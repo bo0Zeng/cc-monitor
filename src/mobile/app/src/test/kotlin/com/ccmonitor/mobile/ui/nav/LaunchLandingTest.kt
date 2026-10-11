@@ -118,7 +118,7 @@ class LaunchLandingTest {
      *
      * 这条不是补边界，是防一类真事故：`landingHostId` 为 null 时若照样拼聊天路由，
      * 拼出来的是 `chat/null/…` 或 `chat//…` —— 要么匹配不上模板（导航当场找不到目的地），
-     * 要么带着一个不存在的主机进屏（连不上 + 满屏报错）。
+     * 要么带着一个不存在的主机进屏（断开 + 满屏报错）。
      */
     @Test
     fun withNoRememberedHostItFallsBackToTheHostList() {

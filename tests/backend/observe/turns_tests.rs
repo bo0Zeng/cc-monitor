@@ -634,7 +634,7 @@ fn untils(row: &TurnRow) -> Vec<Option<&str>> {
     row.folds.iter().map(|f| f.until.as_deref()).collect()
 }
 
-/// ★ 每段管到哪一条为止由核心给（`until`：段后面紧跟的那一条）：本轮下一条露着的 · 下一轮你那句 · 还开着的最后一轮 ⇒ 没有。
+/// ★ 每段管到哪一条为止由核心给（`until`：段后面紧跟的那一条）：这一轮下一条露着的 · 下一轮你那句 · 还开着的最后一轮 ⇒ 没有。
 /// 界面只按 `after` 与 `until` 在账本里取那几行，不自己找「下一个边界」。从某一轮的 `at` 续取也一样。
 #[test]
 fn each_fold_says_which_record_ends_it() {

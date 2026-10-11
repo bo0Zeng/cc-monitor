@@ -29,7 +29,7 @@ export interface RemoteHostConfig {
   addresses: string[];
   /**
    * 跳板 ProxyJump：填另一台已配置主机的 `label`（空 = 直连），经那台隧道连这台
-   * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/连不上即报错不直连。
+   * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/断开即报错不直连。
    */
   jump: string;
   /**

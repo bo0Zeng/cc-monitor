@@ -47,7 +47,7 @@ pub struct UiErrorPayload {
 pub enum Then {
     /// 监护器已经把它重新起了。
     Restarted,
-    /// 没人再起它（脱离那条路没有监护 · 监护器放弃了）⇒ 本机连不上，要用户点［重新连接］。
+    /// 没人再起它（脱离那条路没有监护 · 监护器放弃了）⇒ 本机断开，要用户点［重新连接］。
     Down,
 }
 
@@ -151,7 +151,7 @@ fn now_ms() -> i64 {
 
 type Emit = Box<dyn Fn(&UiErrorPayload) + Send + Sync>;
 
-/// 出口（`lib.rs` setup 那一拍由 `LoggingState::install_error_emitter` 装上；之前的只记日志）。
+/// 出口（`lib.rs` setup 时由 `LoggingState::install_error_emitter` 装上；之前的只记日志）。
 static EMIT: RwLock<Option<Emit>> = RwLock::new(None);
 /// 设置「日志」页那个开关（后台出错 · 弹提示）。
 static ENABLED: AtomicBool = AtomicBool::new(true);

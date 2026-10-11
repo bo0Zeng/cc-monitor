@@ -98,7 +98,7 @@ pub async fn run(
         cfg.port
     );
 
-    // 重连循环：每轮跑一次 stream_loop。失败 / 掉线后按指数退避（2→4→8→16→30s 封顶）重连；本轮站住了则下次以 MIN 快速重连。
+    // 重连循环：每轮跑一次 stream_loop。失败 / 掉线后按指数退避（2→4→8→16→30s 封顶）重连；这一轮站住了则下次以 MIN 快速重连。
     // 唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep（INVARIANT §10）。
     let mut backoff = RECONNECT_MIN;
     // 这台是不是「永久不支持」（非 unix）：`stream_loop` 接不上常驻时写，本循环读完即清。
@@ -107,7 +107,7 @@ pub async fn run(
     loop {
         connected.store(false, Ordering::Release);
         crate::machine_state::connecting(&cfg.origin_label(), "deploy");
-        // 本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
+        // 这一轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
         let conn_started = std::time::Instant::now();
         let result = stream_loop(
             &cfg,
@@ -488,7 +488,7 @@ async fn stream_loop(
     }
 }
 
-/// 本轮起流的结果：接上的那条流、本轮连接的起点。
+/// 这一轮起流的结果：接上的那条流、这一轮连接的起点。
 struct Opened {
     stream: crate::remote_resident::Replayed,
     t_connect_start: std::time::Instant,
@@ -574,7 +574,7 @@ async fn open_round(
     };
     tracing::info!(
         "[perf] stream_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend）\
-         · 自本轮连接开始 T+{}ms",
+         · 自这一轮连接开始 T+{}ms",
         t_exec.elapsed().as_millis(),
         t_connect_start.elapsed().as_millis()
     );
@@ -651,7 +651,7 @@ where
     frame_rx
 }
 
-/// 本轮连接定下来、hello 那一臂要用的几样（起流之后就不变了）。
+/// 这一轮连接定下来、hello 那一臂要用的几样（起流之后就不变了）。
 #[derive(Clone, Copy)]
 struct Round<'a> {
     replay: &'a Arc<EventReplay>,
@@ -659,7 +659,7 @@ struct Round<'a> {
     connected: &'a Arc<AtomicBool>,
     /// 接上那一刻本机常驻后端答的「那台比手上这一版旧」—— 版本提示那句话按它挑。
     remote_older: bool,
-    /// 本轮连接的起点（`[perf]` 埋点从这里算）。
+    /// 这一轮连接的起点（`[perf]` 埋点从这里算）。
     t_connect_start: std::time::Instant,
 }
 
@@ -720,7 +720,7 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
         }
     }
     tracing::info!(
-        "[perf] stream_source [{host_label}] 首个 hello T+{}ms（自本轮连接开始）",
+        "[perf] stream_source [{host_label}] 首个 hello T+{}ms（自这一轮连接开始）",
         t_connect_start.elapsed().as_millis()
     );
     // ★ F05 下半：**自证记忆的唯一写入点**。backend 自己说它是谁，我们才记。

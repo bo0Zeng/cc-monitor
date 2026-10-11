@@ -15,7 +15,7 @@
 //!
 //! 1. **不许往 `filewin/` 里加一份 `.rs`。** `remote_write_registry_tests`
 //!    那条判据把 `filewin/` 那棵树的 `.rs` 份数**钉成恒等 16**（现打：加一份
-//!    当场红在 `left: 17 / right: 16`）—— 而那份文件不在本刀写区。
+//!    当场红在 `left: 17 / right: 16`）—— 而那份文件这里不改。
 //! 2. **抽取器住这儿反而更不容易自欺。** 正向那条判据扫的是
 //!    `src/frontend/shell/src/filewin/**`，反向那条扫的是它之外的 `src/frontend/shell/src/**`
 //!    ⇒ 本文件住 `tests/`，**两个人群都够不着它** ⇒ 结构上不可能

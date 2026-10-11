@@ -1618,7 +1618,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 // 这三刀今天**打不到任何东西** —— 靶子（那一对函数与那颗按钮）不在了，
 // 不是「判据少了三条、缺陷还在」。
 //
-// ⚠ 而**方法**留下来了，并且本刀又用了一遍：一条判据挣不挣得到它的位子，
+// ⚠ 而**方法**留下来了，并且这里又用了一遍：一条判据挣不挣得到它的位子，
 // 看的是「有没有只有它才红的那一刀」；而一条判据该不该删，看的是
 // **它的靶子还在不在** —— 两个问题不一样，混起来就会把真判据当兼容债删掉。
 //
@@ -1670,7 +1670,7 @@ async fn a_real_click_on_download_asks_the_system_save_box() {
 /// 🔴**本条从「发出去了」升级成「读到了」**：读那一问换成经通道问后端
 /// （`files-read-text`）之后，合成后端（真回环口、真钥匙、真 `dial`）答得了它 ⇒ 链子一直走到
 /// 编辑面立起来；线上那一行的参数逐格读回（`path` 原样 · `max_bytes` == 窗口那个上限）。
-/// 第九刀那一版读走 SFTP、连不上（`.invalid`），只买得到「那一趟发出去了」。
+/// 第九刀那一版读走 SFTP、断开（`.invalid`），只买得到「那一趟发出去了」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_real_click_on_edit_fires_the_read() {
     use crate::editor::EDIT_LABEL;
@@ -1983,7 +1983,7 @@ fn sent(log: &crate::find::testing::WireLog, cmd: &str) -> usize {
 }
 
 /// 🔴 **读着一份时再开一份：不发第二趟、说为什么**（后到的那一份会把正在改的那一份换掉）。
-/// 读完了还没落进编辑面的那一拍同样不发。
+/// 读完了还没落进编辑面的那一刻同样不发。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_second_open_while_one_is_still_reading_is_not_sent() {
     let mut w = FileWindow::seeded(
@@ -2016,7 +2016,7 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
         .expect("拒了却没说")
         .said;
     assert!(e.contains("/srv/data/a.txt"), "没说在等哪一份：{e}");
-    // 读完了、还没落进编辑面那一拍：同样不发。
+    // 读完了、还没落进编辑面那一刻：同样不发。
     w.edits.deliver(crate::editor::Arrived::Text {
         path: "/srv/data/a.txt".into(),
         name: "a.txt".into(),

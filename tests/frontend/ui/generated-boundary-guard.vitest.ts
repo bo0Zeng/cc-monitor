@@ -261,7 +261,7 @@ describe("C01 边界生成物", () => {
         // 属性块。**C04c 订正**：第一版的窗口是 `slice(skip_serializing_if 那行, 字段行)`
         // ——只看得见写在 serde 属性**之后**的属性，于是
         // `#[cfg_attr(test, ts(optional))]` + `#[serde(skip_serializing_if)]` 这个顺序
-        // （与 `data_paths.rs` 的 serde-在前 语义完全相同）会**假红**。本轮我写 `origin`
+        // （与 `data_paths.rs` 的 serde-在前 语义完全相同）会**假红**。写 `origin`
         // 时就撞上了，而生成物明明已经是 `origin?: string`。
         // C02 审计的 S2 只修了 **struct 层**的顺序敏感，**字段层**这个窗口漏了。
         // 现在与 u64 那条扫描同一个形状：往上收 ⇒ 顺序无关。
@@ -354,7 +354,7 @@ describe("C01 边界生成物", () => {
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {
-    // **本轮我自己踩的坑**：`ts(type = …)` 覆盖的是**整个**类型、不只是 `Option` 的内层。
+    // **自己踩过的坑**：`ts(type = …)` 覆盖的是**整个**类型、不只是 `Option` 的内层。
     // `duration_ms: Option<u64>` 配 `ts(type = "number")` 生成出 `durationMs: number`
     // ——丢了 `| null`，而该字段**没有** `skip_serializing_if` ⇒ None 会序列化成 `null`。
     // 我是盯生成物发现的，不是守卫逼我的 ⇒ 补上这条。
@@ -492,7 +492,7 @@ describe("C01 边界生成物", () => {
     // ★★**3 → 1**：`tab-session-actions.ts`（11 处）与 `accounts.ts`（5 处）
     //   那 16 处裸 `invoke` 收进包装层（缺的十条命令补进 `commands.ts`，包装层 132 → 142 == Rust 命令数）。
     //   `accounts.ts` 那条「跨工作区冲突协议」早已不在；`tabs.ts` 那条红线由 U2 拆分换成了 `tab-session-actions.ts`，
-    //   这一拍一起清掉。**名单逐字相等**（不是只问「包装层在不在」）：多出任何一个都是第二条路。
+    //   已一起清掉。**名单逐字相等**（不是只问「包装层在不在」）：多出任何一个都是第二条路。
     //   29 → … → 3 → **1**。
     expect(hits.length, `期望恰好 1 个，实得 ${hits.length}`).toBe(1);
     expect(hits.map((f) => f.replace(/\\/g, "/")), "名单只许是包装层自己").toEqual([

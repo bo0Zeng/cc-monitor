@@ -362,7 +362,7 @@ pub const FRESHNESS: &[Freshness] = &[
         evidence: Evidence::Undetermined,
         gap: "🔴 **这一格是「没验」，不是「验过没事」。** 门禁的 `muslbuild` 那格买的是\
               「**编得出静态字节**」，**不买**「在真远端上跑得起来」（无真机、不运行）。\
-              ⇒ 静态 musl 下 `inotify` 的行为**本件没有任何读数**。",
+              ⇒ 静态 musl 下 `inotify` 的行为**没有任何读数**。",
     },
     Freshness {
         target: Target::Windows,

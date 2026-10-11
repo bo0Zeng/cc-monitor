@@ -28,7 +28,7 @@ pub(super) enum ServerState {
 /// 因任何原因没醒，状态永远停在 `Alive`，rc=1 就被永久压成 `Unobservable` ⇒ 永不 retire。
 /// 改成**直接查 `/proc` 里那个 server pid 还在不在**：
 /// - 不在了 ⇒ 就是真的没 server（`NoServer` 原样通过，顺带把状态推到 `Gone`）
-/// - 还在 ⇒ 「server 明明活着、`tmux ls` 却连不上」= 真异常（socket 权限/被换掉之类）
+/// - 还在 ⇒ 「server 明明活着、`tmux ls` 却断开」= 真异常（socket 权限/被换掉之类）
 ///   ⇒ `Unobservable`（保守跳过，不误 retire）
 ///
 /// 一次 `/proc` 存在性读，无定时器、无状态耦合、无挂死风险。
@@ -276,7 +276,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     // `9_/tmp/tmux-1000/default`，`parse::<u32>()` 自然失败 ⇒ `(None, None)`
     // ⇒ 落进 `match probe.server_pid` 的 `_ => {}` 那条**什么都不打的**臂
     // ⇒ `spawn_pid_watcher` 与 `socket_path` 那路 inotify 一次都不装，**而外面看起来一切正常**。
-    // 那正是本件立件时看到的症状。处置不变（拿不到就是拿不到），**加的是那句话**。
+    // 那正是当初看到的症状。处置不变（拿不到就是拿不到），**加的是那句话**。
     if !line.is_empty() && tab_underflow(line, 2) {
         tracing::warn!(
             "CCM_TMUX_UNPARSABLE display-message 切出 {} 段 < 2 —— \
@@ -301,7 +301,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
 /// # 为什么每个挂点都要这一套
 ///
 /// inotify 的 watch 绑在 **inode** 上。本仓 08-13 一天之内在**三处**踩到同一个形状：
-/// `sessions/`（第十拍）· tmux socket 目录（第二十二拍）· `projects/`（本拍）——
+/// `sessions/`（第十拍）· tmux socket 目录（第二十二拍）· `projects/`（最后一拍）——
 /// 症状都是「目录被删掉再重建之后，那一路的帧永远不来，而且没有任何错误」。
 /// ⇒ 与其每处各写一遍，不如**只有一份**：改一处漏两处正是本仓一路在收的那族。
 ///

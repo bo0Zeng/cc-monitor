@@ -425,7 +425,7 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 ///
 /// 现打核过 5 个候选（crates.io / GitHub / docs.rs 三处 API），
 /// 结论逐字是「选定的库是 **`russh-sftp` 3.0.0**」。而本仓此前钉的是 `russh-sftp = "2"`
-/// —— 本件把它抬到 `"3"`，本条判据就是那一刀的钉子。
+/// —— 这里把它抬到 `"3"`，本条判据就是那一刀的钉子。
 ///
 /// # 为什么要一条判据，而不是「改完就算」
 ///
@@ -450,7 +450,7 @@ async fn a_read_over_the_callers_cap_is_refused_not_truncated() {
 /// - 🔴 **买不到：3.x 与 2.x 的行为差异有没有被消化。**（比如 3.0.0 给
 ///   `read` / `write` 各补了一次收尾、`io::ErrorKind::TimedOut` 现在会映射成超时错。）
 ///   那几条要真跑才量得出来，本条**不出声**。
-/// - 🔴 **买不到：许可。** `russh-sftp` 3.0.0 是 Apache-2.0（本件现打核过它那份
+/// - 🔴 **买不到：许可。** `russh-sftp` 3.0.0 是 Apache-2.0（实测核过它那份
 ///   `Cargo.toml` 与 `LICENSE`），但**本条判据不读许可** —— 它只读版本号。
 ///
 /// # ⚠ 死值验的覆盖面，如实登记（09-19 现打）

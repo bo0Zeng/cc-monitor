@@ -1866,7 +1866,7 @@ sid → 上次用哪个号起。
 | `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
 | `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
 | `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
-| `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 连不上时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
+| `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 断开时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
 | `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null` |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（判不了活：这一家没声明怎么判，或这台认不出写者） |
@@ -2293,7 +2293,7 @@ skill 装记录的写口。
 |---|---|---|
 | `dirs` | ← | agent 用户级配置里那张项目表的键（排序）：用过的项目目录 |
 | `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt, mark, login, failed}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
-| `failed` | ← | 这台此刻活着的会话里那一家说它连不上 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
+| `failed` | ← | 这台此刻活着的会话里那一家说它断开 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
 | `login` | ← | `status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null` |
 | `loginIn` | ← | `status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空 |
 | `mark` | ← | 小标画哪一种：`failed`（有 `failed`，压过需登录）· `needsLogin`（有 `login`）· `null`（都没有：只说装了，不说连上了） |
@@ -3970,7 +3970,7 @@ cc-bus 钩子诊断。
 | `--read-session-from-offset` `[--until <end>] <jsonl> <offset>` | 从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）。骨架索引是 `--history-index`。续点用 `line` 帧的 `byte_offset`，别用 `seq` |
 | `--read-session-tail` `<jsonl> <N>` | 尾部优先：首行 `{kind:"snapshot_meta",total,tail_from}`，随后原样输出最新 N 行 `[tail_from,total)`，再输出 `[0,tail_from)` |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
-| `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；连不上 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
+| `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid}`（在听那一位，读不到记录 ⇒ `null`）；没在 ⇒ 起一个脱离的自己、回 `{pid}`；`--replace` 先停掉在听那一位再起 |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |

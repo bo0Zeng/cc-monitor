@@ -66,7 +66,7 @@ fn an_install_is_recorded_in_the_skill_install_ledger() {
 fn the_embedded_file_list_matches_the_repo() {
     let root = crate::guard_support::repo_root().join("src/shared/cc-bus");
     // ⚠ 走 `guard_core::scan_tree!(&root, &[])` —— **空列表 = 不筛扩展名**，
-    //   那个能力是本件 08-13 补进原语的：cc-bus 的脚本（`cc-send` / …）**没有扩展名**，
+    //   那个能力是 08-13 补进原语的：cc-bus 的脚本（`cc-send` / …）**没有扩展名**，
     //   而原语此前按扩展名筛 ⇒ 想扫这棵树只能自己 `read_dir`，
     //   那又撞 `scanning_guard_registry` 的递减棘轮（「不许把上限调上去让今天好过」）。
     //   ⇒ **缺的是原语的能力，不是纪律的例外。**

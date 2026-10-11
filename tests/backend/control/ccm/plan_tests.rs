@@ -231,7 +231,7 @@ fn the_fork_base_differs_from_its_source_and_is_always_a_legal_new_name() {
 
 /// 〔搬自 `ccm-cli` / `cc-spawn-uplift` 的取名那一族〕**三条取名路的退让态度不一样。**
 ///
-/// 🔴 这一条是**自查逮到的**（铁律 15 那一拍）：头一版原生实现**整个没有退让**，
+/// 🔴 这一条是**自查逮到的**（铁律 15 那次）：头一版原生实现**整个没有退让**，
 /// 于是 `--tmux-base=<基名>`（`C15` 给 cc-spawn 的那条路，它的全部意义就是「撞了就退让」）
 /// **静默退化成了 `--tmux=<名>`** —— 写了个修饰、看起来生效了、实际被吃掉。
 #[test]
@@ -613,7 +613,7 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     assert!(!is_exec(std::path::Path::new(&d)), "目录被判成可执行文件");
     let _ = std::fs::remove_dir_all(&d);
 
-    // ② 查找次序**三档都在**：`PATH` 那一档是本拍补回来的，别再删。
+    // ② 查找次序**三档都在**：`PATH` 那一档是补回来的，别再删。
     let me = crate::guard_support::production_code(include_str!(
         "../../../../src/backend/control/ccm/plan.rs"
     ));
@@ -1089,7 +1089,7 @@ fn the_message_the_user_actually_sees_carries_the_reason() {
 
 /// ★ 自检那一趟与 pane 里那一趟**是同一条命令**：同一段 `export` 前缀、同一个入口、
 /// 同一串参数，只在 `--` 之前多一个 `--print`（放到 `--` 后面就成了透传给 agent 的参数，
-/// 那一趟会**真起一个会话**而不是自检 —— 本件现打时就这么踩过一次）。
+/// 那一趟会**真起一个会话**而不是自检 —— 实测时就这么踩过一次）。
 ///
 /// 另钉**顺序**：收尾里自检排在兜底轮询 / 接进去 / 登记**之前**（登记在它后面，才谈得上「不登记」）。
 #[test]

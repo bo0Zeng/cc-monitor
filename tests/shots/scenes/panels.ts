@@ -133,7 +133,7 @@ async function startNewSession(place: "tmux" | "window" = "tmux"): Promise<void>
   await click(await byText('[role="dialog"] button', "新建"));
 }
 
-/** gpu-01 连不上，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
+/** gpu-01 断开，而它那个会话是固定着的 ⇒ 复活出来「说不清」。 */
 function unseenPinnedWorld(): World {
   const w = defaultWorld();
   w.unseenMachines = ["gpu-01"];
@@ -327,7 +327,7 @@ export const PANEL_SCENES: Scene[] = [
     await key("w");
     await sleep(600);
   }),
-  panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 连不上、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
+  panel("panel-unseen-menu", "说不清的 tab 的右键菜单", "gpu-01 断开、它那个固定着的会话说不清：右键菜单里恢复置灰、说为什么", async () => {
     await mainReady(ALL_TABS);
     const t = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].find((x) => (x.textContent ?? "").includes("排序模型"));
     await rightClick(t ?? "#tab-bar .tab");
@@ -781,7 +781,7 @@ export const FRONT_SCENES: Scene[] = [
   }, (w) => {
     w.ops["session-terminals"] = () => ({ terminals: [], why: "detached" });
   }),
-  frontScene("panel-front-remote-offline", "↗ · 连不上那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
+  frontScene("panel-front-remote-offline", "↗ · 断开那台", "devbox 那一问够不着 ⇒ 未切换 · devbox 离线 ＋［重新连接］（红）", async () => {
     await mainReady(ALL_TABS);
     await openTab(3);
     await sleep(400);

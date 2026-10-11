@@ -7,7 +7,7 @@
 1. 〔`KR114D1`，`K-R114` 09-14 立〕`release.yml` 里「发不发布」那个闸
    （`env.PUBLISH` 的**字面** ＋ 每一处「往 Release 上写」与 CI 门那一步的 `if:`）
    **与钉在本文件里的那一份逐字相同**。
-2. 〔`KR124D2`，本件 09-15 立〕**每一处「往 Release 上写」的步骤都带一个正文来源**，
+2. 〔`KR124D2`，09-15 立〕**每一处「往 Release 上写」的步骤都带一个正文来源**，
    而且那份正文**同一个 job 里真的有人生成它**、生成器盘上真的在、生成出来的段真的非空。
 3. 〔`19b`，2026-09-19 立〕**产字节那条路**：平台承诺面的每一格都有一条产线在本文件上
    （两向），本文件上没有第二条**没人登记**的产线（两向），每一处抠后端 `const BUILD_ID` /
@@ -20,13 +20,13 @@
    两向相等、且**三个落点全部被 `.gitignore` 挡着**（两向）；`build.rs` 那几处守卫的
    **出路只有这一个住址**，不许再手抄第二条产字节配方。
    逐条与它买不到什么，见下面 `19c` 那一段的头注。
-5. 〔本拍 2026-09-23 立〕**本包的每一个 `[[bin]]` 都有一条登记过的入包路线**（⑭，
+5. 〔2026-09-23 立〕**本包的每一个 `[[bin]]` 都有一条登记过的入包路线**（⑭，
    两向集合相等），主二进制恰好一个、带 `required-features` 的 bin 零命中、
    `externalBin` ↔ 登记两向且不与本包的 bin 重名、消费侧找它的那个文件名主干
    与产出侧**逐字同源**、而这条路线依据的**打包工具版本**钉住。
    ⚠ 它推翻了一条写在 `Cargo.toml` 与 `filewin::proc` 头注里的报备（「安装包只装主二进制
    与 sidecar」）—— 现打读数与机制逐条住下面 ⑭ 那一段的头注。
-6. 〔本拍 2026-09-23 立〕**产物路径的根 ↔ 两份 `.cargo/config.toml` 声明的 `target-dir`**
+6. 〔2026-09-23 立〕**产物路径的根 ↔ 两份 `.cargo/config.toml` 声明的 `target-dir`**
    （⑮，两向集合相等）。它落地时盘上**就有现物**：搬树之后 `release.yml` 里五处还写着
    `src/frontend/shell/target/release/…`，而那条坏得完全静默 —— Release 建得出来、上面一个
    安装包都没有。逐条住下面 ⑮ 那一段的头注。
@@ -235,7 +235,7 @@ TRIPLES = {"x86_64-unknown-linux-musl", "aarch64-unknown-linux-musl"}
 
 #: 🔴 **每一处抠后端源码常量的住址**（路径, 常量名）→ 出现次数。**Counter 相等，不是包含。**
 #: 它治的是一件真发生过的事：步 9（09-19）把 `BUILD_ID` 从 `main.rs` 搬到 `lib.rs`，
-#: `release.yml` 里**两处**要抠它，那一拍**只改了一处** ⇒ 另一处指着一份**没有那个 const**
+#: `release.yml` 里**两处**要抠它，那次**只改了一处** ⇒ 另一处指着一份**没有那个 const**
 #: 的文件，真发版时死在「抠不到后端的 const BUILD_ID」上，而红的原因与它要守的事无关。
 #: ⇒ 本条不只比登记，还**实打去读那份文件**，抠不出恰好一行就红（⑩b）。
 IDENTITY_READS = {
@@ -265,7 +265,7 @@ IDENTITY_READS = {
 #     （它要 `cargo-zigbuild` ＋ `zig`，本判据一次都不装、不跑）。
 #   · ⑬g 真跑的是 `--check`（**只读**），不是 re-embed 本身。它在一棵**没铺字节**的树上
 #     只答得出「这里没有一份对不上的字节」——那不是「字节是对的」。
-#   · 「本机重编过了」**永远不等于**「发版那一拍办完了」：本机产物与发版 CI 的 zigbuild
+#   · 「本机重编过了」**永远不等于**「发版办完了」：本机产物与发版 CI 的 zigbuild
 #     形态不同（`build.rs` 自陈：static-pie / 未 strip / 不同 rustc）。
 
 #: re-embed 那条命令的本体。
@@ -310,11 +310,11 @@ VERIFY_STEP = ("build-windows", "Place + verify embedded backends")
 AGREE_FN = "emit_embedded_id"
 AGREE_BANNED = ['"unknown"', "unwrap_or_default()"]
 
-# ══ 〔本拍 2026-09-23〕⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ═════════════════════
+# ══ ⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ═════════════════════
 #
 # 🔴 **它治的是一条当天就被推翻的报备。** 第十三刀（文件管理窗口落成独立进程）交回时
 # 逐字写着：「Tauri 安装包只装主二进制与 `externalBin` sidecar ⇒ 装机那份上
-# `resolve_window_bin()` 会找不到它并出声」，并据此把「把它打进包」记成写区外的欠账。
+# `resolve_window_bin()` 会找不到它并出声」，并据此把「把它打进包」记成一笔欠账。
 #
 # **那句是假的。** 现打两趟推翻（用的是本仓这份 `src/frontend/shell/Cargo.toml` ＋
 # `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，`@tauri-apps/cli` 现锁的 2.11.2；
@@ -390,7 +390,7 @@ FOREIGN_SIDECARS = {
         "字节由 `release.yml` 的 `Stage local backend for externalBin` 铺进 `binaries/`",
 }
 
-# ══ 〔本拍 2026-09-23〕⑮ 产物路径的根 ↔ 声明的 `target-dir` ════════════════════════
+# ══ ⑮ 产物路径的根 ↔ 声明的 `target-dir` ════════════════════════
 #
 # 🔴 **这一条落地时盘上就有现物，不用故意改坏。** 09-17 搬树（两个 cargo 工程搬进 `src/`，
 # 同拍加了仓根那份 `.cargo/config.toml`：`[build] target-dir = ".build/shell"`）之后，
@@ -1274,7 +1274,7 @@ def run_checks(emit):
     #     `.gitignore` 还写着 `/embedded-daemons/` 与 `/native-daemon/`
     #     ⇒ 09-19 现打 `git check-ignore` 两条都不命中，两个落点从那天起就没被挡住。
     #     而与 `release.yml` 文件头都还把「三个落点全部 gitignore」
-    #     当硬事实在用 —— **那句话在本拍之前是假的**，而它正是「门禁只能建在
+    #     当硬事实在用 —— **那句话曾经是假的**，而它正是「门禁只能建在
     #     `release.yml` 上」这条推理的全部前提。
     registered = {rust_str_const(brs, c) or "<`const %s` 抠不到>" % c for c in LANDING_CONSTS}
     registered.add(EXTERNALBIN_LANDING)
@@ -1339,7 +1339,7 @@ def run_checks(emit):
     #     F3 hello 自报的是别的版本 ⇒ 红在「起得来」那一格。
     #   ⚠ 买不到：「这棵树上那份真字节起得来」—— 那是 `--check-dev` 在真树上跑的事（B1 交付里
     #     现打过一趟），本格在门禁里**不要求**真树铺了字节（字节不进仓，要求它会把每一棵
-    #     新 clone 的树都判红；接不接进门禁是 `gate.sh` 的事，不在本件写区）。
+    #     新 clone 的树都判红；接不接进门禁是 `gate.sh` 的事，这里不管）。
     lib = read_rel("src/backend/lib.rs")
     contract = read_rel(MARKS_SRC)
     sid = rust_str_const(lib, "BUILD_ID") if lib else None
@@ -1398,7 +1398,7 @@ def run_checks(emit):
                   "现打 rc=%r 红在 %r（要 rc=%r 红在 %r）—— 红错地方、或该红不红，都说明那条判词"
                   "判的不是「开发构建起不起得来本机后端」" % (rc, got, want_rc, want_fails))
 
-    # ══ 〔本拍 09-23〕⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ══════════════════════
+    # ══ ⑭ 本包的每一个 `[[bin]]` ↔ 安装包的清单 ══════════════════════
     cargo_doc = toml_load(BRIDGE_CARGO)
     bins = cargo_bins(cargo_doc)
     pkg_name = ((cargo_doc or {}).get("package") or {}).get("name")
@@ -1504,7 +1504,7 @@ def run_checks(emit):
           "三个打包器里那三处 `if !bin.main()`（逐条读数住本文件 ⑭ 的头注）"
           % (PACKAGE_LOCK, CLI_LOCK_KEY, locked, CLI_VERSION))
 
-    # ══ 〔本拍 09-23〕⑮ 产物路径的根 ↔ 声明的 `target-dir`，两向集合相等 ════════════
+    # ══ ⑮ 产物路径的根 ↔ 声明的 `target-dir`，两向集合相等 ════════════
     declared = declared_target_dirs()
     roots = prod_path_roots(steps)
     check(all(not v.startswith("<") for v in declared.values()),
@@ -1724,8 +1724,8 @@ def main():
           "🔴 **⑬（`19c`）那一组同一条边界**：⑬a–⑬e 全是盘上文本的对拍，"
           "「配方写得一样」≠「那条命令今天跑得出字节」；⑬g 真跑的是 `--check`（只读），"
           "在一棵没铺字节的树上它只答得出「这里没有一份对不上的字节」，"
-          "**不是**「字节是对的」，更不是「发版那一拍办完了」。"
-          "🔴 **⑭（本拍 09-23）那一组的边界**：它读的全是**盘上的文本**（Cargo.toml 的 "
+          "**不是**「字节是对的」，更不是「发版办完了」。"
+          "🔴 **⑭ 那一组的边界**：它读的全是**盘上的文本**（Cargo.toml 的 "
           "`[[bin]]` · `externalBin` · `proc.rs` 那个 `const` · `package-lock.json` 的 CLI 版本）"
           "⇒ 买到的是「每一个 bin 都有一条登记过的入包路线、而且那条路线的依据没被换掉」，"
           "**不是**「装机后它真在那儿」——「非主 `[[bin]]` 会被装」这件事的现打读数是"

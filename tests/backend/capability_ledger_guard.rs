@@ -1,4 +1,4 @@
-//! 〔步 `8a`〕**能力清单汇总的护栏** —— 第 2 层的机器形态。
+//! **能力清单汇总的护栏** —— 第 2 层的机器形态。
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（各自只许有一句）
 //!
@@ -301,7 +301,7 @@ fn every_capability_table_in_the_tree_is_a_registered_face() {
         .collect();
 
     // ★ 反空真：源码树上一张能力表都没扫到 ⇒ 采集坏了（`files/mod.rs` 与 `control/ccm/mod.rs`
-    //   两张是本件的前提，它们不可能不在；`lib.rs` 那张流旗标能力表随旗标删了）。
+    //   两张是这里的前提，它们不可能不在；`lib.rs` 那张流旗标能力表随旗标删了）。
     for must in ["files/mod.rs", "control/ccm/mod.rs"] {
         assert!(
             on_disk.contains(must),

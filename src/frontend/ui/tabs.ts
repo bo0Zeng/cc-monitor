@@ -1135,7 +1135,7 @@ export class TabManager {
   private allListed = false;
   private unarrivedSettled = false;
 
-  /** 「各台都报完了」那一拍（壳给的，`listed` 格的 `all`）。 */
+  /** 「各台都报完了」那一刻（壳给的，`listed` 格的 `all`）。 */
   markAllListed(): void {
     this.allListed = true;
     this.settleUnarrivedOnce();

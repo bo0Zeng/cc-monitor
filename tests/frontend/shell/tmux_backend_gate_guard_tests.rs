@@ -227,7 +227,7 @@ fn scan_verbs(prod: &str) -> (usize, Vec<String>) {
     // 🔴 `K-R112`（09-13）：地板 2 → **1**。`tmux capture-pane` 那一处随抓屏改走
     //    backend 帧面而不存在了 ⇒ monitor 侧只剩 `tmux … ls`（`list_remote_tmux`）一处。
     //    ⚠ **这一格快到头了**：`list_remote_tmux` 也改走后端的那天，这个人群会归零，
-    //    而**归零之后本条就是空真**（`bad` 恒空）—— 到那一拍该做的不是把地板改成 0，
+    //    而**归零之后本条就是空真**（`bad` 恒空）—— 到那时该做的不是把地板改成 0，
     //    是给它换一份**会漂的活体语料**（同本文件 `every_target_placeholder_comes_from_exact_target`
     //    今天的做法：人群 0 + 一份合成坏语料承重）。
     (seen_read_only, bad)
@@ -298,7 +298,7 @@ fn the_backend_identity_gate_is_still_there() {
     );
     // ★ **门必须在路上，不只是在仓里。**
     //
-    // ⚠ 这一条是本轮变异复验补的：M2「把 `launch.rs` 的 `gate::admit` 拆掉、退回
+    // ⚠ 这一条是变异复验补的：M2「把 `launch.rs` 的 `gate::admit` 拆掉、退回
     // `has-session` + 裸 `type_payload`」时，上面两条**照样全绿** —— 因为 `gate.rs`
     // 文件还在、标志串还在。抓到它的是后端自己那两条接线测试，而本模块
     // （monitor 侧那条禁令的**前提**）却认为「门还在」，前提就成了假的。

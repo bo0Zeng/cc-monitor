@@ -4,7 +4,7 @@
 //! # ⚠⚠ 🔴 它的**名字**与对不上，理由现打，别当成漏了
 //!
 //! 那张拆分表要的名字是 **`relay/exchange.rs`**。今天它仍叫 `server.rs`，
-//! 挡着改名的是**写区外的登记**，拿这个路径当住址、改名当场红（今天剩下两行，第一行已不挡）：
+//! 挡着改名的是**这里没改的登记**，拿这个路径当住址、改名当场红（今天剩下两行，第一行已不挡）：
 //!
 //! | 登记 | 它钉着什么 |
 //! |---|---|
@@ -12,9 +12,9 @@
 //! | `tests/frontend/shell/byte_cap_registry_tests.rs` | `HEAD_CAP` / `BODY_CAP` / `TEE_DECODE_CAP` 三条的住址栏都是这个路径 |
 //! | `tests/frontend/shell/structural_scan_tests.rs` | `("src/comms/outward/server.rs", "handle_alloc_error", 1)` |
 //!
-//! 那几处都在 `tests/frontend/shell/` 下，**不在本拍的写区里**（写区逐字是
+//! 那几处都在 `tests/frontend/shell/` 下，**这里没改它们**（改动范围逐字是
 //! `src/backend/relay/` 及它下面新建的目录 ＋ `tests/backend/relay/`）。
-//! ⇒ 本拍**只搬职责、不改文件名**：监听那半已经挪进 `listen.rs`，
+//! ⇒ 这里**只搬职责、不改文件名**：监听那半已经挪进 `listen.rs`，
 //! 这里剩下的就是说的 `exchange`。改名要与那几处同拍，留给下一件。
 //!
 //! # 中转与上游选择的分界就在这一层里的一句话上
@@ -47,7 +47,7 @@ const HEAD_CAP: usize = 64 * 1024;
 ///
 /// ⚠ `HEAD_CAP` **管不到这个量** —— 它只管头**字节数**。先前这一格没有任何上限，
 /// 一条 `Content-Length: 1000000000000` 就能把**整个中转进程** abort 掉
-/// （`handle_alloc_error` ⇒ SIGABRT，不走 unwind），而本件是「一个进程服务 N 个会话」
+/// （`handle_alloc_error` ⇒ SIGABRT，不走 unwind），而这里是「一个进程服务 N 个会话」
 /// ⇒ 打掉的是当时**所有会话**的在途流。
 ///
 /// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
@@ -68,7 +68,7 @@ const READ_CHUNK: usize = 64 * 1024;
 // ══ 中转**自己造**的状态码 —— 每个码只有这一处═══════════
 //
 // 照 HTTP 代理通行做法分两边：**我们拒的一律 4xx**（门 403/421 · 读不懂 400/411/413 ·
-// 路由不成立 404，后者住上游选择那一侧）；**5xx 只说上游那侧**（连不上 / 断了 / 回的不是 HTTP ⇒ 502 · 超时 ⇒ 504）；
+// 路由不成立 404，后者住上游选择那一侧）；**5xx 只说上游那侧**（断开 / 断了 / 回的不是 HTTP ⇒ 502 · 超时 ⇒ 504）；
 // 在飞上界 503 是我们这侧吃不下（代理的通行码）。上游自己的码原样透传 ⇒ 同一个码可能是我们说的、也可能是上游说的，
 // 分开它们的是**原因头** [`REASON_HEADER`]：中转自己回的每一条响应都带它，透传的从来不带。
 // 钉这两条的判据：`server_tests::every_status_we_make_has_one_home_and_the_three_groups_are_disjoint`
@@ -92,7 +92,7 @@ const NOT_A_ROUTE: &str = "404 Not Found";
 ///
 /// ⚠ 名字刻意不带 `CAP`/`MAX`/`LIMIT`/`BYTES`（那几个词是 `byte_cap_registry` 的钩子）。
 pub const BUSY: &str = "503 Service Unavailable";
-/// 🔴 **中转自己的传输失败、而且不是超时**：上游连不上 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx。
+/// 🔴 **中转自己的传输失败、而且不是超时**：上游断开 · 发到一半断了 · 没回应就断 · 回的不是 HTTP · 只给 1xx。
 /// 先前一律 504（502 被上游选择的 `Refuse` 占着）；那个 `Refuse` 改成 4xx 之后 502 让回给它的本义。
 const UPSTREAM_UNREACHABLE: &str = "502 Bad Gateway";
 /// 🔴 **中转自己的传输失败、卡在超时上**（连接超时 · 等响应超时）。
@@ -114,7 +114,7 @@ const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 ///
 /// ㈠ `serve_one()` 开头 —— **有牙的那个**。D3 §2.3 逐字点名的住址（「`serve_one()` 只做
 ///    `set_nodelay`，一个 `set_read_timeout` / `set_write_timeout` 都没有」），
-///    也是转发路径真正阻塞的地方。删掉它，`both_peers_really_carry_…` 当场红（本轮 `MU1`）。
+///    也是转发路径真正阻塞的地方。删掉它，`both_peers_really_carry_…` 当场红（`MU1`）。
 ///    而且 `serve_one()` 有一个**不经过 `serve()`** 的调用者（判据直接调它）
 ///    ⇒ 这句承诺必须由 `serve_one()` 自己兑现，不能挂在调用者身上。
 ///
@@ -126,7 +126,7 @@ const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 ///    ⇒ 它买的**不是**一个实测过的挂死，而是一条更好守的不变式：
 ///    **每一条 `accept` 出来的 socket 从第一刻起就带着期限，不管它接下来走哪个分支**
 ///    —— 明天有人往拒绝路径上加一次阻塞读写时，这条不变式已经在那儿了。
-///    ⚙ **本轮 `MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
+///    ⚙ **`MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
 pub fn apply_downstream_deadline(
     s: &TcpStream,
     deadline: std::time::Duration,
@@ -305,7 +305,7 @@ fn respond_body(
 /// TCP 上，`close` 的时候**接收队列里还压着没读的数据**，内核发的是 **RST 不是 FIN**
 /// ⇒ 下游那边 `read` 拿到的是 `ConnectionReset`，而**不是**我们刚写的那句 503/413
 /// —— 「拒绝」就又变回**静默**的了，而那正是 `阻-3(D3)` 点名的病。
-/// 〔本轮第一版就是这么红的，逐字 `Os { code: 104, kind: ConnectionReset }`；
+/// 〔第一版就是这么红的，逐字 `Os { code: 104, kind: ConnectionReset }`；
 ///  同一条 TCP 事实在 `spawn_fake_upstream` 的头注里也记着（那边是「不读请求体 ⇒ RST 不是 FIN」）。〕
 ///
 /// # 为什么是**非阻塞**的排
@@ -391,7 +391,7 @@ fn drain_arrived(down: &mut TcpStream) {
 /// | `Sent` | 上游那条响应，逐块透传 | 是 |
 /// | `Refused` | 上游选择给的 4xx ＋ 原因头 ＋ 一句为什么（住 `accounts` 那一侧） | **否** |
 /// | `Replied` | 上游选择给的现成回包 ＋ 原因头 | **否** |
-/// | `UpstreamFailed` | 502 / 504 ＋ 原因头 ＋ 一句 `why`（[`UpstreamFailure`]） | 连不上 ⇒ 否；发到一半断了 ⇒ 发过一截 |
+/// | `UpstreamFailed` | 502 / 504 ＋ 原因头 ＋ 一句 `why`（[`UpstreamFailure`]） | 断开 ⇒ 否；发到一半断了 ⇒ 发过一截 |
 ///
 /// 「发到一半断了」（先前的 `WriteFailed`）原先**什么都不回**（连接以错误收尾）：
 /// 下游那时一个字节都还没收到，回一个码不会与已发的字节打架 ⇒ 并进传输失败、回 502 说清卡在发请求（出声，不静默）。
@@ -944,7 +944,7 @@ fn stream_label<'h>(head: &'h RequestHead, names: &[&str]) -> &'h str {
         .unwrap_or("")
 }
 
-/// ★★ **本件的全部意义就在这个函数里。**
+/// ★★ **这一层的全部意义就在这个函数里。**
 ///
 /// 一次 `read` 拿到多少，就立刻 `write_all` + `flush` 多少，然后才回头读下一次。
 /// **绝不**先把响应体读完再写（那会让 TUI 卡住不出字）。
@@ -998,7 +998,7 @@ fn pump<R: Read, W: Write>(
 ///
 /// # ★★ 订正：**上面那 4 条里的第 1、2 条今天已经不成立了 —— 换头做了**
 ///
-/// 先前这里逐字写着「本函数**原样转发**下游那份 `Authorization`，**不替换**」+「『换头』**本件不做**，
+/// 先前这里逐字写着「本函数**原样转发**下游那份 `Authorization`，**不替换**」+「『换头』**这里不做**，
 /// 落点是下一件」。**`K-H2a` 就是那一件，它已经落地** ⇒ 那两句留着就会变成隔壁
 /// `parity_ledger` 里反复记的那一形（**改了行为没回来改理由，账本当天就开始撒谎**）。
 ///

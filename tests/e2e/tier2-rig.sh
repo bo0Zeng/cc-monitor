@@ -91,7 +91,7 @@ print(f"  写了 {p}")
 PY
 
   # Xvfb —— 用 setsid 起，并且**不用 `pkill -f`** 找它：那个模式会匹配到执行 pkill 的
-  # 那条 shell 自己的命令行，把自己杀掉（本轮实发一次）。按 :N 的 socket 判在不在。
+  # 那条 shell 自己的命令行，把自己杀掉（实发过一次）。按 :N 的 socket 判在不在。
   if [ -S "/tmp/.X11-unix/X${DISP#:}" ]; then
     echo "  Xvfb $DISP 已在跑"
   else

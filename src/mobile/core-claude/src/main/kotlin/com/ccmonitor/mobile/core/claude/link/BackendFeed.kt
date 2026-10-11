@@ -224,7 +224,7 @@ class BackendFeed(
         return Run(wasUp = true, retryable = true)
     }
 
-    /** 断在路上的（接流时被掐 · 小中继连不上常驻）再试会好；其余要人动手。 */
+    /** 断在路上的（接流时被掐 · 小中继与常驻断开）再试会好；其余要人动手。 */
     private fun retryable(o: LinkOutcome): Boolean =
         o is LinkOutcome.Attach && (o.outcome is AttachOutcome.Cut || o.outcome is AttachOutcome.Refused)
 

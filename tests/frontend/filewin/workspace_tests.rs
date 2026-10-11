@@ -381,7 +381,7 @@ fn closing_a_tab_with_a_transfer_running_closes_it_and_the_transfer_keeps_going(
 }
 
 /// 稿 18：和那台断了 ⇒ 工具条下一条警告条（重连中 ⇒「devbox 断开 · 重新连接中…」，没按钮；一轮没连上 ⇒
-/// 「devbox 离线 · 采样 HH:MM」＋［重新连接］，时刻 ＝ 摆着那一屏列到的时刻）；列表照常摆着、F5 不把它换成一句「连不上」；
+/// 「devbox 离线 · 采样 HH:MM」＋［重新连接］，时刻 ＝ 摆着那一屏列到的时刻）；列表照常摆着、F5 不把它换成一句「断开」；
 /// 写类那几件说「离线 · 只读」做不了；又连上 ⇒ 条没了、每个标签页重列一遍。
 #[test]
 fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
@@ -432,7 +432,7 @@ fn a_dropped_link_shows_the_strip_keeps_the_stale_listing_and_blocks_writes() {
         painted.iter().any(|(t, _)| *t == retry),
         "离线却没有「重新连接」"
     );
-    // 列表照常摆着；F5 不去问（问了只会把这一屏换成一句「连不上」）。
+    // 列表照常摆着；F5 不去问（问了只会把这一屏换成一句「断开」）。
     let before = ws
         .pane_on(0)
         .listing

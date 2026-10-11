@@ -139,7 +139,7 @@ class FrameClientTest {
         }
 
     @Test
-    fun `小中继连不上：第一行就是拒绝，原因原样`() =
+    fun `小中继断开：第一行就是拒绝，原因原样`() =
         runTest {
             val d = FakeDuplex()
             d.push("""{"attach":"refused","reason":"absent"}""")

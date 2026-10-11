@@ -210,18 +210,18 @@ SITE_TOOLID_NONE_BUT_ARCHIVED = ("build.rs::embed_daemons",)
 # 为什么要有这一块（两条，失效方向不一样）：
 #   甲 `K-R117` `§3-3` 的**收工判据**逐字要「该件那一组的前端落点数恒等于 1」，
 #      而 `§S5b` 今天**只出读数、不判红** ⇒ 那句话没有闸。
-#   乙 **纪律 A**（「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件写区才真不相交」）
+#   乙 **纪律 A**（「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件改动范围才真不相交」）
 #      今天**完全建立在纪律上，没有任何东西在盘它**，而 S1 / S5 是方案里唯一许并跑的一对。
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ── 分组表（`KR128D1`）—— **人的判断住这里**，逐行写死出处 ────────────────────
 #
 # 出处：安装面收成三处时定的那张五行切件表。
-# ⚠ **那张表没有逐条列命令名** —— 它每一行给的是「后端写区 · 前端写区 · 收几条」。
-#   下面这五行是从「归处（①②③）＋ 后端写区那一列 ＋ 收几条那一列」派生出来的
+# ⚠ **那张表没有逐条列命令名** —— 它每一行给的是「后端改动范围 · 前端改动范围 · 收几条」。
+#   下面这五行是从「归处（①②③）＋ 后端改动范围那一列 ＋ 收几条那一列」派生出来的
 #   **人的判断**，派生依据逐行写在第三栏。**派生对不对由 `R8` 盘**（闭集两向 ＋ 交集空）。
 #
-# ⚠ **刻意没有拿「今天住哪」去盘这张表**，理由写出来别当省略：`§3-3` 的「写区（后端）」
+# ⚠ **刻意没有拿「今天住哪」去盘这张表**，理由写出来别当省略：`§3-3` 的「改动范围（后端）」
 #   那一列写的是**搬过去之后**的落点，不是今天的住址 —— S4 那一行现打就对不上
 #   （它写的是 `account_aliases.rs` · `profile_installer.rs`）。拿住址当判据会把「计划」读成「现状」。
 #
@@ -237,11 +237,11 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         #   ⇒ 改表是**跟上真相**，不是凑绿。
         "deploy_remote_backend",
         "uninstall_remote_backend",
-    ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
+    ), "§3-3 第一行：后端改动范围 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
        "`ccm.install`/`ccm.uninstall` 的远端半」。远端半那两条并进了 `aliases_block_*`（带 origin），今天剩 2 条")),
     ("S2", ("①-本机半", (
         # 别名块那三条并进 `aliases_*` 同一族命令面，
-        # 能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个写区」的历史读数，不随归档改。
+        # 能力 id 改成 `alias.block-*`、归档挪到 ②；切件分组（S2）是「那条命令住哪个改动范围」的历史读数，不随归档改。
         #   本条红时逐字「别改表去凑」—— 核过了，是「有人改了命令名」那一种，改表是跟上真相。
         # `aliases_block_*` 三条摘了（别名块进了那台后端，`aliases-block-*`）。
         "ccm_user_path_add",
@@ -249,13 +249,13 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "ccm_user_path_status",
         "local_ccm_entry_status",
         # 远端那台装没装 ccm 由那台后端渲染时自己现查（`launch_render/wire.rs::render_ccm_launch`）；本机那一格是 `local_ccm_entry_status`。
-    ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
+    ), "§3-3 第二行：后端改动范围 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条，那几条归 S4。"
        "🔴 那三条 `ccm_user_path_*`（用户级 PATH 那一格：现在状态 / 加 / 撤）"
-       "是本轮新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
+       "是新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
        "① 它们归档在 `①装后端`（见 `CAP_ARCHIVE` 的 `ccm.user-path`）⇒ 只可能落 S1/S2/S3；"
-       "② 它们是**本机**半（S1 是远端、S3 是 acct-iso）；③ 它们住 `lib.rs`，正是 S2 的后端写区。"
+       "② 它们是**本机**半（S1 是远端、S3 是 acct-iso）；③ 它们住 `lib.rs`，正是 S2 的后端改动范围。"
        "⚠ 而且**前端落点一个字都没多**：它们的调用点在 `src/frontend/ui/launcher-diagnostics.ts`，"
        "那一份本来就在 `FRONTEND_PIN['S2']` 里 ⇒ `R9` 那条棘轮不动。"
        "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
@@ -322,7 +322,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "量于 09-15 · `K-R128` 实现方现打（本文件 `§S5d`，被测树 = `--root`）。"
             "份数不变、换了住处：远端后端装 / 卸那两处调用从 `src/frontend/ui/settings/machine-card.ts` 抽进共用模块 "
             "`src/frontend/ui/backend-deploy.ts`，机器卡（问题行［更新］·「卸载后端」）与主窗口 ↗ 浮层［更新］都调它（↗ 浮层就地部署、不开设置）",
-            "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S1 收完远端半时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
             "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
     ("S2", (("src/frontend/ui/settings/machine-aliases.ts",),
@@ -334,14 +334,14 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "`src/frontend/ui/settings/machine-aliases.ts`：本机别名块的装 / 卸 / 扫（`cc_integration_*`）· "
             "`local_ccm_entry_status` · 用户级 PATH 那三条（`ccm_user_path_*`）整块搬去了机器页「别名」。"
             "**份数没变（3 → 3），是换了一份**：`launcher-diagnostics.ts` 今天一条 S2 调用都没有了",
-            "S2 收完本机半那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S2 收完本机半时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S2']`。"
             "⚠ `src/frontend/ui/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
             "终端集成那几条，不是调用点（见 `§S5d` 第二档）")),
     ("S3", ((),
             "**1 → 0**：`src/frontend/ui/settings/accounts-section.ts` 那一处（一键部署账号库）改经通道问那台后端 `acct-iso-install`，"
             "S3 这一组没有 Tauri 命令了。量于 09-15 · 同上",
-            "S3 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S3 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S3']`。⚠ 现打只剩 1 份这件事**只是现打**，"
             "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
             "（`§3-3` 写「S3 今天 2」是把 `src/frontend/ui/accounts.ts` 那条**注释里的提名**"
@@ -351,7 +351,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "S4 这一组没有 Tauri 命令了。**2 → 1**：`src/frontend/ui/settings/accounts-section.ts` 那一处（rc 片段 `acct_iso_shellinit`）改经通道问那台后端。"
             "量于 09-15 · 同上。`src/frontend/ui/launcher-diagnostics.ts` → "
             "`src/frontend/ui/settings/machine-aliases.ts`（别名管理器并进机器页），份数不变",
-            "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S4 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S4']`")),
     ("S5", (("src/frontend/ui/settings/ext-section.ts",),
             "份数不变、换了住处：cc-bus 的装口从驾驶舱（`src/frontend/ui/settings/cc-bus-section.ts`）搬进扩展页（③ 那一处），"
@@ -359,7 +359,7 @@ FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
             "**2 → 1**：`src/frontend/ui/views/inbox-view.ts`（收件箱写）改经通道问那台后端。"
             "量于 09-15 · 同上。**3 → 2**：`src/frontend/ui/settings/mcp-section.ts` 那几处（MCP 写 / 推拉 · skill 装卸）"
             "改经通道问那台后端，不再调 S5 的 Tauri 命令",
-            "S5 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "S5 时改这一行。**目标不在这一栏** —— 住 "
             "`FRONTEND_GOAL_PER_ITEM['S5']`")),
 ])
 
@@ -435,7 +435,7 @@ FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
             "**本机页那一份**。"
             "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
             "那条装命令归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
-            "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
+            "落地时，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
     ("S3", (("src/frontend/ui/settings/machine-card.ts",),
             "**没达标，前端这一半要做**：把「一键部署 cc-acct-iso」从「账号」栏的空态里"
             "搬进组件栏。R63 裁定三逐字点名「不许再按『…装账号隔离』这样按实现分」，"
@@ -470,7 +470,7 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
 
 # ── 纪律 A 的闸（`KR128D3`）—— 三份共用文件 ───────────────────────────────────
 #
-# 纪律 A 逐字：「第二拍全程不改命令名」⇒ 三份共用文件一个字节都不用动 ⇒ 五件写区才真不相交。
+# 纪律 A 逐字：「第二拍全程不改命令名」⇒ 三份共用文件一个字节都不用动 ⇒ 五件改动范围才真不相交。
 # ⚠ **钉的是命令名，不是文件的字节**（件文件 `§0b`/`KR128D3` 逐字）：那三份里还住着
 #   别的东西，按字节钉会把无关改动也判红，那种闸三天内就会被人绕过去。
 #
@@ -521,7 +521,7 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
 # `src/frontend/ui/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
 # ⚠ 它不是判据，是**反向自检**：形状一变（比如包装层改写成 class 方法），
 #   下面那 22 条会齐刷刷判不到 ⇒ 那时该 CRASH（形状坏了），不该印 22 条红。
-# 〔LOC1b 合并那一拍〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
+# 〔LOC1b 合并时〕100 → 50：包装层条数随 Tauri 命令迁通道按设计在缩（现打 99）；形状坏了读数会塌到个位数，50 照样逮得住。
 WRAPPER_KEY_FLOOR = 40  # 50 → 40：包装层按设计在缩（现打 49），地板只防形状塌
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -824,7 +824,7 @@ def frontend_landing(texts, cmds, wrapper: str):
     落点（第一档）= 有**调用形状**的那一份文件。调用形状逐字只认一种：`.<命令>(`
     —— 本仓前端一律经包装层调（`commands.<名>({…})`，含换行的链式 `.<名>({…})`）。
 
-    🔴 **为什么第二档非分不可**（本件最要防的形状）：只在注释 / 散文 / 字符串里写了
+    🔴 **为什么第二档非分不可**（最要防的形状）：只在注释 / 散文 / 字符串里写了
     命令名的那一份**不是用户入口**。把它算成落点，这把尺子就**可以靠删一条注释变绿** ——
     而「落点数收到 1」正是 S1–S5 的收工判据 ⇒ 那等于给第三块发了一条假出口。
     现打就有两份是这一形（`src/frontend/ui/accounts.ts` · `src/frontend/ui/settings/panel.ts`，逐处印在下面）。
@@ -908,7 +908,7 @@ def section_split_closure(cmds_now):
     if only_now:
         red("R8a", "现打人群里这些命令**五件谁都没认领**：" + ", ".join(only_now)
                    + " —— 新长出一条安装面命令而切件方案没覆盖它，"
-                     "或者有人改了命令名 ⇒ 第三块的写区当场不完整")
+                     "或者有人改了命令名 ⇒ 第三块的改动范围当场不完整")
     if not only_table and not only_now:
         ok(f"R8a 分组表并集逐字等于现打人群（{len(uni)} 条，两向差集都空）")
         print(f"  ✓ R8a 并集逐字相等，两向差集都是空的（表→人群 0 · 人群→表 0）")
@@ -917,7 +917,7 @@ def section_split_closure(cmds_now):
     if overlap:
         for m in sorted(overlap):
             red("R8b", f"命令 `{m}` 同时被 {', '.join(overlap[m])} 认领 —— "
-                       f"五件的写区就是这么撞上的")
+                       f"五件的改动范围就是这么撞上的")
     else:
         ok(f"R8b 五组两两交集为空（{len(SPLIT_GROUPS)} 组 / {len(union)} 条名额）")
         print(f"  ✓ R8b 两两交集为空（{len(union)} 条名额没有一条被两件认领）")
@@ -964,7 +964,7 @@ def section_frontend_ratchet(texts, cmds_now, wrapper: str):
         if grew:
             red("R9a", f"{g}（{label}）**多出落点**：{', '.join(grew)} —— "
                        f"钉住的是 {', '.join(want) if want else '（零）'}。"
-                       f"有人往上加了一份前端落点 ⇒ 第三块那一件的写区变大了，"
+                       f"有人往上加了一份前端落点 ⇒ 第三块那一件的改动范围变大了，"
                        f"**不许靠把表改大让它绿**（`§0c`）")
         if shrank:
             red("R9b", f"{g}（{label}）**少了落点**：{', '.join(shrank)} —— "
@@ -1087,7 +1087,7 @@ def section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper: str):
        **不许红**（否则以后没人敢动这三份文件）。本节每一条判定都只在这 22 个名字上取值。
     """
     print(head("§S5e 纪律 A 的闸 —— 三份共用文件的命令名"))
-    print("  纪律 A 逐字：「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件写区才真不相交」。"
+    print("  纪律 A 逐字：「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件改动范围才真不相交」。"
           "S1 / S5 是方案里唯一许并跑的一对 ⇒ 这条纪律破了，两件当场撞车。")
     print("  🔴 判的是**命令名集合**，不是文件字节：往这三份里加一条与这 22 条无关的新命令"
           "**不红**（按字节钉的闸三天内就会被人绕过去）。")
@@ -1227,7 +1227,7 @@ def main() -> int:
     cmd_addr = scan_tauri_commands(src_dir)
 
     # ── R1 地板（反向自检）：扫不到东西一律 CRASH，不许当「零违例」 ──────────────
-    # 〔LOC1b 合并那一拍〕`LEDGER` 与 `#[tauri::command]` 两格地板 100 → 50：这两格的人群**按设计在缩**
+    # 〔LOC1b 合并时〕`LEDGER` 与 `#[tauri::command]` 两格地板 100 → 50：这两格的人群**按设计在缩**
     #   （Tauri 命令逐批迁到通道 `chan.call`），LOC1b 合并后 `LEDGER` 现打 99 撞了 100。地板只防「解析器塌了」——
     #   塌了读数是个位数，50 照样逮得住；它不是计数棘轮（计数由 parity_ledger / commands.vitest 两向钉着）。
     #   `WRITE_SITES` 同理 20 → 10（monitor 写点随 LOC1b / HX2 等收进后端而减，现打 19）。
@@ -1383,7 +1383,7 @@ def main() -> int:
           f" = {len(rows) + len(SITE_ARCHIVE)} 项**（现打；分母 = `LEDGER` {len(ledger)} 行 ＋"
           f" `WRITE_SITES` {len(sites)} 行）")
 
-    # ── §S5b 前端落点（切件的写区要按这个切，别手写） ─────────────────────────
+    # ── §S5b 前端落点（切件的改动范围要按这个切，别手写） ─────────────────────────
     print(head("§S5b 前端落点 —— 每条安装面命令在 `src/**.ts` 里被谁引用"))
     print("  ⚠ 分母 = `<root>/src` 下的 `.ts`，**排除** `*.vitest.ts` 与 `src/frontend/ui/generated/`；"
           "`src/frontend/ui/ipc/commands.ts` 是**共用包装层**（每条都在它里面），单列不重复印。")

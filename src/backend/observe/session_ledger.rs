@@ -23,7 +23,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::stream::wire::{Frame, RemovalCause, SessionFate};
 
-/// 可重连的会话在 tmux 里**连续几份快照**看不见才算没了（去抖：同一个窗格里换 sid 那一拍新旧并存）。编译期兜死不许小于 2。
+/// 可重连的会话在 tmux 里**连续几份快照**看不见才算没了（去抖：同一个窗格里换 sid 那一刻新旧并存）。编译期兜死不许小于 2。
 pub(crate) const RETIRE_MISS_THRESHOLD: u32 = 2;
 const _: () = assert!(RETIRE_MISS_THRESHOLD >= 2);
 

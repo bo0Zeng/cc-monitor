@@ -30,7 +30,7 @@ fn the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half() {
     );
     assert!(
         spawn_error_is_etxtbsy(chinese),
-        "换个 locale 就认不出来了 ⇒ 判据挂着一条隐式的 locale 前提，正是本件在治的病"
+        "换个 locale 就认不出来了 ⇒ 判据挂着一条隐式的 locale 前提，正是这里在治的病"
     );
     assert!(
         !spawn_error_is_etxtbsy(only_the_prose),
@@ -73,10 +73,10 @@ fn only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try() {
     assert_eq!(tries, 5);
     // 逐字相等，不是 `contains`：
     // ① 最后一次的原话必须带回来（不带回来，用户与日志都问不到成因）；
-    // ② 🔴 **它只许装那一句原话** —— 本轮自查逮到的正是这一处：初版把
+    // ② 🔴 **它只许装那一句原话** —— 自查逮到的正是这一处：初版把
     //    「撞了几次」也揉进了 `last`，而那个数住 `tries` ⇒ 同一个事实两份表示，
     //    实打出来是「…最后一次逐字：撞了 8 次，最后一次逐字：Text file busy…」。
-    //    **本件在治的那条病，长在治它的代码里。** 钉住它别回来。
+    //    **这里在治的那条病，长在治它的代码里。** 钉住它别回来。
     assert_eq!(
         last, "spawn 本地命令失败: Text file busy (os error 26)",
         "`last` 不是那一句原话 —— 要么没带回来，要么被加工了（比如又把次数揉了进来）"
@@ -458,7 +458,7 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 /// # 🔴 `K-R69` 09-12：**人群从「恰好一处」改成「每一处」**，理由写清楚
 ///
 /// 原来这一条是 `find_pinned(&prod, "std::process::id()")`（要求**恰好一处**）＋
-/// 「那一处在 `.partial` 附近」。本轮新增了第二个走 `.partial` + `rename` 的落点
+/// 「那一处在 `.partial` 附近」。又新增了第二个走 `.partial` + `rename` 的落点
 /// （[`install_local_ccm_entry`]）⇒ 它当场红了，报文逐字「命中 2 处，断言指不明是哪一处」。
 ///
 /// **那不是「判据过严」，是它的人群一直写小了**：这条性质从头就该覆盖**所有**临时名落点，
@@ -1263,22 +1263,22 @@ const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安�
 ///
 /// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
 ///
-/// 本件给自释放那条路接上了「产物自己带着的那份」（那一槽今天住 `byte_table.rs`，由宿主取来交进来），
+/// 自释放那条路接上了「产物自己带着的那份」（那一槽今天住 `byte_table.rs`，由宿主取来交进来），
 /// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
 /// 于是要先回答一句：**「找不到本机后端」这一形还存不存在？**
 ///
 /// **存在，而且一点没少。** [`resolve_with`] 的职责一个字没改 —— 它仍然只回答
-/// 「**exe 旁边**有没有」，而裸 exe 旁边**仍然没有**（本件不往 exe 旁边放东西）。
+/// 「**exe 旁边**有没有」，而裸 exe 旁边**仍然没有**（这里不往 exe 旁边放东西）。
 /// 变的是**这个答案之后发生什么**：以前它就是终点，现在它是自释放那一支的**入口**。
 /// ⇒ 本条守的东西**逐字未变**（那一串给不给得出下一步 · 有没有把件号甩给用户），
 /// 而且它守的那一串**仍然到得了用户眼前** —— `resolve_or_extract` 在两个来源都空时
 /// 把 `beside` 的 `reason` **原样**交回去，那条路今天照走。
 ///
-/// ⚠ **真正过期的是那一串里的两句话，本件同拍改掉了**（不改就又成了「判据替假话背书」）：
+/// ⚠ **真正过期的是那一串里的两句话，已同时改掉**（不改就又成了「判据替假话背书」）：
 /// ① 「没有它通常意味着跑的是裸 `monitor.exe`」——今天裸 exe 会自己释放一份，这句不再成立；
 /// ② 「本机后端今天**未启动**」——那是 `resolve_with` **答不了**的问题，它只看得见旁边。
 /// 改完之后本条**照旧命中**（`装一次安装包` 仍在 [`A_STEP_THE_USER_CAN_TAKE`] 里）——
-/// 🔴 而这正是要写下来的那一格：**本条没有变红，所以它也没有替本件的改动作证**。
+/// 🔴 而这正是要写下来的那一格：**本条没有变红，所以它也没有替那次改动作证**。
 /// 「释放失败」那一形由本条**射程之外**的
 /// [`the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all`] 接住，
 /// 那条正好落在上面那句「本条一条都没盖」点名的三格之一。
@@ -1491,7 +1491,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
         panic!("切出来的这段里 `extract_embedded_to(` 不是恰好一处（{e}）—— 切歪了，本条此刻无效。\n逐字：{body}")
     });
 
-    // ★ **防空转的第二半**〔本轮 `7u` 那一刀逼出来的，逐字记下理由〕：
+    // ★ **防空转的第二半**〔`7u` 那一刀逼出来的，逐字记下理由〕：
     //   把实现整个退掉之后，`the_extraction_refusal_…` 那条**仍然绿** ——
     //   它测的是一个**纯函数**，而纯函数不接调用点也照样对。
     //   ⇒ 「那句响亮的话真的被用上了」得在这里钉，不能指望那一条。
@@ -1499,7 +1499,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
         panic!(
             "那份共用的解析体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
                  一处都没有 ⇒ 释放失败又退回那句**与「没带后端」分不开**的话，\n\
-                 而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
+                 而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（实测过）。\n逐字：{body}"
         )
     });
     // 「问产物自己带没带」搬去了宿主（`byte_table::choose` 按这台机器的 (OS, arch) 查表，
@@ -1533,7 +1533,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
 /// | | Linux / macOS（后缀 = 空串） | Windows（后缀 = `.exe`） |
 /// |---|---|---|
 /// | 「带后缀」那条 | **空真**（`ends_with("")` 恒真） | 真 |
-/// | 「不带后缀时逐字不变」那条 | **真**（本件不许让 Linux 那条退化） | 空真 |
+/// | 「不带后缀时逐字不变」那条 | **真**（不许让 Linux 那条退化） | 空真 |
 ///
 /// ⇒ 两条**各有一个平台上是空真**，而本仓 CI 的 `rust` job 跑在 **windows-latest**、
 /// 门禁跑在 Linux ⇒ **两侧合起来才有牙，单侧都不够**。这一格如实写在这里，别读成「验过了」。
@@ -1545,7 +1545,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
 /// 闭集本该只有一个住址（把名字 emit 成编译期 env 就够了）——**`include_bytes!` 的语法
 /// 不许**：它只吃字面量，`concat!(env!(..), ..)` 那种写法会撞
 /// `cross_half_edge_registry` 那条「非字面量 include 必须登记」的默认拒绝，
-/// 而那张登记表不在本件写区。⇒ 两处字面量是**被语法逼出来的**，不是懒。
+/// 而那张登记表这里不改。⇒ 两处字面量是**被语法逼出来的**，不是懒。
 /// 逼出来的重复由**判据**补：这一条现读 `build.rs` 里那两个常量的**值**，
 /// 再去生产段里找拼出来的那条路径 —— 任一侧改名，这里当场红。
 ///
@@ -1556,7 +1556,7 @@ fn the_native_backend_path_is_spelled_the_same_on_both_sides() {
     // 🔴 **必须是 `include_str!`，不许 `std::fs::read_to_string`** —— 后者是
     //    `needle_anchor_registry::CORPUS_SEEDS` 的**种子**：写下它，这个函数里的局部
     //    （`line` / `s` / `e` …）会被那条棘轮的传递闭包一路认成「语料变量」，
-    //    而单字母名字与本文件别处的局部**重名** ⇒ 一处**与本件毫无关系**的既有
+    //    而单字母名字与本文件别处的局部**重名** ⇒ 一处**与这里毫无关系**的既有
     //    `e.contains("再开一次")` 当场被算进欠账，棘轮 33 → 34 变红（实测）。
     //    ⚠ 这正是那条棘轮自己头注里记着的「判据自己跑飞」，只是这次是我喂的种子。
     //    局部也一并改成长名字，别再给传递闭包留同名的落脚点。
@@ -1661,7 +1661,7 @@ fn hitting_the_cap_gives_up_and_says_why() {
     let Decision::GiveUp { reason } = decide(&[1_000, 2_000, 3_000], 3_000, l) else {
         panic!("第 3 次崩溃就该放弃 —— 差一位的错本仓出现过");
     };
-    // 带实际次数与上限，并说清影响面（远端连接全经本机这一份，本机起不来远端一样连不上）。
+    // 带实际次数与上限，并说清影响面（远端连接全经本机这一份，本机起不来远端一样断开）。
     assert_eq!(
         reason,
         copy_core::copy_text(

@@ -52,7 +52,7 @@ sealed interface AttachOutcome {
     ) : AttachOutcome
 
     /**
-     * 拒了：小中继连不上常驻后端（`absent` 没人在听 · `unreachable` 别的原因），或常驻后端嫌 attach 行形状不对
+     * 拒了：小中继与常驻后端断开（`absent` 没人在听 · `unreachable` 别的原因），或常驻后端嫌 attach 行形状不对
      * （`malformed-attach`）。`reason` 原样。
      */
     data class Refused(
@@ -205,7 +205,7 @@ class FrameClient private constructor(
         private const val FRAME_BUFFER = 1024
         private const val BREAK_SNIPPET = 200
 
-        /** 小中继连不上时第一行就是它（`{"attach":"refused","reason":…}`）。 */
+        /** 小中继断开时第一行就是它（`{"attach":"refused","reason":…}`）。 */
         private fun refusal(m: Map<String, Any?>?): String? = if (m?.str("attach") == "refused") m.str("reason") ?: "" else null
 
         internal fun replyOf(

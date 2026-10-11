@@ -455,7 +455,7 @@ fn every_ticker_names_its_event_source_and_owner() {
 /// U4b 落在一份新文件里（`pidwatch/win32.rs` ＋ `mod.rs` 的 `cfg` 改成 Windows 走它），
 /// `fallback.rs` 一个字的行为都没变 ⇒ 旧版本条会**继续绿**、一声不响 —— 头注自己写的那个盲区。
 /// ⇒ 本条改成盯**新的事实**：Windows 那一格路由到 `win32.rs`，而那份文件真的会调 `on_dead`。
-/// 它从「等 U4b 的闹钟」变成「U4b 别退回去的围栏」；**F12 从这一拍起可以开工**
+/// 它从「等 U4b 的闹钟」变成「U4b 别退回去的围栏」；**F12 从此可以开工**
 /// （上面「要做的两件事」照旧：把 `pidwatch` 抽成两侧共用的 crate · `session_map.rs` 删 2s 心跳 ——
 /// 那另做）。
 /// ⚠ 别把「F12 可以开工」读成「Windows 上判活验过了」：`win32.rs` 只买到编得过 ＋ 与 `linux.rs`

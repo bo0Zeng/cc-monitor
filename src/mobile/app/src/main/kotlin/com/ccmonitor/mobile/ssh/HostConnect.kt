@@ -49,7 +49,7 @@ suspend fun resolveJumpChain(
     // 没配跳板、自环、成环截断 → 直连。
     val jumpId = host.proxyJumpHostId?.trim()?.takeIf { it.isNotEmpty() && it != host.id && it !in visited } ?: return null
     // 配了跳板却解析不了（跳板主机没了、没身份）→ 拒连并报错，绝不静默直连：那会绕过跳板这道安全边界，
-    // 还会把「跳板坏了」报成「目标连不上」。
+    // 还会把「跳板坏了」报成「目标断开」。
     val jumpHost = hostRepo.get(jumpId) ?: error(copyText("mobConnect.jump.missing"))
     // 跳板身份或密码有一样即可；都没有同样拒连。
     if (jumpHost.authRef == null && jumpHost.passwordEnc == null) {

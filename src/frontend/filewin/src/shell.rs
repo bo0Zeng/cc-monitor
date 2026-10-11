@@ -22,7 +22,7 @@
 //!
 //! ## ✅ 2026-09-20：**在一台真 Windows 11 桌面上量过了，然后才改的**
 //!
-//! 之前这一节的结论是读源码推出来的，处置写着「建议，本刀没做 —— 没有 Windows 机器，
+//! 之前这一节的结论是读源码推出来的，处置写着「建议，没做 —— 没有 Windows 机器，
 //! 改了验不了」。那个理由现在不成立了：本机那台 Win11 虚拟机有活的交互桌面（session 1），
 //! 一个 scratchpad 探针（`tao` ＋ `eframe`，与本仓同版本、同 `glow` 后端、
 //! 清单与 `monitor.exe` 逐字同形 ⇒ 进程起来时是 `UNAWARE`）在那上面跑出四格：
@@ -675,7 +675,7 @@ impl FileWindow {
 
     /// 🔴 **断线时哪几件做不了 —— 唯一一处**：命令栏每一颗 · 菜单每一项 · 键盘都问它。
     /// 要碰那台机器的（新建 · 上传 · 终端 · 复制到另一栏 · 选中项上的每一件，打开目录除外）⇒ 「离线 · 只读」；
-    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说连不上。
+    /// 只改这一扇窗怎么看的（左栏 · 显示隐藏文件 · 双栏 · 预览）照常。打开目录照常点得动：进去那一下自己会说断开。
     pub fn offline_cmd(&self, c: super::chrome::Cmd) -> Option<String> {
         use super::chrome::Cmd;
         let needs_machine = match c {
@@ -822,7 +822,7 @@ impl FileWindow {
 
     /// 重新列一次当前目录。**本机同步做完；远端扔给 tokio，不堵住 UI 线程。**
     pub fn reload(&self) {
-        // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「连不上」）：列表进过期态、照常摆着，
+        // 和那台断着、手上摆着上一屏 ⇒ 不去问（问了只会把那一屏换成一句「断开」）：列表进过期态、照常摆着，
         //   连上之后窗口那一级把每个标签页重列一遍（`Workspace::settle_link`）。
         if self.link.offline() && !self.listing.rows.lock().unwrap().is_empty() {
             return;
@@ -5286,7 +5286,7 @@ mod tests;
 #[path = "../../../../tests/frontend/filewin/shell_keys_tests.rs"]
 mod keys_tests;
 
-/// 开窗后第一拍（窗口几何有了的那一拍）把窗口夹进 monitor 交来的工作区，之后原样转交。
+/// 开窗后第一拍（窗口几何有了的那一帧）把窗口夹进 monitor 交来的工作区，之后原样转交。
 struct FitOnce<A> {
     inner: A,
     work: Option<host_core::WorkArea>,
@@ -5316,7 +5316,7 @@ impl<A: eframe::App> eframe::App for FitOnce<A> {
     }
 }
 
-/// [`FitOnce`] 那一拍发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定
+/// [`FitOnce`] 那一帧发什么（纯函数）：egui 的几何是逻辑点，工作区是物理像素 ⇒ 换算后交给同一个判定
 /// `crate::fit_into_work_area`（Tauri 那几扇窗也用它），再换回逻辑点。本来就在里面 ⇒ 空。
 pub(crate) fn fit_commands(
     outer: egui::Rect,

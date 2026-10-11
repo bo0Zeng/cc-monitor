@@ -654,7 +654,7 @@ pub(crate) fn live_session_ids(agent_home: &Path) -> std::collections::BTreeSet<
         .collect()
 }
 
-/// 这台活会话里那一家说连不上的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
+/// 这台活会话里那一家说断开的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LiveMcpFailed {
     pub name: String,
@@ -667,7 +667,7 @@ pub(crate) struct LiveMcpFailed {
 }
 
 /// 这台此刻活着的交互会话（`homes` 各号的家里的 pidfile；判活同 [`live_session_ids`]，后台任务不算）里，
-/// 那一家说连不上的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
+/// 那一家说断开的 MCP：每个名字取说它最晚的那一条，按名字排。会话结束了的不算（那份原话已经过时）。
 /// 每条会话只读 MCP 那一格（`facts_query::mcp_of`）；标题取历史清单的缓存（`history_query::session_title_of`）。
 pub(crate) fn live_mcp_failed(homes: &[PathBuf]) -> Vec<LiveMcpFailed> {
     let mut out: Vec<LiveMcpFailed> = Vec::new();

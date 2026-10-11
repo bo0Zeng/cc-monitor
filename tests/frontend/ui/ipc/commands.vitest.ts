@@ -18,7 +18,7 @@
  *
  * 1. **「每个命令都必须经过包装层」** —— C04a 只迁了 1 个模块做样板，其余 118 个仍走裸
  *    `invoke`，由 C04d 分批迁。写了就是当场假红。
- * 2. **「每个 Rust 命令都必须在 TS 侧被静态调用过」** —— **实测证否**：本轮我先扫出
+ * 2. **「每个 Rust 命令都必须在 TS 侧被静态调用过」** —— **实测证否**：先扫出
  *    「7 个命令 TS 从没调过」（`sftp_delete`/`sftp_mkdir`/`sftp_rename`/4 个 `stream_*`），
  *    逐个查后发现**全都在用**，只是经**动态命令名**走的：
  *    `panel.ts:378` `this.doWrite("sftp_delete", …)`（helper 转发）·
@@ -362,7 +362,7 @@ describe("C04a 命令名钉死", () => {
 //
 // ⚠ 它住**本文件**而不是 `accounts.vitest.ts`：那边加一个目录遍历会撞
 // `scanning-guard-registry` 的递减棘轮（「测试里做目录遍历的文件只许变少」，
-// 本轮实测 11 > 上限 10）。本文件本来就在遍历，人群不多一个。
+// 实测 11 > 上限 10）。本文件本来就在遍历，人群不多一个。
 describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   /** 生产段里起本机会话的那几处调用（剥注释、跳过测试文件与包装层）。 */
   function localLaunchCallSites(): Array<{ file: string; text: string; kind: string }> {
@@ -376,7 +376,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       if (!/\blaunchLocal\b/.test(raw)) continue;
       // ⚠ **先剥注释**：散文里逐字写着 `invoke("resume_history_session", …)` 这种句子
       //    （`launch-requests.ts` 的头注、`accounts.ts` 的说明各一处），
-      //    不剥会被数成调用点 —— 本轮实测扫出 6 处而真实是 4。
+      //    不剥会被数成调用点 —— 实测扫出 6 处而真实是 4。
       const code = stripComments(raw, "ts");
       for (const m of code.matchAll(
         // ⚠ 窗口 1200 字符是**量出来的**：`fork-flow.ts` 那处调用里夹着一整段注释，
@@ -426,7 +426,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   // ⚠ **`new_local_session` 不在这个分母里，而那不是漏掉**：Rust 侧
   //   `history.rs::new_local_session` 的签名里**根本没有 `tmux_name` 这一格**
   //   （函数体给 `launch_local` 的第五个实参硬写 `None`）⇒ 前端传了也没人收。
-  //   补它要同一拍改 `src/frontend/shell/`，**不在 `K-R46` 写区**，已随本件上报。
+  //   补它要同一拍改 `src/frontend/shell/`，**`K-R46` 没改**，已上报。
   //   ⇒ 本条的分母是**带得了这个参数的那几处**，不是「全部起会话的路」。
   //
   // 🔴 **本条只买「那一行字在不在 + 人群」**（与上一条同病，`D4` 两刀证过）：
@@ -561,7 +561,7 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
 //   词是 `origin`，改名就出人群；② **出方向**那一半（`JsonlRecord` 一族仍是可缺省的 `origin`，缺省 = 本机；
 // `RemoteHealthPayload.origin` 已改成恒有值的 `string`）——
 //   那几份住 `src/frontend/shell/src/{ui_contract,history,search}.rs` 与 `lib.rs`，
-//   不在步 2 的写区里，逐份读数在交回件里。**别把这一节读成「全仓没有 `null` 了」。**
+//   当时没改。**别把这一节读成「全仓没有 `null` 了」。**
 // ══════════════════════════════════════════════════════════════════════════
 
 
@@ -966,7 +966,7 @@ describe("〔C4b〕本机只有一个表示（`\"__local__\"` 退役）", { time
 //
 // 基线 `d7fcd6d8` 现打：`commands.ts` 之外还有 **16 处**裸 `invoke`（`tab-session-actions.ts` 11 ·
 // `accounts.ts` 5），它们调的命令里有 10 条根本不在包装层 ⇒ 名字 / 实参形状 / 返回类型三样都没人钉。
-// 这一拍把它们收进来，本节钉住「不许再长出来」。与 `generated-boundary-guard.vitest.ts` 那条
+// 已把它们收进来，本节钉住「不许再长出来」。与 `generated-boundary-guard.vitest.ts` 那条
 // 「直接 import invoke 的生产文件恰好 1 个」**异源**：那条量 `import` 语句，本条量**调用点**
 // （命名空间导入 `import * as core` 之后 `core.invoke(` 那一形 import 那条看不见，本条的第三格补上）。
 // ══════════════════════════════════════════════════════════════════════════

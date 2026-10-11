@@ -287,7 +287,7 @@ pub(crate) fn accts_manifest_under(home: &str) -> String {
 }
 
 /// 家目录下一个 `/` 分隔的相对路径 → 本平台的完整路径（逐段 `join`，Windows 上不再 `\` 与 `/` 混拼）。
-/// 家目录为空时照旧拼成 `/<rel>`（与改之前逐字相同 —— 这一格不是本件要改的行为）。
+/// 家目录为空时照旧拼成 `/<rel>`（与改之前逐字相同 —— 这一格不是这里要改的行为）。
 pub(crate) fn under_home(home: &str, rel: &str) -> String {
     if home.is_empty() {
         return format!("/{rel}");

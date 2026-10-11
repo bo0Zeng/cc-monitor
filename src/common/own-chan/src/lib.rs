@@ -125,7 +125,7 @@ pub struct BlockingStream(std::os::unix::net::UnixStream);
 #[cfg(not(unix))]
 pub struct BlockingStream(std::convert::Infallible);
 
-/// 连那个通道（同步）。连不上的 `ErrorKind`（`NotFound` · `ConnectionRefused` = 没人在听；`PermissionDenied` = 不归本人）交调用方挑说法。
+/// 连那个通道（同步）。断开的 `ErrorKind`（`NotFound` · `ConnectionRefused` = 没人在听；`PermissionDenied` = 不归本人）交调用方挑说法。
 #[cfg(unix)]
 pub fn connect_blocking(path: &Path) -> std::io::Result<BlockingStream> {
     std::os::unix::net::UnixStream::connect(path).map(BlockingStream)

@@ -38,7 +38,7 @@ pub const AUTH_KINDS: [&str; 2] = [AUTH_KIND_SUBSCRIPTION, AUTH_KIND_API_KEY];
 /// manifest 的 `authKind` 键 → 鉴权方式。这是这条分类规则的唯一住址。
 /// - 缺席（旧 manifest / 写侧还没加这个键）⇒ [`AUTH_KIND_SUBSCRIPTION`]。
 /// - 认不出的值（写侧先加了 `bedrock` 而读侧还没升）⇒ 也落 [`AUTH_KIND_SUBSCRIPTION`]，刻意的保守方向：订阅这一档保留
-///   「缺凭据 ⇒ 不可选」那道保护（用户看到「未登录」，看得见、可修），落到 api-key 那一档会让它变成可选却连不上（看不见的坏）。
+///   「缺凭据 ⇒ 不可选」那道保护（用户看到「未登录」，看得见、可修），落到 api-key 那一档会让它变成可选却断开（看不见的坏）。
 pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
     match raw {
         Some(s) if s == AUTH_KIND_API_KEY => AUTH_KIND_API_KEY,

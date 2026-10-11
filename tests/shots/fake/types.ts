@@ -63,7 +63,7 @@ export interface World {
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
   unseenMachines: string[];
-  /** 到那台那一跳连不上的几条帧命令：机器 → op（例：历史清单问不到那台，`history-list`）。 */
+  /** 到那台那一跳断开的几条帧命令：机器 → op（例：历史清单问不到那台，`history-list`）。 */
   hopDown?: Record<string, string[]>;
   /** 那台后端比界面老、不认的几条帧命令：机器 → op。 */
   older?: Record<string, string[]>;

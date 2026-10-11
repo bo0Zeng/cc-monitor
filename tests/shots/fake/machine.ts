@@ -41,7 +41,7 @@ function extList(w: World): unknown {
   g.machines[0].name = "workstation";
   g.machines[1].name = "devbox";
   g.machines[1].key = "devbox";
-  // 再两台：gpu-01 连不上（那一列是上次同步的样子）· win-laptop；外加一条 MCP「github」，本机装了、devbox 内容不同、另两台没装。
+  // 再两台：gpu-01 断开（那一列是上次同步的样子）· win-laptop；外加一条 MCP「github」，本机装了、devbox 内容不同、另两台没装。
   const rows = (g as unknown as { rows: { cells: unknown[] }[] }).rows;
   const more = [
     { here: false, key: "gpu-01", name: "gpu-01", projects: [], reachable: !w.unseenMachines.includes("gpu-01") },
@@ -72,7 +72,7 @@ function extList(w: World): unknown {
 export function machineOps(): Record<string, OpHandler> {
   return {
     "ext-list": (_o, _r, w) => extList(w),
-    // 各台的 MCP 列表（形状同 `tests/__fixtures__/mcp-read.golden.json` 的 marked）：本机 github 两个号要登录（黄标）· devbox 上一个活会话说它连不上（红标）。
+    // 各台的 MCP 列表（形状同 `tests/__fixtures__/mcp-read.golden.json` 的 marked）：本机 github 两个号要登录（黄标）· devbox 上一个活会话说它断开（红标）。
     "mcp-read": (origin) => {
       const entry = (over: Record<string, unknown>) => ({ scope: "user", name: "github", server: { type: "http", url: "https://example.invalid/mcp" }, sourcePath: `${HOME}/.claude.json`, status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
       const entries =
