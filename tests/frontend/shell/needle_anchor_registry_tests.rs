@@ -227,7 +227,7 @@ fn receiver_before(hay: &str, dot_at: usize) -> String {
 /// `matches` / `find` / `starts_with` / `ends_with` / `split` / `strip_prefix` 拿字符串字面量
 /// 去够语料时，**风险一模一样**（needle 被撑大 ⇒ 照样绿）。
 ///
-/// 实测这不是理论风险：**本轮在 `polling_registry` 逮到的那个洞用的正是 `matches`**
+/// 实测这不是理论风险：**在 `polling_registry` 逮到的那个洞用的正是 `matches`**
 /// （`src.matches("{api}(")`，一个空格就出圈），而本模块**从头到尾看不见它** ——
 /// 治这一族的判据，自己的人群只取了族里的一种形态。
 ///

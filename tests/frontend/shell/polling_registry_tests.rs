@@ -489,7 +489,7 @@ fn scheduling_marks(raw: &str) -> Vec<(usize, &'static str, Option<String>)> {
 #[test]
 fn every_scheduling_call_site_carries_a_classification_mark() {
     // 匹配单位自检（两个方向都要钉）：
-    // 放松的那一侧 —— 带空白的调用要数进来（本轮的洞就在这里）。
+    // 放松的那一侧 —— 带空白的调用要数进来（洞就在这里）。
     assert_eq!(
         count_calls("requestAnimationFrame (tick);", "requestAnimationFrame"),
         1,

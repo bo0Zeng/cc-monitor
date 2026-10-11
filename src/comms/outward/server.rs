@@ -114,7 +114,7 @@ const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 ///
 /// ㈠ `serve_one()` 开头 —— **有牙的那个**。D3 §2.3 逐字点名的住址（「`serve_one()` 只做
 ///    `set_nodelay`，一个 `set_read_timeout` / `set_write_timeout` 都没有」），
-///    也是转发路径真正阻塞的地方。删掉它，`both_peers_really_carry_…` 当场红（本轮 `MU1`）。
+///    也是转发路径真正阻塞的地方。删掉它，`both_peers_really_carry_…` 当场红（`MU1`）。
 ///    而且 `serve_one()` 有一个**不经过 `serve()`** 的调用者（判据直接调它）
 ///    ⇒ 这句承诺必须由 `serve_one()` 自己兑现，不能挂在调用者身上。
 ///
@@ -126,7 +126,7 @@ const UPSTREAM_TOO_SLOW: &str = "504 Gateway Timeout";
 ///    ⇒ 它买的**不是**一个实测过的挂死，而是一条更好守的不变式：
 ///    **每一条 `accept` 出来的 socket 从第一刻起就带着期限，不管它接下来走哪个分支**
 ///    —— 明天有人往拒绝路径上加一次阻塞读写时，这条不变式已经在那儿了。
-///    ⚙ **本轮 `MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
+///    ⚙ **`MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
 pub fn apply_downstream_deadline(
     s: &TcpStream,
     deadline: std::time::Duration,
@@ -305,7 +305,7 @@ fn respond_body(
 /// TCP 上，`close` 的时候**接收队列里还压着没读的数据**，内核发的是 **RST 不是 FIN**
 /// ⇒ 下游那边 `read` 拿到的是 `ConnectionReset`，而**不是**我们刚写的那句 503/413
 /// —— 「拒绝」就又变回**静默**的了，而那正是 `阻-3(D3)` 点名的病。
-/// 〔本轮第一版就是这么红的，逐字 `Os { code: 104, kind: ConnectionReset }`；
+/// 〔第一版就是这么红的，逐字 `Os { code: 104, kind: ConnectionReset }`；
 ///  同一条 TCP 事实在 `spawn_fake_upstream` 的头注里也记着（那边是「不读请求体 ⇒ RST 不是 FIN」）。〕
 ///
 /// # 为什么是**非阻塞**的排

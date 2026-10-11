@@ -356,7 +356,7 @@ chk "正常路径 stderr 仍为空" "$(wc -l < "$WORK/err-ok.txt")" "0"
 
 echo "[18] 【08-13】边界：cc-bus 脚本**不可执行** · 初始任务**超长**"
 # ★ 这两格钉的都是**失败面**——`C15` 那批新代码的失败路径基本没被真跑过，
-#   而失败面正是「假成功」最爱藏的地方（本轮已在这条路上逮到三次）。
+#   而失败面正是「假成功」最爱藏的地方（已在这条路上逮到三次）。
 TB="$(mktemp -d)"
 cp "$REPO/src/shared/cc-bus/scripts/cc-register" "$REPO/src/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
 chmod -x "$TB/cc-spawned-record"

@@ -240,7 +240,7 @@ jobs:
       # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
       # `crypto-bigint 0.7.3`，而 **`0.7.0…0.7.4` 在 crates.io 上全部 yanked、只有 `0.7.5` 没被 yank**
       #（09-09 现打 crates.io API 核实过 —— `src/backend/Cargo.toml` 里 `K-R34` 那段
-      #  留着的问号「本轮没核，判不了」，这次核了：`yanked=true`）。
+      #  留着的问号「没核，判不了」，后来核了：`yanked=true`）。
       # cargo **只在解析那一步**挡 yanked，lock 里已经写着的照用 ⇒ 今天编得过。
       # 但凡有什么让它**重走解析**（换机器 / 改依赖 / lock 与 manifest 对不上），后果二选一，
       # 两条都坏：① 联网时它会**悄悄挪到 `0.7.5`** ⇒ 发出去的安装包与 CI 测过的**不是同一棵依赖树**；

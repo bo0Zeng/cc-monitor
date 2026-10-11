@@ -73,7 +73,7 @@ fn only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try() {
     assert_eq!(tries, 5);
     // 逐字相等，不是 `contains`：
     // ① 最后一次的原话必须带回来（不带回来，用户与日志都问不到成因）；
-    // ② 🔴 **它只许装那一句原话** —— 本轮自查逮到的正是这一处：初版把
+    // ② 🔴 **它只许装那一句原话** —— 自查逮到的正是这一处：初版把
     //    「撞了几次」也揉进了 `last`，而那个数住 `tries` ⇒ 同一个事实两份表示，
     //    实打出来是「…最后一次逐字：撞了 8 次，最后一次逐字：Text file busy…」。
     //    **本件在治的那条病，长在治它的代码里。** 钉住它别回来。
@@ -458,7 +458,7 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 /// # 🔴 `K-R69` 09-12：**人群从「恰好一处」改成「每一处」**，理由写清楚
 ///
 /// 原来这一条是 `find_pinned(&prod, "std::process::id()")`（要求**恰好一处**）＋
-/// 「那一处在 `.partial` 附近」。本轮新增了第二个走 `.partial` + `rename` 的落点
+/// 「那一处在 `.partial` 附近」。又新增了第二个走 `.partial` + `rename` 的落点
 /// （[`install_local_ccm_entry`]）⇒ 它当场红了，报文逐字「命中 2 处，断言指不明是哪一处」。
 ///
 /// **那不是「判据过严」，是它的人群一直写小了**：这条性质从头就该覆盖**所有**临时名落点，
@@ -1491,7 +1491,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
         panic!("切出来的这段里 `extract_embedded_to(` 不是恰好一处（{e}）—— 切歪了，本条此刻无效。\n逐字：{body}")
     });
 
-    // ★ **防空转的第二半**〔本轮 `7u` 那一刀逼出来的，逐字记下理由〕：
+    // ★ **防空转的第二半**〔`7u` 那一刀逼出来的，逐字记下理由〕：
     //   把实现整个退掉之后，`the_extraction_refusal_…` 那条**仍然绿** ——
     //   它测的是一个**纯函数**，而纯函数不接调用点也照样对。
     //   ⇒ 「那句响亮的话真的被用上了」得在这里钉，不能指望那一条。
@@ -1499,7 +1499,7 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
         panic!(
             "那份共用的解析体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
                  一处都没有 ⇒ 释放失败又退回那句**与「没带后端」分不开**的话，\n\
-                 而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
+                 而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（实测过）。\n逐字：{body}"
         )
     });
     // 「问产物自己带没带」搬去了宿主（`byte_table::choose` 按这台机器的 (OS, arch) 查表，

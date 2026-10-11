@@ -135,7 +135,7 @@ fn stream_source_never_splits_a_stream_itself() {
         !prod.contains(split_apis[0].as_str()),
         "stream_source 的生产段自己切流了。\n\
              切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个裸\n\
-             `WriteHalf` 就等于留了一个「Hello 之前能写」的窗口，而那正是本轮要消灭的东西。"
+             `WriteHalf` 就等于留了一个「Hello 之前能写」的窗口，而那正是这里要消灭的东西。"
     );
     // 反面：切分入口必须真的被用着（否则上面那条零命中是因为**根本没有双工流**）。
     let mut checked = 0usize;

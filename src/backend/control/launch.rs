@@ -211,7 +211,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     // · `send-into` **一个字节不动**：`§19 裁六` 逐字「放宽它会同时改掉已有生产调用方的行为」
     //   —— 那条路的 `payload` 语义不同，不该被这一格牵连。裸键那个 mode 已删（无生产调用者）。
     // ⚠ **这里刻意写 `if matches!(…)` 而不是 `match mode { Mode::CreateOrAttach => … }`**
-    //   〔本轮现打，判据当场逮住的〕：`create_or_attach_never_types_into_a_session_it_did_not_just_create`
+    //   实测时判据当场逮住的：`create_or_attach_never_types_into_a_session_it_did_not_just_create`
     //   用 `arm_of(&src, "Mode::CreateOrAttach =>")` 取那个分支的源码段，而它取的是**第一处**
     //   ⇒ 在 `run()` 之前再写一个同形的 `match` 臂，会把那条判据的**扫描面整个换掉**
     //   （它会去读这里这几行，然后报「分支里没有 type_payload」）。

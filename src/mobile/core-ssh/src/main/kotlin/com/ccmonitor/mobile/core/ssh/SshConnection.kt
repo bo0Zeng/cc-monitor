@@ -125,7 +125,7 @@ class SshConnection(
                     hops.remove(it)
                     // 失败的尝试通常已被对端 EOF，拆除时没有在飞数据。
                     // 注意：本地先判死而对端仍在发（host-key 不匹配、非 SSH 端口）时，拆除仍可能拖垮跳板，
-                    // 本轮剩余地址随之失败，重试可恢复；已成功的赢家不受影响。
+                    // 这一轮剩余地址随之失败，重试可恢复；已成功的赢家不受影响。
                     runCatching { it.disconnect() }
                 }
             }

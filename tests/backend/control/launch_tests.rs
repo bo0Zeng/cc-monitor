@@ -211,7 +211,7 @@ fn a_double_quote_in_the_payload_is_perfectly_fine_here() {
 ///
 /// ⚠ `readonly_guard::no_test_code_leaks_into_any_production_section` 的剥法是**数括号**：
 /// 字符串字面量里一个孤立的大括号会让 `mod tests` 那一层被提前配平收尾，
-/// 于是测试属性「泄漏」进生产段。它本轮当场逮到我（`[("launch.rs", 2)]`），
+/// 于是测试属性「泄漏」进生产段。它当场逮到过一次（`[("launch.rs", 2)]`），
 /// 而它的报错文案逐字预言了这个形状。**别去改剥法，改措辞。**
 fn tail_brace() -> String {
     // 码点 7d 就是右大括号。**用码点写、不写字面大括号** —— `\u{..}` 自带一对，
@@ -451,7 +451,7 @@ fn create_or_attach_never_types_into_a_session_it_did_not_just_create() {
     ));
     // ⚠ F04c 改用 `arm_of`：原来是 `&src[at..]`（一直切到文件末尾）——
     // 那不是「这个分支」，是「这个分支之后的全部生产代码」。
-    // 本轮新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
+    // 新加的 `every_mode_variant_…` 当场点名了它（**它是最后一个分支，所以一直没出事**，
     // 但只要有人在它后面再加一个 mode，断言面就会静默串到别人身上）。
     let arm = arm_of(&src, "Mode::CreateOrAttach =>");
     let early = arm

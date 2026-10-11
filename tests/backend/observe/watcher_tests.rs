@@ -2080,7 +2080,7 @@ fn parse_starttime_malformed_returns_none() {
 /// —— 而 U4a 把那个恒真 stub 换成了 `unimplemented!()`。今天在 Windows 上
 /// `session_alive` → `pid_alive` 会直接 panic。
 ///
-/// **本轮不加门**：`cargo check` 只编不跑，DoD ① 不受影响；而 U4b 一旦在真机上跑
+/// **不加门**：`cargo check` 只编不跑，DoD ① 不受影响；而 U4b 一旦在真机上跑
 /// `cargo test`，这会是第一个红 —— 那正是应该有人看一眼的时刻，加门会把它藏起来。
 /// Phase D 审计的问题 9-3 已把它写进 U4b 的清单。
 ///

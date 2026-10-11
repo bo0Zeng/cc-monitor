@@ -81,7 +81,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           `Detached`：用户的终端不该随 monitor 一起死，关掉界面 ≠ 关掉他正在敲字的会话。\
           ⚠ **这个函数里有两跳，第一格不一样**：Plan A（`wt.exe`）是 `Inherit · Detached · Inherit` —— \
           它今天一个 creation flag 都没带，而且多半只是把请求转交给已在跑的 Windows Terminal 进程。\
-          本轮**照盘面写、不顺手改**（没有任何 Windows 读数支持那个改动，而这是主用途那条路）。\
+          **照盘面写、不顺手改**（没有任何 Windows 读数支持那个改动，而这是主用途那条路）。\
           第五列记的是 Plan B 那一跳；本表的对拍粒度是文件，盖不到同函数内两跳的差别 —— 如实记。",
      "NewVisible · Detached · Inherit"),
     // 🔴 〔`K-R135` / `R88` 09-15〕**这一行就是 `R88` 放行的那一行，只加了这一行。**

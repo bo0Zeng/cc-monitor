@@ -61,10 +61,10 @@
 //!   🔴 **刻意不做「凡出现 `sh` 就红」**：那会把正当用法一并扫进来 ⇒ **净变宽，人会绕开它**。
 //!   现打（09-13，本 crate `src/` 生产段）：整条字面量这一口径命中 **3** 处
 //!   （`control/ccm/mod.rs` 已签字 · `platform/shell.rs` 在 `#[cfg(unix)]` 门后 ·
-//!   `control/oneshot_session.rs` 本轮新签），**假红 0**。
+//!   `control/oneshot_session.rs` 新签），**假红 0**。
 //! - **同一趟普查补上的 `posix-setsid`**：那条 argv 路是
 //!   `setsid` ＋ `sh` ＋ `sleep` **三件**，而上一版只有 `sh` 那一件有针。
-//!   `"setsid"` 整条字面量现打命中 **1** 处（`control/oneshot_session.rs`，本轮签字），假红 0。
+//!   `"setsid"` 整条字面量现打命中 **1** 处（`control/oneshot_session.rs`，签了字），假红 0。
 //!   ⚠ `sleep` 那一件**刻意不加针**：它渲在一条更长的串里（`"sleep \"$1\"; shift; …"`），
 //!   按子串认会把日志文案一并扫进来 —— **如实登记为没做**，不是「顺便也守住了」。
 //!   ⚠ `tmux` 同样**刻意不加**：它也不在 Windows 上，但 `C12`〔用 08-11〕「windows不要tmux」
@@ -1053,7 +1053,7 @@ mod tests {
     /// ★★ `KR103D2`：**argv 形起 shell 逮得到，而「出现过 `sh`」不算。**
     ///
     /// 五刀。反的那三刀就是「🔴 别把针扩成『凡出现 `sh` 就红』」那条红线的**活体** ——
-    /// 没有它们，把 needle 换成裸 `sh` 这一步在盘上与本轮的改法长得一模一样。
+    /// 没有它们，把 needle 换成裸 `sh` 这一步在盘上与正确的改法长得一模一样。
     #[test]
     fn an_argv_shaped_shell_start_is_caught_and_a_mere_mention_of_sh_is_not() {
         // ★ 老形态不许丢。

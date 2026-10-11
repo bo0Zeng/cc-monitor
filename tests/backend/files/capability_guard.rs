@@ -235,7 +235,7 @@ fn the_effect_enum_can_actually_express_a_write() {
 
 /// **阳性对照的语料** —— 一排**独立写出来**的、真的会动盘的代码片段。
 ///
-/// 🔴🔴 **它为什么必须独立写，而不是从 [`write_verbs`] 拼出来** —— 这是本轮死值验
+/// 🔴🔴 **它为什么必须独立写，而不是从 [`write_verbs`] 拼出来** —— 这是死值验
 /// 当场逮到的一个真缺陷，记在这里别再犯：
 ///
 /// 第一版的阳性对照是 `format!("let _ = {needle}")` —— **样本由针自己拼出来的**。
@@ -244,7 +244,7 @@ fn the_effect_enum_can_actually_express_a_write() {
 /// 本仓对这一形的说法逐字：**「恒等两侧同源会恒真」**。
 ///
 /// ⇒ 改成两侧异源：**语料在这里逐条手写**，针在 [`write_verbs`] 里。
-/// 针拼错 ⇒ 对应那条语料没人认得 ⇒ 当场红（本轮实打：刀 7 从 GREEN 变 RED）。
+/// 针拼错 ⇒ 对应那条语料没人认得 ⇒ 当场红（实打：刀 7 从 GREEN 变 RED）。
 const WRITE_SAMPLES: &[&str] = &[
     "std::fs::write(&p, b\"x\").unwrap();",
     "std::fs::create_dir(&p).unwrap();",
@@ -1387,7 +1387,7 @@ fn freshness_is_declared_per_target_and_is_deliberately_not_judged_equal() {
         mechanisms.len()
     );
 
-    // ④ 证据档不许全部自称现打 —— 本轮只有一台 Linux 机器。
+    // ④ 证据档不许全部自称现打 —— 只在一台 Linux 机器上量过。
     let measured = FRESHNESS
         .iter()
         .filter(|f| f.evidence == Evidence::Measured)
@@ -1395,7 +1395,7 @@ fn freshness_is_declared_per_target_and_is_deliberately_not_judged_equal() {
     assert_eq!(
         measured, 1,
         "自称「本机现打」的 target 有 {measured} 个。\n\
-         🔴 本轮只有一台机器（Linux）。多了就是把文献读数写成了实测；\n\
+         🔴 只在一台机器（Linux）上量过。多了就是把文献读数写成了实测；\n\
          少了就是连那一台都没量。⇒ 哪天真有了第二个平台的读数，\n\
          **连着那份读数的住址**一起改这个数。"
     );

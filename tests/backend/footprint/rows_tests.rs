@@ -913,7 +913,7 @@ fn destination_checks_still_run_under_every_host() {
 /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
 /// 剩下**真有常量**的两条在这里用 `pin_definition` 钉死。
 ///
-/// 🔴 **〔`K-R63` 09-11 登记，本轮没治它〕本条与那一族是同一个病，而它今天仍是专名的。**
+/// 🔴 **〔`K-R63` 09-11 登记，没治它〕本条与那一族是同一个病，而它今天仍是专名的。**
 ///
 /// 「申报 ↔ 现实」这条性质在 `tool_registry` 的两个 `bool`（`installable` / `uninstallable`）
 /// 上已经收成**一条覆盖全表**的判据了

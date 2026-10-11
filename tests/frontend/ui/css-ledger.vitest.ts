@@ -23,7 +23,7 @@
  * | ④b | `no-descending-specificity` 的命中 == 登记的例外 | **两向相等**（多一条红、修掉一条也红） | 登记表条数 |
  *
  * 🔴 **本文件不装第五格（`#app` 布局根）—— 它有自己的家。**
- * 本轮落地时它红在一个真缺陷上（`src/frontend/ui/tabs.ts` 的 `ensureArchiveUi()` 往 `#app` 插的
+ * 落地时它红在一个真缺陷上（`src/frontend/ui/tabs.ts` 的 `ensureArchiveUi()` 往 `#app` 插的
  * `.tab-archive` 是个没认领格子的 grid item，偷走消息流 35px，`S21 §6 ④` 有真引擎读数），
  * 而 `src/frontend/ui/tabs.ts` / `src/frontend/ui/styles.css` 都不在本轮写区。
  * **同一棵树上另一路（`S24`）把缺陷修了、并把那一格装成了 `tests/frontend/ui/app-grid-claims.vitest.ts`** ——
@@ -101,13 +101,13 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
  * `ccm-alias-gen*` 共 7 个类，**而那 7 个其实各有真住址**（`src/frontend/ui/render.ts:77` 等）。
  * 一个越宽的前缀能掩掉越多真死规则 ⇒ **白名单必须是人写的，且每条要有理由**。
  *
- * 🔴 **与上一轮那份「11 个前缀」清单的关系（这是本轮最要紧的一条读数）**：
+ * 🔴 **与上一轮那份「11 个前缀」清单的关系（这是最要紧的一条读数）**：
  * 登记了 11 个前缀，`S21` 三处说「今天的 11 个不够，至少还要加
  * `FIRST_RUN_HINT_CLASS` 这类常量拼接、第三方 `katex-*`，以及现打到的 8 处模板拼接点
  * （`settings-btn-` · `cc-bus-hooks-` · `cc-bus-online-` · `remote-test-` · `history-chip` ·
  * `bash-output-body` · `block-collapsible` · `paste-block`）」。
  *
- * **本轮现打的答案不是"补到 19 个"，是"那三族根本不该由前缀来管"**：
+ * **现打的答案不是"补到 19 个"，是"那三族根本不该由前缀来管"**：
  * - 常量拼接 → 归 `const-concat`（把 `${CONST}` 填回去再扫），不占前缀格；
  * - 第三方 → 归 `vendor`（从 `import "<包>/….css"` 现读），不占前缀格；
  * - 那 8 处模板拼接点里有 7 处**根本不需要登记** —— 它们拼出来的类名（`settings-btn-secondary`、
@@ -153,7 +153,7 @@ const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
  * 登记在这儿不是赦免，是**把它变成一条会红的欠账**：修掉（删那几行 CSS）之后
  * 这张表里的条目会变成死条目，下面那条自检会红并叫人来删登记。
  *
- * ⚠ 〔当时〕本轮**不能自己修** —— `src/frontend/ui/styles.css` 在明令禁碰之列（另有一路正在改它）。
+ * ⚠ 〔当时〕**不能自己修** —— `src/frontend/ui/styles.css` 在明令禁碰之列（另有一路正在改它）。
  */
 // 〔D §D8〕唯一那条 `.paste-block-warning` 删了（规则在 `src/frontend/ui/styles/settings.css`，
 //   它的 `warning` 槽早先已移回消费者那儿，`src/frontend/ui/paste-block.ts` 头注写着）⇒ 规则与登记同拍删，本表空。

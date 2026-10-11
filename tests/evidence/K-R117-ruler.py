@@ -253,7 +253,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
        "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
        "⚠ 限定词承重：`lib.rs` 里还住着 `aliases_*` 三条，那几条归 S4。"
        "🔴 那三条 `ccm_user_path_*`（用户级 PATH 那一格：现在状态 / 加 / 撤）"
-       "是本轮新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
+       "是新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
        "① 它们归档在 `①装后端`（见 `CAP_ARCHIVE` 的 `ccm.user-path`）⇒ 只可能落 S1/S2/S3；"
        "② 它们是**本机**半（S1 是远端、S3 是 acct-iso）；③ 它们住 `lib.rs`，正是 S2 的后端写区。"
        "⚠ 而且**前端落点一个字都没多**：它们的调用点在 `src/frontend/ui/launcher-diagnostics.ts`，"

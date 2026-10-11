@@ -70,7 +70,7 @@ pub struct JsonlLinePayload {
     // **C01/C02 立的规则**：有 `skip_serializing_if` 就必须配 `ts(optional)`。
     // 不配的话 ts-rs 生成 `origin: string | null` —— 两处都错：线上是**省略**而不是
     // 必填，而且**永远不会是 null**（Rust 侧 None 直接不序列化）。
-    // 这一条本轮由守卫当场抓到（原话：「会多一个永不出现的 `| null`」）。
+    // 这一条由守卫当场抓到（原话：「会多一个永不出现的 `| null`」）。
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,

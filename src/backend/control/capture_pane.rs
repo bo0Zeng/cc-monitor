@@ -98,7 +98,7 @@ pub(crate) fn capture_with_on(
 pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
     (
         "error connecting to",
-        "🔴 **本轮真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\
+        "🔴 **真 tmux 打回来的那一句**（沙箱 tmux，显式 `-S <不存在的路径>`）：\
          逐字 `error connecting to /tmp/…/sock (No such file or directory)`。\
          ⚠ 它与下面那条**不是同一句话**，而我先前只登记了下面那条 ⇒ \
          第一趟门禁当场红（落进兜底档 `capture_failed`）。**留着这行来历**：\
@@ -108,7 +108,7 @@ pub(crate) const NO_SERVER_NEEDLES: &[(&str, &str)] = &[
         "no server running",
         "tmux 在**默认 socket**（生产走的那条）上找不到 server 时的原话\
          （`no server running on /tmp/tmux-<uid>/default`）。\
-         ⚠ **这一句本轮没有在真 tmux 上打过**：本模块的判据只造得出显式 `-S` 那条路，\
+         ⚠ **这一句没有在真 tmux 上打过**：本模块的判据只造得出显式 `-S` 那条路，\
          而默认 socket 在沙箱里没法造出「无 server」态（那台沙箱自己在用 tmux）。\
          ⇒ 它今天只由 `every_registered_needle_lands_in_its_own_bucket` \
          用合成样本证明「落对了档」，**不是**「见过它」。",

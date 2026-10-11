@@ -22,7 +22,7 @@
   · `S4` **通用层零脚印**:`cc-peek`/`cc-commit`/`cc-bus-adapt.sh` 里 `tmux`/`flock`/`send-keys`
         出现 **0** 次;**正控**:`cc-bus-adapt-posix.sh` 里这三个词 >0(证明扫描器看得见)。
         ⚠ 老的 `cc-bus-lib.sh` 里还剩 5 处直接 `flock`(限流/去重/敲门三族),**恒等**钉住:
-        它们保的是别的不变式,本轮不动;多一处就红。
+        它们保的是别的不变式,这里不动;多一处就红。
   · `S5` **渲染对拍**:`cc-peek` 与 `cc-recv` 里的 `jq -Rr` 程序**逐字节相等**(两份都取全集)。
   · `S6` `cc-recv` **一字未改**:sha256 == 登记值(「不降薄壳」的机检)。
   · `S7` **手册页写了那句**:`SKILL.md` 里 rc 0/2/11/12/13 五个码 ＋「照常处理你手上那段」
@@ -104,7 +104,7 @@ EXPECTED_TAGS = [
 
 # ── 登记:静态面的那些数 ─────────────────────────────────────────────────────
 # `cc-recv` 的 sha256(2026-09-19 现打)。要求逐字「`cc-recv` 不降薄壳」——
-# 本轮一个字节都不许动它,而「没动」这件事只有恒等才钉得住。
+# 一个字节都不许动它,而「没动」这件事只有恒等才钉得住。
 CC_RECV_SHA256 = "277fc2fc87291a5ab1992c2d008a7bed50f33b78231d8f10e9f5a2d29caddec8"
 
 # `cc-peek` 里允许出现的写形,**逐条登记理由**(`D6`:相等断言 ＋ 登记豁免,不要下界)。
@@ -131,7 +131,7 @@ LOCK_FAMILIES = {
 }
 
 # `cc-bus-lib.sh` 里还剩几处**直接** `flock`(B/C/D 三族,保的是别的不变式)。
-# 恒等钉住:本轮只把 A 族那一处换成了 `store_lock_exclusive`,别的一处没动。
+# 恒等钉住:只把 A 族那一处换成了 `store_lock_exclusive`,别的一处没动。
 LIB_DIRECT_FLOCK = 5
 
 # 通用层里不许出现的词(§3.2 那条判据的词表)。表空了下面那条就是空真 ⇒ 先自检。
@@ -259,7 +259,7 @@ def check_s3():
     lib_flock = len(re.findall(r"^\s*flock\s", src("cc-bus-lib.sh"), re.M))
     if lib_flock != LIB_DIRECT_FLOCK:
         bad("S3", f"cc-bus-lib.sh 里直接 `flock` 现打 {lib_flock} 处,登记 {LIB_DIRECT_FLOCK} 处 —— "
-                  f"B/C/D 三族保的是别的不变式,本轮刻意不动;变了要回来重新裁")
+                  f"B/C/D 三族保的是别的不变式,这里刻意不动;变了要回来重新裁")
         return
     ok("S3", f"锁族不增:{len(got)} 个锁文件表达式 / {len(set(LOCK_FAMILIES.values()))} 族,"
              f"A 族现打 {a};lib 里直接 flock 仍是 {lib_flock} 处")

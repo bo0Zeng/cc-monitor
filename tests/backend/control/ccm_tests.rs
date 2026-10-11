@@ -253,7 +253,7 @@ fn every_flag_we_accept_has_a_usage_line() {
     );
     // 🔴 **匹配单位是「有没有属于它自己的那一行」，不是 `USAGE.contains(旗标)`。**
     //
-    // 〔本轮变异台自查逮到，08-xx 那一族的又一形〕`contains` 那一版**是空转的**：
+    // 〔变异台自查逮到，同一族的又一形〕`contains` 那一版**是空转的**：
     // 把 `--detach` 自己那一行整行删掉，判据**照样绿** ——
     // 因为 `--bus-register` 那一行的括注里逐字写着「（需要 `--detach`）」。
     // 匹配单位（全文）比事实（它有没有自己的条目）**大**了一格，
@@ -559,7 +559,7 @@ fn only_two_things_still_need_a_posix_shell_and_the_codex_recipe_is_not_one_of_t
         );
     }
 
-    // ── 另一件**是真的要 shell**，本轮没假装它不要（删了 `resolve` 那一件）──
+    // ── 另一件**是真的要 shell**，这里没假装它不要（删了 `resolve` 那一件）──
     let mut with_env = direct_of(&["--ccm-agent", "codex", "--cwd", "/p"], None);
     with_env.ccm_env = "export HTTPS_PROXY=http://x:1".into();
     assert_eq!(

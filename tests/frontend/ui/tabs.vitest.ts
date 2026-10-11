@@ -1,6 +1,6 @@
 // Tab 生命周期状态机的 DOM 单元测试（vitest + jsdom）。
 //
-// 为什么需要它：本轮迭代两个真 bug 都在 tabs.ts 的生命周期里——
+// 为什么需要它：那次迭代两个真 bug 都在 tabs.ts 的生命周期里——
 //   1) resume 后已归档**本地** Tab 不自动复活（reviveTab + origin 门控）；
 //   2) 关 Tab 只允许 archived（closeTab 守卫）。
 // tabs.ts 重度依赖 DOM + 一堆协作模块（MessageStream / RecordTimeline / BranchFolder /

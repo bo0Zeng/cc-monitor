@@ -311,7 +311,7 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
 //    ② 「保存一次就把盘上那个旧键写没（迁移本体）」—— 它那条
 //       `expect(Object.keys(written)).not.toContain("daemonless")` 是**负向断言**：
 //       那个词从全仓消失之后它**永远满足** ⇒ 留着就是一条恒绿的。
-//    ⚠ 用例数 −2，逐条点名在本轮报告里。
+//    ⚠ 用例数 −2。
 
 describe("F83 sftpEligibleHosts", () => {
   const mk = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({

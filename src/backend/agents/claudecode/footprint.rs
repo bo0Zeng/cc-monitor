@@ -77,7 +77,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
         // 是**必需词守卫** —— 它数注释里两个词的出现次数，**看不见字段的值**。
         // ⇒ `K-R60` 那一轮补了一条真读字段值的判据：左边读这个字段、右边钉
         // `cc_bus_deploy.rs` 的函数签名，两边必须相等。
-        // 🔴 **09-11 `K-R63`：那一条是专名的（名字里带工具名），本轮把它收成了覆盖全表的
+        // 🔴 **09-11 `K-R63`：那一条是专名的（名字里带工具名），后来把它收成了覆盖全表的
         // 一条性质** —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`。
         // 理由：专名判据只把静默从 1 个工具挪走，下一个工具照样静默（件文件 `§0c`）。
         installable: true,
@@ -288,7 +288,7 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
     // ⇒ 处置不是删字段，是**让这张表收进本来就该收的那一档**：
     //   app 会去碰 / 去读、但**装不了**的东西。`installable` 于是重新分得开两类人。
     // ⚠ 代价如实记：这张表的语义从「装到别处的受管工具」扩到了「app 会碰的环境项」，
-    //   模块头注那句话本轮已改。`NOT_MANAGED`（刻意不收的）语义不变。
+    //   模块头注那句话已改。`NOT_MANAGED`（刻意不收的）语义不变。
     ToolSpec {
         id: "claude-code",
         display_name: Text(|| copy_text("rsToolRegistry.tools.sessionRecordsName", &[])),

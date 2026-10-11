@@ -89,7 +89,7 @@ for pat in "${PATTERNS[@]}"; do
     ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')"
     args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
     # ⚠ **按 exe 复核**：`pgrep -f` 会匹配到任何命令行里含这个模式的进程 ——
-    #   08-13 实测它数进了**我自己那条正在跑的 shell**（与本轮五次 `pkill -f` 自伤同一族）。
+    #   08-13 实测它数进了**我自己那条正在跑的 shell**（与那五次 `pkill -f` 自伤同一族）。
     case "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" in
       *cc-monitor-backend) : ;;
       *) found=$((found - 1)); continue ;;

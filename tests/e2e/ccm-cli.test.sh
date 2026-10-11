@@ -33,10 +33,10 @@ zh() { "$REPO/node_modules/.bin/tsx" "$REPO/tests/e2e/copy-text.mts" "$@"; }
 export HOME="$CCMDIR/home"; mkdir -p "$HOME"
 unset CCM_RELAY_PORT CCM_RELAY_ALL_SESSIONS ANTHROPIC_BASE_URL
 
-# ⚠ **这里原来有两道 `jq` 的 fail-closed 硬依赖闸，本轮删了。**
+# ⚠ **这里原来有两道 `jq` 的 fail-closed 硬依赖闸，已删。**
 #   它们守的是本文件那几份**假 backend**（`mk_mirror_backend` 用 `jq` 把夹具 manifest 翻成
 #   `--list-accounts` 的帧形状、`KREC` 的记账 shim 转发给 `/usr/bin:/bin` 上那一个）——
-#   而那几份假后端与它们服务的判据本轮一起删了：同一个进程之下没有「帧」这回事，
+#   而那几份假后端与它们服务的判据也一起删了：同一个进程之下没有「帧」这回事，
 #   账号表由后端自己读那份 manifest。**本文件今天一处都不用 `jq`**（`grep -c jq` 自己看）。
 # 原来这里还有一条「`npx` 那条纪律仍在」（会话名派生那一节拿 `npx tsx` 真跑前端那个函数对拍）：前端那份删了，那一节改手写期望，本文件不再要 `npx`。
 
@@ -335,7 +335,7 @@ for pair in "/home/pi/proj|proj-cc" "/home/pi/a  b|a-b-cc" "/home/pi/proj///|pro
 done
 
 # ══════════════════════════════════════════════════════════════════════════════
-# ⚠ **本文件原来有 264 条断言，本轮删到 46 条。**
+# ⚠ **本文件原来有 264 条断言，已删到 46 条。**
 #
 # 〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
 # ⇒ `shared/ccm` 删了，本套件的被测对象换成后端二进制本体。

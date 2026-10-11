@@ -397,7 +397,7 @@ fn route_is_exactly_two_outcomes_and_local_is_not_a_missing_value() {
 
 /// 从生产段里摘出每条 `#[tauri::command]` 的 (名字, 参数列表, 函数体)。
 ///
-/// ⚠ **收尾括号从签名之后找起** —— 这是本轮实打踩过的坑（`history_tests.rs` 那条
+/// ⚠ **收尾括号从签名之后找起** —— 这是实打踩过的坑（`history_tests.rs` 那条
 /// 同形判据）：`pub(crate) async fn …(` 这样的签名**自己就含一个 `)`**。
 /// 这里从 `fn` 后面的第一个 `(` 起算，天然避开。
 fn tauri_commands_with_bodies(src: &str) -> Vec<(String, String, String)> {

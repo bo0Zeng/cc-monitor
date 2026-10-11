@@ -404,7 +404,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     //
     // ★ **这一步必须先于任何 hook 安装落地** —— `SIGUSR1` 的**默认处置是终止进程**。
     // 先装 hook 再装处理器，等于给一个会自杀的后端装了自杀触发器。
-    // 本轮（P4 backend 侧）刻意只做这一半：没有 hook 在发信号，它完全惰性。
+    // 后端这一侧刻意只做这一半：没有 hook 在发信号，它完全惰性。
     //
     // 为什么是信号而不是别的：原方案让 hook 追加事件日志、backend inotify 读增量，
     // **撞红线 I7「backend 只读」**（`readonly_guard` 当场拦下）。信号通路让后端的
@@ -877,7 +877,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
         // tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
         //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
         //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
-        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、本轮不参与，不会空转。
+        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、这一轮不参与，不会空转。
         let frame = if burst < REPLY_BURST {
             tokio::select! {
                 biased;

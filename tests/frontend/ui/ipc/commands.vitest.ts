@@ -18,7 +18,7 @@
  *
  * 1. **「每个命令都必须经过包装层」** —— C04a 只迁了 1 个模块做样板，其余 118 个仍走裸
  *    `invoke`，由 C04d 分批迁。写了就是当场假红。
- * 2. **「每个 Rust 命令都必须在 TS 侧被静态调用过」** —— **实测证否**：本轮我先扫出
+ * 2. **「每个 Rust 命令都必须在 TS 侧被静态调用过」** —— **实测证否**：先扫出
  *    「7 个命令 TS 从没调过」（`sftp_delete`/`sftp_mkdir`/`sftp_rename`/4 个 `stream_*`），
  *    逐个查后发现**全都在用**，只是经**动态命令名**走的：
  *    `panel.ts:378` `this.doWrite("sftp_delete", …)`（helper 转发）·
@@ -362,7 +362,7 @@ describe("C04a 命令名钉死", () => {
 //
 // ⚠ 它住**本文件**而不是 `accounts.vitest.ts`：那边加一个目录遍历会撞
 // `scanning-guard-registry` 的递减棘轮（「测试里做目录遍历的文件只许变少」，
-// 本轮实测 11 > 上限 10）。本文件本来就在遍历，人群不多一个。
+// 实测 11 > 上限 10）。本文件本来就在遍历，人群不多一个。
 describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   /** 生产段里起本机会话的那几处调用（剥注释、跳过测试文件与包装层）。 */
   function localLaunchCallSites(): Array<{ file: string; text: string; kind: string }> {
@@ -376,7 +376,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       if (!/\blaunchLocal\b/.test(raw)) continue;
       // ⚠ **先剥注释**：散文里逐字写着 `invoke("resume_history_session", …)` 这种句子
       //    （`launch-requests.ts` 的头注、`accounts.ts` 的说明各一处），
-      //    不剥会被数成调用点 —— 本轮实测扫出 6 处而真实是 4。
+      //    不剥会被数成调用点 —— 实测扫出 6 处而真实是 4。
       const code = stripComments(raw, "ts");
       for (const m of code.matchAll(
         // ⚠ 窗口 1200 字符是**量出来的**：`fork-flow.ts` 那处调用里夹着一整段注释，

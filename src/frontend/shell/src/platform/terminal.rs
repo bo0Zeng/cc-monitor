@@ -470,7 +470,7 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     //     而且它多半只是把请求转交给**已在跑的** Windows Terminal 进程（这一格的诚实边界
     //     上面那段注释已经写过一次）⇒ 真正开窗的不是这次 `CreateProcess`。
     //     ⚠ 刻意**不**顺手改成 `NewVisible`：那是一次**没有任何 Windows 读数支持**的
-    //     行为改动，而这条路正是本产品的主用途。本轮只搬「谁来写这三格」，不动盘面。
+    //     行为改动，而这条路正是本产品的主用途。这里只搬「谁来写这三格」，不动盘面。
     //   · `Detached` —— 用户的终端**不该随 monitor 一起死**：关掉界面不等于关掉他正在
     //     敲字的那个会话 ⇒ 绝不能进 `JobKillOnClose` 那个 Job。
     //   · `Inherit` —— 窗口里的话说给用户听，不该灌进我们的滚动日志。

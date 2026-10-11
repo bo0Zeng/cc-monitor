@@ -171,7 +171,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   **必须 bump**：monitor 侧的远端分叉命令要靠这个 id 判 stale 才会自动重装；不 bump
 ///   的话已部署的后端报同一个 id ⇒ 不判 stale ⇒ 不重装 ⇒ 用户点远端 `⑂` 永远只拿到
 ///   「版本过旧，请重新部署」。**这条是 Phase G 审计当场抓出来的** —— 上面 p1r/p1t 两段
-///   逐字写着这课，本轮仍然漏了，说明「加子命令」这一步该有机检而不是靠记性（登记 E77）。
+///   逐字写着这课，那次仍然漏了，说明「加子命令」这一步该有机检而不是靠记性（登记 E77）。
 /// - p1v-attachable = **E73**：`SessionAdded` 帧 additive 加 `attachable`（来自 pidfile 的同名布尔）。
 /// - p1w-inbound-in-fingerprint = **audit-0805 F02**：**结清一笔从 08-02 起就欠着的 bump**。
 ///   `inbound::COMMANDS` 从零条长到 5 条（`cancel`/`ping`/`resolve` 08-02、`kill` 08-04），
@@ -180,7 +180,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⚠ 后果不是纸面的：部署判定（当年住 monitor 的 `sftp.rs`，今天住 `control/deploy_plan.rs` 的 `identity_decision`，原共享 crate `deploy-core` 的判定那一半）判**版本那一维**的唯一判据是 build_id 字符串
 ///   （backend 部署路另看「落点文件在不在」；今天读那份字节自报的身份戳；stale 但文件在时仍只凭 build_id），
 ///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 backend **整个控制面静默不可用**。
-///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
+///   这一版把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
 ///   报 `p1v` 的远端从此会被判 stale 并重装。CLI 那一面**一字未改**。
 /// - p1x-overflow-identity = **audit-0805 F03**：`Overflow` additive 加 `lost` / `lost_truncated`。
 ///   出方向那条通道此前对 11 种帧一视同仁地 `try_send` 丢弃，而「丢一帧可恢复」**只对内容帧成立** ——
@@ -226,7 +226,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
 ///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
-///   本轮**没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
+///   **没做**（本工作树也没铺 `src/frontend/shell/embedded-backends/`）。
 ///   🔴 **别把它读成「远端画面预览通了」**：本件只出后端这一侧的原语，
 ///   monitor 那条远端抓屏命令一个字节没动 —— 欠账换了个名字，没有被结掉。
 ///
@@ -342,10 +342,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// 上一版这里登记「`BrowseWatcher` 零生产调用方」—— 今天 `files-browse`
 ///   会让进程里那一个监听器跟上名单（`files::browse_watch::keep_watching`），浏览的目录此后一有动静 overlay 就重列。
 ///   ★ 同 p2d…p2m 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
-///   本轮**没做** —— 本工作树没铺 `src/frontend/shell/embedded-backends/`，现打
+///   **不做** —— 源码里不铺 `src/frontend/shell/embedded-backends/`，现打
 ///   `bash tests/scripts/re-embed.sh --check` 答的仍是「这棵树上没有一份对不上的字节」。
 ///
-/// ★★ **欠着一笔 bump：（`rbind-token`）** —— 本轮**刻意不 bump**。
+/// ★★ **欠着一笔 bump：（`rbind-token`）** —— 这一版**刻意不 bump**。
 /// 照 F66 那条「待 bump」的先例，把账挂在看得见的地方。
 ///
 /// **这一刀真的动了线上面，三处**：① `hello.capabilities` 多一条 `rbind-token`
@@ -1360,7 +1360,7 @@ pub const SUBCOMMANDS: &[&str] = &[
 //    剥离对应 flag 的**流**能力』，本族六条都不是那种东西，硬塞进去会当场红，
 //    **而且会是红对了**。⇒ 汇总要先有第 2 层那个派生机制，那是另一件活。」
 //
-// 🔴 **「硬塞进去会当场红」这句话本轮现打过，成立**：把 `"files.ls"` 加进上面那个
+// 🔴 **「硬塞进去会当场红」这句话实测过，成立**：把 `"files.ls"` 加进上面那个
 //   流旗标那张能力表之后 `backend` 套 `769 passed / 1 failed`，**只红一条**，
 //   而且是当时那条「每个能力 token 都有剥离分支」的判据逐字点名
 //   「无 flag 映射 …… 否则埋 §26 死循环」。⇒ 那一处的语义**保持不动**，
@@ -1491,7 +1491,7 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
         declares: files::capability_names,
         declared_in: "files/mod.rs",
         targets: TARGETS,
-        target_basis: "本族目录下**零**平台 `cfg`（本轮现打：`src/backend/files/` 递归 \
+        target_basis: "本族目录下**零**平台 `cfg`（实测：`src/backend/files/` 递归 \
                        `grep cfg(target_os|windows|unix|target_family` 零命中）\
                        ⇒ 四个 target 同一份源码。另有本族自己那条更强的：每条能力的 \
                        `Capability::targets` 与 `TARGETS` 做**集合相等**（边界②）。",
@@ -1514,7 +1514,7 @@ pub const CAPABILITY_FACES: &[CapabilityFace] = &[
                        🔴 **〔`P19` 09-22 订正一句账〕** \
                        上一版括号里那句「**不依赖任何 Unix 专有设施**」，\
                         在写下的那一刻对 `codex` 那一支就是假的。\
-                        〔⚠ 这句被订正的原话**刻意在源码里连着写**：本轮差点栽在自己的 grep 上 —— \
+                        〔⚠ 这句被订正的原话**刻意在源码里连着写**：写的时候差点栽在自己的 grep 上 —— \
                          初稿把它断在了 Unix 与「专有设施」之间（Rust 的续行反斜杠），\
                          于是拿「Unix 空格 专有」当针去 grep 全仓**零命中**，\
                          而零命中看起来和「这句话仓里没有」一模一样。\

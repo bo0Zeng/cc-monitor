@@ -424,7 +424,7 @@ fn spawn_fake_upstream_faulted(
                 // 先前门闩到终止块**之前**就停了。门闩是因果链「攒住第 i 块 ⇒ 下游不发第 i+1
                 // 次确认 ⇒ 上游卡住」，而**最后一块没有「第 i+1 块」** ⇒ 中转把终止块攒到流末
                 // 再吐，下游照样数到 4 块、`pump` 照样返回 4 ⇒ **两个半格同时瞎在同一形上**
-                //（D2 `D2M2` 实测 389 全绿；本轮重打 392 全绿）。而判据头注当时逐字写着
+                //（D2 `D2M2` 实测 389 全绿；后来重打 392 全绿）。而判据头注当时逐字写着
                 // 「射程覆盖到最后一块」—— **那句话是假的**。
                 //
                 // 这里再 `recv` 一次、**带上限**，把那一形接住：
@@ -746,7 +746,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     // ⚠⚠ **订正分母**〔回修轮之四 08-25，D2 `重要-4(D2)`〕：先前这里（与件文件 §8.17.4、
     // 与 `28a73df` 的提交正文）逐字写的是「在 `send_request` 里统一加 10s 读期限
     //（**一处覆盖全部客户端 socket**）」，还写「既有 **3 条**走得到 `serve()`」。**两个数都错。**
-    // 下面这两个分母是**本轮重打的今天的数**（D2 那天的盘面已经不是今天的盘面了）：
+    // 下面这两个分母是**重打的今天的数**（D2 那天的盘面已经不是今天的盘面了）：
     //
     //   · **走得到 `serve()` 的判据 = 6 条**（不是 3 条）。量具：`grep -n 'spawn_relay(' relay/`
     //     去掉定义行与注释行 ⇒ **5** 处，逐条点名 —— `routes_two_keys…` ·
@@ -1243,7 +1243,7 @@ fn too_many_interim_responses_are_refused_with_502() {
 /// # 量法与代价
 ///
 /// 上游发一条**永不换行**、比 `TEE_DECODE_CAP` 长的 `data:` 行（本条 9 MiB）。
-/// 这是本轮**最贵**的一条判据（要真搬 9 MiB 过回环，实测把全量从 1.1s 抬到 ~4s），
+/// 这是**最贵**的一条判据（要真搬 9 MiB 过回环，实测把全量从 1.1s 抬到 ~4s），
 /// 但它是唯一能碰到那条接线的路：上限是生产常量，注不进去。
 ///
 /// 非空对照：**下游必须一个字节不少地拿到那 9 MiB** ——
@@ -2277,7 +2277,7 @@ fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
 ///
 /// # ⚠ 它证不了什么
 ///
-/// 证不了「某一家上游真的认这个头」—— 那要打真网，本轮禁（沙箱默认断网）。
+/// 证不了「某一家上游真的认这个头」—— 那要打真网，这里禁（沙箱默认断网）。
 /// 它证的是「**文件里写什么，线上就发什么**」。
 /// ⚠ **分母**（自查订正，09-04）：初稿在这里写「那正是先前**唯一**没人量过的一格」——
 /// 那是一句没有分母的全称。准确的说法是：**我读过的 `relay/` 那一面里**，
@@ -2531,7 +2531,7 @@ fn an_unroutable_path_is_refused_and_never_reaches_upstream() {
 ///    覆盖到最后一块」，**那句话是假的，而且没有分母**。分母 = 一条响应的全部
 ///    **4** 块（夹具自己定义「终止块另算 ⇒ 块数 = `UPSTREAM_EVENTS + 1`」）；
 ///    实测攒第 2 块红 · 攒第 3 块红 · **攒第 4 块（终止块）⇒ 全绿**（D2 `D2M2`，
-///    本轮在 392 条的盘面上重打，读数同）。成因是门闩的因果链在最后一块上断了：
+///    后来在 392 条的盘面上重打，读数同）。成因是门闩的因果链在最后一块上断了：
 ///    最后一块没有「第 i+1 块」可等。⇒ 今天在 `spawn_fake_upstream` 里
 ///    **发完终止块之后再等一次确认**，射程才真的是 **4/4**；
 ///    死值验见件文件 §8.18.7（同一刀今天 1/392 红）。
@@ -2580,7 +2580,7 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
     // 〔铁律 15 回打自己 —— 这一格我第一版就写错了：先写成 `for i in 1..=UPSTREAM_EVENTS`
     //  再在末尾补一次 `body_reads += 1`，于是走到断言那一刻 `body_reads` **恒等于**
     //  `UPSTREAM_EVENTS + 1`，而它下面那条对账拿它跟同一个常量比 ⇒ **结构性恒真**。
-    //  那正是本轮要治的 `assert!(reads >= 1)` **同一种病**，长在治它的代码里。〕
+    //  那正是这里要治的 `assert!(reads >= 1)` **同一种病**，长在治它的代码里。〕
     loop {
         let n = c.read(&mut buf).expect(
             "上游卡在门闩上，只有中转把上一块透出来下游才会有下一块 —— \
@@ -2722,7 +2722,7 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
 /// 生产段在它上面 `setsockopt(TCP_NODELAY)` 之后，这个探针 `getsockopt` 读得到。
 /// **两个方向各一格**，各自带非空对照。
 ///
-/// **它仍然不证明** p95 没塌 —— p95 那条要真流量，本轮禁打真 API（件文件 `判不了-4` 原样留着）。
+/// **它仍然不证明** p95 没塌 —— p95 那条要真流量，这里禁打真 API。
 #[test]
 fn both_directions_really_disable_nagle_on_the_socket() {
     // ㈠ 下游方向：`handle()` 真的在**这一条** socket 上关掉 Nagle。
@@ -3064,7 +3064,7 @@ fn a_launch_command_carrying_the_relay_env_prefix_reaches_upstream_with_that_acc
     // ⚠ 写法照 `spawn_relay_child` 那份夹具（转义的普通串，不是 `r#"…"#`）——
     //   源码扫描型守卫的剥法认的是普通字符串的 `\"` 转义，
     //   一个内含裸 `"` 的原始串会让它在这里失步、把整段测试当成生产段
-    //   （本轮实测：`readonly_guard` / `bind_guard` / spawn 登记表三条一起红）。
+    //   （实测：`readonly_guard` / `bind_guard` / spawn 登记表三条一起红）。
     std::fs::write(
         &creds,
         b"{\n  \"accounts\": {\n    \"acct-a\": { \"api_key\": \"KEY-FOR-A\" },\n              \"acct-b\": { \"api_key\": \"KEY-FOR-B\" }\n  }\n}\n",
@@ -3224,7 +3224,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
     // 采集面自检：写侧那两步**真的产出了一份能解析的、带那两行的文件**。
     // 切歪了 / 产出空的时候，下面那几条会红在「404」上而指不出原因。
     // ⚠ 这里**按结构判，不按子串判**：`needle_anchor_registry` 那条递减棘轮逐字禁
-    //   「语料变量上的裸 `contains`」（本轮实测撞过一次：35 > 上限 33），
+    //   「语料变量上的裸 `contains`」（实测撞过一次：35 > 上限 33），
     //   而它禁的理由与这里要的东西正好同向 —— 子串在 `{"api_key":"…"}` 换成
     //   任何别的字段名时照样命中，那就不是「写侧产出的形状」了。
     let on_disk: serde_json::Value =

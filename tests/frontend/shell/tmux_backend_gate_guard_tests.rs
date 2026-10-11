@@ -298,7 +298,7 @@ fn the_backend_identity_gate_is_still_there() {
     );
     // ★ **门必须在路上，不只是在仓里。**
     //
-    // ⚠ 这一条是本轮变异复验补的：M2「把 `launch.rs` 的 `gate::admit` 拆掉、退回
+    // ⚠ 这一条是变异复验补的：M2「把 `launch.rs` 的 `gate::admit` 拆掉、退回
     // `has-session` + 裸 `type_payload`」时，上面两条**照样全绿** —— 因为 `gate.rs`
     // 文件还在、标志串还在。抓到它的是后端自己那两条接线测试，而本模块
     // （monitor 侧那条禁令的**前提**）却认为「门还在」，前提就成了假的。

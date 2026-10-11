@@ -189,11 +189,11 @@ describe(" preprocessMath 前置闸：快路必须与慢路逐字节相同", () 
     { name: "\\( 行内公式", md: "\\(x^2\\)", slow: true, changes: true },
     { name: "CRLF 行尾（第 1 遍会归一）", md: "一行\r\n二行\r\n", slow: true, changes: true },
     {
-      name: "🔴 \\uFDD0 占位符串（规格那 4 条之外、本轮现打补的第 5 条）",
+      name: "🔴 \\uFDD0 占位符串（规格那 4 条之外、现打补的第 5 条）",
       md: "正文里本来就带着 \uFDD0M0\uFDD0 这个串",
       slow: true,
       // 既存缺陷：慢路会把它当成 stub 去还原（stash 是空的 ⇒ 替成 "undefined"）。
-      // 本轮**不修**，只是把它关进闸里，好让「快路 ⇒ 逐字节等于慢路」无条件成立。
+      // 这里**不修**，只是把它关进闸里，好让「快路 ⇒ 逐字节等于慢路」无条件成立。
       changes: true,
     },
     {

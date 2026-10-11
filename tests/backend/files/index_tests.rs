@@ -236,7 +236,7 @@ fn a_symlink_is_indexed_but_not_followed() {
     {
         // 🔴 这一格在非 unix 上**判不了**，而「判不了」与「过了」必须分得开。
         // 缺的证据：一台 Windows 机器上造一条目录联结（junction）再走一遍。
-        eprintln!("[24f] symlink 那一格在本 target 上判不了：造链接要另一套权限，本轮没有真机");
+        eprintln!("[24f] symlink 那一格在本 target 上判不了：造链接要另一套权限，这里没有真机");
     }
 }
 
@@ -420,7 +420,7 @@ fn a_non_utf8_filename_is_indexed_searchable_and_returned_byte_for_byte() {
     #[cfg(not(unix))]
     {
         // 🔴 **判不了**，缺的证据：一台 Windows 机器上造一个非 WTF-8 名字的文件。
-        // 那不只是「本轮没做」——`OsStr` 在那个平台上**不允许**非 WTF-8，
+        // 那不只是「没做」——`OsStr` 在那个平台上**不允许**非 WTF-8，
         // 所以这一格在那里可能根本不存在。本族对那一维**不出声**。
         eprintln!(
             "[24f] 非 UTF-8 文件名那一格在本 target 上判不了：缺一台真机 ＋ 一个能造出来的名字"
