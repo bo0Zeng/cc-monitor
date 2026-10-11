@@ -112,3 +112,79 @@ fn the_retired_name_match_is_whole_word() {
         "说明行与空行没被跳过"
     );
 }
+
+/// 手机端的旧产品名：拆两段拼，本文件里没有一处完整的字面。
+fn old_mobile_name() -> String {
+    ["a", "term"].concat()
+}
+
+/// 手机那棵树里留着旧名的唯一一份：它钉的就是「远端那层旧目录的字面不许回来」，必须写出那两个字面。
+const OLD_MOBILE_NAME_PIN: &str =
+    "src/mobile/app/src/test/kotlin/com/ccmonitor/mobile/ssh/NamespaceLiteralScanTest.kt";
+
+/// `line` 里有没有旧名（不分大小写；`highwatermark` 这个词里恰好带着它，不算）。
+fn says_old_mobile_name(line: &str, old: &str) -> bool {
+    line.to_lowercase()
+        .replace("highwatermark", "")
+        .contains(old)
+}
+
+/// 手机那棵树（`src/mobile/`，代码 · 资源 · 脚本 · 文档一起）里不许再有旧产品名：
+/// 类名 · 主题名 · 标记 · 环境变量 · 落盘名 · 文案都叫 cc-monitor 这一族。
+#[test]
+fn the_mobile_tree_never_says_the_old_product_name() {
+    let root = super::no_outside_refs::repo();
+    let texts = super::no_outside_refs::tracked_texts(&root);
+    let old = old_mobile_name();
+    let mobile: Vec<&(String, String)> = texts
+        .iter()
+        .filter(|(rel, _)| rel.starts_with("src/mobile/"))
+        .collect();
+    assert!(
+        mobile.len() > 300,
+        "手机那棵树只扫到 {} 份 —— 口径坏了，零命中不作数",
+        mobile.len()
+    );
+    let mut hits = Vec::new();
+    for (rel, text) in mobile {
+        if rel == OLD_MOBILE_NAME_PIN {
+            continue;
+        }
+        for (i, line) in text.lines().enumerate() {
+            if says_old_mobile_name(line, &old) {
+                hits.push(format!("{rel}:{}: {}", i + 1, line.trim()));
+            }
+        }
+    }
+    assert!(
+        hits.is_empty(),
+        "手机那棵树里还有 {} 处旧产品名：改成 cc-monitor 这一族（类名 CcMonitor… · 标记 CCM_… · 落盘名 ccm…）。\n{}",
+        hits.len(),
+        hits.join("\n")
+    );
+}
+
+/// 合成夹具：大小写都认，`highwatermark` 放过。
+#[test]
+fn the_old_mobile_name_match_ignores_case_and_spares_highwatermark() {
+    let old = old_mobile_name();
+    let up = old.to_uppercase();
+    let lines = [
+        format!("class {}App : Application()", "A".to_string() + &old[1..]), // 1 ✔
+        format!("const val X = \"{up}_ADDED\""),                             // 2 ✔
+        format!(".databaseBuilder(ctx, Db::class.java, \"{old}.db\")"),      // 3 ✔
+        "// `.lock` / `.highwatermark` 忽略".to_string(),                    // 4 ✘
+        "class CcMonitorApp : Application()".to_string(),                    // 5 ✘
+    ];
+    let got: BTreeSet<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| says_old_mobile_name(l, &old))
+        .map(|(i, _)| i + 1)
+        .collect();
+    assert_eq!(
+        got,
+        BTreeSet::from([1, 2, 3]),
+        "旧名匹配在合成夹具上抓到的行 ≠ 标定（该抓 1–3；该放过 4、5）—— 匹配坏了，手机那条零命中不作数"
+    );
+}
