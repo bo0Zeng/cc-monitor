@@ -199,6 +199,23 @@ describe("账号面板 · 头 · 配置", () => {
   });
 });
 
+describe("账号面板 · 写被那台拒了", () => {
+  it("★ 写副本被拒（例：轮换文件还是旧格式、常驻后端换形之前不写）⇒ 那一句照原样进面板的一条（需手动 ＋ 那一句），不吞成「原因不明」", async () => {
+    seed();
+    const e = Object.assign(new Error("W-v1pending"), { detail: "D-v1" });
+    editSession.mockRejectedValueOnce(e);
+    openAccountPanel("s1", "<local>", host);
+    rowEl("lab").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    menuItem(copyText("rot.row.leave")).click();
+    await flush();
+    expect(panel().querySelector("[data-rot-write-fail]")?.textContent).toContain(copyText("rot.bar.needs", { said: "W-v1pending" }));
+    rowEl("lab").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 10, clientY: 10 }));
+    menuItem(copyText("rot.row.leave")).click();
+    await flush();
+    expect(panel().querySelector("[data-rot-write-fail]"), "下一次写成了 ⇒ 那一条撤掉").toBeNull();
+  });
+});
+
 describe("账号面板 · 列表", () => {
   it("行序照后端（有效优先级）；第一行在用；行下一句照策略给的；此刻不挑 ⇒ 跳过 · 为什么；别的会话也钉着 ⇒ 琥珀一句；用法不是缺省的才标", () => {
     seed({

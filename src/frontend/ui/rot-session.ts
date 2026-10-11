@@ -14,6 +14,7 @@ import { reasonLabel } from "./acct-view";
 import { copyText } from "./copy-table";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
+import { detailOf, writtenSaid } from "./kit/detail";
 import { button } from "./kit/button";
 import { askText, choiceDialog, confirmDialog } from "./kit/dialog";
 import { icon } from "./kit/icon";
@@ -59,11 +60,13 @@ export interface RotState {
   bulk: Record<string, unknown>;
   /** 最近一次改副本收不下的格（后端回的）。 */
   errors: CellError[];
+  /** 最近一次写被那台整个拒了（例：轮换文件还是旧格式、常驻后端换形之前不写）：那一句 ＋ 复制详情；写成一次就撤。 */
+  fail: { said: string; detail: string } | null;
   chart: { view: ChartView; reply: PlanReply | null; key: string; seq: number };
 }
 
 export function newRotState(): RotState {
-  return { view: { k: "list" }, sel: [], anchor: null, bulk: {}, errors: [], chart: { view: "12h", reply: null, key: "", seq: 0 } };
+  return { view: { k: "list" }, sel: [], anchor: null, bulk: {}, errors: [], fail: null, chart: { view: "12h", reply: null, key: "", seq: 0 } };
 }
 
 /** 面板交进来的几样。 */
@@ -134,14 +137,24 @@ function diffOf(read: Present, who: string | undefined): { changed: Set<string>;
 
 // ─────────────────────────────── 写
 
+/** 一次写没成：那台写好了那一句（拒写的原因）⇒ 进面板那一条、不吞；说不出 ⇒ 一条 toast（`fallback`）。 */
+function writeFailed(c: RotCtx, what: string, e: unknown, fallback: string): void {
+  console.warn(`[rot] ${what} 失败：`, e);
+  const said = writtenSaid(e);
+  if (said !== null) c.st.fail = { said, detail: detailOf(e) };
+  else toast(fallback, "", { level: "error" });
+}
+
 async function edit(c: RotCtx, ask: EditAsk): Promise<void> {
   try {
     const got = await editSession(c.origin, c.sid, ask);
     c.st.errors = got.errors;
+    c.st.fail = null;
   } catch (e) {
-    console.warn("[rot] rotation-session-edit 失败：", e);
-    toast(copyText("rot.doc.editFailed"), "", { level: "error" });
+    writeFailed(c, "rotation-session-edit", e, copyText("rot.doc.editFailed"));
   }
+  // 那一条（拒写的那一句）先画出来 / 撤掉，再等重问回来。
+  c.render();
   await c.reload();
 }
 
@@ -153,6 +166,7 @@ function cfgName(c: RotCtx): string {
 export async function saveCopy(c: RotCtx, force = false): Promise<boolean> {
   try {
     const got = await saveSession(c.origin, c.sid, { ifRev: c.read.config.rev, ...(force ? { force: true } : {}) });
+    c.st.fail = null;
     if (got.state === "saved") {
       toast(copyText("rot.doc.saved", { cfg: cfgName(c) }), "", { level: "success" });
       await c.reload();
@@ -176,8 +190,8 @@ export async function saveCopy(c: RotCtx, force = false): Promise<boolean> {
     if (pick === "saveAs") return saveCopyAs(c);
     return false;
   } catch (e) {
-    console.warn("[rot] rotation-session-save 失败：", e);
-    toast(copyText("rot.doc.failed", { cfg: cfgName(c) }), "", { level: "error" });
+    writeFailed(c, "rotation-session-save", e, copyText("rot.doc.failed", { cfg: cfgName(c) }));
+    c.render();
     return false;
   }
 }
@@ -189,6 +203,7 @@ export async function saveCopyAs(c: RotCtx): Promise<boolean> {
   try {
     const t = name.trim();
     const got = await saveSession(c.origin, c.sid, { ifRev: c.read.config.rev, as: t === "" ? {} : { name: t } });
+    c.st.fail = null;
     if (got.state === "saved") {
       await c.reload();
       return true;
@@ -196,8 +211,8 @@ export async function saveCopyAs(c: RotCtx): Promise<boolean> {
     if (got.state === "refused") toast(copyText("rot.doc.refused", { why: got.errors.map((e) => e.said).join(copyText("kit.text.sep")) }), "", { level: "error" });
     return false;
   } catch (e) {
-    console.warn("[rot] rotation-session-save 失败：", e);
-    toast(copyText("rot.doc.failed", { cfg: cfgName(c) }), "", { level: "error" });
+    writeFailed(c, "rotation-session-save", e, copyText("rot.doc.failed", { cfg: cfgName(c) }));
+    c.render();
     return false;
   }
 }
@@ -205,9 +220,11 @@ export async function saveCopyAs(c: RotCtx): Promise<boolean> {
 async function revert(c: RotCtx, toLatest = false): Promise<void> {
   try {
     await revertSession(c.origin, c.sid, toLatest);
+    c.st.fail = null;
   } catch (e) {
-    console.warn("[rot] rotation-session-revert 失败：", e);
+    writeFailed(c, "rotation-session-revert", e, copyText("rot.doc.editFailed"));
   }
+  c.render();
   await c.reload();
 }
 
@@ -232,10 +249,12 @@ export async function switchConfig(c: RotCtx, id: string): Promise<void> {
       if (pick === "keep" && !(await saveCopy(c))) return;
       await openConfig(c.origin, c.sid, id, true);
     }
+    c.st.fail = null;
   } catch (e) {
-    console.warn("[rot] rotation-session-open 失败：", e);
+    writeFailed(c, "rotation-session-open", e, copyText("rot.doc.editFailed"));
   }
   c.st.view = { k: "list" };
+  c.render();
   await c.reload();
 }
 
@@ -243,12 +262,14 @@ export async function switchConfig(c: RotCtx, id: string): Promise<void> {
 async function place(c: RotCtx, ask: { place: { account: string; at: number } } | { refresh: true }): Promise<void> {
   try {
     const got = await placeSession(c.origin, c.sid, ask);
+    c.st.fail = null;
     if (got.state !== "done" && "place" in ask) {
       toast(copyText("rot.place.failed", { cur: accountLabel(c.read.current), reason: reasonLabel(got.why ?? "", { agent: c.read.agent, target: ask.place.account }) }), "", { level: "error" });
     }
   } catch (e) {
-    console.warn("[rot] rotation-session-set 失败：", e);
+    writeFailed(c, "rotation-session-set", e, copyText("rot.doc.editFailed"));
   }
+  c.render();
   await c.reload();
 }
 
@@ -328,6 +349,11 @@ function bars(c: RotCtx): HTMLElement[] {
   if (r.needs) {
     const b = banner("warn", copyText("rot.bar.needs", { said: r.needs.reason }), [], r.needs.detail);
     b.dataset.rotNeeds = r.needs.kind;
+    out.push(b);
+  }
+  if (c.st.fail) {
+    const b = banner("warn", copyText("rot.bar.needs", { said: c.st.fail.said }), [], c.st.fail.detail);
+    b.dataset.rotWriteFail = "true";
     out.push(b);
   }
   if (r.blocked) {

@@ -1001,7 +1001,7 @@ export class RotationSection {
       );
       box.appendChild(row);
     });
-    const ops = Number(t.ops);
+    const ops = t.ops;
     const max = t.maxOps;
     box.appendChild(el("div", (e) => (e.className = s.rotNote), t.pick ? copyText("rot.st.tryPick", { acct: accountLabel(t.pick), ops, max }) : copyText("rot.st.tryHeld", { ops, max })));
     return box;

@@ -3,8 +3,11 @@ declare const classes: {
   readonly rcAdd: string;
   readonly rcAxis: string;
   readonly rcBar: string;
+  readonly rcBarText: string;
   readonly rcBase: string;
   readonly rcChart: string;
+  readonly rcEst: string;
+  readonly rcFar: string;
   readonly rcGo: string;
   readonly rcHead: string;
   readonly rcHeld: string;
@@ -22,6 +25,8 @@ declare const classes: {
   readonly rcRows: string;
   readonly rcSeg: string;
   readonly rcSegName: string;
+  readonly rcSlot: string;
+  readonly rcSlotText: string;
   readonly rcSwatch: string;
   readonly rcSwitch: string;
   readonly rcTick: string;

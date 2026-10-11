@@ -97,6 +97,29 @@ describe("rot-chart · 合图", () => {
     ]);
   });
 
+  it("后端写好的四样照抄：余 N（在用的段上）· 时段带（≤80% · 不用）· 在用号估的到线段 · 视窗外的重置", () => {
+    const p = plan({
+      rows: [
+        { account: "team", bars: [{ from: T, to: T + 91 * M, k: "use", est: true }], resets: [{ w: "5h", at: T + 127 * M, atText: "23:10" }], left: 41, leftText: "L-41", est: { at: T + 91 * M, atText: "22:34", w: "5h" } },
+        { account: "work", bars: [], resets: [], slots: [{ from: T - 60 * M, to: T + 200 * M, line: 80, text: "S-80" }, { from: T + 300 * M, to: T + 400 * M, line: 0, text: "S-off" }], farResets: [{ w: "7d", at: T + 9000 * M, atText: "10-14", text: "F-7d" }] },
+      ],
+    });
+    const { root } = draw(p);
+    const [team, work] = [...root.querySelectorAll<HTMLElement>("[data-rc-row]")];
+    expect(team.querySelector("[data-rc-left]")?.textContent).toBe("L-41");
+    expect(team.querySelector("[data-rc-left]")?.closest("[data-rc-bar]"), "余 N 写在在用那一段里").not.toBeNull();
+    const est = team.querySelector<HTMLElement>("[data-rc-est]")!;
+    expect(est.textContent).toBe(copyText("rot.chart.est", { at: "22:34" }));
+    expect(est.style.left, "估的到线段从估的那一刻起").not.toBe("");
+    const slots = [...work.querySelectorAll<HTMLElement>("[data-rc-slot]")];
+    expect(slots.map((x) => [x.textContent, x.dataset.unused ?? ""])).toEqual([
+      ["S-80", ""],
+      ["S-off", "true"],
+    ]);
+    expect(work.querySelector("[data-rc-far]")?.textContent).toBe("F-7d");
+    expect(team.querySelector("[data-rc-far]")).toBeNull();
+  });
+
   it("行下一句：策略给的为什么；此刻不挑 ⇒ 跳过 · 为什么、整行淡；别的会话也钉着 ⇒ 琥珀一句；在用那行带标记", () => {
     const { root } = draw();
     const [team, work] = [...root.querySelectorAll<HTMLElement>("[data-rc-row]")];

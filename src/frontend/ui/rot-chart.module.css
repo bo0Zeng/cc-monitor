@@ -245,6 +245,9 @@
 
   .rcBar {
     position: absolute;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
     top: 12px;
     height: 13px;
     border-radius: var(--radius-s);
@@ -288,6 +291,75 @@
   .rcBar[data-rc-bar="skip"],
   .rcSwatch[data-k="skip"] {
     background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-faint) 50%, transparent) 0 2px, transparent 2px 6px);
+  }
+
+  .rcSlot {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    border-right: 1px dashed color-mix(in srgb, var(--color-link) 60%, transparent);
+    border-left: 1px dashed color-mix(in srgb, var(--color-link) 60%, transparent);
+    background: color-mix(in srgb, var(--color-link) 12%, transparent);
+  }
+
+  .rcSlot[data-unused="true"] {
+    border-color: var(--border-medium);
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-faint) 40%, transparent) 0 3px, transparent 3px 6px);
+  }
+
+  .rcSlotText {
+    position: absolute;
+    top: 0;
+    left: 3px;
+    color: var(--color-link);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: 12px;
+    white-space: nowrap;
+  }
+
+  .rcSlot[data-unused="true"] .rcSlotText {
+    color: var(--text-2);
+  }
+
+  .rcBarText {
+    padding: 0 var(--space-1);
+    overflow: hidden;
+    color: var(--rc-ink);
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    line-height: 13px;
+    white-space: nowrap;
+  }
+
+  .rcEst {
+    position: absolute;
+    top: 12px;
+    display: flex;
+    align-items: center;
+    height: 13px;
+    padding: 0 var(--space-1);
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    color: var(--warn);
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--warn) 45%, transparent) 0 2px, transparent 2px 6px);
+    outline: 1px dashed var(--warn);
+    outline-offset: -1px;
+    font-size: var(--font-size-xs);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .rcFar {
+    position: absolute;
+    top: 25px;
+    right: 2px;
+    padding: 0 2px;
+    color: var(--text-2);
+    background: var(--bg-2);
+    font-size: var(--font-size-xs);
+    line-height: 12px;
+    white-space: nowrap;
   }
 
   .rcReset {

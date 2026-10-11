@@ -204,11 +204,22 @@ function acctRow(spec: ChartSpec, r: ChartRow): HTMLElement {
   if (p) {
     const ax = axisOf(p);
     pastShade(track, p, ax);
+    const pr = p.rows.find((x) => x.account === r.account);
+    // 时段带（这个号的每号参数 slots，后端按视窗切好、写好那一段的字「≤80%」「不用」）：最先画，压在最底下。
+    for (const sl of pr?.slots ?? []) {
+      const band = el("div", (e) => (e.className = s.rcSlot));
+      band.dataset.rcSlot = String(sl.line);
+      if (sl.line === 0) band.dataset.unused = "true";
+      band.style.left = ax.pos(sl.from);
+      band.style.width = ax.wid(sl.from, sl.to);
+      band.appendChild(el("b", (e) => (e.className = s.rcSlotText), sl.text));
+      track.appendChild(band);
+    }
     const base = el("div", (e) => (e.className = s.rcBase));
     base.style.left = ax.pos(p.now);
     base.style.width = ax.wid(p.now, p.until);
     track.appendChild(base);
-    const pr = p.rows.find((x) => x.account === r.account);
+    let leftDone = false;
     for (const b of pr?.bars ?? []) {
       const e = el("div", (e) => (e.className = s.rcBar));
       e.dataset.rcBar = b.k;
@@ -216,6 +227,23 @@ function acctRow(spec: ChartSpec, r: ChartRow): HTMLElement {
       e.style.left = ax.pos(b.from);
       e.style.width = ax.wid(b.from, b.to);
       if (b.k === "use") tint(e, r.account);
+      // 余 N（离此刻的线还剩几点，后端写好的字）：写在这个号头一段在用的段里。
+      if (b.k === "use" && !leftDone && pr?.leftText) {
+        leftDone = true;
+        const t = el("span", (e) => (e.className = s.rcBarText), pr.leftText);
+        t.dataset.rcLeft = "true";
+        e.appendChild(t);
+      }
+      track.appendChild(e);
+    }
+    // 在用的号估的到线时刻（后端按最近的用速估好）：从那一刻画到这一窗下一次重置（视窗止）。
+    if (pr?.est) {
+      const until = (pr.resets.find((t) => t.w === pr.est?.w && t.at > (pr.est?.at ?? 0))?.at ?? p.until);
+      const e = el("div", (e) => (e.className = s.rcEst));
+      e.dataset.rcEst = pr.est.w;
+      e.style.left = ax.pos(pr.est.at);
+      e.style.width = ax.wid(pr.est.at, until);
+      e.textContent = copyText("rot.chart.est", { at: pr.est.atText });
       track.appendChild(e);
     }
     for (const t of pr?.resets ?? []) {
@@ -226,6 +254,12 @@ function acctRow(spec: ChartSpec, r: ChartRow): HTMLElement {
       label.style.left = ax.pos(t.at);
       if (t.at > p.until - (p.until - p.from) * 0.08) label.dataset.edge = "end";
       track.append(m, label);
+    }
+    // 落在视窗外的重置（后端写好的那一句）：行尾右对齐一小格。
+    if ((pr?.farResets ?? []).length > 0) {
+      const far = el("span", (e) => (e.className = s.rcFar), (pr?.farResets ?? []).map((f) => f.text).join(copyText("kit.text.sep")));
+      far.dataset.rcFar = "true";
+      track.appendChild(far);
     }
     nowLine(track, p, ax);
   }

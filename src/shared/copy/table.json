@@ -32305,6 +32305,12 @@
       "role": "片段",
       "zh": "{w} {at} 重置 · 视窗外",
       "args": ["w", "at"]
+    },
+    "rot.chart.est": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "约 {at}",
+      "args": ["at"]
     }
   }
 }
