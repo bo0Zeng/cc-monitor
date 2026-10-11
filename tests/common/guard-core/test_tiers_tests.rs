@@ -113,6 +113,7 @@ const SUPPORT: &[&str] = &[
 
 /// e2e 层：`package.json` 的脚本真的去跑的那批 `tests/e2e/` 下的 shell。
 const E2E: &[&str] = &[
+    "tests/e2e/answer-hook.sh",
     "tests/e2e/backend-cc-bus.sh",
     "tests/e2e/backend-fork-session.sh",
     "tests/e2e/backend-gate2-acceptance.sh",
