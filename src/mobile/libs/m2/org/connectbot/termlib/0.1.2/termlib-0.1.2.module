@@ -3,7 +3,7 @@
   "component": {
     "group": "org.connectbot",
     "module": "termlib",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "attributes": {
       "org.gradle.status": "release"
     }
@@ -33,13 +33,13 @@
       ],
       "files": [
         {
-          "name": "termlib-0.1.1.aar",
-          "url": "termlib-0.1.1.aar",
-          "size": 1783454,
-          "sha512": "bae0fb8d34f5f94f3fabb2fdde1f9506dbf829225136cfd2a449a2c2b62a8e8008d33c4903da18a629ddcf05d57adef6bb3fbe4a0421ca0e6ac597faa59f82d3",
-          "sha256": "2753b8d2be664ebe43e78d46fbe1095ec8dcd9d1fc06e8f8c5488b642e18d546",
-          "sha1": "d837f6d57dfd33109bef4fff9509c52aa326faa3",
-          "md5": "9ca09c13f9750d86e0843abe0bb77646"
+          "name": "termlib-0.1.2.aar",
+          "url": "termlib-0.1.2.aar",
+          "size": 1784374,
+          "sha512": "e7d48abd437002b5fc9f33e5c579b4cb0596374f29faf16eeadf9a18d4a351a40758ac2c878ab1c7c18e34abcd3e52b5d881eb6f9ba46d70da196b5cb5c1c85b",
+          "sha256": "227a2ab0a4753b16f19ae9bf3cb949db450f99bd720e18a7534db4154130cabe",
+          "sha1": "986eebc28c7444b7eab1ec17108d95749b2cb819",
+          "md5": "a2cb3cf62770a999b9e1fd9a7bade350"
         }
       ]
     },
@@ -137,13 +137,13 @@
       ],
       "files": [
         {
-          "name": "termlib-0.1.1.aar",
-          "url": "termlib-0.1.1.aar",
-          "size": 1783454,
-          "sha512": "bae0fb8d34f5f94f3fabb2fdde1f9506dbf829225136cfd2a449a2c2b62a8e8008d33c4903da18a629ddcf05d57adef6bb3fbe4a0421ca0e6ac597faa59f82d3",
-          "sha256": "2753b8d2be664ebe43e78d46fbe1095ec8dcd9d1fc06e8f8c5488b642e18d546",
-          "sha1": "d837f6d57dfd33109bef4fff9509c52aa326faa3",
-          "md5": "9ca09c13f9750d86e0843abe0bb77646"
+          "name": "termlib-0.1.2.aar",
+          "url": "termlib-0.1.2.aar",
+          "size": 1784374,
+          "sha512": "e7d48abd437002b5fc9f33e5c579b4cb0596374f29faf16eeadf9a18d4a351a40758ac2c878ab1c7c18e34abcd3e52b5d881eb6f9ba46d70da196b5cb5c1c85b",
+          "sha256": "227a2ab0a4753b16f19ae9bf3cb949db450f99bd720e18a7534db4154130cabe",
+          "sha1": "986eebc28c7444b7eab1ec17108d95749b2cb819",
+          "md5": "a2cb3cf62770a999b9e1fd9a7bade350"
         }
       ]
     },
@@ -157,13 +157,13 @@
       },
       "files": [
         {
-          "name": "termlib-0.1.1-sources.jar",
-          "url": "termlib-0.1.1-sources.jar",
-          "size": 89644,
-          "sha512": "af3e4f65c9670e8173edd5e434d2e128291ef8e427c2204a0d2112a48be45e1cf3e3312f7bc0498a70e29d9e44bca7c59b606dcb2be34d02b3e47355b4d0b9f7",
-          "sha256": "810851831eee50abb78426251ea1a86a49d7c7a9415841455e79a30069a90c4f",
-          "sha1": "98875508e182be528e7da1b30782414ab6628331",
-          "md5": "c9d5e281282683f1d68417daa0c369fb"
+          "name": "termlib-0.1.2-sources.jar",
+          "url": "termlib-0.1.2-sources.jar",
+          "size": 89885,
+          "sha512": "e2c3c0eca66846567670dcd26bb89106b44b688b2cf5741fcbac78e255a849f4b526640b3bb73d8e31a4801c9535671b85c3b80167e7c765338b1d1390f93335",
+          "sha256": "434c9dcc6b62b894cde55334c456c4895e8adcafbe057285a2fdd910d5003396",
+          "sha1": "2ad700ad87b165b93a64aab3b0d6b37eaecf6a4b",
+          "md5": "42c6c1da693bf28faa365917dcf4b820"
         }
       ]
     }

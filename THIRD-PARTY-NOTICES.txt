@@ -13062,8 +13062,8 @@ SOFTWARE.
 
 =================== files vendored in the repo (mobile app, src/mobile) ===================
 
--------- termlib 0.1.1 (Apache-2.0) --------
-    vendored: termlib 0.1.1 — src/mobile/libs/m2/org/connectbot/termlib/
+-------- termlib 0.1.2 (Apache-2.0) --------
+    vendored: termlib 0.1.2 — src/mobile/libs/m2/org/connectbot/termlib/
     connectbot/termlib 的预编 aar（含 sources.jar）；打过 src/mobile/libs/termlib-patches/ 里的补丁，是改过的版本
 
                                  Apache License
@@ -13269,8 +13269,8 @@ SOFTWARE.
    limitations under the License.
 
 
--------- libvterm termlib 0.1.1 内含 (MIT) --------
-    vendored: libvterm termlib 0.1.1 内含 — src/mobile/libs/m2/org/connectbot/termlib/0.1.1/termlib-0.1.1.aar
+-------- libvterm termlib 0.1.2 内含 (MIT) --------
+    vendored: libvterm termlib 0.1.2 内含 — src/mobile/libs/m2/org/connectbot/termlib/0.1.2/termlib-0.1.2.aar
     编进 termlib aar 的 libjni_cb_term.so
 
 The MIT License

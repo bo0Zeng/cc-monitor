@@ -22,7 +22,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 
 Jetpack Compose ＋ Material3 · Koin · Room（KSP）· termlib（libvterm，JNI）· sshj · Markwon ＋ Prism4j · Tink ＋ Android Keystore。Kotlin 2.3 · AGP 8.13 · Gradle 8.14 · JDK 21 · compileSdk 36 · minSdk 26。
 
-termlib `0.1.1` 已放进仓内 maven 仓 `libs/m2/`，构建不需要 NDK。那份 aar 是上游打了补丁编的，补丁与重编步骤在 [`libs/termlib-patches/`](libs/termlib-patches/README.md)；改 termlib 原生代码要照那里另外构建，再更新 `libs/m2/`。
+termlib `0.1.2` 已放进仓内 maven 仓 `libs/m2/`，构建不需要 NDK。那份 aar 是上游打了补丁编的，补丁与重编步骤在 [`libs/termlib-patches/`](libs/termlib-patches/README.md)；改 termlib 原生代码要照那里另外构建，再更新 `libs/m2/`。
 
 ## 构建
 

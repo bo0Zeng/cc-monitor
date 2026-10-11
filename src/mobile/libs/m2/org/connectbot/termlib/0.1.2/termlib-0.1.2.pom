@@ -9,7 +9,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.connectbot</groupId>
   <artifactId>termlib</artifactId>
-  <version>0.1.1</version>
+  <version>0.1.2</version>
   <packaging>aar</packaging>
   <name>termlib</name>
   <description>ConnectBot's terminal emulator Android Compose component using libvterm</description>
