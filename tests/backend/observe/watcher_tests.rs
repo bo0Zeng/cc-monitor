@@ -121,7 +121,7 @@ fn pidfd_watcher_fires_on_death_and_stays_silent_while_alive() {
     // —— 正方向：杀掉 ⇒ 内核唤醒 poll ⇒ 事件到 ——
     child.kill().expect("kill");
     let got = rx
-        .recv_timeout(Duration::from_secs(5))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("杀掉后必须收到 PidDied（超时 = pidfd 没被内核唤醒）");
     match got {
         WatchEvent::PidDied { key: k, pid: p } => {
@@ -148,7 +148,7 @@ fn pidfd_watcher_reports_dead_when_open_fails() {
     let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
     spawn_pid_watcher(PidWatchTarget::Session { key: key.clone() }, pid, None, tx);
     match rx
-        .recv_timeout(Duration::from_secs(2))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("open 失败必须立刻报死")
     {
         WatchEvent::PidDied { key: k, pid: p } => {
@@ -176,7 +176,7 @@ fn pidfd_watcher_rejects_reused_pid_via_start_mismatch() {
     let (tx, rx) = std::sync::mpsc::channel::<WatchEvent>();
     spawn_pid_watcher(PidWatchTarget::Session { key: key.clone() }, pid, bogus, tx);
     match rx
-        .recv_timeout(Duration::from_secs(2))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("基线不符必须立刻报死（否则会把冒名者当成原会话一直判活）")
     {
         WatchEvent::PidDied { key: k, pid: p } => {
@@ -206,7 +206,7 @@ fn arm_pid_watcher_is_idempotent_per_pidfile_and_pid() {
     arm_pid_watcher(&key, dead, None, &mut st);
     arm_pid_watcher(&key, dead, None, &mut st); // 同对 ⇒ 应被跳过
     assert!(
-        rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+        rx.recv_timeout(guard_core::wall::CEILING).is_ok(),
         "第一次必须挂上"
     );
     match rx.recv_timeout(Duration::from_millis(400)) {
@@ -221,7 +221,7 @@ fn arm_pid_watcher_is_idempotent_per_pidfile_and_pid() {
     child2.wait().expect("reap");
     arm_pid_watcher(&key, dead2, None, &mut st);
     assert!(
-        rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+        rx.recv_timeout(guard_core::wall::CEILING).is_ok(),
         "同路径换 pid 必须重新挂看守"
     );
 }
@@ -250,12 +250,12 @@ fn a_recycled_pid_at_the_same_path_gets_a_fresh_watcher() {
     // 同一个 pid、同一个路径，但**两个不同的 starttime** = PID 被复用了。
     arm_pid_watcher(&key, dead, Some(1_000), &mut st);
     assert!(
-        rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+        rx.recv_timeout(guard_core::wall::CEILING).is_ok(),
         "抽取器自检：第一次都没挂上，本条后面的判定无意义"
     );
     arm_pid_watcher(&key, dead, Some(2_000), &mut st);
     assert!(
-        rx.recv_timeout(Duration::from_secs(2)).is_ok(),
+        rx.recv_timeout(guard_core::wall::CEILING).is_ok(),
         "★ 同路径 + 同 pid + **不同 starttime** 没有重新挂看守。\n\
              那正是 PID 复用：pid 数字被回收给了另一个进程，而 (路径, pid) 两元键看不出区别\n\
              ⇒ 新进程死了没人报，会话永远停在「活着」。\n\
@@ -608,7 +608,7 @@ fn pidfd_watches_a_real_tmux_server_and_stays_silent_while_it_lives() {
     // 正方向：杀掉**这个隔离 socket 上的** server ⇒ pidfd 醒
     let _ = tmux(&["kill-server"]);
     match rx
-        .recv_timeout(Duration::from_secs(5))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("server 退出后必须收到 TmuxServerGone")
     {
         WatchEvent::TmuxServerGone { pid: p } => assert_eq!(p, pid),
@@ -2726,7 +2726,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
     let mut kids = vec![vis2_sleeper(), vis2_sleeper()];
     std::fs::create_dir_all(&sessions).unwrap();
     vis2_pidfile(&sessions, kids[0].id(), "vis2-s3-first");
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut added: Vec<String> = Vec::new();
     while added.is_empty() && std::time::Instant::now() < deadline {
         if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
@@ -2744,7 +2744,7 @@ fn vis2_s3_an_agent_home_created_after_start_still_announces_its_session() {
 
     // ③ 第二份 pidfile 的事件真的来（`sessions/` 那道 watch 挂在新目录上）。
     let second = vis2_pidfile(&sessions, kids[1].id(), "vis2-s3-second");
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut heard_second = false;
     while !heard_second && std::time::Instant::now() < deadline {
         if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
@@ -3365,7 +3365,7 @@ fn gap1_an_accounts_dir_created_or_rebuilt_after_start_is_still_heard() {
     let mut round = |ear: &mut AccountsEar, debouncer: &mut _| {
         std::fs::create_dir_all(&dir).unwrap();
         let (mut dir_seen, mut manifest_seen) = (false, false);
-        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
         while !manifest_seen && std::time::Instant::now() < deadline {
             if dir_seen {
                 std::fs::write(&manifest, b"{}").unwrap();
@@ -3420,7 +3420,7 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
     // 写一份文件，等到一批事件里 `on_path` 回过 true（或期限到）。回到没到。
     let heard = |ear: &mut AccountsEar, debouncer: &mut _, path: &Path| -> bool {
         std::fs::write(path, b"{}").unwrap();
-        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
         let mut got = false;
         while !got && std::time::Instant::now() < deadline {
             if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
@@ -3436,7 +3436,7 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
     let fresh = dir.join("acct-b");
     std::fs::create_dir_all(&fresh).unwrap();
     // 号目录出现那一格先到（重挂各号目录），之后那份凭据才听得见。
-    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     while !ear.subs.contains(&fresh) && std::time::Instant::now() < deadline {
         if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
             for ev in &evs {
@@ -3868,7 +3868,7 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     let mut sink = FrameSink::new(tx);
     let mut state = ReaderState::new(projects.clone());
     std::fs::create_dir_all(&tasks).unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     while !ears.tasks_watched && std::time::Instant::now() < deadline {
         if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
             for ev in evs {
@@ -3878,7 +3878,7 @@ fn a_task_written_after_start_is_heard_for_its_session() {
     }
     std::fs::create_dir_all(tasks.join("sid-t1")).unwrap();
     std::fs::write(tasks.join("sid-t1").join("1.json"), b"{}").unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let mut heard: Vec<String> = Vec::new();
     while heard.is_empty() && std::time::Instant::now() < deadline {
         if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
@@ -4055,7 +4055,7 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
     // 做一件事，等到那一批（最多 20 秒）：回这一批里配置文件算不算动了。
     let mut heard = |ear: &mut ProfilesEar, debouncer: &mut _, act: &dyn Fn()| -> bool {
         act();
-        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
         let mut got = false;
         while std::time::Instant::now() < deadline {
             match erx.recv_timeout(Duration::from_millis(300)) {

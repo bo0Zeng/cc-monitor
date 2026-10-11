@@ -120,7 +120,7 @@ CLAUDE_CONFIG_DIR="$WORK/claude" "$BACKEND" -- --stream <"$IN" >"$OUT" 2>"$ERR" 
 BACKEND_PID=$!
 exec 3>"$IN"   # 持住写端，否则第一个写者退出即 EOF，入方向当场寿终
 
-wait_for() { local p="$1" i; for i in $(seq 1 200); do grep -qF -- "$p" "$OUT" && return 0; sleep 0.05; done; return 1; }
+wait_for() { local _p="$1"; wall_until 'grep -qF -- "$_p" "$OUT"'; }
 send()     { printf '%s\n' "$1" >&3; }
 reply_of() { grep -F "\"id\":\"$1\"" "$OUT" | head -1; }
 

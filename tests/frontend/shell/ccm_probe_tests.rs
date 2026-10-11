@@ -219,11 +219,11 @@ fn a_hanging_shell_does_not_hang_the_resume_button() {
     let t0 = std::time::Instant::now();
     // ⚠ 上限要**跨过 rc 加载**（本机 `bash -lic` 实测 ~130ms）：给 50ms 的话子进程
     // 还没来得及吐字就被杀了，「半截输出」那一格永远构造不出来 —— 第三版夹具卡在这儿。
-    // 800ms 足够它吐完首行 + 填充，又远小于下面 5s 那道断言。
+    // 800ms 足够它吐完首行 + 填充。挂住那一段睡两倍兜底上限 ⇒ 超时没生效就撞下面那道（兜底的数）。
     let r = probe_local_ccm_uncached_for_test_sleep(std::time::Duration::from_millis(800));
     let took = t0.elapsed();
     assert!(
-        took < std::time::Duration::from_secs(5),
+        took < guard_core::wall::CEILING,
         "等了 {took:?} —— 超时没生效。生产上这意味着「恢复」按钮永远转圈，\n\
              而且锁一握不放之后**每一次**本机 resume 都堵在这里（D 阶段补审那两条的合体）"
     );
@@ -249,7 +249,10 @@ fn probe_local_ccm_uncached_for_test_sleep(timeout: std::time::Duration) -> CcmP
     // 补一段够大的填充把缓冲挤过去，首行才真的到得了读端。
     probe_with(
         timeout,
-        "printf 'name=ccm\\n'; head -c 200000 /dev/zero | tr '\\0' x; sleep 30",
+        &format!(
+            "printf 'name=ccm\\n'; head -c 200000 /dev/zero | tr '\\0' x; sleep {}",
+            2 * guard_core::wall::CEILING_SECS
+        ),
     )
 }
 

@@ -304,14 +304,12 @@ fn compact_waits_for_the_summary_and_goes_on_at_the_deadline() {
     let mut rig = Rig::new("compact-done");
     rig.summarize = true;
     let t0 = Instant::now();
-    let (out, rig) = go(rig, args(true, 10_000));
+    // 期限放到兜底上限的两倍：摘要到了却没往下，就要等满它、撞下面那道（兜底的数）。
+    let (out, rig) = go(rig, args(true, 2_000 * guard_core::wall::CEILING_SECS));
     let took = t0.elapsed();
     let v = out.expect("应成功");
     assert_eq!(v["compact"], "done");
-    assert!(
-        took < Duration::from_millis(5_000),
-        "摘要到了却拖到 {took:?}"
-    );
+    assert!(took < guard_core::wall::CEILING, "摘要到了却拖到 {took:?}");
     assert_eq!(rig.did("send proj-cc"), 1);
     assert!(rig.calls().iter().any(|c| c.ends_with("/compact")));
 
@@ -321,7 +319,7 @@ fn compact_waits_for_the_summary_and_goes_on_at_the_deadline() {
     let v = out.expect("压缩超时也要照常重启");
     assert_eq!(v["compact"], "timed_out");
     assert!(took >= Duration::from_millis(600), "早退：{took:?}");
-    assert!(took < Duration::from_millis(3_000), "拖了：{took:?}");
+    assert!(took < guard_core::wall::CEILING, "拖了：{took:?}");
     assert_eq!(
         (rig.did("kill"), rig.did("ccm")),
         (1, 1),

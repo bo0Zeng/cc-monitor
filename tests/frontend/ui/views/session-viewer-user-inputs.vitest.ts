@@ -60,6 +60,7 @@ import { chanArgsJson, sessionReadCalls, type ChanCallArgs } from "../../../test
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../../test-support/copy-pattern";
+import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
 let rig: ViewerRigHandles;
 
@@ -433,7 +434,7 @@ describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
     const broken = streamOf(v).querySelector<HTMLElement>('[data-role="broken"]')!;
     expect(broken.textContent).toContain(copyText("sessionViewer.card.broken"));
     [...broken.querySelectorAll("button")].find((b) => b.textContent === copyText("detail.act.copy"))!.click();
-    await vi.waitFor(() => expect(clipboardWrites(vi.mocked(invoke))).toHaveLength(1));
+    await vi.waitFor(() => expect(clipboardWrites(vi.mocked(invoke))).toHaveLength(1), UNTIL_CEILING);
     const [written] = clipboardWrites(vi.mocked(invoke));
     expect(written).toContain("这一条坏了");
     expect(written).toContain('"id": "boom"');

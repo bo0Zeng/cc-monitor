@@ -165,7 +165,7 @@ async fn reply_and_cancelled_frames_reach_the_waiting_caller() {
             .await
     });
     let mut line = String::new();
-    tokio::time::timeout(Duration::from_secs(5), peer.read_line(&mut line))
+    tokio::time::timeout(guard_core::wall::CEILING, peer.read_line(&mut line))
         .await
         .expect("等请求行超时")
         .expect("读到请求行");
@@ -216,7 +216,7 @@ async fn reconnect_wakes_only_the_loop_waiting_on_that_machine() {
     tokio::task::yield_now().await;
     assert!(!waiting.is_finished(), "别台的「重新连接」吵醒了这一台");
     kick("seam-wake-a");
-    tokio::time::timeout(Duration::from_secs(2), waiting)
+    tokio::time::timeout(guard_core::wall::CEILING, waiting)
         .await
         .expect("拨了「重新连接」没醒")
         .unwrap();

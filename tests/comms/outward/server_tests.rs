@@ -53,7 +53,7 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     srv.set_read_timeout(Some(deadline)).expect("装期限");
     // ★★ 风险 `5x`：这条读**一旦有人重试就会无限自旋**，而自旋的表现是**挂住不是红**
     //    —— 那一屏与「跑完了、没有新红」几乎分不开（判定行会整条消失）。
-    //    ⇒ 把读搬到一条工作线程上，用 `recv_timeout` 给它一个**远宽于**期限的上界（20 倍），
+    //    ⇒ 把读搬到一条工作线程上，用 `recv_timeout` 给它一个**远宽于**期限的上界（兜底的那一个数），
     //      超了就 `panic!` ⇒ **把挂住换成红**。这条纪律本文件 `送 5x` 那几处已经在用。
     //    〔本轮 `MU5` 实测：把 `http1::read_head` 的读循环改成「`WouldBlock` 也 `continue`」
     //      —— 没有这一层的话它整条判据挂死，有了这一层它**红**。〕
@@ -64,8 +64,8 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
         let _ = tx.send((r, t0.elapsed()));
     });
     let (r, waited) = rx
-        .recv_timeout(deadline * 20)
-        .expect("`read_head` 在 20 倍期限之内一个字都没返回 —— 期限没起作用，或者有哪一层在**重试**（那就成了轮询）");
+        .recv_timeout(guard_core::wall::CEILING)
+        .expect("`read_head` 在兜底上限之内一个字都没返回 —— 期限没起作用，或者有哪一层在**重试**（那就成了轮询）");
     let e = r.expect_err("半开连接上的 `read_head` 必须**报错返回**；挂住的话本判据根本跑不完");
     assert!(
         matches!(
@@ -83,14 +83,17 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
     );
     drop(half);
 
-    // ── ㈡ 非空对照：同一把尺子、同样的期限，一条**发全了**的连接必须走通且明显快。
+    // ── ㈡ 非空对照：同一把尺子，一条**发全了**的连接必须走通、不等期限。
+    //    期限换成兜底的那一个数（不再是 200 ms）：数据已经在那儿了，「等满期限才回」就是等满五分钟 ⇒ 红；
+    //    机器忙时立刻返回那一下也慢不到它（从前比 200 ms，负载高时会误红）。
     let mut whole = TcpStream::connect(a).expect("connect 完整");
     whole
         .write_all(b"POST /7e577e577e577e577e577e577e577e577e577e577e577e577e577e577e577e57/s/agentA/acctA/v1/messages HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
         .expect("write 完整头");
     whole.flush().expect("flush");
     let (mut srv2, _p2) = l.accept().expect("accept 完整");
-    srv2.set_read_timeout(Some(deadline)).expect("装期限");
+    srv2.set_read_timeout(Some(guard_core::wall::CEILING))
+        .expect("装期限");
     let t1 = std::time::Instant::now();
     let got = http1::read_head(&mut srv2, HEAD_CAP)
         .expect("完整的请求头不该报错")
@@ -102,8 +105,8 @@ fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread
         String::from_utf8_lossy(&got)
     );
     assert!(
-        fast < deadline,
-        "非空对照：数据已经在那儿了，`read_head` 该**立刻**返回而不是等满 {deadline:?}（实测 {fast:?}）\
+        fast < guard_core::wall::CEILING,
+        "非空对照：数据已经在那儿了，`read_head` 该**立刻**返回而不是等满期限（实测 {fast:?}）\
              —— 等满了说明这把尺子把正常流量也判成了超时"
     );
     drop(whole);

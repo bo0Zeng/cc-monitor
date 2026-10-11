@@ -85,9 +85,9 @@ cleanup() {
 trap 'cleanup; _gc_sock_cleanup' EXIT
 
 # 轮询帧日志直到出现 pattern(在给定起始行之后),或超时。回显命中行。
-wait_line() {  # <startline> <grep-ere> <timeout-s>
-  local start="$1" pat="$2" to="$3" i hit
-  for ((i=0; i<to*2; i++)); do
+wait_line() {  # <startline> <grep-ere>（上限是兜底的那一个数）
+  local start="$1" pat="$2" i hit
+  for ((i=0; i<WALL_CEILING_S*2; i++)); do
     hit="$(tail -n "+$((start+1))" "$FRAMES" | grep -E "$pat" | head -1 || true)"
     [ -n "$hit" ] && { echo "$hit"; return 0; }
     sleep 0.5
@@ -117,9 +117,9 @@ CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BACKEND" -- --stream >"$FRAMES" 2>"$BACKEND_ER
 BACKEND_PID=$!
 
 # ── 1. LIVE:SessionAdded(sid)────────────────────────────────────────────────
-SA="$(wait_line 0 "\"kind\":\"session_added\".*$SID" 15)" \
+SA="$(wait_line 0 "\"kind\":\"session_added\".*$SID")" \
   && ok "SessionAdded(live):$SA" \
-  || bad "15s 内未见 SessionAdded($SID)"
+  || bad "上限内未见 SessionAdded($SID)"
 # 「标签挂着谁」直接问 tmux（经 `-L` shim）；原来看的 `tmux_sessions` 快照帧删了。
 TAG="$(tmux display-message -p -t "=$SESSION:" '#{@ccm_sid}' 2>/dev/null || true)"
 [ "$TAG" = "$SID" ] \
@@ -134,13 +134,13 @@ echo "-- kill fake-claude pid=$FAKE_PID(claude 退,tmux 会话保留 = 灰)--"
 MARK_KILL="$(wc -l <"$FRAMES")"
 kill "$FAKE_PID" 2>/dev/null || true
 FAKE_PID=""
-SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID" 12)" \
+SR="$(wait_line 0 "\"kind\":\"session_removed\".*$SID")" \
   && ok "SessionRemoved(claude 死 → 灰):$SR" \
-  || bad "12s 内未见 SessionRemoved($SID)"
+  || bad "上限内未见 SessionRemoved($SID)"
 # claude 死、tmux 会话还挂着它 ⇒ 后端会话账本裁「可重连」（灰）。原来 monitor 拿缓存的最后一份 `tmux_sessions` 快照自己裁
 # （E67③ 那段：kill 之后不会有新快照，只能读最近一帧）；裁决进了后端、快照帧删了 ⇒ 等成品帧 `session_state`（它随 session_removed 同拍发）。
 GRAY_ALIVE="$(tmux has-session -t "=$SESSION:" 2>/dev/null && echo 1 || echo 0)"
-SS_GRAY="$(wait_line "$MARK_KILL" "\"kind\":\"session_state\".*$SID" 12 || true)"  # 从 kill 那一刻之后找（它就是这一拍的裁决）
+SS_GRAY="$(wait_line "$MARK_KILL" "\"kind\":\"session_state\".*$SID" || true)"  # 从 kill 那一刻之后找（它就是这一拍的裁决）
 if [ "$GRAY_ALIVE" = 1 ] && printf '%s' "$SS_GRAY" | grep -q '"state":"reconnectable"'; then
   ok "claude 死后 tmux 会话仍在、后端裁可重连 ⇒ 灰(非已结束):$SS_GRAY"
 else bad "claude 死后会话没了($GRAY_ALIVE) 或没裁成可重连(不该):$SS_GRAY"; fi
@@ -158,10 +158,10 @@ echo "$CMD" | grep -qF "send-keys -t '=$SESSION:' '$CCM_ENTRY --resume $SID " &&
   && ok "resume 命令就地复用 $SESSION、无 new-session(#76)" \
   || bad "resume 命令未就地复用"
 MARK_REVIVE="$(wc -l <"$FRAMES")"
-timeout 8 bash -c "$CMD" >/dev/null 2>&1 || true
-SA2="$(wait_line "$MARK_REVIVE" "\"kind\":\"session_added\".*$SID" 15)" \
+timeout "$WALL_CEILING_S" bash -c "$CMD" >/dev/null 2>&1 || true
+SA2="$(wait_line "$MARK_REVIVE" "\"kind\":\"session_added\".*$SID")" \
   && ok "复活清灰:kill 后再 resume → SessionAdded($SID) 再现(后端灰→live 边沿):$SA2" \
-  || bad "15s 内未见复活 SessionAdded($SID)(清灰失败)"
+  || bad "上限内未见复活 SessionAdded($SID)(清灰失败)"
 
 # ── 4. 无孤儿:全程 tmux 只有一个 cc-<sid8>(复用,无 -N)────────────────────────
 ORPH="$(orphan_count "$SESSION")"

@@ -284,7 +284,7 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
             futures::poll!(read.as_mut()).is_pending(),
             "还没到点就报了 —— 期限提前生效"
         );
-        let e = tokio::time::timeout(std::time::Duration::from_secs(30), read)
+        let e = tokio::time::timeout(guard_core::wall::CEILING, read)
             .await
             .expect("过了总时限 29 秒读还在等 —— 期限没生效，这一格会永远占着")
             .expect_err("对面一个字节都没写，读却成功了");
@@ -483,7 +483,7 @@ async fn w5vis_a_timed_out_link_names_the_leg_it_timed_out_in() {
     let (_far, near) = tokio::io::duplex(64);
     let mut s = Bounded::new(near, Some((tokio::time::Instant::now() + total, total)));
     s.mark_shaken();
-    let e = tokio::time::timeout(std::time::Duration::from_secs(30), s.read(&mut buf))
+    let e = tokio::time::timeout(guard_core::wall::CEILING, s.read(&mut buf))
         .await
         .expect("期限没生效")
         .expect_err("对面没写却读到了");
@@ -495,7 +495,7 @@ async fn w5vis_a_timed_out_link_names_the_leg_it_timed_out_in() {
     );
     let (_far2, near2) = tokio::io::duplex(64);
     let mut s2 = Bounded::new(near2, Some((tokio::time::Instant::now() + total, total)));
-    let e2 = tokio::time::timeout(std::time::Duration::from_secs(30), s2.read(&mut buf))
+    let e2 = tokio::time::timeout(guard_core::wall::CEILING, s2.read(&mut buf))
         .await
         .expect("期限没生效")
         .expect_err("对面没写却读到了");

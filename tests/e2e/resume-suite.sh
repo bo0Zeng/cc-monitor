@@ -73,7 +73,7 @@ drv() { npx tsx "$DRIVER" "$@"; }
 
 # fire_resume <cmd>:真把 app 会跑的 resume 串执行到 tmux(send-keys 进 idle pane)。命令尾部的
 # `tmux attach` 无 tty 即刻失败(headless,无害)——send-keys 已把 resume 打进 pane 的 sh。timeout 兜底。
-fire_resume() { timeout 8 bash -c "$1" >/dev/null 2>&1 || true; }
+fire_resume() { timeout "$WALL_CEILING_S" bash -c "$1" >/dev/null 2>&1 || true; }
 
 # 造一个 idle-tmux(灰):跑 fake-claude→拿 pid→kill→pane 落回 sh(会话+@ccm_sid 仍在)。回显 session 名。
 make_idle() {  # <sid> <claude_dir>
@@ -81,11 +81,10 @@ make_idle() {  # <sid> <claude_dir>
   rm -rf "$dir"; mkdir -p "$dir/sessions" "$dir/projects"
   CLAUDE_CONFIG_DIR="$dir" CCM_E2E_FAKE_CLAUDE="$FAKE" bash "$GEN" "$sid" >/dev/null
   SESSIONS+=("$sess")
-  for _ in $(seq 1 20); do
-    pf="$(ls "$dir"/sessions/*.json 2>/dev/null | head -1 || true)"
-    [ -n "$pf" ] && { p="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$pf")"; break; }
-    sleep 0.3
-  done
+  _mi_dir="$dir"
+  wall_until 'compgen -G "$_mi_dir/sessions/*.json" >/dev/null' || true
+  pf="$(ls "$dir"/sessions/*.json 2>/dev/null | head -1 || true)"
+  [ -n "$pf" ] && p="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$pf")"
   [ -n "${p:-}" ] || { echo "make_idle: fake-claude 未落 pidfile($dir)"; return 1; }
   kill "$p" 2>/dev/null || true       # claude 退 → idle(灰)
   sleep 0.6
@@ -93,9 +92,9 @@ make_idle() {  # <sid> <claude_dir>
 }
 
 # 等 argv.log 里出现「sid 命中且含 --resume」的行,回显之(取最后一条)。超时非零。
-wait_argv_resume() {  # <claude_dir> <sid> <timeout-s>
-  local dir="$1" sid="$2" to="$3" i hit
-  for ((i=0; i<to*2; i++)); do
+wait_argv_resume() {  # <claude_dir> <sid>（上限是兜底的那一个数）
+  local dir="$1" sid="$2" i hit
+  for ((i=0; i<WALL_CEILING_S*2; i++)); do
     hit="$(grep -E "sid=$sid .*argv=--resume $sid" "$dir/argv.log" 2>/dev/null | tail -1 || true)"
     [ -n "$hit" ] && { echo "$hit"; return 0; }
     sleep 0.5
@@ -140,7 +139,7 @@ else bad "B1 命令未就地复用(含 new-session 或名不符)"; fi
 BEFORE1="$(session_exists "$S1")"
 fire_resume "$CMD1"
 # 基座 resume(unset CLAUDE_CONFIG_DIR)→ fake-claude 落回自身默认目录(模拟真 claude 落 ~/.claude)。
-if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID1" 12)"; then ok "B1 argv.log 见 resume: $AL"; else bad "B1 12s 内 argv.log 无 resume 行"; fi
+if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID1")"; then ok "B1 argv.log 见 resume: $AL"; else bad "B1 上限内 argv.log 无 resume 行"; fi
 ORPH1="$(orphan_count "$S1")"; AFTER1="$(session_exists "$S1")"
 echo "   before=$BEFORE1 after=$AFTER1 orphan($S1-N)=$ORPH1 | ls: $(tmux list-sessions -F '#{session_name}' 2>/dev/null | grep "^${S1}" | paste -sd, -)"
 if [ "$AFTER1" = 1 ] && [ "$ORPH1" = 0 ]; then ok "B1 复用后 $S1 仍在且孤儿数=0(无 cc-<sid8>-N,#76 治愈)"; else bad "B1 孤儿数=$ORPH1(#76 回归)或会话丢失"; fi
@@ -159,10 +158,10 @@ echo "   tmux-new: $CMD2T"
 SESSIONS+=("$S2")
 echo "$CMD2T" | grep -q "^$CCM_ENTRY --resume $SID2 -- --ccm-tmux=$S2 --ccm-sid=$SID2 " && ok "B2 tmux-new 是一行 ccm：建 $S2 并带身份标记" || bad "B2 tmux-new 命令形状不符"
 fire_resume "$CMD2T"
-if AL="$(wait_argv_resume "$ACCT_A" "$SID2" 12)"; then
+if AL="$(wait_argv_resume "$ACCT_A" "$SID2")"; then
   echo "   argv(A): $AL"
   echo "$AL" | grep -q "CLAUDE_CONFIG_DIR=$ACCT_A " && ok "B2 新建 resume argv 落账号 A 目录($ACCT_A)" || bad "B2 argv CLAUDE_CONFIG_DIR≠A"
-else bad "B2 12s 内 A 目录 argv.log 无 resume(tmux-new)"; fi
+else bad "B2 上限内 A 目录 argv.log 无 resume(tmux-new)"; fi
 [ "$(session_exists "$S2")" = 1 ] && [ "$(orphan_count "$S2")" = 0 ] && ok "B2 tmux-new 建出 $S2、无孤儿" || bad "B2 tmux-new 未建会话或有孤儿"
 
 # ── B3:带账号 pin「用账号 B resume」→ argv CLAUDE_CONFIG_DIR = B(非 remote/base,非 A)──────────
@@ -177,12 +176,12 @@ if echo "$CMD3" | grep -qF -- "--account b"; then
   ok "B3 pin 命令点名账号 B（--account b）"
 else bad "B3 pin 命令缺 B 前缀"; fi
 fire_resume "$CMD3"
-if AL="$(wait_argv_resume "$ACCT_B" "$SID3" 12)"; then
+if AL="$(wait_argv_resume "$ACCT_B" "$SID3")"; then
   echo "   argv(B): $AL"
   # 关键:argv 落 B 目录,且 remote/base 目录里**不该**有本 sid 的 resume(证明 pin 路由到 B 不是 base)
   echo "$AL" | grep -q "CLAUDE_CONFIG_DIR=$ACCT_B " && ok "B3 argv 落账号 B 目录($ACCT_B)" || bad "B3 argv CLAUDE_CONFIG_DIR≠B"
   if grep -qE "sid=$SID3 .*argv=--resume" "$REMOTE_DIR/argv.log" 2>/dev/null; then bad "B3 pin 泄漏:remote/base 目录也记到该 resume"; else ok "B3 pin 隔离:remote/base 目录无该 sid resume(不串号)"; fi
-else bad "B3 12s 内 B 目录 argv.log 无 resume"; fi
+else bad "B3 上限内 B 目录 argv.log 无 resume"; fi
 
 # ── B4:不带 pin → 基座（跟随判号在那台后端）──────────────────────────────
 echo "-- B4 不带 pin:命令走基座(unset CLAUDE_CONFIG_DIR) --"
@@ -193,7 +192,7 @@ echo "   cmd: $CMD4"
 echo "$CMD4" | grep -qF -- " -- --ccm-agent claude --base " && ok "B4 基座命令带 --base（ccm 清掉 shell 残留旧号,#75 复用变体逃生口）" || bad "B4 基座命令缺 --base"
 # 不带 pin 时跟随落哪个号由那台后端判（`launch_account.rs::pick`，Rust 判据 ＋ ccm 端到端那一条钉着）。
 fire_resume "$CMD4"
-if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID4" 12)"; then ok "B4 基座 resume 执行(argv 落默认隔离目录): $AL"; else bad "B4 12s 内基座 argv 无 resume"; fi
+if AL="$(wait_argv_resume "$BASE_DEFAULT" "$SID4")"; then ok "B4 基座 resume 执行(argv 落默认隔离目录): $AL"; else bad "B4 上限内基座 argv 无 resume"; fi
 
 # ── B6a:重复 resume 幂等(tmux-new create-gate:第二次 new-session 失败短路,不双 resume)──────
 echo "-- B6a 重复 resume 幂等(create-gate 短路)--"

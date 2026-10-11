@@ -26,7 +26,7 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
 /// 排查成本天差地别。
 async fn next_line(peer: &mut tokio::io::BufReader<tokio::io::DuplexStream>) -> String {
     let mut line = String::new();
-    tokio::time::timeout(Duration::from_secs(5), peer.read_line(&mut line))
+    tokio::time::timeout(guard_core::wall::CEILING, peer.read_line(&mut line))
         .await
         .expect("等对端读一行超时（5s）—— 让它干净变红，别让 cargo test 挂死")
         .expect("读一行");
@@ -545,7 +545,7 @@ async fn the_view_entry_puts_the_view_in_the_envelope_and_the_plain_entries_do_n
             "ping",
             Value::Null,
             &v,
-            tokio::time::Instant::now() + Duration::from_secs(5),
+            tokio::time::Instant::now() + guard_core::wall::CEILING,
         )
         .await
     });
@@ -754,7 +754,7 @@ async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
     );
 
     let mut second = String::new();
-    tokio::time::timeout(Duration::from_secs(2), peer.read_line(&mut second))
+    tokio::time::timeout(guard_core::wall::CEILING, peer.read_line(&mut second))
         .await
         .expect("等 cancel 超时了")
         .expect("读到 cancel");
@@ -1260,7 +1260,7 @@ async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
     assert_eq!(link_of(&origin), Link::Reconnecting, "刚断却不是「重连中」");
     // 「重新连接」：先拨、后等也醒（连接循环此刻不一定正睡着）。
     kick(&origin);
-    tokio::time::timeout(Duration::from_secs(2), kick_handle(&origin).notified())
+    tokio::time::timeout(guard_core::wall::CEILING, kick_handle(&origin).notified())
         .await
         .expect("拨过「重新连接」，连接循环没被叫醒");
     // 断着时拨、还没用掉就连上了 ⇒ 那份许可作废（下一次断线照常退避）。

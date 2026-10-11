@@ -122,7 +122,7 @@ describe("jsonPrefix：JSON.stringify 的前缀，拼回调用方与原式逐字
       }
     }
     expect(compared).toBeGreaterThan(9000);
-  }, 30_000);
+  });
 
   it("切口劈开代理对：前 60 个字仍与原式相同", () => {
     for (let pad = 0; pad < 70; pad++) {

@@ -78,7 +78,7 @@ fn feed(sig: Signal) {
 }
 
 fn wait_until(what: &str, ok: impl Fn() -> bool) {
-    let end = Instant::now() + Duration::from_secs(5);
+    let end = Instant::now() + guard_core::wall::CEILING;
     while !ok() {
         assert!(Instant::now() < end, "等了 5s 还没：{what}");
         std::thread::sleep(Duration::from_millis(10));

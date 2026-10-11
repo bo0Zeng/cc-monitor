@@ -227,8 +227,8 @@ impl Drop for Child {
     }
 }
 
-/// 一个等待的上界（测试侧；后端生产段零定时器那条铁律不管测试段）。只为「坏了的时候别把 CI 挂死」。
-const PATIENCE: std::time::Duration = std::time::Duration::from_secs(30);
+/// 一个等待的上界（测试侧；后端生产段零定时器那条铁律不管测试段）。只为「坏了的时候别把 CI 挂死」：兜底的那一个数。
+const PATIENCE: std::time::Duration = guard_core::wall::CEILING;
 
 fn lines_of<R: std::io::Read + Send + 'static>(
     r: R,

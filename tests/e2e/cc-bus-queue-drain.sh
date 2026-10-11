@@ -108,7 +108,7 @@ start_busd() {
   "$S/cc-busd" run </dev/null >"$B/busd.out" 2>&1 &
   local launched=$!
   disown 2>/dev/null || true      # 免得后面 kill -9 时 bash 往 stderr 刷"已杀死"
-  for i in $(seq 60); do [ -f "$B/cc-busd.pid" ] && break; sleep 0.1; done
+  wall_until '[ -f "$B/cc-busd.pid" ]' || true
   PID="$(cat "$B/cc-busd.pid" 2>/dev/null)"
   [ -n "$PID" ] || PID="$launched"
   BUSD_PIDS+=("$PID")
@@ -116,14 +116,10 @@ start_busd() {
 
 # 等收件箱涨到 n 条（不用固定 sleep：慢机上会假红，快机上白等）
 wait_inbox() {
-  local f="$1" n="$2" i
+  _wi_f="$1" _wi_n="$2"
   # ⚠ `wc -l < "$f"` 里的重定向失败是**shell 自己**报的，`2>/dev/null` 挂在 wc 上拦不住
   #   ⇒ 文件还不存在时先短路，别刷一屏"没有那个文件"。
-  for i in $(seq 60); do
-    [ -f "$f" ] && [ "$(wc -l < "$f")" -ge "$n" ] && return 0
-    sleep 0.1
-  done
-  return 1
+  wall_until '[ -f "$_wi_f" ] && [ "$(wc -l < "$_wi_f")" -ge "$_wi_n" ]'
 }
 
 inbox_texts() { jq -r .text < "$1" 2>/dev/null | tr '\n' '|'; }

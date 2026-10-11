@@ -284,7 +284,7 @@ fn a_writer_exit_wakes_the_pidfd_for_its_record() {
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     let _ = drain(&mut r.rx);
     gone(w);
-    match rx.recv_timeout(std::time::Duration::from_secs(5)) {
+    match rx.recv_timeout(guard_core::wall::CEILING) {
         Ok(WatchEvent::PidDied { key, pid: p }) => {
             assert_eq!(key, path_key(&r.record));
             assert_eq!(p, pid);

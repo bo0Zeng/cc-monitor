@@ -2816,7 +2816,7 @@ fn a_child_that_floods_stdout_and_exits_is_still_detected_as_dead() {
     );
     let mut saw_exit = None;
     for _ in 0..6 {
-        match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+        match rx.recv_timeout(guard_core::wall::CEILING) {
             // ⚠ `K-P3b`：新字段**逐个点名**，不用 `..` 把它们静默掉 ——
             //   那正是「加了一维而没人回来看一眼」的入口。
             //   这一跑的形状：缺省那支（没有消费者）⇒ `witness` 必是 `NoConsumer`；
@@ -2878,7 +2878,7 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
         crate::spawn_managed::local_backend_supervised(),
     );
     // 等它真的起来（否则我们可能在 spawn 之前就 stop，测不到那条链）。
-    match rx.recv_timeout(std::time::Duration::from_secs(20)) {
+    match rx.recv_timeout(guard_core::wall::CEILING) {
         Ok(SuperviseEvent::Started { .. }) => {}
         other => panic!("没等到 `Started`：{other:?}"),
     }
@@ -2891,7 +2891,7 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
         let _ = done_tx.send(());
     });
     done_rx
-        .recv_timeout(std::time::Duration::from_secs(10))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect(
             "`stop()` 10s 没回来 —— 监护线程正持着 `child` 锁等一个还活着的子进程。\n\
                  生产上它跑在**主线程**（`RunEvent::Exit`）⇒ 窗口关了、进程退不出去，只能 kill -9。",

@@ -2351,7 +2351,7 @@ async fn perf_rig_worker() {
         panic!("窗口没起来");
     };
     let t_open = std::time::Instant::now();
-    while frames() == 0 && t_open.elapsed().as_secs() < 20 {
+    while frames() == 0 && t_open.elapsed() < guard_core::wall::CEILING {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     println!("perf.open.first_frame_ms={}", t_open.elapsed().as_millis());

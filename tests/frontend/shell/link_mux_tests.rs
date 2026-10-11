@@ -104,7 +104,7 @@ fn rig() -> Rig {
 impl Rig {
     async fn next(&mut self, cmd: &str) -> Value {
         loop {
-            let v = tokio::time::timeout(Duration::from_secs(5), self.seen.recv())
+            let v = tokio::time::timeout(guard_core::wall::CEILING, self.seen.recv())
                 .await
                 .unwrap_or_else(|_| panic!("5s 没等到 `{cmd}`"))
                 .expect("假后端的请求口关了");
@@ -353,8 +353,8 @@ async fn an_error_end_and_an_over_window_flood_both_surface_as_read_errors() {
     let t0 = std::time::Instant::now();
     while lock().contains_key(&b.id) {
         assert!(
-            t0.elapsed() < Duration::from_secs(5),
-            "灌了一窗多一块，5s 还没判坏"
+            t0.elapsed() < guard_core::wall::CEILING,
+            "灌了一窗多一块，兜底上限内还没判坏"
         );
         tokio::time::sleep(Duration::from_millis(10)).await;
     }

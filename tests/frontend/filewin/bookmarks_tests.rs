@@ -251,7 +251,7 @@ fn a_writer_waits_while_another_holds_the_lock() {
         "锁拿着的时候盘上就变了"
     );
     drop(held);
-    rx.recv_timeout(std::time::Duration::from_secs(10))
+    rx.recv_timeout(guard_core::wall::CEILING)
         .expect("锁放了还写不进去");
     t.join().unwrap();
     assert_eq!(read_book(&file).unwrap(), book(&[("devbox", &["/x"])]));

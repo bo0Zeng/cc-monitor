@@ -38,7 +38,10 @@ fn a_change_pushes_only_when_the_rev_moves() {
     // 等它读过第一次（摘要 r1 ＝ 已知的 ⇒ 不推）。
     let t0 = std::time::Instant::now();
     while calls.load(std::sync::atomic::Ordering::SeqCst) == 0 {
-        assert!(t0.elapsed().as_secs() < 10, "改了计划仓却没重读");
+        assert!(
+            t0.elapsed() < guard_core::wall::CEILING,
+            "改了计划仓却没重读"
+        );
         std::thread::yield_now();
     }
     std::fs::write(d.join(".env"), "{}").unwrap();
@@ -48,7 +51,7 @@ fn a_change_pushes_only_when_the_rev_moves() {
             Ok((w, rev, _)) if w == ws => break rev,
             Ok(_) => {}
             Err(_) => {
-                assert!(t1.elapsed().as_secs() < 10, "摘要变了却没推");
+                assert!(t1.elapsed() < guard_core::wall::CEILING, "摘要变了却没推");
                 std::thread::yield_now();
             }
         }
@@ -72,7 +75,7 @@ fn a_change_in_the_need_count_alone_also_pushes() {
             Ok((w, rev, n)) if w == ws => break (rev, n),
             Ok(_) => {}
             Err(_) => {
-                assert!(t0.elapsed().as_secs() < 10, "数变了却没推");
+                assert!(t0.elapsed() < guard_core::wall::CEILING, "数变了却没推");
                 std::thread::yield_now();
             }
         }

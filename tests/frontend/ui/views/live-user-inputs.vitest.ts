@@ -76,6 +76,7 @@ import { REPO_ROOT } from "../../../test-support/repo-root";
 import { TabManager, type Tab } from "../../../../src/frontend/ui/tabs";
 import { MAX_TRANSIENT_FAILURES } from "../../../../src/frontend/ui/views/outline-source";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
+import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
 /** 这一趟里发了哪些 `list_user_inputs`（只看参数）。 */
 const outlineCalls = (): unknown[] =>
@@ -473,7 +474,7 @@ describe("KR45D2 清单跟着 tab 走", () => {
     await vi.waitFor(async () => {
       await settleOutline();
       expect(outlineCalls().map((a) => (a as { jsonlPath: string }).jsonlPath)).toContain("/p/s1.jsonl");
-    }, { timeout: 4_000, interval: 20 });
+    }, UNTIL_CEILING);
   });
 
   it("关掉 tab ⇒ 清单清空、查找面板摘掉；在途那趟回来也不许回写", async () => {

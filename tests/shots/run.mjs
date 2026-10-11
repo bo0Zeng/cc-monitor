@@ -23,6 +23,10 @@ import { FILEWIN_SCENES, shootFilewin } from "./filewin.mjs";
 import { writeIndex } from "./index-page.mjs";
 import { buildBins, pinDateSource, SHOTS_TZ } from "./real/pool.mjs";
 
+// 等页里起好的上限：兜底的那一个数（与 `tests/test-support/wall-ceiling.ts` · Rust `guard_core::wall::CEILING_SECS` 同值，
+// 判据 `wall_ceiling` 逐份核）。从前 30 秒 / 60 秒，合并那一拍负载 20+ 时随机漏图（10-11）；等到了就走，不白等。
+const WALL_CEILING_MS = 300_000;
+
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const args = parseArgs(process.argv.slice(2));
 const out = path.resolve(args.out ?? path.join(repo, ".build/shots"));
@@ -152,7 +156,7 @@ async function shootWeb() {
   // 清单
   const probe = await Page.open(cdp, 800, 600, 1, { boot: pinDateSource() + NO_CARET, reducedMotion: true });
   await probe.goto(`${base}/tests/shots/manifest.html`);
-  await probe.waitFor("window.__shotsManifest", 30_000);
+  await probe.waitFor("window.__shotsManifest", WALL_CEILING_MS);
   const manifest = await probe.eval("window.__shotsManifest");
   await probe.close();
 
@@ -161,9 +165,9 @@ async function shootWeb() {
   // 先热一次：vite 第一次按需编译整张模块图要几秒，别算进第一张图的时限。
   const warm = await Page.open(cdp, 1280, 800, 1, { boot: pinDateSource() + NO_CARET, reducedMotion: true });
   await warm.goto(`${base}/index.html?scene=`);
-  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", 60_000).catch(() => {});
+  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS).catch(() => {});
   await warm.goto(`${base}/settings.html?scene=`);
-  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", 60_000).catch(() => {});
+  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS).catch(() => {});
   await warm.close();
 
   for (const s of scenes) {
@@ -174,7 +178,7 @@ async function shootWeb() {
     let note = "";
     try {
       await page.goto(`${base}/${s.page}.html?scene=${encodeURIComponent(s.id)}${s.query ? `&${s.query}` : ""}`);
-      await page.waitFor("window.__shots && window.__shots.state !== 'booting'", 30_000);
+      await page.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS);
       const h = await page.eval("({ state: window.__shots.state, error: window.__shots.error, unhandled: window.__shots.unhandled, layout: window.__shots.layout ?? [] })");
       const pt = await page.eval("window.__shots.pointer ?? null");
       if (pt) {

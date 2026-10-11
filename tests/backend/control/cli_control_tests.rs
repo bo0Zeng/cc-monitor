@@ -655,7 +655,7 @@ fn a_silent_open_stdin_answers_at_once_instead_of_hanging() {
             let _ = tx.send(run_cli(&a, quiet));
         });
         let (rc, out, err) = rx
-            .recv_timeout(std::time::Duration::from_secs(10))
+            .recv_timeout(guard_core::wall::CEILING)
             .unwrap_or_else(|_| panic!("{args:?}：stdin 开着不写，10 s 还没回 —— 那是挂住"));
         assert_eq!((rc, out.as_str()), (2, ""), "{args:?}：该回失败信封");
         assert_eq!(err_code(&err), "no_input", "{args:?}：码不对：{err}");

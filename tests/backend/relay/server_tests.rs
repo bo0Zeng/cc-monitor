@@ -376,7 +376,7 @@ fn spawn_fake_upstream_faulted(
                 //      ⇒ `pump` 的干净 EOF 路 `Ok(0) => break` 一次都走不到，
                 //         走的全是 `Err(e) => return Err(e)`。
                 // 读期限是**兜底**：中转若少发字节，这里要在对账那条判据上红，**不许挂住**。
-                s.set_read_timeout(Some(std::time::Duration::from_millis(2000)))
+                s.set_read_timeout(Some(guard_core::wall::CEILING))
                     .expect("upstream read deadline");
                 let mut body = vec![0u8; clen];
                 let mut filled = 0usize;
@@ -431,11 +431,11 @@ fn spawn_fake_upstream_faulted(
                 //   · 中转正常透传 ⇒ 下游立刻确认 ⇒ 这一次 `recv` 立刻返回，什么都不耽误；
                 //   · 中转攒住终止块 ⇒ 下游读不到、不确认 ⇒ 上游**不 drop、不发 FIN**
                 //     ⇒ 中转的 `Ok(0) => break` 走不到、攒着的吐不出去
-                //     ⇒ 下游那边 **4s 读期限**先到 ⇒ **红**。
-                // ⚠ **6s > 4s 这个大小关系就是这一格的地基**：上限要严格大于下游的读期限，
-                //   否则上游先放手、中转把攒着的吐出去，这一形又逃了。
+                //     ⇒ 下游那边的**读期限**（兜底的那一个数）先到 ⇒ **红**。
+                // ⚠ **这里等两倍、下游等一倍，这个大小关系就是这一格的地基**：上限要严格大于下游的读期限，
+                //   否则上游先放手、中转把攒着的吐出去，这一形又逃了。两边都按兜底的数取，机器忙不误红。
                 if let Some(g) = gate.as_ref() {
-                    let _ = g.recv_timeout(std::time::Duration::from_millis(6000));
+                    let _ = g.recv_timeout(guard_core::wall::CEILING * 2);
                 }
                 // 请求体已读干净 ⇒ 这里 drop 发的是 **FIN 不是 RST**。
                 Ok(())
@@ -482,7 +482,7 @@ fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
     );
     c.write_all(req.as_bytes()).expect("发请求");
     c.flush().expect("flush");
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("读期限");
     let mut buf = Vec::new();
     c.read_to_end(&mut buf).expect("读响应");
@@ -651,7 +651,7 @@ impl TeeTap {
     fn wait_events(&self, n: usize) {
         for i in 0..n {
             self.rx
-                .recv_timeout(std::time::Duration::from_secs(4))
+                .recv_timeout(guard_core::wall::CEILING)
                 .unwrap_or_else(|e| panic!("等 tap 的第 {} 件没等到：{e}", i + 1));
         }
     }
@@ -741,7 +741,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     // `has been running for over 60 seconds`，10 分钟后手动中止）。
     //
     // 10 秒对回环来说宽得离谱（这几条判据实测都在 10ms 量级收工）⇒ 它只会把
-    // **挂住**换成**红**，不会把真失败盖掉。要更紧的期限由各判据自己再设（门闩那条设了 4s）。
+    // **挂住**换成**红**，不会把真失败盖掉。门闩那条的读期限是兜底的那一个数、闸等两倍。
     //
     // ⚠⚠ **订正分母**〔回修轮之四 08-25，D2 `重要-4(D2)`〕：先前这里（与件文件 §8.17.4、
     // 与 `28a73df` 的提交正文）逐字写的是「在 `send_request` 里统一加 10s 读期限
@@ -762,7 +762,7 @@ fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
     //     ⇒ **本处覆盖 1/4**，另外三处各自带自己的期限（或根本不读）。
     //
     // ⇒ 别再写「一处覆盖全部客户端 socket」：那句话没有分母，而它今天是假的。
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("read deadline（风险 5x：把挂住换成红）");
     let body = REQUEST_BODY;
     let req = format!(
@@ -935,7 +935,7 @@ fn send_raw(addr: SocketAddr, raw: &str) -> (String, bool) {
     let mut c = TcpStream::connect(addr).expect("connect relay");
     c.set_nodelay(true).expect("nodelay");
     // 风险 `5x`：走得到 `serve()` 的判据一律带读期限，把「挂住」换成「红」。
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("read deadline（风险 5x）");
     c.write_all(raw.as_bytes()).expect("write req");
     c.flush().expect("flush");
@@ -1591,7 +1591,7 @@ fn spawn_relay_child_at(
 
     // 风险 `5x` 的同一条纪律：等不到就**红**，不许挂住。
     let line = rx
-        .recv_timeout(std::time::Duration::from_secs(20))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("子进程没在 20s 内印出 `listening on` —— 它可能根本没跑到中转那一支");
     let addr: SocketAddr = line
         .rsplit(' ')
@@ -2523,7 +2523,7 @@ fn an_unroutable_path_is_refused_and_never_reaches_upstream() {
 /// # 今天有两条互相独立的判据，任一条都会红
 ///
 /// ㈠ **逐块门闩（因果证明）**：假上游发**每一块**之前都要等下游确认收到上一块，
-///    **发完最后一块之后再等一次**（带 6s 上限）。
+///    **发完最后一块之后再等一次**（带上限：兜底的数的两倍）。
 ///    ⇒ 中转攒住其中任何一块，下游就再也等不到下一块 ⇒ 读期限到 ⇒ 红。
 ///    比「比较两个时间戳」更不 flaky。
 ///
@@ -2553,7 +2553,8 @@ fn every_chunk_reaches_the_client_before_upstream_sends_the_next_one() {
     let (relay_addr, relay, _sink) = spawn_relay(up.addr);
     let t0 = std::time::Instant::now();
     let mut c = send_request(relay_addr, "/s/agentA/acctA/v1/messages", "");
-    c.set_read_timeout(Some(std::time::Duration::from_millis(4000)))
+    // 读期限比假上游那道闸（两倍）短：中转攒住块时先到这里、红（见 `spawn_fake_upstream` 那段）。
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("read deadline");
 
     let mut buf = [0u8; 4096];
@@ -2732,7 +2733,7 @@ fn both_directions_really_disable_nagle_on_the_socket() {
     let client = std::thread::spawn(move || {
         let mut c = TcpStream::connect(addr).expect("connect relay");
         // 风险 `5x`：走得到中转的判据一律带读期限，把「挂住」换成「红」。
-        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        c.set_read_timeout(Some(guard_core::wall::CEILING))
             .expect("read deadline（风险 5x）");
         let body = REQUEST_BODY;
         let req = format!(
@@ -2823,7 +2824,7 @@ fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
     let client = std::thread::spawn(move || {
         let mut c = TcpStream::connect(addr).expect("connect relay");
         // 风险 `5x`：走得到中转的判据一律带读期限，把「挂住」换成「红」。
-        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        c.set_read_timeout(Some(guard_core::wall::CEILING))
             .expect("read deadline（风险 5x）");
         let body = REQUEST_BODY;
         let req = format!(
@@ -2973,7 +2974,7 @@ fn the_relay_port_is_not_reachable_from_a_non_loopback_address() {
     let sock = std::net::TcpStream::connect_timeout(&dest, std::time::Duration::from_secs(10));
     // 万一真连上了，后面还要 `peer_addr()`：顺手给它一个读期限，别留第二个挂住口。
     if let Ok(ref s) = sock {
-        let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+        let _ = s.set_read_timeout(Some(guard_core::wall::CEILING));
     }
     assert!(
         sock.is_err() || sock.expect("checked").peer_addr().is_err(),
@@ -4087,7 +4088,7 @@ fn rk1_the_minted_key_never_shows_up_in_logs_tee_argv_env_or_upstream() {
     std::thread::spawn(move || {
         for s in l.incoming() {
             let Ok(mut s) = s else { continue };
-            let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+            let _ = s.set_read_timeout(Some(guard_core::wall::CEILING));
             let mut buf = Vec::new();
             let mut one = [0u8; 1];
             while !buf.ends_with(b"\r\n\r\n") {
@@ -4257,7 +4258,7 @@ fn relay_overhead_bench() {
     let direct = |up: SocketAddr| {
         let mut c = TcpStream::connect(up).expect("connect upstream");
         c.set_nodelay(true).expect("nodelay");
-        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        c.set_read_timeout(Some(guard_core::wall::CEILING))
             .expect("deadline");
         let body = REQUEST_BODY;
         let req = format!(

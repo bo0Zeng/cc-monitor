@@ -426,7 +426,7 @@ describe("R3 · 账号 / 中转命名清账（术语归属）", () => {
   it("正控 ③：中转那几个名字逐条看得见（同一个扫描器，表不腐）", () => {
     const blind = RELAY_NAMES.filter((r) => hitsIn(corpus.texts, r.re).length === 0).map((r) => r.name);
     expect(blind, "这几条登记为中转的名字全仓零命中 —— 表腐了或扫描器瞎了").toEqual([]);
-  }, 60_000);
+  });
 
   it("每条账号名的状态与盘面逐条相等：done ⇒ 旧名零命中且新名在；pending ⇒ 旧名还在", () => {
     const wrong: string[] = [];
@@ -440,7 +440,7 @@ describe("R3 · 账号 / 中转命名清账（术语归属）", () => {
       }
     }
     expect(wrong, wrong.join("\n")).toEqual([]);
-  }, 60_000);
+  });
 });
 
 describe("「上游选择」改名", () => {
@@ -488,5 +488,5 @@ describe("「上游选择」改名", () => {
       }
     }
     expect(wrong, wrong.join("\n")).toEqual([]);
-  }, 60_000);
+  });
 });

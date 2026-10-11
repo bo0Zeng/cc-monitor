@@ -83,9 +83,6 @@ import {
   type Ledger,
 } from "../../evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
-import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
-
-const TIMEOUT_MS = 120_000;
 
 /** `z-index` 唯一准写的形状。与 `.stylelintrc.json` 里那条 allowed-list 是同一个意思。 */
 const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
@@ -354,7 +351,7 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
       led.cssClasses.size,
       `个 CSS 类名 · ${led.codeFiles.length} 份代码文件 · ${led.literals.size} 个代码侧 token`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("三条识别路径各自真的有货（任何一条空了，② 的正控就会靠别的机制蒙混过关）", () => {
     const led = ledger();
@@ -374,7 +371,7 @@ describe("S25 ⓪ 量具自检（这些不过，下面四格全是空转）", ()
       led.constConcat.size + led.vendorClasses.size + led.prefixCandidates.size,
       `条识别证据（常量拼接 ${led.constConcat.size} · 第三方 ${led.vendorClasses.size}（${led.vendorSpecs.length} 份） · 前缀候选 ${led.prefixCandidates.size}）`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   /**
    * 🔴 词法器的**正控 ＋ 死值验**，全部在内存里跑，不碰工作树。
@@ -429,7 +426,7 @@ describe("S25 ① z-index 只许写 var(--z-*)（件 4）", () => {
         "  所以 `npm run lint:css` 也看得见它（那条是 advisory，本条才是会红的那个）。",
     ).toEqual([]);
     denom("①", decls.length, "条 z-index 声明（全部走刻度）");
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("`.stylelintrc.json` 里那条规则还在（散文与判据是两处副本，必须同调）", () => {
     const raw = readFileSync(resolve(REPO_ROOT, ".stylelintrc.json"), "utf8");
@@ -476,7 +473,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       ).toBe(kind);
     }
     denom("②", want.length, "个已知假阳性（裁决与机制都对上了）");
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("每个 CSS 类名都说得出谁在用它（未解释的 == 登记的已知死规则）", () => {
     const led = ledger();
@@ -506,7 +503,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       led.cssClasses.size,
       `个 CSS 类名（直接字面量 ${tally.literal} · 常量拼接 ${tally["const-concat"]} · 第三方 ${tally.vendor} · 模板前缀 ${tally.prefix} · 已登记死规则 ${KNOWN_DEAD.length}）`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("登记表不许有死条目（前缀要还派生得出来、还真解释着东西；已知死规则要还在 CSS 里）", () => {
     const led = ledger();
@@ -554,7 +551,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       ALLOWED_PREFIXES.length + KNOWN_DEAD.length,
       `条登记（前缀共掩 ${maskedAll.length} 个类 == 登记：${lines.join(" ")}）`,
     );
-  }, SCAN_TIMEOUT_MS);
+  });
 
   /** 死值验：造一个**没人用**的类名，尺子必须判它死。判不出 ⇒ 上面那条是空的。 */
   it("死值验：造一个没人用的类名，尺子必须判它死；同一把尺子对活类要判活", () => {
@@ -569,7 +566,7 @@ describe("S25 ② CSS 里的类名有人用", () => {
       "literal",
     );
     denom("②", 2, "个变异体类名（1 个该死、1 个该活，都判对了）");
-  }, SCAN_TIMEOUT_MS);
+  });
 });
 
 describe("S25 ③ 代码挂的类名，CSS 里有没有规则（两向等于登记）", () => {
@@ -588,7 +585,7 @@ describe("S25 ③ 代码挂的类名，CSS 里有没有规则（两向等于登�
         "  少了的（-）：修掉了，删那一行。",
     ).toEqual([]);
     denom("③", led.usedClasses.size, `个代码侧类名引用（其中 ${dangling.length} 个 CSS 里没规则 == 登记）`);
-  }, SCAN_TIMEOUT_MS);
+  });
 });
 
 describe("S25 ④ stylelint 报错 == 登记", () => {
@@ -659,7 +656,7 @@ describe("S25 ④ stylelint 报错 == 登记", () => {
         "或确认无害后登记并写理由。\n" +
         "★ 少了的（在 want 不在 got）：那一条修掉了 / 规则改写了 —— 把登记删掉（本表只许缩，除非新登记写了理由）。",
     ).toEqual(want);
-  }, TIMEOUT_MS);
+  });
 
   it("④b 〔UC2〕no-descending-specificity 真的开着，而且真能报（正控：一段降序特异度的夹具必须恰报 1 条）", async () => {
     const cfg = JSON.parse(readFileSync(resolve(REPO_ROOT, ".stylelintrc.json"), "utf8")) as { rules: Record<string, unknown> };
@@ -674,7 +671,7 @@ describe("S25 ④ stylelint 报错 == 登记", () => {
     const kinds = new Map<string, number>();
     for (const e of DESCENDING_SPECIFICITY_EXCEPTIONS) kinds.set(e.kind, (kinds.get(e.kind) ?? 0) + (e.n ?? 1));
     denom("④b", [...kinds.values()].reduce((a, b) => a + b, 0), `条登记的例外（${[...kinds].map(([k, n]) => `${k} ${n}`).join(" · ")}），与真 stylelint 的命中两向相等`);
-  }, TIMEOUT_MS);
+  });
 });
 
 // ═══════════════════════════ ⑤ 层真包进去（件 2）═══════════════════════════
@@ -799,7 +796,7 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
         "它们会悄悄压过层里的一切。放进它该在的那一层（多半是 `components`）。",
     ).toEqual([]);
     denom("⑤", rules, `条规则（${led.cssFiles.length} 份 CSS，无层 0）`);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("⑤b 层名都在声明里、声明次序 == 设计（拼错的层名会悄悄排到最后、压过一切）", () => {
     const led = ledger();
@@ -818,7 +815,7 @@ describe("S25 ⑤ 层真包进去（件 2）", () => {
     for (const must of ["reset", "tokens", "layout", "components"]) expect(used.has(must), `没有任何文件用到 \`${must}\` 层`).toBe(true);
     // `vendor` 不在源码里 —— 它由 `vite.config.ts` 的插件在构建时包上（产物那一侧由 entry-graphs 判）
     denom("⑤", used.size, `个层真装着规则（${[...used].sort().join(" · ")}），零野层名`);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   /**
    * 件 3：最小重置里要有表单控件那一族。订正里那句「`@layer reset` 里只有

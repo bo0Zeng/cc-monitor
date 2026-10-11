@@ -7,7 +7,7 @@
  * 正控：合成串认得出那几形。
  */
 import { describe, it, expect } from "vitest";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 /** 网页自己的剪贴板口（含解构出来再调的 `.writeText(`）。 */
@@ -24,7 +24,6 @@ describe("写剪贴板只一个口", () => {
       expect(code.filter((f) => WEB_CLIPBOARD.test(f.code)).map((f) => f.file)).toEqual([]);
       expect(code.filter((f) => SHELL_CALL.test(f.code)).map((f) => f.file)).toEqual(["src/frontend/ui/clipboard.ts"]);
     },
-    SCAN_TIMEOUT_MS,
   );
 
   it("正控：认得出那几形", () => {

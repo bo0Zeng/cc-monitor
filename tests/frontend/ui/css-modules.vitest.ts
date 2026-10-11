@@ -41,7 +41,6 @@ import { describe, it, expect } from "vitest";
 import { buildLedger, type Ledger } from "../../evidence/S25-class-ledger.ts";
 import { toPosix } from "../../test-support/posix-path.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
-import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 /**
  * ★ **全局样式文件登记表**（M①）。今天 10 份，全是三入口拆分那一拍按「哪几个窗口要它」切出来的。
@@ -156,7 +155,7 @@ describe("〔UC2〕M① 全局样式文件 == 登记表（新样式一律 .modul
         "★ 少了的：那份全局样式迁走 / 删掉了 —— 把登记表里那一条一起删（本表只许缩）。",
     ).toEqual(want);
     console.log(`  ok   UC2-M①  ${got.length} 份全局样式文件 == 登记表；module ${moduleFiles(led).length} 份`);
-  }, SCAN_TIMEOUT_MS);
+  });
 });
 
 describe("〔UC2〕M② 逐文件类型 == 类名集合（逐字）", () => {
@@ -177,7 +176,7 @@ describe("〔UC2〕M② 逐文件类型 == 类名集合（逐字）", () => {
     const orphans = led.arbitraryDecls.filter((d) => !mods.map(declOf).includes(d));
     expect(orphans, "这些 `.d.<扩展名>.ts` 没有对应的 `.module.css` —— 孤儿声明").toEqual([]);
     console.log(`  ok   UC2-M②  ${mods.length} 份 module 的逐文件类型逐字对上；孤儿 0`);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("死值验：规范文本对类名集合敏感（多一个 / 少一个类，文本都变）", () => {
     const a = renderModuleDecl("src/x.module.css", ["chip", "high"]);
@@ -227,7 +226,7 @@ describe("〔UC2〕M③ ④ 只经默认导入用；每个类都有人取（CSS 
     expect(drift, "module 的类名两个方向没对上").toEqual([]);
     expect(judged, "一个 module 类都没判到 —— 零命中地绿").toBeGreaterThan(0);
     console.log(`  ok   UC2-M③④  ${mods.length} 份 module · ${judged} 个类，两向对上、只经默认导入`);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("死值验：导入形与取用形的量具认得出坏形状", () => {
     expect(moduleImportsOf("src/a.ts", 'import s from "./a.module.css";').bad).toEqual([]);
@@ -288,10 +287,10 @@ describe("〔UC2〕M⑤ tsc 真吃到逐文件类型（仓里的 tsconfig）", (
       expect(r.texts[0]).toContain("uc2TypoProbe");
     }
     console.log(`  ok   UC2-M⑤  ${res.length} 份 module：tsc 对拼错的类名恰报 TS2339，对真类零诊断`);
-  }, 60_000);
+  });
 
   it("反控：同一探针关掉 allowArbitraryExtensions ⇒ 零诊断（tsc 落回 vite 的通配类型 —— 红是那一项买的）", () => {
     const res = probe({ allowArbitraryExtensions: false });
     for (const r of res) expect(r.codes, `${r.file}：${r.texts.join(" | ")}`).toEqual([]);
-  }, 60_000);
+  });
 });
