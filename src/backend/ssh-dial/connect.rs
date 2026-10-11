@@ -800,7 +800,7 @@ fn jump_failed(
     (inner(said, e), fp)
 }
 
-/// 「跳板 {hop} 连不上」那一句。
+/// 「跳板 {hop} 没连上」那一句。
 fn hop_dial_failed(hop: &str) -> String {
     copy_text("beConnect.jump.dialFailed", &[("hop", hop)])
 }

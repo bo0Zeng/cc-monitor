@@ -49,7 +49,7 @@ pub type AgentClient = Client<Box<dyn AgentStream + Send + Unpin + 'static>>;
 
 /// ssh-agent（只桌面有）。
 pub trait Agent: Send + Sync {
-    /// `sock` = 请求带来的套接字路径（缺 ⇒ 宿主自己的那一份）。连不上 ⇒ 那一句 ＋ 原话。
+    /// `sock` = 请求带来的套接字路径（缺 ⇒ 宿主自己的那一份）。没连上 ⇒ 那一句 ＋ 原话。
     fn connect<'a>(
         &'a self,
         sock: Option<&'a str>,
@@ -68,7 +68,7 @@ pub trait Facts: Send + Sync {
 pub struct Env {
     pub keys: Box<dyn KeySource>,
     pub host_keys: Box<dyn HostKeys>,
-    /// `None` ⇒ 这个宿主没有 agent（手机）：没配钥匙就报「agent 连不上」。
+    /// `None` ⇒ 这个宿主没有 agent（手机）：没配钥匙就报「此系统不支持连 SSH agent」。
     pub agent: Option<Box<dyn Agent>>,
     pub facts: Box<dyn Facts>,
     /// 远端写的规矩（后端：部署那两处；手机：任意路径）。
