@@ -36,7 +36,7 @@ sealed interface LinkOutcome {
  * 结局照这一趟说。和桌面连远端是同一条路（`IPC-PROTOCOL.md` 载体表「常驻套接字」）。
  * 两端对不对得上只核 `BUILD_ID` 这一处（改了冻结的格同加子命令一样要打版本号），不另问格目录。
  * C 通道（[OneShot]）只在第一次没接上时用那两次；接上之后一切都经 [FrameClient]。
- * （net2 台子：RTT 200 ms 时三条 exec 串着走要 1.5 秒，换成一条约 0.5 秒。）
+ * （台子读数：RTT 200 ms 时三条 exec 串着走要 1.5 秒，换成一条约 0.5 秒。）
  */
 class ResidentLink(
     private val oneShot: OneShot,

@@ -215,7 +215,7 @@ fn calls(id: &str) -> serde_json::Value {
     serde_json::json!([call(id, "Read", serde_json::json!({}))])
 }
 
-/// ★ 用户 10-10：只有连续的工具 / agent 段才折，中间说的话露在外面。「工具 · 正文 · 工具 · 正文」⇒ 两段过程，
+/// ★ 只有连续的工具 / agent 段才折，中间说的话露在外面。「工具 · 正文 · 工具 · 正文」⇒ 两段过程，
 /// 第一段跟在你那句后面、第二段跟在那段正文后面；两段正文都露着（结尾那段照旧在外面）。
 #[test]
 fn prose_between_tools_stays_outside_and_splits_the_process() {
