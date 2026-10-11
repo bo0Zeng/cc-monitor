@@ -4,8 +4,8 @@
  * 分不清是哪个窗口：照实说拉不了、带候选个数（不切、不闪任何一个）。
  *
  * 结局族的来处（这里不判，只排版）：
- * - 壳 `bring_terminal_to_front` / `bring_remote_terminal_to_front`（`FrontOutcome`）：切过去了 · 分不清（带候选窗口）· 没登记 · 窗口已关 ·
- *   认不准 · 系统不许抢前台 · 真在后台 · Wayland 桌面上切不了；
+ * - 壳 `bring_terminal_to_front` / `bring_remote_terminal_to_front`（`FrontOutcome`）：切过去了 · 分不清（带候选窗口与原因：没登记 · 读不到控制台 ·
+ *   提权 · 程序不提供控制台）· 认不出（没登记 · 会话已不在运行 · 后台）· 窗口已关 · 认不准 · 系统不许抢前台 · 真在后台 · Wayland 桌面上切不了；
  * - 那台后端 `session-terminals` 的 `why`：tmux 里没终端连着 · 没有终端 · 读不了；
  * - 本机后端 `terminal-processes` 的 `why`：那台本地屏幕 · 在另一台电脑 · 经跳板机对不上 · 这一次没查成；
  * - 通道那一跳的归因（`ipc/chan-caller.ts`）：那台旧 · 期限到 · 连不上。
@@ -59,9 +59,25 @@ export function frontView(r: FrontResult, machine: string, inTmux: boolean): Fro
     case "switched":
       return null;
     case "several":
-      return v(unsure, copyText("front.body.several", { program: r.program, n: r.count }), "amber", [], copyText("front.hint.several"));
+      switch (r.why) {
+        case "unregistered":
+          return v(unsure, copyText("front.body.severalUnregistered", { program: r.program, n: r.count }), "amber", [], copyText("front.hint.unregistered"));
+        case "console-unreachable":
+          return v(unsure, copyText("front.body.severalConsole", { program: r.program, n: r.count }), "amber", [], copyText("front.hint.severalConsole"));
+        case "elevated":
+          return v(unsure, copyText("front.body.severalElevated", { program: r.program, n: r.count }), "amber", [], copyText("front.hint.severalElevated"));
+        case "foreign":
+          return v(unsure, copyText("front.body.severalForeign", { program: r.program, n: r.count }), "amber");
+      }
     case "unbound":
-      return v(copyText("front.title.unbound"), copyText("front.body.unbound"), "amber", [{ kind: "connect" }], copyText("front.hint.unbound"));
+      switch (r.why) {
+        case "unregistered":
+          return v(copyText("front.title.unbound"), copyText("front.body.unregistered"), "amber", [{ kind: "connect" }], copyText("front.hint.unregistered"));
+        case "not-live":
+          return v(copyText("front.title.unbound"), copyText("front.body.notLive"), "grey");
+        case "no-console":
+          return v(copyText("front.title.noTerminal"), copyText("front.body.background"), "grey");
+      }
     case "detached":
       return v(copyText("front.title.noTerminal"), copyText("front.body.detached"), "grey", [{ kind: "open-in-terminal" }]);
     case "no-terminal":

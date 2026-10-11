@@ -1655,7 +1655,7 @@ async fn bring_monitor_to_front(app: tauri::AppHandle) -> Result<(), Said> {
 //   是会话流里的 `live` / `activity` 成品（就绪点按成品缓存重放），与远端同一条路。
 
 /// 拉本机会话的终端窗口：点那一刻现走那个 claude 往上的进程链（`bind::bring_local_window`，与远端那一格同一条规则），
-/// 校验、拉前。会话账里没有它的进程号（不在活集里）⇒ 「没登记」。回的是结局族（`bind::FrontOutcome`），句子在界面的文案表。
+/// 校验、拉前。会话账里没有它的进程号（不在活集里）⇒ 会话已不在运行。回的是结局族（`bind::FrontOutcome`），句子在界面的文案表。
 ///
 /// **必须 async + spawn_blocking** 隔离 Win32 sync 调用（v1.6.5 的教训）。
 #[tauri::command]
@@ -1671,7 +1671,9 @@ async fn bring_terminal_to_front(
                 .live_pid(&crate::origin::Origin::local(), &session_id);
             match pid {
                 Some(pid) => bind::bring_local_window(pid, &bind),
-                None => bind::front_refusal().unwrap_or(bind::FrontOutcome::Unbound),
+                None => bind::front_refusal().unwrap_or(bind::FrontOutcome::Unbound {
+                    why: bind::UnboundWhy::NotLive,
+                }),
             }
         })
         .await

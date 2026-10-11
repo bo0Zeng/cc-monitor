@@ -106,6 +106,13 @@ pub fn clients() -> Vec<Client> {
     open().map(|c| c.clients()).unwrap_or_default()
 }
 
+/// 窗口管理器此刻的活动窗口（`_NET_ACTIVE_WINDOW`）；读不到 ⇒ `None`。
+pub fn active_window() -> Option<u32> {
+    let c = open()?;
+    let net_active = c.atom("_NET_ACTIVE_WINDOW")?;
+    c.active(net_active)
+}
+
 /// 请窗口管理器把 `window` 切到前面（最小化着的它自己会还原），最多等 `wait` 看它答没答应：`_NET_ACTIVE_WINDOW` 变成它 ⇒ `true`。
 pub fn activate(window: u32, wait: std::time::Duration) -> bool {
     let Some(c) = open() else {

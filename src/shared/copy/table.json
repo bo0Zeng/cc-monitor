@@ -4674,28 +4674,58 @@
       "zh": "切换失败 · 内容无法解析",
       "args": []
     },
-    "front.body.several": {
+    "front.body.severalUnregistered": {
       "kind": "body",
       "role": "说明",
       "zh": "{program} 窗口 ×{n} · 本会话终端未登记",
       "args": ["program", "n"]
     },
-    "front.hint.several": {
+    "front.body.severalConsole": {
       "kind": "body",
       "role": "说明",
-      "zh": "接上终端后新开的终端标签页可识别",
+      "zh": "{program} 窗口 ×{n} · 读不到本会话的控制台",
+      "args": ["program", "n"]
+    },
+    "front.hint.severalConsole": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "需手动切到本会话所在的窗口",
       "args": []
     },
-    "front.body.unbound": {
+    "front.body.severalElevated": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{program}（管理员）窗口 ×{n} · cc-monitor 无权读取",
+      "args": ["program", "n"]
+    },
+    "front.hint.severalElevated": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "以普通权限开终端，或以管理员身份运行 cc-monitor",
+      "args": []
+    },
+    "front.body.severalForeign": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{program} 窗口 ×{n} · 此程序不提供控制台",
+      "args": ["program", "n"]
+    },
+    "front.body.unregistered": {
       "kind": "body",
       "role": "说明",
       "zh": "本会话所在终端未登记",
       "args": []
     },
-    "front.hint.unbound": {
+    "front.hint.unregistered": {
       "kind": "body",
       "role": "说明",
       "zh": "接上终端后新开的终端标签页可识别",
+      "args": []
+    },
+    "front.body.notLive": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话已不在运行",
       "args": []
     },
     "front.body.detached": {

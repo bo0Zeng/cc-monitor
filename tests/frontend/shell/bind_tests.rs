@@ -1,5 +1,5 @@
 use super::*;
-use crate::platform::console::window_of_console;
+use crate::platform::console::{refused_by, window_of_console, ConsoleLook};
 
 #[test]
 fn hwnd_entry_roundtrip() {
@@ -46,13 +46,42 @@ fn found(hwnd: isize, owner_pid: u32, owner_proc_start: u64) -> FoundWindow {
     }
 }
 
-/// 「这一级显示在哪个窗口」的替身：只有 `pid` 那一级认得出，是窗口 `hwnd`（属主 `owner`）。
-fn known_at(pid: u32, hwnd: isize, owner: u32) -> impl Fn(u32) -> Option<FoundWindow> {
-    move |p: u32| (p == pid).then(|| found(hwnd, owner, 777))
+/// 「这一级显示在哪个窗口」的替身：只有 `pid` 那一级认得出，是窗口 `hwnd`（属主 `owner`）；别的级读到 `rest`。
+fn shown_at(pid: u32, hwnd: isize, owner: u32, rest: Look) -> impl Fn(u32) -> Look {
+    move |p: u32| {
+        if p == pid {
+            Look::Window(found(hwnd, owner, 777))
+        } else {
+            rest.clone()
+        }
+    }
 }
 
-fn nothing_known(_: u32) -> Option<FoundWindow> {
-    None
+fn known_at(pid: u32, hwnd: isize, owner: u32) -> impl Fn(u32) -> Look {
+    shown_at(pid, hwnd, owner, Look::Denied)
+}
+
+/// 每一级都读到同一个样子。
+fn every(l: Look) -> impl Fn(u32) -> Look {
+    move |_| l.clone()
+}
+
+fn not_elevated(_: u32) -> bool {
+    false
+}
+
+fn by_console(w: FoundWindow, pid: u32) -> Pick {
+    Pick {
+        window: w,
+        via: Via::Shown(pid),
+    }
+}
+
+fn by_owner(w: FoundWindow, elevated: bool) -> Pick {
+    Pick {
+        window: w,
+        via: Via::Owner { elevated },
+    }
 }
 
 /// 握手表里的一条（Linux bash / zsh 接入块那一份）：shell `ps_pid` 登记了窗口 `hwnd`（属主 `owner_pid`）。
@@ -70,7 +99,7 @@ fn entry(ps_pid: u32, hwnd: isize, owner_pid: u32) -> HwndEntry {
 
 /// ★ 用户 10-09 那一幕（两个 Windows Terminal 窗口、从标签栏 resume 的远端会话、PowerShell 没登记）：
 /// 链上开着连接的 ssh.exe 认得出它显示在哪个窗口（它的控制台挂在那个 Windows Terminal 窗口下）⇒ 就是那个窗口，
-/// 不管 Windows Terminal 开着几个窗口、不要任何登记。
+/// 不管 Windows Terminal 开着几个窗口、不要任何登记；记下是哪一级认出的（切标签页要借它的控制台）。
 #[test]
 fn the_window_showing_the_ssh_console_is_named_even_when_the_terminal_has_several() {
     let chain = ssh_chain();
@@ -79,9 +108,10 @@ fn the_window_showing_the_ssh_console_is_named_even_when_the_terminal_has_severa
             &chain,
             known_at(700, 0x33, 500),
             wins(&[(500, &[0x22, 0x33])]),
-            |_| 0
+            |_| 0,
+            not_elevated
         ),
-        Ok(found(0x33, 500, 777))
+        Ok(by_console(found(0x33, 500, 777), 700))
     );
     // 开着连接的那一级认不出、外面那个 PowerShell 认得出 ⇒ 外面那个（同一个窗口）。
     assert_eq!(
@@ -89,9 +119,10 @@ fn the_window_showing_the_ssh_console_is_named_even_when_the_terminal_has_severa
             &chain,
             known_at(600, 0x22, 500),
             wins(&[(500, &[0x22, 0x33])]),
-            |_| 0
+            |_| 0,
+            not_elevated
         ),
-        Ok(found(0x22, 500, 777))
+        Ok(by_console(found(0x22, 500, 777), 600))
     );
 }
 
@@ -102,24 +133,115 @@ fn without_a_known_window_the_window_is_the_first_one_up_the_chain_and_only_if_i
     let chain = ssh_chain();
     let start = |pid: u32| u64::from(pid) * 10;
     assert_eq!(
-        pick_chain_window(&chain, nothing_known, wins(&[(500, &[0x22])]), start),
-        Ok(found(0x22, 500, 5000))
+        pick_chain_window(
+            &chain,
+            every(Look::Denied),
+            wins(&[(500, &[0x22])]),
+            start,
+            not_elevated
+        ),
+        Ok(by_owner(found(0x22, 500, 5000), false))
     );
-    let two =
-        pick_chain_window(&chain, nothing_known, wins(&[(500, &[0x22, 0x33])]), start).unwrap_err();
+    assert_eq!(
+        pick_chain_window(
+            &chain,
+            every(Look::Denied),
+            wins(&[(500, &[0x22])]),
+            start,
+            |p| p == 500
+        ),
+        Ok(by_owner(found(0x22, 500, 5000), true)),
+        "属主那一级只有一个窗口 ⇒ 照旧拉它，记下它是提权的（标签页切不了）"
+    );
+    let two = pick_chain_window(
+        &chain,
+        every(Look::Denied),
+        wins(&[(500, &[0x22, 0x33])]),
+        start,
+        not_elevated,
+    )
+    .unwrap_err();
     assert_eq!(
         two,
         FrontOutcome::Several {
             program: "WindowsTerminal.exe".into(),
-            count: 2
+            count: 2,
+            why: SeveralWhy::ConsoleUnreachable,
         }
     );
-    let nowin = pick_chain_window(&chain, nothing_known, wins(&[]), start).unwrap_err();
+    let nowin =
+        pick_chain_window(&chain, every(Look::Denied), wins(&[]), start, not_elevated).unwrap_err();
     assert_eq!(
         nowin,
         FrontOutcome::NoWindow {
             program: "ssh.exe".into()
         }
+    );
+}
+
+/// ★ 分不清时说出为什么，按链上读到的样子判（读法是参数）：
+/// - 有一级是「没登记」（Linux：握手表里没有它）⇒ 未登记；
+/// - 终端那一级是提权的（借不到它名下的控制台）⇒ 提权；
+/// - 有一级借控制台被拒 ⇒ 读不到本会话的控制台；
+/// - 都借到了却不在任何可见窗口里 / 都没有控制台 ⇒ 这个程序不提供控制台（不把伪控制台挂到自己窗口下的程序，如 VS Code）。
+#[test]
+fn several_windows_say_why_the_console_did_not_name_one() {
+    let chain = ssh_chain();
+    let two = wins(&[(500, &[0x22, 0x33])]);
+    let why = |look: &dyn Fn(u32) -> Look, elevated: &dyn Fn(u32) -> bool| match pick_chain_window(
+        &chain,
+        look,
+        &two,
+        |_| 0,
+        elevated,
+    ) {
+        Err(FrontOutcome::Several { why, .. }) => why,
+        other => panic!("应当分不清：{other:?}"),
+    };
+    assert_eq!(
+        why(&every(Look::Unregistered), &not_elevated),
+        SeveralWhy::Unregistered
+    );
+    assert_eq!(
+        why(&every(Look::Denied), &|p| p == 500),
+        SeveralWhy::Elevated
+    );
+    assert_eq!(
+        why(&every(Look::Denied), &not_elevated),
+        SeveralWhy::ConsoleUnreachable
+    );
+    assert_eq!(
+        why(
+            &|p| if p == 700 {
+                Look::Denied
+            } else {
+                Look::NoConsole
+            },
+            &not_elevated
+        ),
+        SeveralWhy::ConsoleUnreachable
+    );
+    assert_eq!(
+        why(&every(Look::Hidden), &not_elevated),
+        SeveralWhy::Foreign
+    );
+    assert_eq!(
+        why(&every(Look::NoConsole), &not_elevated),
+        SeveralWhy::Foreign
+    );
+    // 提权只问终端那一级（链上别的级提权不算）。
+    assert_eq!(
+        why(&every(Look::Denied), &|p| p == 700),
+        SeveralWhy::ConsoleUnreachable
+    );
+    assert_eq!(
+        serde_json::to_value(FrontOutcome::Several {
+            program: "WindowsTerminal.exe".into(),
+            count: 2,
+            why: SeveralWhy::ConsoleUnreachable
+        })
+        .unwrap(),
+        serde_json::json!({ "kind": "several", "program": "WindowsTerminal.exe", "count": 2, "why": "console-unreachable" })
     );
 }
 
@@ -139,6 +261,7 @@ fn a_known_window_above_the_terminal_window_is_not_this_window() {
         known_at(400, 0x99, 300),
         wins(&[(500, &[0x22, 0x33])]),
         |_| 0,
+        not_elevated,
     )
     .unwrap_err();
     assert!(
@@ -159,7 +282,8 @@ fn a_registration_that_fails_its_check_is_not_used() {
 }
 
 /// ★ 本机会话点那一刻现走 claude 往上的进程链（同远端那一条规则）：claude 不是 shell 的直接子进程（中间隔着 ccm）⇒
-/// 往上走到认得出窗口的那一级；整条链都认不出 ⇒ 「没登记」（界面再按窗口标签找一次：Linux 上会话在 tmux 里）。
+/// 往上走到认得出窗口的那一级；整条链都认不出 ⇒ 认不出窗口，原因照读到的说：Linux 上是没登记（界面再按窗口标签找一次：
+/// 会话在 tmux 里）；Windows 上是链上没有控制台也没有窗口（后台起的）。
 #[test]
 fn a_local_claude_is_found_up_its_chain_at_click_time() {
     let chain: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
@@ -174,9 +298,10 @@ fn a_local_claude_is_found_up_its_chain_at_click_time() {
             &chain,
             known_at(900, 0x33, 500),
             wins(&[(500, &[0x22, 0x33])]),
-            |_| 0
+            |_| 0,
+            not_elevated
         ),
-        Ok(found(0x33, 500, 777))
+        Ok(by_console(found(0x33, 500, 777), 900))
     );
     let tmux: Vec<ChainLink> = serde_json::from_value(serde_json::json!([
         { "pid": 900, "name": "claude" },
@@ -185,8 +310,41 @@ fn a_local_claude_is_found_up_its_chain_at_click_time() {
     ]))
     .unwrap();
     assert_eq!(
-        pick_local_window(&tmux, nothing_known, wins(&[]), |_| 0),
-        Err(FrontOutcome::Unbound)
+        pick_local_window(
+            &tmux,
+            every(Look::Unregistered),
+            wins(&[]),
+            |_| 0,
+            not_elevated
+        ),
+        Err(FrontOutcome::Unbound {
+            why: UnboundWhy::Unregistered
+        })
+    );
+    assert_eq!(
+        pick_local_window(
+            &chain,
+            every(Look::NoConsole),
+            wins(&[]),
+            |_| 0,
+            not_elevated
+        ),
+        Err(FrontOutcome::Unbound {
+            why: UnboundWhy::NoConsole
+        })
+    );
+}
+
+/// ★ 「切过去了」要核过前台：系统答应了、此刻前台也确实是它 ⇒ 切过去了；答应了前台却是别的窗口（真机见过）/ 读不到 ⇒
+/// 系统不许抢前台（它在任务栏闪）；不答应 ⇒ 同上，不去读前台。
+#[test]
+fn switched_means_the_window_really_is_in_front() {
+    assert_eq!(landed(true, || Some(0x33), 0x33), FrontOutcome::Switched);
+    assert_eq!(landed(true, || Some(0x44), 0x33), FrontOutcome::Refused);
+    assert_eq!(landed(true, || None, 0x33), FrontOutcome::Refused);
+    assert_eq!(
+        landed(false, || panic!("没答应就不读前台"), 0x33),
+        FrontOutcome::Refused
     );
 }
 
@@ -227,17 +385,28 @@ fn a_window_label_names_the_shell_window_only_when_its_start_time_matches() {
 }
 
 /// ★ 「这个进程显示在哪个窗口」在控制台那一侧的规则（读法是参数）：控制台窗口有属主（Windows Terminal 那种伪控制台窗口，
-/// 属主就是承载那个标签的终端窗口）⇒ 属主；没有属主 ⇒ 控制台窗口自己（经典控制台）；那个窗口不可见 ⇒ 不算（隐藏的控制台）；
-/// 借不到控制台 ⇒ 没有。
+/// 属主就是承载那个标签的终端窗口）⇒ 属主；没有属主 ⇒ 控制台窗口自己（经典控制台）；那个窗口不可见 ⇒ 隐藏；
+/// 句柄为 0 ⇒ 没有控制台。借不到：被拒（错误码 5）⇒ 不给借；别的错误码 ⇒ 没有。
 #[test]
 fn a_console_is_shown_in_its_owner_window_or_in_itself() {
     let vis = |h: isize| h != 0x404;
-    assert_eq!(window_of_console(Some(0x101), |_| 0x202, vis), Some(0x202));
-    assert_eq!(window_of_console(Some(0x101), |_| 0, vis), Some(0x101));
-    assert_eq!(window_of_console(Some(0x404), |_| 0, vis), None);
-    assert_eq!(window_of_console(Some(0x101), |_| 0x404, vis), None);
-    assert_eq!(window_of_console(Some(0), |_| 0x202, vis), None);
-    assert_eq!(window_of_console(None, |_| 0x202, vis), None);
+    assert_eq!(
+        window_of_console(0x101, |_| 0x202, vis),
+        ConsoleLook::Shown(0x202)
+    );
+    assert_eq!(
+        window_of_console(0x101, |_| 0, vis),
+        ConsoleLook::Shown(0x101)
+    );
+    assert_eq!(window_of_console(0x404, |_| 0, vis), ConsoleLook::Hidden);
+    assert_eq!(
+        window_of_console(0x101, |_| 0x404, vis),
+        ConsoleLook::Hidden
+    );
+    assert_eq!(window_of_console(0, |_| 0x202, vis), ConsoleLook::None);
+    assert_eq!(refused_by(5), ConsoleLook::Denied);
+    assert_eq!(refused_by(6), ConsoleLook::None);
+    assert_eq!(refused_by(87), ConsoleLook::None);
 }
 
 /// ★ 每级都要先问「它显示在哪」再看它名下的窗口：一个进程（如 Windows Terminal）名下有窗口，却也认得出它自己在哪 ⇒ 用认出的那个。
@@ -248,12 +417,14 @@ fn a_known_window_wins_over_the_owners_window_list() {
     ]))
     .unwrap();
     assert_eq!(
-        walk_chain(
+        pick_chain_window(
             &chain,
             known_at(500, 0x33, 500),
-            wins(&[(500, &[0x22, 0x33])])
+            wins(&[(500, &[0x22, 0x33])]),
+            |_| 0,
+            not_elevated
         ),
-        ChainHit::Known(found(0x33, 500, 777))
+        Ok(by_console(found(0x33, 500, 777), 500))
     );
 }
 

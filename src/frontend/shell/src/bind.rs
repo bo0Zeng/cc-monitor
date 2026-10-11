@@ -3,7 +3,7 @@
 //! ## 一条规则，本机远端同一条
 //!
 //! 点 ↗ 那一刻现拿一串进程（本机会话：claude 往上的进程链；远端会话：本机后端按连接对到的、开着那条连接的进程往上），
-//! [`pick_chain_window`] 沿链从下往上，每一级先问「它显示在哪个窗口」（[`shell_window`]），再看它名下有没有可见顶层窗口；
+//! [`pick_chain_window`] 沿链从下往上，每一级先问「它显示在哪个窗口」（[`look_of`]），再看它名下有没有可见顶层窗口；
 //! 碰到有窗口的那一级（终端本身）就停，那一级恰好一个窗口 ⇒ 它，好几个 ⇒ 照实说分不清（不挑）。
 //! 找到的窗口交 [`bring_found_window`] 三重指纹校验 ＋ 拉到前台。不缓存：每次点击现读。
 //!
@@ -323,23 +323,27 @@ fn find_window_by_marker_substr(marker: &str) -> Option<MarkerHit> {
     crate::platform::hwnd::first_visible_window(marker, title_carries_marker)
 }
 
-/// ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：照实说拉不了、带候选个数。
+/// ↗ 一次的结局（闭集；界面按 `kind` 排版，句子在文案表）。分不清是哪个窗口时**不挑一个切**：照实说拉不了、带候选个数和原因。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub enum FrontOutcome {
-    /// 窗口到前面了。
+    /// 窗口到前面了（核过前台），要切的标签页也选中了（或窗口里只有一个标签 / 没有标签这回事）。
     Switched,
-    /// 链上哪一级都认不出显示在哪个窗口，终端程序又开着几个窗口 ⇒ 分不清；`count` 是候选窗口个数。
-    Several { program: String, count: usize },
-    /// 本机会话的进程链上哪一级都认不出显示在哪个窗口（Linux：shell 开在接上终端之前 · 会话在 tmux 里，界面再按窗口标签找一次）。
-    Unbound,
+    /// 链上哪一级都认不出显示在哪个窗口，终端程序又开着几个窗口 ⇒ 分不清；`count` 是候选窗口个数，`why` 是为什么认不出。
+    Several {
+        program: String,
+        count: usize,
+        why: SeveralWhy,
+    },
+    /// 本机会话：认不出它显示在哪个窗口、链上也没有窗口（原因见 `why`）。
+    Unbound { why: UnboundWhy },
     /// 认得的那个窗口已经不在了。
     WindowGone,
     /// 句柄或进程号已被别的进程复用 ⇒ 认不准（细节进日志）。
     Unclear,
-    /// 找到了，系统不许抢前台（它在任务栏闪）。
+    /// 找到了，系统不许抢前台（它在任务栏闪），或答应了前台却没换。
     Refused,
     /// 整条链上哪一级都没有窗口：真在后台。
     NoWindow { program: String },
@@ -347,6 +351,36 @@ pub enum FrontOutcome {
     DesktopWontSwitch { desktop: String },
     /// 这台系统没有「按句柄找 / 验 / 拉前窗口」这一族。
     Unsupported,
+}
+
+/// 分不清时，链上为什么没有一级认出它显示在哪个窗口（[`several_why`] 判）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "kebab-case")]
+pub enum SeveralWhy {
+    /// Linux：本会话的 shell 没登记（开在接上终端之前）。
+    Unregistered,
+    /// Windows：借本会话的控制台被系统拒了。
+    ConsoleUnreachable,
+    /// Windows：终端是以管理员身份运行的，cc-monitor 借不到它名下的控制台。
+    Elevated,
+    /// Windows：终端程序不提供控制台（不把伪控制台挂到自己窗口下，如 VS Code 的终端）。
+    Foreign,
+}
+
+/// 本机会话认不出窗口的原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
+#[serde(rename_all = "kebab-case")]
+pub enum UnboundWhy {
+    /// Linux：shell 开在接上终端之前 · 会话在 tmux 里（界面再按窗口标签找一次）。
+    Unregistered,
+    /// 会话账里没有它的进程号：会话已不在运行。
+    NotLive,
+    /// Windows：链上没有控制台也没有窗口（后台起的）。
+    NoConsole,
 }
 
 /// 这一种桌面会话上 ↗ 走不走得通：Windows · X11 ⇒ 走（`None`）；Wayland ⇒ 照实说切不了；别的 ⇒ 不支持。
@@ -409,17 +443,31 @@ fn verify_window(hwnd_v: isize, owner_pid: u32, owner_proc_start: u64) -> Result
     Ok(())
 }
 
-/// 把窗口拉到前台：系统答应 ⇒ `Switched`；不答应（OS 会让窗口在任务栏闪烁）⇒ `Refused`。
-/// 拉法住 `platform::hwnd::bring_to_front`。
-pub fn activate(hwnd: isize) -> FrontOutcome {
-    if let Some(o) = front_refusal() {
-        return o;
-    }
-    if crate::platform::hwnd::bring_to_front(hwnd) {
+/// 拉前之后算不算切过去了：系统答应了（`asked`）、而且此刻前台确实是它（`front_now`，答应之后才读）⇒ `Switched`；
+/// 否则 `Refused`（OS 会让窗口在任务栏闪烁）。真机上见过 `SetForegroundWindow` 回成功、前台却没换。
+pub(crate) fn landed(
+    asked: bool,
+    front_now: impl FnOnce() -> Option<isize>,
+    hwnd: isize,
+) -> FrontOutcome {
+    if asked && front_now() == Some(hwnd) {
         FrontOutcome::Switched
     } else {
         FrontOutcome::Refused
     }
+}
+
+/// 把窗口拉到前台、核过前台（[`landed`]）。拉法与读前台住 `platform::hwnd`。
+pub fn activate(hwnd: isize) -> FrontOutcome {
+    if let Some(o) = front_refusal() {
+        return o;
+    }
+    let asked = crate::platform::hwnd::bring_to_front(hwnd);
+    landed(
+        asked,
+        || crate::platform::hwnd::foreground_settled(hwnd),
+        hwnd,
+    )
 }
 
 /// 沿进程链找到的那个窗口（属主与它的起始时刻由本进程现读）。
@@ -471,74 +519,158 @@ impl FoundWindow {
     }
 }
 
-/// 沿进程链从下往上走到终端窗口那一级为止的结局。
+/// 链上一级「它显示在哪个窗口」读到的样子（生产那一份是 [`look_of`]）。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ChainHit<'a> {
-    /// 走到终端窗口之前，有一级认得出它显示在哪个窗口（`known`）⇒ 那个窗口。
-    Known(FoundWindow),
-    /// 先走到一个有可见顶层窗口的进程（终端本身）⇒ 它和它的窗口们（一个或好几个）。
-    Owner(&'a ChainLink, Vec<isize>),
-    /// 整条链都没有。
-    Nothing,
+pub(crate) enum Look {
+    /// 认得出：就是这个窗口。
+    Window(FoundWindow),
+    /// Linux：握手表里没有它（shell 没登记）。
+    Unregistered,
+    /// Windows：借到了它的控制台，那个控制台却不显示在任何可见窗口里。
+    Hidden,
+    /// Windows：借它的控制台被系统拒了。
+    Denied,
+    /// 它没有控制台 / 进程已经没了。
+    NoConsole,
 }
 
-/// 沿进程链从下往上（开着连接 / 起会话的那个进程在前）：每一级先问它显示在哪个窗口（`known`，生产那一份是 [`shell_window`]），
+/// 找到的窗口是怎么认出来的：链上某一级显示在它里面（记下那一级，切标签页要借它的控制台）· 或终端那一级恰好一个窗口。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Via {
+    Shown(u32),
+    /// `elevated`：终端那一级是提权的。
+    Owner {
+        elevated: bool,
+    },
+}
+
+/// 进程链 ⇒ 要拉的那个窗口和它是怎么认出来的。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Pick {
+    pub window: FoundWindow,
+    pub via: Via,
+}
+
+/// 沿进程链从下往上走到终端窗口那一级为止的结局。
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChainHit<'a> {
+    /// 走到终端窗口之前，有一级（`pid`）认得出它显示在哪个窗口 ⇒ 那个窗口。
+    Known(u32, FoundWindow),
+    /// 先走到一个有可见顶层窗口的进程（终端本身）⇒ 它和它的窗口们（一个或好几个）；`looks` 是它下面那几级读到的样子。
+    Owner(&'a ChainLink, Vec<isize>, Vec<Look>),
+    /// 整条链都没有（`looks` 是每一级读到的样子）。
+    Nothing(Vec<Look>),
+}
+
+/// 沿进程链从下往上（开着连接 / 起会话的那个进程在前）：每一级先问它显示在哪个窗口（`look`），
 /// 再看它名下有没有可见顶层窗口；碰到有窗口的那一级就停 —— 终端窗口的属主以上的进程不在这个窗口里，
 /// 它们显示在别的窗口（比如从某个 PowerShell 里打开的 Windows Terminal，它上面那个 PowerShell）。读法是参数（判据喂替身）。
-pub(crate) fn walk_chain<'a>(
+fn walk_chain<'a>(
     chain: &'a [ChainLink],
-    known: impl Fn(u32) -> Option<FoundWindow>,
+    look: impl Fn(u32) -> Look,
     windows_of: impl Fn(u32) -> Vec<isize>,
 ) -> ChainHit<'a> {
+    let mut looks = Vec::new();
     for l in chain {
-        if let Some(w) = known(l.pid) {
-            return ChainHit::Known(w);
+        match look(l.pid) {
+            Look::Window(w) => return ChainHit::Known(l.pid, w),
+            other => looks.push(other),
         }
         let wins = windows_of(l.pid);
         if !wins.is_empty() {
-            return ChainHit::Owner(l, wins);
+            return ChainHit::Owner(l, wins, looks);
         }
     }
-    ChainHit::Nothing
+    ChainHit::Nothing(looks)
+}
+
+/// 分不清时的原因，按终端那一级下面每一级读到的样子判：有一级没登记 ⇒ 未登记（Linux）；终端那一级是提权的 ⇒ 提权；
+/// 有一级借控制台被拒 ⇒ 读不到控制台；都借到了却不在可见窗口里 / 都没有控制台 ⇒ 这个程序不提供控制台。
+pub(crate) fn several_why(looks: &[Look], owner_elevated: bool) -> SeveralWhy {
+    if looks.contains(&Look::Unregistered) {
+        SeveralWhy::Unregistered
+    } else if owner_elevated {
+        SeveralWhy::Elevated
+    } else if looks.contains(&Look::Denied) {
+        SeveralWhy::ConsoleUnreachable
+    } else {
+        SeveralWhy::Foreign
+    }
 }
 
 /// 进程链 ⇒ 要拉的那个窗口：链上有一级认得出 ⇒ 那个窗口（精确到窗口）；否则终端窗口的属主恰好一个窗口 ⇒ 它；
-/// 好几个 ⇒ 分不清（不挑，交出候选个数）；整条链都没有 ⇒ 没有窗口（说开着连接的那个程序）。`start_of` 读属主的起始时刻。
+/// 好几个 ⇒ 分不清（不挑，交出候选个数与原因）；整条链都没有 ⇒ 没有窗口（说开着连接的那个程序）。
+/// `start_of` 读属主的起始时刻，`elevated_of` 读终端那一级是不是提权的（只问那一级）。
 pub(crate) fn pick_chain_window(
     chain: &[ChainLink],
-    known: impl Fn(u32) -> Option<FoundWindow>,
+    look: impl Fn(u32) -> Look,
     windows_of: impl Fn(u32) -> Vec<isize>,
     start_of: impl Fn(u32) -> u64,
-) -> Result<FoundWindow, FrontOutcome> {
-    match walk_chain(chain, known, windows_of) {
-        ChainHit::Known(w) => Ok(w),
-        ChainHit::Owner(l, wins) => match wins.as_slice() {
-            [h] => Ok(FoundWindow {
-                hwnd: *h,
-                owner_pid: l.pid,
-                owner_proc_start: start_of(l.pid),
-            }),
-            _ => Err(FrontOutcome::Several {
-                program: l.name.clone(),
-                count: wins.len(),
-            }),
-        },
-        ChainHit::Nothing => Err(FrontOutcome::NoWindow {
-            program: chain.first().map(|l| l.name.clone()).unwrap_or_default(),
+    elevated_of: impl Fn(u32) -> bool,
+) -> Result<Pick, FrontOutcome> {
+    pick_on_chain(chain, look, windows_of, start_of, elevated_of).map_err(|(o, _)| o)
+}
+
+/// 同 [`pick_chain_window`]，没有窗口时连同每一级读到的样子交回（本机那一条据此说原因）。
+fn pick_on_chain(
+    chain: &[ChainLink],
+    look: impl Fn(u32) -> Look,
+    windows_of: impl Fn(u32) -> Vec<isize>,
+    start_of: impl Fn(u32) -> u64,
+    elevated_of: impl Fn(u32) -> bool,
+) -> Result<Pick, (FrontOutcome, Vec<Look>)> {
+    match walk_chain(chain, look, windows_of) {
+        ChainHit::Known(pid, w) => Ok(Pick {
+            window: w,
+            via: Via::Shown(pid),
         }),
+        ChainHit::Owner(l, wins, looks) => {
+            let elevated = elevated_of(l.pid);
+            match wins.as_slice() {
+                [h] => Ok(Pick {
+                    window: FoundWindow {
+                        hwnd: *h,
+                        owner_pid: l.pid,
+                        owner_proc_start: start_of(l.pid),
+                    },
+                    via: Via::Owner { elevated },
+                }),
+                _ => Err((
+                    FrontOutcome::Several {
+                        program: l.name.clone(),
+                        count: wins.len(),
+                        why: several_why(&looks, elevated),
+                    },
+                    looks,
+                )),
+            }
+        }
+        ChainHit::Nothing(looks) => Err((
+            FrontOutcome::NoWindow {
+                program: chain.first().map(|l| l.name.clone()).unwrap_or_default(),
+            },
+            looks,
+        )),
     }
 }
 
-/// 本机会话的那一条：同 [`pick_chain_window`]，只是整条链都没有窗口时说「没登记」（界面接着按窗口标签找：Linux 上会话在 tmux 里，
-/// claude 的进程链到不了终端窗口）。
+/// 本机会话的那一条：同 [`pick_chain_window`]，只是整条链都没有窗口时说认不出：有一级没登记 ⇒ 未登记（界面接着按窗口标签找：
+/// Linux 上会话在 tmux 里，claude 的进程链到不了终端窗口）；否则 ⇒ 链上没有控制台（Windows：后台起的）。
 pub(crate) fn pick_local_window(
     chain: &[ChainLink],
-    known: impl Fn(u32) -> Option<FoundWindow>,
+    look: impl Fn(u32) -> Look,
     windows_of: impl Fn(u32) -> Vec<isize>,
     start_of: impl Fn(u32) -> u64,
-) -> Result<FoundWindow, FrontOutcome> {
-    pick_chain_window(chain, known, windows_of, start_of).map_err(|o| match o {
-        FrontOutcome::NoWindow { .. } => FrontOutcome::Unbound,
+    elevated_of: impl Fn(u32) -> bool,
+) -> Result<Pick, FrontOutcome> {
+    pick_on_chain(chain, look, windows_of, start_of, elevated_of).map_err(|(o, looks)| match o {
+        FrontOutcome::NoWindow { .. } => FrontOutcome::Unbound {
+            why: if looks.contains(&Look::Unregistered) {
+                UnboundWhy::Unregistered
+            } else {
+                UnboundWhy::NoConsole
+            },
+        },
         o => o,
     })
 }
@@ -567,7 +699,7 @@ pub fn bring_labeled_window(
         return None;
     }
     labeled_window(terminals, crate::platform::pid::start_stamp, |pid| {
-        shell_window(bind, pid)
+        holding_registration(bind, pid).map(|e| FoundWindow::of(&e))
     })
     .map(|w| bring_found_window(&w))
 }
@@ -582,34 +714,41 @@ fn holding_registration(bind: &BindRegistry, pid: u32) -> Option<HwndEntry> {
     .then_some(entry)
 }
 
-/// 生产那一份「这一级显示在哪个窗口」：握手表里作数的登记（Linux bash / zsh）；没有 ⇒ 它的控制台显示在哪个窗口（Windows）。
-/// 属主与它的起始时刻现读。
-fn shell_window(bind: &BindRegistry, pid: u32) -> Option<FoundWindow> {
+/// 生产那一份「这一级显示在哪个窗口」：握手表里作数的登记 ⇒ 那个窗口；这台有登记这一套（Linux）却没有 ⇒ 没登记；
+/// 否则 ⇒ 它的控制台显示在哪个窗口（Windows）。属主与它的起始时刻现读。
+fn look_of(bind: &BindRegistry, pid: u32) -> Look {
+    use crate::platform::console::ConsoleLook;
     if let Some(e) = holding_registration(bind, pid) {
-        return Some(FoundWindow::of(&e));
+        return Look::Window(FoundWindow::of(&e));
     }
-    let hwnd = crate::platform::console::console_window(pid)?;
-    let owner_pid = crate::platform::hwnd::owner_pid(hwnd);
-    Some(FoundWindow {
-        hwnd,
-        owner_pid,
-        owner_proc_start: crate::platform::pid::start_stamp(owner_pid).unwrap_or(0),
-    })
+    if crate::platform::console::TTY_RECORDS {
+        return Look::Unregistered;
+    }
+    match crate::platform::console::console_window(pid) {
+        ConsoleLook::Shown(hwnd) => {
+            let owner_pid = crate::platform::hwnd::owner_pid(hwnd);
+            Look::Window(FoundWindow {
+                hwnd,
+                owner_pid,
+                owner_proc_start: crate::platform::pid::start_stamp(owner_pid).unwrap_or(0),
+            })
+        }
+        ConsoleLook::Hidden => Look::Hidden,
+        ConsoleLook::Denied => Look::Denied,
+        ConsoleLook::None => Look::NoConsole,
+    }
 }
 
 /// 本机后端回的那串进程按本机现读 ⇒ 窗口（认得出 ⇒ 那个；否则属主那一级的窗口）。
-fn pick_live(
-    chain: &[ChainLink],
-    bind: &BindRegistry,
-    local: bool,
-) -> Result<FoundWindow, FrontOutcome> {
-    let known = |pid| shell_window(bind, pid);
+fn pick_live(chain: &[ChainLink], bind: &BindRegistry, local: bool) -> Result<Pick, FrontOutcome> {
+    let look = |pid| look_of(bind, pid);
     let windows_of = crate::platform::hwnd::visible_top_windows_of;
     let start_of = |pid| crate::platform::pid::start_stamp(pid).unwrap_or(0);
+    let elevated_of = crate::platform::pid::above_us;
     if local {
-        pick_local_window(chain, known, windows_of, start_of)
+        pick_local_window(chain, look, windows_of, start_of, elevated_of)
     } else {
-        pick_chain_window(chain, known, windows_of, start_of)
+        pick_chain_window(chain, look, windows_of, start_of, elevated_of)
     }
 }
 
@@ -619,7 +758,7 @@ pub fn bring_chain_window(chain: &[ChainLink], bind: &BindRegistry) -> FrontOutc
         return o;
     }
     match pick_live(chain, bind, false) {
-        Ok(w) => bring_found_window(&w),
+        Ok(p) => bring_found_window(&p.window),
         Err(o) => o,
     }
 }
@@ -631,13 +770,13 @@ pub fn bring_local_window(claude_pid: u32, bind: &BindRegistry) -> FrontOutcome 
         return o;
     }
     // 从它自己问起（它和它的 shell 挂在同一个控制台上；被终端直接起的那一形，父进程就是终端本身、借不到控制台）。
-    // 它自己那一级的名字不进任何一句（分不清说的是终端那一级、没有窗口在本机说「没登记」）⇒ 空。
+    // 它自己那一级的名字不进任何一句（分不清说的是终端那一级、没有窗口在本机说认不出）⇒ 空。
     let chain: Vec<ChainLink> = std::iter::once((claude_pid, String::new()))
         .chain(crate::platform::pid::ancestors(claude_pid))
         .map(|(pid, name)| ChainLink { pid, name })
         .collect();
     match pick_live(&chain, bind, true) {
-        Ok(w) => bring_found_window(&w),
+        Ok(p) => bring_found_window(&p.window),
         Err(o) => o,
     }
 }

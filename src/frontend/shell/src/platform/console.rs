@@ -11,27 +11,56 @@
 //! Linux 那一份是 [`tty_title`]：往本机 bash / zsh 接入块记下的那个终端设备写 xterm 的改标题序列，
 //! 终端程序据此改它窗口的标题（认窗口用，见 `bind.rs::claim_tty`）。
 
-/// 控制台窗口 `console`（借不到 ⇒ `None`）⇒ 显示它的那个窗口：有属主 ⇒ 属主（Windows Terminal 的伪控制台窗口 ⇒ 终端窗口）；
-/// 没有 ⇒ 它自己（经典控制台）。那个窗口不可见 ⇒ 不算（隐藏的控制台不在任何人眼前）。读法是参数。
+/// 借一个进程的控制台、问它显示在哪个窗口，读到的四种样子。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConsoleLook {
+    /// 显示在这个可见窗口里。
+    Shown(isize),
+    /// 借到了，那个控制台不显示在任何可见窗口里（隐藏的控制台 · 不把伪控制台挂到自己窗口下的终端程序）。
+    Hidden,
+    /// 系统不给借（提权的进程 · 本进程自己挂着控制台）。
+    Denied,
+    /// 它没有控制台 / 进程没了。
+    None,
+}
+
+/// `AttachConsole` 失败时的错误码 ⇒ 读到的样子：`ERROR_ACCESS_DENIED`（5）⇒ 不给借；别的（没有控制台 6 · 没有这个进程 87）⇒ 没有。
+#[cfg(any(windows, test))]
+pub fn refused_by(err: u32) -> ConsoleLook {
+    if err == 5 {
+        ConsoleLook::Denied
+    } else {
+        ConsoleLook::None
+    }
+}
+
+/// 借到的控制台窗口 `console` ⇒ 显示它的那个窗口：有属主 ⇒ 属主（Windows Terminal 的伪控制台窗口 ⇒ 终端窗口）；
+/// 没有 ⇒ 它自己（经典控制台）。那个窗口不可见 ⇒ 隐藏（不在任何人眼前）；句柄为 0 ⇒ 没有控制台。读法是参数。
 /// 调用方只在 Windows 上（下面那一份）；判据在各平台喂替身判它。
 #[cfg(any(windows, test))]
 pub fn window_of_console(
-    console: Option<isize>,
+    console: isize,
     owner_of: impl Fn(isize) -> isize,
     visible: impl Fn(isize) -> bool,
-) -> Option<isize> {
-    let c = console.filter(|&c| c != 0)?;
-    let w = match owner_of(c) {
-        0 => c,
+) -> ConsoleLook {
+    if console == 0 {
+        return ConsoleLook::None;
+    }
+    let w = match owner_of(console) {
+        0 => console,
         o => o,
     };
-    visible(w).then_some(w)
+    if visible(w) {
+        ConsoleLook::Shown(w)
+    } else {
+        ConsoleLook::Hidden
+    }
 }
 
-/// `pid` 的控制台此刻显示在哪个窗口（规则见 [`window_of_console`]）。借不到那个控制台（进程没了 · 没有控制台 · 本进程自己挂着
-/// 控制台 · 系统不给）⇒ `None`。挂着期间不响应 Ctrl+C（那个控制台里有人按 Ctrl+C 时别连累本进程）。
+/// `pid` 的控制台此刻显示在哪个窗口（规则见 [`window_of_console`] · [`refused_by`]）。挂着期间不响应 Ctrl+C
+/// （那个控制台里有人按 Ctrl+C 时别连累本进程）。
 #[cfg(windows)]
-pub fn console_window(pid: u32) -> Option<isize> {
+pub fn console_window(pid: u32) -> ConsoleLook {
     use std::sync::Mutex;
     use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{GetWindow, IsWindowVisible, GW_OWNER};
@@ -45,7 +74,7 @@ pub fn console_window(pid: u32) -> Option<isize> {
     let console = unsafe {
         let saved = std_ids.map(|n| GetStdHandle(n));
         if AttachConsole(pid) == 0 {
-            None
+            Err(GetLastError())
         } else {
             SetConsoleCtrlHandler(None, 1);
             let h = GetConsoleWindow();
@@ -54,21 +83,24 @@ pub fn console_window(pid: u32) -> Option<isize> {
             for (n, old) in std_ids.into_iter().zip(saved) {
                 SetStdHandle(n, old);
             }
-            Some(h)
+            Ok(h)
         }
     };
-    window_of_console(
-        console,
-        // SAFETY：只读窗口属性；句柄失效时两个调用各回 0 / false。
-        |h| unsafe { GetWindow(HWND(h), GW_OWNER) }.0,
-        |h| unsafe { IsWindowVisible(HWND(h)) }.as_bool(),
-    )
+    match console {
+        Err(e) => refused_by(e),
+        Ok(c) => window_of_console(
+            c,
+            // SAFETY：只读窗口属性；句柄失效时两个调用各回 0 / false。
+            |h| unsafe { GetWindow(HWND(h), GW_OWNER) }.0,
+            |h| unsafe { IsWindowVisible(HWND(h)) }.as_bool(),
+        ),
+    }
 }
 
 /// 别处没有「别的进程的控制台」这回事。
 #[cfg(not(windows))]
-pub fn console_window(_pid: u32) -> Option<isize> {
-    None
+pub fn console_window(_pid: u32) -> ConsoleLook {
+    ConsoleLook::None
 }
 
 /// 这台有没有「本机 bash / zsh 接入块留终端记录、monitor 往那个终端写改标题序列认窗口」那一套（`bind.rs::BindRegistry`）：只有 Linux。
@@ -128,4 +160,5 @@ extern "system" {
     ) -> i32;
     fn GetStdHandle(which: u32) -> isize;
     fn SetStdHandle(which: u32, handle: isize) -> i32;
+    fn GetLastError() -> u32;
 }
