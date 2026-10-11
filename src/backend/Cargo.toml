@@ -308,6 +308,8 @@ jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bun
 mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../common/test-home" }
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
 comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
@@ -323,10 +325,6 @@ sha2 = "0.11"
 # `src/frontend/ui/generated/`（`npm run gen:types` 早就跑后端这一半）。**只在 dev 侧**：codegen 工具，不进发布二进制；
 # 版本就是 monitor 那份 lock 里早已解析的 12.0.1（离线可用、本机缓存里有）。
 ts-rs = "12.0.1"
-# 测试档的家从一开始就是沙箱（`guard_support::sandbox_home`）：测试二进制的第一条判据跑之前，`HOME` · `CCM_DATA_DIR` · `XDG_*`
-# 已经指到这个进程自己的临时目录 —— 直接敲 `cargo test`、IDE 里点、quick-check 都一样，判据经 `Ctx::here()` · `path_now()` 碰不到真家
-# （10-11 那一次：直接敲 `cargo test`，判据把真家里的 `rotation.json` 换了形）。**只在 dev 侧**，不进发布二进制；本机缓存里有 0.8.0。
-ctor = "0.8.0"
 
 # ── **打补丁版 russh** ─────────────
 #

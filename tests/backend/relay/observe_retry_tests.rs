@@ -459,7 +459,7 @@ impl Home {
         );
         let all_out = if at_limit == "stop" { "stop" } else { "go" };
         let body: rotation::ConfigBody = serde_json::from_value(serde_json::json!({
-            "name": "默认", "strategy": "1", "accounts": accounts,
+            "name": "a 与 b", "strategy": "1", "accounts": accounts,
             "params": {"back": false, "delay": 0, "standby_wait": 40, "all_out": all_out},
             "acctInit": {"line": line, "slots": [], "mode": "normal", "stint": null}
         }))

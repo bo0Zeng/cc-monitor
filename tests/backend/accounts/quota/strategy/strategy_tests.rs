@@ -8,10 +8,25 @@ use super::*;
 use crate::accounts::quota::decide::Kind;
 use serde_json::{json, Map, Value};
 
-const FIXTURES: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../tests/__fixtures__/rotation-strategies"
-);
+const FIXTURES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/__fixtures__/");
+
+/// 十四组样例（设计稿 `轮换-v3-策略/样例/c1–c13` ＋ c14：10-11 那一幕），文件名逐个写出来。
+const SAMPLES: [&str; 14] = [
+    "rotation-sample-c1.json",
+    "rotation-sample-c2.json",
+    "rotation-sample-c3.json",
+    "rotation-sample-c4.json",
+    "rotation-sample-c5.json",
+    "rotation-sample-c6.json",
+    "rotation-sample-c7.json",
+    "rotation-sample-c8.json",
+    "rotation-sample-c9.json",
+    "rotation-sample-c10.json",
+    "rotation-sample-c11.json",
+    "rotation-sample-c12.json",
+    "rotation-sample-c13.json",
+    "rotation-sample-c14.json",
+];
 
 /// 一份手写的策略：`priority` 的身子照给的，`meta` / `texts` / `describe` 是最小的一套。
 fn tiny(priority_body: &str) -> String {
@@ -41,7 +56,11 @@ fn local(id: &str, src: &str) -> Strategy {
 }
 
 fn sample(name: &str) -> Value {
-    let t = std::fs::read_to_string(format!("{FIXTURES}/samples/{name}.json")).expect("样例");
+    let file = SAMPLES
+        .iter()
+        .find(|f| **f == format!("rotation-sample-{name}.json"))
+        .expect("样例名");
+    let t = std::fs::read_to_string(format!("{FIXTURES}{file}")).expect("样例");
     serde_json::from_str(&t).expect("样例是 JSON")
 }
 
@@ -232,7 +251,8 @@ fn rh_block(s: &Strategy, name: &str, c: &Value) -> String {
 /// ★ S3：十三组样例 × 内置三份，排出的先后、`()`、`@memo` 与设计稿的试跑结果逐字节相同。
 #[test]
 fn the_three_builtins_reproduce_the_trial_run_byte_for_byte() {
-    let want = std::fs::read_to_string(format!("{FIXTURES}/trial-run.txt")).expect("试跑结果");
+    let want =
+        std::fs::read_to_string(format!("{FIXTURES}rotation-trial-run.txt")).expect("试跑结果");
     let mut got = String::from(
         "# 试跑结果：rh <lib.rhai> <策略> 样例/c1–c13（Rhai 1.26.1）。@ 开头的是引擎的字（beRotation.lib.*），引擎写字时换成人话；时刻是 unix 秒。\n",
     );

@@ -5,4 +5,4 @@ import type { ConfigNewer } from "./ConfigNewer";
 /**
  * 会话打开的那一份：哪份 · 名字 · 版本 · 改没改过 · 别处存了新版（本会话改过才有）· 改了哪几格（改过才有）。
  */
-export type OpenShown = { id: string, name: string, rev: bigint, dirty: boolean, newer?: ConfigNewer, diff?: Array<ConfigDiff>, };
+export type OpenShown = { id: string, name: string, rev: number, dirty: boolean, newer?: ConfigNewer, diff?: Array<ConfigDiff>, };

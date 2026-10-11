@@ -37,6 +37,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
     ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `control/deploy_plan.rs`）"),
     ("filewin-contract", Class::Contract, "monitor 与文件窗口进程两边对上的形状：开窗种子 · 就绪那一行 · 「在此打开终端」那一问的名字与参数，不裁决"),
+    ("test-home", Class::TestInfra, "测试档的家一开始就是沙箱：各 crate 只在 dev 侧引它，不判业务"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
     ("host-core", Class::HostPrimitive, "两个前端（monitor 主界面 · 文件窗口进程）共用的宿主那几件：自有状态文件的原子写 · 窗口夹进工作区；不裁决业务，后端不链"),
     ("own-chan", Class::Contract, "通道的形状：只有本人连得上的那一种系统通道（套接字住只给本人的目录 · 收连接核对端 uid · 目录独占锁），后端在听、monitor 去连，两边对上同一份，不裁决"),

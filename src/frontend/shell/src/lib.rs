@@ -1887,3 +1887,8 @@ mod app_manifest_tests;
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_invariant_population_tests.rs"]
 mod invariant_population_tests;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;

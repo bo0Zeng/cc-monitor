@@ -72,7 +72,7 @@ fn the_v2_shape_round_trips_and_carries_its_version() {
 fn v1_sample() -> Value {
     json!({
         "rules": {
-            "r_00000000": {"name": "默认", "rev": 3, "updatedAt": 100, "rotation": {
+            "r_00000000": {"name": copy_core::copy_text("beRotation.migrate.oldSeedName", &[]), "rev": 3, "updatedAt": 100, "rotation": {
                 "order": [{"start": true}, "team", "lab", "api", "gone"],
                 "enabled": ["team", "lab", "api"],
                 "atLimit": "stop",

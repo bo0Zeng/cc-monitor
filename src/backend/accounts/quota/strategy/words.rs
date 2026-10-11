@@ -101,8 +101,10 @@ impl<'a> Speak<'a> {
             Value::Object(m) => ["5h", "7d"]
                 .iter()
                 .map(|w| {
-                    m.get(*w)
-                        .map_or_else(|| "—".to_string(), |x| self.arg("n", x))
+                    m.get(*w).map_or_else(
+                        || copy_text("beRotation.val.empty", &[]),
+                        |x| self.arg("n", x),
+                    )
                 })
                 .collect::<Vec<_>>()
                 .join("/"),

@@ -267,3 +267,7 @@ pub(crate) fn simulate(i: &Input<'_>) -> Vec<Snap> {
     }
     out
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/quota/plan_tests.rs"]
+mod tests;

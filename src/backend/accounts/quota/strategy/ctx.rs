@@ -83,6 +83,7 @@ pub struct Facts {
     pub w5h: Win,
     pub w7d: Win,
     /// 此刻也钉在它上面的别的会话数。
+    #[cfg_attr(test, ts(type = "number"))]
     pub others: u32,
 }
 

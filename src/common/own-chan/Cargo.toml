@@ -12,4 +12,6 @@ tokio = { version = "1", features = ["net", "io-util"] }
 libc = "0.2"
 
 [dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../test-home" }
 tokio = { version = "1", features = ["net", "io-util", "macros", "rt-multi-thread"] }
