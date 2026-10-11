@@ -14,6 +14,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了自己接回去）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read` · `turn_end` 折成一轮一条 · `session-new` · `terminal-input` · `history-tail/read` · `line` 帧）；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元；其余（自己读原文那一族：`model/JsonlParser.kt` · `catalog/` · `transport/`）生产屏已经不调，只剩测试在用 |
 | `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
 | `core-ssh` | SSH（sshj）：连接池、多地址竞速、跳板、SFTP、`~/.ssh/config`、known_hosts、密钥 |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳，手写 JNI、窄口、走消息；Rust 源在 `core-rs/rust/`（后端那一棵 cargo workspace 的成员），Gradle 调 cargo 编 |
 | `core-data` | Room 库 |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-ui` | 共用主题与反馈 |
@@ -23,11 +24,14 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 
 Jetpack Compose ＋ Material3 · Koin · Room（KSP）· termlib（libvterm，JNI）· sshj · Markwon ＋ Prism4j · Tink ＋ Android Keystore。Kotlin 2.3 · AGP 8.13 · Gradle 8.14 · JDK 21 · compileSdk 36 · minSdk 26。
 
-termlib `0.1.2` 已放进仓内 maven 仓 `libs/m2/`，构建不需要 NDK。那份 aar 是上游打了补丁编的，补丁与重编步骤在 [`libs/termlib-patches/`](libs/termlib-patches/README.md)；改 termlib 原生代码要照那里另外构建，再更新 `libs/m2/`。
+termlib `0.1.2` 已放进仓内 maven 仓 `libs/m2/`（预编好的，编它不用 NDK）。那份 aar 是上游打了补丁编的，补丁与重编步骤在 [`libs/termlib-patches/`](libs/termlib-patches/README.md)；改 termlib 原生代码要照那里另外构建，再更新 `libs/m2/`。
 
 ## 构建
 
-要 JDK 21 与 Android SDK（`platforms;android-36`、`build-tools;36.0.0`）；不要 NDK。`scripts/env.sh` 在当前 shell 里激活一套隔离的工具链（默认 `$HOME/android-dev`，Gradle 缓存也放那里；Windows 用 `scripts/env.ps1`，装一套用 `scripts/bootstrap-android-env.ps1`，见 [`scripts/README.md`](scripts/README.md)）。
+要 JDK 21、Android SDK（`platforms;android-36`、`build-tools;36.0.0`）与 NDK（版本住 `gradle.properties` 的 `ccm.ndkVersion`，今天 `27.3.13750724`），
+再加 Rust 与两个 android target（`rustup target add aarch64-linux-android x86_64-linux-android`）：`:core-rs` 由 Gradle 调 cargo 编那份 .so，NDK 只给它 clang 与链接器。
+每个构建类型只出一个 ABI（`gradle.properties` 的 `ccm.abi.*`）：release（发出去的包，真机也用它）只有 arm64-v8a，debug（模拟器 · androidTest · 冒烟）只有 x86_64；32 位机不装。
+打完包 `:app:verify<变体>Abis` 读 APK 核「恰好那一个 ABI、Rust 核心在里面」。`scripts/env.sh` 在当前 shell 里激活一套隔离的工具链（默认 `$HOME/android-dev`，Gradle 缓存也放那里；Windows 用 `scripts/env.ps1`，装一套用 `scripts/bootstrap-android-env.ps1`，见 [`scripts/README.md`](scripts/README.md)）。
 
 ```sh
 cd src/mobile
@@ -47,7 +51,7 @@ bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（�
 
 `:core-claude`、`:core-remote` 是纯 JVM 模块，`testDebugUnitTest` 不覆盖，要显式带上。
 
-- **门禁**：仓根 `tests/scripts/gate.sh` 的 `mobile` 格跑的就是上面这几条 ＋ `:app:assembleRelease`（CI 的 `mobile` job 调同一格，Linux 上跑，不起模拟器）。
+- **门禁**：仓根 `tests/scripts/gate.sh` 的 `mobile` 格跑的就是上面这几条 ＋ `:app:assembleRelease` ＋ `:app:assembleDebug`（两趟各编 Rust 核心那一个 ABI、各核一次包里的 ABI；CI 的 `mobile` job 调同一格，Linux 上跑，不起模拟器）。
 - **要设备的 instrumentation 测（androidTest）不进门禁、也不进 CI**：接好模拟器或真机后跑 `bash scripts/android-test.sh`。其中 `SshConnectionTest` 要一台真 SSH 服务端，入口脚本不跑它，手测时用 `-Pandroid.testInstrumentationRunnerArguments.sshHost=<地址>` 给地址。
 - **Android Lint**（`:app:lintDebug`）在上面那条里：error 一条就红，warning 不拦。
 

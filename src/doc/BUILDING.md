@@ -2,7 +2,7 @@
 
 怎样把 cc-monitor 编成可分发的包：Windows 的 NSIS 安装器 · MSI · 裸 `cc-monitor.exe`，Linux 的 `.deb` · 裸 `cc-monitor`。发版产物由 `.github/workflows/release.yml` 在 CI 上编，本篇讲它由哪几件组成、本机怎么编出同样的东西。
 
-开发环境与 dev 模式 → [DEVELOPMENT.md](DEVELOPMENT.md)。发版流程 → [RELEASING.md](RELEASING.md)。手机端（Android APK）的构建在 [`src/mobile/README.md`](../mobile/README.md)，发版时由 `release.yml` 的 `build-mobile` 打签名包（RELEASING §2.3）。
+开发环境与 dev 模式 → [DEVELOPMENT.md](DEVELOPMENT.md)。发版流程 → [RELEASING.md](RELEASING.md)。手机端（Android APK）的构建在 [`src/mobile/README.md`](../mobile/README.md)（要 NDK 与 Rust 的两个 android target：手机嵌的 Rust 核心由 Gradle 调 cargo 编），发版时由 `release.yml` 的 `build-mobile` 打签名包（RELEASING §2.3）。
 
 ---
 

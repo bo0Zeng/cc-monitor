@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.util.zip.ZipFile
 
 plugins {
     alias(libs.plugins.android.application)
@@ -60,7 +61,11 @@ android {
     }
 
     buildTypes {
+        // 每个构建类型只装一个 ABI（`gradle.properties` 的 `ccm.abi.<构建类型>`，`:core-rs` 只为它编那一个）：
+        // 32 位机一律不装（装上了一加载 .so 就崩）。包里真只有那一个 ABI 由 `verify<变体>Abis` 核（见文件末）。
+        getByName("debug") { ndk { abiFilters += providers.gradleProperty("ccm.abi.debug").get() } }
         release {
+            ndk { abiFilters += providers.gradleProperty("ccm.abi.release").get() }
             // R8 full mode：开 minify，CI 借此验 BC / sshj / Tink 的反射在收缩与混淆下不破。
             // BC / sshj 的 keep 来自 core-ssh 的 consumer-rules.pro；Tink 的 keep 在 app 的 proguard-rules.pro。
             isMinifyEnabled = true
@@ -97,6 +102,7 @@ dependencies {
     implementation(project(":core-claude"))
     implementation(project(":core-remote"))
     implementation(project(":core-copy"))
+    implementation(project(":core-rs"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -141,4 +147,38 @@ dependencies {
     androidTestImplementation(libs.androidx.test.rules) // GrantPermissionRule
     // ui-test-manifest 提供测试宿主 Activity 的 manifest 条目，必须落 debug 变体（不是 androidTest）。
     debugImplementation(libs.androidx.ui.test.manifest)
+}
+
+// ── 判据：包里恰好一个 ABI，而且就是这个构建类型登记的那一个（release = arm64-v8a · debug = x86_64），Rust 核心在里面 ──
+// 读打出来的 APK 本身（不读配置）：`lib/<ABI>/` 那一层的目录集合 == {登记的那一个}，且其中有 `libmobcore.so`。
+// 挂在 `assemble<变体>` 上：门禁 `mobile` 那一格的 assembleRelease · assembleDebug 两趟各核一次。
+abstract class VerifyApkAbis : DefaultTask() {
+    @get:InputDirectory
+    abstract val apkDir: DirectoryProperty
+
+    @get:Input
+    abstract val expected: Property<String>
+
+    @TaskAction
+    fun verify() {
+        val apks = apkDir.get().asFile.walkTopDown().filter { it.isFile && it.name.endsWith(".apk") }.toList()
+        if (apks.size != 1) throw GradleException("要恰好一份 APK，实得 ${apks.map { it.name }}")
+        val entries = ZipFile(apks.single()).use { z -> z.entries().asSequence().map { e -> e.name }.toList() }
+        val abis = entries.filter { it.startsWith("lib/") }.map { it.split('/')[1] }.toSortedSet()
+        val want = expected.get()
+        if (abis != sortedSetOf(want)) throw GradleException("${apks.single().name} 里的 ABI 是 $abis，登记的是 [$want]")
+        if ("lib/$want/libmobcore.so" !in entries) throw GradleException("${apks.single().name} 里没有 lib/$want/libmobcore.so")
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val cap = variant.name.replaceFirstChar(Char::uppercase)
+        val verify =
+            tasks.register<VerifyApkAbis>("verify${cap}Abis") {
+                apkDir.set(variant.artifacts.get(com.android.build.api.artifact.SingleArtifact.APK))
+                expected.set(providers.gradleProperty("ccm.abi.${variant.buildType}"))
+            }
+        tasks.configureEach { if (name == "assemble$cap") finalizedBy(verify) }
+    }
 }

@@ -1311,7 +1311,9 @@ gate_lane 手机端
 #   `src/mobile/scripts/env.sh`（探 `$HOME/android-dev`，Gradle 缓存也隔离在那里），找不到按红记。
 # 跑：ktlint · detekt（带类型解析）· Android Lint（`:app:lintDebug`，error 一条就红；warning 不拦）·
 #   各模块 JVM 单测（`:core-claude` · `:core-remote` · `:core-copy` 是纯 JVM 模块，要显式点）·
-#   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）。
+#   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）· debug 构建（模拟器那一份）。
+#   两趟各编手机嵌的 Rust 核心那一个 ABI（release = arm64-v8a · debug = x86_64），打完核包里恰好那一个 ABI（`:app:verify<变体>Abis`）。
+#   要 cargo ＋ 两个 android target ＋ NDK（版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`）。
 # 判：Gradle 退出码是 0 ＋ 这一趟 test-results 里的条数 > 0（先清掉旧的 test-results；build cache 命中时 Gradle 照样还原它）。
 # 不起模拟器：要设备的 androidTest 不在这里，入口是 `src/mobile/scripts/android-test.sh`。
 # 不进无网沙箱：Gradle 头一趟要下依赖；单测里只起 `/bin/sh`、全落临时目录，不连任何口、不碰 tmux。
@@ -1325,7 +1327,7 @@ gate_mobile() {
     fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease || exit $?
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease :app:assembleDebug || exit $?
   ) || return $?
   n="$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
   printf 'mobile: %s passed（Gradle 各模块 JVM 单测合计，读这一趟的 test-results；ktlint · detekt · Android Lint · release 构建也都绿）\n' "${n:-0}"

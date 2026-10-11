@@ -13,7 +13,6 @@ crate: block2 0.5.1
 crate: block2 0.6.2
 crate: bs58 0.5.1
 crate: bumpalo 3.20.2
-crate: cesu8 1.1.0
 crate: cgl 0.3.2
 crate: codespan-reporting 0.13.1
 crate: combine 4.6.7
@@ -54,12 +53,8 @@ crate: iana-time-zone-haiku 0.1.2
 crate: id-arena 2.3.0
 crate: ipnet 2.12.0
 crate: jiff-static 0.2.37
-crate: jni 0.21.1
 crate: jni 0.22.4
 crate: jni-macros 0.22.4
-crate: jni-sys 0.3.1
-crate: jni-sys 0.4.1
-crate: jni-sys-macros 0.4.1
 crate: jobserver 0.1.35
 crate: js-sys 0.3.105
 crate: kqueue 1.1.1

@@ -1,0 +1,20 @@
+[package]
+name = "mobcore"
+version = "0.0.0"
+edition = "2021"
+workspace = "../../../backend"
+publish = false
+description = "手机嵌的 Rust 核心：只有 FFI 外壳（手写 JNI · 一份 tokio 运行时 · 边界上接住 panic）；拨号是后端那一份拨号核心（ssh-dial）。"
+
+# 住后端那一棵 workspace（`../../../backend/Cargo.toml` 的 `[workspace] members`）：同一份 lock、同一个打补丁版 russh。
+# 编法与两个构建类型各自那一个 ABI 由 `../build.gradle.kts` 定（Gradle 调 cargo）；两份 profile（`mobile` · `mobile-dev`）住 workspace 根清单。
+[lib]
+path = "lib.rs"
+# cdylib：装进 APK 的那一份 `libmobcore.so`；rlib：本机跑本 crate 自己的单测（不起 JVM）。
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ssh-dial = { path = "../../../backend/ssh-dial" }
+serde_json = "1"
+# 手写 JNI 的那一层（`JNIEnv` · 字符串 · 异常）。版本同方案试编那一份（0.21.1，本机缓存里有），缺省 feature 关掉（不要 invocation，不起 JVM）。
+jni = { version = "0.21", default-features = false }

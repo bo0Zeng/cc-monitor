@@ -827,9 +827,14 @@ jobs:
           java-version: '21'
 
       # 只装 platform-tools（理由住 ci.yml 的 mobile 格）；平台与 build-tools 由 AGP 按需自己装。
+      # 手机嵌的 Rust 核心由 Gradle 调 cargo 编（release 只出 arm64-v8a）：NDK 版本与 `src/mobile/gradle.properties` 的 `ccm.ndkVersion` 同一行。
       - uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
+          packages: platform-tools ndk;27.3.13750724
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
 
       - uses: gradle/actions/setup-gradle@v4
         with:

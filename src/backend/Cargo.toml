@@ -341,9 +341,26 @@ ts-rs = "12.0.1"
 [patch.crates-io]
 russh = { path = "../vendor/russh" }
 
-# ── 后端这一棵 workspace：本包 ＋ 拨号核心（`ssh-dial/`，手机 `src/mobile/core-rs` 也链它）──
-# 同一份 lock、同一个打补丁版 russh（上面 `[patch.crates-io]` 只在 workspace 根上生效）；拨号核心的判据由 `cargo test --workspace` 跑。
+# ── 后端这一棵 workspace：本包 ＋ 拨号核心（`ssh-dial/`）＋ 手机嵌的 Rust 核心（`../mobile/core-rs/rust`，crate `mobcore`，只是拨号核心的 FFI 外壳）──
+# 同一份 lock、同一个打补丁版 russh（上面 `[patch.crates-io]` 只在 workspace 根上生效）；两份的判据由 `cargo test --workspace` 跑。
 # 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
 [workspace]
-members = [".", "ssh-dial"]
+members = [".", "ssh-dial", "../mobile/core-rs/rust"]
 default-members = ["."]
+
+# ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──
+# release 那一份：体积优先（opt-level z · 胖 LTO · 一个编译单元 · 去符号）；`panic = "unwind"` 是承重的 ——
+#   嵌在 App 进程里，panic 要在 JNI 边界上接住（`catch_unwind`），abort 会带走整个 App。
+[profile.mobile]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"
+
+# debug 那一份（模拟器 · androidTest · 冒烟）：增量快；去掉调试信息，包不至于几十 MB。
+[profile.mobile-dev]
+inherits = "dev"
+debug = false
+strip = "debuginfo"
