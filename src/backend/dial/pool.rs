@@ -413,6 +413,15 @@ impl<C: Conn> Pool<C> {
 /// ⇒ 等回话那一段挂一个 [`Watch`]：没等到就被丢了（链路被关 ⇒ 任务被 abort ⇒ `Drop` 跑）⇒ 从族里摘掉这条连接
 /// （摘掉 ≠ 关掉：还攥着它的用户照用到走；新的放置不再落到它上面）。等到了 ⇒ [`Watch::done`] 解除。
 /// 事件驱动，零定时器。代价：用户点取消关掉链路也会摘一次 —— 多一次握手，不坏事。
+/// 怎么判出死的（[`Watch::dead`]）。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum DeadBy {
+    /// 赛跑里新起的一条比它先站住。
+    Outrun,
+    /// 等回话时它断了（保活连着没回话，russh 断开；或对端断了）。
+    Broke,
+}
+
 pub(crate) struct Watch<'a, C: Conn> {
     pool: &'a Pool<C>,
     key: &'a str,
@@ -438,12 +447,17 @@ impl<'a, C: Conn> Watch<'a, C> {
         self.armed = false;
     }
 
-    /// 判死了（`why`：新起的一条比它先站住 · 等回话时它断了）：当场摘。
-    pub(crate) fn dead(mut self, why: &str) {
+    /// 判死了（[`DeadBy`]）：当场摘。
+    pub(crate) fn dead(mut self, by: DeadBy) {
         self.armed = false;
-        tracing::warn!(
-            "dial: {why} —— 判它是黑洞，从族里摘掉（连同那之后也没动静的成员）"
-        );
+        match by {
+            DeadBy::Outrun => tracing::warn!(
+                "dial: 新起的一条比这条先站住 —— 判它是黑洞，从族里摘掉（连同那之后也没动静的成员）"
+            ),
+            DeadBy::Broke => tracing::warn!(
+                "dial: 等回话时这条连接断了（保活连着没回话）—— 判它是黑洞，从族里摘掉（连同那之后也没动静的成员）"
+            ),
+        }
         self.pool.evict_silent(self.key, self.conn, self.since);
     }
 }

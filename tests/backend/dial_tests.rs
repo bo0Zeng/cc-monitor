@@ -911,9 +911,10 @@ async fn linked_over_road(
             let _ = running.await;
         }
     });
-    let mut h = russh::client::connect_stream(connect::config_with(false, false, every), client, AnyKey)
-        .await
-        .expect("进程内服务端握手没过");
+    let mut h =
+        russh::client::connect_stream(connect::config_with(false, false, every), client, AnyKey)
+            .await
+            .expect("进程内服务端握手没过");
     let ok = h.authenticate_none("u").await.expect("none 鉴权没回话");
     assert!(ok.success(), "进程内服务端没放行");
     (h, frozen)
@@ -941,7 +942,10 @@ async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
         "黑洞上的开通道 {took:?} 才失败，判死门槛应是 {rounds} 轮保活（{:?}）",
         every * rounds
     );
-    assert!(h.is_closed(), "开通道失败了，连接却没被判死（池会接着往它上面放）");
+    assert!(
+        h.is_closed(),
+        "开通道失败了，连接却没被判死（池会接着往它上面放）"
+    );
 }
 
 /// ★ net4：健康的空闲连接不许被判死 —— 空闲十几轮保活之后照样开得出通道（每轮保活都有回话）。
@@ -952,7 +956,11 @@ async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
     tokio::time::sleep(every * 15).await;
     assert!(!h.is_closed(), "空闲 15 轮保活之后，健康的连接被判死了");
     let ch = tokio::time::timeout(every * 30, h.channel_open_session()).await;
-    assert!(matches!(ch, Ok(Ok(_))), "空闲之后开不出通道：{:?}", ch.map(|r| r.map(|_| ())));
+    assert!(
+        matches!(ch, Ok(Ok(_))),
+        "空闲之后开不出通道：{:?}",
+        ch.map(|r| r.map(|_| ()))
+    );
 }
 
 /// ★ net4：生产的几个数之间的关系。
@@ -978,11 +986,17 @@ fn keepalive_judges_a_dead_road_within_twenty_seconds_and_spares_a_live_one() {
 #[test]
 fn a_failed_open_on_a_closed_connection_counts_as_dead() {
     let disc: Result<(), russh::Error> = Err(russh::Error::Disconnect);
-    assert!(uses::died_waiting(&disc, true), "保活判死后开通道失败，没被当成死了");
+    assert!(
+        uses::died_waiting(&disc, true),
+        "保活判死后开通道失败，没被当成死了"
+    );
     assert!(!uses::died_waiting(&disc, false));
     let full: Result<(), russh::Error> = Err(russh::Error::ChannelOpenFailure(
         russh::ChannelOpenFailure::AdministrativelyProhibited,
     ));
-    assert!(!uses::died_waiting(&full, false), "远端说满了被当成了死连接");
+    assert!(
+        !uses::died_waiting(&full, false),
+        "远端说满了被当成了死连接"
+    );
     assert!(!uses::died_waiting(&Ok(()), true));
 }

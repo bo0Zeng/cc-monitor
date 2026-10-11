@@ -320,10 +320,10 @@ impl Lease {
                     (Answered::Old(r), Some(w))
                         if died_waiting(r, self.linked.session.is_closed()) =>
                     {
-                        w.dead("等回话时这条连接断了（保活连着没回话）");
+                        w.dead(pool::DeadBy::Broke);
                     }
                     (Answered::Old(_), Some(w)) => w.done(),
-                    (Answered::Replaced(..), Some(w)) => w.dead("新起的一条比这条先站住"),
+                    (Answered::Replaced(..), Some(w)) => w.dead(pool::DeadBy::Outrun),
                     (_, None) => {}
                 }
                 answered

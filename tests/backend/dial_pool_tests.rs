@@ -534,7 +534,7 @@ async fn a_member_judged_dead_takes_the_members_silent_since_with_it() {
         m[2].heard.store(u64::MAX, Ordering::SeqCst);
         let w = Watch::new(&pool, "k", &m[0]);
         if judged == "dead" {
-            w.dead("判据");
+            w.dead(DeadBy::Outrun);
         } else {
             drop(w);
         }
