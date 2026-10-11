@@ -952,7 +952,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// p10e-tmux-utf8-mobile-core：子命令集不变。渲给客户端的 tmux 行一律带 -u（tmux -u attach / switch-client），接进 tmux 会话收成 common/tmux_utf8.rs 一处。
 /// Codex 一轮完了翻成空闲（记录面多「此刻在干什么」，变了才发 session_status）；前台派出的子 agent 读子记录旁的 agent-<id>.meta.json 对上卡（ChildFace::spawned）。
 /// 手机：列会话 · 附着 · 结束 · 抓屏 · 送字走那台核心（附着那一行照 launch-render-cli 渲的原样敲）；termlib 0.1.2。文件窗口加图片查看页。
-pub const BUILD_ID: &str = "p10e-tmux-utf8-mobile-core";
+///
+/// p10f-wall-ceiling-ro-menus：线上帧与子命令集不变。后端读盘一律经 platform::fs::Ro（只读命名空间，碰盘只这一处点名文件系统）。
+/// 判据按墙钟判的上限只剩一个兜底数（guard_core::wall::CEILING 300 秒）；门禁加 android-device 一格。文件窗口菜单统一一种写法（select.rs 的 MENU_TABLE），空白处可右键。
+pub const BUILD_ID: &str = "p10f-wall-ceiling-ro-menus";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
