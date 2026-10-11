@@ -37,7 +37,7 @@ use serde_json::{json, Value};
 pub(crate) type EndpointAnswer = Result<Value, (&'static str, String)>;
 
 /// 账号 0（不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。只是标签（`/t/` 从不查它的 key）。
-pub(crate) const BASE_ACCOUNT_SEGMENT: &str = acct_core::BARE_ACCOUNT;
+pub(crate) const BASE_ACCOUNT_SEGMENT: &str = "0";
 
 /// 起会话时**没表态**是哪个号（没建账号库的机器上本机起会话就是这一形）在 `/t/` 里的账号段。
 ///

@@ -12,11 +12,15 @@ use std::collections::BTreeMap;
 /// 起会话时没说是哪个号 ⇒ 记成这个（`~/.claude`）。
 pub(crate) const HOME_ACCOUNT: &str = "_";
 
+/// 账号 0（这台本来那一份登录、不设配置目录）在路由第 2 段里的名字。账号域的服务块不引用账号库管理 / 上游选择，
+/// 这里照线上那一格记一份（与 `accounts/manage/model.rs::ACCOUNT_ZERO` · `upstream_select/endpoint.rs::BASE_ACCOUNT_SEGMENT` 同值）。
+const BARE_ACCOUNT: &str = "0";
+
 /// 一个号在人眼里叫什么：`_` ⇒「默认号」那个字；其余照原名。
 pub(crate) fn account_text(name: &str) -> String {
     if name == HOME_ACCOUNT {
         copy_text("acct.home.name", &[])
-    } else if name == acct_core::BARE_ACCOUNT {
+    } else if name == BARE_ACCOUNT {
         // 账号 0：这台本来那一份登录（不设配置目录的状态），路由第 2 段是 `0`；写给人看的叫「账号 0」。
         copy_text("acct.zero.name", &[])
     } else {
@@ -43,7 +47,7 @@ pub(crate) struct Names {
 /// 唯一一处造 [`Names`]。
 pub(crate) fn names() -> Names {
     Names {
-        accounts: [HOME_ACCOUNT, acct_core::BARE_ACCOUNT]
+        accounts: [HOME_ACCOUNT, BARE_ACCOUNT]
             .iter()
             .map(|a| (a.to_string(), Words(account_text(a))))
             .collect(),
