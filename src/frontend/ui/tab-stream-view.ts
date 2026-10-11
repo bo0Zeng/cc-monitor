@@ -31,7 +31,6 @@ import { revealCard } from "./views/session-viewer";
 import {
   renderContentRecord,
   routeMeta,
-  type MetaSink,
   type StreamSink,
 } from "./render-stream-record";
 import { releaseEnhanceRoot } from "./render";
@@ -45,7 +44,6 @@ import type { TabStore } from "./tab-store";
 import { copyText } from "./copy-table";
 
 /** 只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
-const NOOP_META: MetaSink = {};
 
 /** 流视图要宿主做的六件事（全是回调；状态本身在 `TabStore`）。 */
 export interface TabStreamHost {
@@ -55,7 +53,6 @@ export interface TabStreamHost {
   refreshTabBar(): void;
   /** 帧末合批刷 tab 栏（live 路上后台 tab 来一行 ⇒ 未读 ＋1）。 */
   scheduleTabBarRefresh(): void;
-  applyAiTitle(tab: Tab, aiTitle: string): void;
   /** 真用户输入上屏 ⇒ 自动跟随（路由那一半）。 */
   userActive(sessionId: string): void;
   /** 分叉产出新会话文件之后 —— 起它。 */
@@ -563,7 +560,6 @@ export class TabStreamView {
   ingest(tab: Tab, payload: JsonlLinePayload): void {
     const sink: StreamSink = {
       timeline: tab.timeline,
-      onTitleUpdate: (title: string) => this.host.applyAiTitle(tab, title),
       onRealUserInput: (sid: string) => {
         this.host.userActive(sid);
         this.refreshOutline(tab); // 真用户输入上屏 ⇒ 大纲要新的一截
@@ -579,8 +575,8 @@ export class TabStreamView {
       },
     };
 
-    // 收纳（不建卡）的记录也要喂标题（routeMeta 是两条路共用的一份）。
-    if (routeMeta(payload, sink) === "consumed") return;
+    // 标题记录不建卡（routeMeta 是两条路共用的一份）。
+    if (routeMeta(payload) === "consumed") return;
 
     // 门控（单洞后缀不变量，纯按 seq）：
     // - virgin ＋ 批：active tab 首条 content 钉 floor（尾块直渲）；后台 tab 一律收纳（批后空闲物化）；
@@ -979,7 +975,7 @@ export class TabStreamView {
           // 见过的 ⇒ 旁路账早记过了、去重会把它拒掉 ⇒ 只建卡（meta 那几类照旧不建）。
           const fresh = payloads.filter((p) => !tab.seenSeqs.has(p.seq));
           const again = payloads.filter(
-            (p) => tab.seenSeqs.has(p.seq) && routeMeta(p, NOOP_META) === "content",
+            (p) => tab.seenSeqs.has(p.seq) && routeMeta(p) === "content",
           );
           this.feedHistoryRows(tab, fresh);
           tab.seenSeqs.addRange(a, b); // 这一段整段到过（不可显示的也算）
@@ -1044,7 +1040,7 @@ export class TabStreamView {
         if (this.store.tabs.get(tab.sessionId) !== tab) return; // 期间关掉了
         const fresh = page.payloads.filter((p) => !tab.seenSeqs.has(p.seq));
         for (const p of page.payloads) {
-          if (tab.seenSeqs.has(p.seq) && routeMeta(p, NOOP_META) === "content") {
+          if (tab.seenSeqs.has(p.seq) && routeMeta(p) === "content") {
             tab.window.restore(p);
           }
         }

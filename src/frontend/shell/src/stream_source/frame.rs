@@ -113,6 +113,8 @@ pub enum InboundFrame {
         lines: Option<u64>,
         /// 宣告时此刻在干什么（那一态 · 字 · 语气 · 序）＋ 在等什么（连接建立灯就对）。
         activity: crate::session_book::ActivityCells,
+        /// 叫它什么（核心写的名字 ＋ 项目那一格）。
+        naming: crate::session_book::NameCells,
         waiting_for: Option<String>,
         /// 〔additive〕这条活会话住在什么容器里（`{host, terminal?}`）。缺席 ⇒ `None` = 不知道（**不是**「不在任何宿主里」）；
         /// 不认识的宿主 ⇒ `Other`（不吞）。
@@ -135,6 +137,8 @@ pub enum InboundFrame {
     SessionStatus {
         sid: String,
         activity: crate::session_book::ActivityCells,
+        /// 叫它什么（核心写的名字 ＋ 项目那一格）。
+        naming: crate::session_book::NameCells,
         waiting_for: Option<String>,
     },
     /// 远端一个 session 文件消失。monitor 只拿它当内容流的边界（残批先冲、快照作废）；
@@ -325,6 +329,21 @@ fn activity_cells(o: &Obj, kind: &str) -> Result<crate::session_book::ActivityCe
     })
 }
 
+/// `session_added` · `session_status` 上叫这条会话什么那两格（那台核心的 `NameFace`，平铺在帧上）的唯一解码口：名字必有，项目那一格可缺。
+fn name_cells(o: &Obj, kind: &str) -> Result<crate::session_book::NameCells, Unread> {
+    Ok(crate::session_book::NameCells {
+        label: req_str(o, kind, "label")?,
+        label_project: match o.get("label_project") {
+            None => None,
+            Some(v) => Some(
+                v.as_str()
+                    .ok_or_else(|| bad(kind, "`label_project` is not a string".to_string()))?
+                    .to_string(),
+            ),
+        },
+    })
+}
+
 fn req_array_text(
     o: &Obj,
     kind: &str,
@@ -476,6 +495,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 path: opt("path"),
                 lines: obj.get("lines").and_then(|v| v.as_u64()),
                 activity: activity_cells(obj, k)?,
+                naming: name_cells(obj, k)?,
                 waiting_for: opt("waiting_for"),
                 // 开放联合：认得的宿主 · 不在宿主里 · 其它（原词带着）；形状不对 ⇒ 整帧 `BadShape`。
                 container: match obj.get("container") {
@@ -508,6 +528,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             InboundFrame::SessionStatus {
                 sid: req_str(obj, k, "sid")?,
                 activity: activity_cells(obj, k)?,
+                naming: name_cells(obj, k)?,
                 waiting_for: opt("waiting_for"),
             }
         }

@@ -31,10 +31,7 @@ export interface Tab {
   background: boolean;
   /** bg 任务名（pidfile 的 name 字段）；bg 标题优先用它。 */
   bgName: string | null;
-  /**
-   * Tab 标题。优先级：[项目] aiTitle > 项目名 > session_id 前 8 位。
-   * aiTitle 一旦出现就锁住。
-   */
+  /** Tab 标题（[`computeTitleFor`] 排出来的：核心给的名字 ＋ 项目那一格 ＋ 机器 / ⚙ / ↳ 那几样记号）。 */
   title: string;
   /**
    * 会话的项目目录（会话起在哪个目录）：只来自后端（会话宣告那一帧的 `project_dir` · 会话事实的 `projectDir`，或固定 tab 存下来的那一份）。
@@ -47,8 +44,13 @@ export interface Tab {
    * `null` ＝ 事实还没到 / 认不出 ⇒ 要分家的那几项灰着，不落哪一家。
    */
   agent: string | null;
-  /** Claude 给出的语义标题（JSONL 里 `ai-title` 记录的 aiTitle 字段），出现一次就锁定 */
-  aiTitle: string | null;
+  /**
+   * 叫这条会话什么（那台核心写的 `label`，经会话流的 `activity` 格来，改名 · 来了标题 / 第一句随 `session_status` 更新；与历史清单 · 通知同一个函数）。
+   * `null` ＝ 核心还没报过（没宣告过的会话，如从历史里打开的已结束会话）。
+   */
+  label: string | null;
+  /** 名字旁边的项目那一格（核心给的；名字是起出来的才有）。 */
+  labelProject: string | null;
   /**
    * 本会话是从哪个会话 fork 来的（判定住后端 `history_query::fork_origin`，与历史树同一份；出现一次就锁定）。null = 非 fork。
    * 给 tab 标题加 `↳` 血缘徽标 ＋ 悬停 —— 不然 fork 出来的会话与原会话是同名的两个 tab、分不清。
@@ -202,41 +204,24 @@ export function projectNameFromCwd(dir: string): string | null {
 }
 
 /**
- * 标题格式：
- *   aiTitle 有 + 项目目录有 → `[项目] aiTitle`
- *   aiTitle 有 + 项目目录无 → `aiTitle`
- *   aiTitle 无 + 项目目录有 → `项目`
- *   都没有 → `<sid 前 8 位>`
- * 项目 = 项目目录（`Tab.projectDir`，后端给的那一格）的最后一段。
- *
- * 远端 Tab 再加 `[那台远端] ` 前缀（如 `[raspberrypi.local] [proj] aiTitle`）；本机不加。
+ * 标题怎么排（只排版，名字与项目那一格都是核心给的）：
+ *   有项目那一格 → `[项目] 名字`；没有 → `名字`；核心还没报过名字 → `<sid 前 8 位>`
+ *   后台会话 → `⚙ 任务名`（任务名缺 ⇒ 名字）
+ * 远端 Tab 再加 `[那台远端] ` 前缀（如 `[raspberrypi.local] [proj] 名字`）；本机不加。fork 来的再加 `↳ `。
  * 第四个参数是**前缀里写的那台远端名**（本机 ⇒ `null`，没有前缀），不是 origin：
  * 「是不是本机」由调用方经 `ipc/origin.ts` 判完再传进来 —— 本文件只有类型，零运行期依赖（`tabs-split-graph` 钉着）。
-  */
+ */
 export function computeTitleFor(
   sessionId: string,
-  projectDir: string | null,
-  aiTitle: string | null,
+  label: string | null,
+  labelProject: string | null,
   remoteLabel: string | null = null,
   background = false,
   bgName: string | null = null,
   forkedFromSessionId: string | null = null,
 ): string {
-  // fork 会话在最终标题前加 `↳ ` 血缘徽标 —— 与同名的原会话区分开。
   const mark = (s: string): string => (forkedFromSessionId ? `↳ ${s}` : s);
-  const project = projectDir ? projectNameFromCwd(projectDir) : null;
-  // bg 任务 → ⚙ ＋ 任务名
-  if (background) {
-    const base = `⚙ ${bgName ?? aiTitle ?? project ?? sessionId.slice(0, 8)}`;
-    return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
-  }
-  let base: string;
-  if (aiTitle) {
-    base = project ? `[${project}] ${aiTitle}` : aiTitle;
-  } else if (project) {
-    base = project;
-  } else {
-    base = sessionId.slice(0, 8);
-  }
+  const name = label ?? sessionId.slice(0, 8);
+  const base = background ? `⚙ ${bgName ?? name}` : labelProject ? `[${labelProject}] ${name}` : name;
   return mark(remoteLabel !== null ? `[${remoteLabel}] ${base}` : base);
 }

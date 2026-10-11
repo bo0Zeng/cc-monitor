@@ -114,6 +114,7 @@ pub(crate) fn local_product(
             project_dir,
             name,
             activity,
+            naming,
             waiting_for,
             container,
             pid,
@@ -128,6 +129,7 @@ pub(crate) fn local_product(
                 project_dir: project_dir.clone(),
                 name: name.clone(),
                 activity: activity.clone(),
+                naming: naming.clone(),
                 waiting_for: waiting_for.clone(),
                 container: container.clone(),
                 pid: *pid,
@@ -136,11 +138,13 @@ pub(crate) fn local_product(
         LocalItem::Frame(InboundFrame::SessionStatus {
             sid,
             activity,
+            naming,
             waiting_for,
         }) => (!hidden.contains(sid)).then(|| BookIn::Status {
             origin: origin(),
             sid: sid.clone(),
             activity: activity.clone(),
+            naming: naming.clone(),
             waiting_for: waiting_for.clone(),
         }),
         LocalItem::Frame(InboundFrame::SessionState { sid, state, words }) => {

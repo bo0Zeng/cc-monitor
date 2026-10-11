@@ -162,9 +162,8 @@ export class TabManager {
       onLine: (payload) => this.onLine(payload),
       refreshTabBar: () => this.refreshTabBar(),
       scheduleTabBarRefresh: () => this.bar.scheduleRefresh(),
-      applyAiTitle: (tab, aiTitle) => this.applyAiTitle(tab, aiTitle),
       userActive: (sid) => this.userActive(sid),
-      forkFrom: (tab, uuid) => void openNewSession({ origin: tab.origin, fork: { sid: tab.sessionId, uuid, title: tab.aiTitle ?? tab.title } }),
+      forkFrom: (tab, uuid) => void openNewSession({ origin: tab.origin, fork: { sid: tab.sessionId, uuid, title: tab.label ?? tab.title } }),
       runLabelOf: (sid, run) => {
         const r = this.live.board.of(sid).find((x) => x.run === run);
         return r ? runLabel(r) : undefined;
@@ -450,11 +449,15 @@ export class TabManager {
     }
   }
 
-  /** 那台一个会话一轮结束（会话流的 `turn_end` 格，在不在看都来）⇒ 系统通知，标题 · 正文照抄格上后端写好的（没有 tab 的会话不报）。 */
+  /**
+   * 那台一个会话一轮结束（会话流的 `turn_end` 格，在不在看都来）⇒ 系统通知，标题 · 正文照抄格上后端写好的（没有 tab 的会话不报）。
+   * 远端的照标签栏的规矩在前面加 `[那台]`（后端不知道看的人管那台叫什么）；本机不加。
+   */
   onTurnEnd(origin: Origin, turn: SessionTurnEndPayload): void {
     const tab = this.store.tabs.get(turn.session_id);
     if (!tab || tab.origin !== origin) return;
-    turnEndNotifier.observe(turn.session_id, turn.title, turn.body);
+    const title = isRemoteOrigin(origin) ? `[${origin}] ${turn.title}` : turn.title;
+    turnEndNotifier.observe(turn.session_id, title, turn.body);
   }
 
   /**
@@ -695,10 +698,11 @@ export class TabManager {
       return tab;
     }
 
+    const pendingName = this.store.pendingName.get(sessionId) ?? null;
     const title = computeTitleFor(
       sessionId,
-      projectDir,
-      null,
+      pendingName?.label ?? null,
+      pendingName?.labelProject ?? null,
       isRemoteOrigin(origin) ? origin : null,
       background ?? false,
       bgName,
@@ -721,7 +725,8 @@ export class TabManager {
       bgName,
       title,
       projectDir,
-      aiTitle: null,
+      label: pendingName?.label ?? null,
+      labelProject: pendingName?.labelProject ?? null,
       forkedFromSessionId: null, // 会话事实到了才有（`onSessionFacts`）
       agent: null, // 是哪一家：会话事实到了才有（`onSessionFacts`），之前要分家的那几项灰着
       writers: [], // 同上
@@ -777,6 +782,7 @@ export class TabManager {
       ),
     };
     this.store.pendingActivity.delete(sessionId);
+    this.store.pendingName.delete(sessionId);
     this.view.wireTab(tab);
     // 归档信号早于建 Tab 到达 ⇒ 落实，免得重载后已结束的会话复活成关不掉的活 Tab。
     if (this.store.pendingArchive.delete(sessionId)) {
@@ -808,22 +814,27 @@ export class TabManager {
     return tab;
   }
 
-  /** 应用 ai-title：锁定语义标题，按 `[项目名] aiTitle` 更新 Tab 标题。 */
-  private applyAiTitle(tab: Tab, aiTitle: string): void {
-    const trimmed = aiTitle.trim();
-    if (!trimmed) return;
-    if (tab.aiTitle === trimmed) return;
-    tab.aiTitle = trimmed;
+  /** 核心报来叫这条会话什么（会话流 `activity` 格上的 `label` · `label_project`；不在看的会话改了名也来）⇒ 重排标题。Tab 还没建 ⇒ 暂存。 */
+  updateName(sessionId: string, label: string, labelProject: string | null): void {
+    const tab = this.store.tabs.get(sessionId);
+    if (!tab) {
+      this.store.pendingName.set(sessionId, { label, labelProject });
+      return;
+    }
+    if (tab.label === label && tab.labelProject === labelProject) return;
+    tab.label = label;
+    tab.labelProject = labelProject;
     tab.title = this.computeTitle(tab);
     this.refreshTabBar();
+    if (sessionId === this.store.activeId) this.publishActive();
   }
 
-  /** 根据 tab.projectDir + tab.aiTitle + sessionId 算出展示标题（远端 Tab 加 `[origin]` 前缀） */
+  /** 按核心给的名字与项目那一格排出展示标题（远端 Tab 加 `[origin]` 前缀） */
   private computeTitle(tab: Tab): string {
     return computeTitleFor(
       tab.sessionId,
-      tab.projectDir,
-      tab.aiTitle,
+      tab.label,
+      tab.labelProject,
       isRemoteOrigin(tab.origin) ? tab.origin : null,
       tab.background,
       tab.bgName,
@@ -863,6 +874,7 @@ export class TabManager {
       // Tab 还没建（归档信号早于行）⇒ 记下待归档、建 Tab 时落实；直接 return 会丢掉归档 → 僵尸活 Tab。
       this.store.pendingArchive.add(sessionId);
       this.store.pendingActivity.delete(sessionId); // 死会话的暂存灯一并清
+      this.store.pendingName.delete(sessionId);
       this.store.pendingTmuxIdle.delete(sessionId); // 已结束优先，清暂存的可重连
       this.store.pendingContainer.delete(sessionId); // 死了 ⇒ 暂存的容器事实作废
       return;
@@ -965,7 +977,7 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     const r = this.live.board.of(sid).find((x) => (which.run !== undefined ? x.run === which.run : x.tool === which.tool));
     if (!tab || !r) return;
-    await openAgentWindow({ origin: tab.origin, sid, run: r, session: tab.aiTitle ?? tab.title, machine: isRemoteOrigin(tab.origin) ? tab.origin : null });
+    await openAgentWindow({ origin: tab.origin, sid, run: r, session: tab.label ?? tab.title, machine: isRemoteOrigin(tab.origin) ? tab.origin : null });
   }
 
   /** 回到派出它的地方：切到那个会话、滚到派出它的那张卡、闪一下。没有这张卡 ⇒ 只切过去。 */

@@ -454,5 +454,8 @@ pub struct SessionActivityPayload {
     /// 那一态 · 写好的字与语气 · 监控板组内的序（那台核心写的，平铺在载荷上）。
     #[serde(flatten)]
     pub activity: crate::session_book::ActivityCells,
+    /// 叫这条会话什么（那台核心写的，平铺在载荷上；标签页照抄）。
+    #[serde(flatten)]
+    pub naming: crate::session_book::NameCells,
     pub waiting_for: Option<String>,
 }

@@ -205,11 +205,15 @@ class SshKeepAliveService : Service() {
 
     private fun doneNotifIdFor(slot: String): Int = doneNotifIds.getOrPut(slot) { DONE_NOTIF_ID + doneNotifIds.size }
 
-    /** 标题与正文照抄 `turn_end` 帧上后端写好的那两行（叫这条会话什么由后端定，与桌面同一格）。 */
+    /**
+     * 标题与正文照抄 `turn_end` 帧上后端写好的那两行（叫这条会话什么由后端定，与桌面同一格）；
+     * 前面加那台的名字（这台机器表里的叫法，后端不知道），与桌面远端会话同一个规矩。
+     */
     private fun notifyRoundDone(
         hostId: String,
         round: TurnEnd,
     ) {
+        val machine = manager.sessions.value[hostId]?.label ?: hostId
         val tap =
             PendingIntent.getActivity(
                 this,
@@ -220,7 +224,7 @@ class SshKeepAliveService : Service() {
         val n =
             NotificationCompat
                 .Builder(this, DONE_CHANNEL_ID)
-                .setContentTitle(round.title)
+                .setContentTitle("[$machine] ${round.title}")
                 .setContentText(round.body)
                 .setSmallIcon(android.R.drawable.stat_notify_chat)
                 .setAutoCancel(true)
