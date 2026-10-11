@@ -24,8 +24,11 @@ pub(crate) const REPLY_LINES: usize = 3;
 
 /// 一轮。键名全称。
 #[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TurnRow {
     /// 这一轮开头那一行（你说的那句）的字节位置 ⇒ 下次从这里接着取；这一轮的范围到下一轮的 `at`（最后一轮到文件尾）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) at: u64,
     /// 你那句的 uuid（跳过去用）。
     pub(crate) uuid: String,
@@ -72,6 +75,9 @@ pub(crate) struct TurnRow {
 
 /// 一段过程（一行）。
 #[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "FoldSegment"))]
 pub(crate) struct Fold {
     /// 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
     pub(crate) after: String,
@@ -93,6 +99,9 @@ pub(crate) struct Fold {
 
 /// 一轮 / 一段此刻的样子。
 #[derive(Debug, Default, Clone, Copy, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "TurnPhase"))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Phase {
     #[default]
@@ -103,6 +112,9 @@ pub(crate) enum Phase {
 
 /// 过程行的一段字。
 #[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "TurnPart"))]
 pub(crate) struct Part {
     pub(crate) text: String,
     pub(crate) tone: Tone,
@@ -113,9 +125,14 @@ pub(crate) use crate::common::cells::Tone;
 
 /// 右端那一截：字里若有 `{dur}`，界面填 `to − from`（`to` 缺 ⇒ 现在 − `from`，毫秒）的用时；别的照抄。
 #[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "TurnSpan"))]
 pub(crate) struct Span {
     pub(crate) text: String,
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) from: Option<i64>,
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) to: Option<i64>,
 }
 

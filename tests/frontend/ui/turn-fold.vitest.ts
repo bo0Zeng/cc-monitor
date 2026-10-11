@@ -10,7 +10,9 @@ import { placeFloat } from "../../../src/frontend/ui/kit/place";
 
 /** 轮次刻度的悬停卡：左侧、竖直居中、间距 6（`tooltip.ts` 的 PLACEMENT 表）。 */
 const placeCardLeft = (host: DOMRect, tip: { width: number; height: number }, view: { width: number; height: number }) => placeFloat({ rect: host, side: "left", align: "center", gap: 6 }, tip, view);
-import type { TurnFoldRow, TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
+import type { TurnsResult } from "../../../src/frontend/ui/session-reads";
+import type { FoldSegment } from "../../../src/frontend/ui/generated/FoldSegment";
+import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
 import { markCardId, renderContentRecord, type StreamSink } from "../../../src/frontend/ui/render-stream-record";
 import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { estimateFromFacts, setInjectedShown, skeletonKind } from "../../../src/frontend/ui/height-estimate";
@@ -18,7 +20,7 @@ import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import type { JsonlLinePayload } from "../../../src/frontend/ui/events";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
-const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSummary => ({
+const turn = (uuid: string, at: number, over: Partial<TurnRow> = {}): TurnRow => ({
   at,
   uuid,
   start: "2026-10-06T02:01:00Z",
@@ -43,7 +45,7 @@ const turn = (uuid: string, at: number, over: Partial<TurnSummary> = {}): TurnSu
 });
 
 /** 一段过程（缺省：跟在 `after` 后面、工具 ×2、收尾了）。 */
-function seg(after: string, over: Partial<TurnFoldRow> = {}): TurnFoldRow {
+function seg(after: string, over: Partial<FoldSegment> = {}): FoldSegment {
   return {
     after,
     parts: [
@@ -344,7 +346,7 @@ describe("按段折叠", () => {
   it("展开的那几段量竖线高 / 收起行：先把要量的成块量完再写（量一下写一下 ＝ 每一轮都逼一次整页重排；Ctrl+O 全展开时几百轮）", async () => {
     setProcessExpandedDefault(true);
     const cards: HTMLElement[] = [];
-    const turns: TurnSummary[] = [];
+    const turns: TurnRow[] = [];
     for (let k = 0; k < 4; k++) {
       cards.push(card("card-user", `u${k}`), card("card-assistant", `a${k}`), card("card-assistant", `b${k}`));
       turns.push(turn(`u${k}`, k));

@@ -11,7 +11,8 @@ import { RecordTimeline } from "../../../src/frontend/ui/record-timeline";
 import { SKELETON_GAP_CLASS, SkeletonView } from "../../../src/frontend/ui/skeleton-view";
 import { MessageStream } from "../../../src/frontend/ui/stream";
 import { TurnFold, PROC_LINE_CLASS } from "../../../src/frontend/ui/turn-fold";
-import type { TurnSummary, TurnsResult } from "../../../src/frontend/ui/session-reads";
+import type { TurnsResult } from "../../../src/frontend/ui/session-reads";
+import type { TurnRow } from "../../../src/frontend/ui/generated/TurnRow";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(null) }));
 
@@ -58,7 +59,7 @@ function installLayout(scrollEl: HTMLElement, content: HTMLElement, linePx = 0):
 
 const facts = (i: number): SkeletonFacts => ({ o: i * 100, n: 100, t: i % PER_TURN === 0 ? "said" : "reply", u: `u${i}`, ch: 120, pl: 2 });
 
-const turn = (k: number): TurnSummary => ({
+const turn = (k: number): TurnRow => ({
   at: k * PER_TURN * 100,
   uuid: `u${k * PER_TURN}`,
   start: "2026-10-06T02:01:00Z",

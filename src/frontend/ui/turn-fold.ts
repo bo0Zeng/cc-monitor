@@ -31,7 +31,10 @@
  *
  * 本模块不排定时器（`polling_registry`）：触发全靠宿主（新记录到了 · 批结束 · 会话事实变了 · 切 tab）与 DOM 变动（`MutationObserver`）。
  */
-import { readTurns, type TurnSummary, type TurnsResult, type TurnSpan, type TurnFoldRow } from "./session-reads";
+import { readTurns, type TurnsResult } from "./session-reads";
+import type { FoldSegment } from "./generated/FoldSegment";
+import type { TurnRow } from "./generated/TurnRow";
+import type { TurnSpan } from "./generated/TurnSpan";
 import type { Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { clockNow } from "./duration-format";
@@ -104,12 +107,12 @@ export function revealProcessOf(el: HTMLElement, container: HTMLElement): void {
 /** 一段过程：键是它的 `after`（一条记录只会是一段的 `after`）。 */
 interface FoldRef {
   key: string;
-  turn: TurnSummary;
-  fold: TurnFoldRow;
+  turn: TurnRow;
+  fold: FoldSegment;
 }
 
 export class TurnFold {
-  private turns: TurnSummary[] = [];
+  private turns: TurnRow[] = [];
   /** 边界：每一轮的开头 ＋ 露着的那几条（uuid）。 */
   private bounds = new Set<string>();
   /** 落成了人话的排队插话（排队卡的记录 id，后端 `landed`）。 */
@@ -164,7 +167,7 @@ export class TurnFold {
   onTurns: (() => void) | null = null;
 
   /** 已知的轮（刻度 · 大纲用同一份）。 */
-  get all(): readonly TurnSummary[] {
+  get all(): readonly TurnRow[] {
     return this.turns;
   }
 
@@ -543,7 +546,7 @@ const painted = new WeakMap<HTMLElement, string>();
  * 过程行：`›`（＋ 在跑转圈 / 在等你琥珀点）＋ 后端写好的各段（按语气上色、段间分隔）＋ 靠右那一截。
  * 要画的跟上一次一字不差 ⇒ 不动（每趟排版都会走到这里；整行拆了重建会作废这几行的样式与排版，在跑的转圈也从头转）。
  */
-export function paintLine(line: HTMLElement, fold: TurnFoldRow, open: boolean, now: number): void {
+export function paintLine(line: HTMLElement, fold: FoldSegment, open: boolean, now: number): void {
   const dur = fillDur(fold.span, now);
   const sep = copyText("kit.text.sep");
   const key = JSON.stringify([open, fold.phase, fold.parts, dur, sep]);
