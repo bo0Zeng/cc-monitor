@@ -1489,7 +1489,7 @@ impl ReaderState {
             .find(|e| e.sid == sid)
             .map(|e| e.facts.clone())
             .unwrap_or_default();
-        crate::stream::wire::NameFace::of(&facts, sid)
+        crate::stream::wire::NameFace::of(&facts)
     }
 
     /// 改这条会话叫什么的那几样（`change` 回真 = 改了）；名字真变了 ⇒ 一帧 `session_status`（活动那几格照记着的带全）。
@@ -2557,7 +2557,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             entry.waiting_for = new_waiting.clone();
             let activity = meta.as_ref().and_then(crate::agents::pidfile_activity);
             entry.activity = activity;
-            let name_face = crate::stream::wire::NameFace::of(&entry.facts, &sid);
+            let name_face = crate::stream::wire::NameFace::of(&entry.facts);
             sink.send(Frame::SessionStatus {
                 sid: sid.clone(),
                 face: crate::stream::wire::ActivityFace::of(activity),
@@ -2687,7 +2687,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
             f.custom = state.custom_title(&sid);
             f
         });
-    let name_face = crate::stream::wire::NameFace::of(&facts, &sid);
+    let name_face = crate::stream::wire::NameFace::of(&facts);
     state.sessions.insert(
         key,
         SessionEntry {

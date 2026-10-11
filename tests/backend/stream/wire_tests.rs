@@ -334,7 +334,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                         project_dir: Some(s("/w")),
                         ..Default::default()
                     },
-                    "s1",
                 ),
                 waiting_for: Some(s("permission prompt")),
                 container: Some(SessionContainer::Hosted {
@@ -355,7 +354,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: None,
                 lines: None,
                 face: crate::stream::wire::ActivityFace::of(None),
-                name_face: crate::stream::wire::NameFace::of(&Default::default(), "s1"),
+                name_face: crate::stream::wire::NameFace::of(&Default::default()),
                 waiting_for: None,
                 container: None,
                 pid: None,
@@ -373,7 +372,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                         project_dir: Some(s("/w")),
                         ..Default::default()
                     },
-                    "s1",
                 ),
                 waiting_for: Some(s("permission prompt")),
                 liveness_confidence: Some(s("pidfile")),
@@ -381,7 +379,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionStatus {
                 sid: s("s1"),
                 face: crate::stream::wire::ActivityFace::of(None),
-                name_face: crate::stream::wire::NameFace::of(&Default::default(), "s1"),
+                name_face: crate::stream::wire::NameFace::of(&Default::default()),
                 waiting_for: None,
                 liveness_confidence: None,
             },
@@ -400,7 +398,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
         both(Frame::turn_end(
             s("s1"),
             s("u1"),
-            &crate::stream::wire::NameFace::of(&Default::default(), "s1"),
+            &crate::stream::wire::NameFace::of(&Default::default()),
         )),
         [
             Frame::Overflow {
@@ -953,7 +951,7 @@ fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
     let line = to_line(&Frame::turn_end(
         "sid-9".into(),
         "u-abc".into(),
-        &crate::stream::wire::NameFace::of(&named, "sid-9"),
+        &crate::stream::wire::NameFace::of(&named),
     ))
     .expect("serialize");
     let v: Value = serde_json::from_str(line.strip_suffix('\n').unwrap()).expect("json");
@@ -971,14 +969,13 @@ fn turn_end_frame_serializes_with_session_uuid_and_the_written_lines() {
     assert!(v.get("byte_offset").is_none(), "TurnEnd 不带 byte_offset");
 }
 
-/// 叫这条会话什么那两格：名字是起出来的（改的名 · 标题 · 第一句）才带项目那一格；名字本身就是项目名 / sid ⇒ 只有名字。
+/// 叫这条会话什么那两格：名字（`session_label`）＋ 项目目录最后一截（不知道项目目录 ⇒ 不带）。
 #[test]
-fn the_name_face_carries_the_project_only_beside_a_given_name() {
+fn the_name_face_carries_the_name_and_the_project() {
     use crate::observe::search_rules::LabelFacts;
-    let face = |f: LabelFacts| {
-        serde_json::to_value(crate::stream::wire::NameFace::of(&f, "0123456789ab")).unwrap()
-    };
-    let proj = || Some("/w/proj".to_string());
+    let face = |f: LabelFacts| serde_json::to_value(crate::stream::wire::NameFace::of(&f)).unwrap();
+    let proj = || Some("/w/proj/".to_string());
+    let untitled = copy_core::copy_text("history.row.untitled", &[]);
     assert_eq!(
         face(LabelFacts {
             first: "修一下".into(),
@@ -989,14 +986,14 @@ fn the_name_face_carries_the_project_only_beside_a_given_name() {
     );
     assert_eq!(
         face(LabelFacts {
-            project_dir: proj(),
+            project_dir: Some("C:\\w\\q".into()),
             ..Default::default()
         }),
-        serde_json::json!({"label": "proj"})
+        serde_json::json!({"label": untitled, "label_project": "q"})
     );
     assert_eq!(
         face(LabelFacts::default()),
-        serde_json::json!({"label": "01234567"})
+        serde_json::json!({ "label": untitled })
     );
 }
 
@@ -1341,7 +1338,7 @@ fn dg3_codex_fields_serialize_when_present() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: None,
@@ -1349,20 +1346,20 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         liveness_confidence: Some("heuristic".into()),
     })
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"liveness_confidence\":\"heuristic\"}\n"
     );
 }
 
@@ -1405,27 +1402,27 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         path: None,
         lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: None,
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n",
         "agent_kind 每条都带；liveness_confidence 缺 ＝ pidfile 判的"
     );
 
     let ss = to_line(&Frame::SessionStatus {
         sid: "s".into(),
         face: crate::stream::wire::ActivityFace::of(None),
-        name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
+        name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         liveness_confidence: None,
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n",
         "liveness_confidence 省略，字节等价旧形"
     );
 }
@@ -1550,7 +1547,7 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
             path: None,
             lines: None,
             face: crate::stream::wire::ActivityFace::of(None),
-            name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
+            name_face: crate::stream::wire::NameFace::of(&Default::default()),
             waiting_for: None,
             container: c,
             pid: None,
@@ -1561,18 +1558,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"}}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"container\":{\"host\":\"tmux\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"}}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"container\":{\"host\":\"none\"}}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"}}\n"
     );
 }
 
@@ -1632,17 +1629,17 @@ fn loc1b_session_added_pid_is_additive() {
             path: None,
             lines: None,
             face: crate::stream::wire::ActivityFace::of(None),
-            name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
+            name_face: crate::stream::wire::NameFace::of(&Default::default()),
             waiting_for: None,
             container: None,
             pid,
         })
         .unwrap()
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\"}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n");
     assert_eq!(
         frame(Some(4242)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"s\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1837,7 +1834,7 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
         Frame::turn_end(
             "s".into(),
             "u".into(),
-            &crate::stream::wire::NameFace::of(&Default::default(), "s"),
+            &crate::stream::wire::NameFace::of(&Default::default()),
         ),
         Frame::Tap {
             stream: "s".into(),
@@ -2017,7 +2014,7 @@ fn session_frames_carry_the_state_written_and_toned() {
         serde_json::to_value(Frame::SessionStatus {
             sid: "s".into(),
             face: ActivityFace::of(a),
-            name_face: crate::stream::wire::NameFace::of(&Default::default(), "s"),
+            name_face: crate::stream::wire::NameFace::of(&Default::default()),
             waiting_for: None,
             liveness_confidence: None,
         })

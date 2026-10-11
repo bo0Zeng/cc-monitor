@@ -100,29 +100,23 @@ fn sort_by_recency_is_newest_first() {
     assert_eq!(v.iter().map(|x| x.0).collect::<Vec<_>>(), ["b", "c", "a"]);
 }
 
-/// 叫一条会话什么：改过的名 → 标题 → 第一句 → 项目目录最后一截 → sid 前 8 位；空白的当没有；后两档不算「起出来的名字」。
+/// 叫一条会话什么：改过的名 → 标题 → 第一句 → 「没有说过话的会话」那一句；空白的当没有；最后一档不算「起出来的名字」。项目不进名字。
 #[test]
 fn session_label_picks_in_order() {
-    let f = |custom: Option<&str>, title: Option<&str>, first: &str, project: Option<&str>| {
-        session_label(
-            &LabelFacts {
-                custom: custom.map(str::to_string),
-                title: title.map(str::to_string),
-                first: first.to_string(),
-                project_dir: project.map(str::to_string),
-            },
-            "abcdefghij",
-        )
+    let f = |custom: Option<&str>, title: Option<&str>, first: &str| {
+        session_label(&LabelFacts {
+            custom: custom.map(str::to_string),
+            title: title.map(str::to_string),
+            first: first.to_string(),
+            project_dir: Some("/w/p".into()),
+        })
     };
     let named = |s: &str| (s.to_string(), true);
-    let fallback = |s: &str| (s.to_string(), false);
-    assert_eq!(f(Some("改"), Some("AI"), "首句", Some("/w/p")), named("改"));
-    assert_eq!(f(Some(" "), Some("AI"), "首句", Some("/w/p")), named("AI"));
-    assert_eq!(f(None, Some("  "), "首句", Some("/w/p")), named("首句"));
-    assert_eq!(f(None, None, "", Some("/w/p/")), fallback("p"));
-    assert_eq!(f(None, None, "", Some("C:\\w\\q")), fallback("q"));
-    assert_eq!(f(None, None, "", Some("/")), fallback("abcdefgh"));
-    assert_eq!(f(None, None, "", None), fallback("abcdefgh"));
+    let untitled = (copy_core::copy_text("history.row.untitled", &[]), false);
+    assert_eq!(f(Some("改"), Some("AI"), "首句"), named("改"));
+    assert_eq!(f(Some(" "), Some("AI"), "首句"), named("AI"));
+    assert_eq!(f(None, Some("  "), "首句"), named("首句"));
+    assert_eq!(f(None, None, " "), untitled);
 }
 
 // ═══ 搜索口径只有一个家（原 `tests/frontend/shell/search_kou_jing_guard.rs` 的 ①② 两道，随家搬进后端）══════

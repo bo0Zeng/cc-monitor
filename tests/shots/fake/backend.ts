@@ -364,7 +364,7 @@ function omitCells(rec: Record<string, unknown>, paths: string[]): Record<string
 }
 
 
-/** 叫这条会话什么（照后端 `search_rules::session_label` 与 `wire::NameFace::of`）：最后一条标题 → 人说的第一句（120 字）→ 项目目录最后一截 → sid 前 8 位；名字是起出来的才带项目那一格。 */
+/** 叫这条会话什么（照后端 `search_rules::session_label` 与 `wire::NameFace::of`）：最后一条标题 → 人说的第一句（120 字）→「没有说过话的会话」；项目那一格一直带。 */
 function nameCells(s: SessionSpec): { label: string; label_project: string | null } {
   const titles = s.records.filter((r) => r.t === "title");
   const title = titles.length > 0 ? (titles[titles.length - 1] as { text: string }).text : null;
@@ -372,6 +372,5 @@ function nameCells(s: SessionSpec): { label: string; label_project: string | nul
   const first = said ? ([...said.who.text].length > 120 ? `${[...said.who.text].slice(0, 120).join("").replace(/[\r\n]/g, " ")}…` : said.who.text.replace(/[\r\n]/g, " ")) : "";
   const project = s.cwd.split(/[\\/]/).filter((x) => x !== "").pop() ?? null;
   const named = title?.trim() ? title : first.trim() ? first : null;
-  if (named) return { label: named, label_project: project };
-  return { label: project ?? s.sid.slice(0, 8), label_project: null };
+  return { label: named ?? copyText("history.row.untitled"), label_project: project };
 }

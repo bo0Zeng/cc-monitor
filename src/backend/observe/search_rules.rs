@@ -282,28 +282,22 @@ pub(crate) struct LabelFacts {
     pub(crate) project_dir: Option<String>,
 }
 
-/// 叫这条会话什么：回（名字，名字是不是起出来的 —— 改过的名 · 标题 · 第一句是，项目名 · sid 前 8 位不是）。
+/// 叫这条会话什么：回（名字，名字是不是起出来的 —— 改过的名 · 标题 · 第一句是；都没有 ⇒ 「没有说过话的会话」那一句，不是）。
 /// 只此一处：标签页（`session_added` / `session_status` 的 `label`）· 历史清单的 `label` · 全文搜索的标题 · 一轮结束的通知都是它出的。
-/// 顺序：改过的名 → 标题记录 → 第一句 → 项目目录最后一截 → sid 前 8 位；空白的当没有。
-pub(crate) fn session_label(facts: &LabelFacts, session_id: &str) -> (String, bool) {
+/// 顺序：改过的名 → 标题记录 → 第一句 → 文案表 `history.row.untitled`；空白的当没有。项目不进名字（帧上另一格 `label_project`）。
+pub(crate) fn session_label(facts: &LabelFacts) -> (String, bool) {
     let given = |s: &Option<String>| {
         s.as_deref()
             .filter(|s| !s.trim().is_empty())
             .map(str::to_string)
     };
-    if let Some(named) = given(&facts.custom)
+    match given(&facts.custom)
         .or_else(|| given(&facts.title))
         .or_else(|| (!facts.first.trim().is_empty()).then(|| facts.first.clone()))
     {
-        return (named, true);
+        Some(named) => (named, true),
+        None => (copy_core::copy_text("history.row.untitled", &[]), false),
     }
-    let fallback = facts
-        .project_dir
-        .as_deref()
-        .and_then(project_name)
-        .map(str::to_string)
-        .unwrap_or_else(|| session_id.chars().take(8).collect());
-    (fallback, false)
 }
 
 /// 项目目录的最后一截（两种分隔符都认，尾巴上的分隔符不算）；一截都没有 ⇒ `None`。

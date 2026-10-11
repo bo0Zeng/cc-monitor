@@ -17,11 +17,11 @@ describe("独立查看窗的字", () => {
     expect(windowStatus({ n: 88, more: false, live: false, following: true })).toBe(copyText("viewerWindow.status.ended", { n: "88", state: copyText("sessionState.ended.name") }));
   });
 
-  it("系统标题：标题 · 状态 · 项目；远端加机器；没说过话的会话用兜底名", () => {
+  it("系统标题：标题 · 状态 · 项目；远端加机器；名字照抄核心的 label（没说过话的那一句也是核心写的）", () => {
     expect(windowTitle(row(), true)).toBe(copyText("viewerWindow.title.local", { title: "支付回调验签", state: copyText("history.row.live"), project: "orders" }));
     expect(windowTitle(row({ origin: "devbox" }), false)).toBe(copyText("viewerWindow.title.remote", { title: "支付回调验签", state: copyText("sessionState.ended.name"), project: "orders", machine: "devbox" }));
-    expect(windowTitle(row({ untitled: true }), null)).toBe(
-      copyText("viewerWindow.title.local", { title: copyText("history.row.untitled"), state: copyText("sessionState.unseen.name"), project: "orders" }),
+    expect(windowTitle(row({ untitled: true, label: "核心写的那一句" }), null)).toBe(
+      copyText("viewerWindow.title.local", { title: "核心写的那一句", state: copyText("sessionState.unseen.name"), project: "orders" }),
     );
   });
 });

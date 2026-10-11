@@ -215,7 +215,7 @@ export class AgentWindow {
   private sessionName(): string {
     const r = this.row;
     if (!r) return "";
-    return r.untitled ? copyText("history.row.untitled") : r.label;
+    return r.label;
   }
 
   /** 顶上那一条；`detail`（出错那一端写的复制详情）非空 ⇒ 带［复制详情］。 */

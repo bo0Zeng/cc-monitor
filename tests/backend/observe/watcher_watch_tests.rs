@@ -106,7 +106,7 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     sink.send(Frame::turn_end(
         B.into(),
         "u".into(),
-        &crate::stream::wire::NameFace::of(&Default::default(), "s"),
+        &crate::stream::wire::NameFace::of(&Default::default()),
     ));
     sink.send(Frame::SessionFileGone {
         session_id: B.into(),

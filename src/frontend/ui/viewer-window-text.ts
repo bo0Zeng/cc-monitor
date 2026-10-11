@@ -14,7 +14,7 @@ export function windowStatus(s: ViewerStatus): string {
 
 /** 系统标题：`{会话标题} · {状态} · {项目}`，远端再加 `· {机器}`。 */
 export function windowTitle(r: HistoryRow, live: boolean | null): string {
-  const title = r.untitled ? copyText("history.row.untitled") : r.label;
+  const title = r.label;
   const state =
     live === null ? copyText("sessionState.unseen.name") : live ? copyText("history.row.live") : copyText("sessionState.ended.name");
   return r.origin

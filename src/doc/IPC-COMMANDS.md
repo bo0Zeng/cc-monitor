@@ -300,7 +300,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `NameFace`
 
-**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::observe::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截，只在名字是起出来的（改过的名 · 标题 · 第一句）时带 —— 界面拼「[项目] 名字」；名字本身就是项目名 / sid ⇒ 不带。
+**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::observe::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截（界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|

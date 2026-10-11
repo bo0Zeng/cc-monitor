@@ -538,7 +538,7 @@ pub(crate) fn session_title_of(p: &Path) -> String {
         .file_stem()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    super::search_rules::session_label(&label_facts_of(p), &sid).0
+    super::search_rules::session_label(&label_facts_of(p)).0
 }
 
 /// [`analyze_session`] 过一层 [`SESSION_META`]：没变 ⇒ 上次那一行；变长且前面没被改写 ⇒ 只扫新增的；其余整份重扫。

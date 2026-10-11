@@ -299,7 +299,7 @@ fn label_of(
         first: first.to_string(),
         project_dir: (!project.is_empty()).then(|| project.to_string()),
     };
-    crate::observe::search_rules::session_label(&facts, sid).0
+    crate::observe::search_rules::session_label(&facts).0
 }
 
 /// 一行的分组键：哪一家 ＋ 真实目录（记录目录名会撞）。
