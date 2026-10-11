@@ -45,8 +45,13 @@ export const REAL_OPS = new Set([
 export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/");
 
-/** 真后端够不着的那几台：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支（例：账号库「Windows 不支持多账号」）演不出来。 */
-const WINDOWS_ONLY: Record<string, Set<string>> = { "win-laptop": new Set(["accounts-list"]) };
+/**
+ * 真后端够不着的那一支：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支演不出来。那几问照样交真后端答，
+ * 只把 Windows 才有的那一格改过来（账号清单的 `meta.unsupported`：`platform::acct_view::unsupported_said`）。
+ */
+const WINDOWS_FACE: Record<string, Record<string, { meta: Record<string, unknown> }>> = {
+  "win-laptop": { "accounts-list": { meta: { unsupported: copyText("beAcctWire.platform.unsupported", { os: "windows" }) } } },
+};
 
 type Emit = (event: string, payload: unknown) => unknown;
 
@@ -77,7 +82,7 @@ export class FakeBackend {
 
   constructor(readonly world: World) {
     for (const op of REAL_OPS) {
-      if (op in world.ops && !Object.values(WINDOWS_ONLY).some((x) => x.has(op))) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
+      if (op in world.ops) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
     }
     const machines = diskOf(world);
     this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now() }) }).then(async (r) => {
@@ -197,8 +202,15 @@ export class FakeBackend {
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
     // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。声明本身原样交给真后端，这里不读它。
     const delay = (args.view == null ? this.world.fullFetchDelayMs?.[op] : undefined) ?? this.world.opDelayMs?.[op] ?? 0;
-    if (REAL_OPS.has(op) && !WINDOWS_ONLY[origin]?.has(op)) {
-      return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req, args.view));
+    if (REAL_OPS.has(op)) {
+      const face = WINDOWS_FACE[origin]?.[op];
+      return new Promise((r) => setTimeout(r, delay))
+        .then(() => this.real(origin, op, req, args.view))
+        .then((b) => {
+          if (!face) return b;
+          const v = JSON.parse(dec.decode(b)) as { meta?: object };
+          return enc.encode(JSON.stringify({ ...v, meta: { ...v.meta, ...face.meta } })).buffer;
+        });
     }
     const handler = this.world.ops[op];
     if (!handler) {

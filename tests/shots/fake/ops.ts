@@ -14,37 +14,6 @@ export function defaultOps(): Record<string, OpHandler> {
   return {
     // 计划清单：默认世界里没有计划（计划页的世界 `plan.ts::planWorld` 换掉这一条）。
     "plan-list": () => ({ pb: { state: "ok", said: null }, workspaces: [] }),
-    // 账号库只有 win-laptop 那台由这里答（`backend.ts::WINDOWS_ONLY`：Linux 编的真后端演不出 Windows 那一支）：那台做不了多账号。
-    "accounts-list": () => ({
-      accounts: ACCOUNTS.map((a) => ({
-        name: a.name,
-        email: a.email,
-        configDir: `/home/user/.cc-monitor/accounts/${a.name}`,
-        isDefault: a.isDefault,
-        mode: "isolated",
-        exists: true,
-        loggedIn: a.authKind === "subscription",
-        authKind: a.authKind,
-        authReady: true,
-        selectable: true,
-        keyMasked: a.keyMasked ?? null,
-        baseUrl: a.baseUrl ?? null,
-      })),
-      meta: {
-        enabled: true,
-        acctsDir: "/home/user/.cc-monitor/accounts",
-        manifestPath: "/home/user/.cc-monitor/accounts/accounts.json",
-        updatedAt: "2026-10-01T08:00:00Z",
-        sharedStore: "/home/user/.cc-monitor/accounts/shared",
-        count: ACCOUNTS.length,
-        error: null,
-        unsupported: "Windows 不支持多账号",
-        nextDefault: ACCOUNTS.find((a) => !a.isDefault)?.name ?? null,
-        effectiveDefault: "work",
-        home: "/home/user",
-      },
-      notice: null,
-    }),
     "accounts-sessions": (origin, _req, w) => ({
       lines: w.sessions
         .filter((s) => s.origin === origin && !s.ended)

@@ -69,7 +69,10 @@ function hitsIn(src: string, keys: Set<string>): Record<Form, number> {
  */
 const ALLOW: Record<string, Partial<Record<Form, [number, string]>>> = {
   "backend.ts": {
-    coreKey: [1, "合成拒答的复制详情（`detail.value.backend`）：场景演「那台拒了」的那几条帧命令还是合成的（机器页那一族），拒答的详情跟着合成"],
+    coreKey: [
+      2,
+      "合成拒答的复制详情（`detail.value.backend`：场景演「那台拒了」的那几条帧命令还是合成的，机器页那一族）· Windows 那台账号清单的 `meta.unsupported`（台架只有 Linux 编的后端，`cfg(windows)` 那一句演不出来，回包其余照真后端）",
+    ],
   },
   "clock.ts": {
     coreKey: [5, "历史清单 · 内容头 · 查找那几格的时刻字（`common::time::{row_time, section_text, span_text, hit_time}`）：history-list · history-search 还是合成的（清单里那几十条历史会话还没落盘）"],
@@ -114,11 +117,10 @@ describe("截图台架的假适配层不写核心成品", () => {
     const backend = readFileSync(path.join(fakeDir, "backend.ts"), "utf8");
     const real = [...backend.slice(backend.indexOf("export const REAL_OPS"), backend.indexOf("]);", backend.indexOf("export const REAL_OPS"))).matchAll(/"([a-z][a-z0-9-]+)"/g)].map((m) => m[1]);
     expect(real).toContain("quota-read");
-    const windowsOnly = [...backend.slice(backend.indexOf("const WINDOWS_ONLY"), backend.indexOf("\n", backend.indexOf("const WINDOWS_ONLY"))).matchAll(/"([a-z][a-z0-9-]+)"/g)].map((m) => m[1]);
     const dup: string[] = [];
     for (const f of files) {
       const src = readFileSync(f, "utf8");
-      for (const op of real) if (!windowsOnly.includes(op) && new RegExp(`^\\s+"${op}":\\s*\\(`, "m").test(src)) dup.push(`${path.basename(f)}: ${op}`);
+      for (const op of real) if (new RegExp(`^\\s+"${op}":\\s*\\(`, "m").test(src)) dup.push(`${path.basename(f)}: ${op}`);
     }
     expect(dup).toEqual([]);
   });
