@@ -517,6 +517,7 @@ fn run_cli<R: std::io::Read + Send + 'static>(args: &[String], stdin: R) -> (i32
     let rc = rt.block_on(run_io(
         args,
         &Default::default(),
+        &crate::platform::fs::Own::for_tests(),
         stdin,
         std::time::Duration::from_millis(300),
         &mut out,
@@ -956,6 +957,7 @@ fn frame_reply(cmd: &str, args: &serde_json::Value, within_ms: Option<u64>) -> s
             crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
             }),
+            crate::platform::fs::Own::for_tests(),
             crate::stream::wire::HelloFlushed::for_tests(),
         )
         .await

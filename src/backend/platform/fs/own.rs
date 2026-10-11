@@ -15,7 +15,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 /// 写自家状态的句柄。克隆便宜（只有根）；造只经 [`Own::issue`]。
 #[derive(Clone, Debug)]
-pub(crate) struct Own {
+pub struct Own {
     /// 数据目录；这台没有家目录（`HOME` / `USERPROFILE` 都没有）⇒ `None`，各写口照它们自己的「无主目录」那一句报。
     root: Option<PathBuf>,
 }
@@ -52,7 +52,7 @@ impl OwnPath {
 
 impl Own {
     /// 启动时造一次：根是这台的数据目录。
-    pub(crate) fn issue() -> Own {
+    pub fn issue() -> Own {
         Own {
             root: crate::platform::paths::data_home(),
         }
@@ -64,6 +64,14 @@ impl Own {
         Own {
             root: Some(root.to_path_buf()),
         }
+    }
+
+    /// 判据用：根指到这个测试进程自己的一个临时目录（不碰真家目录；只是要递一份句柄、并不关心写到哪的那些判据用它）。
+    #[cfg(test)]
+    pub(crate) fn for_tests() -> Own {
+        Own::issue_at(
+            &std::env::temp_dir().join(format!("ccm-own-for-tests-{}", std::process::id())),
+        )
     }
 
     /// 数据目录本身；这台没有家目录 ⇒ `None`。

@@ -129,6 +129,14 @@ fn the_backend_runtime_keeps_more_than_one_worker() {
 }
 use super::*;
 
+/// 分派要的那两样：`stream-watch` 那一口 ＋ 一份指到临时目录的写句柄。
+fn given_for_tests(watch: WatchDesk) -> Given {
+    Given {
+        watch,
+        own: crate::platform::fs::Own::for_tests(),
+    }
+}
+
 fn chan() -> (mpsc::Sender<Frame>, mpsc::Receiver<Frame>) {
     mpsc::channel(REPLY_CHANNEL_CAPACITY)
 }
@@ -141,6 +149,7 @@ async fn one_line(input: &str) -> Vec<String> {
         crate::stream::inbound::WatchDesk::new(|_| {
             tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
         }),
+        crate::platform::fs::Own::for_tests(),
         crate::stream::wire::HelloFlushed::for_tests(),
     );
     h.await.expect("reader task");
@@ -353,6 +362,7 @@ async fn an_oversized_line_does_not_grow_memory() {
             crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
             }),
+            crate::platform::fs::Own::for_tests(),
             crate::stream::wire::HelloFlushed::for_tests(),
         );
         h.await.expect("reader task");
@@ -432,9 +442,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
             &links,
             &xfers,
             &follows,
-            &crate::stream::inbound::WatchDesk::new(|_| {
+            &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
-            }),
+            })),
         )
     };
 
@@ -966,7 +976,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1))),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -983,7 +993,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1))),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -1011,10 +1021,9 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     &links,
                     &xfers,
                     &follows,
-                    &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<
-                        Vec<crate::stream::wire::WatchFrom>,
-                    >()
-                    .1)
+                    &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
+                        tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+                    }))
                 ),
                 Disposition::SpawnBlocking(..)
             )
@@ -1068,9 +1077,9 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
         &links,
         &xfers,
         &follows,
-        &crate::stream::inbound::WatchDesk::new(|_| {
+        &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
             tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
-        }),
+        })),
     )
     .await;
 
@@ -1420,6 +1429,7 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
         std::io::Cursor::new(input.as_bytes().to_vec()),
         tx,
         desk,
+        crate::platform::fs::Own::for_tests(),
         crate::stream::wire::HelloFlushed::for_tests(),
     );
     h.await.expect("reader task");

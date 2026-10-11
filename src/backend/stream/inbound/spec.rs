@@ -138,6 +138,9 @@ pub(crate) enum Run {
     Blocking(fn(Request) -> CmdResult),
     /// 同 [`Run::Blocking`]，只是失败可以带按码定形的 `data`（起会话那几条：选不了号时带上要的号与替代）。
     BlockingData(fn(Request) -> Outcome),
+    /// 同 [`Run::BlockingData`]，只是要写后端自家状态（`~/.cc-monitor` 底下）：多收一个 [`crate::platform::Own`]。
+    /// `Request` 是从线上解出来的，装不进句柄 ⇒ 句柄由分派那一层递（它手里那一份是启动时造的）。只有写自家状态的那几族用这一档。
+    BlockingOwn(fn(Request, &crate::platform::Own) -> Outcome),
     Builtin,
 }
 

@@ -13,6 +13,7 @@
 //! 本模块只答「这台机器的值是什么」。谁在什么时候按它动手住两处，都是「最后一个客户走了」那一刻：
 //! 常驻那条载体的流结束（`main.rs::serve_listening`）· monitor 退出臂现问一次。逐条登记在 `tests::DECISION_SITES`。
 
+use crate::platform::Own;
 use copy_core::copy_text;
 use std::path::{Path, PathBuf};
 
@@ -61,14 +62,10 @@ impl Read {
     }
 }
 
-/// 这台机器上那个文件的路径。家目录：`HOME`，没有再退 `USERPROFILE`（Windows）。
-/// 两个都没有 ⇒ `None`（调用方把它说成「读不出来」，**不猜一个路径**）。
+/// 这台机器上那个文件的路径：后端数据目录（`platform::paths::data_home`，与写口 `Own` 同一个根）底下那一份。
+/// 没有家目录 ⇒ `None`（调用方把它说成「读不出来」，**不猜一个路径**）。
 pub fn policy_path() -> Option<PathBuf> {
-    Some(
-        crate::platform::paths::home_dir()?
-            .join(DIR_NAME)
-            .join(FILE_NAME),
-    )
+    Some(crate::platform::paths::data_home()?.join(FILE_NAME))
 }
 
 /// 读盘的上限：文件只有一格布尔。
@@ -136,31 +133,28 @@ fn render(kill: bool) -> String {
     format!("{{\"{KEY_KILL_ON_EXIT}\":{kill}}}\n")
 }
 
-/// 全仓唯一的写者（经 `own_state` 原子写）⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
-/// 目录不在就建这一层（`~/.cc-monitor` 本身）。
-fn write_at(path: &Path, kill: bool) -> Result<(), crate::common::said::Said> {
-    let dir = path.parent().ok_or_else(|| {
-        crate::common::said::Said::from(copy_text(
-            "beExitPolicy.writeAt.noParent",
-            &[("path", &(path.display()).to_string())],
-        ))
+/// 全仓唯一的写者（经 `Own` 原子写）⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
+/// 目录不在就建这一层（数据目录本身）。
+fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
+    let dir = own.root().ok_or_else(|| {
+        crate::common::said::Said::from(copy_text("beExitPolicy.answerSet.noHome", &[]))
     })?;
-    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    // 只建那一层、建的那一下就是 0700。
+    own.ensure_dir(&dir).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_text(
                 "beExitPolicy.writeAt.mkdirFailed",
                 &[
-                    ("dir", &(dir.display()).to_string()),
+                    ("dir", &(dir.as_path().display()).to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),
             &e,
         )
     })?;
-    // 第四层同一条规矩：写之前拿那个目录的跨进程锁（`platform/lock.rs`）。这一份没有读—改—写，锁只为这条规矩没有例外（`readonly_guard` 第四层 ⑥）。
-    let _lock = crate::platform::lock::hold(dir)?;
-    crate::common::own_state::write(path, render(kill).as_bytes())
+    // 写之前拿那个目录的跨进程锁（原子写的签名要它）。这一份没有读—改—写，锁只为这条规矩没有例外。
+    let held = own.lock(&dir)?;
+    own.write(&dir.join(FILE_NAME)?, &held, render(kill).as_bytes())
 }
 
 /// 这台后端是不是回环常驻（脱离了起它的那一方）—— 与 `main` 选载体同一个纯函数、同一份环境，不另记一份。
@@ -214,6 +208,7 @@ pub fn answer_read() -> serde_json::Value {
 /// （回的是盘上的事实，不是「我以为写进去了」）。
 pub fn answer_set(
     args: &serde_json::Value,
+    own: &Own,
 ) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
     let kill = args
         .get(KEY_KILL_ON_EXIT)
@@ -232,7 +227,7 @@ pub fn answer_set(
             copy_text("beExitPolicy.answerSet.noHome", &[]),
         )
     })?;
-    write_at(&path, kill).map_err(|e| ("io_failed", e))?;
+    write_at(own, kill).map_err(|e| ("io_failed", e))?;
     Ok(wire(&read_at(&path), Some(&path)))
 }
 

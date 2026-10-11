@@ -849,13 +849,6 @@ mod tests {
     /// 那一半靠那个模块自己的行为判据（写完读回、目录里只剩那一份）。
     pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[
         (
-        "control/exit_policy.rs",
-        "「退出行为」那个值：后端**自己的**状态文件 \
-         `~/.cc-monitor/backend.json`，一格布尔。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；\
-         目录不在就建那一层（父目录是家目录）；失败删掉自己的临时文件。\
-         线上入口只有命令表机器那一族的 `exit-policy-set`（＋ 派生的 CLI 面）",
-        ),
-        (
             "accounts/upstream_select/file_face.rs",
             "上游选择那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
              文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
@@ -1045,11 +1038,6 @@ mod tests {
             "握手时核对主机钥匙那一处（`Checker`）：认下了（与固化的指纹相等 / 首连认下）才记进 cc-monitor 那份 known_hosts。不是帧面命令",
         ),
         (
-            "stream/inbound/registry/machine.rs",
-            "命令注册里机器那一族 —— `exit-policy-set` 一条（帧面与派生的 CLI 面共用）。\
-             前端改那份只有这一条路（`§3.3b ③`：前端要改它，走一条后端命令）",
-        ),
-        (
             "stream/inbound/registry/accounts.rs",
             "命令注册里账号那一族 —— `apikey-key-set` 一条，外加改账号库那几条（`accounts-*`）递给执行器的 key 表几口（`ACCOUNT_KEYS`）",
         ),
@@ -1124,11 +1112,6 @@ mod tests {
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
     /// 第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
     const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
-        (
-            "control/exit_policy.rs",
-            "exit_policy::answer_set",
-            "stream/inbound/registry/machine.rs",
-        ),
         // 写 key（`answer_set`）· 删号清那一行（`answer_drop`）· 回滚放回那一行（`answer_restore`）同一个前缀 ⇒ 针取前缀；
         // 读口 `answer_read` 也落在针上，它同样只从账号那一族进来（多挡一个读口不伤）。
         (
@@ -1251,8 +1234,9 @@ mod tests {
         ),
         // 针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
         ("control/resident.rs", "resident::", "main.rs"),
-        // 读三态与原子写的那一处：只有第四层别的几份调它（门检查本来就跳过第四层成员）⇒ 门空着 = 第四层之外零引用。
-        ("common/own_state.rs", "own_state::", ""),
+        // 原子写的那一处（过渡转调）：只有第四层别的几份调它（门检查本来就跳过第四层成员）⇒ 门空着 = 第四层之外零引用。
+        // 针取写那一半（`write` · `write_json`）：读三态（`read_bytes` · `read_json`）是读，搬上 `Own` 的那几份照旧用。
+        ("common/own_state.rs", "own_state::write", ""),
         // 后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
         (
             "common/own_dir.rs",
@@ -3307,6 +3291,41 @@ mod tests {
             "`platform/fs/` 里点名了读以外的东西：\n{}\n\n\
              这里是全后端唯一能碰盘的地方：读那一半只许读（`RO_NAMES`），自家状态那一半只许那几样（`OWN_NAMES`）；别的写的能力不从这里开口子。",
             bad.join("\n")
+        );
+    }
+
+    /// 自家状态写句柄的造法（`(针, 只许出现在哪几份)`）：[`crate::platform::fs::Own`] 启动时造一次、顺着入口递下去；
+    /// 别处一造就红（类型挡管「拿着它才写得出来」，这一条管「谁能凭空造一个」）。定义所在那一份不算。
+    const ISSUERS: &[(&str, &[&str])] = &[("Own::issue(", &["main.rs"])];
+
+    #[test]
+    fn the_write_handles_are_issued_only_at_startup() {
+        let root = crate::guard_support::src_root();
+        for (needle, want) in ISSUERS {
+            let mut got: Vec<String> = Vec::new();
+            for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if rel.starts_with(FS_HOME) {
+                    continue;
+                }
+                if guard_core::production_code(&src).contains(needle) {
+                    got.push(rel);
+                }
+            }
+            got.sort();
+            assert_eq!(
+                got, *want,
+                "`{needle}` 出现的地方不是启动入口 —— 写句柄只许在启动时造一次、顺着入口递下去；\n\
+                 要写自家状态的那一处改成收一个 `&Own` 参数，由调它的那一层递进来"
+            );
+        }
+        // 正控：针认得出合成语料里的那一造。
+        assert!(
+            guard_core::production_code("fn f() { let o = Own::issue(); }").contains(ISSUERS[0].0)
         );
     }
 

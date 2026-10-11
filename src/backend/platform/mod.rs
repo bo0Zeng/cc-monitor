@@ -37,6 +37,8 @@ pub(crate) mod child_env;
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;
 pub(crate) mod fs;
+/// 自家状态写句柄（启动入口 `main.rs` 在另一个 crate 里造它 ⇒ 从这里交出去）。
+pub use fs::Own;
 #[cfg(target_os = "linux")]
 pub(crate) mod linux_tables;
 pub(crate) mod liveness;

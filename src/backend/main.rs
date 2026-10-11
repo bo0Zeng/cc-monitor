@@ -106,6 +106,8 @@ async fn main() {
     // 起第一个子进程之前：各家「我是哪个会话」的变量一律不往下传（常驻后端若在某个会话里起，它起的会话不许认错父）。
     agents::install_child_env_filter();
     let process_argv: Vec<String> = std::env::args().collect();
+    // 写后端自家状态（数据目录底下）的句柄：只在这里造一次，顺着各入口递下去（`readonly_guard` 构造判据钉「只许这里造」）。
+    let own = cc_monitor_backend::platform::Own::issue();
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {
@@ -178,7 +180,7 @@ async fn main() {
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
             // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
             // 「臂体是一次真调用」也确实成立。
-            Some(f) if cli_control::handles(f) => cli_control::run(&args, z).await,
+            Some(f) if cli_control::handles(f) => cli_control::run(&args, z, &own).await,
             _ => observe::history_query::run(&agent_home, &args, z),
         };
         std::process::exit(code);
@@ -259,7 +261,7 @@ async fn main() {
     // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `changed {rotation}`（广播通道是进程内的）。
     inbound::watch_rotation();
     match listening {
-        None => run_over_stdio(hello, agent_home, wants).await,
+        None => run_over_stdio(hello, agent_home, wants, own).await,
         Some((listener, held)) => {
             // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
             inbound::watch_account_mcp();
@@ -274,6 +276,7 @@ async fn main() {
                     hello,
                     agent_home,
                     wants,
+                    own,
                 ) => {}
                 _ = stop => {
                     tracing::info!("shutdown signal received; exiting");
@@ -359,7 +362,12 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
 ///
 /// ⚠ 本函数体是 `K-P1` 之前 `main()` 的那一段**原样搬过来的**，一行行为都没改 ——
 /// 常驻是**加一条载体**，不是把这条改掉。改这一段之前先问：另一条载体要不要跟着改？
-async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -> ! {
+async fn run_over_stdio(
+    hello: Frame,
+    agent_home: PathBuf,
+    wants: StreamWants,
+    own: cc_monitor_backend::platform::Own,
+) -> ! {
     let mut stdout = BufWriter::new(tokio::io::stdout());
     // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
     // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
@@ -397,6 +405,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
         tokio::io::stdin(),
         reply_tx.clone(),
         watch_desk(&poke),
+        own,
         hello_flushed,
     );
 
@@ -705,6 +714,7 @@ async fn serve_listening(
     hello: Frame,
     agent_home: PathBuf,
     defaults: StreamWants,
+    own: cc_monitor_backend::platform::Own,
 ) {
     tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
 
@@ -765,7 +775,7 @@ async fn serve_listening(
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task =
-                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), hello_flushed);
+                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), own.clone(), hello_flushed);
                 // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
                 let tap_rx = tap::attach(book, tz.clone());
                 let done = done_tx.clone();

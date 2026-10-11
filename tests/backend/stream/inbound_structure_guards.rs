@@ -425,7 +425,10 @@ fn every_registered_command_declares_its_run_kind() {
                 // 文件窗口反查：读认可那份小文件（同步文件 I/O；不起 pb）。
                 | "plan-files"
         );
-        let is_blocking = matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_));
+        let is_blocking = matches!(
+            spec.run,
+            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+        );
         assert_eq!(
             is_blocking, expected_blocking,
             "`{}` 的 Run 档位与预期不符 —— 放错档的代价是「占住 worker」或「假装能取消」",

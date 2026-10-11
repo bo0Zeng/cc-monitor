@@ -162,6 +162,9 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
     assert_eq!(planted, vec![("x.rs".to_string(), "sneaky".to_string())]);
 }
 
+/// 搬上 `Own` 的那几份（第二刀逐份搬，搬一份挪一行）。
+const MOVED_TO_OWN: &[&str] = &["control/exit_policy.rs"];
+
 #[test]
 fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     let src = |p: &str| {
@@ -170,7 +173,6 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
         )
     };
     for f in [
-        "control/exit_policy.rs",
         "assets/asset_catalog.rs",
         "relay/key.rs",
         "assets/skill_ledger.rs",
@@ -185,6 +187,14 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
                 .count(),
             1,
             "{f} 建自家目录不是经 own_dir 恰好一处"
+        );
+    }
+    // 已搬上 `Own` 的（只读只读护栏第二刀逐份搬）：建那一层经 `Own::ensure_dir` 恰好一处。
+    for f in MOVED_TO_OWN {
+        assert_eq!(
+            src(f).matches(".ensure_dir(&").count(),
+            1,
+            "{f} 建自家目录不是经 `Own::ensure_dir` 恰好一处"
         );
     }
     let sftp = src("dial/sftp.rs");
