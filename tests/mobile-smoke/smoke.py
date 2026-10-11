@@ -12,6 +12,17 @@ here = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, here)
 import ui  # noqa: E402
 
+# 屏上的字都照文案表取（App 与核心读的同一张表）：文案一改，冒烟跟着走，不靠抄一份字面。
+_COPY = json.load(open(os.path.join(here, "..", "..", "src", "shared", "copy", "table.json"), encoding="utf-8"))["entries"]
+
+
+def t(key, **args):
+    s = _COPY[key]["zh"]
+    for k, v in args.items():
+        s = s.replace("{" + k + "}", str(v))
+    return s
+
+
 BOX = os.environ["CCM_SMOKE_BOX"]
 OUT = os.environ.get("CCM_SMOKE_OUT", os.path.join(BOX, "..", "shots"))
 PORT = os.environ.get("CCM_SMOKE_PORT", "22422")
@@ -73,7 +84,7 @@ def shot(name):
 def launch(fresh=False):
     adb("shell", "monkey", "-p", PKG, "-c", "android.intent.category.LAUNCHER", "1")
     if fresh:
-        if not wait("服务器", 20):
+        if not wait(t("mobDrawer.server.bare"), 20):
             raise Step.Fail("App 没起来")
         return
     time.sleep(3)
@@ -84,7 +95,7 @@ def to_chat():
     """回到带抽屉按钮的那一屏（对话列表 · 终端屏没有顶栏，按返回回去）。"""
     for _ in range(4):
         hide_keyboard()
-        if wait("打开抽屉", 3):
+        if wait(t("mobDrawer.open.aria"), 3):
             return
         adb("shell", "input", "keyevent", "4")
         time.sleep(1)
@@ -98,7 +109,7 @@ def to_bottom():
 
 def drawer(item):
     to_chat()
-    tap("打开抽屉")
+    tap(t("mobDrawer.open.aria"))
     time.sleep(1.5)
     tap(item)
     time.sleep(2)
@@ -158,24 +169,24 @@ def tap_in_row(label, button):
 
 
 def add_host(name, codex=False):
-    if ui.find("打开抽屉") is not None:
-        drawer("服务器 · ")
+    if ui.find(t("mobDrawer.open.aria")) is not None:
+        drawer(t("mobDrawer.server.named", name=""))
     tap("+")
     time.sleep(1.5)
-    tap("名称"); typed(name)
-    tap("主机 / IP（主地址）"); typed(host_alias())
+    tap(t("mobHostEdit.field.name")); typed(name)
+    tap(t("mobHostEdit.field.host")); typed(host_alias())
     tap("22")
     for k in ("123",) + ("67",) * 4:
         adb("shell", "input", "keyevent", k)
     typed(PORT)
-    tap("用户名"); typed(USER)
+    tap(t("mobHostEdit.field.user")); typed(USER)
     hide_keyboard()
     if codex:
         tap("Codex")
     adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
     time.sleep(1)
     tap("smoke")
-    tap("保存")
+    tap(t("mobHostEdit.page.save"))
     time.sleep(2)
 
 
@@ -186,29 +197,33 @@ def main():
 
     with Step("1-加机器连上"):
         launch(fresh=True)
-        tap("钥匙"); time.sleep(1)
+        tap(t("mobIdentity.page.title")); time.sleep(1)
         tap("+"); time.sleep(1)
-        tap("把别处已有的一把搬进来"); time.sleep(1)
-        tap("给它起个名字"); typed("smoke")
-        tap("粘贴那段私钥"); time.sleep(0.5)
+        tap(t("mobIdentity.add.import")); time.sleep(1)
+        tap(t("mobIdentity.import.name")); typed("smoke")
+        tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         typed(key[0])  # 只贴一行：要当场拒
-        tap("搬进来"); time.sleep(2)
+        tap(t("mobIdentity.import.ok")); time.sleep(2)
         if ui.find("imported") is not None:
             raise Step.Fail("只贴进一行的钥匙照样存下了")
+        # 拒的那一句是条长提示（带「复制详情」，约 10 秒），盖在「+」上：等它退了再点。
+        end = time.time() + 15
+        while time.time() < end and ui.find(t("detail.act.copy")) is not None:
+            time.sleep(1)
         tap("+"); time.sleep(1)
-        tap("把别处已有的一把搬进来"); time.sleep(1)
-        tap("给它起个名字"); typed("smoke")
-        tap("粘贴那段私钥"); time.sleep(0.5)
+        tap(t("mobIdentity.add.import")); time.sleep(1)
+        tap(t("mobIdentity.import.name")); typed("smoke")
+        tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         for line in key:
             typed(line)
             adb("shell", "input", "keyevent", "66")
-        tap("搬进来")
+        tap(t("mobIdentity.import.ok"))
         if not wait("SHA256:", 10):
             raise Step.Fail("整把钥匙没导进来")
-        tap("← 返回"); time.sleep(1)
+        tap(t("mobKit.act.back")); time.sleep(1)
         add_host("smokebox")
-        drawer("对话")
-        if not (wait("今天", 30) or wait("无会话记录", 5)):
+        drawer(t("mobDrawer.item.chats"))
+        if not (wait(t("history.section.today"), 30) or wait(t("history.list.empty"), 5)):
             raise Step.Fail("对话列表没出来（没连上）")
 
     with Step("2-对话列表"):
@@ -216,35 +231,35 @@ def main():
            f'tmux new -d -s needs{T} -c ~/work claude; sleep 3; tmux send-keys -t needs{T} "ask {T} needs" Enter')
         if not wait(f"{T} seed", 30):
             raise Step.Fail("历史清单没出新会话")
-        if not wait("需手动", 20):
+        if not wait(t("needs.bar.unknown"), 20):
             raise Step.Fail("需手动没出来")
-        first = next((n.get("text") for n in ui.nodes() if "在终端里答" in (n.get("text") or "")), "")
+        first = next((n.get("text") for n in ui.nodes() if t("needs.bar.subBare") in (n.get("text") or "")), "")
         time.sleep(4)
-        later = next((n.get("text") for n in ui.nodes() if "在终端里答" in (n.get("text") or "")), "")
+        later = next((n.get("text") for n in ui.nodes() if t("needs.bar.subBare") in (n.get("text") or "")), "")
         if not first or first == later:
             raise Step.Fail(f"已等没走表（{first!r} → {later!r}）")
         rig("tmux", "send-keys", "-t", f"needs{T}", "y", "Enter")
 
     with Step("3-新建会话"):
-        drawer("新对话")
-        tap("说点什么…"); typed(f"{T} new session")
+        drawer(t("mobDrawer.item.newChat"))
+        tap(t("mobChat.input.placeholder")); typed(f"{T} new session")
         hide_keyboard()
-        tap("发送")
+        tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} new session", 40):
             raise Step.Fail("答不回来")
 
     with Step("4-聊天屏"):
-        tap("说点什么…"); typed(f"{T} long")
+        tap(t("mobChat.input.placeholder")); typed(f"{T} long")
         hide_keyboard()
-        tap("发送")
-        if not wait("思考", 20):
+        tap(t("mobChat.input.send"))
+        if not wait(t("cards.thinking.title"), 20):
             raise Step.Fail("过程没出来")
         time.sleep(4)
         for _ in range(12):
             adb("shell", "input", "swipe", "540", "700", "540", "2000", "150")
         if not wait(f"{T} new session", 5):
             raise Step.Fail("往上翻翻不到第一句")
-        tap("思考")
+        tap(t("cards.thinking.title"))
         if not wait("替身在想。", 5):
             raise Step.Fail("思考展不开")
 
@@ -254,7 +269,7 @@ def main():
         time.sleep(2)
         rig("tmux", "send-keys", "-t", name or "", f"{T} notify", "Enter")
         end = time.time() + 20
-        while time.time() < end and "本轮完成" not in adb("shell", "dumpsys", "notification", "--noredact"):
+        while time.time() < end and t("turnNotify.finish.title", tab="").rstrip(" ·") not in adb("shell", "dumpsys", "notification", "--noredact"):
             time.sleep(1)
         if time.time() >= end:
             raise Step.Fail("没出完成通知")
@@ -285,14 +300,14 @@ def main():
 
     with Step("7-终端屏"):
         name = tmux_name_of(f"{T} new session")
-        drawer("终端")
+        drawer(t("mobDrawer.item.terminal"))
         time.sleep(2)
         hide_keyboard()
-        tap("tmux 会话"); time.sleep(3)
+        tap(t("mobDefaultButtons.label.tmux")); time.sleep(3)
         names = [n.get("text") for n in ui.nodes()]
         if name not in names:
             raise Step.Fail(f"tmux 会话列表里没有 {name}")
-        tap_in_row(name, "附着")
+        tap_in_row(name, t("mobTmux.row.attach"))
         time.sleep(3)
         typed(f"{T} from phone terminal")
         adb("shell", "input", "keyevent", "66")
@@ -308,9 +323,9 @@ def main():
         launch()
         add_host("smokecodex", codex=True)
         hide_keyboard()
-        tap("说点什么…"); typed(f"{T} codex")
+        tap(t("mobChat.input.placeholder")); typed(f"{T} codex")
         hide_keyboard()
-        tap("发送")
+        tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} codex", 40):
             raise Step.Fail("Codex 答不回来")
 
