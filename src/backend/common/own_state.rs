@@ -61,8 +61,8 @@ pub(crate) fn read_json<T: serde::de::DeserializeOwned>(path: &Path, cap: u64) -
     })
 }
 
-/// 整份写成紧凑 JSON、收尾一个换行。
-pub(crate) fn write_json<T: serde::Serialize + ?Sized>(path: &Path, v: &T) -> Result<(), Said> {
+/// 整份写成紧凑 JSON、收尾一个换行：交回要写的那一份字节（经 `Own::write` 落盘）。
+pub(crate) fn json_body<T: serde::Serialize + ?Sized>(path: &Path, v: &T) -> Result<Vec<u8>, Said> {
     let mut body = serde_json::to_vec(v).map_err(|e| {
         Said::with_raw(
             copy_text(
@@ -73,7 +73,12 @@ pub(crate) fn write_json<T: serde::Serialize + ?Sized>(path: &Path, v: &T) -> Re
         )
     })?;
     body.push(b'\n');
-    write(path, &body)
+    Ok(body)
+}
+
+/// 过渡：同 [`json_body`] 再原子写（还没搬上 `Own` 的写口用；全部搬完删）。
+pub(crate) fn write_json<T: serde::Serialize + ?Sized>(path: &Path, v: &T) -> Result<(), Said> {
+    write(path, &json_body(path, v)?)
 }
 
 /// 整份原子写 `body`（本体住 `platform::fs::own`，全后端一份）。过渡：还没搬上 `Own` 的写口经它；全部搬完删。

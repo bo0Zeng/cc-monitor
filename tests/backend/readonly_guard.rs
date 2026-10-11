@@ -926,13 +926,6 @@ mod tests {
              经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。入口只有中转那一路（上游选择对中转的那个口）—— 不是帧面命令",
         ),
         (
-            "footprint/chores/marks.rs",
-            "**「待办」记下的选择** `~/.cc-monitor/chores.json`：点过「不用了」的那几件 · 选了「我自己贴」的那份启动文件。\
-             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
-             经 `own_state` 原子写（`O_EXCL` 临时文件 · 0600 · 写满 → 挪过去）；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。\
-             线上入口只有命令表资产那一族的 `chores-mark`（＋ 派生的 CLI 面）",
-        ),
-        (
             "plan/review.rs",
             "**计划要你看的认可与退回记录** `~/.cc-monitor/plan-review.json`：认可过的几条（键带条目版本）· 退回过的格（送给谁 · 当时的子格与正文摘要）。\
              文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据（计划仓 `.planned-build/` 一个字节不写，认可不回写 pb）。\
@@ -1172,12 +1165,6 @@ mod tests {
         (
             "assets/skill_ledger.rs",
             "skill_ledger::answer_",
-            "stream/inbound/registry/assets.rs",
-        ),
-        // 「待办」记下的选择：一条写口 `answer_mark`（`mark_at` 是它的本体，判据直接喂临时目录）。
-        (
-            "footprint/chores/marks.rs",
-            "marks::answer_mark",
             "stream/inbound/registry/assets.rs",
         ),
         // 计划认可与退回：认可两条（`answer_ack` · `answer_unack`）只从认可那一半的宿主进，记退回（`answer_returned`）只从退回那一半进；

@@ -78,8 +78,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "marks_unreadable"],
         fields: &[arg("id", "`decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`）"), arg("op", "`decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回）"), arg("rc", "`selfPaste` 那一份启动文件（绝对路径）"), out("declined", "改完记着的「不用了」那几件"), out("selfPaste", "改完记着的「我自己贴」那份启动文件；没选 ⇒ `null`"), out("startSkipped", "改完记着的「开始用」跳过没有")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::footprint::chores::marks::answer_mark(&r.args)
+        run: Run::BlockingOwn(|r, own| {
+            crate::footprint::chores::marks::answer_mark(&r.args, own)
                 .map(Some)
         }),
     },
