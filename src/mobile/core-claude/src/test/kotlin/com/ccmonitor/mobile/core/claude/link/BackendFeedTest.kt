@@ -208,7 +208,8 @@ class BackendFeedTest {
             assertFalse("流没通：等着，不当场回离线", got.isCompleted)
             ssh.value = TOKEN_1 // SSH 通了 ⇒ 接上
             runCurrent()
-            val req = Json.obj(d.written.tryReceive().getOrNull().orEmpty().let { w -> if (w.startsWith("{\"attach\"")) d.written.tryReceive().getOrNull().orEmpty() else w })
+            val written = generateSequence { d.written.tryReceive().getOrNull() }.toList()
+            val req = Json.obj(written.last { !it.startsWith("{\"attach\"") })
             assertEquals("接上之后那一问才发出去", "history-list", req?.str("cmd"))
             d.push("""{"kind":"reply","id":"${req?.str("id")}","ok":true,"data":{"rows":[]}}""")
             runCurrent()

@@ -182,7 +182,11 @@ class SshConnectionManager(
         try {
             val probe = reconnectScope.async { runCatching { existing.probeAlive(PROBE_TIMEOUT_MS) }.getOrDefault(false) }
             val made = reconnectScope.async { runCatching { handshake(fresh, cfgs, onEvent, AtomicBoolean()) }.isSuccess }
-            val first = select { probe.onAwait { PROBE to it }; made.onAwait { FRESH to it } }
+            val first =
+                select {
+                    probe.onAwait { PROBE to it }
+                    made.onAwait { FRESH to it }
+                }
             val keepOld: Boolean? =
                 when (first) {
                     PROBE to true -> true
