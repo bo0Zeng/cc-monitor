@@ -1,6 +1,6 @@
 //! **一次性等待**：盯一个目录的文件事件，每来一批问一次「到了没有」；到了立刻回，到期限回「没等到」。
 //!
-//! 三种用法：换号重启等某条会话的记录里长出满足判定的一条（压缩摘要）· 等某条会话由一个新进程报出（pidfile）；起会话交第一句之前等它就绪（pidfile 说闲着）。
+//! 两种用法（换号重启那条命令用）：等某条会话的记录里长出满足判定的一条（压缩摘要）· 等某条会话由一个新进程报出（pidfile）。
 //! 事件由内核推（经盯盘原语 [`crate::platform::watch_file`]，不传时间窗），检查跑在它收的那条线程上；等的那一侧只有**一次**有界等待，期限由发起方给。
 //! 先装耳朵、再看一眼：装好之前已经到了的也认得出。
 
@@ -33,29 +33,6 @@ impl<F: FnMut() -> bool> Pending<F> {
         if self.tell.is_some() && (self.seen)() {
             if let Some(t) = self.tell.take() {
                 let _ = t.send(());
-            }
-        }
-    }
-}
-
-/// 发起方那一头：持着的那一端（[`tokio::sync::oneshot::Sender`]）一丢（撤单 · 断线：外层的 future 被丢）⇒ 等的那一侧当场醒。
-pub(crate) type Gone = tokio::sync::oneshot::Receiver<()>;
-
-impl Armed {
-    /// 同 [`Armed::within`]，在阻塞线程上等（起会话那条命令起好之后在 runtime 的阻塞线程上等）：期限是发起方的截止时刻 `until`，
-    /// `gone` 先醒（发起方放手）⇒ 当场 `false`。不在 runtime 里 ⇒ 等不了，回 `false`（说出来）。
-    pub(crate) fn within_blocking(self, until: crate::platform::child::Until, gone: Gone) -> bool {
-        match tokio::runtime::Handle::try_current() {
-            Ok(rt) => rt.block_on(async move {
-                tokio::select! {
-                    biased;
-                    _ = gone => false,
-                    hit = self.within(until.left_ms()) => hit,
-                }
-            }),
-            Err(e) => {
-                tracing::warn!("one-wait: no runtime to wait on ({e})");
-                false
             }
         }
     }
@@ -118,16 +95,6 @@ pub(crate) fn session_arrival(agent_home: &Path, sid: &str) -> Result<Armed, Str
     let before = now(&home, &sid);
     arm(&dir, move || {
         now(&home, &sid).iter().any(|p| !before.contains(p))
-    })
-}
-
-/// 等 `sid` 就绪、等着下一句输入（[`crate::observe::accounts_query::session_idle`]）：盯这台的 pidfile 目录，装好之前已经闲着的也认得出。
-pub(crate) fn session_ready(agent_home: &Path, sid: &str) -> Result<Armed, String> {
-    let dir = crate::observe::watcher::pidfile_dir(agent_home);
-    let home = agent_home.to_path_buf();
-    let sid = sid.to_string();
-    arm(&dir, move || {
-        crate::observe::accounts_query::session_idle(&home, &sid)
     })
 }
 

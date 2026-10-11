@@ -170,8 +170,9 @@ pub(crate) struct LaunchFace {
     /// 起**新**会话时先定好 sid 的那个旗标（`claude --session-id <uuid>`）：起会话框选了规则 ⇒ 后端起之前按这个 sid 写好来源。
     /// 这一家不认 ⇒ `None`（那就不许起的时候带规则）。
     pub(crate) preset_sid: Option<&'static str>,
-    /// 起会话带第一句怎么交（[`FirstPrompt`]）。
-    pub(crate) first_prompt: FirstPrompt,
+    /// 起会话带第一句时，能不能把它作为启动参数交过去（交给那一家的那一半末尾、`--` 之后的位置参数：那一家自己排着，启动画面 · 信任框过了才交进会话）。
+    /// 不能 ⇒ 带第一句的起会话回 `bad_args`。
+    pub(crate) first_prompt_arg: bool,
     /// 起会话时选权限档那个旗标与可选的档（起会话框 · 手机起会话带它；不给 `bypassPermissions` 那种越过批准的档）。这一家没有 ⇒ `None`。
     pub(crate) permission: Option<PermissionFace>,
     /// 这一家把「我是哪个会话」导给它起的子进程的那个环境变量（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。
@@ -199,16 +200,6 @@ pub(crate) struct LaunchFace {
     // 后端里的读者只有生成器（`agents_tests.rs::render_agent_profile_table`，测试档）：它写进 `generated/agent-profile-table.ts`，界面读那一份。
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) models: Option<&'static [&'static str]>,
-}
-
-/// 一家起会话带第一句怎么交（[`LaunchFace::first_prompt`]）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum FirstPrompt {
-    /// 起的时候作为启动参数交（交给那一家的那一半末尾、`--` 之后的位置参数）：那一家自己排着，启动画面 · 信任框过了才交进去；不等就绪、不送键。
-    Argv,
-    /// 不认 ⇒ 起好之后等会话就绪（pidfile 说闲着）再送字 ＋ 回车；要说得出 sid（先定 sid · 分叉）。
-    #[cfg_attr(not(test), allow(dead_code))]
-    Typed,
 }
 
 /// 一家起会话时选权限档的说法（[`LaunchFace::permission`]）。

@@ -408,7 +408,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "sessions-stop"
                 | "sessions-start"
                 | "sessions-where"
-                // 起新会话那两问：读账号清单 · 扫各家记录目录（同步 I/O）。`session-new` 本身是可撤档（起那一段挪到阻塞线程池、等就绪那一下 await）。
+                // 起新会话：起 tmux 子进程 · 读账号清单 · 写分支记录 · 扫各家记录目录（同步 I/O）。
+                | "session-new"
                 | "session-new-facts"
                 | "session-new-dir"
                 // 计划读面三条：起一次 pb 子进程（研究盘约 1 秒）· 读记录树对会话（同步 I/O）。
@@ -653,7 +654,7 @@ fn every_registered_command_declares_its_run_kind() {
         "sessions-stop",
         "sessions-start",
         "sessions-where",
-        // 起新会话：可撤档（起那一段挪到阻塞线程池，带第一句时等就绪那一下 await、听撤单）；另两问阻塞。
+        // 起新会话那三问：阻塞。
         "session-new",
         "session-new-facts",
         "session-new-dir",

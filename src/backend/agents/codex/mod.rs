@@ -79,7 +79,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     resume_token: resume::RESUME_TOKEN,
     preset_sid: None,
     // `codex [OPTIONS] [PROMPT]` · `codex resume [SESSION_ID] [PROMPT]`：位置参数的第一句；它的记录要第一句进去才建。
-    first_prompt: crate::agents::FirstPrompt::Argv,
+    first_prompt_arg: true,
     permission: None,
     self_sid_env: None,
     launch_args: resume::LAUNCH_ARGS,

@@ -655,11 +655,10 @@ mod tests {
         (
         "observe/one_wait.rs",
         "Duration::from_millis(ms)",
-        "一次性等待（`observe::one_wait::Armed::within`）的期限：值由发起方给（换号重启的界面把等压缩 / 等会话报出的期限交下来；\
-         起会话带第一句时等会话就绪，期限是分派层由请求期限 `within_ms` 换来的截止时刻），\
+        "一次性等待（`observe::one_wait::Armed::within`）的期限：值由发起方给（换号重启的界面把等压缩 / 等会话报出的期限交下来），\
          只交给那一次有界等待（登记在 `REGISTERED_DEADLINE_WAKES` 的 observe/one_wait.rs 那一行），不驱动循环、不产生节拍。",
         "收窄人群",
-        "换号重启不再等压缩摘要与会话报出、起会话不再等就绪交第一句（或等待改由别处执行）的那天 —— 与那一行登记一起摘。",
+        "换号重启不再等压缩摘要与会话报出（或等待改由别处执行）的那天 —— 与那一行登记一起摘。",
     ),
         (
         "accounts/upstream_select/rotate.rs",
@@ -737,9 +736,9 @@ mod tests {
         (
             "observe/one_wait.rs",
             "tokio::time::timeout(wait, self.hit)",
-            "换号重启等压缩摘要 / 等会话报出、起会话等就绪交第一句的**一次有界等待**：到了由文件事件（inotify）当场叫醒，没到就等到发起方给的期限、回「没等到」。\
+            "换号重启等压缩摘要 / 等会话报出的**一次有界等待**：到了由文件事件（inotify）当场叫醒，没到就等到发起方给的期限、回「没等到」。\
              一次一等、不循环、不复用；没有它，压缩一直不出摘要时这条命令就永远停在半路。",
-            "发起方给的期限（`compact_within_ms` / `arrive_within_ms` · 起会话那一发请求的 `within_ms`）；等的那件事先到 · 发起方撤单就立刻醒。",
+            "发起方给的期限（`compact_within_ms` / `arrive_within_ms`）；等的那件事先到就立刻醒。",
         ),
     ];
 

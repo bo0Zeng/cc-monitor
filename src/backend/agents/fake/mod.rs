@@ -122,8 +122,8 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     launcher_alias: None,
     resume_token: RESUME_TOKEN,
     preset_sid: None,
-    // 夹具家不认：走「等就绪 → 送字」那一路。
-    first_prompt: crate::agents::FirstPrompt::Typed,
+    // 夹具家同两家：起的时候就交。
+    first_prompt_arg: true,
     permission: None,
     self_sid_env: None,
     launch_args: &[],
