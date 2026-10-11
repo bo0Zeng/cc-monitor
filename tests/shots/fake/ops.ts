@@ -54,9 +54,6 @@ export function defaultOps(): Record<string, OpHandler> {
         },
       ]),
     ),
-    "history-last-accounts": (_o, _r, w) => ({
-      accounts: Object.fromEntries(w.sessions.map((s, i) => [s.sid, ACCOUNTS[i % 2].name])),
-    }),
     "tasks-list": (_o, req, w) => ({ tasks: w.sessions.find((s) => s.sid === req.sid)?.tasks ?? [] }),
     // 起新会话框那三问：那台最近用过的目录（它上面那几个会话的目录）· 有 tmux · 只有一家能起；分叉那一形照源会话给三格。
     "session-new-facts": (origin, req, w) => {

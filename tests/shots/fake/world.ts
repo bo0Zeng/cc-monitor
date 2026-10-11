@@ -5,7 +5,7 @@ import { Convo } from "./records";
 import type { SessionSpec, World } from "./types";
 import { defaultOps } from "./ops";
 import { defaultCommands } from "./commands";
-import { historyOps } from "./history";
+import { putHistory } from "./history";
 import { machineCommands, machineOps } from "./machine";
 import { ACCOUNTS } from "./ops";
 import { blankDisk, putAccounts, type LiveSession, type MachineDisk } from "../disk";
@@ -209,7 +209,7 @@ export function defaultWorld(): World {
     staleMachines: [],
     config: defaultConfig(),
     sessions,
-    ops: { ...defaultOps(), ...historyOps(), ...machineOps() },
+    ops: { ...defaultOps(), ...machineOps() },
     commands: { ...defaultCommands(), ...machineCommands() },
   };
 }
@@ -241,8 +241,10 @@ export function diskOf(w: World): Record<string, MachineDisk> {
     w.machines.map((m) => {
       const d = w.disk[m] ?? blankDisk();
       const mine = w.sessions.filter((s) => s.origin === m);
-      const files = { ...d.files };
-      const mtimes = { ...d.mtimes };
+      const h: MachineDisk = { files: {}, mtimes: {}, live: [] };
+      putHistory(m, h, w.sessions, ACCOUNTS.slice(0, 2).map((a) => a.name), Date.now());
+      const files = { ...h.files, ...d.files };
+      const mtimes = { ...h.mtimes, ...d.mtimes };
       for (const s of mine) {
         if (!s.convo) continue;
         Object.assign(files, s.convo.files());

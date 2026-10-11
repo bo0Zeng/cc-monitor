@@ -63,8 +63,10 @@ export interface World {
   machines: string[];
   /** 订阅时看不见的那几台（流里第一格 `unseen`）。 */
   unseenMachines: string[];
-  /** 历史清单问不到的那几台（那台常驻那一跳 `history-list {raw}` 连不上）。 */
-  historyDown?: string[];
+  /** 到那台那一跳连不上的几条帧命令：机器 → op（例：历史清单问不到那台，`history-list`）。 */
+  hopDown?: Record<string, string[]>;
+  /** 那台后端比界面老、不认的几条帧命令：机器 → op。 */
+  older?: Record<string, string[]>;
   /** 会话流被那台后端关掉的那几台（流里第一格 `closed`）。 */
   closedMachines: string[];
   /** 那台的 cc-monitor 比这一版旧（状态成品 `needs_update`）。 */

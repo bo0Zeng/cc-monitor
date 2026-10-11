@@ -34,6 +34,11 @@ export const REAL_OPS = new Set([
   "history-facts",
   "history-branch",
   "history-run",
+  "history-list",
+  "history-search",
+  "history-search-merge",
+  "history-find",
+  "history-last-accounts",
 ]);
 
 /**
@@ -205,6 +210,9 @@ export class FakeBackend {
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
     // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。声明本身原样交给真后端，这里不读它。
     const delay = (args.view == null ? this.world.fullFetchDelayMs?.[op] : undefined) ?? this.world.opDelayMs?.[op] ?? 0;
+    // 那台后端比界面老、不认这一条（照真壳交的「不认」那一形）· 到那台那一跳连不上（照壳的跳失败那一形）。
+    if (this.world.older?.[origin]?.includes(op)) return Promise.reject({ err: "Unsupported", body: [] });
+    if (this.world.hopDown?.[origin]?.includes(op)) return Promise.reject({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] });
     if (REAL_OPS.has(op)) {
       const face = WINDOWS_FACE[origin]?.[op];
       return new Promise((r) => setTimeout(r, delay))
