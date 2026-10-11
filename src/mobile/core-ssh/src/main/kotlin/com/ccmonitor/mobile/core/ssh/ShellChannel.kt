@@ -6,15 +6,26 @@ import java.io.InputStream
 import java.io.OutputStream
 
 /** 交互 shell 通道：原始字节流与 PTY resize，供终端桥接。 */
-class ShellChannel(
+interface ShellChannel : Closeable {
+    val input: InputStream
+    val output: OutputStream
+
+    /** PTY 尺寸变化 → 远端 SIGWINCH。 */
+    fun resize(
+        cols: Int,
+        rows: Int,
+    )
+}
+
+/** sshj 那一份（[SshConnection] 用）。 */
+class SshjShellChannel(
     private val session: Session,
     private val shell: Session.Shell,
-) : Closeable {
-    val input: InputStream get() = shell.inputStream
-    val output: OutputStream get() = shell.outputStream
+) : ShellChannel {
+    override val input: InputStream get() = shell.inputStream
+    override val output: OutputStream get() = shell.outputStream
 
-    /** PTY 尺寸变化 → 远端 SIGWINCH（sshj 在 Shell 上：`changeWindowDimensions`）。 */
-    fun resize(
+    override fun resize(
         cols: Int,
         rows: Int,
     ) {

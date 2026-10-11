@@ -319,7 +319,7 @@ class SshConnection(
             ) {
                 val session = client().startSession()
                 session.allocatePTY(term, cols, rows, 0, 0, emptyMap<PTYMode, Int>())
-                ShellChannel(session, session.startShell())
+                SshjShellChannel(session, session.startShell())
             }
         }
 

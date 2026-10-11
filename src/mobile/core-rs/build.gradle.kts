@@ -30,6 +30,7 @@ android {
     ndkVersion = ndkVersionPinned
     defaultConfig {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
     }
     buildTypes {
         getByName("debug") { ndk { abiFilters += abiOf("debug") } }

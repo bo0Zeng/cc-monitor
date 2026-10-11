@@ -44,8 +44,8 @@ private const val PROBE_TIMEOUT_MS = 5_000L
  */
 class SshConnectionManager(
     private val knownHostStore: KnownHostStore? = null,
-    // 传输工厂；测试注入假实现。
-    private val transportFactory: (KnownHostStore?) -> SshTransport = { SshConnection(it) },
+    // 传输工厂：走手机嵌的 Rust 核心（[RustTransport]，拨号核心与后端同一份）；测试注入假实现。
+    private val transportFactory: (KnownHostStore?) -> SshTransport = { RustTransport(it) },
     // 重连协程的 dispatcher；测试注入 TestDispatcher。
     reconnectDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {

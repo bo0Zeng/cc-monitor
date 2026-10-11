@@ -33,6 +33,8 @@ dependencies {
     // 用 api：RemoteCommandChannel 出现在公开 API（`SshConnectionManager.commandChannel()` 的返回类型）里，
     // 依赖 :core-ssh 的模块不另外声明 :core-remote 也要编得过。
     api(project(":core-remote"))
+    // 连接走手机嵌的 Rust 核心（拨号核心 ssh-dial 的 FFI 外壳）：[RustTransport]。
+    implementation(project(":core-rs"))
 
     implementation(libs.sshj)
     implementation(libs.bouncycastle.prov)

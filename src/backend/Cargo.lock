@@ -1370,9 +1370,12 @@ dependencies = [
 name = "mobcore"
 version = "0.0.0"
 dependencies = [
+ "copy-core",
  "jni",
+ "russh",
  "serde_json",
  "ssh-dial",
+ "tokio",
 ]
 
 [[package]]
