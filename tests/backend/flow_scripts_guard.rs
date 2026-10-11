@@ -332,7 +332,8 @@ mod tests {
             .map(str::trim)
             .expect("gradle.properties 里没有 ccm.ndkVersion");
         assert!(
-            pinned.split('.').count() == 3 && pinned.chars().all(|c| c.is_ascii_digit() || c == '.'),
+            pinned.split('.').count() == 3
+                && pinned.chars().all(|c| c.is_ascii_digit() || c == '.'),
             "ccm.ndkVersion 不像一个 NDK 版本号：{pinned}"
         );
         let want = format!("ndk;{pinned}");
@@ -350,13 +351,22 @@ mod tests {
                         && !l.chars().next().is_some_and(|c| !c.is_whitespace())
                 })
                 .collect();
-            assert!(body.len() > 10, "{file} 的 `{job}` 只抠到 {} 行 —— 切法坏了", body.len());
+            assert!(
+                body.len() > 10,
+                "{file} 的 `{job}` 只抠到 {} 行 —— 切法坏了",
+                body.len()
+            );
             let ndks: Vec<&str> = body
                 .iter()
                 .flat_map(|l| l.split_whitespace())
                 .filter(|w| w.starts_with("ndk;"))
                 .collect();
-            assert_eq!(ndks, vec![want.as_str()], "{file} 的 `{}` 装的 NDK 不是 gradle.properties 钉的那一版", job.trim());
+            assert_eq!(
+                ndks,
+                vec![want.as_str()],
+                "{file} 的 `{}` 装的 NDK 不是 gradle.properties 钉的那一版",
+                job.trim()
+            );
         }
     }
 

@@ -161,9 +161,22 @@ abstract class VerifyApkAbis : DefaultTask() {
 
     @TaskAction
     fun verify() {
-        val apks = apkDir.get().asFile.walkTopDown().filter { it.isFile && it.name.endsWith(".apk") }.toList()
+        val apks =
+            apkDir
+                .get()
+                .asFile
+                .walkTopDown()
+                .filter { it.isFile && it.name.endsWith(".apk") }
+                .toList()
         if (apks.size != 1) throw GradleException("要恰好一份 APK，实得 ${apks.map { it.name }}")
-        val entries = ZipFile(apks.single()).use { z -> z.entries().asSequence().map { e -> e.name }.toList() }
+        val entries =
+            ZipFile(apks.single()).use { z ->
+                z
+                    .entries()
+                    .asSequence()
+                    .map { e -> e.name }
+                    .toList()
+            }
         val abis = entries.filter { it.startsWith("lib/") }.map { it.split('/')[1] }.toSortedSet()
         val want = expected.get()
         if (abis != sortedSetOf(want)) throw GradleException("${apks.single().name} 里的 ABI 是 $abis，登记的是 [$want]")

@@ -4480,7 +4480,7 @@ SOFTWARE.
 
 -------- MIT License (MIT) --------
 Used by:
-    crate: combine 4.6.8
+    crate: combine 4.6.7
 
 The MIT License (MIT)
 

@@ -50,7 +50,8 @@ listOf("debug", "release").forEach { buildType ->
             group = "build"
             description = "cargo 编 libmobcore.so（$triple，profile $profile）"
             val ndk = androidComponents.sdkComponents.ndkDirectory
-            val workspace = repoRoot.resolve("src/backend")
+            // workspace 根 = 后端那份根清单所在的目录（cargo 在那里找 lock 与两份 profile）。
+            val workspace = repoRoot.resolve("src/backend/Cargo.toml").parentFile
             workingDir = workspace
             doFirst {
                 val bin = ndk.get().asFile.resolve("toolchains/llvm/prebuilt/linux-x86_64/bin")
@@ -70,7 +71,10 @@ listOf("debug", "release").forEach { buildType ->
                 so.copyTo(dest.resolve("libmobcore.so"), overwrite = true)
             }
         }
-    android.sourceSets.getByName(buildType).jniLibs.srcDir(jniDir)
+    android.sourceSets
+        .getByName(buildType)
+        .jniLibs
+        .srcDir(jniDir)
     tasks.configureEach {
         if (name == "merge${cap}JniLibFolders") dependsOn(cargo)
     }

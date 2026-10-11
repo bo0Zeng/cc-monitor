@@ -15,7 +15,6 @@ crate: bs58 0.5.1
 crate: bumpalo 3.20.2
 crate: cgl 0.3.2
 crate: codespan-reporting 0.13.1
-crate: combine 4.6.7
 crate: core-foundation 0.10.1
 crate: core-foundation 0.9.4
 crate: core-foundation-sys 0.8.7
