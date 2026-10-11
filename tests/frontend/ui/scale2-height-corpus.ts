@@ -288,7 +288,7 @@ const SYNTHETIC: { rec: LineRecord; note: string }[] = [
         ),
       "2026-09-18T12:34:56.000Z",
       "syn-compact-0",
-      { kind: "compactSummary" },
+      { kind: "compactSummary", charsText: "3,125" },
     ),
     note: "compact/折叠摘要",
   },

@@ -363,7 +363,17 @@ fn apply_and_check(
     root: &mut Map<String, Value>,
     edits: &[ConfigEdit],
 ) -> Result<Vec<Applied>, ConfigWriteError> {
-    let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(root, e)).collect();
+    let day = pinned_day(std::time::SystemTime::now());
+    let applied: Vec<Applied> = edits
+        .iter()
+        .map(|e| {
+            let a = apply_edit(root, e);
+            if a == Applied::Done {
+                stamp_pinned_day(root, e, &day);
+            }
+            a
+        })
+        .collect();
     if let Some(miss) = applied
         .iter()
         .find(|a| matches!(a, Applied::NoMatch | Applied::Ambiguous))
@@ -395,6 +405,56 @@ fn apply_and_check(
         }
     }
     Ok(applied)
+}
+
+/// 写的那一天（UTC 的 `YYYY-MM-DD`）：机器的「指纹记于 …」那一格（[`stamp_pinned_day`]）。
+pub(crate) fn pinned_day(t: std::time::SystemTime) -> String {
+    let days = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() / 86_400)
+        .unwrap_or(0) as i64;
+    let (y, m, d) = copy_core::civil_from_days(days);
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// 一条写进了机器指纹的补丁（改那一格 · 新增一台）⇒ 同一台的 `hostKeyPinnedAt` 跟着盖上写的那一天；指纹写成空 ⇒ 日子清空。
+/// 只此一处：设置页记下指纹 · 拨号时自动固化都经补丁口，日子不由界面取、也不认补丁里带来的那一份。
+fn stamp_pinned_day(root: &mut Map<String, Value>, e: &ConfigEdit, day: &str) {
+    let hosts = |p: &[String]| p.len() == 2 && p[0] == "remote" && p[1] == "hosts";
+    let (path, r#where, fp) = match e {
+        ConfigEdit::SetIn {
+            path,
+            r#where,
+            field,
+            value,
+            ..
+        } if hosts(path) && field == "hostKeyFingerprint" => (path, r#where, value),
+        ConfigEdit::InsertIn {
+            path,
+            r#where,
+            value,
+        } if hosts(path) => (
+            path,
+            r#where,
+            value.get("hostKeyFingerprint").unwrap_or(&Value::Null),
+        ),
+        _ => return,
+    };
+    let given = fp.as_str().is_some_and(|s| !s.trim().is_empty());
+    apply_edit(
+        root,
+        &ConfigEdit::SetIn {
+            path: path.clone(),
+            r#where: r#where.clone(),
+            field: "hostKeyPinnedAt".into(),
+            value: Value::String(if given {
+                day.to_string()
+            } else {
+                String::new()
+            }),
+            if_empty: false,
+        },
+    );
 }
 
 /// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。

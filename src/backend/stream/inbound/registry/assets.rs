@@ -292,7 +292,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::Async(|r| {
             Box::pin(async move {
                 crate::assets::hub::ext_preview_many(
-                    &hub_here(),
+                    &hub_here(&r.tz),
                     &r.args,
                     &crate::dial::remote_ask::REACH,
                     &crate::dial::remote_ask::DialRemote,
@@ -317,7 +317,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::Async(|r| {
             Box::pin(async move {
                 crate::assets::hub::ext_apply_many(
-                    &hub_here(),
+                    &hub_here(&r.tz),
                     &r.args,
                     &crate::dial::remote_ask::REACH,
                     &crate::dial::remote_ask::DialRemote,

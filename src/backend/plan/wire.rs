@@ -76,6 +76,10 @@ pub(crate) struct PlanSign {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub at_text: Option<String>,
+    /// 那一刻的毫秒（自 1970，排序用）；读不出时刻 ⇒ `null`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub at_ms: Option<i64>,
     pub by: Option<PlanWho>,
     pub reason: Option<String>,
     pub refs: Vec<PlanRef>,

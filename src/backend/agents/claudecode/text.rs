@@ -194,7 +194,7 @@ pub(crate) fn user_text(f: &Facts) -> UserText {
         return UserText::of(Speaker::ToolResult);
     }
     if f.is_compact_summary {
-        return shown(Speaker::CompactSummary, &raw);
+        return compact(&raw);
     }
     match f.origin.and_then(|o| o.get("kind")).and_then(Value::as_str) {
         Some("human") if !f.is_meta => return spoken(&raw),
@@ -326,7 +326,7 @@ fn framed(raw: &str, sidechain: bool) -> Option<UserText> {
         return Some(UserText::of(system(t)));
     }
     if t.starts_with(COMPACT_LEAD) {
-        return Some(shown(Speaker::CompactSummary, t));
+        return Some(compact(t));
     }
     if sidechain && t.starts_with(FORK_OPEN) {
         return Some(shown(Speaker::AgentTask, t));
@@ -384,6 +384,16 @@ fn human(text: String) -> UserText {
 }
 
 /// 要显示正文的那几种非人来源（压缩摘要 · 派的活）：正文同样剥注入。
+/// 压缩摘要：正文照显示，数字数的是显示的那一份。
+fn compact(raw: &str) -> UserText {
+    let text = strip_injected(raw);
+    UserText {
+        speaker: Speaker::compact(&text),
+        text,
+        pasted: Vec::new(),
+    }
+}
+
 fn shown(speaker: Speaker, raw: &str) -> UserText {
     UserText {
         speaker,

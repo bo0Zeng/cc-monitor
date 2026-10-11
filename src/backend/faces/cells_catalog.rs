@@ -873,7 +873,7 @@ mod specimens {
             Speaker::Coordinator { body: some("b") },
             Speaker::AgentTask,
             Speaker::System { body: some("b") },
-            Speaker::CompactSummary,
+            Speaker::compact("ab"),
             Speaker::Interrupt,
             Speaker::ToolResult,
         ]

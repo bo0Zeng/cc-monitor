@@ -177,17 +177,18 @@ const REMOTE_HOST_FIELDS = [
   "user",
   "keyPath",
   "hostKeyFingerprint",
-  "hostKeyPinnedAt",
   "addresses",
   "jump",
   "resumeCommand",
   "connect",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
-/** 上面清单**漏掉**的字段（应为 `never`）。 */
+/**
+ * 上面清单**漏掉**的字段（应为 `never`）。`hostKeyPinnedAt` 不由界面写：壳写配置时跟着指纹盖上（`config.rs::stamp_pinned_day`），界面只读。
+ */
 type MissingField = Exclude<
   keyof RemoteHostConfig,
-  (typeof REMOTE_HOST_FIELDS)[number]
+  (typeof REMOTE_HOST_FIELDS)[number] | "hostKeyPinnedAt"
 >;
 // 漏了字段这一行就红，且 TS 的错误信息会把缺的字段名打出来。
 const _noMissingField: MissingField extends never ? true : MissingField = true;

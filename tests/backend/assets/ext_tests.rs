@@ -420,6 +420,9 @@ impl M {
 /// 本机那一跳：这台自己。
 struct HereM(Arc<M>);
 impl Here for HereM {
+    fn viewer_tz(&self) -> crate::Tz {
+        Default::default()
+    }
     fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
         self.0.inner(cmd, &args)
     }

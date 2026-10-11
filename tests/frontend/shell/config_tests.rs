@@ -695,3 +695,57 @@ fn a_machine_fault_carries_its_written_sentence() {
         assert_eq!(v["said"], json!(copy_text(key, &args)), "{key}");
     }
 }
+
+/// 指纹记于哪一天由壳写配置时盖上（界面不自己取今天）：设了 / 换了指纹 ⇒ 那一台 `hostKeyPinnedAt` 写成写的那一天；清空指纹 ⇒ 日子一起清；
+/// 新增一台带着指纹 ⇒ 同样盖上。别的格动了不碰日子；界面交来的日子不认（盖掉）。
+#[test]
+fn the_pinned_day_is_stamped_when_the_fingerprint_is_written() {
+    let dir = tmpdir("pinned-day");
+    let file = dir.join("config.json");
+    let host = |fp: &str, day: &str| json!({"label": "box", "host": "h", "hostKeyFingerprint": fp, "hostKeyPinnedAt": day});
+    std::fs::write(
+        &file,
+        json!({"remote": {"hosts": [host("", "")]}}).to_string(),
+    )
+    .unwrap();
+    let cell = |field: &str, v: Value| ConfigEdit::SetIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: vec![ElemKey {
+            fields: vec!["label".into(), "host".into()],
+            equals: "box".into(),
+        }],
+        field: field.into(),
+        value: v,
+        if_empty: false,
+    };
+    let day = || read(&file)["remote"]["hosts"][0]["hostKeyPinnedAt"].clone();
+    let today = crate::config::pinned_day(std::time::SystemTime::now());
+    patch_config_at(&file, &[cell("hostKeyFingerprint", json!("SHA256:aa"))]).unwrap();
+    assert_eq!(day(), json!(today), "设了指纹 ⇒ 盖上写的那一天");
+    std::fs::write(
+        &file,
+        json!({"remote": {"hosts": [host("SHA256:aa", "2000-01-01")]}}).to_string(),
+    )
+    .unwrap();
+    patch_config_at(&file, &[cell("jump", json!("j"))]).unwrap();
+    assert_eq!(day(), json!("2000-01-01"), "别的格动了不碰日子");
+    patch_config_at(&file, &[cell("hostKeyFingerprint", json!("SHA256:bb"))]).unwrap();
+    assert_eq!(day(), json!(today), "换了指纹 ⇒ 换成写的那一天");
+    patch_config_at(&file, &[cell("hostKeyFingerprint", json!(""))]).unwrap();
+    assert_eq!(day(), json!(""), "清空指纹 ⇒ 日子一起清");
+    let add = ConfigEdit::InsertIn {
+        path: vec!["remote".into(), "hosts".into()],
+        r#where: vec![ElemKey {
+            fields: vec!["label".into(), "host".into()],
+            equals: "two".into(),
+        }],
+        value: json!({"label": "two", "host": "h2", "hostKeyFingerprint": "SHA256:cc", "hostKeyPinnedAt": "1999-09-09"}),
+    };
+    patch_config_at(&file, &[add]).unwrap();
+    assert_eq!(
+        read(&file)["remote"]["hosts"][1]["hostKeyPinnedAt"],
+        json!(today),
+        "新增一台带指纹 ⇒ 盖上（界面交来的不认）"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}

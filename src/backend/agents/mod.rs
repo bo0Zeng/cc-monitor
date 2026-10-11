@@ -891,8 +891,13 @@ pub enum Speaker {
         #[cfg_attr(test, ts(optional))]
         body: Option<String>,
     },
-    /// 上下文压缩后续接用的摘要。
-    CompactSummary,
+    /// 上下文压缩后续接用的摘要（只经 [`Speaker::compact`] 来）。
+    #[serde(rename_all = "camelCase")]
+    CompactSummary {
+        /// 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+        #[cfg_attr(test, ts(as = "String"))]
+        chars_text: crate::common::cells::Words,
+    },
     /// 中断标记（人按了 Esc）。
     Interrupt,
     /// 工具结果回灌。
@@ -914,7 +919,7 @@ impl Speaker {
             Self::Coordinator { .. } => "coordinator",
             Self::AgentTask => "agentTask",
             Self::System { .. } => "system",
-            Self::CompactSummary => "compactSummary",
+            Self::CompactSummary { .. } => "compactSummary",
             Self::Interrupt => "interrupt",
             Self::ToolResult => "toolResult",
         }
@@ -956,6 +961,17 @@ pub struct Pasted {
 impl Default for UserText {
     fn default() -> Self {
         Self::of(Speaker::System { body: None })
+    }
+}
+
+impl Speaker {
+    /// 压缩摘要那一种：数好正文多少字（按字，不按 UTF-16）。
+    pub(crate) fn compact(text: &str) -> Self {
+        Self::CompactSummary {
+            chars_text: crate::common::cells::Words(copy_core::count_text(
+                text.chars().count() as u64
+            )),
+        }
     }
 }
 
@@ -2331,7 +2347,7 @@ pub(crate) fn compact_request_of(kind: &str) -> Option<&'static str> {
 
 /// `kind` 那一家的这条记录是不是压缩之后续接用的摘要（同渲染模型里 `compactSummary` 那一种来源）。
 pub(crate) fn is_compact_summary(kind: &str, v: &serde_json::Value) -> bool {
-    user_text_of(kind, v).is_some_and(|t| t.speaker == Speaker::CompactSummary)
+    user_text_of(kind, v).is_some_and(|t| matches!(t.speaker, Speaker::CompactSummary { .. }))
 }
 
 /// `hello.homes` 的一项 —— **某个 agent 在这台机器上的 home 目录**〔`S4` / `D3`〕。

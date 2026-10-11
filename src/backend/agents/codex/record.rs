@@ -367,7 +367,7 @@ fn said_as(says: KindSays, text: &str, human_text: String) -> UserText {
         KindSays::SubagentNotice => UserText::of(subagent_notice(text)),
         KindSays::AgentMail => mail_said(text, None, None),
         KindSays::Compact => UserText {
-            speaker: Speaker::CompactSummary,
+            speaker: Speaker::compact(text.trim()),
             text: text.trim().to_string(),
             pasted: Vec::new(),
         },

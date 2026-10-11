@@ -44,7 +44,7 @@ function foldConvo(): { c: Convo; t1: string; t2: string } {
 
   // 压缩
   c.from({ kind: "slashCommand", name: "/compact", args: "" });
-  c.from({ kind: "compactSummary" });
+  c.from({ kind: "compactSummary", charsText: "26" });
   (c.records[c.records.length - 1] as { who: { text: string } }).who.text = "## 摘要\n\n- 配置读取已统一\n- 文档旧写法已改";
 
   // 第三轮：重试 · 中途你按了 Esc 并插话 · 再做 · 结论

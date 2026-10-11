@@ -105,7 +105,7 @@ function build(cells: CellIn[]): Record<string, unknown>[] {
     statusCode: STATUS_CODE[c.status],
     why: c.why ?? null,
     whyCode: whyCode(c.why),
-    signs: (c.signs ?? []).map((g) => ({ at: g.at, by: who(g.by), reason: g.reason, refs: refsIn(g.reason, ids) })),
+    signs: (c.signs ?? []).map((g) => ({ at: g.at, atMs: null, by: who(g.by), reason: g.reason, refs: refsIn(g.reason, ids) })),
     owner: who(c.owner ?? null),
     refs: { title: [], body: refsIn(c.body ?? "", ids) },
     hasView: true,
@@ -123,7 +123,7 @@ function timeText(ms: number): string {
   return d.toDateString() === now.toDateString() ? hm : `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
 }
 
-/** 出口那一遍：`readAt` · `since` · `at`（毫秒或 ISO）旁边添 `…Text`；块的 `at`（编号）不是时刻 ⇒ 不添。 */
+/** 出口那一遍：`readAt` · `since` · `at`（毫秒或 ISO）旁边添 `…Text`（签收那一格另填 `atMs`，照后端 `product.rs`）；块的 `at`（编号）不是时刻 ⇒ 不添。 */
 function withTexts(v: unknown): void {
   if (Array.isArray(v)) {
     v.forEach(withTexts);
@@ -135,7 +135,9 @@ function withTexts(v: unknown): void {
   for (const k of ["readAt", "since", "at"]) {
     const x = o[k];
     const ms = typeof x === "number" ? x : typeof x === "string" ? Date.parse(x) : NaN;
-    if (!Number.isNaN(ms)) o[`${k}Text`] = timeText(ms);
+    if (Number.isNaN(ms)) continue;
+    o[`${k}Text`] = timeText(ms);
+    if (k === "at" && "atMs" in o) o.atMs = ms;
   }
 }
 

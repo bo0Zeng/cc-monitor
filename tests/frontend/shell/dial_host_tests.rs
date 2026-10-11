@@ -763,9 +763,9 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
 
 /// 天数换算的那几个界：纪元第一天 · 闰年 2 月 29 日 · 世纪年不闰 · 跨年。
 #[test]
-fn utc_day_is_the_civil_date() {
+fn pinned_day_is_the_civil_date() {
     use std::time::{Duration, UNIX_EPOCH};
-    let at = |secs: u64| super::utc_day(UNIX_EPOCH + Duration::from_secs(secs));
+    let at = |secs: u64| crate::config::pinned_day(UNIX_EPOCH + Duration::from_secs(secs));
     assert_eq!(at(0), "1970-01-01");
     assert_eq!(at(951_782_400), "2000-02-29");
     assert_eq!(at(4_107_542_400), "2100-03-01");
