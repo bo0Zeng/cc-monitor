@@ -285,7 +285,7 @@ mod tests {
     fn quick_check_runs_the_mobile_suite_only_when_mobile_inputs_changed() {
         // 改到手机读的金样 ⇒ 跑：经 gradle、带 --no-daemon，ktlint · detekt · 单测都在，条数读得出来。
         for changed in [
-            "tests/__fixtures__/x.golden.json",
+            "tests/__fixtures__/history-list.golden.json",
             "src/mobile/app/src/main/kotlin/X.kt",
         ] {
             let (plan, said, args) = quick_mobile("mobile-run", changed);
@@ -320,82 +320,80 @@ mod tests {
     }
 
     /// `mobile_reads` 漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，每一条都得落在表里某一项下。
+    /// 按路径段比（`src/backend` 不会被 `src/backend-x` 冒认）；Gradle 脚本里 `rootProject.file("../X")` 的 X 相对的是 `src/`。
     #[test]
     fn the_mobile_reads_cover_every_repo_path_the_mobile_tree_names() {
+        let segs = |p: &str| -> Vec<String> {
+            p.split('/')
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect()
+        };
         let qc = std::fs::read_to_string(root().join("tests/scripts/quick-check.sh")).unwrap();
         let line = qc
             .lines()
             .find_map(|l| l.strip_prefix("mobile_reads=("))
             .and_then(|l| l.strip_suffix(')'))
             .expect("quick-check.sh 里没有 `mobile_reads=(…)` 那一行");
-        let reads: Vec<&str> = line.split_whitespace().collect();
-        assert!(reads.contains(&"src/mobile/"), "{reads:?}");
-        let mut files = Vec::new();
-        let mut stack = vec![root().join("src/mobile")];
-        while let Some(dir) = stack.pop() {
-            for e in std::fs::read_dir(&dir).unwrap().flatten() {
-                let p = e.path();
-                let name = e.file_name().to_string_lossy().into_owned();
-                if p.is_dir() {
-                    if !matches!(name.as_str(), "build" | ".gradle" | ".kotlin" | ".idea") {
-                        stack.push(p);
-                    }
-                } else if name.ends_with(".kt") || name.ends_with(".kts") {
-                    files.push(p);
-                }
-            }
-        }
+        let reads: Vec<Vec<String>> = line.split_whitespace().map(|r| segs(r)).collect();
+        assert!(reads.contains(&segs("src/mobile")), "{reads:?}");
+        let outside: Vec<Vec<String>> = [
+            "tests",
+            "src/backend",
+            "src/shared",
+            "src/frontend",
+            "src/common",
+            "src/comms",
+            "src/doc",
+            "src/vendor",
+            ".github",
+        ]
+        .iter()
+        .map(|o| segs(o))
+        .collect();
+        let files =
+            guard_core::scan_tree_excluding(&root().join("src/mobile"), &["kt", "kts"], &[]);
         assert!(
             files.len() > 50,
             "只扫到 {} 份手机源 —— 人群坏了",
             files.len()
         );
-        let outside = [
-            "tests/",
-            "src/backend/",
-            "src/shared/",
-            "src/frontend/",
-            "src/common/",
-            "src/comms/",
-            "src/doc/",
-            "src/vendor/",
-            ".github/",
-        ];
         let mut named = Vec::new();
-        for f in &files {
-            let text = std::fs::read_to_string(f).unwrap_or_default();
+        for (f, text) in &files {
             let gradle = f.extension().is_some_and(|e| e == "kts");
             for lit in text.split('"').skip(1).step_by(2) {
                 if lit.chars().any(char::is_whitespace) {
                     continue;
                 }
-                // Gradle 脚本里 rootProject.file("../X") 的 X 相对的是 src/。
-                let path = match lit.strip_prefix("../") {
-                    Some(rest) if gradle && !rest.starts_with('$') => format!("src/{rest}"),
-                    _ => lit.to_string(),
-                };
-                let path = path.split('$').next().unwrap().to_string();
-                if outside
-                    .iter()
-                    .any(|o| path.starts_with(o) || format!("{path}/") == *o)
-                {
-                    named.push((f.strip_prefix(root()).unwrap().display().to_string(), path));
+                let mut path = segs(lit);
+                if path.first().map(String::as_str) == Some("..") {
+                    // 模块目录相对的 `../` 还在手机树里；只有 Gradle 脚本的 rootProject 相对 src/。
+                    if !gradle {
+                        continue;
+                    }
+                    path[0] = "src".to_string();
+                }
+                // 模板段（`$name`）起往后不算。
+                if let Some(cut) = path.iter().position(|s| s.contains('$')) {
+                    path.truncate(cut);
+                }
+                if path.len() >= 2 && outside.iter().any(|o| path.starts_with(o)) {
+                    named.push((
+                        f.strip_prefix(root()).unwrap_or(f).display().to_string(),
+                        path.join("/"),
+                    ));
                 }
             }
         }
         assert!(
             named
                 .iter()
-                .any(|(_, p)| p.starts_with("tests/__fixtures__")),
+                .any(|(_, p)| segs(p).starts_with(&segs("tests/__fixtures__"))),
             "一条金样路径都没认出来 —— 扫法坏了：{named:?}"
         );
         let missed: Vec<_> = named
             .iter()
-            .filter(|(_, p)| {
-                !reads
-                    .iter()
-                    .any(|r| p.starts_with(r) || format!("{p}/") == *r)
-            })
+            .filter(|(_, p)| !reads.iter().any(|r| segs(p).starts_with(r)))
             .collect();
         assert!(
             missed.is_empty(),
