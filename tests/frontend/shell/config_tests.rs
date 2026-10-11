@@ -367,8 +367,9 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
         1,
         "monitor 那一份不是排他锁"
     );
+    // 后端那一份读盘只经 `platform::fs::Ro`（后端除 `platform/fs/` 外不许点名 `std::fs`）⇒ 开目录那一下是 `Ro::open(dir)`，同一个只读开法。
     assert_eq!(
-        theirs.matches("std::fs::File::open(dir)").count(),
+        theirs.matches("crate::platform::fs::Ro::open(dir)").count(),
         1,
         "后端那一份不是锁目录"
     );
