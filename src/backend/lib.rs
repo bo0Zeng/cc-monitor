@@ -2456,7 +2456,7 @@ pub fn unavailable_from(tmux: Option<bool>) -> Vec<stream::wire::Unavailable> {
 ///
 /// # `None`（判不出来）今天只剩**一个**来源
 ///
-/// ① `PATH` 没设、或切不出任何一个非空目录 ⇒ **无处可查**，「没找到」这句话说不出口。
+/// ① `PATH` 没设、或是空的 ⇒ **无处可查**，「没找到」这句话说不出口。
 ///
 /// # 🔴 首行那个 `cfg!(unix)` 今天只说一件事（`K-P4` 下一拍拆开的就是它）
 ///
@@ -2474,16 +2474,26 @@ pub fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
     if !cfg!(unix) {
         return None;
     }
-    let dirs: Vec<PathBuf> = std::env::split_paths(path?)
-        .filter(|d| !d.as_os_str().is_empty())
-        .collect();
-    if dirs.is_empty() {
-        return None;
+    tmux_found(path, false, &|p| plugin::discover::is_executable(p))
+}
+
+/// `PATH` 上找 `tmux`：与找 agent 命令行同一处（[`platform::shell::find_session_command`]，后端里逐目录找命令只有它）。
+/// `PATH` 没设 / 空（或不是 UTF-8）⇒ `None`（无处可查）；`is_file` 定什么样的文件算数。
+fn tmux_found(
+    path: Option<&std::ffi::OsStr>,
+    windows: bool,
+    is_file: &dyn Fn(&std::path::Path) -> bool,
+) -> Option<bool> {
+    match platform::shell::find_session_command(
+        "tmux",
+        path.and_then(std::ffi::OsStr::to_str),
+        windows,
+        is_file,
+    ) {
+        platform::shell::SessionCommand::Unknown => None,
+        platform::shell::SessionCommand::Absent => Some(false),
+        platform::shell::SessionCommand::Found { .. } => Some(true),
     }
-    Some(
-        dirs.iter()
-            .any(|d| plugin::discover::is_executable(&d.join("tmux"))),
-    )
 }
 
 /// `K-P4`（下一拍）：**平台**这一维 —— 与「探针」那一维分开的第二个值。
@@ -2538,12 +2548,13 @@ pub enum TmuxPlatform {
 /// 还会按 `PATHEXT` 补后缀 ⇒ **它可能漏看**。漏看之后答案是「没有」，
 /// 而那正是 [`TmuxPlatform::AbsentUnlessExeOnPath`] 头注里论证过的安全方向。
 pub fn tmux_exe_in(path: Option<&std::ffi::OsStr>) -> bool {
-    let Some(path) = path else {
-        return false;
+    // 只认 `tmux.exe`（起 tmux 那一下 `CreateProcess` 只补 `.exe`）：别的后缀那几形（`.cmd` · `.ps1` …）不算数。
+    let exe = |p: &std::path::Path| {
+        p.file_name()
+            .is_some_and(|n| n.eq_ignore_ascii_case("tmux.exe"))
+            && p.is_file()
     };
-    std::env::split_paths(path)
-        .filter(|d| !d.as_os_str().is_empty())
-        .any(|d| d.join("tmux.exe").is_file())
+    tmux_found(path, true, &exe) == Some(true)
 }
 
 /// `K-P4`：两维合起来 —— **平台**（编译期定死）× **探针**（去世界上看）。
