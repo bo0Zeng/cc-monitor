@@ -25,12 +25,15 @@ export function defaultCommands(): Record<string, CommandHandler> {
 }
 
 /**
- * 配置里那张 tab 顺序（`tabBar.order`）缺 ⇒ 按世界里会话的先后补上：用过一阵的那台盘上都有这一张。
+ * 配置里那张 tab 顺序（`tabBar.order`）缺 ⇒ 补上（先按机器、再按会话的先后）：用过一阵的那台盘上都有这一张。
  * 不补的话顺序看各台会话流谁先到（几台真后端各起各的，每次先后不一样），同一张图两次截出来 tab 排得不一样。
  * 场景自己写了就照它的。
  */
 function withTabOrder(w: World): Record<string, unknown> {
   const bar = (w.config.tabBar ?? {}) as Record<string, unknown>;
   if ("order" in bar) return w.config;
-  return { ...w.config, tabBar: { ...bar, order: w.sessions.map((s) => s.sid) } };
+  // 先按机器（世界里机器的先后：本机在前），同一台上按会话的先后 —— 各台都在就绪点之前报完时真壳重放出来就是这个先后。
+  const at = (o: string): number => (w.machines.indexOf(o) + w.machines.length + 1) % (w.machines.length + 1);
+  const order = w.sessions.map((s, i) => ({ sid: s.sid, m: at(s.origin), i })).sort((a, b) => a.m - b.m || a.i - b.i);
+  return { ...w.config, tabBar: { ...bar, order: order.map((x) => x.sid) } };
 }

@@ -1,6 +1,7 @@
 /**
  * 截图台架造的会话记录与「现在」对得上：每个场景的世界里，每段会话记录（连同子 agent 那几段）的时刻都不晚于开页那一刻；
- * 活着的会话（在跑 / 在等 / 后台任务）末一条在一天之内；pidfile 说的进程起始时刻不晚于它记录的第一条。
+ * 活着的会话（在跑 / 在等 / 后台任务）末一条在一天之内；pidfile 说的进程起始时刻不晚于它记录的第一条；一段记录里后写的那条不早于前一条
+ * （场景往已经挪到「现在」前面的那一段后面接着写时，拿固定时刻 `clock()` 很容易写到它前面去）。
  *
  * 为什么有这一格：交真后端之后，后端照记录与盘上的时刻算成品 —— 记录写的是一周前（或几小时之后）、会话却说它此刻在跑，
  * 历史页的时段写成「10-01 17:00 – 10-08 14:30」、「已等 2m」配一条一周前的待批准；进程起在开页那一刻，
@@ -45,6 +46,8 @@ describe("截图台架的会话记录与「现在」对得上", () => {
         if (last > Date.now()) bad.push(`${s.id} · ${x.sid}：末一条比开页那一刻晚 ${Math.round((last - Date.now()) / 60_000)} 分钟`);
         const alive = !x.ended && (x.activity === "working" || x.activity === "needs_you" || x.activity === "background_work");
         if (alive && Date.now() - last > DAY) bad.push(`${s.id} · ${x.sid}：说它此刻${x.activity}，末一条却是 ${Math.round((Date.now() - last) / DAY)} 天前`);
+        const own = c.lines.filter((l): l is Record<string, unknown> => typeof l !== "string" && typeof l.timestamp === "string").map((l) => Date.parse(l.timestamp as string));
+        if (own.some((t, i) => i > 0 && t < own[i - 1])) bad.push(`${s.id} · ${x.sid}：记录里有一条比前一条早`);
         const born = liveOf(x).startedAt;
         if (born !== undefined && born > Math.min(...ts)) bad.push(`${s.id} · ${x.sid}：进程起在它记录第一条之后`);
       }

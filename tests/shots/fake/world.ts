@@ -135,8 +135,8 @@ export function richConvo(sid: string, cwd: string): { convo: Convo; agentTool: 
     88_000,
     "end_turn",
   );
-  // 照固定起点排出来的；整段挪到四分钟前收尾（这个会话此刻还在跑）。
-  c.endAt(Date.now() - 4 * 60_000);
+  // 照固定起点排出来的；整段挪到一分半前收尾（这个会话此刻还在跑；历史页按最近排它在最上，几个场景点第一行就是它）。
+  c.endAt(Date.now() - 90_000);
   return { convo: c, agentTool, agentTool2 };
 }
 

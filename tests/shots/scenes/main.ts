@@ -380,7 +380,7 @@ export const MAIN_SCENES: Scene[] = [
   }, () => {
     const w = defaultWorld();
     // 第一个会话此刻在跑一步 Bash（两分钟前开始、还没结果）。
-    w.sessions[0].convo?.clock(Date.now() - 145_000).tool("Bash", { command: "pytest -q tests/test_inventory_client.py" }, null);
+    w.sessions[0].convo?.clock(Date.now() - 60_000).tool("Bash", { command: "pytest -q tests/test_inventory_client.py" }, null);
     return w;
   }),
   main("main-step-awaiting", "主窗口 · 过程里那一步在等你批准", "在等批准的会话：过程里那一步琥珀点 ·「等你批准」· 右侧已等多久（后端 needs.call 指的那一步）", async () => {
