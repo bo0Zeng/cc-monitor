@@ -28,7 +28,7 @@ mockIPC((cmd, args) => backend.invoke(cmd, (args ?? {}) as Record<string, unknow
 backend.attachEmitter((event, payload) => emit(event, payload));
 // 场景等「开页之后台架在演的那几样落定」用（`scenes/helpers.ts::mainReady`）。
 (window as { __shotsSettled?: () => Promise<void> }).__shotsSettled = () => backend.settled();
-// 主界面的就绪点（`frontend-ready`，前端发、壳收）：转给无头壳，它照这一拍重放会话流。
+// 主界面的就绪点（`frontend-ready`，前端发、壳收）：转给无头壳，它收到这一下就重放会话流。
 void listen<{ prioritySid?: string | null }>("frontend-ready", (e) => backend.frontendReady(e.payload));
 
 // 产品代码会把「上次停在哪个 tab」之类的记忆写进 localStorage；每张图从同一个起点开始。
