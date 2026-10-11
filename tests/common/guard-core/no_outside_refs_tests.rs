@@ -1,5 +1,7 @@
 //! 守的要求（用户原话）：「产物（cc-monitor 仓）不能引用任何仓外的东西；产物文档只描述现状，不能引用任何开发文档。」
 //!
+//! 网眼包括仓外的开发记录目录、工作树目录与草稿目录；家目录绝对路径归 `private_shape_guard`（只许中性名字）。
+//!
 //! 人群：`git ls-files` 的全部文本文件。跳过两类：含 NUL 的二进制（与 git 判二进制同一口径）；
 //! 锁文件（`Cargo.lock` · `package-lock.json`：工具写的依赖清单，里面没有人写的文字）。
 //! 判定：逐行过检测网，命中集 == ∅。点名仓里一份 `.md` 的（`INVARIANTS §48.1` · `IPC-PROTOCOL §10`）是仓内引用，放过。
@@ -46,6 +48,8 @@ fn net() -> Regex {
         ("调", "研/"),
         ("第四", "波记录"),
         ("_施", "工/"),
+        ("_scr", "atch/"),
+        ("(^|[^0-9A-Za-z_-])cc-", "wt([^0-9A-Za-z_-]|$)"),
         ("真相", "源"),
         ("设计", "篇"),
         ("路线", "图"),
@@ -283,6 +287,10 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         format!("/* 会话头（主窗口稿 {}5.13）：40 高 */", "§"), // 7 ✔ 设计稿的节号
         format!("// 按钮上的字就是结果（额度稿{}5.2）", "§"), // 8 ✔ 稿与 § 之间不空格
         "// 存成草稿再发".to_string(),             // 9 ✘ 不带 §
+        format!("# 跑 `bash ~/cc-{}/_scr{}/heavy.sh`", "wt", "atch"), // 10 ✔ 仓外的工作树与草稿目录
+        format!("/// 见 `../cc-{}`", "wt"),        // 11 ✔ 仓外的工作树目录
+        "fn an_untracked_scratch_file_never_enters() {}".to_string(), // 12 ✘ 标识符里的 scratch
+        "// 包名 `acc-wtf`".to_string(),           // 13 ✘ 粘在别的词里
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -292,8 +300,8 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         .collect();
     assert_eq!(
         got,
-        BTreeSet::from([1, 4, 5, 7, 8]),
-        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8；该放过 2、3、6、9）—— 网坏了，全仓那条零命中不作数"
+        BTreeSet::from([1, 4, 5, 7, 8, 10, 11]),
+        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8、10、11；该放过 2、3、6、9、12、13）—— 网坏了，全仓那条零命中不作数"
     );
 }
 
