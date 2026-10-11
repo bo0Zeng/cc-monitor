@@ -1784,3 +1784,61 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
     back[3].as_object_mut().unwrap().remove("sc");
     assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }
+
+/// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 会话事实 `answerOff` 写明只能在终端里答批准，
+/// 在等批准时 `needs.manualText` 也是这一句；没带那个变量的进程 ⇒ `null`。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
+    let home = scratch("answer-off");
+    let sid = "cccccccc-1111-2222-3333-555555555555";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let facts_with = |off: bool| {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30");
+        if off {
+            cmd.env(crate::agents::asks::ANSWER_HOOK_OFF_ENV, "1");
+        } else {
+            cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
+        }
+        let mut c = cmd.spawn().unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
+        let body = format!(
+            r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
+            c.id()
+        );
+        let pf = pids.join(format!("{}.json", c.id()));
+        std::fs::write(&pf, body).unwrap();
+        let v = answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": path }),
+            &Default::default(),
+        )
+        .unwrap();
+        let _ = c.kill();
+        let _ = c.wait();
+        let _ = std::fs::remove_file(&pf);
+        v
+    };
+    let said = copy_core::copy_text("beAsk.manual.noHook", &[]);
+    let off = facts_with(true);
+    let on = facts_with(false);
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(off["answerOff"], serde_json::json!(said));
+    assert_eq!(off["needs"]["manualText"], serde_json::json!(said));
+    assert_eq!(on["answerOff"], serde_json::Value::Null);
+    assert_eq!(
+        on["needs"]["manualText"],
+        serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]))
+    );
+}
