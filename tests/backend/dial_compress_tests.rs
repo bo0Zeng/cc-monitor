@@ -593,6 +593,7 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
                 endpoint: format!("{host}:{port}"),
                 host: host.clone(),
                 port,
+                heard: Default::default(),
             };
             let mut h = russh::client::connect_stream(config(false, compress), counted, checker)
                 .await
@@ -731,6 +732,7 @@ async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
             endpoint: format!("{host}:{port}"),
             host: host.clone(),
             port,
+            heard: Default::default(),
         };
         let mut h = russh::client::connect_stream(config(false, compress), tcp, checker)
             .await
@@ -849,6 +851,7 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
                 endpoint: ep.to_string(),
                 host: ep.to_string(),
                 port: 22,
+                heard: Default::default(),
             };
             verdicts.push(c.check_server_key(&k).await.unwrap());
         }

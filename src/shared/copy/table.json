@@ -18308,6 +18308,24 @@
       "zh": "删除失败 · ~/{path} · {why}",
       "args": ["path", "why"]
     },
+    "beSftp.list.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "列不出目录 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beSftp.realpath.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到路径 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beSftp.rename.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未改名 · {from} → {to} · {why}",
+      "args": ["from", "to", "why"]
+    },
     "beSftp.open.isLink": {
       "kind": "error",
       "role": "报错",

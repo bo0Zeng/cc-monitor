@@ -33,6 +33,8 @@ pub struct Fs {
     /// 目录链接：`链接路径 → 它指向的（起始目录相对）路径`。
     pub links: BTreeMap<String, String>,
     handles: HashMap<String, String>,
+    /// 开着的目录句柄：`句柄 → (目录, 已经交过一趟了没有)`。
+    dir_handles: HashMap<String, (String, bool)>,
     next_handle: u32,
     /// 🔴 **本台架的针**：每一次会改东西的请求碰的路径，按到达顺序 `(动词, 路径)`。
     pub mutated: Vec<(String, String)>,
@@ -410,6 +412,87 @@ impl russh_sftp::server::Handler for Server {
             }
             let e = fs.files.remove(&o).ok_or(StatusCode::NoSuchFile)?;
             fs.files.insert(n, e);
+            Ok(ok(id))
+        }
+    }
+
+    fn opendir(
+        &mut self,
+        id: u32,
+        path: String,
+    ) -> impl std::future::Future<Output = Result<Handle, Self::Error>> + Send {
+        let fs = self.fs.clone();
+        async move {
+            let mut fs = fs.lock().unwrap();
+            let p = resolve(&fs, &rel(&path)).ok_or(StatusCode::NoSuchFile)?;
+            if !(p.is_empty() || fs.dirs.contains(&p)) {
+                return Err(StatusCode::NoSuchFile);
+            }
+            let h = fs.alloc();
+            fs.dir_handles.insert(h.clone(), (p, false));
+            Ok(Handle { id, handle: h })
+        }
+    }
+
+    fn readdir(
+        &mut self,
+        id: u32,
+        handle: String,
+    ) -> impl std::future::Future<Output = Result<Name, Self::Error>> + Send {
+        let fs = self.fs.clone();
+        async move {
+            let mut fs = fs.lock().unwrap();
+            let (dir, done) = fs
+                .dir_handles
+                .get(&handle)
+                .cloned()
+                .ok_or(StatusCode::Failure)?;
+            if done {
+                return Err(StatusCode::Eof);
+            }
+            fs.dir_handles.insert(handle, (dir.clone(), true));
+            let prefix = if dir.is_empty() {
+                String::new()
+            } else {
+                format!("{dir}/")
+            };
+            let direct = |k: &String| {
+                k.strip_prefix(&prefix)
+                    .filter(|rest| !rest.is_empty() && !rest.contains('/'))
+                    .map(str::to_string)
+            };
+            let mut files: Vec<File> = fs
+                .dirs
+                .iter()
+                .filter_map(|d| direct(d).map(|n| File::new(n, dir_attrs())))
+                .collect();
+            files.extend(
+                fs.files
+                    .iter()
+                    .filter_map(|(k, e)| direct(k).map(|n| File::new(n, attrs_of(e)))),
+            );
+            Ok(Name { id, files })
+        }
+    }
+
+    fn rmdir(
+        &mut self,
+        id: u32,
+        path: String,
+    ) -> impl std::future::Future<Output = Result<Status, Self::Error>> + Send {
+        let fs = self.fs.clone();
+        async move {
+            let mut fs = fs.lock().unwrap();
+            let p = rel(&path);
+            fs.touch("rmdir", &p);
+            let busy = fs
+                .files
+                .keys()
+                .chain(fs.dirs.iter())
+                .any(|k| k.starts_with(&format!("{p}/")));
+            if busy || !fs.dirs.remove(&p) {
+                return Err(StatusCode::Failure);
+            }
             Ok(ok(id))
         }
     }

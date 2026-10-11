@@ -111,6 +111,8 @@ pub fn lane_of(u: Use) -> Lane {
         Use::Stream => Lane::Stream,
         Use::Capture | Use::Files => Lane::Query,
         Use::Shell => Lane::Stream,
+        // 不开通道（`MaxSessions` 不数它），同隧道那一道。
+        Use::Hold => Lane::Tunnel,
         Use::Forward => Lane::Tunnel,
     }
 }
@@ -204,7 +206,8 @@ impl Lease {
         stages: &StageSink,
         lane: Lane,
     ) -> Result<Lease, (Said, Option<String>)> {
-        if req.probe || req.stages {
+        // 握着连接那一形要进池（别的链路复用它）：阶段行照报，只是复用到的那一趟没有拨号的阶段可报。
+        if req.probe || (req.stages && req.use_ != Use::Hold) {
             let linked = Arc::new(connect::establish(req, stages).await?);
             let permit = linked.budget.try_take(lane);
             return Ok(Lease {
@@ -613,6 +616,26 @@ async fn serve<R, W>(
                 return;
             }
             crate::sftp::serve_files(&session, &mut input, out).await;
+        }
+        Use::Hold => {
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            // 上行读到 EOF（对面走了）或连接没了 ⇒ 收工；上行的字节不是协议的一部分，读到就扔。
+            let heard = Arc::clone(&lease.linked.heard);
+            let mut sink = [0u8; 64];
+            loop {
+                tokio::select! {
+                    r = input.read(&mut sink) => if matches!(r, Ok(0) | Err(_)) { break },
+                    () = heard.gone() => {
+                        tracing::info!("dial: 握着的那条连接没了，这条链路收工");
+                        break;
+                    }
+                }
+            }
         }
         Use::Shell => {
             let fp = lease.linked.fingerprint.clone();

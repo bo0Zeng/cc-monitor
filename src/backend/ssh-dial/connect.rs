@@ -133,6 +133,8 @@ pub struct Checker {
     /// 这一趟连的是哪台（主机 ＋ 口，同开终端那一行写的那一对）：认下的钥匙按它交给宿主记（[`env::HostKeys`]）。
     host: String,
     port: u16,
+    /// 这条连接的收包记账；连接没了在这里记一笔（[`crate::pool::Heard::mark_gone`]）。
+    heard: Arc<crate::pool::Heard>,
 }
 
 impl Checker {
@@ -153,6 +155,17 @@ impl Checker {
 
 impl client::Handler for Checker {
     type Error = russh::Error;
+
+    async fn disconnected(
+        &mut self,
+        reason: client::DisconnectReason<Self::Error>,
+    ) -> Result<(), Self::Error> {
+        self.heard.mark_gone();
+        match reason {
+            client::DisconnectReason::ReceivedDisconnect(_) => Ok(()),
+            client::DisconnectReason::Error(e) => Err(e),
+        }
+    }
 
     async fn check_server_key(
         &mut self,
@@ -381,6 +394,7 @@ async fn race(
                 stages.emit(Stage::Dialing {
                     endpoint: ep_label.clone(),
                 });
+                let heard = Arc::new(crate::pool::Heard::new());
                 let checker = Checker {
                     expected,
                     observed: Arc::clone(&observed),
@@ -389,8 +403,8 @@ async fn race(
                     endpoint: ep_label.clone(),
                     host: ep.host.clone(),
                     port: ep.port,
+                    heard: Arc::clone(&heard),
                 };
-                let heard = Arc::new(crate::pool::Heard::new());
                 let r = match tcp_hop(&ep).await {
                     Ok((tcp, compress)) => {
                         let config = config(probe, apply && compress);
@@ -859,6 +873,8 @@ async fn through_hops(
                     endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
                     host: hop.host.clone(),
                     port: hop.port,
+                    // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
+                    heard: Arc::new(crate::pool::Heard::new()),
                 };
                 client::connect_stream(config(req.probe, false), tunnel, checker)
                     .await
@@ -951,6 +967,8 @@ pub async fn establish(
             "beConnect.jump.target",
             &[("host", &req.host), ("port", &req.port.to_string())],
         );
+        // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
+        let heard = Arc::new(crate::pool::Heard::new());
         let checker = Checker {
             expected: req.host_key_fingerprint.clone(),
             observed: Arc::clone(&observed),
@@ -959,9 +977,8 @@ pub async fn establish(
             endpoint: ep_label,
             host: req.host.clone(),
             port: req.port,
+            heard: Arc::clone(&heard),
         };
-        // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
-        let heard = Arc::new(crate::pool::Heard::new());
         let session = client::connect_stream(
             config(req.probe, compress_inner),
             Hearing::new(tunnel, Arc::clone(&heard)),

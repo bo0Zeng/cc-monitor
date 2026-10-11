@@ -709,6 +709,68 @@ pub async fn list_dir(s: &Session, path: &str) -> Option<Vec<(String, Option<u64
     )
 }
 
+/// 列一层目录：`(名, 是不是目录, 大小)`（`.` 与 `..` 不算）。读，不过围栏。
+pub async fn list_entries(s: &Session, path: &str) -> Result<Vec<(String, bool, u64)>, Said> {
+    let rd = s.sftp().read_dir(path.to_string()).await.map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beSftp.list.failed",
+                &[("path", path), ("why", &why_of(&e))],
+            ),
+            &e,
+        )
+    })?;
+    Ok(rd
+        .filter(|e| e.file_name() != "." && e.file_name() != "..")
+        .map(|e| {
+            let m = e.metadata();
+            (e.file_name(), m.is_dir(), m.size.unwrap_or(0))
+        })
+        .collect())
+}
+
+/// 一条路径的真路径（远端 `realpath`）。读，不过围栏。
+pub async fn real_path(s: &Session, path: &str) -> Result<String, Said> {
+    s.sftp().canonicalize(path.to_string()).await.map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beSftp.realpath.failed",
+                &[("path", path), ("why", &why_of(&e))],
+            ),
+            &e,
+        )
+    })
+}
+
+/// 改名（两头都先过围栏；标准 SFTP 的改名不覆盖：落点已在 ⇒ 服务端回失败）。
+pub async fn rename_entry(s: &Session, from: &str, to: &str) -> Result<(), Refusal> {
+    let a = fenced_remote(s, from, Intent::File).await?;
+    let b = fenced_remote(s, to, Intent::File).await?;
+    s.sftp().rename(a.clone(), b.clone()).await.map_err(|e| {
+        io_raw(
+            copy_text(
+                "beSftp.rename.failed",
+                &[("from", &a), ("to", &b), ("why", &why_of(&e))],
+            ),
+            &e,
+        )
+    })
+}
+
+/// 删一个空目录（先过围栏）。
+pub async fn remove_dir(s: &Session, path: &str) -> Result<(), Refusal> {
+    let rel = fenced_remote(s, path, Intent::File).await?;
+    s.sftp().remove_dir(rel.clone()).await.map_err(|e| {
+        io_raw(
+            copy_text(
+                "beSftp.remove.failed",
+                &[("path", &rel), ("why", &why_of(&e))],
+            ),
+            &e,
+        )
+    })
+}
+
 /// 删一份文件。回「真删了」（不在 ⇒ `false`，不算错）。
 pub async fn remove(s: &Session, path: &str) -> Result<bool, Refusal> {
     let rel = fenced_remote(s, path, Intent::File).await?;
@@ -1040,6 +1102,37 @@ async fn answer<R: AsyncRead + Unpin>(
                 };
                 Ok(serde_json::json!({ "readback": readback }))
             }
+            "list" => {
+                let path = arg_str(req, "path").map_err(bad)?;
+                let entries = list_entries(s, path)
+                    .await
+                    .map_err(|e| refused(op, "io", &e.said, e.raw.as_deref()))?;
+                let rows: Vec<serde_json::Value> = entries
+                    .into_iter()
+                    .map(|(name, dir, size)| serde_json::json!({"name": name, "dir": dir, "size": size}))
+                    .collect();
+                Ok(serde_json::json!({ "entries": rows }))
+            }
+            "realpath" => {
+                let path = arg_str(req, "path").map_err(bad)?;
+                let p = real_path(s, path)
+                    .await
+                    .map_err(|e| refused(op, "io", &e.said, e.raw.as_deref()))?;
+                Ok(serde_json::json!({ "path": p }))
+            }
+            "rename" => {
+                let from = arg_str(req, "from").map_err(bad)?;
+                let to = arg_str(req, "to").map_err(bad)?;
+                rename_entry(s, from, to)
+                    .await
+                    .map_err(|r| refusal(op, &r))?;
+                Ok(serde_json::json!({}))
+            }
+            "rmdir" => {
+                let path = arg_str(req, "path").map_err(bad)?;
+                remove_dir(s, path).await.map_err(|r| refusal(op, &r))?;
+                Ok(serde_json::json!({}))
+            }
             "remove" => {
                 let path = arg_str(req, "path").map_err(bad)?;
                 let removed = remove(s, path).await.map_err(|r| refusal(op, &r))?;
@@ -1054,7 +1147,7 @@ async fn answer<R: AsyncRead + Unpin>(
                 op,
                 "unknown_op",
                 &crate::malformed(&format!(
-                    "unknown op `{other}` (known: home / read / put / remove / mkdirs)"
+                    "unknown op `{other}` (known: home / read / put / remove / mkdirs / list / realpath / rename / rmdir)"
                 )),
                 None,
             )),

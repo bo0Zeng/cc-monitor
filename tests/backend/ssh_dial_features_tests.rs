@@ -171,6 +171,20 @@ async fn door(
     password: Option<&str>,
     key: Option<russh::keys::PublicKey>,
 ) -> (u16, Arc<Mutex<Vec<String>>>) {
+    let (port, log, _) = door_with_sessions(password, key).await;
+    (port, log)
+}
+
+/// 同 [`door`]，另回每条进来的服务端会话的收场把手（判据要从服务端那一侧掐断连接）。
+#[allow(clippy::type_complexity)]
+async fn door_with_sessions(
+    password: Option<&str>,
+    key: Option<russh::keys::PublicKey>,
+) -> (
+    u16,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Vec<russh::server::Handle>>>,
+) {
     test_host();
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -192,18 +206,25 @@ async fn door(
         auth_rejection_time_initial: Some(std::time::Duration::ZERO),
         ..Default::default()
     });
+    let sessions: Arc<Mutex<Vec<russh::server::Handle>>> = Arc::default();
+    let seen = Arc::clone(&sessions);
     tokio::spawn(async move {
         while let Ok((tcp, _)) = listener.accept().await {
             let cfg = Arc::clone(&cfg);
             let h = handler.clone();
+            h.note("accept".to_string());
+            let seen = Arc::clone(&seen);
             tokio::spawn(async move {
                 if let Ok(running) = russh::server::run_stream(cfg, tcp, h).await {
+                    seen.lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .push(running.handle());
                     let _ = running.await;
                 }
             });
         }
     });
-    (port, log)
+    (port, log, sessions)
 }
 
 fn request(v: serde_json::Value) -> DialRequest {
@@ -483,4 +504,52 @@ fn the_bare_host_writes_nothing_remote() {
         crate::env::Env::bare().files,
         crate::sftp::WriteRules::ReadOnly
     );
+}
+
+/// ★ 握着一条连接（`use: hold`，手机那一形：连上之后别的链路都复用它）：ack 之后链路不收工；同一身份的下一条链路
+/// 复用这条连接（服务端只进来过一条 TCP）；服务端那头断开 ⇒ 握着的链路当场收工（事件驱动，不靠钟）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_held_connection_is_reused_and_its_link_ends_when_the_peer_goes() {
+    let (port, log, sessions) = door_with_sessions(Some("h"), None).await;
+    register("hold-pw", TestCred::Password("h".into()));
+    let req = |u: &str| {
+        request(serde_json::json!({
+            "host": "127.0.0.1", "port": port, "user": "u", "key_path": "hold-pw",
+            "use": u, "command": "echo", "capture": {"max_bytes": 1024}
+        }))
+    };
+    let (ack, mut held, _up, run) = open(req("hold"), crate::uses::Control::none()).await;
+    assert_eq!(ack["ok"], true, "{ack}");
+    let (ack2, mut rd, _up2, _run2) = open(req("capture"), crate::uses::Control::none()).await;
+    assert_eq!(ack2["ok"], true, "{ack2}");
+    let mut line = String::new();
+    rd.read_line(&mut line).await.unwrap();
+    assert!(line.contains("ran"), "{line}");
+    let accepts = log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| *l == "accept")
+        .count();
+    assert_eq!(accepts, 1, "第二条链路没复用握着的那条连接");
+    assert!(!run.is_finished(), "握着的链路 ack 之后就收工了");
+    let handles: Vec<russh::server::Handle> = sessions.lock().unwrap().clone();
+    for h in handles {
+        let _ = h
+            .disconnect(russh::Disconnect::ByApplication, "bye".into(), "en".into())
+            .await;
+    }
+    let mut rest = Vec::new();
+    let n = tokio::time::timeout(
+        std::time::Duration::from_secs(20),
+        held.read_to_end(&mut rest),
+    )
+    .await
+    .expect("服务端断开之后握着的链路一直没收工");
+    assert!(n.is_ok());
+    tokio::time::timeout(std::time::Duration::from_secs(5), run)
+        .await
+        .expect("那一趟没收场")
+        .unwrap();
+    assert!(crate::USES.contains(&"hold"));
 }

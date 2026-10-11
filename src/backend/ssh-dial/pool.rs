@@ -90,27 +90,53 @@ pub fn mono_ms() -> u64 {
 /// 一条连接**最后一次收到对端字节**的时刻（[`mono_ms`]；0 = 还没收到过）。TCP 那一层每读到字节记一笔
 /// （`connect::Hearing`）。健康的空闲连接也会每 10 秒收到一次保活回话（`connect::KEEPALIVE`）⇒
 /// 「很久没收到」说明对端没在回话：路断成黑洞时 TCP 看着还活着，只有这一格看得出来。
-#[derive(Default)]
-pub struct Heard(AtomicU64);
+pub struct Heard {
+    at: AtomicU64,
+    /// 这条连接没了（russh 报「断开」那一刻置真）。握着连接的那一种链路（`use: hold`）等它 —— 事件，不是计时。
+    gone: tokio::sync::watch::Sender<bool>,
+}
+
+impl Default for Heard {
+    fn default() -> Self {
+        Heard {
+            at: AtomicU64::new(0),
+            gone: tokio::sync::watch::Sender::new(false),
+        }
+    }
+}
 
 impl Heard {
     /// 一条刚握完手的连接：此刻算收到过。
     pub fn new() -> Self {
-        Heard(AtomicU64::new(mono_ms()))
+        Heard {
+            at: AtomicU64::new(mono_ms()),
+            ..Heard::default()
+        }
     }
 
     /// 收到了对端的字节。
     pub fn touch(&self) {
-        self.0.fetch_max(mono_ms(), Ordering::Relaxed);
+        self.at.fetch_max(mono_ms(), Ordering::Relaxed);
     }
 
     pub fn at(&self) -> u64 {
-        self.0.load(Ordering::Relaxed)
+        self.at.load(Ordering::Relaxed)
     }
 
     /// 多久没收到对端字节了（毫秒）。
     pub fn silent_for(&self) -> u64 {
         mono_ms().saturating_sub(self.at())
+    }
+
+    /// 这条连接没了（`connect::Checker` 在 russh 报断开时调）。
+    pub fn mark_gone(&self) {
+        self.gone.send_replace(true);
+    }
+
+    /// 等这条连接没了（已经没了 ⇒ 当场回）。
+    pub async fn gone(&self) {
+        let mut rx = self.gone.subscribe();
+        let _ = rx.wait_for(|g| *g).await;
     }
 }
 
