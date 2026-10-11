@@ -1500,6 +1500,7 @@ impl ReaderState {
                 face: crate::stream::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for,
+                path: None,
             });
         }
     }
@@ -1675,6 +1676,8 @@ struct SessionEntry {
     /// 叫这条会话什么的那几样（[`crate::stream::wire::NameFace`]）：宣告时从清单缓存与注解取，之后跟着读到的标题记录 · 第一句 · 注解改。
     /// 不在看的会话行照读（只是不上流），这几样照记。
     facts: super::search_rules::LabelFacts,
+    /// 客户端手里这条会话的记录路径（宣告时那一份；之后记录出现 · 换了一份就跟上，并发一帧 `session_status` 带它）。
+    path: Option<String>,
 }
 
 /// One line read out of a JSONL file, with its assigned per-file seq.
@@ -2234,6 +2237,27 @@ fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) -> bool {
     state.branches.entry(path_key(path)).or_default().push(fact)
 }
 
+/// 这条会话的记录路径定下来了 / 换了一份（读到的这一行不在客户端手里那份上）⇒ 记下，发一帧 `session_status` 带上它（活动那几格照记着的带全）。
+fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &mut FrameSink) {
+    let mut status = None;
+    for e in state.sessions.values_mut().filter(|e| e.sid == session_id) {
+        if e.path.as_deref() != Some(path_str) {
+            e.path = Some(path_str.to_string());
+            status = Some((e.activity, e.waiting_for.clone()));
+        }
+    }
+    let Some((activity, waiting_for)) = status else {
+        return;
+    };
+    sink.send(Frame::SessionStatus {
+        sid: session_id.to_string(),
+        face: crate::stream::wire::ActivityFace::of(activity),
+        name_face: state.name_face(session_id),
+        waiting_for,
+        path: Some(path_str.to_string()),
+    });
+}
+
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
 /// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::record_face`）；
@@ -2265,6 +2289,7 @@ fn send_line(
     {
         note_name(session_id, body, state, sink);
     }
+    note_path(session_id, path_str, state, sink);
     let (record, cwd) = match translated {
         Some(mut t) => {
             state
@@ -2524,6 +2549,7 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
                 face: crate::stream::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for: new_waiting,
+                path: None,
             });
         }
         // pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
@@ -2652,6 +2678,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
             waiting_for: a.waiting_for.clone(),
             activity: a.activity,
             facts,
+            path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
         },
     );
     // 同一个 sid 已由另一份 pidfile 宣告过（resume 时原进程还活着）⇒ 只记账、打标、挂看守，不再宣告第二次。

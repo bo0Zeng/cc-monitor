@@ -520,6 +520,10 @@ pub enum Frame {
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
+        /// 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来（会话刚起、记录还没写出来）· 换了一份 ⇒ 发一帧带上最新的；
+        /// 没变 ⇒ 不上线（别的原因发的这一帧字节与本字段加进来之前一字不差）。`line` 帧只发给在看的，这一帧人人都收。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
     },
     /// **会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 [`SessionFate`]）。
     ///

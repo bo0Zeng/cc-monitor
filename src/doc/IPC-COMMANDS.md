@@ -70,6 +70,7 @@ A new session file appeared。
 | `face` | ActivityFace | 此刻在干什么（同 `session_added` 那几格，`ActivityFace`） |
 | `name_face` | NameFace | 叫这条会话什么（同 `session_added` 那两格；改了名、来了标题 / 第一句也发这一帧） |
 | `waiting_for` | string? | 在等什么（pidfile 里的 `waitingFor`） |
+| `path` | string? | 这条会话的记录路径（同 `session_added` 那一格）：宣告之后才定下来（会话刚起、记录还没写出来）· 换了一份 ⇒ 发一帧带上最新的；没变 ⇒ 不上线（别的原因发的这一帧字节与本字段加进来之前一字不差） |
 
 ### `session_state`
 
@@ -3224,7 +3225,7 @@ cc-bus 钩子诊断。
 | `outcome` | ← | `started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`） |
 | `permissionMode` | → | 可缺：起在哪一个权限档（那一家声明的档之一，原值）；缺 ＝ 跟随那一家自己的默认；那一家没有 / 不给的档 ⇒ `bad_args` |
 | `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
-| `prompt` | → ← | 入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 起好之后这台等会话就绪（pidfile 说闲着 ⇒ 启动 · 信任框都过了）再送字 ＋ 回车；应答：交的结局 `{result, why, said}`（同 `terminal-input`，`why` 另有 `not_ready`：到请求期限 `within_ms` 没等到就绪 · 撤了单，没送），没给第一句 ⇒ `null`。带第一句必带请求期限（没带 ⇒ `bad_args`）；等多久全由它定，起会话 ＋ 等就绪一般要几十秒，手机侧建议 ≥ 40 秒 |
+| `prompt` | → ← | 入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 怎么交照那一家的声明：认起的时候带（今天两家都认）⇒ 作为启动参数交过去（交给那一家的那一半末尾、`--` 之后，可以跨行），那一家自己在启动画面 · 信任框过了之后交进会话，不等就绪、不送键；不认的那一家 ⇒ 起好之后这台等会话就绪（pidfile 说闲着）再送字 ＋ 回车，要说得出 sid（不然 `bad_args`）。应答：交的结局 `{result, why, said}`（同 `terminal-input`；作为启动参数交的 ⇒ `delivered`；`why` 另有 `not_ready`：到请求期限 `within_ms` 没等到就绪 · 撤了单，没送），没给第一句 ⇒ `null`。带第一句必带请求期限（没带 ⇒ `bad_args`）；等多久全由它定，手机侧建议 ≥ 40 秒 |
 | `session` | ← | `started` 时的 tmux 会话名 |
 | `sid` | ← | 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid 的旗标）；那一家不认 ⇒ `null`（报到之前说不出） |
 | `ticket` | → | 可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界） |

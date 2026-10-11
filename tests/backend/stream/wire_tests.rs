@@ -368,12 +368,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     },
                 ),
                 waiting_for: Some(s("permission prompt")),
+                path: Some(s("/r/s1.jsonl")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
                 face: crate::stream::wire::ActivityFace::of(None),
                 name_face: crate::stream::wire::NameFace::of(&Default::default()),
                 waiting_for: None,
+                path: None,
             },
         ],
         both(Frame::session_state(s("s1"), SessionFate::Reconnectable)),
@@ -1311,6 +1313,7 @@ fn dg3_codex_fields_serialize_when_present() {
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
+        path: None,
     })
     .unwrap();
     assert_eq!(
@@ -1372,6 +1375,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
+        path: None,
     })
     .unwrap();
     assert_eq!(
@@ -1930,6 +1934,7 @@ fn session_frames_carry_the_state_written_and_toned() {
             face: ActivityFace::of(a),
             name_face: crate::stream::wire::NameFace::of(&Default::default()),
             waiting_for: None,
+            path: None,
         })
         .unwrap()
     };

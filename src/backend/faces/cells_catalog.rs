@@ -1283,6 +1283,7 @@ mod specimens {
                     face: ActivityFace::of(Some(a)),
                     name_face: named(),
                     waiting_for: some("w"),
+                    path: some("p"),
                 })
             })
             .collect()

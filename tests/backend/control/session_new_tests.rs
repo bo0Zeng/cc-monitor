@@ -610,26 +610,58 @@ fn a_rule_at_launch_that_fails_leaves_nothing_behind() {
     );
 }
 
-/// 第一句随起会话一起交（B4）：起好了之后才交（交给宿主那一下：它等会话就绪 · 信任框过了再送），回包带交的结局；
-/// 回包的 `sid` 就是交给的那一个。不交 ⇒ 回包没有这一格的结局（`null`），也不叫宿主。
+/// 第一句随起会话一起交（B4）：两家都认起的时候带第一句（`claude [prompt]` · `codex [PROMPT]`）⇒ 作为启动参数交过去
+/// （交给那一家的那一半、`--` 之后，开头是 `-` 也不会被当成旗标），不等就绪、不送键（宿主那一下一次都不叫）；回包的结局是交到了。
+/// Codex 不认先定 sid 也照样收（它的记录要第一句进去才建，等报到再送字会一直等下去）。不交 ⇒ 回包这一格 `null`。
 #[test]
-fn the_first_prompt_goes_in_after_the_session_started_and_its_outcome_comes_back() {
-    let rig = Rig::new(Some(vec![]));
-    let got = rig.call(req(json!({"prompt": "你好"}))).expect("ok");
-    assert_eq!(
-        *rig.said.borrow(),
-        vec![format!("{PRESET} 你好 @1")],
-        "起好之后交、交给先定好的那个 sid"
-    );
-    assert_eq!(got["prompt"]["result"], "delivered", "{got}");
-    let mut rig = Rig::new(Some(vec![]));
-    rig.say_result = "refused";
-    let got = rig.call(req(json!({"prompt": "你好"}))).expect("ok");
-    assert_eq!(got["prompt"]["result"], "refused", "交不成照实说：{got}");
+fn the_first_prompt_goes_in_as_a_launch_argument_for_both_families() {
+    for agent in ["claude", "codex"] {
+        let rig = Rig::new(Some(vec![]));
+        let got = rig
+            .call(req(
+                json!({"agent": agent, "account": {"kind": "base"}, "prompt": "-看一下\n这个目录"}),
+            ))
+            .unwrap_or_else(|e| panic!("{agent}: {e:?}"));
+        let argv = rig.ccm.borrow()[0].clone();
+        let last = argv.iter().rposition(|a| a == "--").expect("--");
+        let agent_side = &argv[..last];
+        assert!(
+            agent_side
+                .windows(2)
+                .any(|w| w == ["--", "-看一下\n这个目录"]),
+            "{agent}：第一句在交给那一家的那一半、`--` 之后：{argv:?}"
+        );
+        assert!(
+            rig.said.borrow().is_empty(),
+            "{agent}：作为启动参数交了就不再送键"
+        );
+        assert_eq!(got["prompt"]["result"], "delivered", "{agent}: {got}");
+    }
     let rig = Rig::new(Some(vec![]));
     let got = rig.call(req(json!({}))).expect("ok");
     assert_eq!(got["prompt"], Value::Null);
-    assert!(rig.said.borrow().is_empty());
+    assert!(!rig.ccm.borrow()[0].iter().any(|a| a == "你好"));
+}
+
+/// 不认起的时候带第一句的那一家（声明 `FirstPrompt::Typed`）才走「起好 → 等就绪 → 送字」：要说得出 sid（先定 sid · 分叉）；说不出 ⇒ `bad_args`。
+#[test]
+fn only_a_family_that_cannot_take_it_at_launch_types_the_first_prompt() {
+    use crate::agents::FirstPrompt;
+    let typed = crate::agents::LaunchFace {
+        first_prompt: FirstPrompt::Typed,
+        ..crate::agents::claudecode::LAUNCH
+    };
+    let argv = crate::agents::LaunchFace {
+        first_prompt: FirstPrompt::Argv,
+        preset_sid: None,
+        ..crate::agents::claudecode::LAUNCH
+    };
+    assert_eq!(first_prompt_plan(&typed, true), Ok(FirstPrompt::Typed));
+    assert!(
+        first_prompt_plan(&typed, false).is_err(),
+        "说不出 sid 就送不进"
+    );
+    assert_eq!(first_prompt_plan(&argv, false), Ok(FirstPrompt::Argv));
 }
 
 /// 第一句只跟 tmux 那一形（开窗那一形终端在界面那一侧，核心送不进去）；空的 ⇒ 不收。不收的什么都不起。
