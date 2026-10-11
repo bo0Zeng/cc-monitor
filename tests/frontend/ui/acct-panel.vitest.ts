@@ -242,6 +242,7 @@ describe("账号面板 · 列表", () => {
     expect(names.length).toBe(4);
     for (const n of names) expect(n.trim() === "" || /^\d+$/.test(n.trim()), `号名画成了「${n}」`).toBe(false);
     expect(names[1]).toBe(NAMES.accounts["0" as keyof typeof NAMES.accounts]);
+    expect(new Set(names).size, `两行同名：${names.join(" / ")}`).toBe(names.length);
   });
 
   it("刷新策略 ⇒ 清掉手动调整（不出提示）；Alt+↓ 把一行往下挪一位", async () => {

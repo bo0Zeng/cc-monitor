@@ -4,10 +4,13 @@ use super::*;
 #[test]
 fn the_names_cell_writes_home_and_both_slots() {
     let n = names_cell();
-    assert_eq!(n["accounts"]["_"], copy_text("acct.home.name", &[]));
-    // 账号 0（账号库里不设配置目录的那一份）与 `_`（起会话没说哪个号）是同一份登录：同一个名字。
+    // 账号 0 ＝ 不设配置目录的那一份登录（~/.claude）；`_` ＝ 起会话时没说是哪个号（落在哪一份登录说不准，
+    //   建了账号库的机器上可能是 shell rc 导出的那个配置根）⇒ 两个名字，`_` 与额度行那一格「未指定账号」同一条键。
     assert_eq!(n["accounts"]["0"], copy_text("acct.home.name", &[]));
-    assert_eq!(account_text("0"), account_text("_"));
+    assert_eq!(n["accounts"]["_"], copy_text("acct.tag.home", &[]));
+    assert_eq!(account_text("0"), copy_text("acct.home.name", &[]));
+    assert_eq!(account_text("_"), copy_text("acct.tag.home", &[]));
+    assert_ne!(account_text("0"), account_text("_"));
     assert_eq!(
         n["accounts"].as_object().unwrap().len(),
         2,

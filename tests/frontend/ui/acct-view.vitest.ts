@@ -53,7 +53,7 @@ describe("状态栏账号按钮：照抄核心写好的用量那一格", () => {
     expect(chip(sw).swapped).toBe(true);
     expect(chip(entry({}, { stale: true })).stale).toBe(true);
   });
-  it("中转没见过这个会话 ⇒ 只画归属的号、无用量；什么都不知道 ⇒ 不画；`_` 写 ~/.claude", () => {
+  it("中转没见过这个会话 ⇒ 只画归属的号、无用量；什么都不知道 ⇒ 不画；`_` 照核心那张表写", () => {
     const absent: SessionRotationEntry = { origin: "<local>", now: NOW, read: { state: "absent", inPlace: "noRelay" } };
     expect(sessionChip(absent, "work")).toMatchObject({ name: "work", value: null });
     expect(sessionChip(undefined, null)).toBeNull();
