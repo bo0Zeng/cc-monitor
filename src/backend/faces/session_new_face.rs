@@ -70,7 +70,7 @@ pub(crate) async fn answer(
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .take()
-                .unwrap_or_else(|| tokio::sync::oneshot::channel().1);
+                .unwrap_or_else(|| tokio::sync::oneshot::channel::<()>().1);
             first_say_with(
                 crate::observe::one_wait::session_ready(&home, sid),
                 until,

@@ -431,11 +431,7 @@ fn render_parts(spec: &CliSpec, caps: &BTreeSet<String>) -> Result<Parts, Refusa
         ours.push("--launcher".into());
         ours.push(spec.launcher.to_string());
     }
-    if let Some(a) = spec
-        .args
-        .iter()
-        .find(|a| !shell_quote_core::free_text_ok(a))
-    {
+    if let Some(a) = spec.args.iter().find(|a| !shell_quote_core::arg_text_ok(a)) {
         return Err(Refusal::FreeTextRefused {
             slot: FreeTextSlot::AgentArg,
             value: format!("{a:?}"),

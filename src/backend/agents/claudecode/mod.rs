@@ -140,6 +140,8 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     launcher_alias: Some(resume::LAUNCHER_ALIAS),
     resume_token: resume::RESUME_TOKEN,
     preset_sid: Some(resume::SESSION_ID_FLAG),
+    // `claude [options] [prompt]`：位置参数的提示词在启动画面（信任框在里头）走完之后才交进会话。
+    first_prompt: crate::agents::FirstPrompt::Argv,
     permission: Some(super::PermissionFace {
         flag: resume::PERMISSION_MODE_FLAG,
         modes: &["default", "acceptEdits", "plan"],
