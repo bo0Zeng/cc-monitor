@@ -6337,6 +6337,29 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     for (let s = 0; s <= 50; s++) expect(t.seenSeqs.has(s), `第 ${s} 行没补上`).toBe(true);
   });
 
+  it("★ 补上的那段落进 tab 之后，过程的划段重新要一次（不然新补的卡按补之前那一份归进还开着的那一段过程、折着看不见）", async () => {
+    answerLines();
+    const lines = vi.mocked(invoke).getMockImplementation()!;
+    vi.mocked(invoke).mockImplementation((async (cmd: string, args?: unknown) =>
+      isChanCall(cmd, args, "history-turns") ? chanReply({ from: 0, end: 0, turns: [] }) : lines(cmd, args as never)) as never);
+    const turnsAsks = () =>
+      vi.mocked(invoke).mock.calls.filter((c) => {
+        const a = c[1] as { op?: string; payload?: number[] };
+        return c[0] === "chan_call" && a.op === "history-turns" && new TextDecoder().decode(new Uint8Array(a.payload ?? [])).includes("/p/wf.jsonl");
+      }).length;
+    for (let s = 0; s < 10; s++) tm.onLine(line("wf", s));
+    for (let k = 0; k < 5; k++) await settle();
+    const before = turnsAsks();
+    tm.onLine(line("wf", 50));
+    for (let k = 0; k < 5; k++) await settle();
+    const live = turnsAsks();
+    expect(live, "实时来一行就要一次").toBeGreaterThan(before);
+    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wf", path: "/p/wf.jsonl", seq: 50 });
+    for (let k = 0; k < 5; k++) await settle();
+    expect(lineReads()).toEqual([{ from: 10, until: 50 }]);
+    expect(turnsAsks(), "补上的那段落了以后没再要划段").toBeGreaterThan(live);
+  });
+
   it("缺得多 ⇒ tab 整份重来，只取上流点之下那一截尾巴、取到末尾（重来时丢掉的实时行也在里面）", async () => {
     answerLines();
     for (let s = 0; s < 10; s++) tm.onLine(line("wbig", s));
