@@ -197,7 +197,7 @@ const TMUX_PRINT_SITES: &[(&str, &str, Carry, usize, &str)] = &[
     ("src/backend/observe/tmux_observe.rs", "ls", Carry::Env, 1, "`sh -c` 一段脚本（期限归起子进程原语），env 一行盖住；`watcher_tests.rs` 钉 env"),
     ("src/backend/observe/tmux_observe.rs", "display-message", Carry::Env, 1, "`sh -c`，同上"),
     // monitor `tmux.rs` 那条跨 SSH `ls`（Flag）删了：`list_remote_tmux` 改问那台后端 `tmux-list`（那一趟 `ls` 住 `watcher.rs`，env 形）。
-    ("src/backend/control/ccm/plan.rs", "list-panes", Carry::None, 1, "无害：只读 `#{pane_id}`（`%N`，ASCII，单列、不按 TAB 切）—— IV1 报过"),
+    ("src/backend/control/ccm/plan.rs", "list-panes", Carry::Flag, 1, "只读 `#{pane_id}`（`%N`，ASCII）；渲给客户端的命令串一律带旗（`common/tmux_utf8.rs`，判据 `every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client`）"),
     ("src/backend/control/ccm/mod.rs", "display-message", Carry::Flag, 1, "`BUS_ID_RECIPE` 读 `#S`（会话名，可以非 ASCII）⇒ 拼进 pane 的命令串，按表用旗；真跑判据 `backend-cc-bus.sh` [SH1-a]"),
     ("src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh", "display-message", Carry::None, 1, "无害：只读 `#{pane_pid}`（数字）"),
     ("src/shared/cc-bus/scripts/cc-kill", "display-message", Carry::None, 2, "无害：`#{pane_pid}` · `#{session_windows}`（数字）"),
@@ -393,9 +393,21 @@ const QUOTE_SITES: &[QuoteRow] = &[
     //   `inherited_gate`（拒绝集只收 NUL / CR / LF，住 `shell_quote_core::free_text_ok`）。剩下的见第四列。
     // resume 接上已在跑的那一个（`Plan::Rejoin`）：名字是 tmux 自己在快照里报的（不是外部输入），只经这一处 quote（同 `Plan::Attach` 那一形）。
     // 「等于」那一格的短形（`render_short`）只给人看、不进任何 shell：词与 `render_*` 同一份计划（已过上面两道放行判定），带空白的才 quote。
+    // 渲给客户端的「接进一个 tmux 会话」（全仓唯一一处）：名字只 quote 进 `=名:` 目标。调用方各自先判过：
+    //   `ccm` 那几形的名字过 `plan.rs::validate_tmux_name`（或是 tmux 自己在快照里报的）· 就地 resume 的目标过 `gate_rules::existing_tmux_name_issue`。
+    (
+        "src/backend/common/tmux_utf8.rs",
+        &["join_session"],
+        &[
+            ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
+            ("src/backend/control/gate_rules.rs", "existing_tmux_name_issue"),
+        ],
+        "",
+        "",
+    ),
     (
         "src/backend/control/ccm/plan.rs",
-        &["build_among", "join_session", "qarg", "relay_word", "render", "render_container", "render_container_tail", "render_direct", "render_short"],
+        &["build_among", "qarg", "relay_word", "render", "render_container", "render_container_tail", "render_direct", "render_short"],
         &[
             ("src/backend/control/ccm/plan.rs", "validate_tmux_name"),
             ("src/backend/control/ccm/plan.rs", "free_text_gate"),

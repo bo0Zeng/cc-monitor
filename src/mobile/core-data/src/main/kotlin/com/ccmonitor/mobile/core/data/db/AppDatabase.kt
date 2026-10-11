@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         Launcher::class,
         Settings::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -2,7 +2,7 @@
  * 机器与设置那一族的合成答法：后端状态、ccm 入口、ssh 配置、tmux、足迹、数据位置、日志 …
  * 后端说的那几句话一律取文案表（与真后端出的成品同一份字），形状照各跨语言金样。
  */
-import { hitTime, hms } from "./clock";
+import { hms } from "./clock";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import FOOTPRINT_GOLDEN from "../../__fixtures__/footprint-report.golden.json";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
@@ -41,7 +41,7 @@ function extList(w: World): unknown {
   g.machines[0].name = "workstation";
   g.machines[1].name = "devbox";
   g.machines[1].key = "devbox";
-  // 再两台：gpu-01 连不上（那一列是上次同步的样子）· win-laptop；外加一条 MCP「github」，本机装了、devbox 内容不同、另两台没装。
+  // 再两台：gpu-01 断开（那一列是上次同步的样子）· win-laptop；外加一条 MCP「github」，本机装了、devbox 内容不同、另两台没装。
   const rows = (g as unknown as { rows: { cells: unknown[] }[] }).rows;
   const more = [
     { here: false, key: "gpu-01", name: "gpu-01", projects: [], reachable: !w.unseenMachines.includes("gpu-01") },
@@ -72,7 +72,7 @@ function extList(w: World): unknown {
 export function machineOps(): Record<string, OpHandler> {
   return {
     "ext-list": (_o, _r, w) => extList(w),
-    // 各台的 MCP 列表（形状同 `tests/__fixtures__/mcp-read.golden.json` 的 marked）：本机 github 两个号要登录（黄标）· devbox 上一个活会话说它连不上（红标）。
+    // 各台的 MCP 列表（形状同 `tests/__fixtures__/mcp-read.golden.json` 的 marked）：本机 github 两个号要登录（黄标）· devbox 上一个活会话说它断开（红标）。
     "mcp-read": (origin) => {
       const entry = (over: Record<string, unknown>) => ({ scope: "user", name: "github", server: { type: "http", url: "https://example.invalid/mcp" }, sourcePath: `${HOME}/.claude.json`, status: "unknown", loginIn: [], seenAt: null, mark: null, login: null, failed: null, ...over });
       const entries =
@@ -214,7 +214,7 @@ export function machineOps(): Record<string, OpHandler> {
     "terminals-list": (o, _r, w) => ({
       complete: true,
       terminals: w.sessions
-        .filter((x) => !x.ended && x.origin === o && x.container.form === "hosted")
+        .filter((x) => !x.ended && !x.outsideTmux && x.origin === o)
         .map((x, i) => {
           const name = `cc-${x.cwd.split(/[/\\]/).pop()}`;
           return {
@@ -309,19 +309,6 @@ export function machineOps(): Record<string, OpHandler> {
         return { sid, standing: s.idle ? "idle" : "running", names: [name], terminals: [{ host: "tmux", terminal: `tmux-${name}` }] };
       }),
     }),
-    "history-find": (_o, req) => {
-      const q = String(req.query ?? "");
-      const at = (min: number): number => Date.now() - min * 60_000;
-      return {
-        total: 4,
-        hits: [
-          { uuid: "00000000-0000-4000-8000-000000000001", kind: "user", before: "帮我加上", matched: q, after: "（指数退避）和整体超时，顺便补测试。", turn: 1, tsMs: at(14), tsText: hitTime(at(14), copyText("history.section.yesterday")) },
-          { uuid: "00000000-0000-4000-8000-000000000006", kind: "assistant", before: "统一做**", matched: q, after: " ＋ 退避 ＋ 整体超时**；", turn: 1, tsMs: at(12), tsText: hitTime(at(12), copyText("history.section.yesterday")) },
-          { uuid: "00000000-0000-4000-8000-000000000007", kind: "assistant", before: "为 InventoryClient._call 写单元测试：成功、", matched: q, after: "后成功、重试耗尽三种。", turn: 1, tsMs: at(11), tsText: hitTime(at(11), copyText("history.section.yesterday")) },
-          { uuid: "00000000-0000-4000-8000-0000000000ff", kind: "assistant", before: "上次讨论过要不要做", matched: q, after: "，当时的结论是先不做", turn: 1, tsMs: at(60 * 26), tsText: hitTime(at(60 * 26), copyText("history.section.yesterday")) },
-        ],
-      };
-    },
   };
 }
 

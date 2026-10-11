@@ -65,7 +65,7 @@ pub(crate) const FENCE_SHAPES: &[FenceShape] = &[
                      而且它要保住 CRLF（fence.rs::detect_eol，`Layout::PowerShell` 那一臂）",
     },
     // 「source 那一行只许一处装」：接上别名文件的那一行只住别名块里，选了 rc 只查不装 ⇒ 没有「装得进去卸不掉」的那一套。
-    // ★★ **本件新加的那条路，就是这一行。**
+    // ★★ **新加的那条路，就是这一行。**
     FenceShape {
         id: "local-posix-block",
         host: "本机 POSIX 的 ~/<用户选的那份 rc>",
@@ -357,7 +357,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// 它是**缺实现**，不是**假申报**。要它红需要的是另一条性质
 /// （「装得进去就必须卸得掉」，即 `registry_tests.rs::fenced_block_implies_uninstallable`
 /// 在这张账上的对应物），而那一条今天立起来就是一道**永远红**的闸
-/// （补卸口是 `§0d` 明写本件不做的事）—— 立不立由 PM 裁，本条不替它裁。
+/// （补卸口是 `§0d` 明写不做的事）—— 本条不替它裁。
 #[test]
 fn a_shape_that_declares_no_uninstall_really_has_none() {
     // ① 语料覆盖：账里点到的每一份文件都在 SHAPE_FILES 里（少一份 ⇒ 那一行悄悄出局）。

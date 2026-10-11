@@ -15,7 +15,7 @@
  * 🔴 **〔射程 · 说清它盖不到什么〕**
  * - **盖不到后端产的那一半**：`**下一步：…**`（`src/frontend/shell/src/backend_policy.rs::death_copy`）
  *   与整条 `ledger_line` 是**运行期**才拼出来的，jsdom 里没有真后端 ⇒ 这把尺子看不见它们。
- *   那是 **第二刀 步 7** 的活，住 `src/frontend/shell/`（本轮写区之外）。
+ *   那是 **第二刀 步 7** 的活，住 `src/frontend/shell/`（不归这里）。
  *   它们登记在下面的 `BACKEND_SIDE_DEBT` 里 —— **登记不等于判了**，写出来是为了
  *   「没提」不被读成「治好了」。
  * - **盖不到运行期才灌进来的后端字符串**：`data_paths.rs` 那条带 `sid` / `HWND` 的说明

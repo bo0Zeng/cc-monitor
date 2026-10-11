@@ -515,14 +515,14 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         );
     }
 
-    // 〔步 `24f` 第二刀〕`files-read` 四条**不起子进程**，但同样在阻塞档上：
+    // `files-read` 四条**不起子进程**，但同样在阻塞档上：
     // `files::answer` 是**同步**函数 —— 前两条真做文件系统 I/O（`read_dir` / 取元数据），
     // `files-find` 在 64 万条量纲上的现打外推是 20–50 ms。
     // 走 `Run::Async` 就是把这些跑在 tokio worker 上，而 `main` 是裸 `#[tokio::main]`
     //（worker 数 = 可用并行度）⇒ 单核机上一条查询就占住唯一的 worker，
     // 而出方向 writer 与入方向 reader 都在同一个 runtime 上。
     // 代价如实写：这一档**开跑之后打不断** ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。
-    // 〔步 `24f` 第三刀〕新那两条同档，而且这一档对它们**更承重**：
+    // 新那两条同档，而且这一档对它们**更承重**：
     // `files-index-rebuild` 走一整棵树（64 万条现打 0.99 秒，**热缓存**；冷缓存没量过），
     // `files-browse` 把名单上那几个目录各 `read_dir` 一遍。
     // 放 tokio worker 上就是拿唯一那条 runtime 去跑一趟秒级遍历。

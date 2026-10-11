@@ -204,7 +204,7 @@ pub(crate) const MAX_CONFIG_BYTES: u64 = 32 * 1024 * 1024;
 ///
 /// ⚠ 有它才能让「账号 0 的配置必须来自 `$HOME`」那条自省判据继续钉得住：
 /// 原来那条断言比的是源码里出不出现 `home.join(".claude.json")` 这个**字面量**，
-/// 而字面量随本件搬进了适配层。⇒ 判据的比对对象换成这个函数名，性质不变。
+/// 而字面量搬进了适配层。⇒ 判据的比对对象换成这个函数名，性质不变。
 pub(crate) fn config_path_in(root: &std::path::Path) -> std::path::PathBuf {
     root.join(CONFIG_FILE_NAME)
 }

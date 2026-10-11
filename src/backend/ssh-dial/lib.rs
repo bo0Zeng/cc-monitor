@@ -17,7 +17,7 @@
 //!       files 之后一问一答（上行一行请求、下行一行应答，`sftp.rs` 头注）
 //! ```
 //!
-//! ack 把「连不上」与「连上了但远端还没说话」分开；ack 带 `v` 与 `uses`，对面据 `uses` 当场认出这一份不认哪种用法。
+//! ack 把「断开」与「连上了但远端还没说话」分开；ack 带 `v` 与 `uses`，对面据 `uses` 当场认出这一份不认哪种用法。
 //!
 //! # 边界
 //!
@@ -178,7 +178,7 @@ pub struct DialRequest {
     /// 竞速的地址顺序（`machine.rs::resolve` 按 `prefer` 排好）。空 = 只有 `host:port`。
     #[serde(default)]
     pub endpoints: Vec<Endpoint>,
-    /// 经这台跳板（fail-closed：它连不上就报错，不回落直连）。
+    /// 经这台跳板（fail-closed：它断开就报错，不回落直连）。
     #[serde(default)]
     pub jump: Option<JumpHop>,
     #[serde(default, rename = "use")]
@@ -296,7 +296,7 @@ pub mod why {
     pub const PASSWORD: &str = "password";
     /// 私钥文件读不出来。
     pub const KEY_UNREADABLE: &str = "key_unreadable";
-    /// 跳板那一台连不上（拨号 · 鉴权 · 经它开隧道任一步）。
+    /// 跳板那一台断开（拨号 · 鉴权 · 经它开隧道任一步）。
     pub const JUMP: &str = "jump";
     /// 别的（看人话）。
     pub const OTHER: &str = "other";

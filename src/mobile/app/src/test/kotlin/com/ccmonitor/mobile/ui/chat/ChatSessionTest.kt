@@ -57,7 +57,7 @@ class ChatSessionTest {
             val s = draft(link)
             s.send("你好")
             runCurrent()
-            assertEquals(listOf(mapOf("agent" to "claude", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1")), link.calls("session-new"))
+            assertEquals(listOf(mapOf("agent" to "claude", "cwd" to "~/proj", "place" to "tmux", "local" to false, "ticket" to "t-1", "prompt" to "你好")), link.calls("session-new"))
             assertTrue("报到之前不送字", link.calls("terminal-input").isEmpty())
             assertEquals(DeliveryState.SENDING, s.local().single().delivery)
 
@@ -72,6 +72,88 @@ class ChatSessionTest {
             assertEquals("记录里出现了这句人话 ⇒ 本地那句换成记录那一条", emptyList<RenderUnit.UserText>(), s.local())
             assertEquals(
                 listOf("u1"),
+                s.state.value.units
+                    .map { it.key },
+            )
+        }
+
+    /** 那台先定好 sid、第一句随起交进去了（`session-new` 的 `prompt`）。 */
+    private fun said(prompt: Map<String, Any?>) = started + mapOf("sid" to "pre", "prompt" to prompt)
+
+    @Test
+    fun `新建会话：第一句随 session-new 交（那台作为启动参数交），送没送到照回包里的 prompt；不另走 terminal-input`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "session-new" -> ok(said(mapOf("result" to "delivered", "why" to null, "said" to null)))
+                    else -> Reply.LinkDown
+                }
+            }
+            val s = draft(link)
+            s.send("你好")
+            runCurrent()
+            assertEquals("你好", link.calls("session-new").single()?.get("prompt"))
+            assertEquals("session-new 撤不动（阻塞档）：按阻塞档问，不带 within_ms、不撤单", listOf("session-new"), link.blockingCalls)
+            assertEquals("pre", s.state.value.sid)
+            assertTrue("第一句已随起交了，不再送一遍", link.calls("terminal-input").isEmpty())
+            assertNull("送到了的不挂标", s.local().single().delivery)
+        }
+
+    @Test
+    fun `新建会话（兜底）：那台说第一句没交到（refused，能改的）⇒ 那句标未送达、字照那台写的；再发一次走 terminal-input`() =
+        runTest {
+            val link = FakeCoreLink()
+            link.answer = { cmd, _ ->
+                when (cmd) {
+                    "session-new" -> ok(said(mapOf("result" to "refused", "why" to "not_known", "said" to "终端已不在")))
+                    "terminal-input" -> ok(mapOf("result" to "delivered"))
+                    else -> Reply.LinkDown
+                }
+            }
+            val s = draft(link)
+            s.send("你好")
+            runCurrent()
+            val o = s.local().single()
+            assertEquals(DeliveryState.FAILED, o.delivery)
+            assertEquals(copyText("terminal.input.failed", "why" to "终端已不在"), o.deliveryText)
+            s.retry(o.key)
+            runCurrent()
+            assertEquals(listOf(mapOf("sid" to "pre", "text" to "你好")), link.calls("terminal-input"))
+            assertEquals(1, link.calls("session-new").size)
+        }
+
+    @Test
+    fun `新起的会话记录还没落盘：不报找不到，等那台推来这条会话的记录路径再读；不按点重问`() =
+        runTest {
+            val link = FakeCoreLink()
+            val file = FakeCoreLink.File()
+            link.answer = { cmd, args ->
+                when (cmd) {
+                    "session-new" -> ok(said(mapOf("result" to "delivered", "why" to null, "said" to null)))
+                    else -> file.answer(cmd, args) ?: Reply.LinkDown
+                }
+            }
+            val s = draft(link)
+            s.visible(true)
+            s.send("你好")
+            link.report("pre", "/h/proj", path = null) // 那台宣告这条会话时记录还没有
+            advanceTimeBy(ChatSession.ARRIVAL_MS * 3)
+            runCurrent()
+            assertNull("记录还没有不是「找不到」", s.state.value.failedWhy)
+            assertTrue("不去清单里按点找", link.calls("history-list").isEmpty())
+            assertEquals(setOf("pre"), link.watching())
+            file.records += human("u1", "你好")
+            link.report("pre", "/h/proj") // 记录出现：那台推来带路径的状态帧（在那一行的 line 帧之前）
+            runCurrent()
+            link.line("pre", 0, human("u1", "你好"))
+            runCurrent()
+            file.records += reply("a1", "替身收到")
+            link.line("pre", 1, reply("a1", "替身收到"))
+            runCurrent()
+            assertNull(s.state.value.failedWhy)
+            assertEquals(
+                listOf("u1", "a1#0"),
                 s.state.value.units
                     .map { it.key },
             )

@@ -10,6 +10,6 @@ export type OriginSessionsListedPayload = {
  */
 origin: Origin, 
 /**
- * 这一刻机器表里的每一台都报完了（「各台都报完」那一拍；F5 重放同一份）。
+ * 这一刻机器表里的每一台都报完了（「各台都报完」那一刻；F5 重放同一份）。
  */
 all: boolean, };

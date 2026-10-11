@@ -1878,7 +1878,7 @@ mod remote_config_tests;
 #[path = "../../../../tests/frontend/shell/lib_window_lifecycle_tests.rs"]
 mod window_lifecycle_tests;
 
-// Windows 应用清单进了本包每一个链接产物（`build.rs::manifest_for_every_artifact`），测试程序读回自己那一份。
+// Windows 进程清单进了本包每一个链接产物（`build.rs` 调 `win_manifest::embed_for_every_artifact`），测试程序读回自己那一份。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/lib_app_manifest_tests.rs"]
 mod app_manifest_tests;

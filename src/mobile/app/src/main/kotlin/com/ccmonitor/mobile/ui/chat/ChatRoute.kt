@@ -1,7 +1,9 @@
 package com.ccmonitor.mobile.ui.chat
 
 import android.content.Intent
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -89,7 +91,14 @@ fun ChatRoute(
                 onRetrySend = vm::retry,
                 onStop = vm::stop,
                 onLoadOlder = vm::loadOlder,
-                modifier = Modifier.fillMaxSize().padding(inner),
+                // 键盘弹起：垫上输入法，消息区缩到输入行上方（不垫的话系统把整窗往上推，顶栏和消息被推出屏外）。
+                // 先认领 Scaffold 已垫的那几块，手势条那一段才不算两遍。
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(inner)
+                        .consumeWindowInsets(inner)
+                        .imePadding(),
             )
         }
     }

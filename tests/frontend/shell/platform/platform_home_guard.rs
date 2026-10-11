@@ -15,6 +15,8 @@ const HOMES: &[&str] = &[
     "platform/",
     // 前端宿主原语（两个前端共用）。
     "host-core/",
+    // 两个前端包的 Windows 进程清单（读回本进程资源那一半是 Win32）。
+    "win-manifest/",
     // 文件窗口包自己的平台层。
     "cc-monitor-filewin/platform.rs",
 ];

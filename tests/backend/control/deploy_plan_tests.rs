@@ -534,7 +534,7 @@ fn probe_metadata_saying_zero_bytes_maps_to_empty() {
     );
 }
 
-/// 映射规则③（本件的承重格）：`metadata` 成功而**服务器不给 size**（`Some(None)`）
+/// 映射规则③（承重格）：`metadata` 成功而**服务器不给 size**（`Some(None)`）
 /// ⇒ 仍是 `Present`。
 /// `TargetBinary` 与取样壳的头注逐字：「服务器不给 size（size=None）≠ 0 字节」——
 /// 把「没说」读成「空」，等于对着一台好机器每次连接都重传 2.3MB。

@@ -188,7 +188,7 @@ export const SETTINGS_SCENES: Scene[] = [
   page("settings-general", "设置 · 通用", "通用：行为 · 恢复会话 · 启动程序 · 高级", "general"),
   page("settings-appearance", "设置 · 外观", "外观：字 · 颜色 · 快捷键", "appearance"),
   page("settings-logs", "设置 · 日志", "日志：开关、级别、日志文件", "logs"),
-  page("settings-data", "设置 · 文件与数据 · 待办", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 连不上的那台离线未检查", "data"),
+  page("settings-data", "设置 · 文件与数据 · 待办", "文件与数据第一栏：顶上各类数 · 每台一段（急的在前）· 每件 点 · 名字 · 类 · 位置 · 现状 · 主按钮 · 已做的折起 · 断开的那台离线未检查", "data"),
   settings("settings-data-chore-open", "设置 · 待办 · 实时显示点开", "点开一件：为什么 · 怎么做 · diff（钥匙遮住）· 复制这几行 / 复制改好的整份文件（含 2 件）· 不用了 · 存盘后自己认出", async () => {
     await go("data");
     await sleep(500);
@@ -221,8 +221,8 @@ export const SETTINGS_SCENES: Scene[] = [
   }),
   settings(
     "settings-data-placed-offline",
-    "设置 · 文件与数据 · 放了什么 · 连不上的那台",
-    "gpu-01 连不上：照本机后端记着的上次那一份画（改过你的文件 · cc-monitor 的文件）＋ 警告条说多旧 ［重试］",
+    "设置 · 文件与数据 · 放了什么 · 断开的那台",
+    "gpu-01 断开：照本机后端记着的上次那一份画（改过你的文件 · cc-monitor 的文件）＋ 警告条说多旧 ［重试］",
     async () => {
       await go("data");
       await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
@@ -249,7 +249,7 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) .ext-filter button", "MCP"));
     await sleep(500);
   }, troubleWorld),
-  settings("settings-ext-mcp", "设置 · 扩展 · MCP 需登录 / 连接失败 · 抽屉", "筛到 MCP：github 本机的点右上角黄标（需登录）、devbox 红标（连不上）· 图例多两项 · 点开：本机那一行「需登录 · 号 · 几点记下」［去登录］· devbox 那一行「会话「…」里连接失败 · 几点」＋ 原话 ＋［复制详情］", async () => {
+  settings("settings-ext-mcp", "设置 · 扩展 · MCP 需登录 / 连接失败 · 抽屉", "筛到 MCP：github 本机的点右上角黄标（需登录）、devbox 红标（断开）· 图例多两项 · 点开：本机那一行「需登录 · 号 · 几点记下」［去登录］· devbox 那一行「会话「…」里连接失败 · 几点」＋ 原话 ＋［复制详情］", async () => {
     await go("ext");
     await sleep(600);
     await click(await byText(".settings-page:not([hidden]) .ext-filter button", "MCP"));
@@ -434,10 +434,10 @@ export const SETTINGS_SCENES: Scene[] = [
     document.querySelector(".settings-page:not([hidden]) .machine-conn-switch")?.scrollIntoView({ block: "center" });
     await sleep(300);
   }, disabledWorld),
-  settings("settings-machines-trouble", "设置 · 机器 · 一台连不上", "gpu-01 连不上：机器列表里那一行的样子", async () => {
+  settings("settings-machines-trouble", "设置 · 机器 · 一台断开", "gpu-01 断开：机器列表里那一行的样子", async () => {
     await go("machines");
   }, troubleWorld),
-  settings("settings-machine-trouble", "设置 · 连不上的那台", "gpu-01 那一页（连不上）", async () => {
+  settings("settings-machine-trouble", "设置 · 断开的那台", "gpu-01 那一页（断开）", async () => {
     await go("machine:gpu-01");
   }, troubleWorld),
   settings("profiles-01-tree", "设置 · 别名 · 01 清单按「基于」排成树", "devbox「别名与配置文件」：清单按基于排成树、每行只写自己那几项；cc · cct 标终端函数", async () => {

@@ -7,10 +7,10 @@ sealed class Screen(
     /**
      * 启动落地判定屏（`startDestination`）。
      *
-     * 打开即进聊天屏要等三个异步事实：新界面开关、上次那台机器、那台机器上次的对话；
+     * 打开即进聊天屏要等一个异步事实：上次那台机器（核对过还在）；
      * 而 `startDestination` 建图时就得给出字符串。所以起点是这个不画东西的判定屏，
      * 读到答案后用 `popUpTo(inclusive = true)` 替换自己，返回键不会退回它。
-     * 开关关着时去 [Hosts]。
+     * 没有上次那台时去 [Hosts]。
      */
     data object Launch : Screen("launch")
 

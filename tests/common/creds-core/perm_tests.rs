@@ -113,7 +113,7 @@ fn the_windows_create_path_really_creates_with_a_dacl() {
     );
     // ③ `CREATE_NEW` = `O_EXCL` 的对应物：已存在就失败，不跟随、不截断。
     //
-    // ⚠ needle 末尾那个换行是**改过一次的**，而这已经是本件里**第三次**同一个错：
+    // ⚠ needle 末尾那个换行是**改过一次的**，而这已经是这里**第三次**同一个错：
     //   裸符号名会把 `use` 那一行也数进去（实测「2 次，应当 1 次」）。
     //   前两次是 `PROTECTED_DACL_SECURITY_INFORMATION`（段一）与
     //   `expose_for_auth_header(`（D1，那次数到的是**定义**）。

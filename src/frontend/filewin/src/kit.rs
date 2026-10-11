@@ -271,8 +271,7 @@ pub fn tab(
     let w = (12.0 + dot + g_icon.size().x + 6.0 + g.size().x + 6.0 + 16.0 + 8.0)
         .clamp(TAB_MIN, TAB_MAX);
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(w, TAB_H), egui::Sense::click());
-    // 「指针在这个标签页上」要连 `contains_pointer` 一起算：× 盖在标签页上面，指针移到 × 上时标签页本身不再 `hovered`。
-    //   只认 `hovered` ⇒ × 消失 ⇒ 下一拍标签页又悬停 ⇒ × 出来 ⇒ … 每拍翻一次（命中按上一拍的控件位置判），鼠标一动就快闪。
+    // 「指针在这个标签页上」要连 `contains_pointer` 一起算：× 盖在标签页上面，指针移到 × 上时标签页本身不再 `hovered`（底色照样铺着）。
     let hovered = resp.hovered() || resp.contains_pointer();
     if hovered && !active {
         ui.painter().rect_filled(rect, 0.0, p.hover);
@@ -302,12 +301,9 @@ pub fn tab(
         );
     }
     let mut closed = false;
-    if active || hovered {
-        let xr = egui::Rect::from_center_size(
-            egui::pos2(rect.right() - 14.0, cy),
-            egui::vec2(16.0, 16.0),
-        );
-        let xresp = ui.interact(xr, resp.id.with("close"), egui::Sense::click());
+    let xr =
+        egui::Rect::from_center_size(egui::pos2(rect.right() - 14.0, cy), egui::vec2(16.0, 16.0));
+    if let Some(xresp) = hover_reveal(ui, &resp, xr, resp.id.with("close"), active) {
         if xresp.hovered() {
             ui.painter().rect_filled(xr, 3.0, p.hover);
         }
@@ -323,6 +319,27 @@ pub fn tab(
     // 中键点标签 ＝ 关它（同 ×）。
     closed |= resp.middle_clicked();
     (resp, closed)
+}
+
+/// 悬停才露的一颗小控件（标签页的 × · 书签那一行的 × …）：**点击区每一帧都登记**，悬停只决定这一帧画不画、点了算不算。
+///
+/// 🔴 窗口里拿悬停决定「露不露」只许走这一处（判据 `kit_tests::only_hover_reveal_decides_by_hover_whether_a_control_is_added`
+/// 扫整个包：别处用 `hovered()` / `contains_pointer()` 决定加不加控件、登不登记点击区 ⇒ 红）。
+/// 为什么：egui 的命中按**上一帧**的控件位置判。只在悬停时才登记 ⇒ 它一登记就盖在 `owner` 上 ⇒ 下一帧 `owner` 不悬停
+/// ⇒ 它不登记 ⇒ 再下一帧又悬停 ⇒ … 每帧翻一次，鼠标一动就一闪一闪（4.1.5 标签页 × 那一回）。
+///
+/// `pinned` ＝ 不悬停也露（当前那个标签页的 ×）。回 `Some(应答)` ＝ 这一帧露着（调用方照它画、读 `clicked`）；
+/// `None` ＝ 藏着（点击区仍在；指针不在 `owner` 上，本来也点不到）。
+pub fn hover_reveal(
+    ui: &Ui,
+    owner: &egui::Response,
+    rect: egui::Rect,
+    id: egui::Id,
+    pinned: bool,
+) -> Option<egui::Response> {
+    let resp = ui.interact(rect, id, egui::Sense::click());
+    let shown = pinned || owner.hovered() || owner.contains_pointer() || resp.hovered();
+    shown.then_some(resp)
 }
 
 /// 标签页的高 · 最宽 · 最窄。

@@ -149,7 +149,8 @@ it("★ ccm 建会话必须是 detached（`new-session -d`）—— 08-06 抽样
   const line = ccmPlan
     .split("\n")
     .find(
-      (l) => !l.trim().startsWith("//") && l.includes("tmux new-session"),
+      // 渲给客户端的命令串是 UTF-8 客户端（`tmux -u new-session`，`common/tmux_utf8.rs`）。
+      (l) => !l.trim().startsWith("//") && /\btmux (?:-u )?new-session\b/.test(l),
     );
   // 抽取器自检：连那一行都找不到 ⇒ ccm 换了写法，下面的断言会零命中地绿。
   expect(line, "在 `control/ccm/plan.rs` 里找不到 `tmux new-session` 那一行 —— 抽取器坏了或形态改了").toBeTruthy();

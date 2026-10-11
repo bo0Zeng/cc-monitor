@@ -30,12 +30,12 @@ impl ssh_dial::env::Agent for LocalAgent {
 #[cfg(windows)]
 const OPENSSH_AGENT_PIPE: &str = r"\\.\pipe\openssh-ssh-agent";
 
-/// 连本机 ssh-agent。连不上 ⇒ `Err(人话)`，**不猜别的位置**。
+/// 连本机 ssh-agent。断开 ⇒ `Err(人话)`，**不猜别的位置**。
 ///
 /// `sock` = 界面进程交过来的 agent 套接字路径（Unix）。常驻后端活得比任何一个界面都长，
 /// 自己身上那份 `SSH_AUTH_SOCK` 可能早就不指向活的 agent 了 ⇒ 给了就用给的；没给才读本进程的环境。
 /// Windows 上 agent 是固定的命名管道，这个参数不用。
-/// 连不上：那一句（不带原话）＋ 下层原话另带（调用方放进复制详情）。
+/// 断开：那一句（不带原话）＋ 下层原话另带（调用方放进复制详情）。
 pub(crate) async fn connect(sock: Option<&str>) -> Result<Agent, copy_core::said::Said> {
     use copy_core::said::Said;
     #[cfg(unix)]

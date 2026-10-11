@@ -14,31 +14,11 @@ import java.io.File
  * 两家都落聊天屏、都能送字（送字走 `terminal-input`，不分哪家）；落点只看新界面开没开。产品名按种类各说各的。
  */
 class AgentArchetypeTest {
-    private fun terminalOf(hostId: String): String = "session/tab-$hostId"
-
-    private fun destination(newUi: Boolean): String =
-        onConnectDestination(
-            hostId = "h1",
-            newUi = newUi,
-            newConversationId = { "s-new" },
-            openTerminal = ::terminalOf,
-        )
-
-    @Test
-    fun theLandingOnlyFollowsTheNewUiFlag() {
-        assertEquals("关着：开终端 tab", "session/tab-h1", destination(false))
-        assertEquals("开着：这台上空的新建会话（Claude、Codex 一样）", Screen.Chat.of("h1", "s-new", isNew = true), destination(true))
-    }
-
     @Test
     fun theStartupLandingIsTheSameForEveryAgent() {
-        fun launch(
-            newUi: Boolean,
-            host: String?,
-        ) = launchDestination(newUi = newUi, landingHostId = host, newConversationId = { "s-new" })
-        assertEquals("关着时去服务器列表", Screen.Hosts.route, launch(false, "h1"))
-        assertEquals("没有上次那台机器时先去服务器列表", Screen.Hosts.route, launch(true, null))
-        assertEquals("开着 ⇒ 聊天屏上空的新对话", Screen.Chat.of("h1", "s-new", isNew = true), launch(true, "h1"))
+        fun launch(host: String?) = launchDestination(landingHostId = host, newConversationId = { "s-new" })
+        assertEquals("没有上次那台机器时先去服务器列表", Screen.Hosts.route, launch(null))
+        assertEquals("有 ⇒ 聊天屏上空的新对话（Claude、Codex 一样）", Screen.Chat.of("h1", "s-new", isNew = true), launch("h1"))
     }
 
     /**
@@ -66,7 +46,6 @@ class AgentArchetypeTest {
      *
      * 钉住已知残余，而不是「一条都不许有」：还剩几处硬写的（理由见 [PINNED_HARDCODED_PRODUCT_NAMES]）。
      * 多一条红、少一条也红（有人清掉了，得重新过一遍眼再改这张表），
-     * 同 `NewUiSettingsTest.theDefaultSourceIsPinnedSoAnyChangeGetsReVetted` 的做法。
      *
      * ### 判别力边界
      *
@@ -157,22 +136,9 @@ class AgentArchetypeTest {
         private val PRODUCT_NAMES = listOf("Claude", "Codex")
 
         /**
-         * 还硬写着产品名的那几处（`app/src/main` 里，按文件名 → 那几句）。
-         *
-         * 这张表只许缩短，不许悄悄变长。每一条都得说得出为什么它还在：
-         *
-         * | 文件 | 为什么还在 |
-         * |---|---|
-         * | `SettingsScreen.kt` | 应用级设置说的是远端那个 Claude（账号目录），不是「这台服务器叫什么」，与 kind 无关 |
-         * | `HostScreens.kt` | 「Claude 账号目录」是 `if (isCodex)` 的 else 支（已按 kind 分档） |
+         * 还硬写着产品名的那几处（`app/src/main` 里，按文件名 → 那几句）。今天一处都没有：
+         * 那几句（设置页、服务器编辑页的配置目录框）随那一格删掉了。这张表只许缩短，不许悄悄变长。
          */
-        private val PINNED_HARDCODED_PRODUCT_NAMES: Map<String, List<String>> =
-            mapOf(
-                // 服务器编辑页那个目录框的标签，已按 kind 分档（`if (isCodex) … else …`）。
-                "HostScreens.kt" to listOf("Claude 账号目录", "Codex 配置目录（可选）"),
-                // 应用级的话（账号目录），说的是「远端那个 Claude」而不是「这台服务器叫什么」，与 agentKind 无关。
-                // （从前还钉着一条扫描器的假阳「留空 = 内置默认 ${'$'}{ClaudePaths…}」：那句进了文案表，占位符是 {dir}，假阳没了。）
-                "SettingsScreen.kt" to listOf("应用级默认 Claude 配置目录"),
-            )
+        private val PINNED_HARDCODED_PRODUCT_NAMES: Map<String, List<String>> = emptyMap()
     }
 }

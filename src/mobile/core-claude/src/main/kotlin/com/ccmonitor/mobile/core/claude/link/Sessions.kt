@@ -10,12 +10,21 @@ object SessionNew {
     /**
      * 新起一条会话（[agent] 是哪一家的线上名：`claude` · `codex`）。账号 · 模型 · 权限都不带 ⇒ 跟随那台的默认（中途换模型送 `/model <名>`）。
      * [ticket] 一个草稿一张：期限到了同一张再问，那台认出是同一趟、不起第二个。
+     * [prompt] 第一句：随起交（那台作为启动参数交给 agent，结局在回包的 `prompt`）。
      */
     fun args(
         cwd: String,
         ticket: String,
         agent: String,
-    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket)
+        prompt: String,
+    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to cwd, "place" to "tmux", "local" to false, "ticket" to ticket, "prompt" to prompt)
+
+    /** 在家目录起 [agent]、起在名叫 [name] 的会话里，不带第一句（终端屏「后台起」那一格）。 */
+    fun inTmux(
+        agent: String,
+        name: String,
+        ticket: String,
+    ): Map<String, Any?> = mapOf("agent" to agent, "cwd" to "~", "place" to "tmux", "local" to false, "ticket" to ticket, "tmuxName" to name)
 
     data class Answer(
         /** `started`（tmux 里起好了）· `open`（要开终端窗口：手机不走这一形）。 */
@@ -26,12 +35,15 @@ object SessionNew {
         val sid: String?,
         /** 展开之后的目录：认报到的会话按它。 */
         val cwd: String,
+        /** 第一句交进去的结局（同 `terminal-input` 的回话）；那台没交 ⇒ `null`。 */
+        val prompt: TerminalInput.Result?,
     )
 
     fun of(data: Any?): Answer? =
         decoding {
             val m = data.asObj()
-            Answer(m.str("outcome").need(), m.str("session"), m.str("sid"), m.str("cwd").need())
+            val prompt = m["prompt"]?.let { TerminalInput.of(it) ?: throw Malformed() }
+            Answer(m.str("outcome").need(), m.str("session"), m.str("sid"), m.str("cwd").need(), prompt)
         }
 
     /** 起好之后报到的那一条：会话表里目录是 [cwd]、起之前（[before]）还没有的。和桌面认法一样（`awaitArrival` 的 `{cwd}`）。 */
@@ -51,6 +63,12 @@ object TerminalInput {
         sid: String,
         text: String,
     ): Map<String, Any?> = mapOf("sid" to sid, "text" to text)
+
+    /** 按名单里的句柄送字（终端屏：那个终端里不一定跑着会话）。 */
+    fun textInto(
+        terminal: String,
+        text: String,
+    ): Map<String, Any?> = mapOf("terminal" to terminal, "text" to text)
 
     /** 送键（`esc` 停这一轮 …）。 */
     fun key(

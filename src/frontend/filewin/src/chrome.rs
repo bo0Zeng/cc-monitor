@@ -90,7 +90,8 @@ const PICK_SHOWN: [super::select::Action; 4] = [
     super::select::Action::Rename,
     super::select::Action::Delete,
 ];
-const PICK_MORE: [super::select::Action; 6] = [
+const PICK_MORE: [super::select::Action; 7] = [
+    super::select::Action::View,
     super::select::Action::Edit,
     super::select::Action::Copy,
     super::select::Action::Chmod,
@@ -107,6 +108,7 @@ fn pick_icon(a: super::select::Action) -> &'static str {
         A::Rename => ph::PENCIL_SIMPLE,
         A::Delete => ph::TRASH,
         A::Edit => ph::NOTE_PENCIL,
+        A::View => ph::EYE,
         A::Copy => ph::COPY_SIMPLE,
         A::Chmod => ph::LOCK_KEY,
         A::Properties => ph::INFO,
@@ -688,11 +690,17 @@ impl FileWindow {
     pub fn status_ui(&mut self, ui: &mut egui::Ui) {
         let p = palette(ui.ctx());
         // 编辑页在前台：状态栏就是它的底条（行 · 列 · 编码 · 换行 · 大小 / 上限；超上限那一句在右端、`--error`）。
-        if let Some((line, over)) = self.editor_status(ui.ctx()) {
+        if let Some((line, over)) = self.view_status().or_else(|| self.editor_status(ui.ctx())) {
             ui.add(egui::Label::new(egui::RichText::new(&line).color(p.text2)).truncate());
             if let Some(o) = over {
+                // 编辑页：超上限那一句（红）；查看页：「原图 … · 按 … 显示」（次级字）。
+                let c = if self.showing_picture() {
+                    p.text2
+                } else {
+                    p.error
+                };
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(o).color(p.error));
+                    ui.label(egui::RichText::new(o).color(c));
                 });
             }
             return;
@@ -1171,13 +1179,12 @@ impl Workspace {
                             go = Some(d.clone());
                         }
                         // × 只在悬停这一行时出（贴右端）。
-                        if r.hovered() || r.contains_pointer() {
-                            let xr = egui::Rect::from_center_size(
-                                egui::pos2(r.rect.right() - 14.0, r.rect.center().y),
-                                egui::vec2(18.0, 18.0),
-                            );
-                            let xresp = ui
-                                .interact(xr, r.id.with("drop"), egui::Sense::click())
+                        let xr = egui::Rect::from_center_size(
+                            egui::pos2(r.rect.right() - 14.0, r.rect.center().y),
+                            egui::vec2(18.0, 18.0),
+                        );
+                        if let Some(xresp) = super::kit::hover_reveal(ui, &r, xr, r.id.with("drop"), false) {
+                            let xresp = xresp
                                 .on_hover_text(copy_text("rsFilewinBookmarks.bar.removeHint", &[]));
                             ui.painter().text(
                                 xr.center(),

@@ -1,12 +1,12 @@
 /**
  * 主窗口：tab 栏 · 消息流 · 状态栏在各种会话状态下的样子，以及消息流里的各种卡。
  */
-import { hm } from "../fake/clock";
 import type { Scene } from "./index";
 import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
+import { copyText } from "../../../src/frontend/ui/copy-table";
 import { answerConvo, defaultWorld, LOCAL, session } from "../fake/world";
-import { click, hover, mainReady, openTab, rightClick, scrollStream, settled, sleep, streamScroller, until, waitFor } from "./helpers";
+import { byText, click, hover, mainReady, openTab, rightClick, scrollStream, settled, sleep, streamScroller, until, waitFor } from "./helpers";
 
 const W = 1280;
 const H = 800;
@@ -77,8 +77,7 @@ function longWorld(): World {
     c.tool(
       "Edit",
       { file_path: `/home/user/work/monorepo/packages/ui-${i % 17}/src/Button.tsx`, old_string: `export const Button${i % 9} = styled.button\``, new_string: `export { Button as Button${i % 9} } from "@acme/shared";` },
-      "The file has been updated.",
-      { card: "diff" },
+      "The file has been updated."
     );
     c.say(`第 ${i} 步完成：删掉 ${12 + (i % 30)} 行重复样式，引用改到共享组件。`, 30_000 + i * 900);
   }
@@ -94,13 +93,13 @@ function injectWorld(): World {
   const c = new Convo(sid, cwd, "2026-10-01T09:00:00Z");
   c.title("超时配置改读环境变量");
   c.user("把超时配置改成读环境变量。");
-  c.tool("Read", { file_path: `${cwd}/src/orders/settings.py` }, "TIMEOUT_S = 30\n", { card: "md" });
+  c.tool("Read", { file_path: `${cwd}/src/orders/settings.py` }, "TIMEOUT_S = 30\n");
   c.user("<system-reminder>\nThe TodoWrite tool hasn't been used recently. Consider using it to track progress.\n</system-reminder>", { meta: true });
-  c.tool("Edit", { file_path: `${cwd}/src/orders/settings.py`, old_string: "TIMEOUT_S = 30", new_string: 'TIMEOUT_S = int(os.environ.get("INVENTORY_TIMEOUT_S", "5"))' }, "The file has been updated.", { card: "diff" });
+  c.tool("Edit", { file_path: `${cwd}/src/orders/settings.py`, old_string: "TIMEOUT_S = 30", new_string: 'TIMEOUT_S = int(os.environ.get("INVENTORY_TIMEOUT_S", "5"))' }, "The file has been updated.");
   c.say("改好了：`INVENTORY_TIMEOUT_S` 缺省 5 秒。", 30_000, "end_turn");
   c.user("再跑一遍测试。");
   c.user("<command-name>/skills</command-name>\nBase directory for this skill: /home/user/.claude/skills/run-tests\n跑全量测试并汇总失败。", { meta: true });
-  c.tool("Bash", { command: "pytest -q", description: "全量测试" }, "213 passed in 9.12s", { card: "command" });
+  c.tool("Bash", { command: "pytest -q", description: "全量测试" }, "213 passed in 9.12s");
   c.say("全量 213 个通过。", 32_000, "end_turn");
   w.sessions = [session(9, LOCAL, cwd, c, { activity: "idle", sid })];
   return w;
@@ -138,7 +137,7 @@ function pasteWorld(): World {
 function answerWorld(): World {
   const w = defaultWorld();
   const s = w.sessions[5];
-  w.sessions[5] = { ...s, activity: "needs_you", waitingFor: "dialog open", waitingSinceMs: Date.now() - 300_000, idle: false, records: answerConvo(s.sid, s.cwd).records };
+  w.sessions[5] = { ...s, activity: "needs_you", waitingFor: "dialog open", waitingSinceMs: Date.now() - 300_000, idle: false, convo: answerConvo(s.sid, s.cwd) };
   return w;
 }
 
@@ -173,8 +172,7 @@ function groupedWorld(): World {
 /** 本机后端比界面老：账号、任务、大纲那几问它都不认。 */
 function oldBackendWorld(): World {
   const w = defaultWorld();
-  w.quiet = ["accounts-list", "accounts-sessions", "history-last-accounts", "tasks-list", "history-user-inputs", "history-facts", "history-index"];
-  for (const op of w.quiet) delete w.ops[op];
+  w.older = { [LOCAL]: ["accounts-list", "accounts-sessions", "history-last-accounts", "tasks-list", "history-user-inputs", "history-facts", "history-index"] };
   return w;
 }
 
@@ -185,26 +183,33 @@ function unreadWorld(): World {
   c.title("认不出的记录");
   c.user("把发布脚本里的版本号改成从标签读。");
   c.say("好，先看一下现在的发布脚本。");
-  c.golden("unread-unknown");
+  c.unknown();
   c.say("脚本里版本号写死在第 12 行，改成读 `git describe` 的结果。");
-  c.golden("unread-parse-failed");
+  c.broken();
   c.user("可以，顺便把 CHANGELOG 也补一条。");
-  s.records = c.records;
+  s.convo = c;
   return w;
 }
 
-/** 提问卡与计划卡：那一问一计划与它们的答都照核心金样（`steps[].ask` 由核心写，界面只照它建卡；假后端不算）。 */
+/** 提问卡与计划卡：同一条回复里一问一计划、随后两条答（卡型与 `steps[].ask` 由核心照原始记录写，界面只照它建卡；假后端不算）。 */
 function askWorld(): World {
   const w = defaultWorld();
   const s = w.sessions[0];
   const c = new Convo(s.sid, s.cwd, "2026-10-01T07:00:00Z");
   c.title("提问与计划");
   c.user("重试那一块先出个计划给我看。");
-  c.golden("reply-ask");
-  c.golden("said-ask-answered");
-  c.golden("said-plan-approved");
+  const ask = { questions: [{ question: "重试耗尽之后怎么办？", header: "耗尽", multiSelect: true, options: [{ label: "记日志", description: "不打断下单" }, { label: "报警" }] }] };
+  const plan = { plan: "1. 客户端统一重试\n2. 补单元测试" };
+  const askId = c.nextToolId();
+  const planId = c.nextToolId();
+  c.assistant([
+    { type: "tool_use", id: askId, name: "AskUserQuestion", input: ask },
+    { type: "tool_use", id: planId, name: "ExitPlanMode", input: plan },
+  ]);
+  c.answer(askId, "AskUserQuestion", ask, 'User has answered your questions: "重试耗尽之后怎么办？"="记日志". You can now continue with the user\'s answers in mind.');
+  c.answer(planId, "ExitPlanMode", plan, "User has approved your plan. You can now start coding.");
   c.say("好，照计划开始改。");
-  s.records = c.records;
+  s.convo = c;
   return w;
 }
 
@@ -224,7 +229,7 @@ function oddCardsWorld(): World {
   c.queued("先别写文档了，先把 CHANGELOG 补上");
   c.user("先补 CHANGELOG。");
   c.say("好，CHANGELOG 里加了一条「库存接口调用加重试与整体超时」。");
-  s.records = c.records;
+  s.convo = c;
   return w;
 }
 
@@ -234,9 +239,9 @@ const LONG_NOSPACE = "refactor_inventory_client_retry_timeout_config_loader_and_
 
 function longTitleWorld(): World {
   const w = defaultWorld();
-  w.sessions[0].records.push({ agent: "claude", id: "@title-long-0", t: "title", text: LONG_MIXED, by: "agent" });
-  w.sessions[1].records.push({ agent: "claude", id: "@title-long-1", t: "title", text: LONG_NOSPACE, by: "agent" });
-  w.sessions[2].records.push({ agent: "claude", id: "@title-long-2", t: "title", text: LONG_MIXED, by: "agent" });
+  w.sessions[0].convo?.title(LONG_MIXED);
+  w.sessions[1].convo?.title(LONG_NOSPACE);
+  w.sessions[2].convo?.title(LONG_MIXED);
   return w;
 }
 
@@ -321,8 +326,20 @@ export const MAIN_SCENES: Scene[] = [
   }, injectWorld),
   main("main-stream-retry", "主窗口 · 重试细条与提问 / 计划结果", "同一个会话靠后：两次重试并成一条（接上了变淡）· 提问答了「已选」· 计划「已批准」", async () => {
     await mainReady(ALL_TABS);
-    // 重试细条在那一轮的过程里（完成的轮默认收起）⇒ 先点开那一轮的过程行，再滚到细条。
-    const retry = await waitFor(".stream.active .card-api-retry");
+    // 重试细条在靠后那一轮里：卡只在视口附近建、完成的轮默认收起（折着的过程不建卡）⇒ 从底往上一屏一屏翻，
+    // 见到数着重试的那条过程行就点开，直到细条建出来。
+    const scroller = await until(() => document.querySelector<HTMLElement>(".stream.active"));
+    const retries = copyText("rsTurns.proc.retries", { n: "2" });
+    let retry: HTMLElement | null = null;
+    for (let k = 0; k < 60 && !retry; k++) {
+      retry = document.querySelector<HTMLElement>(".stream.active .card-api-retry");
+      if (retry) break;
+      const line = [...document.querySelectorAll<HTMLElement>(".stream.active .proc-line")].find((e) => e.textContent?.includes(retries) && e.getAttribute("aria-expanded") !== "true");
+      if (line) line.click();
+      else scroller.scrollTop -= scroller.clientHeight * 0.8;
+      await sleep(200);
+    }
+    if (!retry) throw new Error("翻遍了也没见到重试细条");
     const turn = retry.dataset.procOf;
     if (turn && retry.classList.contains("proc-hidden")) {
       document.querySelector<HTMLElement>(`.stream.active .proc-line[data-fold="${CSS.escape(turn)}"]`)?.click();
@@ -368,18 +385,7 @@ export const MAIN_SCENES: Scene[] = [
   }, () => {
     const w = defaultWorld();
     // 第一个会话此刻在跑一步 Bash（两分钟前开始、还没结果）。
-    const at = new Date(Date.now() - 125_000).toISOString();
-    w.sessions[0].records.push({
-      agent: "claude",
-      id: "a-run-step",
-      at,
-      timeText: hm(Date.now() - 125_000),
-      t: "reply",
-      blocks: [{ type: "tool_use", id: "toolu_run", name: "Bash", input: { command: "pytest -q tests/test_inventory_client.py" } }],
-      autoReply: false,
-      endsTurn: false,
-      steps: { toolu_run: { tool: "Bash", arg: "pytest -q tests/test_inventory_client.py", known: true } },
-    });
+    w.sessions[0].convo?.clock(Date.now() - 145_000).tool("Bash", { command: "pytest -q tests/test_inventory_client.py" }, null);
     return w;
   }),
   main("main-step-awaiting", "主窗口 · 过程里那一步在等你批准", "在等批准的会话：过程里那一步琥珀点 ·「等你批准」· 右侧已等多久（后端 needs.call 指的那一步）", async () => {
@@ -419,6 +425,19 @@ export const MAIN_SCENES: Scene[] = [
   main("main-empty", "主窗口 · 一个会话都没有", "四台机器都连着、没有在跑的会话（空状态）", async () => {
     await sleep(2500);
   }, emptyWorld),
+  main("main-watch-fill", "主窗口 · 切过去之后补段", "devbox 上「网关限流」没在看的时候又写了一轮（主窗口只报在看当前那个 ⇒ 它的行不上流）；切过去 ⇒ 那台报这一份从第几行起上流，前面那段按骨架补、接上实时，新的那一轮只出一次", async (ctx) => {
+    await mainReady(ALL_TABS);
+    const s = ctx.backend.world.sessions[4];
+    const c = s.convo!;
+    const from = c.lines.length;
+    c.user("搜索与导出的限流分开配。");
+    c.say("限流按路由分开了：/api/search 每秒 5 次，/api/export 每分钟 2 次。", 30_000, "end_turn");
+    await ctx.backend.appendLines(s.origin, c, from);
+    await sleep(1500);
+    await click(await byText("#tab-bar .tab", "网关限流配置"));
+    await byText(".stream.active [data-id]:not(.proc-hidden)", "限流按路由分开了", 10_000);
+    await settled(await until(() => document.querySelector<HTMLElement>(".stream.active")));
+  }),
   main("main-long", "主窗口 · 长会话", "一个 160 轮、640 条记录的会话，停在底部", async () => {
     await mainReady(1);
     const scroller = await until(streamScroller);
@@ -437,11 +456,11 @@ export const MAIN_SCENES: Scene[] = [
     card.scrollIntoView({ block: "start" });
     await settled(scroller);
   }, longWorld),
-  main("main-unseen-machine", "主窗口 · 一台机器连不上", "gpu-01 的会话流一开始就看不见（那台机器连不上）", async () => {
+  main("main-unseen-machine", "主窗口 · 一台机器断开", "gpu-01 的会话流一开始就看不见（那台机器断开）", async () => {
     await mainReady(ALL_TABS - 1);
     await sleep(800);
   }, unseenWorld),
-  main("main-unseen-machine-later", "主窗口 · 一台机器一直连不上", "gpu-01 的会话流一开始就看不见、20 秒后还没连上：右下角说是哪台、能做什么", async () => {
+  main("main-unseen-machine-later", "主窗口 · 一台机器一直断开", "gpu-01 的会话流一开始就看不见、20 秒后还没连上：右下角说是哪台、能做什么", async () => {
     await mainReady(ALL_TABS - 1);
     await sleep(21_000);
   }, unseenWorld),

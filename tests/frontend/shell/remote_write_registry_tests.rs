@@ -201,7 +201,7 @@ fn a_registered_write_says_where_it_lands_and_who_picks_the_path() {
 /// 写的是 14，而那第 14 个匹配住在 `sftp_chmod` 的头注里
 /// —— 「错的 grep 与截断的 grep 是同一种失败」。
 ///
-/// 〔步 H2 09-21〕从 [`the_file_window_uses_exactly_the_pool_commands_it_registers`]
+/// 从 [`the_file_window_uses_exactly_the_pool_commands_it_registers`]
 /// 的函数体里提出来，**一行逻辑没改**。提出来的唯一理由：
 /// [`every_pool_command_is_either_a_registered_write_or_a_registered_read`] 要拿
 /// **同一份**人群去做「写 / 读 两分」那条相等断言，而一个闭集只许有一个住址。
@@ -616,7 +616,7 @@ fn pool_refs_in(prod: &str) -> Vec<String> {
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-//  〔步 H2〕围栏拆成独立一族那一刀留下的两条
+//  围栏拆成独立一族那一刀留下的两条
 // ════════════════════════════════════════════════════════════════════════════
 
 /// 池子里**不写任何路径**的那几条命令 —— `(命令, 它做什么, 为什么不需要围栏)`。

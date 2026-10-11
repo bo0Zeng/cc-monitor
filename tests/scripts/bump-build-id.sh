@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 合并那一拍打版本号的机械那一半：改 `src/backend/lib.rs` 的 `BUILD_ID`；子命令集变了就改指纹历史表
+# 发版时打版本号的机械那一半：改 `src/backend/lib.rs` 的 `BUILD_ID`；子命令集变了就改指纹历史表
 #   （`tests/backend/build_id_guard.rs` 的 `SUBCOMMAND_HISTORY` 只留「上一版 ＋ 当前版」两行 ⇒ 删最老那行、追加新行）。
 # 用法：在仓里任一处 `bash tests/scripts/bump-build-id.sh <新 id>`（新 id 照 `p<代号><一个小写字母>-<名>`，代号可多位数，与部署判新旧的序键 `deploy_contract::build_order` 同一口径）。
 # 新行从哪来：指纹那条红时印一行 `NEW-ROW: ("<新 id>", "<指纹>")`，本脚本按它改表 —— 指纹只有那条测试会算，这里不另算一份。

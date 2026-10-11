@@ -294,7 +294,7 @@ do_check() {
   fi
   printf 're-embed: %d passed（分母 = 上面逐行印出来的 PASS 条数；盘上现打 %d 份内嵌字节。' "$pass" "$present"
   printf '⚠ 诚实边界：0 份时本行的绿只代表「这棵树上没有一份对不上的字节」，'
-  printf '**不代表**「发版那一拍办完了」—— 本机 zigbuild 的形态与发版 CI 不同，'
+  printf '**不代表**「发版办完了」—— 本机 zigbuild 的形态与发版 CI 不同，'
   printf '也没有任何东西验过那份字节在真远端上跑得起来。逐条射程见本文件头注）\n'
   return 0
 }

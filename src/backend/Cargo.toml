@@ -74,7 +74,7 @@ path = "main.rs"
 # **递归走全树收 `.rs`**。其中 `no_timer_guard::periodic_wake_patterns()` 的禁用表里
 # 逐字有一条 `format!("{}::now", "Instant")` —— 而一把计时的秤**必须**调它。
 # ⇒ 只要这个文件落在 `src/backend/` 下面任何一层，`backend_production_code_has_no_periodic_wakeups`
-# 当场红，而那条守卫住 `tests/backend/`、不在本件的写区里。
+# 当场红，而那条守卫住 `tests/backend/`、这里没改它。
 # 同理还有 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
 # ⇒ 源码放 `tests/benches/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
@@ -179,7 +179,7 @@ libc = "0.2"
 # ⚠ 口径订正〔回修轮 08-25，承接 D1 `重要-4`〕：先前这里逐字写的是「**本仓**第一条加密依赖」，
 # 而下面两行同时写着「`ring` 已经在」—— **同一段注释自相矛盾**，且前半句是假的。
 # 根子是两个词混着用了，分清楚：
-#   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在本件**之前**就已在
+#   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在这条依赖加进来**之前**就已在
 #     monitor 的依赖图里 —— `git show c3cf193:src/frontend/shell/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
 #     `cargo tree -i ring --manifest-path ../frontend/shell/Cargo.toml` ⇒ `ring └── russh └── monitor`。
 #     同一把尺子量 **backend 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**backend 侧**第一条」是真话。
@@ -218,7 +218,7 @@ ring = "0.17"
 #      「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」（现行版本是 `K30`）⇒ 今天**不是**「本 crate 破了一条还活着的规矩」，
 #      是**那条规矩已经不在了**。上面 tokio 那条 `net` feature 的注释同源同结论，
 #      **这份文件里关于 `C18` 的两处话从此不再打架**。
-#   ② 🔴 **musl 交叉编译本轮没验**。CI（`.github/workflows/release.yml` 的 `build-backends`）
+#   ② 🔴 **musl 交叉编译本机没验**。CI（`.github/workflows/release.yml` 的 `build-backends`）
 #      要把本 crate `cargo zigbuild` 到 `x86_64-unknown-linux-musl` 与 `aarch64-unknown-linux-musl`，
 #      **而沙箱门禁只做本机 gnu 构建、不做交叉编译** ⇒ **门禁全绿也证不出这两个 target 编得过**。
 #      `ring` 在 musl 上要 `cc` 编汇编，zig 作 linker 这条路本 crate 已经走通过（`rustls` 那次），
@@ -241,7 +241,7 @@ ring = "0.17"
 # 上面「**第三条如实登记**」与「**代价写明**」那两段讲的是 `K-P6b` **当时怎么绕过去的**
 # （拿 monitor 那份 lock 播种）。这一段讲**今天**。
 #
-# ① **今天钉着哪个版本 —— 本轮现打**（09-06，量于 `97a4714`，两份 lock 各一把同样的尺子
+# ① **今天钉着哪个版本 —— 实测**（09-06，量于 `97a4714`，两份 lock 各一把同样的尺子
 #    `grep -c '^name = "crypto-bigint"$' <lock>`）：`src/backend/Cargo.lock` ⇒ **1** 处、
 #    版本 **`0.7.3`**；`../frontend/shell/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
 #
@@ -251,9 +251,9 @@ ring = "0.17"
 #    缓存的机器 · 加或改任何一条依赖 —— **都会撞上同一堵墙**。
 #    ⇒ 这**不是**「今天编不过」，是「**哪天要重解析就编不过**」。别把绿门禁读成这件事没了。
 #
-# ③ ⚠ **「那几个版本到底有没有被 yank」—— `K-R34` 本轮没核，判不了。**
+# ③ ⚠ **「那几个版本到底有没有被 yank」—— `K-R34` 没核，判不了。**
 #    上面「`0.7.0 … 0.7.4` 全部 yanked」那句是 `K-P6b` 那一轮写下的，当时的依据是
-#    **解析期报错**（住址就在上面同一段）—— 那是**转述，不是本轮的读数**。
+#    **解析期报错**（住址就在上面同一段）—— 那是**转述，不是实测的读数**。
 #    要核它得**联网**查 crates.io，而门禁沙箱一律断网（`DEVBOX_NET=none`）
 #    ⇒ 本文件里关于 yank 的每一句（含上面「代价写明」那两行），读的时候都要带上这个口径。
 #
@@ -332,7 +332,7 @@ ts-rs = "12.0.1"
 #
 # 上面那一行依赖声明**一个字不动**（`russh = { version = "0.61.1", … }`）；这里把 crates.io 那份换成仓内副本。
 # 副本 = 本机缓存里那份 `russh-0.61.1.crate` 原样解开（其 sha256 == 本 lock 原先锁的 checksum）＋ 只改
-# `src/compression.rs::Decompress::decompress` 的收尾判断（用本轮调用**之后**的进度；上游用调用之前的 ⇒
+# `src/compression.rs::Decompress::decompress` 的收尾判断（用这一次调用**之后**的进度；上游用调用之前的 ⇒
 # 一包最多交出 ≈ 2 × 包长，真 sshd 上一开压缩第一条通道就卡死 ——）。
 # 来历、改了哪几行、上游修好之后怎么撤：`../vendor/russh/VENDOR.md`。
 # 判据：`dial_compress_tests`（闸 == russh 一来一回对不对 · 副本只改了登记的那一份 · 补丁真接上了）。

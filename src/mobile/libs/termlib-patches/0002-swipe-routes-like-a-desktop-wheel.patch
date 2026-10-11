@@ -1,0 +1,200 @@
+diff --git a/lib/src/main/cpp/CMakeLists.txt b/lib/src/main/cpp/CMakeLists.txt
+index 7d0a1380..63c11c73 100644
+--- a/lib/src/main/cpp/CMakeLists.txt
++++ b/lib/src/main/cpp/CMakeLists.txt
+@@ -2,6 +2,15 @@ cmake_minimum_required(VERSION 3.18.1)
+ 
+ project("cb_term")
+ 
++# Reproducible paths: keep the build machine's directories out of the shipped .so
++# (debug info and __FILE__ in asserts would otherwise carry absolute paths).
++add_compile_options(
++    "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=."
++    "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build")
++if(ANDROID_NDK)
++    add_compile_options("-ffile-prefix-map=${ANDROID_NDK}=ndk")
++endif()
++
+ # libvterm static library
+ add_library(vterm STATIC
+     ${CMAKE_CURRENT_SOURCE_DIR}/libvterm/src/encoding.c
+diff --git a/lib/src/main/java/org/connectbot/terminal/Terminal.kt b/lib/src/main/java/org/connectbot/terminal/Terminal.kt
+index f483093f..07c63019 100644
+--- a/lib/src/main/java/org/connectbot/terminal/Terminal.kt
++++ b/lib/src/main/java/org/connectbot/terminal/Terminal.kt
+@@ -1164,37 +1164,33 @@ internal fun TerminalWithAccessibility(
+ 
+                                     GestureType.Scroll -> {
+                                         val snapshot = screenState.snapshot
+-                                        if (snapshot.isAltScreenActive) {
+-                                            // The alternate screen (tmux/vim/less/full-screen apps)
+-                                            // has no scrollback buffer, so translate vertical swipe
+-                                            // travel into mouse wheel events - but ONLY when the
+-                                            // application has enabled mouse tracking (libvterm then
+-                                            // encodes them per the negotiated protocol and delivers
+-                                            // them via onKeyboardInput). When mouse tracking is off we
+-                                            // deliberately do nothing: there is no key sequence that a
+-                                            // mouse-off full-screen app reliably interprets as "scroll"
+-                                            // (e.g. arrow keys recall shell history in an inner prompt
+-                                            // or edit a TUI's draft), and injecting input an app does
+-                                            // not treat as scroll corrupts its state. Doing nothing is
+-                                            // safe. One char-row of travel = one wheel event; swiping
+-                                            // down shows earlier content, matching primary-screen
+-                                            // scrollback.
++                                        val route = swipeRouteOf(snapshot.isAltScreenActive, snapshot.mouseTrackingActive)
++                                        if (route != SwipeRoute.SCROLLBACK) {
++                                            // Same as a desktop terminal's mouse wheel: the application
++                                            // asked for mouse reports -> wheel events (libvterm encodes
++                                            // them per the negotiated protocol and delivers them via
++                                            // onKeyboardInput); alternate screen without mouse reports ->
++                                            // cursor keys (xterm alternateScroll; libvterm honours the
++                                            // application cursor-key mode). One char-row of travel = one
++                                            // click; swiping down shows earlier content, matching
++                                            // primary-screen scrollback.
+                                             altScrollAccumulator += dragAmount.y
+                                             val steps = scrollDeltaToWheelSteps(altScrollAccumulator, baseCharHeight)
+-                                            if (steps != 0 && snapshot.mouseTrackingActive) {
++                                            if (steps != 0) {
+                                                 altScrollAccumulator -= steps * baseCharHeight
+-                                                val scrollUp = steps > 0
+-                                                val eventCol = (change.position.x / baseCharWidth).toInt()
+-                                                    .coerceIn(0, snapshot.cols - 1)
+-                                                val eventRow = (change.position.y / baseCharHeight).toInt()
+-                                                    .coerceIn(0, snapshot.rows - 1)
+-                                                repeat(abs(steps)) {
+-                                                    terminalEmulator.sendMouseWheel(scrollUp, eventRow, eventCol)
++                                                if (route == SwipeRoute.WHEEL) {
++                                                    val scrollUp = steps > 0
++                                                    val eventCol = (change.position.x / baseCharWidth).toInt()
++                                                        .coerceIn(0, snapshot.cols - 1)
++                                                    val eventRow = (change.position.y / baseCharHeight).toInt()
++                                                        .coerceIn(0, snapshot.rows - 1)
++                                                    repeat(abs(steps)) {
++                                                        terminalEmulator.sendMouseWheel(scrollUp, eventRow, eventCol)
++                                                    }
++                                                } else {
++                                                    val key = alternateScrollKey(steps)
++                                                    repeat(abs(steps)) { terminalEmulator.dispatchKey(0, key) }
+                                                 }
+-                                            } else if (!snapshot.mouseTrackingActive) {
+-                                                // Mouse tracking off: discard accumulated travel so it
+-                                                // doesn't burst out if tracking is later enabled.
+-                                                altScrollAccumulator = 0f
+                                             }
+                                         } else {
+                                             // Update scroll offset using total pan from the start of the gesture
+@@ -1299,7 +1295,7 @@ internal fun TerminalWithAccessibility(
+                                 // scrollback: alt-screen scrolling sends discrete input
+                                 // events to the application, and a fling would fire an
+                                 // unbounded burst of them.
+-                                if (!screenState.snapshot.isAltScreenActive) {
++                                if (swipeRouteOf(screenState.snapshot.isAltScreenActive, screenState.snapshot.mouseTrackingActive) == SwipeRoute.SCROLLBACK) {
+                                     val velocity = velocityTracker.calculateVelocity()
+                                     scrollJob?.cancel()
+                                     scrollJob = launch {
+@@ -2043,6 +2039,34 @@ internal fun applyPinchZoomToFontSize(
+ @VisibleForTesting
+ internal fun scrollDeltaToWheelSteps(accumulatedPx: Float, charHeightPx: Float): Int = if (charHeightPx <= 0f) 0 else (accumulatedPx / charHeightPx).toInt()
+ 
++/** Where a vertical swipe goes: the same three routes a desktop terminal uses for the mouse wheel. */
++internal enum class SwipeRoute {
++    /** The application enabled mouse reporting: report wheel events (tmux with `mouse on` enters copy-mode itself). */
++    WHEEL,
++
++    /** Alternate screen without mouse reporting: send cursor keys (xterm `alternateScroll`). */
++    ARROW_KEYS,
++
++    /** Neither: scroll the local scrollback buffer. */
++    SCROLLBACK,
++}
++
++/** Routes a vertical swipe like a desktop terminal routes the mouse wheel (see [SwipeRoute]). */
++@VisibleForTesting
++internal fun swipeRouteOf(altScreen: Boolean, mouseTracking: Boolean): SwipeRoute =
++    when {
++        mouseTracking -> SwipeRoute.WHEEL
++        altScreen -> SwipeRoute.ARROW_KEYS
++        else -> SwipeRoute.SCROLLBACK
++    }
++
++/**
++ * The cursor key xterm's `alternateScroll` sends for [steps] wheel clicks: finger moving down
++ * (positive) means earlier content, i.e. wheel-up, i.e. Up.
++ */
++@VisibleForTesting
++internal fun alternateScrollKey(steps: Int): Int = if (steps > 0) VTermKey.UP else VTermKey.DOWN
++
+ /**
+  * Check if a touch position is near a selection handle.
+  * Returns (touchingStart, touchingEnd).
+diff --git a/lib/src/test/java/org/connectbot/terminal/ScrollWheelStepsTest.kt b/lib/src/test/java/org/connectbot/terminal/ScrollWheelStepsTest.kt
+index d1ef4f58..4ced4ccf 100644
+--- a/lib/src/test/java/org/connectbot/terminal/ScrollWheelStepsTest.kt
++++ b/lib/src/test/java/org/connectbot/terminal/ScrollWheelStepsTest.kt
+@@ -19,9 +19,8 @@ package org.connectbot.terminal
+ import org.junit.Assert.assertEquals
+ import org.junit.Test
+ 
+-// Steps drive alt-screen mouse-wheel reporting only; when the app has not enabled
+-// mouse tracking the caller discards the accumulator and sends nothing (no arrow-key
+-// fallback), so the step math below is used solely to pace wheel events.
++// Steps pace the discrete input a swipe turns into (wheel events, or cursor keys on the
++// alternate screen without mouse reporting; see SwipeRoutingTest).
+ class ScrollWheelStepsTest {
+ 
+     @Test
+diff --git a/lib/src/test/java/org/connectbot/terminal/SwipeRoutingTest.kt b/lib/src/test/java/org/connectbot/terminal/SwipeRoutingTest.kt
+new file mode 100644
+index 00000000..bd3b1be4
+--- /dev/null
++++ b/lib/src/test/java/org/connectbot/terminal/SwipeRoutingTest.kt
+@@ -0,0 +1,49 @@
++/*
++ * ConnectBot Terminal
++ * Copyright 2025 Kenny Root
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++package org.connectbot.terminal
++
++import org.junit.Assert.assertEquals
++import org.junit.Test
++
++// A vertical swipe is handled the way a desktop terminal handles the mouse wheel:
++// mouse reporting on -> wheel events; alternate screen without mouse reporting ->
++// arrow keys (xterm alternateScroll); otherwise -> local scrollback.
++class SwipeRoutingTest {
++
++    @Test
++    fun mouseReportingOn_sendsWheelEvents() {
++        assertEquals(SwipeRoute.WHEEL, swipeRouteOf(altScreen = true, mouseTracking = true))
++        assertEquals(SwipeRoute.WHEEL, swipeRouteOf(altScreen = false, mouseTracking = true))
++    }
++
++    @Test
++    fun altScreenWithoutMouseReporting_sendsArrowKeys() {
++        assertEquals(SwipeRoute.ARROW_KEYS, swipeRouteOf(altScreen = true, mouseTracking = false))
++    }
++
++    @Test
++    fun primaryScreenWithoutMouseReporting_scrollsLocalScrollback() {
++        assertEquals(SwipeRoute.SCROLLBACK, swipeRouteOf(altScreen = false, mouseTracking = false))
++    }
++
++    @Test
++    fun arrowKeyDirection_followsWheelDirection() {
++        // Finger moves down (positive steps) -> earlier content -> Up, like wheel-up.
++        assertEquals(VTermKey.UP, alternateScrollKey(steps = 2))
++        assertEquals(VTermKey.DOWN, alternateScrollKey(steps = -1))
++    }
++}

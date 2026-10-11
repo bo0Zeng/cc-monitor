@@ -400,7 +400,7 @@ fn every_registered_auth_style_survives_the_round_trip_through_its_field_value()
         assert_eq!(
             AuthStyle::from_field_value(bad),
             None,
-            "`{bad}` 被认成了某个合法值 —— 静默回落正是本件在治的那一形"
+            "`{bad}` 被认成了某个合法值 —— 静默回落正是这里在治的那一形"
         );
     }
 }

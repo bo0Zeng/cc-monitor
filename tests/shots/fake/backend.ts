@@ -4,10 +4,10 @@
  * 其余的还是场景合成的。
  * 答不上的一律记进 `unhandled`（工具最后列出来），并按真后端「不认」那一形拒绝 —— 不悄悄给空。
  */
-import type { SessionStreamFrame } from "../../../src/frontend/ui/generated/SessionStreamFrame";
-import { Refuse, type SessionSpec, type World } from "./types";
+import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import type { MachineDisk } from "../disk";
+import { diskOf } from "./world";
+import type { Convo } from "./records";
 
 /**
  * 交给真后端答的帧命令（`real/pool.mjs` 每台机器起的那一个，读 `world.disk` 那几份原始文件）。场景不许再替它们写答（`world.ops` 里有就报）。
@@ -26,17 +26,37 @@ export const REAL_OPS = new Set([
   "rotation-session-set",
   "rotation-rule-save",
   "rotation-plan",
+  "history-page",
+  "history-lines",
+  "history-index",
+  "history-user-inputs",
+  "history-turns",
+  "history-facts",
+  "history-branch",
+  "history-run",
+  "history-list",
+  "history-search",
+  "history-search-merge",
+  "history-find",
+  "history-last-accounts",
 ]);
 
 /**
- * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）。其余几种还是这里合成：会话流（等会话记录落盘那一刀）·
- * `session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；换号那几条帧命令还是合成的）·
- * 终端画面（要真 tmux）。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
+ * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
+ * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那三种 `changed/<topic>`。
+ * 其余几种还是这里合成：`session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
+ * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["changed/accounts", "changed/profiles", "changed/tasks"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks"]);
+const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/");
 
-/** 真后端够不着的那几台：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支（例：账号库「Windows 不支持多账号」）演不出来。 */
-const WINDOWS_ONLY: Record<string, Set<string>> = { "win-laptop": new Set(["accounts-list"]) };
+/**
+ * 真后端够不着的那一支：只有 Linux 编出来的后端，Windows 那台的 `cfg(windows)` 分支演不出来。那几问照样交真后端答，
+ * 只把 Windows 才有的那一格改过来（账号清单的 `meta.unsupported`：`platform::acct_view::unsupported_said`）。
+ */
+const WINDOWS_FACE: Record<string, Record<string, { meta: Record<string, unknown> }>> = {
+  "win-laptop": { "accounts-list": { meta: { unsupported: copyText("beAcctWire.platform.unsupported", { os: "windows" }) } } },
+};
 
 type Emit = (event: string, payload: unknown) => unknown;
 
@@ -51,12 +71,16 @@ interface Sub {
 
 export class FakeBackend {
   readonly unhandled: string[] = [];
+  /** 每条帧命令问过几次（性能台架数取回的问数用；真后端答的那几条也算）。 */
+  readonly asked: Record<string, number> = {};
   private emit: Emit = () => undefined;
   private readonly subs = new Map<number, Sub>();
-  /** 报过「清单报完了」的那几台（壳那一侧「各台都报完」那一拍按机器表算，这里照样算）。 */
+  /** 交给无头壳的那几条订阅：编号 → 哪台、哪一种。 */
+  private readonly shellSubs = new Map<number, Sub>();
+  /** 开页之后台架还在那几台上演的事（已结束的收场 · 断了）：截图等它们都落定（[`settled`]）。 */
+  private readonly pending: Promise<unknown>[] = [];
+  /** 收到过清单的那几台（每台只演一次）。 */
   private readonly listedOrigins = new Set<string>();
-  /** 交给无头壳的那几条订阅的编号。 */
-  private readonly shellSubs = new Set<number>();
   private screenSeq = 0;
 
   /** 真后端那一屋子起好了（`/__ccm/world` 答了）。 */
@@ -65,14 +89,21 @@ export class FakeBackend {
 
   constructor(readonly world: World) {
     for (const op of REAL_OPS) {
-      if (op in world.ops && !Object.values(WINDOWS_ONLY).some((x) => x.has(op))) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
+      if (op in world.ops) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
     }
-    const machines: Record<string, MachineDisk> = {};
-    for (const m of world.machines) machines[m] = world.disk[m] ?? { files: {}, live: [] };
+    const machines = diskOf(world);
     this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now() }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
-      new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`).onmessage = (m) => void this.emit("chan-items", JSON.parse(m.data as string));
+      // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
+      // 机器忙时那几问答得慢，后开的事件流排不上队 ⇒ 一格都收不到、一个 tab 都起不来（负载高时偶发的「现有 0 个 tab」就是它）。
+      const es = new EventSource(`/__ccm/items?key=${encodeURIComponent(this.key)}`);
+      es.onmessage = (m) => {
+        const d = JSON.parse(m.data as string) as { sub: number; items: { t: string; body?: string }[] };
+        this.watch(d.sub, d.items);
+        void this.emit("chan-items", d);
+      };
+      await new Promise<void>((resolve) => (es.onopen = () => resolve()));
     });
   }
 
@@ -86,15 +117,51 @@ export class FakeBackend {
   }
 
   /** 场景在开页之后改那台盘上的一份文件（相对家目录；例：存之前配置文件被别处改过）。 */
-  async writeFile(origin: string, rel: string, text: string): Promise<void> {
+  async writeFile(origin: string, rel: string, text: string, append = false): Promise<void> {
     await this.ready;
-    const r = await fetch("/__ccm/write", { method: "POST", body: JSON.stringify({ key: this.key, origin, rel, text }) });
+    const r = await fetch("/__ccm/write", { method: "POST", body: JSON.stringify({ key: this.key, origin, rel, text, append }) });
     if (!r.ok) throw new Error(`改不了 ${origin} 上的 ${rel}：${await r.text()}`);
   }
 
+  /** 场景在开页之后往一个会话的记录里再写几行（`from` 起的那几条；真后端的 watcher 读到、照真的那一套交格）。 */
+  appendLines(origin: string, c: Convo, from: number): Promise<void> {
+    return this.writeFile(origin, c.file(), c.textFrom(from), true);
+  }
+
   /** 订阅那几样交给无头壳。 */
-  private tell(what: "sub" | "want" | "stop", body: Record<string, unknown>): void {
-    void this.ready.then(() => fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) }));
+  private tell(what: "sub" | "want" | "stop" | "ready" | "kill" | "end" | "watch", body: Record<string, unknown>): Promise<void> {
+    return this.ready.then(async () => {
+      const r = await fetch(`/__ccm/${what}`, { method: "POST", body: JSON.stringify({ key: this.key, ...body }) });
+      if (!r.ok) throw new Error(`/__ccm/${what}：${await r.text()}`);
+    });
+  }
+
+  /** 主界面发 `frontend-ready`（就绪点：壳照它重放会话流，带上次所在的 tab）。 */
+  frontendReady(payload: { prioritySid?: string | null } | null): void {
+    void this.tell("ready", { priority_sid: payload?.prioritySid ?? null });
+  }
+
+  /**
+   * 那台的会话流报完清单了（主界面那一条）：开页之后才演的那两样这时演 —— 已结束的那几个收场（[`SessionSpec.ended`]）·
+   * 断了的那几台过一会儿后端被杀（[`World.droppedMachines`]：壳那一侧照真的那一套作废那台的成品、通道说断了）。
+   */
+  private watch(id: number, items: { t: string; body?: string }[]): void {
+    const sub = this.shellSubs.get(id);
+    if (!sub || sub.kind !== "session-lines" || this.listedOrigins.has(sub.origin)) return;
+    if (!items.some((it) => it.t === "frame" && it.body?.startsWith('{"listed"'))) return;
+    this.listedOrigins.add(sub.origin);
+    this.pending.push(this.tell("end", { origin: sub.origin }));
+    if (this.world.droppedMachines?.includes(sub.origin)) this.pending.push(new Promise((r) => setTimeout(r, 1500)).then(() => this.tell("kill", { origin: sub.origin })));
+  }
+
+  /** 开页之后台架在演的那几样都落定了（截图在这之后量、截）。 */
+  async settled(): Promise<void> {
+    await this.ready;
+    // 主界面订了会话流的那几台都报完清单（收场 · 断了那几样是收到清单才排上的），至多等 15 秒。
+    const t0 = Date.now();
+    const unlisted = (): boolean => [...this.shellSubs.values()].some((s) => s.kind === "session-lines" && !this.listedOrigins.has(s.origin));
+    while (unlisted() && Date.now() - t0 < 15_000) await new Promise((r) => setTimeout(r, 50));
+    for (let n = 0; n < this.pending.length; n = this.pending.length) await Promise.all(this.pending.slice(n));
   }
 
   attachEmitter(emit: Emit): void {
@@ -112,14 +179,18 @@ export class FakeBackend {
         return this.chanCall(args);
       case "chan_offer":
         return { ops: Object.keys(this.world.ops), unavailable: [], stoppable: [] };
+      case "watch_sessions":
+        // 主窗口报在看哪几个（整份换）：转给无头壳，它照产品那一条合每台的名单、经 `stream-watch` 报给那台后端（没在看的会话，行不上流）。
+        void this.tell("watch", { sessions: args.sessions ?? [] });
+        return null;
       case "chan_subscribe":
         this.subscribe(args);
         return null;
       case "chan_want":
-        if (this.shellSubs.has(Number(args.id))) this.tell("want", { id: Number(args.id), more: Number(args.more) });
+        if (this.shellSubs.has(Number(args.id))) void this.tell("want", { id: Number(args.id), more: Number(args.more) });
         return null;
       case "chan_stop":
-        if (this.shellSubs.delete(Number(args.id))) this.tell("stop", { id: Number(args.id) });
+        if (this.shellSubs.delete(Number(args.id))) void this.tell("stop", { id: Number(args.id) });
         return null;
       case "chan_cancel":
         return null;
@@ -134,11 +205,23 @@ export class FakeBackend {
   private chanCall(args: Record<string, unknown>): unknown {
     const origin = String(args.origin);
     const op = String(args.op);
+    this.asked[op] = (this.asked[op] ?? 0) + 1;
     const raw = args.payload as number[];
     const req = raw.length > 0 ? (JSON.parse(dec.decode(Uint8Array.from(raw))) as Record<string, unknown>) : {};
-    if (REAL_OPS.has(op) && !WINDOWS_ONLY[origin]?.has(op)) {
-      const delay = this.world.opDelayMs?.[op] ?? 0;
-      return new Promise((r) => setTimeout(r, delay)).then(() => this.real(origin, op, req, args.view));
+    // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。声明本身原样交给真后端，这里不读它。
+    const delay = (args.view == null ? this.world.fullFetchDelayMs?.[op] : undefined) ?? this.world.opDelayMs?.[op] ?? 0;
+    // 那台后端比界面老、不认这一条（照真壳交的「不认」那一形）· 到那台那一跳断开（照壳的跳失败那一形）。
+    if (this.world.older?.[origin]?.includes(op)) return Promise.reject({ err: "Unsupported", body: [] });
+    if (this.world.hopDown?.[origin]?.includes(op)) return Promise.reject({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] });
+    if (REAL_OPS.has(op)) {
+      const face = WINDOWS_FACE[origin]?.[op];
+      return new Promise((r) => setTimeout(r, delay))
+        .then(() => this.real(origin, op, req, args.view))
+        .then((b) => {
+          if (!face) return b;
+          const v = JSON.parse(dec.decode(b)) as { meta?: object };
+          return enc.encode(JSON.stringify({ ...v, meta: { ...v.meta, ...face.meta } })).buffer;
+        });
     }
     const handler = this.world.ops[op];
     if (!handler) {
@@ -146,9 +229,7 @@ export class FakeBackend {
       return Promise.reject({ err: "Unsupported", body: [] });
     }
     try {
-      const v = foldByView(op, handler(origin, req, this.world), args.view);
-      // 不带声明的那一问（展开那一下按记录 id 取回全文）另有一档延时，让「读取中」那一形截得到。
-      const delay = (args.view == null ? this.world.fullFetchDelayMs?.[op] : undefined) ?? this.world.opDelayMs?.[op] ?? 0;
+      const v = handler(origin, req, this.world);
       const later = delay > 0 ? new Promise((r) => setTimeout(() => r(v), delay)) : Promise.resolve(v);
       return later.then(
         // 照真壳交原始字节（`tauri::ipc::Response` ⇒ 页里拿到 ArrayBuffer），不交数字数组：
@@ -163,9 +244,9 @@ export class FakeBackend {
 
   private subscribe(args: Record<string, unknown>): void {
     const sub: Sub = { id: Number(args.id), origin: String(args.origin), kind: String(args.kind) };
-    if (SHELL_KINDS.has(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
-      this.shellSubs.add(sub.id);
-      this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) });
+    if (shellKind(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
+      this.shellSubs.set(sub.id, sub);
+      void this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) });
       return;
     }
     this.subs.set(sub.id, sub);
@@ -178,21 +259,11 @@ export class FakeBackend {
       this.send(sub, [{ t: "unseen", idx: 1, tag: "open", why: "Unreachable" }]);
       return;
     }
-    if (this.world.closedMachines.includes(sub.origin) && sub.kind === "session-lines") {
+    if (this.world.closedMachines.includes(sub.origin) && sub.kind.startsWith("session-lines")) {
       this.send(sub, [{ t: "closed_by_peer", body: JSON.stringify({ code: "busy", message: "这台机器上的会话太多，先关掉几个再连" }) }]);
       return;
     }
-    if (sub.kind === "session-lines" || sub.kind.startsWith("session-lines/")) {
-      const only = sub.kind.startsWith("session-lines/") ? sub.kind.slice("session-lines/".length) : null;
-      this.sendFrames(sub, this.sessionFrames(sub.origin, only));
-      if (this.world.droppedMachines?.includes(sub.origin)) {
-        // 断了：壳那一侧的会话账本把这台的成品作废（会话流里一格 `unseen`：那台还活着的 / 可重连的一律状态不明），通道再说一声。
-        setTimeout(() => {
-          this.sendFrames(sub, [{ unseen: { origin: sub.origin } } as SessionStreamFrame]);
-          this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]);
-        }, 1500);
-      }
-    } else if (sub.kind.startsWith("terminal-screen/")) {
+    if (sub.kind.startsWith("terminal-screen/")) {
       // 终端实时画面：订上之后推一屏（就是那一刻的 `terminal-preview` 成品）；按场景随后停（画面中断 · 那台断开）。
       // 那一屏抓不到（场景让 `terminal-preview` 拒）⇒ 不推：真后端那边是 `terminal-follow` 那一问被拒，流上什么都不来。
       const mode = this.world.terminalLive ?? "live";
@@ -213,55 +284,8 @@ export class FakeBackend {
     }
   }
 
-  /** 一台机器的会话流：成批那一段里先宣告、再交行，最后报「清单报完了」。 */
-  sessionFrames(origin: string, only: string | null = null): SessionStreamFrame[] {
-    const frames: SessionStreamFrame[] = [{ batch: "start" }];
-    for (const s of this.world.sessions.filter((x) => x.origin === origin && (only === null || x.sid === only))) {
-      frames.push({
-        live: {
-          session_id: s.sid,
-          origin,
-          background: s.background,
-          attachable: true,
-          cwd: s.cwd,
-          project_dir: s.cwd,
-          name: s.name,
-        },
-      });
-      frames.push({ container: { session_id: s.sid, container: s.container } });
-      const from = this.world.replayTail === undefined ? 0 : Math.max(0, s.records.length - this.world.replayTail);
-      s.records.slice(from).forEach((record, i) => {
-        frames.push({ line: { session_id: s.sid, cwd: s.cwd, path: `${s.cwd}/${s.sid}.jsonl`, seq: from + i, origin, record } });
-      });
-      if (s.runs.length > 0) frames.push({ runs: { session_id: s.sid, runs: s.runs, ended: [] } });
-      // 字 · 语气 · 序照后端 `wire::ActivityFace::of` / `SessionFate::cells`（同一张文案表的 `beSession.*`）。
-      const act = s.activity === null ? (["unclear", "now", 4] as const) : ({ working: ["working", "now", 1], needs_you: ["needsYou", "need", 0], idle: ["idle", "plain", 3], background_work: ["backgroundWork", "busy", 2] } as const)[s.activity];
-      frames.push({ activity: { session_id: s.sid, activity: s.activity, activity_text: copyText(`beSession.activity.${act[0]}`), activity_tone: act[1], activity_order: act[2], ...nameCells(s), waiting_for: s.waitingFor } });
-      if (s.ended) frames.push({ ended: { session_id: s.sid, text: copyText("sessionState.ended.name"), hint: copyText("sessionState.ended.tooltip"), tone: "plain" } });
-      else if (s.idle) frames.push({ idle: { session_id: s.sid, text: copyText("sessionState.reconnectable.name"), hint: copyText("sessionState.reconnectable.tooltip"), tone: "plain" } });
-    }
-    this.listedOrigins.add(origin);
-    frames.push({ listed: { origin, all: this.world.machines.every((m) => this.listedOrigins.has(m)) } });
-    frames.push({ batch: "end" });
-    return frames;
-  }
-
-  private sendFrames(sub: Sub, frames: SessionStreamFrame[]): void {
-    this.send(
-      sub,
-      frames.map((f, seq) => ({ t: "frame", seq, body: JSON.stringify(f) })),
-    );
-  }
-
   private send(sub: Sub, items: unknown[]): void {
     void this.emit("chan-items", { sub: sub.id, items });
-  }
-
-  /** 场景在开页之后再推一格（例如活卡、某会话结束）。 */
-  pushFrames(origin: string, frames: SessionStreamFrame[]): void {
-    for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind.startsWith("session-lines")) this.sendFrames(sub, frames);
-    }
   }
 
   /** 场景在开页之后推一格 `changed/<topic>`（格体 `{key?, rev?, body?}`，同壳交的那一份）。 */
@@ -324,53 +348,4 @@ function pluginDefault(cmd: string, args: Record<string, unknown>): unknown {
   if (cmd.startsWith("plugin:window|is_")) return false;
   if (cmd === "plugin:dialog|open" || cmd === "plugin:dialog|save") return null;
   return null;
-}
-
-/**
- * 照出口交的声明裁记录（真后端 `faces/project.rs` 那一处的小抄：只认桌面交的那几种路径 ——
- * `blocks[type=X].Y` · `results.*.Y`）。认不出的路径 ⇒ 抛（宁可这张图截失败，也不交一份没裁的冒充裁过）。
- */
-function foldByView(op: string, v: unknown, view: unknown): unknown {
-  const paths = (view as { omit?: { record?: string[] } } | null | undefined)?.omit?.record;
-  if (!paths || (op !== "history-page" && op !== "history-lines")) return v;
-  const lines = (v as { lines?: Array<{ record: Record<string, unknown> }> }).lines ?? [];
-  const folded = lines.map((l) => ({ ...l, record: omitCells(l.record, paths) }));
-  return { ...(v as object), lines: folded };
-}
-
-function omitCells(rec: Record<string, unknown>, paths: string[]): Record<string, unknown> {
-  const out: Record<string, unknown> = { ...rec };
-  for (const p of paths) {
-    const block = /^blocks\[type=([a-z_]+)\]\.(\w+)$/.exec(p);
-    const result = /^results\.\*\.(\w+)$/.exec(p);
-    if (block && Array.isArray(out.blocks)) {
-      out.blocks = (out.blocks as Array<Record<string, unknown>>).map((b) => {
-        if (b.type !== block[1]) return b;
-        const { [block[2]]: _gone, ...rest } = b;
-        return rest;
-      });
-    } else if (result && out.results && typeof out.results === "object") {
-      out.results = Object.fromEntries(
-        Object.entries(out.results as Record<string, Record<string, unknown>>).map(([k, r]) => {
-          const { [result[1]]: _gone, ...rest } = r;
-          return [k, rest];
-        }),
-      );
-    } else if (!block && !result) {
-      throw new Error(`shots: 假后端认不出声明里的路径 ${p}`);
-    }
-  }
-  return out;
-}
-
-
-/** 叫这条会话什么（照后端 `search_rules::session_label` 与 `wire::NameFace::of`）：最后一条标题 → 人说的第一句（120 字）→「没有说过话的会话」；项目那一格一直带。 */
-function nameCells(s: SessionSpec): { label: string; label_project: string | null } {
-  const titles = s.records.filter((r) => r.t === "title");
-  const title = titles.length > 0 ? (titles[titles.length - 1] as { text: string }).text : null;
-  const said = s.records.find((r) => r.t === "said" && (r as { who: { speaker: { kind: string } } }).who.speaker.kind === "human") as { who: { text: string } } | undefined;
-  const first = said ? ([...said.who.text].length > 120 ? `${[...said.who.text].slice(0, 120).join("").replace(/[\r\n]/g, " ")}…` : said.who.text.replace(/[\r\n]/g, " ")) : "";
-  const project = s.cwd.split(/[\\/]/).filter((x) => x !== "").pop() ?? null;
-  const named = title?.trim() ? title : first.trim() ? first : null;
-  return { label: named ?? copyText("history.row.untitled"), label_project: project };
 }

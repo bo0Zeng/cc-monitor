@@ -1618,7 +1618,7 @@ async fn a_real_click_on_delete_walks_the_whole_chain_even_on_a_session_file() {
 // 这三刀今天**打不到任何东西** —— 靶子（那一对函数与那颗按钮）不在了，
 // 不是「判据少了三条、缺陷还在」。
 //
-// ⚠ 而**方法**留下来了，并且本刀又用了一遍：一条判据挣不挣得到它的位子，
+// ⚠ 而**方法**留下来了，并且这里又用了一遍：一条判据挣不挣得到它的位子，
 // 看的是「有没有只有它才红的那一刀」；而一条判据该不该删，看的是
 // **它的靶子还在不在** —— 两个问题不一样，混起来就会把真判据当兼容债删掉。
 //
@@ -1670,7 +1670,7 @@ async fn a_real_click_on_download_asks_the_system_save_box() {
 /// 🔴**本条从「发出去了」升级成「读到了」**：读那一问换成经通道问后端
 /// （`files-read-text`）之后，合成后端（真回环口、真钥匙、真 `dial`）答得了它 ⇒ 链子一直走到
 /// 编辑面立起来；线上那一行的参数逐格读回（`path` 原样 · `max_bytes` == 窗口那个上限）。
-/// 第九刀那一版读走 SFTP、连不上（`.invalid`），只买得到「那一趟发出去了」。
+/// 第九刀那一版读走 SFTP、断开（`.invalid`），只买得到「那一趟发出去了」。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_real_click_on_edit_fires_the_read() {
     use crate::editor::EDIT_LABEL;
@@ -1983,7 +1983,7 @@ fn sent(log: &crate::find::testing::WireLog, cmd: &str) -> usize {
 }
 
 /// 🔴 **读着一份时再开一份：不发第二趟、说为什么**（后到的那一份会把正在改的那一份换掉）。
-/// 读完了还没落进编辑面的那一拍同样不发。
+/// 读完了还没落进编辑面的那一刻同样不发。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_second_open_while_one_is_still_reading_is_not_sent() {
     let mut w = FileWindow::seeded(
@@ -2016,7 +2016,7 @@ async fn a_second_open_while_one_is_still_reading_is_not_sent() {
         .expect("拒了却没说")
         .said;
     assert!(e.contains("/srv/data/a.txt"), "没说在等哪一份：{e}");
-    // 读完了、还没落进编辑面那一拍：同样不发。
+    // 读完了、还没落进编辑面那一刻：同样不发。
     w.edits.deliver(crate::editor::Arrived::Text {
         path: "/srv/data/a.txt".into(),
         name: "a.txt".into(),
@@ -2985,8 +2985,8 @@ fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
     let file = dir.join("filewin-view.json");
     let mut ws =
         crate::workspace::Workspace::new(remote_window_with_rows("/l", vec![file_row("a")]));
-    ws.zoom = crate::workspace::Zoom::open(Some(file.clone()));
-    assert_eq!(ws.zoom.factor(), 1.0, "没记过却不是 100%");
+    ws.memo = crate::workspace::ViewMemo::open(Some(file.clone()));
+    assert_eq!(ws.memo.zoom(), 1.0, "没记过却不是 100%");
     let ctx = egui::Context::default();
     let mut t = 0.0;
     // 按一下，再跑一帧（egui 的缩放在下一帧开头才生效）。
@@ -3021,10 +3021,68 @@ fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
     let z = press(&mut ws, egui::Event::Zoom(1.5));
     assert!((z - 1.5).abs() < 1e-4, "Ctrl + 滚轮没缩放：{z}");
     assert_eq!(
-        crate::workspace::Zoom::open(Some(file.clone())).factor(),
+        crate::workspace::ViewMemo::open(Some(file.clone())).zoom(),
         1.5,
         "重开之后不是上次的缩放"
     );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 🔴 **预览开关记住上次的**（稿「看一份文件」那一行）：没记过 ⇒ 关着；Alt+P 开了 ⇒ 记进视图文件，
+/// 重开窗（照那份文件摆）预览开着；再关、再重开 ⇒ 关着。缩放与它同住一份文件，改一样不冲掉另一样。
+#[test]
+fn the_preview_switch_survives_a_reopen_and_keeps_the_zoom() {
+    let dir = std::env::temp_dir().join(format!("ccm-filewin-pvmemo-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("filewin-view.json");
+    let reopen = || {
+        let mut ws =
+            crate::workspace::Workspace::new(remote_window_with_rows("/l", vec![file_row("a")]));
+        ws.restore_view(crate::workspace::ViewMemo::open(Some(file.clone())));
+        ws
+    };
+    let ctx = egui::Context::default();
+    let mut t = 0.0;
+    let mut press = |ws: &mut crate::workspace::Workspace, key: egui::Key, modifiers| {
+        for events in [
+            vec![egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers,
+            }],
+            Vec::new(),
+        ] {
+            t += 1.0;
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1280.0, 800.0),
+                )),
+                time: Some(t),
+                events,
+                ..Default::default()
+            };
+            ctx.run_ui(input, |ui| ws.frame(ui))
+                .drop_without_applying_deltas();
+        }
+    };
+    let mut ws = reopen();
+    assert!(ws.preview.is_none(), "没记过却开着预览");
+    press(&mut ws, egui::Key::Equals, egui::Modifiers::COMMAND);
+    press(&mut ws, egui::Key::P, egui::Modifiers::ALT);
+    assert!(ws.preview.is_some(), "Alt+P 没开预览");
+    let ws = reopen();
+    assert!(ws.preview.is_some(), "重开之后预览没照上次开着");
+    assert_eq!(ws.memo.zoom(), 1.1, "记预览把缩放冲掉了");
+    let mut ws = reopen();
+    press(&mut ws, egui::Key::P, egui::Modifiers::ALT);
+    assert!(ws.preview.is_none(), "Alt+P 没关预览");
+    let ws = reopen();
+    assert!(ws.preview.is_none(), "关了再重开预览却开着");
+    assert_eq!(ws.memo.zoom(), 1.1, "记预览把缩放冲掉了");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

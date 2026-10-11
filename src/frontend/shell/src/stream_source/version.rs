@@ -6,7 +6,7 @@ use std::sync::Mutex;
 /// 冷启动预检的自证记忆：远端已经是当前 build 时，每次重连都付的那两条预检连接（`byte_table::probe_key` 的 `uname -s -m` 一次性 exec ·
 /// 读远端 `.build_id` 的那一趟）可以跳过。记的是 hello 自报的 build_id（「这台机器上一次真的跑起来的后端就是当前期望的那个」），不是预检算出来的结论。
 /// 跳的条件只有一个：记忆里那台机器的 build_id 恰好等于「我这一版」（`byte_table::my_backend_id`）；其余一律照跑。miss 路径的 caps 决策本身是保守的
-/// （`hello_confirmed` → 部署侧确认 → 空集全降级）。记忆过期（远端二进制被删 / 换旧）⇒ 本轮 exec 失败，失败路径清掉记忆 ⇒ 下一轮重新预检并部署。代价是多一次重连。
+/// （`hello_confirmed` → 部署侧确认 → 空集全降级）。记忆过期（远端二进制被删 / 换旧）⇒ 这一轮 exec 失败，失败路径清掉记忆 ⇒ 下一轮重新预检并部署。代价是多一次重连。
 static VERIFIED_BUILD: Mutex<Option<std::collections::HashMap<String, String>>> = Mutex::new(None);
 
 /// 纯函数：这一轮能不能跳过那两条预检连接。`verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）；`mine` = 「我这一版」（`None` = 手上没带后端字节）。

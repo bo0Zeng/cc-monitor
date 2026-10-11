@@ -38,7 +38,7 @@ fn two_accounts_land_in_two_rows_each_with_its_own_upstream_and_key() {
         b.key().expect("B").expose_for_auth_header(),
         "两行的 key 一样 —— 下面整族断言在空转"
     );
-    // ★ 同理：两行的**端点**也必须不同（本件题目就是每行端点不一样）。
+    // ★ 同理：两行的**端点**也必须不同（要判的就是每行端点不一样）。
     assert_ne!(
         a.base().host_header(),
         b.base().host_header(),
@@ -88,7 +88,7 @@ fn a_row_that_cannot_be_reached_or_cannot_be_parsed_is_rejected_out_loud() {
     // ★★ **承重的那条排最前**〔`D1` 一并修，08-28〕：
     //    先前它排在整条判据的**最后**，被前面 `assert_eq!(t.len(), 1)` 挡着
     //    ⇒ `D1-M6` 实测红在前面那条，**这一句一次都没被求值**。
-    //    本件这是**第二次**同形（`KH2` 那两条已经修过一次）⇒ 全件扫过一遍。
+    //    这是**第二次**同形（`KH2` 那两条已经修过一次）⇒ 全件扫过一遍。
     assert!(
         t.lookup(AGENT, "ok-id").is_none(),
         "打错的端点回落到了默认上游 —— 那比 404 坏得多"
@@ -284,7 +284,7 @@ fn a_plaintext_upstream_is_only_allowed_on_loopback() {
 
 /// ★★ `K-R1`：**能用但行为与默认不同的行要出声** —— 那是 [`Note`] 这个类型的全部意义。
 ///
-/// # 它治的是本件最阴的那一格
+/// # 它治的是最阴的那一格
 ///
 /// 路径前缀是**承重的、会改变字节**，而它错了的时候（前缀与客户端路径头一段重了）
 /// 上游给的是一个 404 ——「配错了」与「上游挂了」同形。

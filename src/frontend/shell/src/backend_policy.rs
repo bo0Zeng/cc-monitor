@@ -148,7 +148,7 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 //
 // # 为什么这一档住在宿主侧，而不是预批的 `src/backend/death_ledger.rs`
 //
-// 三条现打，逐条给住址（PM 补充里预批了那个新文件 + `main.rs` 一行 `mod`，本件**都没用**）：
+// 三条现打，逐条给住址（PM 补充里预批了那个新文件 + `main.rs` 一行 `mod`，这里**都没用**）：
 //
 // 1. **backend 写不了盘，而放宽写盘口是第二档的事。**
 //    `src/backend/readonly_guard.rs` 的默认层禁掉本 crate 生产段里
@@ -170,9 +170,9 @@ pub fn kill_on_exit_now(origin: &Origin) -> bool {
 // # ⚠ 今天**还没接线**的那一格，如实登记（不写在注释里就等于埋掉）
 //
 // [`record_death`] 的生产调用点该在宿主观测到它死掉的那一刻 ——
-// `local_backend_host.rs::reap_detached`（`c.wait()` 返回那一拍）与
-// `local_backend.rs::supervise_with_stdio`（读到 EOF 那一拍）。
-// 两处**都不在本件写区** ⇒ 交回里逐字点名，由 PM 落。
+// `local_backend_host.rs::reap_detached`（`c.wait()` 返回那一刻）与
+// `local_backend.rs::supervise_with_stdio`（读到 EOF 那一刻）。
+// 两处**都不在本模块** ⇒ 由那两处自己落。
 // ⇒ **本段今天证的是「判据分得开、账写得下、写不进去会出声」，证不了「它已经被调用过」。**
 // 上面那两处后来接上了（判据 `backend_policy_tests.rs` 的 `DEATH_RECORD_SITES` 逐处点名）；读数经 `backend_status` 上界面，
 // 那一格的成品由 [`health_face`] 出。
@@ -279,7 +279,7 @@ pub enum Death {
 ///
 /// ⚠ **诚实边界，如实登记**：`exit 0` 而**从来没说过话**这一形（起来了、干净地退了、
 /// 但一句 hello 都没发）今天**判成不上账**。它在这三维上与「正常收工」不可区分，
-/// 而给它单开第五档就是发明一件今天没有证据支持的事（本件的 DoD 说的是**四件**）。
+/// 而给它单开第五档就是发明一件今天没有证据支持的事（要求说的是**四件**）。
 /// 真撞上它 ⇒ 那是第二档的题目，回来重判，别在这里悄悄加一档。
 pub fn verdict(ev: &DeathEvidence) -> Option<Death> {
     match &ev.reader {
@@ -455,12 +455,12 @@ pub trait DeathSink {
 
 /// 生产落点：**monitor 自己的滚动日志**（只进日志；告诉用户的那一句由调用方经 `ui_error::tell` 说）。
 ///
-/// ★ 这是本件「真的会被写下来」那一半的全部内容，而它**零新增写盘口**：
+/// ★ 这是「真的会被写下来」那一半的全部内容，而它**零新增写盘口**：
 /// 真正碰盘的是 `logging.rs::build_rolling_appender` —— 一个已经登记在
 /// `write_site_registry::WRITE_SITES` 里的落点。本模块一个 `fs::` 调用都没有。
 ///
 /// ⚠ **诚实边界**：`tracing` 的语义是「没有 subscriber 就丢掉」。
-/// `logging.rs` 在 setup 那一拍才装 subscriber ⇒ **在那之前记的一笔会被静默丢掉**，
+/// `logging.rs` 在 setup 时才装 subscriber ⇒ **在那之前记的一笔会被静默丢掉**，
 /// 而本落点看不见这件事（`tracing::error!` 没有返回值）。
 /// ⇒ 所以 [`record_death`] **不把账只交给落点**：那张进程内的表照样更新，
 /// 界面上的读数不跟着落点一起消失。
@@ -477,7 +477,7 @@ impl DeathSink for MonitorLog {
 ///
 /// `#[must_use]` 是**刻意的**：吞掉它就等于把「写不进去」这件事静默掉，
 /// 而 `§0-1` 那一格的全部内容就是「没有任何东西在记」——
-/// 一个被吞掉的错误会让本件原地退回那个状态。
+/// 一个被吞掉的错误会让这里原地退回那个状态。
 #[must_use]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Recorded {

@@ -52,7 +52,7 @@
 #   跑它们比推上去等 CI 红了再修一棵树便宜（编译格合计中位一分半）。
 #   e2e 套件不在这里写死（10-10 起）：--trust-ci 下被改到被测对象的那几套由 plan.py 逐套现算、本机照跑
 #   （套件入口顺着摸到的文件 ＋ 它起的后端二进制 / 它 cargo test 的那棵树的源）；从前写死的 backend-cc-bus · ccm-cli · ccm-contract-parity 随之撤下。
-#   winlink：链两个二进制之外还查 lib 测试程序带不带进程清单（缺了它，测试程序在 Windows 上起不来，推上去 CI 才看得见）；壳那棵被改到时本机照跑。
+#   winlink：链两个二进制之外还查 monitor 与文件窗口两份 lib 测试程序带不带进程清单（缺了它，测试程序在 Windows 上起不来，推上去 CI 才看得见）；壳那棵被改到时本机照跑。
 @keep-local deadcode deadcode-backend winchk-backend winlink npm
 
 # ── 门禁自己 · CI 形状 · 依赖清单：动了就全量 ──────────────────────────────────────────

@@ -979,7 +979,7 @@ fn mcp_delta(fields: Value) -> Value {
 }
 
 /// 这个会话的 MCP 有毛病的那几个：那一家最后一次说的为准，一格一格地换（这一条没写的那一格沿用上一条）；
-/// 写了空表 ⇒ 那一种清空。连不上的带原话。没列的不等于连上了 ⇒ 不出。
+/// 写了空表 ⇒ 那一种清空。断开的带原话。没列的不等于连上了 ⇒ 不出。
 /// 要求：「乙：从会话记录的 deferred_tools_delta 读出这个会话的 MCP 状态，failed 带原因，作为会话事实里的一格」。
 #[test]
 fn the_sessions_mcp_trouble_is_the_last_thing_said_per_list() {
@@ -1013,12 +1013,12 @@ fn the_sessions_mcp_trouble_is_the_last_thing_said_per_list() {
             t("m-n1", McpStatus::NeedsLogin, None),
             t("m-n2", McpStatus::NeedsLogin, None),
         ],
-        "清空连不上的那一种，要登录的沿用"
+        "清空断开的那一种，要登录的沿用"
     );
 }
 
-/// 只读 MCP 那一格的快扫（扩展页问「这台活会话里谁连不上」用）：与整份事实扫出来的 `mcp` 一格逐项相等。
-/// 要求：MCP 状态稿甲 1 / 甲 2「连不上的原因取这台活会话里最近一条」。
+/// 只读 MCP 那一格的快扫（扩展页问「这台活会话里谁断开」用）：与整份事实扫出来的 `mcp` 一格逐项相等。
+/// 要求：MCP 状态稿甲 1 / 甲 2「断开的原因取这台活会话里最近一条」。
 #[test]
 fn the_mcp_only_scan_says_what_the_full_facts_say() {
     let recs = vec![

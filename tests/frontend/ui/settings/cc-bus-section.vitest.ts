@@ -31,7 +31,7 @@ vi.mock("@tauri-apps/api/core", async () => {
 // 今天仍然成立（`__resetAccountsCacheForTest()` 那条路要求每个用例自己喂 tauri 命令，
 // 那是把本节从「DOM 行为」测成「accounts 的缓存」）；② 没有给它补一条判据钉住
 // 「测试侧不许再手抄纯函数」—— 那要一条新的扫描面（人群是 `.vitest.` 文件本身），
-// 不在本轮写区，`account-availability-guard.vitest.ts` 头注第 5 条已把这条边界写明。
+// 这里不改，`account-availability-guard.vitest.ts` 头注第 5 条已把这条边界写明。
 // `fetchAccounts` 拆去了 `account-reads.ts`（规则仍在 `accounts.ts`，用真身）。
 vi.mock("../../../../src/frontend/ui/account-reads", async () => ({
   ...(await vi.importActual<typeof import("../../../../src/frontend/ui/account-reads")>("../../../../src/frontend/ui/account-reads")),

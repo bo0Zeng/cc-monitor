@@ -19,8 +19,15 @@
 //! 本条改成命中集 == ∅（测试与 `tests/evidence/` 同拍清，或那时按目录分两步收）。
 //!
 //! 第五张网（施工过程的叫法）：派活的那一方 · 施工分支与合并分支的代号 · 带日期的「用户 MM-DD」· 「合并」那棵树 ·
-//! 「施工」那一路 · 「这一路的」写区 · 施工那一路的自称（「本」＋「路」）· 带日期 / 步骤的施工标签（搬树 · 步 N · 波 N · 条 N 那几种六角括号标签）· 不带括号的施工条目编号（「条」＋数字，量词那几形不算）。同一个人群去掉 `CHANGELOG.md`（版本记录照实写当时怎么做的），测试声明行不扫；
+//! 「施工」那一路 · 「这一路的」改动范围 · 施工那一路的自称（「本」＋「路」）· 带日期 / 步骤的施工标签（搬树 · 搬测试 · 步 N · 步 `代号` · 波 N · 条 N 那几种六角括号标签）· 不带括号的施工条目编号（「条」＋数字，量词那几形不算）。同一个人群去掉 `CHANGELOG.md`（版本记录照实写当时怎么做的），测试声明行不扫；
 //! 命中集 == ∅，点名哪个文件哪一行。仓的读者不知道这些名字指什么：留下道理本身，叫法删掉。
+//!
+//! 同一条判据的第二副网眼（施工口吻）：施工那一次的自称 ——「本」＋「轮 / 件 / 拍 / 刀」、「那一 / 这一」＋「拍」——
+//! 与改动范围的旧叫法（「写」＋「区」）。写的是「现在是什么样」，不是「这一次做了什么」。
+//! 放过两类：产品文案里 Claude 的「一轮」（`PRODUCT_TURN_PHRASES` 那几句，界面与手机照抄、判据引用它们）；
+//! 文案表 · cc-bus 包（Claude 的「一轮」是那里的真术语）· 禁用词表与对外文案普查量具（它们列这个词就是为了禁它）。
+//! 第三副网眼（口语的连接说法）：「连不」＋「上」。连接说「断开」，机器状态说「{machine} 离线」。放过禁用词表与文案规则表（列它、举它当反例）；
+//! 等整份重写的手写文档登记在 `COLLOQUIAL_AWAITING_REWRITE`，那里一没了它就红、逼着删登记。
 //!
 //! 买不到：换了说法、不落在网眼上的指路（代号网只认登记过的前缀；编号网只认几种常见写法）。
 
@@ -91,9 +98,12 @@ fn process_names_net() -> Regex {
         format!("用{}", r"户 ?(?:20[0-9]{2}-)?[01][0-9]-[0-3][0-9]"),
         format!("合并{}", "树"),
         format!("施工{}", "路"),
-        format!("这一路的{}", "写区"),
+        format!("这一路的写{}", "区"),
         format!("本{}", "路(?:$|[^径由线])"),
-        format!("〔(?:搬{}|步 ?[0-9]|波 ?[0-9]|条 ?[0-9])", "树"),
+        format!(
+            "〔(?:搬树|搬测{}|步 ?[`0-9A-Z]|波 ?[0-9一二三四五六七八九十]|条 ?[0-9])",
+            "试"
+        ),
         // 裸的「条 N」：施工条目的编号。前面紧挨数量词（一条 · 每条 · 那条 · 第 3 条 · 进度条 · 影响条）或空格的是量词，不算。
         format!(
             "(?:^|[^{q} ]|(?:^|[^{q}]) )条{}",
@@ -110,6 +120,58 @@ fn process_names_net() -> Regex {
 
 /// 第五张网不扫的文件：版本记录照实写当时怎么做的。
 const PROCESS_NAMES_EXEMPT: &[&str] = &["CHANGELOG.md"];
+
+/// 第五张网的第二副网眼：施工口吻（施工那一次的自称 · 改动范围的旧叫法）。每个网眼拆两段、运行期拼。
+/// 「文本拍平」里的那两个字不算；「写」＋「区间 / 区域 / 区块」不算。
+fn process_words_net() -> Regex {
+    let eyes = [
+        format!("本{}", "轮"),
+        format!("本{}", "件"),
+        format!("本{}", "刀"),
+        format!("本{}", "拍(?:$|[^平])"),
+        format!("[那这]一{}", "拍"),
+        format!("写{}", "区(?:$|[^间域块])"),
+    ];
+    Regex::new(&eyes.join("|")).expect("施工口吻网拼不成正则")
+}
+
+/// 产品文案里 Claude 的「一轮」：文案表里的原句，界面 · 手机 · 判据 · 金样照抄它们。拆两段拼。
+const PRODUCT_TURN_PHRASES: &[(&str, &str)] = &[
+    ("本", "轮完成"),
+    ("本", "轮中断"),
+    ("已中断本", "轮"),
+    ("从本", "轮分叉"),
+    ("结束本", "轮"),
+];
+
+/// 第二副网眼不扫的：文案表与 cc-bus 包（「一轮」是那里的真术语）· 禁用词表与对外文案普查量具（列这个词为的是禁它）。
+fn process_words_exempt(rel: &str) -> bool {
+    rel == "src/shared/copy/table.json"
+        || rel == "src/shared/copy/terms.json"
+        || rel.starts_with("src/shared/cc-bus/")
+        || rel.starts_with(concat!("tests/evi", "dence/K-T68-"))
+}
+
+/// 第五张网的第三副网眼：口语的连接说法（「连不」＋「上」）。连接说「断开」，机器状态说「{machine} 离线」。拆两段拼。
+fn colloquial_net() -> Regex {
+    Regex::new(&format!("连不{}", "上")).expect("口语连接说法网拼不成正则")
+}
+
+/// 第三副网眼不扫的：禁用词表与文案规则表（列这个词、举它当反例，为的是禁它）。
+const COLLOQUIAL_EXEMPT: &[&str] = &["src/shared/copy/terms.json", "src/shared/copy/rules.json"];
+
+/// 第三副网眼暂不扫、等整份重写的手写文档：重写落地时那一处跟着没了，下面的幽灵检查逼着把这一行删掉。
+const COLLOQUIAL_AWAITING_REWRITE: &[&str] = &[];
+
+/// 一行里第一处施工口吻的字节偏移（产品文案那几句先换成等长的空白再找）。
+fn first_process_word(net: &Regex, line: &str) -> Option<usize> {
+    let mut scrubbed = line.to_string();
+    for (a, b) in PRODUCT_TURN_PHRASES {
+        let phrase = format!("{a}{b}");
+        scrubbed = scrubbed.replace(&phrase, &" ".repeat(phrase.len()));
+    }
+    net.find(&scrubbed).map(|m| m.start())
+}
 
 /// 第三张网的三形，各一个名字（报告按它分组）。每个网眼拆两段、运行期拼。
 fn unblocked_eyes() -> [(&'static str, Regex); 3] {
@@ -373,25 +435,53 @@ fn no_tracked_text_uses_the_build_process_names() {
         "人群只有 {} 份 —— `git ls-files` 口径坏了，零命中不作数",
         texts.len()
     );
-    let (net, decl) = (process_names_net(), test_declaration());
+    let (net, words, decl) = (process_names_net(), process_words_net(), test_declaration());
+    let colloquial = colloquial_net();
+    for rel in COLLOQUIAL_AWAITING_REWRITE {
+        let text = texts
+            .iter()
+            .find(|(r, _)| r == rel)
+            .map(|(_, t)| t.as_str())
+            .unwrap_or("");
+        assert!(
+            colloquial.is_match(text),
+            "{rel} 里已经没有口语的连接说法了 —— 从 `COLLOQUIAL_AWAITING_REWRITE` 里删掉这一行，别留一张空号豁免"
+        );
+    }
     let mut hits = Vec::new();
     for (rel, text) in &texts {
         if PROCESS_NAMES_EXEMPT.contains(&rel.as_str()) {
             continue;
         }
+        let check_words = !process_words_exempt(rel);
+        let check_colloquial = !COLLOQUIAL_EXEMPT.contains(&rel.as_str())
+            && !COLLOQUIAL_AWAITING_REWRITE.contains(&rel.as_str());
         for (i, line) in text.lines().enumerate() {
             if decl.is_match(line) {
                 continue;
             }
-            if let Some(m) = net.find(line) {
-                hits.push(format!("{rel}:{}: {}", i + 1, snippet(line, m.start())));
+            let at = net
+                .find(line)
+                .map(|m| m.start())
+                .or_else(|| {
+                    check_words
+                        .then(|| first_process_word(&words, line))
+                        .flatten()
+                })
+                .or_else(|| {
+                    check_colloquial
+                        .then(|| colloquial.find(line).map(|m| m.start()))
+                        .flatten()
+                });
+            if let Some(at) = at {
+                hits.push(format!("{rel}:{}: {}", i + 1, snippet(line, at)));
             }
         }
     }
     assert!(
         hits.is_empty(),
-        "仓里有 {} 行写着施工过程的叫法（派活的一方 · 分支代号 · 带日期的用户裁定 · 合并那棵树 · 施工那一路）：\
-         读者不知道这些名字指什么 —— 叫法删掉，留下道理本身。前 50 处：\n{}",
+        "仓里有 {} 行写着施工过程的叫法（派活的一方 · 分支代号 · 带日期的用户裁定 · 合并那棵树 · 施工那一路 · 施工那一次的自称 · 改动范围的旧叫法）：\
+         读者不知道这些名字指什么 —— 叫法删掉，留下道理本身、写成现在是什么样。前 50 处：\n{}",
         hits.len(),
         hits.iter().take(50).cloned().collect::<Vec<_>>().join("\n")
     );
@@ -427,6 +517,11 @@ fn the_process_names_net_catches_build_names_and_spares_product_words() {
         format!("// ⚠ 条{} 80 把那条迁移裁掉了", ""),    // 23 ✔
         "// 一条 8 秒「撤销」· 进度条 240 · 第 3 条 · 那条影响条 5 秒后撤".to_string(), // 24 ✘ 量词
         "/// 喂了 2 条 1xx，够不到上限".to_string(),     // 25 ✘ 量词
+        format!("// 〔步{} `24f` 第二刀 09-20〕`files-read` 这一族", ""), // 26 ✔
+        format!("// 〔搬测{} 2026-09-17〕人群是全体后端代码", "试"), // 27 ✔
+        format!("// 🔴〔波{}〕窗口进程只说 `call`", "二"), // 28 ✔
+        format!("/// 〔步{} H2 09-21〕从那条判据拆出来", ""), // 29 ✔
+        "/// 〔搬自 `ccm-cli`「零修饰」〕〔步骤〕".to_string(), // 30 ✘ 出处 · 不是步 N
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -436,8 +531,77 @@ fn the_process_names_net_catches_build_names_and_spares_product_words() {
         .collect();
     assert_eq!(
         got,
-        BTreeSet::from([1, 2, 3, 4, 5, 6, 7, 13, 14, 16, 17, 18, 19, 21, 22, 23]),
-        "施工叫法网在合成夹具上抓到的行 ≠ 标定（该抓 1–7、13、14、16–19、21–23；该放过 8–12、15、20、24、25）—— 网坏了，全仓那条零命中不作数"
+        BTreeSet::from([1, 2, 3, 4, 5, 6, 7, 13, 14, 16, 17, 18, 19, 21, 22, 23, 26, 27, 28, 29]),
+        "施工叫法网在合成夹具上抓到的行 ≠ 标定（该抓 1–7、13、14、16–19、21–23、26–29；该放过 8–12、15、20、24、25、30）—— 网坏了，全仓那条零命中不作数"
+    );
+}
+
+/// 合成夹具：施工口吻必须抓到，产品文案里 Claude 的「一轮」· 「文本拍平」· 「读写区间」必须放过（行号集相等）；
+/// 豁免名单只认那几份。
+#[test]
+fn the_process_words_net_catches_build_wording_and_spares_the_turn_copy() {
+    let net = process_words_net();
+    let lines = [
+        format!("/// 本{}**没做**（源码这一半）", "轮"), // 1 ✔
+        format!("// 那正是本{}在治的病", "件"),          // 2 ✔
+        format!("/// re-embed 归发版那一{}", "拍"),      // 3 ✔
+        format!("/// 那为什么这一{}不 bump", "拍"),      // 4 ✔
+        format!("// ⇒ 本{}的处置是两条一起", "拍"),      // 5 ✔
+        format!("// 本{}碰不到它", "刀"),                // 6 ✔
+        format!("// 而那张表不在这里的写{}", "区"),      // 7 ✔
+        format!("// 报错卡：「本{}中断 · {{原因}}」", "轮"), // 8 ✘ 文案原句
+        format!("\"title\":\"本{}完成 · again\"", "轮"), // 9 ✘ 金样里的文案
+        format!("/** 「已中断本{} · {{time}}」一道细线 */", "轮"), // 10 ✘ 文案原句
+        format!("请先处理完再结束本{}:\\n", "轮"),       // 11 ✘ cc-bus 文案
+        format!("/// **数组文本{}平**", "拍"),           // 12 ✘ 文本 ＋ 拍平
+        format!("// 读写{}间按页对齐", "区"),            // 13 ✘ 区间
+        format!("// 「本{}完成」之后本{}又起了一次", "轮", "轮"), // 14 ✔ 文案之外还有一处
+        "// 这一轮连接的起点 · 那一刻 · 这一帧".to_string(), // 15 ✘ 现状的说法
+    ];
+    let got: BTreeSet<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, l)| first_process_word(&net, l).is_some())
+        .map(|(i, _)| i + 1)
+        .collect();
+    assert_eq!(
+        got,
+        BTreeSet::from([1, 2, 3, 4, 5, 6, 7, 14]),
+        "施工口吻网在合成夹具上抓到的行 ≠ 标定（该抓 1–7、14；该放过 8–13、15）—— 网坏了，全仓那条零命中不作数"
+    );
+    let colloquial = colloquial_net();
+    let said = [
+        format!("// 那台连不{} ⇒ 灰着", "上"),             // ✔
+        format!("throw new Error(`连不{} ${{o}}`)", "上"), // ✔
+        "// 那台断开 ⇒ 灰着 · 「{machine} 离线」 · 连得上 · 连不连".to_string(), // ✘
+    ];
+    let got: Vec<bool> = said.iter().map(|l| colloquial.is_match(l)).collect();
+    assert_eq!(
+        got,
+        [true, true, false],
+        "口语连接说法网在合成夹具上判错了（该抓前两行、放过第三行）"
+    );
+    let exempt: Vec<&str> = [
+        "src/shared/copy/table.json",
+        "src/shared/copy/terms.json",
+        "src/shared/cc-bus/examples/kinds.tsv",
+        "tests/evidence/K-T68-A1-outward-copy-census.py",
+        "src/shared/copy/rules.json",
+        "src/backend/lib.rs",
+        "tests/evidence/K-R117-ruler.py",
+    ]
+    .into_iter()
+    .filter(|r| process_words_exempt(r))
+    .collect();
+    assert_eq!(
+        exempt,
+        [
+            "src/shared/copy/table.json",
+            "src/shared/copy/terms.json",
+            "src/shared/cc-bus/examples/kinds.tsv",
+            "tests/evidence/K-T68-A1-outward-copy-census.py",
+        ],
+        "豁免名单只该放过文案表 · 禁用词表 · cc-bus 包 · 对外文案普查量具"
     );
 }
 

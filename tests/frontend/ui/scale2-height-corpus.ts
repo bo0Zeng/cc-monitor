@@ -28,7 +28,7 @@
  * - **手工构造**：`card-api-retry` / `card-api-error` / `card-bash-input` /
  *   `card-bash-output` / `card-slash` / `card-compact`。
  *   ⚠ **不是偷懒，是没有真样本**：数据源纪律逐字「已查证：`evidence/` 里
- *   没有现成样本」，又加强过一次；本轮采样器顺带复核：全部 8 个项目
+ *   没有现成样本」，又加强过一次；采样器顺带复核：全部 8 个项目
  *   32 674 条记录里 `system.subtype == "api_error"` **0 条**、bash 模式 `<bash-input>`
  *   **0 条**、`<command-name>`（slash）只有 **2 条**。
  *   ⇒ 这几个卡型的读数**带着"构造体长得像不像真的"这个前提**，写报告时不许省略这句。
@@ -160,7 +160,7 @@ function apiError(i: number, text: string): LineRecord {
 }
 
 const SYNTHETIC: { rec: LineRecord; note: string }[] = [
-  // ── card-api-retry：细条，本轮三个悬案的主角 ──
+  // ── card-api-retry：细条，三个悬案的主角 ──
   ...[
     "Connection error (ECONNRESET)",
     "Overloaded",

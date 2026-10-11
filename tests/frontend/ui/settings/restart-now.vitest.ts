@@ -16,7 +16,7 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
       const args = JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>;
       calls.push({ origin, op, args });
       const a = answers.get(origin);
-      if (!a) return Promise.reject(new Error(`${origin} 连不上`));
+      if (!a) return Promise.reject(new Error(`${origin} 断开`));
       return Promise.resolve(new TextEncoder().encode(JSON.stringify(a)));
     },
   },

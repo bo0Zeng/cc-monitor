@@ -22,7 +22,7 @@
 // 🔴 模块声明、`PROTO_VERSION`、身份块（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS`
 //    都搬进了 `lib.rs`，理由逐字写在那份文件的头注里（一句话：**in-process 那条路没有
 //    这个 `main.rs`**，身份与模块跟着它一起消失）。**本文件只留分派**（规格）。
-// ⚠ 用 glob 而不是逐项列 —— 本拍是**纯机械搬家**，逐项列会让 diff 里混进
+// ⚠ 用 glob 而不是逐项列 —— 这一段是**纯机械搬家**，逐项列会让 diff 里混进
 //    「哪些项对外可见」这个**语义**决定，那是另一件事（`4b` 定 API 面时再收窄）。
 use cc_monitor_backend::control::cli_control;
 use cc_monitor_backend::faces::read_face;
@@ -40,7 +40,7 @@ use wire::Frame;
 //
 // # 它管的是哪一维 —— 与已有三道护栏**不重叠**
 //
-// 摸底那一拍现打过：Win32 那几个构件在三张针表里**一个都没有**
+// 摸底时现打过：Win32 那几个构件在三张针表里**一个都没有**
 //（`readonly_guard` 的 11 条写盘针 · `no_timer_guard` 的 5 条周期唤醒针 + 8 条调用形态）
 // ⇒ 一道拦写盘、一道拦「自己醒来」，**拉窗那一段没有任何后端判据看着它**。
 // 而 `platform/fallback_guard` **只扫 `src/platform/`**，且它自陈「人群比性质小」、
@@ -252,7 +252,7 @@ async fn main() {
     //
     // ⚠ **由环境决定，不由 argv 决定**：`SUBCOMMANDS` 那张表一动就要 bump `BUILD_ID`
     // 并进 `IPC-PROTOCOL.md` 的对拍面（`build_id_guard` / `protocol_doc_guard` 各钉一半），
-    // 而本件**一条子命令都没加** —— 它换的是同一个流模式的载体。
+    // 而这里**一条子命令都没加** —— 它换的是同一个流模式的载体。
     // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到），在 [`claim_then_log`] 里定、抢口。
 
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
@@ -406,7 +406,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     //
     // ★ **这一步必须先于任何 hook 安装落地** —— `SIGUSR1` 的**默认处置是终止进程**。
     // 先装 hook 再装处理器，等于给一个会自杀的后端装了自杀触发器。
-    // 本轮（P4 backend 侧）刻意只做这一半：没有 hook 在发信号，它完全惰性。
+    // 后端这一侧刻意只做这一半：没有 hook 在发信号，它完全惰性。
     //
     // 为什么是信号而不是别的：原方案让 hook 追加事件日志、backend inotify 读增量，
     // **撞红线 I7「backend 只读」**（`readonly_guard` 当场拦下）。信号通路让后端的
@@ -808,7 +808,7 @@ async fn serve_listening(
                 //   后端零定时器铁律（P6）不放行，理由整段在 `control/exit_policy.rs` 头注，待定。
                 if control::exit_policy::last_client_left() {
                     // 不再当场 `exit`：刚走的那个客户可能还有停不下来的写在跑 ⇒ 先排空再退。
-                    //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「连不上 ⇒ 起一个」走）。
+                    //   排空期间 accept 循环停着（新连接排在 backlog 里，退了之后被 RST，monitor 那头按「断开 ⇒ 起一个」走）。
                     inbound::exit_after_drain(
                         "流结束 ⇒ 这台机器的退出策略是「结束」",
                         None::<std::future::Ready<()>>,
@@ -879,7 +879,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
         // tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
         //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
         //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
-        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、本轮不参与，不会空转。
+        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、这一轮不参与，不会空转。
         let frame = if burst < REPLY_BURST {
             tokio::select! {
                 biased;

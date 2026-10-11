@@ -173,6 +173,11 @@ export interface RenderContext {
   /** 派出子运行的那几张卡（父侧工具调用 id → 卡）；不需要按运行表标卡的调用方不给。 */
   runCards?: Map<string, HTMLElement>;
   /**
+   * 一张派出卡刚建出来（父侧工具调用 id ＋ 卡）：宿主照它此刻的运行表给它标状态。运行表那一格常先于记录行到、卡又是懒建的 ——
+   * 只在运行表到的那一刻给已有的卡标，之后建的卡就永远空着。不给 ⇒ 只等下一格运行表。
+   */
+  onRunCard?: (tool: string, card: HTMLElement) => void;
+  /**
    * 派活的那段话（子运行记录里那一条）是谁派的：某个 agent ⇒ 它的标签；主会话 ⇒ `null`。不给 ⇒ 当主会话派的。
    */
   briefFrom?: string | null;
@@ -482,6 +487,7 @@ function renderBlock(
       if (card === "agent") {
         const runCard = buildAgentCard(block.id, block.name, runs[block.id]);
         ctx.runCards?.set(block.id, runCard);
+        ctx.onRunCard?.(block.id, runCard);
         ctx.toolUseElements.set(block.id, runCard); // 派出那一方拿到的那次结果收进这张卡（`settleRunCard`）
         return runCard;
       }

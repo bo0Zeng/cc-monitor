@@ -70,7 +70,7 @@ pub struct JsonlLinePayload {
     // **C01/C02 立的规则**：有 `skip_serializing_if` 就必须配 `ts(optional)`。
     // 不配的话 ts-rs 生成 `origin: string | null` —— 两处都错：线上是**省略**而不是
     // 必填，而且**永远不会是 null**（Rust 侧 None 直接不序列化）。
-    // 这一条本轮由守卫当场抓到（原话：「会多一个永不出现的 `| null`」）。
+    // 这一条由守卫当场抓到（原话：「会多一个永不出现的 `| null`」）。
     #[cfg_attr(test, ts(optional))]
     #[serde(rename = "origin", skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
@@ -153,7 +153,7 @@ pub enum SessionStreamFrame {
     /// 一个会话的主线外清单（那台后端给，原样转）：清单里的那几条卡折成一段（ESC 回退掉的）。
     Branch(SessionBranchPayload),
     /// 这个会话刚进了那台那条流的「在看」名单（`stream-watch` 应答的一格，壳原样转）：它的这份记录从第 `seq` 行起上流，
-    /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一拍按它修成「连着的」（见 `event_replay::on_watch_from`）。
+    /// 之前没上流的那段由界面自己补（按行号 / 按骨架）。不进留存：留存在这一刻按它修成「连着的」（见 `event_replay::on_watch_from`）。
     Watch(SessionWatchPayload),
     /// 一轮结束（那台后端 `turn_end`，在不在看都发）：系统通知认它，不认行（没在看的会话行不上流）。
     TurnEnd(SessionTurnEndPayload),
@@ -405,7 +405,7 @@ pub struct SessionTapPayload {
 pub struct OriginSessionsListedPayload {
     /// 用 `Origin`，不用裸字符串（`origin_tests::no_new_raw_string_origin_parameters` 那条棘轮）；线上逐字同一个字符串。
     pub origin: crate::origin::Origin,
-    /// 这一刻机器表里的每一台都报完了（「各台都报完」那一拍；F5 重放同一份）。
+    /// 这一刻机器表里的每一台都报完了（「各台都报完」那一刻；F5 重放同一份）。
     pub all: bool,
 }
 

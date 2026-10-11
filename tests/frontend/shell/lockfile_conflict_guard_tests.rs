@@ -105,7 +105,7 @@ fn the_backend_only_exemption_really_needs_backend_only_dependents() {
         !only_backend_only_dependents(&m, "mio", &v),
         "依赖者两侧都有的包被当成了「只有 backend 要」—— 放行口子开大了"
     );
-    // 反向：`russh` 那棵树里的新版 `sha2` 今天确实只被 backend 独有的包依赖（本拍的放行对象，现打）。
+    // 反向：`russh` 那棵树里的新版 `sha2` 今天确实只被 backend 独有的包依赖（放行对象，现打）。
     if let Some(v) = d
         .get("sha2")
         .and_then(|vs| vs.iter().find(|v| !m["sha2"].contains(*v)))

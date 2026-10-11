@@ -24,14 +24,14 @@ function exitedErrorWorld(): World {
   c.user("训练脚本加断点续训。");
   c.say("我先看一下现在的训练循环。");
   c.apiError(529, "API Error: 529 {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}");
-  s.records = c.records;
+  s.convo = c;
   return w;
 }
 
 /** 第一个会话（本机）活着、但不在 tmux 里（直接敲 cc 起的）。 */
 function outsideWorld(): World {
   const w = defaultWorld();
-  w.sessions[0].container = { form: "none" };
+  w.sessions[0].outsideTmux = true;
   return w;
 }
 
@@ -97,7 +97,7 @@ export const DRAWER_SCENES: Scene[] = [
     await mainReady(ALL_TABS);
     await click(".status-agents");
     await waitFor("#bottom-drawer .agent-row");
-    await emit("agent-window", { sessionId: defaultWorld().sessions[0].sid, run: "agent-a2", open: true });
+    await emit("agent-window", { sessionId: defaultWorld().sessions[0].sid, run: "a2", open: true });
     await waitFor('#bottom-drawer [data-role="window-open"]');
     await sleep(500);
   }),

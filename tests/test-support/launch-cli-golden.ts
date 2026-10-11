@@ -6,7 +6,7 @@
  * 这一步必须是人做的。`print-parity:` 那 4 条是 `tests/e2e/ccm-print-parity.sh` 喂给真 `ccm --ccm-print` 的四行（按名取）。
  * ok 与 refusal 两类都要覆盖：只比 ok 的话，「该拒却渲染出来了」抓不到。
  *
- * 住 `tests/test-support/`：期望里有整条命令（就地 resume 那一格外层的 `tmux send-keys`），而 `src/` 生产段零 shell 串。
+ * 住 `tests/test-support/`：期望里有整条命令（就地 resume 那一格外层的 `tmux -u send-keys`），而 `src/` 生产段零 shell 串。
  */
 import { DEFAULT_AGENT, defaultLauncherOf } from "../../src/frontend/ui/agent-profile.ts";
 import type { LaunchContext } from "../../src/frontend/ui/launch-types.ts";
@@ -63,7 +63,7 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "就地 resume：外层只包那一行直路", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "s1" },
       container: { kind: "tmux", name: "cc-x", mode: "create" },
-    }), sendInto: true, ok: true, out: "tmux send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; tmux attach -t '=cc-x:'" },
+    }), sendInto: true, ok: true, out: "tmux -u send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; case x${TMUX:-} in x) tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac" },
   { name: "identity（--ccm-sid）", caps: ALL_CAPS, ctx: base({ ccmSid: "sid-1" }),
     ok: true, out: "ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base" },
   { name: "自定义 launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: "mycc" }),

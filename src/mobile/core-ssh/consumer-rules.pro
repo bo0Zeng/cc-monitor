@@ -6,7 +6,7 @@
 -dontwarn net.schmizz.sshj.**
 # net.i2p.crypto.eddsa 是 sshj 加载 Ed25519 / OpenSSH-v1 私钥的传递依赖。
 # 注意：只写 -dontwarn 不写 -keep 的话，R8 full-mode 会删光整个包，release 下 loadKeys(ed25519) 抛
-# NoClassDefFoundError，Ed25519 身份连不上。ECDSA / RSA 走 BC，不受影响。整包 keep。
+# NoClassDefFoundError，Ed25519 身份连接断开。ECDSA / RSA 走 BC，不受影响。整包 keep。
 -keep class net.i2p.crypto.eddsa.** { *; }
 -dontwarn net.i2p.crypto.**
 -dontwarn org.slf4j.**

@@ -368,8 +368,8 @@ fn poke_shutdown_sends_shutdown_variant() {
 
 // ---------- P4（zero-poll-liveness）：外部 poke ⇒ 立刻重探 ----------
 
-/// P4：`Poke` 与 `TmuxProbeDue` 必须走**同一条**处理路径 —— 事件驱动的那一拍和
-/// 定时器那一拍，除了来源不同，后续行为应当逐字相同。
+/// P4：`Poke` 与 `TmuxProbeDue` 必须走**同一条**处理路径 —— 事件驱动的那一下和
+/// 定时器那一下，除了来源不同，后续行为应当逐字相同。
 ///
 /// 这条扫源码而不是跑循环：`watch_loop` 要真 spawn 线程 + 真跑 `tmux ls`，
 /// 在单测里不可控。**范围窄于性质，如实记**：它钉的是「两个变体在同一个 match 臂上」，
@@ -2080,7 +2080,7 @@ fn parse_starttime_malformed_returns_none() {
 /// —— 而 U4a 把那个恒真 stub 换成了 `unimplemented!()`。今天在 Windows 上
 /// `session_alive` → `pid_alive` 会直接 panic。
 ///
-/// **本轮不加门**：`cargo check` 只编不跑，DoD ① 不受影响；而 U4b 一旦在真机上跑
+/// **不加门**：`cargo check` 只编不跑，DoD ① 不受影响；而 U4b 一旦在真机上跑
 /// `cargo test`，这会是第一个红 —— 那正是应该有人看一眼的时刻，加门会把它藏起来。
 /// Phase D 审计的问题 9-3 已把它写进 U4b 的清单。
 ///
@@ -2374,7 +2374,7 @@ fn priming_a_big_record_reads_it_in_blocks() {
     let mut state = ReaderState::new(dir.join("projects"));
     state.active_sids.insert(sid.to_string());
     let base = crate::alloc_probe::reset_peak();
-    let lines = prime_file_cursor(&path, &mut state);
+    let (lines, _) = prime_file_cursor(&path, &mut state);
     let grew = crate::alloc_probe::peak_since(base);
     let cursor = state.offsets.get(&path_key(&path)).copied();
     std::fs::remove_dir_all(&dir).ok();

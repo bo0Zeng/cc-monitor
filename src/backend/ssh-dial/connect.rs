@@ -249,7 +249,7 @@ pub const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compression::NONE
 
 /// 🔴 **闸：russh 自己的 zlib 解压对不对**。**开了**（仓内打补丁版 russh 修好了解压）。
 ///
-/// 来历（NT1 现打）：上游 `russh 0.61.1` / `0.61.2` 的 `Decompress::decompress` 收尾判断用的是**本轮调用之前**的进度
+/// 来历（NT1 现打）：上游 `russh 0.61.1` / `0.61.2` 的 `Decompress::decompress` 收尾判断用的是**这一次调用之前**的进度
 /// （`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，
 /// 余下的留在解压器里、拼进**下一包** ⇒ 包流错位。真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上的样子：鉴权过了、
 /// 第一条通道的确认被吃掉、会话卡死。

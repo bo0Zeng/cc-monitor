@@ -22,8 +22,7 @@ import java.io.File
  * | 注释 / KDoc 里提到那两个名字 | 刻意不算（[codeOnly] 先剥注释），注释里分派不了东西 |
  *
  * 白名单 [PINNED_PROFILE_FILES] 是定值钉：多一个文件红（有人又散了一处），
- * 少一个也红（档案挪窝了，得重新过一遍眼再改这张表）。同
- * `NewUiSettingsTest.theDefaultSourceIsPinnedSoAnyChangeGetsReVetted` 的做法。
+ * 少一个也红（档案挪窝了，得重新过一遍眼再改这张表）。
  */
 class AgentProfileSingleAddressTest {
     /**

@@ -2,7 +2,7 @@
  * 设置窗「文件与数据」页：两栏 —— 待办（角标）· cc-monitor 放了什么。
  *
  * - 待办：顶上一行总数 ＋［全部重查］；按机器分段（有事的在前），段头 机器名 · 那台的数 ·［打开该机器］；
- *   每件一行：状态点 · 名字 · 类的小标签 · 下一行 文件位置小标签 ＋ 一句现状 · 主按钮。连不上的那台：「{machine} 离线 · 未检查」。
+ *   每件一行：状态点 · 名字 · 类的小标签 · 下一行 文件位置小标签 ＋ 一句现状 · 主按钮。断开的那台：「{machine} 离线 · 未检查」。
  *   今天的件来自那台后端的 `data-report`（要装 / 要装 · 可选）；单件里每一格都照那份成品画，界面不判。
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
  *   再「cc-monitor 的文件」（本机：宿主交进来那一块）。
@@ -438,7 +438,7 @@ export class DataPage {
       this.changedBox.appendChild(note(copyText("dataPage.chores.reading")));
       return;
     }
-    // 连不上的那台：有上次的就照上次的画（警告条说多旧），没有就照实说读不到。
+    // 断开的那台：有上次的就照上次的画（警告条说多旧），没有就照实说读不到。
     const report = r.ok ? r.report : r.last?.report;
     if (!report) {
       this.changedBox.appendChild(note(copyText("dataPage.placed.unknown")));

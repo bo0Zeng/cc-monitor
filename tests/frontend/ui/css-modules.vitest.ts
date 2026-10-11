@@ -44,11 +44,11 @@ import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
 
 /**
- * ★ **全局样式文件登记表**（M①）。今天 10 份，全是三入口拆分那一拍按「哪几个窗口要它」切出来的。
+ * ★ **全局样式文件登记表**（M①）。今天 10 份，全是三入口拆分时按「哪几个窗口要它」切出来的。
  *
  * 🔴 **只许缩**：一份全局样式整份迁成 module 之后删掉对应条目（两向相等会逼你删）；
  * 要新增一份全局样式文件 ⇒ 先问「它为什么不能是 `.module.css`」，答得出来再加一条并写清理由。
- * ⚠ 并发：同波别的路新建全局样式文件时，本表会在合并那一拍红 —— 那是本条要的红，不是假红。
+ * ⚠ 并发：同波别的路新建全局样式文件时，本表会在合并时红 —— 那是本条要的红，不是假红。
  */
 const GLOBAL_STYLESHEETS: readonly { file: string; why: string }[] = [
   { file: "src/frontend/ui/styles/layers.css", why: "层声明，三窗第一个链" },

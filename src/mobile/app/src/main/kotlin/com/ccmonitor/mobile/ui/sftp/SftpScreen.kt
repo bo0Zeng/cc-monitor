@@ -54,6 +54,7 @@ import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
+import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.dialectFor
@@ -144,7 +145,12 @@ private fun SftpContent(
     Scaffold(
         floatingActionButton = {
             if (ui is SftpUi.Ready) {
-                ExtendedFloatingActionButton(text = { Text(copyText("mobSftp.fab.upload")) }, icon = {}, onClick = { uploadLauncher.launch("*/*") })
+                ExtendedFloatingActionButton(
+                    text = { Text(copyText("mobSftp.fab.upload")) },
+                    icon = {},
+                    onClick = { uploadLauncher.launch("*/*") },
+                    modifier = Modifier.clearOfNotice(),
+                )
             }
         },
     ) { inner ->

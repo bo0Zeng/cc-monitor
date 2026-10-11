@@ -3,18 +3,13 @@ package com.ccmonitor.mobile.ui.session
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ccmonitor.mobile.agent.agentKindOrDefault
-import com.ccmonitor.mobile.core.claude.agent.AgentDirSettingKey
 import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
-import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.data.repo.LauncherRepository
-import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import com.ccmonitor.mobile.core.ssh.HostKeyChangedException
@@ -27,11 +22,10 @@ import com.ccmonitor.mobile.core.ssh.SshTransport
 import com.ccmonitor.mobile.core.ssh.commandChannel
 import com.ccmonitor.mobile.core.ssh.commandExecutor
 import com.ccmonitor.mobile.core.terminal.TerminalSession
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.LaunchSpec
 import com.ccmonitor.mobile.ssh.PosixDialect
-import com.ccmonitor.mobile.ssh.ResumePlan
-import com.ccmonitor.mobile.ssh.ResumeSpec
 import com.ccmonitor.mobile.ssh.ShellDialect
 import com.ccmonitor.mobile.ssh.dialectFor
 import com.ccmonitor.mobile.ssh.initialCommands
@@ -59,7 +53,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.coroutineContext
 
 /** 终端屏的连接态。 */
@@ -107,30 +100,18 @@ class SessionViewModel(
     private val hostId: String,
     cdArg: String?,
     launcherIdArg: String?,
-    tmuxArg: String?, // attach tab 首连即附着的 tmux 会话名；普通 tab 为 null
-    resumeArg: String?, // resume tab 的目标 Claude sessionId；普通 tab 为 null
-    resumeCommandArg: String?, // 历史页长按选定的 resume 命令；走默认候选链时为 null
+    tmuxArg: String?, // 进终端 tab 首连即接回的会话名（敲那台渲出的那一行）；普通 tab 为 null
     private val manager: SshConnectionManager,
     private val hostRepo: HostRepository,
     private val identityRepo: IdentityRepository,
     private val launcherRepo: LauncherRepository,
-    private val settingsRepo: SettingsRepository,
     private val hostConnector: HostConnector, // 建连编排，retain / release / connection 也经它
-    private val tabManager: SessionTabManager, // resume 失败重跑句柄的注册处（init 注册、onCleared 注销）
+    backends: HostBackends, // 这台的常驻流：列会话 · 进终端那一行 · 送字 · 抓屏 · 结束都问那台核心
     private val knownHostStore: KnownHostStore, // 主机钥匙变更的恢复：确认后 forget 再重连
     private val io: CoroutineDispatcher = Dispatchers.IO,
 ) : ViewModel() {
-    // cd / resumeCommand 只在 resume 失败后被重跑时改写（acceptResumeRedrive，UI 线程），随后 retry() 的
-    // 连接协程读新值。launch 已建立 happens-before，@Volatile 只是兜底。
-    @Volatile
-    private var cd: String? = cdArg?.ifBlank { null } // Koin 参数不传 null，空串当 null
+    private val cd: String? = cdArg?.ifBlank { null } // Koin 参数不传 null，空串当 null
     private val launcherId: String? = launcherIdArg?.ifBlank { null } // 启动配置 id
-
-    /** resume 标签那条会话的 sid（阅读子页默认读它）；普通标签 ⇒ `null`。 */
-    val resumeSessionId: String? = resumeArg?.ifBlank { null }
-
-    @Volatile
-    private var resumeCommand: String? = resumeCommandArg?.ifBlank { null } // 候选链首位（选定 > launcher > 主机 > claude）
 
     private val _uiState = MutableStateFlow<SessionUiState>(SessionUiState.Connecting)
     val uiState: StateFlow<SessionUiState> = _uiState.asStateFlow()
@@ -199,44 +180,23 @@ class SessionViewModel(
     /** 是否需要自动重挂交互 shell；终端屏在前台时据此重挂。 */
     val reattachNeeded: StateFlow<Boolean> = reattachDetector.reattachNeeded
 
+    /** 进终端 tab 要接回的会话名（首连与重连都敲那台渲出的那一行）；普通 tab 为 null。 */
+    private val attachTo: String? = tmuxArg?.ifBlank { null }
+
     // 当前所在的 tmux 会话名，每个 tab 各记各的（同主机多 tab 不互相覆盖），跨重连保留。
-    // 供对话框判断 attach 是否要 switch-client。以 [tmuxArg] 初始化：attach tab 首连即 `tmux new -A -s` 到它。
-    private val _tmuxSession = MutableStateFlow(tmuxArg?.ifBlank { null })
+    // 切模型 · 抓屏按它找那台名单里的终端。进终端 tab 以 [attachTo] 初始化。
+    private val _tmuxSession = MutableStateFlow(attachTo)
     val tmuxSession: StateFlow<String?> = _tmuxSession.asStateFlow()
 
-    /**
-     * 本主机解析后的 agent 配置目录（host.claudeDir > 应用默认 > 内置默认），阅读面（只 Claude 有）与 resume 据此定位 JSONL。
-     * 含义随 [agentKind]：ClaudeCode 是 ~/.claude，Codex 是 ~/.codex（字段名仍叫 claudeDir）。
-     */
-    private val _claudeDir = MutableStateFlow<String?>(null)
-    val claudeDir: StateFlow<String?> = _claudeDir.asStateFlow()
-
-    /** 本主机的 agent 种类（缺省 `AgentProfile.DEFAULT`）。目录定位、有没有阅读子页、resume 都按它取档案。 */
-    private val _agentKind = MutableStateFlow(AgentProfile.DEFAULT.kind)
-    val agentKind: StateFlow<AgentKind> = _agentKind.asStateFlow()
+    /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行）。 */
+    val terminals = TerminalOps(backends.of(hostId)) { hostRepo.get(hostId)?.label ?: hostId }
 
     /** 可推送公钥的身份列表（命令面板「推送公钥」用）。 */
     val identities: StateFlow<List<Identity>> =
         identityRepo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** 该主机的 launcher 列表，即历史页长按菜单里的命令选项。 */
-    val hostLaunchers: StateFlow<List<Launcher>> =
-        launcherRepo.observeForHost(hostId).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    /** 历史页「自定义命令…」上次的输入（全局一份），弹窗预填用。 */
-    val lastResumeCustomCommand: StateFlow<String> =
-        settingsRepo
-            .resumeCustomCommand()
-            .map { it.orEmpty() }
-            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
-
-    /** 记住本次自定义 resume 命令（原样输入）。 */
-    fun setLastResumeCustomCommand(value: String) {
-        viewModelScope.launch { settingsRepo.setResumeCustomCommand(value) }
-    }
-
     /**
-     * 一次性提示（resume 失败、自定义命令被替换等）。用缓冲 Channel：connect 早于界面订阅时发的也不丢；
+     * 一次性提示（进终端那一行要不到等）。用缓冲 Channel：connect 早于界面订阅时发的也不丢；
      * 只有一个收集方（终端屏收了弹 Toast）。
      */
     private val _notices = Channel<String>(Channel.BUFFERED)
@@ -245,16 +205,7 @@ class SessionViewModel(
     // 本 tab 的持有者 token。retain / release 按 token 记账，强制断开清空持有者后重连可幂等地重新 retain。
     private val holderToken = UUID.randomUUID().toString()
 
-    // resume 失败探测的 job：发出 resume 后启动，connect() 起点取消，重连不留旧探测。
-    private var resumeWatchdogJob: Job? = null
-
-    // 上次 resume 是否已被判失败（FAILED / ABSENT 时置位；connect() 起点与发送 resume 前都清零）。
-    // 只有这个状态下，open() 命中本 tab 才允许重跑（acceptResumeRedrive）。io 协程写、UI 线程 CAS。
-    // connect 起点就清零，重连在途时的并发重跑会被 CAS 拒掉，不会双发。
-    private val resumeFailed = AtomicBoolean(false)
-
     init {
-        registerResumeRedriver() // 先注册再连：resume tab 一建成就能接重跑（普通 tab 什么都不做）
         connect()
     }
 
@@ -264,8 +215,6 @@ class SessionViewModel(
         // 不会装进一条没人持有的连接（否则前台保活服务永远停不下来）。
         val epoch = hostConnector.retain(hostId, holderToken)
         connectJob?.cancel() // 重连时取消在途的连接
-        resumeWatchdogJob?.cancel() // 旧探测作废：重连会重发 resume 并重新探测
-        resumeFailed.set(false) // 旧失败结论作废；在途期间的重跑请求因此被拒，不会双发
 
         connectJob =
             viewModelScope.launch {
@@ -276,29 +225,12 @@ class SessionViewModel(
             }
     }
 
-    /**
-     * 这一档的 agent 目录认不认「设置」屏里的应用级默认：问档案，不问种类。
-     *
-     * `when` 故意不带 `else`：[AgentDirSettingKey] 加了值，这里当场编译不过，而不是静默走缺省分支。
-     */
-    private suspend fun appDefaultAgentDir(profile: AgentProfile): String? =
-        when (profile.appDefaultDirSetting) {
-            AgentDirSettingKey.AppDefaultClaudeDir -> settingsRepo.getDefaultClaudeDir()
-            null -> null // 这一档没有应用级默认，只认主机覆盖与内置默认
-        }
-
     // 连接可能抛各种异常（IO / 认证 / 超时…），统一兜成 Error 态；CancellationException 先重抛。
     @Suppress("TooGenericExceptionCaught")
     private suspend fun establishConnectedState(expectedGen: Int): SessionUiState {
         var created: TerminalSession? = null // 取消时要关掉它，否则 reader / writeExecutor 线程泄漏
         return try {
             val host = hostRepo.get(hostId) ?: error(copyText("mobSession.host.missing", "id" to hostId))
-            // 按 host.agentKind 选定位器解析 agent 目录。Codex 没有应用级默认，回退内置 ${CODEX_HOME:-$HOME/.codex}。
-            val kind = host.agentKindOrDefault()
-            _agentKind.value = kind
-            val profile = AgentProfile.of(kind)
-            val appDefaultDir = appDefaultAgentDir(profile)
-            _claudeDir.value = profile.sessionLocator.resolveAgentDir(host.claudeDir, appDefaultDir)
             // 认证、跳板、竞速都在 HostConnector 里；pendingIdentityId 是本次选定的身份。
             val conn =
                 hostConnector.connect(
@@ -317,10 +249,8 @@ class SessionViewModel(
             shellOpenedOn = conn // 断因判定的基准
             reattachDetector.notifyNewShellOpened() // 清掉上一个 shell 的断因
             persistPickedIdentity(host) // 认证成功后才持久化选定身份（密码认证跳过）
-            val resumed = sendStartupCommands(host, ts)
-            // resume tab 的阅读面 cwd 指向被 resume 的项目，会话目录会把这个活动会话排在下拉首位。
-            val readerCwd = if (resumed) cd ?: host.defaultWorkingDir else host.defaultWorkingDir
-            SessionUiState.Connected(ts, readerCwd, dialectFor(host.os))
+            sendStartupCommands(host, ts)
+            SessionUiState.Connected(ts, host.defaultWorkingDir, dialectFor(host.os))
         } catch (ce: CancellationException) {
             runCatching { created?.close() } // 关掉本次（可能已建）的孤儿会话
             throw ce // 离屏或重连取消属正常，不标 Error
@@ -355,103 +285,33 @@ class SessionViewModel(
         }
     }
 
-    /** 连接成功后的首发命令：resume tab 发 resume 命令，否则 initialCommands。返回是否走了 resume 路径。 */
+    /**
+     * 连接成功后的首发命令。进终端 tab：敲那台渲出的那一行（与桌面「命令已复制」同一条；找哪个窗格、怎么附着都在那台），
+     * 要不到 ⇒ 留在普通 shell、说一声。其余照「用户在 ssh 里自己敲」：启动配置 / 主机设置的工作目录 · tmux 会话 · 命令。
+     */
     private suspend fun sendStartupCommands(
         host: Host,
         ts: TerminalSession,
-    ): Boolean {
+    ) {
+        attachTo?.let { name ->
+            val profile = AgentProfile.of(host.agentKindOrDefault())
+            terminals
+                .attachLine(name, profile.wireName, profile.invocation.resolveLaunchCommand(emptyList()))
+                .onSuccess { ts.send("$it\n".toByteArray()) }
+                .onFailure { _notices.trySend(it.message.orEmpty()) }
+            return
+        }
         // 有 launcherId 就用它的 LaunchSpec（工作目录 / tmux 会话 / 命令），否则只带 cd。
         val launcher = launcherId?.let { launcherRepo.get(it) }
-        // resume tab：fresh shell 直接跑 resume 命令，替代 initialCommands。远端按 sid 找权威 cwd、守卫 cwd、
-        // 起 detached tmux `cc-<sid8>`、send-keys resume 命令、attach。重连重发也安全：tmux 已在则只 attach；
-        // tmux 没了（主机重启）就重建重 resume。sid 非法或非 POSIX 时返回 false，落回普通 shell。
-        if (trySendResume(host, ts, launcher?.command)) return true
         val baseSpec =
             launcher?.let { LaunchSpec(it.workingDir, it.tmuxSession, it.command) }
                 ?: LaunchSpec(workingDir = cd)
-        // 重连时回到本 tab 上次所在的 tmux 会话（switch 过的也算），优先于 launcher 与默认；首连时为 null。
+        // 重连时回到本 tab 上次所在的 tmux 会话，优先于 launcher 与默认；首连时为 null。
         val lastTmux = _tmuxSession.value
         val spec = if (lastTmux != null) baseSpec.copy(tmuxSession = lastTmux) else baseSpec
-        // 按序发初始命令（tmux / cd / 命令）。移动端触摸与状态栏设置已拼在 tmux 创建序列里。
         host.initialCommands(spec).forEach { ts.send("$it\n".toByteArray()) }
         // 记下实际的 tmux 会话名（launcher 指定 > 自动 tmux > 无），与 initialCommands 同源。
         host.resolveTmuxSession(spec)?.let { _tmuxSession.value = it }
-        return false
-    }
-
-    /**
-     * 构造并发送 resume 命令、启动失败探测。首连与失败后重跑走同一条路径（都经 [sendStartupCommands]）。
-     * 返回是否走了 resume（false = 非 resume tab 或前提不满足，调用方落回 initialCommands）。
-     * 发送前再清一次 [resumeFailed]：新尝试一上路，旧失败结论就作废，成败由这次探测重判。
-     */
-    private suspend fun trySendResume(
-        host: Host,
-        ts: TerminalSession,
-        preferredCommand: String?,
-    ): Boolean {
-        val resume = buildResumeCommand(host, preferredCommand) ?: return false
-        resumeFailed.set(false)
-        ts.send((resume.command + "\n").toByteArray())
-        _tmuxSession.value = resume.sessionName // 先乐观记名，探测失败再清
-        startResumeWatchdog(resume.sessionName, resume.launchLabel) // 失败要看得见，空会话要清掉
-        return true
-    }
-
-    /**
-     * resume 失败探测：发出后 exec 两次探 `pane_current_command`，三种结果见 [ResumeOutcome]。
-     * [tmuxName] 是执行前乐观记下的名；FAILED / ABSENT 都要清掉它，否则命令面板 send-keys 落到不存在的会话
-     * 还报「已发送」。[connect] 起点取消。
-     */
-    private fun startResumeWatchdog(
-        tmuxName: String,
-        launchCommand: String,
-    ) {
-        resumeWatchdogJob?.cancel()
-        resumeWatchdogJob =
-            viewModelScope.launch(io) {
-                when (ResumeWatchdog(channel).watch(tmuxName)) {
-                    ResumeOutcome.SUCCESS -> Unit // Claude 起来了（或像是在包装脚本下跑），保留会话名
-                    ResumeOutcome.FAILED -> {
-                        _notices.trySend(copyText("mobSession.resume.failed", "command" to launchCommand))
-                        _tmuxSession.value = null // 空会话已被杀，本 tab 不再声称附着于它
-                        resumeFailed.set(true) // 失败态：同 sid 再次打开可换命令重跑
-                    }
-                    // 会话不存在（cwd 守卫拦下或没建成）：清掉乐观记的名；pty 里已有守卫的输出，不再弹 Toast。
-                    ResumeOutcome.ABSENT -> {
-                        _tmuxSession.value = null
-                        resumeFailed.set(true) // 没建成也算失败态，换 cwd 或命令重跑可解
-                    }
-                }
-            }
-    }
-
-    /**
-     * resume tab 把重跑句柄注册进 [tabManager]（key = hostId＋sid，不需要 tab key）；[onCleared] 注销。
-     */
-    private fun registerResumeRedriver() {
-        val sid = resumeSessionId ?: return
-        tabManager.registerResumeRedriver(hostId, sid) { command, cwd -> acceptResumeRedrive(command, cwd) }
-    }
-
-    /**
-     * open() 命中本 tab 时决定要不要重跑（UI 线程，经句柄同步调入）。
-     * 只有上次 resume 已被判失败（[resumeFailed]）才接受：CAS 消费失败态，用新的 [command] / [cwd] 更新
-     * 候选链首位与兜底 cwd，再 [retry]，返回 true。运行中、在途、连接中一律拒绝，绝不往运行中的 Claude
-     * 打第二条命令。用 CAS：一次失败最多换一次重跑，快速双击不双发。[cwd] 为 null 不降级已有值。
-     *
-     * 走 [retry] 而不直接往 pty 发：失败后外层 pty 是活的 login shell，里面可能正跑着 vim 或别的程序，
-     * 直接发会被前台程序当输入吃掉，远端守卫也就不起作用。重连拿到一个闲置 login shell 的新 pty，
-     * resume 命令一定作为 shell 命令执行；连接复用，只新开 shell 通道。
-     */
-    private fun acceptResumeRedrive(
-        command: String?,
-        cwd: String?,
-    ): Boolean {
-        if (!resumeFailed.compareAndSet(true, false)) return false
-        resumeCommand = command
-        if (cwd != null) cd = cwd
-        retry() // 新 pty 是闲置 login shell，resume 命令作为 shell 命令执行
-        return true
     }
 
     /**
@@ -468,44 +328,6 @@ class SessionViewModel(
             cols = 80,
             remoteChannel = shell,
         )
-
-    /**
-     * 构造 resume tab 的首发命令；非 resume tab 或前提不满足时返回 null（落回普通 initialCommands）。
-     * 前提：有 sid、远端支持 tmux（POSIX）、sid 过白名单（sid 来自远端文件名，防注入）。
-     * cwd 不是前提：远端按 sid 定位 jsonl 读权威 cwd，[cd] 只作兜底；定位不到时远端守卫给出可见失败、不建会话。
-     * 命令候选链：选定的 [resumeCommand] > 发起 tab 的 launcher 命令 > 该主机各 launcher 命令 > `claude`。
-     * 载荷里先 `unset` 嵌套的 Claude 环境标记，否则 resume 的会话不落盘。
-     */
-    private suspend fun buildResumeCommand(
-        host: Host,
-        preferredCommand: String?,
-    ): ResumePlan? {
-        val sid = resumeSessionId ?: return null
-        // 候选解析、净化、tmux 包裹都在 backend.resume 里。先查前提再读库，非法 sid 不必白跑一趟 launcher 查询。
-        val backend = dialectFor(host.os).sessionBackend
-        if (backend == null || !ClaudeInvocation.isValidSessionId(sid)) return null // 各种类共用一条 sid 白名单
-        val hostCommands = launcherRepo.observeForHost(hostId).first().map { it.command }
-        // agent 目录与会话目录同源（establishConnectedState 已置 _claudeDir）；兜底按种类解析。
-        val kind = host.agentKindOrDefault()
-        val profile = AgentProfile.of(kind)
-        val agentDir =
-            _claudeDir.value
-                ?: profile.sessionLocator.resolveAgentDir(host.claudeDir, appDefaultAgentDir(profile))
-        val plan =
-            backend.resume(
-                ResumeSpec(
-                    sessionId = sid,
-                    launchCandidates = listOf(resumeCommand, preferredCommand) + hostCommands,
-                    claudeDir = agentDir,
-                    fallbackCwd = cd,
-                    alreadyInTmux = false,
-                    agentKind = kind,
-                ),
-            ) ?: return null
-        // 配置的命令含不安全字符被替换时，明说一声，免得静默落空。
-        plan.substitutedFrom?.let { _notices.trySend(copyText("mobSession.resume.substituted", "command" to it, "label" to plan.launchLabel)) }
-        return plan
-    }
 
     /**
      * 连接前确保主机已绑身份。返回 false 表示已置终态（Error / NeedIdentity），connect 应中止。
@@ -554,8 +376,6 @@ class SessionViewModel(
     }
 
     override fun onCleared() {
-        // 注销重跑句柄，免得已死的 VM 被 open() 调到。
-        resumeSessionId?.let { tabManager.unregisterResumeRedriver(hostId, it) }
         // 关 tab 时关掉 shell 并释放连接引用（app 用 configChanges，旋屏不触发 onCleared）。
         // release 而不是 disconnect：同主机还有别的 tab 持有时不断。
         runCatching { session?.close() }

@@ -25,8 +25,6 @@ data class Host(
     val autoReconnect: Boolean = true,
     val reconnectOnNetworkChange: Boolean = true,
     val maxReconnectAttempts: Int = 0, // 0 = 无限
-    // 每主机 Claude 配置目录（null/空 → 默认 ${CLAUDE_CONFIG_DIR:-$HOME/.claude}，远端 shell 就地探测）
-    val claudeDir: String? = null,
     // 经跳板机连接，指向另一个 Host 的 id（ssh -J A B）；null = 直连。
     val proxyJumpHostId: String? = null,
     // 密码认证：CryptoBox 加密后 Base64（TEXT，非明文）；非空 → 用密码认证（优先于 authRef）；null = 不用密码。
@@ -35,7 +33,6 @@ data class Host(
     val os: String? = null,
     // agent 种类：null/"ClaudeCode" = Claude Code（默认）；"Codex" = Codex CLI。
     // core-data 不依赖 core-claude，所以存 enum.name 字符串，在 :app 边界映射为 AgentKind。
-    // claudeDir 按 kind 解释为 agent 配置目录覆盖（~/.claude 或 ~/.codex）。
     val agentKind: String? = null,
 )
 

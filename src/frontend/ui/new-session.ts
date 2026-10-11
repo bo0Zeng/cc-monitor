@@ -137,7 +137,7 @@ function accountOption(a: AccountOpt): SelectOption {
   return { value: a.name, label: a.name, note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16 }) };
 }
 
-/** 机器那一项：远端带机器标记；连不上的灰着、说「离线」（正选着的那台照样列出、可选）。 */
+/** 机器那一项：远端带机器标记；断开的灰着、说「离线」（正选着的那台照样列出、可选）。 */
 function machineOption(m: MachineOpt, chosen: Origin): SelectOption {
   const name = machineName(m.origin);
   return {
@@ -732,7 +732,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   });
   for (const r of [tmuxRadio, windowRadio]) r.input.addEventListener("change", paintPlace);
 
-  // 机器清单（连不上的灰着、第二行「离线」）；分叉 / 机器卡入口锁定那一台。
+  // 机器清单（断开的灰着、第二行「离线」）；分叉 / 机器卡入口锁定那一台。
   void listMachines().then((ms) => {
     machines = ms.some((m) => m.origin === origin) ? ms : [...ms, { origin, up: false }];
     machineSel.setOptions(

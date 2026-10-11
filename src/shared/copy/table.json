@@ -19702,7 +19702,7 @@
     "rsRun.load.notLinked": {
       "kind": "error",
       "role": "报错",
-      "zh": "未知派出的 agent · 前台派出的跑完后才知道",
+      "zh": "未知派出的 agent",
       "args": []
     },
     "extPage.row.noteMarkTitle": {
@@ -20362,6 +20362,126 @@
       "zh": "{human} · {bytes} 字节",
       "args": ["human", "bytes"]
     },
+    "rsFilewinPicture.read.grew": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "图片读取中超过 {limit} · 不显示",
+      "args": ["limit"]
+    },
+    "rsFilewinPicture.decode.undecodable": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "图片无法解码",
+      "args": []
+    },
+    "rsFilewinPicture.decode.tooManyPixels": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "像素过多 · 无法解码",
+      "args": []
+    },
+    "rsFilewinImgview.label.view": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查看",
+      "args": []
+    },
+    "rsFilewinImgview.head.fit": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "适应窗口",
+      "args": []
+    },
+    "rsFilewinImgview.head.full": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "原尺寸",
+      "args": []
+    },
+    "rsFilewinImgview.head.zoomIn": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "放大",
+      "args": []
+    },
+    "rsFilewinImgview.head.zoomOut": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "缩小",
+      "args": []
+    },
+    "rsFilewinImgview.head.prev": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "上一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.next": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "下一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.first": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "已是第一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.last": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "已是最后一张",
+      "args": []
+    },
+    "rsFilewinImgview.head.count": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{i} / {n}",
+      "args": ["i", "n"]
+    },
+    "rsFilewinImgview.head.percent": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{p}%",
+      "args": ["p"]
+    },
+    "rsFilewinImgview.status.meta": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} × {h} · {size} · {time}",
+      "args": ["w", "h", "size", "time"]
+    },
+    "rsFilewinImgview.status.metaNoTime": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{w} × {h} · {size}",
+      "args": ["w", "h", "size"]
+    },
+    "rsFilewinImgview.status.shrunk": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "原图 {w} × {h} · 按 {dw} × {dh} 显示",
+      "args": ["w", "h", "dw", "dh"]
+    },
+    "rsFilewinImgview.state.reading": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "读取中 · {name} · {got} / {total}",
+      "args": ["name", "got", "total"]
+    },
+    "rsFilewinImgview.state.tooBig": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{name} {size} · 超过查看上限 {limit} · 可下载到本机再打开",
+      "args": ["name", "size", "limit"]
+    },
+    "rsFilewinImgview.state.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{name} · {why}",
+      "args": ["name", "why"]
+    },
     "rsFilewinPreview.decide.imageKind": {
       "kind": "body",
       "role": "说明",
@@ -20371,7 +20491,7 @@
     "rsFilewinPreview.decide.imageTooBig": {
       "kind": "body",
       "role": "说明",
-      "zh": "{name} {size} · 图片预览上限 {limit}",
+      "zh": "{name} {size} · 超过图片预览上限 {limit} · 不预览 · 可下载到本机再打开",
       "args": ["name", "size", "limit"]
     },
     "rsFilewinPreview.decide.binaryKind": {
@@ -20385,18 +20505,6 @@
       "role": "片段",
       "zh": "{w} × {h}",
       "args": ["w", "h"]
-    },
-    "rsFilewinPreview.image.grew": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "图片读取中超过 {limit} · 不预览",
-      "args": ["limit"]
-    },
-    "rsFilewinPreview.image.undecodable": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "图片无法解码",
-      "args": []
     },
     "rsFilewinProps.box.title": {
       "kind": "title",
@@ -25509,11 +25617,23 @@
       "zh": "发送中",
       "args": []
     },
+    "mobChat.history.retry": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "再上滑一次可重试",
+      "args": []
+    },
     "mobChat.record.missing": {
       "kind": "error",
       "role": "报错",
       "zh": "{machine} 上找不到这条会话的记录",
       "args": ["machine"]
+    },
+    "mobIdentity.import.unreadable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "私钥认不出 · 须整段贴入 BEGIN 到 END · 带口令的先去掉口令",
+      "args": []
     },
     "terminal.why.ambiguous": {
       "kind": "body",
@@ -30548,12 +30668,6 @@
       "zh": "删除会话 {id} 失败 · 目标无效",
       "args": ["id"]
     },
-    "mobChat.history.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "载入更早的对话失败 · {why}\n再上滑一次可重试",
-      "args": ["why"]
-    },
     "mobChat.history.loading": {
       "kind": "body",
       "role": "进度",
@@ -30749,42 +30863,6 @@
       "kind": "title",
       "role": "标题",
       "zh": "终端",
-      "args": []
-    },
-    "mobSettings.claudeDir.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "应用级默认 Claude 配置目录",
-      "args": []
-    },
-    "mobSettings.claudeDir.label": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "默认用哪个号",
-      "args": []
-    },
-    "mobSettings.claudeDir.placeholder": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "留空 = 内置默认 {dir}",
-      "args": ["dir"]
-    },
-    "mobSettings.claudeDir.hint": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "未单独指定账号的服务器都用此号\n改完后从下一段新对话起生效",
-      "args": []
-    },
-    "mobSettings.claudeDir.saved": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已保存",
-      "args": []
-    },
-    "mobSettings.claudeDir.save": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "保存",
       "args": []
     },
     "mobKit.act.back": {
@@ -30996,15 +31074,6 @@
       "zh": "粘贴",
       "args": []
     },
-    "mobReading.project.unknown": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "(未知项目)",
-      "args": [],
-      "waive": {
-        "C-L4": "会话没有工作目录也没有编码目录名时的占位，括号把它和真项目名分开"
-      }
-    },
     "mobPalette.search.label": {
       "kind": "control",
       "role": "标签",
@@ -31101,18 +31170,6 @@
       "role": "原因格",
       "zh": "未找到主机 {id}",
       "args": ["id"]
-    },
-    "mobSession.resume.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "resume 失败：Claude 未能启动（检查『{command}』是否存在）",
-      "args": ["command"]
-    },
-    "mobSession.resume.substituted": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "自定义命令『{command}』含不安全字符，改用 {label} 续跑",
-      "args": ["command", "label"]
     },
     "mobSession.identity.none": {
       "kind": "error",
@@ -31726,18 +31783,6 @@
       "zh": "已终止「{name}」",
       "args": ["name"]
     },
-    "mobTmux.kill.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "结束「{name}」失败",
-      "args": ["name"]
-    },
-    "mobTmux.kill.noReply": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "结束「{name}」失败 · 无应答",
-      "args": ["name"]
-    },
     "mobTmux.kill.title": {
       "kind": "title",
       "role": "确认框",
@@ -31774,12 +31819,6 @@
       "zh": "无 tmux 会话 · 下方新建一个",
       "args": [],
       "limited": ["tmux"]
-    },
-    "mobTmux.row.windows": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{n} 窗口",
-      "args": ["n"]
     },
     "mobTmux.row.running": {
       "kind": "body",
@@ -32263,30 +32302,6 @@
       "kind": "title",
       "role": "标题",
       "zh": "Agent 种类",
-      "args": []
-    },
-    "mobHostEdit.dir.codex": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "Codex 配置目录（可选）",
-      "args": []
-    },
-    "mobHostEdit.dir.claude": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "Claude 账号目录",
-      "args": []
-    },
-    "mobHostEdit.dir.codexPlaceholder": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "默认 {path}",
-      "args": ["path"]
-    },
-    "mobHostEdit.dir.claudePlaceholder": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "/home/用户名/.claude",
       "args": []
     },
     "mobHostEdit.switch.workspace": {
