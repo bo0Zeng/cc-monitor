@@ -40,6 +40,8 @@
 @shellcheck shellcheck
 # 手机端 app（src/mobile，Gradle）：ktlint · detekt · Android Lint · JVM 单测 · release（R8），一格。CI 的 mobile job 也跑它。
 @mobile mobile
+# 手机端设备测（androidTest，模拟器上跑，10-11 起进门禁）：CI 没有 ⇒ --trust-ci 下被改到就本机照跑。
+@android-device android-device
 
 # CI 上有等价物、本机门禁外的那几格（--trust-ci 时按「CI 会跑」算）。Linux 那几个 job 的 GATE_ONLY 由脚本从 ci.yml 现读，不抄在这；
 # 这里只登记 Windows 那两个 job 自己写命令、门禁格名对不上的：
@@ -120,9 +122,10 @@ src/doc/**                      -      协议 / IPC 文档：读它的判据在 
 src/README.md                   -      只有恒跑判据读
 
 # ── 手机端 ─────────────────────────────────────────────────────────────────────────
-src/mobile/**                   mobile  手机端 app：Gradle 多模块的源码 · 构建脚本 · 金样 · Python 测试都是这一格的输入；扫全仓文本的判据（私人形状 · 出仓引用 · shell lint 登记）在 cargo 格里，*.sh 由规则 ③ 另加 shellcheck
+src/mobile/**                   mobile,android-device  手机端 app：Gradle 多模块的源码 · 构建脚本 · 金样 · Python 测试都是这一格的输入；扫全仓文本的判据（私人形状 · 出仓引用 · shell lint 登记）在 cargo 格里，*.sh 由规则 ③ 另加 shellcheck
 
 # ── 测试那边的其余 ───────────────────────────────────────────────────────────────────
+tests/mobile-smoke/**           android-device  设备测那一格经它起停模拟器（emu.sh）；冒烟台架的其余部分手跑；*.sh 由规则 ③ 另加 shellcheck
 tests/e2e/weak-net/**           weaknet  弱网台架自己的镜像与脚本
 tests/e2e/**                    e2e    e2e 套件本体（e2e-smoke 那几步恒跑）
 tests/__fixtures__/**           e2e,coverage  黄金夹具：e2e（gate2-golden）与 vitest 都读；被 Rust include_str! 的由规则 ① 另加

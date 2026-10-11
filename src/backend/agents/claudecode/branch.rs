@@ -113,6 +113,7 @@ pub(crate) fn build_branch_records(
 // 驱动它的是**两侧各自的测试**（monitor 的 `history.rs` / 后端的 `control/fork_write.rs`），
 // 而那恰好就是 `KR88D1` 第三刀要的形状：**改这里一处，两边一起红。**
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 /// 往记录树下面找几层。
@@ -154,7 +155,7 @@ fn look_down(dir: &Path, want: &str, depth: usize) -> Option<PathBuf> {
     if depth == 0 {
         return None;
     }
-    let listing = std::fs::read_dir(dir).ok()?;
+    let listing = Ro::read_dir(dir).ok()?;
     let mut subdirs: Vec<PathBuf> = Vec::new();
     for entry in listing.flatten() {
         let Ok(kind) = entry.file_type() else {

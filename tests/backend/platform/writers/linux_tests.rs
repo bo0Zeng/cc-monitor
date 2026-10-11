@@ -92,7 +92,8 @@ fn ear(root: &Path) -> (OpenEar, mpsc::Receiver<OpenBatch>) {
 }
 
 fn next(rx: &mpsc::Receiver<OpenBatch>) -> OpenBatch {
-    rx.recv_timeout(Duration::from_secs(5)).expect("等到一批")
+    rx.recv_timeout(guard_core::wall::CEILING)
+        .expect("等到一批")
 }
 
 /// 收到 `pred` 成立的那一批为止（之前的批照收照丢）。
@@ -215,7 +216,7 @@ fn dropping_the_ear_stops_its_thread() {
     drop(e);
     // 线程退出 ⇒ 发送端随之丢掉 ⇒ 收的这一头断开（不是超时）。
     assert!(matches!(
-        rx.recv_timeout(Duration::from_secs(5)),
+        rx.recv_timeout(guard_core::wall::CEILING),
         Err(mpsc::RecvTimeoutError::Disconnected)
     ));
 }

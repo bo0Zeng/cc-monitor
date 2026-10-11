@@ -124,7 +124,7 @@ fn next_frame(rx: &mut tokio::sync::mpsc::Receiver<Frame>, within: Duration) -> 
 
 /// 有界等待：条件成立（至多 3 秒）。
 fn eventually(mut f: impl FnMut() -> bool) -> bool {
-    let until = Instant::now() + Duration::from_secs(3);
+    let until = Instant::now() + guard_core::wall::CEILING;
     while Instant::now() < until {
         if f() {
             return true;

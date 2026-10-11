@@ -652,6 +652,8 @@ fn menu_texts(d: &Drive, w: &FileWindow, painted: &[PaintedText]) -> Vec<String>
     let mut v: Vec<String> = painted
         .iter()
         .filter(|(_, r)| area.contains_rect(*r))
+        // 图标是图标字体里私用区的字（左格那一个），不收。
+        .filter(|(t, _)| !t.chars().all(|c| ('\u{E000}'..='\u{F8FF}').contains(&c)))
         .map(|(t, _)| t.clone())
         .collect();
     v.sort();
@@ -679,14 +681,44 @@ fn open_menu(
 
 /// 🔴🔴 **菜单项 == 当前选中能做的动作 —— 逐格手写，两向相等。**
 ///
-/// 期望一侧是**手写**的字（不调 `actions_for`，否则两侧同源恒真）；
-/// 实得一侧是 egui 这一帧**真画在菜单那一块里**的字。
+/// 期望一侧是**手写**的字（不调 `actions_for` / 菜单那张表，否则两侧同源恒真）；
+/// 实得一侧是 egui 这一帧**真画在菜单那一块里**的字（项的字 ＋ 右端的快捷键；图标不收）。
+/// 10-11 起照表：算大小只给目录与多选 · 解压只给压缩包 · 查看给图片 · 编辑给文本；改权限 / 删除带「…」。
 #[test]
 fn the_menu_lists_exactly_what_the_selection_allows() {
+    use copy_core::copy_static as c;
     let big = crate::editor::MAX_EDIT_BYTES as u64 + 1;
     let lossy = "\u{FFFD}x";
-    let chmod2 = copy_core::copy_text("rsFilewinSelect.label.chmodMany", &[("n", "2")]);
-    let delete2 = copy_core::copy_text("rsFilewinSelect.label.deleteMany", &[("n", "2")]);
+    let delete = copy_core::copy_text("rsFilewinSelect.menu.delete", &[]);
+    let delete2 = copy_core::copy_text("rsFilewinSelect.menu.deleteMany", &[("n", "2")]);
+    let chmod = copy_core::copy_text("rsFilewinSelect.menu.chmod", &[]);
+    let (delete, delete2, chmod) = (delete.as_str(), delete2.as_str(), chmod.as_str());
+    let text_file = vec![
+        c!("rsFilewinEditor.label.edit"),
+        "Enter",
+        c!("rsFilewinDownload.label.download"),
+        "Ctrl+D",
+        c!("rsFilewinCrossCopy.label.cross"),
+        c!("rsFilewinCopy.label.copy"),
+        c!("rsFilewinWriteops.label.rename"),
+        "F2",
+        chmod,
+        c!("rsFilewinSelect.label.properties"),
+        delete,
+        "Delete",
+    ];
+    let a_dir = vec![
+        c!("rsFilewinSelect.label.open"),
+        "Enter",
+        c!("rsFilewinCopy.label.copy"),
+        c!("rsFilewinSize.label.size"),
+        c!("rsFilewinWriteops.label.rename"),
+        "F2",
+        chmod,
+        c!("rsFilewinSelect.label.properties"),
+        delete,
+        "Delete",
+    ];
     // (情形, 行, 先选, 右键点谁, 菜单上该有的字)
     let cases: Vec<(
         &str,
@@ -696,22 +728,49 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
         Vec<&str>,
     )> = vec![
         (
-            "一个普通文件",
+            "一个文本文件：没有算大小、没有解压",
             vec![file("a.bin"), file("f.txt")],
             vec![],
             "f.txt",
-            // +「解压到这里」。
+            text_file.clone(),
+        ),
+        (
+            "一张图：查看顶替编辑",
+            vec![file("a.bin"), file("logo.png")],
+            vec![],
+            "logo.png",
             vec![
-                copy_core::copy_static!("rsFilewinEditor.label.edit"),
-                copy_core::copy_static!("rsFilewinCopy.label.copy"),
-                copy_core::copy_static!("rsFilewinDownload.label.download"),
-                copy_core::copy_static!("rsFilewinSize.label.size"),
-                copy_core::copy_static!("rsFilewinExtract.label.extract"),
-                copy_core::copy_static!("rsFilewinCrossCopy.label.cross"),
-                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
-                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
-                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
-                copy_core::copy_static!("rsFilewinSelect.label.properties"),
+                c!("rsFilewinImgview.label.view"),
+                "Enter",
+                c!("rsFilewinDownload.label.download"),
+                "Ctrl+D",
+                c!("rsFilewinCrossCopy.label.cross"),
+                c!("rsFilewinCopy.label.copy"),
+                c!("rsFilewinWriteops.label.rename"),
+                "F2",
+                chmod,
+                c!("rsFilewinSelect.label.properties"),
+                delete,
+                "Delete",
+            ],
+        ),
+        (
+            "一个压缩包：解压，不编辑",
+            vec![file("a.bin"), file("release.tar.gz")],
+            vec![],
+            "release.tar.gz",
+            vec![
+                c!("rsFilewinDownload.label.download"),
+                "Ctrl+D",
+                c!("rsFilewinCrossCopy.label.cross"),
+                c!("rsFilewinCopy.label.copy"),
+                c!("rsFilewinExtract.label.extract"),
+                c!("rsFilewinWriteops.label.rename"),
+                "F2",
+                chmod,
+                c!("rsFilewinSelect.label.properties"),
+                delete,
+                "Delete",
             ],
         ),
         (
@@ -719,33 +778,14 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), dir("sub")],
             vec![],
             "sub",
-            // 目录能复制了。
-            vec![
-                copy_core::copy_static!("rsFilewinSelect.label.open"),
-                copy_core::copy_static!("rsFilewinCopy.label.copy"),
-                copy_core::copy_static!("rsFilewinSize.label.size"),
-                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
-                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
-                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
-                copy_core::copy_static!("rsFilewinSelect.label.properties"),
-            ],
+            a_dir.clone(),
         ),
         (
-            "一个超编辑上限的文件",
-            vec![file("a.bin"), row("h.bin", false, big, false)],
+            "一个超编辑上限的文件：「编辑」照样在（灰着说为什么）",
+            vec![file("a.bin"), row("h.txt", false, big, false)],
             vec![],
-            "h.bin",
-            vec![
-                copy_core::copy_static!("rsFilewinCopy.label.copy"),
-                copy_core::copy_static!("rsFilewinDownload.label.download"),
-                copy_core::copy_static!("rsFilewinSize.label.size"),
-                copy_core::copy_static!("rsFilewinExtract.label.extract"),
-                copy_core::copy_static!("rsFilewinCrossCopy.label.cross"),
-                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
-                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
-                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
-                copy_core::copy_static!("rsFilewinSelect.label.properties"),
-            ],
+            "h.txt",
+            text_file.clone(),
         ),
         (
             "一个有损名文件",
@@ -759,26 +799,14 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("b.bin"), file("c.bin")],
             vec![("a.bin", NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec![
-                copy_core::copy_static!("rsFilewinSize.label.size"),
-                chmod2.as_str(),
-                delete2.as_str(),
-            ],
+            vec![c!("rsFilewinSize.label.size"), chmod, delete2, "Delete"],
         ),
         (
             "右键落在选中外：换成只选它",
             vec![file("a.bin"), file("b.bin"), dir("c")],
             vec![("a.bin", NONE), ("b.bin", CTRL)],
             "c",
-            vec![
-                copy_core::copy_static!("rsFilewinSelect.label.open"),
-                copy_core::copy_static!("rsFilewinCopy.label.copy"),
-                copy_core::copy_static!("rsFilewinSize.label.size"),
-                copy_core::copy_static!("rsFilewinWriteops.label.rename"),
-                copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
-                copy_core::copy_static!("rsFilewinWriteops.label.delete"),
-                copy_core::copy_static!("rsFilewinSelect.label.properties"),
-            ],
+            a_dir.clone(),
         ),
         (
             "两项混着有损名",
@@ -797,6 +825,49 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             "「{what}」那一格：菜单上画的与该有的不等（两向）"
         );
     }
+}
+
+/// 🔴 右键落在列表的**空白处**（最后一行下面）：选中清掉，菜单对这个目录说话（新建 · 上传 · 终端）。
+#[test]
+fn a_right_click_on_the_blank_part_of_the_list_opens_the_menu_for_this_directory() {
+    let mut w = window(vec![file("a.bin"), file("f.txt")]);
+    let mut d = Drive::new();
+    d.pick(&mut w, "a.bin", NONE);
+    d.frame(&mut w, Vec::new());
+    let pos = egui::pos2(500.0, 600.0);
+    d.frame(&mut w, vec![egui::Event::PointerMoved(pos)]);
+    let press = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Secondary,
+        pressed,
+        modifiers: NONE,
+    };
+    d.frame(&mut w, vec![press(true), press(false)]);
+    assert!(w.menu().is_some(), "右键点空白处，菜单没摆出来");
+    assert!(picked(&w).is_empty(), "右键点空白处，选中还挂着");
+    let painted = d.frame(&mut w, Vec::new());
+    let got = menu_texts(&d, &w, &painted);
+    let mut want: Vec<String> = [
+        copy_core::copy_static!("rsFilewinSelect.menu.newFolder"),
+        "Ctrl+Shift+N",
+        copy_core::copy_static!("rsFilewinSelect.menu.newFile"),
+        crate::upload::UPLOAD_LABEL.as_str(),
+        "Ctrl+U",
+        crate::chrome::TERMINAL_LABEL.as_str(),
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
+    want.sort();
+    assert_eq!(got, want, "空白处那个菜单画的不对");
+    // 点「新建文件夹」⇒ 列表里冒出就地新建那一格（与命令栏「新建 ▾ → 文件夹」同一口）。
+    click_menu_item(
+        &mut d,
+        &mut w,
+        copy_core::copy_static!("rsFilewinSelect.menu.newFolder"),
+    );
+    assert!(w.menu().is_none(), "点了一项菜单还摆着");
+    assert!(w.write_prompt().is_some(), "点了「新建文件夹」什么都没发生");
 }
 
 /// 🔴 菜单上**每一项点下去都落到了对的地方**（对一个普通文件、一个目录）。
@@ -839,14 +910,14 @@ fn every_menu_item_lands_on_the_row_it_was_opened_for() {
             },
         ),
         (
-            copy_core::copy_static!("rsFilewinWriteops.label.chmod"),
+            copy_core::copy_static!("rsFilewinSelect.menu.chmod"),
             |w| match w.write_prompt() {
                 Some(p) if p.src_name == "f.txt" && p.text.is_empty() => Ok(()),
                 other => Err(format!("{other:?}")),
             },
         ),
         (
-            copy_core::copy_static!("rsFilewinWriteops.label.delete"),
+            copy_core::copy_static!("rsFilewinSelect.menu.delete"),
             |w| {
                 // 没有运行时 ⇒ 那一摞起不来，而它**出声**（不静默吞掉一次删除）。
                 let e = w

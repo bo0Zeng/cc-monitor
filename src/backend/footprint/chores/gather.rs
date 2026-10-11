@@ -4,6 +4,7 @@
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
 use crate::assets::aliases;
 use crate::assets::door::Door;
+use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::Shell;
 use serde_json::Value;
 use std::path::Path;
@@ -16,7 +17,7 @@ fn read_small(p: &Path) -> Option<String> {
     if !p.exists() {
         return None;
     }
-    match crate::common::fs::read_regular_capped(p, READ_CAP).map(String::from_utf8) {
+    match crate::platform::fs::Ro::read_regular_capped(p, READ_CAP).map(String::from_utf8) {
         Ok(Ok(t)) => Some(t),
         Ok(Err(_)) => {
             tracing::warn!(path = %p.display(), "chores: not UTF-8, skipped");
@@ -173,7 +174,7 @@ pub(crate) fn stale_ccm(
     };
     let name = if windows { "ccm.exe" } else { "ccm" };
     let ours = home.join(".cc-monitor").join("bin").join(name);
-    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let canon = |p: &Path| Ro::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     if canon(&first) == canon(&ours) {
         return None;
     }

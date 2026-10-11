@@ -60,6 +60,7 @@
 //! 扣出人群的**对价**是判据⑦把本文件的处数钉死成 `REGISTRY.len()`（**一家一行**），
 //! 谁想把别处的直呼挪进来，当场红。
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 pub mod claudecode;
@@ -1420,7 +1421,7 @@ pub(crate) fn record_kind_of(path: &Path) -> Option<&'static str> {
 /// [`record_kind_of`] 的可喂夹具那一半。
 pub(crate) fn record_kind_among(registry: &[Adapter], path: &Path) -> Option<&'static str> {
     let under = |root: PathBuf| {
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        let root = Ro::canonicalize(&root).unwrap_or(root);
         path.starts_with(root)
     };
     registry
@@ -1525,7 +1526,7 @@ pub(crate) fn first_in_head(
     pick: impl Fn(&serde_json::Value) -> Option<String>,
 ) -> Option<String> {
     use std::io::{BufRead, Read};
-    let file = std::fs::File::open(p).ok()?;
+    let file = Ro::open(p).ok()?;
     let mut r = std::io::BufReader::new(file.take(HEAD_CAP));
     let mut line = Vec::new();
     let mut read = 0u64;

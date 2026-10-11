@@ -111,7 +111,7 @@ pass=0
 # 好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。
 chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "  FAIL $1: 期望[$3] 实得[$2]"; fail=$((fail+1)); fi; }
 # 等某个文件出现（每个场景用独立文件名，避免上一场景的残留让等待恒真）
-waitfor() { local f="$1"; for _ in $(seq 40); do [ -s "$f" ] && return 0; sleep 0.5; done; return 1; }
+waitfor() { _wf_f="$1"; wall_until '[ -s "$_wf_f" ]'; }
 
 # 假启动器：记录 会话名/收到的位置参数/CC_BUS_ID/cwd，然后常驻（模拟 agent 起来了）
 mkdir -p "$WORK/proj"
@@ -130,13 +130,13 @@ export WORK
 export CCSPAWN_LAUNCH="$BIN/FAKEAGENT"
 
 echo "[1] cc-spawn 经 ccm 建会话并返回（不挂在 attach 上）"
-s=$(date +%s)
-timeout 30 "$CCSPAWN" "$WORK/proj" "分析这个项目的架构" > "$WORK/out1.txt" 2>&1
-rc=$?; e=$(date +%s)
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/proj" "分析这个项目的架构" > "$WORK/out1.txt" 2>&1
+rc=$?
 chk "退出码 0" "$rc" "0"
 # G-A：这条**手搓的**判定绕开了 `chk`，于是它既不计数也不在门禁的账里
 #（实测：输出有 21 行 PASS，而计数只到 20 —— 差的就是这一条）。改成走 chk。
-chk "未挂起（$((e-s))s < 15s）" "$([ $((e-s)) -lt 15 ] && echo YES || echo NO)" "YES"
+# 「挂在 attach 上」= 自己不回、到兜底上限被 timeout 掐（退出码 124）；不按墙钟数几秒。
+chk "未挂起（不是被 timeout 掐回来的）" "$([ "$rc" -ne 124 ] && echo YES || echo NO)" "YES"
 chk "会话名 proj_cc 存在" "$(tmux has-session -t '=proj_cc' 2>/dev/null && echo YES || echo NO)" "YES"
 
 echo "[2] --tmux-size 生效（原 cc-spawn 的 -x 220 -y 50 没被丢掉）"
@@ -158,19 +158,19 @@ chk "agents.tsv 已登记" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" 2>/dev/null | gr
 # 于是每跑必败 2 条。⚠ **没人发现，是因为这套 e2e 从来没被跑过**。
 # ⇒ 本段改成钉新语义：同目录再 spawn **必须新建并避让到 `-2`**。
 echo "[5] 默认新建（C14）：同目录再 spawn 建出 proj_cc-2，命名避让生效"
-timeout 30 "$CCSPAWN" "$WORK/proj" "第二个任务" > "$WORK/out2.txt" 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/proj" "第二个任务" > "$WORK/out2.txt" 2>&1
 chk "输出不再说复用" "$(grep -c '复用已有会话' "$WORK/out2.txt")" "0"
 chk "新建了 proj_cc-2" "$(tmux has-session -t '=proj_cc-2' 2>/dev/null && echo YES || echo NO)" "YES"
 
 # `--new` 保留为**兼容用的 no-op**（`P4b-Y1`：外面可能有人在传它，让它报错等于弄坏别人的脚本）。
 # ⇒ 它今天与不带旗标**行为一致**：再避让一格到 `-3`。
 echo "[6] --new 仍被接受（no-op 兼容），继续避让到 -3"
-timeout 30 "$CCSPAWN" --new "$WORK/proj" > "$WORK/out3.txt" 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" --new "$WORK/proj" > "$WORK/out3.txt" 2>&1
 chk "proj_cc-3 建起来了" "$(tmux has-session -t '=proj_cc-3' 2>/dev/null && echo YES || echo NO)" "YES"
 
 echo "[7] codex 下 CC_BUS_ID 由 ccm 自动派生 = 会话名（不需要 --bus-id）"
 mkdir -p "$WORK/cx"
-timeout 30 "$CCSPAWN" --tool codex "$WORK/cx" > "$WORK/out4.txt" 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" --tool codex "$WORK/cx" > "$WORK/out4.txt" 2>&1
 waitfor "$WORK/rec-cx_cc.txt" || true
 chk "会话内 CC_BUS_ID" "$(sed -n 's/^busid=//p' "$WORK/rec-cx_cc.txt" 2>/dev/null)" "cx_cc"
 
@@ -190,7 +190,7 @@ mkdir -p "$WORK/inh"
 (
   export PATH="$BIN8:$PATH"
   # 该 socket 上尚无 server → 这次调用会**现起**一个，从而把 CC_BUS_ID 带进 server 全局环境
-  CC_BUS_ID=STALEPARENT timeout 30 "$CCSPAWN" --tool codex "$WORK/inh" > "$WORK/out5.txt" 2>&1
+  CC_BUS_ID=STALEPARENT timeout "$WALL_CEILING_S" "$CCSPAWN" --tool codex "$WORK/inh" > "$WORK/out5.txt" 2>&1
 )
 waitfor "$WORK/rec-inh_cc.txt" || true
 # 先确认污染前提真的成立（否则这条测试又是安慰剂）
@@ -202,7 +202,7 @@ chk "CC_BUS_ID 应为会话名而非继承值" "$(sed -n 's/^busid=//p' "$WORK/r
 echo "[9] 【审计阻塞-1】一个从没信任过的新目录也须成功建会话+上总线（此前恒 rc=1 留孤儿）"
 # 信任由用户在会话里自己答，收尾不再挂任何等待 / 按键子句 —— 那一族曾是 rc 泄漏的来源。
 mkdir -p "$WORK/pt"
-timeout 40 "$CCSPAWN" "$WORK/pt" "任务P" > "$WORK/out6.txt" 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/pt" "任务P" > "$WORK/out6.txt" 2>&1
 rc9=$?
 chk "cc-spawn 退出码 0（不得谎报失败）" "$rc9" "0"
 chk "会话存在" "$(tmux has-session -t '=pt_cc' 2>/dev/null && echo YES || echo NO)" "YES"
@@ -212,7 +212,7 @@ chk "已上总线（孤儿检测）" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" 2>/dev
 echo "[10] 【审计阻塞-2】多词 CCSPAWN_LAUNCH（cc-bus-install.sh:96 文档化的用法）"
 mkdir -p "$WORK/wrap"
 CCSPAWN_LAUNCH="env WRAPVAR=hello $BIN/FAKEAGENT" \
-  timeout 30 "$CCSPAWN" "$WORK/wrap" "任务W" > "$WORK/out7.txt" 2>&1
+  timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/wrap" "任务W" > "$WORK/out7.txt" 2>&1
 waitfor "$WORK/rec-wrap_cc.txt" || true
 chk "wrapper 的 env 前缀生效" "$(sed -n 's/^wrapenv=//p' "$WORK/rec-wrap_cc.txt" 2>/dev/null)" "hello"
 chk "任务仍原样送达" "$(sed -n 's/^args=//p' "$WORK/rec-wrap_cc.txt" 2>/dev/null)" "任务W"
@@ -226,7 +226,7 @@ echo "ccm: 未知选项: --detach" >&2; exit 2
 EOF
 chmod +x "$SANDBOX/oldccm"
 mkdir -p "$WORK/old"
-CCM_BIN="$SANDBOX/oldccm" timeout 30 "$CCSPAWN" "$WORK/old" > "$WORK/out8.txt" 2>&1
+CCM_BIN="$SANDBOX/oldccm" timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/old" > "$WORK/out8.txt" 2>&1
 chk "报的是版本太旧" "$(grep -c '版本太旧' "$WORK/out8.txt")" "1"
 
 echo "[12] 【C15 08-13】命名避让**搬进 ccm 之后**仍然成立（同目录连开三个 → 名字退让）"
@@ -238,7 +238,7 @@ echo "[12] 【C15 08-13】命名避让**搬进 ccm 之后**仍然成立（同目
 #   而那正是搬家最可能出的岔子（cc-spawn 报一个名、ccm 建了另一个）。
 mkdir -p "$WORK/dup"
 for _i in 1 2 3; do
-  timeout 30 "$CCSPAWN" "$WORK/dup" "任务$_i" > "$WORK/out-dup$_i.txt" 2>&1
+  timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/dup" "任务$_i" > "$WORK/out-dup$_i.txt" 2>&1
 done
 chk "三个会话都在" \
   "$(tmux ls -F '#{session_name}' 2>/dev/null | grep -cx 'dup_cc\|dup_cc-2\|dup_cc-3')" "3"
@@ -257,7 +257,7 @@ echo "[13] 【C15 08-13】总线登记 + 台账**由 ccm 做**（cc-spawn 一件
 #（cc-spawn 没删干净 + ccm 又做了一次）⇒ 台账**两行**、地址簿被后写的那次覆盖。
 # 结果上看不出来（名字一样），只有**数行数**才看得见。
 mkdir -p "$WORK/once"
-timeout 30 "$CCSPAWN" "$WORK/once" "任务O" > "$WORK/out-once.txt" 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/once" "任务O" > "$WORK/out-once.txt" 2>&1
 waitfor "$WORK/rec-once_cc.txt" || true
 chk "台账**恰好一行**（没有两边各写一遍）" \
   "$(grep -c '^once_cc	' "$CC_BUS_HOME/spawned.tsv" 2>/dev/null || true)" "1"
@@ -265,7 +265,7 @@ chk "地址簿恰好一条" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'onc
 chk "台账第 4 列是初始任务" \
   "$(awk -F'\t' '$1=="once_cc"{print $4}' "$CC_BUS_HOME/spawned.tsv")" "任务O"
 # 没装 cc-bus 的人不该被总线脚本挡住起会话 —— ccm 静默 no-op，但**要吭一声**。
-CC_BUS_SCRIPTS=/nonexistent timeout 30 "$CCM" -- \
+CC_BUS_SCRIPTS=/nonexistent timeout "$WALL_CEILING_S" "$CCM" -- \
   --tmux-base=nobus --detach --bus-register --cwd "$WORK/once" \
   --launcher "$BIN/FAKEAGENT" > "$WORK/out-nobus.txt" 2>&1 || true
 chk "找不到 cc-bus 时会话照样建出来" \
@@ -283,7 +283,7 @@ echo "[14] 【08-13】**多行初始任务**：登记与台账都不许丢"
 # ★ 这一格同时钉着 ccm 的放行判定：透传参数 / 登记备注可以跨行（`shell_quote_core::arg_text_ok`，
 #   只拒 NUL / CR）。那道判定拒过 LF，于是整条起会话被拒、下面四格一起红。
 mkdir -p "$WORK/multi"
-timeout 30 "$CCSPAWN" "$WORK/multi" "$(printf '第一行\n第二行')" \
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/multi" "$(printf '第一行\n第二行')" \
   > "$WORK/out-multi.txt" 2>&1
 waitfor "$WORK/rec-multi_cc.txt" || true
 chk "多行任务：仍上总线" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'multi_cc' || true)" "1"
@@ -303,7 +303,7 @@ echo "[15] 【08-13】**并发 spawn 同一目录**：四个都得成，名字�
 # ⚠ 判据钉的是**三处账目一致**，不是「有 4 个会话」——名字对不上时会话数照样是 4。
 mkdir -p "$WORK/race"
 for _i in 1 2 3 4; do
-  timeout 40 "$CCSPAWN" "$WORK/race" "并发$_i" > "$WORK/race-$_i.out" 2>&1 &
+  timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/race" "并发$_i" > "$WORK/race-$_i.out" 2>&1 &
 done
 wait
 chk "四个都报成功" \
@@ -323,7 +323,7 @@ echo "[16] 【08-13】目录名含**空格与中文**：quote 要穿过全链"
 #   后者只证明字符串拼对了，证明不了 tmux 真的进了那个目录。
 SPDIR="$WORK/带 空格 的目录"
 mkdir -p "$SPDIR"
-timeout 30 "$CCSPAWN" "$SPDIR" "任务 带空格" > "$WORK/out-sp.txt" 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$SPDIR" "任务 带空格" > "$WORK/out-sp.txt" 2>&1
 SPNAME="$(sed -n 's/^已 spawn: \([^ ]*\).*/\1/p' "$WORK/out-sp.txt")"
 chk "含空格目录：spawn 成功并报出名字" "$([ -n "$SPNAME" ] && echo yes || echo no)" "yes"
 chk "含空格目录：会话真实 cwd 逐字相符" \
@@ -341,16 +341,16 @@ echo "[17] 【08-13】台账**写不进去**时要说话（磁盘满/只读的�
 #   cc-spawned-record 一个字不打）⇒ 不丢诊断、也不吵。
 mkdir -p "$WORK/roproj"
 # 先播一行、再把台账文件设成只读 —— 这是「磁盘满」在测试里的可控替身。
-timeout 30 "$CCSPAWN" "$WORK/roproj" "第一个" > /dev/null 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/roproj" "第一个" > /dev/null 2>&1
 chmod a-w "$CC_BUS_HOME/spawned.tsv"
-timeout 30 "$CCSPAWN" "$WORK/roproj" "第二个" \
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/roproj" "第二个" \
   > "$WORK/out-ro.txt" 2> "$WORK/err-ro.txt"
 chmod u+w "$CC_BUS_HOME/spawned.tsv"
 chk "台账写不进去时 spawn 仍成功" "$(grep -c '^已 spawn: ' "$WORK/out-ro.txt")" "1"
 chk "且**说出了原因**（不是悄悄没有）" \
   "$(grep -c '权限不够\|Permission denied' "$WORK/err-ro.txt")" "1"
 # 反向：正常路径不许多出噪声（放开 stderr 之后最容易出的回归）。
-timeout 30 "$CCSPAWN" "$WORK/roproj" "第三个" \
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/roproj" "第三个" \
   > /dev/null 2> "$WORK/err-ok.txt"
 chk "正常路径 stderr 仍为空" "$(wc -l < "$WORK/err-ok.txt")" "0"
 
@@ -378,7 +378,7 @@ rm -rf "$TB"
 BIGTASK="$(head -c 150000 /dev/zero | tr '\0' 'x')"
 mkdir -p "$WORK/big"
 set +e
-timeout 30 "$CCSPAWN" "$WORK/big" "$BIGTASK" > "$WORK/out-big.txt" 2>&1
+timeout "$WALL_CEILING_S" "$CCSPAWN" "$WORK/big" "$BIGTASK" > "$WORK/out-big.txt" 2>&1
 big_rc=$?
 set -e
 chk "超长任务：退出码非 0" "$([ "$big_rc" -ne 0 ] && echo yes || echo no)" "yes"

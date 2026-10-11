@@ -449,4 +449,140 @@ mod tests {
             "手机树读了这些仓内路径，quick-check 的 mobile_reads 里没有 —— 改了它们 quick-check 不会跑手机那一套：{missed:?}"
         );
     }
+
+    /// 设备测（androidTest）进全量门禁（10-11 起）：从前它们不在任何一格里，`SmokeTest` 红了很久没人看见。
+    /// 门禁的 `android-device` 那一格经 `tests/mobile-smoke/emu.sh` 起模拟器（它自己一个封了内存的 scope），
+    /// 跑设备测唯一的入口 `src/mobile/scripts/android-test.sh`，收场关模拟器。
+    #[test]
+    fn the_device_tests_run_in_the_full_gate_on_their_own_capped_emulator() {
+        let read = |rel: &str| {
+            std::fs::read_to_string(root().join(rel))
+                .unwrap_or_else(|e| panic!("读不到 {rel}：{e}"))
+        };
+        let pinned = |hay: &str, needle: &str, what: &str| {
+            if let Err(e) = guard_core::find_pinned(hay, needle) {
+                panic!("{what}：{e}");
+            }
+        };
+        let gate = read("tests/scripts/gate.sh");
+        pinned(
+            &gate,
+            "\nrun_gate android-device '",
+            "gate.sh 里没有 `android-device` 那一格 —— 设备测又不在门禁里了",
+        );
+        let at = guard_core::find_pinned(&gate, "\ngate_android_device() {")
+            .unwrap_or_else(|e| panic!("{e}"));
+        let len = gate[at..]
+            .find("\n}\n")
+            .expect("gate_android_device 的收尾");
+        let body = &gate[at..at + len];
+        for needle in [
+            "emu=\"$PWD/tests/mobile-smoke/emu.sh\"",
+            "bash \"$emu\" up",
+            "bash \"$emu\" down",
+            "bash scripts/android-test.sh",
+        ] {
+            pinned(body, needle, "`android-device` 那一格的起停与入口");
+        }
+        let emu = read("tests/mobile-smoke/emu.sh");
+        pinned(
+            &emu,
+            "systemd-run --user --scope --quiet -p MemoryHigh=6G -p MemoryMax=8G",
+            "模拟器不在自己封了内存的 scope 里",
+        );
+    }
+
+    /// 设备测入口：gradle 每一趟都带 `--no-daemon`；跑之前先装上 app、`pm clear` 清它的数据，
+    /// 而且 `pm clear` 真成了（退出码 0 ＋ 回 `Success`）才往下跑 —— 清不掉就红，不带着上一趟的数据跑
+    /// （「从没连过服务器 ⇒ 落在服务器列表」那一支才走得到）。拿假的 gradlew / adb 在临时目录里跑那份脚本。
+    #[test]
+    fn the_device_test_entry_clears_the_app_data_and_stops_when_it_cannot() {
+        use guard_core::contains_word;
+        let src = root().join("src/mobile/scripts/android-test.sh");
+        let run = |clear_says: &str, clear_rc: i32| -> (bool, Vec<String>) {
+            let d = scratch(&format!("android-test-{clear_says}-{clear_rc}"));
+            std::fs::create_dir_all(d.join("scripts")).unwrap();
+            std::fs::create_dir_all(d.join("bin")).unwrap();
+            std::fs::copy(&src, d.join("scripts/android-test.sh")).unwrap();
+            let log = d.join("calls");
+            let fake = |name: &str, body: String| {
+                let p = d.join(name);
+                std::fs::write(&p, body).unwrap();
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+            };
+            fake(
+                "gradlew",
+                format!("#!/bin/sh\necho \"gradlew $*\" >> '{}'\n", log.display()),
+            );
+            fake(
+                "bin/adb",
+                format!(
+                    "#!/bin/sh\necho \"adb $*\" >> '{}'\ncase \"$*\" in *\"pm clear\"*) printf '%s\\r\\n' '{clear_says}'; exit {clear_rc};; esac\n",
+                    log.display()
+                ),
+            );
+            let path = format!(
+                "{}:{}",
+                d.join("bin").display(),
+                std::env::var("PATH").unwrap_or_default()
+            );
+            let out = Command::new("bash")
+                .arg(d.join("scripts/android-test.sh"))
+                .current_dir(&d)
+                .env("PATH", path)
+                .output()
+                .unwrap();
+            let calls: Vec<String> = std::fs::read_to_string(&log)
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect();
+            let _ = std::fs::remove_dir_all(&d);
+            (out.status.success(), calls)
+        };
+        let at = |calls: &[String], word: &str| calls.iter().position(|c| contains_word(c, word));
+        let (ok, calls) = run("Success", 0);
+        assert!(ok, "清得掉时入口该跑完退 0：{calls:#?}");
+        let (install, clear, connected) = (
+            at(&calls, ":app:installDebug"),
+            at(&calls, "clear"),
+            at(&calls, "connectedDebugAndroidTest"),
+        );
+        assert!(
+            install.is_some()
+                && clear.is_some()
+                && connected.is_some()
+                && install < clear
+                && clear < connected,
+            "顺序该是 装 app → pm clear → 设备测：{calls:#?}"
+        );
+        let gradle: Vec<&String> = calls
+            .iter()
+            .filter(|c| c.split_whitespace().next() == Some("gradlew"))
+            .collect();
+        assert_eq!(
+            gradle.len(),
+            3,
+            "gradle 该跑三趟（装 app · 两趟设备测）：{calls:#?}"
+        );
+        for c in gradle {
+            assert!(
+                contains_word(c, "--no-daemon"),
+                "gradle 没带 --no-daemon（守护进程会留在 scope 里占着槽位）：{c}"
+            );
+        }
+        for (says, rc) in [("Failed", 1), ("Failed", 0), ("Success", 1)] {
+            let (ok, calls) = run(says, rc);
+            assert!(
+                !ok,
+                "pm clear 回 `{says}`、退出码 {rc} 时入口该红：{calls:#?}"
+            );
+            assert_eq!(
+                at(&calls, "connectedDebugAndroidTest"),
+                None,
+                "pm clear 没成（`{says}` / {rc}）还接着跑了设备测：{calls:#?}"
+            );
+        }
+    }
 }

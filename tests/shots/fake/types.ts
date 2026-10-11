@@ -18,8 +18,6 @@ export interface TaskSpec {
 export interface SessionSpec {
   sid: string;
   origin: string;
-  /** 哪一家（会话事实的 `agent`）；缺 ⇒ claude。 */
-  agent?: string;
   cwd: string;
   /** 会话名（pidfile 的 `name`）。 */
   name: string | null;
@@ -102,6 +100,8 @@ export interface ShotsHandle {
   /** 场景要真鼠标停的那一点（页坐标）；截图工具停好之后调 `remeasure` 重量一遍排版。 */
   pointer?: { x: number; y: number };
   remeasure?: () => string[];
+  /** 会话到了几个：世界宣告的 · 假后端已经交出 `live` 那一格的。等 tab 等不到时拿它分「后端没交」与「交了界面没收」。 */
+  sessions?: () => { declared: number; sent: number };
 }
 
 export interface SceneCtx {

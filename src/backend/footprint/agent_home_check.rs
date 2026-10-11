@@ -3,6 +3,7 @@
 //! 只读：stat 两次，回一个码，说法归界面（按码取文案）。
 
 use crate::common::contract::malformed;
+use crate::platform::fs::Ro;
 use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
@@ -32,12 +33,12 @@ impl Verdict {
 
 /// 判一个目录。
 pub(crate) fn verdict(dir: &Path) -> Verdict {
-    match std::fs::metadata(dir) {
+    match Ro::metadata(dir) {
         Err(_) => Verdict::Missing,
         Ok(m) if !m.is_dir() => Verdict::NotDir,
         Ok(_) => match crate::agents::records_root(dir) {
             None => Verdict::Ok,
-            Some(tree) => match std::fs::metadata(tree) {
+            Some(tree) => match Ro::metadata(tree) {
                 Ok(p) if p.is_dir() => Verdict::Ok,
                 _ => Verdict::NoRecords,
             },

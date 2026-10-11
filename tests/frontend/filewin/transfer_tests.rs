@@ -226,7 +226,7 @@ async fn four_dropped_files_really_fly_at_the_same_time() {
         },
     );
 
-    let out = tokio::time::timeout(std::time::Duration::from_secs(10), fut)
+    let out = tokio::time::timeout(guard_core::wall::CEILING, fut)
         .await
         .expect(
             "四件传输没能同时在飞（`Barrier(4)` 凑不齐 ⇒ 超时）—— \
@@ -920,7 +920,7 @@ async fn pressing_cancel_stops_the_subscription_and_nothing_is_committed() {
         tokio::spawn(async move { upload_remote(&line, &origin, &p("a.bin"), &board).await })
     };
     // 等订阅真的挂上（对端记下了那一笔）再按取消 —— 有界自旋，不睡觉。
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    tokio::time::timeout(guard_core::wall::CEILING, async {
         while !steps(&log).iter().any(|s| s == "subscribe") {
             tokio::task::yield_now().await;
         }
@@ -928,12 +928,12 @@ async fn pressing_cancel_stops_the_subscription_and_nothing_is_committed() {
     .await
     .expect("订阅该挂上");
     desk.request();
-    let r = tokio::time::timeout(std::time::Duration::from_secs(10), run)
+    let r = tokio::time::timeout(guard_core::wall::CEILING, run)
         .await
         .expect("按了取消，那一趟该收场")
         .expect("任务没 panic");
     assert_eq!(r.map_err(|f| f.said), Err(CANCELLED.to_string()));
-    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+    tokio::time::timeout(guard_core::wall::CEILING, async {
         while !steps(&log).iter().any(|s| s == "dropped") {
             tokio::task::yield_now().await;
         }

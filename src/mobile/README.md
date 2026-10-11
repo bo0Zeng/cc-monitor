@@ -52,7 +52,7 @@ bash scripts/gate-count.sh            # 刚跑完上面那条之后看条数（�
 `:core-claude`、`:core-remote` 是纯 JVM 模块，`testDebugUnitTest` 不覆盖，要显式带上。
 
 - **门禁**：仓根 `tests/scripts/gate.sh` 的 `mobile` 格跑的就是上面这几条 ＋ `:app:assembleRelease` ＋ `:app:assembleDebug`（两趟各编 Rust 核心那一个 ABI、各核一次包里的 ABI；CI 的 `mobile` job 调同一格，Linux 上跑，不起模拟器）。
-- **要设备的 instrumentation 测（androidTest）不进门禁、也不进 CI**：接好模拟器或真机后跑 `bash scripts/android-test.sh`。其中 `SshConnectionTest` 要一台真 SSH 服务端，入口脚本不跑它，手测时用 `-Pandroid.testInstrumentationRunnerArguments.sshHost=<地址>` 给地址。
+- **要设备的 instrumentation 测（androidTest）进全量门禁、不进 CI**：门禁的 `android-device` 那一格起一台封了内存的模拟器跑它（CI 的 runner 上没有 KVM 模拟器）；手跑时接好模拟器或真机后跑 `bash scripts/android-test.sh`（先装 app、`pm clear` 清数据，清不掉就停）。其中 `SshConnectionTest` 要一台真 SSH 服务端，入口脚本不跑它，手测时用 `-Pandroid.testInstrumentationRunnerArguments.sshHost=<地址>` 给地址。
 - **Android Lint**（`:app:lintDebug`）在上面那条里：error 一条就红，warning 不拦。
 
 ## License

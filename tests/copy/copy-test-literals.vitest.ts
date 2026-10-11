@@ -29,7 +29,6 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { SCAN_TIMEOUT_MS } from "../test-support/production-sources.ts";
 import { REPO_ROOT } from "../test-support/repo-root.ts";
 import { TABLE_PATH } from "./copy-support.ts";
 
@@ -139,5 +138,5 @@ describe("测试按文案键断言（与表值逐字相同的中文字面量）"
     }
     expect(badUse, `用途不在闭集里（${Object.keys(USES).join(" · ")}）`).toEqual([]);
     expect(dead, "死豁免：那份文件里已没有这句（或表值变了）—— 从豁免表删掉").toEqual([]);
-  }, SCAN_TIMEOUT_MS);
+  });
 });

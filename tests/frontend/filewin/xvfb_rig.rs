@@ -388,7 +388,7 @@ pub fn close_like_a_wm(display: &str, id: &str) -> Result<(), String> {
     let path = socket_path(num);
     let mut s =
         std::os::unix::net::UnixStream::connect(&path).map_err(|e| format!("{path} 断开：{e}"))?;
-    s.set_read_timeout(Some(std::time::Duration::from_secs(5)))
+    s.set_read_timeout(Some(guard_core::wall::CEILING))
         .map_err(|e| e.to_string())?;
     let io = |e: std::io::Error| format!("X11 连接读写失败：{e}");
 

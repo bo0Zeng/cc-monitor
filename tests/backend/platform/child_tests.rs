@@ -65,7 +65,8 @@ fn own_envs_are_exactly_what_the_host_hands_the_backend_for_itself() {
 fn a_child_past_its_deadline_is_killed_with_its_whole_group_and_reaped() {
     let d = scratch("timeout");
     let script = format!(
-        "sleep 30 & echo $! > {g}; echo $$ > {c}; wait",
+        "sleep {s} & echo $! > {g}; echo $$ > {c}; wait",
+        s = 2 * guard_core::wall::CEILING_SECS,
         g = d.join("grand").display(),
         c = d.join("child").display()
     );
@@ -79,7 +80,7 @@ fn a_child_past_its_deadline_is_killed_with_its_whole_group_and_reaped() {
         other => panic!("该超时：{other:?}"),
     }
     assert!(
-        took < std::time::Duration::from_millis(400 + 1_500),
+        took < guard_core::wall::CEILING,
         "超时之后还拖了这么久：{took:?}"
     );
     let grand = std::fs::read_to_string(d.join("grand")).expect("孙进程 pid");
@@ -230,12 +231,17 @@ fn a_command_budget_cuts_the_stuck_child_short_and_spawns_nothing_after_it_is_sp
     let mark = d.join("second-ran");
     let t0 = std::time::Instant::now();
     let _b = Budget::start(Deadline::millis(400));
+    // 每一发自己的期限是兜底上限的两倍、睡得更久 ⇒ 总期限不生效就撞下面那道（兜底的数）。
+    let own = Deadline::secs(2 * guard_core::wall::CEILING_SECS);
     let first = Child::new("sh")
-        .args(["-c", "sleep 30"])
-        .run(Deadline::secs(5));
+        .args([
+            "-c",
+            &format!("sleep {}", 4 * guard_core::wall::CEILING_SECS),
+        ])
+        .run(own);
     let second = Child::new("sh")
         .args(["-c", &format!("touch {}", mark.display())])
-        .run(Deadline::secs(5));
+        .run(own);
     let took = t0.elapsed();
     for r in [first, second] {
         match r {
@@ -243,10 +249,7 @@ fn a_command_budget_cuts_the_stuck_child_short_and_spawns_nothing_after_it_is_sp
             other => panic!("该超时：{other:?}"),
         }
     }
-    assert!(
-        took < std::time::Duration::from_millis(400 + 1_500),
-        "没按总期限回：{took:?}"
-    );
+    assert!(took < guard_core::wall::CEILING, "没按总期限回：{took:?}");
     assert!(!mark.exists(), "总期限用完了还起了下一发");
     let _ = std::fs::remove_dir_all(&d);
 }

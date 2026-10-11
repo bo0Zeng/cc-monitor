@@ -7,6 +7,7 @@
 //! `{timestamp, id?, ttlMs?}`，有效期内下次直接跳过不连（缺省 15 分钟，记了 `ttlMs` 按它；登录成功整份删）。
 //! 过了有效期 Claude 会重连，那一笔就不再算数 ⇒ 这里同样不算。stdio 的 Claude 不拿这份跳过 ⇒ 不算。
 
+use crate::platform::fs::Ro;
 use std::path::Path;
 
 use serde_json::Value;
@@ -156,7 +157,7 @@ fn push(out: &mut Vec<McpEntry>, servers: Option<&Value>, scope: &'static str, s
 
 /// 不在 ⇒ `None`、不出声；在而读不出 / 不是 JSON ⇒ `None` 并记一句（「这台没有」与「那份坏了」不合成一句）。
 fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value> {
-    match std::fs::metadata(path) {
+    match Ro::metadata(path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => {
             problems.push(
@@ -176,7 +177,7 @@ fn read_json(path: &Path, cap: u64, problems: &mut Vec<String>) -> Option<Value>
         }
         Ok(_) => {}
     }
-    match crate::common::fs::read_json_capped(path, cap) {
+    match crate::platform::fs::Ro::read_json_capped(path, cap) {
         Ok(v) => Some(v),
         // 那一句只带原因词进说明；原话记日志（说明没有复制详情那一格）。
         Err(e) => {

@@ -14,7 +14,7 @@ fn an_oversized_file_is_rejected_before_it_is_read() {
     let path = dir.join("big.jsonl");
     std::fs::write(&path, vec![b'x'; 100]).expect("写夹具");
 
-    let err = read_regular_capped(&path, 10).expect_err("100 字节 > cap 10，必须拒");
+    let err = Ro::read_regular_capped(&path, 10).expect_err("100 字节 > cap 10，必须拒");
     assert!(
         err.said.contains(&copy_core::copy_text(
             "beFs.readRegularCapped.tooBig",
@@ -28,7 +28,7 @@ fn an_oversized_file_is_rejected_before_it_is_read() {
     );
 
     // 不超限的照常读回来（防「早退写成恒拒」）。
-    let ok = read_regular_capped(&path, 1000).expect("100 字节 < cap 1000，该放行");
+    let ok = Ro::read_regular_capped(&path, 1000).expect("100 字节 < cap 1000，该放行");
     assert_eq!(ok.len(), 100);
 
     let _ = std::fs::remove_dir_all(&dir);
@@ -66,7 +66,7 @@ fn the_early_return_happens_before_any_read_not_just_somewhere() {
     std::fs::write(&path, vec![b'x'; FILE]).expect("写夹具");
 
     let base = crate::alloc_probe::reset_peak();
-    let err = read_regular_capped(&path, CAP).expect_err("8 MiB > cap 1 MiB，必须拒");
+    let err = Ro::read_regular_capped(&path, CAP).expect_err("8 MiB > cap 1 MiB，必须拒");
     let grew = crate::alloc_probe::peak_since(base);
 
     // 抽取器自检：拒的是**这条路**（早退那条带实际大小），不是别的错。
@@ -91,10 +91,10 @@ fn the_early_return_happens_before_any_read_not_just_somewhere() {
 fn a_refused_read_says_the_reason_and_keeps_the_os_words_apart() {
     let dir = std::env::temp_dir().join(format!("ccm-fs-said-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let e = read_regular_capped(&dir, 8).expect_err("目录也读成了");
+    let e = Ro::read_regular_capped(&dir, 8).expect_err("目录也读成了");
     assert_eq!(e.said, copy_text("beFs.readRegularCapped.notRegular", &[]));
     let gone = dir.join("gone");
-    let e = read_regular_capped(&gone, 8).expect_err("不在的也读成了");
+    let e = Ro::read_regular_capped(&gone, 8).expect_err("不在的也读成了");
     assert_eq!(e.said, copy_core::io_reason(std::io::ErrorKind::NotFound));
     assert!(e.raw.is_some(), "系统原话没进详情：{e:?}");
     std::fs::remove_dir_all(&dir).ok();

@@ -10,7 +10,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { stripComments } from "../../test-support/strip-comments";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources";
+import { productionTsFiles } from "../../test-support/production-sources";
 
 /** `[针, 文件, 处数, 解锁条件]`。今天一行都没有。 */
 const DEBT: ReadonlyArray<readonly [needle: string, file: string, n: number, unlock: string]> = [];
@@ -55,7 +55,6 @@ describe("界面里认着某一家记录格式的地方：只许缩短", () => {
       expect(zero, "清零了的又回来了").toEqual([]);
       for (const [, , , unlock] of DEBT) expect(unlock, "每一行都要写清什么时候解").not.toBe("");
     },
-    SCAN_TIMEOUT_MS,
   );
 
   it("正控：针认得出、剥注释之后注释里的不算", () => {

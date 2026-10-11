@@ -1427,6 +1427,38 @@ async fn screenshot_for_the_shots_tool() {
                     pane.tally.menu_clicked = i;
                     pane.apply_menu_click(egui::pos2(380.0, 230.0));
                 }
+                // 稿 02：Ctrl 点选三项（目录 · 代码 · 压缩包）、在压缩包上右键 ⇒ 多选那一种的菜单；
+                // 空白处右键 ⇒ 对这个目录的菜单。
+                if self.n == 25 && (self.scene == "multi-menu" || self.scene == "blank-menu") {
+                    let pane = self.ws.pane_on_mut(0);
+                    let idx = |pane: &FileWindow, n: &str| {
+                        pane.listing
+                            .rows
+                            .lock()
+                            .unwrap()
+                            .iter()
+                            .position(|r| r.name == n)
+                    };
+                    if self.scene == "multi-menu" {
+                        for (k, n) in ["docs", "main.rs", "release.tar.gz"]
+                            .into_iter()
+                            .enumerate()
+                        {
+                            let mods = if k == 0 {
+                                egui::Modifiers::NONE
+                            } else {
+                                egui::Modifiers::COMMAND
+                            };
+                            pane.tally.picked_click = idx(pane, n).map(|i| (i, mods));
+                            pane.apply_pick_click();
+                        }
+                        pane.tally.menu_clicked = idx(pane, "release.tar.gz");
+                        pane.apply_menu_click(egui::pos2(520.0, 470.0));
+                    } else {
+                        pane.tally.menu_blank = true;
+                        pane.apply_menu_click(egui::pos2(560.0, 600.0));
+                    }
+                }
                 if self.n == 8 && self.scene == "narrow-drawer" {
                     self.ws.drawer_open = true;
                 }
@@ -2411,7 +2443,7 @@ async fn perf_rig_worker() {
         panic!("窗口没起来");
     };
     let t_open = std::time::Instant::now();
-    while frames() == 0 && t_open.elapsed().as_secs() < 20 {
+    while frames() == 0 && t_open.elapsed() < guard_core::wall::CEILING {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     println!("perf.open.first_frame_ms={}", t_open.elapsed().as_millis());

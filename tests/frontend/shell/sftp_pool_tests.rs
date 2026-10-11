@@ -99,7 +99,7 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
 impl Rig {
     pub(crate) async fn next(&mut self, cmd: &str) -> Value {
         loop {
-            let v = tokio::time::timeout(Duration::from_secs(5), self.seen.recv())
+            let v = tokio::time::timeout(guard_core::wall::CEILING, self.seen.recv())
                 .await
                 .unwrap_or_else(|_| panic!("5s 没等到 `{cmd}`"))
                 .expect("假后端的请求口关了");
@@ -136,7 +136,7 @@ pub(crate) fn cfg(label: &str) -> RemoteConfig {
 /// 收一条快照流直到收场（或 10 s）。
 async fn drain(mut s: futures::stream::BoxStream<'static, Snap>) -> Vec<Snap> {
     let mut out = Vec::new();
-    let r = tokio::time::timeout(Duration::from_secs(10), async {
+    let r = tokio::time::timeout(guard_core::wall::CEILING, async {
         while let Some(x) = s.next().await {
             let over = x.end.is_some();
             out.push(x);
@@ -232,6 +232,42 @@ async fn dropping_the_stream_sends_a_stop_to_the_local_backend() {
     drop(s);
     let stop = rig.next("transfer-stop").await;
     assert_eq!(stop["args"]["id"], "xfer-1");
+}
+
+/// 🔴 **旧的那一趟收尾不摘新的那一趟**：本机后端重起之后票号从头数（`xfer-1` 又来一次），新开的那一趟顶掉旧的登记；
+/// 旧那条流晚一步被丢（它的守卫这时才落）⇒ 只摘它自己那一份，新的那一趟照样订得上。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_stale_watch_dropping_late_leaves_a_newer_ticket_with_the_same_id_alone() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let origin = crate::origin::Origin("中继·重号".to_string());
+    let mut old_rig = rig(&ALL);
+    transfer_call(
+        cfg("中继·重号"),
+        TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": "/tmp/z.bin" }),
+    )
+    .await
+    .expect("开单");
+    let old = watch_ticket(&origin, "xfer-1").expect("订阅旧的那一趟");
+    old_rig.next("transfer-start").await;
+    // 本机后端重起：新的那条流、票号从头数。
+    let mut new_rig = rig(&ALL);
+    let v = transfer_call(
+        cfg("中继·重号"),
+        TRANSFER_UPLOAD,
+        &serde_json::json!({ "local_path": "/tmp/z.bin" }),
+    )
+    .await
+    .expect("再开单");
+    assert_eq!(v["id"], "xfer-1", "量具：新的那一趟该撞上旧的票号");
+    drop(old);
+    let fresh = watch_ticket(&origin, "xfer-1");
+    assert!(
+        fresh.is_ok(),
+        "旧那条流的守卫把新的那一趟摘掉了：{:?}",
+        fresh.err()
+    );
+    new_rig.next("transfer-start").await;
 }
 
 /// 本机那条流断了 ⇒ 经它开的中继一律收场（`failed`，原因说清），不让看的人干等。

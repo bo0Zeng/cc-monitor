@@ -64,7 +64,7 @@ async fn place(pool: &Pool<Fake>, key: &str, lane: Lane, dials: &AtomicUsize) ->
         dials.fetch_add(1, Ordering::SeqCst);
         Ok::<Fake, String>(fake())
     });
-    tokio::time::timeout(std::time::Duration::from_secs(5), placing)
+    tokio::time::timeout(guard_core::wall::CEILING, placing)
         .await
         .expect("放置挂住了：该放下的没放下（判准说该等、却没有任何东西会叫醒它）")
         .expect("假拨号不会失败")

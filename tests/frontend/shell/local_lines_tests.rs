@@ -638,7 +638,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
         .unwrap();
     let next = |rx: &mut tokio::sync::mpsc::Receiver<LocalItem>| {
         rt.block_on(async {
-            tokio::time::timeout(std::time::Duration::from_secs(20), rx.recv())
+            tokio::time::timeout(guard_core::wall::CEILING, rx.recv())
                 .await
                 .expect("20 秒没等到下一件")
                 .expect("通道断了")
@@ -675,7 +675,7 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
     //   真会话会一直写，这里照做：每 2 s 没等到就再补一行**空白行**（不计行号、不改编号）催一次事件。
     let wait_line = |rx: &mut tokio::sync::mpsc::Receiver<LocalItem>| {
         rt.block_on(async {
-            tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            tokio::time::timeout(guard_core::wall::CEILING, rx.recv())
                 .await
                 .ok()
                 .map(|x| x.expect("通道断了"))
@@ -930,7 +930,7 @@ async fn local_changed_pushes_reach_the_ui_subscription() {
         }
     }
     drop(tx);
-    tokio::time::timeout(std::time::Duration::from_secs(5), consumer)
+    tokio::time::timeout(guard_core::wall::CEILING, consumer)
         .await
         .expect("本机消费者 5 秒没收摊")
         .unwrap();

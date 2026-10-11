@@ -72,7 +72,8 @@ function foldConvo(): Convo {
   c.tool("Grep", { pattern: "from .a import|from .b import", path: "src" }, "");
   c.say("没有引用了，删掉。");
   c.tool("Bash", { command: "git rm src/c.py", description: "删旧文件" }, null);
-  return c;
+  // 要批准的那一步落在一分钟前（在等的那一形说等了 1 分钟）。
+  return c.endAt(Date.now() - 60_000);
 }
 
 function foldWorld(activity: "needs_you" | "working" = "needs_you"): World {
@@ -99,6 +100,7 @@ function longWorld(n = 90): World {
     c.tool("Edit", { file_path: `${CWD}/src/m${i}.py`, old_string: "a", new_string: "b" }, "The file has been updated.");
     c.say(`模块 ${i} 改好了。`, 20_000, "end_turn");
   }
+  c.endAt(Date.now() - 60_000);
   w.sessions[0] = session(1, LOCAL, CWD, c, { activity: "idle" });
   return w;
 }
@@ -109,7 +111,7 @@ function longWorld(n = 90): World {
  * 对一下；折着的过程不物化，剩下几块 0 高的占位。
  */
 async function measure(): Promise<void> {
-  await waitFor(".session-viewer [data-id]", 15_000);
+  await waitFor(".session-viewer [data-id]");
   await sleep(1500);
   const scroller = document.querySelector<HTMLElement>(".session-viewer-stream")!;
   const est = scroller.scrollHeight;
@@ -211,7 +213,7 @@ export const FOLDALL_SCENES: Scene[] = [
     height: 3600,
     world: foldWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1500);
       const s = document.querySelector<HTMLElement>(".session-viewer .stream, .session-viewer [class*='stream']");
       s?.scrollTo(0, 0);

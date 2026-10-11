@@ -307,7 +307,7 @@ async function restartThroughConfirm(): Promise<void> {
 async function openTimeline(): Promise<void> {
   await openPanel();
   await scrollPanelTo("轮换");
-  const head = await byText('aside[role="dialog"] [data-fold-head]', "时间轴").catch(() => null);
+  const head = await byText('aside[role="dialog"] [data-fold-head]', "时间轴", 8000).catch(() => null);
   if (head) await click(head);
   await sleep(900);
   document.querySelector("[data-tl-head]")?.scrollIntoView({ block: "start" });

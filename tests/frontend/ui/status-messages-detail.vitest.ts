@@ -6,6 +6,7 @@ import { fakeClipboard } from "../../test-support/clipboard-fake";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast } from "../../../src/frontend/ui/kit/toast";
 import { StatusMessages } from "../../../src/frontend/ui/status-messages";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 describe("「消息」里的复制详情", () => {
   it("★ 展开看最近一段 ＋ 另 n 段；复制出全部段", async () => {
@@ -16,13 +17,13 @@ describe("「消息」里的复制详情", () => {
     toast("t-9", "", { detail: "d-1" });
     toast("t-9", "", { detail: "d-2" });
     m.el.querySelector<HTMLElement>('[data-role="status-messages"]')!.click();
-    await vi.waitFor(() => expect(document.querySelector('[data-part="copy-detail"]')).not.toBeNull());
+    await vi.waitFor(() => expect(document.querySelector('[data-part="copy-detail"]')).not.toBeNull(), UNTIL_CEILING);
     const expand = [...document.querySelectorAll("button")].find((b) => b.textContent === copyText("messages.record.expand"))!;
     expand.click();
     const box = document.querySelector<HTMLElement>('[data-role="message-detail"]')!;
     expect(box.textContent).toBe(`d-2${copyText("messages.record.moreSegments", { n: 1 })}`);
     document.querySelector<HTMLButtonElement>('[data-part="copy-detail"] button')!.click();
-    await vi.waitFor(() => expect(written).toHaveLength(1));
+    await vi.waitFor(() => expect(written).toHaveLength(1), UNTIL_CEILING);
     expect(written[0]).toBe(`t-9 ${copyText("kit.toast.count", { n: 2 })}\n\nt-9\nd-1\n\nt-9\nd-2`);
     [...document.querySelectorAll("button")].find((b) => b.textContent === copyText("messages.record.expand"))!.click();
     expect(document.querySelector('[data-role="message-detail"]')).toBeNull();

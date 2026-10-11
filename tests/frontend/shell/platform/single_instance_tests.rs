@@ -70,7 +70,7 @@ fn the_second_launch_hands_its_args_and_activation_token_to_the_first() {
     .expect("第二个连得上");
     assert!(matches!(second, Claim::Handed), "名字被占 ⇒ 交给第一个");
     let got = rx
-        .recv_timeout(Duration::from_secs(5))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("第一个收到了");
     assert_eq!(
         got,
@@ -82,7 +82,10 @@ fn the_second_launch_hands_its_args_and_activation_token_to_the_first() {
 
     let third = claim(&open, Box::new(|_| {}), &[], None).unwrap();
     assert!(matches!(third, Claim::Handed));
-    assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap().token, None);
+    assert_eq!(
+        rx.recv_timeout(guard_core::wall::CEILING).unwrap().token,
+        None
+    );
     drop(first);
 }
 

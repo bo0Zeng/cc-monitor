@@ -67,12 +67,13 @@ fn a_summary_written_in_time_is_seen_promptly_and_an_old_one_does_not_count() {
         })
     };
     let t0 = Instant::now();
-    let got = rt().block_on(armed.within(10_000));
+    // 期限放到兜底上限的两倍：等到了却没当场回，就要等满它、撞下面那道（兜底的数）。
+    let got = rt().block_on(armed.within(2_000 * guard_core::wall::CEILING_SECS));
     let took = t0.elapsed();
     writer.join().unwrap();
     let _ = std::fs::remove_dir_all(&d);
     assert!(got, "写进了压缩摘要却没等到");
-    assert!(took < Duration::from_millis(5_000), "等到了却拖到 {took:?}");
+    assert!(took < guard_core::wall::CEILING, "等到了却拖到 {took:?}");
 
     // 只有旧的那条、期限内没有新的 ⇒ 没等到。
     let d = scratch("old");
@@ -102,7 +103,7 @@ fn nothing_written_returns_at_the_deadline() {
     let _ = std::fs::remove_dir_all(&d);
     assert!(!got);
     assert!(took >= Duration::from_millis(600), "早退：{took:?}");
-    assert!(took < Duration::from_millis(3_000), "拖了：{took:?}");
+    assert!(took < guard_core::wall::CEILING, "拖了：{took:?}");
 }
 
 /// 记录被整份换掉（改名换进来一份新的）⇒ 照流式那一套从头重读，新内容里的摘要认得出。
@@ -122,7 +123,8 @@ fn a_rewritten_record_is_reread_from_the_start() {
             std::fs::rename(&tmp, &rec).unwrap();
         })
     };
-    let got = rt().block_on(armed.within(10_000));
+    // 期限放到兜底上限的两倍：等到了却没当场回，就要等满它、撞下面那道（兜底的数）。
+    let got = rt().block_on(armed.within(2_000 * guard_core::wall::CEILING_SECS));
     writer.join().unwrap();
     let _ = std::fs::remove_dir_all(&d);
     assert!(got, "换过的那份里有摘要，没认出来");
@@ -159,7 +161,8 @@ fn a_session_reported_by_a_new_process_is_seen_and_the_old_one_is_not() {
         .spawn()
         .unwrap();
     pidfile(&new);
-    let got = rt().block_on(armed.within(10_000));
+    // 期限放到兜底上限的两倍：等到了却没当场回，就要等满它、撞下面那道（兜底的数）。
+    let got = rt().block_on(armed.within(2_000 * guard_core::wall::CEILING_SECS));
     for c in [&mut old, &mut new] {
         let _ = c.kill();
         let _ = c.wait();

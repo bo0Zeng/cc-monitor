@@ -32,7 +32,7 @@ const slowFull = (): ReturnType<typeof defaultWorld> => ({ ...defaultWorld(), fu
 
 /** 查看窗里打开最后一个跑命令（Bash）那一步的结果（连同外面的折叠）；回那个结果的折叠。 */
 async function openLastResult(): Promise<HTMLDetailsElement> {
-  await waitFor(".session-viewer [data-id]", 15_000);
+  await waitFor(".session-viewer [data-id]");
   await sleep(1200);
   const all = [...document.querySelectorAll<HTMLDetailsElement>(".session-viewer .block-tool-result-inline")].filter((r) =>
     r.parentElement?.closest("details")?.querySelector(":scope > summary")?.textContent?.includes("Bash"),
@@ -99,7 +99,7 @@ export const HISTORY_SCENES: Scene[] = [
     await openHistory();
     await type(".history-search", SEARCH_WORD);
     await key("Enter");
-    await waitFor(".history-view mark", 8000);
+    await waitFor(".history-view mark");
     await sleep(400);
   }),
   hist("history-07-row-menu", "历史 · 行菜单", "选中一行、点行尾 ⋯", async () => {
@@ -252,7 +252,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 720,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1500);
     },
   },
@@ -299,7 +299,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 720,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1200);
     },
   },
@@ -314,7 +314,7 @@ export const HISTORY_SCENES: Scene[] = [
     height: 560,
     world: defaultWorld,
     act: async () => {
-      await waitFor(".session-viewer [data-id]", 15_000);
+      await waitFor(".session-viewer [data-id]");
       await sleep(1200);
     },
   },

@@ -271,7 +271,7 @@ E1="$(rcm -- --resident-ensure 2>"$WORK/e1.err")"
 P1="$(printf '%s' "$E1" | jget pid)"
 if [ "$P1" != "null" ]; then ok "远端起常驻：起了一个（pid $P1），答里只有 pid"
 else bad "远端起常驻没起来：$E1 $(cat "$WORK/e1.err")"; fi
-for _ in $(seq 1 50); do [ -S "$SOCK" ] && break; sleep 0.1; done
+wall_until '[ -S "$SOCK" ]' || true
 MODE="$(stat -c %a "$RH/.cc-monitor/run" 2>/dev/null)"
 if [ -S "$SOCK" ] && [ "$MODE" = 700 ]; then ok "常驻后端听那台家里的套接字，所在目录只给本人（$MODE）"
 else bad "套接字没出现或目录不是只给本人：$(ls -la "$RH/.cc-monitor/run" 2>&1 | head -5)"; fi

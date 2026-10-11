@@ -6,6 +6,7 @@
 //! - [`RunTrack`]：watcher 那一侧的手 —— 子运行的记录文件在哪（`ChildFace::sources`）、读到哪了；与主记录走同一条文件事件管线，不轮询。
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};
+use crate::platform::fs::Ro;
 use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
@@ -784,7 +785,7 @@ impl RunTrack {
         let Some(cur) = self.children.get_mut(p) else {
             return false;
         };
-        let Ok(mut f) = std::fs::File::open(p) else {
+        let Ok(mut f) = Ro::open(p) else {
             return false;
         };
         let meta = f.metadata().ok();

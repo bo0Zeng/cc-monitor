@@ -2,6 +2,7 @@
 //! 两边只在这里接上。
 
 use crate::accounts::upstream_select::rotate::{LibAccount, Library, LibraryRead};
+use crate::platform::fs::Ro;
 use std::path::Path;
 
 /// 这台的账号库：清单里每个号（配置目录的末段 ＝ 路由第 2 段）＋ 账号 0。没建账号库 / 清单读不懂 ⇒ 空。
@@ -920,7 +921,7 @@ fn warm_of(ctx: &Ctx) -> std::collections::BTreeMap<String, Vec<u64>> {
     else {
         return out;
     };
-    let Some(v) = std::fs::read_to_string(&path)
+    let Some(v) = Ro::read_to_string(&path)
         .ok()
         .and_then(|t| serde_json::from_str::<Value>(&t).ok())
     else {

@@ -108,7 +108,9 @@ ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && e
 if command -v script >/dev/null 2>&1; then
   out=$(timeout 4 script -qec "$TMUX_BIN -L $SOCK attach -t '=cc-p1:'" /dev/null 2>&1 | head -c 200)
   ck "pty 下 attach '=cc-p1:' 能接上真名" "ok" "$(echo "$out" | grep -q "can.t find" && echo notfound || echo ok)"
-  out2=$(timeout 4 script -qec "$TMUX_BIN -L $SOCK attach -t '=cc-nosuch:'" /dev/null 2>&1 | head -c 200)
+  # 不存在的名字 tmux 当场报错退出 ⇒ timeout 只兜底（兜底的那一个数）。上面那一条接上之后 attach 不会自己退，
+  #   4 秒是收它的采样窗：判的是「窗里没出现 can't find」，机器忙只会让窗里更空、不会误红。
+  out2=$(timeout "$WALL_CEILING_S" script -qec "$TMUX_BIN -L $SOCK attach -t '=cc-nosuch:'" /dev/null 2>&1 | head -c 200)
   ck "pty 下 attach 不存在名 → can't find" "notfound" "$(echo "$out2" | grep -q "can.t find" && echo notfound || echo ok)"
 else
   # U0（2026-08-01）：与 `ccm-cli.test.sh` 缺 npx 那处**一字不差的病**，一并修。

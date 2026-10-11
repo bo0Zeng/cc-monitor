@@ -76,7 +76,7 @@ chk() { if [ "$2" = "$3" ]; then echo "  PASS $1"; pass=$((pass+1)); else echo "
 d() {
   env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
       CCBUS_POLICY_MODE="${POLICY:-off}" CC_BUS_ID=probe_cc \
-      "$TIMEOUT" 20 "$D" -- "$@" 2>"$SANDBOX/err.txt"
+      "$TIMEOUT" "$WALL_CEILING_S" "$D" -- "$@" 2>"$SANDBOX/err.txt"
 }
 
 echo "===== P4f：backend 的 cc-bus 基础命令 ====="
@@ -125,7 +125,7 @@ rm -f "$BUS/policy.tsv"
 
 echo "[6] ★ 没装 cc-bus：说得出查过哪儿"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$EMPTY" HOME="$NOHOME" PATH="$EMPTY" \
-    "$TIMEOUT" 20 "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err6.txt"
+    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null >/dev/null 2>"$SANDBOX/err6.txt"
 chk "码是 not_installed（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err6.txt" 2>/dev/null)" "not_installed"
 msg="$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err6.txt" 2>/dev/null)"
 chk "  列出了 ~/.local/bin 那一处" "$(printf '%s' "$msg" | grep -c '.local/bin/cc-list')" "1"
@@ -153,16 +153,16 @@ echo "[8] ★ cc-bus 命令卡住时，backend 不许陪着一起卡"
 # ⚠ 修法**不是**在后端里加计时器（零定时器铁律 + 协议逐字「超时一律推给客户端」）——
 #   而是让**子进程自己**有期限（timeout 前缀，同 ccm 问后端那条）。
 mkdir -p "$SANDBOX/hangbin"
-printf '#!/bin/bash\nsleep 300\n' > "$SANDBOX/hangbin/cc-send"
+printf '#!/bin/bash\nsleep %s\n' "$((2 * WALL_CEILING_S))" > "$SANDBOX/hangbin/cc-send"
 chmod +x "$SANDBOX/hangbin/cc-send"
 cp "$SCRIPTS/cc-list" "$SANDBOX/hangbin/cc-list"
-_t0=$(date +%s)
+# 卡住的那一个睡两倍兜底上限、外面按兜底上限掐 ⇒ 期限不生效就是被掐（退出码 124）。不按墙钟数「几秒内回来」。
 printf '{"to":"x_cc","text":"hi"}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" \
     CC_BUS_BIN_DIR="$SANDBOX/hangbin" CC_BUS_TIMEOUT_SECS=2 \
-    "$TIMEOUT" 30 "$D" -- --bus-send >/dev/null 2>"$SANDBOX/err8.txt"
-_el=$(( $(date +%s) - _t0 ))
-chk "★ 2 秒的期限：真的在 5 秒内回来了（不是等到我们从外面掐）" \
-  "$([ "$_el" -le 5 ] && echo yes || echo "no（用了 ${_el}s）")" "yes"
+    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send >/dev/null 2>"$SANDBOX/err8.txt"
+_rc8=$?
+chk "★ 2 秒的期限：自己回来了（不是等到我们从外面掐）" \
+  "$([ "$_rc8" -ne 124 ] && echo yes || echo "no（被外面掐了）")" "yes"
 chk "  码是 child_timed_out（不是笼统的 failed）" "$(jq -r .code < "$SANDBOX/err8.txt" 2>/dev/null)" "child_timed_out"
 chk "  消息说得出多半卡在哪（cc-bus 的锁；flock 是禁档词，句子改说「锁」）" \
   "$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err8.txt" 2>/dev/null | grep -cF "$(zh_frag beCcBus.timedOut.say)")" "1"
@@ -174,12 +174,12 @@ echo "[9] ★ 声明「不收输入」的命令，stdin 不关时必须秒回"
 # ⚠ 守它的那条单测**是恒真的**（两个分支各是同一个表达式的复述），一声没吭。
 #   ⇒ 这一格钉**行为**：真起进程 + 一条不关的管道。声明真不真，由它说了算。
 for _c in --ping --bus-list; do
-  _t0=$(date +%s%N)
+  # stdin 开着两倍兜底上限、外面按兜底上限掐：挂着等输入就是被掐（124）。
   _o="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-        "$TIMEOUT" 6 "$D" -- "$_c" < <(sleep 30) 2>/dev/null)"
-  _ms=$(( ($(date +%s%N) - _t0) / 1000000 ))
+        "$TIMEOUT" "$WALL_CEILING_S" "$D" -- "$_c" < <(exec sleep "$((2 * WALL_CEILING_S))") 2>/dev/null
+        _r=$?; kill "$!" 2>/dev/null; exit "$_r")"; _rc9=$?
   chk "★ $_c：stdin 不关也返回了（不是挂到被掐）" \
-    "$([ -n "$_o" ] && [ "$_ms" -lt 5000 ] && echo yes || echo "no（${_ms}ms，输出 ${_o:-<空>}）")" "yes"
+    "$([ -n "$_o" ] && [ "$_rc9" -ne 124 ] && echo yes || echo "no（退出码 $_rc9，输出 ${_o:-<空>}）")" "yes"
 done
 
 echo "[10] ★ 总线成员是**身份空间的子集**，不是第二套名单"
@@ -198,7 +198,7 @@ new_bus_state() {
 }
 new_bus_state
 _j="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-      "$TIMEOUT" 20 "$D" -- --bus-list </dev/null 2>/dev/null)"
+      "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null 2>/dev/null)"
 chk "★ 活着的成员 live=true" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .live')" "true"
 chk "  且挂到了真身份上（@ccm_sid）" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="alive_cc") | .ccm_sid')" "sid-1234"
 chk "★ 名单里有、会话已经没了的 live=false" "$(printf '%s' "$_j" | jq -r '.agents[] | select(.id=="gone_cc") | .live')" "false"
@@ -212,7 +212,7 @@ done
 chk "  台架自检：这个 PATH 里确实没有 tmux" \
   "$(PATH="$_NT" command -v tmux >/dev/null 2>&1 && echo 有 || echo 没有)" "没有"
 _j2="$(env PATH="$_NT" CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-       "$TIMEOUT" 20 "$D" -- --bus-list </dev/null 2>/dev/null)"
+       "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-list </dev/null 2>/dev/null)"
 chk "★ 问不到身份空间 ⇒ live 是 **null**（不是 false）" \
   "$(printf '%s' "$_j2" | jq -r '.agents[0].live')" "null"
 chk "  但成员本身照样列得出来（邮箱状态不依赖身份空间）" \
@@ -225,7 +225,7 @@ echo "[11] ★ bus-send 也要说清「有没有人会读」"
 printf 'alive_cc\talive_cc:0.0\tts\t1\ngone_cc\tgone_cc:0.0\tts\t2\n' > "$BUS/agents.tsv"
 _snd() {
   printf '{"to":"%s","text":"x"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" -- --bus-send 2>/dev/null
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send 2>/dev/null
 }
 _a="$(_snd alive_cc)"; _g="$(_snd gone_cc)"; _n="$(_snd nobody_cc)"
 chk "★ 活着的收件人：registered=true live=true" \
@@ -248,7 +248,7 @@ echo "[12] ★ 正文太长要**归对因**：不是 cc-bus 坏了，是塞不�
 python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"x"*200000}))' \
   > "$SANDBOX/big.json"
 env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-    "$TIMEOUT" 20 "$D" -- --bus-send < "$SANDBOX/big.json" >/dev/null 2>"$SANDBOX/err12.txt"
+    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send < "$SANDBOX/big.json" >/dev/null 2>"$SANDBOX/err12.txt"
 chk "★ 码是 too_long（不是兜底的 failed）" "$(jq -r .code < "$SANDBOX/err12.txt" 2>/dev/null)" "too_long"
 _m12="$(jq -r '.message + "\n" + .detail' < "$SANDBOX/err12.txt" 2>/dev/null)"
 chk "  说了实测字节数（别让人自己去量）" "$(printf '%s' "$_m12" | grep -cF "$(zh beCcBus.deliver.tooLong reason= n=200000)")" "1"
@@ -257,7 +257,7 @@ chk "  明说不是 cc-bus 坏了（归因不许甩锅）" "$(printf '%s' "$_m12
 python3 -c 'import json,sys; sys.stdout.write(json.dumps({"to":"alive_cc","text":"y"*120000}))' \
   > "$SANDBOX/mid.json"
 _o12="$(env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-        "$TIMEOUT" 20 "$D" -- --bus-send < "$SANDBOX/mid.json" 2>/dev/null)"
+        "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send < "$SANDBOX/mid.json" 2>/dev/null)"
 chk "  对照：120KB 照样发得出去" "$(printf '%s' "$_o12" | jq -r .sent)" "true"
 
 echo "[13] ★ 以谁的身份发：不给 from 的话，回复会掉进没人读的收件箱"
@@ -271,7 +271,7 @@ printf 'x_cc	x_cc:0.0	ts	1
 ' > "$_fb/agents.tsv"
 _send_from() {
   printf '%s' "$2" | env -u TMUX -u TMUX_PANE -u CC_BUS_ID CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$_fb" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" -- --bus-send 2>/dev/null
+    CC_BUS_HOME="$_fb" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-send 2>/dev/null
 }
 : > "$_fb/inbox/x_cc.jsonl"
 _r1="$(_send_from x '{"to":"x_cc","text":"没给 from"}')"
@@ -299,7 +299,7 @@ tmux new-session -d -s kocc_cc -c /tmp 'sleep 999'; sleep 0.3     # 同名的无
 _occpid="$(tmux list-panes -t '=kocc_cc' -F '#{pane_pid}' | head -1)"
 _dk() {
   printf '{"id":"%s"}' "$1" | env CLAUDE_CONFIG_DIR="$CLA" \
-    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 20 "$D" -- --bus-kill 2>"$SANDBOX/kerr.txt"
+    CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-kill 2>"$SANDBOX/kerr.txt"
 }
 _k1="$(_dk kreal_cc)"
 chk "★ 真 agent：killed=true" "$(printf '%s' "$_k1" | jq -r .killed)" "true"
@@ -349,7 +349,7 @@ chk "起飞前：隔离服务端的 pane 里 claude 解析到假 agent" "$_which
 _ds() {
   printf '%s' "$1" | env HOME="$_SH" PATH="$_SPATH" CLAUDE_CONFIG_DIR="$CLA" \
     CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" CC_BUS_SCRIPTS="$SCRIPTS" CC_BUS_TIMEOUT_SECS=40 \
-    "$TIMEOUT" 60 "$D" -- --bus-spawn 2>"$SANDBOX/serr.txt"
+    "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-spawn 2>"$SANDBOX/serr.txt"
 }
 if [ "$_which" != "$_SB/claude" ]; then
   echo "  !! 自检没过 —— 本格不派生（宁可少判，也不在用户的 claude 上起会话）"
@@ -389,7 +389,7 @@ _sp() {  # $1.. = 额外的 VAR=值；目录与任务两个入口一样（那样
   env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
       CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" \
       "$@" \
-      "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
+      "$TIMEOUT" "$WALL_CEILING_S" bash "$SCRIPTS/cc-spawn" --base "$_EW/proj" "任务乙"
 }
 # 判据：每个入口的调用按内容分三类（探针 `--ccm-probe` / 建会话那趟 `--detach` / 其余 = pane 里那一跳；
 #   带 `--ccm-print` 的是自检那一趟，单列）。「入口前缀」**从 cc-spawn 那一趟的真实 argv 里现取**：
@@ -420,10 +420,9 @@ t1, t2 = p1[len(pre1):], p2[len(pre2):]
 print("同形" if t1 == t2 else f"参数不同：{t1!r} ≠ {t2!r}")
 PY
 }
-_wait_agent() {  # 等到第 $1 个假 agent 真的起来（坏了永远等不到，给 3 秒上限）
-  for _i in $(seq 1 30); do
-    [ "$(find "$_EW/proj" -maxdepth 1 -name 'agent-args.*' | wc -l)" -ge "$1" ] && break; sleep 0.1
-  done
+_wait_agent() {  # 等到第 $1 个假 agent 真的起来（坏了永远等不到，上限是兜底的那一个数）
+  _want_agents="$1"
+  wall_until '[ "$(find "$_EW/proj" -maxdepth 1 -name "agent-args.*" | wc -l)" -ge "$_want_agents" ]' || true
 }
 _o1="$(_sp CCM_BIN="$_EW/e1/ccm" 2>"$_EW/err1.txt")"; _r1=$?
 _wait_agent 1
@@ -455,8 +454,8 @@ mkdir -p "$_EW/bad"
 _ob="$(env -u TMUX -u TMUX_PANE -u CC_BUS_ID HOME="$_EW" CC_BUS_HOME="$_EW/bus" \
       CC_BUS_SCRIPTS="$SCRIPTS" CCSPAWN_LAUNCH="$_EW/bin/fake-agent" \
       CCM_BIN="$_EW/e4/ccm" \
-      "$TIMEOUT" 60 bash "$SCRIPTS/cc-spawn" --base "$_EW/bad" "任务丙" 2>"$_EW/errb.txt")"; _rb=$?
-for _i in $(seq 1 30); do tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -q '未知选项' && break; sleep 0.1; done
+      "$TIMEOUT" "$WALL_CEILING_S" bash "$SCRIPTS/cc-spawn" --base "$_EW/bad" "任务丙" 2>"$_EW/errb.txt")"; _rb=$?
+wall_until "tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -q '未知选项'" || true
 chk "  前提：pane 里那一跳真的当场报了参数错误（不是本格没打到）" \
   "$(tmux capture-pane -p -t '=bad_cc:' 2>/dev/null | grep -c '未知选项')" "1"
 chk "★ cc-spawn 退出码非 0（不是假成功）" "$([ "$_rb" -ne 0 ] && echo 非0 || echo "0（假成功）")" "非0"
@@ -472,7 +471,7 @@ sleep 0.3
 printf 'bcast_cc\tbcast_cc:0.0\tts\t1\nbgone_cc\tbgone_cc:0.0\tts\t2\nbcme_cc\tbcme_cc:0.0\tts\t3\n' > "$BUS/agents.tsv"
 : > "$BUS/inbox/bcast_cc.jsonl"; : > "$BUS/inbox/bgone_cc.jsonl"; : > "$BUS/inbox/bcme_cc.jsonl"
 _b="$(printf '{"text":"来自后端的广播","from":"bcme_cc"}' | env CLAUDE_CONFIG_DIR="$CLA" \
-      CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" 30 "$D" -- --bus-broadcast 2>"$SANDBOX/berr.txt")"
+      CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-broadcast 2>"$SANDBOX/berr.txt")"
 chk "★ 只投给在线的那一个（sent=1）" "$(printf '%s' "$_b" | jq -r .sent 2>/dev/null)" "1"
 chk "★ 会话没了的那一个计进 skipped_offline（不是悄悄丢掉）" "$(printf '%s' "$_b" | jq -r .skipped_offline 2>/dev/null)" "1"
 chk "  身份空间答得上 ⇒ liveness_unknown=false" "$(printf '%s' "$_b" | jq -r .liveness_unknown 2>/dev/null)" "false"
@@ -481,7 +480,7 @@ chk "★ 在线那一个的收件箱真的收到了" "$(grep -c '来自后端的
 chk "★ 会话没了的那一个没被投（不再造幽灵收件箱）" "$(grep -c '来自后端的广播' "$BUS/inbox/bgone_cc.jsonl" 2>/dev/null || true)" "0"
 chk "★ 不发给自己（from）" "$(grep -c '来自后端的广播' "$BUS/inbox/bcme_cc.jsonl" 2>/dev/null || true)" "0"
 printf '{"text":"   "}' | env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$SCRIPTS" \
-  "$TIMEOUT" 30 "$D" -- --bus-broadcast >/dev/null 2>"$SANDBOX/berr.txt"
+  "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-broadcast >/dev/null 2>"$SANDBOX/berr.txt"
 chk "★ 空正文 ⇒ bad_args（空广播不是缺省）" "$(jq -r .code < "$SANDBOX/berr.txt" 2>/dev/null)" "bad_args"
 tmux kill-session -t '=bcast_cc' 2>/dev/null || true
 tmux kill-session -t '=bcme_cc' 2>/dev/null || true
@@ -507,7 +506,7 @@ tmux new-session -d -s "$_u8name" -c /tmp \
     env -u TMUX_PANE TMUX="${TMUX%,*}," "$SCRIPTS/cc-whoami" > "$OUT/who3" 2>&1
     tmux display-message -p "#S" > "$OUT/raw" 2>&1
     touch "$OUT/done"; exec sleep 30' 2>/dev/null
-for _i in $(seq 1 100); do [ -f "$_u8d/done" ] && break; sleep 0.1; done
+wall_until '[ -f "$_u8d/done" ]' || true
 _u8want="$(printf '%s' "$_u8name" | LC_ALL=C sed 's/[^A-Za-z0-9_-]/-/g; s/^-*//; s/-*$//')"
 chk "  反向正控：同台架上不带旗的 display-message 确实被改写（台架真是非 UTF-8 客户端）" \
   "$([ "$(cat "$_u8d/raw" 2>/dev/null)" != "$_u8name" ] && [ -f "$_u8d/done" ] && echo yes || echo no)" "yes"
@@ -541,7 +540,7 @@ chk "★ --help 当收件箱 id ⇒ bad_id（交给 cc-log 之前拒）" "$(jq -
 # 老 cc-bus：`cc-list` / `cc-agents` 不认 --tsv（照打人读表）⇒ 明说要重新部署，不解成一份空名单。
 _old="$SANDBOX/oldbus"; mkdir -p "$_old"
 printf '#!/bin/sh\necho "ID           TMUX               待读"\n' > "$_old/cc-list"; cp "$_old/cc-list" "$_old/cc-agents"; chmod +x "$_old/cc-list" "$_old/cc-agents"
-env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" 20 "$D" -- --bus-state </dev/null >/dev/null 2>"$SANDBOX/err.txt"
+env CLAUDE_CONFIG_DIR="$CLA" CC_BUS_HOME="$BUS" CC_BUS_BIN_DIR="$_old" CC_BUS_ID=probe_cc "$TIMEOUT" "$WALL_CEILING_S" "$D" -- --bus-state </dev/null >/dev/null 2>"$SANDBOX/err.txt"
 # 那一句按文案键认（beCcBus.read.tooOld 最长的那一段固定字），不钉原文。
 _TOOOLD="$(zh_frag beCcBus.read.tooOld)"
 chk "★ 老 cc-bus ⇒ failed 且说要重新部署（beCcBus.read.tooOld）" "$(jq -r --arg w "$_TOOOLD" '.code + " " + ((.message + "\n" + .detail) | contains($w) | tostring)' < "$SANDBOX/err.txt" 2>/dev/null)" "failed true"
@@ -554,7 +553,7 @@ tmux new-session -d -s dg-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" O
   "$SCRIPTS/cc-register" dg_cc >/dev/null 2>&1; touch "$OUT/a"; exec sleep 60' 2>/dev/null
 tmux new-session -d -s dgother-cc -c /tmp env CC_BUS_HOME="$BUS" SCRIPTS="$SCRIPTS" OUT="$_dg" sh -c '
   "$SCRIPTS/cc-register" dgother_cc >/dev/null 2>&1; touch "$OUT/b"; exec sleep 60' 2>/dev/null
-for _i in $(seq 1 100); do [ -f "$_dg/a" ] && [ -f "$_dg/b" ] && break; sleep 0.1; done
+wall_until '[ -f "$_dg/a" ] && [ -f "$_dg/b" ]' || true
 printf '{"from":"x","text":"占位"}\n' >> "$BUS/inbox/dg_cc.jsonl"
 chk "  台架：两个会话都登记上了（带 pane pid）" "$(awk -F'\t' '$4!=""{n++} END{print n+0}' "$BUS/agents.tsv")" "2"
 out="$(printf '{"name":"dg-cc"}' | d --kill)"
@@ -573,7 +572,6 @@ J="$CLA/projects/-cli2/c2000000-0000-4000-8000-000000000001.jsonl"
 printf '%s\n' \
   '{"type":"user","uuid":"u1","parentUuid":null,"sessionId":"c2000000-0000-4000-8000-000000000001","timestamp":"2026-10-09T00:00:00Z","cwd":"/w","message":{"role":"user","content":"夹具一句"}}' \
   '{"type":"assistant","uuid":"a1","parentUuid":"u1","sessionId":"c2000000-0000-4000-8000-000000000001","timestamp":"2026-10-09T00:00:01Z","message":{"role":"assistant","model":"m","content":[{"type":"text","text":"夹具回话"}]}}' > "$J"
-c2ms() { local t=${EPOCHREALTIME/./}; echo $(( t / 1000 )); }
 for _cmd in history-read history-facts; do
   _j="$(jq -cn --arg p "$J" '{path:$p}')"
   printf '%s' "$_j" | d "--$_cmd" >"$SANDBOX/c2-in.txt"; _rc_in=$?; cp "$SANDBOX/err.txt" "$SANDBOX/c2-in.err"
@@ -596,18 +594,23 @@ chk "  --view 的 base64 写法与 JSON 原样逐字一样" "$(cmp -s "$SANDBOX/
 jq -cn --arg p "$J" '{path:$p}' | d --history-read --view '{"omit":{"record":["blcoks"]}}' >/dev/null
 chk "★ --view 点了目录里没有的格：bad_args" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_args"
 # stdin 开着、一直不写：两种读法都立即回 no_input，不挂到被掐。
+# stdin 开着两倍兜底上限、`d` 按兜底上限掐 ⇒ 挂着等就是 124，不是 2。
 for _extra in "" --stdin-line; do
-  _t0=$(c2ms); d --history-read $_extra < <(sleep 30) >/dev/null; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
-  chk "★ 开着不写（${_extra:-默认}）：立即回码（不是挂到被掐）" "$([ "$_rc" -eq 2 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")" "是"
+  d --history-read $_extra < <(exec sleep "$((2 * WALL_CEILING_S))") >/dev/null; _rc=$?; kill "$!" 2>/dev/null
+  chk "★ 开着不写（${_extra:-默认}）：立即回码（不是挂到被掐）" "$([ "$_rc" -eq 2 ] && echo 是 || echo "否 rc=$_rc")" "是"
   chk "  码是 no_input" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "no_input"
 done
 # stdin 是 EOF：照旧当 {}，由命令自己说缺什么。
 d --history-read </dev/null >/dev/null
 chk "★ stdin 是 EOF：命令自己回缺入参（bad_args）" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_args"
 # --stdin-line 不在第二格也认：读到换行就动手，stdin 后面不关也不挂。
-_t0=$(c2ms); { printf '%s\n' "$(jq -cn --arg p "$J" '{path:$p}')"; sleep 30; } | d --history-read --no-such-option --stdin-line >"$SANDBOX/c2-sl.txt" &
-_pid=$!; _ok=否; for _ in $(seq 1 50); do [ -s "$SANDBOX/c2-sl.txt" ] && { _ok=是; break; }; sleep 0.1; done; kill "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null
-chk "★ --stdin-line 在后面也认（5 s 内答出、不等 EOF）" "$_ok" "是"
+# stdin 由本 shell 拿着一个管子的写端：写完一行不关，答出来之后才关 ⇒ 「不等 EOF」不靠墙钟分。
+_sl="$SANDBOX/c2-sl.fifo"; rm -f "$_sl"; mkfifo "$_sl"
+d --history-read --no-such-option --stdin-line <"$_sl" >"$SANDBOX/c2-sl.txt" &
+_pid=$!; exec 7>"$_sl"; printf '%s\n' "$(jq -cn --arg p "$J" '{path:$p}')" >&7
+_ok=否; wall_until '[ -s "$SANDBOX/c2-sl.txt" ]' && _ok=是
+exec 7>&-; kill "$_pid" 2>/dev/null; wait "$_pid" 2>/dev/null
+chk "★ --stdin-line 在后面也认（stdin 还开着就答出、不等 EOF）" "$_ok" "是"
 # 两个口都给 ⇒ bad_args。
 d --history-read --args-b64 e30= --stdin-line < <(sleep 30) >/dev/null
 chk "★ 两个口都给：bad_args" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "bad_args"
@@ -617,8 +620,8 @@ chk "★ stdin 超 1 MiB：args_too_large（不截断、不挂）" "$(jq -r .cod
 d --history-read --args-b64 "$(head -c 131070 /dev/zero | tr '\0' A)" < <(sleep 30) >/dev/null
 chk "★ argv 值超本后端的上限：args_too_large" "$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "args_too_large"
 # 超过系统单个参数的上限（Linux 131072 含 NUL）：起不来，错在 exec 那一层 —— 也是立即失败、不挂。
-_t0=$(c2ms); d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(sleep 30) >/dev/null 2>&1; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
-chk "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")" "是"
+d --history-read --args-b64 "$(head -c 140000 /dev/zero | tr '\0' A)" < <(exec sleep "$((2 * WALL_CEILING_S))") >/dev/null 2>&1; _rc=$?; kill "$!" 2>/dev/null
+chk "★ argv 超系统上限：exec 那一层立即失败（非 0、不挂）" "$([ "$_rc" -ne 0 ] && [ "$_rc" -ne 124 ] && echo 是 || echo "否 rc=$_rc")" "是"
 
 # `--resolve`（与手机端冻结的那一条）同一套口：argv 与 stdin 逐字一样 · 开着不写回 no_input（码全集钉在金样里）。
 _rq='{"sessionId":"s1"}'
@@ -626,8 +629,8 @@ printf '%s' "$_rq" | d --resolve >"$SANDBOX/c2-rs-in.txt"; _rc_in=$?
 d --resolve --args-b64 "$(printf '%s' "$_rq" | base64 -w0)" < <(sleep 30) >"$SANDBOX/c2-rs-av.txt"; _rc_av=$?
 chk "★ --resolve：argv 载荷口与 stdin 逐字一样（退出 0）" "$_rc_in|$_rc_av|$(cmp -s "$SANDBOX/c2-rs-in.txt" "$SANDBOX/c2-rs-av.txt" && echo 同 || echo 不同)" "0|0|同"
 chk "  --resolve 成品是那条恢复命令" "$(jq -r .command < "$SANDBOX/c2-rs-av.txt" 2>/dev/null)" "claude --resume s1"
-_t0=$(c2ms); d --resolve < <(sleep 30) >/dev/null; _rc=$?; _dt=$(( $(c2ms) - _t0 ))
-chk "★ --resolve 开着不写：立即回 no_input" "$([ "$_rc" -eq 2 ] && [ "$_dt" -lt 5000 ] && echo 是 || echo "否 rc=$_rc ${_dt}ms")|$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "是|no_input"
+d --resolve < <(exec sleep "$((2 * WALL_CEILING_S))") >/dev/null; _rc=$?; kill "$!" 2>/dev/null
+chk "★ --resolve 开着不写：立即回 no_input" "$([ "$_rc" -eq 2 ] && echo 是 || echo "否 rc=$_rc")|$(jq -r .code < "$SANDBOX/err.txt" 2>/dev/null)" "是|no_input"
 
 echo "[CLI3] ★ 一次性模式的 stderr 是协议通道：成功 ⇒ 一个字节都没有；失败 ⇒ 正好一行信封 {code, message, detail}；诊断进后端日志文件"
 # 日志落点 = 那台后端自己的 stderr 诊断文件（`~/.cc-monitor/logs/backend/stderr.log`，宿主交了 CCM_BACKEND_STDERR_LOG 就用交的那份）。

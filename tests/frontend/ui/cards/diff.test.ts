@@ -146,30 +146,25 @@ test("MultiEdit well-formed → N pairs", () => {
   ]);
 });
 
-// (j) 超大输入：cell-budget 守卫退化路径，时间有界，不挂不抛
-test("huge 5000-line rewrite: budget-guard degenerate, time-bounded", () => {
-  const old = Array.from({ length: 5000 }, (_, i) => `old line ${i}`).join("\n");
-  const neu = Array.from({ length: 5000 }, (_, i) => `new line ${i}`).join("\n");
-  const t0 = Date.now();
+// (j) 超大输入：cell-budget 守卫退化路径，不挂不抛。
+// 不看墙钟（10-11 起：从前比 `dt < 3000`，忙机上会误红）：走没走退化那一支看形状 ——
+// 两边隔行相同：走了 O(mn) 矩阵会认出同行（ctx）、增删各 2500；退化那一支整删整增、一行同行都没有、增删各 5000。
+test("huge 5000-line rewrite: budget-guard degenerate path", () => {
+  const old = Array.from({ length: 5000 }, (_, i) => (i % 2 ? `old line ${i}` : `same ${i}`)).join("\n");
+  const neu = Array.from({ length: 5000 }, (_, i) => (i % 2 ? `new line ${i}` : `same ${i}`)).join("\n");
   const r = diffLines(old, neu);
-  const dt = Date.now() - t0;
-  // 粗粒度 smoke（非精确基准）：真退化到 O(mn)/递归会在 5000 行上耗时数秒或挂死 → CI job
-  // timeout 兜底。阈值放宽到 3000ms 避免共享 runner 抖动假红（原 500ms 贴近实测、偶发 flaky）。
-  ok(dt < 3000, `took ${dt}ms (regression to O(mn)/recursion would be seconds)`);
+  ok(r.rows.every((row) => row.type !== "ctx"), "degenerate path: whole-delete + whole-add, no LCS ctx rows");
   eq(r.truncated, true, "truncated");
   eq(r.addCount, 5000, "addCount");
   eq(r.delCount, 5000, "delCount");
   ok(r.rows.length <= 400, "rows capped");
 });
 
-// (j2) 真实 LCS 矩阵路径（预算内）也要时间有界、迭代不爆栈
-test("600x600 full rewrite: real LCS path, time-bounded", () => {
+// (j2) 真实 LCS 矩阵路径（预算内）迭代不爆栈（递归回溯在 600 层上会抛 RangeError）；不看墙钟。
+test("600x600 full rewrite: real LCS path, iterative", () => {
   const old = Array.from({ length: 600 }, (_, i) => `o${i}`).join("\n");
   const neu = Array.from({ length: 600 }, (_, i) => `n${i}`).join("\n");
-  const t0 = Date.now();
   const r = diffLines(old, neu);
-  const dt = Date.now() - t0;
-  ok(dt < 3000, `took ${dt}ms (coarse smoke; real regression = seconds/hang)`); // 放宽避免 runner 抖动假红
   eq(r.addCount, 600, "addCount");
   eq(r.delCount, 600, "delCount");
 });

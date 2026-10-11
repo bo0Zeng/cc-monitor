@@ -280,7 +280,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
     // 外层等一会儿还没答 ⇒ 调用方期限到点 ⇒ 外层被丢（`timeout` 到点即丢它）。
     let gave_up = tokio::time::timeout(std::time::Duration::from_millis(200), outer).await;
     assert!(gave_up.is_err(), "永不答的那一趟竟然答了");
-    tokio::time::timeout(std::time::Duration::from_secs(10), rx)
+    tokio::time::timeout(guard_core::wall::CEILING, rx)
         .await
         .expect("外层被丢 10 秒了，内层任务还攥着那一格 —— 它脱钩了（格永远占着）")
         .expect("哨兵没报信就没了");
@@ -298,7 +298,7 @@ async fn an_abandoned_ask_takes_its_inner_task_down_with_it() {
     .await
     .map_err(|s| s.message);
     assert_eq!(got, Ok("答".to_string()));
-    tokio::time::timeout(std::time::Duration::from_secs(10), rx2)
+    tokio::time::timeout(guard_core::wall::CEILING, rx2)
         .await
         .expect("答完 10 秒了，内层任务还在")
         .expect("哨兵没报信就没了");

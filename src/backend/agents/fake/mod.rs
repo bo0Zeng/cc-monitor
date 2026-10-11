@@ -29,6 +29,7 @@
 //! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve_json_among`）。
 //! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
+use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
 /// 本假 agent 在 wire 上的 `agent_kind` 值。
@@ -81,7 +82,7 @@ pub(crate) const ACCOUNT_DIR_ENV: &str = "CCM_FAKE_ACCOUNT_DIR";
 /// `projects[cwd].hasTrustDialogAccepted`）。
 pub(crate) fn trust_of_config(root: &Path, cwd: &str) -> Result<bool, String> {
     let p = root.join("fake-config.json");
-    let bytes = std::fs::read(&p).map_err(|e| format!("fake_config_unreadable: {e}"))?;
+    let bytes = Ro::read(&p).map_err(|e| format!("fake_config_unreadable: {e}"))?;
     let v: serde_json::Value =
         serde_json::from_slice(&bytes).map_err(|e| format!("fake_config_invalid: {e}"))?;
     Ok(v.get("trusted")
@@ -270,7 +271,7 @@ fn read_mcp(project_dir: Option<&Path>, _look: &crate::agents::McpLook) -> crate
     let mut out = crate::agents::McpRead::default();
     let Some(dir) = project_dir else { return out };
     let file = dir.join(".fake-mcp.json");
-    let Ok(text) = std::fs::read_to_string(&file) else {
+    let Ok(text) = Ro::read_to_string(&file) else {
         return out;
     };
     match serde_json::from_str::<serde_json::Value>(&text) {
@@ -525,11 +526,11 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }];
     let mut found: Vec<PathBuf> = Vec::new();
     let records_root = crate::agents::records_root_among(&reg, AGENT_KIND, fixture_home);
-    if let Some(Ok(projects)) = records_root.map(std::fs::read_dir) {
+    if let Some(Ok(projects)) = records_root.map(Ro::read_dir) {
         let mut dirs: Vec<PathBuf> = projects.flatten().map(|e| e.path()).collect();
         dirs.sort();
         for d in dirs {
-            if let Ok(files) = std::fs::read_dir(&d) {
+            if let Ok(files) = Ro::read_dir(&d) {
                 let mut ps: Vec<PathBuf> = files.flatten().map(|e| e.path()).collect();
                 ps.sort();
                 found.extend(ps.into_iter().filter(|p| {
@@ -577,7 +578,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
             stage: STAGES[3],
             capability: "pidfile 目录",
         })?;
-    let pidfiles = std::fs::read_dir((local.pidfile_dir)(fixture_home))
+    let pidfiles = Ro::read_dir((local.pidfile_dir)(fixture_home))
         .map(|rd| rd.flatten().count())
         .unwrap_or(0);
     if pidfiles == 0 {

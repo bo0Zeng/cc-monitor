@@ -37,7 +37,7 @@ fn stand_in(
 /// 掐断它会把记号留在终端标题上）。正控：答得及的那一趟照收。
 ///
 /// 不按墙钟判：替身一直等到判据放行（目录里出现 `go`）才答话、留记号，所以 `ask_helper` 回来那一刻它一定还没答完，
-/// 机器多忙都一样；放行之后记号出现 ⇒ 它没被掐。等的那几处只是上限（卡死时别挂住整套），不是判据。
+/// 机器多忙都一样；放行之后记号出现 ⇒ 它没被掐。等的那几处只是兜底的上限（`guard_core::wall::CEILING`，卡死时别挂住整套），不是判据。
 #[test]
 fn a_late_helper_is_left_to_finish_not_killed() {
     let dir = std::env::temp_dir().join(format!("ccm-console-helper-{}", std::process::id()));
@@ -53,7 +53,7 @@ fn a_late_helper_is_left_to_finish_not_killed() {
     std::thread::spawn(move || {
         let _ = tx.send(ask_helper(std::time::Duration::from_millis(200), &spawn));
     });
-    let got = rx.recv_timeout(std::time::Duration::from_secs(60));
+    let got = rx.recv_timeout(guard_core::wall::CEILING);
     if got.is_err() {
         // 红之前先放行替身，别留一个一直在等的进程。
         let _ = std::fs::write(dir.join("go"), b"");
@@ -65,7 +65,7 @@ fn a_late_helper_is_left_to_finish_not_killed() {
     assert_eq!(got.unwrap(), None, "没答完却收了半截");
     assert!(!dir.join("finished").exists(), "量具：没放行替身就跑完了");
     std::fs::write(dir.join("go"), b"").unwrap();
-    let limit = std::time::Instant::now() + std::time::Duration::from_secs(60);
+    let limit = std::time::Instant::now() + guard_core::wall::CEILING;
     while !dir.join("finished").exists() && std::time::Instant::now() < limit {
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
@@ -74,7 +74,7 @@ fn a_late_helper_is_left_to_finish_not_killed() {
         "到点没答完的小助手被掐掉了（放行之后没跑完它自己那一段）"
     );
     let quick = ask_helper(
-        std::time::Duration::from_secs(60),
+        guard_core::wall::CEILING,
         &stand_in("echo 42 shown 0x1".into(), None),
     );
     assert_eq!(quick.as_deref().map(str::trim_end), Some("42 shown 0x1"));

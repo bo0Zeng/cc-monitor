@@ -29,7 +29,7 @@ import { REPO_ROOT } from "../../../test-support/repo-root";
 
 import { confirmDialog, askText, formDialog, LIST_MAX, type ConfirmSpec } from "../../../../src/frontend/ui/kit/dialog";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../../test-support/production-sources.ts";
+import { productionTsFiles } from "../../../test-support/production-sources.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 // ─────────────────────────────── D1 ───────────────────────────────
@@ -126,7 +126,7 @@ describe("D1 · 生产 TS 零处原生 confirm / prompt", () => {
       hits.map((h) => `${h.file}:${h.line}  ${h.text}`),
       "这些地方还在用原生弹窗 —— 真 app 里 window.confirm 返回 Promise（永远真值），等于没问；改用 src/frontend/ui/kit/dialog.ts 的 confirmDialog / askText",
     ).toEqual([]);
-  }, SCAN_TIMEOUT_MS); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.8 s）
+  }); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.8 s）
 });
 
 // ─────────────────────────────── D1b ───────────────────────────────
@@ -188,7 +188,7 @@ describe("D1b · 对话框的答案一律 await", () => {
       per.filter((p) => p.all.length > 0).map((p) => p.file).sort(),
       "调用对话框的文件变了：新长的调用点要进这张清单（并确认它 await 了）",
     ).toEqual([...ASK_CALLERS].sort());
-  }, SCAN_TIMEOUT_MS); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.8 s）
+  }); // 全仓生产 TS 逐份建 AST：整套并跑时 5 s 默认期限不够（现打 7.8 s）
 });
 
 // ─────────────────────────────── D2 ───────────────────────────────

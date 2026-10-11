@@ -140,8 +140,8 @@ async fn a_backend_that_never_answers_is_bounded_by_left() {
         },
         "第 1 跳超时的形状不对（那张表：Hop{{1 wait, Unknown, Overrun}}）"
     );
-    // 上界不是「永远」：给 80ms，允许调度抖动，但不许等到几秒。
-    assert!(started.elapsed() < Duration::from_secs(3), "没被截断");
+    // 上界不是「永远」：给 80ms；句柄永不回答，没截断就等到兜底上限、撞这一道。
+    assert!(started.elapsed() < guard_core::wall::CEILING, "没被截断");
     let seen = fake.seen.lock().unwrap();
     assert!(
         seen[0].4.is_cancelled(),
@@ -447,10 +447,11 @@ async fn a_cancel_by_id_reaches_the_backend_handle_across_the_webview_hop() {
         }
         assert!(cancel_inflight(&id), "在飞的那一问撤不到 —— 在飞表没登记它");
     };
-    let (got, ()) =
-        tokio::time::timeout(Duration::from_secs(5), async { tokio::join!(call, cancel) })
-            .await
-            .expect("撤了 5 秒还没收场 —— 撤单没过这一跳");
+    let (got, ()) = tokio::time::timeout(guard_core::wall::CEILING, async {
+        tokio::join!(call, cancel)
+    })
+    .await
+    .expect("撤了 5 秒还没收场 —— 撤单没过这一跳");
     assert!(
         matches!(
             got,

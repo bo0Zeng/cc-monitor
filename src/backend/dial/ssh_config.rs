@@ -12,6 +12,7 @@
 //! 只读 `~/.ssh/config`，**不碰任何密钥文件**（`identityfile` 只问「在不在」，不读内容）。
 
 use crate::platform::child::{Child, Deadline};
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use serde::Serialize;
 
@@ -242,7 +243,7 @@ pub(crate) fn list_aliases() -> Vec<String> {
     else {
         return Vec::new();
     };
-    std::fs::read_to_string(path)
+    Ro::read_to_string(path)
         .map(|c| parse_host_aliases(&c))
         .unwrap_or_default()
 }

@@ -2849,6 +2849,12 @@ mod tests {
     /// 允许集合来自实测：`File` / `File::open` / `metadata` / `read` / `read_dir` /
     /// `read_to_string`（纯只读）+ 两个仓内 helper（`mtime_ms` / `read_regular_capped`），
     /// 以及**只准出现在 [`WRITE_WHITELIST_MODULES`] 那几个模块里**的 [`WRITE_ONLY_IN_WHITELIST`]。
+    ///
+    /// # 类型挡第一刀之后（10-11）：**人群只剩还没搬的那几份写盘模块**
+    ///
+    /// 别处读盘都经 `platform::fs::Ro`，连 `std::fs` 都不许点名（[`only_the_fs_platform_module_names_the_filesystem`]）⇒
+    /// 本条只看 [`not_yet_on_typed_fs`] 那 25 份（第一层 1 · 第三层 5 · 第四层 19）：它们的动词闭集照旧靠本条与 `READ_ONLY`。
+    /// 两条管的文件不重叠。第 2、3 刀把那几份搬上 `Own` / `Face` 时，本条连同 `READ_ONLY` 一起删。
     #[test]
     fn every_fs_call_in_backend_production_is_read_only() {
         /// 只读动词 + 仓内只读 helper。**新增写 API 不在这里 ⇒ 自动红。**
@@ -2859,9 +2865,8 @@ mod tests {
             "read",
             "read_dir",
             "read_to_string",
-            "mtime_ms",
-            "read_regular_capped",
-            "read_json_capped",
+            // `platform/fs/` 那个只读命名空间（`crate::platform::fs::Ro::…` 那一形里 `fs::` 后面跟的是它）。
+            "Ro",
             // P4f：`PermissionsExt` 只用来**读** `mode()`（判可执行位，找 cc-bus 命令用）。
             // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
             "PermissionsExt",
@@ -2934,6 +2939,9 @@ mod tests {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
+            if !not_yet_on_typed_fs(&rel) {
+                continue; // 别处由 `only_the_fs_platform_module_names_the_filesystem` 管（连 `std::fs` 都不许点名）
+            }
             let prod = guard_core::production_code(&src);
             for line in prod.lines() {
                 let l = line.trim();
@@ -2962,6 +2970,9 @@ mod tests {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
+            if !not_yet_on_typed_fs(&rel) {
+                continue;
+            }
             let prod = guard_core::production_code(&src);
             for line in prod.lines() {
                 let l = line.trim();
@@ -3040,12 +3051,257 @@ mod tests {
              ★ 本条是白名单 —— 它挡的不只是已知的写 API，也挡**没人想到过**的那些：\n\
              08-06 实测，上面那条黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`\n\
              （表里写的是早已废弃的 `soft_link`，而 `set_permissions` 根本没列）。\n\
-             要新增只读调用就把动词加进 `READ_ONLY`；要写盘只有两条路：\n\
+             这几份还没搬上类型挡：读改走 `platform::fs::Ro`（不用动 `READ_ONLY`）；要写盘只有两条路：\n\
              新增文件 ⇒ 进已登记的白名单模块 `{}`；改动既有数据 ⇒ 只有第三层那一面\n\
              （文件管理面，「现在只允许后端的文件管理部分写文件」）。两条路各自另有护栏。",
             bad.join("\n"),
             write_whitelist_names()
         );
+    }
+    // ═══════════════ 碰盘只经 `platform/fs/`（类型挡第一刀：读）═══════════════
+
+    /// 唯一允许点名文件系统命名空间的地方。别处要读盘只能经它交出去的 [`crate::platform::fs::Ro`]。
+    const FS_HOME: &str = "platform/fs/";
+
+    /// 带路径的那几个命名空间：点名一处就红（前后都要是边界，`std::fsx` 不算）。
+    const FS_PATHS: &[&str] = &["std::fs", "tokio::fs", "os::unix::fs", "os::windows::fs"];
+    /// 只认整词的那两个类型名（`OpenOptionsLike` 不算）。
+    /// ⚠ 裸 `File` 不在这里：它不在前导里，要用 `std` / `tokio` 的那个 `File` 先得点名上面某个路径
+    ///   （全路径 · 导入 · 分组导入 · 起别名都是），而裸词会撞上一堆叫 `File` 的枚举臂（`Item::File` · `What::File` …）。
+    const FS_WORDS: &[&str] = &["OpenOptions", "DirBuilder"];
+    /// 分组导入的根：`use std::{fs, io}` 这种写法里没有 `std::fs` 这串字，要按组认。
+    const FS_GROUP_ROOTS: &[&str] = &["std::", "tokio::", "os::", "os::unix::", "os::windows::"];
+
+    fn word_char(c: char) -> bool {
+        c.is_ascii_alphanumeric() || c == '_'
+    }
+
+    fn word_at(code: &str, at: usize, needle: &str) -> bool {
+        let before = code[..at].chars().next_back().is_some_and(word_char);
+        let after = code[at + needle.len()..]
+            .chars()
+            .next()
+            .is_some_and(word_char);
+        !before && !after
+    }
+
+    /// 一段生产代码（已剥测试段与注释）里点名文件系统命名空间的每一处：`(行号, 命中的那一形)`。
+    pub(super) fn fs_namespace_hits(code: &str) -> Vec<(usize, String)> {
+        let line_of = |at: usize| code[..at].matches('\n').count() + 1;
+        let mut hits = Vec::new();
+        for needle in FS_PATHS.iter().chain(FS_WORDS) {
+            let mut from = 0;
+            while let Some(k) = code[from..].find(needle) {
+                let at = from + k;
+                if word_at(code, at, needle) {
+                    hits.push((line_of(at), needle.to_string()));
+                }
+                from = at + needle.len();
+            }
+        }
+        for root in FS_GROUP_ROOTS {
+            let open = format!("{root}{{");
+            let mut from = 0;
+            while let Some(k) = code[from..].find(open.as_str()) {
+                let at = from + k;
+                let body_at = at + open.len();
+                let mut depth = 1usize;
+                let mut end = code.len();
+                for (i, c) in code[body_at..].char_indices() {
+                    match c {
+                        '{' => depth += 1,
+                        '}' => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = body_at + i;
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let body = &code[body_at..end];
+                let mut f = 0;
+                while let Some(j) = body[f..].find("fs") {
+                    let p = f + j;
+                    if word_at(body, p, "fs") {
+                        hits.push((line_of(at), format!("{open}…fs…}}")));
+                        break;
+                    }
+                    f = p + 2;
+                }
+                from = body_at;
+            }
+        }
+        hits.sort();
+        hits.dedup();
+        hits
+    }
+
+    /// 这一刀还没搬的那几份写盘模块（第一层 1 · 第三层 5 · 第四层 19）：它们照旧由逐调用点那条
+    /// （[`every_fs_call_in_backend_production_is_read_only`]，只看这几份）管，第 2、3 刀搬完连同那条一起删。
+    fn not_yet_on_typed_fs(rel: &str) -> bool {
+        is_write_whitelisted(rel) || is_mutating_face(rel) || is_own_state(rel)
+    }
+
+    /// 🔴 **碰盘只经 `platform/fs/`。** 后端生产段除了 `platform/fs/`，一处都不许点名
+    /// `std::fs` · `tokio::fs` · `os::unix::fs` · `OpenOptions` · `DirBuilder`（分组导入、起别名一样算；`std::fs::File` 只能经这些路径点名）。
+    /// 读盘走 `platform::fs::Ro`（只读：没有写方法，`open` 交回的只能读和挪读写位置）；
+    /// 今后加一个读动词只改 `platform/fs/` 一处，本条不用动。
+    #[test]
+    fn only_the_fs_platform_module_names_the_filesystem() {
+        let root = crate::guard_support::src_root();
+        let mut bad = Vec::new();
+        let (mut scanned, mut home_hits) = (0usize, 0usize);
+        for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let code = guard_core::production_code(&src);
+            let hits = fs_namespace_hits(&code);
+            scanned += 1;
+            if rel.starts_with(FS_HOME) {
+                home_hits += hits.len();
+                continue;
+            }
+            if not_yet_on_typed_fs(&rel) {
+                continue;
+            }
+            // 行号是剥过注释的那份里的，不对盘 ⇒ 报那一行的原文。
+            for (line, what) in hits {
+                let text = code.lines().nth(line - 1).unwrap_or("").trim();
+                bad.push(format!("  {rel}: {what} —— {text}"));
+            }
+        }
+        assert!(
+            scanned >= 100,
+            "只扫到 {scanned} 份后端源码 —— 遍历坏了，本条会空转地绿"
+        );
+        assert!(
+            bad.is_empty(),
+            "后端生产段在 `{FS_HOME}` 之外点名了文件系统：\n{}\n\n\
+             读盘走 `crate::platform::fs::Ro`（`Ro::metadata` · `Ro::read_to_string` · `Ro::open` …）；\n\
+             缺一个读动词就加进 `platform/fs/ro.rs`。写盘不在这里开口子 —— 那是写的那几层的事。",
+            bad.join("\n")
+        );
+        assert!(
+            home_hits > 0,
+            "`{FS_HOME}` 里一处命名空间都没扫到 —— 针坏了（那里本该是唯一点名 `std::fs` 的地方）"
+        );
+    }
+
+    /// 上一条的针真咬得住：该红的那几形红、该绿的那几形绿（a9b661c1a 那一形就是该绿的那一句）。
+    #[test]
+    fn the_fs_namespace_needle_bites_and_lets_the_typed_reads_through() {
+        for red in [
+            "fn f(p: &Path) { let _ = std::fs::metadata(p); }",
+            "fn f(p: &Path) { let _ = std::fs::symlink_metadata(p); }",
+            "use std::{fs, io};",
+            "use std::{io::{self, Read}, fs::File};",
+            "async fn f(p: &Path) { tokio::fs::read(p).await; }",
+            "fn f(r: BufReader<std::fs::File>) {}",
+            "use std::fs as f;",
+            "let p = ::std::fs::read_link(p);",
+            "let o = OpenOptions::new();",
+            "let b = DirBuilder::new();",
+            "use std::os::unix::fs::PermissionsExt;",
+            "use std::os::{unix::fs::MetadataExt};",
+        ] {
+            assert!(!fs_namespace_hits(red).is_empty(), "该红没红：{red}");
+        }
+        for green in [
+            "fn f(p: &Path) { let _ = crate::platform::fs::Ro::symlink_metadata(p); }",
+            "use crate::platform::fs::{Ro, RoFile};",
+            "struct FileKind; let x = Profile::new(); let y = files::list();",
+            "match i { Item::File { .. } => {} }",
+            "use std::{io, path::Path};",
+            "let s = std::fsync;",
+        ] {
+            assert_eq!(fs_namespace_hits(green), vec![], "该绿没绿：{green}");
+        }
+    }
+    /// `platform/fs/` 里点名标准库文件系统的只许 `ro.rs` 一份，而它点名的每一样都是读
+    /// （写原语那几样住 `mod.rs`，走系统调用、一个命名空间都不点名，谁调得到由写的那几层管）。
+    /// 这张表只管这一份文件：今后加一个读动词，改的是 `ro.rs` 与这里，别处一行不动。
+    const RO_NAMES: &[&str] = &[
+        "std::fs::read(",
+        "std::fs::read_to_string(",
+        "std::fs::read_dir(",
+        "std::fs::metadata(",
+        "std::fs::canonicalize(",
+        "std::fs::read_link(",
+        "std::fs::File::open(",
+        "std::fs::File)",
+        "std::fs::File,",
+        "std::fs::Metadata;",
+        "std::fs::ReadDir;",
+        "std::os::unix::fs::PermissionsExt",
+        "std::os::unix::fs::MetadataExt",
+    ];
+
+    #[test]
+    fn the_read_namespace_only_names_reads() {
+        let root = crate::guard_support::src_root();
+        let mut named = 0usize;
+        let mut bad = Vec::new();
+        for (path, src) in guard_core::scan_tree!(&root.join("platform/fs"), &["rs"]) {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let code = guard_core::production_code(&src);
+            if rel != "platform/fs/ro.rs" {
+                for (line, what) in fs_namespace_hits(&code) {
+                    let text = code.lines().nth(line - 1).unwrap_or("").trim();
+                    bad.push(format!("  {rel}: {what} —— {text}（只许 `ro.rs` 点名）"));
+                }
+                continue;
+            }
+            // 认得的那几形整段摘掉，剩下的里面再有一处点名就是读以外的东西。
+            let mut rest = code.clone();
+            for ok in RO_NAMES {
+                named += rest.matches(ok).count();
+                rest = rest.replace(ok, "");
+            }
+            for (line, what) in fs_namespace_hits(&rest) {
+                let text = rest.lines().nth(line - 1).unwrap_or("").trim();
+                bad.push(format!("  {rel}: {what} —— {text}"));
+            }
+        }
+        assert!(
+            named >= 8,
+            "`platform/fs/ro.rs` 只扫到 {named} 处点名 —— 针或住址坏了，本条会空转地绿"
+        );
+        assert!(
+            bad.is_empty(),
+            "`platform/fs/` 里点名了读以外的东西：\n{}\n\n\
+             这里是全后端唯一能碰盘的地方，读那一半只许读（`RO_NAMES`）；写的能力不从这里开口子。",
+            bad.join("\n")
+        );
+    }
+
+    /// `Ro::open` 交回的那一份没有 `Write`：拿着它写不出来（现打，不是读源码）。
+    #[test]
+    fn the_read_only_file_has_no_write() {
+        use std::marker::PhantomData;
+        trait NoWrite {
+            const WRITES: bool = false;
+        }
+        struct Probe<T>(PhantomData<T>);
+        impl<T> NoWrite for Probe<T> {}
+        #[allow(dead_code)]
+        impl<T: std::io::Write> Probe<T> {
+            const WRITES: bool = true;
+        }
+        assert!(
+            !<Probe<crate::platform::fs::RoFile>>::WRITES,
+            "`RoFile` 实现了 `Write` —— 只读打开交回的东西能写了"
+        );
+        // 正控：同一根探针在一个真能写的类型上答「能写」，否则上面那条恒绿。
+        assert!(<Probe<Vec<u8>>>::WRITES, "探针坏了：`Vec<u8>` 明明能写");
     }
 }
 

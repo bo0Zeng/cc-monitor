@@ -18,6 +18,7 @@ vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-
 import { bindEvents, CREDIT_EXEMPT_FRAMES } from "../../../src/frontend/ui/events";
 import { streamFake } from "../../test-support/chan-stream-fake.ts";
 import { REPO_ROOT } from "../../test-support/repo-root";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const golden = JSON.parse(
   readFileSync(resolve(REPO_ROOT, "tests/__fixtures__/session-stream-credit.golden.json"), "utf8"),
@@ -36,12 +37,13 @@ describe("会话流的 credit 例外", () => {
       { streams: [{ origin: "<local>", kind: "session-lines" }] },
     );
     streamFake.lifecycle([{ ended: { session_id: "a" } }, { idle: { session_id: "b" } }]);
-    await vi.waitFor(() => expect(ended).toEqual(["a"]));
+    await vi.waitFor(() => expect(ended).toEqual(["a"]), UNTIL_CEILING);
     await new Promise((r) => setTimeout(r, 20));
     expect(streamFake.subscriptions[0]!.wants.reduce((a, b) => a + b, 0), "起停那几格还了 credit").toBe(0);
     streamFake.lines([{ session_id: "s", cwd: "/p", path: "/p/s.jsonl", seq: 1, message: { type: "assistant", uuid: "u" } }]);
     await vi.waitFor(() =>
       expect(streamFake.subscriptions[0]!.wants.reduce((a, b) => a + b, 0), "行没还 credit").toBe(1),
+      UNTIL_CEILING,
     );
   });
 });

@@ -42,13 +42,14 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
 
 import { invoke } from "@tauri-apps/api/core";
 import { launchRenderShim, localLaunchCalls } from "../../test-support/chan-fake";
-import { productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionTsFiles } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { mintFreshTmuxName } from "../../../src/frontend/ui/terminal-name-mint";
 import { resumeLocalSession } from "../../../src/frontend/ui/local-resume";
 import { failToast, toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
 import { copyText } from "../../../src/frontend/ui/copy-table";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -69,7 +70,7 @@ describe("K1 · 铸名只有一个家", () => {
       "有别的地方自己去问后端铸名了。起会话的 tmux 名只许经 `src/frontend/ui/terminal-name-mint.ts`" +
         "（它守着「问不到 ⇒ 不铸名」；别处抄一份，降级口径就又分叉了 —— B §2.6 的病）。",
     ).toEqual(["src/frontend/ui/terminal-name-mint.ts"]);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("★ 「这个会话在哪个 tmux 会话里」只问那台、只有一个问口（两向）；界面零处拿 tmux 名单自己判", () => {
     // 手写期望，不从实现生成：发 `sessions-where` 的只有 `sessions-where.ts`（菜单就绪 · 换号重启 · 分叉都经它）。
@@ -79,7 +80,7 @@ describe("K1 · 铸名只有一个家", () => {
       filesMatching(/\b(?:listTmux|list_(?:local|remote)_tmux)\s*\(/),
       "又长出一处拿 tmux 名单自己判的 —— 判定只在那台后端（`sessions-where`）",
     ).toEqual([]);
-  }, SCAN_TIMEOUT_MS);
+  });
 });
 
 describe("K2 · 本机 resume 编排只有一个家", () => {
@@ -90,7 +91,7 @@ describe("K2 · 本机 resume 编排只有一个家", () => {
       filesMatching(/\b(?:launchLocal|planLocalLaunch)\s*\(\s*\{\s*action:\s*\{\s*kind:\s*"resume"/),
       "有别的地方自己拼了一遍本机 resume。编排（校验 sid → 铸名 → 账号 → 起 → 记 pin）只许住 `src/frontend/ui/local-resume.ts`。",
     ).toEqual(["src/frontend/ui/local-resume.ts"]);
-  }, SCAN_TIMEOUT_MS);
+  });
 });
 
 describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
@@ -191,7 +192,7 @@ describe("K4 · D-h：本机后端说「要的号选不了」⇒ 不开窗、说
     expect(calls[0][0]).toBe(copyText("accountPick.refused.title"));
     expect(calls[0][1]).toBe(copyText("accountPick.refused.pinGoneToCurrent", { name: "z", current: "b" }));
     calls[0][2]!.onClick!();
-    await vi.waitFor(() => expect(opened()).toBe(1));
+    await vi.waitFor(() => expect(opened()).toBe(1), UNTIL_CEILING);
     expect(resumes().map((r) => r.account)).toEqual([{ kind: "follow" }, { kind: "named", name: "b" }]);
   });
 
@@ -221,9 +222,9 @@ describe("K5 · 起会话挑号界面零处判", () => {
       .map((f) => ({ file: f.file, names: hits(f.text) }))
       .filter((f) => f.names.length > 0);
     expect(found, "界面又长出了起会话挑号的判定 —— 判号只在那台后端").toEqual([]);
-  }, SCAN_TIMEOUT_MS);
+  });
 
   it("★ 线上 `named`（用户点名）只从 `launch-account.ts` 出（两向）", () => {
     expect(filesMatching(/kind:\s*"named"/)).toEqual(["src/frontend/ui/launch-account.ts"]);
-  }, SCAN_TIMEOUT_MS);
+  });
 });

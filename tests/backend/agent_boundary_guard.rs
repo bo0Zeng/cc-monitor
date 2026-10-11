@@ -60,7 +60,7 @@ mod tests {
         "platform/signal.rs",
         // `common/` 整层：`S3` 把 `projects_root` 搬进适配层之后 `common/paths.rs` 整个文件消失了
         //（它当初就违反 `common/` 三条门槛的第③条「无域知识」——`projects` 是 Claude 的布局）。
-        "common/fs.rs",
+        "platform/fs/ro.rs",
         // ── `S4b`：**这一轮一个都没加，而这是量出来的，不是忘了** ────────────
         //
         // `S4`/`L1` 都写着「`claude_dir` 改完名，`watcher`/`accounts_query`/`history_query`
@@ -307,7 +307,8 @@ mod tests {
             "platform/liveness.rs",
             "platform/paths.rs",
             "platform/signal.rs",
-            "common/fs.rs",
+            // 原 `common/fs.rs`：读盘并进 `platform/fs/`（只读护栏换类型挡第一刀，10-11），同一份文件换了住址
+            "platform/fs/ro.rs",
             // K-W1A 加入（08-26）：新立的 `plugin/` 整层，从第一天就在表里
             "plugin/mod.rs",
             "plugin/discover.rs",

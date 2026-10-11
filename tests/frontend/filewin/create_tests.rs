@@ -125,7 +125,7 @@ async fn a_new_file_speaks_files_create_with_root_and_rel_and_no_content() {
     *w.new_file_text_mut().unwrap() = "  笔记.md ".to_string();
     assert!(w.confirm_new_file(None), "合法名字却没发出去");
     assert!(!w.confirm_new_file(None), "在飞的那一趟还没回，又发了一趟");
-    settle_inline(&mut w, "新建空文件").await;
+    settle_inline(&mut w, "新建空文件那一格").await;
     assert!(w.new_file_prompt().is_none(), "建成了，那一格却还摆着");
     assert!(
         w.prompt_error().is_none(),

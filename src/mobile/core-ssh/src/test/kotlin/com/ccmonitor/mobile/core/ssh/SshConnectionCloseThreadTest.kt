@@ -5,7 +5,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertTrue
@@ -66,32 +65,32 @@ class SshConnectionCloseThreadTest {
     }
 
     /** 断连路径：release 归零后 close 被默认 dispatcher 带离调用方线程。 */
-    @Test(timeout = TEST_TIMEOUT_MS)
+    @Test(timeout = WALL_CEILING_MS)
     fun releaseToZeroClosesOffTheMainThread() {
         val mgr = realDispatcherManager()
         onMainThread {
             mgr.retain("id", "a")
             mgr.connect("id", "h", "L", testCfg("good"))
             mgr.release("id", "a")
-            withTimeout(AWAIT_CLOSE_MS) { produced.single().awaitClose() }
+            produced.single().awaitClose()
         }
         assertClosedOffTheMainThread(produced.single())
     }
 
     /** 握手失败路径：主线程上与一台主机断开时每次都走。 */
-    @Test(timeout = TEST_TIMEOUT_MS)
+    @Test(timeout = WALL_CEILING_MS)
     fun aFailedConnectClosesOffTheMainThread() {
         val mgr = realDispatcherManager { throw IOException("造出来的握手失败") }
         onMainThread {
             val ex = runCatching { mgr.connect("id", "h", "L", testCfg("bad")) }.exceptionOrNull()
             assertTrue("前提：这次 connect 必须真的失败，否则测的是另一条路径：$ex", ex is IOException)
-            withTimeout(AWAIT_CLOSE_MS) { produced.single().awaitClose() }
+            produced.single().awaitClose()
         }
         assertClosedOffTheMainThread(produced.single())
     }
 
     /** 建连中途被取消的路径：离屏时协程被取消，连接可能已建到一半，close 是真的网络写。 */
-    @Test(timeout = TEST_TIMEOUT_MS)
+    @Test(timeout = WALL_CEILING_MS)
     fun aCancelledConnectClosesOffTheMainThread() {
         val reachedHandshake = CompletableDeferred<Unit>()
         val mgr =
@@ -103,7 +102,7 @@ class SshConnectionCloseThreadTest {
             val job = launch { runCatching { mgr.connect("id", "h", "L", testCfg("hang")) } }
             reachedHandshake.await() // 前提：确实进到了 connect 里
             job.cancel()
-            withTimeout(AWAIT_CLOSE_MS) { produced.single().awaitClose() }
+            produced.single().awaitClose()
         }
         assertClosedOffTheMainThread(produced.single())
     }
@@ -112,8 +111,9 @@ class SshConnectionCloseThreadTest {
 /** 自造主线程的名字，只用于可读输出；断言比对象身份。 */
 private const val MAIN_THREAD_NAME = "ccm-fake-main"
 
-/** 等后台把 close 做掉的上限。真 IO dispatcher 是毫秒级派发，这个值只是防挂死。 */
-private const val AWAIT_CLOSE_MS = 5_000L
-
-/** 整条用例的兜底上限，比 [AWAIT_CLOSE_MS] 宽，让内层超时先报出更具体的信息。 */
-private const val TEST_TIMEOUT_MS = 15_000L
+/**
+ * 整条用例的兜底上限：真 IO dispatcher 是毫秒级派发，这个值只防挂死（挂住时 JUnit 报超时、带着卡在哪一行的栈）。
+ * 与桌面那边同一个数（`guard_core::wall::CEILING_SECS`；判据 `wall_ceiling` 逐份核、并扫测试源里别的期限）——
+ * 门禁并发、机器忙时单条慢十来倍也不许误红。
+ */
+private const val WALL_CEILING_MS = 300_000L

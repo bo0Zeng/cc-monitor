@@ -11,6 +11,9 @@ import { DEFAULT_STORAGE, sceneById } from "../scenes";
 import { layoutProblems } from "../scenes/layout-check";
 import type { ShotsHandle } from "./types";
 import HOST_FACTS from "../../__fixtures__/host-facts.golden.json";
+import { LS_KEYS } from "../../../src/frontend/ui/local-storage";
+
+const LAST_ACTIVE_KEY = LS_KEYS.lastActiveSid;
 
 const params = new URLSearchParams(location.search);
 const scene = sceneById(params.get("scene") ?? "");
@@ -20,7 +23,7 @@ const label = location.pathname.startsWith("/settings")
     ? `viewer-${params.get("viewer") ?? "x"}`
     : "main";
 
-const backend = new FakeBackend(scene.world());
+const backend = new FakeBackend(scene.world(), { mainWindow: label === "main" });
 // 壳在每页起页时注入的本机能力（`platform/host_facts.rs`）：照场景要的系统（缺省 Linux，截图机就是 Linux）那一行注入。
 (window as { __CCM_HOST__?: unknown }).__CCM_HOST__ = (HOST_FACTS as Record<string, unknown>)[scene.hostOs ?? "linux"] ?? null;
 mockWindows(label);
@@ -36,6 +39,10 @@ try {
   localStorage.clear();
   sessionStorage.clear();
   for (const [k, v] of Object.entries(scene.storage ?? DEFAULT_STORAGE)) localStorage.setItem(k, v);
+  // 上次停在哪个 tab：用过的那台都记着一个（这里记世界里第一个会话）。不记的话开页落在哪个 tab 看谁的会话先到 ——
+  // 就绪点早于后端报完清单时，会话一个个实时到，先到的那个成了当前的（各台后端扫盘的先后每次不一样，main-turn-folded 偶尔落到 web-console 就是它）。
+  const first = backend.world.sessions[0]?.sid;
+  if (first && localStorage.getItem(LAST_ACTIVE_KEY) === null) localStorage.setItem(LAST_ACTIVE_KEY, first);
 } catch {
   // 读不了存储就当它是空的
 }
@@ -45,6 +52,7 @@ const handle: ShotsHandle = {
   error: null,
   unhandled: backend.unhandled,
   layout: [],
+  sessions: () => ({ declared: backend.world.sessions.length, sent: backend.liveSent.size }),
 };
 window.__shots = handle;
 
