@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.core.ssh
 
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.sync.Mutex
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -9,7 +10,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * 并发规矩：
  * - [connection] / [configs] 有无锁的跨线程读，所以是 `@Volatile`。
  * - [connecting] / [generation] / [holders] 只在 [lock] 内访问，不要加无锁读点。
- * - [reconnecting] / [probing] 用 [AtomicBoolean] 的 `compareAndSet(false, true)` 做原子去重。
+ * - [reconnecting] 用 [AtomicBoolean] 的 `compareAndSet(false, true)` 做原子去重；[verifying] 只在 [lock] 内读写。
  * - 本对象永不从状态表移除：[lock]、[connectLock]、[generation] 须跨 disconnect 稳定，disconnect 只清字段。
  */
 internal class HostConnectionState(
@@ -29,6 +30,12 @@ internal class HostConnectionState(
     /** 在飞连接。只在 [lock] 内访问。 */
     var connecting: SshTransport? = null
 
+    /** 与探活同时起跑的那条新连接（还没装上）。只在 [lock] 内访问；disconnect 连它一起关。 */
+    var racing: SshTransport? = null
+
+    /** 在跑的那一场「留旧的还是换新的」（同一台同时只跑一场，后来的等同一场）。只在 [lock] 内访问。 */
+    var verifying: Deferred<SshTransport?>? = null
+
     /** 多地址配置；null 表示没有。有无锁读。 */
     @Volatile
     var configs: List<ConnectionConfig>? = null
@@ -41,7 +48,4 @@ internal class HostConnectionState(
 
     /** 重连在飞去重。 */
     val reconnecting = AtomicBoolean(false)
-
-    /** 探测在飞去重。 */
-    val probing = AtomicBoolean(false)
 }

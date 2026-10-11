@@ -52,9 +52,13 @@ kotlin {
     }
 }
 
+// 判据读仓根夹具目录里的跨语言金样（通用记录那几份等）：整个目录登记成测试任务的输入，金样一变就重跑，不吃缓存的绿。
+tasks.named<Test>("test") {
+    inputs.dir(rootProject.file("../../tests/__fixtures__")).withPathSensitivity(PathSensitivity.RELATIVE)
+}
+
 dependencies {
-    // 用 api：RemoteCommandChannel 出现在公开构造参数里（TailTransport / DaemonTransport / ClaudeSessionCatalog /
-    // CodexSessionCatalog），消费方的 compile classpath 上要见到它。
+    // 用 api：RemoteCommandChannel 出现在公开构造参数里（ClaudeSessionCatalog），消费方的 compile classpath 上要见到它。
     api(project(":core-remote"))
     implementation(libs.moshi)
     // 传输用 Flow<ByteArray>。用 -core（纯 JVM artifact），不引 Android 耦合。

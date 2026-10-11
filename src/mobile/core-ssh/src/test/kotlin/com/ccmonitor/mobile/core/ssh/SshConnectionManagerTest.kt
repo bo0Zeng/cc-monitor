@@ -379,7 +379,7 @@ class SshConnectionManagerTest {
             assertEquals(SessionStatus.CONNECTED, mgr.sessions.value["id"]?.status)
         }
 
-    // 健康连接（probeAlive 走默认，即 isConnected=true）：网络恢复时探测通过，不误重连。
+    // 健康连接（probeAlive 走默认，即 isConnected=true）：网络恢复时探测通过，留旧的；同时起跑的那条新连接关掉（StaleLinkRaceTest）。
     @Test
     fun probeAliveTrueHealthyConnectionNotReconnected() =
         runTest {
@@ -388,8 +388,9 @@ class SshConnectionManagerTest {
             mgr.connect("id", "h", "L", good) // probeAliveResult=null → probeAlive 返回 isConnected=true
             mgr.probeAndReconnectStale()
             advanceUntilIdle()
-            assertEquals("健康连接探测过 → 不重连", 1, produced.size)
-            assertEquals("probe 分支确实运行了一次（非死代码）——探测过才不重连，锁死正原因", 1, produced[0].probeCalls.get())
+            assertSame("健康连接探测过 → 留旧的", produced[0], mgr.connection("id"))
+            assertEquals("probe 分支确实运行了一次（非死代码）——探测过才留旧的，锁死正原因", 1, produced[0].probeCalls.get())
+            assertTrue("同时起跑的那条新连接关掉", produced.drop(1).all { it.closed })
             assertEquals(SessionStatus.CONNECTED, mgr.sessions.value["id"]?.status)
         }
 
@@ -436,7 +437,8 @@ class SshConnectionManagerTest {
             mgr.disconnect("id") // 探测在飞时用户断开
             gate.complete(Unit) // 放行探测：判死后摘除是 no-op，重连应被配置与代号守门弃用
             advanceUntilIdle()
-            assertEquals("中途 disconnect → 不复活、不新建第 2 条", 1, produced.size)
+            assertNull("中途 disconnect → 不复活：没有装着的连接", mgr.connection("id"))
+            assertTrue("造过的全部关掉（含同时起跑的那条）", produced.all { it.closed })
             assertNull("会话条目应保持移除", mgr.sessions.value["id"])
             assertNull("连接应保持断开", mgr.connection("id"))
         }

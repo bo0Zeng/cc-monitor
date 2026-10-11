@@ -19,7 +19,7 @@
  *     上一版逐字照旧纪律做，把 74 条真实会话记录（57 544 字符正文 + 本机绝对路径 +
  *     会话 id）写进了仓，且那 74 条全来自当时正在进行的那次会话。〕
  *   分桶仍逐字对齐（`<2K/2-8K/8-32K/32-128K/>128K`），
- *   覆盖 `card-user` / `card-assistant` / `card-tool-group`。
+ *   覆盖 `card-user` / `card-assistant` / `card-steps`。
  *   ⚠ **`>128K` 那一桶是空的，而且它本来就不该有人**：实测全量 8 148 条候选记录里，
  *   去掉 image 块的 base64 之后最大的一条只有 **41 KB**（p99 13.0 KB / p90 3.9 KB）。
  *   上一版报告里那条「631 KB 的 max 尾记录」**是一颗截图的 base64** ——
@@ -35,17 +35,14 @@
  *
  * # 口径（改这里等于改秤，改之前先想清楚）
  *
- * - 一条 `kind:"tool-group"` 记录单独包一张 `card-tool-group` 外壳（`buildToolGroup`）。
- *   生产里 TabManager 会把**连续多条**合并进同一张外壳；这里一条一张，
- *   ⇒ 本秤量到的 `card-tool-group` 是**单条那一档**，多条合并档没量。
+ * - 一条 `kind:"steps"` 记录一张 `card-steps` 卡（`buildStepsCard`），与生产同形：界面不把相邻的并组。
  * - 折叠态：`<details>` 一律保持默认（关），与 `estimateStreamNodeHeight` 的
  *   `SUMMARY_H` 那一支对齐。
  */
 import { withTimeText } from "../../test-support/time-text";
 import {
   renderMessage,
-  buildToolGroup,
-  addToToolGroup,
+  buildStepsCard,
 } from "../../../src/frontend/ui/cards/index";
 import type { LineRecord, RenderContext } from "../../../src/frontend/ui/cards/index";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -326,16 +323,15 @@ export function buildCorpus(fixtureJsonl: string): CorpusItem[] {
       });
       continue;
     }
-    // tool-group：单条一张外壳（口径见头注）
-    const group = buildToolGroup(res.time);
-    addToToolGroup(group, res.units);
+    // steps：一条一张（口径见头注）
+    const card = buildStepsCard(res.units);
     items.push({
       id: `real#${realIdx}`,
-      cls: cardClassOf(group.root),
+      cls: cardClassOf(card),
       source: "shaped",
       bytes,
       bucket: bucketOf(bytes),
-      element: group.root,
+      element: card,
     });
   }
 

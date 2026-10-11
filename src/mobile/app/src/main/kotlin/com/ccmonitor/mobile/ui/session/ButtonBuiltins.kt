@@ -17,7 +17,6 @@ class ButtonBuiltins(
     val onCommandPalette: () -> Unit,
     val onTmuxSessions: () -> Unit,
     val onPaste: () -> Unit,
-    val onShowHistory: () -> Unit,
     val onCapture: () -> Unit,
     val onPushKey: () -> Unit,
     val onShowKeyboard: () -> Unit,
@@ -33,7 +32,6 @@ class ButtonBuiltins(
             "command_palette" -> onCommandPalette()
             "tmux_sessions" -> onTmuxSessions()
             "paste" -> onPaste()
-            "show_history" -> onShowHistory()
             "capture" -> onCapture()
             "push_key" -> onPushKey()
             "show_keyboard" -> onShowKeyboard()
@@ -49,7 +47,7 @@ class ButtonBuiltins(
  * - [ButtonBuiltins.invoke] 读它管点击：任意组的任意按钮都能配成 tmux builtin，非 tmux 主机上点了要无害；
  * - [visibleOn] 读它管显示：工具条内建按钮由 DB 渲染，非 tmux 主机上照样画出来就是按了没反应的死按钮。
  */
-val TMUX_ONLY_BUILTINS = setOf("tmux_sessions", "show_history", "capture", "push_key")
+val TMUX_ONLY_BUILTINS = setOf("tmux_sessions", "capture", "push_key")
 
 /**
  * 本按钮在当前主机上是否该渲染。只有属于 [TMUX_ONLY_BUILTINS] 的 `builtin` 受门控；
@@ -68,7 +66,6 @@ val BUILTIN_ACTIONS: List<Pair<String, String>> =
         "command_palette" to "命令面板",
         "tmux_sessions" to "tmux 会话",
         "paste" to "粘贴",
-        "show_history" to "Claude 历史",
         "capture" to "抓屏",
         "push_key" to "推送公钥",
         "show_keyboard" to "软键盘",

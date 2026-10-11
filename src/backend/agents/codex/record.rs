@@ -128,11 +128,20 @@ pub fn reasoning_text(v: &Value) -> String {
         .unwrap_or_default()
 }
 
-/// tool_call 的 `payload.input`：Object→原样、String→包 `{"input": s}`、其它/缺→`Null`（保 name 可见）。
+/// tool_call 的入参：`payload.input`（`custom_tool_call` 写这一格，自由文本）：Object→原样、String→包 `{"input": s}`；
+/// 没有就 `payload.arguments`（`function_call` 写这一格，是一个 JSON 串）：解得出对象→那个对象、解不出→同样包 `{"input": s}`（不吞）；
+/// 其它/缺→`Null`（保 name 可见）。
 pub fn tool_input(v: &Value) -> Value {
-    match unwrap_envelope(v).and_then(|(_, p)| p.get("input")) {
-        Some(o) if o.is_object() => o.clone(),
-        Some(Value::String(s)) => serde_json::json!({ "input": s }),
+    let p = unwrap_envelope(v).map_or(&Value::Null, |(_, p)| p);
+    let wrap = |s: &str| serde_json::json!({ "input": s });
+    match (p.get("input"), p.get("arguments")) {
+        (Some(o), _) if o.is_object() => o.clone(),
+        (Some(Value::String(s)), _) => wrap(s),
+        (None, Some(Value::String(s))) => match serde_json::from_str::<Value>(s) {
+            Ok(o) if o.is_object() => o,
+            _ => wrap(s),
+        },
+        (None, Some(o)) if o.is_object() => o.clone(),
         _ => Value::Null,
     }
 }

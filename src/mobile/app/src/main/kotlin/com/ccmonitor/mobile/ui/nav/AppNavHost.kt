@@ -27,9 +27,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.ccmonitor.mobile.agent.agentKindOrDefault
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.SettingsRepository
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
@@ -167,24 +164,6 @@ private fun NavGraphBuilder.sessionRoute(
                     }
                 }
             },
-            // resume 开新终端 tab，按 sid 去重；shell 里跑 `<cc/cct> --resume <sid>`，cwd 由远端按 sid 定。
-            // launcherId 继承发起 tab；title 作 tab 名，command 是长按选定的命令，都不进去重键。
-            // 同 sid 再 resume 会命中当前 tab，照上面的规则短路。
-            onOpenResumeTab = { hid, cwd, sid, launcherId, title, command ->
-                val k =
-                    tabManager.open(
-                        hid,
-                        SessionTabManager.TabTarget.Terminal(cd = cwd, launcherId = launcherId, resumeSessionId = sid),
-                        label = title,
-                        resumeCommand = command,
-                    )
-                if (k != key) {
-                    nav.navigate("session/$k") {
-                        launchSingleTop = true
-                        popUpTo(Screen.Hosts.route)
-                    }
-                }
-            },
             // 面板点击切 tab。
             onSwitchTab = { k ->
                 if (k != key) {
@@ -230,7 +209,7 @@ private fun NewSessionHostPickerScreen(
     }
     HostListScreen(
         // 本页只开终端 tab，与 agent 种类无关。
-        onConnect = { hostId, _ -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(), forceNew = true)) },
+        onConnect = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(), forceNew = true)) },
         onAddHost = { nav.navigate("host/new") },
         onIdentities = { nav.navigate(Screen.Identities.route) },
         onFiles = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Sftp)) },
@@ -256,9 +235,6 @@ private fun HostedSession(
     onGone: () -> Unit,
     onOpenTerminalTab: (hostId: String, path: String) -> Unit,
     onOpenTmuxTab: (hostId: String, tmuxName: String) -> Unit,
-    // resume 开新终端 tab。launcherId 定 cc/cct；title 查不到时为 null；cwd 可为 null，由远端按 sid 兜底；
-    // command 是长按选定的命令，默认链为 null。
-    onOpenResumeTab: (hostId: String, cwd: String?, sessionId: String, launcherId: String?, title: String?, command: String?) -> Unit,
     onSwitchTab: (key: String) -> Unit,
     onNewTerminalTab: (hostId: String) -> Unit,
     onNewSftpTab: (hostId: String) -> Unit,
@@ -290,8 +266,6 @@ private fun HostedSession(
                     target.resumeSessionId, // resume tab 首连即起 tmux 跑 <cc> --resume
                     open.resumeCommand, // 长按选定的 resume 命令，是 tab 元数据，不在 target 里
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
-                    // 续接开新 resume tab，launcherId 继承本 tab。
-                    onResumeInNewTab = { cwd, sid, title, command -> onOpenResumeTab(open.hostId, cwd, sid, target.launcherId, title, command) },
                     onShowTabs = { showTabs = true },
                 )
             // 「在此打开终端」开新终端 tab，不替换当前 SFTP tab。
@@ -346,7 +320,7 @@ private fun HostedTabsSheet(
 private fun NavGraphBuilder.hostsRoute(
     nav: NavHostController,
     tabManager: SessionTabManager,
-    onConnect: (String, AgentKind) -> Unit,
+    onConnect: (String) -> Unit,
 ) {
     composable(Screen.Hosts.route) {
         HostListScreen(
@@ -380,15 +354,11 @@ private fun NavGraphBuilder.launchRoute(
         val settings = koinInject<SettingsRepository>()
         val hosts = koinInject<HostRepository>()
         LaunchedEffect(newUi) {
-            // 核对时顺手留下那台服务器本身，种类从它读。
-            val landing = settings.getLastHost()?.let { id -> hosts.get(id) }
-            val lastHost = landing?.id
+            val lastHost = settings.getLastHost()?.let { id -> hosts.get(id) }?.id
             val target =
                 launchDestination(
                     newUi = newUi,
                     landingHostId = lastHost,
-                    // null 主机时这个值用不上（直接回 Hosts），缺省取 Claude 档。
-                    agentKind = landing?.agentKindOrDefault() ?: AgentProfile.DEFAULT.kind,
                     newConversationId = ::newConversationId,
                 ) ?: return@LaunchedEffect // 「还不知道」⇒ 不导航，等真值那一趟
             nav.navigate(target) { popUpTo(Screen.Launch.route) { inclusive = true } }
@@ -402,8 +372,7 @@ private fun rememberConnectAction(
     nav: NavHostController,
     newUi: Boolean,
     openTerminal: (String) -> String,
-): (String, AgentKind) -> Unit =
-    { hostId, agentKind -> nav.navigate(onConnectDestination(hostId, newUi, agentKind, ::newConversationId, openTerminal)) }
+): (String) -> Unit = { hostId -> nav.navigate(onConnectDestination(hostId, newUi, ::newConversationId, openTerminal)) }
 
 /** 对话总览与单个对话两条路由。 */
 private fun NavGraphBuilder.chatRoutes(
@@ -512,7 +481,7 @@ private fun AddHostRoute(nav: NavHostController) {
         onAdded = { host ->
             scope.launch {
                 settings.setLastHost(host.id)
-                nav.navigate(freshLanding(host.id, host.agentKindOrDefault(), ::newConversationId)) {
+                nav.navigate(freshLanding(host.id, ::newConversationId)) {
                     popUpTo(Screen.Hosts.route) { inclusive = true }
                 }
             }
@@ -521,24 +490,16 @@ private fun AddHostRoute(nav: NavHostController) {
 }
 
 /**
- * 点一台服务器之后去哪儿。
- *
- * | `newUi` | `agentKind` | 去处 |
- * |---|---|---|
- * | 关 | 任意 | 开一个终端 tab |
- * | 开 | ClaudeCode | 这台上空的新建会话（见 [freshLanding]）；不回上次那条 |
- * | 开 | Codex | 对话总览（只读档），不进聊天屏 |
+ * 点一台服务器之后去哪儿：新界面开着 ⇒ 这台上空的新建会话（见 [freshLanding]，哪一家都一样）；关着 ⇒ 开一个终端 tab。
  */
 internal fun onConnectDestination(
     hostId: String,
     newUi: Boolean,
-    /** 这台服务器的 agent 种类。注意：刻意无默认值，漏传要编译不过，而不是静默按 Claude 处理。 */
-    agentKind: AgentKind,
     /** 新建会话那张草稿的票的工厂。做成参数是因为 [newConversationId] 每次调用都不同，测试没法钉住它。 */
     newConversationId: () -> String,
     /** 开一个终端 tab 并给出路由。做成参数：`SessionTabManager.open` 会真建 tab，测试不该为此去建。 */
     openTerminal: (String) -> String,
-): String = if (newUi) freshLanding(hostId, agentKind, newConversationId) else openTerminal(hostId)
+): String = if (newUi) freshLanding(hostId, newConversationId) else openTerminal(hostId)
 
 /**
  * 打开 app 那一刻去哪儿。
@@ -556,27 +517,19 @@ internal fun launchDestination(
     /** 三值：`null` = 还没读到（⇒ 不导航）· `true` = 开 · `false` = 显式关。 */
     newUi: Boolean?,
     landingHostId: String?,
-    /** [landingHostId] 那台服务器的 agent 种类 —— 无默认值，理由同 [onConnectDestination]。 */
-    agentKind: AgentKind,
     newConversationId: () -> String,
 ): String? =
     when {
         newUi == null -> null
         !newUi || landingHostId == null -> Screen.Hosts.route
-        else -> freshLanding(landingHostId, agentKind, newConversationId)
+        else -> freshLanding(landingHostId, newConversationId)
     }
 
-/** 进一台服务器、从空白开始：打开 app 与加完一台共用。Claude 档进空的新对话，不落聊天屏的档进对话列表。 */
+/** 进一台服务器、从空白开始：打开 app 与加完一台共用。哪一家都进空的新对话（送字走 `terminal-input`，不分哪家）。 */
 internal fun freshLanding(
     hostId: String,
-    agentKind: AgentKind,
     newConversationId: () -> String,
-): String =
-    if (AgentProfile.of(agentKind).landsOnChatScreen) {
-        Screen.Chat.of(hostId, newConversationId(), isNew = true)
-    } else {
-        Screen.Conversations.of(hostId)
-    }
+): String = Screen.Chat.of(hostId, newConversationId(), isNew = true)
 
 /** 挂在一条返回栈记录上：那一条出栈时（且只在那时）[onCleared] 跑 [action]。 */
 private class OnLeftBackStack(

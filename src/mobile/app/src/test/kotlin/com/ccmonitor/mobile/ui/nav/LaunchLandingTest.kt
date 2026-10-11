@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.ui.nav
 
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -29,7 +28,6 @@ class LaunchLandingTest {
                 newUi = true,
                 landingHostId = "h1",
                 // 种类是必填的（无默认值）—— Codex 那一格在 `AgentArchetypeTest` 里单独钉
-                agentKind = AgentKind.ClaudeCode,
                 newConversationId = newId,
             )
         // 返回值可以是 null（=「还不知道，别导航」）；真值到了却回 null 就是永远不导航，比落错屏更糟。
@@ -55,7 +53,6 @@ class LaunchLandingTest {
             launchDestination(
                 newUi = null,
                 landingHostId = "h1",
-                agentKind = AgentKind.ClaudeCode,
                 newConversationId = newId,
             )
         assertNull(
@@ -79,7 +76,6 @@ class LaunchLandingTest {
             launchDestination(
                 newUi = newUi,
                 landingHostId = "h1",
-                agentKind = AgentKind.ClaudeCode,
                 newConversationId = newId,
             )
         assertNull("还不知道 ⇒ 不导航", landing(null))
@@ -130,7 +126,6 @@ class LaunchLandingTest {
             launchDestination(
                 newUi = true,
                 landingHostId = null,
-                agentKind = AgentKind.ClaudeCode,
                 newConversationId = newId,
             )
         assertEquals("没有可落地的机器时只能去主机列表", Screen.Hosts.route, to)
@@ -143,7 +138,6 @@ class LaunchLandingTest {
             launchDestination(
                 newUi = false,
                 landingHostId = "h1",
-                agentKind = AgentKind.ClaudeCode,
                 newConversationId = newId,
             )
         assertEquals(Screen.Hosts.route, to)

@@ -75,11 +75,6 @@ export function buildAgentCard(toolId: string, toolName: string, runTag: ChildRu
   return card;
 }
 
-/** 是不是一张派出卡（工具组收着时那一行数「几个子 agent」）。 */
-export function isRunCard(el: Element): boolean {
-  return cardState.has(el as HTMLElement);
-}
-
 /** 子运行的状态收到它那张卡上（运行表给的成品：哪个子运行 · 状态；有整格时再写用时与「最近：…」）。 */
 export function markRunCard(card: HTMLElement, run: string, state: RunState, info?: RunInfo): void {
   const st = cardState.get(card);

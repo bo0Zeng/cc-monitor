@@ -333,7 +333,7 @@ pub(crate) fn launchable_kinds() -> Vec<&'static str> {
 pub enum ToolCard {
     /// 展开 ＝ 子会话（折叠卡里嵌着渲染子 agent 的记录）。
     Agent,
-    /// agent 在等用户决定（默认展开，不进工具组折叠）。
+    /// agent 在等用户决定（默认展开，不收成过程里的一步）。
     Interactive,
     /// 写类工具（参数按行级 diff 画）。
     Diff,
@@ -1153,6 +1153,8 @@ pub(crate) struct TextFace {
     pub(crate) tool: fn(&serde_json::Value, bool) -> String,
     /// 一条已解析的记录 ⇒ 它是谁说的（[`UserText`]）；不是用户角色的记录 ⇒ `None`。
     pub(crate) user: fn(&serde_json::Value) -> Option<UserText>,
+    /// 一条已解析的记录是不是进界面的一句排队插话（人打的）⇒ 它的原文（已 trim）；不是 ⇒ `None`。
+    pub(crate) queued: fn(&serde_json::Value) -> Option<String>,
     /// 一个工具结果块（＋ 记录级的结构化结果）⇒ 结果一句（[`StepResult`]：失败 · 被拒 · 数 · 提问与计划答了什么）。
     pub(crate) result: fn(&serde_json::Value, Option<&serde_json::Value>) -> StepResult,
 }
@@ -1175,6 +1177,11 @@ pub(crate) fn tool_text(kind: &str, content: &serde_json::Value, is_assistant: b
 /// `kind` 那一家判这条记录是谁说的。那一家答不了 ⇒ `None`。
 pub(crate) fn user_text_of(kind: &str, v: &serde_json::Value) -> Option<UserText> {
     text_face(kind).and_then(|t| (t.user)(v))
+}
+
+/// `kind` 那一家判这条记录是不是一句排队插话（进界面的那种）⇒ 原文。那一家答不了 ⇒ `None`。
+pub(crate) fn queued_text_of(kind: &str, v: &serde_json::Value) -> Option<String> {
+    text_face(kind).and_then(|t| (t.queued)(v))
 }
 
 /// `kind` 那一家怎么读一个工具结果块（一轮的摘要数失败用：被拒的不算失败）。那一家答不了 ⇒ 只看 `is_error`。

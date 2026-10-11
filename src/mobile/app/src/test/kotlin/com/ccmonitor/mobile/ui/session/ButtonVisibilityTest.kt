@@ -20,7 +20,7 @@ class ButtonVisibilityTest {
 
     @Test
     fun tmuxBuiltinsHiddenOnNonTmuxHost() {
-        listOf("tmux_sessions", "show_history", "capture", "push_key").forEach { action ->
+        listOf("tmux_sessions", "capture", "push_key").forEach { action ->
             assertFalse("$action 在非 tmux 主机应隐藏", btn("builtin", action).visibleOn(supportsTmux = false))
             assertTrue("$action 在 tmux 主机应显示", btn("builtin", action).visibleOn(supportsTmux = true))
         }

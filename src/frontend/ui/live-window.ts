@@ -422,9 +422,8 @@ export class SkeletonLedger {
   append(rows: SkeletonFacts[]): void {
     for (const r of rows) {
       const seq = this.base + this.rows.length;
-      const prev = this.lastCardKind();
       const kind = skeletonKind(r);
-      const h = estimateFromFacts(r, prev, this.colW);
+      const h = estimateFromFacts(r, this.colW);
       this.rows.push(r);
       this.kinds.push(kind);
       this.est.push(h);
@@ -525,13 +524,6 @@ export class SkeletonLedger {
     for (let i = lowest; i < this.rows.length; i++) {
       this.prefix[i + 1] = this.prefix[i] + this.rowHeight(this.base + i, this.est[i]);
     }
-  }
-
-  private lastCardKind(): SkeletonKind {
-    for (let i = this.kinds.length - 1; i >= 0; i--) {
-      if (this.kinds[i] !== "none") return this.kinds[i];
-    }
-    return "none";
   }
 
   /** 行数 */

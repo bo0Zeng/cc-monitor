@@ -2,9 +2,9 @@
  * issue #21：交互等待类 tool_use 的**默认展开**渲染。
  *
  * `AskUserQuestion` / `ExitPlanMode` 是"Claude 在等用户决定"——折叠在通用
- * 🔧 工具条/工具组里时，用户看不出有问题在等他，误以为 LLM 还在输出。
+ * 🔧 工具条 / 过程里时，用户看不出有问题在等他，误以为 LLM 还在输出。
  * 这两个工具走本模块：问题+选项 / plan 正文直接可见，且 renderMessage 把含
- * 它们的消息按 `kind:"card"` 处理（不进 card-tool-group 折叠，见 index.ts）。
+ * 它们的消息按 `kind:"card"` 处理（画成带正文的卡，见 index.ts）。
  *
  * 题目 / 选项 / 计划正文是核心从入参里读好的一格（`ToolStep.ask`，各家的格式知识在 `agents/<名>/steps.rs`）：
  * 出口省掉 `tool_use.input` 之后照样建得出来。DOM 惯例同 diff.ts：纯 createElement + textContent，

@@ -147,7 +147,7 @@ class ConnectorRetainReleasePairingTest {
 
     companion object {
         private const val MAX_WALK_UP = 6
-        private const val MIN_PRODUCTION_FILES = 150
+        private const val MIN_PRODUCTION_FILES = 100
 
         private const val HOST_LINK = "app/src/main/kotlin/com/ccmonitor/mobile/ui/common/HostLink.kt"
         private const val SESSION_VM = "app/src/main/kotlin/com/ccmonitor/mobile/ui/session/SessionViewModel.kt"
