@@ -46,15 +46,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.SizeFormat
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
-import com.ccmonitor.mobile.core.ui.copy.SizeFormat
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
+import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.dialectFor
+import com.ccmonitor.mobile.ui.common.CopyDetailButton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -120,7 +123,7 @@ private fun SftpContent(
 ) {
     // 连接编排与浏览状态在 [SftpViewModel]；这里只渲染并处理 Android 侧（URI/文件/Toast/瞬态对话框）。
     val vm = koinViewModel<SftpViewModel> { parametersOf(hostId) }
-    val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
 
     val ui by vm.ui.collectAsState()
     val path by vm.path.collectAsState()
@@ -131,8 +134,8 @@ private fun SftpContent(
 
     var dialog by remember { mutableStateOf<SftpDialog?>(null) } // 对话框是瞬态 UI，留在 Composable
 
-    // VM 的一次性提示 → Toast。
-    LaunchedEffect(vm) { vm.events.collect { Toast.makeText(context, it, Toast.LENGTH_LONG).show() } }
+    // VM 的一次性提示 → 底部提示条（失败的带复制详情：原话不上屏）。
+    LaunchedEffect(vm) { vm.events.collect { snackbar.show(it) } }
 
     val actions = sftpEntryActions(vm) { dialog = it }
     val uploadLauncher = rememberSftpUploadLauncher(vm)
@@ -141,7 +144,7 @@ private fun SftpContent(
     Scaffold(
         floatingActionButton = {
             if (ui is SftpUi.Ready) {
-                ExtendedFloatingActionButton(text = { Text("上传") }, icon = {}, onClick = { uploadLauncher.launch("*/*") })
+                ExtendedFloatingActionButton(text = { Text(copyText("mobSftp.fab.upload")) }, icon = {}, onClick = { uploadLauncher.launch("*/*") })
             }
         },
     ) { inner ->
@@ -151,8 +154,9 @@ private fun SftpContent(
                 is SftpUi.Error ->
                     Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("SFTP 错误: ${s.message}", color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = { vm.connect() }) { Text("重试") }
+                            Text(copyText("mobSftp.load.failed"), color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
+                            CopyDetailButton(copyText("mobSftp.load.failed"), s.message)
                         }
                     }
                 is SftpUi.Ready ->
@@ -204,7 +208,7 @@ private fun sftpEntryActions(
                 scope.launch {
                     vm.readForEdit(e.path).onSuccess { content ->
                         if (content == null) {
-                            Toast.makeText(context, "文件过大或非文本，不可编辑", Toast.LENGTH_LONG).show()
+                            Toast.makeText(context, copyText("mobSftp.edit.tooBig"), Toast.LENGTH_LONG).show()
                         } else {
                             onDialog(SftpDialog.Edit(e.name, e.path, content))
                         }
@@ -219,6 +223,7 @@ private fun sftpEntryActions(
 @Composable
 private fun rememberSftpUploadLauncher(vm: SftpViewModel): ManagedActivityResultLauncher<String, Uri?> {
     val context = LocalContext.current
+    val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     return rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -233,7 +238,7 @@ private fun rememberSftpUploadLauncher(vm: SftpViewModel): ManagedActivityResult
             }.onSuccess { vm.upload(tmp, name) }
                 .onFailure {
                     tmp.delete()
-                    Toast.makeText(context, "上传失败: ${it.message}", Toast.LENGTH_LONG).show()
+                    snackbar.show(Notice(copyText("mobSftp.upload.failed", "name" to name), it.message))
                 }
         }
     }
@@ -289,10 +294,10 @@ private fun SftpReadyContent(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onShowTabs) { Text("▤ tab") } // ▤ 是允许的符号，不是 emoji
-            TextButton(onClick = { onDialog(SftpDialog.Mkdir) }) { Text("＋ 新建目录") }
-            TextButton(onClick = { vm.toggleSort() }) { Text(if (sortBySize) "排序: 大小" else "排序: 名称") }
+            TextButton(onClick = { onDialog(SftpDialog.Mkdir) }) { Text("＋ " + copyText("mobSftp.bar.mkdir")) }
+            TextButton(onClick = { vm.toggleSort() }) { Text(if (sortBySize) copyText("mobSftp.bar.sortSize") else copyText("mobSftp.bar.sortName")) }
             // SFTP 路径归一成 shell cd 路径（Windows /C:/x→C:/x；POSIX 原样）。
-            TextButton(onClick = { onOpenTerminal(dialectFor(hostOs).sftpCwdToShell(path)) }) { Text("终端") }
+            TextButton(onClick = { onOpenTerminal(dialectFor(hostOs).sftpCwdToShell(path)) }) { Text(copyText("mobSftp.bar.terminal")) }
         }
         // 书签横条（点跳转 / 长按删）
         if (bookmarks.isNotEmpty()) {
@@ -309,7 +314,7 @@ private fun SftpReadyContent(
                         onDelete = {
                             scope.launch {
                                 bookmarkRepo.delete(bm)
-                                snackbar.showUndo("已删除书签「${bm.label.ifBlank { bm.path }}」") {
+                                snackbar.showUndo(copyText("mobSftp.bookmark.deleted", "label" to bm.label.ifBlank { bm.path })) {
                                     bookmarkRepo.save(bm) // 调用方自己持有被删的那条，控件不替谁记东西
                                 }
                             }
@@ -392,9 +397,9 @@ private fun SftpDialogHost(
         is SftpDialog.Menu -> EntryMenuDialog(d.entry, actions, onDialog)
         is SftpDialog.Rename ->
             InputDialog(
-                title = "重命名",
+                title = copyText("mobSftp.rename.title"),
                 initial = d.entry.name,
-                confirm = "重命名",
+                confirm = copyText("mobSftp.rename.ok"),
                 onConfirm = { name ->
                     vm.rename(d.entry.path, name)
                     onDialog(null)
@@ -403,9 +408,9 @@ private fun SftpDialogHost(
             )
         is SftpDialog.Mkdir ->
             InputDialog(
-                title = "新建目录",
+                title = copyText("mobSftp.mkdir.title"),
                 initial = "",
-                confirm = "创建",
+                confirm = copyText("mobSftp.mkdir.ok"),
                 onConfirm = { name ->
                     vm.mkdir(name)
                     onDialog(null)
@@ -461,17 +466,25 @@ private fun DeleteEntryDialog(
 ) {
     AlertDialog(
         onDismissRequest = { onDialog(null) },
-        title = { Text("删除") },
-        text = { Text("确定删除${if (entry.isDir) "目录" else "文件"} “${entry.name}”？${if (entry.isDir) "（仅限空目录）" else ""}") },
+        title = { Text(copyText("mobSftp.delete.title")) },
+        text = {
+            Text(
+                if (entry.isDir) {
+                    copyText("mobSftp.delete.dirBody", "name" to entry.name)
+                } else {
+                    copyText("mobSftp.delete.fileBody", "name" to entry.name)
+                },
+            )
+        },
         confirmButton = {
             TextButton(onClick = {
                 onConfirm()
                 onDialog(null)
             }) {
-                Text("删除", color = MaterialTheme.colorScheme.error)
+                Text(copyText("mobSftp.delete.ok"), color = MaterialTheme.colorScheme.error)
             }
         },
-        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text("取消") } },
+        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -487,12 +500,12 @@ private fun PreviewDialog(
         title = { Text(name, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             Text(
-                content.ifEmpty { "（空文件）" },
+                content.ifEmpty { copyText("mobSftp.preview.empty") },
                 style = monoSmall,
                 modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("关闭") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -505,7 +518,7 @@ private fun EditFileDialog(
     var text by remember(d) { mutableStateOf(d.content) }
     AlertDialog(
         onDismissRequest = { onDialog(null) },
-        title = { Text("编辑 ${d.name}", maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        title = { Text(copyText("mobSftp.edit.title", "name" to d.name), maxLines = 1, overflow = TextOverflow.Ellipsis) },
         text = {
             OutlinedTextField(
                 value = text,
@@ -514,8 +527,8 @@ private fun EditFileDialog(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 420.dp),
             )
         },
-        confirmButton = { TextButton(onClick = { onDialog(SftpDialog.ConfirmSave(d.name, d.path, text)) }) { Text("保存") } },
-        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text("取消") } },
+        confirmButton = { TextButton(onClick = { onDialog(SftpDialog.ConfirmSave(d.name, d.path, text)) }) { Text(copyText("mobSftp.edit.save")) } },
+        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -528,18 +541,18 @@ private fun ConfirmSaveDialog(
 ) {
     AlertDialog(
         onDismissRequest = { onDialog(null) },
-        title = { Text("覆盖远端文件？") },
+        title = { Text(copyText("mobSftp.overwrite.title")) },
         text = {
             // 写入按字节，所以同时显示 UTF-8 字节数（CJK/emoji 时与字符数差异大）。
             val bytes = d.text.toByteArray(Charsets.UTF_8).size
             Text(
-                "将以 UTF-8 覆写 “${d.name}”（${d.text.length} 字符 / $bytes 字节）。此操作不可撤销。",
+                copyText("mobSftp.overwrite.body", "name" to d.name, "chars" to d.text.length, "bytes" to bytes),
                 style = monoSmall,
             )
         },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("确认覆盖", color = MaterialTheme.colorScheme.error) } },
+        confirmButton = { TextButton(onClick = onConfirm) { Text(copyText("mobSftp.overwrite.ok"), color = MaterialTheme.colorScheme.error) } },
         // 返回编辑（保留改动）。
-        dismissButton = { TextButton(onClick = { onDialog(SftpDialog.Edit(d.name, d.path, d.text)) }) { Text("返回编辑") } },
+        dismissButton = { TextButton(onClick = { onDialog(SftpDialog.Edit(d.name, d.path, d.text)) }) { Text(copyText("mobSftp.overwrite.back")) } },
     )
 }
 
@@ -560,16 +573,16 @@ private fun ActionMenuDialog(
         text = {
             Column {
                 if (!entry.isDir) {
-                    TextButton(onClick = onPreview) { Text("预览") }
-                    TextButton(onClick = onEdit) { Text("编辑") } // 小文件编辑
-                    TextButton(onClick = onDownload) { Text("下载") }
+                    TextButton(onClick = onPreview) { Text(copyText("mobSftp.menu.preview")) }
+                    TextButton(onClick = onEdit) { Text(copyText("mobSftp.menu.edit")) } // 小文件编辑
+                    TextButton(onClick = onDownload) { Text(copyText("mobSftp.menu.download")) }
                 }
-                TextButton(onClick = onRename) { Text("重命名") }
-                TextButton(onClick = onDelete) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = onRename) { Text(copyText("mobSftp.menu.rename")) }
+                TextButton(onClick = onDelete) { Text(copyText("mobSftp.menu.delete"), color = MaterialTheme.colorScheme.error) }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -592,7 +605,7 @@ private fun InputDialog(
                 Text(confirm)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 

@@ -15,7 +15,7 @@ import com.ccmonitor.mobile.core.claude.link.str
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.CompletableDeferred

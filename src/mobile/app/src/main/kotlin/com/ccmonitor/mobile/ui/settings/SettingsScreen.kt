@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.transport.ClaudePaths
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import org.koin.androidx.compose.koinViewModel
@@ -58,29 +59,29 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onBack) { Text("← 返回") }
-                Text("设置", style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onBack) { Text(copyText("mobKit.act.back")) }
+                Text(copyText("rsLib.settings.windowTitle"), style = MaterialTheme.typography.titleLarge)
             }
-            Text("应用级默认 Claude 配置目录", style = MaterialTheme.typography.titleMedium)
+            Text(copyText("mobSettings.claudeDir.title"), style = MaterialTheme.typography.titleMedium)
             OutlinedTextField(
                 value = text,
                 onValueChange = { text = it },
                 // 标签不说 `claudeDir` / 配置目录这类实现词。
-                label = { Text("默认用哪个号") },
-                placeholder = { Text("留空 = 内置默认 ${ClaudePaths.DEFAULT_CLAUDE_DIR}") }, // 引用常量，防漂移
+                label = { Text(copyText("mobSettings.claudeDir.label")) },
+                placeholder = { Text(copyText("mobSettings.claudeDir.placeholder", "dir" to ClaudePaths.DEFAULT_CLAUDE_DIR)) }, // 引用常量，防漂移
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
             // 说明只说两件事：没单独指定的服务器都用这个号；改完对下一段新对话生效。
             Text(
-                "没有单独指定过的服务器，都用这里填的这个号。改完之后，下一段新开始的对话才算。",
+                copyText("mobSettings.claudeDir.hint"),
                 style = MaterialTheme.typography.bodySmall,
                 color = tokens.textFaint,
             )
             Button(onClick = {
                 vm.save(text)
-                Toast.makeText(context, "已保存", Toast.LENGTH_SHORT).show()
-            }) { Text("保存") }
+                Toast.makeText(context, copyText("mobSettings.claudeDir.saved"), Toast.LENGTH_SHORT).show()
+            }) { Text(copyText("mobSettings.claudeDir.save")) }
             // 终端那一节：每一行都从 [settingsEntries] 来，本文件不写死任何一条。
             EntrySections(onNavigate)
         }

@@ -27,7 +27,7 @@
 ## gate-count.sh — 门禁条数
 
 ```bash
-. ./scripts/env.sh && ./gradlew ktlintCheck testDebugUnitTest :core-claude:test :core-remote:test
+. ./scripts/env.sh && ./gradlew ktlintCheck testDebugUnitTest :core-claude:test :core-remote:test :core-copy:test
 bash scripts/gate-count.sh
 ```
 

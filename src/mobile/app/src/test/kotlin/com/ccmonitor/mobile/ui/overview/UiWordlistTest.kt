@@ -1,5 +1,6 @@
 package com.ccmonitor.mobile.ui.overview
 
+import com.ccmonitor.mobile.testing.CopyTableForTests
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -40,6 +41,15 @@ class UiWordlistTest {
     private val cleanPackages = listOf("overview", "chat")
 
     /**
+     * 干净包里许出现的整句：`那句 to 理由`。只收与桌面共用的表条（键 · 句子都是桌面那一条），
+     * 「会话」在共用术语表里就是「与 agent 的一次运行」（`terms.json`「会话」· 规矩 C-W20），不是技术词。
+     */
+    private val sharedSentences =
+        mapOf(
+            "无会话记录" to "history.list.empty：与桌面历史页同一条，「会话」照共用术语表指 agent 的一次运行",
+        )
+
+    /**
      * 还欠着的包 → 现有的违规条数。
      *
      * 这些数只许往下改。往上改 = 又往 UI 上漏了一个技术词。
@@ -73,7 +83,10 @@ class UiWordlistTest {
 
     @Test
     fun theOverviewAndChatFacesNeverSayATechnicalWordOutLoud() {
-        val hits = cleanPackages.flatMap { scan(it) }
+        val all = cleanPackages.flatMap { scan(it) }
+        val dead = sharedSentences.keys - all.map { it.literal }.toSet()
+        assertTrue("许出现的整句已经不在干净包里了（死条，删掉）：$dead", dead.isEmpty())
+        val hits = all.filterNot { it.literal in sharedSentences }
         assertEquals(
             "词表命中：每条都要改成人话：\n" +
                 hits.joinToString("\n") { "  ${it.where}  「${it.word}」 in ${it.literal}" },
@@ -157,7 +170,7 @@ class UiWordlistTest {
  *
  * @return `行号 to 字面量内容`（不含引号；模板 `${'$'}{...}` 原样留在串里，
  *   所以 `Text("${'$'}{n} 个会话")` 抓得到「会话」）。行号是那条字面自己所在的行；
- *   这个数只进报错信息，不进判定。
+ *   这个数只进报错信息，不进判定。界面上的字收进了文案表：字面量是表里的键（`Text(copyText("键"))`）⇒ 换成那句 zh 再比。
  */
 internal fun textLiterals(source: String): List<Pair<Int, String>> =
-    KotlinSourceScanner.literalsInCallsTo(source, "Text").literals.map { it.line to it.body }
+    KotlinSourceScanner.literalsInCallsTo(source, "Text").literals.map { it.line to CopyTableForTests.shown(it.body) }

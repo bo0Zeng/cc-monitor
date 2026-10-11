@@ -40,7 +40,7 @@ import com.ccmonitor.mobile.core.claude.diff.structuredPatchToDiff
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
@@ -183,14 +183,14 @@ private fun BashOutputCard(
             .matchHighlight(matched)
             .padding(tokens.spacing.md),
     ) {
-        Text("▤ bash 输出", style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+        Text("▤ " + copyText("mobReading.bash.title"), style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
         if (unit.stdout.isNotEmpty()) {
             Spacer(Modifier.padding(top = tokens.spacing.xs))
             Text(shownStdout, style = monoBody, color = MaterialTheme.colorScheme.onSurface)
         }
         if (collapsible) {
             Text(
-                if (expanded) "▾ 收起" else "▸ 展开全部 $outLines 行",
+                if (expanded) "▾ " + copyText("mobReading.bash.collapse") else "▸ " + copyText("mobReading.bash.expand", "n" to outLines),
                 style = monoSmall,
                 color = tokens.textFaint,
                 modifier = Modifier.clickable { expanded = !expanded }.padding(top = tokens.spacing.xs),
@@ -225,9 +225,9 @@ private fun CompactSummaryCard(
                 .padding(tokens.spacing.md),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("上下文摘要", style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+            Text(copyText("mobReading.compact.title"), style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
             Spacer(Modifier.width(tokens.spacing.sm))
-            Text("· ${unit.text.length} 字", style = monoSmall, color = tokens.textFaint)
+            Text(copyText("mobReading.compact.size", "n" to unit.text.length), style = monoSmall, color = tokens.textFaint)
             Spacer(Modifier.weight(1f))
             Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
         }
@@ -311,7 +311,7 @@ private fun AssistantMarkdownCard(
         if (codeBlocks.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 TextButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {
-                    Text(if (codeBlocks.size == 1) "复制代码" else "复制代码 (${codeBlocks.size})", style = monoSmall)
+                    Text(if (codeBlocks.size == 1) copyText("mobReading.code.copy") else copyText("mobReading.code.copyN", "n" to codeBlocks.size), style = monoSmall)
                 }
             }
         }
@@ -336,7 +336,7 @@ private fun ThinkingCard(
         ) {
             Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
             Spacer(Modifier.width(tokens.spacing.xs))
-            Text("思考", style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
+            Text(copyText("cards.thinking.title"), style = MaterialTheme.typography.labelMedium, color = tokens.textFaint)
         }
         AnimatedVisibility(expanded) {
             Text(
@@ -422,10 +422,10 @@ private fun ToolCallCard(
                         color = if (unit.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                     )
                     if (result.length > MAX_RESULT_CHARS) {
-                        Text("… 输出已截断", style = monoSmall, color = tokens.textFaint)
+                        Text(copyText("mobReading.tool.truncated"), style = monoSmall, color = tokens.textFaint)
                     }
                 } else if (unit.pending) {
-                    Text("运行中…", style = monoSmall, color = tokens.warn)
+                    Text(copyText("mobReading.tool.running"), style = monoSmall, color = tokens.warn)
                 }
             }
         }

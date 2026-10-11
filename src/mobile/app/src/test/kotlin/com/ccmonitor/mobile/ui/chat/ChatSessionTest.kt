@@ -5,7 +5,7 @@ import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
-import com.ccmonitor.mobile.core.ui.copy.copyText
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.failed
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.human
 import com.ccmonitor.mobile.ui.chat.FakeCoreLink.Companion.reply

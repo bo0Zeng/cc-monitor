@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.diff.DiffResult
 import com.ccmonitor.mobile.core.claude.diff.DiffRow
 import com.ccmonitor.mobile.core.claude.diff.DiffType
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 
@@ -51,7 +52,7 @@ fun DiffView(
         }
         if (result.truncated) {
             Text(
-                "… 更多行已省略",
+                copyText("mobReading.diff.truncated"),
                 style = monoSmall,
                 color = tokens.textFaint,
                 modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),

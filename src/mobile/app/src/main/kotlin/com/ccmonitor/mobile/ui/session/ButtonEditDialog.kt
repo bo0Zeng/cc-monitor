@@ -22,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.terminal.escapeSequenceBytes
@@ -37,14 +38,19 @@ internal val BUTTON_TYPES =
  * 这里只是内建组的显示名；在「目标组」里输入新名即可建任意新组。 */
 internal val BUTTON_GROUPS =
     listOf(
-        ButtonGroups.MAIN to "按钮栏",
-        ButtonGroups.FN to "功能键",
-        ButtonGroups.ALT to "第二排",
-        ButtonGroups.VIM to "vim 键",
+        ButtonGroups.MAIN to copyText("mobButtonGroup.name.main"),
+        ButtonGroups.FN to copyText("mobButtonGroup.name.fn"),
+        ButtonGroups.ALT to copyText("mobButtonGroup.name.alt"),
+        ButtonGroups.VIM to copyText("mobButtonGroup.name.vim"),
     )
 
 /** 长按模式（DB longPressMode 值 → 中文短标签）。none=无 / repeat=连发 / discrete=单发另设载荷。 */
-internal val LONG_PRESS_MODES = listOf("none" to "无", "repeat" to "连发", "discrete" to "单发")
+internal val LONG_PRESS_MODES =
+    listOf(
+        "none" to copyText("mobButtonEdit.longPress.none"),
+        "repeat" to copyText("mobButtonEdit.longPress.repeat"),
+        "discrete" to copyText("mobButtonEdit.longPress.discrete"),
+    )
 
 /**
  * 按「这个按钮做什么」分类，界面上不露内部 type（command/keycode/escape/builtin/switch）。
@@ -54,10 +60,10 @@ enum class ButtonPurpose(
     val label: String,
     val desc: String,
 ) {
-    TEXT("输入文字", "打一段字并回车执行（如 ls -la）"),
-    KEY("按一个键", "方向键 / Esc / Tab / 翻页 / Ctrl+C 等——从预设里选"),
-    ACTION("App 动作", "粘贴 / 切模型 / 抓屏 / 标签面板 等内建功能"),
-    SWITCH("切到按钮组", "点击换一排按钮（键排切到另一组）"),
+    TEXT(copyText("mobButtonEdit.purpose.text"), copyText("mobButtonEdit.purpose.textHint")),
+    KEY(copyText("mobButtonEdit.purpose.key"), copyText("mobButtonEdit.purpose.keyHint")),
+    ACTION(copyText("mobButtonEdit.purpose.action"), copyText("mobButtonEdit.purpose.actionHint")),
+    SWITCH(copyText("mobButtonEdit.purpose.switch"), copyText("mobButtonEdit.purpose.switchHint")),
     ;
 
     companion object {
@@ -239,14 +245,14 @@ fun ButtonEditDialog(
     val s = remember(initial, fixedGroup) { ButtonEditState(initial, hostContext, fixedGroup) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (initial == null) "新建按钮" else "编辑按钮") },
+        title = { Text(if (initial == null) copyText("mobButtonEdit.dialog.newTitle") else copyText("mobButtonEdit.dialog.editTitle")) },
         text = { ButtonEditForm(s, hostContext) },
         confirmButton = {
             TextButton(enabled = s.valid, onClick = { onConfirm(s.build(initial, hostContext)) }) {
-                Text(if (initial == null) "添加" else "保存")
+                Text(if (initial == null) copyText("mobButtonEdit.dialog.add") else copyText("mobButtonEdit.dialog.save"))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("取消") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -268,7 +274,7 @@ private fun ButtonEditForm(
         OutlinedTextField(
             value = s.label,
             onValueChange = { s.label = it },
-            label = { Text("标签（按钮上显示的字）") },
+            label = { Text(copyText("mobButtonEdit.field.label")) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
         )
@@ -277,7 +283,7 @@ private fun ButtonEditForm(
                 OutlinedTextField(
                     value = s.command,
                     onValueChange = { s.command = it },
-                    label = { Text("命令（自动加回车执行）") },
+                    label = { Text(copyText("mobButtonEdit.field.command")) },
                     singleLine = true,
                 )
             ButtonPurpose.KEY -> KeyPresetPicker(s)
@@ -286,8 +292,8 @@ private fun ButtonEditForm(
         }
         if (hostContext != null) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(selected = !s.scopeHost, onClick = { s.scopeHost = false }, label = { Text("全局") })
-                FilterChip(selected = s.scopeHost, onClick = { s.scopeHost = true }, label = { Text("本机") })
+                FilterChip(selected = !s.scopeHost, onClick = { s.scopeHost = false }, label = { Text(copyText("mobButtonEdit.scope.global")) })
+                FilterChip(selected = s.scopeHost, onClick = { s.scopeHost = true }, label = { Text(copyText("mobButtonEdit.scope.host")) })
             }
         }
         // 长按配置；switch 的长按固定是开设置，这里不显示。
@@ -300,7 +306,7 @@ private fun ButtonEditForm(
 @Composable
 private fun LongPressEditor(s: ButtonEditState) {
     Column {
-        Text("长按", style = MaterialTheme.typography.labelMedium)
+        Text(copyText("mobButtonEdit.longPress.title"), style = MaterialTheme.typography.labelMedium)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             LONG_PRESS_MODES.forEach { (v, name) ->
                 FilterChip(selected = s.longPressMode == v, onClick = { s.longPressMode = v }, label = { Text(name) })
@@ -310,7 +316,7 @@ private fun LongPressEditor(s: ButtonEditState) {
             OutlinedTextField(
                 value = s.longPressCommand,
                 onValueChange = { s.longPressCommand = it },
-                label = { Text("长按载荷（按本按钮类型解释，如 \\e\\e = 两下 Esc）") },
+                label = { Text(copyText("mobButtonEdit.longPress.payload")) },
                 singleLine = true,
             )
         }
@@ -319,7 +325,7 @@ private fun LongPressEditor(s: ButtonEditState) {
                 OutlinedTextField(
                     value = s.longPressThresholdMs,
                     onValueChange = { v -> s.longPressThresholdMs = v.filter { it.isDigit() } },
-                    label = { Text("触发阈值 ms") },
+                    label = { Text(copyText("mobButtonEdit.longPress.threshold")) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.weight(1f),
@@ -328,7 +334,7 @@ private fun LongPressEditor(s: ButtonEditState) {
                     OutlinedTextField(
                         value = s.longPressRepeatMs,
                         onValueChange = { v -> s.longPressRepeatMs = v.filter { it.isDigit() } },
-                        label = { Text("连发间隔 ms") },
+                        label = { Text(copyText("mobButtonEdit.longPress.interval")) },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f),
@@ -345,7 +351,7 @@ private fun KeyPresetPicker(s: ButtonEditState) {
     var open by remember { mutableStateOf(false) }
     val current = KEY_PRESETS.firstOrNull { it.type == s.type && it.command == s.command && it.ctrl == s.ctrl }
     Box {
-        TextButton(onClick = { open = true }) { Text("按键：${current?.label ?: "自定义"} ▾") }
+        TextButton(onClick = { open = true }) { Text(copyText("mobButtonEdit.key.pick", "key" to (current?.label ?: copyText("mobButtonEdit.key.custom"))) + " ▾") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             KEY_PRESETS.forEach { k ->
                 DropdownMenuItem(text = { Text(k.label) }, onClick = {
@@ -362,7 +368,7 @@ private fun KeyPresetPicker(s: ButtonEditState) {
                 s.command = it
                 s.type = "escape"
             },
-            label = { Text("自定义转义序列（如 \\e[1;5D）") },
+            label = { Text(copyText("mobButtonEdit.key.customField")) },
             singleLine = true,
         )
     }
@@ -378,7 +384,7 @@ private fun SwitchTargetPicker(
         OutlinedTextField(
             value = target,
             onValueChange = onTarget,
-            label = { Text("目标组（点此 ⇌ 切到该组；可输新组名自建）") },
+            label = { Text(copyText("mobButtonEdit.switch.target")) },
             singleLine = true,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -392,9 +398,9 @@ private fun SwitchTargetPicker(
 /** 载荷输入框的标签随 type 变化。 */
 internal fun payloadFieldLabel(type: String): String =
     when (type) {
-        "keycode" -> "基准键（c=Ctrl+C；Tab/Enter/Esc/Space）"
-        "escape" -> "转义序列（\\e[A、\\x1b、\\t）"
-        else -> "命令（回车自动追加）"
+        "keycode" -> copyText("mobButtonEdit.payload.keycode")
+        "escape" -> copyText("mobButtonEdit.payload.escape")
+        else -> copyText("mobButtonEdit.payload.command")
     }
 
 /** 实时预览将发送什么：escape 显示 hex，builtin 显示动作名，命令与按键码显示文本。 */
@@ -405,11 +411,16 @@ internal fun buttonPreview(
     switchTarget: String = "",
 ): String =
     when (type) {
-        "escape" -> "将发送字节: " + escapeSequenceBytes(command).joinToString(" ") { "%02X".format(Locale.ROOT, it.toInt() and 0xFF) }
-        "builtin" -> "内建动作: " + (BUILTIN_ACTIONS.firstOrNull { it.first == builtinAction }?.second ?: builtinAction)
-        "keycode" -> "将发送按键码（基准键 + 修饰）"
-        "switch" -> "切换到组: " + (BUTTON_GROUPS.firstOrNull { it.first == switchTarget }?.second ?: switchTarget)
-        else -> "将发送: $command⏎"
+        "escape" ->
+            copyText(
+                "mobButtonEdit.preview.bytes",
+                "bytes" to escapeSequenceBytes(command).joinToString(" ") { "%02X".format(Locale.ROOT, it.toInt() and 0xFF) },
+            )
+        "builtin" ->
+            copyText("mobButtonEdit.preview.builtin", "action" to (BUILTIN_ACTIONS.firstOrNull { it.first == builtinAction }?.second ?: builtinAction))
+        "keycode" -> copyText("mobButtonEdit.preview.keycode")
+        "switch" -> copyText("mobButtonEdit.preview.switch", "group" to (BUTTON_GROUPS.firstOrNull { it.first == switchTarget }?.second ?: switchTarget))
+        else -> copyText("mobButtonEdit.preview.command", "command" to command) + "⏎"
     }
 
 /** 内建动作下拉选择。 */
@@ -421,7 +432,7 @@ internal fun BuiltinActionPicker(
     var open by remember { mutableStateOf(false) }
     val label = BUILTIN_ACTIONS.firstOrNull { it.first == selected }?.second ?: selected
     Box {
-        TextButton(onClick = { open = true }) { Text("内建动作：$label ▾") }
+        TextButton(onClick = { open = true }) { Text(copyText("mobButtonEdit.builtin.pick", "action" to label) + " ▾") }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             BUILTIN_ACTIONS.forEach { (id, name) ->
                 DropdownMenuItem(text = { Text(name) }, onClick = {
