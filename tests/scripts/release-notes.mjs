@@ -89,6 +89,10 @@ function main(argv) {
     return;
   }
   if (!target) die("没给输出文件 —— 用法 `node tests/scripts/release-notes.mjs <输出文件>`");
+  // 版本号取自 package.json，不收参数；像版本号的词多半是把它当成了版本号，照写就会在当前目录落一份名叫它的文件。
+  if (/^v?\d+\.\d+\.\d+$/.test(target)) {
+    die(`「${target}」像版本号 —— 这里要的是输出文件（版本号取自 package.json）；只验格式用 --check`);
+  }
   writeFileSync(target, out, "utf8");
   console.log(
     `release-notes: 写出 ${target}（v${version}，${out.split("\n").length} 行 / ${solid} 个非空行）`,
