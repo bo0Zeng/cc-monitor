@@ -11,7 +11,7 @@ import java.io.File
 /**
  * 「设置 · 服务器」那一组屏的窗口内边距判据（这一组屏跨包的判据都住 `ui/host` 的测试包）。
  *
- * `MainActivity` 开着 `enableEdgeToEdge()`、`AndroidManifest.xml` 里没有 `windowSoftInputMode`，
+ * `MainActivity` 开着 `enableEdgeToEdge()`、`AndroidManifest.xml` 里声明 `adjustResize`（系统不整窗上推，见 `ChatLayoutTest`），
  * 所以每个画像素的屏都得自己垫 `statusBarsPadding` / `navigationBarsPadding` / `imePadding`；
  * 不垫的后果两样：标题被状态栏压、键盘弹起时焦点框被遮。
  *

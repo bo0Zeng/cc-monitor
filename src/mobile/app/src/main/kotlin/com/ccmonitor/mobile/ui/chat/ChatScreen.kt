@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -28,6 +29,8 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.model.searchableText
 import com.ccmonitor.mobile.ui.claude.ClaudeReadingPane
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 
 /**
  * 聊天面：正文（[ChatTranscript]）＋ 输入行。
@@ -67,32 +70,34 @@ fun ChatTranscript(
 
     // 前面插入历史后滚动位置靠 Compose 按 key 自己恢复，前提是 `LazyColumn` 用内容派生的稳定 key。
 
-    // 到顶 ⇒ 请求更早的一段。
+    // 贴着底（[following]）：一开始是；之后每次滚动停下时看停在哪 —— 停在底 ⇒ 还贴着，停在别处（人往上翻了）⇒ 不贴了。
+    // 新内容来了只在贴着底时跟到底，往上翻看历史时不拽回去。
+    var following by remember { mutableStateOf(true) }
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }.drop(1).filter { !it }.collect { following = !listState.canScrollForward }
+    }
+
+    // 到顶 ⇒ 请求更早的一段（判法见 [loadOlderNow]）。
     // 注意：判据必须整个进 `derivedStateOf`；漏在效果体里的变量不在 key 里，效果拿过时快照判一次就不再重跑。
     // 内容不满一屏时会先把视口填满，填满后 `firstVisibleItemIndex` 不再恒为 0，自然停止。
-    val readyToLoadOlder by remember {
+    val atTop by remember {
         derivedStateOf {
             val info = listState.layoutInfo
             info.visibleItemsInfo.isNotEmpty() && listState.firstVisibleItemIndex == 0
         }
     }
-    // 尾段里一条进界面的记录都没有时列表是空的，[readyToLoadOlder] 恒假：空判据放在这里（`state.units.size` 在 key 里）。
-    LaunchedEffect(readyToLoadOlder, state.canLoadOlder, state.loadingOlder, state.units.size) {
-        // 「该不该现在去载」= 到顶了（或还没有内容）且允许载且没在载
-        val atTop = readyToLoadOlder || state.units.isEmpty()
-        val mayLoad = state.canLoadOlder && !state.loadingOlder
-        if (atTop && mayLoad) onLoadOlder()
+    val moreBelow by remember { derivedStateOf { listState.canScrollForward } }
+    LaunchedEffect(atTop, moreBelow, following, state.canLoadOlder, state.loadingOlder, state.units.size) {
+        if (loadOlderNow(atTop, state.units.isEmpty(), state.canLoadOlder, state.loadingOlder, following, moreBelow)) onLoadOlder()
     }
 
-    // 自动滚底。触发看「最后一个单元的 key + 内容长度」而不是 `units.size`：流式期间数量不变，
-    // 而往顶部插历史会改 size。只在用户本来就贴着底时才滚，往上翻看历史时不拽回去。
+    // 跟到底。触发看「最后一个单元的 key + 内容长度」而不是 `units.size`：流式期间数量不变，
+    // 而往顶部插历史会改 size。滚到最后一个单元的末尾（一条很长的回答也看得到它最新那几行），偏移交给列表自己夹到底。
+    // 视口高度也在 key 里：键盘弹起把消息区压矮时，贴着底的照样看得到最新那几行。
     val lastUnit = state.units.lastOrNull()
-    LaunchedEffect(lastUnit?.key, lastUnit?.searchableText()?.length) {
-        val info = listState.layoutInfo
-        val atBottom =
-            info.visibleItemsInfo.isEmpty() ||
-                info.visibleItemsInfo.last().index >= state.units.lastIndex - 1
-        if (atBottom && state.units.isNotEmpty()) listState.animateScrollToItem(state.units.lastIndex)
+    val viewport by remember { derivedStateOf { listState.layoutInfo.viewportSize.height } }
+    LaunchedEffect(lastUnit?.key, lastUnit?.searchableText()?.length, viewport) {
+        if (following && state.units.isNotEmpty()) listState.scrollToItem(state.units.lastIndex, Int.MAX_VALUE)
     }
 
     Column(modifier.fillMaxWidth()) {
@@ -176,3 +181,17 @@ private fun ChatInputRow(
 }
 
 private const val INPUT_MAX_LINES = 4
+
+/**
+ * 该不该现在去载更早的一段：到顶了（或尾段里一条进界面的都没有）、允许载、没在载，
+ * 而且不是「还贴着底、底下还有没滚到的」那一刻 —— 打开一条长会话时列表先排在尾段的顶上、紧接着才滚到底，
+ * 那一瞬间的「到顶」不是人翻上去的，在那时载会把更早的整份插进来、人落在中间。内容不满一屏（底下没有了）照样载，先把一屏填满。
+ */
+internal fun loadOlderNow(
+    atTop: Boolean,
+    empty: Boolean,
+    canLoadOlder: Boolean,
+    loadingOlder: Boolean,
+    following: Boolean,
+    moreBelow: Boolean,
+): Boolean = canLoadOlder && !loadingOlder && (empty || (atTop && !(following && moreBelow)))
