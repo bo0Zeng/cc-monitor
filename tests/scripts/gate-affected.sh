@@ -54,7 +54,9 @@ fails=()
 
 if [ -n "$trust" ]; then
   echo; echo "── quick-check（两棵树整套 cargo test --lib ＋ 整套 vitest）"
-  CARGO_BUILD_JOBS=$jobs GATE_STATE_DIR="$state" bash "$HERE/heavy.sh" bash "$HERE/quick-check.sh" || fails+=("quick-check")
+  qc="$root/tests/scripts/quick-check.sh"   # 判的是哪棵树就用哪棵树里那份
+  [ -f "$qc" ] || qc="$HERE/quick-check.sh"
+  CARGO_BUILD_JOBS=$jobs GATE_STATE_DIR="$state" bash "$HERE/heavy.sh" bash "$qc" || fails+=("quick-check")
 fi
 
 if [ ${#fails[@]} -eq 0 ]; then
