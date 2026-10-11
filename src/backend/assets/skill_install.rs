@@ -11,6 +11,7 @@
 //!
 //! 一个字节都不写（写经 monitor → 那台后端 `files-put`，带 `expect`）· 不改写任何一个文件的内容。
 
+use crate::platform::fs::Ro;
 use copy_core::copy_text;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -142,7 +143,7 @@ fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
             .unwrap_or(ent.path())
             .to_string_lossy()
             .replace('\\', "/");
-        if !std::fs::metadata(ent.path()).is_ok_and(|m| m.is_file()) {
+        if !Ro::metadata(ent.path()).is_ok_and(|m| m.is_file()) {
             skipped.push(rel);
             continue;
         }
@@ -175,7 +176,7 @@ pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
         Some(r) => (r.to_path_buf(), r.join(&name)),
         None => skill_dir(args, &name)?,
     };
-    if !std::fs::metadata(&dir).is_ok_and(|m| m.is_dir()) {
+    if !Ro::metadata(&dir).is_ok_and(|m| m.is_dir()) {
         return Err(crate::stream::inbound::spec::Fail::from((
             "not_found",
             copy_text(
@@ -188,7 +189,7 @@ pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
     let files: Vec<Value> = paths
         .iter()
         .map(|(rel, abs)| {
-            let bytes = std::fs::metadata(abs).map(|m| m.len()).unwrap_or(0);
+            let bytes = Ro::metadata(abs).map(|m| m.len()).unwrap_or(0);
             let (text, why) = read_text(abs);
             json!({
                 "path": rel,
@@ -387,7 +388,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
     let mut here: Map<String, Value> = Map::new();
     let mut here_text: BTreeMap<String, String> = BTreeMap::new();
     let mut unwritable: BTreeMap<String, String> = BTreeMap::new();
-    if std::fs::metadata(&dir).is_ok_and(|m| m.is_dir()) {
+    if Ro::metadata(&dir).is_ok_and(|m| m.is_dir()) {
         let (paths, skipped) = walk(&dir)?;
         for (rel, abs) in paths {
             let exec = crate::plugin::discover::is_executable(&abs);
@@ -544,7 +545,7 @@ fn on_disk_now(
     // ⚠ `metadata` 跟链接（`symlink_metadata` 不在本模块能用的只读动词里，`readonly_guard` 白名单）：
     //   装完被换成指向一份同样文本的链接 ⇒ 这里判 `intact`，而后端 `files-delete` 带 `expect` 只删普通文件 ⇒ 那一下拒、什么都不删。
     //   悬空的链接 ⇒ `gone`（从记录里摘掉；链接本身不是装写进去的，不碰）。
-    match std::fs::metadata(abs) {
+    match Ro::metadata(abs) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => (UNINSTALL_GONE, None),
         Err(_) => (UNINSTALL_UNREADABLE, None),
         // 目录 / 特殊文件：装写进去的是一份普通文件，现在换了种类 ⇒ 不按原文删它。

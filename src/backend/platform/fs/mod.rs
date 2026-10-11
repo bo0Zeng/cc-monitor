@@ -16,7 +16,7 @@
 use std::path::Path;
 
 mod ro;
-pub(crate) use ro::{DirEntry, FileType, Metadata, ReadDir, Ro, RoFile};
+pub(crate) use ro::{Ro, RoFile};
 
 /// 把 `from` 改名成 `to`；**`to` 已在（含一条链接）⇒ `AlreadyExists`，一个字节不动**。原子：没有先看后改的窗。
 /// 这个平台 / 这块盘没有这件原语 ⇒ 回一个 [`noreplace_unsupported`] 认得出的错，调用方自己决定退回什么。

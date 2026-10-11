@@ -7,6 +7,7 @@
 //! 三种结局：找到（全路径）· 每一处都查清了、都没有（没装）· 没找到而查的时候出过错（读不到 PATH / SystemRoot、某一项读不了）——
 //! 最后这一种是「判不了」，不说没装。
 
+use crate::platform::fs::Ro;
 use std::ffi::OsStr;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -101,7 +102,7 @@ pub(crate) fn locate_with(
 
 /// 这一处有没有一个能跑的文件：不在（连同父路径不是目录 · 名字在这台不合法）⇒ `Ok(false)`；别的读不了 ⇒ `Err`。
 pub(crate) fn runnable(p: &Path) -> io::Result<bool> {
-    match std::fs::metadata(p) {
+    match Ro::metadata(p) {
         Ok(m) => Ok(m.is_file() && launchable(p)),
         Err(e)
             if matches!(
@@ -120,8 +121,7 @@ pub(crate) fn runnable(p: &Path) -> io::Result<bool> {
 /// unix：有执行位。
 #[cfg(unix)]
 fn launchable(p: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+    Ro::metadata(p).is_ok_and(|m| Ro::mode(&m).is_some_and(|mode| mode & 0o111 != 0))
 }
 
 /// 别处没有执行位：按名字（找的就是 `ssh.exe`）。

@@ -18,6 +18,7 @@ use crate::accounts::quota::rotation::{
 };
 use crate::accounts::quota::show::{self, LoginState};
 use crate::agents::{IdentityCell, LoginFace, QuotaReading};
+use crate::platform::fs::Ro;
 use crate::relay::{AuthSwap, Destination, Mode, RouteKey};
 use creds_core::SecretKey;
 use std::collections::BTreeMap;
@@ -306,7 +307,7 @@ impl Hop {
 
     fn identity(&self, face: &LoginFace, dir: &Path, base: Option<&Path>) -> Option<String> {
         let file = (face.identity_file)(dir, base);
-        let stamp = std::fs::metadata(&file)
+        let stamp = Ro::metadata(&file)
             .ok()
             .and_then(|m| Some((m.modified().ok()?, m.len())));
         let mut g = self.identities.lock().unwrap_or_else(|e| e.into_inner());

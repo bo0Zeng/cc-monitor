@@ -4,6 +4,7 @@
 use super::{Clash, DeadLines, Facts, Hooks, Relay, SelfPaste, StaleCcm};
 use crate::assets::aliases;
 use crate::assets::door::Door;
+use crate::platform::fs::Ro;
 use crate::platform::shell::dialect::Shell;
 use serde_json::Value;
 use std::path::Path;
@@ -173,7 +174,7 @@ pub(crate) fn stale_ccm(
     };
     let name = if windows { "ccm.exe" } else { "ccm" };
     let ours = home.join(".cc-monitor").join("bin").join(name);
-    let canon = |p: &Path| std::fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
+    let canon = |p: &Path| Ro::canonicalize(p).unwrap_or_else(|_| p.to_path_buf());
     if canon(&first) == canon(&ours) {
         return None;
     }

@@ -29,6 +29,7 @@
 //!
 //! 不拨号、不起进程、不写盘 —— 全是既有读函数的换壳。`readonly_guard` 那条写盘禁令照旧管它。
 
+use crate::platform::fs::Ro;
 use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::{json, Value};
@@ -65,7 +66,7 @@ pub(crate) fn log_tail(path: Option<&std::path::Path>, max: u64) -> Answer {
     let Some(path) = path else {
         return Ok(json!({ "path": null, "size": 0, "text": "", "truncated": false }));
     };
-    let mut f = std::fs::File::open(path).map_err(|e| ("failed", e.to_string()))?;
+    let mut f = Ro::open(path).map_err(|e| ("failed", e.to_string()))?;
     let size = f.metadata().map_err(|e| ("failed", e.to_string()))?.len();
     let from = size.saturating_sub(max);
     let mut buf = Vec::new();

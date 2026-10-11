@@ -3,6 +3,7 @@
 //! 账号库的每个号是「一个配置目录 ＋ 一排链回共享库的符号链接」—— 符号链接与 `0700` / `0600` 权限位都是平台差异，
 //! 只在这里认。写不在这里：建目录 · 建链接 · 改权限 · 复制 · 改名 · 删都经这台的文件管理面（`files-*`）。
 
+use crate::platform::fs::Ro;
 use std::path::Path;
 
 /// 一项（**不跟链接**地看）。
@@ -53,13 +54,13 @@ pub(crate) fn unsupported_said() -> Option<String> {
 
 /// `p` 这一项是什么（不跟链接）。读链接成功 ⇒ 它就是一条链接；否则按跟过去的元数据认。
 pub(crate) fn item(p: &Path) -> Item {
-    if let Ok(t) = std::fs::read_link(p) {
+    if let Ok(t) = Ro::read_link(p) {
         return Item::Link {
             target: t.to_string_lossy().into_owned(),
-            dangling: std::fs::metadata(p).is_err(),
+            dangling: Ro::metadata(p).is_err(),
         };
     }
-    match std::fs::metadata(p) {
+    match Ro::metadata(p) {
         Err(_) => Item::Absent,
         Ok(m) if m.is_dir() => Item::Dir { mode: mode_of(p) },
         Ok(m) if m.is_file() => Item::File {
@@ -78,7 +79,7 @@ pub(crate) fn item(p: &Path) -> Item {
 /// 一个目录的直接子项名（排好序）。名字不是 UTF-8 或带控制符 ⇒ 不列（这种名字拼不进链接目标，也显不出来）。
 /// 目录不在 / 读不了 ⇒ `None`。
 pub(crate) fn names(dir: &Path) -> Option<Vec<String>> {
-    let rd = std::fs::read_dir(dir).ok()?;
+    let rd = Ro::read_dir(dir).ok()?;
     let mut out: Vec<String> = rd
         .flatten()
         .filter_map(|e| e.file_name().into_string().ok())
@@ -89,15 +90,6 @@ pub(crate) fn names(dir: &Path) -> Option<Vec<String>> {
 }
 
 /// unix 权限位的低 12 位（跟链接）；非 unix ⇒ `None`（不是 `0`：`0` 是一个真能设的值）。
-#[cfg(unix)]
 fn mode_of(p: &Path) -> Option<u32> {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(p)
-        .ok()
-        .map(|m| m.permissions().mode() & 0o7777)
-}
-
-#[cfg(not(unix))]
-fn mode_of(_p: &Path) -> Option<u32> {
-    None
+    Ro::mode(&Ro::metadata(p).ok()?).map(|m| m & 0o7777)
 }

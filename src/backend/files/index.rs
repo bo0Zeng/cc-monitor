@@ -20,6 +20,7 @@
 //! 常驻字节 ＝ 路径总长 ＋ 5×条数，算得出，所以判据写成相等而不是范围。
 //! `u32` 的界桩把索引总字节钉在 4 GiB 以内；撞上限时 [`build`] 停下并说出来（[`Stats::truncated`]），不静默丢条目。
 
+use crate::platform::fs::Ro;
 use std::path::Path;
 use std::time::SystemTime;
 
@@ -163,7 +164,7 @@ pub fn build_with(root: &Path, device_of: impl Fn(&Path) -> Option<u64>) -> Snap
     let mut stack: Vec<std::path::PathBuf> = vec![root.to_path_buf()];
 
     while let Some(dir) = stack.pop() {
-        let rd = match std::fs::read_dir(&dir) {
+        let rd = match Ro::read_dir(&dir) {
             Ok(rd) => rd,
             Err(_) => {
                 unreadable_dirs += 1;
@@ -385,7 +386,7 @@ pub struct Meta {
 }
 
 fn read_meta(path: &[u8]) -> Meta {
-    match std::fs::metadata(super::raw::to_path_buf(path)) {
+    match Ro::metadata(super::raw::to_path_buf(path)) {
         Ok(md) => Meta {
             size: (!md.is_dir()).then(|| md.len()),
             mtime_secs: md
