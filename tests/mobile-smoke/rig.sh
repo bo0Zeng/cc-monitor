@@ -6,11 +6,11 @@
 #         把本树编好的后端放成 <台架家>/.cc-monitor/bin/ccm、起私有端口上的 sshd（默认 22422，CCM_SMOKE_PORT 可改）。
 #   down  停 sshd、停台架里的常驻后端与 tmux 服务端（只认台架目录里的门牌与套接字）。
 #   env   印出台架那几格（家目录 · tmux 套接字 · 端口 · 登录钥匙），给驱动脚本 source。
-#   ssh   以台架的环境在台架里跑一条（和手机进来走同一个 login.sh）—— 种历史会话、看台架里的状态用它。
+#   ssh   以台架的环境在台架里跑一条（和手机进来走同一个登录壳）—— 种历史会话、看台架里的状态用它。
 #   tmux  在台架的 tmux 服务端上敲一条（显式 -S，清掉继承来的 TMUX 那几格）—— 桌面那一侧接着打字就用它。
 #
-# 隔离：ssh 进来的每条命令都由台架的 login.sh 换上台架的 HOME · TMUX_TMPDIR · PATH（替身 claude / codex 在前）·
-#   CCM_SANDBOX=1（后端要占真家目录的门牌就拒绝起）。sshd 只听 127.0.0.1（模拟器经 10.0.2.2 够到它），
+# 隔离：ssh 进来的每条命令都由台架的登录壳（up 时写进台架目录的 sshd/login.sh）换上台架的 HOME · TMUX_TMPDIR · PATH（替身 claude / codex 在前）·
+#   CCM_SANDBOX=1（后端要占真家目录的门牌就拒绝起）。sshd 只听 127.0.0.1（模拟器经它的网关、即宿主机够到它），
 #   只认台架自己的登录钥匙。不碰本机正在跑的 sshd · 后端 · tmux。
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../.." && pwd)

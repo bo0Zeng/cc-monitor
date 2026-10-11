@@ -484,6 +484,7 @@ class ChatSession(
 
         /** 等新起的会话报到多久（同桌面 `ARRIVAL_BUDGET_MS`）。 */
         const val ARRIVAL_MS = 45_000L
+
         /** 这边等起会话多久（`session-new` 是阻塞档：不交 `within_ms`、到点不撤单；第一句作为启动参数交，起好就回）。 */
         private const val NEW_MS = 45_000L
         private const val INPUT_MS = 20_000L

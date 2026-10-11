@@ -152,7 +152,11 @@ class ChatSessionTest {
             link.line("pre", 1, reply("a1", "替身收到"))
             runCurrent()
             assertNull(s.state.value.failedWhy)
-            assertEquals(listOf("u1", "a1#0"), s.state.value.units.map { it.key })
+            assertEquals(
+                listOf("u1", "a1#0"),
+                s.state.value.units
+                    .map { it.key },
+            )
         }
 
     @Test

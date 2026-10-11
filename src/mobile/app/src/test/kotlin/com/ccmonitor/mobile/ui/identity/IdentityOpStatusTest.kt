@@ -41,7 +41,12 @@ class IdentityOpStatusTest {
             advanceUntilIdle()
             assertTrue("成功应 Done：${vm.op.value}", vm.op.value is IdentityOp.Done)
             assertEquals("认得出的那把存下、带着派生出的指纹", 1, dao.saved.size)
-            assertTrue(dao.saved.single().fingerprintSha256.startsWith("SHA256:"))
+            assertTrue(
+                dao.saved
+                    .single()
+                    .fingerprintSha256
+                    .startsWith("SHA256:"),
+            )
         }
 
     /** 模拟器冒烟撞上的：逐行贴私钥只贴进了第一行，照样存成一把「imported」、不报错，连的时候才说认证方式用尽。 */

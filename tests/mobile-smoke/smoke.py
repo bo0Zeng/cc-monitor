@@ -133,6 +133,14 @@ def tmux_name_of(text):
     return None
 
 
+def host_alias():
+    """模拟器里够到宿主机的那个地址 ＝ 模拟器的网关（问模拟器自己，不写死）。"""
+    route = adb("shell", "ip", "route", "get", "8.8.8.8").split()
+    if "via" not in route:
+        raise Step.Fail(f"问不出模拟器的网关：{' '.join(route)}")
+    return route[route.index("via") + 1]
+
+
 def tap_in_row(label, button):
     """点 [label] 那一行上的 [button]（同一行：纵向范围重叠）。"""
     ns = ui.nodes()
@@ -155,7 +163,7 @@ def add_host(name, codex=False):
     tap("+")
     time.sleep(1.5)
     tap("名称"); typed(name)
-    tap("主机 / IP（主地址）"); typed("10.0.2.2")
+    tap("主机 / IP（主地址）"); typed(host_alias())
     tap("22")
     for k in ("123",) + ("67",) * 4:
         adb("shell", "input", "keyevent", k)

@@ -17,15 +17,15 @@ bash tests/mobile-smoke/smoke.sh
 
 | 东西 | 怎么隔 |
 |---|---|
-| sshd | 只听 `127.0.0.1:22422`（`CCM_SMOKE_PORT`），私有 host key 与登录钥匙，只认台架那把钥匙；模拟器经 `10.0.2.2` 够到它 |
-| 后端 | ssh 进来的每条命令由 `login.sh` 换上台架的 `HOME` · `TMUX_TMPDIR` · `PATH` · `CCM_SANDBOX=1` · 私有中转口；后端文件放在台架家里的 `~/.cc-monitor/bin/ccm`（本树编的那份） |
+| sshd | 只听 `127.0.0.1:22422`（`CCM_SMOKE_PORT`），私有 host key 与登录钥匙，只认台架那把钥匙；模拟器经它的网关（即宿主机）够到它 |
+| 后端 | ssh 进来的每条命令由台架的登录壳（`rig.sh up` 写进台架目录）换上台架的 `HOME` · `TMUX_TMPDIR` · `PATH` · `CCM_SANDBOX=1` · 私有中转口；后端文件放在台架家里的 `~/.cc-monitor/bin/ccm`（本树编的那份） |
 | tmux | 台架自己的 server（`TMUX_TMPDIR` 在台架目录下）；从桌面那一侧打字用 `rig.sh tmux …`（显式 `-S`） |
 | agent | 不起真 claude / codex：`fake-agent.py` 装成这两个名字放在台架 `PATH` 最前，按那一家的原始记录格式写盘（pidfile · jsonl · Codex rollout），带初始提示词起、读终端里敲进来的行 |
 | 模拟器 | 无头，AVD 在台架目录旁（磁盘上），adb 私有端口 5137；单独一个 `systemd-run --user --scope`（MemoryHigh 6G / MemoryMax 8G） |
 
 ## 几样零件
 
-- `rig.sh up|down|env|ssh|tmux`：台架本身。`ssh '<命令>'` 以台架环境跑一条（和手机进来同一个 `login.sh`），每条进来的命令记在 `logs/commands.log`。
+- `rig.sh up|down|env|ssh|tmux`：台架本身。`ssh '<命令>'` 以台架环境跑一条（和手机进来同一个登录壳），每条进来的命令记在 `logs/commands.log`。
 - `emu.sh up|down|env`：模拟器。
 - `frames.py <命令> '<JSON 入参>' [期限毫秒]`：经台架开一条常驻流问一句（和手机同一条路）；`frames.py watch <秒>` 只看流上的帧。
 - `ui.py dump|tap|has|wait|text|key|shot`：按字找控件点、截屏。
