@@ -139,6 +139,55 @@ fn refused_by_remote(e: &russh::Error) -> bool {
     )
 }
 
+/// 多久没收到对端字节（毫秒）算「久」：过了它，复用这条连接开通道时**与新建一条同时起跑**（[`race`]）。
+///
+/// 值照保活定：健康的空闲连接每 `KEEPALIVE`（30 秒）没收包就发一次保活、一个往返后收到回话 ⇒ 它最后收包的年龄落在
+/// 0 到「30 秒 ＋ 一个往返」之间（用户的远端往返 12–577 ms）。门槛再留 2 秒：保活发出去 2 秒还没回话，才当它可能是黑洞。
+/// 判错的代价不对称：健康的被判成久 ⇒ 多起一条 TCP（旧的先回话，新的当场丢掉）；黑洞没判出来 ⇒ 干等界面的握手期限（45 秒）。
+pub(crate) const STALE_AFTER_MS: u64 = connect::KEEPALIVE_MS + 2_000;
+
+/// 这条连接（`silent_ms` 毫秒没收到对端字节）开通道之前要不要和新建赛跑。
+pub(crate) fn stale(silent_ms: u64) -> bool {
+    silent_ms >= STALE_AFTER_MS
+}
+
+/// [`race`] 的结局。
+pub(crate) enum Raced<O, N> {
+    /// 旧连接先回话（成或不成，都是它的回话）。
+    Old(O),
+    /// 新的一条先站住。
+    New(N),
+}
+
+/// **赛跑**：旧连接上等回话（`old`）与新建一条（`fresh`）同时起跑，谁先站住用谁。同时好了 ⇒ 旧的（不白换）；
+/// 新建失败不算数 ⇒ 接着等旧的。另一边随返回被丢掉（新建到一半的那条当场关掉）。不靠钟：两边都是事件。
+pub(crate) async fn race<O, N, E: std::fmt::Debug>(
+    old: impl std::future::Future<Output = O>,
+    fresh: impl std::future::Future<Output = Result<N, E>>,
+) -> Raced<O, N> {
+    tokio::pin!(old, fresh);
+    let mut fresh_failed = false;
+    loop {
+        tokio::select! {
+            biased;
+            o = &mut old => return Raced::Old(o),
+            n = &mut fresh, if !fresh_failed => match n {
+                Ok(n) => return Raced::New(n),
+                Err(e) => {
+                    tracing::info!("dial: 赛跑里新建的那条没成（{e:?}）—— 接着等旧连接回话");
+                    fresh_failed = true;
+                }
+            },
+        }
+    }
+}
+
+/// 开通道那一下的结局：旧连接的回话（成或不成），或者赛跑里新的一条先站住了（连同这一族的身份）。
+enum Answered {
+    Old(Result<russh::Channel<russh::client::Msg>, russh::Error>),
+    Replaced(Box<Linked>, String),
+}
+
 impl Lease {
     /// 拿一条连接。`probe` / `stages` ⇒ 不进池、就地拨；其余按身份在池里放置（`pool::Pool::place`：复用 / 按需多开）。
     pub(crate) async fn take(
@@ -166,9 +215,20 @@ impl Lease {
         key: String,
         lane: Lane,
     ) -> Result<Lease, (Said, Option<String>)> {
-        let placed = pool::ssh()
-            .place(&key, lane, || connect::establish(req, stages))
-            .await?;
+        Self::place_with(key, lane, || connect::establish(req, stages)).await
+    }
+
+    /// 同 [`Lease::place`]，拨号由调用方给（赛跑赢下来的那条：第一次要拨时交出它）。
+    async fn place_with<F, Fut>(
+        key: String,
+        lane: Lane,
+        dial: F,
+    ) -> Result<Lease, (Said, Option<String>)>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Result<Linked, (Said, Option<String>)>>,
+    {
+        let placed = pool::ssh().place(&key, lane, dial).await?;
         let (s, t, cap) = placed.conn.budget.free();
         tracing::info!(
             "dial: {} {} 的 SSH 连接（{lane:?}；这条通道剩 {s}/{cap}、车道剩 {t}；池里此刻 {} 条）",
@@ -207,6 +267,10 @@ impl Lease {
     /// - **远端说满了**（`MaxSessions`）⇒ 这条连接学到上限（`Budget::refused`：空格当场作废）、**不摘它**
     ///   （长流还在它上面），照同一道重新放置 —— 通常落到一条新连接上（`Why::Full`）；学到的上限是 0 ⇒ 报错（远端根本不给开）。
     /// - **连接死了**（其余）⇒ 复用来的才摘掉、重拨一次（同一机制换一条新连接）；新拨的那条再失败就如实报。
+    ///
+    /// 复用来的连接**久没收到对端字节**（[`stale`]）⇒ 开通道与新建一条同时起跑（[`race`]）：旧的先回话照常用；
+    /// 新的先站住 ⇒ 旧的判死（连同族里那之后也没动静的成员一起摘，`pool::Watch::dead`），这一趟改放到新的那条上。
+    /// 路断成黑洞时，不用再干等界面的握手期限。
     pub(crate) async fn session_channel(
         &mut self,
         req: &DialRequest,
@@ -217,16 +281,58 @@ impl Lease {
                 return Err(copy_text("beUses.session.noSlot", &[]).into());
             };
             // 等远端回「开好了」这一段被打断（链路被关）⇒ 摘掉这条连接（`pool::Watch`）。
+            // 只在池里复用来的连接上赛跑（这一趟拨的那条刚握完手；不进池的那一形没有可换的）。
+            let racing = self
+                .key
+                .clone()
+                .filter(|_| self.reused && stale(self.linked.heard.silent_for()));
             let opened = {
                 let watch = self
                     .key
                     .as_deref()
                     .map(|k| pool::Watch::new(pool::ssh(), k, &self.linked));
-                let r = self.linked.session.channel_open_session().await;
-                if let Some(w) = watch {
-                    w.done();
+                let open = self.linked.session.channel_open_session();
+                let answered = match racing {
+                    Some(key) => {
+                        tracing::info!(
+                            "dial: {} 上 {} ms 没收到对端字节 —— 开通道与新建一条同时起跑",
+                            self.linked.endpoint,
+                            self.linked.heard.silent_for()
+                        );
+                        // 赛跑里那条新建的阶段与原因码不进这一趟（它多半会被丢掉）。
+                        let quiet = StageSink::new(false);
+                        match race(open, connect::establish(req, &quiet)).await {
+                            Raced::Old(r) => Answered::Old(r),
+                            Raced::New(fresh) => Answered::Replaced(Box::new(fresh), key),
+                        }
+                    }
+                    None => Answered::Old(open.await),
+                };
+                match (&answered, watch) {
+                    (Answered::Old(_), Some(w)) => w.done(),
+                    (Answered::Replaced(..), Some(w)) => w.dead(),
+                    (_, None) => {}
                 }
-                r
+                answered
+            };
+            let opened = match opened {
+                Answered::Old(r) => r,
+                Answered::Replaced(fresh, key) => {
+                    drop(permit);
+                    let mut won = Some(fresh);
+                    *self = Self::place_with(key, self.lane, || {
+                        let won = won.take();
+                        async move {
+                            match won {
+                                Some(l) => Ok(*l),
+                                None => connect::establish(req, stages).await,
+                            }
+                        }
+                    })
+                    .await
+                    .map_err(|(e, _)| e)?;
+                    continue;
+                }
             };
             let e = match opened {
                 Ok(c) => return Ok((c, permit)),

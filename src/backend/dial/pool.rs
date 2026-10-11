@@ -28,7 +28,7 @@
 //! 例外一形：远端**说满了**（`MaxSessions`）⇒ 不摘，那条连接学到上限（[`Budget::refused`]），换一格放。
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
@@ -48,6 +48,8 @@ pub(crate) trait Conn: Send + Sync + 'static {
         Self: Sized;
     /// 把停着的空闲 sftp 会话关掉、还出它那一格（有就 `true`）。借不到格时池先做这一步。
     fn reclaim_idle(&self) -> bool;
+    /// 最后一次收到对端字节的时刻（[`Heard::at`]）。一条成员被判死时，族里那之后也没动静的跟着摘（[`Watch`]）。
+    fn heard_at(&self) -> u64;
 }
 
 impl Conn for Linked {
@@ -70,6 +72,45 @@ impl Conn for Linked {
             .unwrap_or_else(|e| e.into_inner())
             .take();
         parked.is_some()
+    }
+    fn heard_at(&self) -> u64 {
+        self.heard.at()
+    }
+}
+
+/// 本进程单调钟的毫秒数（从第一次读起算，至少是 1 —— 0 留给「还没收到过」）。
+/// 只用来比「这条连接多久没收到对端字节了」，不驱动任何等待、不让谁醒来。
+pub(crate) fn mono_ms() -> u64 {
+    static ORIGIN: OnceLock<tokio::time::Instant> = OnceLock::new();
+    let now = tokio::time::Instant::now();
+    let origin = *ORIGIN.get_or_init(|| now);
+    u64::try_from(now.saturating_duration_since(origin).as_millis()).unwrap_or(u64::MAX - 1) + 1
+}
+
+/// 一条连接**最后一次收到对端字节**的时刻（[`mono_ms`]；0 = 还没收到过）。TCP 那一层每读到字节记一笔
+/// （`connect::Hearing`）。健康的空闲连接也会每 30 秒收到一次保活回话（`connect::KEEPALIVE`）⇒
+/// 「很久没收到」说明对端没在回话：路断成黑洞时 TCP 看着还活着，只有这一格看得出来。
+#[derive(Default)]
+pub(crate) struct Heard(AtomicU64);
+
+impl Heard {
+    /// 一条刚握完手的连接：此刻算收到过。
+    pub(crate) fn new() -> Self {
+        Heard(AtomicU64::new(mono_ms()))
+    }
+
+    /// 收到了对端的字节。
+    pub(crate) fn touch(&self) {
+        self.0.fetch_max(mono_ms(), Ordering::Relaxed);
+    }
+
+    pub(crate) fn at(&self) -> u64 {
+        self.0.load(Ordering::Relaxed)
+    }
+
+    /// 多久没收到对端字节了（毫秒）。
+    pub(crate) fn silent_for(&self) -> u64 {
+        mono_ms().saturating_sub(self.at())
     }
 }
 
@@ -328,6 +369,26 @@ impl<C: Conn> Pool<C> {
         }
     }
 
+    /// 这一条被判成黑洞（从 `since` 起等它回话、没等到）⇒ 摘掉它，连同族里**从 `since` 起也没收到过字节**的成员：
+    /// 它们多半走的是同一条断掉的路（换网 / NAT 表过期），留着的话下一回放置落到它们上面、再干等一回。
+    /// 那之后收到过字节的成员留着。摘掉 ≠ 关掉（同 [`Pool::evict`]）。
+    pub(crate) fn evict_silent(&self, key: &str, dead: &Arc<C>, since: u64) {
+        let fam = {
+            let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
+            g.get(key).cloned()
+        };
+        if let Some(fam) = fam {
+            fam.members
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .retain(|w| {
+                    w.upgrade()
+                        .is_some_and(|cur| !Arc::ptr_eq(&cur, dead) && cur.heard_at() > since)
+                });
+            fam.freed.notify_waiters();
+        }
+    }
+
     /// 此刻还活着（有人在用 / 被托着）的连接数（全部身份）。生产日志读它。
     pub(crate) fn live(&self) -> usize {
         let g = self.families.lock().unwrap_or_else(|e| e.into_inner());
@@ -344,7 +405,8 @@ impl<C: Conn> Pool<C> {
     }
 }
 
-/// 在一条池里的连接上等远端回话（开通道 / 验活），被打断就摘掉它。
+/// 在一条池里的连接上等远端回话（开通道 / 验活），被打断（或判死，[`Watch::dead`]）就摘掉它，
+/// 连同族里从开始等那一刻起也没收到过字节的成员（[`Pool::evict_silent`]）。
 ///
 /// 路径断成黑洞（换网 / NAT 表过期 —— 没有 RST，TCP 看着还活着）之后，这条连接要等 keepalive 连错三次（30 s × 3）才判死；
 /// 在那之前每一条新链路都会放到它上面、在开通道那一步干等，直到界面的握手期限（45 s）把链路关掉。
@@ -355,6 +417,8 @@ pub(crate) struct Watch<'a, C: Conn> {
     pool: &'a Pool<C>,
     key: &'a str,
     conn: &'a Arc<C>,
+    /// 开始等回话的那一刻（[`mono_ms`]）。
+    since: u64,
     armed: bool,
 }
 
@@ -364,6 +428,7 @@ impl<'a, C: Conn> Watch<'a, C> {
             pool,
             key,
             conn,
+            since: mono_ms(),
             armed: true,
         }
     }
@@ -372,15 +437,24 @@ impl<'a, C: Conn> Watch<'a, C> {
     pub(crate) fn done(mut self) {
         self.armed = false;
     }
+
+    /// 判死了（新起的一条比它先站住）：当场摘。
+    pub(crate) fn dead(mut self) {
+        self.armed = false;
+        tracing::warn!(
+            "dial: 新起的一条比这条先站住 —— 判它是黑洞，从族里摘掉（连同那之后也没动静的成员）"
+        );
+        self.pool.evict_silent(self.key, self.conn, self.since);
+    }
 }
 
 impl<C: Conn> Drop for Watch<'_, C> {
     fn drop(&mut self) {
         if self.armed {
             tracing::warn!(
-                "dial: 在这条连接上等远端回话时被打断了（链路被关）—— 当它可能是黑洞，从族里摘掉"
+                "dial: 在这条连接上等远端回话时被打断了（链路被关）—— 当它可能是黑洞，从族里摘掉（连同那之后也没动静的成员）"
             );
-            self.pool.evict(self.key, self.conn);
+            self.pool.evict_silent(self.key, self.conn, self.since);
         }
     }
 }

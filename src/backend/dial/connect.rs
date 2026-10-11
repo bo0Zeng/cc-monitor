@@ -26,6 +26,10 @@ use crate::common::said::Said;
 /// （空闲一小时的会话很常见）。死链由 keepalive 超时 ＋ EOF 检出。
 const KEEPALIVE: Duration = Duration::from_millis(30_000);
 
+/// 同一个间隔，毫秒（「多久没收包算久」照它定：`uses::STALE_AFTER_MS`）。
+#[allow(clippy::cast_possible_truncation)]
+pub(crate) const KEEPALIVE_MS: u64 = KEEPALIVE.as_millis() as u64;
+
 /// 短命探活（`probe`）的 inactivity 上限 —— 测试连接那条不需要保活。
 const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
 
@@ -48,6 +52,68 @@ pub(crate) struct Linked {
     pub(crate) held: Mutex<Vec<Arc<Linked>>>,
     /// 这条连接上停着的那一条空闲 sftp 会话（一个空位；`sftp.rs::Parked`）。不托本连接。
     pub(crate) idle_sftp: Mutex<Option<super::sftp::Parked>>,
+    /// 最后一次收到对端字节的时刻（[`Hearing`] 在 SSH 底下那条字节流上记）。
+    pub(crate) heard: Arc<super::pool::Heard>,
+}
+
+/// SSH 底下那条字节流（直连的 TCP · 经跳板的那条隧道）套一层：**读到对端的字节**就记一笔收包时刻（[`super::pool::Heard`]）。
+/// 写不记。别的原样转手。
+pub(crate) struct Hearing<S> {
+    inner: S,
+    heard: Arc<super::pool::Heard>,
+}
+
+impl<S> Hearing<S> {
+    pub(crate) fn new(inner: S, heard: Arc<super::pool::Heard>) -> Self {
+        Hearing { inner, heard }
+    }
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Hearing<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if matches!(r, std::task::Poll::Ready(Ok(()))) && buf.filled().len() > before {
+            self.heard.touch();
+        }
+        r
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Hearing<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+    fn poll_write_vectored(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+    }
+    fn is_write_vectored(&self) -> bool {
+        self.inner.is_write_vectored()
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
 }
 
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
@@ -288,6 +354,7 @@ async fn race(
         Arc<Mutex<Option<String>>>,
         Endpoint,
         bool,
+        Arc<super::pool::Heard>,
     ),
     (Said, Option<String>),
 > {
@@ -319,13 +386,18 @@ async fn race(
                     port: ep.port,
                     known_hosts: super::known_hosts::path(),
                 };
+                let heard = Arc::new(super::pool::Heard::new());
                 let r = match tcp_hop(&ep).await {
                     Ok((tcp, compress)) => {
                         let config = config(probe, apply && compress);
-                        client::connect_stream(config, tcp, checker)
-                            .await
-                            .map(|h| (h, compress))
-                            .map_err(|e| (stage_of_russh(&e), e.to_string()))
+                        client::connect_stream(
+                            config,
+                            Hearing::new(tcp, Arc::clone(&heard)),
+                            checker,
+                        )
+                        .await
+                        .map(|h| (h, compress))
+                        .map_err(|e| (stage_of_russh(&e), e.to_string()))
                     }
                     Err((stage, e)) => Err((stage, e.to_string())),
                 };
@@ -335,7 +407,7 @@ async fn race(
                     }
                 }
                 match r {
-                    Ok((h, compress)) => Ok((h, observed, ep, compress)),
+                    Ok((h, compress)) => Ok((h, observed, ep, compress, heard)),
                     Err((stage, e)) => {
                         stages.emit(Stage::Failed {
                             endpoint: ep_label.clone(),
@@ -576,9 +648,9 @@ pub(crate) async fn establish(
     let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
     // 〔第二问〕跳板那一趟自己的一格：跳板是另一台机器，界面按它自己那一台固化（不再一直 TOFU）。
     let jump_reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
-    let (mut session, observed, winner, jump) = match &req.jump {
+    let (mut session, observed, winner, jump, heard) = match &req.jump {
         None => {
-            let (s, o, w, _) = race(
+            let (s, o, w, _, h) = race(
                 req.probe,
                 true,
                 req.host_key_fingerprint.clone(),
@@ -587,7 +659,7 @@ pub(crate) async fn establish(
                 &reported,
             )
             .await?;
-            (s, o, w, None)
+            (s, o, w, None, h)
         }
         Some(hop) => {
             let hop_name = if hop.label.is_empty() {
@@ -603,7 +675,7 @@ pub(crate) async fn establish(
                 port: hop.port,
             };
             // 跳板那条不压（`apply = false`），但本机到跳板这一跳的判准答案要拿回来给目标那条用。
-            let (mut jump_session, _jo, _jw, compress_inner) = race(
+            let (mut jump_session, _jo, _jw, compress_inner, _jh) = race(
                 req.probe,
                 false,
                 hop.host_key_fingerprint.clone(),
@@ -675,9 +747,11 @@ pub(crate) async fn establish(
                 port: req.port,
                 known_hosts: super::known_hosts::path(),
             };
+            // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
+            let heard = Arc::new(super::pool::Heard::new());
             let session = client::connect_stream(
                 config(req.probe, compress_inner),
-                channel.into_stream(),
+                Hearing::new(channel.into_stream(), Arc::clone(&heard)),
                 checker,
             )
             .await
@@ -693,7 +767,7 @@ pub(crate) async fn establish(
                 host: req.host.clone(),
                 port: req.port,
             };
-            (session, observed, winner, Some(jump_session))
+            (session, observed, winner, Some(jump_session), heard)
         }
     };
     let fingerprint = observed.lock().ok().and_then(|g| g.clone());
@@ -731,6 +805,7 @@ pub(crate) async fn establish(
         budget: super::pool::Budget::new(),
         held: Mutex::new(Vec::new()),
         idle_sftp: Mutex::new(None),
+        heard,
     })
 }
 

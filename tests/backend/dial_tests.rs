@@ -757,3 +757,70 @@ async fn a_failed_ack_keeps_the_raw_words_in_the_detail_not_the_sentence() {
     let v: serde_json::Value = serde_json::from_str(String::from_utf8(ok).unwrap().trim()).unwrap();
     assert!(v.get("detail").is_none(), "成功的 ack 多出了 detail：{v}");
 }
+
+// ═══ net3：复用不慢于新建（久没收包的连接上开通道 ⇒ 与新建同时起跑）═══════════════════
+
+/// ★ net3：收包时刻记在 TCP 那一层 —— 从对端**读到字节**才记，往外写不记（自己往外写说明不了对端还在）。
+#[tokio::test]
+async fn the_heard_clock_moves_on_bytes_from_the_peer_only() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let (ours, mut theirs) = tokio::io::duplex(64);
+    let heard = Arc::new(pool::Heard::default());
+    let mut s = connect::Hearing::new(ours, Arc::clone(&heard));
+    s.write_all(b"ping").await.unwrap();
+    let mut got = [0u8; 4];
+    theirs.read_exact(&mut got).await.unwrap();
+    assert_eq!(heard.at(), 0, "往外写也被记成了收到对端字节");
+    theirs.write_all(b"pong").await.unwrap();
+    s.read_exact(&mut got).await.unwrap();
+    assert!(heard.at() > 0, "读到了对端的字节，收包时刻却没动");
+}
+
+/// ★ net3：多久没收包算「久」。健康的空闲连接每 30 秒（`KEEPALIVE`）发一次保活、一个往返后收到回话 ⇒
+/// 它最后收包的年龄落在 0 到 30 秒加一个往返之间，这一段里不赛跑；过了门槛（保活发出去之后还等了一阵没回）才赛跑。
+#[test]
+fn a_connection_is_stale_only_past_one_unanswered_keepalive() {
+    let keepalive = connect::KEEPALIVE_MS;
+    assert!(!uses::stale(0));
+    assert!(
+        !uses::stale(keepalive),
+        "刚到保活点的健康空闲连接被判成了久没动静"
+    );
+    assert!(
+        !uses::stale(keepalive + 1_000),
+        "保活刚发出去、回话还在路上（往返 ≤ 1 秒）就被判成了久没动静"
+    );
+    assert!(uses::stale(uses::STALE_AFTER_MS));
+    assert!(
+        uses::stale(keepalive * 2),
+        "错过一整轮保活还没被判成久没动静"
+    );
+}
+
+/// ★ net3：赛跑 —— 旧连接上开通道与新建一条同时起跑，**谁先站住用谁**。
+/// 旧的先回话 ⇒ 用旧的（新起的那条随之丢掉）；新的先站住 ⇒ 用新的；两边同时好了 ⇒ 用旧的（不白换）；
+/// 新建失败 ⇒ 不算数，接着等旧的回话。
+#[tokio::test]
+async fn the_open_on_an_old_connection_races_a_fresh_dial() {
+    use std::future::{pending, ready};
+    let old_first = uses::race(ready(Ok::<u8, ()>(1)), pending::<Result<u8, String>>()).await;
+    assert!(
+        matches!(old_first, uses::Raced::Old(Ok(1))),
+        "旧的先回话却没用旧的"
+    );
+    let new_first = uses::race(pending::<Result<u8, ()>>(), ready(Ok::<u8, String>(2))).await;
+    assert!(matches!(new_first, uses::Raced::New(2)), "新的先站住却没换");
+    let both = uses::race(ready(Ok::<u8, ()>(1)), ready(Ok::<u8, String>(2))).await;
+    assert!(
+        matches!(both, uses::Raced::Old(Ok(1))),
+        "两边同时好了却换了一条"
+    );
+    let (tx, rx) = tokio::sync::oneshot::channel::<u8>();
+    let raced = tokio::spawn(uses::race(rx, ready(Err::<u8, String>("拨不通".into()))));
+    for _ in 0..16 {
+        tokio::task::yield_now().await;
+    }
+    assert!(!raced.is_finished(), "新建失败之后没接着等旧的回话");
+    tx.send(7).unwrap();
+    assert!(matches!(raced.await.unwrap(), uses::Raced::Old(Ok(7))));
+}
