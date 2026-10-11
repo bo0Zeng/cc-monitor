@@ -11,6 +11,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+/// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
+fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_at(
+        file.parent()
+            .and_then(std::path::Path::parent)
+            .expect("两级"),
+    )
+}
+
 struct NoFacts;
 impl Facts for NoFacts {
     fn path(&self, _p: &str) -> There {
@@ -364,9 +373,16 @@ impl M {
         }
     }
     fn refresh(&self, incoming: Option<BTreeMap<String, Snapshot>>) -> Catalog {
-        asset_catalog::update_with(&self.cat, self.scan(), self.label, incoming, false, 100)
-            .expect("目录记不下")
-            .0
+        asset_catalog::update_with(
+            &own_at(&self.cat),
+            self.scan(),
+            self.label,
+            incoming,
+            false,
+            100,
+        )
+        .expect("目录记不下")
+        .0
     }
     /// 这台跑一条内层命令（与生产那几条同一个本体，只是根换成这台的临时家目录）。
     fn inner(&self, cmd: &str, args: &Value) -> Result<Value, (String, String)> {
@@ -980,9 +996,14 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
 fn a_note_travels_with_the_catalog_to_the_other_backend() {
     let (base, t) = two("note");
     let key = asset_catalog::entry_key(KIND_SKILL, "cc-bus");
-    let (ca, changed) =
-        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, "  先装钩子  "), 101)
-            .unwrap();
+    let (ca, changed) = asset_catalog::update_noting(
+        &own_at(&t.a.cat),
+        t.a.scan(),
+        "a",
+        (&key, "  先装钩子  "),
+        101,
+    )
+    .unwrap();
     assert!(changed);
     let row = |cat: &Catalog| {
         table(cat, &[])
@@ -1000,20 +1021,22 @@ fn a_note_travels_with_the_catalog_to_the_other_backend() {
         "备注没随目录到另一台"
     );
     let (cb, _) =
-        asset_catalog::update_noting(&t.b.cat, t.b.scan(), "b", (&key, "改过了"), 102).unwrap();
+        asset_catalog::update_noting(&own_at(&t.b.cat), t.b.scan(), "b", (&key, "改过了"), 102)
+            .unwrap();
     let ca = t.a.refresh(Some(cb.machines.clone()));
     assert_eq!(
         row(&ca),
         Some("改过了".to_string()),
         "后写的那一条没压过前一条"
     );
-    let (ca, _) = asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 103).unwrap();
+    let (ca, _) =
+        asset_catalog::update_noting(&own_at(&t.a.cat), t.a.scan(), "a", (&key, ""), 103).unwrap();
     assert_eq!(row(&ca), None);
     let cb = t.b.refresh(Some(ca.machines.clone()));
     assert_eq!(row(&cb), None, "清掉的那一下没传过去");
     // 同样的字再存一次：目录不变（不扇出）。
     let (_, again) =
-        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 104).unwrap();
+        asset_catalog::update_noting(&own_at(&t.a.cat), t.a.scan(), "a", (&key, ""), 104).unwrap();
     assert!(!again);
     let _ = std::fs::remove_dir_all(&base);
 }

@@ -120,8 +120,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["catalog_unreadable", "io_failed"],
         fields: &[out("changed", "这一趟目录有没有变（变了才写盘）"), out("machines", "各台一份快照 `{id, label, gen, seenAt, assets}`：`gen` 是那台**自己**的代数（它自己那份变了才 +1）；`seenAt` 是那一代的时刻（那台的钟，只给人看、不参与合并）"), out("path", "目录文件在这台上的路径"), out("problems", "这一趟扫描读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」分开说"), out("rows", "别的机器有的每个（`kind`, `name`）一行 `{kind, name, state, from}`：`state` 闭集 `missing`（这台一条同名的都没有）· `differs`（有同名的，摘要都不同）· `same`（有一条摘要相同）；`from` 是别处那几条 `{machine, project, digest, summary}`"), out("self", "这台机器的 id（第一次记目录时生成，之后不变）")],
         takes_input: false,
-        run: Run::BlockingData(|r| {
-            crate::assets::asset_catalog::answer_catalog(&r.args)
+        run: Run::BlockingOwn(|r, own| {
+            crate::assets::asset_catalog::answer_catalog(&r.args, own)
                 .map(Some)
         }),
     },
@@ -131,8 +131,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "catalog_unreadable", "io_failed"],
         fields: &[arg("catalog", "另一台后端的整份目录，形状就是 `assets-catalog` 的应答（只读它的 `machines`）"), out("changed", "这一次有没有改动"), both("machines", "各台的快照（同一台取 `gen` 大的那一份整份）"), out("path", "目录文件的路径"), out("problems", "读不出的那几处各一句"), out("rows", "并完之后的资产行"), both("self", "这台的机器 id")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::asset_catalog::answer_merge(&r.args)
+        run: Run::BlockingOwn(|r, own| {
+            crate::assets::asset_catalog::answer_merge(&r.args, own)
                 .map(Some)
         }),
     },
@@ -146,10 +146,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "unreachable"],
         fields: &[arg("dial", "可缺席"), arg("origin", "可缺席"), out("reach", "可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin"), out("self", "本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>`"), out("synced", "每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self`")],
         takes_input: true,
-        run: Run::Async(|r| {
+        run: Run::AsyncOwn(|r, own| {
             Box::pin(async move {
-                let fold: crate::assets::asset_sync::Fold =
-                    std::sync::Arc::new(crate::assets::asset_catalog::answer_merge);
+                let fold: crate::assets::asset_sync::Fold = std::sync::Arc::new(move |a| {
+                    crate::assets::asset_catalog::answer_merge(a, &own)
+                });
                 crate::assets::asset_sync::answer(
                     &r.args,
                     fold,
@@ -288,14 +289,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[arg("kind", "`skill` / `mcp`"), out("machines", "勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = 那台说的那一句"), arg("name", "名字"), arg("place", "可缺：用户在卡上选的那一处 `{level:\"user\"}` / `{level:\"project\", dir}`；对勾上的每台都能装才照它"), out("place", "共用的那一处（没有每台都能装的 ⇒ `null`）"), out("places", "各台能装的各处并起来 `{at, ok, note}`：勾上的每台都能装才 `ok`，否则 `note` 说第一台为什么不行"), out("slots", "几张卡的要填格并成一份 `{field, key, kept}`：每格一次，`kept` = 那一格已经有值的几台（名字）"), arg("to", "勾上的几台：可达表的键的列表，**`null` = 这台自己**；来源与那台原来那一处照扩展页那张表")],
         takes_input: true,
-        run: Run::Async(|r| {
+        run: Run::AsyncOwn(|r, own| {
             Box::pin(async move {
+                let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
                 crate::assets::hub::ext_preview_many(
                     &hub_here(&r.tz),
                     &r.args,
                     &crate::dial::remote_ask::REACH,
                     &crate::dial::remote_ask::DialRemote,
-                    crate::assets::asset_catalog::answer_current,
+                    &current,
                 )
                 .await
                 .map(Some)
@@ -313,14 +315,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
         ],
         fields: &[arg("fill", "用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里"), arg("kind", "同 `ext-hub-preview`"), out("machines", "每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = 那台说的那一句（看过之后变了的，那台一个字节不写），一台没成不挡别台"), arg("name", "同 `ext-hub-preview`"), arg("place", "卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale`"), arg("to", "同 `ext-hub-preview`"), arg("tokens", "每台那张卡上的记号 `{机器键（本机 = 空串）: {source, target}}`：枢纽两头都再看一次，任一头对不上 ⇒ 那台 `stale`、**一个字节不写**")],
         takes_input: true,
-        run: Run::Async(|r| {
+        run: Run::AsyncOwn(|r, own| {
             Box::pin(async move {
+                let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
                 crate::assets::hub::ext_apply_many(
                     &hub_here(&r.tz),
                     &r.args,
                     &crate::dial::remote_ask::REACH,
                     &crate::dial::remote_ask::DialRemote,
-                    crate::assets::asset_catalog::answer_current,
+                    &current,
                 )
                 .await
                 .map(Some)
@@ -335,10 +338,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "catalog_unreadable", "io_failed"],
         fields: &[out("machines", "每台一列 `{key, here, reachable, name, projects}`：`key` = 枢纽认它的键（本机后端自己 = `null`"), out("problems", "这台扫的时候读不出来的那几份"), out("rows", "每个条目一行 `{kind, name, about, detail, new, builtin, note, cells}`，`cells` 与 `machines` 同序"), arg("visit", "可缺席：`true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
+        run: Run::BlockingOwn(|r, own| {
             crate::assets::ext::answer_list(
                 &r.args,
-                &crate::assets::asset_catalog::answer_current,
+                &|visit| crate::assets::asset_catalog::answer_current(visit, own),
                 &crate::assets::ext::reach_of(&crate::dial::remote_ask::REACH),
             )
             .map(Some)
@@ -356,10 +359,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "catalog_unreadable", "io_failed"],
         fields: &[out("machines", "恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表"), out("problems", "同 `ext-list`：这台扫的时候读不出来的那几份"), out("rows", "同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格"), arg("visit", "同 `ext-list`：`true` = 这一问算「来看了一次」")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
+        run: Run::BlockingOwn(|r, own| {
             // 裁到这台那一格再交给同一个本体。`answer_current` 仍是那扇门（现扫 ＋ 记下整份目录，别的台那几格一个字节不动）。
             let here = |visit: bool| {
-                let (mut cat, problems) = crate::assets::asset_catalog::answer_current(visit)?;
+                let (mut cat, problems) = crate::assets::asset_catalog::answer_current(visit, own)?;
                 let me = cat.self_id.clone();
                 cat.machines.retain(|id, _| *id == me);
                 Ok((cat, problems))
@@ -374,8 +377,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "catalog_unreadable", "io_failed"],
         fields: &[arg("kind", "`skill` / `mcp`"), arg("name", "名字"), out("note", "现在生效的那一份（清掉了 ⇒ `null`）"), arg("text", "备注正文（首尾空白去掉；空串 = 清掉；最长 2000 字，超了拒、不截断）")],
         takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::ext::answer_note(&r.args, &crate::assets::asset_catalog::answer_note)
+        run: Run::BlockingOwn(|r, own| {
+            crate::assets::ext::answer_note(&r.args, &|k, t| {
+                crate::assets::asset_catalog::answer_note(k, t, own)
+            })
                 .map(Some)
         }),
     },

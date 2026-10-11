@@ -519,6 +519,10 @@ fn dispatch(
             Some(spec) => match spec.run {
                 Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
                 Run::AsyncData(f) => Disposition::SpawnData(req, Box::new(f)),
+                Run::AsyncOwn(f) => {
+                    let own = given.own.clone();
+                    Disposition::Spawn(req, Box::new(move |r| f(r, own)))
+                }
                 Run::Blocking(f) => {
                     Disposition::SpawnBlocking(req, Box::new(move |r| f(r).map_err(Fail::from)))
                 }

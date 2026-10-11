@@ -282,6 +282,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         Run::BlockingOwn(f) => f(req, own),
         Run::Async(f) => f(req).await.map_err(Fail::from),
         Run::AsyncData(f) => f(req).await,
+        Run::AsyncOwn(f) => f(req, own.clone()).await.map_err(Fail::from),
         Run::Builtin => {
             return refuse(
                 err,

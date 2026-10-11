@@ -857,14 +857,6 @@ mod tests {
              只建数据目录那一层（`~/.cc-monitor`，经 `own_dir::ensure_private_dir` 只给本人）；失败删自己的临时文件。线上入口只有命令表账号那一族的 `apikey-key-set`",
         ),
         (
-            "assets/asset_catalog.rs",
-            "**资产目录** `~/.cc-monitor/assets-catalog.json`：这台看到的 skill / 项目级 MCP \
-             ＋ 别的后端同步来的各台快照。文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据\
-             （用户的 skill 与 `.mcp.json` 本模块一个字节都不写）。`O_EXCL` 建临时文件 → 写满 → 原子挪过去；只建 \
-             `~/.cc-monitor` 那一层；失败删自己的临时文件；读不懂的那份不覆盖。线上入口只有命令表资产那一族的 \
-             `assets-catalog` / `assets-catalog-merge`（＋ 派生的 CLI 面）",
-        ),
-        (
             "relay/key.rs",
             "〔`INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
              都是本仓定的、只有中转与起会话那一侧的 shell 读它 ⇒ 中转**自己的**状态，不是用户数据。读回；读不出或形状不对才铸 → \
@@ -1005,10 +997,6 @@ mod tests {
             "命令注册里账号那一族 —— `apikey-key-set` 一条，外加改账号库那几条（`accounts-*`）递给执行器的 key 表几口（`ACCOUNT_KEYS`）",
         ),
         (
-            "stream/inbound/registry/assets.rs",
-            "命令注册里资产那一族 —— 资产目录那两条（`assets-catalog` / `assets-catalog-merge`）；skill 装记录那一条（`skill-install-record`）",
-        ),
-        (
             "accounts/oauth/mod.rs",
             "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
         ),
@@ -1069,13 +1057,6 @@ mod tests {
             "accounts/upstream_select/file_face.rs",
             "file_face::answer_",
             "stream/inbound/registry/accounts.rs",
-        ),
-        // 三条写口同一个前缀（`answer_catalog` 现扫即记 · `answer_merge` 并进来再记，都会写）⇒ 针取前缀：
-        // 本模块生产段里凡是 `answer_` 开头的公开入口都是写口，只许资产那一族碰。
-        (
-            "assets/asset_catalog.rs",
-            "asset_catalog::answer_",
-            "stream/inbound/registry/assets.rs",
         ),
         // 订阅号凭据：写回（`write_tokens`）与续期锁（`with_refresh_lock`）都只从续期那一处（`oauth/mod.rs`）进。
         (

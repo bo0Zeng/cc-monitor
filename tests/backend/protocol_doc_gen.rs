@@ -672,7 +672,7 @@ fn traits_of(spec: &CommandSpec) -> String {
                 "撤不动（阻塞档，`cancel` 回 `not_cancellable`）"
             }
             Run::Builtin => "连接内就地做完",
-            Run::Async(_) | Run::AsyncData(_) => "可撤",
+            Run::Async(_) | Run::AsyncData(_) | Run::AsyncOwn(_) => "可撤",
         }
         .to_string(),
     );
