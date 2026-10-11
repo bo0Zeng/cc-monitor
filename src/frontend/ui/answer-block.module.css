@@ -9,7 +9,7 @@
     flex-direction: column;
     gap: var(--space-5);
     width: min(var(--stream-max-width), calc(100% - 80px));
-    max-height: 60%;
+    max-height: calc(100% - 2 * var(--space-5));
     overflow-y: auto;
     padding: var(--space-5) var(--space-6);
     border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
@@ -27,6 +27,26 @@
   /* 别处先答了：淡出、等重读把它收掉。 */
   .abBlock[data-gone="true"] {
     opacity: 0.45;
+  }
+
+  /* 别处先答了：块收起后只留那一行（不再是警示卡，只剩居中的一枚小条）。 */
+  .abBlock[data-gone-only="true"] {
+    align-items: center;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+  }
+
+  .abGone {
+    align-self: center;
+    padding: var(--space-3) var(--space-5);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    font-size: var(--font-size-small);
   }
 
   .abHead {

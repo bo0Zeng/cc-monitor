@@ -17925,6 +17925,12 @@
       "zh": "未答出 · 原因不明",
       "args": []
     },
+    "askBlock.gone.elsewhere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已在终端答过或已关闭",
+      "args": []
+    },
     "askBlock.note.cancel": {
       "kind": "action",
       "role": "按钮",

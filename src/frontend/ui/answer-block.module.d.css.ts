@@ -4,6 +4,7 @@ declare const classes: {
   readonly abBlock: string;
   readonly abBody: string;
   readonly abDetail: string;
+  readonly abGone: string;
   readonly abHead: string;
   readonly abManual: string;
   readonly abMark: string;

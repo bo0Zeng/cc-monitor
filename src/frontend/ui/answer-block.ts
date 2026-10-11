@@ -11,8 +11,8 @@
  * - 没挂上请求（`ask: null`：信任框 · 别处起的会话 · 放行联网 … 每一种 needs.kind 都走这一支）⇒ 核心写好的那一句（只能在终端里答 / 答题口没接上）＋
  *   ［看终端］，能去它的终端时再多一颗（Windows ↗［切到终端］· 远端 tmux［在终端里打开］）。
  *
- * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）；别处先答了（already_answered · closed_elsewhere）⇒
- * 块淡出、按钮不可点、toast 照核心那一句、随即重读。
+ * 答出去之后等那台推 `changed {needs}` 重读（下一条挂着的换上来；没有了块收起）。别处先答了 ⇒ 块淡出收起、留一行（稳定态，
+ * 下一条请求来了 / 切走才没）：点了才知道的（already_answered · closed_elsewhere）那一行照核心那一句；没点、重读里那条请求没了的写「已在别处答过」。
  */
 import type { Tab } from "./tab-model";
 import type { Ask, AskChoice, AskQuestionItem, Needs } from "./session-reads";
@@ -82,6 +82,10 @@ export class AnswerBlock {
   private picks = new Map<string, Pick>();
   private pending = false;
   private gone = false;
+  /** 此刻画着的那条请求（哪个会话 · 请求 id · 是不是这里答出去的）。 */
+  private shown: { sid: string; id: string; ours: boolean } | null = null;
+  /** 别处先答了留下的那一行（哪个会话 · 哪条请求 · 那一句）。 */
+  private goneLine: { sid: string; ask: string; said: string } | null = null;
   /** 跳过来要焦点的那个会话：块画出来那一刻落进去（一次）。 */
   private wantFocus: string | null = null;
 
@@ -102,12 +106,30 @@ export class AnswerBlock {
   render(now: number = Date.now()): void {
     const tab = this.host.active();
     const n = tab ? needsOf(tab) : null;
+    const sid = tab?.sessionId ?? null;
+    if (this.goneLine && this.goneLine.sid !== sid) this.goneLine = null;
+    // 画着的那条请求没了、不是这里答掉的 ⇒ 别处先答了（终端那边 · 另一个窗口）：块收起、留一行，直到下一条请求来或切走。
+    const shown = this.shown;
+    if (shown && (shown.sid !== sid || n?.ask?.id !== shown.id)) {
+      this.shown = null;
+      if (shown.sid === sid && !shown.ours && !this.goneLine) this.goneLine = { sid: shown.sid, ask: shown.id, said: copyText("askBlock.gone.elsewhere") };
+    }
+    if (this.goneLine) {
+      // 点了才知道的那一种：请求还在（等重读）⇒ 淡出的块 ＋ 那一行照旧。
+      if (n?.ask && n.ask.id === this.goneLine.ask) return;
+      if (!n?.ask) {
+        this.drawGone(this.goneLine.said);
+        return;
+      }
+      this.goneLine = null;
+    }
     if (!tab || !n) {
       if (this.drawn !== "") {
         this.drawn = "";
         this.el.hidden = true;
         this.el.replaceChildren();
         delete this.el.dataset.gone;
+        delete this.el.dataset.goneOnly;
         this.host.room?.(0);
       }
       return;
@@ -117,10 +139,33 @@ export class AnswerBlock {
       this.drawn = key;
       this.draw(tab, n);
     }
+    if (n.ask) this.shown ??= { sid: tab.sessionId, id: n.ask.id, ours: false };
     const waited = waitedNow(n, now);
     if (this.since) this.since.textContent = waited ? copyText("askBlock.head.since", { waited }) : "";
     this.takeFocus();
     this.host.room?.(this.el.offsetHeight);
+  }
+
+  /** 块收起、只留「已在别处答过」那一行（稳定态：下一条请求来了 / 切走才没）。 */
+  private drawGone(said: string): void {
+    const key = `gone\u0000${said}`;
+    if (this.drawn === key) return;
+    this.drawn = key;
+    this.since = null;
+    this.el.hidden = false;
+    this.el.dataset.gone = "true";
+    this.el.dataset.goneOnly = "true";
+    this.el.replaceChildren(this.goneRow(said));
+    this.host.room?.(this.el.offsetHeight);
+  }
+
+  private goneRow(said: string): HTMLElement {
+    const line = document.createElement("div");
+    line.className = s.abGone;
+    line.dataset.part = "gone";
+    line.setAttribute("role", "status");
+    line.textContent = said;
+    return line;
   }
 
   private takeFocus(): void {
@@ -137,6 +182,7 @@ export class AnswerBlock {
     this.pending = false;
     this.gone = false;
     delete this.el.dataset.gone;
+    delete this.el.dataset.goneOnly;
     this.el.hidden = false;
     this.el.setAttribute("aria-label", n.head);
     const ask = n.ask;
@@ -375,6 +421,7 @@ export class AnswerBlock {
     switch (out.kind) {
       case "answered":
         // 等那台推 changed {needs} 重读；块留着、不可再点。也顺手问一次（推送丢了也换得上）。
+        if (this.shown && this.shown.id === req.ask) this.shown.ours = true;
         this.host.reread(sid);
         return;
       case "gone":
@@ -383,7 +430,8 @@ export class AnswerBlock {
         this.el.dataset.gone = "true";
         for (const x of this.el.querySelectorAll<HTMLButtonElement>("button")) setDisabled(x, out.said);
         for (const x of this.el.querySelectorAll<HTMLInputElement>("input")) x.disabled = true;
-        this.host.toast(out.said);
+        this.goneLine = { sid, ask: req.ask, said: out.said };
+        this.el.append(this.goneRow(out.said));
         this.host.reread(sid);
         return;
       case "failed":

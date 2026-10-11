@@ -92,23 +92,20 @@ export const ANSWER_SCENES: Scene[] = [
     await pick(1, 0);
     await pick(1, 1);
     await sleep(300);
-  }, world("AskUserQuestion", { questions: QUESTIONS }, "dialog open")),
+  }, world("AskUserQuestion", { questions: QUESTIONS }, "permission prompt")),
   shot("answer-plan", "答批准 · 批计划（甲4）", "计划原文进等宽块；四项由核心给：自动模式 · 自动接受编辑 · 逐个确认 · 继续规划…", async ({ backend }) => {
     await asked(backend, hook("ExitPlanMode", { plan: PLAN }, { permission_mode: "plan" }));
-  }, world("ExitPlanMode", { plan: PLAN }, "dialog open")),
+  }, world("ExitPlanMode", { plan: PLAN }, "permission prompt")),
   shot("answer-subagent", "答批准 · 子 agent 的请求（甲5）", "后台子 agent 发来的批准：头上标是哪一种 agent；多一项「改到终端里答」排末尾、幽灵样式", async ({ backend }) => {
     await asked(backend, hook("Bash", { command: "touch fgA.txt", description: "建 fgA.txt" }, { permission_suggestions: SUGGEST.slice(0, 1), agent_id: "a1f0", agent_type: "general-purpose" }));
   }, world("Bash", { command: "touch fgA.txt", description: "建 fgA.txt" }, "permission prompt")),
   shot("answer-manual", "答批准 · 只能在终端里答（甲6）", "没挂上请求（这条会话不是经答题口起的）：核心写好的那一句 ＋［看终端］", async ({ backend }) => {
     await asked(backend, null, "[data-part=manual]");
   }),
-  shot("answer-elsewhere", "答批准 · 别处先答了（甲7）", "终端那边先答了，这里再点「允许」：真后端回已答过 ⇒ 块淡出、按钮不可点、toast 照核心那一句，随后重读收起", async ({ backend }) => {
-    const allow = await asked(backend, hook("Bash", { command: PROBE, description: "建探针文件" }, { permission_suggestions: SUGGEST }), "button[data-choice=allow]");
-    // 重读放慢，截得到淡出那一刻（之后照常收起）。
-    backend.world.opDelayMs = { ...(backend.world.opDelayMs ?? {}), "history-facts": 4000 };
-    await backend.answerElsewhere(LOCAL, SID, "deny");
-    await click(allow);
-    await until(() => document.querySelector("[role=group][data-gone=true]"));
+  shot("answer-elsewhere", "答批准 · 别处先答了（甲7）", "终端那边先答了（经真后端答掉那一条）：真后端推 changed {needs}、重读里没了那条请求 ⇒ 块收起，留一行「已在终端答过或已关闭」（稳定态，下一条请求来了 / 切走才没）", async ({ backend }) => {
+    await asked(backend, hook("Bash", { command: PROBE, description: "建探针文件" }, { permission_suggestions: SUGGEST }), "button[data-choice=allow]");
+    await backend.answerElsewhere(LOCAL, SID, "allow");
+    await until(() => document.querySelector("[role=group] [data-part=gone]"), 15_000);
     await sleep(400);
   }),
 ];

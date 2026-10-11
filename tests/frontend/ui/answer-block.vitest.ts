@@ -118,8 +118,8 @@ describe("甲1 批准一步", () => {
     expect(answers).toEqual([{ ask: ASKS.approve.id, choice: "always-1" }]);
   });
 
-  it("★ 不在等了 ⇒ 收起、不留痕；换成下一条 ⇒ 换上来", () => {
-    const r = rig(tab(needs(ASKS.approve)));
+  it("★ 不在等了（没挂请求的那一种）⇒ 收起、不留痕；换成下一条 ⇒ 换上来（挂着请求的被别处答掉见甲7）", () => {
+    const r = rig(tab(needs(null)));
     r.set(tab(null));
     r.b.render(NOW);
     expect([r.b.el.hidden, r.b.el.childElementCount]).toEqual([true, 0]);
@@ -238,14 +238,48 @@ describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
     expect(host.viewTerminal).toHaveBeenCalledWith("s1");
   });
 
-  it("★ 别处先答了 ⇒ 块淡出、按钮不可点、toast 照核心那一句、随后重读", async () => {
-    const { b, host } = rig(tab(needs(ASKS.approve)), { kind: "gone", said: "核心·已在终端答过或已关闭" });
-    btn(b, ASKS.approve.choices[0].text).click();
+  it("★ 点了才知道别处先答了 ⇒ 块淡出、按钮不可点、下面留一行核心那一句、随后重读；重读把请求收了 ⇒ 块收起、那一行还在", async () => {
+    const r = rig(tab(needs(ASKS.approve)), { kind: "gone", said: "核心·已在终端答过或已关闭" });
+    btn(r.b, ASKS.approve.choices[0].text).click();
     await flush();
-    expect(b.el.dataset.gone).toBe("true");
-    expect([...b.el.querySelectorAll("button")].every((x) => x.getAttribute("aria-disabled") === "true")).toBe(true);
-    expect(host.toast).toHaveBeenCalledWith("核心·已在终端答过或已关闭");
-    expect(host.reread).toHaveBeenCalledWith("s1");
+    expect(r.b.el.dataset.gone).toBe("true");
+    expect([...r.b.el.querySelectorAll("button")].every((x) => x.getAttribute("aria-disabled") === "true")).toBe(true);
+    expect(r.b.el.querySelector("[data-part=gone]")!.textContent).toBe("核心·已在终端答过或已关闭");
+    expect(r.host.toast, "那一句留在块里，不另弹 toast").not.toHaveBeenCalled();
+    expect(r.host.reread).toHaveBeenCalledWith("s1");
+    r.set(tab(null));
+    r.b.render(NOW);
+    expect(r.b.el.hidden).toBe(false);
+    expect(r.b.el.querySelectorAll("button").length, "块收起").toBe(0);
+    expect(r.b.el.querySelector("[data-part=gone]")!.textContent).toBe("核心·已在终端答过或已关闭");
+  });
+
+  it("★ 没点、请求在别处被答掉（重读里没了它）⇒ 块收起、留一行「已在别处答过」；下一条请求来了 ⇒ 换上来；切走 ⇒ 不留", () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    r.set(tab(null));
+    r.b.render(NOW);
+    expect([r.b.el.hidden, r.b.el.querySelectorAll("button").length]).toEqual([false, 0]);
+    expect(r.b.el.querySelector("[data-part=gone]")!.textContent).toBe(copyText("askBlock.gone.elsewhere"));
+    r.b.render(NOW + 5_000);
+    expect(r.b.el.querySelector("[data-part=gone]"), "一直留着").not.toBeNull();
+    r.set(tab(needs(ASKS.plan, { kind: "plan" })));
+    r.b.render(NOW);
+    expect(r.b.el.querySelector("[data-part=gone]")).toBeNull();
+    expect(r.b.el.querySelectorAll("button[data-choice]").length).toBe(ASKS.plan.choices.length);
+    r.set(tab(null));
+    r.b.render(NOW);
+    r.set(tab(null, "s2"));
+    r.b.render(NOW);
+    expect([r.b.el.hidden, r.b.el.childElementCount], "切到别的会话 ⇒ 不留").toEqual([true, 0]);
+  });
+
+  it("★ 自己答出去的那一条被收了 ⇒ 块收起、不留那一行", async () => {
+    const r = rig(tab(needs(ASKS.approve)));
+    btn(r.b, ASKS.approve.choices[0].text).click();
+    await flush();
+    r.set(tab(null));
+    r.b.render(NOW);
+    expect([r.b.el.hidden, r.b.el.childElementCount]).toEqual([true, 0]);
   });
 
   it("没答成（别的原因）⇒ 块照旧可答、说一声", async () => {
