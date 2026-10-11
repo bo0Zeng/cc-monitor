@@ -21088,12 +21088,6 @@
       "zh": "找不到该机数据目录 · 额度账无处可读",
       "args": []
     },
-    "beLineage.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beLineage.write.failed": {
       "kind": "error",
       "role": "报错",

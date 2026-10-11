@@ -86,6 +86,7 @@ pub(super) fn spawn_relay_with(upstreams: Upstreams, taps: Arc<Taps>) -> SocketA
         Arc::new(Accounts::new(
             RoutingTable::build(std::iter::empty()),
             upstreams,
+            crate::platform::fs::Own::for_tests(),
         )),
         super::key::key_tests::test_keys(),
         TeeSink::to_port(taps),

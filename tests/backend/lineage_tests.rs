@@ -114,13 +114,15 @@ fn the_store_round_trips_and_does_not_overwrite_an_unreadable_file() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(FILE_NAME);
+    // 写句柄的数据目录那一根就是这个临时目录：写落在它底下的 `lineage.json`。
+    let own = crate::platform::fs::Own::issue_data_at(&dir);
     let store = LineageStore::at(Some(path.clone()));
-    store.saw(o(T, Some("s-p")), "s-new", "claude-code", 100);
+    store.saw(&own, o(T, Some("s-p")), "s-new", "claude-code", 100);
     let again = LineageStore::at(Some(path.clone()));
     assert_eq!(again.now().parent_of("s-new"), Some("s-p"));
     std::fs::write(&path, b"{not json").unwrap();
     let broken = LineageStore::at(Some(path.clone()));
-    broken.saw(o("ffff000011112222", None), "s-b", "claude-code", 100);
+    broken.saw(&own, o("ffff000011112222", None), "s-b", "claude-code", 100);
     assert_eq!(
         std::fs::read(&path).unwrap(),
         b"{not json",

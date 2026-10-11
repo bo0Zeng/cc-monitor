@@ -292,7 +292,7 @@ mod tests {
         (
             "lineage",
             "会话血缘（谁起的谁）：中转那一路每一发先认一次。它归 backend-core 是因为中转住本机常驻后端这个进程；\
-             写的只有 `~/.cc-monitor/lineage.json`（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+             写的只有数据目录底下的 `lineage.json`（后端**自己的**状态，经 `platform::fs::Own` 写）—— 一个用户文件都不写",
         ),
         ("observe", "观测面 —— 读，不改变世界"),
         ("platform", "唯一允许平台原语与平台 cfg 的层"),
@@ -913,12 +913,6 @@ mod tests {
              读不懂的那份不覆盖。策略文件整份原子写、只删策略目录里那一份。入口：中转换号那一路（上游选择）· 帧面那一路",
         ),
         (
-            "lineage.rs",
-            "**会话血缘** `~/.cc-monitor/lineage.json`：起会话地址里每个来处绑给了哪个会话 · 每个会话的父。\
-             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。在跨进程锁里读盘 → 改 → \
-             经 `own_state` 原子写；只建 `~/.cc-monitor` 那一层；读不懂的那份不覆盖。入口只有中转那一路（上游选择对中转的那个口）—— 不是帧面命令",
-        ),
-        (
             "dial/known_hosts.rs",
             "**主机钥匙** `~/.cc-monitor/known_hosts`（OpenSSH 格式）：本后端握手认下的各台主机钥匙，开终端那一行交给 `ssh` 认它。\
              文件名 / 格式 / 落点都是本仓定的、只有终端那一跳的 `ssh` 读它 ⇒ 拨号侧**自己的**状态，不是用户数据（用户的 `~/.ssh` 一个字节不碰）。\
@@ -1102,12 +1096,6 @@ mod tests {
             "accounts/quota/rotation.rs",
             "rotation::strategy_file_remove",
             "faces/rotation_face.rs",
-        ),
-        // 会话血缘：写口只有中转那一路认「谁起的谁」那一个函数，门是上游选择对中转的那个口。
-        (
-            "lineage.rs",
-            "lineage::relay_saw",
-            "accounts/upstream_select/mod.rs",
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),

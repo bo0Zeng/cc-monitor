@@ -221,13 +221,14 @@ async fn main() {
         .and_then(|_| control::resident::here())
         .filter(|dh| relay_route_core::legacy_listen_pid_for(dh).exists());
     let off_thread = legacy.is_some();
+    let relay_own = own.clone();
     let start_relay = move || {
         if let Some(said) = legacy.as_deref().and_then(control::resident::retire_legacy) {
             tracing::info!("{said}");
         }
         tracing::info!(
             "{}",
-            accounts::upstream_select::host_relay(faces::rotation_face::library())
+            accounts::upstream_select::host_relay(faces::rotation_face::library(), relay_own)
         );
     };
     if off_thread {

@@ -20,6 +20,7 @@
 //! [`DROP_AFTER`] 没被用到的整条清掉（写的时候顺手清）。跨进程锁里读 → 改 → `own_state` 原子写；读不懂的那一份不覆盖。
 
 use crate::common::said::Said;
+use crate::platform::fs::{Own, Ro, Stamp};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -139,11 +140,6 @@ impl Book {
 
 // ── 落盘 ─────────────────────────────────────────────────────────────────
 
-/// 这台的落点：`<家>/lineage.json`（家同额度账与轮换）。
-pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    crate::accounts::quota::ledger::path_from(get).map(|p| p.with_file_name(FILE_NAME))
-}
-
 type Read = crate::common::own_state::Read<Book>;
 
 /// 读盘的上限（90 天清一次，远到不了）。
@@ -151,18 +147,6 @@ const MAX_BYTES: u64 = 16 << 20;
 
 pub(crate) fn read_at(path: &Path) -> Read {
     crate::common::own_state::read_json(path, MAX_BYTES)
-}
-
-/// 盘上那一份的戳：改动时刻 · 长度 · inode（同 `rotation.rs`）。
-type Stamp = (std::time::SystemTime, u64, u64);
-
-fn stamp(p: &Path) -> Option<Stamp> {
-    let m = std::fs::metadata(p).ok()?;
-    #[cfg(unix)]
-    let ino = std::os::unix::fs::MetadataExt::ino(&m);
-    #[cfg(not(unix))]
-    let ino = 0;
-    Some((m.modified().ok()?, m.len(), ino))
 }
 
 /// 盘上那一份 ＋ 一份缓存（盘上的戳变了才重读）。`path = None` ⇒ 家推不出来，只在内存里。
@@ -185,7 +169,7 @@ impl LineageStore {
         let Some(p) = self.path.as_deref() else {
             return g.1.clone();
         };
-        let s = stamp(p);
+        let s = Ro::stamp(p);
         if s.is_none() || s != g.0 {
             g.1 = match read_at(p) {
                 Read::Present(b) => b,
@@ -198,7 +182,7 @@ impl LineageStore {
 
     /// 一发请求被看见。先按缓存判有没有新事实，有才拿锁读盘再判一次、写回。写不成只出声，不影响这一发（血缘不是请求的前提）。
     /// 外面只经 [`relay_saw`] 进来。
-    fn saw(&self, origin: Option<Origin<'_>>, sid: &str, agent: &str, now: u64) {
+    fn saw(&self, own: &Own, origin: Option<Origin<'_>>, sid: &str, agent: &str, now: u64) {
         if origin.is_none() || sid.is_empty() || !self.now().clone().saw(origin, sid, agent, now) {
             return;
         }
@@ -207,9 +191,9 @@ impl LineageStore {
             None => {
                 g.1.saw(origin, sid, agent, now);
             }
-            Some(path) => match write_locked(path, |b| b.saw(origin, sid, agent, now)) {
+            Some(path) => match write_locked(own, |b| b.saw(origin, sid, agent, now)) {
                 Ok(after) => {
-                    g.0 = stamp(path);
+                    g.0 = Ro::stamp(path);
                     g.1 = after;
                 }
                 Err(e) => tracing::warn!("[lineage] {}", e.logged()),
@@ -221,20 +205,24 @@ impl LineageStore {
 /// **唯一的写口**（门是上游选择对中转的那个口）：中转那一路每一发认一次「谁起的谁」。
 pub(crate) fn relay_saw(
     store: &LineageStore,
+    own: &Own,
     origin: Option<Origin<'_>>,
     sid: &str,
     agent: &str,
     now: u64,
 ) {
-    store.saw(origin, sid, agent, now);
+    store.saw(own, origin, sid, agent, now);
 }
 
-fn write_locked(path: &Path, f: impl FnOnce(&mut Book) -> bool) -> Result<Book, Said> {
+/// 锁里读—改—写那一份（经 `Own`，数据目录那一根）：落点是数据目录底下的 [`FILE_NAME`]。
+fn write_locked(own: &Own, f: impl FnOnce(&mut Book) -> bool) -> Result<Book, Said> {
+    let file = own.path(FILE_NAME)?;
+    let dir = own
+        .root()
+        .ok_or_else(|| Said::from(copy_text("beOwnState.path.noHome", &[])))?;
+    let path = file.as_path();
     let shown = path.display().to_string();
-    let dir = path
-        .parent()
-        .ok_or_else(|| Said::from(copy_text("beLineage.write.noParent", &[("path", &shown)])))?;
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    own.ensure_dir(&dir).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beLineage.write.failed",
@@ -243,7 +231,7 @@ fn write_locked(path: &Path, f: impl FnOnce(&mut Book) -> bool) -> Result<Book, 
             &e,
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir)?;
+    let held = own.lock(&dir)?;
     let mut book = match read_at(path) {
         Read::Absent => Book::default(),
         Read::Present(b) => b,
@@ -252,7 +240,8 @@ fn write_locked(path: &Path, f: impl FnOnce(&mut Book) -> bool) -> Result<Book, 
         }
     };
     if f(&mut book) {
-        crate::common::own_state::write_json(path, &book)?;
+        let body = crate::common::own_state::json_body(path, &book)?;
+        own.write(&file, &held, &body)?;
     }
     Ok(book)
 }

@@ -135,8 +135,12 @@ fn the_quota_headers_of_an_answer_land_in_the_ledger_under_the_account_that_answ
     let (up, got) = spawn_judging_upstream(answer);
     let d = temp_dir("observe");
     let book = Arc::new(Ledger::at(Some(d.join(ledger::FILE_NAME))));
-    let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-        .recording_to(Arc::clone(&book));
+    let accounts = Accounts::new(
+        RoutingTable::build(std::iter::empty()),
+        upstreams_at(up),
+        crate::platform::fs::Own::issue_data_at(&d),
+    )
+    .recording_to(Arc::clone(&book));
     let relay = spawn_relay_over(accounts);
     let resp = shoot(
         relay,
@@ -483,9 +487,13 @@ impl Home {
             self.library(),
             Some(dead_token_endpoint()),
         );
-        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-            .recording_to(quota)
-            .rotating_with(hop);
+        let accounts = Accounts::new(
+            RoutingTable::build(std::iter::empty()),
+            upstreams_at(up),
+            self.own(),
+        )
+        .recording_to(quota)
+        .rotating_with(hop);
         spawn_relay_over(accounts)
     }
 
@@ -503,17 +511,26 @@ impl Home {
             self.library(),
             Some(dead_token_endpoint()),
         );
-        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-            .recording_to(quota)
-            .rotating_with(hop)
-            .clocked(Arc::new(move || {
-                clock.load(std::sync::atomic::Ordering::SeqCst)
-            }));
+        let accounts = Accounts::new(
+            RoutingTable::build(std::iter::empty()),
+            upstreams_at(up),
+            self.own(),
+        )
+        .recording_to(quota)
+        .rotating_with(hop)
+        .clocked(Arc::new(move || {
+            clock.load(std::sync::atomic::Ordering::SeqCst)
+        }));
         spawn_relay_over(accounts)
     }
 
     fn lineage_path(&self) -> std::path::PathBuf {
         self.root.join(crate::lineage::FILE_NAME)
+    }
+
+    /// 写句柄：数据目录那一根就是这个家（额度账 · 轮换 · 血缘都落这里）。
+    fn own(&self) -> crate::platform::fs::Own {
+        crate::platform::fs::Own::issue_data_at(&self.root)
     }
 
     /// 同 [`Home::relay`]，另装上会话血缘（落在这个家里）。
@@ -526,12 +543,16 @@ impl Home {
             self.library(),
             Some(dead_token_endpoint()),
         );
-        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-            .recording_to(quota)
-            .rotating_with(hop)
-            .tracing_lineage(Arc::new(crate::lineage::LineageStore::at(Some(
-                self.lineage_path(),
-            ))));
+        let accounts = Accounts::new(
+            RoutingTable::build(std::iter::empty()),
+            upstreams_at(up),
+            self.own(),
+        )
+        .recording_to(quota)
+        .rotating_with(hop)
+        .tracing_lineage(Arc::new(crate::lineage::LineageStore::at(Some(
+            self.lineage_path(),
+        ))));
         spawn_relay_over(accounts)
     }
 

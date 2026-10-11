@@ -15,6 +15,9 @@ use std::time::UNIX_EPOCH;
 type Metadata = std::fs::Metadata;
 type ReadDir = std::fs::ReadDir;
 
+/// 盘上一份文件的戳：改动时刻 · 长度 · inode（[`Ro::stamp`]）。
+pub(crate) type Stamp = (std::time::SystemTime, u64, u64);
+
 /// 读盘的命名空间（零大小，不用递）。方法与标准库同名同形，换法就是把 `std::fs::` 换成 `Ro::`。
 pub(crate) struct Ro;
 
@@ -126,6 +129,17 @@ impl Ro {
             let _ = m;
             None
         }
+    }
+
+    /// 盘上那一份的戳（[`Stamp`]）：改动时刻 · 长度 · inode（别的平台记 0）。不在 / 读不出元数据 ⇒ `None`。
+    /// 原子替换每次换一个新节点，同一纳秒里写两次也分得出 —— 缓存判「别人写过没有」用它。
+    pub(crate) fn stamp(p: &Path) -> Option<Stamp> {
+        let m = std::fs::metadata(p).ok()?;
+        #[cfg(unix)]
+        let node = std::os::unix::fs::MetadataExt::ino(&m);
+        #[cfg(not(unix))]
+        let node = 0;
+        Some((m.modified().ok()?, m.len(), node))
     }
 
     /// unix 的设备号（同一个文件系统内才相等）。别的平台 ⇒ `None`。

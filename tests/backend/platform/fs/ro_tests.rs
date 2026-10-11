@@ -99,3 +99,32 @@ fn a_refused_read_says_the_reason_and_keeps_the_os_words_apart() {
     assert!(e.raw.is_some(), "系统原话没进详情：{e:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 盘上那一份的戳（改动时刻 · 长度 · inode）：同样长、同一刻原子替换过（新节点）⇒ 戳也不一样；不在 ⇒ `None`。
+/// 额度账 · 轮换 · 血缘三份缓存都靠它判「别人写过没有」。
+#[test]
+fn the_stamp_tells_an_atomic_replace_apart_and_is_none_when_absent() {
+    let dir = std::env::temp_dir().join(format!("ccm-stamp-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let path = dir.join("book.json");
+    assert_eq!(Ro::stamp(&path), None, "不在 ⇒ 没有戳");
+    std::fs::write(&path, b"{}").expect("写夹具");
+    let first = Ro::stamp(&path).expect("在 ⇒ 有戳");
+    assert_eq!(first.1, 2, "长度那一格");
+    let side = dir.join("book.json.tmp");
+    std::fs::write(&side, b"{}").expect("写旁名");
+    // 改动时刻也拨成同一刻：只剩 inode 那一格分得出两份。
+    std::fs::File::options()
+        .write(true)
+        .open(&side)
+        .and_then(|f| f.set_modified(first.0))
+        .expect("拨改动时刻");
+    std::fs::rename(&side, &path).expect("原子挪过去");
+    #[cfg(unix)]
+    assert_ne!(
+        Ro::stamp(&path),
+        Some(first),
+        "换了节点的同长同内容一份，戳没变"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
