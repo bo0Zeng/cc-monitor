@@ -1562,3 +1562,7 @@ impl eframe::App for Workspace {
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/workspace_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../../tests/frontend/filewin/hover_sweep_tests.rs"]
+mod hover_sweep_tests;

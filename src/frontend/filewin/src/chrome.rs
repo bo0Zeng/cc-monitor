@@ -1171,13 +1171,12 @@ impl Workspace {
                             go = Some(d.clone());
                         }
                         // × 只在悬停这一行时出（贴右端）。
-                        if r.hovered() || r.contains_pointer() {
-                            let xr = egui::Rect::from_center_size(
-                                egui::pos2(r.rect.right() - 14.0, r.rect.center().y),
-                                egui::vec2(18.0, 18.0),
-                            );
-                            let xresp = ui
-                                .interact(xr, r.id.with("drop"), egui::Sense::click())
+                        let xr = egui::Rect::from_center_size(
+                            egui::pos2(r.rect.right() - 14.0, r.rect.center().y),
+                            egui::vec2(18.0, 18.0),
+                        );
+                        if let Some(xresp) = super::kit::hover_reveal(ui, &r, xr, r.id.with("drop"), false) {
+                            let xresp = xresp
                                 .on_hover_text(copy_text("rsFilewinBookmarks.bar.removeHint", &[]));
                             ui.painter().text(
                                 xr.center(),
