@@ -18,8 +18,9 @@ const GONE = new Set(["already_answered", "closed_elsewhere"]);
 
 export async function answerNeeds(origin: Origin, sid: string, req: AnswerRequest): Promise<AnswerOutcome> {
   const body = jsonBody({ sid, ...req });
+  const budget = budgetWithin(ANSWER_WITHIN_MS);
   try {
-    const v = await settle(origin, "needs-answer", chan.call(origin, "needs-answer", body, budgetWithin(ANSWER_WITHIN_MS)), asSaid(() => copyText("askBlock.fail.noReason")));
+    const v = await settle(origin, "needs-answer", chan.call(origin, "needs-answer", body, budget), asSaid(() => copyText("askBlock.fail.noReason")));
     if (v === null || typeof v !== "object" || (v as { result?: unknown }).result !== "answered") {
       return { kind: "failed", said: copyText("askBlock.fail.noReason"), detail: "" };
     }

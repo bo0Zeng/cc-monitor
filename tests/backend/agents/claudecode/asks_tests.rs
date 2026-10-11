@@ -241,7 +241,12 @@ fn the_products_match_the_cross_language_golden() {
         "tool_input": {"plan": "1. a\n2. b\n"}
     });
     let product = |id: &str, v: &Value| {
-        serde_json::to_value(crate::agents::asks::product_of(id, &read(v).unwrap(), 1_000)).unwrap()
+        serde_json::to_value(crate::agents::asks::product_of(
+            id,
+            &read(v).unwrap(),
+            1_000,
+        ))
+        .unwrap()
     };
     let got = json!({
         "approve": product("ask-1", &bash_req()),
@@ -249,8 +254,9 @@ fn the_products_match_the_cross_language_golden() {
         "plan": product("ask-3", &plan),
         "question": product("ask-4", &auq_req()),
     });
-    let want: Value = serde_json::from_str(include_str!("../../../__fixtures__/needs-ask.golden.json"))
-        .expect("金样不是合法 JSON");
+    let want: Value =
+        serde_json::from_str(include_str!("../../../__fixtures__/needs-ask.golden.json"))
+            .expect("金样不是合法 JSON");
     assert_eq!(
         got,
         want,
