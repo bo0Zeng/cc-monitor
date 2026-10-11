@@ -32854,6 +32854,12 @@
       "role": "片段",
       "zh": "默认",
       "args": []
+    },
+    "beRotation.write.v1Pending": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "轮换文件还是旧格式 · 常驻后端换形之前不写 · {path}",
+      "args": ["path"]
     }
   }
 }

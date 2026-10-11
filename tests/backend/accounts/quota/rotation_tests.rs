@@ -225,15 +225,28 @@ fn sandbox(tag: &str) -> PathBuf {
     d.join(FILE_NAME)
 }
 
-/// ★ S11：读到第一版 ⇒ 在锁里换成第二版写回、原文留一份 `rotation.json.v1`；读不懂的不覆盖。
+/// ★ 只有一个写者换形：一次性的那一路（命令行 · ccm）读到第一版 ⇒ 只在内存里换，盘上一字不动、写也不写；
+/// 接上中转的那个进程起来时（[`migrate_at`]）⇒ 换形写回一次、原文留 `rotation.json.v1`，再来一次不动；读不懂的不覆盖。
 #[test]
-fn the_store_rewrites_a_v1_file_once_and_keeps_the_original() {
+fn only_the_relay_host_rewrites_a_v1_file_and_only_once() {
     let path = sandbox("v1");
     let orig = serde_json::to_string_pretty(&v1_sample()).expect("json");
     std::fs::write(&path, &orig).expect("w");
     let st = RotationStore::at(Some(path.clone()));
     let b = st.now();
-    assert_eq!(b.default_config, "r_00000000");
+    assert_eq!(b.default_config, "r_00000000", "内存里照第二版用");
+    assert!(
+        st.change(|b| b.default_config = "c_00000002".into())
+            .is_err(),
+        "第一版在盘上时不写"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&path).expect("r"),
+        orig,
+        "一次性那一路不动盘"
+    );
+    assert!(!v1_backup_of(&path).exists());
+    assert_eq!(migrate_at(&path).ok(), Some(true));
     let disk: Value =
         serde_json::from_str(&std::fs::read_to_string(&path).expect("r")).expect("json");
     assert_eq!(disk["version"], json!(2), "写回了第二版");
@@ -242,13 +255,14 @@ fn the_store_rewrites_a_v1_file_once_and_keeps_the_original() {
         serde_json::from_str::<Value>(&kept).expect("json"),
         v1_sample()
     );
-    // 再读一次：已经是第二版，不再动 .v1。
+    assert_eq!(migrate_at(&path).ok(), Some(false), "已是第二版 ⇒ 不动");
     let again = RotationStore::at(Some(path.clone())).now();
     assert_eq!(again, Book { from_v1: None, ..b });
-    // 读不懂的不覆盖。
     std::fs::write(&path, "{\"version\": 9}").expect("w");
-    let st = RotationStore::at(Some(path.clone()));
-    assert!(st.change(|b| b.default_config = "x".into()).is_err());
+    assert_eq!(migrate_at(&path).ok(), Some(false), "读不懂的不动");
+    assert!(RotationStore::at(Some(path.clone()))
+        .change(|b| b.default_config = "x".into())
+        .is_err());
     assert_eq!(
         std::fs::read_to_string(&path).expect("r"),
         "{\"version\": 9}"

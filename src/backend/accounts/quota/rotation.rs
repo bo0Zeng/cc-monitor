@@ -960,21 +960,12 @@ impl RotationStore {
                 }
             };
             g.2 = None;
-            if b.from_v1.is_none() {
-                g.1 = b.clone();
-                g.0 = s;
-                return b;
-            }
+            // 第一版 ⇒ 只在内存里换形（`from_v1` 记着），不写盘：写回只在接了中转的那个进程起来时做一次（[`migrate_here`]）。
+            g.1 = b.clone();
+            g.0 = s;
             b
         };
-        // 第一版 ⇒ 在锁里换形写回（写不成照内存里换好的那一份用）。
-        match self.change(|_| ()) {
-            Ok(()) => self.now_cached(),
-            Err(e) => {
-                tracing::warn!("[rotation] 换形写回不成：{}", e.logged());
-                read
-            }
-        }
+        read
     }
 
     /// 盘上那份此刻读不懂 ⇒ 为什么（一句 ＋ 原话）；读得懂 · 没有 ⇒ `None`。
@@ -984,14 +975,6 @@ impl RotationStore {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .2
-            .clone()
-    }
-
-    fn now_cached(&self) -> Book {
-        self.cache
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .1
             .clone()
     }
 
@@ -1006,7 +989,7 @@ impl RotationStore {
                 (r, before, g.1.clone())
             }
             Some(path) => {
-                let (r, before, after) = write_locked(path, f)?;
+                let (r, before, after) = write_locked(path, false, f)?;
                 g.0 = stamp(path);
                 g.1 = after.clone();
                 g.2 = None;
@@ -1122,6 +1105,26 @@ pub(crate) fn watch_here() {
     }
 }
 
+/// 第一版换形写回（一次）：盘上那份是第一版 ⇒ 在锁里写成第二版、原文另存 `rotation.json.v1`；已是第二版 · 没有 · 读不懂 ⇒ 不动。
+/// 只由接上了中转的那个进程起来时调（[`migrate_here`]）：那一刻旧版的中转已经让出了口，不会再有读不懂第二版的读者。
+pub(crate) fn migrate_at(path: &Path) -> Result<bool, Said> {
+    if !matches!(read_at(path), Read::Present(ref b) if b.from_v1.is_some()) {
+        return Ok(false);
+    }
+    write_locked(path, true, |_| ())?;
+    Ok(true)
+}
+
+/// 这台的 `rotation.json` 换形写回（[`migrate_at`]）；写不成只出声。
+pub(crate) fn migrate_here() {
+    let Some(path) = path_now() else { return };
+    match migrate_at(&path) {
+        Ok(true) => tracing::info!("[rotation] {} 换成第二版，原文留在 .v1", path.display()),
+        Ok(false) => {}
+        Err(e) => tracing::warn!("[rotation] {} 换形写回不成：{}", path.display(), e.logged()),
+    }
+}
+
 /// 中转那一路的写口（第一次看见会话 · 钉号 · 记一条 · 存备忘）。
 pub(crate) fn relay_change<R>(
     store: &RotationStore,
@@ -1220,7 +1223,11 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
     TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(256).0)
 }
 
-fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Book, Book), Said> {
+fn write_locked<R>(
+    path: &Path,
+    migrate: bool,
+    f: impl FnOnce(&mut Book) -> R,
+) -> Result<(R, Book, Book), Said> {
     let shown = path.display().to_string();
     let dir = path
         .parent()
@@ -1243,6 +1250,13 @@ fn write_locked<R>(path: &Path, f: impl FnOnce(&mut Book) -> R) -> Result<(R, Bo
         }
     };
     let v1 = before.from_v1.take();
+    // 盘上还是第一版：只有起来时接了中转的那个进程换形（那时旧版的中转已经让出了口）；别的写一律不写，免得旧版的中转读不懂。
+    if v1.is_some() && !migrate {
+        return Err(Said::from(copy_text(
+            "beRotation.write.v1Pending",
+            &[("path", &shown)],
+        )));
+    }
     let mut after = before.clone();
     let r = f(&mut after);
     if after == before && v1.is_none() {

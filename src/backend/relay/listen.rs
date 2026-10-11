@@ -185,6 +185,13 @@ pub(crate) enum Hosted {
     Failed(String),
 }
 
+impl Hosted {
+    /// 这个进程此刻接上了中转（听着那个口）。
+    pub(crate) fn listening(&self) -> bool {
+        matches!(self, Hosted::Listening(_))
+    }
+}
+
 impl std::fmt::Display for Hosted {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

@@ -1,4 +1,4 @@
-# 试跑结果：rh <lib.rhai> <策略> 样例/c1–c13（Rhai 1.26.1）。@ 开头的是引擎的字（beRotation.lib.*），引擎写字时换成人话；时刻是 unix 秒。
+# 试跑结果：由引擎生成（`tests/backend/accounts/quota/strategy/strategy_tests.rs` 照引擎的沙箱 · 排法跑样例 c1–c13，CCM_BLESS=1 重写；Rhai 1.26.1）。行序是引擎的有效优先级（`()` 按 back 早的先）。@ 开头的是引擎的字（beRotation.lib.*），引擎写字时换成人话；时刻是 unix 秒。
 
 ## 内置策略 1
 c1	平时：work 到线、lab 00:20 到点、api 备用
@@ -24,7 +24,7 @@ c7	team 刚到点重置
   挑 team · team 2000[还能用就不换（写在第 3）] > personal 998[写在第 2] > lab 996[写在第 4] > api 95[备用 · 写在第 5] > work ()[@line at=1760193600 n=90 w="5h"]
   备忘 —
 c8	只有 api 能用，work 20 分内恢复
-  挑 （停发） · api ()[备用 · 先等 "work" 1760188980 恢复] > lab ()[@refused at=1760191680] > personal ()[@refused at=1760191680] > team ()[@refused at=1760191680] > work ()[@refused at=1760188980]
+  挑 （停发） · api ()[备用 · 先等 "work" 1760188980 恢复] > work ()[@refused at=1760188980] > lab ()[@refused at=1760191680] > personal ()[@refused at=1760191680] > team ()[@refused at=1760191680]
   备忘 —
 c9	lab 用法设成优先
   挑 lab · lab 2996[优先 · 写在第 4] > team 2000[还能用就不换（写在第 3）] > personal 998[写在第 2] > api 95[备用 · 写在第 5] > work ()[@line at=1760193600 n=90 w="5h"]
@@ -39,7 +39,7 @@ c12	都到线、没有按量号；都到上限后 接着用
   挑 team · team 1[@going] > lab 0[@going] > work 0[@going] > personal ()[@full at=1760487780]
   备忘 —
 c13	lab 17:00–23:00 不用（此刻 17:30）
-  挑 team · team 2000[还能用就不换（写在第 3）] > personal 998[写在第 2] > api 95[备用 · 写在第 5] > lab ()[@off at=1760207580] > work ()[@line at=1760193600 n=90 w="5h"]
+  挑 team · team 2000[还能用就不换（写在第 3）] > personal 998[写在第 2] > api 95[备用 · 写在第 5] > work ()[@line at=1760193600 n=90 w="5h"] > lab ()[@off at=1760207580]
   备忘 —
 
 ## 内置策略 2
@@ -66,7 +66,7 @@ c7	team 刚到点重置
   挑 lab · lab 3310[1760199600 到点，先用] > personal 2079[没开窗 · 7d 用了 20%] > team 2049[刚到点重置，先用别的号的余量] > api 199[备用] > work ()[@line at=1760193600 n=90 w="5h"]
   备忘 —
 c8	只有 api 能用，work 20 分内恢复
-  挑 api · api 199[备用] > lab ()[@refused at=1760191680] > personal ()[@refused at=1760191680] > team ()[@refused at=1760191680] > work ()[@refused at=1760188980]
+  挑 api · api 199[备用] > work ()[@refused at=1760188980] > lab ()[@refused at=1760191680] > personal ()[@refused at=1760191680] > team ()[@refused at=1760191680]
   备忘 —
 c9	lab 用法设成优先
   挑 lab · lab 9069[优先] > team 8000[在用，还能用就不换] > personal 2079[没开窗 · 7d 用了 20%] > api 199[备用] > work ()[@line at=1760193600 n=90 w="5h"]
@@ -81,7 +81,7 @@ c12	都到线、没有按量号；都到上限后 接着用
   挑 team · team 1[@going] > lab 0[@going] > work 0[@going] > personal ()[@full at=1760487780]
   备忘 —
 c13	lab 17:00–23:00 不用（此刻 17:30）
-  挑 team · team 8000[在用，还能用就不换] > personal 2079[没开窗 · 7d 用了 20%] > api 199[备用] > lab ()[@off at=1760207580] > work ()[@line at=1760193600 n=90 w="5h"]
+  挑 team · team 8000[在用，还能用就不换] > personal 2079[没开窗 · 7d 用了 20%] > api 199[备用] > work ()[@line at=1760193600 n=90 w="5h"] > lab ()[@off at=1760207580]
   备忘 —
 
 ## 内置策略 3
@@ -108,7 +108,7 @@ c7	team 刚到点重置
   挑 team · team 5000[在用，还能用就不换] > personal 1100[没开窗] > lab 965[5h 用了 35.0%] > api 50[按量号，最后用] > work ()[@line at=1760193600 n=90 w="5h"]
   备忘 —
 c8	只有 api 能用，work 20 分内恢复
-  挑 api · api 50[按量号，最后用] > lab ()[@refused at=1760191680] > personal ()[@refused at=1760191680] > team ()[@refused at=1760191680] > work ()[@refused at=1760188980]
+  挑 api · api 50[按量号，最后用] > work ()[@refused at=1760188980] > lab ()[@refused at=1760191680] > personal ()[@refused at=1760191680] > team ()[@refused at=1760191680]
   备忘 —
 c9	lab 用法设成优先
   挑 team · team 5000[在用，还能用就不换] > personal 1100[没开窗] > lab 965[5h 用了 35.0%] > api 50[按量号，最后用] > work ()[@line at=1760193600 n=90 w="5h"]
@@ -123,5 +123,5 @@ c12	都到线、没有按量号；都到上限后 接着用
   挑 team · team 1[@going] > lab 0[@going] > work 0[@going] > personal ()[@full at=1760487780]
   备忘 —
 c13	lab 17:00–23:00 不用（此刻 17:30）
-  挑 team · team 5000[在用，还能用就不换] > personal 1100[没开窗] > api 50[按量号，最后用] > lab ()[@off at=1760207580] > work ()[@line at=1760193600 n=90 w="5h"]
+  挑 team · team 5000[在用，还能用就不换] > personal 1100[没开窗] > api 50[按量号，最后用] > work ()[@line at=1760193600 n=90 w="5h"] > lab ()[@off at=1760207580]
   备忘 —
