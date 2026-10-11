@@ -23,14 +23,12 @@ data class TurnEnd(
         const val KIND: String = "turn_end"
 
         /** 不是 `turn_end` 或缺格 ⇒ `null`。 */
-        fun of(frame: Map<String, Any?>): TurnEnd? {
-            if (frame.str("kind") != KIND) return null
-            val sid = frame.str("session_id") ?: return null
-            val uuid = frame.str("uuid") ?: return null
-            val title = frame.str("title") ?: return null
-            val body = frame.str("body") ?: return null
-            return TurnEnd(sid, uuid, title, body)
-        }
+        fun of(frame: Map<String, Any?>): TurnEnd? =
+            if (frame.str("kind") != KIND) {
+                null
+            } else {
+                decoding { TurnEnd(frame.str("session_id").need(), frame.str("uuid").need(), frame.str("title").need(), frame.str("body").need()) }
+            }
     }
 }
 
