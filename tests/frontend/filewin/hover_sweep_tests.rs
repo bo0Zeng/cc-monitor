@@ -545,3 +545,148 @@ async fn real_window_rig_for_the_frame_log() {
         .unwrap();
     let _ = std::fs::remove_dir_all(base);
 }
+
+/// 🔴 **划过一排带提示的行，提示框不一行一行地冒**：指针在第一行的修改时间上停够、它的提示出来之后，
+/// 往下一行一行划过（每行 16 毫秒，正常挪鼠标的速度）—— 划的途中别的行的提示一个都不出（出了又收就是一闪一闪）；
+/// 停下来够久，停在的那一行的提示照出（正控）。缺省的 egui 有 0.2 秒「刚出过提示 ⇒ 下一个立刻出」的宽限，正是这一形。
+#[test]
+fn sliding_down_rows_after_a_tooltip_does_not_pop_one_per_row() {
+    let mut w = pane("/srv/tips");
+    let names: Vec<String> = (0..8).map(|k| format!("f{k}.txt")).collect();
+    *w.listing.rows.lock().unwrap() = names
+        .iter()
+        .enumerate()
+        .map(|(k, n)| {
+            let mut l: crate::source::Listed = row(n, "/srv/tips", false).into();
+            l.mtime_secs = Some(1_000 + k as u64);
+            l.mtime_text = Some(format!("10:0{k}"));
+            l.mtime_full = Some(format!("全时刻-{k}"));
+            l
+        })
+        .collect();
+    let mut ws = Workspace::new(w);
+    let ctx = egui::Context::default();
+    crate::theme::install(&ctx, &crate::theme::testing::default_theme());
+    let mut t = 0.0;
+    let mut frame = |ws: &mut Workspace, at: Option<egui::Pos2>, dt: f64| {
+        t += dt;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
+            time: Some(t),
+            events: at
+                .map(|p| vec![egui::Event::PointerMoved(p)])
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+        let out = ctx.run_ui(input, |ui| ws.frame(ui));
+        let painted = crate::copy::testing::text_in_frame(&out);
+        out.drop_without_applying_deltas();
+        painted
+    };
+    let painted = frame(&mut ws, None, 0.016);
+    let painted = if painted.is_empty() {
+        frame(&mut ws, None, 0.016)
+    } else {
+        painted
+    };
+    let cells: Vec<egui::Rect> = (0..8)
+        .map(|k| crate::copy::testing::rects_of(&painted, &format!("10:0{k}"))[0])
+        .collect();
+    let tip_up = |p: &[crate::copy::testing::PaintedText], k: usize| {
+        p.iter().any(|(s, _)| s == &format!("全时刻-{k}"))
+    };
+    // 停在第一行的修改时间上，等它的提示出来（量具自检）。
+    let mut shown = false;
+    frame(&mut ws, Some(cells[0].center()), 0.016);
+    for _ in 0..80 {
+        if tip_up(&frame(&mut ws, None, 0.016), 0) {
+            shown = true;
+            break;
+        }
+    }
+    assert!(shown, "量具：停够了第一行的提示也没出来");
+    // 往下划：每行一帧，16 毫秒一步。
+    let mut popped = Vec::new();
+    for k in 1..7 {
+        // 一行里挪三步（每步 16 毫秒），指针一直在动。
+        for dx in [-6.0, 0.0, 6.0] {
+            let p = frame(
+                &mut ws,
+                Some(cells[k].center() + egui::vec2(dx, 0.0)),
+                0.016,
+            );
+            if (1..8).any(|j| tip_up(&p, j)) {
+                popped.push(k);
+            }
+        }
+    }
+    assert!(
+        popped.is_empty(),
+        "划过的那几行一行冒一个提示（出了又收，看着就是闪）：第 {popped:?} 行"
+    );
+    // 正控：停在第 6 行够久 ⇒ 它的提示照出。
+    let mut later = false;
+    for _ in 0..80 {
+        if tip_up(&frame(&mut ws, None, 0.016), 6) {
+            later = true;
+            break;
+        }
+    }
+    assert!(later, "停下来够久，提示却不出了");
+}
+
+/// 🔴 **等提示出来的那半秒不白转满帧**：指针挪到一格带提示的修改时间上、停住，提示出来之前那几帧
+/// 要的下一次重画是「到点那一下」（几百毫秒后），不是「马上再画」（那就是按显示器刷新率空转）。
+#[test]
+fn waiting_for_a_tooltip_does_not_spin_frames() {
+    let mut w = pane("/srv/spin");
+    *w.listing.rows.lock().unwrap() = vec![{
+        let mut l: crate::source::Listed = row("a.txt", "/srv/spin", false).into();
+        l.mtime_secs = Some(1_000);
+        l.mtime_text = Some("10:00".into());
+        l.mtime_full = Some("全时刻".into());
+        l
+    }];
+    let mut ws = Workspace::new(w);
+    let ctx = egui::Context::default();
+    crate::theme::install(&ctx, &crate::theme::testing::default_theme());
+    let mut t = 0.0;
+    let mut frame = |ws: &mut Workspace, at: Option<egui::Pos2>| {
+        t += 0.016;
+        let input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, SCREEN)),
+            time: Some(t),
+            events: at
+                .map(|p| vec![egui::Event::PointerMoved(p)])
+                .unwrap_or_default(),
+            ..Default::default()
+        };
+        let out = ctx.run_ui(input, |ui| ws.frame(ui));
+        let painted = crate::copy::testing::text_in_frame(&out);
+        let delay = out.viewport_output[&egui::ViewportId::ROOT].repaint_delay;
+        out.drop_without_applying_deltas();
+        (painted, delay)
+    };
+    frame(&mut ws, None);
+    let (painted, _) = frame(&mut ws, None);
+    let cell = crate::copy::testing::rects_of(&painted, "10:00")[0];
+    frame(&mut ws, Some(cell.center() - egui::vec2(4.0, 0.0)));
+    frame(&mut ws, Some(cell.center()));
+    // 停住之后的几帧（提示还没到点）：下一次重画至少隔 100 毫秒。
+    let mut delays = Vec::new();
+    for _ in 0..6 {
+        let (p, d) = frame(&mut ws, None);
+        assert!(
+            !p.iter().any(|(s, _)| s == "全时刻"),
+            "量具：提示不该这么快出来"
+        );
+        delays.push(d);
+    }
+    assert!(
+        delays
+            .iter()
+            .skip(2)
+            .all(|d| *d >= std::time::Duration::from_millis(100)),
+        "等提示的那几帧每帧都要马上再画（空转满帧）：{delays:?}"
+    );
+}
