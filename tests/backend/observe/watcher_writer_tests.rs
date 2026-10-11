@@ -70,6 +70,9 @@ fn writer(file: &Path) -> Child {
         .arg("exec 3>>\"$1\"; echo up; read _; exec 3>&-; echo closed; read _")
         .arg("sh")
         .arg(file)
+        // 容器那一格按写者的环境判：跑测试的终端在不在 tmux 里不许改金样（CI 不在、开发机常在）⇒ 写者的环境里恒没有 tmux 那两格。
+        .env_remove("TMUX")
+        .env_remove("TMUX_PANE")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .spawn()
