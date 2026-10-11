@@ -368,7 +368,6 @@ fn the_agent_set_has_one_address_and_every_member_is_wired() {
     );
     assert!(face("codex").needs_bus_id && !face("claude").needs_bus_id);
     assert!(face("claude").has_identity && !face("codex").has_identity);
-    assert!(face("claude").has_pidfiles && !face("codex").has_pidfiles);
 }
 
 /// 〔搬自 `ccm-cli` WIRE/launch「发对了①–⑤」「缺省尺寸①②」「控制字符①–④」那几族〕

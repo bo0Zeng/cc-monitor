@@ -990,10 +990,13 @@ pub(crate) fn build_among(
         return Err(refuse(&env.account_env, &config_dir));
     }
     // ── resume 先查是否已在跑（「只看不吃 `--resume` 以复用 tmux 名」）──
-    //    判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对留 pidfile 的那几家问；
-    //    `None` = 问不了（预览 / 不留 pidfile 的那一家）。
+    //    判活是观测层起步初扫那一份（`observe::watcher::running_sessions`，入口注入），只对声明认 pidfile 的那几家问（`Adapter::live`）；
+    //    `None` = 问不了（预览 / 不认 pidfile 的那一家）。
     let alive = match (o.resumes.as_deref(), env.running_sessions) {
-        (Some(sid), Some(scan)) if face.is_some_and(|f| f.has_pidfiles) => {
+        (Some(sid), Some(scan))
+            if crate::agents::live_by_among(registry, &o.agent)
+                == crate::agents::LiveBy::Pidfiles =>
+        {
             let dir = if !config_dir.is_empty() {
                 Some(config_dir.as_str())
             } else if o.use_base {

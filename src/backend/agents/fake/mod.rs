@@ -112,7 +112,7 @@ pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
 pub(crate) const SESSION_NAME_PREFIX: &str = "fk";
 
 /// 起会话事实（`Adapter.launch` 那一格）。**组合与两家都不同**：Claude 是「有身份面 · 留 pidfile · 不要 cc-bus 身份」，
-/// Codex 是「要 cc-bus 身份，其余都没有」；这一家是「要 cc-bus 身份 · 有身份面 · 不留 pidfile」。
+/// Codex 是「要 cc-bus 身份，其余都没有」；这一家是「要 cc-bus 身份 · 有身份面 · 判不了活」。
 /// 通用层若在哪一格上按名字认人，喂这一家就会答错（`fake_tests.rs` 的 ccm 规划那几条）。
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     adapter_id: AGENT_KIND,
@@ -130,7 +130,6 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     session_name_prefix: SESSION_NAME_PREFIX,
     needs_bus_id: true,
     has_identity: true,
-    has_pidfiles: false,
     models: None,
 };
 
@@ -314,6 +313,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
         launch: None,
         compact_request: None,
         local: None,
+        live: crate::agents::LiveBy::Unknown,
     }
 }
 
@@ -328,6 +328,7 @@ pub(crate) fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
             session_file_name,
         )),
         local: Some(local_face(pidfile_root, cmdline_may_be_agent)),
+        live: crate::agents::LiveBy::Unknown,
         accounts: Some(accounts_face(ACCOUNT_DIR_ENV)),
         launch: Some(LAUNCH),
         ..bare_row(home)
@@ -360,7 +361,6 @@ fn records_face(
         children: None,
         project_dir: None,
         mcp_said: None,
-        held_open: false,
     }
 }
 
@@ -565,6 +565,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     })?;
     let reg = [crate::agents::Adapter {
         local: Some(local_face(pid_root, cmdline)),
+        live: crate::agents::LiveBy::Unknown,
         ..bare_row(home_fn)
     }];
     let local =

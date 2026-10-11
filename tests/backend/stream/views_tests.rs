@@ -171,7 +171,6 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
     let added = Frame::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,

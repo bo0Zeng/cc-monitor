@@ -337,7 +337,7 @@ pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i3
         }
         Parsed::Opts(o) => {
             let mut env = env;
-            // 这一家认不认得这份扫描由计划那一侧问适配层（`LaunchFace::has_pidfiles`）。
+            // 这一家认不认得这份扫描由计划那一侧问适配层（`Adapter::live`）。
             env.running_sessions = o.resumes.is_some().then_some(running);
             let plan = match plan_of(&o, env, true) {
                 Ok(p) => p,

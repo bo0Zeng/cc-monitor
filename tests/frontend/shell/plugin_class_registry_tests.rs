@@ -640,7 +640,7 @@ fn the_const_list_extractor_takes_one_list_not_the_whole_file() {
     // 起会话事实那一格：抠的是**一个**结构的字段，不是把下一个结构也吃进来（它后面紧跟着两个按注册表查的函数）。
     let cells = launch_face_fields();
     assert!(
-        cells.contains(&"has_pidfiles".to_string()) && !cells.iter().any(|c| c.contains("fn ")),
+        cells.contains(&"has_identity".to_string()) && !cells.iter().any(|c| c.contains("fn ")),
         "`LaunchFace` 抠错了：{cells:?}"
     );
 }

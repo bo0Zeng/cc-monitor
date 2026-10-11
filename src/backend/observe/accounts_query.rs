@@ -754,6 +754,41 @@ pub(crate) fn session_writers(agent_home: &Path, sid: &str) -> Vec<u32> {
     pids
 }
 
+/// **这条会话此刻谁持着它**（冷读那几处判活只问这一处）：`record` 是这条会话的记录（已过围栏），
+/// 哪一家照它落在哪棵树下认（`agents::record_kind_of`），怎么判照那一家声明的（[`crate::agents::Adapter::live`]，见 [`session_holders_by`]）。
+pub(crate) fn session_holders(agent_home: &Path, record: &Path) -> Option<Vec<u32>> {
+    let kind = crate::agents::record_kind_of(record)?;
+    session_holders_by(crate::agents::live_by(kind), agent_home, record)
+}
+
+/// [`session_holders`] 按判活方式那一半（判据直接喂方式）：
+/// - pidfile ⇒ 这台 pidfile 里持着这个 sid（记录文件名）的活交互进程（[`session_writers`]）；
+/// - 开着写 ⇒ 此刻开着这份记录写的进程（`platform::writers`；这个平台认不出写者 ⇒ 判不了）；
+/// - 判不了 ⇒ `None`。
+///
+/// `Some(空)` ＝ 判过了、此刻没有谁持着它（走了）；`None` ＝ 判不了（不是「没有」）。pid 升序。
+pub(crate) fn session_holders_by(
+    live: crate::agents::LiveBy,
+    agent_home: &Path,
+    record: &Path,
+) -> Option<Vec<u32>> {
+    use crate::agents::LiveBy;
+    match live {
+        LiveBy::Pidfiles => Some(session_writers(agent_home, record.file_stem()?.to_str()?)),
+        LiveBy::HeldOpen => {
+            let want = crate::platform::writers::absolute(record);
+            let found = crate::platform::writers::writers_of(&|p| p == want)?;
+            Some(
+                found
+                    .get(&want)
+                    .map(|w| w.iter().map(|w| w.pid).collect())
+                    .unwrap_or_default(),
+            )
+        }
+        LiveBy::Unknown => None,
+    }
+}
+
 /// 那台 pidfile 说这条会话**此刻在等人**（适配层翻成 [`crate::agents::SessionActivity::NeedsYou`]）：等的是什么框（适配层翻好的 [`crate::agents::WaitOn`]）· 从何时起等（`statusUpdatedAt`，epoch ms）。
 /// 判活同 [`session_writers`]；不在等 / 没有活进程持着它 ⇒ `None`。几个进程同时持着、有一个在等 ⇒ 取它（等得最早的那个）。
 /// 「等的是什么」不在这里判：配上记录里那个还没有结果的工具调用，在 `facts_query::needs_of`。

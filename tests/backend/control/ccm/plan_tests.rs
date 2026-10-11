@@ -2258,6 +2258,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         launch: Some(crate::agents::fake::LAUNCH),
         compact_request: None,
         local: None,
+        live: crate::agents::LiveBy::Unknown,
     };
     let reg = [
         row("via-env", Inject::Env("FAKE_URL_VAR")),

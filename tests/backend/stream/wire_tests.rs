@@ -313,7 +313,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionAdded {
                 sid: s("s1"),
                 agent_kind: s("claude"),
-                liveness_confidence: Some(s("pidfile")),
                 background: true,
                 attachable: Some(true),
                 cwd: Some(s("/w")),
@@ -341,7 +340,6 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionAdded {
                 sid: s("s1"),
                 agent_kind: "claude".to_string(),
-                liveness_confidence: None,
                 background: false,
                 attachable: None,
                 cwd: None,
@@ -370,14 +368,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     },
                 ),
                 waiting_for: Some(s("permission prompt")),
-                liveness_confidence: Some(s("pidfile")),
             },
             Frame::SessionStatus {
                 sid: s("s1"),
                 face: crate::stream::wire::ActivityFace::of(None),
                 name_face: crate::stream::wire::NameFace::of(&Default::default()),
                 waiting_for: None,
-                liveness_confidence: None,
             },
         ],
         both(Frame::session_state(s("s1"), SessionFate::Reconnectable)),
@@ -1196,8 +1192,8 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
     #[rustfmt::skip]
     let synth: &[crate::agents::Adapter] = &[
-        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None },
-        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None },
+        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
+        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
     ];
     let discovered = crate::agents::visible_among(synth);
     assert_eq!(
@@ -1291,7 +1287,6 @@ fn dg3_codex_fields_serialize_when_present() {
     let sa = to_line(&Frame::SessionAdded {
         sid: "s".into(),
         agent_kind: "codex".to_string(),
-        liveness_confidence: Some("heuristic".into()),
         background: false,
         attachable: None,
         cwd: None,
@@ -1308,7 +1303,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"liveness_confidence\":\"heuristic\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1316,12 +1311,11 @@ fn dg3_codex_fields_serialize_when_present() {
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
-        liveness_confidence: Some("heuristic".into()),
     })
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"liveness_confidence\":\"heuristic\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n"
     );
 }
 
@@ -1354,7 +1348,6 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     let sa = to_line(&Frame::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1371,7 +1364,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     .unwrap();
     assert_eq!(
         sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n",
-        "agent_kind 每条都带；liveness_confidence 缺 ＝ pidfile 判的"
+        "agent_kind 每条都带"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1379,12 +1372,11 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
-        liveness_confidence: None,
     })
     .unwrap();
     assert_eq!(
         ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n",
-        "liveness_confidence 省略，字节等价旧形"
+        "缺的格不上线"
     );
 }
 
@@ -1497,7 +1489,6 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         to_line(&Frame::SessionAdded {
             sid: "s".into(),
             agent_kind: "claude".to_string(),
-            liveness_confidence: None,
             background: false,
             attachable: None,
             cwd: None,
@@ -1578,7 +1569,6 @@ fn loc1b_session_added_carries_the_pid() {
     let line = to_line(&Frame::SessionAdded {
         sid: "s".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -1940,7 +1930,6 @@ fn session_frames_carry_the_state_written_and_toned() {
             face: ActivityFace::of(a),
             name_face: crate::stream::wire::NameFace::of(&Default::default()),
             waiting_for: None,
-            liveness_confidence: None,
         })
         .unwrap()
     };

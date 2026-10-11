@@ -444,10 +444,6 @@ pub enum Frame {
         sid: String,
         /// 会话属哪一家（注册表里那一家的 kind：`"claude"` · `"codex"` …）。每条都带。
         agent_kind: String,
-        /// 判活置信度：`"heuristic"` ＝ 「活着」是猜的（比如按修改时刻）。缺 ＝ 系统给的事实判的：pidfile ＋ pidfd，
-        /// 或「有进程开着它的记录写」＋ pidfd（`observe::watcher` 的「开着即活」那一路）—— 两路同一档。今天没有哪一路标它。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        liveness_confidence: Option<String>,
         /// 是不是后台会话（不是人坐在终端里对话的那种）。适配层判（`agents::pidfile_background`），客户端只读这一格。
         /// 只在 `true` 时上线（缺 ＝ 交互会话；交互会话的帧字节与本字段加进来之前一字不差）。
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -524,9 +520,6 @@ pub enum Frame {
         /// 在等什么（pidfile 里的 `waitingFor`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
-        /// DG3（#2D，additive）：判活置信度（同 SessionAdded；状态变化时带）。Claude 省→缺=authoritative。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        liveness_confidence: Option<String>,
     },
     /// **会话账本的成品**：这条会话离开「活」之后是可重连还是已结束（见 [`SessionFate`]）。
     ///

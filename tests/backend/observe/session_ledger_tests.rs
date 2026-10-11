@@ -26,7 +26,6 @@ fn added(sid: &str) -> Ev {
     Frame::SessionAdded {
         sid: sid.into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -144,7 +143,6 @@ fn a_removal_waits_for_an_observation_and_asks_for_one() {
     l.on_frame(&Frame::SessionAdded {
         sid: "a".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,

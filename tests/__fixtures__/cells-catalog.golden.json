@@ -1369,12 +1369,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "liveness_confidence",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "name",
           "type": "string"
         },
@@ -1453,12 +1447,6 @@
           "frozen": false,
           "kind": "text",
           "path": "label_project",
-          "type": "string"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
-          "path": "liveness_confidence",
           "type": "string"
         },
         {

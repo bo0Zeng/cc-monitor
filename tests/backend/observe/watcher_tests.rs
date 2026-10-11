@@ -1644,7 +1644,9 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
             assert_eq!(name_face.label(), "乙");
             assert_eq!(
                 face,
-                crate::stream::wire::ActivityFace::of(Some(crate::agents::SessionActivity::Working)),
+                crate::stream::wire::ActivityFace::of(Some(
+                    crate::agents::SessionActivity::Working
+                )),
                 "活动那几格照记着的带全"
             );
         }
@@ -2083,7 +2085,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "a".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2100,7 +2101,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "b".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2123,7 +2123,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "c".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2140,7 +2139,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "d".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2157,7 +2155,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "e".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,
@@ -2197,7 +2194,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionAdded {
         sid: "g".into(),
         agent_kind: "claude".to_string(),
-        liveness_confidence: None,
         background: false,
         attachable: None,
         cwd: None,

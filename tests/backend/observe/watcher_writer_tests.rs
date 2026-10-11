@@ -50,7 +50,7 @@ fn rig(tag: &str) -> Rig {
         kind,
         root: dir.join("codex").join("sessions"),
         face: crate::agents::record_face(kind).unwrap(),
-        live: crate::agents::LiveBy::Writer,
+        live: crate::agents::LiveBy::HeldOpen,
     });
     let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(256);
     Rig {
@@ -105,22 +105,16 @@ fn drain(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<Frame> {
     v
 }
 
-/// 帧的简写：`added:<kind>:<置信度>` · `line:<seq>` · `turn_end:<uuid>` · `removed:<cause>`；别的帧不记。
+/// 帧的简写：`added:<kind>` · `line:<seq>` · `turn_end:<uuid>` · `removed:<cause>`；别的帧不记。
 fn brief(frames: &[Frame]) -> Vec<String> {
     frames
         .iter()
         .filter_map(|f| match f {
             Frame::SessionAdded {
-                sid,
-                agent_kind,
-                liveness_confidence,
-                ..
+                sid, agent_kind, ..
             } => {
                 assert_eq!(sid, SID);
-                Some(format!(
-                    "added:{agent_kind}:{}",
-                    liveness_confidence.as_deref().unwrap_or("-")
-                ))
+                Some(format!("added:{agent_kind}"))
             }
             Frame::Line { seq, .. } => Some(format!("line:{seq}")),
             Frame::TurnEnd { uuid, .. } => Some(format!("turn_end:{uuid}")),
@@ -152,7 +146,7 @@ fn a_record_being_written_is_announced_with_its_line_count_and_then_streams() {
     let w = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     let frames = drain(&mut r.rx);
-    assert_eq!(brief(&frames), vec!["added:codex:-"]);
+    assert_eq!(brief(&frames), vec!["added:codex"]);
     let Some(Frame::SessionAdded {
         path,
         project_dir,
@@ -219,7 +213,7 @@ fn an_unwatched_session_still_says_its_turn_end() {
     let _ = watch_sessions(vec!["someone-else".to_string()], &mut r.state, &mut r.sink);
     let w = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
-    assert_eq!(brief(&drain(&mut r.rx)), vec!["added:codex:-"]);
+    assert_eq!(brief(&drain(&mut r.rx)), vec!["added:codex"]);
     let more = "{\"timestamp\":\"2026-10-10T00:00:03.000Z\",\"type\":\"event_msg\",\"payload\":{\"type\":\"task_complete\",\"turn_id\":\"t2\"}}\n";
     std::fs::OpenOptions::new()
         .append(true)
@@ -248,7 +242,7 @@ fn a_closed_record_retires_the_session_and_a_reopen_brings_it_back() {
     let w2 = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     let again = brief(&drain(&mut r.rx));
-    assert_eq!(again.first().map(String::as_str), Some("added:codex:-"));
+    assert_eq!(again.first().map(String::as_str), Some("added:codex"));
     gone(w);
     gone(w2);
     std::fs::remove_dir_all(&r.dir).ok();
@@ -300,7 +294,7 @@ fn the_startup_scan_finds_a_session_already_being_written() {
     let pidfiles = r.dir.join("sessions");
     initial_session_scan(&pidfiles, &mut r.state, &mut r.sink);
     let b = brief(&drain(&mut r.rx));
-    assert_eq!(b.first().map(String::as_str), Some("added:codex:-"));
+    assert_eq!(b.first().map(String::as_str), Some("added:codex"));
     gone(w);
     let got = resync_sessions(&pidfiles, &mut r.state, &mut r.sink, None);
     assert_eq!(got.removed, 1);

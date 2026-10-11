@@ -923,6 +923,12 @@ pub(crate) fn facts_agent(agent_home: &Path, jsonl_path: &str) -> Option<String>
     crate::agents::record_kind_of(&target).map(str::to_string)
 }
 
+/// 这条会话此刻谁持着它（[`super::accounts_query::session_holders`]，先过同一道围栏）；过不了围栏 / 判不了 ⇒ `None`。
+pub(crate) fn facts_holders(agent_home: &Path, jsonl_path: &str) -> Option<Vec<u32>> {
+    let target = validate_session_path(agent_home, jsonl_path).ok()?;
+    super::accounts_query::session_holders(agent_home, &target)
+}
+
 /// `history-facts` 的续点：从 `from` 接着读之前先核两件事，任一不成立 ⇒ 报错（调用方从 0 重要一份）：
 /// ① `from` 不越过文件尾（越过 = 截断 / 重写）；② `from > 0` 时文件第 `from-1` 字节是 `\n`
 /// （续点恒是某个完整行的末字节 —— 不在行边界上 = 被重写过，接着读会从半行起、把后面的事实算歪）。

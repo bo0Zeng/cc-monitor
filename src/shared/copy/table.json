@@ -3269,7 +3269,7 @@
     "stream.step.unclearUntracked": {
       "kind": "body",
       "role": "说明",
-      "zh": "此类 agent 不留进程记录 · 运行状态不明",
+      "zh": "无法判断此会话是否在运行",
       "args": []
     },
     "stream.step.failed": {

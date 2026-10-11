@@ -1500,7 +1500,6 @@ impl ReaderState {
                 face: crate::stream::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for,
-                liveness_confidence: None,
             });
         }
     }
@@ -1545,7 +1544,7 @@ impl ReaderState {
         if self.roots.iter().any(|r| r.kind == f.kind) {
             return;
         }
-        let by_writer = f.live == crate::agents::LiveBy::Writer;
+        let by_writer = f.live == crate::agents::LiveBy::HeldOpen;
         // 写者那一路认的路径是进程表里读出来的（规范化过）：根也照同一个规范化（`platform::writers::absolute`）。
         let root = crate::platform::writers::absolute(&f.root);
         self.add_root(f.kind, root, f.face, by_writer);
@@ -1638,7 +1637,7 @@ struct Root {
     kind: &'static str,
     root: PathBuf,
     face: crate::agents::RecordFace,
-    /// 判活认写者（没有 pidfile 的那一家，[`crate::agents::LiveBy::Writer`]）。
+    /// 判活认写者（没有 pidfile 的那一家，[`crate::agents::LiveBy::HeldOpen`]）。
     by_writer: bool,
     runs: crate::observe::runs::RunTrack,
 }
@@ -2525,9 +2524,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
                 face: crate::stream::wire::ActivityFace::of(activity),
                 name_face,
                 waiting_for: new_waiting,
-                // Claude pidfile 路 → 判活权威、省略 liveness_confidence（缺=authoritative）。DG2 判活/DG1
-                // Codex 会话时才发 heuristic。
-                liveness_confidence: None,
             });
         }
         // pidfile 重写（sid 没变）顺手对一次标签：外部改掉的 `@ccm_sid` 在这里被纠正。
@@ -2593,8 +2589,6 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
             status: meta_str("status"),
             waiting_for: meta_str("waitingFor"),
             activity,
-            // pidfile 是判活的权威 ⇒ 不标。
-            liveness_confidence: None,
         },
         state,
         sink,
@@ -2616,7 +2610,6 @@ struct Announce {
     status: Option<String>,
     waiting_for: Option<String>,
     activity: Option<crate::agents::SessionActivity>,
-    liveness_confidence: Option<String>,
 }
 
 /// 记一条活会话 ＋ 宣告它（判活那一路已经认定它活着）：记账 · 打标 · 挂 pidfd 看守 · 找它的记录 · `session_added` · 已有的行 / 运行表 / 主线外清单。
@@ -2689,7 +2682,6 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     sink.send(Frame::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
-        liveness_confidence: a.liveness_confidence,
         background: a.background,
         attachable: a.attachable,
         cwd: a.cwd.clone(),
@@ -2728,7 +2720,7 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
 
 // ============ 「开着即活」那一路：没有 pidfile 的那几家 ============
 //
-// 有进程开着一份会话记录写 ⇒ 这条会话活着（适配层 `RecordFace::held_open` 声明这一家是这样）。认写者看打开方式（`platform::writers`），
+// 有进程开着一份会话记录写 ⇒ 这条会话活着（适配层 `Adapter::live` ＝ `LiveBy::HeldOpen` 声明这一家是这样）。认写者看打开方式（`platform::writers`），
 // 不看进程名。扫进程表只在三种时候：记录根下新建 / 打开了一份还没认的记录（耳朵交的一批，一批一趟）· 起步与对齐（整树一趟）·
 // 内核事件队列溢出过（整树一趟）。摘除：写的那个进程退了（pidfd，与 pidfile 那一路同一个 `PidDied`）· 那份记录被写完关闭、
 // 复核已没人开着写。本平台认不出写者（`writers_of` 答 `None`）⇒ 什么都不宣告、什么都不摘（判不了，不冒充判过）。
@@ -2864,9 +2856,6 @@ fn announce_writer(
             status: None,
             waiting_for: None,
             activity: None,
-            // 「这个进程开着这份记录写」是系统给的事实，再挂上 pidfd 看守 ⇒ 与 pidfile 那一路同一档（不标）。
-            // 不确定的那一头是漏认（这一家要是中途关了记录，我们会当它走了），不是把死的认成活的。
-            liveness_confidence: None,
         },
         state,
         sink,

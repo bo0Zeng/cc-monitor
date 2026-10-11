@@ -704,7 +704,6 @@ pub(crate) const PRODUCTS: &[Product] = &[
             "lines",
             "waiting_for",
             "agent_kind",
-            "liveness_confidence",
             "attachable",
             "activity",
             "activity_text",
@@ -719,7 +718,6 @@ pub(crate) const PRODUCTS: &[Product] = &[
         frozen: Frozen::Cells(&[
             "sid",
             "waiting_for",
-            "liveness_confidence",
             "activity",
             "activity_text",
             "activity_tone",
@@ -1247,7 +1245,6 @@ mod specimens {
         Frame::SessionAdded {
             sid: s("s"),
             agent_kind: "agent".to_string(),
-            liveness_confidence: some("heuristic"),
             background: true,
             attachable: Some(true),
             cwd: some("/w"),
@@ -1286,7 +1283,6 @@ mod specimens {
                     face: ActivityFace::of(Some(a)),
                     name_face: named(),
                     waiting_for: some("w"),
-                    liveness_confidence: some("heuristic"),
                 })
             })
             .collect()

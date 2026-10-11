@@ -6,7 +6,7 @@
 //! | [`resume`] | resume 的命令形状与会话名前缀、默认命令名 |
 //!
 //! 适配层的接口是四类能力（会话发现与判活 · 会话内容读 · 用量 · 起会话 / resume）。「这台机器上有没有这个 agent」已有（[`home`] + `agents::visible_homes`）；
-//! 「有哪些会话、活没活」：没有 pidfile ⇒ 声明 `RecordFace::held_open`（在世期间一直开着记录写），流式 watcher 据此认写者判活
+//! 「有哪些会话、活没活」：没有 pidfile ⇒ 声明 [`LIVE`] ＝ 开着写（在世期间一直开着记录写），流式 watcher 据此认写者判活
 //! （`observe/watcher.rs` 的「开着即活」那一路，记录根是合成历史面的那个根）。
 //! 发现出来的东西不上线：`main.rs` 的 `homes: Vec::new()` 那一行留着（填 `homes` 是一次跨仓契约变更，是一次纯发布决策）。
 //! 不要从「这里有个模块」推断「Codex 支持完整」。
@@ -52,9 +52,6 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
     children: None,
     project_dir: Some(history::project_dir),
     mcp_said: None,
-    // 没有 pidfile：会话在世期间写记录的那个任务一直开着这份 rollout（codex-rs `rollout/recorder.rs` 的写者任务持有文件；
-    // 新会话第一轮落盘时才建文件，resume 打开旧的那份接着写）。⚠ 只读过源码，没在真机上实测过。
-    held_open: true,
 };
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**。
@@ -67,6 +64,10 @@ pub(crate) const RECORDS: crate::agents::RecordFace = crate::agents::RecordFace 
 /// 带引号的 `"codex"`，把它写在注册表里会**当场**多一条 kind 派发登记 —— 而注册表
 /// 根本不在做派发）。
 pub(crate) const AGENT_KIND: &str = "codex";
+
+/// 怎么判活（注册表 `Adapter.live` 那一格）：认开着写：没有 pidfile，会话在世期间写记录的那个任务一直开着这份 rollout（codex-rs `rollout/recorder.rs` 的写者任务持有文件；
+/// 新会话第一轮落盘时才建文件，resume 打开旧的那份接着写）。⚠ 只读过源码，没在真机上实测过。
+pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::HeldOpen;
 
 /// 本家的起会话事实（注册表 `Adapter.launch` 那一格）。适配器 id 就是 wire 上的 kind（也是中转路由里它的名字）；没有 shell wrapper。
 pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
@@ -86,7 +87,6 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     // 它的沙箱够不着 tmux socket ⇒ cc-bus 身份经 `CC_BUS_ID` 交进去。
     needs_bus_id: true,
     has_identity: false,
-    has_pidfiles: false,
     models: None,
 };
 
