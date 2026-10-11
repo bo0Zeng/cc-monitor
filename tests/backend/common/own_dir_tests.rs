@@ -192,7 +192,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     // 已搬上 `Own` 的（只读只读护栏第二刀逐份搬）：建那一层经 `Own::ensure_dir` 恰好一处。
     for f in MOVED_TO_OWN {
         assert_eq!(
-            src(f).matches(".ensure_dir(&").count(),
+            src(f).matches(".ensure_dir(").count(),
             1,
             "{f} 建自家目录不是经 `Own::ensure_dir` 恰好一处"
         );

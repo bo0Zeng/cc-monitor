@@ -13,12 +13,21 @@ use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-/// 写自家状态的句柄。克隆便宜（只有根）；造只经 [`Own::issue`]。
+/// 写自家状态的句柄。克隆便宜（只有两个根）；造只经 [`Own::issue`]。
+///
+/// 两个根，都是后端自己的家：
+/// - 家目录底下的 `.cc-monitor`（[`Own::at_home`]，收 `relay_route_core` 那张表里「相对家目录」的名字，如 `.cc-monitor/chores.json`）；
+/// - 数据目录（[`Own::root`] / [`Own::path`]，`CCM_DATA_DIR` 覆盖、否则同上那一个；历史注解 · 凭据文件 · 起会话账号记录住这里）。
 #[derive(Clone, Debug)]
 pub struct Own {
-    /// 数据目录；这台没有家目录（`HOME` / `USERPROFILE` 都没有）⇒ `None`，各写口照它们自己的「无主目录」那一句报。
-    root: Option<PathBuf>,
+    /// 用户家目录；`None` = 这台没有家目录（`HOME` / `USERPROFILE` 都没有）。
+    home: Option<PathBuf>,
+    /// 数据目录；没有 ⇒ `None`，各写口照它们自己的「无主目录」那一句报。
+    data: Option<PathBuf>,
 }
+
+/// 家目录底下后端那一层的名字（`at_home` 收的名字必须以它打头）。
+const HOME_DIR_NAME: &str = ".cc-monitor";
 
 /// 数据目录底下的一条路径。只能由 [`Own::root`] / [`Own::path`] / [`OwnPath::join`] 拼出来。
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -51,18 +60,29 @@ impl OwnPath {
 }
 
 impl Own {
-    /// 启动时造一次：根是这台的数据目录。
+    /// 启动时造一次：两个根取这台的家目录与数据目录。
     pub fn issue() -> Own {
         Own {
-            root: crate::platform::paths::data_home(),
+            home: crate::platform::paths::home_dir(),
+            data: crate::platform::paths::data_home(),
         }
     }
 
-    /// 判据用：根指到一个临时目录。
+    /// 判据用：家目录指到一个临时目录（数据目录随之是它底下的 `.cc-monitor`，同没设 `CCM_DATA_DIR` 那一形）。
     #[cfg(test)]
-    pub(crate) fn issue_at(root: &Path) -> Own {
+    pub(crate) fn issue_at(home: &Path) -> Own {
         Own {
-            root: Some(root.to_path_buf()),
+            home: Some(home.to_path_buf()),
+            data: Some(home.join(HOME_DIR_NAME)),
+        }
+    }
+
+    /// 判据用：只给数据目录（指到一个临时目录；家目录那一根没有）。
+    #[cfg(test)]
+    pub(crate) fn issue_data_at(data: &Path) -> Own {
+        Own {
+            home: None,
+            data: Some(data.to_path_buf()),
         }
     }
 
@@ -76,7 +96,7 @@ impl Own {
 
     /// 数据目录本身；这台没有家目录 ⇒ `None`。
     pub(crate) fn root(&self) -> Option<OwnPath> {
-        self.root.clone().map(OwnPath)
+        self.data.clone().map(OwnPath)
     }
 
     /// 数据目录底下的 `rel`。没有家目录 ⇒ 拒（`beOwnState.path.noHome`）；`rel` 不是相对名 ⇒ 拒。
@@ -84,6 +104,25 @@ impl Own {
         self.root()
             .ok_or_else(|| Said::from(copy_text("beOwnState.path.noHome", &[])))?
             .join(rel)
+    }
+
+    /// 家目录底下的 `rel`（`relay_route_core` 那张表的写法）：必须以 `.cc-monitor` 那一段打头、往下全是普通名字。
+    /// 家目录那一层本身不给（`.cc-monitor` 之外一个字节都写不到）。没有家目录 ⇒ 拒。
+    pub(crate) fn at_home(&self, rel: &str) -> Result<OwnPath, Said> {
+        let home = self
+            .home
+            .as_ref()
+            .ok_or_else(|| Said::from(copy_text("beOwnState.path.noHome", &[])))?;
+        let first = Path::new(rel).components().next();
+        if !relative_ok(rel) || first != Some(Component::Normal(HOME_DIR_NAME.as_ref())) {
+            return Err(copy_text("beOwnState.path.notRelative", &[("rel", rel)]).into());
+        }
+        Ok(OwnPath(home.join(rel)))
+    }
+
+    /// 家目录底下后端那一层本身（`~/.cc-monitor`）。
+    pub(crate) fn home_dir(&self) -> Result<OwnPath, Said> {
+        self.at_home(HOME_DIR_NAME)
     }
 
     /// 建**一层**目录，建的那一下就是 0700；已在的不动；父目录不在 ⇒ 照实报错。

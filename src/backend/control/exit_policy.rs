@@ -62,10 +62,14 @@ impl Read {
     }
 }
 
-/// 这台机器上那个文件的路径：后端数据目录（`platform::paths::data_home`，与写口 `Own` 同一个根）底下那一份。
-/// 没有家目录 ⇒ `None`（调用方把它说成「读不出来」，**不猜一个路径**）。
+/// 这台机器上那个文件的路径。家目录：`HOME`，没有再退 `USERPROFILE`（Windows）（写口 `Own::home_dir` 同一个根）。
+/// 两个都没有 ⇒ `None`（调用方把它说成「读不出来」，**不猜一个路径**）。
 pub fn policy_path() -> Option<PathBuf> {
-    Some(crate::platform::paths::data_home()?.join(FILE_NAME))
+    Some(
+        crate::platform::paths::home_dir()?
+            .join(DIR_NAME)
+            .join(FILE_NAME),
+    )
 }
 
 /// 读盘的上限：文件只有一格布尔。
@@ -134,9 +138,9 @@ fn render(kill: bool) -> String {
 }
 
 /// 全仓唯一的写者（经 `Own` 原子写）⇒ 读者（[`read_at`]）要么看到旧的整份、要么看到新的整份。
-/// 目录不在就建这一层（数据目录本身）。
+/// 目录不在就建这一层（`~/.cc-monitor` 本身）。
 fn write_at(own: &Own, kill: bool) -> Result<(), crate::common::said::Said> {
-    let dir = own.root().ok_or_else(|| {
+    let dir = own.home_dir().map_err(|_| {
         crate::common::said::Said::from(copy_text("beExitPolicy.answerSet.noHome", &[]))
     })?;
     // 只建那一层、建的那一下就是 0700。
