@@ -43,7 +43,7 @@ function bgWorld(folded: readonly string[] = []): World {
   const w = defaultWorld();
   w.sessions = ROWS.map((r, i) => {
     const sid = `7ab1${(i + 1).toString(16).padStart(4, "0")}-0000-4000-8000-00000000${(i + 1).toString(16).padStart(4, "0")}`;
-    const c = new Convo(sid, r.cwd, "2026-10-08T09:00:00Z");
+    const c = new Convo(sid, r.cwd, new Date(Date.now() - 5 * 3600_000).toISOString()); // 早于各条后台命令起的那一刻
     c.title(r.title);
     c.user(`${r.title}：开始。`);
     // 后台命令：那一刻起的（调用记录的时刻就是它起的时刻；结果旁边说任务号），一直没收场。

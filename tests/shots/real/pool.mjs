@@ -27,6 +27,9 @@ import path from "node:path";
 import { createInterface } from "node:readline";
 
 /** 同时留着的世界数（截图是一页一页串着截的；多留几份给预热页与下一页交接）。 */
+/** 等一件事落定的上限：兜底的那一个数（与 `run.mjs` · `tests/test-support/wall-ceiling.ts` 同值）；等的是条件，到了就走。 */
+export const WALL_CEILING_MS = 300_000;
+
 const KEEP = 4;
 
 /**
@@ -270,11 +273,11 @@ export function backendPool({ repo, sandbox }) {
     await Promise.all(mine.map((d) => endOne(w, d)));
   }
 
-  /** 一个收场的会话：等它的宣告 ⇒ 收场 ⇒ 等裁出来的那一格（10 秒上限）。 */
+  /** 一个收场的会话：等它的宣告 ⇒ 收场 ⇒ 等裁出来的那一格（上限是兜底的那个数）。 */
   function endOne(w, d) {
     const id = innerId++;
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`${d.origin} 上 ${d.sid} 10 秒没收场`)), 10_000);
+      const timer = setTimeout(() => reject(new Error(`${d.origin} 上 ${d.sid} 等到上限还没收场`)), WALL_CEILING_MS);
       let killed = false;
       w.inner.set(id, (items) => {
         for (const it of items) {

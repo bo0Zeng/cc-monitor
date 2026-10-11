@@ -365,3 +365,242 @@ fn only_hover_reveal_decides_by_hover_whether_a_control_is_added() {
         "这几处拿悬停决定加不加控件（鼠标一动就会逐帧翻）：改用 kit::hover_reveal（点击区一直登记，悬停只决定画不画）"
     );
 }
+
+/// 一份生产代码里不经 kit 画菜单项的那几处（`name` = 文件名；kit.rs 自己另查：菜单那几口都落到 `menu_body`、它不画按钮）。
+fn menus_not_through_the_kit(name: &str, code: &str) -> Vec<String> {
+    let mut hits = Vec::new();
+    if name == "kit.rs" {
+        let body_of = |f: &str| {
+            let at = code
+                .find(&format!("pub fn {f}("))
+                .or_else(|| code.find(&format!("pub fn {f}<")))?;
+            let open = at + code[at..].find('{')?;
+            Some(code[open..balanced_end(code, open, '{', '}')].to_string())
+        };
+        match body_of("menu_body") {
+            None => hits.push("kit 里没有 menu_body（菜单项那一种写法）".to_string()),
+            Some(b) => {
+                if let Some(bad) = ["Button", "button(", "selectable"]
+                    .into_iter()
+                    .find(|x| b.contains(x))
+                {
+                    hits.push(format!("menu_body 里用了 {bad}：菜单项画成了按钮"));
+                }
+            }
+        }
+        for f in ["menu", "context_menu", "select_field"] {
+            match body_of(f) {
+                Some(b) if b.contains("menu_body(") => {}
+                Some(_) => hits.push(format!("kit::{f} 的内容不经 menu_body")),
+                None => hits.push(format!("kit 里没有 {f}")),
+            }
+        }
+        return hits;
+    }
+    for pat in [
+        "MenuButton",
+        ".menu_button(",
+        ".context_menu(",
+        "Popup::",
+        "PopupKind::Menu",
+        "ComboBox",
+    ] {
+        if code.contains(pat) {
+            hits.push(format!("自己开了一层菜单（{pat}）"));
+        }
+    }
+    for call in ["kit::menu(", "kit::context_menu(", "kit::select_field("] {
+        for (at, _) in code.match_indices(call) {
+            let open = at + call.len() - 1;
+            let args = &code[open..balanced_end(code, open, '(', ')')];
+            if args.contains("|ui|") {
+                hits.push(format!("{call}…) 的内容是一个往里画控件的闭包"));
+            }
+        }
+    }
+    hits
+}
+
+/// 🔴 **菜单项只许经 kit 那一种写法画**（图标 ＋ 字 ＋ 右端快捷键，悬停淡底、不画框）：
+/// 别处不许自己开菜单层（Popup · MenuButton · ComboBox …），也不许给 `kit::menu` 塞一个画按钮的闭包；
+/// kit 里那几口都落到 `menu_body`，而它不用按钮。
+#[test]
+fn menu_items_are_only_drawn_by_the_kit() {
+    // 量具自检：每一形认得出、正常写法认不出。
+    let planted = [
+        ("a.rs", "super::kit::menu(ui, \"x\", |ui| { if ui.button(\"y\").clicked() {} });"),
+        ("a.rs", "egui::Popup::new(id, ctx, anchor, layer).show(|ui| ui.button(\"y\"));"),
+        ("a.rs", "egui::ComboBox::from_id_salt(\"m\").show_ui(ui, |ui| {});"),
+        ("a.rs", "r.context_menu(|ui| { ui.button(\"x\"); });"),
+        ("kit.rs", "pub fn menu_body(ui: &mut Ui) { ui.button(\"x\"); } pub fn menu() { menu_body(); } pub fn context_menu() { menu_body(); } pub fn select_field() { menu_body(); }"),
+        ("kit.rs", "pub fn menu_body(ui: &mut Ui) { paint(); } pub fn menu() { other(); } pub fn context_menu() { menu_body(); } pub fn select_field() { menu_body(); }"),
+    ];
+    for (n, p) in planted {
+        assert_eq!(
+            menus_not_through_the_kit(n, p).len(),
+            1,
+            "量具没认出这一形：{p}"
+        );
+    }
+    let fine = [
+        ("a.rs", "let (r, hit) = super::kit::menu(ui, (ph::PLUS, label.as_str()), &entries);"),
+        ("kit.rs", "pub fn menu_body(ui: &mut Ui) { paint(); } pub fn menu() { menu_body(); } pub fn context_menu() { menu_body(); } pub fn select_field() { menu_body(); }"),
+    ];
+    for (n, p) in fine {
+        assert_eq!(
+            menus_not_through_the_kit(n, p),
+            Vec::<String>::new(),
+            "量具把正常写法认成了违规：{p}"
+        );
+    }
+
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
+    let mut files = 0;
+    let mut hits = Vec::new();
+    for (p, src) in guard_core::scan_tree!(std::path::Path::new(dir), &["rs"]) {
+        files += 1;
+        let name = p.file_name().unwrap().to_string_lossy().to_string();
+        let code = guard_core::production_code(&src);
+        for h in menus_not_through_the_kit(&name, &code) {
+            hits.push(format!("{name}: {h}"));
+        }
+    }
+    assert!(files > 30, "只扫到 {files} 份：路径不对");
+    assert_eq!(
+        hits,
+        Vec::<String>::new(),
+        "这几处的菜单没经 kit 画（菜单项会画成一颗颗带框的按钮）：改成 kit::menu / kit::context_menu / kit::select_field 交一串 kit::Entry"
+    );
+}
+
+/// 菜单项那一种写法画出来的样子（稿 `.mi`）：不画框 · 悬停一整条淡底 · 快捷键贴右端对成一列 · 危险项 `--error-text` ·
+/// 挡着的那一项点不动 · 组与组之间一道线。
+#[test]
+fn a_menu_row_is_icon_text_and_a_right_aligned_key_with_no_border() {
+    let ctx = egui::Context::default();
+    let entries = vec![
+        Entry::Row(MenuRow::new(egui_phosphor::regular::EYE, "View").key(Some("Enter".into()))),
+        Entry::Row(MenuRow::new(egui_phosphor::regular::COPY, "Copy")),
+        Entry::Row(MenuRow::new(egui_phosphor::regular::INFO, "Info").blocked(Some("不行".into()))),
+        Entry::Sep,
+        Entry::Row(
+            MenuRow::new(egui_phosphor::regular::TRASH, "Delete…")
+                .key(Some("Delete".into()))
+                .danger(true),
+        ),
+    ];
+    let first_row = egui::pos2(60.0, 14.0 + 10.0);
+    let blocked_row = egui::pos2(60.0, 14.0 + 2.0 * MENU_ROW_H + 10.0);
+    let mut run = |events: Vec<egui::Event>| {
+        let mut hit = None;
+        let out = ctx.run_ui(
+            egui::RawInput {
+                events,
+                ..Default::default()
+            },
+            |ui| hit = menu_body(ui, &entries),
+        );
+        let shapes: Vec<egui::Shape> = out.shapes.iter().map(|c| c.shape.clone()).collect();
+        out.drop_without_applying_deltas();
+        (shapes, hit)
+    };
+    run(vec![]);
+    let (out, _) = run(vec![egui::Event::PointerMoved(first_row)]);
+    let p = palette(&ctx);
+    let mut texts = Vec::new();
+    let mut rects = Vec::new();
+    fn walk(
+        s: &egui::Shape,
+        texts: &mut Vec<(String, egui::Rect, egui::Color32)>,
+        rects: &mut Vec<egui::epaint::RectShape>,
+    ) {
+        match s {
+            egui::Shape::Text(t) => texts.push((
+                t.galley.text().to_string(),
+                egui::Rect::from_min_size(t.pos, t.galley.size()),
+                t.galley
+                    .job
+                    .sections
+                    .first()
+                    .map_or(t.fallback_color, |s| s.format.color),
+            )),
+            egui::Shape::Rect(r) => rects.push(r.clone()),
+            egui::Shape::Vec(v) => v.iter().for_each(|x| walk(x, texts, rects)),
+            _ => {}
+        }
+    }
+    for sh in &out {
+        walk(sh, &mut texts, &mut rects);
+    }
+    let find = |t: &str| {
+        texts
+            .iter()
+            .find(|(s, _, _)| s == t)
+            .unwrap_or_else(|| panic!("没画「{t}」：{texts:?}"))
+            .clone()
+    };
+    assert!(
+        rects.iter().all(|r| r.stroke.width == 0.0),
+        "菜单项画了框：{rects:?}"
+    );
+    let hover: Vec<_> = rects.iter().filter(|r| r.fill == p.hover).collect();
+    assert_eq!(
+        hover.len(),
+        1,
+        "悬停那一行没有（或不止一条）淡底：{rects:?}"
+    );
+    assert!(
+        hover[0].rect.width() >= MENU_MIN_W,
+        "悬停底不是一整条：{:?}",
+        hover[0].rect
+    );
+    let (_, enter, _) = find("Enter");
+    let (_, del, del_c) = find("Delete");
+    let (_, view, view_c) = find("View");
+    assert!(
+        (enter.right() - del.right()).abs() < 0.5,
+        "快捷键没贴右端对成一列：{enter:?} {del:?}"
+    );
+    assert!(
+        enter.left() > view.right() + 8.0,
+        "快捷键挨着字：{enter:?} {view:?}"
+    );
+    assert_eq!(find("Delete…").2, p.error_text, "危险项不是 --error-text");
+    assert_ne!(del_c, p.text);
+    assert_eq!(view_c, p.text);
+    assert!(find("Info").2 != p.text, "挡着的那一项没灰");
+    // 点挡着的那一项：不回；点能做的那一项：回它的下标。
+    let click = |pos| {
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: Default::default(),
+            },
+            egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: Default::default(),
+            },
+        ]
+    };
+    run(vec![egui::Event::PointerMoved(blocked_row)]);
+    assert_eq!(run(click(blocked_row)).1, None, "挡着的那一项点得动");
+    run(vec![egui::Event::PointerMoved(first_row)]);
+    assert_eq!(run(click(first_row)).1, Some(0));
+    // 分组：两组之间一道线。
+    let (e, at) = grouped(vec![
+        vec![MenuRow::new("", "a"), MenuRow::new("", "b")],
+        vec![],
+        vec![MenuRow::new("", "c")],
+    ]);
+    assert_eq!(
+        e.iter().filter(|x| **x == Entry::Sep).count(),
+        1,
+        "空组也画了线，或者组间没线"
+    );
+    assert_eq!(at[3], (2, 0));
+}

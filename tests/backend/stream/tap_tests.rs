@@ -262,7 +262,7 @@ fn a_plan_change_becomes_one_changed_frame() {
         let tx = tokio::sync::broadcast::channel::<crate::plan::watch::Change>(4).0;
         t.plan = Some(tx.subscribe());
         tx.send(("/w".to_string(), "r2".to_string(), 3)).unwrap();
-        let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
+        let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
             .await
             .expect("该推一帧");
         match f {
@@ -306,7 +306,7 @@ fn a_ring_on_the_quota_bell_becomes_one_changed_frame() {
         let bell = tokio::sync::watch::channel::<u64>(0).0;
         t.quota = Some(bell.subscribe());
         bell.send_modify(|n| *n += 1);
-        let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
+        let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
             .await
             .expect("该推一帧");
         assert!(
@@ -352,7 +352,7 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
         let tx = tokio::sync::broadcast::channel::<String>(4).0;
         t.rotation = Some(tx.subscribe());
         tx.send("s1".to_string()).unwrap();
-        let f = tokio::time::timeout(std::time::Duration::from_secs(5), t.next())
+        let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
             .await
             .expect("该推一帧");
         match f {

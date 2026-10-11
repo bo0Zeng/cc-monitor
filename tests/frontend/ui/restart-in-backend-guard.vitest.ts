@@ -6,7 +6,7 @@
  * 正控：同一套扫描在后端适配层恰好找到那一句（扫描没瞎）；合成串认得出那几个名字。
  */
 import { describe, it, expect } from "vitest";
-import { productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 
 /** 一个带引号的 `/compact` 字面量（单 / 双 / 反引号）。 */
@@ -27,7 +27,6 @@ describe("换号重启不在界面编排", () => {
         .map((f) => f.file);
       expect(backend).toEqual(["src/backend/agents/claudecode/mod.rs"]);
     },
-    SCAN_TIMEOUT_MS,
   );
 
   it(
@@ -40,6 +39,5 @@ describe("换号重启不在界面编排", () => {
       expect(WAITERS.test("this.actions.settleCompact(sid, () => isCompactRecord(m))")).toBe(true);
       expect(COMPACT_LITERAL.test('sendKeys(o, n, "/compact")')).toBe(true);
     },
-    SCAN_TIMEOUT_MS,
   );
 });

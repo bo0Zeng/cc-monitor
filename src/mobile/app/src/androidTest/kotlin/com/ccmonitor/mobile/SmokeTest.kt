@@ -74,7 +74,13 @@ class SmokeTest {
                 composeRule.onAllNodesWithText(a).fetchSemanticsNodes().isNotEmpty() ||
                     composeRule.onAllNodesWithContentDescription(a).fetchSemanticsNodes().isNotEmpty()
             }.getOrDefault(false)
-        composeRule.waitUntil(timeoutMillis = 15_000) { anchors.any(::rendered) }
+        composeRule.waitUntil(timeoutMillis = WALL_CEILING_MS) { anchors.any(::rendered) }
         assertTrue("根屏没渲染出来（认的锚：$anchors）", anchors.any(::rendered))
     }
 }
+
+/**
+ * 等根屏出来的上限：只防挂死，等到了就走。与桌面那边同一个数（`guard_core::wall::CEILING_SECS`；
+ * 判据 `wall_ceiling` 逐份核）—— 门禁里模拟器与别的格抢 CPU，十五秒在忙机上会误红。
+ */
+private const val WALL_CEILING_MS = 300_000L

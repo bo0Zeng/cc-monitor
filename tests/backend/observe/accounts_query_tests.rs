@@ -679,7 +679,7 @@ fn bare_child() -> std::process::Child {
 /// `cmdline` 与环境是同一刻摆上的，看见它就一定读得到环境，而 `sleep` 不会再 exec ⇒ 窗口不会再开。
 #[cfg(target_os = "linux")]
 fn wait_exec_done(pid: u32, prog: &str) {
-    let until = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let until = std::time::Instant::now() + guard_core::wall::CEILING;
     while !std::fs::read(format!("/proc/{pid}/cmdline"))
         .is_ok_and(|c| c.starts_with(prog.as_bytes()))
     {

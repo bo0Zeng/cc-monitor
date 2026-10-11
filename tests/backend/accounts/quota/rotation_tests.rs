@@ -508,7 +508,7 @@ fn the_watcher_rescans_a_foreign_write_without_being_asked() {
     let mut b = st.now();
     b.sessions.get_mut("a1w-s").expect("s").source = Source::Custom;
     crate::common::own_state::write_json(&path, &b).expect("write");
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let seen_custom = || {
         let g = seen().lock().unwrap_or_else(|e| e.into_inner());
         g.get(&path)

@@ -295,7 +295,7 @@ async fn subscribe_receives_frames_in_order_and_from_passes_through() {
         from.clone(),
         16,
     );
-    let got: Vec<Item> = tokio::time::timeout(Duration::from_secs(5), sub.collect())
+    let got: Vec<Item> = tokio::time::timeout(guard_core::wall::CEILING, sub.collect())
         .await
         .expect("五格应当在期限内收齐");
     let mut want = vec![Item::Seen { from }];
@@ -336,7 +336,7 @@ async fn credit_is_backpressure_not_loss() {
     let mut sub = c.subscribe(&Origin("<local>".into()), &Kind("endless".into()), None, 2);
     let mut seqs = Vec::new();
     for _ in 0..2 {
-        match tokio::time::timeout(Duration::from_secs(5), sub.next()).await {
+        match tokio::time::timeout(guard_core::wall::CEILING, sub.next()).await {
             Ok(Some(Item::Frame { seq, .. })) => seqs.push(seq),
             other => panic!("应当收到一格帧，实得 {other:?}"),
         }
@@ -350,7 +350,7 @@ async fn credit_is_backpressure_not_loss() {
     );
     sub.want(3);
     for _ in 0..3 {
-        match tokio::time::timeout(Duration::from_secs(5), sub.next()).await {
+        match tokio::time::timeout(guard_core::wall::CEILING, sub.next()).await {
             Ok(Some(Item::Frame { seq, .. })) => seqs.push(seq),
             other => panic!("追加 credit 之后应当再收到帧，实得 {other:?}"),
         }
@@ -401,7 +401,7 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
         "期限到了，错误的形状不是那一格"
     );
     assert!(
-        took >= Duration::from_millis(250) && took < Duration::from_secs(3),
+        took >= Duration::from_millis(250) && took < guard_core::wall::CEILING,
         "期限 300ms，实际 {took:?} 才回来 —— 绝对时刻没被执行"
     );
     // 对端撤活是尽力的，但在这条回环上它应当到得了。
@@ -414,7 +414,7 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
         );
         seen[0].4.clone()
     };
-    tokio::time::timeout(Duration::from_secs(3), cancel.cancelled())
+    tokio::time::timeout(guard_core::wall::CEILING, cancel.cancelled())
         .await
         .expect("期限到了之后补发的撤单没有到句柄那一侧");
 
@@ -449,7 +449,8 @@ async fn a_passed_deadline_answers_hop_overrun_in_the_05_shape() {
 #[tokio::test]
 async fn a_local_cancel_is_immediate_and_says_cancelled() {
     let (fake, c) = rig();
-    let b = budget(10_000);
+    // 期限放到兜底上限的两倍：撤单不立即的话要等满它，撞下面那道（兜底的数）。
+    let b = budget(2_000 * guard_core::wall::CEILING_SECS);
     let cancel = b.cancel.clone();
     let task = tokio::spawn({
         let c = c.clone();
@@ -464,7 +465,7 @@ async fn a_local_cancel_is_immediate_and_says_cancelled() {
         }
     });
     // 等句柄真的看见了这次调用再撤。
-    tokio::time::timeout(Duration::from_secs(3), async {
+    tokio::time::timeout(guard_core::wall::CEILING, async {
         while fake.calls.lock().unwrap().is_empty() {
             tokio::task::yield_now().await;
         }
@@ -475,7 +476,10 @@ async fn a_local_cancel_is_immediate_and_says_cancelled() {
     cancel.cancel();
     let r = task.await.expect("任务没炸");
     assert_eq!(r, Err(OursFault::Cancelled.into()));
-    assert!(t0.elapsed() < Duration::from_secs(1), "本地撤单不是立即的");
+    assert!(
+        t0.elapsed() < guard_core::wall::CEILING,
+        "本地撤单不是立即的"
+    );
 }
 
 /// 连接断了：在飞的 `call` ⇒ `Hop{第 0 跳 read, Unknown, Dropped}`；
@@ -490,7 +494,7 @@ async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not
     let c = Client::over(ard, awr, FRAME);
     let mut sub = c.subscribe(&Origin("<local>".into()), &Kind("endless".into()), None, 1);
     assert!(matches!(
-        tokio::time::timeout(Duration::from_secs(5), sub.next()).await,
+        tokio::time::timeout(guard_core::wall::CEILING, sub.next()).await,
         Ok(Some(Item::Frame { .. }))
     ));
     let pending = tokio::spawn({
@@ -507,7 +511,7 @@ async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not
     });
     tokio::task::yield_now().await;
     server.abort();
-    let r = tokio::time::timeout(Duration::from_secs(5), pending)
+    let r = tokio::time::timeout(guard_core::wall::CEILING, pending)
         .await
         .expect("断线之后在飞的调用应当马上回来")
         .expect("任务没炸");
@@ -522,7 +526,7 @@ async fn losing_the_connection_turns_calls_into_dropped_and_subs_into_unseen_not
         ),
         "断线时在飞的调用答的是 {r:?}"
     );
-    let next = tokio::time::timeout(Duration::from_secs(5), sub.next()).await;
+    let next = tokio::time::timeout(guard_core::wall::CEILING, sub.next()).await;
     assert!(
         matches!(
             next,
@@ -746,7 +750,7 @@ async fn a_local_cancel_says_the_peer_may_run_on_when_the_offer_says_so() {
             let (c, o) = (c.clone(), origin.clone());
             async move { c.call(&o, &Op(op.into()), Body::default(), b).await }
         });
-        tokio::time::timeout(Duration::from_secs(3), async {
+        tokio::time::timeout(guard_core::wall::CEILING, async {
             while fake.calls.lock().unwrap().len() == before {
                 tokio::task::yield_now().await;
             }

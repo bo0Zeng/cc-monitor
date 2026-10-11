@@ -47,8 +47,6 @@ import { stripCodeComments } from "../../evidence/S25-class-ledger.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { productionTsFiles } from "../../test-support/production-sources.ts";
 
-const TIMEOUT_MS = 180_000;
-
 /** 三个窗口：`vite.config.ts` 的 `input` 键 → 它的 html → 它的入口模块。 */
 const WINDOWS = {
   main: { html: "index.html", entry: "src/frontend/ui/entry-main.ts" },
@@ -202,7 +200,7 @@ beforeAll(async () => {
   const r = await buildClosures();
   CLOSURES = r.closures;
   INPUT = r.input;
-}, TIMEOUT_MS);
+});
 
 describe("三入口 · 住址对账（html ↔ 入口模块 ↔ vite input ↔ Tauri 开窗）", () => {
   it("vite 的 input 表恰好是这三个 html，入口 chunk 的门面就是那个 html", () => {
@@ -567,7 +565,7 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
       expect(r.classes.size, `${win} 挂得上的类只收到 ${r.classes.size} 个 —— 抽取坏了`).toBeGreaterThan(140);
       expect(missingIn(win, linksOf(WINDOWS[win].html)), `${win} 窗口挂得上、却没链到样式的规则`).toEqual([]);
     }
-  }, TIMEOUT_MS);
+  });
 
   it("完整性的正控：从每个窗口的清单里各摘掉一份，这条判据必须红", () => {
     for (const win of Object.keys(WINDOWS) as Win[]) {
@@ -580,7 +578,7 @@ describe("子步 2 · CSS 按窗口拆（清单 ＝ 各 html 的 <link> 列表�
       // 所以摘掉同样会红（第一版以为这两份看不见，现打是看得见的）。
       expect(blind, `${win}：摘掉这些文件，完整性判据照样绿`).toEqual([]);
     }
-  }, TIMEOUT_MS);
+  });
 });
 
 // ═══════════════════════════ CSS Modules 在构建产物里（件 10）═══════════════════════════
@@ -850,7 +848,7 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
       const r = uc2Readings(w);
       for (const hs of r.hashed.values()) if (hs.length === 1) r.inJs(hs[0]);
     }
-  }, TIMEOUT_MS);
+  });
 
   it("每份 .module.css 都进了某个窗口的模块图；每个类在产物 CSS 里恰有一个哈希名、原名不出现、哈希名在那个窗口的 JS 里真出现", () => {
     const mods = Object.keys(MODULE_CLASSES);
@@ -903,7 +901,7 @@ describe("〔UC2〕CSS Modules 在构建产物里（件 10）", () => {
     expect(probe(`help(s.a);`), "认不出挂到哪 ⇒ 按叠算（保守）").toBe(true);
     expect(probe(`a.className = s.a; b.className = "status-cmdk";`), "不同元素不算叠").toBe(false);
     expect(probe(`a.className = s.a; a.classList.remove(s.a); a.className = "not-a-global-xyz";`), "非全局类 / remove 不算叠").toBe(false);
-  }, TIMEOUT_MS); // 全仓生产 TS 逐份建一次语法树（`parsedOnce`）
+  }); // 全仓生产 TS 逐份建一次语法树（`parsedOnce`）
 
   it("次序：每个窗口产物 CSS 里，第一条**叠在全局基类上的** module 规则之后不再有全局样式的规则（module 的 delta 叠在全局基类之上）", () => {
     let judged = 0;

@@ -101,9 +101,11 @@ export class Convo {
     return out;
   }
 
-  /** 这一段与它派出的子 agent 那几段里给了写入时刻的：相对家目录的路径 → 修改时刻（epoch ms）。 */
+  /** 这一段与它派出的子 agent 那几段的修改时刻：相对家目录的路径 → epoch ms（给了写入时刻照它，没给照末一条那一刻）。 */
   mtimes(): Record<string, number> {
-    const out: Record<string, number> = this.writtenAt === undefined ? {} : { [this.file()]: this.writtenAt };
+    // 没给写入时刻 ⇒ 末一条那一刻（文件就是那时候写的）；一条带时刻的都没有 ⇒ 缺（开页那一刻）。
+    const at = this.writtenAt ?? this.lastStamp();
+    const out: Record<string, number> = at === undefined ? {} : { [this.file()]: at };
     for (const c of this.children.values()) Object.assign(out, c.mtimes());
     return out;
   }
@@ -112,6 +114,37 @@ export class Convo {
   clock(ms: number): this {
     this.t = ms;
     return this;
+  }
+
+  /**
+   * 整段（连同它派出的子 agent 那几段）平移到末一条落在 `ms`：照固定起点一条条往后排出来的那几段用它挪到「现在」前面一点。
+   * 不挪的话记录写的是一周前（或几小时之后）、会话却说它此刻在跑 / 在等，文件修改时刻又是开页那一刻 —— 历史页的时段、等了多久都对不上。
+   */
+  endAt(ms: number): this {
+    const stamped = this.lines.filter((l): l is Json => typeof l !== "string" && typeof l.timestamp === "string");
+    if (stamped.length === 0) return this;
+    const delta = ms - Math.max(...stamped.map((l) => Date.parse(l.timestamp as string)));
+    this.shift(delta);
+    return this;
+  }
+
+  private shift(delta: number): void {
+    for (const l of this.lines) if (typeof l !== "string" && typeof l.timestamp === "string") l.timestamp = new Date(Date.parse(l.timestamp) + delta).toISOString();
+    this.t += delta;
+    if (this.writtenAt !== undefined) this.writtenAt += delta;
+    for (const c of this.children.values()) c.shift(delta);
+  }
+
+  private lastStamp(): number | undefined {
+    let last: number | undefined;
+    for (const l of this.lines) if (typeof l !== "string" && typeof l.timestamp === "string") last = Math.max(last ?? -Infinity, Date.parse(l.timestamp));
+    return last;
+  }
+
+  /** 头一条带时刻的那条的时刻（epoch ms）；一条都没有 ⇒ 缺。 */
+  get firstAt(): number | undefined {
+    for (const l of this.lines) if (typeof l !== "string" && typeof l.timestamp === "string") return Date.parse(l.timestamp);
+    return undefined;
   }
 
   /** 末一条的时刻（epoch ms）。 */
@@ -244,6 +277,17 @@ export class Convo {
       apiErrorStatus: status,
       error: status === 429 ? "rate_limit" : "unknown",
       message: { id: `msg_${nextUuid().slice(-12)}`, type: "message", role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], stop_reason: "stop_sequence", usage: usage(0) },
+    });
+    return this;
+  }
+
+  /**
+   * Claude Code 自己补写的那一句（`model: "<synthetic>"`、不是报错；原话照后端判据样本 `record_of_tests.rs` 的 `a-auto`）：
+   * 后端认作 `autoReply`，消息流不给它建卡。
+   */
+  autoReply(text = "No response requested."): this {
+    this.push("assistant", 2, {
+      message: { id: `msg_${nextUuid().slice(-12)}`, type: "message", role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], stop_reason: "stop_sequence", usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 } },
     });
     return this;
   }

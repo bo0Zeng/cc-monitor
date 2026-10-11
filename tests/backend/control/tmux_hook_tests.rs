@@ -509,8 +509,9 @@ fn an_unanswering_tmux_ends_the_hook_round_after_one_deadline() {
     std::fs::write(
         &fake,
         format!(
-            "#!/bin/sh\necho x >> '{}'\nexec sleep 30\n",
-            calls.display()
+            "#!/bin/sh\necho x >> '{}'\nexec sleep {}\n",
+            calls.display(),
+            2 * guard_core::wall::CEILING_SECS
         ),
     )
     .unwrap();
@@ -535,9 +536,6 @@ fn an_unanswering_tmux_ends_the_hook_round_after_one_deadline() {
         asked, 1,
         "超时之后还接着问 tmux（{asked} 发，用时 {took:?}）"
     );
-    assert!(
-        took < std::time::Duration::from_millis(300 + 1_500),
-        "{took:?}"
-    );
+    assert!(took < guard_core::wall::CEILING, "{took:?}");
     let _ = std::fs::remove_dir_all(&dir);
 }

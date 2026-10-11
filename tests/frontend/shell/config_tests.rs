@@ -303,7 +303,7 @@ fn hx2_a_patch_waits_for_another_process_holding_the_config_dir() {
     std::fs::write(&file, r#"{"userWrote":"手写的那一格","other":2}"#).unwrap();
     drop(held);
     assert!(rx
-        .recv_timeout(std::time::Duration::from_secs(10))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("放了锁还没写完"));
     racer.join().unwrap();
     assert_eq!(

@@ -123,11 +123,10 @@ function repoRel(abs: string): string {
  *
  * ⚠ 结果**在本文件内缓存一次** —— 全仓 eslint 约 10 秒，两条判据各跑一次就是 20 秒。
  * 缓存不影响判据强度：同一次进程内源码不会变。
- * ⚠ 每个 `it` 都显式带 `TIMEOUT_MS`：vitest 默认 5 秒，**首版就是因为这个红的**
- * （红在超时上，不是红在被测性质上 —— 那种红没有信息量，必须消掉）。
+ * ⚠ 首版红在 vitest 默认的 5 秒上（红在超时上，不是红在被测性质上 —— 那种红没有信息量）。
+ *   现在用例的上限是兜底的那一个数（`tests/test-support/wall-ceiling.ts`），不另给。
  */
 let cached: EslintJsonResult[] | null = null;
-const TIMEOUT_MS = 120_000;
 
 function runEslintCached(): EslintJsonResult[] {
   cached ??= runEslint();
@@ -194,7 +193,7 @@ describe("eslint 基线与作用面", () => {
         `⚠ 变大时先看第二条判据 —— 上次就是新目录的 .mjs 没被任何 globals 块认领，\n` +
         `  7 条 no-undef 一次性涌进来，而两处散文写着 7 一直没人改。`,
     ).toBe(ESLINT_ERROR_BASELINE);
-  }, TIMEOUT_MS);
+  });
 
   it("① b 两处散文声称的数与基线常量一致（E12：散文要有一条会红的判据读它）", () => {
     for (const file of ["eslint.config.js", ".github/workflows/ci.yml"]) {
@@ -213,7 +212,7 @@ describe("eslint 基线与作用面", () => {
         ).toBe(ESLINT_ERROR_BASELINE);
       }
     }
-  }, TIMEOUT_MS);
+  });
 
   it("③ 〔P3〕基线是 0 ⇒ ci.yml 的 eslint 那一步会拦（`npm run lint`，不带 `|| true`）", () => {
     const yml = read(".github/workflows/ci.yml");
@@ -222,7 +221,7 @@ describe("eslint 基线与作用面", () => {
     const run = step![2].trim();
     expect(ESLINT_ERROR_BASELINE, "基线不是 0 却要拦 —— 先把基线清到 0").toBe(0);
     expect(run, `eslint 那一步（${step![1]}）不会拦`).toBe("npm run lint");
-  }, TIMEOUT_MS);
+  });
 
   it("② 每个被 lint 到的 .mjs 目录都有 files: 块认领（人群从 git ls-files 全集派生）", () => {
     // 人群 = 版本控制里的全部 .mjs，**不是**配置里已经写着的那几个目录。
@@ -268,5 +267,5 @@ describe("eslint 基线与作用面", () => {
         `⇒ 它们会整批报 no-undef（console/process），把基线数顶上去 —— 老病的复发形态。\n` +
         `修法：照 tests/e2e/ 与 scripts/ 那两块的样子加一段 { files: ["<目录>/**/*.mjs"], languageOptions: { globals } }。`,
     ).toEqual([]);
-  }, TIMEOUT_MS);
+  });
 });

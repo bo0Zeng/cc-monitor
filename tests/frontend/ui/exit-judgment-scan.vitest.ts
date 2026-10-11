@@ -21,7 +21,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { productionKtFiles, productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../../test-support/production-sources.ts";
+import { productionKtFiles, productionRsFiles, productionTsFiles } from "../../test-support/production-sources.ts";
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
 import { KT_RULES, RS_RULES, TS_RULES, type ExitRule } from "./exit-rules.ts";
@@ -84,7 +84,6 @@ describe("出口零判定零格式化：扫描 ＋ 只减不增的欠账名单",
       for (const [k, w] of want) if (!got.has(k)) wrong.push(`${k}：一处都没有了，名单还登 ${w} —— 删掉那一格`);
       expect(wrong, wrong.join("\n")).toEqual([]);
     },
-    SCAN_TIMEOUT_MS,
   );
 
   it("★ 合计 == ceiling，ceiling 只许往下改", () => {

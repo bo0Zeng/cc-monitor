@@ -11,7 +11,7 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { productionRsFiles, productionTsFiles, SCAN_TIMEOUT_MS } from "../test-support/production-sources.ts";
+import { productionRsFiles, productionTsFiles } from "../test-support/production-sources.ts";
 import { stripComments } from "../test-support/strip-comments.ts";
 
 /**
@@ -73,5 +73,5 @@ describe("COPY · 生产代码不许按原文认话（判是哪种失败靠码�
       [...new Set(found)].sort(),
       "有生产代码按句子原文判断是哪种失败 —— 句子会被改写（文案表），改成认 code / 结构化字段",
     ).toEqual([...RECOGNIZE_BY_TEXT].sort());
-  }, SCAN_TIMEOUT_MS);
+  });
 });

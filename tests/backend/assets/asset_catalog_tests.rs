@@ -496,7 +496,7 @@ fn hx2_the_first_catalog_is_born_once_even_when_two_writers_race() {
     std::fs::write(&path, serde_json::to_string(&first).unwrap()).unwrap();
     drop(held);
     let v = rx
-        .recv_timeout(std::time::Duration::from_secs(10))
+        .recv_timeout(guard_core::wall::CEILING)
         .expect("放了锁，另一个写者还是没做完");
     racer.join().unwrap();
     assert_eq!(

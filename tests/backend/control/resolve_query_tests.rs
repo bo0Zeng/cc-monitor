@@ -531,7 +531,7 @@ fn frozen_the_oneshot_entry_reads_its_args_the_way_every_cli_subcommand_does() {
                 String::from_utf8(err).unwrap(),
             ));
         });
-        rx.recv_timeout(std::time::Duration::from_secs(10))
+        rx.recv_timeout(guard_core::wall::CEILING)
             .unwrap_or_else(|_| panic!("{shown}：10 s 还没回 —— 那是挂住"))
     };
     let code = |err: &str| -> String {

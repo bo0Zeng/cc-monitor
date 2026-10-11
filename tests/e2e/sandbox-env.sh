@@ -12,3 +12,16 @@ for _ccm_sandbox_k in $(compgen -e); do
 done
 unset _ccm_sandbox_k
 export CCM_SANDBOX=1
+
+# 测试里「等多久算挂了」的唯一上限（秒），与 Rust 的 `guard_core::wall::CEILING_SECS` 同一个数（判据 `wall_ceiling` 逐份核）。
+# 墙钟只许兜底：等一件事成立用 `wall_until`，给一条命令封顶用 `timeout "$WALL_CEILING_S"`；
+# 不拿「几秒之内」判快慢 —— 门禁并发、机器忙时那种判据会误红。要分「自己回来」与「挂住被掐」，看退出码（124 = 被掐）。
+export WALL_CEILING_S=300
+# `wall_until '<条件>'`：条件成立就回 0，每 0.05 秒再问一次；到上限还不成立回 1。条件串每次现 eval（单引号里的变量到时候才展开）。
+wall_until() {
+  local _wall_end=$((SECONDS + WALL_CEILING_S))
+  until eval "$1"; do
+    [ "$SECONDS" -lt "$_wall_end" ] || return 1
+    sleep 0.05
+  done
+}

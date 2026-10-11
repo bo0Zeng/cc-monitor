@@ -23,6 +23,26 @@
 
 跑法与射程都在各脚本自己的头注里。
 
+## 分层：哪一层跑哪些判据
+
+| 层 | 入口 | 跑什么 | 不在这一层 |
+|---|---|---|---|
+| 写的时候 | 增量编 ＋ 只跑改到的那几块（`cargo test --lib -- <模块>` · `vitest run <文件>`） | 改到的那几条 | 其余一切 |
+| 交回前 | `quick-check.sh` | 两棵树排版 · tsc · 两棵树整套 `cargo test --lib` · 整套 vitest；改到手机读的东西才加 ktlint · detekt · 手机 JVM 单测 | e2e · 编译格 · 设备测 |
+| 推候选分支前 | `gate-affected.sh --trust-ci` | 上一层 ＋ 恒跑的便宜格 ＋ 被改到的本机才有的格（改了 `src/mobile/` 就含 `android-device`）＋ 被改到被测对象的 e2e 套件 | CI 会跑的格 |
+| 发版前 | `gate-clean.sh`（全量） | `gate.sh` 每一格，含 `android-device`：模拟器上的设备测（androidTest，见下） | 只能手跑的那几样 |
+| CI | `.github/workflows/ci.yml` | 两棵树 cargo · clippy · vitest · 覆盖率 · e2e · 手机 JVM 单测与 release 构建 · Windows 真测 | 设备测（runner 上没有 KVM 模拟器） |
+| 只能手跑（登记着理由） | 各自的入口 | `SshConnectionTest`（要一台真 SSH 服务端；设备测那一格用 instrumentation 过滤跳过它，`InstrumentedTestInventoryTest` 钉着条数）· `f40-suite` / `graylight-suite`（要 Xvfb 上真开着的窗口）· 容器台架 `tests/e2e/local-backend-container/` · 速度台 `tests/benches/`（读数，不进门禁）· 截图台架 `tests/shots/run.mjs`（发版前与合并时手跑） | — |
+
+**设备测那一格（`android-device`，10-11 起）**：经 `tests/mobile-smoke/emu.sh` 起一台无头 KVM 模拟器（自己一个 `systemd-run --user --scope`，MemoryHigh 6G / MemoryMax 8G，不占 heavy 的槽位；adb 用私有端口，不碰本机正在跑的 adb 与真手机），
+跑设备测唯一的入口 `src/mobile/scripts/android-test.sh`（gradle 一律 `--no-daemon`：先装上 app、`pm clear` 清它的数据 —— 退出码 0 且回 `Success` 才往下跑，清不掉就红；
+所以「从没连过服务器 ⇒ 落在服务器列表」那一支每趟都走得到），收场关模拟器。AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（要 SDK 里装着 `emulator` 与 `system-images;android-36;google_apis;x86_64`）。
+没有 `systemd-run --user` 或 KVM 的机器上这一格按红记（判不了 ≠ 绿）。
+
+**按墙钟判的上限只有一个数**（10-11 起）：测试里「等多久算挂了」一律是兜底的 300 秒 —— Rust `guard_core::wall::CEILING` · TS `tests/test-support/wall-ceiling.ts`（vitest 的 `testTimeout` / `hookTimeout` 就是它）· Kotlin 测试源里的 `WALL_CEILING_MS` · e2e 的 `$WALL_CEILING_S` 与 `wall_until`（`tests/e2e/sandbox-env.sh`）。
+判快慢的改计步数 / 计调用次数 / 注入钟（假定时器、虚拟时间），真要看速度的进速度台、不进门禁；要分「自己回来」与「挂住被掐」看退出码，不看用了几秒。
+判据 `tests/common/guard-core/wall_ceiling_tests.rs` 扫门禁跑的测试源，别处写数字期限就红，例外逐条登记理由。
+
 门禁那几份（`gate-clean.sh` · `gate-affected.sh` · `heavy.sh` · `push-candidate.sh`）共用一个状态目录 `GATE_STATE_DIR`（默认 `${XDG_RUNTIME_DIR:-/tmp}/cc-monitor-gate/`）：门禁锁 `gate.lock` · 槽位 `heavy-slots/` · 推送失败日志 `logs/`，几棵工作树共用同一把锁。私人扫描（`gate-affected.sh` 末一步、`push-candidate.sh` 推之前）的脚本与词表不进仓：取环境变量 `PRIVATE_SCAN` 指的那份，没设就在 PATH 上找同名的扫描脚本，都没有就跳过并说一声。
 
 PowerShell 别名块的模板是 `src/shared/cc.ps1.tpl`（不在本目录；后端编译时 `include_str!` 进去）：设置里装别名块时把它（`__ccm_bind` 自动打开 monitor · 窗口标签 ＋ 带标签的 `ssh` · 接上别名文件）写进用户 `$PROFILE` 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内。

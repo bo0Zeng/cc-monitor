@@ -242,6 +242,7 @@ import { applyConfigEdits, type Edit } from "./config-patch-fake";
 import { dispatcher } from "../../../src/frontend/ui/keybindings/registry";
 import { copyPattern } from "../../test-support/copy-pattern";
 import { factsOn } from "../../test-support/host-facts";
+import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 // `TabManager` 拆开之后各样东西住各自的家（store · tab 栏视图 · 拖拽 · 落盘偏好 · 流视图 · 会话动作）。
 // 判据**直接指向新家**；`TabManager` 上不再为旧判据留同名转交。TS 的 `private` 只在编译期，运行时这几个字段就在实例上。仅测试用。
@@ -1418,7 +1419,7 @@ describe("单个「在 tmux 里 Resume」交那台（与批量同一条，只差
     expect(hit, "没有说清为什么没起").toBeTruthy();
     vi.mocked(callStart).mockResolvedValueOnce([reply("done", null, "proj-cc")] as never);
     hit![2]!.onClick!();
-    await vi.waitFor(() => expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc"));
+    await vi.waitFor(() => expect(runRemoteAttach).toHaveBeenCalledWith("devbox", "claude", "proj-cc"), UNTIL_CEILING);
     expect(vi.mocked(callStart).mock.calls[1][2]).toEqual([{ sid: "r1", cwd: "/home/pi/proj", account: { kind: "named", name: "b" } }]);
   });
 });
@@ -5333,10 +5334,10 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("u2", 0));
     await settle();
     // 切换那一格的推送在 rAF 里（`switchTo`），与事实到达谁先谁后不定 ⇒ 等「最后一次」落定，不钉次序。
-    await vi.waitFor(() => expect(seen.at(-1)).toEqual(["m-a", 42]));
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual(["m-a", 42]), UNTIL_CEILING);
     expect(seen.some(([, t]) => t === 7)).toBe(false); // 后台 tab 的事实到了不推
     tm.switchTo("u2");
-    await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]));
+    await vi.waitFor(() => expect(seen.at(-1)).toEqual([null, 7]), UNTIL_CEILING);
     expect(home(tm).store.tabs.get("u2")!.usage?.promptTokens).toBe(7); // 监控板那一格读的也是它（`snapshotSessions`）
     expect(tm.peekSession("u1")!.model).toBe("m-a");
   });
@@ -5347,13 +5348,13 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("v1", 0));
     tm.onLine(line("v2", 0));
     await settle();
-    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokens).toBe(5));
+    await vi.waitFor(() => expect(tm.active.get().usage?.promptTokens).toBe(5), UNTIL_CEILING);
     const seen: unknown[] = [];
     tm.active.subscribe((a) => seen.push(a));
     (tm as unknown as { onFactsAvailability(sid: string): void }).onFactsAvailability("v1");
     expect(seen, "值没变却通知了").toEqual([]);
     tm.switchTo("v2");
-    await vi.waitFor(() => expect(seen.length).toBe(1));
+    await vi.waitFor(() => expect(seen.length).toBe(1), UNTIL_CEILING);
     expect(seen).toEqual([{ sid: "v2", usage: null, unavailable: null, projectDir: null }]);
   });
 
@@ -5376,7 +5377,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("fine", 0));
     await settle();
     tm.switchTo("fine");
-    await vi.waitFor(() => expect(said.at(-1)).toBeNull()); // 切换那一格的推送在 rAF 里
+    await vi.waitFor(() => expect(said.at(-1)).toBeNull(), UNTIL_CEILING); // 切换那一格的推送在 rAF 里
   });
 });
 

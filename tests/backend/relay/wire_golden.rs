@@ -265,7 +265,7 @@ fn spawn_stub() -> Stub {
         for s in listener.incoming() {
             let Ok(mut s) = s else { continue };
             // 读期限是兜底：中转少发字节时要在对账那条断言上红，**不许挂住**。
-            let _ = s.set_read_timeout(Some(std::time::Duration::from_millis(4000)));
+            let _ = s.set_read_timeout(Some(guard_core::wall::CEILING));
             let Ok(clone) = s.try_clone() else { continue };
             let mut r = BufReader::new(clone);
             let mut head = String::new();
@@ -328,7 +328,7 @@ impl TeeTap {
     fn wait_lines(&self, n: usize) {
         for i in 0..n {
             self.rx
-                .recv_timeout(std::time::Duration::from_secs(4))
+                .recv_timeout(guard_core::wall::CEILING)
                 .unwrap_or_else(|e| panic!("等 tee 的第 {} 件没等到：{e}", i + 1));
         }
     }
@@ -393,7 +393,7 @@ fn one_shot(relay: SocketAddr, target: &str) -> String {
     let mut c = TcpStream::connect(relay).expect("连中转");
     c.set_nodelay(true).expect("nodelay");
     // 期限：把「挂住」换成「红」。回环上这几发都在毫秒量级。
-    c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+    c.set_read_timeout(Some(guard_core::wall::CEILING))
         .expect("读期限");
     let req = format!(
         // 过门：钥匙段挂在最前、`Host` 用回环字面量。金标准比的是**上游那一侧**收到的字节

@@ -44,6 +44,7 @@ function tabWorld(groups = true, folded: readonly string[] = []): World {
     c.title(r.title);
     c.user(`${r.title}：开始。`);
     c.say("好的，先看一下现状。", 20_000);
+    c.endAt(Date.now() - 60_000);
     return session(100 + i, r.origin, r.cwd, c, { sid, ...r.over });
   });
   if (groups) {

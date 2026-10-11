@@ -3928,7 +3928,7 @@ fn status_is_not_blocked_while_a_start_or_stop_holds_the_lifecycle_lock() {
     std::thread::spawn(move || {
         let _ = done_tx.send(local_pid_and_attempts().is_ok());
     });
-    let got = done_rx.recv_timeout(std::time::Duration::from_secs(5));
+    let got = done_rx.recv_timeout(guard_core::wall::CEILING);
     release_tx.send(()).expect("放手");
     holder.join().expect("攥锁那条线程");
     assert_eq!(
@@ -3946,7 +3946,14 @@ fn the_stop_run_gives_up_at_its_deadline() {
     let dir = std::env::temp_dir().join(format!("lbh-stop-deadline-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("建临时目录");
     let fake = dir.join("ccm");
-    std::fs::write(&fake, "#!/bin/sh\nexec sleep 30\n").expect("写替身");
+    std::fs::write(
+        &fake,
+        format!(
+            "#!/bin/sh\nexec sleep {}\n",
+            2 * guard_core::wall::CEILING_SECS
+        ),
+    )
+    .expect("写替身");
     {
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).expect("chmod");
@@ -3968,7 +3975,7 @@ fn the_stop_run_gives_up_at_its_deadline() {
         "不答话的那一趟没按期限回来"
     );
     assert!(
-        took < std::time::Duration::from_secs(10),
+        took < guard_core::wall::CEILING,
         "期限 300 毫秒，实际等了 {took:?} —— 没按期限收"
     );
 }

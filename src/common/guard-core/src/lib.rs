@@ -95,6 +95,21 @@
 //! 少买一件（活样本那个字节数倍数刻意没抽上来 —— 那是一份文件的数）。
 //! 人群怎么枚举、今天补到了哪几条、哪几条还欠着，逐字住 `P28` 的交付记录。
 
+/// 测试里「等多久算挂了」的**唯一**上限（10-11 起）。
+///
+/// 判据只许拿墙钟当兜底，不许拿它判「够不够快」：等一件事发生、给整条用例封顶，一律用这一个数；
+/// 量快慢的去计步数 / 计调用次数 / 注入钟，真要看速度的搬进手跑的速度台（`tests/benches/`），不进门禁。
+/// 量纲是「机器忙」：门禁并发时负载到核数的四倍（10-11 那趟 95 / 24 核）、单条慢十来倍也要还绿 ——
+/// 平时最慢的一条判据跑三十来秒，挂住的才会撞到五分钟。
+/// TS（`tests/test-support/wall-ceiling.ts`）· Kotlin · e2e 脚本各有一份同名的数，由
+/// `wall_ceiling` 那一族判据逐份核成同一个值、并扫测试源里每一处按墙钟判的上限。
+pub mod wall {
+    /// 秒。
+    pub const CEILING_SECS: u64 = 300;
+    /// 同一个数的 `Duration` 形。
+    pub const CEILING: std::time::Duration = std::time::Duration::from_secs(CEILING_SECS);
+}
+
 /// 一条 `#[cfg(…)]` 属性是不是**测试期专属**。
 ///
 /// # 为什么不能只认 `#[cfg(test)]` 这一种写法（U8a-2a 实测，坑 1 的变种）
@@ -2445,3 +2460,8 @@ mod retired_names;
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/private_shape_guard_tests.rs"]
 mod private_shape_guard;
+
+/// 按墙钟判的上限只许是 [`wall::CEILING`]：扫测试源（TS · 两棵 Rust · Kotlin · e2e 脚本）里每一处等待上限与耗时上界。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/wall_ceiling_tests.rs"]
+mod wall_ceiling;
