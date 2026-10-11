@@ -24,7 +24,7 @@ import { writeIndex } from "./index-page.mjs";
 import { buildBins, pinDateSource, SHOTS_TZ } from "./real/pool.mjs";
 
 // 等页里起好的上限：兜底的那一个数（与 `tests/test-support/wall-ceiling.ts` · Rust `guard_core::wall::CEILING_SECS` 同值，
-// 判据 `wall_ceiling` 逐份核）。从前 30 秒 / 60 秒，合并那一拍负载 20+ 时随机漏图（10-11）；等到了就走，不白等。
+// 判据 `wall_ceiling` 逐份核）。从前 30 秒 / 60 秒，机器负载 20+ 时随机漏图；等到了就走，不白等。
 const WALL_CEILING_MS = 300_000;
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
