@@ -204,12 +204,16 @@ impl Upstreams {
 ///
 /// `library`：这台的账号库怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 pub fn host_relay(library: rotate::LibraryRead) -> String {
-    crate::relay::host(
+    let hosted = crate::relay::host(
         &|k| std::env::var(k).ok(),
         &Rotating(library),
         crate::stream::tap::port(),
-    )
-    .to_string()
+    );
+    // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是第一版，这一下换形写回（全机只这一处写回）。
+    if hosted.listening() {
+        crate::accounts::quota::rotation::migrate_here();
+    }
+    hosted.to_string()
 }
 
 /// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）。

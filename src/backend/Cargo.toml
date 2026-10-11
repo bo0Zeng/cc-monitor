@@ -338,8 +338,3 @@ ts-rs = "12.0.1"
 #   第三方八十多份源码放进来会淹掉那一族人群（与上面 `benches` 那段同一条理由）。
 [patch.crates-io]
 russh = { path = "../vendor/russh" }
-
-# 轮换策略的沙箱有 50 ms 墙钟上限：判据跑的是 dev 档，不优化的 rhai 一判要慢一个数量级、机器一忙就撞上墙钟
-# （判据判的是策略的行为，不是 rhai 在 debug 下有多慢）⇒ 只给这一个依赖开优化。发布档本来就优化。
-[profile.dev.package.rhai]
-opt-level = 3

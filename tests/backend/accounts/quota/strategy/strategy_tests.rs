@@ -182,22 +182,18 @@ fn rh_block(s: &Strategy, name: &str, c: &Value) -> String {
             .as_array()
             .is_some_and(|a| a.iter().any(|x| x["id"] == id && x["ok"] == true))
     };
-    let mut rows: Vec<(String, Option<f64>, Value)> = c["accounts"]
+    // 排法就是引擎那一份（`decide::rank`：`p` 降序 · 同分按号 id · 没给的在 `()` 之前 · `()` 按 `back` 早的先）。
+    let ids: Vec<String> = c["accounts"]
         .as_array()
         .expect("accounts")
         .iter()
-        .map(|a| {
-            let id = a["id"].as_str().unwrap_or("").to_string();
-            let r = &out.rows[&id];
-            (id, r.p, r.why.clone())
-        })
+        .map(|a| a["id"].as_str().unwrap_or("").to_string())
         .collect();
-    rows.sort_by(|x, y| match (x.1, y.1) {
-        (Some(a), Some(b)) => b.total_cmp(&a).then(x.0.cmp(&y.0)),
-        (Some(_), None) => std::cmp::Ordering::Less,
-        (None, Some(_)) => std::cmp::Ordering::Greater,
-        _ => x.0.cmp(&y.0),
-    });
+    let rows: Vec<(String, Option<f64>, Value)> =
+        crate::accounts::quota::decide::rank(&out.rows, &ids)
+            .into_iter()
+            .map(|r| (r.account, r.p, r.why))
+            .collect();
     let pick = rows
         .iter()
         .find(|r| r.1.is_some() && ok(&r.0))
@@ -254,7 +250,7 @@ fn the_three_builtins_reproduce_the_trial_run_byte_for_byte() {
     let want =
         std::fs::read_to_string(format!("{FIXTURES}rotation-trial-run.txt")).expect("试跑结果");
     let mut got = String::from(
-        "# 试跑结果：rh <lib.rhai> <策略> 样例/c1–c13（Rhai 1.26.1）。@ 开头的是引擎的字（beRotation.lib.*），引擎写字时换成人话；时刻是 unix 秒。\n",
+        "# 试跑结果：由引擎生成（`tests/backend/accounts/quota/strategy/strategy_tests.rs` 照引擎的沙箱 · 排法跑样例 c1–c13，CCM_BLESS=1 重写；Rhai 1.26.1）。行序是引擎的有效优先级（`()` 按 back 早的先）。@ 开头的是引擎的字（beRotation.lib.*），引擎写字时换成人话；时刻是 unix 秒。\n",
     );
     for s in builtins() {
         assert!(s.usable(), "内置策略 {} 读不懂：{:?}", s.id, s.error);
@@ -264,6 +260,14 @@ fn the_three_builtins_reproduce_the_trial_run_byte_for_byte() {
             got.push_str(&rh_block(s, &name, &sample(&name)));
         }
     }
+    if std::env::var_os("CCM_BLESS").is_some() {
+        std::fs::write(format!("{FIXTURES}rotation-trial-run.txt"), &got).expect("重写");
+    }
+    let want = if std::env::var_os("CCM_BLESS").is_some() {
+        got.clone()
+    } else {
+        want
+    };
     assert_eq!(got, want);
 }
 
@@ -336,14 +340,13 @@ fn an_endless_loop_stops_at_the_same_place_every_time() {
     let c = sample("c1");
     let a = run_sample(&s, &c).expect_err("停");
     let b = run_sample(&s, &c).expect_err("停");
-    assert_eq!(
-        (a.kind.clone(), b.kind.clone()),
-        (FailKind::Timeout, FailKind::Timeout)
+    assert_eq!(a.kind, FailKind::Timeout);
+    assert!(
+        a.msg.contains("operations"),
+        "该是操作数掐的（墙钟只兜底）：{}",
+        a.msg
     );
-    // 两次都是操作数掐的 ⇒ 停在同一处（机器忙时可能先撞上 50 ms 墙钟，那一种只保证是超时）。
-    if a.msg == b.msg {
-        assert_eq!(a, b, "同一份上下文停在同一处");
-    }
+    assert_eq!(a, b, "同一份上下文停在同一处");
 }
 
 /// ★ S1：没有读文件 · 取时间 · 随机数 · `import` —— 各写一份调它的脚本，编或跑必错；`print` 不出东西也不出错。

@@ -47,8 +47,10 @@ pub(crate) const FALLBACK_ID: &str = "1";
 
 /// 一判至多几次操作（同样的输入在同一处停）。
 pub(crate) const MAX_OPERATIONS: u64 = 200_000;
-/// 墙钟兜底：一次调用至多跑多久（毫秒）。不是定时器：只在脚本每走一步时（`on_progress`）比一下，不让谁自己醒来。
-const WALL_MS: u128 = 50;
+/// 墙钟兜底：一次调用至多跑多久（毫秒）。**主上限是操作数 · 调用深度 · 大小**（同样的输入停在同一处，跟机器忙不忙无关）；
+/// 墙钟只兜那几样都没掐住的极端情形，放宽到秒级，免得机器一忙就判超时、换到兜底那份去挑号。真撞上了照超时办、带 `strategyError` 交出来。
+/// 不是定时器：只在脚本每走一步时（`on_progress`）比一下，不让谁自己醒来。
+const WALL_MS: u128 = 1_000;
 /// 一份文件至多多大。
 pub(crate) const MAX_SOURCE_BYTES: usize = 64 * 1024;
 /// 本机目录里至多读几份。
@@ -206,7 +208,11 @@ impl Fail {
             },
             line: pos.line(),
             col: pos.position(),
-            msg: e.to_string(),
+            msg: if matches!(e, EvalAltResult::ErrorTerminated(..)) && timeout {
+                format!("wall clock over {WALL_MS} ms (the machine was too busy or the script too slow)")
+            } else {
+                e.to_string()
+            },
         }
     }
 }
