@@ -940,7 +940,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// 多 landed（落成了人话的排队插话，界面不再单独出）；核心 observe/turns.rs 一处划段。Codex 的 function_call 入参从 arguments 解成 tool_use.input（从前恒为 null）。
 /// Windows 上找 / 起 agent 命令收成 platform::shell::find_session_command（PATHEXT 次序，.cmd 经 cmd /c、.ps1 经 powershell -File）。
 /// 手机：终端屏阅读子页删、Codex 落聊天屏能送字、stream-watch 按行号接续、复用判活与新建同时起跑。
-pub const BUILD_ID: &str = "p10b-fold-segments-codex-record";
+///
+/// p10c-steady-cards-wt-tabs：线上帧与子命令集不变。主界面骨架取回中的行留着占位高度、正文落地同一个任务里换卡（界面侧）；
+/// 足迹里按 PATH 找的那一族（git · bash · tmux …）在 Windows 上也走 find_session_command，只有 .ps1 且执行策略不让跑脚本时照实拒起（ccm 直起同一句）；
+/// 桌面复用：TCP 层记最后收包时刻，久没收包时开通道与新建同时起跑，保活 10 秒、一轮没回话判死并摘同族。
+/// 壳：Windows「切到终端」照实说原因、核前台，隐藏子命令 --ccm-console 一次性小助手认窗口、经 UI Automation 切 Windows Terminal 标签页。
+pub const BUILD_ID: &str = "p10c-steady-cards-wt-tabs";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
