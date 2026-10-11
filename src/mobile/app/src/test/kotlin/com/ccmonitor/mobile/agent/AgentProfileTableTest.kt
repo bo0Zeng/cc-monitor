@@ -13,7 +13,7 @@ import org.junit.Test
  * 它不是「消费方真走档案」的证据：本条对每一刀变异都会红，因为它就是直接读档案。
  * 「消费方真的读了那一格」得由消费方侧的判据来证（`AgentArchetypeTest` · `ChatAccountGateTest` 等）。
  *
- * 本条的职责只有一个：改表要留痕（同 `NewUiSettingsTest.theDefaultSourceIsPinned…`）。
+ * 本条的职责只有一个：改表要留痕。
  */
 class AgentProfileTableTest {
     /** 一份档案压成一行（每一格都进串：少写一格，那一格的变异就溜过去了）。 */

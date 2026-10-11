@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
@@ -59,19 +58,14 @@ import org.koin.compose.koinInject
 fun AppNavHost() {
     val nav = rememberNavController()
     val tabManager = koinInject<SessionTabManager>() // 多 tab 总览状态 + per-key VM store
-    // 新界面总开关，不是显式关就是开。显式关（`FLAG_OFF`）时点服务器开终端 tab、启动进服务器列表；屏上已无关掉的入口。
-    val settings = koinInject<SettingsRepository>()
     val chatController = koinInject<ChatController>()
-    // 初值是 null（还不知道），不是 false：写 false 的话第一帧就把「关」送进落地判定，
-    // 导航去服务器列表并弹掉 Launch，真值到了也没人再看。
-    val newUi by settings.newUiEnabled().collectAsStateWithLifecycle<Boolean?>(null)
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
     ) {
         // 全应用的操作反馈与撤销宿主。装在根部：撤销要跨屏活着。
         AppSnackbarHostScaffold {
-            AppNavGraph(nav, tabManager, newUi, chatController)
+            AppNavGraph(nav, tabManager, chatController)
         }
     }
 }
@@ -80,19 +74,13 @@ fun AppNavHost() {
 private fun AppNavGraph(
     nav: NavHostController,
     tabManager: SessionTabManager,
-    /** 三值：`null` = 开关还没读到。只有 [launchRoute] 处理这个第三态。 */
-    newUi: Boolean?,
     chatController: ChatController,
 ) {
-    // 开终端 tab 并给出路由，作为参数交给 [onConnectDestination]。
-    val openTerminal: (String) -> String = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Terminal())}" }
-    // 点服务器不能「等一等」：不导航就是点了没反应。所以「还不知道」按仓库同一规则折成开
-    // （`newUiEnabled` 判的是 `!= FLAG_OFF`）。app 里没有写 `FLAG_OFF` 的路径，真值恒为开，
-    // 折下来也是开；若加回关掉的入口，这里要改成三值。
-    val onConnect = rememberConnectAction(nav, newUi != false, openTerminal)
+    // 点一台服务器 ⇒ 这台上空的新对话（见 [freshLanding]）。
+    val onConnect: (String) -> Unit = { hostId -> nav.navigate(freshLanding(hostId, ::newConversationId)) }
     // 起点是判定屏，见 [Screen.Launch]。
     NavHost(navController = nav, startDestination = Screen.Launch.route) {
-        launchRoute(nav, newUi)
+        launchRoute(nav)
         hostsRoute(nav, tabManager, onConnect)
         chatRoutes(nav, tabManager, chatController)
         composable(Screen.SessionsOverview.route) {
@@ -323,7 +311,7 @@ private fun NavGraphBuilder.hostsRoute(
 ) {
     composable(Screen.Hosts.route) {
         HostListScreen(
-            // 点主机去哪儿见 [onConnectDestination]。
+            // 点主机 ⇒ 这台上空的新对话（[freshLanding]）。
             onConnect = onConnect,
             onAddHost = { nav.navigate("host/new") },
             onIdentities = { nav.navigate(Screen.Identities.route) },
@@ -345,33 +333,17 @@ private fun NavGraphBuilder.hostsRoute(
  *
  * 注意：上次那台主机要先查主机表核对还在，否则拿已删的 hostId 起聊天屏会一屏报错。
  */
-private fun NavGraphBuilder.launchRoute(
-    nav: NavHostController,
-    newUi: Boolean?,
-) {
+private fun NavGraphBuilder.launchRoute(nav: NavHostController) {
     composable(Screen.Launch.route) {
         val settings = koinInject<SettingsRepository>()
         val hosts = koinInject<HostRepository>()
-        LaunchedEffect(newUi) {
+        LaunchedEffect(Unit) {
             val lastHost = settings.getLastHost()?.let { id -> hosts.get(id) }?.id
-            val target =
-                launchDestination(
-                    newUi = newUi,
-                    landingHostId = lastHost,
-                    newConversationId = ::newConversationId,
-                ) ?: return@LaunchedEffect // 「还不知道」⇒ 不导航，等真值那一趟
+            val target = launchDestination(landingHostId = lastHost, newConversationId = ::newConversationId)
             nav.navigate(target) { popUpTo(Screen.Launch.route) { inclusive = true } }
         }
     }
 }
-
-/** 点一台主机之后去哪儿（见 [onConnectDestination]）。 */
-@Composable
-private fun rememberConnectAction(
-    nav: NavHostController,
-    newUi: Boolean,
-    openTerminal: (String) -> String,
-): (String) -> Unit = { hostId -> nav.navigate(onConnectDestination(hostId, newUi, ::newConversationId, openTerminal)) }
 
 /** 对话总览与单个对话两条路由。 */
 private fun NavGraphBuilder.chatRoutes(
@@ -489,40 +461,19 @@ private fun AddHostRoute(nav: NavHostController) {
 }
 
 /**
- * 点一台服务器之后去哪儿：新界面开着 ⇒ 这台上空的新建会话（见 [freshLanding]，哪一家都一样）；关着 ⇒ 开一个终端 tab。
- */
-internal fun onConnectDestination(
-    hostId: String,
-    newUi: Boolean,
-    /** 新建会话那张草稿的票的工厂。做成参数是因为 [newConversationId] 每次调用都不同，测试没法钉住它。 */
-    newConversationId: () -> String,
-    /** 开一个终端 tab 并给出路由。做成参数：`SessionTabManager.open` 会真建 tab，测试不该为此去建。 */
-    openTerminal: (String) -> String,
-): String = if (newUi) freshLanding(hostId, newConversationId) else openTerminal(hostId)
-
-/**
  * 打开 app 那一刻去哪儿。
  *
- * | `newUi` | 当前服务器（上次那台，核对过还在） | 去处 |
- * |---|---|---|
- * | `null`（开关还没读到） | — | `null` = 不导航，留在 [Screen.Launch] 等真值 |
- * | 关 | — | [Screen.Hosts] |
- * | 开 | 没有 | [Screen.Hosts]（第一次装的第一屏） |
- * | 开 | 有 | 这台上空的新对话（见 [freshLanding]）；不回上次那条 |
+ * | 当前服务器（上次那台，核对过还在） | 去处 |
+ * |---|---|
+ * | 没有 | [Screen.Hosts]（第一次装的第一屏） |
+ * | 有 | 这台上空的新对话（见 [freshLanding]）；不回上次那条 |
  *
- * `null` 那一格防的是冷启动被假的「关」弹走。[landingHostId] 必须已核对过存在，核对在 [launchRoute] 里做。
+ * [landingHostId] 必须已核对过存在，核对在 [launchRoute] 里做。
  */
 internal fun launchDestination(
-    /** 三值：`null` = 还没读到（⇒ 不导航）· `true` = 开 · `false` = 显式关。 */
-    newUi: Boolean?,
     landingHostId: String?,
     newConversationId: () -> String,
-): String? =
-    when {
-        newUi == null -> null
-        !newUi || landingHostId == null -> Screen.Hosts.route
-        else -> freshLanding(landingHostId, newConversationId)
-    }
+): String = landingHostId?.let { freshLanding(it, newConversationId) } ?: Screen.Hosts.route
 
 /** 进一台服务器、从空白开始：打开 app 与加完一台共用。哪一家都进空的新对话（送字走 `terminal-input`，不分哪家）。 */
 internal fun freshLanding(

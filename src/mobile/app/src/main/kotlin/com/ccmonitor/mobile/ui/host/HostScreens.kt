@@ -72,10 +72,7 @@ val HOSTS_SCREEN_TITLE: String get() = copyText("mobHosts.page.title")
 val IDENTITY_SCREEN_TITLE: String get() = copyText("mobIdentity.page.title")
 
 /**
- * 服务器列表。[onConnect] 带上这台服务器的 agent 种类，落地判定（`AppNavHost.onConnectDestination`）
- * 靠它把 Codex 服务器送去只读档，而不是 Claude 的聊天屏。
- * 种类直接从行里的 `Host` 读（同步、零往返），不另查库：关着新界面的那条连接路径不进协程
- * （见 `rememberConnectAction` 的头注），为取种类加一次挂起读会改变它的时序。
+ * 服务器列表。[onConnect] 进这台上空的新对话（`AppNavHost.freshLanding`，哪一家都一样）。
  */
 @Composable
 fun HostListScreen(
