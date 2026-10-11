@@ -82,7 +82,7 @@ mobile_step() {
   step mobile run env REAL_HOME="$real_home" bash "$HERE/heavy.sh" bash -c '
     out="$PWD/.build/mobile"; cd src/mobile || exit 1
     if [ -z "${JAVA_HOME:-}" ] || [ -z "${ANDROID_HOME:-}" ]; then
-      export ATERM_ANDROID_DEV="${ATERM_ANDROID_DEV:-$REAL_HOME/android-dev}"
+      export CCM_ANDROID_DEV="${CCM_ANDROID_DEV:-$REAL_HOME/android-dev}"
       . ./scripts/env.sh >/dev/null || { echo "mobile: 找不到 Android 工具链（JDK ＋ SDK）—— 判不了"; exit 1; }
     else export GRADLE_USER_HOME="${GRADLE_USER_HOME:-$REAL_HOME/.gradle}"; fi
     rm -rf "$out"/*/test-results
