@@ -138,7 +138,7 @@ pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
 /// 而 `=` 前缀只在 target-**session** 解析路径上被识别；`send-keys` 收的是 target-**pane**，
 /// `=name` 会直接 `can't find pane`。尾冒号把串强制成 `session:` 形态，`=` 才落对位置。
 ///
-/// 只剩跨轨对拍锚点在用）删了 ⇒ 精确匹配形只住这里（判据 `exact_target_is_the_exact_match_shape`）。
+/// argv 直传，**不引号化**（引号化了就成了名字的一部分）。精确匹配形只住这里（判据 `exact_target_is_the_exact_match_shape`）。
 pub(crate) fn exact_target(name: &str) -> String {
     format!("={name}:")
 }

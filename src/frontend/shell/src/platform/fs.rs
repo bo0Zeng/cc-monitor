@@ -219,11 +219,8 @@ impl Drop for DirLock {
 // 原住 `config.rs`（逐字）：monitor 自己的文件（config.json）的原子替换，两个平台臂。
 /// 把 src 原子替换到 dst。
 ///
-/// ⚠ **从私有改成 `pub(crate)`，理由不是「顺手」**：
-/// 理由：它的调用方要一次原子替换，而它**不许自己写一个 `fs::rename`** ——
-/// `atomic_replace_registry` 按「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记，
-/// 那张表不在 `K-H2a` 的写区。复用这一份 ⇒ 新文件里那两个字面量出现 **0** 次，
-/// 既不动那张表，也不给它挖洞。
+/// ⚠ 要原子替换的调用方复用这一份，**不许自己写一个 `fs::rename`**：`atomic_replace_registry` 按
+/// 「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记。
 /// 选它（`MoveFileExW` 那套语义）而不是 `ReplaceFileW` 是**有理由的**：
 /// `INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件，而凭据文件与 `config.json` 同类
 /// ——**都是 monitor 自己的文件**（登记表里那两行逐字这么写的；住址今天是 `platform/fs.rs`）。

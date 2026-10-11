@@ -128,8 +128,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("local_backend_host.rs", "spawn_detached", None,
      "建 `<monitor 数据目录>/logs/backend/`（`create_dir_all`，只建目录）—— 脱离常驻的本机后端把自己的 stderr 落在\
           这一层里（后端只 `O_EXCL` 新建文件、不建目录，`src/backend/stderr_log.rs`）。写的是 monitor 自己的日志目录"),
-    // FN1 之后写面已无那道围栏），
-    //    本进程一个字节不删 ⇒ 摘行。那条「入口真的过了围栏」的端到端判据随之换成后端那一族与本侧的一致性闸判据。
+    // 删历史会话是后端一条只收 sid 的命令（`files-delete-session`），本进程一个字节不删 ⇒ 不在本表。
 ];
 
 /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。

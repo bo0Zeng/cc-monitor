@@ -8,6 +8,8 @@
 //!
 //! # 为什么要有它
 //!
+//! 设计写着、没人量的话会漏：同步命令链路里加一次 `block_on` 等本机后端（最长 10 s），照样能合进主线。
+//!
 //! # 它量什么（判据住 `tests/frontend/shell/sync_command_registry_tests.rs`，头注写全）
 //!
 //! 人群 = 本 crate 生产段里**全部**同步 `#[tauri::command]`（现扫）。每一条的名字级调用闭包里，

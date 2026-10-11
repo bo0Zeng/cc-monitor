@@ -697,8 +697,7 @@ fn the_local_stop_rides_the_same_one_shot_supervisor() {
         .unwrap_or_else(|e| panic!("{e}"));
 }
 
-/// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增 · 换了机制〕。
-///
+/// ★★ **本机只许用本平台能跑的二进制**。
 ///
 /// 今天字节按 (OS, arch) 查表（`byte_table`，规矩 4）⇒ 「先问 OS」不再是一道闸，
 /// 是**键的一半**。本条钉：本机那条取用点的键是**这台机器自己**（`Key::this_machine()`）、取的是后端那一类，
@@ -3292,8 +3291,7 @@ fn the_host_never_writes_the_resident_dir_and_carries_no_key() {
 ///
 /// ⚠ **覆盖面另有缺口，一并登记**：本条 105 ＋ backend 侧 73 ＋ guard-core 自检 1 = **179 份**，
 /// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里，`crates/usage-core/src/lib.rs`
-/// **确实被 `guard_core::production_code` 吃**
-/// ⇒ 它掉进兜底的话，三条判据一条都不会响。
+/// 的生产段也经 `guard_core::production_code` 剥 ⇒ 它掉进兜底的话，这几条判据一条都不会响。
 /// 〔那一拍写区只有本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
 ///  **`K-R25`（09-04）答清了那 9 份各是什么**，逐份带住址与「要不要拉进来」的裁定 —— 那一件是**只答不改**。〕
 ///

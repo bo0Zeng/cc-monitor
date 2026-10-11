@@ -213,12 +213,10 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// 🔴 **一条路径是不是 Claude 的「会话记录」那几份具体文件的形状**（`projects/<proj>/<sid>.jsonl` 恰 2 段 ·
 /// `sessions/<x>.json` 恰 1 段）。
 ///
-/// # 〔用户〕它**不再是写侧围栏**
+/// # 它**不是写侧围栏**
 ///
-/// 〔波 5 ㈢ · 2026-09-23 · 「文件管理器该不该能改 `~/.claude`
-/// 里的东西. **可以.**」〕
-///
-/// # 它换掉了什么，以及为什么
+/// 文件管理器能改 `~/.claude` 里的东西 ⇒ 文件管理写面（`control/files_write.rs`）不问它。后端里它**只有删历史会话
+/// 那一条**在问（[`session_file_for_delete_in`] 与 `files_write::fenced_session_file`：「要删的必须**是**一份会话记录」）。
 ///
 /// # 🔴 它是那个判定的**逐字副本**，而不是第二个判定
 ///
@@ -229,7 +227,7 @@ pub fn is_inside_tree(home: &Path, target: &Path) -> bool {
 /// ⇒ 处置：**函数体逐字节相同**，并由判据把这件事钉成相等断言 ——
 /// 两侧任何一处改动、另一处不跟，当场红。桥那一份删了，那条相等判据随之退役（全仓只剩这一份）。
 ///
-/// 今天是本文件的 [`session_file_for_delete_in`]，正题恰恰是
+/// ⚠ **方向相反的那一道不在这儿，也不许合并**：本文件的 [`session_file_for_delete_in`]，正题恰恰是
 /// 「**只许**删恰是 `projects/<proj>/<sid>.jsonl` 的那一份」（`INVARIANTS §1` 例外 3，历史浏览器删会话）。
 /// 两道都读 Claude 的目录结构、方向相反，合成一个之后「哪些不许写」与「哪些才许删」
 /// 会共用一个真相，而它们要的恰好是补集。

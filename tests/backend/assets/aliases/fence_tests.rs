@@ -472,7 +472,7 @@ fn splicing_is_idempotent_and_keeps_every_user_line() {
 
 /// 🔴 **规则只有一个住址**：两家（别名文件 `account_aliases.rs` · 别名块 `profile_installer.rs`，远端 rc 那一份
 /// 也搬进了后者）的生产段里，「配对 ＋ 读回比对」的原语**零命中**。
-/// （零调用方），「备份 · 原子替换 · 回读 · 回滚」今天只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
+/// 正控：「备份 · 原子替换 · 回读 · 回滚」只住后端 `control/files_write.rs::put_text` —— 正控钉它在、且恰好一处定义；
 /// 本模块生产段里**没有**任何异步落盘序列（`async fn` 零处）。别名块「写口只有一个」那条住
 /// `block_tests.rs::the_alias_block_is_written_through_exactly_one_door`。
 ///

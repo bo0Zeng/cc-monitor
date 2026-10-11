@@ -178,9 +178,6 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("comm.face-a.subscribe", (NA, "—",
                                "通信层面 A 在 Tauri IPC 那一跳的订阅（`chan_subscribe` / `chan_want` / `chan_stop`）—— 只搬不透明的流格，"
                                "装什么、查什么装态都不是它的事")),
-    # 界面经通道直问）而退役：monitor 那几条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里（理由同下面 `launch.send-into` 那条墓碑）。
-    # （`src/frontend/ui/tmux-control.ts::sendInto`）而退役：monitor 那条命令删了 ⇒ 能力 id 已不在 `LEDGER` 里，
-    # 理由同下面 `usage.*` 那条墓碑（归档表留一个不存在的 id 会让 `R3b` 恒红）。
     ("mcp.list-origins", (NA, "—", "列 MCP 的 origin —— 读")),
     # `mcp.list-project-dirs` / `mcp.read` 两项摘了（同上：读面进了那台后端的 `mcp-read`）。
     ("session.forget", (NA, "—", "会话")),
@@ -189,9 +186,8 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("terminal.focus", (NA, "—", "把终端提到前台")),
     # 开窗（`open_terminal_window`）：ssh 外壳进了本机后端（`terminal-ssh`），monitor 只剩开窗这一下。
     ("terminal.window", (NA, "—", "开一个终端窗口跑交来的成品（接令牌握手前奏）—— 是**跑**它，不往用户环境里落任何东西")),
-    # 整轴退役⇒ 它们已不在 `LEDGER` 里。本表是**归档表**，留一个指向不存在
-    # 的 id 会让 `R3b`（「表在腐烂」）恒红 ⇒ 整条摘掉，理由留在这里。
-    # ⚠ 摘掉的合法理由只有这一个：**那两条能力真的不在了**，不是「这条判据太吵」。
+    # 本表是**归档表**：能力退役 ⇒ 那一条整条摘掉 —— 留一个指向不在 `LEDGER` 里的 id 会让 `R3b`（「表在腐烂」）恒红。
+    # ⚠ 摘掉的合法理由只有这一个：**那条能力真的不在了**，不是「这条判据太吵」。
 ])
 
 # 同一个能力 id 里读写两性质时，按命令名覆盖。**key 必须在 `LEDGER` 里**（R3 的第三向）。

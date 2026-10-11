@@ -118,7 +118,6 @@ pub(crate) async fn upload_verified(
 pub struct BackendBinary {
     /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
     /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
-    ///
     pub build_id: &'static str,
     pub bytes: &'static [u8],
     /// 那台机器是哪一格（说给人听：「Linux / x86_64」）。
@@ -273,8 +272,7 @@ fn planned_binary(plan: &Plan) -> Result<BackendBinary, String> {
         })
 }
 
-/// 自动部署没成的两种说法 —— **类型上与「部署成功」分得开**（
-/// 「返回类型上不许有『成功』这一支」）。
+/// 自动部署没成的两种说法 —— **类型上与「部署成功」分得开**（「返回类型上不许有『成功』这一支」）。
 #[derive(Debug)]
 pub enum DeployError {
     /// 那台要不了这份 / 这一版没带 / 判不清它是谁 —— 那句话是本机常驻后端说的（`deploy-plan` 失败那一形），原样带回（带它的详情）。

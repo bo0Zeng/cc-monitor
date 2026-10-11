@@ -83,7 +83,7 @@ use table::{RoutingTable, Row};
 /// 那份文件的行挂在哪一家名下由适配层那一格声明（`agents::DefaultUpstream::owns_credentials_file`），
 /// 这里只取它的路由名；本层不认识任何一家的名字。
 ///
-/// 由一条跨半边判据现抠字面量对拍；那张决策表搬进本层（[`endpoint`]）之后，读它的只剩本层自己。
+/// 读它的只有本层自己（那张决策表住本层，[`endpoint`]）。
 /// ⚠ 买不到：「那份文件**将来**会不会装进别家的行」—— 那要文件格式多一维（`creds-core`，
 /// 不在本层），那一天本常量整删、换成逐行读出来的 agent。
 pub(crate) const CREDENTIALS_FILE_AGENT: &str = crate::agents::credentials_file_agent();

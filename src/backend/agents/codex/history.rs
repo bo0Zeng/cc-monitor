@@ -1,6 +1,9 @@
 //! Codex 的**历史清单那一面**：这台机器上有哪些 Codex 会话、各自的首条真用户话。
 //!
-//! # 从哪来
+//! # 住哪
+//!
+//! Codex 的格式知识只许住 `agents/codex/`（`agent_locality_guard` 判据①）⇒ 枚举与摘录在这里；
+//! 通用层（`history_list.rs`）经注册表 `Adapter.history` 那一格够到它（不增 `ADAPTER_CALL_SITES`）。
 //!
 //! # 口径
 //!

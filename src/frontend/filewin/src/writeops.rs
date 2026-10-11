@@ -599,7 +599,6 @@ impl WritePrompt {
     }
 
     /// 改权限那个框 —— 摆出来时**空着**；现值由 [`ModeProbe`] 逐项问回来之后再说、再预填（[`mode_readout`]）。
-    /// 后端 `files-stat` 送 `mode` 了。
     pub fn for_chmod(dir: &str, r: &Listed) -> Self {
         Self::for_chmod_many(dir, &[r])
     }

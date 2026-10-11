@@ -113,8 +113,7 @@ pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-backend";
 /// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
 /// 由 `the_backend_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
-/// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
-/// 一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
+/// 「找本机后端」的一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
 /// ⚠ **monitor 这一半还没接**：本 `const` 今天**没有生产调用点**（只有判据读它，
 /// 于是 `dead_code` 警告仍在 —— 那个警告就是「没接上」的诚实标记，刻意不 `#[allow]`）。

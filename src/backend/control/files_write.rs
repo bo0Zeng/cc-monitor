@@ -2954,8 +2954,7 @@ fn path_of(
 
 /// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。
 ///
-/// 的入参是 `&str`。路径解析换成按 `Path` 逐段判之后，相对段与 `root` 同形（字符串或 `{"b16": …}`），
-/// 取法住 [`rel_of`]。
+/// 路径解析按 `Path` 逐段判；相对段与 `root` 同形（字符串或 `{"b16": …}`），取法住 [`rel_of`]。
 fn answer_create(args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;

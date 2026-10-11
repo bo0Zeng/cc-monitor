@@ -3,6 +3,8 @@
 //! 三块：
 //! 1. [`open_local`](crate::platform::terminal::open_local) —— 通用「新终端窗口跑一条命令」：Windows 是 PowerShell 窗口
 //!    （wt.exe Plan A → CREATE_NEW_CONSOLE Plan B，`-NoExit -EncodedCommand`），POSIX 是挑到的终端里 `bash -lic`。本地与远端共用此单一入口。
+//! 2. [`open_terminal_window`] —— 开窗那一条 Tauri 命令：**只开窗**。交来的是本机后端的成品 —— 远端那一行
+//!    （`& ssh -t[ -J …] … -- '<bash -lic ''…''>'`）由帧命令 `terminal-ssh` 渲、本机那一串由本机后端起会话那一问交回。
 //! 3. [`terminal_dial`] —— 给那一问交机器事实（`{machine, saved, jump, prefer}`：monitor 自己的机器表 ＋ 上次赢的那条，
 //!    `dial_host::machine_facts`）。
 //!
@@ -16,8 +18,6 @@ use crate::detail::Said;
 
 /// 远端命令长度上限（防 IPC 侧异常输入；正常 resume 命令 <300 字节）。
 const MAX_REMOTE_CMD: usize = 4096;
-
-// ssh 外壳（`bash -lic '<命令>'`），随渲染搬进本机后端（`src/backend/dial/terminal.rs`，直调 `shell_quote_core`）⇒ 别名一起删。
 
 // 这里原来一个只双写 ASCII `'` 的 PowerShell 引号器（本机数据目录带弯引号时握手前奏会断）：前奏整段搬进本机后端，
 // PowerShell 字面量只经后端 `platform/shell/dialect.rs::ps_literal` ⇒ 删了。monitor 生产段零 PowerShell 引号器（`quote_singleton_guard_tests`）。

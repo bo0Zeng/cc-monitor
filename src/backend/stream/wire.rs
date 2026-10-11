@@ -289,8 +289,7 @@ pub enum Frame {
         /// （生产路径**确实**给空表）与
         /// `wire_tests.rs::dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
         /// （**给了**空表就得到旧字节）两条**合起来**钉住 —— 缺任一条这句话都不成立。
-        /// **那个名字全仓零定义**，而这句话是**当现状在说**，还撑着一条**契约级**结论
-        /// （仓外 aterm 的 hello fixture 按精确字节对，契约冻结 2026-07-18）。
+        /// 这是**契约级**的：hello 帧的金样按精确字节对。
         /// `S5` 落地时往这里填，**不要再加第二个目录字段**。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         homes: Vec<AgentHome>,

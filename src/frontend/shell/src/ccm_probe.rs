@@ -104,10 +104,14 @@ const LOCAL_PROBE_TTL: std::time::Duration = std::time::Duration::from_secs(300)
 ///
 /// # 为什么本机这条是同步的，而远端那条是 async
 ///
-/// 两个 `#[tauri::command]` 的同步调用链）。远端那条是 async 因为 ssh 本来就要 await；
-/// 本机没有那一跳，`bash -lic` 直接跑 —— 为了它把整条链改成 async 是纯粹的传染。
+/// 远端那条是 async 因为 ssh 本来就要 await；本机没有那一跳，`bash -lic` 直接跑 ——
+/// 为了它把调用链改成 async 是纯粹的传染。
 ///
 /// # 为什么必须真跑一次，而不是渲染完让 shell 自己探
+///
+/// shell 里的 `command -v` 只答得了「在不在」，答不了**能力集**。而渲染器要按 caps 决定
+/// 「这条修饰说不说得出来」（§35/§37）：把 caps 猜成「全都有」，遇到老 ccm 会渲染出一条
+/// 带未知 flag 的命令，没有回落可走 ⇒ 是个 fail-open。
 ///
 /// # 未装不是错误
 ///

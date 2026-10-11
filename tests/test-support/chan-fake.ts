@@ -51,7 +51,7 @@ export function chanArgsJson(args: ChanCallArgs): unknown {
 // 会话读面三条（骨架索引 · 大纲清单 · 会话内查找）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 判据按命令名答话、按旧形参断言。今天它们是一发 `chan_call`（op = 帧命令名）⇒ 本节把一发 `chan_call`
+// 这三问从前是三条 Tauri 命令，判据按命令名答话、按旧形参断言。今天它们是一发 `chan_call`（op = 帧命令名）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 那一问的参数」，把判据手里那份回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体的键名是 `src/frontend/ui/session-reads.ts` 发的那几个，成品的键名是后端 `read_face.rs` 出的那几个
 //   （跨语言金样 `tests/__fixtures__/session-reads.golden.json` 钉着两侧）。
@@ -235,7 +235,7 @@ export function withSessionReads(
 // 会话正文那四问改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
+// 这四问从前是四条 Tauri 命令，判据按命令名答话、回旧回包的形状（载荷数组 · `{from, next, eof, payloads}` · `{path, agent_id, records}`）。今天它们是一发
 // `chan_call`（op = `history-page` / `history-lines` / `history-subagent`，`src/frontend/ui/record-reads.ts` 发）⇒ 本节译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（键名照后端 `observe/record_page.rs` 出的那几个）。
 
@@ -319,7 +319,7 @@ export async function recordReadReply(
 // 账号那两问（清单 · 信任预检）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}` / `{available, trusted, known, error}`）。
+// 它们从前是三条 Tauri 命令，判据按命令名答话、回旧回包的形状（`{available, error, meta, accounts, notice}` / `{available, trusted, known, error}`）。
 // 今天它们是一发 `chan_call`（op = `accounts-list` / `accounts-trust`）⇒ 本节把一发 `chan_call` 译回「哪一问 ＋ 旧形参」，
 // 把判据手里那份旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/accounts.ts` 发的那几个，成品键名是后端 `observe/accounts_query.rs::list_product`
@@ -552,7 +552,7 @@ export function withHistoryReads(
 // tmux 控制类（杀会话 · 送键 · 就地 resume）改走通道之后，判据那一侧的翻译
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `kill` / `launch`）⇒ 本节把一发 `chan_call`
+// 它们从前是三条 Tauri 命令，判据按命令名答话、断言旧形参。今天它们是一发 `chan_call`（op = `kill` / `launch`）⇒ 本节把一发 `chan_call`
 // 译回「哪一问 ＋ 旧形参」交给判据手里那个 `invoke` 替身，再把它的旧回包译成**后端的成品字节**（或通道的失败）。
 // ⚠ 译法逐格照生产：请求体键名是 `src/frontend/ui/tmux-control.ts` 发的那几个，成品键名是后端那三个构造器出的那几个
 //   （跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 钉着两侧）。

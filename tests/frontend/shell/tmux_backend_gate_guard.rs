@@ -21,14 +21,10 @@
 //!
 //! 1. **反向锚点**：backend 侧的身份门**必须还在**。删了它就红 ——
 //!    从「不许出现」翻成「必须存在」，是 F03 之后前提变了的直接后果。
-//! 随那两条命令迁到界面翻面了，见第 4 条）。
-//!    ★★ **`K-R72`（09-12）：那两条又各加了一格 —— 回潮闸。**
-//!    `C7` 那条过渡期 SSH 回落**删了**（`K-R54` 裁定表第 1 · 2 处），于是这两条判据
-//!    从「主路必须走 backend **且回落必须还在**」变成「主路必须走 backend
-//!    **且盘上不许再有第二条路**」。⚠ 两次翻面的方向是相反的，别读成同一格改了措辞：
-//!    先前那半逐字要求 `connect_and_exec_cmd` **在**，今天逐字要求它**不在**。
-//!    ⚠ F04c 当年给 backend 补过一个裸键 mode `send-keys-raw`（打断当前回合的 `Escape`）；
-//! 换号重启不再发 `Escape` ⇒ 无调用者，mode 已删。
+//! 2. **杀会话 · 送键整条在界面那一侧**（`src/frontend/ui/tmux-control.ts::killSession` 经通道直接说后端的 `kill`；
+//!    送键那一条连界面入口一起删了），monitor 里没有第二条路：
+//!    [`tests::the_monitor_has_no_second_path_that_kills_a_session`]（monitor 里一处杀会话的 shell 串都没有）
+//!    ＋ [`tests::the_front_end_speaks_the_tmux_control_ops_only_through_one_module`]（界面只经一处说）。
 //! 3. ~~Gate 3 的前提触发器~~ **已在 F04a 触发并改写**：backend 现在**有** Gate 3
 //!    （`control/gate.rs::admit_destructive` + `control/kill.rs`）。那条触发器
 //!    「backend 一出现 `session_windows`/`kill-session` 就红」**如设计般红了一次**

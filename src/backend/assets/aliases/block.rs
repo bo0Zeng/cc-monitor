@@ -106,8 +106,8 @@ pub(crate) fn render_block(shell: Shell, home: &str) -> Result<String, String> {
     plan_install(shell, "", &what, home)
 }
 
-// （一份 profile 的扫描结果，给终端集成那两条命令出参）。今天候选只有一份来历（`shell_dialect::ShellDialect::startup_files`），
-// 扫描结果是 `account_aliases::StartupFile` ＋ 上面的 [`BlockState`]；「哪一份是 PS 5.1 的」这个标签没有消费者了。
+// 一份启动文件的扫描结果是 `account_aliases::StartupFile` ＋ 上面的 [`BlockState`]；候选只有一份来历
+// （`shell_dialect::ShellDialect::startup_files`），不给候选贴「哪一份是 PS 5.1 的」这类标签（没有消费者）。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // `K-R62`：本机 POSIX 那一半 —— **装**（借远端那一份）与**查**（够得着裸行）
@@ -205,8 +205,8 @@ fn fence_marker(line: &str) -> Option<bool> {
 ///
 /// # 为什么需要它
 ///
-/// 那三条命令（今天是 `aliases_block_install` / `aliases_block_remove` ＋ `aliases_read` 的「其它文件」；
-/// 文本框），此前**原样** `PathBuf::from` 就交给了安装器：装往那里写、
+/// 那三条命令（`aliases_block_install` / `aliases_block_remove` ＋ `aliases_read` 的「其它文件」）收的是
+/// **webview 给的字符串**（前端那一格是用户可输入的文本框）。不过围栏就**原样** `PathBuf::from` 交给安装器的话：装往那里写、
 /// 文件不存在还会创建；卸会重写它；扫是任意路径的存在性探针。
 /// 而**远端**那条同名功能一直有围栏（从前 `sftp.rs`：「profile 只能是 home 下的文件名」）。
 ///
@@ -313,7 +313,7 @@ pub(crate) fn fence(home: &str, raw: &str) -> Result<String, String> {
 //
 // ## 机制
 //
-// （今天落盘在后端 `files-put`，同样原样写字节、不加 BOM）。
+// 落盘在后端 `files-put`：原样写字节、不加 BOM，写出来的是**不带 BOM 的 UTF-8**。
 // 而 **Windows PowerShell 5.1 把不带 BOM 的 `.ps1` 按系统 ANSI 代码页解**
 // （这台机器上是 GBK）。一个 UTF-8 的 CJK 字符被当成 GBK 解，末尾会剩下一个
 // **落单的前导字节**，它把紧随其后的换行吃掉 ⇒ 下一行被并进注释。

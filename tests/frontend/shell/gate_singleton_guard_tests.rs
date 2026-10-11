@@ -128,7 +128,7 @@ fn the_sole_home_really_holds_the_decision() {
 
 /// ★ monitor 这一侧**一道门都没有**：生产段零处够 Gate 判定（`gate_rules` · 旧名 `gate_core`），清单里也没有 `gate-core`。
 ///
-/// 随 monitor 侧的 Gate 残留删了 —— 「monitor 不许自己再实现一份」从「锚在壳上」换成「monitor 里零处」（上面那条管指纹，本条管调用）。
+/// 「monitor 不许自己再实现一份」钉成「monitor 里零处」（上面那条管指纹，本条管调用）。
 /// 正控：同一份语料在后端 `control/gate.rs` 上认得出 `gate_rules::gate2`。
 #[test]
 fn the_monitor_holds_no_gate_of_its_own() {

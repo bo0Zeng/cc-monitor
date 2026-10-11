@@ -1,6 +1,11 @@
 //! 第三方 API key 那份文件在**本机**的「它在哪」那一个出处。
 //!
-//! # 写侧不在这里了
+//! # 写侧不在这里
+//!
+//! 每台机器上这份文件的程序写者恰好一个 ＝ **那台的后端**：本机那一份也由本机常驻后端写（界面经通道
+//! `apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`），与远端同一条路。monitor 这一侧
+//! **一个字节都不落**（monitor 不开 `harden`，`creds-core` 的写半边在这一侧连编都编不进来）。
+//! 那份文件住这台的家，那台后端按家自己推（`creds_core::store::credentials_path`）；本模块只剩判据。
 //!
 //! # 这一档保什么、不保什么
 //!

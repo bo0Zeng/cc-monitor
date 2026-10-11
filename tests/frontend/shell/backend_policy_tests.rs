@@ -1070,7 +1070,7 @@ fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
 //   我一度判它「不存在」，依据是一条 `grep … | head -4` 的输出 ——
 //   🔴 **拿一个截断过的人群下「不存在」的判，正是本仓反复治的那个病。**
 //
-// 钉的是「两者**刻意不同**：`backend-policy.ts` 的是 backend origin，`accounts.ts` 的 `"__local__"` 是账号面自己的标记
+// 剩下那一条钉的是「两者**刻意不同**：`backend-policy.ts` 的是 backend origin，`accounts.ts` 的 `"__local__"` 是账号面自己的标记
 // ——合并是一次设计变更，回去看」。它守的是「合并之前别顺手改」，不是「永远不合」。
 // C4b 读了（一个 Origin 类型、账号面本机与远端同一条路）裁「合」：`"__local__"` 装的就是
 // 「哪台机器」本身（它只是本机那条命令结果的缓存键），账号面没有第二个概念 ⇒ 这一次就是它等的那次设计变更。

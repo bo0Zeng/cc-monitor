@@ -418,7 +418,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     // **F05b 已落地、本机后端真的起起来了**（真机实测日志逐字为
     // `本机后端: Started { pid: 6072, attempt: 1 }`），所以 F10 的正题现在能做 ——
     // 把那些 `reader` 直读点切到后端，然后把那条棘轮往下拧。
-    // `/branch` 的灰点 bug 会回来」）。当时成立，是因为本地那条 diff **只产 `Gone`**；
+    // ⚠ 从前有一条死限：「本地 sid 一进 tmux 原文账，`/branch` 的灰点 bug 会回来」。当时成立，是因为本地那条 diff **只产 `Gone`**；
     // P3 刀 0 让它按 `pid + procStart` 判出 `Superseded`（要正面证据，缺 `procStart` 退回 `Gone`）
     // ⇒ 进表之后 `/branch` 会走 `(Some(origin), Superseded)` = 归档，不再是灰点。
     // 判出它的今天是本机后端（`session_removed.cause` ⇒ 会话账本裁成 `session_state`），monitor 只转交成品。

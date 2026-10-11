@@ -58,7 +58,7 @@ fn the_profile_fence_keeps_writes_inside_home() {
 
 /// ★★ **收启动文件路径的命令都必须先过路径围栏**〔audit-0805 08-08，Phase G 第 86 件〕。
 ///
-/// 今天是别名块的 `aliases_block_install` / `aliases_block_remove` ＋ 读回口 `aliases_read` 的「其它文件」
+/// 那几条命令：别名块的 `aliases_block_install` / `aliases_block_remove` ＋ 读回口 `aliases_read` 的「其它文件」
 /// （读回口的围栏在 `account_aliases::read_in` 里过：它拿临时目录当 home 才测得了，见下面第二段）。
 ///
 /// # 洞：本机这条路没有围栏，而远端那条有
@@ -646,8 +646,8 @@ fn reinstall_replaces_block_keeps_user_content() {
     }
 }
 
-// `ReplaceFileW` 保住 explicit ACE）。写从本进程搬到了后端（只有后端的文件管理部分写文件，本机也算），
-// 那条性质跟着搬：`tests/backend/control/files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
+// 「Windows 上替换要保住 explicit ACE（`ReplaceFileW`）」那条性质住写的那一侧（后端）：
+// `tests/backend/control/files_write_tests.rs::put_keeps_explicit_acl_entries_on_windows`。
 
 #[test]
 fn uninstall_strips_block_keeps_user_content() {

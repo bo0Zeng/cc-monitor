@@ -1641,12 +1641,6 @@ async fn bring_remote_terminal_to_front(
     r.map_err(|s| s.named("bring_remote_terminal_to_front"))
 }
 
-// === v1.7：PowerShell profile cc 集成 IPC ===
-//
-// 与它们的三个出参类型。它们办的是**别名块**，并进了别名同一族命令面；
-// 那一族今天住那台机器的后端（`assets/aliases/`，帧命令 `aliases-*`）。
-// 「v1.7.0-1.7.1 装错位置」那一段遗留扫描随之删了 —— 每份候选都带块的现状，块装在哪几份照实说。
-
 /// Batch13-F40:前端 perf 仪表落盘。webview 无 devtools(生产/CCM_NO_DEVTOOLS)时
 /// console 取证不能,前端把启动管线 timeline/建卡计数经此写进 monitor 日志。
 #[tauri::command]

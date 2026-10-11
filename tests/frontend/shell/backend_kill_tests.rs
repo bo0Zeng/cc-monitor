@@ -3,7 +3,7 @@
 //! 守的要求：`INVARIANTS §34`（三道门：名字形状 · 身份 · 窗口）在创建那一侧的反面 ——
 //! 「建得出来、主路杀不掉」的名字不许被铸出来（F04b / F15 立的那一条，`INVARIANTS §33b` 三问里的创建路径）。
 //!
-//! （读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/frontend/ui/tmux-control.ts::killSession`
+//! 杀会话的 monitor 发送端从前带着几条自己的单元判据（读 `killed` 那一格 · 两条后端命令的拒绝文案同形）。C4e 把杀会话迁到界面（`src/frontend/ui/tmux-control.ts::killSession`
 //! 经通道直接说后端的 `kill`），发送端删了：
 //! - 它自己的那几条随它退役 —— 「读 `killed` 不许猜」搬到 TS `decodeKilled`，「拒绝码逐码一句」搬到 TS 那张表
 //!   （`tests/frontend/ui/tmux-control.vitest.ts`，码集合取自跨语言金样 `tests/__fixtures__/tmux-control.golden.json`）；

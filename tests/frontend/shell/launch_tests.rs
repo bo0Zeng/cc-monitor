@@ -1150,8 +1150,8 @@ fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
     );
 }
 
-// IPv6 · 跳板参数 · 坏输入 · 单引号过两层）：ssh 外壳搬进本机后端（帧命令 `terminal-ssh`），期望原样搬进
-// `tests/backend/dial_terminal_tests.rs`（被测对象搬了家，一个期望没改；跳板那一格改经 `machine::resolve`）。
+// ssh 外壳那几条期望（基本形态 · 钥匙与口 · IPv6 · 跳板参数 · 坏输入 · 单引号过两层）住本机后端那一侧：
+// `tests/backend/dial_terminal_tests.rs`（帧命令 `terminal-ssh`；跳板那一格经 `machine::resolve`）。
 
 /// 开终端窗口那一问只答一处（`open_local`）：POSIX 一个终端都没探到 ⇒ 回「找不到终端」那个结局（前端据此说「未找到终端」并给设置入口，
 /// 账号登录另给「在 tmux 里登录」），**不**回落到无窗口直起（要人交互的那一行跑在看不见的地方 = 没跑）。
