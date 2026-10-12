@@ -241,26 +241,6 @@ fn the_tail_plan_matches_an_independent_count() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 输出超上限 ⇒ `too_large`，不交截断的清单（正控：刚好不超时照常答）。
-#[test]
-fn an_oversized_listing_is_refused_not_truncated() {
-    let big = vec![b'x'; LINES_CAP_BYTES + 1];
-    match rows(|out| {
-        use std::io::Write;
-        out.write_all(&big).map_err(|e| ("failed", e.to_string()))
-    }) {
-        Err((c, _)) => assert_eq!(c, "too_large"),
-        Ok(_) => panic!("超上限的输出被当成完整清单交出去了"),
-    }
-    let ok = rows(|out| {
-        use std::io::Write;
-        out.write_all(b"a\n\n b \n")
-            .map_err(|e| ("failed", e.to_string()))
-    })
-    .unwrap();
-    assert_eq!(ok, vec!["a".to_string(), "b".to_string()]);
-}
-
 /// ★ F2（→出成品）：骨架索引与大纲清单两条帧命令的应答**就是成品**，
 /// 条目与**夹具算出来的**逐条相等（异源：期望的偏移 / 行长 / uuid 从夹具字节自己数，不借被测函数）；
 /// 键集合恒等（`{from, end, rows}` / `{from, end, entries}`）—— 不再是按行的头尾三段。

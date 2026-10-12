@@ -591,24 +591,6 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// 跑一个「往 `out` 里逐行写」的查询，收成非空的那几行。
-fn rows(
-    f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>,
-) -> Result<Vec<String>, (&'static str, String)> {
-    let mut out = CappedBuf::default();
-    let res = f(&mut out);
-    if out.over {
-        return Err(too_large(out.seen));
-    }
-    res?;
-    Ok(String::from_utf8_lossy(&out.buf)
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect())
-}
-
 /// `sessions-needs` 的应答：这台上需手动的会话，先答的在前。
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct NeedsList {
@@ -652,7 +634,7 @@ pub(crate) fn too_large(size: usize) -> (&'static str, String) {
 }
 
 /// 出成品那三条的收集器：逐条收成 JSON 值，整份（按序列化字节计）过 [`LINES_CAP_BYTES`]
-/// ⇒ 当场停下扫描、回 `too_large`（不截断：截断的清单会被当成完整的用）—— 与 [`CappedBuf`] 同一条纪律。
+/// ⇒ 当场停下扫描、回 `too_large`（不截断：截断的清单会被当成完整的用）—— 同全文搜索那一份上限（`faces/search_face.rs::search_at`）。
 #[derive(Default)]
 struct CappedRows {
     rows: Vec<Value>,
@@ -777,30 +759,6 @@ pub(crate) fn pack_index(from: u64, end: u64, rows: &[Value]) -> Value {
         "o": o, "n": n, "t": t, "fd": fd, "u": u,
         "body": body.into_value(), "sp": sp.into_value(), "inputs": inputs.into_value(),
     })
-}
-
-/// 有上限的内存出口。超了就报错（让查询函数停下），并记下「超了」—— 调用方据此回 `too_large`，
-/// 而不是把查询函数报的那句「write failed」当成真原因。
-#[derive(Default)]
-struct CappedBuf {
-    buf: Vec<u8>,
-    seen: usize,
-    over: bool,
-}
-
-impl std::io::Write for CappedBuf {
-    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-        self.seen += data.len();
-        if self.buf.len() + data.len() > LINES_CAP_BYTES {
-            self.over = true;
-            return Err(std::io::Error::other("reply cap reached"));
-        }
-        self.buf.extend_from_slice(data);
-        Ok(data.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (&'static str, String)> {
