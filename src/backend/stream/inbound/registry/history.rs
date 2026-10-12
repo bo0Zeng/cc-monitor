@@ -129,18 +129,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
-    CommandSpec {
-        name: "resync",
-        summary: "手动对齐：重发这条流上的会话状态",
-        codes: &["bad_args"],
-        fields: &[out("added", "这次补宣告"), out("caught_up", "在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加）"), out("removed", "补移除的会话数（各份 watcher 取最大：看的是同一台机器）"), out("retagged", "这次真写了几处 `@ccm_sid`（值一样的不写）"), arg("sid", "可选"), out("uncancellable", "这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`，后者按字母排、当集合用）"), out("unavailable", "这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`，后者按字母排、当集合用）"), out("watchers", "几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::resync_face::answer(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::resync_face::ResyncCmd>(
+        "手动对齐：重发这条流上的会话状态",
+    ),
     // ── 功能侧只读查询 —— 远端会话的任务列表（`parity_ledger` `session.tasks`）──
     //
     // 🔴 此前只有 monitor 直读**本机** `tasks/<sid>/` 那一条路，远端 tab 永远拿不到任务。

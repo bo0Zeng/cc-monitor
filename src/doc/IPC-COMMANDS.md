@@ -4096,16 +4096,55 @@ end: number, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `added` | ← | 这次补宣告 |
-| `caught_up` | ← | 在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加） |
-| `removed` | ← | 补移除的会话数（各份 watcher 取最大：看的是同一台机器） |
-| `retagged` | ← | 这次真写了几处 `@ccm_sid`（值一样的不写） |
-| `sid` | → | 可选 |
-| `uncancellable` | ← | 这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`，后者按字母排、当集合用） |
-| `unavailable` | ← | 这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`，后者按字母排、当集合用） |
-| `watchers` | ← | 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份） |
+入参 `ResyncReq` · 回包 `Resynced`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ResyncReq = { 
+/**
+ * 可缺：给了 ⇒ 只对那一个会话（关卡 2「对齐后重试」，不许空串）；不给 / `null` ⇒ 整机。
+ */
+sid?: string | null, };
+type Resynced = { 
+/**
+ * 这次补宣告的会话数。
+ */
+added: number, 
+/**
+ * 补移除的会话数（各份 watcher 取最大：看的是同一台机器）。
+ */
+removed: number, 
+/**
+ * 这次真写了几处 `@ccm_sid`（值一样的不写）。
+ */
+retagged: number, 
+/**
+ * 在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加）。
+ */
+caught_up: number, 
+/**
+ * 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份）。
+ */
+watchers: number, 
+/**
+ * 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
+ */
+unavailable: Array<Unavailable>, 
+/**
+ * 这台当下开跑之后打不断的命令，按字母排（同 hello 那一格）。
+ */
+uncancellable: Array<string>, };
+type Unavailable = { 
+/**
+ * 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`）。
+ * ⚠ 它**必须**同时出现在 `commands` 里：本表说的是「接得下但做不到」，
+ * 「根本不接」那一格由不在 `commands` 里表达（客户端 `accepts()` 一个字节都不发）。
+ */
+command: string, 
+/**
+ * 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`）。
+ */
+code: string, };
+```
 
 码：`bad_args`
 

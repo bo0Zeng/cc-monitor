@@ -1210,7 +1210,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
     const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
     const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
-    const RESYNC: &str = include_str!("../../__fixtures__/resync.golden.json");
     const SESSION_FORK: &str = include_str!("../../__fixtures__/session-fork.golden.json");
     const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
@@ -1330,7 +1329,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("profiles-write", PROFILES, "/writeReply", &[], &[]),
         ("aliases-read", ALIASES, "/readReply", &[], &[]),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
-        ("resync", RESYNC, "/reply", &[], &[]),
         ("history-list", HISTORY_LIST, "", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
         (
