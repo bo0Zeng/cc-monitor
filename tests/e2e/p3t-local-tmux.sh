@@ -39,6 +39,7 @@ TMP="$(mktemp -d /tmp/p3t-y5.XXXXXX)"
 cleanup() {
   "$TMUX_BIN" -L "$SOCK" kill-session -t "=$TMUXNAME:" 2>/dev/null
   e2e_tmux_reap "$TMUX_BIN" "$SOCK"
+  tmux_shim_cleanup
   [ -n "${P3T_KEEP:-}" ] && { echo "  [keep] $TMP"; return; }
   rm -rf -- "$TMP"
 }

@@ -163,6 +163,14 @@ fn user_id_identity(body: &serde_json::Value) -> Option<Option<String>> {
     }
 }
 
+/// 请求体里账号身份那一格的值（`metadata.user_id` 这段 JSON 串里的 `account_uuid`）：没有 / 读不出 / 空串 / 不像一个 id ⇒ `None`。
+pub(crate) fn identity_of_body(body: &[u8]) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_slice(body).ok()?;
+    user_id_identity(&v)
+        .flatten()
+        .filter(|s| !s.is_empty() && identity_chars_ok(s))
+}
+
 /// 请求体里账号身份那一格（`metadata.user_id` 这段 JSON 串里的 `account_uuid`）换成 `uuid`：只换那几个字节，别的一个字节不动。
 /// 没有这一格 ⇒ [`IdentityCell::Absent`]；那几个字节在整份里不是恰好一处、或换完读回来对不上 ⇒ [`IdentityCell::Unsure`]。
 pub(crate) fn rewrite_identity(body: &[u8], uuid: &str) -> IdentityCell {
