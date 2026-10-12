@@ -314,19 +314,34 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "同上",
     ),
     (
-        "platform::fs::rename_noreplace",
+        "platform::fs::Face",
         Kind::Platform,
-        "不覆盖改名（改名 · 复制上位 · 读改写新建那一形）：原子的「目标已在就失败」是平台原语",
+        "文件管理面的写句柄（分派那一层递进来）：写方法只收 `Resolved`；不覆盖改名 · 不跟链接的开法这些平台原语都在它的方法里",
+    ),
+    (
+        "platform::fs::Resolved",
+        Kind::Platform,
+        "已过路径解析的路径：`files_write` 的路径解析交回它，`Face` 的写方法只收它",
+    ),
+    (
+        "platform::fs::FaceFile",
+        Kind::Platform,
+        "`Face` 开出来的那一份（传输台下载落点：新建 `.part` 后换成异步的往里写）",
+    ),
+    (
+        "platform::fs::Perms",
+        Kind::Platform,
+        "权限位那一格的值（从元数据读出 · 照模式造），交给 `Face` 的改权限才落盘",
+    ),
+    (
+        "platform::fs::RoFile",
+        Kind::Platform,
+        "只读打开交回的那一份（解压读包：只读、只挪位置）",
     ),
     (
         "platform::fs::noreplace_unsupported",
         Kind::Platform,
-        "同上一格：那块盘不认这个旗时退回先看后改（要问是不是「没有这件原语」）",
-    ),
-    (
-        "platform::fs::rename_by_link",
-        Kind::Platform,
-        "盘不认不覆盖改名时，普通文件走 `link` ＋ `unlink`（目标已在 ⇒ 原子失败）",
+        "不覆盖改名那一格：那块盘不认这个旗时退回 `link ＋ unlink`（要问是不是「没有这件原语」）",
     ),
     (
         "platform::fs::Ro",
@@ -337,11 +352,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "platform::fs::Ro::mode",
         Kind::Platform,
         "unix 权限位（`files-stat` 的 `mode` 那一格）：读元数据的平台扩展只住 `platform/fs/`，非 unix ⇒ 缺席",
-    ),
-    (
-        "platform::fs::NO_FOLLOW",
-        Kind::Platform,
-        "全程 `O_NOFOLLOW`：`files_write::opener` 开文件带的那个旗（unix）",
     ),
     // 路径字节的线上两种形搬进 `common/path_wire.rs`（原生那一块的「在此打开终端」也读它），本族经 `raw` 的再导出照旧用。
     (
@@ -368,11 +378,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "common::contract::malformed",
         Kind::Common,
         "契约错只进表一句（「请求格式不对」，诊断记日志）",
-    ),
-    (
-        "platform::fs::create_dir_private",
-        Kind::Platform,
-        "暂存区那两层按后端自家目录建（0700、已在的不动；`Own::ensure_dir` 的同一个本体，第三刀搬上文件管理面的句柄）",
     ),
     (
         "common::own_dir::DIR_NAME",

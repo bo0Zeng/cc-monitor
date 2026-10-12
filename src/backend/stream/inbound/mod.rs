@@ -185,7 +185,10 @@ where
         let links = crate::dial::link::Table::new(replies.clone());
         // 本连接的传输票表：同上，随本读循环一起死 ⇒ monitor 走了，它开的传输一律撤
         // （`control::transfer::Desk` 的 `Drop`）。
-        let xfers = crate::control::transfer::Desk::new(replies.clone());
+        let xfers = crate::control::transfer::Desk::new(
+            replies.clone(),
+            crate::platform::fs::Face::issue(),
+        );
         // 本连接的终端订阅票表：同上，随本读循环一起死 ⇒ monitor 走了，它订的终端画面一律退订
         // （`control::terminal_follow::Desk` 的 `Drop`）。
         let follows = crate::control::terminal_follow::Desk::new(replies.clone());
@@ -560,6 +563,11 @@ fn dispatch(
                     let own = given.own.clone();
                     Disposition::SpawnBlocking(req, Box::new(move |r| f(r, &own)))
                 }
+                // 文件管理那一族：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
+                Run::BlockingFace(f) => Disposition::SpawnBlocking(
+                    req,
+                    Box::new(move |r| f(r, &crate::platform::fs::Face::issue())),
+                ),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
                 Run::Builtin => Disposition::Reply(Frame::err(
                     &req.id,
@@ -589,7 +597,10 @@ pub fn uncancellable() -> Vec<String> {
         .filter(|s| {
             matches!(
                 s.run,
-                Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+                Run::Blocking(_)
+                    | Run::BlockingData(_)
+                    | Run::BlockingOwn(_)
+                    | Run::BlockingFace(_)
             )
         })
         .map(|s| s.name.to_string())

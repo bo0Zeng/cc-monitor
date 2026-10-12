@@ -1,5 +1,4 @@
-//! **文件管理面的落盘原语** —— 那个
-//! 「**带围栏的**白名单模块」，`readonly_guard` 写盘白名单上的第二个洞口。
+//! **文件管理面的落盘原语**：路径解析（造 [`Resolved`] 的那几处）与经 [`Face`] 的每一件写。
 //!
 //! # 🔴〔用户〕**文件管理面不再有任何数据围栏**
 //!
@@ -15,44 +14,17 @@
 //! 「删会话」，它问的是「要删的必须**是**一份会话」，方向与从前那道围栏相反，这里一个字节没动它。
 //! 下面凡说到「围栏拦会话文件」的段落都是**历史**，读现状看这一节。
 //!
-//! # 🔴本模块从白名单层**搬到了第三层**，下面「它刻意不是什么」那一节是**历史**
+//! # 写怎么被挡住：类型，不是扫源码
 //!
-//! 用户逐字：「**现在只允许后端的文件管理部分写文件**」（收窄的是**主语**，不是动作）。
-//! ⇒：新建目录 · 改名 · 删除 · 改权限 · 覆盖写 —— 它们要
-//! **改动既有数据**，正是白名单层的判准（「不改既有数据」）所禁的。
-//! ⇒ `readonly_guard` 长出**第三层**，判准换成「**改，但每一处都先过路径解析、
-//! 且只从声明过的那一面来**」（原话是「先过围栏」），本模块是那一层登记的模块之一。
+//! 用户逐字：「**现在只允许后端的文件管理部分写文件**」（收窄的是**主语**，不是动作）。这句话今天由类型担着：
 //!
-//! | 那一层钉的 | 怎么钉 |
-//! |---|---|
-//! | 能用哪几个改动动词 | **闭集**登记（`readonly_guard` 那张表）；表外的改动动词在本模块里照旧红 —— 包括那个「一条路径进、整棵树出」的一步递归删（它的遍历不经过围栏；递归删由既有动词**逐条拼出**，见 [`delete_tree`]） |
-//! | 列举之后的改动**在列举之后再过一次路径解析** | 出现目录列举的函数恒等于登记的那几个；其中每一处改动之前、列举之后必须有一次路径解析调用（顶上判一次、底下整摞删 ⇒ 红） |
-//! | 每一处改动都先过路径解析 | 本模块每个含改动动词的函数里，路径解析调用必须出现在**第一个改动动词之前** |
-//! | 只从文件管理那一面来 | 后端生产树里引用得到本模块的文件，集合**恒等于**登记的那一扇门（`stream/inbound/`）；其余任何一面伸手 ⇒ 红 |
-//! | `O_EXCL` 那一处没变质 | 开句柄的调用与 `O_EXCL` 仍然逐一配对（新建那条路一个字节没松） |
+//! - 写只经 [`crate::platform::fs::Face`]：它的写方法只收 [`Resolved`]（已过路径解析的路径），而 `Resolved` 只由本模块的路径解析担保
+//!   （[`resolve_parent_in_root`] · [`resolve_existing_in_root`]，外加删会话那一道 [`fenced_session_file`]）⇒ 没过路径解析的路径递不进去；
+//! - `Face` 只有分派那一层造，按命令表文件管理那一族（`Run::BlockingFace`）递进来 ⇒ 别的命令拿不到它，也就写不出来；
+//! - 动词闭集就是 `Face` 的方法表：`O_EXCL` 新建 · 覆盖写 · 建目录 · 改名（含不覆盖改名）· 删文件 · 删空目录 · 改权限 · 建链接；开文件一律不跟链接，做在方法里。
+//!   一步递归删 · 一步复制那类库函数 `Face` 上没有：递归删由删文件 ＋ 删空目录逐条拼（[`delete_tree`]），复制由新建 ＋ 改名拼（[`copy_entry`]）。
 //!
-//! ⚠ 下面原来那几段（「它只会新建……」「它不删、不改名……」）写的是 09-19 那一版的射程，
-//! **今天不再成立**；留着是因为「它当初为什么只许新建」那条推理今天仍然是第三层的底子
-//! （O_EXCL 那条路**仍然**只新建）。读现状看上面那张表。
-//!
-//! # 它是什么，以及它**刻意不是**什么
-//!
-//! 裁过一次：同一轮对话里先说的「把不能写文件的规矩去掉」，
-//! 被后说的、更具体的「ABC 都按建议」**覆盖**了；而 A 的建议原文是
-//! 「**能**，但新模块必须带上 Claude 数据源围栏 ＋ 判据」。
-//! ⇒ **规矩留着，加一个模块。** 本模块就是那个模块，而 `readonly_guard`
-//! 两层判据**一个字都没放宽**：
-//!
-//! - 它只会**新建一份此前不存在的文件**（`O_EXCL`）；目标已经在了就直接失败。
-//! - 它**不**删、**不**改名、**不**复制、**不**建硬链软链、**不**建目录，
-//!   也**不**用截断或追加的方式去开一个既有文件（那两样都能改到既有数据）。
-//! - 上面这几条不是本模块的自律，是 `readonly_guard` 白名单层**逐条扫源码**扫出来的：
-//!   换一种写法，那一层当场红。
-//!
-//! ⚠ **上面几条刻意不写出那些函数的字面名字** —— 护栏是子串扫描、**不剥注释**，
-//! 把那些词原样写进注释，会让本模块被自己的文档判成违规
-//! （`control/fork_write.rs` 头注记着本仓为这件事栽过四次）。
-//! **要改就改措辞，别去放宽护栏。**
+//! 判据只剩构造与签名那几条（`readonly_guard`：句柄只许分派那一层造 · `Resolved` 只许本模块担保 · `Face` 的写方法不收 `&Path`）。
 //!
 //! # 路径解析：两道，各治一种逃逸（原标题「围栏」）
 //!
@@ -80,7 +52,7 @@
 //!    开文件这一步直接失败，不会跟随过去写。⇒ 窗里能被利用的只剩「父目录整个被换掉」
 //!    这一形，而那需要对目标根有写权限的本地攻击者。**如实登记为未闭合。**
 //! 能用原子原语闭合的已闭合：改名不覆盖（[`rename_no_clobber`]；盘不认那个旗 ⇒ 普通文件 `link ＋ unlink`、目录拒）· 复制与读改写新建先写旁名再不覆盖上位 ·
-//!    开文件全程不跟链接（[`opener`]）。仍开着：父目录被整个换掉（要逐段 `openat` 一族）· 递归删 / 复制逐条的窗 · CAS 与换名之间 · 改权限跟链接。
+//!    开文件全程不跟链接（`Face` 的开法）。仍开着：父目录被整个换掉（要逐段 `openat` 一族）· 递归删 / 复制逐条的窗 · CAS 与换名之间 · 改权限跟链接。
 //! 2. ✅ **盘上同时有好几个账号目录不是一维**：写侧按结构判定，**根本不问配置根在哪**
 //!    （配置根解析只答得出此刻这一个，拿它去兜别的账号目录，换个目录名就兜不住）。
 //! 3. **没有真远端**：本模块整个是本机文件系统上的路径算术 ＋ 一次落盘，
@@ -90,6 +62,7 @@
 //!    把它接到命令面上要加子命令 ⇒ 要 bump `BUILD_ID` ⇒ 要同拍 re-embed，
 //!    那几处全不在本模块里。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
+use crate::platform::fs::{Face, Perms, Resolved, Ro};
 use copy_core::{copy_text, io_reason};
 use std::path::{Component, Path, PathBuf};
 
@@ -172,10 +145,10 @@ pub fn lexical_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, St
 /// 判定只看路径的段形状，`CLAUDE_CONFIG_DIR` 指到哪都判得一样。
 /// ⇒ 少一个入参不是整理，是**少一条会错的依赖**。
 ///
-/// ⚠ 父目录**必须已经在盘上**。本模块不建目录（那是白名单层明令禁止的），
+/// ⚠ 父目录**必须已经在盘上**。路径解析不建目录（建目录是 [`make_dir`] 那一条的事），
 /// 所以「父目录不在」是一条正常的拒绝理由，不是内部错误。
-pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, String> {
-    let real_root = std::fs::canonicalize(root).map_err(|e| {
+pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<Resolved, String> {
+    let real_root = Ro::canonicalize(root).map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
             &[
@@ -196,7 +169,7 @@ pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, Str
             &[("path", &target.display().to_string())],
         )
     })?;
-    let real_parent = std::fs::canonicalize(parent).map_err(|e| {
+    let real_parent = Ro::canonicalize(parent).map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
             &[
@@ -215,7 +188,7 @@ pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, Str
             ],
         ));
     }
-    Ok(resolved)
+    Ok(Resolved::vouch(resolved))
 }
 
 /// 两道路径解析串起来跑一遍，返回最终落点。**不碰盘上的内容，只解路径。**
@@ -225,7 +198,7 @@ pub fn resolve_parent_in_root(root: &Path, target: &Path) -> Result<PathBuf, Str
 ///
 /// 旧名 `fenced_target`：它今天**不拦任何数据**（用户「不需要任何围栏」），
 /// 只做词法不越根 ＋ 父目录解链接后仍在根下 ⇒ 改成说它真在做的那件事。
-pub fn resolve_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
+pub fn resolve_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Resolved, String> {
     let lexical = lexical_in_root(root, rel)?;
     resolve_parent_in_root(root, &lexical)
 }
@@ -346,30 +319,27 @@ impl WriteRefusal {
 ///
 /// 返回真正落盘的那个绝对路径（解完 symlink 的）。
 pub fn create_new_file(
+    face: &Face,
     root: &Path,
     rel: impl AsRef<Path>,
     bytes: &[u8],
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let mut f = opener()
-        .write(true)
-        .create_new(true)
-        .open(&target)
-        .map_err(|e| {
-            let said = copy_text(
-                "beFilesWrite.create.failed",
-                &[
-                    ("path", &target.display().to_string()),
-                    ("why", &io_reason(e.kind())),
-                ],
-            );
-            if e.kind() == std::io::ErrorKind::AlreadyExists {
-                WriteRefusal::Exists(said)
-            } else {
-                WriteRefusal::io(said, &e)
-            }
-        })?;
+    let mut f = face.create_new(&target).map_err(|e| {
+        let said = copy_text(
+            "beFilesWrite.create.failed",
+            &[
+                ("path", &target.display().to_string()),
+                ("why", &io_reason(e.kind())),
+            ],
+        );
+        if e.kind() == std::io::ErrorKind::AlreadyExists {
+            WriteRefusal::Exists(said)
+        } else {
+            WriteRefusal::io(said, &e)
+        }
+    })?;
     if let Some(p) = own_mode(&target, false) {
         f.set_permissions(p).map_err(|e| {
             WriteRefusal::io(
@@ -397,7 +367,7 @@ pub fn create_new_file(
             &e,
         )
     })?;
-    Ok(target)
+    Ok(target.into_path_buf())
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -405,11 +375,10 @@ pub fn create_new_file(
 // ══════════════════════════════════════════════════════════════════════════
 //
 // 🔴 **这一节才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
-//   它们每一件都会改动盘上已经在的东西 ⇒ 本模块因此从白名单层搬到第三层。
+//   它们每一件都会改动盘上已经在的东西。
 //
-// 🔴 **每个函数的第一件事是过路径解析** —— 那不是风格，是 `readonly_guard` 第三层
-//   逐函数扫出来的：函数里第一个改动动词之前，必须已经出现一次路径解析调用。
-//   换一种写法（先动手、后判），那一层当场红。
+// 🔴 **每个函数的第一件事是过路径解析** —— 那不是风格，是类型：`Face` 的写方法只收路径解析交回的 `Resolved`，
+//   先动手、后判那一形编不过。
 //
 // ⚠ 路径解析分两个入口，差别只在**最后那一段解不解**：
 //   · [`resolve_in_root`] —— 只解父目录。给「作用在**链接本身**上」的动词用
@@ -418,16 +387,16 @@ pub fn create_new_file(
 //     （改权限 · 覆盖写）：不解的话，根里一条指向根外的链接就能把根外那一份改掉。
 //
 // ⚠ **TOCTOU 照旧在**（同本模块头注诚实边界第 1 条）：判定与动手之间有一个窗。
-//   第三层钉的是「先判后动」这个**顺序**，钉不了「判完之后世界没变」。如实登记。
+//   类型钉的是「动的就是判过的那一条」，钉不了「判完之后世界没变」。如实登记。
 
 /// 路径解析③：对一个**已经在盘上**的东西做一次**会跟链接**的写之前，把它**解到底**再判一次。
 ///
 /// 先走 [`resolve_in_root`]（词法 ＋ 父目录解开），再把**完整路径**解成真路径：
 /// 解出来跑出了目标根 ⇒ 拒。返回解到底的那一个 —— 动手就动它，不再经过任何一条链接。
 /// 旧名 `fenced_existing`；「解出来是一份会话文件 ⇒ 拒」那一判删了。
-pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, String> {
+pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Resolved, String> {
     let at = resolve_in_root(root, rel)?;
-    let real = std::fs::canonicalize(&at).map_err(|e| {
+    let real = Ro::canonicalize(&at).map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
             &[
@@ -436,7 +405,7 @@ pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Pa
             ],
         )
     })?;
-    let real_root = std::fs::canonicalize(root).map_err(|e| {
+    let real_root = Ro::canonicalize(root).map_err(|e| {
         copy_text(
             "beFilesWrite.path.unresolved",
             &[
@@ -454,29 +423,7 @@ pub fn resolve_existing_in_root(root: &Path, rel: impl AsRef<Path>) -> Result<Pa
             ],
         ));
     }
-    Ok(real)
-}
-
-/// 〔「全程 `O_NOFOLLOW`」〕第三层开文件**只有这一个出处**：unix 上带 `O_NOFOLLOW` ——
-/// 最后一段是链接 ⇒ 开就失败，解析过的路径在开之前被换成一条链接也跟不过去。Windows 没有等价的开法（`platform::fs` 头注），照旧。
-/// `readonly_guard` 第三层钉着：五个模块里 `OpenOptions::new()` 只在这里出现，每一次开都挂在它后面。
-pub(crate) fn opener() -> std::fs::OpenOptions {
-    #[allow(unused_mut)]
-    let mut o = std::fs::OpenOptions::new();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt as _;
-        o.custom_flags(crate::platform::fs::NO_FOLLOW);
-    }
-    o
-}
-
-/// 读一整份，不跟最后那一段的链接（[`opener`]）。
-pub(crate) fn read_nofollow(p: &Path) -> std::io::Result<Vec<u8>> {
-    use std::io::Read as _;
-    let mut buf = Vec::new();
-    opener().read(true).open(p)?.read_to_end(&mut buf)?;
-    Ok(buf)
+    Ok(Resolved::vouch(real))
 }
 
 /// **不覆盖地改名** `root ＋ from` → `root ＋ to`：两条各过路径解析，然后一次
@@ -488,6 +435,7 @@ pub(crate) fn read_nofollow(p: &Path) -> std::io::Result<Vec<u8>> {
 /// 目录没有这条路 ⇒ 拒、出声（`Err`，说「这个盘不支持不覆盖改名目录」）。
 /// `between` 是判据插竞争用的口（解析之后、动手之前；生产传空）；`force_link` 让判据走那块盘的那一支（生产传 `false`）。
 fn rename_no_clobber(
+    face: &Face,
     root: &Path,
     from: &Path,
     to: &Path,
@@ -498,12 +446,12 @@ fn rename_no_clobber(
     let dst = resolve_in_root(root, to)?;
     between();
     if !force_link {
-        match crate::platform::fs::rename_noreplace(&src, &dst) {
+        match face.move_noreplace(&src, &dst) {
             Err(e) if crate::platform::fs::noreplace_unsupported(&e) => {}
-            other => return Ok((src, dst, other)),
+            other => return Ok((src.into_path_buf(), dst.into_path_buf(), other)),
         }
     }
-    if std::fs::symlink_metadata(&src).is_ok_and(|m| m.is_dir()) {
+    if Ro::symlink_metadata(&src).is_ok_and(|m| m.is_dir()) {
         return Err(copy_text(
             "beFilesWrite.rename.dirNoNoreplace",
             &[("path", &src.display().to_string())],
@@ -514,15 +462,15 @@ fn rename_no_clobber(
         src.display(),
         dst.display()
     );
-    let done = crate::platform::fs::rename_by_link(&src, &dst);
-    Ok((src, dst, done))
+    let done = face.move_by_link(&src, &dst);
+    Ok((src.into_path_buf(), dst.into_path_buf(), done))
 }
 
 /// 新建一个目录。**只建最后那一段**：父目录不在 ⇒ 路径解析② 那一步就拒
 /// （「顺手把中间几层补出来」是另一件事，没人裁过）。
-pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
+pub fn make_dir(face: &Face, root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    std::fs::create_dir(&target).map_err(|e| {
+    face.make_dir(&target).map_err(|e| {
         let said = copy_text(
             "beFilesWrite.write.failed",
             &[
@@ -537,7 +485,7 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
         }
     })?;
     if let Some(p) = own_mode(&target, true) {
-        std::fs::set_permissions(&target, p).map_err(|e| {
+        face.set_permissions(&target, p).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.chmod.failed",
@@ -550,7 +498,7 @@ pub fn make_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefu
             )
         })?;
     }
-    Ok(target)
+    Ok(target.into_path_buf())
 }
 
 /// 这台机器上后端自家目录的权限位：新建在 `~/.cc-monitor` 里的文件只给本人读写。
@@ -560,9 +508,9 @@ const OWN_FILE_MODE: u32 = 0o600;
 /// `own_dir::PRIVATE_DIR_MODE`（unix；别的平台照常建，那边按父目录继承 ACL）。只管新建：覆盖写沿用原权限位、复制照抄源的。
 /// `at` 是过了路径解析的那一条（父目录已解开）。
 /// 答不出家在哪 ⇒ 不收紧。
-fn own_mode(at: &Path, dir: bool) -> Option<std::fs::Permissions> {
+fn own_mode(at: &Path, dir: bool) -> Option<Perms> {
     let home = crate::platform::paths::home_dir()?;
-    let home = std::fs::canonicalize(&home).unwrap_or(home);
+    let home = Ro::canonicalize(&home).unwrap_or(home);
     if !at.starts_with(home.join(crate::common::own_dir::DIR_NAME)) {
         return None;
     }
@@ -571,16 +519,7 @@ fn own_mode(at: &Path, dir: bool) -> Option<std::fs::Permissions> {
     } else {
         OWN_FILE_MODE
     };
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt as _;
-        Some(std::fs::Permissions::from_mode(mode))
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = mode;
-        None
-    }
+    Ro::perms_from_mode(mode)
 }
 
 /// 改名 / 同根内移动。
@@ -591,22 +530,24 @@ fn own_mode(at: &Path, dir: bool) -> Option<std::fs::Permissions> {
 /// 🔴 **目标已经在了就拒**：unix 上系统那一步**会静默顶掉**已有的目标文件 —— 那就是一次
 /// 没人问过的覆盖。从「先看一眼、在就拒」换成一次原子的不覆盖改名（[`rename_no_clobber`]）：看与改之间那个窗没了。
 pub fn rename_entry(
+    face: &Face,
     root: &Path,
     from: impl AsRef<Path>,
     to: impl AsRef<Path>,
 ) -> Result<PathBuf, WriteRefusal> {
-    rename_entry_racing(root, from.as_ref(), to.as_ref(), &mut || {})
+    rename_entry_racing(face, root, from.as_ref(), to.as_ref(), &mut || {})
 }
 
 /// [`rename_entry`] 的本体；`between` 见 [`rename_no_clobber`]。
 fn rename_entry_racing(
+    face: &Face,
     root: &Path,
     from: &Path,
     to: &Path,
     between: &mut dyn FnMut(),
 ) -> Result<PathBuf, WriteRefusal> {
     let (src, dst, done) =
-        rename_no_clobber(root, from, to, between, false).map_err(WriteRefusal::Refused)?;
+        rename_no_clobber(face, root, from, to, between, false).map_err(WriteRefusal::Refused)?;
     match done {
         Ok(()) => Ok(dst),
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
@@ -635,9 +576,13 @@ fn rename_entry_racing(
 /// 顶上那一条解得干净，底下一条链接或一个挂载点照样会被一起动到。非空目录 ⇒ 系统报错、原样带回。
 /// 递归删是**另一个函数**（[`delete_tree`]），逐条目过路径解析；
 /// 线上要显式带 `recursive: true` 才走它 —— 不带，本函数的射程一个字节不变。
-pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
+pub fn delete_entry(
+    face: &Face,
+    root: &Path,
+    rel: impl AsRef<Path>,
+) -> Result<PathBuf, WriteRefusal> {
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let is_dir = std::fs::symlink_metadata(&target)
+    let is_dir = Ro::symlink_metadata(&target)
         .map(|m| m.is_dir())
         .map_err(|e| {
             WriteRefusal::io(
@@ -652,9 +597,9 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
             )
         })?;
     let done = if is_dir {
-        std::fs::remove_dir(&target)
+        face.delete_dir(&target)
     } else {
-        std::fs::remove_file(&target)
+        face.delete_file(&target)
     };
     done.map_err(|e| {
         WriteRefusal::io(
@@ -668,7 +613,7 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
             &e,
         )
     })?;
-    Ok(target)
+    Ok(target.into_path_buf())
 }
 
 /// **带 CAS 的删一份文件**：盘上那份逐字节 == `expect` 才删，否则一个字节不动。
@@ -682,12 +627,13 @@ pub fn delete_entry(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, Write
 /// 链接的字节是它指向的那一份 —— 删的却是链接本身，两者对不上，不给这一形）。
 /// 不在 ⇒ `Stale`（读的时候还在）；在但不等 ⇒ `Stale`。与 [`delete_entry`] 同一道路径解析、同一个删的动词。
 pub fn delete_file_expecting(
+    face: &Face,
     root: &Path,
     rel: impl AsRef<Path>,
     expect: &[u8],
 ) -> Result<PathBuf, WriteRefusal> {
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let md = match std::fs::symlink_metadata(&target) {
+    let md = match Ro::symlink_metadata(&target) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Err(WriteRefusal::Stale(copy_text(
@@ -714,7 +660,7 @@ pub fn delete_file_expecting(
             &[("path", &target.display().to_string())],
         )));
     }
-    let current = read_nofollow(&target).map_err(|e| {
+    let current = Ro::read_nofollow(&target).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -738,7 +684,7 @@ pub fn delete_file_expecting(
             &[("path", &target.display().to_string())],
         )));
     }
-    std::fs::remove_file(&target).map_err(|e| {
+    face.delete_file(&target).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.delete.failed",
@@ -750,7 +696,7 @@ pub fn delete_file_expecting(
             &e,
         )
     })?;
-    Ok(target)
+    Ok(target.into_path_buf())
 }
 
 /// 〔SU1 问 2〕**只删一个空目录**（`files-delete` 带 `expect: {"empty_dir": true}`）：
@@ -760,9 +706,13 @@ pub fn delete_file_expecting(
 /// - 不在 ⇒ `Stale`（看的时候还在）；**不空 ⇒ `Stale`**：`remove_dir` 自己就是原子的「空才删」，系统拒非空、
 ///   本函数只把那一下翻成 `stale`（说的是「你看的时候它空，此刻不空了」）—— 没有先看后删的窗。
 /// - 删的动词与 [`delete_entry`] 删空目录那一支同一个（闭集里的「删空目录」），路径解析同一道。
-pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, WriteRefusal> {
+pub fn delete_empty_dir(
+    face: &Face,
+    root: &Path,
+    rel: impl AsRef<Path>,
+) -> Result<PathBuf, WriteRefusal> {
     let target = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let md = match std::fs::symlink_metadata(&target) {
+    let md = match Ro::symlink_metadata(&target) {
         Ok(m) => m,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Err(WriteRefusal::Stale(copy_text(
@@ -789,8 +739,8 @@ pub fn delete_empty_dir(root: &Path, rel: impl AsRef<Path>) -> Result<PathBuf, W
             &[("path", &target.display().to_string())],
         )));
     }
-    match std::fs::remove_dir(&target) {
-        Ok(()) => Ok(target),
+    match face.delete_dir(&target) {
+        Ok(()) => Ok(target.into_path_buf()),
         Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => {
             Err(WriteRefusal::Stale(copy_text(
                 "beFilesWrite.rmdir.notEmpty",
@@ -819,12 +769,18 @@ enum DeleteExpect {
 /// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
 ///
 /// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
-pub fn change_mode(root: &Path, rel: impl AsRef<Path>, mode: u32) -> Result<PathBuf, WriteRefusal> {
-    change_mode_reporting(root, rel, mode).map(|(p, _)| p)
+pub fn change_mode(
+    face: &Face,
+    root: &Path,
+    rel: impl AsRef<Path>,
+    mode: u32,
+) -> Result<PathBuf, WriteRefusal> {
+    change_mode_reporting(face, root, rel, mode).map(|(p, _)| p)
 }
 
 /// 同 [`change_mode`]，另交**改之前**的权限位（低 12 位；读不到 ⇒ `None`）：调用方据它撤销。
 pub fn change_mode_reporting(
+    face: &Face,
     root: &Path,
     rel: impl AsRef<Path>,
     mode: u32,
@@ -838,11 +794,12 @@ pub fn change_mode_reporting(
     }
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt as _;
-        let before = std::fs::metadata(&real)
+        let before = Ro::metadata(&real)
             .ok()
-            .map(|m| m.permissions().mode() & 0o7777);
-        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(mode)).map_err(|e| {
+            .and_then(|m| Ro::mode(&m))
+            .map(|m| m & 0o7777);
+        let perms = Ro::perms_from_mode(mode).expect("unix 上恒有权限位");
+        face.set_permissions(&real, perms).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.chmod.failed",
@@ -854,7 +811,7 @@ pub fn change_mode_reporting(
                 &e,
             )
         })?;
-        Ok((real, before))
+        Ok((real.into_path_buf(), before))
     }
     #[cfg(not(unix))]
     {
@@ -883,13 +840,14 @@ pub fn change_mode_reporting(
 ///   **退回就地写**（保住硬链接与属主），并记一行「这一次不是原子写，因为 …」（[`in_place_reason`]）。
 ///   xattr / ACL 不跟过来那一格仍是已知代价（记录 `HX1.md` §6）。
 pub fn overwrite_text(
+    face: &Face,
     root: &Path,
     rel: impl AsRef<Path>,
     bytes: &[u8],
 ) -> Result<PathBuf, WriteRefusal> {
     let rel = rel.as_ref();
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let md = std::fs::metadata(&real).map_err(|e| {
+    let md = Ro::metadata(&real).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -916,13 +874,9 @@ pub fn overwrite_text(
             "覆盖写 {}：这一次不是原子写，因为{why}（原子换会把它拆开）—— 改成就地写",
             real.display()
         );
-        // 不跟链接地开（[`opener`]）、不顺手新建：解析完之后它被换成链接 / 被删了 ⇒ 开就失败，不写到别处去。
+        // 不跟链接地开（`Face::overwrite`）、不顺手新建：解析完之后它被换成链接 / 被删了 ⇒ 开就失败，不写到别处去。
         use std::io::Write as _;
-        let wrote = opener()
-            .write(true)
-            .truncate(true)
-            .open(&real)
-            .and_then(|mut f| f.write_all(bytes));
+        let wrote = face.overwrite(&real).and_then(|mut f| f.write_all(bytes));
         wrote.map_err(|e| {
             WriteRefusal::io(
                 copy_text(
@@ -935,17 +889,25 @@ pub fn overwrite_text(
                 &e,
             )
         })?;
-        return Ok(real);
+        return Ok(real.into_path_buf());
     }
-    swap_in(root, rel, bytes, Some(md.permissions()), false, &mut || {})
+    swap_in(
+        face,
+        root,
+        rel,
+        bytes,
+        Some(md.permissions()),
+        false,
+        &mut || {},
+    )
 }
 
 /// 一份文件的 `(硬链接数, 属主 uid)`（跟链接地看）。**非 unix 上没有这两个概念 ⇒ `None`**（那边照原子换 / Windows 臂办）。
-/// 住本模块而不住 `platform/`：读元数据扩展（`MetadataExt`）在只读护栏上是第三层独有的词（同 `kind_and_device`）。
+/// 硬链接数与属主经 `Ro::nlink` · `Ro::uid` 读（同 `kind_and_device` 读设备号）。
 #[cfg(unix)]
 fn links_and_owner(p: &Path) -> Option<(u64, u32)> {
-    use std::os::unix::fs::MetadataExt as _;
-    std::fs::metadata(p).ok().map(|m| (m.nlink(), m.uid()))
+    let m = Ro::metadata(p).ok()?;
+    Some((Ro::nlink(&m)?, Ro::uid(&m)?))
 }
 
 #[cfg(not(unix))]
@@ -1027,6 +989,7 @@ pub fn sha256_expect_of(args: &serde_json::Value) -> Result<String, (&'static st
 /// - 比对与写之间仍有窗（TOCTOU，同本模块头注诚实边界第 1 条）：CAS 缩小的是「窗口读 → 后端写」那一整趟往返的窗。
 /// - **写法本身不在这里**：比完交给 [`overwrite_text`] 那一个原语（它怎么落盘由那一处定）。
 pub fn overwrite_text_expecting(
+    face: &Face,
     root: &Path,
     rel: impl AsRef<Path>,
     bytes: &[u8],
@@ -1034,7 +997,7 @@ pub fn overwrite_text_expecting(
 ) -> Result<PathBuf, WriteRefusal> {
     let rel = rel.as_ref();
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    match std::fs::symlink_metadata(&at) {
+    match Ro::symlink_metadata(&at) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Err(WriteRefusal::Stale(copy_text(
                 "beFilesWrite.overwrite.gone",
@@ -1056,7 +1019,7 @@ pub fn overwrite_text_expecting(
         Ok(_) => {}
     }
     let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let md = std::fs::metadata(&real).map_err(|e| {
+    let md = Ro::metadata(&real).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -1074,7 +1037,7 @@ pub fn overwrite_text_expecting(
             &[("path", &real.display().to_string())],
         )));
     }
-    let current = read_nofollow(&real).map_err(|e| {
+    let current = Ro::read_nofollow(&real).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -1098,7 +1061,7 @@ pub fn overwrite_text_expecting(
             &[("path", &real.display().to_string())],
         )));
     }
-    overwrite_text(root, rel, bytes)
+    overwrite_text(face, root, rel, bytes)
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -1107,14 +1070,13 @@ pub fn overwrite_text_expecting(
 //
 // 设计全文住第一节。三件承重的事：
 //
-// 1. **不用那个一步递归删的库函数**（它在第三层禁词表上，留在那儿）：它的遍历不经过我们的路径解析，
+// 1. **不用那个一步递归删的库函数**（`Face` 上没有它）：它的遍历不经过我们的路径解析，
 //    删的是「那一刻盘上的东西」而不是「判过的东西」。
 // 2. **两趟**：计划趟（只读）逐条目过路径解析，任一条被拒 ⇒ 整趟拒、一个字节不动；
 //    执行趟**只删计划里的**，每一条**当场再过一次**路径解析，只用「删文件」与「删空目录」两个既有动词
 //    ⇒ 计划之外新长出来的东西绝不会被连带删掉：它所在的目录不空，删目录那一步失败 ⇒ 停。
 // 3. **列举与改动分住两个函数**（[`plan_tree`] 只列不删；[`remove_planned`] 只删一条、先过它自己那一条的路径解析）。
-//    `readonly_guard` 第三层有一条判据钉「列举之后的改动，在列举之后必须再过一次路径解析」，
-//    顶上判一次、底下整摞删那一形当场红。
+//    执行趟删的每一条都是当场再过一次路径解析交回的 `Resolved`（顶上判一次、底下整摞删那一形拿不到句柄要的路径）。
 //
 // ⚠ 每一条的「判」与「删」之间仍然有窗（TOCTOU，同本模块头注诚实边界第 1 条）；
 //   两趟之间的窗靠「只删计划里的 ＋ 当场再判」收住。如实登记为未闭合。
@@ -1137,13 +1099,12 @@ pub struct Planned {
 /// 设备号只在 unix 上有意义（跨挂载点那一判）；别处回常数 0 ⇒ 那一判在那里**不开口**（如实登记）。
 #[cfg(unix)]
 fn kind_and_device(p: &Path) -> std::io::Result<(bool, u64)> {
-    use std::os::unix::fs::MetadataExt as _;
-    std::fs::symlink_metadata(p).map(|m| (m.is_dir(), m.dev()))
+    Ro::symlink_metadata(p).map(|m| (m.is_dir(), Ro::dev(&m).unwrap_or(0)))
 }
 
 #[cfg(not(unix))]
 fn kind_and_device(p: &Path) -> std::io::Result<(bool, u64)> {
-    std::fs::symlink_metadata(p).map(|m| (m.is_dir(), 0))
+    Ro::symlink_metadata(p).map(|m| (m.is_dir(), 0))
 }
 
 /// **计划趟（只读）**：从 `rel` 起、不跟链接地走整棵树，**每一条目各过一次路径解析**。
@@ -1153,7 +1114,7 @@ fn kind_and_device(p: &Path) -> std::io::Result<(bool, u64)> {
 /// 树里跨了挂载点（`refused`：不走进另一个文件系统去删）· 条目数超过 [`TREE_ENTRY_CAP`]（`refused`）·
 /// 列不出某一层（`io_failed`）。
 ///
-/// 🔴 **本函数里一个改动都没有** —— 列举与改动分住两个函数是第三层那条判据钉的。
+/// 🔴 **本函数里一个改动都没有**（不收 `Face`）—— 列举与改动分住两个函数。
 pub fn plan_tree(root: &Path, rel: impl AsRef<Path>) -> Result<Vec<Planned>, WriteRefusal> {
     plan_tree_within(root, rel.as_ref(), TREE_ENTRY_CAP)
 }
@@ -1184,7 +1145,7 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
     };
     while let Some(dir_rel) = pending.pop() {
         let dir_at = resolve_in_root(root, &dir_rel).map_err(WriteRefusal::Refused)?;
-        let listing = std::fs::read_dir(&dir_at).map_err(|e| {
+        let listing = Ro::read_dir(&dir_at).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.copyTree.unlistable",
@@ -1259,22 +1220,20 @@ pub fn plan_tree_within(root: &Path, rel: &Path, cap: usize) -> Result<Vec<Plann
 /// **执行趟的一条**：先过**它自己那一条**的路径解析，再核种类没变，才删。
 ///
 /// 删的是链接本身（不跟过去）；目录只用「删空目录」—— 里面还有计划之外的东西 ⇒ 系统报错、停。
-pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal> {
+pub fn remove_planned(face: &Face, root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal> {
     let at = resolve_in_root(root, &p.rel).map_err(WriteRefusal::Refused)?;
-    let is_dir = std::fs::symlink_metadata(&at)
-        .map(|m| m.is_dir())
-        .map_err(|e| {
-            WriteRefusal::io(
-                copy_text(
-                    "beFilesWrite.read.failed",
-                    &[
-                        ("path", &at.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })?;
+    let is_dir = Ro::symlink_metadata(&at).map(|m| m.is_dir()).map_err(|e| {
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.read.failed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })?;
     if is_dir != p.is_dir {
         return Err(WriteRefusal::Io(copy_text(
             "beFilesWrite.delete.changed",
@@ -1282,9 +1241,9 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
         )));
     }
     let done = if is_dir {
-        std::fs::remove_dir(&at)
+        face.delete_dir(&at)
     } else {
-        std::fs::remove_file(&at)
+        face.delete_file(&at)
     };
     done.map_err(|e| {
         WriteRefusal::io(
@@ -1298,7 +1257,7 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
             &e,
         )
     })?;
-    Ok(at)
+    Ok(at.into_path_buf())
 }
 
 /// **递归删**：计划（逐条目过路径解析）→ 按计划倒序逐条删（每条当场再过一次路径解析）。
@@ -1307,13 +1266,18 @@ pub fn remove_planned(root: &Path, p: &Planned) -> Result<PathBuf, WriteRefusal>
 /// 话里带「删了几条之后停在哪一条」。计划趟被拒 ⇒ 一条都没删。
 ///
 /// 🔴 本函数自己**不含任何改动动词**：删那一下住 [`remove_planned`]，列那一下住 [`plan_tree`]。
-pub fn delete_tree(root: &Path, rel: impl AsRef<Path>) -> Result<(PathBuf, usize), WriteRefusal> {
-    delete_tree_upto(root, rel, None).map(|(top, removed, _)| (top, removed))
+pub fn delete_tree(
+    face: &Face,
+    root: &Path,
+    rel: impl AsRef<Path>,
+) -> Result<(PathBuf, usize), WriteRefusal> {
+    delete_tree_upto(face, root, rel, None).map(|(top, removed, _)| (top, removed))
 }
 
 /// 同 [`delete_tree`]，这一趟至多删 `limit` 条就停在两条之间（叶子先删，剩下的仍是一棵连着的树）：
 /// 回 `(目标的落点, 这一趟删了几条, 还剩几条)`。一趟删多少由调用方定（后端不看钟）；`limit` 为 0 也删一条，一趟接一趟总能删完。
 pub fn delete_tree_upto(
+    face: &Face,
     root: &Path,
     rel: impl AsRef<Path>,
     limit: Option<usize>,
@@ -1324,9 +1288,9 @@ pub fn delete_tree_upto(
     let mut removed = 0usize;
     for p in plan.iter().rev() {
         if removed > 0 && limit.is_some_and(|n| removed >= n) {
-            return Ok((top, removed, plan.len() - removed));
+            return Ok((top.into_path_buf(), removed, plan.len() - removed));
         }
-        remove_planned(root, p).map_err(|e| {
+        remove_planned(face, root, p).map_err(|e| {
             let said = copy_text(
                 "beFilesWrite.deleteTree.stopped",
                 &[
@@ -1339,7 +1303,7 @@ pub fn delete_tree_upto(
         })?;
         removed += 1;
     }
-    Ok((top, removed, 0))
+    Ok((top.into_path_buf(), removed, 0))
 }
 
 /// 复制时暂存旁名的序号（同一进程里两趟复制不撞名）。
@@ -1347,9 +1311,9 @@ static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 
 /// **同根内复制一份普通文件**。回 `(落点, 字节数)`。
 ///
-/// # 🔴 它不给第三层添一个动词 —— 由已有的三个拼出来，理由是承重的
+/// # 🔴 它不给 `Face` 添一个动词 —— 由已有的三个拼出来，理由是承重的
 ///
-/// 标准库那个「一步复制」**仍然在第三层的禁词表上**，本函数刻意不用它，两条理由：
+/// 标准库那个「一步复制」`Face` 上没有，本函数也不要它，两条理由：
 ///
 /// 1. 目标那一格若是一条链接，它**跟过去写**：根里一条指向根外的链接，
 ///    就能借它把根外那一份盖掉 —— 而路径解析判的是**链接本身**那条路径。
@@ -1376,16 +1340,25 @@ static COPY_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::ne
 /// 新文件的权限位**从源抄**（[`land_copy`]；此前是进程缺省、受 umask）；覆盖时目标换成源的权限位。
 /// ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）。
 pub fn copy_entry(
+    face: &Face,
     root: &Path,
     from: impl AsRef<Path>,
     to: impl AsRef<Path>,
     overwrite: bool,
 ) -> Result<(PathBuf, u64), WriteRefusal> {
-    copy_entry_racing(root, from.as_ref(), to.as_ref(), overwrite, &mut || {})
+    copy_entry_racing(
+        face,
+        root,
+        from.as_ref(),
+        to.as_ref(),
+        overwrite,
+        &mut || {},
+    )
 }
 
 /// [`copy_entry`] 的本体；`between` 见 [`land_copy`]。
 fn copy_entry_racing(
+    face: &Face,
     root: &Path,
     from: &Path,
     to: &Path,
@@ -1400,7 +1373,7 @@ fn copy_entry_racing(
             &[("path", &dst.display().to_string())],
         )));
     }
-    let src_md = std::fs::metadata(&src).map_err(|e| {
+    let src_md = Ro::metadata(&src).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -1418,7 +1391,15 @@ fn copy_entry_racing(
             &[("path", &src.display().to_string())],
         )));
     }
-    land_copy(root, to, &src, src_md.permissions(), overwrite, between)
+    land_copy(
+        face,
+        root,
+        to,
+        &src,
+        src_md.permissions(),
+        overwrite,
+        between,
+    )
 }
 
 /// 〔抽出〕把 `src`（已经过了路径解析的真路径）的字节落进 `root ＋ dst_rel` 那一格：
@@ -1428,13 +1409,14 @@ fn copy_entry_racing(
 /// 🔴 **权限位从源抄**（此前是进程缺省、受 umask —— 那条被登记为开着的缺陷）。
 /// 用的是闭集里已有的「改权限」，落在我们自己刚建的那一份的**句柄**上（没有路径可被换成链接）；`Permissions` 原样搬
 /// （unix 是 mode 低 12 位，别处是只读位）⇒ 不需要平台分支。单文件复制（[`copy_entry`]）与复制目录共用这一段。
-/// 源与旁名都经 [`opener`] 开（不跟链接）：源在解析之后被换成一条链接 ⇒ 开就失败，不把链接那头的东西抄进来。
+/// 源与旁名都不跟链接地开（`Ro::open_nofollow` · `Face::create_new`）：源在解析之后被换成一条链接 ⇒ 开就失败，不把链接那头的东西抄进来。
 /// `between`：旁名写满之后、上位之前（判据插竞争用；生产传空）。
 fn land_copy(
+    face: &Face,
     root: &Path,
     dst_rel: &Path,
     src: &Path,
-    perms: std::fs::Permissions,
+    perms: Perms,
     overwrite: bool,
     between: &mut dyn FnMut(),
 ) -> Result<(PathBuf, u64), WriteRefusal> {
@@ -1451,7 +1433,7 @@ fn land_copy(
     side_name.push(format!(".ccm-copy-{}-{seq}.part", std::process::id()));
     let side_rel = dst_rel.with_file_name(side_name);
     let side = resolve_in_root(root, &side_rel).map_err(WriteRefusal::Refused)?;
-    let mut reader = opener().read(true).open(src).map_err(|e| {
+    let mut reader = Ro::open_nofollow(src).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -1463,25 +1445,21 @@ fn land_copy(
             &e,
         )
     })?;
-    let mut writer = opener()
-        .write(true)
-        .create_new(true)
-        .open(&side)
-        .map_err(|e| {
-            WriteRefusal::io(
-                copy_text(
-                    "beFilesWrite.create.failed",
-                    &[
-                        ("path", &side.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })?;
+    let mut writer = face.create_new(&side).map_err(|e| {
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.create.failed",
+                &[
+                    ("path", &side.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })?;
     let drop_side = |why: WriteRefusal| {
         // 只删**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在）。
-        std::fs::remove_file(&side).ok();
+        face.delete_file(&side).ok();
         why
     };
     let n = match std::io::copy(&mut reader, &mut writer) {
@@ -1518,7 +1496,7 @@ fn land_copy(
         let dst =
             resolve_in_root(root, dst_rel).map_err(|m| drop_side(WriteRefusal::Refused(m)))?;
         between();
-        if let Err(e) = std::fs::rename(&side, &dst) {
+        if let Err(e) = face.move_file(&side, &dst) {
             return Err(drop_side(WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.write.failed",
@@ -1530,9 +1508,9 @@ fn land_copy(
                 &e,
             )));
         }
-        return Ok((dst, n));
+        return Ok((dst.into_path_buf(), n));
     }
-    let (_, dst, done) = rename_no_clobber(root, &side_rel, dst_rel, between, false)
+    let (_, dst, done) = rename_no_clobber(face, root, &side_rel, dst_rel, between, false)
         .map_err(|m| drop_side(WriteRefusal::Refused(m)))?;
     if let Err(e) = done {
         return Err(drop_side(WriteRefusal::io(
@@ -1556,7 +1534,7 @@ fn land_copy(
 // 设计住 §2.2。与递归删（[`delete_tree`]）同一个形状：
 //
 // 1. **计划趟只读**（[`plan_copy_within`]）：源解到底一次，然后不跟链接地走整棵，每一条目过一次 [`resolve_in_root`]；
-//    链接 / 设备 / 管道 / 套接字 ⇒ 整趟拒（闭集里没有「建链接」这个动词，`readonly_guard` 第三层 ②）；
+//    链接 / 设备 / 管道 / 套接字 ⇒ 整趟拒（这一趟不建链接）；
 //    跨挂载点 ⇒ 整趟拒；条目数 > [`TREE_ENTRY_CAP`] ⇒ 整趟拒。**一个改动都没有。**
 // 2. **执行趟**（[`copy_planned`]）先序逐条：源与目标**当场再过一次**路径解析、不跟链接地核源的种类没变；
 //    目录 ⇒ 建目录（目标已在 ⇒ 系统报错 ⇒ 停：目录复制不合并）；文件 ⇒ [`land_copy`]（`O_EXCL` 新建 · 写满 · 抄权限位）。
@@ -1597,7 +1575,7 @@ fn join_tail(base: &Path, tail: &Path) -> PathBuf {
 /// 不跟链接地看一眼：`(种类, 所在设备号)`。种类：`Ok(true)` 目录 · `Ok(false)` 普通文件 · `Err(说法)` 别的（链接 / 设备 …）。
 fn copy_kind(p: &Path) -> std::io::Result<(Result<bool, &'static str>, u64)> {
     let (is_dir, dev) = kind_and_device(p)?;
-    let ft = std::fs::symlink_metadata(p)?.file_type();
+    let ft = Ro::symlink_metadata(p)?.file_type();
     let kind = if is_dir {
         Ok(true)
     } else if ft.is_file() {
@@ -1626,7 +1604,7 @@ fn shown(p: &Path) -> String {
 /// **复制目录的计划趟（只读）**。整趟拒的几形都**一个字节不动**（本函数一个改动都没有）。
 pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan, WriteRefusal> {
     let real = resolve_existing_in_root(root, from).map_err(WriteRefusal::Refused)?;
-    let real_root = std::fs::canonicalize(root).map_err(|e| {
+    let real_root = Ro::canonicalize(root).map_err(|e| {
         WriteRefusal::Refused(copy_text(
             "beFilesWrite.copyTree.rootUnresolved",
             &[("path", &shown(root)), ("why", &io_reason(e.kind()))],
@@ -1670,7 +1648,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
     while let Some(tail) = pending.pop() {
         let dir_at =
             resolve_in_root(&real_root, join_tail(&src, &tail)).map_err(WriteRefusal::Refused)?;
-        let listing = std::fs::read_dir(&dir_at).map_err(|e| {
+        let listing = Ro::read_dir(&dir_at).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.copyTree.unlistable",
@@ -1709,7 +1687,7 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
             // 链接 ⇒ 记下它的目标文本（原样，不跟进去）；平台建不了链接时照旧整趟拒。
             let link_to = match kind {
                 Err("link") if super::files_extract::LINKS_SUPPORTED => {
-                    Some(std::fs::read_link(&at).map_err(|e| {
+                    Some(Ro::read_link(&at).map_err(|e| {
                         WriteRefusal::io(
                             copy_text(
                                 "beFilesWrite.read.failed",
@@ -1761,7 +1739,12 @@ pub fn plan_copy_within(root: &Path, from: &Path, cap: usize) -> Result<CopyPlan
 }
 
 /// **执行趟的一条**：源与目标各**当场再过一次**路径解析，不跟链接地核源的种类与计划相同，才动手。回复制了几个字节。
-pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<u64, WriteRefusal> {
+pub fn copy_planned(
+    face: &Face,
+    plan: &CopyPlan,
+    p: &CopyPlanned,
+    dst_rel: &Path,
+) -> Result<u64, WriteRefusal> {
     let src = resolve_in_root(&plan.root, join_tail(&plan.src, &p.tail))
         .map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(&plan.root, dst_rel).map_err(WriteRefusal::Refused)?;
@@ -1777,14 +1760,14 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
     let (kind, _) = copy_kind(&src).map_err(unreadable)?;
     // 链接：当场再核「仍是链接、目标文本没变」，再建一条同文本的链接（住 `files_extract::land_link`）。
     if let Some(to) = &p.link_to {
-        let now = std::fs::read_link(&src).map_err(unreadable)?;
+        let now = Ro::read_link(&src).map_err(unreadable)?;
         if kind != Err("link") || &now != to {
             return Err(WriteRefusal::Io(copy_text(
                 "beFilesWrite.copyTree.kindChanged",
                 &[("path", &shown(&src))],
             )));
         }
-        super::files_extract::land_link(&plan.root, dst_rel, to)?;
+        super::files_extract::land_link(face, &plan.root, dst_rel, to)?;
         return Ok(0);
     }
     if kind != Ok(p.is_dir) {
@@ -1794,7 +1777,7 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
         )));
     }
     if p.is_dir {
-        std::fs::create_dir(&dst).map_err(|e| {
+        face.make_dir(&dst).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.write.failed",
@@ -1805,16 +1788,21 @@ pub fn copy_planned(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<
         })?;
         return Ok(0);
     }
-    let perms = std::fs::metadata(&src).map_err(unreadable)?.permissions();
-    land_copy(&plan.root, dst_rel, &src, perms, false, &mut || {}).map(|(_, n)| n)
+    let perms = Ro::metadata(&src).map_err(unreadable)?.permissions();
+    land_copy(face, &plan.root, dst_rel, &src, perms, false, &mut || {}).map(|(_, n)| n)
 }
 
 /// 目录的权限位抄过去（全部落完之后倒序调）。两边各过一次路径解析。
-fn copy_dir_mode(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<(), WriteRefusal> {
+fn copy_dir_mode(
+    face: &Face,
+    plan: &CopyPlan,
+    p: &CopyPlanned,
+    dst_rel: &Path,
+) -> Result<(), WriteRefusal> {
     let src = resolve_in_root(&plan.root, join_tail(&plan.src, &p.tail))
         .map_err(WriteRefusal::Refused)?;
     let dst = resolve_in_root(&plan.root, dst_rel).map_err(WriteRefusal::Refused)?;
-    let perms = std::fs::metadata(&src)
+    let perms = Ro::metadata(&src)
         .map_err(|e| {
             WriteRefusal::io(
                 copy_text(
@@ -1825,7 +1813,7 @@ fn copy_dir_mode(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<(),
             )
         })?
         .permissions();
-    std::fs::set_permissions(&dst, perms).map_err(|e| {
+    face.set_permissions(&dst, perms).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.copy.modeFailed",
@@ -1838,7 +1826,7 @@ fn copy_dir_mode(plan: &CopyPlan, p: &CopyPlanned, dst_rel: &Path) -> Result<(),
 
 /// 回滚：倒序删掉这一趟**自己建的**（`made` 是按建出来的先后记的目标相对段 ＋ 是不是目录）。
 /// 回 `(撤掉了几条, 撤不掉的那一条的说法)`。
-fn undo_made(root: &Path, made: &[(PathBuf, bool)]) -> (usize, Option<String>) {
+fn undo_made(face: &Face, root: &Path, made: &[(PathBuf, bool)]) -> (usize, Option<String>) {
     let mut undone = 0usize;
     for (rel, is_dir) in made.iter().rev() {
         let at = match resolve_in_root(root, rel) {
@@ -1846,9 +1834,9 @@ fn undo_made(root: &Path, made: &[(PathBuf, bool)]) -> (usize, Option<String>) {
             Err(m) => return (undone, Some(m)),
         };
         let done = if *is_dir {
-            std::fs::remove_dir(&at)
+            face.delete_dir(&at)
         } else {
-            std::fs::remove_file(&at)
+            face.delete_file(&at)
         };
         if let Err(e) = done {
             return (undone, Some(format!("{}：{e}", at.display())));
@@ -1873,15 +1861,17 @@ pub struct TreeCopied {
 ///
 /// 🔴 本函数自己**不含任何改动动词**：建那一下住 [`copy_planned`]，列那一下住 [`plan_copy_within`]，撤那一下住 [`undo_made`]。
 pub fn copy_tree(
+    face: &Face,
     root: &Path,
     from: impl AsRef<Path>,
     to: impl AsRef<Path>,
 ) -> Result<TreeCopied, WriteRefusal> {
-    copy_tree_with(root, from.as_ref(), to.as_ref(), TREE_ENTRY_CAP)
+    copy_tree_with(face, root, from.as_ref(), to.as_ref(), TREE_ENTRY_CAP)
 }
 
 /// [`copy_tree`] 的本体，上限由调用方给（判据拿小上限验「超了整趟拒」）。
 pub fn copy_tree_with(
+    face: &Face,
     root: &Path,
     from: &Path,
     to: &Path,
@@ -1910,13 +1900,13 @@ pub fn copy_tree_with(
     let mut bytes = 0u64;
     for (i, p) in plan.entries.iter().enumerate() {
         let d = join_tail(&dst_rel, &p.tail);
-        match copy_planned(&plan, p, &d) {
+        match copy_planned(face, &plan, p, &d) {
             Ok(n) => {
                 bytes += n;
                 made.push((d, p.is_dir));
             }
             Err(e) => {
-                let (undone, stuck) = undo_made(&plan.root, &made);
+                let (undone, stuck) = undo_made(face, &plan.root, &made);
                 let tail = match stuck {
                     None => copy_text(
                         "beFilesWrite.copyTree.undoneAll",
@@ -1946,7 +1936,7 @@ pub fn copy_tree_with(
     }
     for p in plan.entries.iter().rev().filter(|p| p.is_dir) {
         let d = join_tail(&dst_rel, &p.tail);
-        copy_dir_mode(&plan, p, &d).map_err(|e| {
+        copy_dir_mode(face, &plan, p, &d).map_err(|e| {
             let said = copy_text(
                 "beFilesWrite.copyTree.modeNotCopied",
                 &[("why", e.message())],
@@ -1963,7 +1953,7 @@ pub fn copy_tree_with(
     let dirs = plan.entries.iter().filter(|p| p.is_dir).count();
     let links = plan.entries.iter().filter(|p| p.link_to.is_some()).count();
     Ok(TreeCopied {
-        path: dst_top,
+        path: dst_top.into_path_buf(),
         bytes,
         files: total - dirs - links,
         dirs,
@@ -1991,7 +1981,7 @@ pub fn copy_tree_with(
 //
 // 🔴 **删会话**（[`delete_session`]）：它**只收 sid**，落点由适配层按 sid 找
 //   （门经 [`SessionPort`] 递进来的那一个窄口），不收路径 ⇒ 调用方表达不出「另一份文件」。
-//   `readonly_guard` 第三层的针因此多一根 `fenced_session_file(`，判据钉它在生产树里恰好被调用一处。
+//   删会话那一条的 `Resolved` 由 `fenced_session_file` 担保，判据钉它在生产树里恰好被调用一处。
 // 它从前的说法是「会话文件围栏唯一的例外」—— 文件管理面的会话文件围栏拿掉之后没有「例外」可言了；
 //   它自己那道（「删的必须**是**一份会话、名字恰是 `<sid>.jsonl`」）一个字节没动。
 
@@ -2019,10 +2009,10 @@ pub const PEEK_MAX_BYTES: usize = 256 * 1024;
 pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail> {
     let rel = rel.as_ref();
     let at = resolve_in_root(root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
-    match std::fs::symlink_metadata(&at) {
+    match Ro::symlink_metadata(&at) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Ok(Peeked {
-                path: at,
+                path: at.into_path_buf(),
                 text: None,
             })
         }
@@ -2041,7 +2031,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
         Ok(_) => {}
     }
     let real = resolve_existing_in_root(root, rel).map_err(|m| WriteFail::from(("refused", m)))?;
-    let md = std::fs::metadata(&real).map_err(|e| {
+    let md = Ro::metadata(&real).map_err(|e| {
         WriteFail::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -2075,7 +2065,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
             ),
         )));
     }
-    let bytes = read_nofollow(&real).map_err(|e| {
+    let bytes = Ro::read_nofollow(&real).map_err(|e| {
         WriteFail::io(
             copy_text(
                 "beFilesWrite.read.failed",
@@ -2100,7 +2090,7 @@ pub fn peek_text(root: &Path, rel: impl AsRef<Path>) -> Result<Peeked, WriteFail
         )
     })?;
     Ok(Peeked {
-        path: real,
+        path: real.into_path_buf(),
         text: Some(text),
     })
 }
@@ -2145,6 +2135,7 @@ static PUT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new
 /// ⚠ TOCTOU 照旧在（同本模块头注诚实边界第 1 条）：③ 与 ⑥ 之间有一个窗。窗里被别人改了，
 ///    ⑥ 会把那一次改动盖掉 —— CAS 缩小的是「monitor 读 → 后端写」那一整趟往返的窗，不是这一个。
 pub fn put_text(
+    face: &Face,
     root: &Path,
     rel: impl AsRef<Path>,
     bytes: &[u8],
@@ -2153,6 +2144,7 @@ pub fn put_text(
     parents: bool,
 ) -> Result<Put, WriteRefusal> {
     put_text_racing(
+        face,
         root,
         rel.as_ref(),
         bytes,
@@ -2165,6 +2157,7 @@ pub fn put_text(
 
 /// [`put_text`] 的本体；`between` 交给 [`swap_in`]（CAS 判完、旁名写满之后，换名上位之前）。
 fn put_text_racing(
+    face: &Face,
     root: &Path,
     rel: &Path,
     bytes: &[u8],
@@ -2174,10 +2167,10 @@ fn put_text_racing(
     between: &mut dyn FnMut(),
 ) -> Result<Put, WriteRefusal> {
     if parents {
-        make_parents(root, rel)?;
+        make_parents(face, root, rel)?;
     }
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let existed = match std::fs::symlink_metadata(&at) {
+    let existed = match Ro::symlink_metadata(&at) {
         Ok(_) => true,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
         Err(e) => {
@@ -2195,7 +2188,7 @@ fn put_text_racing(
     };
     let (dst, current, perms) = if existed {
         let real = resolve_existing_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-        let md = std::fs::metadata(&real).map_err(|e| {
+        let md = Ro::metadata(&real).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.read.failed",
@@ -2213,7 +2206,7 @@ fn put_text_racing(
                 &[("path", &real.display().to_string())],
             )));
         }
-        let cur = read_nofollow(&real).map_err(|e| {
+        let cur = Ro::read_nofollow(&real).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.read.failed",
@@ -2253,7 +2246,7 @@ fn put_text_racing(
     }
     if current.as_deref() == Some(bytes) {
         return Ok(Put {
-            path: dst,
+            path: dst.into_path_buf(),
             bytes: bytes.len(),
             changed: false,
             created: false,
@@ -2262,12 +2255,20 @@ fn put_text_racing(
     }
     let backup = match current.as_deref() {
         Some(orig) if keep_backup && !orig.is_empty() => {
-            Some(land_backup(root, rel, orig, perms.clone())?)
+            Some(land_backup(face, root, rel, orig, perms.clone())?)
         }
         _ => None,
     };
     // 原来不在（`expect: null`）⇒ 换名上位不许顶掉任何东西：CAS 判完「不在」之后冒出来的那一份照样不盖，回 `stale`。
-    match swap_in(root, rel, bytes, perms.clone(), current.is_none(), between) {
+    match swap_in(
+        face,
+        root,
+        rel,
+        bytes,
+        perms.clone(),
+        current.is_none(),
+        between,
+    ) {
         Err(WriteRefusal::Stale(_)) => {
             return Err(WriteRefusal::Stale(copy_text(
                 "beFilesWrite.put.appeared",
@@ -2276,7 +2277,7 @@ fn put_text_racing(
         }
         other => other?,
     };
-    let back = read_nofollow(&dst);
+    let back = Ro::read_nofollow(&dst);
     if back.as_deref().ok() != Some(bytes) {
         let why = match &back {
             Ok(b) => copy_text(
@@ -2293,8 +2294,8 @@ fn put_text_racing(
         };
         let raw = back.as_ref().err().map(ToString::to_string);
         let undone = match current.as_deref() {
-            Some(orig) => swap_in(root, rel, orig, perms, false, &mut || {}).is_ok(),
-            None => remove_created(root, rel).is_ok(),
+            Some(orig) => swap_in(face, root, rel, orig, perms, false, &mut || {}).is_ok(),
+            None => remove_created(face, root, rel).is_ok(),
         };
         let note = match (existed, undone, &backup) {
             (true, true, _) => copy_text("beFilesWrite.put.restored", &[]),
@@ -2320,7 +2321,7 @@ fn put_text_racing(
         });
     }
     Ok(Put {
-        path: dst,
+        path: dst.into_path_buf(),
         bytes: bytes.len(),
         changed: true,
         created: !existed,
@@ -2332,7 +2333,7 @@ fn put_text_racing(
 ///
 /// ⚠ 只给 [`put_text`] 用、且只在调用方**显式**要了（`parents: true`）时跑 ——
 /// 「顺手把中间几层补出来」不是缺省行为（`files-mkdir` 照旧只建最后那一段）。
-fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
+fn make_parents(face: &Face, root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
     let Some(parent) = rel.parent() else {
         return Ok(());
     };
@@ -2340,7 +2341,7 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
     for comp in parent.components() {
         acc.push(comp);
         let at = resolve_in_root(root, &acc).map_err(WriteRefusal::Refused)?;
-        match std::fs::metadata(&at) {
+        match Ro::metadata(&at) {
             Ok(m) if m.is_dir() => continue,
             Ok(_) => {
                 return Err(WriteRefusal::Refused(copy_text(
@@ -2349,7 +2350,7 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
                 )))
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-                std::fs::create_dir(&at).map_err(|e| {
+                face.make_dir(&at).map_err(|e| {
                     WriteRefusal::io(
                         copy_text(
                             "beFilesWrite.write.failed",
@@ -2362,7 +2363,7 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
                     )
                 })?;
                 if let Some(p) = own_mode(&at, true) {
-                    std::fs::set_permissions(&at, p).map_err(|e| {
+                    face.set_permissions(&at, p).map_err(|e| {
                         WriteRefusal::io(
                             copy_text(
                                 "beFilesWrite.chmod.failed",
@@ -2398,16 +2399,17 @@ fn make_parents(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
 /// `create`（调用方判过「原来不在」）⇒ 上位走不覆盖改名（[`rename_no_clobber`]）：那一格此刻已有东西 ⇒ `Stale`、旁名删掉。
 /// `between`：旁名写满之后、上位之前（判据插竞争用；生产传空）。
 fn swap_in(
+    face: &Face,
     root: &Path,
     rel: &Path,
     bytes: &[u8],
-    perms: Option<std::fs::Permissions>,
+    perms: Option<Perms>,
     create: bool,
     between: &mut dyn FnMut(),
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    let exists = std::fs::symlink_metadata(&at).is_ok();
+    let exists = Ro::symlink_metadata(&at).is_ok();
     if create && exists {
         return Err(WriteRefusal::Stale(copy_text(
             "beFilesWrite.put.appeared",
@@ -2424,9 +2426,9 @@ fn swap_in(
     //   后端没有那条平台原语 ⇒ 已在的目标在 Windows 上**就地覆盖写**（ACL / ADS / 创建时间都留着）。
     //   ⚠ 代价如实写：这一支**不是原子的**（写到一半断电会留半份），兜底是调用方要的备份 ＋ 回读比对 ＋ 回滚。
     #[cfg(windows)]
-    if std::fs::symlink_metadata(&dst).is_ok() {
+    if Ro::symlink_metadata(&dst).is_ok() {
         let _ = &perms;
-        std::fs::write(&dst, bytes).map_err(|e| {
+        face.write_whole(&dst, bytes).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.write.failed",
@@ -2451,28 +2453,29 @@ fn swap_in(
     let mut side_name = std::ffi::OsString::from(".");
     side_name.push(name);
     side_name.push(format!(".ccm-put-{}-{seq}.part", std::process::id()));
-    let side = dst.with_file_name(&side_name);
-    let mut f = opener()
-        .write(true)
-        .create_new(true)
-        .open(&side)
-        .map_err(|e| {
-            WriteRefusal::io(
-                copy_text(
-                    "beFilesWrite.write.failed",
-                    &[
-                        ("path", &side.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })?;
+    let side = dst.sibling(&side_name).ok_or_else(|| {
+        WriteRefusal::Refused(copy_text(
+            "beFilesWrite.path.noName",
+            &[("path", &rel.display().to_string())],
+        ))
+    })?;
+    let mut f = face.create_new(&side).map_err(|e| {
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.write.failed",
+                &[
+                    ("path", &side.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })?;
     // 权限位在写进内容之前就定（新建在自家目录里的那一份出生就只给本人，旁名上也不留一刻宽的）。
     let perms = perms.or_else(|| own_mode(&dst, false));
     if let Err(e) = perms.map_or(Ok(()), |p| f.set_permissions(p)) {
         drop(f);
-        std::fs::remove_file(&side).ok();
+        face.delete_file(&side).ok();
         return Err(WriteRefusal::io(
             copy_text(
                 "beFilesWrite.write.failed",
@@ -2486,7 +2489,7 @@ fn swap_in(
     }
     if let Err(e) = f.write_all(bytes) {
         drop(f);
-        std::fs::remove_file(&side).ok();
+        face.delete_file(&side).ok();
         return Err(WriteRefusal::io(
             copy_text(
                 "beFilesWrite.write.failed",
@@ -2500,33 +2503,39 @@ fn swap_in(
     }
     drop(f);
     if create {
-        let why =
-            match rename_no_clobber(root, &rel.with_file_name(&side_name), rel, between, false) {
-                Ok((_, _, Ok(()))) => return Ok(dst),
-                Err(m) => WriteRefusal::Refused(m),
-                Ok((_, _, Err(e))) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    WriteRefusal::Stale(copy_text(
-                        "beFilesWrite.put.appeared",
-                        &[("path", &dst.display().to_string())],
-                    ))
-                }
-                Ok((_, _, Err(e))) => WriteRefusal::io(
-                    copy_text(
-                        "beFilesWrite.write.failed",
-                        &[
-                            ("path", &dst.display().to_string()),
-                            ("why", &io_reason(e.kind())),
-                        ],
-                    ),
-                    &e,
+        let why = match rename_no_clobber(
+            face,
+            root,
+            &rel.with_file_name(&side_name),
+            rel,
+            between,
+            false,
+        ) {
+            Ok((_, _, Ok(()))) => return Ok(dst.into_path_buf()),
+            Err(m) => WriteRefusal::Refused(m),
+            Ok((_, _, Err(e))) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                WriteRefusal::Stale(copy_text(
+                    "beFilesWrite.put.appeared",
+                    &[("path", &dst.display().to_string())],
+                ))
+            }
+            Ok((_, _, Err(e))) => WriteRefusal::io(
+                copy_text(
+                    "beFilesWrite.write.failed",
+                    &[
+                        ("path", &dst.display().to_string()),
+                        ("why", &io_reason(e.kind())),
+                    ],
                 ),
-            };
-        std::fs::remove_file(&side).ok();
+                &e,
+            ),
+        };
+        face.delete_file(&side).ok();
         return Err(why);
     }
     between();
-    if let Err(e) = std::fs::rename(&side, &dst) {
-        std::fs::remove_file(&side).ok();
+    if let Err(e) = face.move_file(&side, &dst) {
+        face.delete_file(&side).ok();
         return Err(WriteRefusal::io(
             copy_text(
                 "beFilesWrite.write.failed",
@@ -2538,15 +2547,16 @@ fn swap_in(
             &e,
         ));
     }
-    Ok(dst)
+    Ok(dst.into_path_buf())
 }
 
 /// 另存一份原文：`<名>.ccm-backup-<毫秒>-<序号>`，落在 `rel` 旁边（`O_EXCL`，沿用原权限位）。
 fn land_backup(
+    face: &Face,
     root: &Path,
     rel: &Path,
     original: &[u8],
-    perms: Option<std::fs::Permissions>,
+    perms: Option<Perms>,
 ) -> Result<PathBuf, WriteRefusal> {
     use std::io::Write as _;
     let name = rel.file_name().ok_or_else(|| {
@@ -2564,25 +2574,21 @@ fn land_backup(
     bak_name.push(format!(".ccm-backup-{ms}-{seq}"));
     let bak_rel = rel.with_file_name(bak_name);
     let bak = resolve_in_root(root, &bak_rel).map_err(WriteRefusal::Refused)?;
-    let mut f = opener()
-        .write(true)
-        .create_new(true)
-        .open(&bak)
-        .map_err(|e| {
-            WriteRefusal::io(
-                copy_text(
-                    "beFilesWrite.backup.createFailed",
-                    &[
-                        ("path", &bak.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })?;
+    let mut f = face.create_new(&bak).map_err(|e| {
+        WriteRefusal::io(
+            copy_text(
+                "beFilesWrite.backup.createFailed",
+                &[
+                    ("path", &bak.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })?;
     if let Err(e) = f.write_all(original) {
         drop(f);
-        std::fs::remove_file(&bak).ok();
+        face.delete_file(&bak).ok();
         return Err(WriteRefusal::io(
             copy_text(
                 "beFilesWrite.backup.createFailed",
@@ -2600,22 +2606,22 @@ fn land_backup(
             &bak,
             p,
             |_, p| f.set_permissions(p),
-            |b| std::fs::remove_file(b),
+            |_| face.delete_file(&bak),
         )?;
     }
     drop(f);
-    Ok(bak)
+    Ok(bak.into_path_buf())
 }
 
 /// 〔E 吞错普查点名〕备份**沿用原文件的权限位**；沿用不上 ⇒ 删掉这份备份、整趟拒（此刻原文件还没动）。
 ///
 /// 原先一个 `.ok()` 吞掉：一份 0600 的原文件（钥匙、令牌一类）可能留下一份按 umask 建出来的 0644 备份，
 /// 而一句话都没有。两个动作都由调用方交进来（生产 = `set_permissions` / `remove_file`，写在 `land_backup` 里 ——
-/// 那里先过了路径解析，`readonly_guard` 第三层的判准就落在那个函数上）；判据交一个会失败的 chmod。
+/// 那里先过了路径解析，交给 `Face` 的是 `Resolved`）；判据交一个会失败的 chmod。
 fn keep_mode(
     bak: &Path,
-    perms: std::fs::Permissions,
-    chmod: impl FnOnce(&Path, std::fs::Permissions) -> std::io::Result<()>,
+    perms: Perms,
+    chmod: impl FnOnce(&Path, Perms) -> std::io::Result<()>,
     remove: impl FnOnce(&Path) -> std::io::Result<()>,
 ) -> Result<(), WriteRefusal> {
     let Err(e) = chmod(bak, perms) else {
@@ -2646,9 +2652,9 @@ fn keep_mode(
 }
 
 /// 回滚那一支：删掉**这一趟自己刚建出来**的那一份（只在「原来不存在」时调）。
-fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
+fn remove_created(face: &Face, root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    std::fs::remove_file(&at).map_err(|e| {
+    face.delete_file(&at).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.delete.failed",
@@ -2668,8 +2674,18 @@ fn remove_created(root: &Path, rel: &Path) -> Result<(), WriteRefusal> {
 /// `<项目>/<sid>.jsonl` → 必须是会话文件的形状）。这一条是「用户在历史浏览器里明确点了删」那一件事。
 /// 从前这里写「别的写一律不许碰会话文件，这一条是唯一的例外」—— 文件管理面今天什么都能改，
 /// 这一条的独特之处只剩「只收 sid、只删恰是那一形的那一份」。
-pub fn delete_session(sid: &str, sessions: &SessionPort) -> Result<PathBuf, WriteRefusal> {
-    delete_session_with(sid, sessions.locate, sessions.is_record, sessions.file_name)
+pub fn delete_session(
+    face: &Face,
+    sid: &str,
+    sessions: &SessionPort,
+) -> Result<PathBuf, WriteRefusal> {
+    delete_session_with(
+        face,
+        sid,
+        sessions.locate,
+        sessions.is_record,
+        sessions.file_name,
+    )
 }
 
 /// 删会话那一条要问的两件事（落点 · 形状）是 agent 记录布局的知识，
@@ -2688,6 +2704,7 @@ pub struct SessionPort {
 /// [`delete_session`] 的本体。`locate` / `is_record` 由调用方给（生产侧 = 门递进来的窄口；判据拿临时目录当 home），
 /// 删之前**必须**先过 [`fenced_session_file`]。
 pub fn delete_session_with(
+    face: &Face,
     sid: &str,
     locate: impl FnOnce(&str) -> Result<PathBuf, String>,
     is_record: impl FnOnce(&Path) -> bool,
@@ -2695,7 +2712,7 @@ pub fn delete_session_with(
 ) -> Result<PathBuf, WriteRefusal> {
     let target =
         fenced_session_file(sid, locate, is_record, file_name).map_err(WriteRefusal::Refused)?;
-    std::fs::remove_file(&target).map_err(|e| {
+    face.delete_file(&target).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.session.deleteFailed",
@@ -2707,7 +2724,7 @@ pub fn delete_session_with(
             &e,
         )
     })?;
-    Ok(target)
+    Ok(target.into_path_buf())
 }
 
 /// 删会话那一条**自己的**围栏：落点只能是 `locate(sid)` 找到的那一份，而且**它必须是**
@@ -2717,7 +2734,7 @@ fn fenced_session_file(
     locate: impl FnOnce(&str) -> Result<PathBuf, String>,
     is_record: impl FnOnce(&Path) -> bool,
     file_name: impl FnOnce(&Path, &str) -> Option<String>,
-) -> Result<PathBuf, String> {
+) -> Result<Resolved, String> {
     let p = locate(sid)?;
     let want = file_name(&p, sid).unwrap_or_default();
     if want.is_empty() || p.file_name() != Some(std::ffi::OsStr::new(&want)) {
@@ -2735,7 +2752,8 @@ fn fenced_session_file(
             &[("path", &p.display().to_string())],
         ));
     }
-    Ok(p)
+    // 这一份就是会话那一条的落点：`locate` 按 sid 找到、名字与形状都对上了（删会话不过根内路径解析，过的是这道围栏）。
+    Ok(Resolved::vouch(p))
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -2744,7 +2762,7 @@ fn fenced_session_file(
 //
 // 🔴 **这一步不花用户那句「允许」**，`§8.6` 第 2 步逐字：
 //   「它的射程：`O_EXCL` 新建一份**此前不存在**的文件；不删、不改名、不覆盖、不建目录
-//    🔴 **`readonly_guard` 一行不动** —— 它早就在白名单上
+//    🔴 **`readonly_guard` 一行不动** —— 它那时早就在写盘白名单上（09-19 那一版；今天写经 `Face`）
 //    ⇒ 这一步只是把一个做好了没接的东西接上」。
 //   本节兑现的就是那一句：上面那些函数**一个字节没改射程**，
 //   下面加的全是「把参数收进来、把答案交出去」。
@@ -2756,8 +2774,8 @@ fn fenced_session_file(
 //  （现打：加完之后 `every_cli_exposed_command_is_in_the_query_mode_gate` 当场红，
 //   逐字点名 `["--files-create"]`）。⇒ 两个宿主共用同一个 `run`，
 //   那正是说的「一份代码两种宿主」。
-//   ⇒ **窄在别的地方**：`readonly_guard` 第三层判的是「**谁引用得到这个模块**」
-//   （= 只有这一面的登记入口），不是「谁发得出命令」。别把两者混起来读。
+//   ⇒ **窄在别的地方**：写要 `Face`，而 `Face` 只递给命令表文件管理那一族（`Run::BlockingFace`），
+//   不是「谁发得出命令」。别把两者混起来读。
 //
 // ⚠ 本节**买不到**什么：接上的是「命令面够得到这份原语」这一跳。
 //   「真远端那台机器上跑过」**没有**（同本模块头注第 3 条），
@@ -2831,7 +2849,7 @@ pub struct ManageCommand {
 
 /// 🔴 **文件管理写面的唯一住址。**
 ///
-/// `readonly_guard` 第三层那条「只从声明过的那一面来」判的就是这张表 ——
+/// `readonly_guard` 那条「拿得到 `Face` 的命令 == 写面登记的命令」判的就是这张表（与上传提交 · 解压两张的并）——
 /// 表里没有的名字，`inbound::REGISTRY` 上也不许有对应的一条。
 pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
@@ -2952,7 +2970,7 @@ fn path_of(
 /// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。
 ///
 /// 路径解析按 `Path` 逐段判；相对段与 `root` 同形（字符串或 `{"b16": …}`），取法住 [`rel_of`]。
-fn answer_create(args: &serde_json::Value) -> Answer {
+fn answer_create(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
     names_ok(args, &rel)?;
@@ -2969,7 +2987,7 @@ fn answer_create(args: &serde_json::Value) -> Answer {
         })?,
     };
     // 🔴 码由那个枚举自己答，**不在这里猜字符串前缀** —— 理由住 [`WriteRefusal`]。
-    let landed = create_new_file(&root, &rel, &bytes).map_err(refusal)?;
+    let landed = create_new_file(face, &root, &rel, &bytes).map_err(refusal)?;
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
         "bytes": bytes.len(),
@@ -3059,24 +3077,24 @@ fn refusal(e: WriteRefusal) -> WriteFail {
     WriteFail::from(e)
 }
 
-fn answer_mkdir(args: &serde_json::Value) -> Answer {
+fn answer_mkdir(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
     names_ok(args, &rel)?;
-    let done = make_dir(&root, &rel).map_err(refusal)?;
+    let done = make_dir(face, &root, &rel).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }
 
-fn answer_rename(args: &serde_json::Value) -> Answer {
+fn answer_rename(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let from = rel_of(args, "from")?;
     let to = rel_of(args, "to")?;
     names_ok(args, &to)?;
-    let done = rename_entry(&root, &from, &to).map_err(refusal)?;
+    let done = rename_entry(face, &root, &from, &to).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }
 
-fn answer_delete(args: &serde_json::Value) -> Answer {
+fn answer_delete(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
     // 递归**显式**：不给 ⇒ 不递归（射程与此前一个字节不差）；给了就必须是布尔，不猜。
@@ -3124,20 +3142,20 @@ fn answer_delete(args: &serde_json::Value) -> Answer {
         })?),
     };
     let (done, removed, remaining) = if recursive {
-        delete_tree_upto(&root, &rel, limit).map_err(refusal)?
+        delete_tree_upto(face, &root, &rel, limit).map_err(refusal)?
     } else if let Some(want) = expect {
         let done = match want {
-            DeleteExpect::Bytes(b) => delete_file_expecting(&root, &rel, &b),
-            DeleteExpect::EmptyDir => delete_empty_dir(&root, &rel),
+            DeleteExpect::Bytes(b) => delete_file_expecting(face, &root, &rel, &b),
+            DeleteExpect::EmptyDir => delete_empty_dir(face, &root, &rel),
         };
         (done.map_err(refusal)?, 1, 0)
     } else {
-        (delete_entry(&root, &rel).map_err(refusal)?, 1, 0)
+        (delete_entry(face, &root, &rel).map_err(refusal)?, 1, 0)
     };
     Ok(serde_json::json!({ "path": path_json(&done), "removed": removed, "remaining": remaining }))
 }
 
-fn answer_chmod(args: &serde_json::Value) -> Answer {
+fn answer_chmod(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
     let mode = args
@@ -3152,7 +3170,7 @@ fn answer_chmod(args: &serde_json::Value) -> Answer {
                 ),
             )
         })?;
-    let (done, before) = change_mode_reporting(&root, &rel, mode).map_err(refusal)?;
+    let (done, before) = change_mode_reporting(face, &root, &rel, mode).map_err(refusal)?;
     // `before`：改之前的低 12 位（撤销 ＝ 拿它再改一次）；读不到 ⇒ 不给这一格（不编一个数）。
     let mut out = serde_json::json!({ "path": path_json(&done), "mode": mode });
     if let Some(b) = before {
@@ -3161,7 +3179,7 @@ fn answer_chmod(args: &serde_json::Value) -> Answer {
     Ok(out)
 }
 
-fn answer_copy(args: &serde_json::Value) -> Answer {
+fn answer_copy(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let from = rel_of(args, "from")?;
     let to = rel_of(args, "to")?;
@@ -3183,7 +3201,7 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
                 copy_text("beFilesWrite.copy.recursiveOverwrite", &[]),
             )));
         }
-        let t = copy_tree(&root, &from, &to).map_err(refusal)?;
+        let t = copy_tree(face, &root, &from, &to).map_err(refusal)?;
         return Ok(serde_json::json!({
             "path": path_json(&t.path),
             "bytes": t.bytes,
@@ -3192,14 +3210,14 @@ fn answer_copy(args: &serde_json::Value) -> Answer {
             "links": t.links,
         }));
     }
-    let (done, n) = copy_entry(&root, &from, &to, overwrite).map_err(refusal)?;
+    let (done, n) = copy_entry(face, &root, &from, &to, overwrite).map_err(refusal)?;
     // 两形同一张应答表（`files` / `dirs` 恒在）：调用方不必按问法猜回来的键。
     Ok(
         serde_json::json!({ "path": path_json(&done), "bytes": n, "files": 1, "dirs": 0, "links": 0 }),
     )
 }
 
-fn answer_write_text(args: &serde_json::Value) -> Answer {
+fn answer_write_text(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
     // 🔴 这里**必须给** `content`：不给就把一份既有文件写成空的，那不是一个该有默认值的动作。
@@ -3219,7 +3237,7 @@ fn answer_write_text(args: &serde_json::Value) -> Answer {
     })?;
     // CAS **必给**：没有「不问就盖」这一形（同 `files-put`）。形状先判、再碰盘。
     let expect = sha256_expect_of(args)?;
-    let done = overwrite_text_expecting(&root, &rel, &bytes, &expect).map_err(refusal)?;
+    let done = overwrite_text_expecting(face, &root, &rel, &bytes, &expect).map_err(refusal)?;
     Ok(serde_json::json!({
         "path": path_json(&done),
         "bytes": bytes.len(),
@@ -3263,7 +3281,7 @@ fn answer_peek(args: &serde_json::Value) -> Answer {
     }))
 }
 
-fn answer_put(args: &serde_json::Value) -> Answer {
+fn answer_put(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_of(args, "root")?;
     let rel = rel_of(args, "rel")?;
     let content = args.get("content").ok_or_else(|| {
@@ -3289,8 +3307,16 @@ fn answer_put(args: &serde_json::Value) -> Answer {
     };
     let backup = flag_of(args, "backup")?;
     let parents = flag_of(args, "parents")?;
-    let done =
-        put_text(&root, &rel, &content, expect.as_deref(), backup, parents).map_err(refusal)?;
+    let done = put_text(
+        face,
+        &root,
+        &rel,
+        &content,
+        expect.as_deref(),
+        backup,
+        parents,
+    )
+    .map_err(refusal)?;
     Ok(serde_json::json!({
         "path": path_json(&done.path),
         "bytes": done.bytes,
@@ -3300,7 +3326,7 @@ fn answer_put(args: &serde_json::Value) -> Answer {
     }))
 }
 
-fn answer_delete_session(args: &serde_json::Value, sessions: &SessionPort) -> Answer {
+fn answer_delete_session(face: &Face, args: &serde_json::Value, sessions: &SessionPort) -> Answer {
     // 🔴 **只收 sid**：多给任何一个键都拒 —— 这一条只按 sid 找那一份、从不收路径，
     //    「顺手也收一个路径」那一形连表达的机会都不给。
     if let Some(obj) = args.as_object() {
@@ -3322,7 +3348,7 @@ fn answer_delete_session(args: &serde_json::Value, sessions: &SessionPort) -> An
                 crate::common::contract::malformed("missing `sid` or not a string"),
             )
         })?;
-    let done = delete_session(sid, sessions).map_err(refusal)?;
+    let done = delete_session(face, sid, sessions).map_err(refusal)?;
     Ok(serde_json::json!({ "path": path_json(&done) }))
 }
 
@@ -3330,18 +3356,23 @@ fn answer_delete_session(args: &serde_json::Value, sessions: &SessionPort) -> An
 ///
 /// 🔴 分派写成一个对 [`MANAGE_COMMANDS`] 的 `match`，而「表里有、分派没有」
 /// 那种静默的不可用由判据钉住（本仓 `p1t-removal-cause` 那次真 bug 就是这一形）。
-pub fn answer_wire(wire_name: &str, args: &serde_json::Value, sessions: &SessionPort) -> Answer {
+pub fn answer_wire(
+    face: &Face,
+    wire_name: &str,
+    args: &serde_json::Value,
+    sessions: &SessionPort,
+) -> Answer {
     match wire_name {
-        "files-create" => answer_create(args),
-        "files-mkdir" => answer_mkdir(args),
-        "files-rename" => answer_rename(args),
-        "files-delete" => answer_delete(args),
-        "files-chmod" => answer_chmod(args),
-        "files-write-text" => answer_write_text(args),
-        "files-copy" => answer_copy(args),
+        "files-create" => answer_create(face, args),
+        "files-mkdir" => answer_mkdir(face, args),
+        "files-rename" => answer_rename(face, args),
+        "files-delete" => answer_delete(face, args),
+        "files-chmod" => answer_chmod(face, args),
+        "files-write-text" => answer_write_text(face, args),
+        "files-copy" => answer_copy(face, args),
         "files-peek" => answer_peek(args),
-        "files-put" => answer_put(args),
-        "files-delete-session" => answer_delete_session(args, sessions),
+        "files-put" => answer_put(face, args),
+        "files-delete-session" => answer_delete_session(face, args, sessions),
         other => Err(WriteFail::from((
             "bad_args",
             crate::common::contract::malformed(&format!("unknown write command `{other}`")),

@@ -8,7 +8,7 @@
 //! 又会让「加一家 agent 要回来改的地方」多一处（`agent_locality_guard` 那张只许降的表）。CLI 那一面的家目录
 //! 由 `main.rs` 解析好传进去；帧面没有那一跳 ⇒ 由这层顶层壳补上，与 `read_face` 拿家目录是同一句。
 //!
-//! **零写盘**：写的是本体（`control/fork_write.rs`，`readonly_guard` 白名单层那一处 `O_EXCL` 新建），本文件只转交与读。
+//! **零写盘**：写的是本体（`control/fork_write.rs`，经命令表递进来的 `NewFile` 那一处 `O_EXCL` 新建），本文件只转交与读。
 
 use crate::control::fork_launch;
 use std::path::Path;
@@ -16,9 +16,10 @@ use std::path::Path;
 /// 帧面入口：`{sid, uuid} → {sessionId, jsonlPath, launch}`（形状与失败码住本体那一份）。
 pub(crate) fn answer(
     args: &serde_json::Value,
+    nf: &crate::platform::fs::NewFile,
 ) -> Result<serde_json::Value, (&'static str, String)> {
     let home = crate::observe::history_query::agent_home();
-    crate::control::fork_write::answer_wire_at(&home, args, &|source, sid| {
+    crate::control::fork_write::answer_wire_at(nf, &home, args, &|source, sid| {
         launch_of(&home, source, sid).to_json()
     })
 }

@@ -320,7 +320,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("account", "`process`（源会话进程此刻的配置目录，同 `accounts-sessions`：没设 ＝ 账号 0，设了 ＝ 账号库里认得那个目录的号）|`exited`（源会话已退出）· `live_no_account`（活着，但说不出号：进程名单里没有它 · 那个目录账号库不认得 · 环境这一刻读不出）"), out("cwd", "`record`|`no_cwd`（记录里没有）"), out("from", "`known` 时值的来源"), out("host", "`terminal` 那一格的终端宿主"), out("jsonlPath", "新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）"), out("kind", "`launch` 三格每格的状态：`known` · `unknown`"), out("launch", "起分叉出来的新会话要的三格：`cwd` · `account` · `terminal`，每格 `{kind:\"known\", value, from}` 或 `{kind:\"unknown\", why}`"), out("sessionId", "新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）"), arg("sid", "源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件，`branch_core::find_session_file`）"), out("terminal", "`terminal_list`（挂着它的 `@ccm_sid`、前台是 agent 的那一个；命中多个取第一个）|`exited`"), arg("uuid", "从哪条消息处分叉"), out("value", "`known` 时的值"), out("why", "`unknown` 时为什么说不出")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::fork_face::answer(&r.args)
+            // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
+            crate::faces::fork_face::answer(&r.args, &crate::platform::fs::NewFile::issue())
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

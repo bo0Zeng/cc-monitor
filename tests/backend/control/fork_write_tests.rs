@@ -1,5 +1,6 @@
 use super::*;
 use crate::agents::claudecode::paths::projects_root;
+use crate::platform::fs::NewFile;
 use std::path::PathBuf;
 
 /// 帧面那一格 `launch` 的替身（推断本身由 `fork_launch_tests.rs` 钉）。
@@ -40,7 +41,7 @@ fn fork_writes_new_file_and_leaves_source_untouched() {
     let src = root.join("projects").join("proj").join("srcsid.jsonl");
     let before = std::fs::read(&src).unwrap();
 
-    let res = run_inner(&root, "srcsid", "u2").unwrap();
+    let res = run_inner(&NewFile::issue(), &root, "srcsid", "u2").unwrap();
 
     assert_eq!(std::fs::read(&src).unwrap(), before, "源文件被改动了");
     let out = PathBuf::from(&res.jsonl_path);
@@ -69,7 +70,7 @@ fn write_new_file_refuses_existing_target() {
     let root = tmp("excl");
     let p = root.join("projects").join("proj").join("dup.jsonl");
     std::fs::write(&p, "PREEXISTING\n").unwrap();
-    let err = write_new_file(&p, &[serde_json::json!({"x":1})]).unwrap_err();
+    let err = write_new_file(&NewFile::issue(), &p, &[serde_json::json!({"x":1})]).unwrap_err();
     assert!(err.contains("create"), "got: {err}");
     assert_eq!(
         std::fs::read_to_string(&p).unwrap(),
@@ -115,7 +116,7 @@ fn an_unknown_session_id_is_refused_not_silently_substituted() {
     seed(&root, "bbb");
     // 反向自检：树上真有东西可被「随手挑」。
     assert!(find_here(&root, "aaa").is_ok(), "夹具没造出可被挑中的会话");
-    let err = run_inner(&root, "ccc", "u2").unwrap_err();
+    let err = run_inner(&NewFile::issue(), &root, "ccc", "u2").unwrap_err();
     assert!(
         err.contains("not found") && err.contains("ccc"),
         "查不到的 sid 应当报错并点名，实得：{err}"
@@ -155,7 +156,7 @@ fn sidechain_reject_reaches_backend_path() {
     );
     body.push('\n');
     std::fs::write(&f, body).unwrap();
-    let err = run_inner(&root, "sc", "s1").unwrap_err();
+    let err = run_inner(&NewFile::issue(), &root, "sc", "s1").unwrap_err();
     assert!(err.contains("sidechain"), "got: {err}");
     std::fs::remove_dir_all(&root).ok();
 }
@@ -183,10 +184,11 @@ fn new_session_id_has_uuid_shape_and_varies() {
 fn the_frame_face_and_the_core_are_one_fork() {
     let root = tmp("wire");
     seed(&root, "srcsid");
-    let via_cli = run_inner(&root, "srcsid", "u2").unwrap();
+    let via_cli = run_inner(&NewFile::issue(), &root, "srcsid", "u2").unwrap();
     // 帧面那一格 `launch` 由入口交：它拿到的是源会话那份记录与源 sid。
     let asked = std::cell::RefCell::new(Vec::new());
     let via_wire = answer_wire_at(
+        &NewFile::issue(),
         &root,
         &serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
         &|source, sid| {
@@ -257,10 +259,12 @@ fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
         serde_json::json!({"sid": "", "uuid": "u2"}),
         serde_json::json!({"sid": 1, "uuid": "u2"}),
     ] {
-        let (code, _) = answer_wire_at(&root, &bad, &no_launch).expect_err("该拒");
+        let (code, _) =
+            answer_wire_at(&NewFile::issue(), &root, &bad, &no_launch).expect_err("该拒");
         assert_eq!(code, "bad_args", "{bad}");
     }
     let (code, msg) = answer_wire_at(
+        &NewFile::issue(),
         &root,
         &serde_json::json!({"sid": "nosuch", "uuid": "u2"}),
         &no_launch,
@@ -295,7 +299,8 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
             serde_json::json!({"sid": bad, "uuid": "u2"}),
             serde_json::json!({"sid": "srcsid", "uuid": bad}),
         ] {
-            let (code, msg) = answer_wire_at(&root, &args, &no_launch).expect_err("该拒");
+            let (code, msg) =
+                answer_wire_at(&NewFile::issue(), &root, &args, &no_launch).expect_err("该拒");
             assert_eq!(code, "bad_args", "{args} ⇒ {msg}");
             assert!(
                 copy_core::copy_matches("rsRemoteBranch.forkId.badChar", &msg)
@@ -306,6 +311,7 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
     }
     assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
     let ok = answer_wire_at(
+        &NewFile::issue(),
         &root,
         &serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
         &no_launch,
@@ -314,6 +320,7 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
     assert!(ok["sessionId"].as_str().is_some_and(|s| s.len() <= 64));
     assert!(
         answer_wire_at(
+            &NewFile::issue(),
             &root,
             &serde_json::json!({"sid": "srcsid", "uuid": "a".repeat(64)}),
             &no_launch

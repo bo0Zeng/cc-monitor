@@ -4,6 +4,7 @@
 //! `files_commit_tests::the_commit_face_assembles_chunks_when_asked`。
 
 use super::*;
+use crate::platform::fs::Face;
 
 fn home(tag: &str) -> std::path::PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-uc-{tag}-{}", std::process::id()));
@@ -19,7 +20,8 @@ fn sha(b: &[u8]) -> String {
 
 fn stage(h: &Path, key: &str, parts: &[&[u8]]) {
     for (i, b) in parts.iter().enumerate() {
-        crate::control::files_commit::stage_chunk(h, key, i as u64, b).expect("送块");
+        crate::control::files_commit::stage_chunk(&Face::issue(), h, key, i as u64, b)
+            .expect("送块");
     }
 }
 
@@ -30,8 +32,9 @@ fn chunks_assemble_into_one_commit_and_a_bad_set_lands_nothing() {
     let key = "a".repeat(32);
     let body: Vec<u8> = (0u8..=255).cycle().take(3000).collect();
     stage(&h, &key, &[&body[..1000], &body[1000..2500], &body[2500..]]);
-    assemble_part(&h, &key, 3, 3000).expect("拼块被拒");
+    assemble_part(&Face::issue(), &h, &key, 3, 3000).expect("拼块被拒");
     crate::control::files_commit::commit_upload(
+        &Face::issue(),
         &h,
         &key,
         &h.join("dst"),
@@ -55,7 +58,7 @@ fn chunks_assemble_into_one_commit_and_a_bad_set_lands_nothing() {
     // 反：说 3 块只送了 2 块 ⇒ 拒，目标不在，块收掉。
     let key2 = "b".repeat(32);
     stage(&h, &key2, &[b"xx", b"yy"]);
-    let e = assemble_part(&h, &key2, 3, 4).expect_err("少一块却拼成了");
+    let e = assemble_part(&Face::issue(), &h, &key2, 3, 4).expect_err("少一块却拼成了");
     assert_eq!(e.code(), "io_failed", "{e:?}");
     assert!(
         std::fs::symlink_metadata(h.join("dst/g.bin")).is_err(),

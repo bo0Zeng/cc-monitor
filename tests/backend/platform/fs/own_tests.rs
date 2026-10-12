@@ -326,3 +326,27 @@ fn a5_a_failed_write_carries_the_reason_word_and_the_raw_words_go_to_the_detail(
     assert!(e.raw.is_some(), "系统原话没进详情：{e:?}");
     std::fs::remove_dir_all(&base).ok();
 }
+
+#[test]
+#[cfg(unix)]
+fn o1_born_private_existing_left_alone_missing_parent_refused() {
+    use std::os::unix::fs::PermissionsExt as _;
+    let mode = |p: &Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
+    let base = std::env::temp_dir().join(format!("ccm-hx1-owndir-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    std::fs::create_dir_all(&base).expect("base");
+    let fresh = base.join(".cc-monitor");
+    create_dir_private(&fresh).expect("建");
+    assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
+    create_dir_private(&fresh).expect("再建一次（已在）不算错");
+    let old = base.join("old");
+    std::fs::create_dir(&old).expect("预置");
+    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    create_dir_private(&old).expect("已在");
+    assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
+    assert!(
+        create_dir_private(&base.join("no/such")).is_err(),
+        "父目录不在也建出来了（只建一层）"
+    );
+    std::fs::remove_dir_all(&base).ok();
+}

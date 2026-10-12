@@ -365,7 +365,7 @@ impl std::os::fd::AsFd for DiagFile {
 pub(crate) const PRIVATE_DIR_MODE: u32 = 0o700;
 
 /// 建**一层**目录、建的那一下就是 0700（unix：权限位随创建一起生效，没有「先按 umask 建出来再收窄」的那一段）；已在的不动。
-/// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 的本体；文件管理面建暂存区那一处（第三层，下一刀搬）也直接用它。
+/// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 的本体；文件管理面建暂存区那一处（`Face::make_dir_private`）也是它。
 pub(crate) fn create_dir_private(dir: &Path) -> std::io::Result<()> {
     let mut b = std::fs::DirBuilder::new();
     #[cfg(unix)]

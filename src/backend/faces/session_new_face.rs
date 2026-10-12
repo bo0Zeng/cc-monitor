@@ -23,10 +23,11 @@ pub(crate) fn answer(
     args: &Value,
     files: super::launch_face::Files,
     own: &crate::platform::fs::Own,
+    nf: &crate::platform::fs::NewFile,
 ) -> Result<Value, session_new::Failed> {
     let home = crate::observe::history_query::agent_home();
     let fork =
-        |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(&home, sid, uuid);
+        |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(nf, &home, sid, uuid);
     let user_home = crate::platform::paths::home_dir();
     let ctx = super::rotation_face::Ctx::here();
     let sid = crate::accounts::quota::rotation::new_session_id;

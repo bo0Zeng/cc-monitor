@@ -435,7 +435,7 @@ fn every_registered_command_declares_its_run_kind() {
         );
         let is_blocking = matches!(
             spec.run,
-            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_) | Run::BlockingFace(_)
         );
         assert_eq!(
             is_blocking, expected_blocking,
@@ -958,13 +958,14 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     let tables: [(&[crate::control::files_write::ManageCommand], WriteAnswer); 2] = [
         (crate::control::files_write::MANAGE_COMMANDS, |c, a| {
             crate::control::files_write::answer_wire(
+                &crate::platform::fs::Face::issue(),
                 c,
                 a,
                 &super::registry::file_manager::SESSION_PORT,
             )
         }),
         (crate::control::files_commit::COMMIT_COMMANDS, |c, a| {
-            crate::control::files_commit::answer_wire(c, a)
+            crate::control::files_commit::answer_wire(&crate::platform::fs::Face::issue(), c, a)
         }),
     ];
     for (cap, answer) in tables

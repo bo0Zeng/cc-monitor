@@ -5,19 +5,11 @@
 //! 分叉要读整份 jsonl 的祖先链。真机会话动辄几十 MB —— 为了分叉把它拉过 ssh 再算完写回去，
 //! 是两趟大文件传输。backend 就跑在会话所在那台机器上，读写都是本地。
 //!
-//! # ★ 本模块是 backend **唯一**被允许写文件系统的地方
+//! # ★ 本模块只会新建
 //!
-//! `readonly_guard` 对它另有一套**更严**的断言（见该文件的白名单层）：
-//!
-//! - **只准 `create_new`（`O_EXCL`）新建**：目标已存在直接失败。
-//! - **不得**删除、改名、复制、建硬链软链。
-//! - **不得**用截断或追加打开 —— 那两样能改到既有文件。
-//! - **不得**整文件覆盖写、也不建目录（projects 目录本来就在）。
-//!
-//! ⚠ **上面这几条刻意不写出那些函数的字面名字**。护栏是**子串扫描、不剥注释**，
-//! 把 `fs`+`::`+`write` 这种词原样写进注释，会让这个模块被自己的文档判成违规
-//! —— 本仓「把注释当代码」已栽过四次（见 `test-support/strip-comments.ts` 头注）。
-//! **要改就改措辞，别去放宽护栏。**
+//! 写经 [`crate::platform::fs::NewFile`]：那只手只有一件事 —— `O_EXCL` 新建一份此前不存在的文件、一次写满；
+//! 目标已存在直接失败。删、改名、复制、截断、追加、覆盖、建目录它都没有（projects 目录本来就在）。
+//! 它由分叉那两条命令（`session-fork` · `session-new`）在命令表里领，别处拿不到。
 //!
 //! 这条边界背后的判据不是「backend 不许碰文件系统」，而是
 //! **「backend 不许改动用户既有数据」**。`O_EXCL` 新建一个此前不存在的文件不违反后者
@@ -37,6 +29,7 @@
 //! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：这里收「找」，不搬「写」）——
 //! 它是本 crate 只读白名单上那一条，搬它要动的是白名单，那是另一件事。
 
+use crate::platform::fs::{NewFile, NewFileFail};
 use std::path::Path;
 
 /// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
@@ -114,6 +107,7 @@ fn new_session_id(source_sid: &str) -> String {
 /// 帧面回复比 [`ForkResult`] 多一格 `launch`（分叉之后起要的三格事实）：由入口按「源会话那份记录 ＋ 源 sid」收齐交回（`launch`），
 /// 本层不读观测层。
 pub(crate) fn answer_wire_at(
+    nf: &NewFile,
     agent_home: &Path,
     args: &serde_json::Value,
     launch: &dyn Fn(&Path, &str) -> serde_json::Value,
@@ -133,7 +127,7 @@ pub(crate) fn answer_wire_at(
             })
     };
     let (sid, uuid) = (field("sid")?, field("uuid")?);
-    let res = fork_checked(agent_home, &sid, &uuid)?;
+    let res = fork_checked(nf, agent_home, &sid, &uuid)?;
     let mut v =
         serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))?;
     v["launch"] = launch(&res.source, &sid);
@@ -142,15 +136,17 @@ pub(crate) fn answer_wire_at(
 
 /// 起新会话那一条（`session-new` 带 `forkFrom`）写分支记录：同 [`answer_wire_at`] 那一份本体，回新会话的 sid。
 pub(crate) fn fork_for_launch(
+    nf: &NewFile,
     agent_home: &Path,
     sid: &str,
     uuid: &str,
 ) -> Result<String, (&'static str, String)> {
-    fork_checked(agent_home, sid, uuid).map(|r| r.session_id)
+    fork_checked(nf, agent_home, sid, uuid).map(|r| r.session_id)
 }
 
 /// 两个 id 先过放行判定，再交 [`run_inner`]。
 fn fork_checked(
+    nf: &NewFile,
     agent_home: &Path,
     sid: &str,
     uuid: &str,
@@ -176,10 +172,11 @@ fn fork_checked(
             return Err(("bad_args", said));
         }
     }
-    run_inner(agent_home, sid, uuid).map_err(|m| ("fork_failed", m))
+    run_inner(nf, agent_home, sid, uuid).map_err(|m| ("fork_failed", m))
 }
 
 fn run_inner(
+    nf: &NewFile,
     agent_home: &Path,
     source_sid: &str,
     message_uuid: &str,
@@ -203,7 +200,7 @@ fn run_inner(
     let file_name = crate::agents::session_file_name(kind, &new_sid)
         .ok_or("refuse fork: this agent has no session file naming")?;
     let out_path = dir.join(file_name);
-    write_new_file(&out_path, &records)?;
+    write_new_file(nf, &out_path, &records)?;
 
     Ok(ForkResult {
         session_id: new_sid,
@@ -216,22 +213,21 @@ fn run_inner(
 /// 目标已存在直接失败，既消掉 `exists()→write` 的 TOCTOU 窗口，
 /// 也自证「绝不覆盖任何现存会话」——两个 monitor 同时分叉同一会话时，
 /// 后到的那个会拿到错误而不是把先到的那份盖掉。
-fn write_new_file(out_path: &Path, records: &[serde_json::Value]) -> Result<(), String> {
-    use std::io::Write as _;
+fn write_new_file(
+    nf: &NewFile,
+    out_path: &Path,
+    records: &[serde_json::Value],
+) -> Result<(), String> {
     let mut body = String::new();
     for rec in records {
         body.push_str(&serde_json::to_string(rec).map_err(|e| format!("serialize: {e}"))?);
         body.push('\n');
     }
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(out_path)
-        .map_err(|e| format!("refuse fork: create {}: {e}", out_path.display()))?;
     // 写失败（磁盘满等）也要把原因带回 UI —— 静默半截文件比报错糟得多。
-    f.write_all(body.as_bytes())
-        .map_err(|e| format!("refuse fork: write {}: {e}", out_path.display()))?;
-    Ok(())
+    nf.create(out_path, body.as_bytes()).map_err(|f| match f {
+        NewFileFail::Create(e) => format!("refuse fork: create {}: {e}", out_path.display()),
+        NewFileFail::Write(e) => format!("refuse fork: write {}: {e}", out_path.display()),
+    })
 }
 
 #[cfg(test)]

@@ -39,6 +39,7 @@ pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde
         | Run::AsyncData(_)
         | Run::AsyncOwn(_)
         | Run::BlockingOwn(_)
+        | Run::BlockingFace(_)
         | Run::Builtin => None,
     }
 }

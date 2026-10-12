@@ -293,6 +293,7 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
         Run::Blocking(f) => f(req).map_err(Fail::from),
         Run::BlockingData(f) => f(req),
         Run::BlockingOwn(f) => f(req, own),
+        Run::BlockingFace(f) => f(req, &crate::platform::fs::Face::issue()),
         Run::Async(f) => f(req).await.map_err(Fail::from),
         Run::AsyncData(f) => f(req).await,
         Run::AsyncOwn(f) => f(req, own.clone()).await.map_err(Fail::from),

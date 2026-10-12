@@ -9,6 +9,7 @@
 
 use super::*;
 use crate::dial::sftp::rig::{self, Entry};
+use crate::platform::fs::Face;
 use std::sync::atomic::AtomicUsize;
 
 const KEY: &str = "00112233445566778899aabbccddeeff";
@@ -299,9 +300,16 @@ async fn a_download_lands_under_a_non_utf8_local_name_byte_for_byte() {
         "local_path": crate::files::raw::to_json(crate::files::raw::path_bytes(&local)),
     });
     assert_eq!(local_path_of(&args).expect("b16 落点没认出来"), local);
-    download_to_local(&s, "srv/x.bin", &local, &Cancel::default(), &no_progress)
-        .await
-        .unwrap();
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/x.bin",
+        &local,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
     assert_eq!(std::fs::read(&local).unwrap(), b"BYTES");
     let mut part = name.to_os_string();
     part.push(".part");
@@ -320,9 +328,16 @@ async fn a_download_lands_verbatim_and_leaves_no_part() {
     let s = rig::session_on(fs.clone()).await;
     let tmp = Tmp::dir("dl");
     let local = tmp.path("a.bin").to_string_lossy().into_owned();
-    let n = download_to_local(&s, "srv/a.bin", &local, &Cancel::default(), &no_progress)
-        .await
-        .unwrap();
+    let n = download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/a.bin",
+        &local,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await
+    .unwrap();
     assert_eq!(n, body.len() as u64);
     assert_eq!(std::fs::read(&local).unwrap(), body);
     assert!(!tmp.path("a.bin.part").exists(), "`.part` 没收掉");
@@ -344,9 +359,16 @@ async fn a_download_with_a_matching_part_resumes_from_the_verified_tail() {
     let local = tmp.path("b.bin").to_string_lossy().into_owned();
     let seen = std::sync::Mutex::new(Vec::<u64>::new());
     let sink = |a: u64, _b: u64| seen.lock().unwrap().push(a);
-    download_to_local(&s, "srv/b.bin", &local, &Cancel::default(), &sink)
-        .await
-        .unwrap();
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/b.bin",
+        &local,
+        &Cancel::default(),
+        &sink,
+    )
+    .await
+    .unwrap();
     assert_eq!(std::fs::read(&local).unwrap(), body);
     assert_eq!(
         seen.into_inner().unwrap().first(),
@@ -367,9 +389,16 @@ async fn a_download_with_a_mismatched_part_starts_over_instead_of_stitching() {
     let local = tmp.path("c.bin").to_string_lossy().into_owned();
     let seen = std::sync::Mutex::new(Vec::<u64>::new());
     let sink = |a: u64, _b: u64| seen.lock().unwrap().push(a);
-    download_to_local(&s, "srv/c.bin", &local, &Cancel::default(), &sink)
-        .await
-        .unwrap();
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/c.bin",
+        &local,
+        &Cancel::default(),
+        &sink,
+    )
+    .await
+    .unwrap();
     assert_eq!(std::fs::read(&local).unwrap(), body);
     assert_eq!(seen.into_inner().unwrap().first(), Some(&0));
 }
@@ -384,7 +413,7 @@ async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     let local = tmp.path("d.bin").to_string_lossy().into_owned();
     let c = Cancel::default();
     c.fire();
-    download_to_local(&s, "srv/d.bin", &local, &c, &no_progress)
+    download_to_local(&Face::issue(), &s, "srv/d.bin", &local, &c, &no_progress)
         .await
         .expect_err("撤了");
     assert!(tmp.path("d.bin.part").exists(), "撤了 `.part` 却没了");
@@ -393,7 +422,15 @@ async fn a_cancelled_or_failed_download_keeps_its_part_unless_nothing_landed() {
     remote_file(&fs, "srv/e.bin", rig::corpus(200_000));
     fs.lock().unwrap().fail_read_after = Some(0);
     let local2 = tmp.path("e.bin").to_string_lossy().into_owned();
-    let r = download_to_local(&s, "srv/e.bin", &local2, &Cancel::default(), &no_progress).await;
+    let r = download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/e.bin",
+        &local2,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await;
     assert!(r.is_err(), "读坏了竟然成了");
     assert!(
         !tmp.path("e.bin.part").exists(),
@@ -417,9 +454,16 @@ async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its
     let tmp = Tmp::dir("dl-cut");
     let local = tmp.path("f.bin").to_string_lossy().into_owned();
     fs.lock().unwrap().fail_read_after = Some(2);
-    download_to_local(&s, "srv/f.bin", &local, &Cancel::default(), &no_progress)
-        .await
-        .expect_err("读到半路坏了");
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/f.bin",
+        &local,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await
+    .expect_err("读到半路坏了");
     let part = std::fs::read(tmp.path("f.bin.part")).expect("断了之后 `.part` 该留着");
     let l = part.len();
     assert!(l > 0 && l < body.len(), "`.part` 长度 {l} 不是半截");
@@ -430,9 +474,16 @@ async fn a_download_cut_off_midway_keeps_its_part_and_the_retry_resumes_from_its
         g.fail_read_after = None;
         g.read_offsets.clear();
     }
-    download_to_local(&s, "srv/f.bin", &local, &Cancel::default(), &no_progress)
-        .await
-        .expect("续传该成");
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/f.bin",
+        &local,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await
+    .expect("续传该成");
     let probe = (l as u64).min(CHUNK as u64);
     let below: Vec<u64> = fs
         .lock()
@@ -468,9 +519,16 @@ async fn a_resumed_download_asks_for_every_byte_from_the_probe_on_exactly_once()
     tmp.file("g.bin.part", &body[..have]);
     let local = tmp.path("g.bin").to_string_lossy().into_owned();
     fs.lock().unwrap().served_bytes = 0;
-    download_to_local(&s, "srv/g.bin", &local, &Cancel::default(), &no_progress)
-        .await
-        .expect("续传该成");
+    download_to_local(
+        &Face::issue(),
+        &s,
+        "srv/g.bin",
+        &local,
+        &Cancel::default(),
+        &no_progress,
+    )
+    .await
+    .expect("续传该成");
     let probe = (have as u64).min(CHUNK as u64);
     assert_eq!(
         fs.lock().unwrap().served_bytes,
@@ -517,7 +575,7 @@ fn reply_of(f: &Frame) -> (bool, Option<String>, Option<serde_json::Value>) {
 #[tokio::test]
 async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     let (tx, _rx) = mpsc::channel(64);
-    let desk = Desk::new(tx);
+    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
     let tmp = Tmp::dir("desk");
     let local = tmp.file("g.bin", b"hello");
     let (ok, _, data) = reply_of(&desk.upload(
@@ -553,7 +611,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
     // 另一向：一个规整的本机落点 ⇒ 开得出单（〔SR1b 死值验〕只判「踩线 ⇒ refused」的话，
     //   围栏换成「一律拒」本条照绿 —— 那一刀当场没砍中，补这一向）。另起一张台，不动上面那张的册数。
     let (tx2, _rx2) = mpsc::channel(8);
-    let desk2 = Desk::new(tx2);
+    let desk2 = Desk::new(tx2, crate::platform::fs::Face::issue());
     let (ok, code, data) = reply_of(&desk2.download(
         "r5b",
         &serde_json::json!({"dial": dial(), "remote_path": "/x", "local_path": tmp.0.join("dl.bin").to_string_lossy()}),
@@ -585,7 +643,7 @@ async fn the_desk_books_tickets_and_refuses_what_it_should_with_a_code() {
 #[tokio::test]
 async fn a_started_transfer_always_ends_with_a_final_frame_and_leaves_the_desk() {
     let (tx, mut rx) = mpsc::channel(64);
-    let desk = Desk::new(tx);
+    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
     let tmp = Tmp::dir("start");
     let local = tmp.file("h.bin", b"x");
     // 端口 1：本机上一定断开（拒绝连接，立刻失败，不等期限）。
@@ -653,7 +711,7 @@ async fn cancel_wakes_a_waiter_whichever_side_comes_first() {
 #[test]
 fn dropping_the_desk_cancels_every_ticket() {
     let (tx, _rx) = mpsc::channel(4);
-    let desk = Desk::new(tx);
+    let desk = Desk::new(tx, crate::platform::fs::Face::issue());
     let tmp = Tmp::dir("drop");
     let local = tmp.file("i.bin", b"x");
     reply_of(&desk.upload(
@@ -784,8 +842,15 @@ async fn a_hole_the_tail_probe_cannot_see_is_caught_by_the_commit() {
         std::fs::write(staging.join(format!("{KEY}.part")), &staged_bytes).unwrap();
         let root = tmp.path("dest");
         std::fs::create_dir_all(&root).unwrap();
-        let r =
-            crate::control::files_commit::commit_upload(&home, KEY, &root, "h.bin", false, &sha);
+        let r = crate::control::files_commit::commit_upload(
+            &Face::issue(),
+            &home,
+            KEY,
+            &root,
+            "h.bin",
+            false,
+            &sha,
+        );
         if corrupt {
             let e = r.expect_err("中间有洞的暂存件竟然上位了");
             assert_eq!(e.code(), "stale", "{}", e.message());

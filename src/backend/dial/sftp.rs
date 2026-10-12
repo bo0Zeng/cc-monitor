@@ -25,7 +25,7 @@
 //!
 //! # 买不到什么（逐条）
 //!
-//! - **TOCTOU**：判定与动手之间有窗（同第三层 `files_write` 自陈的那一格）。
+//! - **TOCTOU**：判定与动手之间有窗（同 `files_write` 自陈的那一格）。
 //! - **Windows 远端**：home 是 `C:\…` 形时归一化不认它 ⇒ 一律拒（出声，不猜）。一格读数都没有。
 //! - **`ChrootDirectory` / `internal-sftp -d`**：起始目录不是 `$HOME` 的机器上，这里的「home」是 SFTP 的起始目录，
 //!   与远端后端的 `$HOME` 不是同一个 ⇒ 暂存件提交会答「不在」（`files_commit` 头注那一格照旧）。

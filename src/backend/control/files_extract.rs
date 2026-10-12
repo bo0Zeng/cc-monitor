@@ -1,4 +1,4 @@
-//! 解压（`files-extract`）＋ 第三层「建链接」那一个动词的住址。
+//! 解压（`files-extract`）＋ 「建链接」那一个动词（`Face::make_link`）的调用方。
 //!
 //! - 复制链接本身（不跟进去，目标文本原样；= GNU `cp -R` 缺省的 `-P`）⇒ [`land_link`]（复制目录与解压共用）。
 //! - 「解压到这里」：用 Rust 库（`tar` · `flate2` · `zip`，不调外部命令）解到同目录下以包名命名的新目录；每一条先过路径解析
@@ -17,9 +17,10 @@
 //! 认下的：不设解压字节上限 · 修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
 use super::files_write::{
-    lexical_in_root, opener, resolve_existing_in_root, resolve_in_root, Answer, ManageCommand,
-    WriteFail, WriteRefusal, TREE_ENTRY_CAP,
+    lexical_in_root, resolve_existing_in_root, resolve_in_root, Answer, ManageCommand, WriteFail,
+    WriteRefusal, TREE_ENTRY_CAP,
 };
+use crate::platform::fs::{Face, Ro, RoFile};
 use copy_core::{copy_text, io_reason};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -39,9 +40,14 @@ pub const LINKS_SUPPORTED: bool = cfg!(unix);
 /// 在 `root ＋ rel` 上建一条链接，目标文本 ＝ `target`（原样，不解、不判 —— 它指到哪是它的内容，同 `cp -P`）。
 /// 链接自己那条路径先过 [`resolve_in_root`]；已在（含一条链接）⇒ 系统拒，一个字节不动。
 #[cfg(unix)]
-pub fn land_link(root: &Path, rel: &Path, target: &Path) -> Result<PathBuf, WriteRefusal> {
+pub fn land_link(
+    face: &Face,
+    root: &Path,
+    rel: &Path,
+    target: &Path,
+) -> Result<PathBuf, WriteRefusal> {
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
-    std::os::unix::fs::symlink(target, &at).map_err(|e| {
+    face.make_link(target, &at).map_err(|e| {
         WriteRefusal::io(
             copy_text(
                 "beFilesWrite.write.failed",
@@ -53,12 +59,17 @@ pub fn land_link(root: &Path, rel: &Path, target: &Path) -> Result<PathBuf, Writ
             &e,
         )
     })?;
-    Ok(at)
+    Ok(at.into_path_buf())
 }
 
 /// 非 unix：没有「建链接」这个动词（计划趟看 [`LINKS_SUPPORTED`] 已整趟拒，走不到这里；兜底仍说清）。
 #[cfg(not(unix))]
-pub fn land_link(root: &Path, rel: &Path, _target: &Path) -> Result<PathBuf, WriteRefusal> {
+pub fn land_link(
+    face: &Face,
+    root: &Path,
+    rel: &Path,
+    _target: &Path,
+) -> Result<PathBuf, WriteRefusal> {
     let at = resolve_in_root(root, rel).map_err(WriteRefusal::Refused)?;
     Err(WriteRefusal::Refused(copy_text(
         "beFilesLink.land.unsupported",
@@ -326,8 +337,8 @@ fn close_plan(plan: &mut Plan, cap: usize) -> Result<(), Fail> {
     Ok(())
 }
 
-fn open_archive(path: &Path) -> Result<std::fs::File, Fail> {
-    opener().read(true).open(path).map_err(|e| {
+fn open_archive(path: &Path) -> Result<RoFile, Fail> {
+    Ro::open_nofollow(path).map_err(|e| {
         io_failed(
             copy_text(
                 "beFilesExtract.archive.unreadable",
@@ -374,7 +385,7 @@ fn tar_raw<R: Read>(e: &tar::Entry<'_, R>) -> Raw {
     }
 }
 
-fn tar_reader(kind: Kind, f: std::fs::File) -> Box<dyn Read> {
+fn tar_reader(kind: Kind, f: RoFile) -> Box<dyn Read> {
     let buf = std::io::BufReader::new(f);
     match kind {
         Kind::TarGz => Box::new(flate2::read::GzDecoder::new(buf)),
@@ -447,7 +458,13 @@ pub fn plan(archive: &Path, kind: Kind, cap: usize) -> Result<Plan, Fail> {
 }
 
 /// 落一份普通文件：先过路径解析 → `O_EXCL` 新建 → 写满 → 权限位（给了才设）。回写了几个字节。
-fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) -> Result<u64, Fail> {
+fn land_file(
+    face: &Face,
+    root: &Path,
+    rel: &Path,
+    body: &mut dyn Read,
+    mode: Option<u32>,
+) -> Result<u64, Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
     let fail = |e: std::io::Error| {
         io_failed(
@@ -461,18 +478,13 @@ fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) ->
             e,
         )
     };
-    let mut out = opener()
-        .write(true)
-        .create_new(true)
-        .open(&at)
-        .map_err(fail)?;
+    let mut out = face.create_new(&at).map_err(fail)?;
     // 写一半 / 设权限没成 ⇒ 删掉**我们自己刚建的那一份**（`O_EXCL` 保证它此前不存在），它还没进回滚那张表。
     // 权限位按句柄改（没有路径可被换成链接）。
     let done = std::io::copy(body, &mut out).and_then(|n| {
         #[cfg(unix)]
-        if let Some(m) = mode {
-            use std::os::unix::fs::PermissionsExt as _;
-            out.set_permissions(std::fs::Permissions::from_mode(m))?;
+        if let Some(p) = mode.and_then(Ro::perms_from_mode) {
+            out.set_permissions(p)?;
         }
         #[cfg(not(unix))]
         let _ = mode;
@@ -480,15 +492,15 @@ fn land_file(root: &Path, rel: &Path, body: &mut dyn Read, mode: Option<u32>) ->
     });
     drop(out);
     done.map_err(|e| {
-        std::fs::remove_file(&at).ok();
+        face.delete_file(&at).ok();
         fail(e)
     })
 }
 
 /// 建一个目录（先过路径解析）。
-fn land_dir(root: &Path, rel: &Path) -> Result<(), Fail> {
+fn land_dir(face: &Face, root: &Path, rel: &Path) -> Result<(), Fail> {
     let at = resolve_in_root(root, rel).map_err(|m| ("refused", m))?;
-    std::fs::create_dir(&at).map_err(|e| {
+    face.make_dir(&at).map_err(|e| {
         io_failed(
             copy_text(
                 "beFilesWrite.write.failed",
@@ -503,16 +515,16 @@ fn land_dir(root: &Path, rel: &Path) -> Result<(), Fail> {
 }
 
 /// 回滚：倒序删掉这一趟**自己建的**（每条先过路径解析）。回撤不掉的那一条的说法 ＋ 系统原话（有的话）。
-fn undo(root: &Path, made: &[(PathBuf, bool)]) -> Option<(String, Option<String>)> {
+fn undo(face: &Face, root: &Path, made: &[(PathBuf, bool)]) -> Option<(String, Option<String>)> {
     for (rel, is_dir) in made.iter().rev() {
         let at = match resolve_in_root(root, rel) {
             Ok(a) => a,
             Err(m) => return Some((m, None)),
         };
         let done = if *is_dir {
-            std::fs::remove_dir(&at)
+            face.delete_dir(&at)
         } else {
-            std::fs::remove_file(&at)
+            face.delete_file(&at)
         };
         if let Err(e) = done {
             return Some((
@@ -532,6 +544,7 @@ fn undo(root: &Path, made: &[(PathBuf, bool)]) -> Option<(String, Option<String>
 
 /// 执行趟：照计划落（`into` 相对 `root`，已由调用方建好、记进 `made`）。
 fn execute(
+    face: &Face,
     root: &Path,
     into: &Path,
     archive: &Path,
@@ -541,7 +554,7 @@ fn execute(
 ) -> Result<u64, Fail> {
     for (rel, w) in &plan.entries {
         if *w == What::Dir {
-            land_dir(root, &into.join(rel))?;
+            land_dir(face, root, &into.join(rel))?;
             made.push((into.join(rel), true));
         }
     }
@@ -560,7 +573,7 @@ fn execute(
                 zip::ZipArchive::new(open_archive(archive)?).map_err(|e| broken(archive, e))?;
             for (i, (rel, mode)) in &files {
                 let mut f = z.by_index(*i).map_err(|e| broken(archive, e))?;
-                bytes += land_file(root, &into.join(rel), &mut f, *mode)?;
+                bytes += land_file(face, root, &into.join(rel), &mut f, *mode)?;
                 made.push((into.join(rel), false));
             }
         }
@@ -571,7 +584,7 @@ fn execute(
                     continue;
                 };
                 let mut e = e.map_err(|e| broken(archive, e))?;
-                bytes += land_file(root, &into.join(rel), &mut e, *mode)?;
+                bytes += land_file(face, root, &into.join(rel), &mut e, *mode)?;
                 made.push((into.join(rel), false));
             }
         }
@@ -585,13 +598,13 @@ fn execute(
                 Some(What::File { mode, .. }) => *mode,
                 _ => None,
             };
-            bytes += land_file(root, &into.join(rel), &mut body, mode)?;
+            bytes += land_file(face, root, &into.join(rel), &mut body, mode)?;
             made.push((into.join(rel), false));
         }
     }
     for (rel, w) in &plan.entries {
         if let What::Link(to) = w {
-            land_link(root, &into.join(rel), to)
+            land_link(face, root, &into.join(rel), to)
                 .map_err(|e| (e.code(), e.message().to_string()))?;
             made.push((into.join(rel), false));
         }
@@ -600,12 +613,18 @@ fn execute(
 }
 
 /// **解压**：`root ＋ rel` 那个包解到 `root ＋ into`（一个此前不存在的新目录）。
-pub fn extract(root: &Path, rel: &Path, into: &Path) -> Result<Extracted, Fail> {
-    extract_with(root, rel, into, TREE_ENTRY_CAP)
+pub fn extract(face: &Face, root: &Path, rel: &Path, into: &Path) -> Result<Extracted, Fail> {
+    extract_with(face, root, rel, into, TREE_ENTRY_CAP)
 }
 
 /// [`extract`] 的本体，上限由调用方给（判据拿小上限验「超了整趟拒」）。
-pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<Extracted, Fail> {
+pub fn extract_with(
+    face: &Face,
+    root: &Path,
+    rel: &Path,
+    into: &Path,
+    cap: usize,
+) -> Result<Extracted, Fail> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
     let kind = kind_of(base).ok_or_else(|| {
@@ -619,7 +638,7 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
     })?;
     let archive = resolve_existing_in_root(root, rel).map_err(|m| ("refused", m))?;
     let dest = resolve_in_root(root, into).map_err(|m| ("refused", m))?;
-    if std::fs::symlink_metadata(&dest).is_ok() {
+    if Ro::symlink_metadata(&dest).is_ok() {
         return Err(WriteFail::from((
             "exists",
             copy_text(
@@ -630,7 +649,7 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
     }
     let plan = plan(&archive, kind, cap)?;
     // 落点目录：`create_dir` 自己就是「不在才建」（与探的那一眼之间有人建了 ⇒ 仍是 `exists`）。
-    if let Err(e) = std::fs::create_dir(&dest) {
+    if let Err(e) = face.make_dir(&dest) {
         return Err(if e.kind() == std::io::ErrorKind::AlreadyExists {
             WriteFail::from((
                 "exists",
@@ -653,11 +672,11 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
         });
     }
     let mut made: Vec<(PathBuf, bool)> = vec![(into.to_path_buf(), true)];
-    match execute(root, into, &archive, kind, &plan, &mut made) {
+    match execute(face, root, into, &archive, kind, &plan, &mut made) {
         Ok(bytes) => {
             let count = |f: fn(&What) -> bool| plan.entries.values().filter(|w| f(w)).count();
             Ok(Extracted {
-                path: dest,
+                path: dest.into_path_buf(),
                 files: count(|w| matches!(w, What::File { .. } | What::Copy(_))),
                 dirs: count(|w| *w == What::Dir),
                 links: count(|w| matches!(w, What::Link(_))),
@@ -665,7 +684,7 @@ pub fn extract_with(root: &Path, rel: &Path, into: &Path, cap: usize) -> Result<
             })
         }
         Err(f) => {
-            let (tail, stuck_raw) = match undo(root, &made) {
+            let (tail, stuck_raw) = match undo(face, root, &made) {
                 None => (copy_text("beFilesExtract.undo.all", &[]), None),
                 Some((stuck, raw)) => (
                     copy_text("beFilesExtract.undo.stuck", &[("what", &stuck)]),
@@ -737,7 +756,7 @@ pub fn into_name(stem: &[u8], n: u32) -> Vec<u8> {
 }
 
 /// 线上那一形：落点由这里按包名定（名字规矩只有这一份）；`fresh` ⇒ 撞名往后取第一个不在的编号。
-pub fn extract_here(root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, Fail> {
+pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, Fail> {
     let name = crate::files::raw::path_bytes(rel);
     let base = name.rsplit(|b| *b == b'/').next().unwrap_or(name);
     let stem = stem_of(base).ok_or_else(|| {
@@ -756,10 +775,10 @@ pub fn extract_here(root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, F
         crate::files::raw::to_path_buf(&v)
     };
     if !fresh {
-        return extract(root, rel, &at(1));
+        return extract(face, root, rel, &at(1));
     }
     for n in 2..=FRESH_TRIES + 1 {
-        match extract(root, rel, &at(n)) {
+        match extract(face, root, rel, &at(n)) {
             Err(WriteFail { code: "exists", .. }) => continue,
             other => return other,
         }
@@ -773,7 +792,7 @@ pub fn extract_here(root: &Path, rel: &Path, fresh: bool) -> Result<Extracted, F
     )))
 }
 
-fn answer_extract(args: &serde_json::Value) -> Answer {
+fn answer_extract(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_arg(args, "root")?;
     let rel = path_arg(args, "rel")?;
     let fresh = match args.get("fresh") {
@@ -782,7 +801,7 @@ fn answer_extract(args: &serde_json::Value) -> Answer {
             .as_bool()
             .ok_or(("bad_args", copy_text("beFilesExtract.args.fresh", &[])))?,
     };
-    let got = extract_here(&root, &rel, fresh)?;
+    let got = extract_here(face, &root, &rel, fresh)?;
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&got.path)),
         "files": got.files,
@@ -793,21 +812,21 @@ fn answer_extract(args: &serde_json::Value) -> Answer {
 }
 
 /// `files-link {root, rel, target}` → `{path}`。
-fn answer_link(args: &serde_json::Value) -> Answer {
+fn answer_link(face: &Face, args: &serde_json::Value) -> Answer {
     let root = path_arg(args, "root")?;
     let rel = path_arg(args, "rel")?;
     let target = path_arg(args, "target")?;
-    let at = land_link(&root, &rel, &target).map_err(WriteFail::from)?;
+    let at = land_link(face, &root, &rel, &target).map_err(WriteFail::from)?;
     Ok(serde_json::json!({
         "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&at)),
     }))
 }
 
 /// 线上入口（只从 `stream/inbound/` 那一扇门来）。
-pub fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
+pub fn answer_wire(face: &Face, wire_name: &str, args: &serde_json::Value) -> Answer {
     match wire_name {
-        "files-extract" => answer_extract(args),
-        "files-link" => answer_link(args),
+        "files-extract" => answer_extract(face, args),
+        "files-link" => answer_link(face, args),
         other => Err(WriteFail::from((
             "bad_args",
             copy_text("beFilesExtract.args.unknownCmd", &[("cmd", other)]),
