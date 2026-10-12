@@ -2673,6 +2673,40 @@ fn the_answer_hook_rides_only_on_the_session_ccm_starts() {
     );
 }
 
+/// 换了启动器（`--launcher`，cc-spawn 的 `CCSPAWN_LAUNCH`、别名配置里那一格）⇒ 不垫答题 hook：它后面那些词由那个启动器
+/// 自己原样转交（`env VAR=x <agent>` 那一形里头几个词是 env 的），ccm 不知道它认不认这一家的旗标，垫进去就落进了别人原样转交的那一段。
+/// 启动器写的就是这一家的默认那一个（`claude`）⇒ 照垫。没挂上的会话照「只能在终端里答」那一态画（会话事实没有 ask）。
+#[test]
+fn the_answer_hook_is_not_put_into_a_launcher_someone_else_wrote() {
+    let mut e = env();
+    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
+    for launcher in ["/opt/bin/fake-agent", "env", "ccr code"] {
+        let Plan::Direct(d) = plan_of(
+            &["任务", "--launcher", launcher],
+            &e,
+            &AccountTable::default(),
+        ) else {
+            panic!("该是 Direct")
+        };
+        let mut want: Vec<String> = launcher.split(' ').map(str::to_string).collect();
+        want.push("任务".into());
+        assert_eq!(d.argv, want, "换了启动器 {launcher} ⇒ 不垫");
+    }
+    let Plan::Direct(d) = plan_of(
+        &["任务", "--launcher", "claude"],
+        &e,
+        &AccountTable::default(),
+    ) else {
+        panic!("该是 Direct")
+    };
+    let mut want = vec!["claude".to_string()];
+    want.extend(crate::agents::claudecode::asks::launch_args(
+        "/home/pi/.cc-monitor/bin/ccm",
+    ));
+    want.push("任务".into());
+    assert_eq!(d.argv, want, "启动器就是这一家默认那一个 ⇒ 照垫");
+}
+
 /// 用户自己给了会话级设置 ⇒ 不另垫，把答题 hook 并进他那一份（别的原样，只往 PermissionRequest 末尾加一组），换成并好的 JSON 串交出去；
 /// 文件按工作目录补全去读，原文件一个字不动。读不出 / 形状不认 ⇒ 原样交出去、标挂不上（进程环境里带那个变量，打印那一行也看得见）。
 #[test]

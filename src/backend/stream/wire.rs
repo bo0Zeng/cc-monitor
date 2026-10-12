@@ -168,11 +168,6 @@ impl ActivityFace {
             activity_order: order,
         }
     }
-
-    /// 写好的字与语气（轮换那一侧的会话状态照抄这两格）。
-    pub(crate) fn words(&self) -> (Words, Tone) {
-        (self.activity_text.clone(), self.activity_tone)
-    }
 }
 
 /// **这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：

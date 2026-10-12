@@ -293,7 +293,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             Box::pin(async move {
                 let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
                 crate::assets::hub::ext_preview_many(
-                    &hub_here(&r.tz),
+                    &hub_here(&r.tz, &own),
                     &r.args,
                     &crate::dial::remote_ask::REACH,
                     &crate::dial::remote_ask::DialRemote,
@@ -319,7 +319,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             Box::pin(async move {
                 let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
                 crate::assets::hub::ext_apply_many(
-                    &hub_here(&r.tz),
+                    &hub_here(&r.tz, &own),
                     &r.args,
                     &crate::dial::remote_ask::REACH,
                     &crate::dial::remote_ask::DialRemote,
