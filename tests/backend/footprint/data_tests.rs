@@ -202,7 +202,10 @@ fn 自己家里的每一样一行_文件给大小_目录不给_不在的照实�
     for r in &rows {
         let mut keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort();
-        assert_eq!(keys, vec!["class", "dir", "exists", "id", "path", "size"]);
+        assert_eq!(
+            keys,
+            vec!["class", "dir", "exists", "id", "path", "size", "what"]
+        );
     }
 }
 
