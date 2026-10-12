@@ -18,12 +18,33 @@ fn agent_of(args: &Value) -> &str {
         .unwrap_or_default()
 }
 
-/// `session-new`。
-pub(crate) fn answer(
-    args: &Value,
+/// `session-new`：起一个新会话（全产品一个框、一个请求）。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
+pub(crate) struct SessionNew;
+
+impl crate::stream::inbound::typed::Command for SessionNew {
+    const NAME: &'static str = "session-new";
+    type Req = session_new::NewRequest;
+    type Reply = session_new::SessionNew;
+    type Err = session_new::SessionNewErr;
+}
+
+impl crate::stream::inbound::typed::WithOwn for SessionNew {
+    fn run(
+        req: session_new::NewRequest,
+        _cx: &crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+        own: &crate::platform::Own,
+    ) -> Result<session_new::SessionNew, session_new::SessionNewErr> {
+        answer(req, files, own).map_err(session_new::SessionNewErr)
+    }
+}
+
+/// `session-new` 的生产那一份事实。
+fn answer(
+    req: session_new::NewRequest,
     files: super::launch_face::Files,
     own: &crate::platform::fs::Own,
-) -> Result<Value, session_new::Failed> {
+) -> Result<session_new::SessionNew, session_new::Failed> {
     let home = crate::observe::history_query::agent_home();
     let fork =
         |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(&home, sid, uuid);
@@ -46,8 +67,9 @@ pub(crate) fn answer(
         write: &write,
         forget: &forget,
     };
-    super::session_batch_face::with_deps_as(None, agent_of(args), Some(files), |d| {
-        session_new::answer(args, d, &fork, &pre, user_home.as_deref())
+    let agent = req.agent.clone();
+    super::session_batch_face::with_deps_as(None, &agent, Some(files), |d| {
+        session_new::answer(req, d, &fork, &pre, user_home.as_deref())
     })
 }
 

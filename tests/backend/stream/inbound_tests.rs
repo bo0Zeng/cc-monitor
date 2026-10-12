@@ -1785,6 +1785,37 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         wire(&crate::control::launch::reply("demo-cc", true, false)),
         r##"{"created":true,"session":"demo-cc","typed":false}"##
     );
+    // session-new：手机那一份入参（`core-claude/.../link/Sessions.kt`）经登记表跑；目录不在 ⇒ 失败信封的 `data` 照旧（哪一格 ＋ 选不了号那一形）。
+    let e = run_registered(
+        "session-new",
+        serde_json::json!({ "agent": "claude", "cwd": "/definitely/not/here", "place": "tmux", "local": false, "ticket": "t-1", "prompt": "hi" }),
+    )
+    .unwrap_err();
+    assert_eq!(
+        (e.code.as_str(), serde_json::to_string(&e.data).unwrap()),
+        (
+            "no_dir",
+            r##"{"field":"cwd","unavailable":null}"##.to_string()
+        )
+    );
+    let started = crate::control::session_new::SessionNew {
+        outcome: crate::control::session_new::SessionNewOutcome::Started,
+        session: Some("demo-cc".into()),
+        sid: None,
+        cmd: None,
+        account: None,
+        agent: "claude".into(),
+        cwd: "/srv/p".into(),
+        prompt: Some(crate::control::session_new::FirstSay {
+            result: "delivered".into(),
+            why: None,
+            said: None,
+        }),
+    };
+    assert_eq!(
+        wire(&started),
+        r##"{"account":null,"agent":"claude","cmd":null,"cwd":"/srv/p","outcome":"started","prompt":{"result":"delivered","said":null,"why":null},"session":"demo-cc","sid":null}"##
+    );
 }
 
 /// 回包写上线的那一步（帧里同此：先 `to_value` 再 `to_string` ⇒ 每一层的键排好序）。

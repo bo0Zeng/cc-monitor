@@ -4290,33 +4290,131 @@ type StartMode = "tmux" | "window";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rotation` | → | 可缺：打开哪份轮换配置。缺 ＝ 本机默认那份（不写）· `{config: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它记成打开那一份，回包 `sid` 就是它；配置不在 ⇒ `no_such_config`；那一家不认先定 sid ⇒ `bad_args` |
-| `account` | → ← | 可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:"base"}` · `{kind:"named", name}`；应答里是实际用的号（账号 0 / 不指定 ⇒ `null`） |
-| `agent` | → ← | 哪一家（线上的 kind）；应答里是起的那一家 |
-| `cmd` | → ← | `open` 时界面要在终端里跑的那一行 |
-| `command` | → | 启动命令；空 / 缺 ⇒ 那一家的默认启动器 |
-| `configDir` | ← | 应答 `account` 里：那个号的配置目录 |
-| `cwd` | → ← | 工作目录（开头的 `~` 按这台的家目录读）；应答里是展开之后的（认报到的会话按它） |
-| `field` | ← | 失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`） |
-| `forkFrom` | → | 可缺 |
-| `kind` | → | `account` 的种类：`follow` · `base` · `named`（应答 `account` 是实际用的号，不带种类） |
-| `local` | → | 发请求的界面就在这台上（开窗那一形本机与远端渲法不同） |
-| `model` | ← | 应答 `account` 里：用的模型 |
-| `model` | → | 可缺：这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随 |
-| `models` | → | 可缺 |
-| `name` | → ← | `account` 为 `named` 时的号名；应答 `account` 里是实际用的号 |
-| `outcome` | ← | `started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`） |
-| `permissionMode` | → | 可缺：起在哪一个权限档（那一家声明的档之一，原值）；缺 ＝ 跟随那一家自己的默认；那一家没有 / 不给的档 ⇒ `bad_args` |
-| `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
-| `prompt` | → ← | 入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 作为启动参数交给那一家（交给它的那一半末尾、`--` 之后，可以跨行），那一家自己在启动画面 · 信任框过了之后交进会话；那一家声明不认起的时候带第一句 ⇒ `bad_args`。应答：交的结局 `{result, why, said}`（同 `terminal-input` 那三格；起好了 ⇒ `delivered`），没给第一句 ⇒ `null` |
-| `session` | ← | `started` 时的 tmux 会话名 |
-| `sid` | ← | 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid 的旗标）；那一家不认 ⇒ `null`（报到之前说不出） |
-| `ticket` | → | 可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界） |
-| `tmuxName` | → | 可缺 ⇒ 这台铸 |
-| `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |
-| `uuid` | → | `forkFrom` 里：从哪条消息处分叉 |
+入参 `NewRequest` · 回包 `SessionNew`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type FirstSay = { 
+/**
+ * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
+ */
+result: string, 
+/**
+ * `refused` 的原因（同 `terminal-input`）；别的 ⇒ `null`。
+ */
+why: string | null, 
+/**
+ * `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
+ */
+said: string | null, };
+type ForkFrom = { 
+/**
+ * 源会话 id。
+ */
+sid: string, 
+/**
+ * 从哪条消息处分叉。
+ */
+uuid: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type NewRequest = { 
+/**
+ * 哪一家（线上的 kind）。必填。
+ */
+agent: string, 
+/**
+ * 工作目录（开头的 `~` 按这台的家目录读）。
+ */
+cwd: string, 
+/**
+ * 缺席 ＝ 跟随（分叉跟随源会话上次的号；新起的 ⇒ 这台的默认号）。
+ */
+account?: AccountAsk, 
+/**
+ * `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）。
+ */
+place: Place, 
+/**
+ * 用户改过的终端名；缺席 ⇒ 这台铸（分叉不收这一格：名字从源会话的终端名铸）。
+ */
+tmuxName?: string, 
+/**
+ * 启动命令（空 / 缺席 ⇒ 那一家的默认启动器）。
+ */
+command?: string, 
+/**
+ * 分叉自哪一条（只在这一步写分支记录）。
+ */
+forkFrom?: ForkFrom, 
+/**
+ * 这台的模型偏好表（号 → 模型，用户设置的原值）。
+ */
+models?: { [key in string]: string }, 
+/**
+ * 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
+ */
+local: boolean, 
+/**
+ * 这一趟的票（界面每次点［新建］一张；期限到了再问一次带同一张 ⇒ 认出同一趟，不起第二个：[`super::session_new_ticket`]）。缺 ⇒ 不认。
+ */
+ticket?: string, 
+/**
+ * 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
+ */
+rotation?: RotationPick, 
+/**
+ * 第一句（B4）：起好了之后由这台交进会话（宿主等它就绪 · 信任框过了再送）；只跟 `place: tmux`。缺 ⇒ 不交。
+ */
+prompt?: string, 
+/**
+ * 这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随。
+ */
+model?: string, 
+/**
+ * 起在哪一个权限档（那一家声明的档之一，`LaunchFace::permission`）；缺 ＝ 跟随那一家自己的默认。
+ */
+permissionMode?: string, };
+type Place = "tmux" | "window";
+type RotationPick = { 
+/**
+ * 配置的 id（非空）。
+ */
+config: string, };
+type SessionNew = { outcome: SessionNewOutcome, 
+/**
+ * tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
+ */
+session: string | null, 
+/**
+ * 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid）；那一家不认 ⇒ `null`（报到之前说不出）。
+ */
+sid: string | null, 
+/**
+ * 开窗那一形要跑的那一行（`started` ⇒ `null`）。
+ */
+cmd: string | null, 
+/**
+ * 实际用的号（账号 0 / 不指定 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, 
+/**
+ * 起的是哪一家。
+ */
+agent: string, 
+/**
+ * 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
+ */
+cwd: string, 
+/**
+ * 第一句交进去的结局；没给第一句 ⇒ `null`。
+ */
+prompt: FirstSay | null, };
+type SessionNewOutcome = "started" | "open";
+```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_such_config`
 

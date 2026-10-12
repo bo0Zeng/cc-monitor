@@ -47,7 +47,9 @@ fn backend_command_blocks() -> Vec<(String, String)> {
         for ctor in [
             "typed::blocking::<",
             "typed::with_files::<",
+            "typed::with_own::<",
             "typed::asynchronous::<",
+            "typed::async_with_files::<",
         ] {
             for (at, _) in prod.match_indices(ctor) {
                 let rest = &prod[at + ctor.len()..];
@@ -410,7 +412,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "session-new",
         "后端出成品 `{outcome, session, sid, cmd, account, agent, cwd}`（`control/session_new.rs`：判目录 · 号 · 终端名 · 分叉只在这一步写）；\
-         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、`decodeNew` 按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
         "session-new-facts",

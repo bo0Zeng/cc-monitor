@@ -11,9 +11,9 @@ import { exactKeys, isObj } from "./ipc/decode";
 import type { ForkLaunch } from "./session-writes";
 import { decodeForkLaunch } from "./session-writes";
 import type { DirChecked } from "./generated/DirChecked";
+import type { NewRequest } from "./generated/NewRequest";
 import type { SessionNew } from "./generated/SessionNew";
 import type { SessionNewField } from "./generated/SessionNewField";
-import type { AccountAsk } from "./generated/AccountAsk";
 import type { AccountUnavailable } from "./generated/AccountUnavailable";
 
 /** 读两问：扫记录目录 ＋ 列一次 tmux；15 s 盖住远端握手。 */
@@ -55,27 +55,6 @@ export function decodeFacts(v: unknown): NewFacts {
   return { recent, tmux: o.tmux as boolean, agents: o.agents as string[], fork };
 }
 
-const OUTCOMES = ["started", "open"];
-
-export function decodeNew(v: unknown): SessionNew {
-  const keys = ["outcome", "session", "sid", "cmd", "account", "agent", "cwd", "prompt"];
-  if (!isObj(v) || !exactKeys(v, keys)) bad("session-new");
-  const o = v as Record<string, unknown>;
-  if (
-    !OUTCOMES.includes(o.outcome as string) ||
-    !strOrNull(o.session) ||
-    !strOrNull(o.sid) ||
-    !strOrNull(o.cmd) ||
-    typeof o.agent !== "string" ||
-    typeof o.cwd !== "string" ||
-    !(o.account === null || (isObj(o.account) && typeof o.account.name === "string" && typeof o.account.configDir === "string")) ||
-    !(o.prompt === null || (isObj(o.prompt) && exactKeys(o.prompt, ["result", "why", "said"]) && typeof o.prompt.result === "string" && strOrNull(o.prompt.why) && strOrNull(o.prompt.said)))
-  ) {
-    bad("session-new");
-  }
-  return o as unknown as SessionNew;
-}
-
 export async function askFacts(origin: Origin, fork: { sid: string; uuid: string } | null): Promise<NewFacts> {
   const body = jsonBody(fork ? { forkOf: fork.sid, at: fork.uuid } : {});
   const budget = budgetWithin(READ_BUDGET_MS);
@@ -87,22 +66,8 @@ export async function askDir(origin: Origin, cwd: string, forkOf: string | null)
   return callTyped(origin, "session-new-dir", forkOf ? { cwd, forkOf } : { cwd }, budgetWithin(READ_BUDGET_MS));
 }
 
-/** 点［新建］交给那台的那一份。 */
-export interface NewRequest {
-  agent: string;
-  cwd: string;
-  account?: AccountAsk;
-  place: "tmux" | "window";
-  tmuxName?: string;
-  command?: string;
-  forkFrom?: { sid: string; uuid: string };
-  models?: Record<string, string>;
-  local: boolean;
-  /** 这一趟的票（一个框一张）：期限到了再问一次带同一张 ⇒ 那台认出同一趟，起好了回原样那一份、不起第二个。 */
-  ticket?: string;
-  /** 轮换：缺 ＝ 打开本机默认那份；`{config}` ＝ 那台起之前先定 sid、写成打开那一份（会话一报到就是那份配置）。 */
-  rotation?: { config: string };
-}
+/** 点［新建］交给那台的那一份（typed：入参类型从 Rust 生成）。 */
+export type { NewRequest };
 
 /**
  * 起的结局：起了 · 某一格不行 / 整体不行（那台说的码与那一句）· 同一张票那一趟还在起 · 期限到（结果未知）· 够不着那台。
@@ -128,11 +93,10 @@ function refusalData(d: unknown): { field: SessionNewField | null; unavailable: 
 }
 
 export async function askNew(origin: Origin, req: NewRequest): Promise<NewResult> {
-  const body = jsonBody({ ...req });
   const budget = budgetWithin(NEW_BUDGET_MS);
-  let reply: Uint8Array;
+  let reply: SessionNew;
   try {
-    reply = await chan.call(origin, "session-new", body, budget);
+    reply = await callTyped(origin, "session-new", req, budget);
   } catch (e) {
     const detail = detailOf(e);
     if (!(e instanceof ChanError)) return { kind: "unreachable", said: String(e), detail };
@@ -146,5 +110,5 @@ export async function askNew(origin: Origin, req: NewRequest): Promise<NewResult
     if (err.layer === "hop" && err.reach !== "NotSent") return { kind: "timeout", detail };
     return { kind: "unreachable", said: saidOfTransport(origin, err), detail };
   }
-  return { kind: "ok", reply: decodeNew(readJson(reply)) };
+  return { kind: "ok", reply };
 }

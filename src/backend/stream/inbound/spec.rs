@@ -169,12 +169,13 @@ impl Run {
         matches!(
             self,
             Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_)))
+        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..)))
     }
 
     /// 这一档写不写后端自家状态（要分派递写句柄）。
     pub(crate) fn writes_own(self) -> bool {
         matches!(self, Run::BlockingOwn(_) | Run::AsyncOwn(_))
+            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..)))
     }
 }
 
@@ -203,7 +204,14 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
             super::typed::TypedRun::BlockingFiles(f, files) => {
                 Prepared::Blocking(Box::new(move |r| f(r, files)))
             }
+            super::typed::TypedRun::BlockingOwn(f, files) => {
+                let own = own?.clone();
+                Prepared::Blocking(Box::new(move |r| f(r, files, &own)))
+            }
             super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
+            super::typed::TypedRun::AsyncFiles(f, files) => {
+                Prepared::Async(Box::new(move |r| f(r, files)))
+            }
         },
         Run::Builtin => return None,
     })

@@ -66,11 +66,31 @@ pub(crate) trait WithFiles: Command {
     fn run(req: Self::Req, cx: &Cx, files: Files) -> Result<Self::Reply, Self::Err>;
 }
 
+/// 同 [`WithFiles`]，再多递一份**写自家状态的句柄**（`~/.cc-monitor` 底下）。分派那一层手里没有这一份的入口
+/// （文件门 · 小成品重问）交不出来（[`super::spec::prepare`] 回 `None`）。
+pub(crate) trait WithOwn: Command {
+    fn run(
+        req: Self::Req,
+        cx: &Cx,
+        files: Files,
+        own: &crate::platform::Own,
+    ) -> Result<Self::Reply, Self::Err>;
+}
+
 /// 真异步的那一种：交给独立 task，`cancel` 能在 await 点打断。
 pub(crate) trait Async: Command {
     fn run(
         req: Self::Req,
         cx: Cx,
+    ) -> impl std::future::Future<Output = Result<Self::Reply, Self::Err>> + Send + 'static;
+}
+
+/// 同 [`Async`]，多递一份**文件管理面**（同 [`WithFiles`]：那一份是命令表那一行递的）。
+pub(crate) trait AsyncFiles: Command {
+    fn run(
+        req: Self::Req,
+        cx: Cx,
+        files: Files,
     ) -> impl std::future::Future<Output = Result<Self::Reply, Self::Err>> + Send + 'static;
 }
 
@@ -156,7 +176,11 @@ pub(super) enum TypedRun {
     Blocking(fn(Request) -> Outcome),
     /// 阻塞、要文件管理面（[`WithFiles`]）：那一份是命令表那一行递的。
     BlockingFiles(fn(Request, Files) -> Outcome, Files),
+    /// 阻塞、要文件管理面 ＋ 写句柄（[`WithOwn`]）：写句柄由分派那一层递。
+    BlockingOwn(fn(Request, Files, &crate::platform::Own) -> Outcome, Files),
     Async(fn(Request) -> DataFut),
+    /// 异步、要文件管理面（[`AsyncFiles`]）。
+    AsyncFiles(fn(Request, Files) -> DataFut, Files),
 }
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`（解码器那一句进原话）。
@@ -197,6 +221,15 @@ fn run_with_files<C: WithFiles>(r: Request, files: Files) -> Outcome {
     settle::<C>(C::run(req, &cx, files))
 }
 
+fn run_with_own<C: WithOwn>(r: Request, files: Files, own: &crate::platform::Own) -> Outcome {
+    let req = take::<C::Req>(&r.args)?;
+    let cx = Cx {
+        tz: r.tz,
+        until: r.until,
+    };
+    settle::<C>(C::run(req, &cx, files, own))
+}
+
 fn run_async<C: Async>(r: Request) -> DataFut {
     Box::pin(async move {
         let req = take::<C::Req>(&r.args)?;
@@ -208,6 +241,17 @@ fn run_async<C: Async>(r: Request) -> DataFut {
     })
 }
 
+fn run_async_files<C: AsyncFiles>(r: Request, files: Files) -> DataFut {
+    Box::pin(async move {
+        let req = take::<C::Req>(&r.args)?;
+        let cx = Cx {
+            tz: r.tz,
+            until: r.until,
+        };
+        settle::<C>(C::run(req, cx, files).await)
+    })
+}
+
 /// 阻塞档的一行登记。`summary` ＝ 一句话：这条命令做什么（住命令表，同别的命令）。
 pub(crate) const fn blocking<C: Blocking>(summary: &'static str) -> CommandSpec {
     spec::<C>(summary, TypedRun::Blocking(run_blocking::<C>))
@@ -216,6 +260,19 @@ pub(crate) const fn blocking<C: Blocking>(summary: &'static str) -> CommandSpec 
 /// 阻塞、要文件管理面的一行登记（`files` ＝ 命令表递的那一份）。
 pub(crate) const fn with_files<C: WithFiles>(summary: &'static str, files: Files) -> CommandSpec {
     spec::<C>(summary, TypedRun::BlockingFiles(run_with_files::<C>, files))
+}
+
+/// 阻塞、要文件管理面 ＋ 写句柄的一行登记。
+pub(crate) const fn with_own<C: WithOwn>(summary: &'static str, files: Files) -> CommandSpec {
+    spec::<C>(summary, TypedRun::BlockingOwn(run_with_own::<C>, files))
+}
+
+/// 异步、要文件管理面的一行登记。
+pub(crate) const fn async_with_files<C: AsyncFiles>(
+    summary: &'static str,
+    files: Files,
+) -> CommandSpec {
+    spec::<C>(summary, TypedRun::AsyncFiles(run_async_files::<C>, files))
 }
 
 /// 异步档的一行登记。

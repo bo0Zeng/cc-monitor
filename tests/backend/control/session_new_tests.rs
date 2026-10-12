@@ -144,7 +144,17 @@ impl Rig {
             write: &write,
             forget: &forget,
         };
-        answer(&args, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
+        // 解入参同 typed 分派那一步（多一格 · 类型不对 ⇒ `bad_args`），成品照写上线的那一份 JSON 比。
+        let req: NewRequest = serde_json::from_value(args).map_err(|e| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&e.to_string()),
+                None,
+                None,
+            )
+        })?;
+        answer(req, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
+            .map(|r| serde_json::to_value(r).unwrap())
     }
 }
 

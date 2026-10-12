@@ -1172,12 +1172,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ),
     ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
-        "session-new",
-        sampled_and::<sn::SessionNew, sn::SessionNewRefusal>,
-        &["configDir", "model", "name"],
-        &[],
-    ),
-    (
         "session-new-facts",
         sampled::<crate::faces::session_new_face::NewFacts>,
         &["lastMs", "launch", "startText", "turn"],

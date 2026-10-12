@@ -796,7 +796,9 @@ fn typed_handler_files_of(
     for ctor in [
         "typed::blocking::<",
         "typed::with_files::<",
+        "typed::with_own::<",
         "typed::asynchronous::<",
+        "typed::async_with_files::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];
