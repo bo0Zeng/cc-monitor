@@ -1308,8 +1308,9 @@ fn every_e2e_suite_gets_a_private_tmux_from_the_sandbox_env() {
          没自己挂 shim 的套件起的后端会裸调到缺省 tmux server"
     );
     assert!(
-        env.lines()
-            .any(|l| l.trim_start().starts_with("trap ") && l.contains("tmux_shim_cleanup") && l.contains("EXIT")),
+        env.lines().any(|l| l.trim_start().starts_with("trap ")
+            && l.contains("tmux_shim_cleanup")
+            && l.contains("EXIT")),
         "sandbox-env.sh 没给这一趟设收尾（`trap tmux_shim_cleanup EXIT`）"
     );
     let dir = crate::guard_support::repo_root().join("tests").join("e2e");
