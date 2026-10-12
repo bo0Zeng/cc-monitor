@@ -24,7 +24,6 @@ crate: core-graphics 0.23.2
 crate: core-graphics 0.25.0
 crate: core-graphics-types 0.1.3
 crate: core-graphics-types 0.2.0
-crate: crunchy 0.2.4
 crate: defmt 1.1.1
 crate: defmt-macros 1.1.1
 crate: defmt-parser 1.0.0
@@ -32,8 +31,6 @@ crate: derive_arbitrary 1.4.2
 crate: des 0.9.0
 crate: dispatch 0.2.0
 crate: dispatch2 0.3.1
-crate: dtor 0.3.0
-crate: dtor-proc-macro 0.0.6
 crate: egui-wgpu 0.36.2
 crate: embed_plist 1.2.2
 crate: fax 0.2.7
@@ -75,6 +72,7 @@ crate: naga-types 30.0.1
 crate: ndk 0.9.0
 crate: ndk-context 0.1.1
 crate: ndk-sys 0.6.0+11769913
+crate: no-std-compat 0.4.1
 crate: num_enum 0.7.6
 crate: num_enum_derive 0.7.6
 crate: objc-sys 0.3.5
@@ -116,7 +114,6 @@ crate: phc 0.6.1
 crate: pin-project 1.1.13
 crate: pin-project-internal 1.1.13
 crate: plain 0.2.3
-crate: portable-atomic 1.15.0
 crate: portable-atomic-util 0.2.8
 crate: prettyplease 0.2.37
 crate: r-efi 5.3.0
@@ -136,6 +133,7 @@ crate: schemars 1.2.1
 crate: serdect 0.4.3
 crate: simd_cesu8 1.2.0
 crate: simdutf8 0.1.5
+crate: spin 0.5.2
 crate: swift-rs 1.0.7
 crate: sync_wrapper 1.0.2
 crate: tao-macros 0.1.3
