@@ -2682,18 +2682,18 @@ fn the_answer_hook_is_not_put_into_a_launcher_someone_else_wrote() {
     e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
     for launcher in ["/opt/bin/fake-agent", "env", "ccr code"] {
         let Plan::Direct(d) = plan_of(
-            &["任务", "--launcher", launcher],
+            &["do-it", "--launcher", launcher],
             &e,
             &AccountTable::default(),
         ) else {
             panic!("该是 Direct")
         };
         let mut want: Vec<String> = launcher.split(' ').map(str::to_string).collect();
-        want.push("任务".into());
+        want.push("do-it".into());
         assert_eq!(d.argv, want, "换了启动器 {launcher} ⇒ 不垫");
     }
     let Plan::Direct(d) = plan_of(
-        &["任务", "--launcher", "claude"],
+        &["do-it", "--launcher", "claude"],
         &e,
         &AccountTable::default(),
     ) else {
@@ -2703,7 +2703,7 @@ fn the_answer_hook_is_not_put_into_a_launcher_someone_else_wrote() {
     want.extend(crate::agents::claudecode::asks::launch_args(
         "/home/pi/.cc-monitor/bin/ccm",
     ));
-    want.push("任务".into());
+    want.push("do-it".into());
     assert_eq!(d.argv, want, "启动器就是这一家默认那一个 ⇒ 照垫");
 }
 
