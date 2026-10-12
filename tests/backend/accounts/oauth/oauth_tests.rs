@@ -109,12 +109,17 @@ fn expose(s: &SecretKey) -> String {
 
 const NEW_TOKENS: &str = r#"{"access_token":"acc-new","refresh_token":"ref-new","expires_in":3600,"scope":"user:inference user:profile"}"#;
 
+/// 写句柄（测试进程自己的临时根；订阅号凭据的窄句柄从它造，落点是各判据自己的号目录）。
+fn own() -> crate::platform::fs::Own {
+    crate::platform::fs::Own::for_tests()
+}
+
 #[test]
 fn a_token_that_is_not_about_to_expire_is_handed_out_without_refreshing() {
     let d = temp_dir("fresh");
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS + 3_600_000);
-    let got = access_token(&acct, &FACE, &nowhere(), NOW_MS, "q").expect("能用");
+    let got = access_token(&own(), &acct, &FACE, &nowhere(), NOW_MS, "q").expect("能用");
     assert_eq!(expose(&got), "acc-old");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -126,7 +131,7 @@ fn an_expiring_token_is_refreshed_and_the_whole_file_is_written_back_atomically(
     // 还剩 1 分钟（< 5 分钟余量）⇒ 要续。
     write_creds(&acct, "acc-old", "ref-old", NOW_MS + 60_000);
     let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
-    let got = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").expect("续得上");
+    let got = access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "q").expect("续得上");
     assert_eq!(expose(&got), "acc-new");
     assert_eq!(
         posted.lock().expect("lock").clone(),
@@ -181,7 +186,7 @@ fn two_refreshes_at_once_reach_the_endpoint_once() {
         .map(|_| {
             let (acct, ep) = (acct.clone(), Arc::clone(&ep));
             std::thread::spawn(move || {
-                access_token(&acct, &FACE, &ep, NOW_MS, "q").map(|s| expose(&s))
+                access_token(&own(), &acct, &FACE, &ep, NOW_MS, "q").map(|s| expose(&s))
             })
         })
         .collect();
@@ -202,7 +207,7 @@ fn a_lock_held_by_someone_else_is_said_and_left_alone() {
     std::fs::create_dir(acct.join(FACE.lock_inside)).expect("别人的锁");
     let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
     assert_eq!(
-        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s)),
+        access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s)),
         Err(Unusable::Busy)
     );
     assert!(posted.lock().expect("lock").is_empty());
@@ -218,7 +223,7 @@ fn a_refused_refresh_says_log_in_again_and_leaves_the_file_as_it_was() {
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let before = on_disk(&acct);
     let (addr, _) = spawn_token_endpoint(r#"{"error":"invalid_grant"}"#, 400, None);
-    let r = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s));
+    let r = access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "q").map(|s| expose(&s));
     assert_eq!(r, Err(Unusable::Refused(400)));
     assert_eq!(on_disk(&acct), before);
     let s = Unusable::Refused(400).said("q");
@@ -236,7 +241,7 @@ fn when_the_agent_refreshed_first_its_tokens_win_and_ours_are_not_written() {
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, Some(acct.clone()));
-    let got = access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "q").expect("用它的");
+    let got = access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "q").expect("用它的");
     assert_eq!(expose(&got), "acc-by-claude");
     assert_eq!(
         on_disk(&acct)["claudeAiOauth"]["refreshToken"],
@@ -249,7 +254,7 @@ fn when_the_agent_refreshed_first_its_tokens_win_and_ours_are_not_written() {
 fn no_credentials_file_is_not_logged_in() {
     let d = temp_dir("none");
     assert_eq!(
-        access_token(&d.join("acct"), &FACE, &nowhere(), NOW_MS, "q").map(|s| expose(&s)),
+        access_token(&own(), &d.join("acct"), &FACE, &nowhere(), NOW_MS, "q").map(|s| expose(&s)),
         Err(Unusable::NotLoggedIn)
     );
     let _ = std::fs::remove_dir_all(&d);
@@ -323,7 +328,7 @@ fn every_renewal_is_one_log_line_naming_the_account_outcome_code_and_status() {
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, None);
-    let (r, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    let (r, log) = logged(|| access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
     assert!(r.is_ok());
     let lines: Vec<&str> = log.lines().filter(|l| l.contains("[auth] 续期")).collect();
     assert_eq!(lines.len(), 1, "{log}");
@@ -342,7 +347,7 @@ fn every_renewal_is_one_log_line_naming_the_account_outcome_code_and_status() {
         400,
         None,
     );
-    let (r, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    let (r, log) = logged(|| access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
     assert_eq!(r.map(|s| expose(&s)), Err(Unusable::Refused(400)));
     assert!(
         log.contains("[auth] 续期：号 b · 败 · 状态码 400 · 错误码 invalid_grant · 原因 refused"),
@@ -358,7 +363,7 @@ fn every_renewal_is_one_log_line_naming_the_account_outcome_code_and_status() {
     let d = temp_dir("log-down");
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
-    let (_, log) = logged(|| access_token(&acct, &FACE, &nowhere(), NOW_MS, "b"));
+    let (_, log) = logged(|| access_token(&own(), &acct, &FACE, &nowhere(), NOW_MS, "b"));
     assert!(
         log.contains("[auth] 续期：号 b · 败 · 状态码 — · 错误码 —"),
         "{log}"
@@ -370,7 +375,7 @@ fn every_renewal_is_one_log_line_naming_the_account_outcome_code_and_status() {
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, Some(acct.clone()));
-    let (_, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    let (_, log) = logged(|| access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
     assert!(
         log.contains("[auth] 续期：号 b · 让位 · 状态码 200"),
         "{log}"
@@ -381,7 +386,7 @@ fn every_renewal_is_one_log_line_naming_the_account_outcome_code_and_status() {
     let d = temp_dir("log-fresh");
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS + 3_600_000);
-    let (_, log) = logged(|| access_token(&acct, &FACE, &nowhere(), NOW_MS, "b"));
+    let (_, log) = logged(|| access_token(&own(), &acct, &FACE, &nowhere(), NOW_MS, "b"));
     assert!(!log.contains("[auth]"), "{log}");
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -397,7 +402,7 @@ fn no_token_refresh_token_or_account_uuid_reaches_the_renewal_log() {
             .into_boxed_str(),
     );
     let (addr, _) = spawn_token_endpoint(echo, 401, None);
-    let (_, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    let (_, log) = logged(|| access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
     assert!(log.contains("[auth] 续期：号 b · 败 · 状态码 401"), "{log}");
     assert_eq!(token_shapes(&log), Vec::<String>::new(), "{log}");
     let _ = std::fs::remove_dir_all(&d);
@@ -411,7 +416,7 @@ fn no_token_refresh_token_or_account_uuid_reaches_the_renewal_log() {
             .into_boxed_str(),
     );
     let (addr, _) = spawn_token_endpoint(fresh, 200, None);
-    let (_, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    let (_, log) = logged(|| access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
     assert!(log.contains("[auth] 续期：号 b · 成"), "{log}");
     assert_eq!(token_shapes(&log), Vec::<String>::new(), "{log}");
     let _ = std::fs::remove_dir_all(&d);
@@ -449,9 +454,11 @@ fn a_panic_while_holding_the_refresh_lock_leaves_no_lock_behind() {
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _ = store::with_refresh_lock(&acct, &FACE, |_| -> () {
-            panic!("续期那一趟里出事")
-        });
+        let _ = store::with_refresh_lock(
+            &store::creds_of(&own(), &acct, &FACE).expect("窄句柄"),
+            &FACE,
+            |_, _| -> () { panic!("续期那一趟里出事") },
+        );
     }));
     assert!(r.is_err(), "panic 该传出来");
     assert!(!acct.join(FACE.lock_inside).exists(), "里面那把留下了");
@@ -474,11 +481,18 @@ fn logging_is_heard_even_when_another_thread_touched_the_same_lines_first() {
     let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, None);
     let (r, log) = logged(|| {
         std::thread::spawn(move || {
-            let _ = access_token(&other_acct, &FACE, &endpoint_at(other_addr), NOW_MS, "b");
+            let _ = access_token(
+                &own(),
+                &other_acct,
+                &FACE,
+                &endpoint_at(other_addr),
+                NOW_MS,
+                "b",
+            );
         })
         .join()
         .expect("另一条线程");
-        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b")
+        access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b")
     });
     assert_eq!(r.map(|s| expose(&s)), Ok("acc-new".to_string()), "{log}");
     assert!(log.contains("[auth] 续期：号 b · 成"), "{log}");
@@ -499,7 +513,7 @@ fn a_stale_lock_directory_no_longer_blocks_renewal_and_the_reclaim_is_logged() {
     age_dir(&inside, ago);
     age_dir(&beside, ago);
     let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
-    let (r, log) = logged(|| access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
+    let (r, log) = logged(|| access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b"));
     assert_eq!(r.map(|s| expose(&s)), Ok("acc-new".to_string()), "{log}");
     assert_eq!(posted.lock().expect("lock").len(), 1);
     assert!(!inside.exists() && !beside.exists(), "续完两把都放掉");
@@ -522,7 +536,7 @@ fn a_fresh_lock_directory_still_says_busy() {
     );
     let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
     assert_eq!(
-        access_token(&acct, &FACE, &endpoint_at(addr), NOW_MS, "b").map(|s| expose(&s)),
+        access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "b").map(|s| expose(&s)),
         Err(Unusable::Busy)
     );
     assert!(posted.lock().expect("lock").is_empty());

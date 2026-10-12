@@ -214,6 +214,7 @@ impl Hop {
     /// 订阅号此刻能用的令牌与身份；拿不到 ⇒ 原因码（那一句只进日志，不带令牌）。
     fn login(
         &self,
+        own: &Own,
         agent: &str,
         lib: &Library,
         account: &str,
@@ -224,11 +225,11 @@ impl Hop {
             .dir_of(&face, lib, account)
             .ok_or(Unready::NeedsLogin)?;
         let ep = self.endpoint(&face).ok_or(Unready::NeedsLogin)?;
-        let token = oauth::access_token(&dir, &face, &ep, now.saturating_mul(1000), account)
+        let token = oauth::access_token(own, &dir, &face, &ep, now.saturating_mul(1000), account)
             .map_err(|u| {
-                tracing::warn!("[rotate] {}", u.said(account).logged());
-                Unready::NeedsLogin
-            })?;
+            tracing::warn!("[rotate] {}", u.said(account).logged());
+            Unready::NeedsLogin
+        })?;
         let who = self
             .identity(&face, &dir, base.as_deref())
             .ok_or(Unready::NeedsLogin)?;
@@ -249,7 +250,13 @@ impl Hop {
     }
 
     /// 备好走 `account` 的这一发（起会话的号 ⇒ [`Go::Start`]）。
-    fn prepare(&self, a: &Turn<'_>, lib: &Library, account: &str) -> Result<Go, Unready> {
+    fn prepare(
+        &self,
+        own: &Own,
+        a: &Turn<'_>,
+        lib: &Library,
+        account: &str,
+    ) -> Result<Go, Unready> {
         let rewrite = |who: &str| -> Result<Option<Vec<u8>>, Unready> {
             let face = crate::agents::login_of(a.agent).ok_or(Unready::UnsureBody)?;
             match (face.rewrite_identity)(a.body, who) {
@@ -265,7 +272,7 @@ impl Hop {
                 body: rewrite("")?,
             }),
             Reach::Sub => {
-                let (token, who) = self.login(a.agent, lib, account, a.now)?;
+                let (token, who) = self.login(own, a.agent, lib, account, a.now)?;
                 Ok(Go::Sub {
                     account: account.to_string(),
                     token,
@@ -428,6 +435,7 @@ impl Hop {
     #[allow(clippy::too_many_arguments)]
     fn judge(
         &self,
+        own: &Own,
         a: &Turn<'_>,
         lib: &Library,
         book: &Book,
@@ -483,7 +491,7 @@ impl Hop {
             },
             &j.strategy,
             &mut |x| {
-                self.prepare(a, lib, x).map(|g| {
+                self.prepare(own, a, lib, x).map(|g| {
                     ready = Some(g);
                 })
             },
@@ -590,7 +598,7 @@ impl Hop {
         };
         let lib = self.library();
         if let Some((v, ready, memo, clear, _)) =
-            self.judge(a, &lib, &book, &s, &s.current, None, &[])
+            self.judge(own, a, &lib, &book, &s, &s.current, None, &[])
         {
             if let Some(go) = self.settle(own, a, &s.current, (v, ready, memo, clear)) {
                 return go;
@@ -607,7 +615,7 @@ impl Hop {
         if s.current == s.start {
             return Go::Start;
         }
-        match self.prepare(a, &lib, &s.current) {
+        match self.prepare(own, a, &lib, &s.current) {
             Ok(go) => go,
             Err(_) => {
                 let rec = SwitchRecord {
@@ -649,11 +657,12 @@ impl Hop {
         let (book, s) = self.entry(own, a)?;
         let lib = self.library();
         if s.current != heard_from && !tried.contains(&s.current) {
-            if let Ok(go) = self.prepare(a, &lib, &s.current) {
+            if let Ok(go) = self.prepare(own, a, &lib, &s.current) {
                 return Some(go);
             }
         }
         let judged = self.judge(
+            own,
             a,
             &lib,
             &book,
@@ -720,6 +729,7 @@ impl Hop {
     /// 帧面「现在就换」：目标号此刻接不接得上（订阅号要真拿到令牌 —— 快过期就续，续不上照实报）。
     pub(crate) fn check_target(
         &self,
+        own: &Own,
         agent: &str,
         start: &str,
         target: &str,
@@ -734,7 +744,7 @@ impl Hop {
             row,
             now,
         };
-        self.prepare(&a, &self.library(), target).map(|_| ())
+        self.prepare(own, &a, &self.library(), target).map(|_| ())
     }
 
     /// 一个号此刻卡人的窗口：那一条账 · 那个窗口在这一家的原名 · 语义位（没有 ⇒ 窗口键）· 用了多少（%）。额度账说卡在哪个窗口就取它，没说 ⇒ 用得最多的那个；没出过数 ⇒ `None`。

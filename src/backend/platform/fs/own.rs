@@ -124,7 +124,7 @@ impl Own {
     pub(crate) fn lock(&self, dir: &OwnPath) -> Result<OwnLock, crate::platform::lock::LockFail> {
         Ok(OwnLock {
             dir: dir.0.clone(),
-            _held: Held::Waited(crate::platform::lock::hold(dir.as_path())?),
+            _held: Held::Waited(hold(dir.as_path())?),
         })
     }
 
@@ -161,6 +161,117 @@ impl Own {
     }
 }
 
+/// **订阅号凭据的窄句柄**：一个号的配置目录里那一份凭据文件 ＋ 那一家续期时拿的两把 `mkdir` 锁目录（配置目录里一把 · 旁边一把）。
+/// 能写的只有这三处：整份原子写那份文件（要配置目录的跨进程锁）· 建 / 删那两把锁目录。配置目录本身与里面别的文件一个都碰不到。
+/// 只能由 [`Own::account_creds`] 造（写自家状态的句柄才铸得出它）；名字由登记那一家的那一形给（一段名字，不许带分隔符）。
+pub(crate) struct AccountCreds {
+    dir: PathBuf,
+    file: PathBuf,
+    inside: PathBuf,
+    beside: Option<PathBuf>,
+}
+
+/// 配置目录的跨进程锁（[`AccountCreds::lock`]）：写那份凭据要它。
+pub(crate) struct CredsLock {
+    _held: crate::platform::lock::DirLock,
+}
+
+/// 续期那两把锁目录里的哪一把。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RenewLock {
+    /// 配置目录里那一把（`<目录>/<inside>`）。
+    Inside,
+    /// 配置目录旁边那一把（`<目录><beside>`）。
+    Beside,
+}
+
+/// 一段名字：非空、只一段普通名字（没有分隔符 · `..` · `.`）。
+fn one_name(n: &str) -> bool {
+    let mut c = Path::new(n).components();
+    matches!(c.next(), Some(Component::Normal(_))) && c.next().is_none() && !n.contains(['/', '\\'])
+}
+
+impl Own {
+    /// 铸一个号的凭据窄句柄：`dir` 是那个号的配置目录，`file` / `inside` 是那一家登记的凭据文件名与里面那把锁的名字（一段名字），
+    /// `beside` 是旁边那把锁接在目录名后面的后缀（不许带分隔符）。名字不合 ⇒ 拒。
+    pub(crate) fn account_creds(
+        &self,
+        dir: &Path,
+        file: &str,
+        inside: &str,
+        beside: Option<&str>,
+    ) -> Result<AccountCreds, Said> {
+        let bad = |n: &str| Said::from(copy_text("beOwnState.path.notRelative", &[("rel", n)]));
+        for n in [file, inside] {
+            if !one_name(n) {
+                return Err(bad(n));
+            }
+        }
+        if let Some(sfx) = beside {
+            if sfx.is_empty() || sfx.contains(['/', '\\']) {
+                return Err(bad(sfx));
+            }
+        }
+        Ok(AccountCreds {
+            dir: dir.to_path_buf(),
+            file: dir.join(file),
+            inside: dir.join(inside),
+            beside: beside.map(|sfx| {
+                let mut s = dir.as_os_str().to_os_string();
+                s.push(sfx);
+                PathBuf::from(s)
+            }),
+        })
+    }
+}
+
+impl AccountCreds {
+    /// 那份凭据文件（读用）。
+    pub(crate) fn file(&self) -> &Path {
+        &self.file
+    }
+
+    /// 那一把锁目录在哪（读它的修改时刻用；旁边那把没登记 ⇒ `None`）。
+    pub(crate) fn lock_path(&self, which: RenewLock) -> Option<&Path> {
+        match which {
+            RenewLock::Inside => Some(&self.inside),
+            RenewLock::Beside => self.beside.as_deref(),
+        }
+    }
+
+    /// 拿配置目录的跨进程锁（阻塞到拿到为止）。
+    pub(crate) fn lock(&self) -> Result<CredsLock, crate::platform::lock::LockFail> {
+        Ok(CredsLock {
+            _held: hold(&self.dir)?,
+        })
+    }
+
+    /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`。
+    pub(crate) fn make_lock(&self, which: RenewLock) -> std::io::Result<bool> {
+        let Some(p) = self.lock_path(which) else {
+            return Ok(false);
+        };
+        match std::fs::create_dir(p) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// 删那一把锁目录（只删空目录）。
+    pub(crate) fn drop_lock(&self, which: RenewLock) -> std::io::Result<()> {
+        match self.lock_path(which) {
+            Some(p) => std::fs::remove_dir(p),
+            None => Ok(()),
+        }
+    }
+
+    /// 整份原子写那份凭据（出生即只给本人）。`held` 是配置目录那一把（[`AccountCreds::lock`]）。
+    pub(crate) fn write(&self, _held: &CredsLock, body: &[u8]) -> Result<(), Said> {
+        atomic_write(&self.file, body)
+    }
+}
+
 /// 后端自家目录**建的那一下**给的权限位：只给本人（远端 SFTP 部署建目录用同一个数）。
 pub(crate) const PRIVATE_DIR_MODE: u32 = 0o700;
 
@@ -178,6 +289,11 @@ pub(crate) fn create_dir_private(dir: &Path) -> std::io::Result<()> {
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
         Err(e) => Err(e),
     }
+}
+
+/// 拿一个目录的跨进程锁（阻塞到拿到为止）：本文件里两种句柄（[`Own::lock`] · [`AccountCreds::lock`]）都经这一处。
+fn hold(dir: &Path) -> Result<crate::platform::lock::DirLock, crate::platform::lock::LockFail> {
+    crate::platform::lock::hold(dir)
 }
 
 /// 进程内序号：同一线程连写两次也换一个旁名。

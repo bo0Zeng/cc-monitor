@@ -180,3 +180,50 @@ fn w5_the_home_root_only_hands_out_the_backend_dir() {
     );
     std::fs::remove_dir_all(&base).ok();
 }
+
+/// 订阅号凭据的窄句柄：只认「一段名字」的文件名与锁名（带分隔符 · `..` · 空的都拒）；写只落那一份文件、锁只建删那两把目录。
+#[test]
+fn w6_the_account_creds_handle_reaches_one_file_and_two_lock_dirs() {
+    let base = sandbox("w6");
+    let acct = base.join("acct");
+    std::fs::create_dir_all(&acct).unwrap();
+    let own = Own::for_tests();
+    for bad in ["", "../x", "a/b", ".."] {
+        assert!(
+            own.account_creds(&acct, bad, ".lock", None).is_err(),
+            "文件名 {bad:?} 收下了"
+        );
+        assert!(
+            own.account_creds(&acct, ".credentials.json", bad, None)
+                .is_err(),
+            "锁名 {bad:?} 收下了"
+        );
+    }
+    assert!(
+        own.account_creds(&acct, ".credentials.json", ".lock", Some("/x"))
+            .is_err(),
+        "旁边那把的后缀带分隔符也收下了"
+    );
+    let c = own
+        .account_creds(&acct, ".credentials.json", ".lock", Some(".lock"))
+        .expect("合法的那一形");
+    let held = c.lock().expect("目录锁");
+    c.write(&held, b"{}").expect("写");
+    assert_eq!(
+        std::fs::read(acct.join(".credentials.json")).unwrap(),
+        b"{}"
+    );
+    assert!(c.make_lock(RenewLock::Inside).unwrap(), "里面那把建成");
+    assert!(!c.make_lock(RenewLock::Inside).unwrap(), "已在 ⇒ 没建");
+    assert!(c.make_lock(RenewLock::Beside).unwrap(), "旁边那把建成");
+    assert!(base.join("acct.lock").is_dir() && acct.join(".lock").is_dir());
+    c.drop_lock(RenewLock::Inside).unwrap();
+    c.drop_lock(RenewLock::Beside).unwrap();
+    assert!(!base.join("acct.lock").exists() && !acct.join(".lock").exists());
+    let names: Vec<_> = std::fs::read_dir(&acct)
+        .unwrap()
+        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(names, vec![".credentials.json"], "号目录里多出了别的");
+    std::fs::remove_dir_all(&base).ok();
+}

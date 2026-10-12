@@ -2047,7 +2047,10 @@ pub(crate) fn hot_one(ctx: &Ctx, own: &Own, sid: &str, target: &str, now: u64) -
     }
     let row = |a: &str| (ctx.rows)(&s.agent, a);
     if s.current != target {
-        if let Err(u) = ctx.hop.check_target(&s.agent, &s.start, target, &row, now) {
+        if let Err(u) = ctx
+            .hop
+            .check_target(own, &s.agent, &s.start, target, &row, now)
+        {
             let code = match u {
                 Unready::NeedsKey => "targetNeedsKey",
                 Unready::NeedsLogin | Unready::UnsureBody => "targetNeedsLogin",

@@ -139,7 +139,9 @@ fn fresh(n: &Now, face: &LoginFace, now_ms: u64) -> bool {
 
 /// 这个号此刻能用的访问令牌：没过期直接给；快过期就续（加锁、写回）再给。
 /// 真去续的每一发记一行进后端日志（[`renew_line`]：号 `account` · 成败 · 状态码 · 错误码）。
+/// `own`：写自家状态的句柄 —— 续了要写回时从它铸这个号的凭据窄句柄（[`store::creds_of`]）。
 pub(crate) fn access_token(
+    own: &crate::platform::fs::Own,
     dir: &Path,
     face: &LoginFace,
     endpoint: &TokenEndpoint,
@@ -153,8 +155,17 @@ pub(crate) fn access_token(
     if n.access.is_none() && n.refresh.is_none() {
         return Err(Unusable::NotLoggedIn);
     }
-    match store::with_refresh_lock(dir, face, |reclaimed| {
-        refresh_locked(dir, face, endpoint, now_ms, account, reclaimed)
+    let creds = store::creds_of(own, dir, face).map_err(Unusable::NotRenewed)?;
+    match store::with_refresh_lock(&creds, face, |reclaimed, held| {
+        refresh_locked(
+            dir,
+            face,
+            endpoint,
+            now_ms,
+            account,
+            reclaimed,
+            (&creds, held),
+        )
     }) {
         Ok(store::Locked::Held(r)) => r,
         Ok(store::Locked::Busy) => Err(Unusable::Busy),
@@ -171,6 +182,7 @@ fn refresh_locked(
     now_ms: u64,
     account: &str,
     reclaimed: &store::Reclaimed,
+    write: Writing<'_>,
 ) -> Result<SecretKey, Unusable> {
     let n = look(dir, face)?;
     let mut trail = Trail {
@@ -189,7 +201,7 @@ fn refresh_locked(
     let Some(posted) = n.refresh.as_ref() else {
         return Err(Unusable::Expired);
     };
-    let r = renew(dir, face, endpoint, now_ms, &n, posted, &mut trail);
+    let r = renew(dir, face, endpoint, now_ms, &n, posted, &mut trail, write);
     let line = renew_line(account, &trail, &r);
     if r.is_ok() {
         tracing::info!("{line}");
@@ -264,6 +276,13 @@ fn unreached(trail: &mut Trail, e: &std::io::Error) -> Unusable {
 }
 
 /// 发续期 → 读回包 → 写前比对 → 整份写回；一路把能进日志的几格记进 `trail`。
+/// 写回那一下要的两样：这个号的凭据窄句柄 ＋ 持着的那把配置目录锁。
+type Writing<'a> = (
+    &'a crate::platform::fs::AccountCreds,
+    &'a crate::platform::fs::CredsLock,
+);
+
+#[allow(clippy::too_many_arguments)]
 fn renew(
     dir: &Path,
     face: &LoginFace,
@@ -272,6 +291,7 @@ fn renew(
     n: &Now,
     posted: &SecretKey,
     trail: &mut Trail,
+    (creds, held): Writing<'_>,
 ) -> Result<SecretKey, Unusable> {
     let sec = n.doc.get(face.section);
     let client = sec
@@ -361,7 +381,7 @@ fn renew(
         secrets.push((face.refresh, r));
     }
     let doc = merge_tokens(&disk.doc, face.section, &secrets, &plain);
-    store::write_tokens(dir, face, &doc).map_err(Unusable::WriteFailed)?;
+    store::write_tokens(creds, held, &doc).map_err(Unusable::WriteFailed)?;
     Ok(access)
 }
 

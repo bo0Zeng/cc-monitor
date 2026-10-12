@@ -868,29 +868,10 @@ mod tests {
              `creds_core::perm::create_private`，O_EXCL，带 pid ＋ 线程 ＋ 序号 → 写满 → `sync_all` → 原子挪过去；\
              挪不过去只删自己建的那个旁名）。它不认识任何一份文件，路径由调用方给；第四层之外零引用（门表里没有它的门）",
         ),
-        (
-            "accounts/oauth/store.rs",
-            "**订阅号的凭据文件** `<那个号的配置目录>/.credentials.json`：续登录令牌之后整份写回。那一家的程序（claude）与账号域的 \
-             `oauth` 两个写者，所以在**跨进程锁**（配置目录）＋ 那一家自己的两把 `mkdir` 续期锁里做：写前比对盘上的刷新令牌还是不是发出去那个 → \
-             临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；失败删自己的临时文件。\
-             锁目录建成即持有、续完即删（`remove_dir` 只删自己刚建的那两个空目录）。入口只有上游选择换号要令牌那一处（`oauth::access_token`）",
-        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
     const OWN_STATE_VERBS: &[&str] = &["create_dir", "remove_file", "rename"];
-
-    /// 第四层里**另许删空目录**（`fs::remove_dir`，不含 `remove_dir_all`）的那几份：`(模块, 为什么)`。
-    /// 只给「锁就是一个目录」的那一形：别的程序定的锁协议（`mkdir` 即持有、`rmdir` 即放），要与它互斥就只能照它的做法。
-    const OWN_STATE_LOCK_DIRS: &[(&str, &str)] = &[(
-        "accounts/oauth/store.rs",
-        "订阅号续期锁：那个号自己的 claude 续期时拿的是两把 `mkdir` 锁（配置目录里那一把 · 旁边那一把），\
-         与它互斥就得拿同一套；续完 `rmdir` 掉自己刚建的那两个空目录（建不成 ⇒ 别人持着，一把都不删）",
-    )];
-
-    fn is_own_state_lock_dir(rel: &str) -> bool {
-        OWN_STATE_LOCK_DIRS.iter().any(|(p, _)| *p == rel)
-    }
 
     /// 第四层里**只追加一行**的那几份日志落点（`(模块, 为什么)`）：许它们恰好一个写句柄写成 `.append(true).create(true)`
     /// （`O_APPEND`、不在就新建、不截断、不建目录），`append(true)` · `create(true)` 只在那一个句柄上豁免；别的句柄照旧 `O_EXCL`。
@@ -932,10 +913,6 @@ mod tests {
     /// 入方向拆成目录之后（10-03），命令注册那几个写口的门收紧到**持有那条命令的那一族文件**（例：`apikey-key-set` 的写口只许账号那一族碰），比「整个 `inbound.rs` 都算门」更紧。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
-            "accounts/oauth/mod.rs",
-            "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
-        ),
-        (
             "control/files_commit.rs",
             "暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
              不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
@@ -953,17 +930,6 @@ mod tests {
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
     /// 第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
     const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
-        // 订阅号凭据：写回（`write_tokens`）与续期锁（`with_refresh_lock`）都只从续期那一处（`oauth/mod.rs`）进。
-        (
-            "accounts/oauth/store.rs",
-            "store::write_tokens",
-            "accounts/oauth/mod.rs",
-        ),
-        (
-            "accounts/oauth/store.rs",
-            "store::with_refresh_lock",
-            "accounts/oauth/mod.rs",
-        ),
         // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
         // 装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰 ⇒ 两条针各钉一个写口。
         // 〔从前针取模块前缀 `stderr_log::`：起子进程清环境那一处（`platform/child_env.rs`）要点那个变量的**名字**
@@ -1224,13 +1190,10 @@ mod tests {
                     panic!("第四层模块 {}：{why}", path.display());
                 }
                 let prod = rest;
-                if let Some(pat) = OWN_STATE_STILL_FORBIDDEN.iter().find(|p| {
-                    if **p == "fs::remove_dir" && is_own_state_lock_dir(&rel) {
-                        prod.contains("fs::remove_dir_all")
-                    } else {
-                        prod.contains(**p)
-                    }
-                }) {
+                if let Some(pat) = OWN_STATE_STILL_FORBIDDEN
+                    .iter()
+                    .find(|p| prod.contains(**p))
+                {
                     panic!(
                         "第四层模块 {} 含 `{pat}`。这一层只写后端自己的那一份状态文件，\n\
                          做法只有「`O_EXCL` 临时文件 → 原子挪」一种；`{pat}` 不在那条路上。",
@@ -2731,11 +2694,6 @@ mod tests {
                         if OWN_STATE_VERBS.contains(&full.as_str()) && is_own_state(&rel) {
                             continue;
                         }
-                        // 锁就是目录的那一形：只删空目录（`remove_dir_all` 照旧不许）。
-                        if full == "remove_dir" && is_own_state_lock_dir(&rel) && is_own_state(&rel)
-                        {
-                            continue;
-                        }
                         // 过渡（第二刀搬的这一段）：没搬完的写口经这两份转调 `platform/fs/own.rs` 的原子写与建目录，同一份实现。
                         if OWN_STATE_TRANSITIONAL.contains(&(rel.as_str(), full.as_str())) {
                             continue;
@@ -2967,6 +2925,9 @@ mod tests {
     const OWN_NAMES: &[&str] = &[
         "std::fs::remove_file(",
         "std::fs::rename(",
+        // 订阅号凭据窄句柄（`AccountCreds`）续期那两把 `mkdir` 锁：建 · 删空目录（那一家定的锁协议，与它互斥只能照它的做法）。
+        "std::fs::create_dir(",
+        "std::fs::remove_dir(",
         "std::fs::DirBuilder::new()",
         "std::os::unix::fs::DirBuilderExt",
     ];
