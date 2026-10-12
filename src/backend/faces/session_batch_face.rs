@@ -38,15 +38,20 @@ pub(crate) fn with_deps_as<T>(
         )
         .map(|p| (p.present, p.root))
     };
-    let kill = |name: &str, sid: &str| {
-        crate::control::kill::run_as(name, sid, client).map(|b| b.to_json())
-    };
+    let kill =
+        |name: &str, sid: &str| crate::control::kill::run_as(name, sid, client).map(|b| b.note());
     let send_into = |name: &str, sid: &str, line: &str| {
-        let mut req = serde_json::json!({ "mode": "send-into", "name": name, "payload": line, "ccm_sid": sid });
-        if let Some(c) = client {
-            req["client"] = c.into();
-        }
-        let req = crate::control::launch::parse_request(&req)?;
+        let req = crate::control::launch::parse_request(crate::control::launch::LaunchReq {
+            mode: crate::control::launch::Mode::SendInto,
+            name: name.to_string(),
+            payload: line.to_string(),
+            cwd: None,
+            ccm_sid: Some(sid.to_string()),
+            agent: None,
+            width: None,
+            height: None,
+            client: client.map(str::to_string),
+        })?;
         crate::control::launch::run(&req).map(|_| ())
     };
     let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);

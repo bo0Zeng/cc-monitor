@@ -3884,14 +3884,66 @@ forkOf?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --kill` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bus` | ← | 顺手从 cc-bus 注销的结果 `{removed, failed, unread, said, detail}`：`said` 是那几行句子（没有 ⇒ `null`），`detail` 是复制详情（没有 ⇒ 空串） |
-| `client` | → | 自报的前端（过「哪个前端的会话」那一维） |
-| `killed` | ← | 杀成了 |
-| `name` | → | 要杀的 tmux 会话名 |
-| `session` | ← | 杀掉的 tmux 会话名 |
-| `sid` | → | 可带：只结束挂着这个会话（`@ccm_sid`）的窗格 |
+入参 `KillReq` · 回包 `Killed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusFailed = { 
+/**
+ * 那个 id。
+ */
+id: string, 
+/**
+ * 原话。
+ */
+why: string, };
+type BusNote = { 
+/**
+ * 注销掉了的 id。
+ */
+removed: Array<string>, 
+/**
+ * 没注销成的那几个（`why` 是原话）。
+ */
+failed: Array<BusFailed>, 
+/**
+ * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
+ */
+unread: string | null, 
+/**
+ * 给人看的那几行（没有 ⇒ `null`）。
+ */
+said: string | null, 
+/**
+ * 复制详情（没有 ⇒ 空串）。
+ */
+detail: string, };
+type KillReq = { 
+/**
+ * 要杀的 tmux 会话名。
+ */
+name: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维）。
+ */
+client?: string, 
+/**
+ * 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（1–128 个 `[A-Za-z0-9_-]`）。
+ */
+sid?: string, };
+type Killed = { 
+/**
+ * 杀掉的 tmux 会话名。
+ */
+session: string, 
+/**
+ * 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
+ */
+killed: true, 
+/**
+ * 顺手从 cc-bus 注销的结局。
+ */
+bus: BusNote, };
+```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`
 
@@ -3922,6 +3974,36 @@ listKnown: boolean,
  */
 alternative: string | null, };
 type Batched = { results: Array<Outcome>, };
+type BusFailed = { 
+/**
+ * 那个 id。
+ */
+id: string, 
+/**
+ * 原话。
+ */
+why: string, };
+type BusNote = { 
+/**
+ * 注销掉了的 id。
+ */
+removed: Array<string>, 
+/**
+ * 没注销成的那几个（`why` 是原话）。
+ */
+failed: Array<BusFailed>, 
+/**
+ * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
+ */
+unread: string | null, 
+/**
+ * 给人看的那几行（没有 ⇒ `null`）。
+ */
+said: string | null, 
+/**
+ * 复制详情（没有 ⇒ 空串）。
+ */
+detail: string, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -3959,7 +4041,7 @@ session: string | null,
 /**
  * 停做成了那一个：同 `kill` 应答的 `bus`。
  */
-bus: unknown, 
+bus: BusNote | null, 
 /**
  * 开终端那一形要跑的那一行。
  */
@@ -4063,6 +4145,36 @@ listKnown: boolean,
  */
 alternative: string | null, };
 type Batched = { results: Array<Outcome>, };
+type BusFailed = { 
+/**
+ * 那个 id。
+ */
+id: string, 
+/**
+ * 原话。
+ */
+why: string, };
+type BusNote = { 
+/**
+ * 注销掉了的 id。
+ */
+removed: Array<string>, 
+/**
+ * 没注销成的那几个（`why` 是原话）。
+ */
+failed: Array<BusFailed>, 
+/**
+ * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
+ */
+unread: string | null, 
+/**
+ * 给人看的那几行（没有 ⇒ `null`）。
+ */
+said: string | null, 
+/**
+ * 复制详情（没有 ⇒ 空串）。
+ */
+detail: string, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -4100,7 +4212,7 @@ session: string | null,
 /**
  * 停做成了那一个：同 `kill` 应答的 `bus`。
  */
-bus: unknown, 
+bus: BusNote | null, 
 /**
  * 开终端那一形要跑的那一行。
  */
@@ -4330,20 +4442,61 @@ sid: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --launch` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | → | 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家） |
-| `ccm_sid` | → | 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格 |
-| `client` | → | 可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`） |
-| `created` | ← | 这一次新建了会话 |
-| `cwd` | → | 可选，仅 create-or-attach |
-| `height` | → | 同 `width` |
-| `mode` | → | `create-or-attach`（建或接）· `send-into`（往已在的会话里键入） |
-| `name` | → | tmux 会话名 |
-| `payload` | → | 要键入的那一行 |
-| `session` | ← | 落在哪个会话上 |
-| `typed` | ← | `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉） |
-| `width` | → | 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给 |
+入参 `LaunchReq` · 回包 `Launched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LaunchReq = { 
+/**
+ * `create-or-attach`（建或接）· `send-into`（往已在的会话里键入）。
+ */
+mode: Mode, 
+/**
+ * tmux 会话名。
+ */
+name: string, 
+/**
+ * 要键入的那一行（`create-or-attach` 放行换行 · 制表）。
+ */
+payload: string, 
+/**
+ * 可选，仅 create-or-attach。
+ */
+cwd?: string, 
+/**
+ * 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格。
+ */
+ccm_sid?: string, 
+/**
+ * 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）。
+ */
+agent?: string, 
+/**
+ * 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给。
+ */
+width?: string, 
+/**
+ * 同 `width`。
+ */
+height?: string, 
+/**
+ * 可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`）。
+ */
+client?: string, };
+type Launched = { 
+/**
+ * 落在哪个会话上。
+ */
+session: string, 
+/**
+ * 这一次新建了会话。
+ */
+created: boolean, 
+/**
+ * `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉）。
+ */
+typed: boolean, };
+type Mode = "create-or-attach" | "send-into";
+```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
 

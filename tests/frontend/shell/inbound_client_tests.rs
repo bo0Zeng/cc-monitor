@@ -421,7 +421,7 @@ fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
 fn the_e2e_command_list_matches_the_backend_command_table() {
     const SUITE: &str = include_str!("../../e2e/inbound-backend-frames.sh");
 
-    // backend 侧：命令表各族里每一条的 `name: "…"`（`hello.commands` 就从这里派生）。
+    // backend 侧：命令表各族里每一条的 `name: "…"`（`hello.commands` 就从这里派生）＋ typed 那几条（名字随形状指纹表编进来）。
     let mut backend: Vec<String> = crate::guard_support::backend_registry_sources()
         .iter()
         .flat_map(|(_, prod)| {
@@ -431,6 +431,7 @@ fn the_e2e_command_list_matches_the_backend_command_table() {
                 .map(str::to_string)
                 .collect::<Vec<_>>()
         })
+        .chain(cmd_wire::shapes::SHAPES.iter().map(|(c, _)| c.to_string()))
         .filter(|t| !t.is_empty() && t.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
         .collect();
     backend.sort();
@@ -1145,8 +1146,14 @@ fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
 /// 两侧异源：左边是真 hello 行经 `stream_source::parse_frame` 解出来的，右边是本条手写的期望。
 #[tokio::test]
 async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
-    let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{"command":"kill","code":"no_tmux"},{"command":7}],"uncancellable":["launch",null]}"#;
-    let frame = crate::stream_source::parse_frame(line).expect("是 hello");
+    // `kill` · `launch` 是 typed 命令：那台交了与本份同一张形状指纹（形状对不上那一档另有判据），这一条只看能力事实。
+    let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
+    let line = format!(
+        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","ping","launch"],"unavailable":[{{"command":"kill","code":"no_tmux"}},{{"command":7}}],"uncancellable":["launch",null],"shapes":{{"kill":"{}","launch":"{}"}}}}"#,
+        shape("kill"),
+        shape("launch")
+    );
+    let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
     let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(mine).into_client(hello);

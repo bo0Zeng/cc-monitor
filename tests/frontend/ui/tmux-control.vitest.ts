@@ -28,13 +28,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import {
   ControlError,
-  decodeKilled,
+  killedOf,
   killSession,
 } from "../../../src/frontend/ui/tmux-control";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
 import { copyPattern } from "../../test-support/copy-pattern";
+import type { Killed } from "../../../src/frontend/ui/generated/Killed";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
@@ -106,18 +107,15 @@ const ACTIONS: [string, (origin: string, target: string) => Promise<unknown>, Co
 ];
 
 describe("〔C4e〕结束会话：按形状收", () => {
-  it("★★ 金样：解码器读得懂后端真出的成品；请求体就是金样那一份", async () => {
-    expect(() => decodeKilled("devbox", "demo-cc", KILL.reply)).not.toThrow();
+  it("★★ 金样：后端真出的成品读得出；请求体就是金样那一份", async () => {
+    expect(() => killedOf("devbox", "demo-cc", KILL.reply as unknown as Killed)).not.toThrow();
     answer({ ok: KILL.reply });
     await killSession("devbox", String(KILL.request.name));
     expect(sentCalls()).toEqual([["devbox", "kill", KILL.request]]);
   });
 
-  it("★★ 没明说做成了 ⇒ 不当成功：`killed` 为假、多一格 / 缺一格 / 类型不对都抛", () => {
-    expect(() => decodeKilled("devbox", "demo-cc", { ...KILL.reply, killed: false })).toThrow(copyPattern("tmuxControl.kill.notConfirmed", { target: "demo-cc" }));
-    for (const bad of [{ ...KILL.reply, extra: 1 }, { killed: true }, { session: "demo-cc", killed: "yes" }, null]) {
-      expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
-    }
+  it("★★ 没明说做成了 ⇒ 不当成功：`killed` 不为真就抛（形状由握手指纹管）", () => {
+    expect(() => killedOf("devbox", "demo-cc", { ...KILL.reply, killed: false } as unknown as Killed)).toThrow(copyPattern("tmuxControl.kill.notConfirmed", { target: "demo-cc" }));
   });
 });
 
@@ -135,19 +133,11 @@ describe("按 sid 找窗格：结束带上会话 ID", () => {
 
 describe("FIX4 · 杀会话顺手注销的结局", () => {
   /** 「杀会话顺手注销的结局只进日志：界面不说『顺手注销了谁 / 没注销成』；要说得给 kill 的成品加一格（界面、金样、文案同拍）」。 */
-  it("★ bus 那一格 ⇒ 那台写好的那几行 ＋ 复制详情原样带出；全空不说；那一格缺 / 形状不对 ⇒ 读不懂", () => {
-    const bus = (b: unknown) => ({ ...KILL.reply, bus: b });
-    expect(decodeKilled("devbox", "demo-cc", KILL.reply)).toEqual({ said: null, detail: "" });
+  it("★ bus 那一格 ⇒ 那台写好的那几行 ＋ 复制详情原样带出；全空不说", () => {
+    const bus = (b: unknown) => ({ ...KILL.reply, bus: b }) as unknown as Killed;
+    expect(killedOf("devbox", "demo-cc", KILL.reply as unknown as Killed)).toEqual({ said: null, detail: "" });
     const b = { removed: [], failed: [{ id: "r_cc", why: "w-1" }], unread: null, said: "S-1", detail: "D-1" };
-    expect(decodeKilled("devbox", "demo-cc", bus(b))).toEqual({ said: "S-1", detail: "D-1" });
-    for (const bad of [
-      { session: "demo-cc", killed: true },
-      bus({ removed: [], failed: [], unread: null }),
-      bus({ ...b, said: 1 }),
-      bus({ ...b, detail: null }),
-    ]) {
-      expect(() => decodeKilled("devbox", "demo-cc", bad), JSON.stringify(bad)).toThrow(copyPattern("peerVersion.said.unreadable"));
-    }
+    expect(killedOf("devbox", "demo-cc", bus(b))).toEqual({ said: "S-1", detail: "D-1" });
   });
 
 });

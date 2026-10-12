@@ -115,14 +115,19 @@ impl Rig {
                 .push(format!("record {sid} {dir:?}"));
             Ok((!self.gone.contains(&sid), "/root/x".to_string()))
         };
-        let kill = |name: &str, sid: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
+        let kill = |name: &str,
+                    sid: &str|
+         -> Result<
+            crate::control::cc_bus::BusNote,
+            crate::stream::inbound::spec::Fail,
+        > {
             self.calls.borrow_mut().push(format!("kill {name} {sid}"));
             match self.kill_err {
                 Some(c) => Err(crate::stream::inbound::spec::Fail::new(
                     c,
                     "said".to_string(),
                 )),
-                None => Ok(json!({ "removed": [], "failed": [], "unread": null })),
+                None => Ok(crate::control::cc_bus::BusCleanup::default().note()),
             }
         };
         let send_into =
@@ -556,7 +561,9 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
     let record =
         |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, String::new())) };
     // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限是兜底上限的两倍、睡得更久 ⇒ 总期限不生效就撞下面那道）。
-    let kill = |name: &str, _: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let kill = |name: &str,
+                _: &str|
+     -> Result<crate::control::cc_bus::BusNote, crate::stream::inbound::spec::Fail> {
         let mark = dir.join(name);
         Child::new("sh")
             .args([
@@ -568,7 +575,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
                 ),
             ])
             .run(Deadline::secs(2 * guard_core::wall::CEILING_SECS))
-            .map(|_| json!({}))
+            .map(|_| crate::control::cc_bus::BusCleanup::default().note())
             .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()).into())
     };
     let send_into =
@@ -854,7 +861,14 @@ impl crate::guard_support::Shaped for Batched {
             said: Some("x".into()),
             copy_detail: "y".into(),
             session: Some("proj-cc".into()),
-            bus: Some(serde_json::json!({ "removed": 1 })),
+            bus: Some(
+                crate::control::cc_bus::BusCleanup {
+                    removed: vec!["p_cc".into()],
+                    failed: vec![("r_cc".into(), "gone".into())],
+                    unread: None,
+                }
+                .note(),
+            ),
             cmd: Some("ccm --resume s-1".into()),
             account: Some(launched_sample()),
             unavailable: Some(AccountUnavailable {

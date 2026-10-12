@@ -1749,6 +1749,42 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         )),
         r#"{"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
     );
+    // kill · launch：经登记表跑一趟（这台测试档的 tmux 是空 socket ⇒ 没有这个会话），再拿纯构造器逐字节比换形之前那一版写出来的。
+    assert_eq!(
+        run_registered(
+            "kill",
+            serde_json::json!({ "name": "demo-cc", "client": "mobile" })
+        )
+        .unwrap_err()
+        .code,
+        "no_such_session"
+    );
+    assert_eq!(
+        wire(&crate::control::kill::reply("demo-cc", &Default::default())),
+        r##"{"bus":{"detail":"","failed":[],"removed":[],"said":null,"unread":null},"killed":true,"session":"demo-cc"}"##
+    );
+    let removed = crate::control::cc_bus::BusCleanup {
+        removed: vec!["p_cc".into(), "q_cc".into()],
+        failed: vec![],
+        unread: None,
+    };
+    assert_eq!(
+        wire(&crate::control::kill::reply("demo-cc", &removed)),
+        r##"{"bus":{"detail":"","failed":[],"removed":["p_cc","q_cc"],"said":"已从 cc-bus 名册注销 p_cc · q_cc","unread":null},"killed":true,"session":"demo-cc"}"##
+    );
+    assert_eq!(
+        run_registered(
+            "launch",
+            serde_json::json!({ "mode": "send-into", "name": "nope-x", "payload": "true" })
+        )
+        .unwrap_err()
+        .code,
+        "no_such_session"
+    );
+    assert_eq!(
+        wire(&crate::control::launch::reply("demo-cc", true, false)),
+        r##"{"created":true,"session":"demo-cc","typed":false}"##
+    );
 }
 
 /// 回包写上线的那一步（帧里同此：先 `to_value` 再 `to_string` ⇒ 每一层的键排好序）。

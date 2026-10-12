@@ -387,7 +387,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         inner_head: vec!["/usr/local/bin/ccm".into()],
         bus: None,
     };
-    let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");
+    let req = crate::control::launch::parse_request(launch_args(&c)).expect("该过得了门");
     assert_eq!(req.name, "n1");
     assert_eq!(req.payload, c.payload, "载荷不许被改一个字节");
     assert_eq!(req.cwd.as_deref(), Some("/p"));
@@ -411,13 +411,13 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
     // 不给尺寸 ⇒ 请求里**没有** width/height（不是空串、不是 0）
     let mut c2 = c.clone();
     c2.size = None;
-    let r2 = crate::control::launch::parse_request(&launch_args(&c2)).expect("该过得了门");
+    let r2 = crate::control::launch::parse_request(launch_args(&c2)).expect("该过得了门");
     assert!(r2.width.is_none() && r2.height.is_none());
     // 🔴 那道门真的在判：载荷里塞一个 ESC ⇒ 被**挡在这一侧**，不是发出去被拒
     let mut c3 = c.clone();
     c3.name = "n\u{1b}1".into();
     assert!(
-        crate::control::launch::parse_request(&launch_args(&c3)).is_err(),
+        crate::control::launch::parse_request(launch_args(&c3)).is_err(),
         "控制字符没被挡住 —— 那道门被绕过去了（直接造 LaunchRequest 就是这个后果）"
     );
 }

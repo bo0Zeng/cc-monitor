@@ -252,21 +252,22 @@ pub(crate) fn requester_of(args: &serde_json::Value) -> Result<Option<String>, C
     }
 }
 
-/// 请求里指的会话（`args.sid`，要的是挂着它的那个窗格）：没给 ⇒ `None`；给了就得是 `@ccm_sid` 的形状（1–128 个 `[A-Za-z0-9_-]`）。
-pub(crate) fn sid_of(args: &serde_json::Value) -> Result<Option<String>, CmdErr> {
-    match args.get("sid") {
+/// 请求里指的会话（`sid`，要的是挂着它的那个窗格；typed 入参已按类型解好）：没给 ⇒ `None`；
+/// 给了就得是 `@ccm_sid` 的形状（1–128 个 `[A-Za-z0-9_-]`）。
+pub(crate) fn sid_shape(sid: Option<&str>) -> Result<Option<String>, CmdErr> {
+    match sid {
         None => Ok(None),
-        Some(serde_json::Value::String(s))
+        Some(s)
             if (1..=128).contains(&s.len())
                 && s.chars()
                     .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_') =>
         {
-            Ok(Some(s.clone()))
+            Ok(Some(s.to_string()))
         }
         Some(other) => Err((
             "bad_args",
             crate::common::contract::malformed(&format!(
-                "`sid` must be 1-128 chars of [A-Za-z0-9_-]: {other}"
+                "`sid` must be 1-128 chars of [A-Za-z0-9_-]: {other:?}"
             )),
         )),
     }

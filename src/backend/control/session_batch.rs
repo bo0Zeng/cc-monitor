@@ -45,7 +45,11 @@ pub(crate) struct Deps<'a> {
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
-    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<Value, crate::stream::inbound::spec::Fail>,
+    pub(crate) kill:
+        &'a dyn Fn(
+            &str,
+            &str,
+        ) -> Result<super::cc_bus::BusNote, crate::stream::inbound::spec::Fail>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
     pub(crate) send_into:
@@ -119,7 +123,7 @@ pub(crate) struct Answer {
     pub(crate) detail: String,
     /// 落在哪个 tmux 会话上（停 · 起在 tmux 里 · 本机开终端那一形）。
     pub(crate) session: Option<String>,
-    pub(crate) bus: Option<Value>,
+    pub(crate) bus: Option<super::cc_bus::BusNote>,
     /// 开终端那一形要跑的那一行。
     pub(crate) cmd: Option<String>,
     /// 起的那一条实际用的号（`launch-local` 应答那一格同形；停 / 没起 ⇒ `null`）。
@@ -158,8 +162,7 @@ pub(crate) struct Outcome {
     /// 落在哪个 tmux 会话上。
     pub(crate) session: Option<String>,
     /// 停做成了那一个：同 `kill` 应答的 `bus`。
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) bus: Option<Value>,
+    pub(crate) bus: Option<super::cc_bus::BusNote>,
     /// 开终端那一形要跑的那一行。
     pub(crate) cmd: Option<String>,
     /// 起的那一条实际用的号（停 / 没起 ⇒ `null`）。

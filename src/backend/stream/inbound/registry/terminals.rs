@@ -104,22 +104,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
-    CommandSpec {
-        name: "kill",
-        summary: "杀一个 tmux 会话",
-        codes: &[
-            "bad_args",
-            "no_tmux",
-            "no_such_session",
-            "wrong_owner",
-            "too_many_windows",
-            "kill_failed",
-            "child_timed_out",
-        ],
-        fields: &[out("bus", "顺手从 cc-bus 注销的结果 `{removed, failed, unread, said, detail}`：`said` 是那几行句子（没有 ⇒ `null`），`detail` 是复制详情（没有 ⇒ 空串）"), arg("client", "自报的前端（过「哪个前端的会话」那一维）"), out("killed", "杀成了"), arg("name", "要杀的 tmux 会话名"), out("session", "杀掉的 tmux 会话名"), arg("sid", "可带：只结束挂着这个会话（`@ccm_sid`）的窗格")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::control::kill::kill_for_inbound(&r.args).map(Some)),
-    },
+    crate::stream::inbound::typed::blocking::<crate::control::kill::Kill>("杀一个 tmux 会话"),
     // 一批会话的停 / 起：每一个同单个那一条（`kill` · `launch` · `launch-render-cli` · `launch-local`），逐个答结局。
     //   阻塞档（逐个起 tmux）；要动 tmux / 读记录的几样由帧面那层壳交进去（`faces/session_batch_face.rs`）。
     crate::stream::inbound::typed::blocking::<crate::faces::session_batch_face::SessionsStop>(
@@ -214,27 +199,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             })
         }),
     },
-    CommandSpec {
-        name: "launch",
-        summary: "建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）",
-        // 〔C4e 问 2〕+`wrong_owner`：`send-into` 过 `gate::admit`（§34 Gate 2），
-        // 它真会回这个码，登记表原先漏了。由 `gate_tests.rs::every_command_that_passes_the_gate_lists_the_gates_codes` 从 gate.rs 源码派生钉住。
-        codes: &[
-            "bad_args",
-            "no_tmux",
-            "no_such_session",
-            "wrong_owner",
-            "create_failed",
-            "typed_unconfirmed",
-            "child_timed_out",
-        ],
-        // 〔`K-P2` `D` 阶段第三拍 09-03〕8 → 11：`agent` / `width` / `height`。
-        // 那三个是「ccm 的 `--tmux` 真的改走这条路」逼出来的 —— 本地那条编排里
-        // `@ccm_agent` 与 `-x/-y` 一直都在，这一侧此前没有字段能表达它们
-        // ⇒ 不补就是**静默丢修饰**。⚠ `avoid_collision` **不加**：撞名避让住在要搬的那一块
-        // **之外**，而「撞了」这件事后端已经用 `created:false` 表达完了（`§15 裁五`）。
-        fields: &[arg("agent", "可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）"), arg("ccm_sid", "可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格"), arg("client", "可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`）"), out("created", "这一次新建了会话"), arg("cwd", "可选，仅 create-or-attach"), arg("height", "同 `width`"), arg("mode", "`create-or-attach`（建或接）· `send-into`（往已在的会话里键入）"), arg("name", "tmux 会话名"), arg("payload", "要键入的那一行"), out("session", "落在哪个会话上"), out("typed", "`send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉）"), arg("width", "可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
-    },
+    crate::stream::inbound::typed::blocking::<crate::control::launch::Launch>(
+        "建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）",
+    ),
 ];

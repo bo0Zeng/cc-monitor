@@ -1,6 +1,22 @@
 use super::*;
 use serde_json::json;
 
+// 判据照线上那一份说话：入参是帧里的 JSON（解入参同 typed 分派那一步），成品是写上线的那一份 JSON。
+fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
+    let req: KillReq = serde_json::from_value(args.clone()).map_err(|e| {
+        CmdErr::new(
+            "bad_args",
+            crate::common::contract::malformed(&e.to_string()),
+        )
+    })?;
+    admit_existing_name(&req.name)?;
+    Ok(req.name)
+}
+
+fn reply(name: &str, bus: &crate::control::cc_bus::BusCleanup) -> serde_json::Value {
+    serde_json::to_value(super::reply(name, bus)).unwrap()
+}
+
 #[test]
 fn shape_validation_rejects_what_would_break_the_tmux_target() {
     for (bad, why) in [
@@ -112,7 +128,7 @@ fn kill_uses_the_destructive_gate_not_the_plain_one() {
 /// （后端测试产出 == 金样 · TS 解码器读同一份）」。杀会话由界面经通道直接说（`src/frontend/ui/tmux-control.ts::killSession`），
 /// monitor 那一跳只搬字节 —— 成品的键、拒绝码的集合从此只有后端这一侧与金样说了算。
 ///
-/// 三格各自异源：请求样例过**生产**解析器 [`parse_name`] · 成品 == 生产构造器 [`reply`] ·
+/// 三格各自异源：请求样例过**生产**入参类型与 Gate 1 的形状判（[`KillReq`] · [`admit_existing_name`]）· 成品 == 生产构造器 [`super::reply`] ·
 /// 码集合 == 后端登记表 `inbound::REGISTRY` 那一块（手写在 `stream/inbound/registry/terminals.rs`，不从本文件派生）。
 #[test]
 fn the_kill_product_matches_the_cross_language_golden() {

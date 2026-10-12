@@ -80,14 +80,19 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |name: &str, sid: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
+        let kill = |name: &str,
+                    sid: &str|
+         -> Result<
+            crate::control::cc_bus::BusNote,
+            crate::stream::inbound::spec::Fail,
+        > {
             note(format!("kill {name} {sid}"));
             match self.kill_err {
                 Some(c) => Err(crate::stream::inbound::spec::Fail::new(
                     c,
                     "said".to_string(),
                 )),
-                None => Ok(json!({})),
+                None => Ok(crate::control::cc_bus::BusCleanup::default().note()),
             }
         };
         let send_into =

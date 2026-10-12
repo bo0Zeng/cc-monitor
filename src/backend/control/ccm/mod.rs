@@ -697,7 +697,7 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
             // 而**校验只长在它身上** —— 直接构造结构体等于绕过去。
             // 那份已删的 bash `ccm` 从前也是把这一坨编成 JSON 发给后端的，走的就是同一道门；
             // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
-            let req = match crate::control::launch::parse_request(&launch_args(c)) {
+            let req = match crate::control::launch::parse_request(launch_args(c)) {
                 Ok(r) => r,
                 Err(f) => return die(&format!("{}: {}", f.code, f.message)),
             };
@@ -743,32 +743,22 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
     }
 }
 
-/// 容器路 ⇒ `launch` 那道门认得的那份 `args`。
-///
-/// ⚠ **键名与 `launch::parse_request` 取的那几个逐字对应** —— 少一个键不会报错，
-/// 只会**静默丢掉**那一件（`@ccm_agent` 就这么丢过一次）。
-fn launch_args(c: &plan::Container) -> serde_json::Value {
-    let mut m = serde_json::Map::new();
-    m.insert("mode".into(), "create-or-attach".into());
-    m.insert("name".into(), c.name.clone().into());
-    m.insert("payload".into(), c.payload.clone().into());
-    m.insert("agent".into(), c.agent.clone().into());
-    if !c.cwd.is_empty() {
-        m.insert("cwd".into(), c.cwd.clone().into());
+/// 容器路 ⇒ `launch` 那道门认得的那份入参（同帧面那一形 [`crate::control::launch::LaunchReq`]：
+/// 少一格编不过，不会再「静默丢掉」哪一件 —— `@ccm_agent` 就这么丢过一次）。
+fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
+    let some = |s: &str| (!s.is_empty()).then(|| s.to_string());
+    crate::control::launch::LaunchReq {
+        mode: crate::control::launch::Mode::CreateOrAttach,
+        name: c.name.clone(),
+        payload: c.payload.clone(),
+        agent: Some(c.agent.clone()),
+        cwd: some(&c.cwd),
+        ccm_sid: some(&c.ccm_sid),
+        width: c.size.as_ref().map(|(w, _)| w.clone()),
+        height: c.size.as_ref().map(|(_, h)| h.clone()),
+        // ccm 起的会话是用户在终端里起的：不归任何一个前端（「哪个前端的会话」那一维，`gate_rules::CLIENT_TERMINAL`）。
+        client: Some(crate::control::gate_rules::CLIENT_TERMINAL.to_string()),
     }
-    if !c.ccm_sid.is_empty() {
-        m.insert("ccm_sid".into(), c.ccm_sid.clone().into());
-    }
-    if let Some((w, h)) = &c.size {
-        m.insert("width".into(), w.clone().into());
-        m.insert("height".into(), h.clone().into());
-    }
-    // ccm 起的会话是用户在终端里起的：不归任何一个前端（「哪个前端的会话」那一维，`gate_rules::CLIENT_TERMINAL`）。
-    m.insert(
-        "client".into(),
-        crate::control::gate_rules::CLIENT_TERMINAL.into(),
-    );
-    serde_json::Value::Object(m)
 }
 
 /// 「这一趟非得经 POSIX shell」的**归因**——四句，一句一处，**都在 [`needs_shell`] /

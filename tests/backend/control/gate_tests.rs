@@ -604,16 +604,58 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
     let families = crate::guard_support::registry_sources();
     let root = crate::guard_support::src_root();
     let mut checked = Vec::new();
+    // typed 那几行（`typed::<档>::<crate::control::<模块>::<类型>>(…)`）：命令名从那份文件里 `impl Command for <类型>` 的 `const NAME` 读。
+    let mut typed_cells: Vec<(String, String)> = Vec::new();
+    for (_, prod) in &families {
+        for (at, _) in prod.match_indices("crate::stream::inbound::typed::") {
+            let rest = &prod[at..];
+            let Some(lt) = rest.find("::<") else { continue };
+            let path = &rest[lt + 3..rest.find('>').unwrap_or(rest.len())];
+            let Some(tail) = path.strip_prefix("crate::control::") else {
+                continue;
+            };
+            let segs: Vec<&str> = tail.split("::").collect();
+            let (Some(module), Some(ty)) = (segs.first(), segs.last()) else {
+                continue;
+            };
+            let Ok(src) =
+                std::fs::read_to_string(root.join("control").join(format!("{module}.rs")))
+            else {
+                continue;
+            };
+            let Some(imp) = src.find(&format!("Command for {ty} {{")) else {
+                continue;
+            };
+            let key = "const NAME: &'static str = \"";
+            let Some(n) = src[imp..].find(key) else {
+                continue;
+            };
+            let name: String = src[imp + n + key.len()..]
+                .chars()
+                .take_while(|c| *c != '"')
+                .collect();
+            typed_cells.push((name, format!("crate::control::{module}::{ty}")));
+        }
+    }
     for spec in crate::stream::inbound::REGISTRY {
         let anchor = format!("name: \"{}\",", spec.name);
-        let Some((family, at)) = families
+        let typed_cell = typed_cells
+            .iter()
+            .find(|(n, _)| n == spec.name)
+            .map(|(_, c)| c.as_str());
+        let cell = match families
             .iter()
             .find_map(|(_, prod)| prod.find(&anchor).map(|at| (prod, at)))
-        else {
-            continue;
+        {
+            Some((family, at)) => {
+                let cell = &family[at..];
+                &cell[..cell.find("\n    },").unwrap_or(cell.len())]
+            }
+            None => match typed_cell {
+                Some(c) => c,
+                None => continue,
+            },
         };
-        let cell = &family[at..];
-        let cell = &cell[..cell.find("\n    },").unwrap_or(cell.len())];
         for (i, _) in cell.match_indices("crate::control::") {
             let module: String = cell[i + "crate::control::".len()..]
                 .chars()
