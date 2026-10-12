@@ -1438,6 +1438,8 @@ pub(crate) fn absorb_local_frame(
         // 会话成品 `session_added` · `session_state` 同一条有序通道（去向必须排在那个会话的行之后）。
         f @ (InboundFrame::Line { .. }
         | InboundFrame::SessionAdded { .. }
+        // 读完了、从第几行起 ⇒ 同一条有序通道（排在宣告之后、它的第一行之前）。
+        | InboundFrame::SessionPrimed { .. }
         | InboundFrame::SessionRemoved { .. }
         | InboundFrame::SessionState { .. }
         | InboundFrame::SessionStatus { .. }

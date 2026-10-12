@@ -5,7 +5,7 @@
 //!
 //! # 形状：看着自己发出去的帧
 //!
-//! 挂在 watcher 发帧的唯一出口上（`watcher::FrameSink`，每条流一份）：每一帧发出去之前问 [`SessionLedger::on_frame`]，
+//! 挂在 watcher 发帧的唯一出口上（`watcher::FrameSink`，整台一份）：每一帧发出去之前问 [`SessionLedger::on_frame`]，
 //! 回「这一帧自己发不发」＋「紧跟它之后补发哪几帧」；每一份 tmux 观测交 [`SessionLedger::on_tmux`]（tmux 快照
 //! 不上线，只喂这本账）。它不起线程、不读盘、不定时 —— 输入只有这几样：
 //!
@@ -15,6 +15,7 @@
 //! | `session_removed` | `superseded` ⇒ 已结束（旧 sid 的 tmux 那一格已改挂新 sid，查快照必错）；`gone` ⇒ 去向**等一份摘除之后才起的 tmux 观测**来裁（[`SessionLedger::observing`]）：那一份里还挂在某个窗格上 ⇒ 可重连，否则已结束。拿摘除之前起的快照裁，会先报错一格、下一份再翻回来 |
 //! | tmux 观测（可观测的） | 收割**只对可重连的**（活不活只认 pidfile / pidfd）：它挂的那个 tmux 会话没了（按句柄 `#{session_id}` 认，改名不算没了）⇒ 当场已结束；连续 [`RETIRE_MISS_THRESHOLD`] 份哪个窗格都不挂它 ⇒ 已结束。每一份还宣告「挂着 `@ccm_sid`、却不在活会话里、没报过、也不在等裁」的为可重连 |
 //! | `sessions_replayed` | 第一份 tmux 快照到之前**压住**，到了（不论可不可观测）先放上一格的宣告、再放它 ⇒ 客户端收到「清单报完了」时可重连的也已报过 |
+//! | 一条连接半路接上来 | 账本整台一份（read8a）：给它补 [`SessionLedger::snapshot`]（可重连的 · 清单报完了没有） |
 //!
 //! `@ccm_sid` 打在**窗格**上：一个 tmux 会话里可以挂几个 sid，快照按会话句柄记它挂着的那一组。
 //! 不可观测的快照（没装 tmux · 观测失败）不收割、不推导；等裁的照它裁（它说的是「这一刻一个 `@ccm_sid` 都看不见」）。
@@ -41,6 +42,8 @@ pub(crate) struct SessionLedger {
     tmux_seen: bool,
     /// `sessions_replayed` 被压着没发。
     held_listed: bool,
+    /// `sessions_replayed` 已经放出去过（之后接上来的连接，它那一份里带一帧）。
+    listed: bool,
     /// 上一份快照的观测种类（只为日志只记变化）。
     last_kind: Option<&'static str>,
 }
@@ -95,6 +98,7 @@ impl SessionLedger {
             }
             Frame::SessionsReplayed => {
                 if self.tmux_seen {
+                    self.listed = true;
                     (true, Vec::new())
                 } else {
                     self.held_listed = true;
@@ -193,6 +197,21 @@ impl SessionLedger {
         }
         self.tmux_seen = true;
         if std::mem::take(&mut self.held_listed) {
+            self.listed = true;
+            out.push(Frame::SessionsReplayed);
+        }
+        out
+    }
+
+    /// 一条连接半路接上来时它该补的那一份账（账本整台一份，它没看见之前那些帧）：可重连的各一帧 ·
+    /// 清单已经报完了 ⇒ 一帧 `sessions_replayed`（排在最后，同起步那一趟的次序）。等裁的不补：裁了照常发给每条连接。
+    pub(crate) fn snapshot(&self) -> Vec<Frame> {
+        let mut out: Vec<Frame> = self
+            .reconnectable
+            .iter()
+            .map(|sid| state(sid, SessionFate::Reconnectable))
+            .collect();
+        if self.listed {
             out.push(Frame::SessionsReplayed);
         }
         out

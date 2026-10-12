@@ -1,8 +1,11 @@
-//! `K-P1 KPY8`：**多客户的流按连接各一份（不扇出一条通道）—— 留一个触发器，不留一句话。**
+//! `K-P1 KPY8`：**多客户的流：整台一份 watcher、每条连接一份投影 —— 留一个触发器，不留一句话。**
 //!
-//! **多客户已做**：做法是**每条连接各一份** watcher / inbound / writer
-//! （`main.rs::serve_listening` 每接一条就起一份，与单流那一形逐字同形），不是把一条观测通道扇出 ⇒ `Overflow.lost` 仍按
-//! 「这条连接那一条通道」记，下面几根针的数一处没变；今天它们钉的是「源码里恰好一份，按连接实例化」。
+//! **多客户已做，10-12 read8a 换了形**：从前是**每条连接各一份** watcher（每接一条就起一份、整份重新预读一遍）；
+//! 今天是**整台一份** watcher（会话账本 · 读者 · 运行簿整台一份），每条连接经 `watcher::WatcherPoke::attach` 拿一份
+//! **投影**：它自己的有界出方向通道 ＋ 名单 ＋ 欠的丢帧账（`Overflow.lost` 按连接记 —— 这一刀就是本模块原先说的
+//! 「fan-out 那天的语义变更」，丢帧账从「这台那一条通道」重定义成「这条连接那一条通道」，见 `watcher::Sub`）。
+//! 下面几根针的数一处没变（观测通道仍只有一个诞生点，只是挪进了 `attach`、按连接实例化）；今天它们钉的是
+//! 「源码里恰好一份，按连接实例化」。
 //!
 //! # 它是什么形状
 //!
@@ -22,10 +25,10 @@
 //!    但**多连接那天要么每连接一份见证，要么把见证降级 —— 降级是放宽，不许**。
 //!    那一格由 `wire::tests::the_hello_witness_has_exactly_one_way_to_exist` 钉着，
 //!    本模块**不重复钉它**，只在这里指住它的住址。
-//! 2. **观测帧只有一个消费者** —— `observe::watcher::spawn` 里那条通道**只诞生一次**。
-//!    N 个连接要 fan-out，而 `Overflow.lost` 的丢帧账是**按那一个通道**记的
-//!    （`stream/wire.rs` 的 `LostFrame` 头注逐字：状态增量帧「是一次差分的结果，**别处不存在**」）
-//!    ⇒ 分流之后「丢了哪几帧」这本账要**重新定义**。★ **那是语义变更，不是搬运。**
+//! 2. **观测帧每条连接一个消费者** —— `observe::watcher::WatcherPoke::attach` 里那条通道**只有这一个诞生点**（每接一条连接走一次）。
+//!    N 个连接的 fan-out 在 watcher 里（10-12 read8a 落地），`Overflow.lost` 的丢帧账因此**按连接**记
+//!    （`stream/wire.rs` 的 `LostFrame` 头注逐字：状态增量帧「是一次差分的结果，**别处不存在**」——
+//!    一条连接丢了，别的连接收到了也不算它收到）。★ **那是语义变更，不是搬运**：账重定义成「这条连接那一条通道」。
 //!    ⚠ 这一格的针 08-28 挪过位置（`K-G5`）——怎么挪的、买到什么、买不到什么，见下一节。
 //! 3. **`writer_task` 的让位预算是「两条通道对一个 writer」** —— `REPLY_BURST = 8`，
 //!    那个数是 D 审计实测「500ms 内应答 70789 条 / 实时行 4 条」之后加的。
@@ -196,19 +199,18 @@ mod tests {
             "mpsc::channel::<Frame>(",
             1,
             3,
-            "观测帧**只有一个消费者**，钉在那条通道的**诞生点**上：`watcher::spawn` 里\
-             `mpsc::channel::<Frame>(CHANNEL_CAPACITY)` 那一句，**全 crate 只此一次造观测通道**。\
-             `tokio` 的 `Receiver` 不可 clone ⇒ 一条通道**至多**一个消费端（是上界不是等式：\
-             造了通道而把 receiver 立刻扔掉，消费端就是 0）⇒ 再造一条 `Frame` 通道\
-             就是 fan-out 落地，而 `Overflow.lost` 的丢帧账是按那**一个**通道记的\
-             ⇒ 语义变更，不是搬运。\
+            "观测帧**每条连接一个消费者**，钉在那条通道的**诞生点**上：`watcher::WatcherPoke::attach` 里\
+             `mpsc::channel::<Frame>(CHANNEL_CAPACITY)` 那一句，**全 crate 只此一处造观测通道**（每接一条连接走一次）。\
+             `tokio` 的 `Receiver` 不可 clone ⇒ 一条通道**至多**一个消费端 ⇒ 一条连接至多一个消费端；\
+             扇出在 watcher 里（`FrameSink::fan`：整台那一层过一次，再逐条连接投），`Overflow.lost` 按连接记（`watcher::Sub`）。\
+             再造第二处 `Frame` 通道 = 有一条绕开整台那一层（会话账本 · 预读拦帧）的路 ⇒ 回来重判。\
              ⇒ 全 crate 3 = 观测 1 + `main.rs` 的应答通道 2（stdio 那条 + 常驻那条，\
              与 `writer_task(` 那条针的 2 同源）。第 4 处出现时回来重判它是哪一种。\
              ⚠ 本行从 `mpsc::Receiver<Frame>`（数**类型名出现几处**）换成**诞生点**：\
              旧针把 `writer_task` 的两个**形参**算进那个 3，于是抽一个借用同一条通道的 helper\
              这种**零语义变更的纯重构**会红（`K-G2 D2` 实打）。传递 / 借用 / move 一个**已有的**\
              `Receiver<Frame>` 不增本行计数；射程与诚实边界逐条写在本模块头注。\
-             ★★ **本行一个人挡不住第二个消费者** —— 它只认 turbofish 那一形，\
+             ★★ **本行一个人挡不住第二条通道** —— 它只认 turbofish 那一形，\
              而靠左边类型标注定型的写法（`… : (Sender<Frame>, Receiver<Frame>) = mpsc::channel(8)`）\
              它一处都不数（`PM` 实打：backend `489 passed` 0 failed，静默过）。\
              ⇒ 与 `no_qualified_channel_call_leaves_its_payload_type_to_inference` **成对**：\

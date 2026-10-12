@@ -412,7 +412,7 @@ impl Sess {
     }
 }
 
-/// 一条流连接的运行簿（watcher 与流归位共用一本）。
+/// 这台的运行簿（整台一本：watcher 写、各条流连接的流归位读，read8a 起）。
 #[derive(Default)]
 pub struct RunBook {
     inner: Mutex<HashMap<String, Sess>>,
@@ -420,7 +420,7 @@ pub struct RunBook {
     wake: tokio::sync::Notify,
 }
 
-/// 这个进程里活着的运行簿（每条流连接一本，见 [`RunBook::shared`]）。只读查询（`session-interrupts`）在这里看全部。
+/// 这个进程里活着的运行簿（watcher 那一本 ＋ 夹具造的，见 [`RunBook::shared`]）。只读查询（`session-interrupts`）在这里看全部。
 static LIVE_BOOKS: Mutex<Vec<std::sync::Weak<RunBook>>> = Mutex::new(Vec::new());
 
 /// `sid` 此刻在跑的子运行（全部活着的运行簿合起来，按运行号去重）：显示名（标签 ＞ 种类 ＞ 运行号）。
