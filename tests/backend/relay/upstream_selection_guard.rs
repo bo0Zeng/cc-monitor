@@ -74,6 +74,9 @@ pub(super) mod tests {
         // 各号共用的用户级 MCP：只换一个键 · 三方对照（纯）· 读改写 · 文件事件触发。账号库管理的一部分，与上游选择零引用。
         "manage/json_key.rs",
         "manage/layout.rs",
+        // 各号的 MCP 登录：三态对照（纯）· 在那一家的锁里逐条比对、只换那一条。与上游选择零引用（凭据文件的写口在 `oauth/store`）。
+        "manage/mcp_logins.rs",
+        "manage/mcp_logins_exec.rs",
         "manage/mcp_share.rs",
         "manage/mcp_share_exec.rs",
         "manage/mcp_share_watch.rs",
@@ -90,6 +93,8 @@ pub(super) mod tests {
         // 订阅号令牌：读 · 续 · 加锁整份写回。上游选择换到别的订阅号时问它要令牌；它不许认识上游选择与账号库管理。
         "oauth/mod.rs",
         "oauth/store.rs",
+        // 续成了、写回在等那一家放写锁：新令牌留在内存里照用，文件事件叫醒写回（有总期限）。
+        "oauth/writeback.rs",
         // 额度与轮换：额度账（用量的唯一住址）。上游选择可以问它（换号要看各号的额度），它不许认识上游选择与账号库管理。
         "quota/decide.rs",
         "quota/ledger.rs",

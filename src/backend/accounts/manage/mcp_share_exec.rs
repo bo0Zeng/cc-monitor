@@ -118,9 +118,9 @@ fn servers_in(raw: Option<&str>, key: &str) -> Result<Servers, String> {
     }
 }
 
-fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
+/// 共享集合那份文件：解好的 ＋ 原文（落盘时当 `expect`；`None` = 文件不在）。登录那一半（[`super::mcp_logins_exec`]）也读它。
+pub(crate) fn load_store(home: &str) -> Result<(Store, Option<String>), Refusal> {
     let key = layout::user_mcp_key();
-    let file = layout::identity_config_file();
     let spath = door::join_under(home, relay_route_core::ACCOUNTS_MCP_REL);
     // 那一句只带路径与原因词；原话进复制详情。
     let say = |w: &str| {
@@ -143,6 +143,13 @@ fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
         })?,
         None => Store::default(),
     };
+    Ok((store, store_raw))
+}
+
+fn load(home: &str, list: Vec<(String, String)>) -> Result<Here, Refusal> {
+    let key = layout::user_mcp_key();
+    let file = layout::identity_config_file();
+    let (store, store_raw) = load_store(home)?;
     let mut notes = Vec::new();
     let mut accounts = Vec::new();
     for (name, dir) in list {

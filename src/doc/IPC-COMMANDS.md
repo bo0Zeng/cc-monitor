@@ -1744,7 +1744,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `accounts-mcp-sync`
 
-停 / 开各账号之间同步用户级 MCP。
+停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-mcp-sync`
 
@@ -4243,7 +4243,7 @@ forkOf?: string, };
 | `--accounts-mcp-pick` | ＝ 帧命令 `accounts-mcp-pick`：两边都改了的那一条用哪一版 |
 | `--accounts-mcp-read` | ＝ 帧命令 `accounts-mcp-read`：这台各账号共用的用户级 MCP 此刻的样子 |
 | `--accounts-mcp-remove` | ＝ 帧命令 `accounts-mcp-remove`：从各账号共用的用户级 MCP 里删一条 |
-| `--accounts-mcp-sync` | ＝ 帧命令 `accounts-mcp-sync`：停 / 开各账号之间同步用户级 MCP |
+| `--accounts-mcp-sync` | ＝ 帧命令 `accounts-mcp-sync`：停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关） |
 | `--accounts-remove` | ＝ 帧命令 `accounts-remove`：删一个号 |
 | `--accounts-repair` | ＝ 帧命令 `accounts-repair`：修复账号库（幂等） |
 | `--accounts-rollback` | ＝ 帧命令 `accounts-rollback`：按一份备份还原 |

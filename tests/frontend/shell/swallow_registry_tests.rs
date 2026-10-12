@@ -73,6 +73,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/quota/rotation.rs", "let _ = configs_changes().send(());", Why::NotAnError, "进程内「配置表 / 本机默认 / 策略变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/control/asks/hook.rs", "let _ = stdout.flush().await;", Why::DeadLink, "hook 的 stdout 是那一家读决定的管子：写不进去 ＝ 那一家已经不读了（框已关 / 进程走了），没有第二个地方可以说"),
     ("src/backend/control/asks/hook.rs", "let _ = stdout.write_all(out.to_string().as_bytes()).await;", Why::DeadLink, "同上：决定写不进那一家读的管子 ＝ 它已经不要了（晚到的答案那一家本来也丢）"),
+    ("src/backend/accounts/oauth/writeback.rs", "let _ = tx.send(());", Why::PeerGone, "等写锁放开那一声：等的线程已经到期走了（照实报了写回失败）⇒ 没人收"),
     ("src/backend/control/asks/hook.rs", "let _ = tx.send(());", Why::PeerGone, "「终端那边答了」那一声：等它的那一头已经拿到答案走了 ⇒ 没人收"),
     ("src/backend/control/asks/mod.rs", "let _ = changes().send(sid.to_string());", Why::PeerGone, "广播「这条会话挂着的请求变了」：此刻没有流连接在订 ⇒ 没人收（下一个连上来的照常重问）"),
     ("src/backend/control/cli_args.rs", "let _ = std::io::BufRead::fill_buf(&mut br);", Why::Signal, "读入参的静默窗只等「第一个字节（或 EOF）到了」这件事；读错不在这里报 —— 紧接着那一趟 `read_input` 读同一个读端会再拿到它、按 `stdin_read_failed` 报"),

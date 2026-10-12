@@ -1,7 +1,8 @@
-//! **什么时候同步**：常驻后端里一个监听器盯账号库目录 · 每个号的目录 · 家目录（都只盯直接子项），只认两个名字 ——
+//! **什么时候同步**：常驻后端里一个监听器盯账号库目录 · 每个号的目录 · 家目录（都只盯直接子项），只认三个名字 ——
 //! 各号的配置文件（Claude 改了它、用户在那个号里 `claude mcp add` 了、在那个号里信任了一个目录）· 家目录下账号 0 那一份
-//! （信任只读它，一个字节不写）与账号清单（加号 / 删号 ⇒ 盯的名单跟着换）。每一趟先同步用户级 MCP（[`super::mcp_share_exec`]），
-//! 再同步信任（[`super::trust_share_exec`]）。
+//! （信任只读它，一个字节不写）· 各号的凭据文件（在那个号里登录了一个 MCP、claude 续了一条 MCP 登录）与账号清单
+//! （加号 / 删号 ⇒ 盯的名单跟着换）。每一趟先同步用户级 MCP（[`super::mcp_share_exec`]），再同步 MCP 登录
+//! （[`super::mcp_logins_exec`]），再同步信任（[`super::trust_share_exec`]）。
 //!
 //! 不轮询、不传时间窗：经盯盘原语 [`crate::platform::watch_file`]，一阵连着的改动并成一趟回调、同步一趟。
 //! 同步自己写回去的那一下也会来一个事件，下一趟算出来没有要写的 ⇒ 停在那里。
@@ -17,10 +18,15 @@ use std::sync::Mutex;
 /// 进程里那一份监听（第一次 [`start`] 时起，此后一直持有；名单跟着账号清单换）。
 static LIVE: Mutex<Option<Watching>> = Mutex::new(None);
 
-/// 这个路径的最后一段是不是值得同步一趟的那两个名字之一。
+/// 这个路径的最后一段是不是值得同步一趟的那几个名字之一。
 fn relevant(p: &std::path::Path) -> bool {
+    let creds = super::layout::face()
+        .and_then(|f| f.login)
+        .map(|l| l.creds_file);
     p.file_name().and_then(|n| n.to_str()).is_some_and(|n| {
-        n == super::layout::identity_config_file() || n == super::scan::MANIFEST_FILE
+        n == super::layout::identity_config_file()
+            || n == super::scan::MANIFEST_FILE
+            || Some(n) == creds
     })
 }
 
@@ -47,7 +53,7 @@ fn rearm(home: &str) {
 }
 
 /// 一趟：名单跟上 ⇒ 同步一趟。只出声，不拖垮后端。
-fn sync_once(d: &'static (dyn Door + Sync)) {
+fn sync_once(d: &'static (dyn Door + Sync), own: &crate::platform::fs::Own) {
     let home = match crate::assets::door::home(d) {
         Ok(h) => h,
         Err(e) => {
@@ -73,6 +79,20 @@ fn sync_once(d: &'static (dyn Door + Sync)) {
             crate::common::said::Said::from(f).logged()
         ),
     }
+    match super::mcp_logins_exec::sync(d, own) {
+        Ok(v) => {
+            if !v.changed.is_empty() {
+                tracing::info!("账号之间同步 MCP 登录：改写了 {}", v.changed.join(" · "));
+            }
+            for n in v.notes {
+                tracing::warn!("账号之间同步 MCP 登录：{n}");
+            }
+        }
+        Err(f) => tracing::warn!(
+            "账号之间同步 MCP 登录：这一趟没做成：{}",
+            crate::common::said::Said::from(f).logged()
+        ),
+    }
     match super::trust_share_exec::sync(d) {
         Ok(changed) if !changed.is_empty() => {
             tracing::info!("账号之间同步信任：改写了 {}", changed.join(" · "))
@@ -86,14 +106,15 @@ fn sync_once(d: &'static (dyn Door + Sync)) {
 }
 
 /// 起监听（进程里只起一次），并立刻同步一趟（后端刚起来时各号可能已经不一样了）。
-/// `d` = 这台的文件管理面（写各号配置文件与共享集合都经它）。
-pub(crate) fn start(d: &'static (dyn Door + Sync)) {
+/// `d` = 这台的文件管理面（写各号配置文件与共享集合都经它）；`own` = 写自家状态的句柄（各号凭据文件经它铸的窄句柄写）。
+pub(crate) fn start(d: &'static (dyn Door + Sync), own: crate::platform::fs::Own) {
     let Ok(mut g) = LIVE.lock() else { return };
     if g.is_some() {
         return;
     }
-    match crate::platform::watch_file::watch(&[], relevant, "acct-mcp-share", move |_| sync_once(d))
-    {
+    match crate::platform::watch_file::watch(&[], relevant, "acct-mcp-share", move |_| {
+        sync_once(d, &own)
+    }) {
         Ok(w) => *g = Some(w),
         Err(e) => {
             tracing::warn!(
