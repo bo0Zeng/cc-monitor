@@ -2,7 +2,7 @@
 
 **All your Claude Code sessions, on every machine, in one window: watch them live, jump back in, and manage every machine from one place.**
 
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v4.1.8
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) · Android phone app (.apk) | Current: v4.1.9
 
 ![Main window: each tab on the left is a running Claude Code session; the right side shows the conversation and tool calls live](docs/screenshots/main.png)
 
@@ -198,7 +198,7 @@ The "Data locations" page in Settings shows the full path of every file.
 - Multi-account currently works on Linux machines only; the account store cannot be set up on a local Windows machine.
 - The Windows side has been regression-tested in a Windows 11 virtual machine (copy-details, icons, the terminal drawer, the file window, ↗ bringing the right window and the right Windows Terminal tab forward); terminals opened as administrator have not been tested yet, and desktop notifications cannot be judged in the VM.
 - ↗ only brings the window forward (and says why) when the tab name does not follow the program title (renamed by hand, or "suppress title changes" is set) or the tabs cannot be read; terminals connected through a jump host or port translation cannot be matched.
-- The Android app lives in the repo (`src/mobile/`) but has not shipped in a Release yet.
+- The signed Android app ships with each Release (`cc-monitor-<version>.apk`); it cannot install or upgrade a backend on a machine yet and only reports "needs update"; its SSH is still its own, and moves to the same core as the desktop in the next release.
 
 ---
 
@@ -213,7 +213,7 @@ The "Data locations" page in Settings shows the full path of every file.
 
 ## Status
 
-- current release **v4.1.8**: see the [CHANGELOG](CHANGELOG.md)
+- current release **v4.1.9**: see the [CHANGELOG](CHANGELOG.md)
 
 ## License
 
