@@ -966,7 +966,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// 计划卡三态标题由核心写。删掉没人调的一次性子命令 13 条（--read-session 三条 · --search · --list-* · --find-in-session · --account-trust 两条 · --fork-session · --session-accounts），
 /// --resolve 改走派生臂（入参 ResumeSpec 删 claudeDir · fallbackCwd · alreadyInTmux），不认的子命令一律 unknown_command。只读守卫第二刀：写自家状态经 Own。
 /// PlanSlice 多 path（planned-build 的仓位置照 pb 给的）。
-pub const BUILD_ID: &str = "p10g-rotation-v3-answer-hook";
+///
+/// p10h-chain-linear：线上帧与子命令集不变。主线外清单的链索引不再按条整份重算：冷接宣告与一趟读进的新行先记、读完算一次
+/// （agents::mainline 的 Chain::load / settle），排队那一问看重算时记下的「主线外有没有」。旧做法在分叉与排队行很多的长记录上是平方，
+/// watcher 线程空转、首次 tmux 探测与所有宣告都等着（4.1.9 上报）。
+pub const BUILD_ID: &str = "p10h-chain-linear";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
