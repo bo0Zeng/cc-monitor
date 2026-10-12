@@ -124,6 +124,7 @@
       { "text": "本机", "use": "输入" }
     ],
     "tests/frontend/ui/kit/components.vitest.ts": [
+      { "text": "说不清", "use": "输入" },
       { "text": "关闭", "use": "输入" },
       { "text": "卸载", "use": "输入" },
       { "text": "保存", "use": "输入" },
@@ -245,6 +246,9 @@
     "tests/frontend/ui/tab-bar-state.vitest.ts": [
       { "text": "昨天", "use": "输入" }
     ],
+    "tests/frontend/ui/tab-session-state.vitest.ts": [
+      { "text": "说不清", "use": "词义" }
+    ],
     "tests/frontend/ui/tabs.vitest.ts": [
       { "text": "任务", "use": "输入" }
     ],
@@ -262,6 +266,9 @@
       { "text": "管理账号…", "use": "输入" },
       { "text": "最小化", "use": "输入" },
       { "text": "用量", "use": "输入" }
+    ],
+    "tests/frontend/ui/views/grid-monitor.vitest.ts": [
+      { "text": "说不清", "use": "输入" }
     ],
     "tests/frontend/ui/views/history-page.vitest.ts": [
       { "text": "不指定账号 · ~/.claude", "use": "回显" }
