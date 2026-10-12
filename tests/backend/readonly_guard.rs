@@ -2,47 +2,39 @@
 //!
 //! # `K-G6` `KG62`：性质与人群，两行逐字（**这两行各自只许有一句**，`g6_scope_pins` 钉着）
 //!
-//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 例外只有两档、都逐文件登记：新增文件须 `O_EXCL` 且只许在白名单模块里（白名单层，`D1` 08-01）；改动既有数据只许在**文件管理那一面**、每一处先过路径解析（不越根 ＋ 父目录解链接；从前是「先过 Claude 会话数据围栏」，用户「文件管理器全部都可以改. 不需要任何围栏」之后那道拿掉了）、且只从登记的那一扇门进来（第三层，波 5 · 「现在只允许后端的文件管理部分写文件」）。另有一层**不是例外**、是把人群收回性质上：后端写**它自己的**状态文件（`~/.cc-monitor/backend.json` · 上游选择那份凭据文件，都不是用户数据）只许在逐文件登记的那几份模块里、动词闭集、只从一扇门进来（第四层）。⚠ `src/doc/INVARIANTS.md` §41.6 的「现措辞」今天**没有**第三层那一档 —— 改那条是产品裁决、不归本护栏改，已报备。
-//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段**源码文本**里 `fs::` / `File::` / `OpenOptions` 命名空间的调用（默认层 + 只读白名单 + 逃生口），外加另一张表：`Child::new` 的起进程点（生产段 `Command::new` 只许住起子进程原语 `platform/child.rs`）。
+//! - **它守的性质是**：backend **进程自身**不许改动用户既有数据 —— 碰盘只经 `platform/fs/` 交出去的句柄：读经 `Ro`（没有写方法）· 改用户文件只经文件管理面的 `Face`（写方法只收已过路径解析的 `Resolved`，只递给命令表文件管理那一族）· 分叉只经只会 `O_EXCL` 新建的 `NewFile` · 后端自家状态只经 `Own`（只写家目录的 `.cc-monitor` 与数据目录底下）。
+//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里点名文件系统命名空间的地方（`platform/fs/` 之外一处都不许）与造写句柄的地方（只许登记的那几处），外加另一张表：`Child::new` 的起进程点（生产段 `Command::new` 只许住起子进程原语 `platform/child.rs`）。
 //!
-//! ⚠ **这两行今天不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
-//! 「用户既有数据」是**语义**命题，人群是**文本形状**，两者之间没有可机检的桥。
-//! 人群比性质**小**（不含依赖 crate 的写、不含被起进程的写面、不含非 `fs::` 命名空间的写路径），
-//! 同时又比性质**大**（backend 写一个与用户无关的自己的文件也会红）。
-//! ⇒ **它今天真能拦住的形状全表在 [`g6_reach`]，一个今天在盘上、形状相同却通过了的反例也在那里。**
+//! # 怎么挡：一处实现，四种句柄
 //!
-//! # 🔴 **第三层** —— 判准从「不改既有数据」换成「改，但每一处都先过路径解析、且只从声明过的那一面来」
+//! 从前这份护栏扫源码文本：每一处 `fs::` 调用都得落在某张表里（读动词表 · 白名单层 · 文件管理面 · 自家状态），
+//! 每写一行读盘、每多一个写的地方都要回来登记一次。今天挡在类型上：
 //!
-//! 〔用户〕原话是「先过**围栏**」。用户「文件管理器全部都可以改. 不需要任何围栏」⇒
-//! 会话数据围栏拿掉了，③ 那一针换成**路径解析**（`files_write::resolve_in_root` / `resolve_existing_in_root`：
-//! 词法不越根 ＋ 父目录解链接后判落点 —— 那不限制改什么，只保证改的就是 `root ＋ rel` 那一格）。
-//! 判的形状一个字没变（逐顶格函数切块、剥注释、比位置）；新立一条
-//! [`tests::the_file_manager_face_never_asks_the_session_shape`]：后端生产树里问会话形状的函数恒等于删会话那一条。
+//! - 只有 `platform/fs/` 许点名 `std::fs` · `tokio::fs` · `os::unix::fs` · `OpenOptions` · `DirBuilder`（[`tests::only_the_fs_platform_module_names_the_filesystem`]）；
+//!   那里点名的每一样也逐份登记（[`tests::the_fs_home_names_only_its_registered_entries`]）。
+//! - 读不用递句柄：`Ro` 没有写方法，`Ro::open` 交回的那一份不实现 `Write`（[`tests::the_read_only_file_has_no_write`]）。
+//! - 写要拿到句柄，句柄只在登记的那几处造（[`tests::the_write_handles_are_issued_only_at_startup`]：`Own` 只在启动入口 ·
+//!   `Face` 只在分派那一层 · `NewFile` 只在分叉那两条命令 · `Resolved` 只由路径解析担保）；
+//!   `Face` 只递给文件管理那一族（[`tests::only_the_file_manager_commands_are_handed_the_face`]），写方法不收 `&Path`（[`tests::the_face_writes_take_only_resolved_paths`]）。
 //!
-//! 用户逐字：「**现在只允许后端的文件管理部分写文件**」。这句话收窄的是**主语**（谁能写），
-//! 不是动作（能写什么）⇒ 动作是宽的（建目录 · 改名 · 删除 · 改权限 · 覆盖写），
-//! 入口是窄的（只有文件管理那一面）。要这一层，
-//! `§8.3 甲` 逐字要求「降级后的强度要**机检**」⇒ 它不是一句散文，是 `tests` 模块里
-//! 四条会红的判据（形状与逐条的漏判面住 `MUTATING_FACE_MODULES` 的头注）。
+//! 今后加一处读，不用改护栏；加一处写，只要拿到对的句柄。只有新开一种写能力、或者多一个造句柄的地方，才回来改这里。
 //!
-//! ⚠ 按 [`g6_doctrine`] 那张四格表，这一刀落在**「缩性质」**那一格，不是「加白名单」：
-//! 性质从「不改既有数据」缩成「不改既有数据，文件管理面除外」，
-//! **缩掉的那一半归谁**写在登记表上 —— 归本层四条判据（从前还有「那道 Claude 会话数据围栏」，用户拿掉了）。
-//! 「只缩不写归属 = 把那一半丢了」（那一格的 why 逐字）。
+//! ⚠ **这两行今天仍不是同一件事，而「它们是同一件事」这一格钉不住 —— 靠纪律**（`KG62` 如实登记）：
+//! 「用户既有数据」是**语义**命题，人群是**文本形状 ＋ 类型**，两者之间没有可机检的桥。
+//! 人群比性质**小**：不含依赖 crate 的写（见下：签字表守）· 不含被起进程的写面（`spawn_registry` 逐条登记）·
+//! 不含不经那几个命名空间的写（裸系统调用：`platform/fs/` 外今天一处没有，但没有一条判据钉它）。
+//! ⇒ **它今天真能拦住的形状与一个今天在盘上、形状相同却通过了的反例都在 [`g6_reach`]。**
 //!
-//! # 上面那三条「小」里的第三条：**远端那一半今天有一层了**
+//! # 远端那一半另有一层
 //!
-//! 「不含非 `fs::` 命名空间的写路径」这句话此前把两件事装在一起：
-//! **本机换个命名空间的写**（`os::unix::fs::symlink` 一族）与**根本不在本机的写**（SFTP 那一套）。
-//! 后者不是这条护栏的一个漏项，是它**从来没有过的一维** —— 而 C 类要走的正是那条路。
-//! ⇒ 远端那一半立在 [`remote_write_layer`]，两行性质 / 人群与盲区读数都在那里；
-//! **本机换命名空间那一半仍然没有守卫，那句话对它照旧成立。**
+//! **根本不在本机的写**（SFTP 那一套）不是这条护栏的一个漏项，是它**从来没有过的一维**。
+//! ⇒ 远端那一半立在 [`remote_write_layer`]，两行性质 / 人群与盲区读数都在那里。
+//! （本机换个命名空间的写，`os::unix::fs::symlink` 一族，今天由命名空间那一条一并拦着。）
 //!
-//! # 人群那三条「小」里的第一条：**依赖 crate 的写面，今天有人签字了**
+//! # 依赖 crate 的写面：不经 `platform/fs`，类型挡管不到它 —— 照旧由依赖签字那张表守
 //!
-//! 上面那一行逐字承认人群「不含依赖 crate 的写」。这里**不补人群**（按逐条过），
-//! 而是把这一条从「判据看不见」变成「有人签过字」：清单上每一条依赖都要有一行登记
-//! （有没有写面 · 依据是什么 · 判档），**新加一条而没签字 ⇒ 当场红**。
+//! 依赖 crate（如 `creds-core` 的 `perm.rs`）里的写不经 `platform/fs`，上面那几种句柄挡不住它。这里**不补人群**，
+//! 而是让它「有人签过字」：清单上每一条依赖都要有一行登记（有没有写面 · 依据是什么 · 判档），**新加一条而没签字 ⇒ 当场红**。
 //! 表与判据住 [`g6_dependency_signoff`]。
 //!
 //! 🔴 立表顺手量出一件事：那张表里**真有一条有写面** —— `creds-core` 的 `perm.rs` 里两处，
@@ -59,9 +51,8 @@
 //! ⇒ 两处一并改，并由 `platform/fallback_guard.rs::g6_scope_pins` 立一条**反向棘轮**
 //! 钉住那两个承重词从此不许回来。
 //!
-//! 唯一合法的「写」是把 wire 帧写 **stdout**（`main.rs` 的 `AsyncWriteExt::write_all`，非 FS）。
-//! 本护栏遍历后端生产源码，剥掉 `#[cfg(test)]` 块（测试夹具可用 temp 目录）后，断言不含任何
-//! **文件系统变更**调用。加只读测试是红线 I7 明确允许的（「backend 只准加只读测试/门禁」）。
+//! 本护栏遍历后端生产源码，剥掉 `#[cfg(test)]` 块（测试夹具可用 temp 目录）后，断言 `platform/fs/` 之外不点名文件系统命名空间、
+//! 写句柄只在登记的那几处造。加只读测试是红线 I7 明确允许的（「backend 只准加只读测试/门禁」）。
 //!
 //! # ⚠ 本文件底部三个 `g6_*` 模块的住址是**当时改动范围限制的结果**，不是设计
 //!
@@ -94,8 +85,8 @@ mod tests {
     /// 朴素括号配平认不得），`src/backend` 上两者同为 **0**；
     /// 两个 workspace 的用例数与红绿**一格没动**。
 
-    /// 文件系统**变更**模式。用 `fs::`/`File::`/`OpenOptions` 命名空间锚定，故 stdout 的
-    /// `AsyncWriteExt::write_all`（trait 方法、非 `fs::`）天然不匹配 = 合法放行。
+    /// 文件系统**变更**模式的词表（`fs::`/`File::`/`OpenOptions` 锚定）。本机那一半今天挡在类型上、不再拿它扫；
+    /// 留着是给依赖签字与远端那一层量**别的树**用的（[`g6_dependency_signoff`] · [`remote_write_layer`]）。
     pub(super) const FS_MUTATION_PATTERNS: &[&str] = &[
         "fs::write",
         "fs::create_dir",
@@ -110,254 +101,24 @@ mod tests {
         "OpenOptions",
     ];
 
-    /// 🔴 **`backend-core` 的模块登记 —— 本护栏人群的唯一住址。**
-    ///
-    /// # 它换的是什么（「不是收窄射程，是把判据的锚从二进制换成模块」）
-    ///
-    /// 在这之前，人群是 `guard_support::src_root()` **递归走出来的所有 `.rs`** ——
-    /// 锚是「**后端这个二进制**」。`4b`（monitor 进程内 link 后端库面）一落地，
-    /// 那个锚就名不副实了：跑在 monitor 进程里的那半，它的「不许写盘」由谁盯？
-    /// 而更要紧的是**今天就已经漏的那一半**：一个模块从 `src/backend/` 搬出去
-    /// （搬进某个共享 crate、或被 monitor 那侧接管），它**安静地离开人群**，
-    /// 而下面那条断言原先是 `default_scanned >= 5` —— **地板在「变少」这个方向上是瞎的**。
-    ///
-    /// ⇒ 换锚：人群 ＝ **本表逐条登记的模块**，并由
-    /// [`the_population_is_the_registered_module_set_and_nothing_fell_out`] 三向钉住：
-    ///   · `A` 本表 ↔ `lib.rs` 里真声明的模块，**两向集合相等**
-    ///   · `B` `src/backend/**/*.rs` 每一份归到**恰好一个**登记模块（分区恒等）
-    ///   · `C` 人群非空，且扫到的份数 == 分区算出的份数（**相等，不是地板**）
-    ///
-    /// ⚠ **判据本身一个字没放松**（规格逐字要求）：白名单不变、写盘禁令不变。
-    ///   变的只有「谁在人群里」这件事**从隐式变成登记**。
-    ///
-    /// ⚠ 第二列是「**它为什么算 backend-core**」。写得出来才登记 ——
-    ///   一个说不出理由的模块，多半是该搬走而没搬的那种。
-    const BACKEND_CORE_MODULES: &[(&str, &str)] = &[
-        (
-            "accounts",
-            "上游选择（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
-             中转进程里**只读**那份凭据文件 · 热重载。另有 `upstream/file_face.rs` 那一份\
-             在帧面上写**这台机器上**的那份凭据文件（上游选择自己的状态，经 `platform::fs::Own` 写）。\
-             2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
-        ),
-        (
-            "agents",
-            "每个 agent 一份适配层，装它专属的知识（codex + claudecode）",
-        ),
-        (
-            "alloc_probe",
-            "线程级内存量具（整体 cfg(test)，生产构建为空）",
-        ),
-        (
-            "allocator_guard",
-            "判据：远端 musl 版的全局分配器是 mimalloc、库面不定分配器（整体 cfg(test)，生产构建为空）",
-        ),
-        (
-            "common",
-            "两边都要、又不含平台原语的纯工具。\
-`own_dir` 从 crate 根挪进这里（原生 × 文件管理两块共用、零互相依赖）：今天只剩后端自家目录的几个名字与那个权限位（常量）；\
-             建目录经 `platform::fs::Own::ensure_dir`（本机）。**零写盘**",
-        ),
-        ("control", "控制面 —— 会改变世界，或产出改变世界的计划"),
-        (
-            "dial",
-            "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处 · \
-             `remote_ask` —— 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 内存可达表，\
-             帧面 `remote-reach`。**零写盘**：可达表只在本进程内存里",
-        ),
-        (
-            "files",
-            "`files-read` 这一族：常驻文件名索引 ＋ 一族**只读**能力 —— \
-             它归 backend-core 是因为索引**必须住在被搜的那台机器上**，而后端是唯一住在那里的东西。\
-             ⚠ 这里**刻意不写「几条」** —— 原文写的是「四条」，而 09-21 补了 \
-             `files.index.rebuild` / `files.browse` 之后它变成了六条、这句话当场变假，\
-             **而本表没有任何判据读那个计数** ⇒ 它会一直假下去没人发现。\
-             那个数的唯一住址是 `files::CAPABILITIES`（被两向对拍钉着）。同 `comm-boundary` \
-             那一格 09-21 的处置：**不是把数改对，是把抄来的第二份摘掉**。",
-        ),
-        (
-            "plan",
-            "计划（planned-build）的读面：找 pb、在工作区里起 `pb dump`（只读子命令，不带身份）、加工成界面排版的成品、\
-             盯计划仓推 `changed {plan}`。它归 backend-core 是因为计划仓与 pb 都**在那台机器上**。\
-             **计划仓零写盘**：每个工作区上一次读好的那一份只在进程内存里；计划仓与工作区 `.env` 一个字节都不写\
-             （`tests/backend/plan/book_tests.rs` 跑前跑后逐字节对拍）。认可与退回记在后端自己的 \
-             `~/.cc-monitor/plan-review.json`（`plan/review.rs`，第四层逐份登记）",
-        ),
-        (
-            "stderr_log",
-            "脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件。\
-             它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
-             写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，\
-             经诊断文件的窄句柄 `platform::fs::DiagLog` 写）—— 一个用户文件都不写",
-        ),
-        (
-            "footprint",
-            "「足迹」的这台机器那一半：帧面 `footprint-probe` —— 这台机器的环境 · 一批路径的 stat · \
-             一批文件里有没有某几个字样。它归 backend-core 是因为那些事实**只在那台机器上**；判定仍只住 monitor。**零写盘**",
-        ),
-        ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
-        ("test_home_guard", "判据：每个有判据的 Rust crate 都把 `test-home` 引进测试二进制"),
-        (
-            "assets",
-            "后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
-             它归 backend-core 是因为算的与写的是同一台后端；**零写盘**：写一律经 `stream/inbound/doors.rs::LocalFiles` 递进来的\
-             本进程文件管理面（`files-*` 帧命令本身），本模块不直呼 `files_write`。 \
-从 crate 根归进来五件（纯搬家；上面「零写盘」说的是 MIG-3a 那几份，`asset_catalog` / `skill_ledger` 写的是后端**自己的**文件），各自理由原样： \
-             `asset_catalog` —— 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
-             「这台机器上有哪些 skill / 项目级 MCP」是**那台机器上**的事实；写的只有后端**自己的**目录文件 \
-             `~/.cc-monitor/assets-catalog.json`（经 `platform::fs::Own` 写）—— 一个用户文件都不写 · \
-             `asset_sync` —— 资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
-             在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
-             SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
-             命令表资产那一族（`stream/inbound/registry/assets.rs`）递进来，本模块不直呼它（第四层 ④）。跑远端那一跳与可达表搬去了 `remote_ask` · \
-             `mcp_sync` —— MCP 资产同步的判定：帧面 `mcp-sync-plan` —— 两份原文进、差异 ＋ 可疑项 ＋ 写哪几条出。\
-             它归 backend-core 是因为可疑项里「有没有这个路径 / 这个命令」是**要被写的那台机器上**的事实。\
-             **零写盘、零读文件内容**（原文由 `files-peek` 读来，写经 `files-put`；本模块只 stat） · \
-             `skill_install` —— skill「装到这台」：帧面 `skill-read`（来源那台读 skill 的文件原文）· `skill-install-plan`\
-             （要被写的那一台判：差异与闸原样用 `mcp_sync`，可疑项带那台的事实）。它归 backend-core 是因为文件与事实都在那台机器上。\
-             **零写盘**：写经 monitor → 那台后端 `files-put`（CAS）。又多两条只读帧命令：\
-             `skill-installs`（这台记着哪几个从别处装来的）· `skill-uninstall-plan`（被卸那台逐文件比摘要、判删哪几个）；\
-             删经 monitor → 那台后端 `files-delete`（CAS），本模块仍零写盘 · \
-             `skill_ledger` —— skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
-             它归 backend-core 是因为「这台上哪几个文件是装写进去的」是**那台机器上**的事实；写的只有后端**自己的**记录文件 \
-             `~/.cc-monitor/skill-installs.json`（经 `platform::fs::Own` 写）—— 一个用户文件都不写",
-        ),
-        (
-            "faces",
-            "帧面宿主（从 crate 根归进来，纯搬家），各自归 backend-core 的理由原样： \
-             `read_face` —— 只读查询的帧面宿主：八条一次性查询的帧面那一层壳 —— \
-             本体在 `observe/`（CLI 那一臂同一个函数），它只解 `args`、装应答。**零写盘** · \
-             `feature_face` —— 功能侧只读查询的帧面宿主（任务列表 …）—— 与 `read_face` 同形的一层壳：\
-             本体在 `observe/`，它只解 `args`、装应答。**零写盘** · \
-             `fork_face` —— 帧面 `session-fork` 的宿主壳：找家目录（与 `read_face` 同一句）、交 `control/fork_write` 本体。\
-             它归 backend-core 是因为本体在 `control/` 而家目录的出处在 `observe/`（`control → observe` 反向不许）。\
-             **零写盘**：写的是本体（白名单层那一处 `O_EXCL` 新建），本文件只转交 · \
-             `resync_face` —— 帧面 `resync`（手动对齐）的宿主壳：解 `args`、交 `observe/watcher.rs::resync`、装应答。**零写盘**\
-             （打标改的是 tmux server 的运行期状态，住 `control/identity_tag.rs`）",
-        ),
-        (
-            "history",
-            "各自归 backend-core 的理由： \
-             `history_list` —— 历史页的平铺会话清单：帧面 `history-list` 出成品（记录树 ＋ 合成历史 ＋ pidfile 判活 ＋ \
-             远端经 `remote_ask` 问那台 `raw`，并上注解）。它归 backend-core 是因为「清单只一个家，在本机常驻后端」。\
-             **零写盘**：注解只读（`history_annotations::load`），远端那份只记在本进程内存 · \
-             `history_annotations` —— 历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
-             `history-last-accounts`。它归 backend-core 是因为「读写者换成本机常驻后端」；写的只有那一份 \
-             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，经 `platform::fs::Own` 写）—— 一个用户文件都不写",
-        ),
-        (
-            "stream",
-            "进后端的口 ① 帧面（从 crate 根归进来，纯搬家），各自的理由原样： \
-             `wire` —— 线上协议的帧定义与编解码 · \
-             `inbound` —— 流连接上的入方向（信封 / 分派 / 取消） · \
-             `listen` —— 常驻监听口的纯判定（接受循环在 main.rs） · \
-             `tap` —— tee 的消费侧（后端这一半）：进程级 tap 口 ＋ 每条流连接一条有界通道 ＋ 事件 → `tap` 帧。\
-             它归 backend-core 是因为中转住本机常驻后端这个进程，帧从这个进程的 wire 出去。\
-             **零写盘**：只在内存里递事件",
-        ),
-        (
-            "lineage",
-            "会话血缘（谁起的谁）：中转那一路每一发先认一次。它归 backend-core 是因为中转住本机常驻后端这个进程；\
-             写的只有数据目录底下的 `lineage.json`（后端**自己的**状态，经 `platform::fs::Own` 写）—— 一个用户文件都不写",
-        ),
-        ("observe", "观测面 —— 读，不改变世界"),
-        ("platform", "唯一允许平台原语与平台 cfg 的层"),
-        ("plugin", "插件通用调用口：找它 / 起它 / 问它会什么"),
-        ("relay", "HTTP 中转搬字节那半"),
-        // ── 下面这些整体是 `cfg(test)` 的守卫，生产构建为空 ──────────────────
-        // 🔴 **它们也在人群里，这是刻意的**：护栏扫的是「源码里有没有写盘的形状」，
-        //    而一条守卫自己偷偷写盘（比如把读数落到盘上）同样违反那条铁律。
-        //    ⚠ 它们**不占**白名单的名额 —— 白名单是「允许写」，这里是「在被看」。
-        (
-            "agent_boundary_guard",
-            "守卫：通用层不许知道任何 agent 的名字与文件格式",
-        ),
-        (
-            "agent_locality_guard",
-            "守卫：codex 的格式知识只许住 agents/codex/",
-        ),
-        ("build_features", "守卫：判据构建与发布构建的 serde_json 特性集相同"),
-        ("build_id_guard", "守卫：加了子命令必须 bump BUILD_ID"),
-        (
-            "capability_ledger_guard",
-            "守卫：第 2 层那份汇总清单与各能力面的声明对得上",
-        ),
-        (
-            "cc_bus_boundary_guard",
-            "守卫：backend 不许碰 cc-bus 的数据布局",
-        ),
-        (
-            "flow_scripts_guard",
-            "守卫：流程工具（门禁入口 · 挑格 · 重活隔离 · 推候选分支）在仓里、能跑、不写家目录",
-        ),
-        ("layering_guard", "守卫：observe↔control 的方向与条数"),
-        ("no_timer_guard", "守卫：零定时器护栏"),
-        ("plugin_walk_fixture", "守卫 ＋ 夹具：最小假插件走通全流程"),
-        (
-            "protocol_doc_gen",
-            "守卫：协议参考 IPC-COMMANDS.md 由它从代码生成、逐字节比（只有设了重生成开关才写回那一份文档）",
-        ),
-        (
-            "protocol_doc_guard",
-            "守卫：协议面本身的几条（协议级码闭集 · serde 类型登记 · 子进程旗标 · EMITS 子集）",
-        ),
-        ("ratchet_guard", "守卫：那几张登记表的断言行逐字没动"),
-        (
-            "one_clock_guard",
-            "守卫：后端的「现在」只有一处、拨钟那一段只在特性 shots 下编（只读源码）",
-        ),
-        (
-            "raw_said_guard",
-            "守卫：失败那一句不许直接是下层原话（只读源码）",
-        ),
-        (
-            "runs_guard",
-            "守卫：通用层只认「运行」（扫描 ＋ 两套子运行形状跑同一批判据；临时目录里造夹具，不碰仓与家目录）",
-        ),
-        (
-            "readonly_guard",
-            "守卫：**本护栏自己**（它也在人群里，见 scan() 里那条跳过）",
-        ),
-        (
-            "single_stream_guard",
-            "守卫：「多客户端的流」明确不做的三处触发器",
-        ),
-    ];
-
-    /// `backend-core` 人群**现打**的文件清单 —— 由 [`BACKEND_CORE_MODULES`] 派生。
-    ///
-    /// 🔴 **派生而不是第二次走目录**：两份账必漂（本仓反复治的那个毛病）。
-    /// 一个模块可以是 `<名>.rs`，也可以是 `<名>/` 目录（里面递归）。
+    /// 本护栏各条判据的人群：后端生产树 `src/backend/` 递归全部 `.rs`（`lib.rs` · `main.rs` 在内）。
+    /// 从前由一张模块分区表派生；碰盘挡在类型上之后，人群就是整个 crate，分区表删了。
     pub(super) fn core_files() -> Vec<std::path::PathBuf> {
         let root = crate::guard_support::src_root();
-        let mut out = Vec::new();
-        for (m, _) in BACKEND_CORE_MODULES {
-            let flat = root.join(format!("{m}.rs"));
-            if flat.is_file() {
-                out.push(flat);
-                continue;
-            }
-            let dir = root.join(m);
-            if !dir.is_dir() {
-                continue; // 幽灵条目由判据 `A` 逐条点名，这里不静默补救
-            }
-            let mut stack = vec![dir];
-            while let Some(d) = stack.pop() {
-                for e in std::fs::read_dir(&d).expect("read module dir") {
-                    let p = e.expect("dir entry").path();
-                    if p.is_dir() {
-                        stack.push(p);
-                    } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
-                        out.push(p);
-                    }
-                }
-            }
-        }
+        let mut out: Vec<std::path::PathBuf> = guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
         out.sort();
+        assert!(
+            out.len() >= 100,
+            "只扫到 {} 份后端源码 —— 遍历坏了",
+            out.len()
+        );
         out
     }
 
-    /// 白名单模块**仍然不许**出现的东西 —— 这一层比默认层**更严**。
+    /// 「改动既有数据」那几形的词表（从前写盘白名单层的禁表；那一层删了，词表留给依赖签字与远端那一层量别的树）。
     ///
     /// 判据是「不许改动**既有**数据」：新建一个此前不存在的文件不违反它，
     /// 但删除 / 改名 / 截断 / 追加 / 覆盖写**都会**。
@@ -378,121 +139,6 @@ mod tests {
         // 安全性：`create_new(true)` **不含**子串 `create(true)`，不会自伤。
         "create(true)",
     ];
-
-    /// 🔴 **换锚时的反空真自检 —— 三向。**
-    ///
-    /// 要求：「换锚时必须同拍补一条**反空真自检**（人群非空 · 模块列表…）」，
-    /// 理由引的是：「扫描型测试拿不到人群时会扫空集 ⇒ 恒绿，
-    /// **而恒绿看起来和真绿一模一样**」。
-    ///
-    /// # 三向各治一种失效，缺一不可
-    ///
-    /// · `A` **登记 ↔ `lib.rs` 两向集合相等**。
-    ///   少一向就有一种失效逃掉：只查「登记的都在 lib.rs 里」⇒ **新加的模块没人看**；
-    ///   只查「lib.rs 的都在登记里」⇒ **登记挂空号**（指向一个搬走了的模块）。
-    /// · `B` **分区恒等**：`src/backend/**/*.rs` 每一份归到恰好一个登记模块。
-    ///   它治的是 `A` 盖不到的那种：模块名对得上，而模块**目录里**多出一棵没人管的子树。
-    ///   ⚠ `main.rs` / `lib.rs` 本身不属于任何模块，逐字排除并写明理由。
-    /// · `C` **人群非空**。兜底，不是主锚。
-    ///
-    /// ⚠ **它不判「这个模块该不该算 core」** —— 那是语义，要人读。
-    ///   它判的是「这张表与盘对得上」。
-    #[test]
-    fn the_population_is_the_registered_module_set_and_nothing_fell_out() {
-        let root = crate::guard_support::src_root();
-
-        // ── A：登记 ↔ `lib.rs` 里真声明的模块，两向 ──────────────────────
-        let lib = std::fs::read_to_string(root.join("lib.rs")).expect("读 lib.rs");
-        let declared: std::collections::BTreeSet<String> = lib
-            .lines()
-            .filter_map(|l| {
-                let t = l.trim_start();
-                let t = t.strip_prefix("pub ").unwrap_or(t);
-                let t = t.strip_prefix("mod ")?;
-                t.split(';').next().map(|x| x.trim().to_string())
-            })
-            .filter(|m| !m.is_empty())
-            .collect();
-        assert!(
-            declared.len() >= 20,
-            "从 `lib.rs` 只抠出 {} 个 `mod` 声明 —— 抽取器坏了，本条会零命中地绿",
-            declared.len()
-        );
-        // `lib.rs` 里那四个贴着 `main.rs` 的测试模块**不是 core 的模块**：
-        // 它们是 `#[path]` 挂进来的测试文件，源码住 `tests/backend/`，不在本护栏的树上。
-        const TEST_ONLY_ATTACHMENTS: &[&str] = &[
-            "fourth_face_tests",
-            "window_raise_guard",
-            "stream_flag_tests",
-            "argv_table_guard",
-        ];
-        let declared: std::collections::BTreeSet<String> = declared
-            .into_iter()
-            .filter(|m| !TEST_ONLY_ATTACHMENTS.contains(&m.as_str()))
-            .collect();
-        let registered: std::collections::BTreeSet<String> = BACKEND_CORE_MODULES
-            .iter()
-            .map(|(m, _)| m.to_string())
-            .collect();
-        assert_eq!(
-            registered,
-            declared,
-            "A `BACKEND_CORE_MODULES` 与 `lib.rs` 的 `mod` 声明对不上。\n\
-             登记有而 `lib.rs` 没有：{:?} ⇒ **登记挂空号**（那个模块搬走了或改名了，\n\
-             而本护栏的人群里还留着一个指空的条目）。\n\
-             `lib.rs` 有而登记没有：{:?} ⇒ 🔴 **新加的模块没人看** —— \n\
-             它的源码里可以随便写盘，而这条护栏一声不吭。\n\
-             ★ **两向都判**：只判一向，另一向那种失效永远逃得掉。",
-            registered.difference(&declared).collect::<Vec<_>>(),
-            declared.difference(&registered).collect::<Vec<_>>()
-        );
-
-        // ── B：分区恒等 ──────────────────────────────────────────────────
-        // `main.rs` = 分派那一半（规格留在 bin）；
-        // `lib.rs`  = 模块声明与身份，它自己不属于任何模块。两份逐字排除。
-        const NOT_IN_ANY_MODULE: &[&str] = &["main.rs", "lib.rs"];
-        let mut on_tree: Vec<std::path::PathBuf> = Vec::new();
-        let mut stack = vec![root.clone()];
-        while let Some(d) = stack.pop() {
-            for e in std::fs::read_dir(&d).expect("read backend tree") {
-                let pth = e.expect("dir entry").path();
-                if pth.is_dir() {
-                    stack.push(pth);
-                } else if pth.extension().and_then(|x| x.to_str()) == Some("rs") {
-                    let rel = pth
-                        .strip_prefix(&root)
-                        .unwrap_or(&pth)
-                        .to_string_lossy()
-                        .to_string();
-                    if !NOT_IN_ANY_MODULE.contains(&rel.as_str()) {
-                        on_tree.push(pth);
-                    }
-                }
-            }
-        }
-        on_tree.sort();
-        let covered = core_files();
-        let on_tree_set: std::collections::BTreeSet<_> = on_tree.iter().collect();
-        let covered_set: std::collections::BTreeSet<_> = covered.iter().collect();
-        assert_eq!(
-            covered_set,
-            on_tree_set,
-            "B 分区对不上：登记派生的人群 {} 份，盘上现打 {} 份。\n\
-             盘上有而人群没有：{:?} ⇒ 🔴 **那几份不受任何一层管**（既不在默认层也不在白名单层）。\n\
-             人群有而盘上没有：{:?} ⇒ 登记指向了不存在的东西。\n\
-             ⚠ 写成**集合相等**而不是「份数相等」：份数相等在「搬走一份、又冒出一份」上是瞎的。",
-            covered.len(),
-            on_tree.len(),
-            on_tree_set.difference(&covered_set).collect::<Vec<_>>(),
-            covered_set.difference(&on_tree_set).collect::<Vec<_>>()
-        );
-
-        // ── C：人群非空（兜底）────────────────────────────────────────────
-        assert!(
-            !covered.is_empty() && !BACKEND_CORE_MODULES.is_empty(),
-            "C 人群或登记表是空的 —— 上面两条相等会退化成「空集 == 空集」，整条护栏恒绿"
-        );
-    }
 
     /// 拿这把跨进程锁的（`(模块, 为什么)`）：自家状态的写句柄本身 ＋ 两份不经它、却同样是一趟读—改—写的账号库那一面。
     /// 锁只是只读打开那个目录，不添任何写动词。
@@ -666,11 +312,10 @@ mod tests {
         }
     }
 
-    /// ★ 第三层登记的每一条都**真的在盘上、真的在改**（幽灵检查，照白名单那条同形）。
     /// 🔴🔴 **文件管理写面不再问「这是不是一份会话记录」。**
     ///
     /// 用户原话「**文件管理器全部都可以改. 不需要任何围栏**」；
-    /// 本层判准 ③ 因此从「先过围栏」换成「先过路径解析」（本文件头注第三层那一节）。
+    /// 文件管理面写的路径因此只过路径解析（`Face` 只收它交回的 `Resolved`），不问会话形状。
     ///
     /// # 两向相等，人群按事实取样
     ///
@@ -2275,21 +1920,20 @@ mod g6_reach {
         "run(\"cc-kill\"",
         "生产段起一个外部程序去**删除 / 覆盖用户既有数据**：被起的那个脚本会覆盖两份名册、\
          删掉一个 id 的收件箱与它的状态文件。**形状对得上** —— backend 若把同一件事写成\
-         `remove_file` / `rename` 那两个动词，默认层当场红。\
-         **而它今天通过**：默认层的人群是本 crate 源码文本里 `fs::` / `File::` / `OpenOptions` \
-         这三个命名空间的调用，起进程一个都不匹配（`spawn_registry` 头注逐字承认「它不认 \
+         `remove_file` / `rename` 那两个动词，命名空间那一条当场红。\
+         **而它今天通过**：命名空间那一条的人群是本 crate 生产段里点名文件系统命名空间的地方，起进程一个都不匹配（`spawn_registry` 头注逐字承认「它不认 \
          `Command` / `spawn`」）。⇒ 这不是漏洞，是**一次没有落到判据上的裁定**（`D1` 缩性质），\
          而缩掉的那一半由 `ALLOWED` 接着 —— 那张表的键**分不出被调命令**，所以本条另钉一格：\
          经那个键转调的命令**恰好三条**。",
-        "默认层能顺着起进程点读到被起程序的写面那天（或那条路改成后端自己写、\
-         从而落回默认层射程内）——那时这一条摘掉，并回来重判 `ALLOWED` 还需不需要。",
+        "命名空间那一条能顺着起进程点读到被起程序的写面那天（或那条路改成后端自己写、\
+         从而落回命名空间那一条射程内）——那时这一条摘掉，并回来重判 `ALLOWED` 还需不需要。",
     )];
 
     /// ★ 反例仍在盘上、仍然通过；同形的**直写**仍然会红。
     ///
     /// ★★ 专属陷阱在这一格的答案：这条路**未经任何放宽就已经通过**
-    /// —— 默认层的判据里没有任何一条能匹配到起进程（分母 = `FS_MUTATION_PATTERNS` 11 条 +
-    /// 只读白名单那条，两者都只认 `fs::` / `File::` / `OpenOptions` 三个命名空间的文本）。
+    /// —— 命名空间那一条（[`tests::only_the_fs_platform_module_names_the_filesystem`]）只认文件系统那几个命名空间的文本，
+    /// 起进程一个都不匹配。
     /// ⇒ 它属于「**它本来就拦不住**」那一侧，而不是「放宽之后没红」。
     /// ⚠ 我**没有**去查历史上它有没有因为别的原因红过 —— 上面那句是对**今天的判据**说的，不是对历史说的。
     /// 两句话在终端上长得一样，分开它们的正是下面第二个断言 —— 同形直写会红。
@@ -2320,7 +1964,7 @@ mod g6_reach {
                 "`{rel}` 没写解锁条件 —— 没有解锁条件的反例登记会一直躺着"
             );
         }
-        // ★ 分开「它本来就拦不住」与「放宽之后没红」：**同一件事直写**，默认层当场红。
+        // ★ 分开「它本来就拦不住」与「放宽之后没红」：**同一件事直写**，命名空间那一条当场红。
         assert!(
             !super::tests::fs_namespace_hits(
                 "std::fs::remove_file(bus.join(\"inbox\").join(name))?;"
@@ -3164,7 +2808,7 @@ mod g6_dependency_signoff {
             "对外文案表的 Rust 取文口（编译期内嵌 `src/shared/copy/table.json` ＋ 具名占位符替换，纯字符串变换）；\
              与 monitor、creds-core 共用同一份；仓内 crate，现打 0 处写面",
         ),
-        // `gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（默认层那条判据数它的写面）。
+        // `gate-core` 那一行摘了：它收成本 crate 的模块 `control/gate_rules.rs`（命名空间那一条那条判据数它的写面）。
         (
             "guard-core",
             DEV_DEPS,
@@ -3177,7 +2821,7 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "只用 pidfd 那三样（清单那段注释逐字），零 feature。它是 syscall 绑定 ——\
-             写不写盘看调用点，而调用点在本 crate 里、由默认层那条判据数",
+             写不写盘看调用点，而调用点在本 crate 里、由命名空间那一条那条判据数",
         ),
         (
             "notify",
@@ -3313,7 +2957,7 @@ mod g6_dependency_signoff {
             DEPS,
             MEASURED_CLEAN,
             "本人通道：常驻后端听的那个 Unix 套接字（目录独占锁 `flock` · 绑 · 收连接核对端 uid · 连）；仓内 crate、只依赖 tokio 与 libc。\
-             现打 0 处写面：绑套接字会在那个目录里建一个套接字文件（内核做），删陈旧文件与建目录都在调用方 `control/resident.rs`（第四层）",
+             现打 0 处写面：绑套接字会在那个目录里建一个套接字文件（内核做），删陈旧文件与建目录都在调用方 `control/resident.rs`（经 `Own`）",
         ),
         (
             "relay-route-core",
@@ -3326,7 +2970,7 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "运行时 + io。⚠ **本表唯一「写面在我们自己手上」的一条**：`fs` feature 开着 ⇒ \
-             它**提供**写 API，而调用点全在本 crate 里 —— 那一面由默认层与只读白名单\
+             它**提供**写 API，而调用点全在本 crate 里 —— 那一面由命名空间那一条与那几种写句柄\
              那两条判据数，不由本表。本表管的是「它自己会不会写」",
         ),
         (
@@ -3807,8 +3451,7 @@ mod g6_dependency_signoff {
         let needles = [format!("create_{}", "private")];
         let mut found: std::collections::BTreeSet<String> = Default::default();
         let mut scanned = 0usize;
-        let mut files = super::tests::core_files();
-        files.push(root.join("main.rs"));
+        let files = super::tests::core_files();
         for path in files {
             let rel = path
                 .strip_prefix(&root)
@@ -3832,7 +3475,7 @@ mod g6_dependency_signoff {
         assert_eq!(
             found, want,
             "`creds-core` 的写半边（建私有文件 / 收窄权限）在本 crate 生产段里的引用处对不上：\n\
-             应当**恰好**是第四层登记的账号域那一份。多出来的 = 写凭据的能力扩散了；\n\
+             应当**恰好**是账号域那一份（写经 `Own` 的订阅号凭据窄句柄）。多出来的 = 写凭据的能力扩散了；\n\
              少了 = 那一份不再用它（写口被换掉了？那就回来重签 `{GATED_CRATE}`）。"
         );
         let sample = "let f = creds_core::perm::create_private(&tmp)?;";
@@ -4253,7 +3896,7 @@ mod remote_write_layer {
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
     //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
-    //!   （本机那一半由默认层与只读白名单守；本层守的是**远端**那一半。）
+    //!   （本机那一半由命名空间那一条与那几种写句柄守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
     //!   ＋ **SFTP v3 协议自己那几个改动操作的方法形**（[`REMOTE_MUTATION_VERBS`]）。
@@ -4273,7 +3916,7 @@ mod remote_write_layer {
     //!
     //! - **远端 exec**：`channel_open_session` ＋ 把一条会写的 shell 命令交给远端。
     //!   一条命令写不写，**源码文本上判不了**（monitor 侧 `remote_write_registry` 头注
-    //!   逐字给过同一条结论：`2>/dev/null` 就带 `>`）。这与默认层认不出 `Command::new`
+    //!   逐字给过同一条结论：`2>/dev/null` 就带 `>`）。这与命名空间那一条认不出 `Command::new`
     //!   是**同一个洞的远端孪生** —— 盘上今天就有一处，登记在
     //!   [`the_remote_exec_hole_is_a_registered_counterexample_and_still_passes`]。
     //! - **不经 SSH 的远端写协议**（手写 HTTP PUT / 云存储 SDK / 自己封的传输层）：
@@ -4343,7 +3986,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
     /// # ⚠ 它的口径（两个方向都写出来）
     ///
     /// - **取方法形**（带前导点）是为了与本机那一层分开：`std::fs::remove_file(` 是路径形，
-    ///   默认层已经在数；`sftp.remove_file(` 是方法形，默认层一条都不匹配 —— 那正是要修的。
+    ///   命名空间那一条已经在数；`sftp.remove_file(` 是方法形，命名空间那一条一条都不匹配 —— 那正是要修的。
     /// - 它是**超集**：本机某个**恰好同名**的方法也会红（今天树上 **0 处**，分母 = 本 crate
     ///   `src/` 生产段全部 `.rs`，由 [`the_verb_net_has_no_false_positive_on_this_tree_today`] 现打）。
     /// - 🔴 **`write_all(` 刻意不在表上**：backend 唯一合法的写就是把 wire 帧写 stdout
@@ -4542,7 +4185,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
             .sum();
         LayerReading {
             total: Denominator::Counted(n),
-            // 落在两张模式表射程里的每一处，默认层 / 白名单层都看得见（看得见 ≠ 会红：
+            // 落在两张模式表射程里的每一处，命名空间那一条都看得见（看得见 ≠ 会红：
             // 白名单那两份模块里的 `O_EXCL` 新建是**看得见并且被允许**的）。
             seen: Denominator::Counted(n),
             blind: Denominator::Counted(0),
@@ -4622,7 +4265,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
         (
             "L4 远端代理写（远端 exec）",
             layer_remote_proxy,
-            "**那条命令写不写，源码文本上判不了** —— 与默认层认不出 `Command::new` 同一个洞的远端孪生",
+            "**那条命令写不写，源码文本上判不了** —— 与命名空间那一条认不出 `Command::new` 同一个洞的远端孪生",
         ),
         (
             "L5 不经 SSH 的远端写协议",
@@ -4872,7 +4515,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
     }
 
     /// ★★ 正题 ③：**那一份文件里，每个含远端改动的函数，第一个改动之前先过 `fenced_remote`**
-    /// （形状照第三层 ③ `unresolved_mutations`；漏判面同它：判顺序，判不了「动的就是判过的那一个」——
+    /// （形状照从前本机文件管理面那条「先过路径解析」的按位置判据，那一条随类型挡删了；漏判面同它：判顺序，判不了「动的就是判过的那一个」——
     /// 那一半靠 `dial_sftp_tests` 的行为判据：合成服务端改动表的根集合 == 两处、越界零改动）。
     #[test]
     fn every_remote_mutation_in_that_file_is_fenced_first() {

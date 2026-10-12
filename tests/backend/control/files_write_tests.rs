@@ -34,7 +34,7 @@
 //!    本族判据一格都没量。模块头注里登记的兜底（`O_EXCL` 挡住最后那一段）
 //!    这里只验了「同名第二次会失败」，**没有**验「父目录在窗里被换掉」那一形。
 //! 4. 🔴 **「这个模块该不该有写盘能力」不是这里判的**。那是政策，住
-//!    `readonly_guard::WRITE_WHITELIST_MODULES` 那张登记表。
+//!    写句柄只递给命令表文件管理那一族（`Run::BlockingFace`，`readonly_guard` 钉着）。
 //!    本族只判「围栏在不在、拦不拦得住」。
 
 use super::*;
@@ -330,7 +330,7 @@ fn the_resolved_fence_lets_a_clean_path_through() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 父目录不在盘上 ⇒ 正常拒绝（本模块**不建目录**，那是白名单层明令禁止的）。
+/// 父目录不在盘上 ⇒ 正常拒绝（新建这一条**不顺手建目录**，建目录是 `files-mkdir` 那一条的事）。
 #[test]
 fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     let root = temp_root("noparent");
@@ -342,7 +342,7 @@ fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     );
     assert!(
         !root.join("nope").exists(),
-        "父目录被顺手建出来了 —— 白名单层不许建目录"
+        "父目录被顺手建出来了 —— 新建这一条不许建目录"
     );
     std::fs::remove_dir_all(&root).ok();
 }
@@ -536,7 +536,7 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
 /// ⇒ 人群是后端生产树上**除本模块自己以外**的每一份 `.rs` 的生产段。
 ///
 /// ⚠ 它**只判「有」，不判「只从那一面来」** —— 后者是第 3 步那条判准
-///（`readonly_guard` 第三层），本条刻意不替它作证。
+///（写句柄只递给文件管理那一族，`readonly_guard` 钉着），本条刻意不替它作证。
 #[test]
 fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
     let root = crate::guard_support::src_root();

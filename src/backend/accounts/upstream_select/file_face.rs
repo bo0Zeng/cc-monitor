@@ -12,7 +12,7 @@
 //! 文件名、格式、落点都是本仓定的（`creds_core::store`），只有中转进程里的上游选择读它。
 //! ⇒ 它**不走**文件管理那一面（`Face` · 路径解析 · 暂存区 —— 那是给用户文件的；上一版写「Claude 会话数据围栏」，
 //!   FN1 之后那一面已不设会话文件围栏），
-//! 走 `readonly_guard` **第四层**（后端自有状态文件：按文件登记、动词闭集、只从一扇门进来）。
+//! 写经 `Own`（后端自有状态：动词闭集就是它的方法表，句柄启动时造、顺着入口递下来）。
 //!
 //! # 每台机器上的写者恰好一个
 //!
@@ -352,7 +352,7 @@ fn write_at(
 /// [`rewrite_at`] 收的那一步改动：拿写的这一刻读到的那一份，回新的那一份；回 `None` ⇒ 不用写。
 type Rewrite<'a> = &'a dyn Fn(&Map<String, Value>) -> Option<Map<String, Value>>;
 
-/// **这台机器上唯一的写者**（第四层：动词只有建那一层目录 · 原子改名 · 删自己的临时文件）。
+/// **这台机器上唯一的写者**（经 `Own`：建那一层目录 · 原子写 · 删 · 改名）。
 /// `change` 回 `None` ⇒ 一个字节不动（回 `false`）。
 fn rewrite_at(own: &Own, file: &OwnPath, change: Rewrite) -> Result<bool, Fail> {
     let path = file.as_path();

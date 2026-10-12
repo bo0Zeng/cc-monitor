@@ -18,7 +18,7 @@ use std::path::{Path, PathBuf};
 use crate::assets::door::{self, Door};
 
 type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
-/// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（第四层判据 ④）。
+/// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
 pub(crate) type Record<'a> =
     &'a dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail>;
 

@@ -367,7 +367,7 @@ pub(crate) fn move_failed(
 /// 暂存区在盘上的位置；不在就建（两层：`~/.cc-monitor` 与它底下的 `staging`，已在不算错）。
 ///
 /// 每一层**先过路径解析**（以上一层为根）再建 —— `Face` 只收它交回的 `Resolved`。
-/// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与第四层 `exit_policy` 同一个家）。
+/// ⚠ `~/.cc-monitor` 若是用户自己放的一条链接，跟过去（后端自己的家，与 `exit_policy` 同一个家）。
 fn ensure_staging(face: &Face, home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {

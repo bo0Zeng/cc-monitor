@@ -5,7 +5,7 @@ use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 pub(super) const SPECS: &[CommandSpec] = &[
     // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
-    //   写是第四层（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
+    //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
     CommandSpec {
         name: "history-annotate",
         summary: "改一条历史注解",

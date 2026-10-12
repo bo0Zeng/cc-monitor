@@ -20,7 +20,7 @@
 //!
 //! 计划仓（`.planned-build/`）与工作区 `.env` 只有 pb 与人写；本族只起 `pb dump` 这一条只读子命令（不带 `PB_ID`，pb 认作人），
 //! 读面的状态全在进程内存里。判据 `tests/backend/plan/` 里那条「跑前跑后工作区逐字节不变」钉着。
-//! 认可与退回只记在后端自己家里（[`review`]，第四层逐份登记），不回写 pb。
+//! 认可与退回只记在后端自己家里（[`review`]，写经 `Own`），不回写 pb。
 
 pub(crate) mod book;
 pub(crate) mod command;

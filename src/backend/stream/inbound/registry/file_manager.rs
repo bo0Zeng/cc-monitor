@@ -19,8 +19,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   （边界①，`readonly_guard` 4259 行一行没动）；
     //   而读面 `observe/` 又被入方向头注那条硬约束挡着（`inbound` 不许出现 `observe::`，
     //   `inbound_structure_guards::inbound_never_reaches_into_the_observe_layer` 在钉）。
-    //   ⇒ 它住顶层 `files/`（`lib.rs` 一条 `pub mod`，`readonly_guard::BACKEND_CORE_MODULES`
-    //   里也是一条独立登记）。入方向头注那句「每条命令的处理器属于 `control/`」
+    //   ⇒ 它住顶层 `files/`（`lib.rs` 一条 `pub mod`）。入方向头注那句「每条命令的处理器属于 `control/`」
     //   由此收窄成「**不在入方向里实现**」——那才是它真正保的东西。
     //
     // 🔴 **四条的 `run` 长得一模一样，那是刻意的**：命令名从 `r.cmd` 来，
@@ -52,7 +51,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ── 把那份零消费者的写原语接上 ──
     //
     // 🔴 **这一条是本族第一条会往盘上写的命令，而它不花用户那句「允许」**：
-    //   `control/files_write.rs` 自 09-19 起就在 `readonly_guard` 的写白名单上，
+    //   `control/files_write.rs` 09-19 那时在 `readonly_guard` 的写白名单上（今天写经 `Face`），
     //   射程逐字是「`O_EXCL` 新建一份**此前不存在**的文件；不删、不改名、不覆盖、不建目录」
     //   ⇒ 接上它**没有放宽任何一层判据**（`readonly_guard` 一行没动）。
     //   它此前的形状与 `files.ls` 同一形：**能力在那儿，没人接**（那份文件头注逐字
