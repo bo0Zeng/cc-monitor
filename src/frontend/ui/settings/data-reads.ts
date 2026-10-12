@@ -62,6 +62,8 @@ export interface Chore {
 /** cc-monitor 在那台自己家里放的一样（`id` 是闭集，界面按它取名字与说明）。 */
 export interface OwnItem {
   id: string;
+  /** 是什么（后端写好的那一句，照抄）。 */
+  what: string;
   /** `~/.cc-monitor/…` 写法。 */
   path: string;
   dir: boolean;
@@ -159,10 +161,10 @@ export function decodeDataReport(v: unknown): DataReport {
   });
   const todo = v.todo.map(decodeChore);
   const own = v.own.map((o): OwnItem => {
-    if (!isObj(o) || !exactKeys(o, ["id", "path", "dir", "class", "exists", "size"])) return bad();
+    if (!isObj(o) || !exactKeys(o, ["id", "what", "path", "dir", "class", "exists", "size"])) return bad();
     if (typeof o.dir !== "boolean" || typeof o.exists !== "boolean") return bad();
     if (o.size !== null && !(typeof o.size === "number" && Number.isInteger(o.size) && o.size >= 0)) return bad();
-    return { id: str(o.id), path: str(o.path), dir: o.dir, class: oneOf(o.class, ["truth", "cache"]), exists: o.exists, size: o.size as number | null };
+    return { id: str(o.id), what: str(o.what), path: str(o.path), dir: o.dir, class: oneOf(o.class, ["truth", "cache"]), exists: o.exists, size: o.size as number | null };
   });
   return { home: str(v.home), changedFiles, todo, tmux: v.tmux as boolean | null, chores: v.chores as number, own };
 }
