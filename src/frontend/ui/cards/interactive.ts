@@ -14,6 +14,7 @@ import { renderMarkdown } from "../render";
 import { copyText } from "../copy-table";
 import type { StepResult } from "../generated/StepResult";
 import type { StepAsk } from "../generated/StepAsk";
+import type { PlanTitle } from "../generated/PlanTitle";
 import type { AskQuestion } from "../generated/AskQuestion";
 
 /**
@@ -23,7 +24,7 @@ import type { AskQuestion } from "../generated/AskQuestion";
  */
 export function buildInteractiveCard(ask: StepAsk | undefined, opts: { lazy?: boolean }): HTMLElement {
   if (ask?.kind === "questions") return buildAskCard(ask.questions);
-  if (ask?.kind === "plan") return buildPlanCard(ask.text, opts);
+  if (ask?.kind === "plan") return buildPlanCard(ask.text, ask.title, opts);
   throw new Error("interactive card: no ask cell");
 }
 
@@ -83,14 +84,18 @@ function buildAskCard(questions: AskQuestion[]): HTMLElement {
   return root;
 }
 
-function buildPlanCard(plan: string, opts: { lazy?: boolean }): HTMLElement {
+/** 计划卡标题三态（核心写好的，`PlanTitle`）：建卡时记下，答了之后按结果挑一句。 */
+const planTitles = new WeakMap<HTMLElement, PlanTitle>();
+
+function buildPlanCard(plan: string, titles: PlanTitle, opts: { lazy?: boolean }): HTMLElement {
   const root = document.createElement("div");
   root.className = "block-plan";
 
   const title = document.createElement("div");
   title.className = "block-plan-title";
-  title.textContent = copyText("interactive.plan.title");
+  title.textContent = titles.waiting;
   root.appendChild(title);
+  planTitles.set(root, titles);
 
   const body = document.createElement("div");
   body.className = "block-plan-body block-body-md";
@@ -112,8 +117,17 @@ export function settleInteractive(host: HTMLElement, res: StepResult): void {
   const ask = host.classList.contains("block-ask");
   if (!ask && !host.classList.contains("block-plan")) return;
   host.classList.add("is-answered");
-  const title = host.querySelector<HTMLElement>(ask ? ".block-ask-title" : ".block-plan-title");
-  if (title) title.textContent = ask ? copyText("interactive.ask.done") : copyText("interactive.plan.done");
+  const failed = res.rejected || !res.ok;
+  if (!ask) {
+    // 计划：标题就是结局那一句（核心写的，状态格打头），不另起底行。
+    const titles = planTitles.get(host);
+    const title = host.querySelector<HTMLElement>(".block-plan-title");
+    if (title && titles) title.textContent = failed ? titles.kept : titles.approved;
+    host.querySelector(":scope > .block-interactive-done")?.remove();
+    return;
+  }
+  const title = host.querySelector<HTMLElement>(".block-ask-title");
+  if (title) title.textContent = copyText("interactive.ask.done");
   const picked = res.answer?.kind === "picked" ? res.answer.options : [];
   if (picked.length > 0) {
     const chosen = new Set(picked.flatMap((o) => [o, ...o.split(", ")]));
@@ -122,7 +136,7 @@ export function settleInteractive(host: HTMLElement, res: StepResult): void {
     });
   }
   // 答了什么那一句是核心写的（`StepResult.text`：已选「…」· 已批准）；没成 ⇒ 未批准（卡片这一形的叫法）。
-  const done = res.rejected || !res.ok ? copyText("interactive.done.rejected") : res.text;
+  const done = failed ? copyText("interactive.done.rejected") : res.text;
   let line = host.querySelector<HTMLElement>(":scope > .block-interactive-done");
   if (!done) {
     line?.remove();

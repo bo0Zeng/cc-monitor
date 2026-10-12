@@ -624,6 +624,11 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "新帧命令：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（`assets/aliases/mod.rs::answer_policy_set`）；\
          前端 `src/frontend/ui/alias-reads.ts::allowLocalScripts` 问（用户点了、确认了之后），monitor 这一侧零发送点",
     ),
+    (
+        "needs-answer",
+        "新帧命令：答一条挂着的待答请求（`control/asks/`：第一个答案落下、其余回 already_answered）；\
+         前端 `src/frontend/ui/answer-reads.ts::answerNeeds` 问（答题块里点了那一项），monitor 这一侧零发送点",
+    ),
     // `skill-read` / `skill-install-plan` / `skill-install-apply` 界面不再直问：只经本机那两条枢纽命令。
     // `files-ls` 那一行退役：数据位置页 `$PROFILE` 备份那一格随它的读口一起删了（文件窗口自己列目录不经界面）。
     // `files-stat` 那一行退役：Claude 目录像不像改由后端 `agent-home-check` 一条命令判（见上），界面不再自己问。

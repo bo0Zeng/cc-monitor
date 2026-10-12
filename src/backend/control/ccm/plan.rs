@@ -103,6 +103,11 @@ pub(crate) struct Env {
     /// 这台盘上根钥匙派生出来的只许直通那一把（地址只能拼进参数的那一家要它）：非得经 shell 那一趟照字面写进那个词
     /// （它本来就进 argv）。读不到 ⇒ `None`（那个词写成不带钥匙的地址）。预览那一份不读（界面上不出现钥匙）。
     pub(crate) relay_pass_key: Option<String>,
+    /// 答题 hook 叫的那个 `ccm`（这台的入口 `<家>/.cc-monitor/bin/ccm`，绝对路径；后端升级换真身也不变）。
+    /// `None` ＝ 不挂（预览 / 判据 / 家目录说不出）：这一发起的会话里的框只能在终端里答。
+    pub(crate) answer_hook_entry: Option<String>,
+    /// 读用户自己给的会话级设置文件（并进答题 hook 用）；`None` ＝ 不读（预览 / 判据没喂）：用户给了那个旗标就原样交出去、不并、也不说。
+    pub(crate) read_text: Option<fn(&std::path::Path) -> Option<String>>,
 }
 
 /// 环境里认出调用方那个会话（[`Env::inherited_parent`]）：各家登记的变量按注册序，头一个有值、值过段闸的。
@@ -171,6 +176,8 @@ impl Env {
             relay_pass_key: crate::accounts::upstream_select::endpoint::pass_key_for_shell(
                 std::path::Path::new(&home),
             ),
+            answer_hook_entry: crate::platform::paths::installed_ccm_entry(),
+            read_text: Some(|p| std::fs::read_to_string(p).ok()),
             home,
         }
     }
@@ -213,6 +220,9 @@ impl Env {
             origin_token: None,
             // 预览不读钥匙：界面上不出现任何一把（参数里那个词写成不带钥匙的地址）。
             relay_pass_key: None,
+            // 预览不挂答题 hook：那一串设置是起会话那一下的事，别名本身不带它（真跑那一份照常挂）。
+            answer_hook_entry: None,
+            read_text: None,
             home,
         }
     }
@@ -554,6 +564,9 @@ pub(crate) struct Direct {
     pub(crate) clears_inherited_relay: bool,
     /// 地址拼进参数的那一家：非得经 shell 那一趟照字面插进那个词的只许直通那一把（[`Env::relay_pass_key`]；别的形 ⇒ `None`）。
     pub(crate) relay_pass_key: Option<String>,
+    /// 用户自己给的会话级设置读不出 / 形状不认 ⇒ 答题 hook 挂不上：起的进程环境里带 [`crate::agents::asks::ANSWER_HOOK_OFF_ENV`]，
+    /// 会话事实据此写明「这条会话只能在终端里答批准」。
+    pub(crate) answer_hook_off: bool,
 }
 
 /// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
@@ -1271,13 +1284,45 @@ pub(crate) fn build_among(
             argv.push((*a).to_string());
         }
     }
+    // 答题 hook（会话级，只挂在这一个会话上，不碰用户自己的设置文件）：这一家有答题口、这一发知道 ccm 入口 ⇒
+    //   透传里没有那个旗标 ⇒ 垫在透传之前；有 ⇒ 读他那一份（JSON 串原样 / 文件按工作目录补全）、并进我们那一组、换成并好的 JSON 串交出去；
+    //   读不出 / 形状不认 ⇒ 原样交出去，标「挂不上」（进程环境里带一个变量，会话事实据此写明只能在终端里答批准）。
+    let mut passthru = o.passthru.clone();
+    let mut answer_hook_off = false;
+    if let (Some(entry), Some(f)) = (
+        env.answer_hook_entry.as_deref(),
+        crate::agents::ask_face_among(registry, &o.agent),
+    ) {
+        match settings_value_at(&passthru, f.launch_flag) {
+            None => argv.extend((f.launch_args)(entry)),
+            Some(at) => {
+                if let Some(read) = env.read_text {
+                    let merged = at
+                        .value(&passthru)
+                        .and_then(|raw| {
+                            if raw.trim_start().starts_with('{') {
+                                Some(raw.to_string())
+                            } else {
+                                read(std::path::Path::new(&absolute_from(raw, &cwd)))
+                            }
+                        })
+                        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+                        .and_then(|v| (f.merge)(&v, entry));
+                    match merged {
+                        Some(m) => at.put(&mut passthru, f.launch_flag, m.to_string()),
+                        None => answer_hook_off = true,
+                    }
+                }
+            }
+        }
+    }
     // 地址只能拼进参数的那一家：不带钥匙的地址垫在透传之前（钥匙走环境，见 [`RelayVia::Args`]）。
     if let (Some(url), Some(crate::agents::Inject::Args(words))) =
         (&relay, crate::agents::inject_among(registry, &o.agent))
     {
         argv.extend(words(url));
     }
-    argv.extend(o.passthru.iter().cloned());
+    argv.extend(passthru);
 
     Ok(Plan::Direct(Direct {
         ccm_env: env.ccm_env.clone(),
@@ -1300,7 +1345,44 @@ pub(crate) fn build_among(
         relay_via,
         keeps_user_base_url,
         clears_inherited_relay,
+        answer_hook_off,
     }))
+}
+
+/// 透传里会话级设置那个旗标的值在哪：`<旗标> <值>`（下一个词）或 `<旗标>=<值>`（同一个词）；旗标在末尾没给值也算（值读不出）。
+#[derive(Debug, Clone, Copy)]
+enum SettingsAt {
+    Next(usize),
+    Inline(usize),
+}
+
+fn settings_value_at(words: &[String], flag: &str) -> Option<SettingsAt> {
+    let eq = format!("{flag}=");
+    words.iter().enumerate().find_map(|(i, w)| {
+        if w == flag {
+            Some(SettingsAt::Next(i + 1))
+        } else if w.starts_with(&eq) {
+            Some(SettingsAt::Inline(i))
+        } else {
+            None
+        }
+    })
+}
+
+impl SettingsAt {
+    fn value(self, words: &[String]) -> Option<&str> {
+        match self {
+            SettingsAt::Next(i) => words.get(i).map(String::as_str),
+            SettingsAt::Inline(i) => words.get(i).and_then(|w| w.split_once('=')).map(|(_, v)| v),
+        }
+    }
+
+    fn put(self, words: &mut [String], flag: &str, v: String) {
+        match self {
+            SettingsAt::Next(i) => words[i] = v,
+            SettingsAt::Inline(i) => words[i] = format!("{flag}={v}"),
+        }
+    }
 }
 
 /// 同一条计划写成 `shell` 那种方言（`--ccm-print` · 别名预览）：PowerShell 只有直路那一形（Windows 上没有 tmux，
@@ -1523,6 +1605,12 @@ fn render_direct(d: &Direct) -> String {
         }
         _ => {}
     }
+    if d.answer_hook_off {
+        line.push_str(&posix::export(
+            crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+            "1",
+        ));
+    }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));
     }
@@ -1580,6 +1668,12 @@ fn render_direct_ps(d: &Direct) -> String {
             line.push_str(&ps::remove_env(&[var]))
         }
         _ => {}
+    }
+    if d.answer_hook_off {
+        line.push_str(&ps::set_env(
+            crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+            &pq("1"),
+        ));
     }
     if !d.cwd.is_empty() {
         line.push_str(&ps::set_location(&pq(&d.cwd)));

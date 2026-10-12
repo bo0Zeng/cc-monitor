@@ -8,6 +8,7 @@
  *   POST /__ccm/sub    {key, id, origin, kind, want} · /__ccm/want {key, id, more} · /__ccm/stop {key, id} · /__ccm/ready {key, priority_sid}
  *   POST /__ccm/watch  {key, sessions: [{origin, sessionId}]}  ⇒ 主窗口在看哪几个（同 Tauri 命令 `watch_sessions`）
  *   POST /__ccm/write  {key, origin, rel, text, append?}    ⇒ 场景在开页之后改那台盘上的一份文件（相对家目录；`append` ⇒ 接在末尾写）
+ *   POST /__ccm/status {key, origin, sid, status, waitingFor?} ⇒ 场景演那一家改了自己 pidfile 里的状态（答了框 ⇒ busy）
  *   POST /__ccm/end    {key, origin}                         ⇒ 那台已结束 / 可重连的那几个这时收场（页里收到那台的清单之后发），见到裁出来的那一格才答
  *   POST /__ccm/kill   {key, origin}                         ⇒ 那台后端当场杀掉（演「断了」）
  *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
@@ -22,7 +23,7 @@
  * （两样都由 [`buildBins`] 编：`run.mjs` 起 vite 前调；无头壳只在特性 `shots` 下编，发版构建里没有它）。
  */
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { createInterface } from "node:readline";
 
@@ -341,7 +342,20 @@ export function backendPool({ repo, sandbox }) {
     else if (url === "/__ccm/ready") w.sh.send({ t: "ready", priority_sid: body.priority_sid ?? null });
     else if (url === "/__ccm/kill") w.sh.send({ t: "kill", origin: body.origin });
     else if (url === "/__ccm/watch") w.sh.send({ t: "watch", sessions: body.sessions });
-    else if (url === "/__ccm/write") {
+    else if (url === "/__ccm/status") {
+      // 那一家改了自己 pidfile 里的状态（答了框 ⇒ 接着跑）：找到那个会话的那一份，改状态那几格（原词）。
+      const dir = path.join(w.homes.get(body.origin) ?? "", ".claude", "sessions");
+      for (const f of existsSync(dir) ? readdirSync(dir) : []) {
+        const p = path.join(dir, f);
+        const v = JSON.parse(readFileSync(p, "utf8"));
+        if (v.sessionId !== body.sid) continue;
+        v.status = String(body.status);
+        if (body.waitingFor) v.waitingFor = String(body.waitingFor);
+        else delete v.waitingFor;
+        v.statusUpdatedAt = Date.now() + w.shift;
+        writeFileSync(p, JSON.stringify(v));
+      }
+    } else if (url === "/__ccm/write") {
       const home = w.homes.get(body.origin);
       const rel = String(body.rel);
       if (!home || rel.startsWith("/") || rel.split("/").includes("..")) throw new Error(`改不了：${body.origin} · ${rel}`);
@@ -363,7 +377,7 @@ export function backendPool({ repo, sandbox }) {
       req.on("error", reject);
     });
 
-  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/write"]);
+  const TELL = new Set(["/__ccm/sub", "/__ccm/want", "/__ccm/stop", "/__ccm/ready", "/__ccm/kill", "/__ccm/watch", "/__ccm/write", "/__ccm/status"]);
 
   async function serve(req, res, next) {
     if (req.method === "GET" && req.url?.startsWith("/__ccm/items?")) {

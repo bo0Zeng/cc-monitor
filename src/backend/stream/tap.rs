@@ -132,6 +132,8 @@ pub struct TapRx {
     rules: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
+    /// 某个会话挂着的待答请求变了的通道（挂上 · 撤掉 · 答掉，推一帧 `changed {needs, key: sid}`）；`None` ＝ 不订。
+    needs: Option<tokio::sync::broadcast::Receiver<String>>,
     /// 帧里的小成品怎么现算（生产 ＝ [`crate::stream::topic_hook::body`]；判据自己接的那一形不现算）。
     bodies: crate::stream::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
@@ -207,6 +209,15 @@ impl TapSource for TapRx {
                     // 落后丢了几件：可丢的通道，下一次变化或重问就补上。
                     Some(None) => {}
                     None => self.plan = None,
+                },
+                moved = rotation_moved(&mut self.needs) => match moved {
+                    Some(Some(sid)) => {
+                        let f = self.changed(Topic::Needs, Some(sid));
+                        self.out.push_back(f);
+                    }
+                    // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
+                    Some(None) => {}
+                    None => self.needs = None,
                 }
             }
         }
@@ -221,6 +232,7 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz
     rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
     rx.rules = Some(crate::accounts::quota::rotation::configs_changes().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
+    rx.needs = Some(crate::control::asks::changes().subscribe());
     rx.bodies = crate::stream::topic_hook::body;
     rx.tz = tz;
     rx
@@ -290,6 +302,7 @@ pub(crate) fn attach_rx(
         rotation: None,
         rules: None,
         plan: None,
+        needs: None,
         bodies: no_bodies,
         tz: crate::Tz::default(),
     }

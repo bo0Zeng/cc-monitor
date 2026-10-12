@@ -5,7 +5,7 @@ import { resolve } from "node:path";
  *
  * - `session-face.ts`：状态点 · 状态句 · peek · 需手动（活动信号说不在等了 ⇒ 手上那份当场不认；说在等、种类没到 ⇒ 不猜）· `Ctrl+J` 的顺序；
  * - 标签页栏：「需手动 N」只在 N ≥ 1 时出、点它跳等得最久的；机器离线条（`{machine} 离线 · N 会话状态不明`）＋［重新连接］；
- * - 钉条：种类 ＋ 工具 ＋ 那一句、去哪答（Windows ↗ / 远端 tmux / 都不行不给按钮）；窗口标题与系统通知；
+ * - 窗口标题与系统通知（消息流底部的答题块另见 `answer-block.vitest.ts`）；
  * - 会话头：按状态多一颗（已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］）。
  *
  * 夹具只造结构（sid · 路径 · 占位工具名），不采会话正文。
@@ -19,7 +19,7 @@ import type { Needs } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, GONE, LIVE, LIVE_ATTACHABLE, LIVE_RESUMABLE, RECONNECTABLE, UNSEEN } from "../../../src/frontend/ui/tab-session-state";
 import { abbrOf, dotOf, fullTitle, groupSummary, needsOf, needsOrder, nextNeedsStep, peekLine, stateLine, stateWord, titleParts } from "../../../src/frontend/ui/session-face";
-import { NeedsBar, NeedsWatch, NOTIFY_WAIT_MS, answerWhere } from "../../../src/frontend/ui/needs-bar";
+import { NeedsWatch, NOTIFY_WAIT_MS } from "../../../src/frontend/ui/needs-bar";
 import { SessionHead, terminalActsOf } from "../../../src/frontend/ui/session-head";
 import { buildApiErrorCard } from "../../../src/frontend/ui/cards/api-error";
 import { TerminalPage, type TerminalReads } from "../../../src/frontend/ui/terminal-page";
@@ -63,7 +63,7 @@ const waiting = { doing: "needs_you" as const, waitingFor: "permission prompt", 
 /** 那台在 `NOW` 答出、本机同一刻收到（两台钟一样快）；已等多久由那台算好。 */
 const approve = (sinceMs: number | null = NOW - 120_000): Needs => {
   const waitedMs = sinceMs === null ? null : NOW - sinceMs;
-  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), head: "核心·等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs, waitedText: waitedMs === null ? null : fmtDur(waitedMs / 1000), receivedAt: NOW };
+  return { kind: "approve", tool: "Bash", call: "toolu_b", what: "rm -rf build/", sinceMs, text: copyText("beSession.needs.approve"), head: "核心·等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs, waitedText: waitedMs === null ? null : fmtDur(waitedMs / 1000), ask: null, manualText: null, receivedAt: NOW };
 };
 
 beforeEach(() => {
@@ -89,7 +89,7 @@ describe("状态的字照抄核心写好的（G2：界面不按码取字）", ()
 
 describe("一个会话读成什么（session-face）", () => {
   it("★ 需手动：活着 ＋ 活动信号说在等才算；种类没到 ⇒「需手动」（不猜）；活动信号说不在等了 ⇒ 手上那份不认；死了 ⇒ 不算", () => {
-    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), head: copyText("beSession.needs.unknown"), headCode: null, tone: "need", rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, receivedAt: 0 });
+    expect(needsOf(tab("a", { activity: waiting }))).toEqual({ kind: "unknown", tool: null, call: null, what: null, sinceMs: null, text: copyText("beSession.needs.unknown"), head: copyText("beSession.needs.unknown"), headCode: null, tone: "need", rank: Number.MAX_SAFE_INTEGER, waitedMs: null, waitedText: null, ask: null, manualText: null, receivedAt: 0 });
     expect(needsOf(tab("a", { activity: waiting, needs: approve() }))?.kind).toBe("approve");
     expect(needsOf(tab("a", { activity: { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 }, needs: approve() })), "已经答完：不留一条需手动").toBeNull();
     expect(needsOf(tab("a", { state: RECONNECTABLE, activity: waiting, needs: approve() })), "Claude 已退出：陈旧的在等不算").toBeNull();
@@ -221,6 +221,7 @@ function bar(tabs: Tab[]): { view: TabBarView; host: TabBarViewHost; store: TabS
     bringRemoteTerminalToFront: vi.fn().mockResolvedValue(undefined),
     closeTab: vi.fn(),
     switchTo: vi.fn(),
+    answerAt: vi.fn(),
     pick: vi.fn(),
     isSelected: vi.fn().mockReturnValue(false),
     beginDrag: vi.fn(),
@@ -249,7 +250,8 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
     const b = r.view.tabButtons.get("b")!;
     expect([b.needs.textContent, b.badge.textContent]).toEqual([copyText("beSession.needs.approve"), ""]);
     strip.click();
-    expect(r.host.switchTo).toHaveBeenCalledWith("b");
+    expect(r.host.answerAt, "需手动的入口 ⇒ 跳过去、焦点进答题块").toHaveBeenCalledWith("b");
+    expect(r.host.switchTo).not.toHaveBeenCalled();
     // 答完了（活动信号说不在等）⇒ 那一条收起，未读数回来。
     (r.store.tabs.get("b") as Tab).activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
     r.view.refresh();
@@ -273,11 +275,34 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
       expect(rows.map((b) => b.querySelector('[data-part="label"]')?.textContent)).toEqual(["b", "a"]);
       expect(rows[0].querySelector('[data-part="body"]')?.textContent).toBe("rm -rf build/");
       rows[1].click();
-      expect(r.host.switchTo).toHaveBeenCalledWith("a");
+      expect(r.host.answerAt).toHaveBeenCalledWith("a");
       expect(document.querySelector('[role="menu"]'), "选了一项就关").toBeNull();
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("★ 点标签上那颗「需手动」的点 ⇒ 跳过去、焦点进答题块；点标签别处 / 不在等的点 ⇒ 照常切", () => {
+    const r = bar([tab("a"), tab("b", { activity: waiting, needs: approve(NOW - 10_000) })]);
+    r.view.tabButtons.get("b")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
+    expect(r.host.answerAt).toHaveBeenCalledWith("b");
+    r.view.tabButtons.get("a")!.root.querySelector<HTMLElement>(".tab-dot")!.click();
+    expect(r.host.switchTo).toHaveBeenCalledWith("a");
+    expect(r.host.answerAt).toHaveBeenCalledTimes(1);
+  });
+
+  it("★ 挂着的请求换了（挂上 · 答掉 · 只能在终端里答那一句变了）⇒ 摘要变、订阅者（答题块 · 窗口标题）重画；种类没变也算", () => {
+    const r = bar([tab("a", { activity: waiting, needs: approve(NOW - 10_000) })]);
+    const seen: unknown[] = [];
+    r.store.subscribe((x) => seen.push(x));
+    const n0 = seen.length;
+    const t = r.store.tabs.get("a") as Tab;
+    t.needs = { ...approve(NOW - 10_000), ask: { id: "ask-1" } as never };
+    r.store.notify();
+    expect(seen.length, "ask 挂上").toBe(n0 + 1);
+    t.needs = { ...approve(NOW - 10_000), ask: null, manualText: "核心·那一句" };
+    r.store.notify();
+    expect(seen.length, "换成只能在终端里答").toBe(n0 + 2);
   });
 
   it("★ 机器离线：那台看不见、还有状态不明的会话 ⇒ 一条（离线 · 几个状态不明 · 采样多久前）＋［重新连接］；连上了自己消失", () => {
@@ -309,45 +334,7 @@ describe("标签页栏：「需手动 N」与机器离线条", () => {
   });
 });
 
-describe("「需手动」钉条 · 窗口标题 · 系统通知", () => {
-  it("★ 钉条第一行照抄核心写好的那一格（head · headCode）：界面不按种类取字", () => {
-    const draw = (n: Needs) => {
-      const cur = tab("a", { origin: "devbox" as never, state: LIVE_ATTACHABLE, activity: waiting, needs: n });
-      const nb = new NeedsBar({ active: () => cur, front: vi.fn(), attach: vi.fn() });
-      nb.render(NOW);
-      return nb.el.querySelector(":scope > div > div")!;
-    };
-    const l1 = draw(approve());
-    expect(l1.textContent).toBe("核心·等批准 · Bash" + "rm -rf build/");
-    expect(l1.querySelector("code")?.textContent).toBe("rm -rf build/");
-    // 种类与核心那一格对不上也照抄（不按 kind 另写）；没有等宽那一段 ⇒ 只那一行字。
-    const odd = draw({ ...approve(), kind: "plan", head: "核心·计划那一行", headCode: null });
-    expect(odd.textContent).toBe("核心·计划那一行");
-  });
-
-  it("★ 去哪答：Windows 有 ↗ ⇒ 切到终端；远端在 tmux 里 ⇒ 在终端里打开；本机 Linux 不在 ↗ 上 ⇒ 不给按钮", () => {
-    expect(answerWhere(tab("a", { origin: "devbox" as never, state: LIVE_ATTACHABLE }))).toBe("attach");
-    expect(answerWhere(tab("a"))).toBeNull();
-    expect(answerWhere(tab("a", { origin: "devbox" as never, state: LIVE })), "远端、不在 tmux 里：没有可接的终端").toBeNull();
-    vi.mocked(terminalFrontAvailable).mockReturnValue(true);
-    expect(answerWhere(tab("a"))).toBe("front");
-  });
-
-  it("钉条只跟当前会话：在等 ⇒ 出（两行 ＋ 按钮）；答完 ⇒ 消失、不留痕", () => {
-    const cur = tab("a", { origin: "devbox" as never, state: LIVE_ATTACHABLE, activity: waiting, needs: approve() });
-    const attach = vi.fn();
-    const nb = new NeedsBar({ active: () => cur, front: vi.fn(), attach });
-    nb.render(NOW);
-    expect(nb.el.style.display).toBe("");
-    expect(nb.el.textContent).toContain("rm -rf build/");
-    expect(nb.el.textContent).toContain(copyText("needs.bar.sub", { waited: fmtDur(120) }));
-    nb.el.querySelector("button")!.click();
-    expect(attach).toHaveBeenCalledWith("a");
-    cur.activity = { doing: "working", waitingFor: null, text: copyText("beSession.activity.working"), tone: "now", order: 1 };
-    nb.render(NOW);
-    expect([nb.el.style.display, nb.el.childElementCount]).toEqual(["none", 0]);
-  });
-
+describe("「需手动」· 窗口标题 · 系统通知（消息流底部那一块见 answer-block.vitest.ts）", () => {
   describe("窗口标题与通知", () => {
     beforeEach(() => vi.useFakeTimers());
     afterEach(() => vi.useRealTimers());

@@ -51,15 +51,16 @@ export const REAL_OPS = new Set([
   "history-find",
   "history-last-accounts",
   "exit-policy-read",
+  "needs-answer",
 ]);
 
 /**
  * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
- * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那三种 `changed/<topic>`。
+ * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那四种 `changed/<topic>`（含待答请求 `needs`）。
  * 其余几种还是这里合成：`session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
  * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/");
 
 /**
@@ -146,6 +147,50 @@ export class FakeBackend {
     const f = (await r.json()) as { ok: boolean; body?: string; fail?: unknown };
     if (f.ok) return enc.encode(f.body ?? "null").buffer;
     throw f.fail;
+  }
+
+  /** 那台真后端此刻在等人的会话（`sessions-needs`）；那台看不见 ⇒ 空。 */
+  private async realNeeds(origin: string): Promise<{ sid: string; needs: { ask: unknown; manualText: unknown } }[]> {
+    if (this.world.unseenMachines.includes(origin)) return [];
+    try {
+      const body = await this.real(origin, "sessions-needs", {}, null);
+      return ((JSON.parse(dec.decode(body)) as { waiting?: unknown[] }).waiting ?? []) as { sid: string; needs: { ask: unknown; manualText: unknown } }[];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * 场景演「那一家的答题 hook 挂上一条请求」：经真后端 `needs-ask`（与 hook 客户端 `--answer-hook` 同一条命令）挂上、不等它答完。
+   * `hook` 是那一家 hook 交来的那一份（PermissionRequest 的形）。之后真后端推 `changed {needs}`，页里照常重读。
+   */
+  hookAsk(origin: string, hook: Record<string, unknown>): void {
+    // 答完 / 撤了才回；台架只记一笔（没挂上就看得见为什么）。
+    void this.real(origin, "needs-ask", { agent: "claude", hook }, null).then(
+      (b) => console.info("[shots] needs-ask 收场：", dec.decode(b)),
+      (e: unknown) => console.warn("[shots] needs-ask 没成：", JSON.stringify(e)),
+    );
+  }
+
+  /** 那台真后端此刻给这个会话挂着的请求 id（没有 ⇒ `null`）。 */
+  async askIdOf(origin: string, sid: string): Promise<string | null> {
+    const ask = (await this.realNeeds(origin)).find((r) => r.sid === sid)?.needs.ask as { id?: string } | null | undefined;
+    return ask?.id ?? null;
+  }
+
+  /** 场景演「别处（终端那边）先答了」：经真后端答掉那一条。 */
+  async answerElsewhere(origin: string, sid: string, choice: string): Promise<void> {
+    const w = await this.realNeeds(origin);
+    const ask = (w.find((r) => r.sid === sid)?.needs.ask as { id?: string } | null)?.id;
+    if (!ask) throw new Error(`${sid} 没挂着请求`);
+    await this.real(origin, "needs-answer", { sid, ask, choice }, null);
+  }
+
+  /** 场景演那一家改了自己 pidfile 里的状态（原词：busy · waiting · idle · shell）。 */
+  async setStatus(origin: string, sid: string, status: string, waitingFor: string | null = null): Promise<void> {
+    await this.ready;
+    const r = await fetch("/__ccm/status", { method: "POST", body: JSON.stringify({ key: this.key, origin, sid, status, waitingFor }) });
+    if (!r.ok) throw new Error(`改不了 ${origin} 上 ${sid} 的状态：${await r.text()}`);
   }
 
   /** 场景在开页之后改那台盘上的一份文件（相对家目录；例：存之前配置文件被别处改过）。 */

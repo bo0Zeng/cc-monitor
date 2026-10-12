@@ -25,10 +25,10 @@ fn synth_home_unknown() -> Option<PathBuf> {
 
 #[rustfmt::skip]
 const SYNTH_REGISTRY: &[Adapter] = &[
-    Adapter { kind: "alpha",   home: synth_home_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
-    Adapter { kind: "ghost",   home: synth_home_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
-    Adapter { kind: "nameless", home: synth_home_unknown, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
-    Adapter { kind: "filey",   home: synth_home_is_a_file, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown },
+    Adapter { kind: "alpha",   home: synth_home_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+    Adapter { kind: "ghost",   home: synth_home_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+    Adapter { kind: "nameless", home: synth_home_unknown, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+    Adapter { kind: "filey",   home: synth_home_is_a_file, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
 ];
 
 /// `S5-Y1`：**看得见 = home 目录存在**。整条链喂合成注册表，一次验四种形态。
@@ -221,6 +221,11 @@ fn the_launch_faces_agree_with_the_golden_table() {
                 })
                 .unwrap_or_default(),
             "self_sid_env" => f.self_sid_env.unwrap_or_default().to_string(),
+            // 答题口挂 hook 的那个旗标（注册表 `Adapter.asks`；没有答题口 ⇒ 空）。
+            "answer_hook_flag" => crate::agents::ask_face_among(REGISTRY, agent)
+                .map(|a| a.launch_flag)
+                .unwrap_or_default()
+                .to_string(),
             other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
         };
         if &got != want {
@@ -280,6 +285,7 @@ fn an_agent_name_left_out_is_the_default_and_a_misspelled_one_is_refused() {
         compact_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
+        asks: None,
     };
     let mut reg: Vec<Adapter> = REGISTRY
         .iter()
@@ -742,6 +748,7 @@ fn two_families() -> Vec<Adapter> {
         compact_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
+        asks: None,
     };
     vec![
         row(

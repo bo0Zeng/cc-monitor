@@ -156,6 +156,8 @@ async fn main() {
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
             Some("--resident-ensure") => control::resident::ensure(&args[1..]),
             Some("--resident-attach") => control::resident::attach().await,
+            // 会话级答题 hook 的客户端：经本机常驻后端问人、把答案交回那一家（`control/asks/hook.rs`）；没答案就空手退 0。
+            Some("--answer-hook") => control::asks::hook::run(&args).await,
             Some("--resident-stop") => control::resident::run_stop(&args[1..]),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。

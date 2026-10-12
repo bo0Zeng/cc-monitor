@@ -2260,6 +2260,7 @@ fn the_relay_is_injected_the_way_that_family_declares() {
         compact_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
+        asks: None,
     };
     let reg = [
         row("via-env", Inject::Env("FAKE_URL_VAR")),
@@ -2645,4 +2646,104 @@ fn every_tmux_subcommand_rendered_for_a_client_is_a_utf8_client() {
         "渲给客户端的 tmux 子命令没带 -u：\n{}",
         bad.join("\n")
     );
+}
+/// 答题 hook 只挂在 ccm 起的这一个会话上：知道入口 ⇒ 启动器后面垫那一家的 `--settings <只含那一个 hook 的 JSON>`，
+/// 透传在后（用户自己的 `--` 之后的词照旧落在它后面）；不知道入口（预览 / 判据）⇒ 不垫。用户自己给了那个旗标那一形见下一条。
+#[test]
+fn the_answer_hook_rides_only_on_the_session_ccm_starts() {
+    let mut e = env();
+    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
+    let Plan::Direct(d) = plan_of(&["--model", "opus"], &e, &AccountTable::default()) else {
+        panic!("该是 Direct")
+    };
+    let mut want = vec!["claude".to_string()];
+    want.extend(crate::agents::claudecode::asks::launch_args(
+        "/home/pi/.cc-monitor/bin/ccm",
+    ));
+    want.extend(["--model".to_string(), "opus".to_string()]);
+    assert_eq!(d.argv, want);
+
+    let Plan::Direct(d) = plan_of(&["--model", "opus"], &env(), &AccountTable::default()) else {
+        panic!("该是 Direct")
+    };
+    assert_eq!(
+        d.argv,
+        vec!["claude", "--model", "opus"],
+        "不知道入口 ⇒ 不垫"
+    );
+}
+
+/// 用户自己给了会话级设置 ⇒ 不另垫，把答题 hook 并进他那一份（别的原样，只往 PermissionRequest 末尾加一组），换成并好的 JSON 串交出去；
+/// 文件按工作目录补全去读，原文件一个字不动。读不出 / 形状不认 ⇒ 原样交出去、标挂不上（进程环境里带那个变量，打印那一行也看得见）。
+#[test]
+fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
+    fn read(p: &std::path::Path) -> Option<String> {
+        match p.to_str()? {
+            "/p/u.json" => Some(r#"{"model":"x","hooks":{"PermissionRequest":[{"hooks":[{"type":"command","command":"/mine"}]}],"Stop":[]}}"#.into()),
+            "/p/bad.json" => Some("{not json".into()),
+            "/p/arr.json" => Some("[1]".into()),
+            _ => None,
+        }
+    }
+    let mut e = env();
+    e.answer_hook_entry = Some("/h/ccm".into());
+    e.read_text = Some(read);
+    let entry_group = |v: &serde_json::Value| {
+        v["hooks"]["PermissionRequest"]
+            .as_array()
+            .unwrap()
+            .last()
+            .unwrap()["hooks"][0]["command"]
+            .clone()
+    };
+    for args in [&["--settings", "u.json"][..], &["--settings=/p/u.json"][..]] {
+        let Plan::Direct(d) = plan_of(args, &e, &AccountTable::default()) else {
+            panic!("该是 Direct")
+        };
+        assert!(!d.answer_hook_off);
+        let raw = d.argv.last().unwrap();
+        let json = raw.strip_prefix("--settings=").unwrap_or(raw);
+        let v: serde_json::Value = serde_json::from_str(json).expect("交出去的是并好的 JSON 串");
+        assert_eq!(v["model"], "x", "别的原样");
+        assert_eq!(v["hooks"]["Stop"], serde_json::json!([]));
+        let pr = v["hooks"]["PermissionRequest"].as_array().unwrap();
+        assert_eq!(pr.len(), 2, "用户那一组还在，我们的在末尾");
+        assert_eq!(pr[0]["hooks"][0]["command"], "/mine");
+        assert_eq!(entry_group(&v), "/h/ccm");
+        assert_eq!(
+            d.argv
+                .iter()
+                .filter(|w| w.starts_with("--settings"))
+                .count(),
+            1,
+            "只一个旗标"
+        );
+    }
+    // JSON 串也认。
+    let Plan::Direct(d) = plan_of(&["--settings", r#"{"a":1}"#], &e, &AccountTable::default())
+    else {
+        panic!()
+    };
+    let v: serde_json::Value = serde_json::from_str(d.argv.last().unwrap()).unwrap();
+    assert_eq!(
+        (v["a"].clone(), entry_group(&v)),
+        (serde_json::json!(1), serde_json::json!("/h/ccm"))
+    );
+    for bad in [
+        &["--settings", "bad.json"][..],
+        &["--settings", "arr.json"][..],
+        &["--settings", "gone.json"][..],
+        &["--settings"][..],
+    ] {
+        let Plan::Direct(d) = plan_of(bad, &e, &AccountTable::default()) else {
+            panic!()
+        };
+        assert!(d.answer_hook_off, "{bad:?} ⇒ 挂不上");
+        assert_eq!(
+            d.argv[1..],
+            bad.iter().map(|s| s.to_string()).collect::<Vec<_>>()[..],
+            "原样交出去"
+        );
+        assert!(render(&Plan::Direct(d)).contains(crate::agents::asks::ANSWER_HOOK_OFF_ENV));
+    }
 }

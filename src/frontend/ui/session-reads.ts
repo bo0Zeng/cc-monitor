@@ -172,6 +172,8 @@ export interface SessionFacts {
   background: BackgroundWork | null;
   /** 这个会话里那一家说有毛病的 MCP 服务器（按名字排；没列的不等于连上了）。`detail` 是断开时的原话（复制详情用）。 */
   mcp: McpTrouble[];
+  /** 答题口没接上那一句（ccm 起它时挂不上答题 hook）；接上了 / 判不了 ⇒ `null`。 */
+  answerOff?: string | null;
 }
 
 /** 一条还没收场的后台命令（续传令牌的一部分）。 */
@@ -280,11 +282,57 @@ export interface Needs {
   waitedMs: number | null;
   /** `waitedMs` 写好的字（答出那一刻）；没有起点 ⇒ `null`。 */
   waitedText: string | null;
+  /** 这一条可以怎么答（后端 `needs.ask`：选项的字都写好，界面只排版）；没有挂着的 ⇒ `null`。 */
+  ask: Ask | null;
+  /** `ask` 为 `null` 时写好的那一句（只能在终端里答 / 答题口没接上）；有 `ask` ⇒ `null`。 */
+  manualText: string | null;
   /** 本机收到这一份的时刻（本机钟，不在线上）：会走的钟从它起接着加（`duration-format.ts::waitedNow`）。 */
   receivedAt: number;
 }
 
-const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
+export const NEEDS_KIND: ReadonlySet<string> = new Set<NeedsKind>(["approve", "answer", "plan", "network", "worker", "goal", "choose", "unknown"]);
+
+/** 一条挂着的待答请求（后端 `agents/asks.rs::Ask`，会话 `needs.ask`）：答的时候 `id` 与选项的 `id` 原样交回 `needs-answer`。 */
+export interface Ask {
+  id: string;
+  /** 批准一步 · 回答提问 · 批计划。 */
+  kind: "approve" | "answer" | "plan";
+  /** 工具名原样。 */
+  tool: string;
+  /** 子 agent 发的 ⇒ 是哪一趟（`kind` 是那一家原样的种类名，没说 ⇒ `null`）；主会话 ⇒ `null`。 */
+  run: { id: string; kind: string | null } | null;
+  /** 一行摘要；说不出 ⇒ `null`。 */
+  what: string | null;
+  /** 要批的东西的全文（命令全文 · 计划原文），不截。 */
+  detail: string;
+  /** 能选的几项，核心排好序、写好字。 */
+  choices: AskChoice[];
+  /** 提问那一种的题；别的种类为空。 */
+  questions: AskQuestionItem[];
+  /** 何时挂上的（epoch ms，那台的钟）。 */
+  sinceMs: number;
+}
+
+/** 一个选项：`note` 要不要附一句话。 */
+export interface AskChoice {
+  id: string;
+  text: string;
+  tone: string;
+  note: "none" | "optional" | "required";
+}
+
+/** 一道题（`other` ＝ 许写自由文本）。 */
+export interface AskQuestionItem {
+  id: string;
+  text: string;
+  header: string | null;
+  multi: boolean;
+  other: boolean;
+  options: { id: string; text: string; detail: string | null }[];
+}
+
+const ASK_KIND: ReadonlySet<string> = new Set<Ask["kind"]>(["approve", "answer", "plan"]);
+const NOTE_NEED: ReadonlySet<string> = new Set<AskChoice["note"]>(["none", "optional", "required"]);
 
 /** 会话事实的回包。`available == false` 时 `facts` 缺席、`failure` 是种类、`reason` 是给人看的原因（**不是错误**）。 */
 export type FactsResult =
@@ -302,6 +350,32 @@ const READ_BUDGET_MS = 30_000;
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const isStr = (v: unknown): v is string => typeof v === "string";
 const strOrNull = (x: unknown): x is string | null => x === null || isStr(x);
+
+/** `needs.ask` ⇒ 类型；`null` ⇒ `null`；形状不对 ⇒ `null` 以外的那一支返回 `undefined`（调用方当整份认不出）。 */
+function decodeAsk(a: unknown): Ask | null | undefined {
+  if (a === null) return null;
+  if (!isObj(a) || !exactKeys(a, ["choices", "detail", "id", "kind", "questions", "run", "sinceMs", "tool", "what"])) return undefined;
+  if (!isStr(a.id) || !(isStr(a.kind) && ASK_KIND.has(a.kind)) || !isStr(a.tool) || !strOrNull(a.what) || !isStr(a.detail) || !isNum(a.sinceMs)) return undefined;
+  const run = a.run;
+  if (!(run === null || (isObj(run) && exactKeys(run, ["id", "kind"]) && isStr(run.id) && strOrNull(run.kind)))) return undefined;
+  if (!Array.isArray(a.choices) || !Array.isArray(a.questions)) return undefined;
+  const choices: AskChoice[] = [];
+  for (const c of a.choices) {
+    if (!isObj(c) || !exactKeys(c, ["id", "note", "text", "tone"]) || !isStr(c.id) || !isStr(c.text) || !isStr(c.tone) || !(isStr(c.note) && NOTE_NEED.has(c.note))) return undefined;
+    choices.push({ id: c.id, text: c.text, tone: c.tone, note: c.note as AskChoice["note"] });
+  }
+  const questions: AskQuestionItem[] = [];
+  for (const q of a.questions) {
+    if (!isObj(q) || !exactKeys(q, ["header", "id", "multi", "options", "other", "text"]) || !isStr(q.id) || !isStr(q.text) || !strOrNull(q.header) || typeof q.multi !== "boolean" || typeof q.other !== "boolean" || !Array.isArray(q.options)) return undefined;
+    const options: AskQuestionItem["options"] = [];
+    for (const o of q.options) {
+      if (!isObj(o) || !exactKeys(o, ["detail", "id", "text"]) || !isStr(o.id) || !isStr(o.text) || !strOrNull(o.detail)) return undefined;
+      options.push({ id: o.id, text: o.text, detail: o.detail });
+    }
+    questions.push({ id: q.id, text: q.text, header: q.header, multi: q.multi, other: q.other, options });
+  }
+  return { id: a.id, kind: a.kind as Ask["kind"], tool: a.tool, run: run === null ? null : { id: run.id as string, kind: run.kind as string | null }, what: a.what, detail: a.detail, choices, questions, sinceMs: a.sinceMs };
+}
 
 /** 应答形状不对（那台回的东西认不出）。`message` 只是细目（哪条命令、缺了什么，进日志）；给人看的那句由 [`reasonOf`] 按码取。 */
 class ShapeError extends ReplyUnreadable {
@@ -503,8 +577,8 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   const bad = (): never => {
     throw new ShapeError("history-facts", copyText("sessionReads.missing.facts"));
   };
-  if (!isObj(v) || !exactKeys(v, ["agent", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "mcp", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
-  if (!strOrNull(v.permissionMode)) return bad();
+  if (!isObj(v) || !exactKeys(v, ["agent", "answerOff", "background", "bgTasks", "cost", "end", "forkedFrom", "handedBack", "lastSay", "mcp", "needs", "pending", "permissionMode", "projectDir", "retries", "tokens", "touchedFiles", "usage", "writers"])) return bad();
+  if (!strOrNull(v.permissionMode) || !strOrNull(v.answerOff)) return bad();
   let tokens: TokenUse | null = null;
   if (v.tokens !== null) {
     const p = v.tokens;
@@ -562,8 +636,10 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
   let needs: Needs | null = null;
   if (v.needs !== null) {
     const n = v.needs;
-    if (!isObj(n) || !exactKeys(n, ["call", "head", "headCode", "kind", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.head) || !strOrNull(n.headCode) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
-    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, head: n.head, headCode: n.headCode, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, receivedAt };
+    if (!isObj(n) || !exactKeys(n, ["ask", "call", "head", "headCode", "kind", "manualText", "rank", "sinceMs", "text", "tone", "tool", "waitedMs", "waitedText", "what"]) || !strOrNull(n.manualText) || !(isStr(n.kind) && NEEDS_KIND.has(n.kind)) || !strOrNull(n.tool) || !strOrNull(n.call) || !strOrNull(n.what) || !(n.sinceMs === null || isNum(n.sinceMs)) || !isStr(n.text) || !isStr(n.head) || !strOrNull(n.headCode) || !isStr(n.tone) || !isNum(n.rank) || !numOrNull(n.waitedMs) || !(n.waitedText === null || isStr(n.waitedText))) return bad();
+    const ask = decodeAsk(n.ask);
+    if (ask === undefined) return bad();
+    needs = { kind: n.kind as NeedsKind, tool: n.tool, call: n.call, what: n.what, sinceMs: n.sinceMs as number | null, text: n.text, head: n.head, headCode: n.headCode, tone: n.tone, rank: n.rank, waitedMs: n.waitedMs, waitedText: n.waitedText, ask, manualText: n.manualText as string | null, receivedAt };
   }
   if (!Array.isArray(v.bgTasks)) return bad();
   const bgTasks: BgTask[] = [];
@@ -642,6 +718,7 @@ export function decodeFacts(v: unknown, receivedAt: number = Date.now()): Sessio
     bgTasks,
     background,
     mcp,
+    answerOff: v.answerOff as string | null,
   };
 }
 

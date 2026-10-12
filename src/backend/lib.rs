@@ -1042,6 +1042,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
     //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`cli_control::STREAM_ONLY`）。
     "--accounts-sessions",
+    // 会话级答题 hook 的客户端（`control/asks/hook.rs`）：那一家的 hook 叫它，它经本机常驻后端问人、把答案交回去。⚠ 新子命令 ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
+    "--answer-hook",
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--sessions-needs",
@@ -2193,6 +2195,11 @@ pub const EMITS: &[&str] = &[
 /// 起流那几发（monitor 远端流 / 测试连接探针 / 本机宿主 / 远端常驻子进程）一律带它打头，由 `control::ccm::intercept` 按本表分流。
 /// 它不对应任何能力（老后端不认 ⇒ 按未知旗标照常进流模式，同 U6b-2 的降级）。
 pub const STREAM_FLAG_EXPLICIT: &str = "--stream";
+
+/// 会话级答题 hook 叫 ccm 的那个子命令（`control::asks::hook`；那一家的 hook 设置里写的就是它）。
+pub const ANSWER_HOOK_FLAG: &str = "--answer-hook";
+/// 那一家的 hook 叫 ccm 的那几个词（打头的 `--`：后面是后端的词），后面再接那一家的 kind。
+pub const ANSWER_HOOK_WORDS: [&str; 2] = ["--", ANSWER_HOOK_FLAG];
 
 /// ① 流模式 flag：出现即剥离，**不影响模式判定**。只剩「我是流模式」那一个词；这条流要什么由声明说（[`StreamWants::view`]）。
 pub const STREAM_FLAGS: &[&str] = &[STREAM_FLAG_EXPLICIT];

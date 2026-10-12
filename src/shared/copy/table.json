@@ -3480,10 +3480,16 @@
       "zh": "提问",
       "args": []
     },
-    "interactive.plan.done": {
+    "interactive.plan.approved": {
       "kind": "title",
       "role": "标题",
-      "zh": "计划",
+      "zh": "已批准 · 计划",
+      "args": []
+    },
+    "interactive.plan.kept": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "未批准 · 继续规划",
       "args": []
     },
     "interactive.done.approved": {
@@ -3502,12 +3508,6 @@
       "kind": "body",
       "role": "toast",
       "zh": "未批准",
-      "args": []
-    },
-    "interactive.plan.title": {
-      "kind": "title",
-      "role": "标题",
-      "zh": "计划 · 等批准",
       "args": []
     },
     "interactive.ask.multi": {
@@ -17691,6 +17691,264 @@
       "zh": "运行中",
       "args": []
     },
+    "beAsk.scope.session": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本次会话",
+      "args": []
+    },
+    "beAsk.scope.local": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本项目 · 本机",
+      "args": []
+    },
+    "beAsk.scope.project": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本项目",
+      "args": []
+    },
+    "beAsk.scope.user": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "所有项目",
+      "args": []
+    },
+    "beAsk.rule.dirs": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "允许访问 {dirs}（{scope}）",
+      "args": ["dirs", "scope"]
+    },
+    "beAsk.rule.acceptEdits": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "自动接受编辑（{scope}）",
+      "args": ["scope"]
+    },
+    "beAsk.rule.mode": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "切到 {mode} 模式（{scope}）",
+      "args": ["mode", "scope"]
+    },
+    "beAsk.rule.rules": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "以后不再问 {rules}（{scope}）",
+      "args": ["rules", "scope"]
+    },
+    "beAsk.choice.allow": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "允许",
+      "args": []
+    },
+    "beAsk.choice.allowAlways": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "允许，且{rule}",
+      "args": ["rule"]
+    },
+    "beAsk.choice.deny": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "拒绝",
+      "args": []
+    },
+    "beAsk.choice.denyNote": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "拒绝并说明",
+      "args": []
+    },
+    "beAsk.choice.denyStop": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "拒绝并停下",
+      "args": []
+    },
+    "beAsk.choice.release": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "改到终端里答",
+      "args": []
+    },
+    "beAsk.choice.planAuto": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "自动模式",
+      "args": []
+    },
+    "beAsk.choice.planEdits": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "自动接受编辑",
+      "args": []
+    },
+    "beAsk.choice.planManual": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "逐个确认",
+      "args": []
+    },
+    "beAsk.choice.planKeep": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "继续规划",
+      "args": []
+    },
+    "beAsk.choice.answer": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "提交答案",
+      "args": []
+    },
+    "beAsk.choice.dismiss": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "不回答",
+      "args": []
+    },
+    "beAsk.planKeep.note": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "继续规划，先不要动手",
+      "args": []
+    },
+    "beAsk.manual.noHook": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "只能在终端里答批准 · 会话级设置读不出",
+      "args": []
+    },
+    "beAsk.manual.terminal": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "只能在终端里答",
+      "args": []
+    },
+    "beAsk.answer.already": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已有人答过",
+      "args": []
+    },
+    "beAsk.answer.closed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已在终端答过或已关闭",
+      "args": []
+    },
+    "beAsk.answer.notFound": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到该请求",
+      "args": []
+    },
+    "beAsk.answer.badChoice": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该项不可选",
+      "args": []
+    },
+    "beAsk.answer.noteRequired": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "该项需附说明",
+      "args": []
+    },
+    "beAsk.answer.picks": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "每道题都要答",
+      "args": []
+    },
+    "askBlock.head.since": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "已等 {waited}",
+      "args": ["waited"]
+    },
+    "askBlock.head.questions": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{head} · {n} 题",
+      "args": ["head", "n"]
+    },
+    "askBlock.tag.run": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "agent · {kind}",
+      "args": ["kind"]
+    },
+    "askBlock.tag.runBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "agent",
+      "args": []
+    },
+    "askBlock.choice.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "{label}…",
+      "args": ["label"]
+    },
+    "askBlock.choice.sending": {
+      "kind": "body",
+      "role": "进度",
+      "zh": "正在交出",
+      "args": []
+    },
+    "askBlock.fail.noReason": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未答出 · 原因不明",
+      "args": []
+    },
+    "askBlock.gone.elsewhere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已在终端答过或已关闭",
+      "args": []
+    },
+    "askBlock.note.cancel": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "取消",
+      "args": []
+    },
+    "askBlock.question.multi": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{header} · 多选",
+      "args": ["header"]
+    },
+    "askBlock.question.multiBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "多选",
+      "args": []
+    },
+    "askBlock.question.needAll": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "每道题答完才可提交",
+      "args": []
+    },
+    "askBlock.question.other": {
+      "kind": "control",
+      "role": "占位",
+      "zh": "其他…",
+      "args": []
+    },
+    "askBlock.manual.terminal": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看终端",
+      "args": []
+    },
     "beSession.needs.approve": {
       "kind": "body",
       "role": "片段",
@@ -23072,7 +23330,7 @@
     "needs.bar.plan": {
       "kind": "body",
       "role": "片段",
-      "zh": "计划 · 等批准",
+      "zh": "等批准 · 计划",
       "args": []
     },
     "needs.bar.network": {

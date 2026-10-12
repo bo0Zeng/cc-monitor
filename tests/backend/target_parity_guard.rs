@@ -990,6 +990,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
 /// `run:` 里没有 `crate::…` 路径的命令（`Run::Builtin` 与就地应答）—— 不在射程，逐条登记。
 const NO_HANDLER_PATH: &[(&str, &str)] = &[
     (
+        "needs-ask",
+        "`Run::Builtin`：`inbound::dispatch` 的硬臂带着本连接的号调 `control::asks::ask`（挂进登记表、等一个通道），不起 tmux",
+    ),
+    (
         "cancel",
         "`Run::Builtin`：`inbound::dispatch` 的硬臂，只动在飞表",
     ),

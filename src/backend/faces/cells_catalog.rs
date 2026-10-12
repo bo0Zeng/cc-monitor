@@ -1005,7 +1005,10 @@ mod specimens {
                             note: some("n"),
                             known: true,
                             text: Some(Words(s("t"))),
-                            ask: Some(StepAsk::Plan { text: s("p") }),
+                            ask: Some(StepAsk::Plan {
+                                text: s("p"),
+                                title: crate::agents::PlanTitle::written(),
+                            }),
                         },
                     ),
                 ]
@@ -1109,6 +1112,8 @@ mod specimens {
                         waited_text: Some(crate::common::cells::Words(copy_core::short_duration(
                             1,
                         ))),
+                        ask: Some(crate::agents::asks::specimen()),
+                        manual_text: Some(Words(s("m"))),
                     }),
                     handed_back: vec![s("a")],
                     retries: vec![RetryRun {
@@ -1150,6 +1155,7 @@ mod specimens {
                         count: 1,
                         tone: crate::common::cells::Tone::Busy,
                     }),
+                    answer_off: Some(Words(s("o"))),
                     mcp: [McpStatus::NeedsLogin, McpStatus::Failed, McpStatus::Pending]
                         .into_iter()
                         .map(|status| McpTrouble {
@@ -1207,6 +1213,8 @@ mod specimens {
                 rank: 1,
                 waited_ms: Some(1),
                 waited_text: Some(Words(s("1"))),
+                ask: Some(crate::agents::asks::specimen()),
+                manual_text: Some(Words(s("m"))),
             },
         })]
     }

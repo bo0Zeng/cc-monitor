@@ -127,6 +127,10 @@ export class TabManager {
       bringRemoteTerminalToFront: (sid) => this.frontFrom(sid, "row"),
       closeTab: (sid) => this.closeTab(sid),
       switchTo: (sid) => this.switchTo(sid),
+      answerAt: (sid) => {
+        this.switchTo(sid);
+        this.onAnswerJump(sid);
+      },
       pick: (sid, how) => this.pick(sid, how),
       isSelected: (sid) => this.selection.has(sid),
       beginDrag: (e, sid, root) => this.dragger.begin(e, sid, root),
@@ -1107,6 +1111,22 @@ export class TabManager {
       }
     }
     if (changed) this.refreshTabBar();
+  }
+
+  /** 从「需手动」的入口跳到一个会话之后（焦点进答题块；主窗口挂进来）。 */
+  onAnswerJump: (sid: string) => void = () => {};
+
+  /** 一个会话的会话事实再问一次（那台推 `changed {needs}` · 答题块答出去之后）。 */
+  rereadFacts(sid: string): void {
+    const t = this.store.tabs.get(sid);
+    if (!t) return;
+    t.facts.markStale();
+    void t.facts.refresh();
+  }
+
+  /** 一台的会话事实都再问一次（`changed {needs}` 那一批可能漏了）。 */
+  rereadFactsOn(origin: Origin): void {
+    for (const t of this.store.tabs.values()) if (t.origin === origin) this.rereadFacts(t.sessionId);
   }
 
   /** 当前会话的会话事实再问一次（状态栏「上下文」浮层里的［重试］）。 */

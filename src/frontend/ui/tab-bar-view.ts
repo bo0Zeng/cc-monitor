@@ -92,6 +92,8 @@ export interface TabBarViewHost {
   closeTab(sid: string): void;
   /** 点按钮：手动切 tab。 */
   switchTo(sid: string): void;
+  /** 从「需手动」的入口（Ctrl+J · 栏顶那一条与它的菜单 · 标签上那颗需手动的点）跳过去：切 tab、焦点进答题块。 */
+  answerAt(sid: string): void;
   /**
    * 点按钮时的多选（`tab-selection.ts`）：`plain` 单击（清多选、随后切 tab）· `toggle` Ctrl 单击 · `range` Shift 单击 ·
    * `clear` 单击条上空白。
@@ -283,7 +285,7 @@ export class TabBarView {
     const at = this.plan.at();
     const step = nextNeedsStep(order, at === null ? this.store.activeId : null, at, this.plan.count());
     if (step === null) return;
-    if ("sid" in step) this.host.switchTo(step.sid);
+    if ("sid" in step) this.host.answerAt(step.sid);
     else this.plan.open(step.plan);
   }
 
@@ -391,7 +393,10 @@ export class TabBarView {
       return;
     }
     this.host.pick(sid, "plain");
-    this.host.switchTo(sid);
+    const t = this.store.tabs.get(sid);
+    const onDot = e.target instanceof Element && typeof e.target.closest === "function" && e.target.closest(".tab-dot") !== null;
+    if (onDot && t && needsOf(t)) this.host.answerAt(sid);
+    else this.host.switchTo(sid);
   }
 
   /** 条上的顺序（组与散的混排、组员聚在第一个组员那一格；整刷就按它摆）。含收着的组里的。 */
@@ -689,7 +694,7 @@ export class TabBarView {
         detail: stateLine(t, now).text,
         detailTone: "warn",
         body: needsOf(t)?.what || undefined,
-        onClick: () => this.host.switchTo(sid),
+        onClick: () => this.host.answerAt(sid),
       };
     });
     const room = window.innerWidth - NEEDS_MENU.viewportGutter;

@@ -176,6 +176,9 @@ pub(crate) struct SessionFacts {
     pub(crate) bg_tasks: Vec<BgTask>,
     /// **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
     pub(crate) background: Option<Background>,
+    /// **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）⇒ 写好的那一句
+    /// （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
+    pub(crate) answer_off: Option<Words>,
     /// 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
     pub(crate) mcp: Vec<McpTrouble>,
 }
@@ -502,7 +505,7 @@ pub(crate) struct Needs {
     pub(crate) since_ms: Option<u64>,
     /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
     pub(crate) text: Words,
-    /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 计划 · 等批准 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+    /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
     pub(crate) head: Words,
     /// 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
     pub(crate) head_code: Option<String>,
@@ -515,6 +518,10 @@ pub(crate) struct Needs {
     pub(crate) waited_ms: Option<u64>,
     /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
     pub(crate) waited_text: Option<Words>,
+    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+    pub(crate) ask: Option<crate::agents::asks::Ask>,
+    /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+    pub(crate) manual_text: Option<Words>,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。
@@ -577,7 +584,63 @@ pub(crate) fn needs_of(pending: &[PendingCall], wait: Option<&PidWait>) -> Optio
         rank,
         waited_ms,
         waited_text: waited_ms.map(|ms| Words(copy_core::short_duration(ms))),
+        // 配不配挂着的请求在顶层壳（`faces::read_face` 查常驻进程那一份登记表，经 [`dress_ask_with`] 配）。
+        ask: None,
+        manual_text: None,
     })
+}
+
+/// 会话的 `needs` 配上挂着的待答请求 `ask`（最早挂上的那一条；登记表住常驻进程，`control::asks`，由顶层壳查好交进来）：
+/// 有 ⇒ `needs.ask` 是它（pidfile 没说在等 —— 挡着终端的那种 —— 就照它补出一份）；pidfile 说在等却没有 ⇒ `ask: null`、`manualText` 写好「只能在终端里答」。
+pub(crate) fn dress_ask_with(
+    needs: Option<Needs>,
+    ask: Option<crate::agents::asks::Ask>,
+    now_ms: u64,
+) -> Option<Needs> {
+    use crate::agents::AskKind;
+    match (needs, ask) {
+        (Some(mut n), Some(a)) => {
+            n.manual_text = None;
+            n.ask = Some(a);
+            Some(n)
+        }
+        (Some(mut n), None) => {
+            n.ask = None;
+            n.manual_text = Some(Words(copy_core::copy_text("beAsk.manual.terminal", &[])));
+            Some(n)
+        }
+        (None, Some(a)) => {
+            let kind = match a.kind {
+                AskKind::Approve => NeedsKind::Approve,
+                AskKind::Question => NeedsKind::Answer,
+                AskKind::Plan => NeedsKind::Plan,
+            };
+            let waited = now_ms.saturating_sub(a.since_ms);
+            Some(Needs {
+                kind,
+                tool: Some(a.tool.clone()),
+                call: None,
+                what: a.what.clone(),
+                since_ms: Some(a.since_ms),
+                text: needs_words(kind),
+                head: needs_head(kind, Some(&a.tool)),
+                head_code: match kind {
+                    NeedsKind::Approve | NeedsKind::Answer => a.what.clone(),
+                    _ => None,
+                },
+                tone: crate::common::cells::Tone::Need,
+                rank: NEEDS_BY_DANGER
+                    .iter()
+                    .position(|k| *k == kind)
+                    .map_or(u8::MAX, |i| i as u8),
+                waited_ms: Some(waited),
+                waited_text: Some(Words(copy_core::short_duration(waited))),
+                ask: Some(a),
+                manual_text: None,
+            })
+        }
+        (None, None) => None,
+    }
 }
 
 /// 一种「需手动」写好的字（唯一一处：会话事实的 `needs.text` · 轮换在用名单都由它写）。
@@ -806,6 +869,7 @@ pub(crate) fn context_limit(
 pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
     const TOP: &[&str] = &[
         "agent",
+        "answerOff",
         "background",
         "bgTasks",
         "cost",
@@ -870,10 +934,12 @@ pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
         exact_keys(
             &v["needs"],
             &[
+                "ask",
                 "call",
                 "head",
                 "headCode",
                 "kind",
+                "manualText",
                 "rank",
                 "sinceMs",
                 "text",

@@ -24,6 +24,8 @@ pub(crate) const SESSION_ID_FLAG: &str = "--session-id";
 
 /// 起会话时选权限档的旗标（`claude --permission-mode <档>`）。
 pub(crate) const PERMISSION_MODE_FLAG: &str = "--permission-mode";
+/// 会话级设置那个旗标（`--settings <文件或 JSON 串>`：hooks 与各层设置合并、不替换用户自己的；答题口经它挂 hook，`asks.rs`）。
+pub(crate) const SETTINGS_FLAG: &str = "--settings";
 
 /// claude 导给它起的每个子进程的「我是哪个会话」（会话血缘：`ccm` 在一个会话的 shell 里被调用时读它当父）。也是嵌套标记之一。
 pub(crate) const SELF_SID_ENV: &str = "CLAUDE_CODE_SESSION_ID";

@@ -435,6 +435,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
             &crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
             }),
+            0,
         )
     };
 
@@ -929,6 +930,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-unfollow",
         // 流只发要看的会话：硬臂，交给 watcher 线程、等它一句回话（异步档）⇒ 不阻塞。
         "stream-watch",
+        // 答题 hook 挂一条、等人答：硬臂（要本连接的号），等的是一个通道（异步档）⇒ 不阻塞。
+        "needs-ask",
+        // 答一条挂着的待答请求：锁一下登记表、交通道，不碰盘不起进程 ⇒ 异步档、不阻塞。
+        "needs-answer",
         // 计划七条：起 pb / 读改写小文件 / 起 tmux，阻塞档（上面逐条断）。
         "plan-list",
         "plan-read",
@@ -982,7 +987,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1), 0),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -999,7 +1004,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1), 0),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -1030,7 +1035,8 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     &crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<
                         Vec<crate::stream::wire::WatchFrom>,
                     >()
-                    .1)
+                    .1),
+                    0,
                 ),
                 Disposition::SpawnBlocking(..)
             )
@@ -1087,6 +1093,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
         &crate::stream::inbound::WatchDesk::new(|_| {
             tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
         }),
+        0,
     )
     .await;
 
@@ -1457,5 +1464,88 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
     assert_eq!(
         *asked.lock().unwrap(),
         vec![vec!["a".to_string(), "b".to_string()]]
+    );
+}
+
+/// 答题 hook 经流挂一条、阻塞等：出口答了 ⇒ hook 那条连接收到决定；hook 那一头走了（连接写半边关掉）⇒ 挂着的那条撤掉。
+#[tokio::test]
+async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_leaves() {
+    use tokio::io::AsyncWriteExt;
+    let watch = || {
+        crate::stream::inbound::WatchDesk::new(|_| {
+            tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+        })
+    };
+    let hook = |sid: &str| {
+        serde_json::json!({"id": "h", "cmd": "needs-ask", "args": {"agent": "claude", "hook": {
+            "session_id": sid, "hook_event_name": "PermissionRequest",
+            "tool_name": "Bash", "tool_input": {"command": "true"}
+        }}})
+        .to_string()
+            + "\n"
+    };
+    let until_pending = |sid: &'static str| async move {
+        for _ in 0..10_000 {
+            if let Some(a) = crate::control::asks::pending(sid).pop() {
+                return a;
+            }
+            tokio::task::yield_now().await;
+        }
+        panic!("没挂上");
+    };
+
+    // 答了 ⇒ 决定回到 hook 那条连接。
+    let (mut client, server) = tokio::io::duplex(1 << 16);
+    let (tx, mut rx) = chan();
+    let h = spawn(
+        server,
+        tx,
+        watch(),
+        crate::stream::wire::HelloFlushed::for_tests(),
+    );
+    client
+        .write_all(hook("t-inbound-1").as_bytes())
+        .await
+        .unwrap();
+    let a = until_pending("t-inbound-1").await;
+    crate::control::asks::answer(
+        &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
+    )
+    .unwrap();
+    let f = rx.recv().await.expect("应答");
+    let line: serde_json::Value =
+        serde_json::from_str(&crate::stream::wire::to_line(&f).unwrap()).unwrap();
+    assert_eq!(line["id"], "h");
+    assert_eq!(
+        line["data"]["decision"]["hookSpecificOutput"]["decision"]["behavior"],
+        "allow"
+    );
+    drop(client);
+    h.await.unwrap();
+
+    // hook 那一头走了 ⇒ 撤掉，之后再答回 closed_elsewhere。
+    let (mut client, server) = tokio::io::duplex(1 << 16);
+    let (tx, _rx) = chan();
+    let h = spawn(
+        server,
+        tx,
+        watch(),
+        crate::stream::wire::HelloFlushed::for_tests(),
+    );
+    client
+        .write_all(hook("t-inbound-2").as_bytes())
+        .await
+        .unwrap();
+    let a = until_pending("t-inbound-2").await;
+    drop(client);
+    h.await.unwrap();
+    assert!(crate::control::asks::pending("t-inbound-2").is_empty());
+    assert_eq!(
+        crate::control::asks::answer(
+            &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
+        )
+        .unwrap_err()
+        .0,
+        "closed_elsewhere"
     );
 }

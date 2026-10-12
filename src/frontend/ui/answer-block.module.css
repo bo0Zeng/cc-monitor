@@ -1,0 +1,201 @@
+/* 答题块：消息流底部、与正文列同宽；警示色边框的卡（不是模态框）。答批准设计稿甲1–甲7。 */
+@layer components {
+  .abBlock {
+    position: absolute;
+    bottom: var(--space-5);
+    left: 50%;
+    z-index: var(--z-sticky);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    width: min(var(--stream-max-width), calc(100% - 80px));
+    max-height: calc(100% - 2 * var(--space-5));
+    overflow-y: auto;
+    padding: var(--space-5) var(--space-6);
+    border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+    border-radius: var(--radius-l);
+    background: color-mix(in srgb, var(--warn) 7%, var(--card));
+    box-shadow: var(--shadow-float);
+    transform: translateX(-50%);
+    transition: opacity var(--dur-expand);
+  }
+
+  .abBlock[hidden] {
+    display: none;
+  }
+
+  /* 别处先答了：淡出、等重读把它收掉。 */
+  .abBlock[data-gone="true"] {
+    opacity: 0.45;
+  }
+
+  /* 别处先答了：块收起后只留那一行（不再是警示卡，只剩居中的一枚小条）。 */
+  .abBlock[data-gone-only="true"] {
+    align-items: center;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    box-shadow: none;
+    opacity: 1;
+  }
+
+  .abGone {
+    align-self: center;
+    padding: var(--space-3) var(--space-5);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-m);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    font-size: var(--font-size-small);
+  }
+
+  .abHead {
+    display: flex;
+    gap: var(--space-4);
+    align-items: baseline;
+    font-weight: var(--font-weight-strong);
+    line-height: var(--line-height-ui);
+  }
+
+  .abTitle {
+    min-width: 0;
+  }
+
+  .abTag {
+    padding: 0 var(--space-3);
+    border: 1px solid var(--border-medium);
+    border-radius: var(--radius-s);
+    color: var(--text-2);
+    font-weight: normal;
+    font-size: var(--font-size-xs);
+  }
+
+  .abSince {
+    margin-left: auto;
+    color: var(--text-faint);
+    font-weight: normal;
+    font-size: var(--font-size-small);
+    white-space: nowrap;
+  }
+
+  /* 要批的全文：不截，长了块内滚。 */
+  .abDetail {
+    max-height: 160px;
+    margin: 0;
+    overflow: auto;
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    font-family: var(--font-mono);
+    font-size: var(--font-size-mono);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .abBody {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .abRow {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .abManual {
+    display: flex;
+    gap: var(--space-5);
+    align-items: center;
+    justify-content: space-between;
+    color: var(--text-2);
+  }
+
+  .abActs {
+    display: flex;
+    flex: none;
+    gap: var(--space-3);
+  }
+
+  .abNote {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+  }
+
+  .abNoteInput,
+  .abOther {
+    flex: 1;
+    min-width: 0;
+    color: var(--text);
+    font: inherit;
+  }
+
+  .abNoteInput {
+    height: var(--control-h);
+    padding: 0 var(--space-4);
+    border: 1px solid var(--field-border-focus);
+    border-radius: var(--radius-m);
+    background: var(--field-bg);
+  }
+
+  .abQuestion {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .abQHead {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .abQText {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .abOption {
+    display: flex;
+    gap: var(--space-4);
+    align-items: baseline;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    cursor: pointer;
+  }
+
+  .abOption[aria-checked="true"] {
+    border-color: var(--accent);
+    background: var(--selected-bg);
+  }
+
+  .abOptionDetail {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .abMark {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--border-medium);
+    transform: translateY(2px);
+  }
+
+  .abMark[data-multi="false"] {
+    border-radius: 50%;
+  }
+
+  .abOption[aria-checked="true"] > .abMark {
+    border-color: var(--accent);
+    background: var(--accent);
+  }
+
+  .abOther {
+    border: 0;
+    border-bottom: 1px solid var(--border-medium);
+    background: transparent;
+  }
+}

@@ -144,7 +144,7 @@ fn named(name: &str, input: &Value) -> ToolStep {
 
 /// 提问 / 计划那一格（[`ToolStep::ask`]）：`AskUserQuestion` 的 `questions[]`（`header` · `question` · `multiSelect` · `options[]{label, description}`）·
 /// `ExitPlanMode` 的 `plan`。形状不对（没有题 · 题没有选项表 · 选项没有名 · 计划是空的）⇒ `None`。
-fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
+pub(crate) fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
     let text = |v: &Value, k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
     match name {
         "AskUserQuestion" => {
@@ -178,7 +178,10 @@ fn ask_of(name: &str, input: &Value) -> Option<StepAsk> {
         }
         "ExitPlanMode" => text(input, "plan")
             .filter(|p| !p.trim().is_empty())
-            .map(|text| StepAsk::Plan { text }),
+            .map(|text| StepAsk::Plan {
+                text,
+                title: crate::agents::PlanTitle::written(),
+            }),
         _ => None,
     }
 }

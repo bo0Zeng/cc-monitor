@@ -181,6 +181,9 @@ where
         // 本连接的终端订阅票表：同上，随本读循环一起死 ⇒ monitor 走了，它订的终端画面一律退订
         // （`control::terminal_follow::Desk` 的 `Drop`）。
         let follows = crate::control::terminal_follow::Desk::new(replies.clone());
+        // 本连接挂的待答请求：同上，随本读循环一起死 ⇒ hook 那一头走了（终端先答了 · 被打断），它挂的那条一律撤
+        // （`control::asks::Desk` 的 `Drop`）。
+        let asks = crate::control::asks::Desk::new();
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -233,7 +236,17 @@ where
                 .await;
                 overflowed = false;
             } else {
-                handle_line(&buf, &replies, &running, &links, &xfers, &follows, &watch).await;
+                handle_line(
+                    &buf,
+                    &replies,
+                    &running,
+                    &links,
+                    &xfers,
+                    &follows,
+                    &watch,
+                    asks.conn(),
+                )
+                .await;
             }
             buf.clear();
         }
@@ -249,6 +262,7 @@ async fn handle_line(
     xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
     watch: &WatchDesk,
+    asks: u64,
 ) {
     if raw.is_empty() {
         return; // 空行（含 CRLF 的裸 \r 之后）静默跳过
@@ -272,7 +286,7 @@ async fn handle_line(
             return;
         }
     };
-    match dispatch(req, replies, running, links, xfers, follows, watch) {
+    match dispatch(req, replies, running, links, xfers, follows, watch, asks) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
@@ -371,8 +385,22 @@ fn dispatch(
     xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
     watch: &WatchDesk,
+    asks: u64,
 ) -> Disposition {
     match req.cmd.as_str() {
+        // 答题 hook 挂一条待答请求、阻塞等人答：挂的那条要跟着**本连接**走（hook 那一头走了就撤）⇒ 硬臂带上本连接的号；
+        //   本体是真异步（等的是一个通道），`cancel` 能在那儿把它打断（打断 ＝ 不给决定，同连接断）。
+        "needs-ask" => Disposition::SpawnData(
+            req,
+            Box::new(move |r: Request| -> DataFut {
+                Box::pin(async move {
+                    crate::control::asks::ask(asks, &r.args)
+                        .await
+                        .map(Some)
+                        .map_err(Fail::from)
+                })
+            }),
+        ),
         "stream-watch" => {
             let Some(sids) = watch_sids(&req.args) else {
                 return Disposition::Reply(Frame::err(

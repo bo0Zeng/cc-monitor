@@ -1147,7 +1147,7 @@ gate_lane 覆盖率 after cargo backend
 run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母' \
          gate_vitest_share gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 
-# 18 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
+# 19 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
 # `local-backend` 在壳里跑 `cargo test --lib`，等 `cargo` 那格编完再起，免得两条道抢壳的 target 锁。
 gate_lane e2e-1 after e2e-prep
 run_e2e cc-spawn-uplift
@@ -1166,6 +1166,8 @@ gate_lane e2e-3 after e2e-prep
 #   未登记的 SKIP 由套件自己判红（收尾 `[ "$skip" -eq 0 ] || exit 1`）。
 run_e2e backend-gate2
 run_e2e ccm-cli
+# 答题 hook：沙箱常驻后端 ＋ hook 客户端，喂一份 PermissionRequest、答、撤（不起真 agent）。
+run_e2e answer-hook
 run_e2e inbound-frames
 run_e2e ccm-contract-parity
 # `p3t-local-tmux` 跑在 `bash -lic` 里、依赖本机登录 shell：套件自己的 fail-closed 前置罩住（解析到的不是本树那个二进制就 ABORT）。

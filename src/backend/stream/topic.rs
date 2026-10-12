@@ -30,6 +30,8 @@ pub enum Topic {
     Plan,
     /// 这台某个会话的任务清单（`key` ＝ sid）。
     Tasks,
+    /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）。
+    Needs,
 }
 
 /// 主题表的一行。
@@ -68,7 +70,7 @@ pub enum Ask {
 
 impl Topic {
     /// 全部主题（表的行序）。
-    pub const ALL: [Topic; 7] = [
+    pub const ALL: [Topic; 8] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -76,6 +78,7 @@ impl Topic {
         Topic::RotationConfigs,
         Topic::Plan,
         Topic::Tasks,
+        Topic::Needs,
     ];
 
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
@@ -150,6 +153,16 @@ impl Topic {
                 body_cap: 8192,
                 reask: "tasks-list",
                 ask: Ask::Sid,
+            },
+            Topic::Needs => TopicSpec {
+                name: "needs",
+                lossy: true,
+                key: true,
+                rev: false,
+                body: false,
+                body_cap: 0,
+                reask: "sessions-needs",
+                ask: Ask::None,
             },
         }
     }

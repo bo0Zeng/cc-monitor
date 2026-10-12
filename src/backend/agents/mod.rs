@@ -63,6 +63,8 @@
 use crate::platform::fs::Ro;
 use std::path::{Path, PathBuf};
 
+// 待答请求的成品（`needs.ask`）与选项写字（通用）。
+pub(crate) mod asks;
 pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
@@ -145,6 +147,106 @@ pub(crate) struct Adapter {
     pub(crate) local: Option<LocalFace>,
     /// 这一家的会话**怎么判活**（全仓只此一处声明）：流式 watcher 挑哪一路跟、冷读问「此刻谁持着它」、resume 前问「是不是已在别处跑着」都读它。
     pub(crate) live: LiveBy,
+    /// 这一家的**答题口**：会话里弹批准 / 提问 / 批计划的框时，经它的 hook 把请求交给常驻后端、把人的答案交回去
+    /// （[`AskFace`]）；`None` ＝ 这一家今天没有，那几种框只能在终端里答。
+    pub(crate) asks: Option<AskFace>,
+}
+
+/// 一家的**答题口**（[`Adapter::asks`]）：那一家的 hook 输入长什么样、答案写成什么、起会话时怎么挂上 hook，只住适配层；
+/// 待答登记表、选项怎么写字、谁先答算谁的住通用层（`control::asks`）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AskFace {
+    /// 起会话时垫在启动器后面的那几个词（只给这一个会话挂上答题 hook，不碰用户自己的设置）；入参 ＝ 这台 `ccm` 的绝对路径。
+    pub(crate) launch_args: fn(&str) -> Vec<String>,
+    /// 会话级设置那个旗标（透传里已经有它 ⇒ 不另垫，经 [`AskFace::merge`] 并进用户那一份）。
+    pub(crate) launch_flag: &'static str,
+    /// 用户自己给了那个旗标 ⇒ 把答题 hook 并进他那一份（原样留着他别的一切，只往那一种 hook 的列表末尾加一项）；
+    /// 入参 ＝ 他那一份解析出来的值 · ccm 入口。形状不是那一家认的 ⇒ `None`（不挂，这条会话只能在终端里答批准）。
+    pub(crate) merge: fn(&serde_json::Value, &str) -> Option<serde_json::Value>,
+    /// hook 交来的那一份 ⇒ 通用的待答请求；不是要人答的那一种（别的事件 · 形状认不出）⇒ `None`（hook 空手退）。
+    pub(crate) read: fn(&serde_json::Value) -> Option<AskIn>,
+    /// 人的答案 ⇒ hook 要打到 stdout 的那一整份；`None` ＝ 不给决定（框照常在终端里问）。
+    pub(crate) decide: fn(&AskIn, &Verdict) -> Option<serde_json::Value>,
+}
+
+/// 一次待答请求（适配层翻好的通用形；那一家的字段名不出适配层）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct AskIn {
+    /// 哪条会话（那一家的会话 id）。
+    pub(crate) sid: String,
+    /// 种类：批准 · 回答 · 批计划（只这三种；别的框 hook 管不着）。
+    pub(crate) kind: AskKind,
+    /// 工具名原样。
+    pub(crate) tool: String,
+    /// 一行摘要（钉条里那一段：命令 · 路径 · 问题头一行）；说不出 ⇒ `None`。
+    pub(crate) what: Option<String>,
+    /// 要批的东西的全文（命令全文 · 文件路径与改动 · 计划原文），不截。
+    pub(crate) detail: String,
+    /// 那一家建议的「以后不再问」那几条：写好的字 ＋ 原样（答的时候原样交回）。
+    pub(crate) suggestions: Vec<AskSuggestion>,
+    /// 提问那一种的题目（与过程里那张提问卡同一形）；别的种类为空。
+    pub(crate) questions: Vec<AskQuestion>,
+    /// 是子 agent 发的 ⇒ 它的 id 与种类（那一家原样）。
+    pub(crate) agent_id: Option<String>,
+    pub(crate) agent_type: Option<String>,
+    /// 这个请求**挡着终端**：hook 没答完之前终端里不出框（那一家先跑 hook 再弹框的那几种，如后台子 agent）。
+    /// 为真 ⇒ 多给一项「改到终端里答」，且不能拿「终端那边答了」判它关了（终端里根本没有框）。
+    pub(crate) blocks_terminal: bool,
+    /// 那一家交来的工具参数原样（答的时候适配层要它）。
+    pub(crate) input: serde_json::Value,
+}
+
+/// 待答请求的种类（线上同 `needs.kind` 那一套里的三个词）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub(crate) enum AskKind {
+    #[serde(rename = "approve")]
+    Approve,
+    #[serde(rename = "answer")]
+    Question,
+    #[serde(rename = "plan")]
+    Plan,
+}
+
+/// 「允许，且以后不再问」那一条建议。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct AskSuggestion {
+    /// 写成人话的那一段（「本次会话里允许访问 /a/b」）。
+    pub(crate) text: String,
+    pub(crate) raw: serde_json::Value,
+}
+
+/// 人的答案（通用形，适配层翻成那一家的决定）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Verdict {
+    /// 允许。`rule` ＝ 带上第几条建议（以后不再问）；`mode` ＝ 批计划时切到哪一档；`answers` ＝ 提问那一种每题的答案（题目原文, 答案）。
+    Allow {
+        rule: Option<usize>,
+        mode: Option<PlanMode>,
+        answers: Vec<(String, String)>,
+    },
+    /// 拒绝。`note` ＝ 给它看的那句话；`stop` ＝ 拒绝并停下这一轮。
+    Deny { note: Option<String>, stop: bool },
+}
+
+/// 批计划之后切到哪一档。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlanMode {
+    /// 自动模式（那一家替人判要不要问）。
+    Auto,
+    /// 自动接受编辑。
+    AcceptEdits,
+    /// 逐个确认。
+    Manual,
+}
+
+/// `kind` 那一家的答题口（[`Adapter::asks`]）；认不出 / 没有 ⇒ `None`。
+pub(crate) fn ask_face_among(registry: &[Adapter], kind: &str) -> Option<AskFace> {
+    adapter_among(registry, kind).and_then(|a| a.asks)
+}
+
+/// 同上，生产注册表。
+pub(crate) fn ask_face(kind: &str) -> Option<AskFace> {
+    ask_face_among(REGISTRY, kind)
 }
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
@@ -638,8 +740,37 @@ pub struct ToolStep {
 pub enum StepAsk {
     /// 在问人：一道或几道题，每道题几个选项。
     Questions { questions: Vec<AskQuestion> },
-    /// 交一份计划等人批（正文是 Markdown 原文）。
-    Plan { text: String },
+    /// 交一份计划等人批（正文是 Markdown 原文）＋ 卡片标题那三态写好的字。
+    Plan { text: String, title: PlanTitle },
+}
+
+/// 计划卡的标题（[`StepAsk::Plan`]）：三态都由核心写好、状态格打头（同钉条第一行「等批准 · 计划」）；
+/// 界面按这一步的结果挑一句照抄（还没结果 ⇒ `waiting`；批了 ⇒ `approved`；没批 ⇒ `kept`），不另写字。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct PlanTitle {
+    /// 等着批。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub waiting: crate::common::cells::Words,
+    /// 批了。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub approved: crate::common::cells::Words,
+    /// 没批（接着规划）。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub kept: crate::common::cells::Words,
+}
+
+impl PlanTitle {
+    /// 那三句（唯一一处）。
+    pub(crate) fn written() -> Self {
+        use crate::common::cells::Words;
+        Self {
+            waiting: Words(copy_core::copy_text("needs.bar.plan", &[])),
+            approved: Words(copy_core::copy_text("interactive.plan.approved", &[])),
+            kept: Words(copy_core::copy_text("interactive.plan.kept", &[])),
+        }
+    }
 }
 
 /// 一道题（[`StepAsk::Questions`]）。
@@ -2350,9 +2481,9 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 /// ⚠ **一家一行**（不是每字段一行）：判据⑦把本文件直呼适配层的**行数**钉成 `REGISTRY.len()`。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE, asks: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。

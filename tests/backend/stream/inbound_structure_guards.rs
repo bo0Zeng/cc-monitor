@@ -462,6 +462,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "terminal-unfollow"
                 // 流只发要看的会话：要碰本连接那份 watcher 的名单。
                 | "stream-watch"
+                // 答题 hook 挂一条待答请求：挂的那条跟着本连接走（hook 那一头走了就撤，`control/asks`）。
+                | "needs-ask"
         );
         assert_eq!(
             is_builtin, expected_builtin,
@@ -705,6 +707,10 @@ fn every_registered_command_declares_its_run_kind() {
         "terminal-unfollow",
         // 流只发要看的会话：内建（硬臂；交给本连接的 watcher 线程，等它一句回话）。
         "stream-watch",
+        // 答题 hook 挂一条待答请求：内建（硬臂；带本连接的号，等一个通道）。
+        "needs-ask",
+        // 答一条挂着的待答请求：异步档（锁登记表、交通道，不碰盘）。
+        "needs-answer",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()
@@ -1171,6 +1177,18 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         "sessions-needs",
         sampled::<crate::faces::read_face::NeedsList>,
         &["needs", "sid"],
+        &[],
+    ),
+    (
+        "needs-ask",
+        sampled::<crate::control::asks::AskReply>,
+        &[],
+        &[],
+    ),
+    (
+        "needs-answer",
+        sampled::<crate::control::asks::Answered>,
+        &[],
         &[],
     ),
     (

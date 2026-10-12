@@ -29,6 +29,7 @@
 //! 通用层经注册表那一行（`agents::REGISTRY`）够到本层的各格，一处都不直呼本层（`agent_locality_guard` 判据④零命中）。
 
 pub(crate) mod accounts;
+pub(crate) mod asks;
 pub(crate) mod assets;
 // 后台命令在记录里的样子（起 · 任务号 · 收场通知）。
 pub(crate) mod background;

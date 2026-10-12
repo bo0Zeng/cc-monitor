@@ -540,6 +540,8 @@ fn needs_is_decided_from_the_wait_and_the_pending_call() {
             rank: 1,
             waited_ms: Some(1),
             waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
+            ask: None,
+            manual_text: None,
         })
     );
     // 批准框里是提问 ⇒ 回答；是计划 ⇒ 批准计划；那台没说是哪种框时同样认这两个工具。
@@ -691,6 +693,8 @@ fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
             rank: 1,
             waited_ms: Some(1),
             waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
+            ask: None,
+            manual_text: None,
         }),
         ..SessionFacts::default()
     };
@@ -1425,6 +1429,8 @@ fn needs_first_agrees_with_the_shared_order_golden() {
                         rank: u8::try_from(n["rank"].as_u64().unwrap()).unwrap(),
                         waited_ms: n["waitedMs"].as_u64(),
                         waited_text: None,
+                        ask: None,
+                        manual_text: None,
                     },
                 )
             })
@@ -1497,4 +1503,18 @@ fn needs_carries_the_pinned_bar_headline_written_with_the_tool() {
         (n.kind, n.head.clone()),
         (NeedsKind::Approve, n.text.clone())
     );
+}
+
+/// ★ 钉条第一行状态格打头（同「等批准 · Bash」）：每一种的 `head` 都以它短的那一格（`needs_words`）起头 ——
+/// 计划写「等批准 · 计划」，不写「计划 · 等批准」。
+#[test]
+fn every_needs_head_starts_with_its_status_cell() {
+    for kind in NEEDS_BY_DANGER {
+        let head = needs_head(kind, Some("Bash")).0;
+        let word = needs_words(kind).0;
+        assert!(
+            head.starts_with(&word),
+            "{kind:?}：钉条第一行「{head}」没有以状态格「{word}」打头"
+        );
+    }
 }
