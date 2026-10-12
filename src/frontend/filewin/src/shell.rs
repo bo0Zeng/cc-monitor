@@ -5267,13 +5267,15 @@ pub fn open_detached_seeded(
     OPEN_REQUESTED.fetch_add(1, Ordering::SeqCst);
     std::thread::spawn(move || {
         let title = window_title(super::source::remote_basename(&cwd), &source.label());
-        let opts = eframe::NativeOptions {
+        let mut opts = eframe::NativeOptions {
             event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([1280.0, 800.0])
                 .with_min_inner_size(MIN_WINDOW),
             ..Default::default()
         };
+        // 渲染器挑哪块显卡（Windows：真显卡在前、WARP 垫底；别处缺省）。
+        crate::platform::renderer_options(&mut opts);
         WINDOWS_OPENED.fetch_add(1, Ordering::SeqCst);
         eframe::run_native(
             &title,

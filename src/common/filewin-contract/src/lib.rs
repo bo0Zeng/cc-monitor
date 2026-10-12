@@ -209,6 +209,10 @@ pub fn remote_basename(path: &str) -> &str {
     }
 }
 
+/// 窗口进程挑不出一块能画窗口的显卡时，那一句原话里带的记号（Windows：DX12 与 OpenGL 都没有可用的适配器，连系统自带的软件渲染也没有）。
+/// 窗口进程说（`render::none_line`），monitor 认（`filewin/proc.rs::exit_said`），形状只许有这一份。
+pub const NO_GRAPHICS_ADAPTER: &str = "no usable graphics adapter";
+
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
 #[cfg(test)]
 #[used]
