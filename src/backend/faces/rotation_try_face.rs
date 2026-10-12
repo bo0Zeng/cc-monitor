@@ -46,7 +46,7 @@ pub(crate) struct RotationTryReq {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TryRow {
+pub(crate) struct RotTryRow {
     pub(crate) account: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -61,7 +61,7 @@ pub(crate) struct TryRow {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TryDecision {
+pub(crate) struct RotTryDecision {
     /// 用哪个号（停发 ⇒ 缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -75,7 +75,7 @@ pub(crate) struct TryDecision {
     pub(crate) hold_account: Option<String>,
     /// `stay` · `unusable` · `back` · `delay` · `hold`。
     pub(crate) cause: String,
-    pub(crate) order: Vec<TryRow>,
+    pub(crate) order: Vec<RotTryRow>,
     pub(crate) skipped: Vec<String>,
     pub(crate) temp: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -92,7 +92,7 @@ pub(crate) struct TryDecision {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TryUse {
+pub(crate) struct RotTryUse {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) from: u64,
     #[cfg_attr(test, ts(type = "number"))]
@@ -110,7 +110,7 @@ pub(crate) struct TryUse {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TryLaneSeg {
+pub(crate) struct RotTryLaneSeg {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) from: u64,
     #[cfg_attr(test, ts(type = "number"))]
@@ -128,9 +128,9 @@ pub(crate) struct TryLaneSeg {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TryLane {
+pub(crate) struct RotTryLane {
     pub(crate) account: String,
-    pub(crate) segs: Vec<TryLaneSeg>,
+    pub(crate) segs: Vec<RotTryLaneSeg>,
 }
 
 /// 推演。
@@ -138,9 +138,9 @@ pub(crate) struct TryLane {
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TryTimeline {
-    pub(crate) uses: Vec<TryUse>,
-    pub(crate) lanes: Vec<TryLane>,
+pub(crate) struct RotTryTimeline {
+    pub(crate) uses: Vec<RotTryUse>,
+    pub(crate) lanes: Vec<RotTryLane>,
     pub(crate) truncated: bool,
 }
 
@@ -152,8 +152,8 @@ pub(crate) struct TryTimeline {
 pub(crate) struct RotationTryReply {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) now: u64,
-    pub(crate) decision: TryDecision,
-    pub(crate) timeline: TryTimeline,
+    pub(crate) decision: RotTryDecision,
+    pub(crate) timeline: RotTryTimeline,
 }
 
 crate::stream::inbound::typed::codes! {
@@ -259,7 +259,7 @@ pub(crate) fn try_with(
     };
     Ok(RotationTryReply {
         now,
-        decision: TryDecision {
+        decision: RotTryDecision {
             pick,
             hold_until,
             hold_account,
@@ -267,7 +267,7 @@ pub(crate) fn try_with(
             order: d
                 .order
                 .iter()
-                .map(|r| TryRow {
+                .map(|r| RotTryRow {
                     account: r.account.clone(),
                     score: r.score,
                     why: r.why.clone(),
@@ -280,11 +280,11 @@ pub(crate) fn try_with(
             next_node: d.tn,
             strategy_error: d.strategy_error.as_ref().map(|e| e.msg.clone()),
         },
-        timeline: TryTimeline {
+        timeline: RotTryTimeline {
             uses: tl
                 .uses
                 .iter()
-                .map(|u| TryUse {
+                .map(|u| RotTryUse {
                     from: u.from,
                     to: u.to,
                     account: match &u.pick {
@@ -299,11 +299,11 @@ pub(crate) fn try_with(
             lanes: tl
                 .lanes
                 .iter()
-                .map(|(a, segs)| TryLane {
+                .map(|(a, segs)| RotTryLane {
                     account: a.clone(),
                     segs: segs
                         .iter()
-                        .map(|s| TryLaneSeg {
+                        .map(|s| RotTryLaneSeg {
                             from: s.from,
                             to: s.to,
                             kind: lane_word(s.kind).to_string(),

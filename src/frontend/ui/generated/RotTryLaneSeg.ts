@@ -3,7 +3,7 @@
 /**
  * 每个号那一行的一段。
  */
-export type TryLaneSeg = { from: number, to: number, 
+export type RotTryLaneSeg = { from: number, to: number, 
 /**
  * `usable` · `atCap` · `off` · `blocked`。
  */

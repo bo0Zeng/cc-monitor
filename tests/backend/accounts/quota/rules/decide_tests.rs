@@ -2,7 +2,7 @@
 //! #22 · #26 用随机生成的 500 组跑「推演说的下一次换号 ＝ 逐发判出来的那一次」。
 
 use super::*;
-use crate::accounts::quota::rules::settings::{CapKind, Caps, Row, Rules, Seg, Settings};
+use crate::accounts::quota::rules::settings::{CapKind, Caps, Listed, Rules, Seg, Settings};
 use crate::accounts::quota::rules::simulate::simulate;
 use crate::accounts::quota::rules::{Acct, WINDOW_SECS};
 use std::collections::BTreeMap;
@@ -42,15 +42,15 @@ fn base() -> Settings {
         cap_kind: CapKind::Soft,
         accounts: ["A", "B", "C"]
             .iter()
-            .map(|a| Row {
+            .map(|a| Listed {
                 id: Some(a.to_string()),
-                ..Row::default()
+                ..Listed::default()
             })
             .collect(),
     }
 }
 
-fn row<'a>(s: &'a mut Settings, a: &str) -> &'a mut Row {
+fn row<'a>(s: &'a mut Settings, a: &str) -> &'a mut Listed {
     s.accounts
         .iter_mut()
         .find(|r| r.id.as_deref() == Some(a))
@@ -603,7 +603,7 @@ fn group(seed: u64) -> (Settings, Vec<Acct>, Sigma) {
         },
         accounts: ids
             .iter()
-            .map(|a| Row {
+            .map(|a| Listed {
                 id: Some(a.clone()),
                 caps: if g.upto(3) == 0 {
                     Caps {
@@ -615,7 +615,7 @@ fn group(seed: u64) -> (Settings, Vec<Acct>, Sigma) {
                 },
                 delay: [0, 0, 10, 30][g.upto(4) as usize],
                 back: [None, None, Some(10), Some(40)][g.upto(4) as usize],
-                ..Row::default()
+                ..Listed::default()
             })
             .collect(),
     };

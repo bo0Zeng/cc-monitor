@@ -11,18 +11,15 @@ fn shipped_dir() -> std::path::PathBuf {
 }
 
 fn shipped() -> Vec<(String, String)> {
-    let mut v: Vec<(String, String)> = std::fs::read_dir(shipped_dir())
-        .expect("随包策略目录在")
-        .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("rhai"))
-        .map(|p| {
+    let mut v: Vec<(String, String)> = guard_core::scan_tree!(&shipped_dir(), &["rhai"])
+        .into_iter()
+        .map(|(p, t)| {
             (
                 p.file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("")
                     .to_string(),
-                std::fs::read_to_string(&p).expect("读"),
+                t,
             )
         })
         .collect();
@@ -89,7 +86,7 @@ fn rewriting_the_head_leaves_the_code_byte_for_byte() {
         let mut h = f.head.clone();
         h.settings
             .accounts
-            .push(crate::accounts::quota::rules::settings::Row {
+            .push(crate::accounts::quota::rules::settings::Listed {
                 id: Some("lab".into()),
                 delay: 30,
                 back: Some(20),
@@ -231,7 +228,7 @@ fn the_backend_knows_no_shipped_strategy_by_name() {
         let mut head = parse(&src).expect("读").head;
         head.settings.accounts = ["a", "b", "c"]
             .iter()
-            .map(|a| crate::accounts::quota::rules::settings::Row {
+            .map(|a| crate::accounts::quota::rules::settings::Listed {
                 id: Some(a.to_string()),
                 ..Default::default()
             })

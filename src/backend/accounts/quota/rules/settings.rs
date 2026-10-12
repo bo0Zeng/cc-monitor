@@ -66,14 +66,14 @@ pub enum CapKind {
         rename = "SettingsRow"
     )
 )]
-pub struct Row {
+pub struct Listed {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub start: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub id: Option<String>,
-    #[serde(default, skip_serializing_if = "is_default_caps")]
+    #[serde(default)]
     pub caps: Caps,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -86,10 +86,6 @@ pub struct Row {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub back: Option<u8>,
-}
-
-fn is_default_caps(c: &Caps) -> bool {
-    c == &Caps::default()
 }
 
 fn is_zero(v: &u32) -> bool {
@@ -107,7 +103,7 @@ pub struct Settings {
     pub caps: Caps,
     #[serde(default)]
     pub cap_kind: CapKind,
-    pub accounts: Vec<Row>,
+    pub accounts: Vec<Listed>,
 }
 
 /// 设置 ＋ 时区（判要的那一份）：时区由策略文件头带来，缺 ⇒ UTC。
@@ -142,7 +138,7 @@ impl Rules {
     }
 
     /// 这个号那一行（`start` 那一行认开会话的号）。
-    pub(crate) fn row(&self, start: &str, a: &str) -> Option<&Row> {
+    pub(crate) fn row(&self, start: &str, a: &str) -> Option<&Listed> {
         self.s.accounts.iter().find(|r| {
             if r.start {
                 a == start

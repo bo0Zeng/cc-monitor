@@ -5,7 +5,7 @@ import type { Caps } from "./Caps";
 /**
  * 号列表里的一行：`{"start": true}`（开会话用的号）或 `{"id": …}`，外加这个号另设的几样。
  */
-export type SettingsRow = { start?: boolean, id?: string, caps?: Caps, capKind?: CapKind, 
+export type SettingsRow = { start?: boolean, id?: string, caps: Caps, capKind?: CapKind, 
 /**
  * 启用延迟（分钟）。
  */

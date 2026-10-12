@@ -304,7 +304,7 @@ impl Score for Budgeted<'_> {
             return Err(fail(
                 FailKind::Timeout,
                 None,
-                format!("strategy time for one simulation is over {SIMULATE_BUDGET_MS} ms"),
+                format!("strategy ran past {SIMULATE_BUDGET_MS} ms in this simulation"),
             ));
         }
         let t0 = crate::common::time::now();

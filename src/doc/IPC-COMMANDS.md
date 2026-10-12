@@ -1213,7 +1213,33 @@ resetsText?: string, rate?: number, };
 type CapKind = "soft" | "hard";
 type CapSeg = { from: number, to: number, v: number, };
 type Caps = { "5h"?: Array<CapSeg>, "7d"?: Array<CapSeg>, };
-type RotationTryReply = { now: number, decision: TryDecision, timeline: TryTimeline, };
+type RotTryDecision = { 
+/**
+ * 用哪个号（停发 ⇒ 缺）。
+ */
+pick?: string, 
+/**
+ * 停发到几点 · 到时恢复的号（停发才有）。
+ */
+holdUntil?: number, holdAccount?: string, 
+/**
+ * `stay` · `unusable` · `back` · `delay` · `hold`。
+ */
+cause: string, order: Array<RotTryRow>, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+/**
+ * 策略这一判出错（所有号当没给分、按列表）：原话。
+ */
+strategyError?: string, };
+type RotTryLane = { account: string, segs: Array<RotTryLaneSeg>, };
+type RotTryLaneSeg = { from: number, to: number, 
+/**
+ * `usable` · `atCap` · `off` · `blocked`。
+ */
+kind: string, left?: number, reset: boolean, };
+type RotTryRow = { account: string, score?: number, why: string, fromTemp: boolean, ok: boolean, };
+type RotTryTimeline = { uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, };
+type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, guessed: boolean, skipped: Array<string>, };
+type RotationTryReply = { now: number, decision: RotTryDecision, timeline: RotTryTimeline, };
 type RotationTryReq = { 
 /**
  * 一份策略文件的原文（头 ＋ 代码）。
@@ -1248,7 +1274,7 @@ type Settings = {
  * 默认上限（缺的窗 ＝ 100%）。
  */
 caps: Caps, capKind: CapKind, accounts: Array<SettingsRow>, };
-type SettingsRow = { start?: boolean, id?: string, caps?: Caps, capKind?: CapKind, 
+type SettingsRow = { start?: boolean, id?: string, caps: Caps, capKind?: CapKind, 
 /**
  * 启用延迟（分钟）。
  */
@@ -1257,32 +1283,6 @@ delay?: number,
  * 回切阈值（%）；缺 ＝ 不回切。
  */
 back?: number, };
-type TryDecision = { 
-/**
- * 用哪个号（停发 ⇒ 缺）。
- */
-pick?: string, 
-/**
- * 停发到几点 · 到时恢复的号（停发才有）。
- */
-holdUntil?: number, holdAccount?: string, 
-/**
- * `stay` · `unusable` · `back` · `delay` · `hold`。
- */
-cause: string, order: Array<TryRow>, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
-/**
- * 策略这一判出错（所有号当没给分、按列表）：原话。
- */
-strategyError?: string, };
-type TryLane = { account: string, segs: Array<TryLaneSeg>, };
-type TryLaneSeg = { from: number, to: number, 
-/**
- * `usable` · `atCap` · `off` · `blocked`。
- */
-kind: string, left?: number, reset: boolean, };
-type TryRow = { account: string, score?: number, why: string, fromTemp: boolean, ok: boolean, };
-type TryTimeline = { uses: Array<TryUse>, lanes: Array<TryLane>, truncated: boolean, };
-type TryUse = { from: number, to: number, account?: string, fromTemp: boolean, guessed: boolean, skipped: Array<string>, };
 ```
 
 码：`bad_args` · `bad_strategy`

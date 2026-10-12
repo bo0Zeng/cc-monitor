@@ -3,4 +3,4 @@
 /**
  * 「用哪个号」那一条的一段。
  */
-export type TryUse = { from: number, to: number, account?: string, fromTemp: boolean, guessed: boolean, skipped: Array<string>, };
+export type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, guessed: boolean, skipped: Array<string>, };
