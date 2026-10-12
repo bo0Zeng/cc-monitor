@@ -1520,7 +1520,10 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         .unwrap();
     let a = until_pending("t-inbound-1").await;
     crate::control::asks::answer(
-        &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
+        crate::stream::inbound::typed::take(
+            &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
+        )
+        .unwrap(),
     )
     .unwrap();
     let f = rx.recv().await.expect("应答");
@@ -1554,7 +1557,10 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     assert!(crate::control::asks::pending("t-inbound-2").is_empty());
     assert_eq!(
         crate::control::asks::answer(
-            &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
+            crate::stream::inbound::typed::take(
+                &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
+            )
+            .unwrap()
         )
         .unwrap_err()
         .0,

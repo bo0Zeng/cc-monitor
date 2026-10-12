@@ -23,6 +23,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("launch", "59041b9e"),
     ("launch-local", "d359d78c"),
     ("launch-render-cli", "7fc9d2a8"),
+    ("needs-answer", "b543494a"),
     ("resync", "95dff17f"),
     ("session-interrupts", "6b0c632f"),
     ("session-new", "af0ce8f1"),

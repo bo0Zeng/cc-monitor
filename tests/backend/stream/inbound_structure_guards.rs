@@ -1111,12 +1111,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "needs-answer",
-        sampled::<crate::control::asks::Answered>,
-        &[],
-        &[],
-    ),
-    (
         "plan-command",
         sampled::<crate::plan::wire::PlanCmdReply>,
         &[],

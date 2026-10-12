@@ -3768,14 +3768,46 @@ type Words = string;
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `ask` | → | `needs.ask.id` |
-| `choice` | → | `needs.ask.choices[].id` |
-| `note` | → | 可缺：附的那句话（选项 `note` 是 required 时必给） |
-| `picks` | → | 提问那一种选 `answer` 时必给：`{<题 id>: {options: [<选项 id>…], text: <自由文本>}}`，每题都要答、单选至多一项 |
-| `result` | ← | 恒 `answered`（交到了 hook 那一头；终端那边若同时答了，以先到的为准，晚到的那一家自己丢掉、不会落到别的框上） |
-| `sid` | → | 会话 id |
+入参 `AnswerReq` · 回包 `Answered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AnswerReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * `needs.ask.id`。
+ */
+ask: string, 
+/**
+ * `needs.ask.choices[].id`。
+ */
+choice: string, 
+/**
+ * 可缺：附的那句话（选项 `note` 是 required 时必给）。
+ */
+note?: string | null, 
+/**
+ * 提问那一种选 `answer` 时必给：题 id ⇒ 那一题的答，每题都要答、单选至多一项。
+ */
+picks?: { [key in string]: AskPick } | null, };
+type AnswerResult = "answered";
+type Answered = { 
+/**
+ * 恒 `answered`。
+ */
+result: AnswerResult, };
+type AskPick = { 
+/**
+ * 选项 id（`needs.ask.questions[].options[].id`）；缺 ⇒ 没选。
+ */
+options?: Array<string>, 
+/**
+ * 自由文本；缺 / 空白 ⇒ 没写。
+ */
+text?: string | null, };
+```
 
 码：`bad_args` · `not_found` · `already_answered` · `closed_elsewhere` · `bad_choice` · `note_required`
 

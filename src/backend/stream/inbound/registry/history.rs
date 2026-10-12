@@ -80,21 +80,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         // 本体 `control::asks::ask`（`dispatch` 的硬臂带着本连接的号调它）。
         run: Run::Builtin,
     },
-    CommandSpec {
-        name: "needs-answer",
-        summary: "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
-        codes: &["bad_args", "not_found", "already_answered", "closed_elsewhere", "bad_choice", "note_required"],
-        fields: &[arg("ask", "`needs.ask.id`"), arg("choice", "`needs.ask.choices[].id`"), arg("note", "可缺：附的那句话（选项 `note` 是 required 时必给）"), arg("picks", "提问那一种选 `answer` 时必给：`{<题 id>: {options: [<选项 id>…], text: <自由文本>}}`，每题都要答、单选至多一项"), out("result", "恒 `answered`（交到了 hook 那一头；终端那边若同时答了，以先到的为准，晚到的那一家自己丢掉、不会落到别的框上）"), arg("sid", "会话 id")],
-        takes_input: true,
-        // 锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 普通异步档（没有 await 点，也就没什么可撤的）。
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::control::asks::answer(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    // 锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 普通异步档（没有 await 点，也就没什么可撤的）。
+    crate::stream::inbound::typed::asynchronous::<crate::control::asks::NeedsAnswerCmd>(
+        "答一条挂着的待答请求（`needs.ask`）：第一个答案落下，其余回 `already_answered`",
+    ),
     CommandSpec {
         name: "history-facts",
         summary: "会话事实",
