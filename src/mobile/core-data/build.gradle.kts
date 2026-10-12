@@ -50,7 +50,7 @@ dependencies {
  * 新模块长出 androidTest 时这里要加一行，否则那个模块的改动不会触发重跑。
  */
 tasks.withType<Test>().configureEach {
-    listOf("app", "core-data", "core-ssh").forEach { module ->
+    listOf("app", "core-data", "core-ssh", "core-rs").forEach { module ->
         inputs
             .dir(rootProject.file("$module/src/androidTest"))
             .withPropertyName("instrumentedSources-$module")

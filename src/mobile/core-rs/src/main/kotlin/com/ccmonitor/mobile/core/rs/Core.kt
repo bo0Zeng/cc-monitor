@@ -60,6 +60,12 @@ object Core {
         point: ByteArray,
     ): Boolean
 
+    /** 一段私钥 PEM（不带口令）⇒ 它的公钥那一行（`<算法> <base64> [comment]`）；认不出 ⇒ `null`。 */
+    external fun publicKeyOf(
+        pem: ByteArray,
+        comment: String,
+    ): String?
+
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long
 

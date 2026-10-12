@@ -6,6 +6,7 @@ import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
+import com.ccmonitor.mobile.core.ssh.PublicKeyDeriver
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -32,11 +33,16 @@ class IdentityOpStatusTest {
 
     private val good = SshKeyGenerator.generateEd25519("t").privateKeyOpenSshPem
 
+    /** 派生公钥的替身：只认整把 [good]（真解析在 Rust 核心里，判据在 core-ssh 的 androidTest `PublicKeyDeriverTest`）。 */
+    private val derive: (ByteArray, String) -> PublicKeyDeriver.Derived? = { pem, _ ->
+        if (pem.contentEquals(good)) PublicKeyDeriver.Derived("ssh-ed25519 AAAA t", "SHA256:fake", "ssh-ed25519") else null
+    }
+
     @Test
     fun importSuccessEmitsDone() =
         runTest(dispatcher) {
             val dao = RecordingDao()
-            val vm = IdentityViewModel(IdentityRepository(dao, NoopCrypto), io = dispatcher)
+            val vm = IdentityViewModel(IdentityRepository(dao, NoopCrypto), io = dispatcher, derive = derive)
             vm.importPrivateKey("k", good)
             advanceUntilIdle()
             assertTrue("成功应 Done：${vm.op.value}", vm.op.value is IdentityOp.Done)
@@ -58,7 +64,7 @@ class IdentityOpStatusTest {
             val truncated = text.lines().take(3).joinToString("\n")
             for (pem in listOf(firstLineOnly, truncated, "not-a-real-pem", "")) {
                 val dao = RecordingDao()
-                val vm = IdentityViewModel(IdentityRepository(dao, NoopCrypto), io = dispatcher)
+                val vm = IdentityViewModel(IdentityRepository(dao, NoopCrypto), io = dispatcher, derive = derive)
                 vm.importPrivateKey("k", pem.toByteArray())
                 advanceUntilIdle()
                 assertEquals("「${pem.take(20)}」应当场拒", IdentityOp.Failed(copyText("mobIdentity.import.unreadable")), vm.op.value)
@@ -69,7 +75,7 @@ class IdentityOpStatusTest {
     @Test
     fun repoFailureEmitsFailed() =
         runTest(dispatcher) {
-            val vm = IdentityViewModel(IdentityRepository(ThrowingDao(), NoopCrypto), io = dispatcher)
+            val vm = IdentityViewModel(IdentityRepository(ThrowingDao(), NoopCrypto), io = dispatcher, derive = derive)
             vm.importPrivateKey("k", good)
             advanceUntilIdle()
             assertTrue("异常应 Failed（不静默）", vm.op.value is IdentityOp.Failed)
@@ -78,7 +84,7 @@ class IdentityOpStatusTest {
     @Test
     fun ackOpResetsToIdle() =
         runTest(dispatcher) {
-            val vm = IdentityViewModel(IdentityRepository(RecordingDao(), NoopCrypto), io = dispatcher)
+            val vm = IdentityViewModel(IdentityRepository(RecordingDao(), NoopCrypto), io = dispatcher, derive = derive)
             vm.importPrivateKey("k", good)
             advanceUntilIdle()
             assertTrue(vm.op.value is IdentityOp.Done)

@@ -152,7 +152,10 @@ class InstrumentedTestInventoryTest {
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultButtonsTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt",
+                "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt",
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreSignerInstrumentedTest.kt",
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt",
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt",
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt",
             )
 
@@ -165,21 +168,25 @@ class InstrumentedTestInventoryTest {
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 15,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultButtonsTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt" to 1,
+                "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt" to 1,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreSignerInstrumentedTest.kt" to 2,
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt" to 2,
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 6,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt" to 9,
             )
 
-        const val PINNED_TOTAL_TESTS = 33
-        const val PINNED_TESTS_IN_CI = 24
+        const val PINNED_TOTAL_TESTS = 42
+        const val PINNED_TESTS_IN_CI = 33
         const val PINNED_TESTS_NOT_IN_CI = 9
 
         const val CI_SKIPPED_FILE = "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt"
         const val CI_WORKFLOW = "scripts/android-test.sh"
         const val ANDROID_TEST_JOB = "connectedDebugAndroidTest"
         const val CORE_SSH_FILTER =
-            "android.testInstrumentationRunnerArguments.class=com.ccmonitor.mobile.core.ssh.KeystoreSignerInstrumentedTest"
+            "android.testInstrumentationRunnerArguments.class=com.ccmonitor.mobile.core.ssh.KeystoreSignerInstrumentedTest," +
+                "com.ccmonitor.mobile.core.ssh.PublicKeyDeriverTest,com.ccmonitor.mobile.core.ssh.RustTransportTest"
 
-        val MODULES_WIRED_IN_CI = listOf(":core-data", ":app", ":core-ssh")
+        val MODULES_WIRED_IN_CI = listOf(":core-data", ":app", ":core-ssh", ":core-rs")
 
         const val ANDROID_TEST_SRC = "src/androidTest"
         val SKIPPED_DIRS = setOf("build", ".git", ".gradle", "libs", "bridge", "doc", "scratchpad", "testing", "config", "gradle")

@@ -1,16 +1,19 @@
 package com.ccmonitor.mobile.core.ssh
 
+import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
 
-/** 从私钥 PEM 派生公钥。纯 JVM。 */
+/** 从私钥 PEM 派生公钥（Rust 核心那一份，要 .so ⇒ 在设备上跑）。 */
+@RunWith(AndroidJUnit4::class)
 class PublicKeyDeriverTest {
     @Test
-    fun `derives ed25519 public key matching the generated one (round-trip)`() {
+    fun derives_ed25519_public_key_matching_the_generated_one() {
         val gen = SshKeyGenerator.generateEd25519("f40-test")
         val derived = PublicKeyDeriver.fromPrivatePem(gen.privateKeyOpenSshPem, comment = "f40-test")
         assertNotNull("应能从生成的 Ed25519 PEM 派生公钥", derived)
@@ -26,7 +29,7 @@ class PublicKeyDeriverTest {
     }
 
     @Test
-    fun `garbage input returns null instead of throwing`() {
+    fun garbage_input_returns_null_instead_of_throwing() {
         assertNull(PublicKeyDeriver.fromPrivatePem("not a private key".toByteArray()))
         assertNull(PublicKeyDeriver.fromPrivatePem(ByteArray(0)))
     }

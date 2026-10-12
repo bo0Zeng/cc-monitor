@@ -228,6 +228,16 @@ fn install_env() {
     });
 }
 
+// ═══ 钥匙本身（导入时派生公钥）═══════════════════════════════════════════════════════
+
+/// 一段私钥 PEM（OpenSSH / PKCS#8 / …，不带口令）⇒ 它的公钥那一行（`<算法> <base64> [注释]`）。认不出 ⇒ `None`。
+pub fn public_line_of(pem: &str, comment: &str) -> Option<String> {
+    let key = russh::keys::decode_secret_key(pem, None).ok()?;
+    let mut public = key.public_key().clone();
+    public.set_comment(comment);
+    public.to_openssh().ok()
+}
+
 // ═══ 链路表 ═════════════════════════════════════════════════════════════════════
 
 struct Link {
@@ -423,6 +433,30 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_putKeystore<'l>(
     })
 }
 
+/// `Core.publicKeyOf(pem, comment)`：导入一把私钥时派生它的公钥那一行；认不出 ⇒ `null`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_publicKeyOf<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    pem: JByteArray<'l>,
+    comment: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let pem = env
+            .convert_byte_array(&pem)
+            .ok()
+            .and_then(|b| String::from_utf8(b).ok());
+        let comment = string(&mut env, &comment).unwrap_or_default();
+        match pem.and_then(|p| public_line_of(&p, &comment)) {
+            Some(line) => env
+                .new_string(line)
+                .map(|s| s.into_raw())
+                .unwrap_or(std::ptr::null_mut()),
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
 /// `Core.open(request)`：回链路编号；请求读不动 ⇒ 0（Kotlin 当它开不成）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_open<'l>(
@@ -506,6 +540,24 @@ mod tests {
                 "{v}"
             );
         }
+    }
+
+    /// 导入时派生公钥：一把 OpenSSH 格式的私钥 ⇒ 与它自己的公钥那一行逐字相同；乱码 ⇒ `None`。
+    #[test]
+    fn the_public_line_of_a_private_key_is_its_own_public_key() {
+        let key = russh::keys::PrivateKey::from(
+            russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[7u8; 32]),
+        );
+        let pem = key
+            .to_openssh(russh::keys::ssh_key::LineEnding::LF)
+            .unwrap();
+        let mut want = key.public_key().clone();
+        want.set_comment("phone");
+        assert_eq!(
+            super::public_line_of(&pem, "phone"),
+            Some(want.to_openssh().unwrap())
+        );
+        assert_eq!(super::public_line_of("not a key", ""), None);
     }
 
     /// 链路表：读不动的请求开不成；开成的链路先交下行字节、收工时交一个「没了」；关掉之后再送 ⇒ `false`。
