@@ -55,9 +55,15 @@ pub(crate) struct Tables {
 
 /// 进程链的一级（线上形）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Link {
+    /// 进程号。
     pub(crate) pid: u32,
+    /// 进程名。
     pub(crate) name: String,
+    /// 启动时刻（系统原值；拿不到 ⇒ 0）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) start: u64,
 }
 
@@ -76,17 +82,47 @@ pub(crate) enum Found {
     QueryFailed,
 }
 
-/// 帧面入口：现问系统那一趟。
-pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
-    answer_with(args, crate::platform::connection_and_process_tables)
+/// `terminal-processes` 的入参：那台 `session-terminals` 答的 `terminals`，原样交来。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalProcessesReq {
+    /// 1–16 个，最近动静在前。
+    pub(crate) terminals: Vec<crate::common::seen_terminal::Terminal>,
 }
 
-/// [`answer`] 的本体，系统那一趟是参数（判据喂合成的 JSON）。入参先验，验不过不去问系统。
+crate::stream::inbound::typed::codes! {
+    /// `terminal-processes` 自己没有别的码（没查成也照答：`why: "query-failed"`）。
+    pub(crate) enum TerminalProcessesErr {}
+}
+
+/// `terminal-processes`：那台报来的终端连接是这台电脑上哪个进程开的。阻塞档：读连接表 ＋ 进程表四格。
+pub(crate) struct TerminalProcesses;
+
+impl crate::stream::inbound::typed::Command for TerminalProcesses {
+    const NAME: &'static str = "terminal-processes";
+    type Req = TerminalProcessesReq;
+    type Reply = Processes;
+    type Err = TerminalProcessesErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for TerminalProcesses {
+    fn run(
+        req: TerminalProcessesReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<Processes, TerminalProcessesErr> {
+        answer_with(&req, crate::platform::connection_and_process_tables)
+            .map_err(|(_, said)| TerminalProcessesErr::BadArgs(said))
+    }
+}
+
+/// 本体，系统那一趟是参数（判据喂合成的 JSON）。入参先验，验不过不去问系统（码只有 `bad_args`）。
 pub(crate) fn answer_with(
-    args: &Value,
+    req: &TerminalProcessesReq,
     query: impl FnOnce() -> Result<String, String>,
-) -> Result<Value, CmdErr> {
-    let wanted = read_args(args)?;
+) -> Result<Processes, CmdErr> {
+    let wanted = read_args(req)?;
     let found = match query().and_then(|raw| parse_tables(&raw)) {
         Ok(t) => decide(&wanted, &t),
         Err(e) => {
@@ -94,16 +130,29 @@ pub(crate) fn answer_with(
             Found::QueryFailed
         }
     };
-    crate::stream::inbound::spec::wire(&product(&found))
+    Ok(product(&found))
 }
 
 /// `terminal-processes` 的应答：进程链（对不上 ⇒ 空链 ＋ 为什么，`elsewhere` 另带对面地址）。
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Processes {
+    /// 这台上开着那条连接的进程链（自下而上）。
     pub(crate) chain: Vec<Link>,
+    /// 对不上时：`not-ssh` · `elsewhere`（不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        test,
+        ts(
+            optional,
+            type = "\"not-ssh\" | \"elsewhere\" | \"mismatch\" | \"query-failed\""
+        )
+    )]
     pub(crate) why: Option<&'static str>,
+    /// `elsewhere` 时对面那个地址。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) addr: Option<String>,
 }
 
@@ -134,31 +183,21 @@ fn bad(msg: &str) -> CmdErr {
     ("bad_args", crate::common::contract::malformed(msg))
 }
 
-/// 入参 `{terminals: [{ssh: {clientAddr, clientPort, serverAddr, serverPort} | null, …}…]}` ⇒ 每格要找的连接（`None` = 不是经 ssh）。
-pub(crate) fn read_args(args: &Value) -> Result<Vec<Option<Wanted>>, CmdErr> {
-    let ts = args
-        .get("terminals")
-        .and_then(Value::as_array)
-        .filter(|a| !a.is_empty() && a.len() <= MAX_TERMINALS)
-        .ok_or_else(|| bad("`terminals` must be a non-empty array of at most 16"))?;
+/// 入参 ⇒ 每格要找的连接（`None` = 不是经 ssh）。个数 1–16；地址认不出 ⇒ `bad_args`。
+pub(crate) fn read_args(req: &TerminalProcessesReq) -> Result<Vec<Option<Wanted>>, CmdErr> {
+    let ts = &req.terminals;
+    if ts.is_empty() || ts.len() > MAX_TERMINALS {
+        return Err(bad("`terminals` must be a non-empty array of at most 16"));
+    }
     ts.iter()
-        .map(|t| match t.get("ssh") {
-            Some(Value::Null) => Ok(None),
-            Some(s @ Value::Object(_)) => {
-                let addr = |k: &str| s.get(k).and_then(Value::as_str).and_then(ip);
-                let port = |k: &str| {
-                    s.get(k)
-                        .and_then(Value::as_u64)
-                        .and_then(|p| u16::try_from(p).ok())
-                };
-                Ok(Some(Wanted {
-                    client: addr("clientAddr").ok_or_else(|| bad("bad `clientAddr`"))?,
-                    client_port: port("clientPort").ok_or_else(|| bad("bad `clientPort`"))?,
-                    server: addr("serverAddr").ok_or_else(|| bad("bad `serverAddr`"))?,
-                    server_port: port("serverPort").ok_or_else(|| bad("bad `serverPort`"))?,
-                }))
-            }
-            _ => Err(bad("each terminal needs `ssh` (an object or null)")),
+        .map(|t| match &t.ssh {
+            None => Ok(None),
+            Some(s) => Ok(Some(Wanted {
+                client: ip(&s.client_addr).ok_or_else(|| bad("bad `clientAddr`"))?,
+                client_port: s.client_port,
+                server: ip(&s.server_addr).ok_or_else(|| bad("bad `serverAddr`"))?,
+                server_port: s.server_port,
+            })),
         })
         .collect()
 }

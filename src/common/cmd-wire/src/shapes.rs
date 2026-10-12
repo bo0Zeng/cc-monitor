@@ -5,11 +5,14 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
+    ("session-interrupts", "6b0c632f"),
     ("session-new-dir", "2c86c180"),
+    ("session-terminals", "b2c5f3d1"),
     ("sessions-start", "d7c013a0"),
     ("sessions-stop", "c1ee0ed3"),
     ("sessions-where", "8c20eb86"),
     ("terminal-name-mint", "f0db66f2"),
+    ("terminal-processes", "811f4543"),
 ];
 
 /// 这条命令在本份编进来的形状指纹；不是 typed 命令 ⇒ `None`。

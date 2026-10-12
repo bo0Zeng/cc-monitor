@@ -2310,7 +2310,6 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       [{ terminals: TERMINALS }, { chain: [], why: "elsewhere", addr: "203.0.113.8" }, copyText("front.title.elsewhere"), copyText("front.body.elsewhere", { addr: "203.0.113.8" }), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "mismatch" }, copyText("front.title.unsure"), copyText("front.body.mismatch"), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
-      [{ terminals: [], why: "<新原因>" }, null, copyText("front.title.badShape"), "", [copyText("detail.act.copy")], "red"],
     ];
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);

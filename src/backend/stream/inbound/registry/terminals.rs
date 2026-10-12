@@ -68,32 +68,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
     //   （`dial/terminal_processes.rs`）。阻塞档：读连接表 ＋ 进程表四格（Windows 直调系统接口、每个进程开一次句柄问启动时刻 · Linux 读 `/proc`）。只在被问时答。
-    CommandSpec {
-        name: "terminal-processes",
-        summary: "那台报来的终端连接是这台电脑上哪个进程开的",
-        codes: &["bad_args"],
-        fields: &[out("addr", "`elsewhere` 时对面那个地址"), out("chain", "这台上开着那条连接的进程链（自下而上），每格 `{pid, name, start}`"), out("name", "进程名"), out("pid", "进程号"), out("start", "启动时刻（系统原值；拿不到 ⇒ 0）"), out("why", "对不上时：`mismatch`（经跳板 / 端口转换）· `elsewhere`（不是这台开的）…")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::dial::terminal_processes::answer(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::dial::terminal_processes::TerminalProcesses>(
+        "那台报来的终端连接是这台电脑上哪个进程开的",
+    ),
     // 此刻是哪个终端在显示这个会话：`{sid}` ⇒ `{terminals:[{ssh, activity}…], why?}`（`observe/session_terminals.rs`）。
     //   阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。零定时器，只在被问时答。
-    CommandSpec {
-        name: "session-terminals",
-        summary: "此刻是哪个终端在显示这个会话",
-        codes: &["bad_args", "no_such_session", "failed", "child_timed_out"],
-        fields: &[out("activity", "最近动静（Unix 秒；不在 tmux 里 ⇒ `null`）"), out("clientAddr", "对面地址"), out("clientPort", "对面端口"), out("serverAddr", "本机地址"), out("serverPort", "本机端口"), out("ssh", "那个终端的 `SSH_CONNECTION` 四段；不是经 ssh 连的 ⇒ `null`"), out("terminals", "此刻显示它的终端，每格 `{ssh, activity}`，最近动静在前，最多 16 格"), out("why", "一个都没有时：`detached` · `no-terminal` · `unreadable`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::feature_face::SessionTerminals>(
+        "此刻是哪个终端在显示这个会话",
+    ),
     // 终端管理 L1 三条（`control/terminals.rs`）：只认名单里的终端（句柄 / sid），不收 tmux 目标串；送字送键过身份门。
     //   阻塞档（起 tmux）；只抓一次、只送一次，轮询归调用方。
     CommandSpec {
@@ -260,18 +242,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "起新会话前核一个目录：在不在 · 会用哪个终端名",
     ),
     // 动一个会话之前会打断什么（`observe/interrupts_query.rs`）：按族答，界面只画。只读。
-    CommandSpec {
-        name: "session-interrupts",
-        summary: "动一个会话之前，会打断什么",
-        codes: &["bad_args", "failed"],
-        fields: &[out("families", "按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问）"), out("family", "`turn`（那个会话有一轮在跑：活着的会话进程状态说在干活）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的）"), out("names", "显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表"), arg("sid", "会话 id（空 / 缺 ⇒ `bad_args`）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::feature_face::SessionInterrupts>(
+        "动一个会话之前，会打断什么",
+    ),
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。
     //   可撤档：步与步之间撤单生效；停旧 ＋ 起新不可分（拿退出排空的票），开跑之后撤也做完。失败可带按码定形的 `data`。
     CommandSpec {

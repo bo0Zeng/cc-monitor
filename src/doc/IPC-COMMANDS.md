@@ -3325,14 +3325,71 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `addr` | ← | `elsewhere` 时对面那个地址 |
-| `chain` | ← | 这台上开着那条连接的进程链（自下而上），每格 `{pid, name, start}` |
-| `name` | ← | 进程名 |
-| `pid` | ← | 进程号 |
-| `start` | ← | 启动时刻（系统原值；拿不到 ⇒ 0） |
-| `why` | ← | 对不上时：`mismatch`（经跳板 / 端口转换）· `elsewhere`（不是这台开的）… |
+入参 `TerminalProcessesReq` · 回包 `Processes`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Link = { 
+/**
+ * 进程号。
+ */
+pid: number, 
+/**
+ * 进程名。
+ */
+name: string, 
+/**
+ * 启动时刻（系统原值；拿不到 ⇒ 0）。
+ */
+start: number, };
+type Processes = { 
+/**
+ * 这台上开着那条连接的进程链（自下而上）。
+ */
+chain: Array<Link>, 
+/**
+ * 对不上时：`not-ssh` · `elsewhere`（不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`。
+ */
+why?: "not-ssh" | "elsewhere" | "mismatch" | "query-failed", 
+/**
+ * `elsewhere` 时对面那个地址。
+ */
+addr?: string, };
+type SshConnection = { 
+/**
+ * 对面地址。
+ */
+clientAddr: string, 
+/**
+ * 对面端口。
+ */
+clientPort: number, 
+/**
+ * 本机地址。
+ */
+serverAddr: string, 
+/**
+ * 本机端口。
+ */
+serverPort: number, };
+type Terminal = { 
+/**
+ * 经 ssh 连过来的那条连接；`null` = 那个终端不是经 ssh 连的（这台机器自己的屏幕上，或别的方式）。
+ */
+ssh: SshConnection | null, 
+/**
+ * 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
+ */
+activity: number | null, 
+/**
+ * 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
+ */
+window?: string, };
+type TerminalProcessesReq = { 
+/**
+ * 1–16 个，最近动静在前。
+ */
+terminals: Array<Terminal>, };
+```
 
 码：`bad_args`
 
@@ -3342,16 +3399,54 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `activity` | ← | 最近动静（Unix 秒；不在 tmux 里 ⇒ `null`） |
-| `clientAddr` | ← | 对面地址 |
-| `clientPort` | ← | 对面端口 |
-| `serverAddr` | ← | 本机地址 |
-| `serverPort` | ← | 本机端口 |
-| `ssh` | ← | 那个终端的 `SSH_CONNECTION` 四段；不是经 ssh 连的 ⇒ `null` |
-| `terminals` | ← | 此刻显示它的终端，每格 `{ssh, activity}`，最近动静在前，最多 16 格 |
-| `why` | ← | 一个都没有时：`detached` · `no-terminal` · `unreadable` |
+入参 `SidReq` · 回包 `Showing`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Showing = { 
+/**
+ * 此刻显示它的终端，最近动静在前，最多 16 个。
+ */
+terminals: Array<Terminal>, 
+/**
+ * 一个都没有时：`detached`（在 tmux 里、没终端连着）· `no-terminal`（不在 tmux 里、进程没有终端）· `unreadable`（读不了）。
+ */
+why?: "detached" | "no-terminal" | "unreadable", };
+type SidReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, };
+type SshConnection = { 
+/**
+ * 对面地址。
+ */
+clientAddr: string, 
+/**
+ * 对面端口。
+ */
+clientPort: number, 
+/**
+ * 本机地址。
+ */
+serverAddr: string, 
+/**
+ * 本机端口。
+ */
+serverPort: number, };
+type Terminal = { 
+/**
+ * 经 ssh 连过来的那条连接；`null` = 那个终端不是经 ssh 连的（这台机器自己的屏幕上，或别的方式）。
+ */
+ssh: SshConnection | null, 
+/**
+ * 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
+ */
+activity: number | null, 
+/**
+ * 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
+ */
+window?: string, };
+```
 
 码：`bad_args` · `no_such_session` · `failed` · `child_timed_out`
 
@@ -3894,14 +3989,24 @@ forkOf?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-interrupts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `families` | ← | 按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问） |
-| `family` | ← | `turn`（那个会话有一轮在跑：活着的会话进程状态说在干活）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的） |
-| `names` | ← | 显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表 |
-| `sid` | → | 会话 id（空 / 缺 ⇒ `bad_args`） |
+入参 `SessionInterruptsReq` · 回包 `SessionInterrupts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args` · `failed`
+```ts
+type InterruptFamily = { family: InterruptKind, 
+/**
+ * 显示名（`turn` 那一族没有名字 ⇒ 空表）。
+ */
+names: Array<string>, };
+type InterruptKind = "turn" | "agent" | "task";
+type SessionInterrupts = { families: Array<InterruptFamily>, };
+type SessionInterruptsReq = { 
+/**
+ * 会话 id（空 ⇒ `bad_args`）。
+ */
+sid: string, };
+```
+
+码：`bad_args`
 
 #### `session-restart`
 

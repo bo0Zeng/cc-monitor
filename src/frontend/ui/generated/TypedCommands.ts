@@ -6,19 +6,28 @@ import type { HistorySearchReply } from "./HistorySearchReply";
 import type { HistorySearchReq } from "./HistorySearchReq";
 import type { Merged } from "./Merged";
 import type { Minted } from "./Minted";
+import type { Processes } from "./Processes";
+import type { SessionInterrupts } from "./SessionInterrupts";
+import type { SessionInterruptsReq } from "./SessionInterruptsReq";
 import type { SessionNewDirReq } from "./SessionNewDirReq";
 import type { SessionsStartReq } from "./SessionsStartReq";
+import type { Showing } from "./Showing";
+import type { SidReq } from "./SidReq";
 import type { SidsReq } from "./SidsReq";
 import type { TerminalNameMintReq } from "./TerminalNameMintReq";
+import type { TerminalProcessesReq } from "./TerminalProcessesReq";
 import type { Whereabouts } from "./Whereabouts";
 
 /** typed 帧命令：命令名 ⇒ 入参 · 回包 · 它自己会回的码（`bad_args` 恒在：入参解不出来）。 */
 export interface TypedCommands {
   "history-search": { req: HistorySearchReq; reply: HistorySearchReply; code: "bad_args" | "failed" | "too_large" };
   "history-search-merge": { req: HistorySearchMergeReq; reply: Merged; code: "bad_args" };
+  "session-interrupts": { req: SessionInterruptsReq; reply: SessionInterrupts; code: "bad_args" };
   "session-new-dir": { req: SessionNewDirReq; reply: DirChecked; code: "bad_args" };
+  "session-terminals": { req: SidReq; reply: Showing; code: "bad_args" | "no_such_session" | "failed" | "child_timed_out" };
   "sessions-start": { req: SessionsStartReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };
   "sessions-stop": { req: SidsReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };
   "sessions-where": { req: SidsReq; reply: Whereabouts; code: "bad_args" | "unobservable" | "child_timed_out" };
   "terminal-name-mint": { req: TerminalNameMintReq; reply: Minted; code: "bad_args" | "child_timed_out" };
+  "terminal-processes": { req: TerminalProcessesReq; reply: Processes; code: "bad_args" };
 }

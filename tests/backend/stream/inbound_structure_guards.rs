@@ -1241,25 +1241,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ),
     ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
-        "session-terminals",
-        sampled::<crate::observe::session_terminals::Showing>,
-        &[
-            "activity",
-            "clientAddr",
-            "clientPort",
-            "serverAddr",
-            "serverPort",
-            "ssh",
-        ],
-        &[],
-    ),
-    (
-        "session-interrupts",
-        sampled::<crate::observe::interrupts_query::SessionInterrupts>,
-        &["family", "names"],
-        &[],
-    ),
-    (
         "session-new",
         sampled_and::<sn::SessionNew, sn::SessionNewRefusal>,
         &["configDir", "model", "name"],
@@ -1281,12 +1262,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         "terminal-follow",
         sampled::<crate::control::terminal_follow::Refused>,
         &[],
-        &[],
-    ),
-    (
-        "terminal-processes",
-        sampled::<crate::dial::terminal_processes::Processes>,
-        &["name", "pid", "start"],
         &[],
     ),
     (
