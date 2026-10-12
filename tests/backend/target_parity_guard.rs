@@ -796,7 +796,6 @@ fn typed_handler_files_of(
     for ctor in [
         "typed::blocking::<",
         "typed::with_files::<",
-        "typed::with_own::<",
         "typed::asynchronous::<",
     ] {
         for (at, _) in table.match_indices(ctor) {

@@ -1661,3 +1661,48 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         )
     );
 }
+
+/// 会话族换成 typed 的那几条：多一个键 · 少一个必填 · 类型不对 ⇒ `bad_args`，在解入参那一步就回（不往下读 tmux / 盘）。
+#[test]
+fn the_session_family_refuses_what_its_request_types_do_not_have() {
+    for (cmd, args) in [
+        (
+            "session-new-dir",
+            serde_json::json!({ "cwd": "/x", "extra": 1 }),
+        ),
+        ("session-new-dir", serde_json::json!({ "forkOf": "s-1" })),
+        (
+            "sessions-where",
+            serde_json::json!({ "sids": ["s-1"], "extra": 1 }),
+        ),
+        ("sessions-stop", serde_json::json!({ "sids": "s-1" })),
+        (
+            "sessions-start",
+            serde_json::json!({ "mode": "tmux", "local": true, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": [{ "sid": "s-1", "cwd": "/w", "extra": 1 }] }),
+        ),
+        (
+            "sessions-start",
+            serde_json::json!({ "mode": "screen", "local": true, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": [] }),
+        ),
+        ("session-interrupts", serde_json::json!({ "sid": 1 })),
+        (
+            "session-terminals",
+            serde_json::json!({ "sid": "s-1", "extra": 1 }),
+        ),
+        (
+            "terminal-processes",
+            serde_json::json!({ "terminals": [{ "ssh": null, "activity": null, "extra": 1 }] }),
+        ),
+        (
+            "launch-local",
+            serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "defaultLauncher": "claude", "x": 1 }),
+        ),
+    ] {
+        let got = run_registered(cmd, args.clone());
+        assert_eq!(
+            got.as_ref().err().map(|f| f.code.as_str()),
+            Some("bad_args"),
+            "{cmd} 入参 {args} 该回 bad_args：{got:?}"
+        );
+    }
+}
