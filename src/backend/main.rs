@@ -158,9 +158,9 @@ async fn main() {
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
-            Some("--resident-ensure") => control::resident::ensure(&args[1..]),
+            Some("--resident-ensure") => control::resident::ensure(&args[1..], &own),
             Some("--resident-attach") => control::resident::attach().await,
-            Some("--resident-stop") => control::resident::run_stop(&args[1..]),
+            Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
@@ -197,15 +197,17 @@ async fn main() {
     //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在起中转之前：接上之后这一行起的
     //   每一句（中转那两句、host key 警告、panic）都落进那份文件。
     let env = |k: &str| std::env::var(k).ok();
-    let (listening, installed) =
-        match claim_then_log(&env, control::resident::account_home().as_deref(), || {
-            stderr_log::install_from_env(&env)
-        })
-        .await
-        {
-            Ok(got) => got,
-            Err(code) => std::process::exit(code),
-        };
+    let (listening, installed) = match claim_then_log(
+        &own,
+        &env,
+        control::resident::account_home().as_deref(),
+        || stderr_log::install_from_env(&env),
+    )
+    .await
+    {
+        Ok(got) => got,
+        Err(code) => std::process::exit(code),
+    };
     tracing::info!("{}", installed.said());
     // 装上了 ⇒ 告诉只读面那份文件在哪（`backend-log`，机器页「日志」经它取回来看）。
     if let stderr_log::Installed::Logging(p) = &installed {
@@ -224,8 +226,12 @@ async fn main() {
         .filter(|dh| relay_route_core::legacy_listen_pid_for(dh).exists());
     let off_thread = legacy.is_some();
     let relay_own = own.clone();
+    let legacy_own = own.clone();
     let start_relay = move || {
-        if let Some(said) = legacy.as_deref().and_then(control::resident::retire_legacy) {
+        if let Some(said) = legacy
+            .as_ref()
+            .and_then(|_| control::resident::retire_legacy(&legacy_own))
+        {
             tracing::info!("{said}");
         }
         tracing::info!(
@@ -613,18 +619,20 @@ async fn handshake_one(
 /// 那两份日志属于在听的那一个：已有常驻后端时，后起的这一个若先接，就把在跑那一个的日志滚走（再来一个就删掉）。
 /// ⇒ 配置不成立 / 沙箱跑却要占真家 / 抢不到锁都不接，话只落自己原来的 stderr，退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
 async fn claim_then_log(
+    own: &cc_monitor_backend::platform::Own,
     env: &dyn Fn(&str) -> Option<String>,
     account_home: Option<&std::path::Path>,
     install: impl FnOnce() -> stderr_log::Installed,
 ) -> Result<
     (
-        Option<(own_chan::Listener, own_chan::Held)>,
+        Option<(own_chan::Listener, cc_monitor_backend::platform::OwnLock)>,
         stderr_log::Installed,
     ),
     i32,
 > {
     claim_then_log_as(
         control::resident::unsupported_here(),
+        own,
         env,
         account_home,
         install,
@@ -635,12 +643,13 @@ async fn claim_then_log(
 /// [`claim_then_log`] 的里子：「本平台有没有常驻」那一格是入参（`unsupported` = 没有时那一句），判据两形都量得到。
 async fn claim_then_log_as(
     unsupported: Option<String>,
+    own: &cc_monitor_backend::platform::Own,
     env: &dyn Fn(&str) -> Option<String>,
     account_home: Option<&std::path::Path>,
     install: impl FnOnce() -> stderr_log::Installed,
 ) -> Result<
     (
-        Option<(own_chan::Listener, own_chan::Held)>,
+        Option<(own_chan::Listener, cc_monitor_backend::platform::OwnLock)>,
         stderr_log::Installed,
     ),
     i32,
@@ -669,7 +678,7 @@ async fn claim_then_log_as(
         tracing::error!("{why}");
         return Err(listen::EXIT_BAD_LISTEN_CONFIG);
     }
-    match control::resident::claim(&dh) {
+    match control::resident::claim(own) {
         control::resident::Claim::Listening(l, held) => Ok((Some((l, held)), install())),
         control::resident::Claim::Held => {
             // ★★ **抢不到锁就退出，绝不换个地方再起一个**（换地方 = 每台机 N 个后端，中转口与全部 SSH 各 N 份）。
@@ -713,7 +722,7 @@ async fn claim_then_log_as(
 async fn serve_listening(
     listener: own_chan::Listener,
     // 目录独占锁：随这个函数（＝ 常驻载体）活着。
-    _held: own_chan::Held,
+    _held: cc_monitor_backend::platform::OwnLock,
     hello: Frame,
     agent_home: PathBuf,
     defaults: StreamWants,

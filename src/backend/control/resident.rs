@@ -16,6 +16,7 @@
 
 use crate::platform::child::{Child, ChildFail};
 use crate::platform::child_env::OWN_ENVS;
+use crate::platform::fs::{Own, OwnLock, OwnPath};
 use std::path::{Path, PathBuf};
 
 use copy_core::copy_text;
@@ -81,13 +82,13 @@ fn fail(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32
 
 /// `--resident-ensure [--replace]`。`hosted`：宿主层（`main.rs`）交的额外环境 —— 中转口那一格
 /// （本层不许伸手进 `relay/`，`layering_guard`）。
-pub fn run_ensure(args: &[String], hosted: &[(&str, String)]) -> i32 {
+pub fn run_ensure(args: &[String], hosted: &[(&str, String)], own: &Own) -> i32 {
     let (Some(home), Some(dh)) = (home(), data_home()) else {
         return fail(ENSURE, "no_home", copy_text("beResident.home.missing", &[]));
     };
     if args.iter().any(|a| a == "--replace") {
         // 旧的不先让出锁，新的必然起不来 ⇒ 与「停」同一个停法（等它真退了再起）。
-        if let Err(e) = stop_owner(&dh, STOP_GRACE_MS) {
+        if let Err(e) = stop_owner(own, STOP_GRACE_MS) {
             return fail(ENSURE, "replace_failed", e);
         }
     } else if own_chan::someone_listening(&relay_route_core::listen_socket_for(&dh)) {
@@ -162,7 +163,7 @@ pub(crate) fn relay_refusal(kind: std::io::ErrorKind) -> &'static str {
 }
 
 /// `--resident-ensure` 的入口：宿主层环境 = 中转口 · stderr 诊断文件（凭据与历史注解住家里，那台后端按家自己推）。
-pub fn ensure(args: &[String]) -> i32 {
+pub fn ensure(args: &[String], own: &Own) -> i32 {
     // 本平台没有常驻 ⇒ 先说，一个目录都不建（诊断文件那层目录也不建）。
     if let Some(why) = unsupported_here() {
         return fail(ENSURE, "unsupported", why);
@@ -176,23 +177,21 @@ pub fn ensure(args: &[String]) -> i32 {
         ),
         (crate::stderr_log::ENV, format!("~/{STDERR_LOG_REL}")),
     ];
-    if let Some(h) = home() {
-        // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
-        let _ = log_dir_chain(&h);
-    }
-    run_ensure(args, &hosted)
+    // 诊断文件那层目录先建好（`stderr_log` 只 `O_EXCL` 建文件、不建目录）；建不了 ⇒ 子进程装不上、stderr 照旧 null，不拖垮起。
+    let _ = log_dir_chain(own);
+    run_ensure(args, &hosted, own)
 }
 
 /// `--resident-stop [--grace <秒>]`。
-pub fn run_stop(args: &[String]) -> i32 {
-    let Some(dh) = data_home() else {
+pub fn run_stop(args: &[String], own: &Own) -> i32 {
+    if own.root().is_none() {
         return fail(STOP, "no_home", copy_text("beResident.home.missing", &[]));
-    };
+    }
     let grace_ms = match parse_grace(args) {
         Ok(g) => g,
         Err(e) => return fail(STOP, "bad_args", e),
     };
-    match stop_owner(&dh, grace_ms) {
+    match stop_owner(own, grace_ms) {
         Ok(end) => {
             println!(
                 "{}",
@@ -257,29 +256,48 @@ impl Stopped {
     }
 }
 
-/// `~/.cc-monitor` → `logs` → `backend` 逐层建（每层 0700，已在的不动）。
-fn log_dir_chain(home: &Path) -> Result<(), crate::common::said::Said> {
-    let Some(dir) = home.join(STDERR_LOG_REL).parent().map(Path::to_path_buf) else {
+/// `~/.cc-monitor` → `logs` → `backend` 逐层建（每层 0700，已在的不动；经写句柄的家目录那一根）。
+fn log_dir_chain(own: &Own) -> Result<(), crate::common::said::Said> {
+    let Some(dir) = Path::new(STDERR_LOG_REL).parent() else {
         return Ok(());
     };
-    let mut chain: Vec<&Path> = dir.ancestors().take_while(|a| *a != home).collect();
+    let mut chain: Vec<&Path> = dir
+        .ancestors()
+        .take_while(|a| !a.as_os_str().is_empty())
+        .collect();
     chain.reverse();
-    chain.into_iter().try_for_each(ensure_dir)
+    chain.into_iter().try_for_each(|rel| {
+        let rel = rel.to_string_lossy();
+        ensure_dir(own, &own.at_home(&rel)?)
+    })
 }
 
-fn ensure_dir(dir: &Path) -> Result<(), crate::common::said::Said> {
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+fn ensure_dir(own: &Own, dir: &OwnPath) -> Result<(), crate::common::said::Said> {
+    own.ensure_dir(dir).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_text(
                 "beResident.fs.mkdirFailed",
                 &[
-                    ("dir", &dir.display().to_string()),
+                    ("dir", &dir.as_path().display().to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),
             &e,
         )
     })
+}
+
+/// 门牌那一层（数据目录底下的 `run`，同 `relay_route_core::listen_dir_for`）与它本身所在的数据目录。
+fn run_dir(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
+    let root = own.root().ok_or_else(|| {
+        crate::common::said::Said::from(copy_text("beResident.home.missing", &[]))
+    })?;
+    let name = Path::new(relay_route_core::LISTEN_DIR_REL)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_default();
+    let run = root.join(&name)?;
+    Ok((root, run))
 }
 
 /// 子进程的环境：常驻开关 · 宿主层交的那几格（中转口 · stderr 诊断文件，值里的 `~` 换成家目录）。纯函数，判据钉它。
@@ -324,10 +342,15 @@ fn spawn_detached(
 }
 
 /// 常驻后端拿到锁、绑上之后记下「谁在听」（`pid\n二进制\n`，`<家>/run/backend.pid`）—— 本机远端都由它自己记。
-pub fn record_owner(data_home: &Path) -> Result<(), String> {
+/// `held` 是门牌那一层的那把锁（抢门牌时拿到、随进程活着）。
+fn record_owner(own: &Own, run: &OwnPath, held: &OwnLock) -> Result<(), String> {
     let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    crate::common::own_state::write(
-        &relay_route_core::listen_pid_for(data_home),
+    let file = run
+        .join(relay_route_core::LISTEN_PID_NAME)
+        .map_err(|e| e.said)?;
+    own.write(
+        &file,
+        held,
         format!("{}\n{}\n", std::process::id(), exe.display()).as_bytes(),
     )
     .map_err(|e| e.logged())
@@ -335,7 +358,7 @@ pub fn record_owner(data_home: &Path) -> Result<(), String> {
 
 /// 读「谁在听」那一份（读不到 / 残缺 ⇒ `None`）。
 fn read_owner(data_home: &Path) -> Option<(u32, PathBuf)> {
-    std::fs::read_to_string(relay_route_core::listen_pid_for(data_home))
+    crate::platform::fs::Ro::read_to_string(relay_route_core::listen_pid_for(data_home))
         .ok()
         .and_then(|b| parse_owner(&b))
 }
@@ -355,15 +378,17 @@ pub(crate) fn exe_matches(seen: &str, recorded: &Path) -> bool {
 }
 
 /// 按 pid 文件停在听的那一位。没有记录 ⇒ `NotRunning`。
-fn stop_owner(data_home: &Path, grace_ms: u32) -> Result<Stopped, Said> {
-    let path = relay_route_core::listen_pid_for(data_home);
+fn stop_owner(own: &Own, grace_ms: u32) -> Result<Stopped, Said> {
+    let (root, run) = run_dir(own)?;
+    let data_home = root.as_path();
+    let pid_file = run.join(relay_route_core::LISTEN_PID_NAME)?;
     let Some((pid, bin)) = read_owner(data_home) else {
         return Ok(Stopped::NotRunning);
     };
     let end = stop_pid(pid, &bin, grace_ms, KILL_WAIT_MS)?;
     // 它已不在 ⇒ 那份记录是陈的：还指着它就收掉（下一个起来的会自己再记；指着别人的不动）。
     if read_owner(data_home).is_some_and(|(p, _)| p == pid) {
-        let _ = std::fs::remove_file(&path);
+        let _ = own.delete_file(&pid_file);
     }
     Ok(end)
 }
@@ -408,7 +433,7 @@ pub(crate) fn stop_pid(
 /// 常驻后端抢门牌的结局。
 pub enum Claim {
     /// 抢到了：在听的套接字 ＋ 攥着的目录锁（随进程活着）。
-    Listening(own_chan::Listener, own_chan::Held),
+    Listening(own_chan::Listener, OwnLock),
     /// 别人攥着锁（已有一个常驻后端在听）。
     Held,
     /// 起不来（那一句，已带路径与原因）。
@@ -420,41 +445,47 @@ pub(crate) const SOCKET_PATH_MAX: usize = 100;
 
 /// 常驻后端抢门牌：建 `<家>/run/`（只给本人）→ 抢它的独占锁 → 记「谁在听」→ 删陈旧的套接字文件 → 绑。没有钥匙。
 /// 要在 tokio 运行时里调（绑的是异步套接字）。
-pub fn claim(data_home: &Path) -> Claim {
-    let dir = relay_route_core::listen_dir_for(data_home);
-    let sock = relay_route_core::listen_socket_for(data_home);
-    if let Err(e) = ensure_dir(data_home).and_then(|()| ensure_dir(&dir)) {
+pub fn claim(own: &Own) -> Claim {
+    let (root, run, sock) = match run_dir(own).and_then(|(root, run)| {
+        let sock = run.join(relay_route_core::LISTEN_SOCKET_NAME)?;
+        Ok((root, run, sock))
+    }) {
+        Ok(x) => x,
+        Err(e) => return Claim::Failed(e.logged()),
+    };
+    let dir = run.as_path();
+    if let Err(e) = ensure_dir(own, &root).and_then(|()| ensure_dir(own, &run)) {
         return Claim::Failed(e.logged());
     }
-    let held = match own_chan::try_hold(&dir) {
+    let held = match own.try_lock(&run) {
         Ok(Some(h)) => h,
         Ok(None) => return Claim::Held,
-        Err(e) => return Claim::Failed(bind_failed(&dir, &e)),
+        Err(e) => return Claim::Failed(bind_failed(dir, &e)),
     };
     // 「谁在听」先记、再开门：套接字一出现，记录就已经在盘上（`--resident-ensure` 见到有人在听就读它）。
-    if let Err(e) = record_owner(data_home) {
+    if let Err(e) = record_owner(own, &run, &held) {
         tracing::warn!("记不下「谁在听」（{e}）⇒ 「停」会停不了它");
     }
-    let len = sock.as_os_str().len();
+    let len = sock.as_path().as_os_str().len();
     if len > SOCKET_PATH_MAX {
         return Claim::Failed(copy_text(
             "beResident.claim.pathTooLong",
             &[
-                ("path", &sock.display().to_string()),
+                ("path", &sock.as_path().display().to_string()),
                 ("len", &len.to_string()),
                 ("max", &SOCKET_PATH_MAX.to_string()),
             ],
         ));
     }
     // 攥着锁 ⇒ 没有别人在听：留下的那个文件是上一个被强杀的常驻后端的。
-    match std::fs::remove_file(&sock) {
+    match own.delete_file(&sock) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Claim::Failed(bind_failed(&sock, &e)),
+        Err(e) => return Claim::Failed(bind_failed(sock.as_path(), &e)),
     }
-    match own_chan::bind(&sock) {
+    match own_chan::bind(sock.as_path()) {
         Ok(l) => Claim::Listening(l, held),
-        Err(e) => Claim::Failed(bind_failed(&sock, &e)),
+        Err(e) => Claim::Failed(bind_failed(sock.as_path(), &e)),
     }
 }
 
@@ -501,9 +532,12 @@ pub fn sandbox_refusal(
 /// 新的常驻后端拿到锁之后、接中转之前调它：那一位还在跑 ⇒ 按旧记录核身份、请它收尾、到点强杀（它占着中转口）；
 /// 然后删掉旧记录与旧钥匙文件。回给日志的那一句（没有旧的 ⇒ `None`）。
 /// 等待在这里：只在常驻后端起来那一刻走一次（`no_timer_guard` 那张表登记了这一处入口）。
-pub fn retire_legacy(data_home: &Path) -> Option<String> {
-    let rec = relay_route_core::legacy_listen_pid_for(data_home);
-    let (pid, bin) = std::fs::read_to_string(&rec)
+pub fn retire_legacy(own: &Own) -> Option<String> {
+    let root = own.root()?;
+    let rec = relay_route_core::legacy_listen_pid_for(root.as_path());
+    let rec_own = root.join(&rec.file_name()?.to_string_lossy()).ok()?;
+    let token = root.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME).ok()?;
+    let (pid, bin) = crate::platform::fs::Ro::read_to_string(&rec)
         .ok()
         .and_then(|b| parse_owner(&b))?;
     let said = match stop_pid(pid, &bin, STOP_GRACE_MS, KILL_WAIT_MS) {
@@ -516,8 +550,8 @@ pub fn retire_legacy(data_home: &Path) -> Option<String> {
             &[("pid", &pid.to_string()), ("why", &e.logged())],
         ),
     };
-    let _ = std::fs::remove_file(&rec);
-    let _ = std::fs::remove_file(data_home.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME));
+    let _ = own.delete_file(&rec_own);
+    let _ = own.delete_file(&token);
     Some(said)
 }
 

@@ -179,9 +179,7 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
             &std::fs::read_to_string(crate::guard_support::src_root().join(p)).expect("读"),
         )
     };
-    for f in [
-        "control/files_commit.rs",
-    ] {
+    for f in ["control/files_commit.rs"] {
         assert_eq!(
             src(f)
                 .matches("crate::common::own_dir::ensure_private_dir(")

@@ -4,6 +4,11 @@
 
 use super::*;
 
+/// 写句柄：两个根照这份注入的环境推（同 `Own::issue` 照进程环境推的那两步）。
+fn own_of(env: &dyn Fn(&str) -> Option<String>) -> cc_monitor_backend::platform::Own {
+    cc_monitor_backend::platform::Own::issue_with(env)
+}
+
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("claim-then-log-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
@@ -38,7 +43,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
     std::fs::write(&sock, "在跑那一个的").expect("占位");
     let held = own_chan::try_hold(&dir).expect("锁").expect("拿到");
 
-    let got = claim_then_log(&env, None, install).await;
+    let got = claim_then_log(&own_of(&env), &env, None, install).await;
     assert_eq!(got.err(), Some(listen::EXIT_ADDR_IN_USE));
     assert_eq!(
         installs.get(),
@@ -53,13 +58,15 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
 
     let bad = |k: &str| (k == listen::ENV_RESIDENT).then(|| "yes".to_string());
     assert_eq!(
-        claim_then_log(&bad, None, install).await.err(),
+        claim_then_log(&own_of(&bad), &bad, None, install)
+            .await
+            .err(),
         Some(listen::EXIT_BAD_LISTEN_CONFIG)
     );
     assert_eq!(installs.get(), 0, "常驻配置不成立也接了日志");
 
     drop(held);
-    let (listening, _) = claim_then_log(&env, None, install)
+    let (listening, _) = claim_then_log(&own_of(&env), &env, None, install)
         .await
         .expect("锁放了却没抢到");
     assert!(listening.is_some(), "该在听");
@@ -78,9 +85,11 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
             "HOME" => Some(home_s.clone()),
             _ => None,
         };
-        let (l2, _) = claim_then_log(&env2, None, || stderr_log::Installed::NotAsked)
-            .await
-            .expect("空家里没抢到");
+        let (l2, _) = claim_then_log(&own_of(&env2), &env2, None, || {
+            stderr_log::Installed::NotAsked
+        })
+        .await
+        .expect("空家里没抢到");
         let run = relay_route_core::listen_dir_for(&fresh);
         let mode = std::fs::metadata(&run).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o700, "门牌目录不是只给本人");
@@ -90,7 +99,7 @@ async fn a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket() 
         );
         drop(l2);
     }
-    let (listening, _) = claim_then_log(&|_| None, None, install)
+    let (listening, _) = claim_then_log(&own_of(&|_| None), &|_| None, None, install)
         .await
         .expect("stdio 那条");
     assert!(listening.is_none());
@@ -120,7 +129,9 @@ async fn a_sandboxed_start_refuses_the_real_home() {
         _ => None,
     };
     assert_eq!(
-        claim_then_log(&leaked, Some(&real), install).await.err(),
+        claim_then_log(&own_of(&leaked), &leaked, Some(&real), install)
+            .await
+            .err(),
         Some(listen::EXIT_BAD_LISTEN_CONFIG)
     );
     // HOME 也没隔离、只带了标记：同样拒。
@@ -131,7 +142,9 @@ async fn a_sandboxed_start_refuses_the_real_home() {
         _ => None,
     };
     assert_eq!(
-        claim_then_log(&marked, Some(&real), install).await.err(),
+        claim_then_log(&own_of(&marked), &marked, Some(&real), install)
+            .await
+            .err(),
         Some(listen::EXIT_BAD_LISTEN_CONFIG)
     );
     assert_eq!(installs.get(), 0, "拒绝起也接了日志");
@@ -146,7 +159,7 @@ async fn a_sandboxed_start_refuses_the_real_home() {
         "HOME" => Some(fake_s.clone()),
         _ => None,
     };
-    let (listening, _) = claim_then_log(&boxed, Some(&real), install)
+    let (listening, _) = claim_then_log(&own_of(&boxed), &boxed, Some(&real), install)
         .await
         .expect("沙箱里的家却没起来");
     assert!(listening.is_some());
@@ -178,7 +191,7 @@ async fn a_platform_without_a_resident_says_so_before_building_anything() {
     };
     let said = copy_core::copy_text("beDetach.detach.notUnix", &[]);
     assert_eq!(
-        claim_then_log_as(Some(said.clone()), &env, None, install)
+        claim_then_log_as(Some(said.clone()), &own_of(&env), &env, None, install)
             .await
             .err(),
         Some(listen::EXIT_BAD_LISTEN_CONFIG)
@@ -190,9 +203,15 @@ async fn a_platform_without_a_resident_says_so_before_building_anything() {
         data.display()
     );
     // 不走常驻的那条载体不受影响。
-    let (l, _) = claim_then_log_as(Some(said.clone()), &|_| None, None, install)
-        .await
-        .expect("stdio 那条被平台那一格挡了");
+    let (l, _) = claim_then_log_as(
+        Some(said.clone()),
+        &own_of(&|_| None),
+        &|_| None,
+        None,
+        install,
+    )
+    .await
+    .expect("stdio 那条被平台那一格挡了");
     assert!(l.is_none());
     // 真平台：Windows 上不支持，Unix 上支持；不支持时那句话就是 `--resident-ensure` 回 unsupported 的那一句。
     assert_eq!(

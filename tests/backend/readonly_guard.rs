@@ -857,14 +857,6 @@ mod tests {
              不建目录、不截断；一次性模式另有一个只追加整行的句柄（`OWN_STATE_APPEND_ONLY`）。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer` · 一次性模式的 `oneshot_writer`）只从 `main.rs` 进（与`relay/listen.rs` 一样，是不走命令注册的门）",
         ),
         (
-            "control/resident.rs",
-            "**常驻监听口的钥匙** `~/.cc-monitor/listen-token`（与本机宿主同一份）＋ 远端常驻后端自己记的 \
-             `~/.cc-monitor/listen-<口>.pid`。文件名 / 格式 / 落点都是本仓定的、只有常驻后端与起它的一方读 ⇒ 后端**自己的**状态，\
-             不是用户数据。钥匙：读回；没有才在目录锁里铸 → 临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ \
-             写满 → 原子挪过去；pid 文件同一条写法（只有绑上了口的那一个写）；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件。\
-             入口只有 `main.rs`（CLI 子命令 `--resident-ensure` · 常驻载体绑上口之后那一处）",
-        ),
-        (
             "common/own_dir.rs",
             "**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
              建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
@@ -1006,8 +998,6 @@ mod tests {
             "launch_account::adopt",
             "observe/watcher.rs",
         ),
-        // 针取模块前缀：`run_ensure`（铸钥匙）与 `record_owner`（记 pid）都会写，都只许 `main.rs` 碰。
-        ("control/resident.rs", "resident::", "main.rs"),
         // 原子写的那一处（过渡转调）：只有第四层别的几份调它（门检查本来就跳过第四层成员）⇒ 门空着 = 第四层之外零引用。
         // 针取写那一半（`write` · `write_json`）：读三态（`read_bytes` · `read_json`）是读，搬上 `Own` 的那几份照旧用。
         ("common/own_state.rs", "own_state::write", ""),
@@ -1562,11 +1552,6 @@ mod tests {
         "common/own_state.rs",
         "读三态与原子写的原语本身：它不做读—改—写，锁由做读—改—写的那一份在调它之前拿（锁的是那一份自己的目录）；\
          原语里再拿一次会在同一个目录上锁两回",
-    ),
-    (
-        "control/resident.rs",
-        "常驻监听口的钥匙与「谁在听」都由**绑上口的那一个**整份写（新铸一把 / 自己的 pid），不读旧的再改：\
-         口本身就是互斥（抢不到口的走不到写），没有「读出来、改一格、整份写回」那一步 ⇒ 没有后写盖掉先写可丢",
     )];
 
     /// 第四层**之外**拿这把锁的（`(模块, 为什么)`）：它们改的不是后端自有状态文件，却同样是一趟读—改—写，
@@ -3064,7 +3049,8 @@ mod tests {
 
     /// 自家状态写句柄的造法（`(针, 只许出现在哪几份)`）：[`crate::platform::fs::Own`] 启动时造一次、顺着入口递下去；
     /// 别处一造就红（类型挡管「拿着它才写得出来」，这一条管「谁能凭空造一个」）。定义所在那一份不算。
-    const ISSUERS: &[(&str, &[&str])] = &[("Own::issue(", &["main.rs"])];
+    // 针不带括号：`Own::issue` 一族（照进程环境 · 照注入的环境）都只许启动入口造。
+    const ISSUERS: &[(&str, &[&str])] = &[("Own::issue", &["main.rs"])];
 
     #[test]
     fn the_write_handles_are_issued_only_at_startup() {
