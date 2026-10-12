@@ -21,17 +21,7 @@ import { button, setBusy, setDisabled } from "./kit/button";
 import { kbd } from "./kit/badge";
 import { needsOf } from "./session-face";
 import { waitedNow } from "./duration-format";
-import { isRemoteOrigin } from "./ipc/origin";
-import { hasTerminal } from "./tab-session-state";
-import { terminalFrontAvailable } from "./terminal-front";
 import s from "./answer-block.module.css";
-
-/** 去哪个终端答：Windows 有 ↗ ⇒ 切到终端；远端在 tmux 里 ⇒ 在终端里打开；都不行 ⇒ 只给看终端（抽屉里那一页）。 */
-function terminalWhere(tab: Tab): "front" | "attach" | null {
-  if (terminalFrontAvailable() && hasTerminal(tab.state)) return "front";
-  if (isRemoteOrigin(tab.origin) && tab.state.liveness === "live" && tab.state.recoverability === "attachable") return "attach";
-  return null;
-}
 
 /** 交给 `needs-answer` 的那一份（`sid` 由宿主按 tab 补上）。 */
 export interface AnswerRequest {
@@ -49,12 +39,6 @@ export interface AnswerHost {
   answer(tab: Tab, req: AnswerRequest): Promise<AnswerOutcome>;
   /** 再问一次这个会话的事实（needs 跟着换）。 */
   reread(sid: string): void;
-  /** 抽屉的终端页换到这个会话。 */
-  viewTerminal(sid: string): void;
-  /** Windows：切到它的终端窗口（↗）。 */
-  front(sid: string): void;
-  /** 远端 tmux：在本机终端里打开它。 */
-  attach(sid: string): void;
   toast(title: string, detail?: string): void;
   /** 块高了 / 收了：消息流底部给它让出多高（像素；收起 ⇒ 0）。 */
   room?(px: number): void;
@@ -208,7 +192,7 @@ export class AnswerBlock {
     this.body.className = s.abBody;
     this.el.replaceChildren(head, this.body);
     if (!ask) {
-      this.drawManual(tab, n);
+      this.drawManual(n);
       return;
     }
     if (ask.questions.length === 0 && ask.detail !== "") {
@@ -220,20 +204,17 @@ export class AnswerBlock {
     this.drawChoices(tab, ask);
   }
 
-  private drawManual(tab: Tab, n: Needs): void {
+  /**
+   * 这里答不了（没挂上请求）：只写核心那一句为什么（自带的会话级设置读不出 · 自定义启动器起的 · 只能在终端里答的那种框）。
+   * 块里不放「看终端」「切到终端」这类主按钮：终端只在会话头上「⋯」里当逃生口。
+   */
+  private drawManual(n: Needs): void {
     const row = document.createElement("div");
     row.className = s.abManual;
     const said = document.createElement("span");
     said.dataset.part = "manual";
     said.textContent = n.manualText ?? "";
-    const sid = tab.sessionId;
-    const acts = document.createElement("span");
-    acts.className = s.abActs;
-    acts.append(button({ label: copyText("askBlock.manual.terminal"), onClick: () => this.host.viewTerminal(sid) }));
-    const where = terminalWhere(tab);
-    if (where === "front") acts.append(button({ label: copyText("needs.bar.front"), icon: "front", onClick: () => this.host.front(sid) }));
-    else if (where === "attach") acts.append(button({ label: copyText("needs.bar.openTerm"), onClick: () => this.host.attach(sid) }));
-    row.append(said, acts);
+    row.append(said);
     this.body!.replaceChildren(row);
   }
 
