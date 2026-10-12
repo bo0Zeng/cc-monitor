@@ -161,7 +161,7 @@ pub struct ConfigBody {
     /// 时区不明：第一版缺 `tz`、换形那台又说不出自己的时区（[`crate::platform::local_tz::iana_name`]）⇒ 不猜，标这一格，
     /// 上屏需手动（在设置里确认时区）；在设置里存一次（信封带 `tz`）就清掉。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(as = "Option<bool>", optional))]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub tz_unknown: bool,
 }
 
