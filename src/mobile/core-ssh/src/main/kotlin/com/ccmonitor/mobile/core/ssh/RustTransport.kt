@@ -65,7 +65,7 @@ class RustTransport(
     ) = withContext(Dispatchers.IO) {
         require(configs.isNotEmpty()) { "no address to connect" }
         val first = configs.first()
-        val pinned = pinOf(first.host, first.port)
+        val known = knownOf(first.host, first.port)
         val req =
             JSONObject()
                 .put("host", first.host)
@@ -73,7 +73,7 @@ class RustTransport(
                 .put("user", first.username)
                 .put("key_path", keyFor(first.auth))
                 .put("endpoints", JSONArray(configs.map { JSONObject().put("host", it.host).put("port", it.port) }))
-        pinned?.let { req.put("host_key_fingerprint", it.second) }
+        if (known.isNotEmpty()) req.put("known_keys", JSONArray(known.map { "${it.keyType} ${it.publicKeyBase64}" }))
         first.jumpVia?.let { req.put("jump", hopOf(it)) }
         base = JSONObject(req.toString())
         val chain = generateSequence(first) { it.jumpVia }.map { it.host to it.port }.toList()
@@ -89,7 +89,7 @@ class RustTransport(
             }
         if (!ack.optBoolean("ok")) {
             link.close()
-            throw failureOf(ack, first, pinned)
+            throw failureOf(ack, first, known)
         }
         recordFirstUse(chain)
         if (closed.get()) {
@@ -139,7 +139,7 @@ class RustTransport(
         }.flowOn(Dispatchers.IO)
 
     override suspend fun execDuplex(command: String): RemoteDuplex =
-        withContext(Dispatchers.IO) { RustDuplex(child(JSONObject().put("use", "stream").put("command", command))) }
+        withContext(Dispatchers.IO) { RustDuplex(child(JSONObject().put("use", "duplex").put("command", command))) }
 
     override suspend fun openShell(
         term: String,
@@ -320,20 +320,20 @@ class RustTransport(
                 .put("user", cfg.username)
                 .put("key_path", keyFor(cfg.auth))
                 .put("label", "${cfg.host}:${cfg.port}")
-        pinOf(cfg.host, cfg.port)?.let { hop.put("host_key_fingerprint", it.second) }
+        val known = knownOf(cfg.host, cfg.port)
+        if (known.isNotEmpty()) hop.put("known_keys", JSONArray(known.map { "${it.keyType} ${it.publicKeyBase64}" }))
         cfg.jumpVia?.let { hop.put("jump", hopOf(it)) }
         return hop
     }
 
-    /** 记过的那一把（多把 ⇒ 按 ed25519 · ecdsa · rsa 的先后挑一把）：`(算法, SHA256 指纹)`。 */
-    private suspend fun pinOf(
+    /**
+     * 这台记过的全部钥匙（可多种类型）。交给核心照 OpenSSH 的做法比：协商时这几种类型排前，按协商出的那一种严格比；
+     * 那一种没记过（而别的记过）⇒ 拒，同「钥匙变了」；一把都没记过 ⇒ 首见。
+     */
+    private suspend fun knownOf(
         host: String,
         port: Int,
-    ): Pair<String, String>? {
-        val known = knownHostStore?.forHost(host, port).orEmpty()
-        val pick = known.minByOrNull { rec -> KEY_PREFERENCE.indexOfFirst { rec.keyType.startsWith(it) }.let { if (it < 0) KEY_PREFERENCE.size else it } }
-        return pick?.let { it.keyType to fingerprintOf(it.publicKeyBase64) }
-    }
+    ): List<KnownHostRecord> = knownHostStore?.forHost(host, port).orEmpty()
 
     /** 鉴权过了：这一趟首见的那几台落 [KnownHostStore]（已经记过的不动）。 */
     private suspend fun recordFirstUse(chain: List<Pair<String, Int>>) {
@@ -349,14 +349,16 @@ class RustTransport(
     private fun failureOf(
         ack: JSONObject,
         cfg: ConnectionConfig,
-        pinned: Pair<String, String>?,
+        known: List<KnownHostRecord>,
     ): Exception =
-        if (ack.optString("reason") == "host_key" && pinned != null) {
+        if (ack.optString("reason") == "host_key" && known.isNotEmpty()) {
+            val type = ack.optString("key_type")
             HostKeyChangedException(
                 host = cfg.host,
                 port = cfg.port,
-                keyType = pinned.first,
-                expectedFingerprint = pinned.second,
+                keyType = type,
+                // 同类型记过的那一把（没有 ⇒ 这一种从没记过：空串）。
+                expectedFingerprint = known.firstOrNull { it.keyType == type }?.let { fingerprintOf(it.publicKeyBase64) }.orEmpty(),
                 offeredFingerprint = ack.optString("fingerprint"),
             )
         } else {
@@ -393,7 +395,6 @@ class RustTransport(
         const val STDERR_TAIL = 4096
         const val MAX_FILE_BYTES = 64L shl 20
         const val FILE_MODE = 0x1A4 // 0644
-        val KEY_PREFERENCE = listOf("ssh-ed25519", "ecdsa-sha2", "rsa-sha2", "ssh-rsa")
 
         /** SSH 公钥 blob（base64）⇒ `SHA256:<无填充 base64>`（与 OpenSSH / 核心报的同形）。 */
         fun fingerprintOf(blobB64: String): String {
@@ -540,6 +541,33 @@ internal class RustLink(
         }
     }
 
+    /** 读满 [n] 个字节；收工 ⇒ `null`。 */
+    private suspend fun readExactly(n: Int): ByteArray? {
+        var buf = leftover
+        leftover = ByteArray(0)
+        while (buf.size < n) {
+            val more = inbox.receiveCatching().getOrNull()
+            if (more == null) {
+                closedByCore.set(true)
+                return null
+            }
+            buf += more
+        }
+        leftover = buf.copyOfRange(n, buf.size)
+        return buf.copyOfRange(0, n)
+    }
+
+    /** 下一帧（`use: duplex`）：`(类型, 本体)`；收工 ⇒ `null`。 */
+    suspend fun readFrame(): Pair<Int, ByteArray>? {
+        val head = readExactly(FRAME_HEAD) ?: return null
+        val len =
+            java.nio.ByteBuffer
+                .wrap(head, 1, 4)
+                .int
+        val body = readExactly(len) ?: return null
+        return (head[0].toInt() and 0xff) to body
+    }
+
     /** 读到 ack 那一行（之前的阶段行交给 [onStage]）；没等到就收工 ⇒ 抛。 */
     suspend fun awaitAck(onStage: (JSONObject) -> Unit): JSONObject {
         while (true) {
@@ -559,6 +587,10 @@ internal class RustLink(
         rows: Int,
     ) = Core.resize(handle, cols, rows)
 
+    private companion object {
+        const val FRAME_HEAD = 5
+    }
+
     fun close() {
         if (!ended.compareAndSet(false, true)) return
         Core.close(handle)
@@ -567,24 +599,40 @@ internal class RustLink(
     }
 }
 
-/** 常驻流那条双向长 exec（`use: stream`）。退出码与 stderr 这条链路不带（核心的 stream 用法只搬 stdout）。 */
+/**
+ * 常驻流那条双向长 exec（`use: duplex`）：下行分帧 `[类型][四字节大端长度][本体]`，0 = stdout，2 = 收场那一帧
+ * `{exit_status, exit_signal, stderr_tail}`（stderr 核心那一侧只留尾巴）。
+ */
 internal class RustDuplex(
     private val link: RustLink,
 ) : RemoteDuplex {
     private val collected = AtomicBoolean(false)
 
+    @Volatile private var end: JSONObject? = null
+
     override val stdout: Flow<ByteArray> =
         flow {
             check(collected.compareAndSet(false, true)) { "stdout 只许收集一次" }
-            while (true) emit(link.readChunk() ?: break)
+            var frame = link.readFrame()
+            while (frame != null && end == null) {
+                val (kind, body) = frame
+                if (kind == FRAME_STDOUT) emit(body)
+                if (kind == FRAME_END) end = JSONObject(body.toString(Charsets.UTF_8))
+                if (end == null) frame = link.readFrame()
+            }
         }
 
     override suspend fun write(bytes: ByteArray) = withContext(Dispatchers.IO) { link.send(bytes) }
 
-    override val exitStatus: Int? get() = null
-    override val stderrTail: String get() = ""
+    override val exitStatus: Int? get() = end?.takeUnless { it.isNull("exit_status") }?.getInt("exit_status")
+    override val stderrTail: String get() = end?.optString("stderr_tail").orEmpty()
 
     override fun close() = link.close()
+
+    private companion object {
+        const val FRAME_STDOUT = 0
+        const val FRAME_END = 2
+    }
 }
 
 /** PTY 上的交互 shell（`use: shell`）：给终端桥接的那一对阻塞流。 */

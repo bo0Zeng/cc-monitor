@@ -132,6 +132,14 @@ impl russh::server::Handler for Door {
     ) -> Result<(), Self::Error> {
         self.note(format!("exec {}", String::from_utf8_lossy(data)));
         session.channel_success(channel)?;
+        if data == b"fail" {
+            // 一条退出码非零、往 stderr 写了一行的远端命令。
+            session.data(channel, b"out\n".to_vec())?;
+            session.extended_data(channel, 1, b"boom: not found\n".to_vec())?;
+            session.exit_status_request(channel, 3)?;
+            session.eof(channel)?;
+            return session.close(channel);
+        }
         session.data(channel, b"ran\n".to_vec())?;
         session.exit_status_request(channel, 0)?;
         session.eof(channel)?;
@@ -185,6 +193,20 @@ async fn door_with_sessions(
     Arc<Mutex<Vec<String>>>,
     Arc<Mutex<Vec<russh::server::Handle>>>,
 ) {
+    door_keyed(password, key, None).await
+}
+
+/// 同 [`door_with_sessions`]，host key 由判据给（缺 ⇒ 按口派生一把 ed25519）。
+#[allow(clippy::type_complexity)]
+async fn door_keyed(
+    password: Option<&str>,
+    key: Option<russh::keys::PublicKey>,
+    host_keys: Option<Vec<russh::keys::PrivateKey>>,
+) -> (
+    u16,
+    Arc<Mutex<Vec<String>>>,
+    Arc<Mutex<Vec<russh::server::Handle>>>,
+) {
     test_host();
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
         .await
@@ -197,11 +219,13 @@ async fn door_with_sessions(
         log: Arc::clone(&log),
         shells: Arc::default(),
     };
-    let host_key = russh::keys::PrivateKey::from(
-        russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[port as u8; 32]),
-    );
+    let keys = host_keys.unwrap_or_else(|| {
+        vec![russh::keys::PrivateKey::from(
+            russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[port as u8; 32]),
+        )]
+    });
     let cfg = Arc::new(russh::server::Config {
-        keys: vec![host_key],
+        keys,
         auth_rejection_time: std::time::Duration::ZERO,
         auth_rejection_time_initial: Some(std::time::Duration::ZERO),
         ..Default::default()
@@ -549,4 +573,110 @@ async fn a_held_connection_is_reused_and_its_link_ends_when_the_peer_goes() {
         .expect("那一趟没收场")
         .unwrap();
     assert!(crate::USES.contains(&"hold"));
+}
+
+/// 读 `use: duplex` 的下行帧（`[类型][四字节大端长度][本体]`）直到退出帧：回 `(stdout, 退出帧)`。
+async fn duplex_frames(
+    rd: &mut BufReader<tokio::io::DuplexStream>,
+) -> (Vec<u8>, serde_json::Value) {
+    let mut out = Vec::new();
+    loop {
+        let mut head = [0u8; 5];
+        tokio::time::timeout(guard_core::wall::CEILING, rd.read_exact(&mut head))
+            .await
+            .expect("等帧超时")
+            .expect("帧没读全");
+        let len = u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize;
+        let mut body = vec![0u8; len];
+        rd.read_exact(&mut body).await.expect("帧本体没读全");
+        match head[0] {
+            0 => out.extend(body),
+            2 => return (out, serde_json::from_slice(&body).expect("退出帧不是 JSON")),
+            k => panic!("认不出的帧类型 {k}"),
+        }
+    }
+}
+
+/// ★ 长 exec 带退出码与 stderr 尾巴（`use: duplex`）：退出码非零、stderr 写了一行的远端命令 ⇒ 对面拿到那个码和那一行。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_duplex_exec_carries_the_exit_status_and_the_stderr_tail() {
+    let (port, _log) = door(Some("d"), None).await;
+    register("duplex-pw", TestCred::Password("d".into()));
+    let req = request(serde_json::json!({
+        "host": "127.0.0.1", "port": port, "user": "u", "key_path": "duplex-pw",
+        "use": "duplex", "command": "fail"
+    }));
+    let (ack, mut rd, _up, _run) = open(req, crate::uses::Control::none()).await;
+    assert_eq!(ack["ok"], true, "{ack}");
+    let (out, exit) = duplex_frames(&mut rd).await;
+    assert_eq!(out, b"out\n");
+    assert_eq!(exit["exit_status"], 3, "{exit}");
+    assert!(
+        exit["stderr_tail"]
+            .as_str()
+            .unwrap_or("")
+            .contains("boom: not found"),
+        "{exit}"
+    );
+    assert!(crate::USES.contains(&"duplex"));
+}
+
+/// 一把 host key 的 OpenSSH 那一行前两段（算法 ＋ base64）。
+fn key_line(k: &russh::keys::PrivateKey) -> String {
+    let line = k.public_key().to_openssh().unwrap();
+    line.split_whitespace()
+        .take(2)
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn ecdsa_key() -> russh::keys::PrivateKey {
+    russh::keys::PrivateKey::random(
+        &mut rand::rng(),
+        russh::keys::Algorithm::Ecdsa {
+            curve: russh::keys::EcdsaCurve::NistP256,
+        },
+    )
+    .unwrap()
+}
+
+fn ed25519_key(seed: u8) -> russh::keys::PrivateKey {
+    russh::keys::PrivateKey::from(russh::keys::ssh_key::private::Ed25519Keypair::from_seed(
+        &[seed; 32],
+    ))
+}
+
+async fn dial_with_known(port: u16, known: Vec<String>) -> serde_json::Value {
+    register("known-pw", TestCred::Password("k".into()));
+    let req = request(serde_json::json!({
+        "host": "127.0.0.1", "port": port, "user": "u", "key_path": "known-pw",
+        "use": "capture", "command": "echo", "capture": {"max_bytes": 64},
+        "known_keys": known
+    }));
+    open(req, crate::uses::Control::none()).await.0
+}
+
+/// ★ 同 OpenSSH：记过的类型排在协商前头 ⇒ 服务端两种都给时协商出记过的那一种、按那一把严格比、过。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_known_key_type_is_negotiated_first_and_passes() {
+    let ec = ecdsa_key();
+    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![ed25519_key(9), ec.clone()])).await;
+    let ack = dial_with_known(port, vec![key_line(&ec)]).await;
+    assert_eq!(ack["ok"], true, "记过的那一种没被协商出来 / 被拒了：{ack}");
+}
+
+/// ★ 服务端只给一种这台没记过的类型（而别的类型记过）⇒ 拒，报「钥匙变了」带类型；同类型但不是那一把 ⇒ 也拒。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_unstored_key_type_or_another_key_is_refused() {
+    let (port, _l, _s) = door_keyed(Some("k"), None, Some(vec![ed25519_key(11)])).await;
+    let ack = dial_with_known(port, vec![key_line(&ecdsa_key())]).await;
+    assert_eq!(ack["ok"], false, "{ack}");
+    assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
+    assert_eq!(ack["key_type"], "ssh-ed25519", "{ack}");
+    let ack = dial_with_known(port, vec![key_line(&ed25519_key(12))]).await;
+    assert_eq!(ack["ok"], false, "{ack}");
+    assert_eq!(ack["reason"], crate::why::HOST_KEY, "{ack}");
+    // 正控：记的正是那一把 ⇒ 过。
+    let ack = dial_with_known(port, vec![key_line(&ed25519_key(11))]).await;
+    assert_eq!(ack["ok"], true, "{ack}");
 }

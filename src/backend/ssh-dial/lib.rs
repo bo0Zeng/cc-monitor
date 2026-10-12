@@ -70,7 +70,9 @@ pub fn malformed(detail: &str) -> String {
 pub const ACK_V: u32 = 2;
 
 /// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
-pub const USES: &[&str] = &["stream", "capture", "forward", "files", "shell", "hold"];
+pub const USES: &[&str] = &[
+    "stream", "capture", "forward", "files", "shell", "hold", "duplex",
+];
 
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
@@ -93,6 +95,9 @@ pub struct JumpHop {
     /// 这一台自己经哪台跳板到（再外一台；`None` = 本机直连它）。
     #[serde(default)]
     pub jump: Option<Box<JumpHop>>,
+    /// 这一台记过的 host key（同 [`DialRequest::known_keys`]）。
+    #[serde(default)]
+    pub known_keys: Vec<String>,
 }
 
 /// 开出 channel 之后怎么用。
@@ -110,6 +115,9 @@ pub enum Use {
     Files,
     /// 要一个 PTY（[`PtyOpts`]）开交互 shell，之后同 `stream` 原样对拷；改窗口大小走 [`uses::Control`]。
     Shell,
+    /// exec `command` 的长通道，下行分帧（`[类型 u8][长度 u32 大端][本体]`：0 = stdout · 2 = 收场那一帧 JSON
+    /// `{exit_status, exit_signal, stderr_tail}`）；上行原样进远端 stdin，上行 EOF ⇒ 远端 stdin EOF。stderr 照收、只留尾巴。
+    Duplex,
     /// 只握着这条连接（不开通道）：ack 之后链路不收工，同一身份的别的链路都复用它；对面走了（上行 EOF）
     /// 或连接没了（russh 报断开）⇒ 收工。手机那一形：「连上一台机器」就是开一条这个。
     Hold,
@@ -196,6 +204,10 @@ pub struct DialRequest {
     /// ack 之前逐行报阶段（测试连接那六格）。
     #[serde(default)]
     pub stages: bool,
+    /// 这一台记过的 host key（OpenSSH 那一行的前两段：`算法 base64`，可多种类型；手机从 Room 交来）。非空 ⇒ 同 OpenSSH：
+    /// 协商时这几种类型排前、按协商出的那一种严格比；那一种没记过 ⇒ 拒（同「钥匙变了」）。空 ⇒ 看 `host_key_fingerprint`。
+    #[serde(default)]
+    pub known_keys: Vec<String>,
     /// 短命探活（inactivity 拆链）而不是长连接（keepalive 保活）。
     #[serde(default)]
     pub probe: bool,
@@ -248,6 +260,9 @@ pub struct DialAck {
     pub jump_strict: bool,
     /// 没拨成时的原因码（闭集，[`why`]）：界面按码说那一句、给那颗修法。拨成了 / 说不清 ⇒ `None`。additive。
     pub reason: Option<&'static str>,
+    /// 目标那一台握手时给的 host key 是什么类型（「钥匙变了」那一句要说是哪一种）。没握到那一步 ⇒ 不出这一格。additive。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_type: Option<String>,
     /// 协议版本（[`ACK_V`]）。
     pub v: u32,
     /// 本代理认得的用法（[`USES`]）。
@@ -269,6 +284,7 @@ impl DialAck {
             strict: false,
             jump_strict: false,
             reason: None,
+            key_type: None,
             v: ACK_V,
             uses: USES,
         }
@@ -278,6 +294,14 @@ impl DialAck {
     pub fn because(self, why: Option<&'static str>) -> Self {
         DialAck {
             reason: why,
+            ..self
+        }
+    }
+
+    /// 带上这一趟握手时看到的 host key 类型（[`StageSink::key_type`]）。
+    pub fn seen(self, stages: &StageSink) -> Self {
+        DialAck {
+            key_type: stages.key_type(),
             ..self
         }
     }
@@ -374,6 +398,8 @@ pub struct StageSink {
     buf: Arc<Mutex<Vec<Stage>>>,
     /// 这一趟没拨成的原因码（[`why`] 里那几个；不论要不要阶段行都记）。
     why: Arc<Mutex<Option<&'static str>>>,
+    /// 这一趟最后一次握手时服务端给的 host key 类型。
+    key_type: Arc<Mutex<Option<String>>>,
 }
 
 impl StageSink {
@@ -382,12 +408,25 @@ impl StageSink {
             on,
             buf: Arc::default(),
             why: Arc::default(),
+            key_type: Arc::default(),
         }
     }
 
     /// 记下没拨成的原因码（后记的盖前记的：跳板那一层比它里面那次竞速更说明问题）。
     pub fn note_why(&self, w: &'static str) {
         *self.why.lock().unwrap_or_else(|e| e.into_inner()) = Some(w);
+    }
+
+    /// 记下握手时服务端给的 host key 类型。
+    pub fn note_key_type(&self, t: &str) {
+        *self.key_type.lock().unwrap_or_else(|e| e.into_inner()) = Some(t.to_string());
+    }
+
+    pub fn key_type(&self) -> Option<String> {
+        self.key_type
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
     }
 
     pub fn why(&self) -> Option<&'static str> {

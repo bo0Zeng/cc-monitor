@@ -171,12 +171,12 @@ class InstrumentedTestInventoryTest {
                 "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt" to 1,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreSignerInstrumentedTest.kt" to 2,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt" to 2,
-                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 6,
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 7,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt" to 9,
             )
 
-        const val PINNED_TOTAL_TESTS = 42
-        const val PINNED_TESTS_IN_CI = 33
+        const val PINNED_TOTAL_TESTS = 43
+        const val PINNED_TESTS_IN_CI = 34
         const val PINNED_TESTS_NOT_IN_CI = 9
 
         const val CI_SKIPPED_FILE = "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt"

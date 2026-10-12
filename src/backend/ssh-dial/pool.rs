@@ -644,7 +644,7 @@ pub fn identity(req: &DialRequest) -> String {
         .map(|e| serde_json::json!([e.host, e.port]))
         .collect();
     let jump = req.jump.as_ref().map(hop_identity);
-    serde_json::json!([
+    let mut id = serde_json::json!([
         req.host,
         req.port,
         req.user,
@@ -652,8 +652,12 @@ pub fn identity(req: &DialRequest) -> String {
         req.host_key_fingerprint,
         endpoints,
         jump
-    ])
-    .to_string()
+    ]);
+    // 记过的钥匙也是信任锚的一部分（换了 ⇒ 另一条连接）；没有时身份与从前同形。
+    if let (false, Some(a)) = (req.known_keys.is_empty(), id.as_array_mut()) {
+        a.push(serde_json::json!(req.known_keys));
+    }
+    id.to_string()
 }
 
 /// 一台跳板的身份：`[主机, 口, 用户, 钥匙, 指纹]`，再外一台在 ⇒ 它的身份接在第六格（多跳）。
@@ -661,6 +665,9 @@ fn hop_identity(j: &crate::JumpHop) -> serde_json::Value {
     let mut v = serde_json::json!([j.host, j.port, j.user, j.key_path, j.host_key_fingerprint]);
     if let (Some(outer), Some(a)) = (j.jump.as_deref(), v.as_array_mut()) {
         a.push(hop_identity(outer));
+    }
+    if let (false, Some(a)) = (j.known_keys.is_empty(), v.as_array_mut()) {
+        a.push(serde_json::json!(j.known_keys));
     }
     v
 }

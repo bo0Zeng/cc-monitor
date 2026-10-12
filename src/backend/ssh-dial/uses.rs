@@ -38,6 +38,7 @@ fn ok_ack(l: &Linked, req: &DialRequest) -> DialAck {
         strict,
         jump_strict,
         reason: None,
+        key_type: None,
         v: ACK_V,
         uses: USES,
     }
@@ -110,6 +111,7 @@ pub fn lane_of(u: Use) -> Lane {
     match u {
         Use::Stream => Lane::Stream,
         Use::Capture | Use::Files => Lane::Query,
+        Use::Duplex => Lane::Stream,
         Use::Shell => Lane::Stream,
         // 不开通道（`MaxSessions` 不数它），同隧道那一道。
         Use::Hold => Lane::Tunnel,
@@ -438,7 +440,7 @@ where
                 let _ = write_stages_then_ack(
                     out,
                     stages,
-                    &DialAck::failed(e, fp).because(stages.why()),
+                    &DialAck::failed(e, fp).because(stages.why()).seen(stages),
                 )
                 .await;
                 return;
@@ -616,6 +618,34 @@ async fn serve<R, W>(
                 return;
             }
             crate::sftp::serve_files(&session, &mut input, out).await;
+        }
+        Use::Duplex => {
+            let fp = lease.linked.fingerprint.clone();
+            let (channel, _permit) = match lease.session_channel(req, stages).await {
+                Ok(c) => c,
+                Err(e) => {
+                    let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;
+                    return;
+                }
+            };
+            let (mut rd, wr) = channel.split();
+            let wr = CloseOnDrop::new(wr);
+            if let Err(e) = exec_half(wr.get(), req.command.as_bytes().to_vec()).await {
+                let _ = write_stages_then_ack(
+                    out,
+                    stages,
+                    &DialAck::failed(Said::with_raw(copy_text("beUses.exec.failed", &[]), &e), fp),
+                )
+                .await;
+                return;
+            }
+            if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
+                .await
+                .is_err()
+            {
+                return;
+            }
+            duplex(&mut rd, wr.get(), &mut input, out).await;
         }
         Use::Hold => {
             if write_stages_then_ack(out, stages, &ok_ack(&lease.linked, req))
@@ -827,4 +857,107 @@ async fn forward<R, W>(
     drop(listener);
     tunnels.abort_all();
     let _ = out.flush().await;
+}
+
+/// `use: duplex` 下行一帧的类型。
+pub mod frame {
+    pub const STDOUT: u8 = 0;
+    pub const END: u8 = 2;
+}
+
+/// stderr 尾巴最多留多少字节（只给「为什么起不来」那一句用）。
+pub const STDERR_TAIL_BYTES: usize = 4096;
+
+async fn write_frame<W: AsyncWrite + Unpin>(
+    out: &mut W,
+    kind: u8,
+    body: &[u8],
+) -> std::io::Result<()> {
+    let len = u32::try_from(body.len()).unwrap_or(u32::MAX);
+    out.write_all(&[kind]).await?;
+    out.write_all(&len.to_be_bytes()).await?;
+    out.write_all(body).await?;
+    out.flush().await
+}
+
+/// `use: duplex` 的本体：上行原样进远端 stdin（上行 EOF ⇒ 远端 stdin EOF，接着收完下行）；
+/// 下行 stdout 一块一帧，stderr 只留尾巴；远端收场（Close / 通道没了）⇒ 一帧收场 `{exit_status, exit_signal, stderr_tail}`。
+async fn duplex<R, W>(
+    rd: &mut russh::ChannelReadHalf,
+    wr: &russh::ChannelWriteHalf<russh::client::Msg>,
+    input: &mut R,
+    out: &mut W,
+) where
+    R: AsyncRead + Unpin + Send,
+    W: AsyncWrite + Unpin + Send,
+{
+    let mut status: Option<u32> = None;
+    let mut signal: Option<String> = None;
+    let mut err: Vec<u8> = Vec::new();
+    let mut up = [0u8; 16 * 1024];
+    let mut up_open = true;
+    loop {
+        tokio::select! {
+            r = input.read(&mut up), if up_open => match r {
+                Ok(0) | Err(_) => {
+                    up_open = false;
+                    let _ = eof_half(wr).await;
+                }
+                Ok(n) => {
+                    if data_half(wr, up[..n].to_vec()).await.is_err() {
+                        up_open = false;
+                    }
+                }
+            },
+            msg = rd.wait() => match msg {
+                Some(russh::ChannelMsg::Data { data }) => {
+                    if write_frame(out, frame::STDOUT, &data).await.is_err() {
+                        return;
+                    }
+                }
+                Some(russh::ChannelMsg::ExtendedData { data, .. }) => {
+                    err.extend_from_slice(&data);
+                    if err.len() > STDERR_TAIL_BYTES {
+                        err.drain(..err.len() - STDERR_TAIL_BYTES);
+                    }
+                }
+                Some(russh::ChannelMsg::ExitStatus { exit_status }) => status = Some(exit_status),
+                Some(russh::ChannelMsg::ExitSignal { signal_name, .. }) => {
+                    signal = Some(format!("{signal_name:?}"));
+                }
+                Some(russh::ChannelMsg::Close) | None => break,
+                Some(_) => {}
+            },
+        }
+    }
+    let end = serde_json::json!({
+        "exit_status": status,
+        "exit_signal": signal,
+        "stderr_tail": String::from_utf8_lossy(&err),
+    });
+    if write_frame(out, frame::END, end.to_string().as_bytes())
+        .await
+        .is_err()
+    {
+        tracing::info!("dial: duplex 收场那一帧没写出去（对面已经走了）");
+    }
+}
+
+/// 送一块上行（显式 `Send` 的盒子，理由同 [`exec`]）。
+fn data_half(
+    w: &russh::ChannelWriteHalf<russh::client::Msg>,
+    bytes: Vec<u8>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), russh::Error>> + Send + '_>> {
+    Box::pin(async move {
+        w.data_bytes(bytes)
+            .await
+            .map_err(|_| russh::Error::SendError)
+    })
+}
+
+/// 上行 EOF（同上）。
+fn eof_half(
+    w: &russh::ChannelWriteHalf<russh::client::Msg>,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), russh::Error>> + Send + '_>> {
+    Box::pin(w.eof())
 }

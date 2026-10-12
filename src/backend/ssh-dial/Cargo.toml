@@ -35,4 +35,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "io-util", "ne
 sha2 = "0.11"
 # 判据里的外部签名器（Keystore 那一形）现生成一把 P-256、回 DER；版本同后端 lock 里那一棵（0.17.14），不新增包。
 ring = "0.17"
+# 判据现生成一把 ECDSA 的 host key（版本同 russh 那一棵用的 0.10，不新增包）。
+rand = { version = "0.10", features = ["thread_rng"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }

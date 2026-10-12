@@ -586,7 +586,7 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
                 written: std::sync::Arc::clone(&sent),
             };
             let checker = Checker {
-                expected: None,
+                trust: Default::default(),
                 observed: Default::default(),
                 reported: Default::default(),
                 stages: StageSink::new(false),
@@ -725,7 +725,7 @@ async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
             .await
             .unwrap();
         let checker = Checker {
-            expected: None,
+            trust: Default::default(),
             observed: Default::default(),
             reported: Default::default(),
             stages: StageSink::new(false),
@@ -844,7 +844,10 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
         let mut verdicts = Vec::new();
         for (ep, k, expected) in legs {
             let mut c = Checker {
-                expected,
+                trust: Trust {
+                    expected,
+                    ..Default::default()
+                },
                 observed: Arc::default(),
                 reported: Arc::clone(&book),
                 stages: StageSink::new(false),
@@ -951,7 +954,16 @@ async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail(
     };
     let stages = StageSink::new(false);
     let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
-    let Err((said, _)) = race(true, true, None, vec![ep.clone()], &stages, &reported).await else {
+    let Err((said, _)) = race(
+        true,
+        true,
+        Trust::default(),
+        vec![ep.clone()],
+        &stages,
+        &reported,
+    )
+    .await
+    else {
         panic!("关着的口居然拨通了");
     };
     let addr = format!("127.0.0.1:{port}");

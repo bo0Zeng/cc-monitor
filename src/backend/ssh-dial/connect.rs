@@ -121,10 +121,71 @@ impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Hearing<S> {
     }
 }
 
+/// 一台的信任锚：期望指纹（桌面：机器表里固化的那一格）· 记过的钥匙（手机：Room 里那几把，OpenSSH 的做法）。
+#[derive(Clone, Default)]
+pub struct Trust {
+    pub expected: Option<String>,
+    /// 这台记过的 host key（可多种类型）。非空 ⇒ 协商时这几种类型排前，握手时按协商出的类型严格比；
+    /// 那一种没记过（而别的记过）⇒ 拒，同「钥匙变了」。
+    pub known: Vec<PublicKey>,
+}
+
+impl Trust {
+    /// 期望指纹 ＋ 记过的钥匙那几行（`算法 base64`，认不出的行丢掉）。
+    pub fn of(expected: Option<String>, known: &[String]) -> Trust {
+        Trust {
+            expected,
+            known: known
+                .iter()
+                .filter_map(|l| PublicKey::from_openssh(l.trim()).ok())
+                .collect(),
+        }
+    }
+
+    /// 协商 host key 算法的偏好序：记过的那几种类型排前（按缺省序里的先后），其余照缺省序。没记过 ⇒ 缺省序。
+    fn preferred_keys(&self) -> std::borrow::Cow<'static, [russh::keys::Algorithm]> {
+        let default = russh::Preferred::DEFAULT.key;
+        if self.known.is_empty() {
+            return default;
+        }
+        let stored = |a: &russh::keys::Algorithm| {
+            self.known
+                .iter()
+                .any(|k| key_type_of(a) == k.algorithm().as_str())
+        };
+        let mut first: Vec<russh::keys::Algorithm> =
+            default.iter().filter(|a| stored(a)).cloned().collect();
+        first.extend(default.iter().filter(|a| !stored(a)).cloned());
+        std::borrow::Cow::Owned(first)
+    }
+
+    /// 按记过的钥匙判服务端给的这一把：`Ok(())` 过；`Err(())` 拒（同类型不是那一把 / 这一种没记过）。
+    fn judge_known(&self, offered: &PublicKey) -> Result<(), ()> {
+        let same_type: Vec<&PublicKey> = self
+            .known
+            .iter()
+            .filter(|k| k.algorithm() == offered.algorithm())
+            .collect();
+        if same_type.iter().any(|k| k.key_data() == offered.key_data()) {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+}
+
+/// 协商用的签名算法 ⇒ 钥匙类型（RSA 的 `rsa-sha2-*` 都是 `ssh-rsa` 那一种钥匙）。
+fn key_type_of(a: &russh::keys::Algorithm) -> String {
+    match a {
+        russh::keys::Algorithm::Rsa { .. } => "ssh-rsa".to_string(),
+        other => other.as_str().to_string(),
+    }
+}
+
 /// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
 /// **无论接受与否**都把实得指纹写回共享格 —— 界面要拿它做 TOFU 固化与展示。
 pub struct Checker {
-    expected: Option<String>,
+    trust: Trust,
     observed: Arc<Mutex<Option<String>>>,
     /// 这一趟共用的「地址 → 指纹」格：校验那一刻就记（接受 / 拒绝都记），之后任务被 abort 也不丢。
     reported: Arc<Mutex<BTreeMap<String, String>>>,
@@ -183,7 +244,25 @@ impl client::Handler for Checker {
             endpoint: self.endpoint.clone(),
             fingerprint: actual.clone(),
         });
-        match &self.expected {
+        // 协商出的这一把是什么类型（报错时带上：「钥匙变了」那一句要说是哪一种）。
+        self.stages
+            .note_key_type(server_public_key.algorithm().as_str());
+        if !self.trust.known.is_empty() {
+            return match self.trust.judge_known(server_public_key) {
+                Ok(()) => {
+                    tracing::info!("dial: host key 与记过的那一把相同：{actual}");
+                    self.accepted(server_public_key)
+                }
+                Err(()) => {
+                    tracing::error!(
+                        "dial: host key 对不上记过的（实得 {actual}，alg={}）—— 拒绝这条连接",
+                        server_public_key.algorithm()
+                    );
+                    Ok(false)
+                }
+            };
+        }
+        match &self.trust.expected {
             Some(expected) => {
                 if actual == expected.trim() {
                     tracing::info!("dial: host key 指纹校验通过：{actual}");
@@ -289,6 +368,14 @@ fn config(probe: bool, compress: bool) -> Arc<client::Config> {
     config_with(probe, compress, KEEPALIVE)
 }
 
+/// 同 [`config`]，host key 算法的偏好序按这一台的信任锚排（记过的类型排前，[`Trust::preferred_keys`]）。
+fn config_for(probe: bool, compress: bool, trust: &Trust) -> Arc<client::Config> {
+    let mut c = Arc::try_unwrap(config_with(probe, compress, KEEPALIVE))
+        .unwrap_or_else(|_| unreachable!("刚建出来的 Config 只有这一个引用"));
+    c.preferred.key = trust.preferred_keys();
+    Arc::new(c)
+}
+
 /// 同 [`config`]，保活间隔由调用方给（生产只走 [`config`]；判据把间隔按比例缩小，判死门槛 [`KEEPALIVE_MAX`] 照生产）。
 pub fn config_with(probe: bool, compress: bool, keepalive: Duration) -> Arc<client::Config> {
     Arc::new(client::Config {
@@ -362,7 +449,7 @@ async fn tcp_hop(
 async fn race(
     probe: bool,
     apply: bool,
-    expected: Option<String>,
+    trust: Trust,
     order: Vec<Endpoint>,
     stages: &StageSink,
     reported: &Arc<Mutex<BTreeMap<String, String>>>,
@@ -386,7 +473,7 @@ async fn race(
         for ep in order {
             let stages = stages.clone();
             let observed: Arc<Mutex<Option<String>>> = Arc::default();
-            let expected = expected.clone();
+            let trust = trust.clone();
             let seen = Arc::clone(&seen_for_race);
             let reported = Arc::clone(reported);
             set.spawn(async move {
@@ -395,8 +482,9 @@ async fn race(
                     endpoint: ep_label.clone(),
                 });
                 let heard = Arc::new(crate::pool::Heard::new());
+                let config = |compress| config_for(probe, compress, &trust);
                 let checker = Checker {
-                    expected,
+                    trust: trust.clone(),
                     observed: Arc::clone(&observed),
                     reported,
                     stages: stages.clone(),
@@ -407,7 +495,7 @@ async fn race(
                 };
                 let r = match tcp_hop(&ep).await {
                     Ok((tcp, compress)) => {
-                        let config = config(probe, apply && compress);
+                        let config = config(apply && compress);
                         client::connect_stream(
                             config,
                             Hearing::new(tcp, Arc::clone(&heard)),
@@ -847,7 +935,7 @@ async fn through_hops(
                 let (s, _o, _w, c, _h) = race(
                     req.probe,
                     false,
-                    hop.host_key_fingerprint.clone(),
+                    Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys),
                     vec![Endpoint {
                         host: hop.host.clone(),
                         port: hop.port,
@@ -865,8 +953,9 @@ async fn through_hops(
                     .await
                     .map_err(|e| jump_failed(stages, hop_dial_failed(&name), e, None))?;
                 let observed: Arc<Mutex<Option<String>>> = Arc::default();
+                let hop_trust = Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys);
                 let checker = Checker {
-                    expected: hop.host_key_fingerprint.clone(),
+                    trust: hop_trust.clone(),
                     observed: Arc::clone(&observed),
                     reported: Arc::clone(jump_reported),
                     stages: stages.clone(),
@@ -876,7 +965,7 @@ async fn through_hops(
                     // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
                     heard: Arc::new(crate::pool::Heard::new()),
                 };
-                client::connect_stream(config(req.probe, false), tunnel, checker)
+                client::connect_stream(config_for(req.probe, false, &hop_trust), tunnel, checker)
                     .await
                     .map_err(|e| {
                         let fp = observed.lock().ok().and_then(|g| g.clone());
@@ -953,7 +1042,7 @@ pub async fn establish(
         let (s, o, w, _, h) = race(
             req.probe,
             true,
-            req.host_key_fingerprint.clone(),
+            Trust::of(req.host_key_fingerprint.clone(), &req.known_keys),
             req.race_order(),
             stages,
             &reported,
@@ -969,8 +1058,9 @@ pub async fn establish(
         );
         // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
         let heard = Arc::new(crate::pool::Heard::new());
+        let target_trust = Trust::of(req.host_key_fingerprint.clone(), &req.known_keys);
         let checker = Checker {
-            expected: req.host_key_fingerprint.clone(),
+            trust: target_trust.clone(),
             observed: Arc::clone(&observed),
             reported: Arc::clone(&reported),
             stages: stages.clone(),
@@ -980,7 +1070,7 @@ pub async fn establish(
             heard: Arc::clone(&heard),
         };
         let session = client::connect_stream(
-            config(req.probe, compress_inner),
+            config_for(req.probe, compress_inner, &target_trust),
             Hearing::new(tunnel, Arc::clone(&heard)),
             checker,
         )

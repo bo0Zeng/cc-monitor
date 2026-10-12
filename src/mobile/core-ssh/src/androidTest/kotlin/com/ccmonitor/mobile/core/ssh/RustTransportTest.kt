@@ -72,6 +72,18 @@ class RustTransportTest {
         d.close()
     }
 
+    /** 长 exec 退出码非零、stderr 写了一行 ⇒ 手机这一侧拿到那个码和那一行（「后端缺 / 版本不对 / 起不来」靠它分）。 */
+    @Test
+    fun a_duplex_reports_the_exit_status_and_the_stderr_line() {
+        val t = connected()
+        val d = runBlocking { t.execDuplex("echo partial; echo 'ccm: not found' >&2; exit 127") }
+        val out = runBlocking { withTimeout(WALL_CEILING_MS) { d.stdout.toList() } }
+        assertEquals("partial\n", out.joinToString("") { it.toString(Charsets.UTF_8) })
+        assertEquals(127, d.exitStatus)
+        assertTrue(d.stderrTail, d.stderrTail.contains("ccm: not found"))
+        d.close()
+    }
+
     @Test
     fun a_shell_gets_its_pty_and_follows_a_resize() {
         val t = connected()
