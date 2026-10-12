@@ -662,11 +662,20 @@ mod tests {
     ),
     (
         "accounts/oauth/store.rs",
-        "Duration::from_millis(face.lock_stale_ms)",
-        "续期锁目录的过期门限（`LoginFace::lock_stale_ms`）：拿锁那一刻拿锁目录的修改时刻比一次，\
+        "Duration::from_millis(stale_ms)",
+        "凭据文件那几把 mkdir 锁的过期门限（续期锁 `LoginFace::lock_stale_ms` · 整份写锁 `write_lock_stale_ms` · \
+         MCP 登录那一条的续期锁 `EntryLogins::renew_lock_stale_ms`）：拿锁那一刻拿锁目录的修改时刻比一次，\
          早过它就当无主收回。只是一次比较的尺子，不等、不睡、不让任何线程醒来。不是定时器。",
         "收窄人群",
-        "续期锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
+        "这几把锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
+    ),
+    (
+        "accounts/oauth/writeback.rs",
+        "Duration::from_millis(face.write_wait_ms)",
+        "续成了、写回在等那一家放整份写锁时那一次有界等待的期限（`LoginFace::write_wait_ms`，交给登记过的 \
+         `rx.recv_timeout(within)`）：锁一放由文件事件当场叫醒，到期只再试一次写回、照实报。不循环、不复用。不是定时器。",
+        "收窄人群",
+        "写回不再等那一家放锁（或那一家不再有整份写锁）的那天。",
     ),
     (
         "common/time.rs",
@@ -724,6 +733,14 @@ mod tests {
              只有 stdout 的执行通道）时，读到 EOF 就是永远挂住；到点回 `no_input`、进程随即退出。一次性进程里只等这一次，不循环；\
              第一个字节（或 EOF）到了就立刻醒、之后不再计时。",
             "`STDIN_QUIET`（1 秒）；第一个字节或 EOF 先到就立刻醒。",
+        ),
+        (
+            "accounts/oauth/writeback.rs",
+            "rx.recv_timeout(within)",
+            "续期写回碰上那一家的整份写锁时那一次有界等待（`writeback::wait_and_write`）：新令牌先留在内存里照用，\
+             写锁目录被删 / 凭据文件被换的文件事件当场叫醒写回；一直没放开就要有个头，到期再试一次、照实报写回失败（那个号可能要重新登录）。\
+             一个号一条线程、等一次、不循环。",
+            "`LoginFace::write_wait_ms`（Claude 20 秒，长于它写锁的过期门限 15 秒）；锁先放开就立刻醒。",
         ),
         (
             "observe/one_wait.rs",
@@ -1486,9 +1503,11 @@ mod g6_reach {
         // 11 → **12**：多的那一条是 `control/cli_args.rs` 的 `STDIN_QUIET`（CLI 面读入参的静默窗，一次性进程里等一次；
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
         // 12 → **13**：多的那一条是 `common/time.rs` 的截图台架拨钟（只在特性 `shots` 下编，台架交的起点毫秒换成时刻、比一次系统钟）。
+        // 13 → **14**：多的那一条是 `accounts/oauth/writeback.rs` 的等写锁期限（续成了、写回等那一家放整份写锁，
+        //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
         assert_eq!(
-            registered, 13,
-            "登记表从 13 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 14,
+            "登记表从 14 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

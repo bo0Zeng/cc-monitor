@@ -111,9 +111,10 @@ pub fn watch_rotation(own: &crate::platform::fs::Own) {
     crate::accounts::quota::nodes::watch_logins_here();
 }
 
-/// 常驻后端里起「各号的配置文件一变就同步一趟用户级 MCP」那个监听器（写经 [`LocalFiles`]，与帧命令同一扇门）。
-pub fn watch_account_mcp() {
-    crate::accounts::manage::mcp_share_watch::start(&LocalFiles);
+/// 常驻后端里起「各号的配置文件 / 凭据文件一变就同步一趟用户级 MCP 与 MCP 登录」那个监听器
+/// （配置文件与共享集合写经 [`LocalFiles`]，与帧命令同一扇门；凭据文件经 `own` 铸的窄句柄写）。
+pub fn watch_account_mcp(own: &crate::platform::fs::Own) {
+    crate::accounts::manage::mcp_share_watch::start(&LocalFiles, own.clone());
 }
 
 /// 这台的账号库补号色（一次，写经 [`LocalFiles`]，与帧命令同一扇门）：只由占着常驻的那一个进程起来时调

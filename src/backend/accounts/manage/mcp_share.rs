@@ -26,14 +26,18 @@ const VERSION: u64 = 1;
 const BASE_KEY: &str = "base";
 /// 「停止同步」那一格的键（停着 ⇒ `false`；开着时这一格不写）。
 const SYNC_KEY: &str = "sync";
+/// MCP 登录那一半的底（[`super::mcp_logins`]：每个号上次同步之后每一条的指纹）那一格的键。
+const LOGINS_KEY: &str = "logins";
 
 /// 盘上那一份：共享集合 ＋ 每个号（按配置目录）上次同步时的样子。
 #[derive(Debug, Clone, PartialEq, Default)]
 pub(crate) struct Store {
     pub servers: Servers,
     pub base: BTreeMap<String, Servers>,
-    /// 用户停了同步：各号各管各的，已经同步过去的不删；开回来那一刻照常三方对照。
+    /// 用户停了同步：各号各管各的，已经同步过去的不删；开回来那一刻照常三方对照。登录那一半同一个开关。
     pub paused: bool,
+    /// MCP 登录那一半的底（只有指纹，没有令牌）。
+    pub logins: super::mcp_logins::LoginBase,
 }
 
 impl Store {
@@ -77,10 +81,31 @@ impl Store {
             Some(Value::Bool(on)) => !on,
             Some(_) => return Err(shape()),
         };
+        let mut logins = super::mcp_logins::LoginBase::new();
+        match o.remove(LOGINS_KEY) {
+            None => {}
+            Some(Value::Object(m)) => {
+                for (dir, v) in m {
+                    let Value::Object(keys) = v else {
+                        return Err(shape());
+                    };
+                    let mut one = BTreeMap::new();
+                    for (k, fp) in keys {
+                        let Value::String(fp) = fp else {
+                            return Err(shape());
+                        };
+                        one.insert(k, fp);
+                    }
+                    logins.insert(dir, one);
+                }
+            }
+            Some(_) => return Err(shape()),
+        }
         Ok(Store {
             servers,
             base,
             paused,
+            logins,
         })
     }
 
@@ -97,6 +122,9 @@ impl Store {
         root.insert(BASE_KEY.to_string(), Value::Object(base));
         if self.paused {
             root.insert(SYNC_KEY.to_string(), json!(false));
+        }
+        if !self.logins.is_empty() {
+            root.insert(LOGINS_KEY.to_string(), json!(self.logins));
         }
         let mut out = serde_json::to_string_pretty(&Value::Object(root)).unwrap_or_default();
         out.push('\n');
@@ -223,6 +251,7 @@ pub(crate) fn plan(store: &Store, seen: &[Seen]) -> Plan {
             servers,
             base,
             paused: store.paused,
+            logins: store.logins.clone(),
         },
         writes,
         adopted,

@@ -13,6 +13,8 @@
 //! | [`aliases`] | 账号表 ⇒ 每个号一条 `<名>cc` 别名，并进用户那份别名清单 | 纯 |
 //! | [`mcp_share`] | 各号共用的用户级 MCP：共享集合 ＋ 底 ＋ 各号此刻 ⇒ 计划（三方对照）| 纯 |
 //! | [`json_key`] | 一份 JSON 原文里只换顶层一个键的值，别的字节不动 | 纯 |
+//! | [`mcp_logins`] | 各号的 MCP 登录：底 ＋ 各号凭据文件里那一节 ⇒ 计划（新的压旧的 · 失效的不外传 · 退出即撤）| 纯 |
+//! | [`mcp_logins_exec`] | 读各号凭据文件里那一节 → 算 → 在那一家的锁里逐条比对、只换那一条、整份原子写 → 底写回共享集合 | 写 |
 //! | [`mcp_share_exec`] | 读各号与共享集合 → 算 → 备份 → CAS 写那一个键 → 写回共享集合 | 写 |
 //! | [`trust_share`] | 信任过的目录：一份配置里有哪些 · 把几个目录标成信任过（只换那一格）| 纯 |
 //! | [`trust_share_exec`] | 各号（＋ 家目录下那一份，只读）信任过的并集标进每个号 · 起会话前给要用的号预标 | 写 |
@@ -27,6 +29,8 @@ pub(crate) mod aliases;
 pub(crate) mod exec;
 pub(crate) mod json_key;
 pub(crate) mod layout;
+pub(crate) mod mcp_logins;
+pub(crate) mod mcp_logins_exec;
 pub(crate) mod mcp_share;
 pub(crate) mod mcp_share_exec;
 pub(crate) mod mcp_share_watch;
