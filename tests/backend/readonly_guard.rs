@@ -875,14 +875,6 @@ mod tests {
              临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；失败删自己的临时文件。\
              锁目录建成即持有、续完即删（`remove_dir` 只删自己刚建的那两个空目录）。入口只有上游选择换号要令牌那一处（`oauth::access_token`）",
         ),
-        (
-            "control/launch_account.rs",
-            "**起会话用的号**：`ccm` 最终那一跳给将要跑 agent 的进程留的便条 `~/.cc-monitor/launch-pending/<pid>.json`（号 ＋ 时刻，\
-             一个进程一张、各写各的）＋ 观测侧认便条记下的 `~/.cc-monitor/launch-accounts.json`（`sid → 号`）。文件名 / 格式 / 落点 \
-             都是本仓定的、只有后端读它 ⇒ 后端**自己的**状态，不是用户数据。便条：`O_EXCL` 临时文件 → 写满 → 原子挪过去；\
-             记录：在跨进程锁里读盘 → 换那一条 → 同一条写法；读不懂的不覆盖。只建 `~/.cc-monitor` 与便条目录那两层；\
-             失败删自己的临时文件；进程不在 / pid 被复用的便条删掉。入口两扇：`ccm` 最终那一跳（留便条）· 观测侧 pidfile 出现那一刻（认便条）",
-        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -949,14 +941,6 @@ mod tests {
              不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
         ),
         (
-            "control/ccm/mod.rs",
-            "`ccm` 最终那一跳（`exec_or_spawn`）：给将要跑 agent 的那个进程留起会话便条 —— 没有帧命令可走（pid 只在这一刻在手）",
-        ),
-        (
-            "observe/watcher.rs",
-            "观测侧 pidfile 出现 / 改写那一刻（`adopt_launch_note`）：认那个 pid 的起会话便条、记下 `sid → 号` —— 没有帧命令可走（sid 只在这一刻与 pid 同时在手）",
-        ),
-        (
             "main.rs",
             "流模式起来那一刻（一次性子命令全部 `exit` 之后、选好载体并抢到口之后）装 stderr 诊断文件 —— \
              那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装；\
@@ -987,17 +971,6 @@ mod tests {
         ("stderr_log.rs", "stderr_log::install_from_env", "main.rs"),
         ("stderr_log.rs", "stderr_log::stderr_writer", "main.rs"),
         ("stderr_log.rs", "stderr_log::oneshot_writer", "main.rs"),
-        // 起会话用的号：留便条只从 ccm 最终那一跳进，认便条记账只从观测侧进。
-        (
-            "control/launch_account.rs",
-            "launch_account::leave_note",
-            "control/ccm/mod.rs",
-        ),
-        (
-            "control/launch_account.rs",
-            "launch_account::adopt",
-            "observe/watcher.rs",
-        ),
         // 原子写的那一处（过渡转调）：只有第四层别的几份调它（门检查本来就跳过第四层成员）⇒ 门空着 = 第四层之外零引用。
         // 针取写那一半（`write` · `write_json`）：读三态（`read_bytes` · `read_json`）是读，搬上 `Own` 的那几份照旧用。
         ("common/own_state.rs", "own_state::write", ""),

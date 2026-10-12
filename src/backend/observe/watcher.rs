@@ -820,10 +820,12 @@ impl WatcherPoke {
     }
 }
 
+/// `own`：写自家状态的句柄（启动时造的那一份）—— 认起会话便条、记 `sid → 号` 经它写。
 pub fn spawn(
     agent_home: PathBuf,
     wants: crate::StreamWants,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
+    own: crate::platform::fs::Own,
 ) -> (mpsc::Receiver<Frame>, WatcherPoke) {
     let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
@@ -836,7 +838,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            watch_loop(agent_home, tx, wants, book, events_tx, events_rx);
+            watch_loop(agent_home, tx, wants, book, events_tx, events_rx, own);
             live_leave(me);
         })
         .expect("spawn jsonl-watcher thread");
@@ -947,6 +949,7 @@ fn watch_loop(
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
+    own: crate::platform::fs::Own,
 ) {
     // 记录树的根与 pidfile 目录问注册表里后端盯着的那一家（`RecordFace.tree` · `LocalFace`）；没有那一家 ⇒ 不盯。
     let (Some(projects), Some(local)) = (
@@ -972,7 +975,7 @@ fn watch_loop(
         .filter(|r| r.by_writer)
         .map(|r| r.root.clone())
         .collect();
-    state.launch_home = crate::platform::paths::data_home();
+    state.launch = Some(own);
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
     state.annotations = annotations_table();
@@ -1452,8 +1455,9 @@ struct ReaderState {
     /// 每份活会话记录的排队打字时刻表（`queued` 那条的 `at` 换成打字时刻；键同 `offsets`）。上界固定（`TypedTimes::CAP`）。
     /// 冷接那一趟不喂它（要逐行全解析）：打字在冷接之前、插进去在之后的那一句照用它自己的时刻。
     typed: HashMap<PathBuf, crate::agents::record::TypedTimes>,
-    /// 起会话便条与账号记录住的那个家（`None` ⇒ 不认便条）。默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入。
-    launch_home: Option<PathBuf>,
+    /// 认起会话便条、记账号的写句柄（便条与记录住它的数据目录那一根；`None` ⇒ 不认便条）。
+    /// 默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入启动时造的那一份。
+    launch: Option<crate::platform::fs::Own>,
     /// 这台的会话注解（在 monitor 里改的名住这里；叫会话什么的第一档）。默认空、不进 `new` 的签名；生产由 [`watch_loop`] 读、那份文件动了重读。
     annotations: crate::history::history_annotations::Table,
 }
@@ -1626,7 +1630,7 @@ impl ReaderState {
             roots: Vec::new(),
             pidfile_kind: "",
             book: std::sync::Arc::default(),
-            launch_home: None,
+            launch: None,
             branches: HashMap::new(),
             typed: HashMap::new(),
             annotations: Default::default(),
@@ -2935,14 +2939,14 @@ fn announce_writer(
 /// 「这条会话用哪个号起的」：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt`）。
 /// 触发时机与打标同一个：pidfile 出现 / 改写那一刻，`(pid, sid)` 只在这时同时在手。写不成只出声。
 fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
-    let Some(home) = state.launch_home.as_deref() else {
+    let Some(own) = state.launch.as_ref() else {
         return;
     };
     let started_at = |p: u32| {
         crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
     };
     let alive = |p: u32| crate::platform::proc::pid_alive(p).then(|| started_at(p));
-    if let Err(e) = crate::control::launch_account::adopt(home, pid, sid, started_at(pid), &alive) {
+    if let Err(e) = crate::control::launch_account::adopt(own, pid, sid, started_at(pid), &alive) {
         tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{}", e.logged());
     }
 }

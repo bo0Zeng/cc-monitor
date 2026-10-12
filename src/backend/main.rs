@@ -115,7 +115,7 @@ async fn main() {
         match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {
             // resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
             control::ccm::Entry::Ccm(ccm_args) => {
-                std::process::exit(control::ccm::run(&ccm_args, &process_argv, |dir| {
+                std::process::exit(control::ccm::run(&ccm_args, &process_argv, &own, |dir| {
                     let home = agent_home(dir, false);
                     observe::watcher::running_sessions(&home)
                 }))
@@ -409,7 +409,7 @@ async fn run_over_stdio(
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
     let book = observe::runs::RunBook::shared();
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
-    let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
+    let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone(), own.clone());
     let inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
@@ -739,6 +739,7 @@ async fn serve_listening(
             agent_home.clone(),
             defaults.clone(),
             std::sync::Arc::default(),
+            own.clone(),
         );
         (Some(rx), Some(poke))
     };
@@ -782,7 +783,7 @@ async fn serve_listening(
                 let book = observe::runs::RunBook::shared();
                 let wants = flags.unwrap_or_else(|| defaults.clone());
                 let (tz, view) = (wants.tz.clone(), wants.view.clone());
-                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone());
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone(), own.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
@@ -840,6 +841,7 @@ async fn serve_listening(
                     agent_home.clone(),
                     defaults.clone(),
                     std::sync::Arc::default(),
+                    own.clone(),
                 );
                 idle_rx = Some(rx);
                 idle_poke = Some(poke);

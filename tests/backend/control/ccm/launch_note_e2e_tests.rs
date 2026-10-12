@@ -90,7 +90,14 @@ fn launching_through_ccm_with_an_account_records_it_for_that_session() {
         "ccm 没给那个进程留便条"
     );
     // 观测侧看见 pid 的会话 SID（进程已经退了：起始时刻说不出 ⇒ 便条作数）。
-    assert!(adopt(&data, pid, SID, None, &|_| None).unwrap());
+    assert!(adopt(
+        &crate::platform::fs::Own::issue_data_at(&data),
+        pid,
+        SID,
+        None,
+        &|_| None
+    )
+    .unwrap());
     assert_eq!(last_of(Some(&data), SID).as_deref(), Some("x"));
     // 再跟随着起一次：上次的号 x 压过这台的默认号 y。
     let (_, dir) = launch_in_child(&root, "{\"kind\":\"follow\"}");
@@ -109,7 +116,14 @@ fn launching_through_ccm_with_an_account_records_it_for_that_session() {
         !data.join(NOTES_DIR).join(format!("{pid}.json")).exists(),
         "账号 0 也留了便条"
     );
-    assert!(!adopt(&data, pid, SID, None, &|_| None).unwrap());
+    assert!(!adopt(
+        &crate::platform::fs::Own::issue_data_at(&data),
+        pid,
+        SID,
+        None,
+        &|_| None
+    )
+    .unwrap());
     assert_eq!(last_of(Some(&data), SID), None);
     let (_, dir) = launch_in_child(&root, "{\"kind\":\"follow\"}");
     assert_eq!(
@@ -149,6 +163,11 @@ fn launch_note_child_entry_point() {
     .expect("号判得出来");
     let argv = crate::control::launch_render::local::plan_argv(&req, &account, &facts, false)
         .expect("渲得出那一行");
-    let code = crate::control::ccm::run(&argv[1..], &argv[..1], |_| Vec::new());
+    let code = crate::control::ccm::run(
+        &argv[1..],
+        &argv[..1],
+        &crate::platform::fs::Own::issue(),
+        |_| Vec::new(),
+    );
     panic!("ccm 没有 exec 掉自己（退出码 {code}）");
 }

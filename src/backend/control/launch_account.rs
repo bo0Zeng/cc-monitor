@@ -6,6 +6,7 @@
 //!   各写各的）；观测侧看见那个 pid 的会话时认便条，把 `sid → 号` 记进 `launch-accounts.json`（只有观测侧写，锁里原子写）。
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
+use crate::platform::fs::{Own, OwnPath};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -291,36 +292,51 @@ pub(crate) fn last_of(home: Option<&Path>, sid: &str) -> Option<String> {
 }
 
 /// `ccm` 最终那一跳：给将要跑 agent 的那个进程（`pid`）留便条。失败只出声（不挡起会话）。
+/// 落点：写句柄的数据目录那一根（`home`）底下的便条目录。
 pub(crate) fn leave_note(
-    home: &Path,
+    own: &Own,
     pid: u32,
     account: &str,
     now: u64,
 ) -> Result<(), crate::common::said::Said> {
-    let dir = home.join(NOTES_DIR);
-    for d in [home, dir.as_path()] {
-        crate::common::own_dir::ensure_private_dir(d).map_err(|e| failed(d, &e))?;
+    let (home, dir) = places(own)?;
+    for d in [&home, &dir] {
+        own.ensure_dir(d).map_err(|e| failed(d.as_path(), &e))?;
     }
-    crate::common::own_state::write_json(
-        &dir.join(format!("{pid}.json")),
+    let file = dir.join(&format!("{pid}.json"))?;
+    let body = crate::common::own_state::json_body(
+        file.as_path(),
         &Note {
             account: account.to_string(),
             at: now,
         },
-    )
+    )?;
+    // 一个进程一张、各写各的：拿便条目录那一把锁（原子写要它），不跨便条串。
+    let held = own.lock(&dir)?;
+    own.write(&file, &held, &body)
+}
+
+/// 数据目录本身（记录住这里）与它底下的便条目录。没有数据目录 ⇒ 拒。
+fn places(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
+    let home = own
+        .root()
+        .ok_or_else(|| crate::common::said::Said::from(copy_text("beOwnState.path.noHome", &[])))?;
+    let dir = home.join(NOTES_DIR)?;
+    Ok((home, dir))
 }
 
 /// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`；顺手清掉进程已不在的便条。
 /// `started` ＝ 这个进程的起始时刻（unix 秒；说不出 ⇒ `None`）。`alive(p)` ＝ 别的 pid：不在 ⇒ `None`，在 ⇒ 它的起始时刻（说不出 ⇒ `Some(None)`）。
 pub(crate) fn adopt(
-    home: &Path,
+    own: &Own,
     pid: u32,
     sid: &str,
     started: Option<u64>,
     alive: &dyn Fn(u32) -> Option<Option<u64>>,
 ) -> Result<bool, crate::common::said::Said> {
-    let dir = home.join(NOTES_DIR);
-    let Ok(rd) = std::fs::read_dir(&dir) else {
+    let (home_dir, notes) = places(own)?;
+    let home = home_dir.as_path();
+    let Ok(rd) = crate::platform::fs::Ro::read_dir(notes.as_path()) else {
         return Ok(false);
     };
     let mut note: Option<Note> = None;
@@ -333,7 +349,7 @@ pub(crate) fn adopt(
         else {
             continue;
         };
-        let read = std::fs::read_to_string(&path)
+        let read = crate::platform::fs::Ro::read_to_string(&path)
             .ok()
             .and_then(|s| serde_json::from_str::<Note>(&s).ok());
         if p == pid {
@@ -346,7 +362,13 @@ pub(crate) fn adopt(
             (None, _) | (_, None) => true,
         };
         if stale {
-            let _ = std::fs::remove_file(&path);
+            if let Some(f) = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .and_then(|n| notes.join(n).ok())
+            {
+                let _ = own.delete_file(&f);
+            }
         }
     }
     let Some(note) = note else {
@@ -355,7 +377,7 @@ pub(crate) fn adopt(
     if read_book(home)?.sessions.get(sid) == Some(&note.account) {
         return Ok(false);
     }
-    record(home, sid, &note.account)?;
+    record(own, &home_dir, sid, &note.account)?;
     Ok(true)
 }
 
@@ -365,12 +387,20 @@ fn fresh(n: &Note, started: Option<u64>) -> bool {
 }
 
 /// 在跨进程锁里：读盘 → 换掉那一条 → 原子写回。读不懂的那份不覆盖。
-fn record(home: &Path, sid: &str, account: &str) -> Result<(), crate::common::said::Said> {
-    crate::common::own_dir::ensure_private_dir(home).map_err(|e| failed(home, &e))?;
-    let _lock = crate::platform::lock::hold(home).map_err(crate::common::said::Said::from)?;
-    let mut book = read_book(home)?;
+fn record(
+    own: &Own,
+    home: &OwnPath,
+    sid: &str,
+    account: &str,
+) -> Result<(), crate::common::said::Said> {
+    own.ensure_dir(home)
+        .map_err(|e| failed(home.as_path(), &e))?;
+    let held = own.lock(home)?;
+    let mut book = read_book(home.as_path())?;
     book.sessions.insert(sid.to_string(), account.to_string());
-    crate::common::own_state::write_json(&home.join(FILE_NAME), &book)
+    let file = home.join(FILE_NAME)?;
+    let body = crate::common::own_state::json_body(file.as_path(), &book)?;
+    own.write(&file, &held, &body)
 }
 
 fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {

@@ -270,6 +270,11 @@ fn the_pinned_now_slot_does_not_change_anything_today() {
 
 // ───────── 记录 ─────────
 
+/// 写句柄：数据目录那一根就是这个临时家（便条目录与记录都落它底下）。
+fn own_at(h: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_data_at(h)
+}
+
 fn temp_home(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-launchacct-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -284,14 +289,14 @@ fn none_alive(_: u32) -> Option<Option<u64>> {
 #[test]
 fn a_note_is_adopted_into_the_record_and_kept_while_the_process_lives() {
     let h = temp_home("adopt");
-    leave_note(&h, 4242, "x", 1_000).unwrap();
-    assert!(adopt(&h, 4242, "s1", Some(990), &none_alive).unwrap());
+    leave_note(&own_at(&h), 4242, "x", 1_000).unwrap();
+    assert!(adopt(&own_at(&h), 4242, "s1", Some(990), &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1").as_deref(), Some("x"));
     // 同一个进程原地换了 sid（`/clear`）⇒ 新 sid 也记得到。
-    assert!(adopt(&h, 4242, "s2", Some(990), &none_alive).unwrap());
+    assert!(adopt(&own_at(&h), 4242, "s2", Some(990), &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s2").as_deref(), Some("x"));
     // 已经记着同一个号 ⇒ 不再写。
-    assert!(!adopt(&h, 4242, "s2", Some(990), &none_alive).unwrap());
+    assert!(!adopt(&own_at(&h), 4242, "s2", Some(990), &none_alive).unwrap());
     assert!(h.join(NOTES_DIR).join("4242.json").exists());
     let _ = std::fs::remove_dir_all(&h);
 }
@@ -299,7 +304,7 @@ fn a_note_is_adopted_into_the_record_and_kept_while_the_process_lives() {
 #[test]
 fn no_note_no_record() {
     let h = temp_home("nonote");
-    assert!(!adopt(&h, 7, "s1", None, &none_alive).unwrap());
+    assert!(!adopt(&own_at(&h), 7, "s1", None, &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1"), None);
     assert!(!h.join(FILE_NAME).exists());
     let _ = std::fs::remove_dir_all(&h);
@@ -308,8 +313,8 @@ fn no_note_no_record() {
 #[test]
 fn a_note_older_than_the_process_is_a_reused_pid_and_does_not_count() {
     let h = temp_home("reused");
-    leave_note(&h, 9, "x", 1_000).unwrap();
-    assert!(!adopt(&h, 9, "s1", Some(1_001), &none_alive).unwrap());
+    leave_note(&own_at(&h), 9, "x", 1_000).unwrap();
+    assert!(!adopt(&own_at(&h), 9, "s1", Some(1_001), &none_alive).unwrap());
     assert_eq!(last_of(Some(&h), "s1"), None);
     let _ = std::fs::remove_dir_all(&h);
 }
@@ -317,17 +322,17 @@ fn a_note_older_than_the_process_is_a_reused_pid_and_does_not_count() {
 #[test]
 fn stale_notes_of_other_processes_are_swept() {
     let h = temp_home("sweep");
-    leave_note(&h, 11, "x", 1_000).unwrap(); // 进程不在了
-    leave_note(&h, 12, "x", 1_000).unwrap(); // 在，但比便条晚起（pid 被复用）
-    leave_note(&h, 13, "x", 1_000).unwrap(); // 在、对得上
-    leave_note(&h, 14, "x", 1_000).unwrap(); // 在、起始时刻说不出
+    leave_note(&own_at(&h), 11, "x", 1_000).unwrap(); // 进程不在了
+    leave_note(&own_at(&h), 12, "x", 1_000).unwrap(); // 在，但比便条晚起（pid 被复用）
+    leave_note(&own_at(&h), 13, "x", 1_000).unwrap(); // 在、对得上
+    leave_note(&own_at(&h), 14, "x", 1_000).unwrap(); // 在、起始时刻说不出
     let alive = |p: u32| match p {
         12 => Some(Some(1_005)),
         13 => Some(Some(999)),
         14 => Some(None),
         _ => None,
     };
-    adopt(&h, 99, "s", None, &alive).unwrap();
+    adopt(&own_at(&h), 99, "s", None, &alive).unwrap();
     let left: Vec<u32> = [11, 12, 13, 14]
         .into_iter()
         .filter(|p| h.join(NOTES_DIR).join(format!("{p}.json")).exists())
@@ -340,8 +345,8 @@ fn stale_notes_of_other_processes_are_swept() {
 fn an_unreadable_record_is_never_overwritten() {
     let h = temp_home("unreadable");
     std::fs::write(h.join(FILE_NAME), "{坏").unwrap();
-    leave_note(&h, 5, "x", 1_000).unwrap();
-    assert!(adopt(&h, 5, "s1", None, &none_alive).is_err());
+    leave_note(&own_at(&h), 5, "x", 1_000).unwrap();
+    assert!(adopt(&own_at(&h), 5, "s1", None, &none_alive).is_err());
     assert_eq!(std::fs::read_to_string(h.join(FILE_NAME)).unwrap(), "{坏");
     let _ = std::fs::remove_dir_all(&h);
 }
@@ -355,8 +360,11 @@ fn concurrent_records_all_land() {
         for i in 0..N {
             let h = h.clone();
             s.spawn(move || {
-                leave_note(&h, 50_000 + i, "x", 1_000).unwrap();
-                adopt(&h, 50_000 + i, &format!("s{i}"), None, &|_| Some(None)).unwrap();
+                leave_note(&own_at(&h), 50_000 + i, "x", 1_000).unwrap();
+                adopt(&own_at(&h), 50_000 + i, &format!("s{i}"), None, &|_| {
+                    Some(None)
+                })
+                .unwrap();
             });
         }
     });

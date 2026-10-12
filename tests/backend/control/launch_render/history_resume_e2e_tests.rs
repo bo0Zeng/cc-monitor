@@ -153,6 +153,11 @@ fn history_resume_child_entry_point() {
     )
     .expect("渲得出那一行");
     eprintln!("ccm 那一行：{argv:?}");
-    let code = crate::control::ccm::run(&argv[1..], &argv[..1], |_| Vec::new());
+    let code = crate::control::ccm::run(
+        &argv[1..],
+        &argv[..1],
+        &crate::platform::fs::Own::issue(),
+        |_| Vec::new(),
+    );
     panic!("ccm 没有 exec 掉自己（退出码 {code}）");
 }
