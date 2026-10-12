@@ -268,7 +268,7 @@ async fn budget_and_cancel_token_basics() {
     let waiter = tokio::spawn(async move { t.cancelled().await });
     assert!(!b.cancel.is_cancelled());
     b.cancel.cancel();
-    tokio::time::timeout(Duration::from_secs(5), waiter)
+    tokio::time::timeout(guard_core::wall::CEILING, waiter)
         .await
         .unwrap()
         .unwrap();

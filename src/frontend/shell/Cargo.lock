@@ -938,6 +938,7 @@ dependencies = [
  "cmd-wire",
  "copy-core",
  "futures",
+ "guard-core",
  "serde",
  "serde_json",
  "test-home",

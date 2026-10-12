@@ -9,7 +9,8 @@ use std::time::{Duration, Instant};
 use tokio::io::{duplex, DuplexStream};
 
 const CAP: usize = 64 * 1024;
-const WAIT: Duration = Duration::from_secs(10);
+/// 等一件事发生的兜底（不判快慢）。
+const WAIT: Duration = guard_core::wall::CEILING;
 
 fn budget(d: Duration) -> Budget {
     Budget {

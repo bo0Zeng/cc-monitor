@@ -6,7 +6,8 @@ use futures::FutureExt as _;
 use tokio::io::{duplex, DuplexStream};
 
 const CAP: usize = 64 * 1024;
-const WAIT: Duration = Duration::from_secs(10);
+/// 等一件事发生的兜底（不判快慢）。
+const WAIT: Duration = guard_core::wall::CEILING;
 
 /// 合成的句柄：`echo` 立刻把体原样交回（`view` 不空就换成它的 JSON）；`hang` 永远不答、只记下撤单手柄；
 /// 订阅交出 `items` 那几格（不以 `Closed` 结尾，看路由器补不补）。
@@ -137,7 +138,7 @@ async fn a_cancel_from_the_client_reaches_the_backend() {
     let (mut c, _t) = start(fake.clone());
     send(&mut c, call(3, "hang", WAIT, None), b"").await;
     // 句柄已经拿到那一条，才撤。
-    for _ in 0..200 {
+    for () in guard_core::wall::rounds() {
         if !lock(&fake.hung).is_empty() {
             break;
         }
