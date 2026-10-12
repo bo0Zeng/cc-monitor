@@ -414,7 +414,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "session-new-dir",
-        "后端出成品 `{exists, tmuxName}`（只读）；前端 `new-session-reads.ts::askDir` 问、`decodeDir` 按恰好的键集合收，monitor 这一侧零发送点",
+        "typed：后端出成品 `DirChecked`（`faces/session_new_face.rs::SessionNewDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
     ),
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (

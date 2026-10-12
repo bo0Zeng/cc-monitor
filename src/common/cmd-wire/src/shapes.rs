@@ -5,6 +5,7 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
+    ("session-new-dir", "2c86c180"),
     ("terminal-name-mint", "f0db66f2"),
 ];
 

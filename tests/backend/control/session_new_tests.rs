@@ -428,7 +428,9 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
                 writers: &|_| vec![],
                 pretrust: &|_, _| unreachable!("核目录不起会话"),
             };
-            dir_answer(&args, &deps, Some(std::path::Path::new("/h")))
+            let req: SessionNewDirReq = serde_json::from_value(args).unwrap();
+            dir_answer(&req, &deps, Some(std::path::Path::new("/h")))
+                .map(|d| serde_json::to_value(d).unwrap())
         };
     assert_eq!(
         run(&some, json!({ "cwd": "~/srv" })).unwrap(),
@@ -442,12 +444,11 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         run(&some, json!({ "cwd": "/h/srv", "forkOf": SRC })).unwrap()["tmuxName"],
         "fork:orders-cc"
     );
-    assert_eq!(
-        run(&some, json!({ "cwd": "/x", "extra": 1 }))
-            .unwrap_err()
-            .0,
-        "bad_args"
-    );
+    assert!(matches!(
+        run(&some, json!({ "cwd": "/x", "forkOf": "not a sid" })),
+        Err(SessionNewDirErr::BadArgs(_))
+    ));
+    assert!(serde_json::from_value::<SessionNewDirReq>(json!({ "cwd": "/x", "extra": 1 })).is_err());
 }
 
 /// 起之前预标信任：三种起法（tmux · 本机开窗 · 远端开窗）都在起 / 交回那一行之前把工作目录标进要用的那个号；

@@ -3664,12 +3664,28 @@ forkOf?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-dir`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `cwd` | → | 工作目录（开头的 `~` 按这台的家目录读） |
-| `exists` | ← | 这个目录在不在 |
-| `forkOf` | → | 可缺 |
-| `tmuxName` | ← | 这台此刻会给它铸的终端名（没 tmux ⇒ `null`） |
+入参 `SessionNewDirReq` · 回包 `DirChecked`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DirChecked = { 
+/**
+ * 这个目录在不在。
+ */
+exists: boolean, 
+/**
+ * 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
+ */
+tmuxName: string | null, };
+type SessionNewDirReq = { 
+/**
+ * 工作目录（开头的 `~` 按这台的家目录读）。
+ */
+cwd: string, 
+/**
+ * 分叉出来的那一条：源会话 sid（铸名按它此刻所在的终端名派生 `<…>-fork-cc`）。
+ */
+forkOf?: string, };
+```
 
 码：`bad_args`
 

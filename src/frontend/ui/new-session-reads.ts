@@ -3,13 +3,14 @@
  * `session-new-dir`（目录失焦：在不在 · 那台会铸的终端名）· `session-new`（点［新建］：起）。形状见协议文档那一节，成品严格收。
  */
 import { chan, ChanError } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { saidOfTransport } from "./control-said";
 import { detailOf } from "./kit/detail";
 import { exactKeys, isObj } from "./ipc/decode";
 import type { ForkLaunch } from "./session-writes";
 import { decodeForkLaunch } from "./session-writes";
+import type { DirChecked } from "./generated/DirChecked";
 import type { SessionNew } from "./generated/SessionNew";
 import type { SessionNewField } from "./generated/SessionNewField";
 import type { AccountAsk } from "./generated/AccountAsk";
@@ -54,16 +55,6 @@ export function decodeFacts(v: unknown): NewFacts {
   return { recent, tmux: o.tmux as boolean, agents: o.agents as string[], fork };
 }
 
-export interface DirFacts {
-  exists: boolean;
-  tmuxName: string | null;
-}
-
-export function decodeDir(v: unknown): DirFacts {
-  if (!isObj(v) || !exactKeys(v, ["exists", "tmuxName"]) || typeof v.exists !== "boolean" || !strOrNull(v.tmuxName)) bad("session-new-dir");
-  return v as unknown as DirFacts;
-}
-
 const OUTCOMES = ["started", "open"];
 
 export function decodeNew(v: unknown): SessionNew {
@@ -91,10 +82,9 @@ export async function askFacts(origin: Origin, fork: { sid: string; uuid: string
   return decodeFacts(readJson(await chan.call(origin, "session-new-facts", body, budget)));
 }
 
-export async function askDir(origin: Origin, cwd: string, forkOf: string | null): Promise<DirFacts> {
-  const body = jsonBody(forkOf ? { cwd, forkOf } : { cwd });
-  const budget = budgetWithin(READ_BUDGET_MS);
-  return decodeDir(readJson(await chan.call(origin, "session-new-dir", body, budget)));
+/** 目录失焦：typed 帧命令（回包类型从 Rust 生成，形状由握手指纹核过）。 */
+export async function askDir(origin: Origin, cwd: string, forkOf: string | null): Promise<DirChecked> {
+  return callTyped(origin, "session-new-dir", forkOf ? { cwd, forkOf } : { cwd }, budgetWithin(READ_BUDGET_MS));
 }
 
 /** 点［新建］交给那台的那一份。 */

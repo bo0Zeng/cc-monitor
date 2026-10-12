@@ -646,55 +646,53 @@ fn own_entry(deps: &Deps) -> Result<String, String> {
         .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
 }
 
+/// `session-new-dir` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionNewDirReq {
+    /// 工作目录（开头的 `~` 按这台的家目录读）。
+    pub(crate) cwd: String,
+    /// 分叉出来的那一条：源会话 sid（铸名按它此刻所在的终端名派生 `<…>-fork-cc`）。
+    #[serde(default, rename = "forkOf")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) fork_of: Option<String>,
+}
+
 /// `session-new-dir` 的应答。
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DirChecked {
+    /// 这个目录在不在。
     pub(crate) exists: bool,
     /// 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
     pub(crate) tmux_name: Option<String>,
 }
 
-/// `session-new-dir` 的本体：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`（目录在不在 · 这台此刻会给它铸的终端名；没 tmux ⇒ `null`）。
+crate::stream::inbound::typed::codes! {
+    /// `session-new-dir` 自己没有别的码（`forkOf` 不是会话 id ⇒ `bad_args`）。
+    pub(crate) enum SessionNewDirErr {}
+}
+
+/// `session-new-dir` 的本体：目录在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
 pub(crate) fn dir_answer(
-    args: &Value,
+    req: &SessionNewDirReq,
     deps: &Deps,
     home: Option<&std::path::Path>,
-) -> Result<Value, (&'static str, String)> {
-    let o = args.as_object().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("args must be an object"),
-        )
-    })?;
-    for k in o.keys() {
-        if k != "cwd" && k != "forkOf" {
-            return Err((
-                "bad_args",
-                crate::common::contract::malformed(&format!("unknown field `{k}`")),
-            ));
-        }
-    }
-    let raw = o.get("cwd").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing string `cwd`"),
-        )
-    })?;
-    let fork_of = match o.get("forkOf") {
+) -> Result<DirChecked, SessionNewDirErr> {
+    let fork_of = match req.fork_of.as_deref() {
         None => None,
-        Some(v) => Some(
-            v.as_str()
-                .filter(|s| shell_quote_core::session_id_ok(s))
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed("`forkOf` must be a session id"),
-                    )
-                })?,
-        ),
+        Some(s) if shell_quote_core::session_id_ok(s) => Some(s),
+        Some(_) => {
+            return Err(SessionNewDirErr::BadArgs(
+                crate::common::contract::malformed("`forkOf` must be a session id"),
+            ))
+        }
     };
-    let cwd = expand_home(raw.trim(), home);
+    let cwd = expand_home(req.cwd.trim(), home);
     let exists = !cwd.is_empty() && (deps.local_facts.is_dir)(&cwd);
     let tmux_name = match (deps.list)() {
         Ok(Some(rows)) => {
@@ -710,7 +708,7 @@ pub(crate) fn dir_answer(
         }
         Ok(None) | Err(_) => None,
     };
-    crate::stream::inbound::spec::wire(&DirChecked { exists, tmux_name })
+    Ok(DirChecked { exists, tmux_name })
 }
 
 #[cfg(test)]

@@ -282,18 +282,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 工作目录那一格失焦时问：在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
-    CommandSpec {
-        name: "session-new-dir",
-        summary: "起新会话前核一个目录：在不在 · 会用哪个终端名",
-        codes: &["bad_args"],
-        fields: &[arg("cwd", "工作目录（开头的 `~` 按这台的家目录读）"), out("exists", "这个目录在不在"), arg("forkOf", "可缺"), out("tmuxName", "这台此刻会给它铸的终端名（没 tmux ⇒ `null`）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::session_new_face::dir(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::session_new_face::SessionNewDir>(
+        "起新会话前核一个目录：在不在 · 会用哪个终端名",
+    ),
     // 动一个会话之前会打断什么（`observe/interrupts_query.rs`）：按族答，界面只画。只读。
     CommandSpec {
         name: "session-interrupts",

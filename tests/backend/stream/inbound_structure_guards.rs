@@ -1266,7 +1266,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &["configDir", "model", "name"],
         &[],
     ),
-    ("session-new-dir", sampled::<sn::DirChecked>, &[], &[]),
     (
         "session-new-facts",
         sampled::<crate::faces::session_new_face::NewFacts>,

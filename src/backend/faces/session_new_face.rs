@@ -51,12 +51,26 @@ pub(crate) fn answer(
     })
 }
 
-/// `session-new-dir`：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`。
-pub(crate) fn dir(args: &Value) -> Answer {
-    let user_home = crate::platform::paths::home_dir();
-    super::session_batch_face::with_deps_as(None, "", None, |d| {
-        session_new::dir_answer(args, d, user_home.as_deref())
-    })
+/// `session-new-dir`：起新会话前核一个目录（在不在 · 这台此刻会给它铸的终端名）。阻塞档：起一次 `tmux` 列会话、铸名。
+pub(crate) struct SessionNewDir;
+
+impl crate::stream::inbound::typed::Command for SessionNewDir {
+    const NAME: &'static str = "session-new-dir";
+    type Req = session_new::SessionNewDirReq;
+    type Reply = session_new::DirChecked;
+    type Err = session_new::SessionNewDirErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for SessionNewDir {
+    fn run(
+        req: session_new::SessionNewDirReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<session_new::DirChecked, session_new::SessionNewDirErr> {
+        let user_home = crate::platform::paths::home_dir();
+        super::session_batch_face::with_deps_as(None, "", None, |d| {
+            session_new::dir_answer(&req, d, user_home.as_deref())
+        })
+    }
 }
 
 /// 默认启动器在起会话那个 shell 的 `PATH` 上找得到 —— 与足迹里「装没装」、`ccm` 起它那一下问同一个函数（`platform::shell::find_session_command`）。
