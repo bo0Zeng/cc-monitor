@@ -176,7 +176,6 @@ pub(crate) fn answer_drop(args: &Value, own: &Own) -> FileFaceAnswer {
 /// [`answer_drop`] 的本体，写句柄是参数。
 pub(crate) fn answer_drop_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
-    let path = file.as_path();
     let account = account_of(args)?;
     let dropped = rewrite_at(own, &file, &|cur| {
         let has = cur
@@ -196,7 +195,6 @@ pub(crate) fn answer_restore(args: &Value, own: &Own) -> FileFaceAnswer {
 /// [`answer_restore`] 的本体，写句柄是参数。
 pub(crate) fn answer_restore_at(own: &Own, args: &Value) -> FileFaceAnswer {
     let file = own_file(own)?;
-    let path = file.as_path();
     let account = account_of(args)?;
     let from = args.get("from").and_then(Value::as_str).ok_or_else(|| {
         (

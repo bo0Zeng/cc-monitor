@@ -187,10 +187,8 @@ mod tests {
         (
             "common",
             "两边都要、又不含平台原语的纯工具。\
-`own_dir` 从 crate 根挪进这里（原生 × 文件管理两块共用、零互相依赖），它的理由原样： \
-后端建**自家目录**（`~/.cc-monitor` 与它底下后端自己的几层）的那一个函数：建的那一下就是 0700、\
-             已在的不动。它归 backend-core 是因为第四层那几份（退出行为 · 资产目录 · 中转钥匙 · skill 装记录）与暂存区都要建那一层；\
-             写的只有目录本身（后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+`own_dir` 从 crate 根挪进这里（原生 × 文件管理两块共用、零互相依赖）：今天只剩后端自家目录的几个名字与那个权限位（常量）；\
+             建目录经 `platform::fs::Own::ensure_dir`（本机）。**零写盘**",
         ),
         ("control", "控制面 —— 会改变世界，或产出改变世界的计划"),
         (
@@ -239,7 +237,7 @@ mod tests {
 从 crate 根归进来五件（纯搬家；上面「零写盘」说的是 MIG-3a 那几份，`asset_catalog` / `skill_ledger` 写的是后端**自己的**文件），各自理由原样： \
              `asset_catalog` —— 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`。它归 backend-core 是因为\
              「这台机器上有哪些 skill / 项目级 MCP」是**那台机器上**的事实；写的只有后端**自己的**目录文件 \
-             `~/.cc-monitor/assets-catalog.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写 · \
+             `~/.cc-monitor/assets-catalog.json`（经 `platform::fs::Own` 写）—— 一个用户文件都不写 · \
              `asset_sync` —— 资产目录的自动同步：帧面 `assets-sync` —— 本机常驻后端沿池里那条 SSH \
              在远端跑两条一次性子命令（拉 `--assets-catalog` · 推 `--assets-catalog-merge`）。它归 backend-core 是因为\
              SSH 连接只住本机常驻后端（`dial/`）。**零写盘**：本机目录的写口（`asset_catalog::answer_merge`）由 \
@@ -254,7 +252,7 @@ mod tests {
              删经 monitor → 那台后端 `files-delete`（CAS），本模块仍零写盘 · \
              `skill_ledger` —— skill 装记录：帧面 `skill-install-record`（装完记下写了哪几个文件 · 卸掉的摘掉）。\
              它归 backend-core 是因为「这台上哪几个文件是装写进去的」是**那台机器上**的事实；写的只有后端**自己的**记录文件 \
-             `~/.cc-monitor/skill-installs.json`（第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+             `~/.cc-monitor/skill-installs.json`（经 `platform::fs::Own` 写）—— 一个用户文件都不写",
         ),
         (
             "faces",
@@ -277,7 +275,7 @@ mod tests {
              **零写盘**：注解只读（`history_annotations::load`），远端那份只记在本进程内存 · \
              `history_annotations` —— 历史注解（星标 / 改名 / 隐藏 / 上次账号）：帧面 `history-annotate` / `history-forget` / \
              `history-last-accounts`。它归 backend-core 是因为「读写者换成本机常驻后端」；写的只有那一份 \
-             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，第四层登记，见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+             注解文件（monitor 从前那一份，路径由它交；后端**自己的**状态，经 `platform::fs::Own` 写）—— 一个用户文件都不写",
         ),
         (
             "stream",
@@ -532,6 +530,9 @@ mod tests {
         "symlink_metadata",
         "noreplace_unsupported",
         "NO_FOLLOW",
+        // 暂存区那两层按后端自家目录建（0700、已在的不动）：`platform/fs` 带权限位建一层目录的那一个函数（`Own::ensure_dir` 的同一个本体）。
+        // 第三刀把文件管理面搬上它自己的句柄时连同这一格删。
+        "create_dir_private",
     ];
 
     /// 第三层模块**仍然不许**出现的东西。
@@ -825,98 +826,6 @@ mod tests {
         MUTATING_FACE_MODULES.iter().any(|(p, _)| *p == rel)
     }
 
-    // ═══════════════ 第四层：后端**自有**状态文件═══════════════
-
-    /// ★ **第四层登记的模块** —— 写**后端自己的**状态文件，不碰用户数据。
-    ///
-    /// # 它为什么不是「又开了一个口子」（按 [`g6_doctrine`] 那张四格表，这一刀落在「收窄人群」）
-    ///
-    /// 本护栏头注逐字承认人群比性质**大**：「backend 写一个与用户无关的自己的文件也会红」。
-    /// 要的正是那一形 —— 「退出行为」那个值住后端所在那台机器的
-    /// `~/.cc-monitor/backend.json`、**只有后端写**。那份文件是**我们的**（与 `bin/ccm`、`listen-token` 同一个家），
-    /// 不是用户数据 ⇒ 性质「不许改动用户既有数据」**一个字没松**，松的只是人群里那一块误差。
-    ///
-    /// # 仍然窄（每条一个判据）
-    ///
-    /// | # | 钉什么 | 判据 |
-    /// |---|---|---|
-    /// | ① | **按文件**登记（不按目录，理由同第三层那张表的末尾） | 相等断言（扫到的第四层模块数 == 本表条数） |
-    /// | ② | 动词**闭集**：建那一层目录 · 原子挪 · 失败时删自己的临时文件 | [`OWN_STATE_VERBS`] ＋ `every_fs_call_in_backend_production_is_read_only` |
-    /// | ③ | 表外写法照旧禁（覆盖写 / 截断 / 追加 / 复制 / 链接 / 改权限 / 删目录） | [`OWN_STATE_STILL_FORBIDDEN`] ＋ `.open(` 与 `O_EXCL` 配对 |
-    /// | ④ | **只从一扇门进来**：每一份的写口（[`OWN_STATE_WRITERS`]）只被**它自己那扇门**引用（门逐写口登记，今天几扇：命令注册里持有那条命令的那一族（`stream/inbound/registry/*.rs`） ·`relay/listen.rs` 中转起监听 ·`main.rs` stderr 诊断文件 …） | `the_own_state_writer_is_reached_through_exactly_one_door` |
-    /// | ⑤ | **只写那一份文件**：文件名在全部生产代码里只有这一个家 | `control::exit_policy::tests::the_file_name_has_exactly_one_home_in_all_production_code` |
-    ///
-    /// ⚠ 漏判面：它判不了「挪进去的那一下落在的就是那个名字」（数据流）——
-    /// 那一半靠那个模块自己的行为判据（写完读回、目录里只剩那一份）。
-    pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[
-        (
-            "common/own_dir.rs",
-            "**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
-             建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
-             不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
-        ),
-    ];
-
-    /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
-    const OWN_STATE_VERBS: &[&str] = &["create_dir", "remove_file", "rename"];
-
-    /// 第四层模块**仍然不许**出现的东西。`create(true)` 不含于 `create_new(true)`，不自伤；
-    /// `remove_dir` 同时挡住 `remove_dir_all`。
-    const OWN_STATE_STILL_FORBIDDEN: &[&str] = &[
-        "fs::write",
-        "fs::copy",
-        "fs::hard_link",
-        "fs::soft_link",
-        "fs::symlink(",
-        "fs::remove_dir",
-        "set_permissions",
-        "File::create",
-        "truncate(true)",
-        "append(true)",
-        "set_len",
-        "create(true)",
-    ];
-
-    /// 第四层的门：后端生产树里被允许引用写口的文件。**每个写口恰好一扇**（[`OWN_STATE_WRITERS`] 第三列），
-    /// 本表是门的全集（用到的门 == 本表，两向）。
-    /// 先前只有 `inbound.rs` 一扇、所有写口共用（同波另加了 `relay/listen.rs`，两路合并时并成这一张）；stderr 诊断文件的写口在进程起来那一刻装、此后跟着 `tracing` 滚（没有命令可走）⇒
-    /// 门改成「每个写口自己的那一扇」，`inbound.rs` 那几个写口照旧只许 `inbound.rs` 碰（一格没松）。
-    /// 入方向拆成目录之后（10-03），命令注册那几个写口的门收紧到**持有那条命令的那一族文件**（例：`apikey-key-set` 的写口只许账号那一族碰），比「整个 `inbound.rs` 都算门」更紧。
-    const OWN_STATE_DOORS: &[(&str, &str)] = &[
-        (
-            "control/files_commit.rs",
-            "暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
-             不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
-        ),
-    ];
-
-    /// 第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
-    /// （两向相等，由 `the_own_state_writer_is_reached_through_exactly_one_door` 钉）。
-    /// 读口不在这里 —— 读不改世界，别处引用它合法。
-    /// 第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
-    const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
-        // 后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
-        (
-            "common/own_dir.rs",
-            "common::own_dir::ensure_private_dir",
-            "control/files_commit.rs",
-        ),
-    ];
-
-    /// 只许住 `own_dir.rs` 的两个词：带权限位建目录（`DirBuilder` ＋ unix 的 `DirBuilderExt`）。
-    /// 刻意不进 [`OWN_STATE_VERBS`]（不替第四层每一份都多放一个建目录的写法）。
-    const OWN_DIR_AUX: &[&str] = &["DirBuilder", "DirBuilderExt"];
-    /// 第二刀过渡：还没搬上 `Own` 的写口经 `own_state::write` / `own_dir::ensure_private_dir` 转调 `platform/fs/own.rs`
-    /// （原子写与建目录只有那一份实现）。全部搬完连同这两个转调一起删。
-    const OWN_STATE_TRANSITIONAL: &[(&str, &str)] = &[
-        ("common/own_dir.rs", "create_dir_private"),
-        ("common/own_dir.rs", "PRIVATE_DIR_MODE"),
-    ];
-
-    fn is_own_state(rel: &str) -> bool {
-        OWN_STATE_MODULES.iter().any(|(p, _)| *p == rel)
-    }
-
     /// 第三层判定 ②：本层模块里有没有表外的改动写法。
     pub(super) fn violates_mutating_face_layer(prod: &str) -> Option<&'static str> {
         MUTATING_FACE_STILL_FORBIDDEN
@@ -1036,11 +945,10 @@ mod tests {
     }
 
     /// 扫后端生产源码，按文件分流到两层判据。返回 (默认层文件数, 命中的白名单模块数)。
-    fn scan(src_dir: &std::path::Path) -> (usize, usize, usize, usize) {
+    fn scan(src_dir: &std::path::Path) -> (usize, usize, usize) {
         let mut default_scanned = 0usize;
         let mut whitelisted = 0usize;
         let mut face = 0usize;
-        let mut own = 0usize;
         // Phase G 审计：**递归**。原来是 `read_dir`（只看顶层）——今天 backend src 是平的
         // 所以尚未失效，但「写盘能力不可能悄悄扩散到第二个模块」这句承诺对
         // `src/<subdir>/x.rs` 是不成立的：那种文件既不进默认层也不进白名单层，
@@ -1118,25 +1026,6 @@ mod tests {
                 continue;
             }
 
-            // 第四层：后端自有状态文件。
-            if is_own_state(&rel) {
-                own += 1;
-                if let Err(why) = open_calls_are_all_exclusive(&prod) {
-                    panic!("第四层模块 {}：{why}", path.display());
-                }
-                if let Some(pat) = OWN_STATE_STILL_FORBIDDEN
-                    .iter()
-                    .find(|p| prod.contains(**p))
-                {
-                    panic!(
-                        "第四层模块 {} 含 `{pat}`。这一层只写后端自己的那一份状态文件，\n\
-                         做法只有「`O_EXCL` 临时文件 → 原子挪」一种；`{pat}` 不在那条路上。",
-                        path.display()
-                    );
-                }
-                continue;
-            }
-
             if is_write_whitelisted(&rel) {
                 whitelisted += 1;
                 assert!(
@@ -1176,7 +1065,7 @@ mod tests {
             }
             default_scanned += 1;
         }
-        (default_scanned, whitelisted, face, own)
+        (default_scanned, whitelisted, face)
     }
 
     /// **红线 I7 的机器化护栏**（G2 起分两层）。
@@ -1315,7 +1204,7 @@ mod tests {
     #[test]
     fn backend_write_capability_is_confined_to_the_registered_modules() {
         let src_dir = crate::guard_support::src_root();
-        let (default_scanned, whitelisted, face, own) = scan(&src_dir);
+        let (default_scanned, whitelisted, face) = scan(&src_dir);
         // 🔴 **地板换成恒等。**
         //    上一版逐字是 `default_scanned >= 5` —— 它在「变多」那个方向上有意义，
         //    在「**变少**」这个方向上完全是瞎的：人群从 64 掉到 6，它照样绿。
@@ -1326,10 +1215,10 @@ mod tests {
             .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs"))
             .count();
         assert_eq!(
-            default_scanned + whitelisted + face + own + skipped_self,
+            default_scanned + whitelisted + face + skipped_self,
             core_files().len(),
             "人群对不上：默认层 {default_scanned} ＋ 白名单层 {whitelisted} ＋ 第三层 {face} ＋ \
-             第四层 {own} ＋ 跳过本文件 {skipped_self} != 登记派生的 {} 份。\n\
+             跳过本文件 {skipped_self} != 登记派生的 {} 份。\n\
              ⇒ 有文件既没进默认层也没进白名单层 —— 那种文件**不受任何一层管**，\n\
              而上一版那条地板（`>= 5`）对它一声不吭。",
             core_files().len()
@@ -1359,67 +1248,15 @@ mod tests {
              多一个不可能从这里来（没登记的模块走默认层，那一层会先红）。",
             MUTATING_FACE_MODULES.len()
         );
-        // 第四层同形：相等，不是地板。
-        assert_eq!(
-            own,
-            OWN_STATE_MODULES.len(),
-            "第四层模块必须**恰好**是登记的那几个（登记 {}，扫到 {own}）。\n\
-             少一个 = 登记挂空号（搬走 / 改名了，这张表没跟）。",
-            OWN_STATE_MODULES.len()
-        );
     }
 
-    /// 🔴 **第四层判据 ④：写口只从一扇门进来 —— 零命中守卫。**
-    ///
-    /// 针是写口的**限定名**（[`OWN_STATE_WRITERS`] 那张表，逐份一根）。读口（`exit_policy::last_client_left` /
-    /// `answer_read` · `file_face::answer_read`）不在针里 —— 读不改世界，`main.rs` 流结束那一臂正是读口的合法调用点。
-    /// 第四层从一份变成两份：每一根针各自的引用处都必须**恰好**是那扇门（逐根两向相等），
-    /// 而写口表与模块表两向相等（多登一份模块而没说写口是谁 ⇒ 红）。
-    #[test]
-    fn the_own_state_writer_is_reached_through_exactly_one_door() {
-        let root = crate::guard_support::src_root();
-        let modules: std::collections::BTreeSet<&str> =
-            OWN_STATE_MODULES.iter().map(|(p, _)| *p).collect();
-        let writers: std::collections::BTreeSet<&str> =
-            OWN_STATE_WRITERS.iter().map(|(p, _, _)| *p).collect();
-        assert_eq!(
-            modules, writers,
-            "第四层登记的模块与写口表对不上 —— 每一份都得说清它的写口是哪个函数"
-        );
-        for (_, needle, door) in OWN_STATE_WRITERS {
-            own_state_door_matches(&root, needle, door);
-        }
-        // 门表与写口表里出现的门两向相等：登记了一扇没人走的门 / 写口指着一扇没登记的门 ⇒ 红。
-        let doors_used: std::collections::BTreeSet<&str> = OWN_STATE_WRITERS
-            .iter()
-            .map(|(_, _, d)| *d)
-            .filter(|d| !d.is_empty())
-            .collect();
-        let doors_registered: std::collections::BTreeSet<&str> =
-            OWN_STATE_DOORS.iter().map(|(d, _)| *d).collect();
-        assert_eq!(
-            doors_used, doors_registered,
-            "第四层的门表与写口表里用到的门对不上"
-        );
-        for (p, why) in OWN_STATE_MODULES.iter().chain(OWN_STATE_DOORS) {
-            assert!(why.trim().chars().count() >= 20, "`{p}` 没写清为什么");
-        }
-    }
-
-    /// 第四层里**不做读—改—写、所以不拿跨进程锁**的那几份（`(模块, 为什么)`）。每一条都要答「两个进程同时写它会不会丢东西」。
-    const OWN_STATE_LOCK_EXEMPT: &[(&str, &str)] = &[
-    (
-        "common/own_dir.rs",
-        "后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
-         而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
-    )];
-
-    /// 第四层**之外**拿这把锁的（`(模块, 为什么)`）：它们改的不是后端自有状态文件，却同样是一趟读—改—写，
-    /// 两个后端进程同时做会盖掉对方。锁只是只读打开那个目录，不添任何写动词。
-    const LOCK_HOLDERS_OUTSIDE_OWN_STATE: &[(&str, &str)] = &[
+    /// 拿这把跨进程锁的（`(模块, 为什么)`）：自家状态的写句柄本身 ＋ 两份不经它、却同样是一趟读—改—写的账号库那一面。
+    /// 锁只是只读打开那个目录，不添任何写动词。
+    const LOCK_HOLDERS: &[(&str, &str)] = &[
         (
             "platform/fs/own.rs",
-            "自家状态写句柄 `Own::lock` 的本体：搬上 `Own` 的写口经它拿锁（原子写的签名要这把锁的守卫），自己不读—改—写任何一份",
+            "自家状态写句柄 `Own::lock` 与凭据窄句柄 `AccountCreds::lock` 的本体（同一处拿）：原子写的签名要这把锁的守卫 ⇒ \
+             写自家状态的每一份都在锁里写（类型管，不再逐份登记）；它自己不读—改—写任何一份",
         ),
         (
             "accounts/manage/wire.rs",
@@ -1433,16 +1270,13 @@ mod tests {
         ),
     ];
 
-    /// 🔴 **第四层判据 ⑥：每一份都在跨进程锁里写 —— 人群两向相等。**
+    /// 🔴 **拿跨进程锁的只有登记的那几处 —— 人群两向相等。**
     ///
-    /// 要求：「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」
-    /// （第四层读—改—写只有进程内锁 ⇒ 两个后端进程同时写，后写的整份盖掉先写的；资产目录首建生出幽灵机器；skill 装记录丢了补不回来）。
-    ///
-    /// 生产段里拿 `platform::lock::hold` 那把锁的后端文件 == 第四层登记的模块（两向；每份**恰好一处**）。
-    /// 同波别的路给第四层加一份（SU1 的 `skill_ledger.rs`）而没在写之前拿锁 ⇒ 这一条红（它本来就该红）。
-    /// ⚠ 判不了「锁拿在读之前」（数据流）—— 那一半靠各模块自己的行为判据（资产目录首建那一条）。
+    /// 要求：「后端自有状态文件跨进程锁（`flock` 一类，Windows 对应）」。写自家状态那一半由类型保证：`Own::write` 的签名要
+    /// 那个目录的锁的守卫（拿不到守卫就写不了）。本条管另一向：生产段里拿 `platform::lock::hold` 的文件 == [`LOCK_HOLDERS`]
+    /// （两向；每份**恰好一处**）—— 多出来的 ⇒ 有人绕过写句柄自己拿锁、多半也在自己写。
     #[test]
-    fn hx2_every_own_state_module_writes_under_the_cross_process_lock() {
+    fn hx2_the_cross_process_lock_is_taken_only_where_registered() {
         let root = crate::guard_support::src_root();
         let needle = "platform::lock::hold(";
         let mut holders: std::collections::BTreeMap<String, usize> = Default::default();
@@ -1458,85 +1292,21 @@ mod tests {
                 holders.insert(rel, n);
             }
         }
-        // 〔NT2 合进来之后〕登记的例外：第四层里**不做读—改—写**的那几份（`(模块, 为什么不用锁)`）。
-        let exempt: std::collections::BTreeSet<String> = OWN_STATE_LOCK_EXEMPT
-            .iter()
-            .map(|(p, _)| p.to_string())
-            .collect();
-        for (p, why) in OWN_STATE_LOCK_EXEMPT {
-            assert!(is_own_state(p), "锁的例外 `{p}` 不在第四层登记里 —— 挂空号");
-            assert!(why.chars().count() >= 20, "`{p}` 没写清为什么不用锁");
-        }
-        for (p, why) in LOCK_HOLDERS_OUTSIDE_OWN_STATE {
-            assert!(!is_own_state(p), "`{p}` 在第四层里 —— 它不用登记在这张表上");
+        for (p, why) in LOCK_HOLDERS {
             assert!(why.chars().count() >= 20, "`{p}` 没写清为什么要这把锁");
         }
-        let want: std::collections::BTreeSet<String> = OWN_STATE_MODULES
-            .iter()
-            .map(|(p, _)| p.to_string())
-            .filter(|p| !exempt.contains(p))
-            .chain(
-                LOCK_HOLDERS_OUTSIDE_OWN_STATE
-                    .iter()
-                    .map(|(p, _)| p.to_string()),
-            )
-            .collect();
+        let want: std::collections::BTreeSet<String> =
+            LOCK_HOLDERS.iter().map(|(p, _)| p.to_string()).collect();
         let got: std::collections::BTreeSet<String> = holders.keys().cloned().collect();
         assert_eq!(
             got, want,
-            "拿跨进程锁的模块 ≠ 第四层登记的模块。\n\
-             少了 ⇒ 那一份的读—改—写没有跨进程锁（两个后端进程同时写，后写的整份盖掉先写的）；\n\
-             多了 ⇒ 第四层之外有人拿这把锁（它只为后端自有状态文件存在）。"
+            "拿跨进程锁的模块 ≠ 登记的那几处。\n\
+             多了 ⇒ 有人绕过写句柄自己拿锁（写自家状态经 `platform::fs::Own`，锁随它拿）；\n\
+             少了 ⇒ 登记挂空号（搬走 / 改名了，这张表没跟）。"
         );
         for (m, n) in &holders {
-            assert_eq!(
-                *n, 1,
-                "`{m}` 里拿了 {n} 处锁 —— 每份一处（写口一个，锁一处）"
-            );
+            assert_eq!(*n, 1, "`{m}` 里拿了 {n} 处锁 —— 每份一处");
         }
-    }
-
-    /// 一根写口针在后端生产树里的引用处 == 登记的那扇门（零命中守卫的本体）。
-    fn own_state_door_matches(root: &std::path::Path, needle: &str, door: &str) {
-        let mut scanned = 0usize;
-        let mut found: std::collections::BTreeSet<String> = Default::default();
-        for path in core_files() {
-            let rel = path
-                .strip_prefix(root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            if path.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs")
-                || is_own_state(&rel)
-            {
-                continue;
-            }
-            scanned += 1;
-            let src = std::fs::read_to_string(&path).expect("read rs file");
-            if guard_core::production_code(&src).contains(needle) {
-                found.insert(rel);
-            }
-        }
-        // `main.rs` 不在 `core_files()` 里（它不属于任何模块）⇒ 单独看一眼，它也不许碰写口。
-        let main = std::fs::read_to_string(root.join("main.rs")).expect("读 main.rs");
-        if guard_core::production_code(&main).contains(needle) {
-            found.insert("main.rs".into());
-        }
-        assert!(
-            scanned >= 60,
-            "只扫到 {scanned} 份后端源文件 —— 遍历坏了，零命中守卫在空人群上恒绿"
-        );
-        let want: std::collections::BTreeSet<String> = [door.to_string()]
-            .into_iter()
-            .filter(|d| !d.is_empty())
-            .collect();
-        assert_eq!(
-            found,
-            want,
-            "够得到后端自有状态文件写口 `{needle}` 的文件与登记的那扇门对不上。\n  多出来的：{:?}\n  少了的：{:?}",
-            found.difference(&want).collect::<Vec<_>>(),
-            want.difference(&found).collect::<Vec<_>>()
-        );
     }
 
     /// ★★ 反向那半：**表里每一条都得对得上一份真的在写的文件**（幽灵检查）。
@@ -2608,22 +2378,8 @@ mod tests {
                         // 那几个写口，且只准住在登记过的白名单模块里。
                         // 第三层模块同样可以有（`O_EXCL` 新建那一处还在它里面）。
                         if WRITE_ONLY_IN_WHITELIST.contains(&full.as_str())
-                            && (is_write_whitelisted(&rel)
-                                || is_mutating_face(&rel)
-                                || is_own_state(&rel))
+                            && (is_write_whitelisted(&rel) || is_mutating_face(&rel))
                         {
-                            continue;
-                        }
-                        // 第四层那个闭集：只在第四层模块里放行。
-                        if OWN_STATE_VERBS.contains(&full.as_str()) && is_own_state(&rel) {
-                            continue;
-                        }
-                        // 过渡（第二刀搬的这一段）：没搬完的写口经这两份转调 `platform/fs/own.rs` 的原子写与建目录，同一份实现。
-                        if OWN_STATE_TRANSITIONAL.contains(&(rel.as_str(), full.as_str())) {
-                            continue;
-                        }
-                        // 带权限位建目录：只在建自家目录的那一个模块里放行。
-                        if OWN_DIR_AUX.contains(&full.as_str()) && rel == "common/own_dir.rs" {
                             continue;
                         }
                         // 🔴 第三层那个**闭集**：只在第三层模块里放行，别处照旧红。
@@ -2745,7 +2501,7 @@ mod tests {
     /// 这一刀还没搬的那几份写盘模块（第一层 1 · 第三层 5 · 第四层 19）：它们照旧由逐调用点那条
     /// （[`every_fs_call_in_backend_production_is_read_only`]，只看这几份）管，第 2、3 刀搬完连同那条一起删。
     fn not_yet_on_typed_fs(rel: &str) -> bool {
-        is_write_whitelisted(rel) || is_mutating_face(rel) || is_own_state(rel)
+        is_write_whitelisted(rel) || is_mutating_face(rel)
     }
 
     /// 🔴 **碰盘只经 `platform/fs/`。** 后端生产段除了 `platform/fs/`，一处都不许点名

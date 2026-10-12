@@ -12,6 +12,8 @@
 
 #[cfg(unix)]
 use super::*;
+#[cfg(unix)]
+use std::path::Path;
 
 #[test]
 #[cfg(unix)]
@@ -22,16 +24,16 @@ fn o1_born_private_existing_left_alone_missing_parent_refused() {
     std::fs::remove_dir_all(&base).ok();
     std::fs::create_dir_all(&base).expect("base");
     let fresh = base.join(".cc-monitor");
-    ensure_private_dir(&fresh).expect("建");
+    crate::platform::fs::create_dir_private(&fresh).expect("建");
     assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
-    ensure_private_dir(&fresh).expect("再建一次（已在）不算错");
+    crate::platform::fs::create_dir_private(&fresh).expect("再建一次（已在）不算错");
     let old = base.join("old");
     std::fs::create_dir(&old).expect("预置");
     std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    ensure_private_dir(&old).expect("已在");
+    crate::platform::fs::create_dir_private(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     assert!(
-        ensure_private_dir(&base.join("no/such")).is_err(),
+        crate::platform::fs::create_dir_private(&base.join("no/such")).is_err(),
         "父目录不在也建出来了（只建一层）"
     );
     std::fs::remove_dir_all(&base).ok();
@@ -112,9 +114,9 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "用户的目录（`files-extract` 包里的目录，逐条建）",
     ),
     // `history/history_annotations.rs::lock_for_write` 那一行（数据目录那一层）也摘了 −1：
-    //   数据目录默认就是 `~/.cc-monitor` ⇒ 改走 `own_dir::ensure_private_dir`（进 O3 的调用方表）。
+    //   数据目录默认就是 `~/.cc-monitor` ⇒ 改走 `Own::ensure_dir`（进 O3 的调用方表）。
     // `accounts/upstream_select/file_face.rs::write_at` 那一行（凭据文件那一层）摘了 −1：
-    //   凭据文件住数据目录根上 ＝ `~/.cc-monitor` 本身 ⇒ 改走 `own_dir::ensure_private_dir`（进 O3 的调用方表）。
+    //   凭据文件住数据目录根上 ＝ `~/.cc-monitor` 本身 ⇒ 改走 `Own::ensure_dir`（进 O3 的调用方表）。
 ];
 
 #[test]
@@ -142,7 +144,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
     want.sort();
     assert_eq!(
         found, want,
-        "后端生产段建目录的地方与登记表对不上 —— 新长出来的那一处若建的是 `~/.cc-monitor` 一族，改走 `own_dir::ensure_private_dir`"
+        "后端生产段建目录的地方与登记表对不上 —— 新长出来的那一处若建的是 `~/.cc-monitor` 一族，改走 `Own::ensure_dir`"
     );
     let home: Vec<&str> = DIR_CREATORS
         .iter()
@@ -179,15 +181,14 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
             &std::fs::read_to_string(crate::guard_support::src_root().join(p)).expect("读"),
         )
     };
-    for f in ["control/files_commit.rs"] {
-        assert_eq!(
-            src(f)
-                .matches("crate::common::own_dir::ensure_private_dir(")
-                .count(),
-            1,
-            "{f} 建自家目录不是经 own_dir 恰好一处"
-        );
-    }
+    // 暂存区那两层（第三层，下一刀搬上文件管理面的句柄）：直接经 `platform/fs` 那一个带权限位建目录的函数，恰好一处。
+    assert_eq!(
+        src("control/files_commit.rs")
+            .matches("crate::platform::fs::create_dir_private(")
+            .count(),
+        1,
+        "暂存区建目录不是经 `platform::fs::create_dir_private` 恰好一处"
+    );
     // 已搬上 `Own` 的（只读只读护栏第二刀逐份搬）：建那一层经 `Own::ensure_dir` 恰好一处。
     for f in MOVED_TO_OWN {
         assert_eq!(
