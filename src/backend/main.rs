@@ -108,6 +108,8 @@ async fn main() {
     let process_argv: Vec<String> = std::env::args().collect();
     // 写后端自家状态（数据目录底下）的句柄：只在这里造一次，顺着各入口递下去（`readonly_guard` 构造判据钉「只许这里造」）。
     let own = cc_monitor_backend::platform::Own::issue();
+    // 握手认下的主机钥匙记进 cc-monitor 那份 known_hosts：哪条拨号路上都可能发生 ⇒ 这里装一次那只只会记钥匙的手。
+    dial::install_known_hosts(&own);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {

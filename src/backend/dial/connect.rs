@@ -132,8 +132,8 @@ pub(crate) struct Checker {
     /// 这一趟连的是哪台（主机 ＋ 口，同开终端那一行写的那一对）：认下的钥匙按它记进 cc-monitor 那份 known_hosts。
     host: String,
     port: u16,
-    /// 记到哪份（生产 = [`super::known_hosts::path`]；判据给 `None` ⇒ 不碰盘）。
-    known_hosts: Option<std::path::PathBuf>,
+    /// 记钥匙的那只手（生产 = 启动时装的那一只，[`super::known_hosts::installed`]；判据给 `None` ⇒ 不碰盘）。
+    known_hosts: Option<super::known_hosts::Writer>,
 }
 
 impl Checker {
@@ -142,13 +142,8 @@ impl Checker {
         match key.to_openssh() {
             Ok(line) => {
                 let algo_and_blob: Vec<&str> = line.split_whitespace().take(2).collect();
-                if let Some(file) = &self.known_hosts {
-                    super::known_hosts::remember(
-                        file,
-                        &self.host,
-                        self.port,
-                        &algo_and_blob.join(" "),
-                    );
+                if let Some(w) = &self.known_hosts {
+                    w.remember(&self.host, self.port, &algo_and_blob.join(" "));
                 }
             }
             Err(e) => tracing::warn!("known_hosts：钥匙写不成 OpenSSH 形：{e}"),
@@ -394,7 +389,7 @@ async fn race(
                     endpoint: ep_label.clone(),
                     host: ep.host.clone(),
                     port: ep.port,
-                    known_hosts: super::known_hosts::path(),
+                    known_hosts: super::known_hosts::installed(),
                 };
                 let heard = Arc::new(super::pool::Heard::new());
                 let r = match tcp_hop(&ep).await {
@@ -755,7 +750,7 @@ pub(crate) async fn establish(
                 endpoint: ep_label,
                 host: req.host.clone(),
                 port: req.port,
-                known_hosts: super::known_hosts::path(),
+                known_hosts: super::known_hosts::installed(),
             };
             // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
             let heard = Arc::new(super::pool::Heard::new());

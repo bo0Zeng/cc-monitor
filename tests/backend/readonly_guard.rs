@@ -892,13 +892,6 @@ mod tests {
              锁目录建成即持有、续完即删（`remove_dir` 只删自己刚建的那两个空目录）。入口只有上游选择换号要令牌那一处（`oauth::access_token`）",
         ),
         (
-            "dial/known_hosts.rs",
-            "**主机钥匙** `~/.cc-monitor/known_hosts`（OpenSSH 格式）：本后端握手认下的各台主机钥匙，开终端那一行交给 `ssh` 认它。\
-             文件名 / 格式 / 落点都是本仓定的、只有终端那一跳的 `ssh` 读它 ⇒ 拨号侧**自己的**状态，不是用户数据（用户的 `~/.ssh` 一个字节不碰）。\
-             读盘 → 换掉那一台那一行（同一把不写）→ 临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
-             只建 `~/.cc-monitor` 那一层；失败删自己的临时文件。入口只有握手认下钥匙那一处（`dial/connect.rs` 的钥匙核对）—— 不是帧面命令",
-        ),
-        (
             "control/launch_account.rs",
             "**起会话用的号**：`ccm` 最终那一跳给将要跑 agent 的进程留的便条 `~/.cc-monitor/launch-pending/<pid>.json`（号 ＋ 时刻，\
              一个进程一张、各写各的）＋ 观测侧认便条记下的 `~/.cc-monitor/launch-accounts.json`（`sid → 号`）。文件名 / 格式 / 落点 \
@@ -963,10 +956,6 @@ mod tests {
     /// 入方向拆成目录之后（10-03），命令注册那几个写口的门收紧到**持有那条命令的那一族文件**（例：`apikey-key-set` 的写口只许账号那一族碰），比「整个 `inbound.rs` 都算门」更紧。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
-            "dial/connect.rs",
-            "握手时核对主机钥匙那一处（`Checker`）：认下了（与固化的指纹相等 / 首连认下）才记进 cc-monitor 那份 known_hosts。不是帧面命令",
-        ),
-        (
             "stream/inbound/registry/accounts.rs",
             "命令注册里账号那一族 —— `apikey-key-set` 一条，外加改账号库那几条（`accounts-*`）递给执行器的 key 表几口（`ACCOUNT_KEYS`）",
         ),
@@ -1017,12 +1006,6 @@ mod tests {
             "accounts/oauth/store.rs",
             "store::with_refresh_lock",
             "accounts/oauth/mod.rs",
-        ),
-        // 主机钥匙：门是握手核对钥匙那一处，不是命令注册。
-        (
-            "dial/known_hosts.rs",
-            "known_hosts::remember",
-            "dial/connect.rs",
         ),
         // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
         // 装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰 ⇒ 两条针各钉一个写口。
