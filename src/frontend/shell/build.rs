@@ -36,7 +36,7 @@ const REEMBED_CMD: &str = "bash tests/scripts/re-embed.sh";
 /// `src/frontend/shell/.gitignore` 里带 `⇐ 内嵌落点` 锚的那几行**两向集合相等**。
 const EMBEDDED_BACKENDS_DIR: &str = "embedded-backends";
 
-/// 本机后端的文件名是 `<stem>-<target-triple>`（Tauri `externalBin` 的规矩），而 std 里没有
+/// 判据要「这一份是给哪个 target 编的」（`byte_table_tests` 铺假字节时写进 `.target`），而 std 里没有
 /// 「当前 target triple」这个常量 —— 只有 build script 拿得到 `TARGET`。
 fn emit_target_triple() {
     println!(

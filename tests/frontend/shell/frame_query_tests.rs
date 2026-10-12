@@ -983,8 +983,7 @@ fn the_channeled_ops_are_sent_only_through_the_channel() {
 // ① 发送：本机那几问只经 `inbound_client::client_for("<local>")`；
 // ② 谁能登记在 `<local>` 上：生产段里 `register(LOCAL_ORIGIN, …)` 的文件集合 == 两个载体（常驻回环 · stdio 监护），
 //    两处都是拿**已经回了 hello 的那条活连接**造客户端 ⇒ 登记在那里的就是正在跑的那一份；
-// ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点集合 == {起 / 自释放常驻后端那两处}
-//    （都不是查询；一条查询路径都不许再用它）。两向相等，带正控。
+// ③ 谁还在「找 exe 旁那份文件」：生产段里 `resolve_beside_this_exe(` 的调用点零处（查询不用它，起后端也不用它）。
 // ④给终端窗口的 `CCM_BACKEND_BIN` 同病：两处都交 `local_backend_host::running_backend_bin()`。
 
 /// 生产段里含 `needle` 的「文件::外层函数」集合（按行往回找最近的 `fn `）。
@@ -1062,22 +1061,11 @@ fn local_queries_reach_the_running_resident_backend_not_a_file_beside_the_exe() 
         files(&want),
         "能登记在 `<local>` 上的生产文件变了 —— 只许是两个载体（拿活连接的 hello 造客户端的那两处）"
     );
-    // ③ 谁还在找 exe 旁那份文件：只剩给终端窗口导环境那一处。
+    // ③ 谁还在找 exe 旁那份文件：一处都没有（size2 10-11：安装包旁边不再放后端，起它也只用内嵌那份）。
     let beside = loc1a_sites("resolve_beside_this_exe(");
-    let beside: std::collections::BTreeSet<String> = beside
-        .into_iter()
-        .filter(|s| !s.ends_with("::resolve_beside_this_exe"))
-        .collect();
-    assert_eq!(
-        beside,
-        [
-            // 起本机常驻后端 / 自释放内嵌那份之前先看旁边有没有（起它，不是问它）。
-            "local_backend.rs::resolve_or_extract",
-        ]
-        .iter()
-        .map(|s| s.to_string())
-        .collect(),
-        "又有代码去找 exe 旁那份后端了 —— 本机查询只许问登记在 `<local>` 上的那条活连接（RT1 F2 那一形）"
+    assert!(
+        beside.is_empty(),
+        "又有代码去找 exe 旁那份后端了：{beside:?} —— 本机查询只许问登记在 `<local>` 上的那条活连接（RT1 F2 那一形），起它只用内嵌那份"
     );
     // ④ 给终端窗口导 `CCM_BACKEND_BIN` 的那一格（WIN1 报备的同病）：两处调用都交**正在跑的那一份**。
     //    两向：`backend_bin_env_for_window(` 的生产调用点 == 实参是 `running_backend_bin()` 的那几处。

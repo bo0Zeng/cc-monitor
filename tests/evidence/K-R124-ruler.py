@@ -163,19 +163,15 @@ COMPILE_STEPS = [
     ("build-windows", "Build local backend (native)",
      "runner host triple 的原生 `.exe`",
      "本机 Windows x86_64"),
-    # 文件窗口程序（monitor 包的另一个 `[[bin]]`，内嵌进 exe 让单文件的 monitor 也开得了文件窗口）：同一格平台的**第二件字节**。
+    # 文件窗口程序（文件窗口包 `cc-monitor-filewin` 自己的 `[[bin]]`，内嵌进 monitor；开窗时放到 `~/.cc-monitor/bin/` 再起）：同一格平台的**第二件字节**。
     ("build-windows", "Build local filewin (native)",
      "runner host triple 的原生 `cc-monitor-filewin.exe`",
      "本机 Windows x86_64（文件窗口；内嵌进 `cc-monitor.exe`）"),
     ("build-linux", "Build local filewin (native)",
      "runner host triple 的原生 glibc `cc-monitor-filewin`（链 GTK，musl 那两份替不了它）",
      "本机 Linux x86_64（文件窗口；内嵌进裸 `cc-monitor`）"),
-    ("build-linux", "Build local backend (native)",
-     "runner host triple 的原生 glibc 字节",
-     "🟡 **本机 Linux 的第二份来源** —— 「哪一份该留、哪一份该删，"
-     "我判不了 —— 要先有一次迁移把落点收成一个」。"
-     "⇒ 本条**不是**在认可它，是把「同一格今天有两份来源」这件事钉成一个**数**："
-     "变成三份会红，被人在裁之前偷偷删掉一份也会红"),
+    # 本机 Linux 不另编后端（size2 10-11）：从前 deb 旁边另放一份 glibc 后端（`externalBin`），与 musl 那份自释放并存两份来源；
+    #   安装包不再放它 ⇒ 本机 Linux 只剩 musl 那一份（`BYTE_LINES` 第三格），这一步跟着撤。
 ]
 
 #: 🔴 **承诺面的每一格，它的字节由本文件哪几步产出/铺到 `build.rs` 够得着的地方。**
@@ -187,14 +183,13 @@ BYTE_LINES = [
         "runner": ("build-windows", "windows-latest"),
         "steps": [
             ("build-windows", "Build local backend (native)"),
-            ("build-windows", "Stage local backend for externalBin"),
             ("build-windows", "Stage native backend for self-extract"),
             # 同一格的第二件字节：文件窗口程序。
             ("build-windows", "Build local filewin (native)"),
             ("build-windows", "Stage native filewin for self-extract"),
         ],
-        "into": "① Tauri `externalBin` ⇒ **只进安装包**（装完落在 exe 同目录）；"
-                "② `build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`）；"
+        "into": "`build.rs::embed_native_backend` 的 `include_bytes!` ⇒ **进 exe 本体**（`K-R42`），"
+                "起的时候放到 `~/.cc-monitor/bin/ccm` 再跑；安装包旁边不另放一份（size2 10-11）。"
                 "文件窗口程序经 `build.rs::embed_native_filewin` 进 exe 本体",
     },
     {
@@ -283,14 +278,11 @@ MUSL_STEP = ("build-backends", "Cross-compile backend for both musl targets")
 NATIVE_STEP = "Build local backend (native)"
 #: ⑬b 的第三个对照物：两个 job 里编文件窗口程序那一步（`--native` 那一趟也编它，同配方、同工作目录）。
 FILEWIN_STEP = "Build local filewin (native)"
-FILEWIN_BIN_ARG = "--bin cc-monitor-filewin"
+FILEWIN_BIN_ARG = "-p cc-monitor-filewin --bin cc-monitor-filewin"
 FILEWIN_WORKDIR = "src/frontend/shell"
 #: ⑬d 注册侧：`build.rs` 里登记落点目录名的那两个常量。
 LANDING_CONSTS = ["EMBEDDED_BACKENDS_DIR", "NATIVE_BACKEND_DIR"]
-#: ⑬d 第三个落点**不在 `build.rs` 里**：它是 Tauri `externalBin` 的暂存区，由
-#: `release.yml` 的 `Stage local backend for externalBin` 铺，没有任何 Rust 代码提它的名字。
-#: 🔴 它照样要被挡住 —— 那条硬事实说的是「**三个**落点全部 gitignore」。
-EXTERNALBIN_LANDING = "binaries"
+#: ⑬d 从前还有第三个落点 `binaries/`（Tauri `externalBin` 的暂存区）；安装包不再旁放本机后端（size2 10-11），它跟着撤了。
 #: ⑬d 盘侧：`.gitignore` 里每一行落点上面那句机检锚，逐字。
 LANDING_MARK = "# ⇐ 内嵌落点"
 #: ⑬e：这两个函数体里的**出路**必须点名 `REEMBED_CMD`，各至少两处（重编 ＋ 诚实关闭）。
@@ -366,29 +358,12 @@ BIN_SHIPPING = {
                 "deb 落 `/usr/bin/cc-monitor`（`.desktop` 的 `Exec` 跟它走）",
         "consumer": None,
     },
-    "cc-monitor-filewin": {
-        "route": "非主 cargo bin（`!bin.main()`）",
-        "into": "打包器把它**和主二进制装在一处**：NSIS 清单现打 "
-                "`File /a \"/oname=cc-monitor-filewin.exe\"`（⇒ `$INSTDIR`）；"
-                "deb 现打 `/usr/bin/cc-monitor-filewin`。⇒ `filewin::proc::resolve_window_bin` "
-                "的「exe 旁那一份」这一支在装机布局下命中",
-        "consumer": ("src/frontend/shell/src/filewin/proc.rs", "BIN_STEM"),
-    },
 }
-#: 🔴 `externalBin` 那几项 ↔ 登记，两向集合相等（⑭d）。键 = 落点的**主干名**。
-#: ⚠ 它与 `BIN_SHIPPING` 的键**必须不相交** —— 本包自己的 bin 再进一次 `externalBin`，
-#:   同一个落点名就会被铺**两份**：现打过那一形，NSIS 清单里 `/oname=cc-monitor-filewin.exe`
-#:   出现**两行**（一行来自 `binaries/`、一行来自产物目录）；MSI 那边则是两个组件往
-#:   `INSTALLDIR` 装同一个文件名（WiX 的 ICE30 那一族，而 `light.exe` 没带 `-sval`
-#:   ⇒ 很可能直接红），**那一格本机验不了**。⇒ 别顺手加，本条钉着它。
-#: 🔴 **键刻意是「那个名字的住址」，不是名字本身** —— 本仓纪律：一个事实一个住址。
-#:   `cc-monitor-backend` 这个名字的家是下面那个 Rust `const`（消费侧
-#:   `local_backend::resolve_with` 找的就是它），本文件**不抄一份**，实打去读。
-FOREIGN_SIDECARS = {
-    ("src/frontend/shell/src/local_backend.rs", "LOCAL_BACKEND_STEM"):
-        "F05b 的本机后端，来自 `src/backend` 那棵树（**不是**本包的 `[[bin]]`）；"
-        "字节由 `release.yml` 的 `Stage local backend for externalBin` 铺进 `binaries/`",
-}
+#: 🔴 `externalBin` 那几项 ↔ 登记，两向集合相等（⑭d）。键 = 那个名字的住址（`(文件, const)`，实打去读，不抄名字）。
+#: 🔴 size2（10-11）起这一张是**空的**：安装包旁边不再放第二份本机后端 —— 它与内嵌进 exe 的那份逐字节相同，
+#:   而本机后端无论如何都先放到 `~/.cc-monitor/bin/ccm` 再跑（`local_backend::resolve_or_extract`），旁边那份只是字节来源。
+#:   ⇒ ⑭d 判「`externalBin` 零命中」；要加回来，先答「那份字节谁用、为什么不是内嵌那份」。
+FOREIGN_SIDECARS = {}
 
 # ══ ⑮ 产物路径的根 ↔ 声明的 `target-dir` ════════════════════════
 #
@@ -520,7 +495,7 @@ def cargo_bins(doc):
 
 
 def external_bin_stems(doc):
-    """`tauri.sidecar.conf.json` 的 `bundle.externalBin` → 落点主干名集合。解不出给 `None`。
+    """`tauri.sidecar.conf.json` 的 `bundle.externalBin` → 落点主干名集合（没有这一键 = 空集）。解不出给 `None`。
 
     口径与 Tauri 一致：条目是**路径**，打包时它找 `<路径>-<triple>[.exe]`、装进去时把
     `-<triple>` 剥掉 ⇒ 装机后的文件名就是这里的最后一段（现打：`binaries/cc-monitor-backend`
@@ -528,7 +503,7 @@ def external_bin_stems(doc):
     """
     if not isinstance(doc, dict):
         return None
-    ext = ((doc.get("bundle") or {}) if isinstance(doc.get("bundle"), dict) else {}).get("externalBin")
+    ext = ((doc.get("bundle") or {}) if isinstance(doc.get("bundle"), dict) else {}).get("externalBin", [])
     if not isinstance(ext, list) or not all(isinstance(p, str) for p in ext):
         return None
     return {p.rsplit("/", 1)[-1] for p in ext}
@@ -1277,14 +1252,13 @@ def run_checks(emit):
     #     当硬事实在用 —— **那句话曾经是假的**，而它正是「门禁只能建在
     #     `release.yml` 上」这条推理的全部前提。
     registered = {rust_str_const(brs, c) or "<`const %s` 抠不到>" % c for c in LANDING_CONSTS}
-    registered.add(EXTERNALBIN_LANDING)
     ignored = gitignore_landings(gi)
     check(registered == ignored, "⑬d内嵌落点 ↔ `.gitignore` 的机检锚，两向集合相等",
-          "登记了却没被挡 %s · 挡着却没人登记 %s（登记侧 = `build.rs` 的 %s ＋ `externalBin` 那一格 "
-          "`%s`；盘侧 = `%s` 里带 `%s` 锚的那几行）—— 前者是**re-embed 每跑一次就往工作树倒一次"
+          "登记了却没被挡 %s · 挡着却没人登记 %s（登记侧 = `build.rs` 的 %s；"
+          "盘侧 = `%s` 里带 `%s` 锚的那几行）—— 前者是**re-embed 每跑一次就往工作树倒一次"
           "二十多 MB 垃圾**，后者是一条挡着空气的陈行"
           % (sorted(registered - ignored), sorted(ignored - registered),
-             "/".join(LANDING_CONSTS), EXTERNALBIN_LANDING, BRIDGE_GITIGNORE, LANDING_MARK))
+             "/".join(LANDING_CONSTS), BRIDGE_GITIGNORE, LANDING_MARK))
     for d in sorted(re.findall(r'^[A-Z_]+_DIR="\$ROOT/src/frontend/shell/([^"]+)"', reembed, re.M)):
         check(d in registered, "⑬d脚本往里倒字节的目录是登记过的·%s" % d,
               "`%s` %s在登记集合 %s 里 —— 不在 ＝ 那条命令往一个没人挡的目录里写二十多 MB"
@@ -1468,8 +1442,8 @@ def run_checks(emit):
                   "现打 %r（它是 %s）—— 抠不到就是**判不了，按红记**" % (got, why))
             reg_foreign.add(got if got is not None else "<`%s::%s` 抠不到>" % (rel, const))
         check(stems == reg_foreign, "⑭d`externalBin` ↔ 登记，两向集合相等",
-              "盘上有而没登记 %s · 登记了而盘上没有 %s —— 后者是**装机那份从此没有本机后端**"
-              "（`local_backend::resolve_with` 会落到 `Missing`）；前者是多了一份没人登记的 sidecar"
+              "盘上有而没登记 %s · 登记了而盘上没有 %s —— 前者是安装包旁边多放了一份没人登记的程序"
+              "（本机后端那份与 exe 内嵌的逐字节相同、开机只用内嵌那份：size2 10-11 撤的就是它）"
               % (sorted(stems - reg_foreign), sorted(reg_foreign - stems)))
         dup = stems & names
         check(not dup, "⑭d`externalBin` 与本包的 `[[bin]]` 不重名（零命中）",

@@ -20,6 +20,14 @@ fn the_rc_line_doubles_backslashes() {
     );
 }
 
+#[test]
+fn the_icon_rc_line_doubles_backslashes() {
+    assert_eq!(
+        icon_rc_line(r"C:\a\icon.ico"),
+        "1 ICON \"C:\\\\a\\\\icon.ico\"\n"
+    );
+}
+
 /// 两个前端包的构建脚本都调这一处编法，自己不另写一份（没有第二份 `.rc`、不直接调 embed-resource）。
 #[test]
 fn both_frontend_build_scripts_call_this_one_and_write_no_second_copy() {

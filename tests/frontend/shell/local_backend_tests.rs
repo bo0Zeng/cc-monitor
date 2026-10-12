@@ -957,10 +957,6 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
 
 use super::*;
 
-fn never(_: &Path) -> bool {
-    false
-}
-
 /// 带身份戳的一份假后端字节（界标取自契约 crate，与生产扫描同一对）。
 fn stamped(id: &str, salt: u8) -> Vec<u8> {
     let mut b: Vec<u8> = (0u8..=255).cycle().skip(salt as usize).take(2048).collect();
@@ -1102,14 +1098,13 @@ fn the_local_landing_is_placed_exactly_as_the_bytes_in_hand_say() {
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 要求：「不要的三样：③ 与后端重复的第二份字节」· `W5-ALIAS.md §2.5.2` E-c「旧文件清」。
-/// 真跑一趟 `resolve_or_extract`（旁边必没有 ⇒ 走内嵌那份）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节。
+/// 真跑一趟 `resolve_or_extract`（字节只有内嵌那一个来源）：`Found` 的就是 `dir/ccm`、字节就是喂进去的那份、目录里没有第二份后端字节。
 #[test]
 fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
     let base = tmpdir_e2("resolve");
     let bytes = stamped("p5a-wire", 5);
     let mark = |_: &Path| Ok(());
     let r = resolve_or_extract(
-        "no-such-target-triple",
         &base,
         Ok(("p5a-wire", &bytes)),
         &mark,
@@ -1187,26 +1182,6 @@ fn the_local_path_does_not_hand_roll_version_comparison() {
     );
 }
 
-#[test]
-fn missing_local_backend_is_an_honest_degrade_that_lists_every_path_it_tried() {
-    let r = resolve_with(
-        Path::new("/opt/app"),
-        "x86_64-unknown-linux-gnu",
-        "",
-        &never,
-    );
-    let Resolved::Missing { looked_at, .. } = r else {
-        panic!("应当是 Missing");
-    };
-    assert_eq!(looked_at.len(), 2, "两个候选都要列出来：{looked_at:?}");
-    assert!(
-        looked_at
-            .iter()
-            .any(|p| p.to_string_lossy().contains("x86_64-unknown-linux-gnu")),
-        "triple 形态那个候选丢了：{looked_at:?}"
-    );
-}
-
 /// 「像内部件号」的形状：一个 ASCII 大写字母紧跟两位数字（`F05b` · `K-R30` 的 `R30` 都算）。
 /// 三个字节**全是 ASCII** 才算命中 ⇒ 切片必落在字符边界上，中文正文不会误伤。
 fn internal_item_id_in(s: &str) -> Option<String> {
@@ -1224,90 +1199,6 @@ fn internal_item_id_in(s: &str) -> Option<String> {
 /// 「安装包里没有本机后端」—— 放进来这条判据对**那句假话恒绿**，
 /// 那就又成了一条替假话背书的判据。表里这几个都是**用户点得动 / 做得出的东西**。
 const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安装包", "装上安装包"];
-
-/// 🔴 **这条判据换过一次靶子（09-10）** —— 换靶的理由比判据本身更该记下来。
-///
-/// # 原来钉的是什么，为什么必须换
-///
-/// 原文逐字：`assert!(reason.contains("F05b"), "诊断要指出「谁负责补上它」：{reason}")`。
-/// 它**写的时候是对的**：那天本机后端确实还没做，诊断指出「谁来补」是有用的。
-/// 而 09-10 F05b 随 v3.7.0 发出去之后，**没有人需要「补上它」了** ⇒
-/// 这条判据就变成了钉住一个**目的已经过期**的字符串，
-/// 让「安装包里还没有 `externalBin`」那句已经变假的话看起来**像有 judge 守着**。
-/// **这正是本仓要治的那一形：一条判据替一句已经变假的话背书。**
-///
-/// # 现在钉的是什么
-///
-/// **诊断必须给读它的人一条做得到的下一步**（正向，主判据）——
-/// 用户拿一个内部件号什么也做不了，他要的是「那我该干嘛」。
-/// 外加一条负向：**不许再把内部件号甩到用户脸上**。
-/// ⚠ 负向那条**单独不算数**：把件号删干净只是让判据闭嘴，消息可以照样没用 ⇒
-/// 正向那条才是本条的立身之本，顺序上也先断它。
-///
-/// # 它什么时候会红（09-10 造了三刀，**三刀都真红了**，逐字读数见交回件）
-///
-/// · 刀 1：诊断被改写成只说「找不到」、不说怎么办（最像的一次退化）⇒ 正向那条红；
-/// · 刀 2：诊断被改回 09-10 之前那一版（含 `F05b`）⇒ **正向那条先红** ——
-///   ⚠ `assert!` 按顺序短路，**负向那条根本没轮到说话**，所以不许写成「两条都红」；
-/// · 刀 3：诊断留着「装一次安装包」但把件号加回去 ⇒ **负向那条红**（打出 `F05`）。
-///   刀 3 存在的唯一理由就是：没有它，负向那条**从没被证明过会红**。
-///
-/// # 诚实边界（写死，别读宽）
-///
-/// 它买的是「消息里有一条**看起来是**下一步的东西」，**买不到**「那句话是真的」，
-/// 更买不到「读者真看懂了」—— 把标记词拼进一句废话里，它照样绿。
-/// 射程也只有 [`resolve_with`] 这一条 `reason`：
-/// [`resolve_beside_this_exe`] 拿不到自身路径那条、[`resolve_or_extract`] 释放失败那条，
-/// **本条一条都没盖**。头注 / `DECISIONS` / 模块注释里写件号**不受本条管**，
-/// 本条只管**发到用户面前的那一串**。
-///
-/// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
-///
-/// 自释放那条路接上了「产物自己带着的那份」（那一槽今天住 `byte_table.rs`，由宿主取来交进来），
-/// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
-/// 于是要先回答一句：**「找不到本机后端」这一形还存不存在？**
-///
-/// **存在，而且一点没少。** [`resolve_with`] 的职责一个字没改 —— 它仍然只回答
-/// 「**exe 旁边**有没有」，而裸 exe 旁边**仍然没有**（这里不往 exe 旁边放东西）。
-/// 变的是**这个答案之后发生什么**：以前它就是终点，现在它是自释放那一支的**入口**。
-/// ⇒ 本条守的东西**逐字未变**（那一串给不给得出下一步 · 有没有把件号甩给用户），
-/// 而且它守的那一串**仍然到得了用户眼前** —— `resolve_or_extract` 在两个来源都空时
-/// 把 `beside` 的 `reason` **原样**交回去，那条路今天照走。
-///
-/// ⚠ **真正过期的是那一串里的两句话，已同时改掉**（不改就又成了「判据替假话背书」）：
-/// ① 「没有它通常意味着跑的是裸 `monitor.exe`」——今天裸 exe 会自己释放一份，这句不再成立；
-/// ② 「本机后端今天**未启动**」——那是 `resolve_with` **答不了**的问题，它只看得见旁边。
-/// 改完之后本条**照旧命中**（`装一次安装包` 仍在 [`A_STEP_THE_USER_CAN_TAKE`] 里）——
-/// 🔴 而这正是要写下来的那一格：**本条没有变红，所以它也没有替那次改动作证**。
-/// 「释放失败」那一形由本条**射程之外**的
-/// [`the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all`] 接住，
-/// 那条正好落在上面那句「本条一条都没盖」点名的三格之一。
-#[test]
-fn the_missing_local_backend_diagnosis_hands_the_user_a_next_step() {
-    let r = resolve_with(
-        Path::new("/opt/app"),
-        "x86_64-unknown-linux-gnu",
-        "",
-        &never,
-    );
-    let Resolved::Missing { reason, .. } = r else {
-        panic!("应当是 Missing");
-    };
-    assert!(
-        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason.said),
-        "诊断没给读它的人任何一条做得到的下一步（找过 {A_STEP_THE_USER_CAN_TAKE:?}）。\n\
-             「本机后端没有」本身**不是**下一步 —— 用户要的是「那我该干嘛」。\n\
-             逐字：{reason}"
-    );
-    let id = internal_item_id_in(&reason.said);
-    assert!(
-        id.is_none(),
-        "诊断里出现了内部件号 `{}` —— 用户拿它什么也做不了，而且件号会过期\n\
-             （`F05b` 就是这么过期的，见本条头注）。件号写头注，别写给用户。\n\
-             逐字：{reason}",
-        id.clone().unwrap_or_default()
-    );
-}
 
 /// 🔴 **`K-R42` 硬要求①的判据**：「带了但放不下来」与「压根没带」必须是**两句分得开的话**。
 ///
@@ -1349,14 +1240,13 @@ fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all(
     );
 
     // ── ① 两句话分得开 ──────────────────────────────────────────────
-    let Resolved::Missing { reason: absent, .. } = resolve_with(
-        Path::new("/opt/app"),
-        "x86_64-unknown-linux-gnu",
-        "",
-        &never,
-    ) else {
-        panic!("应当是 Missing");
-    };
+    // 「压根没带」那一句：宿主从字节表取不到时交进来、本层原样交出的那一句（`Refusal::NotCarried`）。
+    let absent = crate::byte_table::Refusal::NotCarried {
+        os: "Windows".into(),
+        arch: "x86_64".into(),
+    }
+    .say(&copy_text("rsLocalBackendHost.local.machine", &[]));
+    let absent = crate::detail::Said::from(absent);
     assert!(
         refused.said.contains(EXTRACTION_REFUSED_MARKER.as_str()),
         "「放不下来」那一句丢了它的标记 ⇒ 调用方与判据都再也分不出它和「没带后端」。\n逐字：{refused}"
@@ -1516,13 +1406,11 @@ fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
                  或者「为什么没有」那句话被丢掉。\n逐字：{body}"
         )
     });
-    let beside = guard_core::find_pinned(&body, "resolve_beside_this_exe(")
-        .expect("那份共用的解析体内 `resolve_beside_this_exe(` 不是恰好一处");
+    let _ = asked;
+    // 字节只有一个来源（size2 10-11）：解析体里不再去 exe 旁边找。
     assert!(
-        beside < asked,
-        "「问产物自己带没带」排到了「找 exe 旁边」前面 —— 顺序反了。\n\
-             dev 构建里旁边那个是**更新**的，内嵌那份是打包时的快照；\
-             顺序一反，同一台机上两条路会找到不同的二进制。"
+        !body.contains("resolve_beside_this_exe(") && !body.contains("current_exe("),
+        "那份共用的解析体又去 exe 旁边找了 —— 旧安装包留下的那一份可能是旧版本，认它就会把旧后端放到落点上。\n逐字：{body}"
     );
 }
 
@@ -1616,28 +1504,6 @@ fn the_extracted_name_carries_the_target_exe_suffix() {
         guard_core::contains_word(&prod, "CCM_TARGET_EXE_SUFFIX"),
         "生产段里不再引用那个编译期常量 —— 后缀要么被写死成空串（Windows 上退化），\
              要么被改成现算的平台原语（当场撞 `the_backend_half_stays_platform_agnostic`）"
-    );
-}
-
-#[test]
-fn the_triple_suffixed_candidate_wins_over_the_bare_one() {
-    // Tauri 打包出来的就是带 triple 的那个名字；裸名只是兜底。
-    let triple = "aarch64-apple-darwin";
-    let want = PathBuf::from("/opt/app").join(format!("{LOCAL_BACKEND_STEM}-{triple}"));
-    let w = want.clone();
-    let exists = move |p: &Path| p == w.as_path() || p.ends_with(LOCAL_BACKEND_STEM);
-    assert_eq!(
-        resolve_with(Path::new("/opt/app"), triple, "", &exists),
-        Resolved::Found(want)
-    );
-}
-
-#[test]
-fn windows_exe_suffix_is_carried_into_both_candidates() {
-    let c = local_backend_candidates(Path::new("C:/app"), "x86_64-pc-windows-msvc", ".exe");
-    assert!(
-        c.iter().all(|p| p.to_string_lossy().ends_with(".exe")),
-        "Windows 上两个候选都得带 .exe：{c:?}"
     );
 }
 
@@ -1788,211 +1654,64 @@ fn the_backend_bin_env_name_has_exactly_one_home() {
     );
 }
 
-/// ★★ **F05b 接线钉：每一个打包 job 都必须给本机后端备好料。**
+/// ★★ **安装包旁边不再放第二份本机后端**（size2 10-11）。
 ///
-/// # 为什么这条是「遍历发现」而不是「数一遍」
-///
-/// `externalBin` 一旦注入，`tauri build` 就要求**当前 target** 的那份二进制存在，
-/// 少了它整个 job 以 `resource path ... doesn't exist` 失败（本机实测过）。
-/// ⇒ 发版流水线里**每一处** `tauri build` 都得配三件：原生编 backend · 按 triple 命名放好 ·
-/// `--config` 注入补丁。少任何一件那个 job 就红，而**发版红是最贵的红**（tag 已经打出去了）。
-///
-/// 所以发现机制是**遍历 workflow 里所有 `tauri build` 调用**，不是手写「有两个 job」。
-///
-/// ⚠ 中间量自检：先断言真的找到了 `tauri build` 调用（找不到 = 抽取器坏了，本条零命中地绿）。
+/// 从前每个打包 job 原生编一份后端、按 triple 命名放进 `binaries/`、`tauri build --config` 注入 `externalBin`，
+/// 装完落在 exe 旁边 —— 而它与内嵌进 exe 的那份逐字节相同，本机后端无论如何都先放到 `~/.cc-monitor/bin/ccm` 再跑，
+/// 旁边那份只是字节来源（setup 多 5.9 MB · msi 多 8 MB · deb 多 27 MB）。
+/// 本条钉住撤干净：发版流水线不再往 `binaries/` 铺 · 补丁配置里没有 `externalBin` · 解析那一侧不再去 exe 旁边找
+/// （旧安装包可能在旁边留着一份旧版本，认它就会把旧后端放到落点上）。
 #[test]
-fn every_bundle_job_stages_the_local_backend_before_building() {
+fn no_bundle_job_puts_a_second_local_backend_beside_the_exe() {
     let root = crate::guard_support::repo_root();
-    let wf = root.join(".github/workflows/release.yml");
-    let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
-    // 运行时拼，免得命中本文件自己的说明文字。
+    let src = std::fs::read_to_string(root.join(".github/workflows/release.yml"))
+        .expect("读不到 release.yml");
+    // 反空真：打包那几处还在（Windows 的 nsis+msi 与 Linux 的 deb）。
     let verb = format!("{} build", "tauri");
-    let calls: Vec<&str> = src
+    let calls = src
         .lines()
         .filter(|l| l.contains(&verb) && l.trim_start().starts_with("run:"))
+        .count();
+    assert!(
+        calls >= 2,
+        "release.yml 里只找到 {calls} 处 `{verb}` —— 抽取器坏了或流水线变形了，本条此刻无效"
+    );
+    let landing = format!("src/frontend/shell/{}/", "binaries");
+    let live: Vec<&str> = src
+        .lines()
+        .filter(|l| !l.trim_start().starts_with('#') && l.contains(&landing))
         .collect();
     assert!(
-        calls.len() >= 2,
-        "在 release.yml 里只找到 {} 处 `{verb}` 调用 —— 抽取器坏了或流水线变形了\n\
-             （实测两处：Windows 的 nsis+msi 与 Linux 的 deb）。本条会零命中地绿。",
-        calls.len()
+        live.is_empty(),
+        "发版流水线还在往 `{landing}` 铺本机后端（安装包会在 exe 旁边多装一份）：{live:?}"
     );
-    for c in &calls {
+    for name in ["tauri.conf.json", "tauri.sidecar.conf.json"] {
+        let conf = std::fs::read_to_string(root.join("src/frontend/shell").join(name))
+            .unwrap_or_else(|e| panic!("读不到 {name}：{e}"));
+        let doc: serde_json::Value =
+            serde_json::from_str(&conf).unwrap_or_else(|e| panic!("{name} 解不动：{e}"));
         assert!(
-            c.contains("tauri.sidecar.conf.json"),
-            "这处打包没有注入本机后端补丁配置：{}\n\
-                 ⇒ 安装包里不会带本机后端（C7），而 `local_backend` 会恒走诚实降级。",
-            c.trim()
+            doc["bundle"].is_object(),
+            "{name} 里没有 `bundle` —— 读到的不是那份配置？"
+        );
+        assert!(
+            doc["bundle"].get("externalBin").is_none(),
+            "{name} 里又有了 `externalBin`：{}",
+            doc["bundle"]
         );
     }
-    // 三件里的另外两件：原生编 + 按 triple 命名。逐个 job 数得太脆，
-    // 这里钉「整份 workflow 里这两件各至少与打包调用数一样多」。
-    let native = src.matches("Build local backend").count();
-    let staged = src.matches("Stage local backend for externalBin").count();
-    assert!(
-        native >= calls.len() && staged >= calls.len(),
-        "打包调用 {} 处，而「原生编后端」{native} 处、「按 triple 放好」{staged} 处 —— \n\
-             有 job 会以 `resource path ... doesn't exist` 失败，而那是**发版时**才炸。",
-        calls.len()
-    );
-    // local_backend 的名字只有一个家：这里不抄它，从 Rust 侧读。
-    assert!(
-        src.contains(super::LOCAL_BACKEND_STEM),
-        "release.yml 里没有出现 `{}` —— 拷过去的名字与消费侧对不上",
-        super::LOCAL_BACKEND_STEM
-    );
-}
-
-/// ★★ 🔴 `KR70D3`（09-12）：**载体①与载体③是同一次构建 —— 这件事从此有人守。**
-///
-/// # 问题（`K-R68` 现打）
-///
-/// 发版流水线里同一个文件被拷了两次：
-/// `.build/backend/release/cc-monitor-backend.exe`
-/// → `src/frontend/shell/binaries/…`（载体③，Tauri `externalBin`，装机那份）
-/// → `src/frontend/shell/native-backend/cc-monitor-native`（载体①，自释放那份）。
-/// 两步之间**一条 `cargo` 都没有** ⇒ 它们逐字节相同，是最强的那种同源。
-/// 🔴 **而这件事此前没有任何断言守着**：中间插一条 `cargo build`（换个 feature、
-/// 换个 profile、甚至只是重编一次）就不再是同一份字节，**没人会红**。
-/// 而两份字节不同、身份戳却相同（同一个 `BUILD_ID`）时，产品**分不出它们** ——
-/// 那正是 `K-R70` 这一件要修的。
-///
-/// # ⚠ 本条**不主张**「载体②也要同字节」
-///
-/// ② 是另一个 job（ubuntu / `cargo zigbuild` / musl），**结构上不可能**逐字节相同 ——
-/// 那正是 `K25` 裁的形状（「一份代码、每个平台编出自己那一份原生二进制」），不是缺陷。
-/// ⇒ 本条的射程只到「同一个 job 里、拷同一个路径的那两步」。
-///
-/// # 量法与它的边界
-///
-/// 人群 = `release.yml` 里**拷贝那个原生产物**的所有行（锚是那条产物路径，不是步骤名 ——
-/// 步骤名是散文，路径是事实），**按 job 分组**。断言：**同一个 job 内**，第一处与
-/// 最后一处拷贝之间没有非注释的构建命令。
-///
-/// ⚠ **为什么按 job 分组，而不是拿全仓那几处一起比** —— 这一格是本条第一次跑就
-/// 逮出来的（写它的时候以为是 2 处，实得 **3** 处）：第三处在 `build-linux` 里，
-/// 它同样把那个原生产物拷成载体③，而 **Linux 那条路根本没有载体①**
-/// （`K-R68` 现打：`native-backend` 那三个字只出现在 `build-windows` 一个 job 里 ——
-/// 已立成待决 `KU26` 问用户）。跨 job 比是**分母错**：两个 job 各自 `checkout` 各自编，
-/// 它们之间当然有构建动作，那不是缺陷。
-///
-/// ⚠ 它**看不见**「构建命令写在别的文件里、由这里 `run:` 一个脚本触发」那一形；
-/// 今天 `release.yml` 里这一段没有那种写法（人群里每一行都是内联的 `Copy-Item`/`cp`），
-/// 真出现那一形要另加一条判据。**这是登记的射程，不是穷举过的全称。**
-#[test]
-fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
-    let root = crate::guard_support::repo_root();
-    let wf = root.join(".github/workflows/release.yml");
-    let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
-    let lines: Vec<&str> = src.lines().collect();
-    // 锚：那个**原生产物**的路径。运行时拼，免得命中本条自己的说明文字。
-    let artifact = format!(".build/backend/release/{}", super::LOCAL_BACKEND_STEM);
-    // job 边界：`jobs:` 下**两空格缩进**的那一层键。
-    let job_at = |i: usize| -> &str {
-        lines[..=i]
-            .iter()
-            .rev()
-            .find(|l| {
-                l.len() > 2
-                    && l.starts_with("  ")
-                    && !l.starts_with("   ")
-                    && l.trim_end().ends_with(':')
-            })
-            .map(|l| l.trim().trim_end_matches(':'))
-            .unwrap_or("<不在任何 job 里>")
-    };
-    let is_copy = |l: &str| {
-        let t = l.trim_start();
-        !t.starts_with('#')
-            && l.contains(&artifact)
-            && (t.starts_with("Copy-Item") || t.starts_with("cp "))
-    };
-    let copies: Vec<usize> = lines
-        .iter()
-        .enumerate()
-        .filter(|(_, l)| is_copy(l))
-        .map(|(i, _)| i)
-        .collect();
-    // 中间量自检：找不到 = 抽取器坏了 / 流水线变形，本条会零命中地绿。
-    assert!(
-        copies.len() >= 2,
-        "在 release.yml 里只找到 {} 处「拷 `{artifact}`」（09-12 实测 3：\n\
-             `build-windows` 两处（载体③ ＋ 载体①）· `build-linux` 一处（只有载体③））—— \n\
-             抽取器坏了或那几步被改名/挪走，**本条此刻是无效的**。",
-        copies.len()
-    );
-    // 词表如实登记：它是「已经栽过 + 想得到」的那几个，不是全称。
-    const BUILD_VERBS: [&str; 3] = ["cargo build", "cargo zigbuild", "cargo run"];
-    // 🔴 `rustc` 要分「编」与「问」—— **这一格是本条第一次跑就被它自己逮到的**：
-    //    `Stage native backend for self-extract` 头一行是 `rustc -vV | …` 取 target triple，
-    //    那是一次**查询**，一个字节都没编。把它读成构建就是一条自信的假报警
-    //    （`C17`：诊断不许比它证得出的说得更死）。
-    const RUSTC_QUERIES: [&str; 4] = ["rustc -vV", "rustc -V", "rustc --version", "rustc --print"];
-    let is_build_action = |t: &str| -> bool {
-        if t.starts_with('#') {
-            return false;
-        }
-        if BUILD_VERBS.iter().any(|v| t.contains(v)) {
-            return true;
-        }
-        t.contains("rustc ") && !RUSTC_QUERIES.iter().any(|q| t.contains(q))
-    };
-    let mut jobs_with_a_pair = 0usize;
-    for job in {
-        let mut js: Vec<&str> = copies.iter().map(|i| job_at(*i)).collect();
-        js.dedup();
-        js
-    } {
-        let mine: Vec<usize> = copies
-            .iter()
-            .copied()
-            .filter(|i| job_at(*i) == job)
-            .collect();
-        let (a, b) = (mine[0], *mine.last().expect("非空"));
-        if b <= a + 1 {
-            continue; // 这个 job 只拷一次（或两次挨着）⇒ 没有「之间」可查
-        }
-        jobs_with_a_pair += 1;
-        let offenders: Vec<String> = lines[a + 1..b]
-            .iter()
-            .enumerate()
-            .filter(|(_, l)| is_build_action(l.trim_start()))
-            .map(|(k, l)| format!("release.yml:{} 逐字 `{}`", a + 2 + k, l.trim()))
-            .collect();
+    let prod = guard_core::production_code(include_str!(
+        "../../../src/frontend/shell/src/local_backend.rs"
+    ));
+    for gone in [
+        "fn resolve_beside_this_exe",
+        "fn local_backend_candidates",
+        "current_exe(",
+    ] {
         assert!(
-            offenders.is_empty(),
-            "job `{job}` 里，那个原生产物被拷去两个载体，而**两次拷贝之间出现了构建动作**：\n  {}\n\
-                 ⇒ 它们**不再是同一份字节**，而两份字节会带着**同一个 `BUILD_ID`** 出货\n\
-                 （身份戳取自源码常量）⇒ 产品分不出它们，`K33`「后端只有一个」在身份这一维当场破。\n\
-                 真要在中间重编，得先答一个问题：**那两份字节凭什么还叫同一个身份？**\n\
-                 （`DECISIONS.md#R26` 裁定一 · 本条的射程与边界见头注 —— 载体②不在里面，\n\
-                  它是另一个 job / musl，结构上不可能同字节，那是 `K25` 裁的形状。）",
-            offenders.join("\n  ")
+            !prod.contains(gone),
+            "`local_backend.rs` 的生产段里还有 `{gone}` —— 本机后端的字节只该来自这一份产物内嵌的那份"
         );
-    }
-    // 反空真：至少有一个 job 真的拷了两次，否则上面整段是空转的。
-    assert!(
-        jobs_with_a_pair >= 1,
-        "没有任何一个 job 把那个原生产物拷去两个载体 —— 上面那段检查此刻**一格都没跑**。\n\
-             （09-12 实测 `build-windows` 是那一个：`Stage local backend for externalBin` → 载体③、\n\
-              `Stage native backend for self-extract` → 载体①。）"
-    );
-}
-
-#[test]
-fn candidates_never_point_into_a_build_tree() {
-    let c = local_backend_candidates(Path::new("/opt/app"), "x86_64-unknown-linux-gnu", "");
-    for p in &c {
-        let s = p.to_string_lossy();
-        for forbidden in ["target", "debug", "release", ".."] {
-            assert!(
-                !s.contains(forbidden),
-                "候选路径含 `{forbidden}`：{s}\n\
-                     扫 dev 产物就起 backend = 去改用户真实 tmux server 的状态（它无条件装全局 hook，\
-                     而且没有开关）。只许在 exe 同目录找。"
-            );
-        }
-        assert!(p.starts_with("/opt/app"), "候选跑出了 exe 目录：{s}");
     }
 }
 
@@ -2091,10 +1810,6 @@ fn the_startup_path_really_calls_this_module() {
         "`lib.rs` 的生产段里一个本模块生产入口都没有（找过 {ENTRIES:?}）—— \n\
              本机后端没有被接上启动路径。判据全绿而功能从不运行，\n\
              正是「模块存在 ≠ 模块被调用」那个坑。"
-    );
-    assert!(
-        prod.contains("CCM_TARGET_TRIPLE"),
-        "`lib.rs` 生产段里找不到 `CCM_TARGET_TRIPLE` —— 接线缺了 target triple 这个宿主知识"
     );
     // 句柄必须被**存下来**：不存就没人能 `stop()`。
     //
@@ -2550,22 +2265,26 @@ fn e2e_a_binary_that_always_dies_is_given_up_on_within_the_cap() {
     println!("E2E-OK 必崩二进制在 3 次内被判死，没有自旋");
 }
 
-/// ★ 真文件系统上「没有本机后端」⇒ 诚实降级（这条不起任何进程）。
+/// ★ 真文件系统上「这一份产物没带本机后端」⇒ 诚实降级：那句拒绝的话原样交回、落点目录一个字节都不写（这条不起任何进程）。
 #[test]
 #[ignore]
 fn e2e_a_missing_local_backend_degrades_honestly_against_the_real_filesystem() {
-    let dir = std::env::var("CCM_E2E_WORK").expect("要 CCM_E2E_WORK");
-    let r = resolve_with(
-        Path::new(&dir),
-        "x86_64-unknown-linux-gnu",
-        "",
-        &|p: &Path| p.exists(),
+    let dir = std::path::PathBuf::from(std::env::var("CCM_E2E_WORK").expect("要 CCM_E2E_WORK"))
+        .join("not-carried");
+    let said = "这一份产物没带本机后端（夹具句）";
+    let r = resolve_or_extract(
+        &dir,
+        Err(said.to_string()),
+        &|_: &Path| Ok(()),
+        &crate::platform::fs::ensure_private_dir,
+        &|_, _| panic!("没带字节还去问放不放"),
     );
-    let Resolved::Missing { looked_at, .. } = r else {
-        panic!("空目录里居然找到了 local_backend");
+    let Resolved::Missing { reason, .. } = r else {
+        panic!("没带字节居然找到了 local_backend：{r:?}");
     };
-    assert_eq!(looked_at.len(), 2);
-    println!("E2E-OK 缺本机后端时诚实降级，且列出了 2 条找过的路径");
+    assert_eq!(reason.said, said, "拒绝的话没有原样交回");
+    assert!(!dir.exists(), "没带字节却建了落点目录 {}", dir.display());
+    println!("E2E-OK 产物没带本机后端时诚实降级，原话交回、落点一个字节都没写");
 }
 
 // ── 测试侧助手。**只在测试里**，生产段没有任何轮询 ─────────────────────
@@ -2650,7 +2369,6 @@ fn wait_section() -> String {
 ///
 /// 原来是 `read_to_end(&mut Vec::new())` —— 被监护的 backend **持续产帧**
 /// （那正是头注用来论证「它不会关 stdout」的理由）⇒ 那个 `Vec` 单调增长且没有消费者。
-/// ⚠ 今天不咬人只因为 `resolve_beside_this_exe` 恒 `Missing` —— **离生效只差一个配置项**。
 #[test]
 fn waiting_for_death_never_accumulates_the_child_stdout() {
     let sec = wait_section();
@@ -2978,10 +2696,9 @@ fn supervise(
 }
 
 /// 宿主从 `byte_table` 取不到字节时交进来的是**那句拒绝的话**（`Err`）：
-/// `resolve_or_extract` 必须把它接在「旁边没有」那句后面交回，**两件事都说**，而且一个字节都不写。
+/// `resolve_or_extract` 必须把它原样交回（它已经说全了「为什么没有」），而且一个字节都不写。
 ///
 /// 要求：「拒绝是一个会到达用户的结论，不是一行 `debug` 日志」。
-/// 夹具：`target_triple` 取盘上必不存在的中性串 ⇒ 旁边必 `Missing`（同上一条的做法）。
 #[test]
 fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing() {
     let base = std::env::temp_dir().join(format!("ccm-dp1-refuse-{}", std::process::id()));
@@ -2990,7 +2707,6 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     let mark = |_: &Path| Ok(());
     let said = "本机 是 macOS / arm64 的机器（夹具句）";
     let r = resolve_or_extract(
-        "no-such-target-triple",
         &base,
         Err(said.to_string()),
         &mark,
@@ -3003,10 +2719,6 @@ fn a_refusal_from_the_byte_table_reaches_the_missing_reason_and_writes_nothing()
     assert!(
         reason.said.contains(said),
         "拒绝的话没到 reason 里：{reason}"
-    );
-    assert!(
-        copy_core::copy_matches("rsLocalBackend.resolve.notBeside", &reason.said),
-        "「旁边没有」那一句被换掉了（两件事都要说）：{reason}"
     );
     // 「一个字节都不写」：空目录才删得掉（`remove_dir` 对非空目录报错）—— 不遍历目录。
     std::fs::remove_dir(&base)

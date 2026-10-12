@@ -888,7 +888,7 @@ run_gate deadcode '不是数出来的数：`cargo check -p monitor`（非 test�
 # 成功时只印输出尾部两行：警告片段会带出源码散文里的数字，而 `run_gate` 取最大的那个数。红的时候整份照印。
 run_gate clippy '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，分母是 `src/frontend/shell` 那个 workspace 的全部成员与全部 target（含 test 档）。⚠ 与 CI 那一步同一条命令、不加 `-D warnings` ⇒ 警告不红，只有 deny 档的 lint 与编译错红；CI 那一步跑在 windows-latest 上，本格跑在 Linux 上（Windows 那一维由 `winchk` 盖）' \
          bash -c 'cd src/frontend/shell && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy: 1 passed"'
-run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 Linux 上真编真链一趟，与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖' \
+run_gate appbuild '不是数出来的数：`cargo build`（dev）只有绿/红两态，射程 = `src/frontend/shell` 根包 `monitor` 的 lib 与主二进制 `cc-monitor` 在 Linux 上真编真链一趟（文件窗口程序住文件窗口包，本格不编它），与 `ci.yml` 的 `linux-app-build` 那一步同一条命令。⚠ 只链不跑；release 档不编；前端产物（`dist/`）由 `npm` 那格里的真 vite 构建与 `tsc` 那格盖' \
          bash -c 'cd src/frontend/shell && out=$(cargo build 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "appbuild: 1 passed"'
 # ── `shotsshell`：截图台架的无头壳（例子 `ccm-shots-shell`，只在台架特性下编）编不编得过 ──
 # 台架那一处（`tests/shots/real/pool.mjs`）照同一条编、起它；从前没有一格编它，壳里它调的签名一改（如 `call_via` 多一参），
@@ -907,8 +907,8 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
          bash -c 'cd src/frontend/shell && cargo check --locked --all-targets -p monitor -p cc-monitor-filewin --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # ── `winlink`：monitor 在 Windows 上链不链得起来，两个前端包的 lib 测试程序带不带进程清单 ──
-# `winchk` 只 check 不链接。这里 `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）在 `x86_64-pc-windows-gnu` 上
-#   真走一趟链接器（dev）。`[lib]` 只产 `rlib`；有人把 `cdylib` 加回来 ⇒ 红在 `export ordinal too large`。
+# `winchk` 只 check 不链接。这里 `-p monitor` 的 `cc-monitor` 与 `-p cc-monitor-filewin` 的 `cc-monitor-filewin`（size2 10-11 起住文件窗口包）在 `x86_64-pc-windows-gnu` 上
+#   真走一趟链接器（dev），文件窗口程序那份 exe 的资源表也读一遍（同一把尺子：它本身用 rfd 的通用控件 v6 对话框）。`[lib]` 只产 `rlib`；有人把 `cdylib` 加回来 ⇒ 红在 `export ordinal too large`。
 # 再编出两份 lib 测试程序（`-p monitor` 的 `monitor_lib` · `-p cc-monitor-filewin` 的 `cc_monitor_filewin`；`cargo test --lib --no-run`，只编不跑），
 #   用 `llvm-readobj --coff-resources` 逐份读资源表：必须有 MANIFEST（资源类型 ID 24），且那份清单里点名 `Microsoft.Windows.Common-Controls`（通用控件 v6）。
 #   为什么：两份都按名字引入 comctl32 里只有 v6 才导出的 `TaskDialogIndirect`（monitor 经 Tauri 的对话框，文件窗口经 rfd 的 `common-controls-v6`），
@@ -938,8 +938,10 @@ GATE_WINLINK_TEST_BINS='monitor monitor_lib monitor
 cc-monitor-filewin cc_monitor_filewin 文件窗口'
 gate_winlink() {
   local t=x86_64-pc-windows-gnu js exe pkg lib label bad=0 n=0
-  ( cd src/frontend/shell && cargo build --locked -p monitor --bins --target "$t" 2>&1 ) || return $?
+  ( cd src/frontend/shell && cargo build --locked -p monitor -p cc-monitor-filewin --bins --target "$t" 2>&1 ) || return $?
   command -v llvm-readobj >/dev/null 2>&1 || { echo "winlink: 这台机器上没有 llvm-readobj（装 llvm）—— 判不了测试程序的清单，按红记"; return 1; }
+  n=$((n + 1))
+  llvm-readobj --coff-resources ".build/shell/$t/debug/cc-monitor-filewin.exe" | gate_pe_manifest_judge "文件窗口程序" || bad=1
   while read -r pkg lib label; do
     js="$(cd src/frontend/shell && cargo test --locked -p "$pkg" --lib --no-run --target "$t" --message-format=json 2>/dev/null)" || {
       ( cd src/frontend/shell && cargo test --locked -p "$pkg" --lib --no-run --target "$t" 2>&1 | tail -40 )
@@ -959,7 +961,7 @@ for l in sys.stdin:
   [ "$bad" -eq 0 ] || return 1
   echo "winlink: $n passed"
 }
-run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）＋ 两份 lib 测试程序的资源表，只有绿/红两态（几份 passed 是查了几份测试程序）。射程 = `-p monitor` 的两个二进制（`cc-monitor` · `cc-monitor-filewin`）**真链接**一趟 ＋ monitor 与文件窗口包两份 lib 测试程序编出来（`--no-run`）、各自资源表里有 MANIFEST（ID 24）且点名 Common-Controls；⚠ 只链不跑（跑不跑得完要真机，CI 的 Windows job 真跑）· `-gnu` 不是 `-msvc` · release 那一档不链' \
+run_gate winlink '不是数出来的数：`cargo build --bins --target x86_64-pc-windows-gnu`（dev）＋ 文件窗口程序与两份 lib 测试程序的资源表，只有绿/红两态（几份 passed 是查了几份）。射程 = `-p monitor` 的 `cc-monitor` 与 `-p cc-monitor-filewin` 的 `cc-monitor-filewin` **真链接**一趟、文件窗口程序的资源表里有 MANIFEST ＋ monitor 与文件窗口包两份 lib 测试程序编出来（`--no-run`）、各自资源表里有 MANIFEST（ID 24）且点名 Common-Controls；⚠ 只链不跑（跑不跑得完要真机，CI 的 Windows job 真跑）· `-gnu` 不是 `-msvc` · release 那一档不链' \
          gate_winlink
 # 探针⑪ · 清单那条还在判：喂两份合成的 `llvm-readobj` 输出 —— 一份没有 ID 24、一份有 ID 24 却不含 Common-Controls；
 #   其余（链接、编出测试程序）对探针不存在，判的就是资源表那一步。

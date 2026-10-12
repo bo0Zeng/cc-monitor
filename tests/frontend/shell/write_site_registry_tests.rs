@@ -63,7 +63,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── **本机那一份文件窗口程序**。不是安装动作 —— 我们自己的部署物，放在我们自己的目录里。
     ("local_backend.rs", "place_local_program", None,
      "把这一份产物带着的、没有身份戳的本机程序放到 `~/.cc-monitor/bin/<file>`：文件窗口程序 \
-          `cc-monitor-filewin[.exe]`（monitor 旁边没有它时）。\
+          `cc-monitor-filewin[.exe]`（开文件窗口都走这一份；安装包里不另放）。\
           写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + 上位走 `rename_into_place`）；盘上那份逐字节相等就零写。\
           调用点：`filewin::proc::resolve_window_bin`（开窗时）。\
           不碰用户既有环境、不注册到任何用户配置里。"),
@@ -90,6 +90,10 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("lib.rs", "embed_for_every_artifact", None,
      "构建期：往 `OUT_DIR` 写一行 `.rc`（指向 `win-manifest/app.manifest`），编成 Windows 进程清单资源，\
           链进调它的那个包的每一个产物（测试程序也要）。写的是 cargo 自己的构建目录，不碰用户环境"),
+    // 同一处编法的第二件：文件窗口程序的图标（size2 10-11 起它不经 `tauri-build`）。
+    ("lib.rs", "embed_icon_for_bins", None,
+     "构建期：往 `OUT_DIR` 写一行 `.rc`（指向 monitor 那份 `icon.ico`），编成 Windows 图标资源，\
+          只链进调它的那个包的程序（文件窗口）。写的是 cargo 自己的构建目录，不碰用户环境"),
     // ── 🔴 这里原来有三行 `fenced_block.rs` 的本机原语
     //    （`put_atomic` / `save_backup` / `delete_created`，那时是本机 rc · `$PROFILE` · 别名文件 · rc 里那一行
     //    source 的唯一落盘漏斗）。只有后端的文件管理部分写文件，**本机也算** ⇒ 那几件改经本机后端
@@ -417,6 +421,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ),
     ("build.rs", "embed_backends", Lands::BuildOutput),
     ("lib.rs", "embed_for_every_artifact", Lands::BuildOutput),
+    ("lib.rs", "embed_icon_for_bins", Lands::BuildOutput),
     ("bind.rs", "spawn", Lands::OwnState),
     ("bind.rs", "process_tty_file", Lands::OwnState),
     ("console.rs", "tty_title", Lands::TerminalDevice),

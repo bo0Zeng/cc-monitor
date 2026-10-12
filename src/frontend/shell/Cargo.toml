@@ -36,7 +36,7 @@ members = [
     "../../common/filewin-contract",
     # 测试档的家一开始就是沙箱：每个有判据的 crate 都把它当 dev 依赖（判据 `test_home_guard` 钉）。
     "../../common/test-home",
-    # 文件窗口（又一个前端）：独立成包，monitor 包里的 `[[bin]] cc-monitor-filewin` 转调它。
+    # 文件窗口（又一个前端）：独立成包，二进制 `[[bin]] cc-monitor-filewin` 也住那一包。
     "../filewin",
     # `gate-core` 出列：收成后端模块 `control/gate_rules.rs`（monitor 那一侧的门删了）。
 ]
@@ -73,48 +73,18 @@ name = "monitor_lib"
 crate-type = ["rlib"]
 
 # 主二进制 `cc-monitor`：下载的 `cc-monitor.exe`（Linux 上是 `cc-monitor`）或装上的就是这个项目本身，包含前端和后端，
-# 后端会被它释放到不同机器上。🔴 **明写出来**：下面多了第二个 `[[bin]]`，而「自动发现 + 明写混用」
-# 是一个读起来要去查 cargo 文档才知道答案的形状 —— 两个都写死，谁都不用猜。
+# 后端会被它释放到不同机器上。🔴 **明写出来**：本包只有这一个 `[[bin]]`（文件窗口程序住它自己的包，见下），写死谁都不用猜。
 # 包名仍是 `monitor`（`-p monitor` · 库名 `monitor_lib` 不动），可执行文件的名字只住这一行。
 [[bin]]
 name = "cc-monitor"
 path = "src/main.rs"
 
-# 🔴**文件管理窗口的独立进程**（作废重写 · `§8.5`）。
-#
-# 为什么它是**本包的第二个 bin** 而不是一个新 crate：与 `filewin` 当初落成模块
-# 同一条理由 —— 当时门禁 `cargo` 那一格把 workspace 包数恒等钉成一个手抄的数，这里不改它
-# （今天那一格的成员集合从 `cargo metadata` 现取，这条理由已不成立）。
-# 第二个 `[[bin]]` 不动包数，而且它要的每一样（egui/eframe/winit/tokio/sftp 那条池）
-# 本包已经全有 ⇒ **零新增依赖**。
-#
-# ⚠ **代价如实记**：它把整个 `monitor_lib` 链进第二份产物
-# ⇒ `cargo build` 多一次链接（体积翻一份）。
-#
-# ── 🔴〔2026-09-23 同日订正〕**「发版包里还没有它」那条报备是假的** ─────────────────
-#
-#
-# 现打两趟推翻（本仓这份 manifest ＋ `tauri.conf.json` ＋ `tauri.sidecar.conf.json`，
-# `@tauri-apps/cli` 现锁 2.11.2，喂的是占位字节 —— 问的是**清单**）：
-#   · 真 `.deb`：`dpkg-deb -c` 现打 `usr/bin/` **三份** —— `monitor` ·
-#     **`cc-monitor-filewin`** · `cc-monitor-backend`，同一个目录；
-#   · NSIS 那份清单（生成出来的 `installer.nsi`）现打逐字
-#     `File /a "/oname=cc-monitor-filewin.exe" …`，与 `${MAINBINARYNAME}.exe` 同落 `$INSTDIR`。
-# 机制：`tauri-cli::get_binaries` 把**每一个** `[[bin]]` 都交给打包器（`name == 包名` 的那个
-# 算主二进制、其余 `!bin.main()`），而 nsis/msi/deb 三个打包器都把非主 bin 装在主二进制旁边。
-# ⇒ `resolve_window_bin()` 的「exe 旁那一份」在装机布局下**命中**，`externalBin` 一个字不用加。
-#
-# ⚠ **别把它加进 `externalBin`**：现打过那一形 —— 同一个落点名会被铺**两份**（NSIS 清单里
-#   `/oname=cc-monitor-filewin.exe` 出现两行；MSI 那边是两个组件往 `INSTALLDIR` 装同一个
-#   文件名，WiX 的 ICE30 那一族，本机验不了）。
-# 🔴 **这条路线由判据钉着，别只读这段注释**：`tests/evidence/K-R124-ruler.py` 的 ⑭ ——
-#   每个 `[[bin]]` ↔ 入包路线登记（**两向集合相等**）· 主二进制恰好一个 ·
-#   `required-features` 零命中（带了它 `get_binaries` 会**静默**跳过这个 bin）·
-#   `externalBin` ↔ 登记两向且不与本包 bin 重名 · 消费侧 `proc::BIN_STEM` ↔ 下面这个
-#   `name` 逐字 · 以及那把工具的版本。**改下面这个名字，判据当场红。**
-[[bin]]
-name = "cc-monitor-filewin"
-path = "src/filewin/win_main.rs"
+# ── 文件窗口程序**不在本包**（size2 10-11）────────────────────────────────────
+# `tauri-cli::get_binaries` 把本包**每一个** `[[bin]]` 都交给打包器，nsis/msi/deb 都把非主 bin 装在主程序旁；
+# 而开窗只用 monitor 内嵌的那一份（`build.rs::embed_native_filewin`，放到 `~/.cc-monitor/bin/` 再起）
+# ⇒ 它从前住这里时安装包里多一份逐字节相同的 10 MB。现在它是文件窗口包自己的 `[[bin]]`（`src/frontend/filewin/Cargo.toml`）。
+# 🔴 判据：`tests/evidence/K-R124-ruler.py` 的 ⑭ —— 本包每个 `[[bin]]` ↔ 入包路线登记（两向集合相等，今天只有主二进制）·
+#   主二进制恰好一个 · `required-features` 零命中 · `externalBin` 零命中 · 以及那把工具的版本。
 
 # 截图台架的无头壳（`src/shots_shell.rs`）：只在这个特性下编，发版构建（`tauri build` · `cargo build --release`）不开它。
 # 台架那一处（`tests/shots/real/pool.mjs`）按 `cargo build --features shots --example ccm-shots-shell` 编；判据 `shots_feature_guard_tests.rs` 钉着。
@@ -211,17 +181,17 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
 tracing-appender = "0.2"
 
-# 文件窗口独立成包 `src/frontend/filewin/`：界面库那几条（egui · eframe（glow）·
-#   winit · rfd）与块形上传的 sha2 随窗口搬进那一包的清单（来历与「为什么是 glow」那几段注释逐字跟过去了）。
-#   monitor 链它**只为**本包第二个 `[[bin]] cc-monitor-filewin`（`src/filewin/win_main.rs` 一行转调 `cc_monitor_filewin::run`；
-#   bin 不能有自己的依赖，只能挂在包上）—— monitor 生产段一行都不引它（`contract_crate_guard` 的「前端包」那一类钉住）。
-cc-monitor-filewin = { path = "../filewin" }
 
 [dev-dependencies]
 # 测试程序在 Windows 上读回自己的进程清单（`tests/frontend/shell/lib_app_manifest_tests.rs`）。
 win-manifest = { path = "../../common/win-manifest" }
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../../common/test-home" }
+
+# 文件窗口包（`src/frontend/filewin/`）：monitor 生产段一行都不引它（`contract_crate_guard` 的「前端包」那一类钉住），
+#   只有跨两半对拍的判据（`tests/frontend/shell/filewin/cross_half_tests.rs`）读它的常量 ⇒ dev 侧。
+#   从前它挂在正式依赖上，只为本包第二个 `[[bin]] cc-monitor-filewin`；那个 bin 搬进了文件窗口包自己名下（size2 10-11）。
+cc-monitor-filewin = { path = "../filewin" }
 # C01（rust-ts-boundary）：**故意只在 dev 侧**。`ts-rs` 是 codegen 工具，
 # 导出本来就走 `cargo test`（`#[ts(export)]` 生成的是一个测试），
 # 所以它没有理由进发布二进制。派生用 `#[cfg_attr(test, ...)]` 挂在 test cfg 上。

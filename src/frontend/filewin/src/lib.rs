@@ -1,5 +1,5 @@
 //! 要求：「文件窗口成独立包 `src/frontend/filewin/`」· 「窗口是又一个前端：只说 `call` / `subscribe`」
-//! 独立的包（lib），monitor 包里的 `[[bin]] cc-monitor-filewin` 一行转调 [`run`]。
+//! 独立的包：库面 ＋ 本包的 `[[bin]] cc-monitor-filewin`（`src/main.rs`，一行转调 [`run`]）。
 //!
 //! 它依赖的只有契约类与前端宿主原语（`comms-inward` 通道 · `filewin-contract` 种子 · `copy-core` 文案 · `creds-core` 家目录规矩 ·
 //! `relay-route-core` 暂存区路径 · `host-core` 原子写与窗口几何）＋ 自己的界面库；一个判定类 crate 都不链，也不链 monitor
@@ -308,7 +308,7 @@ pub mod writeops;
 
 // 与 app 那条边界的判据（`boundary_tests`）挂在 monitor 那一侧（壳里 `filewin/mod.rs`）：它判的是 monitor 那一侧够不够得着这里。
 
-/// 窗口进程的入口：monitor 包里 `[[bin]] cc-monitor-filewin`（`src/frontend/shell/src/filewin/win_main.rs`）只转调这一个函数。
+/// 窗口进程的入口：本包的 `[[bin]] cc-monitor-filewin`（`src/main.rs`）只转调这一个函数。
 pub fn run() -> i32 {
     proc::child_main()
 }

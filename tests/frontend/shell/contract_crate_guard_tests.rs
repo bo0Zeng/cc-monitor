@@ -8,9 +8,9 @@
 //! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `control/deploy_plan.rs` 恰一处定义；契约 crate `deploy-contract` 与
 //!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 通信层面 A 那个 crate）零处定义。
 //! ④「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
-//! ⑤「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`：monitor 链它**只为**那个 `[[bin]]`
-//!    （生产源码里提到它的恰好是 `filewin/win_main.rs` 一份），它自己的闭包照 ② 判；monitor 的源码人群声明
-//!    （`[package.metadata.guard] population`）== monitor 生产闭包 − 后端生产闭包（两向）。
+//! ⑤「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`、自己出一个程序（它的 `[[bin]]` 住它自己名下，size2 10-11 从 monitor 包搬来）：
+//!    monitor 生产段不链它、生产源码一处都不提它；它自己的闭包照 ② 判（「前端那一侧的生产闭包」= monitor ＋ 各前端包）；
+//!    monitor 的源码人群声明（`[package.metadata.guard] population`）== 前端那一侧的生产闭包 − 后端生产闭包（两向）。
 //!
 //! 买不到：契约类 crate **里面**长出一个名字不在 [`DEPLOY_DECISIONS`] 里的判定（这条只按 crate 分类 ＋ 点名的判定符号，不读函数体；
 //! 那是 `judgment-single-home.vitest.ts` 的 CORE_ITEMS）。
@@ -48,11 +48,11 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("upstream-url-core", Class::Decision, "上游 URL 能不能用是裁决；界面读的是生成器现生成的式子（monitor 只在 dev 侧链它）"),
 ];
 
-/// ⑤前端包：不住 `src/common/`、monitor 生产段只为某个 `[[bin]]` 链它的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
+/// ⑤前端包：不住 `src/common/`、自己出一个程序的包 —— (包目录（仓根相对）, 那个 bin 的 crate 根, 理由)。
 const FRONTEND_PACKAGES: &[(&str, &str, &str)] = &[(
     "src/frontend/filewin",
-    "src/frontend/shell/src/filewin/win_main.rs",
-    "文件窗口（又一个前端）：包里第二个 `[[bin]] cc-monitor-filewin` 一行转调它，打包路线不变（K-R124 ⑭）；monitor 库面一行都不引它",
+    "src/frontend/filewin/src/main.rs",
+    "文件窗口（又一个前端）：它自己的 `[[bin]] cc-monitor-filewin` 一行转调库面；只经 monitor 内嵌那份出货（不进安装包，K-R124 ⑭a）；monitor 一行都不引它",
 )];
 
 /// 部署判定（原 `deploy-core` 的判定那一半）：只许在后端 [`DEPLOY_HOME`] 恰一处定义。
@@ -147,6 +147,14 @@ fn monitor_production_closure() -> Vec<(String, String, PathBuf)> {
         "monitor".to_string(),
         root().join("src/frontend/shell/Cargo.toml"),
     )];
+    // 前端那一侧的程序不止 monitor 一个：各前端包自己出程序（monitor 不链它们），它们与自己的生产闭包一起算进来。
+    for (at, _, _) in FRONTEND_PACKAGES {
+        let dir = root().join(at);
+        out.push(("前端".to_string(), (*at).to_string(), dir.clone()));
+        if seen.insert(dir.clone()) {
+            todo.push(((*at).to_string(), dir.join("Cargo.toml")));
+        }
+    }
     while let Some((who, manifest)) = todo.pop() {
         for (name, dir) in production_path_deps(&manifest) {
             out.push((who.clone(), name.clone(), dir.clone()));
@@ -361,8 +369,8 @@ fn deploy_decisions_live_only_in_the_backend() {
         .filter(|(_, b)| b.contains("deploy_contract::"))
         .collect();
     assert!(
-        users.iter().any(|(r, _)| r.ends_with("local_backend.rs")),
-        "monitor 里用部署契约的人群没扫到 `local_backend.rs` —— 量法瞎了"
+        users.iter().any(|(r, _)| r.ends_with("byte_table.rs")),
+        "monitor 里用部署契约的人群没扫到 `byte_table.rs` —— 量法瞎了"
     );
     for (rel, body) in contract.iter().chain(users) {
         for name in DEPLOY_DECISIONS {
@@ -396,11 +404,12 @@ fn backend_production_closure() -> BTreeSet<PathBuf> {
     seen
 }
 
-/// ⑤ 前端包只为它那个 `[[bin]]` 链：monitor 生产源码（壳 `src/` ＋ 通信层面 A 那个 crate，不含别的兄弟包）里
-/// 提到它 crate 名的文件 == 那个 bin 的 crate 根，恰好一份。
+/// ⑤ 前端包自己出程序、monitor 不链它：monitor 的清单生产段不点名它，monitor 生产源码（壳 `src/` ＋ 通信层面 A 那个 crate）一处都不提它的 crate 名；
+/// 它那个 `[[bin]]` 的 crate 根真的转调它自己的库面。
 #[test]
-fn a_frontend_package_is_linked_only_for_its_bin() {
+fn a_frontend_package_ships_its_own_bin_and_the_monitor_does_not_link_it() {
     let sources = monitor_production_sources();
+    let monitor_deps = production_path_deps(&root().join("src/frontend/shell/Cargo.toml"));
     for (at, bin_root, _) in FRONTEND_PACKAGES {
         let manifest = std::fs::read_to_string(root().join(at).join("Cargo.toml"))
             .unwrap_or_else(|e| panic!("读 {at}/Cargo.toml：{e}"));
@@ -410,6 +419,15 @@ fn a_frontend_package_is_linked_only_for_its_bin() {
             .and_then(|r| r.split('"').next())
             .unwrap_or_else(|| panic!("{at}/Cargo.toml 没有包名"))
             .replace('-', "_");
+        let linked: Vec<&String> = monitor_deps
+            .iter()
+            .filter(|(_, dir)| *dir == root().join(at))
+            .map(|(n, _)| n)
+            .collect();
+        assert!(
+            linked.is_empty(),
+            "monitor 的生产段又链了前端包 `{at}`（{linked:?}）—— 它自己出程序，monitor 不链它"
+        );
         let mentioned: BTreeSet<&str> = sources
             .iter()
             .filter(|(rel, _)| {
@@ -418,15 +436,20 @@ fn a_frontend_package_is_linked_only_for_its_bin() {
             .filter(|(_, body)| guard_core::contains_word(body, &name))
             .map(|(rel, _)| rel.as_str())
             .collect();
-        assert_eq!(
-            mentioned,
-            BTreeSet::from([*bin_root]),
-            "monitor 生产源码里提到 `{name}` 的文件变了 —— 它只许由那个 `[[bin]]` 转调（库面引它 = 两个前端又缠回一个 crate）"
+        assert!(
+            mentioned.is_empty(),
+            "monitor 生产源码里提到了 `{name}`：{mentioned:?} —— 两个前端又缠回一个 crate"
+        );
+        let entry = std::fs::read_to_string(root().join(bin_root))
+            .unwrap_or_else(|e| panic!("读 {bin_root}：{e}"));
+        assert!(
+            guard_core::contains_word(&guard_core::production_code(&entry), &name),
+            "`{bin_root}` 不转调 `{name}` 的库面 —— 登记的 bin 根不是那个程序的入口"
         );
     }
 }
 
-/// ⑤ monitor 的源码人群声明（`guard_core::population_trees`：判据按它收兄弟源码树）== monitor 生产闭包 − 后端生产闭包。
+/// ⑤ monitor 的源码人群声明（`guard_core::population_trees`：判据按它收兄弟源码树）== 前端那一侧的生产闭包（monitor ＋ 各前端包）− 后端生产闭包。
 /// 少写一包 ⇒ 按人群扫的判据静默少扫搬进去的那几份；多写一包（后端也链的契约）⇒ 人群被别家的代码撑大。
 #[test]
 fn the_monitor_population_is_exactly_its_frontend_only_closure() {

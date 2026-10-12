@@ -261,7 +261,7 @@ fn ci_actually_runs_the_three_converged_commands() {
 /// 且交出去之后所有门禁**依旧全绿**，比删掉一步隐蔽得多。
 ///
 /// 全仓读 `.github/workflows` 的只有两处（本文件 +
-/// `local_backend_tests.rs::every_bundle_job_stages_the_local_backend_before_building` 读 `release.yml`），（08-08 起三处，见上一条的订正）
+/// `local_backend_tests.rs::no_bundle_job_puts_a_second_local_backend_beside_the_exe` 读 `release.yml`），（08-08 起三处，见上一条的订正）
 /// **两处都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
 ///
 /// ⚠ 本条**不管** backend job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、

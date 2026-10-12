@@ -48,10 +48,35 @@ const vendorLayer = {
   },
 };
 
+/**
+ * KaTeX 的 `@font-face` 只留 woff2：它原样把每个字体的 woff2 · woff · ttf 三种都写进 `src`，vite 就把三种都打进产物（约多 0.6 MB）。
+ * 两个 WebView（WebView2 · WebKitGTK）都认 woff2，后两种永远不会被取。
+ * 判据：`tests/frontend/ui/entry-graphs.vitest.ts`「字体：KaTeX 只打 woff2」。
+ */
+const katexWoff2Only = {
+  postcssPlugin: "cc-monitor-katex-woff2-only",
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  Once(root: any) {
+    const file: string = root.source?.input?.file ?? "";
+    if (!/[\\/]node_modules[\\/]katex[\\/]/.test(file)) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    root.walkAtRules("font-face", (rule: any) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      rule.walkDecls("src", (decl: any) => {
+        const woff2 = String(decl.value)
+          .split(",")
+          .filter((part: string) => /format\(\s*["']woff2["']\s*\)/.test(part));
+        if (woff2.length === 0) throw new Error(`KaTeX 的 @font-face 里没有 woff2：${decl.value}`);
+        decl.value = woff2.join(",");
+      });
+    });
+  },
+};
+
 // https://vite.dev/config/
 export default defineConfig(async () => ({
   css: {
-    postcss: { plugins: [vendorLayer] },
+    postcss: { plugins: [katexWoff2Only, vendorLayer] },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

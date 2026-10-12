@@ -1050,7 +1050,7 @@ fn opening_a_window_again_is_a_new_process_and_it_really_comes_up() {
 ///
 /// ① **值**：那一句是 `with_dpi_aware(builder, true)`，恰好一行（`pin_line`）；`false` 零命中。
 /// ② **前提**：这个 hook 在生产上只经一条链被用到 ——
-///    `win_main.rs`（窗口进程入口，monitor 包里那个 `[[bin]]`）→ `cc_monitor_filewin::run` → `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
+///    `main.rs`（窗口进程入口，本包那个 `[[bin]]`）→ `cc_monitor_filewin::run` → `proc::child_main` → `shell::open_detached_seeded` → `any_thread_hook`，
 ///    每个符号的「生产段里提到它的文件」集合与期望**两向相等**；且链上两份文件的生产段里
 ///    一个 `tauri` / `tao` 都没有。哪天有人在 monitor 进程里开这个窗口（集合多一个文件），
 ///    ② 先红 —— 逼他回来重答「这个进程的 DPI 归谁」，而不是让 ① 静静地守着一个过期的值。
@@ -1081,7 +1081,7 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     );
 
     // ② 前提：谁在生产段里提到这条链上的每一个符号。
-    // 窗口独立成包：人群是 monitor 那棵（入口 `filewin/win_main.rs` 住那里）＋ 本包这棵（键带包名前缀，
+    // 窗口独立成包：人群是 monitor 那棵 ＋ 本包这棵（入口 `main.rs` 住这里；键带包名前缀，
     //    免得与 monitor 那一侧同名的 `filewin/proc.rs` 撞）；链多了一跳 `cc_monitor_filewin::run`（本包 `lib.rs`）。
     let monitor_src = crate::guard_support::repo_root().join("src/frontend/shell/src");
     let own_src = crate::guard_support::crate_src_root();
@@ -1135,8 +1135,8 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
             "child_main",
             set(&["cc-monitor-filewin/proc.rs", "cc-monitor-filewin/lib.rs"]),
         ),
-        // monitor 那一侧只有那个 `[[bin]]` 入口提到本包（`contract_crate_guard` 的「前端包」那一类同钉）。
-        ("cc_monitor_filewin", set(&["filewin/win_main.rs"])),
+        // 只有本包那个 `[[bin]]` 入口提到本包的 crate 名；monitor 那一侧一份都不提（`contract_crate_guard` 的「前端包」那一类同钉）。
+        ("cc_monitor_filewin", set(&["cc-monitor-filewin/main.rs"])),
     ] {
         assert_eq!(
             mentioned_by(sym),
@@ -1150,7 +1150,7 @@ fn the_window_process_owns_its_dpi_because_no_tauri_lives_there() {
     for rel in [
         "cc-monitor-filewin/proc.rs",
         "cc-monitor-filewin/lib.rs",
-        "filewin/win_main.rs",
+        "cc-monitor-filewin/main.rs",
     ] {
         let window_proc_prod = &files
             .iter()

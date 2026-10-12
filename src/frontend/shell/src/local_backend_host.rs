@@ -1142,7 +1142,7 @@ fn adopt_with(sock: &std::path::Path, env: &[(String, String)], wait_for_bind: b
 }
 
 /// 找那个二进制 —— **这一层只做适配，答案取自那一份共用的解析**
-/// （`local_backend::resolve_or_extract`：先找 exe 旁边、再问产物自己带没带、再释放）。
+/// （`local_backend::resolve_or_extract`：用这一份产物内嵌的那份、放到落点）。
 ///
 /// # 🔴 `K-R43`：本函数**曾经是第二份手写实现**，今天不是了
 ///
@@ -1153,7 +1153,7 @@ fn adopt_with(sock: &std::path::Path, env: &[(String, String)], wait_for_bind: b
 /// 顺序没变 ⇒ 判据没红，而同一台机上两条路对同一个失败给出了两句性质不同的话
 /// （本函数那一句逐字是 `K-R42` 从对面删掉的那一句）。读数住件文件。
 /// ⇒ 处置是**只留一份**，本函数降为适配器：把 `Resolved` 换成这条路要的 `Result`，
-/// 并补上两样**宿主知识**（目标三元组常量 · `make_executable`）。
+/// 并补上**宿主知识**（`make_executable` · 建目录 · 问放不放）。
 ///
 /// ⚠ **本层不许再自己拼失败串** —— 拼了就是第二份说法。由
 /// `the_two_resolution_paths_still_agree_on_the_order` 钉着（它今天钉的是「两条路都走那一份」）。
@@ -1162,7 +1162,6 @@ fn resolve_backend_bin(
     embedded: Result<(&str, &[u8]), String>,
 ) -> Result<std::path::PathBuf, (Said, Vec<std::path::PathBuf>)> {
     match local_backend::resolve_or_extract(
-        env!("CCM_TARGET_TRIPLE"),
         extract_dir,
         embedded,
         // `backend-split` 的 C10：平台知识由宿主注入。
@@ -1495,7 +1494,6 @@ pub fn start_local_backend() -> StartOutcome {
         DetachOutcome::NotTaken => {}
     }
     let (resolved, sup) = local_backend::start_or_extract(
-        env!("CCM_TARGET_TRIPLE"),
         &extract_dir,
         embedded,
         // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。

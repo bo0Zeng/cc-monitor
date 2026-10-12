@@ -163,7 +163,7 @@ fn a_seed_that_cannot_be_read_is_a_loud_failure_not_a_default_window() {
     );
 }
 
-/// **那份二进制只有三处来路，都给不出就出声并说出看过哪儿。**（注入形：不读真环境变量、不碰真 `~/.cc-monitor`。）
+/// **那份二进制只有两处来路（环境变量 · monitor 自带那份），都给不出就出声并说出看过哪儿。**（注入形：不读真环境变量、不碰真 `~/.cc-monitor`。）
 #[test]
 fn the_window_binary_is_never_guessed() {
     let dir = std::env::temp_dir().join(format!("filewin-bin-{}", std::process::id()));
@@ -171,24 +171,16 @@ fn the_window_binary_is_never_guessed() {
     let landing = dir.join("home-bin");
     let mk = |_: &Path| -> Result<(), crate::detail::Said> { Ok(()) };
     let ensure = crate::platform::fs::ensure_private_dir;
-    // ① 纯函数那一格：落点的形状（Windows 上带 `.exe`）。
-    let p = window_bin_in(&dir);
+    // ① 纯函数那一格：文件名的形状（Windows 上带 `.exe`）。
     assert_eq!(
-        p,
-        dir.join(format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX)),
-        "落点的拼法变了"
+        window_bin_name(),
+        format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX),
+        "文件名的拼法变了"
     );
-    // ② 环境变量指着一个**不存在**的路径、旁边没有、这一份没带 ⇒ 出声，而且**把看过的都说出来**。
+    // ② 环境变量指着一个**不存在**的路径、这一份没带 ⇒ 出声，而且**把看过的都说出来**。
     let missing = dir.join("根本没有这个文件");
-    let e = resolve_window_bin_in(
-        Some(missing.clone()),
-        &dir,
-        None,
-        Some(&landing),
-        &mk,
-        &ensure,
-    )
-    .expect_err("指着一个不存在的文件居然解出来了");
+    let e = resolve_window_bin_in(Some(missing.clone()), None, Some(&landing), &mk, &ensure)
+        .expect_err("指着一个不存在的文件居然解出来了");
     // 句子只说原因词「未装」＋ 出路；看过的那几条路径进复制详情（原话）。
     assert_eq!(
         e.said,
@@ -215,7 +207,6 @@ fn the_window_binary_is_never_guessed() {
     assert_eq!(
         resolve_window_bin_in(
             Some(real.clone()),
-            &dir,
             Some(b"carried"),
             Some(&landing),
             &mk,
@@ -228,13 +219,13 @@ fn the_window_binary_is_never_guessed() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// 🔴 **旁边没有、monitor 自带着 ⇒ 放到落点再回那一份**（单文件的 monitor 开得了文件窗口，靠的就是这一支）。
+/// 🔴 **monitor 自带着 ⇒ 放到落点再回那一份**（开文件窗口只走这一支：安装包里不再另放一份，exe 旁边有也不认）。
 ///
 /// 期望手写自落盘规则（不取自被测函数）：落点 = `<落点目录>/<窗口程序名>`、字节 = 自带那份；
 /// 同一份再开零写；盘上是别的字节 ⇒ 换成自带那份；原地换不掉（Windows 上旧的那份正在跑）⇒ 先挪开再上位；
-/// 旁边有 ⇒ 用旁边的、不碰落点；家目录问不到 / 放不下来 ⇒ 各说各的那一句，不说成「没带」。
+/// 旁边摆着一份（旧安装包留下的）⇒ 不认、照旧回落点；家目录问不到 / 放不下来 ⇒ 各说各的那一句，不说成「没带」。
 #[test]
-fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned() {
+fn the_carried_window_binary_is_placed_and_returned_even_with_one_beside_the_exe() {
     let root = std::env::temp_dir().join(format!("filewin-carried-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let exe_dir = root.join("exe");
@@ -247,9 +238,8 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
     };
     let ensure = crate::platform::fs::ensure_private_dir;
     let want = landing.join(format!("{BIN_STEM}{}", std::env::consts::EXE_SUFFIX));
-    let resolve = |carried: &[u8]| {
-        resolve_window_bin_in(None, &exe_dir, Some(carried), Some(&landing), &mk, &ensure)
-    };
+    let resolve =
+        |carried: &[u8]| resolve_window_bin_in(None, Some(carried), Some(&landing), &mk, &ensure);
     // ① 第一次：放下来、置可执行位、回落点那一份。
     assert_eq!(resolve(b"carried-v1").expect("自带着却没放下来"), want);
     assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v1");
@@ -276,22 +266,25 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
         aside.join("占着").is_dir(),
         "占着的那一份不是被挪开的：{aside:?}"
     );
-    // ⑤ 旁边有 ⇒ 用旁边那份，落点那一份一个字节不动。
-    let beside = window_bin_in(&exe_dir);
+    // ⑤ exe 旁边摆着一份（旧安装包留下的）⇒ 不认它：照旧回落点、换成自带那份 —— 开窗只认这一版 monitor 带的字节。
+    let beside = exe_dir.join(window_bin_name());
     std::fs::write(&beside, b"beside").expect("写不出旁边那份");
-    assert_eq!(resolve(b"carried-v3").expect("旁边有却没解出来"), beside);
-    assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v2");
+    assert_eq!(
+        resolve(b"carried-v3").expect("旁边有一份就解不出来了"),
+        want
+    );
+    assert_eq!(std::fs::read(&want).expect("落点上没有文件"), b"carried-v3");
     std::fs::remove_file(&beside).expect("删不掉旁边那份");
     // ⑥ 家目录问不到 ⇒ 「不知道放哪」那一句；放不下来 ⇒ 带着原话的那一句 —— 都不是「没带」。
     assert_eq!(
-        resolve_window_bin_in(None, &exe_dir, Some(b"x"), None, &mk, &ensure)
+        resolve_window_bin_in(None, Some(b"x"), None, &mk, &ensure)
             .expect_err("没有落点也解出来了")
             .said,
         copy_text("rsFilewinProc.bin.noHome", &[])
     );
     let no_dir = |_: &Path| -> Result<(), crate::detail::Said> { Err("不许建".into()) };
     let fresh = root.join("fresh");
-    let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&fresh), &mk, &no_dir)
+    let e = resolve_window_bin_in(None, Some(b"x"), Some(&fresh), &mk, &no_dir)
         .expect_err("建不了目录也解出来了");
     // 建不了目录（宿主注入那一下只回一句话）⇒ 判不出 IO 种类 ⇒「原因不明」；落点与原话进详情。
     assert_eq!(
@@ -311,7 +304,7 @@ fn with_nothing_beside_the_exe_the_carried_window_binary_is_placed_and_returned(
         use std::os::unix::fs::PermissionsExt;
         std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o500)).unwrap();
         let ok_dir = |_: &Path| -> Result<(), crate::detail::Said> { Ok(()) };
-        let e = resolve_window_bin_in(None, &exe_dir, Some(b"x"), Some(&denied), &mk, &ok_dir)
+        let e = resolve_window_bin_in(None, Some(b"x"), Some(&denied), &mk, &ok_dir)
             .expect_err("只读目录里竟然写进去了");
         // root 跑测试时只读挡不住 —— 那一形不判。
         if !e.said.is_empty() && std::fs::write(denied.join("probe"), b"").is_err() {
@@ -702,21 +695,40 @@ fn the_ready_line_has_exactly_two_shapes() {
 /// ⇒ 这一条把「那个名字」「那份文件」「那个函数」三者钉成一条链。
 #[test]
 fn the_window_binary_target_really_hosts_the_body() {
-    let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
-    let toml = std::fs::read_to_string(&manifest).expect("读不到本包的 Cargo.toml");
+    // 那个 bin 住文件窗口包自己名下（不再是 monitor 包的第二个 `[[bin]]`：打包器会把 monitor 包的每个 bin 都装进安装包，
+    //   而开窗只用 monitor 内嵌的那份 ⇒ 安装包里那份是纯重复）。
+    let pkg = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../filewin");
+    let toml =
+        std::fs::read_to_string(pkg.join("Cargo.toml")).expect("读不到文件窗口包的 Cargo.toml");
     // ① 那个 bin 的名字与本模块持有的主干**是同一个串**（抄第二份必漂）。
+    // `[[bin]]` 恰好一处，紧跟着的那一行就是它的名字（包名也叫这个，所以不能只数名字那一行）。
+    let lines: Vec<&str> = toml.lines().map(str::trim).collect();
+    let bins: Vec<usize> = (0..lines.len())
+        .filter(|i| lines[*i] == "[[bin]]")
+        .collect();
     assert!(
-        guard_core::pin_line(&toml, &format!("name = \"{BIN_STEM}\"")).is_ok(),
-        "`Cargo.toml` 里没有一个叫 `{BIN_STEM}` 的目标 —— \
-         而生产那条路正是按这个名字去 exe 旁边找它的"
+        bins.len() == 1
+            && lines.get(bins[0] + 1) == Some(&format!("name = \"{BIN_STEM}\"").as_str()),
+        "文件窗口包的 `Cargo.toml` 里没有恰好一个叫 `{BIN_STEM}` 的 `[[bin]]` —— \
+         monitor 内嵌的、放到 `~/.cc-monitor/bin/` 的正是这个名字"
+    );
+    let monitor = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+    )
+    .expect("读不到本包的 Cargo.toml");
+    assert!(
+        monitor
+            .lines()
+            .all(|l| l.trim() != format!("name = \"{BIN_STEM}\"")),
+        "monitor 包里又有了 `{BIN_STEM}` 这个目标 —— 打包器会把它再装进安装包一份（与内嵌那份逐字节相同）"
     );
     // ② 它的入口文件是那一份，而且那一份在盘上。
-    let rel = "src/filewin/win_main.rs";
+    let rel = "src/main.rs";
     assert!(
         guard_core::pin_line(&toml, &format!("path = \"{rel}\"")).is_ok(),
-        "`Cargo.toml` 里那个 bin 的 `path` 不是 `{rel}` —— 入口搬家了，本条的第 ③ 比跟着失效"
+        "文件窗口包里那个 bin 的 `path` 不是 `{rel}` —— 入口搬家了，本条的第 ③ 比跟着失效"
     );
-    let entry = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(rel);
+    let entry = pkg.join(rel);
     let body = std::fs::read_to_string(&entry)
         .unwrap_or_else(|e| panic!("`{rel}` 读不动（{e}）—— `Cargo.toml` 指着一个不存在的入口"));
     // ③ 🔴 它真的调那个躯体。**这一比是本条的全部价值**：
