@@ -333,6 +333,7 @@ async fn stream_loop(
                         cwd,
                         end: Some(end),
                         rid,
+                        catch_up: false,
                     })
                     .await;
             }

@@ -12,6 +12,7 @@ fn payload(sid: &str, idx: usize) -> JsonlLinePayload {
         record: crate::ui_contract::RecordBody::from_json("{}".into()).unwrap(),
         skipped_from: None,
         rid: None,
+        catch_up: false,
     }
 }
 

@@ -384,6 +384,12 @@
         {
           "frozen": true,
           "kind": "value",
+          "path": "{t=said}.results.*.kind",
+          "type": "enum"
+        },
+        {
+          "frozen": true,
+          "kind": "value",
           "path": "{t=said}.results.*.lines",
           "type": "number"
         },

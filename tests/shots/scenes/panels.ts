@@ -17,16 +17,6 @@ function panel(id: string, title: string, desc: string, act: Scene["act"], world
   return { id, page: "index", dir: "主窗口-面板", title, desc, width: 1280, height: 800, world, act };
 }
 
-/**
- * 会话内查找「跳到找不到的那条」：第一个会话末尾用户再说一句、Claude Code 自己补写一句 `<synthetic>` 的「No response requested.」——
- * 核心的查找照 assistant 那一种搜到它，消息流按 `autoReply` 不建卡，选中它就落到「无对应卡片」。
- */
-function findMissingWorld(): World {
-  const w = defaultWorld();
-  w.sessions[0].convo!.user("另外库存接口的 response 里要是带 Retry-After，退避就按它给的秒数来。").autoReply();
-  return w;
-}
-
 /** 这几张要那台的配置表（多选右键「轮换配置 ▸」· 起新会话框「轮换」）：日常（本机默认）· 夜间 · 省额度。 */
 function rotConfigsWorld(): World {
   const w = defaultWorld();
@@ -407,22 +397,6 @@ export const PANEL_SCENES: Scene[] = [
     await key("Enter");
     await sleep(500);
   }),
-  panel(
-    "panel-find-missing",
-    "会话内查找 · 跳到找不到的那条",
-    "找「response」：一条是用户那句（有卡）· 一条是 Claude Code 自己补写的「No response requested.」（核心搜得到、消息流不给它建卡）；选中最后那条，那一行下面写「无对应卡片」",
-    async () => {
-      await mainReady(ALL_TABS);
-      await key("f", { ctrl: true });
-      await waitFor("[data-role=find-input]");
-      await type("[data-role=find-input]", "response");
-      await sleep(700);
-      await key("ArrowUp");
-      await waitFor("[data-role=session-find-panel] [data-unjumpable]");
-      await sleep(300);
-    },
-    findMissingWorld,
-  ),
   panel("panel-outline", "大纲", "Ctrl+F 面板的「大纲」页：本会话里你说过的每一句", async () => {
     await mainReady(ALL_TABS);
     await key("f", { ctrl: true });

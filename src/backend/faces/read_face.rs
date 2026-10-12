@@ -328,8 +328,10 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             } else {
                 let r = history_query::open_session_at(home, path, offset)
                     .map_err(|e| ("failed", e))?;
+                let (target, _) = record_face(home, path)?;
+                let kind = crate::agents::record_kind_of(&target).unwrap_or_default();
                 let scanned =
-                    history_query::scan_session_index(r, offset, until, |row| rows.push(row));
+                    history_query::scan_session_index(kind, r, offset, until, |row| rows.push(row));
                 rows.finish(scanned)?.1
             };
             Ok(pack_index(offset, end, &rows.rows))

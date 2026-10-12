@@ -2067,7 +2067,7 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（与 `--find-in-session` 的中段逐行相同）；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
+| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`（与 `--find-in-session` 的中段逐行相同）；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
 | `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
 | `limit` | → | 可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量） |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
@@ -4072,7 +4072,7 @@ cc-bus 钩子诊断。
 | `--files-stage-chunk` | ＝ 帧命令 `files-stage-chunk`：存盘的一块进暂存区 |
 | `--files-stat` | ＝ 帧命令 `files-stat`：一个路径的元数据 |
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
-| `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好） · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
+| `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`（`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好；`tool` ＝ 它收在哪次工具调用的卡里，缺 ⇒ 自己那张卡） · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
 | `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
 | `--fork-session` `<args>` | 从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下） |

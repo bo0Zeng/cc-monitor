@@ -281,17 +281,6 @@ export class Convo {
     return this;
   }
 
-  /**
-   * Claude Code 自己补写的那一句（`model: "<synthetic>"`、不是报错；原话照后端判据样本 `record_of_tests.rs` 的 `a-auto`）：
-   * 后端认作 `autoReply`，消息流不给它建卡。
-   */
-  autoReply(text = "No response requested."): this {
-    this.push("assistant", 2, {
-      message: { id: `msg_${nextUuid().slice(-12)}`, type: "message", role: "assistant", model: "<synthetic>", content: [{ type: "text", text }], stop_reason: "stop_sequence", usage: { input_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0, output_tokens: 0 } },
-    });
-    return this;
-  }
-
   retry(attempt: number, max: number): this {
     this.push("system", 5, { subtype: "api_error", level: "error", retryInMs: 1000 * attempt, retryAttempt: attempt, maxRetries: max, error: { status: 529, error: { type: "overloaded_error" } } });
     return this;

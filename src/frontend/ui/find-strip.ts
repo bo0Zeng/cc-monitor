@@ -33,8 +33,11 @@ export function plainSnippet(h: { before: string; matched: string; after: string
 export interface FindStripHost {
   /** 在这一份会话里找（宿主决定问哪台机器上的哪份文件）；`skip` ＝ 跳过前几条（续下一页）。 */
   search(query: string, includeTools: boolean, skip: number): Promise<FindResult>;
-  /** 跳到那一条（返回真正落到的那张卡；可以是 Promise —— 要先取回那一段；取失败 ⇒ reject 带原因）。 */
-  jumpTo(uuid: string): JumpResult;
+  /**
+   * 跳到那一条（返回真正落到的那张卡；可以是 Promise —— 要先取回那一段；取失败 ⇒ reject 带原因）。
+   * `tool` ＝ 核心说它落在哪次工具调用的卡里（命中的 `tool`）；缺 ⇒ 落在它自己那张卡上。
+   */
+  jumpTo(uuid: string, tool?: string): JumpResult;
   /** 落空（找不到那张卡）时那一行下面写的一句。 */
   readonly unjumpableHint: string;
 }
@@ -318,7 +321,7 @@ export class FindStrip {
   }
 
   private jump(row: Row): void {
-    const landed = this.host.jumpTo(row.hit.uuid);
+    const landed = this.host.jumpTo(row.hit.uuid, row.hit.tool);
     const settle = (el: HTMLElement | null): void => {
       if (el) {
         delete row.el.dataset.unjumpable;

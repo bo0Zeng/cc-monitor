@@ -37,9 +37,17 @@ fn attach_is_not_a_mode_here() {
         .unwrap_err()
     });
     assert_eq!(e.code, "bad_args");
-    // 句子只说「请求格式不对」；为什么记在日志那一行诊断里。
-    assert_eq!(e.message, crate::common::contract::malformed("x"));
+    // 句子只说「请求格式不对」；为什么记在日志那一行诊断里，也跟进复制详情的原话。
+    assert_eq!(
+        e.message,
+        copy_core::copy_text("beContract.malformed.say", &[])
+    );
     assert!(diag.contains("unknown mode"), "诊断没说清楚为什么：{diag}");
+    assert!(
+        e.raw.as_deref().is_some_and(|r| r.contains("unknown mode")),
+        "原话里没有诊断：{:?}",
+        e.raw
+    );
 }
 
 #[test]

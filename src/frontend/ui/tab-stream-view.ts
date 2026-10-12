@@ -260,7 +260,7 @@ export class TabStreamView {
         }
         return findInSession(t.origin, t.parentPath, query, includeTools, skip);
       },
-      jumpTo: (uuid) => this.jumpInTab(sessionId, streamEl, uuid),
+      jumpTo: (uuid, tool) => this.jumpInTab(sessionId, streamEl, uuid, tool),
       unjumpableHint: copyText("tabStreamView.search.notLoaded"),
     });
     this.finds.set(sessionId, find);
@@ -440,7 +440,7 @@ export class TabStreamView {
    * - 都不是（骨架还没到）⇒ 踢一次要骨架、reject「索引未就绪」（重试时多半已经接上）。
    * 等的期间 tab 被关掉 ⇒ 落空（`null`）。
    */
-  private jumpInTab(sessionId: string, streamEl: HTMLElement, uuid: string): JumpResult {
+  private jumpInTab(sessionId: string, streamEl: HTMLElement, uuid: string, tool?: string): JumpResult {
     const tab = this.store.tabs.get(sessionId);
     if (!tab) return null;
     const sk = tab.skeleton;
@@ -448,23 +448,23 @@ export class TabStreamView {
     if (sk && seq !== undefined && sk.isPending(seq)) {
       sk.ensure(seq);
       const inflight = this.rangeFetches.get(tab);
-      if (!inflight || inflight.size === 0) return revealCard(streamEl, uuid);
+      if (!inflight || inflight.size === 0) return revealCard(streamEl, uuid, tool);
       return Promise.allSettled([...inflight]).then((done) => {
         if (this.store.tabs.get(sessionId) !== tab) return null;
-        const el = revealCard(streamEl, uuid);
+        const el = revealCard(streamEl, uuid, tool);
         const failed = done.find((r): r is PromiseRejectedResult => r.status === "rejected");
         if (!el && failed) throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
         return el;
       });
     }
-    const built = revealCard(streamEl, uuid);
+    const built = revealCard(streamEl, uuid, tool);
     if (built || sk) return built;
     const pending = tab.window.peek(tab.window.pendingCount);
     const at = pending.findIndex((p) => p.record.id === uuid);
     if (at >= 0) {
       this.renderPayloadsBatch(tab, tab.window.takeTail(pending.length - at));
       this.updateSentinel(tab);
-      return revealCard(streamEl, uuid);
+      return revealCard(streamEl, uuid, tool);
     }
     this.requestSkeleton(tab);
     return Promise.reject(new Error(copyText("tabStreamView.search.notReady")));

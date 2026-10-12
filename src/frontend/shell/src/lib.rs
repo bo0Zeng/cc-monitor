@@ -1319,6 +1319,7 @@ pub(crate) fn batch_to_payloads(
                     record,
                     skipped_from: skipped,
                     rid: line.rid,
+                    catch_up: line.catch_up,
                 });
             }
             None => {

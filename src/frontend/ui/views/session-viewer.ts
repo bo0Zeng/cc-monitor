@@ -45,14 +45,23 @@ import { copyText } from "../copy-table";
  * 在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠（过程折叠 · `<details>` · ESC 回退段）、滚过去并闪一下；找不到 ⇒ `null`、什么都不做（兜底归调用方）。
  * 导出给 `tabs.ts` 的实时窗口共用：两条路的卡由同一个 `renderStreamRecord` 建、`data-id` 由同一处写。
  */
-export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
-  // CSS.escape 防 uuid 里有特殊字符破坏选择器
-  const key = CSS.escape(uuid);
-  // 卡找不到 ⇒ 再找「被注入进 tool_use」的那一块（`data-member-id`）
+export function revealCard(container: HTMLElement, uuid: string, tool?: string): HTMLElement | null {
+  // 落点是核心说的：命中带 `tool` ⇒ 它落在那次工具调用画成的那一块里（`data-tool`；派出子运行的结果收在派出卡里），
+  // 否则落在它自己那张卡上（`data-id`）。CSS.escape 防 id 里有特殊字符破坏选择器。
   const el =
-    container.querySelector<HTMLElement>(`[data-id="${key}"]`) ??
-    container.querySelector<HTMLElement>(`[data-member-id="${key}"]`);
+    tool !== undefined
+      ? container.querySelector<HTMLElement>(`[data-tool="${CSS.escape(tool)}"]`)
+      : container.querySelector<HTMLElement>(`[data-id="${CSS.escape(uuid)}"]`);
   if (!el) return null;
+  // 落在一次调用的卡里 ⇒ 那一块连同收在里面的结果一起展开（结果正文展开时才建，`toggle` 照发）。
+  if (tool !== undefined) {
+    for (const d of [el, ...el.querySelectorAll<HTMLElement>('[data-role="run-result"], .block-tool-result-inline')]) {
+      if (d instanceof HTMLDetailsElement && !d.open) {
+        d.open = true;
+        d.dispatchEvent(new Event("toggle"));
+      }
+    }
+  }
   // 落在某一轮折着的过程里 ⇒ 先让那一轮展开（记成手动开；`turn-fold.ts`）。
   revealProcessOf(el, container);
   // 展开所有折叠祖先：ESC 回退段是 `div.branch-fold-wrap` ＋ `.expanded`（不是 `<details>`），不展开的话卡被 0fr 裁掉、闪了也看不见。
@@ -122,6 +131,8 @@ export interface ViewerOptions {
   head?: ViewerHead;
   /** 从全文搜索跳进来时命中的那条 uuid：读完定位到它（展开所在折叠段）、居中并闪一下，不贴底。 */
   scrollToUuid?: string;
+  /** 那条命中落在哪次工具调用的卡里（后端给的命中 `tool`）；缺 ⇒ 落在它自己那张卡上。 */
+  scrollToTool?: string;
   /** 哪台机器的会话（本机 ＝ `LOCAL_ORIGIN`）。必填：「没说」不许当成本机。 */
   origin: Origin;
   /** 这个会话是哪一家（历史清单那一行的 `agent`，后端给的）：卡头那一家的名字按它取。 */
@@ -449,7 +460,7 @@ export class SessionViewer {
       void this.turnFold?.refresh();
       // 从搜索结果跳进来 ⇒ 定位到命中消息；否则贴底。
       if (opts.scrollToUuid) {
-        void Promise.resolve(this.scrollToMessage(opts.scrollToUuid)).catch((e: unknown) => console.warn("[session-viewer] 定位没取到：", e));
+        void Promise.resolve(this.scrollToMessage(opts.scrollToUuid, opts.scrollToTool)).catch((e: unknown) => console.warn("[session-viewer] 定位没取到：", e));
       } else {
         this.stream?.scrollToBottom();
       }
@@ -674,7 +685,7 @@ export class SessionViewer {
    * 滚到指定 uuid 的卡并闪一下（`revealCard`），返回落到的那张卡 / `null`（同主窗口 `TabStreamView.jumpInTab`）：
    * 还在占位里 ⇒ 经骨架物化它附近那一段、**等在途的段落完**再找卡（取不到 ⇒ reject 带原因）；找不到就退到贴底。
    */
-  private scrollToMessage(uuid: string): JumpResult {
+  private scrollToMessage(uuid: string, tool?: string): JumpResult {
     const sk = this.skeleton;
     const seq = sk?.ledger.uuidToSeq.get(uuid);
     if (sk && seq !== undefined && sk.isPending(seq)) {
@@ -684,18 +695,18 @@ export class SessionViewer {
         const gen = this.loadGeneration;
         return Promise.allSettled([...this.inflight]).then((done) => {
           if (this.loadGeneration !== gen) return null;
-          const el = this.reveal(uuid);
+          const el = this.reveal(uuid, tool);
           const failed = done.find((r): r is PromiseRejectedResult => r.status === "rejected");
           if (!el && failed) throw failed.reason instanceof Error ? failed.reason : new Error(String(failed.reason));
           return el;
         });
       }
     }
-    return this.reveal(uuid);
+    return this.reveal(uuid, tool);
   }
 
-  private reveal(uuid: string): HTMLElement | null {
-    const el = revealCard(this.streamEl, uuid);
+  private reveal(uuid: string, tool?: string): HTMLElement | null {
+    const el = revealCard(this.streamEl, uuid, tool);
     if (!el) this.stream?.scrollToBottom();
     return el;
   }
@@ -912,7 +923,7 @@ export class SessionViewer {
         if (!where) return { available: false, reason: "", hits: [], total: 0 };
         return findInSession(where.origin, where.jsonlPath, query, includeTools, skip);
       },
-      jumpTo: (uuid) => this.scrollToMessage(uuid),
+      jumpTo: (uuid, tool) => this.scrollToMessage(uuid, tool),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
     });
     tools.append(this.saidBtn, this.find.box);

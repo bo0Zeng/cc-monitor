@@ -24,6 +24,7 @@ fn jline(
         cwd: cwd.map(str::to_string),
         end: None,
         rid: None,
+        catch_up: false,
     }
 }
 
@@ -124,4 +125,30 @@ fn every_payload_says_the_undisplayable_run_right_before_it() {
             (8, Some(7))
         ]
     );
+}
+
+/// ★ 补历史（旁路快照：开页时 / 那台晚连上时把已有的记录补过来）与刚写进来的分开说：载荷带 `catch_up`。
+/// 界面据它不把旧记录里人说过的话当成「刚敲的」（不自动跟到那个 tab，起页时 tab 乱跳）；
+/// 刚写进来的照旧不带（线上形状与原来逐字相同）。
+#[test]
+fn a_catch_up_line_says_so_on_the_payload_and_a_live_one_does_not() {
+    let user = r#"{"agent":"claude","id":"u-1","t":"said","who":{"speaker":{"kind":"human"},"text":"hi"},"blocks":[]}"#;
+    let mut old = jline("s-abc", 3, Some(user), None);
+    old.catch_up = true;
+    let live = jline("s-abc", 4, Some(user), None);
+    let payloads = batch_to_payloads(
+        vec![old, live],
+        &crate::origin::Origin::local(),
+        &mut SkipRuns::default(),
+    );
+    assert_eq!(
+        payloads.iter().map(|p| p.catch_up).collect::<Vec<_>>(),
+        [true, false]
+    );
+    let wire: Vec<String> = payloads
+        .iter()
+        .map(|p| serde_json::to_string(p).unwrap())
+        .collect();
+    assert!(wire[0].contains("\"catch_up\":true"), "{}", wire[0]);
+    assert!(!wire[1].contains("catch_up"), "{}", wire[1]);
 }

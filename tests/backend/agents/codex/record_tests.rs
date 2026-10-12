@@ -621,3 +621,45 @@ fn codex_sample_rollout_reads_to_the_record_golden() {
         "Codex 通用记录与金样不一致（{CODEX_REGEN}=1 重写）。现打：\n{got}"
     );
 }
+
+/// ★ 骨架那一问（注册表 `RecordFace.class`）与整条翻译逐条一致，骨架索引照**这份记录那一家**的认法判。
+/// 从前这一家没有它、骨架索引又照记录树那一家（Claude）的认法判 Codex 的行 ⇒ 每行都「不进界面」，
+/// 查看器打开有消息的 Codex 会话写「无消息 · 0 条」（`history-page` 那一路照样出得来记录）。
+#[test]
+fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
+    use crate::agents::record::RecordClass;
+    let sample = include_str!("../../../__fixtures__/codex-rollout.sample.jsonl");
+    let class = super::super::RECORDS.class.expect("Codex 的记录出骨架");
+    let mut shown = 0;
+    let mut offset = 0u64;
+    for raw in sample.lines() {
+        let v: Value = serde_json::from_str(raw).unwrap();
+        let rec = record_of(&v, offset);
+        let want = rec
+            .as_ref()
+            .map(|r| r.body.class())
+            .filter(|c| *c != RecordClass::Unread);
+        let has_blocks = rec.as_ref().is_some_and(|r| {
+            serde_json::to_value(&r.body).ok().and_then(|b| {
+                b.get("blocks")
+                    .and_then(Value::as_array)
+                    .map(|a| !a.is_empty())
+            }) == Some(true)
+        });
+        assert_eq!(class(&v), want, "{raw}");
+        let row = crate::observe::history_query::index_row_of(
+            super::super::AGENT_KIND,
+            Some(&v),
+            offset,
+            raw.len() as u64 + 1,
+        );
+        assert_eq!(row.t, want, "骨架那一行：{raw}");
+        // 进界面的那几行骨架上要有料（正文字数 / 折叠单元），不然骨架判它「画不出东西」、查看器照样一张卡都不建。
+        if want.is_some() && has_blocks {
+            assert!(row.ch > 0 || row.fd > 0, "骨架那一行没有料：{raw}");
+        }
+        shown += usize::from(want.is_some());
+        offset += raw.len() as u64 + 1;
+    }
+    assert!(shown >= 3, "样本里进界面的行塌了：{shown}");
+}

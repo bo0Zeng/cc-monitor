@@ -3,6 +3,7 @@
 use super::*;
 use crate::agents::claudecode::parse::parse_line;
 use crate::agents::claudecode::schema::JsonlRecord;
+use crate::agents::ResultKind;
 use crate::common::cells::Words;
 use serde_json::json;
 
@@ -463,4 +464,27 @@ fn a_result_carries_its_first_line_preview() {
         None,
     );
     assert_eq!(r.preview.as_deref(), Some("boom"));
+}
+
+/// ★ 派出子 agent 那次调用的结果是哪一种是核心出的一格（`kind`）：后台派出当场回的「已启动」回执（`status: async_launched`）
+/// 不是交回 —— 界面从前见结果就写「交回结果 · N 字」，子 agent 还在跑卡上就说它交回了。
+/// 带 `agentId` 的其余结果 ⇒ 交回；不是派出子 agent 的结果 ⇒ 缺。
+#[test]
+fn a_dispatch_result_says_whether_it_is_a_launch_receipt_or_a_handback() {
+    let block = json!({"type": "tool_result", "tool_use_id": "t1", "content": [{"type": "text", "text": "Async agent launched"}]});
+    let launched = json!({"status": "async_launched", "agentId": "w1"});
+    assert_eq!(
+        result_of(&block, Some(&launched)).kind,
+        Some(ResultKind::Launched)
+    );
+    let done = json!({"status": "completed", "agentId": "w1"});
+    assert_eq!(
+        result_of(&block, Some(&done)).kind,
+        Some(ResultKind::Handback)
+    );
+    assert_eq!(result_of(&block, None).kind, None);
+    assert_eq!(result_of(&block, Some(&json!({"stdout": "x"}))).kind, None);
+    // 出口那一形：一个字段 `kind`。
+    let v = serde_json::to_value(result_of(&block, Some(&launched))).unwrap();
+    assert_eq!(v["kind"], json!("launched"));
 }

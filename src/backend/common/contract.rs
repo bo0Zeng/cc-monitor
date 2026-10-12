@@ -8,9 +8,32 @@
 //! `detail` 里出现汉字 ⇒ 普查会把那个字面量数成对外文案 ⇒ `CP2c-backend-copy-pending` 红。
 
 /// 契约错的那一句（`detail`：英文诊断，不进表、不上句子，记一行日志）。
+/// 诊断跟着这一串走（隔一个 [`DIAG_SEP`]），由失败信封那一处（[`parts`]）拆开：句子照旧只有「请求格式不对」，
+/// 诊断进复制详情的「原话」那一行 —— 看的人知道缺的是哪一格、要什么形状，不必去翻那台的日志。
 pub(crate) fn malformed(detail: &str) -> String {
     tracing::warn!("contract: malformed request: {detail}");
-    copy_core::copy_text("beContract.malformed.say", &[])
+    format!(
+        "{}{DIAG_SEP}{detail}",
+        copy_core::copy_text("beContract.malformed.say", &[])
+    )
+}
+
+/// 句子与跟在它后面的契约诊断之间那一个字符（[`malformed`]）。
+const DIAG_SEP: char = '\u{1f}';
+
+/// 一条失败的那一句 ⇒ (给人看的那一句, 下层原话)：句子后面跟着契约诊断 ⇒ 拆出来、放在原话最前面。
+/// 失败信封（`stream::detail::Failed` · `Fail`）只经这一处拆；没有诊断 ⇒ 原样。
+pub(crate) fn parts(message: &str, raw: Option<&str>) -> (String, Option<String>) {
+    match message.split_once(DIAG_SEP) {
+        Some((said, diag)) => (
+            said.to_string(),
+            Some(match raw {
+                Some(r) => format!("{diag}\n{r}"),
+                None => diag.to_string(),
+            }),
+        ),
+        None => (message.to_string(), raw.map(str::to_string)),
+    }
 }
 
 #[cfg(test)]

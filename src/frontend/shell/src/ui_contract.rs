@@ -87,6 +87,11 @@ pub struct JsonlLinePayload {
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rid: Option<String>,
+    /// 这一行是补历史带来的（开页时 / 那台晚连上时把宣告那一刻已有的记录补过来，monitor 那一侧的旁路快照），不是刚写进来的。
+    /// 界面据它只把**刚写进来的**人话当成「用户刚敲的」（自动跟到那个 tab），不按时刻猜。刚写进来的 ⇒ 省略。
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub catch_up: bool,
 }
 
 /// 后端给的一条记录成品（JSON 原文）。monitor 只搬：不解析、不读字段，序列化时原样嵌进去。

@@ -176,7 +176,7 @@ fn excerpt_falls_back_to_the_whole_text_when_the_head_is_all_whitespace() {
 /// 带 `x` 的行 ⇒ `{uuid: u, excerpt: x, timestamp: ts ?? ""}`。
 fn outline_from_index(data: &[u8]) -> Vec<(String, String, String)> {
     let mut v = Vec::new();
-    crate::observe::history_query::scan_session_index(data, 0, None, |row| {
+    crate::observe::history_query::scan_session_index(tree(), data, 0, None, |row| {
         v.push(serde_json::to_value(row).unwrap());
         Ok(())
     })

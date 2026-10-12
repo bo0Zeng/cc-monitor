@@ -881,7 +881,8 @@ fn arg_u64(v: &serde_json::Value, k: &str) -> Result<u64, String> {
 /// 失败那一形：与后端 CLI 错误信封同一对键（`code` ＋ `message`，`readonly_guard::error_envelope_registry` 签字），
 /// 多一格 `detail`（复制详情：时刻 · 机器 · 命令 `files <op>` · 码 · 下层原话；排法同失败应答那一格）。
 fn refused(op: &str, code: &str, message: &str, raw: Option<&str>) -> serde_json::Value {
-    let detail = crate::stream::detail::of(Some(&format!("files {op}")), code, raw);
+    let (message, raw) = crate::common::contract::parts(message, raw);
+    let detail = crate::stream::detail::of(Some(&format!("files {op}")), code, raw.as_deref());
     serde_json::json!({ "code": code, "message": message, "detail": detail })
 }
 

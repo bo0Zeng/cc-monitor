@@ -13,17 +13,26 @@ pub(crate) fn diag<T>(f: impl FnOnce() -> T) -> (T, String) {
     (out.expect("f 跑完了"), said)
 }
 
-/// 契约错那一句只说「请求格式不对」：英文诊断不上句子（记一行 warn 日志），任何诊断都回同一句。
+/// 契约错那一句只说「请求格式不对」：英文诊断不上句子（记一行 warn 日志），任何诊断拆出来都是同一句；
+/// 诊断跟着那一串走、在失败信封那一处（`parts`）拆进原话 —— 复制详情里看得到缺的是什么。
 #[test]
 fn the_contract_sentence_carries_no_diagnostic() {
-    let (said, heard) = diag(|| malformed("missing `to` (string)"));
+    let (got, heard) = diag(|| malformed("missing `to` (string)"));
+    let (said, raw) = parts(&got, None);
     assert_eq!(said, copy_core::copy_text("beContract.malformed.say", &[]));
     assert!(!said.contains("missing"), "诊断进了句子：{said}");
+    assert_eq!(raw.as_deref(), Some("missing `to` (string)"));
     assert!(
         heard.contains("missing `to` (string)"),
         "诊断没记进日志：{heard}"
     );
-    assert_eq!(malformed("another diag"), said);
+    assert_eq!(parts(&malformed("another diag"), None).0, said);
+    // 已有下层原话 ⇒ 诊断排在它前面；不是契约错的句子 ⇒ 原样。
+    assert_eq!(parts(&malformed("d"), Some("r")).1.as_deref(), Some("d\nr"));
+    assert_eq!(
+        parts("别的一句", Some("r")),
+        ("别的一句".to_string(), Some("r".to_string()))
+    );
 }
 
 /// `malformed` 有副作用（记一行 warn）⇒ 它只许在真错了的那条路上被调。

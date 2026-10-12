@@ -46,10 +46,16 @@ fn fixture(turns: usize) -> String {
 
 fn index_direct(bytes: &[u8]) -> (Vec<String>, u64) {
     let mut rows = Vec::new();
-    let (_, end) = crate::observe::history_query::scan_session_index(bytes, 0, None, |r| {
-        rows.push(serde_json::to_string(r).unwrap());
-        Ok(())
-    })
+    let (_, end) = crate::observe::history_query::scan_session_index(
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        bytes,
+        0,
+        None,
+        |r| {
+            rows.push(serde_json::to_string(r).unwrap());
+            Ok(())
+        },
+    )
     .unwrap();
     (rows, end)
 }
@@ -58,7 +64,13 @@ fn index_direct(bytes: &[u8]) -> (Vec<String>, u64) {
 fn r1_one_pass_equals_each_scan_on_its_own() {
     let text = fixture(3);
     let bytes = text.as_bytes();
-    let map = ScanMap::scan_with(bytes, bytes.len() as u64, None).expect("scan");
+    let map = ScanMap::scan_with(
+        bytes,
+        bytes.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        None,
+    )
+    .expect("scan");
 
     let (want_index, want_end) = index_direct(bytes);
     let got_index: Vec<String> = map
@@ -223,7 +235,13 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
     let text = rows.join("\n") + "\n";
     let bytes = text.as_bytes();
     let chain = crate::agents::claudecode::RECORDS.chain;
-    let map = ScanMap::scan_with(bytes, bytes.len() as u64, chain).expect("scan");
+    let map = ScanMap::scan_with(
+        bytes,
+        bytes.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        chain,
+    )
+    .expect("scan");
     assert_eq!(map.off, ["u2", "a2"]);
     let inputs: Vec<&str> = map.inputs.iter().map(|r| r.uuid.as_str()).collect();
     assert_eq!(inputs, ["u1", "u3"]);

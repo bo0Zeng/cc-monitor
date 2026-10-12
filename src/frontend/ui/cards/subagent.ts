@@ -9,6 +9,7 @@
 import type { ChildRunTag } from "../generated/ChildRunTag";
 import type { RunInfo } from "../generated/RunInfo";
 import type { RunState } from "../generated/RunState";
+import type { ResultKind } from "../generated/ResultKind";
 import { runLastText, runStateMark, runStateText } from "../runs";
 import { copyText } from "../copy-table";
 import { spanNow } from "../duration-format";
@@ -107,11 +108,13 @@ export function markRunWindow(card: HTMLElement, open: boolean): void {
 
 /**
  * 派出那一方拿到的那次结果：交回的结果（几个字）或报错，收在卡里、可展开。是这种卡 ⇒ `true`。
- * `chars` 是核心出的那一格（`results[id].chars`）—— 出口省掉结果正文时 `text` 只是预览，字数不从它数。
+ * 画不画、画成什么照核心那一格（`results[id].kind`）：后台派出当场回的回执（`launched`）不是交回，卡上不写结果（收场看运行表）；
+ * 核心没说是交回的也不写「交回结果」。`chars` 是核心出的那一格（`results[id].chars`）—— 出口省掉结果正文时 `text` 只是预览，字数不从它数。
  */
-export function settleRunCard(card: HTMLElement, text: string, failed: boolean, chars: number): boolean {
+export function settleRunCard(card: HTMLElement, text: string, failed: boolean, chars: number, kind: ResultKind | undefined): boolean {
   const st = cardState.get(card);
   if (!st) return false;
+  if (!failed && kind !== "handback") return true;
   for (const old of card.querySelectorAll('[data-role="run-result"]')) old.remove();
   const d = document.createElement("details");
   d.className = s.runResult;

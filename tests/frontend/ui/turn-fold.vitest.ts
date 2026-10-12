@@ -175,7 +175,7 @@ describe("按段折叠", () => {
   it("跳卡 / 查找落在折着的过程里（revealCard）：展开那一轮再滚；「几步」卡里的一步也找得到", async () => {
     const g = card("card-steps", "a1");
     const unit = document.createElement("div");
-    unit.dataset.memberId = "a2";
+    unit.dataset.tool = "t2";
     g.appendChild(unit);
     const { content, fold } = rig([card("card-user", "u1"), g, card("card-assistant", "a3")], [
       { available: true, from: 0, end: 10, turns: [turn("u1", 0, { shown: ["a3"] })] },
@@ -184,7 +184,7 @@ describe("按段折叠", () => {
     vi.stubGlobal("CSS", { escape: (x: string) => x });
     await fold.refresh();
     expect(hidden(g)).toBe(true);
-    expect(revealCard(content, "a2")).toBe(unit);
+    expect(revealCard(content, "a2", "t2")).toBe(unit);
     expect(hidden(g)).toBe(false);
     expect(lines(content)[0].getAttribute("aria-expanded")).toBe("true");
   });

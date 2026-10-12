@@ -85,3 +85,14 @@ fn the_dispatcher_and_the_watch_loop_use_the_watched_list() {
     guard_core::find_pinned(&watch, "crate::snapshot_resume::keep_only(&origin, &want);")
         .unwrap_or_else(|e| panic!("名单外的续点没作废：{e}"));
 }
+
+/// ★ 每个会话的补历史边界：宣告时那台说的行数 L（`session_added.lines`）以前的是补历史；快照读到 L 以后的
+/// 是宣告之后才写进来的（实时那条流也会交它，谁先到算谁），不是补历史。L 不知道 ⇒ 快照里的都算补历史（宁可不跟）。
+#[test]
+fn snapshot_lines_before_the_announced_count_are_catch_up_and_later_ones_are_live() {
+    assert!(catch_up_at(Some(10), 0));
+    assert!(catch_up_at(Some(10), 9));
+    assert!(!catch_up_at(Some(10), 10));
+    assert!(!catch_up_at(Some(10), 11));
+    assert!(catch_up_at(None, 12345));
+}

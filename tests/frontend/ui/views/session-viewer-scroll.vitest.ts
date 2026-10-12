@@ -215,12 +215,13 @@ describe("D2 · lazy 补算的 IO 以查看器自己的滚动容器为 root", ()
 });
 
 /**
- * 「命中落在工具结果里（`--include-tools`）时那条记录没有自己的卡、
- * 找不到 `[data-id]` ⇒ 标『跳不过去』」。修法：被注入的记录给落点记 `data-member-id`，`revealCard` 两种键都认。
+ * 「命中落在工具结果里（`--include-tools`）时那条记录没有自己的卡、找不到 `[data-id]` ⇒ 标『跳不过去』」。
+ * 修法（streamfix）：查找的单位就是流里画的那几张卡 —— 落在哪张卡是**核心**说的（命中的 `tool` ＝ 那次工具调用的 id），
+ * 界面按 `data-tool` 找那一块、不自己推「这条结果被注入到哪了」。派出子运行那次调用的结果收在派出卡里 ⇒ 落到派出卡、结果展开。
  * 判据（集合相等）：一条典型工具链（tool_use → tool_result → 又一个 tool_use → 它的 tool_result）里，
- * 四条记录的 uuid 全都跳得到，而且跳到的元素是它自己那一块。
+ * 四条命中照核心给的落点全都跳得到，而且跳到的元素是那次调用那一块。
  */
-describe("R11 · 被注入进调用那一行的工具结果也跳得到", () => {
+describe("R11 · 工具结果的命中落在核心说的那次调用的卡里", () => {
   const ts = (s: number): string => `2026-09-10T00:00:${String(s).padStart(2, "0")}.000Z`;
   const use = (seq: number, uuid: string, id: string, cmd: string): RigPayload =>
     line(seq, {
@@ -231,7 +232,7 @@ describe("R11 · 被注入进调用那一行的工具结果也跳得到", () => 
       autoReply: false,
       endsTurn: false,
     });
-  const res = (seq: number, uuid: string, id: string, out: string): RigPayload =>
+  const res = (seq: number, uuid: string, id: string, out: string, kind?: "handback"): RigPayload =>
     line(seq, {
       t: "said",
       id: uuid,
@@ -239,10 +240,12 @@ describe("R11 · 被注入进调用那一行的工具结果也跳得到", () => 
       who: { speaker: { kind: "toolResult" }, text: "" },
       blocks: [{ type: "tool_result", for: id, content: [{ type: "text", text: out }], isError: false }],
       // 首行预览是核心出的一格（`steps.rs::preview_of`），夹具照后端成品带上
-      results: { [id]: { ok: true, preview: out } },
+      results: { [id]: { ok: true, preview: out, chars: [...out].length, ...(kind ? { kind } : {}) } },
     });
+  const land = (v: SessionViewer, uuid: string, tool?: string): HTMLElement | null =>
+    (v as unknown as { scrollToMessage(u: string, t?: string): HTMLElement | null }).scrollToMessage(uuid, tool);
 
-  it("四条记录的 uuid 全跳得到，落点是各自那一块", async () => {
+  it("四条命中照核心给的落点全跳得到，落点是那次调用那一块", async () => {
     const v = await mount([
       use(1, "a1", "t1", "echo one"),
       res(2, "r1", "t1", "one-out"),
@@ -251,9 +254,10 @@ describe("R11 · 被注入进调用那一行的工具结果也跳得到", () => 
     ]);
     // 台子自检：两次调用各一张「几步」卡，两条结果没有自己的卡（注入进调用那一行 ⇒ 本条测的是「被注入」的落点）
     expect(v.element.querySelectorAll(".card-steps").length).toBe(2);
+    const hits: [string, string | undefined][] = [["a1", undefined], ["r1", "t1"], ["a2", undefined], ["r2", "t2"]];
     const got = new Map<string, string>();
-    for (const uuid of ["a1", "r1", "a2", "r2"]) {
-      const el = (v as unknown as { scrollToMessage(u: string): HTMLElement | null }).scrollToMessage(uuid);
+    for (const [uuid, tool] of hits) {
+      const el = land(v, uuid, tool);
       if (el) got.set(uuid, el.textContent ?? "");
     }
     expect([...got.keys()].sort()).toEqual(["a1", "a2", "r1", "r2"]);
@@ -261,15 +265,39 @@ describe("R11 · 被注入进调用那一行的工具结果也跳得到", () => 
     expect(got.get("a2")).toContain("echo two");
     expect(got.get("r2")).toContain("two-out");
     expect(got.get("r2")).not.toContain("one-out");
+    // 界面不自己推落点：不带核心给的 `tool`，那条结果没有自己的卡 ⇒ 落空（不去猜它被注入到了哪）。
+    expect(land(v, "r1")).toBeNull();
   });
 
-  it("结果先于调用到（先建 fallback、收尾对账时注入）：落点标记跟着搬过去，照样跳得到", async () => {
+  it("结果先于调用到（先建 fallback、收尾对账时注入）：按调用 id 照样跳到注入后的那一块", async () => {
     // r9 的 fallback 先自成一张卡；a9 到了之后收尾对账把结果注入 a9 那一块、摘掉 fallback
     const v = await mount([use(1, "a0", "t0", "echo first"), res(2, "r9", "t9", "early-out"), use(3, "a9", "t9", "echo late")]);
     // 台子自检：对账真的发生了（fallback 独立条已摘掉、结果进了 tool_use 那一块）
     expect(v.element.querySelector(".block-tool-result:not(.block-tool-result-inline)")).toBeNull();
-    const el = (v as unknown as { scrollToMessage(u: string): HTMLElement | null }).scrollToMessage("r9");
-    expect(el?.classList.contains("block-tool-result-inline")).toBe(true);
+    const el = land(v, "r9", "t9");
     expect(el?.textContent).toContain("early-out");
+    expect(el?.textContent).toContain("echo late");
+  });
+
+  it("★ 派出子运行那次调用的结果（子运行交回的）收在派出卡里：跳到派出卡、交回的结果展开、闪一下", async () => {
+    const v = await mount([
+      line(1, {
+        t: "reply",
+        id: "a1",
+        at: ts(1),
+        blocks: [{ type: "tool_use", id: "t1", name: "Spawn", input: {} }],
+        autoReply: false,
+        endsTurn: false,
+        cards: { t1: "agent" },
+        runs: { t1: { label: "扫目录", kind: "Explore" } },
+      }),
+      res(2, "r1", "t1", "交回的那一段 needle", "handback"),
+    ]);
+    const el = land(v, "r1", "t1");
+    expect(el?.dataset.role).toBe("run-card");
+    expect(el?.classList.contains("search-hit-flash")).toBe(true);
+    const got = el?.querySelector<HTMLDetailsElement>('[data-role="run-result"]');
+    expect(got?.open).toBe(true);
+    expect(got?.textContent).toContain("交回的那一段 needle");
   });
 });

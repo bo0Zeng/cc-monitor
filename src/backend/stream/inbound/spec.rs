@@ -23,12 +23,7 @@ pub(crate) struct Fail {
 
 impl From<(String, String)> for Fail {
     fn from((code, message): (String, String)) -> Self {
-        Fail {
-            code,
-            message,
-            data: None,
-            raw: None,
-        }
+        Fail::new(&code, message)
     }
 }
 
@@ -58,20 +53,26 @@ impl From<Fail> for crate::common::said::Said {
 impl Fail {
     /// 码 ＋ 那一句（没有原话、没有 `data`）。
     pub(crate) fn new(code: &str, message: String) -> Fail {
+        // 契约错的诊断跟在句子后面（`contract::malformed`）⇒ 拆开放进原话（往下交给只认一句的那一层时也不带它）。
+        let (message, raw) = crate::common::contract::parts(&message, None);
         Fail {
             code: code.to_string(),
             message,
             data: None,
-            raw: None,
+            raw,
         }
     }
 
     /// 带上下层原话（进复制详情；空 / 缺 ⇒ 不带）。
     pub(crate) fn with_raw(mut self, raw: Option<&str>) -> Fail {
-        self.raw = raw
+        let given = raw
             .map(str::trim)
             .filter(|r| !r.is_empty())
             .map(str::to_string);
+        self.raw = match (self.raw.take(), given) {
+            (Some(diag), Some(r)) => Some(format!("{diag}\n{r}")),
+            (a, b) => b.or(a),
+        };
         self
     }
 

@@ -259,9 +259,13 @@ fn put_entry(raw: &mut Value, sid: &str, entry: Option<&Entry>) {
 /// 唯一的写者（经 `own_state` 原子写；目录由 [`lock_for_write`] 建）。序列化用 `to_string_pretty`。
 fn write_at(path: &Path, raw: &Value) -> Result<(), crate::common::said::Said> {
     let body = serde_json::to_string_pretty(raw).map_err(|e| {
-        crate::common::said::Said::from(crate::common::contract::malformed(&format!(
-            "serializing the annotations failed: {e}"
-        )))
+        // 契约错那一句后面跟着的诊断拆进原话（同失败信封那一处，`contract::parts`）：句子里不带它。
+        crate::common::said::Said::from(crate::common::contract::parts(
+            &crate::common::contract::malformed(&format!(
+                "serializing the annotations failed: {e}"
+            )),
+            None,
+        ))
     })?;
     crate::common::own_state::write(path, body.as_bytes())
 }

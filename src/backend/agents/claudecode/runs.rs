@@ -167,6 +167,19 @@ pub(crate) fn child_link(v: &Value) -> Vec<super::super::ChildLink> {
 /// 后台派出那次当场回的结果（还在跑）。
 const ASYNC_LAUNCHED: &str = "async_launched";
 
+/// 记录级的结构化结果（`toolUseResult`）⇒ 派出子 agent 那次调用拿到的是哪一种：带 `agentId` 才是派出子 agent 的结果；
+/// `status` ＝ `async_launched` ⇒ 后台派出当场回的回执，其余 ⇒ 交回。收场判定（[`result_link`]）与结果一句（`steps.rs`）共用这一处。
+pub(crate) fn result_kind(tur: Option<&Value>) -> Option<crate::agents::ResultKind> {
+    use crate::agents::ResultKind;
+    let t = tur?;
+    s(t, "agentId").filter(|a| !a.is_empty())?;
+    Some(if s(t, "status") == Some(ASYNC_LAUNCHED) {
+        ResultKind::Launched
+    } else {
+        ResultKind::Handback
+    })
+}
+
 /// Agent 调用拿到的那次结果：说出子 agent 是哪个；前台的那次同时就是它收场的时候。
 fn result_link(v: &Value) -> Vec<super::super::ChildLink> {
     use super::super::{ChildLink, RunEnd};
@@ -177,7 +190,7 @@ fn result_link(v: &Value) -> Vec<super::super::ChildLink> {
     else {
         return Vec::new();
     };
-    let launched = result.and_then(|r| s(r, "status")) == Some(ASYNC_LAUNCHED);
+    let launched = result_kind(result) == Some(crate::agents::ResultKind::Launched);
     content(v)
         .filter(|b| s(b, "type") == Some("tool_result"))
         .filter_map(|b| {

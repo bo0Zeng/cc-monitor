@@ -19,6 +19,51 @@ const AGENT: &str = "claude";
 /// 代理那一侧自动写的应答，型号名写成这个。
 const AUTO_REPLY_MODEL: &str = "<synthetic>";
 
+/// 代理那一侧自动写的应答（不是 API 报错那一条：报错那条也写这个型号，画成报错卡）。流里不画它。
+fn is_auto_reply(api_error: bool, model: Option<&str>) -> bool {
+    !api_error && model == Some(AUTO_REPLY_MODEL)
+}
+
+/// 一条已解析的记录在消息流里落在哪（注册表 `TextFace.lands`）：自动写的应答流里不画；
+/// 只装工具结果的那条 user 记录不自己成卡、收进它那次调用的那一块（取第一个结果块的 `tool_use_id`）；其余落在自己那张卡上。
+pub(crate) fn lands_of(v: &Value) -> crate::agents::Lands {
+    use crate::agents::Lands;
+    let s = |k: &str| v.get(k).and_then(Value::as_str);
+    let message = v.get("message");
+    match s("type") {
+        Some("assistant") => {
+            let api_error = v.get("isApiErrorMessage").and_then(Value::as_bool) == Some(true);
+            let model = message.and_then(|m| m.get("model")).and_then(Value::as_str);
+            if is_auto_reply(api_error, model) {
+                Lands::Nowhere
+            } else {
+                Lands::Own
+            }
+        }
+        Some("user") => {
+            let blocks = message
+                .and_then(|m| m.get("content"))
+                .and_then(Value::as_array)
+                .filter(|b| !b.is_empty());
+            let Some(blocks) = blocks else {
+                return Lands::Own;
+            };
+            if !blocks
+                .iter()
+                .all(|b| b.get("type").and_then(Value::as_str) == Some("tool_result"))
+            {
+                return Lands::Own;
+            }
+            blocks[0]
+                .get("tool_use_id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty())
+                .map_or(Lands::Own, |id| Lands::InTool(id.to_string()))
+        }
+        _ => Lands::Own,
+    }
+}
+
 /// 一条已解析的记录（`Value`）⇒ [`record_of`] 会给它的类，不走整条翻译（骨架索引每行一问）。
 /// 只看判别字段与那几类的必填格（缺了 ⇒ 盘上形状认不出、不出记录）；排队那一条还要认出是人说的。
 pub(crate) fn class_of(v: &Value) -> Option<RecordClass> {
@@ -106,7 +151,7 @@ pub(crate) fn record_of(rec: JsonlRecord, fallback_id: &str) -> Option<Record> {
                 reason: api_reason.unwrap_or(crate::agents::ApiReason::Unknown),
                 status: api_error_status,
             });
-            let auto_reply = error.is_none() && message.model.as_deref() == Some(AUTO_REPLY_MODEL);
+            let auto_reply = is_auto_reply(error.is_some(), message.model.as_deref());
             let ends_turn =
                 super::turn::ends_turn(message.stop_reason.as_deref(), is_api_error_message);
             Some(rec_of(

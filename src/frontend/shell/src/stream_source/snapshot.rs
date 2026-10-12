@@ -406,6 +406,7 @@ async fn fetch_snapshot(
                     cwd: row.cwd,
                     end: span.map(|(_, e)| e),
                     rid: None,
+                    catch_up: catch_up_at(item.expected_lines, seq),
                 });
                 if chunk.len() >= SNAPSHOT_CHUNK_LINES {
                     if q.is_cancelled(sid) {
@@ -464,6 +465,12 @@ async fn fetch_snapshot(
     crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
     crate::snapshot_resume::note_witness(&origin, sid, pick.done());
     Ok(FetchOutcome::Done(arrived))
+}
+
+/// 这个会话的第 `seq` 行是不是补历史：宣告那一刻那台说的行数 `announced`（`session_added.lines`）以前的是；
+/// 快照读到它以后的是宣告之后才写进来的（实时那条流也交它，谁先到算谁）⇒ 不是。行数不知道 ⇒ 快照里的都算补历史。
+pub(crate) fn catch_up_at(announced: Option<u64>, seq: u64) -> bool {
+    announced.is_none_or(|l| seq < l)
 }
 
 /// 快照中途被撤时要不要补一个 `ended` 格：**远端补、本机不补。**

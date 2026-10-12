@@ -319,6 +319,7 @@ pub(crate) async fn consume_local(
                             cwd,
                             end,
                             rid,
+                            catch_up: false,
                         })
                         .await
                 }

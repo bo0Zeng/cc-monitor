@@ -29,6 +29,8 @@ export interface Hit {
   before: string;
   matched: string;
   after: string;
+  /** 它落在哪次工具调用的卡里（后端说的调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。 */
+  tool?: string;
 }
 
 /** 一个会话的命中（后端 `--search` 的一行 ＋ 这边补的 `origin`）。 */
@@ -176,7 +178,8 @@ function parseHit(v: unknown): Hit | null {
   const o = v as Record<string, unknown>;
   if (!isStr(o.uuid) || !isInt(o.tsMs) || !isStr(o.kind)) return null;
   if (!isStr(o.before) || !isStr(o.matched) || !isStr(o.after)) return null;
-  return { uuid: o.uuid, tsMs: o.tsMs, kind: o.kind, before: o.before, matched: o.matched, after: o.after };
+  if (o.tool !== undefined && !isStr(o.tool)) return null;
+  return { uuid: o.uuid, tsMs: o.tsMs, kind: o.kind, before: o.before, matched: o.matched, after: o.after, ...(o.tool !== undefined ? { tool: o.tool } : {}) };
 }
 
 /**

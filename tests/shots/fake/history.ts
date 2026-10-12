@@ -97,9 +97,27 @@ export function putHistory(m: string, d: MachineDisk, sessions: readonly Session
   if (Object.keys(book).length > 0) d.files[".cc-monitor/launch-accounts.json"] = json({ sessions: book });
   if (m === "<local>") {
     const at = now - CODEX_AGO_MIN * 60_000;
-    const day = new Date(at).toISOString().slice(0, 10);
-    const rel = `.codex/sessions/${day.split("-").join("/")}/rollout-${day}T06-30-00-${CODEX_SID}.jsonl`;
+    const rel = codexRolloutRel(now);
     d.files[rel] = JSON.stringify({ timestamp: new Date(at).toISOString(), type: "session_meta", payload: { id: CODEX_SID, cwd: CODEX_CWD } }) + "\n";
     d.mtimes = { ...d.mtimes, [rel]: at };
   }
+}
+
+/** 本机那条 Codex 会话的 rollout 在家目录下的相对路径（场景要它说过话时整份换掉）。 */
+export function codexRolloutRel(now: number): string {
+  const day = new Date(now - CODEX_AGO_MIN * 60_000).toISOString().slice(0, 10);
+  return `.codex/sessions/${day.split("-").join("/")}/rollout-${day}T06-30-00-${CODEX_SID}.jsonl`;
+}
+
+/** 同一条 Codex 会话说过一轮话的那一份 rollout（开头 · 你说的一句 · 它回的一句 · 一轮完了）。 */
+export function codexSaidRollout(now: number): string {
+  const t = (s: number): string => new Date(now - CODEX_AGO_MIN * 60_000 + s * 1000).toISOString();
+  const item = (s: number, type: string, payload: Record<string, unknown>): string => JSON.stringify({ timestamp: t(s), type, payload });
+  return [
+    item(0, "session_meta", { id: CODEX_SID, cwd: CODEX_CWD }),
+    item(2, "event_msg", { type: "task_started", turn_id: "t1" }),
+    item(2, "response_item", { type: "message", role: "user", content: [{ type: "input_text", text: "评测脚本里的指标改成按查询平均。" }] }),
+    item(9, "response_item", { type: "message", role: "assistant", content: [{ type: "output_text", text: "改好了：每个查询先各自算指标，再按查询数取平均。" }] }),
+    item(9, "event_msg", { type: "task_complete", turn_id: "t1" }),
+  ].map((l) => l + "\n").join("");
 }

@@ -212,6 +212,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
         user: text::user_text_of_record,
         queued: text::queued_of_record,
         result: steps::result_of,
+        lands: record_of::lands_of,
     }),
     delete: Some(super::SessionDelete {
         locate: paths::session_file_for_delete,

@@ -20,6 +20,9 @@ pub struct JsonlLine {
     pub end: Option<u64>,
     /// 这一行的对账键（后端 `line.rid`，原样转交；快照那一路没有 ⇒ `None`）。
     pub rid: Option<String>,
+    /// 这一行是补历史（旁路快照补过来的、宣告那一刻已经在盘上的那几行，[`super::snapshot::catch_up_at`]），
+    /// 不是刚写进来的。实时那两条流（远端 · 本机）恒 `false`。
+    pub catch_up: bool,
 }
 
 /// 一条**丢了就不可恢复**的帧的身份。
