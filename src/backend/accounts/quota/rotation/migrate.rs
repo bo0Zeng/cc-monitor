@@ -65,6 +65,18 @@ struct Rotation {
     wait: u8,
     #[serde(default)]
     tz: Option<String>,
+    /// 更早的写法（`cap["*"]` 出现之前）：`"full"` 或 `{"threshold": {"n": 1..=99}}`（到 n% 就换），管所有号、两个窗口。
+    #[serde(default)]
+    when: Option<Value>,
+}
+
+/// `when.threshold.n`（没有 / 是 `"full"` / 形状不对 ⇒ 空）。
+fn when_threshold(w: Option<&Value>) -> Option<u8> {
+    w?.get("threshold")?
+        .get("n")?
+        .as_u64()
+        .and_then(|n| u8::try_from(n).ok())
+        .filter(|n| (1..=99).contains(n))
 }
 
 fn wait_default() -> u8 {
@@ -83,6 +95,7 @@ impl Default for Rotation {
             fallback: Vec::new(),
             wait: wait_default(),
             tz: None,
+            when: None,
         }
     }
 }
@@ -246,7 +259,13 @@ fn stint_of(row: Option<&BTreeMap<String, u8>>) -> Option<u8> {
 /// 一份第一版轮换换成内置策略 1 的配置内容（名字 · 时区由调用方给）。
 fn body_of(r: &Rotation, name: &str, local_tz: Option<&str>) -> ConfigBody {
     let all = r.cap.get("*");
-    let all_line = line_positions(all);
+    let mut all_line = line_positions(all);
+    // `cap["*"]` 没写的那一位 ⇒ 落回更早的 `when.threshold.n`（10-11 那一次升级漏了这一格：除 cap 点了名的号以外全成了用满才换）。
+    if let Some(n) = when_threshold(r.when.as_ref()) {
+        for p in &mut all_line {
+            p.get_or_insert(n);
+        }
+    }
     let all_stint = stint_of(r.stint.get("*"));
     let row_params = |id: Option<&str>| -> Params {
         let own = id.and_then(|a| r.cap.get(a));

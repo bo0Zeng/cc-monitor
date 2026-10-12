@@ -793,3 +793,50 @@ fn an_unreadable_file_keeps_the_last_good_book_and_says_so() {
     assert!(st.unreadable().is_none());
     let _ = std::fs::remove_dir_all(path.parent().expect("dir"));
 }
+
+/// ★ 第一版会话自定义里的 `when: {threshold: {n}}`（到 n% 就换，`cap["*"]` 出现之前的写法）⇒ 升上来每一行与 `acctInit`
+/// 的 `line` 都是 n；`cap` 里点了名的号仍按它自己的。真机上 10-11 升第二版时这一格被丢了（只认 `cap["*"]`），
+/// cap 没点名的号全变成用满才换。
+#[test]
+fn a_v1_threshold_becomes_the_default_line_of_every_row() {
+    let v1 = json!({
+        "rules": {},
+        "sessions": {
+            "s-when": {"agent": "claude-code", "start": "r", "current": "r", "since": 70, "source": "custom",
+                       "custom": {"order": [{"start": true}, "z", "q", "b"], "enabled": ["z", "q", "b"],
+                                  "when": {"threshold": {"n": 90}},
+                                  "cap": {"q": {"*": 70}}}},
+            "s-full": {"agent": "claude-code", "start": "r", "current": "r", "since": 70, "source": "custom",
+                       "custom": {"order": [{"start": true}, "z"], "enabled": ["z"], "when": "full"}}
+        }
+    });
+    let b = migrate::from_v1(&v1, Some("UTC")).expect("换得了");
+    let body = |sid: &str| {
+        let s = &b.sessions[sid];
+        s.config
+            .copy
+            .clone()
+            .unwrap_or_else(|| b.configs[&s.config.id].body.clone())
+    };
+    let w = body("s-when");
+    let lines: Vec<(String, Value)> = w
+        .accounts
+        .iter()
+        .map(|r| (format!("{:?}", r.who), r.params["line"].clone()))
+        .collect();
+    assert_eq!(
+        lines,
+        vec![
+            ("Start".to_string(), json!(90)),
+            ("Id(\"z\")".to_string(), json!(90)),
+            ("Id(\"q\")".to_string(), json!(70)),
+            ("Id(\"b\")".to_string(), json!(90)),
+        ]
+    );
+    assert_eq!(w.acct_init["line"], json!(90));
+    let f = body("s-full");
+    assert!(
+        f.accounts.iter().all(|r| r.params["line"].is_null()),
+        "`full` ⇒ 用满才换"
+    );
+}
