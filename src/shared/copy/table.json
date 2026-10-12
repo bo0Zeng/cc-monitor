@@ -1575,12 +1575,6 @@
       "zh": "远端启动常驻后端失败 · 原因不明",
       "args": []
     },
-    "rsRemoteResident.ensure.answerIncomplete": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端启动常驻后端的回答无法识别",
-      "args": []
-    },
     "rsRemoteResident.hello.notOurs": {
       "kind": "error",
       "role": "报错",

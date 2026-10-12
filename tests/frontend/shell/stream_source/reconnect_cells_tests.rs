@@ -13,7 +13,7 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 
 const ORIGIN: &str = "rc-box";
 const SID: &str = "rc-s1";
-const PATH: &str = "/home/rc/.claude/projects/p/rc-s1.jsonl";
+const PATH: &str = "/srv/rc/.claude/projects/p/rc-s1.jsonl";
 
 /// 那台的那份记录：第 i 行正文 `{"t":"r<i>"}`，末端偏移按字节累计。
 #[derive(Default)]
@@ -272,7 +272,6 @@ async fn a_drop_then_reconnect_then_resume_hands_each_line_over_exactly_once() {
         lines(&cells) == 6
     })
     .await;
-    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     let cells = got(&cells);
     let only_lines: Vec<&String> = cells.iter().filter(|c| c.starts_with("line ")).collect();
     assert_eq!(

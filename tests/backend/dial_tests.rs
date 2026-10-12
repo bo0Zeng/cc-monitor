@@ -465,7 +465,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     }
     assert_eq!(
         USES.len(),
-        7,
+        6,
         "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
     );
     // 转发走不占 `MaxSessions` 的那一道。

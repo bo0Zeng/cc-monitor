@@ -53,9 +53,8 @@ impl Transport for DeskLink {
                 .map(crate::dial_host::DialStream::lives_long)
                 .map_err(problem_of);
             tracing::info!(
-                "[perf] stream_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend；成={}）",
-                t_exec.elapsed().as_millis(),
-                got.is_ok()
+                "[perf] stream_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend）",
+                t_exec.elapsed().as_millis()
             );
             got
         })

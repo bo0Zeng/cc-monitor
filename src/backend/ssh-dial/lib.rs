@@ -101,9 +101,7 @@ pub fn joined(said: String, raw: Option<String>) -> String {
 pub const ACK_V: u32 = 2;
 
 /// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
-pub const USES: &[&str] = &[
-    "stream", "capture", "forward", "files", "shell", "hold",
-];
+pub const USES: &[&str] = &["stream", "capture", "forward", "files", "shell", "hold"];
 
 /// 一个拨号地址。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
