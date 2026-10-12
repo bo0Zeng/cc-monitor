@@ -113,6 +113,7 @@ fn prepare(
     get: &dyn Fn(&str) -> Option<String>,
     startup: &dyn Startup,
     tee: TeeSink,
+    own: &crate::platform::fs::Own,
 ) -> Result<(TcpListener, Arc<Relay>), String> {
     // 上游选择认不出时这里拿不到「为什么」：这一支只印一句 `[relay] bad upstream base url`（改那句要同拍改
     // `creds_guard::LOG_SITES`）；每一行账号的 `base_url` 为什么认不出，装表时已经印出去了。
@@ -143,9 +144,10 @@ fn prepare(
     // ② 「在听」那句话说出去的时候钥匙文件已经在盘上。
     // 拿不到 ⇒ 不起（有口没钥匙 = 不设防的口；`listener` 在这里 drop，口当场放掉）。报错里只有路径与原因，没有钥匙值（`door::Key` 不派生 `Debug`）。
     // 盘上只有根钥匙一把；只许直通那一把从它派生（`key::pass_of`），门上同一处按「对上的是哪一把」判范围。
-    let door = match key::key_path(get)
-        .ok_or_else(|| crate::common::said::Said::from(copy_text("beRelayListen.key.noHome", &[])))
-        .and_then(|p| key::ensure_key(&p))
+    let door = match own
+        .home_dir()
+        .map_err(|_| crate::common::said::Said::from(copy_text("beRelayListen.key.noHome", &[])))
+        .and_then(|_| key::ensure_key(own))
         .map(|full| comms_outward::Keys {
             pass: key::pass_of(&full),
             full,
@@ -233,10 +235,12 @@ pub(crate) fn our_relay_listening(port: u16) -> bool {
 /// ① 端口没有缺省值（交了一个认不出的串 ⇒ `Failed`，不悄悄退回默认值：注入侧拼的是它交出来的那个数）；
 /// ② tee 落宿主交下来的 tap 口（[`TeeSink::to_port`]）：本进程的 stdout 在 stdio 载体上就是 wire，宿主把事件转成 `tap` 帧走它自己的有界通道；
 /// ③ 起不来不退出（见 [`Hosted`]）。
+/// `own`：写自家状态的句柄（启动时造的那一份）；钥匙经它读回或铸。
 pub(crate) fn host(
     get: &dyn Fn(&str) -> Option<String>,
     startup: &dyn Startup,
     tap: std::sync::Arc<dyn comms_outward::TapPort>,
+    own: &crate::platform::fs::Own,
 ) -> Hosted {
     let Some(raw) = get(ENV_PORT).filter(|s| !s.trim().is_empty()) else {
         return Hosted::NotAsked;
@@ -248,7 +252,7 @@ pub(crate) fn host(
             return Hosted::Failed(format!("{ENV_PORT}={raw:?} 不是端口号（{e}）"));
         }
     };
-    let (listener, relay) = match prepare(port, get, startup, TeeSink::to_port(tap)) {
+    let (listener, relay) = match prepare(port, get, startup, TeeSink::to_port(tap), own) {
         Ok(x) => x,
         Err(why) => return Hosted::Failed(why),
     };

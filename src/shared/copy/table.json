@@ -1483,12 +1483,6 @@
       "zh": "此机器错误输出不能写进日志文件",
       "args": []
     },
-    "beDoor.fs.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beDoor.fs.mkdirFailed": {
       "kind": "error",
       "role": "原因格",

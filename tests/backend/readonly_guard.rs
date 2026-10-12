@@ -858,13 +858,6 @@ mod tests {
              只建数据目录那一层（`~/.cc-monitor`，经 `own_dir::ensure_private_dir` 只给本人）；失败删自己的临时文件。线上入口只有命令表账号那一族的 `apikey-key-set`",
         ),
         (
-            "relay/key.rs",
-            "〔`INVARIANTS §48.1`〕**中转钥匙** `~/.cc-monitor/relay-key`：中转口进门要出示的那一把。文件名 / 格式 / 落点 \
-             都是本仓定的、只有中转与起会话那一侧的 shell 读它 ⇒ 中转**自己的**状态，不是用户数据。读回；读不出或形状不对才铸 → \
-             临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；\
-             失败删自己的临时文件。入口只有中转**绑上口之后**那一处（`relay/listen.rs::prepare`）—— 不是帧面命令",
-        ),
-        (
             "stderr_log.rs",
             "脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
              `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
@@ -982,11 +975,6 @@ mod tests {
             "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
         ),
         (
-            "relay/listen.rs",
-            "中转起监听那一处（`prepare`，常驻后端进程内起中转；`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
-             拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
-        ),
-        (
             "control/files_commit.rs",
             "暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
              不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
@@ -1030,8 +1018,6 @@ mod tests {
             "store::with_refresh_lock",
             "accounts/oauth/mod.rs",
         ),
-        // 中转钥匙：门是中转起监听那一处，不是命令注册。
-        ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),
         // 主机钥匙：门是握手核对钥匙那一处，不是命令注册。
         (
             "dial/known_hosts.rs",

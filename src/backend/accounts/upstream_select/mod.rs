@@ -209,6 +209,7 @@ pub fn host_relay(library: rotate::LibraryRead, own: crate::platform::fs::Own) -
         &|k| std::env::var(k).ok(),
         &Rotating(library, own.clone()),
         crate::stream::tap::port(),
+        &own,
     );
     // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是第一版，这一下换形写回（全机只这一处写回）。
     if hosted.listening() {
