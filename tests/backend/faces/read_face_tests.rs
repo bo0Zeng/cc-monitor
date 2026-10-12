@@ -1850,13 +1850,31 @@ fn the_record_reads_refuse_fields_their_request_types_do_not_have() {
     let p = golden_record_session(&home);
     let path = p.to_string_lossy().into_owned();
     for (cmd, args) in [
-        ("history-page", serde_json::json!({"path": path, "whole": true})),
-        ("history-read", serde_json::json!({"path": path, "offset": "0"})),
-        ("history-lines", serde_json::json!({"path": path, "from": -1})),
+        (
+            "history-page",
+            serde_json::json!({"path": path, "whole": true}),
+        ),
+        (
+            "history-read",
+            serde_json::json!({"path": path, "offset": "0"}),
+        ),
+        (
+            "history-lines",
+            serde_json::json!({"path": path, "from": -1}),
+        ),
         ("history-tail", serde_json::json!({"path": path})),
-        ("history-branch", serde_json::json!({"path": path, "until": 3})),
-        ("history-run", serde_json::json!({"parent": path, "run": "a1", "seq": 0})),
-        ("history-record", serde_json::json!({"sid": "s", "config_dir": "/x"})),
+        (
+            "history-branch",
+            serde_json::json!({"path": path, "until": 3}),
+        ),
+        (
+            "history-run",
+            serde_json::json!({"parent": path, "run": "a1", "seq": 0}),
+        ),
+        (
+            "history-record",
+            serde_json::json!({"sid": "s", "config_dir": "/x"}),
+        ),
         ("sessions-needs", serde_json::json!({"machine": "m"})),
     ] {
         match answer_at(&home, cmd, &args, &Default::default()) {
