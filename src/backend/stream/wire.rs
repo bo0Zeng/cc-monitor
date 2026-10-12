@@ -473,12 +473,6 @@ pub enum Frame {
         /// 天然从 tail 的 seq 0 起全量到达，无需快照。
         #[serde(skip_serializing_if = "Option::is_none")]
         path: Option<String>,
-        /// Batch8 审计 D-I2（additive）：宣告时 prime 的完整行数 L
-        /// ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend
-        /// 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强）。
-        /// 全量模式 None。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        lines: Option<u64>,
         /// 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，[`ActivityFace`]，平铺在帧上）。
         #[serde(flatten)]
         face: ActivityFace,
@@ -500,6 +494,22 @@ pub enum Frame {
         /// 它在 ↗ 点那一刻从这个 pid 往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
         /// 不要它的出口在声明里去掉（`omit: {session_added: ["pid"]}`）。
         pid: u32,
+    },
+    /// 这条会话的记录读完了（宣告之后后台那一趟预读做完）：从这一帧起它的 `line` 帧从第 `lines` 行起、连续地来。
+    ///
+    /// 宣告（`session_added`）不等记录：会话一认出来就报；预读在后台线程池里做，做完才发这一帧。在它之前，这条会话的
+    /// `line` · `turn_end` · `session_runs` · `session_branch` 一帧都不发。`lines` 是此刻那份记录（`path`，同 `session_added`
+    /// 那一格的取法）已计完的完整行数 L —— 客户端补 `[0, L)`（快照）、接实时 `[L, …)`，并拿它核快照拉全了没有。
+    /// 会话没有记录（刚起还没写首行）⇒ 两格都缺：之后的行天然从 0 起全量到。
+    SessionPrimed {
+        /// 会话 id。
+        sid: String,
+        /// 读完的那份记录（修改时刻最新的那份）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        /// 那份记录此刻的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        lines: Option<u64>,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
@@ -1136,6 +1146,8 @@ impl Frame {
             //
             // 一次差分的结果，别处不存在 —— 这三个正是 B-3 的正题。
             Frame::SessionAdded { .. } => false,
+            // 一次性的「读完了、从第几行起」：没有「下一次必然重发」⇒ 丢了客户端不知道从哪接、也不拉快照。
+            Frame::SessionPrimed { .. } => false,
             Frame::SessionRemoved { .. } => false,
             // 账本的成品：一次裁决的结果，别处没有 ⇒ 不可恢复。
             Frame::SessionState { .. } => false,
@@ -1191,6 +1203,7 @@ impl Frame {
             Frame::SessionBranch { sid, .. } => Some(sid),
             Frame::Hello { .. }
             | Frame::SessionAdded { .. }
+            | Frame::SessionPrimed { .. }
             | Frame::SessionStatus { .. }
             | Frame::SessionState { .. }
             | Frame::SessionRemoved { .. }
@@ -1220,6 +1233,7 @@ impl Frame {
             Frame::Hello { .. } => ("hello", None),
             Frame::Line { session_id, .. } => ("line", Some(session_id.clone())),
             Frame::SessionAdded { sid, .. } => ("session_added", Some(sid.clone())),
+            Frame::SessionPrimed { sid, .. } => ("session_primed", Some(sid.clone())),
             Frame::SessionStatus { sid, .. } => ("session_status", Some(sid.clone())),
             Frame::SessionRemoved { sid, .. } => ("session_removed", Some(sid.clone())),
             Frame::SessionState { sid, .. } => ("session_state", Some(sid.clone())),
@@ -1450,6 +1464,11 @@ impl SeqCounter {
     /// 调用方先发 `session_file_reread` 再发重读出来的行（下游据它把这个会话的旧号整份作废）。
     pub fn restart(&mut self, path: &str) {
         self.next.remove(path);
+    }
+
+    /// 预读交回时装回计数：这份文件已计完 `n` 行（下一个分配的 seq 就是 `n`）。
+    pub fn set(&mut self, path: &str, n: u64) {
+        self.next.insert(path.to_string(), n);
     }
 
     /// Return the current seq for `path`, then bump it by one.

@@ -54,12 +54,21 @@ A new session file appeared。
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
 | `name` | string? | pidfile 里的会话名 |
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
-| `lines` | number? | Batch8 审计 D-I2（additive）：宣告时 prime 的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
+
+### `session_primed`
+
+这条会话的记录读完了（宣告之后后台那一趟预读做完）：从这一帧起它的 `line` 帧从第 `lines` 行起、连续地来。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `path` | string? | 读完的那份记录（修改时刻最新的那份） |
+| `lines` | number? | 那份记录此刻的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它） |
 
 ### `session_status`
 

@@ -129,7 +129,8 @@ class CodexRecordGoldenTest {
                 val tone = only?.activity?.tone
                 if (tones.lastOrNull() != tone || tones.isEmpty()) tones += tone
             }
-        assertEquals(listOf(Tone.PLAIN, Tone.NOW, Tone.PLAIN, Tone.NOW, Tone.PLAIN), tones)
+        // 宣告不等记录：这一家没有进程状态文件，宣告那一帧说不出在干什么（核心写的是没判出那一态）；读完记录紧跟一帧说空闲。
+        assertEquals(listOf(Tone.NOW, Tone.PLAIN, Tone.NOW, Tone.PLAIN, Tone.NOW, Tone.PLAIN), tones)
     }
 
     private fun repoRoot(): File =

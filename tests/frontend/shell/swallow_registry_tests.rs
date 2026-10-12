@@ -133,8 +133,14 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Notify(event));", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Poke);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Shutdown);", Why::PeerGone, ""),
-    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Watch { sids, done });", Why::PeerGone, ""),
-    ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sids, &mut state, &mut sink));", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, sids, done, });", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, sids, &mut state, &mut sink));", Why::PeerGone, ""),
+    // read8a：连接接上 / 走了交给这台那份 watcher（它正在退出 ⇒ 没人收；走了那一声没人收也就没有要摘的）。
+    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, wants.tz.clone())));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
+    ("src/backend/observe/watcher.rs", "let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));", Why::PeerGone, "watcher 已停：连接本来就不在它的名单上了"),
+    // read8a：预读交回 watcher（它在退出 ⇒ 结果没人要）；任务交线程池（池子的线程都退了 ⇒ 进程在收尾）。
+    ("src/backend/observe/watcher.rs", "let _ = events.send(WatchEvent::Primed(run_prime(job)));", Why::PeerGone, "watcher 已停：这一趟预读的结果没人要"),
+    ("src/backend/observe/par.rs", "let _ = self.tx.send(job);", Why::PeerGone, "池子的线程都退了（只在进程收尾时）：这份任务没人跑，交它的那一方也在收尾"),
     ("src/backend/observe/watcher.rs", "let _ = tx.send(WatchEvent::TmuxObserved(run_tmux_probe()));", Why::PeerGone, ""),
     // +2：对齐的应答发回等它的那一方（它可能已退）· 对每份 watcher 发对齐（那份可能正在退出；它丢了应答端，`resync` 不会挂住）。
     ("src/backend/observe/watcher.rs", "let _ = done.send(got);", Why::PeerGone, ""),

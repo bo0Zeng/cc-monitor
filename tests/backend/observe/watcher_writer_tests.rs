@@ -159,13 +159,16 @@ fn a_record_being_written_is_announced_with_its_line_count_and_then_streams() {
         path,
         project_dir,
         cwd,
-        lines,
         ..
     }) = frames.first()
     else {
         unreachable!()
     };
-    assert_eq!(*lines, Some(3), "宣告带已有的完整行数");
+    let lines = frames.iter().find_map(|f| match f {
+        Frame::SessionPrimed { lines, .. } => Some(*lines),
+        _ => None,
+    });
+    assert_eq!(lines, Some(Some(3)), "读完那一帧带已有的完整行数");
     assert_eq!(path.as_deref(), Some(r.record.to_str().unwrap()));
     assert_eq!(
         project_dir.as_deref(),
@@ -218,7 +221,12 @@ fn a_reader_holding_the_record_announces_nothing() {
 #[test]
 fn an_unwatched_session_still_says_its_turn_end() {
     let mut r = rig("unwatched");
-    let _ = watch_sessions(vec!["someone-else".to_string()], &mut r.state, &mut r.sink);
+    let _ = watch_sessions(
+        0,
+        vec!["someone-else".to_string()],
+        &mut r.state,
+        &mut r.sink,
+    );
     let w = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     assert_eq!(brief(&drain(&mut r.rx)), vec!["added:codex"]);
@@ -384,7 +392,7 @@ fn activities(frames: &[Frame]) -> Vec<Option<String>> {
 }
 
 /// 这一家没有进程状态文件：此刻在干什么由适配层照记录里的事件翻（一轮开始 ⇒ 在跑；一轮完了 ⇒ 闲着）。
-/// 宣告时记录里最后一件已是「一轮完了」⇒ 宣告就说闲着；下一句进来（一轮开始）⇒ 在跑；这一轮完了 ⇒ 又闲着。
+/// 宣告不等记录（read8a）⇒ 宣告那一帧说不出；读完记录、最后一件已是「一轮完了」⇒ 紧跟一帧说闲着；下一句进来（一轮开始）⇒ 在跑；这一轮完了 ⇒ 又闲着。
 #[test]
 fn a_codex_round_ending_turns_the_session_idle_and_the_next_round_turns_it_working() {
     let mut r = rig("activity");
@@ -392,8 +400,8 @@ fn a_codex_round_ending_turns_the_session_idle_and_the_next_round_turns_it_worki
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     assert_eq!(
         activities(&drain(&mut r.rx)),
-        vec![Some("idle".to_string())],
-        "记录停在 task_complete ⇒ 宣告说闲着"
+        vec![None, Some("idle".to_string())],
+        "宣告不等记录（这一家没有进程状态文件 ⇒ 宣告时说不出）；读完记录停在 task_complete ⇒ 接着一帧说闲着"
     );
     let append = |r: &Rig, s: &str| {
         std::fs::OpenOptions::new()

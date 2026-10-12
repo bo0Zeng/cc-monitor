@@ -6422,7 +6422,8 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
       const a = home(tm).store.tabs.get(codexSid)!.activity;
       if (seen[seen.length - 1] !== (a?.doing ?? null)) seen.push(a?.doing ?? null);
     }
-    expect(seen).toEqual(["idle", "working", "idle", "working", "idle"]);
+    // 宣告不等记录（这一家没有进程状态文件 ⇒ 宣告那一帧说不出在干什么）；读完记录紧跟一帧说闲着。
+    expect(seen).toEqual([null, "idle", "working", "idle", "working", "idle"]);
     const last = home(tm).store.tabs.get(codexSid)!.activity!;
     expect([last.text, last.tone]).toEqual([copyText("beSession.activity.idle"), "plain"]);
   });
