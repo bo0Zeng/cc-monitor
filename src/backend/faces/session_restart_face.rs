@@ -6,7 +6,6 @@
 use crate::control::session_batch::Deps;
 use crate::control::session_restart::{self as restart, Host, Wait};
 use crate::observe::one_wait::{self, Armed};
-use serde_json::Value;
 use std::future::Future;
 
 struct Prod {
@@ -90,21 +89,39 @@ impl Host for Prod {
     }
 }
 
-/// `session-restart`。`until`：发起方的截止时刻（分派那一层给）。
+/// `session-restart`：换号重启。可撤档（步与步之间撤单生效；停旧 ＋ 起新不可分，开跑之后撤也做完）。
+pub(crate) struct SessionRestart;
+
+impl crate::stream::inbound::typed::Command for SessionRestart {
+    const NAME: &'static str = "session-restart";
+    type Req = restart::RestartReq;
+    type Reply = restart::Restarted;
+    type Err = restart::RestartErr;
+}
+
+impl crate::stream::inbound::typed::AsyncFiles for SessionRestart {
+    async fn run(
+        req: restart::RestartReq,
+        cx: crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+    ) -> Result<restart::Restarted, restart::RestartErr> {
+        answer(req, cx.until, files)
+            .await
+            .map_err(restart::RestartErr)
+    }
+}
+
+/// `until`：发起方的截止时刻（分派那一层给）。「现在就换」的重启那一半逐个也经这里（`rotation_switch_face`）。
 pub(crate) async fn answer(
-    args: Value,
+    req: restart::RestartReq,
     until: Option<crate::platform::child::Until>,
     files: crate::faces::launch_face::Files,
-) -> Result<Value, restart::Fault> {
-    let client =
-        crate::control::gate::requester_of(&args).map_err(|(c, m)| (c.to_string(), m, None))?;
-    let agent = args
-        .get("agent")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
+) -> Result<restart::Restarted, restart::Fault> {
+    let client = crate::control::gate::requester(req.client.as_deref())
+        .map_err(|(c, m)| (c.to_string(), m, None))?;
+    let agent = req.agent.clone();
     restart::run(
-        args,
+        req,
         until,
         Prod {
             client,

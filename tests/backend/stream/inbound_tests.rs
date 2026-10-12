@@ -1604,6 +1604,29 @@ fn run_registered(cmd: &str, args: serde_json::Value) -> Outcome {
     }
 }
 
+/// 同 [`run_registered`]，异步档的也跑（在一个当场起的运行时上等它）。
+fn run_any(cmd: &str, args: serde_json::Value) -> Outcome {
+    let spec = lookup(cmd).unwrap_or_else(|| panic!("`{cmd}` 不在登记表里"));
+    let req = Request {
+        id: "t".to_string(),
+        cmd: cmd.to_string(),
+        args,
+        within_ms: None,
+        view: serde_json::Value::Null,
+        tz: Default::default(),
+        until: None,
+    };
+    match prepare(spec.run, Some(&crate::platform::fs::Own::for_tests())) {
+        Some(Prepared::Blocking(f)) => f(req),
+        Some(Prepared::Async(f)) => tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f(req)),
+        None => panic!("`{cmd}` 是内建档"),
+    }
+}
+
 /// `history-search` 的入参按类型收：认不得的 `scope` · 多出来的键 · 类型不对 ⇒ `bad_args`（不再悄悄当没给、照搜全部）。
 #[test]
 fn history_search_refuses_what_its_request_type_does_not_have() {
@@ -1919,8 +1942,39 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             "launch-local",
             serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "defaultLauncher": "claude", "x": 1 }),
         ),
+        ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
+        ("kill", serde_json::json!({ "name": 1 })),
+        (
+            "launch",
+            serde_json::json!({ "mode": "send-into", "name": "x", "payload": "y", "extra": 1 }),
+        ),
+        (
+            "launch",
+            serde_json::json!({ "mode": "send-into", "name": "x", "cwd": 5, "payload": "y" }),
+        ),
+        (
+            "session-new",
+            serde_json::json!({ "agent": "claude", "cwd": "/x", "place": "tmux", "local": false, "extra": 1 }),
+        ),
+        (
+            "session-new",
+            serde_json::json!({ "agent": "claude", "cwd": "/x", "place": "tmux", "local": false, "rotation": "c1" }),
+        ),
+        (
+            "session-new-facts",
+            serde_json::json!({ "forkOf": "s-1", "extra": 1 }),
+        ),
+        ("session-new-facts", serde_json::json!({ "at": 1 })),
+        (
+            "session-restart",
+            serde_json::json!({ "sid": "s-1", "cwd": "/w", "compact_first": false, "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),
+        ),
+        (
+            "session-restart",
+            serde_json::json!({ "sid": "s-1", "cwd": "/w", "account": "work", "compact_first": "no", "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),
+        ),
     ] {
-        let got = run_registered(cmd, args.clone());
+        let got = run_any(cmd, args.clone());
         assert_eq!(
             got.as_ref().err().map(|f| f.code.as_str()),
             Some("bad_args"),

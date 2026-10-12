@@ -499,18 +499,21 @@ fn item_of(v: &StartItemReq) -> Result<Item, CmdErr> {
     })
 }
 
-pub(crate) fn batch_of(o: &Map<String, Value>) -> Result<Batch, CmdErr> {
-    let models = match o.get("models") {
-        None => Default::default(),
-        Some(m) => serde_json::from_value(m.clone())
-            .map_err(|_| bad("`models` must be an object of strings"))?,
-    };
-    Ok(Batch {
-        agent: str_of(o, "agent")?.to_string(),
-        launcher: str_of(o, "launcher")?.to_string(),
-        default_launcher: str_of(o, "defaultLauncher")?.to_string(),
-        models,
-    })
+impl Batch {
+    /// 整批一份的那几样（入参已按类型解好）。
+    pub(crate) fn of(
+        agent: &str,
+        launcher: &str,
+        default_launcher: &str,
+        models: std::collections::BTreeMap<String, String>,
+    ) -> Batch {
+        Batch {
+            agent: agent.to_string(),
+            launcher: launcher.to_string(),
+            default_launcher: default_launcher.to_string(),
+            models,
+        }
+    }
 }
 
 /// 界面那一行的上线入参（`launch-render-cli`），由这一个起会话项拼：`tmux` = 要新建的会话名（`None` = 直路）。
@@ -607,12 +610,12 @@ pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdE
         .iter()
         .map(item_of)
         .collect::<Result<Vec<_>, _>>()?;
-    let batch = Batch {
-        agent: req.agent.clone(),
-        launcher: req.launcher.clone(),
-        default_launcher: req.default_launcher.clone(),
-        models: req.models.clone().unwrap_or_default(),
-    };
+    let batch = Batch::of(
+        &req.agent,
+        &req.launcher,
+        &req.default_launcher,
+        req.models.clone().unwrap_or_default(),
+    );
     for (i, it) in items.iter().enumerate() {
         if items[..i].iter().any(|x| x.sid == it.sid) {
             return Err(bad(&format!("duplicate session id: {:?}", it.sid)));

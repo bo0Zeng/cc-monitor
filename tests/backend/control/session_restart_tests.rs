@@ -221,9 +221,16 @@ fn rt() -> tokio::runtime::Runtime {
         .unwrap()
 }
 
+/// 线上那一份入参（解入参同 typed 分派那一步）⇒ 本体 ⇒ 写上线的那一份回包。
+fn req(a: Value) -> RestartReq {
+    serde_json::from_value(a).expect("入参类型解得出")
+}
+
 fn go(rig: Rig, a: Value) -> (Result<Value, Fault>, Arc<Rig>) {
     let rig = Arc::new(rig);
-    let out = rt().block_on(run(a, None, Host_(rig.clone())));
+    let out = rt()
+        .block_on(run(req(a), None, Host_(rig.clone())))
+        .map(|r| serde_json::to_value(r).unwrap());
     (out, rig)
 }
 
@@ -340,7 +347,7 @@ fn cancelling_while_waiting_for_the_summary_stops_nothing_and_starts_nothing() {
     let host = Host_(rig.clone());
     let rt = rt();
     rt.block_on(async {
-        let task = tokio::spawn(run(args(true, 60_000), None, host));
+        let task = tokio::spawn(run(req(args(true, 60_000)), None, host));
         // 等到那一句送出去（此刻正在等摘要），再撤。
         for _ in guard_core::wall::rounds() {
             if rig.did("send") == 1 {

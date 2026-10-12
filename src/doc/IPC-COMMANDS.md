@@ -4424,20 +4424,62 @@ type SessionNewOutcome = "started" | "open";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-facts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | → | 哪一家（线上的 kind） |
-| `agents` | ← | 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序） |
-| `at` | → | 可缺（随 `forkOf`） |
-| `cwd` | → | 工作目录（开头的 `~` 按这台的家目录读） |
-| `fork` | ← | 没给 `forkOf` ⇒ `null` |
-| `forkOf` | → | 可缺 |
-| `lastMs` | ← | `recent` 一项：那个目录最近一次会话的修改时刻（毫秒） |
-| `launch` | ← | `fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`） |
-| `recent` | ← | 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻） |
-| `startText` | ← | `fork` 里：那一轮你那句在看的那一台钟上的（请求的 `tz`）钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`） |
-| `tmux` | ← | 这台有没有 tmux（`false` ⇒ 只能开终端窗口） |
-| `turn` | ← | `fork` 里：`at` 那一条在第几轮 |
+入参 `NewFactsReq` · 回包 `NewFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForkFacts = { 
+/**
+ * 源会话是哪一家（说不出 ⇒ 空串）。
+ */
+agent: string, 
+/**
+ * 起分叉会话要的三格（同 `session-fork` 的 `launch`；那一形随 `session-fork` 那一族换成类型）。
+ */
+launch: unknown, 
+/**
+ * `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。
+ */
+turn: number | null, 
+/**
+ * 那一轮那句在看的那一台钟上的（请求的 `tz`） `HH:MM`（说不出 ⇒ `null`）。
+ */
+startText: string | null, };
+type NewFacts = { 
+/**
+ * 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
+ */
+recent: Array<RecentDir>, 
+/**
+ * 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
+ */
+tmux: boolean, 
+/**
+ * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）。
+ */
+agents: Array<string>, 
+/**
+ * 没给 `forkOf` ⇒ `null`。
+ */
+fork: ForkFacts | null, };
+type NewFactsReq = { 
+/**
+ * 可缺：分叉源会话 sid。
+ */
+forkOf?: string, 
+/**
+ * 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。
+ */
+at?: string, };
+type RecentDir = { 
+/**
+ * 工作目录。
+ */
+cwd: string, 
+/**
+ * 那个目录最近一次会话的修改时刻（毫秒）。
+ */
+lastMs: number, };
+```
 
 码：`bad_args` · `fork_failed`
 
@@ -4503,36 +4545,85 @@ sid: string, };
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → ← | 用户点名的号（只收名字）；应答里是实际用的号 |
-| `agent` | → | 同 `sessions-start` 的整批那几格 |
-| `alternative` | ← | `account_unavailable` 失败的 `data`：给的显式替代号（这台的默认号；`null` ⇒ 只能「不指定号」） |
-| `arrive_within_ms` | → | 等新进程报出的期限（≤ 3 600 000） |
-| `client` | → | 自报的前端，同 `kill` |
-| `compact` | ← | 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed` |
-| `compact_first` | → | 先请求压缩、等记录里出现压缩摘要再停 |
-| `compact_within_ms` | → | 等压缩的期限（≤ 3 600 000） |
-| `configDir` | ← | 应答 `account` 里：配置目录 |
-| `cwd` | → | 工作目录 |
-| `defaultLauncher` | → | 同 `sessions-start` |
-| `launcher` | → | 同 `sessions-start` |
-| `listKnown` | ← | `account_unavailable` 失败的 `data`：这台的账号清单读得出来 |
-| `local` | → | 同 `sessions-start` |
-| `model` | ← | 应答 `account` 里：模型 |
-| `models` | → | 可缺：这台的模型偏好表原值 |
-| `name` | ← | 应答 `account` 里：实际用的号 |
-| `names` | ← | `ambiguous` 失败的 `data`：在跑的那几个终端名 |
-| `pids` | ← | `session_already_live` 失败的 `data`：那几个 pid |
-| `pinned` | ← | `account_unavailable` 失败的 `data`：要的号是这条会话上次用的（跟随），不是这次点名的 |
-| `requested` | ← | `account_unavailable` 失败的 `data`：要的那个号 |
-| `sid` | → | 会话 id |
-| `started` | ← | `arrived`（新进程报出了）· `missed` |
-| `stopped` | ← | 停完旧的之后才失败（`session_already_live` · `start_failed`）的 `data`：恒 `true`，旧会话已经不在了 |
-| `terminal` | ← | 所在的终端（会话名） |
-| `why` | ← | `stop_failed` / `start_failed` 失败的 `data`：那一步的码 |
+入参 `RestartReq` · 回包 `Restarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed`
+```ts
+type Arrival = "arrived" | "missed";
+type Compact = "done" | "timed_out" | "skipped" | "unsupported" | "failed";
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type RestartReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 工作目录。
+ */
+cwd: string, 
+/**
+ * 用户点名的号（只收名字，非空）。
+ */
+account: string, 
+/**
+ * 先请求压缩、等记录里出现压缩摘要再停。
+ */
+compact_first: boolean, 
+/**
+ * 等压缩的期限（≤ 3 600 000）。
+ */
+compact_within_ms: number, 
+/**
+ * 等新进程报出的期限（≤ 3 600 000）。
+ */
+arrive_within_ms: number, 
+/**
+ * 这台是不是界面所在那台（同 `sessions-start`）。
+ */
+local: boolean, 
+/**
+ * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。
+ */
+agent: string, 
+/**
+ * 用户设置的 resume 命令原值（同 `sessions-start`）。
+ */
+launcher: string, 
+/**
+ * 那一家的默认启动器（同 `sessions-start`）。
+ */
+defaultLauncher: string, 
+/**
+ * 可缺：这台的模型偏好表原值。
+ */
+models?: { [key in string]: string }, 
+/**
+ * 自报的前端，同 `kill`。
+ */
+client?: string, };
+type Restarted = { 
+/**
+ * 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed`。
+ */
+compact: Compact, 
+/**
+ * 新进程报没报出：`arrived` · `missed`。
+ */
+started: Arrival, 
+/**
+ * 所在的终端（会话名）。
+ */
+terminal: string, 
+/**
+ * 实际用的号（账号 0 / 不指定 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, };
+```
+
+码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed` · `child_timed_out`
 
 #### `launch`
 

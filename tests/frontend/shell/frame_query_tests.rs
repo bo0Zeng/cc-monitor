@@ -416,7 +416,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ),
     (
         "session-new-facts",
-        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、`decodeFacts` 按恰好的键集合收，monitor 这一侧零发送点",
+        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
         "session-new-dir",

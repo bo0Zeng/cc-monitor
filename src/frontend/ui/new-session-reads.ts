@@ -1,9 +1,9 @@
 /**
  * 起新会话框的三问（那台后端判，界面只读）：`session-new-facts`（框打开时：最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格）·
- * `session-new-dir`（目录失焦：在不在 · 那台会铸的终端名）· `session-new`（点［新建］：起）。形状见协议文档那一节，成品严格收。
+ * `session-new-dir`（目录失焦：在不在 · 那台会铸的终端名）· `session-new`（点［新建］：起）。三问都是 typed 帧命令（入参 · 回包类型从 Rust 生成，形状由握手指纹核过）。
  */
-import { chan, ChanError } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, jsonBody, readJson, refusalOf } from "./ipc/chan-caller";
+import { ChanError } from "../../comms/inward/chan";
+import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { saidOfTransport } from "./control-said";
 import { detailOf } from "./kit/detail";
@@ -11,6 +11,7 @@ import { exactKeys, isObj } from "./ipc/decode";
 import type { ForkLaunch } from "./session-writes";
 import { decodeForkLaunch } from "./session-writes";
 import type { DirChecked } from "./generated/DirChecked";
+import type { NewFacts as FactsReply } from "./generated/NewFacts";
 import type { NewRequest } from "./generated/NewRequest";
 import type { SessionNew } from "./generated/SessionNew";
 import type { SessionNewField } from "./generated/SessionNewField";
@@ -28,37 +29,21 @@ export interface NewFacts {
   fork: { agent: string; launch: ForkLaunch; turn: number | null; startText: string | null } | null;
 }
 
-const strOrNull = (v: unknown): v is string | null => v === null || typeof v === "string";
 
-function bad(op: string): never {
-  throw new Error(`${op} reply shape mismatch`);
+/** `session-new-facts` 的回包 ⇒ 框要的那几样（分叉三格那一形随 `session-fork` 那一族换类型之前仍按形状收：[`decodeForkLaunch`]）。 */
+export function factsOf(v: FactsReply): NewFacts {
+  const f = v.fork;
+  return {
+    recent: v.recent,
+    tmux: v.tmux,
+    agents: v.agents,
+    fork: f === null ? null : { agent: f.agent, launch: decodeForkLaunch(f.launch), turn: f.turn, startText: f.startText },
+  };
 }
 
-export function decodeFacts(v: unknown): NewFacts {
-  const op = "session-new-facts";
-  if (!isObj(v) || !exactKeys(v, ["recent", "tmux", "agents", "fork"])) bad(op);
-  const o = v as Record<string, unknown>;
-  if (!Array.isArray(o.recent) || typeof o.tmux !== "boolean" || !Array.isArray(o.agents)) bad(op);
-  const recent = (o.recent as unknown[]).map((r) => {
-    if (!isObj(r) || !exactKeys(r, ["cwd", "lastMs"]) || typeof r.cwd !== "string" || typeof r.lastMs !== "number") bad(op);
-    return r as { cwd: string; lastMs: number };
-  });
-  if (!(o.agents as unknown[]).every((a) => typeof a === "string")) bad(op);
-  let fork: NewFacts["fork"] = null;
-  if (o.fork !== null) {
-    const f = o.fork;
-    if (!isObj(f) || !exactKeys(f, ["agent", "launch", "turn", "startText"]) || typeof f.agent !== "string") bad(op);
-    const ff = f as Record<string, unknown>;
-    if (!(ff.turn === null || typeof ff.turn === "number") || !strOrNull(ff.startText)) bad(op);
-    fork = { agent: ff.agent as string, launch: decodeForkLaunch(ff.launch), turn: ff.turn as number | null, startText: ff.startText as string | null };
-  }
-  return { recent, tmux: o.tmux as boolean, agents: o.agents as string[], fork };
-}
-
+/** 框打开时问一次：typed 帧命令（回包类型从 Rust 生成，形状由握手指纹核过）。 */
 export async function askFacts(origin: Origin, fork: { sid: string; uuid: string } | null): Promise<NewFacts> {
-  const body = jsonBody(fork ? { forkOf: fork.sid, at: fork.uuid } : {});
-  const budget = budgetWithin(READ_BUDGET_MS);
-  return decodeFacts(readJson(await chan.call(origin, "session-new-facts", body, budget)));
+  return factsOf(await callTyped(origin, "session-new-facts", fork ? { forkOf: fork.sid, at: fork.uuid } : {}, budgetWithin(READ_BUDGET_MS)));
 }
 
 /** 目录失焦：typed 帧命令（回包类型从 Rust 生成，形状由握手指纹核过）。 */

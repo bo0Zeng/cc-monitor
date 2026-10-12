@@ -1088,9 +1088,8 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
 }
 
 mod typed_replies {
-    pub(super) use crate::control::session_new as sn;
     pub(super) use crate::faces::rotation_face as rf;
-    pub(super) use crate::guard_support::{merged, sampled, sampled_and, Sampled};
+    pub(super) use crate::guard_support::{sampled, Sampled};
 }
 use typed_replies::*;
 
@@ -1172,18 +1171,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ),
     ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
-        "session-new-facts",
-        sampled::<crate::faces::session_new_face::NewFacts>,
-        &["lastMs", "launch", "startText", "turn"],
-        &[],
-    ),
-    (
-        "session-restart",
-        restart_samples,
-        &["configDir", "model", "name"],
-        &[],
-    ),
-    (
         "terminal-follow",
         sampled::<crate::control::terminal_follow::Refused>,
         &[],
@@ -1228,16 +1215,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ("rotation-strategy-delete", sampled::<rf::StrategyChanged>, &[], &[]),
     ("rotation-strategy-try", sampled::<rf::TryReply>, &[], &[]),
 ];
-
-/// `session-restart`：成功那一形 ＋ 失败信封按码定形的 `data`（自己那几形 ＋ 选不了号那一形）。
-fn restart_samples() -> Sampled {
-    use crate::control::session_restart as sr;
-    merged(vec![
-        sampled::<sr::Restarted>(),
-        sampled::<sr::Refused>(),
-        sampled::<crate::control::launch_account::AccountUnavailable>(),
-    ])
-}
 
 /// ★★ **注册表登的出参字段 ＝ 那条命令真序列化出来的字段**（两向相等）。
 ///

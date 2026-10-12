@@ -1,6 +1,6 @@
 //! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
-use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Fail, Run};
+use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
 
 pub(super) const SPECS: &[CommandSpec] = &[
@@ -114,18 +114,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         &LocalFiles,
     ),
     // 起新会话框打开时问一次：这台最近用过的目录 · 有没有 tmux · 能起哪几家 · 分叉源会话的三格（只读，不写分支记录）。
-    CommandSpec {
-        name: "session-new-facts",
-        summary: "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
-        codes: &["bad_args", "fork_failed"],
-        fields: &[arg("agent", "哪一家（线上的 kind）"), out("agents", "这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）"), arg("at", "可缺（随 `forkOf`）"), arg("cwd", "工作目录（开头的 `~` 按这台的家目录读）"), out("fork", "没给 `forkOf` ⇒ `null`"), arg("forkOf", "可缺"), out("lastMs", "`recent` 一项：那个目录最近一次会话的修改时刻（毫秒）"), out("launch", "`fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`）"), out("recent", "这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻）"), out("startText", "`fork` 里：那一轮你那句在看的那一台钟上的（请求的 `tz`）钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`）"), out("tmux", "这台有没有 tmux（`false` ⇒ 只能开终端窗口）"), out("turn", "`fork` 里：`at` 那一条在第几轮")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::session_new_face::facts(&r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::session_new_face::SessionNewFacts>(
+        "起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法",
+    ),
     // 工作目录那一格失焦时问：在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
     crate::stream::inbound::typed::blocking::<crate::faces::session_new_face::SessionNewDir>(
         "起新会话前核一个目录：在不在 · 会用哪个终端名",
@@ -136,35 +127,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 换号重启（`control/session_restart.rs`）：查号 → 找终端 → 先压缩（可选，等摘要）→ 停旧 → 同一终端名用新号起 → 等报出，全在这台做完。
     //   可撤档：步与步之间撤单生效；停旧 ＋ 起新不可分（拿退出排空的票），开跑之后撤也做完。失败可带按码定形的 `data`。
-    CommandSpec {
-        name: "session-restart",
-        summary: "换号重启",
-        codes: &[
-            "bad_args",
-            "unobservable",
-            "account_unavailable",
-            "not_in_terminal",
-            "ambiguous",
-            "session_already_live",
-            "stop_failed",
-            "start_failed",
-        ],
-        fields: &[both("account", "用户点名的号（只收名字）；应答里是实际用的号"), arg("agent", "同 `sessions-start` 的整批那几格"), out("alternative", "`account_unavailable` 失败的 `data`：给的显式替代号（这台的默认号；`null` ⇒ 只能「不指定号」）"), arg("arrive_within_ms", "等新进程报出的期限（≤ 3 600 000）"), arg("client", "自报的前端，同 `kill`"), out("compact", "先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed`"), arg("compact_first", "先请求压缩、等记录里出现压缩摘要再停"), arg("compact_within_ms", "等压缩的期限（≤ 3 600 000）"), out("configDir", "应答 `account` 里：配置目录"), arg("cwd", "工作目录"), arg("defaultLauncher", "同 `sessions-start`"), arg("launcher", "同 `sessions-start`"), out("listKnown", "`account_unavailable` 失败的 `data`：这台的账号清单读得出来"), arg("local", "同 `sessions-start`"), out("model", "应答 `account` 里：模型"), arg("models", "可缺：这台的模型偏好表原值"), out("name", "应答 `account` 里：实际用的号"), out("names", "`ambiguous` 失败的 `data`：在跑的那几个终端名"), out("pids", "`session_already_live` 失败的 `data`：那几个 pid"), out("pinned", "`account_unavailable` 失败的 `data`：要的号是这条会话上次用的（跟随），不是这次点名的"), out("requested", "`account_unavailable` 失败的 `data`：要的那个号"), arg("sid", "会话 id"), out("started", "`arrived`（新进程报出了）· `missed`"), out("stopped", "停完旧的之后才失败（`session_already_live` · `start_failed`）的 `data`：恒 `true`，旧会话已经不在了"), out("terminal", "所在的终端（会话名）"), out("why", "`stop_failed` / `start_failed` 失败的 `data`：那一步的码")],
-        takes_input: true,
-        run: Run::AsyncData(|r| {
-            Box::pin(async move {
-                crate::faces::session_restart_face::answer(r.args, r.until, &LocalFiles)
-                    .await
-                    .map(Some)
-                    .map_err(|(code, message, data)| Fail {
-                        code,
-                        message,
-                        data,
-                        raw: None,
-                    })
-            })
-        }),
-    },
+    crate::stream::inbound::typed::async_with_files::<crate::faces::session_restart_face::SessionRestart>(
+        "换号重启",
+        &LocalFiles,
+    ),
     crate::stream::inbound::typed::blocking::<crate::control::launch::Launch>(
         "建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面）",
     ),
