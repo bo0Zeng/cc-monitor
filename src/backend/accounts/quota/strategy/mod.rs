@@ -110,10 +110,9 @@ pub(crate) fn engine() -> Result<&'static Engine, String> {
     .map_err(Clone::clone)
 }
 
-/// 不带 `lib` 的那一个沙箱（第五版的策略文件跑在这里；进程里一份）。
-pub(crate) fn bare_engine() -> &'static Engine {
-    static E: OnceLock<Engine> = OnceLock::new();
-    E.get_or_init(bare)
+/// 一个新的、照同样上限挂好的沙箱（第五版在它上面挂自己的积木库）。
+pub(crate) fn fresh_engine() -> Engine {
+    bare()
 }
 
 /// 调一份策略里的一个函数（带墙钟期限）；回值 ＋ 用了几次操作。

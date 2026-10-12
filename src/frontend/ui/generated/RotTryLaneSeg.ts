@@ -5,6 +5,10 @@
  */
 export type RotTryLaneSeg = { from: number, to: number, 
 /**
- * `usable` · `atCap` · `off` · `blocked`。
+ * 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
  */
-kind: string, left?: number, reset: boolean, };
+sendable: boolean, 
+/**
+ * 这一段开头两窗的用量（5 小时 · 7 天）。
+ */
+used: [number, number], reset: boolean, };

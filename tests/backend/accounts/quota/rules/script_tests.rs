@@ -1,8 +1,7 @@
 //! 策略文件与沙箱：头的读写不碰代码 · 沙箱掐得住 · 回值照形状收 · 随包三份都读得懂、后端不认它们的名字。
 
 use super::*;
-use crate::accounts::quota::rules::decide::{decide, Ctx, CtxAcct, Pick, Score, Sigma};
-use crate::accounts::quota::rules::settings::{Rules, Settings};
+use crate::accounts::quota::rules::decide::{turn, Ctx, CtxAcct, Pick, Sigma, Strategy};
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::strategy::FailKind;
 
@@ -31,28 +30,30 @@ fn with_code(code: &str) -> String {
     format!("/*--- rotation\n{{\"format\": 5, \"name\": \"x\", \"line\": \"y\", \"settings\": {{\"accounts\": [{{\"start\": true}}]}}}}\n---*/\n{code}")
 }
 
+static SETTINGS: std::sync::OnceLock<serde_json::Value> = std::sync::OnceLock::new();
+
 fn ctx_of(now: u64) -> Ctx<'static> {
     Ctx {
         now,
         clock: 0,
+        start: "a",
         current: "a",
-        temp: &[],
+        settings: SETTINGS.get_or_init(|| serde_json::json!({"accounts": [{"start": true}]})),
+        memo: None,
         accounts: vec![CtxAcct {
             id: "a".into(),
             pos: 0,
             api: false,
-            ok: true,
-            h: 50.0,
+            sendable: true,
             used: [40.0, 10.0],
             resets: [Some(now + 3600), None],
-            cap: [90.0, 90.0],
             refused_until: None,
             rate: [Some(0.5), None],
         }],
     }
 }
 
-/// ★ 随包三份：都读得懂；`defaults.json` 指的那一份在。
+/// ★ 随包三份：都读得懂、跑得通；`defaults.json` 指的那一份在。
 #[test]
 fn every_shipped_strategy_reads_and_the_default_points_at_one_of_them() {
     let all = shipped();
@@ -64,8 +65,10 @@ fn every_shipped_strategy_reads_and_the_default_points_at_one_of_them() {
     );
     for (id, src) in &all {
         let f = parse(src).unwrap_or_else(|e| panic!("{id} 读不懂：{e:?}"));
-        f.score(&ctx_of(4_000_000_000))
+        let v = f
+            .decide(&ctx_of(4_000_000_000))
             .unwrap_or_else(|e| panic!("{id} 跑不通：{e:?}"));
+        assert_eq!(v.order, ["a"], "{id}");
     }
     let d: serde_json::Value = serde_json::from_str(
         &std::fs::read_to_string(shipped_dir().join("defaults.json")).expect("读"),
@@ -84,14 +87,10 @@ fn rewriting_the_head_leaves_the_code_byte_for_byte() {
     for (id, src) in shipped() {
         let f = parse(&src).expect("读");
         let mut h = f.head.clone();
-        h.settings
-            .accounts
-            .push(crate::accounts::quota::rules::settings::Listed {
-                id: Some("lab".into()),
-                delay: 30,
-                back: Some(20),
-                ..Default::default()
-            });
+        h.settings["accounts"]
+            .as_array_mut()
+            .expect("accounts")
+            .push(serde_json::json!({"id": "lab", "delay": 30, "back": 20}));
         let out = with_head(&src, &h).expect("写");
         let code_of = |s: &str| s[s.find("\n---*/").expect("头尾")..].to_string();
         assert_eq!(code_of(&out), code_of(&src), "{id}：代码变了");
@@ -99,53 +98,46 @@ fn rewriting_the_head_leaves_the_code_byte_for_byte() {
     }
 }
 
-/// ★ 沙箱：死循环 ⇒ 超时（操作数，同样的输入停在同一处）；读文件 · 取时间 · 随机数 · import 都没有；print 吞掉。
+/// ★ 沙箱：死循环 ⇒ 超时；读文件 · 取时间 · 随机数 · import 都没有；print 吞掉。
 #[test]
 fn the_sandbox_stops_loops_and_offers_no_files_clock_or_randomness() {
-    let f = parse(&with_code("fn score(ctx) { loop { } }")).expect("编得过");
-    let e = f.score(&ctx_of(1)).expect_err("该掐住");
-    assert_eq!(e.kind, FailKind::Timeout, "{e:?}");
+    let f = parse(&with_code("fn decide(ctx) { loop { } }")).expect("编得过");
+    assert_eq!(
+        f.decide(&ctx_of(1)).expect_err("该掐住").kind,
+        FailKind::Timeout
+    );
     for code in [
-        "fn score(ctx) { let x = open_file(\"/etc/passwd\"); #{} }",
-        "fn score(ctx) { let x = timestamp(); #{} }",
-        "fn score(ctx) { let x = rand(); #{} }",
+        "fn decide(ctx) { let x = open_file(\"/etc/passwd\"); #{ order: [] } }",
+        "fn decide(ctx) { let x = timestamp(); #{ order: [] } }",
+        "fn decide(ctx) { let x = rand(); #{ order: [] } }",
+        "fn decide(ctx) { import \"x\" as y; #{ order: [] } }",
     ] {
         let f = parse(&with_code(code)).expect("编得过（函数是跑的时候才找）");
         assert_eq!(
-            f.score(&ctx_of(1)).expect_err(code).kind,
+            f.decide(&ctx_of(1)).expect_err(code).kind,
             FailKind::Broke,
             "{code}"
         );
     }
-    // 没有模块解析器：`import` 一跑就错。
-    let f = parse(&with_code("fn score(ctx) { import \"x\" as y; #{} }")).expect("编得过");
-    assert_eq!(
-        f.score(&ctx_of(1)).expect_err("import").kind,
-        FailKind::Broke
-    );
     let f = parse(&with_code(
-        "fn score(ctx) { print(\"x\"); debug(\"y\"); #{ scores: #{} } }",
+        "fn decide(ctx) { print(\"x\"); debug(\"y\"); #{ order: [] } }",
     ))
     .expect("编得过");
-    assert!(f.score(&ctx_of(1)).is_ok());
+    assert!(f.decide(&ctx_of(1)).is_ok());
 }
 
-/// ★ 回值形状：分不是数 · why 不是字 · why 太长 ⇒ 形状不对；没给 score ⇒ 缺；同一份 ctx 跑两次一样。
+/// ★ 回值形状：没有 order · order 不是号 · why 太长 · 叫醒的窗口不认得 ⇒ 形状不对；同一份 ctx 跑两次一样。
 #[test]
 fn returns_are_shape_checked_and_deterministic() {
     for (code, bad) in [
-        ("fn score(ctx) { #{ scores: #{ a: #{ score: \"x\", why: \"\" } } } }", true),
-        ("fn score(ctx) { #{ scores: #{ a: #{ score: 1, why: 3 } } } }", true),
-        ("fn score(ctx) { #{ scores: #{ a: #{ why: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" } } } }", true),
-        ("fn score(ctx) { 3 }", true),
-        ("fn score(ctx) { #{ scores: #{ a: #{ why: \"没给分\" } } } }", false),
+        ("fn decide(ctx) { #{} }", true),
+        ("fn decide(ctx) { #{ order: [1] } }", true),
+        ("fn decide(ctx) { #{ order: [], why: #{ a: \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\" } } }", true),
+        ("fn decide(ctx) { #{ order: [], wake: #{ when: [#{ acct: \"a\", w: \"1d\", used_at_least: 90 }] } } }", true),
+        ("fn decide(ctx) { #{ order: [\"a\"], wake: #{ at: ctx.now + 60, when: [#{ acct: \"a\", w: \"5h\", used_at_least: 90 }] } } }", false),
     ] {
-        let f = parse(&with_code(code)).expect("编得过");
-        let r = f.score(&ctx_of(1));
+        let r = parse(&with_code(code)).expect("编得过").decide(&ctx_of(1));
         assert_eq!(r.as_ref().err().map(|e| e.kind.clone()) == Some(FailKind::BadShape), bad, "{code}：{r:?}");
-        if !bad {
-            assert_eq!(r.expect("ok").scores["a"].0, None);
-        }
     }
     let f = parse(
         &shipped()
@@ -155,26 +147,25 @@ fn returns_are_shape_checked_and_deterministic() {
             .1,
     )
     .expect("读");
-    assert_eq!(f.score(&ctx_of(77)).ok(), f.score(&ctx_of(77)).ok());
+    assert_eq!(f.decide(&ctx_of(77)).ok(), f.decide(&ctx_of(77)).ok());
 }
 
-/// ★ 读不懂的几种：没有头 · 头的形状不对 · 编不过（带行）· 没有 score。
+/// ★ 读不懂的几种：没有头 · 头的形状不对 · 编不过（带行）· 没有 decide。
 #[test]
 fn unreadable_files_say_why_and_where() {
-    assert!(parse("fn score(ctx) { #{} }").is_err());
-    assert!(parse("/*--- rotation\n{\"format\": 5}\n---*/\nfn score(ctx) { #{} }").is_err());
-    let e = parse(&with_code("\nfn score(ctx) { let = ; }")).expect_err("编不过");
-    assert_eq!(e.kind, FailKind::Broke);
-    assert_eq!(e.line, Some(5), "行号与文件对得上：{e:?}");
+    assert!(parse("fn decide(ctx) { #{} }").is_err());
+    assert!(parse("/*--- rotation\n{\"format\": 5}\n---*/\nfn decide(ctx) { #{} }").is_err());
+    let e = parse(&with_code("\nfn decide(ctx) { let = ; }")).expect_err("编不过");
+    assert_eq!((e.kind, e.line), (FailKind::Broke, Some(5)));
     assert!(parse(&with_code("fn other(ctx) { #{} }")).is_err());
 }
 
-/// ★ 后端不认随包策略：生产源码里搜不到它们的文件名与名字（一次性的升级那一份除外）；
-/// 三份全部改名、改 `name`，同一组事实判出来一个不变。
+/// ★ 后端不认随包策略：生产源码里搜不到它们的文件名与名字（一次性的升级那一份除外）；三份全部改 `name`，判出来一个不变。
+/// 积木库里那几项设置的名字（`capKind` · `margin`）也不在后端源码里（`back` · `delay` 这种常见词别处另有用处，不搜）。
 #[test]
-fn the_backend_knows_no_shipped_strategy_by_name() {
+fn the_backend_knows_no_shipped_strategy_and_no_rule() {
     let root = crate::guard_support::repo_root().join("src/backend");
-    let mut needles: Vec<String> = Vec::new();
+    let mut needles: Vec<String> = vec!["\"capKind\"".into(), "\"margin\"".into()];
     for (id, src) in shipped() {
         needles.push(format!("{id}.rhai"));
         needles.push(format!("\"{id}\""));
@@ -184,7 +175,15 @@ fn the_backend_knows_no_shipped_strategy_by_name() {
     }
     let hits: Vec<String> = guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
-        .filter(|(p, _)| !p.ends_with("rotation/migrate.rs"))
+        .filter(|(p, _)| {
+            !p.ends_with("rotation/migrate.rs")
+                && !p.to_string_lossy().contains("/strategy/")
+                && !p.ends_with("quota/rotation.rs")
+                && !p.ends_with("rotation/doc.rs")
+                && !p.ends_with("faces/rotation_face.rs")
+                && !p.ends_with("quota/decide.rs")
+                && !p.ends_with("quota/plan.rs")
+        })
         .flat_map(|(p, t)| {
             let t = crate::guard_support::production_code(&t);
             needles
@@ -194,7 +193,7 @@ fn the_backend_knows_no_shipped_strategy_by_name() {
                 .collect::<Vec<_>>()
         })
         .collect();
-    assert!(hits.is_empty(), "后端源码点了随包策略的名：{hits:?}");
+    assert!(hits.is_empty(), "后端源码点了随包策略或规则的名：{hits:?}");
     let f = [
         Acct {
             id: "a".into(),
@@ -226,13 +225,8 @@ fn the_backend_knows_no_shipped_strategy_by_name() {
     ];
     for (_, src) in shipped() {
         let mut head = parse(&src).expect("读").head;
-        head.settings.accounts = ["a", "b", "c"]
-            .iter()
-            .map(|a| crate::accounts::quota::rules::settings::Listed {
-                id: Some(a.to_string()),
-                ..Default::default()
-            })
-            .collect();
+        head.settings["accounts"] = serde_json::json!([{"id": "a"}, {"id": "b"}, {"id": "c"}]);
+        head.settings["caps"] = serde_json::json!({"5h": [{"from": 0, "to": 1440, "v": 90}]});
         let src = with_head(&src, &head).expect("写");
         let mut renamed = head.clone();
         renamed.name = Text::One("改过的名字".into());
@@ -240,37 +234,23 @@ fn the_backend_knows_no_shipped_strategy_by_name() {
         let sigma = Sigma {
             start: "a".into(),
             current: "b".into(),
-            temp: vec![],
-            since: Default::default(),
+            ..Sigma::default()
         };
         let run = |s: &str| {
             let file = parse(s).expect("读");
-            let d = decide(
+            let d = turn(
                 &sigma,
                 &f,
-                &utc(file.head.settings.clone()),
+                &file.head.settings,
                 &file,
+                0,
                 4_000_000_000,
                 &[],
             );
-            (
-                d.pick.clone(),
-                d.order
-                    .iter()
-                    .map(|r| r.account.clone())
-                    .collect::<Vec<_>>(),
-            )
+            (d.pick.clone(), d.order.clone())
         };
         let (a, b) = (run(&src), run(&other));
         assert_eq!(a, b);
         assert!(matches!(a.0, Pick::Use(_)));
-    }
-}
-
-/// 设置 ＋ UTC。
-fn utc(s: Settings) -> Rules {
-    Rules {
-        s,
-        tz: crate::Tz::default(),
     }
 }

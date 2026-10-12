@@ -14,10 +14,18 @@ pick?: string,
  */
 holdUntil?: number, holdAccount?: string, 
 /**
- * `stay` · `unusable` · `back` · `delay` · `hold`。
+ * 策略交的先后（此刻愿意用的号）。
  */
-cause: string, order: Array<RotTryRow>, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+order: Array<string>, 
 /**
- * 策略这一判出错（所有号当没给分、按列表）：原话。
+ * 每个号一句（策略写的）。
+ */
+why: Array<RotTryRow>, 
+/**
+ * 这一号来自用户拖出来的顺序。
+ */
+fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+/**
+ * 策略这一判出错（走了兜底）：原话。
  */
 strategyError?: string, };

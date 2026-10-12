@@ -1,8 +1,7 @@
 //! 策略文件（`轮换-v5-分层.md` §2.1）：开头一段块注释是 JSON 头（名字 · 一行灰字 · `timeVarying` · 时区 · 设置），后面是 Rhai 代码。
-//! 文件仍是合法的 Rhai；存设置只重写头那一段，代码一个字不动。代码里一个函数 `score(ctx)`，跑在沙箱里（同第三版的上限）。
+//! 文件仍是合法的 Rhai；存设置只重写头那一段，代码一个字不动。代码里一个函数 `decide(ctx)`，跑在沙箱里（同第三版的上限），挂着只读的积木库 `lib`（`src/shared/rotation/lib.rhai`）。
 
-use super::decide::{Ctx, Score, Scored};
-use super::settings::Settings;
+use super::decide::{Ctx, Strategy, Verdict, WakeWhen};
 use crate::accounts::quota::strategy::{Fail, FailKind};
 use rhai::{Dynamic, Map, AST};
 use serde::{Deserialize, Serialize};
@@ -57,7 +56,8 @@ pub(crate) struct Head {
     pub(crate) tz: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) tz_unknown: bool,
-    pub(crate) settings: Settings,
+    /// 这份策略自己的设置（形状它自己定，后端原样交给它）。
+    pub(crate) settings: serde_json::Value,
 }
 
 /// 这一版的格式号。
@@ -105,7 +105,7 @@ fn split(source: &str) -> Result<(&str, &str), Fail> {
     Ok((&rest[..end], &rest[end + HEAD_CLOSE.len()..]))
 }
 
-/// ★ 读一份策略文件：头照形状解、代码编一次、要有 `score`。
+/// ★ 读一份策略文件：头照形状解、代码编一次、要有 `decide`。
 pub(crate) fn parse(source: &str) -> Result<File, Fail> {
     let (head, code) = split(source)?;
     let head: Head = serde_json::from_str(head)
@@ -117,7 +117,7 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
             format!("format {} is not {FORMAT}", head.format),
         ));
     }
-    let e = crate::accounts::quota::strategy::bare_engine();
+    let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
     // 代码的行号接在头后面（报第几行时与文件对得上）。
     let lead = source.len() - code.len();
     let padded = format!(
@@ -130,12 +130,12 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
     })?;
     if !ast
         .iter_functions()
-        .any(|f| f.name == "score" && f.params.len() == 1)
+        .any(|f| f.name == "decide" && f.params.len() == 1)
     {
         return Err(fail(
             FailKind::BadShape,
             None,
-            "the code has no `fn score(ctx)`",
+            "the code has no `fn decide(ctx)`",
         ));
     }
     Ok(File { head, ast })
@@ -147,6 +147,24 @@ pub(crate) fn with_head(source: &str, head: &Head) -> Result<String, Fail> {
     let json = serde_json::to_string_pretty(head)
         .map_err(|e| fail(FailKind::BadShape, None, e.to_string()))?;
     Ok(format!("{HEAD_OPEN}{json}{HEAD_CLOSE}{code}"))
+}
+
+/// 积木库的源码（随包、只读）。
+pub(crate) const LIB_SOURCE: &str = include_str!("../../../../shared/rotation/lib.rhai");
+
+/// 挂好积木库 `lib` 的那一个沙箱（进程里一份）。
+pub(crate) fn engine() -> Result<&'static rhai::Engine, String> {
+    static E: std::sync::OnceLock<Result<rhai::Engine, String>> = std::sync::OnceLock::new();
+    E.get_or_init(|| {
+        let mut e = crate::accounts::quota::strategy::fresh_engine();
+        let ast = e.compile(LIB_SOURCE).map_err(|x| x.to_string())?;
+        let m = rhai::Module::eval_ast_as_new(rhai::Scope::new(), &ast, &e)
+            .map_err(|x| x.to_string())?;
+        e.register_static_module("lib", m.into());
+        Ok(e)
+    })
+    .as_ref()
+    .map_err(Clone::clone)
 }
 
 fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
@@ -170,35 +188,25 @@ fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
             m.insert("id".into(), a.id.clone().into());
             m.insert("pos".into(), Dynamic::from(a.pos as i64));
             m.insert("kind".into(), (if a.api { "api" } else { "sub" }).into());
-            m.insert("ok".into(), a.ok.into());
-            m.insert(
-                "H".into(),
-                Dynamic::from(if a.h.is_finite() { a.h } else { 100.0 }),
-            );
+            m.insert("sendable".into(), a.sendable.into());
             m.insert("used".into(), pair(a.used[0].into(), a.used[1].into()));
             m.insert("resets".into(), pair(opt(a.resets[0]), opt(a.resets[1])));
-            m.insert("cap".into(), pair(a.cap[0].into(), a.cap[1].into()));
             m.insert("refusedUntil".into(), opt(a.refused_until));
             m.insert("rate".into(), pair(optf(a.rate[0]), optf(a.rate[1])));
             Dynamic::from(m)
         })
         .collect();
+    let json = |v: &serde_json::Value| rhai::serde::to_dynamic(v).unwrap_or(Dynamic::UNIT);
     let mut m = Map::new();
     m.insert(
         "now".into(),
         Dynamic::from(i64::try_from(c.now).unwrap_or(i64::MAX)),
     );
     m.insert("clock".into(), Dynamic::from(i64::from(c.clock)));
+    m.insert("start".into(), c.start.to_string().into());
     m.insert("current".into(), c.current.to_string().into());
-    m.insert(
-        "temp".into(),
-        Dynamic::from(
-            c.temp
-                .iter()
-                .map(|s| Dynamic::from(s.clone()))
-                .collect::<rhai::Array>(),
-        ),
-    );
+    m.insert("settings".into(), json(c.settings));
+    m.insert("memo".into(), c.memo.map_or(Dynamic::UNIT, json));
     m.insert("accounts".into(), Dynamic::from(accounts));
     Dynamic::from(m)
 }
@@ -209,63 +217,108 @@ fn num(d: &Dynamic) -> Option<f64> {
         .or_else(|| d.as_int().ok().map(|i| i as f64))
 }
 
-/// 回值照形状收：`#{scores: #{号: #{score?, why}}, next_change_at?}`。`why` 是一句（≤ 80 字）。
-fn shape(v: Dynamic) -> Result<Scored, Fail> {
+fn time(d: Option<&Dynamic>, what: &str) -> Result<Option<u64>, Fail> {
+    match d {
+        None => Ok(None),
+        Some(x) if x.is_unit() => Ok(None),
+        Some(x) => x
+            .as_int()
+            .ok()
+            .and_then(|n| u64::try_from(n).ok())
+            .map(Some)
+            .ok_or_else(|| {
+                fail(
+                    FailKind::BadShape,
+                    None,
+                    format!("{what} must be an integer time"),
+                )
+            }),
+    }
+}
+
+/// 回值照形状收：`#{order: [号], why?: #{号: 一句}, hold_until?, wake?: #{at?, when?: [#{acct, w, used_at_least}]}, memo?}`。
+fn shape(v: Dynamic) -> Result<Verdict, Fail> {
     let bad = |m: &str| fail(FailKind::BadShape, None, m.to_string());
     let top = v
         .try_cast::<Map>()
-        .ok_or_else(|| bad("score(ctx) must return a map"))?;
-    let mut out = Scored::default();
-    if let Some(n) = top.get("next_change_at") {
-        if !n.is_unit() {
-            let n = n
-                .as_int()
-                .map_err(|_| bad("next_change_at must be an integer time"))?;
-            out.next_change_at = u64::try_from(n).ok();
-        }
+        .ok_or_else(|| bad("decide(ctx) must return a map"))?;
+    let mut out = Verdict::default();
+    let order = top.get("order").ok_or_else(|| bad("order is missing"))?;
+    let order = order
+        .clone()
+        .try_cast::<rhai::Array>()
+        .ok_or_else(|| bad("order must be an array"))?;
+    for a in order {
+        out.order.push(
+            a.into_string()
+                .map_err(|_| bad("order must list account ids"))?,
+        );
     }
-    let scores = match top.get("scores") {
-        None => return Ok(out),
-        Some(s) => s
+    if let Some(w) = top.get("why").filter(|w| !w.is_unit()) {
+        let w = w
             .clone()
             .try_cast::<Map>()
-            .ok_or_else(|| bad("scores must be a map"))?,
-    };
-    for (k, v) in scores {
-        let row = v
-            .try_cast::<Map>()
-            .ok_or_else(|| bad("each score must be a map"))?;
-        let score = match row.get("score") {
-            None => None,
-            Some(s) if s.is_unit() => None,
-            Some(s) => Some(
-                num(s)
-                    .filter(|x| x.is_finite())
-                    .ok_or_else(|| bad("score must be a finite number"))?,
-            ),
-        };
-        let why = row
-            .get("why")
-            .map(|w| {
-                w.clone()
-                    .into_string()
-                    .map_err(|_| bad("why must be a string"))
-            })
-            .transpose()?
-            .unwrap_or_default();
-        if why.chars().count() > 80 {
-            return Err(bad("why is longer than 80 characters"));
+            .ok_or_else(|| bad("why must be a map"))?;
+        for (k, v) in w {
+            let s = v.into_string().map_err(|_| bad("why must be a string"))?;
+            if s.chars().count() > 80 {
+                return Err(bad("why is longer than 80 characters"));
+            }
+            out.why.push((k.to_string(), s));
         }
-        out.scores.insert(k.to_string(), (score, why));
+    }
+    out.hold_until = time(top.get("hold_until"), "hold_until")?;
+    if let Some(w) = top.get("wake").filter(|w| !w.is_unit()) {
+        let w = w
+            .clone()
+            .try_cast::<Map>()
+            .ok_or_else(|| bad("wake must be a map"))?;
+        out.wake_at = time(w.get("at"), "wake.at")?;
+        if let Some(list) = w.get("when").filter(|x| !x.is_unit()) {
+            let list = list
+                .clone()
+                .try_cast::<rhai::Array>()
+                .ok_or_else(|| bad("wake.when must be an array"))?;
+            for x in list {
+                let m = x
+                    .try_cast::<Map>()
+                    .ok_or_else(|| bad("each wake.when must be a map"))?;
+                let acct = m
+                    .get("acct")
+                    .and_then(|a| a.clone().into_string().ok())
+                    .ok_or_else(|| bad("wake.when.acct"))?;
+                let w = match m
+                    .get("w")
+                    .and_then(|a| a.clone().into_string().ok())
+                    .as_deref()
+                {
+                    Some("5h") => 0,
+                    Some("7d") => 1,
+                    _ => return Err(bad("wake.when.w must be \"5h\" or \"7d\"")),
+                };
+                let n = m
+                    .get("used_at_least")
+                    .and_then(num)
+                    .ok_or_else(|| bad("wake.when.used_at_least"))?;
+                out.wake_when.push(WakeWhen {
+                    acct,
+                    w,
+                    used_at_least: n,
+                });
+            }
+        }
+    }
+    if let Some(m) = top.get("memo").filter(|m| !m.is_unit()) {
+        out.memo = Some(rhai::serde::from_dynamic(m).map_err(|e| bad(&e.to_string()))?);
     }
     Ok(out)
 }
 
-impl Score for File {
-    fn score(&self, ctx: &Ctx<'_>) -> Result<Scored, Fail> {
-        let e = crate::accounts::quota::strategy::bare_engine();
+impl Strategy for File {
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
+        let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
         let (r, _) =
-            crate::accounts::quota::strategy::call_in(e, &self.ast, "score", (ctx_dynamic(ctx),));
+            crate::accounts::quota::strategy::call_in(e, &self.ast, "decide", (ctx_dynamic(ctx),));
         shape(r.map_err(|x| Fail::of_eval(&x))?)
     }
 
@@ -280,12 +333,12 @@ pub(crate) const SIMULATE_BUDGET: std::time::Duration = std::time::Duration::fro
 
 /// 给一趟推演用的策略：累计耗时到了 [`SIMULATE_BUDGET`] 就不再调、报超时。
 pub(crate) struct Budgeted<'a> {
-    inner: &'a dyn Score,
+    inner: &'a dyn Strategy,
     spent: std::cell::Cell<std::time::Duration>,
 }
 
 impl<'a> Budgeted<'a> {
-    pub(crate) fn new(inner: &'a dyn Score) -> Self {
+    pub(crate) fn new(inner: &'a dyn Strategy) -> Self {
         Self {
             inner,
             spent: std::cell::Cell::new(std::time::Duration::ZERO),
@@ -293,8 +346,8 @@ impl<'a> Budgeted<'a> {
     }
 }
 
-impl Score for Budgeted<'_> {
-    fn score(&self, ctx: &Ctx<'_>) -> Result<Scored, Fail> {
+impl Strategy for Budgeted<'_> {
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
         if self.exhausted() {
             return Err(fail(
                 FailKind::Timeout,
@@ -306,7 +359,7 @@ impl Score for Budgeted<'_> {
             ));
         }
         let t0 = crate::common::time::now();
-        let r = self.inner.score(ctx);
+        let r = self.inner.decide(ctx);
         let took = crate::common::time::now()
             .duration_since(t0)
             .unwrap_or_default();

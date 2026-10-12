@@ -1,14 +1,12 @@
-//! ★ 轮换第五版的规则（`轮换-v5-算法.md` · `轮换-v5-分层.md` §1.3）：R1–R4 ＋ 临时条目，对每份策略一样；策略只交分。
+//! ★ 轮换第五版后端的积木（`轮换-v5-算法.md` · `轮换-v5-分层.md`）：事实 · 动作 · 叫醒 · 推演 · 兜底。换号的想法全在策略里。
 //!
-//! - [`settings`]：一份策略的设置（号与先后 · 上限分段 · 软硬 · 启用延迟 · 回切阈值）与 `C(a, w, t)`；
-//! - [`standing`]：由事实 ＋ 设置派生的 `capEff` · `H` · `ok` · 几点恢复；
-//! - [`decide`]：一判（纯函数：不读钟、不写盘）；
-//! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::decide`]；
-//! - [`script`]：策略文件（JSON 头 ＋ Rhai 代码）与沙箱里的 `score(ctx)`。
+//! - [`standing`]：事实上发不发得出去；
+//! - [`decide`]：一判 —— 叫策略、照它交的先后做动作（纯函数：不读钟、不写盘）；
+//! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::turn`]；
+//! - [`script`]：策略文件（JSON 头 ＋ Rhai 代码）与沙箱里的 `decide(ctx)`（挂着积木库 `lib`）。
 
 pub(crate) mod decide;
 pub(crate) mod script;
-pub(crate) mod settings;
 pub(crate) mod simulate;
 pub(crate) mod standing;
 

@@ -1,22 +1,43 @@
-//! ★ 一判（算法 §2）：纯函数 —— 不读钟、不写盘；同样的 (Σ, F, 设置, 策略, t) 回同样的结果。真用（中转发之前）与推演调的都是 [`decide`]。
+//! ★ 后端的一判（`轮换-v5-算法.md` §3）：叫策略来判，照它交的先后做动作。后端没有任何换号的想法 ——
+//! 上限、软硬、启用延迟、回切都在策略里（随包三份调积木库 `src/shared/rotation/lib.rhai`）。
+//! 后端只认事实上发不发得出去（[`standing::sendable`]）、用户拖出来的顺序、停发、出错兜底。
+//! 纯函数：不读钟、不写盘；真用（中转发之前）与推演调的都是 [`turn`]。
 
-use super::settings::Rules;
 use super::standing;
 use super::Acct;
-use std::collections::BTreeMap;
+use serde_json::Value;
 
-/// 策略这一判交出的：每个号的分（缺 ＝ 按 0 分）与一句为什么 · 次序最早可能在什么时刻变。
+/// 某号某窗读数到 n 再来问（按读数叫醒）。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct WakeWhen {
+    pub(crate) acct: String,
+    /// 0 ＝ 5 小时 · 1 ＝ 7 天。
+    pub(crate) w: usize,
+    pub(crate) used_at_least: f64,
+}
+
+/// 策略这一判交出的。
 #[derive(Debug, Clone, Default, PartialEq)]
-pub(crate) struct Scored {
-    pub(crate) scores: BTreeMap<String, (Option<f64>, String)>,
-    pub(crate) next_change_at: Option<u64>,
+pub(crate) struct Verdict {
+    /// 此刻愿意用的号，先后即想用的先后；不在里面 ＝ 此刻不用。
+    pub(crate) order: Vec<String>,
+    /// 每个号一句为什么。
+    pub(crate) why: Vec<(String, String)>,
+    /// `order` 空时停到几点（不给 ⇒ 停到最早有号事实上发得出去的时刻）。
+    pub(crate) hold_until: Option<u64>,
+    /// 几点再来问（按时刻叫醒）。
+    pub(crate) wake_at: Option<u64>,
+    /// 读数到哪再来问（按读数叫醒）。
+    pub(crate) wake_when: Vec<WakeWhen>,
+    /// 策略要跨判记的小东西（后端原样存回、下一判原样交回）。
+    pub(crate) memo: Option<Value>,
 }
 
 /// 策略那一侧（沙箱里的脚本，或判据里的假策略）。
-pub(crate) trait Score {
-    /// 出错 · 超时 · 形状不对 ⇒ `Err`（这一判所有号当没给分）。
-    fn score(&self, ctx: &Ctx<'_>) -> Result<Scored, super::super::strategy::Fail>;
-    /// 声明了「分会随时间变」。
+pub(crate) trait Strategy {
+    /// 出错 · 超时 · 形状不对 ⇒ `Err`（这一判走兜底）。
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, super::super::strategy::Fail>;
+    /// 声明了「结论会随时间变」：没约时刻时后端每 [`FALLBACK_STEP`] 来问一次。
     fn time_varying(&self) -> bool {
         false
     }
@@ -26,323 +47,214 @@ pub(crate) trait Score {
     }
 }
 
-/// 交给策略的那一份（算法 §7）。
+/// 交给策略的那一份（算法 §2）。
 #[derive(Debug, Clone)]
 pub(crate) struct Ctx<'a> {
     pub(crate) now: u64,
     pub(crate) clock: u16,
+    pub(crate) start: &'a str,
     pub(crate) current: &'a str,
-    pub(crate) temp: &'a [String],
+    pub(crate) settings: &'a Value,
+    pub(crate) memo: Option<&'a Value>,
     pub(crate) accounts: Vec<CtxAcct>,
 }
 
-/// ctx 里的一个号。
+/// ctx 里的一个号（只有事实）。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct CtxAcct {
     pub(crate) id: String,
     pub(crate) pos: usize,
     pub(crate) api: bool,
-    pub(crate) ok: bool,
-    pub(crate) h: f64,
+    pub(crate) sendable: bool,
     pub(crate) used: [f64; 2],
     pub(crate) resets: [Option<u64>; 2],
-    pub(crate) cap: [f64; 2],
     pub(crate) refused_until: Option<u64>,
     pub(crate) rate: [Option<f64>; 2],
 }
 
-/// 会话状态 Σ。
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+/// 会话状态 Σ（后端存）。
+#[derive(Debug, Clone, Default, PartialEq)]
 pub(crate) struct Sigma {
-    /// 开会话用的号（号列表里 `start` 那一行）。
+    /// 开会话用的号。
     pub(crate) start: String,
     pub(crate) current: String,
+    /// 用户拖出来的「接下来先用谁」。
     pub(crate) temp: Vec<String>,
-    /// 启用延迟从什么时候起计（空 ＝ 没在计）。
-    pub(crate) since: BTreeMap<String, u64>,
-}
-
-/// 候选次序里的一行。
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) struct Ranked {
-    pub(crate) account: String,
-    pub(crate) score: Option<f64>,
-    pub(crate) why: String,
-    pub(crate) from_temp: bool,
-    pub(crate) ok: bool,
+    /// 上一判策略约的读数（记账那一下比对）。
+    pub(crate) wake_when: Vec<WakeWhen>,
+    pub(crate) memo: Option<Value>,
 }
 
 /// 结论。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum Pick {
-    /// 用这个号（可能就是在用的那个）。
     Use(String),
-    /// 停发，到 `until`；`account` 是到时恢复的那个号（说得出才有）。
+    /// 停发到 `until`；`account` 是到时最早恢复的那个号（说得出才有）。
     Hold {
         until: Option<u64>,
         account: Option<String>,
     },
 }
 
-/// 为什么。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Cause {
-    /// 在用的号还能用，没有该回切的。
-    Stay,
-    /// R1：在用的号用不了，换到候选次序里第一个能用的。
-    Unusable,
-    /// R3：前面的号余量回到阈值以上，切回去。
-    Back,
-    /// 有能用的号，但还在启用延迟里。
-    Delay,
-    /// R4：一个号都用不了。
-    Hold,
-}
-
-/// 一判的结果（算法 §2）。
+/// 一判的结果。
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Decision {
     pub(crate) pick: Pick,
-    pub(crate) cause: Cause,
     pub(crate) sigma: Sigma,
-    /// 这一判丢掉的临时条目（轮到时用不了 ⇒ 跳过）。
+    /// 这一判丢掉的拖出来的条目（轮到时用不了 ⇒ 跳过）。
     pub(crate) skipped: Vec<String>,
-    pub(crate) order: Vec<Ranked>,
-    /// 放开了软上限（所有号都到了上限）。
-    pub(crate) lift: bool,
-    /// 下一个已知节点（重置 · 分段边界 · 启用延迟到期 · 被拒到期 · 策略给的时刻 / 兜底 15 分钟 · 停发到期）。
+    /// 策略交的先后（显示用）与每号一句。
+    pub(crate) order: Vec<String>,
+    pub(crate) why: Vec<(String, String)>,
+    /// 这一号来自用户拖出来的顺序。
+    pub(crate) from_temp: bool,
+    /// 下一个已知节点（重置 · 被拒到期 · 挡着的到期 · 策略约的时刻 · 停发到期）。
     pub(crate) tn: Option<u64>,
     pub(crate) strategy_error: Option<super::super::strategy::Fail>,
 }
 
-/// 策略没给 `next_change_at`、又声明了分随时间变 ⇒ 每隔这么久一个兜底节点。
+/// 策略声明了结论随时间变、又没约时刻 ⇒ 每隔这么久来问一次。
 pub(crate) const FALLBACK_STEP: u64 = 15 * 60;
 
-/// 找这个号的事实（不在 ⇒ 当作用不了）。
 fn fact<'a>(f: &'a [Acct], a: &str) -> Option<&'a Acct> {
     f.iter().find(|x| x.id == a)
 }
 
-/// ★ 一判。`tried` ＝ 这一发已经试过的号（429 同一发重判时排除），平时空。
-pub(crate) fn decide(
+/// 拼交给策略的 ctx（号照事实的先后）。
+pub(crate) fn ctx_of<'a>(
+    sigma: &'a Sigma,
+    facts: &[Acct],
+    settings: &'a Value,
+    clock: u16,
+    t: u64,
+) -> Ctx<'a> {
+    Ctx {
+        now: t,
+        clock,
+        start: &sigma.start,
+        current: &sigma.current,
+        settings,
+        memo: sigma.memo.as_ref(),
+        accounts: facts
+            .iter()
+            .enumerate()
+            .map(|(pos, x)| CtxAcct {
+                id: x.id.clone(),
+                pos,
+                api: x.api,
+                sendable: standing::sendable(x, t),
+                used: [standing::used_at(x, 0, t), standing::used_at(x, 1, t)],
+                resets: x.resets.map(|r| r.filter(|r| *r > t)),
+                refused_until: x.refused_until.filter(|u| *u > t),
+                rate: if x.id == sigma.current {
+                    x.rate
+                } else {
+                    [None, None]
+                },
+            })
+            .collect(),
+    }
+}
+
+/// ★ 一判。`tried` ＝ 这一发已经试过的号（429 同一发重判时排除），平时空。`clock` ＝ 策略时区里 t 是一天的第几分钟。
+pub(crate) fn turn(
     sigma: &Sigma,
     facts: &[Acct],
-    rules: &Rules,
-    p: &dyn Score,
+    settings: &Value,
+    p: &dyn Strategy,
+    clock: u16,
     t: u64,
     tried: &[String],
 ) -> Decision {
-    let start = sigma.start.as_str();
-    let list = rules.list(start);
-    let usable = |a: &str, lift: bool| {
-        !tried.iter().any(|x| x == a)
-            && fact(facts, a).is_some_and(|x| standing::ok(rules, start, x, t, lift))
+    let ctx = ctx_of(sigma, facts, settings, clock, t);
+    let send = |a: &str| {
+        !tried.iter().any(|x| x == a) && fact(facts, a).is_some_and(|x| standing::sendable(x, t))
     };
-    // 1–2：余量与能不能用；一个都没有 ⇒ 放开软上限。
-    let lift = !list.iter().any(|a| usable(a, false));
-    let ok = |a: &str| usable(a, lift);
-    // 3：排候选次序。
-    let ctx_for = |current: &'_ str| -> Vec<CtxAcct> {
-        list.iter()
-            .enumerate()
-            .filter_map(|(pos, a)| {
-                let x = fact(facts, a)?;
-                Some(CtxAcct {
-                    id: a.clone(),
-                    pos,
-                    api: x.api,
-                    ok: ok(a),
-                    h: standing::headroom(rules, start, x, t, lift),
-                    used: [standing::used_at(x, 0, t), standing::used_at(x, 1, t)],
-                    resets: x.resets.map(|r| r.filter(|r| *r > t)),
-                    cap: [
-                        standing::cap_eff(rules, start, x, 0, t, lift),
-                        standing::cap_eff(rules, start, x, 1, t, lift),
-                    ],
-                    refused_until: x.refused_until.filter(|u| *u > t),
-                    rate: if a == current { x.rate } else { [None, None] },
-                })
-            })
-            .collect()
-    };
-    let ctx = Ctx {
-        now: t,
-        clock: rules.minute(t),
-        current: &sigma.current,
-        temp: &sigma.temp,
-        accounts: ctx_for(&sigma.current),
-    };
-    let (scored, strategy_error) = match p.score(&ctx) {
-        Ok(s) => (s, None),
-        Err(e) => (Scored::default(), Some(e)),
-    };
-    let mut fin: Vec<(usize, &String)> = list.iter().enumerate().collect();
-    let sc = |a: &str| {
-        scored
-            .scores
-            .get(a)
-            .and_then(|(s, _)| *s)
-            .filter(|s| s.is_finite())
-    };
-    fin.sort_by(|(pa, a), (pb, b)| {
-        sc(b)
-            .unwrap_or(0.0)
-            .total_cmp(&sc(a).unwrap_or(0.0))
-            .then(pa.cmp(pb))
-    });
-    // 在用的号用不了、它又是临时条目 ⇒ 先拿掉（用过一轮），再排候选次序：同一刻把交回的 Σ′ 再判一次，结论不变。
-    let c = sigma.current.as_str();
-    let c_ok = ok(c) && list.iter().any(|a| a == c);
-    let mut temp: Vec<String> = Vec::new();
-    for a in &sigma.temp {
-        if list.contains(a) && !temp.contains(a) && (c_ok || a != c) {
-            temp.push(a.clone());
+    // 1：叫策略；出错 ⇒ 兜底：此刻的号发得出去就照用，否则照事实的先后取第一个发得出去的。
+    let (v, strategy_error) = match p.decide(&ctx) {
+        Ok(v) => (v, None),
+        Err(e) => {
+            let mut order: Vec<String> = vec![sigma.current.clone()];
+            order.extend(
+                facts
+                    .iter()
+                    .map(|x| x.id.clone())
+                    .filter(|a| *a != sigma.current),
+            );
+            (
+                Verdict {
+                    order,
+                    memo: sigma.memo.clone(),
+                    ..Verdict::default()
+                },
+                Some(e),
+            )
         }
-    }
-    let mut k: Vec<String> = temp.clone();
-    k.extend(
-        fin.iter()
-            .map(|(_, a)| (*a).clone())
-            .filter(|a| !temp.contains(a)),
-    );
-    // 4：启用延迟。排在最前的那个号前面没有号 ⇒ 恒允许。
-    let mut since = BTreeMap::new();
-    let mut all_bad = true;
-    let mut allowed: BTreeMap<&str, bool> = BTreeMap::new();
-    for (i, a) in k.iter().enumerate() {
-        let d = rules.delay_secs(start, a);
-        let al = if i == 0 || d == 0 {
-            true
-        } else if all_bad {
-            let s = sigma.since.get(a).copied().unwrap_or(t);
-            since.insert(a.clone(), s);
-            t.saturating_sub(s) >= d
-        } else {
-            false
-        };
-        allowed.insert(a.as_str(), al);
-        all_bad &= !ok(a);
-    }
-    let order: Vec<Ranked> = k
-        .iter()
-        .map(|a| Ranked {
-            account: a.clone(),
-            score: sc(a),
-            why: scored
-                .scores
-                .get(a)
-                .map(|(_, w)| w.clone())
-                .unwrap_or_default(),
-            from_temp: temp.contains(a),
-            ok: ok(a),
-        })
-        .collect();
+    };
+    // 2：候选 ＝ order 里事实上发得出去的。
+    let cands: Vec<&String> = v.order.iter().filter(|a| send(a)).collect();
+    let c = sigma.current.as_str();
     let mut next = Sigma {
         start: sigma.start.clone(),
         current: sigma.current.clone(),
-        temp: temp.clone(),
-        since,
+        temp: sigma.temp.clone(),
+        wake_when: v.wake_when.clone(),
+        memo: v.memo.clone(),
     };
     let mut skipped = Vec::new();
-    let hold_all = |k: &[String]| -> Pick {
-        let mut best: Option<(u64, &str)> = None;
-        for a in k {
-            let Some(x) = fact(facts, a) else { continue };
-            if let Some(at) = standing::recover_at(rules, start, x, t, true) {
-                if best.is_none_or(|(b, _)| at < b) {
-                    best = Some((at, a.as_str()));
-                }
-            }
+    let mut from_temp = false;
+    // 3：该换了（当前号不在候选里）⇒ 先照用户拖出来的顺序：第一个在候选里的被选中，排在它前面的丢掉。
+    let mut chosen: Option<String> = None;
+    if !cands.iter().any(|a| *a == c) {
+        next.temp.retain(|a| a != c);
+        if let Some(i) = next.temp.iter().position(|a| cands.iter().any(|x| *x == a)) {
+            skipped = next.temp[..i].to_vec();
+            next.temp.drain(..i);
+            chosen = Some(next.temp[0].clone());
+            from_temp = true;
         }
-        Pick::Hold {
-            until: best.map(|b| b.0),
-            account: best.map(|b| b.1.to_string()),
-        }
-    };
-    let (pick, cause) = if !c_ok {
-        // R1。
-        match k
-            .iter()
-            .position(|a| a != c && ok(a) && allowed[a.as_str()])
-        {
-            Some(i) => {
-                let to = k[i].clone();
-                for a in &k[..i] {
-                    if next.temp.contains(a) && !ok(a) {
-                        skipped.push(a.clone());
+    } else if next.temp.first().map(String::as_str) == Some(c) {
+        from_temp = true;
+    }
+    // 4：否则取候选第一个（当前号排第一 ⇒ 不换）。
+    let pick = match chosen.or_else(|| cands.first().map(|a| (*a).clone())) {
+        Some(a) => Pick::Use(a),
+        None => {
+            // 5：候选空 ⇒ 停发。
+            let mut best: Option<(u64, &str)> = None;
+            for x in facts {
+                if let Some(at) = standing::sendable_again(x, t) {
+                    if best.is_none_or(|(b, _)| at < b) {
+                        best = Some((at, &x.id));
                     }
                 }
-                next.temp.retain(|a| !skipped.contains(a));
-                (Pick::Use(to), Cause::Unusable)
             }
-            None if k.iter().any(|a| a != c && ok(a)) => {
-                let until = next
-                    .since
-                    .iter()
-                    .filter(|(a, _)| ok(a))
-                    .map(|(a, s)| s + rules.delay_secs(start, a))
-                    .min();
-                let account = next
-                    .since
-                    .iter()
-                    .filter(|(a, _)| ok(a))
-                    .min_by_key(|(a, s)| *s + rules.delay_secs(start, a))
-                    .map(|(a, _)| a.clone());
-                (Pick::Hold { until, account }, Cause::Delay)
+            Pick::Hold {
+                until: v.hold_until.or(best.map(|b| b.0)),
+                account: best.map(|b| b.1.to_string()),
             }
-            None => (hold_all(&k), Cause::Hold),
-        }
-    } else {
-        // R3（只在没放开软上限时）。
-        let ci = k.iter().position(|a| a == c).unwrap_or(k.len());
-        let back = (!lift)
-            .then(|| {
-                k[..ci].iter().find(|a| {
-                    ok(a)
-                        && allowed[a.as_str()]
-                        && rules.back(start, a).is_some_and(|r| {
-                            fact(facts, a)
-                                .is_some_and(|x| standing::headroom(rules, start, x, t, false) >= r)
-                        })
-                })
-            })
-            .flatten();
-        match back {
-            Some(a) => (Pick::Use(a.clone()), Cause::Back),
-            None => (Pick::Use(c.to_string()), Cause::Stay),
         }
     };
+    let mut wake_at = v.wake_at;
     if let Pick::Use(a) = &pick {
         next.current = a.clone();
+        // 换了号 ⇒ 在用的号变了，这是一件事实：照新的在用号再问策略一次它约的叫醒（不然要等到别的节点才知道新在用号该几点再判）。
+        if a != c && strategy_error.is_none() {
+            if let Ok(v2) = p.decide(&ctx_of(&next, facts, settings, clock, t)) {
+                next.wake_when = v2.wake_when;
+                next.memo = v2.memo;
+                wake_at = v2.wake_at;
+            }
+        }
     }
-    // 下一个已知节点。
+    // 6：下一个已知节点。
     let mut tn: Vec<u64> = Vec::new();
-    for a in &list {
-        let Some(x) = fact(facts, a) else { continue };
+    for x in facts {
         tn.extend(x.resets.iter().flatten().copied());
         tn.extend(x.refused_until);
         tn.extend(x.barred.and_then(|b| b.until));
-        tn.extend(rules.next_edge(start, a, t));
     }
-    for (a, s) in &next.since {
-        tn.push(s + rules.delay_secs(start, a));
-    }
-    // 换了号 ⇒ 在用的号变了，策略那句「次序最早在什么时刻变」要照新的在用号再问一次（不然要等到兜底那一格）。
-    let mut next_change = scored.next_change_at;
-    if let Pick::Use(a) = &pick {
-        if a != c && strategy_error.is_none() {
-            let again = Ctx {
-                now: t,
-                clock: ctx.clock,
-                current: a,
-                temp: &next.temp,
-                accounts: ctx_for(a),
-            };
-            next_change = p.score(&again).ok().and_then(|s| s.next_change_at);
-        }
-    }
-    // 策略给的时刻至少隔一分钟（太近的挪到一分钟后，免得事件炸开）；过去的不算。
-    match next_change {
+    match wake_at {
         Some(n) if n > t => tn.push(n.max(t + 60)),
         _ if p.time_varying() => tn.push(t + FALLBACK_STEP),
         _ => {}
@@ -352,40 +264,33 @@ pub(crate) fn decide(
     }
     Decision {
         pick,
-        cause,
         sigma: next,
         skipped,
-        order,
-        lift,
+        order: v.order,
+        why: v.why,
+        from_temp,
         tn: tn.into_iter().filter(|x| *x > t).min(),
         strategy_error,
     }
 }
 
-/// 「现在用 a」（后端的动作，不是规则）：`ok(a)` ⇒ 放到临时条目最前（已在就挪过去）、换过去；不 ok ⇒ 什么都不改，回为什么 · 几点恢复。
+/// 「现在用 a」（用户的手动操作）：事实上发得出去 ⇒ 放到拖出来的顺序最前、换过去；发不出去 ⇒ 不改，回几点恢复。
+/// 策略的上限不拦它。
 pub(crate) fn use_now(
     sigma: &Sigma,
     facts: &[Acct],
-    rules: &Rules,
-    p: &dyn Score,
     t: u64,
     a: &str,
-) -> Result<Decision, Option<u64>> {
-    let start = sigma.start.as_str();
-    let listed = rules.list(start).iter().any(|x| x == a);
-    let x = fact(facts, a).filter(|_| listed).ok_or(None)?;
-    let lift = !rules
-        .list(start)
-        .iter()
-        .any(|b| fact(facts, b).is_some_and(|y| standing::ok(rules, start, y, t, false)));
-    if !standing::ok(rules, start, x, t, lift) {
-        return Err(standing::recover_at(rules, start, x, t, lift));
+) -> Result<Sigma, Option<u64>> {
+    let x = fact(facts, a).ok_or(None)?;
+    if !standing::sendable(x, t) {
+        return Err(standing::sendable_again(x, t));
     }
     let mut s = sigma.clone();
     s.temp.retain(|b| b != a);
     s.temp.insert(0, a.to_string());
     s.current = a.to_string();
-    Ok(decide(&s, facts, rules, p, t, &[]))
+    Ok(s)
 }
 
 #[cfg(test)]

@@ -23,12 +23,11 @@ fn source() -> String {
     .expect("随包那份")
 }
 
-fn settings() -> Settings {
-    serde_json::from_value(serde_json::json!({
+fn settings() -> serde_json::Value {
+    (serde_json::json!({
         "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]},
         "accounts": [{"id": "work"}, {"id": "team"}, {"id": "lab"}]
     }))
-    .expect("settings")
 }
 
 /// ★ 在用的 work 2 分钟后到上限 ⇒ 这一判留着，推演里约 2 分钟后换到 team；每个号一行；没写盘。
@@ -46,14 +45,10 @@ fn it_decides_and_simulates_from_the_given_facts() {
     ];
     let got = try_with(&req, &facts, NOW).expect("ok");
     assert_eq!(got.decision.pick.as_deref(), Some("work"));
-    assert_eq!(got.decision.cause, "stay");
     assert_eq!(
-        got.decision
-            .order
-            .iter()
-            .map(|r| r.account.as_str())
-            .collect::<Vec<_>>(),
-        ["work", "team", "lab"]
+        got.decision.order,
+        ["work", "team"],
+        "lab 到了上限，策略不放它"
     );
     let first_switch = got
         .timeline
@@ -77,7 +72,10 @@ fn it_decides_and_simulates_from_the_given_facts() {
             .collect::<Vec<_>>(),
         ["work", "team", "lab"]
     );
-    assert_eq!(got.timeline.lanes[2].segs[0].kind, "atCap");
+    assert!(
+        got.timeline.lanes[2].segs[0].sendable,
+        "lab 只是到了策略的上限，事实上发得出去"
+    );
     assert_eq!(
         (got.name.as_str(), got.use_now_refused),
         ("照列表先后", None)
@@ -92,13 +90,13 @@ fn it_decides_and_simulates_from_the_given_facts() {
     );
 }
 
-/// ★ 试跑「现在用」：能用 ⇒ 换过去、进临时条目最前；用不了 ⇒ 不换、回几点恢复。
+/// ★ 试跑「现在用」：事实上发得出去 ⇒ 换过去、进拖出来的顺序最前（策略的上限不拦）；发不出去 ⇒ 不换、回几点恢复。
 #[test]
 fn use_now_switches_or_says_when() {
     let facts = [
         a("work", 50.0, Some(0.5)),
         a("team", 10.0, None),
-        a("lab", 95.0, None),
+        a("lab", 100.0, None),
     ];
     let req = |who: &str| RotationTryReq {
         source: source(),
@@ -115,7 +113,7 @@ fn use_now_switches_or_says_when() {
     assert_eq!(
         got.decision.pick.as_deref(),
         Some("work"),
-        "lab 用不了 ⇒ 不换"
+        "lab 用到 100 ⇒ 发不出去，不换"
     );
     assert_eq!(got.use_now_refused, Some(Some(NOW + 4 * 3600)));
 }
