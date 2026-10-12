@@ -39,7 +39,7 @@ TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }
 REALTMUX="$(command -v tmux)" || { echo "需要 tmux（[10] 的身份空间对账要它）"; exit 1; }
 
 SANDBOX="$(mktemp -d)"
-trap 'rm -rf "$SANDBOX"' EXIT
+trap 'rm -rf "$SANDBOX"; tmux_shim_cleanup' EXIT
 BUS="$SANDBOX/bus"; CLA="$SANDBOX/claude"; EMPTY="$SANDBOX/empty"; NOHOME="$SANDBOX/nohome"
 mkdir -p "$BUS"/{inbox,state,log,queue} "$CLA/projects" "$EMPTY" "$NOHOME"
 
@@ -48,7 +48,7 @@ mkdir -p "$BUS"/{inbox,state,log,queue} "$CLA/projects" "$EMPTY" "$NOHOME"
 . "$REPO/tests/e2e/tmux-shim.sh" --names-only
 _SOCK="$(e2e_run_name ccbusid)" || exit 2
 # 收尾只收自己这一趟那台（中途退出也收）。
-trap 'e2e_tmux_reap "$REALTMUX" "$_SOCK"; rm -rf "$SANDBOX"' EXIT
+trap 'e2e_tmux_reap "$REALTMUX" "$_SOCK"; rm -rf "$SANDBOX"; tmux_shim_cleanup' EXIT
 _SHIM="$SANDBOX/shim"; mkdir -p "$_SHIM"
 printf '#!/bin/bash\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_SHIM/tmux"
 chmod +x "$_SHIM/tmux"

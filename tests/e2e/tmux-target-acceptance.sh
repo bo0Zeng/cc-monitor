@@ -12,7 +12,7 @@ set -o pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
 SP="$(mktemp -d)"
-trap 'rm -rf "$SP"' EXIT
+trap 'rm -rf "$SP"; tmux_shim_cleanup' EXIT
 # 生产命令串来自**生产渲染链**（不手搓等价命令）——见 tmux-target-emit.mts 头注
 # shellcheck source=tests/e2e/tmux-shim.sh
 . "$HERE/tmux-shim.sh" --names-only
@@ -32,7 +32,7 @@ export PATH="$SHIM:$PATH"
 (cd "$REPO" && npx tsx tests/e2e/tmux-target-emit.mts) > "$SP/f01-cmds.tsv"
 grep -qF "$CCM_ENTRY" "$SP/f01-cmds.tsv" || { echo "取出的起会话那一行没指向本趟沙箱里的 ccm（$CCM_ENTRY）"; exit 1; }
 # 收尾只收自己这一趟那台（中途退出也收，别留一台孤儿 server）。
-trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; ccm_shim_cleanup; rm -rf "$SP"' EXIT
+trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; ccm_shim_cleanup; rm -rf "$SP"; tmux_shim_cleanup' EXIT
 
 CMD() { grep -P "^$1\t" "$SP/f01-cmds.tsv" | cut -f2-; }
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }

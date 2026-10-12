@@ -24,8 +24,10 @@ cleanup() {
   set +e
   [ -n "$HOOKPID" ] && kill "$HOOKPID" 2>/dev/null
   [ -n "$SLEEPER" ] && kill "$SLEEPER" 2>/dev/null
-  "$BACKEND" -- --resident-stop --grace 5 >/dev/null 2>&1
+  # 宽限不写：`--grace` 须大于后端退出排空上限（30 秒），写小了整条被拒成 bad_args、常驻一个都没停（10-11 留下三个就是这么来的）。
+  "$BACKEND" -- --resident-stop >/dev/null 2>&1
   rm -rf -- "$WORK"
+  tmux_shim_cleanup
 }
 trap cleanup EXIT
 
@@ -69,8 +71,12 @@ out="$(hook_input | "$BACKEND" -- --answer-hook claude)"; rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] && ok "退出 0、stdout 一个字节都没有" || bad "rc=$rc out=$out"
 
 echo "== 起沙箱常驻后端"
-CCM_SANDBOX=1 "$BACKEND" -- --resident-ensure >/dev/null 2>&1
+RPID="$(CCM_SANDBOX=1 "$BACKEND" -- --resident-ensure 2>/dev/null | python3 -I -c 'import json,sys; print(json.load(sys.stdin).get("pid") or "")' 2>/dev/null)"
 wall_until '[ -S "$SOCK" ]' && ok "套接字在" || { bad "常驻没起来"; echo "合计 PASS=$pass FAIL=$fail"; exit 1; }
+# 常驻后端裸调 `tmux`（会话快照 · 终端那几处）⇒ 它 PATH 上第一个 tmux 必须是这一趟的 shim（钉着本趟私有名），不然连到的是缺省 server。
+rtmux="$(PATH="$(grep -z '^PATH=' "/proc/$RPID/environ" 2>/dev/null | tr -d '\0' | sed 's/^PATH=//')" command -v tmux)"
+[ -n "${TMUX_SHIM_SOCK:-}" ] && grep -qF -- "-L $TMUX_SHIM_SOCK " "$rtmux" 2>/dev/null \
+  && ok "常驻后端找到的 tmux 是本趟私有的那一台（-L $TMUX_SHIM_SOCK）" || bad "常驻后端（pid ${RPID:-?}）找到的 tmux 是 ${rtmux:-<没有>}，不是本趟私有的"
 
 # 一条活会话：一个睡着的进程 ＋ 它的 pidfile 说在等批准（sessions-needs 只列活着的会话）。
 sleep 60 & SLEEPER=$!
@@ -101,6 +107,13 @@ wall_until '[ -z "$(ask_id)" ]' && ok "连接断了 ⇒ needs 里那条 ask 撤�
 r="$(ask needs-answer "{\"sid\":\"$SID\",\"ask\":\"$id\",\"choice\":\"allow\"}")"
 case "$r" in *closed_elsewhere*) ok "再答 ⇒ closed_elsewhere" ;; *) bad "撤了之后再答：$r" ;; esac
 [ ! -s "$WORK/out2" ] && ok "被杀的那个 hook 什么都没打" || bad "被杀的 hook 打了：$(cat "$WORK/out2")"
+
+echo "== 收尾 ⇒ 常驻停了、这一趟起的进程一个不剩"
+kill "$SLEEPER" 2>/dev/null; wait "$SLEEPER" 2>/dev/null; SLEEPER=""
+r="$("$BACKEND" -- --resident-stop 2>&1)"
+case "$r" in *'"stopped":"graceful"'*|*'"stopped":"killed"'*) ok "resident-stop 停下了常驻（$r）" ;; *) bad "resident-stop：$r" ;; esac
+left="$(e2e_leftovers "$HOME")"
+[ -z "$left" ] && ok "家目录是 $HOME 的进程一个不剩" || bad "这一趟留下的进程：$left"
 
 echo "合计 PASS=$pass FAIL=$fail"
 [ "$fail" -eq 0 ]
