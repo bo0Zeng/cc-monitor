@@ -40,6 +40,7 @@ cleanup() {
   set +e
   for l in early late; do e2e_tmux_reap "$REALTMUX" "$SOCK$l"; done
   rm -rf -- "$W"
+  tmux_shim_cleanup
 }
 trap cleanup EXIT
 

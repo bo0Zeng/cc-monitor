@@ -39,7 +39,7 @@ TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }
 REALTMUX="$(command -v tmux)" || { echo "需要 tmux（[10] 的身份空间对账要它）"; exit 1; }
 
 SANDBOX="$(mktemp -d)"
-trap 'rm -rf "$SANDBOX"' EXIT
+trap 'rm -rf "$SANDBOX"; tmux_shim_cleanup' EXIT
 BUS="$SANDBOX/bus"; CLA="$SANDBOX/claude"; EMPTY="$SANDBOX/empty"; NOHOME="$SANDBOX/nohome"
 mkdir -p "$BUS"/{inbox,state,log,queue} "$CLA/projects" "$EMPTY" "$NOHOME"
 
@@ -48,7 +48,7 @@ mkdir -p "$BUS"/{inbox,state,log,queue} "$CLA/projects" "$EMPTY" "$NOHOME"
 . "$REPO/tests/e2e/tmux-shim.sh" --names-only
 _SOCK="$(e2e_run_name ccbusid)" || exit 2
 # 收尾只收自己这一趟那台（中途退出也收）。
-trap 'e2e_tmux_reap "$REALTMUX" "$_SOCK"; rm -rf "$SANDBOX"' EXIT
+trap 'e2e_tmux_reap "$REALTMUX" "$_SOCK"; rm -rf "$SANDBOX"; tmux_shim_cleanup' EXIT
 _SHIM="$SANDBOX/shim"; mkdir -p "$_SHIM"
 printf '#!/bin/bash\nexec %s -L %s "$@"\n' "$REALTMUX" "$_SOCK" > "$_SHIM/tmux"
 chmod +x "$_SHIM/tmux"
@@ -358,7 +358,9 @@ chk "★ spawned=true" "$(printf '%s' "$_s1" | jq -r .spawned 2>/dev/null)" "tru
 chk "★ 回值里认出了新会话的 id" "$(printf '%s' "$_s1" | jq -r .id 2>/dev/null)" "proj_cc"
 chk "  会话真的起了（隔离 socket 上）" "$(tmux has-session -t '=proj_cc' 2>/dev/null && echo 在 || echo 没有)" "在"
 wall_until '[ -s "$_SW/agent-args.txt" ]'
-chk "  初始任务作为参数送到了启动器" "$(tr -d '\n' < "$_SW/agent-args.txt" 2>/dev/null)" "跑一遍门禁"
+# 启动器就是 claude（PATH 上那一个）⇒ ccm 在任务前面垫答题 hook（会话级 `--settings`，入口是那个家里的 ccm），任务是最后一个参数。
+_hook="{\"hooks\":{\"PermissionRequest\":[{\"hooks\":[{\"args\":[\"--\",\"--answer-hook\",\"claude\"],\"command\":\"$_SH/.cc-monitor/bin/ccm\",\"timeout\":3600,\"type\":\"command\"}]}]}}"
+chk "  初始任务作为参数送到了启动器（前面垫着答题 hook）" "$(tr -d '\n' < "$_SW/agent-args.txt" 2>/dev/null)" "--settings $_hook 跑一遍门禁"
 chk "  登记进了总线名册" "$(cut -f1 "$BUS/agents.tsv" 2>/dev/null | grep -cx proj_cc || true)" "1"
 _ds '{"tool":"claude","dir":"/tmp"}' >/dev/null
 chk "★ 账号不表态 ⇒ bad_args（不替用户选默认号）" "$(jq -r .code < "$SANDBOX/serr.txt" 2>/dev/null)" "bad_args"

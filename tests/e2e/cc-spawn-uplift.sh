@@ -79,6 +79,7 @@ cleanup() {
   e2e_tmux_reap "$REALTMUX" "$SOCK"
   e2e_tmux_reap "$REALTMUX" "${SOCK}b"
   rm -rf "$BIN" "$SANDBOX" "$WORK" "${CCMDIR:-}"
+  tmux_shim_cleanup
 }
 trap cleanup EXIT
 
