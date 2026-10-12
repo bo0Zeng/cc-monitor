@@ -104,7 +104,8 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/ssh-dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(crate::malformed(\"use=forward without `forward`\").into(), fp", Why::DeadLink, ""),
     ("src/backend/ssh-dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp)).await;", Why::DeadLink, ""),
     // 开 sftp 子系统没成那一条（同上：写不进去说明界面已经走了；SFTP 那一下的原话先进了日志）。
-    ("src/backend/ssh-dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp).because(stages.why())).await;", Why::DeadLink, ""),
+    ("src/backend/ssh-dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(e, fp).because(stages.why()).seen(stages)).await;", Why::DeadLink, ""),
+    ("src/backend/ssh-dial/uses.rs", "let _ = eof_half(wr).await;", Why::Reap, "长 exec 上行读完 / 读坏时向远端发 EOF：通道已断时发不出，远端的退出码照样从下行等"),
     ("src/backend/ssh-dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(Said::with_raw(copy_text(\"beUses.exec.failed\", &[]), &e), fp", Why::DeadLink, ""),
     ("src/backend/ssh-dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &DialAck::failed(Said::with_raw(copy_text(\"beUses.forward.bindFailed\", &[ (\"p", Why::DeadLink, ""),
     ("src/backend/ssh-dial/uses.rs", "let _ = write_stages_then_ack(out, stages, &fail(e)).await;", Why::DeadLink, ""),
