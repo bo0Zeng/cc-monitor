@@ -6,6 +6,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
     ("rotation-facts", "978176bb"),
+    ("rotation-try", "e40d7249"),
     ("terminal-name-mint", "f0db66f2"),
 ];
 

@@ -6,6 +6,8 @@ import type { Merged } from "./Merged";
 import type { Minted } from "./Minted";
 import type { RotationFactsReply } from "./RotationFactsReply";
 import type { RotationFactsReq } from "./RotationFactsReq";
+import type { RotationTryReply } from "./RotationTryReply";
+import type { RotationTryReq } from "./RotationTryReq";
 import type { TerminalNameMintReq } from "./TerminalNameMintReq";
 
 /** typed 帧命令：命令名 ⇒ 入参 · 回包 · 它自己会回的码（`bad_args` 恒在：入参解不出来）。 */
@@ -13,5 +15,6 @@ export interface TypedCommands {
   "history-search": { req: HistorySearchReq; reply: HistorySearchReply; code: "bad_args" | "failed" | "too_large" };
   "history-search-merge": { req: HistorySearchMergeReq; reply: Merged; code: "bad_args" };
   "rotation-facts": { req: RotationFactsReq; reply: RotationFactsReply; code: "bad_args" };
+  "rotation-try": { req: RotationTryReq; reply: RotationTryReply; code: "bad_args" | "bad_strategy" };
   "terminal-name-mint": { req: TerminalNameMintReq; reply: Minted; code: "bad_args" | "child_timed_out" };
 }

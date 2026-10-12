@@ -52,6 +52,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
         "每个号此刻的事实",
     ),
+    // 轮换第五版：拿一份策略原文照此刻的事实判一次、往后推演，不写盘不换号（skill 试跑 · 测试台）。
+    crate::stream::inbound::typed::blocking::<crate::faces::rotation_try_face::RotationTry>(
+        "试跑一份策略",
+    ),
     // 换号那一族（帧面宿主 `faces/rotation_face.rs`，`轮换-积木.md` §5）：配置表读 / 存 / 改名 / 删 / 设为本机默认 · 策略读 / 装 / 删 / 试跑 ·
     //   会话读 / 打开配置 / 改副本 / 存 / 还原 / 手动调整 · 推演 · 现在就换。
     //   同步文件 I/O（含沙箱里跑策略，一判至多 50 ms）⇒ 阻塞档；「现在就换」里重启换那一半要等 `session-restart` ⇒ 异步、失败可带码。

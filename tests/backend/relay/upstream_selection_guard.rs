@@ -102,6 +102,13 @@ pub(super) mod tests {
         "quota/ledger.rs",
         "quota/mod.rs",
         "quota/nodes.rs",
+        // 轮换第五版的规则：设置 · 余量与能不能用 · 一判 · 推演 · 策略文件与沙箱（纯）。不认识上游选择与账号库管理。
+        "quota/rules/decide.rs",
+        "quota/rules/mod.rs",
+        "quota/rules/script.rs",
+        "quota/rules/settings.rs",
+        "quota/rules/simulate.rs",
+        "quota/rules/standing.rs",
         // 轮换配置（rotation.json）与换号的唯一判定（纯）：上游选择换号时问它们；它们不认识上游选择与账号库管理。
         "quota/plan.rs",
         "quota/rotation.rs",

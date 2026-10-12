@@ -110,16 +110,31 @@ pub(crate) fn engine() -> Result<&'static Engine, String> {
     .map_err(Clone::clone)
 }
 
+/// 不带 `lib` 的那一个沙箱（第五版的策略文件跑在这里；进程里一份）。
+pub(crate) fn bare_engine() -> &'static Engine {
+    static E: OnceLock<Engine> = OnceLock::new();
+    E.get_or_init(bare)
+}
+
 /// 调一份策略里的一个函数（带墙钟期限）；回值 ＋ 用了几次操作。
 pub(crate) fn call(
     ast: &AST,
     name: &str,
     args: impl rhai::FuncArgs,
 ) -> (Result<Dynamic, Box<EvalAltResult>>, u64) {
-    let e = match engine() {
-        Ok(e) => e,
-        Err(m) => return (Err(m.into()), 0),
-    };
+    match engine() {
+        Ok(e) => call_in(e, ast, name, args),
+        Err(m) => (Err(m.into()), 0),
+    }
+}
+
+/// 在给定的沙箱里调（同 [`call`]）。
+pub(crate) fn call_in(
+    e: &Engine,
+    ast: &AST,
+    name: &str,
+    args: impl rhai::FuncArgs,
+) -> (Result<Dynamic, Box<EvalAltResult>>, u64) {
     STARTED.with(|d| d.set(Some(crate::common::time::now())));
     OPS.with(|c| c.set(0));
     let r = e.call_fn_with_options::<Dynamic>(

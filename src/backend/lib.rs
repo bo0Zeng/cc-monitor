@@ -1121,6 +1121,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--rotation-configs-read",
     // 轮换第五版的事实（typed `rotation-facts`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--rotation-facts",
+    // 试跑一份策略（typed `rotation-try`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--rotation-try",
     "--rotation-config-save",
     "--rotation-config-rename",
     "--rotation-config-delete",

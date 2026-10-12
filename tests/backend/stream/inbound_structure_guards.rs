@@ -287,6 +287,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "quota-read"
                 // 轮换的事实：读额度账 ＋ 账号库 ＋ 各号登录文件（同步文件 I/O）。
                 | "rotation-facts"
+                // 试跑一份策略：读额度账 ＋ 账号库，沙箱里跑策略、推演（同步）。
+                | "rotation-try"
                 // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
                 | "quota-probe"
                 // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
@@ -569,6 +571,7 @@ fn every_registered_command_declares_its_run_kind() {
         "quota-read",
         "quota-probe",
         "rotation-facts",
+        "rotation-try",
         "rotation-configs-read",
         "rotation-config-save",
         "rotation-config-rename",

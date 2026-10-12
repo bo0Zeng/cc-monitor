@@ -1201,6 +1201,92 @@ resetsText?: string, rate?: number, };
 
 码：`bad_args`
 
+#### `rotation-try`
+
+试跑一份策略。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-try`
+
+入参 `RotationTryReq` · 回包 `RotationTryReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CapKind = "soft" | "hard";
+type CapSeg = { from: number, to: number, v: number, };
+type Caps = { "5h"?: Array<CapSeg>, "7d"?: Array<CapSeg>, };
+type RotationTryReply = { now: number, decision: TryDecision, timeline: TryTimeline, };
+type RotationTryReq = { 
+/**
+ * 一份策略文件的原文（头 ＋ 代码）。
+ */
+source: string, 
+/**
+ * 换掉头里的设置（缺 ⇒ 用头里的）。
+ */
+settings?: Settings, 
+/**
+ * 开会话用的号（缺 ⇒ 号列表里第一个点名的号）。
+ */
+start?: string, 
+/**
+ * 在用的号（缺 ⇒ 开会话用的号）。
+ */
+current?: string, 
+/**
+ * 临时条目。
+ */
+temp: Array<string>, 
+/**
+ * 往后推几小时（1–48，缺 ⇒ 12）。
+ */
+hours?: number, 
+/**
+ * 哪一家（缺 ⇒ 有账号库的那一家）。
+ */
+agent?: string, };
+type Settings = { 
+/**
+ * 默认上限（缺的窗 ＝ 100%）。
+ */
+caps: Caps, capKind: CapKind, accounts: Array<SettingsRow>, };
+type SettingsRow = { start?: boolean, id?: string, caps?: Caps, capKind?: CapKind, 
+/**
+ * 启用延迟（分钟）。
+ */
+delay?: number, 
+/**
+ * 回切阈值（%）；缺 ＝ 不回切。
+ */
+back?: number, };
+type TryDecision = { 
+/**
+ * 用哪个号（停发 ⇒ 缺）。
+ */
+pick?: string, 
+/**
+ * 停发到几点 · 到时恢复的号（停发才有）。
+ */
+holdUntil?: number, holdAccount?: string, 
+/**
+ * `stay` · `unusable` · `back` · `delay` · `hold`。
+ */
+cause: string, order: Array<TryRow>, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+/**
+ * 策略这一判出错（所有号当没给分、按列表）：原话。
+ */
+strategyError?: string, };
+type TryLane = { account: string, segs: Array<TryLaneSeg>, };
+type TryLaneSeg = { from: number, to: number, 
+/**
+ * `usable` · `atCap` · `off` · `blocked`。
+ */
+kind: string, left?: number, reset: boolean, };
+type TryRow = { account: string, score?: number, why: string, fromTemp: boolean, ok: boolean, };
+type TryTimeline = { uses: Array<TryUse>, lanes: Array<TryLane>, truncated: boolean, };
+type TryUse = { from: number, to: number, account?: string, fromTemp: boolean, guessed: boolean, skipped: Array<string>, };
+```
+
+码：`bad_args` · `bad_strategy`
+
 #### `rotation-configs-read`
 
 这台的轮换配置表。
@@ -4436,6 +4522,7 @@ forkOf?: string, };
 | `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删本机的一份轮换策略 |
 | `--rotation-strategy-try` | ＝ 帧命令 `rotation-strategy-try`：按此刻的事实试跑一份策略（不写盘不换号） |
 | `--rotation-switch` | ＝ 帧命令 `rotation-switch`：现在就换 |
+| `--rotation-try` | ＝ 帧命令 `rotation-try`：试跑一份策略 |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
