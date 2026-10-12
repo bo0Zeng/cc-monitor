@@ -643,6 +643,7 @@ export class RotationSection {
           const m = el("span", (e) => (e.className = s.rotNote), ed.base.rest.map((a) => accountLabel(a)).join(copyText("kit.text.sep")));
           m.dataset.rotRest = "true";
           m.title = m.textContent ?? "";
+          who.dataset.wrap = "true";
           who.appendChild(m);
         }
       }

@@ -226,7 +226,7 @@
 
   .rotTr {
     display: grid;
-    grid-template-columns: 44px minmax(120px, 1.6fr) var(--rot-colw) 24px;
+    grid-template-columns: 44px minmax(160px, 3fr) var(--rot-colw) 24px;
     gap: var(--space-2);
     align-items: center;
     min-height: 30px;
@@ -266,6 +266,14 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  /* 「其余的订阅号」那一格：成员写不下一行就折到下一行（不截掉）。 */
+  .rotTd[data-wrap="true"] {
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding: var(--space-1) 0;
+    white-space: normal;
   }
 
   .rotCellText {
