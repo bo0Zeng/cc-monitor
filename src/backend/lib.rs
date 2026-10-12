@@ -975,7 +975,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// history-search / -merge · terminal-name-mint · 会话那一族（session-new / -facts / -dir / -restart / -interrupts / -terminals · sessions-* · kill · launch / launch-local / launch-render-cli · terminals-list · terminal-preview / -input / -processes）换成 typed；launch 的 cwd 等几格给了非字符串 ⇒ bad_args，kill · launch · 终端三条带 client: null ⇒ 当没给。拨号核心拆成 ssh-dial（后端与手机同一份），协议多 use:duplex · use:hold、host key 照 OpenSSH 比（ack 多 key_type）；
 /// resident-client 拆出来（桌面与手机同一份，退避：握上手却活不过 30 秒也翻倍）。只读守卫第三、四刀：文件管理面经 Face · Resolved · NewFile。
 /// quota-read 多 candidates，accounts-list 每号多 color；history-find 多可选 scope。各号 MCP 登录实时同步；「另 N 会话」只数活会话。
-pub const BUILD_ID: &str = "p10h-typed-wire-mobile-core";
+pub const BUILD_ID: &str = "p10i-typed-wire-mobile-core";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
