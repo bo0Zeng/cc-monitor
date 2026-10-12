@@ -94,7 +94,7 @@
       "source_label": "随 cc-monitor 一起安装",
       "state": {
         "kind": "undetermined",
-        "why": "列不出目录 /nonexistent-footprint-golden/.local/bin（不存在或无权限）；且它装在运行 Claude Code 的机器上 · 可能在远端 · 本页不连 SSH"
+        "why": "无法列出目录 /nonexistent-footprint-golden/.local/bin（不存在或无权限）；且它装在运行 Claude Code 的机器上 · 可能在远端 · 本页不连 SSH"
       },
       "tier": "AppInstalls",
       "tool_id": "cc-bus",
@@ -366,7 +366,7 @@
       "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
-        "why": "读不到 PATH 或它为空 · 无法判断 tmux 是否存在 · 不代表不存在"
+        "why": "无法读取 PATH 或它为空 · 无法判断 tmux 是否存在 · 不代表不存在"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "tmux",
@@ -383,7 +383,7 @@
       "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
-        "why": "读不到 PATH 或它为空 · 无法判断 bash 是否存在 · 不代表不存在"
+        "why": "无法读取 PATH 或它为空 · 无法判断 bash 是否存在 · 不代表不存在"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "login-shell",
@@ -417,7 +417,7 @@
       "source_label": "不由 cc-monitor 提供 · 通用工具 · 需自行安装",
       "state": {
         "kind": "undetermined",
-        "why": "起会话的 shell 的 PATH 问不出 · 无法判断 claude 是否已装 · 不代表没装"
+        "why": "无法获取起会话的 shell 的 PATH · 无法判断 claude 是否已装 · 不代表没装"
       },
       "tier": "UserInstallsWePrompt",
       "tool_id": "claude-cli",
