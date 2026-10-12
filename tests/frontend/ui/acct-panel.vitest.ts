@@ -88,7 +88,7 @@ const STRATEGIES: StrategiesRead = {
     { id: "2", name: "S-two", builtin: true, ordered: false, text: "D-s2", params: WHOLE, acctParams: ACCT, source: "", usedBy: ["c2"] },
   ],
 };
-const cfg = (id: string, name: string, isDefault = false) => ({ id, name, isDefault, text: `D-${id}`, strategyName: "S", inUse: id === "c2" ? ["s1", "s9"] : [], rev: 3, updatedAt: 0, savedBy: "settings", strategy: "2", accounts: [], params: {}, acctInit: {}, parked: {} });
+const cfg = (id: string, name: string, isDefault = false) => ({ id, name, isDefault, text: `D-${id}`, strategyName: "S", inUse: id === "c2" ? ["s1", "s9"] : [], rest: [], rev: 3, updatedAt: 0, savedBy: "settings", strategy: "2", accounts: [], params: {}, acctInit: {}, parked: {} });
 const CONFIGS: ConfigsShown = { state: "present", reason: null, detail: null, defaultConfig: "c2", configs: [cfg("c2", "C-two", true), cfg("daily", "C-daily")] };
 
 function seed(p: Partial<SessionRotation> = {}): void {

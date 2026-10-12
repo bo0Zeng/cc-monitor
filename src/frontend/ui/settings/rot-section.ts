@@ -104,6 +104,22 @@ function rowKey(r: AcctRow): string {
   return r.start ? "@start" : r.rest ? "@rest" : (r.id ?? "");
 }
 
+/** 号表的一格：字收在格内（写不下 ⇒ 省略号，不压到下一列），悬停看全文。 */
+function cellEl(k: string, text: string): HTMLElement {
+  const td = el("span", (e) => (e.className = s.rotTd));
+  td.dataset.rotCell = k;
+  const t = el("span", (e) => (e.className = s.rotCellText), text);
+  t.dataset.rotText = "true";
+  t.title = text;
+  td.appendChild(t);
+  return td;
+}
+
+/** 号表每一列多宽：「按时段另算」那一列写的是几段钟点，比别的宽（照稿）。 */
+function colWidths(decls: readonly { type: string }[]): string {
+  return decls.map((x) => (x.type === "slots" ? "minmax(0, 1.8fr)" : "minmax(0, 1fr)")).join(" ");
+}
+
 function rowLabel(r: AcctRow): string {
   return r.start ? copyText("rot.ed.rowStart") : r.rest ? copyText("rot.ed.rowRest") : accountLabel(r.id ?? "");
 }
@@ -585,7 +601,8 @@ export class RotationSection {
     sec.appendChild(h);
     const decls = st.acctParams;
     const table = el("div", (e) => (e.className = s.rotTable));
-    table.style.setProperty("--rot-cols", String(decls.length));
+    table.dataset.rotTable = "true";
+    table.style.setProperty("--rot-colw", colWidths(decls));
     const headRow = el("div", (e) => (e.className = s.rotTr));
     headRow.dataset.head = "true";
     headRow.append(el("span", (e) => (e.className = s.rotTd)), el("span", (e) => (e.className = s.rotTd)), ...decls.map((x) => el("span", (e) => (e.className = s.rotTd), x.label)), el("span", (e) => (e.className = s.rotTd)));
@@ -621,10 +638,17 @@ export class RotationSection {
       else {
         who.appendChild(el("span", (e) => (e.className = s.rotWhoGroup), rowLabel(r)));
         if (r.start) who.appendChild(el("span", (e) => (e.className = s.rotNote), copyText("rot.ed.startNote")));
+        // 其余的订阅号此刻是哪几个（后端照账号库算好的）。
+        if (r.rest && ed.base.rest.length > 0) {
+          const m = el("span", (e) => (e.className = s.rotNote), ed.base.rest.map((a) => accountLabel(a)).join(copyText("kit.text.sep")));
+          m.dataset.rotRest = "true";
+          m.title = m.textContent ?? "";
+          who.appendChild(m);
+        }
       }
       const errs = cellErrorsFor(ed.errors, `accounts[${i}]`);
       const cells = decls.map((x) => {
-        const td = el("span", (e) => (e.className = s.rotTd), cellText(x, r.params[x.k]));
+        const td = cellEl(x.k, cellText(x, r.params[x.k]));
         if (errs.some((e) => e.k === x.k)) td.dataset.error = "true";
         const orig = ed.base.accounts.find((b) => rowKey(b) === key);
         if (!orig || !same(orig.params[x.k], r.params[x.k])) td.dataset.changed = "true";
@@ -678,7 +702,7 @@ export class RotationSection {
     const init = el("div", (e) => (e.className = s.rotTr));
     init.dataset.rotRow = "@init";
     init.dataset.init = "true";
-    init.append(el("span", (e) => (e.className = s.rotTd)), el("span", (e) => (e.className = s.rotTd), copyText("rot.par.init")), ...decls.map((x) => el("span", (e) => (e.className = s.rotTd), x.type === "slots" ? "" : cellText(x, ed.draft.acctInit[x.k]))), el("span", (e) => (e.className = s.rotTd)));
+    init.append(el("span", (e) => (e.className = s.rotTd)), el("span", (e) => (e.className = s.rotTd), copyText("rot.par.init")), ...decls.map((x) => cellEl(x.k, x.type === "slots" ? "" : cellText(x, ed.draft.acctInit[x.k]))), el("span", (e) => (e.className = s.rotTd)));
     init.addEventListener("click", () => {
       ed.openRow = ed.openRow === "@init" ? null : "@init";
       this.paint();

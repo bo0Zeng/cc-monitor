@@ -467,6 +467,8 @@ pub struct ConfigItem {
     pub strategy_name: String,
     pub in_use: Vec<String>,
     pub is_default: bool,
+    /// 「账号库里其余的订阅号」那一行此刻是哪几个号（库里没点名的订阅号，按名字排；编辑器那一行照抄）。
+    pub rest: Vec<String>,
 }
 
 /// `rotation-configs-read` 的应答。
@@ -506,7 +508,26 @@ fn config_item(
         strategy_name: strategy_name(all, &c.body.strategy),
         in_use: book.in_use(id),
         is_default: book.default_config == id,
+        rest: rest_of(ctx, LIBRARY_AGENT, &c.body),
     }
+}
+
+/// 一份配置里「其余的订阅号」那一行此刻是哪几个（起会话的号不在这里排除：各会话不同）。
+fn rest_of(ctx: &Ctx, agent: &str, body: &ConfigBody) -> Vec<String> {
+    let named: Vec<String> = body
+        .accounts
+        .iter()
+        .filter_map(|r| match &r.who {
+            Who::Id(x) => Some(x.clone()),
+            _ => None,
+        })
+        .collect();
+    let lib = ctx.hop.library();
+    crate::accounts::upstream_select::rotate::rest_members(
+        lib.accounts.iter().map(|x| x.id.as_str()),
+        &named,
+        |x| ctx.kind(agent, x) == Kind::Sub,
+    )
 }
 
 /// `rotation-configs-read`：这台的配置表（默认那份在最前）。
