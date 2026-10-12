@@ -155,6 +155,7 @@ fn drawn_files() -> Vec<(String, String)> {
     //   （`entry.rs` 在那边，人群与搬家前逐份相同）。`mod.rs` 的躯体成了本包的 `lib.rs`（两份都摘）；两侧各有一份 `proc.rs`（都摘）；
     //   `guard_support.rs` 是本包的判据住址（`#![cfg(test)]`，一个字都不画），同 `proc.rs` 那条理由摘掉。
     //   `frame_log.rs`（帧日志）同理：它写的是一份日志文件，一个字都不画在 egui 上。
+    //   `render.rs`（挑哪块显卡）同理：它的话只上 stderr（挑中的那一行 · 挑不出时那一句），一个字都不画在 egui 上。
     let monitor_side = crate::guard_support::repo_root().join("src/frontend/shell/src/filewin");
     let mut out: Vec<(String, String)> = guard_core::scan_tree_excluding(
         &dir,
@@ -165,6 +166,7 @@ fn drawn_files() -> Vec<(String, String)> {
             "proc.rs",
             "guard_support.rs",
             "frame_log.rs",
+            "render.rs",
             "main.rs",
         ],
     )

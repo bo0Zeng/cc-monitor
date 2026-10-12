@@ -150,7 +150,7 @@ fn crashed(raw: String) -> ProcFail {
 ///   ⇒ Job 句柄一关，刚开出来的窗口当场被收掉。
 ///   ⚠ 顺带一格**刻意的**：用户关掉 monitor 时，已经开着的文件窗口**不跟着走** ——
 ///   那正是「像系统自己的文件管理器一样」那句裁决的样子。
-/// - `StderrSink::Captured` —— 它的 stderr 上是就绪那一行（带记号）与「窗口为什么没立起来」那几句（例如缺 OpenGL 2.0）：
+/// - `StderrSink::Captured` —— 它的 stderr 上是就绪那一行（带记号）与「窗口为什么没立起来」那几句（例如挑不出显卡 · 缺 OpenGL 2.0）：
 ///   双击起的 monitor 没有 stderr 可跟，跟过去就等于丢了 ⇒ 接出来，就绪那一行交给开窗那一趟，别的逐行记进 monitor 的日志，
 ///   最后几行留给开窗没成 / 开了又退那一句话（[`StderrTail`]）。
 ///
@@ -274,11 +274,14 @@ impl From<String> for ProcFail {
 }
 
 /// 开窗没成 / 开了又退那一件：`why`（哪件事没成那一句）＋ 退出状态 ＋ 它 stderr 最后几行。
-/// 认得出的原因说人话（缺 OpenGL 2.0）；一行都没有 ⇒ 说它没留下原因；其余只说 `why`，那几行进复制详情。
+/// 认得出的原因说人话（Windows 挑不出显卡 · Linux 缺 OpenGL 2.0）；一行都没有 ⇒ 说它没留下原因；其余只说 `why`，那几行进复制详情。
 pub fn exit_said(why: &str, code: Option<String>, tail: &[String]) -> ProcFail {
     let all = tail.join("\n");
     let lower = all.to_ascii_lowercase();
-    let said = if lower.contains("opengl") && lower.contains("2.0") {
+    // Windows（wgpu）：一块能画窗的显卡都挑不出，窗口进程那一句带契约记号；Linux（glow）：缺 OpenGL 2.0，egui 的原话。
+    let said = if lower.contains(filewin_contract::NO_GRAPHICS_ADAPTER) {
+        copy_text("rsFilewinProc.cause.noGraphicsAdapter", &[("why", why)])
+    } else if lower.contains("opengl") && lower.contains("2.0") {
         copy_text("rsFilewinProc.cause.noOpenGl", &[("why", why)])
     } else if tail.is_empty() {
         copy_text("rsFilewinProc.open.noStderr", &[("why", why)])

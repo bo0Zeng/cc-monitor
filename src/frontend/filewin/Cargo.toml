@@ -64,43 +64,27 @@ rfd = { version = "0.16", default-features = false, features = ["gtk3", "common-
 #    ⚠ `muslbuild` 那一格的射程是 `src/backend`（`gate.sh:1117` 逐字 `cd src/backend`）
 #      ⇒ 本条依赖**碰不到它**；「GUI crate 能不能 musl 静态链接」这个设计题**这里没回答**。
 egui = "0.36"
-# 🔴 **渲染后端必须是 `glow`，不能用 eframe 默认的 `wgpu`** —— 理由是现打出来的编译失败，
-#    不是口味。**这一条别顺手改回默认。**
+# 🔴 **渲染后端按平台分（fwgpu 10-11）：Linux 用 `glow`（OpenGL），Windows 用 `wgpu`（DX12 ＋ OpenGL）。**
+#    公共这一份不点渲染后端；各平台那一份在下面 `[target.…]` 两段。eframe 的 `Renderer::default()`
+#    按编进来的那一个自己选，开窗那一处（`shell.rs`）不分平台；Windows 上挑哪块显卡住 `render.rs::choose`。
 #
-# ## 为什么：`wgpu` 那条路在本仓交叉编译到 Windows 时**编不过**
+# ## 为什么 Windows 换掉 glow
+# 没装显卡驱动的 Windows（虚拟机、多数远程桌面会话）只有系统自带的 OpenGL 1.1，glow 开不出窗
+# （`egui_glow requires opengl 2.0+`）。wgpu 的 DX12 在那里落到系统自带的 WARP 软件光栅器：开得了、滚动慢
+# （Win11 虚拟机现打约 7 帧/秒）。带 Mesa 的软件 OpenGL 能顺，但安装包压后要多约 15 MiB，不带。
+# OpenGL 那一支也编进来：没有 DX12 的老核显用它自己的 OpenGL 驱动，不掉到 WARP 变慢。
 #
-# 门禁 `winchk` 那一格跑 `cargo check --locked --all-targets -p monitor
-# --target x86_64-pc-windows-gnu`。带默认 feature（`wgpu`）时它**红**，10 条类型错全在
-# `wgpu-hal` 的 DX12 后端上（`expected ID3D12Device, found Direct3D12::ID3D12Device` 这一形）。
+# ## ⚠ 锁文件里 `gpu-allocator` 的 `windows` 必须是 0.62（手钉的，别 `cargo update` 回去）
+# `gpu-allocator 0.28` 的 spec 是 `windows = ">=0.53, <=0.62"`，cargo 自己解会拿本仓现成的 **0.56**（项目自用那一份），
+# 而 `wgpu-hal 30` 用 **0.62** ⇒ 同一段 D3D12 代码里的 `ID3D12Device` 来自两个 crate ⇒ E0308/E0277，Windows 编不过
+# （从前 Windows 也用 glow，就是因为这一条）。锁文件里那一行指到 `windows 0.62.2` 就过。
+# 解回 0.56 不用另写判据：Windows 交叉检查（`winchk`）当场编不过。
 #
-# 病根不在 wgpu，在**本仓已经钉着两个 `windows` 大版本**：
-#   · `gpu-allocator 0.28` 的 spec 是 `windows = ">=0.53, <=0.62"`（**很宽**）
-#     ⇒ cargo 拿本仓现成的 **`windows 0.56`** 就把它满足了；
-#   · 而 `wgpu-hal 30.0.1` 自己用 **`windows 0.62`**。
-#   ⇒ 同一段 D3D12 代码里 `ID3D12Device` / `ID3D12Heap` 来自**两个不同的 `windows` crate** ⇒ E0308/E0277。
-# ⚠ 这个组合在一个干净的独立工程里**不出现**（那里没有 0.56/0.61，gpu-allocator 直接拿 0.62）
-#   —— 它是**本仓特有**的，因为 `windows 0.56`（项目自用）与 `windows 0.61`（`windows-wv2`）已经在树上。
-#
-# ⇒ 换 `glow`：`cargo tree -i wgpu` 确认 `wgpu` 整棵离开**构建图**，`winchk` 现打 **rc=0**。
-# ⚠ 代价：OpenGL 而非 Vulkan/D3D12。对一个文件列表够用。**没在真 GPU 上比过两者**。
-#
-# ## ⚠ 它**没有**顺带解决的那条（别把两件事混起来）
-#
-# 门禁 `cargo` 那一格仍然红，红在 `lockfile_conflict_guard` 上：
-# `cfg_aliases` 在 monitor 是 **0.2.2**、在 `src/backend/Cargo.lock` 是 **0.2.1**。
-# 逐个 manifest 现打：`winit` 与 `glutin` 都只要 `^0.2.1`，**只有 `wgpu` 要 `^0.2.2`**——
-# 而 **`Cargo.lock` 记的是所有 feature 的并集**，`egui-wgpu` 作为 eframe 的可选依赖仍留在 lock 里，
-# 把 `^0.2.2` 一起带着 ⇒ 换后端**改不了 lock**，`cargo update -p cfg_aliases --precise 0.2.1` 照样失败。
-# ⇒ 那条只有两条真出路，**都不在当时的改动范围，所以停下报备、不自作主张**：
-#   ① 把 `src/backend/Cargo.lock` 的 `cfg_aliases` 抬到 0.2.2（它只是 `nix` 的 build-dependency，
-#      纯构建期、零运行时面）——**改的是 `src/backend/`**；
-#   ② 不用 `eframe`，自己拼 `egui-winit` ＋ `egui_glow` ＋ `glutin`（scratchpad 现打：
-#      那样 `wgpu` 从 lock 里彻底消失、`cfg_aliases` 钉得回 0.2.1、总包数 308）——
-#      但那是为了躲一行 lockfile 自己重写一遍 eframe 的集成层，是「硬绕」，先不做。
+# ## 为什么 Linux 不换
+# 私有 Xvfb 里四种软件渲染比过：首帧差不多，每帧 CPU glow 最省，换了还涨约 2.5 MiB；Linux 上 OpenGL 2.0 也没缺过。
 eframe = { version = "0.36", default-features = false, features = [
     "accesskit",
     "default_fonts",
-    "glow",
     "links",
     "wayland",
     "x11",
@@ -124,6 +108,14 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # 主界面字族里的名字 → 这台机器上的那份字体文件（MIT）。
 fontdb = { version = "0.23", default-features = false, features = ["std", "fs"] }
+
+[target.'cfg(not(windows))'.dependencies]
+eframe = { version = "0.36", default-features = false, features = ["glow"] }
+
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "0.36", default-features = false, features = ["wgpu_no_default_features"] }
+# 只开 DX12 与 OpenGL 两支（不要 Vulkan / Metal / WebGPU）；着色器是 WGSL（egui-wgpu 自带的那份）。
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "dx12", "gles", "wgsl"] }
 
 [build-dependencies]
 # Windows 进程清单编成资源、交给本包每一个链接产物（程序 · lib 的测试程序）：与 monitor 同一份清单、同一处编法。

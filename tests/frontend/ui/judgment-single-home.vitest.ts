@@ -776,6 +776,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 就绪那一行打头的记号与认它的那一判（窗口进程在 stderr 上说那一行）；TS 侧零孪生。
     READY_MARK: NONE,
     is_ready_line: NONE,
+    // 窗口进程挑不出显卡时那一句里的记号（窗口进程说、monitor 认），TS 侧零孪生。
+    NO_GRAPHICS_ADAPTER: NONE,
     TERMINAL_OPEN_OP: NONE,
     decode_ready: NONE,
     decode_request: NONE,

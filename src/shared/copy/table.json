@@ -9518,6 +9518,12 @@
       "zh": "{why} · 无错误输出",
       "args": ["why"]
     },
+    "rsFilewinProc.cause.noGraphicsAdapter": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "此电脑没有可用的 DX12 或 OpenGL 显卡 · {why}",
+      "args": ["why"]
+    },
     "rsFilewinProc.cause.noOpenGl": {
       "kind": "error",
       "role": "报错",

@@ -936,7 +936,8 @@ fn the_spawn_result_is_never_thrown_away() {
 }
 
 /// 窗口进程开不了窗时**它自己说的原因**（stderr）要回到那一句话里，而且认得出的原因说人话：
-/// ① 一句不说就带着 stderr 退（缺 OpenGL 2.0 那一形，egui 的原话）⇒ 「显卡不支持 OpenGL 2.0」；
+/// ① 一句不说就带着 stderr 退（Linux 缺 OpenGL 2.0 那一形，egui 的原话）⇒ 「显卡不支持 OpenGL 2.0」；
+/// ①′ Windows 一块显卡都挑不出（wgpu 那一句，带契约记号）⇒ 「没有可用的 DX12 或 OpenGL 显卡」；
 /// ② 别的原话 ⇒ 带最后几行；③ stderr 是空的 ⇒ 说它没留下。
 #[cfg(unix)]
 #[test]
@@ -973,6 +974,17 @@ fn the_window_process_own_reason_reaches_the_sentence() {
         gl.raw.as_deref(),
         Some("Error: egui_glow requires opengl 2.0+.")
     );
+    // Windows 的渲染器（wgpu）一块显卡都挑不出时窗口进程的原话（`render::none_line` 经 eframe 包两层）⇒ 「没有可用的 DX12 或 OpenGL 显卡」。
+    let wgpu_raw = format!(
+        "文件窗口打开失败: WGPU error: Adapter selection failed: {} (dx12, gl); 0 seen: ",
+        filewin_contract::NO_GRAPHICS_ADAPTER
+    );
+    let adapter = run("adapter", &format!("'{wgpu_raw}'"));
+    assert_eq!(
+        adapter.said,
+        copy_text("rsFilewinProc.cause.noGraphicsAdapter", &[("why", &why)])
+    );
+    assert_eq!(adapter.raw.as_deref(), Some(wgpu_raw.trim_end()));
     let other = run("other", "'line a' 'line b'");
     assert_eq!(other.said, why);
     assert_eq!(other.code.as_deref(), Some("exit status: 1"));

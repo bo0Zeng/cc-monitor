@@ -400,10 +400,9 @@ async fn sweeping_over_search_results_never_flips_a_frame() {
     no_flips(flips);
 }
 
-/// ★ 查看页摆着一张图（同目录还有一张 ⇒ 右边那颗「下一张」圆钮悬停才露）。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sweeping_over_the_picture_page_never_flips_a_frame() {
-    let base = std::env::temp_dir().join(format!("ccm-filewin-sweep-view-{}", std::process::id()));
+/// 查看页摆着一张 1600×1000 的图（同目录还有一张小的），图已在读：回 `(通道, 窗口, 临时目录)`。
+async fn picture_pane(tag: &str) -> (crate::find::testing::Wired, FileWindow, std::path::PathBuf) {
+    let base = std::env::temp_dir().join(format!("ccm-filewin-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&base);
     std::fs::create_dir_all(&base).unwrap();
     let png = |w: u32, h: u32| {
@@ -419,7 +418,7 @@ async fn sweeping_over_the_picture_page_never_flips_a_frame() {
         &["files-ls", "files-read-chunk", "files-stat"],
         Declared::default(),
     );
-    let wired = wire_up("sweep-view", be).await;
+    let wired = wire_up(tag, be).await;
     let d = base.to_string_lossy().to_string();
     let mut w = window_on(&wired, &d);
     w.reload();
@@ -438,6 +437,13 @@ async fn sweeping_over_the_picture_page_never_flips_a_frame() {
         .position(|r| r.name == "a.png")
         .expect("量具：列表里没有 a.png");
     assert!(w.begin_view(i), "量具：查看页没开");
+    (wired, w, base)
+}
+
+/// ★ 查看页摆着一张图（同目录还有一张 ⇒ 右边那颗「下一张」圆钮悬停才露）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn sweeping_over_the_picture_page_never_flips_a_frame() {
+    let (_wired, w, base) = picture_pane("sweep-view").await;
     let mut ws = Workspace::new(w);
     let mut s = Sweep::new();
     let ready = |ws: &Workspace| {
@@ -461,10 +467,41 @@ async fn sweeping_over_the_picture_page_never_flips_a_frame() {
     no_flips(flips);
 }
 
+/// 渲染那一层的读数（真窗口台架写进 `<帧日志>.gl.txt`）：Linux 是 glow（OpenGL 的厂商 / 渲染器 / 版本 · vsync 缺省），
+/// Windows 是 wgpu（挑中的那块适配器）。
+#[cfg(not(windows))]
+fn renderer_said(f: &eframe::Frame) -> String {
+    let gl = f.gl().map(|gl| {
+        use eframe::glow::HasContext as _;
+        unsafe {
+            format!(
+                "vendor={} renderer={} version={}",
+                gl.get_parameter_string(eframe::glow::VENDOR),
+                gl.get_parameter_string(eframe::glow::RENDERER),
+                gl.get_parameter_string(eframe::glow::VERSION)
+            )
+        }
+    });
+    format!(
+        "backend=glow {}\nvsync(glow_options 缺省)={}",
+        gl.unwrap_or_else(|| "no-gl".into()),
+        eframe::NativeOptions::default().glow_options.vsync
+    )
+}
+
+/// 同上（Windows：wgpu）。
+#[cfg(windows)]
+fn renderer_said(f: &eframe::Frame) -> String {
+    match f.wgpu_render_state() {
+        Some(rs) => format!("backend=wgpu adapter={:?}", rs.adapter.get_info()),
+        None => "backend=wgpu no-render-state".into(),
+    }
+}
+
 /// 真窗口台架（不是判据）：开一扇真文件窗口（生产那个 `Workspace` 当 eframe 的 App，开窗参数同 `shell::run`），
 /// 帧日志写到 `CCM_FILEWIN_FRAME_LOG`，跑 `CCM_FILEWIN_RIG_SECS` 秒自己关。场景走 `CCM_FILEWIN_RIG_SCENE`
-/// （tabs · split · preview · menu）。后端是合成后端（目录是这一格自己铺的占位），不连任何机器。
-/// 渲染那一层的读数（OpenGL 的厂商 / 渲染器 / 版本 · 开窗参数里的 vsync）另写一份 `<帧日志>.gl.txt`。
+/// （tabs · split · preview · menu · picture：查看页摆一张图，看图片贴图那条路在这台机器的渲染器上画不画得出）。后端是合成后端（目录是这一格自己铺的占位），不连任何机器。
+/// 渲染那一层的读数（[`renderer_said`]：Linux 是 OpenGL 的厂商 / 渲染器 / 版本，Windows 是挑中的那块适配器）另写一份 `<帧日志>.gl.txt`。
 /// 用法：外面模拟鼠标在窗口上乱动，回头读帧日志看鼠标一动时每帧画面变没变、谁请求的重画。拷到别的机器上跑时
 /// 带上 `tokens.css` 并设 `CCM_FILEWIN_TOKENS_CSS`（判据用的主题从它解）。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -476,44 +513,49 @@ async fn real_window_rig_for_the_frame_log() {
     let log = std::path::PathBuf::from(need(crate::frame_log::ENV));
     let scene = need("CCM_FILEWIN_RIG_SCENE");
     let secs: u64 = need("CCM_FILEWIN_RIG_SECS").parse().unwrap();
-    let (_wired, mut w, base) = wired_pane(&format!("rig-{scene}")).await;
-    for n in ["Cargo.toml", "README.md", "notes.txt", "build.log"] {
-        std::fs::write(base.join("work").join(n), format!("{n}\n")).unwrap();
-    }
-    w.reload();
-    while w.listing.is_loading() {
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-    }
-    let i = w
-        .listing
-        .rows
-        .lock()
-        .unwrap()
-        .iter()
-        .position(|r| r.name == "main.rs")
-        .unwrap();
-    w.apply_intent(
-        crate::select::Intent::Edge {
-            end: false,
-            extend: false,
-        },
-        0.0,
-        None,
-    );
-    for _ in 0..i {
+    let (_wired, mut w, base) = if scene == "picture" {
+        picture_pane("rig-picture").await
+    } else {
+        let (wired, mut w, base) = wired_pane(&format!("rig-{scene}")).await;
+        for n in ["Cargo.toml", "README.md", "notes.txt", "build.log"] {
+            std::fs::write(base.join("work").join(n), format!("{n}\n")).unwrap();
+        }
+        w.reload();
+        while w.listing.is_loading() {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
+        let i = w
+            .listing
+            .rows
+            .lock()
+            .unwrap()
+            .iter()
+            .position(|r| r.name == "main.rs")
+            .unwrap();
         w.apply_intent(
-            crate::select::Intent::Step {
-                by: 1,
+            crate::select::Intent::Edge {
+                end: false,
                 extend: false,
             },
             0.0,
             None,
         );
-    }
-    if scene == "menu" {
-        w.tally.menu_clicked = Some(i);
-        w.apply_menu_click(egui::pos2(520.0, 300.0));
-    }
+        for _ in 0..i {
+            w.apply_intent(
+                crate::select::Intent::Step {
+                    by: 1,
+                    extend: false,
+                },
+                0.0,
+                None,
+            );
+        }
+        if scene == "menu" {
+            w.tally.menu_clicked = Some(i);
+            w.apply_menu_click(egui::pos2(520.0, 300.0));
+        }
+        (wired, w, base)
+    };
     let gl_out = log.with_extension("gl.txt");
     let h = std::thread::spawn(move || {
         struct Rig {
@@ -528,23 +570,11 @@ async fn real_window_rig_for_the_frame_log() {
             fn ui(&mut self, ui: &mut egui::Ui, f: &mut eframe::Frame) {
                 if !self.said {
                     self.said = true;
-                    let gl = f.gl().map(|gl| {
-                        use eframe::glow::HasContext as _;
-                        unsafe {
-                            format!(
-                                "vendor={} renderer={} version={}",
-                                gl.get_parameter_string(eframe::glow::VENDOR),
-                                gl.get_parameter_string(eframe::glow::RENDERER),
-                                gl.get_parameter_string(eframe::glow::VERSION)
-                            )
-                        }
-                    });
                     let _ = std::fs::write(
                         &self.gl_out,
                         format!(
-                            "backend=glow {}\nvsync(glow_options 缺省)={}\nppp={}\n",
-                            gl.unwrap_or_else(|| "no-gl".into()),
-                            eframe::NativeOptions::default().glow_options.vsync,
+                            "{}\nppp={}\n",
+                            renderer_said(f),
                             ui.ctx().pixels_per_point()
                         ),
                     );
@@ -557,7 +587,7 @@ async fn real_window_rig_for_the_frame_log() {
         }
         let theme = crate::theme::testing::default_theme();
         // 开窗参数照 `shell::run` 那一处（其余取缺省，与生产一样）。
-        let opts = eframe::NativeOptions {
+        let mut opts = eframe::NativeOptions {
             event_loop_builder: Some(Box::new(crate::platform::any_thread_hook)),
             viewport: egui::ViewportBuilder::default()
                 .with_inner_size([1280.0, 800.0])
@@ -565,6 +595,7 @@ async fn real_window_rig_for_the_frame_log() {
                 .with_title("filewin-rig"),
             ..Default::default()
         };
+        crate::platform::renderer_options(&mut opts);
         eframe::run_native(
             "filewin-rig",
             opts,

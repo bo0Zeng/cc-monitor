@@ -583,6 +583,13 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
              要在一台真 Windows 上录帧日志时，手动按全名拉起它（设好 `CCM_FILEWIN_RIG_SCENE` · `CCM_FILEWIN_RIG_SECS`）。",
         ),
         (
+            "without_opengl_2_the_window_still_draws_its_first_frame",
+            "虚拟机判据（`render_tests.rs`，只在 Windows 上编）：没有 OpenGL 2.0 的 Windows 桌面会话里走生产开窗那一条，窗口照样画出第一帧。\
+             CI 的 Windows 机器能不能开真窗口没核实（本仓没有一条在 Windows 上开真窗口的测试，不推送验不了），有没有 OpenGL 2.0 也不由我们定。\
+             谁什么时候跑：动了文件窗口的渲染器 / 开窗参数 / wgpu 与 eframe 的版本时，交叉编出 lib 测试程序拷到 Win11 虚拟机（没装显卡驱动）\
+             的登录桌面里按全名跑一趟，绿了把那一行贴进报告。",
+        ),
+        (
             "perf_rig_worker",
             "不是判据，是性能台架的一格：`tests/shots/perf/filewin-perf.sh <测试二进制>` 起私有 Xvfb、按全名拉起它，\
              印每一段（静着 · 悬停 · 滚轮 · 键盘 · 看一眼）的进程 CPU 与帧数。谁什么时候跑：动了文件窗口的重画 / 列表 / 预览、要附性能读数时跑。",
