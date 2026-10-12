@@ -269,8 +269,12 @@ pub(crate) struct Book {
 /// 一张便条：起这个进程时用的号 ＋ 写下的时刻（unix 秒）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Note {
+    /// 用的号；空串 ＝ 没用账号库里说得出名字的号（只为下一格留的便条）。
     pub(crate) account: String,
     pub(crate) at: u64,
+    /// 这个进程起来时答题插件经环境交下去了（换了启动器那一支）：hook 认「是 ccm 起的那一个」· 会话事实判「启动器没把环境传下去」都看它。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) plugin: bool,
 }
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
@@ -299,18 +303,51 @@ pub(crate) fn leave_note(
     account: &str,
     now: u64,
 ) -> Result<(), crate::common::said::Said> {
+    write_note(
+        own,
+        pid,
+        &Note {
+            account: account.to_string(),
+            at: now,
+            plugin: false,
+        },
+    )
+}
+
+/// 同上，换了启动器那一支（答题插件经环境交下去了）：号说得出名字就一起记。
+pub(crate) fn leave_plugin_note(
+    own: &Own,
+    pid: u32,
+    account: Option<&str>,
+    now: u64,
+) -> Result<(), crate::common::said::Said> {
+    write_note(
+        own,
+        pid,
+        &Note {
+            account: account.unwrap_or_default().to_string(),
+            at: now,
+            plugin: true,
+        },
+    )
+}
+
+/// 这个进程（`pid`，起始时刻 `started`）的便条，且对它作数（不早于它起）。`data` ＝ 数据目录。没有 ⇒ `None`。
+pub(crate) fn note_of(data: &Path, pid: u32, started: Option<u64>) -> Option<Note> {
+    let f = data.join(NOTES_DIR).join(format!("{pid}.json"));
+    crate::platform::fs::Ro::read_to_string(f)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Note>(&s).ok())
+        .filter(|n| fresh(n, started))
+}
+
+fn write_note(own: &Own, pid: u32, note: &Note) -> Result<(), crate::common::said::Said> {
     let (home, dir) = places(own)?;
     for d in [&home, &dir] {
         own.ensure_dir(d).map_err(|e| failed(d.as_path(), &e))?;
     }
     let file = dir.join(&format!("{pid}.json"))?;
-    let body = crate::common::own_state::json_body(
-        file.as_path(),
-        &Note {
-            account: account.to_string(),
-            at: now,
-        },
-    )?;
+    let body = crate::common::own_state::json_body(file.as_path(), note)?;
     // 一个进程一张、各写各的：拿便条目录那一把锁（原子写要它），不跨便条串。
     let held = own.lock(&dir)?;
     own.write(&file, &held, &body)
@@ -371,7 +408,7 @@ pub(crate) fn adopt(
             }
         }
     }
-    let Some(note) = note else {
+    let Some(note) = note.filter(|n| !n.account.is_empty()) else {
         return Ok(false);
     };
     if read_book(home)?.sessions.get(sid) == Some(&note.account) {

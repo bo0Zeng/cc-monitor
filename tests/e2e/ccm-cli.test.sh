@@ -59,6 +59,15 @@ NOHOME="$CCMDIR/home"; mkdir -p "$NOHOME"
 ccm() { env -u CLAUDE_CONFIG_DIR HOME="$NOHOME" "$CCM" "$@" 2>&1; }
 
 UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
+# 换了启动器那一支看 `PATH` 上那份 claude 是哪一版（够新才经 CLAUDE_CODE_PLUGIN_DIRS 交答题插件）⇒ 不钉 PATH 的话结果随
+#   「这台装没装 claude、装的哪一版」漂移（开发机上走插件、CI 上标 version）。这几条一律钉住：
+#   `ccm_newcc` = PATH 上只有一份装成原生形（`versions/<版本>`）的够新的假 claude；`ccm_nocc` = PATH 上没有 claude。
+FAKECC="$CCMDIR/fakecc"; mkdir -p "$FAKECC/versions" "$FAKECC/bin" "$CCMDIR/nocc"
+printf '#!/bin/sh\n' > "$FAKECC/versions/2.1.300"; chmod +x "$FAKECC/versions/2.1.300"
+ln -s "$FAKECC/versions/2.1.300" "$FAKECC/bin/claude"
+ccm_newcc() { env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$FAKECC/bin" "$CCM" "$@" 2>&1; }
+ccm_nocc() { env -u CLAUDE_CONFIG_DIR -u CLAUDE_CODE_PLUGIN_DIRS HOME="$NOHOME" PATH="$CCMDIR/nocc" "$CCM" "$@" 2>&1; }
+PLUGIN="export CLAUDE_CODE_PLUGIN_DIRS='$NOHOME/.cc-monitor/answer-plugin'"
 
 echo "===== 契约：壳层选项 × 交给 claude 的参数====="
 # ccm 是 claude 的壳：位置动作取消、`--resume` / `--model` / 未知旗标原样交 claude、诊断口改 `--ccm-*`；
@@ -94,9 +103,12 @@ ck "--ccm-agent codex：换启动器 + 不连共享后台 + 不清 claude 的嵌
 ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令形；从前 ccm 报「不支持 resume」）" \
    "yes" \
    "$(ccm resume x -- --ccm-agent codex --cwd /p --ccm-print | grep -q "cd '/p' && exec codex --no-daemon resume x\$" && echo yes || echo no)"
-ck "--launcher 覆盖默认启动器" \
-   "$UNSET; export CCM_ANSWER_HOOK_OFF=launcher; cd '/p' && exec mycc --resume s1" \
-   "$(ccm --resume s1 -- --cwd /p --launcher mycc --ccm-print)"
+ck "--launcher 覆盖默认启动器：后面的词不动，答题插件经环境交下去" \
+   "$UNSET; $PLUGIN; cd '/p' && exec mycc --resume s1" \
+   "$(ccm_newcc --resume s1 -- --cwd /p --launcher mycc --ccm-print)"
+ck "--launcher 而 PATH 上没有 claude（认不出版本）：不设那个变量，标 version" \
+   "$UNSET; export CCM_ANSWER_HOOK_OFF=version; cd '/p' && exec mycc --resume s1" \
+   "$(ccm_nocc --resume s1 -- --cwd /p --launcher mycc --ccm-print)"
 ck "--base：显式 unset CLAUDE_CONFIG_DIR（#75 逃生口）" \
    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude$(hk "$NOHOME")" \
    "$(ccm -- --cwd /p --base --ccm-print)"
@@ -125,8 +137,8 @@ ck "new 不在 -- 右边第一个 ⇒ 报错（不猜）" \
    "ccm: $(zh beArgv.parse.newNotFirst)" \
    "$(ccm -- --cwd /p new --ccm-print 2>&1)"
 ck "--launcher 'ccr code' 拆成词" \
-   "$UNSET; export CCM_ANSWER_HOOK_OFF=launcher; cd '/p' && exec ccr code -p x" \
-   "$(ccm -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"
+   "$UNSET; $PLUGIN; cd '/p' && exec ccr code -p x" \
+   "$(ccm_newcc -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"
 ck "--account 与 --base 互斥" \
    "ccm: $(zh beArgv.validate.accountAndBase)" \
    "$(ccm -- --cwd /p --account z --base --ccm-print)"

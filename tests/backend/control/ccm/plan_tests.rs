@@ -2673,34 +2673,93 @@ fn the_answer_hook_rides_only_on_the_session_ccm_starts() {
     );
 }
 
-/// 换了启动器（`--launcher`，cc-spawn 的 `CCSPAWN_LAUNCH`、别名配置里那一格）⇒ 不垫答题 hook：它后面那些词由那个启动器
-/// 自己原样转交（`env VAR=x <agent>` 那一形里头几个词是 env 的），ccm 不知道它认不认这一家的旗标，垫进去就落进了别人原样转交的那一段。
-/// 启动器写的就是这一家的默认那一个（`claude`）⇒ 照垫。没挂上的会话照「只能在终端里答」那一态画（会话事实没有 ask）。
+/// 换了启动器那一支要问的这台事实（判据喂的几种）。
+fn sideload_ok(_: &crate::agents::PluginFace) -> Sideload {
+    Sideload {
+        inherited: None,
+        version: Some([2, 1, 296]),
+        policy_blocked: false,
+        env_readable: true,
+    }
+}
+fn sideload_mine(f: &crate::agents::PluginFace) -> Sideload {
+    Sideload {
+        inherited: Some("/u/mine".into()),
+        ..sideload_ok(f)
+    }
+}
+fn sideload_has_ours(f: &crate::agents::PluginFace) -> Sideload {
+    Sideload {
+        inherited: Some("/u/mine:/home/pi/.cc-monitor/answer-plugin".into()),
+        ..sideload_ok(f)
+    }
+}
+fn sideload_policy(f: &crate::agents::PluginFace) -> Sideload {
+    Sideload {
+        policy_blocked: true,
+        ..sideload_ok(f)
+    }
+}
+fn sideload_old(f: &crate::agents::PluginFace) -> Sideload {
+    Sideload {
+        version: Some([2, 1, 279]),
+        ..sideload_ok(f)
+    }
+}
+fn sideload_unknown_version(f: &crate::agents::PluginFace) -> Sideload {
+    Sideload {
+        version: None,
+        ..sideload_ok(f)
+    }
+}
+fn sideload_blind(f: &crate::agents::PluginFace) -> Sideload {
+    Sideload {
+        env_readable: false,
+        ..sideload_ok(f)
+    }
+}
+
+const OUR_PLUGIN: &str = "/home/pi/.cc-monitor/answer-plugin";
+
+/// 换了启动器（`--launcher`，cc-spawn 的 `CCSPAWN_LAUNCH`、别名配置里那一格）⇒ 后面的词一个不垫（它们由那个启动器自己原样转交，
+/// `env VAR=x <agent>` 那一形里头几个词是 env 的）；答题 hook 改经环境交下去：`CLAUDE_CODE_PLUGIN_DIRS` 指到我们那个小插件，
+/// 不标挂不上。启动器写的就是这一家的默认那一个（`claude`）⇒ 照垫 `--settings`、不设那个变量。
 #[test]
-fn the_answer_hook_is_not_put_into_a_launcher_someone_else_wrote() {
+fn a_changed_launcher_gets_the_answer_plugin_through_the_environment() {
     let mut e = env();
     e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
-    for launcher in ["/opt/bin/fake-agent", "env", "ccr code"] {
-        let Plan::Direct(d) = plan_of(
-            &["do-it", "--launcher", launcher],
-            &e,
-            &AccountTable::default(),
-        ) else {
+    e.sideload = Some(sideload_ok);
+    // `env WRAPVAR=x <agent>` 那一形：首词给 `--launcher`，其余的词在透传最前面（cc-spawn 的 `CCSPAWN_LAUNCH` 就这么拆）。
+    for (launcher, lead) in [
+        ("/opt/bin/fake-agent", &[][..]),
+        ("env", &["WRAPVAR=x", "claude"][..]),
+        ("ccr code", &[][..]),
+    ] {
+        let mut args: Vec<&str> = lead.to_vec();
+        args.extend(["do-it", "--launcher", launcher]);
+        let Plan::Direct(d) = plan_of(&args, &e, &AccountTable::default()) else {
             panic!("该是 Direct")
         };
         let mut want: Vec<String> = launcher.split(' ').map(str::to_string).collect();
+        want.extend(lead.iter().map(|w| w.to_string()));
         want.push("do-it".into());
-        assert_eq!(d.argv, want, "换了启动器 {launcher} ⇒ 不垫");
+        assert_eq!(d.argv, want, "换了启动器 {launcher} ⇒ 后面的词原样");
+        assert_eq!(d.answer_hook_off, None, "{launcher} ⇒ 不标挂不上");
         assert_eq!(
-            d.answer_hook_off,
-            Some(crate::agents::asks::HookOff::Launcher),
-            "换了启动器 ⇒ 标挂不上、原因是启动器"
+            d.plugin_dirs,
+            Some((
+                crate::agents::claudecode::asks::PLUGIN_ENV.to_string(),
+                OUR_PLUGIN.to_string()
+            )),
+            "{launcher} ⇒ 环境里交我们那个插件目录"
         );
-        assert!(render(&Plan::Direct(d)).contains(&format!(
-            "export {}={};",
-            crate::agents::asks::ANSWER_HOOK_OFF_ENV,
-            crate::agents::asks::HookOff::Launcher.env_value()
-        )));
+        assert!(
+            render(&Plan::Direct(d)).contains(&format!(
+                "export {}='{OUR_PLUGIN}';",
+                crate::agents::claudecode::asks::PLUGIN_ENV
+            )),
+            "打印那一行也看得见"
+        );
     }
     let Plan::Direct(d) = plan_of(
         &["do-it", "--launcher", "claude"],
@@ -2716,6 +2775,67 @@ fn the_answer_hook_is_not_put_into_a_launcher_someone_else_wrote() {
     want.push("do-it".into());
     assert_eq!(d.argv, want, "启动器就是这一家默认那一个 ⇒ 照垫");
     assert_eq!(d.answer_hook_off, None);
+    assert_eq!(d.plugin_dirs, None, "默认启动器不走环境那一路");
+}
+
+/// 用户自己已经设了那个变量 ⇒ 我们的目录接在后面、不覆盖；已经有我们的目录 ⇒ 不重复加。
+#[test]
+fn a_users_own_plugin_dirs_are_appended_to_not_replaced() {
+    let mut e = env();
+    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
+    for (probe, want) in [
+        (
+            sideload_mine as fn(&crate::agents::PluginFace) -> Sideload,
+            format!("/u/mine:{OUR_PLUGIN}"),
+        ),
+        (sideload_has_ours, format!("/u/mine:{OUR_PLUGIN}")),
+    ] {
+        e.sideload = Some(probe);
+        let Plan::Direct(d) = plan_of(
+            &["WRAPVAR=x", "claude", "--launcher", "env"],
+            &e,
+            &AccountTable::default(),
+        ) else {
+            panic!("该是 Direct")
+        };
+        assert_eq!(d.plugin_dirs.map(|(_, v)| v), Some(want));
+    }
+}
+
+/// 挂不上的几种先在拼命令那一步挡住：本机策略不许 · 版本低于 2.1.280（或认不出版本）⇒ 不设那个变量、原因各是新的那一种；
+/// 这台读不出别的进程起来时的环境（判子进程、判接没接上都靠它）· 没问（预览 / 判据没喂）⇒ 照「自定义启动器」标。
+#[test]
+fn a_changed_launcher_that_cannot_take_the_plugin_says_why() {
+    use crate::agents::asks::HookOff;
+    let mut e = env();
+    e.answer_hook_entry = Some("/home/pi/.cc-monitor/bin/ccm".into());
+    let cases: [(Option<fn(&crate::agents::PluginFace) -> Sideload>, HookOff); 5] = [
+        (Some(sideload_policy), HookOff::Policy),
+        (Some(sideload_old), HookOff::Version),
+        (Some(sideload_unknown_version), HookOff::Version),
+        (Some(sideload_blind), HookOff::Launcher),
+        (None, HookOff::Launcher),
+    ];
+    for (probe, why) in cases {
+        e.sideload = probe;
+        let Plan::Direct(d) = plan_of(
+            &["WRAPVAR=x", "claude", "do-it", "--launcher", "env"],
+            &e,
+            &AccountTable::default(),
+        ) else {
+            panic!("该是 Direct")
+        };
+        assert_eq!(d.argv, ["env", "WRAPVAR=x", "claude", "do-it"]);
+        assert_eq!(d.plugin_dirs, None, "{why:?} ⇒ 不设那个变量");
+        assert_eq!(d.answer_hook_off, Some(why));
+        let line = render(&Plan::Direct(d));
+        assert!(line.contains(&format!(
+            "export {}={};",
+            crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+            why.env_value()
+        )));
+        assert!(!line.contains(crate::agents::claudecode::asks::PLUGIN_ENV));
+    }
 }
 
 /// 用户自己给了会话级设置 ⇒ 不另垫，把答题 hook 并进他那一份（别的原样，只往 PermissionRequest 末尾加一组），换成并好的 JSON 串交出去；

@@ -264,3 +264,55 @@ fn the_products_match_the_cross_language_golden() {
         serde_json::to_string_pretty(&got).unwrap()
     );
 }
+
+/// 换了启动器那一支交下去的小插件：`hooks/hooks.json` 与默认启动器垫的 `--settings` 那一串是同一份（同一处生成），
+/// 插件清单只说名字；两份文件都在插件目录里（相对路径）。
+#[test]
+fn the_plugin_hooks_file_and_the_settings_words_come_from_one_source() {
+    let entry = "/h/.cc-monitor/bin/ccm";
+    let files = plugin_files(entry);
+    let hooks = files
+        .iter()
+        .find(|(p, _)| *p == "hooks/hooks.json")
+        .expect("插件里有 hooks/hooks.json");
+    let manifest = files
+        .iter()
+        .find(|(p, _)| *p == ".claude-plugin/plugin.json")
+        .expect("插件里有 .claude-plugin/plugin.json");
+    assert_eq!(files.len(), 2, "只放这两份");
+    let from_plugin: Value = serde_json::from_str(&hooks.1).unwrap();
+    let from_settings: Value = serde_json::from_str(&launch_args(entry)[1]).unwrap();
+    assert_eq!(from_plugin, from_settings, "两组 hook 逐字一样");
+    let m: Value = serde_json::from_str(&manifest.1).unwrap();
+    assert_eq!(m["name"], PLUGIN_NAME);
+}
+
+/// 本机 managed 策略：`disableSideloadFlags`（设了这个变量 claude 当场起不来）或 `allowManagedHooksOnly`（插件里的 hook 被拦）为真 ⇒ 不许。
+#[test]
+fn managed_policy_that_bars_session_plugins_is_recognised() {
+    assert!(policy_blocks(&json!({"disableSideloadFlags": true})));
+    assert!(policy_blocks(&json!({"allowManagedHooksOnly": true})));
+    assert!(!policy_blocks(&json!({"disableSideloadFlags": false})));
+    assert!(!policy_blocks(&json!({"model": "x"})));
+    assert!(!policy_blocks(&json!([1])));
+}
+
+/// 装着的那一份是哪一版：原生安装（`…/versions/<版本>` 那个文件）· npm 安装（往上找那一家的 `package.json`）；认不出 ⇒ `None`。
+#[test]
+fn the_installed_version_reads_from_the_install_layout() {
+    assert_eq!(
+        version_in_name("/home/u/.local/share/claude/versions/2.1.296"),
+        Some([2, 1, 296])
+    );
+    assert_eq!(version_in_name("/usr/bin/claude"), None);
+    assert_eq!(
+        version_in_package(r#"{"name":"@anthropic-ai/claude-code","version":"2.1.279"}"#),
+        Some([2, 1, 279])
+    );
+    assert_eq!(
+        version_in_package(r#"{"name":"other","version":"9.9.9"}"#),
+        None,
+        "别人家的 package.json 不算"
+    );
+    assert!(PLUGIN_MIN_VERSION > [2, 1, 279] && PLUGIN_MIN_VERSION <= [2, 1, 280]);
+}
