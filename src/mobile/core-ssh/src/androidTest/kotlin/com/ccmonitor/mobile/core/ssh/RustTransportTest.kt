@@ -60,28 +60,16 @@ class RustTransportTest {
         assertTrue(runBlocking { t.probeAlive(WALL_CEILING_MS) })
     }
 
+    /** 流式 exec 与常驻流交给核心的那一份拨号请求：连着才有，照它开的链路复用这一条连接。 */
     @Test
-    fun a_stream_and_a_duplex_ride_the_same_connection() {
+    fun a_stream_rides_the_same_connection_and_the_dial_request_is_there_while_connected() {
         val t = connected()
         val out = runBlocking { withTimeout(WALL_CEILING_MS) { t.execStream("printf 'a\\nb\\n'").toList() } }
         assertEquals("a\nb\n", out.joinToString("") { it.toString(Charsets.UTF_8) })
-        val d = runBlocking { t.execDuplex("head -n 1") }
-        runBlocking { d.write("ping\n".toByteArray()) }
-        val got = runBlocking { withTimeout(WALL_CEILING_MS) { d.stdout.toList() } }
-        assertEquals("ping\n", got.joinToString("") { it.toString(Charsets.UTF_8) })
-        d.close()
-    }
-
-    /** 长 exec 退出码非零、stderr 写了一行 ⇒ 手机这一侧拿到那个码和那一行（「后端缺 / 版本不对 / 起不来」靠它分）。 */
-    @Test
-    fun a_duplex_reports_the_exit_status_and_the_stderr_line() {
-        val t = connected()
-        val d = runBlocking { t.execDuplex("echo partial; echo 'ccm: not found' >&2; exit 127") }
-        val out = runBlocking { withTimeout(WALL_CEILING_MS) { d.stdout.toList() } }
-        assertEquals("partial\n", out.joinToString("") { it.toString(Charsets.UTF_8) })
-        assertEquals(127, d.exitStatus)
-        assertTrue(d.stderrTail, d.stderrTail.contains("ccm: not found"))
-        d.close()
+        val req = org.json.JSONObject(t.dialRequest ?: error("连着却没有拨号请求"))
+        assertTrue(req.toString(), req.has("host") && !req.has("use"))
+        t.close()
+        assertEquals(null, t.dialRequest)
     }
 
     @Test

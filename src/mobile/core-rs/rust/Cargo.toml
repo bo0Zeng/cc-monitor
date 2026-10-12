@@ -17,6 +17,10 @@ crate-type = ["cdylib", "rlib"]
 ssh-dial = { path = "../../../backend/ssh-dial" }
 serde_json = "1"
 copy-core = { path = "../../../common/copy-core" }
+# 连远端常驻后端的客户端那一侧（帧客户端 · 握手 · 退避 · 版本门 · 在看名单）：桌面 monitor 同一份。
+resident-client = { path = "../../../comms/resident-client" }
+# 事前就拒的那几种问答怎么说（`route_call_error`）：通信层面 A 那一份。
+comms-inward = { path = "../../../comms/inward" }
 # 同后端那一行（版本 · feature 集）：解 PEM 私钥、拼 Keystore 那把公钥要它的 `keys`。
 russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 # 现生成钥匙的种子取系统随机数（同 russh 那一棵 ring，不新增包）。

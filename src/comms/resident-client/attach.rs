@@ -68,13 +68,12 @@ pub fn attach_reply(line: &str) -> Result<(), String> {
     ))
 }
 
-/// 一行 hello（原样留着，手机交给 Kotlin）：协议版本 · 自报的身份 · 能力事实。
+/// 一行 hello：协议版本 · 自报的身份 · 能力事实。
 #[derive(Debug, Clone)]
 pub struct Hello {
     pub v: u64,
     pub build_id: String,
     offer: Offer,
-    pub raw: String,
 }
 
 impl Hello {
@@ -110,7 +109,6 @@ impl Hello {
                 .unwrap_or_default()
                 .to_string(),
             offer,
-            raw: line.trim().to_string(),
         })
     }
 }
@@ -149,25 +147,34 @@ async fn line_within<R>(r: &mut R, hello: bool, within: Duration) -> Result<Stri
 where
     R: tokio::io::AsyncBufRead + Unpin,
 {
-    let cut = |said: &str, raw: String| AttachFail::Cut {
-        hello,
-        said: copy_text(said, &[]),
-        raw,
-    };
-    let key = if hello {
-        "rsRemoteResident.handshake.helloCut"
-    } else {
-        "rsRemoteResident.handshake.replyCut"
-    };
     let mut buf = Vec::new();
     match tokio::time::timeout(within, read_capped_line(r, &mut buf, HANDSHAKE_LINE_CAP)).await {
-        Err(_) => Err(cut(key, format!("{} ms", within.as_millis()))),
+        Err(_) => Err(cut_short(hello, format!("{} ms", within.as_millis()))),
         Ok(Ok(CappedLine::Line)) => Ok(String::from_utf8_lossy(&buf)
             .trim_end_matches(['\n', '\r'])
             .to_string()),
-        Ok(Ok(CappedLine::TooLong(n))) => Err(cut(key, format!("line of {n} bytes"))),
-        Ok(Ok(CappedLine::Eof)) => Err(cut(key, String::new())),
-        Ok(Err(e)) => Err(cut("rsRemoteResident.handshake.readFailed", e.to_string())),
+        Ok(Ok(CappedLine::TooLong(n))) => Err(cut_short(hello, format!("line of {n} bytes"))),
+        Ok(Ok(CappedLine::Eof)) => Err(cut_short(hello, String::new())),
+        Ok(Err(e)) => Err(read_failed(hello, e.to_string())),
+    }
+}
+
+/// 握手那一行没说完（等 hello · 等 attach 回话）。
+fn cut_short(hello: bool, raw: String) -> AttachFail {
+    let said = if hello {
+        copy_text("rsRemoteResident.handshake.helloCut", &[])
+    } else {
+        copy_text("rsRemoteResident.handshake.replyCut", &[])
+    };
+    AttachFail::Cut { hello, said, raw }
+}
+
+/// 握手那一行读不动。
+fn read_failed(hello: bool, raw: String) -> AttachFail {
+    AttachFail::Cut {
+        hello,
+        said: copy_text("rsRemoteResident.handshake.readFailed", &[]),
+        raw,
     }
 }
 
@@ -228,35 +235,28 @@ where
     S: AsyncRead + Unpin,
 {
     use tokio::io::AsyncReadExt;
-    let key = if hello {
-        "rsRemoteResident.handshake.helloCut"
-    } else {
-        "rsRemoteResident.handshake.replyCut"
-    };
-    let cut = |said: &str, raw: String| AttachFail::Cut {
-        hello,
-        said: copy_text(said, &[]),
-        raw,
-    };
     let read = async {
         let mut out = Vec::new();
         let mut one = [0u8; 1];
         loop {
             match s.read(&mut one).await {
-                Ok(0) => return Err(cut(key, String::new())),
+                Ok(0) => return Err(cut_short(hello, String::new())),
                 Ok(_) if one[0] == b'\n' => return Ok(out),
                 Ok(_) => {
                     out.push(one[0]);
                     if out.len() > HANDSHAKE_LINE_CAP {
-                        return Err(cut(key, format!("line over {HANDSHAKE_LINE_CAP} bytes")));
+                        return Err(cut_short(
+                            hello,
+                            format!("line over {HANDSHAKE_LINE_CAP} bytes"),
+                        ));
                     }
                 }
-                Err(e) => return Err(cut("rsRemoteResident.handshake.readFailed", e.to_string())),
+                Err(e) => return Err(read_failed(hello, e.to_string())),
             }
         }
     };
     match tokio::time::timeout(within, read).await {
-        Err(_) => Err(cut(key, format!("{} ms", within.as_millis()))),
+        Err(_) => Err(cut_short(hello, format!("{} ms", within.as_millis()))),
         Ok(r) => r.map(|b| {
             String::from_utf8_lossy(&b)
                 .trim_end_matches('\r')

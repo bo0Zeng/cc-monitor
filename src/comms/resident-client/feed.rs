@@ -49,7 +49,7 @@ pub struct Exec {
     pub stderr: String,
 }
 
-type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
+pub type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
 /// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全。宿主装（手机：拨号核心开的链路）。
 pub trait Transport: Send + Sync + 'static {
@@ -87,7 +87,7 @@ pub enum State {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Event {
     State(State),
-    /// 流上的一帧（`reply` · `cancelled` 以外的那些，hello 也在内），原样一行。
+    /// 流上的一帧（hello · `reply` · `cancelled` 以外的那些），原样一行。
     Frame(String),
     /// `stream-watch` 应答里的 `from[]`。
     WatchFrom(Vec<WatchFrom>),
@@ -122,6 +122,8 @@ pub struct Feed<T: Transport> {
     cut: Mutex<Option<Arc<Notify>>>,
     watched: Mutex<Watched>,
     watch_tick: tw::Sender<u64>,
+    /// 这一台那两个循环（重连 · 报名单）：[`Feed::close`] 收掉。
+    tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 impl<T: Transport> Feed<T> {
@@ -137,10 +139,22 @@ impl<T: Transport> Feed<T> {
             cut: Mutex::new(None),
             watched: Mutex::new(Watched::default()),
             watch_tick: tw::channel(0).0,
+            tasks: Mutex::new(Vec::new()),
         });
-        tokio::spawn(Arc::clone(&feed).run());
-        tokio::spawn(Arc::clone(&feed).report_watch());
+        let run = tokio::spawn(Arc::clone(&feed).run());
+        let report = tokio::spawn(Arc::clone(&feed).report_watch());
+        lock(&feed.tasks).extend([run, report]);
         feed
+    }
+
+    /// 不再看这台：两个循环收掉、流关掉、在等的问答一律「断了」。
+    pub fn close(&self) {
+        for t in lock(&self.tasks).drain(..) {
+            t.abort();
+        }
+        if let Some(c) = lock(&self.client).take() {
+            c.shutdown();
+        }
     }
 
     /// SSH 那层此刻的连接（`None` ＝ 没通）。换了一条 ⇒ 旧流关掉、当场在新的上接。
@@ -160,6 +174,11 @@ impl<T: Transport> Feed<T> {
         if matches!(*self.state.borrow(), State::Down { .. }) {
             self.kick.notify_one();
         }
+    }
+
+    /// 这台在屏上的名字。
+    pub fn machine(&self) -> &str {
+        &self.cfg.machine
     }
 
     pub fn state(&self) -> State {
@@ -340,7 +359,6 @@ impl<T: Transport> Feed<T> {
             writer,
             hello,
         } = attached;
-        (self.events)(Event::Frame(hello.raw.clone()));
         let witness = BackendHello::from_hello_frame(&hello).expect("Hello 恒交得出能力事实");
         let client = writer.into_client(witness);
         client.name_machine(&self.cfg.machine);
@@ -358,16 +376,27 @@ impl<T: Transport> Feed<T> {
                     older: true,
                 });
             }
-            let data = client
+            let asked = client
                 .call(
                     crate::gate::VERDICT_CMD,
                     crate::gate::verdict_args(mine, theirs, false),
                     crate::gate::VERDICT_BUDGET,
                 )
-                .await
-                .map_err(|e| tracing::warn!("resident-verdict 没问成：{e}"))?;
-            crate::gate::decode_verdict(&data.unwrap_or_default())
-                .map_err(|what| tracing::warn!("resident-verdict 答的形状不对：{what}"))
+                .await;
+            let data = match asked {
+                Ok(d) => d,
+                Err(e) => {
+                    tracing::warn!("resident-verdict 没问成：{e}");
+                    return Err(());
+                }
+            };
+            match crate::gate::decode_verdict(&data.unwrap_or_default()) {
+                Ok(v) => Ok(v),
+                Err(what) => {
+                    tracing::warn!("resident-verdict 答的形状不对：{what}");
+                    Err(())
+                }
+            }
         })
         .await;
         match asked {

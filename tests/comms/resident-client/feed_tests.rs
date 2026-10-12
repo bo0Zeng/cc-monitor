@@ -184,7 +184,7 @@ async fn a_running_resident_is_attached_with_one_exec() {
     let f = Arc::new(Fake::default());
     f.attaches.lock().unwrap().push_back(upp(MINE));
     let (feed, seen) = start(&f);
-    until("接上", || up(&feed)).await;
+    until("流接上了", || up(&feed)).await;
     assert_eq!(
         f.ensured.load(Ordering::SeqCst),
         0,
@@ -201,15 +201,21 @@ async fn a_running_resident_is_attached_with_one_exec() {
         ask(&feed, "ping", Duration::from_secs(5)).await.unwrap(),
         Some(serde_json::json!({"from":[]}))
     );
-    until("hello 与会话帧交出去", || {
+    until("会话帧原样交出去（hello 不交）", || {
         seen.lock()
             .unwrap()
             .iter()
-            .filter(|e| matches!(e, Event::Frame(_)))
-            .count()
-            >= 2
+            .any(|e| matches!(e, Event::Frame(l) if l.contains("sessions_replayed")))
     })
     .await;
+    assert!(
+        !seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, Event::Frame(l) if l.contains("\"hello\""))),
+        "hello 是握手那一行，不当帧交"
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -222,7 +228,7 @@ async fn a_resident_that_is_not_running_is_ensured_then_attached() {
         a.push_back(upp(MINE));
     }
     let (feed, _) = start(&f);
-    until("接上", || up(&feed)).await;
+    until("流接上了", || up(&feed)).await;
     assert_eq!(f.ensured.load(Ordering::SeqCst), 1);
 }
 
@@ -378,7 +384,7 @@ async fn every_new_link_gets_the_whole_watch_list_again() {
     let f = Arc::new(Fake::default());
     f.attaches.lock().unwrap().push_back(upp(MINE));
     let (feed, _) = start(&f);
-    until("接上", || up(&feed)).await;
+    until("流接上了", || up(&feed)).await;
     feed.watch("s1", true);
     feed.watch("s1", true);
     until("报了 s1", || {

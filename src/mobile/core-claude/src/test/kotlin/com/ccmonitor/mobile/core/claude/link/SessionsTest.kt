@@ -103,15 +103,4 @@ class SessionsTest {
         assertEquals(3L, page.next)
         assertNull(HistoryLines.of(mapOf("lines" to emptyList<Any>())))
     }
-
-    @Test
-    fun `stream-watch：报名单整份换；应答 from 每份记录一格 sid · path · seq`() {
-        assertEquals(mapOf("sids" to listOf("a", "b")), StreamWatch.args(setOf("b", "a")))
-        assertEquals(mapOf("sids" to emptyList<String>()), StreamWatch.args(emptySet()))
-        assertEquals(
-            listOf(WatchFrom("s1", "/p/s1.jsonl", 12)),
-            StreamWatch.of(mapOf("from" to listOf(mapOf("sid" to "s1", "path" to "/p/s1.jsonl", "seq" to 12)))),
-        )
-        assertNull(StreamWatch.of(mapOf("from" to listOf(mapOf("sid" to "s1")))))
-    }
 }
