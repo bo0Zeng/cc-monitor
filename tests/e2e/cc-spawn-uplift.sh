@@ -123,10 +123,16 @@ out="$WORK/rec-$(tmux display-message -p '#S' 2>/dev/null || echo nosess).txt"
   printf 'args=%s\n' "$*"
   printf 'busid=%s\n' "${CC_BUS_ID:-<unset>}"
   printf 'cwd=%s\n' "$PWD"
-  printf 'wrapenv=%s\n' "${WRAPVAR:-<unset>}"; } > "$out"
+  printf 'wrapenv=%s\n' "${WRAPVAR:-<unset>}"
+  printf 'plugdirs=%s\n' "${CLAUDE_CODE_PLUGIN_DIRS:-<unset>}"; } > "$out"
 sleep 300
 EOF
 chmod +x "$BIN/FAKEAGENT"
+# PATH 上的 `claude` 是一份装在 `…/versions/<版本>` 的（原生安装的样子）：换了启动器那一支按它认版本（2.1.280 起才交插件）。
+#   内容同假启动器（本套件的启动器一律是 FAKEAGENT，它从不被当启动器起）。
+mkdir -p "$SANDBOX/claude-versions"
+cp "$BIN/FAKEAGENT" "$SANDBOX/claude-versions/2.1.296"
+ln -s "$SANDBOX/claude-versions/2.1.296" "$BIN/claude"
 export WORK
 export CCSPAWN_LAUNCH="$BIN/FAKEAGENT"
 
@@ -217,6 +223,9 @@ CCSPAWN_LAUNCH="env WRAPVAR=hello $BIN/FAKEAGENT" \
 waitfor "$WORK/rec-wrap_cc.txt" || true
 chk "wrapper 的 env 前缀生效" "$(sed -n 's/^wrapenv=//p' "$WORK/rec-wrap_cc.txt" 2>/dev/null)" "hello"
 chk "任务仍原样送达" "$(sed -n 's/^args=//p' "$WORK/rec-wrap_cc.txt" 2>/dev/null)" "任务W"
+# 换了启动器 ⇒ 答题 hook 不垫进参数（上一条），改经环境交我们那个小插件：变量到了、插件目录写好了。
+chk "插件目录经环境到了" "$(sed -n 's/^plugdirs=//p' "$WORK/rec-wrap_cc.txt" 2>/dev/null)" "$HOME/.cc-monitor/answer-plugin"
+chk "插件里有那一组 hook" "$(grep -c '"PermissionRequest"' "$HOME/.cc-monitor/answer-plugin/hooks/hooks.json" 2>/dev/null)" "1"
 
 echo "[11] 【审计重要-7】ccm 版本太旧要报得准（不能说成"建会话失败"）"
 cat > "$SANDBOX/oldccm" << 'EOF'

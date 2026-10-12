@@ -224,6 +224,23 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
+      "note": "答题插件 · 自定义启动器起会话时用 · 由后端生成",
+      "path_declared": "~/.cc-monitor/answer-plugin",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/answer-plugin",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/answer-plugin；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
+      "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
       "note": "同步改写前的原文 · 改写某号的 .claude.json 前留一份\n每号一份 · 下次改写前换新 · 要找回就从此处拿",
       "path_declared": "~/.cc-monitor/backups/accounts-mcp",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/backups/accounts-mcp",

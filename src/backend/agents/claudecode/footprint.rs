@@ -201,6 +201,15 @@ pub(crate) const TOOLS: &[ToolSpec] = &[
                     })),
                     effect: TouchEffect::OwnedFile,
                 },
+                // 换了启动器起会话时交给 claude 的答题插件（清单 ＋ 答题那一组 hook）。
+                TouchedFile {
+                    path: "~/.cc-monitor/answer-plugin",
+                    host: HostScope::Either,
+                    note: Some(Text(|| {
+                        copy_text("rsToolRegistry.tools.answerPluginNote", &[])
+                    })),
+                    effect: TouchEffect::OwnedFile,
+                },
                 // 同步改写某个号的配置文件之前，那份原文放这里（每个号一份）。
                 TouchedFile {
                     path: "~/.cc-monitor/backups/accounts-mcp",

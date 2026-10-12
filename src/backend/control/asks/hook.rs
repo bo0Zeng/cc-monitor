@@ -41,6 +41,22 @@ pub async fn run(args: &[String]) -> i32 {
     let Some(asked) = (face.read)(&hook) else {
         return 0;
     };
+    // 经环境那一路来的 hook 子进程也继承得到：认不出是 ccm 起的那一个会话 ⇒ 空手退（那一发照那一家自己的默认办，
+    // 会话里 Bash 起的 `claude -p` 不在这里挂着等）。
+    if let Some(p) = face.plugin {
+        let mine = std::env::var(p.env).ok();
+        let ours = crate::platform::paths::home_dir()
+            .map(|h| crate::agents::asks::plugin_dir_under(&h.to_string_lossy()))
+            .unwrap_or_default();
+        let asking = asking_pid();
+        let in_table = asking.is_some_and(|pid| in_table(pid, &asked.sid));
+        let marker = asking.map_or(crate::platform::proc::EnvRead::Unreadable, |pid| {
+            crate::platform::proc::proc_env_var(pid, p.child_marker)
+        });
+        if !admitted(mine.as_deref(), &ours, in_table, marker) {
+            return 0;
+        }
+    }
     let closed = (!asked.blocks_terminal)
         .then(|| watch_terminal(agent, &asked.sid))
         .flatten();
@@ -187,4 +203,44 @@ fn now_ms() -> u64 {
     crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
+}
+
+/// 发问的那个进程：hook 是它的直接子进程（exec 形，不经 shell）。说不出 ⇒ `None`。
+fn asking_pid() -> Option<u32> {
+    #[cfg(unix)]
+    {
+        Some(std::os::unix::process::parent_id())
+    }
+    #[cfg(not(unix))]
+    {
+        None
+    }
+}
+
+/// 常驻那份「ccm 起的会话」表：ccm 给发问那个进程留过便条（`/clear` 换了会话 id 进程不变，照样认得）· 这个会话 id 记在起会话那份记录里。
+fn in_table(pid: u32, sid: &str) -> bool {
+    let Some(data) = crate::platform::paths::data_home() else {
+        return false;
+    };
+    crate::control::launch_account::note_of(
+        &data,
+        pid,
+        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(pid)),
+    )
+    .is_some()
+        || crate::control::launch_account::last_of(Some(&data), sid).is_some()
+}
+
+/// 这一发 hook 认不认（纯函数）：自己的环境里那个插件目录变量没带我们的目录 ⇒ 不是经环境来的（`--settings` 那一路不传给子进程），认；
+/// 表里有 ⇒ 认；发问那个进程起来时的环境里没有那一家的嵌套标记 ⇒ 认（ccm 起会话前清掉了它）；带着 ⇒ 子进程；读不出 ⇒ 认不出。
+pub(crate) fn admitted(
+    own_dirs: Option<&str>,
+    ours: &str,
+    in_table: bool,
+    marker: crate::platform::proc::EnvRead,
+) -> bool {
+    if !own_dirs.is_some_and(|l| !ours.is_empty() && crate::agents::asks::dirs_have(l, ours)) {
+        return true;
+    }
+    in_table || marker == crate::platform::proc::EnvRead::Unset
 }

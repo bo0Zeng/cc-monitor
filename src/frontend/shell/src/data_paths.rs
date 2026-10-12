@@ -339,6 +339,11 @@ fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             copy_text("rsDataPaths.backend.launchNotes", &[]),
             DataClass::Cache,
         ),
+        dir(
+            rr::ANSWER_PLUGIN_DIR_REL,
+            copy_text("rsDataPaths.backend.answerPlugin", &[]),
+            DataClass::Cache,
+        ),
         file(
             rr::KNOWN_HOSTS_REL,
             copy_text("rsDataPaths.backend.knownHosts", &[]),

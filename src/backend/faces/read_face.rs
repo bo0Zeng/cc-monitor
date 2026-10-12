@@ -477,6 +477,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             facts.writers = holders.clone().unwrap_or_default();
             // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
             // 答题口没接上（ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量）：每次按持着它的进程现查。
+            //   换了启动器那一支（ccm 的便条说插件是经环境交下去的）：持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去。
             facts.answer_off = facts.writers.iter().find_map(|pid| {
                 match crate::platform::proc::proc_env_var(
                     *pid,
@@ -485,7 +486,12 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                     crate::platform::proc::EnvRead::Value(v) => {
                         Some(crate::agents::asks::hook_off_words(&v))
                     }
-                    _ => None,
+                    crate::platform::proc::EnvRead::Unset => plugin_lost(*pid).then(|| {
+                        crate::agents::asks::hook_off_words(
+                            crate::agents::asks::HookOff::EnvLost.env_value(),
+                        )
+                    }),
+                    crate::platform::proc::EnvRead::Unreadable => None,
                 }
             });
             // 配上挂着的待答请求（`needs.ask`：可以怎么答；挡着终端的那种 pidfile 不说在等，照它补出一份）。
@@ -832,4 +838,26 @@ fn dress_ask(
         crate::control::asks::pending(sid).into_iter().next(),
         now,
     )
+}
+
+/// ccm 给这个进程留的便条说答题插件经环境交下去了，它的环境里却没有我们那个目录（启动器把环境清掉了）。
+fn plugin_lost(pid: u32) -> bool {
+    let (Some(data), Some(home)) = (
+        crate::platform::paths::data_home(),
+        crate::platform::paths::home_dir(),
+    ) else {
+        return false;
+    };
+    let started =
+        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(pid));
+    if !crate::control::launch_account::note_of(&data, pid, started).is_some_and(|n| n.plugin) {
+        return false;
+    }
+    let ours = crate::agents::asks::plugin_dir_under(&home.to_string_lossy());
+    crate::agents::plugin_envs().into_iter().all(|var| {
+        !matches!(
+            crate::platform::proc::proc_env_var(pid, var),
+            crate::platform::proc::EnvRead::Value(v) if crate::agents::asks::dirs_have(&v, &ours)
+        )
+    })
 }

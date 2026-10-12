@@ -1722,6 +1722,14 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
             HookOff::Launcher,
             copy_core::copy_text("beAsk.manual.offLauncher", &[]),
         ),
+        (
+            HookOff::Policy,
+            copy_core::copy_text("beAsk.manual.offPolicy", &[]),
+        ),
+        (
+            HookOff::Version,
+            copy_core::copy_text("beAsk.manual.offVersion", &[]),
+        ),
     ];
     let mut seen = Vec::new();
     for (off, said) in cases {
@@ -1730,13 +1738,92 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         assert_eq!(v["needs"]["manualText"], serde_json::json!(said), "{off:?}");
         seen.push(said);
     }
+    seen.sort();
     seen.dedup();
-    assert_eq!(seen.len(), 3, "三种原因三句不同的话");
+    assert_eq!(seen.len(), 5, "五种原因五句不同的话");
     let on = facts_with(None);
     let _ = std::fs::remove_dir_all(&home);
     assert_eq!(on["answerOff"], serde_json::Value::Null);
     assert_eq!(
         on["needs"]["manualText"],
         serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]))
+    );
+}
+
+/// 换了启动器那一支：ccm 给那个进程留的便条说「走的是环境那一路」，而持着会话的进程环境里没有我们那个插件目录
+/// （启动器把环境清掉了）⇒ `answerOff` 写明启动器没把环境传下去；带着那个目录 ⇒ 接上了（`null`）。按进程的实际环境判，不按声明。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_whose_launcher_dropped_the_environment_says_so() {
+    let home = scratch("answer-env-lost");
+    let sid = "cccccccc-1111-2222-3333-666666666666";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let data = crate::platform::paths::data_home().expect("测试档有数据目录");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let ours = crate::agents::asks::plugin_dir_under(
+        &crate::platform::paths::home_dir()
+            .expect("测试档有家目录")
+            .to_string_lossy(),
+    );
+    let var = crate::agents::claudecode::asks::PLUGIN_ENV;
+    let facts_with = |dirs: Option<String>| {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30");
+        cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
+        match &dirs {
+            Some(v) => cmd.env(var, v),
+            None => cmd.env_remove(var),
+        };
+        let mut c = cmd.spawn().unwrap();
+        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
+        let until = std::time::Instant::now() + guard_core::wall::CEILING;
+        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sleep\0"))
+            && std::time::Instant::now() < until
+        {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let now = crate::common::time::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        crate::control::launch_account::leave_plugin_note(&own, c.id(), None, now + 1).unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
+        let body = format!(
+            r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
+            c.id()
+        );
+        let pf = pids.join(format!("{}.json", c.id()));
+        std::fs::write(&pf, body).unwrap();
+        let v = answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": path }),
+            &Default::default(),
+        )
+        .unwrap();
+        let _ = c.kill();
+        let _ = c.wait();
+        let _ = std::fs::remove_file(&pf);
+        v
+    };
+    let lost = facts_with(None);
+    let mine = facts_with(Some(format!("/u/mine:{ours}")));
+    let _ = std::fs::remove_dir_all(&home);
+    let said = copy_core::copy_text("beAsk.manual.offEnvLost", &[]);
+    assert_eq!(lost["answerOff"], serde_json::json!(said));
+    assert_eq!(lost["needs"]["manualText"], serde_json::json!(said));
+    assert_eq!(
+        mine["answerOff"],
+        serde_json::Value::Null,
+        "带着我们的目录 ⇒ 接上了"
     );
 }
