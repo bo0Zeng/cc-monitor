@@ -1237,9 +1237,26 @@ type RotTryLaneSeg = { from: number, to: number,
  */
 kind: string, left?: number, reset: boolean, };
 type RotTryRow = { account: string, score?: number, why: string, fromTemp: boolean, ok: boolean, };
-type RotTryTimeline = { uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, };
+type RotTrySwitch = { at: number, account: string, };
+type RotTryTimeline = { 
+/**
+ * 将来每次换到别的号（时间轴上方那几个「16:07 work」）。
+ */
+switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, };
 type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, guessed: boolean, skipped: Array<string>, };
-type RotationTryReply = { now: number, decision: RotTryDecision, timeline: RotTryTimeline, };
+type RotationTryReply = { now: number, 
+/**
+ * 这份策略的名字 · 下拉里那一行灰字（照 `lang`）。
+ */
+name: string, line: string, 
+/**
+ * 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
+ */
+source?: string, 
+/**
+ * 试跑「现在用」碰上用不了：几点恢复（说不出 ⇒ `null`）；这时 `decision` 是不换的那一判。
+ */
+useNowRefused?: number | null, decision: RotTryDecision, timeline: RotTryTimeline, };
 type RotationTryReq = { 
 /**
  * 一份策略文件的原文（头 ＋ 代码）。
@@ -1265,6 +1282,14 @@ temp: Array<string>,
  * 往后推几小时（1–48，缺 ⇒ 12）。
  */
 hours?: number, 
+/**
+ * 试跑「现在用这个号」：能用 ⇒ 判的是放进临时条目最前、换过去之后的那一判；用不了 ⇒ `useNowRefused` 带几点恢复。
+ */
+useNow?: string, 
+/**
+ * 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
+ */
+lang?: string, 
 /**
  * 哪一家（缺 ⇒ 有账号库的那一家）。
  */

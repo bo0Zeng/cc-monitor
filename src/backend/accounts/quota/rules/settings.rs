@@ -114,13 +114,6 @@ pub(crate) struct Rules {
 }
 
 impl Rules {
-    pub(crate) fn utc(s: Settings) -> Self {
-        Self {
-            s,
-            tz: crate::Tz::default(),
-        }
-    }
-
     /// 号列表（照先后），`start` 那一行换成开会话的号；重复的只留头一个。
     pub(crate) fn list(&self, start: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();

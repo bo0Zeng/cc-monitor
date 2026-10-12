@@ -73,6 +73,15 @@ fn used(d: &Decision) -> &str {
     }
 }
 
+/// 什么都不给的策略（所有号同分 ⇒ 完全按列表）。
+struct NoScores;
+
+impl Score for NoScores {
+    fn score(&self, _: &Ctx<'_>) -> Result<Scored, crate::accounts::quota::strategy::Fail> {
+        Ok(Scored::default())
+    }
+}
+
 /// 固定的分（判据用的假策略）。
 struct Fixed(Vec<(&'static str, f64)>);
 
@@ -90,7 +99,7 @@ impl Score for Fixed {
 }
 
 fn run(s: &Settings, sigma: &Sigma, f: &[Acct], t: u64) -> Decision {
-    decide(sigma, f, &Rules::utc(s.clone()), &NoScores, t, &[])
+    decide(sigma, f, &utc(s.clone()), &NoScores, t, &[])
 }
 
 // ── #1–#5 候选次序 ───────────────────────────────────────────────────────────
@@ -116,7 +125,7 @@ fn s03_scores_override_the_list_and_missing_counts_as_zero() {
     let d = decide(
         &sig("A", &[]),
         &f,
-        &Rules::utc(base()),
+        &utc(base()),
         &Fixed(vec![("C", 5.0)]),
         T,
         &[],
@@ -130,7 +139,7 @@ fn s04_equal_scores_fall_back_to_the_list() {
     let d = decide(
         &sig("A", &[]),
         &f,
-        &Rules::utc(base()),
+        &utc(base()),
         &Fixed(vec![("B", 3.0), ("C", 3.0)]),
         T,
         &[],
@@ -145,7 +154,7 @@ fn s05_a_broken_strategy_counts_as_no_scores_and_says_so() {
         .replace("#{ scores: #{} }", "loop { }");
     let file = crate::accounts::quota::rules::script::parse(&src).expect("编得过");
     let f = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
-    let d = decide(&sig("A", &[]), &f, &Rules::utc(base()), &file, T, &[]);
+    let d = decide(&sig("A", &[]), &f, &utc(base()), &file, T, &[]);
     assert_eq!(used(&d), "B");
     let e = d.strategy_error.expect("带 strategyError");
     assert_eq!(
@@ -406,13 +415,13 @@ fn s20_a_zero_percent_segment_skips_the_account_until_it_ends() {
 #[test]
 fn s21_use_now_on_an_unusable_account_changes_nothing_and_says_when() {
     let f = [acct("A", 10.0), acct("B", 90.0), acct("C", 10.0)];
-    let r = use_now(&sig("A", &[]), &f, &Rules::utc(base()), &NoScores, T, "B");
+    let r = use_now(&sig("A", &[]), &f, &utc(base()), &NoScores, T, "B");
     assert_eq!(
         r.err(),
         Some(Some(T + 3 * 3600 + 17)),
         "用不了 ⇒ 回恢复时刻（窗口重置）"
     );
-    let d = use_now(&sig("A", &[]), &f, &Rules::utc(base()), &NoScores, T, "C").expect("能用");
+    let d = use_now(&sig("A", &[]), &f, &utc(base()), &NoScores, T, "C").expect("能用");
     assert_eq!(
         (used(&d), d.sigma.temp.clone()),
         ("C", vec!["C".to_string()])
@@ -439,7 +448,7 @@ fn s23_simulation_stops_at_the_event_cap() {
     let tl = simulate(
         &sig("A", &[]),
         &[a, acct("B", 10.0), acct("C", 10.0)],
-        &Rules::utc(s),
+        &utc(s),
         &NoScores,
         T,
         T + 30 * 86_400,
@@ -462,7 +471,7 @@ fn s27_a_refused_send_picks_the_next_account_in_the_same_send() {
     let d = decide(
         &sig("B", &[]),
         &f,
-        &Rules::utc(base()),
+        &utc(base()),
         &NoScores,
         T,
         &["B".to_string()],
@@ -471,7 +480,7 @@ fn s27_a_refused_send_picks_the_next_account_in_the_same_send() {
     let d = decide(
         &sig("B", &[]),
         &f,
-        &Rules::utc(base()),
+        &utc(base()),
         &NoScores,
         T,
         &["B".to_string(), "A".to_string()],
@@ -521,7 +530,7 @@ fn s25_a_rising_score_alone_does_not_switch_back() {
     let mut a = acct("A", 10.0);
     a.resets = [Some(T + 40 * MIN), None];
     let f = [a, acct("B", 10.0), acct("C", 10.0)];
-    let rules = Rules::utc(s);
+    let rules = utc(s);
     let d = decide(&sig("B", &[]), &f, &rules, &Rising, T + 21 * MIN, &[]);
     assert_eq!(d.order[0].account, "A", "t+20 起 A 排到 B 前面");
     assert_eq!(
@@ -703,7 +712,7 @@ fn consistent(
     label: &str,
     collided: &mut usize,
 ) -> usize {
-    let rules = Rules::utc(s.clone());
+    let rules = utc(s.clone());
     let mut f = f0.to_vec();
     let mut sigma = sigma0.clone();
     let mut t = T;
@@ -826,14 +835,7 @@ fn s26_next_change_at_keeps_simulation_exact_and_its_absence_falls_back_to_15_mi
             &mut collided,
         );
         // 兜底：声明了分随时间变、又不交时刻 ⇒ 推演里节点之间至多隔 15 分钟（多一秒是向上取整）。
-        let tl = simulate(
-            &sigma,
-            &f,
-            &Rules::utc(s.clone()),
-            &without,
-            T,
-            T + 12 * 3600,
-        );
+        let tl = simulate(&sigma, &f, &utc(s.clone()), &without, T, T + 12 * 3600);
         let gap = tl.nodes.windows(2).map(|w| w[1] - w[0]).max().unwrap_or(0);
         assert!(
             gap <= 15 * 60 + 1,
@@ -856,4 +858,12 @@ fn shipped(name: &str) -> std::path::PathBuf {
     crate::guard_support::repo_root()
         .join("src/shared/rotation/strategies")
         .join(name)
+}
+
+/// 设置 ＋ UTC。
+fn utc(s: Settings) -> Rules {
+    Rules {
+        s,
+        tz: crate::Tz::default(),
+    }
 }

@@ -5,4 +5,16 @@ import type { RotTryTimeline } from "./RotTryTimeline";
 /**
  * `rotation-try` 的应答。
  */
-export type RotationTryReply = { now: number, decision: RotTryDecision, timeline: RotTryTimeline, };
+export type RotationTryReply = { now: number, 
+/**
+ * 这份策略的名字 · 下拉里那一行灰字（照 `lang`）。
+ */
+name: string, line: string, 
+/**
+ * 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
+ */
+source?: string, 
+/**
+ * 试跑「现在用」碰上用不了：几点恢复（说不出 ⇒ `null`）；这时 `decision` 是不换的那一判。
+ */
+useNowRefused?: number | null, decision: RotTryDecision, timeline: RotTryTimeline, };

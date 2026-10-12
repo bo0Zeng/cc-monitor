@@ -66,8 +66,6 @@ pub(crate) const FORMAT: u32 = 5;
 /// 一份读懂了的策略文件：头 ＋ 编好的代码。
 pub(crate) struct File {
     pub(crate) head: Head,
-    /// 头后面那一段原文（存设置时原样接回去）。
-    pub(crate) code: String,
     ast: AST,
 }
 
@@ -140,11 +138,7 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
             "the code has no `fn score(ctx)`",
         ));
     }
-    Ok(File {
-        head,
-        code: code.to_string(),
-        ast,
-    })
+    Ok(File { head, ast })
 }
 
 /// ★ 换掉头那一段、代码原样接回去（存设置那一下）。

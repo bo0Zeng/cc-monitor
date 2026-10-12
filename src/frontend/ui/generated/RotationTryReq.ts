@@ -30,6 +30,14 @@ temp: Array<string>,
  */
 hours?: number, 
 /**
+ * 试跑「现在用这个号」：能用 ⇒ 判的是放进临时条目最前、换过去之后的那一判；用不了 ⇒ `useNowRefused` 带几点恢复。
+ */
+useNow?: string, 
+/**
+ * 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
+ */
+lang?: string, 
+/**
  * 哪一家（缺 ⇒ 有账号库的那一家）。
  */
 agent?: string, };

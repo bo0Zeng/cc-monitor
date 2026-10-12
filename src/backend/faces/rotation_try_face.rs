@@ -35,6 +35,14 @@ pub(crate) struct RotationTryReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) hours: Option<u8>,
+    /// 试跑「现在用这个号」：能用 ⇒ 判的是放进临时条目最前、换过去之后的那一判；用不了 ⇒ `useNowRefused` 带几点恢复。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) use_now: Option<String>,
+    /// 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) lang: Option<String>,
     /// 哪一家（缺 ⇒ 有账号库的那一家）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -133,12 +141,25 @@ pub(crate) struct RotTryLane {
     pub(crate) segs: Vec<RotTryLaneSeg>,
 }
 
+/// 一次换号。
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RotTrySwitch {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) at: u64,
+    pub(crate) account: String,
+}
+
 /// 推演。
 #[derive(Debug, PartialEq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotTryTimeline {
+    /// 将来每次换到别的号（时间轴上方那几个「16:07 work」）。
+    pub(crate) switches: Vec<RotTrySwitch>,
     pub(crate) uses: Vec<RotTryUse>,
     pub(crate) lanes: Vec<RotTryLane>,
     pub(crate) truncated: bool,
@@ -152,6 +173,17 @@ pub(crate) struct RotTryTimeline {
 pub(crate) struct RotationTryReply {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) now: u64,
+    /// 这份策略的名字 · 下拉里那一行灰字（照 `lang`）。
+    pub(crate) name: String,
+    pub(crate) line: String,
+    /// 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) source: Option<String>,
+    /// 试跑「现在用」碰上用不了：几点恢复（说不出 ⇒ `null`）；这时 `decision` 是不换的那一判。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) use_now_refused: Option<Option<u64>>,
     pub(crate) decision: RotTryDecision,
     pub(crate) timeline: RotTryTimeline,
 }
@@ -249,7 +281,28 @@ pub(crate) fn try_with(
         temp: req.temp.clone(),
         since: Default::default(),
     };
-    let d = decide::decide(&sigma, facts, &rules, &file, now, &[]);
+    let (d, use_now_refused) = match req.use_now.as_deref() {
+        Some(a) => match decide::use_now(&sigma, facts, &rules, &file, now, a) {
+            Ok(d) => (d, None),
+            Err(at) => (
+                decide::decide(&sigma, facts, &rules, &file, now, &[]),
+                Some(at),
+            ),
+        },
+        None => (decide::decide(&sigma, facts, &rules, &file, now, &[]), None),
+    };
+    let source = match &req.settings {
+        Some(s) => {
+            let mut head = file.head.clone();
+            head.settings = s.clone();
+            Some(
+                script::with_head(&req.source, &head)
+                    .map_err(|f| RotationTryErr::BadStrategy(f.msg))?,
+            )
+        }
+        None => None,
+    };
+    let en = req.lang.as_deref() == Some("en");
     let hours = u64::from(req.hours.unwrap_or(12).clamp(1, 48));
     let budget = script::Budgeted::new(&file);
     let tl = simulate::simulate(&sigma, facts, &rules, &budget, now, now + hours * 3600);
@@ -259,6 +312,10 @@ pub(crate) fn try_with(
     };
     Ok(RotationTryReply {
         now,
+        name: file.head.name.pick(en).to_string(),
+        line: file.head.line.pick(en).to_string(),
+        source,
+        use_now_refused,
         decision: RotTryDecision {
             pick,
             hold_until,
@@ -281,6 +338,11 @@ pub(crate) fn try_with(
             strategy_error: d.strategy_error.as_ref().map(|e| e.msg.clone()),
         },
         timeline: RotTryTimeline {
+            switches: tl
+                .switches()
+                .into_iter()
+                .map(|(at, account)| RotTrySwitch { at, account })
+                .collect(),
             uses: tl
                 .uses
                 .iter()

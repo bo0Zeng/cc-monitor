@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::accounts::quota::rules::decide::{decide, Ctx, CtxAcct, Pick, Score, Sigma};
-use crate::accounts::quota::rules::settings::Rules;
+use crate::accounts::quota::rules::settings::{Rules, Settings};
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::strategy::FailKind;
 
@@ -248,7 +248,7 @@ fn the_backend_knows_no_shipped_strategy_by_name() {
             let d = decide(
                 &sigma,
                 &f,
-                &Rules::utc(file.head.settings.clone()),
+                &utc(file.head.settings.clone()),
                 &file,
                 4_000_000_000,
                 &[],
@@ -264,5 +264,13 @@ fn the_backend_knows_no_shipped_strategy_by_name() {
         let (a, b) = (run(&src), run(&other));
         assert_eq!(a, b);
         assert!(matches!(a.0, Pick::Use(_)));
+    }
+}
+
+/// 设置 ＋ UTC。
+fn utc(s: Settings) -> Rules {
+    Rules {
+        s,
+        tz: crate::Tz::default(),
     }
 }

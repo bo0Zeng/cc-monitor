@@ -26,15 +26,6 @@ pub(crate) trait Score {
     }
 }
 
-/// 什么都不给的策略（所有号同分 ⇒ 完全按列表）。
-pub(crate) struct NoScores;
-
-impl Score for NoScores {
-    fn score(&self, _: &Ctx<'_>) -> Result<Scored, super::super::strategy::Fail> {
-        Ok(Scored::default())
-    }
-}
-
 /// 交给策略的那一份（算法 §7）。
 #[derive(Debug, Clone)]
 pub(crate) struct Ctx<'a> {

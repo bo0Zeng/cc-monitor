@@ -12,9 +12,7 @@ pub(crate) mod settings;
 pub(crate) mod simulate;
 pub(crate) mod standing;
 
-/// 两个窗口：下标 0 ＝ 5 小时 · 1 ＝ 7 天。
-pub(crate) const WINDOWS: [&str; 2] = ["5h", "7d"];
-/// 窗口长度（秒）。
+/// 窗口长度（秒）：下标 0 ＝ 5 小时 · 1 ＝ 7 天。
 pub(crate) const WINDOW_SECS: [u64; 2] = [5 * 3600, 7 * 86_400];
 
 /// 判与推演看的那一份事实（一个号）：只有数，没有字。

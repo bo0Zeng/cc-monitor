@@ -64,6 +64,13 @@ fn it_decides_and_simulates_from_the_given_facts() {
     assert_eq!(first_switch.from, NOW + 120, "{:?}", got.timeline.uses);
     assert_eq!(
         got.timeline
+            .switches
+            .first()
+            .map(|s| (s.at, s.account.as_str())),
+        Some((NOW + 120, "team"))
+    );
+    assert_eq!(
+        got.timeline
             .lanes
             .iter()
             .map(|l| l.account.as_str())
@@ -71,6 +78,46 @@ fn it_decides_and_simulates_from_the_given_facts() {
         ["work", "team", "lab"]
     );
     assert_eq!(got.timeline.lanes[2].segs[0].kind, "atCap");
+    assert_eq!(
+        (got.name.as_str(), got.use_now_refused),
+        ("照列表先后", None)
+    );
+    let src = got.source.expect("给了设置 ⇒ 回换了头的原文");
+    assert_eq!(
+        crate::accounts::quota::rules::script::parse(&src)
+            .expect("读得回")
+            .head
+            .settings,
+        settings()
+    );
+}
+
+/// ★ 试跑「现在用」：能用 ⇒ 换过去、进临时条目最前；用不了 ⇒ 不换、回几点恢复。
+#[test]
+fn use_now_switches_or_says_when() {
+    let facts = [
+        a("work", 50.0, Some(0.5)),
+        a("team", 10.0, None),
+        a("lab", 95.0, None),
+    ];
+    let req = |who: &str| RotationTryReq {
+        source: source(),
+        settings: Some(settings()),
+        use_now: Some(who.into()),
+        ..Default::default()
+    };
+    let got = try_with(&req("team"), &facts, NOW).expect("ok");
+    assert_eq!(
+        (got.decision.pick.as_deref(), got.decision.temp.clone()),
+        (Some("team"), vec!["team".to_string()])
+    );
+    let got = try_with(&req("lab"), &facts, NOW).expect("ok");
+    assert_eq!(
+        got.decision.pick.as_deref(),
+        Some("work"),
+        "lab 用不了 ⇒ 不换"
+    );
+    assert_eq!(got.use_now_refused, Some(Some(NOW + 4 * 3600)));
 }
 
 /// ★ 读不懂的原文 ⇒ `bad_strategy`，带第几行。

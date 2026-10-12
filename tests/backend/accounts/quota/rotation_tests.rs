@@ -795,7 +795,7 @@ fn an_unreadable_file_keeps_the_last_good_book_and_says_so() {
 }
 
 /// ★ 第一版会话自定义里的 `when: {threshold: {n}}`（到 n% 就换，`cap["*"]` 出现之前的写法）⇒ 升上来每一行与 `acctInit`
-/// 的 `line` 都是 n；`cap` 里点了名的号仍按它自己的。真机上 10-11 升第二版时这一格被丢了（只认 `cap["*"]`），
+/// 的 `line` 都是 n；`cap` 里点了名的号仍按它自己的。真机上 10-11 升第二版时这一格被丢过（只认 `cap["*"]`），
 /// cap 没点名的号全变成用满才换。
 #[test]
 fn a_v1_threshold_becomes_the_default_line_of_every_row() {
