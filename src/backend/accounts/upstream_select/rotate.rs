@@ -759,6 +759,44 @@ impl Hop {
         }
     }
 
+    /// ★ 这台这一家每个号此刻的事实（`rotation-facts` 与以后的判 · 推演同用这一处；只读：不续令牌、不记）。
+    /// 号照账号库的先后。
+    pub(crate) fn facts(
+        &self,
+        agent: &str,
+        row: &dyn Fn(&str) -> Option<bool>,
+        now: u64,
+        tz: &crate::Tz,
+    ) -> Vec<crate::accounts::quota::facts::Fact> {
+        let lib = self.library();
+        let slot = slot_fn(agent);
+        let when = |t: u64| {
+            crate::common::time::fmt_at(
+                i64::try_from(t).unwrap_or(i64::MAX),
+                i64::try_from(now).unwrap_or(i64::MAX),
+                tz,
+            )
+        };
+        lib.accounts
+            .iter()
+            .map(|a| {
+                let o = self.quota.entry(agent, &a.id);
+                let rate = |name: &str| o.as_ref().and_then(|o| o.rate(name, now));
+                crate::accounts::quota::facts::fact_of(
+                    &a.id,
+                    o.as_ref().map(|o| &o.reading),
+                    o.as_ref().map(|o| o.seen_at),
+                    kind_with(row, &lib, &a.id),
+                    self.show_facts(agent, &lib, &a.id, row).login,
+                    now,
+                    &slot,
+                    &rate,
+                    &when,
+                )
+            })
+            .collect()
+    }
+
     /// 帧面「现在就换」：目标号此刻接不接得上（订阅号要真拿到令牌 —— 快过期就续，续不上照实报）。
     pub(crate) fn check_target(
         &self,

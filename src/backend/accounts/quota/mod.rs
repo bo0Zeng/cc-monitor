@@ -4,6 +4,7 @@
 //! 官方客户端报的用量（帧命令 `quota-probe`，读法同住适配层，[`crate::agents::usage_of`]）。
 
 pub(crate) mod decide;
+pub(crate) mod facts;
 pub(crate) mod ledger;
 pub(crate) mod name_words;
 pub(crate) mod nodes;

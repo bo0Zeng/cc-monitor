@@ -31314,6 +31314,48 @@
       "zh": "策略出错 · 照内置策略 1 排",
       "args": []
     },
+    "beRotation.fact.refused": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "被拒 · {at} 恢复",
+      "args": ["at"]
+    },
+    "beRotation.fact.refusedOpen": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "被拒",
+      "args": []
+    },
+    "beRotation.fact.overage": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "在用付费超额",
+      "args": []
+    },
+    "beRotation.fact.used": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用量已满 · {at} 重置",
+      "args": ["at"]
+    },
+    "beRotation.fact.usedOpen": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用量已满",
+      "args": []
+    },
+    "beRotation.fact.login": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "需重新登录",
+      "args": []
+    },
+    "beRotation.fact.key": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "这台没有这个号的 key",
+      "args": []
+    },
     "beRotation.blocked.stop": {
       "kind": "body",
       "role": "说明",

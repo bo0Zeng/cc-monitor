@@ -15,6 +15,7 @@ pub(crate) mod quota_rows; // `quota-read` 每号的 `rows`（额度每号几行
 pub mod read_face; // 只读查询的帧面宿主（8 条：history-* / accounts-*）—— 薄壳，本体在 observe/，住顶层的理由同 files/
 pub mod resync_face;
 pub mod rotation_face; // 换号那一族的帧面宿主：账号库读成上游选择换号要的那几格（两边只在这里接上）
+pub(crate) mod rotation_facts_face; // 帧面 `rotation-facts`（typed）：每个号此刻的事实，本体在 Hop::facts
 pub mod rotation_switch_face; // 「现在就换」：不重启换交给 rotation_face、重启换交给 session-restart（只有这一条够得着 tmux）
 pub(crate) mod search_face; // 全文搜索那两条（typed）：`history-search` · `history-search-merge`；本体在 observe/search_query.rs
 pub mod session_batch_face;
