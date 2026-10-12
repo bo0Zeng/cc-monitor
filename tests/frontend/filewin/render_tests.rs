@@ -32,7 +32,7 @@ fn real_gpus_come_first_and_software_rendering_last() {
         "有 DX12 真显卡就用它"
     );
     assert_eq!(
-        choose(&[warp.clone()]),
+        choose(std::slice::from_ref(&warp)),
         Some(0),
         "只剩 WARP：开得了，只是慢"
     );
