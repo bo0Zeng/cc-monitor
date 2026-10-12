@@ -367,7 +367,8 @@ fn the_products_match_the_golden() {
     let l = &g["terminals-list"];
     let (rows, odd) = parse_rows(l["panes"].as_str().unwrap());
     let clients = parse_clients(l["clients"].as_str().unwrap());
-    let who = crate::control::gate::requester_of(&l["request"]).unwrap();
+    let asked: TerminalsListReq = req(&l["request"]).expect("金样的请求样例解得出");
+    let who = crate::control::gate::requester(asked.client.as_deref()).unwrap();
     let got = list_reply(&rows, &clients, !odd, who.as_deref());
     assert_eq!(
         got,

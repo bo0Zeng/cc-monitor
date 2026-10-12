@@ -10,12 +10,6 @@ use std::collections::BTreeMap;
 /// 「最近用过的目录」最多列几条。
 pub(crate) const RECENT_MAX: usize = 8;
 
-fn agent_of(args: &Value) -> &str {
-    args.get("agent")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-}
-
 /// `session-new`：起一个新会话（全产品一个框、一个请求）。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
 pub(crate) struct SessionNew;
 

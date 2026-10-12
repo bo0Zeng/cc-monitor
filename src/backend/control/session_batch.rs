@@ -446,12 +446,6 @@ pub(crate) struct Batch {
     pub(crate) models: std::collections::BTreeMap<String, String>,
 }
 
-pub(crate) fn str_of<'v>(o: &'v Map<String, Value>, k: &str) -> Result<&'v str, CmdErr> {
-    o.get(k)
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(&format!("missing string `{k}`")))
-}
-
 /// `sessions-start` 一项的入参。
 #[derive(Debug, Clone, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]

@@ -732,21 +732,13 @@ fn the_identity_door_reads_which_client_started_the_session() {
 /// 请求里的 `client`：没给 ⇒ 没报；给了就得合形状（会进 tmux 会话选项），不合 ⇒ `bad_args`。
 #[test]
 fn the_requester_is_optional_and_shaped() {
-    assert_eq!(requester_of(&serde_json::json!({})), Ok(None));
-    assert_eq!(
-        requester_of(&serde_json::json!({ "client": "mobile" })),
-        Ok(Some("mobile".into()))
-    );
-    for bad in [
-        serde_json::json!({ "client": "" }),
-        serde_json::json!({ "client": "Mobile" }),
-        serde_json::json!({ "client": "-x" }),
-        serde_json::json!({ "client": "a b" }),
-        serde_json::json!({ "client": 1 }),
-        serde_json::json!({ "client": "x".repeat(33) }),
-    ] {
+    // 类型不对（`client: 1`）在解入参那一步就回 `bad_args`（`inbound_tests::the_terminal_trio_refuses_fields_it_does_not_use`）。
+    assert_eq!(requester(None), Ok(None));
+    assert_eq!(requester(Some("mobile")), Ok(Some("mobile".into())));
+    let long = "x".repeat(33);
+    for bad in ["", "Mobile", "-x", "a b", long.as_str()] {
         assert_eq!(
-            requester_of(&bad).map_err(|(c, _)| c),
+            requester(Some(bad)).map_err(|(c, _)| c),
             Err("bad_args"),
             "{bad}"
         );
