@@ -47,8 +47,8 @@ fn a_backend_that_dies_after_hello_every_round_still_backs_off() {
     assert_eq!(b.before_wait(false), RECONNECT_MIN, "叫醒过 ⇒ 从下界来");
 }
 
-/// 两端同一份阈值：退避的数只在本文件定义一次；桌面（monitor `stream_source/backoff.rs`）只转用、不另写数；
-/// 手机（嵌的 Rust 核心 `src/mobile/core-rs`）经本 crate 的 `Feed` 跑循环；Kotlin 那一侧一个退避的数都没有。
+/// 两端同一份阈值：退避的数只在本文件定义一次；用它的循环全仓只一条（`feed.rs`，monitor `one_loop_guard` 守着），
+/// 手机（嵌的 Rust 核心 `src/mobile/core-rs`）与桌面（monitor `stream_source/run.rs`）都经本 crate 的 `Feed` 跑；Kotlin 那一侧一个退避的数都没有。
 #[test]
 fn both_ends_take_the_backoff_from_here() {
     let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
@@ -63,28 +63,16 @@ fn both_ends_take_the_backoff_from_here() {
             "{name} 在本 crate 里不是恰好定义一次"
         );
     }
-    let desk =
-        guard_core::production_code(&read("src/frontend/shell/src/stream_source/backoff.rs"));
-    assert!(
-        desk.contains("pub(crate) use resident_client::backoff::*;"),
-        "桌面那一份不再转用本 crate"
-    );
-    for own in ["const ", "Duration::from_secs", "fn "] {
+    for (who, rel) in [
+        ("桌面", "src/frontend/shell/src/stream_source/run.rs"),
+        ("手机核心", "src/mobile/core-rs/rust/resident.rs"),
+    ] {
+        let src = guard_core::production_code(&read(rel));
         assert!(
-            !desk.contains(own),
-            "桌面那一份自己又写了退避（`{own}`）：{desk}"
+            src.contains("resident_client::feed::") && src.contains("Feed::start("),
+            "{who}不再经本 crate 的 `Feed` 跑重连循环（{rel}）"
         );
     }
-    let run = guard_core::production_code(&read("src/frontend/shell/src/stream_source/run.rs"));
-    assert!(
-        run.contains("Backoff::new()"),
-        "桌面的重连循环不再经本 crate 的 `Backoff`"
-    );
-    let phone = read("src/mobile/core-rs/rust/resident.rs");
-    assert!(
-        phone.contains("resident_client::feed::") && phone.contains("Feed::start("),
-        "手机核心不再经本 crate 的 `Feed` 跑重连循环"
-    );
     // Kotlin 那一侧：从前那一份（`BackendFeed.Backoff` · `HEALTHY_MS`）的名字一个都不许回来；逐文件扫在 `LinkLayerLivesInTheCoreScanTest`，这里只看落地那一份。
     let kt = read("src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt");
     for name in ["class Backoff", "HEALTHY_MS", "MIN_HEALTHY"] {

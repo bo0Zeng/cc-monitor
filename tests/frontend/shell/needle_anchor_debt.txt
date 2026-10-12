@@ -47,7 +47,6 @@ tests/comms/inward/origin_tests.rs	params.contains("origin: crate::origin::Origi
 tests/comms/inward/origin_tests.rs	rest.find("fn "
 tests/frontend/shell/atomic_replace_registry_tests.rs	sec.contains("用户文件"
 tests/frontend/shell/atomic_replace_registry_tests.rs	sec.split("\n---"
-tests/frontend/shell/byte_cap_registry_tests.rs	body.contains("frame_tx.send(Ok(None))"
 tests/frontend/shell/byte_cap_registry_tests.rs	body.contains("warn!"
 tests/frontend/shell/byte_cap_registry_tests.rs	l.contains("=>"
 tests/frontend/shell/byte_cap_registry_tests.rs	l.contains("CappedLine::TooLong"

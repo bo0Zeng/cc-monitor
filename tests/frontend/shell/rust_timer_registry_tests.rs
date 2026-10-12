@@ -97,24 +97,17 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "resident-client/feed.rs",
         "attach_after_ensure",
         "wait-for-condition",
-        "手机那一侧接常驻流（`resident-client`）：`--resident-ensure` 之后小中继回 `absent` 时隔 200ms 再接，至多 30 次（≤6 s，次数与间隔同桌面 `retry_relay`，常量同一份）—— \
-             等的是**那台套接字上有人在听**这个一次性条件，接上即止，等不到就如实报「那台后端没在运行」。不是节拍器。",
+        "接那台常驻流（`resident-client`，桌面与手机同一条）：`--resident-ensure` 之后小中继回 `absent` 时隔 200ms 再接，至多 30 次（≤6 s）：\
+             远端起了一个脱离的常驻后端、后端**不等它绑上**（后端零定时器）⇒ 等的是**那台套接字上有人在听**这个一次性条件，接上即止，\
+             等不到就如实报「那台后端没在运行」、照退避再来；别的理由 ⇒ 当场停、不等。不是节拍器。",
     ),
     (
         "resident-client/feed.rs",
         "run",
         "wait-for-condition",
-        "手机那一侧一台的重连循环（`resident-client`）睡退避（2→30 s，活过 30 s 才清零；同桌面 `stream_source/run.rs` 那一份 `Backoff`）：\
-             只在流断了之后睡、被［重试］/ 回前台 / 换了一条 SSH 叫醒即止；要人动手的那几种不睡、只等叫醒。不是节拍器。",
-    ),
-    (
-        "src/remote_resident.rs",
-        "retry_relay",
-        "wait-for-condition",
-        "接那台常驻后端的小中继（`relay_once`，编排住 `retry_relay`）的 30×200ms（≤6 s）：远端 `--resident-ensure` 起了一个脱离的常驻后端、\
-             后端**不等它绑上**（后端零定时器）⇒ 中继回 `absent` 时这里等**那台套接字上有人在听**这个一次性条件（接上即止），\
-             有次数上限，等不到就如实报「那台后端没在运行」、交重连那一层；别的理由 ⇒ 当场停、不等。\
-             不是节拍器：只在接那台常驻后端的那一趟跑。",
+        "一台的重连循环（`resident-client`，桌面与手机同一条）睡退避（2→30 s 上限，活过 30 s 才清零）：\
+             只在一轮结束之后睡、被［重新连接］/ 回前台 / 换了一条 SSH / 机器页「起」叫醒即止；要人动手的那几种不睡、只等叫醒。\
+             ⚠ 外层循环确实无限，但**它等的是「下次重连时机」，不是节拍** —— 连上之后由读流阻塞驱动；断线才回到这里。不是节拍器。",
     ),
     (
         "src/dial_host.rs",
@@ -189,14 +182,6 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "snapshot_dispatcher",
         "wait-for-condition",
         "快照读失败时 `if attempt == 1 { sleep(1s) }` —— **只重试一次**。",
-    ),
-    (
-        "src/stream_source/run.rs",
-        "run",
-        "wait-for-condition",
-        "重连退避 `sleep(backoff)`，序列 2→4→8→16→**30 上限**。\
-             ⚠ 外层重连循环确实无限，但**它等的是「下次重连时机」，不是节拍** —— \
-             连上之后由 `stream_loop` 阻塞驱动；断线才回到这里。上限 30s 是明写的常量。",
     ),
     // `src/lib.rs` 那一行（`remote-bind-scan` 那条等标题的线程）随窗口标题那一套删了：lib.rs 从此零处。
     (

@@ -279,7 +279,7 @@ impl SuperviseHandle {
 ///
 /// `supervise` 判死的唯一事件源是 **stdout 读到 EOF**（头注逐字「这不是定时器，也不是轮询」）。
 /// 入方向通道要的是**读帧**。二者看起来在抢同一个 stdout —— **其实是同一个事件**：
-/// 「读帧一直读到流结束」就是 EOF。远端那条路正是这么干的（`stream_loop` 一边解帧一边靠断流判掉线）。
+/// 「读帧一直读到流结束」就是 EOF。远端那条路正是这么干的（重连循环 `resident_client::feed` 一边读帧一边靠断流判掉线）。
 /// ⇒ 不夺所有权，而是让调用方**替 supervise 把它读到底**：消费者返回 = 流结束 = 判死。
 ///
 /// # 缺省行为一个字节不变
@@ -1496,10 +1496,10 @@ impl StdioRoute {
 /// + `register(LOCAL_ORIGIN, …)`；其余帧丢弃；读到 EOF 返回 ——
 /// **返回就等于流结束，也就是 `supervise` 的判死信号**（与缺省那支 `io::copy → sink` 同一个事件）。
 ///
-/// # 复用边界（为什么不用 `stream_loop`）
+/// # 复用边界（为什么不用远端那一条）
 ///
-/// `stream_source::stream_loop` **不是泛型**：它吃 `&RemoteConfig` + `&tauri::AppHandle`，
-/// 还管重放 / 会话变更 / 连接状态 / hello 确认。本机没有那些。
+/// 远端那一条（重连循环 `resident_client::feed` ＋ 收事那一头 `stream_source::consume_remote`）管 ensure / 换装 / 退避 /
+/// 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
 /// `parse_frame(&str) -> Result<InboundFrame, Unread>` · `BackendHello::from_hello_frame(&InboundFrame)` ·
 /// `ParkedWriter::into_client(BackendHello)`。

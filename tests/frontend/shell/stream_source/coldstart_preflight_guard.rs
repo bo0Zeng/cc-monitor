@@ -91,15 +91,17 @@ fn the_memo_is_written_in_exactly_one_place() {
     );
 }
 
-/// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。
+/// ★ 失败路径必须抹记忆，而且**不止一处**（一轮没接上 + hello 身份不符）。
 #[test]
 fn every_failure_path_forgets_the_memo() {
     let prod = prod();
-    let n = prod.matches("forget_verified_build(&host_label)").count();
+    // 数调用点（定义那一行不算）：两处的入参写法不必一样（`&host_label` · `host_label`）。
+    let n = prod.matches("forget_verified_build(").count()
+        - prod.matches("fn forget_verified_build(").count();
     assert!(
         n >= 2,
         "生产段只有 {n} 处 `forget_verified_build` —— 该有两处：\n\
-             ① 跳过预检后**起流失败**（backend 被删/被换旧）；\n\
+             ① 一轮**没接上**（跳过预检之后 backend 被删/被换旧也在这一形里）；\n\
              ② 收到 hello 但 **build_id 不是期望值**（装的不是当前 build）。\n\
              少一处，那台机器就会一直跳预检、一直失败，永远等不到重新部署。"
     );

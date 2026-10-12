@@ -201,7 +201,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "monitor→backend",
         "tests/frontend/shell/remote_resident_tests.rs",
         "src/backend/stream/listen.rs",
-        "★**跨 crate 字面量对拍**：小中继「没人在听」那个理由词（`REFUSE_ABSENT`）monitor 与后端各声明一份，monitor 凭它判「等一会儿再接」还是「当场停」；\
+        "★**跨 crate 字面量对拍**：小中继「没人在听」那个理由词（`REFUSE_ABSENT`）客户端那一侧（`resident-client`，桌面与手机同一份）与后端各声明一份，重连循环凭它判「等一会儿再接」还是「当场停」；\
          漂了**不会报错** —— 刚起的那台后端还没绑上，会被当成接不上直接报失败 ⇒ 同时读两侧源码才验得了",
     ),
     (

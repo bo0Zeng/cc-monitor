@@ -12,7 +12,7 @@
 //! `turn_end` 注释写过逐帧刷 warn 的代价：噪声，且真正的坏帧淹没在里面）。
 //! 流结束（这本账被丢掉）时 [`Drop`] 出一行总账；两样都是 0 就不说。
 //!
-//! 三个读帧的地方：远端 `stream_source::stream_loop`（读任务数非 UTF-8、主循环数认不出）·
+//! 三个读帧的地方：远端 `stream_source::consume_remote`（只数认不出；非 UTF-8 由读流的重连循环 `resident_client::feed` 说）·
 //! 本机脱离载体 `local_backend_host::attach_stream` · 本机 stdio 载体 `local_backend` 的 stdout 读循环。
 //! 接线由 `tests/frontend/shell/frame_tally_tests.rs` 的判据按文件逐一钉住。
 

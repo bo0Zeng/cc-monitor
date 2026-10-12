@@ -9,15 +9,6 @@ fn hello(build: &str) -> String {
     )
 }
 
-/// hello 只读线上形状：是 hello ⇒ 那台报的 build（缺 ⇒ 空串，交本机后端判）；不是 hello ⇒ 不是我们的。
-/// 「换一次 · 只升不降」那张真值表随判定进了本机常驻后端（`tests/backend/control/deploy_plan_tests.rs::the_verdict_replaces_only_upward_and_only_once`）。
-#[test]
-fn the_hello_is_read_for_its_build_and_nothing_else() {
-    assert_eq!(hello_build(&hello("p4a-x")), Ok("p4a-x".to_string()));
-    assert_eq!(hello_build(r#"{"kind":"hello","v":1}"#), Ok(String::new()));
-    assert!(hello_build(r#"{"attach":"refused"}"#).is_err());
-}
-
 /// 本机常驻后端的答严格收：恰 `{action, older}`，`action` 只认 `replace` / `attach`（金样同 `IPC-PROTOCOL.md` 那一节）。
 #[test]
 fn the_verdict_answer_is_read_strictly() {
@@ -55,14 +46,14 @@ fn exec(stdout: &str, stderr: &str, code: Option<u32>) -> crate::stream_source::
     }
 }
 
-/// D2 `--resident-ensure` 的答：成了 ⇒ 端口；那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
-/// 带上那台原话，并归成 `Unsupported`（`run` 据此不再自动重连）；别的失败 ⇒ 那台原话原样；
-/// 老后端掉进流模式发 hello ⇒ 「太旧」（`Failed`：部署会把它换掉，照常重连）。四样都是失败，没有「回落」那一格。
+/// 一次性回话（`--resident-stop`，本机那一趟同读）：那台脱离不了（`unsupported`，非 unix）⇒ **明说**「远端只支持 Unix」、
+/// 带上那台原话，并归成 `Unsupported`；别的失败 ⇒ 那台原话原样；老后端掉进流模式发 hello ⇒ 「太旧」。都是失败，没有「回落」那一格。
+/// （`--resident-ensure` 那一趟由重连循环读，`resident-client` 的 `feed_tests.rs::the_ensure_answer_is_read_the_same_on_both_ends`。）
 /// 要求：「非 unix 远端（Windows 远端，不承诺）断开常驻时**明说**不支持，不静默」。
 #[test]
 fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back() {
     let ok = parse_answer(&exec(r#"{"pid":7}"#, "", Some(0)), "devbox").unwrap();
-    assert_eq!(parse_ensured(&ok), Ok(()));
+    assert_eq!(ok, serde_json::json!({"pid": 7}));
     // 那台的失败信封只有一种（`{code, message, detail, data?}`）：`detail` 是那台写好的一整份复制详情，原样转交（补「本机」一行）。
     use copy_core::detail::{Detail, Label};
     let wrote = |code: &str, raw: &str| {
@@ -138,26 +129,25 @@ fn the_ensure_answer_names_a_non_unix_remote_as_unsupported_and_never_falls_back
         parse_answer(&exec(&hello("p1a-old"), "", None), "devbox"),
         Err(AttachErr::Failed(copy_core::backend_old("devbox").into()))
     );
-    // 已有人在听 ⇒ pid 可能是 null；不是对象才算认不得。
-    assert_eq!(parse_ensured(&serde_json::json!({"pid":null})), Ok(()));
-    assert!(parse_ensured(&serde_json::json!("7")).is_err());
 }
 
-/// 远端那条流的 attach 行：「我要流」＋ 时区 ＋ 声明（`session_added.pid` 去掉）；没有旗标、没有钥匙。本机远端同一处拼（`local_backend_host::attach_line`）。
+/// 远端那条流的 attach 行：「我要流」＋ 时区 ＋ 声明（`session_added.pid` 去掉）；没有旗标、没有钥匙。本机远端同一处拼（`local_backend_host::attach_line`）；
+/// 远端那一行由重连循环（`resident-client` 的 `feed.rs`，两端同一条）带上声明。
 #[test]
 fn the_attach_line_asks_for_the_stream_with_the_remote_declaration() {
-    let l =
-        crate::local_backend_host::attach_line(Some("Asia/Shanghai"), Some(&remote_stream_view()));
+    let l = crate::local_backend_host::attach_line(
+        Some("Asia/Shanghai"),
+        Some(&resident_client::attach::remote_stream_view()),
+    );
     assert!(l.ends_with('\n'));
     let v: serde_json::Value = serde_json::from_str(l.trim()).unwrap();
     assert_eq!(
         v,
         serde_json::json!({"attach": true, "tz": "Asia/Shanghai", "view": {"omit": {"session_added": ["pid"]}}})
     );
-    let src = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/remote_resident.rs"
-    ));
-    guard_core::find_pinned(&src, "Some(&remote_stream_view())")
+    let src =
+        guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"));
+    guard_core::find_pinned(&src, "Some(&attach::remote_stream_view())")
         .unwrap_or_else(|e| panic!("远端那一行没带声明：{e}"));
 }
 
@@ -254,9 +244,13 @@ fn the_one_shot_deadline_outlasts_the_remote_stop() {
     );
 }
 
-/// 小中继的第一行：拒绝那一形读出理由，别的（hello）照 hello 读。理由词与后端那一侧逐字相同（跨 crate 字面量）。
+// 中继 `absent` 时等着再接的编排 · 「没带字节就不问换不换」随重连循环住 `resident-client`：
+//   `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · `gate_tests.rs::without_an_own_identity_nothing_is_asked_and_the_link_goes_ahead`。
+
+/// 小中继的第一行（读法住 `resident-client`，两端同一份）：拒绝那一形读出理由，别的（hello）照 hello 读。理由词与后端那一侧逐字相同（跨 crate 字面量）。
 #[test]
 fn the_relay_refusal_line_is_read_and_its_words_match_the_backend() {
+    use resident_client::attach::{relay_refusal, RELAY_ABSENT};
     assert_eq!(
         relay_refusal(r#"{"attach":"refused","reason":"absent"}"#).as_deref(),
         Some(RELAY_ABSENT)
@@ -265,139 +259,15 @@ fn the_relay_refusal_line_is_read_and_its_words_match_the_backend() {
         relay_refusal(r#"{"attach":"refused","reason":"unreachable"}"#).as_deref(),
         Some("unreachable")
     );
-    assert_eq!(relay_refusal(&hello("p1")), None);
+    assert_eq!(
+        relay_refusal(r#"{"kind":"hello","v":1,"build_id":"p1"}"#),
+        None
+    );
     let be = include_str!("../../../src/backend/stream/listen.rs");
     assert!(
         be.contains(&format!(
             "pub const REFUSE_ABSENT: &str = \"{RELAY_ABSENT}\";"
         )),
         "后端那一侧「没人在听」的理由词与这里不同了"
-    );
-}
-
-/// 中继的编排（替身接中继）：① `absent`（刚起的还没绑上）两次、第三次接上 ⇒ 等着再接、恰好 3 次、接成；
-/// ② 别的理由 ⇒ 接 1 次就停、那一句说「断开 · 需重启」；③ 一直 `absent` ⇒ 封顶次数后说「后端没在运行」。
-#[tokio::test]
-async fn the_relay_waits_only_while_nobody_listens() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    let tries = AtomicUsize::new(0);
-    let got = retry_relay(
-        || {
-            let n = tries.fetch_add(1, Ordering::SeqCst);
-            async move {
-                Ok::<_, AttachErr>(if n < 2 {
-                    Err(RELAY_ABSENT.to_string())
-                } else {
-                    Ok(n)
-                })
-            }
-        },
-        "devbox",
-        4,
-        std::time::Duration::from_millis(1),
-    )
-    .await;
-    assert_eq!((got, tries.load(Ordering::SeqCst)), (Ok(2), 3));
-
-    let tries = AtomicUsize::new(0);
-    let got = retry_relay(
-        || {
-            tries.fetch_add(1, Ordering::SeqCst);
-            async { Ok::<Result<(), String>, AttachErr>(Err("unreachable".to_string())) }
-        },
-        "devbox",
-        4,
-        std::time::Duration::from_millis(1),
-    )
-    .await;
-    assert_eq!(tries.load(Ordering::SeqCst), 1, "再接也一样的理由还在重接");
-    assert_eq!(
-        got.map_err(AttachErr::said).map_err(|s| s.said),
-        Err(copy_text(
-            "rsRemoteResident.relay.unreachable",
-            &[("machine", "devbox")]
-        ))
-    );
-
-    let tries = AtomicUsize::new(0);
-    let got = retry_relay(
-        || {
-            tries.fetch_add(1, Ordering::SeqCst);
-            async { Ok::<Result<(), String>, AttachErr>(Err(RELAY_ABSENT.to_string())) }
-        },
-        "devbox",
-        4,
-        std::time::Duration::from_millis(1),
-    )
-    .await;
-    assert_eq!(tries.load(Ordering::SeqCst), 4);
-    assert_eq!(
-        got.map_err(AttachErr::said).map_err(|s| s.said),
-        Err(copy_text(
-            "rsRemoteResident.relay.absent",
-            &[("machine", "devbox")]
-        ))
-    );
-}
-
-/// ④ 手上没带后端字节（「我这一版」是 `None`）⇒ `resident-verdict` **不问**、照接、不判旧（换装无从发起）；
-/// 有值 ⇒ 照问、照它答的做。问的那一方是个假后端：记下被问了几次、问的是哪一版。
-#[tokio::test]
-async fn without_own_bytes_the_resident_verdict_is_not_asked() {
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use std::sync::Mutex;
-    let asked = AtomicUsize::new(0);
-    let with = Mutex::new(String::new());
-    let fake = |mine: &'static str| {
-        asked.fetch_add(1, Ordering::SeqCst);
-        *with.lock().unwrap() = mine.to_string();
-        async {
-            Ok(Verdict {
-                replace: true,
-                older: true,
-            })
-        }
-    };
-    let none = verdict_for(None, fake).await;
-    assert_eq!(
-        none,
-        Ok(Verdict {
-            replace: false,
-            older: false
-        }),
-        "没带字节却判了换 / 判了旧"
-    );
-    assert_eq!(
-        asked.load(Ordering::SeqCst),
-        0,
-        "没带字节却去问了 resident-verdict"
-    );
-
-    let fake = |mine: &'static str| {
-        asked.fetch_add(1, Ordering::SeqCst);
-        *with.lock().unwrap() = mine.to_string();
-        async {
-            Ok(Verdict {
-                replace: true,
-                older: true,
-            })
-        }
-    };
-    let some = verdict_for(Some("p9z-mine"), fake).await;
-    assert_eq!(
-        (
-            some,
-            asked.load(Ordering::SeqCst),
-            with.lock().unwrap().clone()
-        ),
-        (
-            Ok(Verdict {
-                replace: true,
-                older: true
-            }),
-            1,
-            "p9z-mine".to_string()
-        ),
-        "有「我这一版」却没照问 / 问的不是这一版"
     );
 }

@@ -52,6 +52,10 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "EVENT_QUEUE",
+        "**条数**不是体量：`stream_source/run.rs` 重连循环交给收事那一头的那条队列至多排几件事；排满了循环就等（背压回到那台），不丢不截。",
+    ),
+    (
         "HOOK_TIMEOUT_SECS",
         "**时长**不是体量：`agents/claudecode/asks.rs` 写进会话级答题 hook 设置的期限（秒），到点那一家杀 hook、不给决定 ⇒ 框照常在终端里问。",
     ),
@@ -762,12 +766,6 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "REQUEST_LINE_CAP",
         "files 链路上一行请求（短 JSON；`put` 的字节不走行）",
         "拒收+回错",
-    ),
-    (
-        "src/backend/ssh-dial/uses.rs",
-        "STDERR_TAIL_BYTES",
-        "一次长 exec（`use:\"duplex\"`）留下的 stderr 尾巴（只给「为什么起不来」那一句用）。超了 ⇒ 只留最后这么多字节，收尾帧里的 `stderr_tail` 就是这段尾巴（字段名说明了是尾巴）",
-        "截断+说清",
     ),
     (
         "src/backend/ssh-dial/sftp.rs",
@@ -2024,17 +2022,21 @@ fn uncapped_stream_reads(prod: &str) -> Vec<usize> {
 /// `BACKEND_FRAME_LINE_CAP` 在三个地方被提到（有界读的判断处 · 措辞函数 · 消费点的
 /// `warn!`），而报告只发生在**第三处** —— 按每处提及去要求 marker 会造出两条假红。
 ///
-/// ⇒ 换个取样单位：**处置分支本身**。人群 = `stream_source/` 整个目录生产段里每一处
-/// `CappedLine::TooLong` 的处置臂。要求：
+/// ⇒ 换个取样单位：**处置分支本身**。人群 = `stream_source/` 整个目录生产段 ＋ 读远端那条流的重连循环
+/// （`resident-client/feed.rs`，两端同一份）里每一处 `CappedLine::TooLong` 的处置臂。要求：
 /// ① 每一臂都得说点什么（至少 `warn!`）—— 定框 **E4**：静默失败要给身份；
-/// ② **至少有一臂**把它抬到用户能看见的那一层（原位 `Gap`：主帧读那一臂交 `Ok(None)`）——
+/// ② **至少有一臂**把它抬到用户能看见的那一层（原位 `Gap`：读流那一臂交 `Event::Gap`，收事那一头 `LineIntake::lost`）——
 ///    那正是本档与「跳过+说清」的分界（告日志 vs 告用户）。
 ///
 /// ⚠ 失效模式如实登记：臂体窗口是 **12 行**的启发式。臂特别长 ⇒ 假红；
 /// 紧邻的别的语句里恰好有 marker ⇒ 假绿。与隔壁那条同源取舍。
 #[test]
 fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
-    let prod = crate::guard_support::stream_source_production();
+    let prod = format!(
+        "{}\n{}",
+        crate::guard_support::stream_source_production(),
+        guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"))
+    );
     let lines: Vec<&str> = prod.lines().collect();
     let mut arms = 0usize;
     let mut silent = Vec::new();
@@ -2052,10 +2054,10 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
         const WINDOW: usize = 12;
         let body = lines[i..(i + WINDOW).min(lines.len())].join("\n");
         if !body.contains("warn!") {
-            silent.push(format!("  stream_source/ 生产段第 {} 行", i + 1));
+            silent.push(format!("  stream_source/ ＋ feed.rs 生产段第 {} 行", i + 1));
         }
-        if body.contains("frame_tx.send(Ok(None))") {
-            reported += 1; // 原位 `Gap` 那一路（主循环 `LineIntake::lost`）
+        if guard_core::contains_word(&body, "Event::Gap") {
+            reported += 1; // 原位 `Gap` 那一路（收事那一头 `LineIntake::lost`）
         }
     }
     assert!(
@@ -2071,7 +2073,7 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
     );
     assert!(
         reported >= 1,
-        "没有任何一处超限把话说到**用户**那一层（原位 `Gap`，`frame_tx.send(Ok(None))`）。\n\
+        "没有任何一处超限把话说到**用户**那一层（原位 `Gap`，`Event::Gap`）。\n\
              ★ 那是「丢弃+带身份报告」与「跳过+说清」的**唯一分界** —— \n\
              只写 `warn!` 的话本档就该改登记成「跳过+说清」，别占一个更强的名字。"
     );

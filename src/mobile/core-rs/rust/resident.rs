@@ -1,11 +1,11 @@
-//! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同用它的退避 · 握手 · 版本门 · 在看名单），
+//! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同一条循环），
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
 //! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON）· `frame`（流上的一帧原样一行）· `watch_from`（JSON 数组）·
 //! `lost`（流断了、请 Kotlin 探一次 SSH）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
 
 use resident_client::client::CallError;
-use resident_client::feed::{Boxed, Config, Event, Exec, Feed, Problem, State, Transport};
+use resident_client::feed::{sink, Boxed, Config, Event, Exec, Feed, Problem, State, Transport};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -184,9 +184,9 @@ fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
         .cloned()
 }
 
-/// 一件事 ⇒ `(种类, 文本)`。
-pub fn event_of(e: &Event) -> (&'static str, String) {
-    match e {
+/// 一件事 ⇒ `(种类, 文本)`；Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
+pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
+    Some(match e {
         Event::State(s) => ("state", state_json(s)),
         Event::Frame(line) => ("frame", line.clone()),
         Event::WatchFrom(rows) => (
@@ -194,7 +194,8 @@ pub fn event_of(e: &Event) -> (&'static str, String) {
             serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
         ),
         Event::Lost => ("lost", String::new()),
-    }
+        Event::Attached { .. } | Event::Gap => return None,
+    })
 }
 
 pub fn state_json(s: &State) -> String {
@@ -213,11 +214,15 @@ pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event:
     };
     let feed = Feed::start(
         cfg,
-        Arc::new(move |e: Event| {
-            let (kind, body) = event_of(&e);
-            on_event(id, kind, body);
+        None,
+        sink(move |e: Event| {
+            if let Some((kind, body)) = event_of(&e) {
+                on_event(id, kind, body);
+            }
         }),
     );
+    // 一条会话都还没人看 ⇒ 那台一条都不发（屏上开了哪条再经 [`watch`] 报）。
+    feed.watch_none();
     feeds()
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -368,7 +373,8 @@ mod tests {
         let (k, b) = event_of(&Event::State(State::Up {
             epoch: 3,
             notice: None,
-        }));
+        }))
+        .unwrap();
         assert_eq!(k, "state");
         let v: serde_json::Value = serde_json::from_str(&b).unwrap();
         assert_eq!(v["state"], "up");
@@ -376,7 +382,9 @@ mod tests {
         let (k, b) = event_of(&Event::State(State::Down {
             problem: Problem::new("box 离线", ""),
             needs_hand: true,
-        }));
+            unsupported: false,
+        }))
+        .unwrap();
         assert_eq!(k, "state");
         let v: serde_json::Value = serde_json::from_str(&b).unwrap();
         assert_eq!(
@@ -389,9 +397,10 @@ mod tests {
         );
         assert_eq!(
             event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
-            ("frame", "{\"kind\":\"x\"}".to_string())
+            Some(("frame", "{\"kind\":\"x\"}".to_string()))
         );
-        assert_eq!(event_of(&Event::Lost).0, "lost");
+        assert_eq!(event_of(&Event::Lost).unwrap().0, "lost");
+        assert_eq!(event_of(&Event::Gap), None, "缺口 Kotlin 用不着");
     }
 
     /// ack 与 capture 那一行的读法。

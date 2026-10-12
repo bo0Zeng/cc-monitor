@@ -90,14 +90,14 @@ pub(super) async fn flush_lines(
 /// 「一条流，一个来源；本机与远端走同一条帧路」。本机那条流改走后端的 `line` 帧之后，
 /// 「行怎么攒批、什么时候冲、历史怎么旁路补、会话走了撤什么」这几件事若在本机再写一份，
 /// 就又是两份实现。⇒ 收成一个结构，**两个帧源各构造一次**：
-/// [`stream_loop`]（远端）与 [`consume_local`]（本机）。判据钉的就是「构造点恰好这两处」。
+/// `on_attached`（远端，每条连接一个）与 [`consume_local`]（本机）。判据钉的就是「构造点恰好这两处」。
 ///
 /// # 它管什么、不管什么
 ///
 /// 管：[`Batcher`] ＋ 带静默窗的收（[`LineIntake::recv_or_flush`]）· 旁路快照队列与分发器（后端不重放历史，历史一律走它）·
 /// 续点（`snapshot_resume`）。**不管会话的起停**：那是后端出的成品，两条流各自交 `session_book`。
 ///
-/// 丢掉它 ⇒ 快照队列当场关（与原来 `stream_loop` 里那个 `SnapshotQueueCloser` 同一个时机）。
+/// 丢掉它 ⇒ 快照队列当场关（连接断了那一刻）。
 pub(crate) struct LineIntake {
     origin_label: String,
     replay: Arc<EventReplay>,
@@ -134,7 +134,7 @@ impl LineIntake {
 
     /// 带静默窗地收下一件：手里攒着行时最多等 [`BATCH_QUIET_MS`]，窗内没来新东西就先把攒的冲掉再回去等。
     ///
-    /// ⚠ 超时打在 `recv` 上（cancel-safe），不打在读行上 —— 理由见 `stream_loop` 里那个读帧任务的注释。
+    /// ⚠ 超时打在 `recv` 上（cancel-safe），不打在读行上：tokio 的读行不是 cancellation-safe（超时取消会丢缓冲里的半帧）。
     pub(super) async fn recv_or_flush<T>(
         &mut self,
         rx: &mut tokio::sync::mpsc::Receiver<T>,

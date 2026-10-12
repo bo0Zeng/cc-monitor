@@ -100,7 +100,7 @@ async fn register_reach(cfg: &crate::stream_source::RemoteConfig) -> Result<(), 
         })
 }
 
-/// 远端那条流握手成功那一刻（`stream_source/run.rs::stream_loop`）：
+/// 远端那条流握手成功那一刻（`stream_source/run.rs::on_attached`）：
 /// ①**无条件**把「怎么够到那台」登记进本机后端的可达表（历史跨机 join 要它，老远端也要）；
 /// ② 那台认得资产目录 ⇒ 后台让本机后端对它做一趟同步；不认 ⇒ 不碰（老后端不认一次性子命令会进流模式）。
 pub(crate) fn on_remote_ready(cfg: &crate::stream_source::RemoteConfig, remote_accepts: bool) {

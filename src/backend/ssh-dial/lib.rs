@@ -102,7 +102,7 @@ pub const ACK_V: u32 = 2;
 
 /// 本代理认得的用法 —— ack 的 `uses` 字段原样回这张表，界面据它判「代理够不够新」。
 pub const USES: &[&str] = &[
-    "stream", "capture", "forward", "files", "shell", "hold", "duplex",
+    "stream", "capture", "forward", "files", "shell", "hold",
 ];
 
 /// 一个拨号地址。
@@ -146,9 +146,6 @@ pub enum Use {
     Files,
     /// 要一个 PTY（[`PtyOpts`]）开交互 shell，之后同 `stream` 原样对拷；改窗口大小走 [`uses::Control`]。
     Shell,
-    /// exec `command` 的长通道，下行分帧（`[类型 u8][长度 u32 大端][本体]`：0 = stdout · 2 = 收场那一帧 JSON
-    /// `{exit_status, exit_signal, stderr_tail}`）；上行原样进远端 stdin，上行 EOF ⇒ 远端 stdin EOF。stderr 照收、只留尾巴。
-    Duplex,
     /// 只握着这条连接（不开通道）：ack 之后链路不收工，同一身份的别的链路都复用它；对面走了（上行 EOF）
     /// 或连接没了（russh 报断开）⇒ 收工。手机那一形：「连上一台机器」就是开一条这个。
     Hold,

@@ -1088,11 +1088,8 @@ fn remote_respawn(
         let app = app.clone();
         tauri::async_runtime::spawn(async move {
             let label = cfg.origin_label();
-            let connected = Arc::new(std::sync::atomic::AtomicBool::new(true));
-            if let Err(e) = stream_source::run(cfg, replay, remote_health_out(app), connected).await
-            {
-                tracing::error!("stream_source::run [{label}] exited: {e}");
-            }
+            stream_source::run(cfg, replay, remote_health_out(app)).await;
+            tracing::info!("stream_source::run [{label}] 收工了");
         })
     })
 }

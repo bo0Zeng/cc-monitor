@@ -89,7 +89,7 @@ pub(crate) enum LocalStep {
 
 /// 本机那条流上的一件东西 ⇒ 交 `session_book` 的成品（**纯**）。藏起来的 bg 会话到不了这里（[`BgHide`] 那道门在前头）。
 ///
-/// 与远端 [`stream_loop`] 那几条臂交同一种成品（本机 ＝ 不走 ssh 的远端，`INVARIANTS §40`）。流断 ⇒ 这台的成品作废（说不清）。
+/// 与远端 `stream_source/run.rs::dispatch` 那几条臂交同一种成品（本机 ＝ 不走 ssh 的远端，`INVARIANTS §40`）。流断 ⇒ 这台的成品作废（说不清）。
 pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
     let origin = || label.to_string();
     match item {

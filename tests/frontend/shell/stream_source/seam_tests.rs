@@ -1,49 +1,10 @@
 use super::*;
 use crate::copy_table::copy_text;
-use crate::inbound_client;
-use std::time::Duration;
-use tokio::io::{AsyncBufReadExt, BufReader};
 
 fn hello_line(commands: &str) -> String {
     format!(
         r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":{commands}}}"#
     )
-}
-
-/// MU13 的回归钉：收到 hello ⇒ 写半边解冻 + 客户端登记进注册表。
-#[tokio::test]
-async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
-    let (mine, _theirs) = tokio::io::duplex(4096);
-    let mut parked = Some(inbound_client::park(mine));
-    let origin = "seam-attach-origin";
-
-    // 非 hello 帧不解冻。
-    let not_hello = parse_frame(r#"{"kind":"overflow","dropped":1}"#);
-    assert!(
-        attach_inbound_client(origin, &mut parked, not_hello.as_ref().ok()).is_none(),
-        "非 hello 帧居然把写半边解冻了"
-    );
-    assert!(parked.is_some(), "写半边被误消耗了");
-    assert!(inbound_client::client_for(origin).is_none());
-
-    // hello ⇒ 解冻 + 登记，且后端声明的命令集透传到客户端。
-    let hello = parse_frame(&hello_line(r#"["ping"]"#));
-    let client = attach_inbound_client(origin, &mut parked, hello.as_ref().ok())
-        .expect("hello 应当换出客户端");
-    assert!(client.accepts("ping"));
-    assert!(!client.accepts("launch"));
-    assert!(parked.is_none(), "写半边应当已被 take 走");
-    assert!(
-        inbound_client::client_for(origin).is_some_and(|c| std::sync::Arc::ptr_eq(&c, &client)),
-        "客户端没登记进注册表 —— 2b 的 launch 会取不到"
-    );
-
-    // 第二次 hello（不该有）：静默跳过，不会再造一个客户端。
-    let again = parse_frame(&hello_line(r#"["ping"]"#));
-    assert!(attach_inbound_client(origin, &mut parked, again.as_ref().ok()).is_none());
-
-    inbound_client::unregister(origin, &client);
-    assert!(inbound_client::client_for(origin).is_none());
 }
 
 /// ★★ **有不可恢复的丢失时，不许再对用户说「重开会话可看完整历史」**〔audit-0805 F21，E4〕。
@@ -149,75 +110,9 @@ fn overflow_identity_fields_are_actually_parsed() {
     }
 }
 
-/// MU12 的回归钉：`reply` / `cancelled` 真的被路由回等待者。
-#[tokio::test]
-async fn reply_and_cancelled_frames_reach_the_waiting_caller() {
-    let (mine, theirs) = tokio::io::duplex(4096);
-    let mut peer = BufReader::new(theirs);
-    let mut parked = Some(inbound_client::park(mine));
-    let origin = "seam-route-origin";
-    let hello = parse_frame(&hello_line(r#"["ping","cancel"]"#));
-    let client = attach_inbound_client(origin, &mut parked, hello.as_ref().ok()).expect("客户端");
-
-    let c = client.clone();
-    let caller = tokio::spawn(async move {
-        c.call("ping", serde_json::Value::Null, Duration::from_secs(5))
-            .await
-    });
-    let mut line = String::new();
-    tokio::time::timeout(guard_core::wall::CEILING, peer.read_line(&mut line))
-        .await
-        .expect("等请求行超时")
-        .expect("读到请求行");
-    let id = serde_json::from_str::<serde_json::Value>(line.trim_end()).expect("JSON")["id"]
-        .as_str()
-        .expect("id")
-        .to_string();
-
-    // 走的是 stream_loop 真正调的那个函数，不是直接调 route_reply。
-    let frame = parse_frame(&format!(
-        r#"{{"kind":"reply","id":"{id}","ok":true,"data":{{"pong":1}}}}"#
-    ))
-    .expect("reply 帧");
-    assert!(
-        route_inbound_frame(origin, Some(&client), frame),
-        "应答没被路由回等待者"
-    );
-    assert_eq!(
-        caller.await.expect("task").expect("call 成功"),
-        Some(serde_json::json!({ "pong": 1 }))
-    );
-
-    inbound_client::unregister(origin, &client);
-}
-
-/// 没有客户端时（backend 在 hello 之前回应答）不 panic、返回 false。
-#[test]
-fn routing_without_a_client_is_reported_not_panicked() {
-    let frame = parse_frame(r#"{"kind":"reply","id":"x","ok":true}"#).expect("reply");
-    assert!(!route_inbound_frame("no-client-origin", None, frame));
-    // 非入方向帧误传进来也不 panic。
-    let other = parse_frame(r#"{"kind":"overflow","dropped":3}"#).expect("overflow");
-    assert!(!route_inbound_frame("no-client-origin", None, other));
-}
+// hello 解冻写半边并登记 · 应答路由回等待者 · 「重新连接」只叫醒那一台：随重连循环住 `resident-client`
+//   （`feed.rs`：握手换出客户端、应答经 `route` 交回；`feed_tests.rs` 的问答与叫醒那几条）；登记在桌面收事那一头
+//   （`stream_source/run.rs::on_attached`），`reconnect_cells_tests.rs` 走真的那一串。
 
 // 控制通道往返探测那两条（真发 ping 并等应答 · 对旧后端一个字节不发）随测试连接搬进后端：
 //   `tests/backend/dial_probe_tests.rs`（`a_hello_that_answers_ping_is_all_green` · `an_old_backend_without_commands_says_too_old`）。
-
-/// 「重新连接」：退避里睡着的那一条，一拨立刻醒；别台的拨不吵它（「连着时不留许可 · 连上作废」那两半在 `inbound_client_tests`）。
-#[tokio::test]
-async fn reconnect_wakes_only_the_loop_waiting_on_that_machine() {
-    use crate::inbound_client::{kick, kick_handle};
-    let a = kick_handle("seam-wake-a");
-    let waiting = tokio::spawn(async move { a.notified().await });
-    tokio::task::yield_now().await;
-    kick("seam-wake-b");
-    // 单线程运行时：吵醒了的话它已经在就绪队列里，让一拍就轮到它跑完 —— 不按墙钟。
-    tokio::task::yield_now().await;
-    assert!(!waiting.is_finished(), "别台的「重新连接」吵醒了这一台");
-    kick("seam-wake-a");
-    tokio::time::timeout(guard_core::wall::CEILING, waiting)
-        .await
-        .expect("拨了「重新连接」没醒")
-        .unwrap();
-}

@@ -132,14 +132,6 @@ impl russh::server::Handler for Door {
     ) -> Result<(), Self::Error> {
         self.note(format!("exec {}", String::from_utf8_lossy(data)));
         session.channel_success(channel)?;
-        if data == b"fail" {
-            // 一条退出码非零、往 stderr 写了一行的远端命令。
-            session.data(channel, b"out\n".to_vec())?;
-            session.extended_data(channel, 1, b"boom: not found\n".to_vec())?;
-            session.exit_status_request(channel, 3)?;
-            session.eof(channel)?;
-            return session.close(channel);
-        }
         session.data(channel, b"ran\n".to_vec())?;
         session.exit_status_request(channel, 0)?;
         session.eof(channel)?;
@@ -573,52 +565,6 @@ async fn a_held_connection_is_reused_and_its_link_ends_when_the_peer_goes() {
         .expect("那一趟没收场")
         .unwrap();
     assert!(crate::USES.contains(&"hold"));
-}
-
-/// 读 `use: duplex` 的下行帧（`[类型][四字节大端长度][本体]`）直到退出帧：回 `(stdout, 退出帧)`。
-async fn duplex_frames(
-    rd: &mut BufReader<tokio::io::DuplexStream>,
-) -> (Vec<u8>, serde_json::Value) {
-    let mut out = Vec::new();
-    loop {
-        let mut head = [0u8; 5];
-        tokio::time::timeout(guard_core::wall::CEILING, rd.read_exact(&mut head))
-            .await
-            .expect("等帧超时")
-            .expect("帧没读全");
-        let len = u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize;
-        let mut body = vec![0u8; len];
-        rd.read_exact(&mut body).await.expect("帧本体没读全");
-        match head[0] {
-            0 => out.extend(body),
-            2 => return (out, serde_json::from_slice(&body).expect("退出帧不是 JSON")),
-            k => panic!("认不出的帧类型 {k}"),
-        }
-    }
-}
-
-/// ★ 长 exec 带退出码与 stderr 尾巴（`use: duplex`）：退出码非零、stderr 写了一行的远端命令 ⇒ 对面拿到那个码和那一行。
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn a_duplex_exec_carries_the_exit_status_and_the_stderr_tail() {
-    let (port, _log) = door(Some("d"), None).await;
-    register("duplex-pw", TestCred::Password("d".into()));
-    let req = request(serde_json::json!({
-        "host": "127.0.0.1", "port": port, "user": "u", "key_path": "duplex-pw",
-        "use": "duplex", "command": "fail"
-    }));
-    let (ack, mut rd, _up, _run) = open(req, crate::uses::Control::none()).await;
-    assert_eq!(ack["ok"], true, "{ack}");
-    let (out, exit) = duplex_frames(&mut rd).await;
-    assert_eq!(out, b"out\n");
-    assert_eq!(exit["exit_status"], 3, "{exit}");
-    assert!(
-        exit["stderr_tail"]
-            .as_str()
-            .unwrap_or("")
-            .contains("boom: not found"),
-        "{exit}"
-    );
-    assert!(crate::USES.contains(&"duplex"));
 }
 
 /// 一把 host key 的 OpenSSH 那一行前两段（算法 ＋ base64）。

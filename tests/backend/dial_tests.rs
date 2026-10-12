@@ -453,8 +453,6 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         ("shell", Use::Shell),
         // 只握着连接（手机「连上一台」那一形）。
         ("hold", Use::Hold),
-        // 带退出码与 stderr 尾巴的长 exec（手机常驻流）。
-        ("duplex", Use::Duplex),
     ] {
         let raw = format!(
             r#"{{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"{word}"}}"#

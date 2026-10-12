@@ -1244,7 +1244,7 @@ async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
 }
 
 /// 文件窗口断线条那一格事实（`link` 流的来源）：登记 ⇒ `Up`；摘掉自己那条 ⇒ `Reconnecting`；连接循环一轮没连上 ⇒ `Down`；
-/// 从没登记过 ⇒ `Down`。每改一格订阅者醒一次，没变不醒。「重新连接」叫醒睡在退避里的那一位（先拨后等也算数）。
+/// 从没登记过 ⇒ `Down`。每改一格订阅者醒一次，没变不醒。
 #[tokio::test]
 async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
     let origin = format!("link-fact-{}", std::process::id());
@@ -1269,28 +1269,11 @@ async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
     register(&origin, client.clone());
     unregister(&origin, &client);
     assert_eq!(link_of(&origin), Link::Reconnecting, "刚断却不是「重连中」");
-    // 「重新连接」：先拨、后等也醒（连接循环此刻不一定正睡着）。
-    kick(&origin);
-    tokio::time::timeout(guard_core::wall::CEILING, kick_handle(&origin).notified())
-        .await
-        .expect("拨过「重新连接」，连接循环没被叫醒");
-    // 断着时拨、还没用掉就连上了 ⇒ 那份许可作废（下一次断线照常退避）。
-    kick(&origin);
+    // 「重新连接」叫醒的是那台的重连循环（`resident-client` 那一条）：在拨时按也算数 · 连上那一刻作废 · 连着时不做事，
+    //   判据在 `feed_tests.rs::a_wake_while_dialing_skips_one_wait_and_is_void_once_up`；这里只剩「连着 ⇒ 不做事」这一半。
     register(&origin, client.clone());
-    assert!(
-        tokio::time::timeout(Duration::from_millis(50), kick_handle(&origin).notified())
-            .await
-            .is_err(),
-        "连上之后，断线时那一下「重新连接」的许可还留着"
-    );
-    // 连着时拨 ⇒ 不做事、不留许可。
     kick(&origin);
-    assert!(
-        tokio::time::timeout(Duration::from_millis(50), kick_handle(&origin).notified())
-            .await
-            .is_err(),
-        "连着时拨「重新连接」留下了许可"
-    );
+    assert_eq!(link_of(&origin), Link::Up);
 }
 
 /// typed 命令两端形状对不上 ⇒ 一个字节不发，回 `Differs`，那一句带这条连接登记的那台的名字（「{机器} 后端版本不同」）；
