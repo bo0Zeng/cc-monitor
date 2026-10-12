@@ -1,5 +1,5 @@
 /**
- * 因对方版本说不成的三个码：版本旧 / 版本不同 / 回的认不出各一句，按码取（`chan-caller.ts::saidFrom`）。
+ * 因对方版本说不成的两个码：版本旧 / 回的认不出各一句，按码取（`chan-caller.ts::saidFrom`）。
  * 钉三件事：两个码各落一句、认不出那一句不提版本、其余失败不落进这两个码。
  */
 import { describe, expect, it } from "vitest";
@@ -16,13 +16,6 @@ describe("两个码", () => {
     const e = new ChanError({ layer: "peer", why: "unsupported" });
     expect(peerVersionCodeOf(e)).toBe("backend_old");
     expect(saidFrom(e, "devbox")).toBe(zh("peerVersion.said.old").replace("{machine}", "devbox"));
-  });
-
-  it("typed 命令两端形状对不上（monitor 事前就拒，码 backend_differs）⇒ 版本不同那一句（带机器名）", () => {
-    const body = new TextEncoder().encode('{"code":"backend_differs","message":"该机后端版本不同"}');
-    const e = new ChanError({ layer: "peer", why: "refused", body });
-    expect(peerVersionCodeOf(e)).toBe("backend_differs");
-    expect(saidFrom(e, "devbox")).toBe(zh("peerVersion.said.differs").replace("{machine}", "devbox"));
   });
 
   it("回的形状不对 / 不是 JSON ⇒ 认不出那一句，不提版本", () => {

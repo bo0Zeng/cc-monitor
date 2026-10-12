@@ -129,9 +129,9 @@
     {
       "file": "src/frontend/ui/ipc/chan-caller.ts",
       "rule": "codeWord",
-      "n": 1,
+      "n": 2,
       "kind": "留",
-      "why": "通道层自己的失败句（超时 Overrun），宿主本职；对端版本那三个码改成按码查键（第 8 批）"
+      "why": "通道层自己的失败句（对端版本码 backend_old · 超时 Overrun），宿主本职"
     },
     {
       "file": "src/frontend/ui/kit/detail.ts",

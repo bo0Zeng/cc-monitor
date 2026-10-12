@@ -192,6 +192,7 @@ where
             seq: AtomicU64::new(0),
             writes: tx,
             pending: Mutex::new(HashMap::new()),
+            machine: std::sync::OnceLock::new(),
         })
     }
 }
@@ -205,6 +206,8 @@ pub struct InboundClient {
     seq: AtomicU64,
     writes: mpsc::Sender<WriteJob>,
     pending: Mutex<HashMap<String, Waiter>>,
+    /// 这条连接通往哪台（[`register`] 时记下）：给人看的话里称呼它。没登记过 ⇒ 空（称「该机」）。
+    machine: std::sync::OnceLock<String>,
 }
 
 /// 登记表里的一格：等结局的那一头 ＋它若是补发的撤单，撤的是哪条命令（回「停不下来」时点名）。
@@ -217,6 +220,15 @@ impl InboundClient {
     /// backend 声明接受这条命令吗。答案只住 [`Offer::admits`]（能力协商的家）。
     pub fn accepts(&self, cmd: &str) -> bool {
         self.offer_now().admits(cmd)
+    }
+
+    /// 一句话里怎么称呼这条连接通往的那台：本机说「本机」，远端说它的名字；没登记过（判据里直接造的客户端）⇒「该机」。
+    fn machine_said(&self) -> String {
+        match self.machine.get() {
+            Some(m) if m == LOCAL_ORIGIN => copy_core::local_machine(),
+            Some(m) => m.clone(),
+            None => copy_core::peer_machine(),
+        }
     }
 
     /// 那台机器的能力事实（拷贝一份给 webview / 外部前端）。
@@ -330,6 +342,13 @@ impl InboundClient {
             return Err(CallError::Unsupported {
                 cmd: cmd.to_string(),
                 offered: self.offer_now().ops().to_vec(),
+            });
+        }
+        // typed 命令两端形状对不上 ⇒ 不发（发了也解不对）；那一句带上这台的称呼（登记时记下的名字）。
+        if self.offer_now().shape_differs(cmd) {
+            return Err(CallError::Differs {
+                cmd: cmd.to_string(),
+                said: copy_core::backend_differs(&self.machine_said()),
             });
         }
         // 那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
@@ -693,6 +712,8 @@ fn registry() -> &'static Mutex<HashMap<String, Arc<InboundClient>>> {
 
 /// 登记本连接的客户端。同 origin 的旧条目会被替换（重连）。
 pub fn register(origin: &str, client: Arc<InboundClient>) {
+    // 记下它通往哪台：形状对不上那一句按这个名字说（一条连接只登记一次）。
+    client.machine.get_or_init(|| origin.to_string());
     // **先放锁再 shutdown** —— 与 `unregister` 对称。今天两者都不会死锁（没有任何路径是
     // pending → registry），但两处写法不一致就是给后来人埋的坑。
     let old = lock(registry()).insert(origin.to_string(), client);

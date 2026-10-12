@@ -95,6 +95,7 @@ fn the_collapse_to_three_states_is_byte_identical_to_the_table_before_layering()
         match e {
             CallError::Unsupported { .. }
             | CallError::Unavailable { .. }
+            | CallError::Differs { .. }
             | CallError::TooManyPending
             | CallError::Disconnected
             | CallError::Cancelled
@@ -180,6 +181,7 @@ fn the_layering_table_is_pinned_cell_by_cell() {
         match e {
             CallError::Unsupported { .. }
             | CallError::Unavailable { .. }
+            | CallError::Differs { .. }
             | CallError::TooManyPending
             | CallError::Disconnected
             | CallError::Cancelled

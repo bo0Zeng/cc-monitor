@@ -797,9 +797,9 @@ fn typed_handler_files_of(
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];
             let path: Vec<String> = rest[..rest.find('>').expect("typed 那一行没收尾")]
-                .split("::")
+                .split(':')
                 .map(|s| s.trim().to_string())
-                .filter(|s| s != "crate")
+                .filter(|s| !s.is_empty() && s != "crate")
                 .collect();
             let ty = path.last().expect("typed 那一行没有类型名").clone();
             let file = file_of(mods, &path)

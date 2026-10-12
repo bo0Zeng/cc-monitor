@@ -467,20 +467,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustGone: ["src/frontend/shell/src/backend_policy.rs::describe_health"],
   },
   J22: {
-    what: "因对方版本说不成的三个码（版本旧 / 版本不同 / 回的认不出）各取哪一句、本机怎么称呼",
+    what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
     // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
     // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
-    // 版本不同那一个码（typed 命令两端形状指纹对不上，第 8 批）：码的字面量在契约 crate `cmd-wire`，界面那一份由下面的对拍判据钉。
-    homes: [
-      "copy-core::backend_old",
-      "copy-core::backend_differs",
-      "copy-core::reply_unreadable",
-      "copy-core::local_machine",
-      "copy-core::peer_machine",
-      "cmd-wire::SHAPE_DIFFERS",
-    ],
+    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
     status: "mirror",
-    defs: ["peerVersionSaid", "SHAPE_DIFFERS"],
+    defs: ["peerVersionSaid"],
     needles: [],
     parity: {
       via: "src/shared/copy/table.json",
@@ -703,14 +695,15 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     host_name: NONE,
     as_wire_str: NONE,
     route: NONE,
-    SHAPE_DIFFERS: "J22",
+    // 形状对不上那个码与那一句（`copy-core::backend_differs`）只在 monitor：它比指纹、它写好带机器名的那一句，界面照抄拒绝里的话。
+    SHAPE_DIFFERS: NONE,
     // 形状指纹表与查表：只有拿着 hello 的 Rust 那一侧（monitor 的 `Offer`）比，界面不比。
     SHAPES: NONE,
     shape_of: NONE,
   },
   "copy-core": {
     backend_old: "J22",
-    backend_differs: "J22",
+    backend_differs: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。

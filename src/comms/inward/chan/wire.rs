@@ -381,7 +381,7 @@ pub struct Offer {
     /// 撤不动的 op（对端开跑之后停不下）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     uncancellable: Vec<String>,
-    /// typed 命令的形状指纹 `(op, 指纹)`（`hello.shapes`）：跟本侧编进来的那一张（`cmd_wire::SHAPES`）比，对不上的 op 当「这台做不到」（码 [`cmd_wire::SHAPE_DIFFERS`]）。
+    /// typed 命令的形状指纹 `(op, 指纹)`（`hello.shapes`）：跟本侧编进来的那一张（`cmd_wire::SHAPES`）比，对不上的 op 不发（[`Offer::shape_differs`]）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     shapes: Vec<(String, String)>,
 }
@@ -418,8 +418,12 @@ impl Offer {
         self
     }
 
-    /// 这个 op 是本侧编进来的 typed 命令、对端交的形状指纹跟本侧那一份不一样（或对端没交：它比这一版早）。
-    fn shape_differs(&self, op: &str) -> bool {
+    /// 这个 op 是对端接的 typed 命令、对端交的形状指纹跟本侧编进来的那一份不一样（或对端没交：它比这一版早）⇒ 发了也解不对，不发。
+    pub fn shape_differs(&self, op: &str) -> bool {
+        self.admits(op) && self.shape_differs_raw(op)
+    }
+
+    fn shape_differs_raw(&self, op: &str) -> bool {
         cmd_wire::shapes::shape_of(op).is_some_and(|mine| {
             !self
                 .shapes
@@ -439,11 +443,7 @@ impl Offer {
     }
 
     /// 这台做不到这个 op ⇒ 那个码（与对端事后会回的同一个）；做得到 / 没把握 ⇒ `None`。
-    /// typed 命令两端形状对不上 ⇒ [`cmd_wire::SHAPE_DIFFERS`]（那台后端版本不同：发了也解不对，不发）。
     pub fn unavailable(&self, op: &str) -> Option<&str> {
-        if self.admits(op) && self.shape_differs(op) {
-            return Some(cmd_wire::SHAPE_DIFFERS);
-        }
         self.unavailable
             .iter()
             .find(|(o, _)| o == op)

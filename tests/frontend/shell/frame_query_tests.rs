@@ -48,7 +48,10 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             for (at, _) in prod.match_indices(ctor) {
                 let rest = &prod[at + ctor.len()..];
                 let path = &rest[..rest.find('>').expect("typed 那一行没收尾")];
-                let segs: Vec<&str> = path.split("::").filter(|s| *s != "crate").collect();
+                let segs: Vec<&str> = path
+                    .split(':')
+                    .filter(|s| !s.is_empty() && *s != "crate")
+                    .collect();
                 let (ty, module) = segs.split_last().expect("typed 那一行没有类型名");
                 let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../backend")
@@ -76,7 +79,8 @@ fn backend_read_face_commands() -> Vec<String> {
         .into_iter()
         // 全文搜索那两条成了 typed 命令，只读宿主是 `faces/search_face.rs`（第 8 批从 `read_face` 分出去）。
         .filter(|(_, blk)| {
-            blk.contains("read_face::answer") || blk.contains("faces::search_face::")
+            blk.contains("read_face::answer")
+                || (blk.starts_with("typed::") && blk.contains("faces::search_face::"))
         })
         .map(|(name, _)| name)
         .collect();

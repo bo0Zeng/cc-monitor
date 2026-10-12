@@ -1282,3 +1282,53 @@ async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
         "连着时拨「重新连接」留下了许可"
     );
 }
+
+/// typed 命令两端形状对不上 ⇒ 一个字节不发，回 `Differs`，那一句带这条连接登记的那台的名字（「{机器} 后端版本不同」）；
+/// 对得上 ⇒ 照发。指纹表是本侧编进来的那一份（`cmd_wire::SHAPES`），hello 里那一格是对端交的。
+#[tokio::test]
+async fn a_typed_command_with_a_different_shape_is_refused_by_name_and_not_sent() {
+    let (op, mine) = *cmd_wire::shapes::SHAPES
+        .first()
+        .expect("形状指纹表是空的 —— 本条在空转");
+    let hello_with = |hash: &str| {
+        let line = format!(
+            r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["{op}"],"shapes":{{"{op}":"{hash}"}}}}"#
+        );
+        let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
+        BackendHello::from_hello_frame(&frame).expect("是 Hello 帧")
+    };
+    let name = "b8-shape-devbox";
+    let (ours, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(ours).into_client(hello_with("00000000"));
+    register(name, client.clone());
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let err = client
+        .call(op, serde_json::json!({}), Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    unregister(name, &client);
+    assert_eq!(
+        err,
+        CallError::Differs {
+            cmd: op.into(),
+            said: copy_core::backend_differs(name),
+        }
+    );
+    let mut stray = String::new();
+    let read = tokio::time::timeout(Duration::from_millis(100), peer.read_line(&mut stray)).await;
+    assert!(read.is_err(), "形状对不上的命令还是发出去了：{stray:?}");
+
+    // 正控：指纹对得上 ⇒ 照发（对端那一头读得到这一行）。
+    let (ours, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(ours).into_client(hello_with(mine));
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let sent = tokio::spawn(async move {
+        let mut l = String::new();
+        peer.read_line(&mut l).await.map(|_| l)
+    });
+    let _ = client
+        .call(op, serde_json::json!({}), Duration::from_millis(300))
+        .await;
+    let line = sent.await.unwrap().unwrap();
+    assert!(line.contains(op), "指纹对得上的命令没发出去：{line:?}");
+}
