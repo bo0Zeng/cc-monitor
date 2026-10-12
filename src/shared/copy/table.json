@@ -12938,12 +12938,6 @@
       "zh": "画面已变",
       "args": []
     },
-    "beTerminal.no.other": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "被拒",
-      "args": []
-    },
     "beTerminal.refuse.empty": {
       "kind": "error",
       "role": "原因格",

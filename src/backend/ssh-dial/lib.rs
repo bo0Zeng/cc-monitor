@@ -88,6 +88,14 @@ pub fn parts(message: &str, raw: Option<&str>) -> (String, Option<String>) {
     }
 }
 
+/// [`parts`] 的反方向：那一句 ＋ 原话 ⇒ 一串（原话隔一个 [`DIAG_SEP`] 跟在后面；没有原话 ⇒ 那一句原样）。
+pub fn joined(said: String, raw: Option<String>) -> String {
+    match raw {
+        Some(r) => format!("{said}{DIAG_SEP}{r}"),
+        None => said,
+    }
+}
+
 /// ack 里的协议版本：v2 = 竞速 · 跳板 · agent · 几种用法 · 阶段行。多一种用法不 bump 它（新界面凭 `uses` 认出老后端），
 /// 版本号只在同一种用法的字节形状变了时才动。
 pub const ACK_V: u32 = 2;

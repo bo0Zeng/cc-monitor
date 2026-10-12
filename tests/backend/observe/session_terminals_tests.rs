@@ -287,13 +287,18 @@ fn ssh_connection_is_four_fields_or_nothing() {
 fn an_unknown_or_malformed_sid_is_said_not_guessed() {
     let home = tmpdir("home");
     assert_eq!(
-        answer_at(&home, &serde_json::json!({ "sid": "s-nope" }))
-            .unwrap_err()
-            .0,
+        answer_at(
+            &home,
+            &SidReq {
+                sid: "s-nope".into()
+            }
+        )
+        .unwrap_err()
+        .0,
         "no_such_session"
     );
     assert_eq!(
-        answer_at(&home, &serde_json::json!({ "sid": "-x" }))
+        answer_at(&home, &SidReq { sid: "-x".into() })
             .unwrap_err()
             .0,
         "bad_args"

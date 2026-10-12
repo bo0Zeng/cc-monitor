@@ -13,57 +13,67 @@ pub mod wire;
 mod cli_parity;
 
 use crate::control::launch_account::{self as la, Settled};
-use serde_json::Value;
 
-/// 失败：码 ＋ 那一句 ＋ 按码定形的 `data`（只有 `account_unavailable` 带：[`la::AccountUnavailable`]）。
-pub(crate) type Failed = (&'static str, String, Option<Value>);
-type Answer = Result<Value, Failed>;
-
-/// 入参按线上形状严格收（`deny_unknown_fields`）；收不下是契约错。
-fn decode<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, Failed> {
-    serde_json::from_value(args.clone()).map_err(|e| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(&e.to_string()),
-            None,
-        )
-    })
-}
-
-/// 选不了号 ⇒ 命令级码 `account_unavailable`，`data` 是那一形。
-pub(crate) fn unavailable(u: la::AccountUnavailable) -> Failed {
-    let said = la::unavailable_said(&u);
-    ("account_unavailable", said, serde_json::to_value(u).ok())
-}
-
-/// 应答里的 `account`：实际用的号（账号库里的那一形；别的 ⇒ `null`）。
-pub(crate) fn launched(account: &Settled) -> Value {
-    match account {
-        Settled::Account(a) => serde_json::to_value(a).unwrap_or(Value::Null),
-        _ => Value::Null,
+crate::stream::inbound::typed::codes! {
+    /// `launch-render-cli` · `launch-local` 的码（两条同一份）。
+    pub(crate) enum LaunchRenderErr {
+        /// 渲不出来（坏输入 · 目录不在 · 那一家认不得）：那一句说为什么。
+        Refused = "refused",
+        /// 要的号选不了：`data` 带要的号与替代。
+        AccountUnavailable = "account_unavailable" => la::AccountUnavailable,
     }
 }
 
-fn refused(said: String) -> Failed {
-    ("refused", said, None)
+/// 选不了号 ⇒ 命令级码 `account_unavailable`，`data` 是那一形。
+pub(crate) fn unavailable(u: la::AccountUnavailable) -> LaunchRenderErr {
+    let said = la::unavailable_said(&u);
+    LaunchRenderErr::AccountUnavailable(said, u)
 }
 
-/// `launch-render-cli`：那台机器要跑的那一行 `ccm …`。成品 `{cmd, account}`；渲不出来 ⇒ `refused` ＋ 理由；
-/// 要的号选不了 ⇒ `account_unavailable`。
-pub(crate) fn answer_cli(args: &Value, facts: &la::Facts) -> Answer {
-    let req: wire::CliRenderRequest = decode(args)?;
-    let account = wire::settle(&req, facts).map_err(unavailable)?;
-    let cmd = wire::render_ccm_launch(&req, &account).map_err(refused)?;
-    Ok(serde_json::json!({ "cmd": cmd, "account": launched(&account) }))
+/// `launch-render-cli` · `launch-local` 的应答：那一行 `ccm …` ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Rendered {
+    /// 那一行 `ccm …`。
+    pub(crate) cmd: String,
+    /// 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
+    pub(crate) account: Option<la::LaunchedAccount>,
 }
 
-/// `launch-local`：本机起会话那一行。成品 `{cmd, account}`；坏输入 / 目录不在 ⇒ `refused`；
-/// 要的号选不了 ⇒ `account_unavailable`。
-pub(crate) fn answer_local(args: &Value, facts: &la::Facts) -> Answer {
-    let req: local::LocalLaunchRequest = decode(args)?;
-    let account = local::settle(&req, facts).map_err(unavailable)?;
-    let cmd = local::plan(&req, &account, &local::Facts::PRODUCTION).map_err(refused)?;
-    Ok(serde_json::json!({ "cmd": cmd, "account": launched(&account) }))
+/// 应答里的 `account`：实际用的号（账号库里的那一形；别的 ⇒ `None`）。
+pub(crate) fn launched(account: &Settled) -> Option<la::LaunchedAccount> {
+    match account {
+        Settled::Account(a) => Some(a.clone()),
+        _ => None,
+    }
+}
+
+/// `launch-render-cli`：那台机器要跑的那一行 `ccm …`；渲不出来 ⇒ `refused` ＋ 理由；要的号选不了 ⇒ `account_unavailable`。
+pub(crate) fn answer_cli(
+    req: &wire::CliRenderRequest,
+    facts: &la::Facts,
+) -> Result<Rendered, LaunchRenderErr> {
+    let account = wire::settle(req, facts).map_err(unavailable)?;
+    let cmd = wire::render_ccm_launch(req, &account).map_err(LaunchRenderErr::Refused)?;
+    Ok(Rendered {
+        cmd,
+        account: launched(&account),
+    })
+}
+
+/// `launch-local`：本机起会话那一行；坏输入 / 目录不在 ⇒ `refused`；要的号选不了 ⇒ `account_unavailable`。
+pub(crate) fn answer_local(
+    req: &local::LocalLaunchRequest,
+    facts: &la::Facts,
+) -> Result<Rendered, LaunchRenderErr> {
+    let account = local::settle(req, facts).map_err(unavailable)?;
+    let cmd =
+        local::plan(req, &account, &local::Facts::PRODUCTION).map_err(LaunchRenderErr::Refused)?;
+    Ok(Rendered {
+        cmd,
+        account: launched(&account),
+    })
 }
 
 #[cfg(test)]

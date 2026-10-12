@@ -791,8 +791,18 @@ fn the_switch_arguments_are_shaped_per_mode() {
 }
 
 fn restart_cases() -> Vec<(&'static str, Value)> {
+    use crate::control::session_restart::{Arrival, Compact, Restarted};
     let ok = |started: &str| {
-        Ok(json!({"compact": "skipped", "started": started, "terminal": "proj-cc", "account": "b"}))
+        Ok(Restarted {
+            compact: Compact::Skipped,
+            started: if started == "arrived" {
+                Arrival::Arrived
+            } else {
+                Arrival::Missed
+            },
+            terminal: "proj-cc".into(),
+            account: None,
+        })
     };
     let err = |code: &str, data: Option<Value>| Err((code.to_string(), "那一句".to_string(), data));
     [

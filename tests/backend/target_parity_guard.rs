@@ -793,7 +793,13 @@ fn typed_handler_files_of(
     mods: &std::collections::BTreeMap<Vec<String>, String>,
     out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
 ) {
-    for ctor in ["typed::blocking::<", "typed::asynchronous::<"] {
+    for ctor in [
+        "typed::blocking::<",
+        "typed::with_files::<",
+        "typed::with_own::<",
+        "typed::asynchronous::<",
+        "typed::async_with_files::<",
+    ] {
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];
             let path: Vec<String> = rest[..rest.find('>').expect("typed 那一行没收尾")]

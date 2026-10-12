@@ -582,17 +582,17 @@ impl Worker {
         let on = On {
             socket: self.socket.as_deref(),
         };
-        let view = match terminals::screen_view_on(on, &self.target, &self.tz) {
+        let shot = match terminals::screen_view_on(on, &self.target, &self.tz) {
             Ok(v) => v,
             seen @ Err(_) => return Step::End(end_of(&seen)),
         };
-        let fp = view
-            .get("screen")
-            .and_then(Value::as_str)
-            .map(str::to_string);
-        if fp.is_some() && fp == *last {
+        let fp = Some(shot.screen.clone());
+        if fp == *last {
             return Step::Go;
         }
+        let Ok(view) = serde_json::to_value(&shot) else {
+            return Step::End(FollowEnd::Lost);
+        };
         if serde_json::to_string(&view).map_or(usize::MAX, |s| s.len()) > SCREEN_FRAME_CAP {
             return Step::End(FollowEnd::TooBig);
         }

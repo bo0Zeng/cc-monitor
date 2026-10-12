@@ -5,7 +5,24 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
+    ("kill", "6de86725"),
+    ("launch", "59041b9e"),
+    ("launch-local", "d359d78c"),
+    ("launch-render-cli", "7fc9d2a8"),
+    ("session-interrupts", "6b0c632f"),
+    ("session-new", "af0ce8f1"),
+    ("session-new-dir", "2c86c180"),
+    ("session-new-facts", "aed6893e"),
+    ("session-restart", "d223b9ce"),
+    ("session-terminals", "7c85cbeb"),
+    ("sessions-start", "264d59fb"),
+    ("sessions-stop", "0a1aa1a6"),
+    ("sessions-where", "8c20eb86"),
+    ("terminal-input", "b2a383a2"),
     ("terminal-name-mint", "f0db66f2"),
+    ("terminal-preview", "d60b74d2"),
+    ("terminal-processes", "abba2221"),
+    ("terminals-list", "09490ec0"),
 ];
 
 /// 这条命令在本份编进来的形状指纹；不是 typed 命令 ⇒ `None`。

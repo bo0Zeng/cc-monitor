@@ -53,10 +53,13 @@ import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
-/** 生产段（剥注释）里匹配 `re` 的文件集合。 */
-function filesMatching(re: RegExp, skip: readonly string[] = []): string[] {
+/** 生成的 typed 命令表（命令名 ⇒ 入参 · 回包的类型）：里面也写着命令名，可它是类型，不是发送点。 */
+const TYPED_MAP = "src/frontend/ui/generated/TypedCommands.ts";
+
+/** 生产段（剥注释）里匹配 `re` 的文件集合（typed 命令表不算）。 */
+function filesMatching(re: RegExp): string[] {
   return productionTsFiles()
-    .filter((f) => !skip.includes(f.file))
+    .filter((f) => f.file !== TYPED_MAP)
     .filter((f) => re.test(stripComments(f.text, "ts")))
     .map((f) => f.file)
     .sort();
@@ -66,8 +69,7 @@ describe("K1 · 铸名只有一个家", () => {
   // 派生 ＋ 避让搬进后端：前端铸名 = 问那台后端 `terminal-name-mint`，发这一问的只许一个家。
   it("★ 生产段发 `terminal-name-mint` 的文件 == {terminal-name-mint.ts}", () => {
     expect(
-      // 生成的 typed 命令表（命令名 ⇒ 入参 · 回包的类型）里也写着这个名字：它是类型，不是发送点。
-      filesMatching(/["']terminal-name-mint["']/, ["src/frontend/ui/generated/TypedCommands.ts"]),
+      filesMatching(/["']terminal-name-mint["']/),
       "有别的地方自己去问后端铸名了。起会话的 tmux 名只许经 `src/frontend/ui/terminal-name-mint.ts`" +
         "（它守着「问不到 ⇒ 不铸名」；别处抄一份，降级口径就又分叉了 —— B §2.6 的病）。",
     ).toEqual(["src/frontend/ui/terminal-name-mint.ts"]);

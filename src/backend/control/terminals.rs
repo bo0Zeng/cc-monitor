@@ -13,11 +13,16 @@
 //! - **先看见再送**：送的时候带上看到的那一屏的指纹（`seen_screen`），画面变了就不送、把新指纹交回去。
 //! - 只抓一次、只送一次：轮询归调用方（零定时器）。
 
+use super::terminals_wire::{
+    Ability, Attached, Cursor, Preview, ScreenLine, Sent, SentResult, Span, StartedBy, TermSession,
+    TermState, TerminalCan, TerminalInputReq, TerminalItem, TerminalPreviewReq, TerminalsList,
+    TerminalsListReq,
+};
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use crate::control::gate::{self, Who};
 use crate::platform::child::{Child, ChildFail, Deadline};
 use copy_core::copy_text;
-use serde_json::{json, Map, Value};
+use serde_json::Value;
 
 /// 列名单 · 问尺寸那几发只读 tmux 的期限：tmux 一发 5 s（同 watcher 探测 tmux 的期限）。
 const READ_TMUX_WITHIN: Deadline = Deadline::secs(5);
@@ -277,17 +282,38 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
         .collect()
 }
 
-/// 送不了 / 结束不了的原因码 ⇒ 给人看的那一句（`terminal-input` 被拒的 `said` · 名单 `can.*` 里 `{no, said}` 的 `said`）。
-/// 码照线上那一形（小写下划线，与同族命令级码同一写法；手机端也吃这两格）；认不出的 ⇒ 「被拒」。
-pub(crate) fn no_said(why: &str) -> String {
+/// 送不了 / 结束不了的原因（`terminal-input` 被拒的 `why` · 名单 `can.*` 里 `{no, said}` 的 `no`）。
+/// 线上照码那一形（小写下划线，与同族命令级码同一写法；手机端也吃这两格）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS, serde::Deserialize))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Refused {
+    /// 别的前端的会话。
+    NotYours,
+    /// 不归我们管（不是我们起的）。
+    NotManaged,
+    /// 那个 tmux 会话里还有别的窗口（结束会连带关掉）。
+    OtherWindows,
+    /// 名单里此刻没有它。
+    NotKnown,
+    /// 不止一个终端挂着这个 sid。
+    Ambiguous,
+    /// 送的那一刻它已经没了。
+    Ended,
+    /// 画面变了（带新指纹）。
+    ScreenChanged,
+}
+
+/// 原因 ⇒ 给人看的那一句。
+pub(crate) fn no_said(why: Refused) -> String {
     match why {
-        "not_yours" => copy_text("beTerminal.no.notYours", &[]),
-        "not_managed" => copy_text("beTerminal.no.notManaged", &[]),
-        "other_windows" => copy_text("beTerminal.no.otherWindows", &[]),
-        "not_known" | "ended" => copy_text("beTerminal.no.gone", &[]),
-        "ambiguous" => copy_text("beTerminal.no.ambiguous", &[]),
-        "screen_changed" => copy_text("beTerminal.no.screenChanged", &[]),
-        _ => copy_text("beTerminal.no.other", &[]),
+        Refused::NotYours => copy_text("beTerminal.no.notYours", &[]),
+        Refused::NotManaged => copy_text("beTerminal.no.notManaged", &[]),
+        Refused::OtherWindows => copy_text("beTerminal.no.otherWindows", &[]),
+        Refused::NotKnown | Refused::Ended => copy_text("beTerminal.no.gone", &[]),
+        Refused::Ambiguous => copy_text("beTerminal.no.ambiguous", &[]),
+        Refused::ScreenChanged => copy_text("beTerminal.no.screenChanged", &[]),
     }
 }
 
@@ -296,73 +322,61 @@ pub(crate) fn terminal_json(
     row: &TermRow,
     clients: &[(String, u64, u64)],
     requester: Option<&str>,
-) -> Value {
+) -> TerminalItem {
     let who = gate::identity(&row.name, &row.probed(), requester);
-    let not = |why: &str| json!({ "no": why, "said": no_said(why) });
     let input = match who {
-        Who::Pass => json!(true),
-        Who::OtherClient => not("not_yours"),
-        Who::NotOurs => not("not_managed"),
+        Who::Pass => Ability::Yes,
+        Who::OtherClient => Ability::No(Refused::NotYours),
+        Who::NotOurs => Ability::No(Refused::NotManaged),
     };
     let end = match who {
-        Who::Pass if row.shared || row.windows == 1 => json!(true),
-        Who::Pass => not("other_windows"),
-        Who::OtherClient => not("not_yours"),
-        Who::NotOurs => not("not_managed"),
+        Who::Pass if row.shared || row.windows == 1 => Ability::Yes,
+        Who::Pass => Ability::No(Refused::OtherWindows),
+        Who::OtherClient => Ability::No(Refused::NotYours),
+        Who::NotOurs => Ability::No(Refused::NotManaged),
     };
     let shell = SHELLS.contains(&row.program.as_str());
     let state = match (row.sid.is_empty(), shell) {
-        (false, true) => "program_exited",
-        (true, true) => "idle",
-        _ => "running",
+        (false, true) => TermState::ProgramExited,
+        (true, true) => TermState::Idle,
+        _ => TermState::Running,
     };
-    let mut t = Map::new();
-    t.insert("terminal".into(), row.handle().into());
-    t.insert(
-        "host".into(),
-        crate::stream::wire::TerminalHost::Tmux.as_wire().into(),
-    );
-    t.insert("tmux_name".into(), row.name.clone().into());
     let title = if !row.sid.is_empty() && !shell && !row.title.is_empty() {
         row.title.clone()
     } else {
         row.program.clone()
     };
-    t.insert("title".into(), title.into());
-    t.insert("program".into(), row.program.clone().into());
-    t.insert("cwd".into(), row.cwd.clone().into());
-    if !row.sid.is_empty() {
-        let mut s = Map::new();
-        s.insert("sid".into(), row.sid.clone().into());
-        if !row.agent.is_empty() {
-            s.insert("agent".into(), row.agent.clone().into());
-        }
-        t.insert("session".into(), Value::Object(s));
-    }
-    t.insert(
-        "started_by".into(),
-        json!({
-            "client": (!row.client.is_empty()).then(|| row.client.clone()),
-            "mine": who == Who::Pass,
+    let nonempty = |s: &str| (!s.is_empty()).then(|| s.to_string());
+    TerminalItem {
+        terminal: row.handle(),
+        host: crate::stream::wire::TerminalHost::Tmux.as_wire(),
+        tmux_name: row.name.clone(),
+        title,
+        program: row.program.clone(),
+        cwd: row.cwd.clone(),
+        session: nonempty(&row.sid).map(|sid| TermSession {
+            sid,
+            agent: nonempty(&row.agent),
         }),
-    );
-    let attached: Vec<Value> = clients
-        .iter()
-        .filter(|(id, _, _)| *id == row.id)
-        .map(|(_, since, last)| {
-            json!({ "kind": "terminal-window", "since": since, "last_activity": last })
-        })
-        .collect();
-    t.insert("clients".into(), Value::Array(attached));
-    t.insert("input".into(), "shared".into());
-    t.insert("state".into(), state.into());
-    t.insert("last_activity".into(), row.activity.into());
-    t.insert(
-        "can".into(),
+        started_by: StartedBy {
+            client: nonempty(&row.client),
+            mine: who == Who::Pass,
+        },
+        clients: clients
+            .iter()
+            .filter(|(id, _, _)| *id == row.id)
+            .map(|(_, since, last)| Attached {
+                kind: "terminal-window",
+                since: *since,
+                last_activity: *last,
+            })
+            .collect(),
+        input: "shared",
+        state,
+        last_activity: row.activity,
         // 抓屏不过身份门、恒可用 ⇒ 不在这里占一格（`can` 只放会随调用方 / 此刻变的能力）。
-        json!({ "input": input, "end": end }),
-    );
-    Value::Object(t)
+        can: TerminalCan { input, end },
+    }
 }
 
 /// `terminals-list` 的成品构造器（纯）。
@@ -371,17 +385,19 @@ pub(crate) fn list_reply(
     clients: &[(String, u64, u64)],
     complete: bool,
     requester: Option<&str>,
-) -> Value {
-    let terminals: Vec<Value> = rows
-        .iter()
-        .map(|r| terminal_json(r, clients, requester))
-        .collect();
-    json!({ "terminals": terminals, "complete": complete })
+) -> TerminalsList {
+    TerminalsList {
+        terminals: rows
+            .iter()
+            .map(|r| terminal_json(r, clients, requester))
+            .collect(),
+        complete,
+    }
 }
 
-/// 帧面 / CLI 面入口：`terminals-list`。入 `{client?}`（自报的前端，决定每一行的 `mine` 与 `can`）。
-pub(crate) fn list_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
-    let requester = gate::requester_of(args)?;
+/// `terminals-list` 的本体。`client`（自报的前端）决定每一行的 `mine` 与 `can`。
+pub(crate) fn list_on(on: On<'_>, req: &TerminalsListReq) -> Result<TerminalsList, CmdErr> {
+    let requester = gate::requester(req.client.as_deref())?;
     let (rows, clients, complete) = rows_on(on)?;
     Ok(list_reply(&rows, &clients, complete, requester.as_deref()))
 }
@@ -393,19 +409,24 @@ pub(crate) enum Target {
     Sid(String),
 }
 
+/// 入参里那两格（typed 那三条已经按类型解好）⇒ 目标：恰给一个、非空、不超长。
+pub(crate) fn target(terminal: Option<&str>, sid: Option<&str>) -> Result<Target, CmdErr> {
+    let ok = |s: &str| !s.is_empty() && s.len() <= MAX_TARGET_BYTES;
+    match (terminal, sid) {
+        (Some(h), None) if ok(h) => Ok(Target::Handle(h.to_string())),
+        (None, Some(s)) if ok(s) => Ok(Target::Sid(s.to_string())),
+        _ => Err(bad_target()),
+    }
+}
+
+/// 同 [`target`]，从帧面原样的 `args` 里取（终端实时预览 `terminal-follow` 那一条还是内建档）：两格不是串 ⇒ `bad_target`。
 pub(crate) fn target_of(args: &Value) -> Result<Target, CmdErr> {
     let text = |k: &str| match args.get(k) {
         None => Ok(None),
-        Some(Value::String(s)) if !s.is_empty() && s.len() <= MAX_TARGET_BYTES => {
-            Ok(Some(s.clone()))
-        }
+        Some(Value::String(s)) => Ok(Some(s.as_str())),
         Some(_) => Err(bad_target()),
     };
-    match (text("terminal")?, text("sid")?) {
-        (Some(h), None) => Ok(Target::Handle(h)),
-        (None, Some(s)) => Ok(Target::Sid(s)),
-        _ => Err(bad_target()),
-    }
+    target(text("terminal")?, text("sid")?)
 }
 
 fn bad_target() -> CmdErr {
@@ -609,34 +630,24 @@ impl Style {
         }
     }
 
-    fn span(&self, from: usize, to: usize) -> Value {
-        let mut m = Map::new();
-        m.insert("from".into(), from.into());
-        m.insert("to".into(), to.into());
-        if let Some(c) = &self.fg {
-            m.insert("fg".into(), c.clone().into());
+    fn span(&self, from: usize, to: usize) -> Span {
+        Span {
+            from,
+            to,
+            fg: self.fg.clone(),
+            bg: self.bg.clone(),
+            bold: self.bold,
+            dim: self.dim,
+            italic: self.italic,
+            underline: self.underline,
+            inverse: self.inverse,
         }
-        if let Some(c) = &self.bg {
-            m.insert("bg".into(), c.clone().into());
-        }
-        for (k, on) in [
-            ("bold", self.bold),
-            ("dim", self.dim),
-            ("italic", self.italic),
-            ("underline", self.underline),
-            ("inverse", self.inverse),
-        ] {
-            if on {
-                m.insert(k.into(), true.into());
-            }
-        }
-        Value::Object(m)
     }
 }
 
 /// 带 SGR 的一行 ⇒ `(纯文字, 属性段)`。属性段按字符列计（`from` 含、`to` 不含），默认样子不出段；
 /// 别的转义（OSC 等）丢掉。行与行之间属性接着传（`style` 由调用方带着走）。
-fn parse_line(raw: &str, style: &mut Style) -> (String, Vec<Value>) {
+fn parse_line(raw: &str, style: &mut Style) -> (String, Vec<Span>) {
     let mut text = String::new();
     let mut spans = Vec::new();
     let mut col = 0usize;
@@ -694,43 +705,35 @@ pub(crate) fn preview_reply(
     capped: bool,
     captured_at: u64,
     captured_text: &str,
-) -> Value {
+) -> Preview {
     let mut style = Style::default();
     let mut plain = Vec::new();
-    let lines: Vec<Value> = split_lines(&view.text)
+    let lines: Vec<ScreenLine> = split_lines(&view.text)
         .into_iter()
         .map(|raw| {
             let (text, spans) = parse_line(raw, &mut style);
             plain.push(text.clone());
-            if color {
-                json!({ "text": text, "spans": spans })
-            } else {
-                json!({ "text": text })
+            ScreenLine {
+                text,
+                spans: color.then_some(spans),
             }
         })
         .collect();
     let back = plain.len().saturating_sub(view.rows as usize);
-    json!({
-        "screen": fingerprint(&plain, view.rows),
-        "cols": view.cols,
-        "rows": view.rows,
-        "cursor": { "x": view.cursor_x, "y": view.cursor_y, "visible": view.cursor_visible },
-        "lines": lines,
-        "scrollback_lines": back,
-        "capped": capped,
-        "captured_at": captured_at,
-        "captured_at_text": captured_text,
-    })
-}
-
-fn bool_arg(args: &Value, k: &str, default: bool) -> Result<bool, CmdErr> {
-    match args.get(k) {
-        None => Ok(default),
-        Some(Value::Bool(b)) => Ok(*b),
-        Some(_) => Err(CmdErr::from((
-            "bad_args",
-            crate::common::contract::malformed(&format!("`{k}` must be a boolean")),
-        ))),
+    Preview {
+        screen: fingerprint(&plain, view.rows),
+        cols: view.cols,
+        rows: view.rows,
+        cursor: Cursor {
+            x: view.cursor_x,
+            y: view.cursor_y,
+            visible: view.cursor_visible,
+        },
+        lines,
+        scrollback_lines: back,
+        capped,
+        captured_at,
+        captured_at_text: captured_text.to_string(),
     }
 }
 
@@ -750,20 +753,15 @@ fn not_known(why: &str) -> CmdErr {
     )
 }
 
-/// 帧面 / CLI 面入口：`terminal-preview`。入 `{terminal | sid, color?: true, scrollback?: 0}`。只读、不过身份门。
-/// `tz` ＝ 看的那一台的时区：抓屏时刻 `atText` 按它写。
-pub(crate) fn preview_on(on: On<'_>, args: &Value, tz: &crate::Tz) -> Result<Value, CmdErr> {
-    let target = target_of(args)?;
-    let color = bool_arg(args, "color", true)?;
-    let asked = match args.get("scrollback") {
-        None => 0,
-        Some(v) => v.as_u64().ok_or_else(|| {
-            CmdErr::new(
-                "bad_args",
-                crate::common::contract::malformed("`scrollback` must be a non-negative integer"),
-            )
-        })?,
-    };
+/// `terminal-preview` 的本体。只读、不过身份门。`tz` ＝ 看的那一台的时区：抓屏时刻 `captured_at_text` 按它写。
+pub(crate) fn preview_on(
+    on: On<'_>,
+    req: &TerminalPreviewReq,
+    tz: &crate::Tz,
+) -> Result<Preview, CmdErr> {
+    let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
+    let color = req.color.unwrap_or(true);
+    let asked = req.scrollback.unwrap_or(0);
     let back = asked.min(u64::from(MAX_SCROLLBACK)) as u32;
     let (rows, _, _) = rows_on(on)?;
     let row = match find(&rows, &target) {
@@ -822,7 +820,7 @@ pub(crate) fn follow_target_on(on: On<'_>, args: &Value) -> Result<FollowTarget,
 }
 
 /// 这一刻那一屏（带颜色、不往回要）：与 `terminal-preview` 同一份成品（实时预览每一帧就是它）。
-pub(crate) fn screen_view_on(on: On<'_>, target: &str, tz: &crate::Tz) -> Result<Value, CmdErr> {
+pub(crate) fn screen_view_on(on: On<'_>, target: &str, tz: &crate::Tz) -> Result<Preview, CmdErr> {
     let view = view_on(on, target, true, 0)?;
     let at = now_secs();
     Ok(preview_reply(
@@ -860,18 +858,19 @@ pub(crate) enum Input {
     Key(&'static str),
 }
 
-pub(crate) fn input_of(args: &Value) -> Result<Input, CmdErr> {
+/// 送什么：`text`（＋ `enter`，缺省 `true`）与 `key` 恰给一个；键只认键表里的名字。
+pub(crate) fn input_of(req: &TerminalInputReq) -> Result<Input, CmdErr> {
     let bad = |m: &str| CmdErr::new("bad_args", crate::common::contract::malformed(m));
-    match (args.get("text"), args.get("key")) {
-        (Some(Value::String(t)), None) => {
+    match (&req.text, &req.key) {
+        (Some(t), None) => {
             super::launch::check_input_text(t)?;
             Ok(Input::Text {
                 text: t.clone(),
-                enter: bool_arg(args, "enter", true)?,
+                enter: req.enter.unwrap_or(true),
             })
         }
-        (None, Some(Value::String(k))) => {
-            if args.get("enter").is_some() {
+        (None, Some(k)) => {
+            if req.enter.is_some() {
                 return Err(bad("`enter` only goes with `text`"));
             }
             KEYS.iter()
@@ -886,85 +885,57 @@ pub(crate) fn input_of(args: &Value) -> Result<Input, CmdErr> {
 }
 
 /// `terminal-input` 的回话构造器（纯）。被拒的带原因码 `why` 与给人看的 `said`。
-pub(crate) fn input_reply(result: &str, why: Option<&str>, screen: Option<&str>) -> Value {
-    let mut m = Map::new();
-    m.insert("result".into(), result.into());
-    if let Some(w) = why {
-        m.insert("why".into(), w.into());
-        m.insert("said".into(), no_said(w).into());
+pub(crate) fn input_reply(result: SentResult, why: Option<Refused>, screen: Option<&str>) -> Sent {
+    Sent {
+        result,
+        why,
+        said: why.map(no_said),
+        screen: screen.map(str::to_string),
     }
-    if let Some(s) = screen {
-        m.insert("screen".into(), s.into());
-    }
-    Value::Object(m)
 }
 
-/// `terminal-input` 收的那几格；别的一律拒（多送一格 ⇒ `bad_args`，不静默吞 —— 同 `deny_unknown_fields`）。
-/// 原先还收一格 `take`（「先接管输入」）：tmux 上各端本来都能打字，它只被校验、从没被读 ⇒ 删了。
-const INPUT_FIELDS: &[&str] = &[
-    "terminal",
-    "sid",
-    "text",
-    "enter",
-    "key",
-    "seen_screen",
-    "client",
-];
+/// 被拒（不是错）：原因 ＋ 那一句。
+fn refused(why: Refused) -> Sent {
+    input_reply(SentResult::Refused, Some(why), None)
+}
 
-/// 帧面 / CLI 面入口：`terminal-input`。入 `{terminal | sid, text, enter?: true | key, seen_screen?, client?}`（别的格 ⇒ `bad_args`）。
+/// `terminal-input` 的本体（多出来的格在解入参那一步就回 `bad_args`）。
 /// 送不了的（不在名单 · 别的前端的 · 不归我们管 · 画面变了 · 已经没了）回 `result: "refused"` ＋ `why`，不是错；
 /// 形状不对才是错（`bad_target` · `bad_args`）。
-pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
-    if let Some(extra) = args
-        .as_object()
-        .and_then(|m| m.keys().find(|k| !INPUT_FIELDS.contains(&k.as_str())))
-    {
-        return Err(CmdErr::from((
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "unknown field `{extra}` (terminal-input takes {})",
-                INPUT_FIELDS.join(", ")
-            )),
-        )));
-    }
-    let target = target_of(args)?;
-    let input = input_of(args)?;
-    let requester = gate::requester_of(args)?;
-    let seen = match args.get("seen_screen") {
-        None => None,
-        Some(Value::String(s)) => Some(s.clone()),
-        Some(_) => {
-            return Err(CmdErr::from((
-                "bad_args",
-                crate::common::contract::malformed("`seen_screen` must be a string"),
-            )))
-        }
-    };
+pub(crate) fn input_on(on: On<'_>, req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+    let target = target(req.terminal.as_deref(), req.sid.as_deref())?;
+    let input = input_of(req)?;
+    let requester = gate::requester(req.client.as_deref())?;
+    let seen = req.seen_screen.clone();
     let (rows, _, _) = rows_on(on)?;
     let row = match find(&rows, &target) {
         Found::One(r) => r,
-        Found::NotKnown => return Ok(input_reply("refused", Some("not_known"), None)),
-        Found::Ambiguous => return Ok(input_reply("refused", Some("ambiguous"), None)),
+        Found::NotKnown => return Ok(refused(Refused::NotKnown)),
+        Found::Ambiguous => return Ok(refused(Refused::Ambiguous)),
     };
     // 身份门照 `send-into` 那一道：此刻再探一次（名单那一刻之后可能换了人）。探的是挂着 sid 的那个窗格 ⇒ 按它判。
     let Some(p) = gate::probe_with(on.cmd(), row.target())? else {
-        return Ok(input_reply("refused", Some("ended"), None));
+        return Ok(refused(Refused::Ended));
     };
     if row.pane.is_some() && p.ccm_sid != row.sid {
         // 那个窗格此刻挂的已经不是名单里那个 sid 了。
-        return Ok(input_reply("refused", Some("not_known"), None));
+        return Ok(refused(Refused::NotKnown));
     }
     match gate::identity(&row.name, &p, requester.as_deref()) {
         Who::Pass => {}
-        Who::OtherClient => return Ok(input_reply("refused", Some("not_yours"), None)),
-        Who::NotOurs => return Ok(input_reply("refused", Some("not_managed"), None)),
+        Who::OtherClient => return Ok(refused(Refused::NotYours)),
+        Who::NotOurs => return Ok(refused(Refused::NotManaged)),
     }
     // 送到哪：挂着 sid 的那个窗格（窗格 ID 同样是句柄、不复用），没挂 sid 的会话 ⇒ 探回来的会话句柄。
     let at = row.pane.clone().unwrap_or(p.session_id);
     if let Some(seen) = seen {
         let now = screen_now(on, &at)?;
         if now != seen {
-            return Ok(input_reply("refused", Some("screen_changed"), Some(&now)));
+            return Ok(input_reply(
+                SentResult::Refused,
+                Some(Refused::ScreenChanged),
+                Some(&now),
+            ));
         }
     }
     let tmux = |a: &[&str]| super::launch::ran(on.cmd(), a);
@@ -973,26 +944,13 @@ pub(crate) fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
         Input::Key(k) => super::launch::press_key(&at, k, &tmux)?,
     };
     if sent.ok {
-        return Ok(input_reply("delivered", None, None));
+        return Ok(input_reply(SentResult::Delivered, None, None));
     }
     // tmux 回了非零：会话还在 ⇒ 不知道送没送到（不重发）；不在了 ⇒ 已经没了。
     match gate::probe_with(on.cmd(), &at)? {
-        Some(_) => Ok(input_reply("unsure", None, None)),
-        None => Ok(input_reply("refused", Some("ended"), None)),
+        Some(_) => Ok(input_reply(SentResult::Unsure, None, None)),
+        None => Ok(refused(Refused::Ended)),
     }
-}
-
-/// 帧面入口（生产：默认 socket）。
-pub(crate) fn list_for_inbound(args: &Value) -> Result<Value, CmdErr> {
-    list_on(On::default(), args)
-}
-
-pub(crate) fn preview_for_inbound(args: &Value, tz: &crate::Tz) -> Result<Value, CmdErr> {
-    preview_on(On::default(), args, tz)
-}
-
-pub(crate) fn input_for_inbound(args: &Value) -> Result<Value, CmdErr> {
-    input_on(On::default(), args)
 }
 
 #[cfg(test)]

@@ -18,7 +18,10 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ControlError } from "../../../src/frontend/ui/control-said";
-import { decodeSent, decodeShot, decodeTerminals, previewByTmuxName, previewText, sendToTerminal } from "../../../src/frontend/ui/terminal-reads";
+import { decodeShot, previewByTmuxName, previewText, rowsOf, sendToTerminal, sentOf, shotOf } from "../../../src/frontend/ui/terminal-reads";
+import type { Preview } from "../../../src/frontend/ui/generated/Preview";
+import type { Sent } from "../../../src/frontend/ui/generated/Sent";
+import type { TerminalsList } from "../../../src/frontend/ui/generated/TerminalsList";
 import { decodeScreenLines, screenText } from "../../../src/frontend/ui/terminal-screen";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, UNSUPPORTED, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
@@ -70,10 +73,11 @@ async function failureOf(act: () => Promise<unknown>): Promise<ControlError> {
 const saidBy = async (origin: string): Promise<string> => (await failureOf(() => previewText(origin, { sid: "sid-a" }, "demo-cc"))).message;
 
 describe("抓一屏：金样与形状", () => {
-  it("★★ 金样：解码器读得懂后端真出的成品（每行 `text` 用换行接起来）", () => {
+  it("★★ 金样：后端真出的成品读得出（每行 `text` 用换行接起来）；实时预览那一帧同一份成品、读法相同", () => {
     const lines = (PREVIEW.reply.lines as { text: string }[]).map((l) => l.text);
     expect(lines.length, "金样里没有行 —— 下面是空转").toBeGreaterThan(0);
-    expect(decodeShot("devbox", PREVIEW.reply).text).toBe(lines.join("\n"));
+    expect(shotOf(PREVIEW.reply as unknown as Preview).text).toBe(lines.join("\n"));
+    expect(decodeShot("devbox", PREVIEW.reply)).toEqual(shotOf(PREVIEW.reply as unknown as Preview));
   });
 
   it("★ 空屏是合法的成功；多出来的格照收；要用的格缺 / 类型不对 ⇒ 抛", () => {
@@ -85,37 +89,32 @@ describe("抓一屏：金样与形状", () => {
     }
   });
 
-  it("★ 名单：金样读得出句柄与 tmux 名；缺格 ⇒ 抛", () => {
-    const rows = decodeTerminals("devbox", LIST.reply);
+  it("★ 名单：金样读得出句柄与 tmux 名", () => {
+    const rows = rowsOf(LIST.reply as unknown as TerminalsList);
     expect(rows.length).toBe((LIST.reply.terminals as unknown[]).length);
     expect(rows.every((r) => r.terminal !== "" && r.tmuxName !== "")).toBe(true);
-    expect(() => decodeTerminals("devbox", { terminals: [{ terminal: "t" }] })).toThrow(copyPattern("peerVersion.said.unreadable"));
   });
 
   it("★ 名单（终端页要的几格）：会话 ID · 连着几个终端窗口 · 输入在谁手里 · 能不能送（后端写好的那一句原样）", () => {
-    const rows = decodeTerminals("devbox", LIST.reply);
+    const rows = rowsOf(LIST.reply as unknown as TerminalsList);
     expect(rows[0]).toMatchObject({ terminal: "tmux-1-1", sid: "sid-a", clients: 1, input: "shared", programExited: false, inputNo: null });
     expect(rows[1]).toMatchObject({ terminal: "tmux-3", sid: null, clients: 0, inputNo: (LIST.reply.terminals as { can: { input: { said: string } } }[])[1].can.input.said });
     expect(rows[1].inputNo).not.toBe("");
     // 有会话、前台已回到 shell 的那一行（金样第三行，`state` 是后端的码）⇒ 「程序已退出」。
     expect(rows[2]).toMatchObject({ terminal: "tmux-2-2", programExited: true });
-    // 那一句缺（契约外）⇒ 落「被拒」，不按码猜。
-    const bare = decodeTerminals("devbox", { terminals: [{ terminal: "t", tmux_name: "n", can: { input: { no: "not_yours" } } }] });
-    expect(bare[0].inputNo).toBe(copyText("terminal.why.other"));
   });
 
-  it("★ 抓一屏连指纹与时刻；送字送键的三种回话（取自金样）都读得出、认不出的 ⇒ 抛", () => {
-    const shot = decodeShot("devbox", PREVIEW.reply);
+  it("★ 抓一屏连指纹与时刻；送字送键的三种回话（取自金样）都读得出", () => {
+    const shot = shotOf(PREVIEW.reply as unknown as Preview);
     expect([shot.screen, shot.atText]).toEqual([PREVIEW.reply.screen, PREVIEW.reply.captured_at_text]);
     expect(shot.lines[0].spans, "抓一屏要连颜色段一起交给画面").toEqual([{ from: 0, to: 4, fg: "red", bold: true }]);
     const INPUT = golden["terminal-input"] as unknown as { replies: unknown[] };
-    expect(INPUT.replies.map((r) => decodeSent("devbox", r))).toEqual([
+    expect(INPUT.replies.map((r) => sentOf(r as Sent))).toEqual([
       { result: "delivered" },
       { result: "refused", why: "screen_changed", said: (INPUT.replies[1] as { said: string }).said, screen: "0000000000000000" },
       { result: "unsure" },
     ]);
-    expect(() => decodeSent("devbox", { result: "maybe" })).toThrow(copyPattern("peerVersion.said.unreadable"));
-    expect(decodeSent("devbox", { result: "refused", why: "x" }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", why: "x", said: copyText("terminal.why.other"), screen: null });
+    expect(sentOf({ result: "refused", why: "ambiguous" }), "那一句缺 ⇒ 落「被拒」").toEqual({ result: "refused", why: "ambiguous", said: copyText("terminal.why.other"), screen: null });
   });
 
   it("★ 送字带句柄 · 字 · 回车 · 看到的那一屏的指纹；送键只带键", async () => {

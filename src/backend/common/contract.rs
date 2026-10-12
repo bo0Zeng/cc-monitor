@@ -11,7 +11,8 @@
 /// 诊断跟着那一串走（隔一个分隔字符），由失败信封那一处（`parts`）拆开：句子照旧只有「请求格式不对」，
 /// 诊断进复制详情的「原话」那一行 —— 看的人知道缺的是哪一格、要什么形状，不必去翻那台的日志。
 /// 失败信封（`stream::detail::Failed` · `Fail`）只经 `parts` 拆；没有诊断 ⇒ 原样。
-pub(crate) use ssh_dial::{malformed, parts};
+/// 反方向（那一句 ＋ 原话 ⇒ 一串，`joined`）与分隔字符同住那一处。
+pub(crate) use ssh_dial::{joined, malformed, parts};
 
 #[cfg(test)]
 #[path = "../../../tests/backend/common/contract_tests.rs"]

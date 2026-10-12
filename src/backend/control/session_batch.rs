@@ -45,7 +45,11 @@ pub(crate) struct Deps<'a> {
     pub(crate) record: &'a dyn Fn(&str, Option<&str>) -> Result<(bool, String), String>,
     /// `(会话名, sid)` ⇒ 杀；成品是 `kill` 那一格 `bus`。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
-    pub(crate) kill: &'a dyn Fn(&str, &str) -> Result<Value, crate::stream::inbound::spec::Fail>,
+    pub(crate) kill:
+        &'a dyn Fn(
+            &str,
+            &str,
+        ) -> Result<super::cc_bus::BusNote, crate::stream::inbound::spec::Fail>,
     /// 就地键入：`(会话名, sid, 那一行)` ⇒ 同 `launch send-into`（带 sid：落在挂着它的那个窗格，身份按它判）。
     /// 失败带原话（tmux 的 stderr）：那一项的「原话」格收「那一句 ＋ 原话」。
     pub(crate) send_into:
@@ -119,7 +123,7 @@ pub(crate) struct Answer {
     pub(crate) detail: String,
     /// 落在哪个 tmux 会话上（停 · 起在 tmux 里 · 本机开终端那一形）。
     pub(crate) session: Option<String>,
-    pub(crate) bus: Option<Value>,
+    pub(crate) bus: Option<super::cc_bus::BusNote>,
     /// 开终端那一形要跑的那一行。
     pub(crate) cmd: Option<String>,
     /// 起的那一条实际用的号（`launch-local` 应答那一格同形；停 / 没起 ⇒ `null`）。
@@ -130,35 +134,55 @@ pub(crate) struct Answer {
 
 /// `sessions-stop` / `sessions-start` 的应答：逐个结果，与入参同序。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Batched {
     pub(crate) results: Vec<Outcome>,
 }
 
 /// 一个会话的结局上线那一形（[`Answer`] ＋ 失败那一项多的两格）。可缺的格一律出 `null`，不省键。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Outcome {
+    /// 会话 id（与入参同序）。
     pub(crate) sid: String,
+    /// `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
+    #[cfg_attr(test, ts(type = "\"done\" | \"skipped\" | \"failed\""))]
     pub(crate) outcome: &'static str,
+    /// 跳过 / 失败的原因码（做成了 ⇒ `null`）。
     pub(crate) why: Option<String>,
+    /// 那一个的原话。
     pub(crate) detail: String,
+    /// 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`。
     pub(crate) said: Option<String>,
+    /// 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
     pub(crate) copy_detail: String,
+    /// 落在哪个 tmux 会话上。
     pub(crate) session: Option<String>,
-    pub(crate) bus: Option<Value>,
+    /// 停做成了那一个：同 `kill` 应答的 `bus`。
+    pub(crate) bus: Option<super::cc_bus::BusNote>,
+    /// 开终端那一形要跑的那一行。
     pub(crate) cmd: Option<String>,
+    /// 起的那一条实际用的号（停 / 没起 ⇒ `null`）。
     pub(crate) account: Option<LaunchedAccount>,
+    /// 选不了号的那一项：带要的号与替代（别的 ⇒ `null`）。
     pub(crate) unavailable: Option<AccountUnavailable>,
 }
 
 /// `sessions-where` 的应答：逐个结果，与入参同序。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Whereabouts {
     pub(crate) results: Vec<Whereabout>,
 }
 
 /// 一个 sid 此刻在这台 tmux 里的样子（[`Standing`] 上线那一形 ＋ 这台没 tmux）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum StandingWord {
     Running,
@@ -170,17 +194,28 @@ pub(crate) enum StandingWord {
 
 /// `sessions-where` 一项：`terminals` 与 `names` 同序同数。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Whereabout {
+    /// 会话 id（与入参同序）。
     pub(crate) sid: String,
+    /// `running` · `ambiguous` · `idle` · `none` · `no_tmux`。
     pub(crate) standing: StandingWord,
+    /// 带着它的 tmux 会话名。
     pub(crate) names: Vec<String>,
+    /// 与 `names` 同序同数：名单里那一行的句柄。
     pub(crate) terminals: Vec<TerminalAt>,
 }
 
 /// 名单里那一行（词同容器那一格与 `terminals-list`）。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TerminalAt {
+    /// 终端宿主。
+    #[cfg_attr(test, ts(type = "string"))]
     pub(crate) host: &'static str,
+    /// 名单里那一行的句柄。
     pub(crate) terminal: String,
 }
 
@@ -244,20 +279,16 @@ pub(crate) fn bad(why: &str) -> CmdErr {
 }
 
 /// 一串 sid：非空、不超上界、不重复、每个过 sid 那一关。
-fn sids_of(v: Option<&Value>) -> Result<Vec<String>, CmdErr> {
-    let arr = v
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad("`sids` must be an array of session ids"))?;
+fn sids_of(arr: &[String]) -> Result<Vec<String>, CmdErr> {
     let mut out: Vec<String> = Vec::new();
     for s in arr {
-        let s = s.as_str().ok_or_else(|| bad("`sids` must be strings"))?;
         if !shell_quote_core::session_id_ok(s) {
             return Err(bad(&format!("not a session id: {s:?}")));
         }
         if out.iter().any(|x| x == s) {
             return Err(bad(&format!("duplicate session id: {s:?}")));
         }
-        out.push(s.to_string());
+        out.push(s.clone());
     }
     if out.is_empty() || out.len() > MAX_BATCH {
         return Err(bad(&format!("`sids` must hold 1..={MAX_BATCH} ids")));
@@ -307,10 +338,24 @@ pub(crate) fn standing(rows: &[TmuxEntry], sid: &str) -> Standing {
     }
 }
 
-/// `sessions-where`：`{sids}` ⇒ `{results: [{sid, standing, names, terminals}]}`（菜单就绪时问：这一项亮不亮、写哪个名字）。
+/// `sessions-where` / `sessions-stop` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SidsReq {
+    /// 那几个会话（1–64 个，不重复）。
+    pub(crate) sids: Vec<String>,
+    /// 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) client: Option<String>,
+}
+
+/// `sessions-where`：每个 sid 此刻在这台 tmux 里的样子（菜单就绪时问：这一项亮不亮、写哪个名字）。
 /// `terminals` 与 `names` 同序同数，每一项 `{host, terminal}`（词同容器那一格与 `terminals-list`）。
-pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
-    let sids = sids_of(args.get("sids"))?;
+pub(crate) fn where_(req: &SidsReq, deps: &Deps) -> Result<Whereabouts, CmdErr> {
+    let sids = sids_of(&req.sids)?;
     let rows = listed(deps)?;
     let host = crate::stream::wire::TerminalHost::Tmux.as_wire();
     let results = sids
@@ -337,18 +382,18 @@ pub(crate) fn where_(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
             }
         })
         .collect();
-    crate::stream::inbound::spec::wire(&Whereabouts { results })
+    Ok(Whereabouts { results })
 }
 
-/// `sessions-stop`：`{sids}` ⇒ `{results}`。
-pub(crate) fn stop(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
-    let sids = sids_of(args.get("sids"))?;
+/// `sessions-stop`：逐个停，与入参同序答。
+pub(crate) fn stop(req: &SidsReq, deps: &Deps) -> Result<Batched, CmdErr> {
+    let sids = sids_of(&req.sids)?;
     let rows = listed(deps)?;
     let results: Vec<Outcome> = sids
         .iter()
         .map(|sid| stop_one(sid, rows.as_deref(), deps).to_wire("sessions-stop"))
         .collect();
-    crate::stream::inbound::spec::wire(&Batched { results })
+    Ok(Batched { results })
 }
 
 fn stop_one(sid: &str, rows: Option<&[TmuxEntry]>, deps: &Deps) -> Answer {
@@ -401,70 +446,68 @@ pub(crate) struct Batch {
     pub(crate) models: std::collections::BTreeMap<String, String>,
 }
 
-pub(crate) fn str_of<'v>(o: &'v Map<String, Value>, k: &str) -> Result<&'v str, CmdErr> {
-    o.get(k)
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(&format!("missing string `{k}`")))
+/// `sessions-start` 一项的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct StartItemReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+    /// 那一项的工作目录。
+    pub(crate) cwd: String,
+    /// 用哪个号：缺 ＝ 跟随。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) account: Option<AccountAsk>,
+    /// 分叉出来的那一条 ⇒ 必铸新终端名。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) fresh_terminal: Option<bool>,
+    /// 源会话 sid（只许与 `fresh_terminal: true` 一起）：新名从源会话此刻所在终端的名字铸。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) fork_of: Option<String>,
 }
 
-fn item_of(v: &Value) -> Result<Item, CmdErr> {
-    let o = v
-        .as_object()
-        .ok_or_else(|| bad("each item must be an object"))?;
-    for k in o.keys() {
-        if !["sid", "cwd", "account", "fresh_terminal", "fork_of"].contains(&k.as_str()) {
-            return Err(bad(&format!("unknown item field `{k}`")));
-        }
+fn item_of(v: &StartItemReq) -> Result<Item, CmdErr> {
+    if !shell_quote_core::session_id_ok(&v.sid) {
+        return Err(bad(&format!("not a session id: {:?}", v.sid)));
     }
-    let sid = str_of(o, "sid")?;
-    if !shell_quote_core::session_id_ok(sid) {
-        return Err(bad(&format!("not a session id: {sid:?}")));
-    }
-    // 缺席 ＝ 跟随。
-    let account = match o.get("account") {
-        None => AccountAsk::Follow,
-        Some(a) => serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?,
-    };
-    let fresh = match o.get("fresh_terminal") {
-        None => false,
-        Some(v) => v
-            .as_bool()
-            .ok_or_else(|| bad("`fresh_terminal` must be a bool"))?,
-    };
-    let fork_of = match o.get("fork_of") {
+    let fresh = v.fresh_terminal.unwrap_or(false);
+    let fork_of = match v.fork_of.as_deref() {
         None => None,
-        Some(v) => {
-            let s = v
-                .as_str()
-                .filter(|s| shell_quote_core::session_id_ok(s))
-                .ok_or_else(|| bad("`fork_of` must be a session id"))?;
-            if !fresh {
-                return Err(bad("`fork_of` goes with `fresh_terminal: true`"));
-            }
-            Some(s.to_string())
+        Some(s) if !shell_quote_core::session_id_ok(s) => {
+            return Err(bad("`fork_of` must be a session id"))
         }
+        Some(_) if !fresh => return Err(bad("`fork_of` goes with `fresh_terminal: true`")),
+        Some(s) => Some(s.to_string()),
     };
     Ok(Item {
-        sid: sid.to_string(),
-        cwd: str_of(o, "cwd")?.to_string(),
-        account,
+        sid: v.sid.clone(),
+        cwd: v.cwd.clone(),
+        // 缺席 ＝ 跟随。
+        account: v.account.clone().unwrap_or(AccountAsk::Follow),
         fresh,
         fork_of,
     })
 }
 
-pub(crate) fn batch_of(o: &Map<String, Value>) -> Result<Batch, CmdErr> {
-    let models = match o.get("models") {
-        None => Default::default(),
-        Some(m) => serde_json::from_value(m.clone())
-            .map_err(|_| bad("`models` must be an object of strings"))?,
-    };
-    Ok(Batch {
-        agent: str_of(o, "agent")?.to_string(),
-        launcher: str_of(o, "launcher")?.to_string(),
-        default_launcher: str_of(o, "defaultLauncher")?.to_string(),
-        models,
-    })
+impl Batch {
+    /// 整批一份的那几样（入参已按类型解好）。
+    pub(crate) fn of(
+        agent: &str,
+        launcher: &str,
+        default_launcher: &str,
+        models: std::collections::BTreeMap<String, String>,
+    ) -> Batch {
+        Batch {
+            agent: agent.to_string(),
+            launcher: launcher.to_string(),
+            default_launcher: default_launcher.to_string(),
+            models,
+        }
+    }
 }
 
 /// 界面那一行的上线入参（`launch-render-cli`），由这一个起会话项拼：`tmux` = 要新建的会话名（`None` = 直路）。
@@ -510,29 +553,63 @@ fn local_req(it: &Item, b: &Batch, tmux: Option<String>) -> local::LocalLaunchRe
     }
 }
 
-/// `sessions-start`：`{mode, local, agent, launcher, defaultLauncher, models?, items: [{sid, cwd, account?}]}` ⇒ `{results}`。
-pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
-    let o = args
-        .as_object()
-        .ok_or_else(|| bad("args must be an object"))?;
-    let tmux = match str_of(o, "mode")? {
-        "tmux" => true,
-        "window" => false,
-        m => return Err(bad(&format!("unknown mode `{m}` (tmux / window)"))),
-    };
-    let here = o
-        .get("local")
-        .and_then(Value::as_bool)
-        .ok_or_else(|| bad("missing bool `local`"))?;
-    let raw = o
-        .get("items")
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad("missing array `items`"))?;
-    if raw.is_empty() || raw.len() > MAX_BATCH {
+/// `sessions-start` 的起法：在 tmux 里后台起 · 只渲那一行交回（窗口由界面开）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum StartMode {
+    Tmux,
+    Window,
+}
+
+/// `sessions-start` 的入参：整批一份的那几样 ＋ 逐项。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionsStartReq {
+    /// `tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开）。
+    pub(crate) mode: StartMode,
+    /// 这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）。
+    pub(crate) local: bool,
+    /// 整批一家（线上的 kind）。
+    pub(crate) agent: String,
+    /// 整批一份：用户设置的 resume 命令原值。
+    pub(crate) launcher: String,
+    /// 整批一份：那一家的默认启动器。
+    #[serde(rename = "defaultLauncher")]
+    pub(crate) default_launcher: String,
+    /// 这台的模型偏好表（原值）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) models: Option<std::collections::BTreeMap<String, String>>,
+    /// 要起的会话（1–64 项，sid 不重复）。
+    pub(crate) items: Vec<StartItemReq>,
+    /// 自报的前端，同 `kill`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) client: Option<String>,
+}
+
+/// `sessions-start`：逐个起，与入参同序答。
+pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdErr> {
+    let tmux = req.mode == StartMode::Tmux;
+    let here = req.local;
+    if req.items.is_empty() || req.items.len() > MAX_BATCH {
         return Err(bad(&format!("`items` must hold 1..={MAX_BATCH} entries")));
     }
-    let items = raw.iter().map(item_of).collect::<Result<Vec<_>, _>>()?;
-    let batch = batch_of(o)?;
+    let items = req
+        .items
+        .iter()
+        .map(item_of)
+        .collect::<Result<Vec<_>, _>>()?;
+    let batch = Batch::of(
+        &req.agent,
+        &req.launcher,
+        &req.default_launcher,
+        req.models.clone().unwrap_or_default(),
+    );
     for (i, it) in items.iter().enumerate() {
         if items[..i].iter().any(|x| x.sid == it.sid) {
             return Err(bad(&format!("duplicate session id: {:?}", it.sid)));
@@ -549,7 +626,7 @@ pub(crate) fn start(args: &Value, deps: &Deps) -> Result<Value, CmdErr> {
         .iter()
         .map(|it| start_one(it, &batch, tmux, rows.as_ref(), here, deps).to_wire("sessions-start"))
         .collect();
-    crate::stream::inbound::spec::wire(&Batched { results })
+    Ok(Batched { results })
 }
 
 /// 一个：先判用哪个号（选不了 ⇒ 跳过、不挡别的），再问记录在不在（查这个号那棵树），再按那一形做。

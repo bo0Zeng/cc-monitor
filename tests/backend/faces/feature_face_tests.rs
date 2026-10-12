@@ -13,13 +13,9 @@ use super::*;
 /// `feature_face::answer`」，两边必须相等。
 // ＋ `mcp-read`（MCP 列表成品，读法住适配层）。
 // ＋ `hooks-diag`（cc-bus 钩子诊断成品，本体 `observe/cc_bus_hooks.rs`）。
-const FAMILY: &[&str] = &[
-    "hooks-diag",
-    "mcp-read",
-    "session-interrupts",
-    "session-terminals",
-    "tasks-list",
-];
+const FAMILY: &[&str] = &["hooks-diag", "mcp-read", "tasks-list"];
+// `session-interrupts` · `session-terminals` 换成 typed（本文件里的 `SessionInterrupts` · `SessionTerminals`，命令表那一行点类型名），
+//   不再经 `answer` 按名分派，不在这张表里。
 
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("rm1b-face-{tag}-{}", std::process::id()));

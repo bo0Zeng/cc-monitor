@@ -6,17 +6,16 @@
  * 本文件只做调用方那一侧：按台分组 · 组请求（每项只交 sid 与目录，用哪个号那台自己判；整批带用户设置的 resume 命令与模型偏好表原值）·
  * 按形状收 · 把每一个的结局说成一句人话 · 开终端那一形逐个开窗。
  */
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody } from "./ipc/chan-caller";
-import { machineName, saidOfControl, settle, unavailableSaid, unreadable, type Refusals } from "./control-said";
-import { exactKeys, isObj } from "./ipc/decode";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { machineName, saidOfControl, settleTyped, unavailableSaid, type Refusals } from "./control-said";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { killRefusals } from "./tmux-control";
 import type { Tab } from "./tab-model";
 import { machineModels } from "./account-prefs";
-import type { AccountAsk, AccountUnavailable } from "./launch-account";
-import type { LaunchedAccount } from "./generated/LaunchedAccount";
+import type { AccountAsk } from "./launch-account";
+import type { Outcome } from "./generated/Outcome";
+import type { SessionsStartReq } from "./generated/SessionsStartReq";
 import { resumeCommandFor } from "./remote-config";
 import { defaultLauncherOf } from "./agent-profile";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
@@ -32,54 +31,8 @@ export interface BatchOutcome {
   detail?: string;
 }
 
-/** 后端答的一个（`sessions-*` 的 `results[i]`，形状见协议文档那一节）。`why` 是那台的原因码。 */
-export interface Reply {
-  sid: string;
-  outcome: "done" | "skipped" | "failed";
-  why: string | null;
-  detail: string;
-  /** 停失败那一项：那台写好的那一句（与单条结束同一张表）；别的 ⇒ `null`。 */
-  said: string | null;
-  /** 失败那一项的复制详情（那台写好）；别的 ⇒ 空串。 */
-  copyDetail: string;
-  session: string | null;
-  /** 停那一条：顺手从 cc-bus 名册注销的结局（形状同 `kill` 那一格）；别的 ⇒ `null`。 */
-  bus: unknown;
-  cmd: string | null;
-  /** 起成了的那一条实际用的号（停 / 没起 / 不指定 ⇒ `null`）。 */
-  account: LaunchedAccount | null;
-  /** 选不了号的那一项：那台说的那一形（别的 ⇒ `null`）。 */
-  unavailable: AccountUnavailable | null;
-}
-
-const KEYS = ["sid", "outcome", "why", "detail", "said", "copyDetail", "session", "bus", "cmd", "account", "unavailable"] as const;
-
-/** 应答 ⇒ 逐个结局；形状不对（多一格缺一格 · 个数 / 次序对不上）⇒ 抛（两边版本对不上，不猜）。 */
-export function decodeBatch(origin: Origin, op: string, sids: readonly string[], v: unknown): Reply[] {
-  const bad = (): never => {
-    throw unreadable(origin, op, "is not exactly {results: [...]} in request order");
-  };
-  if (!isObj(v) || !exactKeys(v, ["results"]) || !Array.isArray(v.results) || v.results.length !== sids.length) bad();
-  return (v as { results: unknown[] }).results.map((r, i) => {
-    if (
-      !isObj(r) ||
-      !exactKeys(r, KEYS) ||
-      r.sid !== sids[i] ||
-      (r.outcome !== "done" && r.outcome !== "skipped" && r.outcome !== "failed") ||
-      !(r.why === null || typeof r.why === "string") ||
-      typeof r.detail !== "string" ||
-      !(r.said === null || typeof r.said === "string") ||
-      typeof r.copyDetail !== "string" ||
-      !(r.session === null || typeof r.session === "string") ||
-      !(r.cmd === null || typeof r.cmd === "string") ||
-      !(r.account === null || (isObj(r.account) && typeof r.account.name === "string" && typeof r.account.configDir === "string")) ||
-      !(r.unavailable === null || (isObj(r.unavailable) && typeof r.unavailable.requested === "string"))
-    ) {
-      return bad();
-    }
-    return r as unknown as Reply;
-  });
-}
+/** 后端答的一个（`sessions-*` 的 `results[i]`，类型从 Rust 生成）。`why` 是那台的原因码。 */
+export type Reply = Outcome;
 
 /** 一台的整体失败（通道不在 · 后端太旧 · 拒了整批）⇒ 那一台的每一个都记成失败、带同一句。 */
 function machineFailed(sids: readonly string[], e: unknown): BatchOutcome[] {
@@ -148,9 +101,8 @@ const BATCH_EACH_MS = 6_000;
 /** 停：问那台一次（`sids` 那几个），逐个答。问不到 / 形状不对 ⇒ 抛 `ControlError`。 */
 export async function callStop(origin: Origin, sids: readonly string[]): Promise<Reply[]> {
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const body = jsonBody({ sids });
-  const v = await settle(origin, "sessions-stop", chan.call(origin, "sessions-stop", body, budget), batchRefusals(origin));
-  return decodeBatch(origin, "sessions-stop", sids, v);
+  const v = await settleTyped(origin, "sessions-stop", callTyped(origin, "sessions-stop", { sids: [...sids] }, budget), batchRefusals(origin));
+  return v.results;
 }
 
 /**
@@ -160,9 +112,9 @@ export async function callStop(origin: Origin, sids: readonly string[]): Promise
 export async function callStart(origin: Origin, mode: "tmux" | "window", items: readonly StartItem[], agent: string): Promise<Reply[]> {
   const sids = items.map((i) => i.sid);
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const body = jsonBody({ mode, local: isLocalOrigin(origin), ...(await startSettings(origin, agent)), items });
-  const v = await settle(origin, "sessions-start", chan.call(origin, "sessions-start", body, budget), batchRefusals(origin));
-  return decodeBatch(origin, "sessions-start", sids, v);
+  const req = { mode, local: isLocalOrigin(origin), ...(await startSettings(origin, agent)), items: [...items] };
+  const v = await settleTyped(origin, "sessions-start", callTyped(origin, "sessions-start", req, budget), batchRefusals(origin));
+  return v.results;
 }
 
 /** 停：每台一次 `sessions-stop`，各台并发。 */
@@ -192,8 +144,11 @@ export interface StartItem {
   account?: AccountAsk;
 }
 
+/** 整批一份的那几样（`sessions-start` 入参里除了起法与逐项的那几格）。 */
+export type StartSettings = Pick<SessionsStartReq, "agent" | "launcher" | "defaultLauncher" | "models">;
+
 /** 起会话带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。批量起与换号重启共用。 */
-export async function startSettings(origin: Origin, agent: string): Promise<Record<string, unknown>> {
+export async function startSettings(origin: Origin, agent: string): Promise<StartSettings> {
   const defaultLauncher = defaultLauncherOf(agent);
   // 设置里配的 resume 命令只给默认那一家（别的那一家用它自己的默认启动器）。
   const configured = await resumeCommandFor(origin);

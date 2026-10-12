@@ -723,75 +723,6 @@ fn every_registered_command_declares_its_run_kind() {
     );
 }
 
-/// ★ `launch` 的 `fields` 必须与**真正的解析器 / 输出构造器**实测一致。
-///
-/// # 为什么非有这一层不可
-///
-/// `CommandSpec::fields` 是**手写镜子**。拿它去钉文档（R3）时，如果它自己会漂，
-/// 那就是**用一个手写清单证明另一个手写清单** —— 一点强度都没有。
-/// 所以它必须先与代码里真正读/写这些键的地方对上。
-///
-/// 抽取面：`parse_request` 里每个 `get_str("…")`（= args 侧）+
-/// `launch_for_inbound` 里 `json!` 的键（= data 侧）。
-#[test]
-fn launch_fields_match_its_parser_and_output() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
-    let mut found: Vec<String> = Vec::new();
-
-    // args 侧：`get_str("<key>")`
-    let key = "get_str(\"";
-    let mut from = 0usize;
-    while let Some(rel) = src[from..].find(key) {
-        let at = from + rel + key.len();
-        let end = src[at..].find('"').map(|k| at + k).unwrap_or(at);
-        found.push(src[at..end].to_string());
-        from = end;
-    }
-    // 请求自报的前端经 `gate::requester_of`（与 `kill` · `sessions-*` 同一个取法）读 `client`。
-    if src.contains("requester_of(args)") {
-        found.push("client".to_string());
-    }
-    let args_n = found.len();
-    assert!(
-        args_n >= 5,
-        "只从解析器抠到 {args_n} 个 args 字段 —— 抽取坏了，本断言在空转"
-    );
-
-    // data 侧：`json!({ "<key>": … })` —— 取 `json!` 块里的所有 `"key":`
-    let j = src
-        .find("serde_json::json!({")
-        .expect("找不到 launch 的输出构造 —— 抽取坏了");
-    let jend = src[j..].find("})").map(|k| j + k).expect("json! 没收尾");
-    let block = &src[j..jend];
-    let mut data_n = 0usize;
-    for part in block.split('"').skip(1).step_by(2) {
-        if !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
-            found.push(part.to_string());
-            data_n += 1;
-        }
-    }
-    assert!(
-        data_n >= 3,
-        "只从输出构造抠到 {data_n} 个 data 字段 —— 抽取坏了，本断言在空转"
-    );
-
-    found.sort();
-    found.dedup();
-    let spec = super::REGISTRY
-        .iter()
-        .find(|s| s.name == "launch")
-        .expect("注册表里没有 launch");
-    let mut declared: Vec<String> = spec.field_names().map(str::to_string).collect();
-    declared.sort();
-    assert_eq!(
-        declared, found,
-        "\n`launch` 登记的 fields 与它真正读/写的键对不上。\n\
-             这面镜子是用来钉文档的（R3）—— 它自己先漂了，钉出来的就是假的。"
-    );
-}
-
 /// ★**「声明零字段」不许成为免检开关**：零字段的命令在协议参考里就没有字段表，
 /// 而有载荷却声明成空等于让契约面整个消失 ⇒ 默认拒绝 ＋ 豁免登记（写明为什么）。
 #[test]
@@ -1158,10 +1089,8 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
 }
 
 mod typed_replies {
-    pub(super) use crate::control::session_batch as sb;
-    pub(super) use crate::control::session_new as sn;
     pub(super) use crate::faces::rotation_face as rf;
-    pub(super) use crate::guard_support::{merged, sampled, sampled_and, Sampled};
+    pub(super) use crate::guard_support::{sampled, Sampled};
 }
 use typed_replies::*;
 
@@ -1243,95 +1172,9 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ),
     ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
-        "session-terminals",
-        sampled::<crate::observe::session_terminals::Showing>,
-        &[
-            "activity",
-            "clientAddr",
-            "clientPort",
-            "serverAddr",
-            "serverPort",
-            "ssh",
-        ],
-        &[],
-    ),
-    (
-        "session-interrupts",
-        sampled::<crate::observe::interrupts_query::SessionInterrupts>,
-        &["family", "names"],
-        &[],
-    ),
-    (
-        "session-new",
-        sampled_and::<sn::SessionNew, sn::SessionNewRefusal>,
-        &["configDir", "model", "name"],
-        &[],
-    ),
-    ("session-new-dir", sampled::<sn::DirChecked>, &[], &[]),
-    (
-        "session-new-facts",
-        sampled::<crate::faces::session_new_face::NewFacts>,
-        &["lastMs", "launch", "startText", "turn"],
-        &[],
-    ),
-    (
-        "session-restart",
-        restart_samples,
-        &["configDir", "model", "name"],
-        &[],
-    ),
-    (
-        "sessions-start",
-        sampled::<sb::Batched>,
-        &[
-            "account",
-            "cmd",
-            "configDir",
-            "copyDetail",
-            "detail",
-            "model",
-            "name",
-            "outcome",
-            "said",
-            "session",
-            "sid",
-            "unavailable",
-            "why",
-        ],
-        &[],
-    ),
-    (
-        "sessions-stop",
-        sampled::<sb::Batched>,
-        &[
-            "bus",
-            "cmd",
-            "copyDetail",
-            "detail",
-            "outcome",
-            "said",
-            "session",
-            "sid",
-            "why",
-        ],
-        &[],
-    ),
-    (
-        "sessions-where",
-        sampled::<sb::Whereabouts>,
-        &["host", "names", "sid", "standing", "terminal", "terminals"],
-        &[],
-    ),
-    (
         "terminal-follow",
         sampled::<crate::control::terminal_follow::Refused>,
         &[],
-        &[],
-    ),
-    (
-        "terminal-processes",
-        sampled::<crate::dial::terminal_processes::Processes>,
-        &["name", "pid", "start"],
         &[],
     ),
     (
@@ -1374,16 +1217,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ("rotation-strategy-try", sampled::<rf::TryReply>, &[], &[]),
 ];
 
-/// `session-restart`：成功那一形 ＋ 失败信封按码定形的 `data`（自己那几形 ＋ 选不了号那一形）。
-fn restart_samples() -> Sampled {
-    use crate::control::session_restart as sr;
-    merged(vec![
-        sampled::<sr::Restarted>(),
-        sampled::<sr::Refused>(),
-        sampled::<crate::control::launch_account::AccountUnavailable>(),
-    ])
-}
-
 /// ★★ **注册表登的出参字段 ＝ 那条命令真序列化出来的字段**（两向相等）。
 ///
 /// 镜子（`CommandSpec::fields`）是手写的，协议参考从它生成：它比真出参少一格，照文档接的人就看不到那一格
@@ -1425,8 +1258,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
     const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
-    const TERMINALS: &str = include_str!("../../__fixtures__/terminals.golden.json");
-    const TMUX_CONTROL: &str = include_str!("../../__fixtures__/tmux-control.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1524,51 +1355,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             ],
             &[],
         ),
-        (
-            "terminals-list",
-            TERMINALS,
-            "/terminals-list/reply",
-            &[
-                "agent",
-                "can",
-                "client",
-                "clients",
-                "cwd",
-                "end",
-                "host",
-                "input",
-                "kind",
-                "last_activity",
-                "mine",
-                "no",
-                "program",
-                "session",
-                "sid",
-                "since",
-                "started_by",
-                "state",
-                "terminal",
-                "title",
-                "tmux_name",
-            ],
-            &[],
-        ),
-        (
-            "terminal-preview",
-            TERMINALS,
-            "/terminal-preview/reply",
-            &["spans", "text"],
-            &[],
-        ),
-        (
-            "terminal-input",
-            TERMINALS,
-            "/terminal-input/replies",
-            &[],
-            &[],
-        ),
-        ("kill", TMUX_CONTROL, "/kill/reply", &[], &[]),
-        ("launch", TMUX_CONTROL, "/launch/reply", &[], &[]),
         (
             "mcp-read",
             MCP_READ,
@@ -1682,7 +1468,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 87;
+    const UNSHAPED_CEILING: usize = 85;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1749,8 +1535,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "forward-stop",
         "last-seen-read",
         "last-seen-write",
-        "launch-local",
-        "launch-render-cli",
         "machine-interrupts",
         "mcp-sync-apply",
         "mcp-sync-plan",
