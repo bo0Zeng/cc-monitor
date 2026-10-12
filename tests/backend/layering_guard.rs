@@ -508,8 +508,9 @@ mod tests {
     /// 形状照 [`ALLOWED_OBSERVE_TO_CONTROL`]：不是禁绝（调用口本来就是给人用的），
     /// 是**让每一条边被人看见一次**。
     ///
-    /// 扫描面加了 **`accounts/`**：账号域经本口起 `cc-acct-iso`
+    /// 扫描面加了 **`accounts/`**：当时账号域经本口起外部脚本 `cc-acct-iso`
     /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
+    /// 今天那份脚本与 `accounts/iso.rs` 都删了（账号库由 `accounts/manage/` 自己建），`accounts/` 照旧留在扫描面里。
     ///
     /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
     /// 「今天只有 control 在用」是**读数**，不是性质。观测层哪天伸手过来（它一旦这么做，

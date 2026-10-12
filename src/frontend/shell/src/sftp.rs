@@ -74,9 +74,10 @@ pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Res
 ///
 /// ## 为什么这个函数此前不存在（T04 审计①）
 ///
-/// `deploy_remote_backend` 的**全部**上传（另一条 cc-acct-iso 那条随字节进后端退役）
+/// 当时 `deploy_remote_backend` 的**全部**上传
 /// ——1 个后端可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
 /// install.sh）——写完**直接写版本标记**，中间没有任何读回。
+/// 〔今天只剩后端二进制那一份：那几份脚本随账号库改由后端 `accounts/manage/` 自己建一起退役、删出仓。〕
 ///
 /// 而 T04 第二步我论证「备份→写→读回比对→回滚这个范式已共享（5 处），所以不用抽」
 /// ——**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。

@@ -145,11 +145,11 @@ subscribe(origin, kind)    → 流
 - `agents/`：用户的 AI CLI 的适配面（claudecode · codex · 测试用的 fake），一家一行注册表，含记录解释与用量读法。
 - `plugin/`：调外部程序的口（找 · 问 · 起 · 收），cc-bus 那一族命令经它起。
 - `relay/`：中转的宿主（门 · 监听 · 根钥匙）；中转本体是通信层面 B。
-- `dial/`：SSH（连接池 · 链路 · SFTP · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
+- `dial/`：SSH（连接池 · 链路 · SFTP · 问远端后端 · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
 - `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 上次账号）。
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
-- `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里；`stream/`：帧定义 · 入方向命令信封与命令表 · 监听 · 本机后端问远端后端的唯一一处。
+- `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里；`stream/`：帧定义 · 入方向命令信封与命令表 · 监听（本机后端问远端后端的唯一一处住 `dial/remote_ask.rs`）。
 - `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）。
 
 后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/` 与 `control/files_write.rs` · `files_upload_chunks.rs` · `files_extract.rs` · `files_commit.rs`），两块只共用 `platform/` · `common/` 与 `lib.rs` 的能力声明轴；原生那一块够到文件管理那一块只经帧面分派（命令表文件管理那一族）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。判据 `tests/backend/files/module_boundary_guard.rs`。
