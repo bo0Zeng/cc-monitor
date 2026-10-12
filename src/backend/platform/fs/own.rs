@@ -189,7 +189,7 @@ pub(crate) enum RenewLock {
     /// 配置目录里那一把整份写锁（`<目录>/<write>`）。
     Write,
     /// 配置目录里续某一条登录时那一家拿的那一把（`<目录>/<名字>`；名字必须是一段名字）。
-    Entry(String),
+    OneLogin(String),
 }
 
 /// 一段名字：非空、只一段普通名字（没有分隔符 · `..` · `.`）。
@@ -246,7 +246,7 @@ impl AccountCreds {
             RenewLock::Inside => Some(self.inside.clone()),
             RenewLock::Beside => self.beside.clone(),
             RenewLock::Write => self.write.clone(),
-            RenewLock::Entry(n) => one_name(n).then(|| self.dir.join(n)),
+            RenewLock::OneLogin(n) => one_name(n).then(|| self.dir.join(n)),
         }
     }
 
@@ -259,7 +259,7 @@ impl AccountCreds {
 
     /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`；名字不是一段名字 ⇒ `Err`。
     pub(crate) fn make_lock(&self, which: &RenewLock) -> std::io::Result<bool> {
-        if let RenewLock::Entry(n) = which {
+        if let RenewLock::OneLogin(n) = which {
             if !one_name(n) {
                 return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
             }

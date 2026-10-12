@@ -227,11 +227,11 @@ fn w6_the_account_creds_handle_reaches_one_file_and_its_lock_dirs() {
     assert!(!c.make_lock(&RenewLock::Inside).unwrap(), "已在 ⇒ 没建");
     assert!(c.make_lock(&RenewLock::Beside).unwrap(), "旁边那把建成");
     assert!(c.make_lock(&RenewLock::Write).unwrap(), "写锁建成");
-    let entry = RenewLock::Entry("mcp-x.lock.lock".into());
+    let entry = RenewLock::OneLogin("mcp-x.lock.lock".into());
     assert!(c.make_lock(&entry).unwrap(), "按条起名的那把建成");
     for bad in ["../x", "a/b", ""] {
         assert!(
-            c.make_lock(&RenewLock::Entry(bad.into())).is_err(),
+            c.make_lock(&RenewLock::OneLogin(bad.into())).is_err(),
             "条锁名 {bad:?} 收下了"
         );
     }

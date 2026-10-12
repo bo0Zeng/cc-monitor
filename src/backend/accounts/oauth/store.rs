@@ -72,15 +72,25 @@ pub(crate) fn with_refresh_lock<T>(
     work: impl FnOnce(&Reclaimed, &CredsLock) -> T,
 ) -> Result<Locked<T>, Said> {
     let held = creds.lock()?;
-    let stale = Duration::from_millis(face.lock_stale_ms);
+    let stale = face.lock_stale_ms;
     let mut reclaimed = Reclaimed::default();
-    let Some(_inside) = take(creds, RenewLock::Inside, stale, "里面那把", &mut reclaimed)?
+    let Some(_inside) = take(
+        creds,
+        RenewLock::Inside,
+        stale,
+        Some(("里面那把", &mut reclaimed)),
+    )?
     else {
         return Ok(Locked::Busy);
     };
     let _beside = match creds.lock_path(&RenewLock::Beside) {
         None => None,
-        Some(_) => match take(creds, RenewLock::Beside, stale, "旁边那把", &mut reclaimed)? {
+        Some(_) => match take(
+            creds,
+            RenewLock::Beside,
+            stale,
+            Some(("旁边那把", &mut reclaimed)),
+        )? {
             Some(g) => Some(g),
             None => return Ok(Locked::Busy),
         },
@@ -97,10 +107,8 @@ pub(crate) fn with_entry_lock<T>(
     work: impl FnOnce(&CredsLock) -> T,
 ) -> Result<Locked<T>, Said> {
     let held = creds.lock()?;
-    let stale = Duration::from_millis(entries.renew_lock_stale_ms);
-    let which = RenewLock::Entry((entries.renew_lock)(key));
-    let mut reclaimed = Reclaimed::default();
-    let Some(_entry) = take(creds, which, stale, "那一条的续期锁", &mut reclaimed)? else {
+    let which = RenewLock::OneLogin((entries.renew_lock)(key));
+    let Some(_entry) = take(creds, which, entries.renew_lock_stale_ms, None)? else {
         return Ok(Locked::Busy);
     };
     Ok(Locked::Held(work(&held)))
@@ -115,11 +123,9 @@ pub(crate) fn rewrite<T>(
     held: &CredsLock,
     edit: impl FnOnce(Read) -> (Option<Map<String, Value>>, T),
 ) -> Result<Locked<T>, Said> {
-    let stale = Duration::from_millis(face.write_lock_stale_ms);
-    let mut reclaimed = Reclaimed::default();
     let _write = match creds.lock_path(&RenewLock::Write) {
         None => None,
-        Some(_) => match take(creds, RenewLock::Write, stale, "写锁", &mut reclaimed)? {
+        Some(_) => match take(creds, RenewLock::Write, face.write_lock_stale_ms, None)? {
             Some(g) => Some(g),
             None => return Ok(Locked::Busy),
         },
@@ -148,14 +154,15 @@ impl Drop for Hold<'_> {
     }
 }
 
-/// 拿一把 `mkdir` 锁：建成 ⇒ 持有；已在而修改时刻早过 `stale` ⇒ 删了重拿（记进 `reclaimed`）；否则别人持着 ⇒ `None`。
+/// 拿一把 `mkdir` 锁：建成 ⇒ 持有；已在而修改时刻早过 `stale_ms` 毫秒 ⇒ 删了重拿（给了 `reclaimed` 就把那个名字记进去）；
+/// 否则别人持着 ⇒ `None`。
 fn take<'a>(
     creds: &'a AccountCreds,
     which: RenewLock,
-    stale: Duration,
-    name: &'static str,
-    reclaimed: &mut Reclaimed,
+    stale_ms: u64,
+    reclaimed: Option<(&'static str, &mut Reclaimed)>,
 ) -> Result<Option<Hold<'a>>, Said> {
+    let stale = Duration::from_millis(stale_ms);
     if make(creds, &which)? {
         return Ok(Some(Hold(creds, which)));
     }
@@ -167,7 +174,9 @@ fn take<'a>(
     {
         return Ok(None);
     }
-    reclaimed.0.push(name);
+    if let Some((name, r)) = reclaimed {
+        r.0.push(name);
+    }
     Ok(Some(Hold(creds, which)))
 }
 

@@ -277,7 +277,7 @@
     "rsToolRegistry.tools.accountsVaultNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段、.credentials.json 里只有 MCP 登录段会被同步改写 · 各号共用一份 · 别的内容不碰",
+      "zh": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份\n.credentials.json 里只有 MCP 登录段会被同步改写 · 别的内容不碰",
       "args": []
     },
     "beAcctExec.apply.stopped": {

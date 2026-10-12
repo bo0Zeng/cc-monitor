@@ -74,6 +74,9 @@ pub(super) mod tests {
         // 各号共用的用户级 MCP：只换一个键 · 三方对照（纯）· 读改写 · 文件事件触发。账号库管理的一部分，与上游选择零引用。
         "manage/json_key.rs",
         "manage/layout.rs",
+        // 各号的 MCP 登录：三态对照（纯）· 在那一家的锁里逐条比对、只换那一条。与上游选择零引用（凭据文件的写口在 `oauth/store`）。
+        "manage/mcp_logins.rs",
+        "manage/mcp_logins_exec.rs",
         "manage/mcp_share.rs",
         "manage/mcp_share_exec.rs",
         "manage/mcp_share_watch.rs",

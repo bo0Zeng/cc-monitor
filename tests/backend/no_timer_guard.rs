@@ -662,11 +662,12 @@ mod tests {
     ),
     (
         "accounts/oauth/store.rs",
-        "Duration::from_millis(face.lock_stale_ms)",
-        "续期锁目录的过期门限（`LoginFace::lock_stale_ms`）：拿锁那一刻拿锁目录的修改时刻比一次，\
+        "Duration::from_millis(stale_ms)",
+        "凭据文件那几把 mkdir 锁的过期门限（续期锁 `LoginFace::lock_stale_ms` · 整份写锁 `write_lock_stale_ms` · \
+         MCP 登录那一条的续期锁 `EntryLogins::renew_lock_stale_ms`）：拿锁那一刻拿锁目录的修改时刻比一次，\
          早过它就当无主收回。只是一次比较的尺子，不等、不睡、不让任何线程醒来。不是定时器。",
         "收窄人群",
-        "续期锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
+        "这几把锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
     ),
     (
         "common/time.rs",
