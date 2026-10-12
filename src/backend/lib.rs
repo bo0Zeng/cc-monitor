@@ -1113,6 +1113,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 规则表那四条（`--rotation-rules-read` · `-rule-save` · `-rule-rename` · `-rule-delete`）随第二版存储删了，换成配置 · 策略 · 会话副本那几条。
     "--rotation-configs-read",
+    // 轮换第五版的事实（typed `rotation-facts`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--rotation-facts",
     "--rotation-config-save",
     "--rotation-config-rename",
     "--rotation-config-delete",

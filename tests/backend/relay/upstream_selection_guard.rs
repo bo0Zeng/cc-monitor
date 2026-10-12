@@ -92,8 +92,11 @@ pub(super) mod tests {
         "oauth/store.rs",
         // 额度与轮换：额度账（用量的唯一住址）。上游选择可以问它（换号要看各号的额度），它不许认识上游选择与账号库管理。
         "quota/decide.rs",
+        // 轮换第五版：每个号的事实（纯拼装）· 节点通道（事实或设置变了的那一刻）。不认识上游选择与账号库管理。
+        "quota/facts.rs",
         "quota/ledger.rs",
         "quota/mod.rs",
+        "quota/nodes.rs",
         // 轮换配置（rotation.json）与换号的唯一判定（纯）：上游选择换号时问它们；它们不认识上游选择与账号库管理。
         "quota/plan.rs",
         "quota/rotation.rs",

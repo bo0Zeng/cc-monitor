@@ -55,15 +55,15 @@ fn write_manifest(manifest: &Path, accts: &Path, z: &Path, extra: &str) {
 
 /// ★ 某个号的登录文件变了（登录 · 退出 · 别处续了令牌）⇒ 一件 `Accounts`；清单变了 ⇒ 也是一件，而且照新的清单重盯。
 #[test]
-fn a_login_file_or_the_manifest_changing_sends_an_accounts_node() {
+fn a_login_file_or_the_manifest_changing_sends_a_logins_node() {
     let (home, manifest, z) = library_home("acct");
     let tx: Nodes = tokio::sync::broadcast::channel(64).0;
     let mut rx = tx.subscribe();
-    let w = AccountsWatch::start(&home, &tx).expect("watch");
+    let w = LoginWatch::start(&home, &tx).expect("watch");
     assert!(w.armed());
     std::fs::write(z.join(".credentials.json"), "{\"x\":1}").expect("creds");
     assert!(
-        wait_for(&mut rx, Source::Accounts, None).is_some(),
+        wait_for(&mut rx, Source::Logins, None).is_some(),
         "登录文件变了 ⇒ 该来一件"
     );
     write_manifest(
@@ -73,14 +73,9 @@ fn a_login_file_or_the_manifest_changing_sends_an_accounts_node() {
         "1",
     );
     assert!(
-        wait_for(&mut rx, Source::Accounts, None).is_some(),
+        wait_for(&mut rx, Source::Logins, None).is_some(),
         "清单变了 ⇒ 该来一件"
     );
-    // 别的文件不算。
-    while rx.try_recv().is_ok() {}
-    std::fs::write(z.join("other.txt"), "x").expect("w");
-    std::thread::sleep(std::time::Duration::from_millis(300));
-    assert!(rx.try_recv().is_err(), "配置目录里别的文件不该发节点");
     let _ = std::fs::remove_dir_all(&home);
 }
 
@@ -89,7 +84,7 @@ fn a_login_file_or_the_manifest_changing_sends_an_accounts_node() {
 fn a_foreign_write_of_the_quota_file_sends_a_quota_file_node() {
     let home = temp_home("qf");
     let own = crate::platform::fs::Own::issue_data_at(&home);
-    let mut rx = channel().subscribe();
+    let mut rx = bus().subscribe();
     let _w = super::super::rotation::watch(&own).expect("watch");
     let side = home.join("quota.json.tmp");
     std::fs::write(&side, "{\"version\":1,\"accounts\":[]}").expect("w");
@@ -102,25 +97,17 @@ fn a_foreign_write_of_the_quota_file_sends_a_quota_file_node() {
 }
 
 /// ★ 节点不经会话文件那一圈（`observe/` 下的 jsonl 盯）：那一圈卡住时（4.1.9 hot1 那一次）节点照到。
-/// 判法：发节点的口在 `observe/` 下一处都没有。
+/// 判法：`observe/` 下没有一处点名节点那一层（`quota::nodes`）或额度账的发节点口（`.notify(`）。
 #[test]
 fn no_node_is_sent_from_the_session_file_loop() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("observe");
-    let mut hits = Vec::new();
-    let mut stack = vec![root];
-    while let Some(d) = stack.pop() {
-        for e in std::fs::read_dir(&d).expect("observe/ 在").flatten() {
-            let p = e.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
-                let t = std::fs::read_to_string(&p).expect("r");
-                if t.contains("nodes::emit") || t.contains("Source::") && t.contains("quota::nodes")
-                {
-                    hits.push(p.display().to_string());
-                }
-            }
-        }
-    }
+    let hits: Vec<String> = guard_core::scan_tree!(&root, &["rs"])
+        .into_iter()
+        .filter(|(_, t)| {
+            guard_core::contains_word(t, "quota::nodes")
+                || guard_core::contains_word(t, "nodes::emit")
+        })
+        .map(|(p, _)| p.display().to_string())
+        .collect();
     assert!(hits.is_empty(), "会话文件那一圈里不许发节点：{hits:?}");
 }

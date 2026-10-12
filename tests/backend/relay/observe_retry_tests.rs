@@ -648,12 +648,12 @@ fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
 /// ★ 回 429 ⇒ 节点通道上来一件 `Refused`，带这个会话（判的缓存与推送据此当场重跑 / 重推）。
 #[test]
 fn a_refused_answer_sends_a_refused_node_for_that_session() {
-    use crate::accounts::quota::nodes::{channel, Source};
+    use crate::accounts::quota::nodes::{bus, Source};
     let home = Home::new("node429");
     home.set_default(&["b"], None);
     let (up, _got) = spawn_judging_upstream(a_refused_b_serves);
     let relay = home.relay(up);
-    let mut rx = channel().subscribe();
+    let mut rx = bus().subscribe();
     let resp = send_on(relay, "/t/claude-code/a/v1/messages", "s-node-429", "");
     assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
     let mut seen = false;

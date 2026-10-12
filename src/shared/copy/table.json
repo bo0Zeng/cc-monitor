@@ -31353,7 +31353,7 @@
     "beRotation.fact.key": {
       "kind": "body",
       "role": "片段",
-      "zh": "这台没有这个号的 key",
+      "zh": "缺 key",
       "args": []
     },
     "beRotation.blocked.stop": {

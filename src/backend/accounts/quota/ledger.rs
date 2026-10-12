@@ -265,7 +265,7 @@ impl Ledger {
                 on_disk,
                 stamp,
             }),
-            nodes: super::nodes::channel().clone(),
+            nodes: super::nodes::bus().clone(),
         }
     }
 
@@ -292,13 +292,6 @@ impl Ledger {
                 }
             }
         }
-    }
-
-    /// 节点改发到 `tx`（判据用；生产恒是进程里那一条）。
-    #[cfg(test)]
-    pub(crate) fn notifying(mut self, tx: super::nodes::Nodes) -> Self {
-        self.nodes = tx;
-        self
     }
 
     /// 发一件事实的节点（被拒 · 续期失败由换号那一路调；显示变了由记账这里自己调）。

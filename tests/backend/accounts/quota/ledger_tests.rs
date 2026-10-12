@@ -57,7 +57,9 @@ impl Rung {
 fn ringing(path: Option<PathBuf>) -> (Ledger, Rung) {
     let tx = tokio::sync::broadcast::channel(16).0;
     let rx = tx.subscribe();
-    (Ledger::at(path).notifying(tx), Rung(rx))
+    let mut l = Ledger::at(path);
+    l.nodes = tx;
+    (l, Rung(rx))
 }
 
 fn on_disk(path: &std::path::Path) -> Book {
@@ -570,11 +572,7 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
 #[test]
 fn every_ledger_made_for_production_sends_to_the_process_node_channel() {
     let l = Ledger::at(None);
-    assert!(l.nodes.same_channel(super::super::nodes::channel()));
+    assert!(l.nodes.same_channel(super::super::nodes::bus()));
     let ctx = crate::faces::rotation_face::Ctx::here();
-    assert!(ctx
-        .hop
-        .quota
-        .nodes
-        .same_channel(super::super::nodes::channel()));
+    assert!(ctx.hop.quota.nodes.same_channel(super::super::nodes::bus()));
 }

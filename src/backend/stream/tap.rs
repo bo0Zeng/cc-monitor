@@ -210,7 +210,7 @@ impl TapSource for TapRx {
 /// `book` 是这条连接的 watcher 写的那一本运行簿（流归位按它定归哪个运行）；`tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）。
 pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz) -> TapRx {
     let mut rx = attach_rx(hub().attach(), book);
-    rx.nodes = Some(crate::accounts::quota::nodes::channel().subscribe());
+    rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.needs = Some(crate::control::asks::changes().subscribe());
     rx.bodies = crate::stream::topic_hook::body;

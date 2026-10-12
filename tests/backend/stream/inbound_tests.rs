@@ -593,6 +593,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-set",
         "quota-read",
         "quota-probe",
+        "rotation-facts", // 读额度账 ＋ 账号库 ＋ 各号登录文件（同步文件 I/O）
         // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
         "rotation-configs-read",
         "rotation-config-save",
@@ -813,6 +814,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-set",
         "quota-read",
         "quota-probe",
+        "rotation-facts", // 读额度账 ＋ 账号库 ＋ 各号登录文件（同步文件 I/O）
         "rotation-configs-read",
         "rotation-config-save",
         "rotation-config-rename",

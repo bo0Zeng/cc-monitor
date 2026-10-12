@@ -705,7 +705,7 @@ fn a_write_from_another_process_rings_here_on_rescan() {
         b.saw("a1-flip", "claude-code", "a", 1)
     })
     .expect("write");
-    let mut rx = super::super::nodes::channel().subscribe();
+    let mut rx = super::super::nodes::bus().subscribe();
     rescan(&path);
     assert!(drain(&mut rx, "a1-").is_empty(), "本进程写的不重推");
     let mut b = match read_at(&path) {

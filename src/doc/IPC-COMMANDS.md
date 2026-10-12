@@ -1152,6 +1152,55 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
 
+#### `rotation-facts`
+
+每个号此刻的事实。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-facts`
+
+入参 `RotationFactsReq` · 回包 `RotationFactsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Fact = { 
+/**
+ * 路由第 2 段。
+ */
+account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, login: LoginState, 
+/**
+ * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
+ */
+seenAt?: number, 
+/**
+ * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
+ */
+blocked?: FactBlocked, };
+type FactBlocked = { why: FactWhy, until?: number, text: string, };
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type QuotaKind = "sub" | "api";
+type RotationFactsReply = { 
+/**
+ * 这台此刻（unix 秒）。
+ */
+now: number, 
+/**
+ * 照账号库的先后。
+ */
+accounts: Array<Fact>, };
+type RotationFactsReq = { 
+/**
+ * 哪一家（适配器 id）；缺 ⇒ 有账号库的那一家。
+ */
+agent?: string, };
+type WinFact = { open: boolean, used: number, resets?: number, 
+/**
+ * `resets` 写给人看的样子（按看的那一台的时区）。
+ */
+resetsText?: string, rate?: number, };
+```
+
+码：`bad_args`
+
 #### `rotation-configs-read`
 
 这台的轮换配置表。
@@ -4374,6 +4423,7 @@ forkOf?: string, };
 | `--rotation-config-save` | ＝ 帧命令 `rotation-config-save`：存一份轮换配置（新建或覆盖） |
 | `--rotation-configs-read` | ＝ 帧命令 `rotation-configs-read`：这台的轮换配置表 |
 | `--rotation-default-set` | ＝ 帧命令 `rotation-default-set`：设这台的本机默认配置 |
+| `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
 | `--rotation-plan` | ＝ 帧命令 `rotation-plan`：推演：一份配置接下来会怎么换（都不写） |
 | `--rotation-session-edit` | ＝ 帧命令 `rotation-session-edit`：改会话打开的那份配置的副本 |
 | `--rotation-session-open` | ＝ 帧命令 `rotation-session-open`：会话打开一份配置 |

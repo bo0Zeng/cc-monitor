@@ -310,7 +310,7 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
         for (source, sid, n) in [
             (Source::Reading, None, 1),
             (Source::QuotaFile, None, 1),
-            (Source::Accounts, None, 1),
+            (Source::Logins, None, 1),
             (Source::Login, None, 1),
             (Source::Refused, Some("s9"), 2),
             (Source::Book, Some("s1"), 1),
@@ -330,7 +330,7 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
             vec![
                 q(Source::Reading),
                 q(Source::QuotaFile),
-                q(Source::Accounts),
+                q(Source::Logins),
                 q(Source::Login),
                 q(Source::Refused),
                 (Source::Refused, Topic::Rotation, Some("s9".to_string())),

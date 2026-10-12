@@ -108,7 +108,7 @@ pub(super) fn hub_here(
 /// 流那一路的后端里盯这台的 `rotation.json` · 策略目录 · `quota.json` · 账号库（别的进程写了也发节点、推 `changed`）。
 pub fn watch_rotation(own: &crate::platform::fs::Own) {
     crate::accounts::quota::rotation::watch_here(own);
-    crate::accounts::quota::nodes::watch_accounts_here();
+    crate::accounts::quota::nodes::watch_logins_here();
 }
 
 /// 常驻后端里起「各号的配置文件一变就同步一趟用户级 MCP」那个监听器（写经 [`LocalFiles`]，与帧命令同一扇门）。

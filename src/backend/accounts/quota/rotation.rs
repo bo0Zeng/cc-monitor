@@ -1046,17 +1046,9 @@ fn strategies_moved(path: &Path) {
         _ => Book::default(),
     };
     for sid in b.sessions.keys() {
-        super::nodes::emit(
-            super::nodes::channel(),
-            super::nodes::Source::Book,
-            Some(sid),
-        );
+        super::nodes::emit(super::nodes::bus(), super::nodes::Source::Book, Some(sid));
     }
-    super::nodes::emit(
-        super::nodes::channel(),
-        super::nodes::Source::Strategies,
-        None,
-    );
+    super::nodes::emit(super::nodes::bus(), super::nodes::Source::Strategies, None);
 }
 
 /// 盯 `rotation.json` 所在的目录（只认这个文件名）与本机策略目录：别的进程写了 ⇒ [`rescan`]；策略文件变了 ⇒ 重推。
@@ -1091,11 +1083,7 @@ pub(crate) fn watch(own: &Own) -> Result<crate::platform::watch_file::Watching, 
                 .iter()
                 .any(|p| p.file_name().and_then(|n| n.to_str()) == Some(super::ledger::FILE_NAME))
             {
-                super::nodes::emit(
-                    super::nodes::channel(),
-                    super::nodes::Source::QuotaFile,
-                    None,
-                );
+                super::nodes::emit(super::nodes::bus(), super::nodes::Source::QuotaFile, None);
             }
             if hit
                 .iter()
@@ -1223,19 +1211,11 @@ fn ring_changed(before: &Book, after: &Book) {
             None => true,
         };
         if moved {
-            super::nodes::emit(
-                super::nodes::channel(),
-                super::nodes::Source::Book,
-                Some(sid),
-            );
+            super::nodes::emit(super::nodes::bus(), super::nodes::Source::Book, Some(sid));
         }
     }
     if configs_moved {
-        super::nodes::emit(
-            super::nodes::channel(),
-            super::nodes::Source::Strategies,
-            None,
-        );
+        super::nodes::emit(super::nodes::bus(), super::nodes::Source::Strategies, None);
     }
 }
 
