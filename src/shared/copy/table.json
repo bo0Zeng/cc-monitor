@@ -2897,10 +2897,76 @@
       "zh": "关闭",
       "args": []
     },
+    "sessionFind.scope.all": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "全部",
+      "args": []
+    },
+    "sessionFind.scope.user": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "用户",
+      "args": []
+    },
+    "sessionFind.scope.label": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "查找范围",
+      "args": []
+    },
+    "sessionFind.tools.userOnly": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "仅用户时不含工具输出与思考",
+      "args": []
+    },
+    "sessionFind.status.noneScoped": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无匹配「{q}」 · 仅用户",
+      "args": ["q"]
+    },
+    "sessionFind.status.searchAll": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "搜全部",
+      "args": []
+    },
+    "sessionFind.status.keysScope": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{keys} · {scopeKey} 用户",
+      "args": ["keys", "scopeKey"]
+    },
+    "sessionFind.hit.metaNoWho": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "第 {n} 轮 · {time}",
+      "args": ["n", "time"]
+    },
+    "keybindingActions.session.findScopeUser": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查找范围 全部 / 用户",
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
+    },
+    "keybindingActions.session.findTools": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查找含工具输出与思考",
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
+    },
     "sessionFind.box.tools": {
       "kind": "control",
       "role": "标签",
-      "zh": "含工具内容",
+      "zh": "含工具输出与思考",
       "args": []
     },
     "sessionFind.box.placeholder": {
@@ -23229,6 +23295,108 @@
       "zh": "状态不明 · {machine} 不可见",
       "args": ["machine"]
     },
+    "sessionHead.edit.open": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "调整会话头按钮…",
+      "args": []
+    },
+    "sessionHead.edit.remove": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "从会话头移走「{name}」",
+      "args": ["name"]
+    },
+    "sessionHead.edit.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话头按钮",
+      "args": []
+    },
+    "sessionHead.edit.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "拖动排序 · 勾选放到会话头",
+      "args": []
+    },
+    "sessionHead.edit.overflow": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话头放不下的收进「更多」",
+      "args": []
+    },
+    "sessionHead.edit.reset": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复默认",
+      "args": []
+    },
+    "sessionHead.edit.fixedMore": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "固定在最右",
+      "args": []
+    },
+    "sessionHead.edit.onlyLocal": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仅本机",
+      "args": []
+    },
+    "sessionHead.edit.onlyWindows": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仅 Windows",
+      "args": []
+    },
+    "sessionState.headEdit.onlyEnded": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已结束时",
+      "args": []
+    },
+    "sessionHead.edit.displayNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "过程展开 · 系统注入",
+      "args": []
+    },
+    "sessionHead.edit.removed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已从会话头移走「{name}」",
+      "args": ["name"]
+    },
+    "sessionHead.edit.resetDone": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已恢复默认按钮",
+      "args": []
+    },
+    "sessionHead.act.display": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "显示",
+      "args": []
+    },
+    "sessionHead.act.popOut": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在新窗口打开",
+      "args": []
+    },
+    "sessionHead.act.account": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "账号",
+      "args": []
+    },
+    "keybindingActions.sessionHead.edit": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "调整会话头按钮",
+      "args": []
+    },
     "sessionHead.act.find": {
       "kind": "body",
       "role": "片段",
@@ -26711,6 +26879,12 @@
       "role": "读屏",
       "zh": "分组操作",
       "args": []
+    },
+    "tabBar.group.memberHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{group} · {title}",
+      "args": ["group", "title"]
     },
     "tabBar.unpinned.toast": {
       "kind": "body",

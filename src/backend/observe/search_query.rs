@@ -161,9 +161,11 @@ pub(crate) fn find_indexed(
     target: &Path,
     query: &str,
     include_tools: bool,
+    scope: Option<&str>,
     page: FindPage,
     on_hit: impl FnMut(&Value) -> std::io::Result<()>,
 ) -> Option<std::io::Result<(u64, u64)>> {
+    let include_tools = tools_in(scope, include_tools);
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return Some(Ok((0, 0)));
@@ -172,7 +174,7 @@ pub(crate) fn find_indexed(
     let path = fence.admit(target).ok()?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    index.find(&path, &q, include_tools, page, on_hit)
+    index.find(&path, &q, include_tools, scope, page, on_hit)
 }
 
 /// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建；
@@ -600,6 +602,7 @@ impl SearchIndex {
         path: &Path,
         q: &str,
         include_tools: bool,
+        scope: Option<&str>,
         page: FindPage,
         mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
     ) -> Option<std::io::Result<(u64, u64)>> {
@@ -618,7 +621,7 @@ impl SearchIndex {
             if rec.opens_turn {
                 turn += 1;
             }
-            if rec.uuid.is_empty() {
+            if rec.uuid.is_empty() || !scope.is_none_or(|s| in_scope(s, &rec.rt)) {
                 continue;
             }
             let Some((kind, hit)) = record_hit(&rec.rt, q, include_tools) else {
@@ -998,6 +1001,11 @@ fn report_text(u: crate::agents::UserText) -> Option<String> {
     }
 }
 
+/// 会话内查找在这个范围里搜不搜工具内容：只搜人说的 ⇒ 不搜（人说的话没有工具输出），别的照调用方。
+fn tools_in(scope: Option<&str>, include_tools: bool) -> bool {
+    include_tools && scope != Some("user")
+}
+
 /// `scope` 留不留这一条：`user` 人说的 · `assistant` 那一家说的 · `report` agent 回报。
 pub(crate) fn in_scope(scope: &str, rt: &RecordText) -> bool {
     match scope {
@@ -1120,9 +1128,11 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     mut r: R,
     query: &str,
     include_tools: bool,
+    scope: Option<&str>,
     page: FindPage,
     mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
 ) -> std::io::Result<(u64, u64)> {
+    let include_tools = tools_in(scope, include_tools);
     let q = query.trim().to_lowercase();
     let mut pager = FindPager::new(page);
     let mut turn: u64 = 0;
@@ -1155,6 +1165,9 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         let Some(rt) = record_text(&v, include_tools) else {
             continue;
         };
+        if !scope.is_none_or(|s| in_scope(s, &rt)) {
+            continue;
+        }
         let Some((kind, hit)) = record_hit(&rt, &q, include_tools) else {
             continue;
         };

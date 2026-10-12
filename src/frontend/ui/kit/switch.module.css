@@ -67,6 +67,12 @@
     cursor: pointer;
   }
 
+  /* 灰着的勾（C1：悬停说为什么，`title` 由用的那一处写）。 */
+  .swCheck[aria-disabled="true"] {
+    opacity: var(--state-disabled-opacity);
+    cursor: default;
+  }
+
   .swBox {
     width: 16px;
     height: 16px;

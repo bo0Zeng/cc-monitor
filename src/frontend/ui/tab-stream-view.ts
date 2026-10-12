@@ -253,12 +253,12 @@ export class TabStreamView {
     // ② 怎么跳 —— 见 `jumpInTab`（没加载的那一段先取回来再跳）；
     // ③ 落空怎么说 —— 取回来了也找不到那张卡（被并进别的卡 / 渲染成空）。
     const find = new SessionFindPanel({
-      search: async (query, includeTools, skip) => {
+      search: async (query, includeTools, skip, scope) => {
         const t = this.store.tabs.get(sessionId);
         if (!t?.parentPath) {
           return { available: false, reason: copyText("tabStreamView.search.noFile"), hits: [], total: 0 };
         }
-        return findInSession(t.origin, t.parentPath, query, includeTools, skip);
+        return findInSession(t.origin, t.parentPath, query, includeTools, skip, scope);
       },
       jumpTo: (uuid, tool) => this.jumpInTab(sessionId, streamEl, uuid, tool),
       unjumpableHint: copyText("tabStreamView.search.notLoaded"),

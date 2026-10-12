@@ -57,8 +57,6 @@ export interface TabBarDragView {
 
 /** 拖出栏右缘多远算「松开在新窗口打开」。 */
 const DETACH_PX = 16;
-/** 组员缩进（与 `.tab-group-list` 的 margin-left 同值）：落在组里的插入线从这里起。 */
-const GROUP_INDENT_PX = 12;
 /** 影子离窗口底边至少留这么多（影子高 28 ＋ 余量）。 */
 const GHOST_ROOM_PX = 34;
 /** 插入线左端离列表左边（空心圆的圆心在这里）。 */
@@ -129,7 +127,7 @@ export class TabBarDrag {
    * - document mouseup：armed → openInNewWindow(落点)；cancel → 不变；否则落实落点。都抑制紧随的 click
    */
   private drag: DragState | null = null;
-  /** 此刻画着的目标框 / 小标签 / 点亮的引导线（换落点只动旧的与新的）。 */
+  /** 此刻画着的目标框 / 小标签 / 点亮的那一块（换落点只动旧的与新的）。 */
   private marked: { box: HTMLElement | null; pill: HTMLElement | null; hot: HTMLElement | null } = { box: null, pill: null, hot: null };
   /** 此刻画着的是哪个落点（同一个落点的 mousemove 不再碰 DOM；矩形作废时清回 `null` 重画）。 */
   private markedKey: string | null = "";
@@ -425,8 +423,8 @@ export class TabBarDrag {
 
   /**
    * 画落点（`null` ＝ 不画：armed / 出栏取消 / 收尾）：
-   * - 插入：2px accent 线，落在组里从组员缩进处起、那个组的引导线点亮；落在组外通栏。
-   * - 压住（`onto`）/ 落在组头：目标那一行 2px 外框 ＋ 底色 ＋ 右侧小标签（建分组 / 进「名字」）。
+   * - 插入：2px accent 线，落在组里画在那一块里面、块边点亮（ui3 方案 A）；落在组外通栏、哪块都不亮。
+   * - 压住（`onto`）/ 落在组头：目标那一行 2px 外框 ＋ 底色 ＋ 右侧小标签（建分组 / 进「名字」）；进的是已有的组 ⇒ 那一块也点亮。
    */
   private mark(target: DropTarget | null): void {
     const key = target === null ? "" : JSON.stringify(target);
@@ -442,12 +440,13 @@ export class TabBarDrag {
       const gid = this.store.tabs.get(target.sid)?.group ?? null;
       const col = gid === null ? undefined : this.prefs.collections.find((c) => c.id === gid);
       pillText = col ? copyText("tabDrop.pill.join", { name: col.name }) : copyText("tabDrop.pill.found");
+      if (col) hot = this.view.groupParts(col.id)?.wrap ?? null;
     } else if (target?.kind === "insert" && target.head !== undefined) {
       const parts = this.view.groupParts(target.head);
       box = parts?.head ?? null;
       const col = this.prefs.collections.find((c) => c.id === target.head);
       pillText = col ? copyText("tabDrop.pill.join", { name: col.name }) : null;
-      hot = parts?.list ?? null;
+      hot = parts?.wrap ?? null;
     } else if (target?.kind === "insert") {
       const rows = this.dragRects();
       if (target.at === null) {
@@ -463,7 +462,7 @@ export class TabBarDrag {
         else if (r) lineY = at.side === "before" ? r.top : r.top + r.height + (r.gid !== null && target.gid === null ? AFTER_GROUP_PX : 0);
       }
       lineGid = target.gid;
-      if (target.gid !== null) hot = this.view.groupParts(target.gid)?.list ?? null;
+      if (target.gid !== null) hot = this.view.groupParts(target.gid)?.wrap ?? null;
     }
     if (this.marked.box !== box) {
       this.marked.box?.classList.remove("drop-onto");
@@ -488,10 +487,12 @@ export class TabBarDrag {
     if (line) {
       line.hidden = lineY === null;
       if (lineY !== null) {
-        const list = this.view.listEl.getBoundingClientRect();
-        const left = list.left + (lineGid !== null ? GROUP_INDENT_PX : 0) + LINE_INSET_PX;
+        // 组里 ⇒ 线的左右端都在块里面；组外 ⇒ 栏的两边。
+        const box = (lineGid !== null ? this.view.groupParts(lineGid)?.wrap : undefined) ?? this.view.listEl;
+        const r = box.getBoundingClientRect();
+        const left = r.left + LINE_INSET_PX;
         line.style.left = `${left}px`;
-        line.style.width = `${Math.max(0, list.right - 6 - left)}px`;
+        line.style.width = `${Math.max(0, r.right - LINE_INSET_PX - left)}px`;
         line.style.top = `${lineY - 1}px`;
       }
     }

@@ -55,7 +55,7 @@ fn bytes_of(lines: &[String]) -> Vec<u8> {
 fn find(data: &[u8], q: &str, tools: bool, limit: usize) -> Vec<Value> {
     let mut v = vec![serde_json::json!({})];
     let page = FindPage { skip: 0, limit };
-    let (count, total) = scan_session_find(data, q, tools, page, |hit| {
+    let (count, total) = scan_session_find(data, q, tools, None, page, |hit| {
         v.push(with_hit_text(hit, &Default::default()));
         Ok(())
     })
@@ -248,6 +248,7 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
             r,
             "zqx",
             tools,
+            None,
             crate::observe::search_query::FindPage {
                 skip: 0,
                 limit: 500,
@@ -331,7 +332,7 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         let mut hits = Vec::new();
         let page = crate::observe::search_query::FindPage { skip, limit };
         let (_, total) =
-            crate::observe::search_query::scan_session_find(r, "zqx", false, page, |h| {
+            crate::observe::search_query::scan_session_find(r, "zqx", false, None, page, |h| {
                 hits.push(crate::observe::search_query::with_hit_text(
                     h,
                     &Default::default(),
@@ -399,4 +400,106 @@ fn a_tool_result_hit_says_which_tool_card_it_lands_in() {
     assert_eq!(tool_of("tool-result"), Some(serde_json::json!("t")));
     assert_eq!(tool_of("tool-use-input"), None);
     assert_eq!(tool_of("hit-user-str"), None);
+}
+
+/// ★ ui3「只搜用户」：`scope: "user"` 的命中 ＝ 流里画成「人说的」那几条里找得到这个词的（同一份夹具两边各算一遍）。
+/// 「流里画成什么」取自流的成品本身（`parse_line` → `record_of` 出的 `Said { who }`，`who.speech()` 有话 ⇒ 人说的：
+/// 用户气泡 · 斜杠命令 · `!` 命令），不取自查找那一侧的判定函数。系统注入 · 工具结果 · 斜杠命令展开（`isMeta`）·
+/// agent 回报 · 后台通知 · 派给子 agent 的活 · 那一家说的都不算；`include_tools` 在用户范围里当假（用户说的话没有工具输出）。
+/// 常驻索引那一臂（帧面 `history-find`）与现扫那一臂逐字相等。
+#[test]
+fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
+    let lines: Vec<String> = vec![
+        r#"{"type":"user","uuid":"u-plain","timestamp":"2026-10-01T00:00:00Z","message":{"role":"user","content":"find the zqx here"}}"#.into(),
+        r#"{"type":"assistant","uuid":"a-says","timestamp":"2026-10-01T00:00:01Z","message":{"role":"assistant","content":[{"type":"text","text":"repeat zqx back"}]}}"#.into(),
+        r#"{"type":"user","uuid":"u-slash","timestamp":"2026-10-01T00:00:02Z","message":{"role":"user","content":"<command-name>/review</command-name>\n<command-message>review</command-message>\n<command-args>zqx please</command-args>"}}"#.into(),
+        r#"{"type":"user","uuid":"u-expand","isMeta":true,"timestamp":"2026-10-01T00:00:03Z","message":{"role":"user","content":[{"type":"text","text":"expanded prompt about zqx"}]}}"#.into(),
+        r#"{"type":"user","uuid":"u-bash","timestamp":"2026-10-01T00:00:04Z","message":{"role":"user","content":"<bash-input>grep zqx</bash-input>"}}"#.into(),
+        r#"{"type":"user","uuid":"u-bash-out","timestamp":"2026-10-01T00:00:05Z","message":{"role":"user","content":"<bash-stdout>zqx found</bash-stdout><bash-stderr></bash-stderr>"}}"#.into(),
+        r#"{"type":"user","uuid":"u-injected","timestamp":"2026-10-01T00:00:06Z","message":{"role":"user","content":"<system-reminder>zqx</system-reminder>"}}"#.into(),
+        r#"{"type":"user","uuid":"u-tool","timestamp":"2026-10-01T00:00:07Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","content":"tool says zqx"}]}}"#.into(),
+        r#"{"type":"user","uuid":"u-report","isMeta":true,"origin":{"kind":"peer","from":"a1"},"timestamp":"2026-10-01T00:00:08Z","message":{"role":"user","content":"<agent-message from=\"a1\">zqx done</agent-message>"}}"#.into(),
+        r#"{"type":"user","uuid":"u-notice","origin":{"kind":"task-notification"},"timestamp":"2026-10-01T00:00:09Z","message":{"role":"user","content":"<task-notification><summary>zqx</summary></task-notification>"}}"#.into(),
+        r#"{"type":"user","uuid":"u-mixed","timestamp":"2026-10-01T00:00:10Z","message":{"role":"user","content":[{"type":"text","text":"ZQX in caps"},{"type":"tool_result","tool_use_id":"t2","content":"zqx again"}]}}"#.into(),
+        r#"{"type":"user","uuid":"u-other","timestamp":"2026-10-01T00:00:11Z","message":{"role":"user","content":"nothing to find"}}"#.into(),
+    ];
+    // 期望：流的成品里「人说的」且话里有这个词的（文件序）。
+    let q = "zqx";
+    let want: Vec<String> = lines
+        .iter()
+        .filter_map(|l| {
+            let rec = crate::agents::claudecode::parse::parse_line(l).ok()??;
+            let r = crate::agents::claudecode::record_of::record_of(rec, "x")?;
+            match r.body {
+                crate::agents::record::Body::Said { who, .. } => who
+                    .speech()
+                    .filter(|s| s.to_lowercase().contains(q))
+                    .map(|_| r.id),
+                _ => None,
+            }
+        })
+        .collect();
+    assert_eq!(
+        want,
+        ["u-plain", "u-slash", "u-bash", "u-mixed"],
+        "夹具自检：流里画成人说的、且有这个词的恰是这四条（不然这一格比的是空集）"
+    );
+    let data = bytes_of(&lines);
+    // 现扫那一臂：带不带工具都一样（用户范围里工具当假）。
+    for tools in [false, true] {
+        let mut got = Vec::new();
+        let (_, total) = scan_session_find(
+            &data[..],
+            q,
+            tools,
+            Some("user"),
+            FindPage {
+                skip: 0,
+                limit: 500,
+            },
+            |h| {
+                got.push(h["uuid"].as_str().unwrap().to_string());
+                assert_eq!(h["kind"], "user", "用户范围里每条都是 user 命中");
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(got, want, "现扫 · include_tools={tools}");
+        assert_eq!(total as usize, want.len());
+    }
+    // 范围「全部」照旧（对照：那一家复述的 · agent 回报也在）。
+    let all = uuids(&find(&data, q, false, 500));
+    assert!(
+        all.contains(&"a-says".to_string()) && all.contains(&"u-report".to_string()),
+        "全部：{all:?}"
+    );
+    // 帧面（常驻索引那一臂）：同一份答案；认不出的范围 ⇒ bad_args。
+    let home = std::env::temp_dir().join(format!("ui3-find-scope-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("p");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("s.jsonl");
+    std::fs::write(&path, &data).unwrap();
+    let p = path.display().to_string();
+    let ask = |scope: &str, tools: bool| {
+        crate::faces::read_face::answer_at(
+            &home,
+            "history-find",
+            &serde_json::json!({"path": p, "query": q, "include_tools": tools, "scope": scope, "limit": 500}),
+            &Default::default(),
+        )
+    };
+    for tools in [false, true] {
+        let v = ask("user", tools).unwrap();
+        let got: Vec<String> = v["hits"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|h| h["uuid"].as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(got, want, "帧面 · include_tools={tools}");
+        assert_eq!(v["total"].as_u64(), Some(want.len() as u64));
+    }
+    assert_eq!(ask("bogus", false).unwrap_err().0, "bad_args");
+    let _ = std::fs::remove_dir_all(&home);
 }

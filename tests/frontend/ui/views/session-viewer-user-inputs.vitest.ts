@@ -391,7 +391,9 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
     const hits = [...v.element.querySelectorAll<HTMLElement>('[data-role="find-hit"]')];
-    expect(hits.map((h) => h.textContent)).toEqual(["统一做重试 ＋ 退避 ＋ 整体超时；", "重试"]);
+    // 片段那一行（头一行「谁 · 第几轮 · 时刻」同主窗口面板，ui3 稿 05）。
+    expect(hits.map((h) => h.querySelector("mark")!.parentElement!.textContent)).toEqual(["统一做重试 ＋ 退避 ＋ 整体超时；", "重试"]);
+    expect(hits.map((h) => h.firstElementChild!.textContent)).toEqual(["Claude", "Claude"]);
     expect(hits.map((h) => h.querySelector("mark")!.textContent)).toEqual(["重试", "重试"]);
   });
 

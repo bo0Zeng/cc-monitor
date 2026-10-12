@@ -2073,6 +2073,7 @@ sid → 上次用哪个号起。
 | `limit` | → | 可选，缺省 500、封顶 2000 |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `query` | → | 查询串（原样；以 `--` 起头也照样是查询，不是选项） |
+| `scope` | → | 可选，`user`（人说的：流里画成用户气泡 · 斜杠命令 · `!` 命令的那几条；工具内容不搜）/ `assistant`（那一家说的）/ `report`（agent 回报），同 `history-search` 同名同义；别的值 ⇒ `bad_args` |
 | `total` | ← | 全量命中数（≥ 条数；大于 ⇒ 被上限砍过） |
 
 码：`bad_args` · `failed` · `too_large`

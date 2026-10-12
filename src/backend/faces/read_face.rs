@@ -397,10 +397,26 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
         }
         // 会话内查找（Ctrl+F）。
         // `limit` 超封顶按封顶算、缺席取缺省；`skip` ＝ 跳过前几条（续下一页）。
+        // `scope`（可缺）＝ 只留谁说的，同 `history-search` 同名同义、判定同一个 `search_query::in_scope`；
+        //   `user` 时工具内容不搜（人说的话没有工具输出）。
         "history-find" => {
             use crate::observe::search_query::{FindPage, FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
             let path = str_arg(args, "path")?;
             let query = str_arg(args, "query")?;
+            let scope = match args.get("scope") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(s)) if matches!(s.as_str(), "user" | "assistant" | "report") => {
+                    Some(s.as_str())
+                }
+                Some(_) => {
+                    return Err((
+                        "bad_args",
+                        crate::common::contract::malformed(
+                            "`scope` must be user / assistant / report",
+                        ),
+                    ))
+                }
+            };
             let include_tools = args
                 .get("include_tools")
                 .and_then(Value::as_bool)
@@ -412,19 +428,24 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             let target = history_query::session_path_at(home, path).map_err(|e| ("failed", e))?;
             let mut hits = CappedRows::default();
             // 先走 SX1 常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
-            let scanned =
-                match search_query::find_indexed(home, &target, query, include_tools, page, |h| {
-                    hits.push(&search_query::with_hit_text(h, tz))
-                }) {
-                    Some(r) => r,
-                    None => {
-                        let r = history_query::open_session_at(home, path, 0)
-                            .map_err(|e| ("failed", e))?;
-                        search_query::scan_session_find(r, query, include_tools, page, |h| {
-                            hits.push(&search_query::with_hit_text(h, tz))
-                        })
-                    }
-                };
+            let scanned = match search_query::find_indexed(
+                home,
+                &target,
+                query,
+                include_tools,
+                scope,
+                page,
+                |h| hits.push(&search_query::with_hit_text(h, tz)),
+            ) {
+                Some(r) => r,
+                None => {
+                    let r =
+                        history_query::open_session_at(home, path, 0).map_err(|e| ("failed", e))?;
+                    search_query::scan_session_find(r, query, include_tools, scope, page, |h| {
+                        hits.push(&search_query::with_hit_text(h, tz))
+                    })
+                }
+            };
             let (_, total) = hits.finish(scanned)?;
             Ok(json!({ "total": total, "hits": hits.rows }))
         }

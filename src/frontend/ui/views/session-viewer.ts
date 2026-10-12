@@ -38,6 +38,7 @@ import { skeletonRows } from "../kit/skeleton";
 import { emptyState } from "../kit/empty";
 import { openPopover, closePopover, popoverOpenOn } from "../kit/popover";
 import { FindStrip } from "../find-strip";
+import { hitMeta } from "./session-find";
 import sv from "./session-viewer.module.css";
 import { copyText } from "../copy-table";
 
@@ -918,14 +919,14 @@ export class SessionViewer {
     // 查找：问那台后端 `history-find`（经通道，`session-reads.ts::findInSession`），问的是查看器此刻这一份会话；
     // 跳与「你说过的话」同一个住址（`scrollToMessage`）。
     this.find = new FindStrip({
-      search: async (query, includeTools, skip) => {
+      search: async (query, includeTools, skip, scope) => {
         const where = this.outlineWhere;
         if (!where) return { available: false, reason: "", hits: [], total: 0 };
-        return findInSession(where.origin, where.jsonlPath, query, includeTools, skip);
+        return findInSession(where.origin, where.jsonlPath, query, includeTools, skip, scope);
       },
       jumpTo: (uuid, tool) => this.scrollToMessage(uuid, tool),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
-    });
+    }, { meta: (h, scope) => hitMeta(h, scope) }); // 命中头一行同主窗口面板（ui3 稿 05：同一个控件）
     tools.append(this.saidBtn, this.find.box);
     view.appendChild(tools);
     // 命中清单：工具行正下方就地展开。

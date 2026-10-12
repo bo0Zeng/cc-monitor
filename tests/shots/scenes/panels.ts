@@ -397,6 +397,27 @@ export const PANEL_SCENES: Scene[] = [
     await key("Enter");
     await sleep(500);
   }),
+  // ui3 · 10-11 稿「查找-只搜用户」：框下一行范围「全部 | 用户」＋ 含工具输出与思考。
+  panel("panel-find-user", "会话内查找 · 只搜用户", "同一个词换到范围「用户」：词不变、马上重找（核心按流里画成「人说的」那几条判）；命中头一行只写「第几轮 · 时刻」；含工具输出与思考那个勾禁用", async () => {
+    await mainReady(ALL_TABS);
+    await key("f", { ctrl: true });
+    await waitFor("[data-role=find-input]");
+    await type("[data-role=find-input]", "重试");
+    await sleep(700);
+    await click(await waitFor("[data-role=find-scope] [data-key=user]"));
+    await waitFor("[data-role=find-hit]");
+    await sleep(500);
+  }),
+  panel("panel-find-user-none", "会话内查找 · 只搜用户、没命中", "范围「用户」下找一个只有 Claude 说过的词：「无匹配「x」 · 仅用户」＋［搜全部］", async () => {
+    await mainReady(ALL_TABS);
+    await key("f", { ctrl: true });
+    await waitFor("[data-role=find-input]");
+    await click(await waitFor("[data-role=find-scope] [data-key=user]"));
+    await type("[data-role=find-input]", "超时断言");
+    await key("Enter");
+    await waitFor("[data-role=find-head] button");
+    await sleep(400);
+  }),
   panel("panel-outline", "大纲", "Ctrl+F 面板的「大纲」页：本会话里你说过的每一句", async () => {
     await mainReady(ALL_TABS);
     await key("f", { ctrl: true });

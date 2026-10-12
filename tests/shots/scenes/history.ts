@@ -231,6 +231,16 @@ export const HISTORY_SCENES: Scene[] = [
     await waitFor('.history-view [data-role="find-hit"]');
     await sleep(400);
   }),
+  hist("history-17-find-user", "历史 · 会话内查找 · 只搜用户", "查看器就地查找条：头一行「匹配 n · 全部 | 用户 · ☐ 含工具输出与思考 · ✕」，与主窗口面板同一个控件；换到「用户」马上重找", async () => {
+    await openHistory();
+    await click(await row(0));
+    await sleep(900);
+    await type(".history-view [data-role=\"find-input\"]", "重试");
+    await key("Enter");
+    await waitFor('.history-view [data-role="find-hit"]');
+    await click(await waitFor('.history-view [data-role="find-scope"] [data-key="user"]'));
+    await sleep(600);
+  }),
   {
     ...hist("history-14-mid", "历史 · 中档 1000 宽", "800–1100：列表 340、不可拖；内容头第二行折行；「你说过的话」只剩图标 ＋ 数字", async () => {
       await openHistory();
