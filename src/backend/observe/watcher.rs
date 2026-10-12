@@ -3607,6 +3607,16 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     }
     state.priming.remove(&sid);
     sink.priming.remove(&sid);
+    if let Some(pool) = state.pool.as_ref() {
+        let load = pool.0.load();
+        tracing::debug!(
+            "prime landed for {sid}: {} still priming here, {} running now (high {}, pool {})",
+            state.priming.len(),
+            load.running(),
+            load.high(),
+            pool.0.size()
+        );
+    }
     let mut paths = Vec::new();
     for f in files {
         state.prime_bytes += f.bytes;
@@ -4029,15 +4039,6 @@ pub(crate) struct Sub {
 const LOST_IDENTITY_CAP: usize = 64;
 
 impl FrameSink {
-    /// 夹具那一份：一条连接（号 0）、不带会话账本。
-    fn new(tx: mpsc::Sender<Frame>) -> Self {
-        FrameSink {
-            subs: vec![Sub::new(0, tx, crate::Tz::default())],
-            ledger: None,
-            priming: HashSet::new(),
-        }
-    }
-
     /// 生产那一份：带会话账本，起步没有连接（[`join`] 接上来）。
     fn hub() -> Self {
         FrameSink {

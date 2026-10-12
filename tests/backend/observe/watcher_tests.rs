@@ -58,6 +58,17 @@ fn the_event_dispatch_has_no_catch_all_arm() {
 }
 use super::*;
 
+/// 夹具那一份发帧口：一条连接（号 0）、不带会话账本（生产那一份是 [`FrameSink::hub`]，连接经 `join` 接上来）。
+impl FrameSink {
+    pub(in crate::observe::watcher) fn new(tx: mpsc::Sender<Frame>) -> Self {
+        FrameSink {
+            subs: vec![Sub::new(0, tx, crate::Tz::default())],
+            ledger: None,
+            priming: HashSet::new(),
+        }
+    }
+}
+
 // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------
 
 /// 起一个**假**进程当靶子。**绝不起真实已认证的 claude/codex**——这里只要一个
