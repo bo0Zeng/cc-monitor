@@ -489,12 +489,19 @@ export class SkeletonLedger {
     const sameFold = next.length === prev.length && next.every(([a, b], i) => a === prev[i][0] && b === prev[i][1]);
     const sameLines = f.linePx === this.linePx && lines.size === this.lines.size && [...lines].every((x) => this.lines.has(x));
     if (sameFold && sameLines) return false;
-    const touched = [...next.map(([a]) => a), ...prev.map(([a]) => a)];
-    if (!sameLines) touched.push(...lines, ...this.lines);
+    // 动到的最低一行：新旧两份折叠的开头（·行号变了再加新旧两份过程行的开头）。逐个比，不展开成实参 ——
+    // 这几份各约一轮一个，几万轮时合计十几万个号，超过 V8（Windows 的 WebView2）一次调用的实参上限会抛 RangeError。
+    let lowest = Infinity;
+    for (const [a] of next) if (a < lowest) lowest = a;
+    for (const [a] of prev) if (a < lowest) lowest = a;
+    if (!sameLines) {
+      for (const x of lines) if (x < lowest) lowest = x;
+      for (const x of this.lines) if (x < lowest) lowest = x;
+    }
     this.folded = next;
     this.lines = lines;
     this.linePx = f.linePx;
-    this.rebuildFrom(touched.length === 0 ? 0 : Math.max(0, Math.min(...touched) - this.base));
+    this.rebuildFrom(lowest === Infinity ? 0 : Math.max(0, lowest - this.base));
     return true;
   }
 

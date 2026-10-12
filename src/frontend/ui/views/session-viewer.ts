@@ -589,7 +589,8 @@ export class SessionViewer {
     if (this.loadGeneration !== gen) return;
     if (e.t === "lines") {
       if (this.loaded && this.watchFrom === null) this.appendLive(e.lines);
-      else this.followBuf.push(...e.lines);
+      // 逐条接，不展开成实参：一批最多一个流窗口（`STREAM_WINDOW`，2 万行），离 V8 的实参上限只差几倍，不拿它去赌。
+      else for (const l of e.lines) this.followBuf.push(l);
     } else if (e.t === "gap") {
       if (this.loaded) void this.catchUp(gen);
     } else if (e.t === "from") {

@@ -224,7 +224,8 @@ async function readRangeAs(
   for (;;) {
     const body = jsonBody({ path: jsonlPath, offset: at, until, seq });
     const page = await answered(origin, chan.call(origin, "history-page", body, budget, view), (v) => decodePage(origin, v));
-    out.push(...page.payloads);
+    // 逐条接，不展开成实参：一页按字节算（1 MiB），短行能有几十万行，超过 V8（WebView2）一次调用的实参上限会抛 RangeError。
+    for (const p of page.payloads) out.push(p);
     if (page.eof || page.next <= at) return out;
     at = page.next;
     seq = page.nextSeq;
