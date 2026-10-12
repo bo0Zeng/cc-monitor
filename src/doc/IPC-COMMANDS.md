@@ -1782,17 +1782,36 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-annotate`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `customTitle` | ← | 自定义标题（`null` = 没改过名） |
-| `entry` | ← | 改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次） |
-| `hidden` | ← | 隐藏 |
-| `patch` | → | 要改的那几格：`starred` / `customTitle` / `hidden`（`customTitle` 也认蛇形 `custom_title`） |
-| `sid` | → | 会话 id |
-| `starred` | → ← | 星标 |
-| `updatedAt` | ← | 毫秒，= 这一次 |
+入参 `AnnotateReq` · 回包 `Annotated`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`annotations_unreadable` · `bad_args` · `io_failed` · `no_annotations`
+```ts
+type AnnotateReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 要改的那几格。
+ */
+patch: Patch, };
+type Annotated = { entry: Entry, };
+type Entry = { starred: boolean, customTitle: string | null, hidden: boolean, updatedAt: number, };
+type Patch = { 
+/**
+ * 星标。
+ */
+starred?: boolean | null, 
+/**
+ * 自定义标题：`null` = 不改；空白串 = 清空（也认蛇形 `custom_title`）。
+ */
+customTitle?: string | null, 
+/**
+ * 隐藏。
+ */
+hidden?: boolean | null, };
+```
+
+码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
 
 #### `history-forget`
 
@@ -1800,12 +1819,22 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-forget`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `removed` | ← | 真删了一条没有（`false` = 本来就没有这一条，文件没动） |
-| `sid` | → | 会话 id |
+入参 `ForgetReq` · 回包 `Forgotten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`annotations_unreadable` · `bad_args` · `io_failed` · `no_annotations`
+```ts
+type ForgetReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, };
+type Forgotten = { 
+/**
+ * 真删了一条没有（`false` = 本来就没有这一条，文件没动）。
+ */
+removed: boolean, };
+```
+
+码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
 
 #### `history-last-accounts`
 
@@ -1813,11 +1842,18 @@ sid → 上次用哪个号起。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-last-accounts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `accounts` | ← | `{sid: 账号名}` |
+入参 `NoArgs` · 回包 `LastAccounts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`unreadable`
+```ts
+type LastAccounts = { 
+/**
+ * `{sid: 账号名}`：只含真记过的那几条。
+ */
+accounts: { [key in string]: string }, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `unreadable`
 
 #### `history-list`
 

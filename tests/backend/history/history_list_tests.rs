@@ -732,9 +732,10 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let there = dir.join("history-metadata.json");
-    crate::history::history_annotations::answer_annotate_at(
+    crate::history::history_annotations::annotate_at(
         &crate::platform::fs::Own::issue_data_at(&dir),
-        &json!({"sid": S1, "patch": {"starred": true}}),
+        crate::stream::inbound::typed::take(&json!({"sid": S1, "patch": {"starred": true}}))
+            .expect("入参"),
         5,
     )
     .expect("那台写下");

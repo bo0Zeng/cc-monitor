@@ -1,55 +1,21 @@
 //! 命令表 · 历史会话与它的读面：`history-*` · `session-fork` · `resolve` · `tasks-list` · `resync`。
 
-use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
+use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
     //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
-    CommandSpec {
-        name: "history-annotate",
-        summary: "改一条历史注解",
-        codes: &[
-            "annotations_unreadable",
-            "bad_args",
-            "io_failed",
-            "no_annotations",
-        ],
-        fields: &[out("customTitle", "自定义标题（`null` = 没改过名）"), out("entry", "改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次）"), out("hidden", "隐藏"), arg("patch", "要改的那几格：`starred` / `customTitle` / `hidden`（`customTitle` 也认蛇形 `custom_title`）"), arg("sid", "会话 id"), both("starred", "星标"), out("updatedAt", "毫秒，= 这一次")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::history::history_annotations::answer_annotate(&r.args, own)
-                .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "history-forget",
-        summary: "删一条历史注解",
-        codes: &[
-            "annotations_unreadable",
-            "bad_args",
-            "io_failed",
-            "no_annotations",
-        ],
-        fields: &[out("removed", "真删了一条没有（`false` = 本来就没有这一条，文件没动）"), arg("sid", "会话 id")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::history::history_annotations::answer_forget(&r.args, own)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::history::history_annotations::HistoryAnnotateCmd>(
+        "改一条历史注解",
+    ),
+    crate::stream::inbound::typed::owning::<crate::history::history_annotations::HistoryForgetCmd>(
+        "删一条历史注解",
+    ),
     // 「这台上每条会话上次用哪个号起的」（起会话账号记录，会话所在那台各问一次）。读不懂 ⇒ `unreadable`。
-    CommandSpec {
-        name: "history-last-accounts",
-        summary: "sid → 上次用哪个号起",
-        codes: &["unreadable"],
-        fields: &[out("accounts", "`{sid: 账号名}`")],
-        takes_input: false,
-        run: Run::BlockingData(|_| {
-            crate::control::launch_account::answer_last_accounts()
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::control::launch_account::HistoryLastAccountsCmd>(
+        "sid → 上次用哪个号起",
+    ),
     // ── 只读查询面上线 —— 层 1 ＋ ──────────
     //
     // 🔴 **这八条此前全是一次性子命令**：monitor 每问一次就新拨一条 SSH（握手 ＋ 鉴权 ＋ exec），

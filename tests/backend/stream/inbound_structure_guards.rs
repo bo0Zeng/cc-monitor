@@ -1123,24 +1123,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "history-annotate",
-        sampled::<crate::history::history_annotations::Annotated>,
-        &["customTitle", "hidden", "starred", "updatedAt"],
-        &[],
-    ),
-    (
-        "history-forget",
-        sampled::<crate::history::history_annotations::Forgotten>,
-        &[],
-        &[],
-    ),
-    (
-        "history-last-accounts",
-        sampled::<crate::control::launch_account::LastAccounts>,
-        &[],
-        &[],
-    ),
-    (
         "quota-probe",
         sampled::<crate::faces::quota_probe_face::Probed>,
         &[],

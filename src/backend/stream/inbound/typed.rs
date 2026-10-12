@@ -89,6 +89,12 @@ pub(crate) trait WithOwn: Command {
     ) -> Result<Self::Reply, Self::Err>;
 }
 
+/// 同 [`Blocking`]，只多递一份**写自家状态的句柄**（`~/.cc-monitor` 底下），不带文件管理面。
+/// 分派那一层手里没有写句柄的入口交不出来（同 [`WithOwn`]）。
+pub(crate) trait Owning: Command {
+    fn run(req: Self::Req, cx: &Cx, own: &crate::platform::Own) -> Result<Self::Reply, Self::Err>;
+}
+
 /// 真异步的那一种：交给独立 task，`cancel` 能在 await 点打断。
 pub(crate) trait Async: Command {
     fn run(
@@ -190,6 +196,8 @@ pub(super) enum TypedRun {
     BlockingFiles(fn(Request, Files) -> Outcome, Files),
     /// 阻塞、要文件管理面 ＋ 写句柄（[`WithOwn`]）：写句柄由分派那一层递。
     BlockingOwn(fn(Request, Files, &crate::platform::Own) -> Outcome, Files),
+    /// 阻塞、只要写句柄（[`Owning`]）：写句柄由分派那一层递。
+    BlockingOwning(fn(Request, &crate::platform::Own) -> Outcome),
     Async(fn(Request) -> DataFut),
     /// 异步、要文件管理面（[`AsyncFiles`]）。
     AsyncFiles(fn(Request, Files) -> DataFut, Files),
@@ -242,6 +250,15 @@ fn run_with_own<C: WithOwn>(r: Request, files: Files, own: &crate::platform::Own
     settle::<C>(C::run(req, &cx, files, own))
 }
 
+fn run_owning<C: Owning>(r: Request, own: &crate::platform::Own) -> Outcome {
+    let req = take::<C::Req>(&r.args)?;
+    let cx = Cx {
+        tz: r.tz,
+        until: r.until,
+    };
+    settle::<C>(C::run(req, &cx, own))
+}
+
 fn run_async<C: Async>(r: Request) -> DataFut {
     Box::pin(async move {
         let req = take::<C::Req>(&r.args)?;
@@ -277,6 +294,11 @@ pub(crate) const fn with_files<C: WithFiles>(summary: &'static str, files: Files
 /// 阻塞、要文件管理面 ＋ 写句柄的一行登记。
 pub(crate) const fn with_own<C: WithOwn>(summary: &'static str, files: Files) -> CommandSpec {
     spec::<C>(summary, TypedRun::BlockingOwn(run_with_own::<C>, files))
+}
+
+/// 阻塞、只要写句柄的一行登记。
+pub(crate) const fn owning<C: Owning>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, TypedRun::BlockingOwning(run_owning::<C>))
 }
 
 /// 异步、要文件管理面的一行登记。

@@ -3,9 +3,12 @@
 
 /// `(命令, 形状指纹)`，按命令名排。
 pub const SHAPES: &[(&str, &str)] = &[
+    ("history-annotate", "e40c5678"),
     ("history-branch", "cd82bf99"),
     ("history-find", "1f44cd85"),
+    ("history-forget", "bf6099c2"),
     ("history-index", "9b5fb2cb"),
+    ("history-last-accounts", "fcbc6c7c"),
     ("history-lines", "9a21fc37"),
     ("history-page", "9ec1a380"),
     ("history-read", "f9e5a55e"),

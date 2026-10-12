@@ -328,10 +328,12 @@ fn machine_listing_for(only: Option<&str>) -> Result<Listing, (&'static str, Str
         .into_iter()
         .map(|(k, f)| (k, (f.sessions)(), f.excerpt))
         .collect();
-    let last = crate::control::launch_account::answer_last_accounts()
-        .ok()
-        .and_then(|v| v.get("accounts").cloned())
-        .unwrap_or(Value::Null);
+    let last = crate::control::launch_account::last_accounts_at(
+        crate::platform::paths::data_home().as_deref(),
+    )
+    .ok()
+    .and_then(|l| serde_json::to_value(l.accounts).ok())
+    .unwrap_or(Value::Null);
     let mut listing = listing_from(tree.unwrap_or_default(), &synth, &live, &last);
     with_own_annotations(&mut listing, &crate::history::history_annotations::load());
     Ok(listing)

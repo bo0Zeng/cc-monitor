@@ -48,6 +48,7 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             "typed::blocking::<",
             "typed::with_files::<",
             "typed::with_own::<",
+            "typed::owning::<",
             "typed::asynchronous::<",
             "typed::async_with_files::<",
         ] {
