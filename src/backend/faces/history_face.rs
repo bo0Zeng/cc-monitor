@@ -713,6 +713,7 @@ pub(crate) struct HistoryIndexReq {
     /// 可选：一页最多几行。这一版还不分段：给了也整份出，`next` 恒 `null`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[allow(dead_code)] // 形状先留成分页那一形（主会话 10-12 08:0x 批），真正分段归 8a 的 b。
     pub(crate) limit: Option<u64>,
 }
 
@@ -996,6 +997,7 @@ pub(crate) struct HistoryTurnsReq {
     /// 可选：一页最多几轮。这一版还不分段：给了也整份出，`next` 恒 `null`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional, type = "number | null"))]
+    #[allow(dead_code)] // 形状先留成分页那一形（主会话 10-12 08:0x 批），真正分段归 8a 的 b。
     pub(crate) limit: Option<u64>,
 }
 

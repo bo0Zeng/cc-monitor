@@ -300,15 +300,6 @@ pub(crate) fn reader<'a>(
     crate::observe::record_page::Reader::new(face, lead_at, &lead, tz.clone())
 }
 
-/// 整份成品过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
-fn capped(v: Value) -> Answer {
-    let size = v.to_string().len();
-    if size > LINES_CAP_BYTES {
-        return Err(too_large(size));
-    }
-    Ok(v)
-}
-
 /// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `stream/inbound/registry/accounts.rs`
 /// 那一块的 `codes` 同一张**；认不出的一律 `failed`（不把一个没登记的码漏上线）。
 fn trust_code(c: &str) -> &'static str {
