@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.session
 
 import com.ccmonitor.mobile.core.claude.link.AttachLine
-import com.ccmonitor.mobile.core.claude.link.BackendFeed
+import com.ccmonitor.mobile.core.claude.link.CoreLink
 import com.ccmonitor.mobile.core.claude.link.Kill
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNew
@@ -20,7 +20,7 @@ import java.util.UUID
  * [machine] 是这台在手机上的名字（走不通时那一句里用）。
  */
 class TerminalOps(
-    private val feed: BackendFeed,
+    private val feed: CoreLink,
     private val machine: suspend () -> String,
 ) {
     /** 这台的终端名单。 */
@@ -44,7 +44,7 @@ class TerminalOps(
 
     /** 在名叫 [name] 的会话里后台起 Claude（不进入）。失败 ⇒ 那一句。 */
     suspend fun startClaude(name: String): String? =
-        ask(SessionNew.COMMAND, SessionNew.inTmux(agent = "claude", name = name, ticket = UUID.randomUUID().toString()), SessionNew::of, blocking = true)
+        ask(SessionNew.COMMAND, SessionNew.inTmux(agent = "claude", name = name, ticket = UUID.randomUUID().toString()), SessionNew::of)
             .exceptionOrNull()
             ?.message
 
@@ -81,10 +81,9 @@ class TerminalOps(
         command: String,
         args: Map<String, Any?>,
         decode: (Any?) -> T?,
-        blocking: Boolean = false,
     ): Result<T> {
         val m = machine()
-        return when (val r = feed.call(command, args, blocking = blocking)) {
+        return when (val r = feed.call(command, args)) {
             is Reply.Ok -> decode(r.data)?.let { Result.success(it) } ?: Result.failure(Problem(unreadableReply(m, command, r.data.toString()).text))
             else -> Result.failure(Problem(r.problem(m, command)?.text.orEmpty()))
         }

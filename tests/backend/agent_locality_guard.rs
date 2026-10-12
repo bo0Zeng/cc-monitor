@@ -171,12 +171,7 @@ mod tests {
              「允许**命令的地址**，禁**数据布局**」。同 `S1` 的 `@ccm_sid`、`S2` 的 `sessions/` 那一族。",
         ),
         // `control/ccm/argv.rs` 那一条摘了：账号库的门牌号搬进后端的家（契约 crate 的 `ACCOUNTS_DIR_REL`），那里不再有 `.claude` 字样。
-        (
-            "observe/search_query.rs",
-            "\"sessions\"",
-            "这是 **`history-search-merge` 线上的字段名**（各台搜索结果的会话行那一摞，界面 `SearchResult.sessions`），\
-             不是哪个 agent 的 `sessions/` 目录布局 —— 合并只读 `updatedAt` / `hitCount` / `hitsTruncated` 三格。",
-        ),
+        // `observe/search_query.rs` 那一条摘了（第 8 批）：`history-search-merge` 的回包改成 typed 结构体，字面量 `"sessions"` 随之没了。
         (
             "faces/rotation_switch_face.rs",
             "\"sessions\"",
@@ -188,11 +183,7 @@ mod tests {
             "\"sessions\",",
             "同上一条：换号那一族命令登记的入参 / 应答字段名（`fields` 表），不是目录布局。",
         ),
-        (
-            "stream/inbound/registry/history.rs",
-            "\"sessions\",",
-            "同上一条：`history-search-merge` 那条命令登记的应答字段名（`fields` 表），不是目录布局。",
-        ),
+        // `stream/inbound/registry/history.rs` 那一条摘了（第 8 批）：`history-search-merge` 成了 typed 命令，登记里不再手写字段表。
     ];
 
     /// ② 的针：每一家 agent 的**名字**（wire kind · 适配器 id · 中转路由名），外加夹具家的 kind，**带引号的整串**。

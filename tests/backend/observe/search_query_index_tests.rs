@@ -3,6 +3,7 @@
 //! 守的要求：「按文件 mtime / 长度增量」「结果与现扫逐条相等（两向）」；J1（金样）钉「整份读 == 起步树现扫」。
 
 use super::golden_tests::{build_corpus, cases};
+use super::test_support::{lines_into, opts_from_words};
 use super::*;
 use crate::agents::claudecode::paths::projects_root;
 use serde_json::json;
@@ -51,9 +52,9 @@ fn ask_all(
                 .search(
                     &fence,
                     &q.trim().to_lowercase(),
-                    &parse_opts(&rest),
+                    &opts_from_words(&rest),
                     &crate::observe::accounts_query::live_session_ids(home),
-                    &mut buf,
+                    &mut lines_into(&mut buf),
                 )
                 .expect("search ok");
             appended += index.last.appended;
@@ -230,7 +231,13 @@ fn sx1_the_frame_arm_reads_only_what_changed() {
     let key = projects_root(&home).canonicalize().expect("规范化");
     let ask = || {
         let mut out = Vec::new();
-        search_into(&home, "docker", &[], false, &mut out).expect("search ok");
+        search_into(
+            &home,
+            "docker",
+            &opts_from_words(&[]),
+            &mut lines_into(&mut out),
+        )
+        .expect("search ok");
     };
     let last = || {
         RESIDENT
@@ -302,7 +309,13 @@ fn fix_after_the_warm_up_the_first_question_reads_nothing() {
     let n = 9; // 与 J3 同一份人群（build_corpus 的会话文件数）
     assert_eq!((read, kept > 0), (n, true), "预热没把整棵读进来");
     let mut got = Vec::new();
-    search_into(&home, "docker", &[], false, &mut got).expect("search ok");
+    search_into(
+        &home,
+        "docker",
+        &opts_from_words(&[]),
+        &mut lines_into(&mut got),
+    )
+    .expect("search ok");
     let last = RESIDENT.lock().expect("锁").get(&key).map(|i| i.last);
     assert_eq!(
         last,
@@ -320,9 +333,9 @@ fn fix_after_the_warm_up_the_first_question_reads_nothing() {
         .search(
             &fence,
             "docker",
-            &parse_opts(&[]),
+            &opts_from_words(&[]),
             &crate::observe::accounts_query::live_session_ids(&home),
-            &mut want,
+            &mut lines_into(&mut want),
         )
         .expect("search ok");
     assert_eq!(
@@ -463,7 +476,13 @@ fn a_tools_question_does_not_push_plain_text_out_of_the_index() {
         };
         let mut buf = Vec::new();
         index
-            .search(&fence, q, &parse_opts(&rest), &live, &mut buf)
+            .search(
+                &fence,
+                q,
+                &opts_from_words(&rest),
+                &live,
+                &mut lines_into(&mut buf),
+            )
             .expect("search ok");
         String::from_utf8(buf).expect("UTF-8")
     };
@@ -526,9 +545,9 @@ fn many_batches_still_answer_most_recent_first() {
         .search(
             &fence,
             "cursor",
-            &parse_opts(&[]),
+            &opts_from_words(&[]),
             &crate::observe::accounts_query::live_session_ids(&home),
-            &mut buf,
+            &mut lines_into(&mut buf),
         )
         .expect("search ok");
     let got: Vec<String> = String::from_utf8(buf)

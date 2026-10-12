@@ -170,7 +170,10 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));", Why::Reap, "Windows 句柄 / 内存释放"),
     // `cc_bus.rs` 那两行（本机 shell 读收尸）随那条读删了。
-    ("src/frontend/shell/src/inbound_client.rs", "let _ = w.shutdown().await;", Why::DeadLink, ""),
+    // 入方向客户端的本体搬进 `resident-client`（monitor 与手机同一份）：关写半边那一行跟着搬。
+    ("src/comms/resident-client/client.rs", "let _ = w.shutdown().await;", Why::DeadLink, ""),
+    // 一台的常驻流（手机那一侧的循环）睡退避时一起等「SSH 换了一条」：等到了就重接，结果本身没有信息量（发端没了 ⇒ 也该醒）。
+    ("src/comms/resident-client/feed.rs", "let _ = ssh.changed().await;", Why::Signal, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.kill();", Why::Reap, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = c.wait();", Why::Reap, ""),
     ("src/frontend/shell/src/local_backend.rs", "let _ = std::fs::remove_file(&tmp);", Why::CleanupAfterFailure, "原子写的临时件：换名失败之后删它；主错误已在回，删不掉只剩一份临时件"),

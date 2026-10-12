@@ -146,26 +146,6 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                 .collect();
             Ok(json!({ "faces": faces }))
         }
-        // 各台 `history-search` 的会话行合一份（纯计算，不看家目录）。
-        "history-search-merge" => search_query::answer_merge(args, tz),
-        // 读不动几份（`unreadable`）· 内容搜索不覆盖、这台上又有会话的那几家（`skipped`，对用户的叫法）一并回给界面说。
-        "history-search" => {
-            let query = str_arg(args, "query")?;
-            let rest = search_rest(args)?;
-            // 只比标题与第一句：帧面才有的一格（CLI 面没有这个选项）。
-            let titles = args.get("titles").and_then(Value::as_bool) == Some(true);
-            let mut unreadable = 0usize;
-            let lines = rows(|out| {
-                unreadable = search_query::search_into(home, query, &rest, titles, out)
-                    .map_err(|e| ("failed", e))?;
-                Ok(())
-            })?;
-            wire(&Searched {
-                lines,
-                unreadable,
-                skipped: crate::agents::content_search_skips(),
-            })
-        }
         // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
         //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
         "machine-interrupts" => {
@@ -628,35 +608,6 @@ fn capped(v: Value) -> Answer {
     Ok(v)
 }
 
-/// 跑一个「往 `out` 里逐行写」的查询，收成非空的那几行。
-fn rows(
-    f: impl FnOnce(&mut CappedBuf) -> Result<(), (&'static str, String)>,
-) -> Result<Vec<String>, (&'static str, String)> {
-    let mut out = CappedBuf::default();
-    let res = f(&mut out);
-    if out.over {
-        return Err(too_large(out.seen));
-    }
-    res?;
-    Ok(String::from_utf8_lossy(&out.buf)
-        .lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty())
-        .map(str::to_string)
-        .collect())
-}
-
-/// `history-search` 的应答。
-#[derive(Debug, serde::Serialize)]
-pub(crate) struct Searched {
-    /// 每命中会话一行 `SessionHits`（JSON 串），行序 = 最近优先。
-    pub(crate) lines: Vec<String>,
-    /// 这一趟有几份会话记录读不动、没搜到。
-    pub(crate) unreadable: usize,
-    /// 内容搜索不覆盖、这台上又有它的会话记录的那几家。
-    pub(crate) skipped: Vec<&'static str>,
-}
-
 /// `sessions-needs` 的应答：这台上需手动的会话，先答的在前。
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct NeedsList {
@@ -686,21 +637,23 @@ fn trust_code(c: &str) -> &'static str {
     KNOWN.iter().find(|k| **k == c).copied().unwrap_or("failed")
 }
 
-fn too_large(size: usize) -> (&'static str, String) {
+pub(crate) fn too_large(size: usize) -> (&'static str, String) {
+    too_large_at(size, LINES_CAP_BYTES)
+}
+
+/// 同 [`too_large`]，上限是参数（全文搜索那条按它判，判据拿小上限验）。
+pub(crate) fn too_large_at(size: usize, cap: usize) -> (&'static str, String) {
     (
         "too_large",
         copy_text(
             "beReadFace.tooLarge.say",
-            &[
-                ("size", &size.to_string()),
-                ("cap", &LINES_CAP_BYTES.to_string()),
-            ],
+            &[("size", &size.to_string()), ("cap", &cap.to_string())],
         ),
     )
 }
 
 /// 出成品那三条的收集器：逐条收成 JSON 值，整份（按序列化字节计）过 [`LINES_CAP_BYTES`]
-/// ⇒ 当场停下扫描、回 `too_large`（不截断：截断的清单会被当成完整的用）—— 与 [`CappedBuf`] 同一条纪律。
+/// ⇒ 当场停下扫描、回 `too_large`（不截断：截断的清单会被当成完整的用）—— 同全文搜索那一份上限（`faces/search_face.rs::search_at`）。
 #[derive(Default)]
 struct CappedRows {
     rows: Vec<Value>,
@@ -827,30 +780,6 @@ pub(crate) fn pack_index(from: u64, end: u64, rows: &[Value]) -> Value {
     })
 }
 
-/// 有上限的内存出口。超了就报错（让查询函数停下），并记下「超了」—— 调用方据此回 `too_large`，
-/// 而不是把查询函数报的那句「write failed」当成真原因。
-#[derive(Default)]
-struct CappedBuf {
-    buf: Vec<u8>,
-    seen: usize,
-    over: bool,
-}
-
-impl std::io::Write for CappedBuf {
-    fn write(&mut self, data: &[u8]) -> std::io::Result<usize> {
-        self.seen += data.len();
-        if self.buf.len() + data.len() > LINES_CAP_BYTES {
-            self.over = true;
-            return Err(std::io::Error::other("reply cap reached"));
-        }
-        self.buf.extend_from_slice(data);
-        Ok(data.len())
-    }
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (&'static str, String)> {
     args.get(key).and_then(Value::as_str).ok_or_else(|| {
         (
@@ -884,30 +813,6 @@ fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String
             )
         }),
     }
-}
-
-/// `history-search` 的选项 → `search_query::parse_opts` 认的那一截词。
-///
-/// 🔴 **不在这里另写一份选项语义**：解析走 `search_query` 那一个 `parse_opts`，
-/// 本函数只把 JSON 摊回它认的那几个 token（`include_tools` / `scope` / `after_ms` / `limit`）。
-fn search_rest(args: &Value) -> Result<Vec<String>, (&'static str, String)> {
-    let mut rest = Vec::new();
-    if args.get("include_tools").and_then(Value::as_bool) == Some(true) {
-        rest.push("--include-tools".to_string());
-    }
-    if let Some(s) = args.get("scope").and_then(Value::as_str) {
-        rest.push("--scope".to_string());
-        rest.push(s.to_string());
-    }
-    if let Some(n) = u64_arg(args, "after_ms")? {
-        rest.push("--after-ms".to_string());
-        rest.push(n.to_string());
-    }
-    if let Some(n) = u64_arg(args, "limit")? {
-        rest.push("--limit".to_string());
-        rest.push(n.to_string());
-    }
-    Ok(rest)
 }
 
 #[cfg(test)]

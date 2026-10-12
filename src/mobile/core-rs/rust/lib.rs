@@ -1,7 +1,8 @@
 //! **手机嵌的 Rust 核心**（`libmobcore.so`）：只有 FFI 外壳。拨号 · 鉴权 · 复用 · 用法是后端同一份拨号核心（`ssh-dial`）。
 //!
 //! 边界是**手写 JNI、窄口、走消息**：一条链路就是拨号核心那一条（上行字节 → 下行阶段行 ＋ ack ＋ 字节），
-//! Kotlin 只开 · 送 · 改窗口 · 关；回调三个：下行字节 · Keystore 签名 · 认下的 host key（`Core.Sink`）。
+//! Kotlin 只开 · 送 · 改窗口 · 关；回调四个：下行字节 · Keystore 签名 · 认下的 host key · 常驻流交的事（`Core.Sink`）。
+//! 常驻流（重连 · 握手 · 版本门 · 在看名单 · 一问一答）整条在 `resident-client`（桌面同一份），宿主住 [`resident`]。
 //! 不用 UniFFI / JNA（运行时多一份 JNA、两 ABI 多 2.2 MB，量过）。
 //!
 //! 进程里一份 tokio 多线程运行时（两个 worker，第一次用时建）；JNI 口都不阻塞。每个口在边界上接住 panic
@@ -21,6 +22,8 @@ use ssh_dial::sftp::WriteRules;
 use ssh_dial::Said;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
+
+pub mod resident;
 
 /// 这一份核心的身份那一行（JSON）：拨号核心的 ack 协议版本 ＋ 认得的用法。Kotlin 侧冒烟与「装上的是不是这一份」用它。
 pub fn version_json() -> String {
@@ -84,6 +87,31 @@ impl Sink {
             Ok(())
         });
     }
+}
+
+impl Sink {
+    /// 一台常驻流交的事（`resident.rs`）：`(那台的编号, 种类, 文本)`。
+    fn resident(&self, handle: i64, kind: &str, body: &str) {
+        self.call(|env, obj| {
+            let k = env.new_string(kind)?;
+            let b = env.new_string(body)?;
+            env.call_method(
+                obj,
+                "resident",
+                "(JLjava/lang/String;Ljava/lang/String;)V",
+                &[JValue::Long(handle), JValue::Object(&k), JValue::Object(&b)],
+            )?;
+            Ok(())
+        });
+    }
+}
+
+fn on_resident() -> resident::OnEvent {
+    Arc::new(|h, kind, body| {
+        if let Some(s) = sink() {
+            s.resident(h, kind, &body);
+        }
+    })
 }
 
 fn sink() -> Option<&'static Sink> {
@@ -576,6 +604,107 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_close<'l>(
     handle: jlong,
 ) {
     guarded((), || close_link(handle));
+}
+
+// ═══ 常驻流的口（`resident.rs`；`Core.resident*`）═══════════════════════════════════════
+
+/// `Core.residentOpen(machine, mine, tz)`：看一台，回编号。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentOpen<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    machine: JString<'l>,
+    mine: JString<'l>,
+    tz: JString<'l>,
+) -> jlong {
+    guarded(0, || {
+        let machine = string(&mut env, &machine).unwrap_or_default();
+        let mine = string(&mut env, &mine);
+        let tz = string(&mut env, &tz);
+        let _rt = runtime().enter();
+        resident::open(machine, mine, tz, on_resident())
+    })
+}
+
+/// `Core.residentSsh(handle, request)`：SSH 那层此刻的连接（拨号请求 JSON；`null` ⇒ 没通）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentSsh<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    request: JString<'l>,
+) -> jboolean {
+    guarded(JNI_FALSE, || {
+        let req = string(&mut env, &request);
+        let _rt = runtime().enter();
+        if resident::ssh(handle, req.as_deref()) {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }
+    })
+}
+
+/// `Core.residentCall(handle, cmd, args, withinMs)`：回问答编号（结局经 `Sink.resident(…, "reply", …)`）；这台不在 ⇒ 0。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentCall<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    cmd: JString<'l>,
+    args: JString<'l>,
+    within_ms: jlong,
+) -> jlong {
+    guarded(0, || {
+        let (Some(cmd), Some(args)) = (string(&mut env, &cmd), string(&mut env, &args)) else {
+            return 0;
+        };
+        let _rt = runtime().enter();
+        resident::call(
+            handle,
+            cmd,
+            &args,
+            u64::try_from(within_ms).unwrap_or(0),
+            on_resident(),
+        )
+    })
+}
+
+/// `Core.residentWatch(handle, sid, holding)`：多一处 / 少一处在看这条会话。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentWatch<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    sid: JString<'l>,
+    holding: jboolean,
+) {
+    guarded((), || {
+        if let Some(sid) = string(&mut env, &sid) {
+            resident::watch(handle, &sid, holding != JNI_FALSE);
+        }
+    });
+}
+
+/// `Core.residentKick(handle, retry)`：［重试］（`retry`）· 回前台 / 网络变了。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentKick<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    retry: jboolean,
+) {
+    guarded((), || resident::kick(handle, retry != JNI_FALSE));
+}
+
+/// `Core.residentClose(handle)`：不再看这台。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentClose<'l>(
+    _env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+) {
+    guarded((), || resident::close(handle));
 }
 
 #[cfg(test)]

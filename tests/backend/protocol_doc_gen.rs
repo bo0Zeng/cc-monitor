@@ -667,13 +667,12 @@ fn traits_of(spec: &CommandSpec) -> String {
         .to_string(),
     );
     t.push(
-        match spec.run {
-            Run::Blocking(_)
-            | Run::BlockingData(_)
-            | Run::BlockingOwn(_)
-            | Run::BlockingFace(_) => "撤不动（阻塞档，`cancel` 回 `not_cancellable`）",
-            Run::Builtin => "连接内就地做完",
-            Run::Async(_) | Run::AsyncData(_) | Run::AsyncOwn(_) => "可撤",
+        if matches!(spec.run, Run::Builtin) {
+            "连接内就地做完"
+        } else if spec.run.blocking() {
+            "撤不动（阻塞档，`cancel` 回 `not_cancellable`）"
+        } else {
+            "可撤"
         }
         .to_string(),
     );
@@ -728,6 +727,20 @@ fn command(out: &mut String, spec: &CommandSpec) {
             );
         }
         out.push('\n');
+    }
+    // typed 命令：字段不手写，照它的类型写（入参 · 回包的 TS 声明，连同它们引到的类型）。
+    if let Run::Typed(t) = spec.run {
+        let shape = (t.shape)();
+        let _ = writeln!(
+            out,
+            "入参 `{}` · 回包 `{}`（类型从 Rust 生成，`generated/TypedCommands.ts`）：\n",
+            shape.req, shape.reply
+        );
+        out.push_str("```ts\n");
+        for (_, decl) in &shape.decls {
+            let _ = writeln!(out, "{decl}");
+        }
+        out.push_str("```\n\n");
     }
     if !spec.codes.is_empty() {
         let codes: Vec<String> = spec.codes.iter().map(|c| format!("`{c}`")).collect();

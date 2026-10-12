@@ -2433,7 +2433,7 @@
           "frozen": false,
           "kind": "value",
           "path": "rows[].can.delete",
-          "type": "string"
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -2445,7 +2445,7 @@
           "frozen": false,
           "kind": "value",
           "path": "rows[].can.resume",
-          "type": "string"
+          "type": "enum"
         },
         {
           "frozen": false,

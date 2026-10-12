@@ -10,7 +10,6 @@ use super::topic::Topic;
 /// 同步跑（读那台自己的盘，毫秒级）：发端在一阵变化之后调一次。
 /// `tz` ＝ 这条连接看的那一台的时区（attach 带来的）：成品里的时刻字按它写，与客户端带同一个 `tz` 重问拿到的是同一份。
 pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde_json::Value> {
-    use crate::stream::inbound::spec::Run;
     let s = topic.spec();
     let args = match s.ask {
         super::topic::Ask::None => return None,
@@ -31,15 +30,12 @@ pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde
         tz: tz.clone(),
         until: None,
     };
-    match spec.run {
-        Run::Blocking(f) => f(req).ok().flatten(),
-        Run::BlockingData(f) => f(req).ok().flatten(),
-        // 写自家状态的那几条不是读，不拿来算小成品。
-        Run::Async(_)
-        | Run::AsyncData(_)
-        | Run::AsyncOwn(_)
-        | Run::BlockingOwn(_)
-        | Run::BlockingFace(_)
-        | Run::Builtin => None,
+    // 写自家状态 · 改用户文件的那几条不是读，不拿来算小成品；异步档也不在这里跑（这里是同步的）。
+    if spec.run.writes() {
+        return None;
+    }
+    match crate::stream::inbound::prepare(spec.run, None)? {
+        crate::stream::inbound::Prepared::Blocking(f) => f(req).ok().flatten(),
+        crate::stream::inbound::Prepared::Async(_) => None,
     }
 }

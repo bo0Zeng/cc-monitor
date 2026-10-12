@@ -10,9 +10,26 @@
  *
  * ⚠ 本文件**不是**通信层成员（它造期限、解释载荷）；也不认识任何一条具体命令 —— 那是各调用方的事。
  */
-import { ChanError, type Budget, type CallError } from "../../../comms/inward/chan";
+import { chan, ChanError, type Budget, type CallError } from "../../../comms/inward/chan";
 import { copyText } from "../copy-table";
 import { isLocalOrigin, type Origin } from "./origin";
+import type { TypedCommands } from "../generated/TypedCommands";
+
+/**
+ * 问一条 **typed** 帧命令：入参 · 回包的类型都从 Rust 生成（`generated/TypedCommands.ts`）。
+ * 两端形状由握手时的形状指纹核过（对不上 monitor 事前就拒，码 `backend_differs`、那一句它写好），回包这里直接按类型用、不再逐格解。
+ * 回的不是 JSON ⇒ 抛（`readJson`，认不出）。
+ */
+export async function callTyped<K extends keyof TypedCommands>(
+  origin: Origin,
+  cmd: K,
+  req: TypedCommands[K]["req"],
+  budget: Budget,
+): Promise<TypedCommands[K]["reply"]> {
+  const body = jsonBody(req as Record<string, unknown>);
+  const reply = await chan.call(origin, cmd, body, budget);
+  return readJson(reply) as TypedCommands[K]["reply"];
+}
 
 /**
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
@@ -71,6 +88,7 @@ export function refusalOf(body: Uint8Array): { code: string; message: string; da
  * 因对方版本说不成的两个码，全产品各一句（文案表 `peerVersion.said.*`）：
  * - `backend_old`：那台后端事前就说不认这条命令（`peer/unsupported`）；
  * - `reply_unreadable`：那台回了，但回的东西认不出（不是 JSON / 形状不对）—— 只说认不出，不猜版本。
+ * typed 命令两端形状对不上（「{机器} 后端版本不同」）不在这里：monitor 比的指纹、它写好那一句（带机器名），界面照抄拒绝里的那句。
  */
 export type PeerVersionCode = "backend_old" | "reply_unreadable";
 

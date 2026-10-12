@@ -612,8 +612,15 @@ async fn the_scope_follows_the_directory_and_a_hit_takes_you_there() {
 
     w.set_search_whole(true);
     let before = w.search.rounds();
+    let rebuilds = w.search.rebuilds_sent();
     w.fire_search(None, false);
     testing::settle(&w.search, before, "整台机器那一趟").await;
+    // 合成机器的「整台」就是它那棵合成树（已经在索引里）⇒ 这一趟不该发重走（从前合成后端拿真盘上的 `/` 当范围、去走整台真机器）。
+    assert_eq!(
+        w.search.rebuilds_sent(),
+        rebuilds,
+        "整台机器那一趟发了重走：合成后端的范围落到了真盘上"
+    );
     let last = find_calls(&wired).last().unwrap().clone();
     assert_eq!(last["scope"], "machine");
     assert!(last.get("under").is_none(), "整台机器还带了目录：{last}");

@@ -82,6 +82,8 @@ pub enum InboundFrame {
         unavailable: Vec<(String, String)>,
         /// `hello.uncancellable`：撤不动的那几条。旧后端无此字段 ⇒ 空（没把握，照旧补发撤单）。
         uncancellable: Vec<String>,
+        /// `hello.shapes`：typed 命令的形状指纹。旧后端无此字段 ⇒ 空（typed 命令一律当对不上，见 `Offer::unavailable`）。
+        shapes: Vec<(String, String)>,
     },
     /// 一行从后端 session jsonl 尾随读到的原始行（远端流与本机流同一种帧）。字段语义见 [`JsonlLine`]。
     Line {
@@ -476,6 +478,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 commands: strings("commands"),
                 unavailable,
                 uncancellable,
+                shapes: crate::chan::wire::Offer::shapes_of(obj),
             }
         }
         // 键序不是直解那一形时落到这里，同一个解码结构。

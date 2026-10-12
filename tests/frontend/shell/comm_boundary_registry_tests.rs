@@ -24,6 +24,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
         "comms-inward",
         &[
             "copy-core",
+            // 契约 crate：机器名（`Origin` ＝ `cmd_wire::Machine`）· typed 命令的形状指纹表；不是业务。
+            "cmd-wire",
             "serde",
             "serde_json",
             "tokio",

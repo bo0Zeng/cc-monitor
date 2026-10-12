@@ -10,13 +10,9 @@ use crate::event_replay::EventReplay;
 use crate::inbound_client::InboundClient;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Weak};
-use std::time::Duration;
 
-/// 那台后端的命令名。
-const WATCH_CMD: &str = "stream-watch";
-
-/// 一次报名单的期限：后端在连接内就地做完（只是换一张表、数几个游标），几秒足够；超了就等下一次变化 / 下一条连接。
-const WATCH_BUDGET: Duration = Duration::from_secs(10);
+// 命令名 · 期限 · 入参与应答的读法住 `resident-client`（手机同一份）；这里只管名单从哪来（窗口 ∪ 订阅）、交给谁（会话流）。
+use resident_client::watch::{WATCH_BUDGET, WATCH_CMD};
 
 /// 起那条总循环（`lib.rs` 起步时一次）。
 pub(crate) fn spawn(replay: Arc<EventReplay>) {
@@ -75,7 +71,7 @@ async fn send_loop(
         let Some(client) = client.upgrade() else {
             continue; // 那条连接已经走了（新连接来时总循环会再交一份）
         };
-        let args = serde_json::json!({ "sids": sids });
+        let args = resident_client::watch::args(&sids);
         match client.call(WATCH_CMD, args, WATCH_BUDGET).await {
             Ok(data) => {
                 let from = from_of(data.as_ref());
@@ -91,26 +87,16 @@ async fn send_loop(
     }
 }
 
-/// 应答 `{from: [{sid, path, seq}]}` ⇒ 会话流那一格的体。形状不对的那一格不收（记一行）。
+/// 应答 `{from: [{sid, path, seq}]}` ⇒ 会话流那一格的体（读法住 `resident_client::watch::from_of`）。形状不对的那一格不收。
 pub(crate) fn from_of(
     data: Option<&serde_json::Value>,
 ) -> Vec<crate::ui_contract::SessionWatchPayload> {
-    let Some(rows) = data.and_then(|d| d.get("from")).and_then(|f| f.as_array()) else {
-        return Vec::new();
-    };
-    rows.iter()
-        .filter_map(|r| {
-            let got = (|| {
-                Some(crate::ui_contract::SessionWatchPayload {
-                    session_id: r.get("sid")?.as_str()?.to_string(),
-                    path: r.get("path")?.as_str()?.to_string(),
-                    seq: r.get("seq")?.as_u64()?,
-                })
-            })();
-            if got.is_none() {
-                tracing::warn!("stream_watch 应答里一格形状不对，不收：{r}");
-            }
-            got
+    resident_client::watch::from_of(data)
+        .into_iter()
+        .map(|w| crate::ui_contract::SessionWatchPayload {
+            session_id: w.sid,
+            path: w.path,
+            seq: w.seq,
         })
         .collect()
 }

@@ -68,18 +68,8 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     //   两问上了帧面（CLI 面由 `cli_control` 从 `REGISTRY` 派生，那一份早在本表里）。
     // `observe/history_query.rs` · `observe/accounts_query.rs` 两行摘了（10-11）：`--read-session*` · `--list-*` ·
     //   `--find-in-session` · `--account-trust*` 那几条手写子命令删了，两份文件里不再有 `"--` 字面量。
-    (
-        "observe/search_query.rs",
-        include_str!("../../src/backend/observe/search_query.rs"),
-    ),
-    // 只读查询的帧面宿主。它不做 match 分派，但把 `history-search` 的
-    // JSON 选项摊回 `--include-tools` / `--scope` / `--after-ms` / `--limit` 那几个 token
-    // （解析走 `search_query` 那一个 `parse_opts`）⇒ 派生的文件集把它扫了进来。登记，不改判据：
-    // 那几个 token 本来就在 IPC-PROTOCOL.md 里，它们从此也在这里受对拍。
-    (
-        "faces/read_face.rs",
-        include_str!("../../src/backend/faces/read_face.rs"),
-    ),
+    // `observe/search_query.rs` · `faces/read_face.rs` 两行摘了（第 8 批）：帧面 `history-search` 的入参直接从类型收，
+    //   不再摊成 `--include-tools` / `--scope` / `--after-ms` / `--limit` 交从前那个选项词解析器，两份文件里不再有 `"--` 字面量。
     // `relay/machine.rs` 那一行摘了：它不再起 `--relay`（argv 字面量随脱离中转一族删了），派生的文件集不再扫到它。
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
     // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
@@ -665,7 +655,42 @@ mod tests {
             (
                 "observe/search_query.rs",
                 "Merged",
-                "同上，帧命令 `history-search-merge` 的应答 `data`",
+                "typed 帧命令 `history-search-merge` 的回包（`faces/search_face.rs`；形状指纹与生成类型从它来）",
+            ),
+            (
+                "observe/search_query.rs",
+                "MergedRow",
+                "同上，`Merged.sessions` 的一行",
+            ),
+            (
+                "observe/search_query.rs",
+                "MachineHits",
+                "typed 帧命令 `history-search-merge` 的入参一项（那一台 ＋ 它答回来的会话行）",
+            ),
+            (
+                "observe/search_query.rs",
+                "SessionHits",
+                "typed 帧命令 `history-search` 回包里的一行（也是 `history-search-merge` 入参里的一行）",
+            ),
+            (
+                "observe/search_query.rs",
+                "SearchHit",
+                "同上，`SessionHits.hits` 的一条",
+            ),
+            (
+                "observe/search_query.rs",
+                "Liveness",
+                "同上，`SessionHits.status`（全文搜索只扫记录树 ⇒ 只有在跑 · 已结束两态）",
+            ),
+            (
+                "observe/history_query.rs",
+                "CanResume",
+                "`Can.resume` 的三个词（`history-list` 每行与全文搜索每行的「能做什么」）",
+            ),
+            (
+                "observe/history_query.rs",
+                "CanDelete",
+                "`Can.delete` 的三个词（同上）",
             ),
             (
                 "observe/listing_scan.rs",

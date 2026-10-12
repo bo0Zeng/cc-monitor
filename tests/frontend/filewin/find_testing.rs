@@ -485,10 +485,14 @@ impl FakeBackend {
                         None,
                     );
                 };
-                // 「整台机器」⇒ 范围是根（`/`）；否则照 `under`。
+                // 「整台机器」⇒ 范围是这台合成机器的根：它的家（合成树）；没给家才是 `/`。
+                //   🔴 不拿真盘上的 `/` 当范围：那样范围不在索引里 ⇒ 窗口照后端语义发一趟重走、合成后端就去走整台真机器，
+                //   机器一忙要走好几分钟（判据撞兜底上限、看着像按墙钟判的慢），还读了沙箱外的整棵盘。
                 let machine = args.get("scope").and_then(|v| v.as_str()) == Some("machine");
                 let under = if machine {
-                    Some(serde_json::Value::String("/".into()))
+                    Some(serde_json::Value::String(
+                        self.home.clone().unwrap_or_else(|| "/".into()),
+                    ))
                 } else {
                     args.get("under").cloned().filter(|v| !v.is_null())
                 };

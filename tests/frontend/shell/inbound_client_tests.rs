@@ -17,6 +17,7 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
+        shapes: vec![],
     }
 }
 
@@ -93,7 +94,7 @@ fn the_local_origin_is_the_same_string_on_both_sides() {
 /// 所以只扫本文件不是「取样」，是把全部可能的构造点都覆盖了。
 /// （不另加一条「别的文件不许出现 `InboundClient {`」——那条恒绿，铁律 16 不许留。）
 fn the_only_way_to_build_an_inbound_client_is_into_client() {
-    let src = include_str!("../../../src/frontend/shell/src/inbound_client.rs");
+    let src = include_str!("../../../src/comms/resident-client/client.rs");
     // ⚠ 边界**不能**自己手搓。第一版取「第一个 `#[cfg(test)]`」—— 而 `park()` 本身就挂着
     // 那个属性、且住在 `into_client` **之前** ⇒ 那样切会把构造点整个切掉，判据扫了个空
     // （人群自检当场逮到；没有自检它会绿着挂在这里）。第二版改扫 `mod tests` 的位置，
@@ -166,9 +167,8 @@ fn the_only_way_to_build_an_inbound_client_is_into_client() {
 /// 必须恰好是登记的那一个。顺带钉住 `ParkedWriter` 那扇门**要见证**（签名里有 `BackendHello`）。
 #[test]
 fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
-    let prod = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/inbound_client.rs"
-    ));
+    let prod =
+        guard_core::production_code(include_str!("../../../src/comms/resident-client/client.rs"));
 
     // 取某个 `impl` 块（从签名行到下一个顶格行）里的 `pub fn` 名。
     // ⚠ 顶格行做边界、不写花括号字面量：本文件会被按括号配平剥，
@@ -1109,33 +1109,37 @@ fn unregister_never_removes_someone_elses_client() {
 
 // ── P28：给这条源码扫描型守卫立**负对照** ──
 //
-// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。
-// 被扫的 `src/frontend/shell/src/inbound_client.rs` 今天 649 行，第一个 `#[cfg(test)]` 在 **192** 行
-// ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 把扫描面砍到前 191 行，
-// 而本文件要扫的东西在它**后面**（逐针行号写在下面）⇒ 扫描面静默缩水时本文件会**零命中地绿**。
-//
-// 原语与它买不到什么：`guard_core::assert_stripper_keeps` 的头注。
-// 一句话：它不买「针还是那个针」—— 下面这张表必须从本文件真正用的针里抄。
+// 判的不是产品性质，是「**剥法没把我要扫的那一段剥掉**」。被扫的那一份从前是 monitor 的 `inbound_client.rs`，
+// `park()` 挂着 `#[cfg(test)]` 住在 `into_client` 之前 ⇒ 便宜近似 `src.split("\n#[cfg(test)]").next()` 会把构造点整个切掉、零命中地绿。
+// 本体搬进 `resident-client`（`client.rs`）之后，只给判据用的那几样改挂 `#[cfg(any(test, feature = "test-support"))]`
+// （monitor 的测试档要够得到它们），**整份里唯一的 `#[cfg(test)]` 是末尾那个测试模块** ⇒ 两种剥法圈住的是同一段，那个缩水的口子不在了。
+// 本条钉的就是这件事：哪天又在前面挂了一个裸 `#[cfg(test)]`，口子回来了，这里当场红（回头恢复逐针的负对照）。
 
-/// ★ 扫描面自检：共享剥法留住了本文件要扫的那几段，而便宜近似留不住。
+/// ★ 扫描面自检：被扫那一份里，裸 `#[cfg(test)]` 只有末尾那一个测试模块；要扫的那几段都在共享剥法留下的生产段里。
 #[test]
 fn the_shared_stripper_keeps_the_construction_site_this_guard_must_scan() {
-    // 🔴 本文件抬头（`each_type_…` 那条判据上面）已经把这条负对照**写成了散文**：
-    //    「第一版取『第一个 `#[cfg(test)]`』—— 而 `park()` 本身就挂着那个属性、
-    //     且住在 `into_client` **之前** ⇒ 那样切会把构造点整个切掉」。
-    //    那段话写下来了，**而没有任何断言去核它** —— 本仓「写下来的边界不是判据」
-    //    那一族的又一处。⇒ 这一条就是那句散文的机检形态。
-    //
-    // 逐针：`impl<W> ParkedWriter<W>`（232）· `pub fn into_client(`（239）·
-    // 唯一构造点 `InboundClient {`（286）—— 都在 192 之后。
-    // ⚠ 刻意**不**填 `pub struct BackendHello`（132）与 `impl BackendHello {`（136）：
-    //    那两个在 192 **之前**，便宜近似也留得住 ⇒ 填进去这条对照会被
-    //    `assert_stripper_keeps` 当场判成「失去意义」（它正是为此而红，不是静默放过）。
-    guard_core::assert_stripper_keeps(
-        "inbound_client_tests",
-        include_str!("../../../src/frontend/shell/src/inbound_client.rs"),
-        &["impl<W> ParkedWriter<W>", "pub fn into_client("],
+    let src = include_str!("../../../src/comms/resident-client/client.rs");
+    let bare: Vec<usize> = src.match_indices("#[cfg(test)]").map(|(i, _)| i).collect();
+    assert_eq!(
+        bare.len(),
+        1,
+        "`resident-client/client.rs` 里裸 `#[cfg(test)]` 不止末尾那一个 —— 便宜近似又会把扫描面切短，恢复逐针的负对照"
     );
+    assert!(
+        src[bare[0]..]
+            .trim_start_matches("#[cfg(test)]")
+            .trim_start()
+            .starts_with("#[path"),
+        "唯一那个 `#[cfg(test)]` 不是末尾的测试模块"
+    );
+    let prod = guard_core::production_code(src);
+    for needle in [
+        "impl<W> ParkedWriter<W>",
+        "pub fn into_client(",
+        "impl BackendHello {",
+    ] {
+        assert!(prod.contains(needle), "共享剥法把 `{needle}` 剥掉了");
+    }
 }
 
 /// 握手里的能力事实从线上一路进 `Offer`，调用侧照它办：
@@ -1280,4 +1284,54 @@ async fn the_link_fact_follows_register_unregister_and_failed_rounds() {
             .is_err(),
         "连着时拨「重新连接」留下了许可"
     );
+}
+
+/// typed 命令两端形状对不上 ⇒ 一个字节不发，回 `Differs`，那一句带这条连接登记的那台的名字（「{机器} 后端版本不同」）；
+/// 对得上 ⇒ 照发。指纹表是本侧编进来的那一份（`cmd_wire::SHAPES`），hello 里那一格是对端交的。
+#[tokio::test]
+async fn a_typed_command_with_a_different_shape_is_refused_by_name_and_not_sent() {
+    let (op, mine) = *cmd_wire::shapes::SHAPES
+        .first()
+        .expect("形状指纹表是空的 —— 本条在空转");
+    let hello_with = |hash: &str| {
+        let line = format!(
+            r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["{op}"],"shapes":{{"{op}":"{hash}"}}}}"#
+        );
+        let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
+        BackendHello::from_hello_frame(&frame).expect("是 Hello 帧")
+    };
+    let name = "b8-shape-devbox";
+    let (ours, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(ours).into_client(hello_with("00000000"));
+    register(name, client.clone());
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let err = client
+        .call(op, serde_json::json!({}), Duration::from_secs(5))
+        .await
+        .unwrap_err();
+    unregister(name, &client);
+    assert_eq!(
+        err,
+        CallError::Differs {
+            cmd: op.into(),
+            said: copy_core::backend_differs(name),
+        }
+    );
+    let mut stray = String::new();
+    let read = tokio::time::timeout(Duration::from_millis(100), peer.read_line(&mut stray)).await;
+    assert!(read.is_err(), "形状对不上的命令还是发出去了：{stray:?}");
+
+    // 正控：指纹对得上 ⇒ 照发（对端那一头读得到这一行）。
+    let (ours, theirs) = tokio::io::duplex(64 * 1024);
+    let client = park(ours).into_client(hello_with(mine));
+    let mut peer = tokio::io::BufReader::new(theirs);
+    let sent = tokio::spawn(async move {
+        let mut l = String::new();
+        peer.read_line(&mut l).await.map(|_| l)
+    });
+    let _ = client
+        .call(op, serde_json::json!({}), Duration::from_millis(300))
+        .await;
+    let line = sent.await.unwrap().unwrap();
+    assert!(line.contains(op), "指纹对得上的命令没发出去：{line:?}");
 }

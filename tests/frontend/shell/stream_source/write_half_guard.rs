@@ -249,8 +249,7 @@ fn stream_source_never_writes_to_a_stream_itself() {
     //   切生产段」去量，只得到一条 —— 本文件有多个测试模块，那个切法在本工作区
     //   已记过四次。**量具要用被测者那一套**，这是第五次。
     const ALLOWED_IO_IMPORTS: &[&str] = &[
-        // 目录拆开之后两样各住一份：读行那份（`exec.rs`）要 `AsyncBufReadExt`，流循环那份（`run.rs`）要 `BufReader`。
-        "use tokio::io::AsyncBufReadExt;",
+        // 流循环那份（`run.rs`）要 `BufReader`。读行那份（原 `exec.rs` 的 `AsyncBufReadExt`）搬进了 `resident-client`（`line.rs`）。
         "use tokio::io::BufReader;",
         // `use tokio::io::AsyncReadExt;` 也出去了：它只服务读拨号代理 ack 的那一段
         // （`.take(` 有界读），那一段搬进了通信层成员 `ssh_link.rs`。反向锚点同一刀逮住它。

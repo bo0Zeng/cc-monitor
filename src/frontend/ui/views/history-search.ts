@@ -4,63 +4,25 @@
  *
  * - 逐台并发。本机那一台失败 ⇒ 整次失败（本机是必答的那一台）；远端逐台失败只 `console.warn` 并跳过。
  * - 选项只下发后端认的：`include_tools` 只在真时给、`scope` 只给 `user` / `assistant`、`after_ms` 只给正数；`limit` 原样。
- * - 合并：各台的会话行一次交给本机后端 `history-search-merge`（`updatedAt` 倒序、稳定；命中数相加；
- *   任一会话 `hitsTruncated` ⇒ 整体 `truncated`）—— 规则只住 Rust，扇出在这里（各台常驻后端的内存索引保热）。
- * - 本机的行不带 `origin`（界面按「没有 origin ＝ 本机」画）；远端的行补上那台的名字。
+ * - 合并：各台的会话行按台一次交给本机后端 `history-search-merge`（`updatedAt` 倒序、稳定；命中数相加；
+ *   任一会话 `hitsTruncated` ⇒ 整体 `truncated`；远端的行由它添上那台的名字，本机的不添）—— 规则只住 Rust，扇出在这里。
+ * - 两条都是 typed 帧命令（`callTyped`）：入参 · 回包的类型从 Rust 生成，形状由握手时的指纹核过，这里不再逐格解。
  * - 「哪几台远端」问 `list_remote_mcp_origins`（名字里的 `mcp` 是历史，不是限定）。
  */
 import { commands } from "../ipc/commands";
-import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, linesOf, readJson, ReplyUnreadable } from "../ipc/chan-caller";
-import { isLocalOrigin, LOCAL_ORIGIN } from "../ipc/origin";
-import { canOk, type HistoryCan } from "../history-list-reads";
-import { exactKeys, isObj } from "../ipc/decode";
+import { budgetWithin, callTyped } from "../ipc/chan-caller";
+import { LOCAL_ORIGIN } from "../ipc/origin";
+import type { Origin } from "../generated/Origin";
+import type { HistorySearchReq } from "../generated/HistorySearchReq";
+import type { MachineHits } from "../generated/MachineHits";
+import type { MergedRow } from "../generated/MergedRow";
+import type { SearchHit } from "../generated/SearchHit";
 
-/**
- * 一条命中（`hits` 的一格，[`parseHit`] 严格收）。线上形状的家是后端 `observe/search_query.rs`，
- * TS 这一侧只有解码器认它（多一格 / 缺一格 / 类型不对 ⇒ 那一行坏，跳过）。
- */
-export interface Hit {
-  /** 消息 uuid，前端打开 viewer 后据此滚动定位 + 高亮 */
-  uuid: string;
-  tsMs: number;
-  /** "user" | "assistant" | "tool" */
-  kind: string;
-  before: string;
-  matched: string;
-  after: string;
-  /** 它落在哪次工具调用的卡里（后端说的调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。 */
-  tool?: string;
-}
+/** 一条命中（后端 `observe/search_query.rs::SearchHit` 生成的类型）。 */
+export type Hit = SearchHit;
 
-/** 一个会话的命中（后端 `--search` 的一行 ＋ 这边补的 `origin`）。 */
-export interface SessionHits {
-  /** 这个会话是哪一家（线上的 kind）：恢复按它起。 */
-  agent: string;
-  sessionId: string;
-  projectPath: string;
-  projectName: string;
-  jsonlPath: string;
-  /** ai-title / 首条 user 摘要 / sid 前 8 位 之一 */
-  title: string;
-  updatedAt: number;
-  /** 行尾那一格 · 内容头那一段（本机后端合并时按它的本地钟写好；各台单独回来的那一份还没有）。 */
-  atText?: string;
-  spanText?: string;
-  /** 本会话命中总数（可能 > 返回的 hits 长度） */
-  hitCount: number;
-  hits: Hit[];
-  /** 本会话有命中被「全局 snippet 预算用完」挡下了（老后端缺 ⇒ false）。 */
-  hitsTruncated: boolean;
-  /** 后台分身会话。 */
-  isBg: boolean;
-  /** 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。 */
-  status: "live" | "ended";
-  /** 那台判的：这个会话能做什么（与历史清单的行同一张规则）。 */
-  can: HistoryCan;
-  /** 缺 ＝ 本机；否则那台远端的名字。 */
-  origin?: string;
-}
+/** 合好的一个会话的命中（后端 `MergedRow`：那台答的会话行 ＋ 哪台（本机缺）＋ 写好的 `atText` · `spanText`）。 */
+export type SessionHits = MergedRow;
 
 /** 合成之后的一份结果。 */
 export interface SearchResult {
@@ -78,9 +40,9 @@ export interface SearchResult {
   skipped: string[];
 }
 
-/** 一台答回来的：会话行 ＋ 读不动几份 ＋ 不覆盖的那几家。 */
+/** 一台答回来的：那台的名字 ＋ 会话行 ＋ 读不动几份 ＋ 不覆盖的那几家。 */
 interface OneMachine {
-  sessions: SessionHits[];
+  rows: MachineHits;
   unreadable: number;
   skipped: string[];
 }
@@ -107,14 +69,12 @@ const MERGE_BUDGET_MS = 10_000;
 
 /** 本机 ＋ 各台远端，合成一份（合并排序问本机后端，见头注）。 */
 export async function searchAllMachines(q: FullTextQuery): Promise<SearchResult> {
-  const payload = jsonBody(searchArgs(q));
-  const [local, remote] = await Promise.all([askOne(LOCAL_ORIGIN, payload), searchRemotes(payload)]);
+  const req = searchArgs(q);
+  const [local, remote] = await Promise.all([askOne(LOCAL_ORIGIN, req), searchRemotes(req)]);
   const answered = [local, ...remote.answered];
-  const body = jsonBody({ sessions: answered.flatMap((m) => m.sessions) });
-  const budget = budgetWithin(MERGE_BUDGET_MS);
-  const reply = await chan.call(LOCAL_ORIGIN, "history-search-merge", body, budget);
+  const merged = await callTyped(LOCAL_ORIGIN, "history-search-merge", { machines: answered.map((m) => m.rows) }, budgetWithin(MERGE_BUDGET_MS));
   return {
-    ...decodeMerged(readJson(reply)),
+    ...merged,
     failedHosts: remote.failed,
     unreadable: answered.reduce((n, m) => n + m.unreadable, 0),
     skipped: [...new Set(answered.flatMap((m) => m.skipped))],
@@ -122,31 +82,24 @@ export async function searchAllMachines(q: FullTextQuery): Promise<SearchResult>
 }
 
 /** 那一问的请求体（只下发后端认的那几格）。本机远端同一份。 */
-export function searchArgs(q: FullTextQuery): Record<string, unknown> {
-  const args: Record<string, unknown> = { query: q.query };
-  if (q.limit !== null) args.limit = q.limit;
-  if (q.includeTools) args.include_tools = true;
-  if (q.scope === "user" || q.scope === "assistant" || q.scope === "report") args.scope = q.scope;
-  if (q.afterMs !== null && q.afterMs > 0) args.after_ms = q.afterMs;
-  if (q.titles) args.titles = true;
-  return args;
+export function searchArgs(q: FullTextQuery): HistorySearchReq {
+  const req: HistorySearchReq = { query: q.query };
+  if (q.limit !== null) req.limit = q.limit;
+  if (q.includeTools) req.include_tools = true;
+  if (q.scope === "user" || q.scope === "assistant" || q.scope === "report") req.scope = q.scope;
+  if (q.afterMs !== null && q.afterMs > 0) req.after_ms = q.afterMs;
+  if (q.titles) req.titles = true;
+  return req;
 }
 
-/** 问一台。本机的行不补 `origin`（界面按「缺 ＝ 本机」画）。失败原样抛给调用方定怎么办。 */
-async function askOne(origin: string, payload: Uint8Array): Promise<OneMachine> {
-  const budget = budgetWithin(SEARCH_BUDGET_MS);
-  const reply = await chan.call(origin, "history-search", payload, budget);
-  // 「是不是本机」经 origin.ts 判。
-  const sessions = parseSessionHitsLines(linesOf(reply), isLocalOrigin(origin) ? undefined : origin);
-  // 读不动几份 · 不覆盖的那几家（老后端不带 ⇒ 0 / 空）。
-  const v = readJson(reply) as { unreadable?: unknown; skipped?: unknown } | null;
-  const unreadable = typeof v?.unreadable === "number" && v.unreadable > 0 ? v.unreadable : 0;
-  const skipped = Array.isArray(v?.skipped) ? v.skipped.filter(isStr) : [];
-  return { sessions, unreadable, skipped };
+/** 问一台。失败原样抛给调用方定怎么办。 */
+async function askOne(origin: Origin, req: HistorySearchReq): Promise<OneMachine> {
+  const reply = await callTyped(origin, "history-search", req, budgetWithin(SEARCH_BUDGET_MS));
+  return { rows: { origin, sessions: reply.sessions }, unreadable: reply.unreadable, skipped: reply.skipped };
 }
 
 /** 各台远端：答上的那几份 ＋ 没答上的那几台（界面说「X 断开，它的会话没搜到」）。 */
-async function searchRemotes(payload: Uint8Array): Promise<{ answered: OneMachine[]; failed: string[] }> {
+async function searchRemotes(req: HistorySearchReq): Promise<{ answered: OneMachine[]; failed: string[] }> {
   let origins: string[];
   try {
     origins = await commands.list_remote_mcp_origins();
@@ -157,7 +110,7 @@ async function searchRemotes(payload: Uint8Array): Promise<{ answered: OneMachin
   const per = await Promise.all(
     origins.map(async (origin) => {
       try {
-        return { origin, got: await askOne(origin, payload) };
+        return { origin, got: await askOne(origin, req) };
       } catch (e) {
         console.warn(`远端 [${origin}] 全文搜索失败（跳过该台）:`, e);
         return { origin, got: null };
@@ -168,106 +121,4 @@ async function searchRemotes(payload: Uint8Array): Promise<{ answered: OneMachin
     answered: per.flatMap((p) => (p.got === null ? [] : [p.got])),
     failed: per.filter((p) => p.got === null).map((p) => p.origin),
   };
-}
-
-const isStr = (v: unknown): v is string => typeof v === "string";
-const isInt = (v: unknown): v is number => typeof v === "number" && Number.isInteger(v);
-
-function parseHit(v: unknown): Hit | null {
-  if (v === null || typeof v !== "object") return null;
-  const o = v as Record<string, unknown>;
-  if (!isStr(o.uuid) || !isInt(o.tsMs) || !isStr(o.kind)) return null;
-  if (!isStr(o.before) || !isStr(o.matched) || !isStr(o.after)) return null;
-  if (o.tool !== undefined && !isStr(o.tool)) return null;
-  return { uuid: o.uuid, tsMs: o.tsMs, kind: o.kind, before: o.before, matched: o.matched, after: o.after, ...(o.tool !== undefined ? { tool: o.tool } : {}) };
-}
-
-/**
- * 后端 `--search` 的逐行（camelCase，**不带** origin）⇒ `SessionHits`，补上 `origin`。坏行跳过（`console.warn`）。
- * 口径照它上一个住址（Rust `search.rs::SessionHits` 的 serde）：`hitsTruncated` 缺 ⇒ `false`（老后端）；
- * 其余各格必有且类型对，否则整行坏。
- */
-export function parseSessionHitsLines(lines: string[], origin: string | undefined): SessionHits[] {
-  const out: SessionHits[] = [];
-  for (const line of lines) {
-    let v: unknown;
-    try {
-      v = JSON.parse(line);
-    } catch (e) {
-      console.warn(`[${origin ?? LOCAL_ORIGIN}] 搜索结果行解析失败（跳过）:`, e);
-      continue;
-    }
-    const sh = sessionHitsOf(v);
-    if (sh === null) {
-      console.warn(`[${origin ?? LOCAL_ORIGIN}] 搜索结果行形状不对（跳过）`);
-      continue;
-    }
-    out.push(origin === undefined ? sh : { ...sh, origin });
-  }
-  return out;
-}
-
-/** 一个会话行（对象）⇒ `SessionHits`（不含 `origin`）；形状不对 ⇒ `null`。口径见 [`parseSessionHitsLines`] 头注。 */
-function sessionHitsOf(v: unknown): SessionHits | null {
-  const o = (v !== null && typeof v === "object" ? v : {}) as Record<string, unknown>;
-  const hits = Array.isArray(o.hits) ? o.hits.map(parseHit) : null;
-  if (
-    !isStr(o.agent) ||
-    !isStr(o.sessionId) ||
-    !isStr(o.projectPath) ||
-    !isStr(o.projectName) ||
-    !isStr(o.jsonlPath) ||
-    !isStr(o.title) ||
-    !isInt(o.updatedAt) ||
-    !(o.atText === undefined || isStr(o.atText)) ||
-    !(o.spanText === undefined || isStr(o.spanText)) ||
-    !isInt(o.hitCount) ||
-    o.hitCount < 0 ||
-    hits === null ||
-    hits.some((h) => h === null) ||
-    !(o.hitsTruncated === undefined || typeof o.hitsTruncated === "boolean") ||
-    typeof o.isBg !== "boolean" ||
-    !(o.status === "live" || o.status === "ended") ||
-    !canOk(o.can)
-  ) {
-    return null;
-  }
-  return {
-    agent: o.agent,
-    sessionId: o.sessionId,
-    projectPath: o.projectPath,
-    projectName: o.projectName,
-    jsonlPath: o.jsonlPath,
-    title: o.title,
-    updatedAt: o.updatedAt,
-    ...(isStr(o.atText) ? { atText: o.atText } : {}),
-    ...(isStr(o.spanText) ? { spanText: o.spanText } : {}),
-    hitCount: o.hitCount,
-    hits: hits as Hit[],
-    hitsTruncated: o.hitsTruncated ?? false,
-    isBg: o.isBg,
-    status: o.status,
-    can: o.can,
-  };
-}
-
-/**
- * 本机后端 `history-search-merge` 的成品 ⇒ `SearchResult`。严格收：恰好四个键、类型对；会话行逐条过同一个解码器，
- * `origin` 缺 ＝ 本机、有就得是串。不对 ⇒ 抛（整次搜索失败，与本机那一台失败同形 —— 本机是必答的那一台）。
- */
-export function decodeMerged(v: unknown): Omit<SearchResult, "failedHosts" | "unreadable" | "skipped"> {
-  const bad = (): never => {
-    throw new ReplyUnreadable("history-search-merge reply shape");
-  };
-  if (!isObj(v) || !exactKeys(v, ["sessionCount", "sessions", "totalHits", "truncated"])) bad();
-  const o = v as Record<string, unknown>;
-  if (!isInt(o.totalHits) || !isInt(o.sessionCount) || typeof o.truncated !== "boolean" || !Array.isArray(o.sessions)) bad();
-  const sessions = (o.sessions as unknown[]).map((row) => {
-    const sh = sessionHitsOf(row);
-    const origin = (row as Record<string, unknown> | null)?.origin;
-    if (sh === null || sh.atText === undefined || sh.spanText === undefined || !(origin === undefined || isStr(origin))) return bad();
-    return origin === undefined ? sh : { ...sh, origin };
-  });
-  if (sessions.length !== o.sessionCount) bad();
-  return { totalHits: o.totalHits as number, sessionCount: o.sessionCount as number, truncated: o.truncated as boolean, sessions };
 }

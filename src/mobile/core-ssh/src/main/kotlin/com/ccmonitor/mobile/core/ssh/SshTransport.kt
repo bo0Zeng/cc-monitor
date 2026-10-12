@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.core.ssh
 
-import com.ccmonitor.mobile.core.remote.RemoteDuplex
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import kotlinx.coroutines.flow.Flow
 import java.io.Closeable
@@ -43,8 +42,11 @@ interface SshTransport :
 
     fun execStream(command: String): Flow<ByteArray>
 
-    /** 双向长 exec：stdin 写得进、stdout 读得出（常驻流 `--resident-attach` 用它）。 */
-    suspend fun execDuplex(command: String): RemoteDuplex
+    /**
+     * 这条连接的拨号身份那一份请求（JSON，不带用法）：常驻流在嵌的核心里，核心照它在同一条连接上开自己的链路。
+     * 没连着 · 不是走核心的传输 ⇒ `null`。
+     */
+    val dialRequest: String? get() = null
 
     suspend fun sftpList(path: String = "."): List<SftpEntry>
 

@@ -55,6 +55,7 @@ fn rig() -> Rig {
             .collect(),
         unavailable: vec![],
         uncancellable: vec![],
+        shapes: vec![],
     };
     let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);

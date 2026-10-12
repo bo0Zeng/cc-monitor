@@ -1,6 +1,7 @@
 //! 本进程里几条帧命令对后端其余部分开的门：资产域够用户文件那一扇 · 两台之间枢纽问这台自己那一跳 · 各号 MCP 同步的监听器。
 
-use super::{Run, REGISTRY};
+use super::spec::{prepare, Prepared};
+use super::REGISTRY;
 use crate::stream::wire::Request;
 
 /// 资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
@@ -28,16 +29,14 @@ impl crate::assets::door::Door for LocalFiles {
             tz: Default::default(),
             until: None,
         };
-        // 写面那几条失败带下层原话（`BlockingData`）：门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。
-        let out = match spec.run {
-            Run::Blocking(run) => run(req),
-            Run::BlockingData(run) => run(req).map_err(|f| (f.code, f.message)),
-            Run::BlockingFace(run) => {
-                run(req, &crate::platform::fs::Face::issue()).map_err(|f| (f.code, f.message))
-            }
-            _ => return Err(("unknown_command".to_string(), cmd.to_string())),
+        // 门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。文件管理那一族不写自家状态 ⇒ 不递 `Own`；
+        //   文件管理写句柄由 `prepare` 照档位（`Run::BlockingFace`）造了递进去。
+        let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
         };
-        out.map(|v| v.unwrap_or(serde_json::Value::Null))
+        run(req)
+            .map(|v| v.unwrap_or(serde_json::Value::Null))
+            .map_err(|f| (f.code, f.message))
     }
 }
 
@@ -81,14 +80,13 @@ impl crate::assets::hub::Here for LocalFrames {
             tz: self.tz.clone(),
             until: None,
         };
-        // 内层那几条住在三个阻塞档里（读 · 带码的读 · 写装记录）：三档都认；别的档枢纽不问。
-        let out = match spec.run {
-            Run::Blocking(run) => run(req),
-            Run::BlockingData(run) => run(req).map_err(|f| (f.code, f.message)),
-            Run::BlockingOwn(run) => run(req, &self.own).map_err(|f| (f.code, f.message)),
-            _ => return Err(("unknown_command".to_string(), cmd.to_string())),
+        // 内层那几条都在阻塞档（读 · 带码的读 · 写装记录）；枢纽在阻塞线程上问，异步档不问。
+        let Some(Prepared::Blocking(run)) = prepare(spec.run, Some(&self.own)) else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
         };
-        out.map(|v| v.unwrap_or(serde_json::Value::Null))
+        run(req)
+            .map(|v| v.unwrap_or(serde_json::Value::Null))
+            .map_err(|f| (f.code, f.message))
     }
 
     fn viewer_tz(&self) -> crate::Tz {

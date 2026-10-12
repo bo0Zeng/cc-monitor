@@ -121,7 +121,7 @@ fun existingChat(
 
 /**
  * 一条会话的 [ChatSession]（应用级，同一个 key ⇒ 同一条）。[linkOf] 给那台的核心（生产上是 `HostBackends.of(hostId)`，先 `ensure` 接上），
- * [watchOf] 给那台的 `stream-watch` 名单（`HostBackends.watchOf`）。
+ * [watchOf] 给那台的 `stream-watch` 名单（同一条常驻流，`HostBackends.of`）。
  */
 fun ChatController.sessionOf(
     open: ChatOpen,

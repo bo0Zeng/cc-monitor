@@ -22,6 +22,11 @@ pub fn backend_old(machine: &str) -> String {
     copy_text("peerVersion.said.old", &[("machine", machine)])
 }
 
+/// 见 [`backend_old`]：那台后端认得这条命令，但它那一版的形状跟这一侧不一样（typed 命令的形状指纹对不上，事前就不发）。
+pub fn backend_differs(machine: &str) -> String {
+    copy_text("peerVersion.said.differs", &[("machine", machine)])
+}
+
 /// 见 [`backend_old`]。
 pub fn reply_unreadable(machine: &str) -> String {
     copy_text("peerVersion.said.unreadable", &[("machine", machine)])

@@ -170,6 +170,7 @@ impl Said {
                     CallError::Remote { code, .. } | CallError::Unavailable { code, .. } => {
                         code.as_str()
                     }
+                    CallError::Differs { .. } => "backend_differs",
                     CallError::Unsupported { .. } => "unsupported",
                     CallError::TooManyPending => "too_many_pending",
                     CallError::Disconnected => "disconnected",
