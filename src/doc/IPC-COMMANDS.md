@@ -3509,31 +3509,118 @@ window?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminals-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | ← | `session` 里：哪一家（没标就缺） |
-| `can` | ← | 这个调用方能做什么：`input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}`（抓屏不过身份门、恒可用，不在这里） |
-| `client` | → ← | 请求里可选：自报的前端，决定每行的 `can` 与 `started_by.mine`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`） |
-| `clients` | ← | 此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台 |
-| `complete` | ← | `false` ＝ 名单里有读不懂的行（画「部分」） |
-| `cwd` | ← | 当前目录 |
-| `end` | ← | 能不能结束（`{no: "not_yours" \| "not_managed" \| "other_windows"}`） |
-| `host` | ← | 终端宿主（这一版是 `tmux`） |
-| `input` | ← | 输入方式：`shared`（tmux：各端都能打字） |
-| `kind` | ← | `clients` 一项：客户端种类（`terminal-window` …） |
-| `last_activity` | ← | 最近动静（秒） |
-| `mine` | ← | `started_by` 里：这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`） |
-| `no` | ← | 做不了的原因 |
-| `program` | ← | 前台程序名 |
-| `session` | ← | 里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}` |
-| `sid` | ← | `session` 里：会话 id |
-| `since` | ← | `clients` 一项：连上的时刻（秒） |
-| `started_by` | ← | 谁起的：`{client, mine}` |
-| `state` | ← | `running` · `idle`（没会话、前台是 shell）· `program_exited`（有会话、前台是 shell） |
-| `terminal` | ← | 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回） |
-| `terminals` | ← | 终端名单（每行一个终端） |
-| `title` | ← | 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名 |
-| `tmux_name` | ← | tmux 会话名 |
+入参 `TerminalsListReq` · 回包 `TerminalsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Attached = { 
+/**
+ * 客户端种类（`terminal-window`）。
+ */
+kind: "terminal-window", 
+/**
+ * 连上的时刻（秒）。
+ */
+since: number, 
+/**
+ * 最近动静（秒）。
+ */
+last_activity: number, };
+type StartedBy = { 
+/**
+ * 会话上的 `@ccm_client`（没声明 ⇒ `null`）。
+ */
+client: string | null, 
+/**
+ * 这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`）。
+ */
+mine: boolean, };
+type TermSession = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 哪一家（没标就缺）。
+ */
+agent?: string, };
+type TermState = "running" | "idle" | "program_exited";
+type TerminalCan = { 
+/**
+ * 能不能送字 / 送键。
+ */
+input: true | { no: "not_yours" | "not_managed", said: string }, 
+/**
+ * 能不能结束。
+ */
+end: true | { no: "not_yours" | "not_managed" | "other_windows", said: string }, };
+type TerminalItem = { 
+/**
+ * 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）。
+ */
+terminal: string, 
+/**
+ * 终端宿主（这一版是 `tmux`）。
+ */
+host: "tmux", 
+/**
+ * tmux 会话名。
+ */
+tmux_name: string, 
+/**
+ * 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名。
+ */
+title: string, 
+/**
+ * 前台程序名。
+ */
+program: string, 
+/**
+ * 当前目录。
+ */
+cwd: string, 
+/**
+ * 里面跑着会话（`@ccm_sid`）时才有。
+ */
+session?: TermSession, 
+/**
+ * 谁起的。
+ */
+started_by: StartedBy, 
+/**
+ * 此刻连着它的终端客户端；空 ＝ 后台。
+ */
+clients: Array<Attached>, 
+/**
+ * 输入方式：`shared`（tmux：各端都能打字）。
+ */
+input: "shared", 
+/**
+ * 此刻的样子。
+ */
+state: TermState, 
+/**
+ * 最近动静（秒）。
+ */
+last_activity: number, 
+/**
+ * 这个调用方能做什么（抓屏不过身份门、恒可用，不在这里）。
+ */
+can: TerminalCan, };
+type TerminalsList = { 
+/**
+ * 终端名单（每行一个终端）。
+ */
+terminals: Array<TerminalItem>, 
+/**
+ * `false` ＝ 名单里有读不懂的行（画「部分」）。
+ */
+complete: boolean, };
+type TerminalsListReq = { 
+/**
+ * 自报的前端（1–32 个 `[a-z0-9-]`）：决定每行的 `can` 与 `started_by.mine`。
+ */
+client?: string, };
+```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
 
@@ -3543,25 +3630,125 @@ window?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-preview` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `capped` | ← | 要的比上限多、截到了上限 |
-| `captured_at` | ← | 抓屏时刻（秒） |
-| `captured_at_text` | ← | 抓屏时刻在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（界面照抄、不换算） |
-| `color` | → | 要不要颜色；缺省 `true` |
-| `cols` | ← | 列数 |
-| `cursor` | ← | 光标 `{x, y, visible}` |
-| `lines` | ← | 自上而下的行，每行 `{text, spans?}`（往回要的在最前） |
-| `rows` | ← | 行数 |
-| `screen` | ← | 这一屏的指纹（16 位十六进制）：内容一变就变，送字时带回来 |
-| `scrollback` | → | 往回多要几行；缺省 0、上限 2000 |
-| `scrollback_lines` | ← | 实际往回给了几行 |
-| `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `spans` | ← | 着色段 `{from, to, fg?, bg?, bold?, dim?, italic?, underline?, inverse?}`；`color:false` ⇒ 不给 |
-| `terminal` | → | 目标：名单里的句柄（与 `sid` 恰给一个） |
-| `text` | ← | `lines` 一项：那一行的文字 |
+入参 `TerminalPreviewReq` · 回包 `Preview`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_target` · `bad_args` · `not_known` · `ambiguous` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+```ts
+type Cursor = { 
+/**
+ * 列。
+ */
+x: number, 
+/**
+ * 行。
+ */
+y: number, 
+/**
+ * 看得见。
+ */
+visible: boolean, };
+type Preview = { 
+/**
+ * 这一屏的指纹（16 位十六进制）：内容一变就变，送字时带回来。
+ */
+screen: string, 
+/**
+ * 列数。
+ */
+cols: number, 
+/**
+ * 行数。
+ */
+rows: number, 
+/**
+ * 光标。
+ */
+cursor: Cursor, 
+/**
+ * 自上而下的行（往回要的在最前）。
+ */
+lines: Array<ScreenLine>, 
+/**
+ * 实际往回给了几行。
+ */
+scrollback_lines: number, 
+/**
+ * 要的比上限多、截到了上限。
+ */
+capped: boolean, 
+/**
+ * 抓屏时刻（秒）。
+ */
+captured_at: number, 
+/**
+ * 抓屏时刻在看的那一台钟上的（请求的 `tz`）`HH:MM:SS`（界面照抄、不换算）。
+ */
+captured_at_text: string, };
+type ScreenLine = { 
+/**
+ * 那一行的文字。
+ */
+text: string, 
+/**
+ * 着色段（默认样子不出段）；`color: false` ⇒ 不给。
+ */
+spans?: Array<Span>, };
+type Span = { 
+/**
+ * 起（含）。
+ */
+from: number, 
+/**
+ * 止（不含）。
+ */
+to: number, 
+/**
+ * 前景：16 色名（`red` · `bright-red` …）或 `#rrggbb`。
+ */
+fg?: string, 
+/**
+ * 背景：同 `fg`。
+ */
+bg?: string, 
+/**
+ * 粗。
+ */
+bold?: true, 
+/**
+ * 暗。
+ */
+dim?: true, 
+/**
+ * 斜。
+ */
+italic?: true, 
+/**
+ * 下划线。
+ */
+underline?: true, 
+/**
+ * 反显。
+ */
+inverse?: true, };
+type TerminalPreviewReq = { 
+/**
+ * 目标：名单里的句柄（与 `sid` 恰给一个）。
+ */
+terminal?: string, 
+/**
+ * 目标：会话 id（与 `terminal` 恰给一个）。
+ */
+sid?: string, 
+/**
+ * 要不要颜色；缺省 `true`。
+ */
+color?: boolean, 
+/**
+ * 往回多要几行；缺省 0、上限 2000（超了截到上限、回包 `capped: true`）。
+ */
+scrollback?: number, };
+```
+
+码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `terminal-input`
 
@@ -3569,21 +3756,60 @@ window?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-input` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `client` | → | 自报的前端（过「哪个前端的会话」那一维） |
-| `enter` | → | `text` 之后补一个回车；缺省 `true` |
-| `key` | → | 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down` |
-| `result` | ← | `delivered` · `unsure`（不知道送没送到，别重发）· `refused` |
-| `said` | ← | `refused` 时给人看的那一句（后端写好） |
-| `screen` | ← | `screen_changed` 时带的新指纹 |
-| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed` |
-| `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `terminal` | → | 目标：名单里的不透明句柄（前端不拼、不解析） |
-| `text` | → | 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个） |
-| `why` | ← | `refused` 的原因：`not_known` · `ambiguous` · `ended` · `not_yours` · `not_managed` · `screen_changed` |
+入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_target` · `bad_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+```ts
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed";
+type Sent = { 
+/**
+ * 结局。
+ */
+result: SentResult, 
+/**
+ * `refused` 的原因。
+ */
+why?: Refused, 
+/**
+ * `refused` 时给人看的那一句（后端写好）。
+ */
+said?: string, 
+/**
+ * `screen_changed` 时带的新指纹。
+ */
+screen?: string, };
+type SentResult = "delivered" | "unsure" | "refused";
+type TerminalInputReq = { 
+/**
+ * 目标：名单里的不透明句柄（前端不拼、不解析）。
+ */
+terminal?: string, 
+/**
+ * 目标：会话 id（与 `terminal` 恰给一个）。
+ */
+sid?: string, 
+/**
+ * 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个）。
+ */
+text?: string, 
+/**
+ * `text` 之后补一个回车；缺省 `true`（只跟 `text`）。
+ */
+enter?: boolean, 
+/**
+ * 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down`。
+ */
+key?: string, 
+/**
+ * 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`。
+ */
+seen_screen?: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `terminal-follow`
 

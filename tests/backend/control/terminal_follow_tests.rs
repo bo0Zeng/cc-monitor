@@ -70,7 +70,10 @@ impl Iso {
         let on = crate::control::terminals::On {
             socket: self.sock.to_str(),
         };
-        let l = crate::control::terminals::list_on(on, &json!({})).expect("名单");
+        let l = serde_json::to_value(
+            crate::control::terminals::list_on(on, &Default::default()).expect("名单"),
+        )
+        .unwrap();
         l["terminals"]
             .as_array()
             .unwrap()
@@ -300,7 +303,9 @@ fn the_follower_is_not_counted_as_a_terminal_window() {
     let on = crate::control::terminals::On {
         socket: iso.sock.to_str(),
     };
-    let l = crate::control::terminals::list_on(on, &json!({})).unwrap();
+    let l =
+        serde_json::to_value(crate::control::terminals::list_on(on, &Default::default()).unwrap())
+            .unwrap();
     let row = l["terminals"]
         .as_array()
         .unwrap()

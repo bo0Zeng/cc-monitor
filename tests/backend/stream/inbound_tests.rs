@@ -1660,6 +1660,161 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
             serde_json::to_string(&format!("{entry} -- --attach demo-cc")).unwrap()
         )
     );
+    // 终端那三条：经登记表跑一趟手机发的那一份（这台测试档的 tmux 是本进程自己那个空 socket ⇒ 空名单 · 不在名单），
+    //   再拿纯构造器喂金样原料 ＋ 几格「有才出」的（没标 agent · 没声明 client · 别的着色属性 · 不带颜色），逐字节比换形之前那一版写出来的。
+    let wire = |v: &dyn erased_wire::Wire| v.bytes();
+    assert_eq!(
+        serde_json::to_string(
+            &run_registered("terminals-list", serde_json::json!({ "client": "mobile" })).unwrap()
+        )
+        .unwrap(),
+        r##"{"complete":true,"terminals":[]}"##
+    );
+    assert_eq!(
+        run_registered(
+            "terminal-preview",
+            serde_json::json!({ "terminal": "tmux-1", "color": false })
+        )
+        .unwrap_err()
+        .code,
+        "not_known"
+    );
+    assert_eq!(
+        serde_json::to_string(
+            &run_registered(
+                "terminal-input",
+                serde_json::json!({ "sid": "sid-a", "text": "hi" })
+            )
+            .unwrap()
+        )
+        .unwrap(),
+        r#"{"result":"refused","said":"终端已不在","why":"not_known"}"#
+    );
+    use crate::control::terminals as t;
+    use crate::control::terminals_wire::SentResult;
+    let g: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/terminals.golden.json")).unwrap();
+    let (mut rows, _) = t::parse_rows(g["terminals-list"]["panes"].as_str().unwrap());
+    let clients = t::parse_clients(g["terminals-list"]["clients"].as_str().unwrap());
+    rows.extend(t::parse_rows("$4\t%4\t1\t1\tbare\t1\t400\tsid-d\t\t\tclaude\t/s\t\n").0);
+    assert_eq!(
+        wire(&t::list_reply(&rows, &clients, false, Some("mobile"))),
+        r##"{"complete":false,"terminals":[{"can":{"end":true,"input":true},"clients":[{"kind":"terminal-window","last_activity":90,"since":50}],"cwd":"/p","host":"tmux","input":"shared","last_activity":100,"program":"claude","session":{"agent":"claude","sid":"sid-a"},"started_by":{"client":"ccm","mine":true},"state":"running","terminal":"tmux-1-1","title":"demo title","tmux_name":"demo-cc"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/r","host":"tmux","input":"shared","last_activity":300,"program":"vim","started_by":{"client":"desktop","mine":false},"state":"running","terminal":"tmux-3","title":"vim","tmux_name":"other"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/q","host":"tmux","input":"shared","last_activity":200,"program":"bash","session":{"agent":"claude","sid":"sid-b"},"started_by":{"client":"mobile","mine":true},"state":"program_exited","terminal":"tmux-2-2","title":"bash","tmux_name":"pipe-x"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/s","host":"tmux","input":"shared","last_activity":400,"program":"claude","session":{"sid":"sid-d"},"started_by":{"client":null,"mine":true},"state":"running","terminal":"tmux-4-4","title":"claude","tmux_name":"bare"}]}"##
+    );
+    assert_eq!(
+        wire(&t::list_reply(&rows, &clients, false, None)),
+        r##"{"complete":false,"terminals":[{"can":{"end":true,"input":true},"clients":[{"kind":"terminal-window","last_activity":90,"since":50}],"cwd":"/p","host":"tmux","input":"shared","last_activity":100,"program":"claude","session":{"agent":"claude","sid":"sid-a"},"started_by":{"client":"ccm","mine":true},"state":"running","terminal":"tmux-1-1","title":"demo title","tmux_name":"demo-cc"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/r","host":"tmux","input":"shared","last_activity":300,"program":"vim","started_by":{"client":"desktop","mine":false},"state":"running","terminal":"tmux-3","title":"vim","tmux_name":"other"},{"can":{"end":{"no":"not_yours","said":"手机端内部会话"},"input":{"no":"not_yours","said":"手机端内部会话"}},"clients":[],"cwd":"/q","host":"tmux","input":"shared","last_activity":200,"program":"bash","session":{"agent":"claude","sid":"sid-b"},"started_by":{"client":"mobile","mine":false},"state":"program_exited","terminal":"tmux-2-2","title":"bash","tmux_name":"pipe-x"},{"can":{"end":true,"input":true},"clients":[],"cwd":"/s","host":"tmux","input":"shared","last_activity":400,"program":"claude","session":{"sid":"sid-d"},"started_by":{"client":null,"mine":true},"state":"running","terminal":"tmux-4-4","title":"claude","tmux_name":"bare"}]}"##
+    );
+    let view = t::View {
+        text: "\u{1b}[1m\u{1b}[31mline\u{1b}[0m one\n\u{1b}[2;3;4;7;48;5;200;38;2;1;2;3mx\u{1b}[22;23;24;27;39;49my\u{1b}[44;92mz\u{1b}[0m\nplain\n".into(),
+        cols: 80,
+        rows: 2,
+        cursor_x: 3,
+        cursor_y: 1,
+        cursor_visible: false,
+    };
+    assert_eq!(
+        wire(&t::preview_reply(
+            &view,
+            true,
+            true,
+            1_700_000_000,
+            "07:13:20"
+        )),
+        r##"{"capped":true,"captured_at":1700000000,"captured_at_text":"07:13:20","cols":80,"cursor":{"visible":false,"x":3,"y":1},"lines":[{"spans":[{"bold":true,"fg":"red","from":0,"to":4}],"text":"line one"},{"spans":[{"bg":"#ff00d7","dim":true,"fg":"#010203","from":0,"inverse":true,"italic":true,"to":1,"underline":true},{"bg":"blue","fg":"bright-green","from":2,"to":3}],"text":"xyz"},{"spans":[],"text":"plain"}],"rows":2,"screen":"057751a6837d184a","scrollback_lines":1}"##
+    );
+    assert_eq!(
+        wire(&t::preview_reply(
+            &view,
+            false,
+            false,
+            1_700_000_000,
+            "07:13:20"
+        )),
+        r##"{"capped":false,"captured_at":1700000000,"captured_at_text":"07:13:20","cols":80,"cursor":{"visible":false,"x":3,"y":1},"lines":[{"text":"line one"},{"text":"xyz"},{"text":"plain"}],"rows":2,"screen":"057751a6837d184a","scrollback_lines":1}"##
+    );
+    assert_eq!(
+        wire(&t::input_reply(SentResult::Delivered, None, None)),
+        r##"{"result":"delivered"}"##
+    );
+    assert_eq!(
+        wire(&t::input_reply(SentResult::Unsure, None, None)),
+        r##"{"result":"unsure"}"##
+    );
+    assert_eq!(
+        wire(&t::input_reply(
+            SentResult::Refused,
+            Some(t::Refused::ScreenChanged),
+            Some("0000000000000000")
+        )),
+        r#"{"result":"refused","said":"画面已变","screen":"0000000000000000","why":"screen_changed"}"#
+    );
+}
+
+/// 回包写上线的那一步（帧里同此：先 `to_value` 再 `to_string` ⇒ 每一层的键排好序）。
+mod erased_wire {
+    pub(super) trait Wire {
+        fn bytes(&self) -> String;
+    }
+    impl<T: serde::Serialize> Wire for T {
+        fn bytes(&self) -> String {
+            serde_json::to_string(&serde_json::to_value(self).unwrap()).unwrap()
+        }
+    }
+}
+
+/// ★ 终端那三条只收它们真用得上的那几格（`terminal-input` 原先还收一格 `take`「先接管输入」：收了、校验了、然后丢掉，
+/// 第二个前端照字段表画了一颗按钮、按下去什么都不变 ⇒ 删了）。多送一格 · 类型不对 ⇒ `bad_args`，在解入参那一步就回（碰 tmux 之前），
+/// 多出来的那一格诊断里点名（类型不对的那一种，解码器那一句不带格名，只比码）。
+#[test]
+fn the_terminal_trio_refuses_fields_it_does_not_use() {
+    for (cmd, args, named) in [
+        (
+            "terminal-input",
+            serde_json::json!({ "terminal": "tmux-1", "text": "x", "take": true }),
+            "take",
+        ),
+        (
+            "terminal-input",
+            serde_json::json!({ "terminal": "tmux-1", "text": "x", "nonsense": 1 }),
+            "nonsense",
+        ),
+        (
+            "terminal-input",
+            serde_json::json!({ "terminal": "tmux-1", "text": "x", "enter": "yes" }),
+            "",
+        ),
+        (
+            "terminal-input",
+            serde_json::json!({ "terminal": "tmux-1", "text": "x", "seen_screen": 1 }),
+            "",
+        ),
+        (
+            "terminal-preview",
+            serde_json::json!({ "terminal": "tmux-1", "scrollback": -1 }),
+            "",
+        ),
+        (
+            "terminal-preview",
+            serde_json::json!({ "terminal": "tmux-1", "color": "no" }),
+            "",
+        ),
+        ("terminals-list", serde_json::json!({ "client": 1 }), ""),
+        (
+            "terminals-list",
+            serde_json::json!({ "who": "mobile" }),
+            "who",
+        ),
+    ] {
+        let (e, diag) = crate::common::contract::tests::diag(|| {
+            run_registered(cmd, args.clone()).expect_err("多送 / 类型不对的那一格该被拒")
+        });
+        assert_eq!(e.code, "bad_args", "{cmd} {args}：{e:?}");
+        assert!(
+            diag.contains(named),
+            "{cmd} {args}：诊断没点名那一格：{diag}"
+        );
+    }
 }
 
 /// 会话族换成 typed 的那几条：多一个键 · 少一个必填 · 类型不对 ⇒ `bad_args`，在解入参那一步就回（不往下读 tmux / 盘）。

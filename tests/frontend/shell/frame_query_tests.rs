@@ -331,12 +331,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
         "terminals-list",
-        "那台的终端名单：后端 `control/terminals.rs` 出成品；前端 `src/frontend/ui/terminal-reads.ts` 收它要的那几格（只加不改的形状，多出来的格照收）",
+        "那台的终端名单：后端 `control/terminals.rs` 出成品（typed，形状住 `control/terminals_wire.rs`）；前端 `src/frontend/ui/terminal-reads.ts` 挑它要的那几格",
     ),
     // 终端页送字送键：能不能送（身份门 · 画面指纹）全在那台后端判，前端只照回话说。
     (
         "terminal-input",
-        "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_for_inbound` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
+        "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_on` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
          前端 `src/frontend/ui/terminal-reads.ts::sendToTerminal` 问、底部抽屉终端页 `terminal-page.ts` 按回话说一句",
     ),
     // 终端实时预览三条：订阅 · 回执 · 退订（画面帧走那条流连接的应答通道，壳转进 `terminal-screen/<票>`）。

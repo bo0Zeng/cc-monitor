@@ -37,6 +37,19 @@ pub(crate) trait Codes: Sized {
     const ALL: &'static [&'static str];
     /// 投出去的那一份。
     fn into_fail(self) -> Fail;
+    /// 下层交上来的码 ⇒ 这一条的那个变体（只认不带 `data` 的那几种）；不在码表里 ⇒ 原样交回那一句（调用方定落哪一格）。
+    fn of_code(code: &str, said: String) -> Result<Self, String>;
+}
+
+/// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码不在这一条的码表里 ⇒ 落 `fallback`（测试档当场红：下层回了没登的码）。
+/// 原话跟着那一句走（[`Fail::into_said`]），投出去时照原样拆回复制详情。
+pub(crate) fn of_fail<E: Codes>(f: Fail, fallback: fn(String) -> E) -> E {
+    let code = f.code.clone();
+    E::of_code(&code, f.into_said()).unwrap_or_else(|said| {
+        debug_assert!(false, "下层回了码表里没有的码 `{code}`（{:?}）", E::ALL);
+        tracing::warn!("typed: 下层回了码表里没有的码 `{code}`");
+        fallback(said)
+    })
 }
 
 /// 同步阻塞的那一种（读盘 · 扫全库）：进阻塞池，开跑之后打不断。
@@ -74,10 +87,10 @@ pub(crate) struct Cx {
 /// 入参解得出、组合不对（「两个里恰好给一个」那一类）的由处理器自己回 `BadArgs`。
 macro_rules! codes {
     ($(#[$m:meta])* $vis:vis enum $name:ident { $($body:tt)* }) => {
-        $crate::stream::inbound::typed::codes!(@munch [$(#[$m])*] [$vis] $name [] [] [] $($body)*);
+        $crate::stream::inbound::typed::codes!(@munch [$(#[$m])*] [$vis] $name [] [] [] [] $($body)*);
     };
     // 带 `data` 的那一种。
-    (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*]
+    (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*] [$($of:tt)*]
         $(#[$vm:meta])* $var:ident = $code:literal => $data:ty $(, $($rest:tt)*)?) => {
         $crate::stream::inbound::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String, $data),]
@@ -86,18 +99,20 @@ macro_rules! codes {
                 ..$crate::stream::inbound::spec::Fail::new($code, said)
             },]
             [$($codes)* $code,]
+            [$($of)*]
             $($($rest)*)?);
     };
     // 只有那一句的那一种。
-    (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*]
+    (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*] [$($of:tt)*]
         $(#[$vm:meta])* $var:ident = $code:literal $(, $($rest:tt)*)?) => {
         $crate::stream::inbound::typed::codes!(@munch $attrs $vis $name
             [$($vars)* $(#[$vm])* $var(String),]
             [$($arms)* $name::$var(said) => $crate::stream::inbound::spec::Fail::new($code, said),]
             [$($codes)* $code,]
+            [$($of)* ($code, $var)]
             $($($rest)*)?);
     };
-    (@munch [$(#[$m:meta])*] [$vis:vis] $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*]) => {
+    (@munch [$(#[$m:meta])*] [$vis:vis] $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*] [$(($ocode:literal, $ovar:ident))*]) => {
         $(#[$m])*
         #[derive(Debug)]
         $vis enum $name {
@@ -108,6 +123,14 @@ macro_rules! codes {
         }
         impl $crate::stream::inbound::typed::Codes for $name {
             const ALL: &'static [&'static str] = &["bad_args", $($codes)*];
+            #[allow(unreachable_patterns, clippy::match_single_binding)]
+            fn of_code(code: &str, said: String) -> Result<Self, String> {
+                Ok(match code {
+                    "bad_args" => $name::BadArgs(said),
+                    $($ocode => $name::$ovar(said),)*
+                    _ => return Err(said),
+                })
+            }
             fn into_fail(self) -> $crate::stream::inbound::spec::Fail {
                 match self {
                     $name::BadArgs(said) => $crate::stream::inbound::spec::Fail::new("bad_args", said),

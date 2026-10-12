@@ -58,6 +58,8 @@ pub(crate) mod session_new_ticket;
 pub(crate) mod session_restart;
 // 终端管理 L1：名单 · 抓一屏 · 送字送键（两个前端共用，形状与宿主无关；这一版宿主是 tmux）。
 pub(crate) mod terminals;
+// 终端管理 L1 三条的线上形（入参 · 回包 · 码）与 typed 登记。
+pub(crate) mod terminals_wire;
 // 终端实时预览（L2）：订阅一个终端的画面，有变化就推一整屏（tmux 控制模式报变化 · 一帧在途等回执）。
 pub(crate) mod terminal_follow;
 pub mod tmux_hook;

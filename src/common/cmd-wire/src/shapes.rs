@@ -13,8 +13,11 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("sessions-start", "d7c013a0"),
     ("sessions-stop", "c1ee0ed3"),
     ("sessions-where", "8c20eb86"),
+    ("terminal-input", "b2a383a2"),
     ("terminal-name-mint", "f0db66f2"),
+    ("terminal-preview", "d60b74d2"),
     ("terminal-processes", "abba2221"),
+    ("terminals-list", "09490ec0"),
 ];
 
 /// 这条命令在本份编进来的形状指纹；不是 typed 命令 ⇒ `None`。

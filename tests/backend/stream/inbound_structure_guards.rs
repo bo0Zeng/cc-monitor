@@ -1355,7 +1355,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
     const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
-    const TERMINALS: &str = include_str!("../../__fixtures__/terminals.golden.json");
     const TMUX_CONTROL: &str = include_str!("../../__fixtures__/tmux-control.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
@@ -1452,49 +1451,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
                 "proxyJump",
                 "user",
             ],
-            &[],
-        ),
-        (
-            "terminals-list",
-            TERMINALS,
-            "/terminals-list/reply",
-            &[
-                "agent",
-                "can",
-                "client",
-                "clients",
-                "cwd",
-                "end",
-                "host",
-                "input",
-                "kind",
-                "last_activity",
-                "mine",
-                "no",
-                "program",
-                "session",
-                "sid",
-                "since",
-                "started_by",
-                "state",
-                "terminal",
-                "title",
-                "tmux_name",
-            ],
-            &[],
-        ),
-        (
-            "terminal-preview",
-            TERMINALS,
-            "/terminal-preview/reply",
-            &["spans", "text"],
-            &[],
-        ),
-        (
-            "terminal-input",
-            TERMINALS,
-            "/terminal-input/replies",
-            &[],
             &[],
         ),
         ("kill", TMUX_CONTROL, "/kill/reply", &[], &[]),

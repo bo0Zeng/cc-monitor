@@ -76,6 +76,12 @@ impl Fail {
         self
     }
 
+    /// 那一句连着原话（同 [`crate::common::contract::joined`]）：交给只装一句的那一层（typed 的错误枚举）时原话不丢，投出去时由 [`Fail::new`] 拆回来。
+    /// `data` 不跟：按码定形的 `data` 由那一条自己的变体带。
+    pub(crate) fn into_said(self) -> String {
+        crate::common::contract::joined(self.message, self.raw)
+    }
+
     /// 这次失败**不成应答**、只成别处的一句（同 `Said::into_note`：原话记一行日志）。
     pub(crate) fn into_note(self) -> String {
         crate::common::said::Said::from(self).into_note()

@@ -36,6 +36,14 @@ pub(crate) fn parts(message: &str, raw: Option<&str>) -> (String, Option<String>
     }
 }
 
+/// [`parts`] 的反方向：那一句 ＋ 原话 ⇒ 一串（原话隔一个 [`DIAG_SEP`] 跟在后面；没有原话 ⇒ 那一句原样）。
+pub(crate) fn joined(said: String, raw: Option<String>) -> String {
+    match raw {
+        Some(r) => format!("{said}{DIAG_SEP}{r}"),
+        None => said,
+    }
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/common/contract_tests.rs"]
 pub(crate) mod tests; // `pub(crate)`：判据读「契约错记进日志的那条诊断」的 `tests::diag` 给各族单测共用

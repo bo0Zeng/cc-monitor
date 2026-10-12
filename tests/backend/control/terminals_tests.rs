@@ -1,5 +1,69 @@
 use super::*;
+use serde_json::json;
 use std::process::Command;
+
+// 判据照线上那一份说话：入参是帧里的 JSON（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`），回包是写上线的那一份 JSON。
+fn req<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, CmdErr> {
+    serde_json::from_value(args.clone()).map_err(|e| {
+        CmdErr::new(
+            "bad_args",
+            crate::common::contract::malformed(&e.to_string()),
+        )
+    })
+}
+
+fn val<T: serde::Serialize>(t: T) -> Value {
+    serde_json::to_value(t).unwrap()
+}
+
+fn list_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
+    super::list_on(on, &req(args)?).map(val)
+}
+
+fn preview_on(on: On<'_>, args: &Value, tz: &crate::Tz) -> Result<Value, CmdErr> {
+    super::preview_on(on, &req(args)?, tz).map(val)
+}
+
+fn input_on(on: On<'_>, args: &Value) -> Result<Value, CmdErr> {
+    super::input_on(on, &req(args)?).map(val)
+}
+
+fn input_of(args: &Value) -> Result<Input, CmdErr> {
+    super::input_of(&req(args)?)
+}
+
+fn terminal_json(r: &TermRow, clients: &[(String, u64, u64)], who: Option<&str>) -> Value {
+    val(super::terminal_json(r, clients, who))
+}
+
+fn list_reply(
+    rows: &[TermRow],
+    clients: &[(String, u64, u64)],
+    complete: bool,
+    who: Option<&str>,
+) -> Value {
+    val(super::list_reply(rows, clients, complete, who))
+}
+
+fn preview_reply(view: &View, color: bool, capped: bool, at: u64, text: &str) -> Value {
+    val(super::preview_reply(view, color, capped, at, text))
+}
+
+fn refused_of(why: &str) -> Refused {
+    serde_json::from_value(json!(why)).unwrap_or_else(|_| panic!("不是原因码：{why}"))
+}
+
+fn input_reply(result: &str, why: Option<&str>, screen: Option<&str>) -> Value {
+    val(super::input_reply(
+        serde_json::from_value(json!(result)).unwrap(),
+        why.map(refused_of),
+        screen,
+    ))
+}
+
+fn no_said(why: &str) -> String {
+    super::no_said(refused_of(why))
+}
 
 fn row(id: &str, name: &str, sid: &str, client: &str, program: &str) -> TermRow {
     TermRow {
@@ -267,12 +331,12 @@ fn colours_become_spans_and_the_fingerprint_ignores_them() {
     );
     assert_eq!(text, "abcdefg");
     assert_eq!(
-        spans,
-        vec![
-            json!({ "from": 0, "to": 2, "fg": "red", "bold": true }),
-            json!({ "from": 4, "to": 5, "fg": "#ff0000" }),
-            json!({ "from": 5, "to": 7, "fg": "#ff0000", "bg": "#010203" }),
-        ]
+        val(spans),
+        json!([
+            { "from": 0, "to": 2, "fg": "red", "bold": true },
+            { "from": 4, "to": 5, "fg": "#ff0000" },
+            { "from": 5, "to": 7, "fg": "#ff0000", "bg": "#010203" },
+        ])
     );
     let plain = |t: &str| -> Vec<String> {
         let mut s = Style::default();
@@ -801,7 +865,7 @@ fn the_container_handle_is_the_list_handle_of_the_same_pane() {
     );
 }
 
-/// 原因码（线上那一形，下划线）各有一句（彼此不同的那几种不同句；`not_known` 与 `ended` 都是「终端已不在」）；认不出的落「被拒」。
+/// 原因码（线上那一形，下划线）各有一句（彼此不同的那几种不同句；`not_known` 与 `ended` 都是「终端已不在」）。原因是封闭的枚举，没有「认不出」那一档。
 #[test]
 fn every_refusal_reason_has_its_sentence() {
     let codes = [
@@ -818,8 +882,6 @@ fn every_refusal_reason_has_its_sentence() {
     uniq.dedup();
     assert_eq!(uniq.len(), codes.len(), "两种原因同一句：{said:?}");
     assert_eq!(no_said("ended"), no_said("not_known"));
-    assert_eq!(no_said("what"), copy_text("beTerminal.no.other", &[]));
-    assert!(!said.contains(&no_said("what")));
     let r = input_reply("refused", Some("not_yours"), None);
     assert_eq!(r["said"], no_said("not_yours"));
 }
@@ -861,27 +923,6 @@ fn terminal_reason_codes_use_underscores_like_command_codes() {
         .chain(codes_of("terminals-list").iter())
     {
         assert!(!code.contains('-'), "命令级码 `{code}` 带短横");
-    }
-}
-
-/// ★ `terminal-input` 只收它真用得上的那几格；`take`（「先接管输入」）删了 —— 原先收了、校验了、然后丢掉，
-/// 第二个前端照字段表画了一颗按钮、按下去什么都不变。再送它 ⇒ 照「多送一格就拒」回 `bad_args`，在碰 tmux 之前。
-#[test]
-fn terminal_input_refuses_fields_it_does_not_use() {
-    let on = On {
-        socket: Some("/nonexistent/cli2nd/tmux.sock"),
-    };
-    for extra in ["take", "nonsense"] {
-        let mut args = json!({ "terminal": "tmux-1", "text": "x" });
-        args[extra] = json!(true);
-        let (e, diag) = crate::common::contract::tests::diag(|| {
-            input_on(on, &args).expect_err("多送的一格该被拒")
-        });
-        assert_eq!(e.code, "bad_args", "{extra}：码不对：{e:?}");
-        assert!(
-            diag.contains(extra),
-            "{extra}：诊断没点名多出来的那一格：{diag}"
-        );
     }
 }
 

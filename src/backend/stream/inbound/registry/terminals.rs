@@ -51,50 +51,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     // 终端管理 L1 三条（`control/terminals.rs`）：只认名单里的终端（句柄 / sid），不收 tmux 目标串；送字送键过身份门。
     //   阻塞档（起 tmux）；只抓一次、只送一次，轮询归调用方。
-    CommandSpec {
-        name: "terminals-list",
-        summary: "这台的终端名单（形状与宿主无关；这一版宿主是 tmux）",
-        codes: &["bad_args", "unobservable", "child_timed_out"],
-        fields: &[out("agent", "`session` 里：哪一家（没标就缺）"), out("can", "这个调用方能做什么：`input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}`（抓屏不过身份门、恒可用，不在这里）"), both("client", "请求里可选：自报的前端，决定每行的 `can` 与 `started_by.mine`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`）"), out("clients", "此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台"), out("complete", "`false` ＝ 名单里有读不懂的行（画「部分」）"), out("cwd", "当前目录"), out("end", "能不能结束（`{no: \"not_yours\" | \"not_managed\" | \"other_windows\"}`）"), out("host", "终端宿主（这一版是 `tmux`）"), out("input", "输入方式：`shared`（tmux：各端都能打字）"), out("kind", "`clients` 一项：客户端种类（`terminal-window` …）"), out("last_activity", "最近动静（秒）"), out("mine", "`started_by` 里：这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`）"), out("no", "做不了的原因"), out("program", "前台程序名"), out("session", "里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}`"), out("sid", "`session` 里：会话 id"), out("since", "`clients` 一项：连上的时刻（秒）"), out("started_by", "谁起的：`{client, mine}`"), out("state", "`running` · `idle`（没会话、前台是 shell）· `program_exited`（有会话、前台是 shell）"), out("terminal", "名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）"), out("terminals", "终端名单（每行一个终端）"), out("title", "里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名"), out("tmux_name", "tmux 会话名")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::control::terminals::list_for_inbound(&r.args).map(Some)),
-    },
-    CommandSpec {
-        name: "terminal-preview",
-        summary: "抓一个终端的一屏（只抓一次，轮询归调用方）",
-        codes: &[
-            "bad_target",
-            "bad_args",
-            "not_known",
-            "ambiguous",
-            "no_tmux",
-            "no_server",
-            "no_such_session",
-            "capture_failed",
-            "unobservable",
-            "child_timed_out",
-        ],
-        fields: &[out("capped", "要的比上限多、截到了上限"), out("captured_at", "抓屏时刻（秒）"), out("captured_at_text", "抓屏时刻在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（界面照抄、不换算）"), arg("color", "要不要颜色；缺省 `true`"), out("cols", "列数"), out("cursor", "光标 `{x, y, visible}`"), out("lines", "自上而下的行，每行 `{text, spans?}`（往回要的在最前）"), out("rows", "行数"), out("screen", "这一屏的指纹（16 位十六进制）：内容一变就变，送字时带回来"), arg("scrollback", "往回多要几行；缺省 0、上限 2000"), out("scrollback_lines", "实际往回给了几行"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), out("spans", "着色段 `{from, to, fg?, bg?, bold?, dim?, italic?, underline?, inverse?}`；`color:false` ⇒ 不给"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), out("text", "`lines` 一项：那一行的文字")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::control::terminals::preview_for_inbound(&r.args, &r.tz).map(Some)),
-    },
-    CommandSpec {
-        name: "terminal-input",
-        summary: "往一个终端送字或送键（过身份门）",
-        codes: &[
-            "bad_target",
-            "bad_args",
-            "no_tmux",
-            "no_server",
-            "no_such_session",
-            "capture_failed",
-            "unobservable",
-            "child_timed_out",
-        ],
-        fields: &[arg("client", "自报的前端（过「哪个前端的会话」那一维）"), arg("enter", "`text` 之后补一个回车；缺省 `true`"), arg("key", "送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down`"), out("result", "`delivered` · `unsure`（不知道送没送到，别重发）· `refused`"), out("said", "`refused` 时给人看的那一句（后端写好）"), out("screen", "`screen_changed` 时带的新指纹"), arg("seen_screen", "送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("terminal", "目标：名单里的不透明句柄（前端不拼、不解析）"), arg("text", "送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个）"), out("why", "`refused` 的原因：`not_known` · `ambiguous` · `ended` · `not_yours` · `not_managed` · `screen_changed`")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::control::terminals::input_for_inbound(&r.args).map(Some)),
-    },
+    crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalsListCmd>(
+        "这台的终端名单（形状与宿主无关；这一版宿主是 tmux）",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalPreviewCmd>(
+        "抓一个终端的一屏（只抓一次，轮询归调用方）",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalInputCmd>(
+        "往一个终端送字或送键（过身份门）",
+    ),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     CommandSpec {
