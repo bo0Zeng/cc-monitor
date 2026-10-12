@@ -728,7 +728,7 @@ async fn serve_listening(
 
     let _poke_task = spawn_sigusr1_task();
 
-    // 这台一份 watcher（read8a ＋ `11 §5.2 a`）：从起来到退一直这一份 —— 没人连着时它照样看 `sessions/`、打标；
+    // 这台一份 watcher（read8a：整台一份读者）：从起来到退一直这一份 —— 没人连着时它照样看 `sessions/`、打标；
     //   每接上一条流就 `attach` 一份投影（名单 · 续点 · 没送出去的帧按连接），记录整台只预读一次。
     let (watcher, book) = observe::watcher::spawn(agent_home.clone(), own.clone());
 

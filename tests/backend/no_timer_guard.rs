@@ -1226,13 +1226,23 @@ mod tests {
                 .find(|(n, _)| matches_registered(n, file))
                 .map(|(_, c)| c)
                 .unwrap_or_else(|| panic!("登记的 {file} 不在了"));
-            assert_eq!(code.matches(snippet).count(), 1, "{file} 里 `{snippet}` 不是恰好一处");
+            assert_eq!(
+                code.matches(snippet).count(),
+                1,
+                "{file} 里 `{snippet}` 不是恰好一处"
+            );
             assert_eq!(
                 code.matches("thread::Builder::new()").count(),
                 1,
                 "{file} 里起线程的地方不是恰好一处（多了一种常驻线程？）"
             );
-            for call in ["recv_timeout", "sleep", "park_timeout", "wait_timeout", "timeout"] {
+            for call in [
+                "recv_timeout",
+                "sleep",
+                "park_timeout",
+                "wait_timeout",
+                "timeout",
+            ] {
                 assert!(
                     !code.lines().any(|l| is_call_of(l, call)),
                     "{file} 里有带期限的等 `{call}(` —— 线程池只许阻塞在任务队列上"

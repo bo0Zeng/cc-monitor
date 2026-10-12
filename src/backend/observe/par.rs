@@ -56,7 +56,7 @@ pub(crate) fn par_workers(available: Option<usize>) -> usize {
     available.unwrap_or(1).clamp(1, PAR_WORKERS)
 }
 
-// ─── 常驻的那一种：有上限的线程池（read8a，`调研/蓝图/11-会话数据通路.md` §5.1 ①：记录预读各会话并行）───
+// ─── 常驻的那一种：有上限的线程池（read8a：活会话的记录预读各会话并行，宣告不等它）───
 //
 // 线程只阻塞在任务队列上（`recv()`，无期限）：没有任务就一直睡在内核里，不定时、不自己醒（`no_timer_guard` 登记了这一处）。
 // 池子丢了 ⇒ 队列的发送端没了 ⇒ 各线程的 `recv()` 回错、退出。线程数照 [`par_workers`]（只此一处算）。

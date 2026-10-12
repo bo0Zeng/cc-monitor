@@ -1,4 +1,4 @@
-//! 先宣告、后读（read8a，`调研/蓝图/11-会话数据通路.md` §5.1 ① ＋ §5.2 a）：会话一认出来就报，记录在后台线程池里预读；
+//! 先宣告、后读（read8a：宣告不等记录 ＋ 整台一份读者）：会话一认出来就报，记录在后台线程池里预读；
 //! 读完之前它一帧行都不出，读完先交「从第几行起」再接着出；整台一份读者，几条连接接上来都不重读。
 //! 判据只数格数与先后，不按墙钟。卡住的记录源是一条命名管道（写端开着、不写 ⇒ 预读那一趟停在读里）。
 //! 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
@@ -117,7 +117,7 @@ fn brief(frames: &[Frame]) -> Vec<String> {
 fn next_primed(ev: &std::sync::mpsc::Receiver<WatchEvent>) -> PrimeDone {
     loop {
         match ev
-            .recv_timeout(std::time::Duration::from_secs(30))
+            .recv_timeout(guard_core::wall::CEILING)
             .expect("预读一直没交回")
         {
             WatchEvent::Primed(d) => return d,
@@ -140,7 +140,8 @@ fn a_stuck_prime_holds_back_nothing_but_its_own_session() {
     let mut state = rig.state();
     state.pool = Some(PrimePool::start(ev_tx));
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
-    let mut sink = FrameSink::with_ledger(tx);
+    let mut sink = FrameSink::hub();
+    sink.subs.push(Sub::new(0, tx, crate::Tz::default()));
 
     // 初扫回来了（卡住的那一趟在池子里，不挡本线程）⇒ watch_loop 接着起第一份 tmux 观测。
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
@@ -231,13 +232,17 @@ fn no_more_primes_run_at_once_than_the_pool_has_threads() {
     let mut sink = FrameSink::new(tx);
     initial_session_scan(&rig.sessions, &mut state, &mut sink);
     // 等池子把能取的都取走（只等「在跑的到了上限」这件事，判的是份数）。
-    for _ in 0..3000 {
+    for _ in guard_core::wall::rounds() {
         if load.running() == cap {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    assert_eq!(load.running(), cap, "卡住的记录比线程多，在跑的应恰好到上限");
+    assert_eq!(
+        load.running(),
+        cap,
+        "卡住的记录比线程多，在跑的应恰好到上限"
+    );
     for (p, w) in ends {
         release(&p, w);
     }
@@ -268,7 +273,11 @@ fn three_connections_on_one_record_prime_it_once() {
     let mut seen = Vec::new();
     for id in 1..=3 {
         let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
-        join(Sub::new(id, tx, crate::Tz::default()), &mut state, &mut sink);
+        join(
+            Sub::new(id, tx, crate::Tz::default()),
+            &mut state,
+            &mut sink,
+        );
         let got = brief(&drain(&mut rx));
         if id == 2 {
             sink.leave(2); // 手机断了，重连的那条是第三条

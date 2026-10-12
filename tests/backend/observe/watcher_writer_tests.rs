@@ -221,7 +221,12 @@ fn a_reader_holding_the_record_announces_nothing() {
 #[test]
 fn an_unwatched_session_still_says_its_turn_end() {
     let mut r = rig("unwatched");
-    let _ = watch_sessions(0, vec!["someone-else".to_string()], &mut r.state, &mut r.sink);
+    let _ = watch_sessions(
+        0,
+        vec!["someone-else".to_string()],
+        &mut r.state,
+        &mut r.sink,
+    );
     let w = writer(&r.record);
     on_writers(opened(&r.record), &mut r.state, &mut r.sink);
     assert_eq!(brief(&drain(&mut r.rx)), vec!["added:codex"]);

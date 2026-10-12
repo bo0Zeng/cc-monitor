@@ -343,7 +343,11 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     // ② 不显示 bg：bg 的宣告与它的行一律不进；交互 / 旧 CC（没写 kind）照转。
     let mut h = BgHide::new(false);
     assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
-    assert_eq!(step(&mut h, frame(PRIMED_B)), LocalStep::Skip, "藏起来的 bg 读完那一帧也不进");
+    assert_eq!(
+        step(&mut h, frame(PRIMED_B)),
+        LocalStep::Skip,
+        "藏起来的 bg 读完那一帧也不进"
+    );
     assert_eq!(step(&mut h, frame(LINE_B)), LocalStep::Skip);
     assert_eq!(step(&mut h, frame(ADD_A_OLD_CC)), LocalStep::Skip);
     assert_eq!(

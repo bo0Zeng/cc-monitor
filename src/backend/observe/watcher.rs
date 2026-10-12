@@ -827,7 +827,9 @@ impl WatcherPoke {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
-        let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, wants.tz.clone())));
+        let _ = self
+            .0
+            .send(WatchEvent::Join(Sub::new(id, tx, wants.tz.clone())));
         (
             rx,
             Attachment(WatchHandle {
@@ -2368,7 +2370,12 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
             }
         }
     }
-    for f in sink.ledger.as_ref().map(|l| l.snapshot()).unwrap_or_default() {
+    for f in sink
+        .ledger
+        .as_ref()
+        .map(|l| l.snapshot())
+        .unwrap_or_default()
+    {
         sink.send_to(id, f);
     }
 }
@@ -4031,15 +4038,6 @@ impl FrameSink {
         }
     }
 
-    /// 夹具那一份 ＋ 会话账本。
-    #[cfg(test)]
-    fn with_ledger(tx: mpsc::Sender<Frame>) -> Self {
-        FrameSink {
-            ledger: Some(crate::observe::session_ledger::SessionLedger::new()),
-            ..FrameSink::new(tx)
-        }
-    }
-
     /// 生产那一份：带会话账本，起步没有连接（[`join`] 接上来）。
     fn hub() -> Self {
         FrameSink {
@@ -4074,7 +4072,10 @@ impl FrameSink {
 
     /// 发一帧：预读没交回的会话的内容帧拦下；再过会话账本（有的话）—— 它决定这一帧自己发不发、紧跟着补发哪几帧。
     fn send(&mut self, frame: Frame) {
-        if frame.content_of().is_some_and(|sid| self.priming.contains(sid)) {
+        if frame
+            .content_of()
+            .is_some_and(|sid| self.priming.contains(sid))
+        {
             return;
         }
         let (pass, extra) = match self.ledger.as_mut() {
