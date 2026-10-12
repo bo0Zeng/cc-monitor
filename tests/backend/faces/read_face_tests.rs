@@ -1741,6 +1741,14 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
             cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         }
         let mut c = cmd.spawn().unwrap();
+        // fork 之后、exec 之前，/proc/<pid>/environ 还是父进程那一份（不带这个变量）⇒ 等它真成了 sleep 再问。
+        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
+        let until = std::time::Instant::now() + guard_core::wall::CEILING;
+        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sleep\0"))
+            && std::time::Instant::now() < until
+        {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
         let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
         let body = format!(
             r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
