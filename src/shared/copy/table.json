@@ -31365,6 +31365,18 @@
       "zh": "与内置策略 {id} 同名 · 没加载",
       "args": ["id"]
     },
+    "beRotation.tz.unknown": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "时段按哪个时区不明 · 在设置里确认时区",
+      "args": []
+    },
+    "beRotation.tz.unknownDetail": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "第一版轮换文件没写时区，换形时本机也取不到时区；时段暂按 UTC 判",
+      "args": []
+    },
     "beRotation.strategy.builtinFixed": {
       "kind": "error",
       "role": "原因格",

@@ -5,6 +5,6 @@
  */
 export type RotationNeeds = { 
 /**
- * `unreadable`（轮换文件读不懂）。
+ * `unreadable`（轮换文件读不懂）· `tzUnknown`（这份配置时区不明）。
  */
 kind: string, reason: string, detail: string, };

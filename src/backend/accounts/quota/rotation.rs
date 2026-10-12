@@ -158,6 +158,11 @@ pub struct ConfigBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
     pub tz: Option<String>,
+    /// 时区不明：第一版缺 `tz`、换形那台又说不出自己的时区（[`crate::platform::local_tz::iana_name`]）⇒ 不猜，标这一格，
+    /// 上屏需手动（在设置里确认时区）；在设置里存一次（信封带 `tz`）就清掉。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(as = "Option<bool>", optional))]
+    pub tz_unknown: bool,
 }
 
 impl ConfigBody {
@@ -541,7 +546,8 @@ impl<'de> Deserialize<'de> for Book {
         let v = Value::deserialize(d)?;
         let mut b = match v.get("version") {
             None => {
-                let mut b = migrate::from_v1(&v).map_err(D::Error::custom)?;
+                let local = crate::platform::local_tz::iana_name();
+                let mut b = migrate::from_v1(&v, local.as_deref()).map_err(D::Error::custom)?;
                 b.from_v1 = Some(v);
                 b
             }
@@ -611,6 +617,7 @@ pub(crate) fn seed_config(n: usize, now: u64) -> Option<(String, Config)> {
                 acct_init: init,
                 parked: BTreeMap::new(),
                 tz: None,
+                tz_unknown: false,
             },
             rev: 1,
             updated_at: now,

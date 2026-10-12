@@ -3,7 +3,7 @@
 //!
 //! | 第一版 | 第二版 |
 //! |---|---|
-//! | 每条 `rules[id]` | `configs[id]`，`strategy: "1"`，名字照留；种子那条名「默认」⇒「默认配置 1」；`tz` 缺 ⇒ 写明 `UTC` |
+//! | 每条 `rules[id]` | `configs[id]`，`strategy: "1"`，名字照留；种子那条名「默认」⇒「默认配置 1」；`tz` 缺 ⇒ 做换形那台的本地时区（4.1.7 以前的后端按本机钟判时段）；那台说不出 ⇒ 不写、标 `tzUnknown`（上屏需手动，不猜 UTC） |
 //! | `order` ＋ `enabled` | `accounts`：按 `order`，具名的只留勾上的 |
 //! | `cap["*"]` | `acctInit.line`；并给每一行没有自己那一位的线补上 |
 //! | `cap[号]` 数 · 分窗口 · `7d:<模型>` | 那一行的 `params.line`（`7d:<模型>` 并进 `7d` 取小的）；`0` ⇒ 整天不用（`slots: [{at: "00:00-24:00", line: 0}]`） |
@@ -244,7 +244,7 @@ fn stint_of(row: Option<&BTreeMap<String, u8>>) -> Option<u8> {
 }
 
 /// 一份第一版轮换换成内置策略 1 的配置内容（名字 · 时区由调用方给）。
-fn body_of(r: &Rotation, name: &str) -> ConfigBody {
+fn body_of(r: &Rotation, name: &str, local_tz: Option<&str>) -> ConfigBody {
     let all = r.cap.get("*");
     let all_line = line_positions(all);
     let all_stint = stint_of(r.stint.get("*"));
@@ -309,7 +309,8 @@ fn body_of(r: &Rotation, name: &str) -> ConfigBody {
         params,
         acct_init,
         parked: BTreeMap::new(),
-        tz: Some(r.tz.clone().unwrap_or_else(|| "UTC".into())),
+        tz: r.tz.clone().or_else(|| local_tz.map(str::to_string)),
+        tz_unknown: r.tz.is_none() && local_tz.is_none(),
     }
 }
 
@@ -380,7 +381,7 @@ fn record_of(r: &OldRecord, order: &dyn Fn(&str) -> Option<usize>) -> SwitchReco
 const PARENT_DEPTH: usize = 8;
 
 /// ★ 第一版 ⇒ 第二版（整份，只在内存里；写回由调用方在锁里做）。读不懂 ⇒ `Err`（照读不懂办，不覆盖）。
-pub(crate) fn from_v1(v: &Value) -> Result<Book, String> {
+pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Book, String> {
     let old: OldBook = serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
     let mut rules = old.rules;
     let mut default_rule = old.default_rule;
@@ -413,7 +414,7 @@ pub(crate) fn from_v1(v: &Value) -> Result<Book, String> {
             (
                 id.clone(),
                 Config {
-                    body: body_of(&r.rotation, &name),
+                    body: body_of(&r.rotation, &name, local_tz),
                     rev: r.rev.max(1),
                     updated_at: r.updated_at,
                     saved_by: SAVED_BY_SETTINGS.into(),
@@ -462,8 +463,10 @@ pub(crate) fn from_v1(v: &Value) -> Result<Book, String> {
                 Source::Custom => match &s.custom {
                     Some(c) => {
                         let base = configs.get(&default_rule);
-                        let mut body = body_of(c, base.map_or("", |b| b.body.name.as_str()));
+                        let mut body =
+                            body_of(c, base.map_or("", |b| b.body.name.as_str()), local_tz);
                         body.tz = base.and_then(|b| b.body.tz.clone()).or(body.tz);
+                        body.tz_unknown = body.tz.is_none();
                         if let Some(one) = crate::accounts::quota::strategy::fallback() {
                             body = super::doc::filled(&body, &one);
                         }
