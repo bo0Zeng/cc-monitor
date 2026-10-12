@@ -107,7 +107,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("config.rs", "patch_config_stamping", None, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁）"),
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
-    //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，第四层后端自有状态），本进程一个字节不落 ⇒ 摘行。
+    //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，后端自有状态，写经 `Own`），本进程一个字节不落 ⇒ 摘行。
     ("fs.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判；原住 `config.rs`，住壳的平台层）"),
     ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
     ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),
@@ -115,7 +115,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //   `config::patch_config_at`，本文件零写盘。
     // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
-    //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（第三层文件管理写面 `control/transfer.rs`），
+    //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（文件管理写面 `control/transfer.rs`，写经 `Face`），
     //    monitor 这一侧零写盘。上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
     //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
     // 原 `utils.rs`：随两个前端共用搬进 `host-core`（`src/common/host-core/src/atomic.rs`）。
@@ -434,7 +434,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     // `logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
     // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
-    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，第三层文件管理写面；当时写「先过会话文件围栏」，
+    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，文件管理写面；当时写「先过会话文件围栏」，
     //    FN1 之后只过路径解析）。
     // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
@@ -536,7 +536,7 @@ fn moved_out_needles() -> Vec<String> {
 /// ② 里**逐行登记的例外**：搬走写盘的那几份文件里，还在写 **monitor 自己的**状态文件的那几行。
 /// `(文件, 那一行逐字, 写的是什么)`。整行相等，不是子串；每一行必须恰好出现一次（幽灵检查）。
 /// **今天是空表**：唯一那一行（`history.rs` 写 `history-metadata.json` —— 标星 / 改名 / 隐藏这些注解）摘了：
-/// 注解的读写者换成本机常驻后端（`src/backend/history/history_annotations.rs`，第四层；文件原地不动）⇒
+/// 注解的读写者换成本机常驻后端（`src/backend/history/history_annotations.rs`，写经 `Own`；文件原地不动）⇒
 /// 搬走写盘的这几份文件里，连 monitor 自己的状态也一行都不写了。表留着：新长一处「写自己的状态」时第一个要表态的地方。
 const OWN_STATE_LINES: &[(&str, &str, &str)] = &[];
 

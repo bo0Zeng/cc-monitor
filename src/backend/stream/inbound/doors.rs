@@ -4,7 +4,8 @@ use super::{Run, REGISTRY};
 use crate::stream::wire::Request;
 
 /// 资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
-/// 住入方向是因为 `readonly_guard` 第三层只许命令表文件管理那一族（与分派的传输硬臂）够得着写面；资产模块只拿这个句柄，不直呼 `files_write`。
+/// 住入方向是因为文件管理面的写句柄（`Face`）只有分派这一层造：这扇门就是进程内的那一次分派，
+/// 照命令表那一族的档位（`Run::BlockingFace`）递一份进去；资产模块只拿这个门，拿不到句柄，也不直呼 `files_write`。
 #[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
 
@@ -31,6 +32,9 @@ impl crate::assets::door::Door for LocalFiles {
         let out = match spec.run {
             Run::Blocking(run) => run(req),
             Run::BlockingData(run) => run(req).map_err(|f| (f.code, f.message)),
+            Run::BlockingFace(run) => {
+                run(req, &crate::platform::fs::Face::issue()).map_err(|f| (f.code, f.message))
+            }
             _ => return Err(("unknown_command".to_string(), cmd.to_string())),
         };
         out.map(|v| v.unwrap_or(serde_json::Value::Null))

@@ -84,7 +84,7 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
-pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
+pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
 pub mod stream; // 进后端的口 ① 帧面：wire · inbound · listen · tap
 #[cfg(test)]
 #[path = "../../tests/backend/test_home_guard.rs"]
@@ -422,7 +422,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
 ///
 /// ★★★ **p2w-apikey-relay-footprint**（2026-09-24）：子命令 ＋5 ——
-/// RM1a `apikey-key-set` / `apikey-read`（上游选择那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
+/// RM1a `apikey-key-set` / `apikey-read`（上游选择那份凭据文件：远端由那台后端读写，自家状态，经 `Own`）· `relay-status` / `relay-ensure`
 /// （远端中转）· `footprint-probe`（足迹的这台机器那一半），两个命令面都动。
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
@@ -1229,8 +1229,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
     // ⚠ **如实登记一条代价**：因此「写这一面只从帧面进来」这句话**做不到**，
     //   两个宿主共用同一个 `run`（「一份代码两种宿主」正是这一形）。
-    //   写面的「窄」因此**不靠命令面**，而靠 `readonly_guard` 第三层那条
-    //   「只从声明过的那一面来」—— 它判的是**谁引用得到那个模块**，不是谁发得出命令。
+    //   写面的「窄」因此**不靠命令面**，而靠写句柄：`Face` 只递给命令表文件管理那一族（`Run::BlockingFace`），
+    //   判的是**谁拿得到句柄**，不是谁发得出命令。
     "--files-create",
     // 同一面的另外五条。登记理由与上一行逐字相同。
     "--files-chmod",

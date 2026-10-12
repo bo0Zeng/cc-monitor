@@ -507,10 +507,8 @@ fn dirs_arg(args: &serde_json::Value) -> Result<Vec<std::path::PathBuf>, (&'stat
 
 /// 一个时刻换成 Unix 纪元秒。
 ///
-/// ⚠ **参数刻意写成 `io::Result<SystemTime>` 而不是那个元数据类型** ——
-/// 那个类型的名字带大写，而 `readonly_guard` 的只读白名单是按**动词**认的、
-/// 表里那一条是小写的 `metadata`（大小写不同 ⇒ 认不出来 ⇒ 当场红），
-/// 而把它 `use` 进来又正好撞上同一条判据的「条目导入 = 逃生口」那一格。
+/// ⚠ **参数刻意写成 `io::Result<SystemTime>` 而不是那个元数据类型**：那个类型只有 `platform/fs/` 许点名（`readonly_guard` 的命名空间那一条），
+/// 这里只要时刻那一格。
 /// ⇒ 两头都不碰：**不提那个类型名**。这不是绕过护栏，是不去动它。
 fn epoch_secs(t: std::io::Result<std::time::SystemTime>) -> Option<u64> {
     t.ok()?
@@ -627,8 +625,8 @@ where
     })
 }
 
-/// `files.stat` —— 一个路径的元数据。它跟 symlink（拿链接指向的那个东西的元数据）：不跟的读法要另一个动词，
-/// 那个动词不在 `readonly_guard` 的只读白名单上。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
+/// `files.stat` —— 一个路径的元数据。它跟 symlink（拿链接指向的那个东西的元数据）：不跟的读法是另一个动词（`Ro::symlink_metadata`），
+/// 这一条不用它。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
 fn answer_stat(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     let path = path_arg(args)?;
     let md = Ro::metadata(&path).map_err(|e| {

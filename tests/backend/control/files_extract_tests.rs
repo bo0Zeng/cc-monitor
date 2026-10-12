@@ -3,6 +3,7 @@
 //! 建链接那一下只住这里，链接自己那条路径先过路径解析、目标文本不解不判。
 
 use super::*;
+use crate::platform::fs::Face;
 
 fn temp_root(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-fl-{tag}-{}", std::process::id()));
@@ -19,21 +20,24 @@ fn a_link_lands_with_its_target_text_verbatim_and_only_under_the_root() {
     let root = base.join("r");
     std::fs::create_dir(&root).expect("根");
     for (rel, to) in [("rel", "../x/y"), ("abs", "/etc/passwd")] {
-        let at = land_link(&root, Path::new(rel), Path::new(to)).expect("建链接被拒");
+        let at =
+            land_link(&Face::issue(), &root, Path::new(rel), Path::new(to)).expect("建链接被拒");
         assert_eq!(at, root.canonicalize().expect("根").join(rel));
         assert_eq!(
             std::fs::read_link(root.join(rel)).expect("读"),
             Path::new(to)
         );
     }
-    let e = land_link(&root, Path::new("../esc"), Path::new("x")).expect_err("越根的链接建成了");
+    let e = land_link(&Face::issue(), &root, Path::new("../esc"), Path::new("x"))
+        .expect_err("越根的链接建成了");
     assert_eq!(e.code(), "refused", "{e:?}");
     assert!(
         std::fs::symlink_metadata(base.join("esc")).is_err(),
         "根外多了一条"
     );
     std::fs::write(root.join("keep"), b"K").expect("铺");
-    let e = land_link(&root, Path::new("keep"), Path::new("x")).expect_err("盖掉了已在的");
+    let e = land_link(&Face::issue(), &root, Path::new("keep"), Path::new("x"))
+        .expect_err("盖掉了已在的");
     assert_eq!(e.code(), "io_failed", "{e:?}");
     assert_eq!(std::fs::read(root.join("keep")).expect("keep"), b"K");
     std::fs::remove_dir_all(&base).ok();
@@ -129,7 +133,8 @@ fn a_tar_gz_lands_whole_with_bytes_modes_links_and_implied_parents() {
     for name in ["p.tar.gz", "q.TGZ"] {
         plant(&base, name, &gz(&body));
         let into = format!("{name}.out");
-        let got = extract(&base, Path::new(name), Path::new(&into)).expect("干净的包被拒了");
+        let got = extract(&Face::issue(), &base, Path::new(name), Path::new(&into))
+            .expect("干净的包被拒了");
         assert_eq!(
             (got.files, got.dirs, got.links, got.bytes),
             (3, 3, 1, 5 + 3 + 5),
@@ -168,7 +173,8 @@ fn a_zip_lands_whole() {
             ("d/ln", None, Some("x.txt")),
         ]),
     );
-    let got = extract(&base, Path::new("z.zip"), Path::new("z")).expect("干净的 zip 被拒了");
+    let got = extract(&Face::issue(), &base, Path::new("z.zip"), Path::new("z"))
+        .expect("干净的 zip 被拒了");
     assert_eq!((got.files, got.dirs, got.links, got.bytes), (2, 3, 1, 3));
     assert_eq!(std::fs::read(base.join("z/d/x.txt")).expect("x"), b"X");
     assert_eq!(std::fs::read(base.join("z/e/f/y.txt")).expect("y"), b"YY");
@@ -231,7 +237,7 @@ fn every_escaping_or_special_entry_refuses_the_whole_archive_and_builds_nothing(
     for (tag, bytes) in &tars {
         let name = format!("{tag}.tar");
         plant(&root, &name, bytes);
-        let e = extract(&root, Path::new(&name), Path::new(tag))
+        let e = extract(&Face::issue(), &root, Path::new(&name), Path::new(tag))
             .expect_err(&format!("{tag}：坏包解成了"));
         assert_eq!(e.code, "refused", "{tag}：{e:?}");
         assert!(
@@ -244,7 +250,8 @@ fn every_escaping_or_special_entry_refuses_the_whole_archive_and_builds_nothing(
         "bs.zip",
         &zip_bytes(&[("..\\evil", Some(b"E"), None)]),
     );
-    let e = extract(&root, Path::new("bs.zip"), Path::new("bs")).expect_err("zip 反斜杠上跳解成了");
+    let e = extract(&Face::issue(), &root, Path::new("bs.zip"), Path::new("bs"))
+        .expect_err("zip 反斜杠上跳解成了");
     assert_eq!(e.code, "refused", "{e:?}");
     assert!(
         std::fs::symlink_metadata(base.join("evil")).is_err(),
@@ -264,7 +271,13 @@ fn every_escaping_or_special_entry_refuses_the_whole_archive_and_builds_nothing(
             TarItem::File(b"b", b"B", 0o644),
         ]),
     );
-    extract(&root, Path::new("good.tar"), Path::new("good")).expect("真实形被拒了");
+    extract(
+        &Face::issue(),
+        &root,
+        Path::new("good.tar"),
+        Path::new("good"),
+    )
+    .expect("真实形被拒了");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -282,7 +295,8 @@ fn the_three_whole_refusals_touch_nothing() {
     );
     std::fs::create_dir(base.join("p")).expect("铺已在");
     std::fs::write(base.join("p/keep"), b"K").expect("铺");
-    let e = extract(&base, Path::new("p.tar"), Path::new("p")).expect_err("落点已在却解进去了");
+    let e = extract(&Face::issue(), &base, Path::new("p.tar"), Path::new("p"))
+        .expect_err("落点已在却解进去了");
     assert_eq!(e.code, "exists", "{e:?}");
     assert_eq!(std::fs::read(base.join("p/keep")).expect("keep"), b"K");
     assert!(
@@ -290,12 +304,15 @@ fn the_three_whole_refusals_touch_nothing() {
         "合并进去了"
     );
     plant(&base, "p.rar", b"Rar!");
-    let e = extract(&base, Path::new("p.rar"), Path::new("r")).expect_err("rar 解成了");
+    let e =
+        extract(&Face::issue(), &base, Path::new("p.rar"), Path::new("r")).expect_err("rar 解成了");
     assert_eq!(e.code, "unsupported", "{e:?}");
-    let e = extract_with(&base, Path::new("p.tar"), Path::new("c"), 1).expect_err("超上限却解了");
+    let e = extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), 1)
+        .expect_err("超上限却解了");
     assert_eq!(e.code, "refused", "{e:?}");
     assert!(std::fs::symlink_metadata(base.join("c")).is_err());
-    extract_with(&base, Path::new("p.tar"), Path::new("c"), 2).expect("上限恰好够却被拒了");
+    extract_with(&Face::issue(), &base, Path::new("p.tar"), Path::new("c"), 2)
+        .expect("上限恰好够却被拒了");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -313,7 +330,13 @@ fn an_extract_that_fails_midway_undoes_everything_it_built() {
         .expect("找到正文");
     z[at] ^= 0x20;
     plant(&base, "bad.zip", &z);
-    let e = extract(&base, Path::new("bad.zip"), Path::new("bad")).expect_err("坏正文却解成了");
+    let e = extract(
+        &Face::issue(),
+        &base,
+        Path::new("bad.zip"),
+        Path::new("bad"),
+    )
+    .expect_err("坏正文却解成了");
     assert_eq!(e.code, "io_failed", "{e:?}");
     assert!(
         e.said
@@ -338,6 +361,7 @@ fn the_command_face_answers_with_the_declared_fields() {
         &tar_bytes(&[TarItem::File(b"f", b"1", 0o644)]),
     );
     let v = answer_wire(
+        &Face::issue(),
         "files-extract",
         &serde_json::json!({"root": base.to_string_lossy(), "rel": {"b16": "702e746172"}}),
     )
@@ -366,13 +390,14 @@ fn a_taken_name_answers_exists_and_fresh_takes_the_first_free_number() {
     );
     std::fs::create_dir(base.join("p")).expect("铺已在");
     std::fs::create_dir(base.join("p (2)")).expect("铺已在 2");
-    let e = extract_here(&base, Path::new("p.tar"), false).expect_err("撞名却没问");
+    let e = extract_here(&Face::issue(), &base, Path::new("p.tar"), false).expect_err("撞名却没问");
     assert_eq!(e.code, "exists", "{e:?}");
     assert!(
         std::fs::symlink_metadata(base.join("p/f")).is_err(),
         "解进了已在的目录"
     );
-    let got = extract_here(&base, Path::new("p.tar"), true).expect("问过之后仍被拒");
+    let got =
+        extract_here(&Face::issue(), &base, Path::new("p.tar"), true).expect("问过之后仍被拒");
     assert_eq!(got.path, base.canonicalize().expect("根").join("p (3)"));
     assert_eq!(std::fs::read(base.join("p (3)/f")).expect("f"), b"1");
     std::fs::remove_dir_all(&base).ok();
@@ -389,7 +414,8 @@ fn a_zip_link_target_over_the_cap_refuses_instead_of_truncating() {
         "l.zip",
         &zip_bytes(&[("ln", None, Some(long.as_str()))]),
     );
-    let e = extract(&base, Path::new("l.zip"), Path::new("l")).expect_err("超长目标却解成了");
+    let e = extract(&Face::issue(), &base, Path::new("l.zip"), Path::new("l"))
+        .expect_err("超长目标却解成了");
     assert_eq!(e.code, "refused", "{e:?}");
     assert!(std::fs::symlink_metadata(base.join("l")).is_err());
     let ok = "a/".repeat(LINK_TARGET_MAX_BYTES as usize / 2 - 1);
@@ -398,6 +424,7 @@ fn a_zip_link_target_over_the_cap_refuses_instead_of_truncating() {
         "k.zip",
         &zip_bytes(&[("ln", None, Some(ok.as_str()))]),
     );
-    extract(&base, Path::new("k.zip"), Path::new("k")).expect("恰好到上限的目标被拒了");
+    extract(&Face::issue(), &base, Path::new("k.zip"), Path::new("k"))
+        .expect("恰好到上限的目标被拒了");
     std::fs::remove_dir_all(&base).ok();
 }

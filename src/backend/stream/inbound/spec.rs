@@ -144,6 +144,9 @@ pub(crate) enum Run {
     BlockingOwn(fn(Request, &crate::platform::Own) -> Outcome),
     /// 同 [`Run::Async`]，只是要写后端自家状态：句柄按值递（交出去的 future 要 `'static`）。
     AsyncOwn(fn(Request, crate::platform::Own) -> BoxFut),
+    /// 同 [`Run::BlockingData`]，只是要改用户的文件（文件管理面）：多收一个 [`crate::platform::fs::Face`]。
+    /// 只有文件管理那一族用这一档（`readonly_guard::only_the_file_manager_commands_are_handed_the_face`）；句柄由分派那一层造了递进来。
+    BlockingFace(fn(Request, &crate::platform::fs::Face) -> Outcome),
     Builtin,
 }
 

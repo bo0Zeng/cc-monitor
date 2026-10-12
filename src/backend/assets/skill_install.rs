@@ -542,7 +542,7 @@ fn on_disk_now(
     abs: &Path,
     recorded: &crate::assets::skill_ledger::Recorded,
 ) -> (&'static str, Option<String>) {
-    // ⚠ `metadata` 跟链接（`symlink_metadata` 不在本模块能用的只读动词里，`readonly_guard` 白名单）：
+    // ⚠ `metadata` 跟链接（这里用的是跟链接的那一个读法）：
     //   装完被换成指向一份同样文本的链接 ⇒ 这里判 `intact`，而后端 `files-delete` 带 `expect` 只删普通文件 ⇒ 那一下拒、什么都不删。
     //   悬空的链接 ⇒ `gone`（从记录里摘掉；链接本身不是装写进去的，不碰）。
     match Ro::metadata(abs) {

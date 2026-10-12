@@ -435,7 +435,7 @@ fn every_registered_command_declares_its_run_kind() {
         );
         let is_blocking = matches!(
             spec.run,
-            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_) | Run::BlockingFace(_)
         );
         assert_eq!(
             is_blocking, expected_blocking,
@@ -892,7 +892,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
     //   ⚠ 减法是**按那张表**减，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
     // 写那一侧从此是**两张表**：写面 `MANAGE_COMMANDS` ＋ 上传提交
-    //   `files_commit::COMMIT_COMMANDS`（`readonly_guard` 第三层第二个登记的模块）。减法按两张表的并。
+    //   `files_commit::COMMIT_COMMANDS`（写经 `Face`，同一族）。减法按两张表的并。
     let write_face: std::collections::BTreeSet<String> =
         crate::control::files_write::MANAGE_COMMANDS
             .iter()
@@ -905,7 +905,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
                     .map(|c| c.name)
                     .collect::<Vec<_>>(),
             )
-            // 解压（`control/files_extract.rs`，第三层第四个模块）。
+            // 解压（`control/files_extract.rs`，写经 `Face`）。
             .chain(
                 crate::control::files_extract::EXTRACT_COMMANDS
                     .iter()
@@ -951,20 +951,21 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         "\n文件管理**写**面登记的那一组与 `inbound::REGISTRY` 上真上线的那一组对不上。\n\
          登记了而没上线 ⇒ 调用方发过去拿到 `unknown_command`（静默不可用）；\n\
          上线了而没登记 ⇒ 🔴 **写能力长出了一个没签字的命令** ——\n\
-         而 `readonly_guard` 第三层那条「只从声明过的那一面来」判的正是这张表。"
+         而 `readonly_guard` 那条「拿得到 `Face` 的命令 == 写面登记的命令」判的正是这张表。"
     );
     // ★ 写那一面的每条命令，`codes` / `fields` 与它自己的登记逐字对上（同读族那一半）。
     type WriteAnswer = fn(&str, &serde_json::Value) -> crate::control::files_write::Answer;
     let tables: [(&[crate::control::files_write::ManageCommand], WriteAnswer); 2] = [
         (crate::control::files_write::MANAGE_COMMANDS, |c, a| {
             crate::control::files_write::answer_wire(
+                &crate::platform::fs::Face::issue(),
                 c,
                 a,
                 &super::registry::file_manager::SESSION_PORT,
             )
         }),
         (crate::control::files_commit::COMMIT_COMMANDS, |c, a| {
-            crate::control::files_commit::answer_wire(c, a)
+            crate::control::files_commit::answer_wire(&crate::platform::fs::Face::issue(), c, a)
         }),
     ];
     for (cap, answer) in tables

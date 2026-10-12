@@ -1,7 +1,7 @@
 //! 控制面：会改变世界，或产出「要怎么改变世界」的计划。
 //!
-//! - [`fork_write`]：写文件系统（`O_EXCL` 新建一个 `<new-sid>.jsonl`）。写盘白名单的唯一真相是 `readonly_guard::WRITE_WHITELIST_MODULES`。
-//! - [`files_write`]：文件管理的写面（`readonly_guard` 第三层：改，但每一处先过围栏、且只从文件管理面来）。
+//! - [`fork_write`]：写文件系统（`O_EXCL` 新建一个 `<new-sid>.jsonl`），经只会新建的 `NewFile`。
+//! - [`files_write`]：文件管理的写面（经 `Face`：只收过了路径解析的路径，只递给命令表文件管理那一族）。
 //! - [`exit_policy`]：写后端自己的那一份状态文件（`~/.cc-monitor/backend.json`）；不碰用户数据，`readonly_guard` 为它单开一层。
 //! - [`tmux_hook`]：改 tmux server 状态（`tmux set-hook -g`）+ 发信号（`SIGUSR1`）。
 //! - [`gate`]：Gate 2（identity）在本侧的承载，判定本身在 [`gate_rules`]。它只读 tmux，但归 control/：它是「能不能改这个会话」这个决策的一部分。
@@ -29,7 +29,7 @@ pub mod cli_control;
 pub mod deploy_plan;
 pub mod exit_policy;
 pub mod files_commit;
-// 解压（`files-extract`）＋ 第三层「建链接」那一个动词的住址（复制链接本身 · 解压包里的链接）。
+// 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;
 // 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。
 pub mod files_upload_chunks;
@@ -43,7 +43,7 @@ pub(crate) mod gate_rules;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
-// 起会话用哪个号：判定（`pick`）＋「这条会话上次用哪个号起的」（ccm 留便条、观测侧认便条记账；后端自有状态，第四层）。
+// 起会话用哪个号：判定（`pick`）＋「这条会话上次用哪个号起的」（ccm 留便条、观测侧认便条记账；后端自有状态，经 `Own`）。
 pub(crate) mod launch_account;
 // 起会话的计划与渲染：本机起会话 · `ccm …` 调用行 · 载荷 ＋ 外层 tmux 三格。
 pub mod launch_render;
@@ -61,5 +61,5 @@ pub(crate) mod terminals;
 // 终端实时预览（L2）：订阅一个终端的画面，有变化就推一整屏（tmux 控制模式报变化 · 一帧在途等回执）。
 pub(crate) mod terminal_follow;
 pub mod tmux_hook;
-// 传输台住本机常驻后端（第三层成员：本机下载落点的写 · 票表 · 进度帧）。
+// 传输台住本机常驻后端（文件管理写面的成员：本机下载落点的写 · 票表 · 进度帧）。
 pub mod transfer;

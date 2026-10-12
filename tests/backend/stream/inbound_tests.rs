@@ -432,7 +432,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
-    let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     let d = |cmd: &str| {
         dispatch(
@@ -985,7 +985,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     let (tx, _rx) = mpsc::channel::<Frame>(4);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
-    let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     assert!(
         REGISTRY.len() >= 4,
@@ -1028,7 +1028,7 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
     let (tx, _rx) = mpsc::channel::<Frame>(64);
     let running: Running = Arc::new(Mutex::new(HashMap::new()));
     let links = crate::dial::link::Table::new(tx.clone());
-    let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     let blocking: Vec<String> = REGISTRY
         .iter()
@@ -1090,7 +1090,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
 
     // 对它发 cancel。
     let links = crate::dial::link::Table::new(tx.clone());
-    let xfers = crate::control::transfer::Desk::new(tx.clone());
+    let xfers = crate::control::transfer::Desk::new(tx.clone(), crate::platform::fs::Face::issue());
     let follows = crate::control::terminal_follow::Desk::new(tx.clone());
     handle_line(
         br#"{"id":"c1","cmd":"cancel","args":{"target":"blk"}}"#,

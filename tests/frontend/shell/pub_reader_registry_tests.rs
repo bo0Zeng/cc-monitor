@@ -32,17 +32,17 @@ const EXEMPT: &[(&str, &str, &str)] = &[
     (
         "src/backend/control/files_commit.rs",
         "COMMIT_COMMANDS",
-        "第三层写模块的命令声明表：读者是 `readonly_guard`「门里够得到的命令」与 inbound 结构判据的对拍（另一侧是命令表的源码文本，两侧异源）",
+        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
     ),
     (
         "src/backend/control/files_extract.rs",
         "EXTRACT_COMMANDS",
-        "第三层写模块的命令声明表：读者是 `readonly_guard`「门里够得到的命令」与 inbound 结构判据的对拍（另一侧是命令表的源码文本，两侧异源）",
+        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
     ),
     (
         "src/backend/control/files_write.rs",
         "MANAGE_COMMANDS",
-        "第三层写模块的命令声明表：读者是 `readonly_guard`「门里够得到的命令」与 inbound 结构判据的对拍（另一侧是命令表的源码文本，两侧异源）",
+        "文件管理写面的命令声明表：读者是 `readonly_guard`「拿得到 `Face` 的命令」与 inbound 结构判据的对拍（另一侧是命令表里的档位，两侧异源）",
     ),
     (
         "src/backend/agents/claudecode/paths.rs",
