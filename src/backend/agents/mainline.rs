@@ -58,9 +58,8 @@ pub(crate) struct Chain {
     off: Vec<String>,
     /// 记进来了、还没重算（[`Chain::load`] 攒着，[`Chain::settle`] 一次算掉）。
     dirty: bool,
-    /// 判据的量具：整条走过几格（每次整份重算记一遍节点数）—— 判「一趟读多少行都只走一遍」计格数，不按墙钟。
-    #[cfg(test)]
-    pub(crate) walked: u64,
+    /// 到此刻整条走过几格（每次整份重算记一遍节点数）：冷接那一趟的日志带它；判据判「一趟读多少行都只走一遍」也数它，不按墙钟。
+    walked: u64,
 }
 
 impl Chain {
@@ -68,19 +67,12 @@ impl Chain {
         Self::default()
     }
 
-    /// 喂一条事实、当场算好；回：主线外清单变没变。
-    ///
-    /// 大多数新节点接在主线末梢上（上一条在主线上、属于胜出的根、此前没有孩子）⇒ 主线照旧延长一格，不重算。
-    /// 其余（新根 · 分叉 · 接在主线外或豁免叶上 · 补上了先前缺的上一条 · 主线外有东西时排队集合变了）整份重算 ——
-    /// 结果与对全部事实重算一次逐条相同。一次重算是整份的量 ⇒ 一趟要喂很多条时用 [`Chain::load`] ＋ [`Chain::settle`]，
-    /// 不逐条 `push`（12 万行、上万处分叉 / 排队的记录逐条重算就是平方，hot1）。
-    pub(crate) fn push(&mut self, fact: ChainFact) -> bool {
-        let changed = self.settle();
-        self.load(fact);
-        self.settle() || changed
-    }
-
     /// 记一条事实、不重算（要不要重算记下来，[`Chain::settle`] 一次算掉）。
+    ///
+    /// 大多数新节点接在主线末梢上（上一条在主线上、属于胜出的根、此前没有孩子）⇒ 主线照旧延长一格，不用重算。
+    /// 其余（新根 · 分叉 · 接在主线外或豁免叶上 · 补上了先前缺的上一条 · 主线外有东西时排队集合变了）要整份重算 ——
+    /// 结果与对全部事实重算一次逐条相同。一次重算是整份的量 ⇒ 一趟读进多少条都是全记完再 `settle` 一次，
+    /// 不逐条算（12 万行、上万处分叉 / 排队的记录逐条重算就是平方，hot1）。
     pub(crate) fn load(&mut self, fact: ChainFact) {
         if self.stage(fact) {
             self.dirty = true;
@@ -147,11 +139,13 @@ impl Chain {
         &self.off
     }
 
+    /// 到此刻整份重算一共走过几格（见 `walked` 字段）。
+    pub(crate) fn walked(&self) -> u64 {
+        self.walked
+    }
+
     fn recompute(&mut self) -> bool {
-        #[cfg(test)]
-        {
-            self.walked += self.nodes.len() as u64;
-        }
+        self.walked += self.nodes.len() as u64;
         let m = main_branch(&self.nodes);
         let exempt = exempt_queued(&self.nodes, &m.on, &self.queued);
         let off: Vec<String> = self
@@ -174,7 +168,7 @@ impl Chain {
     }
 }
 
-/// 一批事实 ⇒ 主线外清单（冷读那一路；与 [`Chain`] 逐条喂的结果相同）。
+/// 一批事实 ⇒ 主线外清单（冷读那一路；与 [`Chain`] 逐条记、逐条算的结果相同）。
 pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
     let mut c = Chain::new();
     for f in facts {

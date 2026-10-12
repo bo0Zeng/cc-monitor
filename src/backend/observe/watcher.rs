@@ -3305,8 +3305,9 @@ fn prime_file_cursor(
     state.tails.insert(key.clone(), tail);
     state.offsets.insert(key, cursor);
     tracing::debug!(
-        "primed {key_str}: cursor→{} (+{n_lines} lines suppressed, tail seq starts here)",
-        cursor.consumed
+        "primed {key_str}: cursor→{} (+{n_lines} lines suppressed, tail seq starts here; chain walked {})",
+        cursor.consumed,
+        state.branches.get(&path_key(path)).map_or(0, crate::agents::mainline::Chain::walked)
     );
     // Batch8 审计 D-I2：返回 prime 后的行号计数器现值（= 完整行总数 L），
     // session_added 帧带给 monitor 做快照完整性校验（拉到的行数 < L = 快照

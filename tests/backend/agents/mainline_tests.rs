@@ -44,6 +44,12 @@ fn off(facts: &[ChainFact]) -> Vec<String> {
     v
 }
 
+/// 实时那一路一条一条来：记一条、算一次；回：清单变没变。
+fn feed(c: &mut Chain, f: ChainFact) -> bool {
+    c.load(f);
+    c.settle()
+}
+
 fn s(v: &[&str]) -> Vec<String> {
     let mut v: Vec<String> = v.iter().map(|x| x.to_string()).collect();
     v.sort();
@@ -243,7 +249,7 @@ fn feeding_one_by_one_reports_changes_and_agrees_with_the_batch() {
         node("D2", Some("C2"), "t06", K::Reply),
     ];
     let mut c = Chain::new();
-    let changed: Vec<bool> = r.iter().cloned().map(|f| c.push(f)).collect();
+    let changed: Vec<bool> = r.iter().cloned().map(|f| feed(&mut c, f)).collect();
     assert_eq!(changed, [false, false, false, false, true, false]);
     assert_eq!(c.off(), ["C1", "D1"]);
 }
@@ -271,14 +277,14 @@ fn incremental_and_batch_agree_on_every_prefix_of_mixed_shapes() {
     ];
     let mut c = Chain::new();
     for k in 0..r.len() {
-        c.push(r[k].clone());
+        feed(&mut c, r[k].clone());
         let mut inc = c.off().to_vec();
         inc.sort();
         assert_eq!(inc, off(&r[..=k]), "prefix {k}");
     }
 }
 
-/// 攒着记（`load`）、隔几条算一次（`settle`）与逐条 `push` 在每个算过的点上清单相同；`settle` 回的「变没变」是相对上一次算的。
+/// 攒着记（`load`）、隔几条算一次（`settle`）与记一条算一次在每个算过的点上清单相同；`settle` 回的「变没变」是相对上一次算的。
 #[test]
 fn loading_in_batches_and_settling_agrees_with_pushing_one_by_one() {
     let r = [
@@ -302,7 +308,7 @@ fn loading_in_batches_and_settling_agrees_with_pushing_one_by_one() {
         let mut many = Chain::new();
         let mut before = Vec::<String>::new();
         for (k, f) in r.iter().enumerate() {
-            one.push(f.clone());
+            feed(&mut one, f.clone());
             many.load(f.clone());
             if (k + 1) % every == 0 || k + 1 == r.len() {
                 let changed = many.settle();

@@ -4294,7 +4294,10 @@ fn chain_walked(state: &ReaderState, dir: &Path, sid: &str) -> u64 {
         .join("projects")
         .join("proj-h")
         .join(format!("{sid}.jsonl"));
-    state.branches.get(&path_key(&path)).map_or(0, |c| c.walked)
+    state
+        .branches
+        .get(&path_key(&path))
+        .map_or(0, |c| c.walked())
 }
 
 fn branch_lists(frames: &[Frame]) -> Vec<Vec<String>> {
