@@ -958,7 +958,15 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p10f-wall-ceiling-ro-menus：线上帧与子命令集不变。后端读盘一律经 platform::fs::Ro（只读命名空间，碰盘只这一处点名文件系统）。
 /// 判据按墙钟判的上限只剩一个兜底数（guard_core::wall::CEILING 300 秒）；门禁加 android-device 一格。文件窗口菜单统一一种写法（select.rs 的 MENU_TABLE），空白处可右键。
-pub const BUILD_ID: &str = "p10f-wall-ceiling-ro-menus";
+///
+/// p10g-rotation-v3-answer-hook：子命令指纹变了。轮换第三版：rotation.json v2（配置 · 策略 · 会话的副本），rotation-rules / rule 一族换成
+/// rotation-configs-read · rotation-config-save / rename / delete · rotation-strategies-read · rotation-strategy-add / delete / try · rotation-session-open / edit / save / revert；
+/// 策略是 Rhai 沙箱脚本（三条内置）；第一版的文件只在接上中转的那个进程起来时换形写回；读不懂 ⇒ 界面照说、照用上一份好的；changed 的 rotation_rules 改名 rotation_configs。
+/// 答题口：ccm 起的会话垫会话级 PermissionRequest hook（--answer-hook 客户端），帧命令 needs-ask · needs-answer，changed 多 needs，会话事实 needs 多 ask · manualText、多 answerOff；
+/// 计划卡三态标题由核心写。删掉没人调的一次性子命令 13 条（--read-session 三条 · --search · --list-* · --find-in-session · --account-trust 两条 · --fork-session · --session-accounts），
+/// --resolve 改走派生臂（入参 ResumeSpec 删 claudeDir · fallbackCwd · alreadyInTmux），不认的子命令一律 unknown_command。只读守卫第二刀：写自家状态经 Own。
+/// PlanSlice 多 path（planned-build 的仓位置照 pb 给的）。
+pub const BUILD_ID: &str = "p10g-rotation-v3-answer-hook";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
