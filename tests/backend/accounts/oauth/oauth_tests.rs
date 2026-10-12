@@ -229,11 +229,11 @@ fn disk_has(acct: &Path, access: &str, refresh: &str) -> bool {
 }
 
 fn wait_until(mut ok: impl FnMut() -> bool) -> bool {
-    for _ in 0..100 {
+    for _ in guard_core::wall::rounds() {
         if ok() {
             return true;
         }
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        std::thread::sleep(std::time::Duration::from_millis(20));
     }
     ok()
 }

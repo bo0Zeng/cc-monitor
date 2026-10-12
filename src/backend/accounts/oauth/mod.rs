@@ -261,11 +261,11 @@ fn error_code(body: &[u8]) -> Option<String> {
 fn renew_line(account: &str, t: &Trail, r: &Result<SecretKey, Unusable>) -> String {
     let outcome = match r {
         Ok(_) if t.yielded => "让位",
-        Ok(_) if t.deferred => "成·写回等锁",
         Ok(_) => "成",
         Err(_) => "败",
     };
     let why = match r {
+        Ok(_) if t.deferred => Some("write-deferred".to_string()),
         Ok(_) => None,
         Err(Unusable::Refused(_)) => Some("refused".to_string()),
         Err(Unusable::WriteFailed(_)) => Some("write-failed".to_string()),

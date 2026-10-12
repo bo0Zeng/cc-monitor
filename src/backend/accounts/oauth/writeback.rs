@@ -64,18 +64,23 @@ fn attempt(own: &crate::platform::fs::Own, dir: &Path, face: &LoginFace, account
         let held = creds.lock()?;
         super::write_back(&creds, face, &held, &r)
     });
-    let line = match &done {
+    match &done {
         Ok(super::store::Locked::Busy) => return false,
-        Ok(super::store::Locked::Held(Ok(WriteBack::Written))) => "写回成",
-        Ok(super::store::Locked::Held(Ok(WriteBack::Yielded(_)))) => "让位（盘上已是更新的）",
-        Ok(super::store::Locked::Held(Err(_))) | Err(_) => "写回失败",
-    };
+        Ok(super::store::Locked::Held(Ok(WriteBack::Written))) => {
+            tracing::info!("[auth] 续期：号 {account} · 等写锁放开之后写回了")
+        }
+        Ok(super::store::Locked::Held(Ok(WriteBack::Yielded(_)))) => {
+            tracing::info!("[auth] 续期：号 {account} · 等写锁放开之后让位（盘上已是更新的）")
+        }
+        Ok(super::store::Locked::Held(Err(_))) | Err(_) => {
+            tracing::warn!("[auth] 续期：号 {account} · 等写锁放开之后写回失败")
+        }
+    }
     let mut g = pending();
     if matches!(g.get(dir), Some(State::Waiting(_))) {
         g.remove(dir);
     }
     drop(g);
-    tracing::info!("[auth] 续期：号 {account} · 等写锁之后{line}");
     true
 }
 
