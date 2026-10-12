@@ -1149,7 +1149,7 @@ gate_lane 覆盖率 after cargo backend
 run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母' \
          gate_vitest_share gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 
-# 19 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
+# 20 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
 # `local-backend` 在壳里跑 `cargo test --lib`，等 `cargo` 那格编完再起，免得两条道抢壳的 target 锁。
 gate_lane e2e-1 after e2e-prep
 run_e2e cc-spawn-uplift
@@ -1176,6 +1176,8 @@ run_e2e ccm-contract-parity
 run_e2e p3t-local-tmux
 run_e2e ccm-print-parity
 run_e2e backend-fork
+# 文件管理面：经帧路径把文件管理那几条写命令各走一遍 ＋ 两个沙箱后端之间一趟传输（本机回环上一台私有 sshd 当远端）。
+run_e2e files-manager
 gate_lane e2e-4 after e2e-prep cargo
 run_e2e local-backend
 

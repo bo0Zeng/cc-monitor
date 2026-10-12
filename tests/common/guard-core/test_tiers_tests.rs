@@ -126,6 +126,7 @@ const E2E: &[&str] = &[
     "tests/e2e/ccm-print-parity.sh",
     "tests/e2e/exec-bit-guard.sh",
     "tests/e2e/f40-suite.sh",
+    "tests/e2e/files-manager.sh",
     "tests/e2e/graylight-backend-frames.sh",
     "tests/e2e/graylight-suite.sh",
     "tests/e2e/inbound-backend-frames.sh",

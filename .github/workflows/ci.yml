@@ -410,6 +410,7 @@ jobs:
       APT_PKGS: >-
         tmux jq libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential
         curl wget file libxdo-dev libssl-dev librsvg2-dev libayatana-appindicator3-dev
+        openssh-server
     steps:
       - uses: actions/checkout@v4
 
