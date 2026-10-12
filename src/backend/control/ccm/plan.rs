@@ -564,9 +564,9 @@ pub(crate) struct Direct {
     pub(crate) clears_inherited_relay: bool,
     /// 地址拼进参数的那一家：非得经 shell 那一趟照字面插进那个词的只许直通那一把（[`Env::relay_pass_key`]；别的形 ⇒ `None`）。
     pub(crate) relay_pass_key: Option<String>,
-    /// 用户自己给的会话级设置读不出 / 形状不认 ⇒ 答题 hook 挂不上：起的进程环境里带 [`crate::agents::asks::ANSWER_HOOK_OFF_ENV`]，
-    /// 会话事实据此写明「这条会话只能在终端里答批准」。
-    pub(crate) answer_hook_off: bool,
+    /// 答题 hook 挂不上（用户自己给的会话级设置并不进去 · 自定义启动器起的）⇒ 起的进程环境里带 [`crate::agents::asks::ANSWER_HOOK_OFF_ENV`]
+    /// （值是原因的短码），会话事实据此写明为什么在这里答不了。
+    pub(crate) answer_hook_off: Option<crate::agents::asks::HookOff>,
 }
 
 /// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
@@ -1290,31 +1290,39 @@ pub(crate) fn build_among(
     //   换了启动器（不是这一家默认的那一个）⇒ 不垫：它后面的词由那个启动器自己原样转交（`env VAR=x <agent>` 那一形头几个词是 env 的），
     //   ccm 不知道它认不认这一家的旗标；没挂上的会话照「只能在终端里答」那一态画。
     let mut passthru = o.passthru.clone();
-    let mut answer_hook_off = false;
+    let mut answer_hook_off = None;
     let own_launcher = face.is_some_and(|f| launcher == f.default_launcher);
-    if let (Some(entry), Some(f), true) = (
+    if let (Some(entry), Some(f)) = (
         env.answer_hook_entry.as_deref(),
         crate::agents::ask_face_among(registry, &o.agent),
-        own_launcher,
     ) {
-        match settings_value_at(&passthru, f.launch_flag) {
-            None => argv.extend((f.launch_args)(entry)),
-            Some(at) => {
-                if let Some(read) = env.read_text {
-                    let merged = at
-                        .value(&passthru)
-                        .and_then(|raw| {
-                            if raw.trim_start().starts_with('{') {
-                                Some(raw.to_string())
-                            } else {
-                                read(std::path::Path::new(&absolute_from(raw, &cwd)))
-                            }
-                        })
-                        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
-                        .and_then(|v| (f.merge)(&v, entry));
-                    match merged {
-                        Some(m) => at.put(&mut passthru, f.launch_flag, m.to_string()),
-                        None => answer_hook_off = true,
+        use crate::agents::asks::{HookOff, SettingsWhy};
+        if !own_launcher {
+            answer_hook_off = Some(HookOff::Launcher);
+        } else {
+            match settings_value_at(&passthru, f.launch_flag) {
+                None => argv.extend((f.launch_args)(entry)),
+                Some(at) => {
+                    if let Some(read) = env.read_text {
+                        let merged = at
+                            .value(&passthru)
+                            .and_then(|raw| {
+                                if raw.trim_start().starts_with('{') {
+                                    Some(raw.to_string())
+                                } else {
+                                    read(std::path::Path::new(&absolute_from(raw, &cwd)))
+                                }
+                            })
+                            .ok_or(SettingsWhy::Unread)
+                            .and_then(|t| {
+                                serde_json::from_str::<serde_json::Value>(&t)
+                                    .map_err(|_| SettingsWhy::NotJson)
+                            })
+                            .and_then(|v| (f.merge)(&v, entry).ok_or(SettingsWhy::Shape));
+                        match merged {
+                            Ok(m) => at.put(&mut passthru, f.launch_flag, m.to_string()),
+                            Err(why) => answer_hook_off = Some(HookOff::Settings(why)),
+                        }
                     }
                 }
             }
@@ -1609,10 +1617,10 @@ fn render_direct(d: &Direct) -> String {
         }
         _ => {}
     }
-    if d.answer_hook_off {
+    if let Some(off) = d.answer_hook_off {
         line.push_str(&posix::export(
             crate::agents::asks::ANSWER_HOOK_OFF_ENV,
-            "1",
+            off.env_value(),
         ));
     }
     if !d.cwd.is_empty() {
@@ -1673,10 +1681,10 @@ fn render_direct_ps(d: &Direct) -> String {
         }
         _ => {}
     }
-    if d.answer_hook_off {
+    if let Some(off) = d.answer_hook_off {
         line.push_str(&ps::set_env(
             crate::agents::asks::ANSWER_HOOK_OFF_ENV,
-            &pq("1"),
+            &pq(off.env_value()),
         ));
     }
     if !d.cwd.is_empty() {

@@ -76,6 +76,7 @@ fn fill_into(
         acct_init,
         parked: body.parked.clone(),
         tz: body.tz.clone(),
+        tz_unknown: body.tz_unknown,
     }
 }
 
@@ -446,6 +447,7 @@ pub(crate) fn write_config(
 ) -> u64 {
     if tz.is_some() {
         body.tz = tz;
+        body.tz_unknown = false;
     }
     let rev = book.configs.get(id).map_or(1, |c| c.rev + 1);
     book.configs.insert(

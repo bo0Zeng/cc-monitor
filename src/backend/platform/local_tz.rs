@@ -16,3 +16,33 @@ pub(crate) fn offset_secs(t: u64) -> Option<i64> {
 /// Windows 那一臂住 [`super::win_tz`]（整份文件按平台选进来）。
 #[cfg(windows)]
 pub(crate) use super::win_tz::offset_secs;
+
+/// 这台机器的时区叫什么（IANA 名，例：`America/Los_Angeles`）：`TZ` 是 IANA 名 ⇒ 它；不然看 `/etc/localtime` 指向 zoneinfo 里的哪一份。
+/// 说不出（`TZ` 是 POSIX 串 · 没有那条链 · Windows）⇒ `None`：调用方说「时区不明」，不猜成 UTC。全后端只这一处取。
+pub(crate) fn iana_name() -> Option<String> {
+    let tz = std::env::var("TZ").ok();
+    #[cfg(unix)]
+    let link = crate::platform::fs::Ro::read_link("/etc/localtime").ok();
+    #[cfg(not(unix))]
+    let link: Option<std::path::PathBuf> = None;
+    iana_of(tz.as_deref(), link.as_deref())
+}
+
+/// [`iana_name`] 的判法（量具直接喂）：名字都过一遍时区库，库里没有的不算。
+pub(crate) fn iana_of(
+    tz: Option<&str>,
+    localtime_link: Option<&std::path::Path>,
+) -> Option<String> {
+    let known =
+        |n: &str| (!n.is_empty() && jiff::tz::TimeZone::get(n).is_ok()).then(|| n.to_string());
+    if let Some(n) = tz.map(|t| t.strip_prefix(':').unwrap_or(t)).and_then(known) {
+        return Some(n);
+    }
+    let link = localtime_link?.to_str()?;
+    let at = link.rfind("zoneinfo/")? + "zoneinfo/".len();
+    known(&link[at..])
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/local_tz_tests.rs"]
+mod tests;

@@ -4,7 +4,11 @@ import type { AcctRow } from "./AcctRow";
 /**
  * 配置列表里的一项：存下的那一份 ＋ 后端写好的描述 · 策略名 · 开着它的会话 · 是不是本机默认。
  */
-export type ConfigItem = { id: string, text: string, strategyName: string, inUse: Array<string>, isDefault: boolean, rev: number, updatedAt: number, savedBy: string, name: string, strategy: string, accounts: Array<AcctRow>, params: Record<string, unknown>, acctInit: Record<string, unknown>, 
+export type ConfigItem = { id: string, text: string, strategyName: string, inUse: Array<string>, isDefault: boolean, 
+/**
+ * 「账号库里其余的订阅号」那一行此刻是哪几个号（库里没点名的订阅号，按名字排；编辑器那一行照抄）。
+ */
+rest: Array<string>, rev: number, updatedAt: number, savedBy: string, name: string, strategy: string, accounts: Array<AcctRow>, params: Record<string, unknown>, acctInit: Record<string, unknown>, 
 /**
  * 换策略时收起的旧参数：策略 id → `{params, acctInit, accounts}`。
  */
@@ -12,4 +16,9 @@ parked: Record<string, unknown>,
 /**
  * 时段那几个钟点按哪个时区（IANA 名）：写的那一下由请求信封的 `tz` 盖进来；缺 ⇒ UTC。
  */
-tz?: string, };
+tz?: string, 
+/**
+ * 时区不明：第一版缺 `tz`、换形那台又说不出自己的时区（[`crate::platform::local_tz::iana_name`]）⇒ 不猜，标这一格，
+ * 上屏需手动（在设置里确认时区）；在设置里存一次（信封带 `tz`）就清掉。
+ */
+tzUnknown?: boolean, };

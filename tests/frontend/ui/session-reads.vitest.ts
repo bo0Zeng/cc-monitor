@@ -277,7 +277,7 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(() => decodeFacts({ ...good, needs: { kind: "approve", tool: null, call: null, what: null, sinceMs: null, text: "t", tone: "need" } }), "缺先答哪个的序").toThrow(ReplyUnreadable);
     expect(() => decodeFacts({ ...good, projectDir: 1 })).toThrow(ReplyUnreadable);
     expect(() => decodeFacts(without("answerOff")), "缺答题口那一格").toThrow(ReplyUnreadable);
-    expect(decodeFacts({ ...good, answerOff: copyText("beAsk.manual.noHook") }).answerOff).toBe(copyText("beAsk.manual.noHook"));
+    expect(decodeFacts({ ...good, answerOff: copyText("beAsk.manual.offLauncher") }).answerOff).toBe(copyText("beAsk.manual.offLauncher"));
     expect(() => decodeFacts({ ...good, writers: ["4711"] }), "pid 只收数").toThrow(ReplyUnreadable);
     expect(decodeFacts({ ...good, writers: [11, 12] }).writers).toEqual([11, 12]);
     expect(decodeFacts({ ...good, usage: null, forkedFrom: null, projectDir: null }).usage).toBeNull(); // null 是合法的「没有」

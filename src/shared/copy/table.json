@@ -17758,16 +17758,46 @@
       "zh": "继续规划，先不要动手",
       "args": []
     },
-    "beAsk.manual.noHook": {
+    "beAsk.manual.offLauncher": {
       "kind": "body",
       "role": "说明",
-      "zh": "只能在终端里答批准 · 会话级设置无法读取",
+      "zh": "由自定义启动器起，答题口未接上 · 只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.offSettings": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "自带的会话级设置{why}，答题口未接上 · 只能在终端里答",
+      "args": ["why"]
+    },
+    "beAsk.manual.offUnknown": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "答题口未接上 · 只能在终端里答",
       "args": []
     },
     "beAsk.manual.terminal": {
       "kind": "body",
       "role": "说明",
       "zh": "只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.whyJson": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "内容不是 JSON",
+      "args": []
+    },
+    "beAsk.manual.whyShape": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "格式无法识别",
+      "args": []
+    },
+    "beAsk.manual.whyUnread": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "文件无法读取",
       "args": []
     },
     "beAsk.answer.already": {
@@ -17882,12 +17912,6 @@
       "kind": "control",
       "role": "占位",
       "zh": "其他…",
-      "args": []
-    },
-    "askBlock.manual.terminal": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "看终端",
       "args": []
     },
     "beSession.needs.approve": {
@@ -23290,18 +23314,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "在终端里答",
-      "args": []
-    },
-    "needs.bar.front": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "切到终端",
-      "args": []
-    },
-    "needs.bar.openTerm": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "在终端里打开",
       "args": []
     },
     "needs.windowTitle.base": {
@@ -31349,6 +31361,18 @@
       "zh": "与内置策略 {id} 同名 · 没加载",
       "args": ["id"]
     },
+    "beRotation.tz.unknown": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "时段按哪个时区不明 · 在设置里确认时区",
+      "args": []
+    },
+    "beRotation.tz.unknownDetail": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "第一版轮换文件没写时区，换形时本机也无法获取时区；时段暂按 UTC 判",
+      "args": []
+    },
     "beRotation.strategy.builtinFixed": {
       "kind": "error",
       "role": "原因格",
@@ -31665,6 +31689,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "时段不用",
+      "args": []
+    },
+    "rot.chart.lgSlot": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "时段另设线",
       "args": []
     },
     "rot.chart.lgSkip": {
