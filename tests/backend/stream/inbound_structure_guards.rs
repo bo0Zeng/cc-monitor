@@ -1283,16 +1283,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         ("history-facts", SESSION_READS, "/history-facts", &[], &[]),
-        ("history-find", SESSION_READS, "/history-find", &[], &[]),
-        ("history-index", SESSION_READS, "/history-index", &[], &[]),
-        ("history-turns", SESSION_READS, "/history-turns", &[], &[]),
-        (
-            "history-user-inputs",
-            SESSION_READS,
-            "/history-user-inputs",
-            &[],
-            &[],
-        ),
         (
             "ssh-config-aliases",
             SSH_CONFIG,

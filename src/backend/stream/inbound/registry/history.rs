@@ -101,18 +101,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 会话事实（`read_face.rs` 那一臂 ＋ `observe/facts_query.rs`）。同族同档、同一个只读宿主。
     //   `prior` 是调用方上一次拿到的应答原样（续传令牌）；应答四格即成品。
     // 一轮的摘要（`read_face.rs` 那一臂 ＋ `observe/turns.rs`）。同族同档、同一个只读宿主；`from` 是某一轮的 `at`。
-    CommandSpec {
-        name: "history-turns",
-        summary: "一轮的摘要",
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节（残尾不计）"), both("from", "可选，缺 ⇒ 0：从这个字节起扫"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("turns", "这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：看的那一台钟上的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryTurnsCmd>("一轮的摘要"),
     crate::stream::inbound::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>("这台上需手动的会话清单"),
     // 答批准 / 提问 / 批计划（`control/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
     //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `cli_control::STREAM_ONLY`）。
@@ -153,42 +142,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryBranchCmd>("主线外清单"),
-    CommandSpec {
-        name: "history-find",
-        summary: "会话内查找",
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), arg("scope", "可选，`user`（人说的：流里画成用户气泡 · 斜杠命令 · `!` 命令的那几条；工具内容不搜）/ `assistant`（那一家说的）/ `report`（agent 回报），同 `history-search` 同名同义；别的值 ⇒ `bad_args`"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "history-index",
-        summary: "会话骨架索引",
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("body", "稀疏表：正文那五个数（`at` 行号差 · `ch` `cj` `pl` `cb` `cl`；五个全 0 的行不进表）"), out("classes", "本份里出现过的记录类（`t` 列的号从 1 起指它）"), out("count", "行数（每一列都这么长）"), out("end", "最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`"), out("fd", "列：折叠单元数（0 ＝ 没有）"), out("from", "起点字节"), out("inputs", "稀疏表：用户输入的摘要 `x` 与时刻 `ts`（`at` 行号差；没有时刻 ⇒ 空串）"), out("n", "列：行字节长（含换行）"), out("o", "列：行起点与上一行末尾的字节差（第一行与 `from` 比；连着 ＝ 0）"), arg("offset", "从哪个字节起（缺省 0；续传带上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）"), out("sp", "稀疏表：来源（`at` 行号差 · `v`）"), out("t", "列：记录类的号（0 ＝ 不进界面）"), out("u", "列：记录 id（没有 ⇒ null）"), arg("until", "可选：只收起点 `< until` 的行")], // 应答出成品：`lines` ⇒ `from` / `end` / `rows`
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "history-user-inputs",
-        summary: "「你说过的话」清单",
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节 ＝ 下一次增量该带的 `from`"), out("entries", "每条用户输入 `{uuid, timestamp, excerpt}`（对话序）"), both("from", "增量起点（缺省 0；传上次尾行的 `end`）"), arg("path", "jsonl 路径（围栏同 `history-read`）")], // 应答出成品：`lines` ⇒ `from` / `end` / `entries`
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryFindCmd>("会话内查找"),
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryIndexCmd>("会话骨架索引"),
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::UserInputsCmd>("「人说过的话」清单"),
     crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryTailCmd>("一份会话的尾段从哪个字节起"),
     // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。

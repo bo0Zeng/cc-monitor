@@ -37,6 +37,10 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r)),
         "history-record" => via::<h::HistoryRecordCmd>(args, |r| h::record_at(home, r)),
         "sessions-needs" => via::<h::SessionsNeedsCmd>(args, |_| Ok(h::needs_at(home))),
+        "history-index" => via::<h::HistoryIndexCmd>(args, |r| h::index_at(home, r)),
+        "history-user-inputs" => via::<h::UserInputsCmd>(args, |r| h::user_inputs_at(home, r)),
+        "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
+        "history-find" => via::<h::HistoryFindCmd>(args, |r| h::find_at(home, r, tz)),
         _ => super::answer_at(home, cmd, args, tz),
     }
 }
@@ -326,7 +330,10 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     .unwrap();
     assert_eq!(
         keys(&v),
-        ["body", "classes", "count", "end", "fd", "from", "inputs", "n", "o", "sp", "t", "u"],
+        [
+            "body", "classes", "count", "end", "fd", "from", "inputs", "n", "next", "o", "sp", "t",
+            "u"
+        ],
         "骨架索引的成品形状变了"
     );
     let mut o = 0u64;
@@ -1646,17 +1653,48 @@ fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
 /// 稀疏的几格（正文那五个数 · 来源 · 用户输入的摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。`sc` 不上帧面。
 #[test]
 fn the_index_is_packed_by_column_with_offsets_as_differences() {
+    use crate::agents::record::RecordClass;
+    use crate::observe::history_query::IndexRow;
     let rows = vec![
-        serde_json::json!({"o": 0, "n": 100, "t": "said", "u": "in-1", "ch": 14, "pl": 1, "x": "alpha", "ts": "t1"}),
-        serde_json::json!({"o": 100, "n": 194, "t": "reply", "u": "out-1", "fd": 2}),
-        serde_json::json!({"o": 300, "n": 10, "u": "m"}),
-        serde_json::json!({"o": 310, "n": 5, "t": "said", "sp": "system", "sc": true}),
+        IndexRow {
+            o: 0,
+            n: 100,
+            t: Some(RecordClass::Said),
+            u: Some("in-1".into()),
+            ch: 14,
+            pl: 1,
+            x: Some("alpha".into()),
+            ts: Some("t1".into()),
+            ..Default::default()
+        },
+        IndexRow {
+            o: 100,
+            n: 194,
+            t: Some(RecordClass::Reply),
+            u: Some("out-1".into()),
+            fd: 2,
+            ..Default::default()
+        },
+        IndexRow {
+            o: 300,
+            n: 10,
+            u: Some("m".into()),
+            ..Default::default()
+        },
+        IndexRow {
+            o: 310,
+            n: 5,
+            t: Some(RecordClass::Said),
+            sp: Some("system"),
+            sc: true,
+            ..Default::default()
+        },
     ];
-    let v = pack_index(0, 315, &rows);
+    let v = serde_json::to_value(crate::faces::history_face::pack_index(0, 315, &rows)).unwrap();
     assert_eq!(
         v,
         serde_json::json!({
-            "from": 0, "end": 315, "count": 4,
+            "from": 0, "end": 315, "next": null, "count": 4,
             "classes": ["said", "reply"],
             "o": [0, 0, 6, 0], "n": [100, 194, 10, 5], "t": [1, 2, 0, 1], "fd": [0, 2, 0, 0],
             "u": ["in-1", "out-1", "m", null],
@@ -1665,7 +1703,10 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             "inputs": {"at": [0], "x": ["alpha"], "ts": ["t1"]},
         })
     );
-    let mut back = rows.clone();
+    let mut back: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect();
     back[3].as_object_mut().unwrap().remove("sc");
     assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }

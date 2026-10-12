@@ -3440,12 +3440,122 @@ pasted?: Array<Pasted>, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-turns`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `end` | ← | 最后一个完整行的末字节（残尾不计） |
-| `from` | → ← | 可选，缺 ⇒ 0：从这个字节起扫 |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：看的那一台钟上的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
+入参 `HistoryTurnsReq` · 回包 `HistoryTurns`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FoldSegment = { 
+/**
+ * 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
+ */
+after: string, 
+/**
+ * 那一行的字（后端写好，界面按语气排版、段间加分隔）。
+ */
+parts: Array<TurnPart>, 
+/**
+ * 那一行右端那一截。
+ */
+span: TurnSpan, 
+/**
+ * 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 这一轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
+ * 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
+ * 界面按 `after` 与它在账本里取这一段的那几行，不自己找下一个边界。
+ */
+until: string | null, 
+/**
+ * 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
+ */
+phase: TurnPhase, };
+type HistoryTurns = { 
+/**
+ * 起点字节（＝ 请求的 `from`）。
+ */
+from: number, 
+/**
+ * 最后一个完整行的末字节（残尾不计）。
+ */
+end: number, 
+/**
+ * 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+ */
+next: number | null, 
+/**
+ * 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
+ */
+turns: Array<TurnRow>, };
+type HistoryTurnsReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 从这个字节起扫（缺 ⇒ 0；续取传还在跑的那一轮的 `at`）。
+ */
+from?: number | null, 
+/**
+ * 可选：一页最多几轮。这一版还不分段：给了也整份出，`next` 恒 `null`。
+ */
+limit?: number | null, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type TurnPart = { text: string, tone: Tone, };
+type TurnPhase = "idle" | "running" | "awaiting";
+type TurnRow = { 
+/**
+ * 这一轮开头那一行（你说的那句）的字节位置 ⇒ 下次从这里接着取；这一轮的范围到下一轮的 `at`（最后一轮到文件尾）。
+ */
+at: number, 
+/**
+ * 你那句的 uuid（跳过去用）。
+ */
+uuid: string, 
+/**
+ * 起：你那句的时刻；止：这一轮最后一条主线记录的时刻（还没有回应 ⇒ 同起）。
+ */
+start: string, end: string, 
+/**
+ * 起止各自在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
+ */
+startText: string, endText: string, 
+/**
+ * 你那句的第一行（≤ [`SAID_MAX`] 字）。
+ */
+said: string, 
+/**
+ * 整轮合计：工具调用几次（派 agent 不算）· 思考几段 · 派出几个 agent · 后台任务通知几条（交回过的子 agent 的收场通知不算）·
+ * API 重试几次 · 另一会话 / 子 agent 来话几段（交回不算）。
+ */
+tools: number, thinking: number, agents: number, background: number, retries: number, peers: number, 
+/**
+ * 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
+ */
+fails: number, 
+/**
+ * 露着的那几条（uuid，文件序）：带正文的 assistant 记录（中间说的话与结论）＋ 停下这一轮的那一条中断标记 / 报错卡。
+ */
+shown: Array<string>, 
+/**
+ * 回复头三行（≤ [`REPLY_MAX`] 字）：最后一次工具调用之后的结论正文的开头；没有结论 ⇒ 空串。
+ */
+reply: string, 
+/**
+ * 这一轮收尾了：后面又有你的一句，或 Claude 说完了（`end_turn`），或你中断了它。
+ */
+done: boolean, 
+/**
+ * 此刻：没在跑（收尾了 / 没有活进程）· 在跑 · 在等你（[`dress_live`] 按这台的会话事实现判）。
+ */
+phase: TurnPhase, 
+/**
+ * 过程段（文件序）：一段一行，界面把那一行插在 `after` 那张卡后面、把这一段的卡收进去。空 ⇒ 这一轮什么都不折。
+ */
+folds: Array<FoldSegment>, 
+/**
+ * 这一轮里落成了人话的排队插话（排队那一条的记录 id）：下一句你说的原文与它一字不差 ⇒ 那句话已经作为你的一句进了记录，
+ * 界面不再单独出排队那一条（同一句不上屏两次）；还在排队 / 下一句不是它 ⇒ 不在这里（照常露着）。
+ */
+landed: Array<string>, };
+type TurnSpan = { text: string, from: number | null, to: number | null, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -3690,15 +3800,74 @@ path: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-find`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
-| `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
-| `limit` | → | 可选，缺省 500、封顶 2000 |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `query` | → | 查询串（原样；以 `--` 起头也照样是查询，不是选项） |
-| `scope` | → | 可选，`user`（人说的：流里画成用户气泡 · 斜杠命令 · `!` 命令的那几条；工具内容不搜）/ `assistant`（那一家说的）/ `report`（agent 回报），同 `history-search` 同名同义；别的值 ⇒ `bad_args` |
-| `total` | ← | 全量命中数（≥ 条数；大于 ⇒ 被上限砍过） |
+入参 `HistoryFindReq` · 回包 `HistoryFind`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FindHit = { 
+/**
+ * 命中的那条记录的 uuid（界面按骨架索引 `uuid → seq` 跳过去）。
+ */
+uuid: string, 
+/**
+ * `user` · `assistant` · `report`（agent 回报）· `tool`。
+ */
+kind: string, 
+/**
+ * 片段三段（同全局搜索的 `Hit`）。
+ */
+before: string, matched: string, after: string, 
+/**
+ * 第几轮（这条之前含它人说过几句；第一句之前 ＝ 0）。
+ */
+turn: number, 
+/**
+ * 那条记录的时刻（毫秒；读不出 ＝ 0）。
+ */
+tsMs: number, 
+/**
+ * `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
+ */
+tsText: string, 
+/**
+ * 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡）；落在自己那张卡上 ⇒ 缺。
+ */
+tool?: string, };
+type HistoryFind = { 
+/**
+ * 全量命中数（≥ 条数；大于 ⇒ 被上限砍过）。
+ */
+total: number, 
+/**
+ * 这一页的命中，文件序；只搜流里画的那几张卡（自动写的应答不搜）。
+ */
+hits: Array<FindHit>, };
+type HistoryFindReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 查询串（原样；以 `--` 起头也照样是查询，不是选项）。
+ */
+query: string, 
+/**
+ * 工具结果也搜（缺 ⇒ 不搜）。
+ */
+include_tools?: boolean, 
+/**
+ * 只留谁说的，同 `history-search` 同名同义（`user` 时工具内容不搜）。
+ */
+scope?: SearchScope, 
+/**
+ * 最多列几条（缺 ⇒ 500，封顶 2000）。
+ */
+limit?: number | null, 
+/**
+ * 跳过前几条（续下一页；缺 ⇒ 0）。
+ */
+skip?: number | null, };
+type SearchScope = "user" | "assistant" | "report";
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -3708,38 +3877,108 @@ path: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-index`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `body` | ← | 稀疏表：正文那五个数（`at` 行号差 · `ch` `cj` `pl` `cb` `cl`；五个全 0 的行不进表） |
-| `classes` | ← | 本份里出现过的记录类（`t` 列的号从 1 起指它） |
-| `count` | ← | 行数（每一列都这么长） |
-| `end` | ← | 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset` |
-| `fd` | ← | 列：折叠单元数（0 ＝ 没有） |
-| `from` | ← | 起点字节 |
-| `inputs` | ← | 稀疏表：用户输入的摘要 `x` 与时刻 `ts`（`at` 行号差；没有时刻 ⇒ 空串） |
-| `n` | ← | 列：行字节长（含换行） |
-| `o` | ← | 列：行起点与上一行末尾的字节差（第一行与 `from` 比；连着 ＝ 0） |
-| `offset` | → | 从哪个字节起（缺省 0；续传带上次尾行的 `end`） |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `sp` | ← | 稀疏表：来源（`at` 行号差 · `v`） |
-| `t` | ← | 列：记录类的号（0 ＝ 不进界面） |
-| `u` | ← | 列：记录 id（没有 ⇒ null） |
-| `until` | → | 可选：只收起点 `< until` 的行 |
+入参 `HistoryIndexReq` · 回包 `HistoryIndex`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HistoryIndex = { 
+/**
+ * 起点字节。
+ */
+from: number, 
+/**
+ * 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`。
+ */
+end: number, 
+/**
+ * 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+ */
+next: number | null, 
+/**
+ * 行数（每一列都这么长）。
+ */
+count: number, 
+/**
+ * 本份里出现过的记录类（`t` 列的号从 1 起指它）。
+ */
+classes: Array<RecordClass>, o: Array<number>, n: Array<number>, t: Array<number>, fd: Array<number>, u: Array<string | null>, body: IndexBody, sp: IndexSpeaker, inputs: IndexInputs, };
+type HistoryIndexReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 从哪个字节起（缺 ⇒ 0；续传带上次的 `end`）。
+ */
+offset?: number | null, 
+/**
+ * 可选：只收起点 `< until` 的行。
+ */
+until?: number | null, 
+/**
+ * 可选：一页最多几行。这一版还不分段：给了也整份出，`next` 恒 `null`。
+ */
+limit?: number | null, };
+type IndexBody = { 
+/**
+ * 行号差。
+ */
+at: Array<number>, ch: Array<number>, cj: Array<number>, pl: Array<number>, cb: Array<number>, cl: Array<number>, };
+type IndexInputs = { 
+/**
+ * 行号差。
+ */
+at: Array<number>, x: Array<string>, ts: Array<string>, };
+type IndexSpeaker = { 
+/**
+ * 行号差。
+ */
+at: Array<number>, v: Array<string>, };
+type RecordClass = "said" | "reply" | "retry" | "title" | "queued" | "unread";
+```
 
 码：`bad_args` · `failed` · `too_large`
 
 #### `history-user-inputs`
 
-「你说过的话」清单。
+「人说过的话」清单。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-user-inputs`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `end` | ← | 最后一个完整行的末字节 ＝ 下一次增量该带的 `from` |
-| `entries` | ← | 每条用户输入 `{uuid, timestamp, excerpt}`（对话序） |
-| `from` | → ← | 增量起点（缺省 0；传上次尾行的 `end`） |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
+入参 `FromReq` · 回包 `UserInputs`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FromReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 增量起点（缺 ⇒ 0；传上次的 `end`）。
+ */
+from?: number | null, };
+type UserInputRow = { uuid: string, 
+/**
+ * 记录的 `timestamp`；没有 ⇒ 空串。
+ */
+timestamp: string, 
+/**
+ * 摘要：多行/多空白压成一行，截到 [`EXCERPT_MAX`]。
+ */
+excerpt: string, };
+type UserInputs = { 
+/**
+ * 这份清单从哪个字节起（＝ 请求的 `from`）。
+ */
+from: number, 
+/**
+ * 最后一个完整行的末字节 ＝ 下一次增量该带的 `from`。
+ */
+end: number, 
+/**
+ * 每条用户输入，对话序。
+ */
+entries: Array<UserInputRow>, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -6693,7 +6932,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--history-search-merge` | ＝ 帧命令 `history-search-merge`：把各台的搜索结果合成一份 |
 | `--history-tail` | ＝ 帧命令 `history-tail`：一份会话的尾段从哪个字节起 |
 | `--history-turns` | ＝ 帧命令 `history-turns`：一轮的摘要 |
-| `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「你说过的话」清单 |
+| `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「人说过的话」清单 |
 | `--hooks-diag` | ＝ 帧命令 `hooks-diag`：cc-bus 钩子诊断 |
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |

@@ -452,11 +452,14 @@ describe("C01 边界生成物", () => {
         new RegExp(`derive\\(ts_rs::TS\\)\\)\\]\\s*(#\\[[^\\n]*\\]\\s*)*pub\\(crate\\) (struct|enum) ${t}\\b`),
       );
     }
+    // 第 8 批第 3 刀：history-turns 走 `callTyped`，回包类型由生成的命令表给（`TypedCommands.ts` → `HistoryTurns` → `TurnRow`）。
     const src = code(read("src/frontend/ui/session-reads.ts"));
-    expect(src, "没读到 session-reads.ts / 剥过头了").toContain("export function decodeTurns");
-    for (const n of ["TurnRow", "FoldSegment", "TurnPhase", "Tone"]) {
-      expect(src, `session-reads.ts（解 history-turns 的那一处）没从生成物取 ${n}`).toContain(`"./generated/${n}"`);
-    }
+    expect(src, "没读到 session-reads.ts / 剥过头了").toContain("export async function readTurns");
+    expect(src, "session-reads.ts 问 history-turns 不是按类型问的").toMatch(/callTyped\(\s*origin,\s*"history-turns"/);
+    expect(src, "session-reads.ts 没从生成物取 TurnRow").toContain(`"./generated/TurnRow"`);
+    const table = code(read("src/frontend/ui/generated/TypedCommands.ts"));
+    expect(table, "生成的命令表里 history-turns 的回包不是 HistoryTurns").toMatch(/"history-turns":\s*\{[^}]*reply:\s*HistoryTurns;/);
+    expect(code(read("src/frontend/ui/generated/HistoryTurns.ts")), "HistoryTurns 不是由 TurnRow 组成").toContain("TurnRow");
     const handWritten = productionTsFiles("src/frontend").filter(
       (f) =>
         !f.includes("/generated/") &&

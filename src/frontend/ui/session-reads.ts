@@ -22,35 +22,20 @@
 import { chan, ChanError, type CallError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import type { RecordProbe } from "./generated/RecordProbe";
+import type { FindHit } from "./generated/FindHit";
+import type { HistoryIndex } from "./generated/HistoryIndex";
+import type { UserInputRow } from "./generated/UserInputRow";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
 import { exactKeys, isObj } from "./ipc/decode";
 import type { Tone } from "./generated/Tone";
-import type { FoldSegment } from "./generated/FoldSegment";
-import type { TurnPhase } from "./generated/TurnPhase";
 import type { TurnRow } from "./generated/TurnRow";
 
 // ─── 成品的形状（后端 `read_face.rs` 那三条的应答；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）───
 
-/** 一条命中（后端 `search_query::scan_session_find` 那一形，键名一字不差；片段三段同全局搜索的 `Hit`）。 */
-export interface FindHit {
-  /** 命中的那条记录的 uuid —— 前端按骨架索引 `uuid → seq` 跳过去。 */
-  uuid: string;
-  /** `"user"` | `"assistant"` | `"report"`（agent 回报）| `"tool"` */
-  kind: string;
-  before: string;
-  matched: string;
-  after: string;
-  /** 第几轮（这条之前含它你说过几句；第一句之前 ＝ 0）。 */
-  turn: number;
-  /** 那条记录的时刻（毫秒；读不出 ＝ 0）。 */
-  tsMs: number;
-  /** 它写给人看的样子（那台后端按它的本地钟写好；读不出 ⇒ 空串）。 */
-  tsText: string;
-  /** 它落在哪次工具调用的卡里（调用 id；工具结果流里不自己成卡）。缺 ⇒ 落在它自己那张卡上。 */
-  tool?: string;
-}
+/** 一条命中（类型从后端生成：`search_query::FindHit`）。 */
+export type { FindHit };
 
 /** 查找的回包。`available == false` 时 `hits` 为空、`reason` 是给人看的原因（**不是错误**）。 */
 export interface FindResult {
@@ -62,14 +47,8 @@ export interface FindResult {
   total: number;
 }
 
-/** 一条可点的大纲项（后端 `user_inputs::UserInputRow`，键名一字不差）。 */
-export interface UserInputEntry {
-  uuid: string;
-  /** 列表上显示的摘要（后端已折叠、已截断）。 */
-  excerpt: string;
-  /** 记录的 `timestamp`；没有 ⇒ 空串。 */
-  timestamp: string;
-}
+/** 一条可点的大纲项（类型从后端生成：`user_inputs::UserInputRow`）。 */
+export type UserInputEntry = UserInputRow;
 
 /**
  * **要不到大纲的种类** —— 大纲据它决定「还要不要再要」，**只 match 它，不解析 `reason` 的文字**。
@@ -353,6 +332,8 @@ const READ_BUDGET_MS = 30_000;
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
 const isStr = (v: unknown): v is string => typeof v === "string";
 const strOrNull = (x: unknown): x is string | null => x === null || isStr(x);
+const TONES: readonly string[] = ["plain", "fail", "now", "need", "warn", "busy"] satisfies readonly Tone[];
+const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
 
 /** `needs.ask` ⇒ 类型；`null` ⇒ `null`；形状不对 ⇒ `null` 以外的那一支返回 `undefined`（调用方当整份认不出）。 */
 function decodeAsk(a: unknown): Ask | null | undefined {
@@ -388,190 +369,45 @@ class ShapeError extends ReplyUnreadable {
   }
 }
 
-/** `history-find` 的成品 ⇒ `(total, hits)`。形状不对 ⇒ 抛。 */
-export function decodeFind(v: unknown): { total: number; hits: FindHit[] } {
-  if (!isObj(v) || !isNum(v.total) || !Array.isArray(v.hits)) throw new ShapeError("history-find", copyText("sessionReads.missing.find"));
-  const hits = v.hits.map((h): FindHit => {
-    if (!isObj(h) || ![h.uuid, h.kind, h.before, h.matched, h.after, h.tsText].every(isStr) || !isNum(h.turn) || !isNum(h.tsMs) || (h.tool !== undefined && !isStr(h.tool))) {
-      throw new ShapeError("history-find", copyText("sessionReads.missing.findHit"));
-    }
-    return {
-      uuid: h.uuid as string,
-      kind: h.kind as string,
-      before: h.before as string,
-      matched: h.matched as string,
-      after: h.after as string,
-      turn: h.turn,
-      tsMs: h.tsMs,
-      tsText: h.tsText as string,
-      ...(h.tool !== undefined ? { tool: h.tool as string } : {}),
-    };
-  });
-  return { total: v.total, hits };
-}
-
-/** `history-user-inputs` 的成品 ⇒ `(from, end, entries)`。形状不对 ⇒ 抛。 */
-export function decodeUserInputs(v: unknown): { from: number; end: number; entries: UserInputEntry[] } {
-  if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.entries)) {
-    throw new ShapeError("history-user-inputs", copyText("sessionReads.missing.inputs"));
-  }
-  const entries = v.entries.map((e): UserInputEntry => {
-    if (!isObj(e) || ![e.uuid, e.excerpt, e.timestamp].every(isStr)) {
-      throw new ShapeError("history-user-inputs", copyText("sessionReads.missing.inputsEntry"));
-    }
-    return { uuid: e.uuid as string, excerpt: e.excerpt as string, timestamp: e.timestamp as string };
-  });
-  return { from: v.from, end: v.end, entries };
-}
-
-const TURN_KEYS = ["agents", "at", "background", "done", "end", "endText", "fails", "folds", "landed", "peers", "phase", "reply", "retries", "said", "shown", "start", "startText", "thinking", "tools", "uuid"] as const;
-const PHASES: readonly string[] = ["idle", "running", "awaiting"];
-const TONES: readonly string[] = ["plain", "fail", "now", "need", "warn", "busy"] satisfies readonly Tone[];
-const numOrNull = (v: unknown): v is number | null => v === null || isNum(v);
-
-/** 一段过程的形状逐格对。 */
-function isFold(f: unknown): boolean {
-  return (
-    isObj(f) &&
-    exactKeys(f, ["after", "parts", "phase", "span", "until"]) &&
-    isStr(f.after) &&
-    (f.until === null || isStr(f.until)) &&
-    isStr(f.phase) &&
-    PHASES.includes(f.phase) &&
-    Array.isArray(f.parts) &&
-    f.parts.every((p) => isObj(p) && exactKeys(p, ["text", "tone"]) && isStr(p.text) && isStr(p.tone) && TONES.includes(p.tone)) &&
-    isObj(f.span) &&
-    exactKeys(f.span, ["from", "text", "to"]) &&
-    isStr(f.span.text) &&
-    numOrNull(f.span.from) &&
-    numOrNull(f.span.to)
-  );
-}
-
-/** `history-turns` 的成品 ⇒ `(from, end, turns)`。键集合恰好、类型逐格对；不对 ⇒ 抛。 */
-export function decodeTurns(v: unknown): { from: number; end: number; turns: TurnRow[] } {
-  const bad = (): never => {
-    throw new ShapeError("history-turns", copyText("sessionReads.missing.turns"));
-  };
-  if (!isObj(v) || !exactKeys(v, ["end", "from", "turns"]) || !isNum(v.from) || !isNum(v.end) || !Array.isArray(v.turns)) return bad();
-  const turns = v.turns.map((t): TurnRow => {
-    if (
-      !isObj(t) ||
-      !exactKeys(t, TURN_KEYS) ||
-      ![t.at, t.tools, t.thinking, t.agents, t.background, t.retries, t.peers, t.fails].every(isNum) ||
-      ![t.uuid, t.start, t.end, t.startText, t.endText, t.said, t.reply].every(isStr) ||
-      typeof t.done !== "boolean" ||
-      !isStr(t.phase) ||
-      !PHASES.includes(t.phase) ||
-      !Array.isArray(t.shown) ||
-      !t.shown.every(isStr) ||
-      !Array.isArray(t.landed) ||
-      !t.landed.every(isStr) ||
-      !Array.isArray(t.folds) ||
-      !t.folds.every(isFold)
-    ) {
-      return bad();
-    }
-    return {
-      at: t.at as number,
-      uuid: t.uuid as string,
-      start: t.start as string,
-      end: t.end as string,
-      startText: t.startText as string,
-      endText: t.endText as string,
-      said: t.said as string,
-      tools: t.tools as number,
-      thinking: t.thinking as number,
-      agents: t.agents as number,
-      background: t.background as number,
-      retries: t.retries as number,
-      peers: t.peers as number,
-      fails: t.fails as number,
-      shown: [...(t.shown as string[])],
-      landed: [...(t.landed as string[])],
-      reply: t.reply as string,
-      done: t.done,
-      phase: t.phase as TurnPhase,
-      folds: (t.folds as FoldSegment[]).map((f) => ({
-        after: f.after,
-        until: f.until,
-        parts: f.parts.map((p) => ({ text: p.text, tone: p.tone })),
-        span: { text: f.span.text, from: f.span.from, to: f.span.to },
-        phase: f.phase,
-      })),
-    };
-  });
-  return { from: v.from, end: v.end, turns };
-}
-
 /**
- * `history-index` 的成品 ⇒ `(from, end, rows)`。帧面上它**按列排**（后端 `read_face.rs::pack_index`：偏移是与上一行末尾的差、
- * `t` 是 `classes` 里的号、稀疏的几格各一张小表、`at` 是行号差）；这里装回逐行，下游照旧读 [`SkeletonFacts`]。
- * 行本身**不解释**；列长对不上 / 号越界 / 行号越界 ⇒ 抛（不猜、不补）。
+ * `history-index` 的成品装回逐行（帧面上它**按列排**，后端 `history_face.rs::pack_index`：偏移是与上一行末尾的差、
+ * `t` 是 `classes` 里的号、稀疏的几格各一张小表、`at` 是行号差）；下游照旧读 [`SkeletonFacts`]。行本身**不解释**。
+ * 形状由握手时的形状指纹管，这里只装、不验。
  */
-export function decodeIndex(v: unknown): { from: number; end: number; rows: SkeletonFacts[] } {
-  const bad = (): never => {
-    throw new ShapeError("history-index", copyText("sessionReads.missing.index"));
-  };
-  const badRow = (): never => {
-    throw new ShapeError("history-index", copyText("sessionReads.missing.indexRow"));
-  };
-  if (!isObj(v) || !isNum(v.from) || !isNum(v.end) || !isNum(v.count) || !Array.isArray(v.classes)) return bad();
-  const count = v.count;
-  const col = (k: string): unknown[] => {
-    const c = v[k];
-    return Array.isArray(c) && c.length === count ? c : badRow();
-  };
-  const [o, n, t, fd, u] = [col("o"), col("n"), col("t"), col("fd"), col("u")];
-  const classes = v.classes as unknown[];
-  if (!classes.every(isStr)) return bad();
+export function unpackIndex(v: HistoryIndex): SkeletonFacts[] {
   const rows: Array<SkeletonFacts & { x?: string; ts?: string }> = [];
   let at = v.from;
-  for (let i = 0; i < count; i++) {
-    const [gap, len, k, f, id] = [o[i], n[i], t[i], fd[i], u[i]];
-    if (!isNum(gap) || !isNum(len) || !isNum(k) || k > classes.length || !isNum(f) || !(id === null || isStr(id))) return badRow();
-    const r: SkeletonFacts = { o: at + gap, n: len };
-    at = r.o + len;
-    if (k > 0) r.t = classes[k - 1] as SkeletonFacts["t"];
+  for (let i = 0; i < v.count; i++) {
+    const r: SkeletonFacts = { o: at + v.o[i], n: v.n[i] };
+    at = r.o + r.n;
+    const k = v.t[i];
+    if (k > 0) r.t = v.classes[k - 1] as SkeletonFacts["t"];
+    const id = v.u[i];
     if (id !== null) r.u = id;
-    if (f > 0) r.fd = f;
+    if (v.fd[i] > 0) r.fd = v.fd[i];
     rows.push(r);
   }
-  /** 一张稀疏小表：`at` 是与上一项的行号差（第一项与 −1 比），其余每格一列、与 `at` 同长。 */
-  const sparse = (name: string, keys: string[], put: (r: SkeletonFacts & { x?: string; ts?: string }, vals: unknown[]) => void): void => {
-    const tv = v[name];
-    if (!isObj(tv) || !Array.isArray(tv.at)) return badRow();
-    const ats = tv.at;
-    const cols = keys.map((k) => (Array.isArray(tv[k]) && (tv[k] as unknown[]).length === ats.length ? (tv[k] as unknown[]) : badRow()));
+  /** 一张稀疏小表的行号列 ⇒ 每一项落在第几行（`at` 是与上一项的行号差，第一项与 −1 比）。 */
+  const lines = (ats: number[]): number[] => {
     let i = -1;
-    ats.forEach((g, j) => {
-      if (!isNum(g)) return badRow();
-      i += g + 1;
-      if (i >= count) return badRow();
-      put(rows[i], cols.map((c) => c[j]));
-    });
+    return ats.map((g) => (i += g + 1));
   };
-  sparse("body", ["ch", "cj", "pl", "cb", "cl"], (r, vals) => {
-    if (!vals.every(isNum)) return badRow();
-    const [ch, cj, pl, cb, cl] = vals as number[];
-    if (ch > 0) r.ch = ch;
-    if (cj > 0) r.cj = cj;
-    if (pl > 0) r.pl = pl;
-    if (cb > 0) r.cb = cb;
-    if (cl > 0) r.cl = cl;
+  lines(v.body.at).forEach((i, j) => {
+    const r = rows[i];
+    const b = v.body;
+    if (b.ch[j] > 0) r.ch = b.ch[j];
+    if (b.cj[j] > 0) r.cj = b.cj[j];
+    if (b.pl[j] > 0) r.pl = b.pl[j];
+    if (b.cb[j] > 0) r.cb = b.cb[j];
+    if (b.cl[j] > 0) r.cl = b.cl[j];
   });
-  sparse("sp", ["v"], (r, [sp]) => {
-    if (!isStr(sp)) return badRow();
-    r.sp = sp;
+  lines(v.sp.at).forEach((i, j) => (rows[i].sp = v.sp.v[j]));
+  lines(v.inputs.at).forEach((i, j) => {
+    rows[i].x = v.inputs.x[j];
+    if (v.inputs.ts[j] !== "") rows[i].ts = v.inputs.ts[j];
   });
-  sparse("inputs", ["x", "ts"], (r, [x, ts]) => {
-    if (!isStr(x) || !isStr(ts)) return badRow();
-    r.x = x;
-    if (ts !== "") r.ts = ts;
-  });
-  return { from: v.from, end: v.end, rows };
+  return rows;
 }
-
 
 /**
  * `history-facts` 的成品 ⇒ [`SessionFacts`]。**每一层键集合恰好是后端出的那一形**（多一格 / 缺一格 / 类型不对 ⇒ 抛
@@ -761,10 +597,8 @@ export async function findInSession(
 ): Promise<FindResult> {
   try {
     const which = scope ? { scope } : { include_tools: includeTools };
-    const body = jsonBody(skip > 0 ? { path: jsonlPath, query, ...which, limit: FIND_LIMIT, skip } : { path: jsonlPath, query, ...which, limit: FIND_LIMIT });
     const budget = budgetWithin(READ_BUDGET_MS);
-    const reply = await chan.call(origin, "history-find", body, budget);
-    const { total, hits } = decodeFind(readJson(reply));
+    const { total, hits } = await callTyped(origin, "history-find", { path: jsonlPath, query, ...which, limit: FIND_LIMIT, ...(skip > 0 ? { skip } : {}) }, budget);
     return { available: true, hits, total };
   } catch (e) {
     const reason = reasonOf(e, origin);
@@ -775,10 +609,8 @@ export async function findInSession(
 /** **「你说过的话」清单**：从字节 `fromOffset` 起（冷启动 0 / 增量传上次的 `end`）。 */
 export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffset: number): Promise<UserInputsResult> {
   try {
-    const body = jsonBody({ path: jsonlPath, from: fromOffset });
     const budget = budgetWithin(READ_BUDGET_MS);
-    const reply = await chan.call(origin, "history-user-inputs", body, budget);
-    const { from, end, entries } = decodeUserInputs(readJson(reply));
+    const { from, end, entries } = await callTyped(origin, "history-user-inputs", { path: jsonlPath, from: fromOffset }, budget);
     return { available: true, from, end, entries };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
@@ -793,10 +625,9 @@ export type TurnsResult = { available: true; from: number; end: number; turns: T
 /** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）。 */
 export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: number): Promise<TurnsResult> {
   try {
-    const body = jsonBody({ path: jsonlPath, from: fromOffset });
     const budget = budgetWithin(READ_BUDGET_MS);
-    const reply = await chan.call(origin, "history-turns", body, budget);
-    return { available: true, ...decodeTurns(readJson(reply)) };
+    const { from, end, turns } = await callTyped(origin, "history-turns", { path: jsonlPath, from: fromOffset }, budget);
+    return { available: true, from, end, turns };
   } catch (e) {
     return { available: false, reason: reasonOf(e, origin) };
   }
@@ -805,10 +636,10 @@ export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: n
 /** **骨架索引**：从字节 `fromOffset` 起（冷启动 0 / 续传传上次的 `end`）。要不到 ⇒ `available:false`（退回尾部窗口）。 */
 export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOffset: number): Promise<SessionIndexResult> {
   try {
-    const body = jsonBody({ path: jsonlPath, offset: fromOffset });
     const budget = budgetWithin(READ_BUDGET_MS);
-    const reply = await chan.call(origin, "history-index", body, budget);
-    const { from, end, rows } = decodeIndex(readJson(reply));
+    const index = await callTyped(origin, "history-index", { path: jsonlPath, offset: fromOffset }, budget);
+    const { from, end } = index;
+    const rows = unpackIndex(index);
     return { available: true, from, end, rows };
   } catch (e) {
     const reason = reasonOf(e, origin);

@@ -690,6 +690,11 @@ mod tests {
                 "同上，`SessionHits.status`（全文搜索只扫记录树 ⇒ 只有在跑 · 已结束两态）",
             ),
             (
+                "observe/search_query.rs",
+                "FindHit",
+                "typed 帧命令 `history-find` 回包 `hits[]` 的一条（`faces/history_face.rs`；生成类型从它来）",
+            ),
+            (
                 "observe/history_query.rs",
                 "CanResume",
                 "`Can.resume` 的三个词（`history-list` 每行与全文搜索每行的「能做什么」）",

@@ -3,6 +3,11 @@ import type { Batched } from "./Batched";
 import type { Branch } from "./Branch";
 import type { CliRenderRequest } from "./CliRenderRequest";
 import type { DirChecked } from "./DirChecked";
+import type { FromReq } from "./FromReq";
+import type { HistoryFind } from "./HistoryFind";
+import type { HistoryFindReq } from "./HistoryFindReq";
+import type { HistoryIndex } from "./HistoryIndex";
+import type { HistoryIndexReq } from "./HistoryIndexReq";
 import type { HistoryLines } from "./HistoryLines";
 import type { HistoryLinesReq } from "./HistoryLinesReq";
 import type { HistoryPage } from "./HistoryPage";
@@ -16,6 +21,8 @@ import type { HistorySearchMergeReq } from "./HistorySearchMergeReq";
 import type { HistorySearchReply } from "./HistorySearchReply";
 import type { HistorySearchReq } from "./HistorySearchReq";
 import type { HistoryTailReq } from "./HistoryTailReq";
+import type { HistoryTurns } from "./HistoryTurns";
+import type { HistoryTurnsReq } from "./HistoryTurnsReq";
 import type { KillReq } from "./KillReq";
 import type { Killed } from "./Killed";
 import type { LaunchReq } from "./LaunchReq";
@@ -51,11 +58,14 @@ import type { TerminalPreviewReq } from "./TerminalPreviewReq";
 import type { TerminalProcessesReq } from "./TerminalProcessesReq";
 import type { TerminalsList } from "./TerminalsList";
 import type { TerminalsListReq } from "./TerminalsListReq";
+import type { UserInputs } from "./UserInputs";
 import type { Whereabouts } from "./Whereabouts";
 
 /** typed 帧命令：命令名 ⇒ 入参 · 回包 · 它自己会回的码（`bad_args` 恒在：入参解不出来）。 */
 export interface TypedCommands {
   "history-branch": { req: PathReq; reply: Branch; code: "bad_args" | "failed" | "too_large" };
+  "history-find": { req: HistoryFindReq; reply: HistoryFind; code: "bad_args" | "failed" | "too_large" };
+  "history-index": { req: HistoryIndexReq; reply: HistoryIndex; code: "bad_args" | "failed" | "too_large" };
   "history-lines": { req: HistoryLinesReq; reply: HistoryLines; code: "bad_args" | "failed" | "oversized_line" | "refused" };
   "history-page": { req: HistoryPageReq; reply: HistoryPage; code: "bad_args" | "failed" | "oversized_line" | "refused" };
   "history-read": { req: HistoryReadReq; reply: HistoryRead; code: "bad_args" | "failed" | "oversized_line" | "refused" };
@@ -64,6 +74,8 @@ export interface TypedCommands {
   "history-search": { req: HistorySearchReq; reply: HistorySearchReply; code: "bad_args" | "failed" | "too_large" };
   "history-search-merge": { req: HistorySearchMergeReq; reply: Merged; code: "bad_args" };
   "history-tail": { req: HistoryTailReq; reply: TailPlan; code: "bad_args" | "failed" };
+  "history-turns": { req: HistoryTurnsReq; reply: HistoryTurns; code: "bad_args" | "failed" | "too_large" };
+  "history-user-inputs": { req: FromReq; reply: UserInputs; code: "bad_args" | "failed" | "too_large" };
   "kill": { req: KillReq; reply: Killed; code: "bad_args" | "no_tmux" | "no_such_session" | "wrong_owner" | "too_many_windows" | "kill_failed" | "child_timed_out" };
   "launch": { req: LaunchReq; reply: Launched; code: "bad_args" | "no_tmux" | "no_such_session" | "wrong_owner" | "create_failed" | "typed_unconfirmed" | "child_timed_out" };
   "launch-local": { req: LocalLaunchRequest; reply: Rendered; code: "bad_args" | "refused" | "account_unavailable" };

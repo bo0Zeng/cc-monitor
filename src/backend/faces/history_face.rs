@@ -623,3 +623,575 @@ pub(crate) fn needs_at(home: &Path) -> NeedsList {
         ),
     }
 }
+
+// ───────────────────────── 出成品那几条的收集器 ─────────────────────────
+
+/// 逐条收成品，整份（按序列化字节计）过 [`LINES_CAP_BYTES`] ⇒ 当场停下扫描、回 `too_large`
+/// （不截断：截断的清单会被当成完整的用）—— 同全文搜索那一份上限（`search_face::search_at`）。
+pub(crate) struct Capped<T> {
+    pub(crate) rows: Vec<T>,
+    seen: usize,
+    over: bool,
+}
+
+impl<T> Default for Capped<T> {
+    fn default() -> Self {
+        Self {
+            rows: Vec::new(),
+            seen: 0,
+            over: false,
+        }
+    }
+}
+
+impl<T: serde::Serialize + Clone> Capped<T> {
+    pub(crate) fn push(&mut self, row: &T) -> std::io::Result<()> {
+        self.seen += serde_json::to_vec(row).map_or(0, |b| b.len()) + 1;
+        if self.seen > LINES_CAP_BYTES {
+            self.over = true;
+            return Err(std::io::Error::other("reply cap reached"));
+        }
+        self.rows.push(row.clone());
+        Ok(())
+    }
+
+    /// 一整张表逐条推（冷开那几问从扫描图出）；超了上限就停。
+    pub(crate) fn push_all(&mut self, rows: &[T]) -> std::io::Result<()> {
+        rows.iter().try_for_each(|r| self.push(r))
+    }
+
+    /// 扫描的结局：超了上限的那一次停下，原因是「超了」（`Err(Ok(那一句))`），不是扫描函数报的那句 I/O 错（`Err(Err(那一句))`）。
+    pub(crate) fn finish<R>(&self, res: std::io::Result<R>) -> Result<R, Result<String, String>> {
+        if self.over {
+            return Err(Ok(too_large(self.seen).1));
+        }
+        res.map_err(|e| Err(format!("stream failed: {e}")))
+    }
+}
+
+/// 读成品那几条的码：读不动 ⇒ `failed`；整份装不下一帧 ⇒ `too_large`。
+macro_rules! scan_codes {
+    ($(#[$m:meta])* $name:ident) => {
+        codes! {
+            $(#[$m])*
+            pub(crate) enum $name {
+                /// 读不动（路径在围栏外 · 打不开 · 续点越过文件尾 / 不在行边界）。
+                Failed = "failed",
+                /// 整份装不下一帧（不截断）。
+                TooLarge = "too_large",
+            }
+        }
+        impl From<Result<String, String>> for $name {
+            fn from(r: Result<String, String>) -> Self {
+                match r {
+                    Ok(said) => $name::TooLarge(said),
+                    Err(said) => $name::Failed(said),
+                }
+            }
+        }
+    };
+}
+
+// ───────────────────────── history-index ─────────────────────────
+
+/// `history-index` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryIndexReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub(crate) path: String,
+    /// 从哪个字节起（缺 ⇒ 0；续传带上次的 `end`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) offset: Option<u64>,
+    /// 可选：只收起点 `< until` 的行。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) until: Option<u64>,
+    /// 可选：一页最多几行。这一版还不分段：给了也整份出，`next` 恒 `null`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) limit: Option<u64>,
+}
+
+/// 一张稀疏小表的行号列：每项与上一项的行号差（第一项与 −1 比；连着 ＝ 0）。
+fn gap(last: &mut i64, i: usize) -> u64 {
+    let i = i as i64;
+    let d = (i - *last - 1) as u64;
+    *last = i;
+    d
+}
+
+/// 骨架索引的正文那五个数（五个全 0 的行不进表）。
+#[derive(Debug, Default, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct IndexBody {
+    /// 行号差。
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) at: Vec<u64>,
+    pub(crate) ch: Vec<u32>,
+    pub(crate) cj: Vec<u32>,
+    pub(crate) pl: Vec<u32>,
+    pub(crate) cb: Vec<u32>,
+    pub(crate) cl: Vec<u32>,
+}
+
+/// 骨架索引的来源那一列（只有带来源的行）。
+#[derive(Debug, Default, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct IndexSpeaker {
+    /// 行号差。
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) at: Vec<u64>,
+    pub(crate) v: Vec<String>,
+}
+
+/// 骨架索引里用户输入的摘要与时刻（没有时刻 ⇒ 空串）。
+#[derive(Debug, Default, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct IndexInputs {
+    /// 行号差。
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) at: Vec<u64>,
+    pub(crate) x: Vec<String>,
+    pub(crate) ts: Vec<String>,
+}
+
+/// **骨架索引按列排**（17 MB 的会话一份索引六千多行，逐行对象里键名占一大半）：
+///
+/// - 每行都有的几格各一列：`o`（与上一行末尾的字节差，第一行与 `from` 比；连着 ＝ 0）· `n` · `t`（`classes` 里的号，
+///   从 1 起，0 ＝ 不进界面）· `fd`（0 ＝ 没有）· `u`（没有 ⇒ `null`）。
+/// - 稀疏的几格各一张小表（`body` · `sp` · `inputs`），`at` 是与上一项的行号差。
+/// - `sc` 不上帧面（CLI 那一臂照旧逐行出 [`crate::observe::history_query::IndexRow`]）。
+///
+/// 界面读法只在 `session-reads.ts::unpackIndex` 一处（装回逐行，下游照旧），跨语言金样钉两侧。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HistoryIndex {
+    /// 起点字节。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) from: u64,
+    /// 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) end: u64,
+    /// 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub(crate) next: Option<u64>,
+    /// 行数（每一列都这么长）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) count: usize,
+    /// 本份里出现过的记录类（`t` 列的号从 1 起指它）。
+    pub(crate) classes: Vec<crate::agents::record::RecordClass>,
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) o: Vec<u64>,
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) n: Vec<u64>,
+    #[cfg_attr(test, ts(type = "Array<number>"))]
+    pub(crate) t: Vec<usize>,
+    pub(crate) fd: Vec<u32>,
+    pub(crate) u: Vec<Option<String>>,
+    pub(crate) body: IndexBody,
+    pub(crate) sp: IndexSpeaker,
+    pub(crate) inputs: IndexInputs,
+}
+
+/// 逐行的骨架 ⇒ 按列排的那一份（见 [`HistoryIndex`]）。
+pub(crate) fn pack_index(
+    from: u64,
+    end: u64,
+    rows: &[crate::observe::history_query::IndexRow],
+) -> HistoryIndex {
+    let mut ix = HistoryIndex {
+        from,
+        end,
+        next: None,
+        count: rows.len(),
+        classes: Vec::new(),
+        o: Vec::new(),
+        n: Vec::new(),
+        t: Vec::new(),
+        fd: Vec::new(),
+        u: Vec::new(),
+        body: IndexBody::default(),
+        sp: IndexSpeaker::default(),
+        inputs: IndexInputs::default(),
+    };
+    let (mut lb, mut ls, mut li) = (-1i64, -1i64, -1i64);
+    let mut prev_end = from;
+    for (i, r) in rows.iter().enumerate() {
+        ix.o.push(r.o.saturating_sub(prev_end));
+        ix.n.push(r.n);
+        prev_end = r.o + r.n;
+        ix.t.push(match r.t {
+            Some(c) => {
+                let k = ix.classes.iter().position(|x| *x == c).unwrap_or_else(|| {
+                    ix.classes.push(c);
+                    ix.classes.len() - 1
+                });
+                k + 1
+            }
+            None => 0,
+        });
+        ix.fd.push(r.fd);
+        ix.u.push(r.u.clone());
+        if [r.ch, r.cj, r.pl, r.cb, r.cl].iter().any(|n| *n != 0) {
+            let b = &mut ix.body;
+            b.at.push(gap(&mut lb, i));
+            b.ch.push(r.ch);
+            b.cj.push(r.cj);
+            b.pl.push(r.pl);
+            b.cb.push(r.cb);
+            b.cl.push(r.cl);
+        }
+        if let Some(v) = r.sp {
+            ix.sp.at.push(gap(&mut ls, i));
+            ix.sp.v.push(v.to_string());
+        }
+        if let Some(x) = &r.x {
+            ix.inputs.at.push(gap(&mut li, i));
+            ix.inputs.x.push(x.clone());
+            ix.inputs.ts.push(r.ts.clone().unwrap_or_default());
+        }
+    }
+    ix
+}
+
+scan_codes!(
+    /// `history-index` 的码。
+    HistoryIndexErr
+);
+
+/// `history-index`：会话骨架索引。
+pub(crate) struct HistoryIndexCmd;
+
+impl Command for HistoryIndexCmd {
+    const NAME: &'static str = "history-index";
+    type Req = HistoryIndexReq;
+    type Reply = HistoryIndex;
+    type Err = HistoryIndexErr;
+}
+
+impl Blocking for HistoryIndexCmd {
+    fn run(req: HistoryIndexReq, _cx: &Cx) -> Result<HistoryIndex, HistoryIndexErr> {
+        index_at(&home(), req)
+    }
+}
+
+/// [`HistoryIndexCmd`] 的本体，家目录是参数。
+pub(crate) fn index_at(home: &Path, req: HistoryIndexReq) -> Result<HistoryIndex, HistoryIndexErr> {
+    let offset = req.offset.unwrap_or(0);
+    let mut rows = Capped::default();
+    let end = if offset == 0 && req.until.is_none() {
+        let map = history_query::cold_scan(home, &req.path).map_err(HistoryIndexErr::Failed)?;
+        let pushed = rows.push_all(&map.index);
+        rows.finish(pushed)?;
+        map.end
+    } else {
+        let r = history_query::open_session_at(home, &req.path, offset)
+            .map_err(HistoryIndexErr::Failed)?;
+        let (target, _) =
+            record_face(home, &req.path).map_err(|(_, said)| HistoryIndexErr::Failed(said))?;
+        let kind = crate::agents::record_kind_of(&target).unwrap_or_default();
+        let scanned =
+            history_query::scan_session_index(kind, r, offset, req.until, |row| rows.push(row));
+        rows.finish(scanned)?.1
+    };
+    Ok(pack_index(offset, end, &rows.rows))
+}
+
+// ───────────────────────── history-user-inputs ─────────────────────────
+
+/// `history-user-inputs` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FromReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub(crate) path: String,
+    /// 增量起点（缺 ⇒ 0；传上次的 `end`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) from: Option<u64>,
+}
+
+/// `history-user-inputs` 的回包：「人说过的话」清单。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct UserInputs {
+    /// 这份清单从哪个字节起（＝ 请求的 `from`）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) from: u64,
+    /// 最后一个完整行的末字节 ＝ 下一次增量该带的 `from`。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) end: u64,
+    /// 每条用户输入，对话序。
+    pub(crate) entries: Vec<crate::observe::user_inputs::UserInputRow>,
+}
+
+scan_codes!(
+    /// `history-user-inputs` 的码。
+    UserInputsErr
+);
+
+/// `history-user-inputs`：「人说过的话」清单。
+pub(crate) struct UserInputsCmd;
+
+impl Command for UserInputsCmd {
+    const NAME: &'static str = "history-user-inputs";
+    type Req = FromReq;
+    type Reply = UserInputs;
+    type Err = UserInputsErr;
+}
+
+impl Blocking for UserInputsCmd {
+    fn run(req: FromReq, _cx: &Cx) -> Result<UserInputs, UserInputsErr> {
+        user_inputs_at(&home(), req)
+    }
+}
+
+/// [`UserInputsCmd`] 的本体，家目录是参数。
+pub(crate) fn user_inputs_at(home: &Path, req: FromReq) -> Result<UserInputs, UserInputsErr> {
+    let from = req.from.unwrap_or(0);
+    let mut rows = Capped::default();
+    let end = if from == 0 {
+        let map = history_query::cold_scan(home, &req.path).map_err(UserInputsErr::Failed)?;
+        let pushed = rows.push_all(&map.inputs);
+        rows.finish(pushed)?;
+        map.end
+    } else {
+        let r = history_query::open_user_inputs_at(home, &req.path, from)
+            .map_err(UserInputsErr::Failed)?;
+        let scanned = crate::observe::user_inputs::scan_user_inputs(r, from, |row| rows.push(row));
+        rows.finish(scanned)?.1
+    };
+    Ok(UserInputs {
+        from,
+        end,
+        entries: rows.rows,
+    })
+}
+
+// ───────────────────────── history-turns ─────────────────────────
+
+/// `history-turns` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryTurnsReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub(crate) path: String,
+    /// 从这个字节起扫（缺 ⇒ 0；续取传还在跑的那一轮的 `at`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) from: Option<u64>,
+    /// 可选：一页最多几轮。这一版还不分段：给了也整份出，`next` 恒 `null`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) limit: Option<u64>,
+}
+
+/// `history-turns` 的回包。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HistoryTurns {
+    /// 起点字节（＝ 请求的 `from`）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) from: u64,
+    /// 最后一个完整行的末字节（残尾不计）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) end: u64,
+    /// 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub(crate) next: Option<u64>,
+    /// 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
+    pub(crate) turns: Vec<crate::observe::turns::TurnRow>,
+}
+
+scan_codes!(
+    /// `history-turns` 的码。
+    HistoryTurnsErr
+);
+
+/// `history-turns`：每轮的摘要。
+pub(crate) struct HistoryTurnsCmd;
+
+impl Command for HistoryTurnsCmd {
+    const NAME: &'static str = "history-turns";
+    type Req = HistoryTurnsReq;
+    type Reply = HistoryTurns;
+    type Err = HistoryTurnsErr;
+}
+
+impl Blocking for HistoryTurnsCmd {
+    fn run(req: HistoryTurnsReq, cx: &Cx) -> Result<HistoryTurns, HistoryTurnsErr> {
+        turns_at(&home(), req, &cx.tz)
+    }
+}
+
+/// [`HistoryTurnsCmd`] 的本体，家目录是参数。还在跑的最后一轮下次从它的 `at` 再取。
+pub(crate) fn turns_at(
+    home: &Path,
+    req: HistoryTurnsReq,
+    tz: &crate::Tz,
+) -> Result<HistoryTurns, HistoryTurnsErr> {
+    let path = req.path.as_str();
+    let from = req.from.unwrap_or(0);
+    let (mut turns, end) = if from == 0 {
+        let map = history_query::cold_scan(home, path).map_err(HistoryTurnsErr::Failed)?;
+        (map.turns.clone(), map.end)
+    } else {
+        let r = history_query::open_user_inputs_at(home, path, from)
+            .map_err(HistoryTurnsErr::Failed)?;
+        let mut out = Vec::new();
+        let (_, end) = crate::observe::turns::scan_turns(r, from, |row| {
+            out.push(row.clone());
+            Ok(())
+        })
+        .map_err(|e| HistoryTurnsErr::Failed(format!("stream failed: {e}")))?;
+        (out, end)
+    };
+    // 钟面按看的那一台的时区写（先于下面那一步：还在跑的那一轮的右端按钟面改写）。
+    turns.iter_mut().for_each(|t| t.stamp(tz));
+    // 还没收尾的最后一轮：「现在在做哪一步 / 在等什么」按这台此刻的会话事实拼进过程行（判定同 `history-facts`）。
+    if let Some(last) = turns.last_mut().filter(|t| !t.done) {
+        let sid = Path::new(path)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        let needs = dress_ask(
+            crate::observe::facts_query::needs_of(
+                &last.pending,
+                crate::observe::accounts_query::session_wait(home, sid).as_ref(),
+            ),
+            sid,
+        );
+        let live = history_query::facts_holders(home, path).is_some_and(|h| !h.is_empty());
+        crate::observe::turns::dress_live(last, needs.as_ref(), live);
+    }
+    let reply = HistoryTurns {
+        from,
+        end,
+        next: None,
+        turns,
+    };
+    match over_cap(&reply) {
+        Some(said) => Err(HistoryTurnsErr::TooLarge(said)),
+        None => Ok(reply),
+    }
+}
+
+// ───────────────────────── history-find ─────────────────────────
+
+/// `history-find` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryFindReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub(crate) path: String,
+    /// 查询串（原样；以 `--` 起头也照样是查询，不是选项）。
+    pub(crate) query: String,
+    /// 工具结果也搜（缺 ⇒ 不搜）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) include_tools: Option<bool>,
+    /// 只留谁说的，同 `history-search` 同名同义（`user` 时工具内容不搜）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) scope: Option<super::search_face::SearchScope>,
+    /// 最多列几条（缺 ⇒ 500，封顶 2000）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) limit: Option<u64>,
+    /// 跳过前几条（续下一页；缺 ⇒ 0）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number | null"))]
+    pub(crate) skip: Option<u64>,
+}
+
+/// `history-find` 的回包。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HistoryFind {
+    /// 全量命中数（≥ 条数；大于 ⇒ 被上限砍过）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) total: u64,
+    /// 这一页的命中，文件序；只搜流里画的那几张卡（自动写的应答不搜）。
+    pub(crate) hits: Vec<crate::observe::search_query::FindHit>,
+}
+
+scan_codes!(
+    /// `history-find` 的码。
+    HistoryFindErr
+);
+
+/// `history-find`：会话内查找。
+pub(crate) struct HistoryFindCmd;
+
+impl Command for HistoryFindCmd {
+    const NAME: &'static str = "history-find";
+    type Req = HistoryFindReq;
+    type Reply = HistoryFind;
+    type Err = HistoryFindErr;
+}
+
+impl Blocking for HistoryFindCmd {
+    fn run(req: HistoryFindReq, cx: &Cx) -> Result<HistoryFind, HistoryFindErr> {
+        find_at(&home(), req, &cx.tz)
+    }
+}
+
+/// [`HistoryFindCmd`] 的本体，家目录是参数。先走常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
+pub(crate) fn find_at(
+    home: &Path,
+    req: HistoryFindReq,
+    tz: &crate::Tz,
+) -> Result<HistoryFind, HistoryFindErr> {
+    use crate::observe::search_query::{self, FindPage, FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
+    let limit = req.limit.map_or(FIND_DEFAULT_LIMIT, |n| {
+        usize::try_from(n).unwrap_or(usize::MAX).min(FIND_MAX_LIMIT)
+    });
+    let page = FindPage {
+        skip: usize::try_from(req.skip.unwrap_or(0)).unwrap_or(usize::MAX),
+        limit,
+    };
+    let scope = req.scope.map(super::search_face::SearchScope::word);
+    let include_tools = req.include_tools.unwrap_or(false);
+    let target = history_query::session_path_at(home, &req.path).map_err(HistoryFindErr::Failed)?;
+    let mut hits = Capped::default();
+    let scanned = match search_query::find_indexed(
+        home,
+        &target,
+        &req.query,
+        include_tools,
+        scope,
+        page,
+        |h| hits.push(&search_query::with_hit_text(h, tz)),
+    ) {
+        Some(r) => r,
+        None => {
+            let r = history_query::open_session_at(home, &req.path, 0)
+                .map_err(HistoryFindErr::Failed)?;
+            search_query::scan_session_find(r, &req.query, include_tools, scope, page, |h| {
+                hits.push(&search_query::with_hit_text(h, tz))
+            })
+        }
+    };
+    let (_, total) = hits.finish(scanned)?;
+    Ok(HistoryFind {
+        total,
+        hits: hits.rows,
+    })
+}

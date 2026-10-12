@@ -197,7 +197,7 @@ pub(crate) fn find_indexed(
     include_tools: bool,
     scope: Option<&str>,
     page: FindPage,
-    on_hit: impl FnMut(&Value) -> std::io::Result<()>,
+    on_hit: impl FnMut(&FindHit) -> std::io::Result<()>,
 ) -> Option<std::io::Result<(u64, u64)>> {
     let include_tools = tools_in(scope, include_tools);
     let q = query.trim().to_lowercase();
@@ -638,7 +638,7 @@ impl SearchIndex {
         include_tools: bool,
         scope: Option<&str>,
         page: FindPage,
-        mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
+        mut on_hit: impl FnMut(&FindHit) -> std::io::Result<()>,
     ) -> Option<std::io::Result<(u64, u64)>> {
         self.last = Refresh::default();
         let prev = self.files.remove(path);
@@ -1136,29 +1136,55 @@ fn find_hit(
     q: &str,
     turn: u64,
     ts_ms: i64,
-) -> Value {
+) -> FindHit {
     let (before, matched, after) = search_rules::make_snippet(hit, q);
-    let mut v = serde_json::json!({
-        "uuid": uuid,
-        "kind": kind,
-        "before": before,
-        "matched": matched,
-        "after": after,
-        "turn": turn,
-        "tsMs": ts_ms,
-    });
-    if let Some(id) = &rt.lands_in {
-        v["tool"] = id.clone().into();
+    FindHit {
+        uuid: uuid.to_string(),
+        kind: kind.to_string(),
+        before,
+        matched,
+        after,
+        turn,
+        ts_ms,
+        ts_text: String::new(),
+        tool: rt.lands_in.clone(),
     }
-    v
+}
+
+/// 会话内查找的一条命中（`history-find` 的 `hits[]`）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FindHit {
+    /// 命中的那条记录的 uuid（界面按骨架索引 `uuid → seq` 跳过去）。
+    pub(crate) uuid: String,
+    /// `user` · `assistant` · `report`（agent 回报）· `tool`。
+    pub(crate) kind: String,
+    /// 片段三段（同全局搜索的 `Hit`）。
+    pub(crate) before: String,
+    pub(crate) matched: String,
+    pub(crate) after: String,
+    /// 第几轮（这条之前含它人说过几句；第一句之前 ＝ 0）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) turn: u64,
+    /// 那条记录的时刻（毫秒；读不出 ＝ 0）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) ts_ms: i64,
+    /// `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
+    pub(crate) ts_text: String,
+    /// 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡）；落在自己那张卡上 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) tool: Option<String>,
 }
 
 /// 出口那一下：一条命中添上 `tsText`（`tsMs` 按看的那一台的时区写，[`crate::common::time::hit_text`]；界面照抄）。
-pub(crate) fn with_hit_text(hit: &Value, tz: &crate::common::time::Tz) -> Value {
-    let mut h = hit.clone();
-    let ms = h.get("tsMs").and_then(Value::as_i64).unwrap_or(0);
-    h["tsText"] = crate::common::time::hit_text(ms, tz).into();
-    h
+pub(crate) fn with_hit_text(hit: &FindHit, tz: &crate::common::time::Tz) -> FindHit {
+    FindHit {
+        ts_text: crate::common::time::hit_text(hit.ts_ms, tz),
+        ..hit.clone()
+    }
 }
 
 /// 会话内查找的现扫：**逐条命中交给 `on_hit`**（按文件序、只交 `page` 那一页），回 `(count, total)`
@@ -1171,7 +1197,7 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     include_tools: bool,
     scope: Option<&str>,
     page: FindPage,
-    mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
+    mut on_hit: impl FnMut(&FindHit) -> std::io::Result<()>,
 ) -> std::io::Result<(u64, u64)> {
     let include_tools = tools_in(scope, include_tools);
     let q = query.trim().to_lowercase();
