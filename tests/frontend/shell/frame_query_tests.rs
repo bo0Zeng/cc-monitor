@@ -53,9 +53,14 @@ fn backend_command_blocks() -> Vec<(String, String)> {
                     .filter(|s| !s.is_empty() && *s != "crate")
                     .collect();
                 let (ty, module) = segs.split_last().expect("typed 那一行没有类型名");
-                let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join("../../backend")
-                    .join(format!("{}.rs", module.join("/")));
+                    .join(module.join("/"));
+                // 模块住 `<路径>.rs` 或 `<路径>/mod.rs`。
+                let file = [base.with_extension("rs"), base.join("mod.rs")]
+                    .into_iter()
+                    .find(|p| p.is_file())
+                    .unwrap_or_else(|| panic!("找不到 `{}` 那个模块的文件", module.join("::")));
                 let src = std::fs::read_to_string(&file)
                     .unwrap_or_else(|e| panic!("读不到 `{}`：{e}", file.display()));
                 let imp = src
@@ -366,7 +371,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
     (
         "terminal-name-mint",
-        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_terminal_name_mint`）；前端 `src/frontend/ui/terminal-name-mint.ts` 问，monitor 这一侧零发送点",
+        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::TerminalNameMint`）；前端 `src/frontend/ui/terminal-name-mint.ts` 问，monitor 这一侧零发送点",
     ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (

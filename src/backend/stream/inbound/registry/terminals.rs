@@ -178,7 +178,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::Builtin,
     },
     // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
-    //   本体 `control/ccm/mod.rs::answer_terminal_name_mint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
+    //   本体 `control/ccm/mod.rs::TerminalNameMint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
     crate::stream::inbound::typed::blocking::<crate::control::ccm::TerminalNameMint>(
         "起会话要的终端名",
     ),

@@ -231,7 +231,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
     // 翻 `zero`：派生（`name_segment` → `<段>-cc` / `<段>-fork-cc`）＋ 避让只在后端，
-    //   帧命令 `terminal-name-mint`（`control/ccm/mod.rs::answer_terminal_name_mint`，按那台的会话快照避让）；
+    //   帧命令 `terminal-name-mint`（`control/ccm/mod.rs::TerminalNameMint`，按那台的会话快照避让）；
     //   界面要名字就问它（`src/frontend/ui/terminal-name-mint.ts`）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
     //   `fork-launch.ts::forkTmuxName`）删。
     homes: [
