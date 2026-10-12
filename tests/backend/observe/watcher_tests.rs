@@ -4214,3 +4214,186 @@ fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
     );
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// 合成一份长主记录：人 / 回复交替，每 `fork_every` 条回退重发一次（新的人话接在前一条回复的上一条回复下面 ⇒ 一处分叉），
+/// 每 `queue_every` 条插一行排队（原文各不相同）。正文都是占位字。回：整份文本。
+fn long_branchy_record(records: usize, fork_every: usize, queue_every: usize) -> String {
+    let mut body = String::new();
+    let mut replies: Vec<String> = Vec::new();
+    let mut last: Option<String> = None;
+    for i in 0..records {
+        let at = format!(
+            "2026-01-01T00:{:02}:{:02}.{:06}Z",
+            (i / 60_000) % 60,
+            (i / 1000) % 60,
+            i
+        );
+        let id = format!("n{i}");
+        let user = i % 2 == 0;
+        // 回退重发：这一条人话不接在上一条回复下，接在再上一条回复下。
+        let parent = if user && i % fork_every == 0 && replies.len() >= 2 {
+            Some(replies[replies.len() - 2].clone())
+        } else {
+            last.clone()
+        };
+        let ty = if user { "user" } else { "assistant" };
+        let p = parent.map_or("null".to_string(), |p| format!("\"{p}\""));
+        body += &format!(
+            r#"{{"type":"{ty}","uuid":"{id}","parentUuid":{p},"timestamp":"{at}","message":{{"role":"{ty}","content":"w{i}"}}}}"#
+        );
+        body.push('\n');
+        if !user {
+            replies.push(id.clone());
+        }
+        last = Some(id);
+        if i % queue_every == 0 {
+            body += &format!(
+                r#"{{"type":"queue-operation","operation":"enqueue","timestamp":"{at}","content":"q{i}"}}"#
+            );
+            body.push('\n');
+        }
+    }
+    body
+}
+
+/// 主线外清单 = 这份记录整批算一次（与冷读同一个算法）。
+fn off_of_record(body: &str) -> Vec<String> {
+    crate::agents::mainline::off_of(
+        body.lines()
+            .filter_map(crate::agents::claudecode::chain::chain_fact),
+    )
+}
+
+/// 一份合成记录的冷接宣告：起一个认得出的活会话（本进程当写它的那个），宣告出去；回（帧，这份记录的链索引整条走过几格）。
+fn announce_record(dir: &Path, sid: &str, body: &str) -> (Vec<Frame>, ReaderState) {
+    let proj = dir.join("projects").join("proj-h");
+    std::fs::create_dir_all(&proj).unwrap();
+    let pid = std::process::id();
+    let ticks = proc_starttime(pid).expect("own starttime");
+    std::fs::write(proj.join(format!("{sid}.jsonl")), body).unwrap();
+    let pidfile = dir.join(format!("{pid}.json"));
+    std::fs::write(
+        &pidfile,
+        format!(r#"{{"pid":{pid},"sessionId":"{sid}","cwd":"/p","procStart":"{ticks}"}}"#),
+    )
+    .unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 16);
+    let mut sink = FrameSink::new(tx);
+    let mut state = ReaderState::new(dir.join("projects"));
+    process_session_added(&pidfile, &mut state, &mut sink);
+    let mut got = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        got.push(f);
+    }
+    (got, state)
+}
+
+/// 这份记录的链索引到此刻整条走过几格（每次整份重算记一遍节点数）。
+fn chain_walked(state: &ReaderState, dir: &Path, sid: &str) -> u64 {
+    let path = dir
+        .join("projects")
+        .join("proj-h")
+        .join(format!("{sid}.jsonl"));
+    state.branches.get(&path_key(&path)).map_or(0, |c| c.walked)
+}
+
+fn branch_lists(frames: &[Frame]) -> Vec<Vec<String>> {
+    frames
+        .iter()
+        .filter_map(|f| match f {
+            Frame::SessionBranch { off, .. } => Some(off.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// ★ hot1（4.1.9 上报）：一条活会话的主记录很长、回退重发与排队行很多（真机上 12 万多行、两千多处分叉、八千多行排队）⇒
+/// 冷接宣告那一趟逐条喂链索引，每处分叉 / 每行排队都整份重算一次 ⇒ 平方，watcher 线程空转、谁都宣告不出去。
+/// 钉：同形的合成记录宣告一次，链索引整条只走一遍（计格数，不按墙钟），清单与整批算的逐条相同。
+#[cfg(target_os = "linux")]
+#[test]
+fn announcing_a_record_full_of_forks_and_queued_lines_walks_the_chain_once() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-hot1-prime-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let n = 3_000;
+    let body = long_branchy_record(n, 14, 4);
+    let want = off_of_record(&body);
+    assert!(want.len() > 100, "合成记录该有不少主线外的：{}", want.len());
+    let (frames, state) = announce_record(&dir, "hot-sid", &body);
+    let walked = chain_walked(&state, &dir, "hot-sid");
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        branch_lists(&frames),
+        [want],
+        "宣告之后整份发一次，与整批算的相同"
+    );
+    assert!(
+        walked <= n as u64,
+        "{n} 条的记录宣告一次，链索引整条走了 {walked} 格 —— 又在按条整份重算（平方）"
+    );
+}
+
+/// ★ hot1 同一处的另一条来路：一趟读进一大段新行（一口气追加很多 · 从 0 重读）⇒ 链索引整段记完只算一次，
+/// 不是每行一次；清单那一帧整段读完后发一帧。
+#[cfg(target_os = "linux")]
+#[test]
+fn reading_a_big_batch_of_new_lines_walks_the_chain_once() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-hot1-batch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let n = 3_000;
+    let body = long_branchy_record(n, 14, 4);
+    let want = off_of_record(&body);
+    // 宣告时记录还是空的（游标在 0），之后整份一口气写进来。
+    let (_, mut state) = announce_record(&dir, "hot-sid2", "");
+    let path = dir.join("projects").join("proj-h").join("hot-sid2.jsonl");
+    std::fs::write(&path, &body).unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 16);
+    let mut sink = FrameSink::new(tx);
+    process_jsonl(&path, &mut state, &mut sink);
+    let mut frames = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        frames.push(f);
+    }
+    let walked = chain_walked(&state, &dir, "hot-sid2");
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        branch_lists(&frames),
+        [want],
+        "整段读完发一帧，与整批算的相同"
+    );
+    assert!(
+        walked <= n as u64,
+        "一趟读进 {n} 条，链索引整条走了 {walked} 格 —— 又在逐行整份重算（平方）"
+    );
+}
+
+/// ★ hot1 同一处的第三形：没有分叉、排队行极多（主线外恒空）⇒ 每行排队都要问一次「主线外有没有东西」，
+/// 那一问不许逐格数整条主线（逐行数一遍 ⇒ 平方）。
+#[cfg(target_os = "linux")]
+#[test]
+fn queued_lines_without_forks_do_not_walk_the_chain() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-hot1-queue-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let n = 3_000;
+    let body = long_branchy_record(n, usize::MAX, 2);
+    let (frames, state) = announce_record(&dir, "hot-sid3", &body);
+    let walked = chain_walked(&state, &dir, "hot-sid3");
+    std::fs::remove_dir_all(&dir).ok();
+    let added = frames
+        .iter()
+        .filter(|f| matches!(f, Frame::SessionAdded { .. }))
+        .count();
+    assert_eq!(
+        (added, branch_lists(&frames).len()),
+        (1, 0),
+        "宣告一次；主线外恒空 ⇒ 不发清单"
+    );
+    assert!(
+        walked <= n as u64,
+        "{n} 条、{} 行排队、没有分叉，链索引整条走了 {walked} 格 —— 排队那一问在逐格数主线",
+        n / 2
+    );
+}

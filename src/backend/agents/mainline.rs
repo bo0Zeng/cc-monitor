@@ -50,10 +50,17 @@ pub(crate) struct Chain {
     queued: HashSet<String>,
     /// 上一次算的结果：每个节点在不在主线上 · 是不是排队豁免回来的 · 属于哪个根 · 胜出的根。
     on_main: Vec<bool>,
+    /// `on_main` 里有没有 `false`（重算时定；简单延长只追加 `true`，不改它）—— 排队那一条每来一行都问，不逐格数。
+    any_off_main: bool,
     exempt: Vec<bool>,
     root_of: Vec<usize>,
     winner: Option<usize>,
     off: Vec<String>,
+    /// 记进来了、还没重算（[`Chain::load`] 攒着，[`Chain::settle`] 一次算掉）。
+    dirty: bool,
+    /// 判据的量具：整条走过几格（每次整份重算记一遍节点数）—— 判「一趟读多少行都只走一遍」计格数，不按墙钟。
+    #[cfg(test)]
+    pub(crate) walked: u64,
 }
 
 impl Chain {
@@ -61,16 +68,39 @@ impl Chain {
         Self::default()
     }
 
-    /// 喂一条事实；回：主线外清单变没变。
+    /// 喂一条事实、当场算好；回：主线外清单变没变。
     ///
     /// 大多数新节点接在主线末梢上（上一条在主线上、属于胜出的根、此前没有孩子）⇒ 主线照旧延长一格，不重算。
     /// 其余（新根 · 分叉 · 接在主线外或豁免叶上 · 补上了先前缺的上一条 · 主线外有东西时排队集合变了）整份重算 ——
-    /// 结果与对全部事实重算一次逐条相同。
+    /// 结果与对全部事实重算一次逐条相同。一次重算是整份的量 ⇒ 一趟要喂很多条时用 [`Chain::load`] ＋ [`Chain::settle`]，
+    /// 不逐条 `push`（12 万行、上万处分叉 / 排队的记录逐条重算就是平方，hot1）。
     pub(crate) fn push(&mut self, fact: ChainFact) -> bool {
+        let changed = self.settle();
+        self.load(fact);
+        self.settle() || changed
+    }
+
+    /// 记一条事实、不重算（要不要重算记下来，[`Chain::settle`] 一次算掉）。
+    pub(crate) fn load(&mut self, fact: ChainFact) {
+        if self.stage(fact) {
+            self.dirty = true;
+        }
+    }
+
+    /// 攒着的事实一次算掉；回：主线外清单比上一次算的变没变。
+    pub(crate) fn settle(&mut self) -> bool {
+        if !std::mem::take(&mut self.dirty) {
+            return false;
+        }
+        self.recompute()
+    }
+
+    /// 记账；回：这条要不要整份重算。已经攒着没算（`dirty`）时上一次的结果不作数 ⇒ 一律记成要重算。
+    fn stage(&mut self, fact: ChainFact) -> bool {
         match fact {
             ChainFact::Queued(t) => {
                 let fresh = self.queued.insert(t);
-                fresh && self.on_main.iter().any(|m| !m) && self.recompute()
+                fresh && (self.dirty || self.any_off_main)
             }
             ChainFact::Node(l) => {
                 if self.at.contains_key(&l.id) {
@@ -80,6 +110,7 @@ impl Chain {
                 let p = l.parent.as_deref().and_then(|p| self.at.get(p).copied());
                 let adopts = self.unseen_parents.remove(&l.id);
                 let simple = !adopts
+                    && !self.dirty
                     && match p {
                         Some(p) => {
                             !self.has_child[p]
@@ -102,23 +133,25 @@ impl Chain {
                 self.exempt.push(false);
                 self.on_main.push(true);
                 self.root_of.push(p.map_or(i, |p| self.root_of[p]));
-                if simple {
-                    if i == 0 {
-                        self.winner = Some(0);
-                    }
-                    return false;
+                if simple && i == 0 {
+                    self.winner = Some(0);
                 }
-                self.recompute()
+                !simple
             }
         }
     }
 
-    /// 主线外的那几条（只含进界面的；文件序）。
+    /// 主线外的那几条（只含进界面的；文件序）。是上一次算的结果：[`Chain::load`] 之后先 [`Chain::settle`]。
     pub(crate) fn off(&self) -> &[String] {
+        debug_assert!(!self.dirty, "记了没算就来读清单");
         &self.off
     }
 
     fn recompute(&mut self) -> bool {
+        #[cfg(test)]
+        {
+            self.walked += self.nodes.len() as u64;
+        }
         let m = main_branch(&self.nodes);
         let exempt = exempt_queued(&self.nodes, &m.on, &self.queued);
         let off: Vec<String> = self
@@ -128,6 +161,7 @@ impl Chain {
             .filter(|(i, n)| n.shown && !m.on[*i] && !exempt[*i])
             .map(|(_, n)| n.id.clone())
             .collect();
+        self.any_off_main = m.on.iter().any(|on| !on);
         self.on_main = m.on;
         self.root_of = m.root_of;
         self.winner = m.winner;
@@ -144,19 +178,9 @@ impl Chain {
 pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
     let mut c = Chain::new();
     for f in facts {
-        match f {
-            ChainFact::Queued(t) => {
-                c.queued.insert(t);
-            }
-            ChainFact::Node(l) => {
-                if !c.at.contains_key(&l.id) {
-                    c.at.insert(l.id.clone(), c.nodes.len());
-                    c.nodes.push(l);
-                }
-            }
-        }
+        c.load(f);
     }
-    c.recompute();
+    c.settle();
     c.off
 }
 
