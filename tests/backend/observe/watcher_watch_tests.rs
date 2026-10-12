@@ -82,7 +82,7 @@ fn a_stream_that_never_said_what_it_watches_carries_every_session() {
 #[test]
 fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     let (dir, mut state, mut sink, mut rx) = rig("unwatched");
-    watch_sessions(ids(&[A]), &mut state, &mut sink);
+    watch_sessions(0, ids(&[A]), &mut state, &mut sink);
     append(&file(&dir, A), 2);
     append(&file(&dir, B), 3);
     process_jsonl(&file(&dir, A), &mut state, &mut sink);
@@ -126,14 +126,14 @@ fn starting_to_watch_answers_where_live_lines_begin_and_nothing_is_lost_or_doubl
     let pb = file(&dir, B);
     // 先在看 A；B 在后台写了三行。
     assert!(
-        watch_sessions(ids(&[A]), &mut state, &mut sink).is_empty(),
+        watch_sessions(0, ids(&[A]), &mut state, &mut sink).is_empty(),
         "A 没有记录文件 ⇒ 无从答"
     );
     append(&pb, 3);
     process_jsonl(&pb, &mut state, &mut sink);
     assert!(lines(&mut rx).is_empty());
     // 转去看 B：回 B 从第 3 行起上流。
-    let from = watch_sessions(ids(&[B]), &mut state, &mut sink);
+    let from = watch_sessions(0, ids(&[B]), &mut state, &mut sink);
     assert_eq!(
         from,
         vec![WatchFrom {
@@ -171,9 +171,9 @@ fn only_sessions_that_just_came_into_view_get_a_start() {
     process_jsonl(&file(&dir, A), &mut state, &mut sink);
     process_jsonl(&file(&dir, B), &mut state, &mut sink);
     // 没报过 ＝ 全在流上 ⇒ 第一次报，谁都不是「新看的」。
-    assert!(watch_sessions(ids(&[A, B]), &mut state, &mut sink).is_empty());
-    assert!(watch_sessions(ids(&[A]), &mut state, &mut sink).is_empty());
-    let from = watch_sessions(ids(&[A, B]), &mut state, &mut sink);
+    assert!(watch_sessions(0, ids(&[A, B]), &mut state, &mut sink).is_empty());
+    assert!(watch_sessions(0, ids(&[A]), &mut state, &mut sink).is_empty());
+    let from = watch_sessions(0, ids(&[A, B]), &mut state, &mut sink);
     assert_eq!(
         from.iter().map(|f| f.sid.as_str()).collect::<Vec<_>>(),
         vec![B]
@@ -186,11 +186,11 @@ fn coming_into_view_resends_the_run_table_and_the_branch_list() {
     let (dir, mut state, mut sink, mut rx) = rig("resend");
     let pb = file(&dir, B);
     append(&pb, 1);
-    watch_sessions(ids(&[A]), &mut state, &mut sink);
+    watch_sessions(0, ids(&[A]), &mut state, &mut sink);
     process_jsonl(&pb, &mut state, &mut sink);
     adopt_runs(&mut state, B, &pb);
     while rx.try_recv().is_ok() {}
-    watch_sessions(ids(&[A, B]), &mut state, &mut sink);
+    watch_sessions(0, ids(&[A, B]), &mut state, &mut sink);
     let mut kinds = Vec::new();
     while let Ok(f) = rx.try_recv() {
         if let Frame::SessionRuns { sid, .. } = f {

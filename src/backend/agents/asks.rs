@@ -13,8 +13,14 @@ pub(crate) const ANSWER_HOOK_OFF_ENV: &str = "CCM_ANSWER_HOOK_OFF";
 pub(crate) enum HookOff {
     /// 用户自带的会话级设置（`--settings`）并不进答题 hook：为什么见 [`SettingsWhy`]。
     Settings(SettingsWhy),
-    /// 会话由自定义启动器起（不是这一家默认的那一个）：它后面的词由它原样转交，ccm 不往里垫。
+    /// 会话由自定义启动器起（不是这一家默认的那一个），而经环境交插件那一路这一家没有 / 这台判不了子进程与接没接上（读不出别的进程的环境）。
     Launcher,
+    /// 换了启动器，本机 managed 策略不许加载会话插件（`disableSideloadFlags` · `allowManagedHooksOnly`）。
+    Policy,
+    /// 换了启动器，装着的那一家版本低于认插件目录变量的那一版（或认不出版本）。
+    Version,
+    /// 换了启动器、ccm 经环境交了插件，持着会话的进程环境里却没有它：启动器没把环境传下去（会话事实读出来的，ccm 不写这个值）。
+    EnvLost,
 }
 
 /// 用户自带的会话级设置并不进去的原因。
@@ -36,6 +42,9 @@ impl HookOff {
             HookOff::Settings(SettingsWhy::NotJson) => "settings-json",
             HookOff::Settings(SettingsWhy::Shape) => "settings-shape",
             HookOff::Launcher => "launcher",
+            HookOff::Policy => "policy",
+            HookOff::Version => "version",
+            HookOff::EnvLost => "env-lost",
         }
     }
 
@@ -46,9 +55,38 @@ impl HookOff {
             HookOff::Settings(SettingsWhy::NotJson),
             HookOff::Settings(SettingsWhy::Shape),
             HookOff::Launcher,
+            HookOff::Policy,
+            HookOff::Version,
+            HookOff::EnvLost,
         ]
         .into_iter()
         .find(|o| o.env_value() == v)
+    }
+}
+
+/// 我们那个答题插件目录（`<家>/.cc-monitor/…`，绝对路径；ccm 起会话那一下写进去，起会话 · hook · 会话事实都按这一处算）。
+pub(crate) fn plugin_dir_under(home: &str) -> String {
+    let mut p = std::path::PathBuf::from(home);
+    for seg in relay_route_core::ANSWER_PLUGIN_DIR_REL.split('/') {
+        p.push(seg);
+    }
+    p.to_string_lossy().into_owned()
+}
+
+/// 插件目录清单的分隔符（这台的路径清单分隔符；那一家照 `--plugin-dir` 那样一项一项加载）。
+const DIRS_SEP: char = if cfg!(windows) { ';' } else { ':' };
+
+/// 一串插件目录清单里有没有 `dir`。
+pub(crate) fn dirs_have(list: &str, dir: &str) -> bool {
+    list.split(DIRS_SEP).any(|p| p == dir)
+}
+
+/// 用户已有的清单后面接上 `dir`（已有就不重复加）。
+pub(crate) fn dirs_with(list: Option<&str>, dir: &str) -> String {
+    match list.filter(|l| !l.is_empty()) {
+        None => dir.to_string(),
+        Some(l) if dirs_have(l, dir) => l.to_string(),
+        Some(l) => format!("{l}{DIRS_SEP}{dir}"),
     }
 }
 
@@ -64,6 +102,9 @@ pub(crate) fn hook_off_words(env_value: &str) -> Words {
             copy_text("beAsk.manual.offSettings", &[("why", &why)])
         }
         Some(HookOff::Launcher) => copy_text("beAsk.manual.offLauncher", &[]),
+        Some(HookOff::Policy) => copy_text("beAsk.manual.offPolicy", &[]),
+        Some(HookOff::Version) => copy_text("beAsk.manual.offVersion", &[]),
+        Some(HookOff::EnvLost) => copy_text("beAsk.manual.offEnvLost", &[]),
         None => copy_text("beAsk.manual.offUnknown", &[]),
     })
 }

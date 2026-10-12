@@ -17,6 +17,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::Hello { .. } => "hello",
         InboundFrame::Line { .. } => "line",
         InboundFrame::SessionAdded { .. } => "session_added",
+        InboundFrame::SessionPrimed { .. } => "session_primed",
         InboundFrame::SessionsReplayed => "sessions_replayed",
         InboundFrame::SessionFileNotice {
             change: FileChange::Gone,

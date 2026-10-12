@@ -1645,12 +1645,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "lines",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "name",
           "type": "string"
         },

@@ -178,7 +178,6 @@ fn the_stream_view_trims_pushed_frames_and_leaves_the_rest_alone() {
         project_dir: None,
         name: None,
         path: None,
-        lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,

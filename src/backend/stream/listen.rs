@@ -11,11 +11,11 @@
 //! # 两档连接，hello 写在分档之前
 //!
 //! - 流：attach 行形状对 ⇒ 这条连接接管出 / 入两个方向（[`admit`]）；
-//!   每条连接各一份 watcher / inbound / writer（`main.rs::serve_listening`），几个前端可以同时挂着。
+//!   这台一份 watcher，每条连接各一份投影（出方向通道 · 名单 · 丢帧账）/ inbound / writer（`main.rs::serve_listening`），几个前端可以同时挂着。
 //! - 不限次的「只读 hello 就走」：连上就有 hello，读完即关。
 //!
 //! hello 写在分档之前：「有没有长驻后端」靠读一行 hello 答，协议一个字节都不用加。
-//! 多客户是「每条连接各一份」，不是把一条观测通道扇出给 N 个（`single_stream_guard.rs` 钉着「源码里恰好一份、按连接实例化」）。
+//! 多客户是「整台一份 watcher、扇出到每条连接各自那一条通道」（`single_stream_guard.rs` 钉着「源码里恰好一份、按连接实例化」）。
 //!
 //! # 边界
 //!

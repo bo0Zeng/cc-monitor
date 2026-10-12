@@ -182,9 +182,9 @@ pub(crate) fn local_step(item: LocalItem) -> LocalStep {
             end: Some(end),
             rid,
         },
-        LocalItem::Frame(InboundFrame::SessionAdded {
-            sid, path, lines, ..
-        }) => LocalStep::Announce { sid, path, lines },
+        LocalItem::Frame(InboundFrame::SessionPrimed { sid, path, lines }) => {
+            LocalStep::Announce { sid, path, lines }
+        }
         LocalItem::Frame(InboundFrame::SessionRemoved { sid }) => LocalStep::Remove { sid },
         LocalItem::Frame(InboundFrame::SessionFileNotice { sid, path, change }) => {
             LocalStep::Notice { sid, path, change }
@@ -237,7 +237,8 @@ impl BgHide {
             | InboundFrame::SessionStatus { sid, .. }
             | InboundFrame::SessionRuns { sid, .. }
             | InboundFrame::SessionBranch { sid, .. }
-            | InboundFrame::SessionFileNotice { sid, .. } => self.hidden.contains(sid),
+            | InboundFrame::SessionFileNotice { sid, .. }
+            | InboundFrame::SessionPrimed { sid, .. } => self.hidden.contains(sid),
             InboundFrame::TurnEnd(turn) => self.hidden.contains(&turn.session_id),
             _ => false,
         }

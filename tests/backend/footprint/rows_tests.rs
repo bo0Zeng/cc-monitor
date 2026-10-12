@@ -681,6 +681,8 @@ fn every_host_declaration_is_pinned() {
         // 起会话用的号与起会话便条：会话跑的那台的后端自己的状态。
         ("accounts", "~/.cc-monitor/launch-accounts.json", Either),
         ("accounts", "~/.cc-monitor/launch-pending", Either),
+        // 换了启动器起会话时交给那一家的答题插件：起会话的那台后端写（本机远端同形）。
+        ("accounts", "~/.cc-monitor/answer-plugin", Either),
         // 🔴 `remote-daemon` → `backend`：同一份后端今天只剩推给远端那台的那一行（`Remote`）——
         //    「远端」说的是「相对这台 monitor」，**不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
         //    本机那份是 exe 内嵌、放到 `~/.cc-monitor/bin/ccm*` 的那一个，记在 `ccm` 那一条底下；

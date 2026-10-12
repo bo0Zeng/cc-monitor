@@ -1115,6 +1115,8 @@ fn no_production_code_writes_the_agent_settings_file() {
     const READ_ONLY: &[&str] = &[
         // 每号各一份的那张表里有 `remote-settings.json`（字样同针，不是那份设置文件）。
         "src/backend/agents/claudecode/accounts.rs",
+        // 本机 managed 策略文件 `managed-settings.json`（只读：起会话前看它许不许加载会话插件）。
+        "src/backend/agents/claudecode/asks.rs",
         "src/backend/agents/claudecode/footprint.rs",
         "src/backend/agents/claudecode/paths.rs",
     ];

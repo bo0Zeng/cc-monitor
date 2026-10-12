@@ -7,62 +7,6 @@ import { sizeText } from "../format";
 import { describeDataClass } from "./data-section";
 import type { OwnItem } from "./data-reads";
 
-/** 每一样是什么（`id` 闭集同后端 `footprint/data.rs::own_table`；认不出的照实写「类别未知」那一句的同族说法）。 */
-function whatOf(id: string): string {
-  switch (id) {
-    case "bin":
-      return copyText("rsDataPaths.backend.bin");
-    case "staging":
-      return copyText("rsDataPaths.backend.staging");
-    case "relayKey":
-      return copyText("rsDataPaths.backend.relayKey");
-    case "listenDir":
-      return copyText("rsDataPaths.backend.listenDir");
-    case "policy":
-      return copyText("rsDataPaths.backend.policy");
-    case "profiles":
-      return copyText("rsDataPaths.backend.profiles");
-    case "profilesMigrated":
-      return copyText("rsDataPaths.backend.profilesMigrated");
-    case "profilesWritten":
-      return copyText("rsDataPaths.backend.profilesWritten");
-    case "aliasesPosix":
-      return copyText("rsDataPaths.backend.aliasesPosix");
-    case "aliasesPs":
-      return copyText("rsDataPaths.backend.aliasesPs");
-    case "skillLedger":
-      return copyText("rsDataPaths.backend.skillLedger");
-    case "chores":
-      return copyText("rsDataPaths.backend.chores");
-    case "planReview":
-      return copyText("rsDataPaths.backend.planReview");
-    case "lastSeen":
-      return copyText("rsDataPaths.backend.lastSeen");
-    case "assetCatalog":
-      return copyText("rsDataPaths.backend.assetCatalog");
-    case "quota":
-      return copyText("rsDataPaths.backend.quota");
-    case "rotation":
-      return copyText("rsDataPaths.backend.rotation");
-    case "lineage":
-      return copyText("rsDataPaths.backend.lineage");
-    case "launchAccounts":
-      return copyText("rsDataPaths.backend.launchAccounts");
-    case "launchNotes":
-      return copyText("rsDataPaths.backend.launchNotes");
-    case "knownHosts":
-      return copyText("rsDataPaths.backend.knownHosts");
-    case "accounts":
-      return copyText("rsDataPaths.backend.accounts");
-    case "accountsMcp":
-      return copyText("rsDataPaths.backend.accountsMcp");
-    case "extBackups":
-      return copyText("rsDataPaths.backend.extBackups");
-    default:
-      return copyText("dataPage.own.unknownItem", { id });
-  }
-}
-
 /** `~/.cc-monitor/x` ⇒ 显示名（去掉家那一段；目录带尾 `/`）。 */
 function labelOf(o: OwnItem): string {
   const tail = o.path.replace(/^~\/\.cc-monitor\/?/, "");
@@ -93,7 +37,7 @@ export function remoteOwnBlock(items: readonly OwnItem[], home: string, open: ((
     label.textContent = labelOf(o);
     const desc = document.createElement("span");
     desc.className = "settings-data-item-desc";
-    desc.textContent = whatOf(o.id);
+    desc.textContent = o.what;
     const cls = document.createElement("span");
     cls.dataset.dataClass = o.class;
     cls.textContent = describeDataClass(o.class);

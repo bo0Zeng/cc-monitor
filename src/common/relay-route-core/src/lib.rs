@@ -160,6 +160,9 @@ pub const KNOWN_HOSTS_REL: &str = ".cc-monitor/known_hosts";
 /// 〔同上〕**起会话便条**（`ccm` 最终那一跳写、观测侧认完即清）：一个进程一张 `<pid>.json`（号 ＋ 时刻）。
 pub const LAUNCH_NOTES_DIR_REL: &str = ".cc-monitor/launch-pending";
 
+/// 〔同上〕**答题插件**（`ccm` 换了启动器起会话时写、经 `CLAUDE_CODE_PLUGIN_DIRS` 交给那一家）：清单 ＋ 答题那一组 hook，内容由后端生成、随时可重写。
+pub const ANSWER_PLUGIN_DIR_REL: &str = ".cc-monitor/answer-plugin";
+
 /// 账号库目录（相对家目录）那一段字面量，**全仓只写在这里**。宏而不是常量：足迹那张静态表要
 /// `concat!` 出带 `~/` 的那一形，`concat!` 只认字面量。别处一律用 [`ACCOUNTS_DIR_REL`]。
 #[macro_export]
@@ -421,6 +424,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("lineage", LINEAGE_REL, false, true),
     ("launchAccounts", LAUNCH_ACCOUNTS_REL, false, true),
     ("launchNotes", LAUNCH_NOTES_DIR_REL, true, false),
+    ("answerPlugin", ANSWER_PLUGIN_DIR_REL, true, false),
     ("knownHosts", KNOWN_HOSTS_REL, false, false),
     ("accounts", ACCOUNTS_DIR_REL, true, true),
     ("accountsMcp", ACCOUNTS_MCP_REL, false, true),
