@@ -307,7 +307,7 @@ fn three_connections_on_one_record_prime_it_once() {
     }
 }
 
-/// ⑤ 先读正在看的（`11 §5.1 ②`）：两份都没预读完时报名单 [B] ⇒ B 先读完（按完成次序判）。
+/// ⑤ 先读正在看的（read8a ②）：两份都没预读完时报名单 [B] ⇒ B 先读完（按完成次序判）。
 /// 池子先被卡住的几份占满，A、B 依宣告次序排在后面；报名单 [B] 之后空出一位 ⇒ 交出去的是 B，不是先排的 A。已在读的不撤。
 #[test]
 fn the_watched_session_is_primed_first() {
