@@ -881,12 +881,7 @@ pub(crate) fn path_now() -> Option<PathBuf> {
     path_from(&|k| std::env::var(k).ok())
 }
 
-/// 第一版换形前的原文留在哪：`rotation.json.v1`。
-pub(crate) fn v1_backup_of(path: &Path) -> PathBuf {
-    path.with_file_name(v1_name())
-}
-
-/// 那份原文的文件名（与 [`FILE_NAME`] 同一层）。
+/// 第一版换形前的原文留在哪：`rotation.json.v1`（与 [`FILE_NAME`] 同一层）。
 fn v1_name() -> String {
     format!("{FILE_NAME}.v1")
 }

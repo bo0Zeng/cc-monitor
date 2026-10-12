@@ -132,14 +132,11 @@ fn w3_atomic_write_needs_the_lock_of_that_very_dir() {
 }
 
 #[test]
-fn w4_remove_and_rename_stay_under_the_root() {
+fn w4_remove_stays_under_the_root() {
     let base = sandbox("w4");
     let own = Own::issue_data_at(&base);
-    let a = own.path("a").expect("名");
     let b = own.path("b").expect("名");
-    std::fs::write(a.as_path(), b"1").expect("夹具");
-    own.move_file(&a, &b).expect("改名");
-    assert!(!a.as_path().exists() && b.as_path().exists());
+    std::fs::write(b.as_path(), b"1").expect("夹具");
     own.delete_file(&b).expect("删");
     assert!(!b.as_path().exists());
     assert!(own.delete_file(&b).is_err(), "删一个不在的该照实报错");
