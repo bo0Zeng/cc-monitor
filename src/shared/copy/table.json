@@ -26700,6 +26700,12 @@
       "zh": "分组操作",
       "args": []
     },
+    "tabBar.group.memberHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{group} · {title}",
+      "args": ["group", "title"]
+    },
     "tabBar.unpinned.toast": {
       "kind": "body",
       "role": "toast",
