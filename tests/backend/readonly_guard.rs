@@ -110,38 +110,6 @@ mod tests {
         "OpenOptions",
     ];
 
-    /// ★ 被允许写文件系统的模块，**逐条登记**（G2，branch-anywhere）。
-    ///
-    /// `(仓库相对路径, why —— 它写什么、为什么落在「只准新增、不许改动既有数据」之内)`
-    ///
-    /// 收窄而非放开：见下面 [`backend_write_capability_is_confined_to_the_registered_modules`]
-    /// 的头注。**按仓库相对路径钉，不是按裸文件名。**
-    ///
-    /// # U3（2026-08-01）从裸文件名改成路径，理由是一次「该红没红」
-    ///
-    /// U3 把 `fork_write.rs` 从 `src/` 搬进 `src/control/`。功能计划**预言**这会让
-    /// `whitelisted == 1` 当场红（逼出 control 侧护栏），**结果它没红** ——
-    /// 因为匹配用的是 `path.file_name()`，文件名没变，护栏对整个分层重组**毫无察觉**。
-    ///
-    /// 「没红」在这里不是好消息，是缺陷的证据：同样的逻辑意味着**将来任何目录下的
-    /// `fork_write.rs` 都会被当白名单放行** —— 而白名单层比默认层松（它允许 `O_EXCL` 新建），
-    /// 放行错文件 = 给写盘能力开一个没人知道的第二个洞。U2 的 Phase D 审计已经点名过这条。
-    ///
-    /// 改成路径之后，**再搬一次家就会红**，而那正是应该有人看一眼的时刻。
-    ///
-    /// # `K-W2D`（2026-09-10）从**一个 `&str`** 变成**一张表** —— 接线那天真的来了
-    ///
-    /// 件文件 `KW2D5` 逐字预言过这一刻：local_backend 落地当天这条判据「**必然红，红得对** ——
-    /// 那一红就是**有人在这张表上签了字**」。签的字就是下面第二条。
-    ///
-    /// ⚠ **表不是豁免清单，三条性质一条没松**：
-    /// ① 它仍然是**相等断言**（扫到的白名单模块数 == 本表条数），多一个没登记的照样红；
-    /// ② 每一条都得写清它写什么（`why` 有长度地板）；
-    /// ③ 每一条都得**真的在盘上、真的在写** —— 幽灵条目由
-    ///    [`every_registered_write_module_is_really_on_the_tree_and_really_writes`] 逮。
-    ///
-    /// ⚠ **它仍然不检查那行 `why` 说得对不对** —— 同 [`spawn_registry`] 那条登记过的边界：
-    /// 它钉的是「说得出来」，不是「真的想过」。
     /// 🔴 **`backend-core` 的模块登记 —— 本护栏人群的唯一住址。**
     ///
     /// # 它换的是什么（「不是收窄射程，是把判据的锚从二进制换成模块」）
@@ -1182,6 +1150,9 @@ mod tests {
 
     /// 递 [`crate::platform::fs::Face`] 的那一档（`Run::BlockingFace`）只有文件管理那一族用；用它的命令恰好是
     /// 文件管理写面登记的那几张命令表的并（写面 · 上传提交 · 解压）—— 两侧异源：一侧是命令表里的档位（现打），一侧是写面自己的表。
+    /// 命令表按族分住的那个目录。
+    const REGISTRY_DIR: &str = "stream/inbound/registry/";
+
     #[test]
     fn only_the_file_manager_commands_are_handed_the_face() {
         use crate::stream::inbound::{Run, REGISTRY};
@@ -1214,8 +1185,8 @@ mod tests {
                 .unwrap_or(&path)
                 .to_string_lossy()
                 .replace('\\', "/");
-            if rel.starts_with("stream/inbound/registry/")
-                && guard_core::production_code(&src).contains("Run::BlockingFace")
+            if rel.starts_with(REGISTRY_DIR)
+                && guard_core::contains_word(&guard_core::production_code(&src), "BlockingFace")
             {
                 users.push(rel);
             }
@@ -1239,41 +1210,49 @@ mod tests {
             .nth(1)
             .and_then(|b| b.split("\n}\n").next())
             .expect("找不到 `impl Face {` 那一段");
-        let mut sigs = 0usize;
+        let sigs = face_method_params(body);
         let mut bad = Vec::new();
-        for chunk in body.split("fn ").skip(1) {
-            let name: String = chunk
-                .chars()
-                .take_while(|c| c.is_alphanumeric() || *c == '_')
-                .collect();
-            let params = chunk.split(')').next().unwrap_or("");
-            sigs += 1;
+        for (name, params) in &sigs {
             // 建链接：链接内容 `target: &Path` 是登记的那一处，落点照样只收 `Resolved`。
             let rest = if name == "make_link" {
                 params.replacen("target: &Path", "", 1)
             } else {
-                params.to_string()
+                params.clone()
             };
-            if rest.contains("Path") {
+            if guard_core::contains_word(&rest, "Path") {
                 bad.push(format!("{name}({params})"));
             }
         }
-        assert!(sigs >= 10, "`impl Face` 只认出 {sigs} 个方法 —— 切法坏了");
+        assert!(
+            sigs.len() >= 10,
+            "`impl Face` 只认出 {} 个方法 —— 切法坏了",
+            sigs.len()
+        );
         assert!(
             bad.is_empty(),
             "`Face` 的写方法收了裸路径：\n  {}",
             bad.join("\n  ")
         );
-        // 正控：同一切法认得出一个收 `&Path` 的方法。
-        let probe = "fn delete_file(&self, at: &Path) -> io::Result<()>";
-        let params = probe
-            .split("fn ")
-            .nth(1)
-            .unwrap()
-            .split(')')
-            .next()
-            .unwrap();
-        assert!(params.contains("Path"));
+        // 正控：同一切法认得出一个收 `&Path` 的方法（名字 · 参数表都切对）。
+        let probe = face_method_params("    fn delete_file(&self, at: &Path) -> io::Result<()> {}");
+        assert_eq!(probe.len(), 1);
+        assert_eq!(probe[0].0, "delete_file");
+        assert!(guard_core::contains_word(&probe[0].1, "Path"));
+    }
+
+    /// 一段 `impl` 体里每个方法的 `(名字, 参数表)`（到第一个 `)` 为止）。
+    fn face_method_params(body: &str) -> Vec<(String, String)> {
+        const FN_KW: &str = "fn ";
+        body.split(FN_KW)
+            .skip(1)
+            .map(|chunk| {
+                let name: String = chunk
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                (name, chunk.split(')').next().unwrap_or("").to_string())
+            })
+            .collect()
     }
 
     /// `Ro::open` 交回的那一份没有 `Write`：拿着它写不出来（现打，不是读源码）。

@@ -226,6 +226,9 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
     );
 }
 
+/// 后端碰盘的唯一住址（原语本体住这里）。
+const FS_HOME: &str = "platform/fs/";
+
 /// 就地写在一段生产代码里的位置：`fs::write(` · 截断开（`.truncate(true)`）这两形原语，
 /// 与文件管理面句柄上调它们的那两个方法（`Face::write_whole` · `Face::overwrite`）。
 fn write_calls(code: &str) -> Vec<usize> {
@@ -255,7 +258,7 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
             .replace('\\', "/");
         for _ in write_calls(&prod) {
             // 原语本体住 `platform/fs/`（下面单数）；调用方的人群不算它。
-            if rel.starts_with("platform/fs/") {
+            if rel.starts_with(FS_HOME) {
                 prims.push(rel.clone());
             } else {
                 files.push(rel.clone());
