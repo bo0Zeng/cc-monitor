@@ -690,6 +690,11 @@ mod tests {
                 "同上，`SessionHits.status`（全文搜索只扫记录树 ⇒ 只有在跑 · 已结束两态）",
             ),
             (
+                "observe/tasks_query.rs",
+                "Task",
+                "typed 帧命令 `tasks-list` 回包 `tasks[]` 的一格（`faces/feature_face.rs`；生成类型从它来）",
+            ),
+            (
                 "observe/search_query.rs",
                 "FindHit",
                 "typed 帧命令 `history-find` 回包 `hits[]` 的一条（`faces/history_face.rs`；生成类型从它来）",
@@ -767,6 +772,10 @@ mod tests {
             (
                 "observe/listing_scan.rs",
                 include_str!("../../src/backend/observe/listing_scan.rs"),
+            ),
+            (
+                "observe/tasks_query.rs",
+                include_str!("../../src/backend/observe/tasks_query.rs"),
             ),
         ];
 

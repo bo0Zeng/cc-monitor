@@ -298,9 +298,9 @@ fn err(f: crate::stream::inbound::spec::Fail) -> AnnotationErr {
 /// 会话 id：非空、至多 256 字节、不含控制字符；不像 ⇒ `bad_args`（形状对、值不对，由处理器回）。
 fn checked_sid(sid: &str) -> Result<&str, AnnotationErr> {
     if sid.is_empty() || sid.len() > 256 || sid.chars().any(char::is_control) {
-        return Err(AnnotationErr::BadArgs(crate::common::contract::malformed(&format!(
-            "`sid` does not look like a session id: {sid:?}"
-        ))));
+        return Err(AnnotationErr::BadArgs(crate::common::contract::malformed(
+            &format!("`sid` does not look like a session id: {sid:?}"),
+        )));
     }
     Ok(sid)
 }
@@ -360,7 +360,11 @@ impl Owning for HistoryForgetCmd {
 }
 
 /// [`HistoryAnnotateCmd`] 的本体：「现在」由调用方给（判据喂临时目录的写句柄与固定时刻）。
-pub(crate) fn annotate_at(own: &Own, req: AnnotateReq, now: i64) -> Result<Annotated, AnnotationErr> {
+pub(crate) fn annotate_at(
+    own: &Own,
+    req: AnnotateReq,
+    now: i64,
+) -> Result<Annotated, AnnotationErr> {
     let sid = checked_sid(&req.sid)?;
     let patch = req.patch;
     let (dir, file) = need_path(own).map_err(err)?;

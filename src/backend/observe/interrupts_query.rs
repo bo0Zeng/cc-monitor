@@ -73,8 +73,8 @@ fn tasks_in_progress(home: &Path, sid: &str) -> Vec<String> {
     crate::observe::tasks_query::session_tasks(home, sid)
         .unwrap_or_default()
         .iter()
-        .filter(|t| t.get("status").and_then(Value::as_str) == Some("in_progress"))
-        .filter_map(|t| t.get("subject").and_then(Value::as_str).map(str::to_string))
+        .filter(|t| t.status == "in_progress")
+        .map(|t| t.subject.clone())
         .collect()
 }
 

@@ -8,8 +8,71 @@
 //!   整份超过 [`crate::faces::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 
+use crate::stream::inbound::typed::{codes, of_pair, Blocking, Command, Cx};
 use copy_core::copy_text;
 use serde_json::{json, Value};
+
+// ───────────────────────── tasks-list（typed）─────────────────────────
+
+/// `tasks-list` 的入参。
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TasksListReq {
+    /// 会话 id（围栏在本体里：走出任务根 ⇒ `bad_args`）。
+    pub(crate) sid: String,
+}
+
+/// `tasks-list` 的回包（成品）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct TasksList {
+    /// `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
+    pub(crate) tasks: Vec<crate::observe::tasks_query::Task>,
+}
+
+codes! {
+    /// `tasks-list` 的码。
+    pub(crate) enum TasksListErr {
+        /// 任务目录读不动。
+        Failed = "failed",
+        /// 整份过 [`crate::faces::read_face::LINES_CAP_BYTES`]（不截断）。
+        TooLarge = "too_large",
+    }
+}
+
+/// `tasks-list`：一个会话的任务列表。
+pub(crate) struct TasksListCmd;
+
+impl Command for TasksListCmd {
+    const NAME: &'static str = "tasks-list";
+    type Req = TasksListReq;
+    type Reply = TasksList;
+    type Err = TasksListErr;
+}
+
+impl Blocking for TasksListCmd {
+    fn run(req: TasksListReq, _cx: &Cx) -> Result<TasksList, TasksListErr> {
+        tasks_at(&crate::observe::history_query::agent_home(), req)
+    }
+}
+
+/// [`TasksListCmd`] 的本体，家目录是参数。
+pub(crate) fn tasks_at(
+    home: &std::path::Path,
+    req: TasksListReq,
+) -> Result<TasksList, TasksListErr> {
+    let fail = of_pair(TasksListErr::Failed);
+    let tasks = crate::observe::tasks_query::session_tasks(home, &req.sid).map_err(&fail)?;
+    let reply = TasksList { tasks };
+    let size = serde_json::to_vec(&reply).map_or(0, |b| b.len());
+    if size > crate::faces::read_face::LINES_CAP_BYTES {
+        return Err(TasksListErr::TooLarge(too_large(size)));
+    }
+    Ok(reply)
+}
 
 /// 本族的应答：`data` 或 `(code, message)`。
 pub(crate) type Answer = Result<Value, (&'static str, String)>;
@@ -23,16 +86,6 @@ pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
 /// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的时刻字按它写。
 fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
     match cmd {
-        "tasks-list" => {
-            let sid = args.get("sid").and_then(Value::as_str).ok_or_else(|| {
-                (
-                    "bad_args",
-                    crate::common::contract::malformed("missing `sid` (a string)"),
-                )
-            })?;
-            // 应答是成品 `{tasks: [...]}`。
-            capped(json!({ "tasks": crate::observe::tasks_query::session_tasks(home, sid)? }))
-        }
         // cc-bus 钩子诊断出成品：这台自己的 `settings.json` ＋ stat（本机远端同一条，monitor 那两条 Tauri 命令删了）。
         "hooks-diag" => {
             let v = serde_json::to_value(crate::observe::cc_bus_hooks::answer()).map_err(|e| {
@@ -120,21 +173,23 @@ pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
 fn capped(v: Value) -> Answer {
     let size = v.to_string().len();
     if size > crate::faces::read_face::LINES_CAP_BYTES {
-        return Err((
-            "too_large",
-            copy_text(
-                "beFeatureFace.answerAt.tooLarge",
-                &[
-                    ("size", &size.to_string()),
-                    (
-                        "cap",
-                        &(crate::faces::read_face::LINES_CAP_BYTES).to_string(),
-                    ),
-                ],
-            ),
-        ));
+        return Err(("too_large", too_large(size)));
     }
     Ok(v)
+}
+
+/// 整份过上限的那一句（`size` 字节）。
+fn too_large(size: usize) -> String {
+    copy_text(
+        "beFeatureFace.answerAt.tooLarge",
+        &[
+            ("size", &size.to_string()),
+            (
+                "cap",
+                &(crate::faces::read_face::LINES_CAP_BYTES).to_string(),
+            ),
+        ],
+    )
 }
 
 /// [`mcp_reply`] 写字要的：这台活会话里说断开的那几个 · 此刻（unix 秒）与看的那一台的时区 · 登录那一步复制的那条命令（那一家的）。

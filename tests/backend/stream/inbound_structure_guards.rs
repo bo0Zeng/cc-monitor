@@ -1214,7 +1214,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SESSION_FORK: &str = include_str!("../../__fixtures__/session-fork.golden.json");
     const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
-    const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1358,21 +1357,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         ("relay-optin", RELAY_OPTIN, "", &[], &[]),
-        (
-            "tasks-list",
-            TASKS_LIST,
-            "/product",
-            &[
-                "activeForm",
-                "blockedBy",
-                "blocks",
-                "description",
-                "id",
-                "status",
-                "subject",
-            ],
-            &[],
-        ),
         ("pubkey-push", PUBKEY_PUSH, "/product", &[], &[]),
         ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
         ("ccm-probe", CCM_PROBE, "/product", &[], &[]),

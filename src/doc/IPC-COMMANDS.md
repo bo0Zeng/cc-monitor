@@ -4115,17 +4115,49 @@ end: number, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --tasks-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `activeForm` | ← | 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串 |
-| `blockedBy` | ← | 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务） |
-| `blocks` | ← | 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务） |
-| `description` | ← | 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串 |
-| `id` | ← | 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过） |
-| `sid` | → | 会话 id |
-| `status` | ← | 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过） |
-| `subject` | ← | 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过） |
-| `tasks` | ← | **成品**：`<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序（此前是原样对象的 `lines`，字段由 monitor 解） |
+入参 `TasksListReq` · 回包 `TasksList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Task = { 
+/**
+ * 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过）。
+ */
+id: string, 
+/**
+ * 同上。
+ */
+subject: string, 
+/**
+ * 同上。
+ */
+status: string, 
+/**
+ * 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
+ */
+blocks: Array<string>, 
+/**
+ * 同上。
+ */
+blockedBy: Array<string>, 
+/**
+ * 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串。
+ */
+description?: string, 
+/**
+ * 同上。
+ */
+activeForm?: string, };
+type TasksList = { 
+/**
+ * `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
+ */
+tasks: Array<Task>, };
+type TasksListReq = { 
+/**
+ * 会话 id（围栏在本体里：走出任务根 ⇒ `bad_args`）。
+ */
+sid: string, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 

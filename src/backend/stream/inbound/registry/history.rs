@@ -148,19 +148,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ 宿主是 `feature_face`，**不是** `read_face`：monitor 侧有一条两向判据数的正是
     //   「交给 `read_face::answer` 的 == `C1` 那八条」，本族不在其中（理由全文在 `feature_face` 头注）。
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
-    CommandSpec {
-        name: "tasks-list",
-        summary: "一个会话的任务列表",
-        codes: &["bad_args", "failed", "too_large"],
-        // 应答换成成品 `{tasks: [...]}`（原是原样对象的 `lines`）⇒ 后端行为变更，合并那拍 bump。
-        fields: &[out("activeForm", "可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串"), out("blockedBy", "串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）"), out("blocks", "串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）"), out("description", "可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串"), out("id", "每格必有、是串（缺 / 不是串的那个对象不算任务，跳过）"), arg("sid", "会话 id"), out("status", "每格必有、是串（缺 / 不是串的那个对象不算任务，跳过）"), out("subject", "每格必有、是串（缺 / 不是串的那个对象不算任务，跳过）"), out("tasks", "**成品**：`<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序（此前是原样对象的 `lines`，字段由 monitor 解）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::feature_face::TasksListCmd>("一个会话的任务列表"),
     // U6b-3：第一条**真业务命令**：按 `ResumeSpec` 推恢复命令（本体 `control/resolve_query.rs`）。CLI 面照派生规则有 `--resolve`。
     CommandSpec {
         name: "resolve",

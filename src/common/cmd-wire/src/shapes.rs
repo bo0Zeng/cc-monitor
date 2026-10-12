@@ -33,6 +33,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("sessions-start", "264d59fb"),
     ("sessions-stop", "0a1aa1a6"),
     ("sessions-where", "8c20eb86"),
+    ("tasks-list", "3d711ecf"),
     ("terminal-input", "b2a383a2"),
     ("terminal-name-mint", "f0db66f2"),
     ("terminal-preview", "d60b74d2"),

@@ -57,6 +57,8 @@ import type { Showing } from "./Showing";
 import type { SidReq } from "./SidReq";
 import type { SidsReq } from "./SidsReq";
 import type { TailPlan } from "./TailPlan";
+import type { TasksList } from "./TasksList";
+import type { TasksListReq } from "./TasksListReq";
 import type { TerminalInputReq } from "./TerminalInputReq";
 import type { TerminalNameMintReq } from "./TerminalNameMintReq";
 import type { TerminalPreviewReq } from "./TerminalPreviewReq";
@@ -98,6 +100,7 @@ export interface TypedCommands {
   "sessions-start": { req: SessionsStartReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };
   "sessions-stop": { req: SidsReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };
   "sessions-where": { req: SidsReq; reply: Whereabouts; code: "bad_args" | "unobservable" | "child_timed_out" };
+  "tasks-list": { req: TasksListReq; reply: TasksList; code: "bad_args" | "failed" | "too_large" };
   "terminal-input": { req: TerminalInputReq; reply: Sent; code: "bad_args" | "bad_target" | "no_tmux" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };
   "terminal-name-mint": { req: TerminalNameMintReq; reply: Minted; code: "bad_args" | "child_timed_out" };
   "terminal-preview": { req: TerminalPreviewReq; reply: Preview; code: "bad_args" | "bad_target" | "not_known" | "ambiguous" | "no_tmux" | "no_server" | "no_such_session" | "capture_failed" | "unobservable" | "child_timed_out" };

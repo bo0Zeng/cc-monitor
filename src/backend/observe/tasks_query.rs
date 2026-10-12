@@ -145,9 +145,34 @@ pub(crate) fn session_task_lines(home: &Path, sid: &str) -> Result<Vec<String>, 
     Ok(out.into_iter().map(|(_, l)| l).collect())
 }
 
-/// 一个任务对象 → **成品**（`tasks-list` 的 `data.tasks` 里的一格）。**纯函数**。
-///
-pub(crate) fn task_entry(v: &serde_json::Value) -> Option<serde_json::Value> {
+/// `tasks-list` 回包 `tasks[]` 里的一格（成品：字段语义只住这里，[`task_entry`] 从原文对象收）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Task {
+    /// 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过）。
+    pub(crate) id: String,
+    /// 同上。
+    pub(crate) subject: String,
+    /// 同上。
+    pub(crate) status: String,
+    /// 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
+    pub(crate) blocks: Vec<String>,
+    /// 同上。
+    pub(crate) blocked_by: Vec<String>,
+    /// 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) description: Option<String>,
+    /// 同上。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) active_form: Option<String>,
+}
+
+/// 一个任务对象 → **成品**（`tasks-list` 的 `tasks` 里的一格）；解不成任务 ⇒ `None`。**纯函数**。
+pub(crate) fn task_entry(v: &serde_json::Value) -> Option<Task> {
     use serde_json::Value;
     let s = |k: &str| v.get(k).and_then(Value::as_str).map(str::to_string);
     let (id, subject, status) = (s("id")?, s("subject")?, s("status")?);
@@ -165,27 +190,20 @@ pub(crate) fn task_entry(v: &serde_json::Value) -> Option<serde_json::Value> {
             Some(_) => None,
         }
     };
-    let (description, active_form) = (opt("description")?, opt("activeForm")?);
-    let (blocks, blocked_by) = (list("blocks")?, list("blockedBy")?);
-    let mut out = serde_json::json!({
-        "id": id,
-        "subject": subject,
-        "status": status,
-        "blocks": blocks,
-        "blockedBy": blocked_by,
-    });
-    if let Some(d) = description {
-        out["description"] = Value::String(d);
-    }
-    if let Some(a) = active_form {
-        out["activeForm"] = Value::String(a);
-    }
-    Some(out)
+    Some(Task {
+        id,
+        subject,
+        status,
+        description: opt("description")?,
+        active_form: opt("activeForm")?,
+        blocks: list("blocks")?,
+        blocked_by: list("blockedBy")?,
+    })
 }
 
 /// 一个会话的任务**成品**：[`session_task_lines`] 读出的每个对象过 [`task_entry`]，解不成任务的跳过（`trace!`），
 /// 顺序原样（任务号升序）。
-pub(crate) fn session_tasks(home: &Path, sid: &str) -> Result<Vec<serde_json::Value>, Refusal> {
+pub(crate) fn session_tasks(home: &Path, sid: &str) -> Result<Vec<Task>, Refusal> {
     Ok(session_task_lines(home, sid)?
         .iter()
         .filter_map(|l| {
