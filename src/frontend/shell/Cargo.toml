@@ -28,6 +28,8 @@ members = [
     "../../comms/inward",
     # 通信层面 B（中转，搬字节那一层）：后端链它；它自己的单测由这个 workspace 跑。
     "../../comms/outward",
+    # 连远端常驻后端的客户端那一侧：monitor 与手机嵌的 Rust 核心同一份（手机那一份经后端那棵 workspace 的 `mobcore` 链它）。
+    "../../comms/resident-client",
     # 前端宿主原语（两个前端共用、后端不链）：自有状态文件的原子写 · 窗口夹进工作区。
     "../../common/host-core",
     # 交给 Win32 的路径（长路径前缀）：后端 · monitor · 文件窗口 · creds-core 共用那一份。
@@ -64,6 +66,7 @@ default-run = "cc-monitor"
 [package.metadata.guard]
 population = [
     "../../comms/inward",
+    "../../comms/resident-client",
     "../../common/host-core",
     "../../common/filewin-contract",
     "../../common/win-manifest",
@@ -151,6 +154,8 @@ own-chan = { path = "../../common/own-chan" }
 deploy-contract = { path = "../../common/deploy-contract" }
 # 通信层面 A（crate 住 `src/comms/inward/`；壳里 `chan/` 再导出，模块路径不变）。
 comms-inward = { path = "../../comms/inward" }
+# 连远端常驻后端的客户端那一侧（帧客户端 · 握手零件 · 重连退避 · 版本门 · 在看名单）：手机嵌的 Rust 核心同一份（`src/comms/resident-client/`）。
+resident-client = { path = "../../comms/resident-client" }
 # 前端宿主原语（原子写 `atomic_write_json` · `WorkArea` / `fit_into_work_area`）：monitor 与文件窗口共用那一份（`src/common/host-core`）。
 host-core = { path = "../../common/host-core" }
 # 交给 Win32 的路径（长路径前缀）只从它来：配置换名那一处用（`platform/fs.rs`）；仓内 crate、零依赖。
@@ -214,6 +219,8 @@ acct-core = { path = "../../common/acct-core" }
 guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 comms-inward = { path = "../../comms/inward", features = ["ts"] }
+# 判据要的那几样（停一个本来就分开的写端 · 关写半边 · 数登记）：只在测试档开。
+resident-client = { path = "../../comms/resident-client", features = ["test-support"] }
 # 判据要对着编进来的那张形状指纹表（`cmd_wire::shapes::SHAPES`）验「对不上就不发」。
 cmd-wire = { path = "../../common/cmd-wire" }
 # 暂停时钟（`#[tokio::test(start_paused = true)]`）：拿「截止时刻」说事的测试用虚拟时钟，机器负载多高读数都一样。

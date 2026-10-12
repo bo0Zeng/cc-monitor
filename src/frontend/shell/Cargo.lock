@@ -3384,6 +3384,7 @@ dependencies = [
  "own-chan",
  "parking_lot",
  "relay-route-core",
+ "resident-client",
  "serde",
  "serde_json",
  "shell-quote-core",
@@ -4703,6 +4704,21 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
+]
+
+[[package]]
+name = "resident-client"
+version = "0.1.0"
+dependencies = [
+ "comms-inward",
+ "copy-core",
+ "guard-core",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "test-home",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

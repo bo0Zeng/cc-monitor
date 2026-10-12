@@ -501,6 +501,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
+    // 接常驻流那两行（hello · attach 回话）在 `resident-client` 里的上限（手机那一侧整段握手走它；值同下一行）。
+    (
+        "src/comms/resident-client/attach.rs",
+        "HANDSHAKE_LINE_CAP",
+        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测一两 KB",
+        "拒收+回错",
+    ),
     (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
@@ -669,9 +676,9 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
     // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
     // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
-    // 抄过去就是丢真实数据。理由全文在 `stream_source/exec.rs::BACKEND_FRAME_LINE_CAP` 头注。
+    // 抄过去就是丢真实数据。理由全文在 `resident-client/line.rs::BACKEND_FRAME_LINE_CAP` 头注（monitor 与手机同一份）。
     (
-        "src/frontend/shell/src/stream_source/exec.rs",
+        "src/comms/resident-client/line.rs",
         "BACKEND_FRAME_LINE_CAP",
         "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
         "丢弃+带身份报告",
