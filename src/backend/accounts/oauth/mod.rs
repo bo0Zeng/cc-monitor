@@ -4,8 +4,10 @@
 //! - 令牌一律包成秘密（`creds_core::SecretKey`）：不进日志、不进 argv、不进帧、不进报错原文。
 //! - 那一家的文件格式、令牌端点、锁的名字住适配层（[`LoginFace`]）；这里只有「怎么读、怎么续、怎么写回」。
 //! - 续失败照实说（哪个号、为什么），不静默跳过、不猜。
+//! - 续成了而写回碰上那一家正在存盘（它的整份写锁在）⇒ 新令牌不丢：先在内存里照用，等锁放开再写回（[`writeback`]）。
 
 pub(crate) mod store;
+pub(crate) mod writeback;
 
 use crate::agents::LoginFace;
 use crate::relay::Base;
@@ -152,6 +154,10 @@ pub(crate) fn access_token(
     now_ms: u64,
     account: &str,
 ) -> Result<SecretKey, Unusable> {
+    // 刚续成、写回还在等那一家放写锁 ⇒ 照用内存里那份，不再续一次（等到期限没放开 ⇒ 这里照实报一次写回失败）。
+    if let Some(r) = writeback::served(dir, face, now_ms) {
+        return r;
+    }
     let n = look(dir, face)?;
     if fresh(&n, face, now_ms) {
         return n.access.ok_or(Unusable::NotLoggedIn);
@@ -160,7 +166,8 @@ pub(crate) fn access_token(
         return Err(Unusable::NotLoggedIn);
     }
     let creds = store::creds_of(own, dir, face).map_err(Unusable::NotRenewed)?;
-    match store::with_refresh_lock(&creds, face, |reclaimed, held| {
+    let mut later: Option<Renewed> = None;
+    let r = match store::with_refresh_lock(&creds, face, |reclaimed, held| {
         refresh_locked(
             dir,
             face,
@@ -169,16 +176,23 @@ pub(crate) fn access_token(
             account,
             reclaimed,
             (&creds, held),
+            &mut later,
         )
     }) {
         Ok(store::Locked::Held(r)) => r,
         Ok(store::Locked::Busy) => Err(Unusable::Busy),
         Err(why) => Err(Unusable::NotRenewed(why)),
+    };
+    // 续期锁已经放了：写回交给等写锁放开的那一位（文件事件叫醒，有总期限）。
+    if let Some(renewed) = later {
+        writeback::defer(own, dir, face, account, renewed);
     }
+    r
 }
 
 /// 在续期锁里（同一时刻一个号只有一个在续：跨进程锁让同进程的几条线程也排队）：
 /// 再看一眼盘（前一个刚续过就用它的）→ 发续期 → 比对盘上的刷新令牌还是不是发出去那个 → 整份写回。
+#[allow(clippy::too_many_arguments)]
 fn refresh_locked(
     dir: &Path,
     face: &LoginFace,
@@ -187,6 +201,7 @@ fn refresh_locked(
     account: &str,
     reclaimed: &store::Reclaimed,
     write: Writing<'_>,
+    later: &mut Option<Renewed>,
 ) -> Result<SecretKey, Unusable> {
     let n = look(dir, face)?;
     let mut trail = Trail {
@@ -205,7 +220,7 @@ fn refresh_locked(
     let Some(posted) = n.refresh.as_ref() else {
         return Err(Unusable::Expired);
     };
-    let r = renew(face, endpoint, now_ms, &n, posted, &mut trail, write);
+    let r = renew(face, endpoint, now_ms, &n, posted, &mut trail, write, later);
     let line = renew_line(account, &trail, &r);
     if r.is_ok() {
         tracing::info!("{line}");
@@ -226,6 +241,8 @@ struct Trail {
     why: Option<String>,
     /// 续成了，但盘上的刷新令牌已被那个号自己换掉 ⇒ 用盘上的、不写回。
     yielded: bool,
+    /// 续成了，写回时那一家正持着整份写锁 ⇒ 新令牌先在内存里照用，写回等它放开（[`writeback`]）。
+    deferred: bool,
     /// 拿锁时当无主收回的那几把（[`store::Reclaimed`]）。
     reclaimed: Vec<&'static str>,
 }
@@ -244,6 +261,7 @@ fn error_code(body: &[u8]) -> Option<String> {
 fn renew_line(account: &str, t: &Trail, r: &Result<SecretKey, Unusable>) -> String {
     let outcome = match r {
         Ok(_) if t.yielded => "让位",
+        Ok(_) if t.deferred => "成·写回等锁",
         Ok(_) => "成",
         Err(_) => "败",
     };
@@ -295,6 +313,7 @@ fn renew(
     posted: &SecretKey,
     trail: &mut Trail,
     (creds, held): Writing<'_>,
+    later: &mut Option<Renewed>,
 ) -> Result<SecretKey, Unusable> {
     let sec = n.doc.get(face.section);
     let client = sec
@@ -362,47 +381,90 @@ fn renew(
             copy_text("beOauth.refresh.missing", &[]),
         )));
     };
-    let refresh = secret_in(&wrapped, "t", "refresh_token");
-    let mut plain: Vec<(&str, Value)> = vec![(
-        face.expires_ms,
-        Value::from(now_ms.saturating_add(expires_in.saturating_mul(1000))),
-    )];
-    if let Some(scope) = got.get("scope").and_then(Value::as_str) {
-        let list: Vec<Value> = scope.split_whitespace().map(Value::from).collect();
-        if !list.is_empty() {
-            plain.push((face.scopes, Value::Array(list)));
-        }
-    }
-    let mut secrets: Vec<(&str, &SecretKey)> = vec![(face.access, &access)];
-    if let Some(r) = refresh.as_ref() {
-        secrets.push((face.refresh, r));
-    }
-    // 在那一家的整份写锁里重读盘、比对、写：盘上的刷新令牌已经不是发出去那个了 ⇒ 别人（那个号自己的 claude）抢先续过，用它的，不覆盖。
-    let done = store::rewrite(creds, face, held, |read| match now_of(read, face) {
-        Err(u) => (None, Err(u)),
-        Ok(disk) if !disk.refresh.as_ref().is_some_and(|r| r.same_secret(posted)) => {
-            (None, Ok((true, disk.access)))
-        }
-        Ok(disk) => (
-            Some(merge_tokens(&disk.doc, face.section, &secrets, &plain)),
-            Ok((false, None)),
-        ),
-    });
-    match done {
+    let renewed = Renewed {
+        posted: posted.clone(),
+        refresh: secret_in(&wrapped, "t", "refresh_token"),
+        expires_ms: now_ms.saturating_add(expires_in.saturating_mul(1000)),
+        scopes: got
+            .get("scope")
+            .and_then(Value::as_str)
+            .map(|s| s.split_whitespace().map(Value::from).collect::<Vec<_>>())
+            .filter(|l| !l.is_empty()),
+        access,
+    };
+    match write_back(creds, face, held, &renewed) {
         Err(why) => Err(Unusable::WriteFailed(why)),
         Ok(store::Locked::Busy) => {
-            trail.why = Some("write-busy".to_string());
-            Err(Unusable::WriteFailed(crate::common::said::Said::from(
-                copy_text("beOauthStore.write.busy", &[]),
-            )))
+            trail.deferred = true;
+            let access = renewed.access.clone();
+            *later = Some(renewed);
+            Ok(access)
         }
         Ok(store::Locked::Held(Err(u))) => Err(u),
-        Ok(store::Locked::Held(Ok((true, disk_access)))) => {
+        Ok(store::Locked::Held(Ok(WriteBack::Yielded(disk_access)))) => {
             trail.yielded = true;
             disk_access.ok_or(Unusable::Expired)
         }
-        Ok(store::Locked::Held(Ok((false, _)))) => Ok(access),
+        Ok(store::Locked::Held(Ok(WriteBack::Written))) => Ok(renewed.access),
     }
+}
+
+/// 续成了、要写回那一节的那一份（令牌都包成秘密）。`posted` = 发出去的那个刷新令牌（写前比对用）。
+#[derive(Clone)]
+pub(crate) struct Renewed {
+    posted: SecretKey,
+    access: SecretKey,
+    refresh: Option<SecretKey>,
+    expires_ms: u64,
+    scopes: Option<Vec<Value>>,
+}
+
+impl Renewed {
+    /// 新的访问令牌（等写回期间每一发各交一份）与它几点过期。
+    pub(crate) fn access(&self) -> (&SecretKey, u64) {
+        (&self.access, self.expires_ms)
+    }
+}
+
+/// 写回的结局（写锁拿到了的那一支）。
+pub(crate) enum WriteBack {
+    /// 写进去了。
+    Written,
+    /// 盘上的刷新令牌已经不是发出去那个（那个号自己的 claude 抢先续过）⇒ 用盘上的、不覆盖（盘上的访问令牌，可缺）。
+    Yielded(Option<SecretKey>),
+}
+
+/// **续成之后写回只此一处**（续期那一发当场写 · 等写锁放开后再写，都经它）：在那一家的整份写锁里重读盘 → 比对
+/// → 只换那一节里那几格、整份原子写（[`store::rewrite`]）。写锁有人持着 ⇒ `Busy`，一个字节不写。
+pub(crate) fn write_back(
+    creds: &crate::platform::fs::AccountCreds,
+    face: &LoginFace,
+    held: &crate::platform::fs::CredsLock,
+    r: &Renewed,
+) -> Result<store::Locked<Result<WriteBack, Unusable>>, crate::common::said::Said> {
+    let mut plain: Vec<(&str, Value)> = vec![(face.expires_ms, Value::from(r.expires_ms))];
+    if let Some(list) = &r.scopes {
+        plain.push((face.scopes, Value::Array(list.clone())));
+    }
+    let mut secrets: Vec<(&str, &SecretKey)> = vec![(face.access, &r.access)];
+    if let Some(rt) = r.refresh.as_ref() {
+        secrets.push((face.refresh, rt));
+    }
+    store::rewrite(creds, face, held, |read| match now_of(read, face) {
+        Err(u) => (None, Err(u)),
+        Ok(disk)
+            if !disk
+                .refresh
+                .as_ref()
+                .is_some_and(|x| x.same_secret(&r.posted)) =>
+        {
+            (None, Ok(WriteBack::Yielded(disk.access)))
+        }
+        Ok(disk) => (
+            Some(merge_tokens(&disk.doc, face.section, &secrets, &plain)),
+            Ok(WriteBack::Written),
+        ),
+    })
 }
 
 #[cfg(test)]

@@ -124,6 +124,7 @@ pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
     // （`mkdir <配置目录>/.storage-write.lock`，过期门限 15 秒），锁里重读、只改自己那一格、临时文件 ＋ 改名。10-12 沙箱 strace 实测。
     write_lock: Some(".storage-write.lock"),
     write_lock_stale_ms: 15_000,
+    write_wait_ms: 20_000,
     entries: Some(MCP_LOGINS),
     identity_file: accounts::identity_file,
     identity_in: accounts::identity_in,

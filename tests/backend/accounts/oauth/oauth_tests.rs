@@ -216,25 +216,97 @@ fn a_lock_held_by_someone_else_is_said_and_left_alone() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
-/// 续成了、要写回时那个号的 claude 正在整份写这份文件（它那把写锁在）⇒ 不写（不拿一份旧的整份盖掉它正在存的那一格），照实说写回失败。
+/// 等写锁放开的期限缩短到判据等得起的长度（生产里是那一家登记的那个数）。
+const SHORT_WAIT: LoginFace = LoginFace {
+    write_wait_ms: 400,
+    ..FACE
+};
+
+/// 盘上那一份的订阅号令牌是不是 `access` / `refresh`（经 `same_secret` 不读明文以外的东西：夹具全是假值）。
+fn disk_has(acct: &Path, access: &str, refresh: &str) -> bool {
+    let v = on_disk(acct);
+    v["claudeAiOauth"]["accessToken"] == access && v["claudeAiOauth"]["refreshToken"] == refresh
+}
+
+fn wait_until(mut ok: impl FnMut() -> bool) -> bool {
+    for _ in 0..100 {
+        if ok() {
+            return true;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    ok()
+}
+
+/// ★ 续成了、写回时 claude 正持着它的整份写锁：这一发照常拿到新令牌（不被挡）；期间再来的不再续一次、照用内存里那份；
+/// 锁一放（文件事件）就照「重读 → 比对 → 只换这一节 → 整份原子写」写回，别的节原样。
 #[test]
-fn the_write_back_never_writes_under_claudes_write_lock() {
+fn a_write_lock_held_by_claude_does_not_cost_the_new_token() {
     let d = temp_dir("wlock");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let wl = acct.join(FACE.write_lock.expect("Claude 登记了整份写锁"));
+    std::fs::create_dir(&wl).expect("别人的写锁");
+    let (addr, posted) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    let ep = endpoint_at(addr);
+    let r = access_token(&own(), &acct, &FACE, &ep, NOW_MS, "q").map(|s| expose(&s));
+    assert_eq!(r, Ok("acc-new".to_string()), "写锁在，这一发被挡了");
+    assert!(disk_has(&acct, "acc-old", "ref-old"), "写锁在，还是写了");
+    assert!(wl.is_dir(), "别人的写锁不许动");
+    let again = access_token(&own(), &acct, &FACE, &ep, NOW_MS, "q").map(|s| expose(&s));
+    assert_eq!(
+        again,
+        Ok("acc-new".to_string()),
+        "等写回期间又来一发，没用内存里那份"
+    );
+    assert_eq!(
+        posted.lock().expect("lock").len(),
+        1,
+        "等写回期间又续了一次"
+    );
+    std::fs::remove_dir(&wl).expect("放锁");
+    assert!(
+        wait_until(|| disk_has(&acct, "acc-new", "ref-new")),
+        "锁放了，盘上还不是新令牌"
+    );
+    assert_eq!(
+        on_disk(&acct)["mcpOAuth"],
+        serde_json::json!({"keep": "me"}),
+        "别的节变了"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// ★ 到期限写锁还没放开 ⇒ 照实报写回失败（点名这个号、说可能要重新登录），盘上一个字节不动。
+#[test]
+fn a_write_lock_that_never_lets_go_is_reported_as_a_failed_write_back() {
+    let d = temp_dir("wlock-stuck");
     let acct = d.join("acct");
     write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
     let before = on_disk(&acct);
     let wl = acct.join(FACE.write_lock.expect("Claude 登记了整份写锁"));
     std::fs::create_dir(&wl).expect("别人的写锁");
     let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, None);
-    let r = access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "q");
+    let ep = endpoint_at(addr);
+    let r = access_token(&own(), &acct, &SHORT_WAIT, &ep, NOW_MS, "q").map(|s| expose(&s));
+    assert_eq!(r, Ok("acc-new".to_string()));
+    let mut said = None;
     assert!(
-        matches!(r, Err(Unusable::WriteFailed(_))),
-        "{:?}",
-        r.map(|s| expose(&s))
+        wait_until(|| {
+            match access_token(&own(), &acct, &SHORT_WAIT, &nowhere(), NOW_MS, "q") {
+                Err(Unusable::WriteFailed(why)) => {
+                    said = Some(Unusable::WriteFailed(why).said("q").said);
+                    true
+                }
+                _ => false,
+            }
+        }),
+        "期限过了也没报写回失败"
     );
-    assert_eq!(on_disk(&acct), before, "写锁在，还是写了");
+    let said = said.unwrap_or_default();
+    assert!(said.contains('q') && said.contains("重新登录"), "{said}");
+    assert_eq!(on_disk(&acct), before, "写锁一直在，还是写了");
     assert!(wl.is_dir(), "别人的写锁不许动");
-    assert!(!acct.join(FACE.lock_inside).exists(), "续期锁没放");
     let _ = std::fs::remove_dir_all(&d);
 }
 

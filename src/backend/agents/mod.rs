@@ -2095,6 +2095,9 @@ pub(crate) struct LoginFace {
     pub(crate) write_lock: Option<&'static str>,
     /// 那把写锁的修改时刻早过这么多毫秒 ⇒ 当无主收回。
     pub(crate) write_lock_stale_ms: u64,
+    /// 续成了、写回时那把写锁有人持着 ⇒ 新令牌先留在内存里照用，等它放开（文件事件）再写回；最多等这么多毫秒，
+    /// 到期还没放开就照实报写回失败（那个号可能要重新登录）。比 [`Self::write_lock_stale_ms`] 长：到期那一刻再试一次，持有方早已不在的锁就收回了。
+    pub(crate) write_wait_ms: u64,
     /// 同一份文件里另有一节「每个服务器一条」的登录（Claude 的 MCP 登录）；各号之间同步它。没有 ⇒ `None`。
     pub(crate) entries: Option<EntryLogins>,
     /// 一个号的账号身份住哪份文件：（配置目录, 账号 0 时的家目录）→ 那份文件。

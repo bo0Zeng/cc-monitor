@@ -21405,10 +21405,10 @@
       "zh": "写入失败 · {path} · 程序出错",
       "args": ["path"]
     },
-    "beOauthStore.write.busy": {
+    "beOauth.writeback.timedOut": {
       "kind": "error",
       "role": "原因格",
-      "zh": "Claude 正在写这份登录信息",
+      "zh": "Claude 一直占着登录信息 · 新令牌未存下 · 可能需重新登录",
       "args": []
     },
     "beOauth.unusable.notLoggedIn": {
