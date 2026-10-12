@@ -133,6 +133,8 @@ fn a_reused_parent_ends_the_chain_and_a_failed_query_is_said() {
         json!({}),
         json!({ "terminals": [] }),
         json!({ "terminals": [{ "ssh": null, "activity": 1, "extra": 1 }] }),
+        // 产这一格的 `session-terminals` 恒写 `ssh`（不是经 ssh ⇒ `null`）⇒ 缺这一键是认不得的形，不当「不是经 ssh」。
+        json!({ "terminals": [{ "activity": 1 }] }),
         json!({ "terminals": [term("not-an-ip", 1, "192.0.2.9", 22)] }),
         json!({ "terminals": [{ "ssh": { "clientAddr": "192.0.2.5", "clientPort": 70000, "serverAddr": "192.0.2.9", "serverPort": 22 } }] }),
     ] {

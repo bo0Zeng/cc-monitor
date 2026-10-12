@@ -24,6 +24,8 @@ pub(crate) struct SshConnection {
 #[serde(deny_unknown_fields)]
 pub(crate) struct Terminal {
     /// 经 ssh 连过来的那条连接；`null` = 那个终端不是经 ssh 连的（这台机器自己的屏幕上，或别的方式）。
+    /// 键恒在：产这一格的 `session-terminals` 不是经 ssh 也写 `null`；交来的缺这一键 ⇒ 认不得的形（`bad_args`），不当「不是经 ssh」。
+    #[serde(deserialize_with = "Option::deserialize")]
     pub(crate) ssh: Option<SshConnection>,
     /// 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
     #[cfg_attr(test, ts(type = "number | null"))]
