@@ -42,6 +42,8 @@ impl crate::assets::door::Door for LocalFiles {
 pub(crate) struct LocalFrames {
     /// 引起这一趟的请求信封里的时区（内层命令照它写「几点」，问别台时转过去）。
     tz: crate::Tz,
+    /// 写自家状态的句柄：内层那几条里写装记录的（`BlockingOwn`）要它。由引起这一趟的那条命令（它自己就是 `AsyncOwn`）递进来。
+    own: crate::platform::Own,
 }
 
 /// 枢纽问得到的内层命令（来源那台读 · 被写那台判 / 写）。
@@ -66,9 +68,6 @@ impl crate::assets::hub::Here for LocalFrames {
             .iter()
             .find(|s| s.name == cmd && HUB_INNER.contains(&s.name))
             .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
-        let Run::Blocking(run) = spec.run else {
-            return Err(("unknown_command".to_string(), cmd.to_string()));
-        };
         let req = Request {
             id: "in-process".to_string(),
             cmd: cmd.to_string(),
@@ -78,7 +77,14 @@ impl crate::assets::hub::Here for LocalFrames {
             tz: self.tz.clone(),
             until: None,
         };
-        run(req).map(|v| v.unwrap_or(serde_json::Value::Null))
+        // 内层那几条住在三个阻塞档里（读 · 带码的读 · 写装记录）：三档都认；别的档枢纽不问。
+        let out = match spec.run {
+            Run::Blocking(run) => run(req),
+            Run::BlockingData(run) => run(req).map_err(|f| (f.code, f.message)),
+            Run::BlockingOwn(run) => run(req, &self.own).map_err(|f| (f.code, f.message)),
+            _ => return Err(("unknown_command".to_string(), cmd.to_string())),
+        };
+        out.map(|v| v.unwrap_or(serde_json::Value::Null))
     }
 
     fn viewer_tz(&self) -> crate::Tz {
@@ -86,9 +92,15 @@ impl crate::assets::hub::Here for LocalFrames {
     }
 }
 
-/// `tz` ＝ 引起这一趟的那条请求的信封 `tz`。
-pub(super) fn hub_here(tz: &crate::Tz) -> std::sync::Arc<dyn crate::assets::hub::Here> {
-    std::sync::Arc::new(LocalFrames { tz: tz.clone() })
+/// `tz` ＝ 引起这一趟的那条请求的信封 `tz`；`own` ＝ 分派递给那条命令的写句柄。
+pub(super) fn hub_here(
+    tz: &crate::Tz,
+    own: &crate::platform::Own,
+) -> std::sync::Arc<dyn crate::assets::hub::Here> {
+    std::sync::Arc::new(LocalFrames {
+        tz: tz.clone(),
+        own: own.clone(),
+    })
 }
 
 /// 流那一路的后端里盯这台的 `rotation.json`（别的进程写了也推 `changed {rotation}`）。
