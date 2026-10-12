@@ -225,6 +225,18 @@ fn sandbox(tag: &str) -> PathBuf {
     d.join(FILE_NAME)
 }
 
+/// 写句柄：数据目录那一根就是 `path` 所在的那一层（判据的沙箱）。
+fn own_at(path: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_data_at(path.parent().expect("沙箱目录"))
+}
+
+/// 别的进程写了一份（判据直接落盘，不经本进程的写口）：整份 JSON 原子挪过去（新 inode，同别处那个后端的写法）。
+fn foreign_write(path: &std::path::Path, b: &Book) {
+    let side = path.with_extension("foreign.tmp");
+    std::fs::write(&side, serde_json::to_vec(b).expect("json")).expect("写旁名");
+    std::fs::rename(&side, path).expect("挪过去");
+}
+
 /// ★ 只有一个写者换形：一次性的那一路（命令行 · ccm）读到第一版 ⇒ 只在内存里换，盘上一字不动、写也不写；
 /// 接上中转的那个进程起来时（[`migrate_at`]）⇒ 换形写回一次、原文留 `rotation.json.v1`，再来一次不动；读不懂的不覆盖。
 #[test]
@@ -236,7 +248,7 @@ fn only_the_relay_host_rewrites_a_v1_file_and_only_once() {
     let b = st.now();
     assert_eq!(b.default_config, "r_00000000", "内存里照第二版用");
     assert!(
-        st.change(|b| b.default_config = "c_00000002".into())
+        st.change(&own_at(&path), |b| b.default_config = "c_00000002".into())
             .is_err(),
         "第一版在盘上时不写"
     );
@@ -246,7 +258,7 @@ fn only_the_relay_host_rewrites_a_v1_file_and_only_once() {
         "一次性那一路不动盘"
     );
     assert!(!v1_backup_of(&path).exists());
-    assert_eq!(migrate_at(&path).ok(), Some(true));
+    assert_eq!(migrate_at(&own_at(&path)).ok(), Some(true));
     let disk: Value =
         serde_json::from_str(&std::fs::read_to_string(&path).expect("r")).expect("json");
     assert_eq!(disk["version"], json!(2), "写回了第二版");
@@ -255,13 +267,17 @@ fn only_the_relay_host_rewrites_a_v1_file_and_only_once() {
         serde_json::from_str::<Value>(&kept).expect("json"),
         v1_sample()
     );
-    assert_eq!(migrate_at(&path).ok(), Some(false), "已是第二版 ⇒ 不动");
+    assert_eq!(
+        migrate_at(&own_at(&path)).ok(),
+        Some(false),
+        "已是第二版 ⇒ 不动"
+    );
     let again = RotationStore::at(Some(path.clone())).now();
     assert_eq!(again, Book { from_v1: None, ..b });
     std::fs::write(&path, "{\"version\": 9}").expect("w");
-    assert_eq!(migrate_at(&path).ok(), Some(false), "读不懂的不动");
+    assert_eq!(migrate_at(&own_at(&path)).ok(), Some(false), "读不懂的不动");
     assert!(RotationStore::at(Some(path.clone()))
-        .change(|b| b.default_config = "x".into())
+        .change(&own_at(&path), |b| b.default_config = "x".into())
         .is_err());
     assert_eq!(
         std::fs::read_to_string(&path).expect("r"),
@@ -633,7 +649,7 @@ fn drain(rx: &mut tokio::sync::broadcast::Receiver<String>, prefix: &str) -> Vec
 fn a_write_from_another_process_rings_here_on_rescan() {
     let path = sandbox("a1");
     let st = RotationStore::at(Some(path.clone()));
-    st.change(|b| {
+    st.change(&own_at(&path), |b| {
         b.saw("a1-keep", "claude-code", "a", 1);
         b.saw("a1-flip", "claude-code", "a", 1)
     })
@@ -647,7 +663,7 @@ fn a_write_from_another_process_rings_here_on_rescan() {
     };
     b.sessions.get_mut("a1-flip").expect("flip").memo = Some(json!({"x": 1}));
     b.saw("a1-new", "claude-code", "a", 2);
-    crate::common::own_state::write_json(&path, &b).expect("write");
+    foreign_write(&path, &b);
     rescan(&path);
     assert_eq!(
         drain(&mut rx, "a1-"),
@@ -658,7 +674,7 @@ fn a_write_from_another_process_rings_here_on_rescan() {
         _ => panic!("读不回"),
     };
     b.configs.get_mut("c_00000001").expect("1").body.name = "改了".into();
-    crate::common::own_state::write_json(&path, &b).expect("write");
+    foreign_write(&path, &b);
     rescan(&path);
     assert_eq!(drain(&mut rx, "a1-").len(), 3, "开着它的会话都响");
     rescan(&path);
@@ -671,9 +687,9 @@ fn a_write_from_another_process_rings_here_on_rescan() {
 fn the_watcher_rescans_a_foreign_write_without_being_asked() {
     let path = sandbox("a1w");
     let st = RotationStore::at(Some(path.clone()));
-    st.change(|b| b.saw("a1w-s", "claude-code", "a", 1))
+    st.change(&own_at(&path), |b| b.saw("a1w-s", "claude-code", "a", 1))
         .expect("write");
-    let _w = watch(&path).expect("watch");
+    let _w = watch(&own_at(&path)).expect("watch");
     assert!(
         path.parent()
             .expect("dir")
@@ -683,7 +699,7 @@ fn the_watcher_rescans_a_foreign_write_without_being_asked() {
     );
     let mut b = st.now();
     b.sessions.get_mut("a1w-s").expect("s").memo = Some(json!({"y": 2}));
-    crate::common::own_state::write_json(&path, &b).expect("write");
+    foreign_write(&path, &b);
     let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
     let seen_it = || {
         let g = seen().lock().unwrap_or_else(|e| e.into_inner());
@@ -703,7 +719,7 @@ fn the_watcher_rescans_a_foreign_write_without_being_asked() {
 fn an_unreadable_file_keeps_the_last_good_book_and_says_so() {
     let path = sandbox("unread");
     let st = RotationStore::at(Some(path.clone()));
-    st.change(|b| b.default_config = "c_00000003".into())
+    st.change(&own_at(&path), |b| b.default_config = "c_00000003".into())
         .expect("write");
     assert_eq!(st.now().default_config, "c_00000003");
     assert!(st.unreadable().is_none());
@@ -714,14 +730,14 @@ fn an_unreadable_file_keeps_the_last_good_book_and_says_so() {
     assert!(!why.said.is_empty());
     assert!(why.raw.is_some(), "原话进复制详情");
     assert!(
-        st.change(|b| b.default_config = "c_00000001".into())
+        st.change(&own_at(&path), |b| b.default_config = "c_00000001".into())
             .is_err(),
         "不覆盖"
     );
     assert_eq!(std::fs::read_to_string(&path).expect("r"), "{broken");
     let mut good = Book::default();
     good.default_config = "c_00000002".into();
-    crate::common::own_state::write_json(&path, &good).expect("w");
+    foreign_write(&path, &good);
     assert_eq!(st.now().default_config, "c_00000002");
     assert!(st.unreadable().is_none());
     let _ = std::fs::remove_dir_all(path.parent().expect("dir"));

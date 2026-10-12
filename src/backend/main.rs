@@ -260,7 +260,7 @@ async fn main() {
     let hello = build_hello(&agent_home);
 
     // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `changed {rotation}`（广播通道是进程内的）。
-    inbound::watch_rotation();
+    inbound::watch_rotation(&own);
     match listening {
         None => run_over_stdio(hello, agent_home, wants, own).await,
         Some((listener, held)) => {

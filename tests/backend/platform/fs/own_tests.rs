@@ -130,11 +130,11 @@ fn w4_remove_and_rename_stay_under_the_root() {
     let a = own.path("a").expect("名");
     let b = own.path("b").expect("名");
     std::fs::write(a.as_path(), b"1").expect("夹具");
-    own.rename(&a, &b).expect("改名");
+    own.move_file(&a, &b).expect("改名");
     assert!(!a.as_path().exists() && b.as_path().exists());
-    own.remove_file(&b).expect("删");
+    own.delete_file(&b).expect("删");
     assert!(!b.as_path().exists());
-    assert!(own.remove_file(&b).is_err(), "删一个不在的该照实报错");
+    assert!(own.delete_file(&b).is_err(), "删一个不在的该照实报错");
     std::fs::remove_dir_all(&base).ok();
 }
 

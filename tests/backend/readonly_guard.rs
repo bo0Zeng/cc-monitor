@@ -899,13 +899,6 @@ mod tests {
              锁目录建成即持有、续完即删（`remove_dir` 只删自己刚建的那两个空目录）。入口只有上游选择换号要令牌那一处（`oauth::access_token`）",
         ),
         (
-            "accounts/quota/rotation.rs",
-            "**账号轮换** `~/.cc-monitor/rotation.json`（配置表 · 本机默认 · 各会话打开的那份配置的副本 · 手动调整 · 策略备忘 · 换号记录）\
-             与本机策略目录 `~/.cc-monitor/strategies/*.rhai`。文件名 / 格式 / 落点都是本仓定的 ⇒ 账号域**自己的**状态。\
-             `rotation.json` 在跨进程锁里读盘 → 改 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；第一版换形那一下另写一份 `rotation.json.v1`；\
-             读不懂的那份不覆盖。策略文件整份原子写、只删策略目录里那一份。入口：中转换号那一路（上游选择）· 帧面那一路",
-        ),
-        (
             "dial/known_hosts.rs",
             "**主机钥匙** `~/.cc-monitor/known_hosts`（OpenSSH 格式）：本后端握手认下的各台主机钥匙，开终端那一行交给 `ssh` 认它。\
              文件名 / 格式 / 落点都是本仓定的、只有终端那一跳的 `ssh` 读它 ⇒ 拨号侧**自己的**状态，不是用户数据（用户的 `~/.ssh` 一个字节不碰）。\
@@ -989,16 +982,6 @@ mod tests {
             "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
         ),
         (
-            "accounts/upstream_select/rotate.rs",
-            "上游选择换号那一份：中转看见一个会话的第一发 · 被拒 / 发之前满着要换号 ⇒ 记下会话、钉号、记一条为什么 —— \
-             那一格没有帧命令可走（换号发生在中转经手的那一发上）",
-        ),
-        (
-            "faces/rotation_face.rs",
-            "换号那一族的帧面宿主（`rotation-rule-save` · `-rename` · `-delete` · `rotation-default-set` · `rotation-session-set` · `rotation-switch`）：\
-             前端存 / 改 / 删规则、设默认、改会话轮换、现在就换，只有这一族命令（帧面与派生的 CLI 面共用）",
-        ),
-        (
             "relay/listen.rs",
             "中转起监听那一处（`prepare`，常驻后端进程内起中转；`--relay` 那一形删了）：**绑上口之后、说「在听」之前** \
              拿钥匙。它不是帧面命令 —— 钥匙是中转进门的前提，不是前端要改的值；只有绑上了口的那一个会写 ⇒ 不会两个中转抢着铸",
@@ -1046,28 +1029,6 @@ mod tests {
             "accounts/oauth/store.rs",
             "store::with_refresh_lock",
             "accounts/oauth/mod.rs",
-        ),
-        // 账号轮换：中转换号那一路只从上游选择换号那一份进，帧面那一路只从换号的帧面宿主进。
-        (
-            "accounts/quota/rotation.rs",
-            "rotation::relay_change",
-            "accounts/upstream_select/rotate.rs",
-        ),
-        (
-            "accounts/quota/rotation.rs",
-            "rotation::face_change",
-            "faces/rotation_face.rs",
-        ),
-        // 本机策略文件（`~/.cc-monitor/strategies/<id>.rhai`）：装 · 删只从帧面宿主进（`rotation-strategy-add` · `-delete`）。
-        (
-            "accounts/quota/rotation.rs",
-            "rotation::strategy_file_write",
-            "faces/rotation_face.rs",
-        ),
-        (
-            "accounts/quota/rotation.rs",
-            "rotation::strategy_file_remove",
-            "faces/rotation_face.rs",
         ),
         // 中转钥匙：门是中转起监听那一处，不是命令注册。
         ("relay/key.rs", "key::ensure_key", "relay/listen.rs"),

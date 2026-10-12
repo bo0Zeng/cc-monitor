@@ -57,7 +57,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_config"],
         fields: &[arg("config", "整份内容 `{name, strategy, accounts: [{start: true} | {rest: true} | {id}, params], params, acctInit, parked?}`；参数照那份策略的声明逐格校验，缺的格补齐"), out("errors", "只在 `refused` 时有：`[{cell, code, said}]`（`name` · `strategy` · `accounts[i]` · `params.<k>` · `accounts[i].<k>` · `acctInit.<k>`，时段细到 `[j].at` / `[j].line`）"), arg("force", "可缺：`true` ⇒ `ifRev` 对不上也覆盖"), both("id", "入参：改哪份；缺 ＝ 新建。应答：写成的那份"), arg("ifRev", "可缺：改之前读到的 `rev`；对不上 ⇒ `conflict`"), both("rev", "写成的版本 · `conflict` 时此刻的版本"), out("savedAtText", "只在 `saved` 时有：写成那一刻的钟面 `HH:MM`"), out("state", "`\"saved\"` · `\"refused\"` · `\"conflict\"`"), out("theirs", "只在 `conflict` 时有：别处那一版跟这一份差哪几格 `[{acct?, k, from, to, text}]`")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_config_save(&r.args, &r.tz).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_config_save(&r.args, &r.tz, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-config-rename",
@@ -65,7 +67,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_config"],
         fields: &[out("errors", "同 `rotation-config-save`"), both("id", "哪份"), arg("ifRev", "同 `rotation-config-save`"), arg("name", "新名字（1–24 字，本机不重名）"), out("rev", "同 `rotation-config-save`"), out("savedAtText", "同 `rotation-config-save`"), out("state", "同 `rotation-config-save`"), out("theirs", "同 `rotation-config-save`（改名撞版本时为空）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_config_rename(&r.args, &r.tz).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_config_rename(&r.args, &r.tz, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-config-delete",
@@ -73,7 +77,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_config"],
         fields: &[arg("id", "哪份"), out("inUse", "只在 `refused` 时有：开着它的会话"), out("isDefault", "只在 `refused` 时有：是本机默认"), out("said", "只在 `refused` 时有：那一句"), out("state", "`\"done\"` · `\"refused\"`（有会话开着 · 是本机默认）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_config_delete(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_config_delete(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-default-set",
@@ -81,7 +87,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_config"],
         fields: &[arg("id", "设为本机默认的那份（已开着的会话不跟着换）"), out("state", "`\"done\"`")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_default_set(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_default_set(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-strategies-read",
@@ -97,7 +105,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed"],
         fields: &[out("error", "只在 `refused` 时有：读不懂那一处 `{kind, line?, col?, msg, text}`"), both("id", "文件名去 `.rhai`（路由段闸那一套字符，至多 32 字，不以 `@` 开头；与内置同 id ⇒ 不收）"), out("said", "只在 `refused` 时有：那一句"), arg("source", "策略文件的全文（至多 64 KiB）"), out("state", "`\"done\"` · `\"refused\"`"), out("usedBy", "删不了时：用它的配置")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_strategy_add(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_strategy_add(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-strategy-delete",
@@ -105,7 +115,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_strategy"],
         fields: &[out("error", "同 `rotation-strategy-add`"), both("id", "哪份（内置的删不了）"), out("said", "同 `rotation-strategy-add`"), out("state", "`\"done\"` · `\"refused\"`（内置的 · 有配置在用）"), out("usedBy", "只在有配置在用时有：那几份的 id")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_strategy_delete(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_strategy_delete(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-strategy-try",
@@ -137,7 +149,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_config"],
         fields: &[arg("config", "打开哪份"), out("diff", "只在 `dirty` 时有：本会话副本改了哪几格"), arg("discard", "可缺：`true` ⇒ 丢掉本会话没存的改动再打开"), arg("sid", "哪个会话"), out("state", "`\"opened\"`（手动调整与备忘清掉）· `\"dirty\"`（副本有没存的改动，先问）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_open(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_session_open(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-session-edit",
@@ -145,7 +159,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_session"],
         fields: &[arg("add", "可缺：加进来的号（新的一行抄 `acctInit`）"), out("diff", "副本跟原样差哪几格 `[{acct?, k, from, to, text}]`"), out("dirty", "副本改没改过（改回原样 ⇒ `false`，副本丢掉）"), arg("drop", "可缺：不参与的号（删那一行）"), out("errors", "收不下的格 `[{cell, code, said}]`（那几格不改）"), arg("lang", "可缺：字写哪种语言"), arg("set", "`[{acct?, k, v}]`：`acct` 缺 ＝ 整份参数 · `@start` · `@rest` · `@init`（新加的号缺省）· 号 id（`rest` 底下的号 ⇒ 给它单写一行）"), arg("sid", "哪个会话"), arg("strategy", "可缺：换一份策略（旧参数收进 `parked`，同名同类型的照搬）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_edit(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_session_edit(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-session-save",
@@ -153,7 +169,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed"],
         fields: &[arg("as", "可缺：`{name?}` ⇒ 另存为（新 id，本会话改开它；不起名 ⇒ `配置 N`）"), out("errors", "只在 `refused` 时有"), arg("force", "可缺：`true` ⇒ 撞版本也覆盖"), out("id", "只在 `saved` 时有：写成的那份"), arg("ifRev", "打开时的 `rev`；对不上且没 `force` ⇒ `conflict`"), out("mine", "只在 `conflict` 时有：本会话的改动"), out("rev", "写成的版本 · `conflict` 时此刻的版本"), arg("sid", "哪个会话"), out("state", "`\"saved\"` · `\"conflict\"` · `\"refused\"`"), out("theirs", "只在 `conflict` 时有：别处那一版跟本会话的差")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_save(&r.args, &r.tz).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_session_save(&r.args, &r.tz, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-session-revert",
@@ -161,7 +179,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_session"],
         fields: &[arg("sid", "哪个会话"), out("state", "`\"done\"`"), arg("toLatest", "可缺：载入新版本（同一件事：副本丢掉、版本跟上）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_revert(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_session_revert(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-session-set",
@@ -169,7 +189,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_session"],
         fields: &[arg("place", "`{account, at}`：把那个号放到第 `at` 位（0 起；`0` ＝ 现在就换过去，同 `rotation-switch` 热换，不出任何提示）"), arg("refresh", "`true` ⇒ 清掉全部手动调整与备忘，照策略重算"), arg("sid", "哪个会话"), out("state", "`\"done\"` · `\"skipped\"` · `\"failed\"`"), out("why", "没换成时的码（同 `rotation-switch` 的 `hot` 那一格）")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_set(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| {
+            crate::faces::rotation_face::answer_session_set(&r.args, own).map(Some)
+        }),
     },
     CommandSpec {
         name: "rotation-switch",
@@ -177,9 +199,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "failed"],
         fields: &[arg("mode", "`hot`（不重启，下一发起就走它）· `restart`（换号重启）"), both("sessions", "`hot`：会话 id；`restart`：每项是 `session-restart` 的入参（不带 `account`）；应答里是逐个结果"), arg("target", "换到哪个号")],
         takes_input: true,
-        run: Run::Async(|r| {
+        run: Run::AsyncOwn(|r, own| {
             Box::pin(async move {
-                crate::faces::rotation_switch_face::answer_switch(r.args, r.until, &LocalFiles)
+                crate::faces::rotation_switch_face::answer_switch(r.args, r.until, &LocalFiles, own)
                     .await
                     .map(Some)
                     .map_err(|(c, m)| (c.to_string(), m))

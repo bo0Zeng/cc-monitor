@@ -21094,12 +21094,6 @@
       "zh": "{said} · 未覆盖",
       "args": ["said"]
     },
-    "beRotation.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beRotation.write.failed": {
       "kind": "error",
       "role": "报错",

@@ -468,12 +468,16 @@ impl Home {
             "acctInit": {"line": line, "slots": [], "mode": "normal", "stint": null}
         }))
         .expect("config");
-        rotation::face_change(&RotationStore::at(Some(self.rotation_path())), |b| {
-            let id = b.default_config.clone();
-            if let Some(c) = b.configs.get_mut(&id) {
-                c.body = body.clone();
-            }
-        })
+        rotation::face_change(
+            &RotationStore::at(Some(self.rotation_path())),
+            &self.own(),
+            |b| {
+                let id = b.default_config.clone();
+                if let Some(c) = b.configs.get_mut(&id) {
+                    c.body = body.clone();
+                }
+            },
+        )
         .expect("write");
     }
 
@@ -1043,9 +1047,13 @@ fn a_session_started_inside_another_opens_the_default_config() {
     let relay = home.relay_tracing(up);
     let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
-    rotation::face_change(&RotationStore::at(Some(home.rotation_path())), |b| {
-        b.sessions.get_mut("s-owner").expect("owner").config.id = "c_00000003".into();
-    })
+    rotation::face_change(
+        &RotationStore::at(Some(home.rotation_path())),
+        &home.own(),
+        |b| {
+            b.sessions.get_mut("s-owner").expect("owner").config.id = "c_00000003".into();
+        },
+    )
     .expect("write");
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
     let book = RotationStore::at(Some(home.rotation_path())).now();

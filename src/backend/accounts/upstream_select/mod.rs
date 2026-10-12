@@ -207,12 +207,12 @@ impl Upstreams {
 pub fn host_relay(library: rotate::LibraryRead, own: crate::platform::fs::Own) -> String {
     let hosted = crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Rotating(library, own),
+        &Rotating(library, own.clone()),
         crate::stream::tap::port(),
     );
     // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是第一版，这一下换形写回（全机只这一处写回）。
     if hosted.listening() {
-        crate::accounts::quota::rotation::migrate_here();
+        crate::accounts::quota::rotation::migrate_here(&own);
     }
     hosted.to_string()
 }
@@ -510,7 +510,7 @@ impl Destinations for Accounts {
         // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。
         let row = |a: &str| self.row_of(&key.seg1, a);
         let go = match &self.hop {
-            Some(h) => h.steer(&self.rotate_ask(key, ask, &row)),
+            Some(h) => h.steer(&self.rotate_ask(key, ask, &row), &self.own),
             None => rotate::Go::Start,
         };
         let table = self.table();
@@ -553,8 +553,13 @@ impl Destinations for Accounts {
         };
         let tried: Vec<String> = tried.iter().map(|t| t.to_string()).collect();
         let row = |a: &str| self.row_of(&key.seg1, a);
-        let Some(go) = h.on_refused(&self.rotate_ask(key, ask, &row), seen.tag, &reading, &tried)
-        else {
+        let Some(go) = h.on_refused(
+            &self.rotate_ask(key, ask, &row),
+            seen.tag,
+            &reading,
+            &tried,
+            &self.own,
+        ) else {
             return;
         };
         let table = self.table();

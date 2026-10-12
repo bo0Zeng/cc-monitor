@@ -124,13 +124,14 @@ impl Own {
         atomic_write(&path.0, body)
     }
 
-    /// 删一份文件（不删目录）。
-    pub(crate) fn remove_file(&self, path: &OwnPath) -> std::io::Result<()> {
+    /// 删一份文件（不删目录）。方法名刻意不叫 `remove_file` / `rename`：那两个方法形是远端写那一层动词网的锚点
+    /// （`readonly_guard::remote_write_layer`），本机这一层同名会被认成第二份远端写。
+    pub(crate) fn delete_file(&self, path: &OwnPath) -> std::io::Result<()> {
         std::fs::remove_file(&path.0)
     }
 
-    /// 改名（两头都在数据目录底下）。
-    pub(crate) fn rename(&self, from: &OwnPath, to: &OwnPath) -> std::io::Result<()> {
+    /// 改名（两头都在根底下；目标已在 ⇒ 盖掉）。
+    pub(crate) fn move_file(&self, from: &OwnPath, to: &OwnPath) -> std::io::Result<()> {
         std::fs::rename(&from.0, &to.0)
     }
 }

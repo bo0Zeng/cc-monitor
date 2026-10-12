@@ -3,6 +3,7 @@
 //! 会话（读 · 打开一份配置 · 改副本 · 存 · 还原 · 手动调整）· 推演。都只照后端算好的回，界面不跑策略。
 
 use crate::accounts::upstream_select::rotate::{LibAccount, Library, LibraryRead};
+use crate::platform::fs::Own;
 use std::path::Path;
 
 /// 这台的账号库：清单里每个号（配置目录的末段 ＝ 路由第 2 段）＋ 账号 0。没建账号库 / 清单读不懂 ⇒ 空。
@@ -571,15 +572,16 @@ fn saved_at_text(ctx: &Ctx, now: u64) -> String {
 }
 
 /// `rotation-config-save`：`{id?, ifRev?, config, force?}`；参数照声明逐格校验；`id` 缺 ＝ 新建。
-pub(crate) fn answer_config_save(args: &Value, tz: &crate::Tz) -> Answer {
+pub(crate) fn answer_config_save(args: &Value, tz: &crate::Tz, own: &Own) -> Answer {
     answer_config_save_with(
         &Ctx::here().viewing(tz),
+        own,
         args,
         crate::accounts::quota::now_unix(),
     )
 }
 
-pub(crate) fn answer_config_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+pub(crate) fn answer_config_save_with(ctx: &Ctx, own: &Own, args: &Value, now: u64) -> Answer {
     let body = parse_body(args.get("config").unwrap_or(&Value::Null))?;
     let id = match args.get("id") {
         None | Some(Value::Null) => None,
@@ -621,7 +623,7 @@ pub(crate) fn answer_config_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
         }
     }
     let tz = ctx.tz.iana_name();
-    let (id, rev) = rotation::face_change(&ctx.hop.store, |b| {
+    let (id, rev) = rotation::face_change(&ctx.hop.store, own, |b| {
         let id = id
             .clone()
             .unwrap_or_else(|| rotation::new_config_id(&b.configs));
@@ -644,15 +646,16 @@ pub(crate) fn answer_config_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
 }
 
 /// `rotation-config-rename`：`{id, name, ifRev?}`。
-pub(crate) fn answer_config_rename(args: &Value, tz: &crate::Tz) -> Answer {
+pub(crate) fn answer_config_rename(args: &Value, tz: &crate::Tz, own: &Own) -> Answer {
     answer_config_rename_with(
         &Ctx::here().viewing(tz),
+        own,
         args,
         crate::accounts::quota::now_unix(),
     )
 }
 
-pub(crate) fn answer_config_rename_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+pub(crate) fn answer_config_rename_with(ctx: &Ctx, own: &Own, args: &Value, now: u64) -> Answer {
     let id = str_arg(args, "id")?;
     let name = args
         .get("name")
@@ -680,7 +683,7 @@ pub(crate) fn answer_config_rename_with(ctx: &Ctx, args: &Value, now: u64) -> An
         ..cur.body
     };
     let tz = ctx.tz.iana_name();
-    let rev = rotation::face_change(&ctx.hop.store, |b| {
+    let rev = rotation::face_change(&ctx.hop.store, own, |b| {
         doc::write_config(
             b,
             &id,
@@ -738,11 +741,11 @@ fn done() -> Done {
 }
 
 /// `rotation-config-delete`：`{id}`；有会话开着 · 是本机默认 ⇒ 不删。
-pub(crate) fn answer_config_delete(args: &Value) -> Answer {
-    answer_config_delete_with(&Ctx::here(), args)
+pub(crate) fn answer_config_delete(args: &Value, own: &Own) -> Answer {
+    answer_config_delete_with(&Ctx::here(), own, args)
 }
 
-pub(crate) fn answer_config_delete_with(ctx: &Ctx, args: &Value) -> Answer {
+pub(crate) fn answer_config_delete_with(ctx: &Ctx, own: &Own, args: &Value) -> Answer {
     let id = str_arg(args, "id")?;
     store_path(ctx)?;
     let book = ctx.hop.store.now();
@@ -766,7 +769,7 @@ pub(crate) fn answer_config_delete_with(ctx: &Ctx, args: &Value) -> Answer {
             said,
         });
     }
-    rotation::face_change(&ctx.hop.store, |b| {
+    rotation::face_change(&ctx.hop.store, own, |b| {
         b.configs.remove(&id);
     })
     .map_err(|e| ("io_failed", e))?;
@@ -774,17 +777,17 @@ pub(crate) fn answer_config_delete_with(ctx: &Ctx, args: &Value) -> Answer {
 }
 
 /// `rotation-default-set`：`{id}` ⇒ 本机默认指向它（已开着的会话不跟着换）。
-pub(crate) fn answer_default_set(args: &Value) -> Answer {
-    answer_default_set_with(&Ctx::here(), args)
+pub(crate) fn answer_default_set(args: &Value, own: &Own) -> Answer {
+    answer_default_set_with(&Ctx::here(), own, args)
 }
 
-pub(crate) fn answer_default_set_with(ctx: &Ctx, args: &Value) -> Answer {
+pub(crate) fn answer_default_set_with(ctx: &Ctx, own: &Own, args: &Value) -> Answer {
     let id = str_arg(args, "id")?;
     store_path(ctx)?;
     if !ctx.hop.store.now().configs.contains_key(&id) {
         return Err(("no_such_config", copy_text("beRotation.config.gone", &[])).into());
     }
-    rotation::face_change(&ctx.hop.store, |b| b.default_config = id.clone())
+    rotation::face_change(&ctx.hop.store, own, |b| b.default_config = id.clone())
         .map_err(|e| ("io_failed", e))?;
     wire(&done())
 }
@@ -940,11 +943,11 @@ pub enum StrategyChanged {
 }
 
 /// `rotation-strategy-add`：`{id, source}` ⇒ 读得懂才写进本机策略目录（`<id>.rhai`，已有同名 ⇒ 覆盖）。
-pub(crate) fn answer_strategy_add(args: &Value) -> Answer {
-    answer_strategy_add_with(&Ctx::here(), args)
+pub(crate) fn answer_strategy_add(args: &Value, own: &Own) -> Answer {
+    answer_strategy_add_with(&Ctx::here(), own, args)
 }
 
-pub(crate) fn answer_strategy_add_with(ctx: &Ctx, args: &Value) -> Answer {
+pub(crate) fn answer_strategy_add_with(ctx: &Ctx, own: &Own, args: &Value) -> Answer {
     let id = str_arg(args, "id")?;
     let source = args
         .get("source")
@@ -973,16 +976,16 @@ pub(crate) fn answer_strategy_add_with(ctx: &Ctx, args: &Value) -> Answer {
             used_by: Vec::new(),
         });
     }
-    rotation::strategy_file_write(&ctx.hop.store, &id, &source).map_err(|e| ("io_failed", e))?;
+    rotation::strategy_file_write(own, &id, &source).map_err(|e| ("io_failed", e))?;
     wire(&StrategyChanged::Done { id })
 }
 
 /// `rotation-strategy-delete`：`{id}` ⇒ 删本机那一份（内置的 · 有配置在用 ⇒ 不删）。
-pub(crate) fn answer_strategy_delete(args: &Value) -> Answer {
-    answer_strategy_delete_with(&Ctx::here(), args)
+pub(crate) fn answer_strategy_delete(args: &Value, own: &Own) -> Answer {
+    answer_strategy_delete_with(&Ctx::here(), own, args)
 }
 
-pub(crate) fn answer_strategy_delete_with(ctx: &Ctx, args: &Value) -> Answer {
+pub(crate) fn answer_strategy_delete_with(ctx: &Ctx, own: &Own, args: &Value) -> Answer {
     let id = str_arg(args, "id")?;
     let all = ctx.strategies();
     let Some(s) = strategy::find(&all, &id) else {
@@ -1019,7 +1022,7 @@ pub(crate) fn answer_strategy_delete_with(ctx: &Ctx, args: &Value) -> Answer {
         });
     }
     if let Some(p) = &s.path {
-        rotation::strategy_file_remove(&ctx.hop.store, p).map_err(|e| ("io_failed", e))?;
+        rotation::strategy_file_remove(own, p).map_err(|e| ("io_failed", e))?;
     }
     wire(&StrategyChanged::Done { id })
 }
@@ -1693,18 +1696,18 @@ pub enum SessionOpened {
 }
 
 /// `rotation-session-open`：`{sid, config, discard?}`。
-pub(crate) fn answer_session_open(args: &Value) -> Answer {
-    answer_session_open_with(&Ctx::here(), args)
+pub(crate) fn answer_session_open(args: &Value, own: &Own) -> Answer {
+    answer_session_open_with(&Ctx::here(), own, args)
 }
 
-pub(crate) fn answer_session_open_with(ctx: &Ctx, args: &Value) -> Answer {
+pub(crate) fn answer_session_open_with(ctx: &Ctx, own: &Own, args: &Value) -> Answer {
     let sid = sid_arg(args)?;
     let id = str_arg(args, "config")?;
     let discard = flag(args, "discard")?;
     let lang = lang_of(args);
     store_path(ctx)?;
     let all = ctx.strategies();
-    let r = rotation::face_change(&ctx.hop.store, |b| {
+    let r = rotation::face_change(&ctx.hop.store, own, |b| {
         doc::open_session(b, &sid, &id, discard, &all, lang)
     })
     .map_err(|e| ("io_failed", e))?;
@@ -1774,17 +1777,17 @@ fn edit_of(args: &Value) -> Result<Edit, Fail> {
 }
 
 /// `rotation-session-edit`：`{sid, set: [{acct?, k, v}], add?, drop?, strategy?, lang?}` ⇒ 改副本（手动调整不在这里）。
-pub(crate) fn answer_session_edit(args: &Value) -> Answer {
-    answer_session_edit_with(&Ctx::here(), args)
+pub(crate) fn answer_session_edit(args: &Value, own: &Own) -> Answer {
+    answer_session_edit_with(&Ctx::here(), own, args)
 }
 
-pub(crate) fn answer_session_edit_with(ctx: &Ctx, args: &Value) -> Answer {
+pub(crate) fn answer_session_edit_with(ctx: &Ctx, own: &Own, args: &Value) -> Answer {
     let sid = sid_arg(args)?;
     let e = edit_of(args)?;
     let lang = lang_of(args);
     store_path(ctx)?;
     let all = ctx.strategies();
-    let r = rotation::face_change(&ctx.hop.store, |b| {
+    let r = rotation::face_change(&ctx.hop.store, own, |b| {
         doc::edit_session(b, &sid, &e, &all, &account_ok, lang)
     })
     .map_err(|e| ("io_failed", e))?
@@ -1820,15 +1823,16 @@ pub enum SessionSaved {
 }
 
 /// `rotation-session-save`：`{sid, ifRev, as?: {name?}, force?}`。
-pub(crate) fn answer_session_save(args: &Value, tz: &crate::Tz) -> Answer {
+pub(crate) fn answer_session_save(args: &Value, tz: &crate::Tz, own: &Own) -> Answer {
     answer_session_save_with(
         &Ctx::here().viewing(tz),
+        own,
         args,
         crate::accounts::quota::now_unix(),
     )
 }
 
-pub(crate) fn answer_session_save_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+pub(crate) fn answer_session_save_with(ctx: &Ctx, own: &Own, args: &Value, now: u64) -> Answer {
     let sid = sid_arg(args)?;
     let ifr = if_rev(args)?;
     let force = flag(args, "force")?;
@@ -1841,7 +1845,7 @@ pub(crate) fn answer_session_save_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
     store_path(ctx)?;
     let all = ctx.strategies();
     let tz = ctx.tz.iana_name();
-    let r = rotation::face_change(&ctx.hop.store, |b| {
+    let r = rotation::face_change(&ctx.hop.store, own, |b| {
         doc::save_session(
             b,
             &sid,
@@ -1863,15 +1867,15 @@ pub(crate) fn answer_session_save_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
 }
 
 /// `rotation-session-revert`：`{sid, toLatest?}` ⇒ 丢副本（`toLatest` ＝ 载入新版本：同一件事，`rev` 跟上）。
-pub(crate) fn answer_session_revert(args: &Value) -> Answer {
-    answer_session_revert_with(&Ctx::here(), args)
+pub(crate) fn answer_session_revert(args: &Value, own: &Own) -> Answer {
+    answer_session_revert_with(&Ctx::here(), own, args)
 }
 
-pub(crate) fn answer_session_revert_with(ctx: &Ctx, args: &Value) -> Answer {
+pub(crate) fn answer_session_revert_with(ctx: &Ctx, own: &Own, args: &Value) -> Answer {
     let sid = sid_arg(args)?;
     flag(args, "toLatest")?;
     store_path(ctx)?;
-    let ok = rotation::face_change(&ctx.hop.store, |b| doc::revert_session(b, &sid))
+    let ok = rotation::face_change(&ctx.hop.store, own, |b| doc::revert_session(b, &sid))
         .map_err(|e| ("io_failed", e))?;
     if !ok {
         return Err(gone_session());
@@ -1919,15 +1923,15 @@ impl From<SwitchOutcome> for Placed {
 
 /// `rotation-session-set`：手动调整（不碰副本）。`{sid, place: {account, at}}` ⇒ 把那个号放到第 `at` 位（`at = 0` ＝ 现在就换过去，同
 /// `rotation-switch` 热换）；`{sid, refresh: true}` ⇒ 清掉全部手动调整与备忘，照策略重算。
-pub(crate) fn answer_session_set(args: &Value) -> Answer {
-    answer_session_set_with(&Ctx::here(), args, crate::accounts::quota::now_unix())
+pub(crate) fn answer_session_set(args: &Value, own: &Own) -> Answer {
+    answer_session_set_with(&Ctx::here(), own, args, crate::accounts::quota::now_unix())
 }
 
-pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
+pub(crate) fn answer_session_set_with(ctx: &Ctx, own: &Own, args: &Value, now: u64) -> Answer {
     let sid = sid_arg(args)?;
     store_path(ctx)?;
     if flag(args, "refresh")? {
-        let ok = rotation::face_change(&ctx.hop.store, |b| match b.sessions.get_mut(&sid) {
+        let ok = rotation::face_change(&ctx.hop.store, own, |b| match b.sessions.get_mut(&sid) {
             Some(s) => {
                 s.manual = Manual::default();
                 s.memo = None;
@@ -1956,9 +1960,9 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
         .and_then(Value::as_u64)
         .ok_or_else(|| bad("`place.at` must be a position (0 = switch now)"))?;
     if at == 0 {
-        return wire(&Placed::from(hot_one(ctx, &sid, &account, now)));
+        return wire(&Placed::from(hot_one(ctx, own, &sid, &account, now)));
     }
-    let ok = rotation::face_change(&ctx.hop.store, |b| match b.sessions.get_mut(&sid) {
+    let ok = rotation::face_change(&ctx.hop.store, own, |b| match b.sessions.get_mut(&sid) {
         Some(s) => {
             s.manual.place.retain(|p| p.account != account);
             s.manual.place.push(Place {
@@ -1980,6 +1984,7 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, args: &Value, now: u64) -> Answ
 /// 配置不在 ⇒ `no_such_config`。`kind` ＝ 线上的那一家（记成它的适配器 id）。
 pub(crate) fn preset_with(
     ctx: &Ctx,
+    own: &Own,
     sid: &str,
     kind: &str,
     config: &str,
@@ -1999,7 +2004,7 @@ pub(crate) fn preset_with(
         .map(|(_, f)| f.adapter_id.to_string())
         .unwrap_or_else(|_| kind.to_string());
     let zero = crate::accounts::manage::model::ACCOUNT_ZERO;
-    rotation::face_change(&ctx.hop.store, |b| {
+    rotation::face_change(&ctx.hop.store, own, |b| {
         b.sessions.insert(
             sid.to_string(),
             SessionEntry::fresh(&agent, zero, now, open.clone()),
@@ -2009,8 +2014,8 @@ pub(crate) fn preset_with(
 }
 
 /// 起不成：撤掉 [`preset_with`] 记的那一条（只撤还没换过号的；写不成只出声）。
-pub(crate) fn forget_preset_with(ctx: &Ctx, sid: &str) {
-    if let Err(e) = rotation::face_change(&ctx.hop.store, |b| {
+pub(crate) fn forget_preset_with(ctx: &Ctx, own: &Own, sid: &str) {
+    if let Err(e) = rotation::face_change(&ctx.hop.store, own, |b| {
         if b.sessions.get(sid).is_some_and(|s| s.history.is_empty()) {
             b.sessions.remove(sid);
         }
@@ -2025,7 +2030,7 @@ pub(crate) fn outcome(o: SwitchOutcome) -> Result<Value, (&'static str, String)>
 
 /// 不重启换一个会话（手动热换）：中转见过它 · 这一家有账号 · 这台建了账号库 · 目标号接得上 ⇒ 钉过去、记 `manual.hot`、记一条。
 /// 不出任何提示。
-pub(crate) fn hot_one(ctx: &Ctx, sid: &str, target: &str, now: u64) -> SwitchOutcome {
+pub(crate) fn hot_one(ctx: &Ctx, own: &Own, sid: &str, target: &str, now: u64) -> SwitchOutcome {
     let book = ctx.hop.store.now();
     let skipped = |code: &str| SwitchOutcome::Skipped { code: code.into() };
     let Some(s) = book.sessions.get(sid) else {
@@ -2051,12 +2056,13 @@ pub(crate) fn hot_one(ctx: &Ctx, sid: &str, target: &str, now: u64) -> SwitchOut
         }
     }
     let from = s.current.clone();
-    record(ctx, sid, &from, target, Leave::Manual, now)
+    record(ctx, own, sid, &from, target, Leave::Manual, now)
 }
 
 /// 记一条手动换号（钉到 `to`；`Leave::Manual` ⇒ 另记 `manual.hot`）；写不进 ⇒ 没成。
 pub(crate) fn record(
     ctx: &Ctx,
+    own: &Own,
     sid: &str,
     from: &str,
     to: &str,
@@ -2089,7 +2095,7 @@ pub(crate) fn record(
         text: None,
     };
     let base = ctx.hop.baseline_of(&agent, to, now);
-    match rotation::face_change(&ctx.hop.store, |b| {
+    match rotation::face_change(&ctx.hop.store, own, |b| {
         if hot {
             if let Some(s) = b.sessions.get_mut(sid) {
                 s.manual.hot = Some(Hot {
