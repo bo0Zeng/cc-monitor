@@ -225,7 +225,7 @@ async fn main() {
             accounts::upstream_select::host_relay(faces::rotation_face::library(), relay_own)
         );
         if resident {
-            accounts::manage::wire::colors_here(&stream::inbound::LocalFiles);
+            inbound::fill_account_colors();
         }
     };
     if off_thread {

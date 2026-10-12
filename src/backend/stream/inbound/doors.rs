@@ -112,3 +112,9 @@ pub fn watch_rotation(own: &crate::platform::fs::Own) {
 pub fn watch_account_mcp() {
     crate::accounts::manage::mcp_share_watch::start(&LocalFiles);
 }
+
+/// 这台的账号库补号色（一次，写经 [`LocalFiles`]，与帧命令同一扇门）：只由占着常驻的那一个进程起来时调
+/// （`main.rs` 接中转那一刻，与 `rotation.json` 换形写回同一处、同一个写的人）。
+pub fn fill_account_colors() {
+    crate::accounts::manage::wire::colors_here(&LocalFiles);
+}

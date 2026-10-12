@@ -54,7 +54,7 @@ pub(crate) use caps::until_of;
 pub(crate) use caps::{cap_of, MARGIN_MS};
 pub use cli_only::CLI_ONLY_DOCS;
 pub(crate) use doors::LocalFiles;
-pub use doors::{watch_account_mcp, watch_rotation};
+pub use doors::{fill_account_colors, watch_account_mcp, watch_rotation};
 pub use drain::{exit_after_drain, shutdown_listener, SHUTTING_DOWN};
 #[cfg(test)]
 use drain::{exit_after_drain_within, Drain};
