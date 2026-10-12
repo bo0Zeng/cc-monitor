@@ -196,7 +196,7 @@ fn next_backoff_doubles_then_caps() {
 }
 
 // 〔「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
-//   随那几个函数搬进后端 `dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
+//   随那几个函数搬进后端 `ssh-dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
 //   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
 
 // 远端开终端在本机后端（`terminal-ssh`）。首选地址的两半判据：

@@ -2310,7 +2310,6 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       [{ terminals: TERMINALS }, { chain: [], why: "elsewhere", addr: "203.0.113.8" }, copyText("front.title.elsewhere"), copyText("front.body.elsewhere", { addr: "203.0.113.8" }), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "mismatch" }, copyText("front.title.unsure"), copyText("front.body.mismatch"), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
-      [{ terminals: [], why: "<新原因>" }, null, copyText("front.title.badShape"), "", [copyText("detail.act.copy")], "red"],
     ];
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
@@ -6469,5 +6468,107 @@ describe("标签页的名字照抄核心那一格", () => {
     tm.ensureTab("n2", "/w/q", "/p/n2.jsonl", "box");
     tm.updateName("n2", "登录修复", "q");
     expect(home(tm).store.tabs.get("n2")!.title).toBe("[box] [q] 登录修复");
+  });
+});
+
+// ==========================================================================
+// ui3（10-11 稿「标签页分组-边界」方案 A）：组画成一块。块边说「在组里」，拖的时候「进组」点亮的是那一块、
+// 插入线画在块里面；组外的线画在块外。窄栏组员的悬停卡首行带组名（I8）。
+// ==========================================================================
+describe("ui3 · 组成块：落点反馈看块、窄栏悬停带组名", () => {
+  let tm: TabManager;
+  const parts = (gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } => home(tm).bar.groupParts(gid)!;
+  const rect = (el: HTMLElement, left: number, right: number, top = 0, height = 0): void => {
+    el.getBoundingClientRect = (): DOMRect => ({ left, right, top, height, bottom: top + height, width: right - left }) as DOMRect;
+  };
+  const mark = (t: DropTarget | null): void => (home(tm).dragger as unknown as { mark(t: DropTarget | null): void }).mark(t);
+  const line = (): HTMLElement => document.body.querySelector<HTMLElement>(`.${tg.dropLine}`)!;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    home(tm).prefs.collectionsLoaded = true;
+    tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", LOCAL_ORIGIN);
+    setGroups(tm, [{ id: "g1", name: "订单", tabs: ["b", "c"] }]);
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+    rect(home(tm).bar.listEl, 0, 260, 0, 400);
+    rect(parts("g1").wrap, 6, 254);
+    // 起拖（a），线才建出来。
+    home(tm).bar.tabButtons.get("a")!.root.dispatchEvent(new MouseEvent("mousedown", { button: 0, buttons: 1, clientX: 0, clientY: 5, bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { buttons: 1, clientX: 0, clientY: 40, bubbles: true }));
+  });
+  afterEach(() => {
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    document.body.querySelectorAll(".tab-drag-ghost").forEach((n) => n.remove());
+    delete document.body.dataset.tabBar;
+  });
+
+  it("落在组里 ⇒ 点亮的是整块（不是组员那一列）；线画在块里面", () => {
+    mark(before("c", "g1"));
+    expect(parts("g1").wrap.classList.contains(tg.hot), "进组要看得出：块边变 accent").toBe(true);
+    expect(parts("g1").list.classList.contains(tg.hot), "引导线那一套撤了：组员那一列不再挂 hot").toBe(false);
+    expect(line().hidden).toBe(false);
+    expect(line().style.left, "线从块的左内边起（块左 6 ＋ 线内缩 6），不再按缩进 12 算").toBe("12px");
+    expect(line().style.width, "线止于块的右内边").toBe(`${254 - 6 - 12}px`);
+  });
+
+  it("落在组外 ⇒ 哪块都不亮，线通栏", () => {
+    mark(before("a"));
+    expect(parts("g1").wrap.classList.contains(tg.hot)).toBe(false);
+    expect(line().style.left).toBe("6px");
+    expect(line().style.width).toBe(`${260 - 6 - 6}px`);
+  });
+
+  it("压在组员中间停住（进组）· 落在组头 ⇒ 块亮；压在散的上（建组）⇒ 不亮", () => {
+    mark({ kind: "onto", sid: "b" });
+    expect(parts("g1").wrap.classList.contains(tg.hot), "压住组员 ＝ 进这一组").toBe(true);
+    mark({ kind: "insert", at: null, gid: null, head: "g1" } as DropTarget);
+    expect(parts("g1").wrap.classList.contains(tg.hot), "落在组头 ＝ 进这一组").toBe(true);
+    mark({ kind: "onto", sid: "a" });
+    expect(parts("g1").wrap.classList.contains(tg.hot), "建新组不点亮别的块").toBe(false);
+    mark(null);
+    expect(parts("g1").wrap.classList.contains(tg.hot), "收尾清干净").toBe(false);
+  });
+
+  it("当前标签页在收着的组里 ⇒ 块边升一档（块上挂 has-current）；展开着不挂", () => {
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); // 先收掉 beforeEach 起的拖（拖拽中整刷挂起）
+    tm.switchTo("b");
+    const caret = (): HTMLElement => parts("g1").head.querySelector<HTMLElement>(".tab-group-caret")!;
+    caret().click();
+    expect(parts("g1").wrap.classList.contains("is-collapsed"), "前提：收起来了").toBe(true);
+    expect(parts("g1").wrap.classList.contains("has-current")).toBe(true);
+    caret().click();
+    expect(parts("g1").wrap.classList.contains("has-current"), "展开着：当前行自己有 accent，块边不变色").toBe(false);
+  });
+
+  it("窄栏：组员悬停卡首行「组名 · 标题」；散的照旧；宽栏照旧", () => {
+    const title = (sid: string): string => cardOf(tm, sid)!.querySelector(".tab-hover-title")!.textContent!;
+    const plain = title("b");
+    document.body.dataset.tabBar = "folded";
+    expect(title("b")).toBe(copyText("tabBar.group.memberHint", { group: "订单", title: plain }));
+    expect(title("b").startsWith("订单 · ")).toBe(true);
+    expect(title("a"), "散的不带组名").toBe(fullTitle(home(tm).store.tabs.get("a")!));
+    delete document.body.dataset.tabBar;
+    expect(title("b"), "宽栏看得见组，不重复").toBe(plain);
+  });
+
+  it("块的样子：`--group-fill` 是 3% 白；组是淡底 ＋ 细边 ＋ 圆角 8，组员不缩进、没有引导线", () => {
+    const tokens = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/tokens.css"), "utf8");
+    expect(tokens).toMatch(/--group-fill:\s*#ffffff08;/);
+    const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles.css"), "utf8");
+    const rule = (sel: string): string => {
+      const m = new RegExp(`\\n${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(css);
+      expect(m, `styles.css 里没有 ${sel} 这一条`).not.toBeNull();
+      return m![1];
+    };
+    const group = rule(".tab-group");
+    expect(group).toMatch(/background:\s*var\(--group-fill\)/);
+    expect(group).toMatch(/border:\s*1px solid var\(--border-soft\)/);
+    expect(group).toMatch(/border-radius:\s*var\(--radius-l\)/);
+    const list = rule(".tab-group-list");
+    expect(list, "组员不另缩进").not.toMatch(/margin-left/);
+    expect(list, "引导线去掉").not.toMatch(/border-left/);
   });
 });

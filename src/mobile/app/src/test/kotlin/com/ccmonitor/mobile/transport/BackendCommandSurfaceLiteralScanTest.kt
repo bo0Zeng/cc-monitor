@@ -7,11 +7,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 拼后端命令这件事，只许在点名的那几个文件里发生。
+ * Kotlin 这一侧不拼后端命令。
  *
- * 后端命令只有一个产地：`link/OneShot.kt` 的 `BackendBin.command`（路径 `"$HOME"/.cc-monitor/bin/ccm` ＋ `--` 门 ＋
- * 常量词）。子命令名作为常量住在用它的那一处（门槛 `--backend-probe` · 起常驻 `--resident-ensure` · 接流
- * `--resident-attach`）；接上之后一切都走常驻流上的一问一答，不再拼命令行。
+ * 后端命令只有一个产地：嵌的 Rust 核心里那一份常驻流（`resident-client` 的 `feed::backend_command`，路径 `"$HOME"/.cc-monitor/bin/ccm`
+ * ＋ `--` 门 ＋ 常量词；起常驻 `--resident-ensure` · 接流 `--resident-attach`），桌面同一份。接上之后一切都走常驻流上的一问一答，不再拼命令行。
  *
  * 写错叫法不会报错。后端 `route()` 的充要条件是 `argv[1] == "--"` 且 `argv[2]` 是后端词，没有 fallback 分支：
  * 没有 `--` ⇒ 整行交给 claude；零参数 ⇒ 默默起一个 claude 进程。一条绕过网关的命令会在用户机器上起一个 claude。
@@ -20,7 +19,7 @@ import java.io.File
  *
  * | 网关 | 面 | 走 `--` 门？ |
  * |---|---|---|
- * | `core-claude/.../link/OneShot.kt`（`BackendBin`） | cc-monitor 后端 | 走，本文件守的就是它 |
+ * | 嵌的 Rust 核心（`resident-client`） | cc-monitor 后端 | 走；Kotlin 这一侧一处都不许有，本文件守的就是它 |
  * | `app/.../ssh/TmuxCommands` | tmux | 合法地不走（`TmuxSurfaceLiteralScanTest` 守） |
  * | `core-claude/.../command/PipeCommands` | 我们自己的管道 | 合法地不走（`PipeSurfaceLiteralScanTest` 守） |
  *
@@ -42,7 +41,7 @@ import java.io.File
  * | 发明一个新子命令且忘了门（`"'${'$'}p' --list-subagents"`） | 抓不到：词表里没有它、`-- --` 那个形也不在。这是本文件最大的盲区 |
  * | 把锚点拆开拼（`"--list" + "-projects"` · `String(charArrayOf(…))` · 反射 · 按名拼接） | 抓不到：防手滑不防拼接 |
  * | 锚点藏在 `${'$'}{…}` 插值里（跨字面量边界） | 抓不到：扫描器在插值里的内层引号处断开 |
- * | 白名单文件里命令串内容对不对 | 本文件不答，那是 `OneShotAndGateTest` 的事 |
+ * | 核心里命令串内容对不对 | 本文件不答，那是 `resident-client` 的判据的事 |
  * | 调用方存在但走的是死分支 | 源码扫描只答「有没有这个字面」 |
  * | `src/test` / `androidTest` 源集 | 不在扫描面内：测试里拿子命令当 fixture 是正常的 |
  * | 非 Kotlin（`scripts/` · `bridge/`） | 不扫：`bridge/vectors` 下那几份 `.ndjson` 是录制的 fixture，不是命令构造 |
@@ -54,10 +53,7 @@ class BackendCommandSurfaceLiteralScanTest {
      * 钉的是次数不只是文件集：同一个白名单文件里再长出一处也红（重新过一遍眼：
      * 那到底是网关新接的一条，还是有人在那儿内联拼了一条）。
      *
-     * 三道前提自检：
-     * 1. 扫描面非空且够大：路径写错 ⇒ 零文件 ⇒ 恒绿；
-     * 2. 被守的网关源文件真的在扫描面里；
-     * 3. 一个活着的锚点必须真扫到，否则「零命中」只说明扫描器瞎了。
+     * 前提自检：扫描面非空且够大（路径写错 ⇒ 零文件 ⇒ 恒绿）；扫描器认得出真字面由 [theScannerReadsLiteralsAndSkipsCommentsBothWays] 证。
      */
     @Test
     fun everyBackendSubcommandLiteralLivesOnlyInTheNamedFiles() {
@@ -66,14 +62,7 @@ class BackendCommandSurfaceLiteralScanTest {
         assertTrue("前提①：得真扫到源文件，否则本条恒绿（实得 ${sources.size} 个）", sources.size > 100)
 
         val literalsOf = sources.associate { it.relativeTo(root).invariantSeparatorsPath to backendLiteralsOf(it.readText()) }
-        assertTrue(
-            "前提②：被守的网关 `$GATEWAY` 不在扫描面里：这条判据正在扫一片无关的代码",
-            GATEWAY in literalsOf.keys,
-        )
-        for (f in PINNED_BACKEND_LITERALS.values.flatMap { it.keys }.toSet()) {
-            assertTrue("白名单点名的文件不存在了：$f（它被删了/改名了？那白名单要跟着改）", f in literalsOf.keys)
-        }
-
+        // 「扫描器没瞎」的证据在 [theScannerReadsLiteralsAndSkipsCommentsBothWays]（真字面一定认得出）：生产段今天一处都没有。
         val census = linkedMapOf<String, Map<String, Int>>()
         for (anchor in PINNED_BACKEND_LITERALS.keys) {
             val counts = sortedMapOf<String, Int>()
@@ -83,15 +72,10 @@ class BackendCommandSurfaceLiteralScanTest {
             }
             census[anchor] = counts.toMap()
         }
-        assertTrue(
-            "前提③：活着的锚点 `$LIVE_ANCHOR` 整份语料一次都没命中 ⇒ 扫描器瞎了 ⇒ 下面那条恒绿",
-            (census[LIVE_ANCHOR]?.values?.sum() ?: 0) > 0,
-        )
 
         assertEquals(
-            "拼后端命令这件事只许在点名的那几个文件里发生（任何拼命令串的地方都必须经网关）。" +
-                "多出来的一处：要么改成经 `BackendBin.command`（或常驻流上的一问一答），" +
-                "要么连理由一起加进 PINNED_BACKEND_LITERALS。tmux / 管道 / claude CLI 的串不归这里管，" +
+            "Kotlin 这一侧不拼后端命令（拼命令的那一份在嵌的核心里，桌面同一份）。" +
+                "多出来的一处：改成常驻流上的一问一答（`CoreLink.call`）。tmux / 管道 / claude CLI 的串不归这里管，" +
                 "它们各有自己的网关与判据。",
             PINNED_BACKEND_LITERALS.toMap(),
             census.toMap(),
@@ -104,8 +88,7 @@ class BackendCommandSurfaceLiteralScanTest {
      * 锚点表是枚举：有人发明一个表里没有的子命令（`--list-subagents`），锚点表看不见。
      * 但只要他还记得带那道门，串里就会出现 `-- --` 这个形，本条认的就是它。
      *
-     * 它在网关里也是零命中：`BackendBin.command` 的门是拼出来的（`"$PATH_WORD -- ${words…}"`），
-     * 不是写成一个 `"-- --resident-attach"` 字面。
+     * Kotlin 这一侧本来就不拼后端命令（那一份在嵌的核心里）。
      * 零命中 + 零阳性对照 = 恒绿，所以本条自带阳性对照：先喂一份合成样本证明扫描器认得出这个形，
      * 再断言生产段为空。
      */
@@ -136,8 +119,7 @@ class BackendCommandSurfaceLiteralScanTest {
                 .map { it.relativeTo(root).invariantSeparatorsPath }
                 .sorted()
         assertEquals(
-            "有人把「门 + 后端词」内联写进了一条字面：后端命令只许由 `BackendBin.command` 产出。" +
-                "它是拼出来的（append 门、append 后端词），所以生产段这个形恒为零；" +
+            "有人把「门 + 后端词」内联写进了一条字面：后端命令只许由嵌的核心产出（`resident-client`）。" +
                 "冒出来一处就说明有第二个产地。",
             emptyList<String>(),
             hits,
@@ -246,15 +228,7 @@ class BackendCommandSurfaceLiteralScanTest {
 
         private val SOURCE_SETS = listOf("src/main/kotlin", "src/debug/kotlin")
 
-        private const val GATEWAY = "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/OneShot.kt"
-        private const val GATE = "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/BackendGate.kt"
-        private const val RESIDENT = "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentLink.kt"
-
-        /**
-         * 扫描器自检的靶子：今天还活着、而且真在生产代码里的那个子命令。
-         *
-         * 换锚点表时这一条必须跟着换成一个仍有正向命中的 —— 它是「扫描器没瞎」的唯一证据。
-         */
+        /** 扫描器自检的靶子：一个真的后端子命令（自检里喂合成样本，证明真字面一定认得出）。 */
         private const val LIVE_ANCHOR = "--resident-attach"
 
         /**
@@ -271,18 +245,18 @@ class BackendCommandSurfaceLiteralScanTest {
          *
          * | 锚点 | 出处 |
          * |---|---|
-         * | `--backend-probe` · `--resident-ensure` · `--resident-attach` | 接常驻流之前那几步（`BackendGate` · `ResidentLink`） |
+         * | `--backend-probe` · `--resident-ensure` · `--resident-attach` | 接常驻流那几步：在嵌的核心里，Kotlin 一处都没有 |
          * | `--stream` · `--list-projects` · `--list-sessions` · `--read-session`（前缀）· `--resolve` · `--daemon-probe` · `--fork-session` · `--search` · `--list-accounts` | 后端还认、手机不发的那几条：必须是零 |
          *
          * 零命中的锚点也留在表里：将来有人要接的时候，这张表就是那一刻的拦截点。
-         * （它们不构成恒绿：活着的 [LIVE_ANCHOR] 的正向命中是前提③。）
+         * （判别力押在扫描器自检上：[LIVE_ANCHOR] 那几条合成样本证真字面一定认得出。）
          */
         private val PINNED_BACKEND_LITERALS: LinkedHashMap<String, Map<String, Int>> =
             linkedMapOf(
-                // ── 接常驻流（R）之前那几步：门槛 · 起常驻 · 接流（命令经 `BackendBin.command` 拼） ──
-                "--backend-probe" to mapOf(GATE to 1),
-                "--resident-ensure" to mapOf(RESIDENT to 1),
-                "--resident-attach" to mapOf(RESIDENT to 1),
+                // ── 接常驻流那几步：起常驻 · 接流都在嵌的核心里（门槛那一问没了：版本门问接上的那一台） ──
+                "--backend-probe" to emptyMap(),
+                "--resident-ensure" to emptyMap(),
+                "--resident-attach" to emptyMap(),
                 // ── 后端还认、我们不发的那几条：必须保持零 ──
                 "--stream" to emptyMap(),
                 "--list-projects" to emptyMap(),

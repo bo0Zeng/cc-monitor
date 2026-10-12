@@ -19,6 +19,8 @@ pub(crate) struct Account {
     pub is_default: bool,
     /// 盘上 `authKind` 那一格原样（缺席 = 旧清单 = 订阅号）。
     pub auth_kind: Option<String>,
+    /// 号色那一格（`--acct-c0..c7` 的第几格）：加号时分（[`Manifest::with_colors`]），存在盘上 `color`；旧清单没有 ⇒ `None`，常驻那一个补一次。
+    pub color: Option<u8>,
     /// 这个号上本模块不认得的键（原样写回）。
     pub extra: Map<String, Value>,
 }
@@ -43,6 +45,8 @@ pub(crate) enum Entry {
 pub(crate) struct Manifest {
     pub shared_store: Option<String>,
     pub entries: Vec<Entry>,
+    /// 账号 0（写时合成的那一条）的号色：读时从那一条上取下来，写时放回去。
+    pub zero_color: Option<u8>,
     /// 顶层本模块不认得的键（如 `claudeVersionPinned`），原样写回。
     pub extra: Map<String, Value>,
 }
@@ -57,7 +61,29 @@ const ACCOUNT_KEYS: &[&str] = &[
     "isDefault",
     "mode",
     "authKind",
+    "color",
 ];
+
+/// 号色几格（与界面 `--acct-c0..c7` 一一对应）。
+pub(crate) const COLOR_SLOTS: u8 = 8;
+
+/// 8 格都用了时的兜底：名字 ⇒ 一格（FNV-1a 32 位，按 UTF-16 码元，模 [`COLOR_SLOTS`]）。号色只在这里按名字算，界面只画清单里那一格。
+pub(crate) fn color_fallback(name: &str) -> u8 {
+    let mut h: u32 = 0x811c_9dc5;
+    for u in name.encode_utf16() {
+        h ^= u32::from(u);
+        h = h.wrapping_mul(0x0100_0193);
+    }
+    u8::try_from(h % u32::from(COLOR_SLOTS)).unwrap_or(0)
+}
+
+/// 盘上 `color` 那一格：在 `0..8` 里的整数才认，别的当没有（会被重新分）。
+fn color_of(v: &Value) -> Option<u8> {
+    v.get("color")
+        .and_then(Value::as_u64)
+        .and_then(|c| u8::try_from(c).ok())
+        .filter(|c| *c < COLOR_SLOTS)
+}
 
 /// 一个名字能不能当账号名（与 `ccm … --account <名>` 同一条规则）。
 pub(crate) fn name_ok(name: &str) -> bool {
@@ -107,6 +133,7 @@ impl Manifest {
         if let Some(arr) = obj.get("accounts").and_then(Value::as_array) {
             for item in arr {
                 if is_zero_entry(item) {
+                    m.zero_color = color_of(item);
                     continue;
                 }
                 m.entries.push(match account_of(item) {
@@ -149,17 +176,24 @@ impl Manifest {
                     if let Some(k) = &a.auth_kind {
                         kv.push(("authKind".into(), Value::from(k.as_str())));
                     }
+                    if let Some(c) = a.color {
+                        kv.push(("color".into(), Value::from(c)));
+                    }
                     kv.extend(a.extra.iter().map(|(k, v)| (k.clone(), v.clone())));
                     inline_object(&kv)
                 }
             })
             .collect();
-        rows.push(inline_object(&[
+        let mut zero: Vec<(String, Value)> = vec![
             ("name".into(), Value::from(ACCOUNT_ZERO)),
             ("email".into(), Value::from(zero_email)),
             ("isDefault".into(), Value::from(false)),
             ("mode".into(), Value::from("bare")),
-        ]));
+        ];
+        if let Some(c) = self.zero_color {
+            zero.push(("color".into(), Value::from(c)));
+        }
+        rows.push(inline_object(&zero));
         let mut out = String::from("{\n");
         for (k, v) in &top {
             out.push_str(&format!("  {}: {},\n", Value::from(k.as_str()), v));
@@ -195,10 +229,48 @@ impl Manifest {
         })
     }
 
-    /// 加一个号（追加在末尾：按下标取账号的地方下标都不变）。
+    /// 加一个号（追加在末尾：按下标取账号的地方下标都不变）；它（与还没有色的号）分到号色（[`Manifest::with_colors`]）。
     pub(crate) fn with_added(&self, a: Account) -> Manifest {
         let mut m = self.clone();
         m.entries.push(Entry::Managed(a));
+        m.with_colors()
+    }
+
+    /// 还有号没分到号色（账号 0 也算）：旧清单 ⇒ 常驻那一个补一次。
+    pub(crate) fn needs_colors(&self) -> bool {
+        self.zero_color.is_none() || self.managed().any(|a| a.color.is_none())
+    }
+
+    /// 给没有号色的号分色（唯一一处）：照库序（具名的号在前、账号 0 在末尾），每个分第一个没人占的格；
+    /// 已有的色不动（删号不挪别人的色），原样留着那几条占的格也不给；8 格都占了 ⇒ 按名字哈希兜底（[`color_fallback`]）。
+    pub(crate) fn with_colors(&self) -> Manifest {
+        let mut m = self.clone();
+        let mut taken: Vec<u8> = m
+            .entries
+            .iter()
+            .filter_map(|e| match e {
+                Entry::Managed(a) => a.color,
+                Entry::Kept(v) => color_of(v),
+            })
+            .chain(m.zero_color)
+            .collect();
+        let mut pick = |name: &str| {
+            let c = (0..COLOR_SLOTS)
+                .find(|c| !taken.contains(c))
+                .unwrap_or_else(|| color_fallback(name));
+            taken.push(c);
+            c
+        };
+        for e in &mut m.entries {
+            if let Entry::Managed(a) = e {
+                if a.color.is_none() {
+                    a.color = Some(pick(&a.name));
+                }
+            }
+        }
+        if m.zero_color.is_none() {
+            m.zero_color = Some(pick(ACCOUNT_ZERO));
+        }
         m
     }
 
@@ -281,6 +353,7 @@ fn account_of(v: &Value) -> Option<Account> {
         config_dir: dir.trim_end_matches('/').to_string(),
         is_default,
         auth_kind,
+        color: color_of(v),
         extra,
     })
 }

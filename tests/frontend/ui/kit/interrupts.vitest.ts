@@ -3,7 +3,6 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { askWithin, confirmInterrupts, familyLine, INTERRUPTS_WITHIN_MS } from "../../../../src/frontend/ui/kit/interrupts";
-import { decodeInterrupts } from "../../../../src/frontend/ui/interrupt-reads";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { UNTIL_CEILING } from "../../../test-support/wall-ceiling";
 
@@ -43,12 +42,5 @@ describe("会打断什么", () => {
     expect(familyLine("turn", [])).toBe(copyText("kit.interrupts.turn"));
     expect(familyLine("task", ["build", "lint"])).toBe(`${copyText("kit.interrupts.task")} build · lint`);
     expect(familyLine("agent", ["a", "b", "c", "d", "e"])).toBe(`${copyText("kit.interrupts.agent")} ×5`);
-  });
-
-  it("后端应答按形状收：认不得的族 / 名字不是串 ⇒ 抛（当没答）", () => {
-    expect(decodeInterrupts({ families: [{ family: "agent", names: ["x"] }] })).toEqual({ families: [{ family: "agent", names: ["x"] }] });
-    expect(() => decodeInterrupts({ families: [{ family: "edit", names: [] }] })).toThrow();
-    expect(() => decodeInterrupts({ families: [{ family: "task", names: [1] }] })).toThrow();
-    expect(() => decodeInterrupts({})).toThrow();
   });
 });

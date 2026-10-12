@@ -7,26 +7,42 @@ use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-type Answer = Result<Value, (&'static str, String)>;
-
 /// 「最近用过的目录」最多列几条。
 pub(crate) const RECENT_MAX: usize = 8;
 
-fn agent_of(args: &Value) -> &str {
-    args.get("agent")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
+/// `session-new`：起一个新会话（全产品一个框、一个请求）。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
+pub(crate) struct SessionNew;
+
+impl crate::stream::inbound::typed::Command for SessionNew {
+    const NAME: &'static str = "session-new";
+    type Req = session_new::NewRequest;
+    type Reply = session_new::SessionNew;
+    type Err = session_new::SessionNewErr;
 }
 
-/// `session-new`。
-pub(crate) fn answer(
-    args: &Value,
+impl crate::stream::inbound::typed::WithOwn for SessionNew {
+    fn run(
+        req: session_new::NewRequest,
+        _cx: &crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+        own: &crate::platform::Own,
+    ) -> Result<session_new::SessionNew, session_new::SessionNewErr> {
+        // 带 `forkFrom` 时写分支记录：同 `session-fork`，在这里领一只只会新建的手。
+        answer(req, files, own, &crate::platform::fs::NewFile::issue())
+            .map_err(session_new::SessionNewErr)
+    }
+}
+
+/// `session-new` 的生产那一份事实。
+fn answer(
+    req: session_new::NewRequest,
     files: super::launch_face::Files,
     own: &crate::platform::fs::Own,
-) -> Result<Value, session_new::Failed> {
+    nf: &crate::platform::fs::NewFile,
+) -> Result<session_new::SessionNew, session_new::Failed> {
     let home = crate::observe::history_query::agent_home();
     let fork =
-        |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(&home, sid, uuid);
+        |sid: &str, uuid: &str| crate::control::fork_write::fork_for_launch(nf, &home, sid, uuid);
     let user_home = crate::platform::paths::home_dir();
     let ctx = super::rotation_face::Ctx::here();
     let sid = crate::accounts::quota::rotation::new_session_id;
@@ -46,17 +62,32 @@ pub(crate) fn answer(
         write: &write,
         forget: &forget,
     };
-    super::session_batch_face::with_deps_as(None, agent_of(args), Some(files), |d| {
-        session_new::answer(args, d, &fork, &pre, user_home.as_deref())
+    let agent = req.agent.clone();
+    super::session_batch_face::with_deps_as(None, &agent, Some(files), |d| {
+        session_new::answer(req, d, &fork, &pre, user_home.as_deref())
     })
 }
 
-/// `session-new-dir`：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`。
-pub(crate) fn dir(args: &Value) -> Answer {
-    let user_home = crate::platform::paths::home_dir();
-    super::session_batch_face::with_deps_as(None, "", None, |d| {
-        session_new::dir_answer(args, d, user_home.as_deref())
-    })
+/// `session-new-dir`：起新会话前核一个目录（在不在 · 这台此刻会给它铸的终端名）。阻塞档：起一次 `tmux` 列会话、铸名。
+pub(crate) struct SessionNewDir;
+
+impl crate::stream::inbound::typed::Command for SessionNewDir {
+    const NAME: &'static str = "session-new-dir";
+    type Req = session_new::SessionNewDirReq;
+    type Reply = session_new::DirChecked;
+    type Err = session_new::SessionNewDirErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for SessionNewDir {
+    fn run(
+        req: session_new::SessionNewDirReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<session_new::DirChecked, session_new::SessionNewDirErr> {
+        let user_home = crate::platform::paths::home_dir();
+        super::session_batch_face::with_deps_as(None, "", None, |d| {
+            session_new::dir_answer(&req, d, user_home.as_deref())
+        })
+    }
 }
 
 /// 默认启动器在起会话那个 shell 的 `PATH` 上找得到 —— 与足迹里「装没装」、`ccm` 起它那一下问同一个函数（`platform::shell::find_session_command`）。
@@ -86,10 +117,14 @@ pub(crate) fn launchable_here(found: &dyn Fn(&str) -> bool) -> Vec<&'static str>
 
 /// `session-new-facts` 的应答。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct NewFacts {
+    /// 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
     pub(crate) recent: Vec<RecentDir>,
     /// 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
     pub(crate) tmux: bool,
+    /// 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）。
     pub(crate) agents: Vec<&'static str>,
     /// 没给 `forkOf` ⇒ `null`。
     pub(crate) fork: Option<ForkFacts>,
@@ -97,22 +132,30 @@ pub(crate) struct NewFacts {
 
 /// 最近用过的一个工作目录。
 #[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RecentDir {
+    /// 工作目录。
     pub(crate) cwd: String,
     /// 那个目录最近一次会话的修改时刻（毫秒）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) last_ms: i64,
 }
 
 /// 分叉源会话的那几格。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ForkFacts {
     /// 源会话是哪一家（说不出 ⇒ 空串）。
     pub(crate) agent: &'static str,
-    /// 起分叉会话要的三格（同 `session-fork` 的 `launch`）。
+    /// 起分叉会话要的三格（同 `session-fork` 的 `launch`；那一形随 `session-fork` 那一族换成类型）。
+    #[cfg_attr(test, ts(type = "unknown"))]
     pub(crate) launch: Value,
     /// `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) turn: Option<u64>,
     /// 那一轮那句在看的那一台钟上的（请求的 `tz`） `HH:MM`（说不出 ⇒ `null`）。
     pub(crate) start_text: Option<String>,
@@ -165,51 +208,79 @@ fn record_dirs(home: &std::path::Path) -> Vec<(String, i64)> {
     out
 }
 
-/// `session-new-facts`：`{forkOf?, at?}` ⇒ `{recent, tmux, agents, fork}`（`at` ＝ 从哪条消息处分叉：框顶说第几轮、几点）。
-/// `tz` ＝ 看的那一台的时区：分叉那一轮的起点钟面按它写。
-pub(crate) fn facts(args: &Value, tz: &crate::Tz) -> Answer {
-    let o = args.as_object().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("args must be an object"),
-        )
-    })?;
-    if let Some(k) = o
-        .keys()
-        .find(|k| k.as_str() != "forkOf" && k.as_str() != "at")
-    {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed(&format!("unknown field `{k}`")),
-        ));
+/// `session-new-facts` 的入参。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NewFactsReq {
+    /// 可缺：分叉源会话 sid。
+    #[serde(default, rename = "forkOf")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) fork_of: Option<String>,
+    /// 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) at: Option<String>,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `session-new-facts` 的码。
+    pub(crate) enum NewFactsErr {
+        /// 分叉源会话的记录找不着 / 记录树读不出。
+        ForkFailed = "fork_failed",
     }
-    let fork_of = match o.get("forkOf") {
+}
+
+/// `session-new-facts`：起新会话那个框要的事实（只读，不写分支记录）。阻塞档：扫各家记录目录 · 问一次 tmux。
+pub(crate) struct SessionNewFacts;
+
+impl crate::stream::inbound::typed::Command for SessionNewFacts {
+    const NAME: &'static str = "session-new-facts";
+    type Req = NewFactsReq;
+    type Reply = NewFacts;
+    type Err = NewFactsErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for SessionNewFacts {
+    fn run(
+        req: NewFactsReq,
+        cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<NewFacts, NewFactsErr> {
+        facts(&req, &cx.tz).map_err(|(code, said)| match code {
+            "bad_args" => NewFactsErr::BadArgs(said),
+            _ => {
+                debug_assert_eq!(code, "fork_failed");
+                NewFactsErr::ForkFailed(said)
+            }
+        })
+    }
+}
+
+/// `session-new-facts` 的本体：`{forkOf?, at?}` ⇒ `{recent, tmux, agents, fork}`。
+/// `tz` ＝ 看的那一台的时区：分叉那一轮的起点钟面按它写。
+pub(crate) fn facts(req: &NewFactsReq, tz: &crate::Tz) -> Result<NewFacts, (&'static str, String)> {
+    let fork_of = match req.fork_of.as_deref() {
         None => None,
-        Some(v) => Some(
-            v.as_str()
-                .filter(|s| shell_quote_core::session_id_ok(s))
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed("`forkOf` must be a session id"),
-                    )
-                })?,
-        ),
+        Some(s) if shell_quote_core::session_id_ok(s) => Some(s),
+        Some(_) => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed("`forkOf` must be a session id"),
+            ))
+        }
     };
-    let at = match o.get("at") {
+    let at = match req.at.as_deref() {
         None => None,
-        Some(v) => Some(
-            v.as_str()
-                .filter(|s| shell_quote_core::session_id_ok(s) && fork_of.is_some())
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed(
-                            "`at` must be a message id, given with `forkOf`",
-                        ),
-                    )
-                })?,
-        ),
+        Some(s) if shell_quote_core::session_id_ok(s) && fork_of.is_some() => Some(s),
+        Some(_) => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed(
+                    "`at` must be a message id, given with `forkOf`",
+                ),
+            ))
+        }
     };
     let home = crate::observe::history_query::agent_home();
     let fork = match fork_of {
@@ -234,7 +305,7 @@ pub(crate) fn facts(args: &Value, tz: &crate::Tz) -> Answer {
         }
     };
     let tmux = !matches!(super::session_batch_face::tmux_rows(), Ok(None));
-    crate::stream::inbound::spec::wire(&NewFacts {
+    Ok(NewFacts {
         recent: recent_dirs(
             &record_dirs(&home),
             &crate::observe::history_query::hidden_cwd,

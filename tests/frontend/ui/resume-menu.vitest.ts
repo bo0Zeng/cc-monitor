@@ -80,6 +80,7 @@ describe("账号组的事实", () => {
         { name: "home", label: "home", quota: null, last: false },
         { name: null, label: copyText("resumeMenu.account.base"), quota: `5h ${copyText("acct.val.refusedPct", { pct: 100 })}`, last: false },
       ],
+      origin: "devbox",
     });
     expect(refreshQuota, "那台的额度账已在 ⇒ 不再问").not.toHaveBeenCalled();
   });

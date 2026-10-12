@@ -300,9 +300,9 @@ class HostConnectorGatewayTest {
          * | `connect` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
          * | `retain` | `AppModule`（`ChatController` 的 `ConnectionHolder` 端口）+ 三个屏 |
          * | `release` | `AppModule`（同上）+ 两个 VM + `HostLink` |
-         * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` · `HostBackends` |
+         * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
          * | `disconnectAll` | `SshKeepAliveService.onTaskRemoved` |
-         * | `linkOf` · `probeStale` | `HostBackends`（常驻流跟着 SSH 的连接重接 · 流断了先叫 SSH 探活） |
+         * | `linkOf` · `probeStale` | `HostBackends`（常驻流跟着 SSH 的连接重接：把它的拨号请求交给核心 · 流断了先叫 SSH 探活） |
          *
          * 这里只问「住址集变了没」；「凡调 retain 的生产文件必须也调 release」由
          * `ConnectorRetainReleasePairingTest` 管。网关没有 `disconnect(id)` 那一支：全仓零生产调用方。
@@ -312,8 +312,7 @@ class HostConnectorGatewayTest {
                 "connect" to setOf(SESSION_VM, SFTP_VM, HOST_LINK),
                 "retain" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
                 "release" to setOf(APP_MODULE, SESSION_VM, SFTP_VM, HOST_LINK),
-                // HOST_BACKENDS：常驻流开在那条连接上（`liveExecutor` / `liveDuplex` 每次现取）。
-                "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK, HOST_BACKENDS),
+                "connection" to setOf(SESSION_VM, SFTP_VM, HOST_LINK),
                 "disconnectAll" to setOf(KEEP_ALIVE),
                 "linkOf" to setOf(HOST_BACKENDS),
                 "probeStale" to setOf(HOST_BACKENDS),

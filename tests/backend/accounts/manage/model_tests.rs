@@ -11,6 +11,7 @@ fn acct(name: &str, default: bool) -> Account {
         config_dir: format!("{DIR}/{name}"),
         is_default: default,
         auth_kind: None,
+        color: None,
         extra: Default::default(),
     }
 }
@@ -28,8 +29,8 @@ fn render_writes_the_v1_shape_and_appends_account_zero() {
         json!({
             "version": 1, "updatedAt": "2026-01-01T00:00:00Z", "sharedStore": "/h/.claude",
             "accounts": [
-                { "name": "z", "email": "", "configDir": "/h/.cc-monitor/accounts/z", "isDefault": true, "mode": "isolated" },
-                { "name": "0", "email": "zero@example.test", "isDefault": false, "mode": "bare" }
+                { "name": "z", "email": "", "configDir": "/h/.cc-monitor/accounts/z", "isDefault": true, "mode": "isolated", "color": 0 },
+                { "name": "0", "email": "zero@example.test", "isDefault": false, "mode": "bare", "color": 1 }
             ]
         })
     );
@@ -94,4 +95,115 @@ fn removing_the_default_hands_it_to_the_first_remaining_account() {
     assert!(n2.find("b").unwrap().is_default);
     let one = m.with_default("c");
     assert_eq!(one.managed().filter(|a| a.is_default).count(), 1);
+}
+
+// ── 号色：账号库里的事实（加号时分第一个空格，旧号补一次；8 格用满才按名字哈希兜底）──
+
+fn colors(m: &Manifest) -> Vec<(String, Option<u8>)> {
+    m.managed().map(|a| (a.name.clone(), a.color)).collect()
+}
+
+/// ★ 名字哈希撞同一格的两个号（team / lab 都落第 4 格）加进来分到不同的色；色写进清单，账号 0 也带一格
+/// （建库那一下它跟着头一个号分到，排在库序末尾）。
+#[test]
+fn accounts_whose_names_hash_alike_still_get_different_colors() {
+    assert_eq!(
+        color_fallback("team"),
+        color_fallback("lab"),
+        "夹具前提：两名哈希同格"
+    );
+    let m = Manifest::default()
+        .with_added(acct("team", true))
+        .with_added(acct("lab", false));
+    assert_eq!(
+        colors(&m),
+        [("team".into(), Some(0)), ("lab".into(), Some(2))]
+    );
+    let out = render(&m);
+    assert_eq!(out["accounts"][0]["color"], 0);
+    assert_eq!(out["accounts"][1]["color"], 2);
+    assert_eq!(out["accounts"][2]["name"], "0");
+    assert_eq!(out["accounts"][2]["color"], 1, "账号 0 也有一格：{out}");
+    let back = Manifest::parse(&out.to_string()).unwrap();
+    assert_eq!(colors(&back), colors(&m), "读回来色不变");
+    assert_eq!(
+        render(&back)["accounts"][2]["color"],
+        1,
+        "账号 0 那一格读回来也不变"
+    );
+}
+
+/// ★ 删一个号，其余号的色不变；再加的号补进空出来的那一格。
+#[test]
+fn removing_an_account_leaves_the_others_colors_alone() {
+    let m = Manifest::default()
+        .with_added(acct("team", true))
+        .with_added(acct("lab", false))
+        .with_added(acct("work", false));
+    assert_eq!(
+        colors(&m),
+        [
+            ("team".into(), Some(0)),
+            ("lab".into(), Some(2)),
+            ("work".into(), Some(3))
+        ]
+    );
+    let (m, _) = m.without("lab");
+    assert_eq!(
+        colors(&m),
+        [("team".into(), Some(0)), ("work".into(), Some(3))]
+    );
+    assert_eq!(render(&m)["accounts"][2]["color"], 1, "账号 0 的色也不变");
+    let m = m.with_added(acct("next", false));
+    assert_eq!(
+        m.find("next").unwrap().color,
+        Some(2),
+        "空出来的第 2 格给新号"
+    );
+    assert_eq!(m.find("work").unwrap().color, Some(3));
+}
+
+/// 旧清单（没有 `color`）补一次：照库序分空格，已有的色与原样留着那几条占的格都不动；补过就不再补。
+#[test]
+fn an_old_manifest_is_colored_once_in_library_order() {
+    let text = json!({
+        "version": 1, "sharedStore": "/h/.claude",
+        "accounts": [
+            { "name": "team", "configDir": "/h/.cc-monitor/accounts/team" },
+            { "name": "old", "configDir": "/h/.cc-monitor/accounts/old", "color": 0 },
+            { "name": "bad name", "configDir": "/h/.cc-monitor/accounts/b", "color": 1 },
+            { "name": "lab", "configDir": "/h/.cc-monitor/accounts/lab", "color": 9 },
+            { "name": "0", "email": "", "isDefault": false, "mode": "bare" }
+        ]
+    })
+    .to_string();
+    let m = Manifest::parse(&text).unwrap();
+    assert!(m.needs_colors());
+    let c = m.with_colors();
+    assert!(!c.needs_colors());
+    assert_eq!(
+        colors(&c),
+        [
+            ("team".into(), Some(2)),
+            ("old".into(), Some(0)),
+            ("lab".into(), Some(3))
+        ],
+        "原样留着那条占的第 1 格不给；读不懂的 9 当没有"
+    );
+    assert_eq!(render(&c)["accounts"][4]["color"], 4, "账号 0 排在最后");
+    assert_eq!(c.with_colors(), c, "补过就不再动");
+}
+
+/// 8 格都用了 ⇒ 第 9 个号按名字哈希兜底（哈希只住这一处）。
+#[test]
+fn past_eight_accounts_the_name_hash_is_the_fallback() {
+    let mut m = Manifest::default();
+    for n in ["a1", "a2", "a3", "a4", "a5", "a6", "a7"] {
+        m = m.with_added(acct(n, false));
+    }
+    let used: Vec<u8> = m.managed().filter_map(|a| a.color).collect();
+    assert_eq!(used, [0, 2, 3, 4, 5, 6, 7], "第 1 格是账号 0 的");
+    let m = m.with_added(acct("team", false));
+    assert_eq!(m.find("team").unwrap().color, Some(color_fallback("team")));
+    assert!(color_fallback("team") < COLOR_SLOTS);
 }

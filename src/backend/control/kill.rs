@@ -28,23 +28,72 @@ pub(crate) const KILL_CAP: Deadline = Deadline::secs(8);
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（tmux 的 stderr · 起不来时的系统报错，进复制详情）。与 [`super::launch`] 同型。
 type CmdErr = crate::stream::inbound::spec::Fail;
 
-/// 从入方向的 `args` 取出会话名并做**形状**校验。
-///
-/// 与 `launch::parse_request` 同一条纪律：这**不是安全边界**（对端本来就能在这台机上跑任意命令），
+/// `kill` 的入参（`deny_unknown_fields`）。会话名的**形状**在 [`admit_existing_name`] 判：
+/// 与 `launch` 同一条纪律，这**不是安全边界**（对端本来就能在这台机上跑任意命令），
 /// 而是「这组参数能不能构成一次有意义的 tmux 调用」。
-pub(crate) fn parse_name(args: &serde_json::Value) -> Result<String, CmdErr> {
-    let name = args
-        .as_object()
-        .and_then(|o| o.get("name"))
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            CmdErr::from((
-                "bad_args",
-                crate::common::contract::malformed("missing `name`"),
-            ))
-        })?;
-    admit_existing_name(name)?;
-    Ok(name.to_string())
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct KillReq {
+    /// 要杀的 tmux 会话名。
+    pub(crate) name: String,
+    /// 自报的前端（过「哪个前端的会话」那一维）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) client: Option<String>,
+    /// 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（1–128 个 `[A-Za-z0-9_-]`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) sid: Option<String>,
+}
+
+/// `kill` 的回包：杀成了才有（没杀成走失败信封）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Killed {
+    /// 杀掉的 tmux 会话名。
+    pub(crate) session: String,
+    /// 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
+    #[cfg_attr(test, ts(type = "true"))]
+    pub(crate) killed: bool,
+    /// 顺手从 cc-bus 注销的结局。
+    pub(crate) bus: super::cc_bus::BusNote,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `kill` 的码：三道门 · 杀那一发 tmux。
+    pub(crate) enum KillErr {
+        /// tmux 起不来。
+        NoTmux = "no_tmux",
+        /// 没有这个会话（或带了 `sid`、此刻没有窗格挂着它）。
+        NoSuchSession = "no_such_session",
+        /// 身份门不过（不是我们起的 · 别的前端的）。
+        WrongOwner = "wrong_owner",
+        /// 窗口门不过（那个会话里还有别的窗口）。
+        TooManyWindows = "too_many_windows",
+        /// tmux 起来了、但没杀成（tmux 原话进复制详情）。
+        KillFailed = "kill_failed",
+        /// 那一发 `tmux` 过了期限。
+        ChildTimedOut = "child_timed_out",
+    }
+}
+
+/// `kill`：杀一个 tmux 会话（破坏性：三道门在 `gate::admit_destructive`）。阻塞档（起 tmux）。
+pub(crate) struct Kill;
+
+impl crate::stream::inbound::typed::Command for Kill {
+    const NAME: &'static str = "kill";
+    type Req = KillReq;
+    type Reply = Killed;
+    type Err = KillErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for Kill {
+    fn run(req: KillReq, _cx: &crate::stream::inbound::typed::Cx) -> Result<Killed, KillErr> {
+        kill(&req).map_err(|f| crate::stream::inbound::typed::of_fail(f, KillErr::KillFailed))
+    }
 }
 
 /// 已有会话名的 Gate 1（结束 · 抓屏 · 送键共用）：规则只有一份 `crate::control::gate_rules::existing_tmux_name_issue`
@@ -152,21 +201,24 @@ fn pane_pids(handle: &str, only: Option<&[String]>) -> Vec<u32> {
         .collect()
 }
 
-/// 入方向命令的入口：`args` → 结局 JSON。
-pub(crate) fn kill_for_inbound(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
-    let name = parse_name(args)?;
-    let client = super::gate::requester_of(args)?;
+/// `kill` 的本体：会话名过 Gate 1 的形状 · 前端名 · sid 形状 ⇒ 过门 ⇒ 杀 ⇒ 成品。
+pub(crate) fn kill(req: &KillReq) -> Result<Killed, CmdErr> {
+    admit_existing_name(&req.name)?;
+    let client = super::gate::requester(req.client.as_deref())?;
     // 带了 `sid` ⇒ 结束挂着它的那个窗格（会话里还有别的 claude 窗格时不关整个会话）。
-    let sid = super::gate::sid_of(args)?;
-    let bus = run_expecting(&name, sid.as_deref(), client.as_deref())?;
-    Ok(reply(&name, &bus))
+    let sid = super::gate::sid_shape(req.sid.as_deref())?;
+    let bus = run_expecting(&req.name, sid.as_deref(), client.as_deref())?;
+    Ok(reply(&req.name, &bus))
 }
 
-/// 帧面成品 `{session, killed}` 的构造器 —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
-/// 只为让跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍：
-/// 界面（`src/frontend/ui/tmux-control.ts::killSession`）从此直接收这份成品，monitor 那一跳只搬字节。
-pub(crate) fn reply(name: &str, bus: &super::cc_bus::BusCleanup) -> serde_json::Value {
-    serde_json::json!({ "session": name, "killed": true, "bus": bus.to_json() })
+/// 帧面成品 `{session, killed, bus}` 的构造器（纯）：跨语言金样 `tests/__fixtures__/tmux-control.golden.json` 拿**同一个**构造器对拍，
+/// 界面（`src/frontend/ui/tmux-control.ts::killSession`）直接收这份成品，monitor 那一跳只搬字节。
+pub(crate) fn reply(name: &str, bus: &super::cc_bus::BusCleanup) -> Killed {
+    Killed {
+        session: name.to_string(),
+        killed: true,
+        bus: bus.note(),
+    }
 }
 
 #[cfg(test)]

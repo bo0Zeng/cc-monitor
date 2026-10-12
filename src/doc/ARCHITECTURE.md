@@ -363,7 +363,8 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | `app` | 屏与导航、注入、前台保活；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏用拨号网关与 tmux 网关 |
 | `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了接回）与核心成品的解码；`model/` 把通用记录映射成渲染单元 |
 | `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
-| `core-ssh` | SSH（sshj）：连接池 · 多地址竞速 · 跳板 · SFTP · `~/.ssh/config` · known_hosts · 密钥 |
+| `core-ssh` | 连接管理（单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里 |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-data` | 本地库（Room） |
 | `core-ui` | 共用主题与反馈 |
@@ -432,7 +433,7 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 ### 账号：隔离又同步
 
-一个账号 ＝ 一个 `CLAUDE_CONFIG_DIR`：各自一份登录凭据，两个号可以同时跑、互不踢；skill、记忆、历史、设置经符号链接共享同一份（由后端 `accounts/manage/` 建立和维护）。账号分订阅号与 API 号；API 号的 key 只留在它所在的那台机器，经那台的中转注入，不进命令行、不进环境变量。界面只交意图：建库 · 添加 · 删除 · 设默认 · 修复 · 回滚由后端执行，每次改动前先备份；订阅号的登录走真实终端窗口，由 agent 自己完成。
+一个账号 ＝ 一个 `CLAUDE_CONFIG_DIR`：各自一份登录凭据，两个号可以同时跑、互不踢；skill、记忆、历史、设置经符号链接共享同一份（由后端 `accounts/manage/` 建立和维护）。用户级 MCP 的定义与 MCP 登录在各号之间同步（同一个开关）：定义走三方对照（`mcp_share`）；登录（各号凭据文件里 `mcpOAuth` 那一节）任一号一登录或一续期就把最新那一份写进所有号、在一个号里退出则全部撤（`mcp_logins`），写经订阅号凭据的窄句柄、在那一家续这一条的锁与整份写锁里重读比对、只换那一条（`oauth/store::rewrite`，续期写回也只经它；续期写回碰上那一家正在存盘 ⇒ 新令牌先在内存里照用，写锁放开的文件事件来了再写回，有总期限，`oauth/writeback`）。账号分订阅号与 API 号；API 号的 key 只留在它所在的那台机器，经那台的中转注入，不进命令行、不进环境变量。界面只交意图：建库 · 添加 · 删除 · 设默认 · 修复 · 回滚由后端执行，每次改动前先备份；订阅号的登录走真实终端窗口，由 agent 自己完成。
 
 换号重启直接结束旧会话再 resume 同一个 sid；compact 失败不阻断，kill 失败必须中止——绝不在旧进程还活着时续 resume，否则新旧两个进程抢同一份会话。选不了原账号时不静默换号，拒绝并给出「用当前账号」的显式选择。不重启的换号在中转那一发里换凭据（§3.3），进程不知道。
 

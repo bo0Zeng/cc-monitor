@@ -44,7 +44,7 @@ src/frontend/shell/src/backend_control.rs:163	已起：{}	保留	[不对外] bac
 src/frontend/shell/src/backend_control.rs:164	本机后端已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8①，将来若上界面要删 新词:C8①（设计条目号）
 src/frontend/shell/src/backend_control.rs:184	{origin} 的流已经在跑（C8①：每台机只许一个）	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；措辞里带设计条目号 C8① 新词:C8①（设计条目号）
 src/frontend/shell/src/backend_control.rs:187	{origin} 的流已重起	保留	[不对外] backend_start/backend_stop 的 Ok 串，前端 backend-section.ts:270 只进 console.info（发布构建无 devtools）；「流」是内部词，将来若上界面要换 新词:流
-src/frontend/shell/src/inbound_client.rs:439	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :444），日志
+src/comms/resident-client/client.rs:496	（错误应答 code={} message={}）	保留	[不对外] 只拼进 tracing::warn!（本文件 :503），日志
 src/frontend/shell/src/local_backend.rs:600	 …〔这一行超过单行上界，在此切开，下一条接着它〕	保留	[不对外] STDERR_CUT_MARK 只贴进 monitor 自己的滚动日志（logging.rs）
 src/frontend/shell/src/local_backend.rs:1783	本机后端（stdio 载体）	保留	[不对外] FrameTally 的流名，只出现在丢帧账那几行日志里
 src/frontend/shell/src/backend_policy.rs:448	 码={c}	保留	[不对外] 死亡账那一行的「码」一格（裸退出码 / 信号号，界面那一格不带它），只经 DeathSink 落 monitor 日志与复制详情的原话

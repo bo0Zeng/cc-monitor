@@ -1,0 +1,96 @@
+package com.ccmonitor.mobile.core.claude.link
+
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.StateFlow
+
+/** 给人看的那一句 ＋ 复制详情（核心写好，手机原样上屏）。 */
+data class Said(
+    val text: String,
+    val detail: String,
+)
+
+/** 一台的常驻流此刻通不通（核心判，手机照画）。 */
+sealed interface LinkState {
+    data object Connecting : LinkState
+
+    /** 通着。[notice] ＝ 通着但要人动手的那一句（那台后端旧了：手机还装不了，照用对得上的那几条命令）。 */
+    data class Up(
+        val notice: Said? = null,
+    ) : LinkState
+
+    /** 断着：那一句；[needsHand] ⇒ 不会自己好（没装 · 起不了常驻 · 不是我们的后端），等［重试］。 */
+    data class Down(
+        val said: Said,
+        val needsHand: Boolean,
+    ) : LinkState
+}
+
+/** 一台的常驻流对外的那几样：会话表 · 记录行 · 一问一答 · 接上第几回。聊天屏只经它（测试给假的）。 */
+interface CoreLink {
+    val table: StateFlow<SessionTable>
+    val lines: SharedFlow<RecordLine>
+
+    /**
+     * 接上第几回（还没接上过 ⇒ 0）。值变了 ＝ 换了一条流：之前在路上的问答作废（回过 [Reply.LinkDown]），
+     * 断着那一段的 `line` 帧没收到 ⇒ 读过的正文要从断处补读。
+     */
+    val epoch: StateFlow<Long>
+
+    /**
+     * 一问一答。流没通（在建 · 在重接 · SSH 还没通）⇒ 先等它接上（至多 [withinMs]，等的那一段也算在里面）再问；
+     * 走不通、要人动手的那几种 ⇒ 当场 [Reply.LinkDown]。期限到了核心补发撤单（那条命令撤不动的，那台握手时说过，核心照它不补）。
+     */
+    suspend fun call(
+        cmd: String,
+        args: Map<String, Any?>? = null,
+        withinMs: Long = DEFAULT_CALL_MS,
+    ): Reply
+}
+
+/** 一问一答默认等多久。 */
+const val DEFAULT_CALL_MS: Long = 15_000L
+
+/** 一条会话「此刻有人在看」：看着的那一处拿一个 [hold]，不看了关掉；刚进名单那一格的 `from` 经 [from] 来。 */
+interface SessionWatch {
+    val from: SharedFlow<WatchFrom>
+
+    fun hold(sid: String): AutoCloseable
+}
+
+/**
+ * 核心写好的失败：`code` 给程序认，`message` 原样上屏，`detail` 进复制详情（时刻 · 机器 · 命令 · 码 · 原话都在里面）。
+ * 帧面 `reply` 与一次性 CLI 的 stderr 信封是同一份（`IPC-PROTOCOL.md` §4 · §8）。
+ */
+data class CoreFailure(
+    val code: String,
+    val message: String,
+    val detail: String,
+    val data: Any? = null,
+)
+
+/** 一条入方向命令的结局（核心交回来的那一行，`IPC-PROTOCOL.md` §4）。 */
+sealed interface Reply {
+    /** `ok: true`；`data` 是命令的返回值（无返回值 ⇒ `null`）。 */
+    data class Ok(
+        val data: Any?,
+    ) : Reply
+
+    /** `ok: false`：核心写好的失败（`message` 上屏，`detail` 进复制详情）。 */
+    data class Failed(
+        val failure: CoreFailure,
+    ) : Reply
+
+    /** 到了期限（核心已补发撤单）。 */
+    data object TimedOut : Reply
+
+    /** 后端回 `cancelled`。 */
+    data object Cancelled : Reply
+
+    /** 流断了 · 没接上。 */
+    data object LinkDown : Reply
+
+    /** 回包缺必填格（两端契约对不上）：原样带回。 */
+    data class Unreadable(
+        val raw: String,
+    ) : Reply
+}

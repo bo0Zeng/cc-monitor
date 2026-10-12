@@ -81,7 +81,7 @@ export function sessionReadOf(cmd: string, args: unknown): [SessionRead, Record<
     case "list_user_inputs":
       return [which, { origin, jsonlPath: body.path, fromOffset: body.from }];
     case "find_in_session":
-      return [which, { origin, jsonlPath: body.path, query: body.query, includeTools: body.include_tools, ...(body.skip === undefined ? {} : { skip: body.skip }) }];
+      return [which, { origin, jsonlPath: body.path, query: body.query, ...(body.include_tools === undefined ? {} : { includeTools: body.include_tools }), ...(body.scope === undefined ? {} : { scope: body.scope }), ...(body.skip === undefined ? {} : { skip: body.skip }) }];
     case "probe_session_record":
       // 这次 resume 要用的账号根（基座不带 ⇒ `undefined`）。
       return [which, { origin, sessionId: body.sid, configDir: body.configDir }];
@@ -372,6 +372,8 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.baseUrl = a.baseUrl ?? null;
   // 徽章是那台后端写好的一枚（`accounts_query::badge_of`）：夹具不写 ⇒ 给一枚占位（字不当真，判徽章的判据自己写）。
   out.badge = a.badge ?? { text: "badge", warn: false, title: "" };
+  // 号色是那台账号库里的一格（`Manifest::with_colors`）：夹具不写 ⇒ 第 0 格占位（判号色的判据自己写）。
+  out.color = a.color ?? 0;
   return out;
 }
 

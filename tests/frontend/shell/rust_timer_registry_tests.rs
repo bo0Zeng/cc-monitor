@@ -94,6 +94,20 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              没上限就等于「点一次恢复永远转圈」。退役归：std 有了 `wait_timeout` 之后（今天没有）。",
     ),
     (
+        "resident-client/feed.rs",
+        "attach_after_ensure",
+        "wait-for-condition",
+        "手机那一侧接常驻流（`resident-client`）：`--resident-ensure` 之后小中继回 `absent` 时隔 200ms 再接，至多 30 次（≤6 s，次数与间隔同桌面 `retry_relay`，常量同一份）—— \
+             等的是**那台套接字上有人在听**这个一次性条件，接上即止，等不到就如实报「那台后端没在运行」。不是节拍器。",
+    ),
+    (
+        "resident-client/feed.rs",
+        "run",
+        "wait-for-condition",
+        "手机那一侧一台的重连循环（`resident-client`）睡退避（2→30 s，活过 30 s 才清零；同桌面 `stream_source/run.rs` 那一份 `Backoff`）：\
+             只在流断了之后睡、被［重试］/ 回前台 / 换了一条 SSH 叫醒即止；要人动手的那几种不睡、只等叫醒。不是节拍器。",
+    ),
+    (
         "src/remote_resident.rs",
         "retry_relay",
         "wait-for-condition",
@@ -158,7 +172,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     // `src/search.rs` 那一行（`startup-delay` 1 处：`build_blocking` 起头让路 1.5 s）随本机内存索引删了 ——
     //   本机全文搜索改问本机后端（`history-search`），monitor 不再建索引。
     // `src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
-    //   后端的拨号代理（`src/backend/dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
+    //   后端的拨号代理（`src/backend/ssh-dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
     //    它是 `src/stream_source/` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
     //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
@@ -169,7 +183,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
     //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
     // `src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `stream_source/`
-    //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `dial/connect.rs`（同时起拨：后端零定时器）。
+    //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `ssh-dial/connect.rs`（同时起拨：后端零定时器）。
     (
         "src/stream_source/snapshot.rs",
         "snapshot_dispatcher",

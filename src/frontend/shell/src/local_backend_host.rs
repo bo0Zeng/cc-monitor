@@ -411,19 +411,8 @@ fn read_handshake_line(mut sock: &own_chan::BlockingStream) -> Result<String, Sa
     }
 }
 
-/// attach 行：「我要流」＋ 看的这一台的时区 ＋ 这条流的出口声明（后端 `listen::attach_flags` 的逆；本机远端同一处拼）。
-/// `tz` ＝ [`host_core::viewer_tz`]（`None` ⇒ 不带，后端按 UTC 写推来的钟面）；`view` ＝ 请求信封同一套词（`None` ⇒ 不带 ＝ 全量）。
-pub(crate) fn attach_line(tz: Option<&str>, view: Option<&serde_json::Value>) -> String {
-    let mut o = serde_json::Map::new();
-    o.insert("attach".into(), true.into());
-    if let Some(tz) = tz {
-        o.insert("tz".into(), tz.into());
-    }
-    if let Some(v) = view {
-        o.insert("view".into(), v.clone());
-    }
-    format!("{}\n", serde_json::Value::Object(o))
-}
+// attach 行（「我要流」＋ 时区 ＋ 出口声明）住 `resident-client`（本机 · 远端 · 手机同一处拼）。
+pub(crate) use resident_client::attach::attach_line;
 
 /// 交 attach 行，换一句「可以」。门在连上那一刻（套接字只给本人 ＋ 对端 uid），这一行只是「我要流」。
 fn send_attach(sock: &own_chan::BlockingStream) -> Result<(), Said> {

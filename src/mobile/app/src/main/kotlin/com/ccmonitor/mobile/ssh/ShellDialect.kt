@@ -30,7 +30,7 @@ sealed interface ShellDialect {
     fun cd(path: String): String
 
     /**
-     * SFTP 路径（sshj 恒用 `/`，Windows 上常是 `/C:/Users/...`）转成本 shell `cd` 能用的路径。
+     * SFTP 路径（恒用 `/`，Windows 上常是 `/C:/Users/...`）转成本 shell `cd` 能用的路径。
      * POSIX 原样；Windows 去掉盘符前的 `/`。
      */
     fun sftpCwdToShell(sftpPath: String): String

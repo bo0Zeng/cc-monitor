@@ -91,6 +91,11 @@ export const ACTIONS: ReadonlyArray<Action> = [
   { id: "needs.next", label: copyText("tabBar.needs.hint"), category: "Tab", default: "Ctrl+KeyJ", available: true, scope: "any" },
   // 会话内查找（大纲在同一块面板里）：只搜当前 tab 这一份会话；跨全部会话的全文搜索在历史页里。
   { id: "session.find", label: copyText("keybindingActions.session.find"), category: "Tab", default: "Ctrl+KeyF", available: true, scope: "any" },
+  // 会话内查找的两个开关：范围「全部 ⇄ 用户」· 含工具输出与思考。只在焦点在查找面板 / 查找条里时由它自己认（`find-strip.ts`，不经全局派发）。
+  { id: "session.find-scope-user", label: copyText("keybindingActions.session.findScopeUser"), category: "Tab", default: "Alt+KeyU", available: true, scope: "any" },
+  { id: "session.find-tools", label: copyText("keybindingActions.session.findTools"), category: "Tab", default: "Alt+KeyT", available: true, scope: "any" },
+  // 调整会话头按钮（编辑浮层锚在会话头「⋯」下方；默认不绑键，命令面板 · 按钮排右键 ·「⋯」里都有）。
+  { id: "sessionHead.edit", label: copyText("keybindingActions.sessionHead.edit"), category: "Tab", default: null, available: true, scope: "any" },
   // 过程默认展开 / 折起：完成的轮把过程折成一行，这一键全部摊开 / 全部收回。
   { id: "session.toggle-process", label: copyText("keybindingActions.session.toggleProcess"), category: "Tab", default: "Ctrl+KeyO", available: true, scope: "any" },
   // 上 / 下一轮（轮次刻度的键盘那一半）· 回到底部。

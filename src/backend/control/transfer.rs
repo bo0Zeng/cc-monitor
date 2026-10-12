@@ -11,12 +11,12 @@
 //!
 //! 起跑挂在 `transfer-start` 上、不挂在开单上：monitor 先登记好看的人、再起跑，终局就不会没人收。
 //!
-//! # 它是第三层（文件管理写面）的成员
+//! # 它是文件管理写面的成员
 //!
 //! 下载要写本机用户选的落点（`.part` ＋ 改名上位）⇒ 按 `INVARIANTS §41.6` 只许住文件管理那一面：
-//! 本模块登记在 `readonly_guard::MUTATING_FACE_MODULES`，改动动词只用闭集里的（`O_EXCL` 新建 · 接着写 · 改名 · 删文件），
-//! 每一处改动之前先过 `files_write::resolve_in_root`；门只有 `stream/inbound/`。
-//! 远端那一半（暂存区的写）全经 `dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
+//! 写经票表手里那一份 `Face`（帧面分派那一层造台时交来），用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；
+//! 每一处改动的路径都是 `files_write::resolve_in_root` 交回的 `Resolved`。
+//! 远端那一半（暂存区的写）全经 `ssh-dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
 //! # 存亡规矩
 //!
@@ -45,8 +45,9 @@ use tokio::sync::{mpsc, watch, Notify};
 
 use crate::common::said::Said;
 use crate::control::files_commit::{KEY_LEN, PART_SUFFIX};
-use crate::control::files_write::{opener, resolve_in_root};
+use crate::control::files_write::resolve_in_root;
 use crate::dial::sftp::{self, Dial, Session};
+use crate::platform::fs::{Face, FaceFile, Ro};
 use crate::stream::wire::{Frame, TransferEnd};
 
 /// 开单：上传。
@@ -91,7 +92,7 @@ pub fn staging_part(key: &str) -> String {
     format!("{}/{key}{PART_SUFFIX}", sftp::STAGING_ROOT)
 }
 
-// ═══ 本机落点（第三层：每一处改动先过路径解析）══════════════════════════════════════════════
+// ═══ 本机落点（每一处改动先过路径解析）══════════════════════════════════════════════
 
 /// 本机落点拆成 `(父目录 = 路径解析的根, 文件名, 半成品名)`。必须是绝对路径、有文件名。
 /// 名字按 `OsString` 拿（Linux 上落点可以是非 UTF-8 的原始字节：有损名下载「字节原样当文件名」）。
@@ -124,10 +125,10 @@ pub fn land_check(local_path: impl AsRef<Path>) -> Result<(), String> {
 }
 
 /// 从 0 开一份半成品：旧的在就先删（它的尾块已经对不上了），再 `O_EXCL` 新建。
-fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, Said> {
+fn land_open_fresh(face: &Face, root: &Path, part: &OsStr) -> Result<FaceFile, Said> {
     let at = resolve_in_root(root, part)?;
-    if std::fs::symlink_metadata(&at).is_ok() {
-        std::fs::remove_file(&at).map_err(|e| {
+    if Ro::symlink_metadata(&at).is_ok() {
+        face.delete_file(&at).map_err(|e| {
             Said::with_raw(
                 copy_text(
                     "beTransfer.land.dropPartFailed",
@@ -140,34 +141,30 @@ fn land_open_fresh(root: &Path, part: &OsStr) -> Result<std::fs::File, Said> {
             )
         })?;
     }
-    opener()
-        .write(true)
-        .create_new(true)
-        .open(&at)
-        .map_err(|e| {
-            Said::with_raw(
-                copy_text(
-                    "beTransfer.land.createFailed",
-                    &[
-                        ("path", &at.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })
+    face.create_new(&at).map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beTransfer.land.createFailed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })
 }
 
-/// 续传：**不原地接着写**（第三层禁「续写」那种开法：每一个写句柄都得是 `O_EXCL` 新建）⇒
+/// 续传：**不原地接着写**（`Face` 没有「续写」那种开法：每一个写句柄都是 `O_EXCL` 新建）⇒
 /// 旧半成品改名成 `<名>.old` → `O_EXCL` 新建 `<名>` → 把前 `keep` 字节从旧的抄过来 → 删旧的。
 /// 回来的句柄游标停在 `keep`。代价如实记：前缀在本机盘上多抄一遍（本机盘速，不走网）。
-fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File, Said> {
+fn land_carry_over(face: &Face, root: &Path, part: &OsStr, keep: u64) -> Result<FaceFile, Said> {
     let at = resolve_in_root(root, part)?;
     let mut old_name = part.to_os_string();
     old_name.push(".old");
     let old = resolve_in_root(root, &old_name)?;
-    if std::fs::symlink_metadata(&old).is_ok() {
-        std::fs::remove_file(&old).map_err(|e| {
+    if Ro::symlink_metadata(&old).is_ok() {
+        face.delete_file(&old).map_err(|e| {
             Said::with_raw(
                 copy_text(
                     "beTransfer.land.dropLeftoverFailed",
@@ -180,7 +177,7 @@ fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File
             )
         })?;
     }
-    std::fs::rename(&at, &old).map_err(|e| {
+    face.move_file(&at, &old).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beTransfer.land.moveAsideFailed",
@@ -192,24 +189,20 @@ fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File
             &e,
         )
     })?;
-    let mut fresh = opener()
-        .write(true)
-        .create_new(true)
-        .open(&at)
-        .map_err(|e| {
-            Said::with_raw(
-                copy_text(
-                    "beTransfer.land.createFailed",
-                    &[
-                        ("path", &at.display().to_string()),
-                        ("why", &io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            )
-        })?;
+    let mut fresh = face.create_new(&at).map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beTransfer.land.createFailed",
+                &[
+                    ("path", &at.display().to_string()),
+                    ("why", &io_reason(e.kind())),
+                ],
+            ),
+            &e,
+        )
+    })?;
     let copied = {
-        let src = opener().read(true).open(&old).map_err(|e| {
+        let src = Ro::open_nofollow(&old).map_err(|e| {
             Said::with_raw(
                 copy_text(
                     "beTransfer.land.readPartFailed",
@@ -231,7 +224,7 @@ fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File
             )
         })?
     };
-    std::fs::remove_file(&old).map_err(|e| {
+    face.delete_file(&old).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beTransfer.land.dropPartFailed",
@@ -254,10 +247,10 @@ fn land_carry_over(root: &Path, part: &OsStr, keep: u64) -> Result<std::fs::File
 }
 
 /// 传完：半成品改名上位。
-fn land_commit(root: &Path, part: &OsStr, name: &OsStr) -> Result<(), Said> {
+fn land_commit(face: &Face, root: &Path, part: &OsStr, name: &OsStr) -> Result<(), Said> {
     let from = resolve_in_root(root, part)?;
     let to = resolve_in_root(root, name)?;
-    std::fs::rename(&from, &to).map_err(|e| {
+    face.move_file(&from, &to).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beTransfer.land.commitFailed",
@@ -272,9 +265,9 @@ fn land_commit(root: &Path, part: &OsStr, name: &OsStr) -> Result<(), Said> {
 }
 
 /// 失败（不是撤）：删掉半成品。
-fn land_discard(root: &Path, part: &OsStr) {
+fn land_discard(face: &Face, root: &Path, part: &OsStr) {
     if let Ok(at) = resolve_in_root(root, part) {
-        let _ = std::fs::remove_file(&at);
+        let _ = face.delete_file(&at);
     }
 }
 
@@ -373,7 +366,7 @@ pub(crate) async fn upload_to_staging(
     cancel: &Cancel,
     on_progress: &Sink<'_>,
 ) -> Result<(u64, String), Said> {
-    let total = tokio::fs::metadata(local_path)
+    let total = Ro::metadata_async(local_path)
         .await
         .map(|m| m.len())
         .map_err(|e| {
@@ -385,7 +378,7 @@ pub(crate) async fn upload_to_staging(
                 &e,
             )
         })?;
-    let mut lf = tokio::fs::File::open(local_path).await.map_err(|e| {
+    let mut lf = Ro::open_async(local_path).await.map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beTransfer.local.readFailed",
@@ -543,8 +536,9 @@ pub(crate) async fn upload_to_staging(
     }
 }
 
-/// 下载：远端只读；本机落点 `<落点>.part` ＋ 改名上位（第三层：每一处改动先过路径解析）。回落地的字节数。
+/// 下载：远端只读；本机落点 `<落点>.part` ＋ 改名上位（每一处改动先过路径解析）。回落地的字节数。
 pub(crate) async fn download_to_local(
+    face: &Face,
     s: &Session,
     remote_path: &str,
     local_path: impl AsRef<Path>,
@@ -558,18 +552,14 @@ pub(crate) async fn download_to_local(
         .unwrap_or(0);
     let mut rf = sftp::open_for_read(s, remote_path).await?;
     let part_path = root.join(&part);
-    let have = tokio::fs::metadata(&part_path)
+    let have = Ro::metadata_async(&part_path)
         .await
         .map(|m| m.len())
         .unwrap_or(0);
     // `rf_at` = 远端句柄此刻停在哪（知道才填）。尾块对上了 ⇒ 探针那一读恰好读满到 `have`，
     //   句柄就停在 `have` == `resume_from`。
     let (resume_from, rf_at) = if have > 0 {
-        match tokio::fs::OpenOptions::from(opener())
-            .read(true)
-            .open(&part_path)
-            .await
-        {
+        match Ro::open_nofollow_async(&part_path).await {
             Ok(mut half) => {
                 let r = tails_agree(&mut half, &mut rf, have, total).await;
                 (r, (r == have).then_some(have))
@@ -580,12 +570,12 @@ pub(crate) async fn download_to_local(
         (0, Some(0))
     };
     let std_file = if resume_from > 0 {
-        land_carry_over(&root, &part, resume_from)?
+        land_carry_over(face, &root, &part, resume_from)?
     } else {
-        land_open_fresh(&root, &part)?
+        land_open_fresh(face, &root, &part)?
     };
     // 两种开法回来的游标都停在 `resume_from`（新建 ⇒ 0；抄完前缀 ⇒ 前缀末尾）。
-    let mut lf = tokio::fs::File::from_std(std_file);
+    let mut lf = std_file.into_async();
     // 句柄已经停在 `resume_from` 就不 seek：russh-sftp 的第一读按服务端肯给的最大包请求（约 255 KiB，远大于探针那 32 KiB），
     // 多出来的那一截留在读缓冲里，正好是续传要的下一段；seek 一下（哪怕原地）就把缓冲扔掉、从 `have` 再请求一遍。
     // 只有对不上（从 0 来）或探针读坏了（位置说不准）才 seek。
@@ -660,16 +650,16 @@ pub(crate) async fn download_to_local(
         Err(e) => {
             // 撤 ⇒ 留着 `.part`（下次续传的本钱）。失败 ⇒ 也留着：弱网上「连接没了」就是失败，删了重下就从 0 起。
             // 不按错误文案分「断线 / 别的失败」。唯一还清的一形：一个字节都没落（空 `.part` 没有续传的本钱）。
-            let landed = tokio::fs::metadata(root.join(&part))
+            let landed = Ro::metadata_async(root.join(&part))
                 .await
                 .map_or(0, |m| m.len());
             if !cancel.is_set() && landed == 0 {
-                land_discard(&root, &part);
+                land_discard(face, &root, &part);
             }
             return Err(e);
         }
     };
-    land_commit(&root, &part, &name)?;
+    land_commit(face, &root, &part, &name)?;
     on_progress(done, total);
     Ok(done)
 }
@@ -708,6 +698,8 @@ fn lock(t: &Tickets) -> std::sync::MutexGuard<'_, HashMap<String, Ticket>> {
 pub struct Desk {
     tickets: Tickets,
     replies: mpsc::Sender<Frame>,
+    /// 下载落点那一下写用的文件管理写句柄（帧面分派那一层造好交来的；起跑时带一份进那趟任务）。
+    face: Face,
 }
 
 impl Drop for Desk {
@@ -768,10 +760,11 @@ fn next_id() -> String {
 }
 
 impl Desk {
-    pub fn new(replies: mpsc::Sender<Frame>) -> Self {
+    pub fn new(replies: mpsc::Sender<Frame>, face: Face) -> Self {
         Desk {
             tickets: Arc::new(Mutex::new(HashMap::new())),
             replies,
+            face,
         }
     }
 
@@ -830,7 +823,7 @@ impl Desk {
             Ok(v) => v,
             Err(m) => return err(id, TRANSFER_UPLOAD, "bad_args", &m),
         };
-        let meta = match std::fs::metadata(local) {
+        let meta = match Ro::metadata(local) {
             Ok(m) => m,
             Err(e) => {
                 // 开单那一下就读不到本机那份：应答带复制详情（系统原话不上句子）。
@@ -953,6 +946,7 @@ impl Desk {
         let (tx, rx) = watch::channel::<Progress>(Progress::default());
         let forward = tokio::spawn(forward_progress(tid.clone(), rx, self.replies.clone()));
         let tickets = Arc::clone(&self.tickets);
+        let face = self.face.clone();
         tokio::spawn(async move {
             let tx = Arc::new(tx);
             let sink_tx = Arc::clone(&tx);
@@ -962,7 +956,7 @@ impl Desk {
                     p.total = total;
                 });
             };
-            let r = run(&dial, job, &cancel, &sink).await;
+            let r = run(&face, &dial, job, &cancel, &sink).await;
             let end = match r {
                 Ok((bytes, sha256)) => TransferEnd::Done { bytes, sha256 },
                 Err(_) if cancel.is_set() => TransferEnd::Cancelled,
@@ -1017,6 +1011,7 @@ async fn forward_progress(
 /// 一趟：拨号 ＋ 开会话（过传输车道；这一段可以被撤当场打断）→ 按单子传。
 /// 回传完的字节数；上传那一路另带整份的摘要（提交时的对拍依据），下载那一路 `None`。
 async fn run(
+    face: &Face,
     dial: &Dial,
     job: Job,
     cancel: &Cancel,
@@ -1042,7 +1037,7 @@ async fn run(
                 .map_err(|e| (e, None))
         }
         Job::Download { remote, local } => {
-            download_to_local(&session, &remote, &local, cancel, sink)
+            download_to_local(face, &session, &remote, &local, cancel, sink)
                 .await
                 .map(|n| (n, None))
                 .map_err(|e| (e, None))

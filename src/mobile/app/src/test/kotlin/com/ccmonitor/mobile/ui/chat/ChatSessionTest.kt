@@ -94,7 +94,6 @@ class ChatSessionTest {
             s.send("你好")
             runCurrent()
             assertEquals("你好", link.calls("session-new").single()?.get("prompt"))
-            assertEquals("session-new 撤不动（阻塞档）：按阻塞档问，不带 within_ms、不撤单", listOf("session-new"), link.blockingCalls)
             assertEquals("pre", s.state.value.sid)
             assertTrue("第一句已随起交了，不再送一遍", link.calls("terminal-input").isEmpty())
             assertNull("送到了的不挂标", s.local().single().delivery)

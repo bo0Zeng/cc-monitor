@@ -6,39 +6,21 @@
  * 不避让的名字会撞上已有会话、静默接进去，而用户以为开了新的。之后怎么办归调用方。
  */
 import type { Origin } from "./ipc/origin";
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, peerVersionSaid, readJson, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
 
 export type MintOutcome = { ok: true; name: string } | { ok: false; why: string };
 
 /** 期限：那台后端问一次会话快照（起一次 `tmux ls`）就答；15 s 盖住回程（远端没连着还要握手），与列终端名单同一档。 */
 const MINT_BUDGET_MS = 15_000;
 
-/** `terminal-name-mint` 的成品 `{name}` ⇒ 名字；形状不认 ⇒ `null`。严格收（恰好一个键、非空串）。 */
-export function decodeMinted(v: unknown): string | null {
-  if (v === null || typeof v !== "object" || Array.isArray(v)) return null;
-  const o = v as Record<string, unknown>;
-  const keys = Object.keys(o);
-  return keys.length === 1 && keys[0] === "name" && typeof o.name === "string" && o.name !== "" ? o.name : null;
-}
-
-/** 问那台后端铸一个名字。**不抛**。 */
+/** 问那台后端铸一个名字（typed 帧命令：回包类型从 Rust 生成，形状由握手指纹核过）。**不抛**。 */
 async function askMint(origin: Origin, args: { cwd: string }): Promise<MintOutcome> {
-  let reply: Uint8Array;
   try {
-    const body = jsonBody(args);
-    const budget = budgetWithin(MINT_BUDGET_MS);
-    reply = await chan.call(origin, "terminal-name-mint", body, budget);
+    const minted = await callTyped(origin, "terminal-name-mint", args, budgetWithin(MINT_BUDGET_MS));
+    return { ok: true, name: minted.name };
   } catch (e) {
     return { ok: false, why: saidFrom(e, origin) };
   }
-  let name: string | null = null;
-  try {
-    name = decodeMinted(readJson(reply));
-  } catch {
-    name = null;
-  }
-  return name !== null ? { ok: true, name } : { ok: false, why: peerVersionSaid("reply_unreadable", origin) };
 }
 
 /** 起新会话 / 全新 resume：那台按 cwd 派生 `<项目名>-cc`、按它的会话快照避让。 */

@@ -140,7 +140,7 @@ fn every_write_primitive_in_a_capability_holder_is_classified() {
     //   「抽取器没瞎」那一半由下面那条人群根判据的正控钉（同一把针喂合成语料必亮）。
     assert!(
         sites.is_empty(),
-        "monitor 里又有持 SFTP 会话的文件在调写原语了：{sites:?} —— 远端写只许住本机后端 `dial/sftp.rs`"
+        "monitor 里又有持 SFTP 会话的文件在调写原语了：{sites:?} —— 远端写只许住本机后端 `ssh-dial/sftp.rs`"
     );
     let missing: Vec<String> = sites
         .iter()
@@ -359,7 +359,7 @@ fn the_remote_write_capability_is_still_confined_to_three_files() {
         holders,
         Vec::<String>::new(),
         "monitor 里又有文件拿到了 SFTP 会话：{holders:?}\n\n\
-         ★ SFTP 住本机常驻后端、界面进程零 SSH。远端写只许住后端 `dial/sftp.rs`（只许两处）；\
+         ★ SFTP 住本机常驻后端、界面进程零 SSH。远端写只许住后端 `ssh-dial/sftp.rs`（只许两处）；\
          monitor 要远端文件就走 `dial_host::RemoteFs`（部署）或 `transfer-*`（传输）。"
     );
     // 正控：同一把针（会话类型名 · crate 路径 · 两个取会话的出处）喂合成语料，每一根都亮 —— 零命中不是瞎了。

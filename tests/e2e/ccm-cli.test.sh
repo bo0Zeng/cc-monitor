@@ -259,12 +259,12 @@ mkdir -p "$AH/.claude-alt/old"
 printf '{"version":1,"accounts":[{"name":"old","configDir":"%s","isDefault":true}]}\n' "$AH/.claude-alt/old" > "$AH/.claude-alt/accounts.json"
 OLD_SUM="$(cksum < "$AH/.claude-alt/accounts.json")"
 home_run() { env -i PATH="$TMUX_SHIM_BIN:/usr/bin:/bin" HOME="$AH" "$CCM" "$@" 2>&1; }
-# 列账号：额度账那一问（`--quota-read`）逐号一行，`account` 是号名（账号库没启用 ⇒ 一个号都不列）。
+# 列账号：额度账那一问（`--quota-read`）逐号一行，`account` 是号名（账号库没启用 ⇒ 一个号都不列）；候选那一格（`candidates`）再列一遍同几个号 ⇒ 去重。
 #   读不出（不是那一形）⇒ 印出原话，不当成「零个号」。
 names_of() {
   local o; o="$(home_run -- --quota-read </dev/null)"
   case "$o" in *'"unseen":'*) ;; *) printf '<额度账读不出：%s>' "$o"; return ;; esac
-  printf '%s' "$o" | grep -o '"account":"[^"]*"' | sed 's/.*:"\(.*\)"/\1/' | sort | tr '\n' ' '
+  printf '%s' "$o" | grep -o '"account":"[^"]*"' | sed 's/.*:"\(.*\)"/\1/' | sort -u | tr '\n' ' '
 }
 ck "建库前：只有旧位置那份清单 ⇒ 没启用多账号（一个号都不列）" "" "$(names_of)"
 ck "建库前：裸起不落旧清单里的默认号" "$UNSET; cd '/p' && exec claude$(hk "$AH")" "$(home_run -- --cwd /p --ccm-print)"

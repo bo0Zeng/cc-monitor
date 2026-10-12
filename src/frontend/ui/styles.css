@@ -2577,10 +2577,26 @@
 
 /* P7a-3（#61）：标签页集合。**纯手动**建、手动命名 —— 组头点一下改名、× 解散。
    ⚠ 解散只去掉分组，一个会话都不会关：集合是个视图，不是容器。 */
+/* ui3（10-11 稿「标签页分组-边界」方案 A）：一个组画成一块 —— 淡底 ＋ 1px 细边 ＋ 圆角 8；块的上沿是组的开始、下沿是结束，块外的都是散的。
+   左右外边距 6、上下 6；两组紧挨也是两块（中间 6px 空隙）。不给组上色。 */
 .tab-group {
   display: flex;
   flex-direction: column;
-  margin: 4px 0 6px;
+  flex: none;
+  margin: 6px 6px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-l);
+  background: var(--group-fill);
+  overflow: hidden;
+}
+
+.tab-group + .tab-group {
+  margin-top: 0;
+}
+
+/* 当前标签页在收着的组里：组头左边 accent（下面 `.is-current`），块边升一档。 */
+.tab-group.has-current {
+  border-color: var(--border-medium);
 }
 
 /* 组头：⌄ · 名字 · 组员数 · 收着时汇总（等你 · 在跑）· 悬停 / 焦点时右侧「⋯」。点 ⌄ 或空白处收起 / 展开，点名字改名。 */
@@ -2590,7 +2606,7 @@
   align-items: center;
   gap: var(--space-3);
   height: 26px;
-  padding: 0 8px 0 6px;
+  padding: 0 8px 0 4px;
   color: var(--text-2);
   font-size: var(--font-size-small);
   cursor: pointer;
@@ -2701,16 +2717,28 @@
   visibility: visible;
 }
 
-/* 组员：整体缩进 12px，左侧 1px 引导线 —— 组在哪结束一眼看得出（最后一个组与下面散的之间不再混）。 */
+/* 收着的组：块只剩组头（28 高）。 */
+.tab-group.is-collapsed > .tab-group-head {
+  height: 28px;
+}
+
+/* 组员：块边已经说了「在组里」⇒ 不另缩进、没有引导线。组头与第一个组员之间一道细分隔。
+   点与标题和散的对齐到同一列：散的 2px 左边条 ＋ 10px 内边距 ＝ 12；块里扣掉外边距 6 与边框 1 ⇒ 左内边距 3。 */
 .tab-group-list {
   display: flex;
   flex-direction: column;
-  margin-left: 12px;
-  border-left: 1px solid var(--border-medium);
+  padding-bottom: 2px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.tab-group-list:empty {
+  padding-bottom: 0;
+  border-top: 0;
 }
 
 .tab-group-list > .tab {
-  padding-left: 9px;
+  padding-left: 3px;
+  padding-right: 2px;
 }
 
 .tab-group.is-collapsed > .tab-group-list {
@@ -2794,8 +2822,14 @@ body[data-tab-bar="folded"]:not(.viewer-mode) .tab {
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab .tab-abbr {
   display: block;
 }
-body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-list {
-  margin-left: 4px;
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group {
+  margin: 4px 4px;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group + .tab-group {
+  margin-top: 0;
+}
+body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-list > .tab {
+  padding: 0;
 }
 body[data-tab-bar="folded"]:not(.viewer-mode) .tab-group-head {
   justify-content: center;

@@ -165,7 +165,7 @@ export class AccountChip {
       sw.appendChild(icon("swap", "compact"));
       el.appendChild(sw);
     }
-    if (m.account !== null) el.appendChild(acctAvatar(m.account));
+    if (m.account !== null) el.appendChild(acctAvatar(m.account, 16, this.active?.origin));
     const name = document.createElement("span");
     name.className = s.acctChipName;
     name.textContent = m.name;
@@ -238,7 +238,7 @@ export class AccountChip {
     this.element.setAttribute("aria-label", copyText("acct.chip.ariaDefault", { name: text }));
     // ready 时账号图标换成当前账号的彩色头像（与 tab 徽章同色系）；只有 1 个可选账号时颜色区分不了什么 ⇒ 退回账号图标。
     const cur = defaultAccount(st);
-    this.iconEl.replaceChildren(cur && accountColorsActive(st) ? accountAvatarEl(cur.name) : icon("account", "compact"));
+    this.iconEl.replaceChildren(cur && accountColorsActive(st) ? accountAvatarEl(cur.name, { origin: st.origin }) : icon("account", "compact"));
     this.element.style.display = "";
   }
 
@@ -322,7 +322,7 @@ export class AccountChip {
     return {
       label: accountLabel(a.name),
       checked: isCurrent,
-      avatar: accountAvatarEl(a.name, { size: 16 }),
+      avatar: accountAvatarEl(a.name, { size: 16, origin }),
       note: a.email || undefined,
       detail: usage ?? badge.text,
       detailTone: (u && u.tone !== "plain") || badge.warn ? "warn" : undefined,

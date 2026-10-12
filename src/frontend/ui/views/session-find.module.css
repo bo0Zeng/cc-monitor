@@ -27,4 +27,13 @@
     gap: var(--space-5);
     padding: 0 var(--space-5) var(--space-3);
   }
+
+  /* 框下一行：范围「全部 | 用户」· 8px · 含工具输出与思考。 */
+  .sfOpts {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    padding: 0 var(--space-5) var(--space-3);
+    font-size: var(--font-size-small);
+  }
 }

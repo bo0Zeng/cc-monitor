@@ -11,12 +11,11 @@ pub(crate) mod cells;
 pub(crate) mod contract;
 /// 只听回环的那一个地址。① stream（常驻监听口）· relay（中转的宿主）· control（本机探口）都绑 / 连它 · ② `std::net` 的常量 · ③ 只认「回环」。
 pub mod net;
-/// 后端建自家目录的那一个函数。① 原生那一块（退出行为 · 资产目录 · skill 装记录 · 中转钥匙 · 常驻登记）与文件管理那一块（暂存区，
-/// `control/files_commit.rs`）都建这一层，两块之间零互相依赖（`files/module_boundary_guard.rs`）· ② unix 权限位那一句是 `std` 的扩展 trait ·
-/// ③ 只认「建一层目录、只给本人」。它写盘（建目录）：`readonly_guard` 第四层登记它（`common/own_dir.rs`）。
+/// 后端自家目录的几个名字与权限位（只是常量；建目录经 `platform::fs::Own::ensure_dir`）。① 原生那一块与文件管理那一块（暂存区）都认这几个名字 ·
+/// ② 只是常量 · ③ 一个盘都不碰。
 pub(crate) mod own_dir;
-/// 后端自有状态文件的读三态与原子写（旁名唯一 · 0600 · `sync_all` · 失败只删自己的旁名）。① 第四层各份分住 control · accounts · assets ·
-/// history · relay · dial，都经它读写 · ② 只用 `std::fs` 与 `creds_core` 的「出生即只给本人」· ③ 只认「一份文件整份读、整份换」。它写盘：`readonly_guard` 第四层登记它。
+/// 后端自有状态文件的读三态与编码。① 写自家状态的各份（control · accounts · assets · history · relay · dial）读都经它 ·
+/// ② 读经 `platform::fs::Ro`，写不在这里（经 `platform::fs::Own::write`）· ③ 只认「一份文件整份读、整份换」。
 pub(crate) mod own_state;
 /// **路径原始字节的线上两种形**（字符串 / `{"b16": …}`，原住 `files/raw.rs`）。
 ///
@@ -26,6 +25,9 @@ pub(crate) mod own_state;
 pub(crate) mod path_wire;
 /// 一次失败给人看的那一句 ＋ 下层原话（原话进复制详情，不上句子）。① control（传输台）与 dial（SFTP）都回它 · ② 纯数据 · ③ 只认「一句 ＋ 原话」。
 pub(crate) mod said;
+/// 「此刻显示这个会话的终端」那一形（`session-terminals` 的回包 · `terminal-processes` 的入参）。① observe（读出来）与 dial（拿去对这台的连接表）
+/// 都用，界面原样转交 · ② 纯数据 · ③ 只认「一个终端 ＋ 它那条 ssh 连接的四元组」。
+pub(crate) mod seen_terminal;
 /// 「这台机器上现在有哪些 tmux 会话」那一张快照。① control（`gate::list_sessions` 判活、`ccm` 铸名避让）与 observe（`watcher` 焐热）都用 ——
 /// 住 `control/` 的话 watcher 要走一条 `observe → control` 的回边，住 `observe/` 的话 Gate 引用不到 · ② 起的是跨平台的 `tmux` · ③ 只认「会话名 + `@ccm_sid`」。
 pub(crate) mod session_snapshot;

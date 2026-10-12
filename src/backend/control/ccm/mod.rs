@@ -530,38 +530,81 @@ pub(crate) fn preview_resolved(
 ///
 /// 码：`bad_args`（两格都没给 / 都给了 / 不是字符串）。前端问不到（链路断 · 那台后端比这一问老）⇒ 不铸名、不起、说清
 /// （`src/frontend/ui/terminal-name-mint.ts`：空集铸名就是「不避让」，issue #76 的形状）。
-pub(crate) fn answer_terminal_name_mint(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (&'static str, String)> {
-    crate::stream::inbound::spec::wire(&terminal_name_mint_with(
-        args,
-        crate::common::session_snapshot::global(),
-    )?)
+/// `terminal-name-mint` 的入参：工作目录 · 分叉的源，恰好给一个。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalNameMintReq {
+    /// 工作目录 ⇒ `<项目名>-cc`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) cwd: Option<String>,
+    /// 分叉出来的那一条：源会话的终端名或工作目录 ⇒ `<…>-fork-cc`。
+    #[serde(default, rename = "forkOf")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) fork_of: Option<String>,
 }
 
 /// `terminal-name-mint` 的应答：铸出来的那个名字。
 #[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Minted {
+    /// 铸出来的终端名（这台避让过）。
     pub(crate) name: String,
 }
 
-/// [`answer_terminal_name_mint`] 的内核（快照是入参：测试拿脚本化探测器造一份）。
+crate::stream::inbound::typed::codes! {
+    /// `terminal-name-mint` 自己的码。
+    pub(crate) enum TerminalNameMintErr {
+        /// 问会话快照那一次 `tmux` 过了期限。
+        ChildTimedOut = "child_timed_out",
+    }
+}
+
+/// `terminal-name-mint`：起会话要的终端名（这台派生基名、按它的会话快照避让）。阻塞档：快照问一次就起一次 `tmux`。
+pub(crate) struct TerminalNameMint;
+
+impl crate::stream::inbound::typed::Command for TerminalNameMint {
+    const NAME: &'static str = "terminal-name-mint";
+    type Req = TerminalNameMintReq;
+    type Reply = Minted;
+    type Err = TerminalNameMintErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for TerminalNameMint {
+    fn run(
+        req: TerminalNameMintReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<Minted, TerminalNameMintErr> {
+        let base = match (req.cwd.as_deref(), req.fork_of.as_deref()) {
+            (Some(cwd), None) => crate::control::session_batch::NameBase::Cwd(cwd),
+            (None, Some(source)) => crate::control::session_batch::NameBase::ForkOf(source),
+            _ => {
+                return Err(TerminalNameMintErr::BadArgs(
+                    crate::common::contract::malformed("give exactly one of `cwd` / `forkOf`"),
+                ))
+            }
+        };
+        // 快照那一层只回 `no_tmux`（下面那层接住了，不算失败）与 `child_timed_out` 两个码 ⇒ 到这里的只有后者。
+        terminal_name_mint_with(base, crate::common::session_snapshot::global()).map_err(
+            |(code, said)| {
+                debug_assert_eq!(code, crate::platform::child::TIMED_OUT);
+                TerminalNameMintErr::ChildTimedOut(said)
+            },
+        )
+    }
+}
+
+/// 铸名的内核（快照是入参：测试拿脚本化探测器造一份）。快照那一层的失败原样交回（码只有 `child_timed_out`；没 tmux 不算失败）。
 pub(crate) fn terminal_name_mint_with(
-    args: &serde_json::Value,
+    base: crate::control::session_batch::NameBase<'_>,
     snap: &crate::common::session_snapshot::SessionSnapshot,
 ) -> Result<Minted, (&'static str, String)> {
-    let text = |k: &str| args.get(k).and_then(serde_json::Value::as_str);
-    let base = match (text("cwd"), text("forkOf")) {
-        (Some(cwd), None) => plan::derive_tmux_name(cwd),
-        (None, Some(source)) => plan::fork_tmux_base(source),
-        _ => {
-            return Err((
-                "bad_args",
-                crate::common::contract::malformed(
-                    "give exactly one of `cwd` / `forkOf` (a string)",
-                ),
-            ))
-        }
+    let base = match base {
+        crate::control::session_batch::NameBase::Cwd(cwd) => plan::derive_tmux_name(cwd),
+        crate::control::session_batch::NameBase::ForkOf(source) => plan::fork_tmux_base(source),
     };
     let name = match snap.taken_names() {
         Ok(taken) => plan::mint_tmux_name(&base, &taken),
@@ -654,7 +697,7 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
             // 而**校验只长在它身上** —— 直接构造结构体等于绕过去。
             // 那份已删的 bash `ccm` 从前也是把这一坨编成 JSON 发给后端的，走的就是同一道门；
             // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
-            let req = match crate::control::launch::parse_request(&launch_args(c)) {
+            let req = match crate::control::launch::parse_request(launch_args(c)) {
                 Ok(r) => r,
                 Err(f) => return die(&format!("{}: {}", f.code, f.message)),
             };
@@ -705,32 +748,22 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
     }
 }
 
-/// 容器路 ⇒ `launch` 那道门认得的那份 `args`。
-///
-/// ⚠ **键名与 `launch::parse_request` 取的那几个逐字对应** —— 少一个键不会报错，
-/// 只会**静默丢掉**那一件（`@ccm_agent` 就这么丢过一次）。
-fn launch_args(c: &plan::Container) -> serde_json::Value {
-    let mut m = serde_json::Map::new();
-    m.insert("mode".into(), "create-or-attach".into());
-    m.insert("name".into(), c.name.clone().into());
-    m.insert("payload".into(), c.payload.clone().into());
-    m.insert("agent".into(), c.agent.clone().into());
-    if !c.cwd.is_empty() {
-        m.insert("cwd".into(), c.cwd.clone().into());
+/// 容器路 ⇒ `launch` 那道门认得的那份入参（同帧面那一形 [`crate::control::launch::LaunchReq`]：
+/// 少一格编不过，不会再「静默丢掉」哪一件 —— `@ccm_agent` 就这么丢过一次）。
+fn launch_args(c: &plan::Container) -> crate::control::launch::LaunchReq {
+    let some = |s: &str| (!s.is_empty()).then(|| s.to_string());
+    crate::control::launch::LaunchReq {
+        mode: crate::control::launch::Mode::CreateOrAttach,
+        name: c.name.clone(),
+        payload: c.payload.clone(),
+        agent: Some(c.agent.clone()),
+        cwd: some(&c.cwd),
+        ccm_sid: some(&c.ccm_sid),
+        width: c.size.as_ref().map(|(w, _)| w.clone()),
+        height: c.size.as_ref().map(|(_, h)| h.clone()),
+        // ccm 起的会话是用户在终端里起的：不归任何一个前端（「哪个前端的会话」那一维，`gate_rules::CLIENT_TERMINAL`）。
+        client: Some(crate::control::gate_rules::CLIENT_TERMINAL.to_string()),
     }
-    if !c.ccm_sid.is_empty() {
-        m.insert("ccm_sid".into(), c.ccm_sid.clone().into());
-    }
-    if let Some((w, h)) = &c.size {
-        m.insert("width".into(), w.clone().into());
-        m.insert("height".into(), h.clone().into());
-    }
-    // ccm 起的会话是用户在终端里起的：不归任何一个前端（「哪个前端的会话」那一维，`gate_rules::CLIENT_TERMINAL`）。
-    m.insert(
-        "client".into(),
-        crate::control::gate_rules::CLIENT_TERMINAL.into(),
-    );
-    serde_json::Value::Object(m)
 }
 
 /// 「这一趟非得经 POSIX shell」的**归因**——四句，一句一处，**都在 [`needs_shell`] /

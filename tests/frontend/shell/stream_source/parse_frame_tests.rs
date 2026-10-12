@@ -19,6 +19,7 @@ fn parses_hello_and_captures_build_id() {
             commands: Vec::new(),
             unavailable: vec![],
             uncancellable: vec![],
+            shapes: vec![],
         }
     );
 }

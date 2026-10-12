@@ -1,4 +1,4 @@
-//! **合成 SFTP 服务端**（台架）：`dial/sftp.rs` 与 `control/transfer.rs` 两族判据共用。
+//! **合成 SFTP 服务端**（台架）：`ssh-dial/sftp.rs` 与 `control/transfer.rs` 两族判据共用。
 //!
 //! 来历：monitor 那一侧 `tests/frontend/shell/sftp_staging_tests.rs`（F7c）那台「逐条记改动路径」的服务端，
 //! SFTP 客户端搬进本机后端时一起搬过来，再补三样本仓那台没有的：
@@ -19,42 +19,44 @@ use russh_sftp::protocol::{
 };
 
 /// 台架的 home（`realpath(".")` 的答案）。
-pub(crate) const HOME: &str = "/home/rig";
+pub const HOME: &str = "/home/rig";
 
 #[derive(Clone, Debug, Default)]
-pub(crate) struct Entry {
-    pub(crate) bytes: Vec<u8>,
+pub struct Entry {
+    pub bytes: Vec<u8>,
 }
 
 #[derive(Default, Debug)]
-pub(crate) struct Fs {
-    pub(crate) files: BTreeMap<String, Entry>,
-    pub(crate) dirs: BTreeSet<String>,
+pub struct Fs {
+    pub files: BTreeMap<String, Entry>,
+    pub dirs: BTreeSet<String>,
     /// 目录链接：`链接路径 → 它指向的（起始目录相对）路径`。
-    pub(crate) links: BTreeMap<String, String>,
+    pub links: BTreeMap<String, String>,
     handles: HashMap<String, String>,
+    /// 开着的目录句柄：`句柄 → (目录, 已经交过一趟了没有)`。
+    dir_handles: HashMap<String, (String, bool)>,
     next_handle: u32,
     /// 🔴 **本台架的针**：每一次会改东西的请求碰的路径，按到达顺序 `(动词, 路径)`。
-    pub(crate) mutated: Vec<(String, String)>,
+    pub mutated: Vec<(String, String)>,
     /// 第 N 次（0 起）`WRITE` 之后开始回 `FAILURE`（「失败留」那一格要一个中途真坏的形状）。
-    pub(crate) fail_write_after: Option<usize>,
+    pub fail_write_after: Option<usize>,
     write_calls: usize,
     /// 第 N 次（0 起）`READ` 之后开始回 `FAILURE`（下载「中途坏了」那一形）。
-    pub(crate) fail_read_after: Option<usize>,
+    pub fail_read_after: Option<usize>,
     read_calls: usize,
     /// 每一次 `WRITE` 的偏移（续传那一格判「从哪儿接上的」）。
-    pub(crate) write_offsets: Vec<u64>,
+    pub write_offsets: Vec<u64>,
     /// 服务端**看到过**的写（含回坏的那几条）盖到的最远字节 —— 「客户端发出去的写，走之前是不是都有了回话」。
-    pub(crate) seen_write_end: u64,
+    pub seen_write_end: u64,
     /// 每条 `WRITE` 处理之前让出几次（`yield_now`）：把「写还在路上、客户端已经拿到第一条坏回话」那一形
     /// 从调度的运气变成台架的设定（负载高时才碰得上的那个竞态，在这里每次都碰上）。
-    pub(crate) yield_per_write: usize,
+    pub yield_per_write: usize,
     /// 每一次 `READ` 的偏移（下载续传那一格判「前缀没有被重新读一遍」）。
-    pub(crate) read_offsets: Vec<u64>,
+    pub read_offsets: Vec<u64>,
     /// 服务端**交出去**的读字节数（逐条 `READ` 应答里 `data` 的长度之和）—— 「同一段字节有没有被要了两遍」。
-    pub(crate) served_bytes: u64,
+    pub served_bytes: u64,
     /// 目录上被 `SETSTAT` 设过的权限位（`目录 → permissions`）—— 部署建出来的那几层收没收窄。
-    pub(crate) dir_modes: BTreeMap<String, u32>,
+    pub dir_modes: BTreeMap<String, u32>,
 }
 
 impl Fs {
@@ -67,11 +69,11 @@ impl Fs {
         self.mutated.push((verb.to_string(), path.to_string()));
     }
     /// 改动表里碰过的路径（去重、排序）。
-    pub(crate) fn touched(&self) -> BTreeSet<String> {
+    pub fn touched(&self) -> BTreeSet<String> {
         self.mutated.iter().map(|(_, p)| p.clone()).collect()
     }
     /// 一份文件此刻的字节。
-    pub(crate) fn bytes(&self, path: &str) -> Option<Vec<u8>> {
+    pub fn bytes(&self, path: &str) -> Option<Vec<u8>> {
         self.files.get(path).map(|e| e.bytes.clone())
     }
 }
@@ -414,6 +416,87 @@ impl russh_sftp::server::Handler for Server {
         }
     }
 
+    fn opendir(
+        &mut self,
+        id: u32,
+        path: String,
+    ) -> impl std::future::Future<Output = Result<Handle, Self::Error>> + Send {
+        let fs = self.fs.clone();
+        async move {
+            let mut fs = fs.lock().unwrap();
+            let p = resolve(&fs, &rel(&path)).ok_or(StatusCode::NoSuchFile)?;
+            if !(p.is_empty() || fs.dirs.contains(&p)) {
+                return Err(StatusCode::NoSuchFile);
+            }
+            let h = fs.alloc();
+            fs.dir_handles.insert(h.clone(), (p, false));
+            Ok(Handle { id, handle: h })
+        }
+    }
+
+    fn readdir(
+        &mut self,
+        id: u32,
+        handle: String,
+    ) -> impl std::future::Future<Output = Result<Name, Self::Error>> + Send {
+        let fs = self.fs.clone();
+        async move {
+            let mut fs = fs.lock().unwrap();
+            let (dir, done) = fs
+                .dir_handles
+                .get(&handle)
+                .cloned()
+                .ok_or(StatusCode::Failure)?;
+            if done {
+                return Err(StatusCode::Eof);
+            }
+            fs.dir_handles.insert(handle, (dir.clone(), true));
+            let prefix = if dir.is_empty() {
+                String::new()
+            } else {
+                format!("{dir}/")
+            };
+            let direct = |k: &String| {
+                k.strip_prefix(&prefix)
+                    .filter(|rest| !rest.is_empty() && !rest.contains('/'))
+                    .map(str::to_string)
+            };
+            let mut files: Vec<File> = fs
+                .dirs
+                .iter()
+                .filter_map(|d| direct(d).map(|n| File::new(n, dir_attrs())))
+                .collect();
+            files.extend(
+                fs.files
+                    .iter()
+                    .filter_map(|(k, e)| direct(k).map(|n| File::new(n, attrs_of(e)))),
+            );
+            Ok(Name { id, files })
+        }
+    }
+
+    fn rmdir(
+        &mut self,
+        id: u32,
+        path: String,
+    ) -> impl std::future::Future<Output = Result<Status, Self::Error>> + Send {
+        let fs = self.fs.clone();
+        async move {
+            let mut fs = fs.lock().unwrap();
+            let p = rel(&path);
+            fs.touch("rmdir", &p);
+            let busy = fs
+                .files
+                .keys()
+                .chain(fs.dirs.iter())
+                .any(|k| k.starts_with(&format!("{p}/")));
+            if busy || !fs.dirs.remove(&p) {
+                return Err(StatusCode::Failure);
+            }
+            Ok(ok(id))
+        }
+    }
+
     fn setstat(
         &mut self,
         id: u32,
@@ -434,7 +517,7 @@ impl russh_sftp::server::Handler for Server {
 }
 
 /// 起一台：`~/.cc-monitor` 在（后端的家）；`bin` / `staging` 按参数建。
-pub(crate) fn home(with_bin: bool, with_staging: bool) -> Arc<Mutex<Fs>> {
+pub fn home(with_bin: bool, with_staging: bool) -> Arc<Mutex<Fs>> {
     let mut fs = Fs::default();
     fs.dirs.insert(".cc-monitor".to_string());
     if with_bin {
@@ -447,16 +530,19 @@ pub(crate) fn home(with_bin: bool, with_staging: bool) -> Arc<Mutex<Fs>> {
 }
 
 /// 在台架上起一条后端的 SFTP 会话（生产 `Session::over` 那一个口 —— 被判的是同一份实现）。
-pub(crate) async fn session_on(fs: Arc<Mutex<Fs>>) -> crate::dial::sftp::Session {
+pub async fn session_on(fs: Arc<Mutex<Fs>>) -> crate::sftp::Session {
+    // 本 crate 自己的判据里装测试档那一套（写按部署那两处）；后端的测试档由后端自己装它那一套（`dial::host`）。
+    #[cfg(test)]
+    crate::guard_support::test_host();
     let (client_io, server_io) = tokio::io::duplex(256 * 1024);
     russh_sftp::server::run(server_io, Server { fs }).await;
-    crate::dial::sftp::Session::over(client_io, Box::new(()))
+    crate::sftp::Session::over(client_io, Box::new(()))
         .await
         .expect("合成服务端上的 sftp 会话应当开得起来")
 }
 
 /// 合成语料：编译期拼、含不可打印字节（一个真会话正文的字节都没有）。
-pub(crate) fn corpus(len: usize) -> Vec<u8> {
+pub fn corpus(len: usize) -> Vec<u8> {
     let unit: [u8; 16] = *b"SR1b-rig\x00\x01\x02\x03\x04\x05\x06\x07";
     unit.iter().copied().cycle().take(len).collect()
 }

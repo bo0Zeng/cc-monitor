@@ -520,7 +520,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
 ///
 /// 这一条原先钉「窗口起几件 == 池里的车道数」（两份副本 ＋ 相等）；车道闸退役之后改钉
 /// 「一个窗口的一趟拖入占不满池子的通道闸」。池子搬进了本机常驻后端、预算改成**按连接**记
-/// （`dial/pool.rs`：一条连接上 session 通道 `SESSION_CHANNEL_CAP`，其中传输至多 `TRANSFER_LANE_CAP`）⇒ 关系换成两条：
+/// （`ssh-dial/pool.rs`：一条连接上 session 通道 `SESSION_CHANNEL_CAP`，其中传输至多 `TRANSFER_LANE_CAP`）⇒ 关系换成两条：
 /// ① 窗口一趟起的件数 ≤ 传输车道（多起的只会在车道前排队，白挂订阅）；
 /// ② 窗口一趟起的件数 < 整条连接的通道闸（同一台远端的会话长流与查询还要有格子）。
 /// 两个数**现读后端源码**（异源：后端那一份常量，不是窗口自己的副本）。窗口那个数本身仍钉死 4。
@@ -531,11 +531,11 @@ fn one_windows_burst_fits_the_transfer_lane_and_never_fills_the_connection() {
         4,
         "窗口一趟拖入同时起几件变了 —— 这个数改了要回来重读本条那段关系"
     );
-    let pool = guard_core::production_code(include_str!("../../../src/backend/dial/pool.rs"));
+    let pool = guard_core::production_code(include_str!("../../../src/backend/ssh-dial/pool.rs"));
     let cap_of = |name: &str| -> usize {
-        let line = format!("pub(crate) const {name}: usize = ");
+        let line = format!("pub const {name}: usize = ");
         let at = guard_core::find_pinned(&pool, &line)
-            .unwrap_or_else(|e| panic!("后端 `dial/pool.rs` 里找不到 `{name}`：{e}"));
+            .unwrap_or_else(|e| panic!("后端 `ssh-dial/pool.rs` 里找不到 `{name}`：{e}"));
         pool[at + line.len()..]
             .chars()
             .take_while(char::is_ascii_digit)

@@ -189,12 +189,12 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`
 #      · `mobile`（手机端的 JVM 单测里有带等待上限的进程与协程用例）· `android-device`（模拟器上的设备测，带等待上限）；
 #    · 不按墙钟判（只看编得过 / 诊断零条 / 盘上文本 / 两份对得上 ⇒ 让路）—— 编译类 `deadcode` · `deadcode-backend` · `clippy`
-#      · `clippy-backend` · `appbuild` · `shotsshell` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
+#      · `clippy-backend` · `appbuild` · `shotsshell` · `winchk` · `winchk-backend` · `winlink` · `muslbuild` · `androidbuild` · `tsc` · e2e 前置那趟 `cargo build`（`e2e-prep`）；
 #      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
 GATE_WALL_CELLS=" npm coverage cargo backend comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
-GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
+GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
 gate_yield() { renice -n 10 -p "$BASHPID" >/dev/null 2>&1 || true; "$@"; }
@@ -789,9 +789,9 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # ── `fmt-backend`：`src/backend` 那棵树的排版 ──
 # 不并进 `src/frontend/shell` 的 workspace：那个 Linux-only 的后端会被拖进 Windows CI 的 `cargo test --all`。
 # 刻意不加 `--all`：那棵树的 path 依赖指进 `src/frontend/shell`，加了会把别的树（各有自己那一格）拉进来；
-#   不加时 rustfmt 只收 `src/backend` 自己的根。与 `ci.yml` 的 `backend` job 同一条命令。
-run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-backend`；`src/frontend/shell` 由上面 fmt 那一格管，本行盖不到（刻意不加 --all，理由见上方注释）' \
-         bash -c 'cd src/backend && cargo fmt --check 2>&1 && echo "fmt-backend: 1 passed"'
+#   逐个点那棵 workspace 的两个成员（后端 ＋ 拨号核心）。与 `ci.yml` 的 `backend` job 同一条命令。
+run_gate fmt-backend '不是数出来的数：`cargo fmt --check -p …` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的两个成员 `cc-monitor-backend` · `ssh-dial`；`src/frontend/shell` 由上面 fmt 那一格管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+         bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial 2>&1 && echo "fmt-backend: 1 passed"'
 
 # ── `audit`：`ci.yml` 的 `frontend` job 里那一步 `npm audit` ──
 # ⚠ 要联网：它问的是 npm registry **当下**的漏洞库 —— 断网时退出码非零、本格红（不静默跳过）；
@@ -1054,25 +1054,53 @@ else
   printf '  ·    %-14s %s\n' "e2e 前置" "跳过（GATE_ONLY 一套 e2e 都没点 ⇒ 不白编那一趟 cargo build）"
 fi
 
-run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
-         gate_cargo_test_nonet src/backend
+# 后端那一棵 workspace（`cc-monitor-backend` ＋ 拨号核心 `ssh-dial`）：缺省成员只有后端 ⇒ 带 `--workspace`，逐行求和、另判包的集合。
+gate_backend_libs() { gate_workspace_libs src/backend; }
+run_gate_sum backend gate_backend_libs \
+         gate_cargo_test_nonet src/backend --workspace
 run_gate deadcode-backend '不是数出来的数：`src/backend` 的 `cargo check`（非 test，lib ＋ bin）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
          gate_deadcode deadcode-backend src/backend cc_monitor_backend
-run_gate clippy-backend '不是数出来的数：`cargo clippy --all-targets` 只有绿/红两态，射程 = `src/backend` 那一个 crate 的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）' \
-         bash -c 'cd src/backend && out=$(cargo clippy --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
+run_gate clippy-backend '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，射程 = `src/backend` 那一棵 workspace（后端 ＋ 拨号核心）的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）' \
+         bash -c 'cd src/backend && out=$(cargo clippy --workspace --all-targets 2>&1); rc=$?; if [ "$rc" -ne 0 ]; then printf "%s\n" "$out"; exit "$rc"; fi; printf "%s\n" "$out" | tail -2; echo "clippy-backend: 1 passed"'
 
 # ── `winchk-backend`：`src/backend` 在 Windows 上编不编得过 ──
 # CI 用 `-msvc`、本格用 `-gnu`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）。这一族错是 `cfg(unix)` 那一维
 #   （`std::os::unix` · `libc::utimensat` 之类），与 ABI 无关，两者等价；MSVC ABI 专属的那一类只有 CI 有。
 # `--all-targets` 是承重的：这类错会全落在 test 档、生产段照样编得过。不带 `--locked`，与 CI 那一步一致。
-run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/frontend/shell` 那棵树由上面 winchk 那一格盖' \
-         bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
+run_gate winchk-backend '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 那一棵 workspace（后端 ＋ 拨号核心）的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/frontend/shell` 那棵树由上面 winchk 那一格盖' \
+         bash -c 'cd src/backend && cargo check --workspace --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-backend: 1 passed"'
 
 # ── `muslbuild`：远端 Linux 那一格 —— 两个 musl target 编得出静态字节 ──
 # 用 `cargo zigbuild`，版本与 `release.yml` 对齐（`release-gate` 两向对拍）：版本一漂，本格的绿就不代表发版那趟会绿。
 # 买不到「在真远端上跑得起来」，也不编 test 档（只编 bin）。
 run_gate muslbuild '不是数出来的数：两个 musl target（`x86_64` ＋ `aarch64`）各一趟 `cargo zigbuild`，只有绿/红两态。⚠ 买的是「编得出静态字节」，不买「在真远端上跑得起来」、不买 test 档（只编 bin）。每个 arch 的字节里要认得出 mimalloc（远端版换过分配器：源码那一半由 `allocator_guard` 判，字节这一半本格判，认法是它自带的报错前缀 `mimalloc: `）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
          bash -c 'cd src/backend && n=0; for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do cargo zigbuild --target "$t" >/dev/null || { echo "musl: $t 编不过"; exit 1; }; grep -qa "mimalloc: " "../../.build/backend/$t/debug/cc-monitor-backend" || { echo "musl: $t 的字节里认不出 mimalloc（分配器没换上）"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（两个 arch 各一趟 cargo zigbuild，字节里都认得出 mimalloc，zig $(zig version)）\n" "$n"'
+
+# ── `androidbuild`：拨号核心（`src/backend/ssh-dial`，手机也链）编得过手机那两个 target ──
+# android 不算 linux：平台 cfg 悄悄落进「别的平台」那一支是编得过的 —— 那一维由判据 `android_cfg_guard` 管；本格只管「编得过」。
+# 工具链：NDK 版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`（手机构建同一份）；SDK 找法同 `mobile` 那一格（env.sh）。
+# API 级别 26 = 手机的 minSdk。`cargo check` 不链接，`ring` 的 build script 仍要 NDK 的 clang 编它那几份 C。
+gate_androidbuild() {
+  (
+    if [ -z "${ANDROID_HOME:-}" ]; then
+      # shellcheck disable=SC1091  # 路径在仓里，shellcheck 不跟进
+      . src/mobile/scripts/env.sh >/dev/null || { echo "androidbuild: 找不到 Android SDK —— 判不了"; exit 1; }
+    fi
+    v="$(sed -n 's/^ccm\.ndkVersion=//p' src/mobile/gradle.properties)"
+    bin="$ANDROID_HOME/ndk/$v/toolchains/llvm/prebuilt/linux-x86_64/bin"
+    [ -n "$v" ] && [ -x "$bin/aarch64-linux-android26-clang" ] || { echo "androidbuild: NDK ${v:-<gradle.properties 里没写>} 不在 $ANDROID_HOME/ndk/ —— 判不了"; exit 1; }
+    n=0
+    for t in aarch64-linux-android x86_64-linux-android; do
+      u="${t//-/_}"
+      env "CC_$u=$bin/${t}26-clang" "AR_$u=$bin/llvm-ar" "CARGO_TARGET_${u^^}_LINKER=$bin/${t}26-clang" \
+        bash -c 'cd src/backend && cargo check -p ssh-dial --target "$1" 2>&1' _ "$t" || { echo "androidbuild: $t 编不过"; exit 1; }
+      n=$((n+1))
+    done
+    echo "androidbuild: $n passed（拨号核心两个 android target 各一趟 cargo check，NDK $v）"
+  )
+}
+run_gate androidbuild '不是数出来的数：拨号核心（`ssh-dial`）对 `aarch64-linux-android` · `x86_64-linux-android` 各一趟 `cargo check`，只有绿/红两态。⚠ 只编不链、不跑；平台 cfg 有没有悄悄丢下 android 不归本格（判据 `android_cfg_guard`）；后端整包不编（手机只链拨号核心）' \
+         gate_androidbuild
 
 # ── 「前端」道（与下面「覆盖率」道）：读 `src/frontend/ui/generated/` 的那几格，等 `cargo` 与 `backend` 两格写完它 ──
 gate_lane 前端 after cargo backend
@@ -1149,7 +1177,7 @@ gate_lane 覆盖率 after cargo backend
 run_gate coverage '这一趟 vitest（带 v8 覆盖率）真跑过的条数：`ci.yml` 的 `coverage floor (vitest jsdom)`（`npm run coverage`，`vitest.config.ts` 里的全局阈值）＋ `coverage per-file floors + zero-coverage ratchet`（逐文件地板与零覆盖棘轮）两步原样跑。⚠ 与 `npm` 那格是同一批 vitest 文件再跑一遍（带插桩，慢一截）；覆盖率只量 `src/**/*.ts`，tsx 套件与 Rust 一概不进分母' \
          gate_vitest_share gate_private_vite gate_ci_steps coverage "coverage floor (vitest jsdom)" "coverage per-file floors + zero-coverage ratchet"
 
-# 19 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
+# 20 套摊成几条道（按热缓存时长大致拉平）；各套各在自己的网络命名空间与 `/tmp` 里，互不相见。
 # `local-backend` 在壳里跑 `cargo test --lib`，等 `cargo` 那格编完再起，免得两条道抢壳的 target 锁。
 gate_lane e2e-1 after e2e-prep
 run_e2e cc-spawn-uplift
@@ -1176,6 +1204,8 @@ run_e2e ccm-contract-parity
 run_e2e p3t-local-tmux
 run_e2e ccm-print-parity
 run_e2e backend-fork
+# 文件管理面：经帧路径把文件管理那几条写命令各走一遍 ＋ 两个沙箱后端之间一趟传输（本机回环上一台私有 sshd 当远端）。
+run_e2e files-manager
 gate_lane e2e-4 after e2e-prep cargo
 run_e2e local-backend
 
@@ -1287,7 +1317,9 @@ gate_lane 手机端
 #   `src/mobile/scripts/env.sh`（探 `$HOME/android-dev`，Gradle 缓存也隔离在那里），找不到按红记。
 # 跑：ktlint · detekt（带类型解析）· Android Lint（`:app:lintDebug`，error 一条就红；warning 不拦）·
 #   各模块 JVM 单测（`:core-claude` · `:core-remote` · `:core-copy` 是纯 JVM 模块，要显式点）·
-#   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）。
+#   release 构建（R8 不许误删反射 / 原生库要的类；没有签名配置就产未签名的包）· debug 构建（模拟器那一份）。
+#   两趟各编手机嵌的 Rust 核心那一个 ABI（release = arm64-v8a · debug = x86_64），打完核包里恰好那一个 ABI（`:app:verify<变体>Abis`）。
+#   要 cargo ＋ 两个 android target ＋ NDK（版本住 `src/mobile/gradle.properties` 的 `ccm.ndkVersion`）。
 # 判：Gradle 退出码是 0 ＋ 这一趟 test-results 里的条数 > 0（先清掉旧的 test-results；build cache 命中时 Gradle 照样还原它）。
 # 不起模拟器：要设备的 androidTest 在下一格 `android-device`（同一条道、排在这一格后面）。
 # 不进无网沙箱：Gradle 头一趟要下依赖；单测里只起 `/bin/sh`、全落临时目录，不连任何口、不碰 tmux。
@@ -1301,7 +1333,7 @@ gate_mobile() {
     fi
     rm -rf "$out"/*/test-results
     ./gradlew --no-daemon --console=plain ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease || exit $?
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease :app:assembleDebug || exit $?
   ) || return $?
   n="$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
   printf 'mobile: %s passed（Gradle 各模块 JVM 单测合计，读这一趟的 test-results；ktlint · detekt · Android Lint · release 构建也都绿）\n' "${n:-0}"
@@ -1315,7 +1347,7 @@ run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合
 #   不占 heavy 的槽位；adb 用私有端口（默认 5139 / 模拟器 5592，与冒烟台架的 5137 / 5590 错开），不碰本机正在跑的 adb 与真手机。
 #   AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（`gate-clean.sh` 只清 `CCM_*` 等会话变量，不清它）。
 # 跑：`src/mobile/scripts/android-test.sh`（唯一入口：装 app → `pm clear` 判成没成 → 三个模块的设备测；gradle 带 --no-daemon）。
-# 判：退出码 0 ＋ 这一趟 connected 报告里的条数 > 0（先清旧报告）。只能手跑的 `SshConnectionTest` 不在里面（入口脚本过滤掉，理由在那儿）。
+# 判：退出码 0 ＋ 这一趟 connected 报告里的条数 > 0（先清旧报告）。要台架的 `RustTransportTest` 没给台架参数就整份跳过（冒烟台架那一格才带参数跑它）。
 # 与 `mobile` 同一条道、排在它后面（两格共用 Gradle 的构建目录）。不进无网沙箱：Gradle 要读依赖缓存、模拟器要 KVM。
 # CI 不跑（runner 上没有 KVM 模拟器）；没有 `systemd-run --user` 或 KVM 的机器上起不来 ⇒ 按红记（判不了 ≠ 绿）。
 gate_android_device() {
@@ -1340,7 +1372,7 @@ gate_android_device() {
     | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
   printf 'android-device: %s passed（模拟器上的设备测，各模块 connected 报告合计；跑前 pm clear 过 app 的数据）\n' "${n:-0}"
 }
-run_gate android-device '这一趟模拟器上 connected 报告里的设备测条数（core-data · app · core-ssh 的 KeystoreSigner 合计）。⚠ 要 KVM ＋ systemd --user；SshConnectionTest 只能手跑，不在里面' \
+run_gate android-device '这一趟模拟器上 connected 报告里的设备测条数（core-data · app · core-ssh 合计；core-ssh 要台架的那份没给参数就跳过）。⚠ 要 KVM ＋ systemd --user' \
          gate_android_device
 
 # 各道同时起跑、等齐，再按上面的顺序逐格判。

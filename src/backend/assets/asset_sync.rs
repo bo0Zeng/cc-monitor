@@ -44,7 +44,7 @@ pub const PUSH_MAX_BYTES: usize = 96 * 1024;
 pub const PULL_FLAG: &str = "--assets-catalog";
 pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 
-/// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（第四层判据 ④）。
+/// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
 pub type Fold = std::sync::Arc<
     dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail> + Send + Sync,
 >;

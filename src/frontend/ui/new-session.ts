@@ -99,6 +99,8 @@ interface AccountOpt {
   isDefault: boolean;
   ready: boolean;
   quota: string | null;
+  /** 号在哪一台（头像照那台账号库的号色画）。 */
+  origin: Origin;
 }
 
 /** 那台的号（账号 0 之外、隔离的那几个）；那台没开多账号 / 读不出 ⇒ `null`（这一行不出）。 */
@@ -123,6 +125,7 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
     isDefault: a.name === def,
     ready: a.selectable,
     quota: prof.known ? fiveHourCell(q, prof.facts.adapterId, a.name) : null,
+    origin,
   }));
   return [...opts.filter((a) => a.isDefault), ...opts.filter((a) => !a.isDefault)];
 }
@@ -133,7 +136,7 @@ function accountOption(a: AccountOpt): SelectOption {
   if (a.isDefault) note.push(copyText("newSession.account.default"));
   if (a.quota) note.push(a.quota);
   if (!a.ready) note.push(copyText("newSession.account.needLogin"));
-  return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16 }) };
+  return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
 }
 
 /** 机器那一项：远端带机器标记；断开的灰着、说「离线」（正选着的那台照样列出、可选）。 */

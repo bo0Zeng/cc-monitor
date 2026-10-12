@@ -61,9 +61,12 @@ impl Rig {
         let record = |_: &str, _: Option<&str>| -> Result<(bool, String), String> {
             Ok((true, String::new()))
         };
-        let kill = |_: &str, _: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
-            unreachable!("起新会话不杀")
-        };
+        let kill = |_: &str,
+                    _: &str|
+         -> Result<
+            crate::control::cc_bus::BusNote,
+            crate::stream::inbound::spec::Fail,
+        > { unreachable!("起新会话不杀") };
         let send_into =
             |_: &str, _: &str, _: &str| -> Result<(), crate::stream::inbound::spec::Fail> {
                 unreachable!("起新会话不往已有的终端里键入")
@@ -141,7 +144,17 @@ impl Rig {
             write: &write,
             forget: &forget,
         };
-        answer(&args, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
+        // 解入参同 typed 分派那一步（多一格 · 类型不对 ⇒ `bad_args`），成品照写上线的那一份 JSON 比。
+        let req: NewRequest = serde_json::from_value(args).map_err(|e| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(&e.to_string()),
+                None,
+                None,
+            )
+        })?;
+        answer(req, &deps, &fork, &pre, Some(std::path::Path::new("/h")))
+            .map(|r| serde_json::to_value(r).unwrap())
     }
 }
 
@@ -428,7 +441,9 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
                 writers: &|_| vec![],
                 pretrust: &|_, _| unreachable!("核目录不起会话"),
             };
-            dir_answer(&args, &deps, Some(std::path::Path::new("/h")))
+            let req: SessionNewDirReq = serde_json::from_value(args).unwrap();
+            dir_answer(&req, &deps, Some(std::path::Path::new("/h")))
+                .map(|d| serde_json::to_value(d).unwrap())
         };
     assert_eq!(
         run(&some, json!({ "cwd": "~/srv" })).unwrap(),
@@ -442,11 +457,12 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         run(&some, json!({ "cwd": "/h/srv", "forkOf": SRC })).unwrap()["tmuxName"],
         "fork:orders-cc"
     );
-    assert_eq!(
-        run(&some, json!({ "cwd": "/x", "extra": 1 }))
-            .unwrap_err()
-            .0,
-        "bad_args"
+    assert!(matches!(
+        run(&some, json!({ "cwd": "/x", "forkOf": "not a sid" })),
+        Err(SessionNewDirErr::BadArgs(_))
+    ));
+    assert!(
+        serde_json::from_value::<SessionNewDirReq>(json!({ "cwd": "/x", "extra": 1 })).is_err()
     );
 }
 

@@ -92,7 +92,7 @@ use std::sync::{Arc, Mutex};
 /// 一趟拖入同时起几件（同时挂着几条进度订阅 / 同时问几件「那儿有没有东西」）。
 ///
 /// 🔴 **这个数不在本层裁定** —— 真正的闸在本机常驻后端里、**按连接**记
-/// （`src/backend/dial/pool.rs` 的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；这里多挂的那几条订阅只是在那道闸前面排队。
+/// （`src/backend/ssh-dial/pool.rs` 的 `TRANSFER_LANE_CAP` / `SESSION_CHANNEL_CAP`）；这里多挂的那几条订阅只是在那道闸前面排队。
 /// 本层限并发只为「别把一万条订阅一起堆起来」。
 ///
 /// 它原先是池里那道 4 条车道闸的副本（两份 ＋ 相等断言）；车道闸随浏览离开 SFTP

@@ -421,7 +421,7 @@ fn the_monitor_has_no_second_path_that_kills_a_session() {
     );
 }
 
-/// ★★**界面说这条控制类帧命令只经一处**：`kill` 的 `chan.call` 只住 `src/frontend/ui/tmux-control.ts`；
+/// ★★**界面说这条控制类帧命令只经一处**：`kill` 的 `callTyped` 只住 `src/frontend/ui/tmux-control.ts`；
 /// `launch` 那一条界面不再发（送键 · 就地 resume 那两个入口删了）⇒ 全界面零处。
 ///
 /// 守的要求：「迁到通道之后，业务解释是不是**只有一个家**」—— 空目标先拒（Gate 1 本地那一格）、
@@ -433,7 +433,7 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
     let root = crate::guard_support::repo_root();
     let mut homes: std::collections::BTreeMap<String, Vec<String>> = Default::default();
     let mut scanned = 0usize;
-    let needles = ["chan.call(origin, \"kill\""];
+    let needles = ["callTyped(origin, \"kill\""];
     let gone = "chan.call(origin, \"launch\"";
     let mut gone_hits: Vec<String> = Vec::new();
     let mut counts: std::collections::BTreeMap<&str, usize> = Default::default();
@@ -470,7 +470,7 @@ fn the_front_end_speaks_the_tmux_control_ops_only_through_one_module() {
     // 正控 ＋ 恒等：结束 1（送键与就地 resume 那两处随入口删了；「打断」那个 mode 名 → 删；抓屏改走 `terminal-preview` → 删）。
     assert_eq!(
         counts.into_iter().collect::<Vec<_>>(),
-        vec![("chan.call(origin, \"kill\"", 1)],
+        vec![("callTyped(origin, \"kill\"", 1)],
         "`src/frontend/ui/tmux-control.ts` 里这几条的处数变了 —— 多一处是长出了第二个调用点，少一处是那条路没了"
     );
 }

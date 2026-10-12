@@ -22,7 +22,7 @@
 //!
 //! ## ⚠ 远端那一侧：**不许从 SFTP 的 mode 参数拿机密性**〔实@08-27〕
 //!
-//! 远端原子上传收一个 mode 参数（住 `src/backend/dial/sftp.rs::put_atomic`），
+//! 远端原子上传收一个 mode 参数（住 `src/backend/ssh-dial/sftp.rs::put_atomic`），
 //! 看起来像是「推上去就是 0600」。
 //! 对面是 Windows 时**那不是「不生效」，是「静默地不生效」**，三条读数（分母都在，量于 08-27）：
 //! 1. 那个 mode 只以 SFTP v3 的 `SSH_FILEXFER_ATTR_PERMISSIONS` 属性搭在 `SSH_FXP_OPEN` 上
@@ -124,6 +124,10 @@ mod sealed {
     /// 这两形由 `KS2`（取明文的地方**恰好一处**）兜：出口只有一个，那一处被逐字钉住。
     /// **两条判据缺一都不成立**：只有本条 ⇒ 换个类型就绕过；只有 `KS2` ⇒ 出口是一处，
     /// 但那一处拿到的东西照样能被 `{:?}` 印出来。
+    ///
+    /// 能 `clone()`：复制出来的还是一把 `SecretKey`（照样遮蔽、照样只经那一道门取明文）。
+    /// 用它的：续成了而写回在等那一家放写锁时，新令牌留在内存里、每一发各交一份（`accounts/oauth/writeback.rs`）。
+    #[derive(Clone)]
     pub struct SecretKey(String);
 
     impl SecretKey {

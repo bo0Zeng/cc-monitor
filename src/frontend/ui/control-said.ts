@@ -82,19 +82,37 @@ export async function settle(origin: Origin, op: string, sent: Promise<Uint8Arra
   try {
     body = await sent;
   } catch (e) {
-    if (!(e instanceof ChanError)) throw e;
-    const err = e.error;
-    if (err.layer === "peer" && err.why === "refused") {
-      const r = refusalOf(err.body);
-      throw new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), e.detail, err);
-    }
-    throw new ControlError(saidOfTransport(origin, err), e.detail, err);
+    throw controlErrorOf(origin, e, refusals);
   }
   try {
     return readJson(body);
   } catch {
     throw unreadable(origin, op, "is not JSON");
   }
+}
+
+/**
+ * 同 [`settle`]，接的是一发 **typed** 帧命令（`callTyped`：回包已按类型解好、形状由握手指纹核过）。
+ * 回的不是 JSON ⇒ 同 [`settle`] 说「读不懂」。
+ */
+export async function settleTyped<T>(origin: Origin, op: string, sent: Promise<T>, refusals: Refusals): Promise<T> {
+  try {
+    return await sent;
+  } catch (e) {
+    if (e instanceof SyntaxError) throw unreadable(origin, op, "is not JSON");
+    throw controlErrorOf(origin, e, refusals);
+  }
+}
+
+/** 通道那一跳的失败 ⇒ 那一句（被拒 ⇒ 按调用方给的那张表；别的三层 ⇒ 同一张）。不是通道的失败原样抛回。 */
+function controlErrorOf(origin: Origin, e: unknown, refusals: Refusals): unknown {
+  if (!(e instanceof ChanError)) return e;
+  const err = e.error;
+  if (err.layer === "peer" && err.why === "refused") {
+    const r = refusalOf(err.body);
+    return new ControlError(r ? refusals.byCode(r.code, r.message) : refusals.noReason(), e.detail, err);
+  }
+  return new ControlError(saidOfTransport(origin, err), e.detail, err);
 }
 
 /**

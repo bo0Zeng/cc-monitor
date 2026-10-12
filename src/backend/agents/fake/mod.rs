@@ -436,6 +436,7 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
         user_mcp_key: "servers",
         shared_root: |h| h.join("shared"),
         email_in: |_| None,
+        login: None,
         session_env: crate::agents::SessionEnvKeys {
             config_dir: account_env,
             base_url: "CCM_FAKE_UPSTREAM",
@@ -496,6 +497,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .map_err(|_| Stop::MissingCapability {
         stage: STAGES[1],

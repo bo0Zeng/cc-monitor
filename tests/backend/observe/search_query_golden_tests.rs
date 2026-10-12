@@ -2,6 +2,7 @@
 //! 异源：金样在 SX1 子步 1（生产代码未改）由旧现扫跑出入库；改语料 / 查询 ⇒ 必须回到一份现扫实现上重跑，不许拿新实现去「更新」它。
 //! 语料全合成，逐格覆盖旧路逐行那段的分支（BOM · CRLF · 坏行 · 标题先后 · 没写完的末行 · 读不动 · 超 30 条 · 深度 1 / 3 …）。
 
+use super::test_support::{lines_into, opts_from_words};
 use super::*;
 use serde_json::json;
 
@@ -226,9 +227,10 @@ pub(super) fn render(home: &Path) -> String {
     let prefix = canon.to_string_lossy().into_owned();
     let mut out = String::new();
     for (name, q, rest) in cases() {
-        let opts = parse_opts(&rest);
+        let opts = opts_from_words(&rest);
         let mut buf: Vec<u8> = Vec::new();
-        let unreadable = search_counting(home, q, &opts, &mut buf).expect("search ok");
+        let unreadable =
+            search_counting(home, q, &opts, &mut lines_into(&mut buf)).expect("search ok");
         let lines: Vec<String> = String::from_utf8(buf)
             .expect("输出是 UTF-8")
             .lines()

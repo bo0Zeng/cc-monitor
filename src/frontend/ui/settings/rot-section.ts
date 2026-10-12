@@ -268,7 +268,7 @@ export class RotationSection {
     let failed: unknown = null;
     // 配置表 · 策略表 · 这台的号（额度账里那几个：`＋ 加号…` 的候选、哪个是按量号）三问一起发。
     const lib = this.library.length > 0 ? Promise.resolve(this.library) : readQuota(origin).then(
-      (q) => [...q.accounts, ...q.unseen].filter((x) => x.account !== "_").map((x) => ({ account: x.account, api: x.kind === "api" })),
+      (q) => q.candidates.map((x) => ({ account: x.account, api: x.kind === "api" })),
       () => [],
     );
     try {
@@ -634,7 +634,7 @@ export class RotationSection {
         lead.appendChild(handle);
       }
       const who = el("span", (e) => (e.className = s.rotTd));
-      if (r.id) who.append(accountAvatarEl(r.id, { size: 16 }), el("span", (e) => (e.className = s.rotWho), rowLabel(r)));
+      if (r.id) who.append(accountAvatarEl(r.id, { size: 16, origin: this.origin }), el("span", (e) => (e.className = s.rotWho), rowLabel(r)));
       else {
         who.appendChild(el("span", (e) => (e.className = s.rotWhoGroup), rowLabel(r)));
         if (r.start) who.appendChild(el("span", (e) => (e.className = s.rotNote), copyText("rot.ed.startNote")));
@@ -725,7 +725,7 @@ export class RotationSection {
             ? [{ label: copyText("rot.add.none"), enabled: false }]
             : cand.map((a) => ({
                 label: accountLabel(a),
-                avatar: accountAvatarEl(a, { size: 16 }),
+                avatar: accountAvatarEl(a, { size: 16, origin: this.origin }),
                 onClick: () => {
                   ed.draft.accounts = [...ed.draft.accounts, { id: a, params: { ...ed.draft.acctInit } }];
                   this.paint();
@@ -835,7 +835,7 @@ export class RotationSection {
     }
     const rows = (p.reply?.rows ?? []).map((r) => {
       const head = el("div", (e) => (e.className = s.rotChartHead));
-      head.append(accountAvatarEl(r.account, { size: 16 }), el("span", (e) => (e.className = s.rotWho), accountLabel(r.account)));
+      head.append(accountAvatarEl(r.account, { size: 16, origin: this.origin }), el("span", (e) => (e.className = s.rotWho), accountLabel(r.account)));
       return { account: r.account, head, why: "", alsoUsed: 0 };
     });
     sec.appendChild(
@@ -847,6 +847,7 @@ export class RotationSection {
           this.paint();
         },
         rows,
+        origin: this.origin,
       }).root,
     );
     return sec;
@@ -1019,7 +1020,7 @@ export class RotationSection {
       if (r.p === null) row.dataset.skip = "true";
       row.append(
         el("span", (e) => (e.className = s.rotTryN), r.p === null ? copyText("rot.form.empty") : String(i + 1)),
-        accountAvatarEl(r.account, { size: 16 }),
+        accountAvatarEl(r.account, { size: 16, origin: this.origin }),
         el("span", (e) => (e.className = s.rotWho), accountLabel(r.account)),
         el("span", (e) => (e.className = s.rotTryWhy), r.p === null ? copyText("rot.row.skip", { why: r.why }) : r.why),
         el("span", (e) => (e.className = s.rotTryP), r.p === null ? "()" : String(r.p)),

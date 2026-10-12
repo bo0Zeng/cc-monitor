@@ -60,7 +60,7 @@ class ShellDialectTest {
 
     @Test
     fun windowsSftpCwdStripsDriveLeadingSlash() {
-        // Windows：sshj SFTP 返 /C:/Users/... → 去盘符前导 / → C:/Users/...（cd 'C:/...' 对）。
+        // Windows：SFTP 返 /C:/Users/... → 去盘符前导 / → C:/Users/...（cd 'C:/...' 对）。
         assertEquals("C:/Users/me", PowerShellDialect.sftpCwdToShell("/C:/Users/me"))
         assertEquals("D:/data", PowerShellDialect.sftpCwdToShell("/D:/data"))
         assertEquals("c:/lower", PowerShellDialect.sftpCwdToShell("/c:/lower")) // 小写盘符

@@ -1,6 +1,7 @@
 //! 文件窗口包的平台层〔窗口包链不到壳的 `platform/`，自开这一份〕：本包平台 cfg 的唯一住址。
 //! 都原住别处、逐字搬来：[`any_thread_hook`]（`shell.rs`）· [`local_dest_kept`] · [`path_from_bytes`]（`lossy_pull.rs`）·
 //! [`SYSTEM_CJK_FONTS`]（`fonts.rs`）· [`rss_kib`]（`scale.rs`）· [`BACKSLASH_IS_SEP`]（`download.rs` · `lossy_pull.rs` 各一处 `cfg!(windows)`）。
+//! 另有本包自己的一处：[`renderer_options`]（开窗参数里渲染器那几格，Windows 走 wgpu）。
 
 /// 🔴 让 winit 的事件循环能建在**非主线程**上。
 ///
@@ -123,5 +124,71 @@ pub fn rss_kib() -> u64 {
     #[cfg(not(target_os = "linux"))]
     {
         0
+    }
+}
+
+/// 开窗参数里渲染器那几格。Windows 走 wgpu（DX12 ＋ OpenGL 两支），挑哪块显卡交给 [`crate::render::choose`]；
+/// 别处走 glow，缺省就是对的（Linux 不换的理由住 `Cargo.toml` 那段头注）。生产开窗（`shell.rs`）与真窗口台架都调这一处。
+pub fn renderer_options(opts: &mut eframe::NativeOptions) {
+    #[cfg(windows)]
+    {
+        use eframe::egui_wgpu::{WgpuSetup, WgpuSetupCreateNew};
+        let mut setup = WgpuSetupCreateNew::without_display_handle();
+        setup.instance_descriptor.backends = wgpu::Backends::DX12 | wgpu::Backends::GL;
+        setup.native_adapter_selector = Some(std::sync::Arc::new(pick_adapter));
+        opts.wgpu_options.wgpu_setup = WgpuSetup::CreateNew(setup);
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = opts;
+    }
+}
+
+/// wgpu 枚举出来的那几块 → [`crate::render::Seen`] → 挑一块；挑中的那一行上 stderr（monitor 接进它的日志），
+/// 一块都没有 ⇒ 带契约记号的那一句当错回（eframe 把它变成开窗失败的原话）。只要画得到这扇窗的（`surface` 认它）。
+#[cfg(windows)]
+fn pick_adapter(
+    all: &[wgpu::Adapter],
+    surface: Option<&wgpu::Surface<'_>>,
+) -> Result<wgpu::Adapter, String> {
+    use crate::render::{Api, Kind, Seen};
+    let mut pool: Vec<(&wgpu::Adapter, Seen)> = Vec::new();
+    for a in all {
+        if surface.is_some_and(|s| !a.is_surface_supported(s)) {
+            continue;
+        }
+        let info = a.get_info();
+        let api = match info.backend {
+            wgpu::Backend::Dx12 => Api::Dx12,
+            wgpu::Backend::Gl => Api::Gl,
+            _ => continue,
+        };
+        let kind = if info.device_type == wgpu::DeviceType::Cpu
+            || crate::render::looks_software(&info.name)
+        {
+            Kind::Software
+        } else {
+            match info.device_type {
+                wgpu::DeviceType::DiscreteGpu => Kind::Discrete,
+                wgpu::DeviceType::IntegratedGpu => Kind::Integrated,
+                _ => Kind::Other,
+            }
+        };
+        pool.push((
+            a,
+            Seen {
+                api,
+                kind,
+                name: info.name,
+            },
+        ));
+    }
+    let seen: Vec<Seen> = pool.iter().map(|(_, s)| s.clone()).collect();
+    match crate::render::choose(&seen) {
+        Some(i) => {
+            eprintln!("{}", crate::render::picked_line(&seen, i));
+            Ok(pool[i].0.clone())
+        }
+        None => Err(crate::render::none_line(&seen)),
     }
 }

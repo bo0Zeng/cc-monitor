@@ -162,7 +162,7 @@ class TerminalSession(
     cols: Int = 80,
     palette: TerminalPalette = OneHalfDarkPalette,
     // 远端 shell 通道（core-ssh ShellChannel，以 [Closeable] 传入，core-terminal 不依赖 core-ssh）。
-    // 由这个会话持有，[close] 时后台关闭。只关 input 不够：sshj ChannelInputStream.close 只是本地 EOF，
+    // 由这个会话持有，[close] 时后台关闭。只关 input 不够：输入流 close 只是本地 EOF，
     // 不关通道、不通知远端，会留下孤儿远端 shell 与僵尸 tmux attach client。
     private val remoteChannel: Closeable? = null,
 ) : Closeable {
@@ -254,9 +254,9 @@ class TerminalSession(
     override fun close() {
         closed = true
         _streamClosed.value = true // 立即置断（reader finally 也会置，这里保证即时）
-        // 关远端 shell 通道：sshj 的 channel close 是网络写（CHANNEL_CLOSE），而这个方法在 onCleared/retry 的主线程被调
+        // 关远端 shell 通道：channel close 是网络写（CHANNEL_CLOSE），而这个方法在 onCleared/retry 的主线程被调
         // （NetworkOnMainThreadException）→ 派发到守护线程。不走 writeExecutor：下方 shutdownNow() 会丢弃队列任务。
-        // 关两次安全：ShellChannel.close 内部 runCatching，sshj close 幂等。
+        // 关两次安全：ShellChannel.close 幂等。
         closeRemoteChannelInBackground(remoteChannel)
         runCatching { input.close() } // 解阻塞 reader 的 read()
         reader.interrupt()

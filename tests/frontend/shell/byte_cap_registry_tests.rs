@@ -157,7 +157,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "SIO_TCP_INFO",
-        "Win32 **控制码**不是体量：`WSAIoctl` 问一条 TCP 的往返时间那一问（`_WSAIORW(IOC_VENDOR, 39)`，`platform/tcp_rtt.rs`）。",
+        "Win32 **控制码**不是体量：`WSAIoctl` 问一条 TCP 的往返时间那一问（`_WSAIORW(IOC_VENDOR, 39)`，`ssh-dial/tcp_rtt.rs`）。",
     ),
     (
         "PROCESS_TERMINATE",
@@ -501,6 +501,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
+    // 接常驻流那两行（hello · attach 回话）在 `resident-client` 里的上限（手机那一侧整段握手走它；值同下一行）。
+    (
+        "src/comms/resident-client/attach.rs",
+        "HANDSHAKE_LINE_CAP",
+        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测一两 KB",
+        "拒收+回错",
+    ),
     (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
@@ -669,9 +676,9 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
     // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
     // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
-    // 抄过去就是丢真实数据。理由全文在 `stream_source/exec.rs::BACKEND_FRAME_LINE_CAP` 头注。
+    // 抄过去就是丢真实数据。理由全文在 `resident-client/line.rs::BACKEND_FRAME_LINE_CAP` 头注（monitor 与手机同一份）。
     (
-        "src/frontend/shell/src/stream_source/exec.rs",
+        "src/comms/resident-client/line.rs",
         "BACKEND_FRAME_LINE_CAP",
         "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
         "丢弃+带身份报告",
@@ -751,13 +758,19 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "REQUEST_LINE_CAP",
         "files 链路上一行请求（短 JSON；`put` 的字节不走行）",
         "拒收+回错",
     ),
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/uses.rs",
+        "STDERR_TAIL_BYTES",
+        "一次长 exec（`use:\"duplex\"`）留下的 stderr 尾巴（只给「为什么起不来」那一句用）。超了 ⇒ 只留最后这么多字节，收尾帧里的 `stderr_tail` 就是这段尾巴（字段名说明了是尾巴）",
+        "截断+说清",
+    ),
+    (
+        "src/backend/ssh-dial/sftp.rs",
         "MAX_PUT_BYTES",
         "一次 `put` 收进内存的字节（后端二进制今天 MB 级）。超了 ⇒ 那几个字节照收照丢（别让下一行请求读到半截二进制）、回 `too_big`",
         "拒收+回错",
@@ -1771,7 +1784,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     // files 链路的 `put`：`size` 是请求里**声明**的字节数（monitor 给），不是上限；
     //   上限是具名常量 `MAX_PUT_BYTES`（已在 `CAPS` 里），`size > MAX_PUT_BYTES` 的判断在 `take(size)` **之前**。
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "size",
         "`put` 的 `size` 是请求里声明的长度（对端给的），**不是上限**；上限是具名常量 `MAX_PUT_BYTES`\
              （已在 `CAPS` 里，超限「拒收+回错」）。`size > MAX_PUT_BYTES` 那一支在 `take(size)` **之前**：\

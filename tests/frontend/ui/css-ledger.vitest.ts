@@ -124,7 +124,7 @@ const Z_OK = /^var\(--z-[a-z0-9-]+\)$/;
 const ALLOWED_PREFIXES: readonly { prefix: string; why: string }[] = [
   {
     prefix: "acct-c",
-    why: "`src/frontend/ui/account-color.ts:38` 按账号序号生成 8 个配色位（`acct-c0`…`acct-c7`）。序号是运行时算的，写不出字面量。",
+    why: "`src/frontend/ui/account-color.ts` 照那台账号库给的号色那一格挂 8 个配色位之一（`acct-c0`…`acct-c7`）。格号是运行时读的，写不出字面量。",
   },
   {
     prefix: "agent-",

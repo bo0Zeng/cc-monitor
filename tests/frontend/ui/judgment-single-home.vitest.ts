@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35" | "J36";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -231,7 +231,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J7: {
     what: "tmux 名派生 ＋ 撞名避让",
     // 翻 `zero`：派生（`name_segment` → `<段>-cc` / `<段>-fork-cc`）＋ 避让只在后端，
-    //   帧命令 `terminal-name-mint`（`control/ccm/mod.rs::answer_terminal_name_mint`，按那台的会话快照避让）；
+    //   帧命令 `terminal-name-mint`（`control/ccm/mod.rs::TerminalNameMint`，按那台的会话快照避让）；
     //   界面要名字就问它（`src/frontend/ui/terminal-name-mint.ts`）。TS 那份（`remote-launch.ts` 整份 · `shell-quote.ts::tmuxNameSegment` ·
     //   `fork-launch.ts::forkTmuxName`）删。
     homes: [
@@ -341,7 +341,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
     // 翻 `zero`：界面照旧逐台扇出（各台常驻索引保热），合并排序问本机后端
-    //   `history-search-merge`（`observe/search_query.rs::answer_merge` → `search_rules::sort_by_recency`）；前端 `mergeSearchResults` 删。
+    //   `history-search-merge`（`observe/search_query.rs::merge_at` → `search_rules::sort_by_recency`）；前端 `mergeSearchResults` 删。
     //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
     // `search-core` 拆进后端：通用口径住 `observe/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）。
     homes: ["src/backend/observe/search_rules.rs::sort_by_recency", "src/backend/observe/search_rules.rs::clamp_limit"],
@@ -618,6 +618,49 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/backend/accounts/quota/name_words.rs", text: '&str = "0"', count: 0 },
     ],
   },
+  J34: {
+    what: "哪些号能当换号 · 加号的候选（起会话时没说是哪个号的 `_` 不是）",
+    // 从前界面三处（账号面板的轮换那一块 · 现在就换 · 设置页轮换的「＋ 加号…」）各把额度账与没出过数的号拼起来、自己滤 `_`，
+    //   后端会话那一份（`session_state`）另滤一遍。⇒ `quota-read` 回包写 `candidates`，会话那一份调同一个判断；界面只照抄。
+    homes: ["src/backend/accounts/quota/name_words.rs::is_candidate"],
+    status: "zero",
+    defs: [],
+    needles: [
+      { text: 'x.account !== "_"', count: 0 },
+      { text: "...(quota?.unseen ?? [])", count: 0 },
+      { text: "...q.unseen]", count: 0 },
+    ],
+    rustNeedles: [
+      { file: "src/backend/faces/rotation_face.rs", text: "r.account != crate::accounts::quota::name_words::HOME_ACCOUNT", count: 0 },
+    ],
+  },
+  J35: {
+    what: "一个号画哪一格号色（`--acct-c0..c7`）",
+    // 从前界面按名字哈希（FNV-1a % 8），team 与 lab 撞同一格。⇒ 号色是账号库里的事实：加号时后端分第一个空格、存进清单，
+    //   旧号由常驻那一个补一次；8 格用满才按哈希兜底，哈希只住后端这一处。界面只画 `accounts-list` 每号的 `color`。
+    homes: ["src/backend/accounts/manage/model.rs::color_fallback"],
+    status: "zero",
+    defs: [],
+    gone: ["accountColorSlot"],
+    needles: [
+      { text: "0x811c9dc5", count: 0 },
+      { text: "0x01000193", count: 0 },
+    ],
+  },
+  J36: {
+    what: "这一趟问的是不是本机（本机 ＝ 具名的 `\"<local>\"`，不是「没说」）",
+    // 类型的家从 `comms-inward` 挪进契约 crate `cmd-wire`（`Machine`，第 8 批）；界面那一侧是 `ipc/origin.ts` 的两个判法。
+    //   哨兵值两侧逐字节相等由 `origin_tests.rs` 钉（Rust `LOCAL` ⇄ 界面 `backend-policy.ts::LOCAL_ORIGIN`）。
+    homes: ["cmd-wire::LOCAL", "cmd-wire::is_local", "cmd-wire::is_remote"],
+    status: "mirror",
+    defs: ["isLocalOrigin", "isRemoteOrigin"],
+    needles: [],
+    parity: {
+      via: "src/frontend/ui/backend-policy.ts",
+      tests: ["tests/comms/inward/origin_tests.rs"],
+    },
+    why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -671,8 +714,25 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `branch-core` 那一格删了：它收进后端适配层（`agents/claudecode/branch.rs`），不再是共享 crate。
   // `codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
+  // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
+  "cmd-wire": {
+    LOCAL: "J36",
+    is_local: "J36",
+    is_remote: "J36",
+    // 本机那一个 · 远端名 · 线上那个串 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
+    local: NONE,
+    host_name: NONE,
+    as_wire_str: NONE,
+    route: NONE,
+    // 形状对不上那个码与那一句（`copy-core::backend_differs`）只在 monitor：它比指纹、它写好带机器名的那一句，界面照抄拒绝里的话。
+    SHAPE_DIFFERS: NONE,
+    // 形状指纹表与查表：只有拿着 hello 的 Rust 那一侧（monitor 的 `Offer`）比，界面不比。
+    SHAPES: NONE,
+    shape_of: NONE,
+  },
   "copy-core": {
     backend_old: "J22",
+    backend_differs: NONE,
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。
@@ -792,6 +852,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 就绪那一行打头的记号与认它的那一判（窗口进程在 stderr 上说那一行）；TS 侧零孪生。
     READY_MARK: NONE,
     is_ready_line: NONE,
+    // 窗口进程挑不出显卡时那一句里的记号（窗口进程说、monitor 认），TS 侧零孪生。
+    NO_GRAPHICS_ADAPTER: NONE,
     TERMINAL_OPEN_OP: NONE,
     decode_ready: NONE,
     decode_request: NONE,

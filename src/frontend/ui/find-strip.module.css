@@ -74,6 +74,11 @@
     min-width: 0;
   }
 
+  /* 范围「用户」下没命中那一句后面的［搜全部］。 */
+  .fsHead > button {
+    margin-left: var(--space-4);
+  }
+
   .fsKeys {
     flex: none;
     color: var(--text-faint);

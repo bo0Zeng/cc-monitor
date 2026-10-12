@@ -61,11 +61,16 @@ use std::path::{Path, PathBuf};
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
     "tests/backend/observe/runs_testing.rs", // 往运行簿里直接记一个在跑的子运行
+    "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
     "tests/backend/files/index_testing.rs",
     "tests/backend/plan/fixture.rs", // 计划读面的夹具：合成 dump · 假 pb 插件
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）
     "tests/backend/platform/child_tmux_fence.rs", // 子进程起前那一道的测试构建那一份（裸名 tmux 落到本进程的空 socket 目录）
     "tests/backend/sftp_rig.rs",
+    "tests/backend/dial_sftp_rig_host.rs", // 后端测试档的 SFTP 台架：先装本后端那一套再起会话
+    "tests/backend/ssh_dial_support.rs", // 拨号核心判据共用的几样（人群的根 · 测试档装的那一套 · 登记的钥匙）
+    "tests/backend/dial_sftp_rig_host.rs", // 后端测试档的 SFTP 台架：先装本后端那一套再起会话
+    "tests/backend/ssh_dial_support.rs", // 拨号核心判据共用的几样（人群的根 · 测试档装的那一套 · 登记的钥匙）
     "tests/backend/accounts/upstream_select/upstreams_testing.rs", // 把一家的默认上游换成假上游
     "tests/frontend/shell/backend_kill_creation_detect.rs",
     "tests/frontend/filewin/copy_testing.rs",
@@ -126,6 +131,7 @@ const E2E: &[&str] = &[
     "tests/e2e/ccm-print-parity.sh",
     "tests/e2e/exec-bit-guard.sh",
     "tests/e2e/f40-suite.sh",
+    "tests/e2e/files-manager.sh",
     "tests/e2e/graylight-backend-frames.sh",
     "tests/e2e/graylight-suite.sh",
     "tests/e2e/inbound-backend-frames.sh",
@@ -318,6 +324,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         "tests/frontend/filewin/workspace_tests.rs",
         "perf_rig_worker",
         Trigger::Filter { by: "tests/shots/perf/filewin-perf.sh", needle: "workspace::tests::perf_rig_worker" },
+    ),
+    (
+        "tests/frontend/filewin/render_tests.rs",
+        "without_opengl_2_the_window_still_draws_its_first_frame",
+        Trigger::Manual("虚拟机判据：要一台没有 OpenGL 2.0 的 Windows 桌面会话（Win11 虚拟机，没装显卡驱动）。CI 的 Windows 机器能不能开真窗口没核实（本仓从没有一条在 Windows 上开真窗口的测试，不推送验不了），那台机器有没有 OpenGL 2.0 也不由我们定；跑法住它自己的头注"),
     ),
     (
         "tests/frontend/filewin/hover_sweep_tests.rs",

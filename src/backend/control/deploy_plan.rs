@@ -110,7 +110,7 @@ pub enum TargetBinary {
     Present,
     /// stat **明确说**它不在。
     Missing,
-    /// stat 说它在，但是 0 字节 —— 原子上传（`dial/sftp.rs::put_atomic`）里「绝不 set_metadata」防的就是把后端截成 0 字节、
+    /// stat 说它在，但是 0 字节 —— 原子上传（`ssh-dial/sftp.rs::put_atomic`）里「绝不 set_metadata」防的就是把后端截成 0 字节、
     /// 不可 exec 的那一形。`try_exists` 会把它算成「在」。
     Empty,
     /// 问不出来（无权限 / 传输失败 / 服务器不给属性）—— 不许读成上面任何一个。

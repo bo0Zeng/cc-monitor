@@ -26,7 +26,6 @@ use crate::observe::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP
 use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -34,80 +33,115 @@ use walkdir::WalkDir;
 // 字面量 = 又开了第二份。`MAIN_CAP` / `TOOL_CAP` / `SNIPPET_CTX` / `PER_SESSION_CAP` /
 // `DEFAULT_LIMIT` 住 `search_rules`（原共享 crate `search-core`）。
 
-/// 解析后的查询选项。
-struct SearchOpts {
-    include_tools: bool,
-    /// None=全部；Some("user")/Some("assistant")=只搜该类型。
-    scope: Option<String>,
-    after_ms: i64,
+/// 查询选项（帧面 `history-search` 的入参按类型收好以后交进来，`faces/search_face.rs`）。
+pub(crate) struct SearchOpts {
+    pub(crate) include_tools: bool,
+    /// None=全部；Some("user")/Some("assistant")/Some("report")=只搜该类型。
+    pub(crate) scope: Option<&'static str>,
+    pub(crate) after_ms: i64,
     /// 全局返回 snippet 上限（hitCount 仍报全量）。
-    limit: usize,
+    pub(crate) limit: usize,
     /// 只比会话标题与第一句（不搜内容）：命中的会话照样一行，`hitCount` 为 0、`hits` 空。
-    titles: bool,
+    pub(crate) titles: bool,
 }
 
-/// 帧面那条（`history-search`）的入口：`rest` 是 `--search <query>` **之后**那一截，
-/// 解析走**同一个** [`parse_opts`] —— 选项的口径只有一份，不在帧面另写一套 JSON 解析。
-/// 回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
-/// `titles` ＝ 只比标题与第一句（帧面那一格；CLI 面没有这个选项）。
+impl SearchOpts {
+    /// 请求里给的上限 ⇒ 夹进口径里那一档（`search_rules::clamp_limit`；没给 ⇒ 缺省那一个）。
+    pub(crate) fn limit_of(given: Option<u64>) -> usize {
+        given.map_or(search_rules::DEFAULT_LIMIT, |n| {
+            search_rules::clamp_limit(usize::try_from(n).unwrap_or(usize::MAX))
+        })
+    }
+}
+
+/// 一个命中会话的那一行（`history-search` 回包 `sessions[]` 的一项）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SessionHits {
+    /// 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+    pub(crate) agent: String,
+    pub(crate) session_id: String,
+    pub(crate) project_path: String,
+    pub(crate) project_name: String,
+    pub(crate) jsonl_path: String,
+    /// 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+    pub(crate) title: String,
+    /// 记录文件最后改动的毫秒。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) updated_at: i64,
+    /// 本会话命中总数（可能 > `hits` 条数）。
+    pub(crate) hit_count: u32,
+    pub(crate) hits: Vec<SearchHit>,
+    /// 本会话有命中被「全局 snippet 预算用完」挡下了。
+    pub(crate) hits_truncated: bool,
+    /// 后台分身会话。
+    pub(crate) is_bg: bool,
+    /// 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
+    pub(crate) status: Liveness,
+    /// 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+    pub(crate) can: crate::observe::history_query::Can,
+}
+
+/// 一条命中。
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct SearchHit {
+    /// 消息 uuid：打开查看器后据此滚动定位、高亮。
+    pub(crate) uuid: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) ts_ms: i64,
+    /// `user` · `assistant` · `tool` · `report`。
+    pub(crate) kind: String,
+    pub(crate) before: String,
+    pub(crate) matched: String,
+    pub(crate) after: String,
+    /// 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) tool: Option<String>,
+}
+
+/// 全文搜索那一行的活不活：只扫记录树、看得到这台的 pidfile ⇒ 只有两态。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Liveness {
+    Live,
+    Ended,
+}
+
+impl Liveness {
+    fn of(live: bool) -> Liveness {
+        if live {
+            Liveness::Live
+        } else {
+            Liveness::Ended
+        }
+    }
+
+    /// 同历史清单那一格的词（`history_query::status_of`，`can_of` 按它判）。
+    fn word(self) -> &'static str {
+        crate::observe::history_query::status_of(Some(self == Liveness::Live))
+    }
+}
+
+/// 帧面那条（`history-search`）的入口：每命中会话一行交给 `push`。回「读不动、没搜到」的会话数（帧面那条把它交给界面说出来）。
 pub(crate) fn search_into(
     agent_home: &Path,
     query: &str,
-    rest: &[String],
-    titles: bool,
-    out: &mut impl Write,
+    opts: &SearchOpts,
+    push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
 ) -> Result<usize, String> {
-    let opts = SearchOpts {
-        titles,
-        ..parse_opts(rest)
-    };
-    let unreadable = search_counting(agent_home, query, &opts, out)?;
+    let unreadable = search_counting(agent_home, query, opts, push)?;
     if let Some(note) = unreadable_note(unreadable) {
         tracing::warn!("{note}");
     }
     Ok(unreadable)
-}
-
-/// 从选项词（帧面 `history-search` 摊回来的那一截，`faces/read_face.rs::search_rest`）解析选项（未知/缺值的容错忽略）。
-fn parse_opts(rest: &[String]) -> SearchOpts {
-    let mut opts = SearchOpts {
-        include_tools: false,
-        scope: None,
-        after_ms: 0,
-        limit: search_rules::DEFAULT_LIMIT,
-        titles: false,
-    };
-    let mut i = 0;
-    while i < rest.len() {
-        match rest[i].as_str() {
-            "--include-tools" => opts.include_tools = true,
-            "--scope" => {
-                if let Some(v) = rest.get(i + 1) {
-                    if v == "user" || v == "assistant" || v == "report" {
-                        opts.scope = Some(v.clone());
-                    }
-                    i += 1;
-                }
-            }
-            "--after-ms" => {
-                if let Some(v) = rest.get(i + 1) {
-                    opts.after_ms = v.parse::<i64>().unwrap_or(0).max(0);
-                    i += 1;
-                }
-            }
-            "--limit" => {
-                if let Some(v) = rest.get(i + 1) {
-                    opts.limit = search_rules::clamp_limit(
-                        v.parse::<usize>().unwrap_or(search_rules::DEFAULT_LIMIT),
-                    );
-                    i += 1;
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    opts
 }
 
 /// 〔E 吞错普查点名〕扫完一趟，有几个会话文件**读不动**（权限 / IO 错 / 不是合法 UTF-8）、因此没搜到。
@@ -124,7 +158,7 @@ pub(crate) fn search_counting(
     agent_home: &Path,
     query: &str,
     opts: &SearchOpts,
-    out: &mut impl Write,
+    push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
 ) -> Result<usize, String> {
     let q = query.trim().to_lowercase();
     let Some(root) = crate::agents::records_root(agent_home) else {
@@ -138,7 +172,7 @@ pub(crate) fn search_counting(
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
     let live = crate::observe::accounts_query::live_session_ids(agent_home);
-    let unreadable = index.search(&fence, &q, opts, &live, out)?;
+    let unreadable = index.search(&fence, &q, opts, &live, push)?;
     let r = index.last;
     // 〔perfC2〕这一问整份重读过一大批（含工具时常驻装不下的那几份）⇒ 读完放掉的那些空洞还给系统，常驻不停在这一问的高水位。
     if r.bytes >= TRIM_AFTER_BYTES {
@@ -161,9 +195,11 @@ pub(crate) fn find_indexed(
     target: &Path,
     query: &str,
     include_tools: bool,
+    scope: Option<&str>,
     page: FindPage,
     on_hit: impl FnMut(&Value) -> std::io::Result<()>,
 ) -> Option<std::io::Result<(u64, u64)>> {
+    let include_tools = tools_in(scope, include_tools);
     let q = query.trim().to_lowercase();
     if q.is_empty() {
         return Some(Ok((0, 0)));
@@ -172,7 +208,7 @@ pub(crate) fn find_indexed(
     let path = fence.admit(target).ok()?;
     let mut resident = resident();
     let index = resident.entry(fence.root().to_path_buf()).or_default();
-    index.find(&path, &q, include_tools, page, on_hit)
+    index.find(&path, &q, include_tools, scope, page, on_hit)
 }
 
 /// 进程级常驻索引：规范化的 projects 根 → 那一棵的索引。后端一起来就由 [`warm_in_background`] 后台建；
@@ -600,6 +636,7 @@ impl SearchIndex {
         path: &Path,
         q: &str,
         include_tools: bool,
+        scope: Option<&str>,
         page: FindPage,
         mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
     ) -> Option<std::io::Result<(u64, u64)>> {
@@ -618,7 +655,7 @@ impl SearchIndex {
             if rec.opens_turn {
                 turn += 1;
             }
-            if rec.uuid.is_empty() {
+            if rec.uuid.is_empty() || !scope.is_none_or(|s| in_scope(s, &rec.rt)) {
                 continue;
             }
             let Some((kind, hit)) = record_hit(&rec.rt, q, include_tools) else {
@@ -640,7 +677,7 @@ impl SearchIndex {
         q: &str,
         opts: &SearchOpts,
         live: &std::collections::BTreeSet<String>,
-        out: &mut impl Write,
+        push: &mut dyn FnMut(SessionHits) -> Result<(), String>,
     ) -> Result<usize, String> {
         let files = session_files(fence);
 
@@ -696,16 +733,14 @@ impl SearchIndex {
                 }
                 if let Some(mut session) = session {
                     // 能不能恢复由这台判（活不活看这台的 pidfile），与历史清单的行同一个函数。
-                    let sid = session["sessionId"].as_str().unwrap_or_default();
-                    let status = crate::observe::history_query::status_of(Some(live.contains(sid)));
-                    let kind = session["agent"].as_str().unwrap_or_default().to_string();
-                    session["isBg"] = serde_json::json!(bg);
-                    session["status"] = serde_json::json!(status);
-                    session["can"] = serde_json::to_value(crate::observe::history_query::can_of(
-                        &kind, status, bg,
-                    ))
-                    .unwrap_or(Value::Null);
-                    writeln!(out, "{session}").map_err(|e| format!("stdout write failed: {e}"))?;
+                    session.status = Liveness::of(live.contains(&session.session_id));
+                    session.is_bg = bg;
+                    session.can = crate::observe::history_query::can_of(
+                        &session.agent,
+                        session.status.word(),
+                        bg,
+                    );
+                    push(session)?;
                 }
             }
         }
@@ -796,16 +831,16 @@ fn session_hits_in(
     opts: &SearchOpts,
     budget: &mut SnippetBudget,
     updated_at: i64,
-) -> Option<Value> {
+) -> Option<SessionHits> {
     let session_id = path.file_stem()?.to_str()?.to_string();
 
-    let mut hits: Vec<Value> = Vec::new();
+    let mut hits: Vec<SearchHit> = Vec::new();
     let mut hit_count: u32 = 0;
     // 本会话有命中因**全局预算用完**而拿不到 snippet（≠ 单会话超 PER_SESSION_CAP）。
     let mut session_starved = false;
     for rec in entry.done.records.iter().chain(entry.tail.records.iter()) {
         // scope 过滤：想要 user 却是 assistant（或反之）→ 跳过。
-        if let Some(s) = opts.scope.as_deref() {
+        if let Some(s) = opts.scope {
             if !in_scope(s, &rec.rt) {
                 continue;
             }
@@ -821,19 +856,16 @@ fn session_hits_in(
         match budget.take(hits.len()) {
             SnippetVerdict::Give => {
                 let (before, matched, after) = search_rules::make_snippet(text, q_lc);
-                let mut hit = serde_json::json!({
-                    "uuid": rec.uuid,
-                    "tsMs": rec.ts_ms,
-                    "kind": hkind,
-                    "before": before,
-                    "matched": matched,
-                    "after": after,
+                hits.push(SearchHit {
+                    uuid: rec.uuid.clone(),
+                    ts_ms: rec.ts_ms,
+                    kind: hkind.to_string(),
+                    before,
+                    matched,
+                    after,
+                    // 落点同会话内查找（[`find_hit`]）：收在某次工具调用那一块里 ⇒ 带那次调用的 id。
+                    tool: rec.rt.lands_in.clone(),
                 });
-                // 落点同会话内查找（[`find_hit`]）：收在某次工具调用那一块里 ⇒ 带那次调用的 id。
-                if let Some(id) = &rec.rt.lands_in {
-                    hit["tool"] = id.clone().into();
-                }
-                hits.push(hit);
             }
             SnippetVerdict::BudgetExhausted => session_starved = true,
             SnippetVerdict::SessionCapped => {}
@@ -855,7 +887,12 @@ fn session_hits_in(
 }
 
 /// 只比标题与第一句（帧面的 `titles`）：标题 ／ 第一句里有这几个字 ⇒ 一行（`hitCount` 0、`hits` 空）。
-fn session_title_row(path: &Path, entry: &FileEntry, q_lc: &str, updated_at: i64) -> Option<Value> {
+fn session_title_row(
+    path: &Path,
+    entry: &FileEntry,
+    q_lc: &str,
+    updated_at: i64,
+) -> Option<SessionHits> {
     let session_id = path.file_stem()?.to_str()?.to_string();
     let title = entry.tail.title.as_ref().or(entry.done.title.as_ref());
     let excerpt = if entry.done.excerpt.is_empty() {
@@ -875,9 +912,9 @@ fn session_row(
     session_id: String,
     updated_at: i64,
     hit_count: u32,
-    hits: Vec<Value>,
+    hits: Vec<SearchHit>,
     session_starved: bool,
-) -> Value {
+) -> SessionHits {
     let project_path = entry
         .done
         .cwd
@@ -902,19 +939,26 @@ fn session_row(
         first: first_user_excerpt.clone(),
         project_dir: None,
     });
-    serde_json::json!({
-        // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
-        "agent": crate::agents::record_tree_kind().unwrap_or_default(),
-        "sessionId": session_id,
-        "projectPath": project_path,
-        "projectName": project_name,
-        "jsonlPath": path.to_string_lossy(),
-        "title": title,
-        "updatedAt": updated_at,
-        "hitCount": hit_count,
-        "hits": hits,
-        "hitsTruncated": session_starved,
-    })
+    // 全文搜索只扫记录树（`projects/`）⇒ 命中的会话都是记录树那一家的。
+    let agent = crate::agents::record_tree_kind()
+        .unwrap_or_default()
+        .to_string();
+    SessionHits {
+        // 活不活 · 分身 · 能做什么由扫的那一层按这台的 pidfile 补（[`SearchIndex::search`]）；这里先按「已结束、不是分身」占位。
+        can: crate::observe::history_query::can_of(&agent, Liveness::Ended.word(), false),
+        agent,
+        session_id,
+        project_path,
+        project_name,
+        jsonl_path: path.to_string_lossy().into_owned(),
+        title,
+        updated_at,
+        hit_count,
+        hits,
+        hits_truncated: session_starved,
+        is_bg: false,
+        status: Liveness::Ended,
+    }
 }
 
 /// 一条 user / assistant 记录拿去搜的两段文本（从 `session_hits_in` 里拆出来）。
@@ -996,6 +1040,11 @@ fn report_text(u: crate::agents::UserText) -> Option<String> {
         | crate::agents::Speaker::PeerSession { body, .. } => Some(body.unwrap_or(u.text)),
         _ => None,
     }
+}
+
+/// 会话内查找在这个范围里搜不搜工具内容：只搜人说的 ⇒ 不搜（人说的话没有工具输出），别的照调用方。
+fn tools_in(scope: Option<&str>, include_tools: bool) -> bool {
+    include_tools && scope != Some("user")
 }
 
 /// `scope` 留不留这一条：`user` 人说的 · `assistant` 那一家说的 · `report` agent 回报。
@@ -1120,9 +1169,11 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
     mut r: R,
     query: &str,
     include_tools: bool,
+    scope: Option<&str>,
     page: FindPage,
     mut on_hit: impl FnMut(&Value) -> std::io::Result<()>,
 ) -> std::io::Result<(u64, u64)> {
+    let include_tools = tools_in(scope, include_tools);
     let q = query.trim().to_lowercase();
     let mut pager = FindPager::new(page);
     let mut turn: u64 = 0;
@@ -1155,6 +1206,9 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
         let Some(rt) = record_text(&v, include_tools) else {
             continue;
         };
+        if !scope.is_none_or(|s| in_scope(s, &rt)) {
+            continue;
+        }
         let Some((kind, hit)) = record_hit(&rt, &q, include_tools) else {
             continue;
         };
@@ -1180,82 +1234,97 @@ pub(crate) fn scan_session_find<R: std::io::BufRead>(
 
 /// 帧命令 `history-search-merge`：**把各台 `history-search` 的会话行合成一份**。
 ///
-/// 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），拿回来的会话行（界面已补 `origin`）原样交到这里：
-/// `{sessions: [<会话行>…]}` ⇒ `{totalHits, sessionCount, truncated, sessions}`。
+/// 界面照旧逐台经通道问那台常驻后端的 `history-search`（各台内存索引保热），拿回来的会话行按台原样交到这里：
+/// `{machines: [{origin, sessions}]}` ⇒ `{totalHits, sessionCount, truncated, sessions}`。
 /// - 排序：`updatedAt` 倒序、稳定（[`search_rules::sort_by_recency`]，与每台后端花 snippet 预算的顺序同一个函数）；
 /// - `totalHits` = 各会话 `hitCount` 之和；任一会话 `hitsTruncated` ⇒ `truncated`（`K-R100`：每一台都被自己的 `limit` 砍过）；
-/// - 会话行其余各格原样透传（形状由界面的解码器收，这里只读排序与计数要的那三格）。
+/// - 每行添上那台的名字（本机不添）、行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`，按看的那一台的时区；同 [`crate::common::time::history_times`]）。
 ///
-/// 码：`bad_args`（不是 `{sessions: [...]}` / 某一行缺那三格或类型不对）。纯计算：不读盘、不起进程。
-pub(crate) fn answer_merge(
-    args: &Value,
-    tz: &crate::common::time::Tz,
-) -> Result<Value, (&'static str, String)> {
-    merge_at(
-        args,
-        crate::common::time::now_secs().saturating_mul(1_000),
-        tz,
-    )
-}
-
-/// [`answer_merge`] 的可喂钟那一半：每行再添行尾 `atText` 与内容头 `spanText`（都按 `updatedAt`，按看的那一台的时区；
-/// 同 [`crate::common::time::history_times`]）。
+/// 纯计算：不读盘、不起进程。`now_ms` 可喂（判据用）。
 pub(crate) fn merge_at(
-    args: &Value,
+    machines: Vec<MachineHits>,
     now_ms: i64,
     tz: &crate::common::time::Tz,
-) -> Result<Value, (&'static str, String)> {
-    let bad = |d: &str| ("bad_args", crate::common::contract::malformed(d));
-    let rows = args
-        .get("sessions")
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad("missing `sessions` (an array)"))?;
-    let mut sessions: Vec<(i64, Value)> = Vec::with_capacity(rows.len());
+) -> Merged {
+    let mut sessions: Vec<MergedRow> = Vec::new();
     let mut total_hits: u64 = 0;
     let mut truncated = false;
-    for row in rows {
-        let updated = row
-            .get("updatedAt")
-            .and_then(Value::as_i64)
-            .ok_or_else(|| bad("a session without an integer `updatedAt`"))?;
-        let hits = row
-            .get("hitCount")
-            .and_then(Value::as_u64)
-            .ok_or_else(|| bad("a session without a non-negative integer `hitCount`"))?;
-        let cut = row
-            .get("hitsTruncated")
-            .and_then(Value::as_bool)
-            .ok_or_else(|| bad("a session without a boolean `hitsTruncated`"))?;
-        total_hits = total_hits.saturating_add(hits);
-        truncated |= cut;
-        let (at_text, _, span_text) =
-            crate::common::time::history_times(updated, updated, updated, now_ms, tz);
-        let mut row = row.clone();
-        row["atText"] = serde_json::Value::String(at_text.0);
-        row["spanText"] = serde_json::Value::String(span_text.0);
-        sessions.push((updated, row));
+    for m in machines {
+        let origin = (!m.origin.is_local()).then_some(m.origin);
+        for row in m.sessions {
+            total_hits = total_hits.saturating_add(u64::from(row.hit_count));
+            truncated |= row.hits_truncated;
+            let at = row.updated_at;
+            let (at_text, _, span_text) =
+                crate::common::time::history_times(at, at, at, now_ms, tz);
+            sessions.push(MergedRow {
+                row,
+                origin: origin.clone(),
+                at_text: at_text.0,
+                span_text: span_text.0,
+            });
+        }
     }
-    search_rules::sort_by_recency(&mut sessions, |(updated, _)| *updated);
-    crate::stream::inbound::spec::wire(&Merged {
+    search_rules::sort_by_recency(&mut sessions, |r| r.row.updated_at);
+    Merged {
         total_hits,
         session_count: sessions.len(),
         truncated,
-        sessions: sessions.into_iter().map(|(_, v)| v).collect(),
-    })
+        sessions,
+    }
+}
+
+/// `history-search-merge` 入参里的一台：它的名字（本机逐字 `"<local>"`）＋ 它答回来的会话行原样。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MachineHits {
+    // TS 那一侧写成串（`Origin` 就是串）：`Machine` 的生成物归 `cmd-wire` 自己导出，这里不连带导（两个包的生成物目录相对深度不同）。
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) sessions: Vec<SessionHits>,
 }
 
 /// `history-search-merge` 的应答。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Merged {
     /// `hitCount` 之和。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) total_hits: u64,
     pub(crate) session_count: usize,
     /// 任一行 `hitsTruncated`。
     pub(crate) truncated: bool,
-    /// 各台的会话行（原样，每行添好 `atText` · `spanText`），按 `updatedAt` 倒序。
-    pub(crate) sessions: Vec<Value>,
+    /// 各台的会话行，按 `updatedAt` 倒序。
+    pub(crate) sessions: Vec<MergedRow>,
 }
+
+/// 合好的一行：那台答的会话行 ＋ 哪台（本机缺）＋ 写好的两格时刻字。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct MergedRow {
+    #[serde(flatten)]
+    #[cfg_attr(test, ts(flatten))]
+    pub(crate) row: SessionHits,
+    /// 那台远端的名字；本机 ⇒ 缺。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+    pub(crate) origin: Option<cmd_wire::Machine>,
+    /// 行尾那一格。
+    pub(crate) at_text: String,
+    /// 内容头那一段。
+    pub(crate) span_text: String,
+}
+
+// 判据用的两样（照选项词造选项 · 逐行写进缓冲）住测试树：几份判据共用。
+#[cfg(test)]
+#[path = "../../../tests/backend/observe/search_query_support.rs"]
+pub(crate) mod test_support;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/search_query_tests.rs"]

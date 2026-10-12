@@ -67,14 +67,10 @@ use crate::stream::inbound::spec::Fail;
 /// `(agent, 号)` → 这台 key 表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上。
 type Rows = Box<dyn Fn(&str, &str) -> Option<bool> + Send + Sync>;
 
-/// 这台此刻活着的会话（sid 集合）。
-type Live = Box<dyn Fn() -> std::collections::BTreeSet<String> + Send + Sync>;
-
-/// 一条命令要的几样：轮换的账本（经它判、经它写）· 这台 key 表里有哪几行 · 活着的会话 · 看的那一台的时区。
+/// 一条命令要的几样：轮换的账本（经它判、经它写；活着的会话也问它 `hop.live`）· 这台 key 表里有哪几行 · 看的那一台的时区。
 pub(crate) struct Ctx {
     pub(crate) hop: Hop,
     pub(crate) rows: Rows,
-    pub(crate) live: Live,
     /// 看的那一台的时区（请求信封的 `tz`）：写配置那一下盖进配置，字按它写。
     pub(crate) tz: crate::Tz,
 }
@@ -92,18 +88,13 @@ impl Ctx {
                 quota,
                 home,
                 library(),
+                Arc::new(crate::observe::accounts_query::live_here),
                 None,
             ),
             rows: Box::new(move |agent, a| {
                 (agent == crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT
                     && rows.iter().any(|r| r == a))
                 .then_some(true)
-            }),
-            // 判活同历史清单那一处：pidfile 里的会话 id ＋ 进程还是同一个。
-            live: Box::new(|| {
-                crate::observe::accounts_query::live_session_ids(
-                    &crate::observe::history_query::agent_home(),
-                )
             }),
             tz: crate::Tz::default(),
         }
@@ -1207,10 +1198,18 @@ pub(crate) fn answer_strategy_try_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
         _ => sub.body.clone(),
     };
     let row = |a: &str| (ctx.rows)(&sub.agent, a);
+    let alive = (ctx.hop.live)();
     let current = sub.current.clone().unwrap_or_else(|| sub.start.clone());
-    let sc = ctx
-        .hop
-        .scene_of(&book, &sub.agent, &sub.start, &current, &body, &row, now);
+    let sc = ctx.hop.scene_of(
+        &book,
+        &|x| alive.contains(x),
+        &sub.agent,
+        &sub.start,
+        &current,
+        &body,
+        &row,
+        now,
+    );
     let memo = sub
         .entry
         .as_ref()
@@ -1535,19 +1534,9 @@ pub(crate) fn session_state(
             .find(|(f, _)| f.id == a)
             .map(|(f, _)| f.clone())
     };
-    // 第一行固定是在用的号，往下照有效优先级排。`_`（起会话时没说是哪个号）不进候选：它不是一个能放、能换过去的号。
-    let mut eff: Vec<_> = v
-        .eff
-        .iter()
-        .filter(|r| r.account != crate::accounts::quota::name_words::HOME_ACCOUNT)
-        .cloned()
-        .collect();
-    if let Some(i) = eff.iter().position(|r| r.account == v.entry.current) {
-        let r = eff.remove(i);
-        eff.insert(0, r);
-    }
-    let rows: Vec<RowShown> = eff
-        .iter()
+    let rows: Vec<RowShown> = v
+        .shown()
+        .into_iter()
         .filter_map(|r| {
             let f = fact(&r.account)?;
             let back = r.back.or(f.back);
@@ -1704,7 +1693,7 @@ pub(crate) fn answer_session_read_with(ctx: &Ctx, args: &Value, now: u64) -> Ans
     let sids = sids_of(args, "sids")?;
     let (state, why, book) = read_book(ctx);
     let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", why.as_ref());
-    let live = (ctx.live)();
+    let live = (ctx.hop.live)();
     let lang = lang_of(args);
     let sessions = sids
         .into_iter()
@@ -1963,7 +1952,7 @@ impl From<SwitchOutcome> for Placed {
     }
 }
 
-/// `rotation-session-set`：手动调整（不碰副本）。`{sid, place: {account, at}}` ⇒ 把那个号放到第 `at` 位（`at = 0` ＝ 现在就换过去，同
+/// `rotation-session-set`：手动调整（不碰副本）。`{sid, place: {account, at}}` ⇒ 把那个号放到这个会话那张列表（`rotation-session-read` 的 `rows`）的第 `at` 行（`at = 0` ＝ 现在就换过去，同
 /// `rotation-switch` 热换）；`{sid, refresh: true}` ⇒ 清掉全部手动调整与备忘，照策略重算。
 pub(crate) fn answer_session_set(args: &Value, own: &Own) -> Answer {
     answer_session_set_with(&Ctx::here(), own, args, crate::accounts::quota::now_unix())
@@ -2005,13 +1994,20 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, own: &Own, args: &Value, now: u
     if at == 0 {
         return wire(&Placed::from(hot_one(ctx, own, &sid, &account, now)));
     }
+    // `at` 数的是面板上那张列表（第一行在用、`_` 不在里头）：照这一刻的那一份换算成手动调整里钉的位。
+    let book = ctx.hop.store.now();
+    let agent = book.sessions.get(&sid).map(|s| s.agent.clone());
+    let row = |a: &str| agent.as_deref().and_then(|g| (ctx.rows)(g, a));
+    let alive = (ctx.hop.live)();
+    let Ok(v) = ctx.hop.view(&book, &sid, &row, &|x| alive.contains(x), now) else {
+        return Err(gone_session());
+    };
+    let place = v
+        .placed(&account, usize::try_from(at).unwrap_or(usize::MAX))
+        .ok_or_else(|| bad("`place.account` is not in this session's list"))?;
     let ok = rotation::face_change(&ctx.hop.store, own, |b| match b.sessions.get_mut(&sid) {
         Some(s) => {
-            s.manual.place.retain(|p| p.account != account);
-            s.manual.place.push(Place {
-                account: account.clone(),
-                at: usize::try_from(at).unwrap_or(usize::MAX),
-            });
+            s.manual.place = place.clone();
             true
         }
         None => false,
@@ -2079,7 +2075,7 @@ pub(crate) fn hot_one(ctx: &Ctx, own: &Own, sid: &str, target: &str, now: u64) -
     let Some(s) = book.sessions.get(sid) else {
         return skipped("noRelay");
     };
-    if !(ctx.live)().contains(sid) {
+    if !(ctx.hop.live)().contains(sid) {
         return skipped("ended");
     }
     if crate::agents::login_of(&s.agent).is_none() {
@@ -2484,10 +2480,18 @@ pub(crate) fn answer_plan_with(ctx: &Ctx, args: &Value, now: u64) -> Answer {
     let s = trial_strategy(ctx, args, &sub.body);
     let body = sub.body.clone();
     let row = |a: &str| (ctx.rows)(&sub.agent, a);
+    let alive = (ctx.hop.live)();
     let current0 = sub.current.clone().unwrap_or_else(|| sub.start.clone());
-    let sc = ctx
-        .hop
-        .scene_of(&book, &sub.agent, &sub.start, &current0, &body, &row, now);
+    let sc = ctx.hop.scene_of(
+        &book,
+        &|x| alive.contains(x),
+        &sub.agent,
+        &sub.start,
+        &current0,
+        &body,
+        &row,
+        now,
+    );
     let ready = |x: &str| ctx.hop.ready(&sub.agent, &sub.start, x, &row, now);
     let memo = sub
         .entry

@@ -1,10 +1,12 @@
 //! 本进程里几条帧命令对后端其余部分开的门：资产域够用户文件那一扇 · 两台之间枢纽问这台自己那一跳 · 各号 MCP 同步的监听器。
 
-use super::{Run, REGISTRY};
+use super::spec::{prepare, Prepared};
+use super::REGISTRY;
 use crate::stream::wire::Request;
 
 /// 资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
-/// 住入方向是因为 `readonly_guard` 第三层只许命令表文件管理那一族（与分派的传输硬臂）够得着写面；资产模块只拿这个句柄，不直呼 `files_write`。
+/// 住入方向是因为文件管理面的写句柄（`Face`）只有分派这一层造：这扇门就是进程内的那一次分派，
+/// 照命令表那一族的档位（`Run::BlockingFace`）递一份进去；资产模块只拿这个门，拿不到句柄，也不直呼 `files_write`。
 #[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
 
@@ -27,13 +29,14 @@ impl crate::assets::door::Door for LocalFiles {
             tz: Default::default(),
             until: None,
         };
-        // 写面那几条失败带下层原话（`BlockingData`）：门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。
-        let out = match spec.run {
-            Run::Blocking(run) => run(req),
-            Run::BlockingData(run) => run(req).map_err(|f| (f.code, f.message)),
-            _ => return Err(("unknown_command".to_string(), cmd.to_string())),
+        // 门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。文件管理那一族不写自家状态 ⇒ 不递 `Own`；
+        //   文件管理写句柄由 `prepare` 照档位（`Run::BlockingFace`）造了递进去。
+        let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
         };
-        out.map(|v| v.unwrap_or(serde_json::Value::Null))
+        run(req)
+            .map(|v| v.unwrap_or(serde_json::Value::Null))
+            .map_err(|f| (f.code, f.message))
     }
 }
 
@@ -77,14 +80,13 @@ impl crate::assets::hub::Here for LocalFrames {
             tz: self.tz.clone(),
             until: None,
         };
-        // 内层那几条住在三个阻塞档里（读 · 带码的读 · 写装记录）：三档都认；别的档枢纽不问。
-        let out = match spec.run {
-            Run::Blocking(run) => run(req),
-            Run::BlockingData(run) => run(req).map_err(|f| (f.code, f.message)),
-            Run::BlockingOwn(run) => run(req, &self.own).map_err(|f| (f.code, f.message)),
-            _ => return Err(("unknown_command".to_string(), cmd.to_string())),
+        // 内层那几条都在阻塞档（读 · 带码的读 · 写装记录）；枢纽在阻塞线程上问，异步档不问。
+        let Some(Prepared::Blocking(run)) = prepare(spec.run, Some(&self.own)) else {
+            return Err(("unknown_command".to_string(), cmd.to_string()));
         };
-        out.map(|v| v.unwrap_or(serde_json::Value::Null))
+        run(req)
+            .map(|v| v.unwrap_or(serde_json::Value::Null))
+            .map_err(|f| (f.code, f.message))
     }
 
     fn viewer_tz(&self) -> crate::Tz {
@@ -108,7 +110,14 @@ pub fn watch_rotation(own: &crate::platform::fs::Own) {
     crate::accounts::quota::rotation::watch_here(own);
 }
 
-/// 常驻后端里起「各号的配置文件一变就同步一趟用户级 MCP」那个监听器（写经 [`LocalFiles`]，与帧命令同一扇门）。
-pub fn watch_account_mcp() {
-    crate::accounts::manage::mcp_share_watch::start(&LocalFiles);
+/// 常驻后端里起「各号的配置文件 / 凭据文件一变就同步一趟用户级 MCP 与 MCP 登录」那个监听器
+/// （配置文件与共享集合写经 [`LocalFiles`]，与帧命令同一扇门；凭据文件经 `own` 铸的窄句柄写）。
+pub fn watch_account_mcp(own: &crate::platform::fs::Own) {
+    crate::accounts::manage::mcp_share_watch::start(&LocalFiles, own.clone());
+}
+
+/// 这台的账号库补号色（一次，写经 [`LocalFiles`]，与帧命令同一扇门）：只由占着常驻的那一个进程起来时调
+/// （`main.rs` 接中转那一刻，与 `rotation.json` 换形写回同一处、同一个写的人）。
+pub fn fill_account_colors() {
+    crate::accounts::manage::wire::colors_here(&LocalFiles);
 }

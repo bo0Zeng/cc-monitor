@@ -5,7 +5,7 @@ use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 pub(super) const SPECS: &[CommandSpec] = &[
     // **历史注解**（星标 / 改名 / 隐藏）的读写者换成本机常驻后端 ——
     //   「文件留在原处、同一路径，不迁移、一条不丢」：文件住家里（`<家>/history-metadata.json`，后端按家推），
-    //   写是第四层（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
+    //   写是自家状态，经 `Own`（`history_annotations.rs`，读不懂就拒写、只改那一条、认不出的键原样留着）。三条都是阻塞档（读写一份小文件）。
     CommandSpec {
         name: "history-annotate",
         summary: "改一条历史注解",
@@ -81,35 +81,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
             })
         }),
     },
-    CommandSpec {
-        name: "history-search",
-        summary: "全文搜索",
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &[arg("after_ms", "可选：只要这一刻（毫秒）之后的"), arg("include_tools", "可选布尔：工具调用与结果也搜"), arg("limit", "可选：全局片段上限（`hitCount` 仍报全量）"), out("lines", "每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家）"), arg("query", "搜索词（必填）"), arg("scope", "可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope`"), out("skipped", "内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）：它们的会话不在结果里"), arg("titles", "可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空"), out("unreadable", "这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // **各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_rules::sort_by_recency`）·
-    //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `ping`）。
-    CommandSpec {
-        name: "history-search-merge",
-        summary: "把各台的搜索结果合成一份",
-        codes: &["bad_args"],
-        fields: &[out("sessionCount", "会话数"), both("sessions", "各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、按看的那一台的时区（请求的 `tz`）写好"), out("totalHits", "`hitCount` 之和"), out("truncated", "任一行 `hitsTruncated`")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    // 一个子运行的记录（`read_face.rs` 那一臂 ＋ `history_query::run_source`）：按运行读，通用层不认任何一家的形状。同族同档、同一个只读宿主。
+    // 全文搜索那两条：入参 · 回包 · 错误码都是类型（`faces/search_face.rs`）。搜索扫全库 ⇒ 阻塞档；合并是纯计算 ⇒ 异步档（同 `ping`）。
+    crate::stream::inbound::typed::blocking::<crate::faces::search_face::HistorySearch>("全文搜索"),
+    crate::stream::inbound::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(
+        "把各台的搜索结果合成一份",
+    ),
     CommandSpec {
         name: "history-run",
         summary: "一个子运行的记录",
@@ -266,7 +242,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-find",
         summary: "会话内查找",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
+        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), arg("scope", "可选，`user`（人说的：流里画成用户气泡 · 斜杠命令 · `!` 命令的那几条；工具内容不搜）/ `assistant`（那一家说的）/ `report`（agent 回报），同 `history-search` 同名同义；别的值 ⇒ `bad_args`"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -320,7 +296,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         fields: &[out("account", "`process`（源会话进程此刻的配置目录，同 `accounts-sessions`：没设 ＝ 账号 0，设了 ＝ 账号库里认得那个目录的号）|`exited`（源会话已退出）· `live_no_account`（活着，但说不出号：进程名单里没有它 · 那个目录账号库不认得 · 环境这一刻读不出）"), out("cwd", "`record`|`no_cwd`（记录里没有）"), out("from", "`known` 时值的来源"), out("host", "`terminal` 那一格的终端宿主"), out("jsonlPath", "新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）"), out("kind", "`launch` 三格每格的状态：`known` · `unknown`"), out("launch", "起分叉出来的新会话要的三格：`cwd` · `account` · `terminal`，每格 `{kind:\"known\", value, from}` 或 `{kind:\"unknown\", why}`"), out("sessionId", "新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）"), arg("sid", "源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件，`branch_core::find_session_file`）"), out("terminal", "`terminal_list`（挂着它的 `@ccm_sid`、前台是 agent 的那一个；命中多个取第一个）|`exited`"), arg("uuid", "从哪条消息处分叉"), out("value", "`known` 时的值"), out("why", "`unknown` 时为什么说不出")],
         takes_input: true,
         run: Run::Blocking(|r| {
-            crate::faces::fork_face::answer(&r.args)
+            // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
+            crate::faces::fork_face::answer(&r.args, &crate::platform::fs::NewFile::issue())
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),

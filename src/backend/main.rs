@@ -90,6 +90,8 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 async fn main() {
     // 帧里的小成品（`changed.body`）照主题表现算：装进发端调的那一层（理由住 `stream/topic_body.rs` 头注）。
     topic_hook::install(topic_body::body_now);
+    // 拨号核心（`ssh-dial`，手机同一份）装上本后端那一套：钥匙文件 · known_hosts · 本机 agent · 详情事实 · 部署那两处写根。
+    dial::host();
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
@@ -211,6 +213,8 @@ async fn main() {
     let off_thread = legacy.is_some();
     let relay_own = own.clone();
     let legacy_own = own.clone();
+    // 占着常驻的那一个（常驻监听口在本进程）：账号库补号色只由它写，与 `rotation.json` 换形写回同一处、同一个写的人。
+    let resident = listening.is_some();
     let start_relay = move || {
         if let Some(said) = legacy
             .as_ref()
@@ -222,6 +226,9 @@ async fn main() {
             "{}",
             accounts::upstream_select::host_relay(faces::rotation_face::library(), relay_own)
         );
+        if resident {
+            inbound::fill_account_colors();
+        }
     };
     if off_thread {
         std::thread::spawn(start_relay);
@@ -257,7 +264,7 @@ async fn main() {
         None => run_over_stdio(hello, agent_home, wants, own).await,
         Some((listener, held)) => {
             // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
-            inbound::watch_account_mcp();
+            inbound::watch_account_mcp(&own);
             // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
             // 收到之后监听口随 `serve_listening` 一起丢（不再接新连接）；已接上的那条流是独立任务，
             //   排空期间照常写应答，新来的阻塞命令回 `shutting_down`（`inbound::exit_after_drain`）。
@@ -348,6 +355,11 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         host_env: wire::host_env_from(|name| std::env::var(name).ok()),
         // 撤不动的那几条（阻塞档），从命令表派生。
         uncancellable: inbound::uncancellable(),
+        // typed 命令的形状指纹：编进来的那张表原样交出去（客户端拿它自己那张比）。
+        shapes: cmd_wire::shapes::SHAPES
+            .iter()
+            .map(|(c, h)| (c.to_string(), h.to_string()))
+            .collect(),
     }
 }
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 手机冒烟主路，一条命令走完（不进门禁默认格，按需跑；说明见同目录 README.md）。
 # 用法：bash tests/mobile-smoke/smoke.sh        （CCM_SMOKE_BOX 改台架目录；CCM_SMOKE_OUT 改截图目录）
-# 做的事：编后端（每趟都编：增量，没改就秒过；只在缺二进制时才编会拿旧后端去接新手机包，BUILD_ID 对不上、第一步就「要更新」）→ rig.sh up（沙箱 sshd ＋ 后端 ＋ 替身）→ emu.sh up（模拟器）→ 编 debug 包、装上 → smoke.py 走八步。
+# 做的事：编后端（每趟都编：增量，没改就秒过；只在缺二进制时才编会拿旧后端去接新手机包，版本门照「后端要更新」接、对不上的命令不发）→ rig.sh up（沙箱 sshd ＋ 后端 ＋ 替身）→ emu.sh up（模拟器）→ 编 debug 包、装上 → smoke.py 走十步。
 # 重活（cargo · gradle）经 tests/scripts/heavy.sh（有就用），gradle 带 --no-daemon；模拟器自己一个封了内存的 scope。
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)

@@ -2,15 +2,16 @@ package com.ccmonitor.mobile.ui.overview
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ccmonitor.mobile.core.claude.link.BackendFeed
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.ResidentFeed
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionsNeeds
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.copy.DurationFormat
 import com.ccmonitor.mobile.link.Problem
+import com.ccmonitor.mobile.link.notice
 import com.ccmonitor.mobile.link.problem
 import com.ccmonitor.mobile.link.unreadableReply
 import kotlinx.coroutines.FlowPreview
@@ -19,7 +20,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -30,19 +33,25 @@ import kotlinx.coroutines.launch
  */
 @OptIn(FlowPreview::class)
 class ConversationsViewModel(
-    private val backend: BackendFeed,
+    private val backend: ResidentFeed,
     private val machine: String,
 ) : ViewModel() {
     private val list = MutableStateFlow<Fetched<HistoryList.Answer>>(Fetched.Loading)
     private val needs = MutableStateFlow<Fetched<List<SessionsNeeds.Row>>>(Fetched.Loading)
 
     val state: StateFlow<ConversationsUiState> =
-        combine(backend.state, backend.table, list, needs) { link, table, l, n -> view(link, table, l, n, machine, needsAt) }
+        combine(backend.state, backend.table, list, needs) { link, table, l, n -> view(link, table, l, n, needsAt) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationsUiState())
 
     init {
         backend.ensure()
-        viewModelScope.launch { backend.state.filter { it == LinkState.Up }.collect { refetchAll() } }
+        viewModelScope.launch {
+            backend.state
+                .map { it is LinkState.Up }
+                .distinctUntilChanged()
+                .filter { it }
+                .collect { refetchAll() }
+        }
         viewModelScope.launch {
             backend.changes
                 .filter { it in LIST_KINDS }
@@ -119,6 +128,8 @@ sealed interface Fetched<out T> {
 data class ConversationsUiState(
     /** 流走不通 ⇒ 那一句（整屏只说这一句 ＋［重试］）；通着 ⇒ `null`。 */
     val linkProblem: Problem? = null,
+    /** 通着、但要人动手的那一句（那台后端旧了：照用对得上的那几条，屏上排在需手动最前）；没有 ⇒ `null`。 */
+    val linkNotice: Problem? = null,
     val connecting: Boolean = true,
     val needs: List<NeedsItem> = emptyList(),
     val needsProblem: Problem? = null,
@@ -174,10 +185,9 @@ internal fun view(
     table: SessionTable,
     list: Fetched<HistoryList.Answer>,
     needs: Fetched<List<SessionsNeeds.Row>>,
-    machine: String,
     needsAt: Long = 0,
 ): ConversationsUiState {
-    if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(machine), connecting = false, listLoading = false)
+    if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(), connecting = false, listLoading = false)
     if (link == LinkState.Connecting) return ConversationsUiState()
     val answer = (list as? Fetched.Got)?.value
     val labels = answer?.rows?.associate { it.sessionId to it.label }.orEmpty()
@@ -194,6 +204,7 @@ internal fun view(
     }
     return ConversationsUiState(
         connecting = false,
+        linkNotice = (link as? LinkState.Up)?.notice(),
         needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt) },
         needsProblem = (needs as? Fetched.Failed)?.problem,
         sections = sections,

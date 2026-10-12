@@ -16,17 +16,23 @@ const TICKET_MAX: usize = 64;
 
 /// 一张票那一趟此刻怎样。
 #[derive(Debug, Clone, PartialEq)]
-enum Slot {
+enum Slot<T> {
     Running,
-    Started(serde_json::Value),
+    Started(T),
 }
 
-/// 按票记的那几趟（判据用自己的一份；生产用 [`TICKETS`]）。
-#[derive(Default)]
-pub(crate) struct Tickets(Mutex<VecDeque<(String, Slot)>>);
+/// 按票记的那几趟（判据用自己的一份；生产用 [`TICKETS`]）。`T` ＝ 起好了的那一份应答。
+pub(crate) struct Tickets<T>(Mutex<VecDeque<(String, Slot<T>)>>);
+
+impl<T> Default for Tickets<T> {
+    fn default() -> Self {
+        Tickets(Mutex::new(VecDeque::new()))
+    }
+}
 
 /// 生产那一份。
-pub(crate) static TICKETS: Tickets = Tickets(Mutex::new(VecDeque::new()));
+pub(crate) static TICKETS: Tickets<super::session_new::SessionNew> =
+    Tickets(Mutex::new(VecDeque::new()));
 
 /// 票合不合格：非空、有界、只许字母数字与 `-`（它会进日志与应答）。
 pub(crate) fn ticket_ok(t: &str) -> bool {
@@ -36,17 +42,17 @@ pub(crate) fn ticket_ok(t: &str) -> bool {
 }
 
 /// 一趟的结局：起好了的那一份应答 · 不行（码 ＋ 那一句 ＋ `data`）。
-pub(crate) type Run<E> = Result<serde_json::Value, E>;
+pub(crate) type Run<T, E> = Result<T, E>;
 
-impl Tickets {
+impl<T: Clone> Tickets<T> {
     /// 带票起一趟：见过且起好了 ⇒ 原样回那一份（`run` 不跑）；正在起 ⇒ `pending()`；别的 ⇒ 跑 `run`，起好了记下、没起成忘掉这张票。
     /// 没票 ⇒ 照常跑（老界面）。
     pub(crate) fn with<E>(
         &self,
         ticket: Option<&str>,
         pending: impl FnOnce() -> E,
-        run: impl FnOnce() -> Run<E>,
-    ) -> Run<E> {
+        run: impl FnOnce() -> Run<T, E>,
+    ) -> Run<T, E> {
         let Some(t) = ticket else { return run() };
         {
             let mut q = self.0.lock().unwrap_or_else(|p| p.into_inner());

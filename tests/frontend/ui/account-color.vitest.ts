@@ -1,48 +1,73 @@
-// account-ux U1：账号色 slot 纯函数测试。
-import { describe, it, expect } from "vitest";
-import { accountColorSlot, ACCOUNT_COLOR_SLOTS, accountAvatarEl } from "../../../src/frontend/ui/account-color";
+// 号色：账号库里的事实（那台后端加号时分、存进清单），界面只画 `accounts-list` 每号的 `color`，不自己按名字算。
+import { describe, it, expect, beforeEach } from "vitest";
+import { accountAvatarEl, accountColorOf } from "../../../src/frontend/ui/account-color";
+import { putAccounts } from "../../../src/frontend/ui/app-store";
+import type { Account, AccountsState } from "../../../src/frontend/ui/accounts";
+import { LOCAL_ORIGIN, type Origin } from "../../../src/frontend/ui/ipc/origin";
 
-describe("accountColorSlot（FNV-1a % 8）", () => {
-  it("确定性：同名恒同 slot", () => {
-    expect(accountColorSlot("zhang")).toBe(accountColorSlot("zhang"));
-    expect(accountColorSlot("bob")).toBe(accountColorSlot("bob"));
+const REMOTE = "ssh:box" as Origin;
+
+function acct(name: string, color: number): Account {
+  return {
+    name,
+    email: "",
+    configDir: `/h/${name}`,
+    isDefault: false,
+    mode: "isolated",
+    exists: true,
+    loggedIn: true,
+    authKind: "subscription",
+    authReady: true,
+    selectable: true,
+    badge: { text: "", warn: false, title: "" },
+    color,
+  };
+}
+
+function put(origin: Origin, accounts: Account[]): void {
+  putAccounts(origin, { origin, available: true, error: null, oldBackend: false, meta: null, accounts, notice: null } as AccountsState);
+}
+
+const slotClasses = (el: HTMLElement): string[] => [...el.classList].filter((c) => /^acct-c\d$/.test(c));
+
+describe("号色照那台账号库给的那一格画", () => {
+  beforeEach(() => {
+    put(LOCAL_ORIGIN, [acct("team", 0), acct("lab", 2)]);
+    put(REMOTE, [acct("team", 5)]);
   });
-  it("始终落在 [0, ACCOUNT_COLOR_SLOTS)", () => {
-    for (const n of ["z", "b", "wei", "工作号", "a-very-long-account-name", "x1", "X1"]) {
-      const s = accountColorSlot(n);
-      expect(Number.isInteger(s)).toBe(true);
-      expect(s).toBeGreaterThanOrEqual(0);
-      expect(s).toBeLessThan(ACCOUNT_COLOR_SLOTS);
-    }
+
+  it("名字哈希同格的 team / lab 画成不同色（各照各的 `color`）", () => {
+    expect(slotClasses(accountAvatarEl("team"))).toEqual(["acct-c0"]);
+    expect(slotClasses(accountAvatarEl("lab"))).toEqual(["acct-c2"]);
+    expect(accountColorOf("lab")).toBe(2);
   });
-  it("空串不抛，返回确定 slot", () => {
-    expect(accountColorSlot("")).toBe(accountColorSlot(""));
-    expect(accountColorSlot("")).toBeGreaterThanOrEqual(0);
-    expect(accountColorSlot("")).toBeLessThan(ACCOUNT_COLOR_SLOTS);
+
+  it("按号所在那台查：同名的号在别台是别的色", () => {
+    expect(slotClasses(accountAvatarEl("team", { origin: REMOTE }))).toEqual(["acct-c5"]);
+    expect(accountColorOf("team", REMOTE)).toBe(5);
   });
-  it("大小写 / 相近名区分（各自确定，不要求不同，但不得抛）", () => {
-    expect(() => accountColorSlot("a")).not.toThrow();
-    expect(() => accountColorSlot("A")).not.toThrow();
-    expect(() => accountColorSlot("工作")).not.toThrow();
+
+  it("那台没给这个号 ⇒ 不猜色（中性，没有 acct-cN）", () => {
+    expect(accountColorOf("nobody")).toBeNull();
+    expect(slotClasses(accountAvatarEl("nobody"))).toEqual([]);
   });
-  it("分布：一组不同名字覆盖 ≥4 个不同 slot（粗略均匀性，非严格）", () => {
-    const names = ["z", "b", "wei", "amy", "dev", "prod", "test", "main", "alt", "work"];
-    const slots = new Set(names.map(accountColorSlot));
-    expect(slots.size).toBeGreaterThanOrEqual(4);
+
+  it("删了一个号，别的号色不变（照新那份清单画）", () => {
+    put(LOCAL_ORIGIN, [acct("lab", 2)]);
+    expect(slotClasses(accountAvatarEl("lab"))).toEqual(["acct-c2"]);
   });
 });
 
-describe("accountAvatarEl（U4 头像元素）", () => {
-  it("类含 .acct-avatar + 稳定 slot 类 + 缩写文本 + aria-hidden", () => {
+describe("accountAvatarEl（头像元素）", () => {
+  it("类含 .acct-avatar + 缩写文本 + aria-hidden", () => {
+    put(LOCAL_ORIGIN, [acct("zhang", 3)]);
     const el = accountAvatarEl("zhang");
     expect(el.classList.contains("acct-avatar")).toBe(true);
-    expect(el.classList.contains(`acct-c${accountColorSlot("zhang")}`)).toBe(true);
     expect(el.textContent).toBe("zh"); // badgeText：ASCII 取前 2
     expect(el.getAttribute("aria-hidden")).toBe("true");
   });
-  it("ghost=true → 加 .ghost（U5 幽灵态）", () => {
-    const el = accountAvatarEl("bob", { ghost: true });
-    expect(el.classList.contains("ghost")).toBe(true);
+  it("ghost=true → 加 .ghost（幽灵态）", () => {
+    expect(accountAvatarEl("bob", { ghost: true }).classList.contains("ghost")).toBe(true);
   });
   it("size 覆盖边长", () => {
     const el = accountAvatarEl("z", { size: 20 });

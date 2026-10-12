@@ -387,7 +387,7 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
         inner_head: vec!["/usr/local/bin/ccm".into()],
         bus: None,
     };
-    let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");
+    let req = crate::control::launch::parse_request(launch_args(&c)).expect("该过得了门");
     assert_eq!(req.name, "n1");
     assert_eq!(req.payload, c.payload, "载荷不许被改一个字节");
     assert_eq!(req.cwd.as_deref(), Some("/p"));
@@ -411,13 +411,13 @@ fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
     // 不给尺寸 ⇒ 请求里**没有** width/height（不是空串、不是 0）
     let mut c2 = c.clone();
     c2.size = None;
-    let r2 = crate::control::launch::parse_request(&launch_args(&c2)).expect("该过得了门");
+    let r2 = crate::control::launch::parse_request(launch_args(&c2)).expect("该过得了门");
     assert!(r2.width.is_none() && r2.height.is_none());
     // 🔴 那道门真的在判：载荷里塞一个 ESC ⇒ 被**挡在这一侧**，不是发出去被拒
     let mut c3 = c.clone();
     c3.name = "n\u{1b}1".into();
     assert!(
-        crate::control::launch::parse_request(&launch_args(&c3)).is_err(),
+        crate::control::launch::parse_request(launch_args(&c3)).is_err(),
         "控制字符没被挡住 —— 那道门被绕过去了（直接造 LaunchRequest 就是这个后果）"
     );
 }
@@ -1039,38 +1039,35 @@ fn the_mint_frame_derives_here_and_steps_aside_on_this_machines_snapshot() {
             })
             .collect())
     });
-    let mint = |a: serde_json::Value| {
-        terminal_name_mint_with(&a, &snap).map(|m| serde_json::to_value(m).unwrap())
-    };
+    use crate::control::session_batch::NameBase;
+    let mint = |b: NameBase| terminal_name_mint_with(b, &snap).map(|m| m.name);
+    assert_eq!(mint(NameBase::Cwd("/home/u/proj")).unwrap(), "proj-cc-2");
+    assert_eq!(mint(NameBase::Cwd("/home/u/other")).unwrap(), "other-cc");
+    assert_eq!(mint(NameBase::ForkOf("proj-cc")).unwrap(), "proj-fork-cc-3");
     assert_eq!(
-        mint(json!({"cwd": "/home/u/proj"})).unwrap(),
-        json!({"name": "proj-cc-2"})
-    );
-    assert_eq!(
-        mint(json!({"cwd": "/home/u/other"})).unwrap(),
-        json!({"name": "other-cc"})
-    );
-    assert_eq!(
-        mint(json!({"forkOf": "proj-cc"})).unwrap(),
-        json!({"name": "proj-fork-cc-3"})
-    );
-    assert_eq!(
-        mint(json!({"forkOf": "/home/u/gone"})).unwrap(),
-        json!({"name": "gone-fork-cc"})
+        mint(NameBase::ForkOf("/home/u/gone")).unwrap(),
+        "gone-fork-cc"
     );
     let no_tmux = SessionSnapshot::with_prober(|| Err(("no_tmux", "tmux: not found".to_string())));
     assert_eq!(
-        terminal_name_mint_with(&json!({"cwd": "/home/u/proj"}), &no_tmux)
+        terminal_name_mint_with(NameBase::Cwd("/home/u/proj"), &no_tmux)
             .unwrap()
             .name,
         "proj-cc"
     );
-    for bad in [
-        json!({}),
-        json!({"cwd": "/a", "forkOf": "b"}),
-        json!({"cwd": 3}),
-    ] {
-        assert_eq!(mint(bad).unwrap_err().0, "bad_args");
+    // 入参组合不对（两个都没给 · 两个都给）⇒ `bad_args`，不去问快照；形状不对（类型错 · 多一个键）在解入参那一步就拒了。
+    use crate::stream::inbound::typed::{Blocking as _, Codes as _};
+    for (cwd, fork_of) in [(None, None), (Some("/a"), Some("b"))] {
+        let req = TerminalNameMintReq {
+            cwd: cwd.map(str::to_string),
+            fork_of: fork_of.map(str::to_string),
+        };
+        let cx = crate::stream::inbound::typed::Cx {
+            tz: Default::default(),
+            until: None,
+        };
+        let got = TerminalNameMint::run(req, &cx).unwrap_err().into_fail();
+        assert_eq!(got.code, "bad_args");
     }
 }
 
@@ -1293,14 +1290,6 @@ fn the_upstream_variable_comes_from_the_agents_own_upstream_cell() {
         "{}",
         line("codex")
     );
-}
-
-impl crate::guard_support::Shaped for Minted {
-    fn samples() -> Vec<Self> {
-        vec![Minted {
-            name: "proj-cc-2".into(),
-        }]
-    }
 }
 
 /// 缺陷（10-10）：Windows 上 `ccm` 最后起 agent 那一下按裸名字起，std 只补 `.exe` ⇒ npm 全局的 `.cmd` / `.ps1` 起不来，而足迹说装了。

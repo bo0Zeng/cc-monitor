@@ -13,7 +13,7 @@ vi.mock("../../../src/frontend/ui/ipc/commands", () => ({
 import { resumeCommandFor } from "../../../src/frontend/ui/remote-config";
 import { defaultPick } from "../../../src/frontend/ui/resume-menu";
 import { noteMachineTmux, setResumeInTmux } from "../../../src/frontend/ui/resume-defaults";
-import { decodeStandings } from "../../../src/frontend/ui/sessions-where";
+import { standingsFrom } from "../../../src/frontend/ui/sessions-where";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 
 const host = (label: string, resumeCommand: string) => ({ label, host: `${label}.lan`, user: "u", port: 22, resumeCommand });
@@ -52,7 +52,7 @@ describe("「运行于」的默认：照通用页那一格，那台没 tmux 回�
 
   it("★ 那台答过没有 tmux（sessions-where 回 no_tmux）⇒ 那台回落不用 tmux，别的台照那一格", () => {
     setResumeInTmux(true);
-    decodeStandings("win-box", ["s1"], { results: [{ sid: "s1", standing: "no_tmux", names: [], terminals: [] }] });
+    standingsFrom("win-box", { results: [{ sid: "s1", standing: "no_tmux", names: [], terminals: [] }] });
     expect(defaultPick("win-box").tmux).toBe(false);
     expect(defaultPick("devbox").tmux).toBe(true);
   });
@@ -61,7 +61,7 @@ describe("「运行于」的默认：照通用页那一格，那台没 tmux 回�
     setResumeInTmux(true);
     noteMachineTmux("box2", false);
     expect(defaultPick("box2").tmux).toBe(false);
-    decodeStandings("box2", ["s1"], {
+    standingsFrom("box2", {
       results: [{ sid: "s1", standing: "idle", names: ["cc-1"], terminals: [{ host: "tmux", terminal: "cc-1" }] }],
     });
     expect(defaultPick("box2").tmux).toBe(true);

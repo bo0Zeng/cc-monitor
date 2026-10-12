@@ -1,0 +1,416 @@
+//! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同用它的退避 · 握手 · 版本门 · 在看名单），
+//! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
+//!
+//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON）· `frame`（流上的一帧原样一行）· `watch_from`（JSON 数组）·
+//! `lost`（流断了、请 Kotlin 探一次 SSH）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
+
+use resident_client::client::CallError;
+use resident_client::feed::{Boxed, Config, Event, Exec, Feed, Problem, State, Transport};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream, Join};
+
+/// 交给 Kotlin 的那一个口：`(这台的编号, 种类, 文本)`。
+pub type OnEvent = Arc<dyn Fn(i64, &str, String) + Send + Sync>;
+
+/// 握手每一行等多久（冷启要起常驻、读盘，给足）。
+const HANDSHAKE: Duration = Duration::from_secs(20);
+
+/// 一次性 exec 收全的上限（`--resident-ensure` 只回一行 JSON；上限只防对端吐无穷字节）。
+const CAPTURE_MAX: u64 = 1 << 20;
+
+/// 下面那条 SSH：拨号核心在这台手机上开的链路。`base` 是 Kotlin 那一侧连上时组好的拨号请求（主机 · 钥匙编号 · 跳板 · 记过的钥匙），
+/// 每一趟在它上面填用法与命令，复用池里那条连接。
+pub struct PhoneLink {
+    base: serde_json::Value,
+}
+
+impl PhoneLink {
+    pub fn new(base: serde_json::Value) -> Self {
+        PhoneLink { base }
+    }
+
+    /// 在这条连接上开一条用法链路，读到 ack；回下行读端与上行写端。没开成 ⇒ 那一句 ＋ 详情。
+    async fn open(&self, uses: serde_json::Value) -> Result<(DuplexStream, DuplexStream), Problem> {
+        let mut req = self.base.clone();
+        if let (Some(r), Some(u)) = (req.as_object_mut(), uses.as_object()) {
+            for (k, v) in u {
+                r.insert(k.clone(), v.clone());
+            }
+            r.insert("stages".into(), false.into());
+        }
+        let req: ssh_dial::DialRequest = serde_json::from_value(req).map_err(|e| {
+            Problem::new(
+                copy_core::copy_text("mobSsh.conn.unavailable", &[]),
+                e.to_string(),
+            )
+        })?;
+        let (up_w, up_r) = tokio::io::duplex(256 * 1024);
+        let (mut down_w, mut down_r) = tokio::io::duplex(256 * 1024);
+        tokio::spawn(async move {
+            let stages = ssh_dial::StageSink::new(false);
+            ssh_dial::uses::run_with(
+                &req,
+                &stages,
+                up_r,
+                &mut down_w,
+                ssh_dial::uses::Control::none(),
+            )
+            .await;
+            let _ = down_w.shutdown().await;
+        });
+        let ack = read_ack(&mut down_r).await?;
+        Ok((down_r, up_w)).and_then(|pair| {
+            if ack_ok(&ack) {
+                Ok(pair)
+            } else {
+                Err(ack_problem(&ack))
+            }
+        })
+    }
+}
+
+impl Transport for PhoneLink {
+    type Stream = Join<DuplexStream, DuplexStream>;
+
+    fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>> {
+        Box::pin(async move {
+            let (down, up) = self
+                .open(serde_json::json!({ "use": "stream", "command": command }))
+                .await?;
+            Ok(tokio::io::join(down, up))
+        })
+    }
+
+    fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>> {
+        Box::pin(async move {
+            let (mut down, _up) = self
+                .open(serde_json::json!({
+                    "use": "capture",
+                    "command": command,
+                    "capture": { "max_bytes": CAPTURE_MAX },
+                }))
+                .await?;
+            let line = read_line(&mut down).await.ok_or_else(|| {
+                Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
+            })?;
+            Ok(exec_of(&line))
+        })
+    }
+}
+
+/// 读到 ack 那一行（阶段行跳过）。链路没给就收工 ⇒ 当这条连接用不了。
+async fn read_ack(down: &mut DuplexStream) -> Result<serde_json::Value, Problem> {
+    loop {
+        let line = read_line(down).await.ok_or_else(|| {
+            Problem::new(copy_core::copy_text("mobSsh.conn.unavailable", &[]), "")
+        })?;
+        let v: serde_json::Value = serde_json::from_str(&line).unwrap_or_default();
+        if v.get("stage").is_none() {
+            return Ok(v);
+        }
+    }
+}
+
+/// 一字节一字节读一行（ack 之后紧跟的是 exec 的字节，不许预读过头）。
+async fn read_line(down: &mut DuplexStream) -> Option<String> {
+    let mut out = Vec::new();
+    let mut one = [0u8; 1];
+    loop {
+        match down.read(&mut one).await {
+            Ok(0) | Err(_) => return None,
+            Ok(_) if one[0] == b'\n' => return Some(String::from_utf8_lossy(&out).into_owned()),
+            Ok(_) => out.push(one[0]),
+        }
+    }
+}
+
+pub fn ack_ok(ack: &serde_json::Value) -> bool {
+    ack.get("ok").and_then(serde_json::Value::as_bool) == Some(true)
+}
+
+/// 没拨成的 ack ⇒ 那一句（拨号核心写好）＋ 复制详情。
+pub fn ack_problem(ack: &serde_json::Value) -> Problem {
+    let s = |k: &str| {
+        ack.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    let text = s("error");
+    Problem::new(
+        if text.is_empty() {
+            copy_core::copy_text("mobSsh.conn.unavailable", &[])
+        } else {
+            text
+        },
+        s("detail"),
+    )
+}
+
+/// `use: capture` 那一行 `{exit_status, stdout, stderr}`。
+pub fn exec_of(line: &str) -> Exec {
+    let v: serde_json::Value = serde_json::from_str(line).unwrap_or_default();
+    let s = |k: &str| {
+        v.get(k)
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
+    Exec {
+        exit_status: v
+            .get("exit_status")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|n| u32::try_from(n).ok()),
+        stdout: s("stdout"),
+        stderr: s("stderr"),
+    }
+}
+
+// ═══ 表与口 ═════════════════════════════════════════════════════════════════════
+
+fn feeds() -> &'static Mutex<HashMap<i64, Arc<Feed<PhoneLink>>>> {
+    static F: OnceLock<Mutex<HashMap<i64, Arc<Feed<PhoneLink>>>>> = OnceLock::new();
+    F.get_or_init(Default::default)
+}
+
+fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
+    feeds()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&h)
+        .cloned()
+}
+
+/// 一件事 ⇒ `(种类, 文本)`。
+pub fn event_of(e: &Event) -> (&'static str, String) {
+    match e {
+        Event::State(s) => ("state", state_json(s)),
+        Event::Frame(line) => ("frame", line.clone()),
+        Event::WatchFrom(rows) => (
+            "watch_from",
+            serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
+        ),
+        Event::Lost => ("lost", String::new()),
+    }
+}
+
+pub fn state_json(s: &State) -> String {
+    serde_json::to_string(s).unwrap_or_else(|_| r#"{"state":"connecting"}"#.into())
+}
+
+/// 看一台（在当前运行时上起它的循环）。`mine` = 手上这一版的身份（版本门的对照物）。回编号。
+pub fn open(machine: String, mine: Option<String>, tz: Option<String>, on_event: OnEvent) -> i64 {
+    static NEXT: AtomicI64 = AtomicI64::new(1);
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let cfg = Config {
+        machine,
+        mine,
+        tz,
+        handshake: HANDSHAKE,
+    };
+    let feed = Feed::start(
+        cfg,
+        Arc::new(move |e: Event| {
+            let (kind, body) = event_of(&e);
+            on_event(id, kind, body);
+        }),
+    );
+    feeds()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(id, feed);
+    id
+}
+
+/// SSH 那层此刻的连接：交拨号请求（JSON）⇒ 在它上面接；`None` ⇒ 没通。请求读不动 ⇒ `false`。
+pub fn ssh(h: i64, base: Option<&str>) -> bool {
+    let Some(f) = feed(h) else { return false };
+    match base {
+        None => {
+            f.set_transport(None);
+            true
+        }
+        Some(b) => match serde_json::from_str::<serde_json::Value>(b) {
+            Ok(v) if v.is_object() => {
+                f.set_transport(Some(Arc::new(PhoneLink::new(v))));
+                true
+            }
+            _ => false,
+        },
+    }
+}
+
+/// 一问一答：回问答编号；结局经 `reply` 那一种交回（`{call, …}`，[`reply_json`]）。这台不在 ⇒ 0。
+pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) -> i64 {
+    static NEXT: AtomicI64 = AtomicI64::new(1);
+    let Some(f) = feed(h) else { return 0 };
+    let id = NEXT.fetch_add(1, Ordering::Relaxed);
+    let args: serde_json::Value = serde_json::from_str(args).unwrap_or(serde_json::Value::Null);
+    let machine = f.machine().to_string();
+    tokio::spawn(async move {
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(within_ms.max(1));
+        let got = match f.client_by(deadline).await {
+            Some(c) => c.call_until(&cmd, args, deadline).await,
+            None => Err(CallError::Disconnected),
+        };
+        on_event(h, "reply", reply_json(id, &machine, &got));
+    });
+    id
+}
+
+/// 多一处 / 少一处在看这条会话。
+pub fn watch(h: i64, sid: &str, holding: bool) {
+    if let Some(f) = feed(h) {
+        f.watch(sid, holding);
+    }
+}
+
+/// ［重试］（`retry`：断开这一条、马上整份重来）· 回前台 / 网络变了（断着才马上再接）。
+pub fn kick(h: i64, retry: bool) {
+    if let Some(f) = feed(h) {
+        if retry {
+            f.reconnect();
+        } else {
+            f.wake();
+        }
+    }
+}
+
+pub fn close(h: i64) {
+    if let Some(f) = feeds().lock().unwrap_or_else(|e| e.into_inner()).remove(&h) {
+        f.close();
+    }
+}
+
+/// 一问一答的结局 ⇒ 交 Kotlin 的那一行：`{call, ok:true, data}` · `{call, ok:false, code, message, detail, data?}` ·
+/// `{call, timeout:true}` · `{call, cancelled:true}` · `{call, down:true}`。事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）
+/// 经通信层那一份分流器说成一句（`route_call_error`），照失败交。
+pub fn reply_json(
+    id: i64,
+    machine: &str,
+    got: &Result<Option<serde_json::Value>, CallError>,
+) -> String {
+    use comms_inward::backend_route::{route_call_error, Routed};
+    let v = match got {
+        Ok(data) => serde_json::json!({ "call": id, "ok": true, "data": data }),
+        Err(CallError::Remote {
+            code,
+            message,
+            detail,
+            data,
+        }) => serde_json::json!({
+            "call": id, "ok": false, "code": code, "message": message, "detail": detail,
+            "data": data.as_deref().and_then(|d| serde_json::from_str::<serde_json::Value>(d).ok()),
+        }),
+        Err(CallError::Timeout { .. }) => serde_json::json!({ "call": id, "timeout": true }),
+        Err(CallError::Cancelled) => serde_json::json!({ "call": id, "cancelled": true }),
+        Err(CallError::Disconnected) => serde_json::json!({ "call": id, "down": true }),
+        Err(e) => {
+            let code = match e {
+                CallError::Unsupported { .. } => "unsupported".to_string(),
+                CallError::Differs { .. } => "differs".to_string(),
+                CallError::Unavailable { code, .. } => code.clone(),
+                _ => "busy".to_string(),
+            };
+            let (Routed::NoChannel(said) | Routed::Refused(said)) =
+                route_call_error(e, machine, |_code, message| message.to_string());
+            serde_json::json!({ "call": id, "ok": false, "code": code, "message": said, "detail": e.to_string() })
+        }
+    };
+    v.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 一问一答的结局逐种落到 Kotlin 认的那一行；事前就拒的那几种照失败交、带码与一句话。
+    #[test]
+    fn every_outcome_lands_as_the_line_kotlin_reads() {
+        let j = |r: Result<Option<serde_json::Value>, CallError>| -> serde_json::Value {
+            serde_json::from_str(&reply_json(7, "box", &r)).expect("JSON")
+        };
+        assert_eq!(
+            j(Ok(Some(serde_json::json!({"a": 1})))),
+            serde_json::json!({"call": 7, "ok": true, "data": {"a": 1}})
+        );
+        let failed = j(Err(CallError::Remote {
+            code: "no_tmux".into(),
+            message: "没有 tmux".into(),
+            detail: "d".into(),
+            data: Some("{\"x\":1}".into()),
+        }));
+        assert_eq!(failed["ok"], false);
+        assert_eq!(failed["code"], "no_tmux");
+        assert_eq!(failed["data"], serde_json::json!({"x": 1}));
+        assert_eq!(j(Err(CallError::Cancelled))["cancelled"], true);
+        assert_eq!(j(Err(CallError::Disconnected))["down"], true);
+        let differs = j(Err(CallError::Differs {
+            cmd: "history-search".into(),
+            said: copy_core::backend_differs("box"),
+        }));
+        assert_eq!(differs["code"], "differs");
+        assert_eq!(differs["message"], copy_core::backend_differs("box"));
+        let old = j(Err(CallError::Unsupported {
+            cmd: "x".into(),
+            offered: vec![],
+        }));
+        assert_eq!(old["code"], "unsupported");
+        assert_eq!(old["message"], copy_core::backend_old("box"));
+    }
+
+    /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样 · 断了只是一个记号。
+    #[test]
+    fn events_are_tagged_and_frames_go_through_untouched() {
+        let (k, b) = event_of(&Event::State(State::Up {
+            epoch: 3,
+            notice: None,
+        }));
+        assert_eq!(k, "state");
+        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(v["state"], "up");
+        assert_eq!(v["epoch"], 3);
+        let (k, b) = event_of(&Event::State(State::Down {
+            problem: Problem::new("box 离线", ""),
+            needs_hand: true,
+        }));
+        assert_eq!(k, "state");
+        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(
+            (
+                v["state"].as_str(),
+                v["needs_hand"].as_bool(),
+                v["problem"]["text"].as_str()
+            ),
+            (Some("down"), Some(true), Some("box 离线"))
+        );
+        assert_eq!(
+            event_of(&Event::Frame("{\"kind\":\"x\"}".into())),
+            ("frame", "{\"kind\":\"x\"}".to_string())
+        );
+        assert_eq!(event_of(&Event::Lost).0, "lost");
+    }
+
+    /// ack 与 capture 那一行的读法。
+    #[test]
+    fn the_ack_and_the_capture_line_are_read_as_the_dial_core_writes_them() {
+        assert!(ack_ok(&serde_json::json!({"ok": true})));
+        let p = ack_problem(&serde_json::json!({"ok": false, "error": "拨号失败", "detail": "d"}));
+        assert_eq!((p.text.as_str(), p.detail.as_str()), ("拨号失败", "d"));
+        assert_eq!(
+            exec_of(r#"{"exit_status":127,"stdout":"","stderr":"nope"}"#),
+            Exec {
+                exit_status: Some(127),
+                stdout: String::new(),
+                stderr: "nope".into()
+            }
+        );
+        assert_eq!(
+            exec_of(r#"{"exit_status":null,"stdout":"x","stderr":""}"#).exit_status,
+            None
+        );
+    }
+}

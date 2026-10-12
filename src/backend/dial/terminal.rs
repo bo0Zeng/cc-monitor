@@ -74,26 +74,30 @@ fn check_command(cmd: &str, powershell: bool) -> Result<(), CmdErr> {
     Ok(())
 }
 
-/// ` -J user@host[:port]`（口 = 22 不带后缀）。
-fn jump_arg(j: &super::JumpHop) -> Result<String, CmdErr> {
-    if !user_ok(&j.user) {
-        return Err(refused(copy_text(
-            "beTerminal.refuse.jumpUser",
-            &[("jumpUser", &format!("{:?}", j.user))],
-        )));
+/// ` -J user@host[:port],…`（口 = 22 不带后缀；多跳从最外一台起，逗号相连，同 `ssh -J`）。
+fn jump_arg(chain: &[&super::JumpHop]) -> Result<String, CmdErr> {
+    let mut hops = Vec::new();
+    for j in chain {
+        if !user_ok(&j.user) {
+            return Err(refused(copy_text(
+                "beTerminal.refuse.jumpUser",
+                &[("jumpUser", &format!("{:?}", j.user))],
+            )));
+        }
+        if !host_ok(&j.host) {
+            return Err(refused(copy_text(
+                "beTerminal.refuse.jumpHost",
+                &[("jumpHost", &format!("{:?}", j.host))],
+            )));
+        }
+        let port = if j.port == 22 {
+            String::new()
+        } else {
+            format!(":{}", j.port)
+        };
+        hops.push(format!("{}@{}{port}", j.user, j.host));
     }
-    if !host_ok(&j.host) {
-        return Err(refused(copy_text(
-            "beTerminal.refuse.jumpHost",
-            &[("jumpHost", &format!("{:?}", j.host))],
-        )));
-    }
-    let port = if j.port == 22 {
-        String::new()
-    } else {
-        format!(":{}", j.port)
-    };
-    Ok(format!(" -J {}@{}{port}", j.user, j.host))
+    Ok(format!(" -J {}", hops.join(",")))
 }
 
 /// `-o UserKnownHostsFile=<那份>` 的值：`ssh` 自己按空白切词（单引号成对、`\'` 是字面的 `'`），`%` 是它的占位符 ⇒ 照它的规矩写。
@@ -168,9 +172,11 @@ pub(crate) fn render(
         Some(k) if !k.is_empty() => format!(" -i {}", literal(powershell, k)),
         _ => String::new(),
     };
-    let jump = match &req.jump {
-        Some(j) => jump_arg(j)?,
-        None => String::new(),
+    let chain = ssh_dial::connect::hop_chain(req);
+    let jump = if chain.is_empty() {
+        String::new()
+    } else {
+        jump_arg(&chain)?
     };
     let wrapped = format!("bash -lic {}", shell_quote_core::posix_quote(&req.command));
     let known = known_hosts_arg(super::known_hosts::path().as_deref(), powershell);

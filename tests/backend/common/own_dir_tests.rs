@@ -6,38 +6,9 @@
 //!
 //! | # | 判据 | 形状 |
 //! |---|---|---|
-//! | O1 | 新建 ⇒ 0700；已在的 0755 ⇒ 仍 0755；父目录不在 ⇒ 照实报错 | 真目录，两向 |
-//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`platform/fs/own.rs::create_dir_private`（`Own::ensure_dir` 的本体） · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
+//! | O1 | 新建 ⇒ 0700；已在的 0755 ⇒ 仍 0755；父目录不在 ⇒ 照实报错（住 `platform/fs/own_tests.rs`，跟着那个函数） | 真目录，两向 |
+//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`platform/fs/own.rs::create_dir_private`（`Own::ensure_dir` 的本体） · 远端 `ssh-dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
 //! | O3 | 七个调用方（六份第四层 ＋ 暂存区；凭据与历史注解那一层就是数据目录 `~/.cc-monitor`）各经它恰好一处；远端那一处用的是同一个权限位常量 | 文本 |
-
-#[cfg(unix)]
-use super::*;
-#[cfg(unix)]
-use std::path::Path;
-
-#[test]
-#[cfg(unix)]
-fn o1_born_private_existing_left_alone_missing_parent_refused() {
-    use std::os::unix::fs::PermissionsExt as _;
-    let mode = |p: &Path| std::fs::metadata(p).expect("meta").permissions().mode() & 0o777;
-    let base = std::env::temp_dir().join(format!("ccm-hx1-owndir-{}", std::process::id()));
-    std::fs::remove_dir_all(&base).ok();
-    std::fs::create_dir_all(&base).expect("base");
-    let fresh = base.join(".cc-monitor");
-    crate::platform::fs::create_dir_private(&fresh).expect("建");
-    assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
-    crate::platform::fs::create_dir_private(&fresh).expect("再建一次（已在）不算错");
-    let old = base.join("old");
-    std::fs::create_dir(&old).expect("预置");
-    std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    crate::platform::fs::create_dir_private(&old).expect("已在");
-    assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
-    assert!(
-        crate::platform::fs::create_dir_private(&base.join("no/such")).is_err(),
-        "父目录不在也建出来了（只建一层）"
-    );
-    std::fs::remove_dir_all(&base).ok();
-}
 
 /// 一处建目录的调用：(文件, 所在函数)。
 fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
@@ -46,6 +17,8 @@ fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
         "fs::create_dir_all(",
         "fs::DirBuilder::new(",
         ".create_dir(",
+        // 文件管理面经句柄建（`Face::make_dir`）：用户目录那几处都是这一形。
+        "face.make_dir(",
     ];
     let mut out = Vec::new();
     let mut cur = String::new();
@@ -78,12 +51,17 @@ fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
 const OWN_HOME: &str = "后端自家目录";
 const DIR_CREATORS: &[(&str, &str, &str)] = &[
     ("platform/fs/own.rs", "create_dir_private", OWN_HOME),
-    ("dial/sftp.rs", "make_dir", OWN_HOME),
+    ("ssh-dial/sftp.rs", "make_dir", OWN_HOME),
     // 订阅号续期锁（+1）：与那个号自己的 claude 同一套 `mkdir` 锁（配置目录里那一把 · 旁边那一把），建成即持有、续完即删（`make` 建；过期的那把删了重建也走它）。
     (
         "platform/fs/own.rs",
         "make_lock",
         "续期锁目录（订阅号凭据窄句柄 `AccountCreds`：那个号的配置目录里外各一把，claude 自己续期时拿的同一套）",
+    ),
+    (
+        "platform/fs/face.rs",
+        "make_dir",
+        "文件管理面建一层目录的本体（`Face::make_dir`；下面几处用户的目录都经它）",
     ),
     (
         "control/files_write.rs",
@@ -153,7 +131,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
         .collect();
     assert_eq!(
         home,
-        vec!["create_dir_private", "dial/sftp.rs"],
+        vec!["create_dir_private", "ssh-dial/sftp.rs"],
         "建后端自家目录的只该是那个函数（本机）＋ 远端部署那一处"
     );
     // 正控：数法认得出合成语料里多出来的一处。
@@ -181,13 +159,17 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
             &std::fs::read_to_string(crate::guard_support::src_root().join(p)).expect("读"),
         )
     };
-    // 暂存区那两层（第三层，下一刀搬上文件管理面的句柄）：直接经 `platform/fs` 那一个带权限位建目录的函数，恰好一处。
+    // 暂存区那两层：经文件管理面句柄那一个带权限位建目录的方法（`Face::make_dir_private`，本体同上那一个函数），恰好一处。
     assert_eq!(
         src("control/files_commit.rs")
-            .matches("crate::platform::fs::create_dir_private(")
+            .matches("face.make_dir_private(")
             .count(),
         1,
-        "暂存区建目录不是经 `platform::fs::create_dir_private` 恰好一处"
+        "暂存区建目录不是经 `Face::make_dir_private` 恰好一处"
+    );
+    assert!(
+        src("platform/fs/face.rs").contains("super::own::create_dir_private("),
+        "`Face::make_dir_private` 的本体不是自家目录那一个函数了"
     );
     // 已搬上 `Own` 的（只读只读护栏第二刀逐份搬）：建那一层经 `Own::ensure_dir` 恰好一处。
     for f in MOVED_TO_OWN {
@@ -197,11 +179,12 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
             "{f} 建自家目录不是经 `Own::ensure_dir` 恰好一处"
         );
     }
-    let sftp = src("dial/sftp.rs");
-    assert_eq!(
-        sftp.matches("permissions: Some(crate::common::own_dir::PRIVATE_DIR_MODE)")
-            .count(),
-        1,
-        "远端部署建目录没用同一个权限位"
-    );
+    // 远端那一份住拨号核心（手机同一份）：建目录的权限位是宿主交进去的那一个，本后端交的就是 `PRIVATE_DIR_MODE`。
+    guard_core::find_pinned(&src("ssh-dial/sftp.rs"), "permissions: Some(dir_mode)")
+        .expect("远端部署建目录没用宿主交进来的那个权限位");
+    guard_core::find_pinned(
+        &src("dial/mod.rs"),
+        "dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE,",
+    )
+    .expect("本后端交给拨号核心的建目录权限位不是 own_dir 那一个");
 }

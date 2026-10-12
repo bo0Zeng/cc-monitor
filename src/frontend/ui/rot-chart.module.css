@@ -384,10 +384,15 @@
     white-space: nowrap;
   }
 
-  /* 叠在时段那一段的字上 ⇒ 挪到行的下沿（字由 placeLabels 量了才定）。 */
+  /* 撞上别的字 ⇒ 挪到行的下沿；还撞 ⇒ 行下那一句的右端（placeLabels 量了才定）。 */
   .rcFar[data-place="below"] {
     top: auto;
     bottom: 0;
+  }
+
+  .rcFar[data-place="under"] {
+    top: 100%;
+    bottom: auto;
   }
 
   .rcReset {

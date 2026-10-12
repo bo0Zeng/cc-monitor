@@ -15,7 +15,7 @@
 //! 人群（门禁真跑的那些）：`tests/` 下 `*.vitest.ts` · `*.test.ts` · `vitest.config.ts`；
 //! `tests/` 下 `.rs` ＋ `src/` 下 `.rs` 的测试段（`test_source`）；手机端 `src/test` · `src/androidTest` · `testing/` 的 `.kt`；
 //! `tests/e2e/` 下 `.sh`。不在人群里：`tests/evidence/`（量具与读数）· `tests/benches/`（速度台，手跑）·
-//! `src/vendor/`（别人的代码）· 只能手跑的 [`HAND_ONLY`] · 门禁不跑的 e2e 脚本 [`SH_NOT_GATED`] · 手跑的真机台架（`test_tiers` 的 `MANUAL_RIGS`）。
+//! `src/vendor/`（别人的代码）· 门禁不跑的 e2e 脚本 [`SH_NOT_GATED`] · 手跑的真机台架（`test_tiers` 的 `MANUAL_RIGS`）。
 //!
 //! 只抓**上限**：下限（`took >= 600ms`）与静窗（「这 400 毫秒里不许有事件」）机器忙只会让它更长 / 更弱，不会误红，不管。
 //! 一秒以下的等待当轮询片或静窗（逐条看过：`recv_timeout(400ms)` 后面都是 `.is_err()` / `Timeout =>`）。
@@ -45,12 +45,6 @@ macro_rules! re {
         RE.get_or_init(|| Regex::new($pat).unwrap())
     }};
 }
-
-/// 只能手跑、门禁不跑的测试源：不在人群里，理由逐条写。
-const HAND_ONLY: &[(&str, &str)] = &[(
-    "src/mobile/core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt",
-    "要一台真 SSH 服务端；设备测那一格用 instrumentation 过滤跳过它（`android-test.sh`），留真机手测",
-)];
 
 /// `tests/e2e/` 下门禁不跑的脚本（`e2e_gate_registry` 那张表登记过为什么）：不在人群里。
 const SH_NOT_GATED: &[(&str, &str)] = &[
@@ -251,7 +245,7 @@ fn files() -> Vec<String> {
 const SELF: &str = "tests/common/guard-core/wall_ceiling_tests.rs";
 
 fn lang_of(rel: &str) -> Option<&'static str> {
-    if rel == SELF || HAND_ONLY.iter().any(|(f, _)| *f == rel) {
+    if rel == SELF {
         return None;
     }
     let out_of_gate = ["tests/evidence/", "tests/benches/", "src/vendor/"];
@@ -1383,9 +1377,12 @@ fn w4_the_population_is_what_the_gate_runs() {
     }
     assert_eq!(lang_of("tests/evidence/RT1-relay-bench.rs"), None);
     assert_eq!(lang_of("tests/benches/s7_history_read.rs"), None);
-    assert_eq!(lang_of(HAND_ONLY[0].0), None);
+    // 要台架的设备测（没给台架参数就整份跳过）照样在人群里：设备测入口不再按类过滤。
+    const RIG_DEVICE_TEST: &str =
+        "src/mobile/core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt";
+    assert_eq!(lang_of(RIG_DEVICE_TEST), Some("kt"));
     assert!(
-        Path::new(&super::no_outside_refs::repo().join(HAND_ONLY[0].0)).is_file(),
-        "手跑表里那份文件还在"
+        Path::new(&super::no_outside_refs::repo().join(RIG_DEVICE_TEST)).is_file(),
+        "要台架的那份设备测还在"
     );
 }

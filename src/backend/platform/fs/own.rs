@@ -162,14 +162,16 @@ impl Own {
     }
 }
 
-/// **订阅号凭据的窄句柄**：一个号的配置目录里那一份凭据文件 ＋ 那一家续期时拿的两把 `mkdir` 锁目录（配置目录里一把 · 旁边一把）。
-/// 能写的只有这三处：整份原子写那份文件（要配置目录的跨进程锁）· 建 / 删那两把锁目录。配置目录本身与里面别的文件一个都碰不到。
+/// **订阅号凭据的窄句柄**：一个号的配置目录里那一份凭据文件 ＋ 那一家写它、续它时拿的几把 `mkdir` 锁目录
+/// （续期：配置目录里一把 · 旁边一把；整份写：配置目录里一把；续某一条 MCP 登录：配置目录里按那一条起名的一把）。
+/// 能写的只有这几处：整份原子写那份文件（要配置目录的跨进程锁）· 建 / 删那几把锁目录。配置目录本身与里面别的文件一个都碰不到。
 /// 只能由 [`Own::account_creds`] 造（写自家状态的句柄才铸得出它）；名字由登记那一家的那一形给（一段名字，不许带分隔符）。
 pub(crate) struct AccountCreds {
     dir: PathBuf,
     file: PathBuf,
     inside: PathBuf,
     beside: Option<PathBuf>,
+    write: Option<PathBuf>,
 }
 
 /// 配置目录的跨进程锁（[`AccountCreds::lock`]）：写那份凭据要它。
@@ -177,13 +179,17 @@ pub(crate) struct CredsLock {
     _held: crate::platform::lock::DirLock,
 }
 
-/// 续期那两把锁目录里的哪一把。
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// 那几把锁目录里的哪一把。
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum RenewLock {
-    /// 配置目录里那一把（`<目录>/<inside>`）。
+    /// 配置目录里那一把续期锁（`<目录>/<inside>`）。
     Inside,
-    /// 配置目录旁边那一把（`<目录><beside>`）。
+    /// 配置目录旁边那一把续期锁（`<目录><beside>`）。
     Beside,
+    /// 配置目录里那一把整份写锁（`<目录>/<write>`）。
+    Write,
+    /// 配置目录里续某一条登录时那一家拿的那一把（`<目录>/<名字>`；名字必须是一段名字）。
+    OneLogin(String),
 }
 
 /// 一段名字：非空、只一段普通名字（没有分隔符 · `..` · `.`）。
@@ -193,17 +199,18 @@ fn one_name(n: &str) -> bool {
 }
 
 impl Own {
-    /// 铸一个号的凭据窄句柄：`dir` 是那个号的配置目录，`file` / `inside` 是那一家登记的凭据文件名与里面那把锁的名字（一段名字），
-    /// `beside` 是旁边那把锁接在目录名后面的后缀（不许带分隔符）。名字不合 ⇒ 拒。
+    /// 铸一个号的凭据窄句柄：`dir` 是那个号的配置目录，`file` / `inside` / `write` 是那一家登记的凭据文件名与里面那几把锁的名字
+    /// （一段名字），`beside` 是旁边那把锁接在目录名后面的后缀（不许带分隔符）。名字不合 ⇒ 拒。
     pub(crate) fn account_creds(
         &self,
         dir: &Path,
         file: &str,
         inside: &str,
         beside: Option<&str>,
+        write: Option<&str>,
     ) -> Result<AccountCreds, Said> {
         let bad = |n: &str| Said::from(copy_text("beOwnState.path.notRelative", &[("rel", n)]));
-        for n in [file, inside] {
+        for n in [file, inside].into_iter().chain(write) {
             if !one_name(n) {
                 return Err(bad(n));
             }
@@ -222,6 +229,7 @@ impl Own {
                 s.push(sfx);
                 PathBuf::from(s)
             }),
+            write: write.map(|n| dir.join(n)),
         })
     }
 }
@@ -232,11 +240,13 @@ impl AccountCreds {
         &self.file
     }
 
-    /// 那一把锁目录在哪（读它的修改时刻用；旁边那把没登记 ⇒ `None`）。
-    pub(crate) fn lock_path(&self, which: RenewLock) -> Option<&Path> {
+    /// 那一把锁目录在哪（读它的修改时刻用；没登记 · 名字不是一段名字 ⇒ `None`）。
+    pub(crate) fn lock_path(&self, which: &RenewLock) -> Option<PathBuf> {
         match which {
-            RenewLock::Inside => Some(&self.inside),
-            RenewLock::Beside => self.beside.as_deref(),
+            RenewLock::Inside => Some(self.inside.clone()),
+            RenewLock::Beside => self.beside.clone(),
+            RenewLock::Write => self.write.clone(),
+            RenewLock::OneLogin(n) => one_name(n).then(|| self.dir.join(n)),
         }
     }
 
@@ -247,8 +257,13 @@ impl AccountCreds {
         })
     }
 
-    /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`。
-    pub(crate) fn make_lock(&self, which: RenewLock) -> std::io::Result<bool> {
+    /// 建那一把锁目录：建成 ⇒ `true`（持有）；已在 ⇒ `false`；那一把没登记 ⇒ `false`；名字不是一段名字 ⇒ `Err`。
+    pub(crate) fn make_lock(&self, which: &RenewLock) -> std::io::Result<bool> {
+        if let RenewLock::OneLogin(n) = which {
+            if !one_name(n) {
+                return Err(std::io::Error::from(std::io::ErrorKind::InvalidInput));
+            }
+        }
         let Some(p) = self.lock_path(which) else {
             return Ok(false);
         };
@@ -260,7 +275,7 @@ impl AccountCreds {
     }
 
     /// 删那一把锁目录（只删空目录）。
-    pub(crate) fn drop_lock(&self, which: RenewLock) -> std::io::Result<()> {
+    pub(crate) fn drop_lock(&self, which: &RenewLock) -> std::io::Result<()> {
         match self.lock_path(which) {
             Some(p) => std::fs::remove_dir(p),
             None => Ok(()),
@@ -368,7 +383,7 @@ impl std::os::fd::AsFd for DiagFile {
 pub(crate) const PRIVATE_DIR_MODE: u32 = 0o700;
 
 /// 建**一层**目录、建的那一下就是 0700（unix：权限位随创建一起生效，没有「先按 umask 建出来再收窄」的那一段）；已在的不动。
-/// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 的本体；文件管理面建暂存区那一处（第三层，下一刀搬）也直接用它。
+/// 非 unix：照常建（目录的 ACL 按父目录继承）。[`Own::ensure_dir`] 的本体；文件管理面建暂存区那一处（`Face::make_dir_private`）也是它。
 pub(crate) fn create_dir_private(dir: &Path) -> std::io::Result<()> {
     let mut b = std::fs::DirBuilder::new();
     #[cfg(unix)]

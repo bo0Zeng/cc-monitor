@@ -149,8 +149,8 @@
       "scrollback_lines": 0
     },
     "codes": [
-      "bad_target",
       "bad_args",
+      "bad_target",
       "not_known",
       "ambiguous",
       "no_tmux",
@@ -190,8 +190,8 @@
       }
     ],
     "codes": [
-      "bad_target",
       "bad_args",
+      "bad_target",
       "no_tmux",
       "no_server",
       "no_such_session",

@@ -3,6 +3,24 @@
 use super::*;
 use std::cell::RefCell;
 
+/// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`）。
+fn wired<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &Value,
+    f: impl FnOnce(&R) -> Result<T, CmdErr>,
+) -> Result<Value, CmdErr> {
+    let req: R = serde_json::from_value(args.clone()).map_err(|e| bad(&e.to_string()))?;
+    f(&req).map(|t| serde_json::to_value(t).unwrap())
+}
+fn where_(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+    wired(args, |r| super::where_(r, d))
+}
+fn stop(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+    wired(args, |r| super::stop(r, d))
+}
+fn start(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+    wired(args, |r| super::start(r, d))
+}
+
 /// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
 fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
     let library = || {
@@ -97,14 +115,19 @@ impl Rig {
                 .push(format!("record {sid} {dir:?}"));
             Ok((!self.gone.contains(&sid), "/root/x".to_string()))
         };
-        let kill = |name: &str, sid: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
+        let kill = |name: &str,
+                    sid: &str|
+         -> Result<
+            crate::control::cc_bus::BusNote,
+            crate::stream::inbound::spec::Fail,
+        > {
             self.calls.borrow_mut().push(format!("kill {name} {sid}"));
             match self.kill_err {
                 Some(c) => Err(crate::stream::inbound::spec::Fail::new(
                     c,
                     "said".to_string(),
                 )),
-                None => Ok(json!({ "removed": [], "failed": [], "unread": null })),
+                None => Ok(crate::control::cc_bus::BusCleanup::default().note()),
             }
         };
         let send_into =
@@ -272,10 +295,10 @@ fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
         "launcher": "claude",
         "defaultLauncher": "claude",
     });
-    with_accounts(|f| super::super::launch_render::answer_cli(&req, f)).unwrap()["cmd"]
-        .as_str()
+    let req = serde_json::from_value(req).unwrap();
+    with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
-        .to_string()
+        .cmd
 }
 
 /// 单个「在 tmux 里 Resume」那一行（`launch-render-cli`，建进 tmux、打 sid 标记、带 cwd）。
@@ -291,10 +314,10 @@ fn single_tmux_line(sid: &str, name: &str, account: Value) -> String {
         "launcher": "claude",
         "defaultLauncher": "claude",
     });
-    with_accounts(|f| super::super::launch_render::answer_cli(&req, f)).unwrap()["cmd"]
-        .as_str()
+    let req = serde_json::from_value(req).unwrap();
+    with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
-        .to_string()
+        .cmd
 }
 
 #[test]
@@ -486,7 +509,7 @@ fn a_window_start_renders_what_the_single_item_renders() {
     let out = rig.run(|d| start(&args, d)).unwrap();
     let single = with_accounts(|f| {
         super::super::launch_render::answer_local(
-            &json!({
+            &serde_json::from_value(json!({
                 "agent": "claude",
                 "action": { "kind": "resume", "sid": A },
                 "cwd": "/w/proj",
@@ -494,12 +517,13 @@ fn a_window_start_renders_what_the_single_item_renders() {
                 "account": { "kind": "base" },
                 "tmuxName": "proj-cc-2",
                 "defaultLauncher": "claude",
-            }),
+            }))
+            .unwrap(),
             f,
         )
     })
     .unwrap();
-    assert_eq!(out["results"][0]["cmd"], single["cmd"]);
+    assert_eq!(out["results"][0]["cmd"], single.cmd);
     assert_eq!(out["results"][0]["session"], "proj-cc-2");
 }
 
@@ -537,7 +561,9 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
     let record =
         |_: &str, _: Option<&str>| -> Result<(bool, String), String> { Ok((true, String::new())) };
     // 杀那一下真起一发：先留个记号、再卡住（一发自己的期限是兜底上限的两倍、睡得更久 ⇒ 总期限不生效就撞下面那道）。
-    let kill = |name: &str, _: &str| -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let kill = |name: &str,
+                _: &str|
+     -> Result<crate::control::cc_bus::BusNote, crate::stream::inbound::spec::Fail> {
         let mark = dir.join(name);
         Child::new("sh")
             .args([
@@ -549,7 +575,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
                 ),
             ])
             .run(Deadline::secs(2 * guard_core::wall::CEILING_SECS))
-            .map(|_| json!({}))
+            .map(|_| crate::control::cc_bus::BusCleanup::default().note())
             .map_err(|e| e.into_cmd_err("kill_failed", |e| e.to_string()).into())
     };
     let send_into =
@@ -835,7 +861,14 @@ impl crate::guard_support::Shaped for Batched {
             said: Some("x".into()),
             copy_detail: "y".into(),
             session: Some("proj-cc".into()),
-            bus: Some(serde_json::json!({ "removed": 1 })),
+            bus: Some(
+                crate::control::cc_bus::BusCleanup {
+                    removed: vec!["p_cc".into()],
+                    failed: vec![("r_cc".into(), "gone".into())],
+                    unread: None,
+                }
+                .note(),
+            ),
             cmd: Some("ccm --resume s-1".into()),
             account: Some(launched_sample()),
             unavailable: Some(AccountUnavailable {

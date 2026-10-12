@@ -243,7 +243,7 @@ class SessionViewModel(
             val ts = terminalSessionFor(shell)
             created = ts
             // 这次连接若已被取代（重连取消了本协程）或已离屏，抛 CancellationException，由下方 catch 关掉刚建的 ts。
-            // sshj 的阻塞 IO 不及时响应取消，不显式守门的话，旧的在途连接会覆盖 session / uiState。
+            // 阻塞 IO 不及时响应取消，不显式守门的话，旧的在途连接会覆盖 session / uiState。
             coroutineContext.ensureActive()
             session = ts
             shellOpenedOn = conn // 断因判定的基准
@@ -316,7 +316,7 @@ class SessionViewModel(
 
     /**
      * 建终端会话并把 [shell] 交给它持有（`remoteChannel`），会话 close 时在后台关掉通道。
-     * 只关 input 不够：sshj 的 ChannelInputStream.close 只是本地 EOF，不关通道，重连或关 tab 会留下
+     * 只关 input 不够：输入流 close 只是本地 EOF，不关通道，重连或关 tab 会留下
      * 远端 shell 和僵尸 tmux attach client。
      */
     private fun terminalSessionFor(shell: ShellChannel): TerminalSession =

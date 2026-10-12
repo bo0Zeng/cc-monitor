@@ -746,16 +746,21 @@ export function reasonOf(e: unknown, origin: Origin): string {
 
 // ─── 三问 ───
 
-/** **在这一份会话里找** `query`（大小写不敏感子串；`includeTools` 同全局搜索那个勾）；`skip` ＝ 跳过前几条（续下一页）。 */
+/**
+ * **在这一份会话里找** `query`（大小写不敏感子串；`includeTools` 同全局搜索那个勾）；`skip` ＝ 跳过前几条（续下一页）。
+ * `scope: "user"` ＝ 只搜用户说的（那台判，与 `history-search` 同名同义）；这时不带工具那一格（用户说的话没有工具输出）。
+ */
 export async function findInSession(
   origin: Origin,
   jsonlPath: string,
   query: string,
   includeTools: boolean,
   skip = 0,
+  scope?: "user",
 ): Promise<FindResult> {
   try {
-    const body = jsonBody(skip > 0 ? { path: jsonlPath, query, include_tools: includeTools, limit: FIND_LIMIT, skip } : { path: jsonlPath, query, include_tools: includeTools, limit: FIND_LIMIT });
+    const which = scope ? { scope } : { include_tools: includeTools };
+    const body = jsonBody(skip > 0 ? { path: jsonlPath, query, ...which, limit: FIND_LIMIT, skip } : { path: jsonlPath, query, ...which, limit: FIND_LIMIT });
     const budget = budgetWithin(READ_BUDGET_MS);
     const reply = await chan.call(origin, "history-find", body, budget);
     const { total, hits } = decodeFind(readJson(reply));

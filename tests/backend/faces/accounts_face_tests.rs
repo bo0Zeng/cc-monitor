@@ -318,9 +318,10 @@ fn init_moves_the_identity_links_the_rest_and_writes_the_manifest_and_alias() {
     assert_eq!(
         accts[0],
         json!({ "name": "lab", "email": "first@example.test", "configDir": t.s(".cc-monitor/accounts/lab"),
-                "isDefault": true, "mode": "isolated" })
+                "isDefault": true, "mode": "isolated", "color": 0 })
     );
     assert_eq!(accts[1]["name"], "0");
+    assert_eq!(accts[1]["color"], 1, "账号 0 也分到号色");
     assert!(
         accts[1].get("configDir").is_none(),
         "账号 0 不许有 configDir 键"
@@ -1223,4 +1224,63 @@ fn end_to_end_from_an_empty_home() {
     ok(&t, "accounts-rollback", json!({}));
     assert_eq!(tree(&t.p(".cc-monitor/accounts")), before_fix);
     assert_eq!(verify(&t)["pass"], false);
+}
+
+/// ★ 号色：加号时分第一个空格（名字哈希同格的 team / lab 不同色）；删一个号别人的色不动。
+/// 旧清单（没有 `color`）由常驻那一个补一次（`colors_here`）：照库序分、写回清单；补过再调不动盘。
+#[test]
+fn account_colors_are_assigned_on_add_kept_on_remove_and_filled_in_once() {
+    let t = machine("colors");
+    ok(&t, "accounts-init", json!({ "name": "team" }));
+    ok(
+        &t,
+        "accounts-add",
+        json!({ "name": "lab", "kind": "subscription" }),
+    );
+    ok(
+        &t,
+        "accounts-add",
+        json!({ "name": "work", "kind": "subscription" }),
+    );
+    let color = |t: &Tmp, name: &str| {
+        t.manifest()["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["name"] == name)
+            .map(|a| a["color"].clone())
+            .unwrap_or(Value::Null)
+    };
+    assert_eq!(
+        [
+            color(&t, "team"),
+            color(&t, "0"),
+            color(&t, "lab"),
+            color(&t, "work")
+        ],
+        [json!(0), json!(1), json!(2), json!(3)]
+    );
+    ok(&t, "accounts-remove", json!({ "name": "lab" }));
+    assert_eq!(
+        [color(&t, "team"), color(&t, "work")],
+        [json!(0), json!(3)],
+        "删号不挪别人的色"
+    );
+    // 旧清单：把色都抹掉 ⇒ 补一次。
+    let path = ".cc-monitor/accounts/accounts.json";
+    let mut old = t.manifest();
+    for a in old["accounts"].as_array_mut().unwrap() {
+        a.as_object_mut().unwrap().remove("color");
+    }
+    t.write(path, &old.to_string());
+    crate::accounts::manage::wire::colors_here(&HomeDoor(t.0.clone()));
+    assert_eq!(
+        [color(&t, "team"), color(&t, "work"), color(&t, "0")],
+        [json!(0), json!(1), json!(2)],
+        "照库序补：{}",
+        t.read(path)
+    );
+    let text = t.read(path);
+    crate::accounts::manage::wire::colors_here(&HomeDoor(t.0.clone()));
+    assert_eq!(t.read(path), text, "补过再调不动盘");
 }

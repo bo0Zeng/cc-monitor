@@ -24,6 +24,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
         "comms-inward",
         &[
             "copy-core",
+            // 契约 crate：机器名（`Origin` ＝ `cmd_wire::Machine`）· typed 命令的形状指纹表；不是业务。
+            "cmd-wire",
             "serde",
             "serde_json",
             "tokio",
@@ -2155,7 +2157,7 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
         "src/frontend/shell/src/sftp_pool.rs",
         &["X2"],
         &[],
-        "**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `dial/sftp.rs`、传输台 `control/transfer.rs`），\
+        "**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `ssh-dial/sftp.rs`、传输台 `control/transfer.rs`），\
          这份只剩中继：开单 / 起跑 / 撤原样转给本机后端，`transfer` 帧翻成窗口那几格。\
          只剩 `X2`：它给本机后端那几条**就地记账**命令的应答定了一个期限值（`CALL_BUDGET`）—— \
          期限值归宿主，而它**就是**宿主那一侧的中继，不是传输面候选 ⇒ 不圈，照实登记。",

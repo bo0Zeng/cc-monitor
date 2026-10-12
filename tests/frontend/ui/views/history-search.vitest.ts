@@ -1,13 +1,11 @@
 /**
  * 历史全文搜索（`src/frontend/ui/views/history-search.ts`）：本机与各台远端同一条路。
  *
- * 合并与远端 fan-out 从 Rust 搬来时，判据跟着它的家走（原 `tests/frontend/shell/search_tests.rs` 那一组逐条同形）。
- * 本机那一半也改问本机后端（`chan.call(LOCAL_ORIGIN, "history-search")`），monitor 内存索引删了 ⇒
- * 合并只剩「一组会话行」这一形；「本机 indexing」那两条随那一态删了。
+ * 两条都是 typed 帧命令（`callTyped`）：入参 · 回包的类型从 Rust 生成，形状由握手指纹核过 ⇒ 这里不再有逐格的解码器，
+ * 只核扇出那一半（问了哪几台 · 交给合并的是什么 · 结果原样用合并那一份）。
  * 要求：「历史 / 账号 / tmux / MCP 四个面，本机与远端走同一条代码路径」。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { ReplyUnreadable } from "../../../../src/frontend/ui/ipc/chan-caller";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -17,43 +15,17 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import {
-  decodeMerged,
-  parseSessionHitsLines,
-  searchArgs,
-  searchAllMachines,
-  type FullTextQuery,
-  type SessionHits,
-} from "../../../../src/frontend/ui/views/history-search";
+import { searchArgs, searchAllMachines, type FullTextQuery } from "../../../../src/frontend/ui/views/history-search";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
-import { chanArgsJson, chanReply, isChanCall, linesReply, NO_CHANNEL, type ChanCallArgs } from "../../../test-support/chan-fake";
+import type { SessionHits } from "../../../../src/frontend/ui/generated/SessionHits";
+import type { MachineHits } from "../../../../src/frontend/ui/generated/MachineHits";
+import { chanArgsJson, chanReply, isChanCall, NO_CHANNEL, type ChanCallArgs } from "../../../test-support/chan-fake";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
-function mk(sid: string, updatedAt: number, hitCount: number, origin?: string): SessionHits {
+/** 那台 `history-search` 答回来的一行（不带 origin）。 */
+function row(sid: string, updatedAt: number, hitCount: number): SessionHits {
   return {
-    agent: "claude",
-    sessionId: sid,
-    projectPath: "/p",
-    projectName: "p",
-    jsonlPath: `/${sid}.jsonl`,
-    title: sid,
-    updatedAt,
-    hitCount,
-    hits: [],
-    hitsTruncated: false,
-    isBg: false,
-    status: "ended",
-    can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
-    ...(origin === undefined ? {} : { origin }),
-  };
-}
-
-/** 后端 `--search` 的一行（不带 origin）。 */
-function row(sid: string, updatedAt: number, hitCount: number): string {
-  return JSON.stringify({
     agent: "claude",
     sessionId: sid,
     projectPath: "/p",
@@ -63,123 +35,68 @@ function row(sid: string, updatedAt: number, hitCount: number): string {
     updatedAt,
     hitCount,
     hits: [],
+    hitsTruncated: false,
     isBg: false,
     status: "ended",
     can: { resume: "yes", accounts: true, fork: true, delete: "yes" },
-  });
+  };
+}
+
+/** 那台 `history-search` 的回包。 */
+function searched(rows: SessionHits[], unreadable = 0, skipped: string[] = []): ArrayBuffer {
+  return chanReply({ sessions: rows, unreadable, skipped });
 }
 
 const Q: FullTextQuery = { query: "kw", includeTools: false, scope: null, afterMs: null, limit: 300 };
 
+/** 合并那一问交进来的各台行，摊平、远端添上名字（同后端 `merge_at`），`reverse` ⇒ 逆着交进来的顺序回。 */
+function mergedRows(args: ChanCallArgs, reverse: boolean): unknown[] {
+  const machines = (chanArgsJson(args) as { machines: MachineHits[] }).machines;
+  const rows = machines.flatMap((m) =>
+    m.sessions.map((s) => ({ ...s, ...(m.origin === LOCAL_ORIGIN ? {} : { origin: m.origin }), atText: "12:00", spanText: "12:00–12:00" })),
+  );
+  return reverse ? rows.reverse() : rows;
+}
+
 /** 本机后端合一份那一问的替身（按交进来的原样回，好让下面几条只看扇出那一半）。 */
 function passMerge(args: ChanCallArgs): ArrayBuffer {
-  const rows = (chanArgsJson(args) as { sessions: SessionHits[] }).sessions.map((s) => ({ ...s, atText: "12:00", spanText: "12:00–12:00" }));
+  const rows = mergedRows(args, false) as SessionHits[];
   return chanReply({ totalHits: rows.reduce((a, s) => a + s.hitCount, 0), sessionCount: rows.length, truncated: false, sessions: rows });
 }
 
 beforeEach(() => invokeMock.mockReset());
 
-
-/** 替身：本机后端合好的一份 —— 刻意**逆着**交进来的顺序回，好认出「界面用的就是它排的，不是自己排的」。 */
-function mergeReply(sent: unknown): ArrayBuffer {
-  const rows = ((sent as { sessions: SessionHits[] }).sessions ?? []).slice().reverse().map((s) => ({ ...s, atText: "12:00", spanText: "12:00–12:00" }));
-  return chanReply({
-    totalHits: 99,
-    sessionCount: rows.length,
-    truncated: true,
-    sessions: rows,
-  });
-}
-
 describe("合并问本机后端", () => {
-  it("★ 各台的会话行（远端补了 origin）一次交给本机后端合；结果原样用它的（顺序 · 计数 · truncated）", async () => {
-    let sent: unknown = null;
+  it("★ 各台的会话行按台（带那台的名字）一次交给本机后端合；结果原样用它的（顺序 · 计数 · truncated）", async () => {
+    let sent: MachineHits[] = [];
     invokeMock.mockImplementation((cmd: string, args: unknown) => {
       if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi"]);
       if (isChanCall(cmd, args, "history-search")) {
-        return Promise.resolve(linesReply([args.origin === LOCAL_ORIGIN ? row("loc", 100, 1) : row("r", 200, 2)]));
+        return Promise.resolve(searched([args.origin === LOCAL_ORIGIN ? row("loc", 100, 1) : row("r", 200, 2)]));
       }
       if (isChanCall(cmd, args, "history-search-merge")) {
         expect(args.origin, "合并问的是本机后端").toBe(LOCAL_ORIGIN);
-        sent = chanArgsJson(args);
-        return Promise.resolve(mergeReply(sent));
+        sent = (chanArgsJson(args) as { machines: MachineHits[] }).machines;
+        const rows = mergedRows(args, true);
+        return Promise.resolve(chanReply({ totalHits: 99, sessionCount: rows.length, truncated: true, sessions: rows }));
       }
       return Promise.resolve(undefined);
     });
     const got = await searchAllMachines(Q);
-    expect((sent as { sessions: SessionHits[] }).sessions.map((s) => [s.sessionId, s.origin])).toEqual([
-      ["loc", undefined],
+    expect(sent.map((m) => [m.origin, m.sessions.map((s) => s.sessionId)])).toEqual([
+      [LOCAL_ORIGIN, ["loc"]],
+      ["pi", ["r"]],
+    ]);
+    expect(got.sessions.map((s) => [s.sessionId, s.origin])).toEqual([
       ["r", "pi"],
+      ["loc", undefined],
     ]);
-    expect(got.sessions.map((s) => s.sessionId)).toEqual(["r", "loc"]);
     expect([got.totalHits, got.sessionCount, got.truncated]).toEqual([99, 2, true]);
-  });
-
-  it("本机后端回的形状不认 ⇒ 抛（不自己补、不自己排）；正控：认得的那一形照收", () => {
-    const ok = { totalHits: 1, sessionCount: 1, truncated: false, sessions: [{ ...mk("a", 1, 1, "pi"), atText: "12:00", spanText: "12:00–12:00" }] };
-    expect(decodeMerged(ok).sessions[0].origin).toBe("pi");
-    expect(decodeMerged(ok).sessions[0].atText, "行尾那一格照收合并时写好的字").toBe("12:00");
-    for (const bad of [
-      { ...ok, extra: 1 },
-      { ...ok, sessions: [mk("a", 1, 1, "pi")] },
-      { ...ok, sessionCount: 2 },
-      { ...ok, sessions: [{ sessionId: "a" }] },
-      { ...ok, sessions: [{ ...mk("a", 1, 1), origin: 3 }] },
-      null,
-    ]) {
-      expect(() => decodeMerged(bad)).toThrow(ReplyUnreadable);
-    }
-  });
-});
-
-describe("后端 `--search` 的逐行", () => {
-  it("后端那一行（camelCase，不带 origin）解得出来，并补上那台的 origin", () => {
-    const line = `{"agent":"claude","sessionId":"s9","projectPath":"/home/pi/p","projectName":"p","jsonlPath":"/home/pi/.claude/projects/p/s9.jsonl","title":"标题","updatedAt":123,"hitCount":2,"hits":[{"uuid":"u1","tsMs":5,"kind":"user","before":"b","matched":"m","after":"a"}],"isBg":false,"status":"ended","can":{"resume":"yes","accounts":true,"fork":true,"delete":"yes"}}`;
-    const [sh] = parseSessionHitsLines([line], "pi");
-    expect(sh.sessionId).toBe("s9");
-    expect(sh.hitCount).toBe(2);
-    expect(sh.hits).toHaveLength(1);
-    expect(sh.hitsTruncated, "老后端缺 hitsTruncated ⇒ false").toBe(false);
-    expect(sh.origin).toBe("pi");
-    expect([sh.status, sh.can.resume, sh.isBg]).toEqual(["ended", "yes", false]);
-    // 本机那一台：不补 origin（界面按「缺 ＝ 本机」画）。
-    const [mine] = parseSessionHitsLines([line], undefined);
-    expect("origin" in mine).toBe(false);
-  });
-
-  it("坏行跳过、不毁整次（不是 JSON / 缺字段 / 命中里有一格坏）", () => {
-    const good = `{"agent":"claude","sessionId":"a","projectPath":"/p","projectName":"p","jsonlPath":"/a.jsonl","title":"t","updatedAt":1,"hitCount":0,"hits":[],"isBg":false,"status":"ended","can":{"resume":"yes","accounts":true,"fork":true,"delete":"yes"}}`;
-    const got = parseSessionHitsLines(
-      [
-        "not json",
-        `{"sessionId":"b"}`,
-        `{"agent":"claude","sessionId":"c","projectPath":"/p","projectName":"p","jsonlPath":"/c.jsonl","title":"t","updatedAt":1,"hitCount":1,"hits":[{"uuid":"u"}]}`,
-        // 能不能恢复由那台判：缺 `can` / `status`、或 `can` 里有一格不认 ⇒ 坏行。
-        good.replace(',"status":"ended"', ""),
-        good.replace(`"resume":"yes"`, `"resume":"maybe"`),
-        good.replace(',"isBg":false', ""),
-        good,
-      ],
-      "pi",
-    );
-    expect(got.map((s) => s.sessionId)).toEqual(["a"]);
-  });
-});
-
-describe("跨语言金样：命中行（后端判据产出 `tests/__fixtures__/history-search-row.golden.json`）", () => {
-  it("每一行都收下，状态与能做什么照那台判的原样读", () => {
-    const golden = JSON.parse(readFileSync(join(__dirname, "../../../__fixtures__", "history-search-row.golden.json"), "utf8")) as { lines: string[] };
-    const got = parseSessionHitsLines(golden.lines, undefined);
-    expect(got.map((s) => [s.sessionId, s.status, s.isBg, s.can.resume, s.can.fork, s.can.delete])).toEqual([
-      ["live1", "live", false, "switch", true, "live"],
-      ["ended1", "ended", false, "yes", true, "yes"],
-      ["bg1", "ended", true, "bg", false, "yes"],
-    ]);
   });
 });
 
 describe("选项只下发后端认的那几格（本机远端同一份）", () => {
-  it("include_tools 只在真时给 · scope 只给 user/assistant · after_ms 只给正数 · limit 原样", () => {
+  it("include_tools 只在真时给 · scope 只给 user/assistant/report · after_ms 只给正数 · limit 原样", () => {
     expect(searchArgs(Q)).toEqual({ query: "kw", limit: 300 });
     expect(searchArgs({ ...Q, includeTools: true, scope: "user", afterMs: 7 })).toEqual({
       query: "kw",
@@ -197,8 +114,8 @@ describe("本机 ＋ 各台远端（都经通道）", () => {
     invokeMock.mockImplementation((cmd: string, args: unknown) => {
       if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi", "down"]);
       if (isChanCall(cmd, args, "history-search")) {
-        if (args.origin === LOCAL_ORIGIN) return Promise.resolve(linesReply([row("loc", 100, 1)]));
-        return args.origin === "pi" ? Promise.resolve(linesReply([row("r", 200, 2)])) : Promise.reject(NO_CHANNEL);
+        if (args.origin === LOCAL_ORIGIN) return Promise.resolve(searched([row("loc", 100, 1)]));
+        return args.origin === "pi" ? Promise.resolve(searched([row("r", 200, 2)])) : Promise.reject(NO_CHANNEL);
       }
       if (isChanCall(cmd, args, "history-search-merge")) return Promise.resolve(passMerge(args));
       return Promise.resolve(undefined);
@@ -231,7 +148,7 @@ describe("本机 ＋ 各台远端（都经通道）", () => {
     invokeMock.mockImplementation((cmd: string, args: unknown) => {
       if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi"]);
       if (isChanCall(cmd, args, "history-search")) {
-        return args.origin === LOCAL_ORIGIN ? Promise.reject(NO_CHANNEL) : Promise.resolve(linesReply([row("r", 1, 1)]));
+        return args.origin === LOCAL_ORIGIN ? Promise.reject(NO_CHANNEL) : Promise.resolve(searched([row("r", 1, 1)]));
       }
       if (isChanCall(cmd, args, "history-search-merge")) return Promise.resolve(passMerge(args));
       return Promise.resolve(undefined);
@@ -245,7 +162,7 @@ describe("本机 ＋ 各台远端（都经通道）", () => {
         cmd === "list_remote_mcp_origins"
           ? []
           : isChanCall(cmd, args, "history-search")
-            ? linesReply([row("loc", 1, 4)])
+            ? searched([row("loc", 1, 4)])
             : isChanCall(cmd, args, "history-search-merge")
               ? passMerge(args)
               : undefined,
@@ -266,9 +183,9 @@ describe("搜得不全要说出来（没答上的台 · 读不动的会话记录
       if (cmd === "list_remote_mcp_origins") return Promise.resolve(["pi", "down"]);
       if (isChanCall(cmd, args, "history-search")) {
         if (args.origin === LOCAL_ORIGIN)
-          return Promise.resolve(chanReply({ lines: [row("loc", 1, 1)], unreadable: 2, skipped: ["Codex"] }));
+          return Promise.resolve(searched([row("loc", 1, 1)], 2, ["Codex"]));
         return args.origin === "pi"
-          ? Promise.resolve(chanReply({ lines: [row("r", 2, 1)], unreadable: 1, skipped: ["Codex"] }))
+          ? Promise.resolve(searched([row("r", 2, 1)], 1, ["Codex"]))
           : Promise.reject(NO_CHANNEL);
       }
       if (isChanCall(cmd, args, "history-search-merge")) return Promise.resolve(passMerge(args));

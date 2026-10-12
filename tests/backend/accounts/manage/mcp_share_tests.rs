@@ -30,6 +30,7 @@ fn synced() -> Store {
         servers: one.clone(),
         base: [(dir("z"), one.clone()), (dir("b"), one)].into(),
         paused: false,
+        logins: Default::default(),
     }
 }
 

@@ -26,7 +26,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "quota-read",
         summary: "这台的额度账",
         codes: &[],
-        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("fiveHour", "「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null`"), out("names", "号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn）"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?, rows, warm}`（几格同下）。出过数的与没出过的每号都带 `rows`：那一段写好的几行 `[[{text, tone}]]`（首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今；采样那一格只写几点，哪台采的由出口写）· `warm`：开窗那一判 `{act: send|wait, at?, text}`（quota-warm 照它发一句 / 睡到 `at`）"), out("text", "读不出（`unreadable`）· 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
+        fields: &[out("accounts", "每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号"), out("candidates", "换号 · 加号那几处的候选 `{agent, account, kind}`：出过数的在前、没出过的在后，起会话时没说是哪个号的 `_` 不在里面（判断只住 `name_words::is_candidate`）；界面照它画，不另拼、不另滤"), out("detail", "只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("earliestReturn", "被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null`"), out("fiveHour", "「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null`"), out("names", "号名与语义位名的字（核心一处写，出口照它画、不认码）：`{accounts: {码: 字}, slots: {码: 字}}`；`accounts` 只列与原名不同的号（起会话时没说是哪个号的 `_`），不在表里的号就叫它自己的名字；`slots` 列 `5h` · `7d`"), out("now", "这台此刻的 unix 秒（界面算「几分钟前看到的」「还有多久重置」都按这台的钟）；回包里每个时刻（`at` · `seenAt` · `resetsAt` · `fromResetsAt` · `since`）旁边有一格 `…Text`：出口按看的那一台的时区（请求的 `tz`）写好的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年），还没到的再有一格 `…RelText`（距今 `+1h50m` · `+3d`），界面照抄、不换算；`slots[]` 每格带写好的 `text` 与 `tone`（plain · fail · warn）"), out("path", "那份文件的绝对路径（家推不出来时 `null`）"), out("reason", "只在 `unreadable` 时有：为什么读不出来；其余 `null`"), out("state", "`\"present\"`（读得懂）· `\"absent\"`（还没看到过任何回包）· `\"unreadable\"`（文件读不出来 / 家推不出来）"), out("unseen", "账号库里有、额度账上从没出过数的号：`{agent, account, kind, login, subId?, rows, warm}`（几格同下）。出过数的与没出过的每号都带 `rows`：那一段写好的几行 `[[{text, tone}]]`（首行 名 · 类型 · 标签；其余每行 键 · 值 · ↻ · 距今；采样那一格只写几点，哪台采的由出口写）· `warm`：开窗那一判 `{act: send|wait, at?, text}`（quota-warm 照它发一句 / 睡到 `at`）"), out("text", "读不出（`unreadable`）· 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`"), out("usableNow", "此刻发得出去的号（路由第 2 段）：登录拿得到、不是被拒 / 超额在兜（快满 · 数旧 · 没采样 · 上一窗已过都算）")],
         takes_input: false,
         run: Run::BlockingData(|r| crate::faces::rotation_face::answer_quota_read(&r.tz).map(Some)),
     },
@@ -217,7 +217,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // **上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
-    //   不是用户文件（判清全文）⇒ 写口登记在 `readonly_guard` 第四层，
+    //   不是用户文件（判清全文）⇒ 写经 `Own`（启动时造、经分派递进来），
     //   **只从这里一扇门进来**。远端账号页配的 key 从此落在会话跑的那台机器上。
     //   ⚠ 明文只在 `apikey-key-set` 的 `args.key` 里（帧面：长连接入方向；派生 CLI 面：stdin），
     //     **不进 argv / env / 日志**；两条的应答都只有掩码。
@@ -239,7 +239,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "accounts-list",
         summary: "账号清单",
         codes: &["bad_args", "too_large"],
-        fields: &[out("accounts", "每账号一个对象 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable, keyMasked, baseUrl, badge}`；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）"), arg("agent", "必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）"), out("meta", "`{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）"), out("notice", "「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`")],
+        fields: &[out("accounts", "每账号一个对象 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable, keyMasked, baseUrl, badge, color}`；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）；`color` ＝ 号色（`--acct-c0..c7` 第几格，账号库里的事实：加号时分第一个空格、存在清单里，`Manifest::with_colors`），界面只画它"), arg("agent", "必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）"), out("meta", "`{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）"), out("notice", "「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -479,7 +479,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 停 / 开各号之间的同步（只改共享集合那份文件里那一格；开回来那一刻同步一趟）。
     CommandSpec {
         name: "accounts-mcp-sync",
-        summary: "停 / 开各账号之间同步用户级 MCP",
+        summary: "停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）",
         codes: &["bad_args", "io_failed", "refused"],
         fields: &[out("changed", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("choices", "同 `accounts-mcp-read`"), out("conflicts", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("enabled", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("from", "同 `accounts-mcp-read`"), out("gone", "同 `accounts-mcp-read`"), out("holders", "同 `accounts-mcp-read`"), out("name", "同 `accounts-mcp-read`"), out("notes", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), arg("on", "`false` = 停；`true` = 开回来"), out("servers", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("sync", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号")],
         takes_input: true,

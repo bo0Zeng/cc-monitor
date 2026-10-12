@@ -120,12 +120,38 @@ pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
     // 60 秒：旁边那把是 proper-lockfile 的形状，持有方每 5 秒刷一次修改时刻、10 秒没刷算过期（按锁的形状推断，没核那一家的源码）；
     // 我方持锁时不刷修改时刻，最长一趟是令牌端点那一发（每次读写期限 15 秒）。取 60 秒，活着的持有方（它的、我们的）都不会被判过期。
     lock_stale_ms: 60_000,
+    // 2.1.296 起整份写凭据文件（续期写回 · MCP 登录存盘）都在 `<配置目录>/.storage-write` 的 proper-lockfile 锁里
+    // （`mkdir <配置目录>/.storage-write.lock`，过期门限 15 秒），锁里重读、只改自己那一格、临时文件 ＋ 改名。10-12 沙箱 strace 实测。
+    write_lock: Some(".storage-write.lock"),
+    write_lock_stale_ms: 15_000,
+    write_wait_ms: 20_000,
+    entries: Some(MCP_LOGINS),
     identity_file: accounts::identity_file,
     identity_in: accounts::identity_in,
     identity_of_body: accounts::identity_of_body,
     rewrite_identity: accounts::rewrite_identity,
     base_dir: accounts::shared_root_in,
 };
+
+/// MCP 登录：`.credentials.json` 的 `mcpOAuth`，键是「服务器名|定义摘要」，一条里有令牌、过期时刻与客户端登记。
+/// claude 续某一条时拿 `<配置目录>/mcp-refresh-<键里非字母数字换成 _>.lock` 的 proper-lockfile 锁（`mkdir … .lock.lock`，
+/// 过期门限 60 秒），锁里先重读盘：盘上已经是新的就直接用，否则拿盘上的刷新令牌去续（10-12 沙箱实测 2.1.296）。
+pub(crate) const MCP_LOGINS: super::EntryLogins = super::EntryLogins {
+    section: "mcpOAuth",
+    access: "accessToken",
+    refresh: "refreshToken",
+    expires_ms: "expiresAt",
+    renew_lock: mcp_renew_lock,
+    renew_lock_stale_ms: 60_000,
+};
+
+fn mcp_renew_lock(key: &str) -> String {
+    let safe: String = key
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect();
+    format!("mcp-refresh-{safe}.lock.lock")
+}
 
 /// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。
 pub(crate) const COMPACT_REQUEST: &str = "/compact";

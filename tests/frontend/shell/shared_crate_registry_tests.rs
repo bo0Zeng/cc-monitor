@@ -561,7 +561,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "不是 e2e：同上一条，要**真 sshd**（sftp 子系统起始目录钉在临时目录）＋ 编好的后端二进制。\
              触发器是读数脚本 `tests/evidence/SR1b-sftp-loopback.py --monitor`（设好 `SR1B_LOOPBACK` 按名字跑这一条，\
              核输出里那句 `SR1B-LOOPBACK-MONITOR ok`）。谁什么时候跑：改 `sftp.rs` 部署那几问 / `sftp_pool.rs` 中继 /\
-             `dial_host::RemoteFs` / 后端 `dial/sftp.rs` · `control/transfer.rs` 时，交付前跑一趟、把输出贴进报告。",
+             `dial_host::RemoteFs` / 后端 `ssh-dial/sftp.rs` · `control/transfer.rs` 时，交付前跑一趟、把输出贴进报告。",
         ),
         (
             "a_real_backend_feeds_local_lines_through_the_production_read_loop",
@@ -581,6 +581,13 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
             "不是判据，是真窗口台架：开一扇真文件窗口（生产那个 `Workspace`），帧日志写到 `CCM_FILEWIN_FRAME_LOG`、跑几秒自己关。\
              要真桌面（Windows 虚拟机 / 真机，或私有 Xvfb），外面另起一个进程模拟鼠标乱动。谁什么时候跑：查「鼠标一动就闪」那一类、\
              要在一台真 Windows 上录帧日志时，手动按全名拉起它（设好 `CCM_FILEWIN_RIG_SCENE` · `CCM_FILEWIN_RIG_SECS`）。",
+        ),
+        (
+            "without_opengl_2_the_window_still_draws_its_first_frame",
+            "虚拟机判据（`render_tests.rs`，只在 Windows 上编）：没有 OpenGL 2.0 的 Windows 桌面会话里走生产开窗那一条，窗口照样画出第一帧。\
+             CI 的 Windows 机器能不能开真窗口没核实（本仓没有一条在 Windows 上开真窗口的测试，不推送验不了），有没有 OpenGL 2.0 也不由我们定。\
+             谁什么时候跑：动了文件窗口的渲染器 / 开窗参数 / wgpu 与 eframe 的版本时，交叉编出 lib 测试程序拷到 Win11 虚拟机（没装显卡驱动）\
+             的登录桌面里按全名跑一趟，绿了把那一行贴进报告。",
         ),
         (
             "perf_rig_worker",

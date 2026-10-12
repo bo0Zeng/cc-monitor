@@ -504,7 +504,7 @@ export class AccountsSection {
       },
     });
 
-    row.append(accountAvatarEl(a.name, { size: 24 }), who, u5, u7, act, more);
+    row.append(accountAvatarEl(a.name, { size: 24, origin }), who, u5, u7, act, more);
     wrap.appendChild(row);
     const toggle = (): void => {
       if (this.open.has(key)) this.open.delete(key);

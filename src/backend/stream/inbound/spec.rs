@@ -76,6 +76,12 @@ impl Fail {
         self
     }
 
+    /// 那一句连着原话（同 [`crate::common::contract::joined`]）：交给只装一句的那一层（typed 的错误枚举）时原话不丢，投出去时由 [`Fail::new`] 拆回来。
+    /// `data` 不跟：按码定形的 `data` 由那一条自己的变体带。
+    pub(crate) fn into_said(self) -> String {
+        crate::common::contract::joined(self.message, self.raw)
+    }
+
     /// 这次失败**不成应答**、只成别处的一句（同 `Said::into_note`：原话记一行日志）。
     pub(crate) fn into_note(self) -> String {
         crate::common::said::Said::from(self).into_note()
@@ -116,7 +122,7 @@ impl Fail {
 pub(super) type BoxFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = CmdResult> + Send + 'static>>;
 /// 同 [`BoxFut`]，结局可带按码定形的 `data`。
-pub(super) type DataFut =
+pub(crate) type DataFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = Outcome> + Send + 'static>>;
 /// 异步处理器（失败可带 `data`）。
 pub(super) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
@@ -144,7 +150,80 @@ pub(crate) enum Run {
     BlockingOwn(fn(Request, &crate::platform::Own) -> Outcome),
     /// 同 [`Run::Async`]，只是要写后端自家状态：句柄按值递（交出去的 future 要 `'static`）。
     AsyncOwn(fn(Request, crate::platform::Own) -> BoxFut),
+    /// 同 [`Run::BlockingData`]，只是要改用户的文件（文件管理面）：多收一个 [`crate::platform::fs::Face`]。
+    /// 只有文件管理那一族用这一档（`readonly_guard::only_the_file_manager_commands_are_handed_the_face`）；句柄由分派那一层造了递进来。
+    BlockingFace(fn(Request, &crate::platform::fs::Face) -> Outcome),
+    /// 入参 · 回包 · 错误码都从 Rust 类型来的那一种（`typed.rs`）：阻塞还是异步由它自己那一份说。
+    Typed(super::typed::Typed),
     Builtin,
+}
+
+/// 一条登记命令交出去跑的那一份。按档分派只此一处（[`prepare`]）：分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面都经它。
+pub(crate) enum Prepared {
+    /// 真异步：交给独立 task，`cancel` 能在 await 点打断。
+    Async(Box<dyn FnOnce(Request) -> DataFut + Send>),
+    /// 同步阻塞：进阻塞池（或在调用方自己的阻塞线程上跑），开跑之后打不断。
+    Blocking(Box<dyn FnOnce(Request) -> Outcome + Send>),
+}
+
+impl Run {
+    /// 这一档开跑之后打不打得断（阻塞档打不断：hello 的 `uncancellable` 由它派生）。
+    pub(crate) fn blocking(self) -> bool {
+        matches!(
+            self,
+            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_) | Run::BlockingFace(_)
+        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..)))
+    }
+
+    /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
+    pub(crate) fn writes(self) -> bool {
+        matches!(
+            self,
+            Run::BlockingOwn(_) | Run::AsyncOwn(_) | Run::BlockingFace(_)
+        ) || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..)))
+    }
+}
+
+/// 按档把处理器装成 [`Prepared`]。`own` ＝ 调用方手里那一份写句柄；没有（文件门 · 小成品重问）⇒ 写自家状态的那几档交不出来（`None`）。
+/// `Builtin` 那几条在分派的硬臂里，这里也是 `None`。
+pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Prepared> {
+    Some(match run {
+        Run::Async(f) => Prepared::Async(Box::new(move |r| {
+            Box::pin(async move { f(r).await.map_err(Fail::from) })
+        })),
+        Run::AsyncData(f) => Prepared::Async(Box::new(f)),
+        Run::AsyncOwn(f) => {
+            let own = own?.clone();
+            Prepared::Async(Box::new(move |r| {
+                Box::pin(async move { f(r, own).await.map_err(Fail::from) })
+            }))
+        }
+        Run::Blocking(f) => Prepared::Blocking(Box::new(move |r| f(r).map_err(Fail::from))),
+        Run::BlockingData(f) => Prepared::Blocking(Box::new(f)),
+        Run::BlockingOwn(f) => {
+            let own = own?.clone();
+            Prepared::Blocking(Box::new(move |r| f(r, &own)))
+        }
+        // 文件管理那一族：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
+        Run::BlockingFace(f) => {
+            Prepared::Blocking(Box::new(move |r| f(r, &crate::platform::fs::Face::issue())))
+        }
+        Run::Typed(t) => match t.run {
+            super::typed::TypedRun::Blocking(f) => Prepared::Blocking(Box::new(f)),
+            super::typed::TypedRun::BlockingFiles(f, files) => {
+                Prepared::Blocking(Box::new(move |r| f(r, files)))
+            }
+            super::typed::TypedRun::BlockingOwn(f, files) => {
+                let own = own?.clone();
+                Prepared::Blocking(Box::new(move |r| f(r, files, &own)))
+            }
+            super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
+            super::typed::TypedRun::AsyncFiles(f, files) => {
+                Prepared::Async(Box::new(move |r| f(r, files)))
+            }
+        },
+        Run::Builtin => return None,
+    })
 }
 
 /// 载荷字段的向：请求里的（`args`）· 应答里的（`data`）· 两边都有。
