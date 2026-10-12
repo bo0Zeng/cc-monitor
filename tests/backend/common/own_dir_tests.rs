@@ -7,11 +7,13 @@
 //! | # | 判据 | 形状 |
 //! |---|---|---|
 //! | O1 | 新建 ⇒ 0700；已在的 0755 ⇒ 仍 0755；父目录不在 ⇒ 照实报错 | 真目录，两向 |
-//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`own_dir.rs::ensure_private_dir` · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
+//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`platform/fs/own.rs::create_dir_private`（`Own::ensure_dir` 的本体） · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
 //! | O3 | 七个调用方（六份第四层 ＋ 暂存区；凭据与历史注解那一层就是数据目录 `~/.cc-monitor`）各经它恰好一处；远端那一处用的是同一个权限位常量 | 文本 |
 
 #[cfg(unix)]
 use super::*;
+#[cfg(unix)]
+use std::path::Path;
 
 #[test]
 #[cfg(unix)]
@@ -22,16 +24,16 @@ fn o1_born_private_existing_left_alone_missing_parent_refused() {
     std::fs::remove_dir_all(&base).ok();
     std::fs::create_dir_all(&base).expect("base");
     let fresh = base.join(".cc-monitor");
-    ensure_private_dir(&fresh).expect("建");
+    crate::platform::fs::create_dir_private(&fresh).expect("建");
     assert_eq!(mode(&fresh), PRIVATE_DIR_MODE);
-    ensure_private_dir(&fresh).expect("再建一次（已在）不算错");
+    crate::platform::fs::create_dir_private(&fresh).expect("再建一次（已在）不算错");
     let old = base.join("old");
     std::fs::create_dir(&old).expect("预置");
     std::fs::set_permissions(&old, std::fs::Permissions::from_mode(0o755)).expect("chmod");
-    ensure_private_dir(&old).expect("已在");
+    crate::platform::fs::create_dir_private(&old).expect("已在");
     assert_eq!(mode(&old), 0o755, "已在的那一层被改了权限");
     assert!(
-        ensure_private_dir(&base.join("no/such")).is_err(),
+        crate::platform::fs::create_dir_private(&base.join("no/such")).is_err(),
         "父目录不在也建出来了（只建一层）"
     );
     std::fs::remove_dir_all(&base).ok();
@@ -75,13 +77,13 @@ fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
 /// 登记表：`(文件, 函数, 建的是什么)`。第三列恰为 [`OWN_HOME`] 的那几行 = 建后端自家目录的地方。
 const OWN_HOME: &str = "后端自家目录";
 const DIR_CREATORS: &[(&str, &str, &str)] = &[
-    ("common/own_dir.rs", "ensure_private_dir", OWN_HOME),
+    ("platform/fs/own.rs", "create_dir_private", OWN_HOME),
     ("dial/sftp.rs", "make_dir", OWN_HOME),
     // 订阅号续期锁（+1）：与那个号自己的 claude 同一套 `mkdir` 锁（配置目录里那一把 · 旁边那一把），建成即持有、续完即删（`make` 建；过期的那把删了重建也走它）。
     (
-        "accounts/oauth/store.rs",
-        "make",
-        "续期锁目录（那个号的配置目录里外各一把，claude 自己续期时拿的同一套）",
+        "platform/fs/own.rs",
+        "make_lock",
+        "续期锁目录（订阅号凭据窄句柄 `AccountCreds`：那个号的配置目录里外各一把，claude 自己续期时拿的同一套）",
     ),
     (
         "control/files_write.rs",
@@ -112,9 +114,9 @@ const DIR_CREATORS: &[(&str, &str, &str)] = &[
         "用户的目录（`files-extract` 包里的目录，逐条建）",
     ),
     // `history/history_annotations.rs::lock_for_write` 那一行（数据目录那一层）也摘了 −1：
-    //   数据目录默认就是 `~/.cc-monitor` ⇒ 改走 `own_dir::ensure_private_dir`（进 O3 的调用方表）。
+    //   数据目录默认就是 `~/.cc-monitor` ⇒ 改走 `Own::ensure_dir`（进 O3 的调用方表）。
     // `accounts/upstream_select/file_face.rs::write_at` 那一行（凭据文件那一层）摘了 −1：
-    //   凭据文件住数据目录根上 ＝ `~/.cc-monitor` 本身 ⇒ 改走 `own_dir::ensure_private_dir`（进 O3 的调用方表）。
+    //   凭据文件住数据目录根上 ＝ `~/.cc-monitor` 本身 ⇒ 改走 `Own::ensure_dir`（进 O3 的调用方表）。
 ];
 
 #[test]
@@ -142,16 +144,16 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
     want.sort();
     assert_eq!(
         found, want,
-        "后端生产段建目录的地方与登记表对不上 —— 新长出来的那一处若建的是 `~/.cc-monitor` 一族，改走 `own_dir::ensure_private_dir`"
+        "后端生产段建目录的地方与登记表对不上 —— 新长出来的那一处若建的是 `~/.cc-monitor` 一族，改走 `Own::ensure_dir`"
     );
     let home: Vec<&str> = DIR_CREATORS
         .iter()
         .filter(|(_, _, what)| *what == OWN_HOME)
-        .map(|(f, n, _)| if *f == "common/own_dir.rs" { *n } else { *f })
+        .map(|(f, n, _)| if *f == "platform/fs/own.rs" { *n } else { *f })
         .collect();
     assert_eq!(
         home,
-        vec!["ensure_private_dir", "dial/sftp.rs"],
+        vec!["create_dir_private", "dial/sftp.rs"],
         "建后端自家目录的只该是那个函数（本机）＋ 远端部署那一处"
     );
     // 正控：数法认得出合成语料里多出来的一处。
@@ -162,6 +164,16 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
     assert_eq!(planted, vec![("x.rs".to_string(), "sneaky".to_string())]);
 }
 
+/// 搬上 `Own` 的那几份（第二刀逐份搬，搬一份挪一行）。
+const MOVED_TO_OWN: &[&str] = &[
+    "assets/asset_catalog.rs",
+    "assets/skill_ledger.rs",
+    "history/history_annotations.rs",
+    "control/exit_policy.rs",
+    "relay/key.rs",
+    "accounts/upstream_select/file_face.rs",
+];
+
 #[test]
 fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     let src = |p: &str| {
@@ -169,22 +181,20 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
             &std::fs::read_to_string(crate::guard_support::src_root().join(p)).expect("读"),
         )
     };
-    for f in [
-        "control/exit_policy.rs",
-        "assets/asset_catalog.rs",
-        "relay/key.rs",
-        "assets/skill_ledger.rs",
-        "control/files_commit.rs",
-        // +2：凭据文件与历史注解那一层都是数据目录（默认 `~/.cc-monitor`）。
-        "accounts/upstream_select/file_face.rs",
-        "history/history_annotations.rs",
-    ] {
+    // 暂存区那两层（第三层，下一刀搬上文件管理面的句柄）：直接经 `platform/fs` 那一个带权限位建目录的函数，恰好一处。
+    assert_eq!(
+        src("control/files_commit.rs")
+            .matches("crate::platform::fs::create_dir_private(")
+            .count(),
+        1,
+        "暂存区建目录不是经 `platform::fs::create_dir_private` 恰好一处"
+    );
+    // 已搬上 `Own` 的（只读只读护栏第二刀逐份搬）：建那一层经 `Own::ensure_dir` 恰好一处。
+    for f in MOVED_TO_OWN {
         assert_eq!(
-            src(f)
-                .matches("crate::common::own_dir::ensure_private_dir(")
-                .count(),
+            src(f).matches(".ensure_dir(").count(),
             1,
-            "{f} 建自家目录不是经 own_dir 恰好一处"
+            "{f} 建自家目录不是经 `Own::ensure_dir` 恰好一处"
         );
     }
     let sftp = src("dial/sftp.rs");

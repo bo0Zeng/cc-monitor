@@ -34,6 +34,11 @@ pub fn body_now(topic: Topic, key: Option<&str>, tz: &crate::Tz) -> Option<serde
     match spec.run {
         Run::Blocking(f) => f(req).ok().flatten(),
         Run::BlockingData(f) => f(req).ok().flatten(),
-        Run::Async(_) | Run::AsyncData(_) | Run::Builtin => None,
+        // 写自家状态的那几条不是读，不拿来算小成品。
+        Run::Async(_)
+        | Run::AsyncData(_)
+        | Run::AsyncOwn(_)
+        | Run::BlockingOwn(_)
+        | Run::Builtin => None,
     }
 }

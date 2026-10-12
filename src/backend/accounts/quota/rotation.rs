@@ -11,6 +11,7 @@ pub(crate) mod doc;
 pub(crate) mod migrate;
 
 use crate::common::said::Said;
+use crate::platform::fs::{Own, Ro, Stamp};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -882,7 +883,12 @@ pub(crate) fn path_now() -> Option<PathBuf> {
 
 /// 第一版换形前的原文留在哪：`rotation.json.v1`。
 pub(crate) fn v1_backup_of(path: &Path) -> PathBuf {
-    path.with_file_name(format!("{FILE_NAME}.v1"))
+    path.with_file_name(v1_name())
+}
+
+/// 那份原文的文件名（与 [`FILE_NAME`] 同一层）。
+fn v1_name() -> String {
+    format!("{FILE_NAME}.v1")
 }
 
 /// 读一次盘。三态：没有（没动过）/ 读得懂 / 读不懂（不覆盖）。
@@ -893,18 +899,6 @@ const MAX_BYTES: u64 = 16 << 20;
 
 pub(crate) fn read_at(path: &Path) -> Read {
     crate::common::own_state::read_json(path, MAX_BYTES)
-}
-
-/// 盘上那一份的戳：改动时刻 · 长度 · inode（每次写都是换名落盘 ⇒ 新 inode）。
-type Stamp = (std::time::SystemTime, u64, u64);
-
-fn stamp(p: &Path) -> Option<Stamp> {
-    let m = std::fs::metadata(p).ok()?;
-    #[cfg(unix)]
-    let ino = std::os::unix::fs::MetadataExt::ino(&m);
-    #[cfg(not(unix))]
-    let ino = 0;
-    Some((m.modified().ok()?, m.len(), ino))
 }
 
 /// 盘上那一份 ＋ 一份缓存（盘上的戳变了才重读）。`path = None` ⇒ 家推不出来，只在内存里。
@@ -938,7 +932,7 @@ impl RotationStore {
             let Some(p) = self.path.as_deref() else {
                 return g.1.clone();
             };
-            let s = stamp(p);
+            let s = Ro::stamp(p);
             if s.is_some() && s == g.0 {
                 return g.1.clone();
             }
@@ -980,7 +974,7 @@ impl RotationStore {
 
     /// 在跨进程锁里读盘 → 改 → 原子写回 → 缓存跟上；改到的会话各响一下（[`changes`]）。读不懂的那一份不覆盖。
     /// 外面只经两扇门进来：中转那一路（[`relay_change`]）与帧面那一路（[`face_change`]）。
-    fn change<R>(&self, f: impl FnOnce(&mut Book) -> R) -> Result<R, Said> {
+    fn change<R>(&self, own: &Own, f: impl FnOnce(&mut Book) -> R) -> Result<R, Said> {
         let mut g = self.cache.lock().unwrap_or_else(|e| e.into_inner());
         let (r, before, after) = match self.path.as_deref() {
             None => {
@@ -989,8 +983,8 @@ impl RotationStore {
                 (r, before, g.1.clone())
             }
             Some(path) => {
-                let (r, before, after) = write_locked(path, false, f)?;
-                g.0 = stamp(path);
+                let (r, before, after) = write_locked(own, false, f)?;
+                g.0 = Ro::stamp(path);
                 g.1 = after.clone();
                 g.2 = None;
                 let base = seen_swap(path, g.0, &after).unwrap_or(before.clone());
@@ -1020,7 +1014,7 @@ fn seen_swap(path: &Path, st: Option<Stamp>, book: &Book) -> Option<Book> {
 
 /// 重扫一次盘：戳与上回见过的不同（别的进程写了）⇒ 重读、比对、改到的会话各响一下。第一次 ⇒ 只记下。读不懂 ⇒ 不动。
 pub(crate) fn rescan(path: &Path) {
-    let st = stamp(path);
+    let st = Ro::stamp(path);
     let known = {
         let g = seen().lock().unwrap_or_else(|e| e.into_inner());
         g.get(path).map(|(s, _)| *s)
@@ -1057,14 +1051,17 @@ fn strategies_moved(path: &Path) {
 
 /// 盯 `rotation.json` 所在的目录（只认这个文件名）与本机策略目录：别的进程写了 ⇒ [`rescan`]；策略文件变了 ⇒ 重推。
 /// 返回的那一份活着就一直盯。起的时候先记下此刻那一份（之后的改动才有得比）。
-pub(crate) fn watch(path: &Path) -> Result<crate::platform::watch_file::Watching, String> {
-    let dir = path
-        .parent()
-        .ok_or_else(|| format!("{} has no parent", path.display()))?
-        .to_path_buf();
-    crate::common::own_dir::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
-    let sdir = dir.join(super::strategy::DIR_NAME);
-    crate::common::own_dir::ensure_private_dir(&sdir).map_err(|e| e.to_string())?;
+/// 那两层目录（数据目录 · 策略目录）不在就经写句柄建。
+pub(crate) fn watch(own: &Own) -> Result<crate::platform::watch_file::Watching, String> {
+    let no_home = || copy_text("beRotation.read.noHome", &[]);
+    let root = own.root().ok_or_else(no_home)?;
+    let sub = own.path(super::strategy::DIR_NAME).map_err(|e| e.said)?;
+    let file = own.path(FILE_NAME).map_err(|e| e.said)?;
+    own.ensure_dir(&root).map_err(|e| e.to_string())?;
+    own.ensure_dir(&sub).map_err(|e| e.to_string())?;
+    let dir = root.as_path().to_path_buf();
+    let sdir = sub.as_path().to_path_buf();
+    let path = file.as_path();
     rescan(path);
     let target = path.to_path_buf();
     let sdir_for = sdir.clone();
@@ -1089,61 +1086,56 @@ pub(crate) fn watch(path: &Path) -> Result<crate::platform::watch_file::Watching
 }
 
 /// 常驻 / 流那一路的后端起来时调一次：盯这台的 `rotation.json` 与策略目录，进程活着就一直盯。盯不上只出声。
-pub(crate) fn watch_here() {
+pub(crate) fn watch_here(own: &Own) {
     static HELD: Mutex<Option<crate::platform::watch_file::Watching>> = Mutex::new(None);
-    let Some(path) = path_now() else { return };
     let mut g = HELD.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
         return;
     }
-    match watch(&path) {
+    match watch(own) {
         Ok(w) => *g = Some(w),
-        Err(e) => tracing::warn!(
-            "[rotation] 盯不上 {}：{e}（别处写的轮换要等面板重开才看得见）",
-            path.display()
-        ),
+        Err(e) => {
+            tracing::warn!("[rotation] 盯不上 {FILE_NAME}：{e}（别处写的轮换要等面板重开才看得见）")
+        }
     }
 }
 
 /// 第一版换形写回（一次）：盘上那份是第一版 ⇒ 在锁里写成第二版、原文另存 `rotation.json.v1`；已是第二版 · 没有 · 读不懂 ⇒ 不动。
 /// 只由接上了中转的那个进程起来时调（[`migrate_here`]）：那一刻旧版的中转已经让出了口，不会再有读不懂第二版的读者。
-pub(crate) fn migrate_at(path: &Path) -> Result<bool, Said> {
-    if !matches!(read_at(path), Read::Present(ref b) if b.from_v1.is_some()) {
+pub(crate) fn migrate_at(own: &Own) -> Result<bool, Said> {
+    let file = own.path(FILE_NAME)?;
+    if !matches!(read_at(file.as_path()), Read::Present(ref b) if b.from_v1.is_some()) {
         return Ok(false);
     }
-    write_locked(path, true, |_| ())?;
+    write_locked(own, true, |_| ())?;
     Ok(true)
 }
 
 /// 这台的 `rotation.json` 换形写回（[`migrate_at`]）；写不成只出声。
-pub(crate) fn migrate_here() {
-    let Some(path) = path_now() else { return };
-    match migrate_at(&path) {
-        Ok(true) => tracing::info!("[rotation] {} 换成第二版，原文留在 .v1", path.display()),
+pub(crate) fn migrate_here(own: &Own) {
+    match migrate_at(own) {
+        Ok(true) => tracing::info!("[rotation] {FILE_NAME} 换成第二版，原文留在 .v1"),
         Ok(false) => {}
-        Err(e) => tracing::warn!("[rotation] {} 换形写回不成：{}", path.display(), e.logged()),
+        Err(e) => tracing::warn!("[rotation] {FILE_NAME} 换形写回不成：{}", e.logged()),
     }
 }
 
 /// 中转那一路的写口（第一次看见会话 · 钉号 · 记一条 · 存备忘）。
 pub(crate) fn relay_change<R>(
     store: &RotationStore,
+    own: &Own,
     f: impl FnOnce(&mut Book) -> R,
 ) -> Result<R, Said> {
-    store.change(f)
+    store.change(own, f)
 }
 
 /// 帧面那一路装一份本机策略：`<家>/strategies/<id>.rhai`（目录只建这一层，整份原子写）。读不读得懂由调用方先判。
-pub(crate) fn strategy_file_write(
-    store: &RotationStore,
-    id: &str,
-    source: &str,
-) -> Result<PathBuf, Said> {
-    let dir = store
-        .strategy_dir()
-        .ok_or_else(|| Said::from(copy_text("beRotation.read.noHome", &[])))?;
-    let shown = dir.display().to_string();
-    crate::common::own_dir::ensure_private_dir(&dir).map_err(|e| {
+pub(crate) fn strategy_file_write(own: &Own, id: &str, source: &str) -> Result<PathBuf, Said> {
+    let dir = own
+        .path(super::strategy::DIR_NAME)
+        .map_err(|_| Said::from(copy_text("beRotation.read.noHome", &[])))?;
+    let shown = dir.as_path().display().to_string();
+    own.ensure_dir(&dir).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beRotation.write.failed",
@@ -1152,20 +1144,25 @@ pub(crate) fn strategy_file_write(
             &e,
         )
     })?;
-    let path = dir.join(format!("{id}.rhai"));
-    crate::common::own_state::write(&path, source.as_bytes())?;
-    Ok(path)
+    let file = dir.join(&format!("{id}.rhai"))?;
+    let held = own.lock(&dir)?;
+    own.write(&file, &held, source.as_bytes())?;
+    Ok(file.as_path().to_path_buf())
 }
 
 /// 帧面那一路删一份本机策略（只删本机策略目录里的那一份）。
-pub(crate) fn strategy_file_remove(store: &RotationStore, path: &Path) -> Result<(), Said> {
-    let inside = store
-        .strategy_dir()
-        .is_some_and(|d| path.parent() == Some(d.as_path()));
-    if !inside {
-        return Err(Said::from(copy_text("beRotation.read.noHome", &[])));
+pub(crate) fn strategy_file_remove(own: &Own, path: &Path) -> Result<(), Said> {
+    let refuse = || Said::from(copy_text("beRotation.read.noHome", &[]));
+    let dir = own.path(super::strategy::DIR_NAME).map_err(|_| refuse())?;
+    if path.parent() != Some(dir.as_path()) {
+        return Err(refuse());
     }
-    std::fs::remove_file(path).map_err(|e| {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(refuse)?;
+    let file = dir.join(name)?;
+    own.delete_file(&file).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beRotation.write.failed",
@@ -1182,9 +1179,10 @@ pub(crate) fn strategy_file_remove(store: &RotationStore, path: &Path) -> Result
 /// 帧面那一路的写口（存配置 · 改副本 · 手动调整 · 现在就换）。
 pub(crate) fn face_change<R>(
     store: &RotationStore,
+    own: &Own,
     f: impl FnOnce(&mut Book) -> R,
 ) -> Result<R, Said> {
-    store.change(f)
+    store.change(own, f)
 }
 
 /// 改到的会话各响一下：它那一格变了，或它此刻照的那份配置变了；配置表 / 默认指向变了 ⇒ 配置那条通道也响一下。
@@ -1224,15 +1222,17 @@ pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
 }
 
 fn write_locked<R>(
-    path: &Path,
+    own: &Own,
     migrate: bool,
     f: impl FnOnce(&mut Book) -> R,
 ) -> Result<(R, Book, Book), Said> {
+    let file = own.path(FILE_NAME)?;
+    let dir = own
+        .root()
+        .ok_or_else(|| Said::from(copy_text("beRotation.read.noHome", &[])))?;
+    let path = file.as_path();
     let shown = path.display().to_string();
-    let dir = path
-        .parent()
-        .ok_or_else(|| Said::from(copy_text("beRotation.write.noParent", &[("path", &shown)])))?;
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    own.ensure_dir(&dir).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beRotation.write.failed",
@@ -1241,7 +1241,7 @@ fn write_locked<R>(
             &e,
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir)?;
+    let held = own.lock(&dir)?;
     let mut before = match read_at(path) {
         Read::Absent => Book::default(),
         Read::Present(b) => b,
@@ -1264,12 +1264,14 @@ fn write_locked<R>(
     }
     if let Some(orig) = v1 {
         // 第一版换形：原文留一份（已经有了 ⇒ 不覆盖）。
-        let backup = v1_backup_of(path);
-        if !backup.exists() {
-            crate::common::own_state::write_json(&backup, &orig)?;
+        let backup = own.path(&v1_name())?;
+        if !backup.as_path().exists() {
+            let body = crate::common::own_state::json_body(backup.as_path(), &orig)?;
+            own.write(&backup, &held, &body)?;
         }
     }
-    crate::common::own_state::write_json(path, &after)?;
+    let body = crate::common::own_state::json_body(path, &after)?;
+    own.write(&file, &held, &body)?;
     Ok((r, before, after))
 }
 

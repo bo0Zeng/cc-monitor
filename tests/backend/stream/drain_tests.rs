@@ -109,6 +109,7 @@ fn d2_child_harness() {
             crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
             }),
+            crate::platform::fs::Own::for_tests(),
             crate::stream::wire::HelloFlushed::for_tests(),
         );
         let stop = shutdown_listener();

@@ -18,7 +18,7 @@ use crate::accounts::quota::rotation::{
 use crate::accounts::quota::show::{self, LoginState};
 use crate::accounts::quota::strategy::ctx::{Facts, Stint};
 use crate::agents::{IdentityCell, LoginFace, QuotaReading};
-use crate::platform::fs::Ro;
+use crate::platform::fs::{Own, Ro};
 use crate::relay::{AuthSwap, Destination, Mode, RouteKey};
 use creds_core::SecretKey;
 use std::collections::BTreeMap;
@@ -214,6 +214,7 @@ impl Hop {
     /// 订阅号此刻能用的令牌与身份；拿不到 ⇒ 原因码（那一句只进日志，不带令牌）。
     fn login(
         &self,
+        own: &Own,
         agent: &str,
         lib: &Library,
         account: &str,
@@ -224,11 +225,11 @@ impl Hop {
             .dir_of(&face, lib, account)
             .ok_or(Unready::NeedsLogin)?;
         let ep = self.endpoint(&face).ok_or(Unready::NeedsLogin)?;
-        let token = oauth::access_token(&dir, &face, &ep, now.saturating_mul(1000), account)
+        let token = oauth::access_token(own, &dir, &face, &ep, now.saturating_mul(1000), account)
             .map_err(|u| {
-                tracing::warn!("[rotate] {}", u.said(account).logged());
-                Unready::NeedsLogin
-            })?;
+            tracing::warn!("[rotate] {}", u.said(account).logged());
+            Unready::NeedsLogin
+        })?;
         let who = self
             .identity(&face, &dir, base.as_deref())
             .ok_or(Unready::NeedsLogin)?;
@@ -249,7 +250,13 @@ impl Hop {
     }
 
     /// 备好走 `account` 的这一发（起会话的号 ⇒ [`Go::Start`]）。
-    fn prepare(&self, a: &Turn<'_>, lib: &Library, account: &str) -> Result<Go, Unready> {
+    fn prepare(
+        &self,
+        own: &Own,
+        a: &Turn<'_>,
+        lib: &Library,
+        account: &str,
+    ) -> Result<Go, Unready> {
         let rewrite = |who: &str| -> Result<Option<Vec<u8>>, Unready> {
             let face = crate::agents::login_of(a.agent).ok_or(Unready::UnsureBody)?;
             match (face.rewrite_identity)(a.body, who) {
@@ -265,7 +272,7 @@ impl Hop {
                 body: rewrite("")?,
             }),
             Reach::Sub => {
-                let (token, who) = self.login(a.agent, lib, account, a.now)?;
+                let (token, who) = self.login(own, a.agent, lib, account, a.now)?;
                 Ok(Go::Sub {
                     account: account.to_string(),
                     token,
@@ -388,7 +395,7 @@ impl Hop {
     }
 
     /// 这一家有可换的订阅号登录、这一发带着会话 id ⇒ 这个会话在这台的轮换状态（第一次看见 / 换了起它的号 ⇒ 记下）。
-    fn entry(&self, a: &Turn<'_>) -> Option<(Book, SessionEntry)> {
+    fn entry(&self, own: &Own, a: &Turn<'_>) -> Option<(Book, SessionEntry)> {
         if a.sid.is_empty() || crate::agents::login_of(a.agent).is_none() {
             return None;
         }
@@ -406,7 +413,7 @@ impl Hop {
             return Some((book, s));
         }
         let base = fresh.then(|| self.baseline_of(a.agent, a.start, a.now));
-        match rotation::relay_change(&self.store, |b| {
+        match rotation::relay_change(&self.store, own, |b| {
             b.saw(a.sid, a.agent, a.start, a.now);
             if let Some(base) = &base {
                 b.rebase(a.sid, base);
@@ -428,6 +435,7 @@ impl Hop {
     #[allow(clippy::too_many_arguments)]
     fn judge(
         &self,
+        own: &Own,
         a: &Turn<'_>,
         lib: &Library,
         book: &Book,
@@ -483,7 +491,7 @@ impl Hop {
             },
             &j.strategy,
             &mut |x| {
-                self.prepare(a, lib, x).map(|g| {
+                self.prepare(own, a, lib, x).map(|g| {
                     ready = Some(g);
                 })
             },
@@ -496,6 +504,7 @@ impl Hop {
     /// 备忘 · 清热换跟着这一下写。
     fn settle(
         &self,
+        own: &Own,
         a: &Turn<'_>,
         current: &str,
         (v, ready, memo, clear_hot): (Verdict, Option<Go>, Option<serde_json::Value>, bool),
@@ -518,7 +527,7 @@ impl Hop {
         match v {
             Verdict::Stay { overage } => {
                 let r = overage.then(|| rec(current, Leave::Overage, None, from_back));
-                self.write(|b| {
+                self.write(own, |b| {
                     let mut changed = b.set_memo(a.sid, memo.clone());
                     if clear_hot {
                         changed |= b.clear_hot(a.sid);
@@ -533,7 +542,7 @@ impl Hop {
             Verdict::Switch { to, leave, pick } => {
                 let base = self.baseline_of(a.agent, &to, a.now);
                 let r = rec(&to, leave, Some(pick), from_back);
-                self.write(|b| {
+                self.write(own, |b| {
                     b.set_memo(a.sid, memo.clone());
                     if clear_hot {
                         b.clear_hot(a.sid);
@@ -547,11 +556,11 @@ impl Hop {
             }
             Verdict::Hold { back, w } => {
                 let Some((_, at)) = back else {
-                    self.write(|b| b.set_memo(a.sid, memo.clone()));
+                    self.write(own, |b| b.set_memo(a.sid, memo.clone()));
                     return None;
                 };
                 let r = rec(current, Leave::Held, None, Some(at));
-                self.write(|b| {
+                self.write(own, |b| {
                     let mut changed = b.set_memo(a.sid, memo.clone());
                     if clear_hot {
                         changed |= b.clear_hot(a.sid);
@@ -567,14 +576,14 @@ impl Hop {
     }
 
     /// 中转那一路写一下：先在内存里那一份上试，没改就不进锁、不写盘；改了才在锁里照同一个改法写。写不成只出声。
-    fn write(&self, f: impl Fn(&mut Book) -> bool) {
+    fn write(&self, own: &Own, f: impl Fn(&mut Book) -> bool) {
         let mut probe = self.store.now();
         let before = probe.clone();
         f(&mut probe);
         if probe == before {
             return;
         }
-        if let Err(e) = rotation::relay_change(&self.store, |b| {
+        if let Err(e) = rotation::relay_change(&self.store, own, |b| {
             f(b);
         }) {
             tracing::warn!("[rotate] {}", e.logged());
@@ -583,15 +592,15 @@ impl Hop {
 
     /// ★ 发之前：这个会话此刻照打开的那份配置判一次；换成了 ⇒ 走新号；停发 ⇒ 回「用满」。
     /// 钉着的号接不上了（登录过期续不上…）⇒ 回到起会话的号、记一条为什么。
-    pub(crate) fn steer(&self, a: &Turn<'_>) -> Go {
-        let Some((book, s)) = self.entry(a) else {
+    pub(crate) fn steer(&self, a: &Turn<'_>, own: &Own) -> Go {
+        let Some((book, s)) = self.entry(own, a) else {
             return Go::Start;
         };
         let lib = self.library();
         if let Some((v, ready, memo, clear, _)) =
-            self.judge(a, &lib, &book, &s, &s.current, None, &[])
+            self.judge(own, a, &lib, &book, &s, &s.current, None, &[])
         {
-            if let Some(go) = self.settle(a, &s.current, (v, ready, memo, clear)) {
+            if let Some(go) = self.settle(own, a, &s.current, (v, ready, memo, clear)) {
                 return go;
             }
         }
@@ -599,14 +608,14 @@ impl Hop {
         // 换进来时说不出的窗口，这会儿额度账上有了 ⇒ 补进这一段的基线。
         let base = self.baseline_of(a.agent, &s.current, a.now);
         if base.keys().any(|k| !s.baseline.contains_key(k)) {
-            if let Err(e) = rotation::relay_change(&self.store, |b| b.rebase(a.sid, &base)) {
+            if let Err(e) = rotation::relay_change(&self.store, own, |b| b.rebase(a.sid, &base)) {
                 tracing::warn!("[rotate] {}", e.logged());
             }
         }
         if s.current == s.start {
             return Go::Start;
         }
-        match self.prepare(a, &lib, &s.current) {
+        match self.prepare(own, a, &lib, &s.current) {
             Ok(go) => go,
             Err(_) => {
                 let rec = SwitchRecord {
@@ -623,7 +632,7 @@ impl Hop {
                     text: None,
                 };
                 let base = self.baseline_of(a.agent, &s.start, a.now);
-                if let Err(e) = rotation::relay_change(&self.store, |b| {
+                if let Err(e) = rotation::relay_change(&self.store, own, |b| {
                     if b.pin(a.sid, rec) {
                         b.rebase(a.sid, &base);
                     }
@@ -643,15 +652,17 @@ impl Hop {
         heard_from: &str,
         heard: &QuotaReading,
         tried: &[String],
+        own: &Own,
     ) -> Option<Go> {
-        let (book, s) = self.entry(a)?;
+        let (book, s) = self.entry(own, a)?;
         let lib = self.library();
         if s.current != heard_from && !tried.contains(&s.current) {
-            if let Ok(go) = self.prepare(a, &lib, &s.current) {
+            if let Ok(go) = self.prepare(own, a, &lib, &s.current) {
                 return Some(go);
             }
         }
         let judged = self.judge(
+            own,
             a,
             &lib,
             &book,
@@ -662,7 +673,7 @@ impl Hop {
         )?;
         // 一个号事实上都不能用（都被拒着）⇒ 上游那份拒绝就是真的「用满」：照记一条，原样交回（不另造一份）。
         let all_shut = matches!(judged.0, Verdict::Hold { .. }) && judged.4;
-        let go = self.settle(a, heard_from, (judged.0, judged.1, judged.2, judged.3));
+        let go = self.settle(own, a, heard_from, (judged.0, judged.1, judged.2, judged.3));
         if all_shut {
             return None;
         }
@@ -718,6 +729,7 @@ impl Hop {
     /// 帧面「现在就换」：目标号此刻接不接得上（订阅号要真拿到令牌 —— 快过期就续，续不上照实报）。
     pub(crate) fn check_target(
         &self,
+        own: &Own,
         agent: &str,
         start: &str,
         target: &str,
@@ -732,7 +744,7 @@ impl Hop {
             row,
             now,
         };
-        self.prepare(&a, &self.library(), target).map(|_| ())
+        self.prepare(own, &a, &self.library(), target).map(|_| ())
     }
 
     /// 一个号此刻卡人的窗口：那一条账 · 那个窗口在这一家的原名 · 语义位（没有 ⇒ 窗口键）· 用了多少（%）。额度账说卡在哪个窗口就取它，没说 ⇒ 用得最多的那个；没出过数 ⇒ `None`。

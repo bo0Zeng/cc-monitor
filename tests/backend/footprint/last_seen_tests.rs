@@ -11,6 +11,10 @@ impl Dir {
         std::fs::create_dir_all(&p).unwrap();
         Dir(p)
     }
+    /// 写句柄：家目录指到这个临时目录。
+    fn own(&self) -> crate::platform::fs::Own {
+        crate::platform::fs::Own::issue_at(&self.0)
+    }
     fn file(&self) -> std::path::PathBuf {
         self.0.join(".cc-monitor").join("last-seen.json")
     }
@@ -26,7 +30,7 @@ fn 记下再读回_带记下的时刻_没记过的那一样是空() {
     let d = Dir::new("rw");
     let v = json!({"meta": {"enabled": true}, "accounts": [{"name": "work"}]});
     write_at(
-        &d.file(),
+        &d.own(),
         &json!({"origin": "devbox", "kind": "accounts", "value": v}),
         1000,
     )
@@ -54,7 +58,7 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
         json!({"accounts": null, "data": null})
     );
     write_at(
-        &d.file(),
+        &d.own(),
         &json!({"origin": "devbox", "kind": "data", "value": {"home": "/h"}}),
         5,
     )
@@ -68,7 +72,7 @@ fn 文件不在或读不懂_照没记过算_写的时候整份重来() {
 #[test]
 fn 入参闭集_种类只认两样_值要是对象_太大的不收() {
     let d = Dir::new("args");
-    let code = |a: serde_json::Value| write_at(&d.file(), &a, 1).unwrap_err().code;
+    let code = |a: serde_json::Value| write_at(&d.own(), &a, 1).unwrap_err().code;
     assert_eq!(
         code(json!({"origin": "devbox", "kind": "ext", "value": {}})),
         "bad_args"
@@ -95,7 +99,7 @@ fn 台数封顶_超了先丢最久没更新的那台() {
     let d = Dir::new("cap");
     for i in 0..=MAX_ORIGINS {
         write_at(
-            &d.file(),
+            &d.own(),
             &json!({"origin": format!("m{i}"), "kind": "data", "value": {}}),
             i as u64 + 1,
         )
@@ -120,13 +124,13 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
         ("gpu-01", "data"),
     ] {
         write_at(
-            &d.file(),
+            &d.own(),
             &json!({"origin": o, "kind": k, "value": {"x": 1}}),
             10,
         )
         .unwrap();
     }
-    write_at(&d.file(), &json!({"origin": "devbox", "forget": true}), 20).unwrap();
+    write_at(&d.own(), &json!({"origin": "devbox", "forget": true}), 20).unwrap();
     assert_eq!(
         read_at(&d.file(), &json!({"origin": "devbox"})).unwrap(),
         json!({"accounts": null, "data": null})
@@ -137,10 +141,10 @@ fn 删机器时清掉那台_两样都读不到_别的台不动_没记过的那�
     );
     let raw: serde_json::Value = serde_json::from_slice(&std::fs::read(d.file()).unwrap()).unwrap();
     assert!(raw.get("devbox").is_none(), "盘上还留着那台：{raw}");
-    write_at(&d.file(), &json!({"origin": "never", "forget": true}), 30).unwrap();
+    write_at(&d.own(), &json!({"origin": "never", "forget": true}), 30).unwrap();
     // 清就只清：带着 kind / value 的 forget 不收（两件事别混在一次里）。
     let mixed = write_at(
-        &d.file(),
+        &d.own(),
         &json!({"origin": "gpu-01", "forget": true, "kind": "data", "value": {"x": 2}}),
         40,
     );

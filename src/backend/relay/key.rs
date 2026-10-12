@@ -27,9 +27,10 @@
 //! 的 64 位小写十六进制）—— 门上与 `ccm` 插地址用的是同一个函数。漏出去的那一把推不回根钥匙。
 //! 两半的相对路径是同一个 const（共享 crate `relay_route_core::KEY_FILE_REL`），不再各写一份再对拍。
 
+use crate::platform::fs::Own;
 use comms_outward::Key;
 use copy_core::copy_text;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// 钥匙文件相对家目录的路径。值只住共享 crate `relay_route_core::KEY_FILE_REL`：
 /// `ccm` 读钥匙 / 渲 `$(cat ~/…)` 用的也是同一个 const。
@@ -49,13 +50,6 @@ const KEY_BYTES: usize = 32;
 
 /// 派生只许直通那一把时用的标签（换了它，已经发出去的只许直通地址全部作废）。
 const PASS_LABEL: &[u8] = b"ccm-relay/t";
-
-/// 这台机器上根钥匙那份文件的路径：家目录（`platform::paths::home_dir_from`）底下那一份。
-/// 取值器是注入的 ⇒ 判据喂夹具家目录，不碰进程环境。
-pub(crate) fn key_path(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
-    let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))?;
-    Some(home.join(KEY_FILE_REL))
-}
 
 /// 只许直通那一把：`HMAC-SHA256(根钥匙, "ccm-relay/t")` 的 64 位小写十六进制。门上与 `ccm` 插地址同一个函数（纯函数）。
 pub(crate) fn pass_of(full: &Key) -> Key {
@@ -80,7 +74,7 @@ pub(crate) fn pass_key_on_disk(home: &Path) -> Option<String> {
 
 /// 读回盘上那一把。不在 / 读不动 / 形状不对 ⇒ `None`（**只读**：探针与门都走这里）。
 pub(crate) fn read_key(path: &Path) -> Option<Key> {
-    std::fs::read_to_string(path)
+    crate::platform::fs::Ro::read_to_string(path)
         .ok()
         .and_then(|s| Key::from_text(&s))
 }
@@ -93,39 +87,37 @@ pub(crate) fn keyed_with_key_on_disk(home: &Path, url: &str, kind: KeyKind) -> O
     relay_route_core::keyed_base_url(url, key.expose())
 }
 
-/// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘。**本模块唯一的写口**
-/// （`readonly_guard` 第四层登记；门是 `relay/listen.rs`，只在绑上口之后调）。
-pub(crate) fn ensure_key(path: &Path) -> Result<Key, crate::common::said::Said> {
+/// 中转起来时拿钥匙：读回；没有或坏了就铸一把新的落盘（经写句柄，家目录那一根：`~/`[`KEY_FILE_REL`]）。
+/// **本模块唯一的写口**（只在中转绑上口之后调，`relay/listen.rs`）。
+pub(crate) fn ensure_key(own: &Own) -> Result<Key, crate::common::said::Said> {
+    let file = own.at_home(KEY_FILE_REL)?;
+    let dir = own.home_dir()?;
+    let path = file.as_path();
     if let Some(k) = read_key(path) {
         return Ok(k);
     }
     // 读 → 铸 → 写整段在那个目录的跨进程锁里（`platform/lock.rs`），锁里再读一次：
     //   两个进程同时发现没钥匙时，只有先拿到锁的那一个铸，后一个读回它那一把。
-    let dir = path.parent().ok_or_else(|| {
-        copy_text(
-            "beDoor.fs.noParent",
-            &[("path", &path.display().to_string())],
-        )
-    })?;
-    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。挪到拿锁之前：锁的是这个目录，它得先在。
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    // 只建那一层、建的那一下就是 0700。挪到拿锁之前：锁的是这个目录，它得先在。
+    own.ensure_dir(&dir).map_err(|e| {
         crate::common::said::Said::with_raw(
             copy_text(
                 "beDoor.fs.mkdirFailed",
                 &[
-                    ("dir", &dir.display().to_string()),
+                    ("dir", &dir.as_path().display().to_string()),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),
             &e,
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir).map_err(crate::common::said::Said::from)?;
+    let held = own.lock(&dir).map_err(crate::common::said::Said::from)?;
     if let Some(k) = read_key(path) {
         return Ok(k);
     }
     let k = mint()?;
-    write_key(path, &k)?;
+    // 报错里只有路径，**永远没有钥匙本身**。
+    own.write(&file, &held, k.expose().as_bytes())?;
     Ok(k)
 }
 
@@ -141,12 +133,6 @@ fn mint() -> Result<Key, String> {
         s.push_str(&format!("{b:02x}"));
     }
     Key::from_text(&s).ok_or_else(|| copy_text("beDoor.key.noRandom", &[]))
-}
-
-/// 落盘（经 `own_state`：出生即只给本人 → 写满 → 原子挪过去）。那一层目录由 [`ensure_key`] 在拿锁前建。
-/// 报错里只有路径，**永远没有钥匙本身**。
-fn write_key(path: &Path, k: &Key) -> Result<(), crate::common::said::Said> {
-    crate::common::own_state::write(path, k.expose().as_bytes())
 }
 
 // 判据 ＋ 同层判据共用的夹具（`TEST_KEY` · `test_key` · `seed_test_home`）都住这一份测试文件里。

@@ -85,14 +85,27 @@ impl Home {
     }
 
     fn saw(&self, ctx: &Ctx, sid: &str) {
-        rotation::face_change(&ctx.hop.store, |b| b.saw(sid, "claude-code", "a", now()))
-            .expect("write");
+        rotation::face_change(&ctx.hop.store, &own_of(&ctx), |b| {
+            b.saw(sid, "claude-code", "a", now())
+        })
+        .expect("write");
         self.live.lock().expect("lock").insert(sid.to_string());
     }
 
     fn end(&self, sid: &str) {
         self.live.lock().expect("lock").remove(sid);
     }
+}
+
+/// 写句柄：数据目录那一根同这份上下文里额度账所在的那一层（判据的家）。
+fn own_of(ctx: &Ctx) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_data_at(
+        ctx.hop
+            .quota
+            .path()
+            .and_then(std::path::Path::parent)
+            .expect("判据的额度账有落点"),
+    )
 }
 
 const S1: &str = "11111111-1111-4111-8111-111111111111";
@@ -199,7 +212,8 @@ fn saving_a_config_checks_every_cell_and_its_rev() {
     body["params"]["all_out"] = json!("maybe");
     body["accounts"][1]["params"]["slots"] =
         json!([{"at": "17:00-02:00", "line": 80}, {"at": "01:00-03:00", "line": 70}]);
-    let v = answer_config_save_with(&ctx, &json!({"config": body}), now()).expect("ok");
+    let v =
+        answer_config_save_with(&ctx, &own_of(&ctx), &json!({"config": body}), now()).expect("ok");
     assert_eq!(v["state"], "refused");
     let cells: Vec<(&str, &str)> = v["errors"]
         .as_array()
@@ -224,22 +238,30 @@ fn saving_a_config_checks_every_cell_and_its_rev() {
     body["params"]["skip"] = json!(3);
     body["params"]["all_out"] = json!("go");
     body["accounts"][1]["params"]["slots"] = json!([]);
-    let v = answer_config_save_with(&ctx, &json!({"config": body}), now()).expect("ok");
+    let v =
+        answer_config_save_with(&ctx, &own_of(&ctx), &json!({"config": body}), now()).expect("ok");
     assert_eq!(v["state"], "saved", "{v}");
     let id = v["id"].as_str().expect("id").to_string();
     assert_eq!(v["rev"], 1);
     // 重名 ⇒ 拒。
-    let v = answer_config_save_with(&ctx, &json!({"config": body}), now()).expect("ok");
+    let v =
+        answer_config_save_with(&ctx, &own_of(&ctx), &json!({"config": body}), now()).expect("ok");
     assert_eq!(v["errors"][0]["code"], "dup");
     // 撞 rev ⇒ 冲突；force ⇒ 覆盖。
     body["params"]["skip"] = json!(4);
-    let v = answer_config_save_with(&ctx, &json!({"id": id, "ifRev": 0, "config": body}), now())
-        .expect("ok");
+    let v = answer_config_save_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"id": id, "ifRev": 0, "config": body}),
+        now(),
+    )
+    .expect("ok");
     assert_eq!(v["state"], "conflict");
     assert_eq!(v["rev"], 1);
     assert!(!v["theirs"].as_array().expect("theirs").is_empty());
     let v = answer_config_save_with(
         &ctx,
+        &own_of(&ctx),
         &json!({"id": id, "ifRev": 0, "force": true, "config": body}),
         now(),
     )
@@ -249,24 +271,37 @@ fn saving_a_config_checks_every_cell_and_its_rev() {
         (Some("saved"), Some(2))
     );
     // 改名。
-    let v = answer_config_rename_with(&ctx, &json!({"id": id, "name": "白天"}), now()).expect("ok");
+    let v = answer_config_rename_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"id": id, "name": "白天"}),
+        now(),
+    )
+    .expect("ok");
     assert_eq!(v["state"], "saved");
     // 开着它的不删；本机默认不删。
     home.saw(&ctx, S1);
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": id})).expect("open");
-    let v = answer_config_delete_with(&ctx, &json!({"id": id})).expect("ok");
+    answer_session_open_with(&ctx, &own_of(&ctx), &json!({"sid": S1, "config": id})).expect("open");
+    let v = answer_config_delete_with(&ctx, &own_of(&ctx), &json!({"id": id})).expect("ok");
     assert_eq!(
         (v["state"].as_str(), v["inUse"].clone()),
         (Some("refused"), json!([S1]))
     );
-    let v = answer_config_delete_with(&ctx, &json!({"id": "c_00000001"})).expect("ok");
+    let v =
+        answer_config_delete_with(&ctx, &own_of(&ctx), &json!({"id": "c_00000001"})).expect("ok");
     assert_eq!(v["isDefault"], true);
-    answer_default_set_with(&ctx, &json!({"id": id})).expect("ok");
+    answer_default_set_with(&ctx, &own_of(&ctx), &json!({"id": id})).expect("ok");
     assert_eq!(ctx.hop.store.now().default_config, id);
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": "c_00000003"})).expect("open");
-    let v = answer_config_delete_with(&ctx, &json!({"id": "c_00000002"})).expect("ok");
+    answer_session_open_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "config": "c_00000003"}),
+    )
+    .expect("open");
+    let v =
+        answer_config_delete_with(&ctx, &own_of(&ctx), &json!({"id": "c_00000002"})).expect("ok");
     assert_eq!(v["state"], "done");
-    assert!(answer_default_set_with(&ctx, &json!({"id": "nope"})).is_err());
+    assert!(answer_default_set_with(&ctx, &own_of(&ctx), &json!({"id": "nope"})).is_err());
 }
 
 // ── 策略 ─────────────────────────────────────────────────────────────────────────
@@ -305,7 +340,8 @@ fn strategies_are_listed_added_tried_and_deleted() {
     let src = strategy::BUILTIN[2]
         .1
         .replace("format: 1,", "format: 1, name: \"我的\",");
-    let v = answer_strategy_add_with(&ctx, &json!({"id": "mine", "source": src})).expect("ok");
+    let v = answer_strategy_add_with(&ctx, &own_of(&ctx), &json!({"id": "mine", "source": src}))
+        .expect("ok");
     assert_eq!(v["state"], "done");
     let v = answer_strategies_read_with(&ctx, &json!({}), now()).expect("ok");
     let mine = v["strategies"]
@@ -320,10 +356,12 @@ fn strategies_are_listed_added_tried_and_deleted() {
         (Some("我的"), Some(false))
     );
     // 同 id ⇒ 不收；编不过 ⇒ 说第几行。
-    let v = answer_strategy_add_with(&ctx, &json!({"id": "2", "source": src})).expect("ok");
+    let v = answer_strategy_add_with(&ctx, &own_of(&ctx), &json!({"id": "2", "source": src}))
+        .expect("ok");
     assert_eq!(v["state"], "refused");
     let v = answer_strategy_add_with(
         &ctx,
+        &own_of(&ctx),
         &json!({"id": "bad", "source": "fn meta() {\n  oops(\n}"}),
     )
     .expect("ok");
@@ -361,20 +399,22 @@ fn strategies_are_listed_added_tried_and_deleted() {
     let mut body = seed_body(&ctx, "c_00000003");
     body["name"] = json!("用我的");
     body["strategy"] = json!("mine");
-    let v = answer_config_save_with(&ctx, &json!({"config": body}), now()).expect("ok");
+    let v =
+        answer_config_save_with(&ctx, &own_of(&ctx), &json!({"config": body}), now()).expect("ok");
     let cid = v["id"].as_str().expect("id").to_string();
-    let v = answer_strategy_delete_with(&ctx, &json!({"id": "mine"})).expect("ok");
+    let v = answer_strategy_delete_with(&ctx, &own_of(&ctx), &json!({"id": "mine"})).expect("ok");
     assert_eq!(
         (v["state"].as_str(), v["usedBy"].clone()),
         (Some("refused"), json!([cid.clone()]))
     );
     assert_eq!(
-        answer_strategy_delete_with(&ctx, &json!({"id": "1"})).expect("ok")["state"],
+        answer_strategy_delete_with(&ctx, &own_of(&ctx), &json!({"id": "1"})).expect("ok")["state"],
         "refused"
     );
-    answer_config_delete_with(&ctx, &json!({"id": cid})).expect("ok");
+    answer_config_delete_with(&ctx, &own_of(&ctx), &json!({"id": cid})).expect("ok");
     assert_eq!(
-        answer_strategy_delete_with(&ctx, &json!({"id": "mine"})).expect("ok")["state"],
+        answer_strategy_delete_with(&ctx, &own_of(&ctx), &json!({"id": "mine"})).expect("ok")
+            ["state"],
         "done"
     );
 }
@@ -392,7 +432,12 @@ fn a_batch_read_answers_every_session_and_marks_the_unknown() {
     let home = Home::new("batch");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": "c_00000002"})).expect("open");
+    answer_session_open_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "config": "c_00000002"}),
+    )
+    .expect("open");
     let v = answer_session_read_with(&ctx, &json!({"sids": [S1, S2]}), now()).expect("ok");
     assert_eq!(
         v["sessions"][S2],
@@ -432,9 +477,18 @@ fn manual_adjustments_never_touch_the_copy() {
     let home = Home::new("manual");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": "c_00000002"})).expect("open");
-    let v = answer_session_edit_with(&ctx, &json!({"sid": S1, "set": [{"k": "delay", "v": 5}]}))
-        .expect("ok");
+    answer_session_open_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "config": "c_00000002"}),
+    )
+    .expect("open");
+    let v = answer_session_edit_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "set": [{"k": "delay", "v": 5}]}),
+    )
+    .expect("ok");
     assert_eq!(v["dirty"], true);
     assert_eq!(v["diff"].as_array().map(Vec::len), Some(1));
     let copy = || ctx.hop.store.now().sessions[S1].config.copy.clone();
@@ -442,6 +496,7 @@ fn manual_adjustments_never_touch_the_copy() {
     assert_eq!(
         answer_session_set_with(
             &ctx,
+            &own_of(&ctx),
             &json!({"sid": S1, "place": {"account": "c", "at": 1}}),
             now()
         )
@@ -451,6 +506,7 @@ fn manual_adjustments_never_touch_the_copy() {
     assert_eq!(ctx.hop.store.now().sessions[S1].manual.place.len(), 1);
     let v = answer_session_set_with(
         &ctx,
+        &own_of(&ctx),
         &json!({"sid": S1, "place": {"account": "b", "at": 0}}),
         now(),
     )
@@ -469,14 +525,25 @@ fn manual_adjustments_never_touch_the_copy() {
     assert_eq!(r["rows"][0]["account"], "b");
     assert_eq!(r["hot"], "b");
     assert_eq!(r["config"]["dirty"], true);
-    answer_session_set_with(&ctx, &json!({"sid": S1, "refresh": true}), now()).expect("ok");
+    answer_session_set_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "refresh": true}),
+        now(),
+    )
+    .expect("ok");
     let s = ctx.hop.store.now().sessions[S1].clone();
     assert!(s.manual.is_empty() && s.memo.is_none());
     assert_eq!(copy(), before, "刷新策略不碰副本");
     // 设置窗存了同一份的新版 ⇒ 有副本的会话出 `newer`。
     let body = seed_body(&ctx, "c_00000002");
-    let v = answer_config_save_with(&ctx, &json!({"id": "c_00000002", "config": body}), now())
-        .expect("ok");
+    let v = answer_config_save_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"id": "c_00000002", "config": body}),
+        now(),
+    )
+    .expect("ok");
     assert_eq!(v["rev"], 2);
     let r = session(&ctx, S1);
     assert_eq!(r["config"]["newer"]["rev"], 2);
@@ -485,16 +552,23 @@ fn manual_adjustments_never_touch_the_copy() {
         .unwrap_or("")
         .is_empty());
     // 存：撞上（打开时 rev 1）⇒ 冲突；还原 ⇒ 副本丢掉、rev 跟上。
-    let v = answer_session_save_with(&ctx, &json!({"sid": S1, "ifRev": 1}), now()).expect("ok");
+    let v = answer_session_save_with(&ctx, &own_of(&ctx), &json!({"sid": S1, "ifRev": 1}), now())
+        .expect("ok");
     assert_eq!(v["state"], "conflict");
-    answer_session_revert_with(&ctx, &json!({"sid": S1, "toLatest": true})).expect("ok");
+    answer_session_revert_with(&ctx, &own_of(&ctx), &json!({"sid": S1, "toLatest": true}))
+        .expect("ok");
     let s = ctx.hop.store.now().sessions[S1].clone();
     assert_eq!((s.config.copy.is_none(), s.config.rev), (true, 2));
     // 另存为。
-    answer_session_edit_with(&ctx, &json!({"sid": S1, "set": [{"k": "delay", "v": 7}]}))
-        .expect("ok");
+    answer_session_edit_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "set": [{"k": "delay", "v": 7}]}),
+    )
+    .expect("ok");
     let v = answer_session_save_with(
         &ctx,
+        &own_of(&ctx),
         &json!({"sid": S1, "ifRev": 2, "as": {"name": "我的"}}),
         now(),
     )
@@ -513,20 +587,20 @@ fn a_hot_switch_pins_the_session_or_says_why_not() {
     let ctx = home.ctx();
     home.saw(&ctx, S1);
     assert_eq!(
-        serde_json::to_value(hot_one(&ctx, S1, "c", now())).expect("json"),
+        serde_json::to_value(hot_one(&ctx, &own_of(&ctx), S1, "c", now())).expect("json"),
         json!({"state": "failed", "code": "targetNeedsLogin"})
     );
     assert_eq!(
-        serde_json::to_value(hot_one(&ctx, S1, "b", now())).expect("json"),
+        serde_json::to_value(hot_one(&ctx, &own_of(&ctx), S1, "b", now())).expect("json"),
         json!({"state": "done"})
     );
     home.end(S1);
     assert_eq!(
-        serde_json::to_value(hot_one(&ctx, S1, "a", now())).expect("json"),
+        serde_json::to_value(hot_one(&ctx, &own_of(&ctx), S1, "a", now())).expect("json"),
         json!({"state": "skipped", "code": "ended"})
     );
     assert_eq!(
-        serde_json::to_value(hot_one(&ctx, S2, "b", now())).expect("json"),
+        serde_json::to_value(hot_one(&ctx, &own_of(&ctx), S2, "b", now())).expect("json"),
         json!({"state": "skipped", "code": "noRelay"})
     );
 }
@@ -536,14 +610,17 @@ fn a_hot_switch_pins_the_session_or_says_why_not() {
 fn a_preset_session_keeps_its_config_when_the_relay_first_sees_it() {
     let home = Home::new("preset");
     let ctx = home.ctx();
-    preset_with(&ctx, S1, "claude", "c_00000003", now()).expect("ok");
-    rotation::relay_change(&ctx.hop.store, |b| b.saw(S1, "claude-code", "a", now())).expect("w");
+    preset_with(&ctx, &own_of(&ctx), S1, "claude", "c_00000003", now()).expect("ok");
+    rotation::relay_change(&ctx.hop.store, &own_of(&ctx), |b| {
+        b.saw(S1, "claude-code", "a", now())
+    })
+    .expect("w");
     assert_eq!(ctx.hop.store.now().sessions[S1].config.id, "c_00000003");
     assert_eq!(
-        preset_with(&ctx, S2, "claude", "nope", now()).map_err(|e| e.0),
+        preset_with(&ctx, &own_of(&ctx), S2, "claude", "nope", now()).map_err(|e| e.0),
         Err("no_such_config")
     );
-    forget_preset_with(&ctx, S1);
+    forget_preset_with(&ctx, &own_of(&ctx), S1);
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
 }
 
@@ -580,9 +657,10 @@ fn a_broken_strategy_is_said_on_the_session() {
     let mut body = seed_body(&ctx, "c_00000002");
     body["name"] = json!("会坏");
     body["strategy"] = json!("boom");
-    let v = answer_config_save_with(&ctx, &json!({"config": body}), now()).expect("ok");
+    let v =
+        answer_config_save_with(&ctx, &own_of(&ctx), &json!({"config": body}), now()).expect("ok");
     let id = v["id"].as_str().expect("id").to_string();
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": id})).expect("open");
+    answer_session_open_with(&ctx, &own_of(&ctx), &json!({"sid": S1, "config": id})).expect("open");
     let s = session(&ctx, S1);
     assert_eq!(s["strategyError"]["kind"], "failed");
     assert!(
@@ -626,7 +704,7 @@ fn seen(ctx: &Ctx, account: &str, used_5h: f64, refused_until: Option<u64>) {
             overage: None,
         },
     };
-    ledger::record_seen(&ctx.hop.quota, "claude-code", account, r, now);
+    ledger::record_seen(&ctx.hop.quota, &own_of(ctx), "claude-code", account, r, now);
 }
 
 /// ★ 推演：此刻之后的段都是估的；到线那一段（`line`）只在策略声明了 `line` 时出；视窗起止 · 刻度带字。
@@ -635,7 +713,12 @@ fn the_plan_marks_future_segments_and_line_bars() {
     let home = Home::new("plan");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": "c_00000002"})).expect("open");
+    answer_session_open_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "config": "c_00000002"}),
+    )
+    .expect("open");
     seen(&ctx, "b", 0.95, None);
     let v = answer_plan_with(&ctx, &json!({"sid": S1, "view": "12h"}), now()).expect("ok");
     assert_eq!(v["view"], "12h");
@@ -785,7 +868,7 @@ fn quota_read_adds_the_display_state_and_follows_the_default_config_lines() {
         assert!(!text.contains(secret), "{secret} 漏进了应答");
     }
     // 本机默认换成默认配置 2（其余订阅号 90%）⇒ b 86% 不再算快满。
-    answer_default_set_with(&ctx, &json!({"id": "c_00000002"})).expect("ok");
+    answer_default_set_with(&ctx, &own_of(&ctx), &json!({"id": "c_00000002"})).expect("ok");
     assert_eq!(row(&read(), "b")["state"], "ok");
 }
 
@@ -1043,7 +1126,12 @@ fn an_unreadable_file_is_surfaced_on_the_session_and_the_last_good_one_keeps_wor
     let home = Home::new("unread-session");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": "c_00000002"})).expect("open");
+    answer_session_open_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "config": "c_00000002"}),
+    )
+    .expect("open");
     assert!(session(&ctx, S1).get("needs").is_none());
     let path = home.root.join(rotation::FILE_NAME);
     std::fs::write(&path, "{broken").expect("w");
@@ -1064,9 +1152,14 @@ fn the_plan_rows_carry_left_slots_estimate_and_far_resets() {
     let home = Home::new("plan-rows");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    answer_session_open_with(&ctx, &json!({"sid": S1, "config": "c_00000002"})).expect("open");
-    answer_session_edit_with(
+    answer_session_open_with(
         &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "config": "c_00000002"}),
+    )
+    .expect("open");
+    answer_session_edit_with(
+        &ctx, &own_of(&ctx),
         &json!({"sid": S1, "set": [{"acct": "b", "k": "slots", "v": [{"at": "00:00-12:00", "line": 80}, {"at": "12:00-24:00", "line": 0}]}]}),
     )
     .expect("edit");
@@ -1092,8 +1185,22 @@ fn the_plan_rows_carry_left_slots_estimate_and_far_resets() {
         ],
         overage: None,
     };
-    ledger::record_seen(&ctx.hop.quota, "claude-code", "a", r(0.50), n - 600);
-    ledger::record_seen(&ctx.hop.quota, "claude-code", "a", r(0.56), n);
+    ledger::record_seen(
+        &ctx.hop.quota,
+        &own_of(&ctx),
+        "claude-code",
+        "a",
+        r(0.50),
+        n - 600,
+    );
+    ledger::record_seen(
+        &ctx.hop.quota,
+        &own_of(&ctx),
+        "claude-code",
+        "a",
+        r(0.56),
+        n,
+    );
     let v = answer_plan_with(&ctx, &json!({"sid": S1}), n).expect("ok");
     let row = |a: &str| {
         v["rows"]

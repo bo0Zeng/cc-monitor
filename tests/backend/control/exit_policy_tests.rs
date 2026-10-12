@@ -65,7 +65,8 @@ fn three_states_are_told_apart() {
 fn every_read_goes_to_disk() {
     let d = temp_dir("fresh");
     let f = d.join(DIR_NAME).join(FILE_NAME);
-    write_at(&f, false).expect("写 false");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    write_at(&own, false).expect("写 false");
     assert_eq!(read_at(&f), Read::Chosen(false));
     std::fs::write(&f, "{\"killOnExit\":true}").unwrap();
     assert_eq!(
@@ -82,10 +83,11 @@ fn every_read_goes_to_disk() {
 fn the_writer_is_atomic_creates_its_own_dir_and_leaves_nothing_behind() {
     let d = temp_dir("write");
     let f = d.join(DIR_NAME).join(FILE_NAME);
+    let own = crate::platform::fs::Own::issue_at(&d);
     assert!(!f.parent().unwrap().exists(), "前提：家目录下还没有那一层");
-    write_at(&f, true).expect("第一次写（顺带建那一层目录）");
+    write_at(&own, true).expect("第一次写（顺带建那一层目录）");
     assert_eq!(read_at(&f), Read::Chosen(true));
-    write_at(&f, false).expect("第二次写（盖掉既有的）");
+    write_at(&own, false).expect("第二次写（盖掉既有的）");
     assert_eq!(read_at(&f), Read::Chosen(false));
     let tmp = f
         .parent()
@@ -106,7 +108,10 @@ fn set_rejects_a_non_boolean_and_writes_nothing() {
         serde_json::json!({ "killOnExit": "true" }),
         serde_json::json!({ "killOnExit": 1 }),
     ] {
-        let err = answer_set(&bad).expect_err("非布尔应当被拒");
+        let d = temp_dir("set-bad");
+        let own = crate::platform::fs::Own::issue_at(&d);
+        let err = answer_set(&bad, &own).expect_err("非布尔应当被拒");
+        assert!(!d.join(DIR_NAME).exists(), "拒了却建了目录");
         assert_eq!(err.code, "bad_args", "{bad} 应当回 bad_args");
     }
 }
@@ -328,7 +333,7 @@ fn the_module_has_exactly_one_commit_point() {
         "../../../src/backend/control/exit_policy.rs"
     ));
     for (needle, why) in [(
-        "own_state::write(",
+        "own.write(",
         "那一下原子写进去 —— 真正落进 `backend.json` 的**唯一**一下",
     )] {
         guard_core::find_pinned(&prod, needle).unwrap_or_else(|e| {

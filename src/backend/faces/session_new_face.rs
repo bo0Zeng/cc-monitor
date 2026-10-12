@@ -22,6 +22,7 @@ fn agent_of(args: &Value) -> &str {
 pub(crate) fn answer(
     args: &Value,
     files: super::launch_face::Files,
+    own: &crate::platform::fs::Own,
 ) -> Result<Value, session_new::Failed> {
     let home = crate::observe::history_query::agent_home();
     let fork =
@@ -30,9 +31,16 @@ pub(crate) fn answer(
     let ctx = super::rotation_face::Ctx::here();
     let sid = crate::accounts::quota::rotation::new_session_id;
     let write = |sid: &str, kind: &str, rule: &str| {
-        super::rotation_face::preset_with(&ctx, sid, kind, rule, crate::accounts::quota::now_unix())
+        super::rotation_face::preset_with(
+            &ctx,
+            own,
+            sid,
+            kind,
+            rule,
+            crate::accounts::quota::now_unix(),
+        )
     };
-    let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, sid);
+    let forget = |sid: &str| super::rotation_face::forget_preset_with(&ctx, own, sid);
     let pre = session_new::PreRotation {
         sid: &sid,
         write: &write,

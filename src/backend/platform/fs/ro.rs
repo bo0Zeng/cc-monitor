@@ -2,7 +2,7 @@
 //!
 //! 后端生产段只有 `platform/fs/` 许点名文件系统命名空间（`readonly_guard::only_the_fs_platform_module_names_the_filesystem`）；
 //! 别处读盘一律经这里。`Ro` 没有写方法，[`Ro::open`] 交回的 [`RoFile`] 不实现 `Write` ⇒ 拿着它写不出来。
-//! 缺一个读动词就加在这里（不跟链接地看一项 · inode 号这几样等写盘那几层搬过来时随用随加），护栏不用动。本文件点名的标准库条目由同一份护栏逐个核是读（`the_read_namespace_only_names_reads`）。
+//! 缺一个读动词就加在这里（不跟链接地看一项 · inode 号这几样等写盘那几层搬过来时随用随加），护栏不用动。本文件点名的标准库条目由同一份护栏逐个核是读（`the_fs_home_names_only_its_registered_entries`）。
 //! 平台无关的部分不认域知识（不认识账号、会话、帧）。
 
 use copy_core::copy_text;
@@ -14,6 +14,9 @@ use std::time::UNIX_EPOCH;
 // 读出来的那两种值（元数据 · 目录遍历）只装读到的东西，没有一样能写回盘；调用方不用点名它们的类型。
 type Metadata = std::fs::Metadata;
 type ReadDir = std::fs::ReadDir;
+
+/// 盘上一份文件的戳：改动时刻 · 长度 · inode（[`Ro::stamp`]）。
+pub(crate) type Stamp = (std::time::SystemTime, u64, u64);
 
 /// 读盘的命名空间（零大小，不用递）。方法与标准库同名同形，换法就是把 `std::fs::` 换成 `Ro::`。
 pub(crate) struct Ro;
@@ -126,6 +129,17 @@ impl Ro {
             let _ = m;
             None
         }
+    }
+
+    /// 盘上那一份的戳（[`Stamp`]）：改动时刻 · 长度 · inode（别的平台记 0）。不在 / 读不出元数据 ⇒ `None`。
+    /// 原子替换每次换一个新节点，同一纳秒里写两次也分得出 —— 缓存判「别人写过没有」用它。
+    pub(crate) fn stamp(p: &Path) -> Option<Stamp> {
+        let m = std::fs::metadata(p).ok()?;
+        #[cfg(unix)]
+        let node = std::os::unix::fs::MetadataExt::ino(&m);
+        #[cfg(not(unix))]
+        let node = 0;
+        Some((m.modified().ok()?, m.len(), node))
     }
 
     /// unix 的设备号（同一个文件系统内才相等）。别的平台 ⇒ `None`。

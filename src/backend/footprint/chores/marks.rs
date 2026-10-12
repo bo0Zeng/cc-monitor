@@ -45,7 +45,7 @@ pub(crate) fn current(path: Option<&Path>) -> Marks {
 
 /// 改一样：`{op: "decline" | "undecline", id}` · `{op: "selfPaste", rc}` · `{op: "unselfPaste"}` ⇒ 改完的那一份。
 pub(crate) fn mark_at(
-    path: &Path,
+    own: &crate::platform::fs::Own,
     args: &Value,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let bad = |d: &str| {
@@ -61,18 +61,25 @@ pub(crate) fn mark_at(
             .filter(|s| !s.is_empty())
             .map(str::to_string)
     };
-    let dir = path
-        .parent()
-        .ok_or_else(|| bad("marks path has no parent"))?;
-    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    let io =
+        |e: crate::common::said::Said| crate::stream::inbound::spec::Fail::from(("io_failed", e));
+    let dir = own.home_dir().map_err(|_| {
+        crate::stream::inbound::spec::Fail::from((
+            "io_failed",
+            copy_text("beChore.marks.noHome", &[]),
+        ))
+    })?;
+    let file = own.at_home(relay_route_core::CHORES_REL).map_err(io)?;
+    let path = file.as_path();
+    // 只建那一层、建的那一下就是 0700。
+    own.ensure_dir(&dir).map_err(|e| {
         (
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
                     "beChore.marks.mkdirFailed",
                     &[
-                        ("dir", &dir.display().to_string()),
+                        ("dir", &dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),
@@ -80,9 +87,9 @@ pub(crate) fn mark_at(
             ),
         )
     })?;
-    let _g = crate::platform::lock::hold(dir).map_err(|e| {
-        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
-    })?;
+    let held = own
+        .lock(&dir)
+        .map_err(|e| io(crate::common::said::Said::from(e)))?;
     let mut m = match read_at(path) {
         crate::common::own_state::Read::Absent => Marks::default(),
         crate::common::own_state::Read::Present(m) => m,
@@ -114,15 +121,17 @@ pub(crate) fn mark_at(
             ))
         }
     }
-    crate::common::own_state::write_json(path, &m)
-        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+    let body = crate::common::own_state::json_body(path, &m).map_err(io)?;
+    own.write(&file, &held, &body).map_err(io)?;
     Ok(json!({"declined": m.declined, "selfPaste": m.self_paste, "startSkipped": m.start_skipped}))
 }
 
 /// `chores-mark`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub(crate) fn answer_mark(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let path = marks_path().ok_or(("io_failed", copy_text("beChore.marks.noHome", &[])))?;
-    mark_at(&path, args)
+pub(crate) fn answer_mark(
+    args: &Value,
+    own: &crate::platform::fs::Own,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    mark_at(own, args)
 }
 
 #[cfg(test)]

@@ -4,6 +4,7 @@
 //! 走真 socket 的那一半（403/421 与 404 真可分 · 对的钥匙真转发 · 钥匙不出现在日志 / tee / argv / env / 上游）住 `server_tests.rs` 的 `rk1_*` 那几条。
 
 use super::*;
+use std::path::PathBuf;
 
 /// 判据用的那一把（形状合法、一眼认得出是测试值）。同层判据（`server_tests` · `host_tests` · `wire_golden`）经
 /// `key::key_tests::TEST_KEY` 取。
@@ -64,9 +65,14 @@ fn the_pass_key_is_derived_from_the_root_and_never_stored() {
 /// 起真中转的判据都要它 —— 不给的话中转会去**用户真实的家目录**里铸钥匙。
 pub(crate) fn seed_test_home(home: &Path) -> PathBuf {
     let path = home.join(KEY_FILE_REL);
-    // 那一层目录由生产段 `ensure_key` 在拿锁之前建（`write_key` 不再建）⇒ 夹具这里自己建。
+    // 夹具直接落盘（只给本人）；那一层目录这里自己建。
     std::fs::create_dir_all(path.parent().expect("钥匙路径有父目录")).expect("建夹具目录");
-    write_key(&path, &test_key()).expect("写夹具钥匙");
+    std::fs::write(&path, test_key().expose()).expect("写夹具钥匙");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).expect("只给本人");
+    }
     home.to_path_buf()
 }
 
@@ -83,12 +89,12 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
             .unwrap_or(0)
     ));
     std::fs::create_dir_all(&home).expect("建夹具家目录");
-    let get = |k: &str| (k == "HOME").then(|| home.display().to_string());
-    let p = key_path(&get).expect("有 HOME 就有路径");
-    assert_eq!(p, home.join(".cc-monitor").join("relay-key"));
+    // 写句柄的家目录那一根就是这个夹具家目录：钥匙落在它底下的 `.cc-monitor/relay-key`。
+    let own = crate::platform::fs::Own::issue_at(&home);
+    let p = home.join(".cc-monitor").join("relay-key");
     assert!(!p.exists(), "夹具家目录一开始不该有钥匙");
 
-    let first = ensure_key(&p).expect("第一次铸");
+    let first = ensure_key(&own).expect("第一次铸");
     let on_disk = std::fs::read_to_string(&p).expect("读回");
     assert_eq!(on_disk, first.expose(), "盘上就是那一把");
     assert!(
@@ -102,7 +108,7 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "钥匙文件必须只给本人");
     }
-    let again = ensure_key(&p).expect("第二次");
+    let again = ensure_key(&own).expect("第二次");
     assert_eq!(
         again.expose(),
         first.expose(),
@@ -116,7 +122,7 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
         &first.expose().to_ascii_uppercase(),
     ] {
         std::fs::write(&p, junk).expect("写坏文件");
-        let fresh = ensure_key(&p).expect("坏文件 ⇒ 换一把");
+        let fresh = ensure_key(&own).expect("坏文件 ⇒ 换一把");
         assert!(
             relay_route_core::key_shape_ok(fresh.expose()),
             "换出来的形状要对"
@@ -126,9 +132,9 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     }
     // 两次铸出来的不是同一把（随机数真在转）。
     std::fs::write(&p, "").expect("清空");
-    let a = ensure_key(&p).expect("a");
+    let a = ensure_key(&own).expect("a");
     std::fs::write(&p, "").expect("清空");
-    let b = ensure_key(&p).expect("b");
+    let b = ensure_key(&own).expect("b");
     assert_ne!(a.expose(), b.expose(), "两次铸出同一把 —— 随机源是死的");
     // 临时文件都挪走了（本进程那一个临时名不在盘上）。
     let tmp = p
@@ -139,20 +145,18 @@ fn the_key_file_is_minted_once_private_and_read_back_across_restarts() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 家目录解析不出来 ⇒ 没有路径（上层据此**拒绝起**，不猜一个路径去写）。
+/// 家目录解析不出来（写句柄没有家目录那一根）⇒ 拒（上层据此**拒绝起**，不猜一个路径去写）、盘上一个字节不落。
 #[test]
-fn no_home_means_no_key_path() {
-    assert_eq!(key_path(&|_| None), None);
-    assert_eq!(
-        key_path(&|k| (k == "HOME").then(String::new)),
-        None,
-        "空 HOME == 没有"
+fn no_home_means_no_key() {
+    let data = std::env::temp_dir().join(format!("ccm-rk1-nohome-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&data);
+    std::fs::create_dir_all(&data).expect("建夹具目录");
+    assert!(ensure_key(&crate::platform::fs::Own::issue_data_at(&data)).is_err());
+    assert!(
+        !data.join(".cc-monitor").exists() && !data.join("relay-key").exists(),
+        "没有家目录也落了东西"
     );
-    assert_eq!(
-        key_path(&|k| (k == "USERPROFILE").then(|| "C:/Users/u".to_string())),
-        Some(std::path::Path::new("C:/Users/u").join(KEY_FILE_REL)),
-        "没有 HOME 退 USERPROFILE"
-    );
+    let _ = std::fs::remove_dir_all(&data);
 }
 
 /// ⑦ 钥匙文件的相对路径与钥匙形状**只住共享 crate**（`relay_route_core::KEY_FILE_REL` · `key_shape_ok`）：
@@ -177,7 +181,7 @@ fn the_key_file_and_the_key_shape_come_from_the_shared_crate() {
 #[test]
 fn the_key_files_disk_half_is_called_only_by_the_host() {
     use std::collections::BTreeMap;
-    const DISK_HALF: &[&str] = &["key_path", "read_key", "ensure_key"];
+    const DISK_HALF: &[&str] = &["read_key", "ensure_key"];
     let words_in = |prod: &str| -> BTreeMap<&'static str, usize> {
         let ident = |c: char| c.is_alphanumeric() || c == '_';
         let mut out = BTreeMap::new();
@@ -222,13 +226,10 @@ fn the_key_files_disk_half_is_called_only_by_the_host() {
             got.insert((rel.clone(), w), n);
         }
     }
-    let want = BTreeMap::from([
-        (("src/backend/relay/listen.rs".to_string(), "ensure_key"), 1),
-        (("src/backend/relay/listen.rs".to_string(), "key_path"), 1),
-    ]);
+    let want = BTreeMap::from([(("src/backend/relay/listen.rs".to_string(), "ensure_key"), 1)]);
     assert_eq!(
         got, want,
-        "钥匙读盘那一半（算路径 · 读 · 铸）只许宿主 `listen.rs` 绑上口之后调；中转只收宿主交进来的 `Key`"
+        "钥匙读盘那一半（读 · 铸）只许宿主 `listen.rs` 绑上口之后调；中转只收宿主交进来的 `Key`"
     );
     let mod_rs = std::fs::read_to_string(crate::guard_support::relay_host_root().join("mod.rs"))
         .expect("读 relay/mod.rs");

@@ -128,7 +128,7 @@ async fn a_socket_path_over_the_cap_is_refused_out_loud() {
     let base = scratch("long");
     let deep = base.join("d".repeat(SOCKET_PATH_MAX));
     std::fs::create_dir_all(&deep).unwrap();
-    match claim(&deep) {
+    match claim(&crate::platform::fs::Own::issue_data_at(&deep)) {
         Claim::Failed(why) => assert!(why.contains(&SOCKET_PATH_MAX.to_string()), "{why}"),
         Claim::Listening(..) => panic!("超长路径也绑了"),
         Claim::Held => panic!("没人攥着锁却说有"),
@@ -144,7 +144,7 @@ fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
     let home = std::env::temp_dir().join(format!("ccm-gap1-logdir-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&home);
     std::fs::create_dir_all(&home).unwrap();
-    log_dir_chain(&home).expect("逐层建");
+    log_dir_chain(&crate::platform::fs::Own::issue_at(&home)).expect("逐层建");
     for rel in [
         ".cc-monitor",
         ".cc-monitor/logs",
@@ -296,7 +296,11 @@ fn the_one_shot_supervisor_stops_politely_then_by_force() {
 fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
     use std::io::BufRead as _;
     let dh = scratch("legacy");
-    assert_eq!(retire_legacy(&dh), None, "没有旧记录也动了手");
+    assert_eq!(
+        retire_legacy(&crate::platform::fs::Own::issue_data_at(&dh)),
+        None,
+        "没有旧记录也动了手"
+    );
     let mut old = std::process::Command::new("python3")
         .args([
             "-c",
@@ -324,7 +328,8 @@ fn upgrading_retires_the_old_resident_so_the_relay_port_frees_up() {
         std::net::TcpListener::bind(("127.0.0.1", port)).is_err(),
         "前提：旧版占着那个口"
     );
-    let said = retire_legacy(&dh).expect("有旧记录却说没有");
+    let said =
+        retire_legacy(&crate::platform::fs::Own::issue_data_at(&dh)).expect("有旧记录却说没有");
     assert!(said.contains("graceful"), "{said}");
     let _ = old.wait();
     assert!(

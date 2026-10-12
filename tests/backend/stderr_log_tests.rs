@@ -23,6 +23,12 @@
 //! - 真 Windows：非 unix 臂回 `Failed`（本机没跨 target 跑）。
 
 use super::*;
+use crate::platform::fs::{DiagFile, DiagLog};
+
+/// 那份当前文件旁边那份旧的（规则住窄句柄那一处）。
+fn old_of(cur: &Path) -> PathBuf {
+    DiagLog::issue(cur.to_path_buf()).old().to_path_buf()
+}
 
 fn tmp_dir(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!("nt2-stderr-log-{tag}-{}", std::process::id()));
@@ -58,18 +64,15 @@ fn body_of(bytes: Vec<u8>) -> (bool, Vec<u8>) {
 /// 记账替身：「fd 2」指着哪份文件；写经它落到那份上。
 #[derive(Default)]
 struct FakeFd2 {
-    at: Option<std::fs::File>,
+    at: Option<DiagFile>,
     pointed: usize,
 }
 
 impl Target for FakeFd2 {
     fn len(&self) -> Option<u64> {
-        self.at
-            .as_ref()
-            .and_then(|f| f.metadata().ok())
-            .map(|m| m.len())
+        self.at.as_ref().and_then(DiagFile::len)
     }
-    fn point_at(&mut self, f: &std::fs::File) -> Result<(), String> {
+    fn point_at(&mut self, f: &DiagFile) -> Result<(), String> {
         self.at = Some(f.try_clone().map_err(|e| e.to_string())?);
         self.pointed += 1;
         Ok(())
@@ -97,7 +100,8 @@ fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
     let d = tmp_dir("roll");
     let cur = d.join("stderr.log");
     let cap = 200u64;
-    let mut r = Roller::start(cur.clone(), cap, FakeFd2::default()).expect("起不来");
+    let mut r =
+        Roller::start(DiagLog::issue(cur.clone()), cap, FakeFd2::default()).expect("起不来");
     let chunks: Vec<Vec<u8>> = (0..9u8).map(|i| vec![b'a' + i; 30]).collect();
     for c in &chunks {
         put(&mut r, c);
@@ -109,7 +113,7 @@ fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
         "盘上不是恰好当前 ＋ 旧的两份"
     );
     let cur_raw = std::fs::read(&cur).unwrap();
-    let old_raw = std::fs::read(old_path_of(&cur)).unwrap();
+    let old_raw = std::fs::read(old_of(&cur)).unwrap();
     // 检查在写之前 ⇒ 一份最多超出上限一段。
     assert!(
         cur_raw.len() as u64 <= cap + 30 && old_raw.len() as u64 <= cap + 30,
@@ -119,7 +123,7 @@ fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
     assert!(noted, "滚过之后当前那份第一行没有说明");
     let said = String::from_utf8_lossy(&cur_raw).into_owned();
     assert!(
-        said.contains(&old_path_of(&cur).display().to_string()) && said.contains("丢了"),
+        said.contains(&old_of(&cur).display().to_string()) && said.contains("丢了"),
         "说明行没说清旧的挪去了哪、再早的丢了：{said:?}"
     );
     let (_, old_body) = body_of(old_raw);
@@ -140,18 +144,20 @@ fn it_rolls_at_the_cap_and_keeps_exactly_one_old_file() {
 fn a_restart_moves_the_last_run_aside() {
     let d = tmp_dir("restart");
     let cur = d.join("stderr.log");
-    std::fs::write(old_path_of(&cur), b"older").unwrap();
+    std::fs::write(old_of(&cur), b"older").unwrap();
     std::fs::write(&cur, b"last run").unwrap();
-    let mut r = Roller::start(cur.clone(), 1000, FakeFd2::default()).expect("起不来");
+    let mut r =
+        Roller::start(DiagLog::issue(cur.clone()), 1000, FakeFd2::default()).expect("起不来");
     put(&mut r, b"this run");
     let (noted, body) = body_of(std::fs::read(&cur).unwrap());
     assert!(noted, "挪了上一次那份却没说");
     assert_eq!(body, b"this run");
-    assert_eq!(std::fs::read(old_path_of(&cur)).unwrap(), b"last run");
+    assert_eq!(std::fs::read(old_of(&cur)).unwrap(), b"last run");
     assert_eq!(log_names(&d).len(), 2);
     let d2 = tmp_dir("fresh");
     let cur2 = d2.join("stderr.log");
-    let mut r2 = Roller::start(cur2.clone(), 1000, FakeFd2::default()).expect("起不来");
+    let mut r2 =
+        Roller::start(DiagLog::issue(cur2.clone()), 1000, FakeFd2::default()).expect("起不来");
     put(&mut r2, b"first");
     assert_eq!(std::fs::read(&cur2).unwrap(), b"first");
     assert_eq!(log_names(&d2), vec!["stderr.log".to_string()]);
@@ -164,7 +170,7 @@ fn a_restart_moves_the_last_run_aside() {
 fn an_unwritable_target_fails_without_touching_the_output() {
     let d = tmp_dir("gone");
     let cur = d.join("no-such-dir").join("stderr.log");
-    let got = Roller::start(cur.clone(), 1 << 20, FakeFd2::default());
+    let got = Roller::start(DiagLog::issue(cur.clone()), 1 << 20, FakeFd2::default());
     assert!(got.is_err(), "目录不在却起来了");
     assert!(!cur.exists());
     let _ = std::fs::remove_dir_all(&d);
@@ -174,7 +180,7 @@ fn an_unwritable_target_fails_without_touching_the_output() {
 #[test]
 fn nothing_is_installed_without_a_path() {
     for v in [None, Some(""), Some("   ")] {
-        let got = install_from_env(&|k| {
+        let got = install_from_env(DiagLog::issue, &|k| {
             assert_eq!(k, ENV);
             v.map(str::to_string)
         });
@@ -201,7 +207,7 @@ fn stderr_log_child_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    let got = install_from_env(&|k| std::env::var(k).ok());
+    let got = install_from_env(DiagLog::issue, &|k| std::env::var(k).ok());
     let Installed::Logging(_) = got else {
         panic!("子进程没装上：{got:?}");
     };
@@ -266,7 +272,7 @@ fn the_production_wiring_lands_every_stderr_writer_in_the_file() {
         vec!["stderr.log".to_string(), "stderr.old.log".to_string()],
         "没滚出恰好两份"
     );
-    let old = std::fs::read_to_string(old_path_of(&cur)).expect("旧那份不在");
+    let old = std::fs::read_to_string(old_of(&cur)).expect("旧那份不在");
     for line in ["nt2-eprintln-line", "nt2-grandchild-line", DONE] {
         assert!(old.contains(line), "`{line}` 没落进（滚之前那一份）文件");
         assert!(
@@ -335,10 +341,10 @@ fn oneshot_lines_land_in_the_backend_log() {
     let d = std::env::temp_dir().join(format!("ccm-oneshot-{}", std::process::id()));
     std::fs::create_dir_all(&d).unwrap();
     let f = d.join("stderr.log");
-    append_line(&f, b"a\n").unwrap();
-    append_line(&f, b"b\n").unwrap();
+    append_line(&DiagLog::issue(f.to_path_buf()), b"a\n").unwrap();
+    append_line(&DiagLog::issue(f.to_path_buf()), b"b\n").unwrap();
     assert_eq!(std::fs::read_to_string(&f).unwrap(), "a\nb\n");
-    assert!(append_line(&d.join("no/such/stderr.log"), b"c\n").is_err());
+    assert!(append_line(&DiagLog::issue(d.join("no/such/stderr.log")), b"c\n").is_err());
     assert!(!d.join("no").exists(), "替它建了目录");
     let _ = std::fs::remove_dir_all(&d);
 }

@@ -9,6 +9,7 @@
 
 use crate::agents::LoginFace;
 use crate::common::said::Said;
+use crate::platform::fs::{AccountCreds, CredsLock, Own, RenewLock, Ro};
 use copy_core::copy_text;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
@@ -45,105 +46,109 @@ pub(crate) enum Locked<T> {
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub(crate) struct Reclaimed(pub(crate) Vec<&'static str>);
 
-/// 在续期锁里做一件事：跨进程锁（配置目录）→ 里面那一把 → 旁边那一把 → `work` → 守卫倒序放掉。
+/// 这个号的凭据窄句柄（从写句柄铸；能写的只有那份凭据文件与那两把续期锁目录）。
+pub(crate) fn creds_of(own: &Own, dir: &Path, face: &LoginFace) -> Result<AccountCreds, Said> {
+    own.account_creds(dir, face.creds_file, face.lock_inside, face.lock_beside)
+}
+
+/// 在续期锁里做一件事：跨进程锁（配置目录）→ 里面那一把 → 旁边那一把 → `work`（收那把跨进程锁，写回要它）→ 守卫倒序放掉。
 pub(crate) fn with_refresh_lock<T>(
-    dir: &Path,
+    creds: &AccountCreds,
     face: &LoginFace,
-    work: impl FnOnce(&Reclaimed) -> T,
+    work: impl FnOnce(&Reclaimed, &CredsLock) -> T,
 ) -> Result<Locked<T>, Said> {
-    let _held = crate::platform::lock::hold(dir)?;
+    let held = creds.lock()?;
     let stale = Duration::from_millis(face.lock_stale_ms);
     let mut reclaimed = Reclaimed::default();
-    let Some(_inside) = take(
-        &dir.join(face.lock_inside),
-        stale,
-        "里面那把",
-        &mut reclaimed,
-    )?
+    let Some(_inside) = take(creds, RenewLock::Inside, stale, "里面那把", &mut reclaimed)?
     else {
         return Ok(Locked::Busy);
     };
-    let beside = face.lock_beside.map(|suffix| {
-        let mut s = dir.as_os_str().to_os_string();
-        s.push(suffix);
-        PathBuf::from(s)
-    });
-    let _beside = match beside.as_deref() {
+    let _beside = match creds.lock_path(RenewLock::Beside) {
         None => None,
-        Some(b) => match take(b, stale, "旁边那把", &mut reclaimed)? {
+        Some(_) => match take(creds, RenewLock::Beside, stale, "旁边那把", &mut reclaimed)? {
             Some(g) => Some(g),
             None => return Ok(Locked::Busy),
         },
     };
-    Ok(Locked::Held(work(&reclaimed)))
+    Ok(Locked::Held(work(&reclaimed, &held)))
 }
 
 /// 持着的一把 `mkdir` 锁：守卫离开作用域就放（正常返回 · 提前返回 · panic 都走这里）。
-struct Hold(PathBuf);
+struct Hold<'a>(&'a AccountCreds, RenewLock);
 
-impl Drop for Hold {
+impl Drop for Hold<'_> {
     /// 放不掉要留一行日志：那把锁会一直挡着那个号自己的 claude 续期，直到它过期被收回。
     fn drop(&mut self) {
-        if let Err(e) = std::fs::remove_dir(&self.0) {
-            tracing::warn!("[oauth] {}: {e}", self.0.display());
+        if let Err(e) = self.0.drop_lock(self.1) {
+            let shown = self
+                .0
+                .lock_path(self.1)
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            tracing::warn!("[oauth] {shown}: {e}");
         }
     }
 }
 
 /// 拿一把 `mkdir` 锁：建成 ⇒ 持有；已在而修改时刻早过 `stale` ⇒ 删了重拿（记进 `reclaimed`）；否则别人持着 ⇒ `None`。
-fn take(
-    p: &Path,
+fn take<'a>(
+    creds: &'a AccountCreds,
+    which: RenewLock,
     stale: Duration,
     name: &'static str,
     reclaimed: &mut Reclaimed,
-) -> Result<Option<Hold>, Said> {
-    if make(p)? {
-        return Ok(Some(Hold(p.to_path_buf())));
+) -> Result<Option<Hold<'a>>, Said> {
+    if make(creds, which)? {
+        return Ok(Some(Hold(creds, which)));
     }
-    let age = std::fs::metadata(p)
-        .and_then(|m| m.modified())
-        .ok()
+    let age = creds
+        .lock_path(which)
+        .and_then(|p| Ro::metadata(p).and_then(|m| m.modified()).ok())
         .and_then(|t| crate::common::time::now().duration_since(t).ok());
-    if !age.is_some_and(|a| a > stale) || std::fs::remove_dir(p).is_err() || !make(p)? {
+    if !age.is_some_and(|a| a > stale) || creds.drop_lock(which).is_err() || !make(creds, which)? {
         return Ok(None);
     }
     reclaimed.0.push(name);
-    Ok(Some(Hold(p.to_path_buf())))
+    Ok(Some(Hold(creds, which)))
 }
 
 /// `mkdir`：建成 ⇒ `true`；已在 ⇒ `false`。
-fn make(p: &Path) -> Result<bool, Said> {
-    match std::fs::create_dir(p) {
-        Ok(()) => Ok(true),
-        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
-        Err(e) => Err(Said::with_raw(
+fn make(creds: &AccountCreds, which: RenewLock) -> Result<bool, Said> {
+    creds.make_lock(which).map_err(|e| {
+        Said::with_raw(
             copy_text(
                 "beOauthStore.lock.failed",
                 &[
-                    ("path", &p.display().to_string()),
+                    (
+                        "path",
+                        &creds
+                            .lock_path(which)
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default(),
+                    ),
                     ("why", &copy_core::io_reason(e.kind())),
                 ],
             ),
             &e,
-        )),
-    }
+        )
+    })
 }
 
-/// 整份原子写回（只在续期锁里调；经 `own_state`：出生即只给本人 → 写满 → 原子挪过去）。
+/// 整份原子写回（只在续期锁里调：`held` 是那把跨进程锁；出生即只给本人 → 写满 → 原子挪过去）。
 pub(crate) fn write_tokens(
-    dir: &Path,
-    face: &LoginFace,
+    creds: &AccountCreds,
+    held: &CredsLock,
     doc: &Map<String, Value>,
 ) -> Result<(), Said> {
-    let path = creds_path(dir, face);
     let body = serde_json::to_vec(&Value::Object(doc.clone())).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beOauthStore.write.failed",
-                &[("path", &path.display().to_string())],
+                &[("path", &creds.file().display().to_string())],
             ),
             e,
         )
     })?;
-    crate::common::own_state::write(&path, &body)
+    creds.write(held, &body)
 }

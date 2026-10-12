@@ -45,6 +45,11 @@ fn temp_copy(tag: &str) -> PathBuf {
     p
 }
 
+/// 写句柄的根 ＝ 那份文件所在的临时目录（数据目录的替身）。
+fn own_of(p: &Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_data_at(p.parent().expect("临时文件有上一级"))
+}
+
 fn read_table(p: &Path) -> Table {
     match load_at(p) {
         Loaded::Read(t) => t,
@@ -70,8 +75,12 @@ fn writing_one_entry_loses_nothing_else() {
     let p = temp_copy("one");
     let before_raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     let sid = "0000aaaa-0000-4000-8000-000000000002"; // 蛇形别名那一条
-    let got =
-        answer_annotate_at(&p, &json!({"sid": sid, "patch": {"starred": true}}), 4242).unwrap();
+    let got = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"starred": true}}),
+        4242,
+    )
+    .unwrap();
     assert_eq!(got["entry"]["starred"], true);
     assert_eq!(got["entry"]["updatedAt"], 4242);
 
@@ -126,15 +135,19 @@ fn an_unreadable_file_is_never_overwritten() {
         r#"[1, 2]"#,
     ] {
         std::fs::write(&p, bad).unwrap();
-        let e = answer_annotate_at(&p, &json!({"sid": "s2", "patch": {"hidden": true}}), 1)
-            .expect_err("读不懂也写了");
+        let e = answer_annotate_at(
+            &own_of(&p),
+            &json!({"sid": "s2", "patch": {"hidden": true}}),
+            1,
+        )
+        .expect_err("读不懂也写了");
         assert_eq!(e.code, "annotations_unreadable", "{bad}：{e:?}");
         assert_eq!(
             std::fs::read_to_string(&p).unwrap(),
             bad,
             "读不懂那份被动了"
         );
-        let e = answer_forget_at(&p, &json!({"sid": "s"})).expect_err("读不懂也删了");
+        let e = answer_forget_at(&own_of(&p), &json!({"sid": "s"})).expect_err("读不懂也删了");
         assert_eq!(e.code, "annotations_unreadable");
         assert_eq!(std::fs::read_to_string(&p).unwrap(), bad);
         assert!(
@@ -157,16 +170,29 @@ fn patch_semantics_match_what_the_monitor_did() {
     let p = temp_copy("patch");
     let sid = "0000aaaa-0000-4000-8000-000000000001";
     // null 不改（plain default：`null` 到不了「清空」那一档）。
-    let e =
-        answer_annotate_at(&p, &json!({"sid": sid, "patch": {"customTitle": null}}), 7).unwrap();
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"customTitle": null}}),
+        7,
+    )
+    .unwrap();
     assert_eq!(e["entry"]["customTitle"], "占位标题一");
     // 空白串清空。
-    let e =
-        answer_annotate_at(&p, &json!({"sid": sid, "patch": {"customTitle": "  "}}), 8).unwrap();
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": sid, "patch": {"customTitle": "  "}}),
+        8,
+    )
+    .unwrap();
     assert_eq!(e["entry"]["customTitle"], Value::Null);
     assert_eq!(e["entry"]["starred"], true, "没给的格被动了");
     // 新的一条：从缺省起。
-    let e = answer_annotate_at(&p, &json!({"sid": "fresh", "patch": {"hidden": true}}), 9).unwrap();
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "fresh", "patch": {"hidden": true}}),
+        9,
+    )
+    .unwrap();
     assert_eq!(
         e["entry"],
         json!({"starred": false, "customTitle": null, "hidden": true, "updatedAt": 9})
@@ -183,7 +209,7 @@ fn patch_semantics_match_what_the_monitor_did() {
         json!({"sid": "x", "patch": {"starred": "yes"}}),
     ] {
         assert_eq!(
-            answer_annotate_at(&p, &bad, 1).unwrap_err().code,
+            answer_annotate_at(&own_of(&p), &bad, 1).unwrap_err().code,
             "bad_args",
             "{bad}"
         );
@@ -198,7 +224,7 @@ fn forgetting_removes_exactly_that_entry() {
     let p = temp_copy("forget");
     let sid = "0000aaaa-0000-4000-8000-000000000004";
     assert_eq!(
-        answer_forget_at(&p, &json!({"sid": sid})).unwrap(),
+        answer_forget_at(&own_of(&p), &json!({"sid": sid})).unwrap(),
         json!({"removed": true})
     );
     let mut want = golden();
@@ -206,7 +232,7 @@ fn forgetting_removes_exactly_that_entry() {
     assert_eq!(norm(&read_table(&p)), want);
     let before = std::fs::read(&p).unwrap();
     assert_eq!(
-        answer_forget_at(&p, &json!({"sid": "nope"})).unwrap(),
+        answer_forget_at(&own_of(&p), &json!({"sid": "nope"})).unwrap(),
         json!({"removed": false})
     );
     assert_eq!(std::fs::read(&p).unwrap(), before, "不在的那一条也写了一遍");
@@ -220,7 +246,12 @@ fn a_missing_file_reads_empty_and_the_first_write_creates_it() {
     let _ = std::fs::remove_dir_all(&d);
     let p = d.join("history-metadata.json");
     assert_eq!(load_at(&p), Loaded::Read(Table::new()));
-    answer_annotate_at(&p, &json!({"sid": "s", "patch": {"starred": true}}), 5).unwrap();
+    answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "s", "patch": {"starred": true}}),
+        5,
+    )
+    .unwrap();
     let raw: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
     assert_eq!(raw["version"], 0);
     assert_eq!(raw["entries"]["s"]["starred"], true);
@@ -265,8 +296,12 @@ fn an_unreadable_file_hands_its_raw_to_the_detail_not_the_sentence() {
     let p = temp_copy("noread");
     let d = p.parent().unwrap().to_path_buf();
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o000)).unwrap();
-    let e = answer_annotate_at(&p, &json!({"sid": "s2", "patch": {"hidden": true}}), 1)
-        .expect_err("读不出来也写了");
+    let e = answer_annotate_at(
+        &own_of(&p),
+        &json!({"sid": "s2", "patch": {"hidden": true}}),
+        1,
+    )
+    .expect_err("读不出来也写了");
     assert_eq!(e.code, "annotations_unreadable", "{e:?}");
     let raw = e.raw.as_deref().expect("原话丢了");
     assert!(!e.message.contains(raw), "原话上了句子：{e:?}");

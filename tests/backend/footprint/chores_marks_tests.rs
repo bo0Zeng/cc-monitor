@@ -19,11 +19,12 @@ fn tmp(tag: &str) -> PathBuf {
 #[test]
 fn 记下_撤回_读回() {
     let d = tmp("rw");
-    let f = d.join("chores.json");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    let f = d.join(relay_route_core::CHORES_REL);
     assert_eq!(current(Some(&f)), Marks::default());
-    mark_at(&f, &json!({"op": "decline", "id": "relay"})).unwrap();
-    mark_at(&f, &json!({"op": "decline", "id": "relay"})).unwrap();
-    mark_at(&f, &json!({"op": "selfPaste", "rc": "/h/.bashrc"})).unwrap();
+    mark_at(&own, &json!({"op": "decline", "id": "relay"})).unwrap();
+    mark_at(&own, &json!({"op": "decline", "id": "relay"})).unwrap();
+    mark_at(&own, &json!({"op": "selfPaste", "rc": "/h/.bashrc"})).unwrap();
     assert_eq!(
         current(Some(&f)),
         Marks {
@@ -32,8 +33,8 @@ fn 记下_撤回_读回() {
             start_skipped: false,
         }
     );
-    mark_at(&f, &json!({"op": "undecline", "id": "relay"})).unwrap();
-    mark_at(&f, &json!({"op": "unselfPaste"})).unwrap();
+    mark_at(&own, &json!({"op": "undecline", "id": "relay"})).unwrap();
+    mark_at(&own, &json!({"op": "unselfPaste"})).unwrap();
     assert_eq!(current(Some(&f)), Marks::default());
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -41,10 +42,12 @@ fn 记下_撤回_读回() {
 #[test]
 fn 读不懂的那份_不覆盖_回错() {
     let d = tmp("bad");
-    let f = d.join("chores.json");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    std::fs::create_dir_all(d.join(".cc-monitor")).unwrap();
+    let f = d.join(relay_route_core::CHORES_REL);
     std::fs::write(&f, "{oops").unwrap();
     assert_eq!(
-        mark_at(&f, &json!({"op": "decline", "id": "x"}))
+        mark_at(&own, &json!({"op": "decline", "id": "x"}))
             .unwrap_err()
             .code,
         "marks_unreadable"
@@ -57,14 +60,14 @@ fn 读不懂的那份_不覆盖_回错() {
 #[test]
 fn 不认的_op_或缺参数_拒() {
     let d = tmp("args");
-    let f = d.join("chores.json");
+    let own = crate::platform::fs::Own::issue_at(&d);
     for a in [
         json!({}),
         json!({"op": "nope"}),
         json!({"op": "decline"}),
         json!({"op": "selfPaste"}),
     ] {
-        assert_eq!(mark_at(&f, &a).unwrap_err().code, "bad_args", "{a}");
+        assert_eq!(mark_at(&own, &a).unwrap_err().code, "bad_args", "{a}");
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -76,10 +79,11 @@ fn skipping_the_start_block_is_remembered_and_can_be_undone() {
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     let path = d.join(".cc-monitor").join("chores.json");
-    let got = mark_at(&path, &serde_json::json!({"op": "skipStart"})).unwrap();
+    let own = crate::platform::fs::Own::issue_at(&d);
+    let got = mark_at(&own, &serde_json::json!({"op": "skipStart"})).unwrap();
     assert_eq!(got["startSkipped"], serde_json::json!(true));
     assert!(current(Some(&path)).start_skipped);
-    mark_at(&path, &serde_json::json!({"op": "unskipStart"})).unwrap();
+    mark_at(&own, &serde_json::json!({"op": "unskipStart"})).unwrap();
     assert!(!current(Some(&path)).start_skipped);
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -90,10 +94,12 @@ fn 读不出来的那份_原话进详情不上句子() {
     // 那份文件谁都读不了（权限 000）⇒ 读不出来（不是读不懂）：句子只带路径与原因词，下层原话跟着失败走、进复制详情。
     use std::os::unix::fs::PermissionsExt;
     let d = tmp("noread");
-    let f = d.join("chores.json");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    std::fs::create_dir_all(d.join(".cc-monitor")).unwrap();
+    let f = d.join(relay_route_core::CHORES_REL);
     std::fs::write(&f, "{}").unwrap();
     std::fs::set_permissions(&f, std::fs::Permissions::from_mode(0o000)).unwrap();
-    let e = mark_at(&f, &json!({"op": "decline", "id": "x"})).unwrap_err();
+    let e = mark_at(&own, &json!({"op": "decline", "id": "x"})).unwrap_err();
     assert_eq!(e.code, "marks_unreadable", "{e:?}");
     let raw = e.raw.as_deref().expect("原话丢了");
     assert!(!e.message.contains(raw), "原话上了句子：{e:?}");

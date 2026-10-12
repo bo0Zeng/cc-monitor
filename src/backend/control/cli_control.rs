@@ -170,10 +170,12 @@ fn probe() -> i32 {
 /// CLI 控制面的一次性入口。返回进程退出码。
 ///
 /// `tz` ＝ 看的那一台的时区（[`crate::TZ_FLAG`]，`main` 剥流旗标那一步剥出来的）：回包里「几点」按它写，同帧面信封的 `tz`。
-pub async fn run(args: &[String], tz: &crate::Tz) -> i32 {
+/// `own` ＝ 启动入口造的那一份写句柄（只递给写自家状态的那几条，同帧面分派）。
+pub async fn run(args: &[String], tz: &crate::Tz, own: &crate::platform::Own) -> i32 {
     run_io(
         args,
         tz,
+        own,
         std::io::stdin(),
         STDIN_QUIET,
         &mut std::io::stdout(),
@@ -186,6 +188,7 @@ pub async fn run(args: &[String], tz: &crate::Tz) -> i32 {
 pub(crate) async fn run_io<R: Read + Send + 'static>(
     args: &[String],
     tz: &crate::Tz,
+    own: &crate::platform::Own,
     stdin: R,
     quiet: Duration,
     out: &mut dyn Write,
@@ -277,8 +280,10 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     let outcome: Result<Option<serde_json::Value>, Fail> = match spec.run {
         Run::Blocking(f) => f(req).map_err(Fail::from),
         Run::BlockingData(f) => f(req),
+        Run::BlockingOwn(f) => f(req, own),
         Run::Async(f) => f(req).await.map_err(Fail::from),
         Run::AsyncData(f) => f(req).await,
+        Run::AsyncOwn(f) => f(req, own.clone()).await.map_err(Fail::from),
         Run::Builtin => {
             return refuse(
                 err,

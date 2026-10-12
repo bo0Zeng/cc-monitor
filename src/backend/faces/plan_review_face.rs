@@ -61,7 +61,7 @@ fn after_ack(ws: &str, key: &str, acked: bool) -> Answer {
     Ok(json!({"key": key, "acked": acked, "needCount": n}))
 }
 
-fn ack(args: &Value) -> Answer {
+fn ack(args: &Value, own: &crate::platform::fs::Own) -> Answer {
     let (ws, slice, key) = (
         str_arg(args, "workspace")?,
         str_arg(args, "slice")?,
@@ -71,29 +71,27 @@ fn ack(args: &Value) -> Answer {
     let sl = slice_of(&doc, slice)
         .ok_or_else(|| Fail::new("no_such_need", copy_text("bePlan.review.noSuchNeed", &[])))?;
     check_ack(sl, key)?;
-    crate::plan::review::answer_ack(ws, slice, key, &needs::keys_of(sl))?;
+    crate::plan::review::answer_ack(own, ws, slice, key, &needs::keys_of(sl))?;
     after_ack(ws, key, true)
 }
 
-fn unack(args: &Value) -> Answer {
+fn unack(args: &Value, own: &crate::platform::fs::Own) -> Answer {
     let (ws, slice, key) = (
         str_arg(args, "workspace")?,
         str_arg(args, "slice")?,
         str_arg(args, "key")?,
     );
-    crate::plan::review::answer_unack(ws, slice, key)?;
+    crate::plan::review::answer_unack(own, ws, slice, key)?;
     after_ack(ws, key, false)
 }
 
 /// 帧面入口：命令名从 `r.cmd` 来。
-pub(crate) fn answer(cmd: &str, args: &Value) -> Answer {
+pub(crate) fn answer(cmd: &str, args: &Value, own: &crate::platform::fs::Own) -> Answer {
     match cmd {
-        "plan-ack" => {
-            ack(args).and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>)
-        }
-        "plan-unack" => {
-            unack(args).and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>)
-        }
+        "plan-ack" => ack(args, own)
+            .and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>),
+        "plan-unack" => unack(args, own)
+            .and_then(crate::faces::plan_face::wired::<crate::plan::wire::PlanAckReply>),
         other => Err(bad(&format!("unknown command `{other}`"))),
     }
 }

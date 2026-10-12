@@ -376,6 +376,7 @@ fn spawn_relay(up: SocketAddr) -> (SocketAddr, TeeTap) {
         Arc::new(Accounts::new(
             table,
             crate::accounts::upstream_select::Upstreams::from_env(&|_| None).expect("内置默认"),
+            crate::platform::fs::Own::for_tests(),
         )),
         super::key::key_tests::test_keys(),
         TeeSink::to_port(Arc::new(FramingTap(Arc::clone(&buf), Mutex::new(tick)))),

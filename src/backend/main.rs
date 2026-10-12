@@ -106,12 +106,16 @@ async fn main() {
     // 起第一个子进程之前：各家「我是哪个会话」的变量一律不往下传（常驻后端若在某个会话里起，它起的会话不许认错父）。
     agents::install_child_env_filter();
     let process_argv: Vec<String> = std::env::args().collect();
+    // 写后端自家状态（数据目录底下）的句柄：只在这里造一次，顺着各入口递下去（`readonly_guard` 构造判据钉「只许这里造」）。
+    let own = cc_monitor_backend::platform::Own::issue();
+    // 握手认下的主机钥匙记进 cc-monitor 那份 known_hosts：哪条拨号路上都可能发生 ⇒ 这里装一次那只只会记钥匙的手。
+    dial::install_known_hosts(&own);
     let backend_args: Vec<String> = {
         let rest: Vec<String> = process_argv.iter().skip(1).cloned().collect();
         match control::ccm::route(process_argv.first().map_or("", String::as_str), &rest) {
             // resume 判「在别处跑着」用观测层那一份扫描（control 不引用 observe ⇒ 由入口注入）。
             control::ccm::Entry::Ccm(ccm_args) => {
-                std::process::exit(control::ccm::run(&ccm_args, &process_argv, |dir| {
+                std::process::exit(control::ccm::run(&ccm_args, &process_argv, &own, |dir| {
                     let home = agent_home(dir, false);
                     observe::watcher::running_sessions(&home)
                 }))
@@ -154,11 +158,11 @@ async fn main() {
             // `--relay`（独立的中转进程）那一臂删了：中转只住常驻后端进程里（本机远端同形）。
             // 远端常驻后端的起 · 找 / 停（`control/resident.rs` 头注）。
             // 远端中转住进远端常驻后端 —— 起它时交中转口（与本机宿主交的同一个常量）。
-            Some("--resident-ensure") => control::resident::ensure(&args[1..]),
+            Some("--resident-ensure") => control::resident::ensure(&args[1..], &own),
             Some("--resident-attach") => control::resident::attach().await,
             // 会话级答题 hook 的客户端：经本机常驻后端问人、把答案交回那一家（`control/asks/hook.rs`）；没答案就空手退 0。
             Some("--answer-hook") => control::asks::hook::run(&args).await,
-            Some("--resident-stop") => control::resident::run_stop(&args[1..]),
+            Some("--resident-stop") => control::resident::run_stop(&args[1..], &own),
             // `--dial` 那条拨号代理臂**删了**：拨号挪进本机那一个常驻后端，经流上的链路
             // （`link-*` 四条，`dial/link.rs`）做 —— 不再每条链路起一个进程。
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
@@ -180,7 +184,7 @@ async fn main() {
             // 按**行**取 `=>` 右边的臂体，块体臂会被抽成 `""` 当场红（实测）。
             // 那条约束是保守的（宁可假红），照它写就是了 —— 单行形式下它钉的
             // 「臂体是一次真调用」也确实成立。
-            Some(f) if cli_control::handles(f) => cli_control::run(&args, z).await,
+            Some(f) if cli_control::handles(f) => cli_control::run(&args, z, &own).await,
             _ => observe::history_query::run(&agent_home, &args, z),
         };
         std::process::exit(code);
@@ -195,15 +199,17 @@ async fn main() {
     //   放在一次性子命令全部 `exit` 之后：它们的 stderr 是给人 / 给 JSON 解析看的，不动。放在起中转之前：接上之后这一行起的
     //   每一句（中转那两句、host key 警告、panic）都落进那份文件。
     let env = |k: &str| std::env::var(k).ok();
-    let (listening, installed) =
-        match claim_then_log(&env, control::resident::account_home().as_deref(), || {
-            stderr_log::install_from_env(&env)
-        })
-        .await
-        {
-            Ok(got) => got,
-            Err(code) => std::process::exit(code),
-        };
+    let (listening, installed) = match claim_then_log(
+        &own,
+        &env,
+        control::resident::account_home().as_deref(),
+        || stderr_log::install_from_env(cc_monitor_backend::platform::DiagLog::issue, &env),
+    )
+    .await
+    {
+        Ok(got) => got,
+        Err(code) => std::process::exit(code),
+    };
     tracing::info!("{}", installed.said());
     // 装上了 ⇒ 告诉只读面那份文件在哪（`backend-log`，机器页「日志」经它取回来看）。
     if let stderr_log::Installed::Logging(p) = &installed {
@@ -221,13 +227,18 @@ async fn main() {
         .and_then(|_| control::resident::here())
         .filter(|dh| relay_route_core::legacy_listen_pid_for(dh).exists());
     let off_thread = legacy.is_some();
+    let relay_own = own.clone();
+    let legacy_own = own.clone();
     let start_relay = move || {
-        if let Some(said) = legacy.as_deref().and_then(control::resident::retire_legacy) {
+        if let Some(said) = legacy
+            .as_ref()
+            .and_then(|_| control::resident::retire_legacy(&legacy_own))
+        {
             tracing::info!("{said}");
         }
         tracing::info!(
             "{}",
-            accounts::upstream_select::host_relay(faces::rotation_face::library())
+            accounts::upstream_select::host_relay(faces::rotation_face::library(), relay_own)
         );
     };
     if off_thread {
@@ -259,9 +270,9 @@ async fn main() {
     let hello = build_hello(&agent_home);
 
     // 别的进程（命令行 · quota-warm · AI 照 skill 调）写了这台的轮换 ⇒ 这一路也推 `changed {rotation}`（广播通道是进程内的）。
-    inbound::watch_rotation();
+    inbound::watch_rotation(&own);
     match listening {
-        None => run_over_stdio(hello, agent_home, wants).await,
+        None => run_over_stdio(hello, agent_home, wants, own).await,
         Some((listener, held)) => {
             // 这台账号库里各号共用的用户级 MCP：常驻那条载体上盯各号的配置文件，一有动静同步一趟（一次性的 stdio 那条不起）。
             inbound::watch_account_mcp();
@@ -276,6 +287,7 @@ async fn main() {
                     hello,
                     agent_home,
                     wants,
+                    own,
                 ) => {}
                 _ = stop => {
                     tracing::info!("shutdown signal received; exiting");
@@ -361,7 +373,12 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
 ///
 /// ⚠ 本函数体是 `K-P1` 之前 `main()` 的那一段**原样搬过来的**，一行行为都没改 ——
 /// 常驻是**加一条载体**，不是把这条改掉。改这一段之前先问：另一条载体要不要跟着改？
-async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -> ! {
+async fn run_over_stdio(
+    hello: Frame,
+    agent_home: PathBuf,
+    wants: StreamWants,
+    own: cc_monitor_backend::platform::Own,
+) -> ! {
     let mut stdout = BufWriter::new(tokio::io::stdout());
     // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
     // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
@@ -394,11 +411,12 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, wants: StreamWants) -
     // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
     let book = observe::runs::RunBook::shared();
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
-    let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone());
+    let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone(), own.clone());
     let inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
         watch_desk(&poke),
+        own,
         hello_flushed,
     );
 
@@ -603,18 +621,20 @@ async fn handshake_one(
 /// 那两份日志属于在听的那一个：已有常驻后端时，后起的这一个若先接，就把在跑那一个的日志滚走（再来一个就删掉）。
 /// ⇒ 配置不成立 / 沙箱跑却要占真家 / 抢不到锁都不接，话只落自己原来的 stderr，退出码交回 `main` 退（一条命令都还没收，没有可排空的）。
 async fn claim_then_log(
+    own: &cc_monitor_backend::platform::Own,
     env: &dyn Fn(&str) -> Option<String>,
     account_home: Option<&std::path::Path>,
     install: impl FnOnce() -> stderr_log::Installed,
 ) -> Result<
     (
-        Option<(own_chan::Listener, own_chan::Held)>,
+        Option<(own_chan::Listener, cc_monitor_backend::platform::OwnLock)>,
         stderr_log::Installed,
     ),
     i32,
 > {
     claim_then_log_as(
         control::resident::unsupported_here(),
+        own,
         env,
         account_home,
         install,
@@ -625,12 +645,13 @@ async fn claim_then_log(
 /// [`claim_then_log`] 的里子：「本平台有没有常驻」那一格是入参（`unsupported` = 没有时那一句），判据两形都量得到。
 async fn claim_then_log_as(
     unsupported: Option<String>,
+    own: &cc_monitor_backend::platform::Own,
     env: &dyn Fn(&str) -> Option<String>,
     account_home: Option<&std::path::Path>,
     install: impl FnOnce() -> stderr_log::Installed,
 ) -> Result<
     (
-        Option<(own_chan::Listener, own_chan::Held)>,
+        Option<(own_chan::Listener, cc_monitor_backend::platform::OwnLock)>,
         stderr_log::Installed,
     ),
     i32,
@@ -659,7 +680,7 @@ async fn claim_then_log_as(
         tracing::error!("{why}");
         return Err(listen::EXIT_BAD_LISTEN_CONFIG);
     }
-    match control::resident::claim(&dh) {
+    match control::resident::claim(own) {
         control::resident::Claim::Listening(l, held) => Ok((Some((l, held)), install())),
         control::resident::Claim::Held => {
             // ★★ **抢不到锁就退出，绝不换个地方再起一个**（换地方 = 每台机 N 个后端，中转口与全部 SSH 各 N 份）。
@@ -703,10 +724,11 @@ async fn claim_then_log_as(
 async fn serve_listening(
     listener: own_chan::Listener,
     // 目录独占锁：随这个函数（＝ 常驻载体）活着。
-    _held: own_chan::Held,
+    _held: cc_monitor_backend::platform::OwnLock,
     hello: Frame,
     agent_home: PathBuf,
     defaults: StreamWants,
+    own: cc_monitor_backend::platform::Own,
 ) {
     tracing::info!("常驻后端已在听这台家里的套接字（多条流 + 不限次「只读 hello 就走」）");
 
@@ -719,6 +741,7 @@ async fn serve_listening(
             agent_home.clone(),
             defaults.clone(),
             std::sync::Arc::default(),
+            own.clone(),
         );
         (Some(rx), Some(poke))
     };
@@ -762,12 +785,12 @@ async fn serve_listening(
                 let book = observe::runs::RunBook::shared();
                 let wants = flags.unwrap_or_else(|| defaults.clone());
                 let (tz, view) = (wants.tz.clone(), wants.view.clone());
-                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone());
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone(), own.clone());
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task =
-                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), hello_flushed);
+                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), own.clone(), hello_flushed);
                 // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
                 let tap_rx = tap::attach(book, tz.clone());
                 let done = done_tx.clone();
@@ -820,6 +843,7 @@ async fn serve_listening(
                     agent_home.clone(),
                     defaults.clone(),
                     std::sync::Arc::default(),
+                    own.clone(),
                 );
                 idle_rx = Some(rx);
                 idle_poke = Some(poke);
@@ -938,6 +962,8 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 /// 整行追加进这台后端的诊断文件（`stderr_log::oneshot_writer`）。
 fn init_tracing(oneshot: bool) {
     let writer = if oneshot {
+        // 诊断文件那一份的窄句柄只在这里造（启动入口），装给一次性模式的写者。
+        stderr_log::keep_oneshot(cc_monitor_backend::platform::DiagLog::issue);
         tracing_subscriber::fmt::writer::BoxMakeWriter::new(stderr_log::oneshot_writer)
     } else {
         // 仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。

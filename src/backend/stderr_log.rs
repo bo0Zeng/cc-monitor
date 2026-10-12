@@ -12,10 +12,11 @@
 //!   盘上恒 ≤ 两份。起来那一刻已有当前那份 ⇒ 先挪成旧的。两行 `tracing` 之间别人写的字节不触发检查 ⇒ 一份可以略超上限，不会无界。
 //! - 换不过去不拖垮后端：建不了文件 / 换不了 fd ⇒ stderr 原样，照常服务。
 //!
-//! 后端自有状态（`readonly_guard` 第四层）：动词只用 `O_EXCL` 新建 · 原子挪（不建目录、不截断）；一次性模式另有一个只追加整行的句柄
-//! （[`oneshot_writer`]，`readonly_guard::OWN_STATE_APPEND_ONLY`）。对外口只从 `main.rs` 进。
+//! 写经诊断文件的窄句柄（`platform::fs::DiagLog`，只许启动入口造）：动词只有 `O_EXCL` 新建 · 原子挪（不建目录、不截断）·
+//! 一次性模式只追加整行（[`oneshot_writer`]）。对外口只从 `main.rs` 进。
 //! 买不到：远端后端的 stderr · 真 Windows（非 unix 臂回 `Failed`）。
 
+use crate::platform::fs::{DiagFile, DiagLog};
 use copy_core::copy_text;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -26,11 +27,6 @@ pub const ENV: &str = crate::platform::child_env::STDERR_LOG;
 
 /// 每份的字节上限（当前那份 ＋ 旧的那份 ⇒ 盘上 ≈ 两倍；按 `tracing` 行检查，见模块头注）。
 pub const CAP_BYTES: u64 = 4 << 20;
-
-/// 当前那份的路径 ⇒ 旧的那份的路径（`stderr.log` ⇒ `stderr.old.log`）。
-pub(crate) fn old_path_of(cur: &Path) -> PathBuf {
-    cur.with_extension("old.log")
-}
 
 /// 滚过一次之后，新那份的第一行。
 pub(crate) fn roll_note(old: &Path) -> String {
@@ -45,7 +41,7 @@ pub(crate) trait Target: Send {
     /// 此刻那份多长（问不到 ⇒ `None`，不滚）。
     fn len(&self) -> Option<u64>;
     /// 此后的输出改落 `f` 那份。
-    fn point_at(&mut self, f: &std::fs::File) -> Result<(), String>;
+    fn point_at(&mut self, f: &DiagFile) -> Result<(), String>;
 }
 
 /// 生产那一头：本进程的 fd 2。
@@ -55,45 +51,37 @@ impl Target for Fd2 {
     fn len(&self) -> Option<u64> {
         crate::platform::stderr_fd::stderr_len()
     }
-    fn point_at(&mut self, f: &std::fs::File) -> Result<(), String> {
+    fn point_at(&mut self, f: &DiagFile) -> Result<(), String> {
         crate::platform::stderr_fd::point_stderr_at(f)
     }
 }
 
 /// 管那两份文件、决定什么时候滚的那一半。
 pub(crate) struct Roller<T: Target> {
-    cur: PathBuf,
-    old: PathBuf,
+    log: DiagLog,
     cap: u64,
     target: T,
 }
 
 impl<T: Target> Roller<T> {
     /// 起：已有当前那份 ⇒ 挪成旧的；新建一份当前的、把输出指过去。建不了 / 指不过去 ⇒ `Err`（输出原样）。
-    pub(crate) fn start(cur: PathBuf, cap: u64, target: T) -> Result<Roller<T>, String> {
-        let old = old_path_of(&cur);
-        let mut r = Roller {
-            cur,
-            old,
-            cap,
-            target,
-        };
+    pub(crate) fn start(log: DiagLog, cap: u64, target: T) -> Result<Roller<T>, String> {
+        let mut r = Roller { log, cap, target };
         r.fresh()?;
         Ok(r)
     }
 
     /// 当前那份挪成旧的（不在就不挪），`O_EXCL` 新建一份当前的；真挪了一份 ⇒ 新那份第一行说清；把输出指过去。
     fn fresh(&mut self) -> Result<(), String> {
-        let moved = match std::fs::rename(&self.cur, &self.old) {
-            Ok(()) => true,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        let moved = match self.log.roll() {
+            Ok(m) => m,
             // 这几句只进 stderr 那一行（[`Installed::said`]）：那一句 ＋ 原话一起（`Said::logged`）。
             Err(e) => {
                 return Err(crate::common::said::Said::with_raw(
                     copy_text(
                         "beStderrLog.roll.moveFailed",
                         &[
-                            ("path", &self.cur.display().to_string()),
+                            ("path", &self.log.cur().display().to_string()),
                             ("why", &copy_core::io_reason(e.kind())),
                         ],
                     ),
@@ -102,25 +90,21 @@ impl<T: Target> Roller<T> {
                 .logged())
             }
         };
-        let mut f = std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&self.cur)
-            .map_err(|e| {
-                crate::common::said::Said::with_raw(
-                    copy_text(
-                        "beStderrLog.roll.createFailed",
-                        &[
-                            ("path", &self.cur.display().to_string()),
-                            ("why", &copy_core::io_reason(e.kind())),
-                        ],
-                    ),
-                    e,
-                )
-                .logged()
-            })?;
+        let mut f = self.log.create().map_err(|e| {
+            crate::common::said::Said::with_raw(
+                copy_text(
+                    "beStderrLog.roll.createFailed",
+                    &[
+                        ("path", &self.log.cur().display().to_string()),
+                        ("why", &copy_core::io_reason(e.kind())),
+                    ],
+                ),
+                e,
+            )
+            .logged()
+        })?;
         if moved {
-            let _ = f.write_all(roll_note(&self.old).as_bytes());
+            let _ = f.write_all(roll_note(self.log.old()).as_bytes());
         }
         self.target.point_at(&f)
     }
@@ -161,13 +145,17 @@ impl Installed {
     }
 }
 
-/// 宿主交了 [`ENV`] ⇒ 把 fd 2 指到那份文件上。只从 `main.rs` 流模式那一处进（第四层那扇门）。
-pub fn install_from_env(get: &dyn Fn(&str) -> Option<String>) -> Installed {
+/// 宿主交了 [`ENV`] ⇒ 把 fd 2 指到那份文件上。只从 `main.rs` 流模式那一处进：`issue` 是它递进来的造窄句柄那一手
+/// （`DiagLog::issue`，只许启动入口点名）。
+pub fn install_from_env(
+    issue: fn(PathBuf) -> DiagLog,
+    get: &dyn Fn(&str) -> Option<String>,
+) -> Installed {
     let Some(path) = get(ENV).filter(|v| !v.trim().is_empty()) else {
         return Installed::NotAsked;
     };
     let cur = PathBuf::from(path);
-    match Roller::start(cur.clone(), CAP_BYTES, Fd2) {
+    match Roller::start(issue(cur.clone()), CAP_BYTES, Fd2) {
         Ok(r) => {
             *ACTIVE.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
             Installed::Logging(cur)
@@ -196,8 +184,15 @@ pub(crate) fn oneshot_log_path(get: &dyn Fn(&str) -> Option<String>) -> Option<P
     crate::platform::paths::home_dir().map(|h| h.join(crate::control::resident::STDERR_LOG_REL))
 }
 
-/// 一次性模式里本进程那几行诊断的落点（进程起来时定一次）。
-static ONESHOT_PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+/// 一次性模式里本进程那几行诊断的落点（[`keep_oneshot`] 装一次；没装 ⇒ 不写）。
+static ONESHOT: std::sync::OnceLock<DiagLog> = std::sync::OnceLock::new();
+
+/// 一次性模式起来那一刻（`main.rs`）装那一份的窄句柄：`issue` 同 [`install_from_env`]。家推不出来 ⇒ 不装（不写）。
+pub fn keep_oneshot(issue: fn(PathBuf) -> DiagLog) {
+    if let Some(p) = oneshot_log_path(&|k| std::env::var(k).ok()) {
+        ONESHOT.get_or_init(|| issue(p));
+    }
+}
 
 /// 一次性模式的 `tracing` 写者（`main.rs` 在一次性模式里装给它，代替 [`stderr_writer`]）。
 /// 一次性模式的 stderr 是协议通道：成功一个字节都没有，失败正好一行信封 ⇒ 诊断一行都不进 stderr，
@@ -225,23 +220,15 @@ impl Drop for OneShotLine {
         if self.0.is_empty() {
             return;
         }
-        let path = ONESHOT_PATH.get_or_init(|| oneshot_log_path(&|k| std::env::var(k).ok()));
-        if let Some(p) = path {
-            let _ = append_line(p, &self.0);
+        if let Some(log) = ONESHOT.get() {
+            let _ = append_line(log, &self.0);
         }
     }
 }
 
-/// `O_APPEND`（不在就新建，只给本人）一次写下 `line`。目录不在 ⇒ `Err`，不替它建。
-pub(crate) fn append_line(path: &Path, line: &[u8]) -> std::io::Result<()> {
-    let mut o = std::fs::OpenOptions::new();
-    o.append(true).create(true);
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        o.mode(0o600);
-    }
-    o.open(path)?.write_all(line)
+/// `O_APPEND`（不在就新建，只给本人）一次写下 `line`（经窄句柄）。目录不在 ⇒ `Err`，不替它建。
+pub(crate) fn append_line(log: &DiagLog, line: &[u8]) -> std::io::Result<()> {
+    log.append_line(line)
 }
 
 #[cfg(test)]

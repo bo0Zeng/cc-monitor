@@ -17,6 +17,15 @@
 //! - 🔴 真 Windows 远端：不在承诺面。
 
 use super::*;
+
+/// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
+fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_at(
+        file.parent()
+            .and_then(std::path::Path::parent)
+            .expect("两级"),
+    )
+}
 // 这三样原先由 `asset_sync.rs` 顺带引入（`Remote` trait 的签名要它们）；那一跳搬去 `remote_ask` 之后测试自己引。
 use crate::assets::asset_catalog::{self as cat, Asset, KIND_SKILL};
 use std::future::Future;
@@ -59,8 +68,9 @@ struct Machine {
 
 impl Machine {
     fn new(dir: &Path, name: &'static str, scan: Vec<&'static str>) -> Self {
+        std::fs::create_dir_all(dir.join(name)).expect("那台的家");
         Machine {
-            path: dir.join(name).join(cat::FILE_NAME),
+            path: dir.join(name).join(".cc-monitor").join(cat::FILE_NAME),
             scan,
             label: name,
         }
@@ -70,7 +80,7 @@ impl Machine {
         incoming: Option<&Value>,
     ) -> Result<Value, crate::stream::inbound::spec::Fail> {
         let inc = incoming.map(|c| cat::machines_from_wire(c).expect("载荷形状"));
-        cat::update_at(&self.path, skills(&self.scan), self.label, inc)
+        cat::update_at(&own_at(&self.path), skills(&self.scan), self.label, inc)
     }
     fn fold(&self) -> Fold {
         let me = self.clone();

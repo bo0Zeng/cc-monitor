@@ -10,6 +10,15 @@
 use super::*;
 use crate::assets::mcp_sync::There;
 
+/// 写句柄：家目录 ＝ 那份装记录上两级（`<家>/.cc-monitor/skill-installs.json`）。
+fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_at(
+        file.parent()
+            .and_then(std::path::Path::parent)
+            .expect("两级"),
+    )
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-skillinst-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -315,10 +324,10 @@ fn paths_in_the_source_are_fenced() {
 // 买不到：真 Windows（`symlink_metadata` / 链接那一形）· 真远端。
 
 fn ledger_with(d: &Path, name: &str, files: Value) -> (PathBuf, String) {
-    let file = d.join("state/skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
     crate::assets::skill_ledger::record_at(
-        &file,
+        &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": name, "files": files}),
     )
@@ -553,9 +562,9 @@ fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() 
     // 替身「写」：照 write 把来源原文落盘（monitor 那一侧经 files-put 做的事）
     write(&d, "skills/demo/old.md", b"from the source\n");
     write(&d, "skills/demo/new.md", b"brand new\n");
-    let file = d.join("skill-installs.json");
+    let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     crate::assets::skill_ledger::record_at(
-        &file,
+        &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": "demo", "files": plan["ledger"]}),
     )

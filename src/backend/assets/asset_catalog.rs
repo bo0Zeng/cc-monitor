@@ -18,6 +18,7 @@
 //! FNV-1a 64（[`Fnv`]）—— 稳定、零新依赖。只答「相同 / 不同」，不防篡改。
 
 use crate::common::said::IntoNote as _;
+use crate::platform::fs::{Own, OwnLock, OwnPath};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -299,7 +300,7 @@ pub fn skill_asset(
             .replace('\\', "/");
         f.part(rel.as_bytes());
         // 链接：跟到底看它是什么（装到别处时拷过去的是内容，不是链接）；指向目录的不下去。
-        let len = match std::fs::metadata(ent.path()) {
+        let len = match crate::platform::fs::Ro::metadata(ent.path()) {
             Ok(m) if m.is_file() => m.len(),
             _ => {
                 notice.push(copy_text(
@@ -727,15 +728,6 @@ fn home() -> Option<PathBuf> {
     crate::platform::paths::home_dir()
 }
 
-/// 这台机器上目录文件的路径（`~/.cc-monitor/` 与 `backend.json` 同一个家）。
-pub fn catalog_path() -> Option<PathBuf> {
-    Some(
-        home()?
-            .join(crate::control::exit_policy::DIR_NAME)
-            .join(FILE_NAME),
-    )
-}
-
 /// 这台自报的称呼：`user@host`（环境里取；取不到的那一半写 `?`）。只给人看，不参与任何判定。
 pub fn machine_label() -> String {
     let user = std::env::var("USER")
@@ -801,8 +793,14 @@ pub fn read_at(path: &Path) -> Read {
 }
 
 /// **全仓唯一的写者**（经 `own_state` 原子写）。目录由 [`update_at`] 在拿锁之前建（那一层）。
-fn write_at(path: &Path, cat: &Catalog) -> Result<(), crate::common::said::Said> {
-    crate::common::own_state::write_json(path, cat)
+fn write_at(
+    own: &Own,
+    file: &OwnPath,
+    held: &OwnLock,
+    cat: &Catalog,
+) -> Result<(), crate::common::said::Said> {
+    let body = crate::common::own_state::json_body(file.as_path(), cat)?;
+    own.write(file, held, &body)
 }
 
 //
@@ -811,41 +809,47 @@ fn write_at(path: &Path, cat: &Catalog) -> Result<(), crate::common::said::Said>
 
 /// 这台机器现扫一次、并进 `incoming`（若有）、真变了才落盘。**可喂夹具**：路径与扫描结果由调用方给。
 pub fn update_at(
-    path: &Path,
+    own: &Own,
     scanned: Scanned,
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let (cat, problems, changed) = update_with(path, scanned, label, incoming, false, now_secs())?;
-    Ok(wire(&cat, &problems, changed, Some(path)))
+    let (cat, problems, changed) = update_with(own, scanned, label, incoming, false, now_secs())?;
+    let path = own.at_home(relay_route_core::ASSET_CATALOG_REL).ok();
+    Ok(wire(
+        &cat,
+        &problems,
+        changed,
+        path.as_ref().map(OwnPath::as_path),
+    ))
 }
 
 /// [`update_at`] 的本体：交回并好的整份（扩展页的表从它算）。`visit` ⇒ 这一趟算「来看了一次」（挪 [`Visits`]）。
 /// 回 `(目录, 读不出来的那几份, 目录真变了没有)`；「新见到」的记账与来看那两格变了也落盘，但不算目录变了（不触发扇出）。
 pub fn update_with(
-    path: &Path,
+    own: &Own,
     scanned: Scanned,
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
     visit: bool,
     now: u64,
 ) -> Result<(Catalog, Vec<String>, bool), crate::stream::inbound::spec::Fail> {
-    update_core(path, scanned, label, incoming, visit, None, now)
+    update_core(own, scanned, label, incoming, visit, None, now)
 }
 
 /// [`update_with`] 再加一笔备注（`(条目键, 正文)`，见 [`set_note`]）：同一把锁里现扫 · 记备注 · 落盘。
 pub fn update_noting(
-    path: &Path,
+    own: &Own,
     scanned: Scanned,
     label: &str,
     note: (&str, &str),
     now: u64,
 ) -> Result<(Catalog, bool), crate::stream::inbound::spec::Fail> {
-    update_core(path, scanned, label, None, false, Some(note), now).map(|(c, _, ch)| (c, ch))
+    update_core(own, scanned, label, None, false, Some(note), now).map(|(c, _, ch)| (c, ch))
 }
 
 fn update_core(
-    path: &Path,
+    own: &Own,
     scanned: Scanned,
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
@@ -853,22 +857,25 @@ fn update_core(
     note: Option<(&str, &str)>,
     now: u64,
 ) -> Result<(Catalog, Vec<String>, bool), crate::stream::inbound::spec::Fail> {
-    let dir = path.parent().ok_or((
-        "io_failed",
-        copy_text(
-            "beAssetCatalog.write.noParent",
-            &[("path", &path.display().to_string())],
-        ),
-    ))?;
-    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。挪到拿锁之前：锁的是这个目录，它得先在。
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    let no_home = |_| {
+        crate::stream::inbound::spec::Fail::from((
+            "io_failed",
+            copy_text("beAssetCatalog.write.noHome", &[]),
+        ))
+    };
+    let dir = own.home_dir().map_err(no_home)?;
+    let file = own
+        .at_home(relay_route_core::ASSET_CATALOG_REL)
+        .map_err(no_home)?;
+    let path = file.as_path();
+    own.ensure_dir(&dir).map_err(|e| {
         (
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
                     "beAssetCatalog.write.mkdirFailed",
                     &[
-                        ("dir", &dir.display().to_string()),
+                        ("dir", &dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),
@@ -876,7 +883,7 @@ fn update_core(
             ),
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir).map_err(|e| {
+    let held = own.lock(&dir).map_err(|e| {
         crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut cat = match read_at(path) {
@@ -912,34 +919,26 @@ fn update_core(
         dirty = true;
     }
     if dirty || !path.exists() {
-        write_at(path, &cat)
+        write_at(own, &file, &held, &cat)
             .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     }
     Ok((cat, problems, changed))
 }
 
 fn update_now(
+    own: &Own,
     incoming: Option<BTreeMap<String, Snapshot>>,
 ) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let path =
-        catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
-    update_at(&path, scan_here(), &machine_label(), incoming)
+    update_at(own, scan_here(), &machine_label(), incoming)
 }
 
 /// 扩展页那一问（**写口**，只从 `stream/inbound/` 递出去）：这台现扫一次、记下，交回并好的整份（`visit` 见 [`update_with`]）。
 pub(crate) fn answer_current(
     visit: bool,
+    own: &Own,
 ) -> Result<(Catalog, Vec<String>), crate::stream::inbound::spec::Fail> {
-    let path =
-        catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
-    let (cat, problems, _) = update_with(
-        &path,
-        scan_here(),
-        &machine_label(),
-        None,
-        visit,
-        now_secs(),
-    )?;
+    let (cat, problems, _) =
+        update_with(own, scan_here(), &machine_label(), None, visit, now_secs())?;
     Ok((cat, problems))
 }
 
@@ -947,26 +946,21 @@ pub(crate) fn answer_current(
 pub(crate) fn answer_note(
     key: &str,
     text: &str,
+    own: &Own,
 ) -> Result<Catalog, crate::stream::inbound::spec::Fail> {
-    let path =
-        catalog_path().ok_or(("io_failed", copy_text("beAssetCatalog.write.noHome", &[])))?;
-    update_noting(
-        &path,
-        scan_here(),
-        &machine_label(),
-        (key, text),
-        now_secs(),
-    )
-    .map(|(c, _)| c)
+    update_noting(own, scan_here(), &machine_label(), (key, text), now_secs()).map(|(c, _)| c)
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。
-pub fn answer_catalog(_args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    update_now(None)
+pub fn answer_catalog(
+    _args: &Value,
+    own: &Own,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    update_now(own, None)
 }
 
 /// `assets-catalog-merge`：同上，再把 `args.catalog`（别的后端的整份）并进来。
-pub fn answer_merge(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
+pub fn answer_merge(args: &Value, own: &Own) -> Result<Value, crate::stream::inbound::spec::Fail> {
     let cat = args.get("catalog").ok_or_else(|| {
         (
             "bad_args",
@@ -974,7 +968,7 @@ pub fn answer_merge(args: &Value) -> Result<Value, crate::stream::inbound::spec:
         )
     })?;
     let incoming = machines_from_wire(cat).map_err(|e| ("bad_args", e))?;
-    update_now(Some(incoming))
+    update_now(own, Some(incoming))
 }
 
 #[cfg(test)]

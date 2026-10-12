@@ -31,6 +31,7 @@
 //!
 //! - 两个后端**进程**同时写（常驻那一个 ＋ 一次性 CLI）：进程内那把锁挡不住，后写的整份盖掉先写的那一次（同 `asset_catalog` 登记的那一条）。
 
+use crate::platform::fs::{Own, OwnLock, OwnPath};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -160,9 +161,15 @@ pub fn load_at(path: &Path) -> Result<Ledger, crate::stream::inbound::spec::Fail
     }
 }
 
-/// **全仓唯一的写者**（经 `own_state` 原子写；那一层目录由 [`record_at`] 在拿锁之前建）。
-fn write_at(path: &Path, ledger: &Ledger) -> Result<(), crate::common::said::Said> {
-    crate::common::own_state::write_json(path, ledger)
+/// **全仓唯一的写者**（经 `Own` 原子写；那一层目录由 [`record_at`] 在拿锁之前建）。
+fn write_at(
+    own: &Own,
+    file: &OwnPath,
+    held: &OwnLock,
+    ledger: &Ledger,
+) -> Result<(), crate::common::said::Said> {
+    let body = crate::common::own_state::json_body(file.as_path(), ledger)?;
+    own.write(file, held, &body)
 }
 
 //
@@ -282,7 +289,7 @@ pub fn drop_paths(
 }
 
 /// [`answer_record`] 的本体：记录文件路径与 skill 根都可喂（判据拿临时目录喂，不改进程环境）。
-pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answer {
+pub fn record_at(own: &Own, skills_root: Option<&Path>, args: &Value) -> Answer {
     let op = args.get("op").and_then(Value::as_str).ok_or_else(|| {
         (
             "bad_args",
@@ -290,22 +297,26 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
         )
     })?;
     // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
-    let lock_dir = path.parent().ok_or((
-        "io_failed",
-        copy_text(
-            "beSkillLedger.write.noParent",
-            &[("path", &path.display().to_string())],
-        ),
-    ))?;
-    // 只建那一层、建的那一下就是 0700（`own_dir`：后端建自家目录的那一个函数）。
-    crate::common::own_dir::ensure_private_dir(lock_dir).map_err(|e| {
+    let no_home = |_| {
+        crate::stream::inbound::spec::Fail::from((
+            "io_failed",
+            copy_text("beSkillLedger.path.noHome", &[]),
+        ))
+    };
+    let lock_dir = own.home_dir().map_err(no_home)?;
+    let file = own
+        .at_home(relay_route_core::SKILL_LEDGER_REL)
+        .map_err(no_home)?;
+    let path = file.as_path();
+    // 只建那一层、建的那一下就是 0700。
+    own.ensure_dir(&lock_dir).map_err(|e| {
         (
             "io_failed",
             crate::common::said::Said::with_raw(
                 copy_text(
                     "beSkillLedger.write.mkdirFailed",
                     &[
-                        ("dir", &lock_dir.display().to_string()),
+                        ("dir", &lock_dir.as_path().display().to_string()),
                         ("why", &copy_core::io_reason(e.kind())),
                     ],
                 ),
@@ -313,7 +324,7 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
             ),
         )
     })?;
-    let _g = crate::platform::lock::hold(lock_dir).map_err(|e| {
+    let held = own.lock(&lock_dir).map_err(|e| {
         crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut ledger = load_at(path)?;
@@ -477,16 +488,15 @@ pub fn record_at(path: &Path, skills_root: Option<&Path>, args: &Value) -> Answe
         }
     };
     if changed {
-        write_at(path, &ledger)
+        write_at(own, &file, &held, &ledger)
             .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     }
     Ok(json!({ "dir": dir, "name": name, "changed": changed, "remaining": left }))
 }
 
 /// `skill-install-record`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub fn answer_record(args: &Value) -> Answer {
-    let path = ledger_path().ok_or(("io_failed", copy_text("beSkillLedger.path.noHome", &[])))?;
-    record_at(&path, None, args)
+pub fn answer_record(args: &Value, own: &Own) -> Answer {
+    record_at(own, None, args)
 }
 
 #[cfg(test)]

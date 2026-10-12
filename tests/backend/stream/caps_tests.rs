@@ -36,7 +36,10 @@ fn every_capped_command_is_a_registered_blocking_command() {
             .find(|s| s.name == *name)
             .unwrap_or_else(|| panic!("上限表里的 {name} 不是登记了的命令"));
         assert!(
-            matches!(spec.run, Run::Blocking(_) | Run::BlockingData(_)),
+            matches!(
+                spec.run,
+                Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+            ),
             "{name} 不在阻塞档：分派那一层装不到它的线程上"
         );
     }
@@ -110,6 +113,7 @@ fn caps_child() {
             crate::stream::inbound::WatchDesk::new(|_| {
                 tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
             }),
+            crate::platform::fs::Own::for_tests(),
             crate::stream::wire::HelloFlushed::for_tests(),
         );
         h.await.expect("读循环");

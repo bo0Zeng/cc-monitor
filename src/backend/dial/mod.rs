@@ -38,6 +38,7 @@ use tokio::io::AsyncWriteExt;
 mod connect;
 pub(crate) mod forwards; // 端口转发的账（起 · 停 · 列三条帧命令）
 pub(crate) mod known_hosts; // cc-monitor 自己那份 known_hosts（握手认下的钥匙；开终端那一行交给 ssh）
+pub use known_hosts::install as install_known_hosts;
 pub mod link;
 // 本机后端问远端后端的那一跳（池里那条 SSH 上 capture 一次性子命令）＋ 可达表 —— 全后端只此一处；帧面 `remote-reach`。
 // 住拨号层：它只用拨号与契约那几样，不碰帧面（审计二 B2e：原住 `stream/`，那时 `dial ⇄ stream` 双向都因它多出几条边）。

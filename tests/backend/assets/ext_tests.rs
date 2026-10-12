@@ -11,6 +11,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+/// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
+fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_at(
+        file.parent()
+            .and_then(std::path::Path::parent)
+            .expect("两级"),
+    )
+}
+
 struct NoFacts;
 impl Facts for NoFacts {
     fn path(&self, _p: &str) -> There {
@@ -364,9 +373,16 @@ impl M {
         }
     }
     fn refresh(&self, incoming: Option<BTreeMap<String, Snapshot>>) -> Catalog {
-        asset_catalog::update_with(&self.cat, self.scan(), self.label, incoming, false, 100)
-            .expect("目录记不下")
-            .0
+        asset_catalog::update_with(
+            &own_at(&self.cat),
+            self.scan(),
+            self.label,
+            incoming,
+            false,
+            100,
+        )
+        .expect("目录记不下")
+        .0
     }
     /// 这台跑一条内层命令（与生产那几条同一个本体，只是根换成这台的临时家目录）。
     fn inner(&self, cmd: &str, args: &Value) -> Result<Value, (String, String)> {
@@ -380,7 +396,15 @@ impl M {
             .unwrap(),
             None => skills.clone(),
         };
-        let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+        let record = |a: &Value| {
+            super::super::skill_ledger::record_at(
+                &crate::platform::fs::Own::issue_at(
+                    ledger.parent().and_then(std::path::Path::parent).unwrap(),
+                ),
+                Some(&skills),
+                a,
+            )
+        };
         let r = match cmd {
             "skill-read" => super::super::skill_install::answer_read_at(Some(&root), args),
             "skill-install-plan" => {
@@ -612,7 +636,15 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("卸不掉");
     assert!(!dst.exists(), "装时建的目录没收掉");
 
@@ -689,7 +721,15 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("卸不掉");
     let list = t.list();
     assert_eq!(t.cell(&list, "m", 1).state, ExtState::Missing);
@@ -829,9 +869,24 @@ fn make_library(m: &mut M) {
             .to_string(),
     );
     let table = home.join(".cc-monitor/apikey-credentials.json");
-    let set = |v: &Value| file_face::answer_set_at(&table, v);
-    let drop = |v: &Value| file_face::answer_drop_at(&table, v);
-    let restore = |v: &Value| file_face::answer_restore_at(&table, v);
+    let set = |v: &Value| {
+        file_face::answer_set_at(
+            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+            v,
+        )
+    };
+    let drop = |v: &Value| {
+        file_face::answer_drop_at(
+            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+            v,
+        )
+    };
+    let restore = |v: &Value| {
+        file_face::answer_restore_at(
+            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+            v,
+        )
+    };
     let path = || Ok(table.clone());
     let keys = KeyDoor {
         set: &set,
@@ -932,7 +987,15 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).expect("从全局卸不掉");
     assert_eq!(
         shared_names(&t.b),
@@ -948,9 +1011,14 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
 fn a_note_travels_with_the_catalog_to_the_other_backend() {
     let (base, t) = two("note");
     let key = asset_catalog::entry_key(KIND_SKILL, "cc-bus");
-    let (ca, changed) =
-        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, "  先装钩子  "), 101)
-            .unwrap();
+    let (ca, changed) = asset_catalog::update_noting(
+        &own_at(&t.a.cat),
+        t.a.scan(),
+        "a",
+        (&key, "  先装钩子  "),
+        101,
+    )
+    .unwrap();
     assert!(changed);
     let row = |cat: &Catalog| {
         table(cat, &[])
@@ -968,20 +1036,22 @@ fn a_note_travels_with_the_catalog_to_the_other_backend() {
         "备注没随目录到另一台"
     );
     let (cb, _) =
-        asset_catalog::update_noting(&t.b.cat, t.b.scan(), "b", (&key, "改过了"), 102).unwrap();
+        asset_catalog::update_noting(&own_at(&t.b.cat), t.b.scan(), "b", (&key, "改过了"), 102)
+            .unwrap();
     let ca = t.a.refresh(Some(cb.machines.clone()));
     assert_eq!(
         row(&ca),
         Some("改过了".to_string()),
         "后写的那一条没压过前一条"
     );
-    let (ca, _) = asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 103).unwrap();
+    let (ca, _) =
+        asset_catalog::update_noting(&own_at(&t.a.cat), t.a.scan(), "a", (&key, ""), 103).unwrap();
     assert_eq!(row(&ca), None);
     let cb = t.b.refresh(Some(ca.machines.clone()));
     assert_eq!(row(&cb), None, "清掉的那一下没传过去");
     // 同样的字再存一次：目录不变（不扇出）。
     let (_, again) =
-        asset_catalog::update_noting(&t.a.cat, t.a.scan(), "a", (&key, ""), 104).unwrap();
+        asset_catalog::update_noting(&own_at(&t.a.cat), t.a.scan(), "a", (&key, ""), 104).unwrap();
     assert!(!again);
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -1091,7 +1161,7 @@ fn no_production_code_writes_the_agent_settings_file() {
     assert!(code(fake).contains(NEEDLE) && writes(&code(fake)));
     let writer = files
         .iter()
-        .find(|(p, _)| p.ends_with("common/own_state.rs"))
+        .find(|(p, _)| *p == repo.join("src/backend/platform/fs/own.rs"))
         .expect("正控：后端自有状态文件原子写的那一处不在扫描范围里");
     assert!(
         writes(&code(&writer.1)),
@@ -1244,7 +1314,15 @@ async fn the_wire_matches_the_cross_language_golden() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| super::super::skill_ledger::record_at(&ledger, Some(&skills), a);
+    let record = |a: &Value| {
+        super::super::skill_ledger::record_at(
+            &crate::platform::fs::Own::issue_at(
+                ledger.parent().and_then(std::path::Path::parent).unwrap(),
+            ),
+            Some(&skills),
+            a,
+        )
+    };
     let udone = answer_uninstall_apply(&t.b.door(), &t.b.env, &record, &ua).unwrap();
     let got = json!({
         "list": serde_json::to_value(&list).unwrap(),

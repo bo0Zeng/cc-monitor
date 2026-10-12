@@ -300,7 +300,12 @@ pub(crate) fn refuses_without_terminal(args: &[String], stdin_tty: bool, stdout_
 /// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来 · `5` 没有终端又没有 `--`（[`EXIT_NO_TERMINAL`]）。
 /// `process_argv` ＝ 这个进程的整条 argv，由调用方（`main.rs`，argv 只在那里取一次）交；
 /// 本模块不自己读 `std::env::args`。
-pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i32 {
+pub fn run(
+    args: &[String],
+    process_argv: &[String],
+    own: &crate::platform::fs::Own,
+    running: RunningScan,
+) -> i32 {
     use std::io::IsTerminal;
     if refuses_without_terminal(
         args,
@@ -347,7 +352,7 @@ pub fn run(args: &[String], process_argv: &[String], running: RunningScan) -> i3
                 println!("{}", plan::render_for(&plan, plan::terminal_shell()));
                 return 0;
             }
-            execute(plan)
+            execute(plan, own)
         }
     }
 }
@@ -623,7 +628,7 @@ fn die(msg: &str) -> i32 {
 }
 
 /// 真跑。
-fn execute(plan: Plan) -> i32 {
+fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
     match &plan {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--ccm-print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
@@ -634,7 +639,7 @@ fn execute(plan: Plan) -> i32 {
                     copy_text("beCcm.execute.rejoin", &[("sid", sid), ("name", name)])
                 );
             }
-            exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH, None)
+            exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH, None, own)
         }
         Plan::Container(c) => {
             // 🔴 **这里从前有一段退让** —— 它只发生在真跑这条路上，
@@ -688,10 +693,10 @@ fn execute(plan: Plan) -> i32 {
             } else {
                 // 收尾片段以 ` && ` / `; ` 开头（它在 `--ccm-print` 里是接在建会话那段后面的）
                 // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
-                exec_shell(&format!(":{tail}"), &WHY_SHELL_CONTAINER_TAIL, None)
+                exec_shell(&format!(":{tail}"), &WHY_SHELL_CONTAINER_TAIL, None, own)
             }
         }
-        Plan::Direct(d) => exec_direct(d),
+        Plan::Direct(d) => exec_direct(d, own),
     }
 }
 
@@ -781,7 +786,7 @@ fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
 /// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。`why` = 这一趟为什么非得经 shell。
 ///
 /// 起进程点，已登记进 `readonly_guard::spawn_registry::ALLOWED`。
-fn exec_shell(line: &str, why: &str, account: Option<&str>) -> i32 {
+fn exec_shell(line: &str, why: &str, account: Option<&str>, own: &crate::platform::fs::Own) -> i32 {
     exec_or_spawn(
         Child::new("sh").arg("-c").arg(line),
         &format!(
@@ -789,6 +794,7 @@ fn exec_shell(line: &str, why: &str, account: Option<&str>) -> i32 {
             copy_text("beCcm.execShell.needsSh", &[("why", why)])
         ),
         account,
+        own,
     )
 }
 
@@ -803,7 +809,7 @@ pub(crate) const NO_SHELL: &str = "no_shell";
 ///
 /// 🔴 这几步必须发生在**调用者那个进程**里：env 要落在最终 `exec` 的那个 shell 上，
 /// 否则穿不过 tmux 的进程边界（旧 `cct` 正是死在这一步）。
-fn exec_direct(d: &plan::Direct) -> i32 {
+fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     if d.keeps_user_base_url {
         eprintln!("{}", copy_text("beCcm.relay.userBaseUrl", &[]));
     }
@@ -812,7 +818,7 @@ fn exec_direct(d: &plan::Direct) -> i32 {
         Some(d.account_name.as_str()).filter(|n| !n.is_empty() && !d.config_dir.is_empty());
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
     if let Some(why) = needs_shell(d) {
-        return exec_shell(&plan::render(&Plan::Direct(d.clone())), why, account);
+        return exec_shell(&plan::render(&Plan::Direct(d.clone())), why, account, own);
     }
     for k in &d.nested {
         std::env::remove_var(k);
@@ -881,6 +887,7 @@ fn exec_direct(d: &plan::Direct) -> i32 {
         Child::new(program).args(lead).args(rest),
         &format!("'{prog}'"),
         account,
+        own,
     )
 }
 
@@ -922,16 +929,18 @@ pub(crate) fn final_program(
 /// ⇒ 那句话**指不出是哪个 program**。⇒ 两处调用点各自把主语带进来（`sh -c` 那条还带上「为什么非得经它」）。
 ///
 /// `account` ＝ 这一趟用的号（账号库里说得出名字的那一形）：起好那一刻给那个 pid 留便条；写不成只出声、照常起。
-fn exec_or_spawn(cmd: Child, subject: &str, account: Option<&str>) -> i32 {
+fn exec_or_spawn(
+    cmd: Child,
+    subject: &str,
+    account: Option<&str>,
+    own: &crate::platform::fs::Own,
+) -> i32 {
     let note = |pid: u32| {
         let Some(name) = account else { return };
-        let Some(home) = crate::platform::paths::data_home() else {
-            return;
-        };
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        if let Err(e) = crate::control::launch_account::leave_note(&home, pid, name, now) {
+        if let Err(e) = crate::control::launch_account::leave_note(own, pid, name, now) {
             eprintln!("ccm: {}", e.logged());
         }
     };

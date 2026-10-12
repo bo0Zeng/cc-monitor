@@ -15,8 +15,13 @@
 
 use std::path::Path;
 
+mod own;
 mod ro;
-pub(crate) use ro::{Ro, RoFile};
+pub(crate) use own::{
+    create_dir_private, AccountCreds, CredsLock, DiagFile, OwnPath, RenewLock, PRIVATE_DIR_MODE,
+};
+pub use own::{DiagLog, Own, OwnLock};
+pub(crate) use ro::{Ro, RoFile, Stamp};
 
 /// 把 `from` 改名成 `to`；**`to` 已在（含一条链接）⇒ `AlreadyExists`，一个字节不动**。原子：没有先看后改的窗。
 /// 这个平台 / 这块盘没有这件原语 ⇒ 回一个 [`noreplace_unsupported`] 认得出的错，调用方自己决定退回什么。

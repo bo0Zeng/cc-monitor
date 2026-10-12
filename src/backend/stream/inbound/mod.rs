@@ -131,6 +131,12 @@ impl WatchDesk {
     }
 }
 
+/// 入口递给这条连接的两样：`stream-watch` 那一口 · 写自家状态的句柄（分派只递给 [`Run::BlockingOwn`] 那几条）。
+pub(crate) struct Given {
+    pub(crate) watch: WatchDesk,
+    pub(crate) own: crate::platform::Own,
+}
+
 /// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）。别的形状 ⇒ `bad_args`。
 fn watch_sids(args: &serde_json::Value) -> Option<Vec<String>> {
     args.get("sids")?
@@ -165,6 +171,7 @@ pub fn spawn<R>(
     stdin: R,
     replies: mpsc::Sender<Frame>,
     watch: WatchDesk,
+    own: crate::platform::Own,
     _hello_flushed: crate::stream::wire::HelloFlushed,
 ) -> tokio::task::JoinHandle<()>
 where
@@ -172,6 +179,7 @@ where
 {
     tokio::spawn(async move {
         let running: Running = Arc::new(Mutex::new(HashMap::new()));
+        let given = Given { watch, own };
         // 本连接的链路表：随本读循环一起死 ⇒ monitor 走了，它开的链路一条不留
         // （`dial::link::Table` 的 `Drop`）。
         let links = crate::dial::link::Table::new(replies.clone());
@@ -243,7 +251,7 @@ where
                     &links,
                     &xfers,
                     &follows,
-                    &watch,
+                    &given,
                     asks.conn(),
                 )
                 .await;
@@ -261,7 +269,7 @@ async fn handle_line(
     links: &crate::dial::link::Table,
     xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
-    watch: &WatchDesk,
+    given: &Given,
     asks: u64,
 ) {
     if raw.is_empty() {
@@ -286,7 +294,7 @@ async fn handle_line(
             return;
         }
     };
-    match dispatch(req, replies, running, links, xfers, follows, watch, asks) {
+    match dispatch(req, replies, running, links, xfers, follows, given, asks) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
         Disposition::Spawn(req, run) => {
@@ -384,7 +392,7 @@ fn dispatch(
     links: &crate::dial::link::Table,
     xfers: &crate::control::transfer::Desk,
     follows: &crate::control::terminal_follow::Desk,
-    watch: &WatchDesk,
+    given: &Given,
     asks: u64,
 ) -> Disposition {
     match req.cmd.as_str() {
@@ -411,7 +419,7 @@ fn dispatch(
                     ),
                 ));
             };
-            let answer = (watch.0)(sids);
+            let answer = (given.watch.0)(sids);
             Disposition::SpawnData(
                 req,
                 Box::new(move |_r: Request| -> DataFut {
@@ -539,10 +547,19 @@ fn dispatch(
             Some(spec) => match spec.run {
                 Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
                 Run::AsyncData(f) => Disposition::SpawnData(req, Box::new(f)),
+                Run::AsyncOwn(f) => {
+                    let own = given.own.clone();
+                    Disposition::Spawn(req, Box::new(move |r| f(r, own)))
+                }
                 Run::Blocking(f) => {
                     Disposition::SpawnBlocking(req, Box::new(move |r| f(r).map_err(Fail::from)))
                 }
                 Run::BlockingData(f) => Disposition::SpawnBlocking(req, Box::new(f)),
+                // 写自家状态的那几条：递上分派这一层手里那一份写句柄。
+                Run::BlockingOwn(f) => {
+                    let own = given.own.clone();
+                    Disposition::SpawnBlocking(req, Box::new(move |r| f(r, &own)))
+                }
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
                 Run::Builtin => Disposition::Reply(Frame::err(
                     &req.id,
@@ -569,7 +586,12 @@ fn dispatch(
 pub fn uncancellable() -> Vec<String> {
     let mut names: Vec<String> = REGISTRY
         .iter()
-        .filter(|s| matches!(s.run, Run::Blocking(_) | Run::BlockingData(_)))
+        .filter(|s| {
+            matches!(
+                s.run,
+                Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+            )
+        })
         .map(|s| s.name.to_string())
         .collect();
     names.sort();

@@ -19,6 +19,15 @@
 
 use super::*;
 
+/// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
+fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
+    crate::platform::fs::Own::issue_at(
+        file.parent()
+            .and_then(std::path::Path::parent)
+            .expect("两级"),
+    )
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-assetcat-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -327,7 +336,7 @@ fn scan_of(names: &[&str]) -> Scanned {
 fn update_writes_only_when_changed_and_keeps_its_id() {
     let d = temp_dir("update");
     let f = d.join(".cc-monitor").join(FILE_NAME);
-    let first = update_at(&f, scan_of(&["a"]), "u@h", None).expect("第一次");
+    let first = update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).expect("第一次");
     assert_eq!(first["changed"], json!(true));
     let id = first["self"].as_str().unwrap().to_string();
     assert_eq!(id.len(), 16);
@@ -337,7 +346,7 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
         use std::os::unix::fs::MetadataExt as _;
         std::fs::metadata(&f).unwrap().ino()
     };
-    let again = update_at(&f, scan_of(&["a"]), "u@h", None).unwrap();
+    let again = update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).unwrap();
     assert_eq!(again["changed"], json!(false));
     assert_eq!(again["self"], json!(id), "id 生一次就不变");
     assert_eq!(std::fs::read(&f).unwrap(), bytes1, "没变不许写");
@@ -352,7 +361,7 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
         );
     }
     let inc: BTreeMap<String, Snapshot> = [("r".to_string(), snap(1, &["z"]))].into();
-    let merged = update_at(&f, scan_of(&["a"]), "u@h", Some(inc)).unwrap();
+    let merged = update_at(&own_at(&f), scan_of(&["a"]), "u@h", Some(inc)).unwrap();
     assert_eq!(merged["changed"], json!(true));
     assert_eq!(merged["rows"][0]["name"], json!("z"));
     assert_eq!(merged["rows"][0]["state"], json!(HERE_MISSING));
@@ -368,13 +377,14 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
 #[test]
 fn an_unreadable_or_newer_catalog_is_never_overwritten() {
     let d = temp_dir("unreadable");
-    let f = d.join(FILE_NAME);
+    let f = d.join(".cc-monitor").join(FILE_NAME);
+    std::fs::create_dir_all(f.parent().unwrap()).unwrap();
     for body in [
         "{not json".to_string(),
         serde_json::to_string(&json!({"v": 2, "self": "x", "machines": {}})).unwrap(),
     ] {
         std::fs::write(&f, &body).unwrap();
-        let e = update_at(&f, scan_of(&["a"]), "u@h", None).expect_err("读不懂也写了");
+        let e = update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).expect_err("读不懂也写了");
         assert_eq!(e.code, "catalog_unreadable");
         assert_eq!(
             std::fs::read_to_string(&f).unwrap(),
@@ -465,13 +475,15 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
 /// （刀：`update_at` 不拿锁 ⇒ 它先读到「没有」、生一个新 id 回来。）
 #[test]
 fn hx2_the_first_catalog_is_born_once_even_when_two_writers_race() {
-    let dir = temp_dir("hx2-race");
+    let dir = temp_dir("hx2-race").join(".cc-monitor");
+    std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join(FILE_NAME);
     let held = crate::platform::lock::hold(&dir).expect("拿不到锁");
     let (tx, rx) = std::sync::mpsc::channel();
     let p2 = path.clone();
     let racer = std::thread::spawn(move || {
-        let v = update_at(&p2, Scanned::default(), "racer@x", None).expect("另一个写者失败");
+        let v =
+            update_at(&own_at(&p2), Scanned::default(), "racer@x", None).expect("另一个写者失败");
         tx.send(v).unwrap();
     });
     assert!(

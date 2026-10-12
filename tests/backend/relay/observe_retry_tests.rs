@@ -135,8 +135,12 @@ fn the_quota_headers_of_an_answer_land_in_the_ledger_under_the_account_that_answ
     let (up, got) = spawn_judging_upstream(answer);
     let d = temp_dir("observe");
     let book = Arc::new(Ledger::at(Some(d.join(ledger::FILE_NAME))));
-    let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-        .recording_to(Arc::clone(&book));
+    let accounts = Accounts::new(
+        RoutingTable::build(std::iter::empty()),
+        upstreams_at(up),
+        crate::platform::fs::Own::issue_data_at(&d),
+    )
+    .recording_to(Arc::clone(&book));
     let relay = spawn_relay_over(accounts);
     let resp = shoot(
         relay,
@@ -464,12 +468,16 @@ impl Home {
             "acctInit": {"line": line, "slots": [], "mode": "normal", "stint": null}
         }))
         .expect("config");
-        rotation::face_change(&RotationStore::at(Some(self.rotation_path())), |b| {
-            let id = b.default_config.clone();
-            if let Some(c) = b.configs.get_mut(&id) {
-                c.body = body.clone();
-            }
-        })
+        rotation::face_change(
+            &RotationStore::at(Some(self.rotation_path())),
+            &self.own(),
+            |b| {
+                let id = b.default_config.clone();
+                if let Some(c) = b.configs.get_mut(&id) {
+                    c.body = body.clone();
+                }
+            },
+        )
         .expect("write");
     }
 
@@ -483,9 +491,13 @@ impl Home {
             self.library(),
             Some(dead_token_endpoint()),
         );
-        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-            .recording_to(quota)
-            .rotating_with(hop);
+        let accounts = Accounts::new(
+            RoutingTable::build(std::iter::empty()),
+            upstreams_at(up),
+            self.own(),
+        )
+        .recording_to(quota)
+        .rotating_with(hop);
         spawn_relay_over(accounts)
     }
 
@@ -503,17 +515,26 @@ impl Home {
             self.library(),
             Some(dead_token_endpoint()),
         );
-        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-            .recording_to(quota)
-            .rotating_with(hop)
-            .clocked(Arc::new(move || {
-                clock.load(std::sync::atomic::Ordering::SeqCst)
-            }));
+        let accounts = Accounts::new(
+            RoutingTable::build(std::iter::empty()),
+            upstreams_at(up),
+            self.own(),
+        )
+        .recording_to(quota)
+        .rotating_with(hop)
+        .clocked(Arc::new(move || {
+            clock.load(std::sync::atomic::Ordering::SeqCst)
+        }));
         spawn_relay_over(accounts)
     }
 
     fn lineage_path(&self) -> std::path::PathBuf {
         self.root.join(crate::lineage::FILE_NAME)
+    }
+
+    /// 写句柄：数据目录那一根就是这个家（额度账 · 轮换 · 血缘都落这里）。
+    fn own(&self) -> crate::platform::fs::Own {
+        crate::platform::fs::Own::issue_data_at(&self.root)
     }
 
     /// 同 [`Home::relay`]，另装上会话血缘（落在这个家里）。
@@ -526,12 +547,16 @@ impl Home {
             self.library(),
             Some(dead_token_endpoint()),
         );
-        let accounts = Accounts::new(RoutingTable::build(std::iter::empty()), upstreams_at(up))
-            .recording_to(quota)
-            .rotating_with(hop)
-            .tracing_lineage(Arc::new(crate::lineage::LineageStore::at(Some(
-                self.lineage_path(),
-            ))));
+        let accounts = Accounts::new(
+            RoutingTable::build(std::iter::empty()),
+            upstreams_at(up),
+            self.own(),
+        )
+        .recording_to(quota)
+        .rotating_with(hop)
+        .tracing_lineage(Arc::new(crate::lineage::LineageStore::at(Some(
+            self.lineage_path(),
+        ))));
         spawn_relay_over(accounts)
     }
 
@@ -670,7 +695,7 @@ fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
     let now = crate::accounts::quota::now_unix();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     let r = crate::agents::claudecode::quota::read(429, &[], now).expect("被拒");
-    ledger::record_seen(&side, "claude-code", "b", r, now);
+    ledger::record_seen(&side, &home.own(), "claude-code", "b", r, now);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     let resp = send_as_a(home.relay(up));
     assert_eq!(resp, refused_with_quota());
@@ -1022,9 +1047,13 @@ fn a_session_started_inside_another_opens_the_default_config() {
     let relay = home.relay_tracing(up);
     let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
-    rotation::face_change(&RotationStore::at(Some(home.rotation_path())), |b| {
-        b.sessions.get_mut("s-owner").expect("owner").config.id = "c_00000003".into();
-    })
+    rotation::face_change(
+        &RotationStore::at(Some(home.rotation_path())),
+        &home.own(),
+        |b| {
+            b.sessions.get_mut("s-owner").expect("owner").config.id = "c_00000003".into();
+        },
+    )
     .expect("write");
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
     let book = RotationStore::at(Some(home.rotation_path())).now();

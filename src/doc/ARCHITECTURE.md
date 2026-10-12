@@ -386,7 +386,7 @@ monitor 自己的文件在 `~/.cc-monitor/`：
 | `history-metadata.json` | 本机后端 | 本机后端 | 历史注解（星标 · 改名 · 隐藏 · 上次账号） |
 | `logs/monitor/` | monitor | 用户 | 按天滚动的诊断日志 |
 
-后端自己的状态（`backend.json` · 中转根钥匙 `relay-key` · 额度账 `quota.json` · 轮换 `rotation.json` · 血缘 `lineage.json` · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，写者逐文件登记在 `readonly_guard.rs` 的 `OWN_STATE_WRITERS`；每一项是「删了会丢」还是「可随手删」见 INVARIANTS §2.1。
+后端自己的状态（`backend.json` · 中转根钥匙 `relay-key` · 额度账 `quota.json` · 轮换 `rotation.json` · 血缘 `lineage.json` · 资产目录 · skill 装记录 · API 号凭据 · 后端日志 · `bin/`）由那台后端写，都经写句柄 `platform::fs::Own`（订阅号凭据与诊断文件各一个窄句柄）；每一项是「删了会丢」还是「可随手删」见 INVARIANTS §2.1。
 
 只读的外部数据源：`<agent 家>/projects/**/*.jsonl`（会话内容）· `<agent 家>/sessions/<PID>.json`（活跃会话，PID ＋ `procStart` 双校验）· `<agent 家>/tasks/<sid>/`（Task 面板），都由那台后端读。
 

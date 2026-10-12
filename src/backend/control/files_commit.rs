@@ -370,8 +370,8 @@ fn ensure_staging(home: &Path) -> Result<PathBuf, WriteRefusal> {
     let mut at = home.to_path_buf();
     for seg in STAGING_DIR.split('/') {
         let next = resolve_in_root(&at, seg).map_err(WriteRefusal::Refused)?;
-        // 这一趟建出来的那一层建的那一下就是 0700、已在的不动（`own_dir`：后端建自家目录的那一个函数）。
-        crate::common::own_dir::ensure_private_dir(&next).map_err(|e| {
+        // 这一趟建出来的那一层建的那一下就是 0700、已在的不动（`platform/fs` 带权限位建一层目录的那一个函数）。
+        crate::platform::fs::create_dir_private(&next).map_err(|e| {
             WriteRefusal::io(
                 copy_text(
                     "beFilesWrite.write.failed",

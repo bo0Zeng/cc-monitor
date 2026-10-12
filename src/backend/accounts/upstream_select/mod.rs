@@ -203,15 +203,17 @@ impl Upstreams {
 /// （② 不碰响应体）。
 ///
 /// `library`：这台的账号库怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
-pub fn host_relay(library: rotate::LibraryRead) -> String {
+/// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
+pub fn host_relay(library: rotate::LibraryRead, own: crate::platform::fs::Own) -> String {
     let hosted = crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Rotating(library),
+        &Rotating(library, own.clone()),
         crate::stream::tap::port(),
+        &own,
     );
     // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是第一版，这一下换形写回（全机只这一处写回）。
     if hosted.listening() {
-        crate::accounts::quota::rotation::migrate_here();
+        crate::accounts::quota::rotation::migrate_here(&own);
     }
     hosted.to_string()
 }
@@ -222,7 +224,11 @@ pub fn host_relay(library: rotate::LibraryRead) -> String {
 /// `Startup` / `Ready` / `Destinations` 三个契约口。钉这一条的判据：`upstream_selection_guard`（㈢ 零命中）。
 /// 上游选择在中转启动路径上交给中转的那一只手（[`Startup`]）：装上换号（额度满了换到轮换里下一个号），
 /// 带着这台的账号库怎么读。判据交一份空账号库 ⇒ 永远只走起会话那个号。
-pub(crate) struct Rotating(pub(crate) rotate::LibraryRead);
+/// 第二格是写自家状态的句柄（启动时造的那一份）。
+pub(crate) struct Rotating(
+    pub(crate) rotate::LibraryRead,
+    pub(crate) crate::platform::fs::Own,
+);
 
 impl Startup for Rotating {
     fn check(&self, get: &dyn Fn(&str) -> Option<String>) -> Option<Box<dyn Ready>> {
@@ -230,6 +236,7 @@ impl Startup for Rotating {
             Box::new(Booted {
                 upstreams,
                 library: std::sync::Arc::clone(&self.0),
+                own: self.1.clone(),
             }) as Box<dyn Ready>
         })
     }
@@ -239,6 +246,7 @@ impl Startup for Rotating {
 pub(crate) struct Booted {
     upstreams: Upstreams,
     library: rotate::LibraryRead,
+    own: crate::platform::fs::Own,
 }
 
 impl Ready for Booted {
@@ -250,14 +258,25 @@ impl Ready for Booted {
         get: &dyn Fn(&str) -> Option<String>,
         out: &mut dyn Write,
     ) -> std::sync::Arc<dyn Destinations> {
-        let Booted { upstreams, library } = *self;
+        let Booted {
+            upstreams,
+            library,
+            own,
+        } = *self;
         let (table, source) = load_credentials(get, &upstreams, out);
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
         // 推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
-        let quota = std::sync::Arc::new(Ledger::at(ledger::path_from(get)).ringing(ledger::bell()));
-        let mut accounts =
-            Accounts::new(table, upstreams).recording_to(std::sync::Arc::clone(&quota));
+        let quota = std::sync::Arc::new(
+            Ledger::at(
+                own.path(ledger::FILE_NAME)
+                    .ok()
+                    .map(|p| p.as_path().to_path_buf()),
+            )
+            .ringing(ledger::bell()),
+        );
+        let mut accounts = Accounts::new(table, upstreams, own.clone())
+            .recording_to(std::sync::Arc::clone(&quota));
         let store = crate::accounts::quota::rotation::RotationStore::at(
             crate::accounts::quota::rotation::path_from(get),
         );
@@ -271,7 +290,9 @@ impl Ready for Booted {
                 None,
             ))
             .tracing_lineage(std::sync::Arc::new(crate::lineage::LineageStore::at(
-                crate::lineage::path_from(get),
+                own.path(crate::lineage::FILE_NAME)
+                    .ok()
+                    .map(|p| p.as_path().to_path_buf()),
             )));
         std::sync::Arc::new(match source {
             Some((path, stamp)) => accounts.reloading_from(Reload::new(path, stamp)),
@@ -302,6 +323,8 @@ pub(crate) struct Accounts {
     lineage: Option<std::sync::Arc<crate::lineage::LineageStore>>,
     /// 换号与额度账那一侧这一发的「此刻」（unix 秒）。产品恒是真钟；只有判据经 [`Accounts::clocked`] 换（判「隔没隔一天」）。
     clock: Clock,
+    /// 写自家状态的句柄（启动时造的那一份，经中转起监听那一处递进来）：中转经手的那一发要记的几份都经它写。
+    own: crate::platform::fs::Own,
 }
 
 /// 换号与额度账那一侧读的钟。
@@ -309,7 +332,11 @@ type Clock = std::sync::Arc<dyn Fn() -> u64 + Send + Sync>;
 
 impl Accounts {
     /// 从一张已经装好的表 ＋ 那张每 agent 一行的默认上游起一层上游选择。
-    pub(crate) fn new(table: RoutingTable, upstreams: Upstreams) -> Self {
+    pub(crate) fn new(
+        table: RoutingTable,
+        upstreams: Upstreams,
+        own: crate::platform::fs::Own,
+    ) -> Self {
         Self {
             table: std::sync::RwLock::new(table),
             upstreams,
@@ -318,6 +345,7 @@ impl Accounts {
             hop: None,
             lineage: None,
             clock: std::sync::Arc::new(crate::accounts::quota::now_unix),
+            own,
         }
     }
 
@@ -476,14 +504,14 @@ impl Destinations for Accounts {
                 token: &o.token,
                 parent: o.parent.as_deref(),
             });
-            crate::lineage::relay_saw(l, origin, ask.label, &key.seg1, (self.clock)());
+            crate::lineage::relay_saw(l, &self.own, origin, ask.label, &key.seg1, (self.clock)());
         }
         // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
         //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
         // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。
         let row = |a: &str| self.row_of(&key.seg1, a);
         let go = match &self.hop {
-            Some(h) => h.steer(&self.rotate_ask(key, ask, &row)),
+            Some(h) => h.steer(&self.rotate_ask(key, ask, &row), &self.own),
             None => rotate::Go::Start,
         };
         let table = self.table();
@@ -526,8 +554,13 @@ impl Destinations for Accounts {
         };
         let tried: Vec<String> = tried.iter().map(|t| t.to_string()).collect();
         let row = |a: &str| self.row_of(&key.seg1, a);
-        let Some(go) = h.on_refused(&self.rotate_ask(key, ask, &row), seen.tag, &reading, &tried)
-        else {
+        let Some(go) = h.on_refused(
+            &self.rotate_ask(key, ask, &row),
+            seen.tag,
+            &reading,
+            &tried,
+            &self.own,
+        ) else {
             return;
         };
         let table = self.table();
@@ -555,7 +588,7 @@ impl Destinations for Accounts {
                     refusal_line(seen.tag, seen.status, &reading, retry_after)
                 );
             }
-            ledger::record_seen(&self.quota, agent, seen.tag, reading, now);
+            ledger::record_seen(&self.quota, &self.own, agent, seen.tag, reading, now);
         }
     }
 }

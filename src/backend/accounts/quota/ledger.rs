@@ -11,6 +11,7 @@
 
 use crate::agents::QuotaReading;
 use crate::common::said::Said;
+use crate::platform::fs::{Own, Ro, Stamp};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -238,18 +239,6 @@ struct State {
     stamp: Option<Stamp>,
 }
 
-/// 盘上那份文件的戳（修改时刻 · 长度 · 节点号）：原子替换每次换一个新节点，同一纳秒里写两次也分得出。
-type Stamp = (std::time::SystemTime, u64, u64);
-
-fn stamp(p: &Path) -> Option<Stamp> {
-    let m = std::fs::metadata(p).ok()?;
-    #[cfg(unix)]
-    let node = std::os::unix::fs::MetadataExt::ino(&m);
-    #[cfg(not(unix))]
-    let node = 0;
-    Some((m.modified().ok()?, m.len(), node))
-}
-
 /// 额度账本体。`path = None` ⇒ 家推不出来，只记在内存。
 pub(crate) struct Ledger {
     path: Option<PathBuf>,
@@ -267,7 +256,7 @@ impl Ledger {
             }
         }
         let on_disk = mem.iter().map(|(k, e)| (k.clone(), e.seen_at)).collect();
-        let stamp = path.as_deref().and_then(stamp);
+        let stamp = path.as_deref().and_then(Ro::stamp);
         Self {
             path,
             state: Mutex::new(State {
@@ -284,7 +273,7 @@ impl Ledger {
         let Some(p) = self.path.as_deref() else {
             return;
         };
-        let s = stamp(p);
+        let s = Ro::stamp(p);
         if s.is_none() || s == g.stamp {
             return;
         }
@@ -361,6 +350,7 @@ pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf>
 /// 落盘失败只出声，不影响这一发（额度账不是请求的前提）。
 pub(crate) fn record_seen(
     ledger: &Ledger,
+    own: &Own,
     agent: &str,
     account: &str,
     reading: QuotaReading,
@@ -404,11 +394,9 @@ pub(crate) fn record_seen(
         (changed, persist, entry)
     };
     if persist {
-        if let Some(p) = ledger.path.as_deref() {
-            match write_merged(p, &entry, true) {
-                Ok((written, at)) => ledger.landed(written, at),
-                Err(e) => tracing::warn!("[quota] {e}: {}", e.raw.as_deref().unwrap_or("")),
-            }
+        match write_merged(own, &entry, true) {
+            Ok((written, at)) => ledger.landed(written, at),
+            Err(e) => tracing::warn!("[quota] {e}: {}", e.raw.as_deref().unwrap_or("")),
         }
     }
     if changed {
@@ -420,15 +408,15 @@ pub(crate) fn record_seen(
 /// 交回合并好的那一条。
 pub(crate) fn record_probe(
     ledger: &Ledger,
+    own: &Own,
     agent: &str,
     account: &str,
     windows: Vec<crate::agents::QuotaWindow>,
     now: u64,
 ) -> Result<Observed, Said> {
-    let path = ledger
-        .path
-        .as_deref()
-        .ok_or_else(|| Said::from(copy_text("beQuotaLedger.read.noHome", &[])))?;
+    if ledger.path.is_none() {
+        return Err(Said::from(copy_text("beQuotaLedger.read.noHome", &[])));
+    }
     let windows_seen = windows
         .iter()
         .map(|w| {
@@ -457,7 +445,7 @@ pub(crate) fn record_probe(
         trend: BTreeMap::new(),
     };
     let before = ledger.entry(agent, account);
-    let (written, at) = write_merged(path, &probed, false)?;
+    let (written, at) = write_merged(own, &probed, false)?;
     let changed = before.is_none_or(|b| shown(&b.reading) != shown(&written.reading));
     ledger.landed(written.clone(), at);
     if changed {
@@ -479,17 +467,16 @@ pub(crate) fn read_at(path: &Path) -> Read {
 /// ★ 盘上那份的唯一写法：在跨进程锁里读盘 → 那个号那一条按窗口并进 `add`（[`merge`]；`headers` 同它）→ `O_EXCL` 临时文件 →
 /// 写满 → 原子挪过去 → 记下新的戳。读不懂的那份不覆盖。交回落盘的那一条与戳。
 fn write_merged(
-    path: &Path,
+    own: &Own,
     add: &Observed,
     headers: bool,
 ) -> Result<(Observed, Option<Stamp>), Said> {
-    let dir = path.parent().ok_or_else(|| {
-        Said::from(copy_text(
-            "beQuotaLedger.write.noParent",
-            &[("path", &path.display().to_string())],
-        ))
-    })?;
-    crate::common::own_dir::ensure_private_dir(dir).map_err(|e| {
+    let file = own.path(FILE_NAME)?;
+    let dir = own
+        .root()
+        .ok_or_else(|| Said::from(copy_text("beQuotaLedger.read.noHome", &[])))?;
+    let path = file.as_path();
+    own.ensure_dir(&dir).map_err(|e| {
         Said::with_raw(
             copy_text(
                 "beQuotaLedger.write.failed",
@@ -501,7 +488,7 @@ fn write_merged(
             &e,
         )
     })?;
-    let _lock = crate::platform::lock::hold(dir)?;
+    let held = own.lock(&dir)?;
     let mut book = match read_at(path) {
         Read::Absent => Book::default(),
         Read::Present(b) => b,
@@ -531,8 +518,9 @@ fn write_merged(
     book.accounts.push(entry.clone());
     book.accounts
         .sort_by(|a, b| (&a.agent, &a.account).cmp(&(&b.agent, &b.account)));
-    crate::common::own_state::write_json(path, &book)?;
-    Ok((entry, stamp(path)))
+    let body = crate::common::own_state::json_body(path, &book)?;
+    own.write(&file, &held, &body)?;
+    Ok((entry, Ro::stamp(path)))
 }
 
 /// 头一次看到的那一条：每个窗口从这一刻起记走势（已带着的照旧）。

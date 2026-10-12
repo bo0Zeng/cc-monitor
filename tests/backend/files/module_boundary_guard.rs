@@ -370,9 +370,9 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "契约错只进表一句（「请求格式不对」，诊断记日志）",
     ),
     (
-        "common::own_dir::ensure_private_dir",
-        Kind::Common,
-        "〔MOD 挪进 common〕暂存区那两层按后端自家目录建（0700、已在的不动）",
+        "platform::fs::create_dir_private",
+        Kind::Platform,
+        "暂存区那两层按后端自家目录建（0700、已在的不动；`Own::ensure_dir` 的同一个本体，第三刀搬上文件管理面的句柄）",
     ),
     (
         "common::own_dir::DIR_NAME",

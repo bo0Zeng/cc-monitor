@@ -55,9 +55,24 @@ impl Tmp {
     }
     fn ok(&self, cmd: &str, args: Value) -> Value {
         let table = self.0.join(".cc-monitor/apikey-credentials.json");
-        let set = |v: &Value| file_face::answer_set_at(&table, v);
-        let drop = |v: &Value| file_face::answer_drop_at(&table, v);
-        let restore = |v: &Value| file_face::answer_restore_at(&table, v);
+        let set = |v: &Value| {
+            file_face::answer_set_at(
+                &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+                v,
+            )
+        };
+        let drop = |v: &Value| {
+            file_face::answer_drop_at(
+                &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+                v,
+            )
+        };
+        let restore = |v: &Value| {
+            file_face::answer_restore_at(
+                &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+                v,
+            )
+        };
         let path = || Ok(table.clone());
         let keys = KeyDoor {
             set: &set,

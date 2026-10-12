@@ -58,6 +58,18 @@
       "zh": "清掉 key 表 {path} 里 {dir} 的行",
       "args": ["dir", "path"]
     },
+    "beOwnState.path.noHome": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · 无主目录",
+      "args": []
+    },
+    "beOwnState.path.notRelative": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · {rel} · 不是数据目录底下的相对名",
+      "args": ["rel"]
+    },
     "beOwnState.read.failed": {
       "kind": "error",
       "role": "原因格",
@@ -74,6 +86,12 @@
       "kind": "error",
       "role": "原因格",
       "zh": "写入失败 · {path} · 程序出错",
+      "args": ["path"]
+    },
+    "beOwnState.write.lockMismatch": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "写入失败 · {path} · 未持所在目录的锁",
       "args": ["path"]
     },
     "beOwnState.write.noParent": {
@@ -865,12 +883,6 @@
       "zh": "{path} 由版本更高的后端写入 · 未覆盖 · 此后端认格式 {mine} · 它是 {theirs}",
       "args": ["path", "mine", "theirs"]
     },
-    "beAssetCatalog.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beAssetCatalog.write.mkdirFailed": {
       "kind": "error",
       "role": "原因格",
@@ -991,12 +1003,6 @@
       "zh": "{path} 格式不对",
       "args": ["path"]
     },
-    "beSkillLedger.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beSkillLedger.add.tooMany": {
       "kind": "error",
       "role": "原因格",
@@ -1050,12 +1056,6 @@
       "role": "报错",
       "zh": "写后回读 · {path} 里无账号 {account} 的 API key",
       "args": ["path", "account"]
-    },
-    "beUpstreamFileFace.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
     },
     "beUpstreamFileFace.write.mkdirFailed": {
       "kind": "error",
@@ -1476,12 +1476,6 @@
       "role": "报错",
       "zh": "此机器错误输出不能写进日志文件",
       "args": []
-    },
-    "beDoor.fs.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
     },
     "beDoor.fs.mkdirFailed": {
       "kind": "error",
@@ -15841,12 +15835,6 @@
       "zh": "写入失败 · {dir} · {why}",
       "args": ["dir", "why"]
     },
-    "beExitPolicy.writeAt.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beResolveQuery.resolve.unsafeLauncher": {
       "kind": "error",
       "role": "报错",
@@ -15888,12 +15876,6 @@
       "role": "原因格",
       "zh": "写入失败 · {dir} · {why}",
       "args": ["dir", "why"]
-    },
-    "beHistoryAnnotations.writeAt.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
     },
     "beHistoryAnnotations.readForWrite.notObject": {
       "kind": "error",
@@ -21310,12 +21292,6 @@
       "zh": "已删除「{label}」",
       "args": ["label"]
     },
-    "beQuotaLedger.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beQuotaLedger.write.failed": {
       "kind": "error",
       "role": "报错",
@@ -21334,12 +21310,6 @@
       "zh": "找不到该机数据目录 · 额度账无处可读",
       "args": []
     },
-    "beLineage.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beLineage.write.failed": {
       "kind": "error",
       "role": "报错",
@@ -21351,12 +21321,6 @@
       "role": "报错",
       "zh": "{said} · 未覆盖",
       "args": ["said"]
-    },
-    "beRotation.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
     },
     "beRotation.write.failed": {
       "kind": "error",

@@ -94,6 +94,20 @@ fn env_of(
     }
 }
 
+/// 交给 `host` 的上游选择：空账号库 ＋ 写句柄（数据目录那一根同 [`env_of`] 交的 `CCM_DATA_DIR`，即凭据夹具所在的目录）。
+fn rotating(creds: &std::path::Path) -> crate::accounts::upstream_select::Rotating {
+    crate::accounts::upstream_select::Rotating(
+        std::sync::Arc::new(|_| Default::default()),
+        own_of(creds),
+    )
+}
+
+/// 写句柄：两个根同 [`env_of`] 交的 `HOME` 与 `CCM_DATA_DIR`（都是凭据夹具所在的目录；钥匙已在那里放好）。
+fn own_of(creds: &std::path::Path) -> crate::platform::fs::Own {
+    let dir = creds.parent().expect("夹具目录");
+    crate::platform::fs::Own::issue_roots(dir, dir)
+}
+
 /// 经中转发一条请求，读完整个应答（带读期限）。带 claude 那个会话标识头（值 `k-rl1`）。
 fn through(addr: SocketAddr) -> String {
     through_with(addr, "x-claude-code-session-id: k-rl1\r\n")
@@ -124,10 +138,9 @@ fn a_process_that_was_not_handed_a_port_hosts_no_relay() {
     for port in [None, Some(""), Some("   ")] {
         let got = host(
             &env_of(port, None, &creds),
-            &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| {
-                Default::default()
-            })),
+            &rotating(&creds),
             no_tap(),
+            &own_of(&creds),
         );
         assert!(
             matches!(got, Hosted::NotAsked),
@@ -147,8 +160,9 @@ fn a_handed_port_really_listens_and_forwards_the_upstream_sse_byte_for_byte() {
             Some(format!("http://127.0.0.1:{}", up.port())),
             &creds,
         ),
-        &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| Default::default())),
+        &rotating(&creds),
         no_tap(),
+        &own_of(&creds),
     );
     let Hosted::Listening(addr) = got else {
         panic!("交了端口 0 ⇒ 应在听，得 {got:?}");
@@ -175,8 +189,9 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
             Some(format!("http://127.0.0.1:{}", up.port())),
             &creds,
         ),
-        &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| Default::default())),
+        &rotating(&creds),
         no_tap(),
+        &own_of(&creds),
     );
     let Hosted::Listening(addr) = got else {
         panic!("交了端口 0 ⇒ 应在听，得 {got:?}");
@@ -189,8 +204,9 @@ fn our_relay_listening_answers_from_the_hosts_own_state_not_from_who_answers_the
     let port = squatter.local_addr().expect("地址").port();
     let failed = host(
         &env_of(Some(&port.to_string()), None, &creds),
-        &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| Default::default())),
+        &rotating(&creds),
         no_tap(),
+        &own_of(&creds),
     );
     assert!(
         matches!(failed, Hosted::Failed(_)),
@@ -214,8 +230,9 @@ fn a_handed_port_that_is_taken_fails_loudly_without_taking_the_process_down() {
     let creds = creds_fixture("taken");
     let got = host(
         &env_of(Some(&port.to_string()), None, &creds),
-        &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| Default::default())),
+        &rotating(&creds),
         no_tap(),
+        &own_of(&creds),
     );
     match got {
         Hosted::Failed(why) => {
@@ -232,10 +249,9 @@ fn an_unreadable_port_is_refused_rather_than_defaulted() {
     for junk in ["abc", "70000", "-1"] {
         let got = host(
             &env_of(Some(junk), None, &creds),
-            &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| {
-                Default::default()
-            })),
+            &rotating(&creds),
             no_tap(),
+            &own_of(&creds),
         );
         match got {
             Hosted::Failed(why) => assert!(why.contains(junk), "理由里要带那个原串：{why}"),
@@ -258,8 +274,9 @@ fn a_bad_upstream_config_fails_before_any_port_is_bound() {
             Some("not a url".to_string()),
             &creds,
         ),
-        &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| Default::default())),
+        &rotating(&creds),
         no_tap(),
+        &own_of(&creds),
     );
     assert!(
         matches!(got, Hosted::Failed(_)),
@@ -283,8 +300,11 @@ fn hosted_relay_child_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    let said =
-        crate::accounts::upstream_select::host_relay(std::sync::Arc::new(|_| Default::default()));
+    // 写句柄同 `main.rs` 那一份：根取这个子进程的环境（父进程已把家与数据目录指到夹具）。
+    let said = crate::accounts::upstream_select::host_relay(
+        std::sync::Arc::new(|_| Default::default()),
+        crate::platform::fs::Own::issue(),
+    );
     eprintln!("[rl1-child] {said}");
     loop {
         std::thread::park();
@@ -487,8 +507,9 @@ fn hosted_with_tap(
             Some(format!("http://127.0.0.1:{}", up.port())),
             &creds,
         ),
-        &crate::accounts::upstream_select::Rotating(std::sync::Arc::new(|_| Default::default())),
+        &rotating(&creds),
         tap,
+        &own_of(&creds),
     ) {
         Hosted::Listening(a) => a,
         other => panic!("交了端口 0 ⇒ 应在听，得 {other:?}"),

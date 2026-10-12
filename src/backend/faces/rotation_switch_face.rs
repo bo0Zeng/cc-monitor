@@ -100,6 +100,7 @@ pub(crate) async fn answer_switch(
     args: Value,
     until: Option<crate::platform::child::Until>,
     files: super::launch_face::Files,
+    own: crate::platform::fs::Own,
 ) -> Answer {
     let ask = switch_ask(&args)?;
     let now = crate::accounts::quota::now_unix();
@@ -108,11 +109,12 @@ pub(crate) async fn answer_switch(
         let ask = Arc::new(ask);
         let a = Arc::clone(&ask);
         let done = tokio::task::spawn_blocking(move || {
+            let own = own;
             let ctx = Ctx::here();
             a.items
                 .iter()
                 .filter_map(Value::as_str)
-                .map(|sid| (sid.to_string(), hot_one(&ctx, sid, &a.target, now)))
+                .map(|sid| (sid.to_string(), hot_one(&ctx, &own, sid, &a.target, now)))
                 .collect::<Vec<_>>()
         })
         .await
@@ -134,11 +136,12 @@ pub(crate) async fn answer_switch(
         if r.is_ok() {
             // 换过去了（报没报出都算）⇒ 记一条；写不进 ⇒ `ioFailed`（旧的已停）。
             let (s, t) = (sid.clone(), ask.target.clone());
+            let own = own.clone();
             let kept = tokio::task::spawn_blocking(move || {
                 let ctx = Ctx::here();
                 let book = ctx.hop.store.now();
                 match book.sessions.get(&s).map(|e| e.current.clone()) {
-                    Some(from) => record(&ctx, &s, &from, &t, Leave::ManualRestart, now),
+                    Some(from) => record(&ctx, &own, &s, &from, &t, Leave::ManualRestart, now),
                     None => SwitchOutcome::Switched,
                 }
             })

@@ -55,7 +55,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "no_such_need", "not_ackable", "not_read", "review_unreadable"],
         fields: &[arg("key", "那一条的键（`plan-read` 里 `needs[].key`）"), arg("slice", "片名"), arg("workspace", "工作区根"), out("acked", "`true`"), out("key", "原样"), out("needCount", "这个工作区此刻要你看的数")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_review_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| crate::faces::plan_review_face::answer(&r.cmd, &r.args, own).map(Some)),
     },
     CommandSpec {
         name: "plan-unack",
@@ -63,7 +63,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed", "not_read", "review_unreadable"],
         fields: &[arg("key", "那一条的键"), arg("slice", "片名"), arg("workspace", "工作区根"), out("acked", "`false`"), out("key", "原样"), out("needCount", "这个工作区此刻要你看的数")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_review_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| crate::faces::plan_review_face::answer(&r.cmd, &r.args, own).map(Some)),
     },
     CommandSpec {
         name: "plan-return",
@@ -71,6 +71,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "bad_target", "capture_failed", "child_timed_out", "failed", "io_failed", "no_pb", "no_server", "no_such_cell", "no_such_session", "no_target", "no_tmux", "not_workspace", "pb_unsupported", "review_unreadable", "unobservable"],
         fields: &[arg("client", "自报的前端（过 `terminal-input` 那一道身份门）"), arg("id", "格的编号；顶块 ⇒ `project`（标题是片名，送给顶块接手）"), out("line", "送出的那一行（后端拼；只读）"), out("result", "`delivered` · `unsure`（送达未知，别重发）· `refused` · `copy`（送不了，只给这一行去复制）"), out("said", "`refused` / `copy` 时给人看的那一句"), out("screen", "`screen-changed` 时带的新指纹"), arg("seen_screen", "送之前看到的那一屏的指纹（同 `terminal-input`）"), arg("slice", "片名"), arg("text", "人的原话（换行并成空格）"), arg("to", "可选：`owner`（在长它的，缺省）· `signer`（签它的，pb 给了才有）"), out("to", "送给的那一位（同 `plan-read` 里 `owner` 的形状）"), out("why", "`waiting`（在等你批准或回答）· `ended` · `unknown` · 或 `terminal-input` 的原因"), arg("workspace", "工作区根")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::plan_return_face::answer(&r.cmd, &r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| crate::faces::plan_return_face::answer(&r.cmd, &r.args, own).map(Some)),
     },
 ];

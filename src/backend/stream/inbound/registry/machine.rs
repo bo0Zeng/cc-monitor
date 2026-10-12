@@ -139,7 +139,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         codes: &["bad_args", "io_failed"],
         fields: &[out("detail", "同 `exit-policy-read`"), both("killOnExit", "要写的值（布尔）"), out("path", "同 `exit-policy-read`"), out("reason", "同 `exit-policy-read`"), out("said", "同 `exit-policy-read`"), out("state", "写完再读一遍的状态")],
         takes_input: true,
-        run: Run::BlockingData(|r| crate::control::exit_policy::answer_set(&r.args).map(Some)),
+        run: Run::BlockingOwn(|r, own| crate::control::exit_policy::answer_set(&r.args, own).map(Some)),
     },
     // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
     CommandSpec {
