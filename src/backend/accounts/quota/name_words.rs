@@ -1,4 +1,6 @@
-//! **号名与语义位名的字**（唯一一处）：起会话时没说是哪个号的那一个（`_`，即 `~/.claude`）叫什么、`5h` / `7d` 两个语义位叫什么。
+//! **号名与语义位名的字**（唯一一处）：起会话时没说是哪个号的那一个（`_`）· 账号 0（不设配置目录的那一份登录，`~/.claude`）叫什么、
+//! `5h` / `7d` 两个语义位叫什么。`_` 只说「没表态」：落在哪一份登录说不准（建了账号库的机器上可能是 shell rc 导出的那个配置根），
+//! 所以它不叫 `~/.claude`，叫「未指定账号」（与额度行那一格同一条键）。
 //!
 //! 后端自己拼句子时用 [`account_text`] / [`slot_text`]；出口要画号名 / 位名时读成品上的 `names`（[`with_names`]：
 //! `{accounts: {码: 字}, slots: {码: 字}}`，`accounts` 只列与原名不同的那几个 —— 不在表里的号就叫它自己的名字）。
@@ -9,12 +11,14 @@ use copy_core::copy_text;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-/// 起会话时没说是哪个号 ⇒ 记成这个（`~/.claude`）。
+/// 起会话时没说是哪个号 ⇒ 记成这个（是哪一份登录说不准；不等于账号 0）。
 pub(crate) const HOME_ACCOUNT: &str = "_";
 
-/// 一个号在人眼里叫什么：`_` ⇒「默认号」那个字；其余照原名。
+/// 一个号在人眼里叫什么：`_` ⇒「未指定账号」· 账号 0 ⇒ `~/.claude`；其余照原名。
 pub(crate) fn account_text(name: &str) -> String {
     if name == HOME_ACCOUNT {
+        copy_text("acct.tag.home", &[])
+    } else if name == acct_core::BARE_ACCOUNT {
         copy_text("acct.home.name", &[])
     } else {
         name.to_string()
@@ -40,11 +44,11 @@ pub(crate) struct Names {
 /// 唯一一处造 [`Names`]。
 pub(crate) fn names() -> Names {
     Names {
-        accounts: [HOME_ACCOUNT]
+        accounts: [HOME_ACCOUNT, acct_core::BARE_ACCOUNT]
             .iter()
             .map(|a| (a.to_string(), Words(account_text(a))))
             .collect(),
-        slots: super::rotation::LINE_SLOTS
+        slots: ["5h", "7d"]
             .iter()
             .map(|w| (w.to_string(), Words(slot_text(w))))
             .collect(),

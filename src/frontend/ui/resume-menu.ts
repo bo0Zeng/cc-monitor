@@ -14,7 +14,7 @@ import { refreshQuota } from "./acct-center";
 import { fetchAccounts } from "./account-reads";
 import { selectableAccounts } from "./accounts";
 import { accountAvatarEl } from "./account-color";
-import { fiveHourCell } from "./acct-words";
+import { fiveHourCell, accountLabel } from "./acct-words";
 import { lookupAgentProfile } from "./agent-profile";
 import type { Origin } from "./ipc/origin";
 import { resumeInTmuxFor } from "./resume-defaults";
@@ -103,7 +103,7 @@ export async function resumeAccounts(
   // 额度账按路由第 1 段（那一家的适配器 id）记号，会话行上是那一家的名字 ⇒ 经那一家的事实表换过去。
   const prof = lookupAgentProfile(agent);
   const five = (account: string): string | null => (prof.known ? fiveHourCell(q, prof.facts.adapterId, account) : null);
-  const items: ResumeAccount[] = names.map((name) => ({ name, label: name, quota: five(name), last: name === facts.last }));
+  const items: ResumeAccount[] = names.map((name) => ({ name, label: accountLabel(name), quota: five(name), last: name === facts.last }));
   items.push({ name: null, label: copyText("resumeMenu.account.base"), quota: five("_"), last: false });
   return { kind: "list", items };
 }

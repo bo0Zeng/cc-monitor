@@ -80,7 +80,7 @@
   为什么是 IANA 名而不是偏移：偏移只说得准「此刻」，历史页 · 记录里的时刻一跨夏令时就差一小时；看的那一台本来就叫得出自己的名（`Intl` · `ZoneId` · 系统设置），给名不多花一个字节的心思。
   原始时刻（`at` · `resetsAt` · `tsMs` · `mtime_secs` …）照旧是数，要它跟着走的「已经多久」由出口按此刻自己走字（见 §7 的时长约定）。
   复制详情（`detail`）里那一行时刻同样按它写，并带偏移（`2026-10-10 04:30:15 +08:00`，跟哪台的日志都对得上）：详情在深处拼好时先留空位，出去那一下（流的写者按这条连接看的那一台的时区 · CLI 按 `--tz`）填。
-  轮换规则「按时段的上限」按**规则自己的时区**判：写规则那一下（`rotation-rule-save` · `rotation-session-set` 的本会话那一份）后端把请求的 `tz` 盖进规则（`rotation.tz`，IANA 名；`local` 盖不进来），判的时候按它，跟后端那台在哪个时区、此刻有没有人在看都无关；盘上缺 ⇒ UTC。入参里带的 `tz` 不认。
+  轮换配置的时段（每号参数 `slots`）按**配置自己的时区**判：写配置那一下（`rotation-config-save` · `rotation-session-save` 等）后端把请求的 `tz` 盖进配置（`tz`，IANA 名；`local` 盖不进来），判的时候按它，跟后端那台在哪个时区、此刻有没有人在看都无关；盘上缺 ⇒ UTC。入参里带的 `tz` 不认。
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
@@ -126,7 +126,7 @@
 | `profiles` | 否 | — | — | — | `profiles-read` |
 | `quota` | 是 | — | — | 带（≤ 8192 B） | `quota-read` |
 | `rotation` | 是 | 带 | — | 带（≤ 4096 B） | `rotation-session-read` |
-| `rotation_rules` | 是 | — | — | 带（≤ 8192 B） | `rotation-rules-read` |
+| `rotation_configs` | 是 | — | — | 带（≤ 8192 B） | `rotation-configs-read` |
 | `plan` | 是 | 带 | 带 | 带（≤ 64 B） | `plan-read` |
 | `tasks` | 否 | 带 | — | 带（≤ 8192 B） | `tasks-list` |
 <!-- topic-table:end -->

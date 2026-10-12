@@ -110,8 +110,8 @@ export interface NewRequest {
   local: boolean;
   /** 这一趟的票（一个框一张）：期限到了再问一次带同一张 ⇒ 那台认出同一趟，起好了回原样那一份、不起第二个。 */
   ticket?: string;
-  /** 轮换来源：缺 ＝ 跟随默认；`{rule}` ＝ 那台起之前先定 sid、按它写好来源（会话一报到就是那条规则）。 */
-  rotation?: { rule: string };
+  /** 轮换：缺 ＝ 打开本机默认那份；`{config}` ＝ 那台起之前先定 sid、写成打开那一份（会话一报到就是那份配置）。 */
+  rotation?: { config: string };
 }
 
 /**

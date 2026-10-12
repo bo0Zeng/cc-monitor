@@ -50,9 +50,6 @@ fn head(v: &Value) -> Vec<Cell> {
             copy_text("acct.kind.sub", &[])
         }),
     ];
-    if account == "_" {
-        row.push(c(copy_text("acct.tag.home", &[])));
-    }
     match s(v, "login") {
         "needsLogin" => row.push(toned(copy_text("acct.tag.login", &[]), Tone::Warn)),
         "needsKey" => row.push(toned(copy_text("acct.tag.key", &[]), Tone::Warn)),

@@ -351,8 +351,8 @@ fn no_value_ever_leaves_in_what_is_said() {
     let v = sync(&t.door()).unwrap();
     assert_eq!(v.notes.len(), 1, "读不出来的那个号说一句：{:?}", v.notes);
     assert!(v.notes[0].contains('b'));
-    let said =
-        serde_json::to_string(&v).unwrap() + &t.ok("accounts-mcp-read", json!({})).to_string();
+    let said = serde_json::to_string(&v).unwrap()
+        + t.ok("accounts-mcp-read", json!({})).to_string().as_str();
     assert!(
         !said.contains(SECRET) && !said.contains("npx"),
         "成品里只有名字与号名：{said}"

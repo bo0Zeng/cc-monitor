@@ -128,7 +128,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -275,7 +276,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -432,7 +434,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -586,7 +589,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -743,7 +747,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -880,7 +885,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -1015,7 +1021,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -1154,7 +1161,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -1172,7 +1180,7 @@
       "tz": "Asia/Shanghai"
     },
     {
-      "name": "没指定号（_ ⇒ ~/.claude · 未指定账号）· 别台采样（机器名照写）· 距今整点 +2h 与 +45m",
+      "name": "没指定号（_ ⇒ 未指定账号）· 别台采样（机器名照写）· 距今整点 +2h 与 +45m",
       "reply": {
         "accounts": [
           {
@@ -1188,15 +1196,11 @@
             "rows": [
               [
                 {
-                  "text": "~/.claude",
+                  "text": "未指定账号",
                   "tone": "plain"
                 },
                 {
                   "text": "订阅",
-                  "tone": "plain"
-                },
-                {
-                  "text": "未指定账号",
                   "tone": "plain"
                 }
               ],
@@ -1303,7 +1307,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -1532,7 +1537,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -1679,7 +1685,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -2027,7 +2034,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -2056,7 +2064,8 @@
         "fiveHour": null,
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",
@@ -2082,7 +2091,8 @@
         "fiveHour": "5h 读不到",
         "names": {
           "accounts": {
-            "_": "~/.claude"
+            "0": "~/.claude",
+            "_": "未指定账号"
           },
           "slots": {
             "5h": "5h",

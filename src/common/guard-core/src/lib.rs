@@ -2465,3 +2465,7 @@ mod private_shape_guard;
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/wall_ceiling_tests.rs"]
 mod wall_ceiling;
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;

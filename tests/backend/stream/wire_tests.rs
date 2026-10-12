@@ -706,8 +706,8 @@ fn link_frames_have_exactly_these_bytes() {
             "{\"kind\":\"changed\",\"topic\":\"accounts\"}\n",
         ),
         (
-            Frame::changed(Topic::RotationRules, None, None, None),
-            "{\"kind\":\"changed\",\"topic\":\"rotation_rules\"}\n",
+            Frame::changed(Topic::RotationConfigs, None, None, None),
+            "{\"kind\":\"changed\",\"topic\":\"rotation_configs\"}\n",
         ),
         (
             Frame::changed(Topic::Tasks, Some("s1".into()), None, None),

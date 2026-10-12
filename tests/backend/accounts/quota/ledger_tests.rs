@@ -415,41 +415,31 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
     std::fs::remove_dir_all(&d).ok();
 }
 
-/// ★ 估「几点到」：同一窗口有上一次不同的采样 · 此刻这个值是最近 30 分钟里头一次看到的 · 在涨 ⇒ 按两点斜率外推；
-/// 只有一个采样 · 涨在 30 分钟以前 · 不涨 · 到之前窗口先重置 · 已经到了 ⇒ 不给。
+/// 额度账读答过真序列化器（判它的各格）。
+fn answered(path: Option<&Path>, now: u64) -> serde_json::Value {
+    serde_json::to_value(answer_of(path, now)).expect("json")
+}
+
+/// ★ E2 用速：两次不同的采样 ⇒ 斜率（点 / 分）；只有一次 · 过了 30 分 · 不涨 ⇒ 没有。
 #[test]
-fn the_estimate_needs_two_samples_in_one_window_and_recent_growth() {
+fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     let l = Ledger::at(None);
     let t = 1_800_000_000;
     let reset = t + 18_000;
     record_seen(&l, "claude-code", "q", reading_until(0.40, reset), t);
     let o = l.entry("claude-code", "q").expect("entry");
-    assert_eq!(o.eta("five_hour", 0.90, t + 10), None, "只有一个采样");
+    assert_eq!(o.rate("five_hour", t + 10), None, "只有一个采样");
     record_seen(&l, "claude-code", "q", reading_until(0.46, reset), t + 600);
     let o = l.entry("claude-code", "q").expect("entry");
-    // 600 秒涨 6 点 ⇒ 还差 44 点 ＝ 4400 秒。
-    assert_eq!(o.eta("five_hour", 0.90, t + 700), Some(t + 600 + 4_400));
+    // 600 秒涨 6 点 ⇒ 0.6 点 / 分。
+    let r = o.rate("five_hour", t + 700).expect("有用速");
+    assert!((r - 0.6).abs() < 1e-9, "{r}");
     assert_eq!(
-        o.eta("five_hour", 0.90, t + 600 + 1_801),
+        o.rate("five_hour", t + 600 + 1_801),
         None,
         "涨在 30 分钟以前"
     );
-    assert_eq!(o.eta("five_hour", 0.46, t + 700), None, "已经到了");
-    assert_eq!(o.eta("seven_day", 0.90, t + 700), None, "没这个窗口");
-    assert_eq!(o.eta("five_hour", 0.99, t + 700), Some(t + 600 + 5_300));
-
-    let soon = Ledger::at(None);
-    record_seen(&soon, "claude-code", "q", reading_until(0.40, t + 3_000), t);
-    record_seen(
-        &soon,
-        "claude-code",
-        "q",
-        reading_until(0.46, t + 3_000),
-        t + 600,
-    );
-    let o = soon.entry("claude-code", "q").expect("entry");
-    assert_eq!(o.eta("five_hour", 0.90, t + 700), None, "到之前窗口先重置");
-
+    assert_eq!(o.rate("seven_day", t + 700), None, "没这个窗口");
     let down = Ledger::at(None);
     record_seen(&down, "claude-code", "q", reading_until(0.46, reset), t);
     record_seen(
@@ -460,10 +450,5 @@ fn the_estimate_needs_two_samples_in_one_window_and_recent_growth() {
         t + 600,
     );
     let o = down.entry("claude-code", "q").expect("entry");
-    assert_eq!(o.eta("five_hour", 0.90, t + 700), None, "不涨");
-}
-
-/// 额度账读答过真序列化器（判它的各格）。
-fn answered(path: Option<&Path>, now: u64) -> serde_json::Value {
-    serde_json::to_value(answer_of(path, now)).expect("json")
+    assert_eq!(o.rate("five_hour", t + 700), None, "不涨");
 }

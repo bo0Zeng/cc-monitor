@@ -1,8 +1,9 @@
 //! 额度显示态：每一态一条（假额度账 ＋ 假时钟）；「快满」按窗跟着这号这一窗的线走、没线落 80%；数旧 30 分钟边界两侧各一条；订阅标识不含原值。
 
 use super::*;
-use crate::accounts::quota::rotation::{CapValue, Caps};
+use crate::accounts::quota::rotation::Params;
 use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
+use serde_json::json;
 
 const NOW: u64 = 1_800_000_000;
 const LATER: u64 = NOW + 3_600;
@@ -48,10 +49,6 @@ fn facts(kind: Kind) -> Facts {
 /// 没有线（满了才换）：「快满」落 80%。
 fn no_line(_: &str) -> Option<u8> {
     None
-}
-
-fn key(w: &str) -> Option<String> {
-    crate::agents::claudecode::quota::key_of(w)
 }
 
 fn state_of(r: &QuotaReading, kind: Kind, line: &dyn Fn(&str) -> Option<u8>) -> QuotaState {
@@ -143,28 +140,26 @@ fn near_is_judged_per_window_against_its_own_line() {
         QuotaState::Near,
         "没线 ⇒ 80"
     );
-    // 触发只设 7d 95：5h 那一窗没线 ⇒ 落 80 ⇒ 86% 仍快满。
-    let mut cap = Caps::new();
-    cap.entry("*".into())
-        .or_default()
-        .insert("7d".into(), CapValue::N(95));
+    // 这号那一行只写 7d 95：5h 那一窗没线 ⇒ 落 80 ⇒ 86% 仍快满。
+    let p: Params = [("line".to_string(), json!({"7d": 95}))]
+        .into_iter()
+        .collect();
     assert_eq!(
-        state_of(&r, Kind::Sub, &lines_of(&cap, "a", NOW, 0, &key, &slot)),
+        state_of(&r, Kind::Sub, &lines_of(Some(&p), 0, &slot)),
         QuotaState::Near
     );
-    // 触发 5h 90：86% 不到线、也不落 80 ⇒ ok。
-    cap.entry("*".into())
-        .or_default()
-        .insert("5h".into(), CapValue::N(90));
+    // 两窗都 90：86% 不到线、也不落 80 ⇒ ok。
+    let p: Params = [("line".to_string(), json!(90))].into_iter().collect();
     assert_eq!(
-        state_of(&r, Kind::Sub, &lines_of(&cap, "a", NOW, 0, &key, &slot)),
+        state_of(&r, Kind::Sub, &lines_of(Some(&p), 0, &slot)),
         QuotaState::Ok
     );
-    // 这号自己 7d ≤40：7d 41% 到线 ⇒ 快满，7d 那一格 atLine，5h 那一格不。
-    cap.entry("a".into())
-        .or_default()
-        .insert("7d".into(), CapValue::N(40));
-    let lines = lines_of(&cap, "a", NOW, 0, &key, &slot);
+    // 时段内取时段的线：00:00–01:00 到 40% ⇒ 两窗都 40，7d 41% 到线 ⇒ 快满，7d 那一格 atLine，5h（86%）也到。
+    // 只要 7d 一窗的情形：5h 90 · 7d 40。
+    let p: Params = [("line".to_string(), json!({"5h": 90, "7d": 40}))]
+        .into_iter()
+        .collect();
+    let lines = lines_of(Some(&p), 0, &slot);
     let s = show(Some((&r, NOW)), facts(Kind::Sub), &lines, NOW, &slot);
     assert_eq!(s.state, QuotaState::Near);
     assert_eq!(
@@ -401,5 +396,35 @@ fn the_usage_cell_is_written_by_the_core() {
     assert_eq!(
         u.text.0,
         copy_core::copy_text("acct.usage.wv", &[("w", &u.value.0), ("v", &reset)])
+    );
+}
+
+/// 线取那一行的约定参数：时段内取时段的（跨零点照算，`0` ＝ 这段不用）；没声明 ⇒ 没线。
+#[test]
+fn the_line_comes_from_the_row_params_and_its_time_slots() {
+    let p: Params = [
+        ("line".to_string(), json!(99)),
+        (
+            "slots".to_string(),
+            json!([{"at": "17:00-02:00", "line": 80}, {"at": "03:00-04:00", "line": 0}]),
+        ),
+    ]
+    .into_iter()
+    .collect();
+    let at = |clock: u32, w: &str| lines_of(Some(&p), clock, &slot)(w);
+    let five = "five_hour";
+    assert_eq!(at(12 * 60, five), Some(99));
+    assert_eq!(at(17 * 60, five), Some(80));
+    assert_eq!(at(60, five), Some(80), "跨零点");
+    assert_eq!(at(2 * 60, five), Some(99), "含起不含止");
+    assert_eq!(at(3 * 60 + 30, five), Some(0));
+    assert_eq!(lines_of(None, 0, &slot)(five), None);
+    let full: Params = [("line".to_string(), serde_json::Value::Null)]
+        .into_iter()
+        .collect();
+    assert_eq!(
+        lines_of(Some(&full), 0, &slot)(five),
+        None,
+        "用满才换 ⇒ 没线"
     );
 }

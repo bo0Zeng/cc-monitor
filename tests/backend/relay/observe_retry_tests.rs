@@ -440,24 +440,34 @@ impl Home {
         self.set_default_at(enabled, line, "continue");
     }
 
+    /// 本机默认那份（默认配置 1，内置策略 1）写成：起会话的号 ＋ `enabled` 里的号（照 a · b 的先后），每号 `line`（`None` ＝ 用满才换）；
+    /// `at_limit` ＝ 都到上限后：`continue` ⇒ 接着用（`go`）· `stop` ⇒ 停下。
     fn set_default_at(&self, enabled: &[&str], line: Option<u8>, at_limit: &str) {
-        let mut order = vec![serde_json::json!({"start": true})];
-        order.extend(["a", "b"].iter().map(|a| serde_json::json!(a)));
-        let r = rotation::rotation_from(
-            &match line {
-                Some(n) => serde_json::json!({"order": order, "enabled": enabled, "cap": {"*": {"5h": n, "7d": n}}, "atLimit": at_limit}),
-                None => serde_json::json!({"order": order, "enabled": enabled, "atLimit": at_limit}),
-            },
-            1..=1,
-            &|a| a != "_",
-            &|_| false,
-            None,
-        )
-        .expect("rotation");
+        let line = line.map_or(serde_json::Value::Null, serde_json::Value::from);
+        let row = |who: serde_json::Value| {
+            let mut r = who;
+            r["params"] =
+                serde_json::json!({"line": line, "slots": [], "mode": "normal", "stint": null});
+            r
+        };
+        let mut accounts = vec![row(serde_json::json!({"start": true}))];
+        accounts.extend(
+            ["a", "b"]
+                .iter()
+                .filter(|a| enabled.contains(a))
+                .map(|a| row(serde_json::json!({"id": a}))),
+        );
+        let all_out = if at_limit == "stop" { "stop" } else { "go" };
+        let body: rotation::ConfigBody = serde_json::from_value(serde_json::json!({
+            "name": "a 与 b", "strategy": "1", "accounts": accounts,
+            "params": {"back": false, "delay": 0, "standby_wait": 40, "all_out": all_out},
+            "acctInit": {"line": line, "slots": [], "mode": "normal", "stint": null}
+        }))
+        .expect("config");
         rotation::face_change(&RotationStore::at(Some(self.rotation_path())), |b| {
-            let id = b.default_rule.clone();
-            if let Some(rule) = b.rules.get_mut(&id) {
-                rule.rotation = r;
+            let id = b.default_config.clone();
+            if let Some(c) = b.configs.get_mut(&id) {
+                c.body = body.clone();
             }
         })
         .expect("write");
@@ -579,20 +589,18 @@ fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
     }
     let s = home.session("s-1");
     assert_eq!((s.start.as_str(), s.current.as_str()), ("a", "b"));
+    assert_eq!(s.history.len(), 1);
+    let h = &s.history[0];
     assert_eq!(
-        s.history,
-        [rotation::SwitchRecord {
-            at_text: None,
-            from_resets_at_text: None,
-            at: s.since,
-            from: "a".into(),
-            to: "b".into(),
-            why: rotation::SwitchWhy::Full {
-                w: Some("5h".into())
-            },
-            from_resets_at: Some(4_000_000_000),
-        }]
+        (h.at, h.from.as_str(), h.to.as_str(), h.from_resets_at),
+        (s.since, "a", "b", Some(4_000_000_000))
     );
+    assert!(
+        matches!(&h.leave, rotation::Leave::Unusable { why } if why["k"] == "@refused"),
+        "{:?}",
+        h.leave
+    );
+    assert_eq!(h.pick.as_ref().map(|p| p.strategy.as_str()), Some("1"));
     let resp = send_as_a(relay);
     assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
     let got = got.lock().expect("lock");
@@ -693,12 +701,10 @@ fn threshold_mode_moves_the_next_request() {
     assert!(send_as_a(relay).contains("x-from: b"));
     assert_eq!(got.lock().expect("lock").len(), 2);
     let s = home.session("s-1");
-    assert_eq!(
-        s.history[0].why,
-        rotation::SwitchWhy::Threshold {
-            n: 90,
-            w: Some("5h".into())
-        }
+    assert!(
+        matches!(&s.history[0].leave, rotation::Leave::Unusable { why } if why["k"] == "@line" && why["w"] == "5h" && why["n"] == 90),
+        "{:?}",
+        s.history[0].leave
     );
 }
 
@@ -765,15 +771,12 @@ fn a_hard_limit_answers_the_agent_with_its_own_limit_reply_instead_of_sending() 
     let s = home.session("s-1");
     let last = s.history.last().expect("记了一条");
     assert_eq!(
-        (last.why.clone(), last.from_resets_at, last.from == last.to),
         (
-            rotation::SwitchWhy::Held {
-                n: 90,
-                w: Some("5h".into())
-            },
-            Some(B_BACK),
-            true
-        )
+            last.leave.clone(),
+            last.from_resets_at,
+            last.from == last.to
+        ),
+        (rotation::Leave::Held, Some(B_BACK), true)
     );
     let quota = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     assert!(
@@ -809,25 +812,6 @@ fn a_hard_limit_also_holds_when_the_resend_is_refused() {
     let resp = send_as_a(relay);
     assert!(is_held_reply(&resp, B_BACK), "{resp}");
     assert_eq!(got.lock().expect("lock").len(), 2);
-}
-
-/// 「到上限」此刻实际照哪一档办：给得出「用满」回包的那一家照说的办；给不出的那一家 `stop` 按 `continue`。
-#[test]
-fn stop_holds_only_for_an_agent_that_has_a_limit_reply() {
-    use crate::accounts::quota::rotation::AtLimit;
-    use crate::accounts::upstream_select::rotate::at_limit_in_effect;
-    assert_eq!(
-        at_limit_in_effect("claude-code", AtLimit::Stop),
-        AtLimit::Stop
-    );
-    assert_eq!(
-        at_limit_in_effect("no-such-agent", AtLimit::Stop),
-        AtLimit::Continue
-    );
-    assert_eq!(
-        at_limit_in_effect("claude-code", AtLimit::Continue),
-        AtLimit::Continue
-    );
 }
 
 /// ★ 超额在兜（200、限流器说已拒、超额在用）且轮换里还有未满的订阅号 ⇒ 下一发换。
@@ -1030,36 +1014,19 @@ fn the_relay_records_who_started_whom_from_the_origin_tail() {
     );
 }
 
-/// ★ 跟随父会话整趟：父会话用着规则「夜间」，在它里面起的会话（同一条地址、不同会话头）第一发就记成跟随父会话、按父那份走；
-/// 带 agent-id 头的 subagent 那一发不另起一条。
+/// 在别的会话里起的会话照新会话办：打开本机默认那份（「跟随父会话」不在第二版）。
 #[test]
-fn a_session_started_inside_another_follows_its_rotation_from_the_first_request() {
-    let home = Home::new("lineage-follow");
+fn a_session_started_inside_another_opens_the_default_config() {
+    let home = Home::new("lineage-default");
     let (up, _got) = spawn_judging_upstream(serves);
     let relay = home.relay_tracing(up);
     let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
     rotation::face_change(&RotationStore::at(Some(home.rotation_path())), |b| {
-        b.rules.insert(
-            "r_night000".into(),
-            rotation::Rule {
-                name: "夜间".into(),
-                rotation: rotation::Rotation {
-                    preempt: true,
-                    ..rotation::Rotation::default()
-                },
-                rev: 1,
-                updated_at: 0,
-            },
-        );
-        b.sessions.get_mut("s-owner").expect("owner").source =
-            rotation::Source::Rule("r_night000".into());
+        b.sessions.get_mut("s-owner").expect("owner").config.id = "c_00000003".into();
     })
     .expect("write");
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
     let book = RotationStore::at(Some(home.rotation_path())).now();
-    let kid = &book.sessions["s-kid"];
-    assert_eq!(kid.source, rotation::Source::Parent("s-owner".into()));
-    assert_eq!(book.rule_of(kid), Some("r_night000"));
-    assert!(book.rotation_of(kid).preempt);
+    assert_eq!(book.sessions["s-kid"].config.id, book.default_config);
 }

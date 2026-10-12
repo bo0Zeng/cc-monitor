@@ -133,6 +133,9 @@ own-chan = { path = "../common/own-chan" }
 # 后端自己出句子、读的是与前端 / monitor 同一份 `src/shared/copy/table.json`。
 # 依赖只有 `serde_json`（本 crate 早就有）⇒ 不引新的第三方包。
 copy-core = { path = "../common/copy-core" }
+# 轮换的策略文件（`accounts/quota/strategy/`）跑在它的沙箱里：纯 Rust、零 C 依赖、按操作数掐、表有序。
+# `sync` ⇒ 编好的策略能放进进程里的缓存跨线程用；`serde` ⇒ 上下文与回值经 serde 进出；`no_time` ⇒ 脚本里没有取时间的函数。
+rhai = { version = "1.26.1", default-features = false, features = ["std", "sync", "serde", "no_time"] }
 # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `control/deploy_plan.rs`。
 deploy-contract = { path = "../common/deploy-contract" }
 tokio = { version = "1", features = [
@@ -305,6 +308,8 @@ jiff = { version = "0.2", default-features = false, features = ["std", "tzdb-bun
 mimalloc = { version = "0.1", default-features = false }
 
 [dev-dependencies]
+# 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
+test-home = { path = "../common/test-home" }
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
 comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，

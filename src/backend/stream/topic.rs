@@ -23,8 +23,8 @@ pub enum Topic {
     Quota,
     /// 这台某个会话的轮换或「账号」格（`key` ＝ sid）。
     Rotation,
-    /// 这台的轮换规则表或默认指向。
-    RotationRules,
+    /// 这台的轮换配置表 · 本机默认 · 策略。
+    RotationConfigs,
     /// 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问；
     /// `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
     Plan,
@@ -73,7 +73,7 @@ impl Topic {
         Topic::Profiles,
         Topic::Quota,
         Topic::Rotation,
-        Topic::RotationRules,
+        Topic::RotationConfigs,
         Topic::Plan,
         Topic::Tasks,
     ];
@@ -121,14 +121,14 @@ impl Topic {
                 reask: "rotation-session-read",
                 ask: Ask::Sids,
             },
-            Topic::RotationRules => TopicSpec {
-                name: "rotation_rules",
+            Topic::RotationConfigs => TopicSpec {
+                name: "rotation_configs",
                 lossy: true,
                 key: false,
                 rev: false,
                 body: true,
                 body_cap: 8192,
-                reask: "rotation-rules-read",
+                reask: "rotation-configs-read",
                 ask: Ask::NoArgs,
             },
             Topic::Plan => TopicSpec {

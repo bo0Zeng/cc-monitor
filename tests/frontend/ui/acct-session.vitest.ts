@@ -6,47 +6,42 @@ import { describe, expect, it } from "vitest";
 import { onSessionEntry } from "../../../src/frontend/ui/acct-session.ts";
 import type { SessionRotationEntry } from "../../../src/frontend/ui/app-store.ts";
 import type { SwitchRecord } from "../../../src/frontend/ui/generated/SwitchRecord.ts";
-import { copyText } from "../../../src/frontend/ui/copy-table";
-import { copyPattern } from "../../test-support/copy-pattern";
+import { present, quotaShow } from "../../test-support/rot-fixtures";
 
 const NOW = 1_791_189_600;
 const entry = (history: SwitchRecord[], blocked?: { account: string; at: number; atText?: string; atRelText?: string }): SessionRotationEntry => ({
   origin: "<local>",
   now: NOW,
-  read: {
-    state: "present",
-    agent: "claude-code",
-    source: "follow",
-    explain: "",
-    account: { start: "work", current: history.at(-1)?.to ?? "work", since: NOW, history, inPlace: "ok" },
-    atLimit: "continue",
-    ...(blocked ? { blocked: { earliest: blocked } } : {}),
-    quota: { kind: "sub", state: blocked ? "refused" : "ok", stale: false, limiting: "5h", slots: [], login: "ok", usage: { slot: "5h", window: "5h", value: "—", text: "5h —", tone: blocked ? "fail" : "plain" } },
-  },
+  read: present({
+    current: history.at(-1)?.to ?? "work",
+    history,
+    ...(blocked ? { blocked: { earliest: blocked, text: "B-blocked" } } : {}),
+    quota: quotaShow({ state: blocked ? "refused" : "ok" }),
+  }),
 });
 
 describe("换号条 · 提示条", () => {
   it("先有的不回填；新来的一条追加；from == to 的（跳过）不出条", () => {
     const content = document.createElement("div");
     const host = { streamContentOf: () => content, openPanel: () => {} };
-    const h1: SwitchRecord = { at: NOW - 600, from: "work", to: "personal", why: { full: { w: "5h" } } };
+    const h1: SwitchRecord = { at: NOW - 600, from: "work", to: "personal", leave: { k: "unusable", why: {} }, text: "T-h1" };
     onSessionEntry("s1", entry([h1]), host);
     expect(content.querySelectorAll("[data-acct-strip]").length).toBe(0);
-    const h2: SwitchRecord = { at: NOW, from: "personal", to: "team", why: "manualHot" };
-    const skip: SwitchRecord = { at: NOW, from: "team", to: "team", why: { skipped: { account: "api", reason: "needsKey" } } };
+    const h2: SwitchRecord = { at: NOW, from: "personal", to: "team", leave: { k: "manual" }, text: "T-manual" };
+    const skip: SwitchRecord = { at: NOW, from: "team", to: "team", leave: { k: "held" }, text: "T-held" };
     onSessionEntry("s1", entry([h1, h2, skip]), host);
     const strips = [...content.querySelectorAll<HTMLElement>("[data-acct-strip]")];
     expect(strips.length).toBe(1);
     expect(strips[0].textContent).toContain("personal → team");
-    expect(strips[0].textContent).toContain(copyText("acct.hist.manualHot"));
+    expect(strips[0].textContent).toContain("T-manual");
   });
-  it("卡住 ⇒ 内容层最前面一条提示条；能发了 ⇒ 摘掉", () => {
+  it("卡住 ⇒ 内容层最前面一条提示条（字照后端写好的那一句）；能发了 ⇒ 摘掉", () => {
     const content = document.createElement("div");
     content.appendChild(document.createElement("p"));
     const host = { streamContentOf: () => content, openPanel: () => {} };
     onSessionEntry("s2", entry([], { account: "team", at: Math.floor(Date.now() / 1000) + 5400, atText: "13:30", atRelText: "+1h30m" }), host); // 「还有多久」照核心写好的距今
-    expect(content.firstElementChild?.textContent).toMatch(copyPattern("acct.banner.allFull", { name: "team" }));
+    expect(content.firstElementChild?.textContent).toContain("B-blocked");
     onSessionEntry("s2", entry([]), host);
-    expect(content.textContent).not.toMatch(copyText("acct.banner.allFullNoAt"));
+    expect(content.textContent).not.toContain("B-blocked");
   });
 });

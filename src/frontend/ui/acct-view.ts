@@ -56,12 +56,12 @@ export function sessionChip(entry: SessionRotationEntry | undefined, fallback: s
     const name = fallback === null ? copyText("acct.hover.noRelay") : accountLabel(fallback);
     return { account: fallback, name, swapped: false, window: null, value: null, reset: null, tone: "plain", stale: false };
   }
-  const cur = read.account.current;
+  const cur = read.current;
   const u = read.quota.usage;
   return {
     account: cur,
     name: accountLabel(cur),
-    swapped: cur !== read.account.start,
+    swapped: cur !== read.start,
     window: u.window ?? null,
     value: u.value,
     reset: u.reset ?? null,
@@ -70,16 +70,16 @@ export function sessionChip(entry: SessionRotationEntry | undefined, fallback: s
   };
 }
 
-/** 换过号的那一刻与原号（首行尾 `⇄ 14:20 ← work`）：最后一条落到此刻这个号上的记录；没有 ⇒ 起始号。 */
+/** 换过号的那一刻与原号（首行尾 `⇄ 14:20 ← work`）：最后一条落到此刻这个号上的记录；没有记录 ⇒ 不写。 */
 export function swappedFrom(read: Extract<SessionRotationState, { state: "present" }>): { at: string; from: string } | null {
-  const cur = read.account.current;
-  if (cur === read.account.start) return null;
-  const last = [...read.account.history].reverse().find((h) => h.to === cur && h.from !== h.to);
-  return { at: (last ? last.atText : read.account.sinceText) ?? "", from: last?.from ?? read.account.start };
+  const cur = read.current;
+  if (cur === read.start) return null;
+  const last = [...read.history].reverse().find((h) => h.to === cur && h.from !== h.to);
+  return last ? { at: last.atText ?? "", from: last.from } : null;
 }
 
 /**
- * ★ 本会话悬停卡的行：那个号在 `quota-read` 里那一段（与金样同一个行模型）＋ 会话那两样（首行尾 `⇄` · `下一个`）。
+ * ★ 本会话悬停卡的行：那个号在 `quota-read` 里那一段（与金样同一个行模型）＋ 首行尾 `⇄`（从哪个号换过来）。
  * 中转没见过这个会话 ⇒ `用量 — 未实时显示` · `切换 仅重启切换`。
  */
 export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallback: string | null, quota: QuotaRead | null): string[][] | null {
@@ -97,7 +97,7 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
       [copyText("acct.hover.switch"), copyText("acct.hover.restartOnly")],
     ];
   }
-  const cur = read.account.current;
+  const cur = read.current;
   const seen = ledgerOf(quota, read.agent, cur);
   const unseen = seen ? undefined : quota?.unseen.find((u) => u.agent === read.agent && u.account === cur);
   // 号那一段照核心写好的几行；采样那一格后面接上是哪台采的（问的是哪台、那台叫什么是这一侧的事）。
@@ -111,68 +111,13 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
   }
   const from = swappedFrom(read);
   if (from) rows[0].push(copyText("acct.hover.from", { at: from.at, name: accountLabel(from.from) }));
-  if (read.quota.kind === "sub") {
-    const next = nextRow(read, quota);
-    const at = rows.length > 1 && rows[rows.length - 1][0] === copyText("acct.row.seen") ? rows.length - 1 : rows.length;
-    rows.splice(at, 0, next);
-  }
   return rows;
 }
 
-/** `下一个  team  5h 4%` / `下一个  —  轮换内无未满`。 */
-function nextRow(read: Extract<SessionRotationState, { state: "present" }>, quota: QuotaRead | null): string[] {
-  const label = copyText("acct.hover.next");
-  if (read.next === undefined) return [label, copyText("acct.val.none"), copyText("acct.hover.nextNone")];
-  const led = ledgerOf(quota, read.agent, read.next);
-  if (!led) return [label, accountLabel(read.next), copyText("acct.val.none")];
-  return [label, accountLabel(read.next), led.usage.text];
-}
-
-/** 记录那一条的原因（`work 5h ✕` · `手动 · 热切换` …）＋ 那一刻原号几点重置（`↻19:00`，记下就不变）。 */
+/** 记录那一条的原因（后端照 `leave` ＋ `pick` 写好的那一句）＋ 那一刻原号几点重置（`↻19:00`，记下就不变）。 */
 export function whyOf(h: SwitchRecord): { why: string; reset: string | null } {
   const reset = h.fromResetsAtText === undefined ? null : copyText("acct.reset.at", { at: h.fromResetsAtText });
-  const from = accountLabel(h.from);
-  const w = h.why;
-  // 光字符串的那几种先判完（`in` 不许碰到字符串）；两段末尾各一处 `never`：`SwitchWhy` 多了一种而这里没接 ⇒ 编不过。
-  if (typeof w === "string") {
-    switch (w) {
-      case "manualHot":
-        return { why: copyText("acct.hist.manualHot"), reset: null };
-      case "manualRestart":
-        return { why: copyText("acct.hist.manualRestart"), reset: null };
-      case "toOverage":
-        return { why: copyText("acct.hist.toOverage"), reset };
-      case "preempt":
-        return { why: copyText("acct.hist.preempt", { name: accountLabel(h.to) }), reset: null };
-      case "leaveFallback":
-        return { why: copyText("acct.hist.leaveFallback", { name: accountLabel(h.to) }), reset: null };
-      default: {
-        const left: never = w;
-        return left;
-      }
-    }
-  }
-  if ("full" in w) return { why: w.full.w ? copyText("acct.hist.full", { name: from, w: slotLabel(w.full.w) }) : copyText("acct.hist.fullAny", { name: from }), reset };
-  if ("threshold" in w) {
-    const t = w.threshold;
-    return { why: t.w ? copyText("acct.hist.pct", { name: from, w: slotLabel(t.w), n: t.n }) : copyText("acct.hist.pctAny", { name: from, n: t.n }), reset };
-  }
-  if ("off" in w) return { why: copyText("rot.pv.whyOff", { acct: from }), reset };
-  if ("held" in w) {
-    const t = w.held;
-    return { why: t.w ? copyText("acct.hist.held", { name: from, w: slotLabel(t.w), n: t.n }) : copyText("acct.hist.heldAny", { name: from, n: t.n }), reset };
-  }
-  if ("stint" in w) return { why: copyText("acct.hist.stint", { w: slotLabel(w.stint.w), n: w.stint.n }), reset: null };
-  if ("wait" in w) return { why: copyText("acct.hist.wait", { name: accountLabel(w.wait.account), instead: accountLabel(w.wait.instead) }), reset };
-  if ("skipped" in w) return { why: copyText("acct.hist.skipped", { name: accountLabel(w.skipped.account), reason: unreadyLabel(w.skipped.reason, w.skipped.account) }), reset: null };
-  const left: never = w;
-  return left;
-}
-
-function unreadyLabel(reason: string, account: string): string {
-  if (reason === "needsLogin") return copyText("acct.reason.needsLogin", { name: accountLabel(account) });
-  if (reason === "needsKey") return copyText("acct.reason.needsKey", { name: accountLabel(account) });
-  return copyText("acct.reason.unknown");
+  return { why: h.text ?? "", reset };
 }
 
 /** 「热切换」不成立 / 切换没成的原因码 ⇒ 原因词。 */
@@ -208,36 +153,23 @@ export function reasonLabel(code: string, ctx: { agent: string; target: string }
       return copyText("acct.reason.notArrived");
     case "shutting_down":
       return copyText("acct.reason.shuttingDown");
+    case "dirty":
+      return copyText("rot.batch.dirty");
     default:
       return copyText("acct.reason.unknown");
   }
 }
 
 /**
- * 本会话发不出去时那一条（会话头下的提示条）；能发 ⇒ `null`。`blocked` 是后端给的事实（最早回来的那个号与时刻）；
- * 画的那一刻那个时刻已过 ⇒ 中性的 `↻.. 已过 · 可续发`。
+ * 本会话发不出去时那一条（会话头下的提示条）；能发 ⇒ `null`。字是后端写好的（`blocked.text`，同面板卡住条）；
+ * 画的那一刻最早回来的那个时刻已过 ⇒ 中性的 `↻.. 已过 · 可续发`。
  */
 export function bannerOf(entry: SessionRotationEntry | undefined): { text: string; tone: "warn" | "neutral" } | null {
   const read = entry?.read;
   if (!read || read.state === "absent" || read.blocked === undefined) return null;
   const e = read.blocked.earliest;
-  if (e === undefined) return { text: copyText("acct.banner.allFullNoAt"), tone: "warn" };
-  const name = accountLabel(e.account);
-  const at = e.atText ?? "";
-  const rel = e.atRelText ?? null;
-  if (rel === null) return { text: copyText("acct.banner.back", { name, at }), tone: "neutral" };
-  const last = read.account.history[read.account.history.length - 1];
-  if (last && typeof last.why === "object" && "held" in last.why) {
-    // 横幅说的是最早回来的那个号卡在哪一窗（后端随 `blocked.earliest` 给）。
-    const w = e.w;
-    const text = w ? copyText("acct.banner.held", { name, w: slotLabel(w), at, rel: rel.slice(1) }) : copyText("acct.banner.heldAny", { name, at, rel: rel.slice(1) });
-    return { text, tone: "warn" };
-  }
-  if (e.account === read.account.current) {
-    const w = read.quota.usage.window ?? "";
-    return { text: copyText("acct.banner.full", { name, w, at, rel: rel.slice(1) }), tone: "warn" };
-  }
-  return { text: copyText("acct.banner.allFull", { name, at, rel: rel.slice(1) }), tone: "warn" };
+  if (e !== undefined && e.atRelText === undefined) return { text: copyText("acct.banner.back", { name: accountLabel(e.account), at: e.atText ?? "" }), tone: "neutral" };
+  return { text: read.blocked.text, tone: "warn" };
 }
 
 /** 标签页上被卡住的会话：标题后红字 `✕ 5h`（与「等批准」同位）＋ 悬停多一行 `状态 ✕ 5h · 最早 team ↻18:10`。能发 ⇒ `null`。 */

@@ -27,15 +27,19 @@ function findMissingWorld(): World {
   return w;
 }
 
-/** 这几张要那台的规则表（多选右键「轮换规则 ▸」· 起新会话框「轮换」）：日常（默认）· 夜间 · 省额度。 */
-function rotRulesWorld(): World {
+/** 这几张要那台的配置表（多选右键「轮换配置 ▸」· 起新会话框「轮换」）：日常（本机默认）· 夜间 · 省额度。 */
+function rotConfigsWorld(): World {
   const w = defaultWorld();
-  const rot = { order: [{ start: true }, "personal", "work"], enabled: ["personal", "work"], atLimit: "continue", wait: 40 };
-  const at = Math.floor(Date.now() / 1000) - 86_400;
-  putRotation(w.disk[LOCAL], {
-    defaultRule: "r_daily",
-    rules: { r_daily: { name: "日常", rotation: rot, updatedAt: at }, r_night: { name: "夜间", rotation: rot, updatedAt: at }, r_save: { name: "省额度", rotation: rot, updatedAt: at } },
+  const params = { line: 90, slots: [], mode: "normal", stint: null };
+  const cfg = (name: string) => ({
+    name,
+    strategy: "1",
+    accounts: [{ start: true as const, params }, { id: "personal", params }, { id: "work", params }],
+    params: { back: false, delay: 0, standby_wait: 40, all_out: "go" },
+    acctInit: params,
+    updatedAt: Math.floor(Date.now() / 1000) - 86_400,
   });
+  putRotation(w.disk[LOCAL], { defaultConfig: "c_daily", configs: { c_daily: cfg("日常"), c_night: cfg("夜间"), c_save: cfg("省额度") } });
   return w;
 }
 
@@ -215,7 +219,7 @@ export const PANEL_SCENES: Scene[] = [
     await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
     await sleep(600);
   }),
-  panel("panel-new-session-rot", "起新会话 · 轮换", "账号下一行「轮换」点开：跟随默认（日常）· 那台的各条规则（默认那条带「默认」）；没有「本会话」", async () => {
+  panel("panel-new-session-rot", "起新会话 · 轮换", "账号下一行「轮换」点开：那台的各份配置（本机默认那份带「本机默认」、缺省选它）· 右侧后端写好的描述", async () => {
     await openCommandBar();
     await type("[data-role=command-input]", "新建会话");
     await key("Enter");
@@ -223,8 +227,8 @@ export const PANEL_SCENES: Scene[] = [
     await sleep(400);
     await click('[role="dialog"] button[aria-label="轮换"]');
     await sleep(500);
-  }, rotRulesWorld),
-  panel("panel-batch-rot", "多选右键 · 轮换规则 ▸", "本机三个标签页多选、右键「轮换规则」：跟随默认（日常）· 各条规则 · 管理规则…", async () => {
+  }, rotConfigsWorld),
+  panel("panel-batch-rot", "多选右键 · 轮换配置 ▸", "本机三个标签页多选、右键「轮换配置」：各份配置 · 管理配置…（有没存改动的会话不动、结果里照说）", async () => {
     await mainReady(ALL_TABS);
     const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].slice(0, 3);
     for (const t of tabs) {
@@ -237,8 +241,8 @@ export const PANEL_SCENES: Scene[] = [
     const item = await byText("[role^=menuitem]", copyText("tabBatch.menu.rot", { n: 3 }));
     item.closest<HTMLElement>("[role=none]")?.dispatchEvent(new MouseEvent("mouseenter"));
     await sleep(500);
-  }, rotRulesWorld),
-  panel("panel-cmdk-rot", "命令面板 · 轮换", "命令面板里输入「轮换」：套用轮换规则… · 管理本机轮换规则…", async () => {
+  }, rotConfigsWorld),
+  panel("panel-cmdk-rot", "命令面板 · 轮换", "命令面板里输入「轮换」：换轮换配置… · 管理本机轮换配置…", async () => {
     await openCommandBar();
     await type("[data-role=command-input]", "轮换");
     await sleep(300);

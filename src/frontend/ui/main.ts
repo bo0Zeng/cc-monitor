@@ -84,9 +84,9 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
-import { onQuotaChanged, refreshRules, syncSessions } from "./acct-center";
+import { onQuotaChanged, refreshConfigs, syncSessions } from "./acct-center";
 import { planMoves, pushedProducts } from "./changed-stream";
-import { followActive, openSourcePicker, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
+import { followActive, openConfigPicker, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { machineName } from "./control-said";
@@ -325,7 +325,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     openSession: (sid) => tabs.switchTo(sid),
     canOpenSession: (sid) => tabs.snapshotSessions().some((x) => x.sessionId === sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
-    openRules: (origin, rule) => void openSettingsWindow(undefined, dest.rulesOf(origin, rule)),
+    openRotation: (origin, at) => void openSettingsWindow(undefined, dest.rotationOf(origin, at)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
     // 恢复菜单挂在状态栏上（抽屉的底边）：toast 的按钮点了就收起，没有自己的锚。
@@ -336,14 +336,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
-  // 多选右键「轮换规则 ▸」：那台的规则表（还没读过 ⇒ 去读，这一回先转圈）· 管理 ⇒ 设置窗那台的「轮换」栏。
-  tabs.onRotationRules = {
-    rulesOf: (origin) => {
-      const got = appStore.rotationRules.get().get(origin);
-      if (got === undefined) void refreshRules(origin);
+  // 多选右键「轮换配置 ▸」：那台的配置表（还没读过 ⇒ 去读，这一回先转圈）· 管理 ⇒ 设置窗那台的「轮换」栏。
+  tabs.onRotationConfigs = {
+    configsOf: (origin) => {
+      const got = appStore.rotationConfigs.get().get(origin);
+      if (got === undefined) void refreshConfigs(origin);
       return got ?? null;
     },
-    openRules: (origin) => void openSettingsWindow(undefined, dest.rulesOf(origin)),
+    openConfigs: (origin) => void openSettingsWindow(undefined, dest.rotationOf(origin)),
   };
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
@@ -683,8 +683,8 @@ window.addEventListener("DOMContentLoaded", async () => {
           cur !== null && curOrigin !== null
             ? {
                 machine: machineName(curOrigin),
-                apply: () => openSourcePicker(cur, curOrigin, panelHost),
-                openRules: () => void openSettingsWindow(undefined, dest.rulesOf(curOrigin)),
+                apply: () => openConfigPicker(cur, curOrigin, panelHost),
+                openConfigs: () => void openSettingsWindow(undefined, dest.rotationOf(curOrigin)),
               }
             : null,
       }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
@@ -909,7 +909,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
         case "quota":
         case "rotation":
-        case "rotation_rules":
+        case "rotation_configs":
           onQuotaChanged(origin, topic, change);
           break;
         case "plan": {
@@ -955,9 +955,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
     taps: machines,
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
-    //   额度 · 会话轮换 · 规则表 · 计划。配置文件那一种只设置窗订。
+    //   额度 · 会话轮换 · 配置表 · 计划。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_rules", "plan"] as const).map((topic) => ({ origin, topic })),
+      (["accounts", "tasks", "quota", "rotation", "rotation_configs", "plan"] as const).map((topic) => ({ origin, topic })),
     ),
   });
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。

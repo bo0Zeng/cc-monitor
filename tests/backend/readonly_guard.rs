@@ -230,6 +230,7 @@ mod tests {
              一批文件里有没有某几个字样。它归 backend-core 是因为那些事实**只在那台机器上**；判定仍只住 monitor。**零写盘**",
         ),
         ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
+        ("test_home_guard", "判据：每个有判据的 Rust crate 都把 `test-home` 引进测试二进制"),
         (
             "assets",
             "后端代管的用户资产（别名 · MCP · skill）：D 组的计算与判定。\
@@ -929,10 +930,10 @@ mod tests {
         ),
         (
             "accounts/quota/rotation.rs",
-            "**账号轮换** `~/.cc-monitor/rotation.json`：这台的默认轮换 · 各会话跟随还是自己那一份 · 此刻钉在哪个号 · 换号记录。\
-             文件名 / 格式 / 落点都是本仓定的、只有后端读它 ⇒ 账号域**自己的**状态，不是用户数据。\
-             在跨进程锁里读盘 → 改 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；只建 `~/.cc-monitor` 那一层；失败删自己的临时文件；\
-             读不懂的那份不覆盖。入口两扇：中转换号那一路（上游选择）· 帧面改轮换 / 现在就换那一路",
+            "**账号轮换** `~/.cc-monitor/rotation.json`（配置表 · 本机默认 · 各会话打开的那份配置的副本 · 手动调整 · 策略备忘 · 换号记录）\
+             与本机策略目录 `~/.cc-monitor/strategies/*.rhai`。文件名 / 格式 / 落点都是本仓定的 ⇒ 账号域**自己的**状态。\
+             `rotation.json` 在跨进程锁里读盘 → 改 → `O_EXCL` 临时文件 → 写满 → 原子挪过去；第一版换形那一下另写一份 `rotation.json.v1`；\
+             读不懂的那份不覆盖。策略文件整份原子写、只删策略目录里那一份。入口：中转换号那一路（上游选择）· 帧面那一路",
         ),
         (
             "lineage.rs",
@@ -1180,6 +1181,17 @@ mod tests {
         (
             "accounts/quota/rotation.rs",
             "rotation::face_change",
+            "faces/rotation_face.rs",
+        ),
+        // 本机策略文件（`~/.cc-monitor/strategies/<id>.rhai`）：装 · 删只从帧面宿主进（`rotation-strategy-add` · `-delete`）。
+        (
+            "accounts/quota/rotation.rs",
+            "rotation::strategy_file_write",
+            "faces/rotation_face.rs",
+        ),
+        (
+            "accounts/quota/rotation.rs",
+            "rotation::strategy_file_remove",
             "faces/rotation_face.rs",
         ),
         // 会话血缘：写口只有中转那一路认「谁起的谁」那一个函数，门是上游选择对中转的那个口。
@@ -5349,6 +5361,21 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "JSON 编解码；同 `serde`，只在内存里把字节变成结构体、再变回去",
+        ),
+        (
+            "rhai",
+            DEPS,
+            UNMEASURED,
+            "轮换策略文件的沙箱（`accounts/quota/strategy/`）：`Engine::new_raw()` ＋ 标准包，**没注册**读写文件 · 连网 · 起进程的函数，\
+             不给模块解析器（`import` 不可用），开 `no_time`（连取时间都没有）。它只在内存里编、跑脚本，交回一个值；\
+             策略文件由后端自己读成字串交给它（`strategy::files_in`），它自己不开文件",
+        ),
+        (
+            "test-home",
+            DEV_DEPS,
+            UNMEASURED,
+            "测试档一起来就把真家换成沙箱（仓内 crate `src/common/test-home`，`main` 之前设 `HOME` 等变量、建一个临时目录）。\
+             **只在测试期链接**，不进发布二进制",
         ),
         (
             "sha2",

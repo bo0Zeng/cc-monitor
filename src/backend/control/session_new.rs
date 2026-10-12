@@ -62,7 +62,7 @@ pub(crate) struct NewRequest {
     /// 这一趟的票（界面每次点［新建］一张；期限到了再问一次带同一张 ⇒ 认出同一趟，不起第二个：[`super::session_new_ticket`]）。缺 ⇒ 不认。
     #[serde(default)]
     pub(crate) ticket: Option<String>,
-    /// 轮换来源：缺 / `"follow"` ＝ 跟随默认（新会话本来就这样，不写）· `{rule: id}` ＝ 起之前按定好的 sid 写成那条规则。
+    /// 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
     #[serde(default)]
     pub(crate) rotation: Option<Value>,
     /// 第一句（B4）：起好了之后由这台交进会话（宿主等它就绪 · 信任框过了再送）；只跟 `place: tmux`。缺 ⇒ 不交。
@@ -148,28 +148,27 @@ pub struct SessionNew {
     pub prompt: Option<FirstSay>,
 }
 
-/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了规则时起之前把那个会话的来源写成那条规则（规则不在 ⇒ `no_such_rule`）· 起不成撤掉。
+/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了配置时起之前把那个会话写成打开那一份（配置不在 ⇒ `no_such_config`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {
     pub(crate) sid: &'a dyn Fn() -> String,
     pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), (&'static str, String)>,
     pub(crate) forget: &'a dyn Fn(&str),
 }
 
-/// `rotation` 那一格：跟随默认 ⇒ `None`；`{rule: id}` ⇒ 那条规则；别的形状 ⇒ `bad_args`。
-fn rule_of(v: Option<&Value>) -> Result<Option<String>, Failed> {
+/// `rotation` 那一格：缺 ⇒ `None`（本机默认）；`{config: id}` ⇒ 那一份；别的形状 ⇒ `bad_args`。
+fn config_of(v: Option<&Value>) -> Result<Option<String>, Failed> {
     let bad = || {
         (
             "bad_args",
-            crate::common::contract::malformed("`rotation` must be \"follow\" or {\"rule\": id}"),
+            crate::common::contract::malformed("`rotation` must be {\"config\": id}"),
             None,
             None,
         )
     };
     match v {
         None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s)) if s == "follow" => Ok(None),
         Some(Value::Object(o)) if o.len() == 1 => o
-            .get("rule")
+            .get("config")
             .and_then(Value::as_str)
             .filter(|id| !id.is_empty())
             .map(|id| Some(id.to_string()))
@@ -260,12 +259,14 @@ fn start(
     }
     let (kind, face) = crate::agents::pick_kind(Some(&req.agent))
         .map_err(|m| fail("unknown_agent", m, Some(SessionNewField::Agent)))?;
-    let rule = rule_of(req.rotation.as_ref())?;
-    // 新起的要先定 sid 才能起之前写好来源：那一家不认 ⇒ 不收规则（分叉的 sid 由分支记录定，不用它）。
+    let rule = config_of(req.rotation.as_ref())?;
+    // 新起的要先定 sid 才能起之前写好打开哪一份：那一家不认 ⇒ 不收（分叉的 sid 由分支记录定，不用它）。
     if rule.is_some() && req.fork_from.is_none() && face.preset_sid.is_none() {
         return Err((
             "bad_args",
-            crate::common::contract::malformed("this agent cannot take a rotation rule at launch"),
+            crate::common::contract::malformed(
+                "this agent cannot take a rotation config at launch",
+            ),
             None,
             None,
         ));
@@ -399,7 +400,7 @@ fn start(
     }
     let resumed = forked.clone();
     let sid = forked.or_else(|| preset.clone());
-    // 起之前把来源写好：会话一报到就已经是那条规则（界面不补写）。
+    // 起之前写好打开哪一份：会话一报到就已经是它（界面不补写）。
     let wrote = match (&rule, &sid) {
         (Some(r), Some(s)) => {
             (pre.write)(s, kind, r).map_err(|(c, m)| fail(c, m, None))?;

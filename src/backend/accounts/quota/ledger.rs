@@ -124,23 +124,17 @@ pub(crate) struct WindowSeen {
 }
 
 impl Observed {
-    /// ★ 按走势估这个窗口几点用到 `target`（比例）：同一窗口有上一次不同的采样 · 此刻这个值是最近 [`EST_FRESH`] 秒里头一次看到的 ·
-    /// 在涨 ⇒ 按这两点的斜率外推。只有一个采样 · 涨在那之前 · 不涨 · 已经到了 · 到之前窗口先重置 · 外推的时刻已过 ⇒ `None`（没根据就不给）。
-    pub(crate) fn eta(&self, name: &str, target: f64, now: u64) -> Option<u64> {
+    /// ★ 用速（E2）：这个窗口最近 [`EST_FRESH`] 秒里两次不同采样的斜率，点 / 分（用量 0–100 那一种点）。
+    /// 只有一次采样 · 不涨 · 过了 30 分 ⇒ `None`（没根据就不给，推演不外推）。
+    pub(crate) fn rate(&self, name: &str, now: u64) -> Option<f64> {
         let w = self.reading.windows.iter().find(|w| w.name == name)?;
         let u1 = w.used?;
         let t = self.trend.get(name)?;
         let p = t.prev?;
-        if now.saturating_sub(t.since) > EST_FRESH
-            || u1 <= p.used
-            || t.since <= p.since
-            || u1 >= target
-        {
+        if now.saturating_sub(t.since) > EST_FRESH || u1 <= p.used || t.since <= p.since {
             return None;
         }
-        let per_sec = (u1 - p.used) / (t.since - p.since) as f64;
-        let at = t.since + ((target - u1) / per_sec).round() as u64;
-        (at > now && w.resets_at.is_none_or(|r| at < r)).then_some(at)
+        Some((u1 - p.used) * 100.0 / ((t.since - p.since) as f64 / 60.0))
     }
 
     /// 一个窗口几点、从哪看到的（没列 ⇒ 这一条的时刻、回包头）。

@@ -851,8 +851,8 @@ fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
     }
     // ★ **回值要说清"到底动了什么"**：会话是被杀了，还是身份对不上只摘了登记？
     //   cc-kill 两种情况都 exit 0 —— 把它自己的说法读出来，别让调用方以为都一样。
-    let said =
-        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
+    let said = String::from_utf8_lossy(&out.stdout).to_string()
+        + String::from_utf8_lossy(&out.stderr).as_ref();
     let killed = said.contains("已杀会话");
     let stale_only = said.contains("已摘掉");
     Ok(kill_reply(&id, killed, stale_only))

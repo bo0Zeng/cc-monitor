@@ -46,7 +46,6 @@
     ],
     "tests/backend/ratchet_guard.rs": [
       { "text": "退回", "use": "词义" },
-      { "text": "兜底", "use": "非文案" },
       { "text": "刷新", "use": "非文案" }
     ],
     "tests/common/guard-core/no_outside_refs_tests.rs": [
@@ -58,7 +57,6 @@
       { "text": "账号", "use": "输入" }
     ],
     "tests/frontend/filewin/editor_tests.rs": [
-      { "text": "上限", "use": "词义" },
       { "text": "原话", "use": "输入" }
     ],
     "tests/frontend/filewin/progress_tests.rs": [
@@ -81,7 +79,6 @@
       { "text": "全屏", "use": "非文案" }
     ],
     "tests/frontend/shell/command_home_registry_tests.rs": [
-      { "text": "开窗", "use": "词义" },
       { "text": "日志", "use": "非文案" }
     ],
     "tests/frontend/shell/doc_claim_registry_tests.rs": [
@@ -116,8 +113,7 @@
     "tests/frontend/ui/config-persist-failure.vitest.ts": [
       { "text": "分组", "use": "用例名" },
       { "text": "固定", "use": "用例名" },
-      { "text": "快捷键", "use": "用例名" },
-      { "text": "顺序", "use": "用例名" }
+      { "text": "快捷键", "use": "用例名" }
     ],
     "tests/frontend/ui/design-tokens.vitest.ts": [
       { "text": "颜色", "use": "非文案" }
@@ -281,7 +277,6 @@
       { "text": "没签", "use": "输入" },
       { "text": "对账", "use": "输入" },
       { "text": "执行", "use": "输入" },
-      { "text": "来源", "use": "输入" },
       { "text": "订阅", "use": "输入" },
       { "text": "未装 planned-build", "use": "回显" },
       { "text": "无 agent 视角 · 重读计划后再看", "use": "回显" }
@@ -292,7 +287,8 @@
     "tests/shots/fake/machine.ts": [
       { "text": "日志", "use": "回显" },
       { "text": "账号", "use": "回显" },
-      { "text": "本机", "use": "输入" }
+      { "text": "本机", "use": "输入" },
+      { "text": "配置", "use": "回显" }
     ],
     "tests/test-support/session-viewer-rig.ts": [
       { "text": "加载失败", "use": "词义" }

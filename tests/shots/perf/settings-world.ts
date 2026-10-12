@@ -1,5 +1,5 @@
 /**
- * 设置窗性能台架的合成世界：照真实规模放大 —— 十几台机器、二十几个账号、三十条轮换规则、几百个扩展 × 十几台。
+ * 设置窗性能台架的合成世界：照真实规模放大 —— 十几台机器、二十几个账号、三十份轮换配置、几百个扩展 × 十几台。
  * 名字全是按模板拼的占位；账号 · 额度 · 轮换落成家目录里的原始文件（`../disk`），摘要 · 说明 · 在用名单由真后端算（与 `fake/world.ts` 同一套口径），不取任何真配置。
  *
  * 量法与读数住 `settings-bench.mjs` 头注；这里只造数据。
@@ -40,7 +40,7 @@ export function settingsPerfWorld(): World {
   });
   w.disk = defaultDisk(w.machines);
 
-  // ── 账号 · 额度 · 轮换规则：落成本机家目录里的原始文件，真后端读 ──
+  // ── 账号 · 额度 · 轮换配置：落成本机家目录里的原始文件，真后端读 ──
   const d = w.disk[LOCAL];
   const t = now();
   putAccounts(d, accts.map((name, i) => ({ name, kind: i % 5 === 4 ? ("api" as const) : ("sub" as const), isDefault: i === 0, ...(i % 5 === 4 ? { email: "" } : {}) })));
@@ -65,16 +65,17 @@ export function settingsPerfWorld(): World {
     }),
   );
   const sids = w.sessions.map((s) => s.sid);
-  const ruleId = (k: number): string => `r_${String(k).padStart(3, "0")}`;
+  const cfgId = (k: number): string => `c_${String(k).padStart(8, "0")}`;
   putRotation(d, {
-    defaultRule: ruleId(0),
-    rules: Object.fromEntries(
+    defaultConfig: cfgId(0),
+    configs: Object.fromEntries(
       Array.from({ length: SETTINGS_SCALE.rules }, (_, k) => {
-        const order = [{ start: true }, ...Array.from({ length: 4 }, (_, j) => accts[(k + j) % accts.length])];
-        return [ruleId(k), { name: `规则 ${k + 1}`, rotation: { order, enabled: order.slice(1), ...(k % 2 ? {} : { cap: { "*": { "5h": 80 + (k % 20) } } }), atLimit: "continue", wait: 40 }, rev: 2, updatedAt: t - 86_400 }];
+        const params = { line: k % 2 ? null : 80 + (k % 20), slots: [], mode: "normal", stint: null };
+        const accounts = [{ start: true as const, params }, ...Array.from({ length: 4 }, (_, j) => ({ id: accts[(k + j) % accts.length], params }))];
+        return [cfgId(k), { name: `配置 ${k + 1}`, strategy: "1", accounts, params: { back: false, delay: 0, standby_wait: 40, all_out: "go" }, acctInit: params, rev: 2, updatedAt: t - 86_400 }];
       }),
     ),
-    sessions: Object.fromEntries(sids.map((sid, j) => [sid, { start: accts[0], current: accts[0], since: t - 3600, source: j % SETTINGS_SCALE.rules === 0 ? "follow" : { rule: ruleId(j % SETTINGS_SCALE.rules) } }])),
+    sessions: Object.fromEntries(sids.map((sid, j) => [sid, { start: accts[0], current: accts[0], since: t - 3600, config: { id: cfgId(j % SETTINGS_SCALE.rules), rev: 2 } }])),
   });
   putWarm(d, [{ account: accts[1], at: t + 2.5 * 3600 }]);
   w.ops["accounts-sessions"] = (origin, _req, world) => ({

@@ -17,6 +17,10 @@ pub mod wire;
 // 账号库与清单住哪（相对家目录）是后端的家那一族，住 `relay_route_core::ACCOUNTS_DIR_REL` / `ACCOUNTS_MANIFEST_NAME`。
 /// 凭据文件名（每个账号的 config dir 下）；只 stat 存在性，**绝不读内容**。
 pub const CREDENTIALS_NAME: &str = ".credentials.json";
+
+/// 这台本来那一份登录（不设配置目录的状态）的号名：账号库清单里写它的名字、`/t/` 路由第 2 段写它的账号段、号名的字认它，都是这一个。
+/// 起会话时没说是哪个号（路由段 `_`）用的也是这一份登录 —— 两个段写给人看的是同一个名字。
+pub const BARE_ACCOUNT: &str = "0";
 /// 本仓支持的 manifest schema 版本。**不支持的版本不是错误**，是「未启用多账号」。
 ///
 /// 加 `authKind` 这一维**没有 bump**：它是可选键，读侧一律 `#[serde(default)]` ＋ 忽略未知键 ⇒ 新旧清单双向都读得动；
@@ -312,3 +316,8 @@ pub fn config_dir_ok(p: &str) -> bool {
 #[cfg(test)]
 #[path = "../../../../tests/common/acct-core/lib_tests.rs"]
 mod tests;
+
+// 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
+#[cfg(test)]
+#[used]
+static TEST_HOME: fn() = test_home::linked;

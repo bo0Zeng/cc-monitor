@@ -2,6 +2,7 @@
 //
 // 账号是按机器的：chip 绑第一台已配置的远端（`pickPrimaryOrigin`），一台都没有就是本机。
 // 点选账号只改那台的默认账号（非破坏），已有会话不受影响。每一行的徽章带上「这个号走不走 apikey 端点改写」的三态。
+import { accountLabel } from "./acct-words";
 import { deriveUi, defaultAccount, accountColorsActive, type AccountsState, type Account } from "./accounts";
 import { fetchAccounts, fetchLocalAccounts, invalidateAccountsCache } from "./account-reads";
 import { accountsSetDefault } from "./account-ops";
@@ -319,7 +320,7 @@ export class AccountChip {
     const u = led && badge.warn !== true ? led.usage : null;
     const usage = u ? u.text : null;
     return {
-      label: a.name,
+      label: accountLabel(a.name),
       checked: isCurrent,
       avatar: accountAvatarEl(a.name, { size: 16 }),
       note: a.email || undefined,

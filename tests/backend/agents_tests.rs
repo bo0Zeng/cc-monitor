@@ -601,14 +601,14 @@ fn project_dir_is_the_first_cwd_in_the_head_and_reading_is_bounded() {
     };
     let cap = crate::agents::HEAD_CAP;
     let far = dir.join("far.jsonl");
-    std::fs::write(&far, pad(cap) + &rec("/a/proj") + "\n").unwrap();
+    std::fs::write(&far, pad(cap) + rec("/a/proj").as_str() + "\n").unwrap();
     assert_eq!(
         crate::agents::claudecode::parse::project_dir(&far),
         None,
         "上界之后的那一条也被读到了 —— 头部没有上界"
     );
     let near = dir.join("near.jsonl");
-    std::fs::write(&near, pad(cap / 2) + &rec("/a/proj") + "\n").unwrap();
+    std::fs::write(&near, pad(cap / 2) + rec("/a/proj").as_str() + "\n").unwrap();
     assert_eq!(
         crate::agents::claudecode::parse::project_dir(&near).as_deref(),
         Some("/a/proj")
