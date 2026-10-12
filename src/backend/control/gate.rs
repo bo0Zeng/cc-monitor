@@ -223,6 +223,20 @@ pub(crate) fn probe_with(tmux: Child, target: &str) -> Result<Option<Probed>, Cm
 }
 
 /// 请求里自报的前端（`args.client`）：没给 ⇒ `None`；给了就得是一个合形状的名字（`gate_rules::client_name_ok`）。
+/// 同 [`requester_of`]，那一格已经按类型解好（typed 命令的入参）。
+pub(crate) fn requester(client: Option<&str>) -> Result<Option<String>, CmdErr> {
+    match client {
+        None => Ok(None),
+        Some(c) if crate::control::gate_rules::client_name_ok(c) => Ok(Some(c.to_string())),
+        Some(c) => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`client` must be 1-32 chars of [a-z0-9-]: {c:?}"
+            )),
+        )),
+    }
+}
+
 pub(crate) fn requester_of(args: &serde_json::Value) -> Result<Option<String>, CmdErr> {
     match args.get("client") {
         None => Ok(None),

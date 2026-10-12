@@ -3,6 +3,24 @@
 use super::*;
 use std::cell::RefCell;
 
+/// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`）。
+fn wired<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &Value,
+    f: impl FnOnce(&R) -> Result<T, CmdErr>,
+) -> Result<Value, CmdErr> {
+    let req: R = serde_json::from_value(args.clone()).map_err(|e| bad(&e.to_string()))?;
+    f(&req).map(|t| serde_json::to_value(t).unwrap())
+}
+fn where_(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+    wired(args, |r| super::where_(r, d))
+}
+fn stop(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+    wired(args, |r| super::stop(r, d))
+}
+fn start(args: &Value, d: &Deps) -> Result<Value, CmdErr> {
+    wired(args, |r| super::start(r, d))
+}
+
 /// 判号要的事实：这台只有一个号 `work`（能用）、没有谁的上次记录。
 fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
     let library = || {

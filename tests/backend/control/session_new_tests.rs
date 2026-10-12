@@ -448,7 +448,9 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
         run(&some, json!({ "cwd": "/x", "forkOf": "not a sid" })),
         Err(SessionNewDirErr::BadArgs(_))
     ));
-    assert!(serde_json::from_value::<SessionNewDirReq>(json!({ "cwd": "/x", "extra": 1 })).is_err());
+    assert!(
+        serde_json::from_value::<SessionNewDirReq>(json!({ "cwd": "/x", "extra": 1 })).is_err()
+    );
 }
 
 /// 起之前预标信任：三种起法（tmux · 本机开窗 · 远端开窗）都在起 / 交回那一行之前把工作目录标进要用的那个号；

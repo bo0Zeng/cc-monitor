@@ -44,7 +44,12 @@ fn backend_command_blocks() -> Vec<(String, String)> {
     // typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()`）：名字从那个类型住的文件里
     //   `impl Command for <类型>` 那一段的 `const NAME` 读；块 ＝ 那一行本身（点着它的家）。
     for (_, prod) in &families {
-        for ctor in ["typed::blocking::<", "typed::asynchronous::<"] {
+        for ctor in [
+            "typed::blocking::<",
+            "typed::with_files::<",
+            "typed::with_own::<",
+            "typed::asynchronous::<",
+        ] {
             for (at, _) in prod.match_indices(ctor) {
                 let rest = &prod[at + ctor.len()..];
                 let path = &rest[..rest.find('>').expect("typed 那一行没收尾")];

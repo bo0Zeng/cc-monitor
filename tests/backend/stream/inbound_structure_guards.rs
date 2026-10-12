@@ -1157,7 +1157,6 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
 }
 
 mod typed_replies {
-    pub(super) use crate::control::session_batch as sb;
     pub(super) use crate::control::session_new as sn;
     pub(super) use crate::faces::rotation_face as rf;
     pub(super) use crate::guard_support::{merged, sampled, sampled_and, Sampled};
@@ -1276,48 +1275,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         "session-restart",
         restart_samples,
         &["configDir", "model", "name"],
-        &[],
-    ),
-    (
-        "sessions-start",
-        sampled::<sb::Batched>,
-        &[
-            "account",
-            "cmd",
-            "configDir",
-            "copyDetail",
-            "detail",
-            "model",
-            "name",
-            "outcome",
-            "said",
-            "session",
-            "sid",
-            "unavailable",
-            "why",
-        ],
-        &[],
-    ),
-    (
-        "sessions-stop",
-        sampled::<sb::Batched>,
-        &[
-            "bus",
-            "cmd",
-            "copyDetail",
-            "detail",
-            "outcome",
-            "said",
-            "session",
-            "sid",
-            "why",
-        ],
-        &[],
-    ),
-    (
-        "sessions-where",
-        sampled::<sb::Whereabouts>,
-        &["host", "names", "sid", "standing", "terminal", "terminals"],
         &[],
     ),
     (
