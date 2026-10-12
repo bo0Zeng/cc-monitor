@@ -26,7 +26,7 @@
 //! # 走全流程
 //!
 //! [`walk`] 把假 agent 推过六段，每一段都经通用层：发现（`agents::visible_among`）· 宣告（`wire::Frame::Hello`）·
-//! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve_json_among`）。
+//! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve`）。
 //! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
 use crate::platform::fs::Ro;

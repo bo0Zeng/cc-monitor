@@ -615,10 +615,11 @@ async fn a_call_writes_one_line_and_resolves_on_the_matching_reply() {
 
 #[tokio::test]
 async fn an_error_reply_surfaces_code_and_message() {
-    let (client, mut peer) = client_on_duplex(&["resolve"]);
+    // 不是 typed 的那一种（typed 命令对端没交形状指纹就不发：`a_typed_command_with_a_different_shape_is_refused_by_name_and_not_sent`）。
+    let (client, mut peer) = client_on_duplex(&["ping"]);
     let c = client.clone();
     let caller = tokio::spawn(async move {
-        c.call("resolve", serde_json::json!({}), Duration::from_secs(5))
+        c.call("ping", serde_json::json!({}), Duration::from_secs(5))
             .await
     });
     let line = next_line(&mut peer).await;
@@ -1211,8 +1212,12 @@ async fn the_hello_facts_decide_what_is_sent_and_what_is_withdrawn() {
 /// `resync` 的应答交回那台当下的能力事实（`unavailable` 空了）⇒ 换进 `Offer`，之后 `kill` 照发。
 #[tokio::test]
 async fn a_resync_reply_refreshes_the_offer_with_the_facts_of_this_moment() {
-    let line = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","resync"],"unavailable":[{"command":"kill","code":"no_tmux"}]}"#;
-    let frame = crate::stream_source::parse_frame(line).expect("是 hello");
+    // `resync` 是 typed 命令：对端交了同一份形状指纹才发。
+    let line = format!(
+        r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","kill","resync"],"unavailable":[{{"command":"kill","code":"no_tmux"}}],"shapes":{{"resync":"{}"}}}}"#,
+        cmd_wire::shapes::shape_of("resync").expect("typed 命令")
+    );
+    let frame = crate::stream_source::parse_frame(&line).expect("是 hello");
     let hello = BackendHello::from_hello_frame(&frame).expect("是 Hello 帧");
     let (mine, theirs) = tokio::io::duplex(64 * 1024);
     let client = park(mine).into_client(hello);
