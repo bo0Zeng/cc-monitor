@@ -743,6 +743,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/ssh-dial/uses.rs",
+        "STDERR_TAIL_BYTES",
+        "一次长 exec（`use:\"duplex\"`）留下的 stderr 尾巴（只给「为什么起不来」那一句用）。超了 ⇒ 只留最后这么多字节，收尾帧里的 `stderr_tail` 就是这段尾巴（字段名说明了是尾巴）",
+        "截断+说清",
+    ),
+    (
         "src/backend/ssh-dial/sftp.rs",
         "MAX_PUT_BYTES",
         "一次 `put` 收进内存的字节（后端二进制今天 MB 级）。超了 ⇒ 那几个字节照收照丢（别让下一行请求读到半截二进制）、回 `too_big`",

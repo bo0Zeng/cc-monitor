@@ -1341,7 +1341,7 @@ run_gate mobile '这一趟 Gradle test-results 里的单测条数（各模块合
 #   不占 heavy 的槽位；adb 用私有端口（默认 5139 / 模拟器 5592，与冒烟台架的 5137 / 5590 错开），不碰本机正在跑的 adb 与真手机。
 #   AVD 默认建在这棵树的 `.build/android-device/avd`，`GATE_ANDROID_AVD_HOME` 可指别处（`gate-clean.sh` 只清 `CCM_*` 等会话变量，不清它）。
 # 跑：`src/mobile/scripts/android-test.sh`（唯一入口：装 app → `pm clear` 判成没成 → 三个模块的设备测；gradle 带 --no-daemon）。
-# 判：退出码 0 ＋ 这一趟 connected 报告里的条数 > 0（先清旧报告）。只能手跑的 `SshConnectionTest` 不在里面（入口脚本过滤掉，理由在那儿）。
+# 判：退出码 0 ＋ 这一趟 connected 报告里的条数 > 0（先清旧报告）。要台架的 `RustTransportTest` 没给台架参数就整份跳过（冒烟台架那一格才带参数跑它）。
 # 与 `mobile` 同一条道、排在它后面（两格共用 Gradle 的构建目录）。不进无网沙箱：Gradle 要读依赖缓存、模拟器要 KVM。
 # CI 不跑（runner 上没有 KVM 模拟器）；没有 `systemd-run --user` 或 KVM 的机器上起不来 ⇒ 按红记（判不了 ≠ 绿）。
 gate_android_device() {
@@ -1366,7 +1366,7 @@ gate_android_device() {
     | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
   printf 'android-device: %s passed（模拟器上的设备测，各模块 connected 报告合计；跑前 pm clear 过 app 的数据）\n' "${n:-0}"
 }
-run_gate android-device '这一趟模拟器上 connected 报告里的设备测条数（core-data · app · core-ssh 的 KeystoreSigner 合计）。⚠ 要 KVM ＋ systemd --user；SshConnectionTest 只能手跑，不在里面' \
+run_gate android-device '这一趟模拟器上 connected 报告里的设备测条数（core-data · app · core-ssh 合计；core-ssh 要台架的那份没给参数就跳过）。⚠ 要 KVM ＋ systemd --user' \
          gate_android_device
 
 # 各道同时起跑、等齐，再按上面的顺序逐格判。
