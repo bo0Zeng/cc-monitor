@@ -272,6 +272,95 @@ impl AccountCreds {
     }
 }
 
+/// **诊断文件的窄句柄**：宿主交的那一份（`CCM_BACKEND_STDERR_LOG`，或一次性模式落的家里那一份）＋ 旁边那份旧的。
+/// 能做的只有三件：`O_EXCL` 新建当前那份 · 把当前那份原子挪成旧的（盖掉上一份旧的）· 只追加一整行（不在就新建、只给本人）。
+/// 不建目录、不截断、别的文件一个都碰不到。造只经 [`DiagLog::issue`]（只许启动入口，同一条构造判据管）。
+#[derive(Clone, Debug)]
+pub struct DiagLog {
+    cur: PathBuf,
+    old: PathBuf,
+}
+
+/// 新建出来的当前那份：只会写、只交得出 fd（给 fd 2 指过去用）。
+#[derive(Debug)]
+pub(crate) struct DiagFile(std::fs::File);
+
+impl DiagLog {
+    /// 认下交来的那一份（旧的那份落在同目录：`stderr.log` ⇒ `stderr.old.log`）。
+    pub fn issue(cur: PathBuf) -> DiagLog {
+        let old = cur.with_extension("old.log");
+        DiagLog { cur, old }
+    }
+
+    /// 当前那份。
+    pub(crate) fn cur(&self) -> &Path {
+        &self.cur
+    }
+
+    /// 旧的那份。
+    pub(crate) fn old(&self) -> &Path {
+        &self.old
+    }
+
+    /// 当前那份原子挪成旧的：挪了 ⇒ `true`；当前那份不在 ⇒ `false`。
+    pub(crate) fn roll(&self) -> std::io::Result<bool> {
+        match std::fs::rename(&self.cur, &self.old) {
+            Ok(()) => Ok(true),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// `O_EXCL` 新建当前那份（已在 ⇒ 照实报错，不截断）。
+    pub(crate) fn create(&self) -> std::io::Result<DiagFile> {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&self.cur)
+            .map(DiagFile)
+    }
+
+    /// 只追加一整行（`O_APPEND`，不在就新建、只给本人；目录不在 ⇒ `Err`，不替它建）。
+    pub(crate) fn append_line(&self, line: &[u8]) -> std::io::Result<()> {
+        let mut o = std::fs::OpenOptions::new();
+        o.append(true).create(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt as _;
+            o.mode(0o600);
+        }
+        o.open(&self.cur)?.write_all(line)
+    }
+}
+
+impl DiagFile {
+    /// 此刻多长（问不到 ⇒ `None`）。
+    pub(crate) fn len(&self) -> Option<u64> {
+        self.0.metadata().ok().map(|m| m.len())
+    }
+
+    /// 同一份再开一个把手（同一个打开文件描述）。
+    pub(crate) fn try_clone(&self) -> std::io::Result<DiagFile> {
+        self.0.try_clone().map(DiagFile)
+    }
+}
+
+impl std::io::Write for DiagFile {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.write(buf)
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.0.flush()
+    }
+}
+
+#[cfg(unix)]
+impl std::os::fd::AsFd for DiagFile {
+    fn as_fd(&self) -> std::os::fd::BorrowedFd<'_> {
+        self.0.as_fd()
+    }
+}
+
 /// 后端自家目录**建的那一下**给的权限位：只给本人（远端 SFTP 部署建目录用同一个数）。
 pub(crate) const PRIVATE_DIR_MODE: u32 = 0o700;
 

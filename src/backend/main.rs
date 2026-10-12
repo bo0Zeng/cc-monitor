@@ -201,7 +201,7 @@ async fn main() {
         &own,
         &env,
         control::resident::account_home().as_deref(),
-        || stderr_log::install_from_env(&env),
+        || stderr_log::install_from_env(cc_monitor_backend::platform::DiagLog::issue, &env),
     )
     .await
     {
@@ -960,6 +960,8 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
 /// 整行追加进这台后端的诊断文件（`stderr_log::oneshot_writer`）。
 fn init_tracing(oneshot: bool) {
     let writer = if oneshot {
+        // 诊断文件那一份的窄句柄只在这里造（启动入口），装给一次性模式的写者。
+        stderr_log::keep_oneshot(cc_monitor_backend::platform::DiagLog::issue);
         tracing_subscriber::fmt::writer::BoxMakeWriter::new(stderr_log::oneshot_writer)
     } else {
         // 仍是 stderr；写每一行之前看一眼要不要滚（没被交诊断文件路径时它就是 `std::io::stderr`）。

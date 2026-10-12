@@ -221,8 +221,8 @@ mod tests {
             "stderr_log",
             "脱离常驻那条载体的后端：stderr 落进一份有上限、滚动的文件。\
              它归 backend-core 是因为那些诊断（host key 警告 · 中转起不来的原因 · watch 失败）**只在这个进程里**说得出来。\
-             写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，第四层登记，\
-             见 `OWN_STATE_MODULES`）—— 一个用户文件都不写",
+             写的只有那两份诊断文件（当前 ＋ 旧的一份；路径由宿主交 `CCM_BACKEND_STDERR_LOG`，后端**自己的**状态，\
+             经诊断文件的窄句柄 `platform::fs::DiagLog` 写）—— 一个用户文件都不写",
         ),
         (
             "footprint",
@@ -850,13 +850,6 @@ mod tests {
     /// 那一半靠那个模块自己的行为判据（写完读回、目录里只剩那一份）。
     pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[
         (
-            "stderr_log.rs",
-            "脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
-             `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
-             是后端自己说的话 ⇒ 后端**自己的**状态，不是用户数据。动词：`O_EXCL` 新建当前那份 · 原子挪成旧的（盖掉上一份旧的）；\
-             不建目录、不截断；一次性模式另有一个只追加整行的句柄（`OWN_STATE_APPEND_ONLY`）。对外口（装它的 `install_from_env` · 交给 `tracing` 的 `stderr_writer` · 一次性模式的 `oneshot_writer`）只从 `main.rs` 进（与`relay/listen.rs` 一样，是不走命令注册的门）",
-        ),
-        (
             "common/own_dir.rs",
             "**后端建自家目录的那一个函数**（`~/.cc-monitor` 与它底下后端自己的几层）：\
              建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
@@ -872,22 +865,6 @@ mod tests {
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
     const OWN_STATE_VERBS: &[&str] = &["create_dir", "remove_file", "rename"];
-
-    /// 第四层里**只追加一行**的那几份日志落点（`(模块, 为什么)`）：许它们恰好一个写句柄写成 `.append(true).create(true)`
-    /// （`O_APPEND`、不在就新建、不截断、不建目录），`append(true)` · `create(true)` 只在那一个句柄上豁免；别的句柄照旧 `O_EXCL`。
-    const OWN_STATE_APPEND_ONLY: &[(&str, &str)] = &[(
-        "stderr_log.rs",
-        "一次性模式（CLI 子命令）的诊断：stderr 是协议通道（成功一个字节都没有、失败正好一行信封），诊断改追加进这台后端的 \
-         stderr 诊断文件（常驻后端 fd 2 指着的那一份）。几个一次性进程与常驻后端同写一份 ⇒ 只能追加、一次写一整行；\
-         它是日志不是状态，没有读—改—写；不截断、不建目录（目录不在就丢这一行）",
-    )];
-
-    fn is_own_state_append_only(rel: &str) -> bool {
-        OWN_STATE_APPEND_ONLY.iter().any(|(p, _)| *p == rel)
-    }
-
-    /// 只追加那一个句柄的写法（逐字；[`OWN_STATE_APPEND_ONLY`] 的模块恰好一处）。
-    const APPEND_ONLY_HANDLE: &str = ".append(true).create(true)";
 
     /// 第四层模块**仍然不许**出现的东西。`create(true)` 不含于 `create_new(true)`，不自伤；
     /// `remove_dir` 同时挡住 `remove_dir_all`。
@@ -917,12 +894,6 @@ mod tests {
             "暂存区 `~/.cc-monitor/staging` 那两层（上传件与存盘块的落点）要建 —— 它是第三层（文件管理写面）的成员、\
              不是第四层，所以它是 `own_dir` 在第四层之外**唯一**的一扇门；只调建目录那一个函数，不碰第四层别的写口",
         ),
-        (
-            "main.rs",
-            "流模式起来那一刻（一次性子命令全部 `exit` 之后、选好载体并抢到口之后）装 stderr 诊断文件 —— \
-             那一格没有命令可走（要接的正是这个进程此后说的每一句话），宿主交了路径才装；\
-远端常驻后端的钥匙与 pid 文件（`--resident-ensure` 子命令 · 常驻载体绑上口之后），也没有帧命令可走",
-        ),
     ];
 
     /// 第四层每一份模块的**写口**（`模块路径`, `写口的限定名尾巴`）。**与 [`OWN_STATE_MODULES`] 一一对应**
@@ -930,13 +901,6 @@ mod tests {
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
     /// 第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
     const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
-        // stderr 诊断文件：写口是装它的那一个函数，门是 `main.rs`。
-        // 装它（`install_from_env`）与滚它（`stderr_writer`，交给 `tracing`）都会写，都只许 `main.rs` 碰 ⇒ 两条针各钉一个写口。
-        // 〔从前针取模块前缀 `stderr_log::`：起子进程清环境那一处（`platform/child_env.rs`）要点那个变量的**名字**
-        //  （`stderr_log::ENV`，不是写口）就被当成够到了写口 ⇒ 改成逐个点写口；这个模块今天对外的函数就这两个会写。〕
-        ("stderr_log.rs", "stderr_log::install_from_env", "main.rs"),
-        ("stderr_log.rs", "stderr_log::stderr_writer", "main.rs"),
-        ("stderr_log.rs", "stderr_log::oneshot_writer", "main.rs"),
         // 原子写的那一处（过渡转调）：只有第四层别的几份调它（门检查本来就跳过第四层成员）⇒ 门空着 = 第四层之外零引用。
         // 针取写那一半（`write` · `write_json`）：读三态（`read_bytes` · `read_json`）是读，搬上 `Own` 的那几份照旧用。
         ("common/own_state.rs", "own_state::write", ""),
@@ -1054,12 +1018,7 @@ mod tests {
     ///
     /// 配对计数把这个洞堵上：想再开一个写句柄，就必须再配一个 `O_EXCL`。
     fn open_calls_are_all_exclusive(prod: &str) -> Result<(), String> {
-        open_calls_are_all_exclusive_but(prod, 0)
-    }
-
-    /// 同上，另许 `appends` 个只追加的句柄（[`OWN_STATE_APPEND_ONLY`]）。
-    fn open_calls_are_all_exclusive_but(prod: &str, appends: usize) -> Result<(), String> {
-        let opens = prod.matches(".open(").count() - appends.min(prod.matches(".open(").count());
+        let opens = prod.matches(".open(").count();
         let excl = prod.matches(".create_new(true)").count();
         if opens != excl {
             return Err(format!(
@@ -1172,24 +1131,9 @@ mod tests {
             // 第四层：后端自有状态文件。
             if is_own_state(&rel) {
                 own += 1;
-                // 只追加的那一份：恰好一个 `APPEND_ONLY_HANDLE` 句柄，判别的写句柄时把它摘掉。
-                let appends = if is_own_state_append_only(&rel) {
-                    let n = prod.matches(APPEND_ONLY_HANDLE).count();
-                    assert_eq!(
-                        n,
-                        1,
-                        "第四层只追加的模块 {}：`{APPEND_ONLY_HANDLE}` 该恰好一处，实得 {n}",
-                        path.display()
-                    );
-                    n
-                } else {
-                    0
-                };
-                let rest = prod.replacen(APPEND_ONLY_HANDLE, "", appends);
-                if let Err(why) = open_calls_are_all_exclusive_but(&prod, appends) {
+                if let Err(why) = open_calls_are_all_exclusive(&prod) {
                     panic!("第四层模块 {}：{why}", path.display());
                 }
-                let prod = rest;
                 if let Some(pat) = OWN_STATE_STILL_FORBIDDEN
                     .iter()
                     .find(|p| prod.contains(**p))
@@ -1473,12 +1417,7 @@ mod tests {
     }
 
     /// 第四层里**不做读—改—写、所以不拿跨进程锁**的那几份（`(模块, 为什么)`）。每一条都要答「两个进程同时写它会不会丢东西」。
-    const OWN_STATE_LOCK_EXEMPT: &[(&str, &str)] = &[(
-        "stderr_log.rs",
-        "这是后端自己的 stderr **日志落点**，不是一份被读—改—写的状态：fd 2 指着它的那一个常驻进程 `O_EXCL` 新建 ＋ 滚动时原子挪，\
-         一次性进程只 `O_APPEND` 一次写一整行（几个进程同写一份不会写进彼此中间）；\
-         没有「读出来、改一格、整份写回」那一步 ⇒ 没有「后写的盖掉先写的」可丢。在每一行 `tracing` 写之前拿目录锁只会白加一次系统调用",
-    ),
+    const OWN_STATE_LOCK_EXEMPT: &[(&str, &str)] = &[
     (
         "common/own_dir.rs",
         "后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
@@ -2930,6 +2869,10 @@ mod tests {
         "std::fs::remove_dir(",
         "std::fs::DirBuilder::new()",
         "std::os::unix::fs::DirBuilderExt",
+        // 诊断文件窄句柄（`DiagLog`）：`O_EXCL` 新建当前那份 · 只追加一整行（权限位 0600）两个打开法，交出去的那一份只会写、交得出 fd。
+        "std::fs::OpenOptions::new()",
+        "std::os::unix::fs::OpenOptionsExt",
+        "DiagFile(std::fs::File)",
     ];
 
     #[test]
@@ -2984,7 +2927,10 @@ mod tests {
     /// 自家状态写句柄的造法（`(针, 只许出现在哪几份)`）：[`crate::platform::fs::Own`] 启动时造一次、顺着入口递下去；
     /// 别处一造就红（类型挡管「拿着它才写得出来」，这一条管「谁能凭空造一个」）。定义所在那一份不算。
     // 针不带括号：`Own::issue` 一族（照进程环境 · 照注入的环境）都只许启动入口造。
-    const ISSUERS: &[(&str, &[&str])] = &[("Own::issue", &["main.rs"])];
+    const ISSUERS: &[(&str, &[&str])] = &[
+        ("Own::issue", &["main.rs"]),
+        ("DiagLog::issue", &["main.rs"]),
+    ];
 
     #[test]
     fn the_write_handles_are_issued_only_at_startup() {
