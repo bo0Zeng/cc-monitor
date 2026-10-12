@@ -806,7 +806,7 @@ fn typed_handler_files_of(
                 .unwrap_or_else(|| panic!("typed 那一行的 `{ty}` 找不到它住的文件"));
             let src = &tree[&file];
             let imp = src
-                .find(&format!("impl Command for {ty} {{"))
+                .find(&format!("Command for {ty} {{"))
                 .unwrap_or_else(|| panic!("`{file}` 里没有 `impl Command for {ty}`"));
             let n = src[imp..]
                 .find("const NAME: &'static str = \"")
@@ -828,6 +828,11 @@ fn handler_files_of(
     out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
 ) {
     for block in table.split("CommandSpec {").skip(1) {
+        // 块到下一条 typed 那一行为止（typed 那几行不是 `CommandSpec {` 块，由 [`typed_handler_files_of`] 另认）。
+        let block = block
+            .split("crate::stream::inbound::typed::")
+            .next()
+            .unwrap_or(block);
         let Some(n) = block.find("name: \"") else {
             continue;
         };

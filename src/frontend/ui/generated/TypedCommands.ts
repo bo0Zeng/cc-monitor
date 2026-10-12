@@ -3,9 +3,12 @@ import type { HistorySearchMergeReq } from "./HistorySearchMergeReq";
 import type { HistorySearchReply } from "./HistorySearchReply";
 import type { HistorySearchReq } from "./HistorySearchReq";
 import type { Merged } from "./Merged";
+import type { Minted } from "./Minted";
+import type { TerminalNameMintReq } from "./TerminalNameMintReq";
 
 /** typed 帧命令：命令名 ⇒ 入参 · 回包 · 它自己会回的码（`bad_args` 恒在：入参解不出来）。 */
 export interface TypedCommands {
   "history-search": { req: HistorySearchReq; reply: HistorySearchReply; code: "bad_args" | "failed" | "too_large" };
   "history-search-merge": { req: HistorySearchMergeReq; reply: Merged; code: "bad_args" };
+  "terminal-name-mint": { req: TerminalNameMintReq; reply: Minted; code: "bad_args" | "child_timed_out" };
 }

@@ -60,18 +60,23 @@ pub(crate) struct Cx {
 }
 
 /// 声明一条命令的错误枚举：每个变体带那一句（同 [`Fail::new`]：契约错的诊断跟在句子后面 ⇒ 拆进原话），码就是右边那个字面量。
-/// 码表恒以 `bad_args` 打头：入参解不出来是每条 typed 命令都会回的（[`take`]），不在枚举里另写。
+/// 码表恒以 `bad_args` 打头、枚举里恒有 `BadArgs`：入参解不出来是每条 typed 命令都会回的（[`take`]），
+/// 入参解得出、组合不对（「两个里恰好给一个」那一类）的由处理器自己回 `BadArgs`。
 macro_rules! codes {
     ($(#[$m:meta])* $vis:vis enum $name:ident { $($(#[$vm:meta])* $var:ident = $code:literal),* $(,)? }) => {
         $(#[$m])*
         #[derive(Debug)]
         $vis enum $name {
+            /// 入参组合不对（形状不对的那一种在解入参那一步就回了，不经这里）。
+            #[allow(dead_code)] // 不是每条命令都有「组合不对」这一种；码表里它恒在（解入参那一步）。
+            BadArgs(String),
             $($(#[$vm])* $var(String)),*
         }
         impl $crate::stream::inbound::typed::Codes for $name {
             const ALL: &'static [&'static str] = &["bad_args", $($code),*];
             fn into_fail(self) -> $crate::stream::inbound::spec::Fail {
                 match self {
+                    $name::BadArgs(said) => $crate::stream::inbound::spec::Fail::new("bad_args", said),
                     $($name::$var(said) => $crate::stream::inbound::spec::Fail::new($code, said)),*
                 }
             }

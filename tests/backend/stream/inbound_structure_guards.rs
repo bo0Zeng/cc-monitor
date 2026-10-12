@@ -1328,12 +1328,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "terminal-name-mint",
-        sampled::<crate::control::ccm::Minted>,
-        &[],
-        &[],
-    ),
-    (
         "terminal-processes",
         sampled::<crate::dial::terminal_processes::Processes>,
         &["name", "pid", "start"],

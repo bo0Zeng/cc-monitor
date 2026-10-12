@@ -59,7 +59,7 @@ fn backend_command_blocks() -> Vec<(String, String)> {
                 let src = std::fs::read_to_string(&file)
                     .unwrap_or_else(|e| panic!("读不到 `{}`：{e}", file.display()));
                 let imp = src
-                    .find(&format!("impl Command for {ty} {{"))
+                    .find(&format!("Command for {ty} {{"))
                     .unwrap_or_else(|| {
                         panic!("`{}` 里没有 `impl Command for {ty}`", file.display())
                     });

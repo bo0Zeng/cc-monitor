@@ -5,6 +5,7 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
+    ("terminal-name-mint", "f0db66f2"),
 ];
 
 /// 这条命令在本份编进来的形状指纹；不是 typed 命令 ⇒ `None`。

@@ -52,12 +52,8 @@ pub(crate) fn with_deps_as<T>(
     };
     let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);
     let mint = |base: batch::NameBase| {
-        let args = match base {
-            batch::NameBase::Cwd(cwd) => serde_json::json!({ "cwd": cwd }),
-            batch::NameBase::ForkOf(source) => serde_json::json!({ "forkOf": source }),
-        };
         crate::control::ccm::terminal_name_mint_with(
-            &args,
+            base,
             crate::common::session_snapshot::global(),
         )
         .map(|m| m.name)

@@ -3483,9 +3483,24 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-name-mint`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `name` | ← | 铸出来的终端名（这台避让过） |
+入参 `TerminalNameMintReq` · 回包 `Minted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Minted = { 
+/**
+ * 铸出来的终端名（这台避让过）。
+ */
+name: string, };
+type TerminalNameMintReq = { 
+/**
+ * 工作目录 ⇒ `<项目名>-cc`。
+ */
+cwd?: string, 
+/**
+ * 分叉出来的那一条：源会话的终端名或工作目录 ⇒ `<…>-fork-cc`。
+ */
+forkOf?: string, };
+```
 
 码：`bad_args` · `child_timed_out`
 
