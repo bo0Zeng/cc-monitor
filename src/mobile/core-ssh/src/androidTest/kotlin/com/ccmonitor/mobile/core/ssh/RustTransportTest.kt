@@ -18,15 +18,15 @@ import java.util.Base64
 
 /**
  * 端到端：模拟器上的 [RustTransport]（手机嵌的 Rust 核心）连一台**私起的 sshd**（冒烟台架 `tests/mobile-smoke/rig.sh`，
- * 只听宿主机回环的私有口，模拟器经网关 `10.0.2.2` 够到它），走一遍连上 · exec · 长 exec · PTY 改窗口 · SFTP · TOFU · Keystore 签名。
+ * 只听宿主机回环的私有口，模拟器经它的网关够到它），走一遍连上 · exec · 长 exec · PTY 改窗口 · SFTP · TOFU · Keystore 签名。
  *
- * 参数（instrumentation，`-Pandroid.testInstrumentationRunnerArguments.<名>=…`）：`sshHost`（缺 = 10.0.2.2）· `sshPort` ·
- * `sshKey`（台架登录钥匙的 PEM，base64）。没给 `sshKey` ⇒ 整份跳过（入口脚本 `scripts/android-test.sh` 不起台架时就是这样）。
+ * 参数（instrumentation，`-Pandroid.testInstrumentationRunnerArguments.<名>=…`）：`sshHost`（模拟器那一侧宿主机的网关地址）· `sshPort` ·
+ * `sshKey`（台架登录钥匙的 PEM，base64）。没给 `sshKey` / `sshHost` ⇒ 整份跳过（入口脚本 `scripts/android-test.sh` 不起台架时就是这样）。
  */
 @RunWith(AndroidJUnit4::class)
 class RustTransportTest {
     private val args = InstrumentationRegistry.getArguments()
-    private val host = args.getString("sshHost") ?: "10.0.2.2"
+    private val host = args.getString("sshHost").orEmpty()
     private val port = args.getString("sshPort")?.toIntOrNull() ?: 22422
     private val pem: ByteArray? = args.getString("sshKey")?.let { Base64.getDecoder().decode(it) }
     private val open = mutableListOf<RustTransport>()
@@ -43,7 +43,7 @@ class RustTransportTest {
         store: KnownHostStore? = null,
         auth: AuthMethod? = null,
     ): RustTransport {
-        assumeTrue("没给台架钥匙（sshKey）", pem != null)
+        assumeTrue("没给台架钥匙与地址（sshKey · sshHost）", pem != null && host.isNotEmpty())
         val t = RustTransport(store).also { open += it }
         runBlocking { withTimeout(WALL_CEILING_MS) { t.connect(if (auth == null) config() else config(auth)) } }
         return t

@@ -27,8 +27,7 @@ if [ "$clear_rc" -ne 0 ] || [ "$said" != Success ]; then
 fi
 echo "android-test: pm clear $pkg ⇒ Success"
 rc=0
-./gradlew --no-daemon --console=plain :core-data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --continue --stacktrace || rc=$?
-./gradlew --no-daemon --console=plain :core-rs:connectedDebugAndroidTest --stacktrace || rc=$?
+./gradlew --no-daemon --console=plain :core-data:connectedDebugAndroidTest :app:connectedDebugAndroidTest :core-rs:connectedDebugAndroidTest --continue --stacktrace || rc=$?
 # core-ssh：Keystore 签名 · 导入时派生公钥 · RustTransport（后者不带台架参数 sshKey 时整份跳过；要连台架的跑法见 core-ssh 的 RustTransportTest 头注）。
 ./gradlew --no-daemon --console=plain :core-ssh:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ccmonitor.mobile.core.ssh.KeystoreSignerInstrumentedTest,com.ccmonitor.mobile.core.ssh.PublicKeyDeriverTest,com.ccmonitor.mobile.core.ssh.RustTransportTest --stacktrace || rc=$?
 exit "$rc"
