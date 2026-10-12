@@ -342,8 +342,7 @@ async fn stream_loop(
                 cwd,
                 project_dir,
                 name,
-                path,
-                lines,
+                path: _,
                 activity,
                 naming,
                 waiting_for,
@@ -352,7 +351,6 @@ async fn stream_loop(
                 pid: _,
             }) => on_session_added(
                 &host_label,
-                &intake,
                 sid,
                 LiveMeta {
                     background,
@@ -366,9 +364,12 @@ async fn stream_loop(
                     container,
                     pid: None,
                 },
-                path,
-                lines,
             ),
+            // 读完了：有记录文件就排旁路快照（无 path = 会话刚起还没写 jsonl ⇒ 无历史可拉，后续行天然从 tail 全量到达）。
+            //   队列按 sid 幂等（重复宣告不重拉）。
+            Some(InboundFrame::SessionPrimed { sid, path, lines }) => {
+                intake.announced(&sid, path, lines)
+            }
             Some(InboundFrame::SessionStatus {
                 sid,
                 activity,
@@ -732,15 +733,8 @@ fn on_hello(host_label: String, round: Round, hello: HelloSeen) {
     }
 }
 
-/// 新宣告一个活会话：成品（元信息 ＋ 初始灯 ＋ 容器）原样交 `session_book`（本机那条流同一个口），有记录文件就排旁路快照。
-fn on_session_added(
-    host_label: &str,
-    intake: &LineIntake,
-    sid: String,
-    meta: LiveMeta,
-    path: Option<String>,
-    lines: Option<u64>,
-) {
+/// 新宣告一个活会话：成品（元信息 ＋ 初始灯 ＋ 容器）原样交 `session_book`（本机那条流同一个口）。旁路快照等它读完那一帧（`session_primed`）再排。
+fn on_session_added(host_label: &str, sid: String, meta: LiveMeta) {
     // ★★ 这一跳要看得见（「帧到 monitor 了吗」）；每个会话一次，不淹日志。
     tracing::info!("session-added: [{host_label}] sid={sid} → 成品交出口");
     crate::session_book::feed(BookIn::Live {
@@ -748,10 +742,6 @@ fn on_session_added(
         sid: sid.clone(),
         meta,
     });
-    // Batch8-F26：历史走旁路快照——宣告带 path 即入队
-    // （无 path = 会话刚起还没写 jsonl → 无历史可拉，后续行天然从
-    // tail 全量到达，无需快照）。队列按 sid 幂等（重复宣告不重拉）。
-    intake.announced(&sid, path, lines);
 }
 
 /// 那台管道拥塞丢了帧：日志 ＋ 经 `remote-health` 告诉用户（丢了的不可恢复帧点名）。

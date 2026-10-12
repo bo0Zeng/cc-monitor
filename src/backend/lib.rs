@@ -2153,6 +2153,8 @@ mod capability_ledger_guard;
 pub const EMITS: &[&str] = &[
     "line",
     "session_added",
+    // 宣告之后后台预读做完那一刻（`observe::watcher` 交回预读那一步真发，登记 = 承诺真发）：从第几行起接实时、拿它核快照。
+    "session_primed",
     "session_status",
     "session_removed",
     // 会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
