@@ -4018,7 +4018,7 @@ cc-bus 钩子诊断。
 | `--aliases-block-remove` | ＝ 帧命令 `aliases-block-remove`：别名块卸掉 |
 | `--aliases-block-render` | ＝ 帧命令 `aliases-block-render`：别名块预览 |
 | `--aliases-read` | ＝ 帧命令 `aliases-read`：启动文件候选（接入那一格） |
-| `--answer-hook` `<agent>` | 会话级答题 hook 的客户端（那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 连不上 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0 |
+| `--answer-hook` `<agent>` | 会话级答题 hook 的客户端（那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 断开 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0 |
 | `--apikey-key-set` | ＝ 帧命令 `apikey-key-set`：给一个账号写 key，写完读回 |
 | `--assets-catalog` | ＝ 帧命令 `assets-catalog`：资产目录 |
 | `--assets-catalog-merge` | ＝ 帧命令 `assets-catalog-merge`：把另一台后端的整份目录并进来 |

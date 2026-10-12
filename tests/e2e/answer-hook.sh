@@ -63,11 +63,6 @@ for r in v.get("data", {}).get("waiting", []):
     if r.get("sid") == sys.argv[1] and a: print(a["id"]); break' "$SID"
 }
 
-wait_for() {  # $1 = 条件命令，至多 10 秒
-  local i
-  for i in $(seq 1 100); do eval "$1" && return 0; sleep 0.1; done
-  return 1
-}
 
 echo "== 常驻不在 ⇒ hook 客户端空手退"
 out="$(hook_input | "$BACKEND" -- --answer-hook claude)"; rc=$?
@@ -75,7 +70,7 @@ out="$(hook_input | "$BACKEND" -- --answer-hook claude)"; rc=$?
 
 echo "== 起沙箱常驻后端"
 CCM_SANDBOX=1 "$BACKEND" -- --resident-ensure >/dev/null 2>&1
-wait_for '[ -S "$SOCK" ]' && ok "套接字在" || { bad "常驻没起来"; echo "合计 PASS=$pass FAIL=$fail"; exit 1; }
+wall_until '[ -S "$SOCK" ]' && ok "套接字在" || { bad "常驻没起来"; echo "合计 PASS=$pass FAIL=$fail"; exit 1; }
 
 # 一条活会话：一个睡着的进程 ＋ 它的 pidfile 说在等批准（sessions-needs 只列活着的会话）。
 sleep 60 & SLEEPER=$!
@@ -85,7 +80,7 @@ printf '{"pid":%s,"sessionId":"%s","kind":"interactive","procStart":"%s","status
 
 echo "== 挂上 ⇒ needs 出 ask ⇒ 答 ⇒ hook 打出决定"
 hook_input | "$BACKEND" -- --answer-hook claude > "$WORK/out1" & HOOKPID=$!
-wait_for '[ -n "$(ask_id)" ]' && ok "needs 里出了 ask" || bad "needs 里没有 ask"
+wall_until '[ -n "$(ask_id)" ]' && ok "needs 里出了 ask" || bad "needs 里没有 ask"
 id="$(ask_id)"
 r="$(ask needs-answer "{\"sid\":\"$SID\",\"ask\":\"$id\",\"choice\":\"always-0\"}")"
 case "$r" in *'"ok": true'*'"answered"'*) ok "needs-answer 回 answered" ;; *) bad "needs-answer：$r" ;; esac
@@ -99,10 +94,10 @@ case "$r" in *already_answered*) ok "再答一次 ⇒ already_answered" ;; *) ba
 
 echo "== hook 那一头走了 ⇒ 撤掉"
 hook_input | "$BACKEND" -- --answer-hook claude > "$WORK/out2" & HOOKPID=$!
-wait_for '[ -n "$(ask_id)" ]' || bad "第二条没挂上"
+wall_until '[ -n "$(ask_id)" ]' || bad "第二条没挂上"
 id="$(ask_id)"
 kill -TERM "$HOOKPID"; wait "$HOOKPID" 2>/dev/null; HOOKPID=""
-wait_for '[ -z "$(ask_id)" ]' && ok "连接断了 ⇒ needs 里那条 ask 撤了" || bad "没撤"
+wall_until '[ -z "$(ask_id)" ]' && ok "连接断了 ⇒ needs 里那条 ask 撤了" || bad "没撤"
 r="$(ask needs-answer "{\"sid\":\"$SID\",\"ask\":\"$id\",\"choice\":\"allow\"}")"
 case "$r" in *closed_elsewhere*) ok "再答 ⇒ closed_elsewhere" ;; *) bad "撤了之后再答：$r" ;; esac
 [ ! -s "$WORK/out2" ] && ok "被杀的那个 hook 什么都没打" || bad "被杀的 hook 打了：$(cat "$WORK/out2")"

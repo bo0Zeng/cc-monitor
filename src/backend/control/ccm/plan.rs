@@ -177,7 +177,7 @@ impl Env {
                 std::path::Path::new(&home),
             ),
             answer_hook_entry: crate::platform::paths::installed_ccm_entry(),
-            read_text: Some(|p| std::fs::read_to_string(p).ok()),
+            read_text: Some(|p| crate::platform::fs::Ro::read_to_string(p).ok()),
             home,
         }
     }

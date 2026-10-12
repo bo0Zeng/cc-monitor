@@ -5,7 +5,7 @@
 pub const CLI_ONLY_DOCS: &[(&str, &str, &str)] = &[
     ("account-trust", "<configDir> <cwd>", "换号恢复前的信任预检：单行 `{trusted, known, error}`；`configDir` 必须逐字是账号清单里的一个，否则退出 2、`unknown_config_dir`；不回那份配置的内容"),
     ("account-trust-zero", "<cwd>", "账号 0（没启用多账号时那个原生身份）的信任预检，形状同 `--account-trust`；`cwd` 只当查表键，不收路径参数"),
-    ("answer-hook", "<agent>", "会话级答题 hook 的客户端（那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 连不上 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0"),
+    ("answer-hook", "<agent>", "会话级答题 hook 的客户端（那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 断开 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0"),
     ("backend-probe", "", "能力探测：回 `{proto, buildId, commands}`，`commands` 是这台真能派发的 CLI 控制面子命令；不读 stdin"),
     ("find-in-session", "[--include-tools] [--limit <n>] --query <q> <jsonl>", "在一份会话里找一段文字：头 `{kind:\"session_find\",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText}`（`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好） · 尾 `{kind:\"session_find_end\",count,total}`；`limit` 缺省 500、封顶 2000"),
     ("fork-session", "<args>", "从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下）"),

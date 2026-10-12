@@ -64,7 +64,8 @@
       { "text": "已取消", "use": "回显" }
     ],
     "tests/frontend/filewin/select_tests.rs": [
-      { "text": "回车", "use": "用例名" }
+      { "text": "回车", "use": "用例名" },
+      { "text": "多选", "use": "用例名" }
     ],
     "tests/frontend/filewin/size_tests.rs": [
       { "text": "原话", "use": "输入" }

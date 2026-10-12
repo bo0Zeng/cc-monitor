@@ -2,7 +2,7 @@
 //!
 //! 读 hook 的 stdin → 连这台家里的常驻后端套接字（同 `--resident-attach` 那一处）→ `needs-ask` 挂上、阻塞等 →
 //! 拿到人的答案就把那一家要的那一整份打到 stdout、退 0。**铁律：没收到人的答案，一个字节都不打**（＝不给决定，框照常在终端里问）：
-//! 常驻不在 · 连不上 · 握手不对 · 不是要人答的那一种 · 连接断了 —— 一律空手退 0。
+//! 常驻不在 · 断开 · 握手不对 · 不是要人答的那一种 · 连接断了 —— 一律空手退 0。
 //!
 //! 终端那边先答了，那一家不会给 hook 任何信号（实测：进程不被杀、写 stdout 也照样成功）⇒ 这里自己判：
 //! 盯会话进程的状态文件，见过「在等」之后离开「在等」，或状态更新晚于自己起来那一刻而不在「在等」⇒ 判关了、空手退
@@ -150,11 +150,11 @@ fn watch_terminal(
 
 /// 这条会话各个进程此刻的（状态, 状态更新于）。
 fn statuses(dir: &std::path::Path, sid: &str) -> Vec<(Option<SessionActivity>, Option<u64>)> {
-    let Ok(rd) = std::fs::read_dir(dir) else {
+    let Ok(rd) = crate::platform::fs::Ro::read_dir(dir) else {
         return Vec::new();
     };
     rd.flatten()
-        .filter_map(|e| std::fs::read(e.path()).ok())
+        .filter_map(|e| crate::platform::fs::Ro::read(e.path()).ok())
         .filter_map(|b| serde_json::from_slice::<Value>(&b).ok())
         .filter(|v| v.get("sessionId").and_then(Value::as_str) == Some(sid))
         .map(|v| {
