@@ -2991,12 +2991,40 @@ fn start_prime(
         files,
         label: fresh_name.then(|| jsonls.first().cloned()).flatten(),
     };
-    match state.pool.as_ref() {
-        Some(pool) => pool.submit(job),
+    match state.pool.as_mut() {
+        Some(pool) => {
+            pool.queue.push_back(job);
+            dispatch_primes(state, sink);
+        }
         None => {
             let done = run_prime(job);
             primed(done, state, sink);
         }
+    }
+}
+
+/// **先读正在看的**（`11 §5.1 ②`）：池子有空位就从排着的预读里挑下一份交出去 —— 有连接在看（`stream-watch` 名单里点了名）的先，
+/// 其余照排队的先后。挑在交出去那一刻（名单一变，下一个空位就按新名单挑）；已经在读的不撤。
+/// 排着的那一份对应的会话已退休 / 又被重新宣告（代号对不上）⇒ 扔掉（它带走的游标与链本来就作废了）。
+/// 名单是「点了名」才算：没报过名单的连接（＝ 全看）不把谁顶到前面。
+fn dispatch_primes(state: &mut ReaderState, sink: &FrameSink) {
+    let watched = |sid: &str| {
+        sink.subs
+            .iter()
+            .any(|s| s.watching.as_ref().is_some_and(|w| w.contains(sid)))
+    };
+    let Some(pool) = state.pool.as_mut() else {
+        return;
+    };
+    pool.queue
+        .retain(|j| state.priming.get(&j.sid) == Some(&j.gen));
+    while pool.in_flight < pool.pool.size() {
+        let at = pool.queue.iter().position(|j| watched(&j.sid)).unwrap_or(0);
+        let Some(job) = pool.queue.remove(at) else {
+            break;
+        };
+        pool.in_flight += 1;
+        pool.pool.submit(job);
     }
 }
 
@@ -3631,6 +3659,11 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
         activity,
         facts,
     } = done;
+    // 池子空出一位 ⇒ 按此刻的名单交下一份（不论这一趟认不认得上）。
+    if let Some(pool) = state.pool.as_mut() {
+        pool.in_flight = pool.in_flight.saturating_sub(1);
+    }
+    dispatch_primes(state, sink);
     if state.priming.get(&sid) != Some(&gen) {
         if !state.active_sids.contains(&sid) {
             state.book.forget(&sid);
@@ -3640,13 +3673,13 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     state.priming.remove(&sid);
     sink.priming.remove(&sid);
     if let Some(pool) = state.pool.as_ref() {
-        let load = pool.0.load();
+        let load = pool.pool.load();
         tracing::debug!(
             "prime landed for {sid}: {} still priming here, {} running now (high {}, pool {})",
             state.priming.len(),
             load.running(),
             load.high(),
-            pool.0.size()
+            pool.pool.size()
         );
     }
     let mut paths = Vec::new();
@@ -3748,17 +3781,24 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
 
 /// 预读的线程池：各会话并行（上限按 CPU 数），一条会话一趟、趟内照顺序读。做完经 watcher 的事件通道交回（`WatchEvent::Primed`）。
 /// 池子里的线程只阻塞在任务队列上（[`crate::observe::par::Pool`]），不睡、不定时。
-pub(crate) struct PrimePool(crate::observe::par::Pool<PrimeJob>);
+/// 排队在本线程（[`dispatch_primes`] 按名单挑），池子里同时至多线程数那么多份 ⇒ 名单一变就能改先后，已交出去的不撤。
+pub(crate) struct PrimePool {
+    pool: crate::observe::par::Pool<PrimeJob>,
+    /// 还没交出去的（宣告的先后）。
+    queue: std::collections::VecDeque<PrimeJob>,
+    /// 交出去了、还没交回的份数。
+    in_flight: usize,
+}
 
 impl PrimePool {
     fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
-        PrimePool(crate::observe::par::Pool::new("record-prime", move |job| {
-            let _ = events.send(WatchEvent::Primed(run_prime(job)));
-        }))
-    }
-
-    fn submit(&self, job: PrimeJob) {
-        self.0.submit(job);
+        PrimePool {
+            pool: crate::observe::par::Pool::new("record-prime", move |job| {
+                let _ = events.send(WatchEvent::Primed(run_prime(job)));
+            }),
+            queue: std::collections::VecDeque::new(),
+            in_flight: 0,
+        }
     }
 }
 
