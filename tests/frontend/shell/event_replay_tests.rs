@@ -1550,6 +1550,12 @@ async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
                 ..
             } => {
                 announced_text = Some(activity.activity_text.clone());
+                // 判不出 ⇒ 语气 plain（不是「在跑」那一种）：壳原样转交，不自己补。
+                assert_eq!(
+                    activity.activity_tone, "plain",
+                    "宣告那一帧判不出却用了在跑的语气"
+                );
+                assert_eq!(activity.activity, None, "宣告那一帧不说判出了哪一态");
                 added.push((sid, path))
             }
             InboundFrame::SessionStatus { activity, .. }

@@ -120,8 +120,8 @@ impl SessionFate {
 /// 字段私有：帧上这几格只能经 [`ActivityFace::of`] 来，不许哪一处另拼。
 ///
 /// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`；
-/// 活着、那一家没说在干什么（`None`）⇒ 运行中 · `now`（出口照画，不自己补一种默认）。
-/// 序：等人 0 · 在干活 1 · 后台任务运行中 2 · 闲着 3 · 说不清 4（要人操作的先看）。
+/// 活着、那一家没说在干什么（`None`）⇒ 说不清 · `plain`（出口照画，不自己补一种默认）。
+/// 序：等人 0 · 在干活 1 · 后台任务运行中 2 · 闲着 / 说不清 3（要人操作的先看；序跟着语气走）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ActivityFace {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,10 +155,11 @@ impl ActivityFace {
                 Tone::Plain,
                 3,
             ),
+            // 判不出就照实说「说不清」：不说一句没判出来的「运行中」。语气 plain、序跟着语气走（与闲着同一档）。
             None => (
                 copy_core::copy_text("beSession.activity.unclear", &[]),
-                Tone::Now,
-                4,
+                Tone::Plain,
+                3,
             ),
         };
         ActivityFace {

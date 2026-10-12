@@ -6431,6 +6431,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(seen).toEqual([null, "idle", "working", "idle", "working", "idle"]);
     expect(announced.activity_text).toBe(copyText("beSession.activity.reading"));
     expect(announced.activity_text).not.toBe(copyText("beSession.activity.working"));
+    expect(announced.activity_tone).toBe("plain");
     const last = home(tm).store.tabs.get(codexSid)!.activity!;
     expect([last.text, last.tone]).toEqual([copyText("beSession.activity.idle"), "plain"]);
   });
