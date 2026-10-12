@@ -274,20 +274,21 @@ impl Score for File {
     }
 }
 
-/// 一趟推演里给策略的总耗时（毫秒）：一趟至多调 200 次，单次的墙钟兜底是秒级，不另限就可能拖到几十秒。用完 ⇒ 推演停在那里。
-pub(crate) const SIMULATE_BUDGET_MS: u128 = 500;
+/// 一趟推演里给策略的总耗时：一趟至多调 200 次，单次的墙钟兜底是秒级，不另限就可能拖到几十秒。用完 ⇒ 推演停在那里。
+/// 只是累计耗时的一把尺子（每调一次策略前后读一次钟、加起来比），不等、不睡、不让谁醒来。登记在零定时器的期限表里。
+pub(crate) const SIMULATE_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
 
-/// 给一趟推演用的策略：累计耗时到了 [`SIMULATE_BUDGET_MS`] 就不再调、报超时。
+/// 给一趟推演用的策略：累计耗时到了 [`SIMULATE_BUDGET`] 就不再调、报超时。
 pub(crate) struct Budgeted<'a> {
     inner: &'a dyn Score,
-    spent: std::cell::Cell<u128>,
+    spent: std::cell::Cell<std::time::Duration>,
 }
 
 impl<'a> Budgeted<'a> {
     pub(crate) fn new(inner: &'a dyn Score) -> Self {
         Self {
             inner,
-            spent: std::cell::Cell::new(0),
+            spent: std::cell::Cell::new(std::time::Duration::ZERO),
         }
     }
 }
@@ -298,15 +299,18 @@ impl Score for Budgeted<'_> {
             return Err(fail(
                 FailKind::Timeout,
                 None,
-                format!("strategy ran past {SIMULATE_BUDGET_MS} ms in this simulation"),
+                format!(
+                    "strategy ran past {} ms in this simulation",
+                    SIMULATE_BUDGET.as_millis()
+                ),
             ));
         }
         let t0 = crate::common::time::now();
         let r = self.inner.score(ctx);
-        let ms = crate::common::time::now()
+        let took = crate::common::time::now()
             .duration_since(t0)
-            .map_or(0, |d| d.as_millis());
-        self.spent.set(self.spent.get() + ms);
+            .unwrap_or_default();
+        self.spent.set(self.spent.get() + took);
         r
     }
 
@@ -315,7 +319,7 @@ impl Score for Budgeted<'_> {
     }
 
     fn exhausted(&self) -> bool {
-        self.spent.get() >= SIMULATE_BUDGET_MS
+        self.spent.get() >= SIMULATE_BUDGET
     }
 }
 

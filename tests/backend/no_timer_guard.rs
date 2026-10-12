@@ -678,6 +678,14 @@ mod tests {
         "写回不再等那一家放锁（或那一家不再有整份写锁）的那天。",
     ),
     (
+        "accounts/quota/rules/script.rs",
+        "Duration::from_millis(500)",
+        "一趟推演里给策略的总耗时（`rules::script::SIMULATE_BUDGET`）：每调一次策略前后读一次钟、把耗时加起来跟它比，\
+         到了就不再调、推演停在那里。只是累计耗时的一把尺子，不等、不睡、不让任何线程醒来。不是定时器。",
+        "收窄人群",
+        "推演里不再在沙箱里跑策略（或策略的耗时改由别处兜住）的那天。",
+    ),
+    (
         "common/time.rs",
         "Duration::from_millis(ms)",
         "截图台架的拨钟（`common::time::shots_clock`，只在特性 `shots` 下编）：台架交来的起点毫秒换成一个时刻，\
@@ -1505,9 +1513,11 @@ mod g6_reach {
         // 12 → **13**：多的那一条是 `common/time.rs` 的截图台架拨钟（只在特性 `shots` 下编，台架交的起点毫秒换成时刻、比一次系统钟）。
         // 13 → **14**：多的那一条是 `accounts/oauth/writeback.rs` 的等写锁期限（续成了、写回等那一家放整份写锁，
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
+        // 14 → **15**：多的那一条是 `accounts/quota/rules/script.rs` 的 `SIMULATE_BUDGET`（一趟推演里给策略的总耗时，
+        //   累计耗时比一次，不等不睡）。
         assert_eq!(
-            registered, 14,
-            "登记表从 14 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 15,
+            "登记表从 15 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }
