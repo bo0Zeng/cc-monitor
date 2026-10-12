@@ -1025,7 +1025,7 @@ impl SessionView {
 
     /// ★ 把 `account` 拖到面板那张列表（[`SessionView::shown`]）的第 `at` 行（`at ≥ 1`；越界取末尾）之后，手动调整里的 `place` 该是什么样：
     /// 有效优先级里把它挪到落点下面那一行的前头（落在末尾 ⇒ 挪到最后），拖过的号（连它）各钉在挪完之后的那一位
-    /// （数的是除热换的号之外的那张列表，同 [`decide::overlay`]）⇒ 叠回去恰好是拖完的样子。它不在那张列表里 ⇒ `None`。
+    /// （数的是除热换的号之外的那张列表，同 [`decide::overlay`]）⇒ 叠回去恰好是拖完的样子。拖的是热换过去的号 ⇒ 不变。它不在那张列表里 ⇒ `None`。
     pub(crate) fn placed(&self, account: &str, at: usize) -> Option<Vec<rotation::Place>> {
         let shown: Vec<&str> = self.shown().iter().map(|r| r.account.as_str()).collect();
         let from = shown.iter().position(|a| *a == account)?;
@@ -1047,6 +1047,10 @@ impl SessionView {
             .then_some(self.entry.manual.hot.as_ref())
             .flatten()
             .map(|h| h.account.as_str());
+        if hot == Some(account) {
+            // 热换过去的那个号恒在第一行（面板也把在用的提到第一行）：拖它不改先后。
+            return Some(self.entry.manual.place.clone());
+        }
         eff.retain(|a| Some(*a) != hot);
         let mut place: Vec<rotation::Place> = self
             .entry

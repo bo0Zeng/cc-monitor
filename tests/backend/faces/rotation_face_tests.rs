@@ -526,6 +526,16 @@ fn manual_adjustments_never_touch_the_copy() {
     let r = session(&ctx, S1);
     assert_eq!(r["rows"][0]["account"], "b");
     assert_eq!(r["hot"], "b");
+    // 拖热换过去的那个号：它恒在第一行，不改先后、不报错。
+    let v = answer_session_set_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "place": {"account": "b", "at": 2}}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(v["state"], "done", "{v}");
+    assert_eq!(session(&ctx, S1)["rows"], r["rows"]);
     assert_eq!(r["config"]["dirty"], true);
     answer_session_set_with(
         &ctx,
