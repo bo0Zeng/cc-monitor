@@ -1732,11 +1732,11 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
     .unwrap();
     let pids = crate::observe::watcher::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
-    let facts_with = |off: bool| {
+    let facts_with = |off: Option<&str>| {
         let mut cmd = std::process::Command::new("sleep");
         cmd.arg("30");
-        if off {
-            cmd.env(crate::agents::asks::ANSWER_HOOK_OFF_ENV, "1");
+        if let Some(v) = off {
+            cmd.env(crate::agents::asks::ANSWER_HOOK_OFF_ENV, v);
         } else {
             cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
         }
@@ -1760,12 +1760,39 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         let _ = std::fs::remove_file(&pf);
         v
     };
-    let said = copy_core::copy_text("beAsk.manual.noHook", &[]);
-    let off = facts_with(true);
-    let on = facts_with(false);
+    use crate::agents::asks::{HookOff, SettingsWhy};
+    // 每一种原因各写那一句（自带的会话级设置读不出 · 带上为什么；自定义启动器起的）。
+    let cases = [
+        (
+            HookOff::Settings(SettingsWhy::NotJson),
+            copy_core::copy_text(
+                "beAsk.manual.offSettings",
+                &[("why", &copy_core::copy_text("beAsk.manual.whyJson", &[]))],
+            ),
+        ),
+        (
+            HookOff::Settings(SettingsWhy::Unread),
+            copy_core::copy_text(
+                "beAsk.manual.offSettings",
+                &[("why", &copy_core::copy_text("beAsk.manual.whyUnread", &[]))],
+            ),
+        ),
+        (
+            HookOff::Launcher,
+            copy_core::copy_text("beAsk.manual.offLauncher", &[]),
+        ),
+    ];
+    let mut seen = Vec::new();
+    for (off, said) in cases {
+        let v = facts_with(Some(off.env_value()));
+        assert_eq!(v["answerOff"], serde_json::json!(said), "{off:?}");
+        assert_eq!(v["needs"]["manualText"], serde_json::json!(said), "{off:?}");
+        seen.push(said);
+    }
+    seen.dedup();
+    assert_eq!(seen.len(), 3, "三种原因三句不同的话");
+    let on = facts_with(None);
     let _ = std::fs::remove_dir_all(&home);
-    assert_eq!(off["answerOff"], serde_json::json!(said));
-    assert_eq!(off["needs"]["manualText"], serde_json::json!(said));
     assert_eq!(on["answerOff"], serde_json::Value::Null);
     assert_eq!(
         on["needs"]["manualText"],

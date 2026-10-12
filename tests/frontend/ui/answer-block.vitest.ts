@@ -45,10 +45,7 @@ function rig(t: Tab | null, outcome: AnswerOutcome = { kind: "answered" }) {
       return outcome;
     }),
     reread: vi.fn<(sid: string) => void>(),
-    viewTerminal: vi.fn<(sid: string) => void>(),
     toast: vi.fn<(title: string, detail?: string) => void>(),
-    front: vi.fn<(sid: string) => void>(),
-    attach: vi.fn<(sid: string) => void>(),
   } satisfies AnswerHost;
   const b = new AnswerBlock(host);
   document.body.append(b.el);
@@ -230,12 +227,10 @@ describe("甲4 批计划 · 甲5 子 agent", () => {
 });
 
 describe("甲6 只能在终端里答 · 甲7 别处先答了", () => {
-  it("★ 没挂上请求 ⇒ 核心那一句原样 ＋［看终端］，没有选项", () => {
-    const { b, host } = rig(tab(needs(null, { head: "核心·等批准 · 信任工作区" })));
+  it("★ 没挂上请求 ⇒ 只写核心那一句（为什么在这里答不了），块里一颗按钮都没有（终端只在「⋯」里当逃生口）", () => {
+    const { b } = rig(tab(needs(null, { head: "核心·等批准 · 信任工作区" })));
     expect(b.el.querySelector("[data-part=manual]")!.textContent).toBe("核心·只能在终端里答");
-    expect(b.el.querySelectorAll("button[data-choice]").length).toBe(0);
-    btn(b, copyText("askBlock.manual.terminal")).click();
-    expect(host.viewTerminal).toHaveBeenCalledWith("s1");
+    expect(b.el.querySelectorAll("button").length).toBe(0);
   });
 
   it("★ 点了才知道别处先答了 ⇒ 块淡出、按钮不可点、下面留一行核心那一句、随后重读；重读把请求收了 ⇒ 块收起、那一行还在", async () => {
@@ -313,7 +308,7 @@ describe("入口：跳到等批准的会话 ⇒ 焦点进块", () => {
 });
 
 describe("每一种需手动都有地方出（钉条删了以后）", () => {
-  it("★ 核心能出的每一种 needs.kind（读 Rust 那份枚举，两向相等）在桌面都画成块：头一行 ＋ 那一句 ＋［看终端］", () => {
+  it("★ 核心能出的每一种 needs.kind（读 Rust 那份枚举，两向相等）在桌面都画成块：头一行 ＋ 那一句（没有按钮）", () => {
     const src = readFileSync(resolve(__dirname, "../../../src/backend/observe/facts_query.rs"), "utf8");
     const body = src.slice(src.indexOf("pub(crate) enum NeedsKind {"));
     const variants = [...body.slice(0, body.indexOf("}")).matchAll(/^\s*([A-Z][A-Za-z]*),/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
@@ -325,7 +320,7 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
       expect(b.el.hidden, kind).toBe(false);
       expect(b.el.querySelector("[data-part=head]")!.textContent, kind).toContain(`核心·${kind}`);
       expect(b.el.querySelector("[data-part=manual]")!.textContent, kind).toBe(`核心·${kind}·那一句`);
-      expect(btn(b, copyText("askBlock.manual.terminal")), kind).toBeDefined();
+      expect(b.el.querySelectorAll("button").length, kind).toBe(0);
     }
   });
 
@@ -336,19 +331,12 @@ describe("每一种需手动都有地方出（钉条删了以后）", () => {
     expect(b.el.querySelector("[data-part=head]")!.textContent).toContain(waiting.text);
   });
 
-  it("★ 去终端答：远端在 tmux 里 ⇒ 多一颗［在终端里打开］；Windows 有 ↗ ⇒［切到终端］；都不行 ⇒ 只［看终端］", () => {
+  it("★ 能不能去终端都一样：远端在 tmux 里 · Windows 有 ↗ · 都不行 ⇒ 块里都不放终端那几颗主按钮", () => {
     const remote = { ...tab(needs(null)), origin: "devbox", state: LIVE_ATTACHABLE } as unknown as Tab;
-    const r1 = rig(remote);
-    btn(r1.b, copyText("needs.bar.openTerm")).click();
-    expect(r1.host.attach).toHaveBeenCalledWith("s1");
+    expect(rig(remote).b.el.querySelectorAll("button").length).toBe(0);
     document.body.innerHTML = "";
     vi.mocked(terminalFrontAvailable).mockReturnValue(true);
-    const r2 = rig(tab(needs(null)));
-    btn(r2.b, copyText("needs.bar.front")).click();
-    expect(r2.host.front).toHaveBeenCalledWith("s1");
+    expect(rig(tab(needs(null))).b.el.querySelectorAll("button").length).toBe(0);
     vi.mocked(terminalFrontAvailable).mockReturnValue(false);
-    document.body.innerHTML = "";
-    const r3 = rig(tab(needs(null)));
-    expect([...r3.b.el.querySelectorAll("button")].map(label)).toEqual([copyText("askBlock.manual.terminal")]);
   });
 });

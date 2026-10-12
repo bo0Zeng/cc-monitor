@@ -294,6 +294,7 @@ fn body(strategy: &str, rows: Vec<AcctRow>) -> ConfigBody {
         acct_init: Params::new(),
         parked: BTreeMap::new(),
         tz: Some("UTC".into()),
+        tz_unknown: false,
     }
 }
 

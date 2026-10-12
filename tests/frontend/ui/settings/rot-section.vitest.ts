@@ -60,6 +60,7 @@ const cfg = (id: string, name: string, over: Partial<ConfigItem> = {}): ConfigIt
   strategyName: "S-one",
   inUse: [],
   isDefault: false,
+  rest: [],
   rev: 3,
   updatedAt: 0,
   savedBy: "settings",
@@ -124,6 +125,31 @@ describe("设置 · 轮换 · 配置", () => {
     expect(q(root, '[data-rot-row="@start"]').textContent).toContain(copyText("rot.ed.rowStart"));
     expect(q(root, '[data-rot-row="@init"]')).not.toBeNull();
     expect(root.querySelectorAll("[data-rot-handle]").length, "ordered 的策略：行首有把手").toBe(3);
+  });
+
+  it("★ 「账号库里其余的订阅号」那一行照稿列出此刻是哪几个号（后端给的 rest）", async () => {
+    readConfigs.mockResolvedValue({
+      ...CONFIGS,
+      configs: [cfg("c1", "C-one", { isDefault: true, rest: ["personal", "work"], accounts: [{ start: true, params: { line: 90, mode: "normal" } }, { rest: true, params: { line: 90, mode: "normal" } }] })],
+    });
+    const root = await mount();
+    const rest = q(root, '[data-rot-row="@rest"]');
+    const m = rest.querySelector<HTMLElement>("[data-rot-rest]")!;
+    expect(m.textContent).toBe(["personal", "work"].join(copyText("kit.text.sep")));
+  });
+
+  it("★ 号表的列宽照稿：「按时段另算」那一列比别的宽；格里写不下 ⇒ 省略号收在格内（不压到下一列）、悬停看全文", async () => {
+    const decl: DeclShown[] = [...ACCT, { k: "slots", type: "slots", init: [], label: "L-slots" }];
+    readStrategies.mockResolvedValue({ ...STRATS, strategies: [{ ...STRATS.strategies[0], acctParams: decl }, STRATS.strategies[1]] });
+    const root = await mount();
+    const table = q(root, "[data-rot-table]");
+    const cols = table.style.getPropertyValue("--rot-colw").trim().split(/\s+(?=minmax)/);
+    expect(cols.length).toBe(decl.length);
+    const fr = (c: string) => Number(/([\d.]+)fr/.exec(c)![1]);
+    expect(fr(cols[2]), "时段那一列更宽").toBeGreaterThan(fr(cols[0]));
+    const cell = q(root, '[data-rot-row="team"]').querySelector<HTMLElement>("[data-rot-cell=line]")!;
+    const text = cell.querySelector<HTMLElement>("[data-rot-text]")!;
+    expect(text.title).toBe(text.textContent);
   });
 
   it("改一格只改草稿（出 已改），保存 ⇒ 带打开时的版本写回整份草稿", async () => {

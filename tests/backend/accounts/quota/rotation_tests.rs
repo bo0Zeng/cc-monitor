@@ -124,11 +124,54 @@ fn row(who: Value, params: Value) -> Value {
     r
 }
 
+/// ★ 第一版缺 `tz`（只有 4.1.7 以前的后端会这么写，那时按本机钟判时段）⇒ 换形时写成做换形的那台的本地时区，不写 UTC；
+/// 会话自带的那一份跟着走。取不到本地时区 ⇒ 不写、标「时区不明」（上屏需手动，不猜）；第一版自己写了 `tz` 的照留。
+#[test]
+fn a_v1_without_tz_takes_the_zone_of_the_machine_that_migrates_it() {
+    let la = migrate::from_v1(&v1_sample(), Some("America/Los_Angeles")).expect("换得了");
+    let d = &la.configs["r_00000000"].body;
+    assert_eq!(d.tz.as_deref(), Some("America/Los_Angeles"));
+    assert!(!d.tz_unknown);
+    assert_eq!(
+        la.configs["r_aaaaaaaa"].body.tz.as_deref(),
+        Some("Asia/Shanghai"),
+        "自己写了的照留"
+    );
+    let s3 = la.sessions["s3"]
+        .config
+        .copy
+        .as_ref()
+        .expect("s3 有自己那一份");
+    assert_eq!(
+        s3.tz.as_deref(),
+        Some("America/Los_Angeles"),
+        "会话自带那一份跟着走"
+    );
+    let unknown = migrate::from_v1(&v1_sample(), None).expect("换得了");
+    let d = &unknown.configs["r_00000000"].body;
+    assert_eq!(d.tz, None, "不猜成 UTC");
+    assert!(d.tz_unknown, "标时区不明");
+    assert!(!unknown.configs["r_aaaaaaaa"].body.tz_unknown);
+    let s3 = unknown.sessions["s3"]
+        .config
+        .copy
+        .as_ref()
+        .expect("s3 有自己那一份");
+    assert!(s3.tz_unknown);
+    // 时区不明那一份上屏需手动：说清要在设置里确认时区。
+    let n = crate::faces::rotation_face::tz_needs(d).expect("需手动");
+    assert_eq!(n.kind, "tzUnknown");
+    assert_eq!(n.reason, copy_core::copy_text("beRotation.tz.unknown", &[]));
+    assert!(crate::faces::rotation_face::tz_needs(&la.configs["r_00000000"].body).is_none());
+}
+
 /// ★ S11：第一版样本（分窗口线 · 时段 · `7d:<模型>` · 兜底 · 抢回 · 单段 · 先等 · 本会话两份 · 跟随父会话 · 旧原因码各一）⇒ 与期望的第二版逐字段相同。
 #[test]
 fn a_v1_book_upgrades_field_for_field() {
-    let b: Book = serde_json::from_value(v1_sample()).expect("第一版读得懂");
-    assert!(b.from_v1.is_some());
+    let read: Book = serde_json::from_value(v1_sample()).expect("第一版读得懂");
+    assert!(read.from_v1.is_some());
+    // 缺 `tz` 那一份取做换形那台的本地时区（见下一条）：这里钉成一个，逐字段比。
+    let b = migrate::from_v1(&v1_sample(), Some("America/Los_Angeles")).expect("换得了");
     let p = |line: Value, slots: Value, mode: &str, stint: Value| json!({"line": line, "slots": slots, "mode": mode, "stint": stint});
     let want_default = json!({
         "name": copy_core::copy_text("beRotation.config.seedName", &[("n", "1")]),
@@ -142,7 +185,7 @@ fn a_v1_book_upgrades_field_for_field() {
         "params": {"back": true, "delay": 0, "standby_wait": 30, "all_out": "stop"},
         "acctInit": p(json!({"5h": 90, "7d": 95}), json!([]), "normal", json!(10)),
         "parked": {},
-        "tz": "UTC",
+        "tz": "America/Los_Angeles",
         "rev": 3, "updatedAt": 100, "savedBy": "settings"
     });
     assert_eq!(

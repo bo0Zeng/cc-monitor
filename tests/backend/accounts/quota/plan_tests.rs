@@ -35,6 +35,7 @@ fn body(params: serde_json::Value) -> ConfigBody {
         acct_init: Params::new(),
         parked: BTreeMap::new(),
         tz: Some("UTC".into()),
+        tz_unknown: false,
     }
 }
 

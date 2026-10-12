@@ -113,12 +113,6 @@
     color: var(--text-2);
   }
 
-  .abActs {
-    display: flex;
-    flex: none;
-    gap: var(--space-3);
-  }
-
   .abNote {
     display: flex;
     gap: var(--space-3);

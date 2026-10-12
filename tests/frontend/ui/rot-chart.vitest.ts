@@ -120,6 +120,38 @@ describe("rot-chart · 合图", () => {
     expect(team.querySelector("[data-rc-far]")).toBeNull();
   });
 
+  it("★ 图例照稿列全：能用 · 到线 · 被拒 · 时段不用 · 时段另设线 · 此刻不挑 · 满额 · 将来 · 换号 · 估", () => {
+    const { root } = draw();
+    const lg = root.querySelector<HTMLElement>("[data-rc-legend]")!;
+    expect([...lg.querySelectorAll<HTMLElement>("i")].map((i) => i.dataset.k)).toEqual(["use", "line", "refused", "off", "slot", "skip", "base", "future", "switch", "est"]);
+    expect(lg.textContent).toContain(copyText("rot.chart.lgSlot"));
+  });
+
+  it("★ 时段那一段的字（≤80%）不被视窗外重置那一句盖住：两个叠上 ⇒ 那一句挪到行的下沿", async () => {
+    const p = plan({
+      rows: [{ account: "work", bars: [], resets: [], slots: [{ from: T + 60 * M, to: T + 600 * M, line: 80, text: "S-80" }], farResets: [{ w: "7d", at: T + 9000 * M, atText: "x", text: "F-7d" }] }],
+    });
+    const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+    const rect = (l: number, r: number) => ({ left: l, right: r, top: 0, bottom: 12, width: r - l, height: 12, x: l, y: 0, toJSON: () => ({}) }) as DOMRect;
+    const orig = HTMLElement.prototype.getBoundingClientRect;
+    try {
+      const place = async (slotAt: [number, number], farAt: [number, number]) => {
+        HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+          if (this.closest("[data-rc-far]")) return rect(...farAt);
+          if (this.closest("[data-rc-slot]") && this.tagName === "B") return rect(...slotAt);
+          return rect(0, 0);
+        };
+        const far = draw(p).root.querySelector<HTMLElement>("[data-rc-far]")!;
+        await frame();
+        return far.dataset.place;
+      };
+      expect(await place([100, 130], [90, 300]), "叠上 ⇒ 挪到下沿").toBe("below");
+      expect(await place([100, 130], [200, 300]), "不叠 ⇒ 留在右上角").toBeUndefined();
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = orig;
+    }
+  });
+
   it("★ 余 N 要么整句看得见、要么挪到段的右端外面（不被段截掉）；段上悬停也写这一句", async () => {
     const p = plan({ rows: [{ account: "team", bars: [{ from: T, to: T + 3 * M, k: "use" }], resets: [], left: 41, leftText: "L-41" }] });
     const fits = (sw: number, cw: number) => {

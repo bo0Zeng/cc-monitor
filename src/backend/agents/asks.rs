@@ -7,6 +7,66 @@ use super::{AskIn, AskKind};
 /// ccm 起会话时**挂不上**答题 hook（用户自己给的会话级设置读不出 / 不是那一家认的形）⇒ 起的那个进程环境里带这个变量；
 /// 会话事实读那个进程的环境认出「这条会话只能在终端里答批准」（`answerOff`）。
 pub(crate) const ANSWER_HOOK_OFF_ENV: &str = "CCM_ANSWER_HOOK_OFF";
+
+/// 答题 hook 为什么没挂上（ccm 起会话时定，经 [`ANSWER_HOOK_OFF_ENV`] 的值带到那个进程里，会话事实读回来写那一句）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HookOff {
+    /// 用户自带的会话级设置（`--settings`）并不进答题 hook：为什么见 [`SettingsWhy`]。
+    Settings(SettingsWhy),
+    /// 会话由自定义启动器起（不是这一家默认的那一个）：它后面的词由它原样转交，ccm 不往里垫。
+    Launcher,
+}
+
+/// 用户自带的会话级设置并不进去的原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SettingsWhy {
+    /// 读不出：文件不在 / 打不开，或旗标后面没给值。
+    Unread,
+    /// 读出来不是 JSON。
+    NotJson,
+    /// 是 JSON，但不是那一家认的会话级设置的形状（并不进去）。
+    Shape,
+}
+
+impl HookOff {
+    /// 写进那个进程环境的值（ASCII 短码；会话事实按它认原因）。
+    pub(crate) fn env_value(self) -> &'static str {
+        match self {
+            HookOff::Settings(SettingsWhy::Unread) => "settings-unread",
+            HookOff::Settings(SettingsWhy::NotJson) => "settings-json",
+            HookOff::Settings(SettingsWhy::Shape) => "settings-shape",
+            HookOff::Launcher => "launcher",
+        }
+    }
+
+    /// 环境里读回来的值 ⇒ 原因；认不出 ⇒ `None`（只说没接上，不编原因）。
+    pub(crate) fn from_env_value(v: &str) -> Option<HookOff> {
+        [
+            HookOff::Settings(SettingsWhy::Unread),
+            HookOff::Settings(SettingsWhy::NotJson),
+            HookOff::Settings(SettingsWhy::Shape),
+            HookOff::Launcher,
+        ]
+        .into_iter()
+        .find(|o| o.env_value() == v)
+    }
+}
+
+/// 「这条会话在这里答不了」那一句（会话事实的 `answerOff` · `needs.manualText`）：照环境里那个值说原因。
+pub(crate) fn hook_off_words(env_value: &str) -> Words {
+    Words(match HookOff::from_env_value(env_value) {
+        Some(HookOff::Settings(w)) => {
+            let why = match w {
+                SettingsWhy::Unread => copy_text("beAsk.manual.whyUnread", &[]),
+                SettingsWhy::NotJson => copy_text("beAsk.manual.whyJson", &[]),
+                SettingsWhy::Shape => copy_text("beAsk.manual.whyShape", &[]),
+            };
+            copy_text("beAsk.manual.offSettings", &[("why", &why)])
+        }
+        Some(HookOff::Launcher) => copy_text("beAsk.manual.offLauncher", &[]),
+        None => copy_text("beAsk.manual.offUnknown", &[]),
+    })
+}
 use crate::common::cells::{Tone, Words};
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};

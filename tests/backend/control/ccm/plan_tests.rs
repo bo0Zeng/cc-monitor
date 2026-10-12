@@ -2691,6 +2691,16 @@ fn the_answer_hook_is_not_put_into_a_launcher_someone_else_wrote() {
         let mut want: Vec<String> = launcher.split(' ').map(str::to_string).collect();
         want.push("do-it".into());
         assert_eq!(d.argv, want, "换了启动器 {launcher} ⇒ 不垫");
+        assert_eq!(
+            d.answer_hook_off,
+            Some(crate::agents::asks::HookOff::Launcher),
+            "换了启动器 ⇒ 标挂不上、原因是启动器"
+        );
+        assert!(render(&Plan::Direct(d)).contains(&format!(
+            "export {}={};",
+            crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+            crate::agents::asks::HookOff::Launcher.env_value()
+        )));
     }
     let Plan::Direct(d) = plan_of(
         &["do-it", "--launcher", "claude"],
@@ -2705,6 +2715,7 @@ fn the_answer_hook_is_not_put_into_a_launcher_someone_else_wrote() {
     ));
     want.push("do-it".into());
     assert_eq!(d.argv, want, "启动器就是这一家默认那一个 ⇒ 照垫");
+    assert_eq!(d.answer_hook_off, None);
 }
 
 /// 用户自己给了会话级设置 ⇒ 不另垫，把答题 hook 并进他那一份（别的原样，只往 PermissionRequest 末尾加一组），换成并好的 JSON 串交出去；
@@ -2734,7 +2745,7 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
         let Plan::Direct(d) = plan_of(args, &e, &AccountTable::default()) else {
             panic!("该是 Direct")
         };
-        assert!(!d.answer_hook_off);
+        assert_eq!(d.answer_hook_off, None);
         let raw = d.argv.last().unwrap();
         let json = raw.strip_prefix("--settings=").unwrap_or(raw);
         let v: serde_json::Value = serde_json::from_str(json).expect("交出去的是并好的 JSON 串");
@@ -2763,16 +2774,21 @@ fn a_users_own_settings_get_the_answer_hook_merged_in_or_say_it_could_not() {
         (v["a"].clone(), entry_group(&v)),
         (serde_json::json!(1), serde_json::json!("/h/ccm"))
     );
-    for bad in [
-        &["--settings", "bad.json"][..],
-        &["--settings", "arr.json"][..],
-        &["--settings", "gone.json"][..],
-        &["--settings"][..],
+    use crate::agents::asks::{HookOff, SettingsWhy};
+    for (bad, why) in [
+        (&["--settings", "bad.json"][..], SettingsWhy::NotJson),
+        (&["--settings", "arr.json"][..], SettingsWhy::Shape),
+        (&["--settings", "gone.json"][..], SettingsWhy::Unread),
+        (&["--settings"][..], SettingsWhy::Unread),
     ] {
         let Plan::Direct(d) = plan_of(bad, &e, &AccountTable::default()) else {
             panic!()
         };
-        assert!(d.answer_hook_off, "{bad:?} ⇒ 挂不上");
+        assert_eq!(
+            d.answer_hook_off,
+            Some(HookOff::Settings(why)),
+            "{bad:?} ⇒ 挂不上、带原因"
+        );
         assert_eq!(
             d.argv[1..],
             bad.iter().map(|s| s.to_string()).collect::<Vec<_>>()[..],
