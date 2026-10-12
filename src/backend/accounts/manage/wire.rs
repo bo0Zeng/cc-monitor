@@ -345,6 +345,33 @@ pub(crate) fn run_change(
     })
 }
 
+/// 这台的账号库补号色（一次）：清单里还有号没分到号色 ⇒ 拿账号库那把锁、照库序分好写回（留一份备份，同别的改动）；
+/// 都有了 · 没有账号库 · 做不了多账号 ⇒ 不动。只由占着常驻的那一个进程起来时调（与 `rotation.json` 换形写回同一处、同一个写的人）；写不成只出声。
+pub(crate) fn colors_here(d: &dyn Door) {
+    let run = || -> Result<bool, Refusal> {
+        supported()?;
+        let home = home_of(d)?;
+        let _held = lock(&home)?;
+        let snap = scan::scan(&home, &[], &[]);
+        if snap.manifest().is_none_or(|m| !m.needs_colors()) {
+            return Ok(false);
+        }
+        snap.roots().check().map_err(|e| ("refused", e))?;
+        let plan = layout::plan_colors(&snap)?;
+        let r = snap.roots().clone();
+        let zero_email = snap.email_of(&home).unwrap_or_default().to_string();
+        let render =
+            |m: &super::model::Manifest| m.render(&r.shared, &zero_email, &exec::utc_stamp(true));
+        exec::apply(d, &r, &plan, snap.manifest_text.as_deref(), &render, None)?;
+        Ok(true)
+    };
+    match run() {
+        Ok(true) => tracing::info!("[accounts] 账号库补了号色"),
+        Ok(false) => {}
+        Err(e) => tracing::warn!("[accounts] 账号库补号色不成：{} {}", e.code, e.message),
+    }
+}
+
 fn rollback(
     d: &dyn Door,
     snap: &Snapshot,

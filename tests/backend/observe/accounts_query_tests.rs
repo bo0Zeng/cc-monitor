@@ -2437,3 +2437,45 @@ fn each_adapter_declares_how_its_sessions_are_judged_alive() {
     assert_eq!(live_by("codex"), LiveBy::HeldOpen);
     assert_eq!(live_by("no-such-agent"), LiveBy::Unknown);
 }
+
+/// ★ 号色：清单每号出 `color`（界面只画它）。盘上有就照盘上；还没补过色的旧清单照补色那一处（`Manifest::with_colors`）现算，
+/// 与常驻那一个补完写回去的一样 —— 名字哈希同格的 team / lab 读出来也不同色；读这一下不写盘。
+#[test]
+fn the_listing_hands_over_each_accounts_color() {
+    let root = tmpdir("colors");
+    let accts = root.join("accts");
+    for n in ["team", "lab", "old"] {
+        fs::create_dir_all(accts.join(n)).unwrap();
+    }
+    let body = format!(
+        r#"{{"version":1,"sharedStore":"{s}","accounts":[
+            {{"name":"team","configDir":"{t}"}},
+            {{"name":"old","configDir":"{o}","color":2}},
+            {{"name":"lab","configDir":"{l}"}},
+            {{"name":"0","email":"","isDefault":false,"mode":"bare"}}]}}"#,
+        s = root.join("shared").display(),
+        t = accts.join("team").display(),
+        o = accts.join("old").display(),
+        l = accts.join("lab").display(),
+    );
+    write_manifest(&accts, &body);
+    let lines = list_accounts(&accts);
+    let color = |name: &str| {
+        lines[1..]
+            .iter()
+            .map(|l| serde_json::from_str::<serde_json::Value>(l).unwrap())
+            .find(|v| v["name"] == name)
+            .map(|v| v["color"].clone())
+            .unwrap_or_else(|| panic!("没有 {name}：{lines:?}"))
+    };
+    assert_eq!(color("team"), 0);
+    assert_eq!(color("old"), 2, "盘上那一格照抄");
+    assert_eq!(color("lab"), 1);
+    assert_eq!(color("0"), 3, "账号 0 排在库序末尾");
+    assert_eq!(
+        fs::read_to_string(accts.join("accounts.json")).unwrap(),
+        body,
+        "读清单不写盘（补色只由常驻那一个写）"
+    );
+    let _ = fs::remove_dir_all(&root);
+}

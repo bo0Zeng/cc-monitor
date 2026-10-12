@@ -123,6 +123,13 @@
             }
           }
         ],
+        "candidates": [
+          {
+            "account": "personal",
+            "agent": "claude-code",
+            "kind": "sub"
+          }
+        ],
         "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
@@ -269,6 +276,13 @@
               "atText": "18:31",
               "text": "5h 86% ↻18:30"
             }
+          }
+        ],
+        "candidates": [
+          {
+            "account": "personal",
+            "agent": "claude-code",
+            "kind": "sub"
           }
         ],
         "detail": null,
@@ -424,6 +438,13 @@
             }
           }
         ],
+        "candidates": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "kind": "sub"
+          }
+        ],
         "detail": null,
         "earliestReturn": {
           "account": "work",
@@ -577,6 +598,13 @@
               "atText": "19:01",
               "text": "被拒（5h）↻19:00"
             }
+          }
+        ],
+        "candidates": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "kind": "sub"
           }
         ],
         "detail": null,
@@ -737,6 +765,13 @@
             }
           }
         ],
+        "candidates": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "kind": "sub"
+          }
+        ],
         "detail": null,
         "earliestReturn": {
           "account": "work",
@@ -880,6 +915,13 @@
             }
           }
         ],
+        "candidates": [
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "kind": "sub"
+          }
+        ],
         "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
@@ -1009,6 +1051,13 @@
               "act": "send",
               "text": "无 5h 窗口"
             }
+          }
+        ],
+        "candidates": [
+          {
+            "account": "work",
+            "agent": "claude-code",
+            "kind": "sub"
           }
         ],
         "detail": null,
@@ -1154,6 +1203,13 @@
               "atText": "17:40",
               "text": "需登录"
             }
+          }
+        ],
+        "candidates": [
+          {
+            "account": "old",
+            "agent": "claude-code",
+            "kind": "sub"
           }
         ],
         "detail": null,
@@ -1302,6 +1358,7 @@
             }
           }
         ],
+        "candidates": [],
         "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
@@ -1527,6 +1584,23 @@
             }
           }
         ],
+        "candidates": [
+          {
+            "account": "api",
+            "agent": "claude-code",
+            "kind": "api"
+          },
+          {
+            "account": "api2",
+            "agent": "claude-code",
+            "kind": "api"
+          },
+          {
+            "account": "api4",
+            "agent": "claude-code",
+            "kind": "api"
+          }
+        ],
         "detail": null,
         "earliestReturn": {
           "account": "api2",
@@ -1678,6 +1752,23 @@
               "atText": "18:11",
               "text": "5h 4% ↻18:10"
             }
+          }
+        ],
+        "candidates": [
+          {
+            "account": "personal",
+            "agent": "claude-code",
+            "kind": "sub"
+          },
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "kind": "sub"
+          },
+          {
+            "account": "api",
+            "agent": "claude-code",
+            "kind": "api"
           }
         ],
         "detail": null,
@@ -2029,6 +2120,18 @@
             }
           }
         ],
+        "candidates": [
+          {
+            "account": "team",
+            "agent": "claude-code",
+            "kind": "sub"
+          },
+          {
+            "account": "cold",
+            "agent": "claude-code",
+            "kind": "sub"
+          }
+        ],
         "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
@@ -2059,6 +2162,7 @@
       "name": "还没看到过任何回包、账号库也是空的",
       "reply": {
         "accounts": [],
+        "candidates": [],
         "detail": null,
         "earliestReturn": null,
         "fiveHour": null,
@@ -2086,6 +2190,7 @@
       "name": "额度账读不出来",
       "reply": {
         "accounts": [],
+        "candidates": [],
         "detail": null,
         "earliestReturn": null,
         "fiveHour": "5h 读不到",

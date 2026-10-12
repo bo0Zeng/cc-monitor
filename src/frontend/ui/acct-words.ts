@@ -64,6 +64,13 @@ export interface QuotaReadUnseen {
   fiveHour: null;
 }
 
+/** `quota-read` 的一个候选号。 */
+export interface QuotaCandidate {
+  agent: string;
+  account: string;
+  kind: QuotaKind;
+}
+
 /** `quota-read` 的回包（`IPC-PROTOCOL.md` `quota-read` 那一节）。 */
 export interface QuotaRead {
   state: "present" | "absent" | "unreadable";
@@ -75,6 +82,8 @@ export interface QuotaRead {
   accounts: QuotaReadAccount[];
   unseen: QuotaReadUnseen[];
   usableNow: string[];
+  /** 换号 · 加号那几处的候选（那台后端排好、滤好：起会话时没说是哪个号的那一个不在里面）；界面照它画，不另拼、不另滤。 */
+  candidates: QuotaCandidate[];
   earliestReturn: { account: string; at: number; atText?: string; atRelText?: string } | null;
   /** 读不出 / 一个号都没有时那一句。 */
   text?: string;

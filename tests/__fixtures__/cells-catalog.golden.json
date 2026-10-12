@@ -2101,6 +2101,24 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "candidates[].account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "candidates[].agent",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "candidates[].kind",
+          "type": "enum"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "detail",

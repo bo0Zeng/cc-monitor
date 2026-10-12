@@ -40,7 +40,7 @@ const rows: ChartRow[] = [
 
 function draw(p: PlanReply | null = plan(), extra: Partial<Parameters<typeof combinedChart>[0]> = {}) {
   const views: string[] = [];
-  const c = combinedChart({ plan: p, view: "12h", onView: (v) => views.push(v), session: { title: copyText("rot.chart.session"), sub: "orders" }, rows, ...extra });
+  const c = combinedChart({ plan: p, view: "12h", onView: (v) => views.push(v), session: { title: copyText("rot.chart.session"), sub: "orders" }, rows, origin: "<local>", ...extra });
   document.body.replaceChildren(c.root);
   return { ...c, views };
 }

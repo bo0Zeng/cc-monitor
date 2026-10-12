@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34" | "J35";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -616,6 +616,35 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/backend/accounts/manage/model.rs", text: 'ACCOUNT_ZERO: &str = "0"', count: 0 },
       { file: "src/backend/accounts/upstream_select/endpoint.rs", text: 'BASE_ACCOUNT_SEGMENT: &str = "0"', count: 0 },
       { file: "src/backend/accounts/quota/name_words.rs", text: '&str = "0"', count: 0 },
+    ],
+  },
+  J34: {
+    what: "哪些号能当换号 · 加号的候选（起会话时没说是哪个号的 `_` 不是）",
+    // 从前界面三处（账号面板的轮换那一块 · 现在就换 · 设置页轮换的「＋ 加号…」）各把额度账与没出过数的号拼起来、自己滤 `_`，
+    //   后端会话那一份（`session_state`）另滤一遍。⇒ `quota-read` 回包写 `candidates`，会话那一份调同一个判断；界面只照抄。
+    homes: ["src/backend/accounts/quota/name_words.rs::is_candidate"],
+    status: "zero",
+    defs: [],
+    needles: [
+      { text: 'x.account !== "_"', count: 0 },
+      { text: "...(quota?.unseen ?? [])", count: 0 },
+      { text: "...q.unseen]", count: 0 },
+    ],
+    rustNeedles: [
+      { file: "src/backend/faces/rotation_face.rs", text: "r.account != crate::accounts::quota::name_words::HOME_ACCOUNT", count: 0 },
+    ],
+  },
+  J35: {
+    what: "一个号画哪一格号色（`--acct-c0..c7`）",
+    // 从前界面按名字哈希（FNV-1a % 8），team 与 lab 撞同一格。⇒ 号色是账号库里的事实：加号时后端分第一个空格、存进清单，
+    //   旧号由常驻那一个补一次；8 格用满才按哈希兜底，哈希只住后端这一处。界面只画 `accounts-list` 每号的 `color`。
+    homes: ["src/backend/accounts/manage/model.rs::color_fallback"],
+    status: "zero",
+    defs: [],
+    gone: ["accountColorSlot"],
+    needles: [
+      { text: "0x811c9dc5", count: 0 },
+      { text: "0x01000193", count: 0 },
     ],
   },
   J29: {

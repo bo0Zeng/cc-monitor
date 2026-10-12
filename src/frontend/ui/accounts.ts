@@ -46,6 +46,11 @@ export interface Account {
    * 只出自这一件成品，界面不按号的类型去挑来源。
    */
   badge: { text: string; warn: boolean; title: string };
+  /**
+   * 号色（`--acct-c0..c7` 第几格）：那台账号库里的事实（加号时分第一个空格、存在清单里，`accounts/manage/model.rs::Manifest::with_colors`），
+   * 头像只照它画（`account-color.ts`）。线上恒有这一格，本地造的夹具可以不写（不写 ⇒ 画中性）。
+   */
+  color?: number;
 }
 
 /** 那台机器的账号库（manifest）的概况 —— 后端 `accounts-list` 成品的 `meta` 那一格，逐键照收。 */

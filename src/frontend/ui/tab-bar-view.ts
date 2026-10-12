@@ -10,7 +10,7 @@
  * 读的状态：`TabStore`（tab 集合 · 顺序 · 当前 tab · 账号快照）与 `TabBarPrefs`（集合）。
  */
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
-import { accountAvatarEl } from "./account-color";
+import { accountAvatarEl, accountColorOf } from "./account-color";
 import type { TabCollection } from "./tab-collections";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { activityFace } from "./session-status";
@@ -1008,12 +1008,12 @@ export class TabBarView {
     if (account === null) return hide();
     const current = this.store.currentByOrigin.get(tab.origin) ?? null;
     if (!detectAccountMismatch(account.name, current)) return hide();
-    const drawn = `${account.name}\u0000${account.ghost ? 1 : 0}`;
+    const drawn = `${account.name}\u0000${account.ghost ? 1 : 0}\u0000${accountColorOf(account.name, tab.origin) ?? ""}`;
     if (refs.acctDrawn === drawn) return;
     refs.acctDrawn = drawn;
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
-    refs.acctBadge.appendChild(accountAvatarEl(account.name, { size: 14, ghost: account.ghost }));
+    refs.acctBadge.appendChild(accountAvatarEl(account.name, { size: 14, ghost: account.ghost, origin: tab.origin }));
     refs.acctBadge.title = copyText("tabBar.hover.account", { name: account.name });
     refs.acctBadge.style.display = "";
   }

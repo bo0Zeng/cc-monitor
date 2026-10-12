@@ -211,6 +211,8 @@ async fn main() {
     let off_thread = legacy.is_some();
     let relay_own = own.clone();
     let legacy_own = own.clone();
+    // 占着常驻的那一个（常驻监听口在本进程）：账号库补号色只由它写，与 `rotation.json` 换形写回同一处、同一个写的人。
+    let resident = listening.is_some();
     let start_relay = move || {
         if let Some(said) = legacy
             .as_ref()
@@ -222,6 +224,9 @@ async fn main() {
             "{}",
             accounts::upstream_select::host_relay(faces::rotation_face::library(), relay_own)
         );
+        if resident {
+            accounts::manage::wire::colors_here(&stream::inbound::LocalFiles);
+        }
     };
     if off_thread {
         std::thread::spawn(start_relay);

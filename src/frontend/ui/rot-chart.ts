@@ -8,7 +8,8 @@
  * - 行下一句：策略给的为什么（此刻不挑 ⇒ `跳过 · {why}`，整行淡）；别的会话也钉在它上面 ⇒ 琥珀一句。
  * 判据：`tests/frontend/ui/rot-chart.vitest.ts`。
  */
-import { accountColorSlot } from "./account-color";
+import { accountColorOf } from "./account-color";
+import type { Origin } from "./ipc/origin";
 import { accountLabel } from "./acct-words";
 import { copyText } from "./copy-table";
 import { segmented } from "./kit/tabs";
@@ -37,6 +38,8 @@ export interface ChartSpec {
   /** 本会话那行（设置窗的预览没有会话 ⇒ 缺）。 */
   session?: { title: string; sub: string };
   rows: readonly ChartRow[];
+  /** 号在哪一台（号色照那台账号库画）。 */
+  origin: Origin;
   /** 行尾 `›`（号详情）。 */
   onOpen?: (account: string) => void;
   /** 列表底 `＋ 加号…`。 */
@@ -59,11 +62,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: (e: HTMLElementT
   return e;
 }
 
-/** 号色（号色的字色随它走）。 */
-function tint(e: HTMLElement, account: string): void {
-  const slot = accountColorSlot(account);
-  e.style.setProperty("--rc-c", `var(--acct-c${slot})`);
-  e.style.setProperty("--rc-ink", `var(--acct-ink${slot})`);
+/** 号色（号色的字色随它走）：照那台账号库给的那一格；那台没给 ⇒ 中性。 */
+function tint(e: HTMLElement, account: string, origin: Origin): void {
+  const slot = accountColorOf(account, origin);
+  e.style.setProperty("--rc-c", slot === null ? "var(--border-strong)" : `var(--acct-c${slot})`);
+  e.style.setProperty("--rc-ink", slot === null ? "var(--text)" : `var(--acct-ink${slot})`);
 }
 
 interface Axis {
@@ -164,7 +167,7 @@ function sessionRow(spec: ChartSpec, sess: { title: string; sub: string }): HTML
         b.dataset.when = seg.est || seg.from >= p.now ? "future" : "past";
         b.style.left = ax.pos(seg.from);
         b.style.width = ax.wid(seg.from, seg.to);
-        tint(b, seg.account);
+        tint(b, seg.account, spec.origin);
         b.appendChild(el("span", (e) => (e.className = s.rcSegName), accountLabel(seg.account)));
         attachTooltip(b, copyText("rot.chart.seg", { from: seg.fromText, to: seg.toText, acct: accountLabel(seg.account) }));
         track.appendChild(b);
@@ -226,7 +229,7 @@ function acctRow(spec: ChartSpec, r: ChartRow): HTMLElement {
       if (b.est) e.dataset.est = "true";
       e.style.left = ax.pos(b.from);
       e.style.width = ax.wid(b.from, b.to);
-      if (b.k === "use") tint(e, r.account);
+      if (b.k === "use") tint(e, r.account, spec.origin);
       // 余 N（离此刻的线还剩几点，后端写好的字）：写在这个号头一段在用的段里。
       if (b.k === "use" && !leftDone && pr?.leftText) {
         leftDone = true;
