@@ -305,3 +305,7 @@ fn backups_in(accts: &str, st: &DirState) -> Vec<Backup> {
 pub(crate) fn item_at(p: &str) -> Item {
     acct_view::item(Path::new(p))
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/manage/scan_tests.rs"]
+mod tests;

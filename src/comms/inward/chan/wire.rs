@@ -781,3 +781,7 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
     w.write_all(&out).await?;
     w.flush().await
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/comms/inward/chan/wire_tests.rs"]
+mod tests;

@@ -511,3 +511,7 @@ impl Drop for Subscription {
         self.stop();
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/comms/inward/chan/client_tests.rs"]
+mod tests;

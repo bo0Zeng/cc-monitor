@@ -351,3 +351,7 @@ pub(crate) fn specimen() -> Ask {
         1,
     )
 }
+
+#[cfg(test)]
+#[path = "../../../tests/backend/agents/asks_tests.rs"]
+mod tests;
