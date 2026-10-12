@@ -231,3 +231,18 @@ fn time_fields_get_their_text_beside_them_and_cell_ids_do_not() {
     with_time_texts(&mut w, now, &crate::Tz::named("Asia/Shanghai").unwrap());
     assert_eq!(w["readAtText"], "11:10");
 }
+
+/// 每片的仓库位置（相对工作区根）：pb 给了 `path` ⇒ 照它；没给（旧 pb）⇒ 片名（仓库贴着工作区根）。读不成的片也带。
+#[test]
+fn every_slice_carries_its_repo_path_or_falls_back_to_its_name() {
+    let at = make(&crate::plan::fixture::dump_at("/w", "repos/alpha"), &who);
+    assert_eq!(at.doc["slices"][0]["path"], "repos/alpha");
+    assert_eq!(made().doc["slices"][0]["path"], "alpha");
+    let mut broken = dump_broken("/w");
+    broken["slices"][0]["path"] = serde_json::json!("repos/alpha");
+    assert_eq!(make(&broken, &who).doc["slices"][0]["path"], "repos/alpha");
+    assert_eq!(
+        make(&dump_broken("/w"), &who).doc["slices"][0]["path"],
+        "alpha"
+    );
+}

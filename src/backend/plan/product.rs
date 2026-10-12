@@ -205,6 +205,13 @@ pub(crate) fn slice(sl: &Value, repo: Option<&str>, who: WhoPort, views: &mut Vi
         let mut m = Map::new();
         m.insert("name".into(), json!(name));
         m.insert("domain".into(), s(sl, "domain"));
+        // 仓库相对工作区根在哪（`pb repo <路径>` 登记的）；pb 没给（旧 pb）⇒ 片名（仓库贴着工作区根）。只在这一处补。
+        let path = sl
+            .get("path")
+            .and_then(Value::as_str)
+            .filter(|p| !p.is_empty())
+            .unwrap_or(&name);
+        m.insert("path".into(), json!(path));
         m.insert("current".into(), json!(repo == Some(name.as_str())));
         m.insert("error".into(), error);
         m.insert("stale".into(), Value::Null);

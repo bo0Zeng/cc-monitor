@@ -100,3 +100,23 @@ fn the_reply_through_the_wire_type_is_the_golden_sample() {
         serde_json::to_string_pretty(&got).unwrap()
     );
 }
+
+/// `pb repo repos/alpha`：仓库登记在工作区根底下别的目录 ⇒ 按登记的位置认；片名那个目录不再算。
+#[test]
+fn a_slice_registered_elsewhere_is_found_at_its_registered_path() {
+    let d = doc(crate::plan::fixture::dump_at("/w", "repos/alpha"));
+    let v = of_dir(&d, "/w/repos/alpha/src");
+    assert_eq!(v["slice"], "alpha");
+    let names: Vec<&str> = v["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(names, ["read.txt", "write.txt"]);
+    assert_eq!(v["entries"][0]["id"], "A1-1");
+    assert_eq!(of_dir(&d, "/w/repos/alpha")["slice"], "alpha");
+    for dir in ["/w/alpha/src", "/w/repos", "/w/repos/alphabet"] {
+        assert_eq!(of_dir(&d, dir)["slice"], Value::Null, "{dir}");
+    }
+}

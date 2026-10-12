@@ -224,6 +224,7 @@ function ledgerSlice(): Record<string, unknown> {
   ]);
   return {
     name: "ledger",
+    path: "repos/ledger",
     domain: "软件",
     current: true,
     error: null,
@@ -254,6 +255,7 @@ function surveySlice(): Record<string, unknown> {
   ]);
   return {
     name: "export-survey",
+    path: "export-survey",
     domain: "研究",
     current: false,
     error: null,
@@ -289,6 +291,7 @@ function siteSlice(): Record<string, unknown> {
   ]);
   return {
     name: "site",
+    path: "site",
     domain: "软件",
     current: true,
     error: null,

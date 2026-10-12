@@ -147,14 +147,11 @@ fn arm(entry: &Path, ws: &Path) {
         let prior = |ws: &str, slice: &str| review.prior(ws, slice);
         let mut v = book::book().read(&e, p, &who, now_ms(), &prior).ok()?;
         review.annotate(&mut v);
-        seen_of(&v)
+        Some((seen_of(&v)?, watch::spots(&v)))
     });
-    let last = book::book()
-        .last(&ws.to_string_lossy())
-        .map(marked)
-        .as_ref()
-        .and_then(seen_of);
-    watch::arm(ws, last, reread);
+    let now = book::book().last(&ws.to_string_lossy()).map(marked);
+    let spots = now.as_ref().map(watch::spots).unwrap_or_default();
+    watch::arm(ws, spots, now.as_ref().and_then(seen_of), reread);
 }
 
 /// 一份标过的成品此刻的样子（`changed {plan}` 比的那两样）。

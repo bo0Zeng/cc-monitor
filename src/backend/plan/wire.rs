@@ -317,6 +317,8 @@ pub(crate) struct PlanArchived {
 pub(crate) struct PlanSlice {
     pub name: String,
     pub domain: Option<String>,
+    /// 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
+    pub path: String,
     pub current: bool,
     /// 这一刻读不成的那一句（pb 原样）。
     pub error: Option<String>,
