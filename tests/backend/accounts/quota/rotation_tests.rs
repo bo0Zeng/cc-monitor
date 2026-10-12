@@ -257,12 +257,14 @@ fn only_the_relay_host_rewrites_a_v1_file_and_only_once() {
         orig,
         "一次性那一路不动盘"
     );
-    assert!(!v1_backup_of(&path).exists());
+    // 原文另存在同一层的 `rotation.json.v1`（判据自己拼这个名，不借产品的那个函数）。
+    let backup = path.with_file_name(format!("{FILE_NAME}.v1"));
+    assert!(!backup.exists());
     assert_eq!(migrate_at(&own_at(&path)).ok(), Some(true));
     let disk: Value =
         serde_json::from_str(&std::fs::read_to_string(&path).expect("r")).expect("json");
     assert_eq!(disk["version"], json!(2), "写回了第二版");
-    let kept = std::fs::read_to_string(v1_backup_of(&path)).expect("留着 .v1");
+    let kept = std::fs::read_to_string(&backup).expect("留着 .v1");
     assert_eq!(
         serde_json::from_str::<Value>(&kept).expect("json"),
         v1_sample()

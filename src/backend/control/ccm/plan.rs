@@ -1287,11 +1287,15 @@ pub(crate) fn build_among(
     // 答题 hook（会话级，只挂在这一个会话上，不碰用户自己的设置文件）：这一家有答题口、这一发知道 ccm 入口 ⇒
     //   透传里没有那个旗标 ⇒ 垫在透传之前；有 ⇒ 读他那一份（JSON 串原样 / 文件按工作目录补全）、并进我们那一组、换成并好的 JSON 串交出去；
     //   读不出 / 形状不认 ⇒ 原样交出去，标「挂不上」（进程环境里带一个变量，会话事实据此写明只能在终端里答批准）。
+    //   换了启动器（不是这一家默认的那一个）⇒ 不垫：它后面的词由那个启动器自己原样转交（`env VAR=x <agent>` 那一形头几个词是 env 的），
+    //   ccm 不知道它认不认这一家的旗标；没挂上的会话照「只能在终端里答」那一态画。
     let mut passthru = o.passthru.clone();
     let mut answer_hook_off = false;
-    if let (Some(entry), Some(f)) = (
+    let own_launcher = face.is_some_and(|f| launcher == f.default_launcher);
+    if let (Some(entry), Some(f), true) = (
         env.answer_hook_entry.as_deref(),
         crate::agents::ask_face_among(registry, &o.agent),
+        own_launcher,
     ) {
         match settings_value_at(&passthru, f.launch_flag) {
             None => argv.extend((f.launch_args)(entry)),

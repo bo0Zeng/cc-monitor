@@ -1561,3 +1561,27 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         "closed_elsewhere"
     );
 }
+
+/// 两台之间的枢纽问**这台自己**那一跳：`HUB_INNER` 放行的每一条都要真到那条命令（入参不对回它自己的码），
+/// 不能因为它住在哪一档（`BlockingData` · `BlockingOwn`）就回 `unknown_command`。
+/// 一条一判：哪条没到，失败里点它的名字。
+#[test]
+fn the_hub_local_hop_reaches_every_inner_command() {
+    let here = super::doors::hub_here(
+        &crate::Tz::default(),
+        &crate::platform::fs::Own::for_tests(),
+    );
+    let mut missed = Vec::new();
+    for cmd in super::doors::HUB_INNER {
+        // 空入参：多数条按自己的码拒；`cc-bus-install` 不看入参，会装进测试档的沙箱家（`src/common/test-home`）。只看它到没到。
+        if let Err((code, said)) = here.ask(cmd, serde_json::json!({})) {
+            if code == "unknown_command" {
+                missed.push(format!("{cmd}（{said}）"));
+            }
+        }
+    }
+    assert!(
+        missed.is_empty(),
+        "枢纽问本机那一跳到不了这几条：{missed:?}"
+    );
+}

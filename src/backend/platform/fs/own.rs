@@ -40,10 +40,14 @@ pub struct OwnLock {
     _held: Held,
 }
 
-/// 锁本体（落地即放）。
+/// 锁本体（落地即放：只为它的 `Drop` 拿着，不读）。
 enum Held {
-    Waited(crate::platform::lock::DirLock),
-    Tried(own_chan::Held),
+    Waited {
+        _lock: crate::platform::lock::DirLock,
+    },
+    Tried {
+        _lock: own_chan::Held,
+    },
 }
 
 /// 相对名：至少一段、每段都是普通名字（没有 `..` · `.` · 根 · 盘符）。
@@ -124,7 +128,9 @@ impl Own {
     pub(crate) fn lock(&self, dir: &OwnPath) -> Result<OwnLock, crate::platform::lock::LockFail> {
         Ok(OwnLock {
             dir: dir.0.clone(),
-            _held: Held::Waited(hold(dir.as_path())?),
+            _held: Held::Waited {
+                _lock: hold(dir.as_path())?,
+            },
         })
     }
 
@@ -133,7 +139,7 @@ impl Own {
     pub(crate) fn try_lock(&self, dir: &OwnPath) -> std::io::Result<Option<OwnLock>> {
         Ok(own_chan::try_hold(dir.as_path())?.map(|h| OwnLock {
             dir: dir.0.clone(),
-            _held: Held::Tried(h),
+            _held: Held::Tried { _lock: h },
         }))
     }
 
@@ -153,11 +159,6 @@ impl Own {
     /// （`readonly_guard::remote_write_layer`），本机这一层同名会被认成第二份远端写。
     pub(crate) fn delete_file(&self, path: &OwnPath) -> std::io::Result<()> {
         std::fs::remove_file(&path.0)
-    }
-
-    /// 改名（两头都在根底下；目标已在 ⇒ 盖掉）。
-    pub(crate) fn move_file(&self, from: &OwnPath, to: &OwnPath) -> std::io::Result<()> {
-        std::fs::rename(&from.0, &to.0)
     }
 }
 
@@ -333,6 +334,8 @@ impl DiagLog {
     }
 }
 
+/// 判据的「fd 2」替身要的两样（生产里 fd 2 那一份由 `platform::stderr_fd` 量、指，不经它们）。
+#[cfg(test)]
 impl DiagFile {
     /// 此刻多长（问不到 ⇒ `None`）。
     pub(crate) fn len(&self) -> Option<u64> {
