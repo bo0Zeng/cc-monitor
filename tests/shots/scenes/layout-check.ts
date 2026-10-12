@@ -9,6 +9,7 @@
  * 5. 时间轴（面板 · 设置 · 编辑器预览）：本会话轨每段要么段里的号名全字可见、要么收起（不许露半截），读屏名里有号名；
  *    换号点（菱形 ＋ 原因短码）在段上面那一层，不压段里的号名（上下留缝），原因字彼此不叠；
  *    规则编辑器封顶表宽时一号一行、各格同一行，窄（窗 <640）时每号一张卡：表头那一行收起、各格竖排、每格前写着列名。
+ * 6. 合图每号那一行：行内几句字（时段那一段的「≤80%」· 余 N · 估的到线 · 重置时刻 · 视窗外重置那一句）的框两两不相交。
  * 4. 账号面板轮换列表一行：每段字一行不折（重置时刻那种）；状态标签（在用 · 起始 …）全字可见、不被省略
  *    （号名可以省略，只读的封顶标签可以省略）；兜底开关开着 ⇒ 看得见、有底色；关着 ⇒ 所在行没悬停、没焦点时看不见。
  *
@@ -191,6 +192,22 @@ function ruleEditor(): string[] {
   return out;
 }
 
+function chartRows(): string[] {
+  const out: string[] = [];
+  const SEL = "[data-rc-slot] > b, [data-rc-left], [data-rc-est], [data-rc-reset], [data-rc-far]";
+  for (const row of document.querySelectorAll<HTMLElement>("[data-rc-row]")) {
+    if (!visible(row)) continue;
+    const texts = [...row.querySelectorAll<HTMLElement>(SEL)].filter(visible);
+    for (let i = 0; i < texts.length; i++)
+      for (let j = i + 1; j < texts.length; j++) {
+        const a = texts[i].getBoundingClientRect();
+        const b = texts[j].getBoundingClientRect();
+        if (intersects(a, b)) out.push(`合图 ${row.dataset.rcRow}：${name(texts[i])} ${fmt(a)} 与 ${name(texts[j])} ${fmt(b)} 叠在一起`);
+      }
+  }
+  return out;
+}
+
 /** 一个元素里的字占了几行（数不同的行顶；省略号会把一行拆成几个框，不算折行）。 */
 function lineCount(el: Element): number {
   const rg = document.createRange();
@@ -228,7 +245,7 @@ function messageRows(): string[] {
 }
 
 export function layoutProblems(): string[] {
-  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...messageRows()];
+  const out = [...floats(), ...singleLines(), ...foldHeads(), ...acctRows(), ...ruleEditor(), ...chartRows(), ...messageRows()];
   // 也写进页里的控制台（截图工具每张存一份），整趟被打断时还查得到。
   for (const p of out) console.warn(`[layout] ${p}`);
   return out;

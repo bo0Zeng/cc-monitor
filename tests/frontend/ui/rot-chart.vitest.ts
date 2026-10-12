@@ -127,28 +127,61 @@ describe("rot-chart · 合图", () => {
     expect(lg.textContent).toContain(copyText("rot.chart.lgSlot"));
   });
 
-  it("★ 时段那一段的字（≤80%）不被视窗外重置那一句盖住：两个叠上 ⇒ 那一句挪到行的下沿", async () => {
+  it("★ 一行里几句字的框互不相交：撞上就按量出来的宽排开（时段字挪到撞上那一句右边 · 视窗外重置那一句 右上角 → 下沿 → 行下那一句的右端）", async () => {
     const p = plan({
-      rows: [{ account: "work", bars: [], resets: [], slots: [{ from: T + 60 * M, to: T + 600 * M, line: 80, text: "S-80" }], farResets: [{ w: "7d", at: T + 9000 * M, atText: "x", text: "F-7d" }] }],
+      rows: [
+        {
+          account: "team",
+          bars: [{ from: T, to: T + 20 * M, k: "use" }],
+          resets: [{ w: "5h", at: T + 200 * M, atText: "17:47" }],
+          left: 64,
+          leftText: "L-64",
+          slots: [{ from: T + 60 * M, to: T + 600 * M, line: 80, text: "S-80" }],
+          farResets: [{ w: "7d", at: T + 9000 * M, atText: "x", text: "F-7d" }],
+        },
+      ],
     });
     const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
-    const rect = (l: number, r: number) => ({ left: l, right: r, top: 0, bottom: 12, width: r - l, height: 12, x: l, y: 0, toJSON: () => ({}) }) as DOMRect;
+    const box = (l: number, r: number, t: number) => ({ left: l, right: r, top: t, bottom: t + 12, width: r - l, height: 12, x: l, y: t, toJSON: () => ({}) }) as DOMRect;
+    const LANE: Record<string, number> = { top: 0, below: 26, under: 40 };
+    const hits = (a: DOMRect, b: DOMRect) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
     const orig = HTMLElement.prototype.getBoundingClientRect;
-    try {
-      const place = async (slotAt: [number, number], farAt: [number, number]) => {
-        HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
-          if (this.closest("[data-rc-far]")) return rect(...farAt);
-          if (this.closest("[data-rc-slot]") && this.tagName === "B") return rect(...slotAt);
-          return rect(0, 0);
-        };
-        const far = draw(p).root.querySelector<HTMLElement>("[data-rc-far]")!;
-        await frame();
-        return far.dataset.place;
+    const origRange = Range.prototype.getBoundingClientRect;
+    // 量具：各句的框照它此刻摆在哪算（时段字的 marginLeft · 视窗外那一句的 data-place）。
+    type Geo = { slot: [number, number]; left?: [number, number]; reset?: [number, number]; far: [number, number]; why: [number, number] };
+    const lay = async (g: Geo) => {
+      HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+        if (this.dataset.rcFar) return box(g.far[0], g.far[1], LANE[this.dataset.place ?? "top"]);
+        if (this.tagName === "B" && this.closest("[data-rc-slot]")) {
+          const dx = parseFloat(this.style.marginLeft || "0");
+          return box(g.slot[0] + dx, g.slot[1] + dx, 0);
+        }
+        if (this.dataset.rcSlot) return box(g.slot[0] - 3, 400, 0);
+        if (this.dataset.rcLeft && g.left) return box(g.left[0], g.left[1], 10);
+        if (this.dataset.rcReset && g.reset) return box(g.reset[0], g.reset[1], 26);
+        return box(0, 0, 0);
       };
-      expect(await place([100, 130], [90, 300]), "叠上 ⇒ 挪到下沿").toBe("below");
-      expect(await place([100, 130], [200, 300]), "不叠 ⇒ 留在右上角").toBeUndefined();
+      Range.prototype.getBoundingClientRect = () => box(g.why[0], g.why[1], 40);
+      const { root } = draw(p);
+      await frame();
+      const texts = [...root.querySelectorAll<HTMLElement>("[data-rc-slot] > b, [data-rc-left], [data-rc-reset], [data-rc-far]")].map((e) => [e.dataset.rcFar ? "far" : e.dataset.rcReset ? "reset" : e.dataset.rcLeft ? "left" : "slot", e.getBoundingClientRect()] as const);
+      texts.push(["why", box(g.why[0], g.why[1], 40)]);
+      const crossed = texts.flatMap((a, i) => texts.slice(i + 1).filter((b) => hits(a[1], b[1])).map((b) => `${a[0]}×${b[0]}`));
+      return { crossed, far: root.querySelector<HTMLElement>("[data-rc-far]")!.dataset.place, slot: root.querySelector<HTMLElement>("[data-rc-slot] > b")!.style.marginLeft };
+    };
+    try {
+      // 什么都不撞 ⇒ 都在原处。
+      expect(await lay({ slot: [100, 130], far: [300, 380], why: [0, 50] })).toEqual({ crossed: [], far: undefined, slot: "" });
+      // 只撞时段字 ⇒ 视窗外那一句挪到下沿。
+      expect(await lay({ slot: [100, 130], far: [90, 300], why: [0, 50] })).toMatchObject({ crossed: [], far: "below" });
+      // 时段字压着余 N ⇒ 时段字挪到余 N 右边（还在那一段里）；下沿又撞上重置时刻 ⇒ 视窗外那一句放到行下那一句的右端。
+      const lab = await lay({ slot: [100, 135], left: [90, 120], reset: [150, 194], far: [90, 300], why: [0, 50] });
+      expect(lab.crossed, "一行里几句字的框互不相交").toEqual([]);
+      expect(lab.far).toBe("under");
+      expect(lab.slot).toBe("23px");
     } finally {
       HTMLElement.prototype.getBoundingClientRect = orig;
+      Range.prototype.getBoundingClientRect = origRange;
     }
   });
 
