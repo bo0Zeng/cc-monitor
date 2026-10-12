@@ -8,7 +8,8 @@
  * - 行下一句：策略给的为什么（此刻不挑 ⇒ `跳过 · {why}`，整行淡）；别的会话也钉在它上面 ⇒ 琥珀一句。
  * 判据：`tests/frontend/ui/rot-chart.vitest.ts`。
  */
-import { accountColorSlot } from "./account-color";
+import { accountColorOf } from "./account-color";
+import type { Origin } from "./ipc/origin";
 import { accountLabel } from "./acct-words";
 import { copyText } from "./copy-table";
 import { segmented } from "./kit/tabs";
@@ -37,6 +38,8 @@ export interface ChartSpec {
   /** 本会话那行（设置窗的预览没有会话 ⇒ 缺）。 */
   session?: { title: string; sub: string };
   rows: readonly ChartRow[];
+  /** 号在哪一台（号色照那台账号库画）。 */
+  origin: Origin;
   /** 行尾 `›`（号详情）。 */
   onOpen?: (account: string) => void;
   /** 列表底 `＋ 加号…`。 */
@@ -59,11 +62,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: (e: HTMLElementT
   return e;
 }
 
-/** 号色（号色的字色随它走）。 */
-function tint(e: HTMLElement, account: string): void {
-  const slot = accountColorSlot(account);
-  e.style.setProperty("--rc-c", `var(--acct-c${slot})`);
-  e.style.setProperty("--rc-ink", `var(--acct-ink${slot})`);
+/** 号色（号色的字色随它走）：照那台账号库给的那一格；那台没给 ⇒ 中性。 */
+function tint(e: HTMLElement, account: string, origin: Origin): void {
+  const slot = accountColorOf(account, origin);
+  e.style.setProperty("--rc-c", slot === null ? "var(--border-strong)" : `var(--acct-c${slot})`);
+  e.style.setProperty("--rc-ink", slot === null ? "var(--text)" : `var(--acct-ink${slot})`);
 }
 
 interface Axis {
@@ -164,7 +167,7 @@ function sessionRow(spec: ChartSpec, sess: { title: string; sub: string }): HTML
         b.dataset.when = seg.est || seg.from >= p.now ? "future" : "past";
         b.style.left = ax.pos(seg.from);
         b.style.width = ax.wid(seg.from, seg.to);
-        tint(b, seg.account);
+        tint(b, seg.account, spec.origin);
         b.appendChild(el("span", (e) => (e.className = s.rcSegName), accountLabel(seg.account)));
         attachTooltip(b, copyText("rot.chart.seg", { from: seg.fromText, to: seg.toText, acct: accountLabel(seg.account) }));
         track.appendChild(b);
@@ -226,7 +229,7 @@ function acctRow(spec: ChartSpec, r: ChartRow): HTMLElement {
       if (b.est) e.dataset.est = "true";
       e.style.left = ax.pos(b.from);
       e.style.width = ax.wid(b.from, b.to);
-      if (b.k === "use") tint(e, r.account);
+      if (b.k === "use") tint(e, r.account, spec.origin);
       // 余 N（离此刻的线还剩几点，后端写好的字）：写在这个号头一段在用的段里。
       if (b.k === "use" && !leftDone && pr?.leftText) {
         leftDone = true;
@@ -309,23 +312,59 @@ function legend(): HTMLElement {
   return lg;
 }
 
-/** 段里那一句（余 N）放不下 ⇒ 整句挪到段的右端外面；放得下 ⇒ 留在段里。只认量出来的宽，不按字数猜。 */
+/** 两个框相交（贴边不算）。 */
+function crosses(a: DOMRect, b: DOMRect): boolean {
+  return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+}
+
+/** 两句排开时中间留的缝（px）。 */
+const LABEL_GAP = 3;
+
+/** 行下那一句（为什么）的字占的框；量不出 ⇒ `null`。 */
+function whyBox(row: HTMLElement): DOMRect | null {
+  const why = row.querySelector<HTMLElement>("[data-rc-why]");
+  if (!why || why.textContent === "") return null;
+  const rg = document.createRange();
+  rg.selectNodeContents(why);
+  return typeof rg.getBoundingClientRect === "function" ? rg.getBoundingClientRect() : null;
+}
+
+/**
+ * 一行里几句字（余 N · 估的到线 · 重置时刻 · 时段那一段的「≤80%」· 视窗外重置那一句）的框互不相交 —— 只认量出来的宽，不按字数猜：
+ * ① 余 N 放不下 ⇒ 整句挪到段的右端外面；② 时段那一段的字撞上前三样 ⇒ 挪到撞上那一句的右边（还在那一段里才挪）；
+ * ③ 视窗外重置那一句照 右上角 → 行的下沿 → 行下那一句的右端 的次序，放在第一个谁都不撞的地方（都撞 ⇒ 最后那一处）。
+ */
 function placeLabels(root: HTMLElement): void {
-  // 视窗外重置那一句（行右上角）叠在时段那一段的字（≤80%）上 ⇒ 挪到行的下沿。
-  for (const far of root.querySelectorAll<HTMLElement>("[data-rc-far]")) {
-    const fr = far.getBoundingClientRect();
-    const row = far.closest<HTMLElement>("[data-rc-row]");
-    const hit = [...(row?.querySelectorAll<HTMLElement>("[data-rc-slot] > b") ?? [])].some((b) => {
-      const r = b.getBoundingClientRect();
-      return r.left < fr.right && fr.left < r.right && r.top < fr.bottom && fr.top < r.bottom;
-    });
-    if (hit) far.dataset.place = "below";
-  }
   for (const t of root.querySelectorAll<HTMLElement>("[data-rc-left]")) {
     if (t.scrollWidth <= t.clientWidth) continue;
     t.dataset.place = "after";
     const bar = t.closest<HTMLElement>("[data-rc-bar]");
     if (bar) bar.dataset.labelOut = "true";
+  }
+  for (const row of root.querySelectorAll<HTMLElement>("[data-rc-row]")) {
+    const fixed = [...row.querySelectorAll<HTMLElement>("[data-rc-left], [data-rc-est], [data-rc-reset]")];
+    for (const b of row.querySelectorAll<HTMLElement>("[data-rc-slot] > b")) {
+      const band = b.parentElement!.getBoundingClientRect();
+      for (const f of fixed) {
+        const r = b.getBoundingClientRect();
+        const fr = f.getBoundingClientRect();
+        if (!crosses(r, fr)) continue;
+        const dx = fr.right + LABEL_GAP - r.left;
+        if (r.right + dx > band.right) continue;
+        b.style.marginLeft = `${(parseFloat(b.style.marginLeft) || 0) + dx}px`;
+      }
+    }
+    const far = row.querySelector<HTMLElement>("[data-rc-far]");
+    if (!far) continue;
+    const others = [...row.querySelectorAll<HTMLElement>("[data-rc-left], [data-rc-est], [data-rc-reset], [data-rc-slot] > b")].map((e) => e.getBoundingClientRect());
+    const why = whyBox(row);
+    if (why) others.push(why);
+    for (const place of [undefined, "below", "under"] as const) {
+      if (place === undefined) delete far.dataset.place;
+      else far.dataset.place = place;
+      const fr = far.getBoundingClientRect();
+      if (!others.some((o) => crosses(fr, o))) break;
+    }
   }
 }
 

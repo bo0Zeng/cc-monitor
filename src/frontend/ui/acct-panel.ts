@@ -269,7 +269,7 @@ function rotCtx(o: Open, read: Present, quota: QuotaRead | null, host: AcctPanel
     strategies: strategiesOf(o.origin),
     quotaOf: (a) => quotaOf(quota, read.agent, a),
     meters: (q) => [slotMeter(q, "5h"), slotMeter(q, "7d")],
-    library: () => [...(quota?.accounts ?? []), ...(quota?.unseen ?? [])].filter((x) => x.agent === read.agent && x.account !== "_").map((x) => x.account),
+    library: () => (quota?.candidates ?? []).filter((x) => x.agent === read.agent).map((x) => x.account),
     st: o.rot,
     render: () => {
       if (open === o) render(o, host);
@@ -393,9 +393,8 @@ function switchBlock(
     : entry?.read.state === "absent"
       ? entry.read.inPlace
       : "noRelay";
-  const candidates = [...(quota?.accounts ?? []), ...(quota?.unseen ?? [])]
-    .filter((x) => x.agent === agent && x.account !== "_")
-    .map((x) => x.account);
+  // 候选那台后端给好（`quota-read` 的 `candidates`）；这里只挑这一家的。
+  const candidates = (quota?.candidates ?? []).filter((x) => x.agent === agent).map((x) => x.account);
   // 缺省选有效优先级里在用的号之后、此刻挑得上的第一个（后端排好的行序）；中转没见过 ⇒ 此刻发得出去的头一个（`usableNow`，后端判的）。
   const pick =
     o.pick ??
@@ -408,7 +407,7 @@ function switchBlock(
   pickBtn.setAttribute("aria-label", copyText("acct.sw.pickAria"));
   if (pick) {
     pickBtn.append(
-      acctAvatar(pick),
+      acctAvatar(pick, 16, o.origin),
       el("span", s.acctPickName, accountLabel(pick)),
     );
     const q = quotaOf(quota, agent, pick);
@@ -430,7 +429,7 @@ function switchBlock(
         a === cur || q?.login === "needsLogin" || q?.login === "needsKey";
       return {
         label: accountLabel(a),
-        avatar: acctAvatar(a),
+        avatar: acctAvatar(a, 16, o.origin),
         checked: a === pick,
         detail:
           a === cur
@@ -666,7 +665,7 @@ function footer(o: Open, host: AcctPanelHost): HTMLElement {
   const b = el("button", s.acctPick);
   b.type = "button";
   if (def)
-    b.append(acctAvatar(def), el("span", s.acctPickName, accountLabel(def)));
+    b.append(acctAvatar(def, 16, o.origin), el("span", s.acctPickName, accountLabel(def)));
   b.appendChild(icon("caretDown", "compact"));
   b.addEventListener("click", () => {
     closeMenu();

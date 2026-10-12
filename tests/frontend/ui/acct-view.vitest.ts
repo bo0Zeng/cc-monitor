@@ -38,6 +38,7 @@ const LEDGER: QuotaRead = {
   ],
   unseen: [],
   usableNow: ["personal", "team"],
+  candidates: [],
   earliestReturn: null,
   fiveHour: null,
 };
@@ -110,7 +111,7 @@ describe("记录 · 提示条 · 标签页", () => {
 
 describe("每号 5h 那一格（恢复菜单 · 新建会话的账号项）", () => {
   it("照抄核心写好的那一格：读不出 ⇒ 顶上那一格；读得出 ⇒ 那个号那一格；按量号 / 账上没有 ⇒ 不出", () => {
-    const r = { state: "unreadable", reason: "x", detail: null, path: null, now: 0, accounts: [], unseen: [], usableNow: [], earliestReturn: null, fiveHour: "那台写的读不到" } as QuotaRead;
+    const r = { state: "unreadable", reason: "x", detail: null, path: null, now: 0, accounts: [], unseen: [], usableNow: [], candidates: [], earliestReturn: null, fiveHour: "那台写的读不到" } as QuotaRead;
     expect(fiveHourCell(r, "claude-code", "work")).toBe("那台写的读不到");
     expect(fiveHourCell(LEDGER, "claude-code", "personal")).toBe("5h 63%");
     expect(fiveHourCell(LEDGER, "claude-code", "api")).toBeNull();

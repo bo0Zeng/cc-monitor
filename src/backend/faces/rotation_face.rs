@@ -1539,7 +1539,7 @@ pub(crate) fn session_state(
     let mut eff: Vec<_> = v
         .eff
         .iter()
-        .filter(|r| r.account != crate::accounts::quota::name_words::HOME_ACCOUNT)
+        .filter(|r| crate::accounts::quota::name_words::is_candidate(&r.account))
         .cloned()
         .collect();
     if let Some(i) = eff.iter().position(|r| r.account == v.entry.current) {

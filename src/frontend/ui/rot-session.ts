@@ -402,7 +402,7 @@ function rowHead(c: RotCtx, row: RotationRow, i: number, modeDecl: DeclShown | n
   handle.dataset.rotHandle = row.account;
   handle.setAttribute("aria-label", copyText("rot.row.dragAria", { name: accountLabel(row.account) }));
   handle.appendChild(icon("drag", "compact"));
-  l1.append(handle, acctAvatar(row.account, 16), nameEl(row.account));
+  l1.append(handle, acctAvatar(row.account, 16, c.origin), nameEl(row.account));
   const mode = modeDecl ? whoOf(c.read, row.account).params[modeDecl.k] : undefined;
   if (modeDecl && mode !== undefined && mode !== modeDecl.init) {
     const opt = modeDecl.options?.find((o) => o.v === mode);
@@ -590,12 +590,13 @@ export function rotationList(c: RotCtx): HTMLElement {
     },
     session: { title: copyText("rot.chart.session"), sub: copyText("rot.chart.sessionSub", { session: c.sessionTitle, acct: accountLabel(r.start) }) },
     rows,
+    origin: c.origin,
     onOpen: (a) => openDetail(c, a),
     onAdd: () => {
       const items: MenuItem[] =
         candidates.length === 0
           ? [{ label: copyText("rot.add.none"), enabled: false }]
-          : candidates.map((a) => ({ label: accountLabel(a), avatar: acctAvatar(a), onClick: () => void edit(c, { add: [a] }) }));
+          : candidates.map((a) => ({ label: accountLabel(a), avatar: acctAvatar(a, 16, c.origin), onClick: () => void edit(c, { add: [a] }) }));
       const anchor = root.querySelector<HTMLElement>("[data-rc-add]");
       if (anchor) openMenu({ el: anchor, align: "start" }, items);
     },
@@ -676,7 +677,7 @@ export function detailView(c: RotCtx, account: string): HTMLElement {
   const row = r.rows[i];
   const md = modeDeclOf(c);
   const w = whoOf(r, account);
-  const titleBits: HTMLElement[] = [acctAvatar(account, 18), el("span", (e) => (e.className = s.rsDetName), accountLabel(account))];
+  const titleBits: HTMLElement[] = [acctAvatar(account, 18, c.origin), el("span", (e) => (e.className = s.rsDetName), accountLabel(account))];
   if (md) {
     const v = w.params[md.k];
     const opt = md.options?.find((o) => o.v === v);

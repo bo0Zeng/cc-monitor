@@ -1287,3 +1287,39 @@ fn the_unnamed_account_is_never_a_manual_target() {
     );
     assert!(switch_ask(&json!({"sessions": [S1], "target": "_", "mode": "hot"})).is_err());
 }
+
+/// ★ `quota-read` 的 `candidates`：换号 · 加号那几处的候选只从这一格来（界面不再自己拼额度账 ＋ 没出过数的、自己滤 `_`）。
+/// 出过数的在前、没出过的在后；`_`（起会话时没说是哪个号）出过数也不在里面；每条带种类（加号那一处要分按量号）。
+#[test]
+fn quota_read_hands_over_the_candidates_without_the_unnamed_account() {
+    let home = Home::new("cands");
+    let ctx = home.ctx();
+    seen(&ctx, "_", 0.1, None);
+    seen(&ctx, "a", 0.5, None);
+    seen(&ctx, "api", 0.0, None);
+    let got =
+        serde_json::to_value(quota_read_with(&ctx, now(), &crate::Tz::default())).expect("json");
+    assert!(
+        got["accounts"]
+            .as_array()
+            .expect("accounts")
+            .iter()
+            .any(|r| r["account"] == "_"),
+        "额度账那一格照旧列 `_`（它出过数）：{got}"
+    );
+    let cands = got["candidates"].as_array().expect("candidates");
+    let ids: Vec<&str> = cands
+        .iter()
+        .map(|c| c["account"].as_str().unwrap_or(""))
+        .collect();
+    assert_eq!(ids, ["a", "api", "b", "c"], "{got}");
+    let kind = |id: &str| {
+        cands
+            .iter()
+            .find(|c| c["account"] == id)
+            .map(|c| c["kind"].clone())
+    };
+    assert_eq!(kind("api"), Some(json!("api")));
+    assert_eq!(kind("b"), Some(json!("sub")));
+    assert!(cands.iter().all(|c| c["agent"] == "claude-code"), "{got}");
+}

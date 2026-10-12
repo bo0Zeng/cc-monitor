@@ -6,7 +6,7 @@ import { decodeQuotaRead } from "../../../src/frontend/ui/quota-reads";
 import { decodeConfigsRead } from "../../../src/frontend/ui/rot-reads";
 
 const NAMES = { accounts: { _: "家里那个号" }, slots: { "5h": "五小时", "7d": "七天" } };
-const quota = (names?: unknown) => ({ state: "absent", reason: null, path: null, now: 1, accounts: [], unseen: [], usableNow: [], earliestReturn: null, fiveHour: null, ...(names ? { names } : {}) });
+const quota = (names?: unknown) => ({ state: "absent", reason: null, path: null, now: 1, accounts: [], unseen: [], usableNow: [], candidates: [], earliestReturn: null, fiveHour: null, ...(names ? { names } : {}) });
 
 describe("号名 / 位名照核心那张表", () => {
   it("没收到表之前照原样", () => {

@@ -6,7 +6,7 @@
 //! 每号几行与开窗那一判照「不含这几格的那一截」的线上样子算（`faces/quota_rows.rs`，唯一的行模型）。
 
 use crate::accounts::quota::decide::Kind;
-use crate::accounts::quota::name_words::{names, Names};
+use crate::accounts::quota::name_words::{is_candidate, names, Names};
 use crate::accounts::quota::show::{LoginState, QuotaShow};
 use crate::common::cells::Words;
 use crate::common::time::TextClock;
@@ -26,6 +26,8 @@ pub(crate) struct QuotaRead {
     pub(crate) accounts: Vec<QuotaAccount>,
     pub(crate) unseen: Vec<QuotaUnseen>,
     pub(crate) usable_now: Vec<String>,
+    /// 换号 · 加号那几处的候选：出过数的在前、没出过的在后，`_` 不在里面（[`is_candidate`]）。界面只照它画，不另拼、不另滤。
+    pub(crate) candidates: Vec<Candidate>,
     pub(crate) earliest_return: Option<EarliestReturn>,
     /// 读不出 / 一个号都没有 ⇒ 那一句（`--text` 拼字时放最前）；否则 `null`（[`quota_rows::head_text`]）。
     pub(crate) text: Option<Words>,
@@ -116,6 +118,15 @@ impl From<crate::accounts::quota::show::Usage> for UnseenUsage {
             tone: u.tone,
         }
     }
+}
+
+/// 一个候选号：哪一家 · 哪个号 · 种类（加号那一处要分按量号）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Candidate {
+    pub(crate) agent: String,
+    pub(crate) account: String,
+    pub(crate) kind: Kind,
 }
 
 /// 被拒 / 超额在兜的号里最早回来的那个。
@@ -213,7 +224,19 @@ pub(crate) fn reply_of(
         seen.is_empty() && unseen.is_empty(),
         base.reason.as_str(),
     );
+    let candidates = seen
+        .iter()
+        .map(|s| (&s.agent, &s.account, s.show.kind))
+        .chain(unseen.iter().map(|u| (&u.agent, &u.account, u.kind)))
+        .filter(|(_, a, _)| is_candidate(a))
+        .map(|(agent, account, kind)| Candidate {
+            agent: agent.clone(),
+            account: account.clone(),
+            kind,
+        })
+        .collect();
     QuotaRead {
+        candidates,
         text,
         five_hour: quota_rows::head_five_hour(base.state),
         state: base.state,

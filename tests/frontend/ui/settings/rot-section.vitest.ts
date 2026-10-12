@@ -26,7 +26,11 @@ vi.mock("../../../../src/frontend/ui/rot-reads", async (orig) => ({
 }));
 vi.mock("../../../../src/frontend/ui/quota-reads", async (orig) => ({
   ...(await orig<typeof import("../../../../src/frontend/ui/quota-reads")>()),
-  readQuota: vi.fn(async () => ({ accounts: [{ account: "team", kind: "sub" }, { account: "api", kind: "api" }], unseen: [{ account: "lab", kind: "sub" }] })),
+  readQuota: vi.fn(async () => ({
+    accounts: [{ account: "team", kind: "sub" }, { account: "api", kind: "api" }],
+    unseen: [{ account: "lab", kind: "sub" }],
+    candidates: [{ agent: "claude-code", account: "team", kind: "sub" }, { agent: "claude-code", account: "api", kind: "api" }, { agent: "claude-code", account: "lab", kind: "sub" }],
+  })),
 }));
 vi.mock("../../../../src/frontend/ui/events", () => ({ bindEvents: vi.fn(async () => {}) }));
 vi.mock("../../../../src/frontend/ui/remote-config", () => ({ readRemoteConfig: vi.fn(async () => ({ hosts: [] })) }));

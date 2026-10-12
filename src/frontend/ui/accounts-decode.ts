@@ -71,6 +71,7 @@ export function decodeAccountsList(v: unknown): {
         "keyMasked",
         "baseUrl",
         "badge",
+        "color",
       ]) ||
       typeof a.name !== "string" ||
       typeof a.email !== "string" ||
@@ -88,7 +89,10 @@ export function decodeAccountsList(v: unknown): {
       !exactKeys(a.badge, ["text", "warn", "title"]) ||
       typeof a.badge.text !== "string" ||
       typeof a.badge.warn !== "boolean" ||
-      typeof a.badge.title !== "string"
+      typeof a.badge.title !== "string" ||
+      !Number.isInteger(a.color) ||
+      (a.color as number) < 0 ||
+      (a.color as number) > 7
     ) {
       return bad(copyText("accountsDecode.where.nth", { i }));
     }
@@ -106,6 +110,7 @@ export function decodeAccountsList(v: unknown): {
       keyMasked: a.keyMasked,
       badge: { text: a.badge.text as string, warn: a.badge.warn as boolean, title: a.badge.title as string },
       baseUrl: a.baseUrl,
+      color: a.color as number,
     };
   });
   const meta: AccountsMeta = {

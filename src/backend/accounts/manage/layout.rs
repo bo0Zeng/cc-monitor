@@ -273,6 +273,7 @@ pub(crate) fn plan_init(s: &Snapshot, name: &str) -> Result<Plan, Refusal> {
         config_dir: cfg,
         is_default: true,
         auth_kind: None,
+        color: None,
         extra: Default::default(),
     });
     plan.write(m);
@@ -351,6 +352,7 @@ pub(crate) fn plan_add(s: &Snapshot, want: &AddIntent) -> Result<Plan, Refusal> 
         auth_kind: want
             .api_key
             .then(|| acct_core::AUTH_KIND_API_KEY.to_string()),
+        color: None,
         extra: Default::default(),
     });
     if want.make_default {
@@ -423,6 +425,16 @@ pub(crate) fn plan_set_default(s: &Snapshot, name: &str) -> Result<Plan, Refusal
     let mut plan = Plan::default();
     if !a.is_default {
         plan.write(m.with_default(name));
+    }
+    Ok(plan)
+}
+
+/// **补号色**（幂等）：旧清单里还没分到号色的号照库序分一格（[`Manifest::with_colors`]）、写回清单；都有了 ⇒ 空计划（不动盘）。
+pub(crate) fn plan_colors(s: &Snapshot) -> Result<Plan, Refusal> {
+    let m = need_manifest(s)?;
+    let mut plan = Plan::default();
+    if m.needs_colors() {
+        plan.write(m.with_colors());
     }
     Ok(plan)
 }

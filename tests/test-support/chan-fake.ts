@@ -372,6 +372,8 @@ function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   out.baseUrl = a.baseUrl ?? null;
   // 徽章是那台后端写好的一枚（`accounts_query::badge_of`）：夹具不写 ⇒ 给一枚占位（字不当真，判徽章的判据自己写）。
   out.badge = a.badge ?? { text: "badge", warn: false, title: "" };
+  // 号色是那台账号库里的一格（`Manifest::with_colors`）：夹具不写 ⇒ 第 0 格占位（判号色的判据自己写）。
+  out.color = a.color ?? 0;
   return out;
 }
 
