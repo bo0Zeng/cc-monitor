@@ -31695,6 +31695,12 @@
       "zh": "时段不用",
       "args": []
     },
+    "rot.chart.lgSlot": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "时段另设线",
+      "args": []
+    },
     "rot.chart.lgSkip": {
       "kind": "body",
       "role": "片段",

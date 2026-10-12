@@ -299,6 +299,7 @@ function legend(): HTMLElement {
     item("line", copyText("rot.chart.lgLine")),
     item("refused", copyText("rot.chart.lgRefused")),
     item("off", copyText("rot.chart.lgOff")),
+    item("slot", copyText("rot.chart.lgSlot")),
     item("skip", copyText("rot.chart.lgSkip")),
     item("base", copyText("rot.chart.lgFull")),
     item("future", copyText("rot.chart.lgFuture")),
@@ -310,6 +311,16 @@ function legend(): HTMLElement {
 
 /** 段里那一句（余 N）放不下 ⇒ 整句挪到段的右端外面；放得下 ⇒ 留在段里。只认量出来的宽，不按字数猜。 */
 function placeLabels(root: HTMLElement): void {
+  // 视窗外重置那一句（行右上角）叠在时段那一段的字（≤80%）上 ⇒ 挪到行的下沿。
+  for (const far of root.querySelectorAll<HTMLElement>("[data-rc-far]")) {
+    const fr = far.getBoundingClientRect();
+    const row = far.closest<HTMLElement>("[data-rc-row]");
+    const hit = [...(row?.querySelectorAll<HTMLElement>("[data-rc-slot] > b") ?? [])].some((b) => {
+      const r = b.getBoundingClientRect();
+      return r.left < fr.right && fr.left < r.right && r.top < fr.bottom && fr.top < r.bottom;
+    });
+    if (hit) far.dataset.place = "below";
+  }
   for (const t of root.querySelectorAll<HTMLElement>("[data-rc-left]")) {
     if (t.scrollWidth <= t.clientWidth) continue;
     t.dataset.place = "after";
