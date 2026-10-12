@@ -1,4 +1,4 @@
-//! `--fork-session`：在**远端本地**把一个会话从指定消息处分叉出一个新会话文件。
+//! 分叉（帧命令 `session-fork` 与起新会话带 `forkFrom` 的本体）：在**远端本地**把一个会话从指定消息处分叉出一个新会话文件。
 //!
 //! # 为什么这一步必须在后端里做
 //!
@@ -37,7 +37,6 @@
 //! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：这里收「找」，不搬「写」）——
 //! 它是本 crate 只读白名单上那一条，搬它要动的是白名单，那是另一件事。
 
-use crate::stream::detail::Failed;
 use std::path::Path;
 
 /// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
@@ -106,47 +105,13 @@ fn new_session_id(source_sid: &str) -> String {
     )
 }
 
-/// `--fork-session <source-sid> <message-uuid>`：stdout 出一行 `ForkResult` JSON、exit 0；
-/// 出错 exit 2 + stderr 一行 `{code, message, detail}`（与帧面失败应答同一份 [`Failed`]）。
-/// `tz` ＝ 看的那一台的时区（`--tz`）：失败详情那一行时刻按它填。
-pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
-    match cli(agent_home, args) {
-        Ok(line) => {
-            println!("{line}");
-            0
-        }
-        Err(f) => f.emit(tz),
-    }
-}
-
-/// [`run`] 的本体：成 ⇒ 那一行 `ForkResult`；败 ⇒ 那一份失败（详情的「命令」那一项是 `fork-session`）。
-pub(crate) fn cli(agent_home: &Path, args: &[String]) -> Result<String, Failed> {
-    let res = run_inner(agent_home, args)
-        .map_err(|m| Failed::new(Some("fork-session"), "fork_failed", m, None, None))?;
-    // 两格都是字符串，实际到不了；到了也照规矩：那一句只说原因，原话进详情。
-    serde_json::to_string(&res).map_err(|e| {
-        Failed::new(
-            Some("fork-session"),
-            "serialize",
-            crate::common::contract::malformed("fork result does not serialize"),
-            Some(&e.to_string()),
-            None,
-        )
-    })
-}
-
-/// 帧面 `session-fork {sid, uuid} → {sessionId, jsonlPath}` 的本体 —— 与 CLI
-/// `--fork-session` **同一个** [`run_inner`]（读 → `branch-core` 变换 → `O_EXCL` 落盘），只是入参从 argv 换成 `args`、
-/// 结果从 stdout 一行换成 `data`。
+/// 帧面 `session-fork {sid, uuid} → {sessionId, jsonlPath, launch}`：本体是 [`run_inner`]（读 → `branch-core` 变换 → `O_EXCL` 落盘）。
 ///
-/// 为什么要它（本机那几问从「exec 一次性本机后端」改走 `<local>` 长连接）：monitor 本机分叉此前每次
-/// exec 一个本机后端进程跑 `--fork-session`、远端经拨号链路 exec 同一条；两条路现在都经那台机器常驻后端的长连接说这一条。
-/// ⚠ 帧命令**不叫** `fork-session`：`cli_control` 从帧面自动派生的 CLI 面会是 `--fork-session`，
-/// 与对手机端冻结的那一条（argv 两个位置参数）撞名。
+/// 本机远端都经那台机器常驻后端的长连接说这一条（从前是每次 exec 一个一次性后端跑 `--fork-session`，那条子命令删了）。
 /// ⚠ 入口住顶层壳 `fork_face.rs`（它找家目录）：本层自己找就得问 `observe::`（反向边）或多问一次适配层。
 /// 帧面 `session-fork` 的本体（家目录由顶层壳 `fork_face` 交进来；判据直接喂夹具家目录）。
 ///
-/// 帧面回复比 CLI 那一行多一格 `launch`（分叉之后起要的三格事实）：由入口按「源会话那份记录 ＋ 源 sid」收齐交回（`launch`），
+/// 帧面回复比 [`ForkResult`] 多一格 `launch`（分叉之后起要的三格事实）：由入口按「源会话那份记录 ＋ 源 sid」收齐交回（`launch`），
 /// 本层不读观测层。
 pub(crate) fn answer_wire_at(
     agent_home: &Path,
@@ -211,19 +176,14 @@ fn fork_checked(
             return Err(("bad_args", said));
         }
     }
-    // `run_inner` 只读第 1、2 格（第 0 格是 argv 形里的子命令名，本入口没有）。
-    let argv = [String::new(), sid.to_string(), uuid.to_string()];
-    run_inner(agent_home, &argv).map_err(|m| ("fork_failed", m))
+    run_inner(agent_home, sid, uuid).map_err(|m| ("fork_failed", m))
 }
 
-fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
-    let source_sid = args
-        .get(1)
-        .ok_or("usage: --fork-session <source-sid> <message-uuid>")?;
-    let message_uuid = args
-        .get(2)
-        .ok_or("usage: --fork-session <source-sid> <message-uuid>")?;
-
+fn run_inner(
+    agent_home: &Path,
+    source_sid: &str,
+    message_uuid: &str,
+) -> Result<ForkResult, String> {
     // 🔴 「找文件」**这一句就是全部** —— 本模块只填「记录树的根在哪」这一格
     //（那是 agent 适配层的知识），找本身两侧同一份（`K-R88`）。
     let root = crate::agents::records_root(agent_home)

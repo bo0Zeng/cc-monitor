@@ -405,7 +405,7 @@ export class SessionViewer {
     const sink: StreamSink = {
       timeline,
       enhanceRoot: this.streamEl, // IO 的 root = 查看器自己的滚动容器
-      // 每张 user / assistant 卡挂「从这一轮分叉」（远端走后端的 `--fork-session`，只认 sid）；子 agent 记录不挂。
+      // 每张 user / assistant 卡挂「从这一轮分叉」（走后端的 `session-fork`，只认 sid）；子 agent 记录不挂。
       onCardRendered: opts.suppressBranch
         ? undefined
         : (el, msg) =>

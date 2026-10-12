@@ -40,7 +40,7 @@ fn fork_writes_new_file_and_leaves_source_untouched() {
     let src = root.join("projects").join("proj").join("srcsid.jsonl");
     let before = std::fs::read(&src).unwrap();
 
-    let res = run_inner(&root, &sargs(&["--fork-session", "srcsid", "u2"])).unwrap();
+    let res = run_inner(&root, "srcsid", "u2").unwrap();
 
     assert_eq!(std::fs::read(&src).unwrap(), before, "源文件被改动了");
     let out = PathBuf::from(&res.jsonl_path);
@@ -115,7 +115,7 @@ fn an_unknown_session_id_is_refused_not_silently_substituted() {
     seed(&root, "bbb");
     // 反向自检：树上真有东西可被「随手挑」。
     assert!(find_here(&root, "aaa").is_ok(), "夹具没造出可被挑中的会话");
-    let err = run_inner(&root, &sargs(&["--fork-session", "ccc", "u2"])).unwrap_err();
+    let err = run_inner(&root, "ccc", "u2").unwrap_err();
     assert!(
         err.contains("not found") && err.contains("ccc"),
         "查不到的 sid 应当报错并点名，实得：{err}"
@@ -155,7 +155,7 @@ fn sidechain_reject_reaches_backend_path() {
     );
     body.push('\n');
     std::fs::write(&f, body).unwrap();
-    let err = run_inner(&root, &sargs(&["--fork-session", "sc", "s1"])).unwrap_err();
+    let err = run_inner(&root, "sc", "s1").unwrap_err();
     assert!(err.contains("sidechain"), "got: {err}");
     std::fs::remove_dir_all(&root).ok();
 }
@@ -169,25 +169,21 @@ fn new_session_id_has_uuid_shape_and_varies() {
     assert_ne!(a, new_session_id("x"));
 }
 
-fn sargs(v: &[&str]) -> Vec<String> {
-    v.iter().map(|s| s.to_string()).collect()
-}
-
 // ═════════════════════════════════════════════════════════════════════════════
-// 帧面 `session-fork`：与 CLI `--fork-session` 同一份本体
+// 帧面 `session-fork`：与本体 `run_inner` 同一份
 // ═════════════════════════════════════════════════════════════════════════════
 //
 // 要求：「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」—— 分叉上了帧面之后，
-// 帧面与 CLI 两个入口必须是**同一份**实现（「业务解释只有一个家」）。
+// 帧面与本体必须是**同一份**实现（「业务解释只有一个家」）。
 
-/// ★ J3：同一份夹具会话、同一个 uuid，帧面 `answer_wire_at` 与 CLI `run_inner` 落盘的**内容**逐字相同（只差新 sid），
-/// 帧面的 `data` 键集 == CLI 那一行的键集（两个入口，一份形状）；金样 `tests/__fixtures__/session-fork.golden.json`
+/// ★ J3：同一份夹具会话、同一个 uuid，帧面 `answer_wire_at` 与本体 `run_inner` 落盘的**内容**逐字相同（只差新 sid），
+/// 帧面的 `data` 键集 == `ForkResult` 的键集 ＋ `launch`；金样 `tests/__fixtures__/session-fork.golden.json`
 /// 的 `product` 键集 == 真产出的键集（monitor 那一侧读同一份金样解码）。
 #[test]
-fn the_frame_face_and_the_cli_face_are_one_fork() {
+fn the_frame_face_and_the_core_are_one_fork() {
     let root = tmp("wire");
     seed(&root, "srcsid");
-    let via_cli = run_inner(&root, &sargs(&["--fork-session", "srcsid", "u2"])).unwrap();
+    let via_cli = run_inner(&root, "srcsid", "u2").unwrap();
     // 帧面那一格 `launch` 由入口交：它拿到的是源会话那份记录与源 sid。
     let asked = std::cell::RefCell::new(Vec::new());
     let via_wire = answer_wire_at(
@@ -218,7 +214,7 @@ fn the_frame_face_and_the_cli_face_are_one_fork() {
         k.sort();
         k
     };
-    // 帧面只比 CLI 那一行（对手机端冻结的 `--fork-session`）多 `launch` 一格。
+    // 帧面只比 `ForkResult` 多 `launch` 一格。
     let mut cli_keys = keys(&cli_v);
     cli_keys.push("launch".into());
     cli_keys.sort();
@@ -232,7 +228,7 @@ fn the_frame_face_and_the_cli_face_are_one_fork() {
             via_wire["sessionId"].as_str().unwrap()
         ),
         read_rows(&via_cli.jsonl_path, &via_cli.session_id),
-        "帧面与 CLI 落盘的内容不是同一份变换"
+        "帧面与本体落盘的内容不是同一份变换"
     );
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/session-fork.golden.json")).unwrap();
@@ -327,35 +323,5 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
             != Some("bad_args"),
         "64 位是上界本身，不该被形状判定拒"
     );
-    std::fs::remove_dir_all(&root).ok();
-}
-
-/// `--fork-session` 失败那一份与帧面失败应答同一种信封（`stream::detail::Failed`：码 · 那一句 · 复制详情）：
-/// 详情的「命令」那一项是这条 CLI 的名字，码原样。用法错（缺 uuid）与找不到源会话两支都走它。
-#[test]
-fn the_cli_failure_is_the_one_failed_envelope() {
-    let root = tmp("cli-failed");
-    let f = cli(&root, &sargs(&["--fork-session", "nope"])).unwrap_err();
-    assert_eq!(f.code, "fork_failed");
-    assert!(f.message.contains("usage"), "got: {}", f.message);
-    let v = serde_json::to_value(&f).unwrap();
-    assert_eq!(
-        v.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
-        ["code", "detail", "message"],
-        "信封三格（没有按码定形的 data）"
-    );
-    assert!(
-        f.detail.contains("fork-session"),
-        "详情里要有命令名：{}",
-        f.detail
-    );
-    assert!(
-        f.detail.contains("fork_failed"),
-        "详情里要有码：{}",
-        f.detail
-    );
-    let f = cli(&root, &sargs(&["--fork-session", "nope", "u1"])).unwrap_err();
-    assert_eq!(f.code, "fork_failed");
-    assert!(f.message.contains("not found"), "got: {}", f.message);
     std::fs::remove_dir_all(&root).ok();
 }

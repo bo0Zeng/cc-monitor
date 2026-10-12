@@ -416,10 +416,16 @@ fn records_that_can_never_hit_take_no_room_in_the_index() {
     let admitted = fence.admit(&f).unwrap();
     index.files.insert(admitted.clone(), entry);
     index
-        .find(&admitted, "cursor", false, FindPage::first(10), |v| {
-            hits.push(v["uuid"].as_str().unwrap_or_default().to_string());
-            Ok(())
-        })
+        .find(
+            &admitted,
+            "cursor",
+            false,
+            FindPage { skip: 0, limit: 10 },
+            |v| {
+                hits.push(v["uuid"].as_str().unwrap_or_default().to_string());
+                Ok(())
+            },
+        )
         .expect("归索引管")
         .expect("找得了");
     assert_eq!(hits, vec!["u-0".to_string(), "u-1".to_string()]);

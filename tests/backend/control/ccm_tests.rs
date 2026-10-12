@@ -1162,8 +1162,8 @@ fn string_literals(code: &str) -> Vec<String> {
 /// ★★ **后端生产段里，除 `ccm` 自己（`control/ccm/`，最终 exec 那一处）与 agent 注册表（`agents/`，起会话事实声明的地方）之外，
 /// 零处渲染出直接起 agent 的命令**。名字从注册表取（每一家的默认启动器 ＋ resume 词）。
 ///
-/// 两向相等：命中 == 登记的那一处（`control/resolve_query.rs`：给仓外终端客户端的那份冻结契约 `--resolve`，
-/// 它的 `command` 今天仍是 `<启动器> --resume <sid>`，改成 `ccm …` 是一次跨仓契约变更 —— 待定，不在这里悄悄改）。
+/// 两向相等：命中 == 登记的那一处（`control/resolve_query.rs`：命令 `resolve` 的成品，
+/// 它的 `command` 今天仍是 `<启动器> --resume <sid>`，改成 `ccm …` 是一次线上形状变更 —— 待定，不在这里悄悄改）。
 /// 正控：同一个针在注册表那一侧量得到默认启动器的字面量；一段现造的语料里该中的中、`ccm …` 不中。
 #[test]
 fn nothing_but_ccm_renders_a_command_that_starts_an_agent() {

@@ -181,14 +181,11 @@ fn every_listed_subcommand_is_actually_dispatched() {
 /// （逐字：「一张表混装两种角色是它自己会红的那种错」）。
 ///
 /// 没有这一张，[`every_listed_subcommand_has_a_live_dispatch_route`] 在双路那几条上
-/// **有一个洞**：摘掉它们的字面量臂，派生臂会静默接住 ⇒ 主断言不红，
-/// 而那是一次**换路**（`--resolve` 那条臂上方逐字写着它「故意留在前面」，
-/// 理由是手机端的冻结契约「不拿『实际上一样』去赌」）。
-const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[(
-    "--resolve",
-    "信封与手机端冻结在 2026-07-18，走原路一个字节都不动 —— \
-             两条路的输出实为同一个 `CommandPlan`，而冻结的契约不拿「实际上一样」去赌",
-)];
+/// **有一个洞**：摘掉它们的字面量臂，派生臂会静默接住 ⇒ 主断言不红，而那是一次**换路**。
+///
+/// 今天是空的：唯一那条 `--resolve`（信封与手机端冻结在 2026-07-18）的手写臂第 7 批第二题删了 ——
+/// 手机不调它，它照派生规则走 CLI 面、信封与别的命令同一形。表留着：再有一条要双路，得先在这里写下理由。
+const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[];
 
 /// ★★ `KR102D2` 甲：**表里每一条子命令都有一条活的分派落点。**
 ///
@@ -201,12 +198,12 @@ const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[(
 /// # 🔴 两侧的发现机制刻意不同 —— 这是本条的承重要求，不是排版
 ///
 /// - **表侧** = `SUBCOMMANDS` 这个**编译后的常量值**。没有抽取器可坏，改名增删自动反映。
-/// - **臂侧** = 三处**块内**取法，每一处的扫描面都**不含那张表**：
+/// - **臂侧** = 两处**块内**取法，每一处的扫描面都**不含那张表**：
 ///   ① `main.rs` 一次性查询 `match` 块（[`dispatch_block`]）里的 `Some("--x")` 字面量臂；
 ///   ② 那条**派生臂** —— 它**在不在**由块内文本判，它**认哪几条**由
-///      [`crate::control::cli_control::spec_for`] 在**运行期**从 `inbound::REGISTRY` 派生；
-///   ③ `_` 兜底臂交给 `observe::history_query::run`，它认哪几条由**那份文件里
-///      它自己那个 `match` 块**判。
+///      [`crate::control::cli_control::spec_for`] 在**运行期**从 `inbound::REGISTRY` 派生。
+///   `_` 兜底臂不是落点：它回「不认识」（`cli_control::refuse_unknown`）。从前它交给 `observe::history_query::run`
+///   （第三处落点），那一族手写子命令第 7 批第二题删了。
 ///
 /// 分表这一形抄 `src/frontend/shell/src/backend_kill.rs` 的
 /// `CREATION_PATHS`／`VALIDATORS`（逐字：「一张表混装两种角色是它自己会红的那种错，
@@ -239,23 +236,15 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     );
     let literal = arm_tokens(block);
     let derived_arm = block.contains("cli_control::handles(");
-    let catch_all = block.lines().any(|l| l.trim_start().starts_with("_ =>"));
-
-    let hist_src = include_str!("../../src/backend/observe/history_query.rs");
-    let hist = crate::guard_support::production_code(hist_src);
-    let hbeg = hist
-        .find("let result = match args.first()")
-        .expect("`history_query::run` 的分派块起点锚点变了");
-    let hend = hist[hbeg..]
-        .find("Some(other) =>")
-        .expect("`history_query::run` 的分派块收尾锚点变了")
-        + hbeg;
-    let fallback = arm_tokens(&hist[hbeg..hend]);
+    let catch_all = block.lines().any(|l| {
+        l.trim_start()
+            .starts_with("_ => cli_control::refuse_unknown(")
+    });
 
     // ── 反空真地板（只问「抽取塌没塌」，不问「某一条在不在」）──────────────
     assert!(
-        literal.len() >= 6,
-        "分派块里只抠到 {} 条字面量臂（地板 6，实测 14）—— 块界找错或抽取塌了：{literal:?}",
+        literal.len() >= 3,
+        "分派块里只抠到 {} 条字面量臂（地板 3，实测 4）—— 块界找错或抽取塌了：{literal:?}",
         literal.len()
     );
     assert!(
@@ -264,12 +253,7 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     );
     assert!(
         catch_all,
-        "分派块里没有 `_` 兜底臂 —— 历史查询那一族一条都调不到了"
-    );
-    assert!(
-        fallback.len() >= 3,
-        "`history_query::run` 的块里只抠到 {} 条（地板 3，实测 5）—— 块界找错或抽取塌了：{fallback:?}",
-        fallback.len()
+        "分派块里没有回「不认识」的 `_` 兜底臂 —— 认不出的子命令会落到别处"
     );
 
     // ★ 表侧也要有反空真地板：`SUBCOMMANDS` 被掏瘪 ⇒ 下面那个循环跑零圈、
@@ -291,24 +275,19 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
             if literal.contains(tok) {
                 return false;
             }
-            if derived_arm
+            !(derived_arm
                 && (crate::control::cli_control::spec_for(tok).is_some()
-                    || *tok == crate::control::cli_control::PROBE_FLAG)
-            {
-                return false;
-            }
-            !(catch_all && fallback.contains(tok))
+                    || *tok == crate::control::cli_control::PROBE_FLAG))
         })
         .collect();
     assert!(
         orphans.is_empty(),
         "这些子命令**登记在表里，却没有任何一条分派路够得到**：{orphans:?}\n\
              ⇒ `is_query_mode` 那道闸门照旧放它们进查询模式（表还在），而下面没人接 ⇒\n\
-             它们落进 `_` 臂走历史查询、回 `unknown argument` + exit 2 —— \n\
+             它们落进 `_` 臂、回 `unknown_command` + exit 2 —— \n\
              v3.4.0 `--account-trust-zero` 那次事故的形状，只是方向反过来（那次是表里漏）。\n\
-             三条合法落点：① 块内写一条 `Some(\"--x\") => …` 的字面量臂；\n\
-             ② 让它上 `inbound::REGISTRY` 的 CLI 面（走派生臂）；\n\
-             ③ 在 `observe::history_query::run` 里给它一条臂（走 `_` 兜底）。"
+             两条合法落点：① 块内写一条 `Some(\"--x\") => …` 的字面量臂；\n\
+             ② 让它上 `inbound::REGISTRY` 的 CLI 面（走派生臂）。"
     );
 
     // ── 第二格：**双路**那几条的字面量臂不许悄悄消失（[`DUAL_ROUTE_ARMS`] 的活）──
@@ -416,4 +395,105 @@ fn x15_the_process_argv_is_read_once_in_main() {
         vec![("main.rs".to_string(), "main".to_string())],
         "读进程 argv 的地方不再恰是 `main.rs::main` 那一处（⑮）—— 要 argv 的模块由调用方交"
     );
+}
+
+/// 第 7 批第二题删掉的一次性子命令：手写、生产里没人调（帧面早有同义的帧命令；手机只调 `--resident-*` · `--backend-probe`）。
+/// **异源**：这张表手抄方案里的名单，不从任何生产表派生。
+const RETIRED_ONESHOTS: &[&str] = &[
+    "--read-session",
+    "--read-session-tail",
+    "--read-session-from-offset",
+    "--search",
+    "--list-accounts",
+    "--session-accounts",
+    "--list-user-inputs",
+    "--find-in-session",
+    "--account-trust",
+    "--account-trust-zero",
+    "--list-projects",
+    "--list-sessions",
+    "--fork-session",
+];
+
+/// ★ 删掉的那几条不再是子命令：闸门表里没有 · CLI 独有那张说明表里没有 · 派生臂也不认 ⇒
+/// 单敲它照「不认识的 flag」进流模式（同老后端遇到新 flag），带裸参数敲落进「不认识」那一形（`unknown_command`、退出 2）。
+#[test]
+fn retired_oneshot_subcommands_are_not_subcommands_anymore() {
+    let docs: Vec<String> = crate::stream::inbound::CLI_ONLY_DOCS
+        .iter()
+        .map(|(n, _, _)| format!("--{n}"))
+        .collect();
+    for f in RETIRED_ONESHOTS {
+        assert!(!SUBCOMMANDS.contains(f), "`{f}` 还在 SUBCOMMANDS 里");
+        assert!(
+            !docs.contains(&f.to_string()),
+            "`{f}` 还在 CLI_ONLY_DOCS 里"
+        );
+        assert!(
+            !crate::control::cli_control::handles(f),
+            "`{f}` 派生臂还认它"
+        );
+        assert!(
+            !super::is_query_mode(&[f.to_string()]),
+            "`{f}` 单敲还进查询模式"
+        );
+    }
+}
+
+/// ★ 删掉的那几条带裸参数敲 ⇒ 「不认识」那一形：stderr 一行 `{code:"unknown_command", …}`、退出 2、stdout 空。
+#[test]
+fn a_retired_oneshot_with_arguments_answers_unknown_command() {
+    for f in RETIRED_ONESHOTS {
+        let args = vec![f.to_string(), "/x.jsonl".to_string()];
+        assert!(super::is_query_mode(&args));
+        let mut err: Vec<u8> = Vec::new();
+        let rc =
+            crate::control::cli_control::refuse_unknown_to(&args, &mut err, &crate::Tz::default());
+        let line = String::from_utf8(err).unwrap();
+        let v: serde_json::Value = serde_json::from_str(line.trim())
+            .unwrap_or_else(|e| panic!("`{f}` 的失败不是一行 JSON（{e}）：{line}"));
+        assert_eq!(
+            (rc, v["code"].as_str()),
+            (2, Some("unknown_command")),
+            "`{f}`：{line}"
+        );
+    }
+}
+
+/// ★ 留下的那几条照旧是子命令、照旧有落点（字面量臂或派生臂）。异源：手抄方案「留」那一节。
+#[test]
+fn kept_oneshot_subcommands_are_still_dispatched() {
+    let src = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let literal = arm_tokens(dispatch_block(&src));
+    for f in [
+        "--resident-ensure",
+        "--resident-attach",
+        "--resident-stop",
+        "--backend-probe",
+        "--tmux-notify",
+        "--place-verdict",
+        "--assets-catalog",
+        "--assets-catalog-merge",
+        "--quota-read",
+        "--quota-probe",
+        "--rotation-plan",
+        "--rotation-switch",
+        "--history-branch",
+        "--resolve",
+    ] {
+        assert!(SUBCOMMANDS.contains(&f), "`{f}` 不在 SUBCOMMANDS 里了");
+        assert!(
+            literal.contains(&f) || crate::control::cli_control::handles(f),
+            "`{f}` 没有落点"
+        );
+    }
+}
+
+/// ★ `--resolve` 不再有手写臂：它照派生规则走 CLI 面（信封与别的命令同一形）。
+#[test]
+fn resolve_rides_the_derived_arm_only() {
+    let src = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let literal = arm_tokens(dispatch_block(&src));
+    assert!(!literal.contains(&"--resolve"), "`--resolve` 的手写臂还在");
+    assert!(crate::control::cli_control::spec_for("--resolve").is_some());
 }

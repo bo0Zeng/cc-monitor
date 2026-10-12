@@ -35,7 +35,8 @@ use crate::origin::Origin;
 use serde_json::{json, Value};
 use std::time::Duration;
 
-/// CLI 子命令 → 帧命令。**判据的一侧**（另一侧从后端源码数，见测试）。
+/// 搬上帧面的 CLI 子命令 → 帧命令（来历表）。**判据的一侧**（另一侧从后端源码数，见测试）。
+/// 左列那几条子命令第 7 批第二题已从后端删掉（判据钉着「它们不再是子命令」），右列是今天的帧命令。
 /// 生产段不读它 —— 它是判据的一侧（与 `inbound::CommandSpec` 那几栏同理），故精确 allow。
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) const MOVED: &[(&str, &str)] = &[

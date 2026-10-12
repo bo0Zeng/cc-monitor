@@ -1,15 +1,18 @@
 #!/usr/bin/env bash
-# G2（branch-anywhere）：`--fork-session` 的**跨进程**验收 —— 真跑后端二进制。
+# G2（branch-anywhere）：分叉的**跨进程**验收 —— 真跑后端二进制，走帧命令 `session-fork` 派生的 CLI 面
+#（`--session-fork`，入参 `{sid, uuid}` 从 stdin）。从前走的是手写的 `--fork-session <sid> <uuid>`，第 7 批第二题删了。
 #
 # **为什么单测不够**：`accounts_query` 的单测当年直接调 `run()`、**绕过了 main 的 dispatch**，
 # 于是 `--account-trust-zero` 在模块里实现完整、却在 dispatch 里漏了一臂 —— 随 v3.4.0
-# 发出去成了真 bug（见 `main.rs` 那段注释）。本套件从 **argv 进、stdout/exit code 出**，
-# 盯的正是那一层。
+# 发出去成了真 bug。本套件从 **argv / stdin 进、stdout/exit code 出**，盯的正是那一层。
 #
-# 不需要 tmux、不需要 ssh：`--fork-session` 是一次性查询模式，指向隔离的 fixture 目录即可。
+# 不需要 tmux、不需要 ssh：一次性模式，指向隔离的 fixture 目录即可。
 # 红线：**不碰真 ~/.claude** —— 全程用 `CLAUDE_CONFIG_DIR` 指向临时目录
 #（backend 的 `resolve_claude_dir` 优先读它，没有 `--claude-dir` 这种参数）；不改后端行为（只跑它）。
 . "$(cd "$(dirname "$0")" && pwd)/sandbox-env.sh"  # 无条件清掉继承来的 CCM_* / CLAUDE* / ANTHROPIC_* / TMUX* / CC_BUS_*
+# 分叉之后起要的三格事实里有「哪个终端挂着它」⇒ 后端会问 tmux：装私有 socket 的 shim，不碰缺省 server（`C7i`）。
+# shellcheck source=tests/e2e/tmux-shim.sh
+. "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh" e2eFork
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -24,7 +27,7 @@ export CARGO_HOME="${CARGO_HOME:-$HOME/.cargo}"
 export RUSTUP_HOME="${RUSTUP_HOME:-$HOME/.rustup}"
 export HOME="$WORK/home"
 mkdir -p "$HOME"
-cleanup() { rm -rf "$WORK"; }
+cleanup() { rm -rf "$WORK"; tmux_shim_cleanup; }
 trap cleanup EXIT
 
 echo "== 构建 backend =="
@@ -45,7 +48,10 @@ SRC_SID="11111111-2222-3333-4444-555555555555"
 } > "$PROJ/$SRC_SID.jsonl"
 SRC_BEFORE="$(sha256sum "$PROJ/$SRC_SID.jsonl" | cut -d' ' -f1)"
 
-run_fork() { CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BIN" -- --fork-session "$@" 2>"$WORK/err" ; }
+run_fork() {
+  printf '{"sid":"%s","uuid":"%s"}' "$1" "$2" \
+    | CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$BIN" -- --session-fork 2>"$WORK/err"
+}
 
 echo "== 1. 正常分叉：exit 0 + stdout 一行 JSON =="
 if OUT="$(run_fork "$SRC_SID" u3)"; then
@@ -83,8 +89,8 @@ if run_fork "99999999-0000-0000-0000-000000000000" u1 >/dev/null; then
 else
   rc=$?
   [ "$rc" = 2 ] && ok "exit 2" || bad "exit code" "got $rc"
-  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["code"] and d["message"]' "$WORK/err" 2>/dev/null \
-    && ok "stderr 是 {code,message} JSON" || bad "stderr 信封" "$(cat "$WORK/err")"
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["code"] and d["message"] and "detail" in d' "$WORK/err" 2>/dev/null \
+    && ok "stderr 是 {code,message,detail} JSON" || bad "stderr 信封" "$(cat "$WORK/err")"
 fi
 
 echo "== 5. 路径穿越的 sid 必须被拒 =="

@@ -79,6 +79,33 @@ fn the_moved_table_matches_the_design_list_and_the_backend_registry() {
     );
 }
 
+/// ★ [`MOVED`] 左列那几条**不再是后端的子命令**（第 7 批第二题删了：帧面早有右列那条，生产里没人再调）。
+/// 另一侧从后端 `lib.rs` 的 `SUBCOMMANDS` 那张表的源码数（正控：同一块里认得出今天真在的 `--history-read`）。
+#[test]
+fn the_moved_subcommands_are_gone_from_the_backend() {
+    let lib = std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/lib.rs"))
+        .expect("读不到后端 lib.rs");
+    let at = lib
+        .find("pub const SUBCOMMANDS: &[&str] = &[")
+        .expect("后端 lib.rs 里找不到 SUBCOMMANDS —— 锚点变了");
+    // 表里每一项各占一行（`"--x",`）：按整行比，不按子串。
+    let rows: Vec<&str> = lib[at..at + lib[at..].find("\n];").expect("SUBCOMMANDS 没收尾")]
+        .lines()
+        .map(str::trim)
+        .collect();
+    assert!(
+        rows.contains(&"\"--history-read\","),
+        "正控失败：同一块里认不出 `--history-read` —— 下面的零命中不可信"
+    );
+    for (flag, _) in MOVED {
+        let row = format!("\"{flag}\",");
+        assert!(
+            !rows.contains(&row.as_str()),
+            "`{flag}` 又回到了后端的 SUBCOMMANDS —— 它早上了帧面，CLI 那一臂不该再有"
+        );
+    }
+}
+
 /// ★**逐次拨号那条路不存在了**（零命中 ＋ 正控）。
 ///
 /// 守的要求：「逐次拨号那条路删，同拍动 `subagent.rs` 的回落」。原先这里两条判据钉「那条路只放行登记表 ＋ 先问后拨」——

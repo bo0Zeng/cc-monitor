@@ -45,14 +45,16 @@ fn bytes_of(lines: &[String]) -> Vec<u8> {
     v
 }
 
+/// 扫一遍（帧面 `history-user-inputs` 跑的那一个扫描），摊成 `[{from}, 每条…, {count, end}]`：中段是条目，尾格是扫描的回数。
 fn run(data: &[u8], from: u64) -> Vec<serde_json::Value> {
-    let mut out = Vec::new();
-    write_user_inputs(&data[from as usize..], from, &mut out).expect("write ok");
-    String::from_utf8(out)
-        .unwrap()
-        .lines()
-        .map(|l| serde_json::from_str(l).expect("每行都是 JSON"))
-        .collect()
+    let mut v = vec![serde_json::json!({ "from": from })];
+    let (count, end) = scan_user_inputs(&data[from as usize..], from, |row| {
+        v.push(serde_json::to_value(row).unwrap());
+        Ok(())
+    })
+    .expect("scan ok");
+    v.push(serde_json::json!({ "count": count, "end": end }));
+    v
 }
 
 fn uuids(v: &[serde_json::Value]) -> Vec<String> {
@@ -99,18 +101,14 @@ fn rows_carry_timestamp_and_the_text_blocks_joined() {
 }
 
 #[test]
-fn head_and_tail_frame_the_rows_and_end_counts_only_complete_lines() {
+fn end_counts_only_complete_lines() {
     let lines = fixture();
     let mut data = bytes_of(&lines);
     let complete = data.len() as u64;
     // torn 残尾：一条还没写完的用户输入 —— 不出、不计进 end
     data.extend_from_slice(br#"{"type":"user","uuid":"in-torn","message":{"content":"half"#);
     let v = run(&data, 0);
-    assert_eq!(v[0]["kind"], "user_inputs");
-    assert_eq!(v[0]["v"], 1);
-    assert_eq!(v[0]["from"], 0);
     let tail = &v[v.len() - 1];
-    assert_eq!(tail["kind"], "user_inputs_end");
     assert_eq!(tail["count"], (v.len() - 2) as u64);
     assert_eq!(tail["end"], complete, "end 必须停在最后一个完整行的末字节");
     assert!(!uuids(&v).contains(&"in-torn".to_string()));

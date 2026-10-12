@@ -21,6 +21,14 @@ fn write_manifest(accts: &Path, body: &str) {
     fs::write(accts.join("accounts.json"), body).unwrap();
 }
 
+/// 清单的扫描本体摊成行：首行 meta、其后每号一行（不并 apikey 表）。下面几条判的是扫描（读 manifest · 判安全 · 判鉴权），不是哪一个出口。
+fn list_accounts(accts: &Path) -> Vec<String> {
+    let (meta, rows) = scan_accounts(accts, &|_| false);
+    let mut out = vec![serde_json::Value::Object(meta).to_string()];
+    out.extend(rows.iter().map(serde_json::Value::to_string));
+    out
+}
+
 fn meta(lines: &[String]) -> serde_json::Value {
     serde_json::from_str(&lines[0]).unwrap()
 }
@@ -1038,70 +1046,6 @@ fn trust_of_claude_json_reads_only_the_three_booleans() {
     let _ = fs::remove_dir_all(&root);
 }
 
-/// ★ **main 必须分发本模块认的每一个子命令** —— v3.4.0 的事故守卫。
-///
-/// 当时 `--account-trust-zero` 在本模块实现完整（`run` 里有它的臂），但 `main.rs` 的
-/// match 只列了三个字面量 ⇒ 它落进 `_ => history_query::run` ⇒ 回 `unknown argument`
-/// + exit 2。而 monitor 的账号 0 信任预检**真的在发这条命令**，随 v3.4.0 发了出去。
-///
-/// **为什么既有测试一条都没红**：它们全都直接调 `accounts_query::run`，
-/// **绕过了 main 的调度**——被测的那一半是好的，坏的是没人测的那一半。
-/// ⇒ 这条守卫**跨文件**比对：本模块 `run` 里出现的每个 `Some("--x")`，
-/// 在 `main.rs` 的生产段里都必须出现。
-#[test]
-fn main_dispatches_every_subcommand_we_handle() {
-    let me = include_str!("../../../src/backend/observe/accounts_query.rs");
-    let main_raw = include_str!("../../../src/backend/main.rs");
-    // 只看生产段 + 剥行注释：两个文件的散文里都会提到这些字面量，
-    // 不剥的话「main 的注释里写了它」也会让守卫变绿——那正是安慰剂。
-    // U-1：剥法收敛到 `guard_support`。旧的内联版锚 `mod tests`，而 main.rs 的测试模块
-    // 叫 `mod stream_flag_tests` ⇒ 匹配不上 ⇒ **这条守卫一直在拿测试段里那份副本对账**。
-    let strip = crate::guard_support::production_code;
-    let mine = strip(me);
-    let main_prod = strip(main_raw);
-    assert!(
-        main_prod.len() > 3_000 && main_prod.len() < main_raw.len(),
-        "剥完 main 生产段只剩 {} 字节（原文 {}）——剥法坏了",
-        main_prod.len(),
-        main_raw.len()
-    );
-    // ★ 上面那条 `len` 自检**检不出「测试段没剥掉」**（光靠剥注释就满足）。
-    // 真正的判据是这条：剥完不许再有测试属性。
-    crate::guard_support::assert_no_test_code("accounts_query/main.rs", &main_prod);
-    crate::guard_support::assert_no_test_code("accounts_query/self", &mine);
-
-    // 抠出本模块 `run` 分发的子命令：形如 `Some("--x") =>`。
-    let mut subs: Vec<&str> = Vec::new();
-    let needle = format!("{}(\"--", "Some");
-    for (i, _) in mine.match_indices(needle.as_str()) {
-        let rest = &mine[i + needle.len()..];
-        if let Some(end) = rest.find('"') {
-            let name = &rest[..end];
-            if !subs.contains(&name) {
-                subs.push(name);
-            }
-        }
-    }
-    // 反向自检：一个都没抠到 = 抠法坏了，而不是「本模块没有子命令」。
-    assert_eq!(
-        subs.len(),
-        4,
-        "从本模块抠到 {} 个子命令（真实应为 4）：{subs:?}——加/删子命令时来改这个数",
-        subs.len()
-    );
-
-    for name in &subs {
-        let lit = format!("{}(\"--{name}\")", "Some");
-        assert!(
-            main_prod.contains(lit.as_str()),
-            "`--{name}` 在本模块有完整实现，但 `main.rs` 的调度里找不到 `{lit}`。\n\
-                 它会落进 `_` 臂走历史查询 ⇒ 回 `unknown argument` + exit 2，\n\
-                 而调用方（monitor）拿到的是一个看起来像「backend 太旧」的失败。\n\
-                 **v3.4.0 就是这么漏出去的。** 加子命令时两处都要加。"
-        );
-    }
-}
-
 /// `--account-trust-zero` 只收 cwd，路径写死在代码里 ⇒ 它连「任意文件读」的面都没有。
 /// 钉住入口形状（而不是去改 $HOME 跑真的，那在并行测试里是竞态）。
 #[test]
@@ -1216,7 +1160,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        prod.contains("fn list_accounts(accts_dir: &Path)") && prod.len() > 8_000,
+        prod.contains("fn scan_accounts(") && prod.len() > 8_000,
         "剥注释剥过头了（实得 {} 字节）—— 下面几条会零命中地绿",
         prod.len()
     );
@@ -1335,10 +1279,10 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 ///
 /// # 它为什么非有不可
 ///
-/// `K-P5f` 摸底现打过：往 `--session-accounts` 加字段这条路**撞 0 道机检**
+/// `K-P5f` 摸底现打过：往会话归属那几行（今天的帧命令 `accounts-sessions`）加字段这条路**撞 0 道机检**
 /// （`protocol_doc_guard` 那两条一条够不着它 —— 出参是本文件里一个就地
 /// `serde_json::json!`，不是 `wire.rs` 里的类型；另一条数的是**子命令名**，
-/// 而 `--session-accounts` 早在表里）。⇒ 文档那一行**只靠人记得改**。
+/// 而那条命令早在表里）。⇒ 文档那一行**只靠人记得改**。
 /// 而「没有闸看着的文档事实」正是本工作区反复判过的假绿源
 /// （「写着有、其实没有」同族）。**这条就是那道闸。**
 ///
@@ -1346,7 +1290,7 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 ///
 /// | 格 | 断的是什么 | 翻掉它的形状 |
 /// |---|---|---|
-/// | ① | `CLI_ONLY_DOCS` 那一行的出参字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
+/// | ① | 帧命令 `accounts-sessions` 的 `lines` 那一格说明里的字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改说明 / 改了名字 |
 /// | ② | 本文件头注把**两个**环境变量键都点了名 | 加第二个键、却留着「只抠一个键」那句假话 |
 ///
 /// # ⚠ 它买不到什么
@@ -1355,12 +1299,13 @@ fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
 /// 解释）它一个字都判不了 —— 那是评审的活。
 #[test]
 fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
-    // 协议参考的 CLI 那一节从 `CLI_ONLY_DOCS` 生成：那一行就是这里的说明。
-    let row = crate::stream::inbound::CLI_ONLY_DOCS
+    // 协议参考的命令那一节从登记表的字段说明生成：`accounts-sessions` 的 `lines` 那一格就是这里的说明。
+    let row = crate::stream::inbound::REGISTRY
         .iter()
-        .find(|(f, _, _)| *f == "session-accounts")
-        .map(|(_, _, what)| *what)
-        .expect("`CLI_ONLY_DOCS` 里没有 `--session-accounts`");
+        .find(|c| c.name == "accounts-sessions")
+        .and_then(|c| c.fields.iter().find(|f| f.name == "lines"))
+        .map(|f| f.doc)
+        .expect("登记表里没有 `accounts-sessions` 的 `lines` 那一格");
 
     // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
     let prod = production_text();
@@ -1392,7 +1337,7 @@ fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
     let table = format!("{{{}}}", keys.join(", "));
     assert!(
         row.contains(&table),
-        "\n★★ `CLI_ONLY_DOCS` 的 `--session-accounts` 那一行里找不到字段表 {table:?}。\n\
+        "\n★★ `accounts-sessions` 的 `lines` 那一格说明里找不到字段表 {table:?}。\n\
              出参加了字段 / 改了名 / 换了顺序，而文档没跟着改 —— **盘上留了一句假话**，\n\
              而这条路撞 0 道机检，除了本条没有任何东西会说。\n\
              那一行现在写的是：\n  {row}"
@@ -1456,20 +1401,16 @@ fn c4c_fixture(tag: &str, with_zero: bool) -> (PathBuf, PathBuf) {
     (root, accts)
 }
 
-/// ★★ 成品里的账号 == CLI 那一臂逐行打印的账号（同一夹具、两个出口；表里没行时逐条相等），
-/// meta == CLI 首行去掉 `kind` / `accountZeroAware`；成品顶层键集合恒等 `{meta, accounts, notice}`。
+/// ★★ 成品里的账号 == 扫描本体那几行（表里没行时逐条相等），meta == 扫描的 meta；成品顶层键集合恒等 `{meta, accounts, notice}`。
 #[test]
-fn the_list_product_carries_exactly_what_the_cli_arm_prints() {
+fn the_list_product_carries_exactly_what_the_scan_reads() {
     let (root, accts) = c4c_fixture("c4c-same", true);
     let cli = list_accounts(&accts);
     let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     let keys: Vec<&String> = product.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["accounts", "meta", "notice"], "成品顶层键集合变了");
-    let mut cli_meta = meta(&cli);
-    let o = cli_meta.as_object_mut().unwrap();
-    assert_eq!(o.remove("kind"), Some(serde_json::json!("accounts-meta")));
-    assert_eq!(o.remove("accountZeroAware"), Some(serde_json::json!(true)));
-    // 成品比 CLI 多出的只有帧面那几格（家目录 · 每号 key 掩码与端点 · 徽章），其余逐格同一份扫描。
+    let cli_meta = meta(&cli);
+    // 成品比扫描多出的只有帧面那几格（家目录 · 每号 key 掩码与端点 · 徽章），其余逐格同一份扫描。
     let mut product = product;
     assert_eq!(
         product["meta"].as_object_mut().unwrap().remove("home"),
@@ -1481,7 +1422,10 @@ fn the_list_product_carries_exactly_what_the_cli_arm_prints() {
         assert_eq!(o.remove("baseUrl"), Some(serde_json::Value::Null));
         assert!(o.remove("badge").is_some(), "帧面每个号带徽章");
     }
-    assert_eq!(product["meta"], cli_meta, "成品 meta 与 CLI 首行不是同一份");
+    assert_eq!(
+        product["meta"], cli_meta,
+        "成品 meta 与扫描的 meta 不是同一份"
+    );
     let cli_rows: Vec<serde_json::Value> = cli[1..]
         .iter()
         .map(|l| serde_json::from_str(l).unwrap())
@@ -2259,55 +2203,6 @@ fn live_doing_reads_activity_and_what_it_waits_for() {
     .into_iter()
     .collect();
     assert_eq!(got, want);
-}
-
-/// `--account-trust` / `--account-trust-zero` 的失败与帧面失败应答同一种信封（`stream::detail::Failed`）：
-/// 拒绝码原样、详情的「命令」那一项是这条 CLI 的名字；参数不齐那一支同形（码 `bad_args`）。
-#[test]
-fn the_trust_cli_failures_are_the_one_failed_envelope() {
-    let root = tmpdir("trust-cli");
-    let accts = root.join("accts");
-    write_manifest(&accts, r#"{"version":1,"accounts":[]}"#);
-    let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-    for (args, code, cmd) in [
-        (
-            a(&["--account-trust", "/etc", "/w"]),
-            "unknown_config_dir",
-            "account-trust",
-        ),
-        (
-            a(&["--account-trust", "/a'b", "/w"]),
-            "unsafe_config_dir",
-            "account-trust",
-        ),
-        (a(&["--account-trust", "/etc"]), "bad_args", "account-trust"),
-        (
-            a(&["--account-trust-zero"]),
-            "bad_args",
-            "account-trust-zero",
-        ),
-    ] {
-        let f = trust_cli(&accts, &args).unwrap_err();
-        assert_eq!(f.code, code, "{args:?}");
-        assert!(!f.message.is_empty(), "{args:?} 没有那一句");
-        assert!(
-            f.detail.contains(cmd),
-            "{args:?} 详情里要有命令名：{}",
-            f.detail
-        );
-        assert!(
-            f.detail.contains(code),
-            "{args:?} 详情里要有码：{}",
-            f.detail
-        );
-        let v = serde_json::to_value(&f).unwrap();
-        assert_eq!(
-            v.as_object().unwrap().keys().cloned().collect::<Vec<_>>(),
-            ["code", "detail", "message"],
-            "{args:?}"
-        );
-    }
-    let _ = fs::remove_dir_all(&root);
 }
 
 // ---- 能不能选 · 默认号是谁（跨三处金样 `tests/__fixtures__/account-default.golden.json`）----

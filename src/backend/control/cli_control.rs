@@ -12,7 +12,7 @@
 //! （同一个 tmux server、同一个 `$TMUX_TMPDIR` 下的 socket，权限由文件系统把守）⇒ 本入口不新授任何权力。
 //! 这条理由只覆盖「起 / 杀 tmux 会话」这一族；将来若有一条命令能做本机进程原本做不到的事，必须单独立一条理由。
 //!
-//! # 信封（与 `--resolve` 同形）
+//! # 信封
 //!
 //! · 入：那条命令的 `args`（一段 JSON；空 = `{}`），两个口**二选一**，都是一处读（[`read_args`]，住 `cli_args`），每条子命令自动都有：
 //!   - stdin：默认读到 EOF；带 [`crate::STDIN_LINE_FLAG`]（任意位置）⇒ 只读一行（给 stdin 关不掉的调用方：远端命令经 capture 那一跳交载荷，
@@ -38,7 +38,7 @@ use std::time::Duration;
 /// 能力探测口。集成方按能力兼容，不按版本号；出 JSON（不是 `ccm --ccm-probe` 那种 `key=value` 行：那是 ccm 专用的方言）。
 pub(crate) const PROBE_FLAG: &str = "--backend-probe";
 
-/// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`super::cli_args`]：`--resolve` 也经它读，而它不该为此引到整张命令表。
+/// 读入参（两个口 · 上限 · 静默窗 · 码）住 [`super::cli_args`]。
 use super::cli_args::{bad_args, read_args, STDIN_QUIET};
 
 /// 本入口回显给命令的 `id`。**帧面的 `id` 由客户端发号且不透明**，而一次性 exec
@@ -135,6 +135,26 @@ fn emit_failed(err: &mut dyn Write, f: &Failed, text: bool, tz: &crate::Tz) -> i
     f.emit_to(err, text, tz)
 }
 
+/// 一次性那一形里不认识的子命令（打头那一词不是任何一条子命令，或带着裸参数敲了一条删掉的）：
+/// stderr 一行 `unknown_command` 失败信封（与别的 CLI 出口同一处出）、退出 2。
+pub fn refuse_unknown(args: &[String], tz: &crate::Tz) -> i32 {
+    refuse_unknown_to(args, &mut std::io::stderr(), tz)
+}
+
+/// [`refuse_unknown`] 的本体（stderr 是入参，测试喂替身）。`--text` 照收（那一句 ＋ 复制详情）。
+pub(crate) fn refuse_unknown_to(args: &[String], err: &mut dyn Write, tz: &crate::Tz) -> i32 {
+    let flag = args.first().map(String::as_str).unwrap_or_default();
+    let text = args.iter().skip(1).any(|a| a == crate::TEXT_FLAG);
+    let f = Failed::new(
+        None,
+        "unknown_command",
+        contract::malformed(&format!("unknown CLI flag {flag}")),
+        None,
+        None,
+    );
+    emit_failed(err, &f, text, tz)
+}
+
 /// 流模式起参的声明（`--stream --view <声明>`）认不出：不起流，stderr 一行失败信封（与别的 CLI 出口同一处出）、退出 2。
 pub fn refuse_stream_view(why: Option<&str>, tz: &crate::Tz) -> i32 {
     let detail = why.unwrap_or_default().to_string();
@@ -202,16 +222,8 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     // 「给人看」那一形：成功 ＝ 回包里写好的格拼成字（`control/ship_text.rs`，不分命令）；失败那一形 ＝ 那一句 ＋ 复制详情。
     let text = opts.iter().any(|a| a == crate::TEXT_FLAG);
     let Some(spec) = spec_for(flag) else {
-        // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：
-        // backend 的一次性模式对未知参数的既定行为是 exit 2 + 结构化 stderr。
-        let f = Failed::new(
-            None,
-            "unknown_command",
-            contract::malformed(&format!("unknown CLI flag {flag}")),
-            None,
-            None,
-        );
-        return emit_failed(err, &f, text, tz);
+        // 走不到（`main` 只把已知 flag 派到这里），但**不许 panic**：与 `main` 那条 `_` 臂同一形。
+        return refuse_unknown_to(args, err, tz);
     };
     let refuse = |err: &mut dyn Write, code: &str, message: String| {
         emit_failed(

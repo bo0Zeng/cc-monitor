@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 pub(crate) const CONFIG_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
 
 /// Claude 找上游的环境变量名。起会话时中转地址经它注入（`http://127.0.0.1:<口>/<钥匙>/<前缀>/…`，钥匙段在 pane shell 里展开）；
-/// `--session-accounts` 读它**只为答一个布尔**（这条会话走不走本机中转），值本身带钥匙、**绝不出参、绝不进日志**。
+/// `accounts-sessions` 读它**只为答一个布尔**（这条会话走不走本机中转），值本身带钥匙、**绝不出参、绝不进日志**。
 pub(crate) const BASE_URL_ENV: &str = "ANTHROPIC_BASE_URL";
 
 /// 账号归属读会话进程环境时读的那两个键（注册表 `AccountsFace.session_env`）。

@@ -395,8 +395,8 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             rows.finish(pushed)?;
             Ok(json!({ "from": from, "end": end, "turns": rows.rows }))
         }
-        // 会话内查找（Ctrl+F，SE2 的 `--find-in-session`）随骨架索引与大纲一起上帧面。
-        // `limit` 超封顶按封顶算、缺席取缺省 —— 与 CLI 那一臂的 `parse_find_args` 同一对常量；`skip` ＝ 跳过前几条（续下一页）。
+        // 会话内查找（Ctrl+F）。
+        // `limit` 超封顶按封顶算、缺席取缺省；`skip` ＝ 跳过前几条（续下一页）。
         "history-find" => {
             use crate::observe::search_query::{FindPage, FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
             let path = str_arg(args, "path")?;
@@ -632,7 +632,7 @@ fn rows(
 /// `history-search` 的应答。
 #[derive(Debug, serde::Serialize)]
 pub(crate) struct Searched {
-    /// 每命中会话一行 `SessionHits`（JSON 串），形状与行序同 `--search`。
+    /// 每命中会话一行 `SessionHits`（JSON 串），行序 = 最近优先。
     pub(crate) lines: Vec<String>,
     /// 这一趟有几份会话记录读不动、没搜到。
     pub(crate) unreadable: usize,
@@ -869,9 +869,9 @@ fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String
     }
 }
 
-/// `history-search` 的选项 → `--search <query>` 之后那一截 argv。
+/// `history-search` 的选项 → `search_query::parse_opts` 认的那一截词。
 ///
-/// 🔴 **不在这里另写一份选项语义**：解析走 CLI 那一臂同一个 `parse_opts`，
+/// 🔴 **不在这里另写一份选项语义**：解析走 `search_query` 那一个 `parse_opts`，
 /// 本函数只把 JSON 摊回它认的那几个 token（`include_tools` / `scope` / `after_ms` / `limit`）。
 fn search_rest(args: &Value) -> Result<Vec<String>, (&'static str, String)> {
     let mut rest = Vec::new();

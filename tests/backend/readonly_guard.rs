@@ -4292,14 +4292,8 @@ mod error_envelope_registry {
     ///
     /// 🔴 **不是免检名单**：没签字的当场红，签了字而今天匹配不上的也当场红。
     const SIGNED: &[(&str, &str, &str, &str)] = &[
-        (
-            "control/resolve_query.rs",
-            "<unserializable>",
-            "`--resolve` 的 `emit_err`",
-            "**信封的原型**，其余几处的头注都逐字指向它。它是四份里唯一走 typed 结构体\
-             （`ResolveError` ＋ `Serialize`）的一份，并且**多一条兜底**：序列化失败时手写一行 JSON。\
-             ⇒ 它与另三份**不同形**，收成一份要么砍掉这条兜底、要么把它摊给另三份。",
-        ),
+        // `control/resolve_query.rs` 那一行（`--resolve` 手写臂的 `emit_err` 兜底）删了：第 7 批第二题删了那条手写臂，
+        //   `--resolve` 照派生规则走 CLI 面，失败经 `stream::detail::Failed` 投出，与别的命令同一份。
         // `control/cli_control.rs` 那一行（一次性 CLI 入口的 `emit_err`）删了：信封改由 `stream::detail::Failed` 序列化，
         //   与帧面失败应答同一份（`{code, message, detail, data?}`），不再手拼键。
         // `control/fork_write.rs`（`--fork-session` 的 `fail`）与 `observe/accounts_query.rs` 两行（`--account-trust*` 的内联信封 ·
@@ -4315,7 +4309,7 @@ mod error_envelope_registry {
              与 CLI 信封同一对键是刻意的（读的人少记一种形状），但它住 `dial/`、成功那一形是别的键 \
              ⇒ 收进 `control/` 那几份出口要先让 `dial/` 反向引 `control/`，不划算。",
         ),
-        // `observe/history_query.rs` 那一行（`--list-projects` 的 `no_record_tree` 信封）删了：同上，改由 `Failed` 序列化。
+        // `observe/history_query.rs` 那一行（`--list-projects` 那份带码的信封）删了：同上，改由 `Failed` 序列化（那条子命令 10-11 也删了）。
     ];
 
     /// 一行里 `code` 这个键出现几次（两种写法都算）—— [`envelope_sites`] 的**纯函数那一半**。
@@ -4360,13 +4354,13 @@ mod error_envelope_registry {
     }
 
     /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件；10-09 CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*`
-    /// 收进同一份失败载体后 2 处 / 2 份文件，地板贴着现数）。
+    /// 收进同一份失败载体后 2 处 / 2 份文件；10-11 `--resolve` 手写臂删了 ⇒ 1 处 / 1 份文件，地板贴着现数）。
     #[test]
     fn the_envelope_scan_is_not_silently_empty() {
         let sites = envelope_sites();
-        // 10-09 又收两份（`--fork-session` · `--account-trust*`）⇒ 剩 `--resolve` 那份的兜底一行与部署链路那一行：2 处 / 2 份文件。
+        // 10-11 `--resolve` 那份兜底随手写臂删了 ⇒ 只剩部署链路那一行：1 处 / 1 份文件。
         assert!(
-            sites.len() >= 2,
+            sites.len() >= 1,
             "全树只扫到 {} 处错误信封 —— 扫坏了，下面几条此刻在空转",
             sites.len()
         );
@@ -4374,7 +4368,7 @@ mod error_envelope_registry {
         files.sort_unstable();
         files.dedup();
         assert!(
-            files.len() >= 2,
+            files.len() >= 1,
             "这些信封只来自 {} 份文件 —— 遍历塌了",
             files.len()
         );
@@ -4455,8 +4449,9 @@ mod error_envelope_registry {
         // 8 → 7：抓屏那条 CLI 面（`--capture-pane`）删了，它的 `emit_err` 随之没了。
         // 7 → 5：CLI 控制面与 `--list-projects` 那两份收进同一份失败载体（`stream::detail::Failed`，与帧面同一份）。
         // 5 → 2：`--fork-session` 与 `--account-trust*`（两行）也收进去了。
+        // 2 → 1：`--resolve` 的手写臂删了（10-11），它那份兜底随之没了。
         assert!(
-            SIGNED.len() >= 2,
+            SIGNED.len() >= 1,
             "`SIGNED` 只剩 {} 行 —— 它在缩水",
             SIGNED.len()
         );

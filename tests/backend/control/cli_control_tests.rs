@@ -1193,3 +1193,24 @@ fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
         "详情没说入参从哪给：{detail}"
     );
 }
+
+/// ★ `--resolve` 走派生臂之后，信封与别的命令同一形：入参形状不对 ⇒ 命令级 `bad_args`（不再借协议级的 `bad_request`），
+/// stderr 那一行带 `detail`（`{code, message, detail}`，同别的 CLI 失败）；成品照旧是那一份 `CommandPlan`。
+#[test]
+fn resolve_answers_in_the_same_envelope_as_every_other_command() {
+    let (rc, out, err) = run_cli(
+        &strs(&["--resolve"]),
+        std::io::Cursor::new(br#"{"sessionId": 5}"#.to_vec()),
+    );
+    assert_eq!((rc, out.as_str()), (2, ""), "坏入参该被拒：{err}");
+    let v: serde_json::Value = serde_json::from_str(err.trim()).expect("stderr 不是一行 JSON");
+    assert_eq!(v["code"], "bad_args", "{err}");
+    assert!(v["detail"].is_string(), "失败信封缺 detail：{err}");
+    let (rc, out, err) = run_cli(
+        &strs(&["--resolve"]),
+        std::io::Cursor::new(br#"{"sessionId":"s1"}"#.to_vec()),
+    );
+    assert_eq!(rc, 0, "{err}");
+    let v: serde_json::Value = serde_json::from_str(out.trim()).unwrap();
+    assert_eq!(v["command"], "claude --resume s1");
+}

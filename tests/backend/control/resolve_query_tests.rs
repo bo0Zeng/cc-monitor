@@ -8,9 +8,6 @@ fn spec(sid: &str, candidates: Vec<Option<&str>>) -> ResumeSpec {
             .into_iter()
             .map(|o| o.map(str::to_string))
             .collect(),
-        claude_dir: String::new(),
-        fallback_cwd: String::new(),
-        already_in_tmux: false,
         agent_kind: String::new(),
     }
 }
@@ -90,7 +87,7 @@ fn resolve_codex_builds_resume_subcommand_and_cx_name() {
     assert_eq!(v2["command"], format!("mycodex resume {uuid}"));
 }
 
-/// `agentKind` 缺 / 空 ⇒ 默认那一家（`--resume` / `cc-`）；注册表里没有的名字（大小写不对、拼错、别家）⇒ `bad_request`，
+/// `agentKind` 缺 / 空 ⇒ 默认那一家（`--resume` / `cc-`）；注册表里没有的名字（大小写不对、拼错、别家）⇒ `bad_args`，
 /// 那句话说出名字与认得的几家 —— **不落默认**（从前这里落 Claude 路，拼错就跑成另一家）。
 #[test]
 fn resolve_takes_the_default_when_agent_kind_is_left_out_and_refuses_a_misspelled_one() {
@@ -113,7 +110,7 @@ fn resolve_takes_the_default_when_agent_kind_is_left_out_and_refuses_a_misspelle
         };
         let (code, said) =
             resolve(crate::agents::REGISTRY, &s).expect_err(&format!("{ak:?} 被认成了某一家"));
-        assert_eq!(code, "bad_request");
+        assert_eq!(code, "bad_args");
         assert_eq!(
             said,
             copy_core::copy_text(
@@ -179,7 +176,7 @@ fn resolve_rejects_injection_in_launch_candidate() {
 }
 
 /// 审计 quality-阻塞：`resolve_from_json`（= `run()` 的分发核）真覆盖 happy 路径——
-/// stdin JSON 串 → CommandPlan JSON 串（含手机端 caps 名）。此前 `run()` 零覆盖。
+/// 入参 JSON 串 → CommandPlan JSON 串（含手机端 caps 名）。
 #[test]
 fn resolve_from_json_happy_returns_command_plan_json() {
     let out = resolve_from_json(
@@ -192,12 +189,11 @@ fn resolve_from_json_happy_returns_command_plan_json() {
     assert_eq!(v["capabilities"]["supportsSendKeys"], true);
 }
 
-/// 审计 quality-阻塞：`run()` 的 bad_request 分支真覆盖（此前只测 `serde_json::from_str` 本身、
-/// 不走分发）。畸形 JSON 经 `resolve_from_json` → `(bad_request, _)`。
+/// 畸形 JSON 经 `resolve_from_json` → 命令级 `(bad_args, _)`（不借协议级的 `bad_request`）。
 #[test]
-fn resolve_from_json_malformed_is_bad_request() {
+fn resolve_from_json_malformed_is_bad_args() {
     let err = resolve_from_json(crate::agents::REGISTRY, "{not json").expect_err("must err");
-    assert_eq!(err.0, "bad_request");
+    assert_eq!(err.0, "bad_args");
 }
 
 /// 分发核对非法 sid / 不安全 base 同样短路成对应错误码（端到端错误 taxonomy）。
@@ -221,17 +217,11 @@ fn resolve_from_json_propagates_validation_errors() {
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// `resolve` / `--resolve` 是给手机端的**承诺**
+// `resolve` 的线上形状
 // ════════════════════════════════════════════════════════════════════════
 //
-// 要求：后端 `resolve` 帧命令与 `--resolve` 子命令是给手机端冻结的契约，保留并由判据钉住形状；
-// 契约正文住 `src/doc/IPC-PROTOCOL.md` §8 末尾「`--resolve`」那一条。
-//
-// 为什么这一族要比上面那几条更硬：仓内**零调用方**（`D §D7`）⇒ 改坏了**仓里没有任何东西会红**，
-// 消费方在仓外、按字节读。上面那几条只核几个字段名与几条错误码；这一族把**整份线上形状**钉在
-// 一份冻结金样上（`tests/__fixtures__/resolve-contract.golden.json`），并与那一节文档三方对拍。
-//
-// 异源：金样是冻结字节（手写、不从实现生成）· 代码侧读**生产**纯函数与源码 · 文档侧读 IPC-PROTOCOL 那一节。
+// 帧命令 `resolve`（CLI 面照派生规则有 `--resolve`）：整份线上形状钉在一份金样上（`tests/__fixtures__/resolve-contract.golden.json`）。
+// 异源：金样是手写字节（不从实现生成）· 代码侧读**生产**纯函数与源码 · 登记表侧读 `inbound::REGISTRY`。
 
 fn frozen_golden() -> Value {
     let p =
@@ -280,7 +270,10 @@ fn frozen_every_frozen_sample_still_produces_the_same_bytes() {
         if let Some(want) = s["product"].as_str() {
             ok += 1;
             let out = got.unwrap_or_else(|e| panic!("冻结样例 {req} 该成功，却回了 {e:?}"));
-            assert_eq!(out, want, "冻结样例 {req} 的成品字节变了 —— 这是一次与手机端的契约变更（IPC-PROTOCOL §8「--resolve」那一条）");
+            assert_eq!(
+                out, want,
+                "样例 {req} 的成品字节变了 —— 这是一次线上形状变更"
+            );
             let v: Value = serde_json::from_str(&out).unwrap();
             for k in v.as_object().unwrap().keys() {
                 assert!(plan_fields.contains(k), "成品里多出一个承诺外的键 `{k}`");
@@ -330,7 +323,7 @@ fn frozen_wire_fields(src: &str, decl: &str) -> Vec<String> {
     );
     let body = &src[start..start + src[start..].find("\n}").expect("结构体没收尾")];
     // 字段上的 `serde(rename…)` / `alias` 会让线上名与标识符分家 —— 那样下面读标识符就是在读错的东西
-    //（`ResumeSpec.claude_dir` 头注逐字：「除非再挂一条 `serde(rename)` —— 那是把一条契约拆成两个源头」）。
+    //（再挂一条 `serde(rename)` 就是把一条契约拆成两个源头）。
     for bad in ["rename", "alias"] {
         assert!(
             !body.contains(bad),
@@ -383,20 +376,19 @@ fn frozen_the_wire_field_names_are_the_frozen_ones() {
         assert_eq!(
             frozen_sorted(frozen_wire_fields(&src, decl)),
             frozen_sorted(frozen_list(&g, key)),
-            "`{decl}` 的线上字段 ≠ 冻结金样 `{key}`（两向）—— 改名 / 增删字段都是与手机端的契约变更"
+            "`{decl}` 的线上字段 ≠ 金样 `{key}`（两向）—— 改名 / 增删字段都是线上形状变更"
         );
     }
 }
 
-/// R3 错误码全集：生产段交给错误出口的码字面量集合 ∪ 读入参那一处（[`crate::control::cli_args::READ_ARGS_CODES`]，
-/// 一次性那条经它读入参时才算进来）== 金样 `error_codes`（两向）；
-/// 流那条的登记表 `codes` == 全集减去只属于一次性那条的；信封只有 `code` / `message` 两键、退出码 == 金样。
+/// R3 错误码全集：生产段交给错误出口的码字面量集合 == 金样 `error_codes` == 登记表 `resolve` 的 `codes`（两向）；
+/// 帧面那一格仍经 `resolve_json_for_inbound`、转回串时也只回命令级的码。
 #[test]
-fn frozen_the_error_codes_and_the_envelope_are_the_frozen_ones() {
+fn frozen_the_error_codes_are_the_registered_ones() {
     let g = frozen_golden();
     let src = frozen_prod_src();
-    // 码的出口只有两形：`(码, 消息)` 元组（`Err((…))` / `map_err(|e| (…))`）与 `emit_err(码, …)` ——
-    // 两形都是「`(` 之后（隔着空白）紧跟一个蛇形字面量、再跟 `,`」。元组可能折行，所以跳空白。
+    // 码的出口只有一形：`(码, 消息)` 元组（`Err((…))` / `map_err(|e| (…))`）——
+    // 「`(` 之后（隔着空白）紧跟一个蛇形字面量、再跟 `,`」。元组可能折行，所以跳空白。
     let mut found = Vec::new();
     for (i, _) in src.match_indices('(') {
         let after = src[i + 1..].trim_start();
@@ -413,71 +405,21 @@ fn frozen_the_error_codes_and_the_envelope_are_the_frozen_ones() {
             found.push(lit.to_string());
         }
     }
-    // 入参不在本文件读：交给 CLI 面读入参的那一处（与别的子命令同一套口 · 上限 · 码）。那一处会回的码由
-    // `cli_args_tests` 对着它自己的源码钉住；这里只认「本文件真的经它读」。
-    if src.contains("cli_args::read_args(") {
-        found.extend(
-            crate::control::cli_args::READ_ARGS_CODES
-                .iter()
-                .map(|c| c.to_string()),
-        );
-    }
     let codes = frozen_sorted(frozen_list(&g, "error_codes"));
     assert_eq!(
         frozen_sorted(found),
         codes,
-        "生产段真会回的错误码 ≠ 冻结金样（两向）"
+        "生产段真会回的错误码 ≠ 金样（两向）"
     );
-
-    let oneshot_only = frozen_list(&g, "oneshot_only_codes");
-    let stream_want: Vec<String> = codes
-        .iter()
-        .filter(|c| !oneshot_only.contains(c))
-        .cloned()
-        .collect();
     let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|c| c.name == "resolve")
-        .expect("inbound::REGISTRY 里没有 `resolve` —— 对手机端的承诺的流那条入口没了");
+        .expect("inbound::REGISTRY 里没有 `resolve`");
     assert_eq!(
         frozen_sorted(spec.codes.iter().map(|s| s.to_string()).collect()),
-        stream_want,
-        "流那条 `resolve` 的登记码 ≠ 承诺全集 − 只属于一次性那条的"
+        codes,
+        "`resolve` 的登记码 ≠ 金样"
     );
-
-    let env: Value = serde_json::from_str(&error_envelope("bad_request", "m".into())).unwrap();
-    let keys = frozen_sorted(env.as_object().unwrap().keys().cloned().collect());
-    assert_eq!(
-        keys,
-        frozen_sorted(frozen_list(&g, "error_envelope")),
-        "错误信封的键 ≠ 承诺"
-    );
-    assert_eq!(env["code"], "bad_request");
-    assert_eq!(
-        i64::from(ERROR_EXIT),
-        g["error_exit"].as_i64().expect("金样缺 error_exit"),
-        "一次性那条的错误退出码 ≠ 承诺"
-    );
-    assert!(
-        src.contains("fn emit_err(") && src.contains("ERROR_EXIT\n"),
-        "`emit_err` 不再以 `ERROR_EXIT` 收尾 —— 退出码与承诺脱钩了"
-    );
-}
-
-/// R4 两条入口都在：流命令（`inbound::REGISTRY` 的 `resolve`，经 `resolve_json_for_inbound`）·
-/// 一次性（`main.rs` 分派那一臂 ＋ `SUBCOMMANDS` 有 `--resolve`）。仓内零调用方 ⇒ 删掉哪一条仓里都不会有别的东西红。
-#[test]
-fn frozen_both_entry_points_of_the_commitment_are_still_wired() {
-    assert!(
-        crate::SUBCOMMANDS.contains(&"--resolve"),
-        "`SUBCOMMANDS` 里没有 `--resolve`（一次性那条入口）"
-    );
-    let main = guard_core::strip_comment_lines(include_str!("../../../src/backend/main.rs"));
-    guard_core::pin_line(
-        &main,
-        "Some(\"--resolve\") => control::resolve_query::run(&agent_home, &args),",
-    )
-    .unwrap_or_else(|e| panic!("`main.rs` 分派里 `--resolve` 那一臂不在了：{e}"));
     let inbound: Vec<String> = crate::guard_support::registry_sources()
         .into_iter()
         .map(|(_, prod)| guard_core::strip_comment_lines(&prod))
@@ -490,143 +432,12 @@ fn frozen_both_entry_points_of_the_commitment_are_still_wired() {
     let cell = &tail[..tail.find("\n    },").expect("那一格没收尾")];
     assert!(
         cell.contains("resolve_query::resolve_json_for_inbound("),
-        "流那条 `resolve` 不再经 `resolve_json_for_inbound` —— 两条路不再共用一个纯函数"
+        "`resolve` 不再经 `resolve_json_for_inbound`"
     );
-}
-
-/// R5 一次性那条读入参与别的子命令同一套口：`--args-b64`（argv，不碰 stdin）· `--stdin-line` · stdin 开着不写 ⇒ `no_input` ·
-/// 超上限 ⇒ `args_too_large`（不截断）· 用法错 ⇒ `bad_args`。第二个前端的执行通道写不了 stdin，原先只能读 stdin 的 `--resolve` 它够不着。
-/// 金样 `oneshot_input_flags` 就是两个修饰词的字面量。
-#[test]
-fn frozen_the_oneshot_entry_reads_its_args_the_way_every_cli_subcommand_does() {
-    use crate::control::cli_args::{MAX_ARGS_B64_LEN, MAX_CLI_STDIN};
-    let g = frozen_golden();
-    assert_eq!(
-        frozen_sorted(frozen_list(&g, "oneshot_input_flags")),
-        frozen_sorted(vec![
-            crate::ARGS_B64_FLAG.to_string(),
-            crate::STDIN_LINE_FLAG.to_string()
-        ]),
-        "金样承诺的两个修饰词 ≠ 代码里的字面量"
+    assert!(
+        !cell.contains("\"bad_request\""),
+        "`resolve` 那一格又借了协议级的 `bad_request`"
     );
-    struct Silent(std::sync::mpsc::Receiver<()>);
-    impl std::io::Read for Silent {
-        fn read(&mut self, _buf: &mut [u8]) -> std::io::Result<usize> {
-            let _ = self.0.recv();
-            Ok(0)
-        }
-    }
-    let quiet = std::time::Duration::from_millis(300);
-    // 在另一条线程里跑、本线程掐表：挂住时红在 10 s，不是把整趟测试拖死。
-    let run = |opts: &[&str], stdin: Box<dyn std::io::Read + Send>| {
-        let opts: Vec<String> = opts.iter().map(|s| s.to_string()).collect();
-        let (tx, rx) = std::sync::mpsc::channel();
-        let shown = format!("{opts:?}");
-        std::thread::spawn(move || {
-            let (mut out, mut err) = (Vec::new(), Vec::new());
-            let rc = run_io(&opts, stdin, quiet, &mut out, &mut err);
-            let _ = tx.send((
-                rc,
-                String::from_utf8(out).unwrap(),
-                String::from_utf8(err).unwrap(),
-            ));
-        });
-        rx.recv_timeout(guard_core::wall::CEILING)
-            .unwrap_or_else(|_| panic!("{shown}：10 s 还没回 —— 那是挂住"))
-    };
-    let code = |err: &str| -> String {
-        serde_json::from_str::<Value>(err.trim())
-            .unwrap_or_else(|_| panic!("stderr 不是信封：{err:?}"))["code"]
-            .as_str()
-            .unwrap()
-            .to_string()
-    };
-    let sample = &g["samples"][0];
-    let req = sample["request"].as_str().unwrap();
-    let want = format!("{}\n", sample["product"].as_str().unwrap());
-    // stdin 那一形（原样）。
-    let by_stdin = run(&[], Box::new(std::io::Cursor::new(req.as_bytes().to_vec())));
-    assert_eq!(
-        by_stdin,
-        (0, want.clone(), String::new()),
-        "stdin 那一形的成品变了"
-    );
-    // argv 那一形：stdin 开着不写也不碰它，成品逐字一样。
-    let b64 = crate::stream::wire::b64_encode(req.as_bytes());
-    let (_hold, rx) = std::sync::mpsc::channel::<()>();
-    let by_argv = run(&[crate::ARGS_B64_FLAG, &b64], Box::new(Silent(rx)));
-    assert_eq!(by_argv, by_stdin, "`--args-b64` 与 stdin 答得不一样");
-    // 只读一行：读到换行就动手。
-    let by_line = run(
-        &[crate::STDIN_LINE_FLAG],
-        Box::new(std::io::Cursor::new(format!("{req}\n").into_bytes())),
-    );
-    assert_eq!(by_line, by_stdin, "`--stdin-line` 答得不一样");
-    // 失败一律退出 2、stdout 空、stderr 一行信封。
-    let refuse = |opts: &[&str], stdin: Box<dyn std::io::Read + Send>| {
-        let (rc, out, err) = run(opts, stdin);
-        assert_eq!((rc, out.as_str()), (ERROR_EXIT, ""), "{opts:?} 该被拒");
-        code(&err)
-    };
-    let (_hold2, rx2) = std::sync::mpsc::channel::<()>();
-    assert_eq!(
-        refuse(&[], Box::new(Silent(rx2))),
-        "no_input",
-        "stdin 开着不写该立即回码"
-    );
-    assert_eq!(
-        refuse(
-            &[crate::ARGS_B64_FLAG, &b64, crate::STDIN_LINE_FLAG],
-            Box::new(std::io::empty())
-        ),
-        "bad_args"
-    );
-    assert_eq!(
-        refuse(&[crate::ARGS_B64_FLAG], Box::new(std::io::empty())),
-        "bad_args"
-    );
-    let big = "A".repeat(MAX_ARGS_B64_LEN + 4);
-    assert_eq!(
-        refuse(&[crate::ARGS_B64_FLAG, &big], Box::new(std::io::empty())),
-        "args_too_large"
-    );
-    // stdin 超上限：拒收，不再截断成一段解析失败的 JSON。
-    assert_eq!(
-        refuse(
-            &[],
-            Box::new(std::io::Cursor::new(vec![b' '; MAX_CLI_STDIN as usize + 1]))
-        ),
-        "args_too_large"
-    );
-    assert_eq!(
-        refuse(&[crate::ARGS_B64_FLAG, "e30"], Box::new(std::io::empty())),
-        "bad_request"
-    );
-}
-
-/// R6 文档侧：IPC-PROTOCOL §8「`--resolve`」那一条写了全部错误码与两个修饰词（承诺的正文就在那里，金样改了文档不改 ⇒ 红）。
-#[test]
-fn frozen_the_protocol_doc_states_the_whole_commitment() {
-    let g = frozen_golden();
-    let doc = include_str!("../../../src/doc/IPC-PROTOCOL.md");
-    let sec = doc
-        .split("## 8. CLI 一次性调用")
-        .nth(1)
-        .and_then(|s| s.split("\n## ").next())
-        .expect("IPC-PROTOCOL.md 没有「8. CLI 一次性调用」那一节");
-    let item = sec
-        .split("\n- ")
-        .find(|b| b.starts_with("**`--resolve`**"))
-        .expect("§8 里没有「`--resolve`」那一条");
-    for want in frozen_list(&g, "error_codes")
-        .into_iter()
-        .chain(frozen_list(&g, "oneshot_input_flags"))
-    {
-        assert!(
-            item.contains(&format!("`{want}`")),
-            "§8「--resolve」那一条没写 `{want}`（金样里有）"
-        );
-    }
 }
 
 /// 会话 id 的校验规则：第二个前端照它铸 / 认 id（非空 · ≤128 · 只 `[0-9A-Za-z_-]`）。放宽或收紧都红。

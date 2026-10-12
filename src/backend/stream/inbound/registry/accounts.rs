@@ -239,7 +239,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "accounts-list",
         summary: "账号清单",
         codes: &["bad_args", "too_large"],
-        fields: &[out("accounts", "每账号一个对象，字段同 `--list-accounts` 的账号行；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）"), arg("agent", "必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）"), out("meta", "`{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）"), out("notice", "「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`")],
+        fields: &[out("accounts", "每账号一个对象 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable, keyMasked, baseUrl, badge}`；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）"), arg("agent", "必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）"), out("meta", "`{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）"), out("notice", "「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
@@ -264,7 +264,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "accounts-sessions",
         summary: "正在跑的会话各属哪个账号",
         codes: &["too_large"],
-        fields: &[out("lines", "同 `--session-accounts`：每条运行中会话一行")],
+        fields: &[out("lines", "每条运行中会话一行 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜）")],
         takes_input: false,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)

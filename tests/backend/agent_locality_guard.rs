@@ -244,16 +244,8 @@ mod tests {
             "monitor 与手机端 **都**改读 `homes` 之后删掉它。monitor 那半 `S4` 已做完，\
              只剩手机端。删的那天本条同轮摘登记（下面的幽灵检查会逼着摘）。",
         ),
-        (
-            "control/resolve_query.rs",
-            "claude_dir",
-            "`--resolve` 的 **stdin 入参** `ResumeSpec.claudeDir`（`rename_all=camelCase`）。\
-             契约与手机端冻结在 2026-07-18，改 Rust 标识符 = 改线上字段名。\
-             ⚠ 它今天是 `#[allow(dead_code)]`（MVP 不做 pidfile 消解），**但「没用到」不等于\
-             「可以改名」** —— 别人在往里发。",
-            "手机端那侧 `ResumeSpec` 不再发 `claudeDir` 之后（或整个 `--resolve` 契约重谈）。\
-             与上一条同源：都卡在同一个仓外消费方身上。",
-        ),
+        // `control/resolve_query.rs` 那一行（`ResumeSpec.claudeDir`）摘了：10-11 手写的 `--resolve` 臂删了、契约解冻（解锁条件满足），
+        //   那一格从没用过，随 `fallbackCwd` · `alreadyInTmux` 一起删了。
         (
             "main.rs",
             "claude_dir",

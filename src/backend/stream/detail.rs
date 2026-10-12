@@ -64,7 +64,7 @@ impl Failed {
             .into_owned()
     }
 
-    /// 投到 CLI 面（**唯一一处**：CLI 控制面 · `--list-projects` · `--fork-session` · `--account-trust*` 都经这里）：
+    /// 投到 CLI 面（**唯一一处**：CLI 控制面与常驻后端起停那几条都经这里）：
     /// stderr 一行 `{code, message, detail, data?}`，退出 2；`text`（[`crate::TEXT_FLAG`]）⇒ 那一句 ＋ 下面原样接复制详情。
     /// `tz` ＝ 看的那一台的时区（`--tz`）：详情里那一行时刻按它填。
     pub(crate) fn emit_to(
@@ -82,11 +82,6 @@ impl Failed {
         };
         let _ = writeln!(err, "{line}");
         2
-    }
-
-    /// [`Failed::emit_to`] 的 stderr · JSON 那一形（不收 `--text` 的那几条 CLI）。
-    pub(crate) fn emit(&self, tz: &crate::common::time::Tz) -> i32 {
-        self.emit_to(&mut std::io::stderr(), false, tz)
     }
 }
 

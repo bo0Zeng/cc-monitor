@@ -1,10 +1,10 @@
 //! 多账号（账号库：每个号一个配置目录，共享项链回同一个配置根）的只读消费侧（写侧是 `accounts/manage/`）。
 //!
-//! - `--list-accounts` → 第 1 行 `{"kind":"accounts-meta",…}`，其后每账号一行 JSON。
-//! - `--session-accounts` → 每条运行中会话一行：它的 `CLAUDE_CONFIG_DIR` 属于哪个账号。
-//! - `--account-trust <configDir> <cwd>` → 单行 `{"trusted":bool,"known":bool}`：目标账号是否已信任该目录
-//!   （换号 resume 前的预检 —— 首次用某账号进某目录，CC 会弹信任确认，会卡住编排）。
-//! - `--account-trust-zero <cwd>` → 同上，但问的是账号 0（它没有 configDir，`.claude.json` 在 `$HOME`）。
+//! 帧面三条（`inbound::REGISTRY` 的账号族，宿主 `faces/read_face.rs`）：
+//! - `accounts-list` → `{meta, accounts, notice}`（[`list_product_with`]）。
+//! - `accounts-sessions` → 每条运行中会话一行：它的 `CLAUDE_CONFIG_DIR` 属于哪个账号（[`session_accounts`]）。
+//! - `accounts-trust` → `{trusted, known}`：目标账号是否已信任该目录（换号 resume 前的预检 —— 首次用某账号进某目录，
+//!   CC 会弹信任确认，会卡住编排）；`configDir` 缺席 = 账号 0（它没有 configDir，`.claude.json` 在 `$HOME`）。
 //!
 //! # 账号 0
 //!
@@ -14,14 +14,11 @@
 //!
 //! # 谓词的作用面不对称
 //!
-//! `is_safe_config_dir` 的调用点都在清单侧（源是 accounts manifest）；`--session-accounts` 那条路的 `configDir` 来自
+//! `is_safe_config_dir` 的调用点都在清单侧（源是 accounts manifest）；`accounts-sessions` 那条路的 `configDir` 来自
 //! `/proc/<pid>/environ`，没过谓词就作为帧字段发出去。不给它套谓词：进程侧的值只拿去与 `by_dir`（只装过了谓词的目录）比对，
 //! 不安全的值匹配不上、`account` 恒 `None`；若把它丢弃（置 `None`），那条会话就变成 `bare: true` —— 等于把一个可疑会话贴成默认账号。
 //! ⇒ 归属安全、展示未净化；要表达「configDir 不可信」得给帧加一个状态位（改上线契约）。
 
-//!
-//! 输出协议同 `history_query`：每行一个 JSON 对象（不是 wire::Frame）。成功 exit 0；`--account-trust` 的硬错误 exit 2 +
-//! stderr 纯 `{code,message}` JSON（同 `resolve_query` 的结构化错误约定）。
 //!
 //! # 只读（src/doc/INVARIANTS.md §1）
 //!
@@ -34,8 +31,8 @@
 //! - `/proc/<pid>/environ` 只抠两个写死的键（账号配置目录 · `ANTHROPIC_BASE_URL`，键名由适配层给），不回传整个环境快照。
 //!   `ANTHROPIC_BASE_URL` 的值带中转钥匙 ⇒ 只折成一个布尔（`viaRelay`），值本身不出参、不进日志。键名不接受调用方传进来
 //!   （否则就退化成「任意环境变量读」原语）；判据数着本文件生产段里读环境的调用点，多一处 ⇒ 红。
-//! - `--account-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，否则拒绝（不退化成任意文件读）；
-//!   `--account-trust-zero` 不收路径参数。
+//! - `accounts-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，否则拒绝（不退化成任意文件读）；
+//!   问账号 0 时不收路径参数。
 
 use crate::common::cells::Words;
 use crate::platform::fs::Ro;
@@ -115,7 +112,7 @@ fn manifest_path(accts_dir: &Path) -> PathBuf {
     accts_dir.join(ACCOUNTS_MANIFEST_NAME)
 }
 
-/// **这台机器上**那份账号 manifest 在哪（与 `--list-accounts` 读的是同一份）。watcher 盯着它、变了发 `changed {accounts}`。
+/// **这台机器上**那份账号 manifest 在哪（与 `accounts-list` 读的是同一份）。watcher 盯着它、变了发 `changed {accounts}`。
 pub(crate) fn default_manifest_path() -> PathBuf {
     manifest_path(&resolve_accts_dir())
 }
@@ -225,7 +222,7 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
     }
 }
 
-/// 一条会话在出参里的全部字段（`--session-accounts` 每行一个）。
+/// 一条会话在出参里的全部字段（`accounts-sessions` 每行一个）。
 struct SessionRow {
     pid: u32,
     sid: Option<String>,
@@ -245,31 +242,9 @@ struct SessionRow {
 
 // ---------------------------------------------------------------- 命令
 
-/// `--list-accounts`：meta 行 + 每账号一行。永远 exit 0（"未启用"是正常状态，不是错误）。
+/// 清单的**扫描本体**：`(meta, 账号们)`，帧面成品（[`list_product_with`]）经它读 manifest / 判安全 / 判鉴权方式。
 ///
-/// 扫描本体挪进 [`scan_accounts`]（帧面 `accounts-list` 出成品那一臂共用同一个扫描）；
-/// 本函数只把它摊成 CLI 那几行（meta 行多两格分帧用的 `kind` 与 `accountZeroAware`，逐字节同旧形状）。
-/// CLI 这一臂**不并 apikey 表**（`in_table` 恒假 ⇒ 分类逐格是 manifest 那一份）。
-fn list_accounts(accts_dir: &Path) -> Vec<String> {
-    let (meta, rows) = scan_accounts(accts_dir, &|_| false);
-    let enabled = meta.get("enabled") == Some(&serde_json::Value::Bool(true));
-    let mut line = serde_json::Map::new();
-    line.insert("kind".into(), "accounts-meta".into());
-    line.extend(meta);
-    if enabled {
-        // 能力标记：本后端认识「configDir 缺席 = 账号 0」。读这几行的人 default=false ⇒ 老后端能被明说出来，而不是静默少一行账号 0。
-        line.insert("accountZeroAware".into(), true.into());
-    }
-    let mut out = vec![serde_json::Value::Object(line).to_string()];
-    out.extend(rows.iter().map(serde_json::Value::to_string));
-    out
-}
-
-/// 清单的**扫描本体**：`(meta, 账号们)`。CLI 那一臂（[`list_accounts`]）与帧面成品
-/// （[`list_product_with`]）两个出口共用它 —— 「一份扫描、两个出口」，读 manifest / 判安全 / 判鉴权方式一行不重写。
-///
-/// `in_table(configDir)`：这个号在**这台机器**的 apikey 表里有没有行（帧面那一臂由调用方按
-/// `acct_core::apikey_routed_subset` 答；CLI 那一臂恒答没有）。它是鉴权方式的**第二个输入**，
+/// `in_table(configDir)`：这个号在**这台机器**的 apikey 表里有没有行（调用方按 `acct_core::apikey_routed_subset` 答）。它是鉴权方式的**第二个输入**，
 /// 进的是同一条计算路径（`auth_kind_with_apikey_table` → `auth_ready`，各只一处）。
 fn scan_accounts(
     accts_dir: &Path,
@@ -346,7 +321,7 @@ fn scan_accounts(
                     .as_ref()
                     .is_some_and(|d| d.join(CREDENTIALS_NAME).exists());
                 // 鉴权方式这一维：分类与就绪各只有一处实现，都住 `acct-core`（本文件与 `local_accounts.rs` 都调它）。
-                // 第二个输入：这台机器的 apikey 表里有没有它（帧面那一臂才问；CLI 那一臂恒没有）。
+                // 第二个输入：这台机器的 apikey 表里有没有它。
                 let in_apikey_table = cfg_out.as_str().is_some_and(in_table);
                 let auth_kind = auth_kind_with_apikey_table(
                     auth_kind_from_manifest(a.auth_kind.as_deref()),
@@ -412,7 +387,7 @@ fn next_default(accts_dir: &Path) -> Option<String> {
 
 /// 帧面 `accounts-list` 的成品（账号域读自己那台的 apikey 表，agent 随请求带）。
 ///
-/// `{meta, accounts, notice}`：清单同 CLI 那一臂同一个扫描（[`scan_accounts`]），并上这台机器自己那份 apikey 表
+/// `{meta, accounts, notice}`：清单经 [`scan_accounts`] 扫，并上这台机器自己那份 apikey 表
 /// （`rows`：表里有哪几条账号 id，调用方从 `accounts::upstream_select::file_face` 读来 —— 与中转里的上游选择同一个出处）；
 /// 「哪几个号在表里有行」只问 `acct_core::apikey_routed_subset`（`table_agent`：这台机器上那份文件属于哪一家）。
 /// `notice`：「能用但有缺」—— manifest 启用了、却一个账号 0 都没有（写它的那一侧旧到不认账号 0）。措辞不说「远端」：本机远端同一条路。
@@ -952,7 +927,7 @@ fn waiting_needs(agent_home: &Path, sid: &str) -> Option<super::facts_query::Nee
     super::facts_query::needs_of(&pending, Some(&wait))
 }
 
-/// `--session-accounts`：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
+/// 正在跑的会话各属哪个号：扫 `<claude_dir>/sessions/<PID>.json`，每条一行。
 pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
     // 向注册表要「会话进程环境里该读哪两个键」只问这一次（账号 · 上游地址；账号库那一家的 `AccountsFace.session_env`）。
     let Some(env_keys) = crate::agents::account_library_face().map(|f| f.session_env) else {
@@ -1056,7 +1031,7 @@ pub(crate) fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<Strin
         .collect()
 }
 
-/// `--account-trust <configDir> <cwd>`：目标账号是否已信任该目录。
+/// 目标账号（`configDir`）是否已信任该目录。
 /// `configDir` 必须 ∈ manifest（否则这就成了任意文件读原语）。
 fn account_trust(
     accts_dir: &Path,
@@ -1084,9 +1059,9 @@ fn account_trust(
     trust_in(Path::new(want), cwd)
 }
 
-/// `--account-trust-zero <cwd>`：**账号 0** 的信任预检。
+/// **账号 0** 的信任预检。
 ///
-/// 为什么要单独一个入口而不是给 `--account-trust` 传个空 `configDir`：账号 0 **没有**
+/// 为什么要单独一个入口而不是给上一个传个空 `configDir`：账号 0 **没有**
 /// config dir，空串是被明令禁止的拼法（空值 ≠ 未设，见 `RawAccount::config_dir`）。
 /// 而且它的 `.claude.json` 也不在共享库里 —— 原生根是 `$HOME`（身份表 `NATIVE_IDENTITY` 里它的原生根是家目录）⇒ 路径来源本就不同，
 /// 用同一个入口只能靠哨兵值区分，那比多一个动词更容易出错。
@@ -1175,13 +1150,13 @@ pub(crate) fn app_exit_product(
     }
 }
 
-/// 帧面那几问要的「哪个会话在用哪个号」（同 `--session-accounts` 那一臂，走同一个解析，只跟着家走）。
+/// 帧面那几问要的「哪个会话在用哪个号」（[`session_accounts`]，只跟着家走）。
 pub(crate) fn session_lines_for_frame(agent_home: &Path) -> Vec<String> {
     session_accounts(agent_home, &resolve_accts_dir())
 }
 
-/// 帧面 `accounts-trust`：换号前的信任预检。`config_dir == None` ⇒ 账号 0（同 `--account-trust-zero`：路径写死在 `$HOME`，不收路径参数）；
-/// 否则同 `--account-trust`（必须 ∈ manifest，否则就成了任意文件读原语）。两形各调 CLI 那一臂同一个函数，拒绝码原样上交。成品 `{trusted, known}`。
+/// 帧面 `accounts-trust`：换号前的信任预检。`config_dir == None` ⇒ 账号 0（路径写死在 `$HOME`，不收路径参数）；
+/// 否则必须 ∈ manifest（否则就成了任意文件读原语）。拒绝码原样上交。成品 `{trusted, known}`。
 pub(crate) fn trust_product(
     config_dir: Option<&str>,
     cwd: &str,
@@ -1199,7 +1174,7 @@ pub(crate) fn trust_product_at(
         None => account_trust_zero(cwd)?,
         Some(c) => account_trust(accts_dir, c, cwd)?,
     };
-    // CLI 那一臂的出参是一行 JSON（`trust_of_config` 造的）；帧面只取那两格。缺一格 ⇒ 契约坏了，不猜。
+    // 本体的出参是一行 JSON（`trust_of_config` 造的）；帧面只取那两格。缺一格 ⇒ 契约坏了，不猜。
     let v: serde_json::Value = serde_json::from_str(&line).map_err(|e| {
         (
             "failed".to_string(),
@@ -1217,64 +1192,6 @@ pub(crate) fn trust_product_at(
             "failed".to_string(),
             crate::common::contract::malformed("trust line lacks `trusted` / `known`"),
         )),
-    }
-}
-
-/// `--account-trust <configDir> <cwd>` / `--account-trust-zero <cwd>` 的 CLI 一趟：成 ⇒ 那一行 `{trusted, known, error}`；
-/// 败 ⇒ 那一份失败（与帧面失败应答同一种信封 [`crate::stream::detail::Failed`]；拒绝码原样，详情的「命令」那一项是这条 CLI 的名字）。
-pub(crate) fn trust_cli(
-    accts_dir: &Path,
-    args: &[String],
-) -> Result<String, crate::stream::detail::Failed> {
-    let flag = args.first().map(String::as_str).unwrap_or_default();
-    let cmd = flag.trim_start_matches("--");
-    let got = match (flag, args.get(1), args.get(2)) {
-        ("--account-trust", Some(cfg), Some(cwd)) => account_trust(accts_dir, cfg, cwd),
-        ("--account-trust-zero", Some(cwd), _) => account_trust_zero(cwd),
-        _ => Err((
-            "bad_args".to_string(),
-            if flag == "--account-trust" {
-                "--account-trust requires <configDir> <cwd>"
-            } else {
-                "--account-trust-zero requires <cwd>"
-            }
-            .to_string(),
-        )),
-    };
-    got.map_err(|(code, message)| {
-        crate::stream::detail::Failed::new(Some(cmd), &code, message, None, None)
-    })
-}
-
-/// 查询模式入口。返回进程退出码（0 ok / 2 err），同 `history_query::run` 约定。
-/// `tz` ＝ 看的那一台的时区（`--tz`）：失败详情那一行时刻按它填。
-pub fn run(agent_home: &Path, args: &[String], tz: &crate::Tz) -> i32 {
-    let accts_dir = resolve_accts_dir();
-    match args.first().map(String::as_str) {
-        Some("--list-accounts") => {
-            for l in list_accounts(&accts_dir) {
-                println!("{l}");
-            }
-            0
-        }
-        Some("--session-accounts") => {
-            for l in session_accounts(agent_home, &accts_dir) {
-                println!("{l}");
-            }
-            0
-        }
-        Some("--account-trust") | Some("--account-trust-zero") => match trust_cli(&accts_dir, args)
-        {
-            Ok(line) => {
-                println!("{line}");
-                0
-            }
-            Err(f) => f.emit(tz),
-        },
-        other => {
-            eprintln!("cc-monitor-backend accounts error: unknown argument: {other:?}");
-            2
-        }
     }
 }
 

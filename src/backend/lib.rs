@@ -681,7 +681,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// op 表 · 期限档 · 写表（算 op → 写成之后那一步）都由小程序自报，后端零引擎常量；`panorama-edit` 的 `op` 改成「算」op 名；op `subgraph` 删、`neighborhood` 加（跳数由小程序给，前端不算图）。形状代号换代 ⇒ 各台首次打开全景重放一次小程序字节。
 ///
 /// ★★★ **p5r-link-fixes-win3**（2026-09-29）：行为 / 协议 —— russh 副本压缩循环 CZ2（撑满就扩、吃光且冲刷完才收工：压缩链路上大块不可压数据不再断）·
-/// `deploy-plan` 多 `leftovers`（部署残件每次连上照删）· 拨号 ack 多 `open_refused`（对端拒端口转发 ⇒ 停止重拨、明说）· `--list-projects` 没有记录树时出错行带码 `no_record_tree`（本机后端认它当零个项目）。子命令没变。
+/// `deploy-plan` 多 `leftovers`（部署残件每次连上照删）· 拨号 ack 多 `open_refused`（对端拒端口转发 ⇒ 停止重拨、明说）· `--list-projects` 没有记录树时出错行带一个「记录树不在」的码（本机后端认它当零个项目；那条子命令 10-11 删了）。子命令没变。
 ///
 /// ★★★ **p5s-win-shell-fixes**（2026-09-29）：行为 / 协议 —— PowerShell 单引号字面量只留一个出口（认全五个引号字符）· 流进 Windows 开终端那条路的远端命令不带双引号 ·
 /// 执行策略挡住别名块时明说、给标准做法（新帧命令 `powershell-policy-set`，只在用户确认后执行）· 写用户 PATH 保持注册表原类型 · 后端家目录收成 `platform` 一个家 · Windows 上本机 ccm 也现测。
@@ -1017,8 +1017,6 @@ pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 
 /// ② 一次性查询子命令：**只有 `args[0]` 是其中之一才进查询模式**。
 pub const SUBCOMMANDS: &[&str] = &[
-    "--account-trust",
-    "--account-trust-zero",
     // 改账号库那几条帧命令（`inbound::REGISTRY` 的 `accounts-*`，本体 `accounts/manage/`）**自动派生**的 CLI 面。
     // 登记理由同下面那几族：`is_query_mode` 那道闸门读本表，不在表里 ⇒ 当未知 flag 静默进流模式。
     // `--accounts-add` 的入参（API 号的 key 在内）**从 stdin 读**，不收 argv。⚠ 加这几行会逼出一次 `BUILD_ID` bump。
@@ -1038,8 +1036,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 只读查询面那八条帧命令**自动派生**出来的 CLI 面
     //（`cli_control::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
-    // ⚠ 它们与 `--list-accounts` / `--session-accounts` 是**同一个函数的两个宿主**，
-    //   不是第二份实现（理由整段在 `inbound::REGISTRY` 那一段）。
     //   `--accounts-list` 不在：它的徽章读本进程的中转监听状态，一次性进程答不出真话（`cli_control::STREAM_ONLY`）。
     "--accounts-sessions",
     // 会话级答题 hook 的客户端（`control/asks/hook.rs`）：那一家的 hook 叫它，它经本机常驻后端问人、把答案交回去。⚠ 新子命令 ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
@@ -1047,8 +1043,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--machine-interrupts",
     // 帧命令 `sessions-needs`（这台上需手动的会话清单）自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--sessions-needs",
-    // 帧命令 `accounts-trust` 自动派生出来的 CLI 面（与 `--account-trust` / `--account-trust-zero`
-    //   是同一个函数的两个宿主）。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
+    // 帧命令 `accounts-trust` 自动派生出来的 CLI 面。⚠ 逼出一次 `BUILD_ID` bump（打版本号时统一做）。
     "--accounts-trust",
     // 帧面 `backend-log`（这台后端的 stderr 诊断文件尾部）自动派生的 CLI 面。
     //   **是新子命令** ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
@@ -1265,10 +1260,10 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--files-grep",
     // 会话内查找（Ctrl+F）。**是新子命令** ⇒ `build_id_guard` 红是预期的，
     // BUILD_ID 打版本号时统一 bump。
-    "--find-in-session",
-    "--fork-session",
-    // 帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。刻意不与上一行同名：那一条是对手机端冻结的
-    //   argv 形。⚠ 加这一行逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
+    // 历史读面 · 搜索 · 账号读面 · 分叉那 13 条手写子命令（`--read-session*` · `--search` · `--list-*` · `--session-accounts` ·
+    //   `--find-in-session` · `--account-trust*` · `--fork-session`）删了（第 7 批第二题：帧面早有同义的帧命令、生产里没人调）。
+    //   ⚠ 子命令集变了 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    // 帧面 `session-fork` 自动派生的 CLI 面（读 stdin）。
     "--session-fork",
     // 同上一段：`history-*` 六条帧命令的 CLI 面。
     // +2：`history-index` / `history-user-inputs`（骨架索引与大纲清单上帧面）的 CLI 面，
@@ -1305,16 +1300,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--hooks-diag",
     "--kill",
     "--launch",
-    "--list-accounts",
-    // 大纲的数据源：「你说过的话」清单。**是新子命令** ⇒
-    // `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
-    "--list-user-inputs",
-    "--list-projects",
-    "--list-sessions",
     "--ping",
-    "--read-session",
-    "--read-session-from-offset",
-    "--read-session-tail",
     // `--relay`（独立的中转进程）删了：中转只住常驻后端进程里。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     // 远端常驻后端的起 · 找 · 停（`control/resident.rs`；monitor 经链路 capture 跑）。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
@@ -1322,10 +1308,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--resident-attach",
     "--resident-ensure",
     "--resident-stop",
+    // 帧面 `resolve` 派生的 CLI 面（手写那一臂删了，信封与别的命令同一形）。
     "--resolve",
     // `--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    "--search",
-    "--session-accounts",
     "--session-interrupts",
     // 起新会话框那三问 ＋ tab 栏多选的批量停 / 起 / 问样子（`inbound::REGISTRY` 的 `session-new*` / `sessions-*`）
     //   自动派生的 CLI 面：六条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
@@ -2273,18 +2258,15 @@ pub fn cli_flag(name: &str) -> String {
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
+    // `--after-ms` · `--include-tools` · `--limit` · `--scope`：全文搜索的选项词（帧面 `history-search` 摊回来交 `search_query::parse_opts`）。
+    // `--from` · `--until` · `--query`（`--list-user-inputs` · `--read-session-from-offset` · `--find-in-session` 的选项）随那几条子命令删了。
     "--after-ms",
     // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     ARGS_B64_FLAG,
-    // `--list-user-inputs` 的增量起点（字节偏移，传上次尾行的 `end`）。
-    "--from",
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
     "--grace",
     "--include-tools",
-    // `--read-session-from-offset` 的右端收口（骨架索引是帧命令 `history-index`，CLI 面 `--history-index`）。
     "--limit",
-    // `--find-in-session` 的查询串（选项值，不是位置参数：查询本身可能以 `--` 起头）。
-    "--query",
     // `--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
     "--replace",
     "--scope",
@@ -2294,7 +2276,6 @@ pub const SUBCOMMAND_OPTIONS: &[&str] = &[
     TEXT_FLAG,
     // 看的那一台的时区（同帧面请求信封的 `tz`；流模式起参也认它，剥在 [`split_stream_flags`]）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     TZ_FLAG,
-    "--until",
     // CLI 控制面那一族（`--<帧命令>`）的声明口（同帧面请求信封的 `view`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     VIEW_FLAG,
     // CLI 控制面那一族（`--<帧命令>`）的期限口（同帧面请求信封的 `within_ms`）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。

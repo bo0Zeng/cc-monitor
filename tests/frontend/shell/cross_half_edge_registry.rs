@@ -220,8 +220,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // 这里原有四条边（`session_outline_tests.rs` / `session_find_tests.rs` 各两条：
     //   大纲清单与会话内查找的**线上词**、monitor 造的 **argv** 两侧同形）。monitor 那一侧的读者（核头尾、造 argv）
     //   随两条命令改走通道一起删了 ⇒ 四条边没有读者了。两侧同形的牙换到了**帧面成品**上：
-    //   后端 `read_face_tests::the_frame_products_carry_exactly_the_rows_the_cli_arm_prints`（成品 == CLI 臂中段）
-    //   ＋ 跨语言金样（`tests/__fixtures__/session-reads.golden.json`，后端写、TS 解码器读）—— 那两条都不是编译期边。
+    //   跨语言金样（`tests/__fixtures__/session-reads.golden.json`，后端写、TS 解码器读）—— 那不是编译期边。
     (
         "monitor→backend",
         "tests/frontend/shell/dial_host_tests.rs",

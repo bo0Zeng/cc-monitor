@@ -1473,7 +1473,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `accounts` | ← | 每账号一个对象，字段同 `--list-accounts` 的账号行；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`） |
+| `accounts` | ← | 每账号一个对象 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable, keyMasked, baseUrl, badge}`；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`） |
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`） |
 | `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`） |
 | `notice` | ← | 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null` |
@@ -1505,7 +1505,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `lines` | ← | 同 `--session-accounts`：每条运行中会话一行 |
+| `lines` | ← | 每条运行中会话一行 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |
 
 码：`too_large`
 
@@ -1840,10 +1840,10 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `after_ms` | → | 可选，= `--after-ms` |
-| `include_tools` | → | 可选布尔，= `--include-tools` |
-| `limit` | → | 可选，= `--limit` |
-| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家），形状与行序同 `--search` |
+| `after_ms` | → | 可选：只要这一刻（毫秒）之后的 |
+| `include_tools` | → | 可选布尔：工具调用与结果也搜 |
+| `limit` | → | 可选：全局片段上限（`hitCount` 仍报全量） |
+| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家） |
 | `query` | → | 搜索词（必填） |
 | `scope` | → | 可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope` |
 | `skipped` | ← | 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）：它们的会话不在结果里 |
@@ -1929,7 +1929,7 @@ sid → 上次用哪个号起。
 | `eof` | ← | 区间到头了（`until` 或读时的文件长度） |
 | `next` | ← | 下一页从这里起（= `offset` ＋ 这一页的原始字节数） |
 | `offset` | → | 从这个字节起（缺省 0） |
-| `path` | → | jsonl 路径，围栏同 `--read-session`（越界 ⇒ `refused`） |
+| `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
 | `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd` |
 | `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
 
@@ -2067,9 +2067,9 @@ sid → 上次用哪个号起。
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`（与 `--find-in-session` 的中段逐行相同）；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
+| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
 | `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
-| `limit` | → | 可选，缺省 500、封顶 2000（与 CLI 的 `--limit` 同一对常量） |
+| `limit` | → | 可选，缺省 500、封顶 2000 |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 | `query` | → | 查询串（原样；以 `--` 起头也照样是查询，不是选项） |
 | `total` | ← | 全量命中数（≥ 条数；大于 ⇒ 被上限砍过） |
@@ -2111,7 +2111,7 @@ sid → 上次用哪个号起。
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `end` | ← | 最后一个完整行的末字节 ＝ 下一次增量该带的 `from` |
-| `entries` | ← | 每条用户输入 `{uuid, timestamp, excerpt}`（对话序；与 `--list-user-inputs` 的中段逐行相同） |
+| `entries` | ← | 每条用户输入 `{uuid, timestamp, excerpt}`（对话序） |
 | `from` | → ← | 增量起点（缺省 0；传上次尾行的 `end`） |
 | `path` | → | jsonl 路径（围栏同 `history-read`） |
 
@@ -2130,7 +2130,7 @@ sid → 上次用哪个号起。
 | `path` | → | jsonl 路径（路径围栏同 `history-read`） |
 | `split_at` | ← | 尾段第一行的字节起点 |
 | `tail_from` | ← | 尾段第一行的行号 |
-| `total` | ← | 可计行总数（口径同 `--read-session-tail` 的 `snapshot_meta`） |
+| `total` | ← | 可计行总数 |
 
 码：`bad_args` · `failed`
 
@@ -2199,11 +2199,11 @@ sid → 上次用哪个号起。
 
 #### `resolve`
 
-按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数）。
+按 `ResumeSpec` 推出恢复命令 `CommandPlan`。
 
 收 `args` · 可撤 · CLI：`ccm -- --resolve`
 
-码：`bad_request` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`
+码：`bad_args` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`
 
 ### 4.5 资产
 
@@ -3997,8 +3997,6 @@ cc-bus 钩子诊断。
 
 | 子命令 | 说明 |
 |---|---|
-| `--account-trust` `<configDir> <cwd>` | 换号恢复前的信任预检：单行 `{trusted, known, error}`；`configDir` 必须逐字是账号清单里的一个，否则退出 2、`unknown_config_dir`；不回那份配置的内容 |
-| `--account-trust-zero` `<cwd>` | 账号 0（没启用多账号时那个原生身份）的信任预检，形状同 `--account-trust`；`cwd` 只当查表键，不收路径参数 |
 | `--accounts-add` | ＝ 帧命令 `accounts-add`：新建一个号 |
 | `--accounts-init` | ＝ 帧命令 `accounts-init`：建账号库 |
 | `--accounts-login-cmd` | ＝ 帧命令 `accounts-login-cmd`：在终端里登录一个号的那一行 |
@@ -4072,10 +4070,8 @@ cc-bus 钩子诊断。
 | `--files-stage-chunk` | ＝ 帧命令 `files-stage-chunk`：存盘的一块进暂存区 |
 | `--files-stat` | ＝ 帧命令 `files-stat`：一个路径的元数据 |
 | `--files-write-text` | ＝ 帧命令 `files-write-text`：覆盖写一份已经在的普通文件 |
-| `--find-in-session` `[--include-tools] [--limit <n>] --query <q> <jsonl>` | 在一份会话里找一段文字：头 `{kind:"session_find",v:1}` · 每条命中 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`（`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好；`tool` ＝ 它收在哪次工具调用的卡里，缺 ⇒ 自己那张卡） · 尾 `{kind:"session_find_end",count,total}`；`limit` 缺省 500、封顶 2000 |
 | `--first-run` | ＝ 帧命令 `first-run`：首次运行「开始用」三步各自打没打勾 |
 | `--footprint-report` | ＝ 帧命令 `footprint-report`：「足迹」由这台后端出整份成品 |
-| `--fork-session` `<args>` | 从某条消息处分叉出一个新会话文件，出参 `ForkResult`（见下） |
 | `--history-annotate` | ＝ 帧命令 `history-annotate`：改一条历史注解 |
 | `--history-branch` | ＝ 帧命令 `history-branch`：主线外清单 |
 | `--history-facts` | ＝ 帧命令 `history-facts`：会话事实 |
@@ -4100,10 +4096,6 @@ cc-bus 钩子诊断。
 | `--last-seen-write` | ＝ 帧命令 `last-seen-write`：记下一台这一次读成的那一份（或清掉那台） |
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
-| `--list-accounts` | 账号清单：首行 `{kind:"accounts-meta", enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault}`，其后每号一行 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable}`；没启用多账号 ⇒ `enabled:false`、退出 0 |
-| `--list-projects` | 项目清单：每行 `{dirName, projectPath, sessionCount, lastActivityMs}`；工作目录在 `~/.cc-monitor/autostart/` 下的会话不出 |
-| `--list-sessions` `<project_dir>` | 一个项目的会话：每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}` |
-| `--list-user-inputs` `[--from <offset>] <jsonl>` | 「你说过的话」：头 `{kind:"user_inputs",v:1,from}` · 每条 `{uuid, timestamp, excerpt}`（对话序）· 尾 `{kind:"user_inputs_end",count,end}`；`end` 是下次增量的 `--from`；`offset` 过了文件尾 ⇒ 退出 2 |
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
 | `--mcp-read` | ＝ 帧命令 `mcp-read`：这台机器的 MCP 列表成品 |
 | `--mcp-server-put` | ＝ 帧命令 `mcp-server-put`：增 / 改这台一个项目 `.mcp.json` 里的一条 |
@@ -4131,15 +4123,12 @@ cc-bus 钩子诊断。
 | `--pubkey-push` | ＝ 帧命令 `pubkey-push`：把本机公钥推进那台的 `authorized_keys` |
 | `--quota-probe` | ＝ 帧命令 `quota-probe`：用某个号查一次额度 |
 | `--quota-read` | ＝ 帧命令 `quota-read`：这台的额度账 |
-| `--read-session` `<jsonl>` | 原样透传整份会话字节 |
-| `--read-session-from-offset` `[--until <end>] <jsonl> <offset>` | 从字节 `offset` 续读：原样透传 `[offset, EOF)`（`--until` ⇒ `[offset, end)`）。骨架索引是 `--history-index`。续点用 `line` 帧的 `byte_offset`，别用 `seq` |
-| `--read-session-tail` `<jsonl> <N>` | 尾部优先：首行 `{kind:"snapshot_meta",total,tail_from}`，随后原样输出最新 N 行 `[tail_from,total)`，再输出 `[0,tail_from)` |
 | `--remote-reach` | ＝ 帧命令 `remote-reach`：本机后端的可达表登记 |
 | `--resident-attach` | 小中继：连这台家里常驻后端的套接字，stdin → 套接字、套接字 → stdout 原样对拷，任一边断就退；断开 ⇒ stdout 一行 `{attach:"refused", reason: absent\|unreachable}`、退出 2 |
 | `--resident-ensure` `[--replace]` | 确保这台的常驻后端在听：已在 ⇒ `{pid}`（在听那一位，读不到记录 ⇒ `null`）；没在 ⇒ 起一个脱离的自己、回 `{pid}`；`--replace` 先停掉在听那一位再起 |
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
-| `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（与一次性 `--resolve` 同一个函数） |
+| `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
 | `--rotation-config-delete` | ＝ 帧命令 `rotation-config-delete`：删一份轮换配置 |
 | `--rotation-config-rename` | ＝ 帧命令 `rotation-config-rename`：给一份轮换配置改名 |
 | `--rotation-config-save` | ＝ 帧命令 `rotation-config-save`：存一份轮换配置（新建或覆盖） |
@@ -4157,8 +4146,6 @@ cc-bus 钩子诊断。
 | `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删本机的一份轮换策略 |
 | `--rotation-strategy-try` | ＝ 帧命令 `rotation-strategy-try`：按此刻的事实试跑一份策略（不写盘不换号） |
 | `--rotation-switch` | ＝ 帧命令 `rotation-switch`：现在就换 |
-| `--search` `<query> [--include-tools] [--scope user|assistant] [--after-ms N] [--limit N]` | 全库全文搜索：每命中会话一行 `SessionHits`（camelCase，含 `hitsTruncated`），行序 = 最近优先 |
-| `--session-accounts` | 正在跑的会话各属哪个号：每条 `{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}`；`account:null` ＝ 查不到（不猜） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
@@ -4183,26 +4170,23 @@ cc-bus 钩子诊断。
 | `--terminals-list` | ＝ 帧命令 `terminals-list`：这台的终端名单（形状与宿主无关；这一版宿主是 tmux） |
 | `--tmux-notify` `<backend_pid> <backend_starttime>` | tmux 钩子用：核对身份后叫正在跑的后端立刻重扫 tmux；身份对不上静默退出 0；不碰文件系统 |
 
-## 6. 一次性子命令的出入参类型
+## 6. 几条命令的出入参类型
 
-### `--resolve`（入参 `ResumeSpec` 从 stdin，出参 `CommandPlan` / `ResolveError`）
+### `resolve`（入参 `ResumeSpec`，出参 `CommandPlan`）
 
 #### `ResumeSpec`
 
-stdin 入参（camelCase 对齐手机端 `ResumeSpec`）。
+入参（camelCase 对齐手机端 `ResumeSpec`）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sessionId` | string |  |
 | `launchCandidates` | [string]? |  |
-| `claudeDir` | string? | 冻结兼容字段，不许改名（与 `hello` 帧的 `claude_dir` 同族）：它是 `--resolve` 的 stdin 契约（线上是 `claudeDir`），与手机端冻结对齐 |
-| `fallbackCwd` | string? |  |
-| `alreadyInTmux` | bool? |  |
 | `agentKind` | string? | 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`） |
 
 #### `Capabilities`
 
-stdout 出参 caps（4 名**逐字复用手机端 `SessionCapabilities`**，camelCase 免映射）。
+出参 caps（4 名**逐字复用手机端 `SessionCapabilities`**，camelCase 免映射）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -4213,7 +4197,7 @@ stdout 出参 caps（4 名**逐字复用手机端 `SessionCapabilities`**，came
 
 #### `CommandPlan`
 
-stdout 出参（camelCase 对齐手机端 `ResumePlan`，另加 mode/capabilities）。
+出参（camelCase 对齐手机端 `ResumePlan`，另加 mode/capabilities）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -4224,16 +4208,7 @@ stdout 出参（camelCase 对齐手机端 `ResumePlan`，另加 mode/capabilitie
 | `launchLabel` | string? |  |
 | `substitutedFrom` | string? |  |
 
-#### `ResolveError`
-
-错误信封（exit 2 + stderr 出此 JSON）。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `code` | string |  |
-| `message` | string |  |
-
-### `--fork-session` 的出参
+### `session-fork` 的出参（应答另多 `launch` 一格）
 
 #### `ForkResult`
 
@@ -4280,7 +4255,7 @@ stdout 出参（camelCase 对齐手机端 `ResumePlan`，另加 mode/capabilitie
 
 #### `TailPlan`
 
-`--read-session-tail` 那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
+尾段那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|

@@ -604,7 +604,7 @@ pub enum Frame {
     /// 复用出方向的 `kind` tag 空间而不另开一条流：旧 monitor 见到未知 kind 会**忽略**
     /// （§10 已有的 additive 规律），所以新 backend × 旧 monitor 天然安全。
     ///
-    /// 错误形状 `{code, message}` **对齐 `--resolve` 已冻结的那套**（协议 v1 §3），
+    /// 错误形状 `{code, message}`（协议 v1 §3；当年对齐的是一次性 `--resolve` 那套，那条手写臂 10-11 删了），
     /// 不发明第二种错误 JSON。成功时两者都省略。
     Reply {
         /// 回显请求的 `id`。

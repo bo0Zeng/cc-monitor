@@ -213,7 +213,7 @@ fn the_frame_read_keeps_the_projects_fence() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 尾段那张图：按它的两段区间读回来 ＝ CLI `--read-session-tail` 印出的那两段（meta 之后的字节）。
+/// ★ 尾段那张图：最后 `n` 个可计行的起点与区间。
 ///
 /// 期望值由测试自己从夹具算（最后 `n` 个可计行的起点），不借被测函数。
 #[test]
@@ -363,76 +363,6 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
             .is_err(),
             "`{cmd}` 读了围栏外的文件"
         );
-    }
-    let _ = std::fs::remove_dir_all(&home);
-}
-
-/// ★★帧面成品的条目 == CLI 那一臂**中段**的逐行（同一份夹具、两个出口）。
-///
-/// 异源在：CLI 那一臂照旧写头尾三段（`write_*` 经 stdout 那条路），本条把它的中段剥出来，
-/// 与帧面那一臂的成品逐条比 —— 两臂共用的是扫描，不是装配；装配任一边丢一条 / 多一条 / 改一个键都红。
-#[test]
-fn the_frame_products_carry_exactly_the_rows_the_cli_arm_prints() {
-    let home = scratch("c4b-cli-parity");
-    let dir = home.join("projects").join("-p");
-    std::fs::create_dir_all(&dir).unwrap();
-    let p = dir.join("s.jsonl");
-    // 结构占位：两条用户输入（带同一个查找词）、一条助手行、一个空行、一条 meta —— 不采任何真会话正文。
-    let body = [
-        r#"{"type":"user","uuid":"u-1","timestamp":"t1","message":{"content":"zqx one"}}"#,
-        r#"{"type":"assistant","uuid":"a-1","timestamp":"t1a","parentUuid":"u-1","message":{"content":[{"type":"text","text":"zqx two"}]}}"#,
-        "",
-        r#"{"type":"user","uuid":"m-1","timestamp":"t1aa","parentUuid":"a-1","isMeta":true,"message":{"content":"meta"}}"#,
-        r#"{"type":"user","uuid":"u-2","parentUuid":"m-1","timestamp":"t2","message":{"content":"three zqx"}}"#,
-    ]
-    .iter()
-    .map(|r| format!("{r}\n"))
-    .collect::<String>();
-    std::fs::write(&p, &body).unwrap();
-    let path = p.to_string_lossy().to_string();
-    let middle = |f: &dyn Fn(&mut Vec<u8>) -> Result<(), String>| -> Vec<serde_json::Value> {
-        let mut out: Vec<u8> = Vec::new();
-        f(&mut out).unwrap();
-        let lines: Vec<serde_json::Value> = String::from_utf8(out)
-            .unwrap()
-            .lines()
-            .map(|l| serde_json::from_str(l).unwrap())
-            .collect();
-        assert!(lines.len() >= 2, "CLI 臂没写头尾");
-        lines[1..lines.len() - 1].to_vec()
-    };
-    let cases: [(&str, serde_json::Value, &str, Vec<serde_json::Value>); 2] = [
-        (
-            "history-user-inputs",
-            serde_json::json!({"path": path, "from": 0}),
-            "entries",
-            middle(&|o| crate::observe::history_query::list_user_inputs_into(&home, &path, 0, o)),
-        ),
-        (
-            "history-find",
-            serde_json::json!({"path": path, "query": "zqx", "limit": 500}),
-            "hits",
-            middle(&|o| {
-                crate::observe::history_query::find_in_session_into(
-                    &home,
-                    &path,
-                    "zqx",
-                    false,
-                    500,
-                    &Default::default(),
-                    o,
-                )
-            }),
-        ),
-    ];
-    for (cmd, args, key, cli) in cases {
-        let v = answer_at(&home, cmd, &args, &Default::default()).unwrap();
-        assert!(
-            !cli.is_empty(),
-            "`{cmd}` 的 CLI 臂中段是空的 —— 夹具没打到，本条会空真"
-        );
-        let got = v[key].as_array().unwrap().clone();
-        assert_eq!(got, cli, "`{cmd}` 的成品条目 != CLI 臂中段");
     }
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -1698,7 +1628,7 @@ fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 帧面骨架索引按列装回的逐行（判据用：帧面那一臂与 CLI 那一臂、与夹具逐行比）。
+/// 帧面骨架索引按列装回的逐行（判据用：与夹具逐行比）。
 /// 读法同界面 `session-reads.ts::decodeIndex`（那一侧的读者由跨语言金样钉）；`sc` 不上帧面（占位不用它）。
 fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
     let col = |k: &str| v[k].as_array().cloned().unwrap_or_default();
