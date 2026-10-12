@@ -58,6 +58,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: this account cannot be used: {:?} - {}\", r.id, r.why);", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] credentials: this account is not on the default path: {:?} - {}\", note.id, note.what);", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
     ("src/backend/accounts/upstream_select/creds.rs", "let _ = writeln!(out, \"[apikey] how to fix: {fix}\");", Why::Diag, "`announce` 往它的诊断出口（stderr）印上游选择的状态行"),
+    ("src/backend/platform/local_tz.rs", "#[cfg(unix)] let link = crate::platform::fs::Ro::read_link(\"/etc/localtime\").ok();", Why::NotAnError, "这台的 /etc/localtime 不是链（没有 · 是一份拷贝）是常态：说不出时区 ⇒ 调用方写「时区不明」"),
     ("src/backend/platform/watch_file.rs", "let _ = events.send(Some(p));", Why::PeerGone, "盯盘那一口把文件事件转给收的线程（轮换 · 计划 · 一次性等待 · 各号同步 · 浏览保鲜共用）：线程不在了就没人要这一下"),
     ("src/backend/platform/watch_file.rs", "let _ = self.tx.send(None);", Why::PeerGone, "踢收的线程一下（各号 MCP 同步做完加号 / 建库之后）：线程不在了就没人要这一下"),
     ("src/backend/platform/watch_file.rs", "let _ = self.inner.unwatch(&gone.0);", Why::Reap, "名单里离开的目录卸掉 watch：目录已删时 unwatch 本来就会失败，名单照样摘"),
