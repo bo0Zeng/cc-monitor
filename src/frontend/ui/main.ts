@@ -254,7 +254,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       openCwd: (sid) => tabs.openCwdOf(sid),
       front: (sid) => tabs.frontFor(sid),
       find: () => tabs.openFind(),
-      more: (anchor, sid) => tabs.openMenuFor(anchor, sid),
+      more: (anchor, sid, extra) => tabs.openMenuFor(anchor, sid, extra),
+      menuItem: (sid, id) => tabs.menuItemFor(sid, id),
+      displayItems: () => tabs.streamToggles(),
       resume: (anchor, sid) => tabs.openResumeFor(anchor, sid),
       attach: (sid) => tabs.attachInTerminal(sid),
       reconnect: (origin) => tabs.reconnect(origin),
@@ -266,6 +268,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       },
   });
   document.getElementById("session-head")?.replaceWith(sessionHead.el);
+  // 会话头上放哪几颗（`config.json` 的 `sessionHead.buttons`；没设过 ＝ 默认那一排，读到之前先照默认画）。
+  void sessionHead.loadButtons().catch((e: unknown) => console.warn("[session-head] 读会话头按钮失败：", e));
   // 答题块（消息流底部、贴着聊天线末尾）：当前会话在等你时就地答；字与选项全照核心那一份 `needs.ask`（`answer-block.ts`）。
   const answerBlock = new AnswerBlock({
     active: () => tabs.activeTab(),
@@ -647,6 +651,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (cur !== null && curOrigin !== null) {
       cmds.push(
         { id: "find", group: "current", icon: "search", title: copyText("main.cmd.find"), keywords: copyText("main.cmd.findKeywords"), hint: chordHint("session.find"), run: () => tabs.openFind() },
+        { id: "head-buttons", group: "current", icon: "sliders", title: copyText("sessionHead.edit.open"), hint: chordHint("sessionHead.edit"), run: () => sessionHead.openEditor() },
         { id: "toggle-tasks", group: "current", icon: "tasks", title: copyText("main.cmd.tasks"), keywords: copyText("main.cmd.tasksKeywords"), hint: chordHint("panel.toggle-tasks"), run: () => mainDrawer.toggle("tasks") },
         { id: "toggle-agents", group: "current", icon: "agent", title: copyText("main.cmd.agents"), keywords: copyText("main.cmd.agentsKeywords"), hint: chordHint("panel.toggle-agents"), run: () => mainDrawer.toggle("agents") },
         { id: "toggle-terminal", group: "current", icon: "terminal", title: copyText("main.cmd.terminal"), keywords: copyText("main.cmd.terminalKeywords"), hint: chordHint("panel.toggle-terminal"), run: () => mainDrawer.toggle("terminal") },
@@ -783,6 +788,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   dispatcher.bind("needs.next", () => tabs.jumpToNextNeeds());
   onSession("tab.pop-out", () => tabs.openActiveInNewWindow());
   // 会话内查找（大纲同一块面板）；历史查看器开着时落在它上面（它盖在 tab 上）。
+  dispatcher.bind("sessionHead.edit", () => sessionHead.openEditor());
   dispatcher.bind("session.find", () => {
     if (!historyView.openFind() && !tabs.shadowedBySlot("session.find")) tabs.openFind();
   });

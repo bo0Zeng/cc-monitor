@@ -44,6 +44,8 @@ export const CONFIG_KEY_OWNERS = {
   tabBar: "src/frontend/ui/tab-bar-state.ts",
   // src/frontend/ui/tab-collections.ts
   tabCollections: "src/frontend/ui/tab-collections.ts",
+  // src/frontend/ui/session-head.ts：会话头上放哪几颗按钮（`sessionHead.buttons`，这扇界面自己的偏好；没有 ＝ 默认）。
+  sessionHead: "src/frontend/ui/session-head.ts",
   // src/frontend/ui/main.ts 读（经 `views/context-limit.ts::readContextLimits`）、随会话事实交给各台后端；设置页「外观 → 高级」写
   //   （`settings/context-limits-section.ts`）。
   contextLimits: "src/frontend/ui/main.ts",

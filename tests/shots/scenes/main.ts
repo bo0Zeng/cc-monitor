@@ -476,6 +476,29 @@ export const MAIN_SCENES: Scene[] = [
     await click(await waitFor<HTMLElement>("#session-head button:has([data-icon='more'])"));
     await sleep(400);
   }),
+  // ui3 · 10-11 稿「会话头按钮」方案②：用户自己排（默认 ＝ 方案①那一排）。
+  main("main-head-ctx", "主窗口 · 会话头按钮排右键", "会话头按钮那一排上右键「看它的终端」：调整会话头按钮… · 从会话头移走「看它的终端」", async () => {
+    await mainReady(ALL_TABS);
+    await rightClick(await waitFor<HTMLElement>("#session-head [data-head='terminal']"));
+    await sleep(400);
+  }),
+  main("main-head-edit", "主窗口 · 会话头按钮编辑浮层", "「⋯」最后一项「调整会话头按钮…」开的浮层：上段 ＝ 会话头上的（按顺序、勾着）· 下段 ＝ 只在「⋯」里的 · 末行「更多」固定 · 底部［恢复默认］", async () => {
+    await mainReady(ALL_TABS);
+    await click(await waitFor<HTMLElement>("#session-head [data-head='more']"));
+    await click(await byText("[role=menu] [role^=menuitem]", copyText("sessionHead.edit.open")));
+    await waitFor("[role=dialog]");
+    await sleep(300);
+  }),
+  main("main-head-display", "主窗口 · 会话头「显示 ▾」", "两个流开关（过程默认展开 · 显示系统注入）合成的一颗：下拉里两项、立刻生效", async () => {
+    await mainReady(ALL_TABS);
+    await click(await waitFor<HTMLElement>("#session-head [data-head='display']"));
+    await sleep(400);
+  }),
+  main("main-head-fold", "窄窗 · 会话头放不下", "窗口 600×560：目录与状态一句先藏，还放不下 ⇒ 从排在最后的那颗起收进「⋯」最上面一组", async () => {
+    await mainReady(ALL_TABS);
+    await click(await waitFor<HTMLElement>("#session-head [data-head='more']"));
+    await sleep(400);
+  }, longTitleWorld, [600, 560]),
   longTitle("main-long-title", "主窗口 · 超长标题", "中英混排的超长标题在会话头与标签页里：单行省略，右侧按钮（↗ 等）宽度不变、不被压（排版量具核对）", W, H),
   longTitle("main-long-title-narrow", "窄窗口 · 超长标题", "窗口 900×640、无空格的超长标题：会话头先藏目录与状态一句，标题省略，按钮不被压", 900, 640, 1),
   longTitle("main-long-title-tight", "更窄 · 超长标题 · 已结束", "窗口 760×560、已结束的会话（多一颗［恢复 ▾］）：标题省略、机器名与状态一句也能缩，按钮一颗不少、不被压", 760, 560, 2, async () => {

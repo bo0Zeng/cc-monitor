@@ -122,6 +122,136 @@
     outline-offset: -2px;
   }
 
+  /* —— 编辑浮层（`session-head-edit.ts`）：标题 · 灰字 · 两段清单 · 「更多」固定 · 底部灰字 ＋［恢复默认］ —— */
+  .shEdit {
+    width: 300px;
+    font-size: var(--font-size-base);
+  }
+
+  .shEditTitle {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .shEditHint {
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .shEditList {
+    position: relative;
+    margin: var(--space-3) calc(-1 * var(--space-3)) 0;
+  }
+
+  .shEditRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 28px;
+    padding: 0 var(--space-3);
+    border-radius: var(--radius-m);
+  }
+
+  .shEditRow:hover {
+    background: var(--state-hover);
+  }
+
+  .shEditRow:focus-visible {
+    outline: var(--focus-ring) solid var(--state-focus);
+    outline-offset: calc(-1 * var(--focus-ring));
+  }
+
+  .shEditRow > input {
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  .shEditRow > svg {
+    flex: none;
+    color: var(--text-2);
+  }
+
+  .shEditGrip {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 12px;
+    color: var(--text-faint);
+    cursor: grab;
+  }
+
+  .shEditName {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shEditNote {
+    flex: none;
+    color: var(--text-2);
+    font-size: var(--font-size-small);
+  }
+
+  .shEditFixed {
+    color: var(--text-2);
+  }
+
+  .shEditRow[data-lifted] {
+    opacity: 0.45;
+  }
+
+  .shEditSep {
+    height: 1px;
+    margin: var(--space-2) var(--space-3);
+    background: var(--border-soft);
+  }
+
+  /* 拖动时的插入线：2px accent（同标签页栏）。 */
+  .shEditLine {
+    position: absolute;
+    right: var(--space-3);
+    left: var(--space-3);
+    height: 2px;
+    background: var(--accent);
+    pointer-events: none;
+  }
+
+  .shEditFoot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+  }
+
+  /* 「显示 ▾」：图标后面一枚小三角。开着一个流开关 ⇒ C21「开」样（`aria-pressed`）。 */
+  .shIbDrop {
+    display: inline-flex;
+    gap: 1px;
+    width: auto;
+    padding: 0 4px;
+  }
+
+  .shIb[aria-pressed="true"] {
+    background: var(--state-active);
+    color: var(--text);
+  }
+
+  .shIb[aria-pressed="true"] > svg:first-child {
+    color: var(--accent);
+  }
+
+  .shIb[aria-disabled="true"] {
+    opacity: var(--state-disabled-opacity);
+    cursor: default;
+  }
+
+  .shIb[aria-disabled="true"]:hover {
+    background: transparent;
+    color: var(--text-2);
+  }
+
   @container (width < 640px) {
     .shDir {
       display: none;

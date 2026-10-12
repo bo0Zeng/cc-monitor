@@ -44,6 +44,7 @@ import type { ConfigsShown } from "./rot-reads";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
+import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
@@ -1265,12 +1266,23 @@ export class TabManager {
 
   /** 这个 tab 的菜单锚在一颗按钮上（会话头「更多」）。 */
   /** 会话头「⋯」：这个标签页的右键菜单 ＋ 流的开关（过程默认展开）。 */
-  openMenuFor(anchor: HTMLElement, sid: string): void {
+  /** 会话头「⋯」/ 菜单键：这个标签页的菜单锚在一颗按钮上；会话头另交最上面（收进来的）与最后（流开关 ＋ 调整…）两组。 */
+  openMenuFor(anchor: HTMLElement, sid: string, extra?: { top: MenuItem[]; bottom: MenuItem[] }): void {
     if (!this.selection.has(sid) && this.selection.size > 0) {
       this.selection.clear();
       this.refreshTabBar();
     }
-    this.menu.open(anchor, sid, this.view.streamToggles());
+    this.menu.open(anchor, sid, extra ?? { bottom: this.view.streamToggles() });
+  }
+
+  /** 会话头借这个标签页菜单里的一项画成按钮（同一项，不另写）。 */
+  menuItemFor(sid: string, id: Parameters<TabMenu["itemFor"]>[1]): MenuItem | null {
+    return this.menu.itemFor(sid, id);
+  }
+
+  /** 两个流开关（会话头「显示 ▾」与「⋯」里同一份）。 */
+  streamToggles(): MenuItem[] {
+    return this.view.streamToggles();
   }
 
   /**

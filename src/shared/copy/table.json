@@ -23205,6 +23205,108 @@
       "zh": "状态不明 · {machine} 不可见",
       "args": ["machine"]
     },
+    "sessionHead.edit.open": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "调整会话头按钮…",
+      "args": []
+    },
+    "sessionHead.edit.remove": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "从会话头移走「{name}」",
+      "args": ["name"]
+    },
+    "sessionHead.edit.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话头按钮",
+      "args": []
+    },
+    "sessionHead.edit.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "拖动排序 · 勾选放到会话头",
+      "args": []
+    },
+    "sessionHead.edit.overflow": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话头放不下的收进「更多」",
+      "args": []
+    },
+    "sessionHead.edit.reset": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复默认",
+      "args": []
+    },
+    "sessionHead.edit.fixedMore": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "固定在最右",
+      "args": []
+    },
+    "sessionHead.edit.onlyLocal": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仅本机",
+      "args": []
+    },
+    "sessionHead.edit.onlyWindows": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仅 Windows",
+      "args": []
+    },
+    "sessionState.headEdit.onlyEnded": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已结束时",
+      "args": []
+    },
+    "sessionHead.edit.displayNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "过程展开 · 系统注入",
+      "args": []
+    },
+    "sessionHead.edit.removed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已从会话头移走「{name}」",
+      "args": ["name"]
+    },
+    "sessionHead.edit.resetDone": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已恢复默认按钮",
+      "args": []
+    },
+    "sessionHead.act.display": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "显示",
+      "args": []
+    },
+    "sessionHead.act.popOut": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在新窗口打开",
+      "args": []
+    },
+    "sessionHead.act.account": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "账号",
+      "args": []
+    },
+    "keybindingActions.sessionHead.edit": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "调整会话头按钮",
+      "args": []
+    },
     "sessionHead.act.find": {
       "kind": "body",
       "role": "片段",
