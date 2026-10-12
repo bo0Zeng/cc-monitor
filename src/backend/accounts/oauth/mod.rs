@@ -112,7 +112,11 @@ struct Now {
 }
 
 fn look(dir: &Path, face: &LoginFace) -> Result<Now, Unusable> {
-    let doc = match store::read(dir, face) {
+    now_of(store::read(dir, face), face)
+}
+
+fn now_of(read: store::Read, face: &LoginFace) -> Result<Now, Unusable> {
+    let doc = match read {
         store::Read::Absent => return Err(Unusable::NotLoggedIn),
         // `Unusable` 那几句只进日志（换号那一路 `rotate.rs`）⇒ 原话跟着走，记日志时拼在那一句后面。
         store::Read::Unreadable(why) => return Err(Unusable::Unreadable(why)),
@@ -201,7 +205,7 @@ fn refresh_locked(
     let Some(posted) = n.refresh.as_ref() else {
         return Err(Unusable::Expired);
     };
-    let r = renew(dir, face, endpoint, now_ms, &n, posted, &mut trail, write);
+    let r = renew(face, endpoint, now_ms, &n, posted, &mut trail, write);
     let line = renew_line(account, &trail, &r);
     if r.is_ok() {
         tracing::info!("{line}");
@@ -284,7 +288,6 @@ type Writing<'a> = (
 
 #[allow(clippy::too_many_arguments)]
 fn renew(
-    dir: &Path,
     face: &LoginFace,
     endpoint: &TokenEndpoint,
     now_ms: u64,
@@ -360,12 +363,6 @@ fn renew(
         )));
     };
     let refresh = secret_in(&wrapped, "t", "refresh_token");
-    // 写前比对：盘上的刷新令牌已经不是发出去那个了 ⇒ 别人（那个号自己的 claude）抢先续过，用它的，不覆盖。
-    let disk = look(dir, face)?;
-    if !disk.refresh.as_ref().is_some_and(|r| r.same_secret(posted)) {
-        trail.yielded = true;
-        return disk.access.ok_or(Unusable::Expired);
-    }
     let mut plain: Vec<(&str, Value)> = vec![(
         face.expires_ms,
         Value::from(now_ms.saturating_add(expires_in.saturating_mul(1000))),
@@ -380,9 +377,32 @@ fn renew(
     if let Some(r) = refresh.as_ref() {
         secrets.push((face.refresh, r));
     }
-    let doc = merge_tokens(&disk.doc, face.section, &secrets, &plain);
-    store::write_tokens(creds, held, &doc).map_err(Unusable::WriteFailed)?;
-    Ok(access)
+    // 在那一家的整份写锁里重读盘、比对、写：盘上的刷新令牌已经不是发出去那个了 ⇒ 别人（那个号自己的 claude）抢先续过，用它的，不覆盖。
+    let done = store::rewrite(creds, face, held, |read| match now_of(read, face) {
+        Err(u) => (None, Err(u)),
+        Ok(disk) if !disk.refresh.as_ref().is_some_and(|r| r.same_secret(posted)) => {
+            (None, Ok((true, disk.access)))
+        }
+        Ok(disk) => (
+            Some(merge_tokens(&disk.doc, face.section, &secrets, &plain)),
+            Ok((false, None)),
+        ),
+    });
+    match done {
+        Err(why) => Err(Unusable::WriteFailed(why)),
+        Ok(store::Locked::Busy) => {
+            trail.why = Some("write-busy".to_string());
+            Err(Unusable::WriteFailed(crate::common::said::Said::from(
+                copy_text("beOauthStore.write.busy", &[]),
+            )))
+        }
+        Ok(store::Locked::Held(Err(u))) => Err(u),
+        Ok(store::Locked::Held(Ok((true, disk_access)))) => {
+            trail.yielded = true;
+            disk_access.ok_or(Unusable::Expired)
+        }
+        Ok(store::Locked::Held(Ok((false, _)))) => Ok(access),
+    }
 }
 
 #[cfg(test)]

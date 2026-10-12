@@ -1774,6 +1774,8 @@ pub(crate) struct AccountsFace {
     pub(crate) shared_root: fn(&Path) -> PathBuf,
     /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
     pub(crate) email_in: fn(&Path) -> Option<String>,
+    /// 各号的订阅号登录那份文件的格式（各号之间同步 MCP 登录读写它）；没有 ⇒ `None`。
+    pub(crate) login: Option<LoginFace>,
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
@@ -2088,6 +2090,13 @@ pub(crate) struct LoginFace {
     pub(crate) lock_beside: Option<&'static str>,
     /// 续期锁目录的修改时刻比现在早过这么多毫秒 ⇒ 持有方已经不在，当无主收回（删了重拿）。
     pub(crate) lock_stale_ms: u64,
+    /// 那一家**整份写**这份凭据文件时拿的 `mkdir` 锁（配置目录里那一把的名字）：它在锁里重读盘、只改自己那一格、整份写回。
+    /// 我方任何一次写这份文件也在这把锁里重读、比对、写（续期写回 · 各号之间同步 MCP 登录）。没有这一把的家 ⇒ `None`。
+    pub(crate) write_lock: Option<&'static str>,
+    /// 那把写锁的修改时刻早过这么多毫秒 ⇒ 当无主收回。
+    pub(crate) write_lock_stale_ms: u64,
+    /// 同一份文件里另有一节「每个服务器一条」的登录（Claude 的 MCP 登录）；各号之间同步它。没有 ⇒ `None`。
+    pub(crate) entries: Option<EntryLogins>,
     /// 一个号的账号身份住哪份文件：（配置目录, 账号 0 时的家目录）→ 那份文件。
     pub(crate) identity_file: fn(&Path, Option<&Path>) -> PathBuf,
     /// 那份文件里的账号身份（请求里跟着鉴权一起换的那一格的值）；读不到 ⇒ `None`。
@@ -2098,6 +2107,20 @@ pub(crate) struct LoginFace {
     pub(crate) rewrite_identity: fn(&[u8], &str) -> IdentityCell,
     /// 账号 0（没设配置目录的那个号）的配置目录：家目录 → 它。
     pub(crate) base_dir: fn(&Path) -> PathBuf,
+}
+
+/// 凭据文件里「每个服务器一条」的那一节登录的格式（各号之间同步 MCP 登录用；通用层只按这几格读写）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EntryLogins {
+    /// 那一节的顶层键（键 → 一条：访问令牌 · 刷新令牌 · 过期时刻 · 客户端登记 …，整条原样搬）。
+    pub(crate) section: &'static str,
+    pub(crate) access: &'static str,
+    pub(crate) refresh: &'static str,
+    pub(crate) expires_ms: &'static str,
+    /// 那一家续某一条时在配置目录里拿的 `mkdir` 锁的名字（一段名字）：键 → 名字。
+    pub(crate) renew_lock: fn(&str) -> String,
+    /// 那把续期锁的修改时刻早过这么多毫秒 ⇒ 当无主收回。
+    pub(crate) renew_lock_stale_ms: u64,
 }
 
 /// 请求体里账号身份那一格换没换成。

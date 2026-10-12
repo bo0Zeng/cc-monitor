@@ -277,7 +277,7 @@
     "rsToolRegistry.tools.accountsVaultNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份 · 别的内容不碰",
+      "zh": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段、.credentials.json 里只有 MCP 登录段会被同步改写 · 各号共用一份 · 别的内容不碰",
       "args": []
     },
     "beAcctExec.apply.stopped": {
@@ -6001,7 +6001,7 @@
     "cfgPage.mcp.pausedBody": {
       "kind": "body",
       "role": "说明",
-      "zh": "同步已停止 · 各账号各自管理 · 已同步的不删\n恢复同步后 · 停止期间各账号加的同步到全部账号",
+      "zh": "同步已停止 · 各账号各自管理（MCP 登录也是） · 已同步的不删\n恢复同步后 · 停止期间各账号加的同步到全部账号",
       "args": []
     },
     "cfgPage.mcp.conflict": {
@@ -6025,7 +6025,7 @@
     "cfgPage.mcp.shared": {
       "kind": "body",
       "role": "说明",
-      "zh": "任一账号加的同步到 {machine} 全部账号\n只在此处删 · 账号里删会被补回",
+      "zh": "任一账号加的同步到 {machine} 全部账号\n只在此处删 · 账号里删会被补回\nMCP 登录也同步：任一账号登录或续期后 · 全部账号换成最新那份 · 一个账号里退出则全部退出",
       "args": ["machine"]
     },
     "cfgPage.mcp.conflictHead": {
@@ -6085,7 +6085,7 @@
     "cfgPage.mcp.stopHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "停后各账号独立 · 已同步的不删 · 可再开",
+      "zh": "停后各账号独立 · MCP 登录也不再同步 · 已同步的不删 · 可再开",
       "args": []
     },
     "cfgPage.mcp.resumeHint": {
@@ -20156,6 +20156,12 @@
       "zh": "{account} 同步失败 · {why}",
       "args": ["account", "why"]
     },
+    "beAcctMcpLogins.note.writeFailed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{account} 的 MCP 登录同步失败 · {why}",
+      "args": ["account", "why"]
+    },
     "beAcctMcpShare.note.stale": {
       "kind": "body",
       "role": "说明",
@@ -20195,7 +20201,7 @@
     "rsToolRegistry.tools.accountsMcpStoreNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n内含 MCP 密钥 · 仅本人可读",
+      "zh": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n另记各号 MCP 登录上次同步后的指纹（不含令牌）\n内含 MCP 密钥 · 仅本人可读",
       "args": []
     },
     "rsToolRegistry.tools.accountsMcpBackupNote": {
@@ -21390,7 +21396,7 @@
     "beOauthStore.lock.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "加锁失败 · {why} · 续期锁 {path}",
+      "zh": "加锁失败 · {why} · 锁目录 {path}",
       "args": ["why", "path"]
     },
     "beOauthStore.write.failed": {
@@ -21398,6 +21404,12 @@
       "role": "报错",
       "zh": "写入失败 · {path} · 程序出错",
       "args": ["path"]
+    },
+    "beOauthStore.write.busy": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "Claude 正在写这份登录信息",
+      "args": []
     },
     "beOauth.unusable.notLoggedIn": {
       "kind": "error",

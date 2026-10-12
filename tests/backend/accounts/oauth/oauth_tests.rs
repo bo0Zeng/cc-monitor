@@ -216,6 +216,28 @@ fn a_lock_held_by_someone_else_is_said_and_left_alone() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// 续成了、要写回时那个号的 claude 正在整份写这份文件（它那把写锁在）⇒ 不写（不拿一份旧的整份盖掉它正在存的那一格），照实说写回失败。
+#[test]
+fn the_write_back_never_writes_under_claudes_write_lock() {
+    let d = temp_dir("wlock");
+    let acct = d.join("acct");
+    write_creds(&acct, "acc-old", "ref-old", NOW_MS - 1);
+    let before = on_disk(&acct);
+    let wl = acct.join(FACE.write_lock.expect("Claude 登记了整份写锁"));
+    std::fs::create_dir(&wl).expect("别人的写锁");
+    let (addr, _) = spawn_token_endpoint(NEW_TOKENS, 200, None);
+    let r = access_token(&own(), &acct, &FACE, &endpoint_at(addr), NOW_MS, "q");
+    assert!(
+        matches!(r, Err(Unusable::WriteFailed(_))),
+        "{:?}",
+        r.map(|s| expose(&s))
+    );
+    assert_eq!(on_disk(&acct), before, "写锁在，还是写了");
+    assert!(wl.is_dir(), "别人的写锁不许动");
+    assert!(!acct.join(FACE.lock_inside).exists(), "续期锁没放");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
 #[test]
 fn a_refused_refresh_says_log_in_again_and_leaves_the_file_as_it_was() {
     let d = temp_dir("refused");

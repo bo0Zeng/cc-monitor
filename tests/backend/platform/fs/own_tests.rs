@@ -180,29 +180,42 @@ fn w5_the_home_root_only_hands_out_the_backend_dir() {
 
 /// 订阅号凭据的窄句柄：只认「一段名字」的文件名与锁名（带分隔符 · `..` · 空的都拒）；写只落那一份文件、锁只建删那两把目录。
 #[test]
-fn w6_the_account_creds_handle_reaches_one_file_and_two_lock_dirs() {
+fn w6_the_account_creds_handle_reaches_one_file_and_its_lock_dirs() {
     let base = sandbox("w6");
     let acct = base.join("acct");
     std::fs::create_dir_all(&acct).unwrap();
     let own = Own::for_tests();
     for bad in ["", "../x", "a/b", ".."] {
         assert!(
-            own.account_creds(&acct, bad, ".lock", None).is_err(),
+            own.account_creds(&acct, bad, ".lock", None, None).is_err(),
             "文件名 {bad:?} 收下了"
         );
         assert!(
-            own.account_creds(&acct, ".credentials.json", bad, None)
+            own.account_creds(&acct, ".credentials.json", bad, None, None)
                 .is_err(),
             "锁名 {bad:?} 收下了"
         );
     }
     assert!(
-        own.account_creds(&acct, ".credentials.json", ".lock", Some("/x"))
+        own.account_creds(&acct, ".credentials.json", ".lock", Some("/x"), None)
             .is_err(),
         "旁边那把的后缀带分隔符也收下了"
     );
+    for bad in ["", "../x", "a/b"] {
+        assert!(
+            own.account_creds(&acct, ".credentials.json", ".lock", None, Some(bad))
+                .is_err(),
+            "写锁名 {bad:?} 收下了"
+        );
+    }
     let c = own
-        .account_creds(&acct, ".credentials.json", ".lock", Some(".lock"))
+        .account_creds(
+            &acct,
+            ".credentials.json",
+            ".lock",
+            Some(".lock"),
+            Some(".w.lock"),
+        )
         .expect("合法的那一形");
     let held = c.lock().expect("目录锁");
     c.write(&held, b"{}").expect("写");
@@ -210,13 +223,30 @@ fn w6_the_account_creds_handle_reaches_one_file_and_two_lock_dirs() {
         std::fs::read(acct.join(".credentials.json")).unwrap(),
         b"{}"
     );
-    assert!(c.make_lock(RenewLock::Inside).unwrap(), "里面那把建成");
-    assert!(!c.make_lock(RenewLock::Inside).unwrap(), "已在 ⇒ 没建");
-    assert!(c.make_lock(RenewLock::Beside).unwrap(), "旁边那把建成");
+    assert!(c.make_lock(&RenewLock::Inside).unwrap(), "里面那把建成");
+    assert!(!c.make_lock(&RenewLock::Inside).unwrap(), "已在 ⇒ 没建");
+    assert!(c.make_lock(&RenewLock::Beside).unwrap(), "旁边那把建成");
+    assert!(c.make_lock(&RenewLock::Write).unwrap(), "写锁建成");
+    let entry = RenewLock::Entry("mcp-x.lock.lock".into());
+    assert!(c.make_lock(&entry).unwrap(), "按条起名的那把建成");
+    for bad in ["../x", "a/b", ""] {
+        assert!(
+            c.make_lock(&RenewLock::Entry(bad.into())).is_err(),
+            "条锁名 {bad:?} 收下了"
+        );
+    }
     assert!(base.join("acct.lock").is_dir() && acct.join(".lock").is_dir());
-    c.drop_lock(RenewLock::Inside).unwrap();
-    c.drop_lock(RenewLock::Beside).unwrap();
+    assert!(acct.join(".w.lock").is_dir() && acct.join("mcp-x.lock.lock").is_dir());
+    for w in [
+        RenewLock::Inside,
+        RenewLock::Beside,
+        RenewLock::Write,
+        entry,
+    ] {
+        c.drop_lock(&w).unwrap();
+    }
     assert!(!base.join("acct.lock").exists() && !acct.join(".lock").exists());
+    assert!(!acct.join(".w.lock").exists() && !acct.join("mcp-x.lock.lock").exists());
     assert!(side_files(&acct).is_empty(), "号目录里留了旁名");
     std::fs::remove_dir_all(&base).ok();
 }
