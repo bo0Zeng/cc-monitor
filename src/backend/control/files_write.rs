@@ -815,6 +815,7 @@ pub fn change_mode_reporting(
     }
     #[cfg(not(unix))]
     {
+        let _ = face;
         // 回 `no_unix_mode`，不回 `io_failed`（理由住 [`WriteRefusal::Unsupported`]）。
         Err(WriteRefusal::Unsupported(copy_text(
             "beFilesWrite.chmod.unsupported",
@@ -2440,7 +2441,7 @@ fn swap_in(
                 &e,
             )
         })?;
-        return Ok(dst);
+        return Ok(dst.into_path_buf());
     }
     let name = dst.file_name().ok_or_else(|| {
         WriteRefusal::Refused(copy_text(

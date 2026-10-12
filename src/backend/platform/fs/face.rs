@@ -65,6 +65,7 @@ pub struct Face(());
 
 /// 不跟链接的开法（最后一段是链接 ⇒ 失败）。
 fn nofollow() -> std::fs::OpenOptions {
+    #[allow(unused_mut)]
     let mut o = std::fs::OpenOptions::new();
     #[cfg(unix)]
     {

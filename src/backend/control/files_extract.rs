@@ -65,7 +65,7 @@ pub fn land_link(
 /// 非 unix：没有「建链接」这个动词（计划趟看 [`LINKS_SUPPORTED`] 已整趟拒，走不到这里；兜底仍说清）。
 #[cfg(not(unix))]
 pub fn land_link(
-    face: &Face,
+    _face: &Face,
     root: &Path,
     rel: &Path,
     _target: &Path,
