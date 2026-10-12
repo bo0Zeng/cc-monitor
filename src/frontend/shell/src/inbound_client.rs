@@ -90,8 +90,10 @@ fn offer_of(frame: &InboundFrame) -> Offer {
             commands,
             unavailable,
             uncancellable,
+            shapes,
             ..
-        } => Offer::new(commands.clone(), unavailable.clone(), uncancellable.clone()),
+        } => Offer::new(commands.clone(), unavailable.clone(), uncancellable.clone())
+            .with_shapes(shapes.clone()),
         _ => Offer::default(),
     }
 }

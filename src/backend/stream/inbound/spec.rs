@@ -116,7 +116,7 @@ impl Fail {
 pub(super) type BoxFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = CmdResult> + Send + 'static>>;
 /// 同 [`BoxFut`]，结局可带按码定形的 `data`。
-pub(super) type DataFut =
+pub(crate) type DataFut =
     std::pin::Pin<Box<dyn std::future::Future<Output = Outcome> + Send + 'static>>;
 /// 异步处理器（失败可带 `data`）。
 pub(super) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
@@ -144,7 +144,60 @@ pub(crate) enum Run {
     BlockingOwn(fn(Request, &crate::platform::Own) -> Outcome),
     /// 同 [`Run::Async`]，只是要写后端自家状态：句柄按值递（交出去的 future 要 `'static`）。
     AsyncOwn(fn(Request, crate::platform::Own) -> BoxFut),
+    /// 入参 · 回包 · 错误码都从 Rust 类型来的那一种（`typed.rs`）：阻塞还是异步由它自己那一份说。
+    Typed(super::typed::Typed),
     Builtin,
+}
+
+/// 一条登记命令交出去跑的那一份。按档分派只此一处（[`prepare`]）：分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面都经它。
+pub(crate) enum Prepared {
+    /// 真异步：交给独立 task，`cancel` 能在 await 点打断。
+    Async(Box<dyn FnOnce(Request) -> DataFut + Send>),
+    /// 同步阻塞：进阻塞池（或在调用方自己的阻塞线程上跑），开跑之后打不断。
+    Blocking(Box<dyn FnOnce(Request) -> Outcome + Send>),
+}
+
+impl Run {
+    /// 这一档开跑之后打不打得断（阻塞档打不断：hello 的 `uncancellable` 由它派生）。
+    pub(crate) fn blocking(self) -> bool {
+        matches!(
+            self,
+            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+        ) || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::Blocking(_)))
+    }
+
+    /// 这一档写不写后端自家状态（要分派递写句柄）。
+    pub(crate) fn writes_own(self) -> bool {
+        matches!(self, Run::BlockingOwn(_) | Run::AsyncOwn(_))
+    }
+}
+
+/// 按档把处理器装成 [`Prepared`]。`own` ＝ 调用方手里那一份写句柄；没有（文件门 · 小成品重问）⇒ 写自家状态的那几档交不出来（`None`）。
+/// `Builtin` 那几条在分派的硬臂里，这里也是 `None`。
+pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Prepared> {
+    Some(match run {
+        Run::Async(f) => Prepared::Async(Box::new(move |r| {
+            Box::pin(async move { f(r).await.map_err(Fail::from) })
+        })),
+        Run::AsyncData(f) => Prepared::Async(Box::new(f)),
+        Run::AsyncOwn(f) => {
+            let own = own?.clone();
+            Prepared::Async(Box::new(move |r| {
+                Box::pin(async move { f(r, own).await.map_err(Fail::from) })
+            }))
+        }
+        Run::Blocking(f) => Prepared::Blocking(Box::new(move |r| f(r).map_err(Fail::from))),
+        Run::BlockingData(f) => Prepared::Blocking(Box::new(f)),
+        Run::BlockingOwn(f) => {
+            let own = own?.clone();
+            Prepared::Blocking(Box::new(move |r| f(r, &own)))
+        }
+        Run::Typed(t) => match t.run {
+            super::typed::TypedRun::Blocking(f) => Prepared::Blocking(Box::new(f)),
+            super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
+        },
+        Run::Builtin => return None,
+    })
 }
 
 /// 载荷字段的向：请求里的（`args`）· 应答里的（`data`）· 两边都有。

@@ -24,6 +24,7 @@ Handshake sent once when a client connects。
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
 | `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
 | `uncancellable` | [string]? | `commands` 里**撤不动**的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
+| `shapes` | {string: string}? | typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算） |
 
 ### `line`
 
@@ -1838,17 +1839,115 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-search`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `after_ms` | → | 可选：只要这一刻（毫秒）之后的 |
-| `include_tools` | → | 可选布尔：工具调用与结果也搜 |
-| `limit` | → | 可选：全局片段上限（`hitCount` 仍报全量） |
-| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家） |
-| `query` | → | 搜索词（必填） |
-| `scope` | → | 可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope` |
-| `skipped` | ← | 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）：它们的会话不在结果里 |
-| `titles` | → | 可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空 |
-| `unreadable` | ← | 这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8） |
+入参 `HistorySearchReq` · 回包 `HistorySearchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type HistorySearchReply = { 
+/**
+ * 每命中会话一行，最近优先。
+ */
+sessions: Array<SessionHits>, 
+/**
+ * 这一趟有几份会话记录读不动、没搜到。
+ */
+unreadable: number, 
+/**
+ * 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）。
+ */
+skipped: Array<string>, };
+type HistorySearchReq = { 
+/**
+ * 搜索词（不分大小写，子串）。
+ */
+query: string, 
+/**
+ * 工具调用与结果也搜。
+ */
+include_tools?: boolean, 
+/**
+ * 只搜哪一种：人说的话 · agent 的回答 · agent 回报；缺 ⇒ 全部。
+ */
+scope?: SearchScope, 
+/**
+ * 只要这一刻（毫秒）之后的。
+ */
+after_ms?: number, 
+/**
+ * 全局片段上限（`hitCount` 仍报全量）。
+ */
+limit?: number, 
+/**
+ * 只比会话标题与第一句（不搜内容）。
+ */
+titles?: boolean, };
+type Liveness = "live" | "ended";
+type SearchHit = { 
+/**
+ * 消息 uuid：打开查看器后据此滚动定位、高亮。
+ */
+uuid: string, tsMs: number, 
+/**
+ * `user` · `assistant` · `tool` · `report`。
+ */
+kind: string, before: string, matched: string, after: string, 
+/**
+ * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
+ */
+tool?: string, };
+type SearchScope = "user" | "assistant" | "report";
+type SessionHits = { 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, 
+/**
+ * 本会话命中总数（可能 > `hits` 条数）。
+ */
+hitCount: number, hits: Array<SearchHit>, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
+ */
+status: Liveness, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -1858,12 +1957,136 @@ sid → 上次用哪个号起。
 
 收 `args` · 可撤 · CLI：`ccm -- --history-search-merge`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `sessionCount` | ← | 会话数 |
-| `sessions` | → ← | 各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、按看的那一台的时区（请求的 `tz`）写好 |
-| `totalHits` | ← | `hitCount` 之和 |
-| `truncated` | ← | 任一行 `hitsTruncated` |
+入参 `HistorySearchMergeReq` · 回包 `Merged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type HistorySearchMergeReq = { machines: Array<MachineHits>, };
+type Liveness = "live" | "ended";
+type MachineHits = { origin: string, sessions: Array<SessionHits>, };
+type Merged = { 
+/**
+ * `hitCount` 之和。
+ */
+totalHits: number, sessionCount: number, 
+/**
+ * 任一行 `hitsTruncated`。
+ */
+truncated: boolean, 
+/**
+ * 各台的会话行，按 `updatedAt` 倒序。
+ */
+sessions: Array<MergedRow>, };
+type MergedRow = { 
+/**
+ * 那台远端的名字；本机 ⇒ 缺。
+ */
+origin?: string, 
+/**
+ * 行尾那一格。
+ */
+atText: string, 
+/**
+ * 内容头那一段。
+ */
+spanText: string, 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, 
+/**
+ * 本会话命中总数（可能 > `hits` 条数）。
+ */
+hitCount: number, hits: Array<SearchHit>, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
+ */
+status: Liveness, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, };
+type SearchHit = { 
+/**
+ * 消息 uuid：打开查看器后据此滚动定位、高亮。
+ */
+uuid: string, tsMs: number, 
+/**
+ * `user` · `assistant` · `tool` · `report`。
+ */
+kind: string, before: string, matched: string, after: string, 
+/**
+ * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
+ */
+tool?: string, };
+type SessionHits = { 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, 
+/**
+ * 本会话命中总数（可能 > `hits` 条数）。
+ */
+hitCount: number, hits: Array<SearchHit>, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
+ */
+status: Liveness, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, };
+```
 
 码：`bad_args`
 
@@ -4227,10 +4450,26 @@ cc-bus 钩子诊断。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `resume` | string | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
+| `resume` | CanResume | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
 | `accounts` | bool | 恢复时能不能选号 |
 | `fork` | bool | 能不能从某一轮分叉 |
-| `delete` | string | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
+| `delete` | CanDelete | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
+
+#### `CanResume`
+
+`Can::resume` 的三个词。
+
+- `yes`
+- `switch`
+- `bg`
+
+#### `CanDelete`
+
+`Can::delete` 的三个词。
+
+- `yes`
+- `live`
+- `unsure`
 
 #### `IndexRow`
 

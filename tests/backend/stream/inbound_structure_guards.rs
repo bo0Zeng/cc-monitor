@@ -433,10 +433,7 @@ fn every_registered_command_declares_its_run_kind() {
                 // 文件窗口反查：读认可那份小文件（同步文件 I/O；不起 pb）。
                 | "plan-files"
         );
-        let is_blocking = matches!(
-            spec.run,
-            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        );
+        let is_blocking = spec.run.blocking();
         assert_eq!(
             is_blocking, expected_blocking,
             "`{}` 的 Run 档位与预期不符 —— 放错档的代价是「占住 worker」或「假装能取消」",
@@ -811,7 +808,8 @@ fn declaring_zero_fields_needs_a_reason() {
     let mut unexplained: Vec<&str> = Vec::new();
     let mut zero = 0usize;
     for spec in super::REGISTRY {
-        if !spec.fields.is_empty() {
+        // typed 命令的字段从类型来（协议参考照类型写），不手写镜子。
+        if !spec.fields.is_empty() || matches!(spec.run, super::spec::Run::Typed(_)) {
             continue;
         }
         zero += 1;
@@ -1227,18 +1225,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     (
         "history-record",
         sampled::<crate::observe::history_query::RecordProbe>,
-        &[],
-        &[],
-    ),
-    (
-        "history-search",
-        sampled::<crate::faces::read_face::Searched>,
-        &[],
-        &[],
-    ),
-    (
-        "history-search-merge",
-        sampled::<crate::observe::search_query::Merged>,
         &[],
         &[],
     ),
@@ -1894,6 +1880,10 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     let mut want_shaped_or_listed = std::collections::BTreeSet::new();
     let mut zero_out = std::collections::BTreeSet::new();
     for spec in super::REGISTRY {
+        // typed 命令不手写字段镜子：出参就是它的回包类型（`typed.rs`），不在这四张表里。
+        if matches!(spec.run, super::spec::Run::Typed(_)) {
+            continue;
+        }
         if out_of(spec).is_empty() {
             zero_out.insert(spec.name);
         } else {
@@ -2036,5 +2026,48 @@ fn typed_enum_replies_sample_every_variant() {
         bad.is_empty(),
         "顶层是枚举的 typed 应答要每个变体一个样本（漏了的那一支，它的格判据就看不见）：\n{}",
         bad.join("\n")
+    );
+}
+
+/// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::AsyncOwn(` …）只许在
+/// `stream/inbound/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面
+/// 各写一份 `match`，枢纽那一份漏了两档，问本机那一跳的 8 条一律 `unknown_command`。
+#[test]
+fn only_one_place_matches_on_how_a_command_runs() {
+    const TIERS: &[&str] = &[
+        "Run::Blocking(",
+        "Run::BlockingData(",
+        "Run::BlockingOwn(",
+        "Run::Async(",
+        "Run::AsyncData(",
+        "Run::AsyncOwn(",
+    ];
+    let root = crate::guard_support::src_root();
+    let mut at: Vec<String> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
+        .into_iter()
+        .filter_map(|(path, src)| {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let code = crate::guard_support::production_code(&src);
+            // 前面紧挨标识符字符的不算（`TypedRun::Blocking(` 是 typed 那一份自己的两种，不是 `Run` 的档）。
+            let names_a_tier = TIERS.iter().any(|t| {
+                code.match_indices(t).any(|(i, _)| {
+                    !code[..i]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                })
+            });
+            (!rel.starts_with("stream/inbound/registry/") && names_a_tier).then_some(rel)
+        })
+        .collect();
+    at.sort();
+    assert_eq!(
+        at,
+        vec!["stream/inbound/spec.rs".to_string()],
+        "按档分派该只有 `spec::prepare` 一处"
     );
 }

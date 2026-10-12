@@ -243,6 +243,7 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
+ "cmd-wire",
  "comms-outward",
  "copy-core",
  "creds-core",
@@ -326,6 +327,14 @@ dependencies = [
  "crypto-common",
  "inout 0.2.2",
  "zeroize",
+]
+
+[[package]]
+name = "cmd-wire"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "serde",
 ]
 
 [[package]]

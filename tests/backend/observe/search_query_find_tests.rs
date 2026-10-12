@@ -193,14 +193,17 @@ fn find_and_global_search_agree_on_the_same_file() {
         let s = session_hits_in(&p, &entry, &q, &opts, &mut budget, 0).expect("有命中");
         // 两者刻意的差别只有一处：`--search` 也列没有 uuid 的记录（uuid 记成空串）、本命令不列。
         //   agent 回报（种类 `report`）两边都收。
-        let searched: Vec<(String, String, String, String)> = s["hits"]
-            .as_array()
-            .unwrap()
+        let searched: Vec<(String, String, String, String)> = s
+            .hits
             .iter()
-            .filter(|h| !h["uuid"].as_str().unwrap().is_empty())
+            .filter(|h| !h.uuid.is_empty())
             .map(|h| {
-                let g = |k: &str| h[k].as_str().unwrap().to_string();
-                (g("uuid"), g("before"), g("matched"), g("after"))
+                (
+                    h.uuid.clone(),
+                    h.before.clone(),
+                    h.matched.clone(),
+                    h.after.clone(),
+                )
             })
             .collect();
         let v = find(&bytes_of(&fixture()), Q, tools, FIND_DEFAULT_LIMIT);

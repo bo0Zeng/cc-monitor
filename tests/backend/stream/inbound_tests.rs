@@ -482,7 +482,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "remote-probe",
     ] {
         assert!(
-            matches!(d(c), Disposition::Spawn(..)),
+            matches!(d(c), Disposition::Spawn(..) | Disposition::SpawnData(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
         );
     }
@@ -1584,4 +1584,51 @@ fn the_hub_local_hop_reaches_every_inner_command() {
         missed.is_empty(),
         "枢纽问本机那一跳到不了这几条：{missed:?}"
     );
+}
+
+/// 走登记表跑一条阻塞档的命令（同分派那一层）。
+fn run_registered(cmd: &str, args: serde_json::Value) -> Outcome {
+    let spec = lookup(cmd).unwrap_or_else(|| panic!("`{cmd}` 不在登记表里"));
+    let req = Request {
+        id: "t".to_string(),
+        cmd: cmd.to_string(),
+        args,
+        within_ms: None,
+        view: serde_json::Value::Null,
+        tz: Default::default(),
+        until: None,
+    };
+    match prepare(spec.run, Some(&crate::platform::fs::Own::for_tests())) {
+        Some(Prepared::Blocking(f)) => f(req),
+        _ => panic!("`{cmd}` 不在阻塞档"),
+    }
+}
+
+/// `history-search` 的入参按类型收：认不得的 `scope` · 多出来的键 · 类型不对 ⇒ `bad_args`（不再悄悄当没给、照搜全部）。
+#[test]
+fn history_search_refuses_what_its_request_type_does_not_have() {
+    for args in [
+        serde_json::json!({ "query": "x", "scope": "users" }),
+        serde_json::json!({ "query": "x", "limt": 5 }),
+        serde_json::json!({ "query": "x", "include_tools": "yes" }),
+        serde_json::json!({ "scope": "user" }),
+    ] {
+        let got = run_registered("history-search", args.clone());
+        assert_eq!(
+            got.as_ref().err().map(|f| f.code.as_str()),
+            Some("bad_args"),
+            "入参 {args} 该回 bad_args：{got:?}"
+        );
+    }
+}
+
+/// 帧面 `history-search` 不再把 JSON 摊成选项词交给命令行那一套解：`SUBCOMMAND_OPTIONS` 里不剩那四个词。
+#[test]
+fn history_search_options_are_not_subcommand_words() {
+    for gone in ["--include-tools", "--scope", "--after-ms", "--limit"] {
+        assert!(
+            !crate::SUBCOMMAND_OPTIONS.contains(&gone),
+            "`{gone}` 还在 SUBCOMMAND_OPTIONS 里（帧面入参该直接从类型解）"
+        );
+    }
 }

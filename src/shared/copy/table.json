@@ -256,6 +256,12 @@
       "zh": "{machine} 后端要更新",
       "args": ["machine"]
     },
+    "peerVersion.said.differs": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端版本不同",
+      "args": ["machine"]
+    },
     "peerVersion.said.unreadable": {
       "kind": "error",
       "role": "报错",

@@ -33,9 +33,6 @@ const FAMILY: &[&str] = &[
     "history-read",
     // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
     "history-record",
-    "history-search",
-    // 各台搜索结果合一份（异源是手抄的要求，不是 `stream/inbound/`）。
-    "history-search-merge",
     // 按字节分页出记录行 · 漂移账（异源是手抄的要求，不是 `stream/inbound/`）。
     // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `stream/inbound/`）。
     "history-run",
@@ -1277,40 +1274,6 @@ fn the_record_products_match_the_cross_language_golden() {
     );
 }
 
-/// 全文搜索的应答把「读不动几份」与「内容搜索不覆盖的那几家」一起交回（此前只进日志，界面只能说「共 N 条」像是全的）；
-/// `titles: true` 只比标题与第一句：只在标题里出现的词也搜得到那一个会话。
-#[test]
-fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_only_words() {
-    let home = scratch("search-said");
-    let dir = home.join("projects").join("-w-x");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("0000aaaa-0000-4000-8000-0000000000aa.jsonl"),
-        concat!(
-            r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/w/x","message":{"role":"user","content":"占位正文"}}"#,
-            "\n",
-            r#"{"type":"ai-title","aiTitle":"订单重试"}"#,
-            "\n"
-        ),
-    )
-    .unwrap();
-    let ask =
-        |args: Value| answer_at(&home, "history-search", &args, &Default::default()).expect("搜索");
-    let v = ask(json!({ "query": "订单" }));
-    assert_eq!(v["unreadable"], json!(0), "读不动几份没交回：{v}");
-    assert!(v["skipped"].is_array(), "内容搜索不覆盖的那几家没交回：{v}");
-    assert_eq!(v["lines"], json!([]), "只在标题里的词被当成了内容命中：{v}");
-    let v = ask(json!({ "query": "订单", "titles": true }));
-    let lines = v["lines"].as_array().unwrap();
-    assert_eq!(lines.len(), 1, "按标题搜没搜到那一个会话：{v}");
-    let row: Value = serde_json::from_str(lines[0].as_str().unwrap()).unwrap();
-    assert_eq!(
-        (row["title"].as_str(), row["hitCount"].as_u64()),
-        (Some("订单重试"), Some(0))
-    );
-    std::fs::remove_dir_all(&home).ok();
-}
-
 /// `history-find` 每条命中旁边一格 `tsText`：那条记录的时刻按这台本地钟写好（今天 `HH:MM` · 昨天 · 更早带日期），界面照抄；读不出时刻 ⇒ 空串。
 #[test]
 fn find_hits_carry_their_time_text() {
@@ -1434,16 +1397,6 @@ fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
         );
     }
     let _ = std::fs::remove_dir_all(&home);
-}
-
-impl crate::guard_support::Shaped for Searched {
-    fn samples() -> Vec<Self> {
-        vec![Searched {
-            lines: vec!["{}".into()],
-            unreadable: 0,
-            skipped: vec!["codex"],
-        }]
-    }
 }
 
 impl crate::guard_support::Shaped for Branch {

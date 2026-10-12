@@ -768,3 +768,26 @@ async fn a_local_cancel_says_the_peer_may_run_on_when_the_offer_says_so() {
         );
     }
 }
+
+/// typed 命令两端形状对不上 ⇒ 当「这台做不到」（码 `backend_differs`，事前就拒、一个字节不发）：
+/// 对端交的指纹跟本侧编进来的那一份一样 ⇒ 照发；不一样 · 没交（比这一版早的后端）⇒ 拒。不是 typed 的命令不受影响。
+#[test]
+fn a_typed_command_whose_shape_differs_is_not_sent() {
+    let (op, mine) = *cmd_wire::shapes::SHAPES
+        .first()
+        .expect("形状指纹表是空的 —— 本条在空转");
+    let offer = |shapes: Vec<(String, String)>| {
+        Offer::new(vec![op.to_string(), "ping".into()], vec![], vec![]).with_shapes(shapes)
+    };
+    assert_eq!(offer(vec![(op.into(), mine.into())]).unavailable(op), None);
+    assert_eq!(
+        offer(vec![(op.into(), "00000000".into())]).unavailable(op),
+        Some(cmd_wire::SHAPE_DIFFERS)
+    );
+    assert_eq!(offer(vec![]).unavailable(op), Some(cmd_wire::SHAPE_DIFFERS));
+    assert_eq!(
+        offer(vec![]).unavailable("ping"),
+        None,
+        "不是 typed 的命令不看指纹"
+    );
+}

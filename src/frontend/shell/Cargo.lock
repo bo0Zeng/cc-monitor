@@ -880,6 +880,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmd-wire"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "serde",
+ "serde_json",
+ "test-home",
+ "ts-rs",
+]
+
+[[package]]
 name = "codespan-reporting"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -917,6 +928,7 @@ dependencies = [
 name = "comms-inward"
 version = "0.1.0"
 dependencies = [
+ "cmd-wire",
  "copy-core",
  "futures",
  "serde",
@@ -3356,6 +3368,7 @@ dependencies = [
  "acct-core",
  "arboard",
  "cc-monitor-filewin",
+ "cmd-wire",
  "comms-inward",
  "copy-core",
  "creds-core",

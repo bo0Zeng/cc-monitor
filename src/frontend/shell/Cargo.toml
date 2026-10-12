@@ -10,6 +10,8 @@
 members = [
     ".",
     "../../common/acct-core",
+    # 帧命令两端对上的那几样：机器名 · typed 命令的形状指纹表（后端 · monitor 同一份）。
+    "../../common/cmd-wire",
     "../../common/creds-core",
     "../../common/guard-core",
     "../../common/relay-route-core",
@@ -212,6 +214,8 @@ acct-core = { path = "../../common/acct-core" }
 guard-core = { path = "../../common/guard-core" }
 # `Origin` 编进 `comms-inward` 之后，本包测试档里别的生成类型（会话流那几帧）嵌着它 ⇒ dev 侧开它的 TS 派生（发布二进制不开）。
 comms-inward = { path = "../../comms/inward", features = ["ts"] }
+# 判据要对着编进来的那张形状指纹表（`cmd_wire::shapes::SHAPES`）验「对不上就不发」。
+cmd-wire = { path = "../../common/cmd-wire" }
 # 暂停时钟（`#[tokio::test(start_paused = true)]`）：拿「截止时刻」说事的测试用虚拟时钟，机器负载多高读数都一样。
 # 只在 dev 侧开 —— resolver 2 下 dev 依赖的特性不并进产品构建，发布二进制里的 tokio 照旧是上面那份 `full`。
 tokio = { version = "1", features = ["test-util"] }

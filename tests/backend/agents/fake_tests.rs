@@ -240,6 +240,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .expect("填了第三家的 hello 必须序列化得出来");
     assert_eq!(
@@ -379,8 +380,13 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
 
     // ② 搜索：**静默**（零命中）。
     let mut out: Vec<u8> = Vec::new();
-    crate::observe::search_query::search_into(&root, "hi", &[], false, &mut out)
-        .expect("搜索对一个布局不同的 agent 报错了");
+    crate::observe::search_query::search_into(
+        &root,
+        "hi",
+        &crate::observe::search_query::test_support::opts_from_words(&[]),
+        &mut crate::observe::search_query::test_support::lines_into(&mut out),
+    )
+    .expect("搜索对一个布局不同的 agent 报错了");
     assert!(
         out.is_empty(),
         "全文搜索的反应变了 —— 本格记的是「今天它零命中」这个事实，变了就该同轮改本格头注那张表"

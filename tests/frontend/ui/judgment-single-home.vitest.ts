@@ -65,7 +65,7 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 type JudgmentId =
   | "J1" | "J2" | "J3" | "J4" | "J5" | "J6" | "J7"
   | "J9" | "J10" | "J11" | "J12" | "J13" | "J14" | "J15" | "J16"
-  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33";
+  | "J17" | "J18" | "J19" | "J20" | "J21" | "J22" | "J23" | "J24" | "J25" | "J26" | "J27" | "J28" | "J29" | "J30" | "J31" | "J32" | "J33" | "J34";
 
 /** TS 孪生的规则指纹：一段字面子串（在**剥过注释**的生产代码里数）。`file` 缺席 = 全体生产段合计。 */
 interface Needle {
@@ -341,7 +341,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   J15: {
     what: "全文搜索条数上限 ＋ 多机合并排序",
     // 翻 `zero`：界面照旧逐台扇出（各台常驻索引保热），合并排序问本机后端
-    //   `history-search-merge`（`observe/search_query.rs::answer_merge` → `search_rules::sort_by_recency`）；前端 `mergeSearchResults` 删。
+    //   `history-search-merge`（`observe/search_query.rs::merge_at` → `search_rules::sort_by_recency`）；前端 `mergeSearchResults` 删。
     //   条数上限：界面不交 `limit` ⇒ 每台用 `search_rules::DEFAULT_LIMIT`（`history.ts` 那份 300 的副本删了）。
     // `search-core` 拆进后端：通用口径住 `observe/search_rules.rs`（`DEFAULT_LIMIT` 与收 limit 的 `clamp_limit` 同一份文件；住址格只认 `fn`）。
     homes: ["src/backend/observe/search_rules.rs::sort_by_recency", "src/backend/observe/search_rules.rs::clamp_limit"],
@@ -467,12 +467,20 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
     rustGone: ["src/frontend/shell/src/backend_policy.rs::describe_health"],
   },
   J22: {
-    what: "因对方版本说不成的两个码（版本旧 / 回的认不出）各取哪一句、本机怎么称呼",
+    what: "因对方版本说不成的三个码（版本旧 / 版本不同 / 回的认不出）各取哪一句、本机怎么称呼",
     // 两侧各一个取句口，取的是表里同两条键（`peerVersion.said.*`）与同一个本机称呼（`control.machine.local`）；
     // 说话那一层不知道名字时的称呼（`control.machine.peer`）只有 Rust 那一侧用（通信层兜底 · 后端自己答不认）。
-    homes: ["copy-core::backend_old", "copy-core::reply_unreadable", "copy-core::local_machine", "copy-core::peer_machine"],
+    // 版本不同那一个码（typed 命令两端形状指纹对不上，第 8 批）：码的字面量在契约 crate `cmd-wire`，界面那一份由下面的对拍判据钉。
+    homes: [
+      "copy-core::backend_old",
+      "copy-core::backend_differs",
+      "copy-core::reply_unreadable",
+      "copy-core::local_machine",
+      "copy-core::peer_machine",
+      "cmd-wire::SHAPE_DIFFERS",
+    ],
     status: "mirror",
-    defs: ["peerVersionSaid"],
+    defs: ["peerVersionSaid", "SHAPE_DIFFERS"],
     needles: [],
     parity: {
       via: "src/shared/copy/table.json",
@@ -618,6 +626,20 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
       { file: "src/backend/accounts/quota/name_words.rs", text: '&str = "0"', count: 0 },
     ],
   },
+  J34: {
+    what: "这一趟问的是不是本机（本机 ＝ 具名的 `\"<local>\"`，不是「没说」）",
+    // 类型的家从 `comms-inward` 挪进契约 crate `cmd-wire`（`Machine`，第 8 批）；界面那一侧是 `ipc/origin.ts` 的两个判法。
+    //   哨兵值两侧逐字节相等由 `origin_tests.rs` 钉（Rust `LOCAL` ⇄ 界面 `backend-policy.ts::LOCAL_ORIGIN`）。
+    homes: ["cmd-wire::LOCAL", "cmd-wire::is_local", "cmd-wire::is_remote"],
+    status: "mirror",
+    defs: ["isLocalOrigin", "isRemoteOrigin"],
+    needles: [],
+    parity: {
+      via: "src/frontend/ui/backend-policy.ts",
+      tests: ["tests/comms/inward/origin_tests.rs"],
+    },
+    why: "INVARIANTS §40「本地 ＝ 不走 ssh 的远端」：两侧都要在读进来之后分本机与远端；线上同一个串，判法各在本侧唯一一处",
+  },
   J29: {
     what: "这个号能不能选 · 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）",
     homes: ["acct-core::account_selectable", "acct-core::effective_default"],
@@ -671,8 +693,24 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
   // `branch-core` 那一格删了：它收进后端适配层（`agents/claudecode/branch.rs`），不再是共享 crate。
   // `codex-token-core` 那一格删了：它搬进后端成模块（`agents/codex/token.rs`），不再是共享 crate，不在本表人群里。
   // `chan-core` 那一格删了：通道成了通信层 crate `comms-inward`（住 `src/comms/inward/`，不在 `src/common/` 的人群里）。
+  // 帧命令两端对上的形状（第 8 批）：机器名 `Machine`（从 `comms-inward` 的 `Origin` 挪来）· typed 命令的形状指纹表。
+  "cmd-wire": {
+    LOCAL: "J34",
+    is_local: "J34",
+    is_remote: "J34",
+    // 本机那一个 · 远端名 · 线上那个串 · 分过本机之后的两态：界面没有孪生（它直接拿串比，判法只在 `ipc/origin.ts`）。
+    local: NONE,
+    host_name: NONE,
+    as_wire_str: NONE,
+    route: NONE,
+    SHAPE_DIFFERS: "J22",
+    // 形状指纹表与查表：只有拿着 hello 的 Rust 那一侧（monitor 的 `Offer`）比，界面不比。
+    SHAPES: NONE,
+    shape_of: NONE,
+  },
   "copy-core": {
     backend_old: "J22",
+    backend_differs: "J22",
     // 测试按文案键断言用（占位处任意值）；TS 那一侧的同形在测试支架 `tests/test-support/copy-pattern.ts`，不是生产判定。
     copy_matches: NONE,
     // 同上，只钉给了值的那几格（TS 那一侧是 `copyPattern(键, 已知值)`）。

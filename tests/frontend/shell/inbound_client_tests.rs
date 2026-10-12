@@ -17,6 +17,7 @@ fn hello_frame(commands: &[&str]) -> InboundFrame {
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
+        shapes: vec![],
     }
 }
 

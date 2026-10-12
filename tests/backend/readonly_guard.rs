@@ -4635,6 +4635,12 @@ mod g6_dependency_signoff {
             "同上一行那个仓内 crate，测试构建多开 `fixtures` feature（多出来的只是一张静态夹具表 ＋ 渲染它的纯函数），0 处写面",
         ),
         (
+            "cmd-wire",
+            DEPS,
+            MEASURED_CLEAN,
+            "帧命令两端对上的形状（机器名 `Machine` · typed 命令的形状指纹表），纯数据；仓内 crate，现打 0 处写面",
+        ),
+        (
             "comms-outward",
             DEPS,
             MEASURED_CLEAN,

@@ -33,7 +33,7 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
 /// 抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
     let families = crate::guard_support::backend_registry_sources();
-    let blocks: Vec<(String, String)> = families
+    let mut blocks: Vec<(String, String)> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
         .filter_map(|blk| {
@@ -41,6 +41,32 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             Some((blk[at..].split('"').next()?.to_string(), blk.to_string()))
         })
         .collect();
+    // typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()`）：名字从那个类型住的文件里
+    //   `impl Command for <类型>` 那一段的 `const NAME` 读；块 ＝ 那一行本身（点着它的家）。
+    for (_, prod) in &families {
+        for ctor in ["typed::blocking::<", "typed::asynchronous::<"] {
+            for (at, _) in prod.match_indices(ctor) {
+                let rest = &prod[at + ctor.len()..];
+                let path = &rest[..rest.find('>').expect("typed 那一行没收尾")];
+                let segs: Vec<&str> = path.split("::").filter(|s| *s != "crate").collect();
+                let (ty, module) = segs.split_last().expect("typed 那一行没有类型名");
+                let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../backend")
+                    .join(format!("{}.rs", module.join("/")));
+                let src = std::fs::read_to_string(&file)
+                    .unwrap_or_else(|e| panic!("读不到 `{}`：{e}", file.display()));
+                let imp = src
+                    .find(&format!("impl Command for {ty} {{"))
+                    .unwrap_or_else(|| {
+                        panic!("`{}` 里没有 `impl Command for {ty}`", file.display())
+                    });
+                let key = "const NAME: &'static str = \"";
+                let n = src[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
+                let name: String = src[n..].chars().take_while(|c| *c != '"').collect();
+                blocks.push((name, format!("{ctor}{path}>()")));
+            }
+        }
+    }
     blocks
 }
 
@@ -48,7 +74,10 @@ fn backend_command_blocks() -> Vec<(String, String)> {
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
-        .filter(|(_, blk)| blk.contains("read_face::answer"))
+        // 全文搜索那两条成了 typed 命令，只读宿主是 `faces/search_face.rs`（第 8 批从 `read_face` 分出去）。
+        .filter(|(_, blk)| {
+            blk.contains("read_face::answer") || blk.contains("faces::search_face::")
+        })
         .map(|(name, _)| name)
         .collect();
     assert!(!got.is_empty(), "从后端源码一条都没数到 —— 抽取坏了");
@@ -311,7 +340,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",
-        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::answer_merge`（`search_rules::sort_by_recency`）；\
+        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::merge_at`（`search_rules::sort_by_recency`）；\
          前端 `src/frontend/ui/views/history-search.ts` 问，monitor 这一侧零发送点",
     ),
     // 开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
@@ -782,14 +811,26 @@ fn frontend_chan_ops() -> (std::collections::BTreeSet<String>, Vec<String>) {
     (ops, not_literal)
 }
 
-/// 一段（已剥注释的）TS 里 `chan.call(` 的操作名。前面紧挨标识符字符的不算（`mychan.call(`）。
+/// typed 帧命令的那一口（`ipc/chan-caller.ts::callTyped`）：调用点的操作名同样必须是字面量；
+/// 它自己里面那一处 `chan.call(origin, cmd, …)` 是唯一一处不是字面量的（操作名从它的调用点来）。
+const TYPED_CALL: &str = "callTyped(";
+const TYPED_CALL_HOME: (&str, &str) = ("src/frontend/ui/ipc/chan-caller.ts", "cmd,");
+
+/// 一段（已剥注释的）TS 里 `chan.call(` 与 `callTyped(` 的操作名。前面紧挨标识符字符的不算（`mychan.call(`）。
 fn chan_ops_in(
     code: &str,
     rel: &str,
     ops: &mut std::collections::BTreeSet<String>,
     not_literal: &mut Vec<String>,
 ) {
-    for (at, _) in code.match_indices("chan.call(") {
+    let sites = code
+        .match_indices("chan.call(")
+        .map(|(at, _)| (at, "chan.call("))
+        .chain(
+            code.match_indices(TYPED_CALL)
+                .map(|(at, _)| (at, TYPED_CALL)),
+        );
+    for (at, entry) in sites {
         if code[..at]
             .chars()
             .next_back()
@@ -797,13 +838,19 @@ fn chan_ops_in(
         {
             continue;
         }
-        let args = &code[at + "chan.call(".len()..];
+        let args = &code[at + entry.len()..];
         // 第二个实参：跳过第一个逗号之前的 origin。
         let Some(comma) = args.find(',') else {
             not_literal.push(format!("{rel}: 实参表不完整"));
             continue;
         };
         let second = args[comma + 1..].trim_start();
+        if entry == "chan.call("
+            && rel.ends_with(TYPED_CALL_HOME.0)
+            && second.starts_with(TYPED_CALL_HOME.1)
+        {
+            continue;
+        }
         match second.strip_prefix('"').and_then(|r| r.split_once('"')) {
             Some((op, _)) => {
                 ops.insert(op.to_string());
@@ -1119,6 +1166,7 @@ fn client_for_test(
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
+        shapes: vec![],
     })
     .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);

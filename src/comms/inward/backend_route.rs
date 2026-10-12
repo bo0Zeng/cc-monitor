@@ -65,6 +65,14 @@ impl std::fmt::Display for CallError {
                 write!(f, "{}", copy_core::backend_old(&copy_core::peer_machine()))
             }
             // 码不上屏（调用方要按码分支的读 `code` 本身）。
+            // 两端形状对不上（那台后端版本不同）：同「要更新」那一句，按对端称呼说。
+            CallError::Unavailable { code, .. } if code == cmd_wire::SHAPE_DIFFERS => {
+                write!(
+                    f,
+                    "{}",
+                    copy_core::backend_differs(&copy_core::peer_machine())
+                )
+            }
             CallError::Unavailable { .. } => {
                 write!(f, "{}", copy_text("rsInboundClient.error.unavailable", &[]))
             }

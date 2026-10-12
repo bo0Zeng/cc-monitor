@@ -10,9 +10,29 @@
  *
  * ⚠ 本文件**不是**通信层成员（它造期限、解释载荷）；也不认识任何一条具体命令 —— 那是各调用方的事。
  */
-import { ChanError, type Budget, type CallError } from "../../../comms/inward/chan";
-import { copyText } from "../copy-table";
+import { chan, ChanError, type Budget, type CallError } from "../../../comms/inward/chan";
+import { copyText, type CopyKey } from "../copy-table";
 import { isLocalOrigin, type Origin } from "./origin";
+import type { TypedCommands } from "../generated/TypedCommands";
+
+/** 两端 typed 命令形状对不上时 monitor 回的码（Rust `cmd_wire::SHAPE_DIFFERS`）。 */
+const SHAPE_DIFFERS = "backend_differs";
+
+/**
+ * 问一条 **typed** 帧命令：入参 · 回包的类型都从 Rust 生成（`generated/TypedCommands.ts`）。
+ * 两端形状由握手时的形状指纹核过（对不上 monitor 事前就拒，码 `backend_differs`），回包这里直接按类型用、不再逐格解。
+ * 回的不是 JSON ⇒ 抛（`readJson`，认不出）。
+ */
+export async function callTyped<K extends keyof TypedCommands>(
+  origin: Origin,
+  cmd: K,
+  req: TypedCommands[K]["req"],
+  budget: Budget,
+): Promise<TypedCommands[K]["reply"]> {
+  const body = jsonBody(req as Record<string, unknown>);
+  const reply = await chan.call(origin, cmd, body, budget);
+  return readJson(reply) as TypedCommands[K]["reply"];
+}
 
 /**
  * 造一个期限：从现在起 `ms` 毫秒（`performance.now()` 钟面的绝对时刻）。
@@ -68,11 +88,19 @@ export function refusalOf(body: Uint8Array): { code: string; message: string; da
 }
 
 /**
- * 因对方版本说不成的两个码，全产品各一句（文案表 `peerVersion.said.*`）：
+ * 因对方版本说不成的三个码，全产品各一句（文案表 `peerVersion.said.*`）：
  * - `backend_old`：那台后端事前就说不认这条命令（`peer/unsupported`）；
+ * - `backend_differs`：那台认这条命令，但 typed 命令的形状指纹跟这一侧不一样（monitor 事前就不发，`Offer::unavailable`）；
  * - `reply_unreadable`：那台回了，但回的东西认不出（不是 JSON / 形状不对）—— 只说认不出，不猜版本。
  */
-export type PeerVersionCode = "backend_old" | "reply_unreadable";
+export type PeerVersionCode = "backend_old" | "backend_differs" | "reply_unreadable";
+
+/** 三个码各自那一句的键（全产品各一句，Rust 那一侧同键：`copy_core::peer`）。 */
+const PEER_VERSION_SAID: Record<PeerVersionCode, CopyKey> = {
+  backend_old: "peerVersion.said.old",
+  backend_differs: "peerVersion.said.differs",
+  reply_unreadable: "peerVersion.said.unreadable",
+};
 
 /** 一句话里怎么称呼这台机器：本机说「本机」，远端说它的名字。 */
 export function machineName(origin: Origin): string {
@@ -82,9 +110,7 @@ export function machineName(origin: Origin): string {
 /** 码 ⇒ 那一句（唯一住址）。 */
 export function peerVersionSaid(code: PeerVersionCode, origin: Origin): string {
   const machine = machineName(origin);
-  return code === "backend_old"
-    ? copyText("peerVersion.said.old", { machine })
-    : copyText("peerVersion.said.unreadable", { machine });
+  return copyText(PEER_VERSION_SAID[code], { machine });
 }
 
 /** 那台回的东西认不出。`message` 只是细目（进日志）；给人看的那句由 [`saidFrom`] 按码取。 */
@@ -105,6 +131,8 @@ export function unreadableFrom(origin: Origin, detail: string): Error {
 export function peerVersionCodeOf(e: unknown): PeerVersionCode | null {
   if (e instanceof ReplyUnreadable || e instanceof SyntaxError) return "reply_unreadable";
   if (e instanceof ChanError && unsupported(e.error)) return "backend_old";
+  if (e instanceof ChanError && e.error.layer === "peer" && e.error.why === "refused" && refusalOf(e.error.body)?.code === SHAPE_DIFFERS)
+    return "backend_differs";
   return null;
 }
 
