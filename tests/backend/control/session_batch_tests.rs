@@ -290,10 +290,10 @@ fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
         "launcher": "claude",
         "defaultLauncher": "claude",
     });
-    with_accounts(|f| super::super::launch_render::answer_cli(&req, f)).unwrap()["cmd"]
-        .as_str()
+    let req = serde_json::from_value(req).unwrap();
+    with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
-        .to_string()
+        .cmd
 }
 
 /// 单个「在 tmux 里 Resume」那一行（`launch-render-cli`，建进 tmux、打 sid 标记、带 cwd）。
@@ -309,10 +309,10 @@ fn single_tmux_line(sid: &str, name: &str, account: Value) -> String {
         "launcher": "claude",
         "defaultLauncher": "claude",
     });
-    with_accounts(|f| super::super::launch_render::answer_cli(&req, f)).unwrap()["cmd"]
-        .as_str()
+    let req = serde_json::from_value(req).unwrap();
+    with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
-        .to_string()
+        .cmd
 }
 
 #[test]
@@ -504,7 +504,7 @@ fn a_window_start_renders_what_the_single_item_renders() {
     let out = rig.run(|d| start(&args, d)).unwrap();
     let single = with_accounts(|f| {
         super::super::launch_render::answer_local(
-            &json!({
+            &serde_json::from_value(json!({
                 "agent": "claude",
                 "action": { "kind": "resume", "sid": A },
                 "cwd": "/w/proj",
@@ -512,12 +512,13 @@ fn a_window_start_renders_what_the_single_item_renders() {
                 "account": { "kind": "base" },
                 "tmuxName": "proj-cc-2",
                 "defaultLauncher": "claude",
-            }),
+            }))
+            .unwrap(),
             f,
         )
     })
     .unwrap();
-    assert_eq!(out["results"][0]["cmd"], single["cmd"]);
+    assert_eq!(out["results"][0]["cmd"], single.cmd);
     assert_eq!(out["results"][0]["session"], "proj-cc-2");
 }
 

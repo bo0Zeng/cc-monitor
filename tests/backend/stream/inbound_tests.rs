@@ -1632,3 +1632,32 @@ fn history_search_options_are_not_subcommand_words() {
         );
     }
 }
+
+/// 手机也在问的那几条换成 typed 之后，回包的线上字节不变：经登记表跑（同分派那一层），回包按帧里那一份写法（`serde_json::to_string`）
+/// 逐字节比手机那一侧收的形状（入参照抄手机发的那一份：`core-claude/.../link/Terminals.kt`）。
+#[test]
+fn the_replies_the_phone_reads_keep_their_wire_bytes() {
+    let entry = crate::control::launch_render::ccm_invocation::argv(
+        &crate::platform::paths::installed_ccm_entry().unwrap(),
+    );
+    let attach = serde_json::json!({
+        "agent": "claude",
+        "action": { "kind": "attach", "name": "demo-cc" },
+        "container": { "kind": "tmux", "name": "demo-cc", "send_into": false },
+        "cwd": null,
+        "account": { "kind": "base" },
+        "ccmSid": null,
+        "model": null,
+        "models": {},
+        "launcher": "claude",
+        "defaultLauncher": "claude",
+    });
+    let got = run_registered("launch-render-cli", attach).expect("launch-render-cli 渲得出");
+    assert_eq!(
+        serde_json::to_string(&got).unwrap(),
+        format!(
+            r#"{{"account":null,"cmd":{}}}"#,
+            serde_json::to_string(&format!("{entry} -- --attach demo-cc")).unwrap()
+        )
+    );
+}

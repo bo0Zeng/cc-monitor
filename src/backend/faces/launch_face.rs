@@ -3,7 +3,8 @@
 
 use crate::assets::door::Door;
 use crate::control::launch_account::{self as la, Facts, Library};
-use serde_json::Value;
+use crate::control::launch_render::{self as lr, LaunchRenderErr, Rendered};
+use crate::stream::inbound::typed::{self, Command, WithFiles};
 
 /// 起会话那几条要的文件管理面（起之前预标信任经它写）：生产那一份由命令表交（`stream/inbound` 的 `LocalFiles`）。
 /// 预标住这里不住 `session_batch_face`：渲那一行的两条（`launch-local` · `launch-render-cli`）不碰 tmux，引用不该连带过去。
@@ -55,54 +56,62 @@ pub(crate) fn with_facts<T>(agent: &str, f: impl FnOnce(&Facts) -> T) -> T {
     })
 }
 
-fn agent_of(args: &Value) -> String {
-    args.get("agent")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
+/// `launch-local`：本机起会话那一行。渲好了 ⇒ 交回那一行之前把工作目录标成要用的那个号信任过（界面随后在终端里跑那一行）。
+/// 阻塞档：核一次「新起」的目录在不在 · 读账号清单。
+pub(crate) struct LaunchLocal;
+
+impl Command for LaunchLocal {
+    const NAME: &'static str = "launch-local";
+    type Req = lr::local::LocalLaunchRequest;
+    type Reply = Rendered;
+    type Err = LaunchRenderErr;
 }
 
-/// `launch-local`。渲好了 ⇒ 交回那一行之前把工作目录标成要用的那个号信任过（界面随后在终端里跑那一行）。
-pub(crate) fn answer_local(
-    args: &Value,
-    files: Files,
-) -> Result<Value, crate::control::launch_render::Failed> {
-    let agent = agent_of(args);
-    let v = with_facts(&agent, |facts| {
-        crate::control::launch_render::answer_local(args, facts)
-    })?;
-    pretrust_rendered(files, &agent, args, &v);
-    Ok(v)
+impl WithFiles for LaunchLocal {
+    fn run(
+        req: lr::local::LocalLaunchRequest,
+        _cx: &typed::Cx,
+        files: Files,
+    ) -> Result<Rendered, LaunchRenderErr> {
+        let v = with_facts(&req.agent, |facts| lr::answer_local(&req, facts))?;
+        pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
+        Ok(v)
+    }
 }
 
-/// `launch-render-cli`。同 [`answer_local`]：渲好了 ⇒ 先预标信任。
-pub(crate) fn answer_cli(
-    args: &Value,
-    files: Files,
-) -> Result<Value, crate::control::launch_render::Failed> {
-    let agent = agent_of(args);
-    let v = with_facts(&agent, |facts| {
-        crate::control::launch_render::answer_cli(args, facts)
-    })?;
-    pretrust_rendered(files, &agent, args, &v);
-    Ok(v)
+/// `launch-render-cli`：远端起会话那一行。同 [`LaunchLocal`]：渲好了 ⇒ 先预标信任。阻塞档：判号要读这台的账号清单与那份记录。
+pub(crate) struct LaunchRenderCli;
+
+impl Command for LaunchRenderCli {
+    const NAME: &'static str = "launch-render-cli";
+    type Req = lr::wire::CliRenderRequest;
+    type Reply = Rendered;
+    type Err = LaunchRenderErr;
+}
+
+impl WithFiles for LaunchRenderCli {
+    fn run(
+        req: lr::wire::CliRenderRequest,
+        _cx: &typed::Cx,
+        files: Files,
+    ) -> Result<Rendered, LaunchRenderErr> {
+        let v = with_facts(&req.agent, |facts| lr::answer_cli(&req, facts))?;
+        pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
+        Ok(v)
+    }
 }
 
 /// 渲出来的那一行用的是账号库里的号（成品 `account.configDir`）且请求给了工作目录 ⇒ 预标信任。
-fn pretrust_rendered(files: Files, agent: &str, args: &Value, v: &Value) {
-    if let Some((dir, cwd)) = rendered_target(args, v) {
+fn pretrust_rendered(files: Files, agent: &str, cwd: Option<&str>, v: &Rendered) {
+    if let Some((dir, cwd)) = rendered_target(cwd, v) {
         pretrust_with(Some(files), agent, dir, cwd);
     }
 }
 
 /// 渲好的那一行要预标哪一格：`(号目录, 工作目录)`；账号 0 / 不表态（成品 `account` 为 `null`）· 没给工作目录 ⇒ `None`。
-fn rendered_target<'a>(args: &'a Value, v: &'a Value) -> Option<(&'a str, &'a str)> {
-    let dir = v["account"]["configDir"].as_str()?;
-    let cwd = args
-        .get("cwd")
-        .and_then(Value::as_str)
-        .filter(|c| !c.is_empty())?;
-    Some((dir, cwd))
+fn rendered_target<'a>(cwd: Option<&'a str>, v: &'a Rendered) -> Option<(&'a str, &'a str)> {
+    let dir = v.account.as_ref()?.config_dir.as_str();
+    Some((dir, cwd.filter(|c| !c.is_empty())?))
 }
 
 #[cfg(test)]

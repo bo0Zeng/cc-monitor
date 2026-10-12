@@ -3,6 +3,7 @@
 
 use super::*;
 use crate::control::launch_account::{Facts, Library};
+use serde_json::Value;
 
 /// 判号要的事实：一个号 `z`（能用）、没有谁的上次记录。
 fn facts_of<T>(f: impl FnOnce(&Facts) -> T) -> T {
@@ -20,11 +21,26 @@ fn facts_of<T>(f: impl FnOnce(&Facts) -> T) -> T {
         last: &|_| None,
     })
 }
-fn answer_cli(v: &Value) -> Result<Value, (&'static str, String)> {
-    facts_of(|f| super::answer_cli(v, f)).map_err(|(c, m, _)| (c, m))
+/// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包 / 失败的码与那一句（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`）。
+fn wired<R: serde::de::DeserializeOwned>(
+    v: &Value,
+    f: impl FnOnce(&R, &Facts) -> Result<Rendered, LaunchRenderErr>,
+) -> Result<Value, (String, String)> {
+    use crate::stream::inbound::typed::Codes;
+    let req: R =
+        serde_json::from_value(v.clone()).map_err(|e| ("bad_args".to_string(), e.to_string()))?;
+    facts_of(|facts| f(&req, facts))
+        .map(|r| serde_json::to_value(r).unwrap())
+        .map_err(|e| {
+            let fail = e.into_fail();
+            (fail.code, fail.message)
+        })
 }
-fn answer_local(v: &Value) -> Result<Value, (&'static str, String)> {
-    facts_of(|f| super::answer_local(v, f)).map_err(|(c, m, _)| (c, m))
+fn answer_cli(v: &Value) -> Result<Value, (String, String)> {
+    wired(v, super::answer_cli)
+}
+fn answer_local(v: &Value) -> Result<Value, (String, String)> {
+    wired(v, super::answer_local)
 }
 
 fn attach_req() -> Value {
@@ -117,16 +133,18 @@ fn the_account_used_is_in_the_product_and_an_unusable_one_is_refused_with_data()
         serde_json::json!({"name": "z", "configDir": "/h/z", "model": null})
     );
     assert!(v["cmd"].as_str().unwrap().contains("--account z"), "{v}");
-    let (code, _, data) = facts_of(|f| {
-        super::answer_local(
-            &resume(serde_json::json!({"kind": "named", "name": "gone"})),
-            f,
-        )
-    })
-    .unwrap_err();
-    assert_eq!(code, "account_unavailable");
+    let fail = {
+        use crate::stream::inbound::typed::Codes;
+        let req =
+            serde_json::from_value(resume(serde_json::json!({"kind": "named", "name": "gone"})))
+                .unwrap();
+        facts_of(|f| super::answer_local(&req, f))
+            .unwrap_err()
+            .into_fail()
+    };
+    assert_eq!(fail.code, "account_unavailable");
     assert_eq!(
-        data,
+        fail.data,
         Some(
             serde_json::json!({"requested": "gone", "pinned": false, "listKnown": true, "alternative": "z"})
         )

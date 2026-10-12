@@ -5,6 +5,8 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
+    ("launch-local", "d359d78c"),
+    ("launch-render-cli", "7fc9d2a8"),
     ("session-interrupts", "6b0c632f"),
     ("session-new-dir", "2c86c180"),
     ("session-terminals", "b2c5f3d1"),

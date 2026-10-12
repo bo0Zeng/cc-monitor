@@ -80,24 +80,49 @@ pub(crate) struct Cx {
 }
 
 /// 声明一条命令的错误枚举：每个变体带那一句（同 [`Fail::new`]：契约错的诊断跟在句子后面 ⇒ 拆进原话），码就是右边那个字面量。
+/// 按码定了 `data` 形状的那几个码写成 `Var = "code" => 类型`：变体多带那一份，投出去时进失败信封的 `data`。
 /// 码表恒以 `bad_args` 打头、枚举里恒有 `BadArgs`：入参解不出来是每条 typed 命令都会回的（[`take`]），
 /// 入参解得出、组合不对（「两个里恰好给一个」那一类）的由处理器自己回 `BadArgs`。
 macro_rules! codes {
-    ($(#[$m:meta])* $vis:vis enum $name:ident { $($(#[$vm:meta])* $var:ident = $code:literal),* $(,)? }) => {
+    ($(#[$m:meta])* $vis:vis enum $name:ident { $($body:tt)* }) => {
+        $crate::stream::inbound::typed::codes!(@munch [$(#[$m])*] [$vis] $name [] [] [] $($body)*);
+    };
+    // 带 `data` 的那一种。
+    (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*]
+        $(#[$vm:meta])* $var:ident = $code:literal => $data:ty $(, $($rest:tt)*)?) => {
+        $crate::stream::inbound::typed::codes!(@munch $attrs $vis $name
+            [$($vars)* $(#[$vm])* $var(String, $data),]
+            [$($arms)* $name::$var(said, data) => $crate::stream::inbound::spec::Fail {
+                data: ::serde_json::to_value(&data).ok(),
+                ..$crate::stream::inbound::spec::Fail::new($code, said)
+            },]
+            [$($codes)* $code,]
+            $($($rest)*)?);
+    };
+    // 只有那一句的那一种。
+    (@munch $attrs:tt $vis:tt $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*]
+        $(#[$vm:meta])* $var:ident = $code:literal $(, $($rest:tt)*)?) => {
+        $crate::stream::inbound::typed::codes!(@munch $attrs $vis $name
+            [$($vars)* $(#[$vm])* $var(String),]
+            [$($arms)* $name::$var(said) => $crate::stream::inbound::spec::Fail::new($code, said),]
+            [$($codes)* $code,]
+            $($($rest)*)?);
+    };
+    (@munch [$(#[$m:meta])*] [$vis:vis] $name:ident [$($vars:tt)*] [$($arms:tt)*] [$($codes:tt)*]) => {
         $(#[$m])*
         #[derive(Debug)]
         $vis enum $name {
             /// 入参组合不对（形状不对的那一种在解入参那一步就回了，不经这里）。
             #[allow(dead_code)] // 不是每条命令都有「组合不对」这一种；码表里它恒在（解入参那一步）。
             BadArgs(String),
-            $($(#[$vm])* $var(String)),*
+            $($vars)*
         }
         impl $crate::stream::inbound::typed::Codes for $name {
-            const ALL: &'static [&'static str] = &["bad_args", $($code),*];
+            const ALL: &'static [&'static str] = &["bad_args", $($codes)*];
             fn into_fail(self) -> $crate::stream::inbound::spec::Fail {
                 match self {
                     $name::BadArgs(said) => $crate::stream::inbound::spec::Fail::new("bad_args", said),
-                    $($name::$var(said) => $crate::stream::inbound::spec::Fail::new($code, said)),*
+                    $($arms)*
                 }
             }
         }

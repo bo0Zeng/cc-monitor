@@ -13,11 +13,13 @@
 
 use super::launch::LAUNCH_CAP;
 use super::launch_account::{self as la, AccountAsk, Settled};
-use super::launch_render::Failed;
 use super::session_batch::{self as batch, Batch, Deps, Item, Standing, SESSIONS_WHERE_CAP};
 use crate::platform::child::{Budget, Deadline, Until};
 use serde_json::{Map, Value};
 use std::future::Future;
+
+/// 失败：码 ＋ 那一句 ＋ 按码定形的 `data`（`account_unavailable` 带 [`la::AccountUnavailable`]）。
+pub(crate) type Failed = (&'static str, String, Option<Value>);
 
 /// 命令级失败（码 ＋ 那一句 ＋ 按码定形的 `data`），全是自有值：跨阻塞线程交回来。
 pub(crate) type Fault = (String, String, Option<Value>);
@@ -171,7 +173,10 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
         models,
         deps.accounts,
     )
-    .map_err(super::launch_render::unavailable)?;
+    .map_err(|u| {
+        let said = la::unavailable_said(&u);
+        ("account_unavailable", said, serde_json::to_value(u).ok())
+    })?;
     let rows = batch::listed(deps).map_err(|(code, m)| (code, m, None))?;
     let not_here = || {
         (

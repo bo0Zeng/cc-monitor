@@ -1,10 +1,8 @@
 /**
  * U8c-2c-2：`render_ccm_launch` 的 **wire 形状两侧一致** + **生产真的切过去了**。
  *
- * `src/frontend/ui/launch-cli-wire.ts` 是一份**手写镜像**（不是 ts-rs 生成的）。Rust 那边带
- * `deny_unknown_fields` ⇒ 前端多送/少送一个字段会被**拒**，而那在生产里表现为
- * 「拉起时静默走兜底」—— 功能不变砖，但**真正在跑的那条路悄悄换了**，没人会发现。
- * 所以这条对拍是必需的。
+ * 入参类型从 Rust 生成（`generated/CliRenderRequest.ts`，typed 帧命令），TS 侧不再有手写镜像、不再逐字段对拍。
+ * Rust 那边带 `deny_unknown_fields` ⇒ 前端多送一个字段会被**拒**：下面那条仍核那几个入方向类型都带着它。
  */
 import { describe, expect, test } from "vitest";
 import { existsSync, readFileSync } from "node:fs";
@@ -14,50 +12,9 @@ import { stripComments } from "../../test-support/strip-comments.ts";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "../../..", p), "utf8");
 const RUST = read("src/backend/control/launch_render/wire.rs");
-const WIRE = read("src/frontend/ui/launch-cli-wire.ts");
 const RUN = read("src/frontend/ui/remote-launch-run.ts");
 
 describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
-  // Rust 侧 `CliRenderRequest` 用 `rename_all = "camelCase"`，所以字段名要转过来比。
-  // 标了 `#[serde(skip)]` 的格不上线（后端自己填的），不算进线上字段集。
-  const rustReqFields = (() => {
-    const body = RUST.slice(
-      RUST.indexOf("pub struct CliRenderRequest {"),
-      RUST.indexOf("}", RUST.indexOf("pub struct CliRenderRequest {")),
-    );
-    let skip = false;
-    return body
-      .split("\n")
-      .map((l) => {
-        if (/^\s{4}#\[serde\(skip\)\]/.test(l)) skip = true;
-        const f = /^\s{4}pub ([a-z_0-9]+):/.exec(l)?.[1];
-        if (f === undefined) return undefined;
-        const off = skip;
-        skip = false;
-        return off ? undefined : f;
-      })
-      .filter((x): x is string => !!x)
-      .map((snake) => snake.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase()))
-      .sort();
-  })();
-
-  test("抽取器自检：真的从 Rust 抽到了字段（抽空就会零命中零失败地绿）", () => {
-    expect(rustReqFields.length).toBeGreaterThanOrEqual(8);
-  });
-
-  test("TS 手写镜像的字段集 == Rust `CliRenderRequest` 的字段集", () => {
-    const body = WIRE.slice(
-      WIRE.indexOf("export interface CliRenderRequest {"),
-      WIRE.indexOf("}", WIRE.indexOf("export interface CliRenderRequest {")),
-    );
-    const tsFields = body
-      .split("\n")
-      .map((l) => /^\s{2}([a-zA-Z0-9]+)[?]?:/.exec(l)?.[1])
-      .filter((x): x is string => !!x)
-      .sort();
-    expect(tsFields).toEqual(rustReqFields);
-  });
-
   // 判据自带清单（遍历被测文件自己是恒真的）：一个请求结构 ＋ 两个枚举。载荷那条请求与它的四个类型随载荷渲染删了；
   // `account` 那一格是三条起会话请求共用的 `AccountAsk`（住 `control/launch_account.rs`，同样 `deny_unknown_fields`）。
   const DENY_WIRE_TYPES = ["CliRenderRequest", "WireAction", "WireContainer"];

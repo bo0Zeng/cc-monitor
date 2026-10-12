@@ -3,16 +3,6 @@
 use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Fail, Run};
 use crate::stream::inbound::LocalFiles;
 
-/// 起会话那几条的失败（码 ＋ 那一句 ＋ 按码定形的 `data`）⇒ 应答那一格。
-fn failed((code, message, data): crate::control::launch_render::Failed) -> Fail {
-    Fail {
-        code: code.to_string(),
-        message,
-        data,
-        raw: None,
-    }
-}
-
 /// `session-new` 的失败（多一格下层原话：进应答的复制详情，不进那一句）。
 fn failed_with_raw((code, message, data, raw): crate::control::session_new::Failed) -> Fail {
     Fail {
@@ -26,31 +16,14 @@ fn failed_with_raw((code, message, data, raw): crate::control::session_new::Fail
 pub(super) const SPECS: &[CommandSpec] = &[
     // 起会话那一行 `ccm …`（`control/launch_render/`）：交给终端的只有这一行，环境与中转地址归那台的 `ccm`。
     //   `launch-local`：本机那几形（阻塞档：核一次「新起」的目录在不在）；`launch-render-cli`：远端那几形（纯函数）。
-    CommandSpec {
-        name: "launch-local",
-        summary: "本机起会话那一行 `ccm …`",
-        codes: &["bad_args", "refused", "account_unavailable"],
-        fields: &[arg("account", "缺席（不表态：继承；接回那一形）· 同 `launch-render-cli`（`follow` 什么都没选上 ⇒ 也是不表态）"), arg("action", "`{\"kind\":\"new\"}` · `{\"kind\":\"resume\",\"sid\":…}` · `{\"kind\":\"attach\"}`（接回 `tmuxName` 那个会话，不起 agent）"), out("cmd", "那一行 `ccm …`"), out("configDir", "应答 `account` 里：那个号的配置目录"), arg("cwd", "只用来核「新起」那一格的目录在不在"), arg("defaultLauncher", "这一家 agent 的默认启动器（等于它就不吐 `--launcher`）"), both("kind", "`action` 的种类：`new` · `resume` · `attach`；`account` 的种类：`follow` · `base` · `named`"), arg("launcher", "自定义启动命令（空 = 没设）"), out("model", "应答 `account` 里：用的模型"), out("name", "`account` 为 `named` 时的号名；应答 `account` 里是实际用的号"), arg("tmuxName", "建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 直路")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::faces::launch_face::answer_local(&r.args, &LocalFiles)
-                .map(Some)
-                .map_err(failed)
-        }),
-    },
-    CommandSpec {
-        name: "launch-render-cli",
-        summary: "远端起会话那一行 `ccm …`",
-        codes: &["bad_args", "refused", "account_unavailable"],
-        fields: &[arg("account", "`{\"kind\":\"follow\"}` · `{\"kind\":\"base\"}` · `{\"kind\":\"named\",\"name\":…}`（按名字判）—— 生成的类型 `AccountAsk`"), arg("action", "`{\"kind\":\"new\"}` · `{\"kind\":\"resume\",\"sid\":…}` · `{\"kind\":\"attach\",\"name\":…}`"), arg("ccmSid", "这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`）"), out("cmd", "那一行 `ccm …`"), out("configDir", "应答 `account` 里：那个号的配置目录"), arg("container", "`{\"kind\":\"none\"}`（直路）· `{\"kind\":\"tmux\",\"name\":…,\"send_into\":bool}`（建会话 / 键进已有 pane）"), arg("cwd", "这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`）"), arg("defaultLauncher", "这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`）"), both("kind", "`action` / `account` 的种类（同 `launch-local`）"), arg("launcher", "这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`）"), arg("model", "这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`）"), arg("models", "可缺：这台的模型偏好表（`{号: 模型}`，用户设置的原值）；判出来的号在表里 ⇒ `--model` 用那一条"), both("name", "号名（同 `launch-local`）")],
-        takes_input: true,
-        // 阻塞档：判号要读这台的账号清单与那份记录（同步文件 I/O）。
-        run: Run::BlockingData(|r| {
-            crate::faces::launch_face::answer_cli(&r.args, &LocalFiles)
-                .map(Some)
-                .map_err(failed)
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::faces::launch_face::LaunchLocal>(
+        "本机起会话那一行 `ccm …`",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_files::<crate::faces::launch_face::LaunchRenderCli>(
+        "远端起会话那一行 `ccm …`",
+        &LocalFiles,
+    ),
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
     //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。

@@ -3267,19 +3267,51 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → | 缺席（不表态：继承；接回那一形）· 同 `launch-render-cli`（`follow` 什么都没选上 ⇒ 也是不表态） |
-| `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach"}`（接回 `tmuxName` 那个会话，不起 agent） |
-| `cmd` | ← | 那一行 `ccm …` |
-| `configDir` | ← | 应答 `account` 里：那个号的配置目录 |
-| `cwd` | → | 只用来核「新起」那一格的目录在不在 |
-| `defaultLauncher` | → | 这一家 agent 的默认启动器（等于它就不吐 `--launcher`） |
-| `kind` | → ← | `action` 的种类：`new` · `resume` · `attach`；`account` 的种类：`follow` · `base` · `named` |
-| `launcher` | → | 自定义启动命令（空 = 没设） |
-| `model` | ← | 应答 `account` 里：用的模型 |
-| `name` | ← | `account` 为 `named` 时的号名；应答 `account` 里是实际用的号 |
-| `tmuxName` | → | 建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 直路 |
+入参 `LocalLaunchRequest` · 回包 `Rendered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type LocalAction = { "kind": "new" } | { "kind": "resume", sid: string, } | { "kind": "attach" };
+type LocalLaunchRequest = { 
+/**
+ * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
+ */
+agent: string, action: LocalAction, 
+/**
+ * 只用来核「新起」那一格的目录在不在；终端的工作目录由 monitor 开窗口时给。
+ */
+cwd?: string | null, 
+/**
+ * 自定义启动命令（空 / 纯空白 = 没设）。
+ */
+launcher?: string | null, 
+/**
+ * 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
+ */
+account?: AccountAsk | null, 
+/**
+ * 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
+ */
+tmuxName?: string | null, 
+/**
+ * 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
+ */
+defaultLauncher: string, };
+type Rendered = { 
+/**
+ * 那一行 `ccm …`。
+ */
+cmd: string, 
+/**
+ * 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, };
+```
 
 码：`bad_args` · `refused` · `account_unavailable`
 
@@ -3289,21 +3321,40 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --launch-render-cli`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → | `{"kind":"follow"}` · `{"kind":"base"}` · `{"kind":"named","name":…}`（按名字判）—— 生成的类型 `AccountAsk` |
-| `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach","name":…}` |
-| `ccmSid` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `cmd` | ← | 那一行 `ccm …` |
-| `configDir` | ← | 应答 `account` 里：那个号的配置目录 |
-| `container` | → | `{"kind":"none"}`（直路）· `{"kind":"tmux","name":…,"send_into":bool}`（建会话 / 键进已有 pane） |
-| `cwd` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `kind` | → ← | `action` / `account` 的种类（同 `launch-local`） |
-| `launcher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `model` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `models` | → | 可缺：这台的模型偏好表（`{号: 模型}`，用户设置的原值）；判出来的号在表里 ⇒ `--model` 用那一条 |
-| `name` | → ← | 号名（同 `launch-local`） |
+入参 `CliRenderRequest` · 回包 `Rendered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type CliRenderRequest = { 
+/**
+ * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
+ */
+agent: string, action: WireAction, container: WireContainer, cwd: string | null, account: AccountAsk, ccmSid: string | null, 
+/**
+ * 显式指定的模型（压过下面那张表）。
+ */
+model: string | null, 
+/**
+ * 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
+ */
+models?: { [key in string]: string }, launcher: string, defaultLauncher: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type Rendered = { 
+/**
+ * 那一行 `ccm …`。
+ */
+cmd: string, 
+/**
+ * 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, };
+type WireAction = { "kind": "new" } | { "kind": "resume", sid: string, } | { "kind": "attach", name: string, };
+type WireContainer = { "kind": "none" } | { "kind": "tmux", name: string, send_into: boolean, };
+```
 
 码：`bad_args` · `refused` · `account_unavailable`
 

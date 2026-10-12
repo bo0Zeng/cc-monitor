@@ -13,6 +13,8 @@ use std::collections::BTreeSet;
 
 /// `launch-local` 的入参。
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct LocalLaunchRequest {
     /// 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
@@ -20,15 +22,19 @@ pub(crate) struct LocalLaunchRequest {
     pub(crate) action: LocalAction,
     /// 只用来核「新起」那一格的目录在不在；终端的工作目录由 monitor 开窗口时给。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) cwd: Option<String>,
     /// 自定义启动命令（空 / 纯空白 = 没设）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) launcher: Option<String>,
     /// 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) account: Option<AccountAsk>,
     /// 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) tmux_name: Option<String>,
     /// 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
     pub(crate) default_launcher: String,
@@ -41,6 +47,8 @@ pub(crate) struct LocalLaunchRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub(crate) enum LocalAction {
     New,
