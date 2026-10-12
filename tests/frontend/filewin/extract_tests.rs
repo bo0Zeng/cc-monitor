@@ -23,7 +23,7 @@ fn file_row(name: &str) -> crate::source::Listed {
 }
 
 async fn settle(w: &crate::shell::FileWindow, want: u64) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.extract_board.rounds() >= want {
             return;
         }

@@ -36,7 +36,11 @@ trap 'e2e_tmux_reap "$TMUX_BIN" "$SOCK"; ccm_shim_cleanup; rm -rf "$SP"' EXIT
 
 CMD() { grep -P "^$1\t" "$SP/f01-cmds.tsv" | cut -f2-; }
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }
-reset() { T kill-server 2>/dev/null; sleep 0.3; }
+reset() { T kill-server 2>/dev/null; wall_until '! T ls >/dev/null 2>&1'; }
+# 会话里的 shell 起好了（提示符画出来了）：之后打进去的字才有人读。
+ready() { local s; for s in "$@"; do wall_until "[ -n \"\$(pane $s | tr -d '[:space:]')\" ]"; done; }
+# 载荷落进了那个会话（等它出现，不睡固定秒数）。
+landed() { wall_until "pane $1 | grep -q CCMPROBE"; }
 sessions() { T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' '; }
 pane() { T capture-pane -p -t "=$1:" 2>/dev/null; }
 
@@ -47,7 +51,7 @@ ck() { # ck <描述> <期望> <实得>
 }
 
 echo "===== 场景 A：只有兄弟会话 cc-p1-2（cc-p1 不存在）====="
-reset; T new-session -d -s cc-p1-2; sleep 0.5
+reset; T new-session -d -s cc-p1-2; ready cc-p1-2
 bash -c "$(CMD resumeIntoExisting)" >/dev/null 2>&1; rc=$?
 ck "生产串 resumeIntoExisting → rc≠0" "nonzero" "$([ $rc -ne 0 ] && echo nonzero || echo zero)"
 ck "兄弟 cc-p1-2 未收到载荷" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
@@ -66,9 +70,9 @@ ck "兄弟 cc-p1-2 仍存活" "cc-p1-2 " "$(sessions)"
 
 echo
 echo "===== 场景 B：cc-p1 与 cc-p1-2 并存 ====="
-reset; T new-session -d -s cc-p1-2; T new-session -d -s cc-p1; sleep 0.5
+reset; T new-session -d -s cc-p1-2; T new-session -d -s cc-p1; ready cc-p1-2 cc-p1
 bash -c "$(CMD resumeIntoExisting)" >/dev/null 2>&1
-sleep 1
+landed cc-p1
 ck "载荷落进 cc-p1" "HIT" "$(pane cc-p1 | grep -q CCMPROBE && echo HIT || echo MISS)"
 ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
 T set-option -t '=cc-p1:' @ccm_sid PROBE-SID >/dev/null 2>&1
@@ -80,16 +84,16 @@ ck "只杀掉 cc-p1，cc-p1-2 存活" "cc-p1-2 " "$(sessions)"
 
 echo
 echo "===== 场景 C：glob 不得生效 ====="
-reset; T new-session -d -s alpha; sleep 0.4
+reset; T new-session -d -s alpha
 T kill-session -t '=a*a:' >/dev/null 2>&1; rc=$?
 ck "kill-session '=a*a:' → rc≠0" "nonzero" "$([ $rc -ne 0 ] && echo nonzero || echo zero)"
 ck "alpha 存活" "alpha " "$(sessions)"
 
 echo
 echo "===== 场景 D：新建路径（生产串）建自己的会话，不碰兄弟 ====="
-reset; T new-session -d -s cc-p1-2; sleep 0.4
+reset; T new-session -d -s cc-p1-2; ready cc-p1-2
 bash -c "$(CMD resumeTmux)" >/dev/null 2>&1
-sleep 1
+landed cc-p1
 ck "cc-p1 被建出来" "yes" "$(T has-session -t '=cc-p1:' 2>/dev/null && echo yes || echo no)"
 ck "载荷落进新建的 cc-p1" "HIT" "$(pane cc-p1 | grep -q CCMPROBE && echo HIT || echo MISS)"
 ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"
@@ -98,9 +102,9 @@ ck "@ccm_sid_expect 写在 cc-p1 上" "p1" "$(T show-options -v -t '=cc-p1:' @cc
 
 echo
 echo "===== 场景 E：posixQuote 名路径（buildLauncherCmd 生产串）+ pty 下 attach 正例 ====="
-reset; T new-session -d -s cc-p1-2; sleep 0.4
+reset; T new-session -d -s cc-p1-2; ready cc-p1-2
 bash -c "$(CMD launcher)" >/dev/null 2>&1
-sleep 1
+landed cc-p1
 ck "cc-p1 被建出（posixQuote 名路径）" "yes" "$(T has-session -t '=cc-p1:' 2>/dev/null && echo yes || echo no)"
 ck "载荷落进 cc-p1" "HIT" "$(pane cc-p1 | grep -q CCMPROBE && echo HIT || echo MISS)"
 ck "兄弟 cc-p1-2 未被污染" "clean" "$(pane cc-p1-2 | grep -q CCMPROBE && echo POLLUTED || echo clean)"

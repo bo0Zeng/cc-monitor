@@ -132,14 +132,14 @@ fn chunk_reads(wired: &Wired) -> usize {
 }
 
 async fn settle(p: &Pictures, key: &PicKey, ctx: &egui::Context) -> Look {
-    for _ in 0..1000 {
+    for _ in guard_core::wall::rounds() {
         match p.look(key, Some(ctx)) {
             Some(Look::Reading { .. }) | None => {}
             Some(l) => return l,
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("等了 5 秒图还没读完");
+    panic!("到兜底上限图还没读完");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

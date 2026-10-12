@@ -911,7 +911,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
 
     // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
     let mut client = None;
-    for _ in 0..100 {
+    for _ in guard_core::wall::rounds() {
         if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
             client = Some(c);
             break;
@@ -925,7 +925,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let Some(client) = client else {
         cleanup(&h);
         panic!(
-            "5s 内 `client_for(<local>)` 仍是 None —— 本机入方向通道没登记上。\n\
+            "到兜底上限 `client_for(<local>)` 仍是 None —— 本机入方向通道没登记上。\n\
                  ⚠ 「没报错」不算数：远端那条路的头注记着一次审计变异 ——\n\
                  把注册整段删掉（写半边永不解冻）`cargo test` 照样全绿。所以这里必须**看到通道**。"
         );
@@ -2570,7 +2570,7 @@ fn e2e_a_missing_local_backend_degrades_honestly_against_the_real_filesystem() {
 
 // ── 测试侧助手。**只在测试里**，生产段没有任何轮询 ─────────────────────
 fn spin<T>(mut f: impl FnMut() -> Option<T>) -> Option<T> {
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if let Some(v) = f() {
             return Some(v);
         }

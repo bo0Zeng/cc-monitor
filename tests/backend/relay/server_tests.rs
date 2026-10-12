@@ -1404,7 +1404,7 @@ fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
 /// 等一个条件成立，最多 4 秒。**等不到回 `false`**，调用方当红处理。
 /// （只住测试段：生产段一个 sleep 都不许有，`no_timer_guard` 钉着。）
 fn wait_until(mut cond: impl FnMut() -> bool) -> bool {
-    for _ in 0..2000 {
+    for _ in guard_core::wall::rounds() {
         if cond() {
             return true;
         }

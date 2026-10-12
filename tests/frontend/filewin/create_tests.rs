@@ -15,13 +15,13 @@ use crate::find::testing::{frame_text, window_on, wire_up, Declared, FakeBackend
 
 /// 等就地那一趟回来（[`FileWindow::settle_inline`] 收到）。**带上限，绝不挂死**（同 `find::testing::settle`）。
 async fn settle_inline(w: &mut FileWindow, who: &str) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.settle_inline() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("{who}：等了 3 秒那一趟还没回来");
+    panic!("{who}：到兜底上限那一趟还没回来");
 }
 
 /// 一帧生产那个 `frame_body` 连同窗口的框（命令栏上那几颗在框里），交回这一帧画出来的字 ＋ 位置。
@@ -132,7 +132,7 @@ async fn a_new_file_speaks_files_create_with_root_and_rel_and_no_content() {
         "建成了却说了一句：{:?}",
         w.prompt_error()
     );
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if wired.count("files-ls") >= 1 {
             break;
         }

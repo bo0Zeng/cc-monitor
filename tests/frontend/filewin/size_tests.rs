@@ -126,13 +126,13 @@ async fn size_on_the_menu_walks_to_the_wire_for_each_picked_item() {
         "算大小没起来：{:?}",
         w.key_notice()
     );
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.size_board.rounds() > 0 {
             break;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    assert_eq!(w.size_board.rounds(), 1, "等了 3 秒那一摞还没回话");
+    assert_eq!(w.size_board.rounds(), 1, "到兜底上限那一摞还没回话");
     let sent: Vec<serde_json::Value> = wired
         .log
         .lock()

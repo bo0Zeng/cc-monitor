@@ -1363,13 +1363,13 @@ pub fn type_into_search(ctx: &egui::Context, w: &mut crate::shell::FileWindow, t
 /// 照 `inbound_client_tests::next_line` 那条纪律办：一条判据该干净地红，
 /// 不该让 `cargo test` 悬在那儿（那在 CI 上表现为 job 超时，不是失败列表）。
 pub async fn settle(board: &crate::find::SearchBoard, before: u64, who: &str) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if board.rounds() > before {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("{who}：等了 3 秒那块板子还是没有新答案（rounds 仍是 {before}）");
+    panic!("{who}：到兜底上限那块板子还是没有新答案（rounds 仍是 {before}）");
 }
 
 /// 合成后端的「摘要」：64 位小写十六进制、内容不同就不同（判据只要这两条；窗口把它当不透明令牌）。
@@ -1417,13 +1417,13 @@ impl SideRt {
 
     /// 等到窗口一趟都不在路上。按条件等，上限只防挂死。
     pub async fn idle(&self) {
-        for _ in 0..1000 {
+        for _ in guard_core::wall::rounds() {
             if self.in_flight() == 0 {
                 return;
             }
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
-        panic!("等了 5 秒，窗口还有 {} 趟在路上", self.in_flight());
+        panic!("到兜底上限，窗口还有 {} 趟在路上", self.in_flight());
     }
 }
 

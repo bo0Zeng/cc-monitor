@@ -135,8 +135,14 @@ fn find_latest_log_picks_newest_mtime() {
     std::fs::create_dir_all(&tmp).unwrap();
 
     std::fs::write(tmp.join("monitor.2026-01-01.log"), "old").unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
     std::fs::write(tmp.join("monitor.2026-05-25.log"), "new").unwrap();
+    // 修改时刻直接写（旧的那份早十秒），不靠睡一会儿造出先后。
+    std::fs::File::options()
+        .write(true)
+        .open(tmp.join("monitor.2026-01-01.log"))
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(10))
+        .unwrap();
     // 非 log 文件不应被选中
     std::fs::write(tmp.join("notes.txt"), "noise").unwrap();
 

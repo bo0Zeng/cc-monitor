@@ -3418,21 +3418,43 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
     let mut ear = AccountsEar::new(&dir);
     ear.arm(&mut debouncer);
     // 写一份文件，等到一批事件里 `on_path` 回过 true（或期限到）。回到没到。
-    let heard = |ear: &mut AccountsEar, debouncer: &mut _, path: &Path| -> bool {
-        std::fs::write(path, b"{}").unwrap();
-        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
-        let mut got = false;
-        while !got && std::time::Instant::now() < deadline {
-            if let Ok(WatchEvent::Notify(Ok(evs))) = erx.recv_timeout(Duration::from_millis(200)) {
-                for ev in &evs {
-                    got |= ear.on_path(debouncer, &ev.path);
+    // 「不该听见」那一格是个没发生：紧跟着再写一份收尾记号，等记号那条事件到了就停（排在它前面的都过完了），
+    //   不拿「等满期限还没听见」当答案（那样绿的时候每次都要等满兜底的那个数）。
+    let heard =
+        |ear: &mut AccountsEar, debouncer: &mut _, path: &Path, settle: Option<&Path>| -> bool {
+            std::fs::write(path, b"{}").unwrap();
+            if let Some(s) = settle {
+                std::fs::write(s, b"").unwrap();
+            }
+            let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+            let mut got = false;
+            let mut settled = false;
+            while !(if settle.is_some() { settled } else { got })
+                && std::time::Instant::now() < deadline
+            {
+                if let Ok(WatchEvent::Notify(Ok(evs))) =
+                    erx.recv_timeout(Duration::from_millis(200))
+                {
+                    for ev in &evs {
+                        got |= ear.on_path(debouncer, &ev.path);
+                        settled |= settle.is_some_and(|s| ev.path.file_name() == s.file_name());
+                    }
                 }
             }
-        }
-        got
-    };
-    let other = heard(&mut ear, &mut debouncer, &old.join("settings.json"));
-    let at_start = heard(&mut ear, &mut debouncer, &old.join(".credentials.json"));
+            got
+        };
+    let other = heard(
+        &mut ear,
+        &mut debouncer,
+        &old.join("settings.json"),
+        Some(&old.join("zz-settle")),
+    );
+    let at_start = heard(
+        &mut ear,
+        &mut debouncer,
+        &old.join(".credentials.json"),
+        None,
+    );
     let fresh = dir.join("acct-b");
     std::fs::create_dir_all(&fresh).unwrap();
     // 号目录出现那一格先到（重挂各号目录），之后那份凭据才听得见。
@@ -3444,7 +3466,12 @@ fn a_credentials_file_appearing_in_an_account_dir_is_heard() {
             }
         }
     }
-    let later = heard(&mut ear, &mut debouncer, &fresh.join(".credentials.json"));
+    let later = heard(
+        &mut ear,
+        &mut debouncer,
+        &fresh.join(".credentials.json"),
+        None,
+    );
     drop(debouncer);
     std::fs::remove_dir_all(&root).ok();
     assert!(!other, "号目录里别的文件不该当成「清单可能变了」");
@@ -4002,8 +4029,14 @@ fn announcing_a_session_finds_its_records_from_the_table_not_a_full_walk() {
         std::fs::create_dir_all(p.parent().unwrap()).unwrap();
     }
     std::fs::write(&a, "{}\n").unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(20));
     std::fs::write(&b, "{}\n").unwrap();
+    // 修改时刻直接写（a 比 b 早十秒），不靠睡一会儿造出先后。
+    std::fs::File::options()
+        .write(true)
+        .open(&a)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(10))
+        .unwrap();
     let mut st = ReaderState::new(projects.clone());
     assert!(st.sid_files.is_none(), "表应在第一次宣告时才建");
     assert_eq!(sid_jsonls(&mut st, sid), find_sid_jsonls(&st, sid));
@@ -4052,37 +4085,56 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
         .expect("debouncer 起不来");
     let mut ear = ProfilesEar::new(file.clone()).expect("有上一层");
     ear.arm(&mut debouncer);
-    // 做一件事，等到那一批（最多 20 秒）：回这一批里配置文件算不算动了。
-    let mut heard = |ear: &mut ProfilesEar, debouncer: &mut _, act: &dyn Fn()| -> bool {
-        act();
-        let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
-        let mut got = false;
-        while std::time::Instant::now() < deadline {
-            match erx.recv_timeout(Duration::from_millis(300)) {
-                Ok(WatchEvent::Notify(Ok(evs))) => {
-                    got |= ear.touched(debouncer, evs.iter().map(|e| e.path.as_path()));
-                    if got {
-                        break;
-                    }
-                }
-                Ok(_) => {}
-                Err(_) if got => break,
-                Err(_) => {}
+    // 做一件事，等到那一批：回这一批里配置文件算不算动了。
+    // 「不算」那一格是个没发生：事后再写一份收尾记号（`settle`），等记号那条事件到了就停（排在它前面的都过完了），
+    //   不拿「等满期限还没听见」当答案（那样绿的时候每次都要等满兜底的那个数）。
+    let settle = dir.join("zz-settle");
+    let mut heard =
+        |ear: &mut ProfilesEar, debouncer: &mut _, act: &dyn Fn(), settle: Option<&Path>| -> bool {
+            act();
+            if let Some(s) = settle {
+                std::fs::write(s, "").unwrap();
             }
-        }
-        got
-    };
-    let made = heard(&mut ear, &mut debouncer, &|| {
-        std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(&file, "[cc]\n").unwrap();
-    });
-    let other = heard(&mut ear, &mut debouncer, &|| {
-        std::fs::write(dir.join("aliases.sh"), "x").unwrap()
-    });
-    let renamed = heard(&mut ear, &mut debouncer, &|| {
-        std::fs::write(dir.join(".profiles.toml.tmp"), "[cct]\n").unwrap();
-        std::fs::rename(dir.join(".profiles.toml.tmp"), &file).unwrap();
-    });
+            let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+            let mut got = false;
+            let mut settled = false;
+            while !(if settle.is_some() { settled } else { got })
+                && std::time::Instant::now() < deadline
+            {
+                if let Ok(WatchEvent::Notify(Ok(evs))) =
+                    erx.recv_timeout(Duration::from_millis(300))
+                {
+                    got |= ear.touched(debouncer, evs.iter().map(|e| e.path.as_path()));
+                    settled |= settle
+                        .is_some_and(|s| evs.iter().any(|e| e.path.file_name() == s.file_name()));
+                }
+            }
+            got
+        };
+    let made = heard(
+        &mut ear,
+        &mut debouncer,
+        &|| {
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(&file, "[cc]\n").unwrap();
+        },
+        None,
+    );
+    let other = heard(
+        &mut ear,
+        &mut debouncer,
+        &|| std::fs::write(dir.join("aliases.sh"), "x").unwrap(),
+        Some(&settle),
+    );
+    let renamed = heard(
+        &mut ear,
+        &mut debouncer,
+        &|| {
+            std::fs::write(dir.join(".profiles.toml.tmp"), "[cct]\n").unwrap();
+            std::fs::rename(dir.join(".profiles.toml.tmp"), &file).unwrap();
+        },
+        None,
+    );
     drop(debouncer);
     std::fs::remove_dir_all(&root).ok();
     assert!(made, "目录后建出来、写进配置文件 ⇒ 要听得见");

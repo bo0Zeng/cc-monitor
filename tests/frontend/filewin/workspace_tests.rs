@@ -229,7 +229,7 @@ async fn a_new_tab_and_the_right_side_inherit_the_line_and_the_shelf() {
     let mut ws = Workspace::new(first);
     assert!(ws.open_tab(0));
     assert!(ws.set_split(true));
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if wired.count("files-ls") >= 2 {
             break;
         }
@@ -541,13 +541,13 @@ async fn across_rig(tag: &str) -> (crate::find::testing::Wired, Workspace) {
 }
 
 async fn settle_copy(w: &FileWindow) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.copy_board.rounds() > 0 {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("等了 3 秒复制那一趟还没回话");
+    panic!("到兜底上限复制那一趟还没回话");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

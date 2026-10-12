@@ -108,6 +108,13 @@ pub mod wall {
     pub const CEILING_SECS: u64 = 300;
     /// 同一个数的 `Duration` 形。
     pub const CEILING: std::time::Duration = std::time::Duration::from_secs(CEILING_SECS);
+
+    /// 轮询圈的圈数：一圈一圈地给，从头一回问起过了 [`CEILING`] 就停。
+    /// `for _ in rounds() { if 成了 { break } sleep(片) }` —— 等的是条件，上限是兜底的那个数，不拿「圈数 × 片」当期限。
+    pub fn rounds() -> impl Iterator<Item = ()> {
+        let end = std::time::Instant::now() + CEILING;
+        std::iter::from_fn(move || (std::time::Instant::now() < end).then_some(()))
+    }
 }
 
 /// 一条 `#[cfg(…)]` 属性是不是**测试期专属**。

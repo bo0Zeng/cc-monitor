@@ -265,7 +265,9 @@ else
   else
     bad "第二次 launch 没有应答"
   fi
-  sleep 0.4
+  # 「没重复键入」是个没发生：自己往同一个会话敲一条记号命令、等它落盘 ⇒ 在它之前进去的（要是后端敲了）已经执行过了。
+  tmux send-keys -t "=$SESS:" "touch '$MARK.settle'" Enter 2>/dev/null || true
+  wall_until '[ -f "$MARK.settle" ]' || true
   if [ ! -f "$MARK" ]; then ok "幂等短路真的没重复键入载荷"; else
     bad "幂等短路声称没键入，marker 却又出现了"
   fi

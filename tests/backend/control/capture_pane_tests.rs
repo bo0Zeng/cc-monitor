@@ -71,7 +71,7 @@ fn capturing_a_real_pane_brings_the_screen_back() {
     //   🔴 这段循环住在**测试段**：`KR86D3` 禁的是**生产段**里的轮询，
     //   由 `readonly_guard::capture_is_read_only::the_capture_site_is_one_shot` 钉着。
     let mut screen = String::new();
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         screen = capture_with_on(Some(&sock.to_string_lossy()), "=kr86live:", false, 0)
             .expect("真会话必须抓得到，抓不到说明这条原语根本没通");
         if screen.contains(marker) {

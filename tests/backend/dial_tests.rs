@@ -832,14 +832,18 @@ fn freezable_road() -> (
     tokio::io::DuplexStream,
     tokio::io::DuplexStream,
     Arc<std::sync::atomic::AtomicBool>,
+    Arc<std::sync::atomic::AtomicUsize>,
 ) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let frozen = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    // 服务端答回客户端的那一向过了几次（每轮保活的回话是一次）：「空闲了几轮」按它数，不按墙钟睡。
+    let answered = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let (client, near) = tokio::io::duplex(1 << 16);
     let (far, server) = tokio::io::duplex(1 << 16);
     let pump = |mut from: tokio::io::ReadHalf<tokio::io::DuplexStream>,
                 mut to: tokio::io::WriteHalf<tokio::io::DuplexStream>,
-                frozen: Arc<std::sync::atomic::AtomicBool>| async move {
+                frozen: Arc<std::sync::atomic::AtomicBool>,
+                passed: Option<Arc<std::sync::atomic::AtomicUsize>>| async move {
         let mut buf = vec![0u8; 1 << 14];
         loop {
             let n = match from.read(&mut buf).await {
@@ -852,13 +856,21 @@ fn freezable_road() -> (
             if to.write_all(&buf[..n]).await.is_err() {
                 return;
             }
+            if let Some(p) = &passed {
+                p.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
         }
     };
     let (nr, nw) = tokio::io::split(near);
     let (fr, fw) = tokio::io::split(far);
-    tokio::spawn(pump(nr, fw, Arc::clone(&frozen)));
-    tokio::spawn(pump(fr, nw, Arc::clone(&frozen)));
-    (client, server, frozen)
+    tokio::spawn(pump(nr, fw, Arc::clone(&frozen), None));
+    tokio::spawn(pump(
+        fr,
+        nw,
+        Arc::clone(&frozen),
+        Some(Arc::clone(&answered)),
+    ));
+    (client, server, frozen, answered)
 }
 
 /// 进程内的一台 SSH 服务端：谁来都放行（none 鉴权）、开 session 通道都答应；自己不发保活、不按空闲拆链。
@@ -894,8 +906,9 @@ async fn linked_over_road(
 ) -> (
     russh::client::Handle<AnyKey>,
     Arc<std::sync::atomic::AtomicBool>,
+    Arc<std::sync::atomic::AtomicUsize>,
 ) {
-    let (client, server, frozen) = freezable_road();
+    let (client, server, frozen, answered) = freezable_road();
     let key = russh::keys::PrivateKey::from(
         russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&[7u8; 32]),
     );
@@ -917,7 +930,7 @@ async fn linked_over_road(
             .expect("进程内服务端握手没过");
     let ok = h.authenticate_none("u").await.expect("none 鉴权没回话");
     assert!(ok.success(), "进程内服务端没放行");
-    (h, frozen)
+    (h, frozen, answered)
 }
 
 /// ★ 路断成黑洞之后开通道 —— 保活连着没回话就判死，挂在上面还在等的开通道**当场失败**（不等界面的 45 秒期限）。
@@ -927,7 +940,7 @@ async fn linked_over_road(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
     let every = std::time::Duration::from_millis(200);
-    let (h, frozen) = linked_over_road(every).await;
+    let (h, frozen, _answered) = linked_over_road(every).await;
     frozen.store(true, std::sync::atomic::Ordering::SeqCst);
     let got = tokio::time::timeout(guard_core::wall::CEILING, h.channel_open_session()).await;
     assert!(
@@ -950,8 +963,17 @@ async fn a_pending_open_on_a_frozen_road_fails_once_keepalives_go_unanswered() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_healthy_idle_connection_survives_many_keepalive_rounds() {
     let every = std::time::Duration::from_millis(200);
-    let (h, _frozen) = linked_over_road(every).await;
-    tokio::time::sleep(every * 15).await;
+    let (h, _frozen, answered) = linked_over_road(every).await;
+    // 空闲 15 轮：数服务端答回来的次数（每轮保活一次回话），不睡「15 × 间隔」——忙机上睡够了也未必真跑了 15 轮。
+    let base = answered.load(std::sync::atomic::Ordering::SeqCst);
+    let rounds = tokio::time::timeout(guard_core::wall::CEILING, async {
+        while answered.load(std::sync::atomic::Ordering::SeqCst) < base + 15 && !h.is_closed() {
+            tokio::task::yield_now().await;
+            tokio::time::sleep(every / 4).await;
+        }
+    })
+    .await;
+    assert!(rounds.is_ok(), "到兜底上限还没空闲满 15 轮保活");
     assert!(!h.is_closed(), "空闲 15 轮保活之后，健康的连接被判死了");
     let ch = tokio::time::timeout(guard_core::wall::CEILING, h.channel_open_session()).await;
     assert!(

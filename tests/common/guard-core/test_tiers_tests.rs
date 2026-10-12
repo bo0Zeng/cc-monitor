@@ -169,7 +169,7 @@ const UNREFERENCED: &[(&str, &str)] = &[];
 /// **手动、真机**的台架：刻意不进任何执行链（要真图形会话 / 真 dev 实例，门禁与 CI 都起不来），由人照 README 跑。
 /// `(文件, 为什么不进执行链 · 谁来跑)`。与 [`UNREFERENCED`] 同一道闸：每一行必须真的仍是没人引用的辅助件
 /// （有脚本 / 配置 / 测试引用它了 ⇒ 它不再是「只有人手跑」⇒ 死行 ⇒ 红）。
-const MANUAL_RIGS: &[(&str, &str)] = &[(
+pub(super) const MANUAL_RIGS: &[(&str, &str)] = &[(
     "tests/e2e/tier2-rig.sh",
     "tier-2 台架搭建器（`setup` / `dev` / `run` / `teardown`：沙箱 ＋ Xvfb ＋ dev 实例 ＋ 回环 ssh）；\
      它起的是**跑着的 dev app**，无头门禁与 CI 里没有那个 app（同 `e2e_gate_registry` 里 `graylight` / `f40` 两条豁免的理由）。\

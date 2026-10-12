@@ -14,9 +14,9 @@ fn tmpdir(tag: &str) -> PathBuf {
     d
 }
 
-/// 等到 `f` 成立（最多 `secs` 秒）；夹具用，生产段零处。
-fn wait_until(secs: u64, mut f: impl FnMut() -> bool) -> bool {
-    let end = Instant::now() + Duration::from_secs(secs);
+/// 等到 `f` 成立（最多兜底的那一个数）；夹具用，生产段零处。
+fn wait_until(mut f: impl FnMut() -> bool) -> bool {
+    let end = Instant::now() + guard_core::wall::CEILING;
     while Instant::now() < end {
         if f() {
             return true;
@@ -24,6 +24,12 @@ fn wait_until(secs: u64, mut f: impl FnMut() -> bool) -> bool {
         std::thread::sleep(Duration::from_millis(50));
     }
     f()
+}
+
+fn unix_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 /// `pid` 已经 exec 成 `comm` 并且新映像的环境装好了。只看 `comm` 不够：exec 时内核先换进程名、后记下新映像的
@@ -101,7 +107,7 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     // 那个「claude」（pane 里的进程）自己的环境里有 TMUX / TMUX_PANE —— tmux 注的。
     //   先等 exec 成 `sleep` 做完（`exec_settled`）：exec 之前读到的环境是 fork 出来那一份（也有 TMUX），只等 TMUX 出现
     //   会在 exec 那一刻之前就放行，下面那一问落进 exec 当中 ⇒ 判「取不到」（负载下并发跑红过：Unreadable ≠ Detached）。
-    assert!(wait_until(5, || exec_settled(pane_pid, "sleep")
+    assert!(wait_until(|| exec_settled(pane_pid, "sleep")
         && matches!(
             crate::platform::proc::proc_env_var(pane_pid, "TMUX"),
             crate::platform::proc::EnvRead::Value(_)
@@ -114,15 +120,16 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
     );
 
     let mut a = attach_client(&sock, "192.0.2.5 62414 192.0.2.9 22", None);
-    assert!(wait_until(10, || clients(&sock) == 1), "客户端 A 没连上");
-    // tmux 的动静是秒级的：隔开一秒多，B 才是「更近」的那个。
-    std::thread::sleep(Duration::from_millis(1300));
+    assert!(wait_until(|| clients(&sock) == 1), "客户端 A 没连上");
+    // tmux 的动静是秒级的：等墙钟走进 A 连上之后的下一秒再连 B，B 才是「更近」的那个（等的是那一秒到，不是睡固定的一秒多）。
+    let a_at = unix_secs();
+    assert!(wait_until(|| unix_secs() > a_at), "墙钟没往前走");
     let mut b = attach_client(
         &sock,
         "fd00::7 50000 fd00::1 2222",
         Some("4242-133000000000000000"),
     );
-    assert!(wait_until(10, || clients(&sock) == 2), "客户端 B 没连上");
+    assert!(wait_until(|| clients(&sock) == 2), "客户端 B 没连上");
 
     let got = shown_by(pane_pid).unwrap();
     let Shown::By(ts) = got else {
@@ -154,7 +161,7 @@ fn inside_tmux_the_answer_is_the_clients_attached_right_now() {
 
     // 断开 ⇒ 又是「没有终端连着」。
     tmux(&sock, &["detach-client", "-s", "a"]);
-    assert!(wait_until(10, || clients(&sock) == 0), "客户端没断开");
+    assert!(wait_until(|| clients(&sock) == 0), "客户端没断开");
     assert_eq!(shown_by(pane_pid).unwrap(), Shown::Detached);
 
     tmux(&sock, &["kill-server"]);
@@ -186,8 +193,9 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
         .spawn()
         .expect("起不来 script");
     let pid = {
-        assert!(wait_until(10, || std::fs::read_to_string(&pidfile)
-            .is_ok_and(|s| s.trim().parse::<u32>().is_ok())));
+        assert!(wait_until(
+            || std::fs::read_to_string(&pidfile).is_ok_and(|s| s.trim().parse::<u32>().is_ok())
+        ));
         std::fs::read_to_string(&pidfile)
             .unwrap()
             .trim()
@@ -195,7 +203,7 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
             .unwrap()
     };
     // 等它 exec 成 sleep、新映像的环境装好（环境定型）。
-    assert!(wait_until(10, || exec_settled(pid, "sleep")));
+    assert!(wait_until(|| exec_settled(pid, "sleep")));
     assert_eq!(
         shown_by(pid).unwrap(),
         Shown::By(vec![Terminal {
@@ -223,7 +231,7 @@ fn outside_tmux_the_process_own_environment_is_the_answer() {
         .spawn()
         .expect("起不来 setsid");
     let bpid = bare.id();
-    assert!(wait_until(10, || exec_settled(bpid, "sleep")));
+    assert!(wait_until(|| exec_settled(bpid, "sleep")));
     assert_eq!(shown_by(bpid).unwrap(), Shown::NoTerminal);
     let _ = bare.kill();
     let _ = bare.wait();

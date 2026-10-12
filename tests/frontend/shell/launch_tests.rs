@@ -668,7 +668,7 @@ fn local_posix_spawn_actually_runs_the_command() {
     launch_local_posix_via(&cmd, dir.to_str(), &term).expect("spawn 应成功");
     // 轮询等它落地（spawn 是异步的；上限宽松，判的是「跑没跑」不是快慢）。
     let mut seen = false;
-    for _ in 0..100 {
+    for _ in guard_core::wall::rounds() {
         if marker.is_file() {
             seen = true;
             break;
@@ -681,7 +681,7 @@ fn local_posix_spawn_actually_runs_the_command() {
         String::new()
     };
     let _ = std::fs::remove_dir_all(&dir);
-    assert!(seen, "5s 内没看到标记文件——spawn 那半没真跑");
+    assert!(seen, "到兜底上限没看到标记文件——spawn 那半没真跑");
     assert_eq!(content, "ok", "命令跑了但内容不对");
 }
 
@@ -713,7 +713,7 @@ fn exec_terminal(dir: &std::path::Path) -> Vec<String> {
 /// 轮询等一个文件落地（spawn 是异步的；上限宽松，判的是「有没有」不是快慢）。
 #[cfg(not(windows))]
 fn wait_for(path: &std::path::Path) -> bool {
-    for _ in 0..100 {
+    for _ in guard_core::wall::rounds() {
         if path.is_file() {
             // 再等一拍，避免读到写了一半的内容。
             std::thread::sleep(std::time::Duration::from_millis(20));

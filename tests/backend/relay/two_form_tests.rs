@@ -247,7 +247,7 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
 
     // tee 那一侧：三段流，每段 4 件数据 ＋ 收尾；标签 ＝ session-id 的值。
     let mut events = Vec::new();
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         events = taps.0.lock().unwrap().clone();
         if events.len() >= 15 {
             break;

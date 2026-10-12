@@ -171,7 +171,7 @@ async fn rig(tag: &str) -> (Wired, FileWindow, std::path::PathBuf) {
     let wired = wire_up(tag, be).await;
     let w = window_on(&wired, &dir.to_string_lossy());
     w.reload();
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if !w.listing.is_loading() && !w.listing.rows.lock().unwrap().is_empty() {
             break;
         }
@@ -248,7 +248,7 @@ impl Drive {
 
     /// 跑到查看页那一张解好为止（带上限）。
     async fn until_ready(&mut self, ws: &mut Workspace) -> Vec<PaintedText> {
-        for _ in 0..600 {
+        for _ in guard_core::wall::rounds() {
             let painted = self.frame(ws, Vec::new());
             let ready = ws.pane_on(ws.focus()).viewing().is_some_and(|v| {
                 matches!(
@@ -262,7 +262,7 @@ impl Drive {
             let _ = painted;
             tokio::time::sleep(std::time::Duration::from_millis(5)).await;
         }
-        panic!("查看页等了 3 秒图还没好");
+        panic!("查看页到兜底上限图还没好");
     }
 
     /// 真双击：按下松开两次（时间挨着、同一处）。
@@ -391,7 +391,7 @@ async fn the_page_draws_the_picture_and_shares_one_decode_with_the_preview() {
     ws.set_preview(true);
     let mut d = Drive::new();
     let mut shown = None;
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         d.frame(&mut ws, Vec::new());
         if let Some(crate::preview::View::Image { tex, size, .. }) =
             ws.preview.as_ref().map(|p| p.view().clone())

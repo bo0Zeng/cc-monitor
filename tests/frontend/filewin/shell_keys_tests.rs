@@ -576,7 +576,7 @@ async fn the_batch_that_reaches_the_wire_is_exactly_the_selection() {
     assert_eq!(picked(&w), want, "前提：选中态没选成那三项");
 
     d.key(&mut w, egui::Key::Delete, NONE);
-    for _ in 0..400 {
+    for _ in guard_core::wall::rounds() {
         if w.write_board.is_asking() {
             break;
         }
@@ -609,7 +609,7 @@ async fn the_batch_that_reaches_the_wire_is_exactly_the_selection() {
     );
 
     assert!(w.write_board.settle(true));
-    for _ in 0..400 {
+    for _ in guard_core::wall::rounds() {
         if w.write_board.rounds() > 0 {
             break;
         }
@@ -1169,7 +1169,7 @@ fn drive_real_keys(
         log.push("一个窗口都没等到".into());
         return log;
     };
-    for _ in 0..100 {
+    for _ in guard_core::wall::rounds() {
         if shared.lock().unwrap().frames >= 5 {
             break;
         }
@@ -1196,7 +1196,7 @@ fn drive_real_keys(
             log.push(format!("{name}：xdotool 没成：{e}"));
         }
         let mut ok = false;
-        for _ in 0..60 {
+        for _ in guard_core::wall::rounds() {
             if done(&shared.lock().unwrap()) {
                 ok = true;
                 break;
@@ -1323,7 +1323,7 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
     // 改权限不问（直接做 ＋ 回执［撤销］）；删除问一次。
     async fn settle(w: &mut FileWindow, round: u64) {
         if round > 0 {
-            for _ in 0..400 {
+            for _ in guard_core::wall::rounds() {
                 if w.write_board.is_asking() {
                     break;
                 }
@@ -1334,7 +1334,7 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
         } else {
             assert!(!w.write_board.is_asking(), "改权限又问了一次");
         }
-        for _ in 0..400 {
+        for _ in guard_core::wall::rounds() {
             if w.write_board.rounds() > round {
                 break;
             }

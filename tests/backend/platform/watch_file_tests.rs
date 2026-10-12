@@ -18,7 +18,7 @@ fn scratch(tag: &str) -> PathBuf {
 
 /// 有界等：每 20 毫秒看一眼，最多 5 秒。
 fn eventually(mut ok: impl FnMut() -> bool) -> bool {
-    for _ in 0..250 {
+    for _ in guard_core::wall::rounds() {
         if ok() {
             return true;
         }

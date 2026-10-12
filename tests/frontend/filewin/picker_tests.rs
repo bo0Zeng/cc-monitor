@@ -33,13 +33,13 @@ impl Picker for Fake {
 }
 
 async fn settle(w: &mut crate::shell::FileWindow) {
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if w.settle_pick() {
             return;
         }
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
-    panic!("等了 3 秒选择框的结局还没落下");
+    panic!("到兜底上限选择框的结局还没落下");
 }
 
 fn uploads(w: &crate::shell::FileWindow) -> usize {

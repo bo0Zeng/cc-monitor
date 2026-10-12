@@ -360,7 +360,7 @@ async fn sweeping_with_the_preview_open_never_flips_a_frame() {
     let mut ws = Workspace::new(w);
     ws.set_preview(true);
     let mut s = Sweep::new();
-    for _ in 0..400 {
+    for _ in guard_core::wall::rounds() {
         s.frame(&mut ws, Vec::new());
         if matches!(
             ws.preview.as_ref().map(|p| p.view()),
@@ -423,7 +423,7 @@ async fn sweeping_over_the_picture_page_never_flips_a_frame() {
     let d = base.to_string_lossy().to_string();
     let mut w = window_on(&wired, &d);
     w.reload();
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         if !w.listing.is_loading() && !w.listing.rows.lock().unwrap().is_empty() {
             break;
         }
@@ -448,7 +448,7 @@ async fn sweeping_over_the_picture_page_never_flips_a_frame() {
             )
         })
     };
-    for _ in 0..600 {
+    for _ in guard_core::wall::rounds() {
         s.frame(&mut ws, Vec::new());
         if ready(&ws) {
             break;

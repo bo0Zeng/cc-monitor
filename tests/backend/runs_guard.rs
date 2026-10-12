@@ -1142,8 +1142,9 @@ fn a_frame_judges_quiet_runs_without_waiting_for_another_record() {
         Some(RunState::Running),
         "差两秒到阈值 ⇒ 还在跑"
     );
-    std::thread::sleep(Duration::from_millis(2500));
-    let Frame::SessionRuns { runs, .. } = track.book.frame(SID) else {
+    // 过阈值不靠真睡 2.5 秒：钟往后拨 2.5 秒交给 `frame_at`（`frame` 就是拿此刻调它）。
+    let later = SystemTime::now() + Duration::from_millis(2500);
+    let Frame::SessionRuns { runs, .. } = track.book.frame_at(SID, later) else {
         panic!("frame() 该出运行表帧");
     };
     assert_eq!(

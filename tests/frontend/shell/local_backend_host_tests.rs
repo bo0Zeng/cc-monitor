@@ -498,7 +498,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         )
     };
     let wait_channel = |want: bool| -> bool {
-        for _ in 0..100 {
+        for _ in guard_core::wall::rounds() {
             let on =
                 crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
             if on == want {
@@ -512,7 +512,10 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
 
     // ── 起 ────────────────────────────────────────────────────────
     *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
-    assert!(wait_channel(true), "5s 内通道没登记上 —— backend 没起来");
+    assert!(
+        wait_channel(true),
+        "到兜底上限通道没登记上 —— backend 没起来"
+    );
     // 通道先登记、pid 后落盘：等状态里出现 pid（同一个 5s 上限），不在登记的那一刻就问死。
     let status_pid = || {
         tauri::async_runtime::block_on(crate::backend_control::backend_status(
@@ -522,14 +525,14 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         .get("pid")
         .and_then(|v| v.as_u64())
     };
-    let pid1 = (0..100)
+    let pid1 = guard_core::wall::rounds()
         .find_map(|_| {
             status_pid().or_else(|| {
                 std::thread::sleep(Duration::from_millis(50));
                 None
             })
         })
-        .expect("5s 内状态里一直没有 pid —— backend 起来了却没报 pid") as u32;
+        .expect("到兜底上限状态里一直没有 pid —— backend 起来了却没报 pid") as u32;
     assert!(alive(pid1), "状态给了 pid={pid1}，但 /proc 里没有这个进程");
     // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
     //   而那个脚本的收尾自检是「**标记数 < 跑成的测试数 ⇒ 有测试提前退出**」
@@ -545,7 +548,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         .expect("刚起的")
         .stop();
     let mut gone = false;
-    for _ in 0..100 {
+    for _ in guard_core::wall::rounds() {
         if !alive(pid1) {
             gone = true;
             break;
@@ -3470,7 +3473,7 @@ impl Drop for E2eSandbox {
                 .args(["-KILL", &pid.to_string()])
                 .status();
             // 它是本进程的子进程（`process_group` 不改父子关系）⇒ 收尸线程会 `wait` 它；这里只等它从表里消失。
-            for _ in 0..50 {
+            for _ in guard_core::wall::rounds() {
                 if !alive(pid) || proc_state(pid) == Some('Z') {
                     break;
                 }
@@ -3653,7 +3656,7 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         // 流断了 ⇒ 读方拿到 EOF ⇒ 收尸。**事件驱动**，这里只是等那个事件走完。
         let mut gone = false;
         let mut ever_zombie = None;
-        for _ in 0..200 {
+        for _ in guard_core::wall::rounds() {
             match proc_state(pid) {
                 None => {
                     gone = true;
@@ -3666,7 +3669,7 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
         }
         assert!(
             gone,
-            "pid={pid} 10 秒后还在进程表里（最后见到的状态：{:?}）。\n\
+            "pid={pid} 到兜底上限还在进程表里（最后见到的状态：{:?}）。\n\
                  ★ 若它是 `Z`：那就是这条 DoD 要防的僵尸 —— `process_group` 不改父子关系，\n\
                  不 `wait` 它就一直挂在进程表上，而我们自己的事件（EOF）**早就到了**。",
             ever_zombie
@@ -3746,7 +3749,7 @@ fn e2e_children_of_the_resident_backend_carry_none_of_its_own_env() {
             );
         }
         let mut lines: Vec<String> = Vec::new();
-        for _ in 0..100 {
+        for _ in guard_core::wall::rounds() {
             lines = std::fs::read_to_string(&log)
                 .unwrap_or_default()
                 .lines()
@@ -3759,7 +3762,7 @@ fn e2e_children_of_the_resident_backend_carry_none_of_its_own_env() {
         }
         assert!(
             !lines.is_empty(),
-            "正控：5 秒里常驻后端一次 tmux 都没起 —— 这条量不到东西"
+            "正控：到兜底上限常驻后端一次 tmux 都没起 —— 这条量不到东西"
         );
         let leaked: Vec<&str> = lines
             .iter()
@@ -4173,7 +4176,7 @@ fn three_fake_backends_land_in_three_different_cells() {
         window_ms: 60_000,
     };
     let wait_for = |what: &str, pred: &dyn Fn(&crate::backend_policy::Health) -> bool| {
-        for _ in 0..200 {
+        for _ in guard_core::wall::rounds() {
             let h = local_health();
             if pred(&h) {
                 return h;
@@ -4181,7 +4184,7 @@ fn three_fake_backends_land_in_three_different_cells() {
             std::thread::sleep(std::time::Duration::from_millis(50));
         }
         panic!(
-            "10 秒内账上没等到「{what}」那一笔 —— 实得 {:?}",
+            "到兜底上限账上没等到「{what}」那一笔 —— 实得 {:?}",
             local_health()
         );
     };
@@ -4616,6 +4619,19 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
         r#""claude_dir":"/dev/null","commands":["ping"]}"#
     );
     let base = local_health();
+    // 生产那份事件处理照用；包一层只为知道「那一命结束」那一件已经处理完了（之后账上该有的都有了）。
+    let exited = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let events: Arc<dyn Fn(local_backend::SuperviseEvent) + Send + Sync> = {
+        let prod = backend_supervise_events();
+        let exited = Arc::clone(&exited);
+        Arc::new(move |e| {
+            let done = matches!(e, local_backend::SuperviseEvent::Exited { .. });
+            prod(e);
+            if done {
+                exited.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+        })
+    };
     let h = local_backend::supervise_with_stdio(
         std::path::PathBuf::from("sh"),
         vec![
@@ -4625,29 +4641,37 @@ fn stopping_the_supervised_local_backend_is_not_recorded_as_a_crash() {
         vec![("CCM_STOP_HELLO".to_string(), hello.to_string())],
         local_backend::CrashLimits::default(),
         Arc::new(|| 0),
-        backend_supervise_events(),
+        events,
         Some(Arc::new(|i, o| {
             local_backend::local_stdio_consumer(&local_backend::StdioRoute::local(), i, o)
         })),
         crate::spawn_managed::local_backend_supervised(),
     );
-    for _ in 0..200 {
+    for _ in guard_core::wall::rounds() {
         if h.current_pid().is_some() {
             break;
         }
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    assert!(h.current_pid().is_some(), "4 秒内没起来");
-    // 等 hello 被读到（说过话那一维）再叫停。
-    std::thread::sleep(std::time::Duration::from_millis(500));
-    h.stop();
-    for _ in 0..100 {
-        if h.current_pid().is_none() {
-            break;
-        }
+    assert!(h.current_pid().is_some(), "到兜底上限没起来");
+    // 等 hello 被读到（说过话那一维：读到 hello 才登记本机入方向通道）再叫停。
+    let t0 = std::time::Instant::now();
+    while crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_none() {
+        assert!(
+            t0.elapsed() < guard_core::wall::CEILING,
+            "到兜底上限还没读到 hello"
+        );
         std::thread::sleep(std::time::Duration::from_millis(20));
     }
-    std::thread::sleep(std::time::Duration::from_millis(300));
+    h.stop();
+    // 等「那一命结束」那一件被处理完（不是睡一会儿再看账）。
+    while !exited.load(std::sync::atomic::Ordering::SeqCst) {
+        assert!(
+            t0.elapsed() < guard_core::wall::CEILING,
+            "到兜底上限还没处理完那一命结束"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
     let after = local_health();
     assert_eq!(
         (after.crashed, after.refused, after.misread),

@@ -17,11 +17,12 @@ export CCM_SANDBOX=1
 # 墙钟只许兜底：等一件事成立用 `wall_until`，给一条命令封顶用 `timeout "$WALL_CEILING_S"`；
 # 不拿「几秒之内」判快慢 —— 门禁并发、机器忙时那种判据会误红。要分「自己回来」与「挂住被掐」，看退出码（124 = 被掐）。
 export WALL_CEILING_S=300
-# `wall_until '<条件>'`：条件成立就回 0，每 0.05 秒再问一次；到上限还不成立回 1。条件串每次现 eval（单引号里的变量到时候才展开）。
+# `wall_until '<条件>'`：条件成立就回 0，每 0.05 秒再问一次；到上限还不成立回 1（stderr 说一声是哪个条件）。
+# 不睡固定秒数再看（判据 `wall_ceiling` 的 sh-sleep 那一形）：等一件事就等它成立；要看「没发生」，先等一个说明「定了」的正面迹象。条件串每次现 eval（单引号里的变量到时候才展开）。
 wall_until() {
   local _wall_end=$((SECONDS + WALL_CEILING_S))
   until eval "$1"; do
-    [ "$SECONDS" -lt "$_wall_end" ] || return 1
+    [ "$SECONDS" -lt "$_wall_end" ] || { echo "wall_until：到兜底上限 ${WALL_CEILING_S} 秒还不成立：$1" >&2; return 1; }
     sleep 0.05
   done
 }

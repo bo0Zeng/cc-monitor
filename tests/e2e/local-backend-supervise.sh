@@ -79,8 +79,8 @@ cleanup() {
   #    ⇒ 先收进程、等它真的走了，再删 shim。
   # shellcheck disable=SC2046
   kill $(ours_backends) 2>/dev/null
-  # 给它一拍走完（`pkill` 只是把信号发出去）。**不是定时器**：一次性的收尾等待。
-  sleep 1
+  # 等它们真的走了（`kill` 只是把信号发出去）：进程表里再没有本趟的后端，才删 shim。
+  wall_until '[ -z "$(ours_backends)" ]'
   # C7i 红线〔08-11 事故后〕：**socket 用 `-S` 显式给死**，不靠 `unset TMUX` + `TMUX_TMPDIR`。
   # 那条依赖是「漏一次就出事」的形态 —— 我在一条探针里漏了 unset，打到用户真实 server 上，
   # 9 个真实会话没了。`-S <绝对路径>` 不受 $TMUX 影响，漏什么都打不偏。
