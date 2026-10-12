@@ -483,12 +483,21 @@ impl Home {
 
     /// 起一个中转（一个后端进程那一份）：额度账 ＋ 轮换都落在这个家里。
     fn relay(&self, up: SocketAddr) -> SocketAddr {
+        self.relay_on(up, self.library())
+    }
+
+    /// 同 [`Home::relay`]，账号库换成 `library`。
+    fn relay_on(
+        &self,
+        up: SocketAddr,
+        library: crate::accounts::upstream_select::rotate::LibraryRead,
+    ) -> SocketAddr {
         let quota = Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))));
         let hop = Hop::new(
             Arc::new(RotationStore::at(Some(self.rotation_path()))),
             Arc::clone(&quota),
             Some(self.root.clone()),
-            self.library(),
+            library,
             Some(dead_token_endpoint()),
         );
         let accounts = Accounts::new(
@@ -1058,4 +1067,194 @@ fn a_session_started_inside_another_opens_the_default_config() {
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
     let book = RotationStore::at(Some(home.rotation_path())).now();
     assert_eq!(book.sessions["s-kid"].config.id, book.default_config);
+}
+
+// ── 起会话时没说是哪个号（`_`）：请求体里的账号身份恰好对上账号库里一个号 ⇒ 按那个号记 ─────────────────
+
+const UUID_ZERO: &str = "00000000-3333-4333-8333-000000000000";
+const UUID_NOBODY: &str = "99999999-4444-4444-8444-999999999999";
+
+impl Home {
+    /// 账号库：`ids` 里的号（`0` ⇒ 账号 0，身份在这个家下面；其余在 `accts/<id>`）。
+    fn library_of(&self, ids: &[&str]) -> crate::accounts::upstream_select::rotate::LibraryRead {
+        let accts = self.root.join("accts");
+        let ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+        Arc::new(move |_| Library {
+            enabled: true,
+            accounts: ids
+                .iter()
+                .map(|id| LibAccount {
+                    id: id.clone(),
+                    dir: (id != "0").then(|| accts.join(id)),
+                    api: false,
+                })
+                .collect(),
+        })
+    }
+
+    /// 给一个号写一份假身份（`0` ⇒ 家目录下那一份 `.claude.json`）。
+    fn identity(&self, id: &str, uuid: &str) {
+        let file = if id == "0" {
+            self.root.join(".claude.json")
+        } else {
+            let dir = self.root.join("accts").join(id);
+            std::fs::create_dir_all(&dir).expect("mkdir");
+            dir.join(".claude.json")
+        };
+        std::fs::write(
+            file,
+            format!("{{\"oauthAccount\":{{\"accountUuid\":\"{uuid}\"}}}}"),
+        )
+        .expect("identity");
+    }
+
+    /// 额度账上记了哪几个号（照盘上那一本）。
+    fn ledger_accounts(&self) -> Vec<String> {
+        let mut v: Vec<String> = ledger::answer_of(Some(&self.root.join(ledger::FILE_NAME)), 0)
+            .accounts
+            .iter()
+            .map(|o| o.account.clone())
+            .collect();
+        v.sort();
+        v
+    }
+}
+
+/// 回包带一格用量（额度账记得下）。
+fn serves_with_quota(_auth: Option<&str>) -> String {
+    sse_200(
+        "anthropic-ratelimit-unified-status: allowed\r\n\
+         anthropic-ratelimit-unified-5h-utilization: 0.25\r\n\
+         anthropic-ratelimit-unified-5h-reset: 4000000000\r\n\
+         anthropic-ratelimit-unified-representative-claim: five_hour\r\n",
+    )
+}
+
+fn send_undeclared(relay: SocketAddr, sid: &str, body: &str) -> String {
+    shoot(
+        relay,
+        "/t/claude-code/_/v1/messages",
+        &format!("authorization: {AGENT_TOKEN}\r\nx-claude-code-session-id: {sid}\r\n"),
+        body,
+    )
+}
+
+/// ★ `_` 的会话，请求体里的账号身份恰好是账号库里 a 的 ⇒ 用量记在 a 名下（轮换读得到）、会话的起始号是 a；
+/// 这一发原样转发（鉴权头 · 请求体一个字节不动）。
+#[test]
+fn an_undeclared_session_whose_identity_matches_one_account_is_kept_under_that_account() {
+    let home = Home::new("undeclared-a");
+    let (up, got) = spawn_judging_upstream(serves_with_quota);
+    let relay = home.relay(up);
+    let resp = send_undeclared(relay, "s-1", &request_body(UUID_A));
+    assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+    assert_eq!(home.ledger_accounts(), ["a"]);
+    let s = home.session("s-1");
+    assert_eq!((s.start.as_str(), s.current.as_str()), ("a", "a"));
+    let got = got.lock().expect("lock");
+    assert_eq!(got.len(), 1);
+    assert_eq!(got[0].auth.as_deref(), Some(AGENT_TOKEN));
+    assert_eq!(got[0].body, request_body(UUID_A).into_bytes());
+}
+
+/// 对上的是账号 0（身份在家目录下那一份）⇒ 记成 `0`。
+#[test]
+fn an_undeclared_session_on_account_zero_is_kept_under_zero() {
+    let home = Home::new("undeclared-0");
+    home.identity("0", UUID_ZERO);
+    let (up, _got) = spawn_judging_upstream(serves_with_quota);
+    let relay = home.relay_on(up, home.library_of(&["0", "a", "b"]));
+    assert!(send_undeclared(relay, "s-1", &request_body(UUID_ZERO)).starts_with("HTTP/1.1 200"));
+    assert_eq!(home.ledger_accounts(), ["0"]);
+    assert_eq!(home.session("s-1").start, "0");
+}
+
+/// 一个都没对上 · 对上不止一个 · 请求体里没有这一格 ⇒ 照旧记成 `_`（不猜）。
+#[test]
+fn an_undeclared_session_stays_undeclared_unless_exactly_one_account_matches() {
+    let body_without = serde_json::to_string(&serde_json::json!({
+        "model": "m", "messages": [{"role": "user", "content": "你好"}], "stream": true,
+    }))
+    .expect("json");
+    for (tag, dup, body) in [
+        ("nobody", false, request_body(UUID_NOBODY)),
+        ("twice", true, request_body(UUID_A)),
+        ("absent", false, body_without),
+    ] {
+        let home = Home::new(&format!("undeclared-{tag}"));
+        let ids: &[&str] = if dup { &["a", "b", "c"] } else { &["a", "b"] };
+        if dup {
+            home.identity("c", UUID_A);
+        }
+        let (up, _got) = spawn_judging_upstream(serves_with_quota);
+        let relay = home.relay_on(up, home.library_of(ids));
+        assert!(
+            send_undeclared(relay, "s-1", &body).starts_with("HTTP/1.1 200"),
+            "{tag}"
+        );
+        assert_eq!(home.ledger_accounts(), ["_"], "{tag}");
+        assert_eq!(home.session("s-1").start, "_", "{tag}");
+    }
+}
+
+/// 会话中途 `/login` 换成 b（请求体里的身份变了）⇒ 照「换了起它的号」走：起始号与在用号都改成 b、手动调整清掉。
+#[test]
+fn an_undeclared_session_that_logs_in_elsewhere_follows_its_new_account() {
+    let home = Home::new("undeclared-login");
+    let (up, _got) = spawn_judging_upstream(serves_with_quota);
+    let relay = home.relay(up);
+    assert!(send_undeclared(relay, "s-1", &request_body(UUID_A)).starts_with("HTTP/1.1 200"));
+    assert_eq!(home.session("s-1").start, "a");
+    rotation::face_change(
+        &RotationStore::at(Some(home.rotation_path())),
+        &home.own(),
+        |b| {
+            b.sessions.get_mut("s-1").expect("s-1").manual.place = vec![rotation::Place {
+                account: "b".into(),
+                at: 1,
+            }];
+        },
+    )
+    .expect("write");
+    assert!(!home.session("s-1").manual.is_empty());
+    assert!(send_undeclared(relay, "s-1", &request_body(UUID_B)).starts_with("HTTP/1.1 200"));
+    let s = home.session("s-1");
+    assert_eq!((s.start.as_str(), s.current.as_str()), ("b", "b"));
+    assert!(s.manual.is_empty(), "手动调整没清：{:?}", s.manual);
+    assert_eq!(home.ledger_accounts(), ["a", "b"]);
+}
+
+/// `_` 不是哪一份登录：当不了「现在就换」的目标（不拿默认配置目录那份登录顶），显示态也不带订阅标识。
+#[test]
+fn the_undeclared_account_is_not_taken_for_the_default_login() {
+    let home = Home::new("undeclared-hop");
+    let base = home.root.join(".claude");
+    std::fs::create_dir_all(&base).expect("mkdir");
+    std::fs::copy(
+        home.root.join("accts/a/.credentials.json"),
+        base.join(".credentials.json"),
+    )
+    .expect("creds");
+    home.identity("0", UUID_ZERO);
+    let hop = Hop::new(
+        Arc::new(RotationStore::at(Some(home.rotation_path()))),
+        Arc::new(Ledger::at(Some(home.root.join(ledger::FILE_NAME)))),
+        Some(home.root.clone()),
+        home.library_of(&["0", "a", "b"]),
+        Some(dead_token_endpoint()),
+    );
+    let none = |_: &str| None;
+    let now = crate::accounts::quota::now_unix();
+    assert!(hop
+        .check_target(&home.own(), "claude-code", "a", "0", &none, now)
+        .is_ok());
+    assert!(hop
+        .check_target(&home.own(), "claude-code", "a", "_", &none, now)
+        .is_err());
+    let lib = hop.library();
+    assert!(hop
+        .show_facts("claude-code", &lib, "0", &none)
+        .sub_id
+        .is_some());
+    assert_eq!(hop.show_facts("claude-code", &lib, "_", &none).sub_id, None);
 }

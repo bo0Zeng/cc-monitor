@@ -1238,3 +1238,50 @@ fn the_plan_rows_carry_left_slots_estimate_and_far_resets() {
     }
     assert!(row("b").get("est").is_none(), "不在用的号没有估的到线");
 }
+
+/// ★ `_`（起会话时没说是哪个号）不是一个能放的号：它不再顶账号 0 的登录，放上去只能回「需登录」。
+/// 会话那一份的候选里没有它（起的号是 `_`、配置里有 `@start` 那一行也一样）；手动放号 · 现在就换点名 `_` ⇒ `bad_args`。
+#[test]
+fn the_unnamed_account_is_never_a_manual_target() {
+    let home = Home::new("unnamed");
+    let ctx = home.ctx();
+    rotation::face_change(&ctx.hop.store, &own_of(&ctx), |b| {
+        b.saw(S1, "claude-code", "_", now())
+    })
+    .expect("write");
+    home.live.lock().expect("lock").insert(S1.to_string());
+    answer_session_open_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "config": "c_00000002"}),
+    )
+    .expect("open");
+    let r = session(&ctx, S1);
+    assert_eq!(r["state"], "present", "{r}");
+    let ids: Vec<&str> = r["rows"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .map(|x| x["account"].as_str().unwrap_or(""))
+        .collect();
+    assert!(!ids.is_empty(), "候选不该是空的：{r}");
+    assert!(!ids.contains(&"_"), "候选里不该有 `_`：{ids:?}");
+    for at in [0, 1] {
+        let got = answer_session_set_with(
+            &ctx,
+            &own_of(&ctx),
+            &json!({"sid": S1, "place": {"account": "_", "at": at}}),
+            now(),
+        );
+        assert_eq!(
+            got.as_ref().err().map(|e| e.code.as_str()),
+            Some("bad_args"),
+            "放到 `_`（at {at}）应回 bad_args：{got:?}"
+        );
+    }
+    assert!(
+        ctx.hop.store.now().sessions[S1].manual.is_empty(),
+        "被拒的那两条不该记下任何手动调整"
+    );
+    assert!(switch_ask(&json!({"sessions": [S1], "target": "_", "mode": "hot"})).is_err());
+}

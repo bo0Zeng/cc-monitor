@@ -2092,6 +2092,8 @@ pub(crate) struct LoginFace {
     pub(crate) identity_file: fn(&Path, Option<&Path>) -> PathBuf,
     /// 那份文件里的账号身份（请求里跟着鉴权一起换的那一格的值）；读不到 ⇒ `None`。
     pub(crate) identity_in: fn(&Path) -> Option<String>,
+    /// 请求体里那一格账号身份是谁（这一发实际在用的那份登录）；没有这一格 / 读不出 / 是空串 ⇒ `None`。
+    pub(crate) identity_of_body: fn(&[u8]) -> Option<String>,
     /// 请求体里那一格账号身份换成给的值（按量号给空串）；只动那几个字节。
     pub(crate) rewrite_identity: fn(&[u8], &str) -> IdentityCell,
     /// 账号 0（没设配置目录的那个号）的配置目录：家目录 → 它。

@@ -100,6 +100,7 @@ cleanup_rig() {
 on_exit() {
   cleanup_rig
   [ -n "$SNAP" ] && rm -rf -- "$SNAP"
+  tmux_shim_cleanup
   return 0
 }
 

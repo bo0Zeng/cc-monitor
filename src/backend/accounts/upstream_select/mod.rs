@@ -393,6 +393,22 @@ impl Accounts {
         }
     }
 
+    /// ★ 起会话的号（路由第 2 段）**只在这一处**定：地址里是 `_`（没说是哪个号，比如终端里直接敲、经「直接敲的也走中转」那条地址来的）
+    /// 而请求体里的账号身份恰好对上账号库里一个号（[`rotate::Hop::recognize`]）⇒ 当作地址里写的就是那个号 ——
+    /// 轮换的起始号、额度账记在谁名下、换号记录都跟着它。认不出 ⇒ 原样（`_`）。只认 `/t/`（`_` 只出现在那一种地址里）。
+    fn recognized(&self, mode: Mode, key: &RouteKey, ask: &Ask<'_>) -> RouteKey {
+        let seen = (mode == Mode::Passthrough && key.seg2 == endpoint::UNDECLARED_ACCOUNT_SEGMENT)
+            .then(|| self.hop.as_ref()?.recognize(&key.seg1, ask.body))
+            .flatten();
+        match seen {
+            Some(id) => RouteKey {
+                seg1: key.seg1.clone(),
+                seg2: id,
+            },
+            None => key.clone(),
+        }
+    }
+
     /// 这个号在表里那一行：没有 ⇒ `None`；有 ⇒ 接不接得上（有 key，或这一行本来就不写鉴权头）。
     fn row_of(&self, agent: &str, account: &str) -> Option<bool> {
         self.table()
@@ -509,6 +525,7 @@ impl Destinations for Accounts {
         // ⚠ 这个读锁活到本函数返回为止 —— 而 `resolve` 的契约禁止调用方在 `act` 里做
         //   流式转发（见 `Destinations::resolve` 头注第 2 条硬约束）⇒ 锁不跨 `pump`。
         // 换号那一问（可能要续令牌 ⇒ 有网络 IO）在取读锁**之前**做完，锁里只照备好的去处交给中转。
+        let key = &self.recognized(mode, key, ask);
         let row = |a: &str| self.row_of(&key.seg1, a);
         let go = match &self.hop {
             Some(h) => h.steer(&self.rotate_ask(key, ask, &row), &self.own),
@@ -553,6 +570,7 @@ impl Destinations for Accounts {
             return;
         };
         let tried: Vec<String> = tried.iter().map(|t| t.to_string()).collect();
+        let key = &self.recognized(mode, key, ask);
         let row = |a: &str| self.row_of(&key.seg1, a);
         let Some(go) = h.on_refused(
             &self.rotate_ask(key, ask, &row),
