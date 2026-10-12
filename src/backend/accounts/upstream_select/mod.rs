@@ -287,6 +287,7 @@ impl Ready for Booted {
                 quota,
                 home,
                 library,
+                std::sync::Arc::new(crate::observe::accounts_query::live_here),
                 None,
             ))
             .tracing_lineage(std::sync::Arc::new(crate::lineage::LineageStore::at(
