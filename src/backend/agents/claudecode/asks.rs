@@ -18,7 +18,127 @@ pub(crate) const FACE: AskFace = AskFace {
     merge,
     read,
     decide,
+    plugin: Some(PLUGIN),
 };
+
+/// 换了启动器那一支（`AskFace.plugin`）：同一组 hook 做成一个小插件，经 `CLAUDE_CODE_PLUGIN_DIRS` 交下去（2.1.280 起认；
+/// 文档 env-vars：「each loaded the way a `--plugin-dir` flag loads it」，id 是 `<名>@inline`、只管这一个会话）。
+const PLUGIN: crate::agents::PluginFace = crate::agents::PluginFace {
+    env: PLUGIN_ENV,
+    min_version: PLUGIN_MIN_VERSION,
+    files: plugin_files,
+    policy_files,
+    policy_blocks,
+    installed_version,
+    child_marker: CHILD_MARKER,
+};
+
+/// 插件目录清单那个变量。
+pub(crate) const PLUGIN_ENV: &str = "CLAUDE_CODE_PLUGIN_DIRS";
+/// 认 [`PLUGIN_ENV`] 的最低版本。
+pub(crate) const PLUGIN_MIN_VERSION: [u64; 3] = [2, 1, 280];
+/// 插件名（清单里那一格；用户在 `enabledPlugins` 里写 `"<名>@inline": false` 就不加载，那一家自己照办）。
+pub(crate) const PLUGIN_NAME: &str = "cc-monitor-answer-hook";
+/// claude 导给子进程的嵌套标记（`resume::NESTED_ENV` 的头一个；ccm 起会话前清掉它）。
+const CHILD_MARKER: &str = super::resume::NESTED_ENV[0];
+
+/// 只含答题那一组 hook 的那一份：`--settings` 的 JSON 串与插件的 `hooks/hooks.json` 都是它（实现只一处）。
+fn hooks_doc(entry: &str) -> Value {
+    json!({ "hooks": { EVENT: [hook_group(entry)] } })
+}
+
+/// 插件目录里的两份：清单 ＋ hook。
+pub(crate) fn plugin_files(entry: &str) -> Vec<(&'static str, String)> {
+    let manifest = json!({
+        "name": PLUGIN_NAME,
+        "description": "cc-monitor: answer permission prompts from the message stream",
+    });
+    vec![
+        (".claude-plugin/plugin.json", manifest.to_string()),
+        ("hooks/hooks.json", hooks_doc(entry).to_string()),
+    ]
+}
+
+/// 这台的 managed 策略目录（docs/en/settings 的落点表）。
+#[cfg(target_os = "linux")]
+const POLICY_DIR: Option<&str> = Some("/etc/claude-code");
+#[cfg(target_os = "macos")]
+const POLICY_DIR: Option<&str> = Some("/Library/Application Support/ClaudeCode");
+#[cfg(windows)]
+const POLICY_DIR: Option<&str> = Some("C:\\Program Files\\ClaudeCode");
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+const POLICY_DIR: Option<&str> = None;
+
+/// 这台的 managed 策略文件（`managed-settings.d/` 里的各份一起读）。
+fn policy_files() -> Vec<std::path::PathBuf> {
+    let Some(base) = POLICY_DIR.map(std::path::Path::new) else {
+        return Vec::new();
+    };
+    let mut out = vec![base.join("managed-settings.json")];
+    if let Ok(rd) = crate::platform::fs::Ro::read_dir(base.join("managed-settings.d")) {
+        let mut more: Vec<_> = rd
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().and_then(|e| e.to_str()) == Some("json"))
+            .collect();
+        more.sort();
+        out.extend(more);
+    }
+    out
+}
+
+/// 一份 managed 策略不许这一路：`disableSideloadFlags`（设了这个变量当场 exitWithError）· `allowManagedHooksOnly`（插件里的 hook 被拦）。
+pub(crate) fn policy_blocks(v: &Value) -> bool {
+    ["disableSideloadFlags", "allowManagedHooksOnly"]
+        .iter()
+        .any(|k| v.get(k).and_then(Value::as_bool) == Some(true))
+}
+
+/// `PATH` 上的 `claude` 是哪一版：顺着链接找到真身，原生安装看文件名（`…/versions/<版本>`），npm 安装往上找那一家的 `package.json`。
+fn installed_version(path: Option<&str>) -> Option<[u64; 3]> {
+    let crate::platform::shell::SessionCommand::Found { file: found, .. } =
+        crate::platform::shell::find_session_command(
+            super::resume::DEFAULT_COMMAND,
+            path,
+            cfg!(windows),
+            &|p| crate::platform::fs::Ro::metadata(p).is_ok_and(|m| m.is_file()),
+        )
+    else {
+        return None;
+    };
+    let real = crate::platform::fs::Ro::canonicalize(&found).ok()?;
+    if let Some(v) = version_in_name(&real.to_string_lossy()) {
+        return Some(v);
+    }
+    real.ancestors().skip(1).take(4).find_map(|d| {
+        crate::platform::fs::Ro::read_to_string(d.join("package.json"))
+            .ok()
+            .and_then(|t| version_in_package(&t))
+    })
+}
+
+/// 文件名本身是一个版本号（`2.1.296`）⇒ 它。
+pub(crate) fn version_in_name(path: &str) -> Option<[u64; 3]> {
+    semver3(path.rsplit(['/', '\\']).next()?)
+}
+
+/// 那一家的 `package.json`（名字对得上）⇒ 它的版本。
+pub(crate) fn version_in_package(text: &str) -> Option<[u64; 3]> {
+    let v: Value = serde_json::from_str(text).ok()?;
+    if v.get("name").and_then(Value::as_str) != Some("@anthropic-ai/claude-code") {
+        return None;
+    }
+    semver3(v.get("version")?.as_str()?)
+}
+
+fn semver3(s: &str) -> Option<[u64; 3]> {
+    let mut it = s.split('.');
+    let mut out = [0u64; 3];
+    for slot in &mut out {
+        *slot = it.next()?.parse().ok()?;
+    }
+    it.next().is_none().then_some(out)
+}
 
 /// 会话级设置那个旗标（住启动形状那一处，`resume.rs`）。
 use super::resume::SETTINGS_FLAG;
@@ -44,8 +164,7 @@ fn hook_group(entry: &str) -> Value {
 
 /// 起会话时垫的那两个词：`--settings` ＋ 只含这一个 hook 的 JSON 串。
 pub(crate) fn launch_args(entry: &str) -> Vec<String> {
-    let settings = json!({ "hooks": { EVENT: [hook_group(entry)] } });
-    vec![SETTINGS_FLAG.to_string(), settings.to_string()]
+    vec![SETTINGS_FLAG.to_string(), hooks_doc(entry).to_string()]
 }
 
 /// 用户自己的会话级设置并进答题 hook：别的一切原样，只往 `hooks.PermissionRequest` 末尾加我们那一组（hooks 本来就是各层合并、不替换）。

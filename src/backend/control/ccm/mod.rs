@@ -639,7 +639,7 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
                     copy_text("beCcm.execute.rejoin", &[("sid", sid), ("name", name)])
                 );
             }
-            exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH, None, own)
+            exec_shell(&plan::render(&plan), &WHY_SHELL_ATTACH, Note::NONE, own)
         }
         Plan::Container(c) => {
             // 🔴 **这里从前有一段退让** —— 它只发生在真跑这条路上，
@@ -693,7 +693,12 @@ fn execute(plan: Plan, own: &crate::platform::fs::Own) -> i32 {
             } else {
                 // 收尾片段以 ` && ` / `; ` 开头（它在 `--ccm-print` 里是接在建会话那段后面的）
                 // ⇒ 单独跑时前面补一个 `:`，**不重写一份**（重写就是第二处住址）。
-                exec_shell(&format!(":{tail}"), &WHY_SHELL_CONTAINER_TAIL, None, own)
+                exec_shell(
+                    &format!(":{tail}"),
+                    &WHY_SHELL_CONTAINER_TAIL,
+                    Note::NONE,
+                    own,
+                )
             }
         }
         Plan::Direct(d) => exec_direct(d, own),
@@ -786,7 +791,7 @@ fn needs_shell(d: &plan::Direct) -> Option<&'static str> {
 /// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。`why` = 这一趟为什么非得经 shell。
 ///
 /// 起进程点，已登记进 `readonly_guard::spawn_registry::ALLOWED`。
-fn exec_shell(line: &str, why: &str, account: Option<&str>, own: &crate::platform::fs::Own) -> i32 {
+fn exec_shell(line: &str, why: &str, account: Note<'_>, own: &crate::platform::fs::Own) -> i32 {
     exec_or_spawn(
         Child::new("sh").arg("-c").arg(line),
         &format!(
@@ -816,9 +821,21 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     // 用的是账号库里一个说得出名字的号 ⇒ 最终那一跳给 agent 那个进程留张便条（观测侧据它记「这条会话用哪个号起的」）。
     let account =
         Some(d.account_name.as_str()).filter(|n| !n.is_empty() && !d.config_dir.is_empty());
+    // 换了启动器那一支：插件目录先写好；写不成 ⇒ 不交那个变量、标挂不上（不让那一家拿到一个空目录）。
+    let laid;
+    let d = if d.plugin_dirs.is_some() {
+        laid = lay_plugin(d, own);
+        &laid
+    } else {
+        d
+    };
+    let note = Note {
+        account,
+        plugin: d.plugin_dirs.is_some(),
+    };
     // 非得要 shell 的那几趟（判定与归因都只住 `needs_shell` 一处）⇒ 整条走 `sh -c`（它最后一句 `exec`，pid 不变）。
     if let Some(why) = needs_shell(d) {
-        return exec_shell(&plan::render(&Plan::Direct(d.clone())), why, account, own);
+        return exec_shell(&plan::render(&Plan::Direct(d.clone())), why, note, own);
     }
     for k in &d.nested {
         std::env::remove_var(k);
@@ -830,6 +847,9 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     // 没有账号载体的那一家：`--base` 什么都不做。
     if let Some(off) = d.answer_hook_off {
         std::env::set_var(crate::agents::asks::ANSWER_HOOK_OFF_ENV, off.env_value());
+    }
+    if let Some((var, value)) = &d.plugin_dirs {
+        std::env::set_var(var, value);
     }
     if d.unset_config_dir && !cfg_env.is_empty() {
         std::env::remove_var(cfg_env);
@@ -886,9 +906,80 @@ fn exec_direct(d: &plan::Direct, own: &crate::platform::fs::Own) -> i32 {
     exec_or_spawn(
         Child::new(program).args(lead).args(rest),
         &format!("'{prog}'"),
-        account,
+        note,
         own,
     )
+}
+
+/// 最后那一跳给那个进程留的便条里写什么：用的号（说得出名字才有）· 答题插件是不是经环境交下去的。
+#[derive(Clone, Copy)]
+struct Note<'a> {
+    account: Option<&'a str>,
+    plugin: bool,
+}
+
+impl Note<'_> {
+    /// 不留便条。
+    const NONE: Note<'static> = Note {
+        account: None,
+        plugin: false,
+    };
+}
+
+/// 把答题插件那几份写进我们的目录（内容一样就不动）。写不成 ⇒ 说一声，换成不交那个变量、标挂不上的那一份。
+fn lay_plugin(d: &plan::Direct, own: &crate::platform::fs::Own) -> plan::Direct {
+    match write_plugin(&d.plugin_files, own) {
+        Ok(()) => d.clone(),
+        Err(e) => {
+            eprintln!("ccm: {}", e.logged());
+            let mut d = d.clone();
+            d.plugin_dirs = None;
+            d.answer_hook_off = Some(crate::agents::asks::HookOff::Launcher);
+            d
+        }
+    }
+}
+
+fn write_plugin(
+    files: &[(&'static str, String)],
+    own: &crate::platform::fs::Own,
+) -> Result<(), crate::common::said::Said> {
+    let failed = |p: &std::path::Path, e: &std::io::Error| {
+        crate::common::said::Said::with_raw(
+            copy_text(
+                "beCcm.plugin.writeFailed",
+                &[
+                    ("path", &p.display().to_string()),
+                    ("why", &copy_core::io_reason(e.kind())),
+                ],
+            ),
+            e,
+        )
+    };
+    let home = own.home_dir()?;
+    let root = own.at_home(relay_route_core::ANSWER_PLUGIN_DIR_REL)?;
+    for d in [&home, &root] {
+        own.ensure_dir(d).map_err(|e| failed(d.as_path(), &e))?;
+    }
+    for (rel, body) in files {
+        let file = root.join(rel)?;
+        let dir = match rel.rsplit_once('/') {
+            Some((sub, _)) => root.join(sub)?,
+            None => root.clone(),
+        };
+        own.ensure_dir(&dir)
+            .map_err(|e| failed(dir.as_path(), &e))?;
+        if crate::platform::fs::Ro::read_to_string(file.as_path())
+            .ok()
+            .as_deref()
+            == Some(body.as_str())
+        {
+            continue;
+        }
+        let held = own.lock(&dir)?;
+        own.write(&file, &held, body.as_bytes())?;
+    }
+    Ok(())
 }
 
 /// 最后起 agent 那一下起的程序与前导参数。Windows 上裸名字照 `platform::shell::find_session_command` 换成找到的那个文件
@@ -932,15 +1023,21 @@ pub(crate) fn final_program(
 fn exec_or_spawn(
     cmd: Child,
     subject: &str,
-    account: Option<&str>,
+    leave: Note<'_>,
     own: &crate::platform::fs::Own,
 ) -> i32 {
     let note = |pid: u32| {
-        let Some(name) = account else { return };
         let now = crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| d.as_secs());
-        if let Err(e) = crate::control::launch_account::leave_note(own, pid, name, now) {
+        let left = match (leave.account, leave.plugin) {
+            (_, true) => {
+                crate::control::launch_account::leave_plugin_note(own, pid, leave.account, now)
+            }
+            (Some(name), false) => crate::control::launch_account::leave_note(own, pid, name, now),
+            (None, false) => return,
+        };
+        if let Err(e) = left {
             eprintln!("ccm: {}", e.logged());
         }
     };

@@ -167,6 +167,27 @@ pub(crate) struct AskFace {
     pub(crate) read: fn(&serde_json::Value) -> Option<AskIn>,
     /// 人的答案 ⇒ hook 要打到 stdout 的那一整份；`None` ＝ 不给决定（框照常在终端里问）。
     pub(crate) decide: fn(&AskIn, &Verdict) -> Option<serde_json::Value>,
+    /// 换了启动器那一支：答题 hook 做成一个小插件、经环境交下去（启动器后面的词不动）；`None` ＝ 这一家没有这一路（照「自定义启动器」标挂不上）。
+    pub(crate) plugin: Option<PluginFace>,
+}
+
+/// 一家的**会话插件**那一路（[`AskFace::plugin`]）：插件目录经哪个环境变量交下去、里面放什么、哪些情形挂不上。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PluginFace {
+    /// 那一家认的插件目录清单变量（多个目录用这台的路径分隔符连）。
+    pub(crate) env: &'static str,
+    /// 认这个变量的最低版本。
+    pub(crate) min_version: [u64; 3],
+    /// 插件目录里的每一份文件：（相对路径, 内容）；入参 ＝ ccm 绝对路径。
+    pub(crate) files: fn(&str) -> Vec<(&'static str, String)>,
+    /// 这台的 managed 策略文件（起会话前读；服务端下发的那一份事先读不到）。
+    pub(crate) policy_files: fn() -> Vec<std::path::PathBuf>,
+    /// 一份 managed 策略不许这一路（设了变量起不来 · 插件里的 hook 被拦）。
+    pub(crate) policy_blocks: fn(&serde_json::Value) -> bool,
+    /// `PATH` 上那一家装的是哪一版（认不出 ⇒ `None`）。
+    pub(crate) installed_version: fn(Option<&str>) -> Option<[u64; 3]>,
+    /// 那一家导给它起的每个子进程的嵌套标记（ccm 起会话前清掉它 ⇒ 发问的进程起来时带着它 ＝ 会话里 Bash 起的子进程）。
+    pub(crate) child_marker: &'static str,
 }
 
 /// 一次待答请求（适配层翻好的通用形；那一家的字段名不出适配层）。
@@ -247,6 +268,16 @@ pub(crate) fn ask_face_among(registry: &[Adapter], kind: &str) -> Option<AskFace
 /// 同上，生产注册表。
 pub(crate) fn ask_face(kind: &str) -> Option<AskFace> {
     ask_face_among(REGISTRY, kind)
+}
+
+/// 各家经环境交会话插件的那个变量（[`PluginFace::env`]，去重）：会话事实判「插件到没到那个进程里」按它们读。
+pub(crate) fn plugin_envs() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = REGISTRY
+        .iter()
+        .filter_map(|a| a.asks.and_then(|f| f.plugin).map(|p| p.env))
+        .collect();
+    v.dedup();
+    v
 }
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
