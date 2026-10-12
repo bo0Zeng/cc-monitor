@@ -1258,6 +1258,7 @@ fn sid_change_in_place_retires_old_sid() {
     write("sid-1");
     process_session_added(&path, &mut state, &mut sink);
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-1"));
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })), "读完那一帧紧跟着宣告（夹具没有池：就地读完）");
 
     write("sid-2"); // /clear：同文件重写 sessionId
     process_session_added(&path, &mut state, &mut sink);
@@ -1384,7 +1385,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
             path: Some(path.to_string_lossy().into_owned()),
         },
     );
-    watch_sessions(vec!["other".into()], &mut state, &mut sink);
+    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
     let names = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut got = Vec::new();
         while let Ok(f) = rx.try_recv() {
@@ -1452,6 +1453,7 @@ fn same_sid_two_pidfiles_refcount() {
     std::fs::write(&p2, &body).unwrap();
     process_session_added(&p1, &mut state, &mut sink);
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "shared-sid"));
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })), "读完那一帧紧跟着宣告（夹具没有池：就地读完）");
     process_session_added(&p2, &mut state, &mut sink);
     // 第二个 pidfile：同一个会话已经宣告过 ⇒ 只记账，一帧都不发（也没有误发的 Removed）。
     assert!(
@@ -1500,6 +1502,7 @@ fn plain_lifecycle_regression() {
     .unwrap();
     process_session_added(&path, &mut state, &mut sink);
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "solo"));
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })), "读完那一帧紧跟着宣告（夹具没有池：就地读完）");
     process_session_removed(&path, &mut state, &mut sink);
     assert!(
         matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause })
@@ -1557,6 +1560,7 @@ fn status_diff_emits_session_status_frame() {
         }
         other => panic!("expected SessionAdded, got {other:?}"),
     }
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })), "读完那一帧紧跟着宣告（夹具没有池：就地读完）");
     // 同内容 modify → 静默
     process_session_added(&pidfile, &mut state, &mut sink);
     assert!(rx.try_recv().is_err(), "status 未变不发帧");
@@ -1632,6 +1636,7 @@ fn a_custom_title_in_the_annotations_renames_a_live_session() {
         ),
         other => panic!("expected SessionAdded, got {other:?}"),
     }
+    assert!(matches!(rx.try_recv(), Ok(Frame::SessionPrimed { .. })), "读完那一帧紧跟着宣告（夹具没有池：就地读完）");
     state.reload_annotations(note(Some("甲")), &mut sink);
     assert!(rx.try_recv().is_err(), "名字没变不发帧");
     state.reload_annotations(note(Some("乙")), &mut sink);
@@ -1684,20 +1689,22 @@ fn tail_only_primes_cursor_and_new_line_seq_is_line_number() {
     )
     .unwrap();
     process_session_added(&pidfile, &mut state, &mut sink);
-    // ① 宣告帧带 path
+    // ① 宣告帧带 path（不等预读）
     match rx.try_recv() {
-        Ok(Frame::SessionAdded {
-            sid, path, lines, ..
-        }) => {
+        Ok(Frame::SessionAdded { sid, path, .. }) => {
             assert_eq!(sid, "tail-sid");
             assert_eq!(path.as_deref(), Some(jsonl.to_string_lossy().as_ref()));
-            assert_eq!(
-                lines,
-                Some(3),
-                "帧应带 prime 时的完整行数 L（快照完整性校验用）"
-            );
         }
         other => panic!("expected SessionAdded, got {other:?}"),
+    }
+    // ①' 预读读完那一帧带完整行数 L（快照完整性校验用）
+    match rx.try_recv() {
+        Ok(Frame::SessionPrimed { sid, path, lines }) => {
+            assert_eq!(sid, "tail-sid");
+            assert_eq!(path.as_deref(), Some(jsonl.to_string_lossy().as_ref()));
+            assert_eq!(lines, Some(3), "读完那一帧带预读时的完整行数 L");
+        }
+        other => panic!("expected SessionPrimed, got {other:?}"),
     }
     // ② 零行帧（历史被 prime 吸收）
     assert!(rx.try_recv().is_err(), "tail-only 初扫不得发行帧");
@@ -1747,15 +1754,16 @@ fn with_bg_and_tail_only_combined() {
     .unwrap();
     process_session_added(&pidfile, &mut state, &mut sink);
     match rx.try_recv() {
-        Ok(Frame::SessionAdded {
-            sid, lines, path, ..
-        }) => {
+        Ok(Frame::SessionAdded { sid, path, .. }) => {
             assert_eq!(sid, "combo-sid");
-            assert_eq!(lines, Some(2), "tail-only 带 L");
             assert!(path.is_some());
         }
         other => panic!("expected SessionAdded, got {other:?}"),
     }
+    assert!(
+        matches!(rx.try_recv(), Ok(Frame::SessionPrimed { lines: Some(2), .. })),
+        "读完那一帧带 L"
+    );
     assert!(rx.try_recv().is_err(), "tail-only：历史零行帧");
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -2148,7 +2156,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
@@ -2164,7 +2171,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
@@ -2172,7 +2178,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         pid: 0,
     });
     assert_eq!(
-        sink.dropped, 0,
+        sink.subs[0].dropped, 0,
         "nothing dropped while the channel had room"
     );
 
@@ -2186,7 +2192,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
@@ -2202,7 +2207,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
@@ -2218,14 +2222,13 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
         container: None,
         pid: 0,
     });
-    assert_eq!(sink.dropped, 3);
+    assert_eq!(sink.subs[0].dropped, 3);
 
     // Drain both queued frames (they are the first two, not the dropped ones).
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { .. })));
@@ -2237,7 +2240,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         sid: "f".into(),
         cause: RemovalCause::Gone,
     });
-    assert_eq!(sink.dropped, 0, "overflow signal flushed, counter reset");
+    assert_eq!(sink.subs[0].dropped, 0, "overflow signal flushed, counter reset");
     assert!(
         matches!(rx.try_recv(), Ok(Frame::Overflow { dropped: 3, .. })),
         "overflow signal carries the dropped count and arrives first"
@@ -2257,7 +2260,6 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
         project_dir: None,
         name: None,
         path: None,
-        lines: None,
         face: crate::stream::wire::ActivityFace::of(None),
         name_face: crate::stream::wire::NameFace::of(&Default::default()),
         waiting_for: None,
@@ -2373,9 +2375,13 @@ fn priming_a_big_record_reads_it_in_blocks() {
 
     let mut state = ReaderState::new(dir.join("projects"));
     state.active_sids.insert(sid.to_string());
+    let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(16);
+    let mut sink = FrameSink::new(tx);
     let base = crate::alloc_probe::reset_peak();
-    let (lines, _) = prime_file_cursor(&path, &mut state);
+    // 夹具没有线程池 ⇒ 同一趟预读就地跑、就地装回（与池子里跑的是同一个函数）。
+    start_prime(sid, std::slice::from_ref(&path), false, &mut state, &mut sink);
     let grew = crate::alloc_probe::peak_since(base);
+    let lines = state.seqs.peek(&path_key(&path).to_string_lossy());
     let cursor = state.offsets.get(&path_key(&path)).copied();
     std::fs::remove_dir_all(&dir).ok();
 
@@ -2538,7 +2544,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
         sid: "sid-gone".into(),
         cause: RemovalCause::Gone,
     });
-    assert_eq!(sink.dropped, 2, "两条都该计入 dropped");
+    assert_eq!(sink.subs[0].dropped, 2, "两条都该计入 dropped");
 
     // 排空后下一次 send 会先补 Overflow。
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
@@ -2591,9 +2597,9 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
             cause: RemovalCause::Gone,
         });
     }
-    assert_eq!(sink.dropped, over as u64, "超出上限的仍然计入 dropped");
-    assert_eq!(sink.lost.len(), LOST_IDENTITY_CAP, "身份表不许越界增长");
-    assert!(sink.lost_truncated, "截断了就要说出来，不许静默");
+    assert_eq!(sink.subs[0].dropped, over as u64, "超出上限的仍然计入 dropped");
+    assert_eq!(sink.subs[0].lost.len(), LOST_IDENTITY_CAP, "身份表不许越界增长");
+    assert!(sink.subs[0].lost_truncated, "截断了就要说出来，不许静默");
 
     assert!(matches!(rx.try_recv(), Ok(Frame::Line { .. })));
     sink.send(Frame::turn_end(
@@ -2970,7 +2976,7 @@ fn one_sid_in_two_pidfiles_is_announced_once() {
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(
         got,
-        vec!["session_added", "sessions_replayed"],
+        vec!["session_added", "session_primed", "sessions_replayed"],
         "同一个会话宣告了两次，或先退的那份 pidfile 把还活着的会话摘了"
     );
 }
@@ -3049,7 +3055,13 @@ fn sessions_replayed_follows_every_initial_session_added_exactly_once() {
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(
         got,
-        vec!["session_added", "session_added", "sessions_replayed"],
+        vec![
+            "session_added",
+            "session_primed",
+            "session_added",
+            "session_primed",
+            "sessions_replayed"
+        ],
         "「清单报完了」要恰好一帧、排在 Phase 1 每一帧 `session_added` 之后"
     );
 
@@ -3129,7 +3141,7 @@ fn a_pidfile_landing_once_the_ears_are_up_is_announced_by_the_initial_scan() {
     let _ = kid.wait();
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(added, vec!["arm-live"], "挂耳朵之后落下的那份没被初扫报出");
-    assert_eq!(kinds, vec!["session_added", "sessions_replayed"]);
+    assert_eq!(kinds, vec!["session_added", "session_primed", "sessions_replayed"]);
     assert!(
         later.is_empty(),
         "排队的事件又出了帧（重报 / 冒出从没 added 过的 removed）：{later:?}"
@@ -3650,7 +3662,8 @@ fn resync_reconciles_the_table_against_the_disk_and_emits_only_the_difference() 
             vec![
                 "added sid-d".to_string(),
                 "removed sid-a".to_string(),
-                "removed sid-b".to_string()
+                "removed sid-b".to_string(),
+                "session_primed".to_string()
             ]
         ),
         "整机对齐的差异不对"
@@ -3932,7 +3945,7 @@ fn the_notify_arm_reports_task_changes_before_the_per_event_loop() {
     let ask = guard_core::find_pinned(&prod, "tasks_touched(events.iter()")
         .expect("Notify 那一臂里不是恰好一处问 tasks_touched");
     let emit = prod[ask..]
-        .find("sink.send(Frame::changed(Topic::Tasks, Some(sid), None, body));")
+        .find("Frame::changed(Topic::Tasks, Some(sid.clone()), None, body)")
         .map(|k| ask + k)
         .expect("问完之后没有发 changed {tasks}");
     let per_event = prod[ask..]

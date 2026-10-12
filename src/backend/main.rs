@@ -400,16 +400,15 @@ async fn run_over_stdio(
     // ⚠ 而**状态增量帧**丢了别处没有 —— 那半靠 `Overflow.lost` 带身份让客户端重同步（audit-0805 F03），
     // 丢一条应答会让客户端永远等下去。混在一个通道里，实时行的洪峰会把应答挤掉。
     let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
-    // (c) Start the watcher reader; it returns the receiving half of the
-    // bounded frame channel.
-    // 运行簿：这条连接的 watcher 写、tap 那一路的流归位读（一条连接一本）。
-    let book = observe::runs::RunBook::shared();
+    // (c) Start the watcher reader（这台一份）并接上这一条流：回这条连接的有界出方向通道。
+    // 运行簿：整台一本，watcher 写、tap 那一路的流归位读。
+    let (poke, book) = observe::watcher::spawn(agent_home, own.clone());
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
-    let (rx, poke) = observe::watcher::spawn(agent_home, wants, book.clone(), own.clone());
+    let (rx, attached) = poke.attach(&wants);
     let inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
-        watch_desk(&poke),
+        watch_desk(&attached),
         own,
         hello_flushed,
     );
@@ -450,6 +449,7 @@ async fn run_over_stdio(
     // P5：**显式告诉 reader 停** —— 删掉 8s ticker 之后，reader 那边的
     // `sink.is_closed()` 复查再没有定期醒来的机会，只会一直阻塞在 `recv()`。
     // 漏这一句不会红任何测试（进程退出时线程随之消亡），所以它与删 ticker 是同一步。
+    drop(attached);
     poke_for_shutdown.shutdown();
     poke_task.abort();
     if signalled {
@@ -461,10 +461,10 @@ async fn run_over_stdio(
     inbound::exit_after_drain("对端走了（写不出去）", None::<std::future::Ready<()>>).await
 }
 
-/// 这条连接的 `stream-watch` 口接到它自己那份 watcher 上。
-fn watch_desk(poke: &observe::watcher::WatcherPoke) -> inbound::WatchDesk {
-    let poke = poke.clone();
-    inbound::WatchDesk::new(move |sids| poke.watch(sids))
+/// 这条连接的 `stream-watch` 口接到它在这台 watcher 上的那一份（名单按连接）。
+fn watch_desk(attached: &observe::watcher::Attachment) -> inbound::WatchDesk {
+    let h = attached.handle();
+    inbound::WatchDesk::new(move |sids| h.watch(sids))
 }
 
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
@@ -478,8 +478,8 @@ fn watch_desk(poke: &observe::watcher::WatcherPoke) -> inbound::WatchDesk {
 /// 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
 #[cfg(unix)]
 ///
-/// ★ **戳的是名单，不是句柄**：常驻那条载体上 watcher 会**换人**（每接上一个客户端换一份新的，
-/// 理由见 [`serve_listening`]），而处理器活得比任何一个 watcher 都长。名单只有一个家：
+/// ★ **戳的是名单，不是句柄**：处理器不认哪一份 watcher（今天一个进程只起一份，见 [`serve_listening`]；
+/// 名单这一层留着，处理器与 `resync` 都不必知道它是谁起的）。名单只有一个家：
 /// `observe::watcher` 的在跑名单（`spawn` 登记、退出即摘；`resync` 也按它找人）。
 fn spawn_sigusr1_task() -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -700,16 +700,14 @@ async fn claim_then_log_as(
 ///   （`observe/watcher.rs` inotify `sessions/` → `identity_tag::tag`），
 ///   而 `shared/ccm` 那条每会话每秒的身份 poller 已经被 `U-NP④` **整条删掉、不留轮询退路**。
 ///   monitor 没开着的时候若这里不看 `sessions/`，②就一格都没买到。
-/// ⇒ 空转期照样起一个 watcher，帧**读出来就丢**（没人要），打标那一半照常发生。
+/// ⇒ 没人连着时 watcher 照样跑（帧算出来、发不出去），打标那一半照常发生。
 ///
-/// # 接上客户端时为什么**换一份新的** watcher，而不是把空转那份的帧转给他
+/// # 接上客户端时：整台一份 watcher，各连接一份投影（10-12 read8a）
 ///
-/// `watch_loop` 的 Phase 1 是一次**同步初扫**（`WalkDir` 走一遍 `sessions/` 逐个
-/// `process_session_added`），之后靠 `ReaderState` 去重。⇒ 半路接进来的客户端
-/// **拿不到那次初扫**，屏上就是空的。换一份新的 = 他拿到一次完整快照，
-/// 而这不需要动 `watcher.rs` 一个字节。
-/// ⚠ 代价如实记：换人期间 inotify 有一个**极短的重装窗口**，那段时间的文件事件不会补发；
-/// 而 Phase 1 的初扫恰好覆盖「换人之前已经存在的会话」⇒ 漏的只有「正好落在那一瞬的新会话」。
+/// 从前每接一条就换一份新的 watcher（半路接进来的拿不到那次初扫，换一份新的 = 一次完整快照），
+/// 代价是每条连接都把全部活会话的记录整份预读一遍（桌面 ＋ 手机 ＋ 重连 ⇒ 同一份读 N 遍），换人那一瞬还有一个 inotify 重装窗口。
+/// 今天这台只起一份（`observe::watcher::spawn`），接上来的连接经 `attach` 先收一份**此刻的样子**（每个活会话的宣告 · 读完那一帧 ·
+/// 运行表 · 主线外清单 · 会话账本那一份，`watcher::join`），之后与别的连接一样收每一帧；记录整台只预读一次，也没有重装窗口。
 ///
 /// # 它**不做**什么
 ///
@@ -730,15 +728,9 @@ async fn serve_listening(
 
     let _poke_task = spawn_sigusr1_task();
 
-    let (mut idle_rx, mut idle_poke) = {
-        let (rx, poke) = observe::watcher::spawn(
-            agent_home.clone(),
-            defaults.clone(),
-            std::sync::Arc::default(),
-            own.clone(),
-        );
-        (Some(rx), Some(poke))
-    };
+    // 这台一份 watcher（read8a ＋ `11 §5.2 a`）：从起来到退一直这一份 —— 没人连着时它照样看 `sessions/`、打标；
+    //   每接上一条流就 `attach` 一份投影（名单 · 续点 · 没送出去的帧按连接），记录整台只预读一次。
+    let (watcher, book) = observe::watcher::spawn(agent_home.clone(), own.clone());
 
     // 多客户：认证通过的连接排进这里；每条自己一份 watcher / inbound / writer。
     let (attached_tx, mut attached_rx) = tokio::sync::mpsc::channel::<Attached>(1);
@@ -766,27 +758,20 @@ async fn serve_listening(
                     Err(e) => tracing::warn!("accept 失败（{e}）；继续听"),
                 }
             }
-            // ② 有人认证通过 ⇒ 第一条来时退掉空转那份 watcher；给他一份新的（拿到一次完整初扫），起流。
+            // ② 有人认证通过 ⇒ 接上这台那份 watcher（先收一份此刻的样子），起流。
             Some(att) = attached_rx.recv() => {
-                if clients.count() == 0 {
-                    if let Some(p) = idle_poke.take() {
-                        p.shutdown();
-                    }
-                    idle_rx = None;
-                }
                 let id = clients.join();
                 let Attached { reader, writer, hello_flushed, flags } = att;
-                let book = observe::runs::RunBook::shared();
                 let wants = flags.unwrap_or_else(|| defaults.clone());
                 let (tz, view) = (wants.tz.clone(), wants.view.clone());
-                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), wants, book.clone(), own.clone());
+                let (rx, poke) = watcher.attach(&wants);
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
                 let mut inbound_task =
                     inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), own.clone(), hello_flushed);
                 // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
-                let tap_rx = tap::attach(book, tz.clone());
+                let tap_rx = tap::attach(book.clone(), tz.clone());
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（此刻 {} 条）", clients.count());
                 tokio::spawn(async move {
@@ -803,8 +788,8 @@ async fn serve_listening(
                             tracing::info!("流结束：入方向读到 EOF（客户端关了它的写半边）");
                         }
                     }
-                    // P5：**显式告诉 reader 停** —— 没有 ticker 之后它只会一直阻塞在 `recv()`。
-                    poke.shutdown();
+                    // 这条连接的投影摘掉（watcher 照跑：这台一份）。
+                    drop(poke);
                     inbound_task.abort();
                     drop(reply_tx);
                     let _ = done.send(id).await;
@@ -832,25 +817,7 @@ async fn serve_listening(
                     )
                     .await
                 }
-                tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
-                let (rx, poke) = observe::watcher::spawn(
-                    agent_home.clone(),
-                    defaults.clone(),
-                    std::sync::Arc::default(),
-                    own.clone(),
-                );
-                idle_rx = Some(rx);
-                idle_poke = Some(poke);
-            }
-            // ④ 空转期把 watcher 的帧读出来丢掉。**没人要它们**，
-            //    但不读的话 10_000 容量的通道会填满并开始记 `Overflow`，
-            //    而那本账是给「有客户端在听」那一档记的 —— 空转期记它没有意义。
-            f = async { idle_rx.as_mut().expect("上面刚判过 is_some").recv().await }, if idle_rx.is_some() => {
-                if f.is_none() {
-                    tracing::warn!("空转期的 watcher 自己结束了 ⇒ 这台机的 @ccm_sid 打标停了");
-                    idle_rx = None;
-                    idle_poke = None;
-                }
+                tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看（同一份 watcher）");
             }
         }
     }

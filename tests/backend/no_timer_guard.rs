@@ -800,6 +800,16 @@ mod tests {
         ),
     ];
 
+    /// 〔read8a〕**常驻的线程池**：线程起来之后一直在的那几处，`(文件, 生产段里的片段——恰好一处, why)`。
+    /// 它们只阻塞在任务队列上（无期限的 `recv()`）：没有任务就睡在内核里，不定时、不自己醒 —— 本护栏守的性质不受影响；
+    /// 登在这里是为了让「后端又多了一种常驻线程」这件事有人看过：多一处、少一处、等法变了（带了期限）都红。
+    pub(super) const REGISTERED_QUEUE_WORKERS: &[(&str, &str, &str)] = &[(
+        "observe/par.rs",
+        "q.recv()",
+        "记录预读的线程池（`par::Pool`，watcher 在 `watch_loop` 起一份 `PrimePool`）：各会话的预读在这里并行，\
+         线程数照 `par_workers`；取任务就是这一处无期限的 `recv()`，队列的发送端没了（池子丢了）它回错、线程退出。",
+    )];
+
     /// 生产段里**全部带期限**的内核等待：`libc::poll(` 与 `WaitForSingleObject(` 的调用，最后一个实参不是「一直等」（`-1` / `WAIT_FOREVER`）。
     /// 回 `(文件, 调用原文)`。纯文本；括号配平取整个调用。
     pub(super) fn bounded_kernel_waits(files: &[(String, String)]) -> Vec<(String, String)> {
@@ -1199,6 +1209,33 @@ mod tests {
                 assert!(
                     !rest.contains(&pat),
                     "{file} 剥掉登记的片段之后仍有 `{pat}`"
+                );
+            }
+        }
+    }
+
+    /// 〔read8a〕**登记的每一个常驻线程池都还在盘上、取任务那一处恰好一个、等法是无期限的 `recv()`**：
+    /// 那份文件生产段里没有带期限的等（`recv_timeout` · `sleep` …），线程起法（`thread::Builder::new()`）恰好一处 ——
+    /// 多起一种线程、把等法换成带期限的，都当场红。
+    #[test]
+    fn every_registered_queue_worker_blocks_on_its_queue_without_a_deadline() {
+        for (file, snippet, why) in REGISTERED_QUEUE_WORKERS {
+            assert!(why.chars().count() >= 40, "{file} 的登记没写清它是什么");
+            let code = backend_sources()
+                .into_iter()
+                .find(|(n, _)| matches_registered(n, file))
+                .map(|(_, c)| c)
+                .unwrap_or_else(|| panic!("登记的 {file} 不在了"));
+            assert_eq!(code.matches(snippet).count(), 1, "{file} 里 `{snippet}` 不是恰好一处");
+            assert_eq!(
+                code.matches("thread::Builder::new()").count(),
+                1,
+                "{file} 里起线程的地方不是恰好一处（多了一种常驻线程？）"
+            );
+            for call in ["recv_timeout", "sleep", "park_timeout", "wait_timeout", "timeout"] {
+                assert!(
+                    !code.lines().any(|l| is_call_of(l, call)),
+                    "{file} 里有带期限的等 `{call}(` —— 线程池只许阻塞在任务队列上"
                 );
             }
         }

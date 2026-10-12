@@ -113,7 +113,12 @@ const FRAMES: &[(&str, &str)] = &[
     ),
     (
         "session_added",
-        r#"{"kind":"session_added","agent_kind":"claude","sid":"s1","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","path":"/h/.claude/projects/p/s1.jsonl","lines":7}"#,
+        r#"{"kind":"session_added","agent_kind":"claude","sid":"s1","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","path":"/h/.claude/projects/p/s1.jsonl"}"#,
+    ),
+    // 读完了、从第几行起 —— 会话内容那一族（排在宣告之后、它的第一行之前；本机消费者在这一帧排旁路快照）。
+    (
+        "session_primed",
+        r#"{"kind":"session_primed","sid":"s1","path":"/h/.claude/projects/p/s1.jsonl","lines":7}"#,
     ),
     (
         "session_status",
@@ -218,6 +223,7 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
                 (&"line", InboundFrame::Line { .. })
                     | (&"changed", InboundFrame::Changed { .. })
                     | (&"session_added", InboundFrame::SessionAdded { .. })
+                    | (&"session_primed", InboundFrame::SessionPrimed { .. })
                     | (&"session_removed", InboundFrame::SessionRemoved { .. })
                     | (&"session_state", InboundFrame::SessionState { .. })
                     | (&"session_status", InboundFrame::SessionStatus { .. })
@@ -238,6 +244,8 @@ fn the_absorb_point_hands_back_exactly_the_content_and_lifecycle_frames() {
         [
             "line",
             "session_added",
+            // 读完了、从第几行起（本机消费者在这一帧排旁路快照）。
+            "session_primed",
             "session_removed",
             // 「X 变了」（本机消费者交 `changed/<主题>` 订阅）。
             "changed",
@@ -275,9 +283,12 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     const LINE_A: &str = r#"{"kind":"line","session_id":"a","path":"/p/a.jsonl","seq":4,"record":{"x":1},"byte_offset":50}"#;
     const LINE_B: &str =
         r#"{"kind":"line","session_id":"b","path":"/p/b.jsonl","seq":0,"byte_offset":10}"#;
-    const ADD_A: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"interactive","path":"/p/a.jsonl","lines":4}"#;
+    const ADD_A: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"interactive","path":"/p/a.jsonl"}"#;
+    const PRIMED_A: &str = r#"{"kind":"session_primed","sid":"a","path":"/p/a.jsonl","lines":4}"#;
+    const PRIMED_A_EMPTY: &str = r#"{"kind":"session_primed","sid":"a"}"#;
+    const PRIMED_B: &str = r#"{"kind":"session_primed","sid":"b","path":"/p/b.jsonl","lines":9}"#;
     const ADD_A_OLD_CC: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L"}"#;
-    const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"bg","background":true,"path":"/p/b.jsonl","lines":9}"#;
+    const ADD_B_BG: &str = r#"{"kind":"session_added","agent_kind":"claude","sid":"b","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"bg","background":true,"path":"/p/b.jsonl"}"#;
     const REM_B: &str = r#"{"kind":"session_removed","sid":"b"}"#;
     const STATUS: &str = r#"{"kind":"session_status","sid":"a","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","status":"busy","activity":"working"}"#;
 
@@ -303,16 +314,19 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     // ① 显示 bg：一切照转。
     let mut h = BgHide::new(true);
     assert_eq!(step(&mut h, frame(LINE_A)), line_a);
+    // 宣告本身不排快照（它不等记录）；读完那一帧才排。
+    assert_eq!(step(&mut h, frame(ADD_A)), LocalStep::Skip);
     assert_eq!(
-        step(&mut h, frame(ADD_A)),
+        step(&mut h, frame(PRIMED_A)),
         LocalStep::Announce {
             sid: "a".into(),
             path: Some("/p/a.jsonl".into()),
             lines: Some(4)
         }
     );
+    assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
     assert_eq!(
-        step(&mut h, frame(ADD_B_BG)),
+        step(&mut h, frame(PRIMED_B)),
         LocalStep::Announce {
             sid: "b".into(),
             path: Some("/p/b.jsonl".into()),
@@ -329,9 +343,11 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     // ② 不显示 bg：bg 的宣告与它的行一律不进；交互 / 旧 CC（没写 kind）照转。
     let mut h = BgHide::new(false);
     assert_eq!(step(&mut h, frame(ADD_B_BG)), LocalStep::Skip);
+    assert_eq!(step(&mut h, frame(PRIMED_B)), LocalStep::Skip, "藏起来的 bg 读完那一帧也不进");
     assert_eq!(step(&mut h, frame(LINE_B)), LocalStep::Skip);
+    assert_eq!(step(&mut h, frame(ADD_A_OLD_CC)), LocalStep::Skip);
     assert_eq!(
-        step(&mut h, frame(ADD_A_OLD_CC)),
+        step(&mut h, frame(PRIMED_A_EMPTY)),
         LocalStep::Announce {
             sid: "a".into(),
             path: None,
@@ -644,14 +660,13 @@ fn a_real_backend_feeds_local_lines_through_the_production_read_loop() {
                 .expect("通道断了")
         })
     };
-    // ① 宣告：带 path 与 prime 到的完整行数；宣告之前不许有这个会话的行帧。
+    // ① 宣告（不等记录）之后读完那一帧：带 path 与预读到的完整行数；它之前不许有这个会话的行帧。
     let (path, lines) = loop {
         match next(&mut rx) {
-            LocalItem::Frame(InboundFrame::SessionAdded {
+            LocalItem::Frame(InboundFrame::SessionPrimed {
                 sid: s,
                 path,
                 lines,
-                ..
             }) if s == sid => break (path, lines),
             LocalItem::Frame(InboundFrame::Line { session_id, .. }) if session_id == sid => {
                 panic!("宣告之前就来了这个会话的行帧")
