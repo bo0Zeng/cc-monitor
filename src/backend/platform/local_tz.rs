@@ -21,7 +21,10 @@ pub(crate) use super::win_tz::offset_secs;
 /// 说不出（`TZ` 是 POSIX 串 · 没有那条链 · Windows）⇒ `None`：调用方说「时区不明」，不猜成 UTC。全后端只这一处取。
 pub(crate) fn iana_name() -> Option<String> {
     let tz = std::env::var("TZ").ok();
+    #[cfg(unix)]
     let link = crate::platform::fs::Ro::read_link("/etc/localtime").ok();
+    #[cfg(not(unix))]
+    let link: Option<std::path::PathBuf> = None;
     iana_of(tz.as_deref(), link.as_deref())
 }
 
@@ -30,9 +33,8 @@ pub(crate) fn iana_of(
     tz: Option<&str>,
     localtime_link: Option<&std::path::Path>,
 ) -> Option<String> {
-    let known = |n: &str| {
-        (!n.is_empty() && crate::common::time::Tz::iana(n).is_some()).then(|| n.to_string())
-    };
+    let known =
+        |n: &str| (!n.is_empty() && jiff::tz::TimeZone::get(n).is_ok()).then(|| n.to_string());
     if let Some(n) = tz.map(|t| t.strip_prefix(':').unwrap_or(t)).and_then(known) {
         return Some(n);
     }
