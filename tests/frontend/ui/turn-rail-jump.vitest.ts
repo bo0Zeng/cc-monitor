@@ -23,10 +23,10 @@ describe("刻度跳不过去", () => {
     const dom = tsv.mountTabDom("t");
     store.tabs.set("t", {
       sessionId: "t",
+      ...dom,
       skeleton: null,
       skeletonFetch: "done",
       window: { pendingCount: 0, peek: () => [] },
-      ...dom,
     } as never);
     store.activeId = "t";
     (dom.turnFold as unknown as { turns: unknown[] }).turns = [{ uuid: "u-far", at: 0, parts: [{ text: "x", tone: "plain" }], ending: [] }];
@@ -53,7 +53,7 @@ describe("Ctrl+O 只当场排当前 tab", () => {
     const tsv = new TabStreamView(store, document.createElement("div"), {} as never);
     const mk = (sid: string) => {
       const dom = tsv.mountTabDom(sid);
-      store.tabs.set(sid, { sessionId: sid, skeleton: null, window: { pendingCount: 0, peek: () => [] }, ...dom, stream: { ...dom.stream, park: () => {} } } as never);
+      store.tabs.set(sid, { sessionId: sid, ...dom, skeleton: null, window: { pendingCount: 0, peek: () => [] }, stream: { ...dom.stream, park: () => {} } } as never);
       return dom;
     };
     const a = mk("a");

@@ -2549,7 +2549,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     const paint = (pending: Tab["pending"], needs: Tab["needs"]): void => {
       tab.pending = pending;
       tab.needs = needs;
-      (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
+      (home(tm).view as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab); // 流里补画住流视图（8a ④）
     };
     const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need", rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), ask: null, manualText: null, receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
@@ -5164,6 +5164,16 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
   };
+  /**
+   * 后台 tab 的第一趟会话事实排在当前那一趟之后、空闲时一个一个要（`tab-cold-reads.ts`；jsdom 没有 requestIdleCallback，走 200 ms 的兜底）：
+   * 等 `n` 个后台 tab 都轮到。
+   */
+  const idleTurns = async (n = 1): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+      await new Promise((r) => setTimeout(r, 220));
+      await settle();
+    }
+  };
   /** 记下每一问的 `(origin, path, prior)`；答法由 `answer` 现算（抛 ⇒ 通道那一跳的失败形状原样抛）。 */
   let asked: { origin: string; path: string; prior: unknown }[] = [];
   const answerFacts = (answer: (path: string, prior: unknown) => unknown): void => {
@@ -5265,6 +5275,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("f3", 0));
     tm.onLine(line("fr", 0, "pi"));
     await settle();
+    await idleTurns(); // fr 是后台 tab：它的第一趟空闲时才轮到
     const tab = home(tm).store.tabs.get("f3")!;
     tm.updateName("f3", "我的功能", "proj");
     expect(tab.title).toBe("↳ [proj] 我的功能");
@@ -5301,7 +5312,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect([...home(tm).store.tabs.get("t")!.touchedFiles]).toEqual(["/f3"]);
   });
 
-  it("批期不问；批结束每个「没要过或又长了」的 tab 各问一次（不只 active）", async () => {
+  it("批期不问；批结束当前 tab 当场问，后台 tab 空闲时轮到再问（不只 active，一个一个）", async () => {
     answerFacts((path) => facts({ forkedFrom: path.includes("b1") ? "src" : null }));
     tm.onBatchStart();
     tm.onLine(line("b1", 0));
@@ -5311,8 +5322,10 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(asked).toEqual([]);
     tm.onBatchEnd();
     await settle();
+    expect(asked.map((a) => a.path), "批结束当场只问当前那一个").toEqual(["/home/u/proj/b1.jsonl"]);
+    await idleTurns();
     expect(asked.map((a) => a.path).sort()).toEqual(["/home/u/proj/b1.jsonl", "/home/u/proj/b2.jsonl"]);
-    expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src"); // 后台 tab 也有 ↳
+    expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src");
   });
 
   it("改动文件集：成品原样透传给监控板 peek（近因序由后端排）；远端问的是那台", async () => {
@@ -5320,6 +5333,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("s-local", 0));
     tm.onLine(line("s-remote", 0, "devbox"));
     await settle();
+    await idleTurns(); // s-remote 是后台 tab
     expect(tm.peekSession("s-local")!.recentFiles).toEqual(["/proj/b.rs", "/proj/a.ts"]); // F91b：尾 = 最近改
     expect(asked.find((a) => a.path.includes("s-remote"))?.origin).toBe("devbox"); // 远端问的是那台
   });
@@ -6342,6 +6356,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
         return c[0] === "chan_call" && a.op === "history-turns" && (JSON.parse(new TextDecoder().decode(new Uint8Array(a.payload ?? []))) as { path?: string }).path === "/p/wf.jsonl";
       }).length;
     for (let s = 0; s < 10; s++) tm.onLine(line("wf", s));
+    tm.switchTo("wf"); // 后台 tab 的第一趟排着（`tab-cold-reads.ts`）；切过来才当场要
     for (let k = 0; k < 5; k++) await settle();
     const before = turnsAsks();
     tm.onLine(line("wf", 50));
@@ -6574,5 +6589,134 @@ describe("ui3 · 组成块：落点反馈看块、窄栏悬停带组名", () => 
     const list = rule(".tab-group-list");
     expect(list, "组员不另缩进").not.toMatch(/margin-left/);
     expect(list, "引导线去掉").not.toMatch(/border-left/);
+  });
+});
+
+// 8a ④（蓝图 11 §5.1 ④）：N 个 tab 冷起，到当前 tab 画出尾段、它那一趟落地之前，后端只收到当前那一个会话的冷读命令；
+// 后台的冷读排在它之后、空闲时一个一个来；切进来停住的插到最前。数命令，不按墙钟。
+// 冷读 ＝ 后端要从头扫的那几问：`history-facts` 不带 prior · `history-turns` from 0 · 骨架索引 · 大纲清单。夹具只造结构（sid / 路径）。
+describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 tab 那一趟之后、一个一个来", () => {
+  const COLD_OPS = new Set(["history-facts", "history-turns", "history-index", "history-user-inputs"]);
+  const facts = (): SessionFacts => ({
+    agent: "claude",
+    end: 100,
+    forkedFrom: null,
+    touchedFiles: [],
+    usage: null,
+    projectDir: null,
+    writers: [],
+    pending: [],
+    lastSay: null,
+    needs: null,
+    handedBack: [],
+    retries: [],
+    permissionMode: null,
+    tokens: null,
+    cost: null,
+    bgTasks: [],
+    background: null,
+    mcp: [],
+    answerOff: null,
+  });
+  const line = (sid: string, seq: number) =>
+    ({ session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "reply", id: `${sid}-${seq}` } }) as never;
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  /** 发出去的冷读：哪一问 · 哪个会话（按路径认）。 */
+  let cold: { op: string; sid: string }[] = [];
+  /** 扣着不答的会话（它的 facts / turns 挂起，`release` 才答）。 */
+  let holding = new Set<string>();
+  let held: { sid: string; go: () => void }[] = [];
+  let idle: IdleRequestCallback[] = [];
+  let hadIdle: typeof window.requestIdleCallback;
+  const sidOf = (path: string): string => path.replace(/^.*\//, "").replace(/\.jsonl$/, "");
+  const release = (sid: string): void => {
+    for (const h of held.filter((x) => x.sid === sid)) h.go();
+    held = held.filter((x) => x.sid !== sid);
+  };
+  /** 在途的冷读各属哪个会话（发了、还没答）。 */
+  const inflight = (): Set<string> => new Set(held.map((h) => h.sid));
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cold = [];
+    holding = new Set();
+    held = [];
+    idle = [];
+    hadIdle = window.requestIdleCallback;
+    window.requestIdleCallback = ((cb: IdleRequestCallback) => idle.push(cb)) as typeof window.requestIdleCallback;
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd !== "chan_call") return undefined;
+      const a = args as { op: string };
+      if (!COLD_OPS.has(a.op)) return undefined;
+      const body = chanArgsJson(args as never) as { path: string; prior?: unknown; from?: number };
+      const sid = sidOf(body.path);
+      if (!["A", "B", "C"].includes(sid)) return undefined; // 前面几组留下的 TabManager 还在排它们的空闲回调：不算这一组的
+      const isCold = a.op === "history-facts" ? body.prior == null : a.op === "history-turns" ? body.from === 0 : true;
+      if (isCold) cold.push({ op: a.op, sid });
+      if (a.op !== "history-facts" && a.op !== "history-turns") throw UNSUPPORTED;
+      const reply = chanReply(a.op === "history-facts" ? facts() : { from: 0, end: 0, turns: [] });
+      if (!holding.has(sid) && !holding.has("*")) return reply;
+      return new Promise((resolve) => held.push({ sid, go: () => resolve(reply) }));
+    });
+    tm = makeTM();
+  });
+  afterEach(() => {
+    window.requestIdleCallback = hadIdle;
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
+  });
+  /** 冷起：一批里三个会话（A 是第一个 ⇒ 当前），每个一格红绿灯，那台推一次「需手动变了」⇒ 各 tab 再问会话事实。 */
+  const coldStart = (): void => {
+    tm.onBatchStart();
+    for (const sid of ["A", "B", "C"]) for (let s = 0; s < 3; s++) tm.onLine(line(sid, s));
+    for (const sid of ["A", "B", "C"]) tm.updateActivity(sid, "idle", null, "核心·空闲", "plain", 3);
+    tm.rereadFactsOn(LOCAL_ORIGIN);
+    tm.onBatchEnd();
+  };
+
+  it("当前 tab 那一趟落地之前，冷读只有当前那一个会话的（正控：它的 facts 与 turns 都已发）", async () => {
+    holding = new Set(["*"]);
+    coldStart();
+    await settle();
+    expect(home(tm).store.activeId).toBe("A");
+    expect(home(tm).store.tabs.get("A")!.window.floorSeq, "当前 tab 尾段已物化").not.toBeNull();
+    expect(cold.map((c) => c.op).sort(), "正控：当前 tab 的冷读发了").toEqual(expect.arrayContaining(["history-facts", "history-turns"]));
+    // 空闲回调也跑一遍：前台那一趟没落地，空闲时也不发后台的。
+    for (let i = 0; i < 10 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 50 });
+    await settle();
+    expect([...new Set(cold.map((c) => c.sid))], "后端只收到当前那个会话的冷读").toEqual(["A"]);
+  });
+
+  it("当前那一趟落地 ⇒ 后台空闲时一个一个来：任一时刻在途的后台冷读只属一个会话", async () => {
+    holding = new Set(["B", "C"]); // 当前那一趟照答（落地），后台的扣着、一个一个放
+    coldStart();
+    await settle();
+    const seen: string[] = [];
+    for (let round = 0; round < 10; round++) {
+      for (let i = 0; i < 10 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 50 });
+      await settle();
+      const now = [...inflight()];
+      expect(now.length, `第 ${round} 轮在途的会话：${now.join(",")}`).toBeLessThanOrEqual(1);
+      if (now.length === 0) break;
+      seen.push(now[0]);
+      release(now[0]);
+      await settle();
+    }
+    expect(seen, "B · C 都轮到了，一个一个").toEqual(["B", "C"]);
+    expect(cold.filter((c) => c.op === "history-facts").map((c) => c.sid), "每个会话只冷读一次 facts").toEqual(["A", "B", "C"]);
+  });
+
+  it("当前那一趟还扣着时切到 C、停住 ⇒ C 的冷读先于排在前面的 B 发出", async () => {
+    holding = new Set(["A", "B", "C"]);
+    coldStart();
+    await settle();
+    tm.switchTo("C");
+    await new Promise((r) => setTimeout(r, 200)); // 停住（过了 STAY_MS）
+    await settle();
+    const sids = [...new Set(cold.map((c) => c.sid))];
+    expect(sids.slice(0, 2), "C 插到 B 前面").toEqual(["A", "C"]);
+    expect(sids, "B 还在排着").not.toContain("B");
   });
 });
