@@ -121,6 +121,9 @@ pub(crate) struct Turn<'a> {
 }
 
 /// 读身份的缓存：`.claude.json` 可能很大，按那份文件的戳缓存（文件动了再读）。
+/// 这台此刻活着的会话（sid 集合）。判活只认一处：生产那一份是 [`crate::observe::accounts_query::live_here`]（pidfile 里的会话 id ＋ 进程还是同一个）。
+pub(crate) type Live = Arc<dyn Fn() -> std::collections::BTreeSet<String> + Send + Sync>;
+
 type IdentityCache = Mutex<BTreeMap<PathBuf, (Option<(std::time::SystemTime, u64)>, String)>>;
 
 /// 换号要的几样：轮换的账本 · 额度账 · 家目录 · 账号库 · 令牌端点（缺省用那一家登记的）。
@@ -130,6 +133,8 @@ pub(crate) struct Hop {
     pub(crate) home: Option<PathBuf>,
     pub(crate) library: LibraryRead,
     pub(crate) token: Option<TokenEndpoint>,
+    /// 这台此刻活着的会话（「另 N 会话也在用」只数它们）。
+    pub(crate) live: Live,
     identities: IdentityCache,
 }
 
@@ -140,6 +145,7 @@ impl Hop {
         quota: Arc<Ledger>,
         home: Option<PathBuf>,
         library: LibraryRead,
+        live: Live,
         token: Option<TokenEndpoint>,
     ) -> Self {
         Self {
@@ -148,6 +154,7 @@ impl Hop {
             home,
             library,
             token,
+            live,
             identities: Mutex::new(BTreeMap::new()),
         }
     }
@@ -315,10 +322,12 @@ impl Hop {
 
     /// ★ 一个会话此刻的场面：打开的那份配置展开成参与的号（起会话的号 · 点名的号 · 其余订阅号），每个号带事实与这一行的参数；
     /// 在用号这一段用了几点 · 用速。`heard` ＝ 刚回来的那个回包（它答的那个号按它判）。
+    /// `live(sid)` ＝ 那个会话此刻还活着：「另 N 会话也在用」（事实 `others`）只数活着的，走了的会话还留在账本里也不算。
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn scene(
         &self,
         book: &Book,
+        live: &dyn Fn(&str) -> bool,
         sid: Option<&str>,
         agent: &str,
         start: &str,
@@ -363,7 +372,9 @@ impl Hop {
             let others = book
                 .sessions
                 .iter()
-                .filter(|(x, s)| Some(x.as_str()) != sid && s.agent == agent && s.current == id)
+                .filter(|(x, s)| {
+                    Some(x.as_str()) != sid && s.agent == agent && s.current == id && live(x)
+                })
                 .count() as u32;
             let login_ok = self.reach(&a, lib, id).is_ok();
             let f = decide::facts_of(
@@ -472,8 +483,11 @@ impl Hop {
         tried: &[String],
     ) -> Option<(Verdict, Option<Go>, Option<serde_json::Value>, bool, bool)> {
         let o = book.opened(s)?;
+        // 判活要扫一遍 pidfile：只在真有别的会话也在某个号上时才扫（每一发都走这里）。
+        let alive = std::cell::OnceCell::new();
         let sc = self.scene(
             book,
+            &|x| alive.get_or_init(|| (self.live)()).contains(x),
             Some(a.sid),
             a.agent,
             &s.start,
@@ -876,6 +890,7 @@ impl Hop {
         let (id, rev, dirty, body) = (o.id.to_string(), o.rev, o.dirty, o.body.clone());
         let sc = self.scene(
             book,
+            live,
             Some(sid),
             &s.agent,
             &s.start,
@@ -956,9 +971,11 @@ impl Hop {
     }
 
     /// 帧面：一份配置（或草稿）此刻在这台的场面（推演 · 试跑用；没有会话 ⇒ 起会话的号取 `start`，在用的号取有效优先级第一个能用的）。
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn scene_of(
         &self,
         book: &Book,
+        live: &dyn Fn(&str) -> bool,
         agent: &str,
         start: &str,
         current: &str,
@@ -969,6 +986,7 @@ impl Hop {
         let lib = self.library();
         self.scene(
             book,
+            live,
             None,
             agent,
             start,
@@ -1028,6 +1046,71 @@ pub(crate) struct SessionView {
     pub(crate) hot_stale: bool,
     pub(crate) verdict: Verdict,
     pub(crate) quota: show::QuotaShow,
+}
+
+impl SessionView {
+    /// ★ 面板上那张列表（有效优先级照它显示、拖的位置也照它数）：第一行固定是在用的号，往下照有效优先级排；
+    /// `_`（起会话时没说是哪个号）不进候选：它不是一个能放、能换过去的号；场面里没有事实的号不列。
+    pub(crate) fn shown(&self) -> Vec<&decide::Ranked> {
+        let mut out: Vec<&decide::Ranked> = self
+            .eff
+            .iter()
+            .filter(|r| crate::accounts::quota::name_words::is_candidate(&r.account))
+            .filter(|r| self.scene.accounts.iter().any(|(f, _)| f.id == r.account))
+            .collect();
+        if let Some(i) = out.iter().position(|r| r.account == self.entry.current) {
+            let r = out.remove(i);
+            out.insert(0, r);
+        }
+        out
+    }
+
+    /// ★ 把 `account` 拖到面板那张列表（[`SessionView::shown`]）的第 `at` 行（`at ≥ 1`；越界取末尾）之后，手动调整里的 `place` 该是什么样：
+    /// 有效优先级里把它挪到落点下面那一行的前头（落在末尾 ⇒ 挪到最后），拖过的号（连它）各钉在挪完之后的那一位
+    /// （数的是除热换的号之外的那张列表，同 [`decide::overlay`]）⇒ 叠回去恰好是拖完的样子。拖的是热换过去的号 ⇒ 不变。它不在那张列表里 ⇒ `None`。
+    pub(crate) fn placed(&self, account: &str, at: usize) -> Option<Vec<rotation::Place>> {
+        let shown: Vec<&str> = self.shown().iter().map(|r| r.account.as_str()).collect();
+        let from = shown.iter().position(|a| *a == account)?;
+        let mut after = shown.clone();
+        after.remove(from);
+        let to = at.min(after.len());
+        let below = after.get(to).copied();
+        let mut eff: Vec<&str> = self
+            .eff
+            .iter()
+            .map(|r| r.account.as_str())
+            .filter(|a| *a != account)
+            .collect();
+        let i = below
+            .and_then(|b| eff.iter().position(|a| *a == b))
+            .unwrap_or(eff.len());
+        eff.insert(i, account);
+        let hot = (!self.hot_stale)
+            .then_some(self.entry.manual.hot.as_ref())
+            .flatten()
+            .map(|h| h.account.as_str());
+        if hot == Some(account) {
+            // 热换过去的那个号恒在第一行（面板也把在用的提到第一行）：拖它不改先后。
+            return Some(self.entry.manual.place.clone());
+        }
+        eff.retain(|a| Some(*a) != hot);
+        let mut place: Vec<rotation::Place> = self
+            .entry
+            .manual
+            .place
+            .iter()
+            .filter(|p| p.account != account)
+            .map(|p| rotation::Place {
+                account: p.account.clone(),
+                at: eff.iter().position(|a| *a == p.account).unwrap_or(p.at),
+            })
+            .collect();
+        place.push(rotation::Place {
+            account: account.to_string(),
+            at: eff.iter().position(|a| *a == account)?,
+        });
+        Some(place)
+    }
 }
 
 /// 号的种类：key 表里有行、或账号库说它是按量号 ⇒ 按量号；其余是订阅号。

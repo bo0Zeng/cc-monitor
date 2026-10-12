@@ -73,13 +73,13 @@ impl Home {
                 Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME)))),
                 Some(self.root.clone()),
                 library,
+                {
+                    let live = Arc::clone(&self.live);
+                    Arc::new(move || live.lock().expect("lock").clone())
+                },
                 Some(dead_token_endpoint()),
             ),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
-            live: {
-                let live = Arc::clone(&self.live);
-                Box::new(move || live.lock().expect("lock").clone())
-            },
             tz: crate::Tz::default(),
         }
     }
@@ -526,6 +526,16 @@ fn manual_adjustments_never_touch_the_copy() {
     let r = session(&ctx, S1);
     assert_eq!(r["rows"][0]["account"], "b");
     assert_eq!(r["hot"], "b");
+    // 拖热换过去的那个号：它恒在第一行，不改先后、不报错。
+    let v = answer_session_set_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "place": {"account": "b", "at": 2}}),
+        now(),
+    )
+    .expect("ok");
+    assert_eq!(v["state"], "done", "{v}");
+    assert_eq!(session(&ctx, S1)["rows"], r["rows"]);
     assert_eq!(r["config"]["dirty"], true);
     answer_session_set_with(
         &ctx,
@@ -1322,4 +1332,97 @@ fn quota_read_hands_over_the_candidates_without_the_unnamed_account() {
     assert_eq!(kind("api"), Some(json!("api")));
     assert_eq!(kind("b"), Some(json!("sub")));
     assert!(cands.iter().all(|c| c["agent"] == "claude-code"), "{got}");
+}
+
+/// ★ 「另 N 会话也在用」只数此刻活着的会话（判活同 `rotation-session-read` 那一处 `ctx.live`）：
+/// 自己之外 3 个活的 ＋ 5 个走了的都在 a 上 ⇒ 数 3（自己不算）；走了的会话不算进去。
+#[test]
+fn also_used_counts_only_live_sessions() {
+    let home = Home::new("alsoused");
+    let ctx = home.ctx();
+    let sid = |i: u32| format!("{i:08x}-0000-4000-8000-000000000000");
+    for i in 1..=9 {
+        home.saw(&ctx, &sid(i));
+    }
+    for i in 5..=9 {
+        home.end(&sid(i));
+    }
+    let s = session(&ctx, &sid(1));
+    let a = s["rows"]
+        .as_array()
+        .expect("rows")
+        .iter()
+        .find(|r| r["account"] == "a")
+        .expect("a")
+        .clone();
+    assert_eq!(a["alsoUsed"], 3, "另三个活会话在 a 上；走了的五个不算：{a}");
+}
+
+/// ★ 拖一行（`place {account, at}`，`at` 是面板上那张列表的第几行）⇒ 再读，那个号就在第 `at` 行，别的行先后不变。
+/// 面板上的列表 ＝ 这一份回的 `rows`（第一行在用、`_` 不在里头），拖的位置也按它算：每一对（从哪行 → 到哪行）都试，一次接一次地拖。
+/// 三份内置配置各试一遍；起会话的号有两种：点名了号（a）· 没说是哪个号（`_`，它不进面板那张列表）。
+#[test]
+fn a_drag_lands_on_the_row_it_was_dropped_on() {
+    for start in ["a", crate::accounts::quota::name_words::HOME_ACCOUNT] {
+        for cfg in ["c_00000001", "c_00000002", "c_00000003"] {
+            drag_every_pair(start, cfg);
+        }
+    }
+}
+
+fn drag_every_pair(start: &str, cfg: &str) {
+    let home = Home::new(&format!("dragland-{cfg}-{}", start.replace('_', "u")));
+    let ctx = home.ctx();
+    rotation::face_change(&ctx.hop.store, &own_of(&ctx), |b| {
+        b.saw(S1, "claude-code", start, now())
+    })
+    .expect("write");
+    home.live.lock().expect("lock").insert(S1.to_string());
+    answer_session_open_with(&ctx, &own_of(&ctx), &json!({"sid": S1, "config": cfg}))
+        .expect("open");
+    answer_session_edit_with(
+        &ctx,
+        &own_of(&ctx),
+        &json!({"sid": S1, "add": ["b", "c", "api"]}),
+    )
+    .expect("add");
+    let order = || -> Vec<String> {
+        session(&ctx, S1)["rows"]
+            .as_array()
+            .expect("rows")
+            .iter()
+            .map(|r| r["account"].as_str().unwrap_or("").to_string())
+            .collect()
+    };
+    let n = order().len();
+    assert!(
+        n >= 3,
+        "{cfg} · 起会话的号 {start}：要至少三行才拖得出名堂：{:?}",
+        order()
+    );
+    for from in 1..n {
+        for to in 1..n {
+            if from == to {
+                continue;
+            }
+            let before = order();
+            let moved = before[from].clone();
+            let got = answer_session_set_with(
+                &ctx,
+                &own_of(&ctx),
+                &json!({"sid": S1, "place": {"account": moved, "at": to}}),
+                now(),
+            )
+            .expect("ok");
+            assert_eq!(got["state"], "done", "{got}");
+            let mut want = before.clone();
+            let x = want.remove(from);
+            want.insert(to, x);
+            assert_eq!(
+                order(),
+                want,
+                "{cfg} · 起会话的号 {start}：把第 {from} 行（{moved}）拖到第 {to} 行；拖之前 {before:?}"
+            );
+        }
+    }
 }

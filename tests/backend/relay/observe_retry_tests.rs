@@ -498,6 +498,7 @@ impl Home {
             Arc::clone(&quota),
             Some(self.root.clone()),
             library,
+            Arc::new(std::collections::BTreeSet::new),
             Some(dead_token_endpoint()),
         );
         let accounts = Accounts::new(
@@ -522,6 +523,7 @@ impl Home {
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
+            Arc::new(std::collections::BTreeSet::new),
             Some(dead_token_endpoint()),
         );
         let accounts = Accounts::new(
@@ -554,6 +556,7 @@ impl Home {
             Arc::clone(&quota),
             Some(self.root.clone()),
             self.library(),
+            Arc::new(std::collections::BTreeSet::new),
             Some(dead_token_endpoint()),
         );
         let accounts = Accounts::new(
@@ -1259,6 +1262,7 @@ fn the_undeclared_account_is_not_taken_for_the_default_login() {
         Arc::new(Ledger::at(Some(home.root.join(ledger::FILE_NAME)))),
         Some(home.root.clone()),
         home.library_of(&["0", "a", "b"]),
+        Arc::new(std::collections::BTreeSet::new),
         Some(dead_token_endpoint()),
     );
     let none = |_: &str| None;

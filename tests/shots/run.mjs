@@ -180,6 +180,20 @@ async function shootWeb() {
       await page.goto(`${base}/${s.page}.html?scene=${encodeURIComponent(s.id)}${s.query ? `&${s.query}` : ""}`);
       await page.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS);
       const h = await page.eval("({ state: window.__shots.state, error: window.__shots.error, unhandled: window.__shots.unhandled, layout: window.__shots.layout ?? [] })");
+      const drag = await page.eval("window.__shots.drag ?? null");
+      if (drag) {
+        // 真鼠标拖（页里派的指针事件不算）：按下 · 分几步移过去 · 松开；松开之后问场景对不对。
+        const at = (y, extra) => page.send("Input.dispatchMouseEvent", { x: drag.x0, y, ...extra });
+        await at(drag.y0, { type: "mouseMoved" });
+        await at(drag.y0, { type: "mousePressed", button: "left", buttons: 1, clickCount: 1 });
+        for (let k = 1; k <= 8; k++) {
+          await sleep(30);
+          await at(drag.y0 + ((drag.y1 - drag.y0) * k) / 8, { type: "mouseMoved", button: "left", buttons: 1 });
+        }
+        await at(drag.y1, { type: "mouseReleased", button: "left", buttons: 0, clickCount: 1 });
+        const why = await page.eval("window.__shots.afterDrag()");
+        if (why) problems.push(`${s.id}：拖了一下 —— ${why}`);
+      }
       const pt = await page.eval("window.__shots.pointer ?? null");
       if (pt) {
         // 真鼠标停上去（CSS :hover 只认它），等过渡落定再量排版。

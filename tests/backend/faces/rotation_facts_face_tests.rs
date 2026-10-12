@@ -49,10 +49,10 @@ fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
                     })
                     .collect(),
             }),
+            Arc::new(Default::default),
             None,
         ),
         rows: Box::new(|_, a| (a == "api").then_some(true)),
-        live: Box::new(Default::default),
         tz: crate::Tz::default(),
     }
 }
