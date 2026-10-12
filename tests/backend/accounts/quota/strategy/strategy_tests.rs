@@ -599,7 +599,11 @@ fn builtins_and_local_files_load_the_same_way() {
     );
     // 改了文件 ⇒ 重读（目录戳认名字 · 修改时刻 · 长度：换进去的这份长度不同，不用等修改时刻走一格）。
     let before = std::fs::metadata(dir.join("broken.rhai")).expect("m").len();
-    assert_ne!(before, BUILTIN[0].1.len() as u64, "量具：换进去的那份得与原来长度不同");
+    assert_ne!(
+        before,
+        BUILTIN[0].1.len() as u64,
+        "量具：换进去的那份得与原来长度不同"
+    );
     std::fs::write(dir.join("broken.rhai"), BUILTIN[0].1).expect("w");
     let again = super::all(Some(&dir));
     assert!(again[4].usable());
