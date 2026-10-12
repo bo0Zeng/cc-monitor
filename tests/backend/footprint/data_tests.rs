@@ -249,3 +249,33 @@ fn 契约里家里的每个路径都有一行() {
     want.insert(".cc-monitor/bin".to_string());
     assert_eq!(covered, want);
 }
+
+/// 自家每一样带写好的那一句（界面照抄，不再按 id 取字）：契约里每个 id 都认得（没有一行落到「未识别」），答题插件那一行是它那一句。
+#[test]
+fn 自己家里的每一样带写好的那一句_界面照抄() {
+    let h = Home::new("what");
+    let rows = own_rows(&h.0);
+    assert_eq!(rows.len(), relay_route_core::OWN_HOME_ENTRIES.len());
+    for r in &rows {
+        let id = r["id"].as_str().unwrap();
+        let what = r["what"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{id} 没带 what"));
+        assert_eq!(
+            what,
+            copy_core::copy_text(&format!("rsDataPaths.backend.{id}"), &[]),
+            "{id}"
+        );
+    }
+    let plugin = rows
+        .iter()
+        .find(|r| r["id"] == "answerPlugin")
+        .expect("有答题插件那一行");
+    assert_eq!(
+        plugin["what"],
+        json!(copy_core::copy_text(
+            "rsDataPaths.backend.answerPlugin",
+            &[]
+        ))
+    );
+}
