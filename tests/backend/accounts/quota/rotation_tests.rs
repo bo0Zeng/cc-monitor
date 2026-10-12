@@ -674,12 +674,18 @@ fn switching_strategy_parks_and_restores_params() {
 
 // ── 别的进程写了盘 ⇒ 本进程照样推 ─────────────────────────────────────────────
 
-fn drain(rx: &mut tokio::sync::broadcast::Receiver<String>, prefix: &str) -> Vec<String> {
+fn drain(
+    rx: &mut tokio::sync::broadcast::Receiver<super::super::nodes::Node>,
+    prefix: &str,
+) -> Vec<String> {
     use tokio::sync::broadcast::error::TryRecvError;
     let mut out = Vec::new();
     loop {
         match rx.try_recv() {
-            Ok(s) if s.starts_with(prefix) && !out.contains(&s) => out.push(s),
+            Ok(super::super::nodes::Node {
+                source: super::super::nodes::Source::Book,
+                sid: Some(s),
+            }) if s.starts_with(prefix) && !out.contains(&s) => out.push(s),
             Ok(_) | Err(TryRecvError::Lagged(_)) => {}
             Err(_) => break,
         }
@@ -699,7 +705,7 @@ fn a_write_from_another_process_rings_here_on_rescan() {
         b.saw("a1-flip", "claude-code", "a", 1)
     })
     .expect("write");
-    let mut rx = changes().subscribe();
+    let mut rx = super::super::nodes::channel().subscribe();
     rescan(&path);
     assert!(drain(&mut rx, "a1-").is_empty(), "本进程写的不重推");
     let mut b = match read_at(&path) {

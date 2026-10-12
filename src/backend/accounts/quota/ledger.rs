@@ -16,7 +16,7 @@ use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 pub(crate) const FILE_NAME: &str =
     relay_route_core::file_name_of(relay_route_core::QUOTA_LEDGER_REL);
@@ -243,7 +243,8 @@ struct State {
 pub(crate) struct Ledger {
     path: Option<PathBuf>,
     state: Mutex<State>,
-    bell: Option<Arc<tokio::sync::watch::Sender<u64>>>,
+    /// 显示变了往哪发节点（生产是进程里那一条；判据各给自己的一条）。
+    nodes: super::nodes::Nodes,
 }
 
 impl Ledger {
@@ -264,7 +265,7 @@ impl Ledger {
                 on_disk,
                 stamp,
             }),
-            bell: None,
+            nodes: super::nodes::channel().clone(),
         }
     }
 
@@ -293,10 +294,16 @@ impl Ledger {
         }
     }
 
-    /// 显示变了就在这个通道上加一（订阅者据此推帧）。
-    pub(crate) fn ringing(mut self, bell: Arc<tokio::sync::watch::Sender<u64>>) -> Self {
-        self.bell = Some(bell);
+    /// 节点改发到 `tx`（判据用；生产恒是进程里那一条）。
+    #[cfg(test)]
+    pub(crate) fn notifying(mut self, tx: super::nodes::Nodes) -> Self {
+        self.nodes = tx;
         self
+    }
+
+    /// 发一件事实的节点（被拒 · 续期失败由换号那一路调；显示变了由记账这里自己调）。
+    pub(crate) fn notify(&self, source: super::nodes::Source, sid: Option<&str>) {
+        super::nodes::emit(&self.nodes, source, sid);
     }
 
     /// 那个号的最近一条（盘上别人写过 ⇒ 先并进来）。
@@ -309,9 +316,7 @@ impl Ledger {
     }
 
     fn ring(&self) {
-        if let Some(t) = &self.bell {
-            t.send_modify(|n| *n = n.wrapping_add(1));
-        }
+        self.notify(super::nodes::Source::Reading, None);
     }
 
     /// 落了盘之后：戳跟上；内存那一条换成盘上合并好的那份（内存里那条没更新过才换）。
@@ -330,13 +335,6 @@ impl Ledger {
     pub(crate) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
-}
-
-/// 进程里那条「额度账显示变了」的通道（流连接订它推 `changed {quota}`）。
-pub(crate) fn bell() -> Arc<tokio::sync::watch::Sender<u64>> {
-    static BELL: std::sync::OnceLock<Arc<tokio::sync::watch::Sender<u64>>> =
-        std::sync::OnceLock::new();
-    Arc::clone(BELL.get_or_init(|| Arc::new(tokio::sync::watch::channel::<u64>(0).0)))
 }
 
 /// 这台的落点：`<家>/quota.json`（家与 API key 凭据同一个出处）。推不出 ⇒ `None`。

@@ -642,6 +642,24 @@ fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
     assert_eq!(got[2].auth, Some(format!("Bearer {B_TOKEN}")));
 }
 
+/// ★ 回 429 ⇒ 节点通道上来一件 `Refused`，带这个会话（判的缓存与推送据此当场重跑 / 重推）。
+#[test]
+fn a_refused_answer_sends_a_refused_node_for_that_session() {
+    use crate::accounts::quota::nodes::{channel, Source};
+    let home = Home::new("node429");
+    home.set_default(&["b"], None);
+    let (up, _got) = spawn_judging_upstream(a_refused_b_serves);
+    let relay = home.relay(up);
+    let mut rx = channel().subscribe();
+    let resp = send_on(relay, "/t/claude-code/a/v1/messages", "s-node-429", "");
+    assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+    let mut seen = false;
+    while let Ok(n) = rx.try_recv() {
+        seen |= n.source == Source::Refused && n.sid.as_deref() == Some("s-node-429");
+    }
+    assert!(seen, "429 那一发该发一件带会话的 Refused");
+}
+
 /// ★ 后端重启 / 会话 resume 之后，同一会话第一发就走钉着的号（钉号在盘上）。
 #[test]
 fn a_restarted_backend_sends_the_first_request_of_a_pinned_session_to_the_pinned_account() {

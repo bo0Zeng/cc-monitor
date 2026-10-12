@@ -6,6 +6,7 @@
 pub(crate) mod decide;
 pub(crate) mod ledger;
 pub(crate) mod name_words;
+pub(crate) mod nodes;
 pub(crate) mod plan;
 pub(crate) mod rotation;
 pub(crate) mod show;

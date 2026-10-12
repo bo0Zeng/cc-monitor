@@ -257,6 +257,8 @@ impl Hop {
         let token = oauth::access_token(own, &dir, &face, &ep, now.saturating_mul(1000), account)
             .map_err(|u| {
             tracing::warn!("[rotate] {}", u.said(account).logged());
+            self.quota
+                .notify(super::super::quota::nodes::Source::Login, None);
             Unready::NeedsLogin
         })?;
         let who = self
@@ -679,6 +681,8 @@ impl Hop {
         tried: &[String],
         own: &Own,
     ) -> Option<Go> {
+        self.quota
+            .notify(super::super::quota::nodes::Source::Refused, Some(a.sid));
         let (book, s) = self.entry(own, a)?;
         let lib = self.library();
         if s.current != heard_from && !tried.contains(&s.current) {

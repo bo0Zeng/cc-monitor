@@ -1046,9 +1046,17 @@ fn strategies_moved(path: &Path) {
         _ => Book::default(),
     };
     for sid in b.sessions.keys() {
-        let _ = changes().send(sid.clone());
+        super::nodes::emit(
+            super::nodes::channel(),
+            super::nodes::Source::Book,
+            Some(sid),
+        );
     }
-    let _ = configs_changes().send(());
+    super::nodes::emit(
+        super::nodes::channel(),
+        super::nodes::Source::Strategies,
+        None,
+    );
 }
 
 /// 盯 `rotation.json` 所在的目录（只认这个文件名）与本机策略目录：别的进程写了 ⇒ [`rescan`]；策略文件变了 ⇒ 重推。
@@ -1070,12 +1078,25 @@ pub(crate) fn watch(own: &Own) -> Result<crate::platform::watch_file::Watching, 
     crate::platform::watch_file::watch(
         &[(dir, false), (sdir.clone(), false)],
         move |p| {
-            p.file_name().and_then(|n| n.to_str()) == Some(FILE_NAME)
+            let name = p.file_name().and_then(|n| n.to_str());
+            name == Some(FILE_NAME)
+                || name == Some(super::ledger::FILE_NAME)
                 || (p.parent() == Some(sdir_for.as_path())
                     && p.extension().and_then(|x| x.to_str()) == Some("rhai"))
         },
         "rotation-watch",
         move |hit| {
+            // 额度账被写了（多半是别的进程：CLI 的 quota-probe 等）：本进程的额度账只在用的时候比戳，不会自己响。
+            if hit
+                .iter()
+                .any(|p| p.file_name().and_then(|n| n.to_str()) == Some(super::ledger::FILE_NAME))
+            {
+                super::nodes::emit(
+                    super::nodes::channel(),
+                    super::nodes::Source::QuotaFile,
+                    None,
+                );
+            }
             if hit
                 .iter()
                 .any(|p| p.extension().and_then(|x| x.to_str()) == Some("rhai"))
@@ -1202,25 +1223,20 @@ fn ring_changed(before: &Book, after: &Book) {
             None => true,
         };
         if moved {
-            let _ = changes().send(sid.clone());
+            super::nodes::emit(
+                super::nodes::channel(),
+                super::nodes::Source::Book,
+                Some(sid),
+            );
         }
     }
     if configs_moved {
-        let _ = configs_changes().send(());
+        super::nodes::emit(
+            super::nodes::channel(),
+            super::nodes::Source::Strategies,
+            None,
+        );
     }
-}
-
-/// 进程里那条「这台的配置表 / 本机默认 / 策略变了」的通道（流连接订它推 `changed {rotation_configs}`）。
-pub(crate) fn configs_changes() -> &'static tokio::sync::broadcast::Sender<()> {
-    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<()>> = std::sync::OnceLock::new();
-    TX.get_or_init(|| tokio::sync::broadcast::channel::<()>(16).0)
-}
-
-/// 进程里那条「某个会话的轮换 / 账号格变了」的通道（流连接订它推 `changed {rotation}`）。
-pub(crate) fn changes() -> &'static tokio::sync::broadcast::Sender<String> {
-    static TX: std::sync::OnceLock<tokio::sync::broadcast::Sender<String>> =
-        std::sync::OnceLock::new();
-    TX.get_or_init(|| tokio::sync::broadcast::channel::<String>(256).0)
 }
 
 fn write_locked<R>(

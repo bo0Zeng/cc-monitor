@@ -31,10 +31,33 @@ fn reading(used_5h: f64, refused: bool) -> QuotaReading {
     }
 }
 
-fn ringing(path: Option<PathBuf>) -> (Ledger, tokio::sync::watch::Receiver<u64>) {
-    let tx = std::sync::Arc::new(tokio::sync::watch::channel::<u64>(0).0);
+/// 这一条额度账自己的节点通道（不经进程里那一条：别的判据也往那一条发）。
+struct Rung(tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>);
+
+impl Rung {
+    /// 自上次看以来来过「显示变了」的节点（看过就清）。
+    fn has_changed(&mut self) -> Result<bool, ()> {
+        let mut any = false;
+        while let Ok(n) = self.0.try_recv() {
+            assert_eq!(
+                n.source,
+                crate::accounts::quota::nodes::Source::Reading,
+                "{n:?}"
+            );
+            any = true;
+        }
+        Ok(any)
+    }
+
+    fn mark_unchanged(&mut self) {
+        let _ = self.has_changed();
+    }
+}
+
+fn ringing(path: Option<PathBuf>) -> (Ledger, Rung) {
+    let tx = tokio::sync::broadcast::channel(16).0;
     let rx = tx.subscribe();
-    (Ledger::at(path).ringing(tx), rx)
+    (Ledger::at(path).notifying(tx), Rung(rx))
 }
 
 fn on_disk(path: &std::path::Path) -> Book {
@@ -50,7 +73,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
-    let (l, rx) = ringing(Some(path.clone()));
+    let (l, mut rx) = ringing(Some(path.clone()));
     record_seen(
         &l,
         &own,
@@ -212,9 +235,8 @@ fn a_probe_merges_windows_into_the_same_entry_and_headers_do_not_wash_them_out()
     let path = d.join(FILE_NAME);
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
-    let (l, rx) = ringing(Some(path.clone()));
+    let (l, mut rx) = ringing(Some(path.clone()));
     record_seen(&l, &own, "claude-code", "q", reading(0.42, true), 100);
-    let mut rx = rx;
     rx.mark_unchanged();
     let got = record_probe(
         &l,
@@ -541,4 +563,18 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     );
     let o = down.entry("claude-code", "q").expect("entry");
     assert_eq!(o.rate("five_hour", t + 700), None, "不涨");
+}
+
+/// ★ 生产里造的每一份额度账（中转那一份 · 帧面每条命令现造的那一份）都往进程里那一条节点通道发：
+/// `quota-probe` 走的是帧面现造的那一份，从前它没有铃，报了用量也不推。
+#[test]
+fn every_ledger_made_for_production_sends_to_the_process_node_channel() {
+    let l = Ledger::at(None);
+    assert!(l.nodes.same_channel(super::super::nodes::channel()));
+    let ctx = crate::faces::rotation_face::Ctx::here();
+    assert!(ctx
+        .hop
+        .quota
+        .nodes
+        .same_channel(super::super::nodes::channel()));
 }
