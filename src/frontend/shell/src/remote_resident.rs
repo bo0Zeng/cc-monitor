@@ -20,9 +20,8 @@ use crate::detail::Said;
 use crate::dial_host::DialStream;
 use crate::stream_source::RemoteConfig;
 
-/// 刚起的那一个还没绑上套接字：中继回 `absent` ⇒ 隔一会儿再接，封顶这么多次。
-const RELAY_TRIES: u32 = 30;
-const RELAY_WAIT: Duration = Duration::from_millis(200);
+// 刚起的那一个还没绑上套接字：中继回 `absent` ⇒ 隔一会儿再接（次数与间隔住 `resident-client`，手机同一份）。
+use resident_client::attach::{RELAY_TRIES, RELAY_WAIT};
 
 /// 不认 `--resident-ensure` 的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就收工、当「太旧」。
 const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
@@ -150,69 +149,32 @@ async fn ensure(cfg: &RemoteConfig, replace: bool) -> Result<(), AttachErr> {
     Ok(parse_ensured(&parse_answer(&exec, &cfg.origin_label())?)?)
 }
 
-/// hello 那一行里那台报的 build（纯函数，只读线上形状）。第一行不是 hello ⇒ `Err`（那句话）。
-pub(crate) fn hello_build(line: &str) -> Result<String, String> {
-    let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
-    if v["kind"] != "hello" {
-        return Err(copy_text("rsRemoteResident.hello.notOurs", &[]));
-    }
-    Ok(v["build_id"].as_str().unwrap_or_default().to_string())
-}
+// hello 那一行里那台报的 build（纯函数，只读线上形状）：住 `resident-client`。
+pub(crate) use resident_client::attach::hello_build;
 
-/// 本机常驻后端那条命令的名字（与 `src/backend/stream/inbound/mod.rs::REGISTRY` 同名）。
-pub(crate) const VERDICT_CMD: &str = "resident-verdict";
+// 那条命令的名字 · 期限 · 答的形状与读法 · 「没带身份就不问」：住 `resident-client` 的版本门（手机同一份，手机问的是接上的那一台自己）。
+pub(crate) use resident_client::gate::{Verdict, VERDICT_BUDGET, VERDICT_CMD};
 
-/// 问那一趟的上限：纯判定、不拨号，只是本机那条长连接上一问一答。
-const VERDICT_BUDGET: Duration = Duration::from_secs(10);
-
-/// 本机常驻后端对 hello 那一问的答：`replace` = 换掉再接 · `older` = 那台比手上这一版旧（版本那句话按它挑）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Verdict {
-    pub(crate) replace: bool,
-    pub(crate) older: bool,
-}
-
-/// 应答 → [`Verdict`]（**严格收**：恰 `{action, older}` 两格、`action` 只认两个词 —— 两侧漂了当场说出来）。
-pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, Said> {
-    let bad =
-        |what: &str| Said::with_raw(copy_text("rsRemoteResident.verdict.unreadable", &[]), what);
-    let obj = v.as_object().ok_or_else(|| bad("not an object"))?;
-    if obj.len() != 2 {
-        return Err(bad("expected exactly `action` and `older`"));
-    }
-    let replace = match obj.get("action").and_then(serde_json::Value::as_str) {
-        Some("replace") => true,
-        Some("attach") => false,
-        _ => return Err(bad("`action` is neither `replace` nor `attach`")),
-    };
-    let older = obj
-        .get("older")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| bad("`older` is not a bool"))?;
-    Ok(Verdict { replace, older })
-}
-
-/// 换不换、旧不旧：「我这一版」（`mine`）有值才去问（`ask`，生产里是 [`ask_verdict`]）；手上没带后端字节（`None`）⇒
-/// **不问**、直接「接、不判旧」—— 没有可放的字节，换装无从发起，新旧也无从比（版本那句话说「不可比」）。
+/// 换不换、旧不旧：「我这一版」有值才去问（`ask`，生产里是 [`ask_verdict`]）；没带后端字节 ⇒ 不问、照接、不判旧（本体 `resident_client::gate::verdict_for`）。
 pub(crate) async fn verdict_for<F, Fut>(mine: Option<&'static str>, ask: F) -> Result<Verdict, Said>
 where
     F: FnOnce(&'static str) -> Fut,
     Fut: std::future::Future<Output = Result<Verdict, Said>>,
 {
-    match mine {
-        Some(m) => ask(m).await,
-        None => Ok(Verdict {
-            replace: false,
-            older: false,
-        }),
-    }
+    resident_client::gate::verdict_for(mine, ask).await
+}
+
+/// 应答 → [`Verdict`]（严格收，读法住 `resident_client::gate::decode_verdict`）；对不上 ⇒ 那一句 ＋ 哪里不对。
+pub(crate) fn decode_verdict(v: &serde_json::Value) -> Result<Verdict, Said> {
+    resident_client::gate::decode_verdict(v)
+        .map_err(|what| Said::with_raw(copy_text("rsRemoteResident.verdict.unreadable", &[]), what))
 }
 
 /// 问本机常驻后端「那台报 `theirs`，换还是接」。入参只有事实（手上这一版 · 那台报的 · 这一趟换过没有）。
 async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict, Said> {
     use crate::backend_route::{route_call_error, Routed};
     let client = crate::dial_host::local_backend_accepting(VERDICT_CMD).await?;
-    let args = serde_json::json!({ "mine": mine, "theirs": theirs, "replaced": replaced });
+    let args = resident_client::gate::verdict_args(mine, theirs, replaced);
     let data = client
         .call(VERDICT_CMD, args, VERDICT_BUDGET)
         .await
@@ -226,10 +188,8 @@ async fn ask_verdict(mine: &str, theirs: &str, replaced: bool) -> Result<Verdict
     decode_verdict(&data.unwrap_or_default())
 }
 
-/// 远端这条流的出口声明：`session_added.pid` 不要（那台的 pid 只有本机 ↗ 绑窗口用得上）。
-pub(crate) fn remote_stream_view() -> serde_json::Value {
-    serde_json::json!({ "omit": { "session_added": ["pid"] } })
-}
+// 远端这条流的出口声明（`session_added.pid` 不要）：住 `resident-client`。
+pub(crate) use resident_client::attach::remote_stream_view;
 
 /// 读握手那一行（hello / attach 应答）；`hello` 选哪一句说「没答完」。
 async fn read_line(r: &mut tokio::io::BufReader<DialStream>, hello: bool) -> Result<String, Said> {
@@ -310,14 +270,11 @@ impl tokio::io::AsyncWrite for Replayed {
     }
 }
 
-/// 中继回的第一行（纯函数）：`{"attach":"refused","reason":…}` ⇒ 那一格理由（`absent` 可等、别的不可等）；别的 ⇒ `None`（照 hello 读）。
-pub(crate) fn relay_refusal(first: &str) -> Option<String> {
-    let v: serde_json::Value = serde_json::from_str(first.trim()).ok()?;
-    (v["attach"] == "refused").then(|| v["reason"].as_str().unwrap_or_default().to_string())
-}
+// 中继回的第一行（纯函数）：拒绝 ⇒ 那一格理由；住 `resident-client`（手机同一份）。
+pub(crate) use resident_client::attach::relay_refusal;
 
-/// 中继说「没人在听」的那个理由词（后端 `listen::REFUSE_ABSENT`，跨 crate 字面量，`the_relay_refusal_line_is_read_and_its_words_match_the_backend` 对拍）。
-pub(crate) const RELAY_ABSENT: &str = "absent";
+// 中继说「没人在听」的那个理由词（后端 `listen::REFUSE_ABSENT`，`the_relay_refusal_line_is_read_and_its_words_match_the_backend` 对拍）。
+pub(crate) use resident_client::attach::RELAY_ABSENT;
 
 /// 接中继、读第一行：回「那条链路 ＋ 第一行」，或回一句「接不上」（`Ok(Err(reason))` 留给调用方判可不可以等）。
 async fn relay_once(
@@ -407,7 +364,7 @@ pub(crate) async fn attach(cfg: &RemoteConfig) -> Result<Replayed, AttachErr> {
         };
         r.get_mut()
             .write_all(
-                crate::local_backend_host::attach_line(
+                resident_client::attach::attach_line(
                     host_core::viewer_tz().as_deref(),
                     Some(&remote_stream_view()),
                 )
@@ -417,14 +374,7 @@ pub(crate) async fn attach(cfg: &RemoteConfig) -> Result<Replayed, AttachErr> {
             .map_err(not_sent)?;
         r.get_mut().flush().await.map_err(not_sent)?;
         let reply = read_line(&mut r, false).await?;
-        let v: serde_json::Value = serde_json::from_str(&reply).unwrap_or_default();
-        if v["attach"] != "ok" {
-            let why = match v["reason"].as_str() {
-                Some(r) => r.to_string(),
-                None => copy_text("rsRemoteResident.handshake.notAttachReply", &[]),
-            };
-            return Err(copy_text("rsRemoteResident.handshake.refused", &[("why", &why)]).into());
-        }
+        resident_client::attach::attach_reply(&reply)?;
         // 预读进缓冲的字节（attach 之后紧跟的帧）连同 hello 一起补吐。
         let mut head = hello.into_bytes();
         head.push(b'\n');

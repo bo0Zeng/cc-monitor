@@ -381,6 +381,9 @@ pub struct Offer {
     /// 撤不动的 op（对端开跑之后停不下）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     uncancellable: Vec<String>,
+    /// typed 命令的形状指纹 `(op, 指纹)`（`hello.shapes`）：跟本侧编进来的那一张（`cmd_wire::SHAPES`）比，对不上的 op 不发（[`Offer::shape_differs`]）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    shapes: Vec<(String, String)>,
 }
 
 /// 本地撤单之后，对端那一半怎样了（本地照撤；对端不认要说出来）。
@@ -405,7 +408,28 @@ impl Offer {
             ops,
             unavailable,
             uncancellable,
+            shapes: Vec::new(),
         }
+    }
+
+    /// 带上对端握手时交的形状指纹（`hello.shapes`）。
+    pub fn with_shapes(mut self, shapes: Vec<(String, String)>) -> Self {
+        self.shapes = shapes;
+        self
+    }
+
+    /// 这个 op 是对端接的 typed 命令、对端交的形状指纹跟本侧编进来的那一份不一样（或对端没交：它比这一版早）⇒ 发了也解不对，不发。
+    pub fn shape_differs(&self, op: &str) -> bool {
+        self.admits(op) && self.shape_differs_raw(op)
+    }
+
+    fn shape_differs_raw(&self, op: &str) -> bool {
+        cmd_wire::shapes::shape_of(op).is_some_and(|mine| {
+            !self
+                .shapes
+                .iter()
+                .any(|(o, theirs)| o == op && theirs == mine)
+        })
     }
 
     /// 对端认不认这个 op。
@@ -433,6 +457,18 @@ impl Offer {
         } else {
             Withdraw::NotOffered
         }
+    }
+
+    /// hello 里 `shapes`（`{op: 指纹}`）那一格。缺 / 不是对象 ⇒ 空（旧后端：typed 命令一律当形状对不上）；值不是串的那一项丢掉。
+    pub fn shapes_of(obj: &serde_json::Map<String, serde_json::Value>) -> Vec<(String, String)> {
+        obj.get("shapes")
+            .and_then(|v| v.as_object())
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(op, h)| Some((op.clone(), h.as_str()?.to_string())))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// JSON 对象里 `unavailable`（`[{command, code}]`）/ `uncancellable`（`[op]`）两格 —— hello 与 `resync` 应答同形，

@@ -61,6 +61,7 @@ use std::path::{Path, PathBuf};
 /// ⚠ 一份真测试文件掉光了测试属性，判别器会把它判进这里 ⇒ 与登记不一致 ⇒ 红。
 const SUPPORT: &[&str] = &[
     "tests/backend/observe/runs_testing.rs", // 往运行簿里直接记一个在跑的子运行
+    "tests/backend/observe/search_query_support.rs", // 全文搜索几份判据共用：照选项词造选项 · 逐行写进缓冲
     "tests/backend/files/index_testing.rs",
     "tests/backend/plan/fixture.rs", // 计划读面的夹具：合成 dump · 假 pb 插件
     "tests/backend/control/identity_tag_door.rs", // `identity_tag` 起 tmux 那个口的测试构建那一份（假 tmux 注入，§48.3）

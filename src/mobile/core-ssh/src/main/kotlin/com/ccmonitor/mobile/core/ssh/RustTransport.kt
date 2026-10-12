@@ -3,8 +3,8 @@ package com.ccmonitor.mobile.core.ssh
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.remote.ConnectionDeadException
 import com.ccmonitor.mobile.core.remote.ExecResult
-import com.ccmonitor.mobile.core.remote.RemoteDuplex
 import com.ccmonitor.mobile.core.rs.Core
+import com.ccmonitor.mobile.core.rs.ResidentEvents
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -13,7 +13,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -139,8 +138,7 @@ class RustTransport(
             awaitClose { link.close() }
         }.flowOn(Dispatchers.IO)
 
-    override suspend fun execDuplex(command: String): RemoteDuplex =
-        withContext(Dispatchers.IO) { RustDuplex(child(JSONObject().put("use", "duplex").put("command", command))) }
+    override val dialRequest: String? get() = base?.takeIf { isConnected }?.toString()
 
     override suspend fun openShell(
         term: String,
@@ -421,7 +419,10 @@ class RustTransport(
     }
 }
 
-/** 进程里那一份 Rust 核心的 Kotlin 一侧：链路编号 → 收件箱 · Keystore 签名 · 认下的 host key。 */
+/** 核心装上（记下 Kotlin 这一侧的回调、装上手机那一套）；只认第一次。开常驻流之前要它（常驻流交的事经同一个回调回来）。 */
+fun ensureRustCore() = RustCore.ensure()
+
+/** 进程里那一份 Rust 核心的 Kotlin 一侧：链路编号 → 收件箱 · Keystore 签名 · 认下的 host key · 常驻流交的事。 */
 internal object RustCore : Core.Sink {
     private val inboxes = ConcurrentHashMap<Long, Channel<ByteArray>>()
     private val seen = ConcurrentHashMap<String, String>()
@@ -497,6 +498,13 @@ internal object RustCore : Core.Sink {
         host: String,
         port: Int,
     ): String? = seen.remove("$host:$port")
+
+    /** 常驻流交的事：按那台的编号分过去（`ResidentEvents`）。 */
+    override fun resident(
+        handle: Long,
+        kind: String,
+        body: String,
+    ) = ResidentEvents.deliver(handle, kind, body)
 }
 
 /** 一条链路（Kotlin 这一侧）：下行字节按序读（行 / 块），上行经核心送。 */
@@ -542,33 +550,6 @@ internal class RustLink(
         }
     }
 
-    /** 读满 [n] 个字节；收工 ⇒ `null`。 */
-    private suspend fun readExactly(n: Int): ByteArray? {
-        var buf = leftover
-        leftover = ByteArray(0)
-        while (buf.size < n) {
-            val more = inbox.receiveCatching().getOrNull()
-            if (more == null) {
-                closedByCore.set(true)
-                return null
-            }
-            buf += more
-        }
-        leftover = buf.copyOfRange(n, buf.size)
-        return buf.copyOfRange(0, n)
-    }
-
-    /** 下一帧（`use: duplex`）：`(类型, 本体)`；收工 ⇒ `null`。 */
-    suspend fun readFrame(): Pair<Int, ByteArray>? {
-        val head = readExactly(FRAME_HEAD) ?: return null
-        val len =
-            java.nio.ByteBuffer
-                .wrap(head, 1, 4)
-                .int
-        val body = readExactly(len) ?: return null
-        return (head[0].toInt() and 0xff) to body
-    }
-
     /** 读到 ack 那一行（之前的阶段行交给 [onStage]）；没等到就收工 ⇒ 抛。 */
     suspend fun awaitAck(onStage: (JSONObject) -> Unit): JSONObject {
         while (true) {
@@ -588,51 +569,11 @@ internal class RustLink(
         rows: Int,
     ) = Core.resize(handle, cols, rows)
 
-    private companion object {
-        const val FRAME_HEAD = 5
-    }
-
     fun close() {
         if (!ended.compareAndSet(false, true)) return
         Core.close(handle)
         RustCore.drop(handle)
         synchronized(onClose) { onClose.toList() }.forEach { it() }
-    }
-}
-
-/**
- * 常驻流那条双向长 exec（`use: duplex`）：下行分帧 `[类型][四字节大端长度][本体]`，0 = stdout，2 = 收场那一帧
- * `{exit_status, exit_signal, stderr_tail}`（stderr 核心那一侧只留尾巴）。
- */
-internal class RustDuplex(
-    private val link: RustLink,
-) : RemoteDuplex {
-    private val collected = AtomicBoolean(false)
-
-    @Volatile private var end: JSONObject? = null
-
-    override val stdout: Flow<ByteArray> =
-        flow {
-            check(collected.compareAndSet(false, true)) { "stdout 只许收集一次" }
-            var frame = link.readFrame()
-            while (frame != null && end == null) {
-                val (kind, body) = frame
-                if (kind == FRAME_STDOUT) emit(body)
-                if (kind == FRAME_END) end = JSONObject(body.toString(Charsets.UTF_8))
-                if (end == null) frame = link.readFrame()
-            }
-        }
-
-    override suspend fun write(bytes: ByteArray) = withContext(Dispatchers.IO) { link.send(bytes) }
-
-    override val exitStatus: Int? get() = end?.takeUnless { it.isNull("exit_status") }?.getInt("exit_status")
-    override val stderrTail: String get() = end?.optString("stderr_tail").orEmpty()
-
-    override fun close() = link.close()
-
-    private companion object {
-        const val FRAME_STDOUT = 0
-        const val FRAME_END = 2
     }
 }
 

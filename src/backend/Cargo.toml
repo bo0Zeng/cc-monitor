@@ -109,6 +109,8 @@ comms-outward = { path = "../comms/outward" }
 # 上游 base URL 能不能用的唯一一份（中转解析 · 上游选择装表 · 写口）；非业务 crate ⇒ 通信层成员可以用它（C2）。
 upstream-url-core = { path = "../common/upstream-url-core" }
 acct-core = { path = "../common/acct-core" }
+# typed 命令两端对上的那几样：机器名 · 形状指纹表（hello 带出去）。
+cmd-wire = { path = "../common/cmd-wire" }
 # K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
 # 🔴 **开了 `harden`** —— `K-H2a` 裁四「backend 只许读」收窄成
 # 「backend 里只有账号域那一份（`accounts/upstream_select/file_face.rs`）写这份文件，只从帧面 `apikey-key-set` 进来」。

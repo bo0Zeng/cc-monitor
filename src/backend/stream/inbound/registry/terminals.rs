@@ -178,19 +178,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::Builtin,
     },
     // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
-    //   本体 `control/ccm/mod.rs::answer_terminal_name_mint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
-    CommandSpec {
-        name: "terminal-name-mint",
-        summary: "起会话要的终端名",
-        codes: &["bad_args", "child_timed_out"],
-        fields: &[out("name", "铸出来的终端名（这台避让过）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::ccm::answer_terminal_name_mint(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    //   本体 `control/ccm/mod.rs::TerminalNameMint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
+    crate::stream::inbound::typed::blocking::<crate::control::ccm::TerminalNameMint>(
+        "起会话要的终端名",
+    ),
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
     CommandSpec {

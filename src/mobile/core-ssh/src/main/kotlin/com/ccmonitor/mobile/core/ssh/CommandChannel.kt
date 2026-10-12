@@ -3,7 +3,6 @@ package com.ccmonitor.mobile.core.ssh
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.remote.ConnectionDeadException
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
-import com.ccmonitor.mobile.core.remote.RemoteDuplexChannel
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import kotlinx.coroutines.flow.flow
 
@@ -37,11 +36,3 @@ fun liveExecutor(conn: () -> SshTransport?): RemoteExecutor =
 
 private fun alive(conn: SshTransport?): SshTransport =
     conn?.takeIf { it.isConnected } ?: throw ConnectionDeadException(copyText("mobSsh.conn.unavailable"))
-
-/**
- * [RemoteDuplexChannel] 的工厂（常驻流那条双向长 exec）。无活连接时抛 [ConnectionDeadException]，判据与上面两个同一个。
- */
-fun SshConnectionManager.duplexChannel(id: String): RemoteDuplexChannel = liveDuplex { connection(id) }
-
-/** [RemoteDuplexChannel]：每次打开现取 [conn]；没有活连接 ⇒ 抛 [ConnectionDeadException]。 */
-fun liveDuplex(conn: () -> SshTransport?): RemoteDuplexChannel = RemoteDuplexChannel { cmd -> alive(conn()).execDuplex(cmd) }

@@ -98,9 +98,9 @@ pub async fn run(
         cfg.port
     );
 
-    // 重连循环：每轮跑一次 stream_loop。失败 / 掉线后按指数退避（2→4→8→16→30s 封顶）重连；这一轮站住了则下次以 MIN 快速重连。
+    // 重连循环：每轮跑一次 stream_loop。失败 / 掉线后按指数退避（2→4→8→16→30s 封顶）重连；这一轮站住了（活过 30 s）则下次以 MIN 快速重连。
     // 唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep（INVARIANT §10）。
-    let mut backoff = RECONNECT_MIN;
+    let mut backoff = Backoff::new();
     // 这台是不是「永久不支持」（非 unix）：`stream_loop` 接不上常驻时写，本循环读完即清。
     let mut unsupported: Option<String> = None;
     let mut unsupported_code: Option<&'static str> = None;
@@ -144,10 +144,10 @@ pub async fn run(
         // 两段式（非冗余）：先按当前 backoff 睡，再在仍没连上时翻倍 ⇒ 首次失败只等 MIN，退避序列是 2→4→8→16→30。
         // sleep 期间 `connected` 不会变（其唯一写者 stream_loop 已返回）。「连上过」不等于「站住了」：判据是这条连接活过 MIN_HEALTHY_UPTIME ——
         // hello-then-die 的后端若每轮都算连上过，退避永远重置回 2s，SSH 握手会一直砸在那台撑不住的机器上。
-        if should_reset_backoff(connected.load(Ordering::Acquire), conn_started.elapsed()) {
-            backoff = RECONNECT_MIN; // 本次真站住过 → 下次立即快速重连
-        }
-        let wait = match after_round(unsupported.take(), backoff) {
+        // 退避的数与判法住 `resident-client`（手机同一份）：这一轮站住了 ⇒ 下界；没站住（含握上手却活不过）⇒ 睡完翻倍。
+        let healthy =
+            should_reset_backoff(connected.load(Ordering::Acquire), conn_started.elapsed());
+        let wait = match after_round(unsupported.take(), backoff.before_wait(healthy)) {
             AfterRound::RetryIn(d) => d,
             AfterRound::Stop(why) => {
                 // 出声（界面 toast），然后这条流就此收工；机器页「起」会重起一条、再试一次。
@@ -175,10 +175,8 @@ pub async fn run(
                 "stream_source [{}] 重新连接：不等退避，立刻重拨",
                 cfg.origin_label()
             );
-            backoff = RECONNECT_MIN;
-        } else if !connected.load(Ordering::Acquire) {
-            backoff = next_backoff(backoff); // 仍没连上 → 指数退避增长
         }
+        backoff.after_wait(kicked, healthy);
     }
 }
 

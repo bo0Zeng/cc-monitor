@@ -393,6 +393,11 @@ pub enum Frame {
         /// 空/缺 = 没有把握（旧后端）⇒ 客户端照旧补发、看回话。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
+        /// typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：
+        /// 这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算）。客户端拿它自己编进来的那一张比：
+        /// 对得上就直接按类型用，对不上就说「那台后端版本不同」、一个字节不发。没有 typed 命令 ⇒ 省略。
+        #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        shapes: std::collections::BTreeMap<String, String>,
     },
     /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
     /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。

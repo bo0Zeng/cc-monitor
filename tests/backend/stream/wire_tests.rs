@@ -270,6 +270,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 }],
                 host_env: [(s("CCM_RELAY_PORT"), s("47001"))].into_iter().collect(),
                 uncancellable: vec![s("ping")],
+                shapes: Default::default(),
             },
             Frame::Hello {
                 v: 1,
@@ -282,6 +283,7 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 unavailable: vec![],
                 host_env: Default::default(),
                 uncancellable: vec![],
+                shapes: Default::default(),
             },
         ],
         [
@@ -1019,6 +1021,7 @@ fn hello_with(emits: Vec<String>) -> Frame {
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     }
 }
 
@@ -1215,6 +1218,7 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .expect("填了 homes 的 hello 必须序列化得出来");
     assert_eq!(
@@ -1277,6 +1281,7 @@ fn dg3_codex_fields_serialize_when_present() {
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .unwrap();
     // ★ 精确字节（手机端 fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
@@ -1338,6 +1343,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .unwrap();
     assert_eq!(
@@ -1410,6 +1416,7 @@ fn hello_unavailable_is_additive_present_and_absent() {
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .unwrap();
     assert_eq!(
@@ -1436,6 +1443,7 @@ fn hello_unavailable_is_additive_present_and_absent() {
         }],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .unwrap();
     assert_eq!(
@@ -1647,6 +1655,7 @@ fn hx2_production_hello_bytes_do_not_change_when_nothing_was_handed() {
             unavailable: vec![],
             host_env,
             uncancellable: vec![],
+            shapes: Default::default(),
         })
         .unwrap()
     };
@@ -1691,6 +1700,7 @@ fn net2_uncancellable_is_additive_and_last() {
             unavailable: vec![],
             host_env: Default::default(),
             uncancellable,
+            shapes: Default::default(),
         })
         .unwrap()
     };

@@ -600,7 +600,7 @@ pub(crate) fn qarg(s: &str) -> String {
 /// 结果可能是空串（输入全是分隔符 / 根目录），调用方给兜底。
 ///
 /// 全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
-/// 界面要名字就问这台后端的 `terminal-name-mint`（[`super::answer_terminal_name_mint`]）。
+/// 界面要名字就问这台后端的 `terminal-name-mint`（[`super::TerminalNameMint`]）。
 fn name_segment(raw: &str) -> String {
     let trimmed = raw.trim_end_matches('/');
     let base = trimmed.rsplit('/').next().unwrap_or("");

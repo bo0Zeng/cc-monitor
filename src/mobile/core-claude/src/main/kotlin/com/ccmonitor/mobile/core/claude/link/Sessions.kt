@@ -200,25 +200,9 @@ data class RecordLine(
     }
 }
 
-/** `stream-watch` 应答里的一格：这个会话刚进名单，这条流从第 [seq] 行起发它；`[已有, seq)` 由看的那一方补。 */
+/** `stream-watch` 应答里的一格（核心报名单、交回来）：这个会话刚进名单，这条流从第 [seq] 行起发它；`[已有, seq)` 由看的那一方补。 */
 data class WatchFrom(
     val sid: String,
     val path: String,
     val seq: Long,
 )
-
-/** `stream-watch`：这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。 */
-object StreamWatch {
-    const val COMMAND: String = "stream-watch"
-
-    fun args(sids: Set<String>): Map<String, Any?> = mapOf("sids" to sids.sorted())
-
-    fun of(data: Any?): List<WatchFrom>? =
-        decoding {
-            data
-                .asObj()
-                .objs("from")
-                .need()
-                .map { WatchFrom(it.str("sid").need(), it.str("path").need(), it.num("seq").need()) }
-        }
-}

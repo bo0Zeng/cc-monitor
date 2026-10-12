@@ -7,6 +7,10 @@ package com.ccmonitor.mobile.core.rs
  * 下行字节（先是阶段行 ＋ 一行 ack，再按用法）经 [Sink.data] 回来，收工时回一个 `null`。改 PTY 窗口经 [resize]，收掉经 [close]。
  * 钥匙按编号交进来（[putPassword] · [putPem] · [putKeystore]），拨号请求的 `key_path` 写那个编号。
  *
+ * 一台的**常驻流**（重连 · 握手 · 版本门 · 在看名单 · 一问一答，桌面同一份 `resident-client`）整条在核心里：[residentOpen] 看一台，
+ * [residentSsh] 交 SSH 那层此刻的拨号请求，[residentCall] 问一句，[residentWatch] 报在看哪条，[residentKick] 叫它马上再接，[residentClose] 不看了；
+ * 它交的事经 [Sink.resident] 回来（`state` · `frame` · `watch_from` · `lost` · `reply`）。
+ *
  * 第一次碰到时才加载那份 .so；JVM 单测不碰它（真连接那一条路才用，单测走假传输）。
  */
 object Core {
@@ -14,7 +18,7 @@ object Core {
         System.loadLibrary("mobcore")
     }
 
-    /** 核心回调 Kotlin 的三个口（在核心的工作线程上调；不许阻塞太久，不许抛）。 */
+    /** 核心回调 Kotlin 的四个口（在核心的工作线程上调；不许阻塞太久，不许抛）。 */
     interface Sink {
         /** 一条链路的下行字节；`null` ⇒ 这条链路收工了。 */
         fun data(
@@ -33,6 +37,13 @@ object Core {
             host: String,
             port: Int,
             key: String,
+        )
+
+        /** 一台常驻流交的事：[kind] 是 `state` · `frame` · `watch_from` · `lost` · `reply`，[body] 是那一段文本（JSON 或原样一帧）。 */
+        fun resident(
+            handle: Long,
+            kind: String,
+            body: String,
         )
     }
 
@@ -87,4 +98,40 @@ object Core {
     )
 
     external fun close(handle: Long)
+
+    /** 看一台：[machine] 是它在屏上的名字（句子里称呼它）· [mine] 手上这一版的身份（版本门的对照物）· [tz] 看的这一台的时区。回编号。 */
+    external fun residentOpen(
+        machine: String,
+        mine: String?,
+        tz: String?,
+    ): Long
+
+    /** SSH 那层此刻的连接（拨号请求 JSON，同 [open] 那一形，不带用法）；`null` ⇒ 没通。请求读不动 ⇒ `false`。 */
+    external fun residentSsh(
+        handle: Long,
+        request: String?,
+    ): Boolean
+
+    /** 问一句（流没通就先等它接上，等的那一段也算在 [withinMs] 里）；回问答编号，结局经 [Sink.resident] 的 `reply` 回来。这台不在 ⇒ 0。 */
+    external fun residentCall(
+        handle: Long,
+        cmd: String,
+        args: String,
+        withinMs: Long,
+    ): Long
+
+    /** 多一处（[holding]）/ 少一处在看 [sid] 这条会话。 */
+    external fun residentWatch(
+        handle: Long,
+        sid: String,
+        holding: Boolean,
+    )
+
+    /** [retry] ⇒ ［重试］：断开这一条、马上整份重来；否则（回前台 · 网络变了）断着才马上再接。 */
+    external fun residentKick(
+        handle: Long,
+        retry: Boolean,
+    )
+
+    external fun residentClose(handle: Long)
 }

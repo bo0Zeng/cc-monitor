@@ -94,6 +94,20 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              没上限就等于「点一次恢复永远转圈」。退役归：std 有了 `wait_timeout` 之后（今天没有）。",
     ),
     (
+        "resident-client/feed.rs",
+        "attach_after_ensure",
+        "wait-for-condition",
+        "手机那一侧接常驻流（`resident-client`）：`--resident-ensure` 之后小中继回 `absent` 时隔 200ms 再接，至多 30 次（≤6 s，次数与间隔同桌面 `retry_relay`，常量同一份）—— \
+             等的是**那台套接字上有人在听**这个一次性条件，接上即止，等不到就如实报「那台后端没在运行」。不是节拍器。",
+    ),
+    (
+        "resident-client/feed.rs",
+        "run",
+        "wait-for-condition",
+        "手机那一侧一台的重连循环（`resident-client`）睡退避（2→30 s，活过 30 s 才清零；同桌面 `stream_source/run.rs` 那一份 `Backoff`）：\
+             只在流断了之后睡、被［重试］/ 回前台 / 换了一条 SSH 叫醒即止；要人动手的那几种不睡、只等叫醒。不是节拍器。",
+    ),
+    (
         "src/remote_resident.rs",
         "retry_relay",
         "wait-for-condition",

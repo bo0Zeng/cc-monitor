@@ -739,15 +739,11 @@ mod tests {
     const ISSUERS: &[(&str, &[&str])] = &[
         ("Own::issue", &["main.rs"]),
         ("DiagLog::issue", &["main.rs"]),
-        // 文件管理面的写句柄：只有分派那一层造（帧面 · CLI 面 · 资产域经门的进程内分派各一处），按命令表那一族（`Run::BlockingFace`）递下去；
-        //   传输台那四条硬臂的票表在帧面那一处造的时候领一份。
+        // 文件管理面的写句柄：只有分派那一层造 —— 按档装处理器的那一处（`spec.rs::prepare`，帧面 · CLI 面 · 资产域经门的进程内分派都经它），
+        //   按命令表那一族（`Run::BlockingFace`）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
         (
             "Face::issue",
-            &[
-                "control/cli_control.rs",
-                "stream/inbound/doors.rs",
-                "stream/inbound/mod.rs",
-            ],
+            &["stream/inbound/mod.rs", "stream/inbound/spec.rs"],
         ),
         // 分叉那只只会新建的手：只有分叉那两条命令（`session-fork` · `session-new`）在命令表里造。
         (
@@ -2774,6 +2770,12 @@ mod g6_dependency_signoff {
             DEV_DEPS,
             MEASURED_CLEAN,
             "同上一行那个仓内 crate，测试构建多开 `fixtures` feature（多出来的只是一张静态夹具表 ＋ 渲染它的纯函数），0 处写面",
+        ),
+        (
+            "cmd-wire",
+            DEPS,
+            MEASURED_CLEAN,
+            "帧命令两端对上的形状（机器名 `Machine` · typed 命令的形状指纹表），纯数据；仓内 crate，现打 0 处写面",
         ),
         (
             "comms-outward",

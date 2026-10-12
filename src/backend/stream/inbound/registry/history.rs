@@ -81,35 +81,11 @@ pub(super) const SPECS: &[CommandSpec] = &[
             })
         }),
     },
-    CommandSpec {
-        name: "history-search",
-        summary: "全文搜索",
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &[arg("after_ms", "可选：只要这一刻（毫秒）之后的"), arg("include_tools", "可选布尔：工具调用与结果也搜"), arg("limit", "可选：全局片段上限（`hitCount` 仍报全量）"), out("lines", "每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家）"), arg("query", "搜索词（必填）"), arg("scope", "可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope`"), out("skipped", "内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）：它们的会话不在结果里"), arg("titles", "可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空"), out("unreadable", "这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // **各台 `history-search` 的会话行合成一份**：`updatedAt` 倒序（`search_rules::sort_by_recency`）·
-    //   命中数相加 · 任一行被砍 ⇒ `truncated`。本体 `observe/search_query.rs::answer_merge`（经只读宿主 `read_face` 那一臂）；纯计算 ⇒ 不进阻塞档（同 `ping`）。
-    CommandSpec {
-        name: "history-search-merge",
-        summary: "把各台的搜索结果合成一份",
-        codes: &["bad_args"],
-        fields: &[out("sessionCount", "会话数"), both("sessions", "各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、按看的那一台的时区（请求的 `tz`）写好"), out("totalHits", "`hitCount` 之和"), out("truncated", "任一行 `hitsTruncated`")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    // 一个子运行的记录（`read_face.rs` 那一臂 ＋ `history_query::run_source`）：按运行读，通用层不认任何一家的形状。同族同档、同一个只读宿主。
+    // 全文搜索那两条：入参 · 回包 · 错误码都是类型（`faces/search_face.rs`）。搜索扫全库 ⇒ 阻塞档；合并是纯计算 ⇒ 异步档（同 `ping`）。
+    crate::stream::inbound::typed::blocking::<crate::faces::search_face::HistorySearch>("全文搜索"),
+    crate::stream::inbound::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(
+        "把各台的搜索结果合成一份",
+    ),
     CommandSpec {
         name: "history-run",
         summary: "一个子运行的记录",

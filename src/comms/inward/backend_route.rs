@@ -44,6 +44,9 @@ pub enum CallError {
     /// 握手时那台说过「这条我接得下、这台做不到」（`hello.unavailable`）⇒ **不发**，事前就拒。
     /// `code` 与那台事后会回的同一个（如 `no_tmux`），调用方那张「码 → 人话」表不用另写。**别重试**（换台机器或装上再连）。
     Unavailable { cmd: String, code: String },
+    /// typed 命令两端形状对不上（握手时那台交的形状指纹跟本侧编进来的那一份不一样，或它没交：比这一版早）⇒ **不发**，事前就拒。
+    /// `said` 是给人看的那一句，由比指纹的这一层写好、带上那台的称呼（`peerVersion.said.differs`）。**别重试**（那台换了版本再连）。
+    Differs { cmd: String, said: String },
     /// 本地超时。`withdraw` 说对端那一半：没发出去 / 已补发撤单（best-effort）/ 对端不认撤单（要说出来）。
     Timeout { after: Duration, withdraw: Withdraw },
     /// backend 回了 `ok:false`。`code`/`message` 原样透出（形状同帧面失败应答）；
@@ -64,6 +67,8 @@ impl std::fmt::Display for CallError {
             CallError::Unsupported { .. } => {
                 write!(f, "{}", copy_core::backend_old(&copy_core::peer_machine()))
             }
+            // 那一句是比指纹的那一层写好的（带那台的称呼）。
+            CallError::Differs { said, .. } => write!(f, "{said}"),
             // 码不上屏（调用方要按码分支的读 `code` 本身）。
             CallError::Unavailable { .. } => {
                 write!(f, "{}", copy_text("rsInboundClient.error.unavailable", &[]))
@@ -131,6 +136,7 @@ pub enum Routed {
 /// |---|---|---|
 /// | `Unsupported` | `Peer{Unsupported}` | 对端事前就说不认（`hello.commands`），一个字节没发 |
 /// | `Unavailable{code}` | `Peer{Refused{body}}`，body = `{"code","message"}` | 对端握手时说过这台做不到（`hello.unavailable`），本侧没发；同对端事后回那个码 |
+/// | `Differs{said}` | `Peer{Refused{body}}`，body = `{"code": "backend_differs", "message": said}` | typed 命令两端形状指纹对不上，本侧没发；那一句本层写好 |
 /// | `TooManyPending` | `Hop{write, NotSent, Overrun}` | 本侧在飞上限顶满，早于入队 |
 /// | `Disconnected` | `Hop{read, Unknown, Dropped}` | 两个产地分不开 ⇒ 拿不准一律 `Unknown` |
 /// | `Timeout` | `Hop{wait, Unknown, Overrun}` | 同上 |
@@ -164,6 +170,23 @@ pub fn layer_call_error(e: &CallError, hop: u8) -> Layered {
             detail: Detail::Remote {
                 code: code.clone(),
                 message: e.to_string(),
+            },
+        },
+        // 两端形状对不上：同 `Unavailable` 那一形（对端的话来得早、本侧没发），码 `cmd_wire::SHAPE_DIFFERS`，那一句是本层写好的。
+        CallError::Differs { said, .. } => Layered {
+            error: w::CallError::Peer {
+                why: w::PeerFault::Refused {
+                    body: w::Body(
+                        serde_json::to_vec(
+                            &serde_json::json!({ "code": cmd_wire::SHAPE_DIFFERS, "message": said }),
+                        )
+                        .unwrap_or_default(),
+                    ),
+                },
+            },
+            detail: Detail::Remote {
+                code: cmd_wire::SHAPE_DIFFERS.to_string(),
+                message: said.clone(),
             },
         },
         CallError::TooManyPending => Layered {

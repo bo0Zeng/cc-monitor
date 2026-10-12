@@ -54,19 +54,9 @@
         "why": "BUTTON_TYPES 只拿来认 DB 里的 type 值（first），第二格不上屏；上屏的是 ButtonPurpose 那几条"
       }
     ],
-    "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/FrameClient.kt": [
+    "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt": [
       {
-        "text": "不是 JSON 对象的一行：{…}",
-        "use": "内部",
-        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
-      },
-      {
-        "text": "帧没有 kind：{…}",
-        "use": "内部",
-        "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
-      },
-      {
-        "text": "应答对不上请求：{…}",
+        "text": "核心交的 {…} 认不出：{…}",
         "use": "内部",
         "why": "两端契约对不上时的诊断：经 onBreak 只进日志（HostBackends，一种报一次），不上屏"
       }

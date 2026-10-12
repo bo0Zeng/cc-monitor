@@ -45,6 +45,7 @@ mod doors;
 mod drain;
 mod sniff;
 pub(crate) mod spec;
+pub(crate) mod typed;
 pub(crate) mod views;
 
 pub(crate) use caps::install as install_total;
@@ -61,8 +62,8 @@ use drain::{exit_after_drain_within, Drain};
 pub(crate) use drain::{DRAIN, DRAIN_DEADLINE};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
+pub(crate) use spec::{prepare, CommandSpec, Prepared, Run};
 use spec::{BlockingHandler, BoxFut, DataFut, DataHandler, Fail, Handler, Outcome};
-pub(crate) use spec::{CommandSpec, Run};
 // 字段的向只有协议文档生成器读（测试档）。
 #[cfg(test)]
 pub(crate) use spec::Dir;
@@ -547,29 +548,11 @@ fn dispatch(
         // 名字与处理器绑在**同一个值**里 ⇒ 「声明了却不接」「接了却不声明」
         // 在注册表这一侧不可表示；`hello.commands` 也从注册表派生（[`command_names`]），没有第二份名单。
         other => match lookup(other) {
-            Some(spec) => match spec.run {
-                Run::Async(f) => Disposition::Spawn(req, Box::new(f)),
-                Run::AsyncData(f) => Disposition::SpawnData(req, Box::new(f)),
-                Run::AsyncOwn(f) => {
-                    let own = given.own.clone();
-                    Disposition::Spawn(req, Box::new(move |r| f(r, own)))
-                }
-                Run::Blocking(f) => {
-                    Disposition::SpawnBlocking(req, Box::new(move |r| f(r).map_err(Fail::from)))
-                }
-                Run::BlockingData(f) => Disposition::SpawnBlocking(req, Box::new(f)),
-                // 写自家状态的那几条：递上分派这一层手里那一份写句柄。
-                Run::BlockingOwn(f) => {
-                    let own = given.own.clone();
-                    Disposition::SpawnBlocking(req, Box::new(move |r| f(r, &own)))
-                }
-                // 文件管理那一族：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
-                Run::BlockingFace(f) => Disposition::SpawnBlocking(
-                    req,
-                    Box::new(move |r| f(r, &crate::platform::fs::Face::issue())),
-                ),
+            Some(spec) => match spec::prepare(spec.run, Some(&given.own)) {
+                Some(spec::Prepared::Async(f)) => Disposition::SpawnData(req, f),
+                Some(spec::Prepared::Blocking(f)) => Disposition::SpawnBlocking(req, f),
                 // `cancel` 在上面那条硬臂里处理完了，走不到这儿。
-                Run::Builtin => Disposition::Reply(Frame::err(
+                None => Disposition::Reply(Frame::err(
                     &req.id,
                     "unknown_command",
                     &copy_text(
@@ -594,15 +577,7 @@ fn dispatch(
 pub fn uncancellable() -> Vec<String> {
     let mut names: Vec<String> = REGISTRY
         .iter()
-        .filter(|s| {
-            matches!(
-                s.run,
-                Run::Blocking(_)
-                    | Run::BlockingData(_)
-                    | Run::BlockingOwn(_)
-                    | Run::BlockingFace(_)
-            )
-        })
+        .filter(|s| s.run.blocking())
         .map(|s| s.name.to_string())
         .collect();
     names.sort();

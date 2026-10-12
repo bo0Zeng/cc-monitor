@@ -85,7 +85,7 @@ class HostConnector(
 
     /**
      * 这台此刻的活连接，可观测（语义见 [SshConnectionManager.linkOf]）。值换了（按身份）＝ SSH 重连过、换了一条。
-     * 常驻流跟着它重接（`BackendFeed`）。
+     * 常驻流跟着它重接（`ResidentFeed`：交给核心的是它的拨号请求 `dialRequest`）。
      */
     fun linkOf(hostId: String): Flow<SshTransport?> = manager.linkOf(hostId)
 

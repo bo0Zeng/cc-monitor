@@ -2265,18 +2265,14 @@ pub fn cli_flag(name: &str) -> String {
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
-    // `--after-ms` · `--include-tools` · `--limit` · `--scope`：全文搜索的选项词（帧面 `history-search` 摊回来交 `search_query::parse_opts`）。
+    // `--after-ms` · `--include-tools` · `--limit` · `--scope`（全文搜索的选项词）第 8 批删了：帧面 `history-search` 的入参直接从类型收（`faces/search_face.rs`）。
     // `--from` · `--until` · `--query`（`--list-user-inputs` · `--read-session-from-offset` · `--find-in-session` 的选项）随那几条子命令删了。
-    "--after-ms",
     // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     ARGS_B64_FLAG,
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
     "--grace",
-    "--include-tools",
-    "--limit",
     // `--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
     "--replace",
-    "--scope",
     // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
     STDIN_LINE_FLAG,
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。

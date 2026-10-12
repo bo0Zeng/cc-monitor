@@ -1,4 +1,18 @@
+use super::test_support::{lines_into, opts_from_words};
 use super::*;
+
+/// 一个会话的命中那一行，按 JSON 看（判据按格名比）。
+fn hits_v(
+    path: &Path,
+    entry: &FileEntry,
+    q: &str,
+    opts: &SearchOpts,
+    budget: &mut SnippetBudget,
+    updated_at: i64,
+) -> Option<Value> {
+    session_hits_in(path, entry, q, opts, budget, updated_at)
+        .map(|h| serde_json::to_value(h).unwrap())
+}
 
 // ⚠ `extract_*` / `user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
 // **随实现住在口径的家里**（`K-R100`；通用那几条在 `search_rules_tests.rs`，记录文本那几条在 `agents/claudecode/text_tests.rs`）。
@@ -31,7 +45,7 @@ fn search_end_to_end_and_rejects_traversal() {
     let mut entry = FileEntry::empty(true);
     entry.take(None, &std::fs::read(&jsonl).expect("读夹具"));
     let mut budget = SnippetBudget::new(opts.limit);
-    let hit = session_hits_in(
+    let hit = hits_v(
         &jsonl,
         &entry,
         "docker",
@@ -59,14 +73,13 @@ fn search_end_to_end_and_rejects_traversal() {
     // scope=user → 只 user 命中
     let opts_u = SearchOpts {
         include_tools: false,
-        scope: Some("user".into()),
+        scope: Some("user"),
         after_ms: 0,
         limit: 300,
         titles: false,
     };
     let mut budget2 = SnippetBudget::new(opts_u.limit);
-    let hu =
-        session_hits_in(&jsonl, &entry, "docker", &opts_u, &mut budget2, 1).expect("user hits");
+    let hu = hits_v(&jsonl, &entry, "docker", &opts_u, &mut budget2, 1).expect("user hits");
     assert_eq!(hu["hitCount"], 1);
 
     std::fs::remove_dir_all(&tmp).ok();
@@ -85,16 +98,16 @@ fn agent_reports_are_searchable_as_their_own_kind() {
     let mut entry = FileEntry::empty(true);
     entry.take(None, lines.as_bytes());
     let path = std::path::Path::new("/x/projects/p/s1.jsonl");
-    let ask = |scope: Option<&str>| {
+    let ask = |scope: Option<&'static str>| {
         let opts = SearchOpts {
             include_tools: false,
-            scope: scope.map(str::to_string),
+            scope,
             after_ms: 0,
             limit: 300,
             titles: false,
         };
         let mut b = SnippetBudget::new(opts.limit);
-        session_hits_in(path, &entry, "部署脚本", &opts, &mut b, 1)
+        hits_v(path, &entry, "部署脚本", &opts, &mut b, 1)
     };
     let all = ask(None).expect("三条都命中");
     let kinds: Vec<&str> = all["hits"]
@@ -131,7 +144,7 @@ fn system_injections_are_never_searched() {
             titles: false,
         };
         let mut b = SnippetBudget::new(opts.limit);
-        session_hits_in(path, &entry, q, &opts, &mut b, 1)
+        hits_v(path, &entry, q, &opts, &mut b, 1)
     };
     for tools in [false, true] {
         assert!(ask("注入词乙", tools).is_none(), "isMeta 那一条不搜");
@@ -203,7 +216,7 @@ fn run_search(home: &Path, q: &str, limit: usize) -> Vec<Value> {
         titles: false,
     };
     let mut buf: Vec<u8> = Vec::new();
-    search_counting(home, q, &opts, &mut buf).expect("search ok");
+    search_counting(home, q, &opts, &mut lines_into(&mut buf)).expect("search ok");
     String::from_utf8(buf)
         .unwrap()
         .lines()
@@ -322,10 +335,10 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     std::fs::create_dir_all(&proj).unwrap();
     let rec = r#"{"type":"user","uuid":"u","timestamp":"2026-01-01T00:00:00Z","cwd":"/w","message":{"role":"user","content":"docker"}}"#;
     std::fs::write(proj.join("good.jsonl"), rec).unwrap();
-    let opts = parse_opts(&[]);
+    let opts = opts_from_words(&[]);
     let mut buf = Vec::new();
     assert_eq!(
-        search_counting(&tmp, "docker", &opts, &mut buf).expect("search ok"),
+        search_counting(&tmp, "docker", &opts, &mut lines_into(&mut buf)).expect("search ok"),
         0,
         "全都读得动却报了读不动"
     );
@@ -333,7 +346,7 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     bad.extend_from_slice(b"\n\xff\xfe docker\n");
     std::fs::write(proj.join("bad.jsonl"), &bad).unwrap();
     let mut buf = Vec::new();
-    let n = search_counting(&tmp, "docker", &opts, &mut buf).expect("search ok");
+    let n = search_counting(&tmp, "docker", &opts, &mut lines_into(&mut buf)).expect("search ok");
     assert_eq!(n, 1, "读不动的那一份没被数到");
     let rows: Vec<Value> = String::from_utf8(buf)
         .unwrap()
@@ -348,75 +361,79 @@ fn w5vis_an_unreadable_session_is_counted_and_said_not_silently_dropped() {
     std::fs::remove_dir_all(&tmp).ok();
 }
 
+/// 一行合并用的会话行（只有排序与计数要的那几格是要紧的）。
+fn row(sid: &str, updated: i64, hits: u32, cut: bool) -> SessionHits {
+    SessionHits {
+        agent: "a".into(),
+        session_id: sid.into(),
+        project_path: String::new(),
+        project_name: String::new(),
+        jsonl_path: String::new(),
+        title: sid.into(),
+        updated_at: updated,
+        hit_count: hits,
+        hits: vec![],
+        hits_truncated: cut,
+        is_bg: false,
+        status: Liveness::Ended,
+        can: crate::observe::history_query::can_of("a", "ended", false),
+    }
+}
+
 /// 要求：「多机合并排序收进 `search-core::sort_by_recency`，前端 `mergeSearchResults` 删」：
-/// 界面照旧逐台扇出、合并排序问本机后端 `history-search-merge`。期望原样搬自 `tests/frontend/ui/views/history-search.vitest.ts` 那几条合并用例。
+/// 界面照旧逐台扇出、合并排序问本机后端 `history-search-merge`（按台交：`{origin, sessions}`）。
 #[test]
 fn the_merge_frame_sorts_newest_first_stably_and_sums_what_each_machine_said() {
-    use serde_json::json;
-    let mk = |sid: &str, updated: i64, hits: u64, cut: bool, origin: Option<&str>| {
-        let mut v = json!({ "sessionId": sid, "updatedAt": updated, "hitCount": hits, "hitsTruncated": cut, "hits": [] });
-        if let Some(o) = origin {
-            v["origin"] = json!(o);
-        }
-        v
+    let on = |name: &str, rows: Vec<SessionHits>| MachineHits {
+        origin: cmd_wire::Machine(name.into()),
+        sessions: rows,
     };
-    let merged = answer_merge(
-        &json!({ "sessions": [
-        mk("local-old", 100, 3, false, None),
-        mk("rem-new", 300, 2, false, Some("pi")),
-        mk("rem-mid", 200, 1, false, Some("wsl")),
-        mk("tie-a", 150, 0, false, Some("pi")),
-        mk("tie-b", 150, 0, false, None),
-    ] }),
+    let local = cmd_wire::LOCAL;
+    let merged = merge_at(
+        vec![
+            on(local, vec![row("local-old", 100, 3, false)]),
+            on("pi", vec![row("rem-new", 300, 2, false)]),
+            on("wsl", vec![row("rem-mid", 200, 1, false)]),
+            on("pi", vec![row("tie-a", 150, 0, false)]),
+            on(local, vec![row("tie-b", 150, 0, false)]),
+        ],
+        0,
         &Default::default(),
-    )
-    .unwrap();
-    let order: Vec<&str> = merged["sessions"]
-        .as_array()
-        .unwrap()
+    );
+    let order: Vec<&str> = merged
+        .sessions
         .iter()
-        .map(|s| s["sessionId"].as_str().unwrap())
+        .map(|s| s.row.session_id.as_str())
         .collect();
     // 倒序；同一时刻保持交进来的先后（稳定）。
     assert_eq!(order, ["rem-new", "rem-mid", "tie-a", "tie-b", "local-old"]);
-    assert_eq!(merged["totalHits"], 6);
-    assert_eq!(merged["sessionCount"], 5);
-    assert_eq!(merged["truncated"], false);
-    // 其余各格原样透传（`origin` 缺 ＝ 本机，不补）。
-    assert_eq!(merged["sessions"][0]["origin"], "pi");
-    assert!(merged["sessions"][4].get("origin").is_none());
-    // 任一台的任一会话被砍过 ⇒ 整体 truncated（`K-R100`）。
-    for rows in [
-        json!([
-            mk("loc", 100, 1, false, None),
-            mk("rem", 200, 12, true, Some("pi"))
-        ]),
-        json!([
-            mk("loc", 100, 12, true, None),
-            mk("rem", 200, 1, false, Some("pi"))
-        ]),
-    ] {
-        assert_eq!(
-            answer_merge(&json!({ "sessions": rows }), &Default::default()).unwrap()["truncated"],
-            true
-        );
-    }
     assert_eq!(
-        answer_merge(&json!({ "sessions": [] }), &Default::default()).unwrap(),
-        json!({ "totalHits": 0, "sessionCount": 0, "truncated": false, "sessions": [] })
+        (merged.total_hits, merged.session_count, merged.truncated),
+        (6, 5, false)
     );
-    // 形状不对 ⇒ bad_args（不替界面补值）。
-    for bad in [
-        json!({}),
-        json!({ "sessions": [ { "updatedAt": 1, "hitCount": 1 } ] }),
-        json!({ "sessions": [ { "updatedAt": "1", "hitCount": 1, "hitsTruncated": false } ] }),
-        json!({ "sessions": [ { "updatedAt": 1, "hitCount": -1, "hitsTruncated": false } ] }),
-    ] {
-        assert_eq!(
-            answer_merge(&bad, &Default::default()).unwrap_err().0,
-            "bad_args"
+    // 远端的行带那台的名字；本机的不带。
+    assert_eq!(
+        merged.sessions[0].origin.as_ref().map(|m| m.0.as_str()),
+        Some("pi")
+    );
+    assert!(merged.sessions[4].origin.is_none());
+    // 任一台的任一会话被砍过 ⇒ 整体 truncated（`K-R100`）。
+    for (a, b) in [(false, true), (true, false)] {
+        let m = merge_at(
+            vec![
+                on(local, vec![row("loc", 100, 1, a)]),
+                on("pi", vec![row("rem", 200, 12, b)]),
+            ],
+            0,
+            &Default::default(),
         );
+        assert!(m.truncated);
     }
+    let empty = merge_at(vec![], 0, &Default::default());
+    assert_eq!(
+        (empty.total_hits, empty.session_count, empty.truncated),
+        (0, 0, false)
+    );
 }
 
 /// 命中带这台判的 `status` · `isBg` · `can`（与历史清单的行同一张规则，`history_query::can_of`）：
@@ -479,32 +496,22 @@ fn a_hit_carries_this_machines_status_and_can() {
 /// 合好的每一行带 `atText`（行尾那一格）与 `spanText`（打开它时内容头那一段）：按 `updatedAt`、这台本地钟写好（界面照抄）。
 #[test]
 fn merged_sessions_carry_row_and_span_texts() {
-    use serde_json::json;
     let day = crate::common::time::days_from_civil(2026, 10, 7) * 86_400;
     let (u, now) = (
         (day + 9 * 3_600 + 5 * 60) * 1_000,
         (day + 15 * 3_600) * 1_000,
     );
     let merged = merge_at(
-        &json!({ "sessions": [ { "sessionId": "s1", "updatedAt": u, "hitCount": 1, "hitsTruncated": false, "hits": [] } ] }),
+        vec![MachineHits {
+            origin: cmd_wire::Machine::local(),
+            sessions: vec![row("s1", u, 1, false)],
+        }],
         now,
         &Default::default(),
-    )
-    .unwrap();
-    let s = &merged["sessions"][0];
-    assert_eq!(
-        (s["atText"].as_str(), s["spanText"].as_str()),
-        (Some("09:05"), Some("09:05–09:05"))
     );
-}
-
-impl crate::guard_support::Shaped for Merged {
-    fn samples() -> Vec<Self> {
-        vec![Merged {
-            total_hits: 2,
-            session_count: 1,
-            truncated: false,
-            sessions: vec![serde_json::json!({ "updatedAt": 1, "hitCount": 2 })],
-        }]
-    }
+    let s = &merged.sessions[0];
+    assert_eq!(
+        (s.at_text.as_str(), s.span_text.as_str()),
+        ("09:05", "09:05–09:05")
+    );
 }

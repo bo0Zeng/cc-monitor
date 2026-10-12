@@ -1,17 +1,14 @@
 package com.ccmonitor.mobile.link
 
-import com.ccmonitor.mobile.core.claude.link.AttachOutcome
 import com.ccmonitor.mobile.core.claude.link.CoreFailure
-import com.ccmonitor.mobile.core.claude.link.GateVerdict
-import com.ccmonitor.mobile.core.claude.link.LinkOutcome
 import com.ccmonitor.mobile.core.claude.link.LinkState
-import com.ccmonitor.mobile.core.claude.link.OneShotOutcome
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.Said
 import com.ccmonitor.mobile.core.copy.copyText
 
 /**
  * 屏上那一句 ＋ 复制详情。核心写好的失败（[CoreFailure]）原样：`message` 上屏、`detail` 进详情；
- * 手机这一侧判出来的走不通（门槛 · 握手）用桌面同一个概念的那几条字（`rsRemoteResident.*` · `front.*`），不另写。
+ * 常驻流走不通 · 通着但那台后端旧了，那一句也是核心写好的（[Said]，桌面同一套字），手机不另判、不另写。
  */
 data class Problem(
     val text: String,
@@ -20,61 +17,13 @@ data class Problem(
 
 private fun core(f: CoreFailure) = Problem(f.message, f.detail)
 
-private fun unreadable(o: OneShotOutcome.Unreadable) =
-    Problem(copyText("rsRemoteResident.hello.notOurs"), "exit: ${o.exitStatus}\nstdout: ${o.stdout.trim()}\nstderr: ${o.stderr.trim()}")
+private fun Said.problem() = Problem(text, detail)
 
-/** 接一台走不通 ⇒ 那一句。[machine] 是这台在手机上的名字。 */
-fun LinkState.Down.problem(machine: String): Problem {
-    transport?.let { return Problem(copyText("front.body.offline", "machine" to machine), it) }
-    return when (val o = outcome) {
-        null -> Problem(copyText("front.body.offline", "machine" to machine), "")
-        is LinkOutcome.Gate -> gateProblem(o.verdict, machine)
-        is LinkOutcome.Ensure -> ensureProblem(o.outcome)
-        is LinkOutcome.Attach -> attachProblem(o.outcome, machine)
-        is LinkOutcome.HelloDiffers -> Problem(copyText("front.title.update", "machine" to machine), o.theirs.orEmpty())
-        is LinkOutcome.Up -> Problem(copyText("front.body.offline", "machine" to machine), "")
-    }
-}
+/** 接一台走不通 ⇒ 核心说的那一句。 */
+fun LinkState.Down.problem(): Problem = said.problem()
 
-private fun gateProblem(
-    v: GateVerdict,
-    machine: String,
-): Problem =
-    when (v) {
-        GateVerdict.Same -> Problem(copyText("front.body.offline", "machine" to machine), "")
-        is GateVerdict.Differs -> Problem(copyText("front.title.update", "machine" to machine), v.theirs.orEmpty())
-        GateVerdict.Absent -> Problem(copyText("remoteHealth.head.notDeployed"), "")
-        is GateVerdict.Failed -> core(v.failure)
-        is GateVerdict.Unreadable -> unreadable(v.outcome)
-    }
-
-private fun ensureProblem(e: OneShotOutcome): Problem =
-    when (e) {
-        is OneShotOutcome.Failed -> core(e.failure)
-        OneShotOutcome.Absent -> Problem(copyText("remoteHealth.head.notDeployed"), "")
-        is OneShotOutcome.Unreadable -> Problem(copyText("rsRemoteResident.ensure.answerUnreadable"), e.stderr.trim())
-        is OneShotOutcome.Ok -> Problem(copyText("rsRemoteResident.ensure.noReason"), "")
-    }
-
-private fun attachProblem(
-    a: AttachOutcome,
-    machine: String,
-): Problem =
-    when (a) {
-        is AttachOutcome.Refused ->
-            when (a.reason) {
-                "absent" -> Problem(copyText("rsRemoteResident.relay.absent", "machine" to machine), "")
-                "unreachable" -> Problem(copyText("rsRemoteResident.relay.unreachable", "machine" to machine), "")
-                else -> Problem(copyText("rsRemoteResident.handshake.refused", "why" to a.reason.orEmpty()), "")
-            }
-        is AttachOutcome.NotOurs -> Problem(copyText("rsRemoteResident.hello.notOurs"), a.line)
-        is AttachOutcome.Cut ->
-            when (a.stage) {
-                AttachOutcome.Stage.HELLO -> Problem(copyText("rsRemoteResident.handshake.helloCut"), a.stderr)
-                AttachOutcome.Stage.ATTACH_REPLY -> Problem(copyText("rsRemoteResident.handshake.replyCut"), a.stderr)
-            }
-        is AttachOutcome.Attached -> Problem(copyText("front.body.offline", "machine" to machine), "")
-    }
+/** 通着、但那台后端旧了（手机还装不了后端，照用对得上的那几条）⇒ 那一句「需手动」；不旧 ⇒ `null`。 */
+fun LinkState.Up.notice(): Problem? = notice?.problem()
 
 /** 一问一答没答成 ⇒ 那一句；答成了 ⇒ `null`。[command] 是问的那条命令（解不出时进详情）。 */
 fun Reply.problem(
@@ -90,7 +39,7 @@ fun Reply.problem(
     }
 
 /**
- * 回包解不出（帧上缺格 · 成品形状对不上，同一个说法）。门槛核过同一个 `BUILD_ID`，那头就是 cc-monitor 后端，
+ * 回包解不出（帧上缺格 · 成品形状对不上，同一个说法）。握手过了 hello，那头就是 cc-monitor 后端，
  * 所以说「读取那台后端回复失败 · 内容无法解析」，不说「不是 cc-monitor 后端」；详情带命令名与原文。
  */
 fun unreadableReply(

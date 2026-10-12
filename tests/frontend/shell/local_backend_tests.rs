@@ -621,6 +621,7 @@ async fn a_local_reply_reaches_the_caller_through_the_absorb_point() {
         commands: vec!["ping".into()],
         unavailable: vec![],
         uncancellable: vec![],
+        shapes: vec![],
     };
     let witness = crate::inbound_client::BackendHello::from_hello_frame(&hello).unwrap();
     let client = crate::inbound_client::park(mine).into_client(witness);

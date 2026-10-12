@@ -243,6 +243,7 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",
+ "cmd-wire",
  "comms-outward",
  "copy-core",
  "creds-core",
@@ -336,6 +337,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "cmd-wire"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "serde",
+]
+
+[[package]]
 name = "cmov"
 version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -349,6 +358,20 @@ checksum = "ba5a308b75df32fe02788e748662718f03fde005016435c444eea572398219fd"
 dependencies = [
  "bytes",
  "memchr",
+]
+
+[[package]]
+name = "comms-inward"
+version = "0.1.0"
+dependencies = [
+ "cmd-wire",
+ "copy-core",
+ "futures",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1442,8 +1465,10 @@ dependencies = [
 name = "mobcore"
 version = "0.0.0"
 dependencies = [
+ "comms-inward",
  "copy-core",
  "jni",
+ "resident-client",
  "ring",
  "russh",
  "serde_json",
@@ -1626,6 +1651,16 @@ dependencies = [
  "tokio",
  "windows 0.62.2",
  "windows-strings",
+]
+
+[[package]]
+name = "parking_lot"
+version = "0.12.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93857453250e3077bd71ff98b6a65ea6621a19bb0f559a85248955ac12c45a1a"
+dependencies = [
+ "lock_api",
+ "parking_lot_core",
 ]
 
 [[package]]
@@ -1863,6 +1898,19 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 [[package]]
 name = "relay-route-core"
 version = "0.1.0"
+
+[[package]]
+name = "resident-client"
+version = "0.1.0"
+dependencies = [
+ "comms-inward",
+ "copy-core",
+ "relay-route-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+]
 
 [[package]]
 name = "rfc6979"
@@ -2588,6 +2636,7 @@ dependencies = [
  "bytes",
  "libc",
  "mio 1.2.0",
+ "parking_lot",
  "pin-project-lite",
  "signal-hook-registry",
  "socket2",
@@ -2777,6 +2826,17 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 [[package]]
 name = "upstream-url-core"
 version = "0.1.0"
+
+[[package]]
+name = "uuid"
+version = "1.23.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
+dependencies = [
+ "getrandom 0.4.2",
+ "js-sys",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "valuable"

@@ -66,7 +66,8 @@ describe("K1 · 铸名只有一个家", () => {
   // 派生 ＋ 避让搬进后端：前端铸名 = 问那台后端 `terminal-name-mint`，发这一问的只许一个家。
   it("★ 生产段发 `terminal-name-mint` 的文件 == {terminal-name-mint.ts}", () => {
     expect(
-      filesMatching(/["']terminal-name-mint["']/),
+      // 生成的 typed 命令表（命令名 ⇒ 入参 · 回包的类型）里也写着这个名字：它是类型，不是发送点。
+      filesMatching(/["']terminal-name-mint["']/, ["src/frontend/ui/generated/TypedCommands.ts"]),
       "有别的地方自己去问后端铸名了。起会话的 tmux 名只许经 `src/frontend/ui/terminal-name-mint.ts`" +
         "（它守着「问不到 ⇒ 不铸名」；别处抄一份，降级口径就又分叉了 —— B §2.6 的病）。",
     ).toEqual(["src/frontend/ui/terminal-name-mint.ts"]);
@@ -112,13 +113,12 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     }));
   };
 
-  it("★ 问不到 ⇒ mintFreshTmuxName 回 ok:false 且带原因；形状不认 ⇒ 同样不铸；正控：那台铸了 ⇒ 用它铸的", async () => {
+  // 「回了认不得的形状」那一态不在这里判了：`terminal-name-mint` 是 typed 命令，两端形状由握手指纹核过（对不上 monitor 事前就拒，那一句它写好）。
+  it("★ 问不到 ⇒ mintFreshTmuxName 回 ok:false 且带原因；正控：那台铸了 ⇒ 用它铸的", async () => {
     replyMint(null);
     const no = await mintFreshTmuxName("devbox", "/home/u/proj");
     expect(no.ok).toBe(false);
     expect(no.ok ? "" : no.why).not.toBe("");
-    replyMint({ bad: { name: "proj-cc", extra: 1 } });
-    expect((await mintFreshTmuxName("devbox", "/home/u/proj")).ok).toBe(false);
     replyMint("proj-cc-2");
     expect(await mintFreshTmuxName("devbox", "/home/u/proj")).toEqual({ ok: true, name: "proj-cc-2" });
     expect(mintAsks).toEqual([{ origin: "devbox", args: { cwd: "/home/u/proj" } }]);

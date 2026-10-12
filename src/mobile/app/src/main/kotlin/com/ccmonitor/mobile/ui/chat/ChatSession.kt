@@ -264,7 +264,7 @@ class ChatSession(
         _state.value = _state.value.copy(failedWhy = null)
         val before = link.table.value.sessions.keys
         val answer =
-            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, d.agent, first.text), NEW_MS, blocking = true)) {
+            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, d.agent, first.text), NEW_MS)) {
                 is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
             }

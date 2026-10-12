@@ -224,9 +224,9 @@ fn the_target_dir_defaults_to_home_and_must_be_absolute() {
 
 #[test]
 fn the_local_origin_is_the_app_one() {
-    let app = guard_core::production_code(include_str!(
-        "../../../src/frontend/shell/src/inbound_client.rs"
-    ));
+    // app 侧那一份住 `resident-client`（monitor `inbound_client.rs` 转用）。
+    let app =
+        guard_core::production_code(include_str!("../../../src/comms/resident-client/client.rs"));
     let needle = format!("pub const LOCAL_ORIGIN: &str = \"{LOCAL_ORIGIN}\";");
     assert_eq!(
         app.matches(needle.as_str()).count(),
