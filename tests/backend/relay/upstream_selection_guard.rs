@@ -106,7 +106,6 @@ pub(super) mod tests {
         "quota/rules/decide.rs",
         "quota/rules/mod.rs",
         "quota/rules/script.rs",
-        "quota/rules/settings.rs",
         "quota/rules/simulate.rs",
         "quota/rules/standing.rs",
         // 轮换配置（rotation.json）与换号的唯一判定（纯）：上游选择换号时问它们；它们不认识上游选择与账号库管理。

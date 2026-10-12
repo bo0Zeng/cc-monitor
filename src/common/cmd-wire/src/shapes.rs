@@ -10,7 +10,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("launch-local", "d359d78c"),
     ("launch-render-cli", "7fc9d2a8"),
     ("rotation-facts", "978176bb"),
-    ("rotation-try", "4073ff94"),
+    ("rotation-try", "70c6e001"),
     ("session-interrupts", "6b0c632f"),
     ("session-new", "af0ce8f1"),
     ("session-new-dir", "2c86c180"),

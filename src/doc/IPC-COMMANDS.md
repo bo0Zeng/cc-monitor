@@ -1210,9 +1210,6 @@ resetsText?: string, rate?: number, };
 入参 `RotationTryReq` · 回包 `RotationTryReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type CapKind = "soft" | "hard";
-type CapSeg = { from: number, to: number, v: number, };
-type Caps = { "5h"?: Array<CapSeg>, "7d"?: Array<CapSeg>, };
 type RotTryDecision = { 
 /**
  * 用哪个号（停发 ⇒ 缺）。
@@ -1223,20 +1220,32 @@ pick?: string,
  */
 holdUntil?: number, holdAccount?: string, 
 /**
- * `stay` · `unusable` · `back` · `delay` · `hold`。
+ * 策略交的先后（此刻愿意用的号）。
  */
-cause: string, order: Array<RotTryRow>, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+order: Array<string>, 
 /**
- * 策略这一判出错（所有号当没给分、按列表）：原话。
+ * 每个号一句（策略写的）。
+ */
+why: Array<RotTryRow>, 
+/**
+ * 这一号来自用户拖出来的顺序。
+ */
+fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+/**
+ * 策略这一判出错（走了兜底）：原话。
  */
 strategyError?: string, };
 type RotTryLane = { account: string, segs: Array<RotTryLaneSeg>, };
 type RotTryLaneSeg = { from: number, to: number, 
 /**
- * `usable` · `atCap` · `off` · `blocked`。
+ * 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
  */
-kind: string, left?: number, reset: boolean, };
-type RotTryRow = { account: string, score?: number, why: string, fromTemp: boolean, ok: boolean, };
+sendable: boolean, 
+/**
+ * 这一段开头两窗的用量（5 小时 · 7 天）。
+ */
+used: [number, number], reset: boolean, };
+type RotTryRow = { account: string, why: string, };
 type RotTrySwitch = { at: number, account: string, };
 type RotTryTimeline = { 
 /**
@@ -1263,11 +1272,11 @@ type RotationTryReq = {
  */
 source: string, 
 /**
- * 换掉头里的设置（缺 ⇒ 用头里的）。
+ * 换掉头里的设置（形状由这份策略自己定；缺 ⇒ 用头里的）。
  */
-settings?: Settings, 
+settings?: unknown, 
 /**
- * 开会话用的号（缺 ⇒ 号列表里第一个点名的号）。
+ * 开会话用的号（缺 ⇒ 事实里第一个号）。
  */
 start?: string, 
 /**
@@ -1283,7 +1292,7 @@ temp: Array<string>,
  */
 hours?: number, 
 /**
- * 试跑「现在用这个号」：能用 ⇒ 判的是放进临时条目最前、换过去之后的那一判；用不了 ⇒ `useNowRefused` 带几点恢复。
+ * 试跑「现在用这个号」：事实上发得出去 ⇒ 判的是换过去、放进拖出来的顺序最前之后的那一判；发不出去 ⇒ `useNowRefused` 带几点恢复。
  */
 useNow?: string, 
 /**
@@ -1294,20 +1303,6 @@ lang?: string,
  * 哪一家（缺 ⇒ 有账号库的那一家）。
  */
 agent?: string, };
-type Settings = { 
-/**
- * 默认上限（缺的窗 ＝ 100%）。
- */
-caps: Caps, capKind: CapKind, accounts: Array<SettingsRow>, };
-type SettingsRow = { start?: boolean, id?: string, caps: Caps, capKind?: CapKind, 
-/**
- * 启用延迟（分钟）。
- */
-delay?: number, 
-/**
- * 回切阈值（%）；缺 ＝ 不回切。
- */
-back?: number, };
 ```
 
 码：`bad_args` · `bad_strategy`
