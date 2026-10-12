@@ -122,6 +122,7 @@ pub(crate) const LOGIN: super::LoginFace = super::LoginFace {
     lock_stale_ms: 60_000,
     identity_file: accounts::identity_file,
     identity_in: accounts::identity_in,
+    identity_of_body: accounts::identity_of_body,
     rewrite_identity: accounts::rewrite_identity,
     base_dir: accounts::shared_root_in,
 };

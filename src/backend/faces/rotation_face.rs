@@ -1535,8 +1535,13 @@ pub(crate) fn session_state(
             .find(|(f, _)| f.id == a)
             .map(|(f, _)| f.clone())
     };
-    // 第一行固定是在用的号，往下照有效优先级排。
-    let mut eff = v.eff.clone();
+    // 第一行固定是在用的号，往下照有效优先级排。`_`（起会话时没说是哪个号）不进候选：它不是一个能放、能换过去的号。
+    let mut eff: Vec<_> = v
+        .eff
+        .iter()
+        .filter(|r| r.account != crate::accounts::quota::name_words::HOME_ACCOUNT)
+        .cloned()
+        .collect();
     if let Some(i) = eff.iter().position(|r| r.account == v.entry.current) {
         let r = eff.remove(i);
         eff.insert(0, r);
@@ -1989,7 +1994,8 @@ pub(crate) fn answer_session_set_with(ctx: &Ctx, own: &Own, args: &Value, now: u
     let account = place
         .get("account")
         .and_then(Value::as_str)
-        .filter(|a| account_ok(a) || *a == crate::accounts::quota::name_words::HOME_ACCOUNT)
+        // `_`（起会话时没说是哪个号）不是号：它不顶任何一份登录，放上去只能回「需登录」⇒ 与现在就换一样拒（`account_ok` 不收它）。
+        .filter(|a| account_ok(a))
         .ok_or_else(|| bad("`place.account` must name an account"))?
         .to_string();
     let at = place

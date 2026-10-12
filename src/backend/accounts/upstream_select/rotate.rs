@@ -201,14 +201,27 @@ impl Hop {
         id: &str,
     ) -> Option<(PathBuf, Option<PathBuf>)> {
         let home = self.home.as_deref()?;
-        if id == super::endpoint::UNDECLARED_ACCOUNT_SEGMENT {
-            // 起会话时没说是哪个号 ⇒ 那一家的默认配置目录（同账号 0）。
-            return Some(((face.base_dir)(home), Some(home.to_path_buf())));
-        }
+        // 起会话时没说是哪个号（`_`）不是哪一份登录：不拿默认配置目录（账号 0）那份顶。
         match &lib.find(id)?.dir {
             Some(d) => Some((d.clone(), None)),
             None => Some(((face.base_dir)(home), Some(home.to_path_buf()))),
         }
+    }
+
+    /// ★ 起会话时没说是哪个号（`_`）的这一发实际在用哪个号：请求体里的账号身份恰好对上账号库里**一个**订阅号 ⇒ 那个号的 id
+    /// （账号 0 ⇒ `0`）；一个都没对上 · 对上不止一个 · 请求体里没有这一格 · 没建账号库 ⇒ `None`（照旧记 `_`，不猜）。
+    /// 每一发都比一次（身份按文件戳缓存）：会话里 `/login` 换了号，下一发就认成新号。
+    pub(crate) fn recognize(&self, agent: &str, body: &[u8]) -> Option<String> {
+        let face = crate::agents::login_of(agent)?;
+        let uuid = (face.identity_of_body)(body)?;
+        let lib = self.library();
+        let mut hit = lib.accounts.iter().filter(|x| !x.api).filter(|x| {
+            self.dir_of(&face, &lib, &x.id)
+                .and_then(|(dir, base)| self.identity(&face, &dir, base.as_deref()))
+                .is_some_and(|who| who == uuid)
+        });
+        let one = hit.next()?;
+        hit.next().is_none().then(|| one.id.clone())
     }
 
     fn identity(&self, face: &LoginFace, dir: &Path, base: Option<&Path>) -> Option<String> {
@@ -718,6 +731,10 @@ impl Hop {
     ) -> show::Facts {
         let kind = kind_with(row, lib, account);
         let (login, sub_id) = match kind {
+            // 起会话时没说是哪个号：是哪一份登录说不准 ⇒ 不带订阅标识；登录照起它的那个会话（它自己发得出去）。
+            Kind::Sub if account == super::endpoint::UNDECLARED_ACCOUNT_SEGMENT => {
+                (LoginState::Ok, None)
+            }
             Kind::Api => (
                 if row(account) == Some(true) {
                     LoginState::Ok

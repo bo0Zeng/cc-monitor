@@ -72,7 +72,7 @@ PASS=0; FAIL=0
 ck() { if [ "$2" = "$3" ]; then printf 'PASS | %s\n' "$1"; PASS=$((PASS+1))
        else printf 'FAIL | %s\n      期望: %s\n      实得: %s\n' "$1" "$2" "$3"; FAIL=$((FAIL+1)); fi; }
 
-W="$(mktemp -d)"; trap 'rm -rf "$W" "$CCMDIR"' EXIT
+W="$(mktemp -d)"; trap 'rm -rf "$W" "$CCMDIR"; tmux_shim_cleanup' EXIT
 mkdir -p "$W/bin" "$W/proj" "$W/acct-z" "$W/acct-b" "$W/home"
 CWD="$W/proj"
 

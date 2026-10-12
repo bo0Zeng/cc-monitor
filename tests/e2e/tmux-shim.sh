@@ -113,8 +113,12 @@ _e2e_foreign_net_ids() { # $1 = 同族名字的正则  $2 = 本趟的网络名�
     | awk -v pat="$1" -v own="$2" '$2 ~ pat && $2 != own { print substr($1, 1, 12) }'
 }
 
+# `--sandbox-default`：`sandbox-env.sh` 给**每一套**先装的那一份（前缀 `e2eSbx`）—— 套件自己不碰 tmux、起的后端照样裸调，
+# 也得落到本趟私有的那台。这一形不做登录 shell 探针（套件自己 `. tmux-shim.sh <前缀>` 时照做）、机器上没有 tmux 就不装（没有可隔离的）。
+_e2e_shim_default=0
 case "${1:-}" in
   --names-only) return 0 ;;
+  --sandbox-default) _e2e_shim_default=1; set -- e2eSbx ;;
   ''|-*|*[!A-Za-z0-9-]*)
     echo "tmux-shim.sh 要一个私有名前缀：. tmux-shim.sh <前缀>（只要名字：--names-only），实得 '${1:-}'" >&2
     exit 2 ;;
@@ -122,17 +126,27 @@ esac
 TMUX_SHIM_SOCK="$(e2e_run_name "$1")" || exit 2
 
 unset TMUX TMUX_PANE
-TMUX_SHIM_REAL="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
-TMUX_SHIM_BIN="$(mktemp -d /tmp/e2e-tmuxshim.XXXXXX)"
-printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_SHIM_REAL" "$TMUX_SHIM_SOCK" > "$TMUX_SHIM_BIN/tmux"
-chmod +x "$TMUX_SHIM_BIN/tmux"
-export PATH="$TMUX_SHIM_BIN:$PATH"
+if [ -n "${TMUX_SHIM_BIN:-}" ] && [ -x "$TMUX_SHIM_BIN/tmux" ] && [ -n "${TMUX_SHIM_REAL:-}" ]; then
+  # 这一趟已经装过（sandbox-env 那一份）⇒ 同一份 shim 改钉本套件的名字，不在 PATH 上再叠一层。
+  TMUX_SHIM_SOCKS="${TMUX_SHIM_SOCKS:-} $TMUX_SHIM_SOCK"
+else
+  if ! TMUX_SHIM_REAL="$(command -v tmux)"; then
+    [ "$_e2e_shim_default" = 1 ] && { unset TMUX_SHIM_SOCK TMUX_SHIM_REAL _e2e_shim_default; return 0; }
+    echo "需要 tmux"; exit 1
+  fi
+  TMUX_SHIM_BIN="$(mktemp -d /tmp/e2e-tmuxshim.XXXXXX)"
+  TMUX_SHIM_SOCKS="$TMUX_SHIM_SOCK"
+  export PATH="$TMUX_SHIM_BIN:$PATH"
+fi
+printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_SHIM_REAL" "$TMUX_SHIM_SOCK" > "$TMUX_SHIM_BIN/tmux.new"
+chmod +x "$TMUX_SHIM_BIN/tmux.new"
+mv -f -- "$TMUX_SHIM_BIN/tmux.new" "$TMUX_SHIM_BIN/tmux"
 
 # ★ 前置断言**经登录 shell 问** —— 08-12 实测教训：在外层 shell 量 `command -v tmux` 会报 PASS，
 #   而命令真正跑在 `bash -lic` 里（PATH 被 profile 重排过）⇒「隔离没生效」以 PASS 的形式呈现。
 #   ⚠ `E2E_SKIP_SHIM_PROBE=1` 只给**不经登录 shell** 的调用方用（它们的 PATH 不会被重排）；
 #     绝不是「探针麻烦就关掉」的开关 —— 关了它，隔离没生效时你会看到一片 PASS。
-if [ "${E2E_SKIP_SHIM_PROBE:-0}" != "1" ]; then
+if [ "$_e2e_shim_default" != 1 ] && [ "${E2E_SKIP_SHIM_PROBE:-0}" != "1" ]; then
   _tmux_shim_probe="$(bash -lic 'command -v tmux' 2>/dev/null | tail -1)"
   if [ "$_tmux_shim_probe" != "$TMUX_SHIM_BIN/tmux" ]; then
     echo "  ABORT 隔离没生效：登录 shell 里的 tmux 是 '$_tmux_shim_probe'，不是 shim $TMUX_SHIM_BIN/tmux"
@@ -141,11 +155,15 @@ if [ "${E2E_SKIP_SHIM_PROBE:-0}" != "1" ]; then
     exit 2
   fi
 fi
+unset _e2e_shim_default
 
-# 收尾：只收自己那台（`-L` 选择器在，**绝不裸 `kill-server`**）。
+# 收尾：只收这一趟钉过的那几台（`-L` 选择器在，**绝不裸 `kill-server`**），连同 shim 目录。
 tmux_shim_cleanup() {
   set +e
-  [ -n "${TMUX_SHIM_REAL:-}" ] && "$TMUX_SHIM_REAL" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null
-  [ -n "${TMUX_SHIM_SOCK:-}" ] && rm -f -- "$(e2e_tmux_socket_file "$TMUX_SHIM_SOCK")"
+  local TMUX_SHIM_SOCK
+  for TMUX_SHIM_SOCK in ${TMUX_SHIM_SOCKS:-}; do
+    [ -n "${TMUX_SHIM_REAL:-}" ] && "$TMUX_SHIM_REAL" -L "$TMUX_SHIM_SOCK" kill-server 2>/dev/null
+    rm -f -- "$(e2e_tmux_socket_file "$TMUX_SHIM_SOCK")"
+  done
   [ -n "${TMUX_SHIM_BIN:-}" ] && rm -rf -- "$TMUX_SHIM_BIN"
 }
