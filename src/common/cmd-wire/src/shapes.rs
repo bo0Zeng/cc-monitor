@@ -3,8 +3,15 @@
 
 /// `(命令, 形状指纹)`，按命令名排。
 pub const SHAPES: &[(&str, &str)] = &[
+    ("history-branch", "cd82bf99"),
+    ("history-lines", "9a21fc37"),
+    ("history-page", "9ec1a380"),
+    ("history-read", "f9e5a55e"),
+    ("history-record", "5745dae9"),
+    ("history-run", "3263f4a4"),
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
+    ("history-tail", "f812e894"),
     ("kill", "6de86725"),
     ("launch", "59041b9e"),
     ("launch-local", "d359d78c"),
@@ -15,6 +22,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("session-new-facts", "aed6893e"),
     ("session-restart", "d223b9ce"),
     ("session-terminals", "7c85cbeb"),
+    ("sessions-needs", "2db9d5b7"),
     ("sessions-start", "264d59fb"),
     ("sessions-stop", "0a1aa1a6"),
     ("sessions-where", "8c20eb86"),

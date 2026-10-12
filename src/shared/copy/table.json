@@ -5604,12 +5604,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "sessionReads.record.badShape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "不是恰好 present / root 两格",
-      "args": []
-    },
     "sessionReads.missing.facts": {
       "kind": "error",
       "role": "报错",

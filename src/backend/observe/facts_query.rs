@@ -472,6 +472,8 @@ pub(crate) struct LastSay {
 /// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum NeedsKind {
     /// 批准一个工具调用（或别的批准框）。
     Approve,
@@ -493,6 +495,8 @@ pub(crate) enum NeedsKind {
 /// **需手动**的成品：种类 · 等的那一句 · 从何时起等。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Needs {
     pub(crate) kind: NeedsKind,
     /// 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
@@ -502,6 +506,7 @@ pub(crate) struct Needs {
     /// 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
     pub(crate) what: Option<String>,
     /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) since_ms: Option<u64>,
     /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
     pub(crate) text: Words,
@@ -515,6 +520,7 @@ pub(crate) struct Needs {
     pub(crate) rank: u8,
     /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
     /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) waited_ms: Option<u64>,
     /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
     pub(crate) waited_text: Option<Words>,

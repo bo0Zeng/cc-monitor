@@ -86,78 +86,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(
         "把各台的搜索结果合成一份",
     ),
-    CommandSpec {
-        name: "history-run",
-        summary: "一个子运行的记录",
-        codes: &[
-            "bad_args",
-            "failed",
-            "not_found",
-            "path_refused",
-            "refused",
-            "too_large",
-        ],
-        fields: &[out("end", "读到哪了（最后一个整行之后）"), arg("from", "从这个字节起读（缺 ＝ 0）；续读拿上一次的 `end`"), out("more", "这一页没读到头（再从 `end` 读）"), arg("parent", "父会话的记录路径（读会话那道围栏照旧；越界 ⇒ `path_refused`）"), out("path", "那份子运行记录（不透明，给查看器整份打开用）"), out("rows", "这一页里每一条进界面的记录：`record` 通用记录（与主会话同一形）· `rid` 它的对账键（没有 ⇒ 省略）"), both("run", "子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准"), arg("tool", "派出它的那次工具调用的 id：后端在父记录里找那次调用的派出链接（适配层 `child_link`）；还没对上（前台子运行跑完才写明是哪一个）⇒ `not_found`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryRunCmd>("一个子运行的记录"),
     // resume 之前问「这条会话的记录还在不在」。同族同档（一次目录枚举 ⇒ 阻塞档）、
     // 同一个只读宿主。**只收 sid**（找文件那一步与分叉 / 删会话同一份 `agents::find_session_file`）。
-    CommandSpec {
-        name: "history-record",
-        summary: "这条会话的记录还在不在",
-        codes: &["bad_args"],
-        // +`configDir`（可选入参：这次 resume 要用的账号根）。
-        fields: &[arg("configDir", "可选：这次 resume 要用的**账号配置目录**"), out("present", "这条会话的记录文件在那棵记录树里找得到（根那一层或项目目录那一层"), out("root", "查的那棵记录树的根（报错时说清查了什么）"), arg("sid", "会话 id")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryRecordCmd>("这条会话的记录还在不在"),
     // 按**行号**取回（没接骨架的会话丢掉的正文从这里要回来）。同族同档、同一个只读宿主。
-    CommandSpec {
-        name: "history-lines",
-        summary: "按行号取回一段",
-        codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "读到了最后一个完整行之后"), both("from", "第一行的行号（缺省 0）"), out("lines", "**记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现）"), out("next", "下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）"), arg("path", "jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`）"), arg("until", "可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "history-read",
-        summary: "按字节分页读一份会话",
-        codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "区间到头了（`until` 或读时的文件长度）"), out("next", "下一页从这里起（= `offset` ＋ 这一页的原始字节数）"), arg("offset", "从这个字节起（缺省 0）"), arg("path", "jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`）"), out("rows", "这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd`"), arg("until", "可选右端（半开区间 `[offset, until)`），= `--until`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryLinesCmd>("按行号取回一段"),
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryReadCmd>("按字节分页读一份会话"),
     // 按字节分页读、出记录行（`read_face.rs` 那一臂 ＋ `observe/record_page.rs`）。同族同档、同一个只读宿主。
-    CommandSpec {
-        name: "history-page",
-        summary: "按字节分页读，出记录行",
-        codes: &["bad_args", "failed", "oversized_line", "refused"],
-        fields: &[out("eof", "同 `history-read`"), out("lines", "只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节）"), out("next", "同 `history-read`"), out("nextSeq", "下一页第一行的行号"), arg("offset", "同 `history-read`"), arg("path", "同 `history-read`"), arg("seq", "`offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq`"), arg("until", "同 `history-read`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryPageCmd>("按字节分页读，出记录行"),
     // 骨架索引与大纲清单上帧面（此前它们在远端走逐次拨号 —— `STILL_DIALED` 那两行）。
     // 同族同档（同步文件 I/O ⇒ 阻塞档）、同一个只读宿主（`read_face::answer`）。
     // 会话内查找上帧面（此前走逐次拨号 —— `STILL_DIALED` 那一行）。同族同档。
@@ -176,18 +113,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    CommandSpec {
-        name: "sessions-needs",
-        summary: "这台上需手动的会话清单",
-        codes: &[],
-        fields: &[out("needs", "它在等什么 `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `head` 钉条第一行、`headCode` 它等宽那一段 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框；`ask` 这一条可以怎么答 `{id, kind, tool, run {id, kind}, what, detail, sinceMs, choices[] {id, text, tone, note}, questions[] {id, text, header, multi, other, options[] {id, text, detail}}}`（挂着的待答请求：`id` 答的时候交回 `needs-answer`；`run` 子运行（子 agent）发的才有：它的 id 与种类；`choices` 选项写好字与语气、`note` 要不要附话 none · optional · required；`questions` 提问那一种的题，`other` 恒真 ＝ 许写自由文本）；没有挂着的 ⇒ `null`，`manualText` 写好「只能在终端里答」那一句（有 `ask` ⇒ `null`）；挡着终端的子 agent 请求 pidfile 不说在等，照它补出一份"), out("sid", "会话 id"), out("waiting", "此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组")],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::SessionsNeedsCmd>("这台上需手动的会话清单"),
     // 答批准 / 提问 / 批计划（`control/asks/`）：会话级答题 hook 经 `needs-ask` 挂一条、阻塞等；任一出口经 `needs-answer` 答，第一个答案落下。
     //   挂着的请求住常驻进程里 ⇒ 两条都只在帧面（`needs-ask` 要本连接的号 ⇒ 硬臂；`needs-answer` 在 `cli_control::STREAM_ONLY`）。
     CommandSpec {
@@ -226,18 +152,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    CommandSpec {
-        name: "history-branch",
-        summary: "主线外清单",
-        codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("end", "最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）"), out("off", "回退掉的那几条记录的 `id`（只含进界面的；文件序）；这一家的记录没有链 ⇒ 恒空"), arg("path", "jsonl 路径（围栏同 `history-read`）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryBranchCmd>("主线外清单"),
     CommandSpec {
         name: "history-find",
         summary: "会话内查找",
@@ -274,18 +189,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    CommandSpec {
-        name: "history-tail",
-        summary: "一份会话的尾段从哪个字节起",
-        codes: &["bad_args", "failed"],
-        fields: &[out("end", "最后一个完整行之后的字节位置"), arg("n", "要最新几行"), arg("path", "jsonl 路径（路径围栏同 `history-read`）"), out("split_at", "尾段第一行的字节起点"), out("tail_from", "尾段第一行的行号"), out("total", "可计行总数")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::history_face::HistoryTailCmd>("一份会话的尾段从哪个字节起"),
     // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。

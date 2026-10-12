@@ -10,6 +10,10 @@
  *
  * 买不到：真 Tauri IPC 与真后端（后端那一侧的判据在 Rust 里；monitor 那一跳由 `webview_tests` 量）。
  */
+import type { Branch } from "../../../src/frontend/ui/generated/Branch";
+import type { HistoryLines } from "../../../src/frontend/ui/generated/HistoryLines";
+import type { HistoryPage } from "../../../src/frontend/ui/generated/HistoryPage";
+import type { HistoryRun } from "../../../src/frontend/ui/generated/HistoryRun";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
@@ -25,7 +29,6 @@ import {
   decodeFacts,
   decodeFind,
   decodeIndex,
-  decodeRecord,
   decodeUserInputs,
   failureOf,
   findInSession,
@@ -171,18 +174,6 @@ describe("〔C4c〕记录还在不在：经通道问 `history-record`", () => {
       "history-record",
       { sid: "s-1" },
     ]);
-  });
-  it("★★ 缺一格 / 多一格 / 类型不对 ⇒ 抛 —— **绝不**读成「不在」（`present:false` 会把接得上的 resume 拦掉）", () => {
-    for (const bad of [
-      { root: "/r" },
-      { present: false },
-      { present: "no", root: "/r" },
-      { present: false, root: "/r", extra: 1 },
-      { lines: [] },
-    ]) {
-      expect(() => decodeRecord(bad), JSON.stringify(bad)).toThrow();
-    }
-    expect(decodeRecord({ present: true, root: "/r" })).toEqual({ present: true, root: "/r" });
   });
   it("★ 问不到（没有控制通道 / 后端不认）⇒ 抛（调用方当「不知道」），不折成一个答案", async () => {
     invokeMock.mockRejectedValueOnce(NO_CHANNEL);
@@ -376,33 +367,28 @@ describe("〔MOD〕会话正文：按形状收那台后端出的成品", () => {
   ) as Record<string, unknown>;
 
   it("★★ 金样：整份读 · 按行号 · 一个子运行（按运行读）三份成品读得懂；远端那台的载荷带上它的名字、本机不带", async () => {
-    const { decodePage, decodeLines, decodeRun } = await import("../../../src/frontend/ui/record-reads");
-    const page = decodePage("<local>", recordGolden["history-page"]);
+    const { pageOf, linesOf } = await import("../../../src/frontend/ui/record-reads");
+    const page = pageOf("<local>", recordGolden["history-page"] as HistoryPage);
     expect([page.next, page.nextSeq, page.eof]).toEqual([273, 3, true]);
     expect(page.payloads.map((p) => [p.seq, p.session_id, p.cwd, p.record.id])).toEqual([
       [1, "r", "/w", "r-1"],
       [2, "r", null, "r-2"],
     ]);
     expect(page.payloads.every((p) => p.origin === undefined)).toBe(true);
-    const lines = decodeLines("devbox", recordGolden["history-lines"]);
+    const lines = linesOf("devbox", recordGolden["history-lines"] as HistoryLines);
     expect([lines.from, lines.next, lines.eof]).toEqual([1, 3, true]);
     expect(lines.payloads.map((p) => [p.seq, p.origin])).toEqual([
       [1, "devbox"],
       [2, "devbox"],
     ]);
-    const run = decodeRun(recordGolden["history-run"]);
+    const run = recordGolden["history-run"] as HistoryRun;
     expect([run.run, run.rows.length, run.rows.map((r) => r.rid ?? null), run.more]).toEqual(["a1", 2, [null, "m-s2"], false]);
-    // 反向：外层多一格 ⇒ 不收（两端契约对不上，不猜）。
-    expect(() => decodePage("<local>", { ...(recordGolden["history-page"] as object), extra: 1 })).toThrow();
   });
 
-  it("★★ 金样：主线外清单（history-branch）读得懂；清单里不是串 / 外层多一格 ⇒ 不收", async () => {
-    const { decodeBranch } = await import("../../../src/frontend/ui/record-reads");
+  it("★★ 金样：主线外清单（history-branch）的成品就是生成的那个类型", () => {
     // 金样那份会话两条都没有链（r-2 不接 r-1）⇒ 两个根、r-1 是不接任何回复的人那一句 ⇒ 后端判它回退掉了。
-    expect(decodeBranch(recordGolden["history-branch"])).toEqual({ off: ["r-1"], end: 273 });
-    expect(decodeBranch({ off: ["u2", "u3"], end: 9 })).toEqual({ off: ["u2", "u3"], end: 9 });
-    expect(() => decodeBranch({ off: [2], end: 9 })).toThrow();
-    expect(() => decodeBranch({ off: [], end: 9, extra: 1 })).toThrow();
+    const branch: Branch = recordGolden["history-branch"] as Branch;
+    expect(branch).toEqual({ off: ["r-1"], end: 273 });
   });
 });
 

@@ -1105,12 +1105,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "sessions-needs",
-        sampled::<crate::faces::read_face::NeedsList>,
-        &["needs", "sid"],
-        &[],
-    ),
-    (
         "needs-ask",
         sampled::<crate::control::asks::AskReply>,
         &[],
@@ -1135,12 +1129,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "history-branch",
-        sampled::<crate::faces::read_face::Branch>,
-        &[],
-        &[],
-    ),
-    (
         "history-forget",
         sampled::<crate::history::history_annotations::Forgotten>,
         &[],
@@ -1149,18 +1137,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     (
         "history-last-accounts",
         sampled::<crate::control::launch_account::LastAccounts>,
-        &[],
-        &[],
-    ),
-    (
-        "history-record",
-        sampled::<crate::observe::history_query::RecordProbe>,
-        &[],
-        &[],
-    ),
-    (
-        "history-tail",
-        sampled::<crate::observe::history_query::TailPlan>,
         &[],
         &[],
     ),
@@ -1251,7 +1227,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
     const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
-    const RECORD_READS: &str = include_str!("../../__fixtures__/record-reads.golden.json");
     const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
     const RESYNC: &str = include_str!("../../__fixtures__/resync.golden.json");
     const SESSION_FORK: &str = include_str!("../../__fixtures__/session-fork.golden.json");
@@ -1307,10 +1282,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &["class", "from", "text", "ts"],
             &[],
         ),
-        ("history-lines", RECORD_READS, "/history-lines", &[], &[]),
-        ("history-page", RECORD_READS, "/history-page", &[], &[]),
-        ("history-read", RECORD_READS, "/history-read", &[], &[]),
-        ("history-run", RECORD_READS, "/history-run", &[], &[]),
         ("history-facts", SESSION_READS, "/history-facts", &[], &[]),
         ("history-find", SESSION_READS, "/history-find", &[], &[]),
         ("history-index", SESSION_READS, "/history-index", &[], &[]),

@@ -5,6 +5,42 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
+/// 读一份会话记录的那几条换成了 typed（`faces/history_face.rs`）：判据照旧按命令名问，这里照登记表那一层的做法走一遍
+///   （入参经 typed 那一处解、回包过一遍真序列化器、失败落成码 ＋ 那一句），盖住 `super::*` 里的同名口；别的命令照旧交只读宿主。
+fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -> Answer {
+    use crate::faces::history_face as h;
+    use crate::stream::inbound::typed::{take, Codes, Command};
+    fn via<C: Command>(
+        args: &serde_json::Value,
+        f: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
+    ) -> Answer {
+        let code = |c: &str| -> &'static str {
+            <C::Err as Codes>::ALL
+                .iter()
+                .find(|k| **k == c)
+                .copied()
+                .unwrap_or_else(|| panic!("码表外的码 `{c}`"))
+        };
+        let req = take::<C::Req>(args).map_err(|e| (code(&e.code), e.message))?;
+        let got = f(req).map_err(|e| {
+            let fail = e.into_fail();
+            (code(&fail.code), fail.message)
+        })?;
+        Ok(serde_json::to_value(got).unwrap())
+    }
+    match cmd {
+        "history-read" => via::<h::HistoryReadCmd>(args, |r| h::read_at(home, r, tz)),
+        "history-page" => via::<h::HistoryPageCmd>(args, |r| h::page_at(home, r, tz)),
+        "history-lines" => via::<h::HistoryLinesCmd>(args, |r| h::lines_at(home, r, tz)),
+        "history-run" => via::<h::HistoryRunCmd>(args, |r| h::run_at(home, r, tz)),
+        "history-branch" => via::<h::HistoryBranchCmd>(args, |r| h::branch_at(home, r)),
+        "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r)),
+        "history-record" => via::<h::HistoryRecordCmd>(args, |r| h::record_at(home, r)),
+        "sessions-needs" => via::<h::SessionsNeedsCmd>(args, |_| Ok(h::needs_at(home))),
+        _ => super::answer_at(home, cmd, args, tz),
+    }
+}
+
 /// 本族的八条帧命令 —— **要求点名的那八条**，
 /// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `stream/inbound/` 源码里数「谁把活交给了
 /// `read_face::answer`」，两边必须相等。
@@ -75,12 +111,28 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
     let mut got: Vec<String> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
+        // 块截到它后面紧跟的 typed 那一行为止（那一行不是这一块的）。
+        .map(|blk| blk.split("typed::").next().unwrap_or(blk))
         .filter(|blk| blk.contains("read_face::answer"))
         .filter_map(|blk| {
             let at = blk.find("name: \"")? + "name: \"".len();
             Some(blk[at..].split('"').next()?.to_string())
         })
         .collect();
+    // 读一份会话记录的那几条成了 typed（`faces/history_face.rs`）：名字从那个类型的 `impl Command` 里 `const NAME` 读。
+    let face = include_str!("../../../src/backend/faces/history_face.rs");
+    for (_, prod) in &families {
+        for (at, _) in prod.match_indices("::faces::history_face::") {
+            let rest = &prod[at + "::faces::history_face::".len()..];
+            let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
+            let imp = face
+                .find(&format!("impl Command for {ty} {{"))
+                .unwrap_or_else(|| panic!("`history_face.rs` 里没有 `impl Command for {ty}`"));
+            let key = "const NAME: &'static str = \"";
+            let n = face[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
+            got.push(face[n..].chars().take_while(|c| *c != '"').collect());
+        }
+    }
     got.sort();
     let mut want: Vec<String> = FAMILY.iter().map(|s| s.to_string()).collect();
     want.sort();
@@ -1226,7 +1278,7 @@ fn the_record_products_match_the_cross_language_golden() {
     let path = p.to_string_lossy().into_owned();
     let got = serde_json::json!({
         "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
-        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true}), &Default::default()).unwrap(),
+        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
         "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1}), &Default::default()).unwrap(),
         "history-branch": answer_at(&home, "history-branch", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
         "history-run": answer_at(
@@ -1379,15 +1431,6 @@ fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-impl crate::guard_support::Shaped for Branch {
-    fn samples() -> Vec<Self> {
-        vec![Branch {
-            off: vec!["u-1".into()],
-            end: 99,
-        }]
-    }
-}
-
 /// ★ **这台上需手动的会话清单**（`sessions-needs`）：恰好是这台此刻活着、那台 pidfile 说在等人的那几个会话；
 /// 每一个的 `needs` 就是 `history-facts` 对同一份记录答的那一格（同一处判、同一份字，清单不另判）；
 /// 记录找不到的照列（判不出是哪一步，但框是哪种照那台说的）；在跑 · 空闲 · 进程死了的都不在。
@@ -1478,27 +1521,6 @@ fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
     let ms = o.remove("waitedMs").and_then(|v| v.as_u64());
     o.remove("waitedText");
     (ms, rest)
-}
-
-impl crate::guard_support::Shaped for NeedsList {
-    fn samples() -> Vec<Self> {
-        use crate::observe::facts_query::{needs_of, PidWait};
-        let needs = needs_of(
-            &[],
-            Some(&PidWait {
-                waiting_for: Some(crate::agents::WaitOn::Worker),
-                since_ms: Some(1),
-                read_at_ms: 2,
-            }),
-        )
-        .expect("在等就有需手动");
-        vec![NeedsList {
-            waiting: vec![crate::observe::accounts_query::NeedsRow {
-                sid: "s-1".into(),
-                needs,
-            }],
-        }]
-    }
 }
 
 /// ★ **续算令牌不被投影弄残**：带声明去掉 `touchedFiles` 之后，下一问交回的是应答里那一格 `prior`（投影之前的整份），
@@ -1739,4 +1761,113 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         on["needs"]["manualText"],
         serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]))
     );
+}
+
+/// 手机读的那几条（`history-read` · `history-lines` · `history-tail` · `sessions-needs`）：照手机发的那一份入参
+///   （`until: null` 照发）跑出来的应答，与换成 typed 之前那一版写出来的**逐字节**相同。
+///   金样两份（read · lines）就是跨语言金样那一份重新序列化（键恒排好序）；别的形是换形之前用旧代码跑出来钉成的字面量。
+#[test]
+fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
+    let home = scratch("phone-bytes");
+    let p = golden_record_session(&home);
+    let path = p.to_string_lossy().into_owned();
+    let canon = std::fs::canonicalize(&home)
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let bytes = |cmd: &str, args: serde_json::Value| {
+        serde_json::to_string(&phone_wire(&home, cmd, args))
+            .unwrap()
+            .replace(&canon, "<home>")
+    };
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/record-reads.golden.json")).unwrap();
+    let read = bytes(
+        "history-read",
+        serde_json::json!({"path": path, "offset": 0, "until": null}),
+    );
+    let lines = bytes(
+        "history-lines",
+        serde_json::json!({"path": path, "from": 1, "until": null}),
+    );
+    let read_mid = bytes(
+        "history-read",
+        serde_json::json!({"path": path, "offset": 55, "until": 200}),
+    );
+    let lines_mid = bytes(
+        "history-lines",
+        serde_json::json!({"path": path, "from": 0, "until": 2}),
+    );
+    let tail = bytes("history-tail", serde_json::json!({"path": path, "n": 2}));
+    let needs = bytes("sessions-needs", serde_json::Value::Null);
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        read,
+        serde_json::to_string(&golden["history-read"]).unwrap()
+    );
+    assert_eq!(
+        lines,
+        serde_json::to_string(&golden["history-lines"]).unwrap()
+    );
+    assert_eq!(
+        read_mid,
+        r#"{"eof":true,"next":200,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":null,"hash":3774565367099417574}]}"#
+    );
+    assert_eq!(
+        lines_mid,
+        r#"{"eof":false,"from":0,"lines":[{"cwd":"/w","path":"<home>/projects/-golden/r.jsonl","record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}},"seq":1,"session_id":"r"}],"next":2}"#
+    );
+    assert_eq!(tail, r#"{"end":273,"split_at":55,"tail_from":1,"total":3}"#);
+    assert_eq!(needs, r#"{"waiting":[]}"#);
+    // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
+    let row = {
+        use crate::observe::facts_query::{needs_of, PidWait};
+        crate::faces::history_face::NeedsList {
+            waiting: vec![crate::observe::accounts_query::NeedsRow {
+                sid: "s-1".into(),
+                needs: needs_of(
+                    &[],
+                    Some(&PidWait {
+                        waiting_for: Some(crate::agents::WaitOn::Worker),
+                        since_ms: Some(1),
+                        read_at_ms: 2,
+                    }),
+                )
+                .expect("在等就有需手动"),
+            }],
+        }
+    };
+    assert_eq!(
+        serde_json::to_string(&serde_json::to_value(&row).unwrap()).unwrap(),
+        r#"{"waiting":[{"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+    );
+}
+
+/// 读一份会话记录的那几条：入参类型里没有的键 · 类型不对的格 ⇒ `bad_args`（从前悄悄当没给）。
+#[test]
+fn the_record_reads_refuse_fields_their_request_types_do_not_have() {
+    let home = scratch("refuse-stray");
+    let p = golden_record_session(&home);
+    let path = p.to_string_lossy().into_owned();
+    for (cmd, args) in [
+        ("history-page", serde_json::json!({"path": path, "whole": true})),
+        ("history-read", serde_json::json!({"path": path, "offset": "0"})),
+        ("history-lines", serde_json::json!({"path": path, "from": -1})),
+        ("history-tail", serde_json::json!({"path": path})),
+        ("history-branch", serde_json::json!({"path": path, "until": 3})),
+        ("history-run", serde_json::json!({"parent": path, "run": "a1", "seq": 0})),
+        ("history-record", serde_json::json!({"sid": "s", "config_dir": "/x"})),
+        ("sessions-needs", serde_json::json!({"machine": "m"})),
+    ] {
+        match answer_at(&home, cmd, &args, &Default::default()) {
+            Err(("bad_args", _)) => {}
+            other => panic!("{cmd} {args}：该回 bad_args，回的是 {other:?}"),
+        }
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 照手机那一份入参问一条只读命令，应答原样（成功那一支）。
+fn phone_wire(home: &Path, cmd: &str, args: serde_json::Value) -> serde_json::Value {
+    answer_at(home, cmd, &args, &Default::default()).unwrap_or_else(|e| panic!("{cmd}: {e:?}"))
 }

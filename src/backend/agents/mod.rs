@@ -198,6 +198,8 @@ pub(crate) struct AskIn {
 
 /// 待答请求的种类（线上同 `needs.kind` 那一套里的三个词）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum AskKind {
     #[serde(rename = "approve")]
     Approve,

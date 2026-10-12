@@ -20,7 +20,8 @@
  * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
  */
 import { chan, ChanError, type CallError } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, jsonBody, readJson, refusalOf, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import type { RecordProbe } from "./generated/RecordProbe";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
 import { copyText } from "./copy-table";
@@ -842,22 +843,8 @@ export async function readSessionFacts(
 
 // ─── 第四问：这条会话的记录还在不在（resume 一跳先问）───
 
-/**
- * 那台机器的后端对「这条会话的记录还在不在」的答案（后端 `read_face.rs` 的 `history-record`，成品 `{present, root}`）。
- * `root` = 查的那棵记录树的根（答「不在」时要说清查的是哪里）。
- */
-export interface RecordProbe {
-  present: boolean;
-  root: string;
-}
-
-/** `history-record` 的成品 ⇒ [`RecordProbe`]。两格缺一格 / 多一格 / 类型不对 ⇒ 抛 —— **绝不**把缺字段读成「不在」。 */
-export function decodeRecord(v: unknown): RecordProbe {
-  if (!isObj(v) || !exactKeys(v, ["present", "root"]) || typeof v.present !== "boolean" || !isStr(v.root)) {
-    throw new ShapeError("history-record", copyText("sessionReads.record.badShape"));
-  }
-  return { present: v.present, root: v.root };
-}
+/** 那台机器的后端对「这条会话的记录还在不在」的答案（`present` · `root` = 查的那棵记录树的根；类型从后端生成）。 */
+export type { RecordProbe };
 
 /**
  * **resume 之前问那台机器：这条会话的记录还在不在**（最后一条）。本机与远端同一条路。
@@ -874,8 +861,6 @@ export async function probeSessionRecord(
 ): Promise<RecordProbe> {
   // 带上这次 resume 要用的账号配置目录（`CLAUDE_CONFIG_DIR`）：会话起在那个账号根下时，
   //   只查那台后端自己的家目录会答「不在」、误拦 resume。基座（没有账号）⇒ 不带。
-  const body = jsonBody(configDir ? { sid, configDir } : { sid });
   const budget = budgetWithin(READ_BUDGET_MS);
-  const reply = await chan.call(origin, "history-record", body, budget);
-  return decodeRecord(readJson(reply));
+  return await callTyped(origin, "history-record", configDir ? { sid, configDir } : { sid }, budget);
 }

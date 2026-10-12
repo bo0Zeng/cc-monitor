@@ -963,14 +963,20 @@ fn count_prose(s: &str, row: &mut IndexRow) {
 ///
 /// 帧面那条（`history-tail`）只要**这张图**，正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TailPlan {
     /// 可计行总数（`line_counts` 口径）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub total: u64,
     /// 尾段第一行的行号。
+    #[cfg_attr(test, ts(type = "number"))]
     pub tail_from: u64,
     /// 尾段第一行的字节起点（＝ 头段的字节终点）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub split_at: u64,
     /// 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
+    #[cfg_attr(test, ts(type = "number"))]
     pub end: u64,
 }
 
@@ -1326,6 +1332,8 @@ pub(crate) fn record_for(
 
 /// [`record_in`] 的答案。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RecordProbe {
     /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
     pub present: bool,

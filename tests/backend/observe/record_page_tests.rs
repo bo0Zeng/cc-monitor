@@ -1,5 +1,44 @@
 use super::*;
 
+// 判据照线上的样子读（成品过一遍真序列化器）：下面三个把有类型的那几个口包成 JSON，盖住 `super::*` 里的同名口。
+fn record_lines<'b>(
+    reader: &mut Reader<'_>,
+    path: &Path,
+    seq: u64,
+    lines: impl IntoIterator<Item = (&'b [u8], u64)>,
+) -> (Vec<Value>, u64) {
+    let (got, next) = super::record_lines(reader, path, seq, lines);
+    (
+        got.iter()
+            .map(|l| serde_json::to_value(l).unwrap())
+            .collect(),
+        next,
+    )
+}
+
+fn record_lines_of_page(
+    reader: &mut Reader<'_>,
+    path: &Path,
+    seq: u64,
+    offset: u64,
+    bytes: &[u8],
+) -> (Vec<Value>, u64) {
+    let (got, next) = super::record_lines_of_page(reader, path, seq, offset, bytes);
+    (
+        got.iter()
+            .map(|l| serde_json::to_value(l).unwrap())
+            .collect(),
+        next,
+    )
+}
+
+fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
+    super::run_rows(reader, offset, bytes)
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect()
+}
+
 /// 行摘要按线上的样子看（`ReadRow` 经 serde）。
 fn rows_v(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
     rows_of(reader, offset, bytes)

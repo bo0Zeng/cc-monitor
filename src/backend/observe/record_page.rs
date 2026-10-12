@@ -132,16 +132,22 @@ fn split_starts(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64)> {
 
 /// 行摘要的一条（`history-read.rows[]`；成品 `read_row`，格目录里登记、冻结）。
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct ReadRow {
     /// 这一行（含 `\n`）之后那个字节的偏移；没 `\n` 收尾的残尾 ⇒ `null`。
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) end: Option<u64>,
-    /// 这一行正文的摘要（[`line_hash`]）。
+    /// 这一行正文的摘要（[`line_hash`]；64 位，过 JSON 数会失精度，只拿来比相等）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) hash: u64,
     /// 通用记录（缺 ＝ 不进界面，照占号）。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, as = "Option<crate::agents::record::Record>"))]
     pub(crate) record: Option<Value>,
     /// 那一行记的工作目录（只在有记录时带）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) cwd: Option<String>,
 }
 
@@ -203,17 +209,50 @@ pub(crate) fn fold_unread(into: &mut Value, next: &Value) -> bool {
     true
 }
 
+/// 记录行的一条（`history-page.lines[]` · `history-lines.lines[]`）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RecordLine {
+    /// 这份记录是哪个会话的（那一家按路径认）。
+    pub(crate) session_id: String,
+    /// 那份记录的路径。
+    pub(crate) path: String,
+    /// 行号（可计行，从 0 起）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) seq: u64,
+    /// 那一行记的工作目录；没有 ⇒ `null`。
+    pub(crate) cwd: Option<String>,
+    /// 通用记录。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
+    #[cfg_attr(test, ts(as = "crate::agents::record::Record"))]
+    pub(crate) record: Value,
+}
+
+/// 子运行那一页的一条（`history-run.rows[]`）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RunRow {
+    /// 通用记录（同 [`RecordLine::record`]）。
+    #[cfg_attr(test, ts(as = "crate::agents::record::Record"))]
+    pub(crate) record: Value,
+    /// 它的对账键（界面拿它撤那个子运行的活卡）；没有 ⇒ 这一格不出现。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) rid: Option<String>,
+}
+
 /// **记录行**：`lines` 里第 k 个可计行的行号是 `seq + k`；只出进界面的那些；相邻的认不出那几条并进前一条（[`fold_unread`]，行号是前一条的）。`lines` 每条带它的起点字节偏移。回 `(成品, 下一个行号)`。
 pub(crate) fn record_lines<'b>(
     reader: &mut Reader<'_>,
     path: &Path,
     seq: u64,
     lines: impl IntoIterator<Item = (&'b [u8], u64)>,
-) -> (Vec<Value>, u64) {
+) -> (Vec<RecordLine>, u64) {
     let sid = (reader.face.sid)(path).unwrap_or_default();
     let path_str = path.to_string_lossy();
     let mut next = seq;
-    let mut out = Vec::new();
+    let mut out: Vec<RecordLine> = Vec::new();
     for (body, start) in lines {
         if !super::history_query::line_counts(body) {
             continue;
@@ -221,18 +260,18 @@ pub(crate) fn record_lines<'b>(
         let at = next;
         next += 1;
         if let Some((record, cwd)) = reader.interpret(body, start) {
-            if let Some(prev) = out.last_mut().and_then(|l: &mut Value| l.get_mut("record")) {
-                if fold_unread(prev, &record) {
+            if let Some(prev) = out.last_mut() {
+                if fold_unread(&mut prev.record, &record) {
                     continue;
                 }
             }
-            out.push(json!({
-                "session_id": sid,
-                "path": path_str,
-                "seq": at,
-                "cwd": cwd,
-                "record": record,
-            }));
+            out.push(RecordLine {
+                session_id: sid.clone(),
+                path: path_str.to_string(),
+                seq: at,
+                cwd,
+                record,
+            });
         }
     }
     (out, next)
@@ -245,34 +284,29 @@ pub(crate) fn record_lines_of_page(
     seq: u64,
     offset: u64,
     bytes: &[u8],
-) -> (Vec<Value>, u64) {
+) -> (Vec<RecordLine>, u64) {
     record_lines(reader, path, seq, split_starts(offset, bytes))
 }
 
 /// 一页子运行记录（`history-run`，`offset` 是这一页在文件里的起点）：出了记录的每一条给 `{record, rid?}`；
 /// `rid` 是它的对账键（界面拿它撤那个子运行的活卡）。解析不出 / 不进界面的行跳过；相邻的认不出那几条并成一条（[`fold_unread`]）。
-pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<Value> {
+pub(crate) fn run_rows(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<RunRow> {
     let faces = crate::agents::RunFaces::of(reader.face);
-    let mut out: Vec<Value> = Vec::new();
+    let mut out: Vec<RunRow> = Vec::new();
     for (body, start) in split_starts(offset, bytes) {
         let Some((record, _)) = reader.interpret(body, start) else {
             continue;
         };
-        if let Some(prev) = out.last_mut().and_then(|l| l.get_mut("record")) {
-            if fold_unread(prev, &record) {
+        if let Some(prev) = out.last_mut() {
+            if fold_unread(&mut prev.record, &record) {
                 continue;
             }
         }
-        out.push({
-            let text = String::from_utf8_lossy(body);
-            let rid = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
-                .ok()
-                .and_then(|v| faces.response_id(&v));
-            match rid {
-                Some(rid) => json!({ "record": record, "rid": rid }),
-                None => json!({ "record": record }),
-            }
-        });
+        let text = String::from_utf8_lossy(body);
+        let rid = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}').trim())
+            .ok()
+            .and_then(|v| faces.response_id(&v));
+        out.push(RunRow { record, rid });
     }
     out
 }

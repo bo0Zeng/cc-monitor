@@ -88,10 +88,12 @@ fn backend_command_blocks() -> Vec<(String, String)> {
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
-        // 全文搜索那两条成了 typed 命令，只读宿主是 `faces/search_face.rs`（第 8 批从 `read_face` 分出去）。
+        // 全文搜索那两条、读一份会话记录的那几条成了 typed 命令，只读宿主是 `faces/search_face.rs` · `faces/history_face.rs`（第 8 批从 `read_face` 分出去）。
         .filter(|(_, blk)| {
             blk.contains("read_face::answer")
-                || (blk.starts_with("typed::") && blk.contains("faces::search_face::"))
+                || (blk.starts_with("typed::")
+                    && (blk.contains("faces::search_face::")
+                        || blk.contains("faces::history_face::")))
         })
         .map(|(name, _)| name)
         .collect();
@@ -1181,7 +1183,11 @@ fn client_for_test(
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
-        shapes: vec![],
+        // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
+        shapes: commands
+            .iter()
+            .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.to_string())))
+            .collect(),
     })
     .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);

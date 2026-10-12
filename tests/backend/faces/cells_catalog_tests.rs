@@ -572,7 +572,8 @@ fn every_needs_out_field_names_each_needs_cell() {
             );
         }
     }
-    assert!(seen >= 2, "叫 needs 的出参只找到 {seen} 个 —— 本条在空转");
+    // `sessions-needs` 换成 typed 以后，它那一格的说明住类型 `facts_query::Needs` 的文档上（生成进 TS 与协议文档），不在手写的 `fields` 里。
+    assert!(seen >= 1, "叫 needs 的出参只找到 {seen} 个 —— 本条在空转");
 }
 
 /// 只冻结几格的成品：点名的每一格都得是目录里真有的格（写错路径 ＝ 以为冻住了、其实什么也没冻）。
