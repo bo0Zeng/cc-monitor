@@ -1226,19 +1226,8 @@ fn end_to_end_from_an_empty_home() {
     assert_eq!(verify(&t)["pass"], false);
 }
 
-/// 账号库里有几份备份（`.backup-*`）。
-fn backups(t: &Tmp) -> usize {
-    std::fs::read_dir(t.p(".cc-monitor/accounts"))
-        .map(|d| {
-            d.filter_map(Result::ok)
-                .filter(|e| e.file_name().to_string_lossy().starts_with(".backup-"))
-                .count()
-        })
-        .unwrap_or(0)
-}
-
 /// ★ 号色：加号时分第一个空格（名字哈希同格的 team / lab 不同色）；删一个号别人的色不动。
-/// 旧清单（没有 `color`）由常驻那一个补一次（`colors_here`）：照库序分、写回清单、留一份备份；补过再调不动盘。
+/// 旧清单（没有 `color`）由常驻那一个补一次（`colors_here`）：照库序分、写回清单；补过再调不动盘。
 #[test]
 fn account_colors_are_assigned_on_add_kept_on_remove_and_filled_in_once() {
     let t = machine("colors");
@@ -1284,7 +1273,6 @@ fn account_colors_are_assigned_on_add_kept_on_remove_and_filled_in_once() {
         a.as_object_mut().unwrap().remove("color");
     }
     t.write(path, &old.to_string());
-    let before = backups(&t);
     crate::accounts::manage::wire::colors_here(&HomeDoor(t.0.clone()));
     assert_eq!(
         [color(&t, "team"), color(&t, "work"), color(&t, "0")],
@@ -1292,9 +1280,7 @@ fn account_colors_are_assigned_on_add_kept_on_remove_and_filled_in_once() {
         "照库序补：{}",
         t.read(path)
     );
-    assert_eq!(backups(&t), before + 1, "补色那一写留一份备份");
     let text = t.read(path);
     crate::accounts::manage::wire::colors_here(&HomeDoor(t.0.clone()));
     assert_eq!(t.read(path), text, "补过再调不动盘");
-    assert_eq!(backups(&t), before + 1);
 }
