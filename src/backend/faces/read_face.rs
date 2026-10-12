@@ -621,14 +621,16 @@ fn trust_code(c: &str) -> &'static str {
 }
 
 pub(crate) fn too_large(size: usize) -> (&'static str, String) {
+    too_large_at(size, LINES_CAP_BYTES)
+}
+
+/// 同 [`too_large`]，上限是参数（全文搜索那条按它判，判据拿小上限验）。
+pub(crate) fn too_large_at(size: usize, cap: usize) -> (&'static str, String) {
     (
         "too_large",
         copy_text(
             "beReadFace.tooLarge.say",
-            &[
-                ("size", &size.to_string()),
-                ("cap", &LINES_CAP_BYTES.to_string()),
-            ],
+            &[("size", &size.to_string()), ("cap", &cap.to_string())],
         ),
     )
 }

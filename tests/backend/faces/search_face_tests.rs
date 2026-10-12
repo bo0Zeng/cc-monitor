@@ -30,7 +30,7 @@ fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_o
             limit: None,
             titles: Some(titles),
         };
-        search_at(&home, req).expect("搜索")
+        search_at(&home, req, crate::faces::read_face::LINES_CAP_BYTES).expect("搜索")
     };
     let v = ask(false);
     assert_eq!(v.unreadable, 0, "读不动几份没交回");
@@ -95,4 +95,36 @@ fn merge_takes_rows_per_machine_and_names_only_the_remote_ones() {
         })
         .collect();
     assert_eq!(order, vec![("b", Some("devbox")), ("a", None)]);
+}
+
+/// 回包过了上限 ⇒ `too_large`，不交截断的清单；正控：同一份夹具、生产那个上限下照常答。上限是 `search_at` 的入参，生产只传 `LINES_CAP_BYTES`。
+#[test]
+fn an_oversized_search_answer_is_refused_not_truncated() {
+    let home = std::env::temp_dir().join(format!("b8-search-cap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&home);
+    let dir = home.join("projects").join("-w-y");
+    std::fs::create_dir_all(&dir).unwrap();
+    for i in 0..4 {
+        std::fs::write(
+            dir.join(format!("0000aaaa-0000-4000-8000-00000000000{i}.jsonl")),
+            r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/w/y","message":{"role":"user","content":"占位词"}}"#,
+        )
+        .unwrap();
+    }
+    let req = || HistorySearchReq {
+        query: "占位词".to_string(),
+        include_tools: None,
+        scope: None,
+        after_ms: None,
+        limit: None,
+        titles: None,
+    };
+    let small = search_at(&home, req(), 1024);
+    let full = search_at(&home, req(), crate::faces::read_face::LINES_CAP_BYTES);
+    std::fs::remove_dir_all(&home).ok();
+    assert!(
+        matches!(small, Err(HistorySearchErr::TooLarge(_))),
+        "超了上限还交了回包：{small:?}"
+    );
+    assert_eq!(full.expect("生产上限下该照常答").sessions.len(), 4);
 }

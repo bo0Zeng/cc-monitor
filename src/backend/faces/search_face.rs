@@ -91,14 +91,20 @@ impl Command for HistorySearch {
 
 impl Blocking for HistorySearch {
     fn run(req: HistorySearchReq, _cx: &Cx) -> Result<HistorySearchReply, HistorySearchErr> {
-        search_at(&crate::observe::history_query::agent_home(), req)
+        search_at(
+            &crate::observe::history_query::agent_home(),
+            req,
+            super::read_face::LINES_CAP_BYTES,
+        )
     }
 }
 
-/// [`HistorySearch`] 的本体，家目录是参数（判据拿夹具喂它）。
+/// [`HistorySearch`] 的本体，家目录与回包上限是参数（判据拿夹具喂它、拿小上限验「超了就拒、不截断」）。
+/// 生产只有一个值：`read_face::LINES_CAP_BYTES`。
 pub(crate) fn search_at(
     home: &std::path::Path,
     req: HistorySearchReq,
+    cap: usize,
 ) -> Result<HistorySearchReply, HistorySearchErr> {
     let opts = SearchOpts {
         include_tools: req.include_tools == Some(true),
@@ -112,15 +118,15 @@ pub(crate) fn search_at(
     let mut sessions = Vec::new();
     let mut size = 0usize;
     let unreadable = search_query::search_into(home, &req.query, &opts, &mut |row| {
-        // 上限照逐行那一形算（每行一份 JSON ＋ 换行）：同 `read_face::LINES_CAP_BYTES`。
+        // 上限照逐行那一形算（每行一份 JSON ＋ 换行）。
         size += serde_json::to_vec(&row).map_or(0, |b| b.len()) + 1;
         sessions.push(row);
         Ok(())
     })
     .map_err(HistorySearchErr::Failed)?;
-    if size > super::read_face::LINES_CAP_BYTES {
+    if size > cap {
         return Err(HistorySearchErr::TooLarge(
-            super::read_face::too_large(size).1,
+            super::read_face::too_large_at(size, cap).1,
         ));
     }
     Ok(HistorySearchReply {
