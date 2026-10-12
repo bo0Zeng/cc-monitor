@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "TAIL_PROBE",
+        "**见证长度**不是上限：`backend/observe/watcher.rs` 续读前核游标前多少字节没被改写（值取 `observe/skeleton.rs::WITNESS`，骨架的见证同一个数）；什么都不截",
+    ),
+    (
+        "MIN_LEN",
+        "**门槛**不是上限：`backend/observe/skeleton.rs` 多长的记录才落骨架（比它短的整份读一遍比读骨架还快，不落；什么都不截）",
+    ),
+    (
         "HOOK_TIMEOUT_SECS",
         "**时长**不是体量：`agents/claudecode/asks.rs` 写进会话级答题 hook 设置的期限（秒），到点那一家杀 hook、不给决定 ⇒ 框照常在终端里问。",
     ),
@@ -1081,6 +1089,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_BYTES",
         "冷开会话那几问共用的扫描图留在内存里的估算字节（超了先淘汰最久没用的；单张比它还大就不留、每次现扫）",
         "索引截断（不丢数据）",
+    ),
+    // 记录骨架读回来的上限：超了 ⇒ 当没有骨架，照记录整份重扫（记一笔调试日志）。
+    (
+        "src/backend/observe/skeleton.rs",
+        "MAX_READ",
+        "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，预读或冷开扫描图那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
+        "跳过+说清",
     ),
     (
         "src/backend/observe/search_query.rs",

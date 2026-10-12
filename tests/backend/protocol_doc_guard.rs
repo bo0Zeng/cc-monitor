@@ -595,6 +595,11 @@ mod tests {
         /// (文件, 类型名, 它是什么 —— 为什么不在 `wire.rs`)
         const ALLOWED: &[(&str, &str, &str)] = &[
             (
+                "observe/watcher.rs",
+                "PrimeSkel",
+                "预读那一路落的记录骨架（数据目录 `cache/skeleton/` 底下的缓存文件 schema，带版本号、认不出就整份重扫）；不上线",
+            ),
+            (
                 "control/launch.rs",
                 "LaunchReq",
                 "帧命令 `launch` 的入参（typed：形状从类型生成进协议参考与 TS），命令应答不是流协议帧",

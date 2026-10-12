@@ -134,6 +134,7 @@ fn own_what(id: &str) -> String {
         "accounts" => copy_text("rsDataPaths.backend.accounts", &[]),
         "accountsMcp" => copy_text("rsDataPaths.backend.accountsMcp", &[]),
         "extBackups" => copy_text("rsDataPaths.backend.extBackups", &[]),
+        "skeleton" => copy_text("rsDataPaths.backend.skeleton", &[]),
         _ => copy_text("dataPage.own.unknownItem", &[("id", id)]),
     }
 }

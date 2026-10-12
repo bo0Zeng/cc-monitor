@@ -1097,6 +1097,24 @@ pub enum Speaker {
     ToolResult,
 }
 
+/// [`Speaker::kind`] 那一份闭集（骨架读回来认词用）。
+pub(crate) const SPEAKER_KINDS: [&str; 14] = [
+    "human",
+    "slashCommand",
+    "bashInput",
+    "bashOutput",
+    "commandOutput",
+    "taskNotification",
+    "agentMessage",
+    "peerSession",
+    "coordinator",
+    "agentTask",
+    "system",
+    "compactSummary",
+    "interrupt",
+    "toolResult",
+];
+
 impl Speaker {
     /// 线上 `kind` 那一格（骨架索引的 `sp` 也用它）。
     pub(crate) fn kind(&self) -> &'static str {

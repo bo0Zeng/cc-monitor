@@ -10,7 +10,7 @@
 use std::collections::{HashMap, HashSet};
 
 /// 链上一个节点（适配层从一条记录翻过来）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Link {
     /// 这条记录的身份（与记录成品的 `id` 同值）。
     pub(crate) id: String,
@@ -39,8 +39,8 @@ pub(crate) enum ChainFact {
     Queued(String),
 }
 
-/// 一份会话记录的链索引：每个节点只记几个短串。
-#[derive(Debug, Default)]
+/// 一份会话记录的链索引：每个节点只记几个短串。可以抄一份接着记（扫描图续扫）；骨架落盘那一形见 [`skel`]。
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Chain {
     nodes: Vec<Link>,
     at: HashMap<String, usize>,
@@ -139,6 +139,11 @@ impl Chain {
         &self.off
     }
 
+    /// 记了几个节点。
+    pub(crate) fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
     /// 到此刻整份重算一共走过几格（见 `walked` 字段）。
     pub(crate) fn walked(&self) -> u64 {
         self.walked
@@ -165,6 +170,48 @@ impl Chain {
         }
         self.off = off;
         true
+    }
+}
+
+/// 骨架落盘那一形（`observe::skeleton`）：只存记进来的事实（节点 ＋ 排队原文），读回来照原样一条条记、算一次 ——
+/// 算出来的那几样（主线 · 豁免 · 清单）不存，跟整份记一遍的结果相同。
+pub(crate) mod skel {
+    use super::{Chain, ChainFact, Link};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize)]
+    struct FactsRef<'a> {
+        nodes: &'a [Link],
+        queued: Vec<&'a String>,
+    }
+
+    #[derive(Deserialize)]
+    struct Facts {
+        nodes: Vec<Link>,
+        queued: Vec<String>,
+    }
+
+    pub(crate) fn serialize<S: Serializer>(c: &Chain, s: S) -> Result<S::Ok, S::Error> {
+        let mut queued: Vec<&String> = c.queued.iter().collect();
+        queued.sort();
+        FactsRef {
+            nodes: &c.nodes,
+            queued,
+        }
+        .serialize(s)
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Chain, D::Error> {
+        let f = Facts::deserialize(d)?;
+        let mut c = Chain::new();
+        for n in f.nodes {
+            c.load(ChainFact::Node(n));
+        }
+        for q in f.queued {
+            c.load(ChainFact::Queued(q));
+        }
+        c.settle();
+        Ok(c)
     }
 }
 

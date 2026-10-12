@@ -248,3 +248,191 @@ fn r5_retracted_lines_are_listed_and_left_out_of_inputs_and_turns() {
     let turns: Vec<&str> = map.turns.iter().map(|t| t.uuid.as_str()).collect();
     assert_eq!(turns, ["u1", "u3"]);
 }
+
+/// 一张图的全部样子（线上那几样 ＋ 线上不带、续扫要用的那几格），比「接着扫的」与「整份扫的」用。
+fn whole(map: &ScanMap) -> String {
+    let limits = crate::observe::facts_query::ContextLimits::default();
+    let rows = |v: &[TurnRow]| -> Vec<String> {
+        v.iter()
+            .map(|r| {
+                format!(
+                    "{} {:?} {} {:?}",
+                    serde_json::to_string(r).unwrap(),
+                    r.pending,
+                    r.tail_fold,
+                    r.folds
+                )
+            })
+            .collect()
+    };
+    format!(
+        "end {} | starts {:?} | index {} | inputs {} | turns {:?} | off {:?} | facts {:?} | tail {:?}",
+        map.end,
+        map.starts,
+        serde_json::to_string(&map.index).unwrap(),
+        serde_json::to_string(&map.inputs).unwrap(),
+        rows(&map.turns),
+        map.off,
+        map.facts(&limits, None),
+        map.tail(3),
+    )
+}
+
+/// 带分叉、带一轮没收尾的合成记录（结构性的假行）。
+fn branched(turns: usize) -> String {
+    let mut s = fixture(turns);
+    s.truncate(s.rfind('\n').unwrap() + 1); // 去掉残尾
+    s.push_str(r#"{"type":"user","uuid":"b1","parentUuid":"e0","timestamp":"2026-10-01T01:00:00.000Z","message":{"role":"user","content":"回退前那句"}}"#);
+    s.push('\n');
+    s.push_str(r#"{"type":"user","uuid":"b2","parentUuid":"e0","timestamp":"2026-10-01T01:00:05.000Z","message":{"role":"user","content":"回退后这句"}}"#);
+    s.push('\n');
+    s.push_str(r#"{"type":"assistant","uuid":"b25","parentUuid":"b2","timestamp":"2026-10-01T01:00:05.500Z","message":{"model":"m-x","content":[{"type":"thinking","thinking":"想"},{"type":"tool_use","id":"tq","name":"Bash","input":{"command":"pwd"}}]}}"#);
+    s.push('\n');
+    s.push_str(r#"{"type":"user","uuid":"b26","parentUuid":"b25","timestamp":"2026-10-01T01:00:05.700Z","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tq","content":"/w"}]}}"#);
+    s.push('\n');
+    s.push_str(r#"{"type":"assistant","uuid":"b3","parentUuid":"b26","timestamp":"2026-10-01T01:00:06.000Z","message":{"model":"m-x","content":[{"type":"text","text":"还在跑"},{"type":"tool_use","id":"tb","name":"Bash","input":{"command":"ls"}}]}}"#);
+    s.push('\n');
+    s.push_str(r#"{"type":"user","uuid":"b4","parentUuid":"b3","timestamp":"2026-10-01T01:01:00.000Z","message":{"role":"user","content":"下一句"}}"#);
+    s.push('\n');
+    s.push_str(r#"{"type":"assistant","uuid":"b5","parentUuid":"b4","timestamp":"2026-10-01T01:01:01.000Z","message":{"model":"m-x","content":[{"type":"tool_use","id":"tc","name":"Bash","input":{"command":"ls"}}]}}"#);
+    s.push('\n');
+    s
+}
+
+/// R6（骨架 ＋ 还没收尾那一轮）：在任意一行处停下、把扫到一半的样子（含还没收尾那一轮）落成骨架再读回来、接着扫完 ⇒
+/// 与整份一遍扫的逐格相同（主线外清单在后半截才出现时，前半截的用户输入与轮次照新的清单重滤）。
+#[test]
+fn r6_resuming_from_any_line_through_the_skeleton_equals_one_pass() {
+    let text = branched(3);
+    let bytes = text.as_bytes();
+    let kind = crate::agents::record_tree_kind().unwrap_or_default();
+    let chain = crate::agents::claudecode::RECORDS.chain;
+    let full = ScanMap::scan_with(bytes, bytes.len() as u64, kind, chain).unwrap();
+    assert!(!full.off.is_empty(), "夹具该有主线外的");
+    assert!(
+        full.turns.iter().any(|t| t.done && !t.folds.is_empty()),
+        "夹具该有收了尾、带过程段的一轮"
+    );
+    let cuts: Vec<usize> = std::iter::once(0)
+        .chain(
+            bytes
+                .iter()
+                .enumerate()
+                .filter(|(_, b)| **b == b'\n')
+                .map(|(i, _)| i + 1),
+        )
+        .collect();
+    for &cut in &cuts {
+        let head = ScanMap::scan_with(&bytes[..cut], cut as u64, kind, chain).unwrap();
+        let mark = Mark {
+            len: cut as u64,
+            mtime: None,
+            cursor: head.end,
+            witness: head.rest.witness.clone(),
+        };
+        let raw = serde_json::to_vec(&SkelView {
+            mark,
+            scan: head.view(),
+        })
+        .unwrap();
+        let back: Skel = serde_json::from_slice(&raw).expect("骨架读不回来");
+        let start = back.scan.end as usize;
+        let mut s = back.scan;
+        s.feed(&bytes[start..], bytes.len() as u64, kind, chain)
+            .unwrap();
+        assert_eq!(
+            whole(&s.done(bytes.len() as u64)),
+            whole(&full),
+            "从第 {cut} 字节接着扫的跟一遍扫的不一样"
+        );
+        // 进程里留着的那张直接接着扫（不过盘）也一样。
+        let mut s = head.resume();
+        s.feed(&bytes[start..], bytes.len() as u64, kind, chain)
+            .unwrap();
+        assert_eq!(whole(&s.done(bytes.len() as u64)), whole(&full));
+    }
+}
+
+fn append(p: &std::path::Path, s: &str) {
+    let mut f = std::fs::OpenOptions::new().append(true).open(p).unwrap();
+    f.write_all(s.as_bytes()).unwrap();
+}
+
+/// R7（骨架落盘，数字节）：冷开扫描图照骨架 —— 重启后没变 ⇒ 读 0 字节、图与整份扫的相同；追加 k 字节 ⇒ 读 k ＋ 见证；
+/// 改写过（同长）⇒ 整份。进程里留着的那张遇到追加也只读 k ＋ 见证（不再按长度作废整份重扫）。
+#[test]
+fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
+    let (d, own) = crate::observe::skeleton::tests::sandbox("scan-r7");
+    let p = d.join("s.jsonl");
+    let text = branched(4);
+    std::fs::write(&p, &text).unwrap();
+    let home = || Skeletons::at(own.clone(), 0);
+    let probe = crate::observe::skeleton::WITNESS;
+
+    let first = RecordScans::new(4, 64 << 20).with_skeletons(home());
+    let a = first.get(&p).unwrap();
+    assert_eq!(first.bytes_read(), text.len() as u64, "头一次读整份");
+
+    let restarted = RecordScans::new(4, 64 << 20).with_skeletons(home());
+    let b = restarted.get(&p).unwrap();
+    assert_eq!(restarted.bytes_read(), 0, "重启后没变，还是读了记录");
+    assert_eq!(whole(&b), whole(&a), "照骨架出的图跟扫出来的不一样");
+
+    let more = "{\"type\":\"user\",\"uuid\":\"late\",\"parentUuid\":\"b3\",\"timestamp\":\"2026-10-01T02:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
+    append(&p, more);
+    let k = more.len() as u64;
+    let grown = RecordScans::new(4, 64 << 20).with_skeletons(home());
+    let c = grown.get(&p).unwrap();
+    assert_eq!(grown.bytes_read(), k + probe, "追加 k 字节应只读 k ＋ 见证");
+    let all = std::fs::read(&p).unwrap();
+    let fresh = ScanMap::scan_with(
+        &all[..],
+        all.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::RECORDS.chain,
+    )
+    .unwrap();
+    assert_eq!(whole(&c), whole(&fresh), "接着骨架扫的跟整份扫的不一样");
+    assert!(c.inputs.iter().any(|r| r.uuid == "late"));
+
+    // 进程里留着的那张（不落盘的那一份）：再追加一行，只读新的那一截 ＋ 见证。
+    let grown = RecordScans::new(4, 64 << 20);
+    grown.get(&p).unwrap();
+    let before = grown.bytes_read();
+    let again = more
+        .replace("\"late\"", "\"later\"")
+        .replace("b3", "late")
+        .replace("后来的一句", "再后来一句");
+    append(&p, &again);
+    let e = grown.get(&p).unwrap();
+    assert_eq!(
+        grown.bytes_read() - before,
+        again.len() as u64 + probe,
+        "留着的那张遇到追加又整份重扫了"
+    );
+    assert!(e.inputs.iter().any(|r| r.uuid == "later"));
+
+    // 改写（同长、内容变了）⇒ 整份。先让骨架跟上此刻这一份。
+    RecordScans::new(4, 64 << 20)
+        .with_skeletons(home())
+        .get(&p)
+        .unwrap();
+    let now = std::fs::read(&p).unwrap();
+    let flipped = String::from_utf8(now.clone())
+        .unwrap()
+        .replace("回退后这句", "回退后那句");
+    assert_eq!(flipped.len(), now.len());
+    std::fs::write(&p, &flipped).unwrap();
+    let f = std::fs::OpenOptions::new().write(true).open(&p).unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+        .unwrap();
+    drop(f);
+    let rewritten = RecordScans::new(4, 64 << 20).with_skeletons(home());
+    rewritten.get(&p).unwrap();
+    assert_eq!(
+        rewritten.bytes_read(),
+        now.len() as u64,
+        "改写过还照骨架读了"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}

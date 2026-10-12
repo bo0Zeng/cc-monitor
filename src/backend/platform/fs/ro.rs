@@ -12,7 +12,8 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 // 读出来的那两种值（元数据 · 目录遍历）只装读到的东西，没有一样能写回盘；调用方不用点名它们的类型。
-type Metadata = std::fs::Metadata;
+/// 文件的元数据（读者按这个名字收，不点名 `std::fs`）。
+pub(crate) type Metadata = std::fs::Metadata;
 type ReadDir = std::fs::ReadDir;
 
 /// 权限位那一格的值（从元数据读出来，或由 [`Ro::perms_from_mode`] 照一个 unix 模式造）；只是值，交给写面的改权限才落盘。

@@ -767,7 +767,7 @@ pub(crate) fn scan_session_index<R: std::io::BufRead>(
 /// ⚠ **口径是近似的，而且近似得有方向**：它不知道前端哪些记录最终不建卡（`stripInternalNoise`、
 /// ESC 折叠、slash/compact 细条…），只按记录的**原料**数。前端据 `t` / `sp` / `fd` 分档，
 /// 分不准的那几档落到偏保守的常数（`§2.5b`：「粗估用偏保守的常数，精算后往下修」）。
-#[derive(Debug, Default, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
 pub(crate) struct IndexRow {
     /// 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)`。
     pub(crate) o: u64,
