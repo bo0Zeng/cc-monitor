@@ -9,6 +9,9 @@
 /// ③ 只认「这一格是写好的字 / 语气」。
 pub(crate) mod cells;
 pub(crate) mod contract;
+/// 内容摘要（SHA-256 流式那一形 ＋ 十六进制长度）。① 文件管理那一块（读 · 写面比对 · 提交核暂存件）与原生那一块（传输台上传边传边算）都用 ·
+/// ② 纯算术（`ring`）· ③ 只认「一串字节的摘要」。
+pub(crate) mod digest;
 /// 只听回环的那一个地址。① stream（常驻监听口）· relay（中转的宿主）· control（本机探口）都绑 / 连它 · ② `std::net` 的常量 · ③ 只认「回环」。
 pub mod net;
 /// 后端自家目录的几个名字与权限位（只是常量；建目录经 `platform::fs::Own::ensure_dir`）。① 原生那一块与文件管理那一块（暂存区）都认这几个名字 ·
@@ -20,10 +23,14 @@ pub(crate) mod own_state;
 /// **路径原始字节的线上两种形**（字符串 / `{"b16": …}`，原住 `files/raw.rs`）。
 ///
 /// 它满足门槛的方式：①（≥2 层）文件管理那一块（整族入参 / 回送）与原生那一块（`dial/terminal.rs`：文件窗口「在此打开终端」
-/// 交来的当前目录）都读这一形 —— 两块之间零互相依赖，共用的只许在这一层。②（平台无关）只做 JSON ⇄ 字节。
+/// 交来的当前目录 · 传输台的本机落点）都读这一形 —— 两块之间零互相依赖，共用的只许在这一层。②（平台无关）只做 JSON ⇄ 字节，
+/// 以及字节还原成 `PathBuf`（`OsStr::from_encoded_bytes_unchecked`，标准库在哪都一样）。
 /// ③（无域知识）它只认「一串字节怎么上线」，不认那是哪个文件、拿去干什么。
 pub(crate) mod path_wire;
 /// 一次失败给人看的那一句 ＋ 下层原话（原话进复制详情，不上句子）。① control（传输台）与 dial（SFTP）都回它 · ② 纯数据 · ③ 只认「一句 ＋ 原话」。
+/// 根底下路径的两道解析（词法 ＋ 父目录解链接）。① 文件管理那一块（写面 · 提交 · 解压 · 分块上传）与原生那一块（传输台的本机落点）都过它 ·
+/// ② 读盘经 `platform::fs::Ro`（解链接）· ③ 只认「根 ＋ 一段相对路径」，不认落点是谁的数据。
+pub(crate) mod root_path;
 pub(crate) mod said;
 /// 「此刻显示这个会话的终端」那一形（`session-terminals` 的回包 · `terminal-processes` 的入参）。① observe（读出来）与 dial（拿去对这台的连接表）
 /// 都用，界面原样转交 · ② 纯数据 · ③ 只认「一个终端 ＋ 它那条 ssh 连接的四元组」。
@@ -31,6 +38,8 @@ pub(crate) mod seen_terminal;
 /// 「这台机器上现在有哪些 tmux 会话」那一张快照。① control（`gate::list_sessions` 判活、`ccm` 铸名避让）与 observe（`watcher` 焐热）都用 ——
 /// 住 `control/` 的话 watcher 要走一条 `observe → control` 的回边，住 `observe/` 的话 Gate 引用不到 · ② 起的是跨平台的 `tmux` · ③ 只认「会话名 + `@ccm_sid`」。
 pub(crate) mod session_snapshot;
+/// 暂存区上传件的键长与后缀。① 原生那一块（传输台造键、往暂存区写）与文件管理那一块（提交、孤儿扫）都认 · ② 只是常量 · ③ 只认「一个键 ＋ 一个后缀」。
+pub(crate) mod staging;
 /// 公历换算与 ISO8601 时刻。① control（额度时刻排字 · 账号库操作戳）、observe（搜索与历史清单的时刻）、agents（子运行时刻 · 额度窗口重置）都用 ·
 /// ② 纯算术 · ③ 只认日历。
 pub(crate) mod time;

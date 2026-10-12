@@ -143,14 +143,14 @@ fn has_prefix(hay: &str, prefix: &str) -> bool {
 /// 模块成员里**不住 `files/` 目录**的那几份（仓相对 `src/backend`）。
 /// `control/files_commit.rs`（上传的提交）同一条理由住 `control/`：
 /// 它会改变世界；而 `files/` 那一族的头注逐字「整族纯读」，放进去那句话就当场变假。
-/// `control/transfer.rs`（传输台住本机后端：下载的本机落点在这里写）同一条理由住 `control/`。
+/// `control/transfer.rs`（传输台）**不是**成员：两台之间搬字节是拨号那一半的活（它引 `dial::sftp`），归原生那一块；
+/// 它要的路径解析 · 暂存件命名 · 流式摘要 · 路径字节还原都住 `common/`，两块各引各的。
 /// `control/files_extract.rs`（解压 ＋ 建链接）同一条理由住 `control/`。
 const MEMBERS_ELSEWHERE: &[&str] = &[
     "control/files_commit.rs",
     "control/files_extract.rs",
     "control/files_upload_chunks.rs",
     "control/files_write.rs",
-    "control/transfer.rs",
 ];
 
 /// 模块在 crate 内的路径前缀（**成员之间**的引用不算一条边）。
@@ -160,7 +160,6 @@ const MODULE_PATHS: &[&str] = &[
     "control::files_extract::",
     "control::files_upload_chunks::",
     "control::files_write::",
-    "control::transfer::",
 ];
 
 fn src_root() -> PathBuf {
@@ -230,7 +229,7 @@ fn inward_edges(prod: &str) -> BTreeSet<String> {
 ///
 /// 「两块零互相依赖（共用 platform / common 除外）」读成
 /// **业务模块之间**零依赖：文件模块往外只许够到**下面那几层** —— 没有一类装得下原生那一块的业务
-/// （会话 · tmux · 账号 · 资产 · 历史），也没有一类装得下适配层（`agents::`）：
+/// （会话 · tmux · 账号 · 拨号与两台之间的传输 · 资产 · 历史），也没有一类装得下适配层（`agents::`）：
 /// 删会话那两问（落点 · 形状）由门经 `control::files_write::SessionPort` 递进来，文件模块不认任何一家的记录布局。
 /// 〔此前另有「围栏」「target 轴」「传输」「建自家目录」四类：围栏那两条改经门、建自家目录随 `own_dir` 进了 `common/`，
 /// target 轴与传输并进 [`Kind::Infra`]。〕
@@ -240,13 +239,11 @@ enum Kind {
     Platform,
     /// `common/` —— 两块共用的判定。
     Common,
-    /// 🔴 **下面一层的基础设施**：传输层（`dial` 的 SFTP 原语 · `stream::wire` 的帧）与 `lib.rs` 的能力声明轴。
-    /// 两块都可用；只许三个前缀（[`INFRA_PREFIXES`] ＋ target 轴），每一格的理由写在 [`OUTWARD`] 第三列。
+    /// 🔴 **汇总层的能力声明轴**：`lib.rs` 的 `TARGETS` / `Target`（住 crate 根，没有前缀）。
+    /// 〔此前还许 `dial::sftp::` · `stream::wire::` 两个前缀，都是传输台用的；传输台归原生那一块（layer11）之后
+    /// 这一块一条都不引，前缀一并撤了 ⇒ 拨号那一半与帧面再引一条就当场红。〕
     Infra,
 }
-
-/// 基础设施那一类许的路径前缀（target 轴那两格另判：它们住 crate 根，没有前缀）。
-const INFRA_PREFIXES: &[&str] = &["dial::sftp::", "stream::wire::"];
 
 /// ★ **登记表**：模块生产段够到外面的符号，**逐条**，带类别与理由。
 ///
@@ -324,11 +321,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "已过路径解析的路径：`files_write` 的路径解析交回它，`Face` 的写方法只收它",
     ),
     (
-        "platform::fs::FaceFile",
-        Kind::Platform,
-        "`Face` 开出来的那一份（传输台下载落点：新建 `.part` 后换成异步的往里写）",
-    ),
-    (
         "platform::fs::Perms",
         Kind::Platform,
         "权限位那一格的值（从元数据读出 · 照模式造），交给 `Face` 的改权限才落盘",
@@ -370,9 +362,45 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
         "线上那个键名 `b16`（本族判据按它对拍）",
     ),
     (
-        "common::said::Said",
+        "common::path_wire::to_path_buf",
         Kind::Common,
-        "传输台停下的那一句 ＋ 下层原话（原话进收场帧的复制详情，不上句子）",
+        "字节还原成 `PathBuf`（同一台取出去的字节原样回来），经 `raw` 的再导出用",
+    ),
+    // 下面这几格随传输台归原生那一块搬进 `common/`：两块都要，本族经再导出照旧用。
+    (
+        "common::digest::ContentDigest",
+        Kind::Common,
+        "SHA-256 的流式那一形：读交出去的摘要 · 写面比对 · 提交对暂存件逐块读着算",
+    ),
+    (
+        "common::digest::SHA256_HEX_LEN",
+        Kind::Common,
+        "CAS 摘要形里十六进制串的长度（判 `expect` 的形）",
+    ),
+    (
+        "common::root_path::lexical_in_root",
+        Kind::Common,
+        "路径解析①（词法不越根）：写面每一处改动先过它",
+    ),
+    (
+        "common::root_path::resolve_parent_in_root",
+        Kind::Common,
+        "路径解析②（父目录解链接后仍在根下）：造 `Resolved` 的那一道",
+    ),
+    (
+        "common::root_path::resolve_in_root",
+        Kind::Common,
+        "两道串起来跑一遍",
+    ),
+    (
+        "common::staging::KEY_LEN",
+        Kind::Common,
+        "暂存件的键长：提交认键、孤儿扫认名（造键的一侧是传输台）",
+    ),
+    (
+        "common::staging::PART_SUFFIX",
+        Kind::Common,
+        "暂存件的后缀：同上一格",
     ),
     (
         "common::contract::malformed",
@@ -411,18 +439,6 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
          （声明 target 的面不止一个）—— 声明契约，不是行为依赖",
     ),
     ("Target", Kind::Infra, "同上一格：target 轴的元素类型"),
-    (
-        "dial::sftp::Dial",
-        Kind::Infra,
-        "传输台要一条 sftp 会话才搬得动字节：只经 `ssh-dial/sftp.rs` 包出来的 `Dial`，手里不拿 `DialRequest`",
-    ),
-    ("dial::sftp::Session", Kind::Infra, "同上一格：那一条 sftp 会话本身"),
-    (
-        "stream::wire::Frame",
-        Kind::Infra,
-        "传输进度要出方向那一种帧才报得出",
-    ),
-    ("stream::wire::TransferEnd", Kind::Infra, "同上一格：传输结束那一帧的收尾格"),
 ];
 
 /// ★★ 模块够到外面的每一条边都在表里，表里也不留死行；而且**只有**那三类。
@@ -510,24 +526,6 @@ const DOORS: &[(&str, &str, Door)] = &[
         "control::files_extract::answer_wire",
         Door::Command,
     ),
-    // 传输台（`control/transfer.rs`）：**每条流连接一张票表**（同 `dial::link::Table`）
-    //   ⇒ 这一面的入口是「造表 ＋ 答口」两个函数，外加读循环 / 分派签名里点名的那个表类型。
-    //   四条 `transfer-*` 硬臂**全**经 `answer_wire` 进来（它们是 `Run::Builtin`，要碰本连接的票表与应答通道）。
-    (
-        "stream/inbound/mod.rs",
-        "control::transfer::Desk",
-        Door::Command,
-    ),
-    (
-        "stream/inbound/mod.rs",
-        "control::transfer::Desk::new",
-        Door::Command,
-    ),
-    (
-        "stream/inbound/mod.rs",
-        "control::transfer::Desk::answer_wire",
-        Door::Command,
-    ),
     // 删会话那两问的窄口：门把适配层那两个函数装进这个类型递给写面（`SESSION_PORT`）。
     (
         "stream/inbound/registry/file_manager.rs",
@@ -571,7 +569,7 @@ fn the_native_backend_reaches_the_file_backend_only_through_its_doors() {
 /// **文件模块与原生那一块的业务零依赖**：往外只够到下面那几层。
 ///
 /// - 每一格的类别与路径首段对得上（没有这一条，`OUTWARD` 可以把一条 `observe::…` 登记成 `Kind::Common` 让上一条变绿）；
-/// - 基础设施那一类只许 [`INFRA_PREFIXES`] 与 target 轴，每一格都写得出理由，条数**相等**；
+/// - 基础设施那一类只许 target 轴那两格，每一格都写得出理由，条数**相等**；
 /// - 没有一类装得下 `agents::`（适配层）—— 删会话那两问经门递进来，这一向的边今天为零。
 /// 反方向（原生那一块零处伸手进文件模块、只经门）由 [`the_native_backend_reaches_the_file_backend_only_through_its_doors`] 判。
 #[test]
@@ -580,11 +578,7 @@ fn the_file_backend_depends_on_no_business_module_only_on_the_layers_below() {
         let ok = match kind {
             Kind::Platform => has_prefix(path, "platform::"),
             Kind::Common => has_prefix(path, "common::"),
-            Kind::Infra => {
-                INFRA_PREFIXES.iter().any(|p| has_prefix(path, p))
-                    || *path == "Target"
-                    || *path == "TARGETS"
-            }
+            Kind::Infra => *path == "Target" || *path == "TARGETS",
         };
         assert!(
             ok,
@@ -594,8 +588,8 @@ fn the_file_backend_depends_on_no_business_module_only_on_the_layers_below() {
     }
     let infra = OUTWARD.iter().filter(|(_, k, _)| *k == Kind::Infra).count();
     assert_eq!(
-        infra, 6,
-        "基础设施那一类从 6 条变成了 {infra} 条 —— **相等，不是上限**：\
+        infra, 2,
+        "基础设施那一类从 2 条变成了 {infra} 条 —— **相等，不是上限**：\
          变多 = 文件模块又往下面那一层多要了一样东西（先问能不能不要）；变少 = 同拍删行"
     );
 }
@@ -626,11 +620,12 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
         // 6 → 7：多了解压面 `control::files_extract::answer_wire`。
         // 7 → 8：多了删会话那两问的窄口类型 `control::files_write::SessionPort`。
         // 8 → 9：读那一面多一个可撤的入口 `files::answer_grep_cancellable`（按内容搜，异步档）。
-        command, 9,
-        "命令注册那一处够到的入口从 9 个变成了 {command} 个 —— \
+        // 9 → 6：传输台（`Desk` · `Desk::new` · `Desk::answer_wire`）归原生那一块，不再是这一块的门。
+        command, 6,
+        "命令注册那一处够到的入口从 6 个变成了 {command} 个 —— \
          四面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
          上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕／ 解压 `control::files_extract::answer_wire`〔FILES2 +1〕）各一个入口，\
-         〔SR1b 09-24 +3〕传输台每连接一张表：表类型 ＋ 造表 `Desk::new` ＋ 答口 `Desk::answer_wire`。\
+         〔SR1b 09-24 +3，layer11 −3〕传输台归原生那一块，三格出列。\
          〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。〔FILES3 +1〕按内容搜那个可撤的入口 `files::answer_grep_cancellable`。\
          多一个就说明有命令绕过了入口、直接调内部"
     );
@@ -645,8 +640,6 @@ fn the_file_backend_is_mounted_from_exactly_its_three_declarations() {
         ("control/mod.rs", "pub mod files_write;"),
         // 上传的提交那一份。
         ("control/mod.rs", "pub mod files_commit;"),
-        // 传输台那一份。
-        ("control/mod.rs", "pub mod transfer;"),
         // 解压 ＋ 建链接那一份；上传块形那一份。
         ("control/mod.rs", "pub mod files_extract;"),
         ("control/mod.rs", "pub mod files_upload_chunks;"),

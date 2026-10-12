@@ -1,6 +1,6 @@
 //! 文件管理面的写：[`Face`] · [`Resolved`] · [`FaceFile`]；分叉那一处只会新建的 [`NewFile`]。
 //!
-//! - [`Resolved`] 是「已过路径解析」的那条路径：只能由 `control/files_write.rs` 的路径解析造（[`Resolved::vouch`]，
+//! - [`Resolved`] 是「已过路径解析」的那条路径：只能由路径解析造（`common/root_path.rs` 那两道 · `control/files_write.rs` 那几道；[`Resolved::vouch`]，
 //!   谁许调由 `readonly_guard` 的构造判据钉）。[`Face`] 的写方法只收它，不收 `&Path` ⇒ 没过路径解析的路径递不进来。
 //! - [`Face`] 只有分派那一层造（按档装处理器的 `stream/inbound/spec.rs::prepare`，帧面 · CLI 面 · 资产域那扇门都经它；另有帧面给传输台的那一份），
 //!   按命令表声明的那一族（`Run::BlockingFace`，只有文件管理那一族用）递给处理函数；别的命令拿不到这个值，也就写不出来。
@@ -19,7 +19,7 @@ use super::ro::Perms;
 pub struct Resolved(PathBuf);
 
 impl Resolved {
-    /// 担保 `p` 已过路径解析。只许 `control/files_write.rs` 的路径解析调（构造判据钉）。
+    /// 担保 `p` 已过路径解析。只许路径解析调（`common/root_path.rs` · `control/files_write.rs`，构造判据钉）。
     pub(crate) fn vouch(p: PathBuf) -> Resolved {
         Resolved(p)
     }

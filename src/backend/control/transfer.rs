@@ -11,11 +11,12 @@
 //!
 //! 起跑挂在 `transfer-start` 上、不挂在开单上：monitor 先登记好看的人、再起跑，终局就不会没人收。
 //!
-//! # 它是文件管理写面的成员
+//! # 归原生那一块（两台之间搬字节是拨号那一半的活）
 //!
-//! 下载要写本机用户选的落点（`.part` ＋ 改名上位）⇒ 按 `INVARIANTS §41.6` 只许住文件管理那一面：
-//! 写经票表手里那一份 `Face`（帧面分派那一层造台时交来），用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；
-//! 每一处改动的路径都是 `files_write::resolve_in_root` 交回的 `Resolved`。
+//! 它引 `dial::sftp` 拿会话、搬字节；文件管理那一块（`files/` · `control/files_*.rs`）只管本机的读和写，它一处都不引
+//! （`files/module_boundary_guard.rs` 两个方向都钉）。两块共用的路径解析 · 暂存件命名 · 流式摘要 · 路径字节还原都住 `common/`。
+//! 下载要写本机用户选的落点（`.part` ＋ 改名上位）：写经票表手里那一份 `Face`（帧面分派那一层造台时交来），
+//! 用到的只有 `O_EXCL` 新建 · 接着写 · 改名 · 删文件；每一处改动的路径都是 `common::root_path::resolve_in_root` 交回的 `Resolved`。
 //! 远端那一半（暂存区的写）全经 `ssh-dial/sftp.rs` 的写原语（只许两处、先过 `fenced_remote`）。
 //!
 //! # 存亡规矩
@@ -43,9 +44,9 @@ use std::sync::{Arc, Mutex};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::{mpsc, watch, Notify};
 
+use crate::common::root_path::resolve_in_root;
 use crate::common::said::Said;
-use crate::control::files_commit::{KEY_LEN, PART_SUFFIX};
-use crate::control::files_write::resolve_in_root;
+use crate::common::staging::{KEY_LEN, PART_SUFFIX};
 use crate::dial::sftp::{self, Dial, Session};
 use crate::platform::fs::{Face, FaceFile, Ro};
 use crate::stream::wire::{Frame, TransferEnd};
@@ -424,7 +425,7 @@ pub(crate) async fn upload_to_staging(
             )
         })?;
     // 续传：接上的那一截前缀在本机读一遍算进摘要（与发出去的那一份逐字节同源：同一个本机文件）。
-    let mut digest = crate::files::ContentDigest::new();
+    let mut digest = crate::common::digest::ContentDigest::new();
     if resume_from > 0 {
         lf.seek(std::io::SeekFrom::Start(0)).await.map_err(|e| {
             Said::with_raw(
@@ -730,9 +731,9 @@ fn err(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
 /// 下载的本机落点：字符串或 `{"b16": …}`（与文件管理面同一个字节形）。
 fn local_path_of(args: &serde_json::Value) -> Result<PathBuf, String> {
     args.get("local_path")
-        .and_then(crate::files::raw::from_json)
+        .and_then(crate::common::path_wire::from_json)
         .filter(|b| !b.is_empty())
-        .map(|b| crate::files::raw::to_path_buf(&b))
+        .map(|b| crate::common::path_wire::to_path_buf(&b))
         .ok_or_else(|| {
             crate::common::contract::malformed("missing `local_path` (a string or {\"b16\": …})")
         })

@@ -331,11 +331,7 @@ fn oneshot_lines_land_in_the_backend_log() {
     assert_eq!(given, Some(PathBuf::from("/x/given.log")));
     let blank = oneshot_log_path(&|k| (k == ENV).then(|| "  ".to_string()));
     if let Some(p) = blank {
-        assert!(
-            p.ends_with(crate::control::resident::STDERR_LOG_REL),
-            "{}",
-            p.display()
-        );
+        assert!(p.ends_with(super::STDERR_LOG_REL), "{}", p.display());
     }
     // 追加一整行、不截断；目录不在 ⇒ Err、不替它建。
     let d = std::env::temp_dir().join(format!("ccm-oneshot-{}", std::process::id()));

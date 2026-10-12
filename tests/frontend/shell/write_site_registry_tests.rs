@@ -115,7 +115,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     //   `config::patch_config_at`，本文件零写盘。
     // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 「下载落到用户选的本机路径」那一行摘了（连同它上面那段 09-21 的订正：「本地缓存」那句是假的、
-    //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（文件管理写面 `control/transfer.rs`，写经 `Face`），
+    //    围栏补在开单那一刻）—— 落地那一下随传输台搬进了本机常驻后端（`control/transfer.rs`，写经帧面交来的 `Face`；传输台 layer11 起归原生那一块），
     //    monitor 这一侧零写盘。上一版还说「开单时那道本机落点围栏照旧在中继里先判一次
     //    （`sftp_pool.rs::transfer_call`）」—— FN1 把那一判删了（后端那道也没了，本地那道是它的出声早副本）。
     // 原 `utils.rs`：随两个前端共用搬进 `host-core`（`src/common/host-core/src/atomic.rs`）。
@@ -434,7 +434,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     // `logging.rs` 两行随写盘一起摘（见 `WRITE_SITES` 同处）。
     // `session_map.rs` 那条 watcher 线程那一行摘了：monitor 自己那份判活（连同它写的会话映射状态）删了。
     // 「下载落到用户选的本机路径」那一行（指名 SR1b 的待收例外）**收了**：
-    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，文件管理写面；当时写「先过会话文件围栏」，
+    //    下载的落地随传输台搬进本机常驻后端（`control/transfer.rs`，写经帧面交来的 `Face`；当时写「先过会话文件围栏」，
     //    FN1 之后只过路径解析）。
     // 通用原语：它自己不定落点，调用方各自申报（今天的调用方全是 monitor 自己的状态文件，
     // 下面第 ② 道把「搬走写盘的那几份文件」里调它也算成一处写）。
