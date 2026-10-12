@@ -19,7 +19,7 @@ interface SshTransport :
     val isConnected: Boolean
 
     /**
-     * 活性探测。[isConnected] 只读 sshj 本地标志，死 TCP 在内核超时前仍是 true，复用连接前要真走一次往返。
+     * 活性探测。[isConnected] 只读本地标志，死 TCP 在内核超时前仍是 true，复用连接前要真走一次往返。
      * 默认实现就是 [isConnected]；[SshConnection] 实现为开关一次 session，超过 [timeoutMs] 判死并关整条连接。
      * [timeoutMs] 不设默认值，由调用方显式传。
      */

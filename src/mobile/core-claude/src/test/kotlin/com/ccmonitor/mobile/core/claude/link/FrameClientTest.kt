@@ -31,7 +31,7 @@ internal class FakeDuplex : RemoteDuplex {
         out.close()
     }
 
-    /** 读那一头抛错（断网：sshj 的 `SSHException: Software caused connection abort`，它是 IOException）。 */
+    /** 读那一头抛错（断网：读那一头抛 IOException）。 */
     fun fail(e: java.io.IOException) {
         out.close(e)
     }

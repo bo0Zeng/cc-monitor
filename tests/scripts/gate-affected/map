@@ -23,8 +23,8 @@
 @suites cargo comm-boundary test-tiers generated backend npm
 # 壳那棵 workspace（monitor · 文件窗口 · 共享 crate）只编不跑的那几格：lint · 死码 · Linux 真链 · 截图台架的无头壳 · Windows 交叉检查与真链。
 @shellrs clippy deadcode appbuild shotsshell winchk winlink
-# 后端那棵（src/backend 及它链的共享 crate）只编不跑的那几格：lint · 死码 · Windows 交叉检查 · 两个 musl 静态包。
-@backendrs clippy-backend deadcode-backend winchk-backend muslbuild
+# 后端那棵（src/backend 及它链的共享 crate）只编不跑的那几格：lint · 死码 · Windows 交叉检查 · 两个 musl 静态包 · 拨号核心的两个 android target。
+@backendrs clippy-backend deadcode-backend winchk-backend muslbuild androidbuild
 # 真机 e2e 全部套件（逐套列名：gate.sh 里新加的套件这里没列 ⇒ 按恒跑算）＋ 起内层门禁跑两套 e2e 的 env-sandbox。被测对象是后端二进制、cc-bus 脚本与几份启动渲染 TS。
 @e2e cc-spawn-uplift backend-tmux-late-server tmux-target restart backend-sessions-rewatch backend-cc-bus resume cc-bus-queue-drain graylight-frames resume-frames backend-gate2 ccm-cli answer-hook inbound-frames ccm-contract-parity p3t-local-tmux ccm-print-parity backend-fork local-backend env-sandbox
 # local-backend 那一套另在壳 workspace 里 `cargo test --lib -- --ignored local_backend::`（monitor 的 lib 是它的被测对象之一）⇒ 壳那边改了也要它；
@@ -108,6 +108,9 @@ src/comms/outward/**            shellrs,backendrs,e2e  中转那层：后端链�
 
 # ── 后端那棵 ─────────────────────────────────────────────────────────────────────────
 src/backend/**                  backendrs,e2e  后端 crate：e2e 全部套件的被测对象就是它编出来的二进制
+src/backend/ssh-dial/**         mobile  拨号核心：手机嵌的 Rust 核心（src/mobile/core-rs）链它，手机那一格编那份 .so
+src/backend/Cargo.toml          mobile  后端那一棵 workspace 的根清单（成员 · 手机那两份 profile · 打补丁版 russh）：手机那份 .so 也照它编
+src/backend/Cargo.lock          mobile  同一份 lock：手机那份 .so 的依赖版本也锁在这里
 src/vendor/**                   backendrs,e2e  后端链的 vendored russh
 tests/backend/**                backendrs  后端的测试（#[path] 引进 lib 的 test 档）；被壳那边 include 的由规则 ① 另加
 tests/benches/**                backendrs  后端 Cargo.toml 里登记的 bench 目标（--all-targets 编它）

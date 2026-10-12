@@ -82,7 +82,7 @@ pub struct Ack {
     /// 同一条胜者，结构化 —— 记 last-good 用它（地址不在界面进程里解析）。
     #[serde(default)]
     pub winner: Option<Endpoint>,
-    /// 这一趟目标那台是否已严格校验指纹（后端组请求时定的，`dial/machine.rs`）。
+    /// 这一趟目标那台是否已严格校验指纹（后端组请求时定的，`ssh-dial/machine.rs`）。
     #[serde(default)]
     pub strict: bool,
     /// 同上，跳板那一台。

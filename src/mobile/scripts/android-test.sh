@@ -11,8 +11,7 @@
 #   上一趟留下的数据会让冒烟落到「进过服务器」那一支，「从没连过 ⇒ 落在服务器列表」那一支就走不到了。
 # gradle 一律 --no-daemon：守护进程会留在 heavy 的 scope 里、一直占着槽位。
 # core-data 与 app 合进一次 gradlew 加 --continue：一个挂了另一个照跑，两份报告都在。
-# core-ssh 单开一条，因为 -P 的 instrumentation 过滤是全局的；它只跑 KeystoreSigner，
-# 要一台真 SSH 服务端的 SshConnectionTest 不在这里跑（留真机手测）。
+# core-ssh 单开一条：RustTransportTest 要台架参数（不给就整份跳过），手连台架时照它头注另跑。
 # 这份脚本的形状由 core-data 的 InstrumentedTestInventoryTest 钉着（JVM 单测，门禁里跑）；
 # 清数据与 --no-daemon 由后端那棵的 `flow_scripts_guard` 拿假 gradlew / adb 真跑一遍钉着。
 set -euo pipefail
@@ -27,6 +26,7 @@ if [ "$clear_rc" -ne 0 ] || [ "$said" != Success ]; then
 fi
 echo "android-test: pm clear $pkg ⇒ Success"
 rc=0
-./gradlew --no-daemon --console=plain :core-data:connectedDebugAndroidTest :app:connectedDebugAndroidTest --continue --stacktrace || rc=$?
-./gradlew --no-daemon --console=plain :core-ssh:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.ccmonitor.mobile.core.ssh.KeystoreSignerInstrumentedTest --stacktrace || rc=$?
+./gradlew --no-daemon --console=plain :core-data:connectedDebugAndroidTest :app:connectedDebugAndroidTest :core-rs:connectedDebugAndroidTest --continue --stacktrace || rc=$?
+# core-ssh：导入时派生公钥 · RustTransport（后者不带台架参数时整份跳过；要连台架的跑法见 core-ssh 的 RustTransportTest 头注）。
+./gradlew --no-daemon --console=plain :core-ssh:connectedDebugAndroidTest --stacktrace || rc=$?
 exit "$rc"

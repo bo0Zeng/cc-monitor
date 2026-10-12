@@ -19,11 +19,14 @@ name = "cc-monitor-backend"
 version = "0.0.0"
 edition = "2021"
 
-# Standalone crate, intentionally NOT part of a workspace. There is no root
-# Cargo.toml: a workspace would couple this crate to the monitor's build and
+# Standalone crate, intentionally NOT part of the monitor's workspace. There is no
+# repo-root Cargo.toml: that would couple this crate to the monitor's build and
 # `cargo test --all`, while the backend is built and shipped on its own (one
 # native binary per target platform, identity = `BUILD_ID`). Build this
 # natively on the target.
+# It is the root of its own small workspace (see `[workspace]` at the end): the
+# dial core `ssh-dial/` (shared with the phone) is a member, so both share this
+# lock and the patched russh, and `cargo test --workspace` runs its tests too.
 #
 # F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
 #   · `cargo build`  **真的独立**。把两条 backend→monitor 的 `include_str!` 路径打断，
@@ -36,7 +39,7 @@ edition = "2021"
 # 不影响部署。由 monitor 侧 `cross_half_edge_registry` 逐条登记 + 钉住
 # 「一条都不许长到生产段」（真长过去，上面那句 standalone 就变假了）。
 
-# 「后端源码树」的判据人群：本包 ＋ 只有后端链的兄弟包（中转 `comms-outward`）。按人群扫的判据（只读 · 零定时器 · 日志白名单 …）
+# 「后端源码树」的判据人群：本包 ＋ 只有后端链的兄弟包（中转 `comms-outward`）。拨号核心 `ssh-dial` 住本目录底下（`ssh-dial/`），按目录就在人群里。按人群扫的判据（只读 · 零定时器 · 日志白名单 …）
 #   照旧管到中转那几份；`guard_core::walk_tree` / `module_address` 按它收 / 认（中转的文件认作 `comms-outward/<文件>`）。
 [package.metadata.guard]
 population = ["../comms/outward"]
@@ -140,6 +143,8 @@ copy-core = { path = "../common/copy-core" }
 rhai = { version = "1.26.1", default-features = false, features = ["std", "sync", "serde", "no_time"] }
 # 部署那一族的契约（表 A 的键与行 · 戳格式 · 答话形状 · 路径），与 monitor 同一份；判定（承诺 · 换不换 · 认不认）住 `control/deploy_plan.rs`。
 deploy-contract = { path = "../common/deploy-contract" }
+# 拨号核心（竞速 · 跳板 · 鉴权 · 复用 · 用法 · SFTP 客户端）：手机同一份；本后端经 `dial/mod.rs::host` 装上自己那一套。
+ssh-dial = { path = "ssh-dial" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
@@ -277,7 +282,7 @@ russh = { version = "0.61.1", default-features = false, features = ["ring", "fla
 # （`INVARIANTS §41.6`）。签字行住 `readonly_guard::g6_dependency_signoff`。
 # 版本照抄当年 `../frontend/shell/Cargo.toml` 那一行（`3`，lock 里 `3.0.0`，Apache-2.0；现打核过 5 个候选、
 # 用户「不要 GPL」核过）。monitor 那一行同拍删了（界面进程零 SFTP）⇒ 本 crate 是唯一一份。
-# ⚠ 3.0.0 **仍然无** posix-rename@openssh 扩展 ⇒ `dial/sftp.rs::put_atomic` 的近似原子写照旧成立，不许当成已解决。
+# ⚠ 3.0.0 **仍然无** posix-rename@openssh 扩展 ⇒ `ssh-dial/sftp.rs::put_atomic` 的近似原子写照旧成立，不许当成已解决。
 # 它是**传输泛型**的（吃 `AsyncRead + AsyncWrite`，自己的 `tokio` 没开 `net`）⇒ 结构上开不了 socket，
 # 字节只能走 `dial/` 那条已鉴权的 SSH 连接。
 russh-sftp = "3"
@@ -312,6 +317,8 @@ mimalloc = { version = "0.1", default-features = false }
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../common/test-home" }
+# 测试档不许出网：拨号核心那一句断言（`test-support`）在后端的测试档里也开着（resolver 2 ⇒ 不并进发布构建）。
+ssh-dial = { path = "ssh-dial", features = ["test-support"] }
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
 comms-outward = { path = "../comms/outward", features = ["test-support"] }
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
@@ -350,3 +357,27 @@ opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
+
+# ── 后端这一棵 workspace：本包 ＋ 拨号核心（`ssh-dial/`）＋ 手机嵌的 Rust 核心（`../mobile/core-rs/rust`，crate `mobcore`，只是拨号核心的 FFI 外壳）──
+# 同一份 lock、同一个打补丁版 russh（上面 `[patch.crates-io]` 只在 workspace 根上生效）；两份的判据由 `cargo test --workspace` 跑。
+# 缺省成员只有本包（`cargo build` / `cargo test` 不带 `-p` 时照旧只管后端）。
+[workspace]
+members = [".", "ssh-dial", "../mobile/core-rs/rust"]
+default-members = ["."]
+
+# ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──
+# release 那一份：体积优先（opt-level z · 胖 LTO · 一个编译单元 · 去符号）；`panic = "unwind"` 是承重的 ——
+#   嵌在 App 进程里，panic 要在 JNI 边界上接住（`catch_unwind`），abort 会带走整个 App。
+[profile.mobile]
+inherits = "release"
+opt-level = "z"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"
+
+# debug 那一份（模拟器 · androidTest · 冒烟）：增量快；去掉调试信息，包不至于几十 MB。
+[profile.mobile-dev]
+inherits = "dev"
+debug = false
+strip = "debuginfo"

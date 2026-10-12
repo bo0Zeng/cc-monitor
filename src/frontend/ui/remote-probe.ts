@@ -8,7 +8,7 @@
  * 期限归发起方（DL1）：这一问的预算 15 s 由本文件给；到点没等到结局 ⇒ 抛 {@link ProbeStalled}，带「停在哪一段」（最后收到的那一格）。
  *
  * 交过去的是设置页表单里那台（**可能还没保存**）的配置 ＋ 已保存的那一份（表单空着指纹时，同一个 host 才继承）＋ 跳板那一台；
- * 拨号请求在后端组（`src/backend/dial/machine.rs`）。按形状严格收；本机后端不在 ⇒ 通道那一层报（D11，不回落）。
+ * 拨号请求在后端组（`src/backend/ssh-dial/machine.rs`）。按形状严格收；本机后端不在 ⇒ 通道那一层报（D11，不回落）。
  */
 import { chan, ChanError, type Item } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, saidFrom, unreadableFrom } from "./ipc/chan-caller";

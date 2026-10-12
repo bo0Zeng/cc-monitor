@@ -13,7 +13,7 @@ import java.io.File
  * - 文件集与逐文件 `@Test` 数（行首 `@Test` 计数，不剥注释，写在注释里的也算）；
  * - 设备测的入口 `scripts/android-test.sh` 仍为每个有 instrumented 测的模块跑 `connectedDebugAndroidTest`
  *   （门禁那一格调的就是它，它是设备测唯一的入口）；
- * - `SshConnectionTest` 要一台真 SSH 服务端，入口脚本刻意用 instrumentation 过滤跳过它，这个缺口写成断言。
+ * - 入口脚本不用 instrumentation 过滤挑文件（每一份都跑得到；要台架的那一份不带参数时自己跳过）。
  *
  * 它不知道那些测跑起来是红是绿，那要设备。
  *
@@ -70,31 +70,15 @@ class InstrumentedTestInventoryTest {
     }
 
     /**
-     * `SshConnectionTest` 刻意不进入口脚本：它要真 SSH 服务端，留真机手测。
-     * 入口脚本用 `-Pandroid.testInstrumentationRunnerArguments.class=…KeystoreSignerInstrumentedTest`
-     * 把 `:core-ssh` 过滤成只跑那一个文件；过滤没了或放宽了，都会去连真服务端而必挂。
+     * 每一份 instrumented 测都从入口脚本跑到：入口里不再用 instrumentation 过滤挑文件
+     * （从前那一份要真 SSH 服务端的测已经删了；RustTransportTest 不带台架参数时自己整份跳过，不靠过滤）。
      */
     @Test
-    fun theOneInstrumentedFileThatCiDeliberatelySkipsIsStillSkippedOnPurpose() {
+    fun noInstrumentedFileIsFilteredOutOfTheEntry() {
         val ci = read(CI_WORKFLOW)
         assertTrue(
-            "`$CI_WORKFLOW` 里 `:core-ssh` 的 instrumentation 过滤不见了。\n" +
-                "   没有它，会去跑 `$CI_SKIPPED_FILE`（要连一台真 SSH 服务端），在模拟器上必挂。",
-            ci.contains(CORE_SSH_FILTER),
-        )
-        val counts = instrumentedTestFiles().toMap()
-        val skipped = counts[CI_SKIPPED_FILE]
-        assertEquals(
-            "`$CI_SKIPPED_FILE` 的条数变了（它是唯一不进入口脚本的文件）。\n" +
-                "   它的每一条都只能真机手测，增减要有意识地做。",
-            PINNED_TESTS_NOT_IN_CI,
-            skipped,
-        )
-        assertEquals(
-            "「入口脚本接线到的 `@Test` 数」对不上了。\n" +
-                "   分解：总 $PINNED_TOTAL_TESTS 条 − 刻意不跑的 $PINNED_TESTS_NOT_IN_CI 条（`$CI_SKIPPED_FILE`）＝ $PINNED_TESTS_IN_CI 条。",
-            PINNED_TESTS_IN_CI,
-            counts.values.sum() - PINNED_TESTS_NOT_IN_CI,
+            "`$CI_WORKFLOW` 又用 instrumentation 过滤挑文件了：被挑掉的那几份没有入口可跑。",
+            !ci.contains(CLASS_FILTER),
         )
     }
 
@@ -152,8 +136,9 @@ class InstrumentedTestInventoryTest {
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultButtonsTest.kt",
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt",
-                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreSignerInstrumentedTest.kt",
-                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt",
+                "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt",
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt",
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt",
             )
 
         /** 逐文件 `@Test` 方法数。 */
@@ -165,21 +150,17 @@ class InstrumentedTestInventoryTest {
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/MigrationTest.kt" to 15,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/RestoreDefaultButtonsTest.kt" to 1,
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt" to 1,
-                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreSignerInstrumentedTest.kt" to 2,
-                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt" to 9,
+                "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt" to 1,
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt" to 2,
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 7,
             )
 
-        const val PINNED_TOTAL_TESTS = 33
-        const val PINNED_TESTS_IN_CI = 24
-        const val PINNED_TESTS_NOT_IN_CI = 9
-
-        const val CI_SKIPPED_FILE = "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionTest.kt"
+        const val PINNED_TOTAL_TESTS = 32
         const val CI_WORKFLOW = "scripts/android-test.sh"
         const val ANDROID_TEST_JOB = "connectedDebugAndroidTest"
-        const val CORE_SSH_FILTER =
-            "android.testInstrumentationRunnerArguments.class=com.ccmonitor.mobile.core.ssh.KeystoreSignerInstrumentedTest"
+        const val CLASS_FILTER = "testInstrumentationRunnerArguments.class="
 
-        val MODULES_WIRED_IN_CI = listOf(":core-data", ":app", ":core-ssh")
+        val MODULES_WIRED_IN_CI = listOf(":core-data", ":app", ":core-ssh", ":core-rs")
 
         const val ANDROID_TEST_SRC = "src/androidTest"
         val SKIPPED_DIRS = setOf("build", ".git", ".gradle", "libs", "bridge", "doc", "scratchpad", "testing", "config", "gradle")

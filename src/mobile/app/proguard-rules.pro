@@ -1,5 +1,5 @@
 # ───────────────────────────────────────────────────────────────────────────
-# R8 full-mode keep 规则。BC/sshj 的 keep 来自 core-ssh/consumer-rules.pro
+# R8 full-mode keep 规则。Rust 核心（JNI）的 keep 来自 core-rs/consumer-rules.pro
 # （经 consumerProguardFiles 传入）。本文件补 :app 直接依赖里需反射保留的部分。
 # ───────────────────────────────────────────────────────────────────────────
 

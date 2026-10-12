@@ -21,7 +21,6 @@ tests/backend/assets/aliases/block_tests.rs	stripped.contains("cc-monitor remote
 tests/backend/assets/ext_tests.rs	written.contains("secret-A"
 tests/backend/assets/ext_tests.rs	written.contains("typed-B"
 tests/backend/assets/pubkey_tests.rs	content.contains("AAAAEXISTINGssh-ed25519"
-tests/backend/common/own_dir_tests.rs	sftp.matches("permissions: Some(crate::common::own_dir::PRIVATE_DIR_MODE)"
 tests/backend/control/ccm/plan_tests.rs	said.contains("4242"
 tests/backend/control/ccm/plan_tests.rs	said.contains("4242, 5252"
 tests/backend/control/ccm/plan_tests.rs	said.contains("sid-1"

@@ -41,3 +41,4 @@ include(":core-terminal")
 include(":core-claude")
 include(":core-remote")
 include(":core-copy")
+include(":core-rs") // 手机嵌的 Rust 核心（libmobcore.so：拨号核心 ssh-dial 的 FFI 外壳）

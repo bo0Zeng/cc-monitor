@@ -492,7 +492,7 @@ private fun ConnectedDialogs(
     showKeyPush: Boolean,
     onDismissKeyPush: () -> Unit,
 ) {
-    // tmux 管理用该连接的 exec 通道（sshj 多路复用，不影响终端 shell 通道）。
+    // tmux 管理用该连接的 exec 通道（同一条连接多路复用，不影响终端 shell 通道）。
     val channel = vm.channel
     if (showTmux) {
         TmuxManagerDialog(

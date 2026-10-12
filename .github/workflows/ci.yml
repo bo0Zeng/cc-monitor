@@ -333,7 +333,7 @@ jobs:
           CC_x86_64_pc_windows_msvc: zig cc
           CFLAGS_x86_64_pc_windows_msvc: --target=x86_64-windows-gnu
           AR_x86_64_pc_windows_msvc: zig lib
-        run: cargo check --all-targets --target x86_64-pc-windows-msvc
+        run: cargo check --workspace --all-targets --target x86_64-pc-windows-msvc
 
       - name: 门禁 · 后端 fmt / clippy / test
         env:
@@ -477,9 +477,19 @@ jobs:
 
       # 只装 platform-tools：这个 action 默认还装 `tools`，那个旧包已从 SDK 仓里撤了、
       # sdkmanager 找不到就整步失败（10-10 那一趟）。平台与 build-tools 由 AGP 按需自己装。
+      # 手机嵌的 Rust 核心（`src/mobile/core-rs`）由 Gradle 调 cargo 编：NDK 版本与 `src/mobile/gradle.properties` 的 `ccm.ndkVersion` 同一行，
+      #   两个 android target 各给一个构建类型（release = arm64-v8a · debug = x86_64，门禁 `mobile` 那一格两趟都编）。
       - uses: android-actions/setup-android@v3
         with:
-          packages: platform-tools
+          packages: platform-tools ndk;27.3.13750724
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/backend
 
       - uses: gradle/actions/setup-gradle@v4
         with:
