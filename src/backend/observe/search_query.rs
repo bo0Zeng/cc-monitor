@@ -502,6 +502,7 @@ impl Facts {
 
     /// 把**后面**那一段并进来：按段序合并与整份顺扫相等。
     fn extend(&mut self, later: Facts) {
+        self.bg |= later.bg;
         if self.cwd.is_none() {
             self.cwd = later.cwd;
         }
