@@ -3715,7 +3715,7 @@ cc-bus 钩子诊断。
 | `readAt` | ← | 读到的时刻（epoch ms） |
 | `needCount` | ← | 这个工作区要你看的数（没认可的，不含 agent 问人那一种） |
 | `bySession` | ← | 会话 ⇒ 它接手的那一块 `{slice, block, cell, title, top, phase, at, atTitle, via: session\|subagent}`（子 agent 接的记在父会话名下；自己接的优先） |
-| `slices` | ← | 每片一格：读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null`；顶块（`project`）那一次记在片上的 `returned` |
+| `slices` | ← | 每片一格：`path` ＝ 仓库相对工作区根（pb 登记的；旧 pb 没给 ⇒ 片名）；读不成 ⇒ `error`；这一刻读不成但读好过 ⇒ 上一次那一份 ＋ `stale {said, since}`；`needs: [{key, kind: top\|red\|ended\|ask, block, cell, sid, acked}]` · `needCount`；每格 `returned`：退回过 ⇒ `{at, to, state: returned\|unsure\|landed, by: child\|body, child}`，没有 ⇒ `null`；顶块（`project`）那一次记在片上的 `returned` |
 | `stale` | ← | 整次读不成、给的是上一次那一份 ⇒ `{said, raw, since}`；否则 `null` |
 
 码：`bad_args` · `failed` · `no_pb` · `not_workspace` · `pb_unsupported`
@@ -3761,7 +3761,7 @@ cc-bus 钩子诊断。
 |---|---|---|
 | `dir` | → | 那台机器上的绝对路径（串） |
 | `workspace` | ← | 工作区根；不在任何工作区 ⇒ `null` |
-| `slice` | ← | 片名；不在任何一片的仓库（`<工作区>/<片名>/`）里 ⇒ `null` |
+| `slice` | ← | 片名；不在任何一片的仓库（`<工作区>/<path>/`：pb 登记的位置，没登记 ⇒ 片名）里 ⇒ `null` |
 | `unreadable` | ← | 那一片此刻读不成的那一句（条目空） |
 | `entries` | ← | 每份声明过的文件 `{name, id, title, statusCode, status, block, signAtText, fileState, fileNote, dup: [{id, title}]}`（被几格声明 ⇒ 先声明的作主、其余进 `dup`） |
 | `unowned` | ← | 无主的那几份（要 pb 给；没给 ⇒ `null`） |

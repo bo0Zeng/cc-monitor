@@ -1,7 +1,7 @@
 //! 文件窗口反查（设计稿 planned-build 06）：一个目录落在哪一片的仓库里、那里每份文件归哪一格。纯函数，吃标过的成品。
 //!
-//! - 一片的仓库 ＝ `<工作区>/<片名>/`（pb 的盘面：做出来的东西一片一个目录；格的文件声明是相对它的路径）。
-//!   pb 还没在 dump 里给每片的仓库目录 ⇒ 照这个盘面拼；请求单第 8 条请 pb 给 `repo_dir`，给了就换成它给的。
+//! - 一片的仓库 ＝ `<工作区>/<path>/`：`path` 是成品里那一片的仓库位置（pb `pb repo <路径>` 登记的、相对工作区根，
+//!   如 `repos/app`；旧 pb 没给 ⇒ 成品补成片名）。格的文件声明是相对它的路径。拼这个绝对路径只在 [`repo_dir`]（盯盘也用它）。
 //! - 一份文件被几格声明（pb 判据红「两个节点声明同一个文件」）⇒ 排期上先出现的那一格作主，其余进 `dup`（文件那一侧也看得出来）。
 //! - 那一格住哪一块：从它往上找第一个块根格（`blocks[].cells` 里的那一格），写块根格的标题；住顶块 ⇒ `null`。
 //! - 无主（没有一格声明）要 pb 给 `unowned`（请求单 3）；没给之前 `unowned` 恒 `null`，文件窗口不出「无主」两个字。
@@ -59,6 +59,17 @@ fn block_title(sl: &Value, id: &str) -> Option<String> {
     None
 }
 
+/// 一片的仓库目录（绝对路径，`/` 分隔）：`<工作区>/<path>`。成品里没有 `path` 或是片名不像一片（空 · `.` 起头）⇒ `None`。
+pub(crate) fn repo_dir(ws: &str, sl: &Value) -> Option<String> {
+    str_of(sl, "name").filter(|n| !n.is_empty() && !n.starts_with('.'))?;
+    let path = str_of(sl, "path").filter(|p| !p.is_empty())?;
+    Some(format!(
+        "{}/{}",
+        ws.trim_end_matches('/'),
+        path.trim_matches('/')
+    ))
+}
+
 /// `plan-files {dir}` 的本体：`doc` 是一个工作区标过的成品；`dir` 是那台机器上的绝对路径。
 pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
     let ws = str_of(doc, "workspace").unwrap_or_default();
@@ -68,10 +79,10 @@ pub(crate) fn of_dir(doc: &Value, dir: &str) -> Value {
         return none;
     };
     for sl in slices {
-        let Some(name) = str_of(sl, "name").filter(|n| !n.is_empty() && !n.starts_with('.')) else {
+        let Some(repo) = repo_dir(ws, sl) else {
             continue;
         };
-        let repo = format!("{}/{name}", ws.trim_end_matches('/'));
+        let name = str_of(sl, "name").unwrap_or_default();
         let Some(rel) = rel_in(dir, &repo) else {
             continue;
         };

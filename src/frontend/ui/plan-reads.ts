@@ -313,6 +313,7 @@ export function decodeSlice(v: unknown, what: string): PlanSlice {
   const head = {
     name: str(o.name, `${what}.name`),
     domain: strOrNull(o.domain, `${what}.domain`),
+    path: str(o.path, `${what}.path`),
     current: bool(o.current, `${what}.current`),
     error: strOrNull(o.error, `${what}.error`),
     stale: staleOf(o.stale, `${what}.stale`),

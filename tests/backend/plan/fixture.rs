@@ -60,6 +60,13 @@ pub(crate) fn dump(workspace: &str) -> Value {
     })
 }
 
+/// 同一份，只是那一片的仓库登记在别处（`pb repo <路径>`：dump 每片带 `path`，相对工作区根）。
+pub(crate) fn dump_at(workspace: &str, path: &str) -> Value {
+    let mut d = dump(workspace);
+    d["slices"][0]["path"] = json!(path);
+    d
+}
+
 /// 同一份，只是那一片这一刻读不成（pb 给 `error`，别的格都没有）。
 pub(crate) fn dump_broken(workspace: &str) -> Value {
     json!({

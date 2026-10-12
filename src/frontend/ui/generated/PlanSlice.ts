@@ -13,7 +13,11 @@ import type { PlanStale } from "./PlanStale";
 /**
  * 一片。读不成又没读好过 ⇒ `bare`（只有头几格有字，其余是空的）。
  */
-export type PlanSlice = { name: string, domain: string | null, current: boolean, 
+export type PlanSlice = { name: string, domain: string | null, 
+/**
+ * 这一片的仓库相对工作区根在哪（pb 登记的；旧 pb 没给 ⇒ 片名）。
+ */
+path: string, current: boolean, 
 /**
  * 这一刻读不成的那一句（pb 原样）。
  */
