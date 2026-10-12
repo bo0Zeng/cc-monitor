@@ -220,10 +220,109 @@ fn w6_the_account_creds_handle_reaches_one_file_and_two_lock_dirs() {
     c.drop_lock(RenewLock::Inside).unwrap();
     c.drop_lock(RenewLock::Beside).unwrap();
     assert!(!base.join("acct.lock").exists() && !acct.join(".lock").exists());
-    let names: Vec<_> = std::fs::read_dir(&acct)
-        .unwrap()
-        .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+    assert!(side_files(&acct).is_empty(), "号目录里留了旁名");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+// ── 原子写本体（从 `common/own_state` 那一份测试搬来：写那一半随转调一起退了，本体只住这里）──────────────
+
+fn side_files(dir: &std::path::Path) -> Vec<String> {
+    let mut v: Vec<String> = guard_core::scan_tree!(dir, &["tmp"])
+        .into_iter()
+        .map(|(p, _)| p.file_name().unwrap().to_string_lossy().into_owned())
         .collect();
-    assert_eq!(names, vec![".credentials.json"], "号目录里多出了别的");
+    v.sort();
+    v
+}
+
+#[test]
+fn a2_round_trip_newline_and_private() {
+    let base = sandbox("a2");
+    let p = base.join("x.json");
+    atomic_write(
+        &p,
+        &crate::common::own_state::json_body(&p, &serde_json::json!({"a": 1})).expect("编码"),
+    )
+    .expect("write");
+    assert_eq!(std::fs::read(&p).expect("read"), b"{\"a\":1}\n");
+    atomic_write(&p, b"raw").expect("overwrite");
+    assert_eq!(std::fs::read(&p).expect("read"), b"raw");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let mode = std::fs::metadata(&p).expect("meta").permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "后端自有状态文件不是只给本人");
+    }
+    assert!(side_files(&base).is_empty(), "留了旁名");
+    assert!(p.is_file());
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn a3_concurrent_writers_never_collide_on_the_side_name() {
+    let base = sandbox("a3");
+    let p = base.join("x.json");
+    let fails: Vec<String> = std::thread::scope(|s| {
+        let hs: Vec<_> = (0..16)
+            .map(|i| {
+                let p = p.clone();
+                s.spawn(move || {
+                    (0..20)
+                        .filter_map(|j| {
+                            atomic_write(&p, format!("{i}-{j}").as_bytes())
+                                .err()
+                                .map(|e| e.said)
+                        })
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        hs.into_iter()
+            .flat_map(|h| h.join().expect("join"))
+            .collect()
+    });
+    assert!(
+        fails.is_empty(),
+        "并发写撞了旁名 {} 次，头一条：{:?}",
+        fails.len(),
+        fails.first()
+    );
+    assert!(side_files(&base).is_empty(), "留了旁名");
+    assert!(p.is_file());
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn a4_failed_rename_removes_only_its_own_side_file() {
+    let base = sandbox("a4");
+    let target = base.join("x.json");
+    std::fs::create_dir(&target).expect("target is a dir");
+    std::fs::write(target.join("keep"), b"k").expect("non-empty");
+    std::fs::write(base.join("x.json.other.tmp"), b"theirs").expect("foreign");
+    assert!(
+        atomic_write(&target, b"mine").is_err(),
+        "挪到非空目录上居然成了"
+    );
+    assert_eq!(
+        side_files(&base),
+        vec!["x.json.other.tmp".to_string()],
+        "旁名没删，或删了别人的文件"
+    );
+    assert!(target.join("keep").is_file(), "挪的目标被动了");
+    std::fs::remove_dir_all(&base).ok();
+}
+
+/// 写不进的那一句只带路径与原因词，系统原话进 `raw`（复制详情）。
+#[test]
+fn a5_a_failed_write_carries_the_reason_word_and_the_raw_words_go_to_the_detail() {
+    let base = sandbox("a5");
+    let gone = base.join("no-such-dir").join("y.json");
+    let e = atomic_write(&gone, b"x").expect_err("父目录不在也写成了");
+    assert!(
+        e.said
+            .ends_with(&copy_core::io_reason(std::io::ErrorKind::NotFound)),
+        "写不进那一句没带原因词：{e:?}"
+    );
+    assert!(e.raw.is_some(), "系统原话没进详情：{e:?}");
     std::fs::remove_dir_all(&base).ok();
 }

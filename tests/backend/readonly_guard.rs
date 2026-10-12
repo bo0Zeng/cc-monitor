@@ -855,12 +855,6 @@ mod tests {
              建的那一下就是 0700（`DirBuilder` 带权限位一次建成，只许住本模块）、已在的不动、只建一层。它建的是后端**自己的**目录，\
              不是用户数据。第四层别的几份调它不算越门；第四层之外只有 `control/files_commit.rs` 建暂存区那一处（门）",
         ),
-        (
-            "common/own_state.rs",
-            "**后端自有状态文件的读三态与原子写**：第四层各份读写自己那一份文件都经它（旁名出生即只给本人 \
-             `creds_core::perm::create_private`，O_EXCL，带 pid ＋ 线程 ＋ 序号 → 写满 → `sync_all` → 原子挪过去；\
-             挪不过去只删自己建的那个旁名）。它不认识任何一份文件，路径由调用方给；第四层之外零引用（门表里没有它的门）",
-        ),
     ];
 
     /// 第四层模块**能用**的写动词（`fs::` 之后那个词）。**闭集**。
@@ -901,9 +895,6 @@ mod tests {
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
     /// 第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
     const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
-        // 原子写的那一处（过渡转调）：只有第四层别的几份调它（门检查本来就跳过第四层成员）⇒ 门空着 = 第四层之外零引用。
-        // 针取写那一半（`write` · `write_json`）：读三态（`read_bytes` · `read_json`）是读，搬上 `Own` 的那几份照旧用。
-        ("common/own_state.rs", "own_state::write", ""),
         // 后端建自家目录的那一个函数：第四层别的几份调它不算（门检查本来就跳过第四层成员）；之外只有暂存区那一处。
         (
             "common/own_dir.rs",
@@ -918,7 +909,6 @@ mod tests {
     /// 第二刀过渡：还没搬上 `Own` 的写口经 `own_state::write` / `own_dir::ensure_private_dir` 转调 `platform/fs/own.rs`
     /// （原子写与建目录只有那一份实现）。全部搬完连同这两个转调一起删。
     const OWN_STATE_TRANSITIONAL: &[(&str, &str)] = &[
-        ("common/own_state.rs", "atomic_write"),
         ("common/own_dir.rs", "create_dir_private"),
         ("common/own_dir.rs", "PRIVATE_DIR_MODE"),
     ];
@@ -1422,11 +1412,6 @@ mod tests {
         "common/own_dir.rs",
         "后端建自家目录的那一个函数（`ensure_private_dir`）：只有「建一层目录、已在不动」这一个动词，没有一份文件被读—改—写；\
          而且它正是拿锁之前那一步（锁的就是它建出来的目录）—— 它自己再拿锁是先有鸡还是先有蛋",
-    ),
-    (
-        "common/own_state.rs",
-        "读三态与原子写的原语本身：它不做读—改—写，锁由做读—改—写的那一份在调它之前拿（锁的是那一份自己的目录）；\
-         原语里再拿一次会在同一个目录上锁两回",
     )];
 
     /// 第四层**之外**拿这把锁的（`(模块, 为什么)`）：它们改的不是后端自有状态文件，却同样是一趟读—改—写，
@@ -5551,7 +5536,7 @@ mod g6_dependency_signoff {
 
     /// 🔴 **`creds-core` 那条「就是要它写」的边界判据**：它的写半边
     /// （`perm::create_private`）在本 crate 生产段里的引用处，
-    /// **恰好**是第四层的读三态与原子写那一处 `common/own_state.rs`（两向集合相等）。
+    /// **恰好**是原子写那一处 `platform/fs/own.rs`（两向集合相等）。
     ///
     /// # 它顶替的是哪一格
     ///
@@ -5593,7 +5578,7 @@ mod g6_dependency_signoff {
             }
         }
         assert!(scanned >= 60, "只扫到 {scanned} 份后端源文件 —— 遍历坏了");
-        // 第四层各份（凭据 · 中转钥匙 · 常驻钥匙 · 主机钥匙 …）都经原子写那一处（`platform/fs/own.rs`）出生即只给本人 ⇒ 引用处只有它。
+        // 自家状态各份与两个窄句柄（凭据 · 中转钥匙 · 门牌 · 主机钥匙 …）都经原子写那一处（`platform/fs/own.rs`）出生即只给本人 ⇒ 引用处只有它。
         let want: std::collections::BTreeSet<String> =
             ["platform/fs/own.rs".to_string()].into_iter().collect();
         assert_eq!(

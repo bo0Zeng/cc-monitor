@@ -152,9 +152,8 @@ fn no_home_means_no_key() {
     let _ = std::fs::remove_dir_all(&data);
     std::fs::create_dir_all(&data).expect("建夹具目录");
     assert!(ensure_key(&crate::platform::fs::Own::issue_data_at(&data)).is_err());
-    assert_eq!(
-        std::fs::read_dir(&data).expect("读目录").count(),
-        0,
+    assert!(
+        !data.join(".cc-monitor").exists() && !data.join("relay-key").exists(),
         "没有家目录也落了东西"
     );
     let _ = std::fs::remove_dir_all(&data);

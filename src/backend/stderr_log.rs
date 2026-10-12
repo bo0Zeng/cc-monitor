@@ -190,7 +190,7 @@ static ONESHOT: std::sync::OnceLock<DiagLog> = std::sync::OnceLock::new();
 /// 一次性模式起来那一刻（`main.rs`）装那一份的窄句柄：`issue` 同 [`install_from_env`]。家推不出来 ⇒ 不装（不写）。
 pub fn keep_oneshot(issue: fn(PathBuf) -> DiagLog) {
     if let Some(p) = oneshot_log_path(&|k| std::env::var(k).ok()) {
-        let _ = ONESHOT.set(issue(p));
+        ONESHOT.get_or_init(|| issue(p));
     }
 }
 

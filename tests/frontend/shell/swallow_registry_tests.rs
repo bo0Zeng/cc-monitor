@@ -76,7 +76,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/resolve_query.rs", "let _ = writeln!(out, \"{json}\");", Why::Diag, "`--resolve` 的成品写 stdout：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
     ("src/backend/control/resolve_query.rs", "let _ = writeln!(err, \"{}\", error_envelope(code, message));", Why::Diag, "`--resolve` 的失败信封写 stderr：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
     ("src/backend/control/cli_control.rs", "let _ = writeln!(out, \"{}\", crate::common::time::fill_at(&line, tz));", Why::Diag, "CLI 面的应答写 stdout（JSON 那一形与 `--text` 那一形同一行）：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
-    ("src/backend/control/launch_account.rs", "let _ = std::fs::remove_file(&path);", Why::CleanupAfterFailure, "清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认"),
+    ("src/backend/control/launch_account.rs", "let _ = own.delete_file(&f);", Why::CleanupAfterFailure, "清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&at);", Why::CleanupAfterFailure, "写块失败 / 收拾旧块：主错误已在回；删不掉等孤儿扫（7 天）"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&side);", Why::CleanupAfterFailure, "跨盘提交抄写失败后删自己这一趟的旁名；主错误已在回"),
     ("src/backend/control/files_commit.rs", "let _ = std::fs::remove_file(&staged);", Why::CleanupAfterFailure, "目标已落好之后删暂存件；删不掉由孤儿扫（`sweep_stale`）按期限收（该处注释原话）"),
@@ -149,7 +149,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/platform/child.rs", "let _ = ev_tx.send(Ev::GaveUp);", Why::PeerGone, "等待线程已收尾退出 ⇒ 放手那一声没人收"),
     ("src/backend/platform/child.rs", "let _ = piped_tx.send(Ev::Piped(o, e));", Why::PeerGone, "等待线程已按放手收尾 ⇒ 读完的输出没人收"),
     ("src/backend/platform/child.rs", "let _ = r.read_to_end(&mut buf);", Why::Drain, "读子进程输出到底；读错只少尾巴几个字节，退出码与超时照旧判"),
-    ("src/backend/control/resident.rs", "let _ = log_dir_chain(&h);", Why::Diag, "诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
+    ("src/backend/control/resident.rs", "let _ = log_dir_chain(own);", Why::Diag, "诊断文件那层目录建不了 ⇒ 子进程装不上 stderr 文件、照旧 null（「写不进去不拖垮后端」）；这是一次性子命令，stderr 只许一行 JSON 信封，没有第二个地方可说"),
     ("src/backend/faces/read_face.rs", "let _ = BACKEND_LOG.set(path);", Why::SetOnce, "`main.rs` 装上 stderr 诊断文件之后交一次"),
     ("src/backend/relay/listen.rs", "let _ = comms_outward::refuse_busy(&mut s);", Why::DeadLink, "回一句「忙」给被拒的那条连接"),
     ("src/backend/relay/listen.rs", "let _ = comms_outward::refuse_busy(&mut stream);", Why::DeadLink, "回一句「忙」给被拒的那条连接"),
@@ -158,9 +158,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n, body, }", Why::Backpressure, "投不进就丢：号照占，缺口在接收侧按号算得出（「SSE 保快、jsonl 保对」）"),
     ("src/comms/outward/tee.rs", "let _ = self.port.offer(TapEvent { stream: id.stream.to_string(), owner: id.owner.to_string(), resp: at.resp, n: at.n, b", Why::Backpressure, "同上（收尾那一件）"),
     // NDJSON 那一形的四行（写线程 · 两处 `write_all` · `flush`）随独立 `--relay` 删了。
-    ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(&self.old).as_bytes());", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
+    ("src/backend/stderr_log.rs", "let _ = f.write_all(roll_note(self.log.old()).as_bytes());", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
     ("src/backend/stderr_log.rs", "let _ = self.fresh();", Why::Diag, "「写不进去不拖垮后端」（脱离载体那一格）"),
-    ("src/backend/stderr_log.rs", "let _ = append_line(p, &self.0);", Why::Diag, "一次性模式的诊断行：写不进诊断文件也不许回落 stderr（stderr 是协议通道），丢这一行、命令照常"),
+    ("src/backend/stderr_log.rs", "let _ = append_line(log, &self.0);", Why::Diag, "一次性模式的诊断行：写不进诊断文件也不许回落 stderr（stderr 是协议通道），丢这一行、命令照常"),
     ("src/common/creds-core/src/perm.rs", "let _ = CloseHandle(token);", Why::Reap, "Windows 句柄 / 内存释放"),
     ("src/common/creds-core/src/perm.rs", "let _ = GetTokenInformation(token, TokenUser, None, 0, &mut need);", Why::NotAnError, "第一次调用只为问缓冲区要多大，按约定一定回「缓冲区不够」"),
     ("src/common/creds-core/src/perm.rs", "let _ = LocalFree(HLOCAL(psd.0));", Why::Reap, "Windows 句柄 / 内存释放"),
@@ -246,9 +246,9 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = debouncer.watcher().unwatch(agent_home);", Why::Reap, "撤旧 inode 上的 watch：目录被删 / 换过 inode 时 unwatch 本来就会失败"),
     ("src/backend/control/resident.rs", "let _ = tokio::io::copy(&mut down, &mut stdout).await;", Why::DeadLink, "小中继下行：套接字那头走了 / stdout 写不出去（ssh 通道关了），两种都是这一趟结束，退出就是交代"),
     ("src/backend/control/resident.rs", "let _ = tokio::io::AsyncWriteExt::flush(&mut stdout).await;", Why::DeadLink, "小中继收尾 flush：ssh 通道已经关了就写不出去，退出就是交代"),
-    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&rec);", Why::Reap, "升级那一跳停完旧版之后收掉它的旧记录：结局已经写进日志；删不掉只剩一份陈记录，下一个新版起来会再核一次身份（ESRCH / exe 对不上照样答对）"),
-    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(data_home.join(relay_route_core::LEGACY_LISTEN_TOKEN_NAME));", Why::Reap, "升级那一跳顺手收掉旧版的钥匙文件：新版不读它，删不掉只是留一个没人用的文件"),
-    ("src/backend/control/resident.rs", "let _ = std::fs::remove_file(&path);", Why::Reap, "停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
+    ("src/backend/control/resident.rs", "let _ = own.delete_file(&rec_own);", Why::Reap, "升级那一跳停完旧版之后收掉它的旧记录：结局已经写进日志；删不掉只剩一份陈记录，下一个新版起来会再核一次身份（ESRCH / exe 对不上照样答对）"),
+    ("src/backend/control/resident.rs", "let _ = own.delete_file(&token);", Why::Reap, "升级那一跳顺手收掉旧版的钥匙文件：新版不读它，删不掉只是留一个没人用的文件"),
+    ("src/backend/control/resident.rs", "let _ = own.delete_file(&pid_file);", Why::Reap, "停完之后收掉还指着它的那份 pid 记录：结局（graceful / killed）已经定了；删不掉只剩一份陈记录，下次认身份时 ESRCH / exe 对不上照样答对；一次性子命令，stderr 只许一行 JSON 信封"),
 ];
 
 /// 键的长度上限（字符）。长语句（带一整句报错的 `write_stages_then_ack(…)`）截到这里就认得出。

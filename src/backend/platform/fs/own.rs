@@ -389,7 +389,7 @@ fn hold(dir: &Path) -> Result<crate::platform::lock::DirLock, crate::platform::l
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
 /// 原子写本体（全后端一份）。那一句只有路径与原因词，系统原话进 `raw`；都不带内容。
-pub(crate) fn atomic_write(path: &Path, body: &[u8]) -> Result<(), Said> {
+fn atomic_write(path: &Path, body: &[u8]) -> Result<(), Said> {
     let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
         return Err(copy_text(
             "beOwnState.write.noParent",

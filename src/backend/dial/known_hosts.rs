@@ -59,7 +59,7 @@ static INSTALLED: std::sync::OnceLock<Writer> = std::sync::OnceLock::new();
 
 /// 启动入口（`main.rs`）装一次：此后握手认下的钥匙经这份句柄记。再装 ⇒ 不动（第一份为准）。
 pub fn install(own: &crate::platform::fs::Own) {
-    let _ = INSTALLED.set(Writer(own.clone()));
+    INSTALLED.get_or_init(|| Writer(own.clone()));
 }
 
 /// 装了的那一只（没装 ⇒ `None`：一次性子命令 · 判据，握手照常、不记）。
@@ -113,3 +113,7 @@ const MAX_BYTES: u64 = 4 << 20;
 #[cfg(test)]
 #[path = "../../../tests/backend/dial_known_hosts_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/dial_known_hosts_disk_tests.rs"]
+mod disk_tests;
