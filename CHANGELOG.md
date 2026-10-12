@@ -13,7 +13,7 @@
 ### 会改变已有行为的
 
 - **轮换文件换成新格式**：`~/.cc-monitor/rotation.json` 换成第二版（配置 · 策略 · 每个会话一份副本）。旧格式的那一份在常驻后端起来时换成新格式写回一次，原文留作 `rotation.json.v1`；命令行与 ccm 这类一次性调用读到旧格式只在内存里换、不写盘。读不懂的文件不覆盖，轮换面板照实说读不懂，照用上一份读得懂的。
-- **旧轮换文件没写时区的，时段照旧按那台机器的本地时区算**：以前的后端按机器本地钟判时段，旧文件里多半没写时区；换成新格式时取做这一步的那台机器的本地时区写进去，时段不挪位置。取不到本地时区就不写、标成时区不明，会话面板提示需手动「时段按哪个时区不明 · 在设置里确认时区」，在设置里存一次就清掉。
+- **旧轮换文件没写时区的，时段按那台机器的本地时区算**：没写时区的轮换是 4.1.7 以前的后端写的，那时按机器本地钟判时段；4.1.7 和 4.1.8 把这种当成 UTC 判，时段错开了本地与 UTC 之差。换成新格式时取做这一步的那台机器的本地时区写进去，回到写的时候的本意：一直装着 4.1.7 以前后端的机器，时段不挪；装过 4.1.7 或 4.1.8 的，这几份的时段挪回本地钟。取不到本地时区就不写、标成时区不明，会话面板提示需手动「时段按哪个时区不明 · 在设置里确认时区」，在设置里存一次就清掉。
 - **轮换的帧命令换了一套**：`rotation-rules-read` · `rotation-rule-save` · `rotation-rule-rename` · `rotation-rule-delete` 删了，换成 `rotation-configs-read` · `rotation-config-save / rename / delete` · `rotation-strategies-read` · `rotation-strategy-add / delete / try` · `rotation-session-open / edit / save / revert`；`changed` 里的 `rotation_rules` 改名 `rotation_configs`。老界面连新后端（或反过来）这几条答「不认」，界面与后端要同版一起升级。
 - **删掉 13 条没人用的一次性子命令**：`--read-session` · `--read-session-from-offset` · `--read-session-tail` · `--search` · `--list-accounts` · `--list-projects` · `--list-sessions` · `--list-user-inputs` · `--session-accounts` · `--find-in-session` · `--account-trust` · `--account-trust-zero` · `--fork-session`。不认的子命令一律在 stderr 写一行 `unknown_command`、退出码 2。`--resolve` 的入参删了从没用过的 `claudeDir` · `fallbackCwd` · `alreadyInTmux`（带着也照旧忽略）。
 - **账号 0 与「未指定账号」分开叫**：账号 0 是这台机器本来那一份登录（不设配置目录的 `~/.claude`），账号页 · 状态栏下拉 · 新会话 · 恢复菜单 · 轮换面板都写「账号 0」；起会话时没说用哪个号的叫「未指定账号」，它不再当成账号 0 的登录，不进轮换的候选，手动放号或现在就换点名它答参数不对。
