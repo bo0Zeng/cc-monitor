@@ -5,15 +5,20 @@
  *   结果已经是框里这个词的 ⇒ 回车 / `F3` 下一条、`Shift+F3` 上一条，↑↓ 也走；选中一条就交宿主跳过去。
  * - 清单一页 `FIND_LIMIT` 条；没列完的滚到底自己续下一页（问那台后端 `skip` ＝ 已列的条数）。
  * - 跳到一条还没加载的：那一行下面写「未加载 · 加载后跳转」，取到就跳；取失败写原因 ＋［重试］。
- * - 两种摆法：就地展开（头一行「{n} 处 · ☐ 含工具 · ✕」，开着时登记在快捷键弹层栈上）· 面板（`panel`：
- *   头一行只有计数与键位提示，含工具那个勾由宿主摆 [`FindStrip.tools`]，开合与 Esc 归宿主）。
+ * - 范围（ui3 · 10-11 稿「查找-只搜用户」）：分段「全部 | 用户」，换段 ⇒ 词不变、马上重找；「用户」⇒ 问那台时带 `scope: "user"`
+ *   （谁算用户说的由那台判，与流里画成「人说的」同一口径），「含工具输出与思考」禁用（悬停说为什么）、勾着的记住，切回「全部」还原；
+ *   命中头一行不再写「用户」；没命中 ⇒「无匹配「x」 · 仅用户」＋［搜全部］。范围只在这扇窗开着时记（换标签页不清、不落盘）。
+ *   焦点在框 / 查找条里时 Alt+U 换范围、Alt+T 开关工具（键位进快捷键一览、可改：`session.find-scope-user` · `session.find-tools`）。
+ * - 两种摆法：就地展开（头一行「{n} 处 · 全部 | 用户 · ☐ 含工具输出与思考 · ✕」，开着时登记在快捷键弹层栈上）· 面板（`panel`：
+ *   头一行只有计数与键位提示，范围与含工具那个勾由宿主摆 [`FindStrip.scopeEl`] · [`FindStrip.tools`]，开合与 Esc 归宿主）。
  * - 只排版：查什么、哪几处算命中、第几轮由那台后端（`history-find`）给。迟到的旧结果不盖新结果（代数）。
  */
 import { button } from "./kit/button";
 import { icon } from "./kit/icon";
 import { spinner } from "./kit/progress";
 import { checkbox } from "./kit/switch";
-import { dispatcher, type OverlayHandle } from "./keybindings/registry";
+import { segmented } from "./kit/tabs";
+import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./keybindings/registry";
 import { imeComposing } from "./keybindings/ime";
 import { copyText } from "./copy-table";
 import type { FindHit, FindResult } from "./session-reads";
@@ -30,9 +35,23 @@ export function plainSnippet(h: { before: string; matched: string; after: string
   return { before: strip(h.before).replace(/^(?:\s*[#>]+)+\s*/, ""), matched, after: strip(h.after) };
 }
 
+/** 查找范围：全部 · 只搜用户说的。 */
+export type FindScope = "all" | "user";
+
+/** 这扇窗此刻的查找范围（各标签页的面板与查看器那条共用；不落盘，重开回「全部」）。 */
+let windowScope: FindScope = "all";
+
+/** 仅供测试：范围回「全部」（模块级状态会跨用例串味）。 */
+export function __resetFindScopeForTests(): void {
+  windowScope = "all";
+}
+
 export interface FindStripHost {
-  /** 在这一份会话里找（宿主决定问哪台机器上的哪份文件）；`skip` ＝ 跳过前几条（续下一页）。 */
-  search(query: string, includeTools: boolean, skip: number): Promise<FindResult>;
+  /**
+   * 在这一份会话里找（宿主决定问哪台机器上的哪份文件）；`skip` ＝ 跳过前几条（续下一页）。
+   * 范围「用户」⇒ 第四个参数是 `"user"`、`includeTools` 恒假；「全部」⇒ 不给第四个参数。
+   */
+  search(query: string, includeTools: boolean, skip: number, scope?: "user"): Promise<FindResult>;
   /**
    * 跳到那一条（返回真正落到的那张卡；可以是 Promise —— 要先取回那一段；取失败 ⇒ reject 带原因）。
    * `tool` ＝ 核心说它落在哪次工具调用的卡里（命中的 `tool`）；缺 ⇒ 落在它自己那张卡上。
@@ -45,8 +64,8 @@ export interface FindStripHost {
 export interface FindStripOptions {
   /** 停多少毫秒自己找；不给 ⇒ 回车才找。 */
   autoMs?: number;
-  /** 命中行的头一行（谁 · 第几轮 · 时刻）；不给 ⇒ 只一行片段。 */
-  meta?: (h: FindHit) => string;
+  /** 命中行的头一行（谁 · 第几轮 · 时刻；范围「用户」⇒ 不写谁）；不给 ⇒ 只一行片段。 */
+  meta?: (h: FindHit, scope: FindScope) => string;
   /** 面板摆法（见头注）。 */
   panel?: boolean;
 }
@@ -62,8 +81,12 @@ export class FindStrip {
   readonly box: HTMLElement;
   /** 命中清单（宿主摆在框下）；就地展开摆法收着时 `hidden`。 */
   readonly strip: HTMLElement;
-  /** 「含工具」那个勾（面板摆法由宿主摆；就地摆法已在清单头一行里）。 */
+  /** 「含工具输出与思考」那个勾（面板摆法由宿主摆；就地摆法已在清单头一行里）。 */
   readonly tools: HTMLElement;
+  /** 范围「全部 | 用户」（同上）。 */
+  readonly scopeEl: HTMLElement;
+  private readonly toolsBox: HTMLInputElement;
+  private readonly keys: HTMLElement | null = null;
   private readonly input: HTMLInputElement;
   private readonly head: HTMLElement;
   private readonly list: HTMLElement;
@@ -106,6 +129,20 @@ export class FindStrip {
       this.withTools = on;
       if (this.input.value.trim()) void this.run();
     });
+    this.toolsBox = this.tools.querySelector("input")!;
+    this.scopeEl = segmented<FindScope>({
+      items: [
+        { key: "all", label: copyText("sessionFind.scope.all") },
+        { key: "user", label: copyText("sessionFind.scope.user") },
+      ],
+      current: windowScope,
+      label: copyText("sessionFind.scope.label"),
+      onChange: (k) => this.setScope(k),
+    });
+    this.scopeEl.dataset.role = "find-scope";
+    // Alt+U · Alt+T：焦点在框 / 范围 / 勾上时（框自己的 keydown 已管；这两格补上）。
+    for (const el of [this.scopeEl, this.tools]) el.addEventListener("keydown", (e) => this.onScopeKeys(e));
+    this.paintTools();
 
     this.strip = document.createElement("div");
     this.strip.className = s.fsStrip;
@@ -119,7 +156,9 @@ export class FindStrip {
     if (opts.panel) {
       const keys = document.createElement("span");
       keys.className = s.fsKeys;
-      keys.textContent = copyText("sessionFind.status.keys");
+      keys.dataset.role = "find-keys";
+      this.keys = keys;
+      keys.textContent = copyText("sessionFind.status.keys"); // 带上范围那一键：开的那一刻按当前键位拼（`focus`）
       bar.append(this.head, keys);
       this.setShown(true);
     } else {
@@ -131,7 +170,7 @@ export class FindStrip {
         hint: copyText("findStrip.box.close"),
         onClick: () => this.close(),
       });
-      bar.append(this.head, this.tools, close);
+      bar.append(this.head, this.scopeEl, this.tools, close);
       this.setShown(false);
     }
     this.list = document.createElement("div");
@@ -147,10 +186,79 @@ export class FindStrip {
     return !this.strip.hidden;
   }
 
-  /** `Ctrl+F`：焦点进框、全选（再按一次就是改词）。 */
+  /** `Ctrl+F`：焦点进框、全选（再按一次就是改词）。范围照这扇窗此刻的（别的标签页上换过 ⇒ 这里跟上）。 */
   focus(): void {
+    this.syncScope();
+    this.paintKeys();
     this.input.focus();
     this.input.select();
+  }
+
+  /** 此刻的范围（这扇窗共用那一格）。 */
+  get scope(): FindScope {
+    return windowScope;
+  }
+
+  /** 换范围：词不变、马上重找（不等停顿）。 */
+  setScope(k: FindScope): void {
+    if (k === windowScope && this.shownScope === k) return;
+    windowScope = k;
+    this.syncScope();
+    this.paintTools();
+    if (this.input.value.trim()) void this.run();
+  }
+
+  /** 这一条上画的是哪个范围（分段与复选框跟着那一格）。 */
+  private shownScope: FindScope = windowScope;
+
+  private syncScope(): void {
+    if (this.shownScope === windowScope) return;
+    this.shownScope = windowScope;
+    // 分段那一组的样子跟上（点那一段 ⇒ 它自己标勾；onChange 回到 setScope，范围已一致 ⇒ 不再找）。
+    this.scopeEl.querySelector<HTMLElement>(`[data-key="${windowScope}"]`)?.click();
+    this.paintTools();
+  }
+
+  /** 「用户」⇒ 含工具那个勾禁用、悬停说为什么（勾着的状态留着）；「全部」⇒ 照常。 */
+  private paintTools(): void {
+    const user = windowScope === "user";
+    this.toolsBox.disabled = user;
+    this.tools.title = user ? copyText("sessionFind.tools.userOnly") : "";
+    if (user) this.tools.setAttribute("aria-disabled", "true");
+    else this.tools.removeAttribute("aria-disabled");
+  }
+
+  /** 提示行「↑↓ 或 F3 · Alt+U 用户」（键按当前键位拼；没绑 ⇒ 只留前半）。 */
+  private paintKeys(): void {
+    if (!this.keys) return;
+    const chord = dispatcher.effectiveChord("session.find-scope-user");
+    const base = copyText("sessionFind.status.keys");
+    this.keys.textContent = chord ? copyText("sessionFind.status.keysScope", { keys: base, scopeKey: KeybindingDispatcher.prettyChord(chord) }) : base;
+  }
+
+  /** Alt+U / Alt+T（按当前键位比；组字时不算）⇒ 换范围 / 开关工具，焦点不动。认出了 ⇒ `true`。 */
+  private scopeKey(e: KeyboardEvent): boolean {
+    if (imeComposing(e)) return false;
+    const chord = KeybindingDispatcher.normalizeChord(e);
+    if (!chord) return false;
+    if (chord === dispatcher.effectiveChord("session.find-scope-user")) {
+      e.preventDefault();
+      this.setScope(windowScope === "user" ? "all" : "user");
+      return true;
+    }
+    if (chord === dispatcher.effectiveChord("session.find-tools")) {
+      e.preventDefault();
+      if (windowScope === "user") return true; // 「用户」时不响应
+      this.toolsBox.checked = !this.toolsBox.checked;
+      this.withTools = this.toolsBox.checked;
+      if (this.input.value.trim()) void this.run();
+      return true;
+    }
+    return false;
+  }
+
+  private onScopeKeys(e: KeyboardEvent): void {
+    this.scopeKey(e);
   }
 
   /** 按框里的词从头找一次。空 ⇒ 清单清空（就地摆法收起）、不发。 */
@@ -214,12 +322,12 @@ export class FindStrip {
   }
 
   private queryKey(q: string): string {
-    return `${this.withTools ? 1 : 0}\u0000${q}`;
+    return `${windowScope}\u0000${this.withTools ? 1 : 0}\u0000${q}`;
   }
 
   private async ask(q: string, skip: number): Promise<FindResult> {
     try {
-      return await this.host.search(q, this.withTools, skip);
+      return await (windowScope === "user" ? this.host.search(q, false, skip, "user") : this.host.search(q, this.withTools, skip));
     } catch (e) {
       return { available: false, reason: String(e), hits: [], total: 0 };
     }
@@ -244,6 +352,20 @@ export class FindStrip {
 
   private sayCount(q: string): void {
     const n = this.rows.length;
+    if (n === 0 && windowScope === "user") {
+      // 筛选空 ≠ 真没有（C16）：说是在「用户」里没有，给一颗［搜全部］（回「全部」、词不变、马上找、焦点留在框里）。
+      const all = button({
+        label: copyText("sessionFind.status.searchAll"),
+        size: "compact",
+        onClick: () => {
+          this.setScope("all");
+          this.input.focus();
+        },
+      });
+      all.addEventListener("mousedown", (e) => e.preventDefault());
+      this.head.replaceChildren(document.createTextNode(copyText("sessionFind.status.noneScoped", { q })), all);
+      return;
+    }
     this.head.textContent =
       n === 0
         ? copyText("findStrip.status.none", { q })
@@ -273,6 +395,7 @@ export class FindStrip {
 
   private onKey(e: KeyboardEvent): void {
     if (imeComposing(e)) return; // 组字中的回车 / 方向键归输入法
+    if (this.scopeKey(e)) return;
     const fresh = this.shown !== null && this.shown === this.queryKey(this.input.value.trim());
     if (e.key === "Enter") {
       e.preventDefault();
@@ -374,7 +497,7 @@ export class FindStrip {
     if (this.opts.meta) {
       const meta = document.createElement("div");
       meta.className = s.fsMeta;
-      meta.textContent = this.opts.meta(h);
+      meta.textContent = this.opts.meta(h, windowScope);
       el.appendChild(meta);
     }
     const t = plainSnippet(h);

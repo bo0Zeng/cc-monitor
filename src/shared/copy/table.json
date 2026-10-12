@@ -2897,10 +2897,76 @@
       "zh": "关闭",
       "args": []
     },
+    "sessionFind.scope.all": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "全部",
+      "args": []
+    },
+    "sessionFind.scope.user": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "用户",
+      "args": []
+    },
+    "sessionFind.scope.label": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "查找范围",
+      "args": []
+    },
+    "sessionFind.tools.userOnly": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "仅用户时不含工具输出与思考",
+      "args": []
+    },
+    "sessionFind.status.noneScoped": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无匹配「{q}」 · 仅用户",
+      "args": ["q"]
+    },
+    "sessionFind.status.searchAll": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "搜全部",
+      "args": []
+    },
+    "sessionFind.status.keysScope": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{keys} · {scopeKey} 用户",
+      "args": ["keys", "scopeKey"]
+    },
+    "sessionFind.hit.metaNoWho": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "第 {n} 轮 · {time}",
+      "args": ["n", "time"]
+    },
+    "keybindingActions.session.findScopeUser": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查找范围 全部 / 用户",
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
+    },
+    "keybindingActions.session.findTools": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查找含工具输出与思考",
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
+    },
     "sessionFind.box.tools": {
       "kind": "control",
       "role": "标签",
-      "zh": "含工具内容",
+      "zh": "含工具输出与思考",
       "args": []
     },
     "sessionFind.box.placeholder": {

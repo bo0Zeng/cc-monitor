@@ -494,11 +494,11 @@ export const MAIN_SCENES: Scene[] = [
     await click(await waitFor<HTMLElement>("#session-head [data-head='display']"));
     await sleep(400);
   }),
-  main("main-head-fold", "窄窗 · 会话头放不下", "窗口 600×560：目录与状态一句先藏，还放不下 ⇒ 从排在最后的那颗起收进「⋯」最上面一组", async () => {
+  main("main-head-fold", "窄窗 · 会话头放不下", "窗口 480×560：目录与状态一句先藏，还放不下 ⇒ 从排在最后的那颗起收进「⋯」最上面一组", async () => {
     await mainReady(ALL_TABS);
     await click(await waitFor<HTMLElement>("#session-head [data-head='more']"));
     await sleep(400);
-  }, longTitleWorld, [600, 560]),
+  }, longTitleWorld, [480, 560]),
   longTitle("main-long-title", "主窗口 · 超长标题", "中英混排的超长标题在会话头与标签页里：单行省略，右侧按钮（↗ 等）宽度不变、不被压（排版量具核对）", W, H),
   longTitle("main-long-title-narrow", "窄窗口 · 超长标题", "窗口 900×640、无空格的超长标题：会话头先藏目录与状态一句，标题省略，按钮不被压", 900, 640, 1),
   longTitle("main-long-title-tight", "更窄 · 超长标题 · 已结束", "窗口 760×560、已结束的会话（多一颗［恢复 ▾］）：标题省略、机器名与状态一句也能缩，按钮一颗不少、不被压", 760, 560, 2, async () => {

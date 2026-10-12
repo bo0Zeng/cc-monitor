@@ -266,7 +266,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "history-find",
         summary: "会话内查找",
         codes: &["bad_args", "failed", "too_large"],
-        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
+        fields: &[out("hits", "命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）"), arg("include_tools", "可选，缺省 `false`：工具结果也搜"), arg("limit", "可选，缺省 500、封顶 2000"), arg("path", "jsonl 路径（围栏同 `history-read`）"), arg("query", "查询串（原样；以 `--` 起头也照样是查询，不是选项）"), arg("scope", "可选，`user`（人说的：流里画成用户气泡 · 斜杠命令 · `!` 命令的那几条；工具内容不搜）/ `assistant`（那一家说的）/ `report`（agent 回报），同 `history-search` 同名同义；别的值 ⇒ `bad_args`"), out("total", "全量命中数（≥ 条数；大于 ⇒ 被上限砍过）")], // 应答出成品：`lines` ⇒ `total` / `hits`
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
