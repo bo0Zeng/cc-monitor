@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 快检：交给门禁之前的那一圈，也是合并后 gate-affected --trust-ci 的第一步。不拿门禁锁、不代替门禁。
 # 用法：在仓里任一处 `bash tests/scripts/quick-check.sh`
-#   跑：两棵 Rust 树的排版 · tsc · 后端那棵整套 `cargo test --lib` · 壳那棵 workspace 整套 `cargo test --workspace --lib`
+#   跑：两棵 Rust 树的排版 · tsc · 后端那棵整套 `cargo test --workspace --lib`（后端 ＋ 拨号核心） · 壳那棵 workspace 整套 `cargo test --workspace --lib`
 #       （monitor · 文件窗口 · 共享 crate · 通信层，全部成员）· 整套 vitest。
 #   不按名字挑判据（10-10 起）：从前只跑名字带 guard / registry / ledger … 的那些，漏了一百多份读金样 / 冻结表的判据，
 #     推上去 CI 才红。现在两棵树与 vitest 都是整套。
@@ -22,7 +22,7 @@ root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 mode=all
 case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
-mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/)
+mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/backend/ssh-dial/ src/backend/Cargo.toml src/backend/Cargo.lock)
 # 改到的第一条（空 = 没改到；`?` = 找不到 main，照跑）
 mobile_touch() {
   local base
@@ -102,12 +102,12 @@ echo "快检 $(git log --oneline -1 | cut -c1-60)"
 [ "$mode" = mobile ] && { mobile_step; verdict; }
 if [ ! -x node_modules/.bin/tsc ]; then echo "  --   node_modules 不在（新树）⇒ npm ci"; run env npm_config_cache="$npm_cache" npm ci --prefer-offline --no-audit --no-fund >/dev/null 2>&1 || { echo "QUICK: 红 —— npm ci 失败"; exit 1; }; fi
 step fmt          runcargo bash -c 'cd src/frontend/shell && cargo fmt --all --check'
-step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check'
+step fmt-backend  runcargo bash -c 'cd src/backend && cargo fmt --check -p cc-monitor-backend -p ssh-dial'
 step tsc          run node_modules/.bin/tsc --noEmit
 
 # 后端那棵整套 --lib；版本号那一条若是唯一红的 ⇒ 记「待打版本号」
 t0=$SECONDS
-out=$(runcargo bash -c 'cd src/backend && cargo test --lib --no-fail-fast -q' 2>&1); rc=$?
+out=$(runcargo bash -c 'cd src/backend && cargo test --workspace --lib --no-fail-fast -q' 2>&1); rc=$?
 { echo "════ backend（rc=$rc）"; printf '%s\n' "$out"; } >> "$log"
 n=$(printf '%s' "$out" | grep -oE '([0-9]+) passed' | grep -oE '[0-9]+' | paste -sd+ | bc 2>/dev/null)
 failed=$(printf '%s\n' "$out" | awk '/^failures:$/{f=1; next} f && /^    [A-Za-z0-9_:]+$/{print $1} /^test result:/{f=0}' | sort -u)

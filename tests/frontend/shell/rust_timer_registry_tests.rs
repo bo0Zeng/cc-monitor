@@ -158,7 +158,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     // `src/search.rs` 那一行（`startup-delay` 1 处：`build_blocking` 起头让路 1.5 s）随本机内存索引删了 ——
     //   本机全文搜索改问本机后端（`history-search`），monitor 不再建索引。
     // `src/port_forward.rs` 那一行（accept 瞬时错误 100ms 退避）**删了**：accept 循环整个搬进了
-    //   后端的拨号代理（`src/backend/dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
+    //   后端的拨号代理（`src/backend/ssh-dial/uses.rs::forward`），而后端不许睡 ⇒ 那一侧改成「accept 失败就收工并出声」。
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
     //    它是 `src/stream_source/` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
     //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
@@ -169,7 +169,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
     //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
     // `src/inproc_dial.rs` 那一行（`RACE_STAGGER * i`：进程内多端点竞速的错开起拨，C2 从 `stream_source/`
-    //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `dial/connect.rs`（同时起拨：后端零定时器）。
+    //   原样搬去的那一份）摘了 —— 那份文件整份删了（界面进程零 SSH）。竞速今天住本机后端 `ssh-dial/connect.rs`（同时起拨：后端零定时器）。
     (
         "src/stream_source/snapshot.rs",
         "snapshot_dispatcher",

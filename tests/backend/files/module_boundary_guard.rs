@@ -414,7 +414,7 @@ const OUTWARD: &[(&str, Kind, &str)] = &[
     (
         "dial::sftp::Dial",
         Kind::Infra,
-        "传输台要一条 sftp 会话才搬得动字节：只经 `dial/sftp.rs` 包出来的 `Dial`，手里不拿 `DialRequest`",
+        "传输台要一条 sftp 会话才搬得动字节：只经 `ssh-dial/sftp.rs` 包出来的 `Dial`，手里不拿 `DialRequest`",
     ),
     ("dial::sftp::Session", Kind::Infra, "同上一格：那一条 sftp 会话本身"),
     (

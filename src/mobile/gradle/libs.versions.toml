@@ -26,8 +26,6 @@ moshi = "1.15.1"
 markwon = "4.6.2"
 prism4j = "2.0.0"   # 语法高亮：Prism4j（io.noties）；bundler 是 Java 注解处理器
 tink = "1.17.0"
-sshj = "0.39.0"     # 已含 Terrapin 修复
-bouncycastle = "1.84"   # SSH 认证与密钥解析用的 crypto provider
 # termlib 0.1.2：带捏合缩放持久化、竖滑照桌面终端处理滚轮的规矩走（鼠标上报 → 滚轮 · 备用屏 → 方向键 · 否则回滚区）的改动版，从仓内 maven 仓 libs/m2 解析
 # （见 settings.gradle.kts），不在 Maven Central。
 termlib = "0.1.2"
@@ -69,9 +67,6 @@ androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }
-sshj = { group = "com.hierynomus", name = "sshj", version.ref = "sshj" }
-bouncycastle-prov = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
-bouncycastle-pkix = { group = "org.bouncycastle", name = "bcpkix-jdk18on", version.ref = "bouncycastle" }
 connectbot-termlib = { group = "org.connectbot", name = "termlib", version.ref = "termlib" }
 # Markwon —— Markdown 渲染（View 系，经 AndroidView 进 Compose）。代码块语法高亮见下方 Prism4j。
 markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "markwon" }

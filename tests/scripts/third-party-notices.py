@@ -8,7 +8,7 @@
 门禁 `release-gate`（`tests/evidence/K-R124-ruler.py` ⑰）两向核这两句；发版那一趟（`release.yml`）跑 `--check`。
 
 来源：
-  · Rust（后端 `src/backend` ＋ 壳与文件窗口 `src/frontend/shell` 整个工作区，含 `src/vendor/` 下放进仓的那几份）：
+  · Rust（后端 `src/backend` ＋ 壳与文件窗口 `src/frontend/shell` 整个工作区 ＋ 手机嵌的 Rust 核心 `src/mobile/core-rs/rust`，含 `src/vendor/` 下放进仓的那几份）：
     cargo-about（版本钉在 `CARGO_ABOUT_VERSION`），离线读 cargo 注册表缓存里各包自带的许可文件；目标平台与收纳的许可住
     `tests/scripts/third-party-about.toml`；开发期依赖不收。
   · npm：`package-lock.json` 里不带 `dev` 的包，读 `node_modules/` 里各包自带的许可文件（要先 `npm ci`）。
@@ -38,7 +38,9 @@ NOTICES = ROOT / "THIRD-PARTY-NOTICES.txt"
 NOT_SHIPPED = ROOT / "tests/evidence/third-party-not-shipped.txt"
 VENDOR = ROOT / "src/vendor"
 #: (清单, 是不是整个工作区)
-TREES = [("src/backend/Cargo.toml", False), ("src/frontend/shell/Cargo.toml", True)]
+TREES = [("src/backend/Cargo.toml", False), ("src/frontend/shell/Cargo.toml", True),
+         # 手机嵌的 Rust 核心（`libmobcore.so`，进 APK）：后端那一棵 workspace 的成员，依赖闭包单算（拨号核心 ＋ jni）。
+         ("src/mobile/core-rs/rust/Cargo.toml", False)]
 LOCKS = ["src/backend/Cargo.lock", "src/frontend/shell/Cargo.lock"]
 LICENSE_FILE = re.compile(r"^(licen[cs]e|copying|notice)", re.I)
 #: (组件, 版本, SPDX, 在仓里的位置（目录以 / 结尾）, 许可全文所在文件, 说明)

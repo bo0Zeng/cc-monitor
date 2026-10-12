@@ -2443,7 +2443,7 @@ mod error_envelope_registry {
         // `accounts/iso.rs` 那一行（本机 `cc-acct-iso` 两问的 argv 形失败信封）删了：
         //   两问上了帧面，失败走帧面的 `(code, message)` 应答，iso.rs 里不再自己拼信封。
         (
-            "dial/sftp.rs",
+            "ssh-dial/sftp.rs",
             "serde_json::json!({ \"code\": code, \"message\": message, \"detail\": detail })",
             "部署链路（`use:\"files\"`）一问一答的失败应答",
             "它**不是 CLI 出口**，是一条链路上的一行应答（monitor 那侧 `dial_host::RemoteFs` 读它）；\
@@ -2788,6 +2788,24 @@ mod g6_dependency_signoff {
             MEASURED_CLEAN,
             "同上一行那个仓内 crate，测试构建多开 `test-support`（只把内部件再导出给组合判据），0 处写面",
         ),
+        (
+            "ssh-dial",
+            DEPS,
+            MEASURED_WRITES_ON_PURPOSE,
+            "拨号核心（后端与手机同一份）：仓内 crate，**住本 crate 目录底下**（`ssh-dial/`）⇒ 它的源码就在本护栏的人群里\
+             （`src/backend` 下全部 `.rs`），与本 crate 自己的代码同一套判准。本机写面现打 0 处：认下的 host key 交回宿主\
+             （`dial/known_hosts.rs`，经启动时装的写句柄 `known_hosts::Writer` 记）。**远端**写面就是它的本职（`russh-sftp` 那一格搬到这里）⇒ 就是要它写。\
+             谁划边界：只住它的 `sftp.rs` 一份、规矩由宿主装（本后端装部署那两处，`dial/mod.rs::host`）、每处先过 `fenced_remote`。\
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+        ),
+        (
+            "ssh-dial",
+            DEV_DEPS,
+            MEASURED_WRITES_ON_PURPOSE,
+            "同上一行那个仓内 crate，测试构建多开 `test-support`（测试档不许出网那句断言 · 拨了必被拒的本机口 · 合成 SFTP 服务端），\
+             多出来的 0 处写面；远端写面同上一行。\
+             边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
+        ),
         // `branch-core` 那一行摘了：它收进本 crate 的适配层（`agents/claudecode/branch.rs`；IO 只有一处只读的目录枚举，0 处写面）。
         (
             GATED_CRATE,
@@ -2899,7 +2917,7 @@ mod g6_dependency_signoff {
              **本机**写面现打 0 处（3.0.0 源码里 `std::fs` 只出现在 `protocol/open.rs` 一个 `From<OpenFlags> for \
              fs::OpenOptions` 的转换里 —— 造选项、不开文件；它的 `tokio` 没开 `fs` / `net`）；\
              **远端**写面就是它的本职（`SSH_FXP_OPEN` 带写标志 · `REMOVE` · `RENAME` · `MKDIR` …）⇒ 就是要它写。\
-             谁划边界：只许 `dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
+             谁划边界：只许 `ssh-dial/sftp.rs` 一份文件持有它的会话、写根 == 暂存区与部署目录、每处先过 `fenced_remote`。\
              边界判据：`the_remote_write_lives_in_exactly_one_file_and_its_roots_are_exactly_staging_and_bin`",
         ),
         // `search-core` 那一行出列：crate 删了（通用口径收成 `observe/search_rules.rs`，记录文本进 `agents/claudecode/text.rs`）。
@@ -3386,9 +3404,10 @@ mod g6_dependency_signoff {
         // +`russh-sftp`（SFTP 进本机常驻后端）。它的前提不是一个 feature，
         //   是「只许一份文件持有它的会话、写根 == 两处」—— 那一条由它签字里点名的边界判据钉（远端写那一层），
         //   本条只钉 `creds-core` 那一条的前提（feature 开着）。
+        // +`ssh-dial` 两行（拨号核心，远端写那一格随 SFTP 客户端搬进去）：前提同 `russh-sftp`，由同一条边界判据钉。
         assert_eq!(
             purposeful,
-            vec![GATED_CRATE, "russh-sftp"],
+            vec!["ssh-dial", "ssh-dial", GATED_CRATE, "russh-sftp"],
             "「就是要它写」那一档的成员变了：{purposeful:?}\n\
              本条只钉得住 `{GATED_CRATE}` 那一条的前提（feature 开着）；新来的成员要在签字里点名它自己的边界判据。"
         );
@@ -3606,7 +3625,7 @@ mod g6_dependency_signoff {
              它是「真干净」还是「尺子瞎了」分不出来了。回来重挑对照。"
         );
         // 对照只取**仓内**那几条：`russh-sftp`（第四档，外部 crate）的源码不在树里，
-        //   本尺子够不着 —— 它的写面由签字里点名的边界判据在**用法**一侧钉（只许 `dial/sftp.rs` 一份持有）。
+        //   本尺子够不着 —— 它的写面由签字里点名的边界判据在**用法**一侧钉（只许 `ssh-dial/sftp.rs` 一份持有）。
         //   够不着的只许是这一形：第四档、名字落在远端写协议词表上；别的形照旧红。
         let (scannable, out_of_reach) = split_by_reachability(&with_surface);
         let external_ok: Vec<&str> = SIGNED
@@ -3895,7 +3914,7 @@ mod remote_write_layer {
     //!
     //! # 它守的性质 · 它扫的人群（两行，各只许有一句 —— 同本文件顶上 `KG62` 那对）
     //!
-    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
+    //! - **它守的性质是**：backend **进程自身**不许改动**别人机器上**的用户既有数据 —— 远端写只许住 `ssh-dial/sftp.rs` 一份、只许落在 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/`（我们自己的目录）、每一处先过 `fenced_remote`。
     //!   （本机那一半由命名空间那一条与那几种写句柄守；本层守的是**远端**那一半。）
     //! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs` 的生产段源码文本里，
     //!   **把一条远端通道变成文件系统的那一步**（[`REMOTE_CAPABILITY_ANCHORS`]）
@@ -3949,7 +3968,7 @@ mod remote_write_layer {
             FAMILY_SUBSYSTEM,
             "在 SSH 连接上开一个**子系统** —— `ssh-connection` 协议里这是**唯一**一个动作，\
              而 SFTP 就是一个子系统名。换一份 crate、换一套方法名，这一步躲不掉；\
-backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常驻后端）\
+backend 今天**只在一处**开子系统（`ssh-dial/sftp.rs`，SFTP 住本机常驻后端）\
              ⇒ 这一条在那一份之外恒零，出现在第二份即越线（`REMOTE_WRITE_MODULE`）。",
         ),
         (
@@ -4362,7 +4381,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
 
     /// ★ **远端写的唯一住址**：`(仓库相对路径, why —— 它写什么、路径由谁定、哪一道围栏拦着)`。
     const REMOTE_WRITE_MODULE: (&str, &str) = (
-        "dial/sftp.rs",
+        "ssh-dial/sftp.rs",
         "SFTP 住本机常驻后端：暂存区的上传件（`control/transfer.rs` 经它写）· \
          自部署的后端二进制 / `.build_id` / `ccm` 入口（部署链路 `use:\"files\"` 经它写）。\
          路径由 monitor 给、由本文件的 `fenced_remote` 判：词法（只许两个根）＋ 父目录解链接仍在根下 ＋ \
@@ -4587,7 +4606,7 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
     /// 是因为两者说的不是同一件事：合起来那个结论里，动词网那一半有可能靠
     /// 「本机恰好没有同名方法」撑着，而那是**今天的巧合**，不是本层的性质。
     /// ⇒ 哪天它红了，先读这条的报错：**它多半不是一次越线，是一次同名误伤**。
-    /// 登记的那一份（`dial/sftp.rs`）里的动词是真的远端写，不算误伤 ⇒ 不在本条人群里。
+    /// 登记的那一份（`ssh-dial/sftp.rs`）里的动词是真的远端写，不算误伤 ⇒ 不在本条人群里。
     #[test]
     fn the_verb_net_has_no_false_positive_on_this_tree_today() {
         let tree = production_tree();
@@ -4632,22 +4651,22 @@ backend 今天**只在一处**开子系统（`dial/sftp.rs`，SFTP 住本机常�
             .filter(|(_, c)| c.contains(needle.as_str()))
             .map(|(rel, _)| rel.as_str())
             .collect();
-        // 住址 `dial/mod.rs` → `dial/uses.rs`：拨号代理拆成三份，开 channel 之后那一段
+        // 住址 `dial/mod.rs` → `ssh-dial/uses.rs`：拨号代理拆成三份，开 channel 之后那一段
         //   住 `uses.rs`。处数仍是**一份文件**；它里面多了 `capture` 那一臂（同一条 exec，收全输出）——
         //   那一臂此前在界面进程里（`stream_source::connect_and_exec_capture`），是搬家，不是新长的能力。
         assert_eq!(
             sites,
-            vec!["dial/uses.rs"],
+            vec!["ssh-dial/uses.rs"],
             "远端 session channel 的处数 / 住址变了：{sites:?}\n\
              它是本层**认不出的那一格**的活体标本 —— 变了就回来重读这条登记，\
              别只改这个断言。（`dial_locality` 管的是「跑不跑传输层握手」，是另一维。）"
         );
         for (rel, prod) in &tree {
-            if rel == "dial/uses.rs" {
+            if rel == "ssh-dial/uses.rs" {
                 assert_eq!(
                     violates_remote_write_layer(prod),
                     None,
-                    "反例 `dial/uses.rs` 今天**红了** —— 那说明本层的射程变了，\
+                    "反例 `ssh-dial/uses.rs` 今天**红了** —— 那说明本层的射程变了，\
                      这条登记说的话已经不成立，回来重判"
                 );
             }

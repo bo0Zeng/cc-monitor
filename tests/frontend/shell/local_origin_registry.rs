@@ -62,7 +62,7 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[(
      本机没有「经跳板连本机」这一形（本机那条路不拨 SSH），`<local>` 结构上走不到这里：\
      调它的只有 `dial_host` 那几个拿链路的入口，而它们的调用方全在「已经分过本机、确定是远端」之后。\
 另一处是**同一台**盘上那份（当 `saved` 交给后端，固化之后下一次拨号就严格；\
-     指纹继承规则住后端 `dial/machine.rs`）—— 同一条理由：本机那条路不拨 SSH、没有 host key。",
+     指纹继承规则住后端 `ssh-dial/machine.rs`）—— 同一条理由：本机那条路不拨 SSH、没有 host key。",
 ), (
     "backend_control.rs",
     "stop_remote_resident",

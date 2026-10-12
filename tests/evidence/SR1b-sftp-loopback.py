@@ -235,7 +235,7 @@ def main():
                     n = int(ln.rsplit(" written ", 1)[1].split()[0])
             return n
 
-        # 〔WIN3 §2〕拨号只收界面那一格原样的配置（MIG-1 之后 `dial/machine.rs::resolve`）；平铺 host/port 那一形会被回 `invalid_args`。
+        # 〔WIN3 §2〕拨号只收界面那一格原样的配置（MIG-1 之后 `ssh-dial/machine.rs::resolve`）；平铺 host/port 那一形会被回 `invalid_args`。
         base = {"machine": {"host": "127.0.0.1", "port": port, "user": user, "label": "sr1b", "keyPath": f"{d}/client_key"}}
         be = Backend(bin_path, home)
         cmds = be.hello.get("commands", [])
@@ -396,7 +396,7 @@ def main():
         r = be.call("transfer-download", {"dial": base, "remote_path": rsrc, "local_path": sess})
         check("本机落点是会话文件 ⇒ 照样开单（没有数据围栏）", bool(r) and r["ok"], r)
 
-        # 长流在时传输分道（`dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
+        # 长流在时传输分道（`ssh-dial/pool.rs`：主连接上有长流 ⇒ 传输另开一条批量连接，
         #   被主连接托着、之后的传输都复用它）⇒ 长流 ＋ files 一条、六趟传输一条：恰好两次鉴权、两条 TCP。
         #   分道本身的读数（下载期间长流回声 314 → 116 ms）住 `NT1-net-loopback.py` ①⑤。
         print("⑧ 两条连接（长流 ＋ files 一条 · 传输分道一条）")

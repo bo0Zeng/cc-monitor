@@ -7,7 +7,7 @@
 //! | # | 判据 | 形状 |
 //! |---|---|---|
 //! | O1 | 新建 ⇒ 0700；已在的 0755 ⇒ 仍 0755；父目录不在 ⇒ 照实报错（住 `platform/fs/own_tests.rs`，跟着那个函数） | 真目录，两向 |
-//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`platform/fs/own.rs::create_dir_private`（`Own::ensure_dir` 的本体） · 远端 `dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
+//! | O2 | 后端生产段**每一处建目录**（`fs::create_dir` · `create_dir_all` · `DirBuilder` · SFTP `.create_dir(`）的所在 (文件, 函数) 集合 == 登记表；登记表里建「后端自家目录」的那一格 == {`platform/fs/own.rs::create_dir_private`（`Own::ensure_dir` 的本体） · 远端 `ssh-dial/sftp.rs::make_dir`} | 两向相等 ＋ 正控（合成语料里多一处 `create_dir` 必被认出） |
 //! | O3 | 七个调用方（六份第四层 ＋ 暂存区；凭据与历史注解那一层就是数据目录 `~/.cc-monitor`）各经它恰好一处；远端那一处用的是同一个权限位常量 | 文本 |
 
 /// 一处建目录的调用：(文件, 所在函数)。
@@ -51,7 +51,7 @@ fn dir_creations(rel: &str, prod: &str) -> Vec<(String, String)> {
 const OWN_HOME: &str = "后端自家目录";
 const DIR_CREATORS: &[(&str, &str, &str)] = &[
     ("platform/fs/own.rs", "create_dir_private", OWN_HOME),
-    ("dial/sftp.rs", "make_dir", OWN_HOME),
+    ("ssh-dial/sftp.rs", "make_dir", OWN_HOME),
     // 订阅号续期锁（+1）：与那个号自己的 claude 同一套 `mkdir` 锁（配置目录里那一把 · 旁边那一把），建成即持有、续完即删（`make` 建；过期的那把删了重建也走它）。
     (
         "platform/fs/own.rs",
@@ -131,7 +131,7 @@ fn o2_every_dir_creation_is_registered_and_only_the_helper_builds_our_home() {
         .collect();
     assert_eq!(
         home,
-        vec!["create_dir_private", "dial/sftp.rs"],
+        vec!["create_dir_private", "ssh-dial/sftp.rs"],
         "建后端自家目录的只该是那个函数（本机）＋ 远端部署那一处"
     );
     // 正控：数法认得出合成语料里多出来的一处。
@@ -179,11 +179,12 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
             "{f} 建自家目录不是经 `Own::ensure_dir` 恰好一处"
         );
     }
-    let sftp = src("dial/sftp.rs");
-    assert_eq!(
-        sftp.matches("permissions: Some(crate::common::own_dir::PRIVATE_DIR_MODE)")
-            .count(),
-        1,
-        "远端部署建目录没用同一个权限位"
-    );
+    // 远端那一份住拨号核心（手机同一份）：建目录的权限位是宿主交进去的那一个，本后端交的就是 `PRIVATE_DIR_MODE`。
+    guard_core::find_pinned(&src("ssh-dial/sftp.rs"), "permissions: Some(dir_mode)")
+        .expect("远端部署建目录没用宿主交进来的那个权限位");
+    guard_core::find_pinned(
+        &src("dial/mod.rs"),
+        "dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE,",
+    )
+    .expect("本后端交给拨号核心的建目录权限位不是 own_dir 那一个");
 }

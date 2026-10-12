@@ -139,7 +139,7 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
 /// 要求：「**拒绝是一个会到达用户的结论，不是一行 `debug` 日志**；文案照」
 /// 与第 4 条「**OS 问不出 ＝ 拒绝，不是回落**」；读数
 /// 「Windows 远端 `uname` 的回话在 toast / 日志里是**乱码**：PowerShell 按控制台代码页（GBK）吐错误，我们按 UTF-8 解」。
-/// 异源：语料是**手写的 GBK 字节**（「无法将“uname”」），走与后端 `dial/uses.rs` 同一种有损解（`from_utf8_lossy`）；
+/// 异源：语料是**手写的 GBK 字节**（「无法将“uname”」），走与后端 `ssh-dial/uses.rs` 同一种有损解（`from_utf8_lossy`）；
 /// 期望是「整句里零个 U+FFFD」＋「说得出不是 UTF-8」，不从被测常量里抠。正控：UTF-8 的回话照旧原样带出。
 #[test]
 fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {

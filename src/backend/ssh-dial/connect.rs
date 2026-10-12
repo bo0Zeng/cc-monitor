@@ -1,0 +1,1129 @@
+//! 连 → 校验 host key → 鉴权。**全仓唯一与远端跑 SSH 传输层握手的地方**
+//! （`tests/backend/dial_tests.rs::the_dial_only_happens_under_dial_home` 钉着「只在拨号核心」）。
+//!
+//! TCP 由这里自己拨（不交给 `client::connect`）：拨通之后问内核这一跳的往返时间
+//! （[`crate::tcp_rtt`]），过**唯一一处**压缩判准 [`compression_for`]，再在这条 socket 上跑 SSH 握手。
+//! 跳板可以多跳（`JumpHop::jump` 一层套一层，同 `ssh -J a,b`）：从最外一台起逐台经上一台的 direct-tcpip 开到下一台。
+
+use copy_core::copy_text;
+use std::collections::BTreeMap;
+use std::net::IpAddr;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use russh::client;
+use russh::keys::{HashAlg, PrivateKeyWithHashAlg, PublicKey};
+
+use crate::env::{self, Credential};
+use crate::{DialRequest, Endpoint, JumpHop, Said, Stage, StageSink};
+
+/// 长连接的 SSH 层保活：**10 秒没收到对端字节就发一个**（russh 的 `keepalive_interval`：收到任何字节都重新计时）。
+/// 发出去之后又过了 [`KEEPALIVE_MAX`] 轮还是一个字节都没收到 ⇒ russh 判死、断开这条连接（最后收包之后 `KEEPALIVE_MAX + 1` 轮，20 秒）。
+/// **不靠 inactivity 拆链**：russh 的 inactivity 计时在无 keepalive 时会拆掉一条健康的空闲连接
+/// （空闲一小时的会话很常见）。死链由 keepalive 超时 ＋ EOF 检出。
+///
+/// 为什么是 10 秒（从 30 秒改来）：路断成黑洞（换网 / NAT 表过期，没有 RST）之后，挂在这条连接上的开通道
+/// 要等它被判死才失败、才换到新连接上 —— 30 秒 × 3 时是 120 秒，界面 45 秒的握手期限先到。
+/// 代价：每条空闲连接每 10 秒一个保活往返（一个 `keepalive@openssh.com` 全局请求 ＋ 一条回话，各一包、百来字节）。
+const KEEPALIVE: Duration = Duration::from_millis(10_000);
+
+/// 同一个间隔，毫秒（「多久没收包算久」照它定：`uses::STALE_AFTER_MS`）。
+#[allow(clippy::cast_possible_truncation)]
+pub const KEEPALIVE_MS: u64 = KEEPALIVE.as_millis() as u64;
+
+/// 保活发出去之后，再过几轮还没有任何回话就判死（russh 的 `keepalive_max`：计时到点时「已发未回」的个数超过它 ⇒ 断开）。
+/// 1 ⇒ 最后收包之后第 1 轮发一个保活、第 2 轮到点时它还没回话 ⇒ 判死。一次保活要整整一轮（10 秒）没回话，健康的路上不会有。
+pub const KEEPALIVE_MAX: usize = 1;
+
+/// 短命探活（`probe`）的 inactivity 上限 —— 测试连接那条不需要保活。
+const PROBE_INACTIVITY: Duration = Duration::from_millis(30_000);
+
+/// 握手鉴权都过了的一条 SSH 连接。
+pub struct Linked {
+    pub session: client::Handle<Checker>,
+    pub fingerprint: Option<String>,
+    /// 建这条连接那一趟里**报过指纹的每条地址** → 它报的指纹（竞速的输家也在；跳板那台不在）。
+    pub fingerprints: BTreeMap<String, String>,
+    /// 经跳板时跳板那一趟报过的「地址 → 指纹」（另一格；直连 ⇒ 空）。
+    pub jump_fingerprints: BTreeMap<String, String>,
+    pub endpoint: String,
+    /// 同一条胜者，结构化（ack 的 `winner`）。
+    pub winner: Endpoint,
+    /// 经跳板时跳板链那几条连接（外在先）：**必须与目标连接同生命周期**（drop 它 ⇒ 隧道死 ⇒ 目标断）。
+    pub _jumps: Vec<client::Handle<Checker>>,
+    /// 这条连接上的通道预算（`pool::Budget`）：长流 · 查询 · SFTP 同一条连接，同一道闸。
+    pub budget: crate::pool::Budget,
+    /// 这条连接托着的别的连接（主连接托着批量连接：长流在它就在，主连接没了随之释放 —— `pool.rs`）。
+    pub held: Mutex<Vec<Arc<Linked>>>,
+    /// 这条连接上停着的那一条空闲 sftp 会话（一个空位；`sftp.rs::Parked`）。不托本连接。
+    pub idle_sftp: Mutex<Option<crate::sftp::Parked>>,
+    /// 最后一次收到对端字节的时刻（[`Hearing`] 在 SSH 底下那条字节流上记）。
+    pub heard: Arc<crate::pool::Heard>,
+}
+
+/// SSH 底下那条字节流（直连的 TCP · 经跳板的那条隧道）套一层：**读到对端的字节**就记一笔收包时刻（[`crate::pool::Heard`]）。
+/// 写不记。别的原样转手。
+pub struct Hearing<S> {
+    inner: S,
+    heard: Arc<crate::pool::Heard>,
+}
+
+impl<S> Hearing<S> {
+    pub fn new(inner: S, heard: Arc<crate::pool::Heard>) -> Self {
+        Hearing { inner, heard }
+    }
+}
+
+impl<S: tokio::io::AsyncRead + Unpin> tokio::io::AsyncRead for Hearing<S> {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        let before = buf.filled().len();
+        let r = std::pin::Pin::new(&mut self.inner).poll_read(cx, buf);
+        if matches!(r, std::task::Poll::Ready(Ok(()))) && buf.filled().len() > before {
+            self.heard.touch();
+        }
+        r
+    }
+}
+
+impl<S: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for Hearing<S> {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write(cx, buf)
+    }
+    fn poll_write_vectored(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bufs: &[std::io::IoSlice<'_>],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        std::pin::Pin::new(&mut self.inner).poll_write_vectored(cx, bufs)
+    }
+    fn is_write_vectored(&self) -> bool {
+        self.inner.is_write_vectored()
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut self.inner).poll_shutdown(cx)
+    }
+}
+
+/// 一台的信任锚：期望指纹（桌面：机器表里固化的那一格）· 记过的钥匙（手机：Room 里那几把，OpenSSH 的做法）。
+#[derive(Clone, Default)]
+pub struct Trust {
+    pub expected: Option<String>,
+    /// 这台记过的 host key（可多种类型）。非空 ⇒ 协商时这几种类型排前，握手时按协商出的类型严格比；
+    /// 那一种没记过（而别的记过）⇒ 拒，同「钥匙变了」。
+    pub known: Vec<PublicKey>,
+}
+
+impl Trust {
+    /// 期望指纹 ＋ 记过的钥匙那几行（`算法 base64`，认不出的行丢掉）。
+    pub fn of(expected: Option<String>, known: &[String]) -> Trust {
+        Trust {
+            expected,
+            known: known
+                .iter()
+                .filter_map(|l| PublicKey::from_openssh(l.trim()).ok())
+                .collect(),
+        }
+    }
+
+    /// 协商 host key 算法的偏好序：记过的那几种类型排前（按缺省序里的先后），其余照缺省序。没记过 ⇒ 缺省序。
+    fn preferred_keys(&self) -> std::borrow::Cow<'static, [russh::keys::Algorithm]> {
+        let default = russh::Preferred::DEFAULT.key;
+        if self.known.is_empty() {
+            return default;
+        }
+        let stored = |a: &russh::keys::Algorithm| {
+            self.known
+                .iter()
+                .any(|k| key_type_of(a) == k.algorithm().as_str())
+        };
+        let mut first: Vec<russh::keys::Algorithm> =
+            default.iter().filter(|a| stored(a)).cloned().collect();
+        first.extend(default.iter().filter(|a| !stored(a)).cloned());
+        std::borrow::Cow::Owned(first)
+    }
+
+    /// 按记过的钥匙判服务端给的这一把：`Ok(())` 过；`Err(())` 拒（同类型不是那一把 / 这一种没记过）。
+    fn judge_known(&self, offered: &PublicKey) -> Result<(), ()> {
+        let same_type: Vec<&PublicKey> = self
+            .known
+            .iter()
+            .filter(|k| k.algorithm() == offered.algorithm())
+            .collect();
+        if same_type.iter().any(|k| k.key_data() == offered.key_data()) {
+            Ok(())
+        } else {
+            Err(())
+        }
+    }
+}
+
+/// 协商用的签名算法 ⇒ 钥匙类型（RSA 的 `rsa-sha2-*` 都是 `ssh-rsa` 那一种钥匙）。
+fn key_type_of(a: &russh::keys::Algorithm) -> String {
+    match a {
+        russh::keys::Algorithm::Rsa { .. } => "ssh-rsa".to_string(),
+        other => other.as_str().to_string(),
+    }
+}
+
+/// host key 校验：给了期望值就严格比（比之前 `trim`），没给就 TOFU 接受并显眼 `warn`。
+/// **无论接受与否**都把实得指纹写回共享格 —— 界面要拿它做 TOFU 固化与展示。
+pub struct Checker {
+    trust: Trust,
+    observed: Arc<Mutex<Option<String>>>,
+    /// 这一趟共用的「地址 → 指纹」格：校验那一刻就记（接受 / 拒绝都记），之后任务被 abort 也不丢。
+    reported: Arc<Mutex<BTreeMap<String, String>>>,
+    stages: StageSink,
+    endpoint: String,
+    /// 这一趟连的是哪台（主机 ＋ 口，同开终端那一行写的那一对）：认下的钥匙按它交给宿主记（[`env::HostKeys`]）。
+    host: String,
+    port: u16,
+    /// 这条连接的收包记账；连接没了在这里记一笔（[`crate::pool::Heard::mark_gone`]）。
+    heard: Arc<crate::pool::Heard>,
+}
+
+impl Checker {
+    /// 认下了 ⇒ 交给宿主记（桌面：cc-monitor 那份 known_hosts，开终端那一跳的 `ssh` 认同一把，不再问）。
+    fn accepted(&self, key: &PublicKey) -> Result<bool, russh::Error> {
+        match key.to_openssh() {
+            Ok(line) => {
+                let algo_and_blob: Vec<&str> = line.split_whitespace().take(2).collect();
+                env::get()
+                    .host_keys
+                    .remember(&self.host, self.port, &algo_and_blob.join(" "));
+            }
+            Err(e) => tracing::warn!("known_hosts：钥匙写不成 OpenSSH 形：{e}"),
+        }
+        Ok(true)
+    }
+}
+
+impl client::Handler for Checker {
+    type Error = russh::Error;
+
+    async fn disconnected(
+        &mut self,
+        reason: client::DisconnectReason<Self::Error>,
+    ) -> Result<(), Self::Error> {
+        self.heard.mark_gone();
+        match reason {
+            client::DisconnectReason::ReceivedDisconnect(_) => Ok(()),
+            client::DisconnectReason::Error(e) => Err(e),
+        }
+    }
+
+    async fn check_server_key(
+        &mut self,
+        server_public_key: &PublicKey,
+    ) -> Result<bool, Self::Error> {
+        let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
+        if let Ok(mut slot) = self.observed.lock() {
+            *slot = Some(actual.clone());
+        }
+        if let Ok(mut all) = self.reported.lock() {
+            all.insert(self.endpoint.clone(), actual.clone());
+        }
+        // 到 host key 校验 = 该地址 TCP ＋ KEX 已过。
+        self.stages.emit(Stage::HostKey {
+            endpoint: self.endpoint.clone(),
+            fingerprint: actual.clone(),
+        });
+        // 协商出的这一把是什么类型（报错时带上：「钥匙变了」那一句要说是哪一种）。
+        self.stages
+            .note_key_type(server_public_key.algorithm().as_str());
+        if !self.trust.known.is_empty() {
+            return match self.trust.judge_known(server_public_key) {
+                Ok(()) => {
+                    tracing::info!("dial: host key 与记过的那一把相同：{actual}");
+                    self.accepted(server_public_key)
+                }
+                Err(()) => {
+                    tracing::error!(
+                        "dial: host key 对不上记过的（实得 {actual}，alg={}）—— 拒绝这条连接",
+                        server_public_key.algorithm()
+                    );
+                    Ok(false)
+                }
+            };
+        }
+        match &self.trust.expected {
+            Some(expected) => {
+                if actual == expected.trim() {
+                    tracing::info!("dial: host key 指纹校验通过：{actual}");
+                    self.accepted(server_public_key)
+                } else {
+                    // 失配时附上实际 key 的算法：分得开「合法换 key 类型」与「同类型 key 被换」。
+                    let alg = server_public_key.algorithm();
+                    tracing::error!(
+                        "dial: host key 失配：期望 {expected}，实得 {actual}（alg={alg}）—— 拒绝这条连接。\
+                         若服务器确系合法轮换过 host key，请在设置里「重置为 TOFU」后重连；否则可能是中间人攻击。"
+                    );
+                    Ok(false)
+                }
+            }
+            None => {
+                tracing::warn!(
+                    "dial: **未经校验**接受 host key {actual}（TOFU）—— 界面侧应当把它固化回配置，之后转严格校验。"
+                );
+                self.accepted(server_public_key)
+            }
+        }
+    }
+}
+
+/// 把一次拨号失败粗分成阶段标签（界面泳道用不同图标）：按错误的**类型**分（`io::ErrorKind` / `russh::Error` 变体），
+/// 不看错误串 —— 串是给人读的，改一个字不该改分类。认不出的一律 `other`。
+pub fn stage_of_io(e: &std::io::Error) -> &'static str {
+    use std::io::ErrorKind as K;
+    match e.kind() {
+        K::ConnectionRefused | K::HostUnreachable | K::NetworkUnreachable => "tcp",
+        K::TimedOut => "timeout",
+        _ => "other",
+    }
+}
+
+/// 同上，russh 那一侧（握手期的错误；`IO` 那一支交给 [`stage_of_io`]）。
+pub fn stage_of_russh(e: &russh::Error) -> &'static str {
+    match e {
+        russh::Error::IO(io) => stage_of_io(io),
+        russh::Error::ConnectionTimeout
+        | russh::Error::KeepaliveTimeout
+        | russh::Error::InactivityTimeout
+        | russh::Error::Elapsed(_) => "timeout",
+        russh::Error::UnknownKey | russh::Error::WrongServerSig => "hostkey",
+        _ => "other",
+    }
+}
+
+fn label(ep: &Endpoint) -> String {
+    format!("{}:{}", ep.host, ep.port)
+}
+
+// ═══ **压缩：开不开，判准只此一处** ═══════════════════════════════════════════
+//
+// 用户要求：「智能多开链接\压缩等等」「这是属于 ssh 优化的部分」。SSH 传输层零压缩，
+// 而会话数据 gzip 3.1–4.1×。russh 0.61.1 的默认偏好序是
+// `[none, zlib, zlib@openssh.com]`，客户端按**自己的**偏好序挑双方都有的第一个 ⇒ **永远 `none`**。
+//
+// 判准看的是**这一跳真实的往返时间**（内核 `TCP_INFO`，`tcp_rtt`），不是地址长什么样：
+// 用户的远端大半走覆盖网（地址在 RFC 1918 私网段、跨互联网、RTT 12–577 ms —— `NT1.md §0.3` 现打）。
+
+/// 往返时间到这个数（微秒）才压。回环 ≈ 0.07 ms、有线局域网 < 1 ms、无线局域网 1–5 ms；最近的一条跨互联网覆盖网 12 ms。
+/// 判错两种代价不对称：局域网被判「远」⇒ 多花一点 zlib `fast` 档的 CPU；跨互联网被判「近」⇒ 白传 3–5 倍字节 ⇒ 门槛取低。
+pub const COMPRESS_RTT_FLOOR_US: u32 = 5_000;
+
+/// 压缩偏好序：**压**（`zlib@openssh.com` 鉴权之后才开 —— OpenSSH 服务端 `Compression yes` 今天只给它；
+/// 远端 `Compression no` ⇒ 交集只剩 `none`，照样连得上）。
+pub const COMPRESS_ON: &[russh::compression::Name] = &[
+    russh::compression::ZLIB_LEGACY,
+    russh::compression::ZLIB,
+    russh::compression::NONE,
+];
+
+/// 压缩偏好序：**不压**。
+pub const COMPRESS_OFF: &[russh::compression::Name] = &[russh::compression::NONE];
+
+/// 🔴 **闸：russh 自己的 zlib 解压对不对**。**开了**（仓内打补丁版 russh 修好了解压）。
+///
+/// 来历（NT1 现打）：上游 `russh 0.61.1` / `0.61.2` 的 `Decompress::decompress` 收尾判断用的是**这一次调用之前**的进度
+/// （`n_in_` / `n_out_`）⇒ 解出来的字节比输入多一倍以上时，它在输出缓冲第二次撑满的那一刻提前收工：一包只交出 ≈ 2 × 包长，
+/// 余下的留在解压器里、拼进**下一包** ⇒ 包流错位。真 sshd（`OpenSSH_10.2p1`，`zlib@openssh.com`）上的样子：鉴权过了、
+/// 第一条通道的确认被吃掉、会话卡死。
+///
+/// 今天链的是仓内补过的那一份（`Cargo.toml` 末尾 `[patch.crates-io]` → `../vendor/russh`，改了哪几行见那里的 `VENDOR.md`）
+/// ⇒ 闸开：判准的答案落到连接上。压那一半同病（不可压的满长包只交出前一截 ⇒ 对端断链，WIN3 读数 A），同一份副本里补了。
+/// `dial_compress_tests::the_gate_matches_what_russh_really_does` 两向钉着「闸 == russh 一来一回对不对」：
+/// 谁把补丁撤了（或换回一份还坏着的 russh）而闸还开着 ⇒ 红；russh 对着而闸被关回去 ⇒ 红。
+pub const RUSSH_ZLIB_SOUND: bool = true;
+
+/// 🔴 **判准只此一处**：这一跳（`peer` ＋ 内核量到的往返微秒）要不要开 SSH 压缩。
+///
+/// - 回环 ⇒ 不压（压了只花 CPU）；
+/// - 往返时间读得到 ⇒ `≥ COMPRESS_RTT_FLOOR_US` 才压；
+/// - 读不到（平台答不上来）⇒ **压**（宁可在局域网上多花一点 CPU，也不在跨互联网那一跳上白传字节）。
+pub fn compression_for(peer: IpAddr, rtt_us: Option<u32>) -> bool {
+    if peer.to_canonical().is_loopback() {
+        return false;
+    }
+    rtt_us.is_none_or(|us| us >= COMPRESS_RTT_FLOOR_US)
+}
+
+/// 生产用的 Config：保活照 [`KEEPALIVE`]，host key 算法的偏好序按这一台的信任锚排（记过的类型排前，[`Trust::preferred_keys`]）。
+fn config_for(probe: bool, compress: bool, trust: &Trust) -> Arc<client::Config> {
+    let mut c = Arc::try_unwrap(config_with(probe, compress, KEEPALIVE))
+        .unwrap_or_else(|_| unreachable!("刚建出来的 Config 只有这一个引用"));
+    c.preferred.key = trust.preferred_keys();
+    Arc::new(c)
+}
+
+/// 保活间隔由调用方给（生产只走 [`config_for`]；判据把间隔按比例缩小，判死门槛 [`KEEPALIVE_MAX`] 照生产）。
+pub fn config_with(probe: bool, compress: bool, keepalive: Duration) -> Arc<client::Config> {
+    Arc::new(client::Config {
+        inactivity_timeout: probe.then_some(PROBE_INACTIVITY),
+        keepalive_interval: (!probe).then_some(keepalive),
+        keepalive_max: KEEPALIVE_MAX,
+        preferred: russh::Preferred {
+            compression: std::borrow::Cow::Borrowed(if compress {
+                COMPRESS_ON
+            } else {
+                COMPRESS_OFF
+            }),
+            ..russh::Preferred::DEFAULT
+        },
+        ..Default::default()
+    })
+}
+
+/// 拨 TCP，拨通后问内核这一跳的往返时间、过一遍判准。回 `(socket, 跨这一跳的字节压不压)` ——
+/// 判准的答案过了闸（[`RUSSH_ZLIB_SOUND`]）才算数。
+async fn tcp_hop(
+    ep: &Endpoint,
+) -> Result<(tokio::net::TcpStream, bool), (&'static str, std::io::Error)> {
+    // 测试档不许出网：目的地不是本机回环（回环判定只有 `upstream_is_loopback` 那一个家）⇒ 当场 panic，不连、不解析名字。
+    // 本 crate 自己的判据（`test`）与后端的测试档（经 dev 依赖开 `test-support`）都管到。
+    #[cfg(any(test, feature = "test-support"))]
+    assert!(
+        upstream_url_core::upstream_is_loopback(&ep.host),
+        "测试档不许出网：{}",
+        ep.host
+    );
+    // 先解析（解析不出来与拨不通是两件事，原因码分开），再按解析出来的地址逐个拨。
+    let addrs: Vec<std::net::SocketAddr> = tokio::net::lookup_host((ep.host.as_str(), ep.port))
+        .await
+        .map_err(|e| ("resolve", e))?
+        .collect();
+    if addrs.is_empty() {
+        return Err((
+            "resolve",
+            std::io::Error::other(copy_text("beConnect.race.noAddress", &[])),
+        ));
+    }
+    let tcp = tokio::net::TcpStream::connect(&addrs[..])
+        .await
+        .map_err(|e| (stage_of_io(&e), e))?;
+    let rtt = crate::tcp_rtt::rtt_us(&tcp);
+    let judged = compression_for(tcp.peer_addr().map_err(|e| (stage_of_io(&e), e))?.ip(), rtt);
+    let compress = judged && RUSSH_ZLIB_SOUND;
+    tracing::info!(
+        "dial: {} 往返 {} ⇒ 判准：{}{}",
+        label(ep),
+        rtt.map_or_else(|| "读不到".to_string(), |us| format!("{us} µs")),
+        if judged { "压" } else { "不压" },
+        if judged && !compress {
+            "（russh 的 zlib 解压有缺陷，闸关着 ⇒ 这一条不压）"
+        } else {
+            ""
+        }
+    );
+    Ok((tcp, compress))
+}
+
+/// 多地址竞速：**同时**对每个地址起拨（TCP ＋ 握手 ＋ host key 校验，各自独立的校验器与指纹格），
+/// 首个握手成功者胜、其余立即丢弃（drop 关 socket）。鉴权留给调用方只对胜者做一次
+/// （防 agent 并发撞 `MaxAuthTries`）。全失败 ⇒ 聚合各地址的错误；被丢弃的输家不算错误。
+///
+/// TCP 由这里自己拨（不再交给 `client::connect`）：拨通之后问内核这一跳的往返时间、过压缩判准
+/// （[`compression_for`]），再在这条 socket 上跑 SSH 握手。`apply = false` ⇒ 判准照问、答案**不用在这一条上**
+/// 而是回给调用方（跳板那一形：跳板自己只运隧道、里面是已加密的字节，压不动；该压的是隧道里的目标那条）。
+/// 回 `(句柄, 指纹格, 胜者, 跨这一跳的字节该不该压)`；`reported` 由调用方给，每个地址的校验器都记进它。
+async fn race(
+    probe: bool,
+    apply: bool,
+    trust: Trust,
+    order: Vec<Endpoint>,
+    stages: &StageSink,
+    reported: &Arc<Mutex<BTreeMap<String, String>>>,
+) -> Result<
+    (
+        client::Handle<Checker>,
+        Arc<Mutex<Option<String>>>,
+        Endpoint,
+        bool,
+        Arc<crate::pool::Heard>,
+    ),
+    (Said, Option<String>),
+> {
+    use tokio::task::JoinSet;
+    let addr_list = order.iter().map(label).collect::<Vec<_>>().join(", ");
+    // 任一地址看到过的指纹（失败时也回报给界面，TOFU 展示要它）。
+    let seen: Arc<Mutex<Option<String>>> = Arc::default();
+    let seen_for_race = Arc::clone(&seen);
+    let race = async move {
+        let mut set: JoinSet<Result<_, (&'static str, String)>> = JoinSet::new();
+        for ep in order {
+            let stages = stages.clone();
+            let observed: Arc<Mutex<Option<String>>> = Arc::default();
+            let trust = trust.clone();
+            let seen = Arc::clone(&seen_for_race);
+            let reported = Arc::clone(reported);
+            set.spawn(async move {
+                let ep_label = label(&ep);
+                stages.emit(Stage::Dialing {
+                    endpoint: ep_label.clone(),
+                });
+                let heard = Arc::new(crate::pool::Heard::new());
+                let config = |compress| config_for(probe, compress, &trust);
+                let checker = Checker {
+                    trust: trust.clone(),
+                    observed: Arc::clone(&observed),
+                    reported,
+                    stages: stages.clone(),
+                    endpoint: ep_label.clone(),
+                    host: ep.host.clone(),
+                    port: ep.port,
+                    heard: Arc::clone(&heard),
+                };
+                let r = match tcp_hop(&ep).await {
+                    Ok((tcp, compress)) => {
+                        let config = config(apply && compress);
+                        client::connect_stream(
+                            config,
+                            Hearing::new(tcp, Arc::clone(&heard)),
+                            checker,
+                        )
+                        .await
+                        .map(|h| (h, compress))
+                        .map_err(|e| (stage_of_russh(&e), e.to_string()))
+                    }
+                    Err((stage, e)) => Err((stage, e.to_string())),
+                };
+                if let Some(fp) = observed.lock().ok().and_then(|g| g.clone()) {
+                    if let Ok(mut s) = seen.lock() {
+                        *s = Some(fp);
+                    }
+                }
+                match r {
+                    Ok((h, compress)) => Ok((h, observed, ep, compress, heard)),
+                    Err((stage, e)) => {
+                        stages.emit(Stage::Failed {
+                            endpoint: ep_label.clone(),
+                            reason: format!("[{stage}] {e}"),
+                        });
+                        Err((stage, format!("{ep_label} {e}")))
+                    }
+                }
+            });
+        }
+        let mut errors: Vec<String> = Vec::new();
+        // 各地址没成的阶段：全输了按最说明问题的那一个记原因码（指纹不对 ＞ 解析不出 ＞ 拨不通 ＞ 超时 ＞ 别的）。
+        let mut worst: Option<&'static str> = None;
+        let rank = |s: &str| {
+            ["hostkey", "resolve", "tcp", "timeout"]
+                .iter()
+                .position(|x| *x == s)
+                .unwrap_or(9)
+        };
+        while let Some(joined) = set.join_next().await {
+            match joined {
+                Ok(Ok(winner)) => {
+                    set.abort_all();
+                    stages.emit(Stage::Won {
+                        endpoint: label(&winner.2),
+                    });
+                    return Ok(winner);
+                }
+                Ok(Err((stage, e))) => {
+                    if worst.is_none_or(|w| rank(stage) < rank(w)) {
+                        worst = Some(stage);
+                    }
+                    errors.push(e)
+                }
+                Err(je) if je.is_cancelled() => {}
+                Err(je) => errors.push(format!(
+                    "{}: {je}",
+                    copy_text("beConnect.race.taskFailed", &[])
+                )),
+            }
+        }
+        stages.note_why(crate::why_of_stage(worst.unwrap_or("resolve")));
+        // 句子只带原因词（按最说明问题的那一格）；各地址的原话进详情。
+        Err(if errors.is_empty() {
+            Said::from(copy_text("beConnect.race.noAddress", &[]))
+        } else {
+            Said::with_raw(
+                copy_text(
+                    "beConnect.race.allFailed",
+                    &[
+                        ("why", &race_reason(worst)),
+                        ("addrs", &addr_list.to_string()),
+                    ],
+                ),
+                errors.join("\n"),
+            )
+        })
+    };
+    // ⚠ **这里没有握手看门狗**：本 crate 按调用形态禁 `timeout(`（`no_timer_guard`）。
+    //   黑洞地址那一格由界面侧兜：它等 ack 有期限，到点就收掉本进程（drop 关 socket）。
+    match race.await {
+        Ok(w) => Ok(w),
+        Err(e) => {
+            let fp = seen.lock().ok().and_then(|g| g.clone());
+            Err((e, fp))
+        }
+    }
+}
+
+/// 竞速全输了那一句的原因词（按最说明问题的那一格）：解析不出 · 拨不通 · 超时有词；指纹不对另有那台的状态、别的说不清 ⇒ 原因不明。
+pub fn race_reason(worst: Option<&str>) -> String {
+    match worst {
+        Some("resolve") => copy_text("reason.dial.resolve", &[]),
+        Some("tcp") => copy_text("reason.dial.refused", &[]),
+        Some("timeout") => copy_text("reason.dial.timeout", &[]),
+        _ => copy_core::io_reason(std::io::ErrorKind::Other),
+    }
+}
+
+/// 鉴权：配了钥匙走宿主给的那一样（钥匙 · 外部签名器 · 密码，[`env::KeySource`]）；没配走 ssh-agent（[`env::Agent`]）。
+async fn authenticate(
+    session: &mut client::Handle<Checker>,
+    user: &str,
+    key_path: Option<&str>,
+    agent_sock: Option<&str>,
+) -> Result<(), (&'static str, Said)> {
+    use crate::why;
+    let Some(key) = key_path.filter(|s| !s.trim().is_empty()) else {
+        let best_hash = best_rsa_hash(session).await?;
+        // agent 这一支**在当前线程上就地跑完**（`block_in_place` ＋ `block_on`），不留在外层 future 里。
+        //
+        // ⚠ 不是口味：拨号跑在要 `tokio::spawn` 的链路任务里（后端 `dial/link.rs` · 手机那份 FFI 外壳），外层 future 必须 `Send`；
+        //   而 russh 的 `authenticate_publickey_with(.., &mut agent)` 经 `Signer::auth_sign(&AgentIdentity, ..)`
+        //   那条高阶生命周期，rustc 证不出它的 future 是 `Send`（`implementation of Send is not general enough`，
+        //   实打）。`block_on` 不要求 `Send` ⇒ 这一段就地跑完、不跨外层的任何 await。
+        //   代价如实写：这一段期间占住一个 worker（鉴权是毫秒级到秒级的一趟），并且**取消不掉**
+        //   （链路被关时它照样跑完这一趟鉴权；服务端的 `LoginGraceTime` 兜底）。
+        //   宿主的运行时要是多线程的（后端 `main.rs` 的 `#[tokio::main]` · 手机那份两个 worker）；`block_in_place` 在单线程运行时上会 panic
+        //   ⇒ 走到这一支的判据要用多线程运行时。
+        let handle = tokio::runtime::Handle::current();
+        return tokio::task::block_in_place(|| {
+            handle.block_on(agent_auth(session, user, best_hash, agent_sock))
+        });
+    };
+    let credential = env::get()
+        .keys
+        .credential(key)
+        .map_err(|e| (why::KEY_UNREADABLE, e))?;
+    let by_password = matches!(credential, Credential::Password(_));
+    let authenticated = match credential {
+        Credential::Key(key_pair) => {
+            let best_hash = best_rsa_hash(session).await?;
+            session
+                .authenticate_publickey(
+                    user,
+                    PrivateKeyWithHashAlg::new(Arc::new(*key_pair), best_hash),
+                )
+                .await
+                .map_err(|e| {
+                    (
+                        why::AUTH,
+                        Said::with_raw(copy_text("beConnect.auth.keyFailed", &[]), &e),
+                    )
+                })?
+        }
+        Credential::Signer(signer) => {
+            // 同 agent 那一支：`Signer` 那条高阶生命周期证不出 `Send` ⇒ 就地跑完。
+            let handle = tokio::runtime::Handle::current();
+            tokio::task::block_in_place(|| {
+                handle.block_on(async {
+                    let public = signer.public_key();
+                    session
+                        .authenticate_publickey_with(user, public, None, &mut External(signer))
+                        .await
+                })
+            })
+            .map_err(|e| {
+                (
+                    why::AUTH,
+                    Said::with_raw(copy_text("beConnect.auth.keyFailed", &[]), &e.0),
+                )
+            })?
+        }
+        Credential::Password(password) => session
+            .authenticate_password(user, password)
+            .await
+            .map_err(|e| {
+                (
+                    why::AUTH,
+                    Said::with_raw(copy_text("beConnect.auth.passwordFailed", &[]), &e),
+                )
+            })?,
+    };
+    if !authenticated.success() {
+        let said = if by_password {
+            copy_text("beConnect.auth.passwordRejected", &[("user", user)])
+        } else {
+            copy_text("beConnect.auth.keyRejected", &[("user", user)])
+        };
+        return Err((rejected_why(&authenticated), said.into()));
+    }
+    Ok(())
+}
+
+/// RSA key 要协商出服务端支持的 hash；非 RSA 时 flatten 成 None。
+async fn best_rsa_hash(
+    session: &client::Handle<Checker>,
+) -> Result<Option<HashAlg>, (&'static str, Said)> {
+    Ok(session
+        .best_supported_rsa_hash()
+        .await
+        .map_err(|e| {
+            (
+                crate::why::OTHER,
+                Said::with_raw(copy_text("beConnect.auth.rsaHash", &[]), &e),
+            )
+        })?
+        .flatten())
+}
+
+/// 外部签名器（[`env::ExternalSigner`]）套成 russh 的 `Signer`：宿主回 DER，这里换成 SSH 的签名格式接在待签字节后面
+/// （与 agent 那一形 `AgentClient::sign_request` 回的同形：`待签字节 ‖ string(string(算法) ‖ string(mpint r ‖ mpint s))`）。
+struct External(Arc<dyn env::ExternalSigner>);
+
+/// 外部签名没成（原话）。
+#[derive(Debug)]
+pub struct SignFailed(pub String);
+
+impl From<russh::SendError> for SignFailed {
+    fn from(e: russh::SendError) -> Self {
+        SignFailed(format!("{e:?}"))
+    }
+}
+
+/// 外部签名器只认这一种（手机 Keystore 里的 P-256）。
+pub const EXTERNAL_ALGO: &str = "ecdsa-sha2-nistp256";
+
+impl russh::Signer for External {
+    type Error = SignFailed;
+
+    fn auth_sign(
+        &mut self,
+        _key: &russh::keys::agent::AgentIdentity,
+        _hash_alg: Option<HashAlg>,
+        mut to_sign: Vec<u8>,
+    ) -> impl std::future::Future<Output = Result<Vec<u8>, Self::Error>> + Send {
+        let signer = Arc::clone(&self.0);
+        async move {
+            let der = signer
+                .sign(to_sign.clone())
+                .await
+                .map_err(|e| SignFailed(e.logged()))?;
+            let blob = ecdsa_der_to_ssh(&der).ok_or_else(|| SignFailed("DER".to_string()))?;
+            let mut inner = Vec::new();
+            put_string(&mut inner, EXTERNAL_ALGO.as_bytes());
+            put_string(&mut inner, &blob);
+            put_string(&mut to_sign, &inner);
+            Ok(to_sign)
+        }
+    }
+}
+
+/// SSH 线上的 `string`：四字节大端长度 ＋ 本体。
+fn put_string(out: &mut Vec<u8>, bytes: &[u8]) {
+    out.extend_from_slice(&u32::try_from(bytes.len()).unwrap_or(u32::MAX).to_be_bytes());
+    out.extend_from_slice(bytes);
+}
+
+/// DER 的 `SEQUENCE { INTEGER r, INTEGER s }` ⇒ SSH 的 ECDSA 签名本体 `mpint r ‖ mpint s`（RFC 5656 §3.1.2）。
+/// DER 的 INTEGER 本来就是最短的大端补码，与 mpint 的本体同形 ⇒ 只换外面那层长度。认不出 ⇒ `None`。
+pub fn ecdsa_der_to_ssh(der: &[u8]) -> Option<Vec<u8>> {
+    fn len_at(b: &[u8], i: usize) -> Option<(usize, usize)> {
+        let first = *b.get(i)?;
+        if first < 0x80 {
+            return Some((usize::from(first), i + 1));
+        }
+        let n = usize::from(first & 0x7f);
+        if n == 0 || n > 2 {
+            return None;
+        }
+        let mut len = 0usize;
+        for k in 0..n {
+            len = (len << 8) | usize::from(*b.get(i + 1 + k)?);
+        }
+        Some((len, i + 1 + n))
+    }
+    if *der.first()? != 0x30 {
+        return None;
+    }
+    let (seq_len, mut i) = len_at(der, 1)?;
+    if i + seq_len != der.len() {
+        return None;
+    }
+    let mut out = Vec::new();
+    for _ in 0..2 {
+        if *der.get(i)? != 0x02 {
+            return None;
+        }
+        let (n, at) = len_at(der, i + 1)?;
+        let int = der.get(at..at + n)?;
+        if int.is_empty() {
+            return None;
+        }
+        put_string(&mut out, int);
+        i = at + n;
+    }
+    (i == der.len()).then_some(out)
+}
+
+/// 公钥没过的原因码：服务端剩下的方法里没有公钥、只有密码 / 键盘交互 ⇒ 那台只收密码；否则密钥被拒。
+pub fn rejected_why(res: &russh::client::AuthResult) -> &'static str {
+    use russh::MethodKind as M;
+    match res {
+        russh::client::AuthResult::Failure {
+            remaining_methods, ..
+        } if !remaining_methods.contains(&M::PublicKey)
+            && remaining_methods
+                .iter()
+                .any(|m| matches!(m, M::Password | M::KeyboardInteractive)) =>
+        {
+            crate::why::PASSWORD
+        }
+        _ => crate::why::AUTH,
+    }
+}
+
+/// ssh-agent 那一支的本体（见调用点：它**不在** `Send` 的 future 里跑）。
+async fn agent_auth(
+    session: &mut client::Handle<Checker>,
+    user: &str,
+    best_hash: Option<HashAlg>,
+    agent_sock: Option<&str>,
+) -> Result<(), (&'static str, Said)> {
+    use crate::why;
+    let Some(source) = env::get().agent.as_ref() else {
+        return Err((
+            why::AUTH,
+            copy_text("beSshAgent.connect.unsupported", &[]).into(),
+        ));
+    };
+    let mut agent = source.connect(agent_sock).await.map_err(|e| {
+        (
+            why::AUTH,
+            // 原话格收 agent 那一层的那一句 ＋ 它的原话。
+            Said::with_raw(copy_text("beConnect.agent.unreachable", &[]), e.logged()),
+        )
+    })?;
+    let identities = agent.request_identities().await.map_err(|e| {
+        (
+            why::AUTH,
+            Said::with_raw(copy_text("beConnect.agent.listFailed", &[]), &e),
+        )
+    })?;
+    if identities.is_empty() {
+        return Err((why::AUTH, copy_text("beConnect.agent.empty", &[]).into()));
+    }
+    let mut last_err: Option<(&'static str, Said)> = None;
+    for id in identities {
+        let pubkey = id.public_key().into_owned();
+        match session
+            .authenticate_publickey_with(user, pubkey, best_hash, &mut agent)
+            .await
+        {
+            Ok(res) if res.success() => return Ok(()),
+            Ok(res) => {
+                last_err = Some((
+                    rejected_why(&res),
+                    copy_text("beConnect.agent.rejected", &[("user", user)]).into(),
+                ))
+            }
+            Err(e) => {
+                last_err = Some((
+                    why::AUTH,
+                    Said::with_raw(copy_text("beConnect.agent.signFailed", &[]), &e),
+                ))
+            }
+        }
+    }
+    Err(last_err.unwrap_or_else(|| {
+        (
+            why::AUTH,
+            copy_text("beConnect.agent.allFailed", &[]).into(),
+        )
+    }))
+}
+
+/// 跳板那一步没成：外层那一句（哪一步）＋ 里层那一句与它的原话一起进详情（里层的句子不上外层的句子）。
+fn inner(said: String, e: Said) -> Said {
+    let raw = match e.raw {
+        Some(raw) => format!("{}: {raw}", e.said),
+        None => e.said,
+    };
+    Said::with_raw(said, raw)
+}
+
+/// 一台跳板在阶段行与报错里的名字（界面那边的配置标签；没有就 `host:port`）。
+fn hop_name(hop: &JumpHop) -> String {
+    if hop.label.is_empty() {
+        format!("{}:{}", hop.host, hop.port)
+    } else {
+        hop.label.clone()
+    }
+}
+
+/// 跳板链，**从最外一台起**（本机直连的那一台在先，紧挨着目标的那一台在末）。`req.jump` 是紧挨目标的那一台，
+/// 它的 `jump` 是再外一台（同 `ssh -J 外,内`）。
+pub fn hop_chain(req: &DialRequest) -> Vec<&JumpHop> {
+    let mut chain = Vec::new();
+    let mut at = req.jump.as_ref();
+    while let Some(hop) = at {
+        chain.push(hop);
+        at = hop.jump.as_deref();
+    }
+    chain.reverse();
+    chain
+}
+
+/// 跳板那一步没成：记原因码、外层那一句（哪一步、哪一台）＋ 里层那一句与原话进详情。
+fn jump_failed(
+    stages: &StageSink,
+    said: String,
+    e: Said,
+    fp: Option<String>,
+) -> (Said, Option<String>) {
+    stages.note_why(crate::why::JUMP);
+    (inner(said, e), fp)
+}
+
+/// 「跳板 {hop} 没连上」那一句。
+fn hop_dial_failed(hop: &str) -> String {
+    copy_text("beConnect.jump.dialFailed", &[("hop", hop)])
+}
+
+/// 经跳板链开到 `host:port` 的那条隧道。最外一台竞速（只它一个地址，判准答案拿回来给目标那条用 —— 跳板只运隧道、
+/// 里面是已加密的字节，压不动）；其余逐台经上一台的 direct-tcpip 握手 ＋ 鉴权。
+/// 回 `(隧道, 跨本机那一跳的字节该不该压, 各台跳板的句柄（外在先）)`；句柄**必须与目标连接同生命周期**。
+async fn through_hops(
+    req: &DialRequest,
+    stages: &StageSink,
+    jump_reported: &Arc<Mutex<BTreeMap<String, String>>>,
+) -> Result<
+    (
+        russh::ChannelStream<client::Msg>,
+        bool,
+        Vec<client::Handle<Checker>>,
+    ),
+    (Said, Option<String>),
+> {
+    let chain = hop_chain(req);
+    let mut held: Vec<client::Handle<Checker>> = Vec::new();
+    let mut compress = false;
+    for hop in chain {
+        let name = hop_name(hop);
+        stages.emit(Stage::Dialing {
+            endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
+        });
+        let mut session = match held.last() {
+            None => {
+                let (s, _o, _w, c, _h) = race(
+                    req.probe,
+                    false,
+                    Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys),
+                    vec![Endpoint {
+                        host: hop.host.clone(),
+                        port: hop.port,
+                    }],
+                    stages,
+                    jump_reported,
+                )
+                .await
+                .map_err(|(e, fp)| jump_failed(stages, hop_dial_failed(&name), e, fp))?;
+                compress = c;
+                s
+            }
+            Some(prev) => {
+                let tunnel = open_tunnel(prev, &hop.host, hop.port)
+                    .await
+                    .map_err(|e| jump_failed(stages, hop_dial_failed(&name), e, None))?;
+                let observed: Arc<Mutex<Option<String>>> = Arc::default();
+                let hop_trust = Trust::of(hop.host_key_fingerprint.clone(), &hop.known_keys);
+                let checker = Checker {
+                    trust: hop_trust.clone(),
+                    observed: Arc::clone(&observed),
+                    reported: Arc::clone(jump_reported),
+                    stages: stages.clone(),
+                    endpoint: copy_text("beConnect.jump.label", &[("hop", &name)]),
+                    host: hop.host.clone(),
+                    port: hop.port,
+                    // 跳板那几台：断了 ⇒ 隧道跟着断 ⇒ 目标那条自己报断开；这一份没人等。
+                    heard: Arc::new(crate::pool::Heard::new()),
+                };
+                client::connect_stream(config_for(req.probe, false, &hop_trust), tunnel, checker)
+                    .await
+                    .map_err(|e| {
+                        let fp = observed.lock().ok().and_then(|g| g.clone());
+                        jump_failed(
+                            stages,
+                            hop_dial_failed(&name),
+                            Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
+                            fp,
+                        )
+                    })?
+            }
+        };
+        authenticate(
+            &mut session,
+            &hop.user,
+            hop.key_path.as_deref(),
+            req.agent_sock.as_deref(),
+        )
+        .await
+        .map_err(|(_, e)| {
+            jump_failed(
+                stages,
+                copy_text("beConnect.jump.authFailed", &[("hop", &name)]),
+                e,
+                None,
+            )
+        })?;
+        held.push(session);
+    }
+    let last = held.last().expect("调用方只在有跳板时走这里");
+    let tunnel = open_tunnel(last, &req.host, req.port).await.map_err(|e| {
+        stages.note_why(crate::why::JUMP);
+        (e, None)
+    })?;
+    Ok((tunnel, compress, held))
+}
+
+/// 经一条已鉴权的连接开 direct-tcpip 到 `host:port`。
+async fn open_tunnel(
+    via: &client::Handle<Checker>,
+    host: &str,
+    port: u16,
+) -> Result<russh::ChannelStream<client::Msg>, Said> {
+    via.channel_open_direct_tcpip(
+        host.to_string(),
+        u32::from(port),
+        "127.0.0.1".to_string(),
+        0,
+    )
+    .await
+    .map(russh::Channel::into_stream)
+    .map_err(|e| {
+        Said::with_raw(
+            copy_text(
+                "beConnect.jump.tunnelFailed",
+                &[("host", host), ("port", &port.to_string())],
+            ),
+            &e,
+        )
+    })
+}
+
+/// 连 ＋ 鉴权。`jump` 在就先连跳板链（[`through_hops`]）、经最后一台开 direct-tcpip 到目标主地址、在隧道上跑目标的握手
+/// （fail-closed：跳板任一步失败就报错，**绝不**回落直连目标）。
+pub async fn establish(
+    req: &DialRequest,
+    stages: &StageSink,
+) -> Result<Linked, (Said, Option<String>)> {
+    // 目标那一趟（直连竞速 / 经跳板那一次握手）报过的逐地址指纹；跳板自己那一趟另开一格、不进来。
+    let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
+    // 〔第二问〕跳板那一趟自己的一格：跳板是另一台机器，界面按它自己那一台固化（不再一直 TOFU）。
+    let jump_reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
+    let (mut session, observed, winner, jumps, heard) = if req.jump.is_none() {
+        let (s, o, w, _, h) = race(
+            req.probe,
+            true,
+            Trust::of(req.host_key_fingerprint.clone(), &req.known_keys),
+            req.race_order(),
+            stages,
+            &reported,
+        )
+        .await?;
+        (s, o, w, Vec::new(), h)
+    } else {
+        let (tunnel, compress_inner, jumps) = through_hops(req, stages, &jump_reported).await?;
+        let observed: Arc<Mutex<Option<String>>> = Arc::default();
+        let ep_label = copy_text(
+            "beConnect.jump.target",
+            &[("host", &req.host), ("port", &req.port.to_string())],
+        );
+        // 目标那条的字节经隧道到：收包时刻记在隧道这一层（跳板那条 TCP 上的字节不全是它的）。
+        let heard = Arc::new(crate::pool::Heard::new());
+        let target_trust = Trust::of(req.host_key_fingerprint.clone(), &req.known_keys);
+        let checker = Checker {
+            trust: target_trust.clone(),
+            observed: Arc::clone(&observed),
+            reported: Arc::clone(&reported),
+            stages: stages.clone(),
+            endpoint: ep_label,
+            host: req.host.clone(),
+            port: req.port,
+            heard: Arc::clone(&heard),
+        };
+        let session = client::connect_stream(
+            config_for(req.probe, compress_inner, &target_trust),
+            Hearing::new(tunnel, Arc::clone(&heard)),
+            checker,
+        )
+        .await
+        .map_err(|e| {
+            stages.note_why(crate::why_of_stage(stage_of_russh(&e)));
+            let fp = observed.lock().ok().and_then(|g| g.clone());
+            (
+                Said::with_raw(copy_text("beConnect.jump.targetFailed", &[]), &e),
+                fp,
+            )
+        })?;
+        let winner = Endpoint {
+            host: req.host.clone(),
+            port: req.port,
+        };
+        (session, observed, winner, jumps, heard)
+    };
+    let fingerprint = observed.lock().ok().and_then(|g| g.clone());
+    if let Err(e) = authenticate(
+        &mut session,
+        &req.user,
+        req.key_path.as_deref(),
+        req.agent_sock.as_deref(),
+    )
+    .await
+    {
+        let (code, e) = e;
+        stages.note_why(code);
+        stages.emit(Stage::Auth {
+            ok: false,
+            detail: Some(e.said.clone()),
+        });
+        return Err((e, fingerprint));
+    }
+    stages.emit(Stage::Auth {
+        ok: true,
+        detail: None,
+    });
+    stages.emit(Stage::Established);
+    let fingerprints = reported.lock().map(|g| g.clone()).unwrap_or_default();
+    let jump_fingerprints = jump_reported.lock().map(|g| g.clone()).unwrap_or_default();
+    Ok(Linked {
+        session,
+        fingerprint,
+        fingerprints,
+        jump_fingerprints,
+        endpoint: label(&winner),
+        winner,
+        _jumps: jumps,
+        budget: crate::pool::Budget::new(),
+        held: Mutex::new(Vec::new()),
+        idle_sftp: Mutex::new(None),
+        heard,
+    })
+}
+
+#[cfg(test)]
+#[path = "../../../tests/backend/dial_compress_tests.rs"]
+mod tests;

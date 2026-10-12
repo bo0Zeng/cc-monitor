@@ -321,6 +321,55 @@ mod tests {
 
     /// `mobile_reads` 漏没漏：`src/mobile` 的 Kotlin / Gradle 源里字面写到的仓内（手机树外）路径，每一条都得落在表里某一项下。
     /// 按路径段比（`src/backend` 不会被 `src/backend-x` 冒认）；Gradle 脚本里 `rootProject.file("../X")` 的 X 相对的是 `src/`。
+    /// 手机嵌的 Rust 核心用的 NDK 只钉在一处（`src/mobile/gradle.properties` 的 `ccm.ndkVersion`，Gradle 与门禁 `androidbuild` 读它）；
+    /// CI 的 `mobile` job 与发版的 `build-mobile` job 装的就是那一版（装错一版 ⇒ Gradle 找不到 NDK、CI 才红）。
+    #[test]
+    fn ci_and_release_install_the_ndk_the_mobile_build_pins() {
+        let props = std::fs::read_to_string(root().join("src/mobile/gradle.properties")).unwrap();
+        let pinned = props
+            .lines()
+            .find_map(|l| l.strip_prefix("ccm.ndkVersion="))
+            .map(str::trim)
+            .expect("gradle.properties 里没有 ccm.ndkVersion");
+        assert!(
+            pinned.split('.').count() == 3
+                && pinned.chars().all(|c| c.is_ascii_digit() || c == '.'),
+            "ccm.ndkVersion 不像一个 NDK 版本号：{pinned}"
+        );
+        let want = format!("ndk;{pinned}");
+        for (file, job) in [
+            (".github/workflows/ci.yml", "  mobile:"),
+            (".github/workflows/release.yml", "  build-mobile:"),
+        ] {
+            let text = std::fs::read_to_string(root().join(file)).unwrap();
+            // 那个 job 的正文：它那一行之后、到下一个同级键（两格缩进、第三格不是空白）为止。
+            let mut lines = text.lines().skip_while(|l| *l != job);
+            assert!(lines.next().is_some(), "{file} 里没有 `{job}` 那个 job");
+            let body: Vec<&str> = lines
+                .take_while(|l| {
+                    !(l.starts_with("  ") && l.chars().nth(2).is_some_and(|c| !c.is_whitespace()))
+                        && !l.chars().next().is_some_and(|c| !c.is_whitespace())
+                })
+                .collect();
+            assert!(
+                body.len() > 10,
+                "{file} 的 `{job}` 只抠到 {} 行 —— 切法坏了",
+                body.len()
+            );
+            let ndks: Vec<&str> = body
+                .iter()
+                .flat_map(|l| l.split_whitespace())
+                .filter(|w| w.starts_with("ndk;"))
+                .collect();
+            assert_eq!(
+                ndks,
+                vec![want.as_str()],
+                "{file} 的 `{}` 装的 NDK 不是 gradle.properties 钉的那一版",
+                job.trim()
+            );
+        }
+    }
+
     #[test]
     fn the_mobile_reads_cover_every_repo_path_the_mobile_tree_names() {
         let segs = |p: &str| -> Vec<String> {

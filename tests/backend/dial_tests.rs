@@ -16,6 +16,8 @@
 //! 而那张登记表这里不改）。
 
 use super::*;
+use ssh_dial::{connect, write_ack, write_stages_then_ack};
+use std::sync::Arc;
 
 /// 从一行 JSON 文本读一份**组好的**请求（`DialRequest` 自己的反序列化 —— 生产上线交来的是一台机器的原样配置，
 /// 经 `machine::resolve` 组成这一形之后走的也是这一份）。
@@ -45,8 +47,8 @@ fn anchors() -> Vec<String> {
     .collect()
 }
 
-/// 允许出现拨号锚点的**文件维前缀**。闭集，只此一条。
-const DIAL_HOME: &str = "dial/";
+/// 允许出现拨号锚点的**文件维前缀**：拨号核心那个包（后端人群里认作 `ssh-dial/`，手机同一份）。闭集，只此一条。
+const DIAL_HOME: &str = "ssh-dial/";
 
 /// 语料地板：低于这个字节数就判「语料没喂进来」而不是「一处都没有」。
 ///
@@ -118,11 +120,8 @@ fn crate_sources() -> Vec<(String, String)> {
     let root = crate::guard_support::src_root();
     let mut out: Vec<(String, String)> = Vec::new();
     for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
-        let rel = path
-            .strip_prefix(&root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .replace('\\', "/");
+        // 住址按模块树认（拨号核心那个包认作 `ssh-dial/<文件>`，`guard_core::module_address`）。
+        let rel = guard_core::module_address(&root, &path);
         out.push((rel, crate::guard_support::production_code(&src)));
     }
     // 被测那一份。它走普通遍历**本来就在**人群里（自摘不生效，理由见本函数头注）；
@@ -321,6 +320,7 @@ async fn the_ack_is_exactly_one_newline_terminated_line() {
             strict: true,
             jump_strict: false,
             reason: Some(super::why::AUTH),
+            key_type: None,
             v: ACK_V,
             uses: USES,
         },
@@ -449,6 +449,12 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         ("forward", Use::Forward),
         // 受限的远端文件一问一答（部署）。
         ("files", Use::Files),
+        // PTY 上的交互 shell（手机终端屏）。
+        ("shell", Use::Shell),
+        // 只握着连接（手机「连上一台」那一形）。
+        ("hold", Use::Hold),
+        // 带退出码与 stderr 尾巴的长 exec（手机常驻流）。
+        ("duplex", Use::Duplex),
     ] {
         let raw = format!(
             r#"{{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"{word}"}}"#
@@ -461,7 +467,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     }
     assert_eq!(
         USES.len(),
-        4,
+        7,
         "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
     );
     // 转发走不占 `MaxSessions` 的那一道。
@@ -556,7 +562,7 @@ async fn the_ack_and_the_stage_lines_have_the_shape_the_monitor_reads() {
 /// 〔C2 → COPY〕拨号失败按错误**类型**分阶段标签（不看错误串：串改一个字不该改分类）。
 #[test]
 fn a_dial_error_is_bucketed_into_a_stage_label() {
-    use super::connect::{stage_of_io, stage_of_russh};
+    use ssh_dial::connect::{stage_of_io, stage_of_russh};
     use std::io::{Error, ErrorKind as K};
     assert_eq!(stage_of_io(&Error::from(K::ConnectionRefused)), "tcp");
     assert_eq!(stage_of_io(&Error::from(K::HostUnreachable)), "tcp");
@@ -571,11 +577,12 @@ fn a_dial_error_is_bucketed_into_a_stage_label() {
     assert_eq!(stage_of_russh(&russh::Error::Kex), "other");
 }
 
-/// ★ 多开的判准只住一处（`dial/pool.rs`；，见 `dial_pool_tests.rs` 头注 NT1 那一段 —— 行为判据在那边，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），
+/// ★ 多开的判准只住一处（`ssh-dial/pool.rs`；，见 `dial_pool_tests.rs` 头注 NT1 那一段 —— 行为判据在那边，这一条是源码面的）：`Family::dial_reason` 是生产段里唯一给出 `Why::` 的地方（`place` 只转述它），
 /// 且 `Extra(` 只在 `place` 里造。针运行时拼。
 #[test]
 fn the_multi_open_judge_lives_in_one_function() {
-    let src = crate::guard_support::production_code(include_str!("../../src/backend/dial/pool.rs"));
+    let src =
+        crate::guard_support::production_code(include_str!("../../src/backend/ssh-dial/pool.rs"));
     let body = |name: &str| -> String {
         let at = src
             .find(&format!("fn {name}("))
@@ -673,7 +680,8 @@ async fn dropping_the_guard_closes_the_channel_exactly_once() {
 /// exec 走守卫里那一半、收全走读半边；裸通道（`&channel` / `&mut channel`）在那一臂里零处。
 #[test]
 fn the_capture_arm_holds_its_channel_under_the_close_guard() {
-    let src = crate::guard_support::production_code(include_str!("../../src/backend/dial/uses.rs"));
+    let src =
+        crate::guard_support::production_code(include_str!("../../src/backend/ssh-dial/uses.rs"));
     let at = guard_core::find_pinned(&src, "Use::Capture => {")
         .unwrap_or_else(|e| panic!("capture 那一臂不是恰好一处：{e}"));
     let end = guard_core::find_pinned(&src, "Use::Forward => {")
@@ -1016,4 +1024,50 @@ fn a_failed_open_on_a_closed_connection_counts_as_dead() {
         "远端说满了被当成了死连接"
     );
     assert!(!uses::died_waiting(&Ok(()), true));
+}
+
+/// ★ 本后端交给拨号核心的那一套（`host`）：装上了、写的规矩是部署那两处且目录权限位就是 `own_dir` 那一个、
+/// 复制详情写的是本后端的机器那一行（带 `BUILD_ID`）。没装 ⇒ 拨号核心那一份缺省一个字节都不许写（另一条判据，住拨号核心）。
+#[test]
+fn the_backend_installs_its_own_host_into_the_dial_core() {
+    host();
+    assert!(ssh_dial::env::installed(), "本后端那一套没装上");
+    assert_eq!(
+        ssh_dial::env::get().files,
+        ssh_dial::sftp::WriteRules::Deploy {
+            dir_mode: crate::common::own_dir::PRIVATE_DIR_MODE
+        }
+    );
+    let d = DialAck::failed(crate::common::said::Said::with_raw("x".into(), "raw"), None)
+        .detail
+        .expect("失败的 ack 带详情");
+    assert!(
+        d.contains(crate::BUILD_ID),
+        "详情里没有本后端的机器那一行：{d}"
+    );
+    // 暂存区那一根与提交那一侧（`files_commit`）是同一个串。
+    assert_eq!(
+        sftp::STAGING_ROOT,
+        crate::control::files_commit::STAGING_DIR
+    );
+}
+
+/// 本后端的生产代码从不装「任意路径都许写」那一种规矩（那是手机文件屏的）：远端写只许部署那两处。
+#[test]
+fn the_backend_never_names_the_anywhere_write_rule() {
+    let root = crate::guard_support::src_root();
+    let needle = format!("WriteRules::{}", "Anywhere");
+    let mut hits = Vec::new();
+    for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
+        let rel = guard_core::module_address(&root, &path);
+        if rel.starts_with("ssh-dial/") {
+            continue; // 规矩的定义住拨号核心
+        }
+        if crate::guard_support::production_code(&src).contains(needle.as_str()) {
+            hits.push(rel);
+        }
+    }
+    assert!(hits.is_empty(), "后端生产代码点名了任意路径写：{hits:?}");
+    // 正控：拨号核心那一份里确有这个名字（针没写坏）。
+    assert!(include_str!("../../src/backend/ssh-dial/sftp.rs").contains(needle.as_str()));
 }

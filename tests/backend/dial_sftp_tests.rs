@@ -1,4 +1,4 @@
-//! `dial/sftp.rs` 的判据：远端写围栏（只许两处）· 解链接 · files 链路的一问一答。
+//! `ssh-dial/sftp.rs` 的判据：远端写围栏（只许两处）· 解链接 · files 链路的一问一答。
 //!
 //! 台架是 `sftp_rig`（合成 SFTP 服务端，逐条记改动路径）。**判据看服务端的改动表，不信被测侧的自述。**
 
@@ -99,11 +99,7 @@ fn the_declared_write_roots_are_exactly_staging_and_bin() {
         .collect();
     let got: std::collections::BTreeSet<&str> = REMOTE_WRITE_ROOTS.into_iter().collect();
     assert_eq!(got, want);
-    // 暂存区那一根与提交那一侧（`files_commit`）是同一个串 —— 同一个 crate，直接比。
-    assert_eq!(
-        super::STAGING_ROOT,
-        crate::control::files_commit::STAGING_DIR
-    );
+    // 暂存区那一根与提交那一侧（后端 `files_commit`）是同一个串：那一条住后端（`dial_tests`），这里够不到后端。
 }
 
 // ═══ 解链接那一道 ══════════════════════════════════════════════════════════════════════
@@ -265,7 +261,7 @@ async fn a_deploy_shaped_session_touches_exactly_the_two_roots_and_refuses_every
         None,
     )
     .await;
-    assert_eq!(v["data"], crate::stream::wire::b64_encode(b"new"));
+    assert_eq!(v["data"], crate::b64::b64_encode(b"new"));
     // `stat` 那一问删了（零调用方）⇒ 对端当不认识的一问回 `unknown_op`，链路照常往下走。
     let v = ask(
         &mut w,
@@ -682,7 +678,7 @@ async fn hx1_the_dirs_a_deploy_creates_are_made_private_and_an_existing_one_is_l
     let g = fs.lock().unwrap();
     assert_eq!(
         g.dir_modes.get(".cc-monitor/bin").copied(),
-        Some(crate::common::own_dir::PRIVATE_DIR_MODE),
+        Some(crate::guard_support::TEST_DIR_MODE),
         "新建的 bin 没收成只给本人：{:?}",
         g.mutated
     );
@@ -755,4 +751,91 @@ fn sftp_failures_wrapped_in_io_errors_still_land_on_the_right_reason_word() {
     for (e, want) in cases {
         assert_eq!(super::why_of_io(&e), want, "{e:?}");
     }
+}
+
+// ═══ 手机文件屏要的那几问：列目录 · 真路径 · 改名 · 删空目录 ══════════════════════════════════════
+
+/// 列目录（名 · 是不是目录 · 大小）与真路径是读，哪种规矩都答；改名 · 删空目录是写，先过围栏（这里装的是部署那两处）。
+#[tokio::test]
+async fn the_files_link_lists_resolves_renames_and_removes_empty_dirs() {
+    let fs = rig::home(false, true);
+    {
+        let mut g = fs.lock().unwrap();
+        g.files.insert(
+            ".cc-monitor/staging/a.txt".into(),
+            rig::Entry {
+                bytes: b"abc".to_vec(),
+            },
+        );
+        g.dirs.insert(".cc-monitor/staging/sub".into());
+    }
+    let (mut w, mut r) = link_on(fs.clone()).await;
+    let v = ask(
+        &mut w,
+        &mut r,
+        serde_json::json!({"op":"list","path": ".cc-monitor/staging"}),
+        None,
+    )
+    .await;
+    let mut got: Vec<(String, bool, u64)> = v["entries"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{v}"))
+        .iter()
+        .map(|e| {
+            (
+                e["name"].as_str().unwrap().to_string(),
+                e["dir"].as_bool().unwrap(),
+                e["size"].as_u64().unwrap_or(0),
+            )
+        })
+        .collect();
+    got.sort();
+    assert_eq!(
+        got,
+        vec![("a.txt".into(), false, 3), ("sub".into(), true, 0)]
+    );
+    let v = ask(
+        &mut w,
+        &mut r,
+        serde_json::json!({"op":"realpath","path": "."}),
+        None,
+    )
+    .await;
+    assert_eq!(v["path"], HOME, "{v}");
+    let v = ask(
+        &mut w,
+        &mut r,
+        serde_json::json!({"op":"rename","from": ".cc-monitor/staging/a.txt","to": ".cc-monitor/staging/b.txt"}),
+        None,
+    )
+    .await;
+    assert!(v.get("code").is_none(), "{v}");
+    assert!(fs
+        .lock()
+        .unwrap()
+        .files
+        .contains_key(".cc-monitor/staging/b.txt"));
+    let v = ask(
+        &mut w,
+        &mut r,
+        serde_json::json!({"op":"rmdir","path": ".cc-monitor/staging/sub"}),
+        None,
+    )
+    .await;
+    assert!(v.get("code").is_none(), "{v}");
+    assert!(!fs.lock().unwrap().dirs.contains(".cc-monitor/staging/sub"));
+    // 围栏照旧：改名改到写根外面 ⇒ 拒，盘上不动。
+    let v = ask(
+        &mut w,
+        &mut r,
+        serde_json::json!({"op":"rename","from": ".cc-monitor/staging/b.txt","to": ".ssh/authorized_keys"}),
+        None,
+    )
+    .await;
+    assert_eq!(v["code"], "fenced", "{v}");
+    assert!(fs
+        .lock()
+        .unwrap()
+        .files
+        .contains_key(".cc-monitor/staging/b.txt"));
 }

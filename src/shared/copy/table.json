@@ -18535,6 +18535,12 @@
       "zh": "未改动 · {path} 不在 ~/{a} · ~/{b}",
       "args": ["a", "b", "path"]
     },
+    "beSftp.fence.readOnly": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未改动 · 此处不许改远端文件 · {path}",
+      "args": ["path"]
+    },
     "beSftp.fence.rootUnresolved": {
       "kind": "error",
       "role": "报错",
@@ -18576,6 +18582,24 @@
       "role": "报错",
       "zh": "删除失败 · ~/{path} · {why}",
       "args": ["path", "why"]
+    },
+    "beSftp.list.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "列不出目录 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beSftp.realpath.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到路径 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beSftp.rename.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未改名 · {from} → {to} · {why}",
+      "args": ["from", "to", "why"]
     },
     "beSftp.open.isLink": {
       "kind": "error",
@@ -18656,6 +18680,18 @@
       "kind": "error",
       "role": "报错",
       "zh": "密钥被拒 · 用户 {user}",
+      "args": ["user"]
+    },
+    "beConnect.auth.passwordFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "密码登录失败",
+      "args": []
+    },
+    "beConnect.auth.passwordRejected": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "密码被拒 · 用户 {user}",
       "args": ["user"]
     },
     "beConnect.agent.unreachable": {
@@ -18770,6 +18806,12 @@
       "kind": "error",
       "role": "原因格",
       "zh": "远端命令启动失败",
+      "args": []
+    },
+    "beUses.shell.failed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "开终端失败",
       "args": []
     },
     "beUses.exec.stdinLost": {
@@ -24163,6 +24205,12 @@
       "zh": "私钥认不出 · 须整段贴入 BEGIN 到 END · 带口令的先去掉口令",
       "args": []
     },
+    "mobIdentity.gen.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "钥匙生成失败",
+      "args": []
+    },
     "terminal.why.ambiguous": {
       "kind": "body",
       "role": "片段",
@@ -29425,32 +29473,6 @@
       "zh": "AndroidKeyStore 无该别名的证书 {alias}",
       "args": ["alias"]
     },
-    "mobSsh.keystore.noKey": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "AndroidKeyStore 无该别名的私钥 {alias}",
-      "args": ["alias"]
-    },
-    "mobSsh.race.allFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "所有地址连接失败",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.tofuFirst": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "首次连接，记下该主机密钥",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.tofuTrusted": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "主机密钥已信任",
-      "args": []
-    },
     "mobSsh.log.established": {
       "kind": "body",
       "role": "进度",
@@ -29458,24 +29480,12 @@
       "args": ["target"],
       "limited": ["连接"]
     },
-    "mobSsh.log.viaJump": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "经跳板 {jump} 打开到 {target} 的隧道 …",
-      "args": ["jump", "target"]
-    },
     "mobSsh.log.connecting": {
       "kind": "body",
       "role": "进度",
       "zh": "连接 {target} …",
       "args": ["target"],
       "limited": ["连接"]
-    },
-    "mobSsh.log.keyMismatch": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "主机密钥不匹配（疑 MITM / 服务器重装）",
-      "args": []
     },
     "mobSsh.log.connectFailed": {
       "kind": "error",
@@ -29490,22 +29500,10 @@
       "zh": "协议协商与密钥交换完成",
       "args": []
     },
-    "mobSsh.log.authPassword": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "密码认证中 …",
-      "args": []
-    },
     "mobSsh.log.authKey": {
       "kind": "body",
       "role": "进度",
       "zh": "公钥认证中 …",
-      "args": []
-    },
-    "mobSsh.log.authKeystore": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "硬件密钥认证中（TEE 签名）…",
       "args": []
     },
     "mobSsh.log.authFailed": {
@@ -29514,24 +29512,11 @@
       "zh": "认证失败",
       "args": []
     },
-    "mobSsh.shell.openTimeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "打开终端超时（{dur}），连接已断开\n重试即可",
-      "args": ["dur"],
-      "limited": ["连接"]
-    },
     "mobSsh.read.truncated": {
       "kind": "body",
       "role": "片段",
       "zh": "…（已截断，共 {n} 字节）",
       "args": ["n"]
-    },
-    "mobSsh.exec.timeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "命令执行超时（{dur}），已中止",
-      "args": ["dur"]
     },
     "mobSsh.log.waitOther": {
       "kind": "body",

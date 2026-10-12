@@ -317,7 +317,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
     (
         "terminal-ssh",
-        "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `dial/machine.rs::resolve`）；\
+        "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `ssh-dial/machine.rs::resolve`）；\
          前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
     // 远端 ↗ 的前两问：那台谁在显示这个会话 · 本机哪串进程开着那条连接。

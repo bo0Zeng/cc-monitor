@@ -5,7 +5,7 @@
 //!
 //! 闸开了（Z5 翻面 ＋ 多包一格）；补丁那一族两条：VR1 副本只改了登记的那一份 · VR2 补丁真接上了。
 //!
-//! `dial/connect.rs` 的压缩判准（[`compression_for`]）与它的接法。四件：
+//! `ssh-dial/connect.rs` 的压缩判准（[`compression_for`]）与它的接法。四件：
 //! Z1 真值表 · Z2 两张偏好序 · Z3 判准只有一处、只有一个调用点 · Z4 回环上内核真量得到往返时间、判准答「不压」。
 //! 真 sshd 上「强制压 ⇒ 协商出 zlib、线上字节变少」那一维是 [`ZR`] 那条 `#[ignore]` 读数
 //! （由 `tests/evidence/NT1-net-loopback.py --compress` 带环境变量来跑）。
@@ -68,7 +68,7 @@ fn the_compression_judge_answers_exactly_this_table() {
 }
 
 /// ★ Z2：两张偏好序。压 ⇒ `zlib@openssh.com` 在首（OpenSSH 服务端 `Compression yes` 今天只给它）、`none` 垫底
-/// （远端关了压缩照样连得上）；不压 ⇒ 只有 `none`。`config()` 真把它们装进了 `preferred`。
+/// （远端关了压缩照样连得上）；不压 ⇒ 只有 `none`。`config_with()` 真把它们装进了 `preferred`。
 #[test]
 fn the_two_preference_lists_are_exactly_these_and_reach_the_config() {
     let names = |xs: &[russh::compression::Name]| -> Vec<String> {
@@ -82,11 +82,11 @@ fn the_two_preference_lists_are_exactly_these_and_reach_the_config() {
     assert_eq!(names(COMPRESS_OFF), ["none"], "不压的那张偏好序变了");
     for (compress, want) in [(true, COMPRESS_ON), (false, COMPRESS_OFF)] {
         for probe in [true, false] {
-            let c = config(probe, compress);
+            let c = config_with(probe, compress, KEEPALIVE);
             assert_eq!(
                 names(&c.preferred.compression),
                 names(want),
-                "config(probe={probe}, compress={compress}) 没把偏好序装进去"
+                "config_with(probe={probe}, compress={compress}) 没把偏好序装进去"
             );
             // 其余偏好一个不动（只覆盖压缩那一栏）。
             assert_eq!(
@@ -105,20 +105,15 @@ fn production_hits(needle: &str) -> Vec<(String, usize)> {
         let code = crate::guard_support::production_code(&src);
         let n = code.matches(needle).count();
         if n > 0 {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            out.push((rel, n));
+            out.push((guard_core::module_address(&root, &path), n));
         }
     }
     out.sort();
     out
 }
 
-/// ★ Z3：**判准只有一处**。① 碰 SSH 压缩偏好的生产文件 == `{dial/connect.rs}`（两向）；
-/// ② 判准函数在生产段恰好被调一次（`tcp_hop` —— 直连与跳板都经它）；③ 往返时间只从 `platform::tcp_rtt` 那一个口读。
+/// ★ Z3：**判准只有一处**。① 碰 SSH 压缩偏好的生产文件 == `{ssh-dial/connect.rs}`（两向）；
+/// ② 判准函数在生产段恰好被调一次（`tcp_hop` —— 直连与跳板都经它）；③ 往返时间只从 `tcp_rtt` 那一个口读。
 /// 针运行时拼（本文件自己不被扫到的那一半由 `production_code` 剥测试段保证；拼接是第二道）。
 #[test]
 fn the_compression_judge_lives_in_exactly_one_place() {
@@ -126,20 +121,20 @@ fn the_compression_judge_lives_in_exactly_one_place() {
     // 6 = 两张表的类型名各 1 ＋ COMPRESS_ON 三项 ＋ COMPRESS_OFF 一项。
     assert_eq!(
         production_hits(&pref),
-        vec![("dial/connect.rs".to_string(), 6)],
+        vec![("ssh-dial/connect.rs".to_string(), 6)],
         "碰 SSH 压缩偏好的地方不止 connect.rs 那两张表"
     );
     let call = format!("{}(", "compression_for");
     // connect.rs 里：定义 1 ＋ 调用 1。
     assert_eq!(
         production_hits(&call),
-        vec![("dial/connect.rs".to_string(), 2)],
+        vec![("ssh-dial/connect.rs".to_string(), 2)],
         "判准函数的调用点不是恰好一处（tcp_hop）"
     );
     let rtt = format!("{}::{}(", "tcp_rtt", "rtt_us");
     assert_eq!(
         production_hits(&rtt),
-        vec![("dial/connect.rs".to_string(), 1)],
+        vec![("ssh-dial/connect.rs".to_string(), 1)],
         "往返时间不止从 tcp_hop 那一处读"
     );
     // 正控：同一个计数器喂一段合成代码，三根针各中一次（针没写坏）。
@@ -168,7 +163,7 @@ async fn the_kernel_measures_the_loopback_hop_and_the_judge_says_no() {
         port: addr.port(),
     };
     let (tcp, compress) = tcp_hop(&ep).await.expect("回环拨不通");
-    let rtt = crate::platform::tcp_rtt::rtt_us(&tcp);
+    let rtt = crate::tcp_rtt::rtt_us(&tcp);
     let us = rtt.expect("回环 socket 上 TCP_INFO 读不到往返时间 —— 平台那一半坏了");
     assert!(
         us < COMPRESS_RTT_FLOOR_US,
@@ -591,18 +586,22 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
                 written: std::sync::Arc::clone(&sent),
             };
             let checker = Checker {
-                expected: None,
+                trust: Default::default(),
                 observed: Default::default(),
                 reported: Default::default(),
                 stages: StageSink::new(false),
                 endpoint: format!("{host}:{port}"),
                 host: host.clone(),
                 port,
-                known_hosts: None,
+                heard: Default::default(),
             };
-            let mut h = russh::client::connect_stream(config(false, compress), counted, checker)
-                .await
-                .unwrap();
+            let mut h = russh::client::connect_stream(
+                config_with(false, compress, KEEPALIVE),
+                counted,
+                checker,
+            )
+            .await
+            .unwrap();
             authenticate(&mut h, &user, Some(&key), None).await.unwrap();
             let body = tokio::time::timeout(guard_core::wall::CEILING, async {
                 let mut ch = h.channel_open_session().await.ok()?;
@@ -730,36 +729,37 @@ async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
             .await
             .unwrap();
         let checker = Checker {
-            expected: None,
+            trust: Default::default(),
             observed: Default::default(),
             reported: Default::default(),
             stages: StageSink::new(false),
             endpoint: format!("{host}:{port}"),
             host: host.clone(),
             port,
-            known_hosts: None,
+            heard: Default::default(),
         };
-        let mut h = russh::client::connect_stream(config(false, compress), tcp, checker)
-            .await
-            .unwrap();
+        let mut h =
+            russh::client::connect_stream(config_with(false, compress, KEEPALIVE), tcp, checker)
+                .await
+                .unwrap();
         authenticate(&mut h, &user, Some(&key), None).await.unwrap();
         let ch = h.channel_open_session().await.unwrap();
         ch.request_subsystem(true, "sftp").await.unwrap();
-        let s = crate::dial::sftp::Session::over(ch.into_stream(), Box::new(()))
+        let s = crate::sftp::Session::over(ch.into_stream(), Box::new(()))
             .await
             .unwrap();
-        let dir = format!("{}/{}", s.home(), crate::dial::sftp::STAGING_ROOT);
-        crate::dial::sftp::make_dirs(&s, &dir).await.unwrap();
+        let dir = format!("{}/{}", s.home(), crate::sftp::STAGING_ROOT);
+        crate::sftp::make_dirs(&s, &dir).await.unwrap();
         for (n, seed) in [(33_000usize, 7u64), (1 << 20, 11)] {
             let blob = incompressible(n, seed);
             let path = format!("{dir}/zr2-{compress}-{n}");
             let put = tokio::time::timeout(
                 guard_core::wall::CEILING,
-                crate::dial::sftp::put_atomic(&s, &path, &blob, 0o600),
+                crate::sftp::put_atomic(&s, &path, &blob, 0o600),
             )
             .await;
             let back = match &put {
-                Ok(Ok(())) => crate::dial::sftp::read_all(&s, &path).await,
+                Ok(Ok(())) => crate::sftp::read_all(&s, &path).await,
                 _ => None,
             };
             let ok = back.as_deref() == Some(blob.as_slice());
@@ -849,14 +849,17 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
         let mut verdicts = Vec::new();
         for (ep, k, expected) in legs {
             let mut c = Checker {
-                expected,
+                trust: Trust {
+                    expected,
+                    ..Default::default()
+                },
                 observed: Arc::default(),
                 reported: Arc::clone(&book),
                 stages: StageSink::new(false),
                 endpoint: ep.to_string(),
                 host: ep.to_string(),
                 port: 22,
-                known_hosts: None,
+                heard: Default::default(),
             };
             verdicts.push(c.check_server_key(&k).await.unwrap());
         }
@@ -891,23 +894,23 @@ async fn vis2_every_checker_of_one_run_writes_its_address_into_the_shared_book()
 /// 〔第二问「只当跳板用的机器一直 TOFU（设计没写）」〕跳板那一格也进 `Linked`（`jump_fingerprints`），界面按那一台自己固化。
 #[test]
 fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
-    let prod =
-        crate::guard_support::production_code(include_str!("../../src/backend/dial/connect.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../src/backend/ssh-dial/connect.rs"
+    ));
+    // 跳板链那一段（`through_hops`）紧挨在 `establish` 前面：两段一起看（目标那一趟在后者、跳板那几趟在前者）。
     let at = prod
-        .find("pub(crate) async fn establish(")
-        .expect("establish 不在了");
+        .find("async fn through_hops(")
+        .expect("through_hops 不在了");
+    assert!(
+        prod[at..].contains("pub async fn establish("),
+        "establish 不在了"
+    );
     let body = &prod[at..];
     let n = |t: &str, needle: &str| t.matches(needle).count();
-    assert_eq!(
-        n(body, "                &reported,\n"),
-        1,
-        "目标那一趟的竞速没拿到那一格"
-    );
-    assert_eq!(
-        n(body, "                &jump_reported,\n"),
-        1,
-        "跳板那一趟该另开一格"
-    );
+    // 按去掉缩进的整行数（缩进随嵌套层数变，不是要钉的事）。
+    let lines = |t: &str, line: &str| t.lines().filter(|l| l.trim() == line).count();
+    assert_eq!(lines(body, "&reported,"), 1, "目标那一趟的竞速没拿到那一格");
+    assert_eq!(lines(body, "jump_reported,"), 1, "跳板那一趟该另开一格");
     assert_eq!(
         n(body, "&Arc::default(),"),
         0,
@@ -922,6 +925,11 @@ fn vis2_the_target_run_and_only_it_feeds_the_linked_book() {
         n(body, "reported: Arc::clone(&reported),"),
         1,
         "经跳板那一次握手没记进那一格"
+    );
+    assert_eq!(
+        n(body, "reported: Arc::clone(jump_reported),"),
+        1,
+        "多跳里经上一台握手的那几台跳板没记进跳板那一格"
     );
     assert_eq!(
         n(body, "let fingerprints = reported.lock()"),
@@ -951,7 +959,16 @@ async fn a_lost_race_says_the_reason_word_and_keeps_the_os_words_for_the_detail(
     };
     let stages = StageSink::new(false);
     let reported: Arc<Mutex<BTreeMap<String, String>>> = Arc::default();
-    let Err((said, _)) = race(true, true, None, vec![ep.clone()], &stages, &reported).await else {
+    let Err((said, _)) = race(
+        true,
+        true,
+        Trust::default(),
+        vec![ep.clone()],
+        &stages,
+        &reported,
+    )
+    .await
+    else {
         panic!("关着的口居然拨通了");
     };
     let addr = format!("127.0.0.1:{port}");

@@ -52,7 +52,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
-    //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
+    //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `ssh-dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
     CommandSpec {
         name: "terminal-ssh",
