@@ -43,7 +43,12 @@ fn search_end_to_end_and_rejects_traversal() {
     };
     // 会话那一格来自索引：整份读进一格 `FileEntry`，查询对它跑。
     let mut entry = FileEntry::empty(true);
-    entry.take(None, &std::fs::read(&jsonl).expect("读夹具"));
+    entry
+        .take(
+            None,
+            &mut Blocks::new(&std::fs::read(&jsonl).expect("读夹具")[..], 1 << 20),
+        )
+        .expect("读得动");
     let mut budget = SnippetBudget::new(opts.limit);
     let hit = hits_v(
         &jsonl,
@@ -96,7 +101,9 @@ fn agent_reports_are_searchable_as_their_own_kind() {
     ]
     .join("\n");
     let mut entry = FileEntry::empty(true);
-    entry.take(None, lines.as_bytes());
+    entry
+        .take(None, &mut Blocks::new(lines.as_bytes(), 1 << 20))
+        .expect("读得动");
     let path = std::path::Path::new("/x/projects/p/s1.jsonl");
     let ask = |scope: Option<&'static str>| {
         let opts = SearchOpts {
@@ -133,7 +140,9 @@ fn system_injections_are_never_searched() {
     ]
     .join("\n");
     let mut entry = FileEntry::empty(true);
-    entry.take(None, lines.as_bytes());
+    entry
+        .take(None, &mut Blocks::new(lines.as_bytes(), 1 << 20))
+        .expect("读得动");
     let path = std::path::Path::new("/x/projects/p/s1.jsonl");
     let ask = |q: &str, include_tools: bool| {
         let opts = SearchOpts {

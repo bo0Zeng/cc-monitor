@@ -663,3 +663,160 @@ fn par_in_order_keeps_the_order_and_does_not_swallow_a_panic() {
 fn the_resident_bound_is_128_mb() {
     assert_eq!(RESIDENT_MAX_BYTES, 128 << 20);
 }
+
+/// d：整份读按块 —— 第一次带一份 8 MiB 的记录（整份那一臂），读的时候本线程手里最多两块多一点，不是整份文件。
+#[test]
+fn a_whole_read_holds_about_a_block_not_the_file() {
+    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    let dir = std::env::temp_dir().join(format!("ccm-sx-held-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let path = dir.join("big.jsonl");
+    let users = big_record(&path, BIG, false);
+    let base = crate::alloc_probe::reset_peak();
+    let got = {
+        let mut last = Refresh::default();
+        let e = bring_up(&path, None, false, &mut last).expect("读得动");
+        (e.done.records.len(), last.full, last.bytes)
+    };
+    let held = crate::alloc_probe::peak_since(base);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(got.0, users, "用户话该一句不少地进索引");
+    assert_eq!(got.1, 1, "走的该是整份那一臂");
+    assert!(got.2 >= BIG as u64, "该把整份都读了（读了 {} 字节）", got.2);
+    assert!(
+        held <= HELD_BOUND,
+        "整份读一份 {BIG} 字节的记录，本线程手里最多 {held} 字节，上界 {HELD_BOUND}（两块 ＋ 一行）"
+    );
+}
+
+/// d：追加读按块 —— 两问之间长了 8 MiB，读的时候本线程手里同样只有两块多一点。
+#[test]
+fn an_appended_read_holds_about_a_block_not_the_growth() {
+    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    let dir = std::env::temp_dir().join(format!("ccm-sx-held-app-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("建临时目录");
+    let path = dir.join("grow.jsonl");
+    std::fs::write(&path, format!("{}\n", line("a-0", "first"))).expect("写");
+    let mut last = Refresh::default();
+    let first = bring_up(&path, None, false, &mut last).expect("读得动");
+    let grow = dir.join("more.jsonl");
+    let users = big_record(&grow, BIG, false);
+    append(&path, &std::fs::read(&grow).expect("读夹具"));
+    touch(&path, 1_780_000_000_000);
+    let base = crate::alloc_probe::reset_peak();
+    let got = {
+        let mut last = Refresh::default();
+        let e = bring_up(&path, Some(first), false, &mut last).expect("读得动");
+        (e.done.records.len(), last.appended)
+    };
+    let held = crate::alloc_probe::peak_since(base);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(got, (users + 1, 1), "该走追加那一臂、新长的用户话一句不少");
+    assert!(
+        held <= HELD_BOUND,
+        "追加读 {BIG} 字节，本线程手里最多 {held} 字节，上界 {HELD_BOUND}"
+    );
+}
+
+/// 一格索引的全部事实（判「按块读 == 一整块读」用）。
+fn facts_of(e: &FileEntry) -> String {
+    let f = |x: &Facts| {
+        let recs: Vec<String> = x
+            .records
+            .iter()
+            .map(|r| {
+                format!(
+                    "{}|{}|{:?}|{:?}|{:?}|{}|{}|{}",
+                    r.rt.is_assistant,
+                    r.rt.report,
+                    r.rt.main,
+                    r.rt.tool,
+                    r.rt.lands_in,
+                    r.ts_ms,
+                    r.uuid,
+                    r.opens_turn
+                )
+            })
+            .collect();
+        format!(
+            "cwd={:?} bg={} title={:?} excerpt={:?} recs={recs:?}",
+            x.cwd, x.bg, x.title, x.excerpt
+        )
+    };
+    format!(
+        "done[{}] tail[{}] bad={:?} tools={} weight={} plain={} consumed={} witness={}",
+        f(&e.done),
+        f(&e.tail),
+        e.bad.as_ref().map(|(at, why)| (*at, why.clone())),
+        e.tools,
+        e.weight,
+        e.plain_weight,
+        e.read.consumed(),
+        e.read.witness_len()
+    )
+}
+
+/// d：同一份记录按 1 · 7 · 64 · 4096 字节一块读，与一整块读出来的那一格逐个相等（含 CRLF · BOM · 跨块的多字节字 ·
+/// 标题在后半 · 坏 UTF-8 在中段 / 在残尾 · 残尾半行）；工具文本抽与不抽两样都比。
+#[test]
+fn reading_in_blocks_gives_the_same_entry_as_one_block() {
+    let user = |uuid: &str, text: &str| line(uuid, text);
+    let ai = |t: &str| json!({"type":"ai-title","aiTitle":t}).to_string();
+    let tool = json!({"type":"assistant","uuid":"a-1","timestamp":"2026-04-01T00:00:01Z","cwd":"/sandbox/p",
+        "message":{"role":"assistant","content":[{"type":"text","text":"答：中文跨块"},
+        {"type":"tool_use","id":"x1","name":"Bash","input":{"command":"echo 中文"}}]}})
+    .to_string();
+    let bg = json!({"type":"user","uuid":"u-bg","sessionKind":"bg","message":{"role":"user","content":"later"}}).to_string();
+    let good = format!(
+        "{}\r\n\u{feff}{}\n\n{}\n{}\n{}\n{}",
+        user("u-1", "第一句：中文"),
+        tool,
+        ai("标题甲"),
+        bg,
+        user("u-2", "第二句"),
+        r#"{"type":"user","uuid":"u-3","message":{"role":"user","content":"半"#
+    )
+    .into_bytes();
+    let mut bad_mid = good.clone();
+    let at = bad_mid.iter().position(|&b| b == b'\n').unwrap() + 3;
+    bad_mid.insert(at, 0xff);
+    let mut bad_tail = good.clone();
+    bad_tail.push(0xff);
+    for (name, bytes) in [
+        ("好", &good),
+        ("坏在中段", &bad_mid),
+        ("坏在残尾", &bad_tail),
+    ] {
+        for tools in [false, true] {
+            let one = {
+                let mut e = FileEntry::empty(tools);
+                e.take(None, &mut Blocks::new(&bytes[..], 1 << 20))
+                    .expect("读得动");
+                facts_of(&e)
+            };
+            for block in [1usize, 7, 64, 4096] {
+                let mut e = FileEntry::empty(tools);
+                e.take(None, &mut Blocks::new(&bytes[..], block))
+                    .expect("读得动");
+                assert_eq!(
+                    facts_of(&e),
+                    one,
+                    "[{name} · 工具 {tools} · 块 {block}] 与一整块读的不一样"
+                );
+            }
+        }
+    }
+    // 正控：坏的那一句的位置按整段算。
+    let mut e = FileEntry::empty(false);
+    e.take(None, &mut Blocks::new(&bad_mid[..], 7))
+        .expect("读得动");
+    assert_eq!(
+        e.bad.map(|(_, why)| why),
+        Some(
+            std::str::from_utf8(&bad_mid[..bad_mid.iter().rposition(|&b| b == b'\n').unwrap() + 1])
+                .unwrap_err()
+                .to_string()
+        ),
+        "坏在中段那一句与整段一次判的不一样"
+    );
+}

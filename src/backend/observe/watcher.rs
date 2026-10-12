@@ -47,16 +47,16 @@
 //! re-read (`session_file_reread`) — seq is the line number in the file as it is
 //! now, never a number past it (see [`process_jsonl`]).
 //!
-//! On a mid-read I/O error this reader gives up the whole pass (cursor untouched)
-//! — at-least-once-safe. (The deleted monitor copy kept the complete lines it had
-//! already consumed; that difference left with it.)
+//! 读在块上（8a d，[`NewLines`]）：一趟从起读处按块读到尾，一块一块地出行，不把那一截一次读进内存。
+//! 读到一半出错 ⇒ 这一趟停在已经交出去的最后一块之后（交出去的行不再发一遍），其余的下一趟接着读；
+//! 读的那一下文件缩了 ⇒ 游标留旧高水位，下一趟按截短从 0 重读并出声。
 //!
 //! ⚠ 这段话此前写的是 "reads via one `fs::read` snapshot" —— 那**曾经是真的**，
 //! 而它只评了**错误语义**那一面，对**内存与 IO 后果一个字没记**（audit-0805 B-4）：
 //! 每个 debounce 事件把整份 jsonl 读进内存，257 MB 的活跃会话 ⇒ 每次读 257 MB，
 //! 只为提取约 500 字节的新行；而本地 monitor 同一件事一直是 `seek` + `read_until`
 //! ⇒ **强机器流式、弱机器整读，正好反了**（backend 住树莓派那类小机器）。
-//! F04 已改成只读新字节（`read_tail_from` + `read_new_lines_at`），
+//! F04 已改成只读新字节（`read_tail_from` + `read_new_lines_at`；d 之后按块读，见上），
 //! 由 `the_two_tail_readers_do_not_slurp_the_whole_session_file` 钉住不许改回去。
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
@@ -1992,105 +1992,163 @@ pub const TAIL_PROBE: u64 = 64;
 enum Look {
     /// 盘上不在了（删了 / 改名走了）。
     Gone,
-    /// 在，但这一趟读不出来（权限 · 读到一半出错）—— 与从前一样静默跳过这一趟（至少一次语义，游标不动）。
+    /// 在，但这一趟开不了 / 核指纹那一下读不出（权限 · 出错）—— 静默跳过这一趟（游标不动）。读到一半出错的见 [`NewLines`]。
     Unreadable,
-    /// 读到了：`chunk` 覆盖 `[chunk_start, file_len)`；`from` 是这一趟该接着的游标（被改写 ⇒ 归零）；
-    /// `reread` = 这一趟要从 0 重读、以及为什么。
-    Read {
-        chunk: Vec<u8>,
-        chunk_start: u64,
-        file_len: u64,
-        from: ReadCursor,
-        reread: Option<RereadWhy>,
-    },
+    /// 看过了、停在起读处：按块读到尾（[`NewLines`]）。
+    Read(NewLines),
 }
 
-/// 只读新字节：从游标处 `seek` 到 EOF〔audit-0805 F04 第 2 步〕。
+/// 只读新字节〔audit-0805 F04〕＋先认出「不在了 / 被截短 / 被原地改写」三形，**读之前**就判定，交回停在起读处的块读者
+/// （[`NewLines`]，按块读到尾，不把那一截一次读进内存）。
 ///
-/// 返回 [`Look`]：读到的那一形里 `(chunk, chunk_start, file_len)` 直接喂 [`read_new_lines_at`]（配 `from`）。
-///
-/// # 两件必须想清楚的事
-///
-/// 1. **截断时退回整读。** `read_new_lines_at` 的断言②要求判定为截断时 `chunk_start == 0`，
-///    因为截断的语义就是「从头重来、重发 seq」。这里先用 `metadata` 的长度判一次。
-/// 2. ★ **`file_len` 用「真读到多少」算，不用 `metadata` 那个数。**
-///    `metadata()` 与 `read_to_end()` 之间文件还在被 CC 追加 —— 拿元数据那个长度当 `file_len`
-///    会让断言①（chunk 必须覆盖到 EOF）在**完全正常的并发追加**下炸。
-///    改用 `start + chunk.len()`：多读到的字节这一轮就一起处理掉，天然自洽。
-///    ⚠ 反过来（读的时候文件缩了）也自洽：`file_len` 变小 ⇒ 下一次事件 `file_len < seen_len`
-///    ⇒ 判截断 ⇒ 整读重来。**两个方向都不需要额外分支。**
-///
-/// 只读新字节（F04）＋先认出「不在了 / 被截短 / 被原地改写」三形。
-///
-/// - 截短：`metadata` 的长度 < 高水位 ⇒ 整读、`reread = Truncated`（`scan_new_lines` 自己也会判出截断、从 0 起）。
-/// - 续读：从 `consumed − k` 读起（`k = min(TAIL_PROBE, consumed)`），多读的那 `k` 字节与 `tail`（上一趟记下的）逐字节比；
-///   对不上 ⇒ 整读、游标归零、`reread = Rewritten`。`tail` 为 `None`（第一次读 / 刚丢过游标）⇒ 不核。
-/// - ★ `file_len` 用「真读到多少」算（理由见原注：`metadata` 与读之间文件还在长）。
+/// - 截短：`metadata` 的长度 < 高水位 ⇒ 从 0 读、`reread = Truncated`、行号从 0 数。
+/// - 续读：先读游标前 `k = min(TAIL_PROBE, consumed)` 字节与 `tail`（上一趟记下的）逐字节比；对不上 ⇒ 从 0 读、游标归零、
+///   `reread = Rewritten`。`tail` 为 `None`（第一次读 / 刚丢过游标）⇒ 不核。
+/// - ★ 这一趟看到的文件长度用「真读到多少」算（`metadata` 与读之间文件还在长；多读到的字节这一趟一起处理掉），见 [`NewLines::finish`]。
 fn read_tail_from(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>) -> Look {
+    read_tail_in_blocks(path, cursor, tail, crate::observe::fs::READ_BLOCK)
+}
+
+/// [`read_tail_from`] 的本体（块多大是参数：判据拿小块验「按块扫 == 一整块扫」）。
+fn read_tail_in_blocks(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>, block: usize) -> Look {
     use std::io::{Read, Seek, SeekFrom};
     let meta_len = match Ro::metadata(path) {
         Ok(m) => m.len(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Look::Gone,
         Err(_) => return Look::Unreadable,
     };
-    let read_from = |start: u64| -> Option<(Vec<u8>, u64, u64)> {
-        let mut f = Ro::open(path).ok()?;
-        if start > 0 {
-            f.seek(SeekFrom::Start(start)).ok()?;
-        }
-        let mut chunk = Vec::new();
-        f.read_to_end(&mut chunk).ok()?;
-        let file_len = start + chunk.len() as u64;
-        Some((chunk, start, file_len))
+    let Ok(mut f) = Ro::open(path) else {
+        return Look::Unreadable;
     };
-    let whole = |why: RereadWhy| match read_from(0) {
-        Some((chunk, chunk_start, file_len)) => Look::Read {
-            chunk,
-            chunk_start,
-            file_len,
-            from: ReadCursor::default(),
-            reread: Some(why),
-        },
-        None => Look::Unreadable,
+    let from_zero = |f: RoFile, from: ReadCursor, why: RereadWhy| {
+        Look::Read(NewLines::new(f, block, 0, Vec::new(), from, Some(why)))
     };
     if meta_len < cursor.seen_len {
-        // 截短：游标原样交给扫描（它按高水位判截断、从 0 起、seq 照旧往上）。
-        return match read_from(0) {
-            Some((chunk, chunk_start, file_len)) => Look::Read {
-                chunk,
-                chunk_start,
-                file_len,
-                from: cursor,
-                reread: Some(RereadWhy::Truncated),
-            },
-            None => Look::Unreadable,
-        };
+        // 截短：从 0 起、行号从 0 数（读的那一下文件又长回去了也照样从 0：这一趟已经判定）。
+        if meta_len > 0 {
+            tracing::warn!(
+                "jsonl truncated (len {meta_len} < seen_len {}), full re-read with new seqs: {}",
+                cursor.seen_len,
+                path.display()
+            );
+        }
+        return from_zero(f, cursor, RereadWhy::Truncated);
     }
     let consumed = cursor.consumed.min(meta_len);
     let k = TAIL_PROBE.min(consumed);
-    let Some((chunk, chunk_start, file_len)) = read_from(consumed - k) else {
+    let mut probe = Vec::new();
+    let read = f
+        .seek(SeekFrom::Start(consumed - k))
+        .and_then(|_| (&mut f).take(k).read_to_end(&mut probe));
+    if read.is_err() {
         return Look::Unreadable;
-    };
-    if let Some(t) = tail {
-        if chunk.get(..k as usize) != Some(t) {
-            return whole(RereadWhy::Rewritten);
-        }
     }
-    Look::Read {
-        chunk,
-        chunk_start,
-        file_len,
-        from: cursor,
-        reread: None,
+    if tail.is_some_and(|t| t != probe.as_slice()) {
+        return match f.seek(SeekFrom::Start(0)) {
+            Ok(_) => from_zero(f, ReadCursor::default(), RereadWhy::Rewritten),
+            Err(_) => Look::Unreadable,
+        };
     }
+    if f.seek(SeekFrom::Start(cursor.consumed)).is_err() {
+        return Look::Unreadable;
+    }
+    Look::Read(NewLines::new(
+        f,
+        block,
+        cursor.consumed,
+        probe,
+        cursor,
+        None,
+    ))
 }
 
-/// 扫完之后记下新游标之前那 `TAIL_PROBE` 字节（下一趟续读前核它）。`chunk` 覆盖 `[chunk_start, ..)`。
-fn tail_of(chunk: &[u8], chunk_start: u64, consumed: u64) -> Vec<u8> {
-    let k = TAIL_PROBE.min(consumed);
-    let from = (consumed - k).saturating_sub(chunk_start) as usize;
-    let to = (consumed.saturating_sub(chunk_start) as usize).min(chunk.len());
-    chunk.get(from..to).map(<[u8]>::to_vec).unwrap_or_default()
+/// 一趟续读：从起读处按块读到尾，每块止于一个 `\n`，交给同一段扫描（[`read_new_lines_at`]）出行；
+/// 末尾没写完的那截不交（留给下一趟）。手里最多 ≈ 一块 ＋ 正在读的那一行。
+struct NewLines {
+    blocks: crate::observe::fs::Blocks<RoFile>,
+    /// 下一块在文件里的起点（起读处 ＋ 已交出的块）。
+    at: u64,
+    /// 起读处。
+    start: u64,
+    /// 这一趟接着的游标（被改写 ⇒ 归零）。
+    from: ReadCursor,
+    /// 这一趟要从 0 重读、以及为什么（读之前就判定了）。
+    reread: Option<RereadWhy>,
+    /// 新游标之前那 `TAIL_PROBE` 字节（滚动着记；起读处之前那几字节打底）。
+    tail: Vec<u8>,
+    /// 读到一半出错了：这一趟停在已交出的最后一块之后。
+    broke: bool,
+}
+
+impl NewLines {
+    fn new(
+        f: RoFile,
+        block: usize,
+        start: u64,
+        tail: Vec<u8>,
+        from: ReadCursor,
+        reread: Option<RereadWhy>,
+    ) -> Self {
+        Self {
+            blocks: crate::observe::fs::Blocks::new(f, block),
+            at: start,
+            start,
+            from,
+            reread,
+            tail,
+            broke: false,
+        }
+    }
+
+    /// 下一块里的行（号从 `seqs` 接着发）；读到尾 / 读出错 ⇒ `None`。
+    fn next(&mut self, key: &str, seqs: &mut SeqCounter) -> Option<Vec<ReadLine>> {
+        let whole = match self.blocks.next() {
+            Ok(Some(b)) => b,
+            Ok(None) => return None,
+            Err(_) => {
+                self.broke = true;
+                return None;
+            }
+        };
+        let at = self.at;
+        let end = at + whole.len() as u64;
+        // 每块当一段「读到这里为止」的完整区扫：起点就是这块的起点、没有高水位 ⇒ 号 · 字节位与整段扫的逐个相同。
+        let here = ReadCursor {
+            consumed: at,
+            seen_len: 0,
+        };
+        let (lines, _) = read_new_lines_at(&whole, at, end, here, key, seqs);
+        let keep = TAIL_PROBE as usize;
+        if whole.len() >= keep {
+            self.tail.clear();
+            self.tail.extend_from_slice(&whole[whole.len() - keep..]);
+        } else {
+            self.tail.extend_from_slice(&whole);
+            let over = self.tail.len().saturating_sub(keep);
+            self.tail.drain(..over);
+        }
+        self.at = end;
+        Some(lines)
+    }
+
+    /// 读完：（新游标, 新游标之前那几个指纹字节）。`seen_len` ＝ 这一趟真读到的长度；比旧的高水位还短（读的那一下文件缩了 ·
+    /// 读到一半出错）而这一趟不是从 0 读的 ⇒ 留旧的高水位：下一趟按截短从 0 重读并出声。
+    fn finish(mut self) -> (ReadCursor, Vec<u8>) {
+        let _ = self.blocks.rest();
+        let seen = self.start + self.blocks.read();
+        let seen_len = if (seen < self.from.seen_len || self.broke) && self.reread.is_none() {
+            seen.max(self.from.seen_len)
+        } else {
+            seen
+        };
+        (
+            ReadCursor {
+                consumed: self.at,
+                seen_len,
+            },
+            self.tail,
+        )
+    }
 }
 
 /// 跟着一份记录往下读（一次性等待用）：与续读同一套读法 —— 只读新字节 · 截短 / 改写从 0 重读 · 残行等 `\n` · 不在了丢游标。
@@ -2124,18 +2182,13 @@ impl Follow {
                 Vec::new()
             }
             Look::Unreadable => Vec::new(),
-            Look::Read {
-                chunk,
-                chunk_start,
-                file_len,
-                from,
-                ..
-            } => {
-                let (lines, next) =
-                    read_new_lines_at(&chunk, chunk_start, file_len, from, "", &mut self.seqs);
-                self.tail = tail_of(&chunk, chunk_start, next.consumed);
-                self.cursor = next;
-                lines.into_iter().map(|l| l.raw).collect()
+            Look::Read(mut new) => {
+                let mut out = Vec::new();
+                while let Some(lines) = new.next("", &mut self.seqs) {
+                    out.extend(lines.into_iter().map(|l| l.raw));
+                }
+                (self.cursor, self.tail) = new.finish();
+                out
             }
         }
     }
@@ -2167,36 +2220,29 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     let key_str = key.to_string_lossy().into_owned();
     let prev_cursor = state.offsets.get(&key).copied().unwrap_or_default();
     let path_str = path.to_string_lossy().into_owned();
-    // F04：只读新字节（截断 / 改写时 `read_tail_from` 自己退回整读）。此前是 `fs::read` 整读 ——
-    // 257 MB 会话的每一次文件事件都要把整份读进内存，只为提取约 500 字节的新行。
+    // F04：只读新字节（截断 / 改写时 `read_tail_from` 判成从 0 读）；d：按块读、一块一块地出行，不把那一截一次读进内存。
     // 活会话的 jsonl 是「看的，不是管的」（之后文件管理器改得动它）：
     //   不在了 ⇒ 出声一次、丢游标（同名再出现从 0 读）；截短 / 原地改写 ⇒ 从 0 重读并出声。都不碰判活。
-    let (chunk, chunk_start, file_len, from, reread) =
-        match read_tail_from(path, prev_cursor, state.tails.get(&key).map(Vec::as_slice)) {
-            Look::Gone => {
-                forget_cursor(state, &key);
-                if state.gone.insert(key) {
-                    sink.send(Frame::SessionFileGone {
-                        session_id,
-                        path: path_str,
-                    });
-                }
-                return 0;
+    let mut new = match read_tail_from(path, prev_cursor, state.tails.get(&key).map(Vec::as_slice))
+    {
+        Look::Gone => {
+            forget_cursor(state, &key);
+            if state.gone.insert(key) {
+                sink.send(Frame::SessionFileGone {
+                    session_id,
+                    path: path_str,
+                });
             }
-            Look::Unreadable => return 0,
-            Look::Read {
-                chunk,
-                chunk_start,
-                file_len,
-                from,
-                reread,
-            } => (chunk, chunk_start, file_len, from, reread),
-        };
+            return 0;
+        }
+        Look::Unreadable => return 0,
+        Look::Read(new) => new,
+    };
     // 这一趟要从 0 重读 ⇒ 行号从 0 重数（seq ＝ 当前文件里的行号），出声那一帧排在重读的行之前。
-    //   三种来路：`read_tail_from` 认出的截短 / 改写 · 读的那一下文件又缩了（扫描自己按高水位判截断）· 删了之后同名又长出来。
+    //   来路：`read_tail_from` 认出的截短 / 改写 · 删了之后同名又长出来（读的那一下文件又缩了的，下一趟按截短办，见 [`NewLines::finish`]）。
     let reappeared = state.gone.remove(&key);
-    let reread = reread
-        .or_else(|| (file_len < from.seen_len).then_some(RereadWhy::Truncated))
+    let reread = new
+        .reread
         .or_else(|| reappeared.then_some(RereadWhy::Rewritten));
     if reread.is_some() {
         state.seqs.restart(&key_str);
@@ -2207,19 +2253,6 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
             .branches
             .remove(&key)
             .is_some_and(|c| !c.off().is_empty());
-    let (lines, new_cursor) = read_new_lines_at(
-        &chunk,
-        chunk_start,
-        file_len,
-        from,
-        &key_str,
-        &mut state.seqs,
-    );
-    state.tails.insert(
-        key.clone(),
-        tail_of(&chunk, chunk_start, new_cursor.consumed),
-    );
-    state.offsets.insert(key, new_cursor);
     if let Some(why) = reread {
         sink.send(Frame::SessionFileReread {
             session_id: session_id.clone(),
@@ -2227,11 +2260,17 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
             why,
         });
     }
-    let n = lines.len();
+    let mut n = 0;
     let mut runs_changed = adopt_runs(state, &session_id, path);
-    for line in lines {
-        runs_changed |= send_line(&session_id, &path_str, line, state, sink);
+    while let Some(lines) = new.next(&key_str, &mut state.seqs) {
+        n += lines.len();
+        for line in lines {
+            runs_changed |= send_line(&session_id, &path_str, line, state, sink);
+        }
     }
+    let (new_cursor, tail) = new.finish();
+    state.tails.insert(key.clone(), tail);
+    state.offsets.insert(key, new_cursor);
     branch_changed |= settle_chain(state, path);
     if runs_changed {
         sink.send(state.runs_frame(&session_id));
@@ -2590,19 +2629,23 @@ fn catch_up_session(
 
 /// [`catch_up_session`] 的收尾那一半：`[consumed, EOF)` 是一整个 JSON 对象 ⇒ 交出去（号 = 计数器现值，不推进）。
 fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::{Seek, SeekFrom};
     let key = path_key(path);
     let Some(cursor) = state.offsets.get(&key).copied() else {
         return;
     };
-    let mut rest = Vec::new();
-    let read = Ro::open(path).and_then(|mut f| {
-        f.seek(SeekFrom::Start(cursor.consumed))?;
-        f.read_to_end(&mut rest)
-    });
-    if read.is_err() || rest.contains(&b'\n') {
+    // 按块读：读出一整块（有 `\n`）就不往下读了 —— 只剩一截半行时才真读到尾。
+    let Ok(mut f) = Ro::open(path) else {
+        return;
+    };
+    if f.seek(SeekFrom::Start(cursor.consumed)).is_err() {
+        return;
+    }
+    let mut blocks = crate::observe::fs::Blocks::new(f, crate::observe::fs::READ_BLOCK);
+    if !matches!(blocks.next(), Ok(None)) {
         return; // 读不动 / 还有完整行没消费（补读那一步没读动）⇒ 不猜
     }
+    let rest = blocks.rest();
     let text = String::from_utf8_lossy(&rest);
     let raw = text.trim_start_matches('\u{feff}').trim_end_matches('\r');
     if !raw.trim_start().starts_with('{')
