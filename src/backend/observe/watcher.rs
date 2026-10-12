@@ -2230,10 +2230,9 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     let n = lines.len();
     let mut runs_changed = adopt_runs(state, &session_id, path);
     for line in lines {
-        let (r, b) = send_line(&session_id, &path_str, line, state, sink);
-        runs_changed |= r;
-        branch_changed |= b;
+        runs_changed |= send_line(&session_id, &path_str, line, state, sink);
     }
+    branch_changed |= settle_chain(state, path);
     if runs_changed {
         sink.send(state.runs_frame(&session_id));
     }
@@ -2393,16 +2392,24 @@ fn branch_frame(state: &ReaderState, sid: &str, path: &Path) -> Frame {
     }
 }
 
-/// 一行喂进这份记录的链索引（这一家有链才喂）；回：主线外清单变没变。
-fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) -> bool {
+/// 一行记进这份记录的链索引（这一家有链才记）；不算 —— 这一趟读的行都记完了由 [`settle_chain`] 算一次。
+fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) {
     let Some(fact) = state
         .root_of(path)
         .and_then(|i| state.roots[i].face.chain)
         .and_then(|c| c(raw))
     else {
-        return false;
+        return;
     };
-    state.branches.entry(path_key(path)).or_default().push(fact)
+    state.branches.entry(path_key(path)).or_default().load(fact);
+}
+
+/// 这份记录的链索引把记下的一次算掉；回：主线外清单变没变。一趟读进多少行都只算这一次（逐行算是平方：hot1）。
+fn settle_chain(state: &mut ReaderState, path: &Path) -> bool {
+    state
+        .branches
+        .get_mut(&path_key(path))
+        .is_some_and(crate::agents::mainline::Chain::settle)
 }
 
 /// 这条会话的记录路径定下来了 / 换了一份（读到的这一行不在客户端手里那份上）⇒ 记下，发一帧 `session_status` 带上它（活动那几格照记着的带全）。
@@ -2429,15 +2436,15 @@ fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &m
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
 /// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::record_face`）；
-/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿，链事实记进链索引（回：运行表变没变 · 主线外清单变没变）。
+/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿，链事实记进链索引（不算：调用方读完这一趟再 `settle_chain`）。回：运行表变没变。
 fn send_line(
     session_id: &str,
     path_str: &str,
     line: ReadLine,
     state: &mut ReaderState,
     sink: &mut FrameSink,
-) -> (bool, bool) {
-    let branch_changed = feed_chain(state, Path::new(path_str), &line.raw);
+) -> bool {
+    feed_chain(state, Path::new(path_str), &line.raw);
     let root = state.root_of(Path::new(path_str));
     let face = root.map(|i| state.roots[i].face);
     let translated = face.and_then(|f| (f.parse)(&line.raw, line.start).ok().flatten());
@@ -2496,7 +2503,7 @@ fn send_line(
     if let Some(a) = activity {
         note_activity(session_id, a, state, sink);
     }
-    (rec.changed, branch_changed)
+    rec.changed
 }
 
 /// 记录说这条会话此刻进到 `a` 这一态 ⇒ 记账；真变了 ⇒ 一帧 `session_status`（带全，与进程状态文件那一路同一形）。
@@ -2610,7 +2617,8 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         byte_offset: cursor.consumed + rest.len() as u64,
         start: cursor.consumed,
     };
-    let (runs_changed, branch_changed) = send_line(sid, &path.to_string_lossy(), line, state, sink);
+    let runs_changed = send_line(sid, &path.to_string_lossy(), line, state, sink);
+    let branch_changed = settle_chain(state, path);
     if runs_changed {
         sink.send(state.runs_frame(sid));
     }
@@ -3514,7 +3522,7 @@ fn prime_file_cursor(
     let mut activity = None;
     while let Some(block) = reader.next_block() {
         let Ok(block) = block else {
-            // 读到一半出错：游标不装（至少一次语义，下一趟再来）。
+            // 读到一半出错：游标不装（至少一次语义，下一趟再来）；这一趟记的链一起扔掉。
             return (none(key, false), None);
         };
         // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行），不会有残行。
@@ -3536,7 +3544,7 @@ fn prime_file_cursor(
         if let Some(chain) = chain {
             for line in block.split(|&b| b == b'\n') {
                 if let Some(f) = std::str::from_utf8(line).ok().and_then(chain) {
-                    c.push(f);
+                    c.load(f);
                 }
             }
         }
@@ -3564,10 +3572,13 @@ fn prime_file_cursor(
         let drop = tail.len().saturating_sub(TAIL_PROBE as usize);
         tail.drain(..drop);
     }
+    // 链事实整份记完才算一次（逐条算是平方：hot1）。
+    c.settle();
     cursor.seen_len = reader.len.max(cursor.consumed);
     tracing::debug!(
-        "primed {key_str}: cursor→{} (+{n_lines} lines suppressed, tail seq starts here)",
-        cursor.consumed
+        "primed {key_str}: cursor→{} (+{n_lines} lines suppressed, tail seq starts here; chain walked {})",
+        cursor.consumed,
+        c.walked()
     );
     let bytes = reader.len - reader.from;
     (
