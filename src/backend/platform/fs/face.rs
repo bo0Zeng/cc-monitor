@@ -151,7 +151,7 @@ impl Face {
     }
 }
 
-/// 文件管理面开出来的一份文件（新建的或覆盖写的）：能读写、挪位置、改权限、落盘、问元数据；
+/// 文件管理面开出来的一份文件（新建的或覆盖写的）：能读写、挪位置、改权限、落盘；
 /// 下载落点那一份可以换成异步的（[`FaceFile::into_async`]）。
 #[derive(Debug)]
 pub struct FaceFile(std::fs::File);
@@ -163,10 +163,6 @@ impl FaceFile {
 
     pub(crate) fn sync_all(&self) -> io::Result<()> {
         self.0.sync_all()
-    }
-
-    pub(crate) fn metadata(&self) -> io::Result<std::fs::Metadata> {
-        self.0.metadata()
     }
 
     /// 换成异步的那一份（只会写：下载落点往里写远端读来的字节）。

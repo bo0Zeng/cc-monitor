@@ -1019,7 +1019,6 @@ mod tests {
         "std::fs::set_permissions(",
         "std::os::unix::fs::symlink(",
         "FaceFile(std::fs::File)",
-        "std::fs::Metadata>",
         "FaceAsyncFile(tokio::fs::File)",
         "tokio::fs::File::from_std(",
     ];
