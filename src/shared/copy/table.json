@@ -1057,12 +1057,6 @@
       "zh": "写后回读 · {path} 里无账号 {account} 的 API key",
       "args": ["path", "account"]
     },
-    "beUpstreamFileFace.write.noParent": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "写入失败 · {path} · 无上一级目录",
-      "args": ["path"]
-    },
     "beUpstreamFileFace.write.mkdirFailed": {
       "kind": "error",
       "role": "原因格",

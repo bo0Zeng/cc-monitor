@@ -169,6 +169,7 @@ const MOVED_TO_OWN: &[&str] = &[
     "history/history_annotations.rs",
     "control/exit_policy.rs",
     "relay/key.rs",
+    "accounts/upstream_select/file_face.rs",
 ];
 
 #[test]
@@ -180,8 +181,6 @@ fn o3_the_five_callers_go_through_it_and_the_remote_one_shares_the_mode() {
     };
     for f in [
         "control/files_commit.rs",
-        // +2：凭据文件与历史注解那一层都是数据目录（默认 `~/.cc-monitor`）。
-        "accounts/upstream_select/file_face.rs",
     ] {
         assert_eq!(
             src(f)

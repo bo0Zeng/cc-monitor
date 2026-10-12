@@ -169,7 +169,7 @@ mod tests {
             "accounts",
             "上游选择（apikey 端点改写）：那张 `(agent, 账号)` 表 · 每 agent 一行的默认上游 · \
              中转进程里**只读**那份凭据文件 · 热重载。另有 `upstream/file_face.rs` 那一份\
-             在帧面上写**这台机器上**的那份凭据文件（上游选择自己的状态，第四层登记）。\
+             在帧面上写**这台机器上**的那份凭据文件（上游选择自己的状态，经 `platform::fs::Own` 写）。\
              2026-09-24 从 `relay/` 底下搬出来（「中转层不要有账号」），在那之前它就在本护栏的人群里",
         ),
         (
@@ -850,14 +850,6 @@ mod tests {
     /// 那一半靠那个模块自己的行为判据（写完读回、目录里只剩那一份）。
     pub(super) const OWN_STATE_MODULES: &[(&str, &str)] = &[
         (
-            "accounts/upstream_select/file_face.rs",
-            "上游选择那份凭据文件 `apikey-credentials.json` 在**这台机器上**的写口：\
-             文件名 / 格式 / 落点都是本仓定的、只有中转进程里的上游选择读它 ⇒ 上游选择**自己的**状态，\
-             不是用户数据（判清全文）。写的那一刻读盘 → 只改一条账号那一格 → \
-             临时文件出生即只给本人（`creds_core::perm::create_private`，O_EXCL）→ 写满 → 原子挪过去；\
-             只建数据目录那一层（`~/.cc-monitor`，经 `own_dir::ensure_private_dir` 只给本人）；失败删自己的临时文件。线上入口只有命令表账号那一族的 `apikey-key-set`",
-        ),
-        (
             "stderr_log.rs",
             "脱离常驻那条载体的后端自己的 **stderr 诊断文件**（当前 `stderr.log` ＋ 旧的一份 \
              `stderr.old.log`；路径由 monitor 起脱离那条载体时交 `CCM_BACKEND_STDERR_LOG`，目录由它建好）。只有后端写、\
@@ -956,10 +948,6 @@ mod tests {
     /// 入方向拆成目录之后（10-03），命令注册那几个写口的门收紧到**持有那条命令的那一族文件**（例：`apikey-key-set` 的写口只许账号那一族碰），比「整个 `inbound.rs` 都算门」更紧。
     const OWN_STATE_DOORS: &[(&str, &str)] = &[
         (
-            "stream/inbound/registry/accounts.rs",
-            "命令注册里账号那一族 —— `apikey-key-set` 一条，外加改账号库那几条（`accounts-*`）递给执行器的 key 表几口（`ACCOUNT_KEYS`）",
-        ),
-        (
             "accounts/oauth/mod.rs",
             "订阅号续登录令牌那一处（`access_token`）：令牌快过期才续，续完整份写回 —— 没有帧命令可走（只在上游选择换到这个号、要它的令牌时才发生）",
         ),
@@ -989,13 +977,6 @@ mod tests {
     /// 读口不在这里 —— 读不改世界，别处引用它合法。
     /// 第三列 = 这个写口**唯一**的那扇门（[`OWN_STATE_DOORS`] 里的一行）。
     const OWN_STATE_WRITERS: &[(&str, &str, &str)] = &[
-        // 写 key（`answer_set`）· 删号清那一行（`answer_drop`）· 回滚放回那一行（`answer_restore`）同一个前缀 ⇒ 针取前缀；
-        // 读口 `answer_read` 也落在针上，它同样只从账号那一族进来（多挡一个读口不伤）。
-        (
-            "accounts/upstream_select/file_face.rs",
-            "file_face::answer_",
-            "stream/inbound/registry/accounts.rs",
-        ),
         // 订阅号凭据：写回（`write_tokens`）与续期锁（`with_refresh_lock`）都只从续期那一处（`oauth/mod.rs`）进。
         (
             "accounts/oauth/store.rs",
@@ -5072,7 +5053,7 @@ mod g6_dependency_signoff {
             "第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。\
              ★ **它自己有一处写面**：`perm.rs` 的 `create_private`（建一个只给本人的新文件），在那个 feature 后面。\
 本清单**开了**它：远端那台机器上的 key 只能由那台的后端写\
-             （上游选择自己的状态文件，第四层登记的 `accounts/upstream_select/file_face.rs`），\
+             （上游选择自己的状态文件，`accounts/upstream_select/file_face.rs` 经 `platform::fs::Own` 写），\
              「出生即只给本人」只有 `create_private` 这一份实现 ⇒ 就是要它写。\
              先前「编译器保证写不了」那一格换成下面这条判据：写半边在本 crate 生产段的引用处 == 那一份。\
              边界判据：`the_credentials_write_half_is_reached_only_from_the_account_file_face`",

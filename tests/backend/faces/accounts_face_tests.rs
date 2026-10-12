@@ -134,8 +134,18 @@ fn call_door(
     args: Value,
 ) -> Answer {
     let table = key_table(t);
-    let drop = |v: &Value| file_face::answer_drop_at(&table, v);
-    let restore = |v: &Value| file_face::answer_restore_at(&table, v);
+    let drop = |v: &Value| {
+        file_face::answer_drop_at(
+            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+            v,
+        )
+    };
+    let restore = |v: &Value| {
+        file_face::answer_restore_at(
+            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+            v,
+        )
+    };
     let path = || Ok(table.clone());
     let keys = KeyDoor {
         set,
@@ -151,7 +161,10 @@ fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
     let table = key_table(t);
     let set = |v: &Value| -> file_face::FileFaceAnswer {
         keys.lock().unwrap().push(v.clone());
-        file_face::answer_set_at(&table, v)
+        file_face::answer_set_at(
+            &crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层")),
+            v,
+        )
     };
     call_door(t, &set, cmd, args)
 }
