@@ -1300,24 +1300,24 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
 /// 上面 [`no_e2e_suite_isolates_with_tmux_tmpdir`] 只看套件**自己写的**裸调，被测后端 shell out 的那几处它看不见。
 #[test]
 fn every_e2e_suite_gets_a_private_tmux_from_the_sandbox_env() {
+    use guard_core::contains_word as has;
     let env = strip_comments(&read_e2e("sandbox-env.sh"));
     assert!(
         env.lines()
-            .any(|l| l.contains("tmux-shim.sh") && l.contains("--sandbox-default")),
+            .any(|l| has(l, "tmux-shim.sh") && has(l, "--sandbox-default")),
         "sandbox-env.sh 没给这一趟装私有 tmux 的 shim（`. tmux-shim.sh --sandbox-default`）：\
          没自己挂 shim 的套件起的后端会裸调到缺省 tmux server"
     );
     assert!(
-        env.lines().any(|l| l.trim_start().starts_with("trap ")
-            && l.contains("tmux_shim_cleanup")
-            && l.contains("EXIT")),
+        env.lines()
+            .any(|l| l.trim() == "trap tmux_shim_cleanup EXIT"),
         "sandbox-env.sh 没给这一趟设收尾（`trap tmux_shim_cleanup EXIT`）"
     );
     let dir = crate::guard_support::repo_root().join("tests").join("e2e");
     let mut bad: Vec<String> = Vec::new();
     for (f, src) in guard_core::scan_tree!(&dir, &["sh"]) {
         let exec = strip_comments(&src);
-        if !exec.contains("sandbox-env.sh") {
+        if !has(&exec, "sandbox-env.sh") {
             continue;
         }
         // `trap` 不一定在行首（`W="$(mktemp -d)"; trap '…' EXIT` 那一形）：命令位上的 `trap ` 就算。
@@ -1328,7 +1328,7 @@ fn every_e2e_suite_gets_a_private_tmux_from_the_sandbox_env() {
                     before.is_empty() || before.ends_with(';') || before.ends_with('&')
                 })
         });
-        if traps_exit && !exec.contains("tmux_shim_cleanup") {
+        if traps_exit && !has(&exec, "tmux_shim_cleanup") {
             bad.push(crate::guard_support::rel_of(&f));
         }
     }
