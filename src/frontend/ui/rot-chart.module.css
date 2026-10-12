@@ -288,6 +288,12 @@
     outline-offset: -1px;
   }
 
+  .rcSwatch[data-k="slot"] {
+    background: color-mix(in srgb, var(--color-link) 12%, transparent);
+    outline: 1px dashed color-mix(in srgb, var(--color-link) 60%, transparent);
+    outline-offset: -1px;
+  }
+
   .rcBar[data-rc-bar="skip"],
   .rcSwatch[data-k="skip"] {
     background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-faint) 50%, transparent) 0 2px, transparent 2px 6px);
@@ -376,6 +382,12 @@
     font-size: var(--font-size-xs);
     line-height: 12px;
     white-space: nowrap;
+  }
+
+  /* 叠在时段那一段的字上 ⇒ 挪到行的下沿（字由 placeLabels 量了才定）。 */
+  .rcFar[data-place="below"] {
+    top: auto;
+    bottom: 0;
   }
 
   .rcReset {

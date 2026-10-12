@@ -179,6 +179,8 @@ fn the_configs_read_lists_the_seeds_with_words() {
         );
     }
     let two = cs.iter().find(|c| c["id"] == "c_00000002").expect("2");
+    // 「账号库里其余的订阅号」此刻是哪几个（编辑器那一行照抄）：库里没点名的订阅号，按名字排；按量号不算。
+    assert_eq!(two["rest"], json!(["a", "b", "c"]));
     assert!(two["text"]
         .as_str()
         .unwrap_or("")

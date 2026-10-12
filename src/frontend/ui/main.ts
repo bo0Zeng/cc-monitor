@@ -271,9 +271,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     active: () => tabs.activeTab(),
     answer: (tab, req) => answerNeeds(tab.origin, tab.sessionId, req),
     reread: (sid) => tabs.rereadFacts(sid),
-    viewTerminal: () => mainDrawer.dock.show("terminal"),
-    front: (sid) => tabs.frontFor(sid),
-    attach: (sid) => tabs.attachInTerminal(sid),
     toast: (title, detail) => void (detail ? toast(title, "", { detail }) : toast(title, "", { level: "info" })),
     room: (px) => {
       // 消息流底部给块让出它那么高；原来贴着底 ⇒ 让完还贴着底（最后那一行不被块盖住）。

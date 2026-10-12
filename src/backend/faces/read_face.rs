@@ -456,21 +456,17 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             facts.writers = holders.clone().unwrap_or_default();
             // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
             // 答题口没接上（ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量）：每次按持着它的进程现查。
-            facts.answer_off = facts
-                .writers
-                .iter()
-                .any(|pid| {
-                    matches!(
-                        crate::platform::proc::proc_env_var(
-                            *pid,
-                            crate::agents::asks::ANSWER_HOOK_OFF_ENV
-                        ),
-                        crate::platform::proc::EnvRead::Value(_)
-                    )
-                })
-                .then(|| {
-                    crate::common::cells::Words(copy_core::copy_text("beAsk.manual.noHook", &[]))
-                });
+            facts.answer_off = facts.writers.iter().find_map(|pid| {
+                match crate::platform::proc::proc_env_var(
+                    *pid,
+                    crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+                ) {
+                    crate::platform::proc::EnvRead::Value(v) => {
+                        Some(crate::agents::asks::hook_off_words(&v))
+                    }
+                    _ => None,
+                }
+            });
             // 配上挂着的待答请求（`needs.ask`：可以怎么答；挡着终端的那种 pidfile 不说在等，照它补出一份）。
             facts.needs = dress_ask(
                 facts_query::needs_of(

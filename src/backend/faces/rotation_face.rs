@@ -467,6 +467,8 @@ pub struct ConfigItem {
     pub strategy_name: String,
     pub in_use: Vec<String>,
     pub is_default: bool,
+    /// 「账号库里其余的订阅号」那一行此刻是哪几个号（库里没点名的订阅号，按名字排；编辑器那一行照抄）。
+    pub rest: Vec<String>,
 }
 
 /// `rotation-configs-read` 的应答。
@@ -506,7 +508,26 @@ fn config_item(
         strategy_name: strategy_name(all, &c.body.strategy),
         in_use: book.in_use(id),
         is_default: book.default_config == id,
+        rest: rest_of(ctx, LIBRARY_AGENT, &c.body),
     }
+}
+
+/// 一份配置里「其余的订阅号」那一行此刻是哪几个（起会话的号不在这里排除：各会话不同）。
+fn rest_of(ctx: &Ctx, agent: &str, body: &ConfigBody) -> Vec<String> {
+    let named: Vec<String> = body
+        .accounts
+        .iter()
+        .filter_map(|r| match &r.who {
+            Who::Id(x) => Some(x.clone()),
+            _ => None,
+        })
+        .collect();
+    let lib = ctx.hop.library();
+    crate::accounts::upstream_select::rotate::rest_members(
+        lib.accounts.iter().map(|x| x.id.as_str()),
+        &named,
+        |x| ctx.kind(agent, x) == Kind::Sub,
+    )
 }
 
 /// `rotation-configs-read`：这台的配置表（默认那份在最前）。
@@ -871,6 +892,7 @@ fn strategy_item(ctx: &Ctx, book: &Book, s: &Strategy, lang: Lang, now: u64) -> 
             acct_init: s.acct_init(),
             parked: Default::default(),
             tz: None,
+            tz_unknown: false,
         };
         describe(ctx, LIBRARY_AGENT, &body, Some(s), lang, now)
     } else {
@@ -1422,13 +1444,22 @@ pub struct SessionRotation {
     pub needs: Option<RotationNeeds>,
 }
 
+/// 这份配置时区不明（第一版缺 `tz`、换形那台说不出自己的时区）⇒ 需手动：在设置里确认时区（时段那几个钟点按它判）。
+pub(crate) fn tz_needs(body: &rotation::ConfigBody) -> Option<RotationNeeds> {
+    body.tz_unknown.then(|| RotationNeeds {
+        kind: "tzUnknown".into(),
+        reason: copy_text("beRotation.tz.unknown", &[]),
+        detail: copy_text("beRotation.tz.unknownDetail", &[]),
+    })
+}
+
 /// 会话这一侧需手动的那一格。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct RotationNeeds {
-    /// `unreadable`（轮换文件读不懂）。
+    /// `unreadable`（轮换文件读不懂）· `tzUnknown`（这份配置时区不明）。
     pub kind: String,
     pub reason: String,
     pub detail: String,
@@ -1579,14 +1610,20 @@ pub(crate) fn session_state(
     }
     let mut quota = v.quota.clone();
     quota.stamp(&clock);
-    let needs = ctx.hop.store.unreadable().map(|e| {
-        let (reason, detail) = crate::stream::detail::unreadable("rotation-session-read", Some(&e));
-        RotationNeeds {
-            kind: "unreadable".into(),
-            reason: reason.as_str().unwrap_or_default().to_string(),
-            detail: detail.as_str().unwrap_or_default().to_string(),
-        }
-    });
+    let needs = ctx
+        .hop
+        .store
+        .unreadable()
+        .map(|e| {
+            let (reason, detail) =
+                crate::stream::detail::unreadable("rotation-session-read", Some(&e));
+            RotationNeeds {
+                kind: "unreadable".into(),
+                reason: reason.as_str().unwrap_or_default().to_string(),
+                detail: detail.as_str().unwrap_or_default().to_string(),
+            }
+        })
+        .or_else(|| tz_needs(&v.body));
     SessionRotationState::Present(Box::new(SessionRotation {
         agent: v.entry.agent.clone(),
         start: v.entry.start.clone(),

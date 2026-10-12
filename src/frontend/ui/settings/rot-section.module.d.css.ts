@@ -2,6 +2,7 @@
 declare const classes: {
   readonly rot: string;
   readonly rotBody: string;
+  readonly rotCellText: string;
   readonly rotChartHead: string;
   readonly rotCols: string;
   readonly rotDetTitle: string;

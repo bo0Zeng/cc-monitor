@@ -95,7 +95,7 @@ ck "--ccm-agent codex：resume <sid> 原样交给 codex（它自己的子命令�
    "yes" \
    "$(ccm resume x -- --ccm-agent codex --cwd /p --ccm-print | grep -q "cd '/p' && exec codex --no-daemon resume x\$" && echo yes || echo no)"
 ck "--launcher 覆盖默认启动器" \
-   "$UNSET; cd '/p' && exec mycc --resume s1" \
+   "$UNSET; export CCM_ANSWER_HOOK_OFF=launcher; cd '/p' && exec mycc --resume s1" \
    "$(ccm --resume s1 -- --cwd /p --launcher mycc --ccm-print)"
 ck "--base：显式 unset CLAUDE_CONFIG_DIR（#75 逃生口）" \
    "unset CLAUDE_CONFIG_DIR; $UNSET; cd '/p' && exec claude$(hk "$NOHOME")" \
@@ -125,7 +125,7 @@ ck "new 不在 -- 右边第一个 ⇒ 报错（不猜）" \
    "ccm: $(zh beArgv.parse.newNotFirst)" \
    "$(ccm -- --cwd /p new --ccm-print 2>&1)"
 ck "--launcher 'ccr code' 拆成词" \
-   "$UNSET; cd '/p' && exec ccr code -p x" \
+   "$UNSET; export CCM_ANSWER_HOOK_OFF=launcher; cd '/p' && exec ccr code -p x" \
    "$(ccm -p x -- --launcher 'ccr code' --cwd /p --ccm-print)"
 ck "--account 与 --base 互斥" \
    "ccm: $(zh beArgv.validate.accountAndBase)" \
