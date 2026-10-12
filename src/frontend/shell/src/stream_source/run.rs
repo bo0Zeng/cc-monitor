@@ -52,10 +52,7 @@ impl Transport for DeskLink {
                 .await
                 .map(crate::dial_host::DialStream::lives_long)
                 .map_err(problem_of);
-            tracing::info!(
-                "[perf] stream_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend）",
-                t_exec.elapsed().as_millis()
-            );
+            perf_dialed(&host_label, t_exec);
             got
         })
     }
@@ -100,6 +97,14 @@ impl Install for DeskLink {
                 .map_err(problem_of)
         })
     }
+}
+
+/// 开那条链路花了多久（SSH 登录 ＋ exec 小中继）：冷启动最贵的三段之一，埋 `[perf]`。
+fn perf_dialed(host_label: &str, t_exec: std::time::Instant) {
+    tracing::info!(
+        "[perf] stream_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend）",
+        t_exec.elapsed().as_millis()
+    );
 }
 
 /// 每台一条的循环（［重新连接］· 机器页「起」经 [`wake`] 叫醒它）。只记弱引用：流任务停了，它就跟着没了。

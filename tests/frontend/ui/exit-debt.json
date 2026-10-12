@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 213,
+  "ceiling": 212,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",

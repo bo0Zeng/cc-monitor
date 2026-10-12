@@ -21,8 +21,8 @@ const PHASES: &[(&str, &str, &str)] = &[
     ),
     (
         "起流",
-        // 重连循环每接一次都经 `DeskLink::stream` 开那条链路（SSH 登录 ＋ exec 小中继）。
-        "    fn stream",
+        // 重连循环每接一次都经 `DeskLink::stream` 开那条链路（SSH 登录 ＋ exec 小中继），开完报一行。
+        "fn perf_dialed",
         "[perf] stream_source [{host_label}] 起流 {}ms（",
     ),
     (
