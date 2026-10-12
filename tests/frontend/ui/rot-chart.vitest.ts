@@ -164,7 +164,7 @@ describe("rot-chart · 合图", () => {
       Range.prototype.getBoundingClientRect = () => box(g.why[0], g.why[1], 40);
       const { root } = draw(p);
       await frame();
-      const texts = [...root.querySelectorAll<HTMLElement>("[data-rc-slot] > b, [data-rc-left], [data-rc-reset], [data-rc-far]")].map((e) => [e.dataset.rcFar ? "far" : e.dataset.rcReset ? "reset" : e.dataset.rcLeft ? "left" : "slot", e.getBoundingClientRect()] as const);
+      const texts = [...root.querySelectorAll<HTMLElement>("[data-rc-slot] > b, [data-rc-left], [data-rc-reset], [data-rc-far]")].map((e): [string, DOMRect] => [e.dataset.rcFar ? "far" : e.dataset.rcReset ? "reset" : e.dataset.rcLeft ? "left" : "slot", e.getBoundingClientRect()]);
       texts.push(["why", box(g.why[0], g.why[1], 40)]);
       const crossed = texts.flatMap((a, i) => texts.slice(i + 1).filter((b) => hits(a[1], b[1])).map((b) => `${a[0]}×${b[0]}`));
       return { crossed, far: root.querySelector<HTMLElement>("[data-rc-far]")!.dataset.place, slot: root.querySelector<HTMLElement>("[data-rc-slot] > b")!.style.marginLeft };
