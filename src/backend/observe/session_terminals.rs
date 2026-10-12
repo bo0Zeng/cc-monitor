@@ -10,12 +10,8 @@
 
 use crate::platform::child::{Child, Deadline};
 use serde::Serialize;
-use serde_json::Value;
 
 use crate::platform::proc::{proc_env_var, EnvRead};
-
-/// 本族的应答：成品或 `(code, message)`。
-pub(crate) type Answer = Result<Value, (&'static str, String)>;
 
 const TMUX_ENV: &str = "TMUX";
 const TMUX_PANE_ENV: &str = "TMUX_PANE";
@@ -24,28 +20,7 @@ const WINDOW_LABEL_ENV: &str = "LC_CCM_WINDOW";
 /// 一次最多报几个连着的终端（同一个会话连十几个客户端已经不正常；超出的按动静排在后面的丢掉）。
 const MAX_TERMINALS: usize = 16;
 
-/// `SSH_CONNECTION` 四元组（那台机器看到的：对面地址 · 对面端口 · 本机地址 · 本机端口）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct SshConnection {
-    pub(crate) client_addr: String,
-    pub(crate) client_port: u16,
-    pub(crate) server_addr: String,
-    pub(crate) server_port: u16,
-}
-
-/// 一个正在显示这个会话的终端。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct Terminal {
-    /// 经 ssh 连过来的那条连接；`None` = 那个终端不是经 ssh 连的（这台机器自己的屏幕上，或别的方式）。
-    pub(crate) ssh: Option<SshConnection>,
-    /// 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `None`。
-    pub(crate) activity: Option<u64>,
-    /// 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) window: Option<String>,
-}
+pub(crate) use crate::common::seen_terminal::{SshConnection, Terminal};
 
 /// 查到的事实：一串终端，或一条说得出的原因。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,18 +35,29 @@ pub(crate) enum Shown {
     Unreadable,
 }
 
-/// 帧面入口（宿主 `faces/feature_face.rs` 交家目录）：`{sid}` ⇒ `{terminals: [...]}` 或 `{terminals: [], why}`。
-pub(crate) fn answer_at(home: &std::path::Path, args: &Value) -> Answer {
-    let sid = args
-        .get("sid")
-        .and_then(Value::as_str)
-        .filter(|s| shell_quote_core::session_id_ok(s))
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("missing or malformed `sid`"),
-            )
-        })?;
+/// `session-terminals` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SidReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+}
+
+/// 帧面入口（宿主 `faces/feature_face.rs` 交家目录）：此刻显示它的终端，或一条原因。
+/// 码：`bad_args`（sid 形状不对）· `no_such_session` · `failed` / `child_timed_out`（问 tmux 那一发）。
+pub(crate) fn answer_at(
+    home: &std::path::Path,
+    req: &SidReq,
+) -> Result<Showing, (&'static str, String)> {
+    let sid = req.sid.as_str();
+    if !shell_quote_core::session_id_ok(sid) {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed("malformed `sid`"),
+        ));
+    }
     let pid = crate::observe::watcher::running_sessions(home)
         .into_iter()
         .find(|(s, _)| s == sid)
@@ -84,14 +70,22 @@ pub(crate) fn answer_at(home: &std::path::Path, args: &Value) -> Answer {
                 ),
             )
         })?;
-    crate::stream::inbound::spec::wire(&product(&shown_by(pid)?))
+    Ok(product(&shown_by(pid)?))
 }
 
 /// `session-terminals` 的应答：此刻显示它的终端（一个都没有 ⇒ 空 ＋ 为什么）。
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Showing {
+    /// 此刻显示它的终端，最近动静在前，最多 16 个。
     pub(crate) terminals: Vec<Terminal>,
+    /// 一个都没有时：`detached`（在 tmux 里、没终端连着）· `no-terminal`（不在 tmux 里、进程没有终端）· `unreadable`（读不了）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        test,
+        ts(optional, type = "\"detached\" | \"no-terminal\" | \"unreadable\"")
+    )]
     pub(crate) why: Option<&'static str>,
 }
 

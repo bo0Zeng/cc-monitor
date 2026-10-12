@@ -3,6 +3,16 @@
 use super::*;
 use serde_json::json;
 
+/// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`，不去问系统）。
+fn answer_with(
+    args: &Value,
+    query: impl FnOnce() -> Result<String, String>,
+) -> Result<Value, CmdErr> {
+    let req: TerminalProcessesReq =
+        serde_json::from_value(args.clone()).map_err(|e| bad(&e.to_string()))?;
+    super::answer_with(&req, query).map(|p| serde_json::to_value(p).unwrap())
+}
+
 /// 一份合成的系统应答：用户开的 Windows Terminal 里 PowerShell 起的 ssh，另有一条同地址、别的端口的 ssh（诱饵），
 /// 一条别的程序连着跳板地址的连接，和一个父进程号被复用过的孤儿。
 fn tables() -> String {
@@ -122,6 +132,8 @@ fn a_reused_parent_ends_the_chain_and_a_failed_query_is_said() {
     for bad in [
         json!({}),
         json!({ "terminals": [] }),
+        json!({ "terminals": [{ "ssh": null, "activity": 1, "extra": 1 }] }),
+        // 产这一格的 `session-terminals` 恒写 `ssh`（不是经 ssh ⇒ `null`）⇒ 缺这一键是认不得的形，不当「不是经 ssh」。
         json!({ "terminals": [{ "activity": 1 }] }),
         json!({ "terminals": [term("not-an-ip", 1, "192.0.2.9", 22)] }),
         json!({ "terminals": [{ "ssh": { "clientAddr": "192.0.2.5", "clientPort": 70000, "serverAddr": "192.0.2.9", "serverPort": 22 } }] }),

@@ -84,6 +84,19 @@ ticks="$(awk '{print $22}' "/proc/$SLEEPER/stat")"
 printf '{"pid":%s,"sessionId":"%s","kind":"interactive","procStart":"%s","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":%s000}\n' \
   "$SLEEPER" "$SID" "$ticks" "$(date +%s)" > "$CLAUDE_CONFIG_DIR/sessions/$SLEEPER.json"
 
+echo "== 经环境来的 hook（换了启动器那一支，子进程也继承得到）：发问的是会话里 Bash 起的子 claude ⇒ 空手退、不挂"
+# 发问的进程 ＝ hook 的父进程：一个起来时环境里带着嵌套标记的 sh（`; :` 让它 fork 出 hook、自己留着当父进程）。
+PLUG="$HOME/.cc-monitor/answer-plugin"
+out="$(hook_input | env CLAUDE_CODE_PLUGIN_DIRS="/u/mine:$PLUG" CLAUDECODE=1 timeout "$WALL_CEILING_S" sh -c '"$0" -- --answer-hook claude; :' "$BACKEND")"; rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && ok "子进程那一发：退出 0、stdout 一个字节都没有、没挂着等" || bad "rc=$rc out=$out"
+[ -z "$(ask_id)" ] && ok "needs 里没有它" || bad "子进程那一发挂进了 needs"
+# 对照：发问的进程起来时没有嵌套标记（ccm 起会话前清掉了它）⇒ 认是 ccm 起的那一个，照常挂上。
+#   sh 把 hook 放后台（stdin 先存到 3 号：后台命令的 stdin 会被换成 /dev/null）、记下它的 pid、等它（hook 的父进程仍是这个 sh）；收的时候按那个 pid 停。
+hook_input | env CLAUDE_CODE_PLUGIN_DIRS="$PLUG" sh -c 'exec 3<&0; "$0" -- --answer-hook claude <&3 & echo $! > "$1"; wait' "$BACKEND" "$WORK/hook.pid" > /dev/null 2>&1 & SHPID=$!
+wall_until '[ -n "$(ask_id)" ]' && ok "对照：没有嵌套标记的那一发照常挂上" || bad "对照：没挂上"
+kill -TERM "$(cat "$WORK/hook.pid")" 2>/dev/null; wait "$SHPID" 2>/dev/null
+wall_until '[ -z "$(ask_id)" ]' || bad "对照那一发没撤"
+
 echo "== 挂上 ⇒ needs 出 ask ⇒ 答 ⇒ hook 打出决定"
 hook_input | "$BACKEND" -- --answer-hook claude > "$WORK/out1" & HOOKPID=$!
 wall_until '[ -n "$(ask_id)" ]' && ok "needs 里出了 ask" || bad "needs 里没有 ask"

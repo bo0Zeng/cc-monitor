@@ -6,6 +6,17 @@
 //! ⚠ `§42` 的机检只核字段名落节、不核行为；契约里行为句不漂靠的是本族。
 
 use super::*;
+
+// 判据照线上那一份说话：入参是帧里的 JSON（解入参同 typed 分派那一步：多一格 · 缺一格 · 类型不对 ⇒ `bad_args`），再过值域那一道。
+fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, CmdErr> {
+    let req: LaunchReq = serde_json::from_value(args.clone()).map_err(|e| {
+        CmdErr::new(
+            "bad_args",
+            crate::common::contract::malformed(&e.to_string()),
+        )
+    })?;
+    super::parse_request(req)
+}
 use crate::stream::inbound::spec::Fail;
 
 fn args(v: serde_json::Value) -> serde_json::Value {
@@ -42,9 +53,14 @@ fn attach_is_not_a_mode_here() {
         e.message,
         copy_core::copy_text("beContract.malformed.say", &[])
     );
-    assert!(diag.contains("unknown mode"), "诊断没说清楚为什么：{diag}");
     assert!(
-        e.raw.as_deref().is_some_and(|r| r.contains("unknown mode")),
+        diag.contains("unknown variant `attach-only`"),
+        "诊断没说清楚为什么：{diag}"
+    );
+    assert!(
+        e.raw
+            .as_deref()
+            .is_some_and(|r| r.contains("unknown variant")),
         "原话里没有诊断：{:?}",
         e.raw
     );
@@ -157,9 +173,8 @@ fn the_create_only_fields_have_their_own_shapes() {
 ///
 /// # 它补的洞
 ///
-/// [`parse_request`] 与 `launch_for_inbound` 的键名有一面镜子
-/// （`inbound::structure_guards::launch_fields_match_its_parser_and_output`），
-/// 而那面镜子**只看解析器与输出构造器** —— 一个字段完全可以「解析出来、存进结构体、
+/// 入参类型 [`LaunchReq`] 管「收得下」（键名与类型由它定，协议参考与 TS 从它生成），
+/// 而它**只管收** —— 一个字段完全可以「解析出来、存进结构体、
 /// 然后一个地方都不用」。⇒ 症状是 **ccm 照发、backend 照收、`@ccm_agent` 与尺寸静默消失**，
 /// 而两侧任何一条现有判据都不会红。**那正是本命令要防的那件事。**
 ///
@@ -500,8 +515,9 @@ fn the_three_success_shapes_are_distinguishable() {
 /// 错误文案列的是真集合（不再提那个名字）。
 #[test]
 fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
-    assert_eq!(Mode::parse("send-into"), Some(Mode::SendInto));
-    assert_eq!(Mode::parse("create-or-attach"), Some(Mode::CreateOrAttach));
+    let mode = |m: &str| serde_json::from_value::<Mode>(serde_json::json!(m)).ok();
+    assert_eq!(mode("send-into"), Some(Mode::SendInto));
+    assert_eq!(mode("create-or-attach"), Some(Mode::CreateOrAttach));
     for unknown in [
         "send-keys-raw",
         "send-keys",
@@ -509,7 +525,7 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
         "",
         "send-into ",
     ] {
-        assert_eq!(Mode::parse(unknown), None, "{unknown:?} 不该被认出来");
+        assert_eq!(mode(unknown), None, "{unknown:?} 不该被认出来");
     }
     let (e, diag) = crate::common::contract::tests::diag(|| {
         parse_request(&serde_json::json!({
@@ -523,7 +539,9 @@ fn the_mode_set_is_exactly_the_two_and_the_raw_one_is_gone() {
         .nth(1)
         .unwrap_or_else(|| panic!("诊断没列 mode 集合：{diag}"));
     assert!(
-        listed.contains("create-or-attach / send-into") && !listed.contains("send-keys-raw"),
+        listed.contains("`create-or-attach`")
+            && listed.contains("`send-into`")
+            && !listed.contains("send-keys-raw"),
         "诊断列的不是真正的 mode 集合：{diag}"
     );
 }
@@ -576,9 +594,19 @@ fn every_mode_variant_has_an_arm_and_a_parse_and_is_named_in_some_judge() {
             src.contains(&format!("Mode::{v} =>")),
             "`Mode::{v}` 在 `run()` 里没有分支（或分支头写法不同）"
         );
+        // 线上名由 serde 的 `kebab-case` 派生：每个变体都得解得出来（解不出 ⇒ 它永远收不到请求）。
+        let wire: String = v
+            .chars()
+            .enumerate()
+            .flat_map(|(i, c)| {
+                let lead = (i > 0 && c.is_ascii_uppercase()).then_some('-');
+                lead.into_iter()
+                    .chain(std::iter::once(c.to_ascii_lowercase()))
+            })
+            .collect();
         assert!(
-            src.contains(&format!("Some(Mode::{v})")),
-            "`Mode::{v}` 不在 `Mode::parse` 的映射里 —— 那它永远收不到请求"
+            serde_json::from_value::<Mode>(serde_json::json!(wire)).is_ok(),
+            "`Mode::{v}` 的线上名 `{wire}` 解不出来 —— 那它永远收不到请求"
         );
         // 判据面：**本文件**里必须有人点名扫过这个分支（剖分后判据都住这儿）。
         assert!(
@@ -655,17 +683,26 @@ fn typed_is_only_as_strong_as_the_send_keys_exit_code() {
 /// 而消费方默认会按字面把 `typed:true` 读成确凿落地 —— 那正是报告 I-3 的起点。
 #[test]
 fn the_contract_says_how_strong_typed_actually_is() {
-    // 契约那一句住 `launch` 登记里 `typed` 字段的说明（协议参考由它生成）。
+    // 契约那一句住回包类型 `Launched` 的 `typed` 那一格的文档注释（协议参考与生成的 TS 由它来）。
     let spec = crate::stream::inbound::REGISTRY
         .iter()
         .find(|s| s.name == "launch")
         .expect("注册表里没有 launch");
-    let doc = spec
-        .fields
+    let crate::stream::inbound::spec::Run::Typed(t) = spec.run else {
+        panic!("launch 不是 typed 命令")
+    };
+    let shape = (t.shape)();
+    let decl = shape
+        .decls
         .iter()
-        .find(|f| f.name == "typed")
-        .map(|f| f.doc)
-        .expect("launch 没登记 `typed` 字段");
+        .find(|(n, _)| n == &shape.reply)
+        .map(|(_, d)| d.clone())
+        .expect("launch 的回包类型没有声明");
+    let doc = decl
+        .split("typed:")
+        .next()
+        .and_then(|head| head.rsplit("/**").next())
+        .expect("回包里没有 `typed` 那一格");
     for needle in ["只有 `send-keys` 的退出码那么强", "copy-mode"] {
         assert!(
             doc.contains(needle),
@@ -739,11 +776,12 @@ fn the_launch_request_and_product_match_the_cross_language_golden() {
     );
     let r = &l["reply"];
     assert_eq!(
-        reply(
+        serde_json::to_value(reply(
             r["session"].as_str().expect("session"),
             r["created"].as_bool().expect("created"),
             r["typed"].as_bool().expect("typed"),
-        ),
+        ))
+        .unwrap(),
         *r,
         "后端出的 launch 成品与金样不相等 —— 改了键名或多 / 少一格，界面那一侧就会读成「不知道送到没有」"
     );

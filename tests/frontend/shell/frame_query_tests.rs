@@ -44,7 +44,13 @@ fn backend_command_blocks() -> Vec<(String, String)> {
     // typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()`）：名字从那个类型住的文件里
     //   `impl Command for <类型>` 那一段的 `const NAME` 读；块 ＝ 那一行本身（点着它的家）。
     for (_, prod) in &families {
-        for ctor in ["typed::blocking::<", "typed::asynchronous::<"] {
+        for ctor in [
+            "typed::blocking::<",
+            "typed::with_files::<",
+            "typed::with_own::<",
+            "typed::asynchronous::<",
+            "typed::async_with_files::<",
+        ] {
             for (at, _) in prod.match_indices(ctor) {
                 let rest = &prod[at + ctor.len()..];
                 let path = &rest[..rest.find('>').expect("typed 那一行没收尾")];
@@ -327,12 +333,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
         "terminals-list",
-        "那台的终端名单：后端 `control/terminals.rs` 出成品；前端 `src/frontend/ui/terminal-reads.ts` 收它要的那几格（只加不改的形状，多出来的格照收）",
+        "那台的终端名单：后端 `control/terminals.rs` 出成品（typed，形状住 `control/terminals_wire.rs`）；前端 `src/frontend/ui/terminal-reads.ts` 挑它要的那几格",
     ),
     // 终端页送字送键：能不能送（身份门 · 画面指纹）全在那台后端判，前端只照回话说。
     (
         "terminal-input",
-        "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_for_inbound` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
+        "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_on` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
          前端 `src/frontend/ui/terminal-reads.ts::sendToTerminal` 问、底部抽屉终端页 `terminal-page.ts` 按回话说一句",
     ),
     // 终端实时预览三条：订阅 · 回执 · 退订（画面帧走那条流连接的应答通道，壳转进 `terminal-screen/<票>`）。
@@ -406,15 +412,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "session-new",
         "后端出成品 `{outcome, session, sid, cmd, account, agent, cwd}`（`control/session_new.rs`：判目录 · 号 · 终端名 · 分叉只在这一步写）；\
-         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、`decodeNew` 按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
         "session-new-facts",
-        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、`decodeFacts` 按恰好的键集合收，monitor 这一侧零发送点",
+        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
         "session-new-dir",
-        "后端出成品 `{exists, tmuxName}`（只读）；前端 `new-session-reads.ts::askDir` 问、`decodeDir` 按恰好的键集合收，monitor 这一侧零发送点",
+        "typed：后端出成品 `DirChecked`（`faces/session_new_face.rs::SessionNewDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
     ),
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (

@@ -595,6 +595,13 @@ mod tests {
         /// (文件, 类型名, 它是什么 —— 为什么不在 `wire.rs`)
         const ALLOWED: &[(&str, &str, &str)] = &[
             (
+                "control/launch.rs",
+                "LaunchReq",
+                "帧命令 `launch` 的入参（typed：形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
+            ),
+            ("control/launch.rs", "Mode", "同上，入参的 `mode` 那一格"),
+            ("control/launch.rs", "Launched", "同上，出参"),
+            (
                 "control/resolve_query.rs",
                 "ResumeSpec",
                 "命令 `resolve` 的入参（形状钉在金样 `resolve-contract.golden.json`），命令应答不是流协议帧",

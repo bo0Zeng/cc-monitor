@@ -604,16 +604,58 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
     let families = crate::guard_support::registry_sources();
     let root = crate::guard_support::src_root();
     let mut checked = Vec::new();
+    // typed 那几行（`typed::<档>::<crate::control::<模块>::<类型>>(…)`）：命令名从那份文件里 `impl Command for <类型>` 的 `const NAME` 读。
+    let mut typed_cells: Vec<(String, String)> = Vec::new();
+    for (_, prod) in &families {
+        for (at, _) in prod.match_indices("crate::stream::inbound::typed::") {
+            let rest = &prod[at..];
+            let Some(lt) = rest.find("::<") else { continue };
+            let path = &rest[lt + 3..rest.find('>').unwrap_or(rest.len())];
+            let Some(tail) = path.strip_prefix("crate::control::") else {
+                continue;
+            };
+            let segs: Vec<&str> = tail.split("::").collect();
+            let (Some(module), Some(ty)) = (segs.first(), segs.last()) else {
+                continue;
+            };
+            let Ok(src) =
+                std::fs::read_to_string(root.join("control").join(format!("{module}.rs")))
+            else {
+                continue;
+            };
+            let Some(imp) = src.find(&format!("Command for {ty} {{")) else {
+                continue;
+            };
+            let key = "const NAME: &'static str = \"";
+            let Some(n) = src[imp..].find(key) else {
+                continue;
+            };
+            let name: String = src[imp + n + key.len()..]
+                .chars()
+                .take_while(|c| *c != '"')
+                .collect();
+            typed_cells.push((name, format!("crate::control::{module}::{ty}")));
+        }
+    }
     for spec in crate::stream::inbound::REGISTRY {
         let anchor = format!("name: \"{}\",", spec.name);
-        let Some((family, at)) = families
+        let typed_cell = typed_cells
+            .iter()
+            .find(|(n, _)| n == spec.name)
+            .map(|(_, c)| c.as_str());
+        let cell = match families
             .iter()
             .find_map(|(_, prod)| prod.find(&anchor).map(|at| (prod, at)))
-        else {
-            continue;
+        {
+            Some((family, at)) => {
+                let cell = &family[at..];
+                &cell[..cell.find("\n    },").unwrap_or(cell.len())]
+            }
+            None => match typed_cell {
+                Some(c) => c,
+                None => continue,
+            },
         };
-        let cell = &family[at..];
-        let cell = &cell[..cell.find("\n    },").unwrap_or(cell.len())];
         for (i, _) in cell.match_indices("crate::control::") {
             let module: String = cell[i + "crate::control::".len()..]
                 .chars()
@@ -690,21 +732,13 @@ fn the_identity_door_reads_which_client_started_the_session() {
 /// 请求里的 `client`：没给 ⇒ 没报；给了就得合形状（会进 tmux 会话选项），不合 ⇒ `bad_args`。
 #[test]
 fn the_requester_is_optional_and_shaped() {
-    assert_eq!(requester_of(&serde_json::json!({})), Ok(None));
-    assert_eq!(
-        requester_of(&serde_json::json!({ "client": "mobile" })),
-        Ok(Some("mobile".into()))
-    );
-    for bad in [
-        serde_json::json!({ "client": "" }),
-        serde_json::json!({ "client": "Mobile" }),
-        serde_json::json!({ "client": "-x" }),
-        serde_json::json!({ "client": "a b" }),
-        serde_json::json!({ "client": 1 }),
-        serde_json::json!({ "client": "x".repeat(33) }),
-    ] {
+    // 类型不对（`client: 1`）在解入参那一步就回 `bad_args`（`inbound_tests::the_terminal_trio_refuses_fields_it_does_not_use`）。
+    assert_eq!(requester(None), Ok(None));
+    assert_eq!(requester(Some("mobile")), Ok(Some("mobile".into())));
+    let long = "x".repeat(33);
+    for bad in ["", "Mobile", "-x", "a b", long.as_str()] {
         assert_eq!(
-            requester_of(&bad).map_err(|(c, _)| c),
+            requester(Some(bad)).map_err(|(c, _)| c),
             Err("bad_args"),
             "{bad}"
         );

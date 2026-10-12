@@ -76,6 +76,12 @@ impl Fail {
         self
     }
 
+    /// 那一句连着原话（同 [`crate::common::contract::joined`]）：交给只装一句的那一层（typed 的错误枚举）时原话不丢，投出去时由 [`Fail::new`] 拆回来。
+    /// `data` 不跟：按码定形的 `data` 由那一条自己的变体带。
+    pub(crate) fn into_said(self) -> String {
+        crate::common::contract::joined(self.message, self.raw)
+    }
+
     /// 这次失败**不成应答**、只成别处的一句（同 `Said::into_note`：原话记一行日志）。
     pub(crate) fn into_note(self) -> String {
         crate::common::said::Said::from(self).into_note()
@@ -166,7 +172,7 @@ impl Run {
         matches!(
             self,
             Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_) | Run::BlockingFace(_)
-        ) || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::Blocking(_)))
+        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..)))
     }
 
     /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
@@ -174,7 +180,7 @@ impl Run {
         matches!(
             self,
             Run::BlockingOwn(_) | Run::AsyncOwn(_) | Run::BlockingFace(_)
-        )
+        ) || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..)))
     }
 }
 
@@ -204,7 +210,17 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
         }
         Run::Typed(t) => match t.run {
             super::typed::TypedRun::Blocking(f) => Prepared::Blocking(Box::new(f)),
+            super::typed::TypedRun::BlockingFiles(f, files) => {
+                Prepared::Blocking(Box::new(move |r| f(r, files)))
+            }
+            super::typed::TypedRun::BlockingOwn(f, files) => {
+                let own = own?.clone();
+                Prepared::Blocking(Box::new(move |r| f(r, files, &own)))
+            }
             super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
+            super::typed::TypedRun::AsyncFiles(f, files) => {
+                Prepared::Async(Box::new(move |r| f(r, files)))
+            }
         },
         Run::Builtin => return None,
     })

@@ -364,3 +364,32 @@ impl crate::guard_support::Shaped for Answered {
         }]
     }
 }
+
+/// hook 认「是不是 ccm 起的那一个会话」：只有经环境那一路来的 hook（自己的环境里那个变量带着我们的插件目录）才要认 ——
+/// `--settings` 那一路不会传给子进程。认法：先看常驻那份表（发问那个进程有 ccm 留的便条 · 会话 id 记在起会话那份记录里），
+/// 再看发问那个进程起来时的环境：带着那一家的嵌套标记 ⇒ 是会话里 Bash 起的子进程；读不出 ⇒ 认不出。认不出 ⇒ 空手退。
+#[test]
+fn a_hook_that_came_by_the_environment_answers_only_for_the_session_ccm_started() {
+    use crate::platform::proc::EnvRead;
+    let ours = "/h/.cc-monitor/answer-plugin";
+    let via = Some("/u/mine:/h/.cc-monitor/answer-plugin");
+    // `--settings` 那一路（环境里没有我们的目录）：不认，照答。
+    assert!(hook::admitted(None, ours, false, EnvRead::Unreadable));
+    assert!(hook::admitted(
+        Some("/u/mine"),
+        ours,
+        false,
+        EnvRead::Value("1".into())
+    ));
+    // 经环境来的：表里有 ⇒ 是。
+    assert!(hook::admitted(via, ours, true, EnvRead::Unreadable));
+    // 表里没有：发问那个进程起来时没有嵌套标记 ⇒ 是（ccm 起会话前清掉了它）；带着 ⇒ 子进程；读不出 ⇒ 认不出。
+    assert!(hook::admitted(via, ours, false, EnvRead::Unset));
+    assert!(!hook::admitted(
+        via,
+        ours,
+        false,
+        EnvRead::Value("1".into())
+    ));
+    assert!(!hook::admitted(via, ours, false, EnvRead::Unreadable));
+}

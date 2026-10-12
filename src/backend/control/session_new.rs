@@ -21,6 +21,8 @@ pub(crate) type Failed = (&'static str, String, Option<Value>, Option<String>);
 
 /// 放在哪：这台 tmux 里后台起（关终端不断）· 开一个新的终端窗口直接跑。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Place {
     Tmux,
@@ -29,51 +31,128 @@ pub(crate) enum Place {
 
 /// 分叉自：源会话 ＋ 从哪条消息处。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ForkFrom {
+    /// 源会话 id。
     pub(crate) sid: String,
+    /// 从哪条消息处分叉。
     pub(crate) uuid: String,
+}
+
+/// 轮换：打开哪一份配置。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RotationPick {
+    /// 配置的 id（非空）。
+    pub(crate) config: String,
 }
 
 /// `session-new` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub(crate) struct NewRequest {
     /// 哪一家（线上的 kind）。必填。
     pub(crate) agent: String,
+    /// 工作目录（开头的 `~` 按这台的家目录读）。
     pub(crate) cwd: String,
     /// 缺席 ＝ 跟随（分叉跟随源会话上次的号；新起的 ⇒ 这台的默认号）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) account: Option<AccountAsk>,
+    /// `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）。
     pub(crate) place: Place,
     /// 用户改过的终端名；缺席 ⇒ 这台铸（分叉不收这一格：名字从源会话的终端名铸）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) tmux_name: Option<String>,
     /// 启动命令（空 / 缺席 ⇒ 那一家的默认启动器）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) command: Option<String>,
+    /// 分叉自哪一条（只在这一步写分支记录）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) fork_from: Option<ForkFrom>,
     /// 这台的模型偏好表（号 → 模型，用户设置的原值）。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, String>>"))]
     pub(crate) models: BTreeMap<String, String>,
     /// 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
     pub(crate) local: bool,
     /// 这一趟的票（界面每次点［新建］一张；期限到了再问一次带同一张 ⇒ 认出同一趟，不起第二个：[`super::session_new_ticket`]）。缺 ⇒ 不认。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) ticket: Option<String>,
     /// 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
     #[serde(default)]
-    pub(crate) rotation: Option<Value>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) rotation: Option<RotationPick>,
     /// 第一句（B4）：起好了之后由这台交进会话（宿主等它就绪 · 信任框过了再送）；只跟 `place: tmux`。缺 ⇒ 不交。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) prompt: Option<String>,
     /// 这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) model: Option<String>,
     /// 起在哪一个权限档（那一家声明的档之一，`LaunchFace::permission`）；缺 ＝ 跟随那一家自己的默认。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) permission_mode: Option<String>,
+}
+
+/// `session-new` 的失败：码 ＋ 那一句 ＋ 按码定形的 `data`（[`SessionNewRefusal`]：哪一格 · 选不了号那一形）＋ 下层原话。
+/// 码表封闭（[`SESSION_NEW_CODES`]）：下层交上来的码不在表里 ⇒ 测试档当场红。
+#[derive(Debug)]
+pub(crate) struct SessionNewErr(pub(crate) Failed);
+
+/// `session-new` 会回的码（`bad_args` 打头）。
+pub(crate) const SESSION_NEW_CODES: &[&str] = &[
+    "bad_args",
+    "unknown_agent",
+    "bad_command",
+    "no_dir",
+    "account_unavailable",
+    "place_unavailable",
+    "bad_tmux_name",
+    "tmux_taken",
+    "unobservable",
+    "fork_failed",
+    "refused",
+    "start_failed",
+    "child_timed_out",
+    "launch_pending",
+    "no_such_config",
+];
+
+impl crate::stream::inbound::typed::Codes for SessionNewErr {
+    const ALL: &'static [&'static str] = SESSION_NEW_CODES;
+    fn into_fail(self) -> crate::stream::inbound::spec::Fail {
+        let (code, message, data, raw) = self.0;
+        debug_assert!(
+            SESSION_NEW_CODES.contains(&code),
+            "session-new 回了码表里没有的码 `{code}`"
+        );
+        // 那一句与原话本来就分开（`Failed` 第四格），照原样投（不经 `Fail::new` 再拆一次）。
+        crate::stream::inbound::spec::Fail {
+            code: code.to_string(),
+            message,
+            data,
+            raw,
+        }
+    }
+    fn of_code(code: &str, said: String) -> Result<Self, String> {
+        match SESSION_NEW_CODES.iter().find(|c| **c == code) {
+            Some(c) => Ok(SessionNewErr((c, said, None, None))),
+            None => Err(said),
+        }
+    }
 }
 
 /// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。第一句作为启动参数交给那一家 ⇒ 起好了就是 `delivered`（起不成整条失败、走不到这里）。
@@ -155,25 +234,17 @@ pub(crate) struct PreRotation<'a> {
     pub(crate) forget: &'a dyn Fn(&str),
 }
 
-/// `rotation` 那一格：缺 ⇒ `None`（本机默认）；`{config: id}` ⇒ 那一份；别的形状 ⇒ `bad_args`。
-fn config_of(v: Option<&Value>) -> Result<Option<String>, Failed> {
-    let bad = || {
-        (
+/// `rotation` 那一格：缺 ⇒ `None`（本机默认）；`{config: id}` ⇒ 那一份；id 空 ⇒ `bad_args`（别的形状在解入参那一步就回了）。
+fn config_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
+    match v {
+        None => Ok(None),
+        Some(p) if !p.config.is_empty() => Ok(Some(p.config.clone())),
+        Some(_) => Err((
             "bad_args",
             crate::common::contract::malformed("`rotation` must be {\"config\": id}"),
             None,
             None,
-        )
-    };
-    match v {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::Object(o)) if o.len() == 1 => o
-            .get("config")
-            .and_then(Value::as_str)
-            .filter(|id| !id.is_empty())
-            .map(|id| Some(id.to_string()))
-            .ok_or_else(bad),
-        Some(_) => Err(bad()),
+        )),
     }
 }
 
@@ -200,22 +271,14 @@ pub(crate) fn expand_home(cwd: &str, home: Option<&std::path::Path>) -> String {
     }
 }
 
-/// `session-new` 的本体。`home` ＝ 这台的家目录（展开 `~`）。
+/// `session-new` 的本体（入参已按类型解好）。`home` ＝ 这台的家目录（展开 `~`）。
 pub(crate) fn answer(
-    args: &Value,
+    req: NewRequest,
     deps: &Deps,
     fork: ForkWrite,
     pre: &PreRotation,
     home: Option<&std::path::Path>,
-) -> Result<Value, Failed> {
-    let req: NewRequest = serde_json::from_value(args.clone()).map_err(|e| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(&e.to_string()),
-            None,
-            None,
-        )
-    })?;
+) -> Result<SessionNew, Failed> {
     let ticket = req.ticket.clone();
     if ticket
         .as_deref()
@@ -248,7 +311,7 @@ fn start(
     fork: ForkWrite,
     pre: &PreRotation,
     home: Option<&std::path::Path>,
-) -> Result<Value, Failed> {
+) -> Result<SessionNew, Failed> {
     // 没说是哪一家就不起（不落默认那一家：默认是界面读画像时的事）。
     if req.agent.trim().is_empty() {
         return Err(fail(
@@ -534,7 +597,7 @@ fn start(
             said: None,
         });
     }
-    serde_json::to_value(out).map_err(|e| ("bad_args", e.to_string(), None, None))
+    Ok(out)
 }
 
 /// 那一家起的时候收不收第一句（[`crate::agents::LaunchFace::first_prompt_arg`]）：不收 ⇒ 那句不行的话。
@@ -646,55 +709,53 @@ fn own_entry(deps: &Deps) -> Result<String, String> {
         .ok_or_else(|| copy_core::copy_text("beLaunchRender.entry.noHome", &[]))
 }
 
+/// `session-new-dir` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SessionNewDirReq {
+    /// 工作目录（开头的 `~` 按这台的家目录读）。
+    pub(crate) cwd: String,
+    /// 分叉出来的那一条：源会话 sid（铸名按它此刻所在的终端名派生 `<…>-fork-cc`）。
+    #[serde(default, rename = "forkOf")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) fork_of: Option<String>,
+}
+
 /// `session-new-dir` 的应答。
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DirChecked {
+    /// 这个目录在不在。
     pub(crate) exists: bool,
     /// 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
     pub(crate) tmux_name: Option<String>,
 }
 
-/// `session-new-dir` 的本体：`{cwd, forkOf?}` ⇒ `{exists, tmuxName}`（目录在不在 · 这台此刻会给它铸的终端名；没 tmux ⇒ `null`）。
+crate::stream::inbound::typed::codes! {
+    /// `session-new-dir` 自己没有别的码（`forkOf` 不是会话 id ⇒ `bad_args`）。
+    pub(crate) enum SessionNewDirErr {}
+}
+
+/// `session-new-dir` 的本体：目录在不在 · 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
 pub(crate) fn dir_answer(
-    args: &Value,
+    req: &SessionNewDirReq,
     deps: &Deps,
     home: Option<&std::path::Path>,
-) -> Result<Value, (&'static str, String)> {
-    let o = args.as_object().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("args must be an object"),
-        )
-    })?;
-    for k in o.keys() {
-        if k != "cwd" && k != "forkOf" {
-            return Err((
-                "bad_args",
-                crate::common::contract::malformed(&format!("unknown field `{k}`")),
-            ));
-        }
-    }
-    let raw = o.get("cwd").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing string `cwd`"),
-        )
-    })?;
-    let fork_of = match o.get("forkOf") {
+) -> Result<DirChecked, SessionNewDirErr> {
+    let fork_of = match req.fork_of.as_deref() {
         None => None,
-        Some(v) => Some(
-            v.as_str()
-                .filter(|s| shell_quote_core::session_id_ok(s))
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed("`forkOf` must be a session id"),
-                    )
-                })?,
-        ),
+        Some(s) if shell_quote_core::session_id_ok(s) => Some(s),
+        Some(_) => {
+            return Err(SessionNewDirErr::BadArgs(
+                crate::common::contract::malformed("`forkOf` must be a session id"),
+            ))
+        }
     };
-    let cwd = expand_home(raw.trim(), home);
+    let cwd = expand_home(req.cwd.trim(), home);
     let exists = !cwd.is_empty() && (deps.local_facts.is_dir)(&cwd);
     let tmux_name = match (deps.list)() {
         Ok(Some(rows)) => {
@@ -710,7 +771,7 @@ pub(crate) fn dir_answer(
         }
         Ok(None) | Err(_) => None,
     };
-    crate::stream::inbound::spec::wire(&DirChecked { exists, tmux_name })
+    Ok(DirChecked { exists, tmux_name })
 }
 
 #[cfg(test)]

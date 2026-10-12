@@ -158,7 +158,13 @@ fn give_back(args: &Value, own: &crate::platform::fs::Own) -> Answer {
     let ws = str_arg(args, "workspace")?;
     // 只拿此刻的接手与状态（不交出去），时刻的字用不上 ⇒ 按 UTC 写的那一份也行。
     let doc = crate::faces::plan_face::read_fresh(ws, &crate::Tz::default())?;
-    let send = |a: &Value| crate::control::terminals::input_for_inbound(a);
+    // 送字那一份是本条现拼的（`return_with`）⇒ 按 `terminal-input` 的入参类型解一次，形状不对同那一条回 `bad_args`。
+    let send = |a: &Value| {
+        let req: crate::control::terminals_wire::TerminalInputReq =
+            serde_json::from_value(a.clone()).map_err(|e| bad(&e.to_string()))?;
+        crate::control::terminals_wire::input(&req)
+            .and_then(|sent| crate::stream::inbound::spec::wire(&sent))
+    };
     let record = |ws: &str, sl: &str, id: &str, r: Returned| {
         crate::plan::review::answer_returned(own, ws, sl, id, r)
     };

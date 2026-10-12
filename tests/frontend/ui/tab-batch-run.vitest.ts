@@ -21,7 +21,6 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   stopMany,
   startMany,
-  decodeBatch,
 } from "../../../src/frontend/ui/tab-batch-run";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -158,32 +157,6 @@ describe("批量停：每台一次、逐个答", () => {
     });
     expect(by.d.outcome).toBe("failed");
     expect(by.d.why).not.toBe("");
-  });
-
-  it("应答形状对不上（缺一格 · 个数 / 次序不符）⇒ 那一台整批记失败，不猜", () => {
-    expect(() =>
-      decodeBatch("r1", "sessions-stop", ["a"], {
-        results: [{ sid: "a", outcome: "done" }],
-      }),
-    ).toThrow();
-    expect(() =>
-      decodeBatch("r1", "sessions-stop", ["a", "b"], {
-        results: [res("b", "done"), res("a", "done")],
-      }),
-    ).toThrow();
-    expect(
-      () =>
-        decodeBatch("r1", "sessions-stop", ["a"], {
-          results: [{ ...res("a", "done"), extra: 1 }],
-        }),
-      "多一格",
-    ).toThrow();
-    expect(
-      decodeBatch("r1", "sessions-stop", ["a"], {
-        results: [res("a", "done")],
-      })[0].outcome,
-      "正控",
-    ).toBe("done");
   });
 });
 

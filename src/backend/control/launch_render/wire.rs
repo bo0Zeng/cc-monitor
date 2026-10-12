@@ -11,6 +11,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 /// `launch-render-cli` 的上线入参（`deny_unknown_fields`：前端多送一个字段 ⇒ 拒，不静默吞）。
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct CliRenderRequest {
     /// 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
@@ -24,6 +26,7 @@ pub struct CliRenderRequest {
     pub model: Option<String>,
     /// 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<_>"))]
     pub models: BTreeMap<String, String>,
     pub launcher: String,
     pub default_launcher: String,
@@ -33,6 +36,8 @@ pub struct CliRenderRequest {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum WireAction {
     New,
@@ -41,6 +46,8 @@ pub enum WireAction {
 }
 
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum WireContainer {
     None,

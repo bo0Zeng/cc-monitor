@@ -12938,12 +12938,6 @@
       "zh": "画面已变",
       "args": []
     },
-    "beTerminal.no.other": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "被拒",
-      "args": []
-    },
     "beTerminal.refuse.empty": {
       "kind": "error",
       "role": "原因格",
@@ -17840,6 +17834,24 @@
       "zh": "由自定义启动器起，答题口没接上 · 只能在终端里答",
       "args": []
     },
+    "beAsk.manual.offPolicy": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "组织策略不许加载插件，答题口没接上 · 只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.offVersion": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "claude 版本低于 2.1.280 或认不出版本，答题口没接上 · 只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.offEnvLost": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "启动器没把环境传下去，答题口没接上 · 只能在终端里答",
+      "args": []
+    },
     "beAsk.manual.offSettings": {
       "kind": "body",
       "role": "说明",
@@ -21597,6 +21609,12 @@
       "zh": "写入失败 · {path} · {why}",
       "args": ["path", "why"]
     },
+    "beCcm.plugin.writeFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "答题插件写不进去，这条会话只能在终端里答 · {path} · {why}",
+      "args": ["path", "why"]
+    },
     "rsToolRegistry.tools.launchAccountsNote": {
       "kind": "body",
       "role": "说明",
@@ -21607,6 +21625,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "起会话便条 · 启动时记下的账号 · 进程退出即清",
+      "args": []
+    },
+    "rsToolRegistry.tools.answerPluginNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "答题插件 · 自定义启动器起会话时用 · 由后端生成",
       "args": []
     },
     "rsDataPaths.backend.knownHosts": {
@@ -21626,6 +21650,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "起会话便条 · 启动时记下的账号 · 进程退出即清",
+      "args": []
+    },
+    "rsDataPaths.backend.answerPlugin": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "答题插件 · 自定义启动器起会话时用 · 随时重写",
       "args": []
     },
     "beLaunchAccount.unavailable.said": {

@@ -126,3 +126,16 @@ fn top_level_args(s: &str) -> Vec<&str> {
     }
     out
 }
+
+/// `joined` 是 `parts` 的反方向：一句 ＋ 原话连成一串再拆，原样回来（typed 的错误枚举只装一串，原话经它不丢）。
+#[test]
+fn a_sentence_joined_with_its_raw_words_splits_back_the_same() {
+    for (said, raw) in [
+        ("说不出", Some("tmux rc=1: boom")),
+        ("说不出", None),
+        ("说不出", Some("a\u{1f}b")),
+    ] {
+        let s = joined(said.to_string(), raw.map(str::to_string));
+        assert_eq!(parts(&s, None), (said.to_string(), raw.map(str::to_string)));
+    }
+}

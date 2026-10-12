@@ -268,7 +268,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
     "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀 / 在 tmux 里 Resume 交那台（`sessions-stop` / `sessions-start`，与批量同一条）
-    "src/frontend/ui/tmux-control.ts", // 杀成之后 cc-bus 注销那一句（`decodeKilled` 那一份说法）
     "src/frontend/ui/tmux-resume.ts", // 在 tmux 里 Resume 那一条起法（不依赖标签页对象，历史页「恢复 ▾」同一条）；这里只把「记录在不在」落进 tab
   ],
 };
