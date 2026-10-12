@@ -157,6 +157,14 @@ async function openPanel(): Promise<void> {
   await sleep(900);
 }
 
+/** 面板上那张列表此刻的先后（号）。 */
+function order(): string[] {
+  return [...document.querySelectorAll<HTMLElement>(`${PANEL} [data-rc-row]`)].map((e) => e.dataset.rcRow ?? "");
+}
+
+/** `rot-drag` 拖之前那张列表的先后（act 记下、drag 照它算该落成什么样）。 */
+let dragFrom: string[] = [];
+
 async function rowEl(account: string): Promise<HTMLElement> {
   return waitFor(`${PANEL} [data-rc-row="${account}"]`);
 }
@@ -242,6 +250,43 @@ export const ROTATION_SCENES: Scene[] = [
       };
     }),
   ),
+  {
+    ...panelScene(
+      "rot-drag",
+      "面板 · 拖一行（起会话时没说是哪个号）",
+      "真鼠标拖第 2 行的把手、松在第 3 行下面那一行前头 ⇒ 后端那一份回来，那个号就在第 3 行，别的行先后不变（`_` 不进这张列表，拖的位置照这张列表数）",
+      async () => {
+        await openPanel();
+        dragFrom = order();
+      },
+      rotWorld((rw) => {
+        rw.configs.c_daily = daily({ accounts: [row1({ start: true }), row1({ id: "team" }), row1({ id: "lab" }), row1({ id: "personal" }), row1({ id: "api" }, { mode: "standby" })] });
+        rw.sessions[0] = { start: "_", current: "team", config: { id: "c_daily", rev: 2 }, history: [] };
+      }),
+    ),
+    drag: () => {
+      const moved = dragFrom[1];
+      const want = [...dragFrom];
+      want.splice(1, 1);
+      want.splice(2, 0, moved);
+      return {
+        from: document.querySelector<HTMLElement>(`${PANEL} [data-rot-handle="${moved}"]`)!,
+        to: document.querySelector<HTMLElement>(`${PANEL} [data-rc-row="${dragFrom[3]}"]`)!,
+        check: async () => {
+          const ok = await waitFor(`${PANEL} [data-rc-row="${moved}"]`, 8000)
+            .then(async () => {
+              for (let k = 0; k < 40; k++) {
+                if (JSON.stringify(order()) === JSON.stringify(want)) return true;
+                await sleep(200);
+              }
+              return false;
+            })
+            .catch(() => false);
+          return ok ? null : `把 ${moved} 从第 2 行拖到第 3 行，回来是 ${JSON.stringify(order())}，该是 ${JSON.stringify(want)}`;
+        },
+      };
+    },
+  },
   panelScene("rot-row-menu", "面板 · 右键一行", "换到这个号 · 用法（这份策略声明了才出）· 不参与 · 号详情…", async () => {
     await openPanel();
     await rightClick(await rowEl("lab"));

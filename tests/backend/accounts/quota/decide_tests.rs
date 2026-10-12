@@ -142,7 +142,7 @@ fn ranked(ids: &[&str]) -> Vec<Ranked> {
         .collect()
 }
 
-/// ★ S6 overlay：`hot` 第一；`place` 越界取末尾、按 `at` 升序依次插。
+/// ★ S6 overlay：`hot` 第一；`place` 越界取末尾。
 #[test]
 fn manual_adjustments_put_hot_first_and_places_where_dropped() {
     let m = Manual {
@@ -163,6 +163,40 @@ fn manual_adjustments_put_hot_first_and_places_where_dropped() {
     };
     let v = overlay(ranked(&["a", "b", "c", "d"]), &m);
     assert_eq!(order(&v), ["d", "c", "b", "a"]);
+}
+
+/// ★ 拖过的号钉在它那一位，其余的照策略的先后补空位：先钉的号不被后钉的挤走（从前按 `at` 升序依次插，
+/// 后插的把先插的挤歪一格 —— Z 钉在第 4 位、再把 c 拖到第 1 位，c 却落到第 0 位）。
+#[test]
+fn placed_accounts_keep_their_slots_and_the_rest_fill_in_by_rank() {
+    let m = Manual {
+        hot: None,
+        place: vec![
+            Place {
+                account: "z".into(),
+                at: 4,
+            },
+            Place {
+                account: "c".into(),
+                at: 1,
+            },
+        ],
+    };
+    let v = overlay(ranked(&["z", "a", "b", "c", "d"]), &m);
+    assert_eq!(order(&v), ["a", "c", "b", "d", "z"]);
+    // 换进来的号（hot）不占钉的位：钉的位数的是除它之外的那张列表。
+    let m = Manual {
+        hot: Some(Hot {
+            account: "d".into(),
+            since: 1,
+        }),
+        place: vec![Place {
+            account: "a".into(),
+            at: 2,
+        }],
+    };
+    let v = overlay(ranked(&["a", "b", "c", "d", "e"]), &m);
+    assert_eq!(order(&v), ["d", "b", "c", "a", "e"]);
 }
 
 fn facts(id: &str, ok: bool, back: Option<u64>) -> (Facts, Params) {

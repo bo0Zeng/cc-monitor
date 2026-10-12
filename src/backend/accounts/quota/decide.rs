@@ -199,25 +199,40 @@ pub(crate) fn rank(rows: &BTreeMap<String, Given>, accounts: &[String]) -> Vec<R
     v
 }
 
-/// ★ E7 叠手动调整：先放 `hot`（最前），再按 `place[{account, at}]` 把拖过的号放回位置 `at`（越界取末尾，按 `at` 升序依次插）。
-/// 不在列表里的号不动。
+/// ★ E7 叠手动调整：`hot` 放最前；`place[{account, at}]` 拖过的号钉在第 `at` 位（数的是除 `hot` 之外的那张列表；越界取末尾），
+/// 其余的号照策略排的先后补空位。几个号钉在同一位 / 越界 ⇒ 按 `at` 升序往后挪到最近的空位。不在列表里的号不动。
 pub(crate) fn overlay(mut rows: Vec<Ranked>, manual: &Manual) -> Vec<Ranked> {
+    let hot = manual
+        .hot
+        .as_ref()
+        .and_then(|h| rows.iter().position(|r| r.account == h.account))
+        .map(|i| rows.remove(i));
     let mut place = manual.place.clone();
     place.sort_by_key(|p| p.at);
+    let mut pins = Vec::new();
     for p in &place {
         if let Some(i) = rows.iter().position(|r| r.account == p.account) {
-            let r = rows.remove(i);
-            let at = p.at.min(rows.len());
-            rows.insert(at, r);
+            pins.push((p.at, rows.remove(i)));
         }
     }
-    if let Some(h) = &manual.hot {
-        if let Some(i) = rows.iter().position(|r| r.account == h.account) {
-            let r = rows.remove(i);
-            rows.insert(0, r);
-        }
+    let n = rows.len() + pins.len();
+    let m = pins.len();
+    let mut slots: Vec<Option<Ranked>> = (0..n).map(|_| None).collect();
+    let mut next = 0;
+    for (j, (at, r)) in pins.into_iter().enumerate() {
+        let k = at.max(next).min(n - (m - j));
+        slots[k] = Some(r);
+        next = k + 1;
     }
-    rows
+    let mut rest = rows.into_iter();
+    let mut out: Vec<Ranked> = slots
+        .into_iter()
+        .filter_map(|s| s.or_else(|| rest.next()))
+        .collect();
+    if let Some(h) = hot {
+        out.insert(0, h);
+    }
+    out
 }
 
 /// 拼一判要的：选的那份策略（读不懂也交进来，好兜底）· 打开的配置内容 · 参与的号（按写下的先后，事实 ＋ 这一行的参数）·

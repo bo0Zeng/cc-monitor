@@ -64,6 +64,14 @@ window.addEventListener("DOMContentLoaded", () => {
       await backend.settled();
       // 让过渡动画落定再量（浮层出现 160ms 上移 4px）。
       await new Promise((r) => setTimeout(r, 250));
+      if (scene.drag) {
+        const d = scene.drag();
+        d.from.scrollIntoView({ block: "center" });
+        const a = d.from.getBoundingClientRect();
+        const b = d.to.getBoundingClientRect();
+        handle.drag = { x0: a.left + a.width / 2, y0: a.top + a.height / 2, y1: b.top + 3 };
+        handle.afterDrag = d.check;
+      }
       if (scene.pointer) {
         const r = document.querySelector(scene.pointer)?.getBoundingClientRect();
         if (!r) throw new Error(`要停鼠标的 ${scene.pointer} 不在页里`);

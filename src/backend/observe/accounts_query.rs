@@ -638,6 +638,11 @@ fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     out
 }
 
+/// 这台此刻活着的会话（[`live_session_ids`]，家取这台那一家的家）：轮换数「另 N 会话也在用」· 判「会话走了」都问它。
+pub(crate) fn live_here() -> std::collections::BTreeSet<String> {
+    live_session_ids(&super::history_query::agent_home())
+}
+
 /// 这台机器上此刻活着的会话（sid 集合）—— 历史跨机 join 的本机判活源头：pidfile 里的会话 id ＋ 进程还是不是同一个
 /// （`platform::proc::session_alive`：存在性 ＋ 有 `procStart` 时对拍启动时刻 —— 与 watcher 加会话那一道闸同一个平台原语，
 /// 不是账号归属那道更严的「缺 `procStart` 就不认」）。

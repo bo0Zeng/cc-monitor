@@ -73,10 +73,10 @@ impl Home {
                 Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME)))),
                 Some(self.root.clone()),
                 library,
+                Arc::new(std::collections::BTreeSet::new),
                 None,
             ),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
-            live: Box::new(std::collections::BTreeSet::new),
             tz: Default::default(),
         }
     }
