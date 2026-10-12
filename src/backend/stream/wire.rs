@@ -168,6 +168,15 @@ impl ActivityFace {
             activity_order: order,
         }
     }
+
+    /// 宣告时判不出、要等记录读完才判得出的那一刻（这一家没有进程状态文件、此刻在干什么只有记录说）：
+    /// 与「说不清」同一格（`activity` 缺席、语气与序同那一格，界面照它画），字照实说「读记录中」—— 不先说一句读完才会知道真假的。
+    pub(crate) fn reading() -> Self {
+        ActivityFace {
+            activity_text: Words(copy_core::copy_text("beSession.activity.reading", &[])),
+            ..Self::of(None)
+        }
+    }
 }
 
 /// **这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：

@@ -1540,15 +1540,35 @@ async fn the_codex_sample_frames_decode_and_each_turn_end_reaches_the_stream() {
     let mut added = Vec::new();
     let mut lines = 0;
     let mut ends = Vec::new();
+    let (mut announced_text, mut working_text) = (None, None);
     for l in GOLDEN.lines() {
         match parse_frame(l).unwrap_or_else(|_| panic!("壳解不开这一帧：{l}")) {
-            InboundFrame::SessionAdded { sid, path, .. } => added.push((sid, path)),
+            InboundFrame::SessionAdded {
+                sid,
+                path,
+                activity,
+                ..
+            } => {
+                announced_text = Some(activity.activity_text.clone());
+                added.push((sid, path))
+            }
+            InboundFrame::SessionStatus { activity, .. }
+                if activity.activity == Some(crate::session_book::SessionActivity::Working) =>
+            {
+                working_text.get_or_insert(activity.activity_text.clone());
+            }
             InboundFrame::Line { .. } => lines += 1,
             InboundFrame::TurnEnd(turn) => ends.push(turn),
             _ => {}
         }
     }
     assert_eq!(added.len(), 1, "一条宣告");
+    // 宣告不等记录：这一家宣告那一帧判不出在干什么 ⇒ 核心照实写（「读记录中」），不先说「运行中」；壳原样转交。
+    assert!(working_text.is_some(), "金样里没有在跑的那一帧 —— 本条空转");
+    assert_ne!(
+        announced_text, working_text,
+        "宣告那一帧判不出却先说了运行中"
+    );
     let (sid, path) = &added[0];
     assert!(path.as_deref().is_some_and(|p| p.ends_with(".jsonl")));
     assert_eq!(lines, 6);

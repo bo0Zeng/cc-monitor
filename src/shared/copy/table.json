@@ -17702,6 +17702,12 @@
       "zh": "运行中",
       "args": []
     },
+    "beSession.activity.reading": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "读记录中",
+      "args": []
+    },
     "beAsk.scope.session": {
       "kind": "body",
       "role": "片段",
