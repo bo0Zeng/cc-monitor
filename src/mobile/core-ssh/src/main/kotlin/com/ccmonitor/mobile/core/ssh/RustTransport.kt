@@ -41,7 +41,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * - **连上**＝开一条握着连接的链路（`use: hold`）：竞速 · 跳板（多跳）· host key · 鉴权 · 保活都在核心里；之后每一次 exec /
  *   shell / SFTP 各开一条链路，按同一份拨号身份复用那条连接（核心的连接池）。握着的那条收工（对端断 · 保活判死）⇒ [isConnected] 变假。
- * - host key：记过的那一把的指纹交进请求（严格比）；没记过 ⇒ 首见接受，**鉴权过了**才落 [KnownHostStore]（同 sshj 那一份的规矩）。
+ * - host key：这台记过的全部钥匙交进请求，照 OpenSSH 比（记过的类型协商排前、按协商出的那一种严格比、那一种没记过 ⇒ 拒）；
+ *   一把都没记过 ⇒ 首见接受，**鉴权过了**才落 [KnownHostStore]。
  * - 钥匙按编号交进核心（密码 · PEM · Keystore 别名＋公钥）；Keystore 的签名在这里做（回 DER，核心换成 SSH 的格式）。
  */
 class RustTransport(

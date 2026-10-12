@@ -66,6 +66,12 @@ object Core {
         comment: String,
     ): String?
 
+    /** 现生成一把软件 Ed25519：JSON `{pem, public}`（私钥 openssh-key-v1 无口令 · 公钥那一行）；生成不了 ⇒ `null`。 */
+    external fun generateEd25519(comment: String): String?
+
+    /** 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（`alias` · `host_name` · `port` · `user` · `identity_file`）。 */
+    external fun parseSshConfig(text: String): String
+
     /** 开一条链路，回编号；请求读不动 ⇒ 0。 */
     external fun open(request: String): Long
 

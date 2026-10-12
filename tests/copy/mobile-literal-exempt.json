@@ -102,20 +102,6 @@
         "why": "ExecResult.orThrow 的异常说明：生产代码里没有调用方，只在异常栈；接上屏的调用方时改成表里一句 ＋ 原话"
       }
     ],
-    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/KeystoreEcdsaSigner.kt": [
-      {
-        "text": "initSign 未调用",
-        "use": "内部",
-        "why": "sshj 调用顺序错的程序员错，只进异常栈"
-      }
-    ],
-    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnection.kt": [
-      {
-        "text": "连接在竞速期间已被关闭（看门狗超时或断开）—弃用赢家，防幻影胜出泄漏",
-        "use": "内部",
-        "why": "CancellationException 的说明：取消照常上抛、不当失败显示，只在异常栈里"
-      }
-    ],
     "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshConnectionManager.kt": [
       {
         "text": "会话在连接期间已被断开",
@@ -126,20 +112,6 @@
         "text": "重连纪元过期：会话已被断开",
         "use": "内部",
         "why": "CancellationException 的说明：取消照常上抛、不当失败显示，只在异常栈里"
-      }
-    ],
-    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/SshDuplex.kt": [
-      {
-        "text": "双向 exec 已关",
-        "use": "内部",
-        "why": "常驻流断开时的原话：只进 LinkState.Down 的 transport，上屏时是复制详情那一栏（句子是 front.body.offline）"
-      }
-    ],
-    "src/mobile/core-ssh/src/main/kotlin/com/ccmonitor/mobile/core/ssh/TofuHostKeyVerifier.kt": [
-      {
-        "text": "(该主机已有其它类型密钥，无 {…} 记录)",
-        "use": "内部",
-        "why": "Mismatch 的 expectedB64 占位：只拿去算指纹，算不出 ⇒ 恢复页显示表里的「（算不出）」，这串本身不上屏"
       }
     ],
     "src/mobile/core-ui/src/main/kotlin/com/ccmonitor/mobile/core/ui/feedback/AppSnackbarController.kt": [

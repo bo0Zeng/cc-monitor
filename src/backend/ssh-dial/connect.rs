@@ -364,11 +364,7 @@ pub fn compression_for(peer: IpAddr, rtt_us: Option<u32>) -> bool {
     rtt_us.is_none_or(|us| us >= COMPRESS_RTT_FLOOR_US)
 }
 
-fn config(probe: bool, compress: bool) -> Arc<client::Config> {
-    config_with(probe, compress, KEEPALIVE)
-}
-
-/// 同 [`config`]，host key 算法的偏好序按这一台的信任锚排（记过的类型排前，[`Trust::preferred_keys`]）。
+/// 生产用的 Config：保活照 [`KEEPALIVE`]，host key 算法的偏好序按这一台的信任锚排（记过的类型排前，[`Trust::preferred_keys`]）。
 fn config_for(probe: bool, compress: bool, trust: &Trust) -> Arc<client::Config> {
     let mut c = Arc::try_unwrap(config_with(probe, compress, KEEPALIVE))
         .unwrap_or_else(|_| unreachable!("刚建出来的 Config 只有这一个引用"));
@@ -376,7 +372,7 @@ fn config_for(probe: bool, compress: bool, trust: &Trust) -> Arc<client::Config>
     Arc::new(c)
 }
 
-/// 同 [`config`]，保活间隔由调用方给（生产只走 [`config`]；判据把间隔按比例缩小，判死门槛 [`KEEPALIVE_MAX`] 照生产）。
+/// 保活间隔由调用方给（生产只走 [`config_for`]；判据把间隔按比例缩小，判死门槛 [`KEEPALIVE_MAX`] 照生产）。
 pub fn config_with(probe: bool, compress: bool, keepalive: Duration) -> Arc<client::Config> {
     Arc::new(client::Config {
         inactivity_timeout: probe.then_some(PROBE_INACTIVITY),

@@ -2,7 +2,6 @@ package com.ccmonitor.mobile.ui.identity
 
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.crypto.CryptoBox
-import com.ccmonitor.mobile.core.data.crypto.SshKeyGenerator
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.IdentityDao
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
@@ -31,7 +30,8 @@ class IdentityOpStatusTest {
 
     @After fun reset() = Dispatchers.resetMain()
 
-    private val good = SshKeyGenerator.generateEd25519("t").privateKeyOpenSshPem
+    // 认得出的那一把（派生在替身里认它；真解析在 Rust 核心里，判据在 core-ssh 的 androidTest）。逐行贴的那几形照旧从它切。
+    private val good = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\nBBBB\nCCCC\n-----END OPENSSH PRIVATE KEY-----\n".toByteArray()
 
     /** 派生公钥的替身：只认整把 [good]（真解析在 Rust 核心里，判据在 core-ssh 的 androidTest `PublicKeyDeriverTest`）。 */
     private val derive: (ByteArray, String) -> PublicKeyDeriver.Derived? = { pem, _ ->

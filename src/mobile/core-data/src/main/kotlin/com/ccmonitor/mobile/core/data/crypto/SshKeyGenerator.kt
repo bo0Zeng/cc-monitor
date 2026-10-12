@@ -3,13 +3,11 @@ package com.ccmonitor.mobile.core.data.crypto
 import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import org.bouncycastle.crypto.generators.Ed25519KeyPairGenerator
-import org.bouncycastle.crypto.params.Ed25519KeyGenerationParameters
-import org.bouncycastle.crypto.params.Ed25519PublicKeyParameters
-import org.bouncycastle.crypto.util.OpenSSHPrivateKeyUtil
+import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.rs.Core
+import org.json.JSONObject
 import java.security.KeyPairGenerator
 import java.security.ProviderException
-import java.security.SecureRandom
 import java.security.interfaces.ECPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.util.Base64
@@ -55,34 +53,19 @@ object SshKeyGenerator {
     )
 
     /**
-     * 软件生成 Ed25519 身份（BouncyCastle 低层 API，不依赖 JCA provider 注册）。
-     * 公钥经 SshWire 编 OpenSSH 串/指纹；私钥编为 OpenSSH PEM（openssh-key-v1，无 passphrase），交上层 CryptoBox 加密落库。
+     * 软件生成 Ed25519 身份：在手机嵌的 Rust 核心里生成（`Core.generateEd25519`，与连接时解这把钥匙的是同一份）。
+     * 私钥是 OpenSSH PEM（openssh-key-v1，无 passphrase），交上层 CryptoBox 加密落库；指纹由公钥 wire blob 用 SshWire 出。
      * 走软件而非 Keystore：Android Keystore 对 Ed25519 的支持不可靠。
      */
     fun generateEd25519(comment: String = ""): SoftwareSshKey {
-        val gen = Ed25519KeyPairGenerator()
-        gen.init(Ed25519KeyGenerationParameters(SecureRandom()))
-        val kp = gen.generateKeyPair()
-        val pub = (kp.getPublic() as Ed25519PublicKeyParameters).encoded // 32B raw
-        val privPem = pemArmor(OpenSSHPrivateKeyUtil.encodePrivateKey(kp.getPrivate()))
+        val got = JSONObject(Core.generateEd25519(comment) ?: error(copyText("mobIdentity.gen.failed")))
+        val public = got.getString("public")
+        val blob = Base64.getDecoder().decode(public.split(' ')[1])
         return SoftwareSshKey(
-            publicKeyOpenSsh = SshWire.ed25519ToOpenSsh(pub, comment),
-            fingerprintSha256 = SshWire.fingerprintSha256(SshWire.encodeEd25519(pub)),
-            privateKeyOpenSshPem = privPem,
+            publicKeyOpenSsh = public,
+            fingerprintSha256 = SshWire.fingerprintSha256(blob),
+            privateKeyOpenSshPem = got.getString("pem").toByteArray(),
         )
-    }
-
-    /** OpenSSH 私钥 PEM armor：BEGIN/END + base64 折行(64)。 */
-    private fun pemArmor(inner: ByteArray): ByteArray {
-        val b64 = Base64.getEncoder().encodeToString(inner)
-        val sb = StringBuilder("-----BEGIN OPENSSH PRIVATE KEY-----\n")
-        var i = 0
-        while (i < b64.length) {
-            sb.append(b64, i, minOf(i + 64, b64.length)).append('\n')
-            i += 64
-        }
-        sb.append("-----END OPENSSH PRIVATE KEY-----\n")
-        return sb.toString().toByteArray()
     }
 
     /**

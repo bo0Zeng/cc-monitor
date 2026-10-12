@@ -8,12 +8,11 @@ android {
     // compileSdk / minSdk / compileOptions / jvmTarget 在根 subprojects{} 里统一配置。
     defaultConfig {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        consumerProguardFiles("consumer-rules.pro")
     }
 
     packaging {
         resources {
-            // sshj / bouncycastle 带的重复 META-INF 资源
+            // 依赖里带的重复 META-INF 资源
             excludes +=
                 setOf(
                     "META-INF/DEPENDENCIES",
@@ -35,10 +34,6 @@ dependencies {
     api(project(":core-remote"))
     // 连接走手机嵌的 Rust 核心（拨号核心 ssh-dial 的 FFI 外壳）：[RustTransport]。
     implementation(project(":core-rs"))
-
-    implementation(libs.sshj)
-    implementation(libs.bouncycastle.prov)
-    implementation(libs.bouncycastle.pkix)
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.koin.android)

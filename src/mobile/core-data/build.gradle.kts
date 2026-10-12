@@ -29,7 +29,7 @@ dependencies {
 
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.tink.android)
-    implementation(libs.bouncycastle.prov) // 软件 Ed25519 生成与 OpenSSH 私钥编码
+    implementation(project(":core-rs")) // 软件 Ed25519 生成在手机嵌的 Rust 核心里
 
     implementation(libs.koin.android)
 

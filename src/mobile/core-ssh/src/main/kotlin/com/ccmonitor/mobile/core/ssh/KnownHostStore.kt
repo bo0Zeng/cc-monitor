@@ -16,7 +16,7 @@ data class KnownHostRecord(
  * 已知主机存储端口：core-ssh 定义契约，app 侧用 Room 适配。
  * 适配器放 app：app 同时依赖 core-ssh 与 core-data，放 core-data 会和 core-ssh 对 core-data 的依赖成环。
  *
- * - [forHost] 在连接前预取快照：`TofuHostKeyVerifier.verify` 在 sshj 握手线程同步跑，不碰存储。
+ * - [forHost] 在连接前预取快照：握手在 Rust 核心里跑（[RustTransport] 把记过的钥匙交进拨号请求），不碰存储。
  * - [record] 在认证成功后才落首见的 key，免得未认证的端点往库里投毒；同 (host, port, keyType) 为 upsert。
  */
 interface KnownHostStore {

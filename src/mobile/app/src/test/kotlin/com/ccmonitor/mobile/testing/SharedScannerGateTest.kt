@@ -474,8 +474,8 @@ class SharedScannerGateTest {
                 "core-claude/src/test/kotlin/com/ccmonitor/mobile/core/claude/CoreClaudeKnowsNoTmuxTest.kt",
             )
 
-        /** ⑤⑥的扫描面下限。 */
-        private const val MIN_TEST_SOURCES = 100
+        /** ⑤⑥的扫描面下限（旧 SSH 库那一族的 JVM 单测删掉以后，test 源集剩一百份上下）。 */
+        private const val MIN_TEST_SOURCES = 80
 
         /**
          * ⑥ 的「逐字符走一遍」特征：`whi`+`le` 后面跟一个「下标 < 某某点 length」的条件。

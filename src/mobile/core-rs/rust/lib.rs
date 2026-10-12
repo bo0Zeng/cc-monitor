@@ -238,6 +238,25 @@ pub fn public_line_of(pem: &str, comment: &str) -> Option<String> {
     public.to_openssh().ok()
 }
 
+/// 现生成一把软件 Ed25519（系统随机数做种子）：回 `(私钥 PEM（openssh-key-v1，无口令）, 公钥那一行)`。
+pub fn generate_ed25519(comment: &str) -> Option<(String, String)> {
+    use ring::rand::SecureRandom as _;
+    let mut seed = [0u8; 32];
+    ring::rand::SystemRandom::new().fill(&mut seed).ok()?;
+    let mut key = russh::keys::PrivateKey::from(
+        russh::keys::ssh_key::private::Ed25519Keypair::from_seed(&seed),
+    );
+    key.set_comment(comment);
+    let pem = key.to_openssh(russh::keys::ssh_key::LineEnding::LF).ok()?;
+    let public = key.public_key().to_openssh().ok()?;
+    Some((pem.to_string(), public))
+}
+
+/// 一段 `~/.ssh/config` 文本 ⇒ 可导入主机的 JSON 数组（解析住拨号核心 `config_text`）。
+pub fn ssh_config_json(text: &str) -> String {
+    serde_json::to_string(&ssh_dial::config_text::parse(text)).unwrap_or_else(|_| "[]".to_string())
+}
+
 // ═══ 链路表 ═════════════════════════════════════════════════════════════════════
 
 struct Link {
@@ -457,6 +476,40 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_publicKeyOf<'l>(
     })
 }
 
+/// `Core.generateEd25519(comment)`：回 JSON `{pem, public}`；生成不了 ⇒ `null`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_generateEd25519<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    comment: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let comment = string(&mut env, &comment).unwrap_or_default();
+        match generate_ed25519(&comment) {
+            Some((pem, public)) => env
+                .new_string(serde_json::json!({"pem": pem, "public": public}).to_string())
+                .map(|s| s.into_raw())
+                .unwrap_or(std::ptr::null_mut()),
+            None => std::ptr::null_mut(),
+        }
+    })
+}
+
+/// `Core.parseSshConfig(text)`：可导入主机的 JSON 数组（`alias` · `host_name` · `port` · `user` · `identity_file`）。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_parseSshConfig<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    text: JString<'l>,
+) -> jstring {
+    guarded(std::ptr::null_mut(), || {
+        let text = string(&mut env, &text).unwrap_or_default();
+        env.new_string(ssh_config_json(&text))
+            .map(|s| s.into_raw())
+            .unwrap_or(std::ptr::null_mut())
+    })
+}
+
 /// `Core.open(request)`：回链路编号；请求读不动 ⇒ 0（Kotlin 当它开不成）。
 #[no_mangle]
 pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_open<'l>(
@@ -558,6 +611,29 @@ mod tests {
             Some(want.to_openssh().unwrap())
         );
         assert_eq!(super::public_line_of("not a key", ""), None);
+    }
+
+    /// 现生成的那一把：私钥解得回来、公钥就是它的公钥、两把不一样（真随机）。
+    #[test]
+    fn a_generated_key_round_trips_and_is_fresh() {
+        let (pem, public) = super::generate_ed25519("phone").expect("生成不了");
+        assert!(pem.starts_with("-----BEGIN OPENSSH PRIVATE KEY-----"));
+        assert_eq!(
+            super::public_line_of(&pem, "phone").as_deref(),
+            Some(public.as_str())
+        );
+        assert!(
+            public.starts_with("ssh-ed25519 ") && public.ends_with(" phone"),
+            "{public}"
+        );
+        assert_ne!(
+            super::generate_ed25519("").unwrap().1,
+            super::generate_ed25519("").unwrap().1
+        );
+        let hosts: serde_json::Value =
+            serde_json::from_str(&super::ssh_config_json("Host a\n Port 2200")).unwrap();
+        assert_eq!(hosts[0]["alias"], "a");
+        assert_eq!(hosts[0]["port"], 2200);
     }
 
     /// 链路表：读不动的请求开不成；开成的链路先交下行字节、收工时交一个「没了」；关掉之后再送 ⇒ `false`。

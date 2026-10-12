@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.sftp
 
 /*
- * SFTP 远端路径的纯字符串逻辑。远端恒为 POSIX `/` 分隔（sshj SFTP）。
+ * SFTP 远端路径的纯字符串逻辑。远端恒为 POSIX `/` 分隔（SFTP）。
  */
 
 /** 上级目录（尾斜杠归一后取最后 `/` 前；根的上级=根）。 */

@@ -33,6 +33,7 @@ use tokio::io::AsyncWriteExt;
 pub use copy_core::said::Said;
 
 pub mod b64;
+pub mod config_text;
 pub mod connect;
 pub mod env;
 pub mod known_hosts;

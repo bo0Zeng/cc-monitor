@@ -25685,6 +25685,12 @@
       "zh": "私钥认不出 · 须整段贴入 BEGIN 到 END · 带口令的先去掉口令",
       "args": []
     },
+    "mobIdentity.gen.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "钥匙生成失败",
+      "args": []
+    },
     "terminal.why.ambiguous": {
       "kind": "body",
       "role": "片段",
@@ -30941,32 +30947,6 @@
       "zh": "AndroidKeyStore 无该别名的证书 {alias}",
       "args": ["alias"]
     },
-    "mobSsh.keystore.noKey": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "AndroidKeyStore 无该别名的私钥 {alias}",
-      "args": ["alias"]
-    },
-    "mobSsh.race.allFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "所有地址连接失败",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.tofuFirst": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "首次连接，记下该主机密钥",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.tofuTrusted": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "主机密钥已信任",
-      "args": []
-    },
     "mobSsh.log.established": {
       "kind": "body",
       "role": "进度",
@@ -30974,24 +30954,12 @@
       "args": ["target"],
       "limited": ["连接"]
     },
-    "mobSsh.log.viaJump": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "经跳板 {jump} 打开到 {target} 的隧道 …",
-      "args": ["jump", "target"]
-    },
     "mobSsh.log.connecting": {
       "kind": "body",
       "role": "进度",
       "zh": "连接 {target} …",
       "args": ["target"],
       "limited": ["连接"]
-    },
-    "mobSsh.log.keyMismatch": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "主机密钥不匹配（疑 MITM / 服务器重装）",
-      "args": []
     },
     "mobSsh.log.connectFailed": {
       "kind": "error",
@@ -31006,22 +30974,10 @@
       "zh": "协议协商与密钥交换完成",
       "args": []
     },
-    "mobSsh.log.authPassword": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "密码认证中 …",
-      "args": []
-    },
     "mobSsh.log.authKey": {
       "kind": "body",
       "role": "进度",
       "zh": "公钥认证中 …",
-      "args": []
-    },
-    "mobSsh.log.authKeystore": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "硬件密钥认证中（TEE 签名）…",
       "args": []
     },
     "mobSsh.log.authFailed": {
@@ -31030,24 +30986,11 @@
       "zh": "认证失败",
       "args": []
     },
-    "mobSsh.shell.openTimeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "打开终端超时（{dur}），连接已断开\n重试即可",
-      "args": ["dur"],
-      "limited": ["连接"]
-    },
     "mobSsh.read.truncated": {
       "kind": "body",
       "role": "片段",
       "zh": "…（已截断，共 {n} 字节）",
       "args": ["n"]
-    },
-    "mobSsh.exec.timeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "命令执行超时（{dur}），已中止",
-      "args": ["dur"]
     },
     "mobSsh.log.waitOther": {
       "kind": "body",

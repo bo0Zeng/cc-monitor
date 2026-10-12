@@ -66,8 +66,8 @@ android {
         getByName("debug") { ndk { abiFilters += providers.gradleProperty("ccm.abi.debug").get() } }
         release {
             ndk { abiFilters += providers.gradleProperty("ccm.abi.release").get() }
-            // R8 full mode：开 minify，CI 借此验 BC / sshj / Tink 的反射在收缩与混淆下不破。
-            // BC / sshj 的 keep 来自 core-ssh 的 consumer-rules.pro；Tink 的 keep 在 app 的 proguard-rules.pro。
+            // R8 full mode：开 minify，CI 借此验 Tink 的反射与 Rust 核心的 JNI 名字在收缩与混淆下不破。
+            // Rust 核心的 keep 来自 core-rs 的 consumer-rules.pro；Tink 的 keep 在 app 的 proguard-rules.pro。
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

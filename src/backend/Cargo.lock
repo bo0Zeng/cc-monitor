@@ -1372,6 +1372,7 @@ version = "0.0.0"
 dependencies = [
  "copy-core",
  "jni",
+ "ring",
  "russh",
  "serde_json",
  "ssh-dial",

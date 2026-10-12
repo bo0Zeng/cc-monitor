@@ -68,7 +68,7 @@ fn the_compression_judge_answers_exactly_this_table() {
 }
 
 /// ★ Z2：两张偏好序。压 ⇒ `zlib@openssh.com` 在首（OpenSSH 服务端 `Compression yes` 今天只给它）、`none` 垫底
-/// （远端关了压缩照样连得上）；不压 ⇒ 只有 `none`。`config()` 真把它们装进了 `preferred`。
+/// （远端关了压缩照样连得上）；不压 ⇒ 只有 `none`。`config_with()` 真把它们装进了 `preferred`。
 #[test]
 fn the_two_preference_lists_are_exactly_these_and_reach_the_config() {
     let names = |xs: &[russh::compression::Name]| -> Vec<String> {
@@ -82,11 +82,11 @@ fn the_two_preference_lists_are_exactly_these_and_reach_the_config() {
     assert_eq!(names(COMPRESS_OFF), ["none"], "不压的那张偏好序变了");
     for (compress, want) in [(true, COMPRESS_ON), (false, COMPRESS_OFF)] {
         for probe in [true, false] {
-            let c = config(probe, compress);
+            let c = config_with(probe, compress, KEEPALIVE);
             assert_eq!(
                 names(&c.preferred.compression),
                 names(want),
-                "config(probe={probe}, compress={compress}) 没把偏好序装进去"
+                "config_with(probe={probe}, compress={compress}) 没把偏好序装进去"
             );
             // 其余偏好一个不动（只覆盖压缩那一栏）。
             assert_eq!(
@@ -595,9 +595,13 @@ async fn zr_real_sshd_negotiates_zlib_and_moves_fewer_bytes_when_forced() {
                 port,
                 heard: Default::default(),
             };
-            let mut h = russh::client::connect_stream(config(false, compress), counted, checker)
-                .await
-                .unwrap();
+            let mut h = russh::client::connect_stream(
+                config_with(false, compress, KEEPALIVE),
+                counted,
+                checker,
+            )
+            .await
+            .unwrap();
             authenticate(&mut h, &user, Some(&key), None).await.unwrap();
             let body = tokio::time::timeout(guard_core::wall::CEILING, async {
                 let mut ch = h.channel_open_session().await.ok()?;
@@ -734,9 +738,10 @@ async fn zr_real_sshd_takes_incompressible_puts_when_forced() {
             port,
             heard: Default::default(),
         };
-        let mut h = russh::client::connect_stream(config(false, compress), tcp, checker)
-            .await
-            .unwrap();
+        let mut h =
+            russh::client::connect_stream(config_with(false, compress, KEEPALIVE), tcp, checker)
+                .await
+                .unwrap();
         authenticate(&mut h, &user, Some(&key), None).await.unwrap();
         let ch = h.channel_open_session().await.unwrap();
         ch.request_subsystem(true, "sftp").await.unwrap();

@@ -115,7 +115,7 @@ class SshConnectionManager(
     }
 
     /**
-     * 复用已有连接之前先问它还活不活。`isConnected` 只读 sshj 本地标志，死 TCP 好一阵仍是 true，直接复用会卡死在 openShell。
+     * 复用已有连接之前先问它还活不活。`isConnected` 只读本地标志，死 TCP 好一阵仍是 true，直接复用会卡死在 openShell。
      * 问法见 [keepOrReplace]：旧的先回话 ⇒ 复用；新的先站住 ⇒ 已换上，回新的；两边都不成 ⇒ null，走锁里的真连接。
      */
     private suspend fun reusableOrReplaced(
@@ -243,7 +243,7 @@ class SshConnectionManager(
         }
         val timedOut = AtomicBoolean(false)
         // 注意：close() 是网络写（SSH_MSG_DISCONNECT），在主线程调会抛 NetworkOnMainThreadException，
-        // sshj 只 catch IOException，socket、读线程和远端会话随之泄漏，外层 runCatching 又会把异常吞掉。
+        // 传输只 catch IOException，socket、读线程和远端会话随之泄漏，外层 runCatching 又会把异常吞掉。
         // connect 可能从主线程调进来，所以失败路径一律走 [closeInBackground]。
         try {
             handshake(conn, addressConfigs, onEvent, timedOut)
@@ -279,7 +279,7 @@ class SshConnectionManager(
         onEvent: ((SshConnectEvent) -> Unit)?,
         timedOut: AtomicBoolean,
     ) {
-        // 握手看门狗：黑洞对端连上 TCP 后 banner/KEX 读会无限阻塞（sshj 没有这一级超时），到点强关 transport 解阻塞。
+        // 握手看门狗：黑洞对端连上 TCP 后 banner/KEX 读会无限阻塞（传输层没有这一级超时），到点强关 transport 解阻塞。
         // 进度判据是任一目标地址认证成功（ESTABLISHED），不是 isConnected：isConnected 要等所有输家清理完才为真，
         // 期间赢家早已认证。只认目标地址，跳板的 ESTABLISHED 不算。
         val handshakeDone = AtomicBoolean(false)
@@ -306,7 +306,7 @@ class SshConnectionManager(
 
     // 下限 connectTimeoutMs + 15s，防 connectTimeoutMs 调得比 handshakeTimeoutMs 还大时看门狗先于合法握手触发。
     // 跳板 + 多地址是串行的，按地址数扩额；每次尝试的上界取 max(connectTimeoutMs, 30s)，
-    // 因为经隧道的尝试不走 socket.connect，上界是 sshj 内部 channel-open 的 30s 等待。
+    // 因为经隧道的尝试不走 socket.connect，上界是经隧道那一次握手自己的等待。
     private fun handshakeDeadlineMs(addressConfigs: List<ConnectionConfig>): Long {
         val first0 = addressConfigs.first()
         val isSerialJump = first0.jumpVia != null && addressConfigs.size > 1
@@ -418,7 +418,7 @@ class SshConnectionManager(
     private fun disconnectLocked(id: String): List<SshTransport> {
         val st = stateFor(id)
         st.generation++ // 作废任何在飞 connect 的注册
-        // 在飞连接也摘下来关：阻塞的 sshj 握手不响应取消，关 socket 是唯一的解法，单飞锁随之释放。
+        // 在飞连接也摘下来关：阻塞的握手不响应取消，关 socket 是唯一的解法，单飞锁随之释放。
         val prevConnecting = st.connecting
         val prevConnection = st.connection
         val prevRacing = st.racing
