@@ -26,8 +26,7 @@
   "error_codes": [
     "bad_args",
     "invalid_session_id",
-    "unsafe_launch_candidate",
-    "serialize_failed"
+    "unsafe_launch_candidate"
   ],
   "samples": [
     {

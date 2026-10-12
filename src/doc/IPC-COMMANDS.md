@@ -4238,7 +4238,42 @@ sid: string, };
 
 收 `args` · 可撤 · CLI：`ccm -- --resolve`
 
-码：`bad_args` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`
+入参 `ResumeSpec` · 回包 `CommandPlan`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Capabilities = { supportsSendKeys: boolean, supportsCapture: boolean, supportsMultiClient: boolean, supportsMultiWindow: boolean, };
+type CommandPlan = { 
+/**
+ * **唯一可信的一项**。
+ */
+command: string, 
+/**
+ * "PtyInject"（resume 走 pty send-keys 注入 §5④）| "ExecOnce"（未来）。MVP 恒 PtyInject。
+ */
+mode: string, 
+/**
+ * **典型档，不是探测结果**（见结构体头注）。
+ */
+capabilities: Capabilities, 
+/**
+ * **纯从 sid 派生，不是探测结果**（见结构体头注）——
+ * 拿它去 attach 一个「并不存在」的 tmux 会话是现实风险。要判断会话是否真的存在，
+ * 问 `terminals-list`（那是真 `tmux list-panes`）。
+ */
+sessionName?: string, launchLabel?: string, substitutedFrom?: string, };
+type ResumeSpec = { sessionId: string, 
+/**
+ * 可缺：候选启动命令，取第一个非空的；都没有 ⇒ 这一家的默认启动器。
+ */
+launchCandidates?: Array<string | null>, 
+/**
+ * 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`）。
+ * 注册表里的一家 = 那一家；缺 / `""` = 默认那一家；别的名字 ⇒ `bad_args`。
+ */
+agentKind?: string, };
+```
+
+码：`bad_args` · `invalid_session_id` · `unsafe_launch_candidate`
 
 ### 4.5 资产
 
@@ -7172,7 +7207,7 @@ type Mode = "create-or-attach" | "send-into";
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sessionId` | string |  |
-| `launchCandidates` | [string]? |  |
+| `launchCandidates` | [string]? | 可缺：候选启动命令，取第一个非空的；都没有 ⇒ 这一家的默认启动器 |
 | `agentKind` | string? | 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`） |
 
 #### `Capabilities`

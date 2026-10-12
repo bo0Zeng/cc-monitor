@@ -728,14 +728,7 @@ fn every_registered_command_declares_its_run_kind() {
 #[test]
 fn declaring_zero_fields_needs_a_reason() {
     /// `(命令名, 为什么它可以声明零载荷字段)`。
-    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[
-        (
-            "resolve",
-            "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体：协议参考的出入参那一节从结构体本身生成，\
-             在这里再列一份字段名就是第二个源头。",
-        ),
-        ("ping", "零载荷：问活，回 `ok`。"),
-    ];
+    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[("ping", "零载荷：问活，回 `ok`。")];
     let mut unexplained: Vec<&str> = Vec::new();
     let mut zero = 0usize;
     for spec in super::REGISTRY {
@@ -1369,16 +1362,24 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
-        ("aliases-block-install", "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`"),
+        (
+            "aliases-block-install",
+            "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`",
+        ),
         ("aliases-block-remove", "同 `aliases-block-install`"),
         ("cancel", "撤单的结果是 `cancelled` 帧，应答只回 ok"),
         ("link-close", "只回 ok；链路的收尾走 `link_end` 帧"),
         ("link-credit", "只回 ok（还信用）"),
         ("link-data", "只回 ok；字节走 `link_data` 帧"),
-        ("link-open", "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧"),
+        (
+            "link-open",
+            "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧",
+        ),
         ("ping", "问活，回 ok"),
-        ("resolve", "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体，协议参考从结构体本身生成（冻结金样 `resolve-contract`）"),
-        ("terminal-follow-ack", "只回 ok；下一帧画面走 `terminal_screen`"),
+        (
+            "terminal-follow-ack",
+            "只回 ok；下一帧画面走 `terminal_screen`",
+        ),
         ("terminal-unfollow", "只回 ok（幂等）"),
         ("transfer-download", "只回 ok；进度与终局走 `transfer` 帧"),
         ("transfer-start", "只回 ok；进度与终局走 `transfer` 帧"),

@@ -666,13 +666,17 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         }),
         ..bare_row(home_fn)
     }];
-    let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{sid}\"}}");
-    let plan =
-        crate::control::resolve_query::resolve_json_among(&registry, &spec).map_err(|_| {
-            Stop::MissingCapability {
-                stage: STAGES[5],
-                capability: "resume 命令形",
-            }
+    let spec = crate::control::resolve_query::ResumeSpec {
+        session_id: sid.to_string(),
+        launch_candidates: Vec::new(),
+        agent_kind: AGENT_KIND.to_string(),
+    };
+    let plan = crate::control::resolve_query::resolve(&registry, &spec)
+        .ok()
+        .and_then(|p| serde_json::to_value(p).ok())
+        .ok_or_else(|| Stop::MissingCapability {
+            stage: STAGES[5],
+            capability: "resume 命令形",
         })?;
     let head: String = sid.chars().take(8).collect();
     if plan["command"] != serde_json::json!(cmd(base, sid))

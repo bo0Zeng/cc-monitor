@@ -157,12 +157,20 @@ fn a_computed_body_is_the_reask_reply() {
             Some("no-such-sid"),
             &crate::Tz::default()
         ),
-        crate::faces::feature_face::answer(
-            "tasks-list",
-            &serde_json::json!({"sid": "no-such-sid"}),
-            &crate::Tz::default()
-        )
-        .ok(),
+        {
+            use crate::stream::inbound::typed::Blocking as _;
+            crate::faces::feature_face::TasksListCmd::run(
+                crate::faces::feature_face::TasksListReq {
+                    sid: "no-such-sid".to_string(),
+                },
+                &crate::stream::inbound::typed::Cx {
+                    tz: crate::Tz::default(),
+                    until: None,
+                },
+            )
+            .ok()
+            .and_then(|t| serde_json::to_value(t).ok())
+        },
         "任务清单的小成品不是 tasks-list 的应答"
     );
     assert_eq!(

@@ -130,26 +130,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ⚠ 阻塞档：读一个目录 ＋ 每个任务文件各一次。`cancel` 命中回 `not_cancellable`（不撒谎）。
     crate::stream::inbound::typed::blocking::<crate::faces::feature_face::TasksListCmd>("一个会话的任务列表"),
     // U6b-3：第一条**真业务命令**：按 `ResumeSpec` 推恢复命令（本体 `control/resolve_query.rs`）。CLI 面照派生规则有 `--resolve`。
-    CommandSpec {
-        name: "resolve",
-        summary: "按 `ResumeSpec` 推出恢复命令 `CommandPlan`",
-        // 与 `resolve_query` 真会回的码两向相等由 `resolve_query_tests.rs` 钉着。
-        codes: &[
-            "bad_args",
-            "invalid_session_id",
-            "unsafe_launch_candidate",
-            "serialize_failed",
-        ],
-        fields: &[],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                let input = serde_json::to_string(&r.args)
-                    .map_err(|e| ("bad_args".to_string(), e.to_string()))?;
-                crate::control::resolve_query::resolve_json_for_inbound(&input)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::control::resolve_query::ResolveCmd>(
+        "按 `ResumeSpec` 推出恢复命令 `CommandPlan`",
+    ),
 ];

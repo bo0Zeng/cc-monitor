@@ -10,7 +10,6 @@
 //! 等不到答复时本来就按「有东西在跑」处理，这里不再替它猜。
 
 use serde::Serialize;
-use serde_json::Value;
 use std::path::Path;
 
 /// 一族会被打断的东西。
