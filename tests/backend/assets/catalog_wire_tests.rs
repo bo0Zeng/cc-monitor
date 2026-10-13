@@ -178,6 +178,8 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
     let digest = "0123456789abcdef";
     let cases = [
         ("assets-catalog", json!({ "bogus": 1 })),
+        ("mcp-read", json!({ "projectDir": null, "bogus": 1 })),
+        ("hooks-diag", json!({ "bogus": 1 })),
         ("ext-list", json!({ "visit": false, "bogus": 1 })),
         ("ext-list-here", json!({ "visit": false, "bogus": 1 })),
         (

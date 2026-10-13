@@ -86,18 +86,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。卸在 `ext-uninstall-*`（判 · 删 · 摘同一台）。阻塞档。
     crate::stream::inbound::typed::owning::<crate::faces::catalog_face::SkillInstallRecordCmd>("skill 装记录的写口"),
     // MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
-    CommandSpec {
-        name: "mcp-read",
-        summary: "这台机器的 MCP 列表成品",
-        codes: &["bad_args", "too_large"],
-        fields: &[out("dirs", "agent 用户级配置里那张项目表的键（排序）：用过的项目目录"), out("entries", "`{scope, name, server, sourcePath, status, loginIn, seenAt, mark, login, failed}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢）"), out("failed", "这台此刻活着的会话里那一家说它断开 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null`"), out("login", "`status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null`"), out("loginIn", "`status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空"), out("mark", "小标画哪一种：`failed`（有 `failed`，压过需登录）· `needsLogin`（有 `login`）· `null`（都没有：只说装了，不说连上了）"), out("name", "server 名"), out("problems", "在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默"), arg("projectDir", "可缺席 / `null`"), out("scope", "`user` · `local` · `project`"), out("seenAt", "`status` 是 `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`"), out("server", "那一条配置原样（未知字段不丢）"), out("sourcePath", "读自哪一份文件"), out("status", "闭集：`needsLogin`（agent 最近一次连它时要登录、还在有效期内）· `disabled`（这个项目里停用了）· `unknown`（配置层判不出：不说连上了）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::feature_face::McpReadCmd>("这台机器的 MCP 列表成品"),
     // cc-bus 装到这台（扩展页经枢纽问被写那台）：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（`Own` 由分派那一层递）。
     crate::stream::inbound::typed::blocking::<crate::faces::hub_inner_face::CcBusStateCmd>("装 cc-bus 到这台之前看一眼"),
     crate::stream::inbound::typed::with_own::<crate::faces::hub_inner_face::CcBusInstallCmd>("把这台二进制带着的 cc-bus 装到这台", &LocalFiles),
@@ -129,16 +118,5 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   记（`skill_ledger::answer_record`，写口只从这扇门递进去）同一台。
     crate::stream::inbound::typed::with_own::<crate::faces::hub_inner_face::SkillApplyCmd>("在要被写的那一台把勾的那几个 skill 文件写进去", &LocalFiles),
     // cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
-    CommandSpec {
-        name: "hooks-diag",
-        summary: "cc-bus 钩子诊断",
-        codes: &["failed", "too_large"],
-        fields: &[out("command", "钩子原文（去首尾空白）"), out("diagnosis", "`session_start`（→ `cc-register`）· `stop`（→ `cc-bus-stop-hook`）各一态 ＋ `note`（读不到 / 坏 JSON / 顶层不是对象时说原因，否则空串）"), out("kind", "一态：`not-installed` · `installed-via-path` · `installed-at-path` · `path-missing` · `unknown`"), out("note", "读不到 / 坏 JSON / 顶层不是对象时说原因，否则空串"), out("path", "钩子点名的路径（原样，环境变量不展开）"), out("session_start", "`SessionStart` 钩子（→ `cc-register`）那一态"), out("snippet", "要合并进那份文件的内容：两条钩子直接指向这台 cc-bus 的两个脚本（家目录底下写成相对家目录的形，否则绝对路径），不依赖 `PATH`"), out("source", "读的是哪份文件：这台后端的 agent 配置根下的设置文件"), out("stop", "`Stop` 钩子（→ `cc-bus-stop-hook`）那一态"), out("supported", "这台跑得了 cc-bus（它要 tmux；这份后端编到的平台没有原生 tmux ⇒ `false`，`snippet` 恒 `null`，界面只说这台不支持自动收信）")],
-        takes_input: false,
-        run: Run::Blocking(|r| {
-            crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::feature_face::HooksDiagCmd>("cc-bus 钩子诊断"),
 ];

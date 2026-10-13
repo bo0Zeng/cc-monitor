@@ -6136,22 +6136,56 @@ at?: RecordAt, } | { "op": "drop", dir: string, paths: Array<string>, } | { "op"
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dirs` | ← | agent 用户级配置里那张项目表的键（排序）：用过的项目目录 |
-| `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt, mark, login, failed}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
-| `failed` | ← | 这台此刻活着的会话里那一家说它断开 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
-| `login` | ← | `status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null` |
-| `loginIn` | ← | `status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空 |
-| `mark` | ← | 小标画哪一种：`failed`（有 `failed`，压过需登录）· `needsLogin`（有 `login`）· `null`（都没有：只说装了，不说连上了） |
-| `name` | ← | server 名 |
-| `problems` | ← | 在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默 |
-| `projectDir` | → | 可缺席 / `null` |
-| `scope` | ← | `user` · `local` · `project` |
-| `seenAt` | ← | `status` 是 `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null` |
-| `server` | ← | 那一条配置原样（未知字段不丢） |
-| `sourcePath` | ← | 读自哪一份文件 |
-| `status` | ← | 闭集：`needsLogin`（agent 最近一次连它时要登录、还在有效期内）· `disabled`（这个项目里停用了）· `unknown`（配置层判不出：不说连上了） |
+入参 `McpReadReq` · 回包 `McpReadReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type McpFailedMark = { said: string, tip: string, detail: string | null, };
+type McpLoginMark = { said: string, tip: string, copy: string, };
+type McpMark = "needsLogin" | "failed";
+type McpReadEntry = { 
+/**
+ * 闭集 `user` · `local` · `project`（适配层那一格写的）。
+ */
+scope: "user" | "local" | "project", name: string, 
+/**
+ * 那一条配置原样（未知字段不丢）。
+ */
+server: unknown, 
+/**
+ * 读自哪一份文件。
+ */
+sourcePath: string, 
+/**
+ * 配置层只说三种：`needsLogin` · `disabled` · `unknown`（不说连上了）。
+ */
+status: "needsLogin" | "disabled" | "unknown", 
+/**
+ * `needsLogin` 时：在哪几个号里要登录；别的状态恒空。
+ */
+loginIn: Array<string>, 
+/**
+ * `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`。
+ */
+seenAt: number | null, 
+/**
+ * 小标画哪一种：断开压过需登录；都没有 ⇒ `null`（只说装了，不说连上了）。
+ */
+mark: McpMark | null, login: McpLoginMark | null, failed: McpFailedMark | null, };
+type McpReadReply = { entries: Array<McpReadEntry>, 
+/**
+ * agent 用户级配置里那张项目表的键（排序）：用过的项目目录。
+ */
+dirs: Array<string>, 
+/**
+ * 在而读不出 / 不是 JSON 的那几份各一句；不在的静默。
+ */
+problems: Array<string>, };
+type McpReadReq = { 
+/**
+ * 项目目录（绝对路径；缺 · `null` ⇒ 不看项目那一段）。
+ */
+projectDir?: string, };
+```
 
 码：`bad_args` · `too_large`
 
@@ -6690,20 +6724,28 @@ cc-bus 钩子诊断。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --hooks-diag`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `command` | ← | 钩子原文（去首尾空白） |
-| `diagnosis` | ← | `session_start`（→ `cc-register`）· `stop`（→ `cc-bus-stop-hook`）各一态 ＋ `note`（读不到 / 坏 JSON / 顶层不是对象时说原因，否则空串） |
-| `kind` | ← | 一态：`not-installed` · `installed-via-path` · `installed-at-path` · `path-missing` · `unknown` |
-| `note` | ← | 读不到 / 坏 JSON / 顶层不是对象时说原因，否则空串 |
-| `path` | ← | 钩子点名的路径（原样，环境变量不展开） |
-| `session_start` | ← | `SessionStart` 钩子（→ `cc-register`）那一态 |
-| `snippet` | ← | 要合并进那份文件的内容：两条钩子直接指向这台 cc-bus 的两个脚本（家目录底下写成相对家目录的形，否则绝对路径），不依赖 `PATH` |
-| `source` | ← | 读的是哪份文件：这台后端的 agent 配置根下的设置文件 |
-| `stop` | ← | `Stop` 钩子（→ `cc-bus-stop-hook`）那一态 |
-| `supported` | ← | 这台跑得了 cc-bus（它要 tmux；这份后端编到的平台没有原生 tmux ⇒ `false`，`snippet` 恒 `null`，界面只说这台不支持自动收信） |
+入参 `NoArgs` · 回包 `HooksReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`failed` · `too_large`
+```ts
+type HookState = { "kind": "not-installed" } | { "kind": "installed-via-path", command: string, } | { "kind": "installed-at-path", command: string, path: string, } | { "kind": "path-missing", command: string, path: string, } | { "kind": "unknown", command: string, };
+type HooksDiagnosis = { session_start: HookState, stop: HookState, note: string, };
+type HooksReport = { 
+/**
+ * 这台跑得了 cc-bus（它要 tmux）；跑不了 ⇒ 不给要加的内容，界面只说这台不支持自动收信。
+ */
+supported: boolean, diagnosis: HooksDiagnosis, 
+/**
+ * 要合并进那份 `settings.json` 的内容；这台的 cc-bus 没装（那两个脚本不在）⇒ `None`。
+ */
+snippet: string | null, 
+/**
+ * 读的是哪份文件（这台后端看到的路径）。
+ */
+source: string, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `too_large`
 
 ### 4.6 别名
 

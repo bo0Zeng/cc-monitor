@@ -10,7 +10,7 @@
 
 use crate::stream::inbound::typed::{codes, of_pair, Blocking, Command, Cx};
 use copy_core::copy_text;
-use serde_json::{json, Value};
+use serde_json::Value;
 
 // ───────────────────────── tasks-list（typed）─────────────────────────
 
@@ -74,75 +74,108 @@ pub(crate) fn tasks_at(
     Ok(reply)
 }
 
-/// 本族的应答：`data` 或 `(code, message)`。
-pub(crate) type Answer = Result<Value, (&'static str, String)>;
+// ───────────────────────── hooks-diag · mcp-read（typed）─────────────────────────
+// 与 `session-terminals` 同住这一份（引用图按文件算，`target_parity` 那张名单按这一形写了理由）；本身不碰 tmux。
 
-/// 帧面入口：命令名从 `r.cmd` 来（与 `read_face::answer` 同一形）。
-pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    answer_at(&crate::observe::history_query::agent_home(), cmd, args, tz)
+codes! {
+    /// `hooks-diag` 的码（只有整份过上限那一种；读不到 / 坏 JSON 是回包里的 `note`）。
+    pub(crate) enum HooksDiagErr {
+        /// 整份超过上限（不截断）。
+        TooLarge = "too_large",
+    }
 }
 
-/// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
-/// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的时刻字按它写。
-fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    match cmd {
-        // cc-bus 钩子诊断出成品：这台自己的 `settings.json` ＋ stat（本机远端同一条，monitor 那两条 Tauri 命令删了）。
-        "hooks-diag" => {
-            let v = serde_json::to_value(crate::observe::cc_bus_hooks::answer()).map_err(|e| {
-                (
-                    "failed",
-                    crate::common::contract::malformed(&format!(
-                        "serializing the report failed: {e}"
-                    )),
-                )
-            })?;
-            capped(v)
-        }
-        // MCP 列表出成品：读法住适配层那一格（`agents::mcp_read`，唯一声明了 MCP 读面的那一家），这里只换壳。
-        "mcp-read" => {
-            let dir = match args.get("projectDir") {
-                None | Some(Value::Null) => None,
-                Some(v) => {
-                    let d = v.as_str().unwrap_or("");
-                    // `INVARIANTS §47` ②：项目目录是外来的路径 —— 绝对 · 不空 · 拒 NUL / CR / LF。
-                    if d.is_empty()
-                        || !std::path::Path::new(d).is_absolute()
-                        || !shell_quote_core::free_text_ok(d)
-                    {
-                        return Err((
-                            "bad_args",
-                            crate::common::contract::malformed(
-                                "`projectDir` must be an absolute path",
-                            ),
-                        ));
-                    }
-                    Some(std::path::PathBuf::from(d))
-                }
-            };
-            // 读 MCP 的那一家：唯一声明了 MCP 读面的那一家（今天只有 Claude）；Codex 的 MCP 来了由请求说是哪一家。
-            let Some(kind) = crate::agents::sole_kind(|a| a.mcp.is_some()) else {
-                return capped(mcp_reply(&Default::default(), &McpSay::default()));
-            };
-            let look = mcp_look(kind);
-            let read = crate::agents::mcp_read(kind, dir.as_deref(), &look).unwrap_or_default();
-            // 断开：这台此刻活着的会话里那一家说的（各号的家都看）；每个名字取说它最晚的那一条。
-            let homes: Vec<std::path::PathBuf> =
-                look.homes.iter().map(|(_, h)| h.clone()).collect();
-            let failed = crate::observe::accounts_query::live_mcp_failed(&homes);
-            let now_s = i64::try_from(look.now_ms / 1000).unwrap_or(i64::MAX);
-            let say = McpSay {
-                failed: &failed,
-                now_s,
-                tz: tz.clone(),
-                login_command: crate::agents::mcp_login_command(kind).unwrap_or(""),
-            };
-            capped(mcp_reply(&read, &say))
-        }
-        other => Err((
-            "bad_args",
-            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
-        )),
+/// `hooks-diag`：cc-bus 钩子诊断（这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段）。
+pub(crate) struct HooksDiagCmd;
+
+impl Command for HooksDiagCmd {
+    const NAME: &'static str = "hooks-diag";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = crate::observe::cc_bus_hooks::HooksReport;
+    type Err = HooksDiagErr;
+}
+
+impl Blocking for HooksDiagCmd {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: &Cx,
+    ) -> Result<crate::observe::cc_bus_hooks::HooksReport, HooksDiagErr> {
+        capped(crate::observe::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge)
     }
+}
+
+/// `mcp-read` 的入参。
+#[derive(Debug, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct McpReadReq {
+    /// 项目目录（绝对路径；缺 · `null` ⇒ 不看项目那一段）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) project_dir: Option<String>,
+}
+
+codes! {
+    /// `mcp-read` 的码。
+    pub(crate) enum McpReadErr {
+        /// 整份超过上限（不截断）。
+        TooLarge = "too_large",
+    }
+}
+
+/// `mcp-read`：这台机器的 MCP 列表成品。
+pub(crate) struct McpReadCmd;
+
+impl Command for McpReadCmd {
+    const NAME: &'static str = "mcp-read";
+    type Req = McpReadReq;
+    type Reply = McpReadReply;
+    type Err = McpReadErr;
+}
+
+impl Blocking for McpReadCmd {
+    fn run(req: McpReadReq, cx: &Cx) -> Result<McpReadReply, McpReadErr> {
+        mcp_read_here(&req, &cx.tz)
+    }
+}
+
+/// [`McpReadCmd`] 的本体：读法住适配层那一格（`agents::mcp_read`，唯一声明了 MCP 读面的那一家），这里只换壳。
+/// `tz` ＝ 看的那一台的时区：成品里的时刻字按它写。
+fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpReadErr> {
+    let dir = match req.project_dir.as_deref() {
+        None => None,
+        Some(d) => {
+            // `INVARIANTS §47` ②：项目目录是外来的路径 —— 绝对 · 不空 · 拒 NUL / CR / LF。
+            if d.is_empty()
+                || !std::path::Path::new(d).is_absolute()
+                || !shell_quote_core::free_text_ok(d)
+            {
+                return Err(McpReadErr::BadArgs(crate::common::contract::malformed(
+                    "`projectDir` must be an absolute path",
+                )));
+            }
+            Some(std::path::PathBuf::from(d))
+        }
+    };
+    // 读 MCP 的那一家：唯一声明了 MCP 读面的那一家（今天只有 Claude）；Codex 的 MCP 来了由请求说是哪一家。
+    let Some(kind) = crate::agents::sole_kind(|a| a.mcp.is_some()) else {
+        return capped(mcp_reply(&Default::default(), &McpSay::default())).map_err(McpReadErr::TooLarge);
+    };
+    let look = mcp_look(kind);
+    let read = crate::agents::mcp_read(kind, dir.as_deref(), &look).unwrap_or_default();
+    // 断开：这台此刻活着的会话里那一家说的（各号的家都看）；每个名字取说它最晚的那一条。
+    let homes: Vec<std::path::PathBuf> = look.homes.iter().map(|(_, h)| h.clone()).collect();
+    let failed = crate::observe::accounts_query::live_mcp_failed(&homes);
+    let now_s = i64::try_from(look.now_ms / 1000).unwrap_or(i64::MAX);
+    let say = McpSay {
+        failed: &failed,
+        now_s,
+        tz: tz.clone(),
+        login_command: crate::agents::mcp_login_command(kind).unwrap_or(""),
+    };
+    capped(mcp_reply(&read, &say)).map_err(McpReadErr::TooLarge)
 }
 
 /// 判 MCP 状态要看的那几个家：那一家没设账号时的家 ＋ 账号库里各号的家（同一个目录只算一次，带名字的那一条留下）。
@@ -169,11 +202,11 @@ pub(crate) fn mcp_look(kind: &str) -> crate::agents::McpLook {
     crate::agents::McpLook { homes, now_ms }
 }
 
-/// 整份过同一个上限（不截断）。
-fn capped(v: Value) -> Answer {
-    let size = v.to_string().len();
+/// 整份过同一个上限（不截断）：过了 ⇒ 那一句。
+fn capped<T: serde::Serialize>(v: T) -> Result<T, String> {
+    let size = serde_json::to_vec(&v).map_or(0, |b| b.len());
     if size > crate::faces::read_face::LINES_CAP_BYTES {
-        return Err(("too_large", too_large(size)));
+        return Err(too_large(size));
     }
     Ok(v)
 }
@@ -201,13 +234,84 @@ pub(crate) struct McpSay<'a> {
     pub login_command: &'static str,
 }
 
+/// `mcp-read` 的回包。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct McpReadReply {
+    pub entries: Vec<McpReadEntry>,
+    /// agent 用户级配置里那张项目表的键（排序）：用过的项目目录。
+    pub dirs: Vec<String>,
+    /// 在而读不出 / 不是 JSON 的那几份各一句；不在的静默。
+    pub problems: Vec<String>,
+}
+
+/// `mcp-read` 的一条（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 钉）。
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct McpReadEntry {
+    /// 闭集 `user` · `local` · `project`（适配层那一格写的）。
+    #[cfg_attr(test, ts(type = "\"user\" | \"local\" | \"project\""))]
+    pub scope: &'static str,
+    pub name: String,
+    /// 那一条配置原样（未知字段不丢）。
+    #[cfg_attr(test, ts(type = "unknown"))]
+    pub server: Value,
+    /// 读自哪一份文件。
+    pub source_path: String,
+    /// 配置层只说三种：`needsLogin` · `disabled` · `unknown`（不说连上了）。
+    #[cfg_attr(test, ts(type = "\"needsLogin\" | \"disabled\" | \"unknown\""))]
+    pub status: crate::agents::McpStatus,
+    /// `needsLogin` 时：在哪几个号里要登录；别的状态恒空。
+    pub login_in: Vec<String>,
+    /// `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`。
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub seen_at: Option<u64>,
+    /// 小标画哪一种：断开压过需登录；都没有 ⇒ `null`（只说装了，不说连上了）。
+    pub mark: Option<McpMark>,
+    pub login: Option<McpLoginMark>,
+    pub failed: Option<McpFailedMark>,
+}
+
+/// 小标那一种（闭集）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum McpMark {
+    NeedsLogin,
+    Failed,
+}
+
+/// 需登录时写好的字：抽屉那一句 · 悬停那一截 · 在那一家会话里登录要敲的那条命令。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct McpLoginMark {
+    pub said: String,
+    pub tip: String,
+    pub copy: String,
+}
+
+/// 断开时写好的字：抽屉那一句 · 悬停那一截 · 那一家的原话（没写 ⇒ `null`）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct McpFailedMark {
+    pub said: String,
+    pub tip: String,
+    pub detail: Option<String>,
+}
+
 /// `mcp-read` 的成品 —— 纯构造器（跨语言金样 `tests/__fixtures__/mcp-read.golden.json` 拿它对拍）。
 /// 每条带写好的字（界面照抄）：`login`（需登录那一句 · 悬停那一截 · 复制的命令）· `failed`（断开那一句 · 悬停那一截 · 原话）·
 /// `mark`（小标画哪一种：断开压过需登录；停用的不连 ⇒ 不标断开）。
-pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> Value {
+pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadReply {
     use crate::agents::McpStatus;
     let time = |ms: i64| crate::common::time::fmt_at(ms.div_euclid(1000), say.now_s, &say.tz);
-    let entries: Vec<Value> = r
+    let entries = r
         .entries
         .iter()
         .map(|e| {
@@ -222,7 +326,11 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> Value {
                         copy_text("beMcp.mark.loginTip", &[("accounts", &who)]),
                     )
                 };
-                json!({ "said": said, "tip": tip, "copy": say.login_command })
+                McpLoginMark {
+                    said,
+                    tip,
+                    copy: say.login_command.to_string(),
+                }
             });
             let failed = (e.status != McpStatus::Disabled)
                 .then(|| say.failed.iter().find(|f| f.name == e.name))
@@ -232,23 +340,38 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> Value {
                         Some(t) => copy_text("beMcp.mark.failed", &[("title", &f.title), ("time", &time(t))]),
                         None => copy_text("beMcp.mark.failedUntimed", &[("title", &f.title)]),
                     };
-                    json!({ "said": said, "tip": copy_text("beMcp.mark.failedTip", &[]), "detail": f.detail })
+                    McpFailedMark {
+                        said,
+                        tip: copy_text("beMcp.mark.failedTip", &[]),
+                        detail: f.detail.clone(),
+                    }
                 });
             let mark = if failed.is_some() {
-                json!(McpStatus::Failed)
+                Some(McpMark::Failed)
             } else if login.is_some() {
-                json!(McpStatus::NeedsLogin)
+                Some(McpMark::NeedsLogin)
             } else {
-                Value::Null
+                None
             };
-            json!({
-                "scope": e.scope, "name": e.name, "server": e.server, "sourcePath": e.source,
-                "status": e.status, "loginIn": e.login_in, "seenAt": e.seen_ms,
-                "mark": mark, "login": login, "failed": failed,
-            })
+            McpReadEntry {
+                scope: e.scope,
+                name: e.name.clone(),
+                server: e.server.clone(),
+                source_path: e.source.clone(),
+                status: e.status,
+                login_in: e.login_in.clone(),
+                seen_at: e.seen_ms,
+                mark,
+                login,
+                failed,
+            }
         })
         .collect();
-    json!({ "entries": entries, "dirs": r.dirs, "problems": r.problems })
+    McpReadReply {
+        entries,
+        dirs: r.dirs.clone(),
+        problems: r.problems.clone(),
+    }
 }
 
 #[cfg(test)]

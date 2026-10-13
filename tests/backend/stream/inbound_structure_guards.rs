@@ -1100,8 +1100,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
     const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
-    const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
-    const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1109,33 +1107,8 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[
         ("accounts-list", ACCOUNTS, "/accounts-list", &[], &[]),
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
-        (
-            "mcp-read",
-            MCP_READ,
-            "/reply",
-            &[
-                "failed",
-                "login",
-                "loginIn",
-                "mark",
-                "name",
-                "scope",
-                "seenAt",
-                "server",
-                "sourcePath",
-                "status",
-            ],
-            &[],
-        ),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
-        (
-            "hooks-diag",
-            HOOKS_DIAG,
-            "",
-            &["command", "kind", "note", "path", "session_start", "stop"],
-            &[],
-        ),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。

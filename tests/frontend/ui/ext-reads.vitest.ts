@@ -17,11 +17,11 @@ import {
   extNoteSet,
   extUninstallApply,
   extUninstallPreview,
-  decodeMcpRead,
   mcpRead,
 } from "../../../src/frontend/ui/ext-reads";
 import type { ExtDone } from "../../../src/frontend/ui/generated/ExtDone";
 import type { ExtList } from "../../../src/frontend/ui/generated/ExtList";
+import type { McpReadReply } from "../../../src/frontend/ui/generated/McpReadReply";
 import type { ExtUninstallCard } from "../../../src/frontend/ui/generated/ExtUninstallCard";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -120,27 +120,19 @@ describe("请求：问对那台、说对那条", () => {
   });
 });
 
-// 要求：MCP 状态稿甲 1 / 甲 2 —— 小标与抽屉那一行的字都是那台后端 `mcp-read` 写好的，界面按形状收、照抄。
+// 要求：MCP 状态稿甲 1 / 甲 2 —— 小标与抽屉那一行的字都是那台后端 `mcp-read` 写好的，界面照抄（回包形状由握手指纹核过）。
 describe("mcp-read：每台问它自己的后端，写好的字照收", () => {
   const MCP = golden("mcp-read");
   it("金样两份（不带字的 · 带需登录 / 连不上那几格的）都读得懂；字原样带出", () => {
-    expect(decodeMcpRead(MCP.reply).entries.map((e) => [e.name, e.mark])).toEqual([
+    expect((MCP.reply as McpReadReply).entries.map((e) => [e.name, e.mark])).toEqual([
       ["u1", null],
       ["l1", null],
       ["p1", null],
     ]);
-    const m = decodeMcpRead(MCP.marked).entries;
+    const m = (MCP.marked as McpReadReply).entries;
     expect(m.map((e) => e.mark)).toEqual(["needsLogin", "failed", "failed", null, null]);
     expect(m[0].login).toEqual({ said: copyText("beMcp.mark.login", { accounts: "acct-a、acct-b", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a、acct-b" }), copy: "/mcp" });
     expect(m[1].failed).toEqual({ said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "err-1" });
-  });
-  it("严格收：多一格 / 小标不是认得的那两种 ⇒ 收不下", () => {
-    const one = (MCP.marked as { entries: Record<string, unknown>[] }).entries[1];
-    const wrap = (e: unknown) => ({ entries: [e], dirs: [], problems: [] });
-    expect(decodeMcpRead(wrap(one)).entries).toHaveLength(1);
-    expect(() => decodeMcpRead(wrap({ ...one, extra: 1 }))).toThrow();
-    expect(() => decodeMcpRead(wrap({ ...one, mark: "connected" }))).toThrow();
-    expect(() => decodeMcpRead(wrap({ ...one, failed: { said: "x", tip: "y" } }))).toThrow();
   });
   it("问的是那一台、不带项目目录", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(MCP.marked));
