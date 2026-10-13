@@ -6,13 +6,13 @@
 import { accountLabel } from "./acct-words";
 import { board, type BoardActs, type BoardState } from "./rot-board";
 import { copyText } from "./copy-table";
-import { saidFrom } from "./ipc/chan-caller";
+import { callTyped, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { askText, confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { failToast } from "./kit/toast";
-import { readStrategies, readView, refusedCode, rotCall } from "./rot-reads";
+import { readStrategies, readView, refusedCode, rotBudget } from "./rot-reads";
 import type { RotSeg } from "./generated/RotSeg";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
@@ -173,7 +173,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     draft = undefined;
     if (sid !== null)
       await write(copyText("rot.fail.revert"), () =>
-        rotCall(origin, "rotation-revert", { sid }),
+        callTyped(origin, "rotation-revert", { sid }, rotBudget()),
       );
     else await refresh();
   };
@@ -186,16 +186,16 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         if (sid === null) {
           draft = undefined;
           await write(copyText("rot.fail.forNew"), () =>
-            rotCall(origin, "rotation-for-new", { strategy: id }),
+            callTyped(origin, "rotation-for-new", { strategy: id }, rotBudget()),
           );
           return;
         }
         try {
-          await rotCall(origin, "rotation-use", {
+          await callTyped(origin, "rotation-use", {
             sid,
             strategy: id,
             discard: false,
-          });
+          }, rotBudget());
         } catch (e) {
           if (refusedCode(e)?.code !== "dirty")
             return void failToast(copyText("rot.fail.use"), e);
@@ -207,11 +207,11 @@ export function mountRotation(spec: RotMountSpec): RotMount {
           if (!ok) return paint();
           if (
             !(await write(copyText("rot.fail.use"), () =>
-              rotCall(origin, "rotation-use", {
+              callTyped(origin, "rotation-use", {
                 sid,
                 strategy: id,
                 discard: true,
-              }),
+              }, rotBudget()),
             ))
           )
             return;
@@ -223,7 +223,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         const name = await ask(copyText("rot.ask.copyTitle", { name: id }), "");
         if (name)
           await write(copyText("rot.fail.copy"), () =>
-            rotCall(origin, "rotation-strategy-copy", { id, name }),
+            callTyped(origin, "rotation-strategy-copy", { id, name }, rotBudget()),
           );
       })(),
     rename: (id, ifRev) =>
@@ -234,12 +234,12 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         );
         if (name && name !== id)
           await write(copyText("rot.fail.rename"), () =>
-            rotCall(origin, "rotation-strategy-rename", { id, name, ifRev }),
+            callTyped(origin, "rotation-strategy-rename", { id, name, ifRev }, rotBudget()),
           );
       })(),
     forNew: (id) =>
       void write(copyText("rot.fail.forNew"), () =>
-        rotCall(origin, "rotation-for-new", { strategy: id }),
+        callTyped(origin, "rotation-for-new", { strategy: id }, rotBudget()),
       ),
     remove: (id) =>
       void (async () => {
@@ -251,7 +251,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         });
         if (ok)
           await write(copyText("rot.fail.delete"), () =>
-            rotCall(origin, "rotation-strategy-delete", { id }),
+            callTyped(origin, "rotation-strategy-delete", { id }, rotBudget()),
           );
       })(),
     add: () =>
@@ -261,7 +261,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         const name = await ask(copyText("rot.ask.addTitle"), f.name);
         if (name)
           await write(copyText("rot.fail.add"), () =>
-            rotCall(origin, "rotation-strategy-add", { source: f.text, name }),
+            callTyped(origin, "rotation-strategy-add", { source: f.text, name }, rotBudget()),
           );
       })(),
     settings: (next) => {
@@ -271,11 +271,11 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         return;
       }
       void write(copyText("rot.fail.settings"), () =>
-        rotCall(origin, "rotation-settings", {
+        callTyped(origin, "rotation-settings", {
           target: { sid },
           settings: next,
           ifRev: rev(),
-        }),
+        }, rotBudget()),
       );
     },
     save: () =>
@@ -283,15 +283,15 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         const id = view?.strategy?.id;
         if (sid !== null) {
           await write(copyText("rot.fail.save"), () =>
-            rotCall(origin, "rotation-save", { target: { sid }, ifRev: rev() }),
+            callTyped(origin, "rotation-save", { target: { sid }, ifRev: rev() }, rotBudget()),
           );
         } else if (id) {
           const ok = await write(copyText("rot.fail.save"), () =>
-            rotCall(origin, "rotation-save", {
+            callTyped(origin, "rotation-save", {
               target: { strategy: id },
               settings: draft,
               ifRev: rev(),
-            }),
+            }, rotBudget()),
           );
           if (ok) {
             draft = undefined;
@@ -302,7 +302,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     revert: () => {
       if (sid !== null)
         void write(copyText("rot.fail.revert"), () =>
-          rotCall(origin, "rotation-revert", { sid }),
+          callTyped(origin, "rotation-revert", { sid }, rotBudget()),
         );
       else {
         draft = undefined;
@@ -317,7 +317,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     ) => {
       try {
         return (
-          await rotCall(origin, "rotation-day-paint", { segs, from, to, v })
+          await callTyped(origin, "rotation-day-paint", { segs, from, to, v }, rotBudget())
         ).segs;
       } catch (e) {
         failToast(copyText("rot.fail.settings"), e);
@@ -338,7 +338,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     acts.useNow = (account) =>
       void (async () => {
         try {
-          await rotCall(origin, "rotation-use-now", { sid, account });
+          await callTyped(origin, "rotation-use-now", { sid, account }, rotBudget());
           state.refused = null;
         } catch (e) {
           if (refusedCode(e)?.code !== "unusable")
@@ -358,7 +358,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       })();
     acts.temp = (op) =>
       void write(copyText("rot.fail.temp"), () =>
-        rotCall(origin, "rotation-temp", { sid, op }),
+        callTyped(origin, "rotation-temp", { sid, op }, rotBudget()),
       );
   }
   paint();

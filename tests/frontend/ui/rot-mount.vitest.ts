@@ -13,16 +13,19 @@ vi.mock("../../../src/frontend/ui/rot-reads", async (orig) => ({
     calls.push({ name: "rotation-view", req: target });
     return VIEW;
   }),
-  rotCall: vi.fn(async (_o: string, name: string, req: unknown) => {
+  refusedCode: (e: unknown) => ((e as { code?: string }).code ? { code: (e as { code: string }).code } : null),
+}));
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => ({
+  ...(await orig<typeof import("../../../src/frontend/ui/ipc/chan-caller")>()),
+  callTyped: vi.fn(async (_o: string, name: string, req: unknown) => {
     calls.push({ name, req });
     const code = refuse.get(name);
     if (code) {
       refuse.delete(name);
       throw Object.assign(new Error(code), { code });
     }
-    return {};
+    return { segs: [] };
   }),
-  refusedCode: (e: unknown) => ((e as { code?: string }).code ? { code: (e as { code: string }).code } : null),
 }));
 
 import { mountRotation } from "../../../src/frontend/ui/rot-mount";

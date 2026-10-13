@@ -5,7 +5,6 @@
 import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, refusalOf } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import type { TypedCommands } from "./generated/TypedCommands";
 import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import type { RotationViewReply } from "./generated/RotationViewReply";
 import type { RotTarget } from "./generated/RotTarget";
@@ -13,23 +12,16 @@ import type { RotTarget } from "./generated/RotTarget";
 /** 读盘 ＋ 跑策略 ＋ 推演 ＋ 回程。 */
 const BUDGET_MS = 15_000;
 
-/** 轮换那几条命令的名字。 */
-export type RotCommand = Extract<keyof TypedCommands, `rotation-${string}`>;
-
-/** 发一条轮换命令。 */
-export function rotCall<K extends RotCommand>(
-  origin: Origin,
-  name: K,
-  req: TypedCommands[K]["req"],
-): Promise<TypedCommands[K]["reply"]> {
-  return callTyped(origin, name, req, budgetWithin(BUDGET_MS));
+/** 一条轮换命令的期限（读盘 ＋ 跑策略 ＋ 推演 ＋ 回程）。 */
+export function rotBudget(): ReturnType<typeof budgetWithin> {
+  return budgetWithin(BUDGET_MS);
 }
 
 /** 那台的策略目录。 */
 export function readStrategies(
   origin: Origin,
 ): Promise<RotationStrategiesReply> {
-  return rotCall(origin, "rotation-strategies", {});
+  return callTyped(origin, "rotation-strategies", {}, rotBudget());
 }
 
 /** 一个会话（或一份策略）的四块要画的全部；推 `hours` 小时。 */
@@ -38,7 +30,7 @@ export function readView(
   target: RotTarget,
   hours: number,
 ): Promise<RotationViewReply> {
-  return rotCall(origin, "rotation-view", { target, hours });
+  return callTyped(origin, "rotation-view", { target, hours }, rotBudget());
 }
 
 /** 后端回的拒绝码（不是拒绝 ⇒ `null`）与它带的数据。 */

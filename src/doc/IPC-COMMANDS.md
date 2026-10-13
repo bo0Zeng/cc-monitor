@@ -1253,14 +1253,31 @@ sendable: boolean,
 /**
  * 这一段开头两窗的用量（5 小时 · 7 天）。
  */
-used: [number, number], reset: boolean, };
+used: [number, number], reset: boolean, 
+/**
+ * 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
+ */
+fromText: string, 
+/**
+ * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
+ */
+left: number, };
 type RotTryRow = { account: string, why: string, };
-type RotTrySwitch = { at: number, account: string, };
+type RotTrySwitch = { at: number, 
+/**
+ * `at` 的钟面（`HH:MM`）。
+ */
+atText: string, account: string, };
+type RotTryTick = { at: number, text: string, };
 type RotTryTimeline = { 
 /**
  * 将来每次换到别的号（时间轴上方那几个「16:07 work」）。
  */
-switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, };
+switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, 
+/**
+ * 此刻之后的整点刻度（推 12 小时以内每 2 小时、更长每 4 小时，看的那一台的钟）。
+ */
+ticks: Array<RotTryTick>, };
 type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
 /**
  * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
@@ -1399,9 +1416,14 @@ nullable?: StrategyText, };
 type RotFormChoice = { v: string, label: StrategyText, };
 type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
 type RotFormScope = "all" | "each";
-type RotHint = { "k": "hold", until?: number, account?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
-type RotLog = { at: number, from: string, to: string, cause: RotLogCause, why?: string, };
+type RotHint = { "k": "hold", until?: number, account?: string, 
+/**
+ * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
+ */
+untilText?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
+type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
+type RotNote = { hint: RotHint, text: string, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -1455,20 +1477,41 @@ sendable: boolean,
 /**
  * 这一段开头两窗的用量（5 小时 · 7 天）。
  */
-used: [number, number], reset: boolean, };
+used: [number, number], reset: boolean, 
+/**
+ * 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
+ */
+fromText: string, 
+/**
+ * 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
+ */
+left: number, };
 type RotTryRow = { account: string, why: string, };
-type RotTrySwitch = { at: number, account: string, };
+type RotTrySwitch = { at: number, 
+/**
+ * `at` 的钟面（`HH:MM`）。
+ */
+atText: string, account: string, };
+type RotTryTick = { at: number, text: string, };
 type RotTryTimeline = { 
 /**
  * 将来每次换到别的号（时间轴上方那几个「16:07 work」）。
  */
-switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, };
+switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, 
+/**
+ * 此刻之后的整点刻度（推 12 小时以内每 2 小时、更长每 4 小时，看的那一台的钟）。
+ */
+ticks: Array<RotTryTick>, };
 type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
 /**
  * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
  */
 capUnknown: boolean, skipped: Array<string>, };
 type RotationViewReply = { now: number, 
+/**
+ * `now` 的钟面（`HH:MM`，看的那一台的时区）。
+ */
+nowText: string, 
 /**
  * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
  */
@@ -1500,7 +1543,7 @@ listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null
 /**
  * 换号记录（会话才有）。
  */
-log: Array<RotLog>, hints: Array<RotHint>, };
+log: Array<RotLogRow>, hints: Array<RotNote>, };
 type RotationViewReq = { target: RotTarget, 
 /**
  * 往后推几小时（1–48，缺 ⇒ 12）。
@@ -1738,13 +1781,13 @@ type RotationStrategyDeleteReq = { id: string, };
 入参 `RotationDayPaintReq` · 回包 `RotationDayPaintReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type RotSeg = { from: bigint, to: bigint, v: number, };
+type RotSeg = { from: number, to: number, v: number, };
 type RotationDayPaintReply = { segs: Array<RotSeg>, };
 type RotationDayPaintReq = { segs: Array<RotSeg>, 
 /**
  * 刷哪一截（一天里的分钟；`to ≤ from` ⇒ 跨午夜，相等 ⇒ 一整天）。
  */
-from: bigint, to: bigint, 
+from: number, to: number, 
 /**
  * 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
  */
@@ -4686,9 +4729,9 @@ permissionMode?: string, };
 type Place = "tmux" | "window";
 type RotationPick = { 
 /**
- * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）。
+ * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
  */
-strategy: string, };
+strategy: string | null, };
 type SessionNew = { outcome: SessionNewOutcome, 
 /**
  * tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
