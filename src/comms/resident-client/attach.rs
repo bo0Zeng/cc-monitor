@@ -1,6 +1,6 @@
 //! 接常驻流那一段握手（`ccm -- --resident-attach`，`IPC-PROTOCOL.md` 载体表「常驻套接字」）：
-//! 小中继的拒绝行 → hello → attach 行 → `{"attach":"ok"}`。桌面（monitor `remote_resident.rs`）与手机（[`crate::feed`]）同一份零件；
-//! 手机那一侧整段走 [`handshake`]，桌面那一侧在它自己的链路上逐步调这里的零件（中间要问本机常驻后端换不换）。
+//! 小中继的拒绝行 → hello → attach 行 → `{"attach":"ok"}`。桌面与手机同一份零件；
+//! 两端都整段走 [`handshake`]（经 [`crate::feed`]）。
 
 use crate::client::{split_and_park, HelloFrame, ParkedWriter};
 use crate::line::{read_capped_line, CappedLine};
@@ -22,15 +22,6 @@ pub const HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 pub fn relay_refusal(first: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(first.trim()).ok()?;
     (v["attach"] == "refused").then(|| v["reason"].as_str().unwrap_or_default().to_string())
-}
-
-/// 第一行是 hello ⇒ 它自报的 `build_id`；不是 ⇒ 那一句「不是 cc-monitor 后端」。
-pub fn hello_build(line: &str) -> Result<String, String> {
-    let v: serde_json::Value = serde_json::from_str(line.trim()).unwrap_or_default();
-    if v["kind"] != "hello" {
-        return Err(copy_text("rsRemoteResident.hello.notOurs", &[]));
-    }
-    Ok(v["build_id"].as_str().unwrap_or_default().to_string())
 }
 
 /// attach 行：「我要流」＋ 看的这一台的时区 ＋ 这条流的出口声明（后端 `listen::attach_flags` 的逆；本机 · 远端 · 手机同一处拼）。
@@ -73,6 +64,8 @@ pub fn attach_reply(line: &str) -> Result<(), String> {
 pub struct Hello {
     pub v: u64,
     pub build_id: String,
+    /// 那一行原样（宿主要读别的几格时照它的帧类型再解一遍）。
+    pub line: String,
     offer: Offer,
 }
 
@@ -108,6 +101,7 @@ impl Hello {
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or_default()
                 .to_string(),
+            line: line.trim().to_string(),
             offer,
         })
     }

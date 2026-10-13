@@ -15,7 +15,7 @@
 //!
 //! # 帧命令 `resident-verdict`（同一家）
 //!
-//! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（`remote_resident::attach`）。
+//! 远端常驻后端 hello 报的 build 比 monitor 手上这一版旧 ⇒ 换一次（[`resident_verdict`]）；monitor 只照做（重连循环 `resident_client::feed` 换装那一步）。
 //!
 //! # 帧命令 `place-verdict`（同一家：本机那一份放不放）
 //!

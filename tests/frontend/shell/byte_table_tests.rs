@@ -662,10 +662,8 @@ fn my_version_is_read_only_through_my_backend_id() {
     let want: BTreeSet<String> = [
         // 槽的身份（三槽同一个值）
         "byte_table.rs",
-        // 版本判定 · 版本提示 · 跳预检 · 已验版本记忆 · 乐观能力集
+        // 版本判定 · 版本提示 · 跳预检 · 已验版本记忆 · 乐观能力集 · 交给重连循环的「手上这一版」（版本门问不问由它判）
         "stream_source/run.rs",
-        // resident-verdict 问不问
-        "remote_resident.rs",
         // 本机常驻 hello 比对
         "local_backend_host.rs",
         // Windows 预检

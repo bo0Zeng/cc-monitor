@@ -141,8 +141,8 @@ fn both_streams_hide_background_sessions_through_the_one_gate() {
         "../../../../src/frontend/shell/src/stream_source/run.rs"
     ));
     for needle in [
-        "let mut bg = super::local::BgHide::new(crate::load_show_bg_sessions());",
-        "let frame = frame.filter(|f| !bg.hides(f));",
+        "bg: super::local::BgHide::new(crate::load_show_bg_sessions()),",
+        "let frame = frame.filter(|f| !c.bg.hides(f));",
     ] {
         guard_core::find_pinned(&remote, needle)
             .unwrap_or_else(|e| panic!("远端那条流没过那道门：{e}"));

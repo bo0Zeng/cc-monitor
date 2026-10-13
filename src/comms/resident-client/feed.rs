@@ -1,19 +1,26 @@
-//! **一台的常驻流，断了自己接回去**（手机那一侧整条循环；桌面那一侧的循环住 monitor `stream_source/run.rs`，退避与判法同用本 crate）。
+//! **一台的常驻流，断了自己接回去** —— 桌面与手机同一条重连循环（全仓只这一处，`one_loop_guard`）。宿主只接几根线：
+//! 下面那条 SSH（[`Transport`]）· 往外交的事（[`Sink`]）· 装不装得了后端（[`Transport::installer`]）。
 //!
 //! 接一台只有一条路：先直接接常驻流（`--resident-attach`，平时一条 exec 就接上）；没接上 ⇒ `--resident-ensure`（常驻不在就起）
-//! ⇒ 再接（小中继回 `absent` 时隔 [`RELAY_WAIT`] 再试，同桌面）。接上之后照版本门（[`crate::gate`]）：那台旧 ⇒ 照接、说「要更新」
-//! （手机还装不了后端；装得了以后换成直接换装）；同或新 ⇒ 接。能不能用逐条命令由形状指纹判（[`InboundClient::call`]）。
+//! ⇒ 再接（小中继回 `absent` 时隔 [`RELAY_WAIT`] 再试）。接上之后照版本门（[`crate::gate`]）：
+//! - 装得了后端的宿主（桌面）：问本机常驻后端（[`Install::verdict`]）；那台旧 ⇒ `--resident-ensure --replace` 换一次再接；同或新 ⇒ 接。
+//! - 装不了的（手机）：问接上的那一台自己；旧 ⇒ 照接、说「要更新」；同或新 ⇒ 接。
+//!
+//! 能不能用逐条命令由形状指纹判（[`InboundClient::call`]）。
 //!
 //! 什么时候接：
 //! - 宿主交了一条 SSH（[`Feed::set_transport`]）⇒ 当场接；换了一条 ⇒ 旧流关掉、在新的上接；交 `None` ⇒ 不接、停在断开。
+//! - 每一轮开拨之前先做宿主那一步（[`Transport::before_round`]，桌面：把这一版的后端放到那台）。
 //! - 流断了、SSH 还在 ⇒ 交一个 [`Event::Lost`]（让宿主去探 SSH：多半是它先死了），再按退避接（[`crate::backoff`]，活过 30 s 才清零）。
-//! - 走不通、要人动手的那几种（没装 · 起不了常驻 · 不是我们的后端）不自己反复试：等 [`Feed::reconnect`]（［重试］· 回前台 · 网络变了）。
+//! - 走不通、要人动手的那几种不自己反复试，等 [`Feed::reconnect`] / [`Feed::wake`]（［重试］· 回前台 · 网络变了 · 机器页「起」）：
+//!   那台不是 Unix（常驻脱离不了）恒是；没装 · 起不了常驻 · 不是我们的后端只在装不了后端的宿主上是（装得了的下一轮装过再试）。
 //!
-//! 每次接上，那台整份重报会话；宿主收到的 [`State::Up`] 里 `epoch` 加一，之前在路上的问答作废。
+//! 每次接上先交 [`Event::Attached`]（那台的 hello 原样一行 ＋ 这条连接的客户端），再交 [`State::Up`]（`epoch` 加一，之前在路上的问答作废）。
 
 use crate::attach::{self, AttachFail, RELAY_ABSENT, RELAY_TRIES, RELAY_WAIT};
 use crate::backoff::{should_reset_backoff, Backoff};
 use crate::client::{BackendHello, InboundClient};
+use crate::gate::Verdict;
 use crate::line::{read_capped_line, CappedLine, BACKEND_FRAME_LINE_CAP};
 use crate::watch::{self, WatchFrom, Watched};
 use copy_core::copy_text;
@@ -41,7 +48,7 @@ impl Problem {
     }
 }
 
-/// 一次性 exec 收全的那三样（同桌面 `RemoteExec`）。
+/// 一次性 exec 收全的那三样（`exit_status` 缺 ＝ 没退出就收了，如老后端掉进流模式、见到 hello 提前收）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Exec {
     pub exit_status: Option<u32>,
@@ -51,11 +58,30 @@ pub struct Exec {
 
 pub type Boxed<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-/// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全。宿主装（手机：拨号核心开的链路）。
+/// 下面那条 SSH：开一条长 exec（字节原样对拷）· 跑一次收全；外加宿主那两样（每一轮之前做的那一步 · 装不装得了后端）。
+/// 手机：拨号核心在这台手机上开的链路；桌面：本机常驻后端给的链路（monitor `stream_source/run.rs`）。
 pub trait Transport: Send + Sync + 'static {
     type Stream: AsyncRead + AsyncWrite + Unpin + Send + 'static;
     fn stream(&self, command: String) -> Boxed<'_, Result<Self::Stream, Problem>>;
     fn capture(&self, command: String) -> Boxed<'_, Result<Exec, Problem>>;
+    /// 每一轮开拨之前（桌面：部署预检，把这一版的后端放到那台的落点）。缺省不做事。
+    fn before_round(&self) -> Boxed<'_, ()> {
+        Box::pin(async {})
+    }
+    /// 这一侧装得了后端 ⇒ 版本门问它、旧了换装（桌面）；装不了 ⇒ `None`（手机，缺省）。
+    fn installer(&self) -> Option<&dyn Install> {
+        None
+    }
+}
+
+/// 装得了后端的宿主：「那台报 `theirs`，换还是接」由它问本机常驻后端（判定只在后端）。
+pub trait Install: Send + Sync {
+    fn verdict<'a>(
+        &'a self,
+        mine: &'a str,
+        theirs: &'a str,
+        replaced: bool,
+    ) -> Boxed<'a, Result<Verdict, Problem>>;
 }
 
 /// 那台后端的一条子命令在远端 shell 里的写法（落点固定 `~/.cc-monitor/bin/ccm`，打头的 `--` 让它当后端用）。只收常量词。
@@ -65,6 +91,8 @@ pub fn backend_command(word: &'static str) -> String {
 
 pub const ATTACH: &str = "--resident-attach";
 pub const ENSURE: &str = "--resident-ensure";
+/// 换装：在跑的那一个停掉、换成落点上这一版。
+pub const ENSURE_REPLACE: &str = "--resident-ensure --replace";
 
 /// 一台此刻通不通。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -76,23 +104,47 @@ pub enum State {
         epoch: u64,
         notice: Option<Problem>,
     },
-    /// 断着：那一句；`needs_hand` ⇒ 不会自己好（要［重试］或人去装 / 起）。
+    /// 断着：那一句；`needs_hand` ⇒ 不会自己好（要［重试］或人去装 / 起）；`unsupported` ⇒ 那台不是 Unix（常驻脱离不了）。
     Down {
         problem: Problem,
         needs_hand: bool,
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        unsupported: bool,
     },
 }
 
-/// 交给宿主的事。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 交给宿主的事（按发生的先后、一件一件交：宿主慢了，读流就跟着慢，背压一路回到那台）。
+#[derive(Clone)]
 pub enum Event {
     State(State),
-    /// 流上的一帧（hello · `reply` · `cancelled` 以外的那些），原样一行。
+    /// 接上了：那台的 hello 原样一行 ＋ 这条连接的客户端。先于这条连接的 [`State::Up`] 与它的任何一帧。
+    Attached {
+        hello: String,
+        client: Arc<InboundClient>,
+    },
+    /// 流上的一帧（`reply` · `cancelled` 以外的那些），原样一行。
     Frame(String),
+    /// 流上有一行超过上限、整行丢了（看着的那一处原位留一个缺口）。
+    Gap,
     /// `stream-watch` 应答里的 `from[]`。
     WatchFrom(Vec<WatchFrom>),
     /// 流断了、SSH 还在：请宿主探一次 SSH。
     Lost,
+}
+
+impl std::fmt::Debug for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Event::State(s) => f.debug_tuple("State").field(s).finish(),
+            Event::Attached { hello, .. } => {
+                f.debug_struct("Attached").field("hello", hello).finish()
+            }
+            Event::Frame(l) => f.debug_tuple("Frame").field(l).finish(),
+            Event::Gap => f.write_str("Gap"),
+            Event::WatchFrom(w) => f.debug_tuple("WatchFrom").field(w).finish(),
+            Event::Lost => f.write_str("Lost"),
+        }
+    }
 }
 
 /// 一台的几样定值。
@@ -108,7 +160,47 @@ pub struct Config {
     pub handshake: Duration,
 }
 
-pub type Sink = Arc<dyn Fn(Event) + Send + Sync>;
+/// 往宿主交事的那个口：交完（宿主收下）才往下读。
+pub type Sink = Arc<dyn Fn(Event) -> Boxed<'static, ()> + Send + Sync>;
+
+/// 收下就算交完的宿主（手机：回调进 Kotlin）。
+pub fn sink(f: impl Fn(Event) + Send + Sync + 'static) -> Sink {
+    Arc::new(move |e| {
+        f(e);
+        Box::pin(async {})
+    })
+}
+
+/// 走不通的一轮：那一句 ＋ 是哪一类。
+struct Fail {
+    problem: Problem,
+    kind: FailKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FailKind {
+    /// 断在路上（被掐 · 小中继与常驻断开 · 拨不通 · 问不成换不换）：再试会好。
+    Transient,
+    /// 没装 · 起不了常驻 · 不是我们的后端：装一次会好 ⇒ 装得了的宿主下一轮再试，装不了的等人。
+    Install,
+    /// 那台不是 Unix：怎样都不会好。
+    Unsupported,
+}
+
+impl Fail {
+    fn new(problem: Problem, kind: FailKind) -> Self {
+        Fail { problem, kind }
+    }
+}
+
+/// 接上之后到开读之前定下的那几样。
+struct Connected<S> {
+    client: Arc<InboundClient>,
+    reader: tokio::io::BufReader<tokio::io::ReadHalf<S>>,
+    hello: attach::Hello,
+    /// 装得了后端的宿主：本机常驻后端判那台比手上这一版旧（换过一次还旧）⇒ 那一句。
+    notice: Option<Problem>,
+}
 
 /// 一台的常驻流。
 pub struct Feed<T: Transport> {
@@ -117,27 +209,29 @@ pub struct Feed<T: Transport> {
     transport: tw::Sender<Option<Arc<T>>>,
     state: tw::Sender<State>,
     client: Mutex<Option<Arc<InboundClient>>>,
-    kick: Notify,
+    /// ［重试］· 回前台 · 网络变了 · 「起」：每按一下 +1。接上那一刻之前按的作废（不留到下一次断线白白跳过一轮退避）。
+    kick: tw::Sender<u64>,
     /// 当前这条流的收工信号（[`Feed::reconnect`] 拨它）。
     cut: Mutex<Option<Arc<Notify>>>,
-    watched: Mutex<Watched>,
+    /// 在看名单：`None` ＝ 宿主从没报过（不发 `stream-watch`，那台照旧全发）。
+    watched: Mutex<Option<Watched>>,
     watch_tick: tw::Sender<u64>,
     /// 这一台那两个循环（重连 · 报名单）：[`Feed::close`] 收掉。
     tasks: Mutex<Vec<tokio::task::JoinHandle<()>>>,
 }
 
 impl<T: Transport> Feed<T> {
-    /// 起一台（在当前 tokio 运行时上起它的循环）。
-    pub fn start(cfg: Config, events: Sink) -> Arc<Self> {
+    /// 起一台（在当前 tokio 运行时上起它的循环）；`transport` ＝ 起来那一刻手上的那条 SSH（还没有 ⇒ `None`，之后经 [`Feed::set_transport`] 交）。
+    pub fn start(cfg: Config, transport: Option<Arc<T>>, events: Sink) -> Arc<Self> {
         let feed = Arc::new(Feed {
             cfg,
             events,
-            transport: tw::channel(None).0,
+            transport: tw::channel(transport).0,
             state: tw::channel(State::Connecting).0,
             client: Mutex::new(None),
-            kick: Notify::new(),
+            kick: tw::channel(0).0,
             cut: Mutex::new(None),
-            watched: Mutex::new(Watched::default()),
+            watched: Mutex::new(None),
             watch_tick: tw::channel(0).0,
             tasks: Mutex::new(Vec::new()),
         });
@@ -166,13 +260,13 @@ impl<T: Transport> Feed<T> {
     /// ［重试］：断开这一条（有的话）、马上整份重来。
     pub fn reconnect(&self) {
         self.cut_current();
-        self.kick.notify_one();
+        self.kick.send_modify(|k| *k += 1);
     }
 
-    /// 回到前台 · 网络变了：通着不动；断着马上再接。
+    /// 回到前台 · 网络变了 · ［重新连接］：通着不动；没通 ⇒ 不等退避马上再接（此刻正在拨 ⇒ 这一轮没成就不睡）。
     pub fn wake(&self) {
-        if matches!(*self.state.borrow(), State::Down { .. }) {
-            self.kick.notify_one();
+        if !matches!(*self.state.borrow(), State::Up { .. }) {
+            self.kick.send_modify(|k| *k += 1);
         }
     }
 
@@ -185,15 +279,27 @@ impl<T: Transport> Feed<T> {
         self.state.borrow().clone()
     }
 
+    /// 名单从空开始报（宿主起步时一次：一条会话都还没人看 ⇒ 那台一条都不发）。
+    pub fn watch_none(&self) {
+        let fresh = {
+            let mut w = lock(&self.watched);
+            let fresh = w.is_none();
+            w.get_or_insert_with(Watched::default);
+            fresh
+        };
+        if fresh {
+            self.watch_tick.send_modify(|t| *t += 1);
+        }
+    }
+
     /// 多一处 / 少一处在看这条会话。名单变了 ⇒ 在当前连接上整份重报。
     pub fn watch(&self, sid: &str, holding: bool) {
         let changed = {
-            let mut w = lock(&self.watched);
-            if holding {
-                w.hold(sid)
-            } else {
-                w.release(sid)
-            }
+            let mut g = lock(&self.watched);
+            let fresh = g.is_none();
+            let w = g.get_or_insert_with(Watched::default);
+            let changed = if holding { w.hold(sid) } else { w.release(sid) };
+            changed || fresh
         };
         if changed {
             self.watch_tick.send_modify(|t| *t += 1);
@@ -236,123 +342,168 @@ impl<T: Transport> Feed<T> {
         }
     }
 
-    fn set_state(&self, s: State) {
+    async fn set_state(&self, s: State) {
         self.state.send_replace(s.clone());
-        (self.events)(Event::State(s));
+        (self.events)(Event::State(s)).await;
     }
 
-    fn offline(&self, detail: String) -> Problem {
+    fn offline(&self) -> Problem {
         Problem::new(
             copy_text("front.body.offline", &[("machine", &self.cfg.machine)]),
-            detail,
+            String::new(),
         )
     }
 
     async fn run(self: Arc<Self>) {
         let mut ssh = self.transport.subscribe();
+        let mut kicks = self.kick.subscribe();
         let mut backoff = Backoff::new();
         let mut epoch = 0u64;
         loop {
             let Some(t) = ssh.borrow_and_update().clone() else {
                 self.set_state(State::Down {
-                    problem: self.offline(String::new()),
+                    problem: self.offline(),
                     needs_hand: false,
-                });
+                    unsupported: false,
+                })
+                .await;
                 if ssh.changed().await.is_err() {
                     return;
                 }
                 continue;
             };
-            self.set_state(State::Connecting);
+            self.set_state(State::Connecting).await;
             let started = tokio::time::Instant::now();
+            t.before_round().await;
             let cut = Arc::new(Notify::new());
             *lock(&self.cut) = Some(Arc::clone(&cut));
+            let installs = t.installer().is_some();
             let (saw_hello, needs_hand) = match self.connect(&t).await {
-                Ok((client, reader, theirs)) => {
+                Ok(Connected {
+                    client,
+                    reader,
+                    hello,
+                    notice,
+                }) => {
                     epoch += 1;
                     *lock(&self.client) = Some(Arc::clone(&client));
-                    self.set_state(State::Up {
-                        epoch,
-                        notice: None,
-                    });
+                    (self.events)(Event::Attached {
+                        hello: hello.line.clone(),
+                        client: Arc::clone(&client),
+                    })
+                    .await;
+                    self.set_state(State::Up { epoch, notice }).await;
+                    // 连上那一刻：断着时按过、还没用掉的那一下作废。
+                    kicks.borrow_and_update();
                     self.watch_tick.send_modify(|t| *t += 1);
-                    // 版本门那一问走这条流本身，应答要等下面开始读才回得来 ⇒ 与读并行；问完了还是这一条才补上那一句。
-                    let asking = {
+                    // 装不了后端的宿主：版本门那一问走这条流本身，应答要等下面开始读才回得来 ⇒ 与读并行；问完了还是这一条才补上那一句。
+                    let asking = (!installs).then(|| {
                         let me = Arc::clone(&self);
                         let c = Arc::clone(&client);
+                        let theirs = hello.build_id.clone();
                         tokio::spawn(async move {
                             if let Some(notice) = me.version_notice(&c, &theirs).await {
-                                if matches!(*me.state.borrow(), State::Up { epoch: e, .. } if e == epoch)
-                                {
+                                let same = matches!(*me.state.borrow(), State::Up { epoch: e, .. } if e == epoch);
+                                if same {
                                     me.set_state(State::Up {
                                         epoch,
                                         notice: Some(notice),
-                                    });
+                                    })
+                                    .await;
                                 }
                             }
                         })
-                    };
+                    });
                     self.pump(&client, reader, &cut).await;
-                    asking.abort();
+                    if let Some(a) = asking {
+                        a.abort();
+                    }
                     client.shutdown();
                     *lock(&self.client) = None;
                     self.set_state(State::Down {
-                        problem: self.offline(String::new()),
+                        problem: self.offline(),
                         needs_hand: false,
-                    });
-                    (self.events)(Event::Lost);
+                        unsupported: false,
+                    })
+                    .await;
+                    (self.events)(Event::Lost).await;
                     (true, false)
                 }
-                Err((problem, needs_hand)) => {
+                Err(Fail { problem, kind }) => {
+                    let needs_hand = match kind {
+                        FailKind::Transient => false,
+                        FailKind::Install => !installs,
+                        FailKind::Unsupported => true,
+                    };
                     self.set_state(State::Down {
                         problem,
                         needs_hand,
-                    });
+                        unsupported: kind == FailKind::Unsupported,
+                    })
+                    .await;
                     (false, needs_hand)
                 }
             };
             *lock(&self.cut) = None;
-            // 退避同桌面那一份：握上手且活过 30 s 才清零；首次失败只等下界，这一轮没站住才翻倍。
+            // 握上手且活过 30 s 才清零；首次失败只等下界，这一轮没站住才翻倍。
             let healthy = should_reset_backoff(saw_hello, started.elapsed());
             let wait = backoff.before_wait(healthy);
-            let ssh_changed = async {
-                let _ = ssh.changed().await;
-            };
-            let kicked = if needs_hand {
-                tokio::select! {
-                    () = self.kick.notified() => true,
-                    () = ssh_changed => true,
-                }
-            } else {
-                tokio::select! {
-                    () = tokio::time::sleep(wait) => false,
-                    () = self.kick.notified() => true,
-                    () = ssh_changed => true,
+            let kicked = {
+                let ssh_changed = async {
+                    let _ = ssh.changed().await;
+                };
+                let kicked = async {
+                    let _ = kicks.changed().await;
+                };
+                if needs_hand {
+                    tokio::select! {
+                        () = kicked => true,
+                        () = ssh_changed => true,
+                    }
+                } else {
+                    tokio::select! {
+                        () = tokio::time::sleep(wait) => false,
+                        () = kicked => true,
+                        () = ssh_changed => true,
+                    }
                 }
             };
             backoff.after_wait(kicked, healthy);
         }
     }
 
-    /// 接一次：直接接 ⇒ 没接上就 ensure ⇒ 再接。`Err((那一句, 要不要人动手))`。
-    #[allow(clippy::type_complexity)]
-    async fn connect(
-        &self,
-        t: &Arc<T>,
-    ) -> Result<
-        (
-            Arc<InboundClient>,
-            tokio::io::BufReader<tokio::io::ReadHalf<T::Stream>>,
-            String,
-        ),
-        (Problem, bool),
-    > {
-        let attached = match self.attach_once(t).await {
+    /// 接一次：直接接 ⇒ 没接上就 ensure ⇒ 再接；装得了后端的宿主再过一道版本门（旧 ⇒ 换一次再接）。
+    async fn connect(&self, t: &Arc<T>) -> Result<Connected<T::Stream>, Fail> {
+        let mut attached = match self.attach_once(t).await {
             Ok(a) => a,
             Err(_) => {
-                self.ensure(t).await?;
+                self.ensure(t, ENSURE).await?;
                 self.attach_after_ensure(t).await?
             }
+        };
+        let mut replaced = false;
+        let notice = loop {
+            let Some(installer) = t.installer() else {
+                break None;
+            };
+            let theirs = attached.hello.build_id.clone();
+            let verdict = crate::gate::verdict_for(self.cfg.mine.as_deref(), |mine| {
+                installer.verdict(mine, &theirs, replaced)
+            })
+            .await
+            .map_err(|p| Fail::new(p, FailKind::Transient))?;
+            if verdict.replace {
+                tracing::info!(
+                    "resident feed [{}] 本机后端判那台常驻后端比手上这一版旧 ⇒ 换掉再接",
+                    self.cfg.machine
+                );
+                drop(attached);
+                replaced = true;
+                self.ensure(t, ENSURE_REPLACE).await?;
+                attached = self.attach_after_ensure(t).await?;
+                continue;
+            }
+            break verdict.older.then(|| self.old_notice(&theirs));
         };
         let attach::Attached {
             reader,
@@ -363,15 +514,30 @@ impl<T: Transport> Feed<T> {
         let client = writer.into_client(witness);
         client.name_machine(&self.cfg.machine);
         client.set_viewer_tz(self.cfg.tz.clone());
-        Ok((client, reader, hello.build_id))
+        Ok(Connected {
+            client,
+            reader,
+            hello,
+            notice,
+        })
     }
 
-    /// 版本门（[`crate::gate`]）：问接上的那一台它比手上这一版旧不旧（判定在后端）。旧 ⇒ 照接、带一句「要更新」（手机还装不了后端）；
+    fn old_notice(&self, theirs: &str) -> Problem {
+        Problem::new(
+            copy_core::backend_old(&self.cfg.machine),
+            format!(
+                "theirs: {theirs}\nmine: {}",
+                self.cfg.mine.as_deref().unwrap_or_default()
+            ),
+        )
+    }
+
+    /// 版本门（装不了后端的宿主，[`crate::gate`]）：问接上的那一台它比手上这一版旧不旧（判定在后端）。旧 ⇒ 照接、带一句「要更新」；
     /// 同或新 ⇒ 不说。那台不认这一问 ⇒ 比这一问还早 ⇒ 当旧。问不成（超时 · 断了）⇒ 不说（下次接上再问）。
     async fn version_notice(&self, client: &InboundClient, theirs: &str) -> Option<Problem> {
         let asked = crate::gate::verdict_for(self.cfg.mine.as_deref(), |mine| async move {
             if !client.accepts(crate::gate::VERDICT_CMD) {
-                return Ok(crate::gate::Verdict {
+                return Ok(Verdict {
                     replace: true,
                     older: true,
                 });
@@ -400,49 +566,42 @@ impl<T: Transport> Feed<T> {
         })
         .await;
         match asked {
-            Ok(v) if v.older => Some(Problem::new(
-                copy_core::backend_old(&self.cfg.machine),
-                format!(
-                    "theirs: {theirs}\nmine: {}",
-                    self.cfg.mine.as_deref().unwrap_or_default()
-                ),
-            )),
+            Ok(v) if v.older => Some(self.old_notice(theirs)),
             _ => None,
         }
     }
 
-    async fn attach_once(
-        &self,
-        t: &Arc<T>,
-    ) -> Result<attach::Attached<T::Stream>, (Problem, bool)> {
+    /// 开一条 `--resident-attach`、握手（attach 行带这条流的出口声明：会话帧里不要本机才用得上的 `pid`）。
+    async fn attach_on(&self, t: &Arc<T>) -> Result<attach::Attached<T::Stream>, AttachOr> {
         let stream = t
             .stream(backend_command(ATTACH))
             .await
-            .map_err(|p| (p, false))?;
-        attach::handshake(stream, self.cfg.tz.as_deref(), None, self.cfg.handshake)
-            .await
-            .map_err(|f| self.attach_problem(f))
+            .map_err(AttachOr::Dial)?;
+        attach::handshake(
+            stream,
+            self.cfg.tz.as_deref(),
+            Some(&attach::remote_stream_view()),
+            self.cfg.handshake,
+        )
+        .await
+        .map_err(AttachOr::Shake)
     }
 
-    /// ensure 之后：小中继回 `absent`（常驻还没绑上口）隔一会儿再试，同桌面。
-    async fn attach_after_ensure(
-        &self,
-        t: &Arc<T>,
-    ) -> Result<attach::Attached<T::Stream>, (Problem, bool)> {
+    async fn attach_once(&self, t: &Arc<T>) -> Result<attach::Attached<T::Stream>, Fail> {
+        self.attach_on(t).await.map_err(|e| self.attach_problem(e))
+    }
+
+    /// ensure 之后：小中继回 `absent`（常驻还没绑上口）隔一会儿再试。
+    async fn attach_after_ensure(&self, t: &Arc<T>) -> Result<attach::Attached<T::Stream>, Fail> {
         for _ in 0..RELAY_TRIES {
-            let stream = t
-                .stream(backend_command(ATTACH))
-                .await
-                .map_err(|p| (p, false))?;
-            match attach::handshake(stream, self.cfg.tz.as_deref(), None, self.cfg.handshake).await
-            {
+            match self.attach_on(t).await {
                 Ok(a) => return Ok(a),
-                Err(AttachFail::Refused(r)) if r == RELAY_ABSENT => {}
-                Err(f) => return Err(self.attach_problem(f)),
+                Err(AttachOr::Shake(AttachFail::Refused(r))) if r == RELAY_ABSENT => {}
+                Err(e) => return Err(self.attach_problem(e)),
             }
             tokio::time::sleep(RELAY_WAIT).await;
         }
-        Err((
+        Err(Fail::new(
             Problem::new(
                 copy_text(
                     "rsRemoteResident.relay.absent",
@@ -450,51 +609,57 @@ impl<T: Transport> Feed<T> {
                 ),
                 format!("{RELAY_TRIES} × {}ms", RELAY_WAIT.as_millis()),
             ),
-            false,
+            FailKind::Transient,
         ))
     }
 
-    /// 握手走不通 ⇒ 那一句。断在路上的（被掐 · 小中继与常驻断开）再试会好；不是我们的后端 · 回话不对 ⇒ 要人动手。
-    fn attach_problem(&self, f: AttachFail) -> (Problem, bool) {
+    /// 握手走不通 ⇒ 那一句。拨不通 · 断在路上的（被掐 · 小中继与常驻断开）再试会好；不是我们的后端 · 回话不对 ⇒ 装过才会好。
+    fn attach_problem(&self, e: AttachOr) -> Fail {
         let m = &self.cfg.machine;
+        let f = match e {
+            AttachOr::Dial(p) => return Fail::new(p, FailKind::Transient),
+            AttachOr::Shake(f) => f,
+        };
         match f {
-            AttachFail::Refused(r) if r == RELAY_ABSENT => (
+            AttachFail::Refused(r) if r == RELAY_ABSENT => Fail::new(
                 Problem::new(
                     copy_text("rsRemoteResident.relay.absent", &[("machine", m)]),
                     "",
                 ),
-                false,
+                FailKind::Transient,
             ),
-            AttachFail::Refused(r) if r == "unreachable" => (
+            AttachFail::Refused(r) if r == "unreachable" => Fail::new(
                 Problem::new(
                     copy_text("rsRemoteResident.relay.unreachable", &[("machine", m)]),
                     "",
                 ),
-                false,
+                FailKind::Transient,
             ),
-            AttachFail::Refused(r) => (
+            AttachFail::Refused(r) => Fail::new(
                 Problem::new(
                     copy_text("rsRemoteResident.handshake.refused", &[("why", &r)]),
                     "",
                 ),
-                false,
+                FailKind::Transient,
             ),
-            AttachFail::NotOurs(line) => (
+            AttachFail::NotOurs(line) => Fail::new(
                 Problem::new(copy_text("rsRemoteResident.hello.notOurs", &[]), line),
-                true,
+                FailKind::Install,
             ),
-            AttachFail::Cut { said, raw, .. } => (Problem::new(said, raw), false),
-            AttachFail::Reply(said) => (Problem::new(said, ""), true),
+            AttachFail::Cut { said, raw, .. } => {
+                Fail::new(Problem::new(said, raw), FailKind::Transient)
+            }
+            AttachFail::Reply(said) => Fail::new(Problem::new(said, ""), FailKind::Install),
         }
     }
 
-    /// `--resident-ensure`（常驻不在就起）。
-    async fn ensure(&self, t: &Arc<T>) -> Result<(), (Problem, bool)> {
+    /// `--resident-ensure`（常驻不在就起）/ `--resident-ensure --replace`（换成落点上这一版）。
+    async fn ensure(&self, t: &Arc<T>, word: &'static str) -> Result<(), Fail> {
         let exec = t
-            .capture(backend_command(ENSURE))
+            .capture(backend_command(word))
             .await
-            .map_err(|p| (p, false))?;
-        read_one_shot(&exec).map(|_| ())
+            .map_err(|p| Fail::new(p, FailKind::Transient))?;
+        read_one_shot(&exec, &self.cfg.machine).map(|_| ())
     }
 
     /// 读到头为止：应答交回请求方，别的帧原样交宿主。到头 · 读不动 · 被叫停（[`Feed::reconnect`]）⇒ 回。
@@ -505,6 +670,8 @@ impl<T: Transport> Feed<T> {
         cut: &Notify,
     ) {
         let mut buf = Vec::new();
+        // 这条流上有几行不是合法 UTF-8（按替换字符读的）：数着，按 2 的幂次说一句。
+        let mut bad_utf8 = 0u64;
         loop {
             let got = tokio::select! {
                 r = read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP) => r,
@@ -512,11 +679,24 @@ impl<T: Transport> Feed<T> {
             };
             match got {
                 Ok(CappedLine::Line) => {
-                    let line = String::from_utf8_lossy(&buf).into_owned();
-                    route(client, &line, &self.events);
+                    if std::str::from_utf8(&buf).is_err() {
+                        bad_utf8 += 1;
+                        if bad_utf8.is_power_of_two() {
+                            tracing::warn!(
+                                "[{}] 常驻流上已有 {bad_utf8} 行不是合法 UTF-8（按替换字符读）",
+                                self.cfg.machine
+                            );
+                        }
+                    }
+                    let text = String::from_utf8_lossy(&buf);
+                    route(client, text.trim_end_matches(['\n', '\r']), &self.events).await;
                 }
                 Ok(CappedLine::TooLong(n)) => {
-                    tracing::warn!("常驻流上一行 {n} 字节，超过上限，丢了这一行");
+                    tracing::warn!(
+                        "[{}] 常驻流上一行 {n} 字节，超过上限 {BACKEND_FRAME_LINE_CAP}，丢了这一行",
+                        self.cfg.machine
+                    );
+                    (self.events)(Event::Gap).await;
                 }
                 Ok(CappedLine::Eof) | Err(_) => return,
             }
@@ -524,13 +704,16 @@ impl<T: Transport> Feed<T> {
     }
 
     /// 名单变了 · 换了一条新连接 ⇒ 在当前连接上整份重报；`from[]` 交宿主。报没成不重试：下一次接上照样整份重报。
+    /// 宿主从没报过名单 ⇒ 不报（那台照旧全发）。
     async fn report_watch(self: Arc<Self>) {
         let mut tick = self.watch_tick.subscribe();
         while tick.changed().await.is_ok() {
             let Some(client) = lock(&self.client).clone() else {
                 continue;
             };
-            let sids = lock(&self.watched).sids();
+            let Some(sids) = lock(&self.watched).as_ref().map(Watched::sids) else {
+                continue;
+            };
             match client
                 .call(watch::WATCH_CMD, watch::args(&sids), watch::WATCH_BUDGET)
                 .await
@@ -538,7 +721,7 @@ impl<T: Transport> Feed<T> {
                 Ok(data) => {
                     let from = watch::from_of(data.as_ref());
                     if !from.is_empty() {
-                        (self.events)(Event::WatchFrom(from));
+                        (self.events)(Event::WatchFrom(from)).await;
                     }
                 }
                 Err(e) => tracing::warn!("stream_watch 报名单没报上（这条连接照旧全看）：{e:?}"),
@@ -547,16 +730,29 @@ impl<T: Transport> Feed<T> {
     }
 }
 
-/// 一行帧：`reply` · `cancelled` 交回请求方；别的原样交宿主。不是 JSON 对象 ⇒ 说一句、不断流。
-fn route(client: &InboundClient, line: &str, events: &Sink) {
+/// 开一条 attach 没成在哪一层：链路没开出来 · 握手走不通。
+enum AttachOr {
+    Dial(Problem),
+    Shake(AttachFail),
+}
+
+/// 只有含这两个词的行才可能是应答（别的帧不必整行解一遍 JSON 才交出去）。
+fn maybe_reply(line: &str) -> bool {
+    line.contains("\"reply\"") || line.contains("\"cancelled\"")
+}
+
+/// 一行帧：`reply` · `cancelled` 交回请求方；别的原样交宿主。空行跳过。
+async fn route(client: &InboundClient, line: &str, events: &Sink) {
     if line.trim().is_empty() {
         return;
     }
-    let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-        tracing::warn!(
-            "常驻流上一行不是 JSON：{}",
-            line.chars().take(200).collect::<String>()
-        );
+    let v = if maybe_reply(line) {
+        serde_json::from_str::<serde_json::Value>(line).ok()
+    } else {
+        None
+    };
+    let Some(v) = v else {
+        events(Event::Frame(line.to_string())).await;
         return;
     };
     let id = v
@@ -597,46 +793,62 @@ fn route(client: &InboundClient, line: &str, events: &Sink) {
         Some("cancelled") => {
             client.route_cancelled(id);
         }
-        _ => events(Event::Frame(line.to_string())),
+        _ => events(Event::Frame(line.to_string())).await,
     }
 }
 
 /// shell 找不到命令 / 不能执行。
 const ABSENT_CODES: [u32; 2] = [126, 127];
 
-/// 一次性 CLI 的回话（`--resident-ensure`）：退出 0 ＋ stdout 一行 JSON 对象 ⇒ 成；127 / 126 ⇒ 没装；
-/// 非 0 ＋ stderr 一行 `{code, message, detail}` ⇒ 那一句；对不上协议 ⇒ 原样进详情。失败一律要人动手。
-pub fn read_one_shot(exec: &Exec) -> Result<serde_json::Value, (Problem, bool)> {
+/// 不认 `--resident-ensure` 的老后端会把它当未知旗标、直接进流模式发 hello ⇒ 见到它就当「太旧」（桌面收全那一趟见到它就提前收）。
+pub const OLD_BACKEND_MARKER: &str = "\"kind\":\"hello\"";
+
+/// 一次性 CLI 的回话（`--resident-ensure [--replace]`）：退出 0 ＋ stdout 一行 JSON 对象 ⇒ 成；stdout 里有 hello ⇒ 老后端、要更新；
+/// 127 / 126 ⇒ 没装；非 0 ＋ stderr 一行 `{code, message, detail}` ⇒ 那一句（`code == "unsupported"` ⇒ 那台不是 Unix）；
+/// 对不上协议 ⇒ 原样进详情。
+fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> {
     let out = exec.stdout.trim();
     let err = exec.stderr.trim();
     let raw = || format!("exit: {:?}\nstdout: {out}\nstderr: {err}", exec.exit_status);
+    let install = |p: Problem| Err(Fail::new(p, FailKind::Install));
+    if out.contains(OLD_BACKEND_MARKER) {
+        return install(Problem::new(copy_core::backend_old(machine), raw()));
+    }
     match exec.exit_status {
-        Some(0) => serde_json::from_str::<serde_json::Value>(out)
+        Some(0) => match serde_json::from_str::<serde_json::Value>(out)
             .ok()
             .filter(serde_json::Value::is_object)
-            .ok_or_else(|| {
-                (
-                    Problem::new(
-                        copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
-                        raw(),
-                    ),
-                    true,
-                )
-            }),
-        Some(c) if ABSENT_CODES.contains(&c) => Err((
-            Problem::new(copy_text("remoteHealth.head.notDeployed", &[]), raw()),
-            true,
+        {
+            Some(v) => Ok(v),
+            None => install(Problem::new(
+                copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
+                raw(),
+            )),
+        },
+        Some(c) if ABSENT_CODES.contains(&c) => install(Problem::new(
+            copy_text("remoteHealth.head.notDeployed", &[]),
+            raw(),
         )),
         _ => {
             let env: serde_json::Value = serde_json::from_str(err).unwrap_or_default();
+            let detail = env["detail"].as_str().unwrap_or_default();
             match (env["code"].as_str(), env["message"].as_str()) {
-                (Some(_), Some(m)) => Err((
-                    Problem::new(m, env["detail"].as_str().unwrap_or_default()),
-                    true,
+                // 那台的 `message` 这一格就是它的原话（脱离不了的系统报错）：句子由这边说，原话进详情。
+                (Some("unsupported"), Some(m)) => Err(Fail::new(
+                    Problem::new(
+                        copy_text("rsRemoteResident.ensure.unsupported", &[]),
+                        if detail.is_empty() {
+                            m.to_string()
+                        } else {
+                            format!("{m}\n{detail}")
+                        },
+                    ),
+                    FailKind::Unsupported,
                 )),
-                _ => Err((
-                    Problem::new(copy_text("rsRemoteResident.ensure.noReason", &[]), raw()),
-                    true,
+                (Some(_), Some(m)) => install(Problem::new(m, detail)),
+                _ => install(Problem::new(
+                    copy_text("rsRemoteResident.ensure.noReason", &[]),
+                    raw(),
                 )),
             }
         }

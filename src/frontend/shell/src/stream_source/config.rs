@@ -107,3 +107,7 @@ pub(crate) fn record_last_good(cfg: &RemoteConfig, ep: &Endpoint) {
 // 开终端那一行在本机后端（`terminal-ssh`），地址由 `ssh-dial/machine.rs::resolve` 按交过去的 `prefer`（[`last_good_for`]）排首。
 
 // 竞发拨号顺序（last-good 排首、其余保序）那个纯函数 `winner_order` 搬进后端 `ssh-dial/machine.rs::request`（`prefer`）。
+
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/tier1_tests.rs"]
+mod tier1_tests;

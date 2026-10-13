@@ -56,7 +56,7 @@ pub(super) struct SnapshotItem {
     pub(super) expected_lines: Option<u64>,
 }
 
-/// stream_loop 退出（重连/EOF/错误任何路径）时关队列。
+/// 这条连接的收口（`LineIntake`）被丢掉（断了 · 收工，任何路径）时关队列。
 pub(super) struct SnapshotQueueCloser(pub(super) std::sync::Arc<SnapshotQueue>);
 impl Drop for SnapshotQueueCloser {
     fn drop(&mut self) {

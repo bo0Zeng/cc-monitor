@@ -1,13 +1,12 @@
 //! 会话流从哪来：远端那台后端的流（经本机常驻后端的链路）与本机后端的流，进同一条收口。
 //!
-//! 各份分工：`config` 远端配置 · `backoff` 重连退避 · `version` 能力与版本 · `snapshot` 旁路快照 ·
+//! 各份分工：`config` 远端配置 · `version` 能力与版本 · `snapshot` 旁路快照 ·
 //! `exec` 一次性远端 exec 与限长读行 · `frame` 帧类型与解析 · `batch` 攒批与收行 ·
-//! `local` 本机那条流 · `run` 远端流主循环。外面一律写 `crate::stream_source::X`。
+//! `local` 本机那条流 · `run` 远端那台的宿主（重连循环本身住 `resident-client`）。外面一律写 `crate::stream_source::X`。
 //!
 //! 本模块不拨 SSH：链路只经宿主 `dial_host`，读代理应答的是通信层成员 `ssh_link`
 //! （所以它不登记为通信层成员，理由住 `comm_boundary_registry_tests::TRANSPORT_LEFT_OUTSIDE`）。
 
-mod backoff;
 mod batch;
 mod config;
 mod exec;
@@ -17,7 +16,6 @@ mod run;
 mod snapshot;
 mod version;
 
-pub(crate) use backoff::*;
 pub(crate) use batch::*;
 pub(crate) use config::*;
 pub(crate) use exec::*;
@@ -48,3 +46,8 @@ pub(crate) use version::*;
 #[cfg(test)]
 #[path = "../../../../../tests/frontend/shell/stream_source/dial_move_judge.rs"]
 pub(crate) mod dial_move_judge;
+
+/// 重连循环只有一个诞生点（`resident-client` 的 `feed.rs`），monitor 不许再长出自己的。
+#[cfg(test)]
+#[path = "../../../../../tests/frontend/shell/stream_source/one_loop_guard.rs"]
+mod one_loop_guard;

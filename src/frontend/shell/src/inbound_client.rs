@@ -46,7 +46,7 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 // ============================================================================
 
 /// 形状同 `stream_source::announced_registry`：origin 是那台机器的稳定身份。
-/// 写者 = 各主机的 `stream_loop`（收到 hello 时登记、连接退出时摘除）。
+/// 写者 = 远端各台的收事那一头 `stream_source::consume_remote`（接上时登记、断了摘除）· 本机那条流。
 fn registry() -> &'static Mutex<HashMap<String, Arc<InboundClient>>> {
     static R: std::sync::OnceLock<Mutex<HashMap<String, Arc<InboundClient>>>> =
         std::sync::OnceLock::new();
@@ -68,8 +68,6 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
     // 换了一条新连接 ⇒ 不论那台原先是不是 `Up`（新的先登记、旧的后摘时一直是）都醒一次订阅者：
     //   `stream_watch` 据它给新连接重报「在看」名单（新连接 ＝ 没报过）。
     lock(link_book()).tick.send_modify(|t| *t += 1);
-    // 断线时按过、还没用掉的「重新连接」许可作废（见 [`kick`]）。
-    lock(link_book()).kicks.remove(origin);
     // 本机那一台的状态成品看的就是这条通道在不在。
     if origin == LOCAL_ORIGIN {
         crate::machine_state::notify(origin);
@@ -114,8 +112,6 @@ struct LinkBook {
     links: HashMap<String, Link>,
     /// 每改一格 +1（订阅者据它醒）。
     tick: tokio::sync::watch::Sender<u64>,
-    /// 「重新连接」那一下：叫醒那台的连接循环（它正睡在退避里）。
-    kicks: HashMap<String, Arc<tokio::sync::Notify>>,
 }
 
 fn link_book() -> &'static Mutex<LinkBook> {
@@ -124,7 +120,6 @@ fn link_book() -> &'static Mutex<LinkBook> {
         Mutex::new(LinkBook {
             links: HashMap::new(),
             tick: tokio::sync::watch::channel(0).0,
-            kicks: HashMap::new(),
         })
     })
 }
@@ -157,23 +152,14 @@ pub fn link_changes() -> tokio::sync::watch::Receiver<u64> {
     lock(link_book()).tick.subscribe()
 }
 
-/// 那台连接循环睡退避时一起等的那一下（[`kick`] 拨它）。
-pub fn kick_handle(origin: &str) -> Arc<tokio::sync::Notify> {
-    lock(link_book())
-        .kicks
-        .entry(origin.to_string())
-        .or_insert_with(|| Arc::new(tokio::sync::Notify::new()))
-        .clone()
-}
-
-/// 「重新连接」：叫醒那台的连接循环，不等退避睡满。
-/// 连着 ⇒ 不做事；断着而它此刻没在睡 ⇒ 记一下，下一回一睡就醒；连上那一刻这份许可作废（[`register`]），
+/// 「重新连接」：叫醒那台的连接循环，不等退避睡满（循环住 `resident-client`，`stream_source::wake` 拨它）。
+/// 连着 ⇒ 不做事；断着而它此刻正在拨 ⇒ 这一轮没成就不睡；连上那一刻这一下作废，
 /// 不会留到下一次断线时白白跳过一轮退避。主窗口与文件窗口的［重新连接］都只走这一处。
 pub fn kick(origin: &str) {
     if link_of(origin) == Link::Up {
         return;
     }
-    kick_handle(origin).notify_one();
+    crate::stream_source::wake(origin);
 }
 
 // 本机后端在 registry 里的 key（`LOCAL_ORIGIN`）住 `resident-client`（称呼那一句认它），上面整份转用。

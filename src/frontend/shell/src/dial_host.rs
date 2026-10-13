@@ -649,7 +649,7 @@ fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerd
 }
 
 /// **一条长 exec 字节流**（链路 `use:"stream"`：本机常驻后端在池里那条 SSH 连接上开一条 session 通道、exec `cmd`，
-/// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（`remote_resident::attach`：`ccm -- --resident-attach`）。
+/// stdin/stdout 原样对拷）。今天只有远端常驻后端那个小中继走它（重连循环经 `stream_source/run.rs::DeskLink` 开：`ccm -- --resident-attach`）。
 /// 出生带一次性总时限；接成流之后由调用方摘。
 pub(crate) async fn stream(cfg: &RemoteConfig, cmd: &str) -> Result<DialStream, Said> {
     let req = request(cfg, "stream", serde_json::json!({ "command": cmd }))?;

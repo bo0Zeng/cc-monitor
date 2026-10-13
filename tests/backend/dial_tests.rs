@@ -453,8 +453,6 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
         ("shell", Use::Shell),
         // 只握着连接（手机「连上一台」那一形）。
         ("hold", Use::Hold),
-        // 带退出码与 stderr 尾巴的长 exec（手机常驻流）。
-        ("duplex", Use::Duplex),
     ] {
         let raw = format!(
             r#"{{"host":"h","port":1,"user":"u","key_path":null,"host_key_fingerprint":null,"use":"{word}"}}"#
@@ -467,7 +465,7 @@ fn a_v2_request_reads_and_a_v1_request_still_reads() {
     }
     assert_eq!(
         USES.len(),
-        7,
+        6,
         "`uses` 与 `Use` 的变体必须一一对应（两向：上面逐个读过，这里数一遍）"
     );
     // 转发走不占 `MaxSessions` 的那一道。

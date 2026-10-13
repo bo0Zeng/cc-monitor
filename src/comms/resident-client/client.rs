@@ -4,14 +4,14 @@
 //! # 「Hello 之前不许写」做成不可表示（对称于后端的 `wire::HelloFlushed`）
 //!
 //! ```text
-//! remote_resident::attach（远端）/ 本机宿主那条流 → 双工流
+//! attach::handshake（远端，重连循环 feed）/ 本机宿主那条流 → 双工流
 //! └── split_and_park(stream) ─→ (ReadHalf, ParkedWriter<WriteHalf>)
 //! │                            ▲ 身上没有任何写方法
 //! │                            └── .into_client(hello: BackendHello)
 //! └── ReadHalf → 既有 reader task      ▲ 只能由 InboundFrame::Hello 换来
 //! ```
 //!
-//! 收到 Hello 之前，`stream_loop` 手里只有一个 [`ParkedWriter`]，它没有可调的写（比「注释 + 扫文本的机检」强一档）。
+//! 收到 Hello 之前，握手那一步手里只有一个 [`ParkedWriter`]，它没有可调的写（比「注释 + 扫文本的机检」强一档）。
 //! 切分与停放是同一个函数（[`split_and_park`]）⇒ 生产代码里不存在可写的裸 `WriteHalf` 窗口。
 //! 剩下的绕过方式：自己造一个假的 `InboundFrame::Hello` 去换见证（调用点显眼的胡来），或绕开本模块直接拿 `tokio::io::split` ——
 //! 后者由 `stream_source` 的 `write_half_guard::stream_source_never_splits_a_stream_itself` 拦（零命中型判据，尾随注释绕不动）。
@@ -128,7 +128,7 @@ where
 /// 停住一个本来就独立、没有对应「切」动作的写端：本机后端是 `std::process::Child`，它的 `ChildStdin` / `ChildStdout` 是两条本来就独立的管道，
 /// 没有「切了忘了停」这个失效模式可防。仍然产出 [`ParkedWriter`] ⇒ 「hello 之前不许写」照旧由类型保证
 /// （可写的 client 唯一的路是 [`ParkedWriter::into_client`]，它要一个 [`BackendHello`] 见证）。
-/// 远端那条路用不了它：`attach_inbound_client`（`stream_source/run.rs`）要的 [`ParkedWriter`] 只能由 [`split_and_park`] 从可切的双工流产出。
+/// 远端那条路用不了它：握手那一步（`attach::handshake`）要的 [`ParkedWriter`] 只能由 [`split_and_park`] 从可切的双工流产出。
 /// 它没有判据钉「只许本机用」：有人拿它去停一个真的从双工流切出来的写端，就绕过了上面那道门。
 pub fn park_owned_writer<W>(w: W) -> ParkedWriter<W>
 where
@@ -273,7 +273,7 @@ impl InboundClient {
     /// 而且每一环都是本仓自己写下来的事实：
     ///
     /// ```text
-    /// monitor 读侧一停（stream_loop 卡在 flush_lines）
+    /// monitor 读侧一停（收事那一头 `consume_remote` 卡在 flush_lines，重连循环交事那一步跟着等）
     ///   → backend stdout 反压
     ///   → backend 应答通道满（IPC-PROTOCOL 第 4 条：「满时阻塞入方向正是想要的」）
     ///   → backend 停读 stdin

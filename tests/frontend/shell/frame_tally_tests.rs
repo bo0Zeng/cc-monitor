@@ -64,12 +64,13 @@ fn w5vis_the_summary_is_silent_only_when_nothing_was_dropped() {
 
 /// 三条读帧循环各自接了几处：`(文件, FrameTally::new 处数, 认不出的那一支（`unread.take(`）处数, note_bad_utf8 处数)`。
 ///
-/// - `stream_source/`：读任务一本（只数非 UTF-8 —— 它按替换字符读）· 主循环一本（只数认不出的）；
+/// - `stream_source/`：收事那一头每条连接一本（只数认不出的：hello 那一行 ＋ 之后每一帧）；非 UTF-8 行由读流的那一位
+///   （重连循环 `resident_client::feed`，按替换字符读）按 2 的幂次说一句；
 /// - `local_backend_host.rs`：脱离载体那条循环一本，两样都数（非 UTF-8 行在那里整行丢）；
 /// - `local_backend.rs`：stdio 载体那条循环一本，两样都数。
 /// 认不出的那一支一律经 `UnreadNotes::take`（`stream_source/frame.rs`），记账（`note_unparsed`）只住那一处。
 const WIRED: &[(&str, usize, usize, usize)] = &[
-    ("src/frontend/shell/src/stream_source/run.rs", 2, 1, 1),
+    ("src/frontend/shell/src/stream_source/run.rs", 1, 2, 0),
     ("src/frontend/shell/src/stream_source/frame.rs", 0, 0, 0),
     ("src/frontend/shell/src/local_backend_host.rs", 1, 1, 1),
     ("src/frontend/shell/src/local_backend.rs", 1, 1, 1),
