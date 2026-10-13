@@ -19,6 +19,7 @@
  * `outlineBackend` 替身回答 —— 它**不判**，每条清单项由用例逐条写明（异源：不是拿前端算出来的去对前端）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { owned } from "../../../test-support/owned-tab-manager.ts";
 import { readFileSync } from "node:fs";
 
 /**
@@ -115,7 +116,7 @@ beforeEach(() => {
   const barEl = document.createElement("div");
   streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  tm = new TabManager(barEl, streamRootEl);
+  tm = owned(new TabManager(barEl, streamRootEl));
 });
 
 afterEach(() => {

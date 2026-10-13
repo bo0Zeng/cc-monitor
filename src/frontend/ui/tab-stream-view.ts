@@ -48,7 +48,7 @@ import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
 import { isResumeOnly } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
-import { ColdReads } from "./tab-cold-reads";
+import { ColdReads, IdleSlot } from "./tab-cold-reads";
 import { copyText } from "./copy-table";
 
 /** 只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
@@ -1416,6 +1416,8 @@ export class TabStreamView {
   /** 后台 tab 的空闲物化队列（串行；没有 rIC 时 setTimeout 兜底） */
   materializeQueue: string[] = [];
   private materializeScheduled = false;
+  /** 空闲物化挂的那个空闲回调（主人拆掉时撤掉，`dispose`）。 */
+  private readonly idleSlot = new IdleSlot();
 
   /** 后台空闲物化一截建几条（建完一截看一眼空闲期限还剩没剩）。 */
   private static readonly IDLE_CHUNK = 20;
@@ -1456,13 +1458,19 @@ export class TabStreamView {
       }
       this.scheduleIdleMaterialize();
     };
-    if (typeof window.requestIdleCallback === "function") {
-      // 调度：自链 —— 后台标签页空闲物化队列：处理一个再排自己，队列空即停
-      window.requestIdleCallback(run, { timeout: 2000 });
-    } else {
-      // 调度：自链 —— 上面那条队列在没有 rIC 时的兜底，同一条链（接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms）
-      window.setTimeout(() => run(), this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
-    }
+    // 后台标签页空闲物化队列：处理一个再排自己，队列空或主人拆掉即停。没有 rIC 时兜底：接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms。
+    this.idleSlot.schedule(run, this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
+  }
+
+  /**
+   * 主人（`TabManager`）拆掉：冷读排班停、空闲物化撤掉挂着的回调，每个 tab 照关掉那样拆（在途的读回来后不许回写）。
+   * 之后回来的读不再排下一趟、不碰 `window`。
+   */
+  dispose(): void {
+    this.cold.stop();
+    this.idleSlot.stop();
+    this.materializeQueue = [];
+    for (const t of [...this.store.tabs.values()]) this.disposeTab(t);
   }
 
 }

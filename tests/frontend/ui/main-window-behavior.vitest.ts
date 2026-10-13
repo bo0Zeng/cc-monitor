@@ -3,6 +3,7 @@
 // 行为口径：同一时刻同一层只开一块；看得见 ⇔ 在 Esc 弹层栈上，Esc 一次只关最上一层；浮层躲窗口边、贴边内缩 8px；
 // 收起后看不见的动作在右键菜单里有；「说不清」是一个单独的状态，不并进「已结束」。
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
+import { owned } from "../../test-support/owned-tab-manager.ts";
 import { applyRetries, buildApiErrorCard, buildApiRetryCard, mergeRetry } from "../../../src/frontend/ui/cards/api-error";
 import { buildStepLine, durBetween, middleEllipsis, paintWaiting, settleStepLine, stateOf, stepRight } from "../../../src/frontend/ui/cards/step-line";
 import { applyHandedBack, mergeNotice } from "../../../src/frontend/ui/cards/speaker-bar";
@@ -106,7 +107,7 @@ function makeTabs(sids: readonly string[], origin: string = LOCAL_ORIGIN): TabMa
   const bar = document.createElement("div");
   const root = document.createElement("div");
   document.body.append(bar, root);
-  const tm = new TabManager(bar, root);
+  const tm = owned(new TabManager(bar, root));
   for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, `/p/${sid}.jsonl`, origin as never);
   return tm;
 }
