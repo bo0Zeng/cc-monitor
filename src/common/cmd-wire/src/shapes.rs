@@ -3,6 +3,10 @@
 
 /// `(命令, 形状指纹)`，按命令名排。
 pub const SHAPES: &[(&str, &str)] = &[
+    ("aliases-block-install", "18d53556"),
+    ("aliases-block-remove", "18d53556"),
+    ("aliases-block-render", "e2823346"),
+    ("aliases-read", "73b3664a"),
     ("authorized-keys-add", "ce9dcc7d"),
     ("backend-log", "395a1d30"),
     ("bus-broadcast", "71a905b4"),
@@ -44,6 +48,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("launch-render-cli", "7fc9d2a8"),
     ("needs-answer", "b543494a"),
     ("place-verdict", "a292117f"),
+    ("powershell-policy-set", "1c04aa4c"),
     ("pubkey-push", "404f00e5"),
     ("relay-optin", "b70788cb"),
     ("remote-reach", "46657c03"),

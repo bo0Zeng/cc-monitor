@@ -149,6 +149,21 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
             json!({ "dir": "/w", "base": true, "extra": 1 }),
         ),
         ("bus-spawn", json!({ "dir": "/w", "base": "yes" })),
+        (
+            "aliases-read",
+            json!({ "shell": "posix", "rcPath": null, "extra": 1 }),
+        ),
+        ("aliases-read", json!({ "shell": "fish" })),
+        (
+            "aliases-block-render",
+            json!({ "rcPath": "~/.bashrc", "extra": 1 }),
+        ),
+        (
+            "aliases-block-install",
+            json!({ "rcPath": "~/.bashrc", "extra": 1 }),
+        ),
+        ("aliases-block-remove", json!({ "rcPath": 7 })),
+        ("powershell-policy-set", json!({ "host": "cmd" })),
     ] {
         let got = run_any(cmd, args.clone());
         assert_eq!(

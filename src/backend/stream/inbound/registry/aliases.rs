@@ -4,18 +4,10 @@ use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
 
 pub(super) const SPECS: &[CommandSpec] = &[
-    CommandSpec {
-        name: "aliases-read",
-        summary: "启动文件候选（接入那一格）",
-        codes: &["bad_args", "refused"],
-        fields: &[out("home", "这台的家目录"), out("otherRc", "`rcPath` 过了围栏之后的绝对路径"), out("rcCandidates", "启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy, blockLines}`（`blockLines` = 把别名块装进这一份会写几行），`block` = 别名块现状 `{present, conflictingFunctions}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清））"), arg("rcPath", "人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选"), arg("shell", "`posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::aliases::answer_read(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::assets::aliases::AliasesRead>(
+        "启动文件候选（接入那一格）",
+        &LocalFiles,
+    ),
     CommandSpec {
         name: "profiles-read",
         summary: "读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填",
@@ -56,40 +48,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| crate::assets::aliases::page::answer_write(&LocalFiles, &r.args).map(Some).map_err(|(c, m)| (c.to_string(), m))),
     },
-    CommandSpec {
-        name: "aliases-block-render",
-        summary: "别名块预览",
-        codes: &["bad_args", "refused"],
-        fields: &[arg("rcPath", "目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell）"), out("text", "往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::aliases::answer_block_render(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "aliases-block-install",
-        summary: "别名块装进人选的那份启动文件",
-        codes: &["bad_args", "refused"],
-        fields: &[arg("rcPath", "人选的那份启动文件（过围栏；方言由扩展名定，再过方言那一道闸）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::aliases::answer_block_install(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "aliases-block-remove",
-        summary: "别名块卸掉",
-        codes: &["bad_args", "refused"],
-        fields: &[arg("rcPath", "同 `aliases-block-install`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::aliases::answer_block_remove(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::assets::aliases::AliasesBlockRender>("别名块预览", &LocalFiles),
+    crate::stream::inbound::typed::with_files::<crate::assets::aliases::AliasesBlockInstall>(
+        "别名块装进人选的那份启动文件",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_files::<crate::assets::aliases::AliasesBlockRemove>("别名块卸掉", &LocalFiles),
 ];

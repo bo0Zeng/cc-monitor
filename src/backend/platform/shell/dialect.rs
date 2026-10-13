@@ -43,6 +43,15 @@ use std::path::{Path, PathBuf};
 ///
 /// 它取代了 `profile_installer` 里那个只给别名块用的方言枚举（那一族的旧名见本仓 `git log`）：
 /// 别名文件、别名块、source 那一行，三件事问的是同一个问题，不许有两个枚举各答一半。
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ShellKind"
+    )
+)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum Shell {

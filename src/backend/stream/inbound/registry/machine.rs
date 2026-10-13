@@ -99,18 +99,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::asynchronous::<crate::dial::remote_ask::RemoteReach>("本机后端的可达表登记"),
     crate::stream::inbound::typed::blocking::<crate::faces::read_face::BackendLog>("这台后端的 stderr 诊断文件尾部"),
     // 起一次那一代 PowerShell（同步子进程）⇒ 阻塞档。
-    CommandSpec {
-        name: "powershell-policy-set",
-        summary: "那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`",
-        codes: &["bad_args", "refused"],
-        fields: &[arg("host", "哪一代：`powershell`（5.1）· `pwsh`（7）"), out("policy", "设完现问的那一份（形状同 `aliases-read` 候选里的 `policy`）"), out("setError", "设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::aliases::answer_policy_set(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::assets::aliases::PowershellPolicySet>(
+        "那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`",
+    ),
     // `~/.ssh/config` 的解读（`dial/ssh_config.rs`）：读一份文件 ／ 逐个起 `ssh -G`（只读配置、不建连接）并等它退出 ⇒ 阻塞档。
     crate::stream::inbound::typed::blocking::<crate::dial::ssh_config::SshConfigImport>("批量导入预览"),
 ];

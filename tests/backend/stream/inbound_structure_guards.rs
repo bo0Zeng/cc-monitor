@@ -1218,7 +1218,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("profiles-impact", PROFILES, "/impactReply", &[], &[]),
         ("profiles-bases", PROFILES, "/basesReply", &[], &[]),
         ("profiles-write", PROFILES, "/writeReply", &[], &[]),
-        ("aliases-read", ALIASES, "/readReply", &[], &[]),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
         ("files-grep", FILES_GREP, "", &[], &[]),
@@ -1234,11 +1233,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
-        (
-            "aliases-block-install",
-            "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`",
-        ),
-        ("aliases-block-remove", "同 `aliases-block-install`"),
         ("cancel", "撤单的结果是 `cancelled` 帧，应答只回 ok"),
         ("link-close", "只回 ok；链路的收尾走 `link_end` 帧"),
         ("link-credit", "只回 ok（还信用）"),
@@ -1260,7 +1254,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 76;
+    const UNSHAPED_CEILING: usize = 74;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1276,7 +1270,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "accounts-set-default",
         "accounts-verify",
         "agent-home-check",
-        "aliases-block-render",
         "apikey-key-set",
         "assets-catalog",
         "assets-catalog-merge",
@@ -1331,7 +1324,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-read",
         "plan-return",
         "plan-unack",
-        "powershell-policy-set",
         "remote-probe",
         "resident-verdict",
         "skill-install-apply",

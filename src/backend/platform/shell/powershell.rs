@@ -17,6 +17,15 @@ const POLICY_ALLOW_LOCAL: &str =
     "Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force";
 
 /// 这一代 PowerShell 的执行策略现状（`aliases-read` 每份 `$PROFILE` 候选带一份）。
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "PsExecPolicy"
+    )
+)]
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ExecPolicy {

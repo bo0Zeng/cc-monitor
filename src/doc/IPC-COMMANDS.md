@@ -5343,13 +5343,96 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --aliases-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `home` | ← | 这台的家目录 |
-| `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy, blockLines}`（`blockLines` = 把别名块装进这一份会写几行），`block` = 别名块现状 `{present, conflictingFunctions}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）） |
-| `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
-| `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒） |
+入参 `AliasesReadReq` · 回包 `AliasListing`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AliasBlockState = { 
+/**
+ * 这份文件里有没有 cc-monitor 的别名块（**悬空的 BEGIN 也算在**，见 `block_presence`）。
+ */
+present: boolean, 
+/**
+ * 块外自己定义的、与清单里某条同名的函数（只提醒，不替人改）。
+ */
+conflictingFunctions: Array<AliasNameClash>, };
+type AliasListing = { 
+/**
+ * 这台的家目录（界面拿它把路径写成 `~/…` 短形，只做这一步缩写）。
+ */
+home: string, 
+/**
+ * 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
+ */
+rcCandidates: Array<AliasStartupFile>, 
+/**
+ * 人另指的那一份（`read_via` 的 `extra_rc`）过了围栏之后的绝对路径 —— 界面拿它在候选里认出「刚指的是哪一份」。
+ */
+otherRc: string | null, };
+type AliasNameClash = { name: string, 
+/**
+ * 1 起的行号。
+ */
+line: number, 
+/**
+ * 新开的终端里敲这个名字，起的是哪一个（[`Wins`]）。
+ */
+wins: AliasWins, };
+type AliasStartupFile = { 
+/**
+ * 绝对路径。
+ */
+path: string, 
+/**
+ * 这份文件今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
+ */
+sourced: boolean, 
+/**
+ * 这份文件在不在盘上。POSIX 只列在的（恒 true）；PowerShell 的 `$PROFILE` 常常要装的时候才建。
+ */
+exists: boolean, 
+/**
+ * 这份文件里别名块的现状（不在盘上 ⇒ 全空）。
+ */
+block: AliasBlockState, 
+/**
+ * 在盘上、可那台后端读不了它（非 UTF-8 · 太大 · 解到 home 外 · I/O）—— 后端原话；`None` = 读得了或不在。
+ * 从前本机直读时这一形被吞成「没有别名块」。
+ */
+unreadable: string | null, 
+/**
+ * 加载它的那一代 PowerShell 的执行策略（现问；块装在这里它会不会跑）。POSIX 与人另指的那一份 ⇒ `None`。
+ */
+policy: PsExecPolicy | null, 
+/**
+ * 把别名块装进这一份会写几行（与装进去的那一块同源：[`block::render_block`]，方言按这份的扩展名；渲染不出 ⇒ 0）。
+ */
+blockLines: number, };
+type AliasWins = "yours" | "list" | "unclear";
+type AliasesReadReq = { 
+/**
+ * `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）。
+ */
+shell: ShellKind, rcPath?: string | null, };
+type PsExecPolicy = { host: PsHost, 
+/**
+ * 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原因词在 `error`。
+ */
+effective: string | null, 
+/**
+ * 按这一档，这一代会不会加载本地、未签名的 profile；说不清 ⇒ `None`。
+ */
+loads: boolean | null, 
+/**
+ * 组策略（`MachinePolicy` / `UserPolicy`）钉着 ⇒ 改当前用户那一档没用。
+ */
+groupPolicy: boolean, 
+/**
+ * 问不到的原因词（原因词闭集里的一个；PowerShell / 系统的原话只记一行日志，不随应答走）。
+ */
+error: string | null, };
+type PsHost = "powershell" | "pwsh";
+type ShellKind = "posix" | "powershell";
+```
 
 码：`bad_args` · `refused`
 
@@ -5443,10 +5526,12 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-block-render`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rcPath` | → | 目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell） |
-| `text` | ← | 往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`） |
+入参 `BlockReq` · 回包 `BlockText`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BlockReq = { rcPath: string, };
+type BlockText = { text: string, };
+```
 
 码：`bad_args` · `refused`
 
@@ -5456,9 +5541,12 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-block-install`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rcPath` | → | 人选的那份启动文件（过围栏；方言由扩展名定，再过方言那一道闸） |
+入参 `BlockReq` · 回包 `BlockDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BlockDone = Record<symbol, never>;
+type BlockReq = { rcPath: string, };
+```
 
 码：`bad_args` · `refused`
 
@@ -5468,9 +5556,12 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-block-remove`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rcPath` | → | 同 `aliases-block-install` |
+入参 `BlockReq` · 回包 `BlockDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BlockDone = Record<symbol, never>;
+type BlockReq = { rcPath: string, };
+```
 
 码：`bad_args` · `refused`
 
@@ -7948,11 +8039,42 @@ truncated: boolean, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --powershell-policy-set`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `host` | → | 哪一代：`powershell`（5.1）· `pwsh`（7） |
-| `policy` | ← | 设完现问的那一份（形状同 `aliases-read` 候选里的 `policy`） |
-| `setError` | ← | 设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报 |
+入参 `PolicySetReq` · 回包 `PolicySet`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PolicySet = { 
+/**
+ * 形状同 `aliases-read` 候选里的 `policy`。
+ */
+policy: PsExecPolicy, 
+/**
+ * 设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报。
+ */
+setError: string | null, };
+type PolicySetReq = { 
+/**
+ * `powershell`（5.1）· `pwsh`（7）。
+ */
+host: PsHost, };
+type PsExecPolicy = { host: PsHost, 
+/**
+ * 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原因词在 `error`。
+ */
+effective: string | null, 
+/**
+ * 按这一档，这一代会不会加载本地、未签名的 profile；说不清 ⇒ `None`。
+ */
+loads: boolean | null, 
+/**
+ * 组策略（`MachinePolicy` / `UserPolicy`）钉着 ⇒ 改当前用户那一档没用。
+ */
+groupPolicy: boolean, 
+/**
+ * 问不到的原因词（原因词闭集里的一个；PowerShell / 系统的原话只记一行日志，不随应答走）。
+ */
+error: string | null, };
+type PsHost = "powershell" | "pwsh";
+```
 
 码：`bad_args` · `refused`
 
