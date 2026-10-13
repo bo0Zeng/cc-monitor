@@ -1112,26 +1112,31 @@ fn s26_groups(n: u64) -> (usize, usize, usize) {
 fn s36_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
     for seed in 1..=n {
-        let (mut s, f, sigma) = group(seed);
-        for r in s["accounts"].as_array_mut().expect("accounts") {
-            if r.get("delay").is_some() {
-                r["delay"] = json!(0);
-            }
-        }
-        s["force"] = json!(25);
-        s["close"] = json!(10);
-        let (c, k, _) = consistent(
-            &s,
-            &f,
-            &sigma,
-            by_left(),
-            &format!("第 {seed} 组（余量 · 耗尽后启用）"),
-        );
+        let (c, k) = s36_one(seed);
         total += c;
         crowd += k;
     }
     assert!(crowd * 20 <= total.max(20), "挤在一起的有 {crowd} 次");
     (total, crowd)
+}
+
+fn s36_one(seed: u64) -> (usize, usize) {
+    let (mut s, f, sigma) = group(seed);
+    for r in s["accounts"].as_array_mut().expect("accounts") {
+        if r.get("delay").is_some() {
+            r["delay"] = json!(0);
+        }
+    }
+    s["force"] = json!(25);
+    s["close"] = json!(10);
+    let (c, k, _) = consistent(
+        &s,
+        &f,
+        &sigma,
+        by_left(),
+        &format!("第 {seed} 组（余量 · 耗尽后启用）"),
+    );
+    (c, k)
 }
 
 #[test]
@@ -1145,27 +1150,16 @@ fn s26_forced_switches_agree_with_per_request_decisions() {
     s26_groups(5);
 }
 
-/// ★ #36 全是耗尽后启用的号、照余量排：a0 被用着、余量往下掉，a2 超出它 10% 的那一刻换（第 19 组原样）。
+/// ★ #36 耗尽后启用的号照余量排（权重容差 10%）：在用的那个用着用着被超过就换，推演说的那一刻 ＝ 逐发那一刻。500 组里挑出来的两组原样：
+/// · 第 19 组：五个号全是耗尽后启用的，在用的 a0 余量往下掉，a2 超出它 10% 的那一刻换；
+/// · 第 302 组：在用的 a3 余量最高，a5 第二、a0 第三；a5 被别的会话用着、余量往下掉，降到跟 a0 同权以后，
+///   a3 一掉进跟 a0 同权的那一档就换到号列表里排在前面的 a0 —— 要看的不只是在用的号自己的读数。
 #[test]
 fn s36_fallbacks_ranked_by_weight_switch_where_the_simulation_says() {
-    let (c, _) = s36_groups_from(19);
-    assert!(c >= 2, "本条在空转：只比到 {c} 次换号");
-}
-
-fn s36_groups_from(seed: u64) -> (usize, usize) {
-    let (mut s, f, sigma) = group(seed);
-    s["force"] = json!(25);
-    s["close"] = json!(10);
-    for r in s["accounts"].as_array_mut().expect("accounts") {
-        assert_eq!(
-            r["fallback"],
-            json!(true),
-            "第 {seed} 组该全是耗尽后启用的号"
-        );
-        r["delay"] = json!(0);
+    for seed in [19, 302] {
+        let (c, _) = s36_one(seed);
+        assert!(c >= 2, "第 {seed} 组在空转：只比到 {c} 次换号");
     }
-    let (c, k, _) = consistent(&s, &f, &sigma, by_left(), &format!("第 {seed} 组"));
-    (c, k)
 }
 
 /// #22 · #26 · #36 的大样本（各 500 组）。测试档的 Rhai 太慢（100 组二十多分钟），所以不进常规那一趟：
