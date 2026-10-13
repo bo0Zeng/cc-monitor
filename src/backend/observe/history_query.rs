@@ -422,6 +422,23 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
 
 /// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
 pub(crate) fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
+    label_facts_among(crate::agents::REGISTRY, p)
+}
+
+/// [`label_facts_of`] 的可喂夹具那一半（注册表是参数）。
+pub(crate) fn label_facts_among(
+    registry: &[crate::agents::Adapter],
+    p: &Path,
+) -> super::search_rules::LabelFacts {
+    // 有合成历史面的那一家（记录格式不是记录树那一家的）：第一句照它自己的读法（与历史清单那一行同一个摘录）；它没有标题记录。
+    if let Some(excerpt) = crate::agents::synth_excerpt_among(registry, p) {
+        return super::search_rules::LabelFacts {
+            custom: None,
+            title: None,
+            first: excerpt(p),
+            project_dir: crate::agents::project_dir_among(registry, p),
+        };
+    }
     let row = analyze_session_cached(p);
     super::search_rules::LabelFacts {
         custom: None,

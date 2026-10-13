@@ -204,6 +204,8 @@ pub(crate) fn head_five_hour(state: &str) -> Option<Words> {
 const WARM_MARGIN_S: i64 = 60;
 /// 登录拿不到 ⇒ 过这么久再看。
 const WARM_LOGIN_RETRY_S: i64 = 60 * 60;
+/// 额度账读不懂 ⇒ 过这么久再看。
+const WARM_UNREADABLE_RETRY_S: i64 = 15 * 60;
 
 /// 开窗那一判的一个号：`send`（发一句让 5h 窗口开始计时）· `wait`（睡到 `at`）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -313,6 +315,18 @@ pub(crate) fn warm_of(a: &Value, seen: bool, now: i64) -> Warm {
         return send(copy_text("acct.warm.expired", &[]));
     }
     send(copy_text("acct.warm.noWindow", &[]))
+}
+
+/// ★ 额度账读不懂时每个号那一判：一个都不发（账上说不出它此刻什么样，「没见过就发」那一条不成立），过一阵再看；
+/// 那一句照实说哪一份读不懂、为什么（`why` ＝ 顶上那一句，[`head_text`]）。
+pub(crate) fn warm_unreadable(why: &str, now: i64) -> Warm {
+    Warm {
+        act: WarmAct::Wait,
+        at: Some(now + WARM_UNREADABLE_RETRY_S),
+        at_text: None,
+        at_rel_text: None,
+        text: Words(copy_text("acct.warm.unreadable", &[("why", why)])),
+    }
 }
 
 #[cfg(test)]

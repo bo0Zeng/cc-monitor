@@ -235,6 +235,16 @@ pub(crate) fn reply_of(
             kind,
         })
         .collect();
+    // 账读不懂 ⇒ 每个号都不发（判在 `warm_unreadable`），那一句带上顶上那一句（哪一份 · 为什么）。
+    let unreadable = (base.state == "unreadable")
+        .then(|| text.as_ref().map(|w| w.0.clone()))
+        .flatten();
+    let warm_over = |mut w: quota_rows::Warm| {
+        if let Some(why) = &unreadable {
+            w = quota_rows::warm_unreadable(why, clock.now).stamp(clock);
+        }
+        w
+    };
     QuotaRead {
         candidates,
         text,
@@ -244,8 +254,22 @@ pub(crate) fn reply_of(
         detail: base.detail,
         path: base.path,
         now: base.now,
-        accounts: seen.into_iter().map(|s| account_of(s, clock)).collect(),
-        unseen: unseen.into_iter().map(|u| unseen_of(u, clock)).collect(),
+        accounts: seen
+            .into_iter()
+            .map(|s| account_of(s, clock))
+            .map(|mut a| {
+                a.warm = warm_over(a.warm);
+                a
+            })
+            .collect(),
+        unseen: unseen
+            .into_iter()
+            .map(|u| unseen_of(u, clock))
+            .map(|mut u| {
+                u.warm = warm_over(u.warm);
+                u
+            })
+            .collect(),
         usable_now: base.usable_now,
         earliest_return: base.earliest.map(|(account, at)| EarliestReturn {
             account,
