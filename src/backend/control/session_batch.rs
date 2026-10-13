@@ -438,6 +438,12 @@ pub(crate) struct Item {
     pub(crate) fresh: bool,
     /// 分叉出来的那一条的源会话 sid：新名从源会话此刻所在终端的名字铸（同 `terminal-name-mint` 的 `forkOf`）。
     pub(crate) fork_of: Option<String>,
+    /// 起的时候就交的第一句（`session-say` 终端没了、恢复再送那一项；批量起 · 换号重启恒空）。
+    pub(crate) say: Option<String>,
+    /// 这一趟用的模型（恢复再送那一项：会话记录里最后那一个）；缺 ＝ 跟随偏好表。
+    pub(crate) model: Option<String>,
+    /// 起在哪一个权限档（恢复再送那一项：会话记录里最后那一档）；缺 ＝ 跟随那一家自己的默认。
+    pub(crate) permission_mode: Option<String>,
 }
 
 /// 整批共用的几样：哪一家 · 启动器 · 这台的模型偏好表（后两样都读这台的偏好 `prefs.json`，界面不交）。
@@ -446,6 +452,8 @@ pub(crate) struct Batch {
     launcher: String,
     default_launcher: String,
     pub(crate) models: std::collections::BTreeMap<String, String>,
+    /// 那一家起会话的说法（权限档旗标 · 收不收第一句）；注册表里没有这一家 ⇒ `None`。
+    face: Option<crate::agents::LaunchFace>,
 }
 
 /// `sessions-start` 一项的入参。
@@ -492,22 +500,55 @@ fn item_of(v: &StartItemReq) -> Result<Item, CmdErr> {
         account: v.account.clone().unwrap_or(AccountAsk::Follow),
         fresh,
         fork_of,
+        say: None,
+        model: None,
+        permission_mode: None,
     })
 }
 
 impl Batch {
     /// 整批一份的那几样：那一家的默认启动器问适配层，启动命令与模型表照这台的偏好（[`crate::control::machine_prefs`]）。
     pub(crate) fn of(agent: &str, prefs: &crate::control::machine_prefs::Prefs) -> Batch {
-        let default_launcher = crate::agents::launch_face_among(crate::agents::REGISTRY, agent)
-            .map_or("", |f| f.default_launcher)
-            .to_string();
+        let face = crate::agents::launch_face_among(crate::agents::REGISTRY, agent);
+        let default_launcher = face.map_or("", |f| f.default_launcher).to_string();
         Batch {
             agent: agent.to_string(),
             launcher: prefs.launcher_for(agent, &default_launcher),
             default_launcher,
             models: prefs.models.clone(),
+            face,
         }
     }
+
+    /// 那一家起的时候收不收第一句。
+    fn takes_first_say(&self) -> bool {
+        self.face.is_some_and(|f| f.first_prompt_arg)
+    }
+}
+
+/// 这一项交给那一家的那一半末尾（两条起法同一份，照 `session_new` 那一形）：权限档旗标 ＋ `--` ＋ 那一句。
+/// 权限档只认那一家声明可选的那几档（越过批准的不在里面）⇒ 别的不给、跟随；那一家不收第一句 ⇒ 不带（[`resume_saying`] 先拦）。
+fn tail_args(it: &Item, b: &Batch) -> Vec<String> {
+    let mut out = Vec::new();
+    if let (Some(m), Some(p)) = (
+        it.permission_mode.as_deref(),
+        b.face.and_then(|f| f.permission),
+    ) {
+        if p.modes.iter().any(|c| c.value == m) {
+            out.extend([p.flag.to_string(), m.to_string()]);
+        }
+    }
+    if let Some(text) = it.say.as_ref().filter(|_| b.takes_first_say()) {
+        out.extend([super::ccm::argv::flag::END.to_string(), text.clone()]);
+    }
+    out
+}
+
+/// 这一项的模型：过全仓那一条模型名判；不过 ⇒ 缺（跟随偏好表）。
+fn model_of(it: &Item) -> Option<String> {
+    it.model
+        .clone()
+        .filter(|m| shell_quote_core::model_name_ok(m))
 }
 
 /// 界面那一行的上线入参（`launch-render-cli`），由这一个起会话项拼：`tmux` = 要新建的会话名（`None` = 直路）。
@@ -528,11 +569,11 @@ fn wire_req(it: &Item, b: &Batch, tmux: Option<&str>, cwd: bool) -> wire::CliRen
         cwd: Some(it.cwd.clone()).filter(|c| cwd && !c.is_empty()),
         account: it.account.clone(),
         ccm_sid: tmux.map(|_| it.sid.clone()),
-        model: None,
+        model: model_of(it),
         models: b.models.clone(),
         launcher: b.launcher.clone(),
         default_launcher: b.default_launcher.clone(),
-        preset_args: Vec::new(),
+        preset_args: tail_args(it, b),
     }
 }
 
@@ -548,8 +589,8 @@ fn local_req(it: &Item, b: &Batch, tmux: Option<String>) -> local::LocalLaunchRe
         account: Some(it.account.clone()),
         tmux_name: tmux,
         default_launcher: b.default_launcher.clone(),
-        preset_args: Vec::new(),
-        model: None,
+        preset_args: tail_args(it, b),
+        model: model_of(it),
     }
 }
 
@@ -755,6 +796,24 @@ fn start_in_tmux(
             Err(e) => Answer::failed(&it.sid, e),
         },
     }
+}
+
+/// 原因码：那一家起的时候不收第一句（恢复再送那一项起不了）。
+pub(crate) const NO_FIRST_PROMPT: &str = "no_first_prompt";
+
+/// **恢复再送那一项**（`session-say` 送的时候终端已经没了）：同批量起的 tmux 那一形走一项（号照 `it.account`，
+/// 问记录 · 已有活进程在写 ⇒ 不起 · 空 tmux 就地键入 · 都不是就铸名起、`--detach`），那一句随行交给那一家。
+/// 起法用 tmux 那一形的远端那一行（同 `session-new` 的 tmux 那一支）。那一家起的时候不收第一句 ⇒ 不起。
+pub(crate) fn resume_saying(it: &Item, agent: &str, deps: &Deps) -> Answer {
+    let batch = Batch::of(agent, deps.prefs);
+    if it.say.is_some() && !batch.takes_first_say() {
+        return Answer::skipped(&it.sid, NO_FIRST_PROMPT, agent.to_string());
+    }
+    let rows = match listed(deps) {
+        Ok(rows) => rows,
+        Err(e) => return Answer::failed(&it.sid, e),
+    };
+    start_one(it, &batch, true, Some(&rows), false, deps)
 }
 
 /// 铸不出新名：落在已有的名字上 ⇒ `session` 带那个名字（同 ccm 说名字被占那一形）。

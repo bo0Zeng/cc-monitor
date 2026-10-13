@@ -11,6 +11,7 @@ fn sent(result: SentResult) -> Sent {
             .then_some(crate::control::terminals::Refused::NotYours),
         said: (result == SentResult::Refused).then(|| "x".to_string()),
         screen: None,
+        resumed: false,
     }
 }
 

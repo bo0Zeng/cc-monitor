@@ -305,6 +305,10 @@ pub(crate) enum Refused {
     ScreenChanged,
     /// 那台说这条会话在等人（批准 · 回答）：此刻打的字会落进那个框里（`session-say` 才回它）。
     Waiting,
+    /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个（`session-say` 才回它）。
+    Elsewhere,
+    /// 终端已经没了，按记下的号恢复这条会话没成（`session-say` 才回它；原话记日志）。
+    NotResumed,
 }
 
 /// 原因 ⇒ 给人看的那一句。
@@ -317,6 +321,8 @@ pub(crate) fn no_said(why: Refused) -> String {
         Refused::Ambiguous => copy_text("beTerminal.no.ambiguous", &[]),
         Refused::ScreenChanged => copy_text("beTerminal.no.screenChanged", &[]),
         Refused::Waiting => copy_text("beTerminal.no.waiting", &[]),
+        Refused::Elsewhere => copy_text("beTerminal.no.elsewhere", &[]),
+        Refused::NotResumed => copy_text("beTerminal.no.notResumed", &[]),
     }
 }
 
@@ -894,6 +900,7 @@ pub(crate) fn input_reply(result: SentResult, why: Option<Refused>, screen: Opti
         why,
         said: why.map(no_said),
         screen: screen.map(str::to_string),
+        resumed: false,
     }
 }
 

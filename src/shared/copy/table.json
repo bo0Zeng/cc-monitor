@@ -13001,6 +13001,18 @@
       "zh": "会话在等批准或回答",
       "args": []
     },
+    "beTerminal.no.elsewhere": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "会话在别的终端里开着",
+      "args": []
+    },
+    "beTerminal.no.notResumed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端已关，恢复会话没成",
+      "args": []
+    },
     "beTerminal.refuse.empty": {
       "kind": "error",
       "role": "原因格",

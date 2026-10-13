@@ -4,4 +4,4 @@
  * 送不了 / 结束不了的原因（`terminal-input` 被拒的 `why` · 名单 `can.*` 里 `{no, said}` 的 `no`）。
  * 线上照码那一形（小写下划线，与同族命令级码同一写法；手机端也吃这两格）。
  */
-export type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+export type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
