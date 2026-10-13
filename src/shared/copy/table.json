@@ -21880,6 +21880,12 @@
       "zh": "读取失败 · 用量记录 · 原因不明",
       "args": []
     },
+    "acct.warm.unreadable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{why} · 不发",
+      "args": ["why"]
+    },
     "acct.warm.unseen": {
       "kind": "body",
       "role": "片段",
