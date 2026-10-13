@@ -201,16 +201,18 @@ pub(crate) const LIB_SOURCE: &str = include_str!("../../../../shared/rotation/li
 /// 挂好积木库 `lib` 的那一个沙箱（进程里一份）。
 pub(crate) fn engine() -> Result<&'static rhai::Engine, String> {
     static E: std::sync::OnceLock<Result<rhai::Engine, String>> = std::sync::OnceLock::new();
-    E.get_or_init(|| {
-        let mut e = crate::accounts::quota::strategy::fresh_engine();
-        let ast = e.compile(LIB_SOURCE).map_err(|x| x.to_string())?;
-        let m = rhai::Module::eval_ast_as_new(rhai::Scope::new(), &ast, &e)
-            .map_err(|x| x.to_string())?;
-        e.register_static_module("lib", m.into());
-        Ok(e)
-    })
-    .as_ref()
-    .map_err(Clone::clone)
+    E.get_or_init(|| with_lib(crate::accounts::quota::strategy::fresh_engine()))
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
+/// 在沙箱 `e` 上挂积木库 `lib`（[`engine`] 那一份就是 [`fresh_engine`](crate::accounts::quota::strategy::fresh_engine) 挂上它）。
+pub(crate) fn with_lib(mut e: rhai::Engine) -> Result<rhai::Engine, String> {
+    let ast = e.compile(LIB_SOURCE).map_err(|x| x.to_string())?;
+    let m =
+        rhai::Module::eval_ast_as_new(rhai::Scope::new(), &ast, &e).map_err(|x| x.to_string())?;
+    e.register_static_module("lib", m.into());
+    Ok(e)
 }
 
 fn ctx_dynamic(c: &Ctx<'_>) -> Dynamic {
@@ -360,12 +362,19 @@ fn shape(v: Dynamic) -> Result<Verdict, Fail> {
     Ok(out)
 }
 
-impl Strategy for File {
-    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
-        let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
+impl File {
+    /// 在给定的沙箱里判（[`Strategy::decide`] 给的是进程里那一份 [`engine`]）。
+    pub(crate) fn decide_in(&self, e: &rhai::Engine, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
         let (r, _) =
             crate::accounts::quota::strategy::call_in(e, &self.ast, "decide", (ctx_dynamic(ctx),));
         shape(r.map_err(|x| Fail::of_eval(&x))?)
+    }
+}
+
+impl Strategy for File {
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
+        let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
+        self.decide_in(e, ctx)
     }
 
     fn time_varying(&self) -> bool {

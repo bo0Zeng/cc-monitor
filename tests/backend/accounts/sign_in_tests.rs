@@ -45,7 +45,17 @@ impl Rig {
         } else {
             format!("#!/bin/sh\n{script}\n")
         };
-        std::fs::write(&p, body).unwrap();
+        // 本进程只写一份旁稿，`bin/claude` 由 `cp` 那个子进程写：本进程里从没有过 `bin/claude` 的写 fd。
+        // 在本进程里直接写 ⇒ 并行测试里别的线程正在 fork 时，子进程在 fork 与 exec 之间还攥着那份写 fd，
+        // 这时 exec 它 ＝ `ETXTBSY`（`Text file busy (os error 26)`，机器忙时撞得到）。登录作业照 `PATH` 找 `claude`，不能改经 `/bin/sh` 起。
+        let draft = root.join("claude.draft");
+        std::fs::write(&draft, body).unwrap();
+        let cp = std::process::Command::new("cp")
+            .arg(&draft)
+            .arg(&p)
+            .status()
+            .unwrap();
+        assert!(cp.success(), "cp 没写成：{cp:?}");
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
         Rig { root }
     }
@@ -82,6 +92,13 @@ impl Rig {
     }
 }
 
+/// 发起作业的连接号：跟生产同一个发号器取（[`crate::control::asks::Desk`]，读循环开一条连接就从它拿一个号）。
+/// 不写死：同一进程里读循环那几条判据也从 1 起发号，它们的连接一收场就收掉那个号上的登录作业（`Desk` 的 `Drop`）——
+/// 写死 1…6 时，机器一忙、两边的时段叠上，这边的作业会被那边收走（`它没自己退: Disconnected` · `本该被拒：Err(NoJob)`）。
+fn conn() -> u64 {
+    crate::control::asks::Desk::new().conn()
+}
+
 type Log = Arc<Mutex<Vec<(String, SignInEnd)>>>;
 
 fn on_end(log: &Log) -> OnEnd {
@@ -102,7 +119,7 @@ fn read(p: &Path) -> String {
 fn a_pasted_code_signs_the_account_in_and_the_core_writes_nothing_itself() {
     let rig = Rig::new("ok", CLAUDE_LIKE);
     let log: Log = Default::default();
-    let s = rig.start("acct-ok", 1, &log).expect("起得来");
+    let s = rig.start("acct-ok", conn(), &log).expect("起得来");
     assert_eq!(s.url, FAKE_URL);
     assert_eq!(finish(&s.job, " good#st8\n"), Ok("acct-ok".to_string()));
     let acct = rig.root.join("acct");
@@ -130,7 +147,7 @@ fn a_pasted_code_signs_the_account_in_and_the_core_writes_nothing_itself() {
 fn a_bad_paste_keeps_the_job() {
     let rig = Rig::new("bad", CLAUDE_LIKE);
     let log: Log = Default::default();
-    let s = rig.start("acct-bad", 2, &log).unwrap();
+    let s = rig.start("acct-bad", conn(), &log).unwrap();
     assert_eq!(finish(&s.job, "good#other"), Err(FinishFail::BadPaste));
     assert_eq!(finish(&s.job, "no-hash"), Err(FinishFail::BadPaste));
     assert_eq!(finish(&s.job, "wrong#st8"), Err(FinishFail::BadPaste));
@@ -142,7 +159,7 @@ fn a_bad_paste_keeps_the_job() {
 fn a_refused_exchange_says_why_and_ends_the_job() {
     let rig = Rig::new("refused", CLAUDE_LIKE);
     let log: Log = Default::default();
-    let s = rig.start("acct-refused", 3, &log).unwrap();
+    let s = rig.start("acct-refused", conn(), &log).unwrap();
     match finish(&s.job, "bad#st8") {
         Err(FinishFail::Refused(said)) => {
             assert!(
@@ -167,18 +184,19 @@ fn a_refused_exchange_says_why_and_ends_the_job() {
 fn cancel_replace_and_a_dropped_connection_end_the_job_quietly() {
     let rig = Rig::new("end", CLAUDE_LIKE);
     let log: Log = Default::default();
-    let a = rig.start("acct-end", 4, &log).unwrap();
+    let k = conn();
+    let a = rig.start("acct-end", k, &log).unwrap();
     assert!(cancel(&a.job));
     assert!(!cancel(&a.job));
     assert_eq!(finish(&a.job, "good#st8"), Err(FinishFail::NoJob));
-    let b = rig.start("acct-end", 4, &log).unwrap();
-    let c = rig.start("acct-end", 4, &log).unwrap();
+    let b = rig.start("acct-end", k, &log).unwrap();
+    let c = rig.start("acct-end", k, &log).unwrap();
     assert_eq!(
         finish(&b.job, "good#st8"),
         Err(FinishFail::NoJob),
         "被替掉了"
     );
-    drop(Desk::of(4));
+    drop(Desk::of(k));
     assert_eq!(
         finish(&c.job, "good#st8"),
         Err(FinishFail::NoJob),
@@ -192,11 +210,15 @@ fn cancel_replace_and_a_dropped_connection_end_the_job_quietly() {
 fn a_login_that_completes_by_itself_is_reported() {
     let rig = Rig::new(
         "auto",
-        &format!("echo \"visit: {FAKE_URL}\"\nsleep 0.2\necho \"Login successful.\""),
+        // 等判据放行（`start` 已经回了）才自己退：不等的话机器一忙，`start` 那条线程还没醒、它已经退了、作业已经收了，
+        //   `start` 就回「没给出链接就退了」——比的是快慢。工作目录是这份临时目录；目录没了（判据中途红了）也退。
+        &format!(
+            "echo \"visit: {FAKE_URL}\"\nwhile [ ! -e go ] && [ -d bin ]; do sleep 0.02; done\necho \"Login successful.\""
+        ),
     );
     let (tx, rx) = std::sync::mpsc::channel::<(String, SignInEnd)>();
     let tx = Mutex::new(tx);
-    let (mut a, dir) = rig.ask("acct-auto", 5);
+    let (mut a, dir) = rig.ask("acct-auto", conn());
     a.dir = Some(Box::leak(dir.into_boxed_str()));
     let s = start(
         &a,
@@ -205,6 +227,7 @@ fn a_login_that_completes_by_itself_is_reported() {
         }),
     )
     .unwrap();
+    std::fs::write(rig.root.join("go"), "").unwrap();
     let job = s.job.clone();
     // 等那一件事（它自己退了 ⇒ 回调来一次），兜底是那个统一的上限。
     let got = rx
@@ -223,7 +246,7 @@ fn a_login_that_completes_by_itself_is_reported() {
 fn no_link_before_it_exits_is_a_failed_start() {
     let rig = Rig::new("nolink", "echo 'boom: no network' >&2\nexit 1");
     let log: Log = Default::default();
-    let e = rig.start("acct-nolink", 6, &log).expect_err("起不成");
+    let e = rig.start("acct-nolink", conn(), &log).expect_err("起不成");
     assert!(
         e.raw.as_deref().unwrap_or("").contains("boom: no network"),
         "{e:?}"
