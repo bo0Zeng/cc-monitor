@@ -394,15 +394,18 @@ fn scan_commands_at(root: &Path, project: bool, out: &mut crate::agents::Session
                     needs_args,
                 });
             }
-            Err(e) => out.problems.push(
-                e.wrap(|why| {
-                    copy_text(
-                        "beClaudeAssets.scan.listFailed",
-                        &[("path", &path.display().to_string()), ("why", why)],
-                    )
-                })
-                .into_note(),
-            ),
+            Err(e) => {
+                tracing::warn!("一条会话能用的命令：跳过读不出的 {}", path.display());
+                out.problems.push(
+                    e.wrap(|why| {
+                        copy_text(
+                            "beClaudeAssets.scan.listFailed",
+                            &[("path", &path.display().to_string()), ("why", why)],
+                        )
+                    })
+                    .into_note(),
+                );
+            }
         }
     }
     found.sort_by(|a, b| a.name.cmp(&b.name));
