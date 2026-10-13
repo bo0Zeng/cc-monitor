@@ -10,7 +10,7 @@ use crate::platform::fs::Ro;
 use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -412,7 +412,7 @@ impl Sess {
     }
 }
 
-/// 一条流连接的运行簿（watcher 与流归位共用一本）。
+/// 这台的运行簿（整台一本：watcher 写、各条流连接的流归位读，read8a 起）。
 #[derive(Default)]
 pub struct RunBook {
     inner: Mutex<HashMap<String, Sess>>,
@@ -420,7 +420,7 @@ pub struct RunBook {
     wake: tokio::sync::Notify,
 }
 
-/// 这个进程里活着的运行簿（每条流连接一本，见 [`RunBook::shared`]）。只读查询（`session-interrupts`）在这里看全部。
+/// 这个进程里活着的运行簿（watcher 那一本 ＋ 夹具造的，见 [`RunBook::shared`]）。只读查询（`session-interrupts`）在这里看全部。
 static LIVE_BOOKS: Mutex<Vec<std::sync::Weak<RunBook>>> = Mutex::new(Vec::new());
 
 /// `sid` 此刻在跑的子运行（全部活着的运行簿合起来，按运行号去重）：显示名（标签 ＞ 种类 ＞ 运行号）。
@@ -722,6 +722,11 @@ impl RunTrack {
         changed
     }
 
+    /// 这一行主记录过不过子运行的预筛（预读落的骨架只留过了预筛的那几行，读回来照 [`Self::prime`] 补进簿里）。
+    pub(crate) fn hint(&self, text: &str) -> bool {
+        self.has_children() && self.faces.hint(text)
+    }
+
     /// 一个会话的主记录在这里（宣告 / 每次读到它时都说；只有头一次真去找）：把它此刻已有的子运行记录收进来、从头读一遍。
     /// 之后新长出来的子运行记录靠它自己的文件事件进来（[`Self::on_path`]）。回：运行表变没变。
     pub(crate) fn adopt(&mut self, sid: &str, parent: &Path) -> bool {
@@ -807,23 +812,20 @@ impl RunTrack {
         if f.seek(SeekFrom::Start(cur.consumed)).is_err() {
             return changed;
         }
-        let mut buf = Vec::new();
-        if f.read_to_end(&mut buf).is_err() {
-            return changed;
-        }
-        let Some(last_nl) = buf.iter().rposition(|&b| b == b'\n') else {
-            return changed;
-        };
-        cur.consumed += last_nl as u64 + 1;
+        // 按块读到尾（第一次认领时是整份；不一次读进内存）：每块整行逐行记进簿里、游标跟着块走；末尾没写完的那截等下次。
         let sid = cur.sid.clone();
-        for line in buf[..last_nl].split(|&b| b == b'\n') {
-            let text = String::from_utf8_lossy(line);
-            let t = text.trim_start_matches('\u{feff}').trim();
-            if t.is_empty() {
-                continue;
-            }
-            if let Ok(v) = serde_json::from_str::<Value>(t) {
-                changed |= self.book.record(&self.faces, &sid, &v, Some(written));
+        let mut blocks = crate::observe::fs::Blocks::new(f, crate::observe::fs::READ_BLOCK);
+        while let Ok(Some(whole)) = blocks.next() {
+            cur.consumed += whole.len() as u64;
+            for line in whole[..whole.len() - 1].split(|&b| b == b'\n') {
+                let text = String::from_utf8_lossy(line);
+                let t = text.trim_start_matches('\u{feff}').trim();
+                if t.is_empty() {
+                    continue;
+                }
+                if let Ok(v) = serde_json::from_str::<Value>(t) {
+                    changed |= self.book.record(&self.faces, &sid, &v, Some(written));
+                }
             }
         }
         changed

@@ -240,6 +240,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .expect("填了第三家的 hello 必须序列化得出来");
     assert_eq!(
@@ -379,8 +380,13 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
 
     // ② 搜索：**静默**（零命中）。
     let mut out: Vec<u8> = Vec::new();
-    crate::observe::search_query::search_into(&root, "hi", &[], false, &mut out)
-        .expect("搜索对一个布局不同的 agent 报错了");
+    crate::observe::search_query::search_into(
+        &root,
+        "hi",
+        &crate::observe::search_query::test_support::opts_from_words(&[]),
+        &mut crate::observe::search_query::test_support::lines_into(&mut out),
+    )
+    .expect("搜索对一个布局不同的 agent 报错了");
     assert!(
         out.is_empty(),
         "全文搜索的反应变了 —— 本格记的是「今天它零命中」这个事实，变了就该同轮改本格头注那张表"
@@ -398,7 +404,9 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
 
     // ④ resume：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
-    let (code, said) = crate::control::resolve_query::resolve_json_for_inbound(&spec)
+    let spec: crate::control::resolve_query::ResumeSpec =
+        crate::stream::inbound::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
+    let (code, said) = crate::control::resolve_query::resolve(crate::agents::REGISTRY, &spec)
         .expect_err("`resolve` 对注册表里没有的 agentKind 落了默认那一家");
     assert_eq!(code, "bad_args");
     assert_eq!(
@@ -545,7 +553,12 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             "{{\"agentKind\":\"{}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}",
             a.kind
         );
-        let rp = crate::control::resolve_query::resolve_json_among(&reg, &spec).expect("解析得动");
+        let spec: crate::control::resolve_query::ResumeSpec =
+            crate::stream::inbound::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
+        let rp = serde_json::to_value(
+            crate::control::resolve_query::resolve(&reg, &spec).expect("解析得动"),
+        )
+        .unwrap();
         assert_eq!(
             rp["command"],
             serde_json::json!((face.resume_command)(

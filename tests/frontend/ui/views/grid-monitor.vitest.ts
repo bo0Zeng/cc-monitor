@@ -177,7 +177,7 @@ describe("F91 GridMonitorView", () => {
   it("后台任务运行中：徽标写命令那一格（核心写的），悬停给整句、时长按此刻走；不是这一态不出", () => {
     document.body.replaceChildren();
     const from = Date.now() - 12 * 60_000 - 5_000;
-    const bw = { text: "x", clock: { text: "L · {dur}", from }, what: "make test-all", count: 1, tone: "busy" };
+    const bw = { text: "x", clock: { text: "L · {dur}", from }, what: "make test-all", count: 1, tone: "busy" as const };
     const source = mkSource([
       snap({ sessionId: "bw", origin: "pi", activity: "background_work", activityTone: "busy", backgroundWork: bw }),
       snap({ sessionId: "id", origin: "pi", activity: "idle", backgroundWork: bw }),

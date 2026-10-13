@@ -94,6 +94,7 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
             let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());
             json!({
                 "id": id,
+                "what": own_what(id),
                 "path": format!("~/{rel}"),
                 "dir": dir,
                 "class": if truth { "truth" } else { "cache" },
@@ -102,6 +103,40 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
             })
         })
         .collect()
+}
+
+/// 自家那一样是什么（界面照抄这一句，不按 id 取字）。`id` 闭集同 `relay_route_core::OWN_HOME_ENTRIES`；认不出 ⇒ 「未识别」那一句。
+fn own_what(id: &str) -> String {
+    use copy_core::copy_text;
+    match id {
+        "bin" => copy_text("rsDataPaths.backend.bin", &[]),
+        "staging" => copy_text("rsDataPaths.backend.staging", &[]),
+        "relayKey" => copy_text("rsDataPaths.backend.relayKey", &[]),
+        "listenDir" => copy_text("rsDataPaths.backend.listenDir", &[]),
+        "policy" => copy_text("rsDataPaths.backend.policy", &[]),
+        "profiles" => copy_text("rsDataPaths.backend.profiles", &[]),
+        "profilesMigrated" => copy_text("rsDataPaths.backend.profilesMigrated", &[]),
+        "profilesWritten" => copy_text("rsDataPaths.backend.profilesWritten", &[]),
+        "aliasesPosix" => copy_text("rsDataPaths.backend.aliasesPosix", &[]),
+        "aliasesPs" => copy_text("rsDataPaths.backend.aliasesPs", &[]),
+        "skillLedger" => copy_text("rsDataPaths.backend.skillLedger", &[]),
+        "chores" => copy_text("rsDataPaths.backend.chores", &[]),
+        "planReview" => copy_text("rsDataPaths.backend.planReview", &[]),
+        "lastSeen" => copy_text("rsDataPaths.backend.lastSeen", &[]),
+        "assetCatalog" => copy_text("rsDataPaths.backend.assetCatalog", &[]),
+        "quota" => copy_text("rsDataPaths.backend.quota", &[]),
+        "rotation" => copy_text("rsDataPaths.backend.rotation", &[]),
+        "lineage" => copy_text("rsDataPaths.backend.lineage", &[]),
+        "launchAccounts" => copy_text("rsDataPaths.backend.launchAccounts", &[]),
+        "launchNotes" => copy_text("rsDataPaths.backend.launchNotes", &[]),
+        "answerPlugin" => copy_text("rsDataPaths.backend.answerPlugin", &[]),
+        "knownHosts" => copy_text("rsDataPaths.backend.knownHosts", &[]),
+        "accounts" => copy_text("rsDataPaths.backend.accounts", &[]),
+        "accountsMcp" => copy_text("rsDataPaths.backend.accountsMcp", &[]),
+        "extBackups" => copy_text("rsDataPaths.backend.extBackups", &[]),
+        "skeleton" => copy_text("rsDataPaths.backend.skeleton", &[]),
+        _ => copy_text("dataPage.own.unknownItem", &[("id", id)]),
+    }
 }
 
 /// 整份足迹 ＋「待办」各件 ＋ 有没有 tmux ＋ 自己家里那几样 ⇒ 这一页的成品。

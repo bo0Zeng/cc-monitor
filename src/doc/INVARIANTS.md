@@ -50,13 +50,13 @@
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | 主题 · 字体 · `claudeDir` · 快捷键 · 机器表 · 诊断开关 —— 全是用户手填 |
-| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::answer_annotate` | 按 sid 的星标 · 改名 · 隐藏 |
+| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` | 按 sid 的星标 · 改名 · 隐藏 |
 | `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件窗口进程，旁件 `.lock` 上独占锁读改写） | 每台机器一份收藏目录 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
-| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 主机钥匙 · 上次写出的配置指纹 |
+| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `known_hosts` `profiles-written.json` `cache/skeleton/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 主机钥匙 · 上次写出的配置指纹 · 大记录的骨架（照记录重扫） |
 | `relay-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号。名字取契约常量（`relay_route_core` · `creds_core::store`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
@@ -468,7 +468,7 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 | 新建层 | `control/fork_write.rs` | 必须含 `.create_new(true)`（带前导点：只许由调用满足，不许被注释喂饱）；不得有删除 / 改名 / 复制 / 链接 / 截断 / 追加 / 覆盖写 / 建目录 / `set_len` / `.create(true)` |
 | 文件管理写面 | `control/files_write.rs` · `control/files_commit.rs` | 改动动词是闭集；每一处改动之前先过路径解析（`files_write::resolve_in_root`：逐段只许普通段、拼出来仍在根下、父目录解链接后仍在根下；跟链接的动词用 `resolve_existing_in_root`），针 `readonly_guard::RESOLVE_CALLS`；这一面不问数据是谁的（文件管理器可以改会话文件） |
 | 后端自有状态文件 | 按文件登记（第四层表，相等断言） | 每份只写它自己那一个文件 |
-| 远端（SFTP） | `dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/` 写，每处改动先过 `dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload` |
+| 远端（SFTP） | `ssh-dial/sftp.rs` | 只往远端 `~/.cc-monitor/staging/` 与 `~/.cc-monitor/bin/` 写，每处改动先过 `ssh-dial/sftp.rs::fenced_remote`；落进用户目录只经远端后端 `files-commit-upload` |
 
 删历史会话（`files-delete-session`）那一道单列：只收 sid、必须是一份会话记录，`readonly_guard::the_file_manager_face_never_asks_the_session_shape` 钉着「问会话形状的只有删会话那三处」。TOCTOU（判定与动手之间的窗）未闭合，如实登记。
 
@@ -561,7 +561,7 @@ webview 拿得到的 Tauri 权限只许是登记过的那一批；webview 里跑
 
 **为什么不能松动**：从前的回环 TCP 口没有权限位，只能靠一把钥匙补，钥匙文件又被别的实例改写过（远端从此一直被拒）⇒ 已删，换成内核给的本人门。能连上套接字的只有本账号自己的进程。
 
-**谁在守**：`listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::attach_verdicts_judge_the_shape_only` · `listen_tests.rs::refusal_reasons_are_a_closed_set` · `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody` · `main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket` · `main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` · `resident_tests.rs::the_sandbox_refusal_truth_table` · `child_tests.rs::a_child_never_inherits_the_backend_internal_families` · `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` · `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused` · `remote_resident_tests.rs::the_relay_waits_only_while_nobody_listens` · e2e `local-backend-supervise.sh`。
+**谁在守**：`listen_tests.rs::the_resident_switch_is_empty_one_or_refused` · `listen_tests.rs::attach_verdicts_judge_the_shape_only` · `listen_tests.rs::refusal_reasons_are_a_closed_set` · `lib_tests.rs::the_dir_lock_is_exclusive_and_released_on_drop` · `lib_tests.rs::a_peer_with_my_uid_is_ours_and_nobody_means_nobody` · `main_claim_tests.rs::a_late_starter_that_cannot_claim_never_touches_the_log_or_the_socket` · `main_claim_tests.rs::a_sandboxed_start_refuses_the_real_home` · `resident_tests.rs::the_sandbox_refusal_truth_table` · `child_tests.rs::a_child_never_inherits_the_backend_internal_families` · `local_backend_host_tests.rs::the_host_never_writes_the_resident_dir_and_carries_no_key` · `local_backend_host_tests.rs::a_stranger_on_our_port_is_refused_out_loud_not_silently_reused` · `feed_tests.rs::a_relay_that_stays_absent_is_tried_a_capped_number_of_times` · e2e `local-backend-supervise.sh`。
 
 #### 48.1a 中转口的钥匙
 

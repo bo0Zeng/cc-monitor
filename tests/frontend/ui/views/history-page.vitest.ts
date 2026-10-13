@@ -80,6 +80,7 @@ import { chanArgsJson, chanReply, NO_CHANNEL, refusedReply, type ChanCallArgs } 
 import { answerAskDialog, answerAskText, noAskDialog } from "../../../test-support/ask-dialog-driver.ts";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { closeMenu } from "../../../../src/frontend/ui/kit/menu";
+import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const NOW = Date.now();
@@ -184,15 +185,16 @@ beforeEach(() => {
     if (c.op === "history-search") {
       if (world.search === "fail") return Promise.reject(new Error("搜不动"));
       return chanReply({
-        lines: [JSON.stringify({ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false, isBg: false, status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" } })],
+        sessions: [{ agent: "claude", sessionId: "a", projectPath: "/w/p", projectName: "p", jsonlPath: "/x/a.jsonl", title: "标题 a", updatedAt: NOW, hitCount: 1, hits: [{ uuid: "u1", tsMs: NOW, kind: "user", before: "**前", matched: "词", after: "`后`" }], hitsTruncated: false, isBg: false, status: "ended", can: { resume: "yes", accounts: true, fork: true, delete: "yes" } }],
         unreadable: 0,
         skipped: [],
       });
     }
     if (c.op === "history-search-merge") {
-      const ss = args.sessions as { hitCount: number }[];
-      // 合并那一臂替真后端添上行尾 · 时间段两格。
-      return chanReply({ totalHits: ss.reduce((n, s) => n + s.hitCount, 0), sessionCount: ss.length, truncated: false, sessions: ss.map((s) => ({ ...s, atText: "12:00", spanText: "12:00–12:00" })) });
+      const ms = args.machines as { origin: string; sessions: { hitCount: number }[] }[];
+      // 合并那一臂替真后端添上那台的名字（本机不添）与行尾 · 时间段两格。
+      const ss = ms.flatMap((m) => m.sessions.map((s) => ({ ...s, ...(m.origin === LOCAL_ORIGIN ? {} : { origin: m.origin }), atText: "12:00", spanText: "12:00–12:00" })));
+      return chanReply({ totalHits: ss.reduce((n, s) => n + s.hitCount, 0), sessionCount: ss.length, truncated: false, sessions: ss });
     }
     if (c.op === "history-annotate") return chanReply({ entry: { starred: false, customTitle: null, hidden: true, updatedAt: 1 } });
     if (c.op === "files-delete-session") return chanReply({ path: "/x" });
@@ -790,7 +792,7 @@ describe("内容搜索的其余几态", () => {
     invokeMock.mockImplementation(async (cmd: string, a: unknown) => {
       if (cmd === "chan_call" && (a as ChanCallArgs).op === "history-search") {
         if ((a as ChanCallArgs).origin === "dev") return Promise.reject(refusedReply("unreachable", "dev 问不到"));
-        return chanReply({ lines: [], unreadable: 2, skipped: ["codex"] });
+        return chanReply({ sessions: [], unreadable: 2, skipped: ["codex"] });
       }
       return base(cmd, a);
     });

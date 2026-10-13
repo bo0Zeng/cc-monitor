@@ -4,6 +4,7 @@ pub mod accounts_face; // 改账号库那几条命令的帧面宿主：本体在
 pub(crate) mod cells_catalog; // 帧面 `cells-catalog`：每件成品有哪些格（从成品的 Rust 类型序列化出来，不手写第二份）
 pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod fork_face;
+pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub mod launch_face; // 帧面 `launch-local` / `launch-render-cli` 的宿主壳：交起会话挑号要的事实（账号库 · 上次的号） // 帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
 pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：计划读面要的这台事实（pb 装在哪 · 会话在哪些目录 · id 是哪个会话）
 pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 · 判能不能送 · 走 `terminal-input` 的本体 · 记已退回）
@@ -16,6 +17,7 @@ pub mod read_face; // 只读查询的帧面宿主（8 条：history-* / accounts
 pub mod resync_face;
 pub mod rotation_face; // 换号那一族的帧面宿主：账号库读成上游选择换号要的那几格（两边只在这里接上）
 pub mod rotation_switch_face; // 「现在就换」：不重启换交给 rotation_face、重启换交给 session-restart（只有这一条够得着 tmux）
+pub(crate) mod search_face; // 全文搜索那两条（typed）：`history-search` · `history-search-merge`；本体在 observe/search_query.rs
 pub mod session_batch_face;
 pub mod session_new_face; // 帧面 `session-new` · `session-new-facts` · `session-new-dir`：起新会话框要的这台事实 ＋ 起
 pub mod session_restart_face; // 帧面 `session-restart` 的宿主壳：每一步一份批量那份事实、停旧 ＋ 起新拿退出排空的票、两种等待住观测层 // 帧面 `sessions-stop` / `sessions-start` 的宿主壳：把 tmux 名单 · 记录在不在 · 杀 · 建会话那几样交给 control/session_batch // 手动对齐 `resync` 的帧面宿主 —— 薄壳，本体在 observe/watcher.rs（住顶层的理由同 read_face）

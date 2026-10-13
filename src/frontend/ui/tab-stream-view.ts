@@ -6,6 +6,13 @@
  * `replay-tail-keep.vitest.ts` 按原文抽 `MATERIALIZE_TAIL_K` 与 `MATERIALIZE_ROUNDS_PER_CALL` 对拍 Rust 侧的 `REPLAY_TAIL_KEEP`。
  */
 import { speakerNameOf } from "./agent-profile";
+import { SPEAKER_SELECTOR } from "./cards/speaker";
+import { applyHandedBack } from "./cards/speaker-bar";
+import { applyRetries } from "./cards/api-error";
+import { paintWaiting } from "./cards/step-line";
+import { waitedNow } from "./duration-format";
+import type { SessionFacts } from "./session-reads";
+import type { FactsChange } from "./tab-session-facts";
 import { MessageStream } from "./stream";
 import { reconcilePendingToolResults, type RenderContext } from "./cards";
 import { BranchFolder } from "./branch-fold";
@@ -19,7 +26,7 @@ import { SkeletonView, ledgerFromIndex, rowRuns } from "./skeleton-view";
 import { eagerBodyChars, setInjectedShown, skeletonKind } from "./height-estimate";
 // 「大纲」与历史查看器共用同一份界面与跳转；清单问后端要（`OutlineSource`）。
 // 大纲在会话内查找面板里（`SessionFindPanel`：搜索 / 大纲两个模式，跳只有一个住址）。
-import type { UserInputPanel, JumpResult } from "./views/user-input-panel";
+import type { JumpResult } from "./views/user-input-panel";
 import { OutlineSource, outlineSeedFromIndex } from "./views/outline-source";
 import { SessionFindPanel } from "./views/session-find";
 import { TurnFold, injectedShownDefault, processExpandedDefault, setInjectedShownDefault, setProcessExpandedDefault } from "./turn-fold";
@@ -41,6 +48,7 @@ import { readLines, readRange } from "./record-reads";
 import type { Tab } from "./tab-model";
 import { isResumeOnly } from "./tab-session-state";
 import type { TabStore } from "./tab-store";
+import { ColdReads, IdleSlot } from "./tab-cold-reads";
 import { copyText } from "./copy-table";
 
 /** 只问「这条是不是 meta」、不喂任何账的空 sink（骨架按偏移取回**见过**的行时用）。 */
@@ -87,18 +95,31 @@ export function tabRenderContext(tab: Tab, host: Pick<TabStreamHost, "runLabelOf
   };
 }
 
-/** `mountTabDom` 建出来、要写进 `Tab` 的那几样。 */
-export interface TabStreamDom {
-  streamEl: HTMLElement;
-  stream: MessageStream;
-  branchFolder: BranchFolder;
-  timeline: RecordTimeline;
-  inputsEl: HTMLElement;
-  inputsPanel: UserInputPanel;
-  outline: OutlineSource;
-  turnFold: TurnFold;
-  turnRail: TurnRail;
-}
+/**
+ * 一个 tab 的**渲染那一半**（`mountTabDom` 整份建出来、写进 `Tab`）：流 · 时间线 · 折叠层 · 去重集合 · 尾部窗口账本 · 骨架 ·
+ * 批期缓冲 · 大纲 · 按轮折叠 · 刻度 · 工具卡的挂点。这几格只有本文件读写 —— 组装根与别的 `tab-*` 只调本类的方法
+ * （判据 `tabs-split-graph.vitest.ts`「渲染那一半只经流视图」）。
+ */
+export type TabStreamDom = Pick<
+  Tab,
+  | "streamEl"
+  | "stream"
+  | "branchFolder"
+  | "timeline"
+  | "inputsEl"
+  | "inputsPanel"
+  | "outline"
+  | "turnFold"
+  | "turnRail"
+  | "seenSeqs"
+  | "window"
+  | "skeleton"
+  | "skeletonFetch"
+  | "midBatchBuffer"
+  | "fillHandler"
+  | "toolUseElements"
+  | "pendingToolResults"
+>;
 
 export class TabStreamView {
   /** 物化 / 后台 tab 尾段条数（与查看器的 TAIL_INITIAL 同义） */
@@ -149,6 +170,8 @@ export class TabStreamView {
    * 接骨架要插占位、量几何、补可见区 —— 在收起的 tab 里做是白干还逼排版；快速连切时一串旧切换的活全堆在后面。
    */
   private readonly parkedSkeletons = new WeakMap<Tab, SkeletonLedger>();
+  /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
+  private readonly cold: ColdReads;
 
   constructor(
     private readonly store: TabStore,
@@ -157,6 +180,7 @@ export class TabStreamView {
     /** 第二级估高（Worker 精算）；环境里没有 Worker 时它自己不开。 */
     private readonly refiner: HeightRefiner = new HeightRefiner(workerMeasure()),
   ) {
+    this.cold = new ColdReads(store);
     this.applyInjected(injectedShownDefault()); // 「显示系统注入」这扇窗上次的样子
   }
 
@@ -253,12 +277,12 @@ export class TabStreamView {
     // ② 怎么跳 —— 见 `jumpInTab`（没加载的那一段先取回来再跳）；
     // ③ 落空怎么说 —— 取回来了也找不到那张卡（被并进别的卡 / 渲染成空）。
     const find = new SessionFindPanel({
-      search: async (query, includeTools, skip) => {
+      search: async (query, includeTools, skip, scope) => {
         const t = this.store.tabs.get(sessionId);
         if (!t?.parentPath) {
           return { available: false, reason: copyText("tabStreamView.search.noFile"), hits: [], total: 0 };
         }
-        return findInSession(t.origin, t.parentPath, query, includeTools, skip);
+        return findInSession(t.origin, t.parentPath, query, includeTools, skip, scope);
       },
       jumpTo: (uuid, tool) => this.jumpInTab(sessionId, streamEl, uuid, tool),
       unjumpableHint: copyText("tabStreamView.search.notLoaded"),
@@ -295,7 +319,25 @@ export class TabStreamView {
     });
     turnFold.onTurns = () => turnRail.render();
     this.streamRootEl.appendChild(turnRail.el);
-    return { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold, turnRail };
+    return {
+      streamEl,
+      stream,
+      branchFolder,
+      timeline,
+      inputsEl,
+      inputsPanel,
+      outline,
+      turnFold,
+      turnRail,
+      seenSeqs: new SeqSet(),
+      window: new TailWindow(),
+      skeleton: null,
+      skeletonFetch: "idle",
+      midBatchBuffer: [],
+      fillHandler: null,
+      toolUseElements: new Map(),
+      pendingToolResults: new Map(),
+    };
   }
 
   /** 给刚建好的 tab 挂上翻补批的滚动监听与视口变大的补批（原是 `ensureTab` 里的一段，逐字）。 */
@@ -354,6 +396,7 @@ export class TabStreamView {
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
     tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写
+    this.cold.drop(tab.sessionId); // 第一趟还排着的出队
     tab.streamEl.removeEventListener("scroll", tab.turnRail.onScroll);
     tab.turnRail.el.remove(); // 刻度挂在流外，不随 `streamEl.remove()` 一起走
     tab.turnFold.dispose(); // 按轮折叠：断观察、在途那趟作废
@@ -390,14 +433,6 @@ export class TabStreamView {
       ...old,
       ...this.mountTabDom(old.sessionId),
       toolUseNames: new Map(),
-      toolUseElements: new Map(),
-      pendingToolResults: new Map(),
-      seenSeqs: new SeqSet(),
-      window: new TailWindow(),
-      skeleton: null,
-      skeletonFetch: "idle",
-      midBatchBuffer: [],
-      fillHandler: null,
     };
     this.store.tabs.set(tab.sessionId, tab);
     this.wireTab(tab);
@@ -497,6 +532,7 @@ export class TabStreamView {
           this.attachSkeleton(next, parked);
         }
         this.requestSkeleton(next); // 上面刚物化过尾段 ⇒ floor 已钉；要过的不重要
+        this.cold.toFront(next); // 第一趟会话事实与轮次：停住的这一个插到最前（后台排着的等它落地）
         if (next.outline.needsFetch) this.refreshOutline(next); // 大纲：有新行才要
       }, TabStreamView.STAY_MS);
     }
@@ -557,12 +593,10 @@ export class TabStreamView {
     // 〔骨架〕active tab 此刻一定有渲染后缀了 ⇒ 要索引（在途/要过就不重复）
     if (active) this.requestSkeleton(active);
     if (active?.outline.needsFetch) this.refreshOutline(active); // 大纲
-    // 会话事实：凡是「没要过或又长了」的 tab 都要一次（F5 之后每个 tab 首次整份扫，之后只读新写的一截）。
-    for (const t of this.store.tabs.values()) {
-      if (t.facts.needsFetch) void t.facts.refresh();
-    }
-    // 按轮折叠：每个 tab 要一次（续取从还没收尾的那一轮起）。
-    for (const t of this.store.tabs.values()) void t.turnFold.refresh();
+    // 会话事实与按轮折叠：当前 tab 当场要；其余的 —— 要过第一趟的照旧续读（只读新写的一截），
+    // 没要过的（F5 之后每个都是：后端要从头扫）排在当前那一趟落地之后、空闲时一个一个要（`tab-cold-reads.ts`）。
+    if (active) this.cold.toFront(active);
+    for (const t of this.store.tabs.values()) if (t !== active) this.cold.later(t);
     return active;
   }
 
@@ -654,8 +688,94 @@ export class TabStreamView {
     if (!tab.outline.everFetched && !this.store.inBatch && this.store.activeId === tab.sessionId) {
       void tab.outline.refresh();
     }
-    if (!this.store.inBatch) void tab.facts.refresh();
-    if (!this.store.inBatch) void tab.turnFold.refresh();
+    if (!this.store.inBatch) this.cold.grew(tab); // 没要过第一趟的后台 tab 只排着（`tab-cold-reads.ts`）
+  }
+
+  /** 这个 tab 的会话事实要再问一次（状态变了 · 那台说需手动变了 · ［重试］· 上限表换了）：第一趟还没轮到的后台 tab 只排着。 */
+  wantFacts(tab: Tab): void {
+    this.cold.want(tab);
+  }
+
+  /** 按 seq 去重（入口唯一一道）：见过 ⇒ `false`（不往下走）；没见过 ⇒ 记下（连同 monitor 连着跳过的那一段）、`true`。 */
+  admit(tab: Tab, payload: JsonlLinePayload): boolean {
+    if (tab.seenSeqs.has(payload.seq)) return false;
+    if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
+    tab.seenSeqs.add(payload.seq);
+    return true;
+  }
+
+  /**
+   * 后端的一份会话事实落到 tab 上之后（`applyFacts`），消息流里跟着补画的那几样：交回了的子运行收起收场通知 ·
+   * 重试细条的结局 · 等批准那一轮的刻度 · 过程行的「现在：…」· 还没结果的那几步 · 先画出来的卡头补上那一家的名字。
+   */
+  factsLanded(tab: Tab, f: SessionFacts, ch: FactsChange): void {
+    applyHandedBack(tab.streamEl, new Set(f.handedBack)); // 同一个子运行只报一次：以交回为准
+    applyRetries(tab.streamEl, tab.retries); // 按首条的 id
+    if (ch.needs) tab.turnRail.render(); // 在等批准的那一轮琥珀
+    // 过程行上的「现在：… / 等批准：…」跟着这台此刻的会话事实（后端在 `history-turns` 里拼）。
+    if (ch.needs || ch.writers || ch.peek) void tab.turnFold.refresh();
+    this.paintStepWaits(tab);
+    if (ch.agent) {
+      // 是哪一家到了：先画出来的卡头那一格补上那一家的名字（之后建的卡按它直接画）。
+      const who = speakerNameOf(tab.agent) ?? "";
+      for (const el of tab.streamEl.querySelectorAll<HTMLElement>(SPEAKER_SELECTOR)) el.textContent = who;
+    }
+  }
+
+  /**
+   * 过程里还没结果的那几步照会话事实画：`pending[].state`（在跑 · 在等批准 · 状态不明）；事实里已经没有它（那一轮过去了、
+   * 被截在上界外）⇒ 状态不明。结果已经到了的不动（`paintWaiting` 自己守）。
+   */
+  private paintStepWaits(tab: Tab): void {
+    const WAITING_ROWS = '.step-line[data-call]:is([data-state="pending"], [data-state="running"], [data-state="awaiting"], [data-state="unclear"])';
+    const by = new Map(tab.pending.map((p) => [p.id, p] as const));
+    const n = tab.needs;
+    for (const row of tab.streamEl.querySelectorAll<HTMLElement>(WAITING_ROWS)) {
+      const call = row.dataset.call ?? "";
+      const waited = n?.call === call ? waitedNow(n, Date.now()) : null;
+      const p = by.get(call);
+      paintWaiting(row, p ?? null, waited, n?.kind === "approve");
+    }
+  }
+
+  /** 主线外清单到了（整份）：折叠层按它重折。 */
+  setOff(tab: Tab, off: ReadonlySet<string>): void {
+    tab.branchFolder.setOff(off);
+  }
+
+  /** 这个 tab 的骨架账本（展开省掉的正文按它取偏移；没接上 ⇒ `null`）。 */
+  ledgerOf(tab: Tab): SkeletonLedger | null {
+    return tab.skeleton?.ledger ?? null;
+  }
+
+  /** 活卡挂在哪（消息流末尾那一格；没有这个 tab ⇒ `null`）。 */
+  trailerOf(sid: string): HTMLElement | null {
+    return this.store.tabs.get(sid)?.stream.trailerElement ?? null;
+  }
+
+  /** 这个 tab 的流容器（记录文件那一句 · 置顶提示挂在它里面）。 */
+  streamElOf(tab: Tab): HTMLElement {
+    return tab.streamEl;
+  }
+
+  /** 消息流内容那一层（换号条按发生那一刻追加在这里）。 */
+  contentOf(tab: Tab): HTMLElement {
+    return tab.stream.contentElement;
+  }
+
+  /** 贴着底没有（切走时记，切回来照它贴底）。 */
+  stuckToBottom(tab: Tab): boolean {
+    return tab.stream.stuckToBottom;
+  }
+
+  scrollToBottom(tab: Tab): void {
+    tab.stream.scrollToBottom();
+  }
+
+  /** 从栏上摘下来（关掉待撤销）：流与查找面板都收起。 */
+  hide(tab: Tab): void {
+    tab.streamEl.classList.remove("active");
+    tab.inputsEl.classList.remove("active");
   }
 
   /** `Ctrl+O` · 会话头开关：过程默认展开与否（每扇窗一份，所有 tab 一起换）。 */
@@ -1296,6 +1416,8 @@ export class TabStreamView {
   /** 后台 tab 的空闲物化队列（串行；没有 rIC 时 setTimeout 兜底） */
   materializeQueue: string[] = [];
   private materializeScheduled = false;
+  /** 空闲物化挂的那个空闲回调（主人拆掉时撤掉，`dispose`）。 */
+  private readonly idleSlot = new IdleSlot();
 
   /** 后台空闲物化一截建几条（建完一截看一眼空闲期限还剩没剩）。 */
   private static readonly IDLE_CHUNK = 20;
@@ -1336,13 +1458,19 @@ export class TabStreamView {
       }
       this.scheduleIdleMaterialize();
     };
-    if (typeof window.requestIdleCallback === "function") {
-      // 调度：自链 —— 后台标签页空闲物化队列：处理一个再排自己，队列空即停
-      window.requestIdleCallback(run, { timeout: 2000 });
-    } else {
-      // 调度：自链 —— 上面那条队列在没有 rIC 时的兜底，同一条链（接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms）
-      window.setTimeout(() => run(), this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
-    }
+    // 后台标签页空闲物化队列：处理一个再排自己，队列空或主人拆掉即停。没有 rIC 时兜底：接着建同一个 tab 的下一截只隔一帧，换下一个 tab 隔 200 ms。
+    this.idleSlot.schedule(run, this.idleTaken.has(this.store.tabs.get(sid) as Tab) ? 16 : 200);
+  }
+
+  /**
+   * 主人（`TabManager`）拆掉：冷读排班停、空闲物化撤掉挂着的回调，每个 tab 照关掉那样拆（在途的读回来后不许回写）。
+   * 之后回来的读不再排下一趟、不碰 `window`。
+   */
+  dispose(): void {
+    this.cold.stop();
+    this.idleSlot.stop();
+    this.materializeQueue = [];
+    for (const t of [...this.store.tabs.values()]) this.disposeTab(t);
   }
 
 }

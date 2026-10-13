@@ -90,13 +90,9 @@ export function runtimeImports(rel: string, src: string = read(rel)): string[] {
 const DEPS: Record<string, readonly string[]> = {
   // 组装根：把下面每一份接起来 ＋ re-export `Tab` 的形状（tab-model）。
   "src/frontend/ui/tabs.ts": [
-    "src/frontend/ui/agent-profile.ts", // 会话事实说是哪一家 ⇒ 卡头那一格补上那一家的短名（画像 `speakerName`）
     "src/frontend/ui/agent-window-open.ts", // 面板那一行 / 派出卡的卡头：开那个子运行自己的窗口
-    "src/frontend/ui/cards/speaker.ts", // 卡头那一格在哪（补名字时按它找）
     "src/frontend/ui/accounts.ts", // debugSessionsSnapshot 的「账号不一致」派生（detectAccountMismatch）
     "src/frontend/ui/app-store.ts", // 「账号快照变了」改订阅 store（`appStore.sessionAccounts`）
-    "src/frontend/ui/cards/step-line.ts", // 会话事实说在等批准的那一步：那一行画成「在等你批准」/ 不等了回到在跑
-    "src/frontend/ui/duration-format.ts", // 那一行右侧已等多久（会走的钟，那一个读口 `waitedNow`）
     "src/frontend/ui/cards/subagent.ts", // 运行表到了：派出子运行的那张卡标上是哪个、什么状态
     "src/frontend/ui/control-said.ts", // ↗ 结局浮层里的机器名（`machineName`）
     "src/frontend/ui/copy-table.ts", // W 关掉之后那条「已关闭 · 撤销」
@@ -104,14 +100,11 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/kit/toast.ts", // bringActiveTerminalToFront：非 Windows 说一句实话
     "src/frontend/ui/new-session.ts", // forkFrom：消息流「从这里分叉」开起新会话框（分叉随起会话那一个请求写）
     "src/frontend/ui/launch-slot.ts", // 起新会话之后的占位标签页：栏末那几行与盖在消息流上的那一页（报到了换成真的）
-    "src/frontend/ui/cards/api-error.ts", // applyRetries：会话事实说的每串重试的结局 ⇒ 消息流里的重试细条照画
-    "src/frontend/ui/cards/speaker-bar.ts", // applyHandedBack：会话事实说哪几个子运行交回了 ⇒ 它们的收场通知收起（同一个子运行只报一次）
     "src/frontend/ui/front-pop.ts", // ↗ 的回执：「查找终端…」· 对勾 · 结局浮层
     "src/frontend/ui/front-result.ts", // ↗ 结局族 ⇒ 浮层的标题 · 正文 · 按钮
     "src/frontend/ui/backend-deploy.ts", // ↗ 浮层［更新］就地把这一版换到那台（与机器卡同一处部署）
     "src/frontend/ui/ipc/origin.ts", // 本机 / 远端只经这一处判（线上缺省 = 本机的那一下表示法转换也在这里）
     "src/frontend/ui/live-card.ts", // 中转抄出的流式活卡：tap 格进状态机、同对账键的记录落盘即撤卡；子运行那几行
-    "src/frontend/ui/live-window.ts", // ensureTab：新 tab 的尾部窗口
     "src/frontend/ui/record-reads.ts", // 出口省掉的正文展开那一下按骨架偏移取回那一行（`readRecordById`，挂在 tab 的 `fullRecord` 上）
     "src/frontend/ui/runs.ts", // 监控板 peek 的子运行名：标签缺席时的通用叫法只住 `runs.ts::runLabel`
     "src/frontend/ui/tab-bar-drag.ts",
@@ -135,6 +128,8 @@ const DEPS: Record<string, readonly string[]> = {
   ],
   // ① 形状：只有类型。
   "src/frontend/ui/tab-model.ts": [],
+  // ③ 冷读排班：只排「什么时候问」，问与落都是 `FactsSource` / `TurnFold` 的（只有类型依赖）。
+  "src/frontend/ui/tab-cold-reads.ts": [],
   // ④ 落点算术：纯函数，只认集合表的增删。
   // 默认组名「组 N」进了文案表 ⇒ 取文口。
   // 组员是 `Tab.group` ⇒ 不再改组表，只回「怎么动」。
@@ -164,7 +159,14 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/ipc/chan-caller.ts", // 丢格之后往后补那一件的期限：开头 `budgetWithin` 造一次（造期限的那一手）
     "src/comms/inward/chan.ts", // 同上：每问交 `remaining(budget)`（那一件还剩多少，不重新计时）
     // `ipc/commands.ts` 出列：按偏移 / 按行号取正文那两条包装退役，改经 `record-reads.ts` 走通道。
-    "src/frontend/ui/live-window.ts", // 从头重读 ⇒ tab 整份重来时新建 `TailWindow` / `SeqSet`（原先只有类型依赖）
+    "src/frontend/ui/live-window.ts", // 建 tab 的渲染那一半（`mountTabDom`）与从头重读时新建 `TailWindow` / `SeqSet`
+    "src/frontend/ui/tab-cold-reads.ts", // 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台空闲时一个一个）
+    // 会话事实到了之后在消息流里补画的那几样（`factsLanded`，原在组装根）：
+    "src/frontend/ui/cards/speaker.ts", // 卡头那一格在哪（补名字时按它找）
+    "src/frontend/ui/cards/step-line.ts", // 会话事实说在等批准的那一步：那一行照画 / 不等了回到在跑
+    "src/frontend/ui/duration-format.ts", // 那一行右侧已等多久（会走的钟，那一个读口 `waitedNow`）
+    "src/frontend/ui/cards/api-error.ts", // applyRetries：每串重试的结局 ⇒ 消息流里的重试细条照画
+    "src/frontend/ui/cards/speaker-bar.ts", // applyHandedBack：交回了的子运行 ⇒ 它们的收场通知收起
     "src/frontend/ui/record-reads.ts", // 按偏移 / 按行号取正文经通道问那台后端（`history-page` · `history-lines`，后端出记录行）
     "src/frontend/ui/record-timeline.ts",
     "src/frontend/ui/render-stream-record.ts",
@@ -268,7 +270,6 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/resync.ts", // 关卡 2 拒了结束会话 ⇒ 提示带「对齐后重试」（认拒绝码 ＋ 对齐 ＋ 再做一次，都在那一个口）
     "src/frontend/ui/session-reads.ts", // resume 之前问记录还在不在（经通道问 `history-record`）
     "src/frontend/ui/tab-batch-run.ts", // 杀 / 在 tmux 里 Resume 交那台（`sessions-stop` / `sessions-start`，与批量同一条）
-    "src/frontend/ui/tmux-control.ts", // 杀成之后 cc-bus 注销那一句（`decodeKilled` 那一份说法）
     "src/frontend/ui/tmux-resume.ts", // 在 tmux 里 Resume 那一条起法（不依赖标签页对象，历史页「恢复 ▾」同一条）；这里只把「记录在不在」落进 tab
   ],
 };
@@ -399,5 +400,57 @@ describe("〔U2〕tabs.ts 只剩组装根", () => {
         // tab-drop.ts 那几个落点算术不再经这里转：分组重做换了整套落点，判据直接从 `tab-drop.ts` 取。
       ].sort(),
     );
+  });
+});
+
+/**
+ * 〔8a ④ 一个口子〕**一个 tab 的渲染那一半只经流视图**（`TabStreamView`，`TabStreamDom` 那几格）：组装根与拆出来的别的每一份
+ * 不直接读写渲染管线（流 · 时间线 · 折叠层 · 去重集合 · 尾部窗口账本 · 骨架 · 批期缓冲 · 大纲 · 按轮折叠 · 刻度 · 工具卡挂点），
+ * 会话事实什么时候问也只在流视图（冷读排班 `tab-cold-reads.ts`：当前的先、后台的排着）。
+ * 口径：剥注释后的 `.<格名>` 成员访问（`window.` 全局前面没有点，不算）；`facts.refresh(` 直呼。同一谓词在流视图上的正控。
+ */
+describe("〔8a ④〕渲染那一半只经流视图（零命中 ＋ 正控）", () => {
+  const RENDER_HALF = [
+    "seenSeqs",
+    "window",
+    "skeleton",
+    "skeletonFetch",
+    "stream",
+    "streamEl",
+    "timeline",
+    "branchFolder",
+    "turnFold",
+    "turnRail",
+    "midBatchBuffer",
+    "fillHandler",
+    "outline",
+    "inputsEl",
+    "inputsPanel",
+    "toolUseElements",
+    "pendingToolResults",
+  ];
+  const member = new RegExp(String.raw`\.(?:${RENDER_HALF.join("|")})\b`, "g");
+  const factsAsk = /\bfacts\.refresh\(/g;
+  const VIEW = "src/frontend/ui/tab-stream-view.ts";
+  const COLD = "src/frontend/ui/tab-cold-reads.ts";
+  /** 组装根 ＋ 拆出来的每一份，去掉流视图自己、冷读排班（流视图的一部分）与只有类型的形状。 */
+  const OUTSIDE = ["src/frontend/ui/tabs.ts", ...SPLIT].filter((f) => f !== VIEW && f !== COLD && f !== "src/frontend/ui/tab-model.ts");
+  const hits = (rel: string, re: RegExp): string[] => stripComments(read(rel), "ts").match(re) ?? [];
+
+  it("★ 组装根与别的 tab-* 零处碰渲染那一半（正控：流视图同一谓词命中）", () => {
+    expect(hits(VIEW, member).length, "正控：流视图必然碰渲染那一半（否则谓词拼错了）").toBeGreaterThan(20);
+    expect(Object.fromEntries(OUTSIDE.map((f) => [f, hits(f, member)]))).toEqual(Object.fromEntries(OUTSIDE.map((f) => [f, []])));
+  });
+
+  it("★ 会话事实什么时候问只在流视图（正控：冷读排班同一谓词命中）", () => {
+    expect(hits(COLD, factsAsk).length, "正控：冷读排班必然直呼（否则谓词拼错了）").toBeGreaterThan(0);
+    expect(Object.fromEntries(OUTSIDE.map((f) => [f, hits(f, factsAsk)]))).toEqual(Object.fromEntries(OUTSIDE.map((f) => [f, []])));
+  });
+
+  it("★ 组装根不再引渲染那一半的零件（尾部窗口账本 · 卡片补画那几样）", () => {
+    const deps = runtimeImports("src/frontend/ui/tabs.ts");
+    for (const d of ["live-window", "cards/step-line", "cards/api-error", "cards/speaker-bar", "cards/speaker"]) {
+      expect(deps, d).not.toContain(`src/frontend/ui/${d}.ts`);
+    }
   });
 });

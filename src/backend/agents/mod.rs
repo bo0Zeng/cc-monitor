@@ -167,6 +167,27 @@ pub(crate) struct AskFace {
     pub(crate) read: fn(&serde_json::Value) -> Option<AskIn>,
     /// 人的答案 ⇒ hook 要打到 stdout 的那一整份；`None` ＝ 不给决定（框照常在终端里问）。
     pub(crate) decide: fn(&AskIn, &Verdict) -> Option<serde_json::Value>,
+    /// 换了启动器那一支：答题 hook 做成一个小插件、经环境交下去（启动器后面的词不动）；`None` ＝ 这一家没有这一路（照「自定义启动器」标挂不上）。
+    pub(crate) plugin: Option<PluginFace>,
+}
+
+/// 一家的**会话插件**那一路（[`AskFace::plugin`]）：插件目录经哪个环境变量交下去、里面放什么、哪些情形挂不上。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PluginFace {
+    /// 那一家认的插件目录清单变量（多个目录用这台的路径分隔符连）。
+    pub(crate) env: &'static str,
+    /// 认这个变量的最低版本。
+    pub(crate) min_version: [u64; 3],
+    /// 插件目录里的每一份文件：（相对路径, 内容）；入参 ＝ ccm 绝对路径。
+    pub(crate) files: fn(&str) -> Vec<(&'static str, String)>,
+    /// 这台的 managed 策略文件（起会话前读；服务端下发的那一份事先读不到）。
+    pub(crate) policy_files: fn() -> Vec<std::path::PathBuf>,
+    /// 一份 managed 策略不许这一路（设了变量起不来 · 插件里的 hook 被拦）。
+    pub(crate) policy_blocks: fn(&serde_json::Value) -> bool,
+    /// `PATH` 上那一家装的是哪一版（认不出 ⇒ `None`）。
+    pub(crate) installed_version: fn(Option<&str>) -> Option<[u64; 3]>,
+    /// 那一家导给它起的每个子进程的嵌套标记（ccm 起会话前清掉它 ⇒ 发问的进程起来时带着它 ＝ 会话里 Bash 起的子进程）。
+    pub(crate) child_marker: &'static str,
 }
 
 /// 一次待答请求（适配层翻好的通用形；那一家的字段名不出适配层）。
@@ -198,6 +219,8 @@ pub(crate) struct AskIn {
 
 /// 待答请求的种类（线上同 `needs.kind` 那一套里的三个词）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum AskKind {
     #[serde(rename = "approve")]
     Approve,
@@ -247,6 +270,16 @@ pub(crate) fn ask_face_among(registry: &[Adapter], kind: &str) -> Option<AskFace
 /// 同上，生产注册表。
 pub(crate) fn ask_face(kind: &str) -> Option<AskFace> {
     ask_face_among(REGISTRY, kind)
+}
+
+/// 各家经环境交会话插件的那个变量（[`PluginFace::env`]，去重）：会话事实判「插件到没到那个进程里」按它们读。
+pub(crate) fn plugin_envs() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = REGISTRY
+        .iter()
+        .filter_map(|a| a.asks.and_then(|f| f.plugin).map(|p| p.env))
+        .collect();
+    v.dedup();
+    v
 }
 
 /// 〔加一个 agent 只改 `agents/`〕一家的起会话事实 —— **唯一的家**。
@@ -1066,6 +1099,24 @@ pub enum Speaker {
     ToolResult,
 }
 
+/// [`Speaker::kind`] 那一份闭集（骨架读回来认词用）。
+pub(crate) const SPEAKER_KINDS: [&str; 14] = [
+    "human",
+    "slashCommand",
+    "bashInput",
+    "bashOutput",
+    "commandOutput",
+    "taskNotification",
+    "agentMessage",
+    "peerSession",
+    "coordinator",
+    "agentTask",
+    "system",
+    "compactSummary",
+    "interrupt",
+    "toolResult",
+];
+
 impl Speaker {
     /// 线上 `kind` 那一格（骨架索引的 `sp` 也用它）。
     pub(crate) fn kind(&self) -> &'static str {
@@ -1719,9 +1770,21 @@ pub(crate) fn first_in_head(
 
 /// 这份会话记录的项目目录：记录归哪一家就问哪一家（[`RecordFace::project_dir`]）；那一家不声明 / 开头里没有 ⇒ `None`。
 pub(crate) fn project_dir_of(p: &Path) -> Option<String> {
-    record_face_of(p)
+    project_dir_among(REGISTRY, p)
+}
+
+/// [`project_dir_of`] 的可喂夹具那一半。
+pub(crate) fn project_dir_among(registry: &[Adapter], p: &Path) -> Option<String> {
+    record_face_among(registry, p)
         .and_then(|f| f.project_dir)
         .and_then(|f| f(p))
+}
+
+/// 这份记录归的那一家若有合成历史面（记录不住记录树、首句另有读法）⇒ 那一家的首句摘录法
+/// （与历史清单那一行同一个，[`HistoryFace::excerpt`]）；归记录树那一家 · 认不出 ⇒ `None`。
+pub(crate) fn synth_excerpt_among(registry: &[Adapter], p: &Path) -> Option<fn(&Path) -> String> {
+    let kind = record_kind_among(registry, p)?;
+    adapter_among(registry, kind)?.history.map(|h| h.excerpt)
 }
 
 /// 注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
@@ -1774,6 +1837,8 @@ pub(crate) struct AccountsFace {
     pub(crate) shared_root: fn(&Path) -> PathBuf,
     /// 一个配置根下登录的邮箱（读不到 ⇒ `None`）。
     pub(crate) email_in: fn(&Path) -> Option<String>,
+    /// 各号的订阅号登录那份文件的格式（各号之间同步 MCP 登录读写它）；没有 ⇒ `None`。
+    pub(crate) login: Option<LoginFace>,
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
@@ -1854,6 +1919,8 @@ pub(crate) struct McpLook {
 /// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 断开 · 还在连。两处都不说「连上了」。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum McpStatus {
     NeedsLogin,
     Failed,
@@ -2088,6 +2155,16 @@ pub(crate) struct LoginFace {
     pub(crate) lock_beside: Option<&'static str>,
     /// 续期锁目录的修改时刻比现在早过这么多毫秒 ⇒ 持有方已经不在，当无主收回（删了重拿）。
     pub(crate) lock_stale_ms: u64,
+    /// 那一家**整份写**这份凭据文件时拿的 `mkdir` 锁（配置目录里那一把的名字）：它在锁里重读盘、只改自己那一格、整份写回。
+    /// 我方任何一次写这份文件也在这把锁里重读、比对、写（续期写回 · 各号之间同步 MCP 登录）。没有这一把的家 ⇒ `None`。
+    pub(crate) write_lock: Option<&'static str>,
+    /// 那把写锁的修改时刻早过这么多毫秒 ⇒ 当无主收回。
+    pub(crate) write_lock_stale_ms: u64,
+    /// 续成了、写回时那把写锁有人持着 ⇒ 新令牌先留在内存里照用，等它放开（文件事件）再写回；最多等这么多毫秒，
+    /// 到期还没放开就照实报写回失败（那个号可能要重新登录）。比 [`Self::write_lock_stale_ms`] 长：到期那一刻再试一次，持有方早已不在的锁就收回了。
+    pub(crate) write_wait_ms: u64,
+    /// 同一份文件里另有一节「每个服务器一条」的登录（Claude 的 MCP 登录）；各号之间同步它。没有 ⇒ `None`。
+    pub(crate) entries: Option<EntryLogins>,
     /// 一个号的账号身份住哪份文件：（配置目录, 账号 0 时的家目录）→ 那份文件。
     pub(crate) identity_file: fn(&Path, Option<&Path>) -> PathBuf,
     /// 那份文件里的账号身份（请求里跟着鉴权一起换的那一格的值）；读不到 ⇒ `None`。
@@ -2098,6 +2175,20 @@ pub(crate) struct LoginFace {
     pub(crate) rewrite_identity: fn(&[u8], &str) -> IdentityCell,
     /// 账号 0（没设配置目录的那个号）的配置目录：家目录 → 它。
     pub(crate) base_dir: fn(&Path) -> PathBuf,
+}
+
+/// 凭据文件里「每个服务器一条」的那一节登录的格式（各号之间同步 MCP 登录用；通用层只按这几格读写）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EntryLogins {
+    /// 那一节的顶层键（键 → 一条：访问令牌 · 刷新令牌 · 过期时刻 · 客户端登记 …，整条原样搬）。
+    pub(crate) section: &'static str,
+    pub(crate) access: &'static str,
+    pub(crate) refresh: &'static str,
+    pub(crate) expires_ms: &'static str,
+    /// 那一家续某一条时在配置目录里拿的 `mkdir` 锁的名字（一段名字）：键 → 名字。
+    pub(crate) renew_lock: fn(&str) -> String,
+    /// 那把续期锁的修改时刻早过这么多毫秒 ⇒ 当无主收回。
+    pub(crate) renew_lock_stale_ms: u64,
 }
 
 /// 请求体里账号身份那一格换没换成。

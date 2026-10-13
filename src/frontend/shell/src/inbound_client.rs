@@ -1,680 +1,44 @@
-//! monitor 侧的入方向发送端 —— 往那条长连接的写半边发命令、按 `id` 收应答。
-//!
-//! # 「Hello 之前不许写」做成不可表示（对称于后端的 `wire::HelloFlushed`）
-//!
-//! ```text
-//! remote_resident::attach（远端）/ 本机宿主那条流 → 双工流
-//! └── split_and_park(stream) ─→ (ReadHalf, ParkedWriter<WriteHalf>)
-//! │                            ▲ 身上没有任何写方法
-//! │                            └── .into_client(hello: BackendHello)
-//! └── ReadHalf → 既有 reader task      ▲ 只能由 InboundFrame::Hello 换来
-//! ```
-//!
-//! 收到 Hello 之前，`stream_loop` 手里只有一个 [`ParkedWriter`]，它没有可调的写（比「注释 + 扫文本的机检」强一档）。
-//! 切分与停放是同一个函数（[`split_and_park`]）⇒ 生产代码里不存在可写的裸 `WriteHalf` 窗口。
-//! 剩下的绕过方式：自己造一个假的 `InboundFrame::Hello` 去换见证（调用点显眼的胡来），或绕开本模块直接拿 `tokio::io::split` ——
-//! 后者由 `stream_source` 的 `write_half_guard::stream_source_never_splits_a_stream_itself` 拦（零命中型判据，尾随注释绕不动）。
-//!
-//! # 超时归客户端
-//!
-//! backend 零定时器 ⇒ [`InboundClient::call`] 自带超时，超时后补发一条 `cancel` 让后端别白跑。调用方放弃等待（这个 future 被丢）与超时同一格：
-//! 命令已入队、还没拿到结局就走人 ⇒ 同一条 `cancel` 补发（`AbandonGuard`）。对可取消档（`Run::Async`）这一条真能把活停下；对阻塞档它照旧回 `not_cancellable`。
-//! 对端不认撤单要说出来：握手没交出 `cancel` ⇒ 不补发、`Timeout.withdraw` 带 `NotOffered` ＋ warn；补发之后被回 `not_cancellable` ⇒ warn 点名那条命令。
+//! monitor 侧的入方向客户端：本体（「Hello 之前不许写」的类型 · 一问一答 · 期限与撤单 · 应答路由）住 `resident-client`
+//! （手机核心同一份，`src/comms/resident-client/client.rs`），这里转用；本文件只剩 monitor 自己的那两样 ——
+//! 每台一个客户端的登记表（[`register`] · [`client_for`]）与那台此刻连没连着（[`Link`]）。
 
-use crate::chan::wire::{Offer, Withdraw, WITHDRAW_OP, WITHDRAW_REFUSED};
-// 「问后端失败了」那一套词（失败原因 · 在等应答的上限）住通信层 crate，与分流规则同一个家。
+pub use resident_client::client::*;
+// 判据（`inbound_client_tests.rs`，与本体同一份行为）沿用本体那几样词。
+#[cfg(test)]
+use crate::chan::wire::Withdraw;
 use crate::stream_source::InboundFrame;
-pub use comms_inward::backend_route::{CallError, MAX_PENDING};
-use serde::Serialize;
+#[cfg(test)]
 use serde_json::Value;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+#[cfg(test)]
 use std::time::Duration;
-use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::sync::{mpsc, oneshot};
 
-/// 待写队列容量。满了 [`InboundClient::call`] 会**等**（背压），不丢命令 ——
-/// 丢一条命令的后果是调用方永远等不到应答，比慢一点糟得多。
-pub const WRITE_QUEUE_CAPACITY: usize = 64;
-
-/// 一条命令的结局（由收帧侧路由过来）。
-#[derive(Debug, Clone, PartialEq)]
-enum Outcome {
-    Reply {
-        ok: bool,
-        code: Option<String>,
-        message: Option<String>,
-        detail: Option<String>,
-        data: Option<Value>,
-    },
-    Cancelled,
-}
-
-/// 交给 writer task 的活。关写半边是一条显式指令（让后端的入方向 reader 见 EOF 寿终），不是「写任务结束时顺手做的事」：
-/// 一次性探测想要这个收尾，长连接不想要。关写半边不会让后端退出（`tests/e2e/inbound-backend-frames.sh` 第 9 条）：backend 只在
-/// ① `writer_task` 结束（stdout 关了）或 ② 收到停机信号 时退出（见其 `main.rs` 的 select）。
-enum WriteJob {
-    Line(String),
-    /// 只编进测试档：两条起真后端的判据拿它演「宿主走了 / 关写端不带走后端」。生产里没有关写半边这回事。
-    #[cfg(test)]
-    CloseWrite,
-}
-
-/// **Hello 见证**：拿到它 = 已经真的收到过后端的 `hello` 帧。
-///
-/// 唯一构造入口是 [`BackendHello::from_hello_frame`]，它只对 `InboundFrame::Hello` 返回 `Some`。
-/// 字段私有 ⇒ 外部造不出来。
-#[derive(Debug, Clone)]
-pub struct BackendHello {
-    /// 握手交出的 op 集 —— 「认不认」只问它（家在 `chan::wire::Offer`）。
-    offer: Offer,
-}
-
-impl BackendHello {
-    /// 从一个真的 Hello 帧换见证。非 Hello 帧 → `None`。
-    pub fn from_hello_frame(frame: &InboundFrame) -> Option<Self> {
-        match frame {
-            InboundFrame::Hello { .. } => Some(Self {
-                offer: offer_of(frame),
-            }),
+/// monitor 的帧类型是不是 hello：只有 `InboundFrame::Hello` 交得出能力事实（见证只经它换得出）。
+impl HelloFrame for InboundFrame {
+    fn hello_offer(&self) -> Option<crate::chan::wire::Offer> {
+        match self {
+            InboundFrame::Hello {
+                commands,
+                unavailable,
+                uncancellable,
+                shapes,
+                ..
+            } => Some(
+                crate::chan::wire::Offer::new(
+                    commands.clone(),
+                    unavailable.clone(),
+                    uncancellable.clone(),
+                )
+                .with_shapes(shapes.clone()),
+            ),
             _ => None,
         }
     }
 }
 
-/// hello 帧 ⇒ 那台机器的能力事实（`chan::wire::Offer`，一个家）。非 hello ⇒ 空。
-fn offer_of(frame: &InboundFrame) -> Offer {
-    match frame {
-        InboundFrame::Hello {
-            commands,
-            unavailable,
-            uncancellable,
-            ..
-        } => Offer::new(commands.clone(), unavailable.clone(), uncancellable.clone()),
-        _ => Offer::default(),
-    }
-}
-
-/// 「重新对齐」那条帧命令：它的应答顺带交回那台当下的能力事实（见 [`InboundClient::take_fresh_facts`]）。
-pub const RESYNC_OP: &str = "resync";
-
-/// **停在手里的写半边** —— 身上没有任何写方法。
-///
-/// 唯一出口是 [`ParkedWriter::into_client`]，而它要一个 [`BackendHello`]。
-/// 这就是「Hello 之前不许写」在 monitor 侧的落点。
-pub struct ParkedWriter<W> {
-    inner: W,
-}
-
-/// 把流切成两半，并且在同一个表达式里把写半边停住。`split()` 与 `park()` 分开的话，两者之间有一个可写的裸 `WriteHalf` 窗口，
-/// 类型系统保护不了，文本机检也能被尾随注释或一句 `w.write(..)` 绕过 ⇒ 让那个窗口根本不存在：调用方拿不到裸 `WriteHalf`，只能拿到 [`ParkedWriter`]；
-/// 护栏是「生产段里不许出现 `tokio::io::split(`」（零命中型判据）。
-pub fn split_and_park<S>(
-    stream: S,
-) -> (
-    tokio::io::ReadHalf<S>,
-    ParkedWriter<tokio::io::WriteHalf<S>>,
-)
-where
-    S: tokio::io::AsyncRead + AsyncWrite + Send + 'static,
-{
-    let (r, w) = tokio::io::split(stream);
-    (r, ParkedWriter { inner: w })
-}
-
-/// 把一个已经拿在手里的写半边停下。
-///
-/// **只在测试期存在**（`#[cfg(test)]`）—— 生产代码一律走 [`split_and_park`]。
-/// 留它是因为 `tokio::io::duplex` 造的内存管道两端本来就是分开的，没有可切的双工流；
-/// 把它 gate 在 test 下，等于让「生产代码里有可写的裸 WriteHalf」这件事**编译期不可表示**，
-/// 不用再靠 `write_half_guard` 去扫（那条护栏留着挡 `tokio::io::split` 直接调用）。
-#[cfg(test)]
-pub fn park<W>(w: W) -> ParkedWriter<W>
-where
-    W: AsyncWrite + Unpin + Send + 'static,
-{
-    ParkedWriter { inner: w }
-}
-
-/// 停住一个本来就独立、没有对应「切」动作的写端：本机后端是 `std::process::Child`，它的 `ChildStdin` / `ChildStdout` 是两条本来就独立的管道，
-/// 没有「切了忘了停」这个失效模式可防。仍然产出 [`ParkedWriter`] ⇒ 「hello 之前不许写」照旧由类型保证
-/// （可写的 client 唯一的路是 [`ParkedWriter::into_client`]，它要一个 [`BackendHello`] 见证）。
-/// 远端那条路用不了它：`attach_inbound_client`（`stream_source/run.rs`）要的 [`ParkedWriter`] 只能由 [`split_and_park`] 从可切的双工流产出。
-/// 它没有判据钉「只许本机用」：有人拿它去停一个真的从双工流切出来的写端，就绕过了上面那道门。
-pub fn park_owned_writer<W>(w: W) -> ParkedWriter<W>
-where
-    W: AsyncWrite + Unpin + Send + 'static,
-{
-    ParkedWriter { inner: w }
-}
-
-impl<W> ParkedWriter<W>
-where
-    W: AsyncWrite + Unpin + Send + 'static,
-{
-    /// 收到 Hello 之后，把停着的写半边换成一个能发命令的客户端。
-    ///
-    /// 写半边被移进一个独立的 writer task —— 之后没有任何人还能直接碰它。
-    pub fn into_client(self, hello: BackendHello) -> Arc<InboundClient> {
-        let (tx, mut rx) = mpsc::channel::<WriteJob>(WRITE_QUEUE_CAPACITY);
-        let mut w = self.inner;
-        tauri::async_runtime::spawn(async move {
-            while let Some(job) = rx.recv().await {
-                let line = match job {
-                    WriteJob::Line(l) => l,
-                    // 只有明确要求时才关写半边 —— 见 `InboundClient::close_write`（只在测试档）。
-                    #[cfg(test)]
-                    WriteJob::CloseWrite => {
-                        let _ = w.shutdown().await;
-                        break;
-                    }
-                };
-                if let Err(e) = w.write_all(line.as_bytes()).await {
-                    tracing::warn!("inbound_client 写失败（{e}）；停写");
-                    break;
-                }
-                // 逐行 flush：命令是交互式的，攒批只会让应答莫名其妙地晚到。
-                if let Err(e) = w.flush().await {
-                    tracing::warn!("inbound_client flush 失败（{e}）；停写");
-                    break;
-                }
-            }
-            // 走到这里 = 通道关了或写崩了。**不隐式 shutdown**：关掉写半边 =
-            // backend 的入方向 reader 寿终 ⇒ 这条连接**再也发不出命令**。
-            // 长连接上那是不可接受的，所以关不关由调用方用 `CloseWrite` 明说。
-        });
-        Arc::new(InboundClient {
-            offer: std::sync::RwLock::new(hello.offer),
-            nonce: connection_nonce(),
-            seq: AtomicU64::new(0),
-            writes: tx,
-            pending: Mutex::new(HashMap::new()),
-        })
-    }
-}
-
-/// 一条连接上的入方向客户端。
-pub struct InboundClient {
-    /// 握手那一刻的能力事实；`resync` 的应答会把它换成那台当下的（[`RESYNC_OP`]）。
-    offer: std::sync::RwLock<Offer>,
-    /// 本连接的号段前缀。**每连接一套** —— 重连后的 `id` 与上一条连接不撞。
-    nonce: String,
-    seq: AtomicU64,
-    writes: mpsc::Sender<WriteJob>,
-    pending: Mutex<HashMap<String, Waiter>>,
-}
-
-/// 登记表里的一格：等结局的那一头 ＋它若是补发的撤单，撤的是哪条命令（回「停不下来」时点名）。
-struct Waiter {
-    tx: oneshot::Sender<Outcome>,
-    withdraws: Option<String>,
-}
-
-impl InboundClient {
-    /// backend 声明接受这条命令吗。答案只住 [`Offer::admits`]（能力协商的家）。
-    pub fn accepts(&self, cmd: &str) -> bool {
-        self.offer_now().admits(cmd)
-    }
-
-    /// 那台机器的能力事实（拷贝一份给 webview / 外部前端）。
-    pub fn offer(&self) -> Offer {
-        self.offer_now().clone()
-    }
-
-    fn offer_now(&self) -> std::sync::RwLockReadGuard<'_, Offer> {
-        self.offer.read().unwrap_or_else(|e| e.into_inner())
-    }
-
-    /// `resync` 应答里那台当下的能力事实 ⇒ 换进 [`Offer`]（唯一住处）。应答里没有这两格（旧后端）⇒ 不动。
-    fn take_fresh_facts(&self, data: Option<&Value>) {
-        let Some(obj) = data.and_then(Value::as_object) else {
-            return;
-        };
-        if !obj.contains_key("unavailable") && !obj.contains_key("uncancellable") {
-            return;
-        }
-        let (unavailable, uncancellable) = Offer::facts_of(obj);
-        self.offer
-            .write()
-            .unwrap_or_else(|e| e.into_inner())
-            .refresh_facts(unavailable, uncancellable);
-    }
-
-    /// 本连接内唯一的请求 `id`。
-    ///
-    /// 形状 `<连接 nonce>-<单调序号>`：nonce 让重连后的号段不撞，序号在连接内唯一
-    /// ⇒ backend 的 `duplicate_id` 拒绝路径在正常情况下打不到。
-    fn next_id(&self) -> String {
-        let n = self.seq.fetch_add(1, Ordering::Relaxed);
-        format!("{}-{n}", self.nonce)
-    }
-
-    /// 发一条命令并等应答。
-    ///
-    /// # ★ 超时覆盖**写入 + 等应答**两段，不只是后者
-    ///
-    /// 第一版把 `writes.send(..).await` 放在 `timeout` 外面。D 审计给出了完整的死锁链，
-    /// 而且每一环都是本仓自己写下来的事实：
-    ///
-    /// ```text
-    /// monitor 读侧一停（stream_loop 卡在 flush_lines）
-    ///   → backend stdout 反压
-    ///   → backend 应答通道满（IPC-PROTOCOL 第 4 条：「满时阻塞入方向正是想要的」）
-    ///   → backend 停读 stdin
-    ///   → monitor 的 write_all 永久 pending（记着这条）
-    ///   → 写队列（64）填满
-    ///   → call() **无视自己的 timeout 永久挂起**
-    /// ```
-    ///
-    /// 而 `src/doc/IPC-PROTOCOL.md` 把「超时归客户端」写成了契约。所以两段共用**一个 deadline**。
-    ///
-    /// # 超时为什么**不摘登记**（只对「等应答」那一段成立）
-    ///
-    /// 摘掉的话，晚到的 `reply`/`cancelled` 会落进「未登记的 id」，每次超时刷一条 warn ——
-    /// 而那恰恰是**预期内**的事。所以登记条目留着，由路由侧摘：路由发现
-    /// `oneshot::send` 失败即知调用方已走，记 debug 而不是 warn。
-    ///
-    /// **写入那一段超时则相反**：那条命令根本没入队（`send` 只在有空位时才完成），
-    /// 不会有任何应答回来 ⇒ 必须当场摘掉，否则就是纯泄漏。
-    pub async fn call(
-        &self,
-        cmd: &str,
-        args: Value,
-        timeout: Duration,
-    ) -> Result<Option<Value>, CallError> {
-        self.send_until(cmd, args, None, tokio::time::Instant::now() + timeout)
-            .await
-    }
-
-    /// 〔「一次调用一个绝对时刻」〕与 [`Self::call`] 同一件事，只是截止时刻由**调用方**给。
-    ///
-    /// 一件事由好几问组成时（分页读），发起方造一次截止时刻、每一问都拿**同一个**去等 ⇒ 越往后剩得越少，
-    /// 没有一问会重新拿一整份（病 2：「每 59 s 吐一个字节的对端能拖到无限」）。
-    /// 本函数**只用、不造**：写入 ＋ 等应答两段共用这一个时刻（上面「两段共用一个 deadline」同一条理由）。
-    /// [`Self::call`] 是它的薄壳（`now + timeout`），其余调用方行为逐字不变。
-    pub async fn call_until(
-        &self,
-        cmd: &str,
-        args: Value,
-        deadline: tokio::time::Instant,
-    ) -> Result<Option<Value>, CallError> {
-        self.send_until(cmd, args, None, deadline).await
-    }
-
-    /// 与 [`Self::call_until`] 同一件事，外加出口的声明（`view`：要哪几格 · 哪几格不要）——
-    /// 原样放进请求信封的 `view` 那一格，后端照它把成品裁好再装运（`stream/inbound/views.rs`）。本侧不读它。
-    pub async fn call_until_viewed(
-        &self,
-        cmd: &str,
-        args: Value,
-        view: &Value,
-        deadline: tokio::time::Instant,
-    ) -> Result<Option<Value>, CallError> {
-        self.send_until(cmd, args, Some(view), deadline).await
-    }
-
-    /// [`Self::call`] · [`Self::call_until`] · [`Self::call_until_viewed`] 共用的那一份：发一条命令、在 `deadline` 之前等它的结局。
-    async fn send_until(
-        &self,
-        cmd: &str,
-        args: Value,
-        view: Option<&Value>,
-        deadline: tokio::time::Instant,
-    ) -> Result<Option<Value>, CallError> {
-        // 只为报错里那一格「等了多久」（`Timeout.after`）：这一问开始时还剩多少。
-        let timeout = deadline.saturating_duration_since(tokio::time::Instant::now());
-        if !self.accepts(cmd) {
-            return Err(CallError::Unsupported {
-                cmd: cmd.to_string(),
-                offered: self.offer_now().ops().to_vec(),
-            });
-        }
-        // 那台握手时说过做不到 ⇒ 不发，事前就拒（一个字节不出本侧）。
-        if let Some(code) = self.offer_now().unavailable(cmd).map(str::to_string) {
-            return Err(CallError::Unavailable {
-                cmd: cmd.to_string(),
-                code,
-            });
-        }
-        let id = self.next_id();
-        let rx = self.register(&id, None).ok_or(CallError::TooManyPending)?;
-        // 这一问还剩多少原样放进信封：后端按它（减它自己的余量）装这条命令的总期限。
-        let tz = host_core::viewer_tz();
-        let line = WriteJob::Line(encode_request(
-            &id,
-            cmd,
-            &args,
-            Some(timeout),
-            tz.as_deref(),
-            view,
-        ));
-        match tokio::time::timeout_at(deadline, self.writes.send(line)).await {
-            Ok(Ok(())) => {}
-            Ok(Err(_)) => {
-                self.take_pending(&id);
-                return Err(CallError::Disconnected);
-            }
-            Err(_elapsed) => {
-                // 没入队 ⇒ 不会有应答 ⇒ 摘掉，也不用补 cancel（backend 没见过这条命令）。
-                self.take_pending(&id);
-                return Err(CallError::Timeout {
-                    after: timeout,
-                    withdraw: Withdraw::Unsent,
-                });
-            }
-        }
-        // 从这一刻起它已经入队、后端会去跑它 ⇒ 调用方在拿到结局之前走人（超时，或者这个 future 被丢：`select!` 输了 / 任务被撤 / 界面点了「取消」）
-        // 都要补发一条 `cancel`，让后端别白跑（不然那条命令照跑到它自己的期限）。
-        let mut abandon = AbandonGuard {
-            client: self,
-            id: Some(id),
-            cmd,
-        };
-        let outcome = tokio::time::timeout_at(deadline, rx).await;
-        if outcome.is_ok() {
-            // 拿到了结局（应答 / 已取消 / 断连）⇒ 没什么可撤的。
-            abandon.id = None;
-        }
-        match outcome {
-            Ok(Ok(Outcome::Reply { ok: true, data, .. })) => {
-                if cmd == RESYNC_OP {
-                    self.take_fresh_facts(data.as_ref());
-                }
-                Ok(data)
-            }
-            Ok(Ok(Outcome::Reply {
-                code,
-                message,
-                detail,
-                data,
-                ..
-            })) => Err(CallError::Remote {
-                code: code.unwrap_or_else(|| "unspecified".to_string()),
-                message: message.unwrap_or_default(),
-                detail: detail.unwrap_or_default(),
-                data: data.map(|d| d.to_string()),
-            }),
-            Ok(Ok(Outcome::Cancelled)) => Err(CallError::Cancelled),
-            // 登记条目被摘掉/连接没了 ⇒ 发送端 drop。
-            Ok(Err(_)) => Err(CallError::Disconnected),
-            // 超时：`abandon` 还拿着 id ⇒ 它在本函数返回时补发那条 `cancel`（与「被丢」同一处，不发两次）。
-            Err(_elapsed) => Err(CallError::Timeout {
-                after: timeout,
-                withdraw: self.offer_now().withdraw(cmd),
-            }),
-        }
-    }
-
-    /// 收到 `{"kind":"reply",…}` 时调。返回是否找到了对应的等待者。
-    pub fn route_reply(
-        &self,
-        id: &str,
-        ok: bool,
-        code: Option<String>,
-        message: Option<String>,
-        detail: Option<String>,
-        data: Option<Value>,
-    ) -> bool {
-        self.deliver(
-            id,
-            Outcome::Reply {
-                ok,
-                code,
-                message,
-                detail,
-                data,
-            },
-        )
-    }
-
-    /// 收到 `{"kind":"cancelled",…}` 时调。返回是否找到了对应的等待者。
-    pub fn route_cancelled(&self, id: &str) -> bool {
-        self.deliver(id, Outcome::Cancelled)
-    }
-
-    /// 显式关掉写半边 —— backend 的入方向 reader 见 EOF 后寿终。只编进测试档。长连接上调它 = 之后再也发不出任何命令，而连接看起来一切正常；
-    /// 做成一条要主动发的指令，是为了让这个区别在调用点显形。它不会让后端退出（见 [`WriteJob`]）。
-    #[cfg(test)]
-    pub fn close_write(&self) {
-        if self.writes.try_send(WriteJob::CloseWrite).is_err() {
-            // 队列满 / 写任务已退。**说出来** —— 调用方会以为已经关了。
-            tracing::debug!("inbound_client close_write 未能入队（写队列满或写任务已退）");
-        }
-    }
-
-    /// 断连：叫醒所有还在等的调用方（它们会拿到 [`CallError::Disconnected`]）。
-    pub fn shutdown(&self) {
-        let n = {
-            let mut p = lock(&self.pending);
-            let n = p.len();
-            p.clear();
-            n
-        };
-        if n > 0 {
-            tracing::debug!("inbound_client 断连，叫醒 {n} 个等待中的命令");
-        }
-    }
-
-    fn deliver(&self, id: &str, outcome: Outcome) -> bool {
-        let Some(Waiter { tx, withdraws }) = self.take_pending(id) else {
-            // ★ 归不到任何命令头上的应答。**最要紧的是别把 code/message 丢了** ——
-            // 它们往往是唯一能说清「为什么那条命令没反应」的东西。
-            //
-            // backend 对**协议级**错误（坏 JSON / 超长单行）回的 `id` 是**空串**
-            // （它那时还不知道 id 是什么），所以空 id 不是「回显错了」，是这一类。
-            let detail = match &outcome {
-                Outcome::Reply {
-                    ok: false,
-                    code,
-                    message,
-                    ..
-                } => format!(
-                    "（错误应答 code={} message={}）",
-                    code.as_deref().unwrap_or("-"),
-                    message.as_deref().unwrap_or("-")
-                ),
-                _ => String::new(),
-            };
-            if id.is_empty() {
-                tracing::warn!(
-                    "远端后端回了一条**协议级**错误应答（id 为空，归不到具体命令）{detail} —— \
-                     多半是上一条命令的 JSON 坏了或超过单行上限；那条命令会走本地超时"
-                );
-            } else {
-                tracing::warn!(
-                    "入方向应答的 id `{id}` 没有登记{detail} —— 要么后端回显错了 id，\
-                     要么登记表满时补发的 cancel 回来了"
-                );
-            }
-            return false;
-        };
-        // 补发的撤单被回「停不下来」⇒ 说出来（先前落 debug，等于静默）。
-        if let (
-            Some(cmd),
-            Outcome::Reply {
-                ok: false,
-                code: Some(code),
-                ..
-            },
-        ) = (&withdraws, &outcome)
-        {
-            if code == WITHDRAW_REFUSED {
-                tracing::warn!("对端不认撤单：`{cmd}` 停不下来，会照跑完（本地已不再等它）");
-            }
-        }
-        if tx.send(outcome).is_err() {
-            // 正常：调用方已超时走人（或那是一条 fire-and-forget 的 cancel）。
-            tracing::debug!("入方向应答 `{id}` 晚到，调用方已走");
-        }
-        true
-    }
-
-    /// 登记一个等待者。表满 → `None`。
-    ///
-    /// # ★ 满之前先回收「调用方已走」的登记
-    ///
-    /// 「超时不摘登记」那条设计有个前提：晚到的应答终会把登记摘掉。
-    /// D 审计指出这个前提在**背压路径上不成立** —— backend 侧 cancel 的两条应答都是
-    /// `try_send`（`stream/inbound/`），应答通道满时**静默丢弃**，被 abort 的命令也不补应答。
-    /// 那条 id 就永远等不到任何帧，是真泄漏；每次超时消耗 2 格，128 次封死 256 格，
-    /// **而且后端恢复之后也不会自愈**。
-    ///
-    /// 回收判据用 `oneshot::Sender::is_closed()`：接收端已 drop = 调用方早走了，
-    /// 这条登记留着只是为了「让晚到的应答别刷 warn」，满的时候它显然不值那个价。
-    /// 不需要定时器，只在真要满的那一刻扫一次。
-    fn register(&self, id: &str, withdraws: Option<String>) -> Option<oneshot::Receiver<Outcome>> {
-        let (tx, rx) = oneshot::channel();
-        let mut p = lock(&self.pending);
-        if p.len() >= MAX_PENDING {
-            let before = p.len();
-            p.retain(|_, waiter| !waiter.tx.is_closed());
-            let reclaimed = before - p.len();
-            if reclaimed > 0 {
-                tracing::debug!("入方向登记表满，回收了 {reclaimed} 条调用方已走的登记");
-            }
-            if p.len() >= MAX_PENDING {
-                return None;
-            }
-        }
-        p.insert(id.to_string(), Waiter { tx, withdraws });
-        Some(rx)
-    }
-
-    /// 当前登记数（测试用；生产没有读者，别拿它做判断）。
-    #[cfg(test)]
-    fn pending_len(&self) -> usize {
-        lock(&self.pending).len()
-    }
-
-    fn take_pending(&self, id: &str) -> Option<Waiter> {
-        lock(&self.pending).remove(id)
-    }
-
-    /// 超时后补一条 `cancel`，让后端别白跑。**不等它的应答。**
-    ///
-    /// 它自己那条应答也登记（接收端立刻丢掉）——这样路由到它时走的是
-    /// 「调用方已走」的 debug 路径，而不是「未登记的 id」的 warn。
-    ///
-    /// **登记不上就不发**：登记表满时硬发出去，那条应答回来一定落进 unknown-id 的 warn，
-    /// 而那正是登记它想避免的噪声 —— 在表已经满、日志最该干净的时候刷。
-    fn fire_and_forget_cancel(&self, target: &str, cmd: &str) {
-        let w = self.offer_now().withdraw(cmd);
-        match w {
-            Withdraw::Asked => {}
-            // 对端不认撤单：本地照撤、一帧不补，但要说出来（先前静默 return）。
-            Withdraw::NotOffered => {
-                tracing::warn!("对端不认撤单：`{cmd}` 没法叫它停，可能照跑完（本地已不再等它）");
-                return;
-            }
-            // `Offer::withdraw` 不给这一档（它只问已发出的那条）。
-            Withdraw::Unsent => return,
-        }
-        let id = self.next_id();
-        let Some(_keep_quiet) = self.register(&id, Some(cmd.to_string())) else {
-            tracing::debug!("登记表满，跳过超时补发的 cancel：target={target}");
-            return;
-        };
-        let line = encode_request(
-            &id,
-            WITHDRAW_OP,
-            &serde_json::json!({ "target": target }),
-            None,
-            None,
-            None,
-        );
-        // `try_send`：这是 best-effort 的收尾，绝不为它阻塞调用方。
-        if self.writes.try_send(WriteJob::Line(line)).is_err() {
-            self.take_pending(&id);
-            tracing::debug!("超时补发 cancel 未能入队（队列满或已断连）：target={target}");
-        }
-    }
-}
-
-/// **已入队、还没拿到结局**的那一条命令：这个守卫被析构时（调用方超时 / future 被丢）
-/// 补发一条 `cancel{target: id}`（[`InboundClient::fire_and_forget_cancel`]，best-effort、不等应答）。
-/// 拿到结局的那一刻 `id` 被取走 ⇒ 不发。
-struct AbandonGuard<'a> {
-    client: &'a InboundClient,
-    id: Option<String>,
-    /// 撤的是哪条命令 —— 对端不认 / 停不下来时点名用。
-    cmd: &'a str,
-}
-
-impl Drop for AbandonGuard<'_> {
-    fn drop(&mut self) {
-        if let Some(id) = self.id.take() {
-            self.client.fire_and_forget_cancel(&id, self.cmd);
-        }
-    }
-}
-
-/// 请求信封的线上形状。**用结构体而不是 `json!` map** —— 结构体字段顺序由 serde 保证，
-/// 与 `serde_json` 有没有开 `preserve_order` 无关。跨轨对拍要的是**逐字节确定**。
-#[derive(Serialize)]
-struct RequestLine<'a> {
-    id: &'a str,
-    cmd: &'a str,
-    args: &'a Value,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    within_ms: Option<u64>,
-    /// 看的这一台的时区（IANA 名）：后端按它写回包里的「几点」（`IPC-PROTOCOL.md` §4）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    tz: Option<&'a str>,
-    /// 出口的声明（要哪几格 · 哪几格不要），原样搬上线。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    view: Option<&'a Value>,
-}
-
-/// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
-///
-/// 对侧是 `src/backend/stream/wire.rs::Request`（`{id, cmd, args, within_ms?, tz?, view?}`，`args` 可缺省）。
-/// `within`：发起方这一发还愿意等多久（调用方给的，这里只换成毫秒搬上线；不足 1 ms 记 1）；`None` ⇒ 不带这一格。
-/// `tz`：看的这一台的时区（[`host_core::viewer_tz`]）；`None` ⇒ 不带（后端按 UTC 写）。
-/// `view`：出口的声明，原样搬上线；`None` ⇒ 不带这一格（＝ 全量）。
-///
-/// # 为什么可以 `expect`
-///
-/// `serde_json::Value` 在类型上就装不下会让序列化失败的东西：`Number` 不可能是 NaN/Inf，
-/// `Map` 的键恒为 `String`。字段只有 `&str`/`&Value`/`u64` ⇒ 这个 `to_string` 不可失败。
-pub fn encode_request(
-    id: &str,
-    cmd: &str,
-    args: &Value,
-    within: Option<Duration>,
-    tz: Option<&str>,
-    view: Option<&Value>,
-) -> String {
-    let within_ms = within.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX).max(1));
-    let mut s = serde_json::to_string(&RequestLine {
-        id,
-        cmd,
-        args,
-        within_ms,
-        tz,
-        view,
-    })
-    .expect("RequestLine 只含 &str/&Value/u64，序列化不可失败");
-    s.push('\n');
-    s
-}
-
-// `launch` 的参数构造器住 `backend/control/command_args.rs`：「一条命令要带哪几个业务字段」是载荷的内容，本文件只管载荷的搬运（零业务语义）。
-
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     m.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-/// 每条连接一个前缀。用进程内单调计数 + 起始时间戳：**不需要密码学随机**，
-/// 只需要「同一个后端进程看到的两条连接不会用同一个号段」。
-fn connection_nonce() -> String {
-    static CONN: AtomicU64 = AtomicU64::new(0);
-    let n = CONN.fetch_add(1, Ordering::Relaxed);
-    let t = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    format!("m{t:x}.{n}")
 }
 
 // ============================================================================
@@ -682,7 +46,7 @@ fn connection_nonce() -> String {
 // ============================================================================
 
 /// 形状同 `stream_source::announced_registry`：origin 是那台机器的稳定身份。
-/// 写者 = 各主机的 `stream_loop`（收到 hello 时登记、连接退出时摘除）。
+/// 写者 = 远端各台的收事那一头 `stream_source::consume_remote`（接上时登记、断了摘除）· 本机那条流。
 fn registry() -> &'static Mutex<HashMap<String, Arc<InboundClient>>> {
     static R: std::sync::OnceLock<Mutex<HashMap<String, Arc<InboundClient>>>> =
         std::sync::OnceLock::new();
@@ -691,6 +55,9 @@ fn registry() -> &'static Mutex<HashMap<String, Arc<InboundClient>>> {
 
 /// 登记本连接的客户端。同 origin 的旧条目会被替换（重连）。
 pub fn register(origin: &str, client: Arc<InboundClient>) {
+    // 记下它通往哪台：形状对不上那一句按这个名字说（一条连接只登记一次）；看的这一台的时区，每条请求信封都带。
+    client.name_machine(origin);
+    client.set_viewer_tz(host_core::viewer_tz());
     // **先放锁再 shutdown** —— 与 `unregister` 对称。今天两者都不会死锁（没有任何路径是
     // pending → registry），但两处写法不一致就是给后来人埋的坑。
     let old = lock(registry()).insert(origin.to_string(), client);
@@ -701,8 +68,6 @@ pub fn register(origin: &str, client: Arc<InboundClient>) {
     // 换了一条新连接 ⇒ 不论那台原先是不是 `Up`（新的先登记、旧的后摘时一直是）都醒一次订阅者：
     //   `stream_watch` 据它给新连接重报「在看」名单（新连接 ＝ 没报过）。
     lock(link_book()).tick.send_modify(|t| *t += 1);
-    // 断线时按过、还没用掉的「重新连接」许可作废（见 [`kick`]）。
-    lock(link_book()).kicks.remove(origin);
     // 本机那一台的状态成品看的就是这条通道在不在。
     if origin == LOCAL_ORIGIN {
         crate::machine_state::notify(origin);
@@ -747,8 +112,6 @@ struct LinkBook {
     links: HashMap<String, Link>,
     /// 每改一格 +1（订阅者据它醒）。
     tick: tokio::sync::watch::Sender<u64>,
-    /// 「重新连接」那一下：叫醒那台的连接循环（它正睡在退避里）。
-    kicks: HashMap<String, Arc<tokio::sync::Notify>>,
 }
 
 fn link_book() -> &'static Mutex<LinkBook> {
@@ -757,7 +120,6 @@ fn link_book() -> &'static Mutex<LinkBook> {
         Mutex::new(LinkBook {
             links: HashMap::new(),
             tick: tokio::sync::watch::channel(0).0,
-            kicks: HashMap::new(),
         })
     })
 }
@@ -790,29 +152,17 @@ pub fn link_changes() -> tokio::sync::watch::Receiver<u64> {
     lock(link_book()).tick.subscribe()
 }
 
-/// 那台连接循环睡退避时一起等的那一下（[`kick`] 拨它）。
-pub fn kick_handle(origin: &str) -> Arc<tokio::sync::Notify> {
-    lock(link_book())
-        .kicks
-        .entry(origin.to_string())
-        .or_insert_with(|| Arc::new(tokio::sync::Notify::new()))
-        .clone()
-}
-
-/// 「重新连接」：叫醒那台的连接循环，不等退避睡满。
-/// 连着 ⇒ 不做事；断着而它此刻没在睡 ⇒ 记一下，下一回一睡就醒；连上那一刻这份许可作废（[`register`]），
+/// 「重新连接」：叫醒那台的连接循环，不等退避睡满（循环住 `resident-client`，`stream_source::wake` 拨它）。
+/// 连着 ⇒ 不做事；断着而它此刻正在拨 ⇒ 这一轮没成就不睡；连上那一刻这一下作废，
 /// 不会留到下一次断线时白白跳过一轮退避。主窗口与文件窗口的［重新连接］都只走这一处。
 pub fn kick(origin: &str) {
     if link_of(origin) == Link::Up {
         return;
     }
-    kick_handle(origin).notify_one();
+    crate::stream_source::wake(origin);
 }
 
-/// 本机后端在 registry 里的 key。远端用 `cfg.origin_label()`（用户配的机器名）；本机在前端是省略 origin，而 registry 的 key 是 `String` ⇒ 需要一个约定值。
-/// 用户理论上可以把某台远端机器的 label 起成这个名字，两者就撞了；尖括号不是合法的 ssh host 名，撞名要故意才做得到，所以不加校验。
-#[allow(dead_code)]
-pub const LOCAL_ORIGIN: &str = "<local>";
+// 本机后端在 registry 里的 key（`LOCAL_ORIGIN`）住 `resident-client`（称呼那一句认它），上面整份转用。
 
 /// **测试期 `<local>` 的独占锁**。
 ///

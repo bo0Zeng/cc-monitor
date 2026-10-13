@@ -288,7 +288,9 @@ fn the_cli_entry_never_names_a_concrete_handler() {
         );
     }
     assert!(
-        prod.contains("Run::Blocking(f) => f(req)") && prod.contains("Run::Async(f) => f(req)"),
+        prod.contains("prepare(spec.run, Some(own))")
+            && prod.contains("Prepared::Blocking(f)) => f(req)")
+            && prod.contains("Prepared::Async(f)) => f(req).await"),
         "派发不再直接跑 `spec.run` 了 —— 「一份实现，两个入口」这个支点断在这里"
     );
 }
@@ -1185,7 +1187,7 @@ fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
     );
     let detail = v["detail"].as_str().unwrap();
     assert!(
-        detail.contains("missing `path`"),
+        detail.contains("missing field `path`"),
         "详情没说缺什么：{detail}"
     );
     assert!(

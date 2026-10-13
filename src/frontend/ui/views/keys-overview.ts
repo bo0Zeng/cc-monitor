@@ -36,6 +36,8 @@ function groups(): { title: string; rows: Row[] }[] {
       title: copyText("keys.group.current"),
       rows: [
         { ids: ["session.find"] },
+        { ids: ["session.find-scope-user"] },
+        { ids: ["session.find-tools"] },
         { label: copyText("keys.row.turns"), ids: ["session.prev-turn", "session.next-turn"] },
         { ids: ["session.to-bottom"] },
         { ids: ["session.toggle-process"] },

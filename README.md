@@ -2,7 +2,7 @@
 
 **把你在各台机器上跑的 Claude Code 会话收进一个窗口：实时看、随时接着用、一处管好所有机器。**
 
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v4.1.8
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） · Android 手机端（.apk） | 当前版本: v4.1.10
 
 ![主界面：左边每个 tab 是一个正在跑的 Claude Code 会话，右边实时显示对话与工具调用](docs/screenshots/main.png)
 
@@ -198,7 +198,7 @@ ccm -- --ccm-help                 # 全部选项
 - 多账号目前只支持 Linux 机器，Windows 本机上不能建账号库。
 - Windows 那一侧在 Windows 11 虚拟机上做过回归（复制详情 · 图标 · 终端抽屉 · 文件窗口 · ↗ 切到对的窗口与 Windows Terminal 标签页）；以管理员身份开的终端还没测过，系统通知在虚拟机里判不了。
 - ↗ 在标签名不随程序标题变（手动改过名 · 设了「禁止更改标题」）或读不到标签页时只切窗口，并说为什么；经跳板机或端口转换连过去的终端对不上。
-- 手机端（Android）在仓里（`src/mobile/`），还没随 Release 发过安装包。
+- 手机端（Android）的签名安装包随 Release 一起发（`cc-monitor-<版本>.apk`）；手机上还不能给机器装 / 升级后端，只会说「需更新」；手机的 SSH 还是它自己那一套，下一版换成与桌面同一个核心。
 
 ---
 
@@ -213,8 +213,8 @@ ccm -- --ccm-help                 # 全部选项
 
 ## 项目当前状态
 
-- **版本**：v4.1.8（Released）
-- 当前发布 **v4.1.8**：详见 [CHANGELOG](CHANGELOG.md)
+- **版本**：v4.1.10（Released）
+- 当前发布 **v4.1.10**：详见 [CHANGELOG](CHANGELOG.md)
 
 ## License
 

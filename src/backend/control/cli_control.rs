@@ -289,21 +289,18 @@ pub(crate) async fn run_io<R: Read + Send + 'static>(
     // 总期限与帧面同一处装：登记了上限的（都在阻塞档）按上限与发起方期限里早的那个装；别的命令不装（`None`）。
     let total = crate::stream::inbound::install_total(&req);
     // 这几行是本模块的全部：派发落到 `REGISTRY` 自己的 `run`。
-    let outcome: Result<Option<serde_json::Value>, Fail> = match spec.run {
-        Run::Blocking(f) => f(req).map_err(Fail::from),
-        Run::BlockingData(f) => f(req),
-        Run::BlockingOwn(f) => f(req, own),
-        Run::Async(f) => f(req).await.map_err(Fail::from),
-        Run::AsyncData(f) => f(req).await,
-        Run::AsyncOwn(f) => f(req, own.clone()).await.map_err(Fail::from),
-        Run::Builtin => {
-            return refuse(
-                err,
-                "not_available_in_cli",
-                contract::malformed("this command is only served on the frame channel"),
-            )
-        }
-    };
+    let outcome: Result<Option<serde_json::Value>, Fail> =
+        match crate::stream::inbound::prepare(spec.run, Some(own)) {
+            Some(crate::stream::inbound::Prepared::Blocking(f)) => f(req),
+            Some(crate::stream::inbound::Prepared::Async(f)) => f(req).await,
+            None => {
+                return refuse(
+                    err,
+                    "not_available_in_cli",
+                    contract::malformed("this command is only served on the frame channel"),
+                )
+            }
+        };
     drop(total);
     match outcome {
         Ok(v) => {

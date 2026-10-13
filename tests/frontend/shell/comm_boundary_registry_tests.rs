@@ -24,6 +24,8 @@ const ALLOWED_DEPS: &[(&str, &[&str])] = &[
         "comms-inward",
         &[
             "copy-core",
+            // 契约 crate：机器名（`Origin` ＝ `cmd_wire::Machine`）· typed 命令的形状指纹表；不是业务。
+            "cmd-wire",
             "serde",
             "serde_json",
             "tokio",
@@ -2135,7 +2137,7 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
         "**传输那一段已经搬出去了**：SSH 的全部活进了后端的拨号代理，\
          界面侧读应答的那一段是新的通信层成员 `ssh_link.rs`，起代理的是宿主 `dial_host.rs`。\
          今天咬它的两条**全是业务该做的事**，不是传输面没洗干净：`C1` 公开面上是会话/tmux/agent 那一族\
-         （远端数据源本来就是业务）· `X2` 重连退避与快照重试的期限值。\
+         （远端数据源本来就是业务）· `X2` 握手每一行的期限与快照重试的期限值（重连退避本身随重连循环住 `resident-client`）。\
          ⇒ **这一份不是「还差一点就进来」，是「本来就不该进来」**：登记它等于把业务家圈进通信层。\
          〔`C4` 原来还有一个判词「读环境OS」—— 拨号代理二进制的解析搬去了宿主，那一处随之离开。\
 `C4`「读文本」（读 `~/.ssh/config`）与 `C5`（起 `ssh -G`）随「从 ssh config 导入」搬进后端 `dial/ssh_config.rs` 一起离开。〕",
@@ -2155,7 +2157,7 @@ const TRANSPORT_LEFT_OUTSIDE: &[(&str, &[&str], &[&str], &str)] = &[
         "src/frontend/shell/src/sftp_pool.rs",
         &["X2"],
         &[],
-        "**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `dial/sftp.rs`、传输台 `control/transfer.rs`），\
+        "**传输本体整段搬进了本机常驻后端**（SFTP 客户端 `ssh-dial/sftp.rs`、传输台 `control/transfer.rs`），\
          这份只剩中继：开单 / 起跑 / 撤原样转给本机后端，`transfer` 帧翻成窗口那几格。\
          只剩 `X2`：它给本机后端那几条**就地记账**命令的应答定了一个期限值（`CALL_BUDGET`）—— \
          期限值归宿主，而它**就是**宿主那一侧的中继，不是传输面候选 ⇒ 不圈，照实登记。",

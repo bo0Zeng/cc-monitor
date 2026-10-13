@@ -28,6 +28,7 @@
  *    但**把这 7 个名字逐字钉死**（`DYNAMIC_ONLY`）：盲区本身不许静默变大。
  */
 import { describe, it, expect, vi, beforeEach, beforeAll } from "vitest";
+import { owned } from "../../../test-support/owned-tab-manager.ts";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join, sep } from "node:path";
 import ts from "typescript";
@@ -500,7 +501,7 @@ describe("本机起会话的主路：交「跟随」给本机后端、界面一�
     const bar = document.createElement("div");
     const root = document.createElement("div");
     document.body.append(bar, root);
-    const tm = new TabManager(bar, root);
+    const tm = owned(new TabManager(bar, root));
     const t = tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, LOCAL_ORIGIN);
     t.agent = "claude"; // 会话事实到了（是哪一家由后端说）
     tm.archiveTab(sid);

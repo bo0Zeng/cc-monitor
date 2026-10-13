@@ -67,14 +67,9 @@ fn tasks_count_only_when_in_progress_and_a_missing_dir_is_none() {
 fn the_frame_face_answers_a_shape_and_refuses_a_missing_sid() {
     let home = scratch("face");
     // 夹具家目录里什么都没有：没有 pidfile、没有任务 ⇒ 空清单（子运行那一族读本进程的活簿表，这里没有连接）。
-    let v = answer_at(&home, &json!({"sid": "zz-none"})).unwrap();
-    assert_eq!(v, json!({"families": []}));
-    let e = answer_at(&home, &json!({})).unwrap_err();
-    assert_eq!(e.0, "bad_args");
-    assert_eq!(
-        answer_at(&home, &json!({"sid": ""})).unwrap_err().0,
-        "bad_args"
-    );
+    let v = answer_at(&home, "zz-none").unwrap();
+    assert_eq!(serde_json::to_value(v).unwrap(), json!({"families": []}));
+    assert!(answer_at(&home, "").is_err());
     let _ = std::fs::remove_dir_all(&home);
 }
 

@@ -3,12 +3,10 @@
  * 事件怎么在下面几份之间流转也写在这里：
  * - 会话状态账 `tab-store.ts`（`Tab` 形状与标题 `tab-model.ts` · 会话事实落到 tab 上 `tab-session-facts.ts` · 两轴状态 `tab-session-state.ts`）
  * - 路由 `tab-router.ts`（切到哪个 · 自动跟随 · 手动 5s 保护 · 记住上次）
- * - 实时流视图 `tab-stream-view.ts`
+ * - 实时流视图 `tab-stream-view.ts`（一个 tab 的渲染那一半只经它；每个 tab 第一趟会话事实与轮次的排班 `tab-cold-reads.ts`）
  * - tab 栏 `tab-bar-view.ts` · 拖拽 `tab-bar-drag.ts` · 落点 `tab-drop.ts` · 落盘偏好 `tab-bar-prefs.ts`
  * - 会话动作 `tab-session-actions.ts`（菜单项 `tab-menu.ts`）
  */
-import { speakerNameOf } from "./agent-profile";
-import { SPEAKER_SELECTOR } from "./cards/speaker";
 import { markRunCard, markRunWindow } from "./cards/subagent";
 import { openAgentWindow } from "./agent-window-open";
 import { runLabel } from "./runs";
@@ -25,7 +23,6 @@ import { toast, undoToast } from "./kit/toast";
 import { detailOf } from "./kit/detail";
 import { copyText } from "./copy-table";
 import { fullTitle, needsOf } from "./session-face";
-import { SeqSet, TailWindow } from "./live-window";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
@@ -44,6 +41,7 @@ import type { ConfigsShown } from "./rot-reads";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
+import type { MenuItem } from "./kit/menu";
 import { TabSelection } from "./tab-selection";
 import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
@@ -70,13 +68,9 @@ import {
 } from "./tab-session-actions";
 import { frontView, type FrontAct, type FrontResult, type FrontView } from "./front-result";
 import { updateBackendOf } from "./backend-deploy";
-import { paintWaiting } from "./cards/step-line";
-import { waitedNow } from "./duration-format";
 import { machineName } from "./control-said";
 import { closeFrontResult, flashFrontDone, setFrontBusy, showFrontResult } from "./front-pop";
 import { CHANNEL_ACTS, LaunchSlots, type SlotSpec } from "./launch-slot";
-import { applyHandedBack } from "./cards/speaker-bar";
-import { applyRetries } from "./cards/api-error";
 import type { ActionId } from "./keybindings/actions";
 
 
@@ -190,7 +184,7 @@ export class TabManager {
       const t = this.store.tabs.get(stream);
       return t && t.origin === origin ? t.sessionId : null;
     },
-    (sid) => this.store.tabs.get(sid)?.stream.trailerElement ?? null,
+    (sid) => this.view.trailerOf(sid),
   );
 
 
@@ -200,6 +194,7 @@ export class TabManager {
     createSkeletonTab: (sid, projectDir, origin, background, name) =>
       this.createSkeletonTab(sid, projectDir, origin, background, name),
     resumeTab: (sid) => this.actions.resumeTab(sid),
+    streamElOf: (sid) => this.streamElOf(sid),
   });
 
   /** 从 `config.json` 拉一次集合并重画（宿主启动时调一次）。 */
@@ -337,6 +332,14 @@ export class TabManager {
     "tab.context-menu",
     "terminal.bring-front",
   ]);
+
+  /**
+   * 拆掉这一份（窗口关掉 · 判据收场）：流视图那一半跟着停 —— 冷读排班与空闲物化撤掉挂着的空闲回调，每个 tab 照关掉那样拆；
+   * 之后才回来的读直接丢掉，不再排、不碰 `window`。
+   */
+  dispose(): void {
+    this.view.dispose();
+  }
 
   /** DEV 探针：当前 tab 状态一行 JSON（形状见 `tab-stream-view.ts`）。生产不接线，无副作用。 */
   debugSnapshot(): string {
@@ -494,10 +497,8 @@ export class TabManager {
     // 按 seq 去重（唯一一道）：旁路快照与实时行的重叠区是精确重复的 (sid, seq)（seq ＝ 当前文件里的行号）。
     // 必须在 renderStreamRecord 之前、且覆盖不入时间线的记录（attachment / isMeta / 空 user 也有 seq）。
     // 文件从头重读先出声、tab 整份重来（`onRecordFileReread`），不会换新 seq 重投同一条。
-    if (tab.seenSeqs.has(payload.seq)) return;
-    // monitor 连着见过、都不可显示的那一段一起记（去重集合成区间，段数有上界）。
-    if (payload.skipped_from !== undefined) tab.seenSeqs.addRange(payload.skipped_from, payload.seq);
-    tab.seenSeqs.add(payload.seq);
+    // monitor 连着见过、都不可显示的那一段一起记（去重集合成区间，段数有上界）。去重集合是流视图那一半的（`admit`）。
+    if (!this.view.admit(tab, payload)) return;
 
     // jsonl 那一轮到了 ⇒ 同一次应答（`rid`）的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
     this.live.onRecord(tab.sessionId, payload.rid);
@@ -718,8 +719,8 @@ export class TabManager {
       bgName,
     );
 
-    const { streamEl, stream, branchFolder, timeline, inputsEl, inputsPanel, outline, turnFold, turnRail } =
-      this.view.mountTabDom(sessionId);
+    // 渲染那一半（流 · 时间线 · 折叠层 · 窗口账本 · 骨架 · 大纲 · 按轮折叠 · 刻度）整份由流视图建，这里只接过来（`TabStreamDom`）。
+    const render = this.view.mountTabDom(sessionId);
 
     // 取一次初始任务快照；`changed/tasks` 流那一路（`refreshTasks`）并行更新同一份，当前 tab 的同步推给面板。
     void fetchSessionTasks(sessionId, origin).then((tasks) => {
@@ -746,33 +747,17 @@ export class TabManager {
       pinned: false,
       // 组员关系是 tab 自己的属性；盘上有它的组 id ⇒ 下面 `adoptGroup` 归位。
       group: null,
-      streamEl,
-      stream,
+      ...render,
       parentPath: sourcePath,
       unread: 0,
-      timeline,
       toolUseNames: new Map(),
-      toolUseElements: new Map(),
       runCards: new Map(),
-      branchFolder,
-      pendingToolResults: new Map(),
       // 出口省掉的正文展开那一下：按骨架里那一行的偏移取回全文（骨架还没接上 ⇒ 说清、下次再取）。
       // 机器与记录路径按展开那一刻的 tab 取：骨架 tab 建的时候路径还是空串，首条行才回填。
       fullRecord: (id: string) => {
         const t = this.store.tabs.get(sessionId);
-        return readRecordById(t?.origin ?? origin, t?.parentPath || sourcePath, t?.skeleton?.ledger ?? null, id);
+        return readRecordById(t?.origin ?? origin, t?.parentPath || sourcePath, t ? this.view.ledgerOf(t) : null, id);
       },
-      seenSeqs: new SeqSet(),
-      window: new TailWindow(),
-      skeleton: null,
-      skeletonFetch: "idle",
-      midBatchBuffer: [],
-      fillHandler: null,
-      outline,
-      turnFold,
-      turnRail,
-      inputsPanel,
-      inputsEl,
       // 红绿灯信号早于建 Tab 到达 ⇒ 从暂存取（否则 null ＝ 未知 → 绿）。
       activity: this.store.pendingActivity.get(sessionId) ?? null,
       // 下面三样只经 `facts` 落下来（后端 `history-facts` 出成品，`onSessionFacts`）。
@@ -970,7 +955,8 @@ export class TabManager {
    * 一个会话的主线外清单到了（会话流里的 `branch` 格，整份）：那个 tab 的折叠层按它重折。没有这个 tab ⇒ 不收。
    */
   onSessionBranch(p: SessionBranchPayload): void {
-    this.store.tabs.get(p.session_id)?.branchFolder.setOff(new Set(p.off));
+    const tab = this.store.tabs.get(p.session_id);
+    if (tab) this.view.setOff(tab, new Set(p.off));
   }
 
   /** 一个子运行的窗口开了 / 关了：面板那一行与派出它的那张卡标「窗口已开」。 */
@@ -1034,12 +1020,14 @@ export class TabManager {
    * **不碰会话状态**（判活不看 jsonl：不误判结束）。
    */
   streamElOf(sessionId: string): HTMLElement | null {
-    return this.store.tabs.get(sessionId)?.streamEl ?? null;
+    const tab = this.store.tabs.get(sessionId);
+    return tab ? this.view.streamElOf(tab) : null;
   }
 
   /** 这个会话的消息流内容那一层（换号条按发生那一刻追加在这里，之后来的记录排在它后面）。 */
   streamContentOf(sessionId: string): HTMLElement | null {
-    return this.store.tabs.get(sessionId)?.stream.contentElement ?? null;
+    const tab = this.store.tabs.get(sessionId);
+    return tab ? this.view.contentOf(tab) : null;
   }
 
   /** 右键「账号…」开哪个面板（主窗口接；独立窗口不接 ⇒ 那一项照样在，点了不动）。 */
@@ -1121,8 +1109,7 @@ export class TabManager {
   rereadFacts(sid: string): void {
     const t = this.store.tabs.get(sid);
     if (!t) return;
-    t.facts.markStale();
-    void t.facts.refresh();
+    this.view.wantFacts(t);
   }
 
   /** 一台的会话事实都再问一次（`changed {needs}` 那一批可能漏了）。 */
@@ -1134,8 +1121,7 @@ export class TabManager {
   retryActiveFacts(): void {
     const t = this.store.activeId === null ? undefined : this.store.tabs.get(this.store.activeId);
     if (!t) return;
-    t.facts.markStale();
-    void t.facts.refresh();
+    this.view.wantFacts(t);
   }
 
   /** 设置里的上下文上限表（随会话事实交给那台后端，上限在那里定）。 */
@@ -1147,8 +1133,7 @@ export class TabManager {
     this.contextLimits = limits;
     for (const t of this.store.tabs.values()) {
       if (!t.facts.everArrived) continue;
-      t.facts.markStale();
-      void t.facts.refresh();
+      this.view.wantFacts(t);
     }
   }
 
@@ -1265,12 +1250,23 @@ export class TabManager {
 
   /** 这个 tab 的菜单锚在一颗按钮上（会话头「更多」）。 */
   /** 会话头「⋯」：这个标签页的右键菜单 ＋ 流的开关（过程默认展开）。 */
-  openMenuFor(anchor: HTMLElement, sid: string): void {
+  /** 会话头「⋯」/ 菜单键：这个标签页的菜单锚在一颗按钮上；会话头另交最上面（收进来的）与最后（流开关 ＋ 调整…）两组。 */
+  openMenuFor(anchor: HTMLElement, sid: string, extra?: { top: MenuItem[]; bottom: MenuItem[] }): void {
     if (!this.selection.has(sid) && this.selection.size > 0) {
       this.selection.clear();
       this.refreshTabBar();
     }
-    this.menu.open(anchor, sid, this.view.streamToggles());
+    this.menu.open(anchor, sid, extra ?? { bottom: this.view.streamToggles() });
+  }
+
+  /** 会话头借这个标签页菜单里的一项画成按钮（同一项，不另写）。 */
+  menuItemFor(sid: string, id: Parameters<TabMenu["itemFor"]>[1]): MenuItem | null {
+    return this.menu.itemFor(sid, id);
+  }
+
+  /** 两个流开关（会话头「显示 ▾」与「⋯」里同一份）。 */
+  streamToggles(): MenuItem[] {
+    return this.view.streamToggles();
   }
 
   /**
@@ -1298,7 +1294,8 @@ export class TabManager {
 
   /** `End`：当前会话回到底部。 */
   toBottom(): void {
-    this.activeTab()?.stream.scrollToBottom();
+    const t = this.activeTab();
+    if (t) this.view.scrollToBottom(t);
   }
 
   /** 命令面板「刷新各台机器上的会话」：同标签页栏顶那颗刷新。 */
@@ -1369,8 +1366,7 @@ export class TabManager {
     // 需手动的种类与那一句在会话事实里（后端配着记录判）：状态一变就再要一份；不在等了 ⇒ 手上那份当场作废（不等回包）。
     if (act.doing !== "needs_you") tab.needs = null;
     if (act.doing !== "background_work") tab.backgroundWork = null;
-    tab.facts.markStale();
-    void tab.facts.refresh();
+    this.view.wantFacts(tab);
     tab.activity = act;
     this.refreshTabBar();
   }
@@ -1382,40 +1378,13 @@ export class TabManager {
     const tab = this.store.tabs.get(sid);
     if (!tab) return;
     const ch = applyFacts(tab, f);
-    // 交回了的子运行：它的收场通知以交回为准（同一个子运行只报一次）。
-    applyHandedBack(tab.streamEl, new Set(f.handedBack));
-    // 一串一串重试的结局（按首条的 id）。
-    applyRetries(tab.streamEl, tab.retries);
+    // 消息流里跟着事实补画的那几样（交回 · 重试 · 卡头名字 · 等批准那几行 · 刻度 · 过程行）是流视图的事。
+    this.view.factsLanded(tab, f, ch);
     if (ch.forkedFrom || ch.projectDir) {
       tab.title = this.computeTitle(tab);
       this.refreshTabBar();
     } else if (ch.writers || ch.needs || ch.peek) this.refreshTabBar();
-    if (ch.needs) tab.turnRail.render(); // 在等你的那一轮琥珀
-    // 过程行上的「现在：… / 等你批准：…」跟着这台此刻的会话事实（后端在 `history-turns` 里拼）。
-    if (ch.needs || ch.writers || ch.peek) void tab.turnFold.refresh();
-    this.paintStepWaits(tab);
     if ((ch.usage || ch.projectDir) && sid === this.store.activeId) this.publishActive();
-    if (ch.agent) {
-      // 是哪一家到了：先画出来的卡头那一格补上那一家的名字（之后建的卡按它直接画）。
-      const who = speakerNameOf(tab.agent) ?? "";
-      for (const el of tab.streamEl.querySelectorAll<HTMLElement>(SPEAKER_SELECTOR)) el.textContent = who;
-    }
-  }
-
-  /**
-   * 过程里还没结果的那几步照会话事实画：`pending[].state`（在跑 · 在等你 · 状态不明）；事实里已经没有它（那一轮过去了、
-   * 被截在上界外）⇒ 状态不明。结果已经到了的不动（`paintWaiting` 自己守）。
-   */
-  private paintStepWaits(tab: Tab): void {
-    const WAITING_ROWS = '.step-line[data-call]:is([data-state="pending"], [data-state="running"], [data-state="awaiting"], [data-state="unclear"])';
-    const by = new Map(tab.pending.map((p) => [p.id, p] as const));
-    const n = tab.needs;
-    for (const row of tab.streamEl.querySelectorAll<HTMLElement>(WAITING_ROWS)) {
-      const call = row.dataset.call ?? "";
-      const waited = n?.call === call ? waitedNow(n, Date.now()) : null;
-      const p = by.get(call);
-      paintWaiting(row, p ?? null, waited, n?.kind === "approve");
-    }
   }
 
   /** 这个 tab 的会话事实可不可用变了 ⇒ 是 active 就告诉 HUD（要不到 ⇒ 出声，「不可用，不是空表」）。 */
@@ -1470,8 +1439,7 @@ export class TabManager {
     for (const sid of sids) {
       const tab = this.detachTab(sid);
       if (!tab) continue;
-      tab.streamEl.classList.remove("active");
-      tab.inputsEl.classList.remove("active");
+      this.view.hide(tab);
       this.pendingCloses.set(sid, { tab, index: at.get(sid)! });
       taken.push(sid);
     }
@@ -1817,18 +1785,19 @@ export class TabManager {
 
     // 回到离开时的位置：切走时贴着底的才贴底（往上翻着看的不拽到底 —— 后台 tab 只是 `visibility:hidden`，滚动位置一直在）。
     // 贴底（读 scrollHeight，强制同步 reflow）与面板整表 re-render 推到下一帧：让 `.active` 的切换先画出来；期间又切走则跳过。
-    const stuck = next?.stream.stuckToBottom ?? true;
+    const stuck = next ? this.view.stuckToBottom(next) : true;
     // 调度：合批 —— 切 Tab 后贴底与面板整表重画推到下一帧，期间切走则跳过
     requestAnimationFrame(() => {
       if (this.store.activeId !== sessionId) return;
-      if (stuck) next?.stream.scrollToBottom();
+      if (stuck && next) this.view.scrollToBottom(next);
       // 第二帧再贴一次（只对贴底的）：刚从 `visibility:hidden` 翻出来的卡还带着 `content-visibility: auto`
       // 的估值几何，第一帧算出来的 `scrollHeight` 不准；下一帧材料化成真实尺寸再落一次才准。
       if (stuck) {
         // 调度：一次性 —— 贴底的第二帧（卡材料化成真实尺寸后再落一次），回调里不再排
         requestAnimationFrame(() => {
           if (this.store.activeId !== sessionId) return;
-          this.store.tabs.get(sessionId)?.stream.scrollToBottom();
+          const t = this.store.tabs.get(sessionId);
+          if (t) this.view.scrollToBottom(t);
         });
       }
       this.tasksPanel?.setSession(sessionId, this.store.tasksBySid.get(sessionId) ?? []);

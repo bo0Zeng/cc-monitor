@@ -75,8 +75,7 @@ mod ratchet_guard; // K-P1 KPY7：动过的那几张登记表，**断言那几�
 #[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：backend 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 #[cfg(test)]
-#[path = "../../tests/backend/refusing_port.rs"]
-pub(crate) mod refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用）
+pub(crate) use ssh_dial::refusing_port; // 拨了必被拒、又不会被别人捡走的本机口（测试用；住拨号核心，经它的 `test-support`）
 pub mod relay; // 中转的宿主：绑口 · 钥匙 · 起中转（中转本身是通信层 crate `comms_outward`）
 #[cfg(test)]
 #[path = "../../tests/backend/runs_guard.rs"]
@@ -84,7 +83,7 @@ mod runs_guard; // 子运行：通用层只认「运行」（扫描 ＋ 假适�
 #[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：多客户按连接各一份 —— 「源码里恰好一份、按连接实例化」那几处的触发器（整体 #[cfg(test)]）
-pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；第四层自有状态，写口只从 main.rs 进）
+pub mod stderr_log; // 脱离常驻那条载体的 stderr 落进一份有上限、滚动的文件（宿主交 `CCM_BACKEND_STDERR_LOG` 才接；后端自有状态，经 `Own`，写口只从 main.rs 进）
 pub mod stream; // 进后端的口 ① 帧面：wire · inbound · listen · tap
 #[cfg(test)]
 #[path = "../../tests/backend/test_home_guard.rs"]
@@ -152,7 +151,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// - p1p-tmux-frame = B2：watch_loop 周期本机 `tmux ls` 发 `TmuxSessions` 帧（+EMITS "tmux_sessions"），
 ///   替 monitor 每 8s 新建 SSH 跑 tmux ls 的对账刷屏。additive、**不 bump PROTO_VERSION**。
 /// - p1q-accounts = A2：多账号只读三命令 `--list-accounts` / `--session-accounts` /
-///   `--account-trust`（cc-acct-iso manifest 的消费侧；账号=一个 CLAUDE_CONFIG_DIR）。
+///   `--account-trust`（读账号库清单那一侧；账号=一个 CLAUDE_CONFIG_DIR。当时清单由外部工具 cc-acct-iso 写，今天账号库由后端 `accounts/manage/` 自己读写）。
 ///   纯一次性查询、零写入、不 shell out；**不动** PROTO_VERSION / CAPABILITIES / EMITS。
 ///   bump BUILD_ID 只为给"含账号命令"的后端独立身份，旧版遇到新命令会
 ///   `unknown argument` exit 2，monitor 侧按"功能不可用"优雅降级。
@@ -422,7 +421,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ⚠ 旧本机后端不认 `link-open` ⇒ 界面判「本机后端太旧」、不回落（D11）⇒ **必须**让它被判 stale。
 ///
 /// ★★★ **p2w-apikey-relay-footprint**（2026-09-24）：子命令 ＋5 ——
-/// RM1a `apikey-key-set` / `apikey-read`（上游选择那份凭据文件：远端由那台后端读写，第四层）· `relay-status` / `relay-ensure`
+/// RM1a `apikey-key-set` / `apikey-read`（上游选择那份凭据文件：远端由那台后端读写，自家状态，经 `Own`）· `relay-status` / `relay-ensure`
 /// （远端中转）· `footprint-probe`（足迹的这台机器那一半），两个命令面都动。
 /// ＋ 行为：后端开 `creds-core` 的 `harden`（远端要写那份文件；「后端写不了」从编译期收窄成两条判据）。C4a 不动后端。
 ///
@@ -546,7 +545,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 代号 3 → 4（`p3z` 之后按 `(代号, 字母)` 序是 `p4a`，只升不降那条路据此判新旧）。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4b-single-home-judgments**（2026-09-26）：行为 —— `ccm` 拒不合规的 sid（`resume` / `--resume` / `--ccm-sid`，
-/// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与 cc-acct-iso 同）；配置目录走 `acct-core` 全表
+/// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与账号库建号那一侧同一条规矩）；配置目录走 `acct-core` 全表
 /// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 冻结给手机端、没收。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4c-history-facts**（2026-09-26）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：
@@ -647,7 +646,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// ★★★ **p5e-session-ledger-in-backend**（2026-09-28）：会话 / tmux 账本进后端 `observe/session_ledger.rs`（出 `session_state` 帧；9 个会话事件并进 `session-lines`，起停格不吃 credit）·
 /// `~/.ssh/config` / `ssh -G` 解读进 `dial/ssh_config.rs` · 端口转发进 `dial/forwards.rs`（流没起也按配置拨）· 测试连接 `remote-probe` · `tmux-list` 出成品 · `tmux_sessions` / `tmux_session_closed` 两帧删（手机端不读）。
 ///
-/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28）：拨号请求只在后端 `dial/machine.rs::resolve` 组（monitor 只交原样配置）·
+/// ★★★ **p5f-dial-resolve-one-home**（2026-09-28）：拨号请求只在后端 `ssh-dial/machine.rs::resolve` 组（monitor 只交原样配置）·
 /// ack ＋3 格 `winner` · `strict` · `jump_strict` · `remote-probe` 只留帧面、经 `probe {ticket, cell}` 帧逐段推进度（hello `EMITS` ＋ `probe`）。
 ///
 /// ★★★ **p5g-acct-iso-in-backend**（2026-09-28）：新帧命令 `acct-iso-install`（字节随后端走，vendored 目录挪到 `src/shared/cc-acct-iso/`）· `files-link`（写面 `land_link` 的帧面入口）·
@@ -966,7 +965,24 @@ pub const PROTO_VERSION: u32 = 1;
 /// 计划卡三态标题由核心写。删掉没人调的一次性子命令 13 条（--read-session 三条 · --search · --list-* · --find-in-session · --account-trust 两条 · --fork-session · --session-accounts），
 /// --resolve 改走派生臂（入参 ResumeSpec 删 claudeDir · fallbackCwd · alreadyInTmux），不认的子命令一律 unknown_command。只读守卫第二刀：写自家状态经 Own。
 /// PlanSlice 多 path（planned-build 的仓位置照 pb 给的）。
-pub const BUILD_ID: &str = "p10g-rotation-v3-answer-hook";
+///
+/// p10h-chain-linear：线上帧与子命令集不变。主线外清单的链索引不再按条整份重算：冷接宣告与一趟读进的新行先记、读完算一次
+/// （agents::mainline 的 Chain::load / settle），排队那一问看重算时记下的「主线外有没有」。旧做法在分叉与排队行很多的长记录上是平方，
+/// watcher 线程空转、首次 tmux 探测与所有宣告都等着（4.1.9 上报）。
+///
+/// p10i-typed-wire-mobile-core：子命令指纹变了（p10h 那一代在 4.1.10 已用作 p10h-chain-linear，这一版接着打 p10i；相对 p10g：history-search 那一族换成 typed 以后，CLI 面的 --after-ms · --include-tools · --limit · --scope 四个选项不再有）。
+/// typed 命令地基：入参 · 回包 · 错误码从 Rust 类型来，按档分派收成 spec::prepare 一处；hello 带形状指纹表，monitor 对不上就不发（cmd-wire 契约 crate，收 Machine）；
+/// history-search / -merge · terminal-name-mint · 会话那一族（session-new / -facts / -dir / -restart / -interrupts / -terminals · sessions-* · kill · launch / launch-local / launch-render-cli · terminals-list · terminal-preview / -input / -processes）换成 typed；launch 的 cwd 等几格给了非字符串 ⇒ bad_args，kill · launch · 终端三条带 client: null ⇒ 当没给。拨号核心拆成 ssh-dial（后端与手机同一份），协议多 use:duplex · use:hold、host key 照 OpenSSH 比（ack 多 key_type）；
+/// resident-client 拆出来（桌面与手机同一份，退避：握上手却活不过 30 秒也翻倍）。只读守卫第三、四刀：文件管理面经 Face · Resolved · NewFile。
+/// quota-read 多 candidates，accounts-list 每号多 color；history-find 多可选 scope。各号 MCP 登录实时同步；「另 N 会话」只数活会话。
+/// 读会话先宣告、后台读（冻结格跟着变，同一个 BUILD_ID 里换了指纹：这一版还没发过）：session_added 不再带 lines，读完发新帧 session_primed {sid, path?, lines?}（这条会话的行在它之前一帧不出）；整台一份 watcher，各连接拿投影。
+/// 答题 hook 做成小插件经 CLAUDE_CODE_PLUGIN_DIRS 交下去（自定义启动器起的会话也能在消息流里答）；data-report 自家每一样带写好的 what。
+///
+/// p10j-typed-history：子命令集不变，hello 带的形状指纹表变了：历史族（history-read / -page / -lines / -run / -tail / -branch / -record /
+/// -facts / -find / -index / -user-inputs / -turns / -annotate / -forget / -list / -last-accounts · sessions-needs · needs-answer · resolve · resync ·
+/// session-fork · tasks-list）换成 typed，会话事实那一串类型生成 TS；session-new-facts 形状跟着变。骨架落盘（足迹多一格骨架目录）；整份读改成按块读；
+/// 先读正在看的、判不出状态照实写「说不清」；桌面与手机共用一条重连循环；answerOff 多一种原因：别处起的会话、持着它的进程身上看不出挂过答题口。
+pub const BUILD_ID: &str = "p10j-typed-history";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1229,8 +1245,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
     // ⚠ **如实登记一条代价**：因此「写这一面只从帧面进来」这句话**做不到**，
     //   两个宿主共用同一个 `run`（「一份代码两种宿主」正是这一形）。
-    //   写面的「窄」因此**不靠命令面**，而靠 `readonly_guard` 第三层那条
-    //   「只从声明过的那一面来」—— 它判的是**谁引用得到那个模块**，不是谁发得出命令。
+    //   写面的「窄」因此**不靠命令面**，而靠写句柄：`Face` 只递给命令表文件管理那一族（`Run::BlockingFace`），
+    //   判的是**谁拿得到句柄**，不是谁发得出命令。
     "--files-create",
     // 同一面的另外五条。登记理由与上一行逐字相同。
     "--files-chmod",
@@ -2144,6 +2160,8 @@ mod capability_ledger_guard;
 pub const EMITS: &[&str] = &[
     "line",
     "session_added",
+    // 宣告之后后台预读做完那一刻（`observe::watcher` 交回预读那一步真发，登记 = 承诺真发）：从第几行起接实时、拿它核快照。
+    "session_primed",
     "session_status",
     "session_removed",
     // 会话账本的成品（可重连 / 已结束，`observe::session_ledger` 经 watcher 的 sink 真发，登记 = 承诺真发）。
@@ -2266,18 +2284,14 @@ pub fn cli_flag(name: &str) -> String {
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，backend 顶层不解释它们。
 pub const SUBCOMMAND_OPTIONS: &[&str] = &[
-    // `--after-ms` · `--include-tools` · `--limit` · `--scope`：全文搜索的选项词（帧面 `history-search` 摊回来交 `search_query::parse_opts`）。
+    // `--after-ms` · `--include-tools` · `--limit` · `--scope`（全文搜索的选项词）第 8 批删了：帧面 `history-search` 的入参直接从类型收（`faces/search_face.rs`）。
     // `--from` · `--until` · `--query`（`--list-user-inputs` · `--read-session-from-offset` · `--find-in-session` 的选项）随那几条子命令删了。
-    "--after-ms",
     // CLI 控制面那一族（`--<帧命令>`）的 argv 形载荷口（与 `--stdin-line` 二选一）。⚠ 进指纹的 `#options` 段 ⇒ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     ARGS_B64_FLAG,
     // `--resident-stop` 的宽限期（秒；必须大于退出排空上限）。
     "--grace",
-    "--include-tools",
-    "--limit",
     // `--resident-ensure` 的「先停口上那一位再起」（只升不降由 monitor 按 hello 判）。
     "--replace",
-    "--scope",
     // CLI 控制面那一族（`--<帧命令>`）的「只读一行 stdin」修饰词。
     STDIN_LINE_FLAG,
     // CLI 控制面那一族的「给人看」那一形（所有命令通用）。

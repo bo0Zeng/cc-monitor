@@ -41,7 +41,7 @@ sealed interface SftpUi {
 /**
  * SFTP 的连接编排与浏览状态。放在 VM 里，是为了在每个 tab 自己的 ViewModelStore 里保活：切走再回来不断连、不丢导航。
  *
- * SFTP 与终端共享一条主机连接（id=hostId，sshj 多路复用 shell 与 SFTP 子系统）。
+ * SFTP 与终端共享一条主机连接（id=hostId，同一条 SSH 连接上多路复用 shell 与 SFTP 子系统）。
  * [hostConnector] 的 retain/release 是引用计数：关本屏只 release，归零才真断。
  */
 class SftpViewModel(

@@ -18,6 +18,7 @@
  * **买不到**：真 webview 里的滚动落点与面板长相（jsdom 无布局）· 真后端（后端那侧的判据在 Rust 里）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { owned } from "../../../test-support/owned-tab-manager.ts";
 
 const stub = vi.hoisted(() => ({
   /** `find_in_session` 回什么（按调用顺序一份一份给；给的是 Promise 就原样回）。 */
@@ -77,7 +78,8 @@ import {
 import { TabManager, type Tab } from "../../../../src/frontend/ui/tabs";
 import { SessionFindPanel, type SessionFindHost } from "../../../../src/frontend/ui/views/session-find";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
-import type { FindResult } from "../../../../src/frontend/ui/session-reads";
+import { findInSession, type FindResult } from "../../../../src/frontend/ui/session-reads";
+import { FindStrip, __resetFindScopeForTests } from "../../../../src/frontend/ui/find-strip";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const hit = (uuid: string, matched = "needle", before = "a ", after = " b", turn = 0, tsMs = 0, tsText = "") => ({
@@ -343,7 +345,7 @@ function liveSetup(): void {
   const barEl = document.createElement("div");
   streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  tm = new TabManager(barEl, streamRootEl);
+  tm = owned(new TabManager(barEl, streamRootEl));
 }
 
 describe("SE2 · 实时 tab 上的查找面板", () => {
@@ -431,5 +433,129 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
     expect(ranges.length, "正文真的是按偏移要回来的").toBeGreaterThan(0);
     expect(el.querySelector('[data-id="u300"]'), "取回之后卡建出来了").not.toBeNull();
     expect(row.dataset.unjumpable, "等到了卡却标成跳不过去 ⇒ 同步那一下就去找了").toBeUndefined();
+  });
+});
+
+// ── ui3（10-11 稿「查找-只搜用户」）：范围「全部 | 用户」 ─────────────────────────────
+
+describe("ui3 · 查找范围「全部 | 用户」", () => {
+  const scopeSeg = (root: ParentNode): HTMLElement => root.querySelector<HTMLElement>(`[role=radiogroup][aria-label="${copyText("sessionFind.scope.label")}"]`)!;
+  const seg = (root: ParentNode, key: "all" | "user"): HTMLButtonElement => scopeSeg(root).querySelector<HTMLButtonElement>(`[data-key=${key}]`)!;
+  const toolsBox = (root: ParentNode): HTMLInputElement => root.querySelector<HTMLInputElement>("input[type=checkbox]")!;
+  beforeEach(() => {
+    __resetFindScopeForTests();
+    dispatcher.applyOverrides({});
+  });
+
+  it("★ 框下一行：分段「全部 | 用户」（默认全部）＋ 复选框「含工具输出与思考」（与查看器那条同一个说法）", () => {
+    const { p } = panelWith();
+    p.open("search");
+    expect([...scopeSeg(p.el).querySelectorAll("button")].map((b) => [b.dataset.key, b.textContent, b.getAttribute("aria-checked")])).toEqual([
+      ["all", copyText("sessionFind.scope.all"), "true"],
+      ["user", copyText("sessionFind.scope.user"), "false"],
+    ]);
+    expect(toolsBox(p.el).closest("label")!.textContent).toBe(copyText("findStrip.box.tools"));
+    expect(copyText("sessionFind.box.tools")).toBe(copyText("findStrip.box.tools"));
+    const query = q(p, "[data-role=find-input]").closest("div")!;
+    expect(query.contains(scopeSeg(p.el)), "分段不挤在框那一行").toBe(false);
+  });
+
+  it("★ 选「用户」⇒ 词不变、马上重找（传 scope: user、不带工具）；复选框灰着、悬停说为什么；切回「全部」勾着的还原", async () => {
+    vi.useFakeTimers();
+    const s = vi.fn(async () => found([hit("u1")]));
+    const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
+    p.open("search");
+    toolsBox(p.el).click();
+    enter(p, "needle");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
+    seg(p.el, "user").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(s.mock.calls.at(-1), "不等 300ms，换段就找").toEqual(["needle", false, 0, "user"]);
+    expect(toolsBox(p.el).disabled).toBe(true);
+    expect(toolsBox(p.el).closest("label")!.title).toBe(copyText("sessionFind.tools.userOnly"));
+    seg(p.el, "all").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(toolsBox(p.el).disabled).toBe(false);
+    expect(toolsBox(p.el).checked, "勾着的状态记住了").toBe(true);
+    expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
+  });
+
+  it("★ 范围「用户」的命中头一行不写「用户」（恒真）：「第几轮 · 时刻」", async () => {
+    const s = vi.fn(async () => found([{ ...hit("u9", "needle", "前 ", " 后", 3, 1, "10:42"), kind: "user" }, { ...hit("u8", "needle", "", "", 0, 1, "10:40"), kind: "user" }]));
+    const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
+    p.open("search");
+    seg(p.el, "user").click();
+    enter(p, "needle");
+    await settleOutline();
+    const rows = hitRows(p.el);
+    expect(rows[0].firstElementChild!.textContent).toBe(copyText("sessionFind.hit.metaNoWho", { n: 3, time: "10:42" }));
+    expect(rows[1].firstElementChild!.textContent, "第一句之前的：只写时刻").toBe("10:40");
+  });
+
+  it("★ 范围「用户」下没命中：「无匹配「x」 · 仅用户」＋［搜全部］⇒ 回「全部」、词不变、马上找、焦点留在框里；「全部」下没命中照旧、无按钮", async () => {
+    const s = vi.fn(async () => found([]));
+    const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
+    p.open("search");
+    seg(p.el, "user").click();
+    enter(p, "指数退避");
+    await settleOutline();
+    const head = q(p, "[data-role=find-head]");
+    const btn = head.querySelector<HTMLButtonElement>("button")!;
+    expect(head.textContent).toBe(copyText("sessionFind.status.noneScoped", { q: "指数退避" }) + copyText("sessionFind.status.searchAll"));
+    expect(btn.textContent).toBe(copyText("sessionFind.status.searchAll"));
+    btn.click();
+    await settleOutline();
+    expect(s.mock.calls.at(-1)).toEqual(["指数退避", false, 0]);
+    expect(seg(p.el, "all").getAttribute("aria-checked")).toBe("true");
+    expect(document.activeElement).toBe(input(p));
+    expect(status(p)).toBe(copyText("findStrip.status.none", { q: "指数退避" }));
+    expect(head.querySelector("button")).toBeNull();
+  });
+
+  it("★ Alt+U 换范围、Alt+T 开关工具（「用户」时不响应）；焦点不动；提示行带上范围那一键", async () => {
+    const s = vi.fn(async () => found([hit("u1")]));
+    const { p } = panelWith({ search: s } as Partial<SessionFindHost>);
+    p.open("search");
+    expect(q(p, "[data-role=find-keys]").textContent).toBe(copyText("sessionFind.status.keysScope", { keys: copyText("sessionFind.status.keys"), scopeKey: "Alt + U" }));
+    input(p).value = "needle";
+    press(p, { key: "t", code: "KeyT", altKey: true });
+    await settleOutline();
+    expect(toolsBox(p.el).checked).toBe(true);
+    press(p, { key: "u", code: "KeyU", altKey: true });
+    await settleOutline();
+    expect(seg(p.el, "user").getAttribute("aria-checked")).toBe("true");
+    expect(s.mock.calls.at(-1)).toEqual(["needle", false, 0, "user"]);
+    press(p, { key: "t", code: "KeyT", altKey: true });
+    expect(toolsBox(p.el).checked, "「用户」时 Alt+T 不响应").toBe(true);
+    expect(document.activeElement).toBe(input(p));
+    press(p, { key: "u", code: "KeyU", altKey: true });
+    await settleOutline();
+    expect(s.mock.calls.at(-1)).toEqual(["needle", true, 0]);
+  });
+
+  it("★ 范围跟着这扇窗记（另一块面板 · 查看器那条打开就是「用户」），不落盘", () => {
+    localStorage.clear();
+    const a = panelWith();
+    a.p.open("search");
+    seg(a.p.el, "user").click();
+    const b = panelWith();
+    b.p.open("search");
+    expect(seg(b.p.el, "user").getAttribute("aria-checked")).toBe("true");
+    const strip = new FindStrip({ search: vi.fn(async () => found([])), jumpTo: () => null, unjumpableHint: "" });
+    document.body.append(strip.box, strip.strip);
+    strip.focus();
+    expect(seg(strip.strip, "user").getAttribute("aria-checked"), "查看器的就地查找条同一个控件、跟着变").toBe("true");
+    expect(localStorage.length, "不落盘").toBe(0);
+  });
+
+  it("★ 问那台时带 scope（用户 ⇒ 不带 include_tools 那一格）", async () => {
+    stub.finds = [found([]), found([])];
+    await findInSession("<local>" as never, "/p/s1.jsonl", "needle", false, 0, "user");
+    await findInSession("<local>" as never, "/p/s1.jsonl", "needle", true, 0);
+    expect(findCalls().slice(-2)).toEqual([
+      { origin: "<local>", jsonlPath: "/p/s1.jsonl", query: "needle", scope: "user" },
+      { origin: "<local>", jsonlPath: "/p/s1.jsonl", query: "needle", includeTools: true },
+    ]);
   });
 });

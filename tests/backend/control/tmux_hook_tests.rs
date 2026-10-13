@@ -102,28 +102,28 @@ fn no_filesystem_writes_in_this_module() {
     // 它天然漏掉没列的那些 —— 实测把 `std::fs::remove_file` 放进本模块生产段，
     // 本条**不红**（删除/改名/复制都不在表里）。
     //
-    // 真正的保障是 `readonly_guard::every_fs_call_in_backend_production_is_read_only`：
-    // 那条是**白名单**（默认拒绝），上面那一刀正是它逮住的。
+    // 真正的保障是 `readonly_guard::only_the_fs_platform_module_names_the_filesystem`：
+    // 那条是**默认拒绝**（`platform/fs/` 之外一处都不许点名文件系统命名空间），上面那一刀正是它逮住的。
     // 两层失效模式相反（黑名单漏新写法 / 白名单误伤新读法）⇒ 留着这层是纵深，不是重复；
     // 但**别把这张黑名单读成保障**。它一旦成了唯一的一层，本模块就没人守了。
     // ⚠⚠ **08-08 订正：光查名字挡不住「掏空」**。实测把 `readonly_guard` 那条白名单的
     // 函数体清空、名字原样留着 ⇒ 本触发器**照样绿**，而本模块就只剩下面那张黑名单了。
     // 「符号在 ≠ 它还在做那件事」——本区 08-08 在两条前提触发器上连撞两次。
-    // ⇒ 三条腿：名字在 · 它还在堵**导入逃生口**（`is_hatch`）· 它还有**默认拒绝**那半。
+    // ⇒ 三条腿：名字在 · 它还在堵**分组导入那条逃生口**（`FS_GROUP_ROOTS`）· 它还对违规集合下断言。
     let guard = include_str!("../readonly_guard.rs");
     for (needle, why) in [
         (
-            "fn every_fs_call_in_backend_production_is_read_only",
-            "那条白名单整个不见了",
+            "fn only_the_fs_platform_module_names_the_filesystem",
+            "那条默认拒绝整个不见了",
         ),
         (
-            "fn is_hatch",
-            "白名单还在，但**堵逃生口那一段没了** —— `use std::fs::{…}` 之后调用点不带前缀，\
-                 白名单会整个瞎掉（08-06 实测：那样一次真写盘，六条判据全绿）",
+            "const FS_GROUP_ROOTS",
+            "默认拒绝还在，但**堵分组导入那一段没了** —— `use std::{fs, …}` 之后调用点不带前缀，\
+                 它会整个瞎掉（08-06 实测：那样一次真写盘，六条判据全绿）",
         ),
         (
             "bad.is_empty()",
-            "白名单还在，但**不再对违规集合下断言** —— 大概率被掏空了",
+            "默认拒绝还在，但**不再对违规集合下断言** —— 大概率被掏空了",
         ),
     ] {
         assert!(

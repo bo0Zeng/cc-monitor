@@ -145,14 +145,14 @@ subscribe(origin, kind)    → 流
 - `agents/`：用户的 AI CLI 的适配面（claudecode · codex · 测试用的 fake），一家一行注册表，含记录解释与用量读法。
 - `plugin/`：调外部程序的口（找 · 问 · 起 · 收），cc-bus 那一族命令经它起。
 - `relay/`：中转的宿主（门 · 监听 · 根钥匙）；中转本体是通信层面 B。
-- `dial/`：SSH（连接池 · 链路 · SFTP · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
+- `dial/`：SSH（连接池 · 链路 · SFTP · 问远端后端 · `~/.ssh/config` 解读 · 端口转发 · 开终端那一行）。
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
 - `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 上次账号）。
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
-- `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里；`stream/`：帧定义 · 入方向命令信封与命令表 · 监听 · 本机后端问远端后端的唯一一处。
+- `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里；`stream/`：帧定义 · 入方向命令信封与命令表 · 监听（本机后端问远端后端的唯一一处住 `dial/remote_ask.rs`）。
 - `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）。
 
-后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH · 资产 · 历史 · 中转宿主）与**文件管理后端**（列 · 读 · 搜 · 写用户的文件 · 上传解压 · 传输），两块只共用 `platform/` · `common/` 与基础设施层。
+后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/` 与 `control/files_write.rs` · `files_upload_chunks.rs` · `files_extract.rs` · `files_commit.rs`），两块只共用 `platform/` · `common/` 与 `lib.rs` 的能力声明轴；原生那一块够到文件管理那一块只经帧面分派（命令表文件管理那一族）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。判据 `tests/backend/files/module_boundary_guard.rs`。
 
 ### 2.3 `observe/` 与 `control/`：按用途分，不按读写分
 
@@ -309,7 +309,8 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 - **窗口**：`cc-monitor-filewin`（独立包 `src/frontend/filewin/`，egui，一窗一进程）经父子管道只说 `call` / `subscribe`；开窗那一侧在壳 `filewin/`，契约在共享 crate `src/common/filewin-contract/`。配色读同一份界面令牌。
 - **读**：后端 `files/`（常驻文件名索引 · 列目录 · 元数据 · 按块读 · 按内容搜）。
-- **写**：只经那台后端的文件管理面 `control/files_write.rs`（`files-peek` · `files-put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传解压 · 传输台在 `control/files_upload_chunks.rs` · `control/files_extract.rs` · `control/transfer.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
+- **写**：只经那台后端的文件管理面 `control/files_write.rs`（`files-peek` · `files-put` 带期望值 · `files-delete` …，规矩见 INVARIANTS §4），本机远端同一条路；上传块 · 解压 · 提交在 `control/files_upload_chunks.rs` · `control/files_extract.rs` · `control/files_commit.rs`。monitor 碰用户文件只有这一个开口，只差 `origin`。
+- **传输**：两台之间搬字节归原生那一块的传输台 `control/transfer.rs`（经 `dial/` 的 SFTP 写暂存区，远端那台的 `files-commit-upload` 提交）；下载的本机落点也由它写（过同一套路径解析，经帧面分派交来的写句柄）。
 - **手机**：文件屏（`app` 的 `ui/sftp/`）今天经手机自己那条 SSH 走 SFTP，不经那台后端的文件管理面。
 
 ### 3.5 终端与 tmux
@@ -363,7 +364,8 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | `app` | 屏与导航、注入、前台保活；聊天屏（`ui/chat/`）起会话 · 送字 · 正文都走那台核心；终端屏用拨号网关与 tmux 网关 |
 | `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了接回）与核心成品的解码；`model/` 把通用记录映射成渲染单元 |
 | `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
-| `core-ssh` | SSH（sshj）：连接池 · 多地址竞速 · 跳板 · SFTP · `~/.ssh/config` · known_hosts · 密钥 |
+| `core-ssh` | 连接管理（单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` |
+| `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳（手写 JNI · 走消息）——竞速 · 跳板 · host key · 鉴权 · SFTP · 钥匙派生与生成 · `~/.ssh/config` 解析都在这一份里 |
 | `core-terminal` | 终端引擎（termlib） |
 | `core-data` | 本地库（Room） |
 | `core-ui` | 共用主题与反馈 |
@@ -432,7 +434,7 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 ### 账号：隔离又同步
 
-一个账号 ＝ 一个 `CLAUDE_CONFIG_DIR`：各自一份登录凭据，两个号可以同时跑、互不踢；skill、记忆、历史、设置经符号链接共享同一份（由后端 `accounts/manage/` 建立和维护）。账号分订阅号与 API 号；API 号的 key 只留在它所在的那台机器，经那台的中转注入，不进命令行、不进环境变量。界面只交意图：建库 · 添加 · 删除 · 设默认 · 修复 · 回滚由后端执行，每次改动前先备份；订阅号的登录走真实终端窗口，由 agent 自己完成。
+一个账号 ＝ 一个 `CLAUDE_CONFIG_DIR`：各自一份登录凭据，两个号可以同时跑、互不踢；skill、记忆、历史、设置经符号链接共享同一份（由后端 `accounts/manage/` 建立和维护）。用户级 MCP 的定义与 MCP 登录在各号之间同步（同一个开关）：定义走三方对照（`mcp_share`）；登录（各号凭据文件里 `mcpOAuth` 那一节）任一号一登录或一续期就把最新那一份写进所有号、在一个号里退出则全部撤（`mcp_logins`），写经订阅号凭据的窄句柄、在那一家续这一条的锁与整份写锁里重读比对、只换那一条（`oauth/store::rewrite`，续期写回也只经它；续期写回碰上那一家正在存盘 ⇒ 新令牌先在内存里照用，写锁放开的文件事件来了再写回，有总期限，`oauth/writeback`）。账号分订阅号与 API 号；API 号的 key 只留在它所在的那台机器，经那台的中转注入，不进命令行、不进环境变量。界面只交意图：建库 · 添加 · 删除 · 设默认 · 修复 · 回滚由后端执行，每次改动前先备份；订阅号的登录走真实终端窗口，由 agent 自己完成。
 
 换号重启直接结束旧会话再 resume 同一个 sid；compact 失败不阻断，kill 失败必须中止——绝不在旧进程还活着时续 resume，否则新旧两个进程抢同一份会话。选不了原账号时不静默换号，拒绝并给出「用当前账号」的显式选择。不重启的换号在中转那一发里换凭据（§3.3），进程不知道。
 

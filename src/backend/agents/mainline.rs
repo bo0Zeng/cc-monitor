@@ -10,7 +10,7 @@
 use std::collections::{HashMap, HashSet};
 
 /// 链上一个节点（适配层从一条记录翻过来）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Link {
     /// 这条记录的身份（与记录成品的 `id` 同值）。
     pub(crate) id: String,
@@ -39,8 +39,8 @@ pub(crate) enum ChainFact {
     Queued(String),
 }
 
-/// 一份会话记录的链索引：每个节点只记几个短串。
-#[derive(Debug, Default)]
+/// 一份会话记录的链索引：每个节点只记几个短串。可以抄一份接着记（扫描图续扫）；骨架落盘那一形见 [`skel`]。
+#[derive(Debug, Default, Clone)]
 pub(crate) struct Chain {
     nodes: Vec<Link>,
     at: HashMap<String, usize>,
@@ -50,10 +50,16 @@ pub(crate) struct Chain {
     queued: HashSet<String>,
     /// 上一次算的结果：每个节点在不在主线上 · 是不是排队豁免回来的 · 属于哪个根 · 胜出的根。
     on_main: Vec<bool>,
+    /// `on_main` 里有没有 `false`（重算时定；简单延长只追加 `true`，不改它）—— 排队那一条每来一行都问，不逐格数。
+    any_off_main: bool,
     exempt: Vec<bool>,
     root_of: Vec<usize>,
     winner: Option<usize>,
     off: Vec<String>,
+    /// 记进来了、还没重算（[`Chain::load`] 攒着，[`Chain::settle`] 一次算掉）。
+    dirty: bool,
+    /// 到此刻整条走过几格（每次整份重算记一遍节点数）：冷接那一趟的日志带它；判据判「一趟读多少行都只走一遍」也数它，不按墙钟。
+    walked: u64,
 }
 
 impl Chain {
@@ -61,16 +67,32 @@ impl Chain {
         Self::default()
     }
 
-    /// 喂一条事实；回：主线外清单变没变。
+    /// 记一条事实、不重算（要不要重算记下来，[`Chain::settle`] 一次算掉）。
     ///
-    /// 大多数新节点接在主线末梢上（上一条在主线上、属于胜出的根、此前没有孩子）⇒ 主线照旧延长一格，不重算。
-    /// 其余（新根 · 分叉 · 接在主线外或豁免叶上 · 补上了先前缺的上一条 · 主线外有东西时排队集合变了）整份重算 ——
-    /// 结果与对全部事实重算一次逐条相同。
-    pub(crate) fn push(&mut self, fact: ChainFact) -> bool {
+    /// 大多数新节点接在主线末梢上（上一条在主线上、属于胜出的根、此前没有孩子）⇒ 主线照旧延长一格，不用重算。
+    /// 其余（新根 · 分叉 · 接在主线外或豁免叶上 · 补上了先前缺的上一条 · 主线外有东西时排队集合变了）要整份重算 ——
+    /// 结果与对全部事实重算一次逐条相同。一次重算是整份的量 ⇒ 一趟读进多少条都是全记完再 `settle` 一次，
+    /// 不逐条算（12 万行、上万处分叉 / 排队的记录逐条重算就是平方，hot1）。
+    pub(crate) fn load(&mut self, fact: ChainFact) {
+        if self.stage(fact) {
+            self.dirty = true;
+        }
+    }
+
+    /// 攒着的事实一次算掉；回：主线外清单比上一次算的变没变。
+    pub(crate) fn settle(&mut self) -> bool {
+        if !std::mem::take(&mut self.dirty) {
+            return false;
+        }
+        self.recompute()
+    }
+
+    /// 记账；回：这条要不要整份重算。已经攒着没算（`dirty`）时上一次的结果不作数 ⇒ 一律记成要重算。
+    fn stage(&mut self, fact: ChainFact) -> bool {
         match fact {
             ChainFact::Queued(t) => {
                 let fresh = self.queued.insert(t);
-                fresh && self.on_main.iter().any(|m| !m) && self.recompute()
+                fresh && (self.dirty || self.any_off_main)
             }
             ChainFact::Node(l) => {
                 if self.at.contains_key(&l.id) {
@@ -80,6 +102,7 @@ impl Chain {
                 let p = l.parent.as_deref().and_then(|p| self.at.get(p).copied());
                 let adopts = self.unseen_parents.remove(&l.id);
                 let simple = !adopts
+                    && !self.dirty
                     && match p {
                         Some(p) => {
                             !self.has_child[p]
@@ -102,23 +125,32 @@ impl Chain {
                 self.exempt.push(false);
                 self.on_main.push(true);
                 self.root_of.push(p.map_or(i, |p| self.root_of[p]));
-                if simple {
-                    if i == 0 {
-                        self.winner = Some(0);
-                    }
-                    return false;
+                if simple && i == 0 {
+                    self.winner = Some(0);
                 }
-                self.recompute()
+                !simple
             }
         }
     }
 
-    /// 主线外的那几条（只含进界面的；文件序）。
+    /// 主线外的那几条（只含进界面的；文件序）。是上一次算的结果：[`Chain::load`] 之后先 [`Chain::settle`]。
     pub(crate) fn off(&self) -> &[String] {
+        debug_assert!(!self.dirty, "记了没算就来读清单");
         &self.off
     }
 
+    /// 记了几个节点。
+    pub(crate) fn len(&self) -> usize {
+        self.nodes.len()
+    }
+
+    /// 到此刻整份重算一共走过几格（见 `walked` 字段）。
+    pub(crate) fn walked(&self) -> u64 {
+        self.walked
+    }
+
     fn recompute(&mut self) -> bool {
+        self.walked += self.nodes.len() as u64;
         let m = main_branch(&self.nodes);
         let exempt = exempt_queued(&self.nodes, &m.on, &self.queued);
         let off: Vec<String> = self
@@ -128,6 +160,7 @@ impl Chain {
             .filter(|(i, n)| n.shown && !m.on[*i] && !exempt[*i])
             .map(|(_, n)| n.id.clone())
             .collect();
+        self.any_off_main = m.on.iter().any(|on| !on);
         self.on_main = m.on;
         self.root_of = m.root_of;
         self.winner = m.winner;
@@ -140,24 +173,46 @@ impl Chain {
     }
 }
 
-/// 一批事实 ⇒ 主线外清单（冷读那一路；与 [`Chain`] 逐条喂的结果相同）。
-pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
-    let mut c = Chain::new();
-    for f in facts {
-        match f {
-            ChainFact::Queued(t) => {
-                c.queued.insert(t);
-            }
-            ChainFact::Node(l) => {
-                if !c.at.contains_key(&l.id) {
-                    c.at.insert(l.id.clone(), c.nodes.len());
-                    c.nodes.push(l);
-                }
-            }
-        }
+/// 骨架落盘那一形（`observe::skeleton`）：只存记进来的事实（节点 ＋ 排队原文），读回来照原样一条条记、算一次 ——
+/// 算出来的那几样（主线 · 豁免 · 清单）不存，跟整份记一遍的结果相同。
+pub(crate) mod skel {
+    use super::{Chain, ChainFact, Link};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    #[derive(Serialize)]
+    struct FactsRef<'a> {
+        nodes: &'a [Link],
+        queued: Vec<&'a String>,
     }
-    c.recompute();
-    c.off
+
+    #[derive(Deserialize)]
+    struct Facts {
+        nodes: Vec<Link>,
+        queued: Vec<String>,
+    }
+
+    pub(crate) fn serialize<S: Serializer>(c: &Chain, s: S) -> Result<S::Ok, S::Error> {
+        let mut queued: Vec<&String> = c.queued.iter().collect();
+        queued.sort();
+        FactsRef {
+            nodes: &c.nodes,
+            queued,
+        }
+        .serialize(s)
+    }
+
+    pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Chain, D::Error> {
+        let f = Facts::deserialize(d)?;
+        let mut c = Chain::new();
+        for n in f.nodes {
+            c.load(ChainFact::Node(n));
+        }
+        for q in f.queued {
+            c.load(ChainFact::Queued(q));
+        }
+        c.settle();
+        Ok(c)
+    }
 }
 
 struct Main {
@@ -298,4 +353,4 @@ fn exempt_queued(nodes: &[Link], on: &[bool], queued: &HashSet<String>) -> Vec<b
 
 #[cfg(test)]
 #[path = "../../../tests/backend/agents/mainline_tests.rs"]
-mod tests;
+pub(crate) mod tests;

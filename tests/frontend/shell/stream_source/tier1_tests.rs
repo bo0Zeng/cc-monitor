@@ -1,4 +1,3 @@
-use super::*;
 use crate::stream_source::RemoteConfig;
 
 /// ★★ **本机 `~/.ssh` 的读面：恰好一处，且只读 `config`**〔audit-0805 08-08，Phase G 第 85 件〕。
@@ -135,68 +134,11 @@ fn remote_config_defaults_and_some() {
     assert_eq!(cfg.host_key_fingerprint.as_deref(), Some("SHA256:abc"));
 }
 
-/// ★★ **hello-then-die 的后端不许把退避永远按在 2 秒**〔audit-0805 F05 / 报告 I-1〕。
-///
-/// `connected` 是收到 hello 的那一刻置位的。一个「发完 hello 就死」的 backend
-/// （小机器整读 jsonl 触发 OOM 被杀，正是本区 F04 治的那条链）每轮都算「连上过」
-/// ⇒ 退避每次重置回 2 秒 ⇒ **永远不增长**，而每次重连要付 3 次完整 SSH 登录
-/// ⇒ 约 **90 次握手/分钟/台**，正好砸在那台已经撑不住的机器上。
-///
-/// ⇒ 判据必须是「**活过多久**」，不是「握没握上手」。
-#[test]
-fn a_backend_that_dies_right_after_hello_does_not_keep_resetting_the_backoff() {
-    // hello 收到了，但连接只活了 1 秒 —— 这正是 hello-then-die。
-    assert!(
-        !should_reset_backoff(true, Duration::from_secs(1)),
-        "收到 hello 但只活了 1 秒就重置退避 —— 那是 I-1 那个自激循环：\n\
-             每分钟约 90 次 SSH 握手砸在一台已经 OOM 的机器上。"
-    );
-    // 活够了才算站住。
-    assert!(
-        should_reset_backoff(true, MIN_HEALTHY_UPTIME),
-        "活过 MIN_HEALTHY_UPTIME 还不重置 —— 正常的长连接会被误当成 flapping"
-    );
-    assert!(should_reset_backoff(true, Duration::from_secs(600)));
-    // 从没握上手的，活多久都不算健康（否则「连了很久但一直没 hello」会被当成好连接）。
-    assert!(
-        !should_reset_backoff(false, Duration::from_secs(600)),
-        "没收到过 hello 却算健康 —— 两个条件是**与**不是或"
-    );
-}
-
-/// 守的要求：「非 unix 远端：那一类失败按『永久不支持』记在那台的连接状态里，**不再自动按退避重连**」。
-/// 记下了 ⇒ `Stop`（带那句话，任何退避值都一样）；没记 ⇒ 照当前退避再连。
-#[test]
-fn a_permanently_unsupported_remote_stops_instead_of_backing_off() {
-    for b in [RECONNECT_MIN, RECONNECT_MAX] {
-        assert_eq!(
-            after_round(Some("不是 Unix".into()), b),
-            AfterRound::Stop("不是 Unix".into()),
-            "非 unix 远端还在按退避 {b:?} 空转"
-        );
-        assert_eq!(after_round(None, b), AfterRound::RetryIn(b));
-    }
-}
-
-/// next_backoff：翻倍直到封顶 RECONNECT_MAX(30s)，封顶后饱和不再增长。
-#[test]
-fn next_backoff_doubles_then_caps() {
-    assert_eq!(next_backoff(Duration::from_secs(2)), Duration::from_secs(4));
-    assert_eq!(next_backoff(Duration::from_secs(4)), Duration::from_secs(8));
-    // 16s*2=32s 被封顶到 30s。
-    assert_eq!(
-        next_backoff(Duration::from_secs(16)),
-        Duration::from_secs(30)
-    );
-    // 已在上界 → 翻倍后仍被 min 拉回 30s（饱和）。
-    assert_eq!(
-        next_backoff(Duration::from_secs(30)),
-        Duration::from_secs(30)
-    );
-}
+// 退避那几条（hello-then-die 不许把退避按在下界 · 翻倍封顶）随退避本体住 `resident-client`：`tests/comms/resident-client/backoff_tests.rs`；
+//   「非 unix 远端不按退避空转」住同一条循环的判据 `feed_tests.rs::a_remote_that_is_not_unix_waits_for_a_hand`。
 
 // 〔「一个判定一个家」〕地址四形态解析 · `endpoints` 去重保序 · `winner_order`（last-good 排首）三组判据
-//   随那几个函数搬进后端 `dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
+//   随那几个函数搬进后端 `ssh-dial/machine.rs`：`tests/backend/dial_machine_tests.rs` 的 `address_lines_read_the_four_shapes_and_refuse_garbage`
 //   与 `a_wire_dial_is_composed_here_and_the_preferred_winner_goes_first`（后者同拍新加）。
 
 // 远端开终端在本机后端（`terminal-ssh`）。首选地址的两半判据：

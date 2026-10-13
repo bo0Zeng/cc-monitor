@@ -256,6 +256,12 @@
       "zh": "{machine} 后端要更新",
       "args": ["machine"]
     },
+    "peerVersion.said.differs": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{machine} 后端版本不同",
+      "args": ["machine"]
+    },
     "peerVersion.said.unreadable": {
       "kind": "error",
       "role": "报错",
@@ -277,7 +283,7 @@
     "rsToolRegistry.tools.accountsVaultNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份 · 别的内容不碰",
+      "zh": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份\n.credentials.json 里只有 MCP 登录段会被同步改写 · 别的内容不碰",
       "args": []
     },
     "beAcctExec.apply.stopped": {
@@ -1567,12 +1573,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "远端启动常驻后端失败 · 原因不明",
-      "args": []
-    },
-    "rsRemoteResident.ensure.answerIncomplete": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "远端启动常驻后端的回答无法识别",
       "args": []
     },
     "rsRemoteResident.hello.notOurs": {
@@ -2897,10 +2897,76 @@
       "zh": "关闭",
       "args": []
     },
+    "sessionFind.scope.all": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "全部",
+      "args": []
+    },
+    "sessionFind.scope.user": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "用户",
+      "args": []
+    },
+    "sessionFind.scope.label": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "查找范围",
+      "args": []
+    },
+    "sessionFind.tools.userOnly": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "仅用户时不含工具输出与思考",
+      "args": []
+    },
+    "sessionFind.status.noneScoped": {
+      "kind": "body",
+      "role": "空态",
+      "zh": "无匹配「{q}」 · 仅用户",
+      "args": ["q"]
+    },
+    "sessionFind.status.searchAll": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "搜全部",
+      "args": []
+    },
+    "sessionFind.status.keysScope": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{keys} · {scopeKey} 用户",
+      "args": ["keys", "scopeKey"]
+    },
+    "sessionFind.hit.metaNoWho": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "第 {n} 轮 · {time}",
+      "args": ["n", "time"]
+    },
+    "keybindingActions.session.findScopeUser": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查找范围 全部 / 用户",
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
+    },
+    "keybindingActions.session.findTools": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "查找含工具输出与思考",
+      "args": [],
+      "waive": {
+        "C-W15": "键位表 / 命令面板里的动作名"
+      }
+    },
     "sessionFind.box.tools": {
       "kind": "control",
       "role": "标签",
-      "zh": "含工具内容",
+      "zh": "含工具输出与思考",
       "args": []
     },
     "sessionFind.box.placeholder": {
@@ -5532,60 +5598,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "sessionReads.record.badShape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "不是恰好 present / root 两格",
-      "args": []
-    },
-    "sessionReads.missing.facts": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺格、多格或某格类型不对",
-      "args": []
-    },
-    "sessionReads.missing.indexRow": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "里有一行缺 o / n 字段",
-      "args": []
-    },
-    "sessionReads.missing.index": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 from / end / rows 字段",
-      "args": []
-    },
-    "sessionReads.missing.inputsEntry": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "里有一条缺字段",
-      "args": []
-    },
-    "sessionReads.missing.turns": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 from / end / turns 字段，或某一轮的字段不对",
-      "args": []
-    },
-    "sessionReads.missing.inputs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 from / end / entries 字段",
-      "args": []
-    },
-    "sessionReads.missing.findHit": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "里有一条命中缺字段",
-      "args": []
-    },
-    "sessionReads.missing.find": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 total / hits 字段",
-      "args": []
-    },
     "skeletonView.ledgerFromIndex.noIndex": {
       "kind": "error",
       "role": "报错",
@@ -6001,7 +6013,7 @@
     "cfgPage.mcp.pausedBody": {
       "kind": "body",
       "role": "说明",
-      "zh": "同步已停止 · 各账号各自管理 · 已同步的不删\n恢复同步后 · 停止期间各账号加的同步到全部账号",
+      "zh": "同步已停止 · 各账号各自管理（MCP 登录也是） · 已同步的不删\n恢复同步后 · 停止期间各账号加的同步到全部账号",
       "args": []
     },
     "cfgPage.mcp.conflict": {
@@ -6025,7 +6037,7 @@
     "cfgPage.mcp.shared": {
       "kind": "body",
       "role": "说明",
-      "zh": "任一账号加的同步到 {machine} 全部账号\n只在此处删 · 账号里删会被补回",
+      "zh": "任一账号加的同步到 {machine} 全部账号\n只在此处删 · 账号里删会被补回\nMCP 登录也同步：任一账号登录或续期后 · 全部账号换成最新那份 · 一个账号里退出则全部退出",
       "args": ["machine"]
     },
     "cfgPage.mcp.conflictHead": {
@@ -6085,7 +6097,7 @@
     "cfgPage.mcp.stopHint": {
       "kind": "body",
       "role": "说明",
-      "zh": "停后各账号独立 · 已同步的不删 · 可再开",
+      "zh": "停后各账号独立 · MCP 登录也不再同步 · 已同步的不删 · 可再开",
       "args": []
     },
     "cfgPage.mcp.resumeHint": {
@@ -9494,6 +9506,12 @@
       "zh": "{why} · 无错误输出",
       "args": ["why"]
     },
+    "rsFilewinProc.cause.noGraphicsAdapter": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "此电脑没有可用的 DX12 或 OpenGL 显卡 · {why}",
+      "args": ["why"]
+    },
     "rsFilewinProc.cause.noOpenGl": {
       "kind": "error",
       "role": "报错",
@@ -12858,12 +12876,6 @@
       "kind": "body",
       "role": "片段",
       "zh": "画面已变",
-      "args": []
-    },
-    "beTerminal.no.other": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "被拒",
       "args": []
     },
     "beTerminal.refuse.empty": {
@@ -17629,7 +17641,13 @@
     "beSession.activity.unclear": {
       "kind": "body",
       "role": "片段",
-      "zh": "运行中",
+      "zh": "状态不明",
+      "args": []
+    },
+    "beSession.activity.reading": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "读记录中",
       "args": []
     },
     "beAsk.scope.session": {
@@ -17762,6 +17780,30 @@
       "kind": "body",
       "role": "说明",
       "zh": "由自定义启动器起，答题口未接上 · 只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.offPolicy": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "组织策略不许加载插件，答题口未接上 · 只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.offVersion": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "claude 版本低于 2.1.280 或无法识别版本，答题口未接上 · 只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.offEnvLost": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "启动器未传递环境，答题口未接上 · 只能在终端里答",
+      "args": []
+    },
+    "beAsk.manual.offElsewhere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "别处起的会话，未挂答题口 · 只能在终端里答",
       "args": []
     },
     "beAsk.manual.offSettings": {
@@ -18465,6 +18507,12 @@
       "zh": "未改动 · {path} 不在 ~/{a} · ~/{b}",
       "args": ["a", "b", "path"]
     },
+    "beSftp.fence.readOnly": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未改动 · 此处不许改远端文件 · {path}",
+      "args": ["path"]
+    },
     "beSftp.fence.rootUnresolved": {
       "kind": "error",
       "role": "报错",
@@ -18506,6 +18554,24 @@
       "role": "报错",
       "zh": "删除失败 · ~/{path} · {why}",
       "args": ["path", "why"]
+    },
+    "beSftp.list.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "无法列出目录 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beSftp.realpath.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未找到路径 · {path} · {why}",
+      "args": ["path", "why"]
+    },
+    "beSftp.rename.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "未改名 · {from} → {to} · {why}",
+      "args": ["from", "to", "why"]
     },
     "beSftp.open.isLink": {
       "kind": "error",
@@ -18586,6 +18652,18 @@
       "kind": "error",
       "role": "报错",
       "zh": "密钥被拒 · 用户 {user}",
+      "args": ["user"]
+    },
+    "beConnect.auth.passwordFailed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "密码登录失败",
+      "args": []
+    },
+    "beConnect.auth.passwordRejected": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "密码被拒 · 用户 {user}",
       "args": ["user"]
     },
     "beConnect.agent.unreachable": {
@@ -18700,6 +18778,12 @@
       "kind": "error",
       "role": "原因格",
       "zh": "远端命令启动失败",
+      "args": []
+    },
+    "beUses.shell.failed": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "开终端失败",
       "args": []
     },
     "beUses.exec.stdinLost": {
@@ -20158,6 +20242,12 @@
       "zh": "{account} 同步失败 · {why}",
       "args": ["account", "why"]
     },
+    "beAcctMcpLogins.note.writeFailed": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "{account} 的 MCP 登录同步失败 · {why}",
+      "args": ["account", "why"]
+    },
     "beAcctMcpShare.note.stale": {
       "kind": "body",
       "role": "说明",
@@ -20197,7 +20287,7 @@
     "rsToolRegistry.tools.accountsMcpStoreNote": {
       "kind": "body",
       "role": "说明",
-      "zh": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n内含 MCP 密钥 · 仅本人可读",
+      "zh": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n另记各号 MCP 登录上次同步后的指纹（不含令牌）\n内含 MCP 密钥 · 仅本人可读",
       "args": []
     },
     "rsToolRegistry.tools.accountsMcpBackupNote": {
@@ -21392,7 +21482,7 @@
     "beOauthStore.lock.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "加锁失败 · {why} · 续期锁 {path}",
+      "zh": "加锁失败 · {why} · 锁目录 {path}",
       "args": ["why", "path"]
     },
     "beOauthStore.write.failed": {
@@ -21400,6 +21490,12 @@
       "role": "报错",
       "zh": "写入失败 · {path} · 程序出错",
       "args": ["path"]
+    },
+    "beOauth.writeback.timedOut": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "登录信息被 Claude 持续占用 · 新令牌未保存 · 可能需重新登录",
+      "args": []
     },
     "beOauth.unusable.notLoggedIn": {
       "kind": "error",
@@ -21467,6 +21563,12 @@
       "zh": "写入失败 · {path} · {why}",
       "args": ["path", "why"]
     },
+    "beCcm.plugin.writeFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "答题插件无法写入，此会话只能在终端里答 · {path} · {why}",
+      "args": ["path", "why"]
+    },
     "rsToolRegistry.tools.launchAccountsNote": {
       "kind": "body",
       "role": "说明",
@@ -21479,12 +21581,24 @@
       "zh": "起会话便条 · 启动时记下的账号 · 进程退出即清",
       "args": []
     },
+    "rsToolRegistry.tools.answerPluginNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "答题插件 · 自定义启动器起会话时用 · 由后端生成",
+      "args": []
+    },
     "rsDataPaths.backend.knownHosts": {
       "kind": "body",
       "role": "说明",
       "zh": "主机钥匙 · 拨号时认下的各台主机钥匙 · 开终端时 ssh 按它核对",
       "args": [],
       "limited": ["SSH"]
+    },
+    "rsDataPaths.backend.skeleton": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "记录骨架 · 大记录的扫描索引 · 重启后接着读 · 可重建",
+      "args": []
     },
     "rsDataPaths.backend.launchAccounts": {
       "kind": "body",
@@ -21496,6 +21610,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "起会话便条 · 启动时记下的账号 · 进程退出即清",
+      "args": []
+    },
+    "rsDataPaths.backend.answerPlugin": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "答题插件 · 自定义启动器起会话时用 · 随时重写",
       "args": []
     },
     "beLaunchAccount.unavailable.said": {
@@ -21713,6 +21833,12 @@
       "role": "报错",
       "zh": "读取失败 · 用量记录 · 原因不明",
       "args": []
+    },
+    "acct.warm.unreadable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{why} · 不发",
+      "args": ["why"]
     },
     "acct.warm.unseen": {
       "kind": "body",
@@ -23231,6 +23357,108 @@
       "zh": "状态不明 · {machine} 不可见",
       "args": ["machine"]
     },
+    "sessionHead.edit.open": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "调整会话头按钮…",
+      "args": []
+    },
+    "sessionHead.edit.remove": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "从会话头移走「{name}」",
+      "args": ["name"]
+    },
+    "sessionHead.edit.title": {
+      "kind": "title",
+      "role": "标题",
+      "zh": "会话头按钮",
+      "args": []
+    },
+    "sessionHead.edit.hint": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "拖动排序 · 勾选放到会话头",
+      "args": []
+    },
+    "sessionHead.edit.overflow": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "超出会话头宽度的收进「更多」",
+      "args": []
+    },
+    "sessionHead.edit.reset": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "恢复默认",
+      "args": []
+    },
+    "sessionHead.edit.fixedMore": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "固定在最右",
+      "args": []
+    },
+    "sessionHead.edit.onlyLocal": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仅本机",
+      "args": []
+    },
+    "sessionHead.edit.onlyWindows": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "仅 Windows",
+      "args": []
+    },
+    "sessionState.headEdit.onlyEnded": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已结束时",
+      "args": []
+    },
+    "sessionHead.edit.displayNote": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "过程展开 · 系统注入",
+      "args": []
+    },
+    "sessionHead.edit.removed": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已从会话头移走「{name}」",
+      "args": ["name"]
+    },
+    "sessionHead.edit.resetDone": {
+      "kind": "body",
+      "role": "toast",
+      "zh": "已恢复默认按钮",
+      "args": []
+    },
+    "sessionHead.act.display": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "显示",
+      "args": []
+    },
+    "sessionHead.act.popOut": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "在新窗口打开",
+      "args": []
+    },
+    "sessionHead.act.account": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "账号",
+      "args": []
+    },
+    "keybindingActions.sessionHead.edit": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "调整会话头按钮",
+      "args": []
+    },
     "sessionHead.act.find": {
       "kind": "body",
       "role": "片段",
@@ -23989,6 +24217,12 @@
       "kind": "error",
       "role": "报错",
       "zh": "私钥无法识别 · 须整段贴入 BEGIN 到 END · 带口令的先去掉口令",
+      "args": []
+    },
+    "mobIdentity.gen.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "钥匙生成失败",
       "args": []
     },
     "terminal.why.ambiguous": {
@@ -26714,6 +26948,12 @@
       "zh": "分组操作",
       "args": []
     },
+    "tabBar.group.memberHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "{group} · {title}",
+      "args": ["group", "title"]
+    },
     "tabBar.unpinned.toast": {
       "kind": "body",
       "role": "toast",
@@ -29241,32 +29481,6 @@
       "zh": "AndroidKeyStore 无该别名的证书 {alias}",
       "args": ["alias"]
     },
-    "mobSsh.keystore.noKey": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "AndroidKeyStore 无该别名的私钥 {alias}",
-      "args": ["alias"]
-    },
-    "mobSsh.race.allFailed": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "所有地址连接失败",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.tofuFirst": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "首次连接，记下该主机密钥",
-      "args": [],
-      "limited": ["连接"]
-    },
-    "mobSsh.log.tofuTrusted": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "主机密钥已信任",
-      "args": []
-    },
     "mobSsh.log.established": {
       "kind": "body",
       "role": "进度",
@@ -29274,24 +29488,12 @@
       "args": ["target"],
       "limited": ["连接"]
     },
-    "mobSsh.log.viaJump": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "经跳板 {jump} 打开到 {target} 的隧道 …",
-      "args": ["jump", "target"]
-    },
     "mobSsh.log.connecting": {
       "kind": "body",
       "role": "进度",
       "zh": "连接 {target} …",
       "args": ["target"],
       "limited": ["连接"]
-    },
-    "mobSsh.log.keyMismatch": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "主机密钥不匹配（疑 MITM / 服务器重装）",
-      "args": []
     },
     "mobSsh.log.connectFailed": {
       "kind": "error",
@@ -29306,22 +29508,10 @@
       "zh": "协议协商与密钥交换完成",
       "args": []
     },
-    "mobSsh.log.authPassword": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "密码认证中 …",
-      "args": []
-    },
     "mobSsh.log.authKey": {
       "kind": "body",
       "role": "进度",
       "zh": "公钥认证中 …",
-      "args": []
-    },
-    "mobSsh.log.authKeystore": {
-      "kind": "body",
-      "role": "进度",
-      "zh": "硬件密钥认证中（TEE 签名）…",
       "args": []
     },
     "mobSsh.log.authFailed": {
@@ -29330,24 +29520,11 @@
       "zh": "认证失败",
       "args": []
     },
-    "mobSsh.shell.openTimeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "打开终端超时（{dur}），连接已断开\n重试即可",
-      "args": ["dur"],
-      "limited": ["连接"]
-    },
     "mobSsh.read.truncated": {
       "kind": "body",
       "role": "片段",
       "zh": "…（已截断，共 {n} 字节）",
       "args": ["n"]
-    },
-    "mobSsh.exec.timeout": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "命令执行超时（{dur}），已中止",
-      "args": ["dur"]
     },
     "mobSsh.log.waitOther": {
       "kind": "body",

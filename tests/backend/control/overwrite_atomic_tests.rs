@@ -14,6 +14,7 @@
 //! | W4 | 后端生产段 `fs::write(` 恰好一处，且在 `swap_in` 的 `cfg(windows)` 臂里 | 文本，零富余 ＋ 正控 |
 
 use super::*;
+use crate::platform::fs::Face;
 
 const CHILD_MARK: &str = "CCM_HX1_OW_CHILD";
 const CHILD_ROOT: &str = "CCM_HX1_OW_ROOT";
@@ -47,7 +48,7 @@ fn w1_child() {
     match mode.as_str() {
         // 生产那一个原语。
         "atomic" => {
-            let _ = overwrite_text(&root, "t.txt", &body);
+            let _ = overwrite_text(&Face::issue(), &root, "t.txt", &body);
         }
         // 正控：旧形状（先截断再写）—— 台架看得见「半份」才说明它看得见原子与否。
         "inplace" => {
@@ -120,7 +121,7 @@ fn w2_the_swap_keeps_mode_follows_the_link_and_leaves_no_side_file() {
     std::os::unix::fs::symlink("real.txt", root.join("link.txt")).expect("链接");
     let ino_before = std::fs::metadata(&real).expect("meta").ino();
 
-    let got = overwrite_text(&root, "link.txt", b"new content").expect("覆盖写");
+    let got = overwrite_text(&Face::issue(), &root, "link.txt", b"new content").expect("覆盖写");
     assert_eq!(
         std::fs::canonicalize(&got).expect("canon"),
         std::fs::canonicalize(&real).expect("canon")
@@ -211,7 +212,7 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
         "../../../src/backend/control/files_commit.rs"
     ));
     let undo = prod
-        .find("let undo = std::fs::remove_file(&dest);")
+        .find("let undo = face.delete_file(&dest);")
         .expect("撤占位那一句");
     let tail = &prod[undo..];
     assert!(
@@ -220,16 +221,22 @@ fn w3_a_placeholder_that_could_not_be_removed_is_named_in_the_refusal() {
         "撤占位的结局没交给 move_failed"
     );
     assert!(
-        !prod.contains("let _ = std::fs::remove_file(&dest)"),
+        !prod.contains("let _ = face.delete_file(&dest)"),
         "撤占位的结局又被吞了"
     );
 }
 
-/// 就地写在一段生产代码里的位置：`fs::write(` · 不跟链接的截断开（`.truncate(true)`，`files_write::opener` 那条链）。
+/// 后端碰盘的唯一住址（原语本体住这里）。
+const FS_HOME: &str = "platform/fs/";
+
+/// 就地写在一段生产代码里的位置：`fs::write(` · 截断开（`.truncate(true)`）这两形原语，
+/// 与文件管理面句柄上调它们的那两个方法（`Face::write_whole` · `Face::overwrite`）。
 fn write_calls(code: &str) -> Vec<usize> {
     let mut at: Vec<usize> = code
         .match_indices("fs::write(")
         .chain(code.match_indices(".truncate(true)"))
+        .chain(code.match_indices(".write_whole("))
+        .chain(code.match_indices(".overwrite("))
         .map(|(i, _)| i)
         .collect();
     at.sort_unstable();
@@ -241,17 +248,32 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
     // ① 全后端生产段的人群：`fs::write(` 只住 `control/files_write.rs`。
     let roots = crate::guard_support::code_roots();
     let mut files: Vec<String> = Vec::new();
+    let mut prims: Vec<String> = Vec::new();
     for (path, src) in guard_core::scan_tree_excluding(&roots[0], &["rs"], &[]) {
         let prod = crate::guard_support::production_side_of(&path, &src);
+        let rel = path
+            .strip_prefix(&roots[0])
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
         for _ in write_calls(&prod) {
-            files.push(
-                path.strip_prefix(&roots[0])
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .replace('\\', "/"),
-            );
+            // 原语本体住 `platform/fs/`（下面单数）；调用方的人群不算它。
+            if rel.starts_with(FS_HOME) {
+                prims.push(rel.clone());
+            } else {
+                files.push(rel.clone());
+            }
         }
     }
+    // 原语那一侧：两形各恰好一处，都在文件管理面的句柄里（`write_whole` · `overwrite` 两个方法的本体）。
+    assert_eq!(
+        prims,
+        vec![
+            "platform/fs/face.rs".to_string(),
+            "platform/fs/face.rs".to_string()
+        ],
+        "就地写的原语住址变了"
+    );
     // 两处：`swap_in` 的 Windows 臂 ＋ `overwrite_text` 的「硬链接 / 别人的属主」那一支
     // （后者从 `fs::write` 换成不跟链接的截断开，处数不变）。
     assert_eq!(
@@ -294,8 +316,9 @@ fn w4_the_only_in_place_write_left_is_the_windows_arm_of_swap_in() {
     let swap = ow.find("swap_in(").expect("原子换那一支");
     let w = write_calls(ow)[0];
     assert!(asked < w && w < swap, "就地写不在「不该原子换」那一支里");
-    // 正控：数法认得出两形就地写。
+    // 正控：数法认得出两形就地写（原语与句柄上的方法）。
     assert_eq!(write_calls("std::fs::write(&p, b)").len(), 1);
+    assert_eq!(write_calls("face.overwrite(&real)").len(), 1);
     assert_eq!(
         write_calls("opener().write(true).truncate(true).open(&p)").len(),
         1
@@ -315,8 +338,8 @@ fn h1_a_hardlinked_target_is_written_in_place_so_both_names_see_it() {
     std::fs::write(root.join("solo.txt"), b"old").expect("铺");
     let ino = |p: &str| std::fs::metadata(root.join(p)).expect("meta").ino();
     let (a0, solo0) = (ino("a.txt"), ino("solo.txt"));
-    overwrite_text(&root, "a.txt", b"new").expect("覆盖写");
-    overwrite_text(&root, "solo.txt", b"new").expect("覆盖写");
+    overwrite_text(&Face::issue(), &root, "a.txt", b"new").expect("覆盖写");
+    overwrite_text(&Face::issue(), &root, "solo.txt", b"new").expect("覆盖写");
     assert_eq!(
         std::fs::read(root.join("b.txt")).expect("读"),
         b"new",

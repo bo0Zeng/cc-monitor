@@ -5,6 +5,7 @@
 //! 买不到：退回先看后改那一支（要一块不认 `RENAME_NOREPLACE` 的盘：NFS / 部分 FUSE）· 真并发的时序 · Windows 臂。
 
 use super::*;
+use crate::platform::fs::Face;
 
 fn temp_root(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-toctou-{tag}-{}", std::process::id()));
@@ -27,12 +28,20 @@ fn the_platform_rename_refuses_an_existing_target_and_moves_onto_an_absent_one()
     let base = temp_root("prim");
     std::fs::write(base.join("a"), b"A").unwrap();
     std::fs::write(base.join("b"), b"B").unwrap();
-    let e = crate::platform::fs::rename_noreplace(&base.join("a"), &base.join("b"))
+    let e = crate::platform::fs::Face::issue()
+        .move_noreplace(
+            &crate::platform::fs::Resolved::vouch(base.join("a")),
+            &crate::platform::fs::Resolved::vouch(base.join("b")),
+        )
         .expect_err("目标已在却改成了");
     assert_eq!(e.kind(), std::io::ErrorKind::AlreadyExists, "{e}");
     assert_eq!(std::fs::read(base.join("a")).unwrap(), b"A");
     assert_eq!(std::fs::read(base.join("b")).unwrap(), b"B");
-    crate::platform::fs::rename_noreplace(&base.join("a"), &base.join("c"))
+    crate::platform::fs::Face::issue()
+        .move_noreplace(
+            &crate::platform::fs::Resolved::vouch(base.join("a")),
+            &crate::platform::fs::Resolved::vouch(base.join("c")),
+        )
         .expect("目标不在却没改成");
     assert_eq!(std::fs::read(base.join("c")).unwrap(), b"A");
     assert!(!base.join("a").exists());
@@ -44,9 +53,15 @@ fn a_rename_does_not_clobber_a_file_that_appears_after_the_paths_were_resolved()
     let base = temp_root("mv");
     std::fs::write(base.join("mine"), b"mine").unwrap();
     let target = base.join("theirs");
-    let got = rename_entry_racing(&base, Path::new("mine"), Path::new("theirs"), &mut || {
-        std::fs::write(&target, b"theirs").unwrap();
-    });
+    let got = rename_entry_racing(
+        &Face::issue(),
+        &base,
+        Path::new("mine"),
+        Path::new("theirs"),
+        &mut || {
+            std::fs::write(&target, b"theirs").unwrap();
+        },
+    );
     assert!(matches!(got, Err(WriteRefusal::Exists(_))), "{got:?}");
     assert_eq!(
         std::fs::read(&target).unwrap(),
@@ -64,6 +79,7 @@ fn a_copy_lands_whole_or_not_at_all_and_does_not_clobber_a_newcomer() {
     let target = base.join("dst");
     let mut seen_early = None;
     let got = copy_entry_racing(
+        &Face::issue(),
         &base,
         Path::new("src"),
         Path::new("dst"),
@@ -97,6 +113,7 @@ fn a_put_that_expects_absence_does_not_clobber_a_file_that_appears_after_the_che
     let base = temp_root("put");
     let target = base.join("new.txt");
     let got = put_text_racing(
+        &Face::issue(),
         &base,
         Path::new("new.txt"),
         b"ours",
@@ -128,14 +145,22 @@ fn a_put_that_expects_absence_does_not_clobber_a_file_that_appears_after_the_che
 fn a_disk_without_noreplace_moves_files_by_link_and_refuses_directories() {
     let base = temp_root("link");
     std::fs::write(base.join("a"), b"A").unwrap();
-    let (_, _, done) = rename_no_clobber(&base, Path::new("a"), Path::new("b"), &mut || {}, true)
-        .expect("路径解析拒了");
+    let (_, _, done) = rename_no_clobber(
+        &Face::issue(),
+        &base,
+        Path::new("a"),
+        Path::new("b"),
+        &mut || {},
+        true,
+    )
+    .expect("路径解析拒了");
     done.expect("普通文件走 link 那一支没改成");
     assert!(!base.join("a").exists(), "源的名字还在");
     assert_eq!(std::fs::read(base.join("b")).unwrap(), b"A");
     // 目标在「解析之后、动手之前」冒出来 ⇒ link 原子失败，不盖、源不动。
     let target = base.join("c");
     let (_, _, done) = rename_no_clobber(
+        &Face::issue(),
         &base,
         Path::new("b"),
         Path::new("c"),
@@ -157,8 +182,15 @@ fn a_disk_without_noreplace_moves_files_by_link_and_refuses_directories() {
     assert_eq!(std::fs::read(base.join("b")).unwrap(), b"A", "源没了");
     // 目录：没有这条路 ⇒ 拒并出声，一个字节不动。
     std::fs::create_dir(base.join("d")).unwrap();
-    let said = rename_no_clobber(&base, Path::new("d"), Path::new("e"), &mut || {}, true)
-        .expect_err("目录被改名了");
+    let said = rename_no_clobber(
+        &Face::issue(),
+        &base,
+        Path::new("d"),
+        Path::new("e"),
+        &mut || {},
+        true,
+    )
+    .expect_err("目录被改名了");
     let d = std::fs::canonicalize(base.join("d")).unwrap();
     assert_eq!(
         said,
@@ -183,7 +215,15 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
     let src = root.join("src");
     std::os::unix::fs::symlink(&secret, &src).unwrap();
     let perms = std::fs::metadata(&secret).unwrap().permissions();
-    let got = land_copy(&root, Path::new("dst"), &src, perms, false, &mut || {});
+    let got = land_copy(
+        &Face::issue(),
+        &root,
+        Path::new("dst"),
+        &src,
+        perms,
+        false,
+        &mut || {},
+    );
     assert!(matches!(&got, Err(e) if e.code() == "io_failed"), "{got:?}");
     assert!(!root.join("dst").exists(), "跟着链接把根外那一份抄进来了");
     assert_eq!(
@@ -191,6 +231,9 @@ fn a_source_swapped_for_a_link_after_resolving_is_not_followed() {
         Vec::<String>::new(),
         "暂存旁名留下了"
     );
-    assert!(read_nofollow(&src).is_err(), "读那一口跟了链接");
+    assert!(
+        crate::platform::fs::Ro::read_nofollow(&src).is_err(),
+        "读那一口跟了链接"
+    );
     std::fs::remove_dir_all(&base).ok();
 }

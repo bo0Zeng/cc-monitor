@@ -12,8 +12,12 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 // 读出来的那两种值（元数据 · 目录遍历）只装读到的东西，没有一样能写回盘；调用方不用点名它们的类型。
-type Metadata = std::fs::Metadata;
+/// 文件的元数据（读者按这个名字收，不点名 `std::fs`）。
+pub(crate) type Metadata = std::fs::Metadata;
 type ReadDir = std::fs::ReadDir;
+
+/// 权限位那一格的值（从元数据读出来，或由 [`Ro::perms_from_mode`] 照一个 unix 模式造）；只是值，交给写面的改权限才落盘。
+pub(crate) type Perms = std::fs::Permissions;
 
 /// 盘上一份文件的戳：改动时刻 · 长度 · inode（[`Ro::stamp`]）。
 pub(crate) type Stamp = (std::time::SystemTime, u64, u64);
@@ -38,6 +42,11 @@ impl Ro {
         std::fs::metadata(p)
     }
 
+    /// 问元数据、不跟链接（最后一段是链接 ⇒ 答的是链接本身）。
+    pub(crate) fn symlink_metadata(p: impl AsRef<Path>) -> io::Result<Metadata> {
+        std::fs::symlink_metadata(p)
+    }
+
     pub(crate) fn canonicalize(p: impl AsRef<Path>) -> io::Result<PathBuf> {
         std::fs::canonicalize(p)
     }
@@ -49,6 +58,50 @@ impl Ro {
     /// 只读打开（跟链接，同 `File::open`）。交回的只能读、挪读写位置、问元数据。
     pub(crate) fn open(p: impl AsRef<Path>) -> io::Result<RoFile> {
         std::fs::File::open(p).map(RoFile)
+    }
+
+    /// 只读打开、最后一段是链接就失败（`O_NOFOLLOW`；别的平台同 [`Ro::open`]）。
+    pub(crate) fn open_nofollow(p: impl AsRef<Path>) -> io::Result<RoFile> {
+        nofollow_read().open(p).map(RoFile)
+    }
+
+    /// 不跟链接地整份读（[`Ro::open_nofollow`] 再读满）。
+    pub(crate) fn read_nofollow(p: impl AsRef<Path>) -> io::Result<Vec<u8>> {
+        let mut buf = Vec::new();
+        Self::open_nofollow(p)?.read_to_end(&mut buf)?;
+        Ok(buf)
+    }
+
+    /// 异步问元数据（跟链接）。
+    pub(crate) async fn metadata_async(p: impl AsRef<Path>) -> io::Result<Metadata> {
+        tokio::fs::metadata(p).await
+    }
+
+    /// 异步只读打开（跟链接）：交回的只能读、挪读写位置。
+    pub(crate) async fn open_async(p: impl AsRef<Path>) -> io::Result<RoAsyncFile> {
+        tokio::fs::File::open(p).await.map(RoAsyncFile)
+    }
+
+    /// 异步只读打开、不跟链接。
+    pub(crate) async fn open_nofollow_async(p: impl AsRef<Path>) -> io::Result<RoAsyncFile> {
+        tokio::fs::OpenOptions::from(nofollow_read())
+            .open(p)
+            .await
+            .map(RoAsyncFile)
+    }
+
+    /// 照一个 unix 模式（低 12 位）造权限位那一格的值。别的平台没有这一维 ⇒ `None`。
+    pub(crate) fn perms_from_mode(mode: u32) -> Option<Perms> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt as _;
+            Some(Perms::from_mode(mode))
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = mode;
+            None
+        }
     }
 
     /// 安全读取：先确认是常规文件（挡掉 FIFO / 字符设备 / socket —— 它们的 `metadata().len()` 报 0 会骗过大小检查，而无上限的读能把内存吃爆，
@@ -142,6 +195,20 @@ impl Ro {
         Some((m.modified().ok()?, m.len(), node))
     }
 
+    /// unix 的硬链接数。别的平台 ⇒ `None`。
+    pub(crate) fn nlink(m: &Metadata) -> Option<u64> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::MetadataExt as _;
+            Some(m.nlink())
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = m;
+            None
+        }
+    }
+
     /// unix 的设备号（同一个文件系统内才相等）。别的平台 ⇒ `None`。
     pub(crate) fn dev(m: &Metadata) -> Option<u64> {
         #[cfg(unix)]
@@ -154,6 +221,44 @@ impl Ro {
             let _ = m;
             None
         }
+    }
+}
+
+/// 只读、不跟链接的开法（最后一段是链接 ⇒ 失败）。
+fn nofollow_read() -> std::fs::OpenOptions {
+    let mut o = std::fs::OpenOptions::new();
+    o.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt as _;
+        o.custom_flags(super::NO_FOLLOW);
+    }
+    o
+}
+
+/// 异步只读打开的文件：只实现 `AsyncRead` 与 `AsyncSeek`。
+#[derive(Debug)]
+pub(crate) struct RoAsyncFile(tokio::fs::File);
+
+impl tokio::io::AsyncRead for RoAsyncFile {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        std::pin::Pin::new(&mut self.get_mut().0).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncSeek for RoAsyncFile {
+    fn start_seek(self: std::pin::Pin<&mut Self>, pos: SeekFrom) -> io::Result<()> {
+        std::pin::Pin::new(&mut self.get_mut().0).start_seek(pos)
+    }
+    fn poll_complete(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<io::Result<u64>> {
+        std::pin::Pin::new(&mut self.get_mut().0).poll_complete(cx)
     }
 }
 

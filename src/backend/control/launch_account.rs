@@ -7,6 +7,7 @@
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
 use crate::platform::fs::{Own, OwnPath};
+use crate::stream::inbound::typed::codes;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -269,8 +270,12 @@ pub(crate) struct Book {
 /// 一张便条：起这个进程时用的号 ＋ 写下的时刻（unix 秒）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Note {
+    /// 用的号；空串 ＝ 没用账号库里说得出名字的号（只为下一格留的便条）。
     pub(crate) account: String,
     pub(crate) at: u64,
+    /// 这个进程起来时答题插件经环境交下去了（换了启动器那一支）：hook 认「是 ccm 起的那一个」· 会话事实判「启动器没把环境传下去」都看它。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub(crate) plugin: bool,
 }
 
 /// 读那份记录。没有 ⇒ 空；读不懂 ⇒ `Err`（不覆盖它）。
@@ -299,18 +304,51 @@ pub(crate) fn leave_note(
     account: &str,
     now: u64,
 ) -> Result<(), crate::common::said::Said> {
+    write_note(
+        own,
+        pid,
+        &Note {
+            account: account.to_string(),
+            at: now,
+            plugin: false,
+        },
+    )
+}
+
+/// 同上，换了启动器那一支（答题插件经环境交下去了）：号说得出名字就一起记。
+pub(crate) fn leave_plugin_note(
+    own: &Own,
+    pid: u32,
+    account: Option<&str>,
+    now: u64,
+) -> Result<(), crate::common::said::Said> {
+    write_note(
+        own,
+        pid,
+        &Note {
+            account: account.unwrap_or_default().to_string(),
+            at: now,
+            plugin: true,
+        },
+    )
+}
+
+/// 这个进程（`pid`，起始时刻 `started`）的便条，且对它作数（不早于它起）。`data` ＝ 数据目录。没有 ⇒ `None`。
+pub(crate) fn note_of(data: &Path, pid: u32, started: Option<u64>) -> Option<Note> {
+    let f = data.join(NOTES_DIR).join(format!("{pid}.json"));
+    crate::platform::fs::Ro::read_to_string(f)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Note>(&s).ok())
+        .filter(|n| fresh(n, started))
+}
+
+fn write_note(own: &Own, pid: u32, note: &Note) -> Result<(), crate::common::said::Said> {
     let (home, dir) = places(own)?;
     for d in [&home, &dir] {
         own.ensure_dir(d).map_err(|e| failed(d.as_path(), &e))?;
     }
     let file = dir.join(&format!("{pid}.json"))?;
-    let body = crate::common::own_state::json_body(
-        file.as_path(),
-        &Note {
-            account: account.to_string(),
-            at: now,
-        },
-    )?;
+    let body = crate::common::own_state::json_body(file.as_path(), note)?;
     // 一个进程一张、各写各的：拿便条目录那一把锁（原子写要它），不跨便条串。
     let held = own.lock(&dir)?;
     own.write(&file, &held, &body)
@@ -371,7 +409,7 @@ pub(crate) fn adopt(
             }
         }
     }
-    let Some(note) = note else {
+    let Some(note) = note.filter(|n| !n.account.is_empty()) else {
         return Ok(false);
     };
     if read_book(home)?.sessions.get(sid) == Some(&note.account) {
@@ -416,21 +454,56 @@ fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {
     )
 }
 
-/// `history-last-accounts`：这台记着的 `{accounts: {sid: 号}}`。读不懂 ⇒ `unreadable`。
-pub(crate) fn answer_last_accounts() -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let book = match crate::platform::paths::data_home() {
-        Some(h) => read_book(&h)
-            .map_err(|e| crate::stream::inbound::spec::Fail::from(("unreadable", e)))?,
+codes! {
+    /// `history-last-accounts` 的码。
+    pub(crate) enum LastAccountsErr {
+        /// 这台那份起会话账号记录读不懂。
+        Unreadable = "unreadable",
+    }
+}
+
+/// `history-last-accounts`：这台记着的「每条会话上次用哪个号起的」。
+pub(crate) struct HistoryLastAccountsCmd;
+
+impl crate::stream::inbound::typed::Command for HistoryLastAccountsCmd {
+    const NAME: &'static str = "history-last-accounts";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = LastAccounts;
+    type Err = LastAccountsErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for HistoryLastAccountsCmd {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<LastAccounts, LastAccountsErr> {
+        last_accounts_at(crate::platform::paths::data_home().as_deref())
+    }
+}
+
+/// [`HistoryLastAccountsCmd`] 的本体，家是参数（推不出家 ⇒ 空表）。读不懂 ⇒ `unreadable`。
+pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, LastAccountsErr> {
+    let book = match home {
+        Some(h) => read_book(h).map_err(|e| {
+            crate::stream::inbound::typed::of_fail(
+                crate::stream::inbound::spec::Fail::from(("unreadable", e)),
+                LastAccountsErr::Unreadable,
+            )
+        })?,
         None => Book::default(),
     };
-    crate::stream::inbound::spec::wire(&LastAccounts {
+    Ok(LastAccounts {
         accounts: book.sessions,
     })
 }
 
-/// `history-last-accounts` 的应答：`{sid: 号}`。
+/// `history-last-accounts` 的回包。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct LastAccounts {
+    /// `{sid: 账号名}`：只含真记过的那几条。
     pub(crate) accounts: BTreeMap<String, String>,
 }
 

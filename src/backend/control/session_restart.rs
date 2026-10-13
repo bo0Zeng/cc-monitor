@@ -13,11 +13,13 @@
 
 use super::launch::LAUNCH_CAP;
 use super::launch_account::{self as la, AccountAsk, Settled};
-use super::launch_render::Failed;
 use super::session_batch::{self as batch, Batch, Deps, Item, Standing, SESSIONS_WHERE_CAP};
 use crate::platform::child::{Budget, Deadline, Until};
-use serde_json::{Map, Value};
+use serde_json::Value;
 use std::future::Future;
+
+/// 失败：码 ＋ 那一句 ＋ 按码定形的 `data`（`account_unavailable` 带 [`la::AccountUnavailable`]）。
+pub(crate) type Failed = (&'static str, String, Option<Value>);
 
 /// 命令级失败（码 ＋ 那一句 ＋ 按码定形的 `data`），全是自有值：跨阻塞线程交回来。
 pub(crate) type Fault = (String, String, Option<Value>);
@@ -76,47 +78,81 @@ fn bad(why: &str) -> Failed {
     (c, m, None)
 }
 
-fn ms_of(o: &Map<String, Value>, k: &str) -> Result<u64, Failed> {
-    o.get(k)
-        .and_then(Value::as_u64)
-        .filter(|n| *n <= MAX_WAIT_MS)
-        .ok_or_else(|| bad(&format!("`{k}` must be 0..={MAX_WAIT_MS} (ms)")))
+fn ms_of(k: &str, n: u64) -> Result<u64, Failed> {
+    if n <= MAX_WAIT_MS {
+        Ok(n)
+    } else {
+        Err(bad(&format!("`{k}` must be 0..={MAX_WAIT_MS} (ms)")))
+    }
 }
 
-/// `{sid, cwd, account, compact_first, compact_within_ms, arrive_within_ms, local, agent, launcher, defaultLauncher, models?}`。
-pub(crate) fn parse(args: &Value) -> Result<Req, Failed> {
-    let o = args
-        .as_object()
-        .ok_or_else(|| bad("args must be an object"))?;
-    let s = |k: &str| batch::str_of(o, k).map_err(|(c, m)| (c, m, None));
-    let sid = s("sid")?;
-    if !shell_quote_core::session_id_ok(sid) {
-        return Err(bad(&format!("not a session id: {sid:?}")));
+/// `session-restart` 的入参（`deny_unknown_fields`）。值域由 [`parse`] 判。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct RestartReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+    /// 工作目录。
+    pub(crate) cwd: String,
+    /// 用户点名的号（只收名字，非空）。
+    pub(crate) account: String,
+    /// 先请求压缩、等记录里出现压缩摘要再停。
+    pub(crate) compact_first: bool,
+    /// 等压缩的期限（≤ 3 600 000）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) compact_within_ms: u64,
+    /// 等新进程报出的期限（≤ 3 600 000）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) arrive_within_ms: u64,
+    /// 这台是不是界面所在那台（同 `sessions-start`）。
+    pub(crate) local: bool,
+    /// 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。
+    pub(crate) agent: String,
+    /// 用户设置的 resume 命令原值（同 `sessions-start`）。
+    pub(crate) launcher: String,
+    /// 那一家的默认启动器（同 `sessions-start`）。
+    #[serde(rename = "defaultLauncher")]
+    pub(crate) default_launcher: String,
+    /// 可缺：这台的模型偏好表原值。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) models: Option<std::collections::BTreeMap<String, String>>,
+    /// 自报的前端，同 `kill`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) client: Option<String>,
+}
+
+/// 入参的值域：sid 的形状 · 号非空 · 两个期限有界。
+pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
+    if !shell_quote_core::session_id_ok(&r.sid) {
+        return Err(bad(&format!("not a session id: {:?}", r.sid)));
     }
-    let account = s("account")?;
-    if account.is_empty() {
+    if r.account.is_empty() {
         return Err(bad("`account` must name an account"));
     }
-    let flag = |k: &str| {
-        o.get(k)
-            .and_then(Value::as_bool)
-            .ok_or_else(|| bad(&format!("missing bool `{k}`")))
-    };
     Ok(Req {
         item: Item {
-            sid: sid.to_string(),
-            cwd: s("cwd")?.to_string(),
+            sid: r.sid.clone(),
+            cwd: r.cwd.clone(),
             account: AccountAsk::Named {
-                name: account.to_string(),
+                name: r.account.clone(),
             },
             fresh: false,
             fork_of: None,
         },
-        compact_first: flag("compact_first")?,
-        compact_within_ms: ms_of(o, "compact_within_ms")?,
-        arrive_within_ms: ms_of(o, "arrive_within_ms")?,
-        local: flag("local")?,
-        batch: batch::batch_of(o).map_err(|(c, m)| (c, m, None))?,
+        compact_first: r.compact_first,
+        compact_within_ms: ms_of("compact_within_ms", r.compact_within_ms)?,
+        arrive_within_ms: ms_of("arrive_within_ms", r.arrive_within_ms)?,
+        local: r.local,
+        batch: Batch::of(
+            &r.agent,
+            &r.launcher,
+            &r.default_launcher,
+            r.models.clone().unwrap_or_default(),
+        ),
         until: None,
     })
 }
@@ -171,7 +207,10 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
         models,
         deps.accounts,
     )
-    .map_err(super::launch_render::unavailable)?;
+    .map_err(|u| {
+        let said = la::unavailable_said(&u);
+        ("account_unavailable", said, serde_json::to_value(u).ok())
+    })?;
     let rows = batch::listed(deps).map_err(|(code, m)| (code, m, None))?;
     let not_here = || {
         (
@@ -259,6 +298,8 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
 
 /// 先压缩那一步的结局（不论哪种都照常往下）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Compact {
     Done,
@@ -270,6 +311,8 @@ pub(crate) enum Compact {
 
 /// 新进程报没报出（等到期限为止）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Arrival {
     Arrived,
@@ -278,8 +321,12 @@ pub(crate) enum Arrival {
 
 /// `session-restart` 的应答。
 #[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Restarted {
+    /// 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed`。
     pub(crate) compact: Compact,
+    /// 新进程报没报出：`arrived` · `missed`。
     pub(crate) started: Arrival,
     /// 所在的终端（会话名）。
     pub(crate) terminal: String,
@@ -318,10 +365,10 @@ async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
 /// `session-restart` 本体 ⇒ `{compact, started, terminal, account}`。
 /// `until`：发起方的截止时刻（分派那一层由请求信封换来；没带 ⇒ 各步只按上限）。
 pub(crate) async fn run<H: Host>(
-    args: Value,
+    args: RestartReq,
     until: Option<Until>,
     host: H,
-) -> Result<Value, Fault> {
+) -> Result<Restarted, Fault> {
     let mut req = parse(&args).map_err(owned)?;
     req.until = until;
     let req = std::sync::Arc::new(req);
@@ -339,7 +386,7 @@ pub(crate) async fn run<H: Host>(
     {
         None => {
             return Err((
-                "shutting_down".to_string(),
+                SHUTTING_DOWN.to_string(),
                 copy_core::copy_text("beInbound.drain.shuttingDown", &[]),
                 None,
             ))
@@ -350,7 +397,7 @@ pub(crate) async fn run<H: Host>(
         Ok(ears) => ears.within(req.arrive_within_ms).await,
         Err(_) => false,
     };
-    crate::stream::inbound::spec::wire::<_, (&str, String)>(&Restarted {
+    Ok(Restarted {
         compact,
         started: if started {
             Arrival::Arrived
@@ -363,7 +410,49 @@ pub(crate) async fn run<H: Host>(
             Settled::Base | Settled::Unsaid => None,
         },
     })
-    .map_err(|(c, m)| (c.to_string(), m, None))
+}
+
+/// `session-restart` 会回的码（`bad_args` 打头）。另有协议级的 `shutting_down`（这台正在收场，停旧 ＋ 起新那一步一个字节不动）：
+/// 那一层不归命令登记，照原样投、不进这张表。
+pub(crate) const RESTART_CODES: &[&str] = &[
+    "bad_args",
+    "unobservable",
+    "account_unavailable",
+    "not_in_terminal",
+    "ambiguous",
+    "session_already_live",
+    "stop_failed",
+    "start_failed",
+    "child_timed_out",
+];
+
+/// 协议级的「正在收场」（`stream/inbound` 退出排空那一层的码）。
+const SHUTTING_DOWN: &str = "shutting_down";
+
+/// `session-restart` 的失败：码 ＋ 那一句 ＋ 按码定形的 `data`（[`Refused`] · 选不了号那一形）。码表封闭（[`RESTART_CODES`]）。
+#[derive(Debug)]
+pub(crate) struct RestartErr(pub(crate) Fault);
+
+impl crate::stream::inbound::typed::Codes for RestartErr {
+    const ALL: &'static [&'static str] = RESTART_CODES;
+    fn into_fail(self) -> crate::stream::inbound::spec::Fail {
+        let (code, message, data) = self.0;
+        debug_assert!(
+            RESTART_CODES.contains(&code.as_str()) || code == SHUTTING_DOWN,
+            "session-restart 回了码表里没有的码 `{code}`"
+        );
+        crate::stream::inbound::spec::Fail {
+            data,
+            ..crate::stream::inbound::spec::Fail::new(&code, message)
+        }
+    }
+    fn of_code(code: &str, said: String) -> Result<Self, String> {
+        if RESTART_CODES.contains(&code) {
+            Ok(RestartErr((code.to_string(), said, None)))
+        } else {
+            Err(said)
+        }
+    }
 }
 
 #[cfg(test)]

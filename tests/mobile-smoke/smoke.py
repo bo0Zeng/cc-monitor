@@ -331,7 +331,41 @@ def main():
         if flashed:
             raise Step.Fail(f"闪了「离线」：{flashed[:1]}")
 
-    with Step("7-终端屏"):
+    with Step("7-换网"):
+        # 换一张网（Wi-Fi 关掉 ⇒ 落到移动数据，再开回来）：SSH 那层重连换一条，常驻流在新的那条上当场重接；断着那段补上。
+        name = tmux_name_of(f"{T} new session")
+        adb("shell", "svc", "wifi", "disable")
+        time.sleep(4)
+        rig("tmux", "send-keys", "-t", name or "", f"{T} switched", "Enter")
+        time.sleep(4)
+        adb("shell", "svc", "wifi", "enable")
+        time.sleep(6)
+        to_bottom()
+        if not wait(f"替身收到：{T} switched", 60):
+            raise Step.Fail("换网之后没补上那一段")
+        if not adb("shell", "pidof", PKG).strip():
+            raise Step.Fail("App 没了（换网闪退）")
+
+    with Step("8-杀进程"):
+        # 进程整个没了（停掉，连前台服务一起）：内存里的续点都没了；重开 ⇒ 核心重接、先取尾巴，被杀那段的话照样在。
+        name = tmux_name_of(f"{T} new session")
+        adb("shell", "am", "force-stop", PKG)
+        time.sleep(2)
+        if adb("shell", "pidof", PKG).strip():
+            raise Step.Fail("进程没停掉")
+        rig("tmux", "send-keys", "-t", name or "", f"{T} while dead", "Enter")
+        time.sleep(4)
+        launch()
+        drawer(t("mobDrawer.item.chats"))
+        if not wait(f"{T} new session", 30):
+            raise Step.Fail("重开之后对话列表里没有那条会话")
+        tap(f"{T} new session")
+        time.sleep(3)
+        to_bottom()
+        if not wait(f"替身收到：{T} while dead", 60):
+            raise Step.Fail("重开之后没有被杀那段的话")
+
+    with Step("9-终端屏"):
         name = tmux_name_of(f"{T} new session")
         drawer(t("mobDrawer.item.terminal"))
         time.sleep(2)
@@ -352,7 +386,7 @@ def main():
             raise Step.Fail("两侧打的字没都进那个会话")
         adb("shell", "input", "keyevent", "4")
 
-    with Step("8-Codex"):
+    with Step("10-Codex"):
         launch()
         add_host("smokecodex", codex=True)
         hide_keyboard()

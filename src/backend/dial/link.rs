@@ -143,7 +143,7 @@ impl Table {
                 &crate::common::contract::malformed("missing `dial` (a dial request)"),
             );
         };
-        // 原始子系统字节流不交给界面：SFTP 住本机常驻后端（`dial/sftp.rs`），界面只有部署 `use:"files"` 与传输 `transfer-*` 两条路；
+        // 原始子系统字节流不交给界面：SFTP 住本机常驻后端（`ssh-dial/sftp.rs`），界面只有部署 `use:"files"` 与传输 `transfer-*` 两条路；
         // 把协议字节交出去，界面进程就又碰 SSH 了。协议上认得这个词，说得出为什么不做。
         if dial.get("use").and_then(serde_json::Value::as_str) == Some("subsystem") {
             return Frame::refused(

@@ -13,18 +13,18 @@
 //! - **F50**：追加公钥到远端 `~/.ssh/authorized_keys`今天是本机常驻后端的帧命令 `pubkey-push`（那台后端在就经它写 · 不在就一次 exec；不在本模块，登记于此备查）。
 //!
 //! 原子写（EXCL 临时件 → 旧目标先**改名成 `.bak`**（不是删）→ 上位 → 清 `.bak`）与它的来历住后端
-//! `dial/sftp.rs::put_atomic`（F89a 审计后加固 · DN-7 订正「删旧」那句 · setstat 截断事故）。
+//! `ssh-dial/sftp.rs::put_atomic`（F89a 审计后加固 · DN-7 订正「删旧」那句 · setstat 截断事故）。
 //!
 //! # **本模块手里已经没有 SFTP 了**
 //!
-//! 用户「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/dial/sftp.rs`，
+//! 用户「SFTP 进本机常驻后端，只写暂存区」：SFTP 客户端住本机常驻后端（`src/backend/ssh-dial/sftp.rs`，
 //! 与其它 SSH 同一条连接），**远端写只许两处**（`~/.cc-monitor/staging/` · `~/.cc-monitor/bin/`）。
 //! **部署判定也不在本模块了**：该不该换 · 换成哪一格 · 落点那一份是谁由本机常驻后端出计划
 //! （帧命令 `deploy-plan`，本体 `src/backend/control/deploy_plan.rs`，判定住后端那一份、两侧对上的形状住契约 crate `deploy-contract`）；
 //! 本模块只**照计划放字节**（取这一版带着的那一格 · 身份戳自检 · mkdir · 原子上传 ＋ 读回判定 · 删旧落点），
 //! 执行经 [`crate::dial_host::RemoteFs`]（本机后端那条 `files` 链路的一问一答）。
 //! 原子上传的序列与它的两条事故教训（先备份不删旧 · **绝不** rename 之后 setstat 兜底 chmod）住后端
-//! `dial/sftp.rs::put_atomic` 的头注。
+//! `ssh-dial/sftp.rs::put_atomic` 的头注。
 //! ⇒ 落点变了一格：`ccm` 入口从 `~/.local/bin/ccm` 挪到 **`~/.cc-monitor/bin/ccm`**（两个写根之内；也正是
 //! 要的落点；自带别名块把 `~/.cc-monitor/bin` 加进 PATH）。
 
@@ -74,9 +74,10 @@ pub fn verify_readback(path: &str, expected_len: u64, readback: Readback) -> Res
 ///
 /// ## 为什么这个函数此前不存在（T04 审计①）
 ///
-/// `deploy_remote_backend` 的**全部**上传（另一条 cc-acct-iso 那条随字节进后端退役）
+/// 当时 `deploy_remote_backend` 的**全部**上传
 /// ——1 个后端可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
 /// install.sh）——写完**直接写版本标记**，中间没有任何读回。
+/// 〔今天只剩后端二进制那一份：那几份脚本随账号库改由后端 `accounts/manage/` 自己建一起退役、删出仓。〕
 ///
 /// 而 T04 第二步我论证「备份→写→读回比对→回滚这个范式已共享（5 处），所以不用抽」
 /// ——**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。

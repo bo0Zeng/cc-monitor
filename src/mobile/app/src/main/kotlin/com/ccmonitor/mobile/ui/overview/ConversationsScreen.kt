@@ -62,6 +62,7 @@ fun ConversationsScreen(
                 Text(copyText("history.list.empty"), style = monoSmall, modifier = Modifier.padding(16.dp).testTag(OverviewTags.EMPTY))
             else ->
                 LazyColumn(Modifier.fillMaxSize().testTag(OverviewTags.LIST)) {
+                    state.linkNotice?.let { p -> item { ProblemBar(p, onRetry) } }
                     state.needsProblem?.let { p -> item { ProblemBar(p, onRetry) } }
                     needsSection(state.needs, onOpen)
                     state.notice?.let { n -> item { Text(n, style = monoSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) } }

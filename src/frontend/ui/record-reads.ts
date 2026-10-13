@@ -13,7 +13,8 @@
  *
  * # 本文件做的只有三件（都是调用方那一侧的事）
  *
- * 1. **按形状收**：外层键集合恰好是后端出的那一形；记录本身**不解释**（只验「是对象」）。形状不对 ⇒ 抛。
+ * 1. **按类型收**：按偏移 · 按行号 · 子运行 · 主线外这四条是 typed 命令，回包按后端生成的类型用（两端形状由握手指纹管）；
+ *    漂移账照旧按形状收（外层键集合恰好是后端出的那一形，不对 ⇒ 抛）。记录本身**不解释**。
  * 2. **给载荷打上它从哪台来**（`origin`：本机不带、远端是那台的名字 —— 与实时流那一条同一个口径，这是地址不是解释）。
  * 3. **期限与翻页**：一件事一个期限，翻页只把后端交回的续点（`next` / `nextSeq`）原样交回去。
  *
@@ -21,32 +22,21 @@
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
 import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
+import type { Branch } from "./generated/Branch";
+import type { HistoryLines } from "./generated/HistoryLines";
+import type { HistoryPage } from "./generated/HistoryPage";
+import type { HistoryRun } from "./generated/HistoryRun";
+import type { RecordLine } from "./generated/RecordLine";
 import { exactKeys, isObj } from "./ipc/decode";
 import { copyText } from "./copy-table";
 import FOLDED from "../../shared/views/folded-record.json";
 
-/** 一个子运行记录里的一条：通用记录 ＋ 它的对账键（撤那个子运行的活卡用）。 */
-export interface RunRecordRow {
-  record: LineRecord;
-  rid?: string;
-}
-
-/** 一页子运行记录（后端 `read_face.rs` 的 `history-run`，键名一字不差）。 */
-export interface RunPage {
-  /** 读的是哪个子运行。 */
-  run: string;
-  /** 那份记录（不透明，给查看器整份打开用）。 */
-  path: string;
-  rows: RunRecordRow[];
-  /** 读到哪了（下次从这里续）。 */
-  end: number;
-  /** 这一页没读到头。 */
-  more: boolean;
-}
+/** 一页子运行记录（后端 `faces/history_face.rs` 的 `history-run`，类型从后端生成）。 */
+export type RunPage = HistoryRun;
 
 /** 按行号取回的那一段（后端 `history-lines`）：`[from, next)` 里进界面的那些（不进界面的照占号、不出现）。 */
 export interface SessionLinesPage {
@@ -57,10 +47,7 @@ export interface SessionLinesPage {
 }
 
 /** 主线外清单（后端 `history-branch`）：回退掉的那几条记录的 `id`（文件序）· 读到哪个字节（之后的由实时帧接着说）。 */
-export interface BranchOff {
-  off: string[];
-  end: number;
-}
+export type BranchOff = Branch;
 
 /** 那台后端漂移账的一个面（后端 `agents/claudecode/drift.rs::DriftFaceReport`，键名一字不差）。 */
 export interface RecordDriftFace {
@@ -84,78 +71,21 @@ function badShape(op: string): never {
   throw new ReplyUnreadable(`${op} reply shape`);
 }
 
-/** 一条记录行（后端 `record_page::record_lines`）⇒ 载荷；`origin` 由问的那一方打上。 */
-function payloadOf(op: string, origin: Origin, v: unknown): JsonlLinePayload {
-  if (
-    !isObj(v) ||
-    !exactKeys(v, ["session_id", "path", "seq", "cwd", "record"]) ||
-    !isStr(v.session_id) ||
-    !isStr(v.path) ||
-    !isNum(v.seq) ||
-    !(v.cwd === null || isStr(v.cwd)) ||
-    !isObj(v.record)
-  ) {
-    return badShape(op);
-  }
-  const p: JsonlLinePayload = {
-    session_id: v.session_id,
-    path: v.path,
-    seq: v.seq,
-    cwd: v.cwd as string | null,
-    record: v.record as unknown as LineRecord,
-  };
+/** 一条记录行（后端 `record_page::RecordLine`）⇒ 载荷；`origin` 由问的那一方打上（这是地址，不是解释）。 */
+function payloadOf(origin: Origin, v: RecordLine): JsonlLinePayload {
+  const p: JsonlLinePayload = { session_id: v.session_id, path: v.path, seq: v.seq, cwd: v.cwd, record: v.record };
   if (!isLocalOrigin(origin)) p.origin = origin;
   return p;
 }
 
 /** `history-page` 的一页 ⇒ `(载荷, 续点)`。 */
-export function decodePage(
-  origin: Origin,
-  v: unknown,
-): { payloads: JsonlLinePayload[]; next: number; nextSeq: number; eof: boolean } {
-  if (!isObj(v) || !exactKeys(v, ["lines", "next", "nextSeq", "eof"]) || !Array.isArray(v.lines)) {
-    return badShape("history-page");
-  }
-  if (!isNum(v.next) || !isNum(v.nextSeq) || typeof v.eof !== "boolean") return badShape("history-page");
-  return { payloads: v.lines.map((l) => payloadOf("history-page", origin, l)), next: v.next, nextSeq: v.nextSeq, eof: v.eof };
+export function pageOf(origin: Origin, v: HistoryPage): { payloads: JsonlLinePayload[]; next: number; nextSeq: number; eof: boolean } {
+  return { payloads: v.lines.map((l) => payloadOf(origin, l)), next: v.next, nextSeq: v.nextSeq, eof: v.eof };
 }
 
 /** `history-lines` 的一段 ⇒ [`SessionLinesPage`]。 */
-export function decodeLines(origin: Origin, v: unknown): SessionLinesPage {
-  if (!isObj(v) || !exactKeys(v, ["from", "next", "eof", "lines"]) || !Array.isArray(v.lines)) {
-    return badShape("history-lines");
-  }
-  if (!isNum(v.from) || !isNum(v.next) || typeof v.eof !== "boolean") return badShape("history-lines");
-  return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf("history-lines", origin, l)) };
-}
-
-/** `history-run` 的成品 ⇒ [`RunPage`]（记录本身不解释，只验是对象）。 */
-export function decodeRun(v: unknown): RunPage {
-  if (
-    !isObj(v) ||
-    !exactKeys(v, ["run", "path", "rows", "end", "more"]) ||
-    !isStr(v.run) ||
-    !isStr(v.path) ||
-    typeof v.end !== "number" ||
-    typeof v.more !== "boolean" ||
-    !Array.isArray(v.rows)
-  ) {
-    return badShape("history-run");
-  }
-  const rows = v.rows.map((r): RunRecordRow => {
-    if (!isObj(r) || !isObj(r.record) || !(r.rid === undefined || isStr(r.rid))) return badShape("history-run");
-    return r.rid === undefined
-      ? { record: r.record as unknown as LineRecord }
-      : { record: r.record as unknown as LineRecord, rid: r.rid };
-  });
-  return { run: v.run, path: v.path, rows, end: v.end, more: v.more };
-}
-
-/** `history-branch` 的成品 ⇒ [`BranchOff`]。 */
-export function decodeBranch(v: unknown): BranchOff {
-  if (!isObj(v) || !exactKeys(v, ["off", "end"]) || !Array.isArray(v.off) || !isNum(v.end)) return badShape("history-branch");
-  if (!v.off.every(isStr)) return badShape("history-branch");
-  return { off: v.off, end: v.end };
+export function linesOf(origin: Origin, v: HistoryLines): SessionLinesPage {
+  return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf(origin, l)) };
 }
 
 /** `drift-report` 的成品 ⇒ 各面。 */
@@ -197,6 +127,15 @@ async function answered<T>(origin: Origin, reply: Promise<Uint8Array>, decode: (
   }
 }
 
+/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 同 [`answered`]。 */
+async function asked<T>(origin: Origin, reply: Promise<T>): Promise<T> {
+  try {
+    return await reply;
+  } catch (e) {
+    throw new Error(saidFrom(e, origin));
+  }
+}
+
 /** **按偏移取一段** `[offset, until)`（两端、`seqBase` 取自骨架索引）：一段可能跨页，取到这一段的末尾。交折起那一行的声明。 */
 export async function readRange(
   origin: Origin,
@@ -222,9 +161,9 @@ async function readRangeAs(
   let at = offset;
   let seq = seqBase;
   for (;;) {
-    const body = jsonBody({ path: jsonlPath, offset: at, until, seq });
-    const page = await answered(origin, chan.call(origin, "history-page", body, budget, view), (v) => decodePage(origin, v));
-    out.push(...page.payloads);
+    const page = pageOf(origin, await asked(origin, callTyped(origin, "history-page", { path: jsonlPath, offset: at, until, seq }, budget, view)));
+    // 逐条接，不展开成实参：一页按字节算（1 MiB），短行能有几十万行，超过 V8（WebView2）一次调用的实参上限会抛 RangeError。
+    for (const p of page.payloads) out.push(p);
     if (page.eof || page.next <= at) return out;
     at = page.next;
     seq = page.nextSeq;
@@ -262,11 +201,9 @@ export async function readLines(
   until: number | undefined,
   leftMs: number,
 ): Promise<SessionLinesPage> {
-  const args: Record<string, unknown> = { path: jsonlPath, from };
-  if (until !== undefined) args.until = until;
-  const body = jsonBody(args);
   const budget = budgetWithin(leftMs);
-  return await answered(origin, chan.call(origin, "history-lines", body, budget, FOLDED), (v) => decodeLines(origin, v));
+  const req = until === undefined ? { path: jsonlPath, from } : { path: jsonlPath, from, until };
+  return linesOf(origin, await asked(origin, callTyped(origin, "history-lines", req, budget, FOLDED)));
 }
 
 /** 一个子运行要读哪一个：子运行本身（运行表里那一格）‖ 派出它的那次工具调用（后端在父记录里找派出链接）。 */
@@ -274,16 +211,14 @@ export type RunWhich = { run: string; tool?: string } | { run?: string; tool: st
 
 /** **一个子运行的记录，一页**（按运行读，通用命令 `history-run`）：父记录 ＋ 哪一个 ＋ 从哪个字节起。 */
 export async function loadRunPage(origin: Origin, parentJsonlPath: string, which: RunWhich, from = 0): Promise<RunPage> {
-  const body = jsonBody({ parent: parentJsonlPath, ...which, from });
   const budget = budgetWithin(PIECE_BUDGET_MS);
-  return await answered(origin, chan.call(origin, "history-run", body, budget), decodeRun);
+  return await asked(origin, callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
 }
 
 /** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）。 */
 export async function readBranch(origin: Origin, jsonlPath: string): Promise<BranchOff> {
-  const body = jsonBody({ path: jsonlPath });
   const budget = budgetWithin(PIECE_BUDGET_MS);
-  return await answered(origin, chan.call(origin, "history-branch", body, budget), decodeBranch);
+  return await asked(origin, callTyped(origin, "history-branch", { path: jsonlPath }, budget));
 }
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */

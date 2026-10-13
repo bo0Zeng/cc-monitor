@@ -7,7 +7,7 @@
 //!  界面 ── forward-start {origin, localPort, remoteHost, remotePort} ──▶ 本机后端
 //!           ① 规格先过围栏（任何查表 / 拨号之前）
 //!           ② 查可达表（`remote_ask::REACH`：monitor 在每台远端流握手那一刻登记的「怎么够到那台」）；
-//! 表里没有（那台的流没起来）⇒ 按界面一并交来的那台配置自己组请求（`dial/machine.rs`），不拒
+//! 表里没有（那台的流没起来）⇒ 按界面一并交来的那台配置自己组请求（`ssh-dial/machine.rs`），不拒
 //!           ③ 把那份拨号请求改成 `use: forward` ⇒ `dial::uses::run`（池里那条 SSH 连接；绑本机回环口是它的事）
 //!           ④ 等 ack：口绑好了、连上了才算起来；不成 ⇒ 原话回、不进账
 //!           ⑤ 进账：一个任务读「接进了第 n 条连接」那几行，计数照抄
@@ -164,13 +164,13 @@ where
 {
     let spec = parse_spec(args)?;
     // 那台的流握手过 ⇒ 用可达表里那份（带着 monitor 排好的 last-good 顺序与它的 agent 套接字）；
-    //   没握手过（流没起来）⇒ **不拒**：按界面交来的那台配置自己组请求、自己拨（与起流同一个池，`dial/machine.rs`）。
+    //   没握手过（流没起来）⇒ **不拒**：按界面交来的那台配置自己组请求、自己拨（与起流同一个池，`ssh-dial/machine.rs`）。
     let reached = remote_ask::lock(reach)
         .get(&spec.origin)
         .map(|r| r.dial.clone());
     let dial = match reached {
         Some(d) => d,
-        // 界面交来的那台原样的配置（线上那一份拨号的形状，组法在 `dial/machine.rs::resolve`）；先读一遍，坏了当场拒。
+        // 界面交来的那台原样的配置（线上那一份拨号的形状，组法在 `ssh-dial/machine.rs::resolve`）；先读一遍，坏了当场拒。
         None if args.get("machine").is_some_and(|m| !m.is_null()) => {
             super::machine::from_args(args)?;
             json!({ "machine": args.get("machine"), "saved": args.get("saved"), "jump": args.get("jump") })

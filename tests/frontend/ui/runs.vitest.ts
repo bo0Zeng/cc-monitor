@@ -7,6 +7,7 @@
  * （主 tab 零子运行行、面板分组与五态、后台派出只拿到「已启动」那次结果的不是完成、被叫停的是「已停止」）。
  */
 import { describe, it, expect, vi } from "vitest";
+import { owned } from "../../test-support/owned-tab-manager.ts";
 import { invoke } from "@tauri-apps/api/core";
 
 vi.mock("@tauri-apps/api/core", async () => {
@@ -169,7 +170,7 @@ describe("真 TabManager ＋ 真 agent 面板", () => {
     const streamRootEl = document.createElement("div");
     const panel = new AgentsPanel();
     document.body.replaceChildren(barEl, streamRootEl, panel.summaryElement, panel.pageElement);
-    const tm = new TabManager(barEl, streamRootEl, undefined, undefined, panel);
+    const tm = owned(new TabManager(barEl, streamRootEl, undefined, undefined, panel));
     tm.setLivePainter(livePainter);
     return { tm, streamRootEl, panel };
   }

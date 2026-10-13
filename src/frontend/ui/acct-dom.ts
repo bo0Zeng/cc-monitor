@@ -4,11 +4,12 @@
  */
 import { accountAvatarEl } from "./account-color";
 import { copyText } from "./copy-table";
+import type { Origin } from "./ipc/origin";
 import s from "./acct.module.css";
 
-/** 号的头像：`_`（起会话时没说是哪个号）画虚线框 `~`。 */
-export function acctAvatar(account: string, size = 16): HTMLElement {
-  if (account !== "_") return accountAvatarEl(account, { size });
+/** 号的头像：`_`（起会话时没说是哪个号）画虚线框 `~`；别的号照它那台（`origin`，缺 ⇒ 本机）账号库的号色画。 */
+export function acctAvatar(account: string, size = 16, origin?: Origin): HTMLElement {
+  if (account !== "_") return accountAvatarEl(account, { size, origin });
   const el = document.createElement("span");
   el.className = s.acctHomeAvatar;
   el.textContent = copyText("acct.home.avatar");

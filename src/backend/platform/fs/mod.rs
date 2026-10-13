@@ -1,8 +1,8 @@
-//! 后端碰盘的唯一住址：读盘那一半住 [`ro`]（[`Ro`] · [`RoFile`]，全后端都用）；本文件是文件管理写面要的两样平台原语：
+//! 后端碰盘的唯一住址：读盘那一半住 [`ro`]（[`Ro`] · [`RoFile`]，全后端都用）；文件管理面的写住 [`face`]（[`Face`] · [`Resolved`]，
+//! 只有文件管理那一族拿得到）；后端自家状态的写住 [`own`]（[`Own`]，启动时造）。本文件是文件管理写面要的两样平台原语：
 //! **不覆盖改名** · **开文件不跟链接的旗**。
 //!
-//! 只有原语，不判路径（路径解析住 `control/files_write.rs`）。谁调得到由 `readonly_guard` 第三层钉：
-//! 改名这一件在第三层的改名闭集里（只许那五个模块调），别处一调当场红。
+//! 只有原语，不判路径（路径解析住 `control/files_write.rs`）。两样都不出本目录：外面只能经 [`Face`] 的方法用到它们。
 //!
 //! | 平台 | 不覆盖改名 | 不跟链接 |
 //! |---|---|---|
@@ -15,17 +15,17 @@
 
 use std::path::Path;
 
+mod face;
 mod own;
 mod ro;
-pub(crate) use own::{
-    create_dir_private, AccountCreds, CredsLock, DiagFile, OwnPath, RenewLock, PRIVATE_DIR_MODE,
-};
+pub use face::{Face, FaceFile, NewFile, NewFileFail, Resolved};
+pub(crate) use own::{AccountCreds, CredsLock, DiagFile, OwnPath, RenewLock, PRIVATE_DIR_MODE};
 pub use own::{DiagLog, Own, OwnLock};
-pub(crate) use ro::{Ro, RoFile, Stamp};
+pub(crate) use ro::{Metadata, Perms, Ro, RoFile, Stamp};
 
 /// 把 `from` 改名成 `to`；**`to` 已在（含一条链接）⇒ `AlreadyExists`，一个字节不动**。原子：没有先看后改的窗。
 /// 这个平台 / 这块盘没有这件原语 ⇒ 回一个 [`noreplace_unsupported`] 认得出的错，调用方自己决定退回什么。
-pub(crate) fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
+fn rename_noreplace(from: &Path, to: &Path) -> std::io::Result<()> {
     imp::rename_noreplace(from, to)
 }
 
@@ -39,7 +39,7 @@ pub(crate) fn noreplace_unsupported(e: &std::io::Error) -> bool {
 /// 盘不认不覆盖改名时，**普通文件**（含链接本身）的不覆盖改名：`link(from, to)` ＋ `unlink(from)`。
 /// `link` 在 `to` 已在时原子失败（`EEXIST`，NFS 上也成立）；`unlink` 失败 ⇒ 撤掉刚建的那个名字、回 `unlink` 的错（两个名字不同时留着）。
 /// 目录没有这条路（`link` 不收目录）—— 那一判在调用方。非 unix ⇒ `Unsupported`。
-pub(crate) fn rename_by_link(from: &Path, to: &Path) -> std::io::Result<()> {
+fn rename_by_link(from: &Path, to: &Path) -> std::io::Result<()> {
     imp_link::rename_by_link(from, to)
 }
 
@@ -77,7 +77,7 @@ mod imp_link {
 
 /// 开文件时加上的「最后一段是链接就失败」那个旗（开法的 `custom_flags` 收它）。
 #[cfg(unix)]
-pub(crate) const NO_FOLLOW: i32 = libc::O_NOFOLLOW;
+const NO_FOLLOW: i32 = libc::O_NOFOLLOW;
 
 #[cfg(target_os = "linux")]
 mod imp {

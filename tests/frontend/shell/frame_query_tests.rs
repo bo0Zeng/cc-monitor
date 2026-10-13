@@ -33,7 +33,7 @@ fn sorted(v: impl IntoIterator<Item = String>) -> Vec<String> {
 /// 抽成一处：下面两条判据（交给只读宿主的那几条 · 全部登记的帧命令）共用同一个切法。
 fn backend_command_blocks() -> Vec<(String, String)> {
     let families = crate::guard_support::backend_registry_sources();
-    let blocks: Vec<(String, String)> = families
+    let mut blocks: Vec<(String, String)> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
         .filter_map(|blk| {
@@ -41,6 +41,47 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             Some((blk[at..].split('"').next()?.to_string(), blk.to_string()))
         })
         .collect();
+    // typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()`）：名字从那个类型住的文件里
+    //   `impl Command for <类型>` 那一段的 `const NAME` 读；块 ＝ 那一行本身（点着它的家）。
+    for (_, prod) in &families {
+        for ctor in [
+            "typed::blocking::<",
+            "typed::with_files::<",
+            "typed::with_own::<",
+            "typed::owning::<",
+            "typed::asynchronous::<",
+            "typed::async_with_files::<",
+        ] {
+            for (at, _) in prod.match_indices(ctor) {
+                let rest = &prod[at + ctor.len()..];
+                let path = &rest[..rest.find('>').expect("typed 那一行没收尾")];
+                let segs: Vec<&str> = path
+                    .split(':')
+                    .filter(|s| !s.is_empty() && *s != "crate")
+                    .collect();
+                let (ty, module) = segs.split_last().expect("typed 那一行没有类型名");
+                let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .join("../../backend")
+                    .join(module.join("/"));
+                // 模块住 `<路径>.rs` 或 `<路径>/mod.rs`。
+                let file = [base.with_extension("rs"), base.join("mod.rs")]
+                    .into_iter()
+                    .find(|p| p.is_file())
+                    .unwrap_or_else(|| panic!("找不到 `{}` 那个模块的文件", module.join("::")));
+                let src = std::fs::read_to_string(&file)
+                    .unwrap_or_else(|e| panic!("读不到 `{}`：{e}", file.display()));
+                let imp = src
+                    .find(&format!("Command for {ty} {{"))
+                    .unwrap_or_else(|| {
+                        panic!("`{}` 里没有 `impl Command for {ty}`", file.display())
+                    });
+                let key = "const NAME: &'static str = \"";
+                let n = src[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
+                let name: String = src[n..].chars().take_while(|c| *c != '"').collect();
+                blocks.push((name, format!("{ctor}{path}>()")));
+            }
+        }
+    }
     blocks
 }
 
@@ -48,7 +89,13 @@ fn backend_command_blocks() -> Vec<(String, String)> {
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
-        .filter(|(_, blk)| blk.contains("read_face::answer"))
+        // 全文搜索那两条、读一份会话记录的那几条成了 typed 命令，只读宿主是 `faces/search_face.rs` · `faces/history_face.rs`（第 8 批从 `read_face` 分出去）。
+        .filter(|(_, blk)| {
+            blk.contains("read_face::answer")
+                || (blk.starts_with("typed::")
+                    && (blk.contains("faces::search_face::")
+                        || blk.contains("faces::history_face::")))
+        })
         .map(|(name, _)| name)
         .collect();
     assert!(!got.is_empty(), "从后端源码一条都没数到 —— 抽取坏了");
@@ -289,12 +336,12 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 终端名单：那台后端出成品（与宿主无关的句柄）；只有 tmux 名在手的那一方先按名字认出那一行。
     (
         "terminals-list",
-        "那台的终端名单：后端 `control/terminals.rs` 出成品；前端 `src/frontend/ui/terminal-reads.ts` 收它要的那几格（只加不改的形状，多出来的格照收）",
+        "那台的终端名单：后端 `control/terminals.rs` 出成品（typed，形状住 `control/terminals_wire.rs`）；前端 `src/frontend/ui/terminal-reads.ts` 挑它要的那几格",
     ),
     // 终端页送字送键：能不能送（身份门 · 画面指纹）全在那台后端判，前端只照回话说。
     (
         "terminal-input",
-        "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_for_inbound` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
+        "往那个终端送一段字 / 一颗键：后端 `control/terminals.rs::input_on` 过身份门、比画面指纹、回 `delivered` · `unsure` · `refused ＋ why`；\
          前端 `src/frontend/ui/terminal-reads.ts::sendToTerminal` 问、底部抽屉终端页 `terminal-page.ts` 按回话说一句",
     ),
     // 终端实时预览三条：订阅 · 回执 · 退订（画面帧走那条流连接的应答通道，壳转进 `terminal-screen/<票>`）。
@@ -311,13 +358,13 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 各台搜索结果合成一份：合并排序进本机后端（`search_rules::sort_by_recency`），界面逐台扇出。
     (
         "history-search-merge",
-        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::answer_merge`（`search_rules::sort_by_recency`）；\
+        "各台 `history-search` 的会话行合一份：本机后端 `observe/search_query.rs::merge_at`（`search_rules::sort_by_recency`）；\
          前端 `src/frontend/ui/views/history-search.ts` 问，monitor 这一侧零发送点",
     ),
     // 开终端那一行：ssh 外壳由本机后端渲（monitor 只开窗）。
     (
         "terminal-ssh",
-        "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `dial/machine.rs::resolve`）；\
+        "开终端那一行（`ssh -t …` 外壳 ＋ PowerShell 载荷）：本机后端 `dial/terminal.rs` 渲（组请求走 `ssh-dial/machine.rs::resolve`）；\
          前端 `src/frontend/ui/terminal-open.ts` 与文件窗口 `filewin/shell.rs::open_terminal_here` 问，monitor 那一侧只开窗",
     ),
     // 远端 ↗ 的前两问：那台谁在显示这个会话 · 本机哪串进程开着那条连接。
@@ -333,7 +380,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 起会话要的 tmux 名：派生 ＋ 避让只留后端（前端那份铸名口删了）。
     (
         "terminal-name-mint",
-        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::answer_terminal_name_mint`）；前端 `src/frontend/ui/terminal-name-mint.ts` 问，monitor 这一侧零发送点",
+        "铸 tmux 名：那台后端派生基名、按它那张会话快照避让（`control/ccm/mod.rs::TerminalNameMint`）；前端 `src/frontend/ui/terminal-name-mint.ts` 问，monitor 这一侧零发送点",
     ),
     // 端口转发三条：monitor 那三条 Tauri 命令与它手里的转发账退役，账住本机常驻后端。
     (
@@ -368,15 +415,15 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "session-new",
         "后端出成品 `{outcome, session, sid, cmd, account, agent, cwd}`（`control/session_new.rs`：判目录 · 号 · 终端名 · 分叉只在这一步写）；\
-         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、`decodeNew` 按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/new-session-reads.ts::askNew` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
         "session-new-facts",
-        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、`decodeFacts` 按恰好的键集合收，monitor 这一侧零发送点",
+        "后端出成品 `{recent, tmux, agents, fork}`（`faces/session_new_face.rs`，只读）；前端 `new-session-reads.ts::askFacts` 问、回包按 typed 的类型收（形状由握手指纹管），monitor 这一侧零发送点",
     ),
     (
         "session-new-dir",
-        "后端出成品 `{exists, tmuxName}`（只读）；前端 `new-session-reads.ts::askDir` 问、`decodeDir` 按恰好的键集合收，monitor 这一侧零发送点",
+        "typed：后端出成品 `DirChecked`（`faces/session_new_face.rs::SessionNewDir`，只读）；前端 `new-session-reads.ts::askDir` 按类型问，monitor 这一侧零发送点",
     ),
     // 钩子诊断：本机远端两条 Tauri 命令合成一条帧命令，界面直接问那台。
     (
@@ -430,7 +477,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "resync",
         "新帧命令（手动对齐）：后端出成品 `{added, removed, retagged, watchers}`（`resync_face.rs` → `observe/watcher.rs::resync`）；\
-         前端 `src/frontend/ui/resync.ts::resync` 问、`decodeResynced` 按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/resync.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
     ),
     (
         "machine-interrupts",
@@ -448,7 +495,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-facts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{end, forkedFrom, touchedFiles, agents, usage}`（`observe/facts_query.rs`），\
-         续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 问、`decodeFacts` 按恰好的键集合收，\
+         续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 按类型问（`callTyped`），\
          monitor 这一侧零发送点（它替掉的是前端 `onLine` 上四个旁路记账员，不是一条 monitor 命令）",
     ),
     (
@@ -525,7 +572,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
     (
         "history-annotate",
-        "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::decodeEntry` 按形状收）",
+        "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::annotate` 按类型收）",
     ),
     (
         "history-branch",
@@ -782,14 +829,26 @@ fn frontend_chan_ops() -> (std::collections::BTreeSet<String>, Vec<String>) {
     (ops, not_literal)
 }
 
-/// 一段（已剥注释的）TS 里 `chan.call(` 的操作名。前面紧挨标识符字符的不算（`mychan.call(`）。
+/// typed 帧命令的那一口（`ipc/chan-caller.ts::callTyped`）：调用点的操作名同样必须是字面量；
+/// 它自己里面那一处 `chan.call(origin, cmd, …)` 是唯一一处不是字面量的（操作名从它的调用点来）。
+const TYPED_CALL: &str = "callTyped(";
+const TYPED_CALL_HOME: (&str, &str) = ("src/frontend/ui/ipc/chan-caller.ts", "cmd,");
+
+/// 一段（已剥注释的）TS 里 `chan.call(` 与 `callTyped(` 的操作名。前面紧挨标识符字符的不算（`mychan.call(`）。
 fn chan_ops_in(
     code: &str,
     rel: &str,
     ops: &mut std::collections::BTreeSet<String>,
     not_literal: &mut Vec<String>,
 ) {
-    for (at, _) in code.match_indices("chan.call(") {
+    let sites = code
+        .match_indices("chan.call(")
+        .map(|(at, _)| (at, "chan.call("))
+        .chain(
+            code.match_indices(TYPED_CALL)
+                .map(|(at, _)| (at, TYPED_CALL)),
+        );
+    for (at, entry) in sites {
         if code[..at]
             .chars()
             .next_back()
@@ -797,13 +856,19 @@ fn chan_ops_in(
         {
             continue;
         }
-        let args = &code[at + "chan.call(".len()..];
+        let args = &code[at + entry.len()..];
         // 第二个实参：跳过第一个逗号之前的 origin。
         let Some(comma) = args.find(',') else {
             not_literal.push(format!("{rel}: 实参表不完整"));
             continue;
         };
         let second = args[comma + 1..].trim_start();
+        if entry == "chan.call("
+            && rel.ends_with(TYPED_CALL_HOME.0)
+            && second.starts_with(TYPED_CALL_HOME.1)
+        {
+            continue;
+        }
         match second.strip_prefix('"').and_then(|r| r.split_once('"')) {
             Some((op, _)) => {
                 ops.insert(op.to_string());
@@ -1119,6 +1184,11 @@ fn client_for_test(
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
+        // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
+        shapes: commands
+            .iter()
+            .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.to_string())))
+            .collect(),
     })
     .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);

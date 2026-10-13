@@ -132,6 +132,8 @@ describe("C01 边界生成物", () => {
   const VALUE_TABLES: Readonly<Record<string, string>> = {
     "agent-profile-table": "tests/backend/agents_tests.rs",
     "judgment-rules": "tests/frontend/shell/payload_judgment_rules.rs",
+    // typed 帧命令那张表（命令名 ⇒ 入参 · 回包 · 码）：后端判据从登记表与类型现算（第 8 批）。
+    TypedCommands: "tests/backend/stream/typed_tests.rs",
   };
 
   it("每个生成物都有产出者、每个导出的类型都有它那一份（两向；自动发现的范围自检）", () => {
@@ -176,6 +178,7 @@ describe("C01 边界生成物", () => {
       TS_RS_HEADER,
       "src/backend/agents/mod.rs", // `agent-profile-table.ts` 的生成器随值的家进了后端注册表（从前是 monitor `adapter.rs`）
       "src/frontend/shell/src/payload.rs", // `judgment-rules.ts`
+      "src/backend/stream/inbound/typed.rs", // `TypedCommands.ts`
     ];
     for (const f of files) {
       const src = read(`src/frontend/ui/generated/${f}`);
@@ -449,11 +452,14 @@ describe("C01 边界生成物", () => {
         new RegExp(`derive\\(ts_rs::TS\\)\\)\\]\\s*(#\\[[^\\n]*\\]\\s*)*pub\\(crate\\) (struct|enum) ${t}\\b`),
       );
     }
+    // 第 8 批第 3 刀：history-turns 走 `callTyped`，回包类型由生成的命令表给（`TypedCommands.ts` → `HistoryTurns` → `TurnRow`）。
     const src = code(read("src/frontend/ui/session-reads.ts"));
-    expect(src, "没读到 session-reads.ts / 剥过头了").toContain("export function decodeTurns");
-    for (const n of ["TurnRow", "FoldSegment", "TurnPhase", "Tone"]) {
-      expect(src, `session-reads.ts（解 history-turns 的那一处）没从生成物取 ${n}`).toContain(`"./generated/${n}"`);
-    }
+    expect(src, "没读到 session-reads.ts / 剥过头了").toContain("export async function readTurns");
+    expect(src, "session-reads.ts 问 history-turns 不是按类型问的").toMatch(/callTyped\(\s*origin,\s*"history-turns"/);
+    expect(src, "session-reads.ts 没从生成物取 TurnRow").toContain(`"./generated/TurnRow"`);
+    const table = code(read("src/frontend/ui/generated/TypedCommands.ts"));
+    expect(table, "生成的命令表里 history-turns 的回包不是 HistoryTurns").toMatch(/"history-turns":\s*\{[^}]*reply:\s*HistoryTurns;/);
+    expect(code(read("src/frontend/ui/generated/HistoryTurns.ts")), "HistoryTurns 不是由 TurnRow 组成").toContain("TurnRow");
     const handWritten = productionTsFiles("src/frontend").filter(
       (f) =>
         !f.includes("/generated/") &&

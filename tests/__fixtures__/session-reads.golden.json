@@ -211,6 +211,7 @@
       129,
       113
     ],
+    "next": null,
     "o": [
       0,
       0,
@@ -241,6 +242,7 @@
   "history-turns": {
     "end": 1486,
     "from": 0,
+    "next": null,
     "turns": [
       {
         "agents": 0,

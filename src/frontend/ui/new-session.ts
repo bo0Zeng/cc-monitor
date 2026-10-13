@@ -40,6 +40,7 @@ import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
 import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
+import type { ForkSlot } from "./generated/ForkSlot";
 import s from "./new-session.module.css";
 
 /** 设置窗 → 主窗口：切到那个会话（载荷 `{origin, sid}`）。 */
@@ -99,6 +100,8 @@ interface AccountOpt {
   isDefault: boolean;
   ready: boolean;
   quota: string | null;
+  /** 号在哪一台（头像照那台账号库的号色画）。 */
+  origin: Origin;
 }
 
 /** 那台的号（账号 0 之外、隔离的那几个）；那台没开多账号 / 读不出 ⇒ `null`（这一行不出）。 */
@@ -123,6 +126,7 @@ async function listAccounts(origin: Origin, agent: string): Promise<AccountOpt[]
     isDefault: a.name === def,
     ready: a.selectable,
     quota: prof.known ? fiveHourCell(q, prof.facts.adapterId, a.name) : null,
+    origin,
   }));
   return [...opts.filter((a) => a.isDefault), ...opts.filter((a) => !a.isDefault)];
 }
@@ -133,7 +137,7 @@ function accountOption(a: AccountOpt): SelectOption {
   if (a.isDefault) note.push(copyText("newSession.account.default"));
   if (a.quota) note.push(a.quota);
   if (!a.ready) note.push(copyText("newSession.account.needLogin"));
-  return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16 }) };
+  return { value: a.name, label: accountLabel(a.name), note: note.join(copyText("kit.text.sep")), lead: () => accountAvatarEl(a.name, { size: 16, origin: a.origin }) };
 }
 
 /** 机器那一项：远端带机器标记；断开的灰着、说「离线」（正选着的那台照样列出、可选）。 */
@@ -300,7 +304,7 @@ function windowNote(origin: Origin, hasTmux: boolean): string {
 }
 
 /** 账号那一格预选哪一项：分叉且那台说得出源会话的号 ⇒ 那个号；分叉说不出 ⇒ 跟随；不分叉 ⇒ 排第一的。 */
-function accountPick(forking: boolean, forkAccount: { kind: string; value?: string | null } | undefined, first: string): string {
+function accountPick(forking: boolean, forkAccount: ForkSlot<string | null> | undefined, first: string): string {
   if (forking && forkAccount?.kind === "known" && forkAccount.value != null) return forkAccount.value;
   return forking ? ACCOUNT_FOLLOW : first;
 }

@@ -52,6 +52,18 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "EVENT_QUEUE",
+        "**条数**不是体量：`stream_source/run.rs` 重连循环交给收事那一头的那条队列至多排几件事；排满了循环就等（背压回到那台），不丢不截。",
+    ),
+    (
+        "TAIL_PROBE",
+        "**见证长度**不是上限：`backend/observe/watcher.rs` 续读前核游标前多少字节没被改写（值取 `observe/skeleton.rs::WITNESS`，骨架的见证同一个数）；什么都不截",
+    ),
+    (
+        "MIN_LEN",
+        "**门槛**不是上限：`backend/observe/skeleton.rs` 多长的记录才落骨架（比它短的整份读一遍比读骨架还快，不落；什么都不截）",
+    ),
+    (
         "HOOK_TIMEOUT_SECS",
         "**时长**不是体量：`agents/claudecode/asks.rs` 写进会话级答题 hook 设置的期限（秒），到点那一家杀 hook、不给决定 ⇒ 框照常在终端里问。",
     ),
@@ -112,6 +124,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**一次读多少**不是上界：冷接宣告会话时主记录按这么大一块一块读（一行比它长就接着读完那一行），只为不把整份读进内存；什么都不因它被截掉。",
     ),
     (
+        "READ_BLOCK",
+        "**一次读多少**不是上界：记录的整份 / 一大截读（搜索索引 · 清单缓存追加读 · 续读从 0 重读 · 子运行记录）按这么大一块一块读（一行比它长就接着读完那一行），只为不把整份读进内存；什么都不因它被截掉。",
+    ),
+    (
         "ENDED_KEEP",
         "**条数**不是字节：运行簿每个会话记住几个被挤出运行表的已收场子运行（id ＋ 终态，先进先出）；超了丢最旧的那条，它日后再被说到就按新的立起来。",
     ),
@@ -157,7 +173,7 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     ),
     (
         "SIO_TCP_INFO",
-        "Win32 **控制码**不是体量：`WSAIoctl` 问一条 TCP 的往返时间那一问（`_WSAIORW(IOC_VENDOR, 39)`，`platform/tcp_rtt.rs`）。",
+        "Win32 **控制码**不是体量：`WSAIoctl` 问一条 TCP 的往返时间那一问（`_WSAIORW(IOC_VENDOR, 39)`，`ssh-dial/tcp_rtt.rs`）。",
     ),
     (
         "PROCESS_TERMINATE",
@@ -501,6 +517,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
+    // 接常驻流那两行（hello · attach 回话）在 `resident-client` 里的上限（手机那一侧整段握手走它；值同下一行）。
+    (
+        "src/comms/resident-client/attach.rs",
+        "HANDSHAKE_LINE_CAP",
+        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测一两 KB",
+        "拒收+回错",
+    ),
     (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
@@ -669,9 +692,9 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     // 第七条不是内联字面量，是**压根没有上限**：backend 出方向单行此前走无界 `read_line`。
     // ⚠ 它的数**刻意不等于** backend 侧的 `MAX_LINE_BYTES`（1 MiB，入方向命令信封）——
     // 实测本机 525,132 行 jsonl 里有 78 行超过 1 MiB、最长 2.97 MiB，
-    // 抄过去就是丢真实数据。理由全文在 `stream_source/exec.rs::BACKEND_FRAME_LINE_CAP` 头注。
+    // 抄过去就是丢真实数据。理由全文在 `resident-client/line.rs::BACKEND_FRAME_LINE_CAP` 头注（monitor 与手机同一份）。
     (
-        "src/frontend/shell/src/stream_source/exec.rs",
+        "src/comms/resident-client/line.rs",
         "BACKEND_FRAME_LINE_CAP",
         "backend **出方向单行**（一帧 = 一条 Claude jsonl 行）",
         "丢弃+带身份报告",
@@ -751,13 +774,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // SFTP 住本机常驻后端：部署链路（`use:"files"`）一问一答的两个界。
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "REQUEST_LINE_CAP",
         "files 链路上一行请求（短 JSON；`put` 的字节不走行）",
         "拒收+回错",
     ),
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "MAX_PUT_BYTES",
         "一次 `put` 收进内存的字节（后端二进制今天 MB 级）。超了 ⇒ 那几个字节照收照丢（别让下一行请求读到半截二进制）、回 `too_big`",
         "拒收+回错",
@@ -1068,6 +1091,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "MAX_BYTES",
         "冷开会话那几问共用的扫描图留在内存里的估算字节（超了先淘汰最久没用的；单张比它还大就不留、每次现扫）",
         "索引截断（不丢数据）",
+    ),
+    // 记录骨架读回来的上限：超了 ⇒ 当没有骨架，照记录整份重扫（记一笔调试日志）。
+    (
+        "src/backend/observe/skeleton.rs",
+        "MAX_READ",
+        "读回一份记录骨架（数据目录 `cache/skeleton/` 底下，预读或冷开扫描图那一份）：超了 ⇒ `warn!` 说是哪一份，当没有骨架、照记录整份重扫",
+        "跳过+说清",
     ),
     (
         "src/backend/observe/search_query.rs",
@@ -1771,7 +1801,7 @@ const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     // files 链路的 `put`：`size` 是请求里**声明**的字节数（monitor 给），不是上限；
     //   上限是具名常量 `MAX_PUT_BYTES`（已在 `CAPS` 里），`size > MAX_PUT_BYTES` 的判断在 `take(size)` **之前**。
     (
-        "src/backend/dial/sftp.rs",
+        "src/backend/ssh-dial/sftp.rs",
         "size",
         "`put` 的 `size` 是请求里声明的长度（对端给的），**不是上限**；上限是具名常量 `MAX_PUT_BYTES`\
              （已在 `CAPS` 里，超限「拒收+回错」）。`size > MAX_PUT_BYTES` 那一支在 `take(size)` **之前**：\
@@ -2011,17 +2041,21 @@ fn uncapped_stream_reads(prod: &str) -> Vec<usize> {
 /// `BACKEND_FRAME_LINE_CAP` 在三个地方被提到（有界读的判断处 · 措辞函数 · 消费点的
 /// `warn!`），而报告只发生在**第三处** —— 按每处提及去要求 marker 会造出两条假红。
 ///
-/// ⇒ 换个取样单位：**处置分支本身**。人群 = `stream_source/` 整个目录生产段里每一处
-/// `CappedLine::TooLong` 的处置臂。要求：
+/// ⇒ 换个取样单位：**处置分支本身**。人群 = `stream_source/` 整个目录生产段 ＋ 读远端那条流的重连循环
+/// （`resident-client/feed.rs`，两端同一份）里每一处 `CappedLine::TooLong` 的处置臂。要求：
 /// ① 每一臂都得说点什么（至少 `warn!`）—— 定框 **E4**：静默失败要给身份；
-/// ② **至少有一臂**把它抬到用户能看见的那一层（原位 `Gap`：主帧读那一臂交 `Ok(None)`）——
+/// ② **至少有一臂**把它抬到用户能看见的那一层（原位 `Gap`：读流那一臂交 `Event::Gap`，收事那一头 `LineIntake::lost`）——
 ///    那正是本档与「跳过+说清」的分界（告日志 vs 告用户）。
 ///
 /// ⚠ 失效模式如实登记：臂体窗口是 **12 行**的启发式。臂特别长 ⇒ 假红；
 /// 紧邻的别的语句里恰好有 marker ⇒ 假绿。与隔壁那条同源取舍。
 #[test]
 fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
-    let prod = crate::guard_support::stream_source_production();
+    let prod = format!(
+        "{}\n{}",
+        crate::guard_support::stream_source_production(),
+        guard_core::production_code(include_str!("../../../src/comms/resident-client/feed.rs"))
+    );
     let lines: Vec<&str> = prod.lines().collect();
     let mut arms = 0usize;
     let mut silent = Vec::new();
@@ -2039,10 +2073,10 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
         const WINDOW: usize = 12;
         let body = lines[i..(i + WINDOW).min(lines.len())].join("\n");
         if !body.contains("warn!") {
-            silent.push(format!("  stream_source/ 生产段第 {} 行", i + 1));
+            silent.push(format!("  stream_source/ ＋ feed.rs 生产段第 {} 行", i + 1));
         }
-        if body.contains("frame_tx.send(Ok(None))") {
-            reported += 1; // 原位 `Gap` 那一路（主循环 `LineIntake::lost`）
+        if guard_core::contains_word(&body, "Event::Gap") {
+            reported += 1; // 原位 `Gap` 那一路（收事那一头 `LineIntake::lost`）
         }
     }
     assert!(
@@ -2058,7 +2092,7 @@ fn the_drop_and_report_semantics_is_honoured_at_every_over_limit_arm() {
     );
     assert!(
         reported >= 1,
-        "没有任何一处超限把话说到**用户**那一层（原位 `Gap`，`frame_tx.send(Ok(None))`）。\n\
+        "没有任何一处超限把话说到**用户**那一层（原位 `Gap`，`Event::Gap`）。\n\
              ★ 那是「丢弃+带身份报告」与「跳过+说清」的**唯一分界** —— \n\
              只写 `warn!` 的话本档就该改登记成「跳过+说清」，别占一个更强的名字。"
     );

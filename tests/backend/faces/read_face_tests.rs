@@ -5,6 +5,47 @@
 use super::*;
 use std::path::{Path, PathBuf};
 
+/// 读一份会话记录的那几条换成了 typed（`faces/history_face.rs`）：判据照旧按命令名问，这里照登记表那一层的做法走一遍
+///   （入参经 typed 那一处解、回包过一遍真序列化器、失败落成码 ＋ 那一句），盖住 `super::*` 里的同名口；别的命令照旧交只读宿主。
+fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -> Answer {
+    use crate::faces::history_face as h;
+    use crate::stream::inbound::typed::{take, Codes, Command};
+    fn via<C: Command>(
+        args: &serde_json::Value,
+        f: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
+    ) -> Answer {
+        let code = |c: &str| -> &'static str {
+            <C::Err as Codes>::ALL
+                .iter()
+                .find(|k| **k == c)
+                .copied()
+                .unwrap_or_else(|| panic!("码表外的码 `{c}`"))
+        };
+        let req = take::<C::Req>(args).map_err(|e| (code(&e.code), e.message))?;
+        let got = f(req).map_err(|e| {
+            let fail = e.into_fail();
+            (code(&fail.code), fail.message)
+        })?;
+        Ok(serde_json::to_value(got).unwrap())
+    }
+    match cmd {
+        "history-read" => via::<h::HistoryReadCmd>(args, |r| h::read_at(home, r, tz)),
+        "history-page" => via::<h::HistoryPageCmd>(args, |r| h::page_at(home, r, tz)),
+        "history-lines" => via::<h::HistoryLinesCmd>(args, |r| h::lines_at(home, r, tz)),
+        "history-run" => via::<h::HistoryRunCmd>(args, |r| h::run_at(home, r, tz)),
+        "history-branch" => via::<h::HistoryBranchCmd>(args, |r| h::branch_at(home, r)),
+        "history-tail" => via::<h::HistoryTailCmd>(args, |r| h::tail_at(home, r)),
+        "history-record" => via::<h::HistoryRecordCmd>(args, |r| h::record_at(home, r)),
+        "sessions-needs" => via::<h::SessionsNeedsCmd>(args, |_| Ok(h::needs_at(home))),
+        "history-index" => via::<h::HistoryIndexCmd>(args, |r| h::index_at(home, r)),
+        "history-user-inputs" => via::<h::UserInputsCmd>(args, |r| h::user_inputs_at(home, r)),
+        "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
+        "history-find" => via::<h::HistoryFindCmd>(args, |r| h::find_at(home, r, tz)),
+        "history-facts" => via::<h::HistoryFactsCmd>(args, |r| h::facts_at(home, r)),
+        _ => super::answer_at(home, cmd, args, tz),
+    }
+}
+
 /// 本族的八条帧命令 —— **要求点名的那八条**，
 /// 写成帧面名。它是判据的**异源**那一侧：下面那条从 `stream/inbound/` 源码里数「谁把活交给了
 /// `read_face::answer`」，两边必须相等。
@@ -33,9 +74,6 @@ const FAMILY: &[&str] = &[
     "history-read",
     // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
     "history-record",
-    "history-search",
-    // 各台搜索结果合一份（异源是手抄的要求，不是 `stream/inbound/`）。
-    "history-search-merge",
     // 按字节分页出记录行 · 漂移账（异源是手抄的要求，不是 `stream/inbound/`）。
     // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `stream/inbound/`）。
     "history-run",
@@ -78,12 +116,28 @@ fn the_registry_hands_exactly_the_eight_to_this_host() {
     let mut got: Vec<String> = families
         .iter()
         .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
+        // 块截到它后面紧跟的 typed 那一行为止（那一行不是这一块的）。
+        .map(|blk| blk.split("typed::").next().unwrap_or(blk))
         .filter(|blk| blk.contains("read_face::answer"))
         .filter_map(|blk| {
             let at = blk.find("name: \"")? + "name: \"".len();
             Some(blk[at..].split('"').next()?.to_string())
         })
         .collect();
+    // 读一份会话记录的那几条成了 typed（`faces/history_face.rs`）：名字从那个类型的 `impl Command` 里 `const NAME` 读。
+    let face = include_str!("../../../src/backend/faces/history_face.rs");
+    for (_, prod) in &families {
+        for (at, _) in prod.match_indices("::faces::history_face::") {
+            let rest = &prod[at + "::faces::history_face::".len()..];
+            let ty = &rest[..rest.find('>').expect("typed 那一行没收尾")];
+            let imp = face
+                .find(&format!("impl Command for {ty} {{"))
+                .unwrap_or_else(|| panic!("`history_face.rs` 里没有 `impl Command for {ty}`"));
+            let key = "const NAME: &'static str = \"";
+            let n = face[imp..].find(key).expect("没有 `const NAME`") + imp + key.len();
+            got.push(face[n..].chars().take_while(|c| *c != '"').collect());
+        }
+    }
     got.sort();
     let mut want: Vec<String> = FAMILY.iter().map(|s| s.to_string()).collect();
     want.sort();
@@ -244,26 +298,6 @@ fn the_tail_plan_matches_an_independent_count() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// ★ 输出超上限 ⇒ `too_large`，不交截断的清单（正控：刚好不超时照常答）。
-#[test]
-fn an_oversized_listing_is_refused_not_truncated() {
-    let big = vec![b'x'; LINES_CAP_BYTES + 1];
-    match rows(|out| {
-        use std::io::Write;
-        out.write_all(&big).map_err(|e| ("failed", e.to_string()))
-    }) {
-        Err((c, _)) => assert_eq!(c, "too_large"),
-        Ok(_) => panic!("超上限的输出被当成完整清单交出去了"),
-    }
-    let ok = rows(|out| {
-        use std::io::Write;
-        out.write_all(b"a\n\n b \n")
-            .map_err(|e| ("failed", e.to_string()))
-    })
-    .unwrap();
-    assert_eq!(ok, vec!["a".to_string(), "b".to_string()]);
-}
-
 /// ★ F2（→出成品）：骨架索引与大纲清单两条帧命令的应答**就是成品**，
 /// 条目与**夹具算出来的**逐条相等（异源：期望的偏移 / 行长 / uuid 从夹具字节自己数，不借被测函数）；
 /// 键集合恒等（`{from, end, rows}` / `{from, end, entries}`）—— 不再是按行的头尾三段。
@@ -297,7 +331,10 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     .unwrap();
     assert_eq!(
         keys(&v),
-        ["body", "classes", "count", "end", "fd", "from", "inputs", "n", "o", "sp", "t", "u"],
+        [
+            "body", "classes", "count", "end", "fd", "from", "inputs", "n", "next", "o", "sp", "t",
+            "u"
+        ],
         "骨架索引的成品形状变了"
     );
     let mut o = 0u64;
@@ -653,7 +690,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1, "ask": null, "manualText": copy_core::copy_text("beAsk.manual.terminal", &[])})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1, "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");
@@ -1249,7 +1286,7 @@ fn the_record_products_match_the_cross_language_golden() {
     let path = p.to_string_lossy().into_owned();
     let got = serde_json::json!({
         "history-read": answer_at(&home, "history-read", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
-        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path, "whole": true}), &Default::default()).unwrap(),
+        "history-page": answer_at(&home, "history-page", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
         "history-lines": answer_at(&home, "history-lines", &serde_json::json!({"path": path, "from": 1}), &Default::default()).unwrap(),
         "history-branch": answer_at(&home, "history-branch", &serde_json::json!({"path": path}), &Default::default()).unwrap(),
         "history-run": answer_at(
@@ -1275,40 +1312,6 @@ fn the_record_products_match_the_cross_language_golden() {
         "帧面成品与跨语言金样不一致。现打：\n{}",
         serde_json::to_string_pretty(&got).unwrap()
     );
-}
-
-/// 全文搜索的应答把「读不动几份」与「内容搜索不覆盖的那几家」一起交回（此前只进日志，界面只能说「共 N 条」像是全的）；
-/// `titles: true` 只比标题与第一句：只在标题里出现的词也搜得到那一个会话。
-#[test]
-fn the_search_answer_says_what_it_could_not_search_and_titles_mode_finds_title_only_words() {
-    let home = scratch("search-said");
-    let dir = home.join("projects").join("-w-x");
-    std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(
-        dir.join("0000aaaa-0000-4000-8000-0000000000aa.jsonl"),
-        concat!(
-            r#"{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","cwd":"/w/x","message":{"role":"user","content":"占位正文"}}"#,
-            "\n",
-            r#"{"type":"ai-title","aiTitle":"订单重试"}"#,
-            "\n"
-        ),
-    )
-    .unwrap();
-    let ask =
-        |args: Value| answer_at(&home, "history-search", &args, &Default::default()).expect("搜索");
-    let v = ask(json!({ "query": "订单" }));
-    assert_eq!(v["unreadable"], json!(0), "读不动几份没交回：{v}");
-    assert!(v["skipped"].is_array(), "内容搜索不覆盖的那几家没交回：{v}");
-    assert_eq!(v["lines"], json!([]), "只在标题里的词被当成了内容命中：{v}");
-    let v = ask(json!({ "query": "订单", "titles": true }));
-    let lines = v["lines"].as_array().unwrap();
-    assert_eq!(lines.len(), 1, "按标题搜没搜到那一个会话：{v}");
-    let row: Value = serde_json::from_str(lines[0].as_str().unwrap()).unwrap();
-    assert_eq!(
-        (row["title"].as_str(), row["hitCount"].as_u64()),
-        (Some("订单重试"), Some(0))
-    );
-    std::fs::remove_dir_all(&home).ok();
 }
 
 /// `history-find` 每条命中旁边一格 `tsText`：那条记录的时刻按这台本地钟写好（今天 `HH:MM` · 昨天 · 更早带日期），界面照抄；读不出时刻 ⇒ 空串。
@@ -1436,25 +1439,6 @@ fn the_three_record_reads_each_honour_the_body_on_demand_view_both_ways() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-impl crate::guard_support::Shaped for Searched {
-    fn samples() -> Vec<Self> {
-        vec![Searched {
-            lines: vec!["{}".into()],
-            unreadable: 0,
-            skipped: vec!["codex"],
-        }]
-    }
-}
-
-impl crate::guard_support::Shaped for Branch {
-    fn samples() -> Vec<Self> {
-        vec![Branch {
-            off: vec!["u-1".into()],
-            end: 99,
-        }]
-    }
-}
-
 /// ★ **这台上需手动的会话清单**（`sessions-needs`）：恰好是这台此刻活着、那台 pidfile 说在等人的那几个会话；
 /// 每一个的 `needs` 就是 `history-facts` 对同一份记录答的那一格（同一处判、同一份字，清单不另判）；
 /// 记录找不到的照列（判不出是哪一步，但框是哪种照那台说的）；在跑 · 空闲 · 进程死了的都不在。
@@ -1545,27 +1529,6 @@ fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
     let ms = o.remove("waitedMs").and_then(|v| v.as_u64());
     o.remove("waitedText");
     (ms, rest)
-}
-
-impl crate::guard_support::Shaped for NeedsList {
-    fn samples() -> Vec<Self> {
-        use crate::observe::facts_query::{needs_of, PidWait};
-        let needs = needs_of(
-            &[],
-            Some(&PidWait {
-                waiting_for: Some(crate::agents::WaitOn::Worker),
-                since_ms: Some(1),
-                read_at_ms: 2,
-            }),
-        )
-        .expect("在等就有需手动");
-        vec![NeedsList {
-            waiting: vec![crate::observe::accounts_query::NeedsRow {
-                sid: "s-1".into(),
-                needs,
-            }],
-        }]
-    }
 }
 
 /// ★ **续算令牌不被投影弄残**：带声明去掉 `touchedFiles` 之后，下一问交回的是应答里那一格 `prior`（投影之前的整份），
@@ -1691,17 +1654,48 @@ fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
 /// 稀疏的几格（正文那五个数 · 来源 · 用户输入的摘要与时刻）各一张小表，`at` 是与上一项的行号差（连着 ＝ 0）。`sc` 不上帧面。
 #[test]
 fn the_index_is_packed_by_column_with_offsets_as_differences() {
+    use crate::agents::record::RecordClass;
+    use crate::observe::history_query::IndexRow;
     let rows = vec![
-        serde_json::json!({"o": 0, "n": 100, "t": "said", "u": "in-1", "ch": 14, "pl": 1, "x": "alpha", "ts": "t1"}),
-        serde_json::json!({"o": 100, "n": 194, "t": "reply", "u": "out-1", "fd": 2}),
-        serde_json::json!({"o": 300, "n": 10, "u": "m"}),
-        serde_json::json!({"o": 310, "n": 5, "t": "said", "sp": "system", "sc": true}),
+        IndexRow {
+            o: 0,
+            n: 100,
+            t: Some(RecordClass::Said),
+            u: Some("in-1".into()),
+            ch: 14,
+            pl: 1,
+            x: Some("alpha".into()),
+            ts: Some("t1".into()),
+            ..Default::default()
+        },
+        IndexRow {
+            o: 100,
+            n: 194,
+            t: Some(RecordClass::Reply),
+            u: Some("out-1".into()),
+            fd: 2,
+            ..Default::default()
+        },
+        IndexRow {
+            o: 300,
+            n: 10,
+            u: Some("m".into()),
+            ..Default::default()
+        },
+        IndexRow {
+            o: 310,
+            n: 5,
+            t: Some(RecordClass::Said),
+            sp: Some("system"),
+            sc: true,
+            ..Default::default()
+        },
     ];
-    let v = pack_index(0, 315, &rows);
+    let v = serde_json::to_value(crate::faces::history_face::pack_index(0, 315, &rows)).unwrap();
     assert_eq!(
         v,
         serde_json::json!({
-            "from": 0, "end": 315, "count": 4,
+            "from": 0, "end": 315, "next": null, "count": 4,
             "classes": ["said", "reply"],
             "o": [0, 0, 6, 0], "n": [100, 194, 10, 5], "t": [1, 2, 0, 1], "fd": [0, 2, 0, 0],
             "u": ["in-1", "out-1", "m", null],
@@ -1710,13 +1704,16 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
             "inputs": {"at": [0], "x": ["alpha"], "ts": ["t1"]},
         })
     );
-    let mut back = rows.clone();
+    let mut back: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect();
     back[3].as_object_mut().unwrap().remove("sc");
     assert_eq!(rows_of_index(&v), back, "按列装回来与原来的逐行不一样");
 }
 
 /// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 会话事实 `answerOff` 写明只能在终端里答批准，
-/// 在等批准时 `needs.manualText` 也是这一句；没带那个变量的进程 ⇒ `null`。
+/// 在等批准时 `needs.manualText` 也是这一句（没带那个变量的进程见下一条：看它是不是 ccm 起的）。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
@@ -1789,6 +1786,14 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
             HookOff::Launcher,
             copy_core::copy_text("beAsk.manual.offLauncher", &[]),
         ),
+        (
+            HookOff::Policy,
+            copy_core::copy_text("beAsk.manual.offPolicy", &[]),
+        ),
+        (
+            HookOff::Version,
+            copy_core::copy_text("beAsk.manual.offVersion", &[]),
+        ),
     ];
     let mut seen = Vec::new();
     for (off, said) in cases {
@@ -1797,13 +1802,308 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
         assert_eq!(v["needs"]["manualText"], serde_json::json!(said), "{off:?}");
         seen.push(said);
     }
+    seen.sort();
     seen.dedup();
-    assert_eq!(seen.len(), 3, "三种原因三句不同的话");
-    let on = facts_with(None);
+    assert_eq!(seen.len(), 5, "五种原因五句不同的话");
     let _ = std::fs::remove_dir_all(&home);
-    assert_eq!(on["answerOff"], serde_json::Value::Null);
-    assert_eq!(
-        on["needs"]["manualText"],
-        serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]))
+}
+
+/// 不是 ccm 起的会话（持着它的进程身上看不出挂过答题口：命令行里没有 hook 客户端那个旗标 · 插件目录变量里没有我们那个目录 ·
+/// ccm 没给它留过便条）⇒ `answerOff` 与 `needs.manualText` 写明「别处起的会话，没挂答题口」；看得出挂过的 ⇒ `answerOff` 是 `null`、
+/// 只说「只能在终端里答」（那一步不是答题口管得着的框）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
+    let home = scratch("answer-elsewhere");
+    let sid = "cccccccc-1111-2222-3333-777777777777";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let data = crate::platform::paths::data_home().expect("测试档有数据目录");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let var = crate::agents::claudecode::asks::PLUGIN_ENV;
+    // `extra` 接在 sh 的位置参数后面（只为让它出现在命令行里）；`noted` ⇒ 像 ccm 那样给这个进程留一张便条。
+    let facts_with = |extra: &[&str], noted: bool| {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "sleep 30; :", "sh"]).args(extra);
+        cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
+        cmd.env_remove(var);
+        let mut c = cmd.spawn().unwrap();
+        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
+        let until = std::time::Instant::now() + guard_core::wall::CEILING;
+        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sh\0-c\0"))
+            && std::time::Instant::now() < until
+        {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        if noted {
+            let now = crate::common::time::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            crate::control::launch_account::leave_note(&own, c.id(), "acct", now + 1).unwrap();
+        }
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
+        let body = format!(
+            r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
+            c.id()
+        );
+        let pf = pids.join(format!("{}.json", c.id()));
+        std::fs::write(&pf, body).unwrap();
+        let v = answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": path }),
+            &Default::default(),
+        )
+        .unwrap();
+        let _ = c.kill();
+        let _ = c.wait();
+        let _ = std::fs::remove_file(&pf);
+        v
+    };
+    let elsewhere = facts_with(&[], false);
+    let hooked = facts_with(&[crate::ANSWER_HOOK_FLAG, "claude"], false);
+    let noted = facts_with(&[], true);
+    let _ = std::fs::remove_dir_all(&home);
+    let said = copy_core::copy_text("beAsk.manual.offElsewhere", &[]);
+    assert_eq!(elsewhere["answerOff"], serde_json::json!(said));
+    assert_eq!(elsewhere["needs"]["manualText"], serde_json::json!(said));
+    let terminal = serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]));
+    for (what, v) in [("命令行里挂着 hook", &hooked), ("ccm 留过便条", &noted)] {
+        assert_eq!(v["answerOff"], serde_json::Value::Null, "{what}");
+        assert_eq!(v["needs"]["manualText"], terminal, "{what}");
+    }
+}
+
+/// 手机读的那几条（`history-read` · `history-lines` · `history-tail` · `sessions-needs`）：照手机发的那一份入参
+///   （`until: null` 照发）跑出来的应答，与换成 typed 之前那一版写出来的**逐字节**相同。
+///   金样两份（read · lines）就是跨语言金样那一份重新序列化（键恒排好序）；别的形是换形之前用旧代码跑出来钉成的字面量。
+#[test]
+fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
+    let home = scratch("phone-bytes");
+    let p = golden_record_session(&home);
+    let path = p.to_string_lossy().into_owned();
+    let canon = std::fs::canonicalize(&home)
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    let bytes = |cmd: &str, args: serde_json::Value| {
+        serde_json::to_string(&phone_wire(&home, cmd, args))
+            .unwrap()
+            .replace(&canon, "<home>")
+    };
+    let golden: serde_json::Value =
+        serde_json::from_str(include_str!("../../__fixtures__/record-reads.golden.json")).unwrap();
+    let read = bytes(
+        "history-read",
+        serde_json::json!({"path": path, "offset": 0, "until": null}),
     );
+    let lines = bytes(
+        "history-lines",
+        serde_json::json!({"path": path, "from": 1, "until": null}),
+    );
+    let read_mid = bytes(
+        "history-read",
+        serde_json::json!({"path": path, "offset": 55, "until": 200}),
+    );
+    let lines_mid = bytes(
+        "history-lines",
+        serde_json::json!({"path": path, "from": 0, "until": 2}),
+    );
+    let tail = bytes("history-tail", serde_json::json!({"path": path, "n": 2}));
+    let needs = bytes("sessions-needs", serde_json::Value::Null);
+    let _ = std::fs::remove_dir_all(&home);
+    assert_eq!(
+        read,
+        serde_json::to_string(&golden["history-read"]).unwrap()
+    );
+    assert_eq!(
+        lines,
+        serde_json::to_string(&golden["history-lines"]).unwrap()
+    );
+    assert_eq!(
+        read_mid,
+        r#"{"eof":true,"next":200,"rows":[{"cwd":"/w","end":152,"hash":12521928789128290262,"record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}}},{"end":null,"hash":3774565367099417574}]}"#
+    );
+    assert_eq!(
+        lines_mid,
+        r#"{"eof":false,"from":0,"lines":[{"cwd":"/w","path":"<home>/projects/-golden/r.jsonl","record":{"agent":"claude","at":"t1","blocks":[{"text":"q","type":"text"}],"cwd":"/w","id":"r-1","t":"said","who":{"speaker":{"kind":"human"},"text":"q"}},"seq":1,"session_id":"r"}],"next":2}"#
+    );
+    assert_eq!(tail, r#"{"end":273,"split_at":55,"tail_from":1,"total":3}"#);
+    assert_eq!(needs, r#"{"waiting":[]}"#);
+    // 清单里有一行的那一形（`needs` 那一份成品与 `history-facts` 同一个类型）。
+    let row = {
+        use crate::observe::facts_query::{needs_of, PidWait};
+        crate::faces::history_face::NeedsList {
+            waiting: vec![crate::observe::accounts_query::NeedsRow {
+                sid: "s-1".into(),
+                needs: needs_of(
+                    &[],
+                    Some(&PidWait {
+                        waiting_for: Some(crate::agents::WaitOn::Worker),
+                        since_ms: Some(1),
+                        read_at_ms: 2,
+                    }),
+                )
+                .expect("在等就有需手动"),
+            }],
+        }
+    };
+    assert_eq!(
+        serde_json::to_string(&serde_json::to_value(&row).unwrap()).unwrap(),
+        r#"{"waiting":[{"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+    );
+}
+
+/// 读一份会话记录的那几条：入参类型里没有的键 · 类型不对的格 ⇒ `bad_args`（从前悄悄当没给）。
+#[test]
+fn the_record_reads_refuse_fields_their_request_types_do_not_have() {
+    let home = scratch("refuse-stray");
+    let p = golden_record_session(&home);
+    let path = p.to_string_lossy().into_owned();
+    for (cmd, args) in [
+        (
+            "history-page",
+            serde_json::json!({"path": path, "whole": true}),
+        ),
+        (
+            "history-read",
+            serde_json::json!({"path": path, "offset": "0"}),
+        ),
+        (
+            "history-lines",
+            serde_json::json!({"path": path, "from": -1}),
+        ),
+        ("history-tail", serde_json::json!({"path": path})),
+        (
+            "history-branch",
+            serde_json::json!({"path": path, "until": 3}),
+        ),
+        (
+            "history-run",
+            serde_json::json!({"parent": path, "run": "a1", "seq": 0}),
+        ),
+        (
+            "history-record",
+            serde_json::json!({"sid": "s", "config_dir": "/x"}),
+        ),
+        ("sessions-needs", serde_json::json!({"machine": "m"})),
+    ] {
+        match answer_at(&home, cmd, &args, &Default::default()) {
+            Err(("bad_args", _)) => {}
+            other => panic!("{cmd} {args}：该回 bad_args，回的是 {other:?}"),
+        }
+    }
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 照手机那一份入参问一条只读命令，应答原样（成功那一支）。
+fn phone_wire(home: &Path, cmd: &str, args: serde_json::Value) -> serde_json::Value {
+    answer_at(home, cmd, &args, &Default::default()).unwrap_or_else(|e| panic!("{cmd}: {e:?}"))
+}
+
+/// 换了启动器那一支：ccm 给那个进程留的便条说「走的是环境那一路」，而持着会话的进程环境里没有我们那个插件目录
+/// （启动器把环境清掉了）⇒ `answerOff` 写明启动器没把环境传下去；带着那个目录 ⇒ 接上了（`null`）。按进程的实际环境判，不按声明。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_whose_launcher_dropped_the_environment_says_so() {
+    let home = scratch("answer-env-lost");
+    let sid = "cccccccc-1111-2222-3333-666666666666";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let data = crate::platform::paths::data_home().expect("测试档有数据目录");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let ours = crate::agents::asks::plugin_dir_under(
+        &crate::platform::paths::home_dir()
+            .expect("测试档有家目录")
+            .to_string_lossy(),
+    );
+    let var = crate::agents::claudecode::asks::PLUGIN_ENV;
+    let facts_with = |dirs: Option<String>| {
+        let mut cmd = std::process::Command::new("sleep");
+        cmd.arg("30");
+        cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
+        match &dirs {
+            Some(v) => cmd.env(var, v),
+            None => cmd.env_remove(var),
+        };
+        let mut c = cmd.spawn().unwrap();
+        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
+        let until = std::time::Instant::now() + guard_core::wall::CEILING;
+        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sleep\0"))
+            && std::time::Instant::now() < until
+        {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let now = crate::common::time::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        crate::control::launch_account::leave_plugin_note(&own, c.id(), None, now + 1).unwrap();
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
+        let body = format!(
+            r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
+            c.id()
+        );
+        let pf = pids.join(format!("{}.json", c.id()));
+        std::fs::write(&pf, body).unwrap();
+        let v = answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": path }),
+            &Default::default(),
+        )
+        .unwrap();
+        let _ = c.kill();
+        let _ = c.wait();
+        let _ = std::fs::remove_file(&pf);
+        v
+    };
+    let lost = facts_with(None);
+    let mine = facts_with(Some(format!("/u/mine:{ours}")));
+    let _ = std::fs::remove_dir_all(&home);
+    let said = copy_core::copy_text("beAsk.manual.offEnvLost", &[]);
+    assert_eq!(lost["answerOff"], serde_json::json!(said));
+    assert_eq!(lost["needs"]["manualText"], serde_json::json!(said));
+    assert_eq!(
+        mine["answerOff"],
+        serde_json::Value::Null,
+        "带着我们的目录 ⇒ 接上了"
+    );
+}
+
+/// `history-facts` 的入参是类型：多一格 · 一格类型不对 ⇒ `bad_args`（不碰盘）。
+#[test]
+fn history_facts_refuses_what_its_request_type_does_not_have() {
+    let home = scratch("facts-args");
+    for args in [
+        serde_json::json!({ "path": "/x.jsonl", "extra": 1 }),
+        serde_json::json!({ "path": 1 }),
+        serde_json::json!({ "path": "/x.jsonl", "prior": 1 }),
+        serde_json::json!({}),
+    ] {
+        let got = answer_at(&home, "history-facts", &args, &Default::default());
+        assert_eq!(
+            got.as_ref().err().map(|e| e.0),
+            Some("bad_args"),
+            "{args} ⇒ {got:?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }

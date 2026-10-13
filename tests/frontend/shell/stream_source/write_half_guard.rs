@@ -20,7 +20,7 @@ use crate::structural_scan::ScanReport;
 /// 生产段。**用共享的 `guard_core::production_code`，不自己写便宜近似。**
 ///
 /// 这不是洁癖：本文件第一个 `#[cfg(test)]` 模块在 800 行附近，而本护栏要扫的
-/// `parse_frame` / `stream_loop` / `probe_backend` 全在它**后面**。
+/// `parse_frame` / `consume_remote` 全在它**后面**。
 /// monitor 侧此前流行的那个近似（`split("\n#[cfg(test)]").next()`）会把扫描面
 /// 砍掉三分之二 —— 下面第一条测试把这个差距**实测**出来，免得它变成一句口号。
 fn prod() -> String {
@@ -35,7 +35,7 @@ fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
     let me = crate::guard_support::stream_source_raw();
     let cheap = me.split("\n#[cfg(test)]").next().unwrap_or(&me);
     let good = prod();
-    for anchor in ["fn parse_frame", "async fn stream_loop"] {
+    for anchor in ["fn parse_frame", "async fn consume_remote"] {
         assert!(
             good.contains(anchor),
             "共享剥法把 `{anchor}` 剥掉了 —— 本护栏此刻扫不到它"
@@ -137,21 +137,22 @@ fn stream_source_never_splits_a_stream_itself() {
              切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个裸\n\
              `WriteHalf` 就等于留了一个「Hello 之前能写」的窗口，而那正是这里要消灭的东西。"
     );
-    // 反面：切分入口必须真的被用着（否则上面那条零命中是因为**根本没有双工流**）。
-    let mut checked = 0usize;
-    for (_i, _) in prod.match_indices("inbound_client::split_and_park(") {
-        checked += 1;
-    }
+    // 反面：切分入口必须真的被用着（否则上面那条零命中是因为**根本没有双工流**）——
+    //   远端那条长连接的切分随重连循环住 `resident-client`（握手那一步，两端同一处）：恰好一处、在 `attach.rs`。
+    let crate_side = guard_core::production_code(include_str!(
+        "../../../../src/comms/resident-client/attach.rs"
+    ));
     ScanReport {
-        checked,
+        checked: crate_side.matches("split_and_park(stream)").count(),
         violations: Vec::new(),
     }
-    .require(
-        1,
-        // 2 → 1：一次性探测那一处随测试连接搬进本机后端。
-        "本文件应有一处双工切分（stream_loop 的长连接）",
-    )
+    .require(1, "握手那一步应有一处双工切分（远端那条长连接）")
     .expect("split_and_park 用量");
+    assert_eq!(
+        prod.matches("split_and_park(").count(),
+        0,
+        "stream_source 又自己切流了（切分住重连循环的握手那一步）"
+    );
 }
 
 /// ★ 本文件的生产段**一个字节都不许自己往流里写**。
@@ -249,22 +250,24 @@ fn stream_source_never_writes_to_a_stream_itself() {
     //   切生产段」去量，只得到一条 —— 本文件有多个测试模块，那个切法在本工作区
     //   已记过四次。**量具要用被测者那一套**，这是第五次。
     const ALLOWED_IO_IMPORTS: &[&str] = &[
-        // 目录拆开之后两样各住一份：读行那份（`exec.rs`）要 `AsyncBufReadExt`，流循环那份（`run.rs`）要 `BufReader`。
-        "use tokio::io::AsyncBufReadExt;",
-        "use tokio::io::BufReader;",
-        // `use tokio::io::AsyncReadExt;` 也出去了：它只服务读拨号代理 ack 的那一段
-        // （`.take(` 有界读），那一段搬进了通信层成员 `ssh_link.rs`。反向锚点同一刀逮住它。
+        // 一条都不放：流循环那份（`run.rs`）要的 `BufReader` 随读流整个搬进了 `resident-client`（`feed.rs` · `attach.rs`）；
+        // 读行那份（原 `exec.rs` 的 `AsyncBufReadExt`）在 `line.rs`；`AsyncReadExt` 随读 ack 那一段进了 `ssh_link.rs`。
     ];
-    let io_imports: Vec<&str> = prod
-        .lines()
-        .map(str::trim)
-        .filter(|l| l.starts_with("use ") && l.contains("tokio::io"))
-        .collect();
-    // 自检：一条都没扫到 ⇒ 下面那句「不许有没登记的」是空转。
-    assert!(
-        !io_imports.is_empty(),
-        "生产段里一条 `tokio::io` 导入都没扫到 —— 剥法坏了，本段此刻无效"
+    let io_imports_of = |src: &str| -> Vec<String> {
+        src.lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("use ") && l.contains("tokio::io"))
+            .map(str::to_string)
+            .collect()
+    };
+    // 自检：扫法认得出一条条目导入（否则下面那句「不许有没登记的」是空转）。
+    assert_eq!(
+        io_imports_of("fn f() {}\nuse tokio::io::copy;\n").len(),
+        1,
+        "`tokio::io` 导入的扫法是瞎的"
     );
+    let io_imports = io_imports_of(&prod);
+    let io_imports: Vec<&str> = io_imports.iter().map(String::as_str).collect();
     let bad_imports: Vec<&&str> = io_imports
         .iter()
         .filter(|l| !ALLOWED_IO_IMPORTS.contains(l))

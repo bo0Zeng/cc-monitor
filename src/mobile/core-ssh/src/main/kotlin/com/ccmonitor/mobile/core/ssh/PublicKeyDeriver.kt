@@ -1,16 +1,14 @@
 package com.ccmonitor.mobile.core.ssh
 
 import com.ccmonitor.mobile.core.data.crypto.SshWire
-import net.schmizz.sshj.SSHClient
-import net.schmizz.sshj.common.Buffer
-import net.schmizz.sshj.common.KeyType
+import com.ccmonitor.mobile.core.rs.Core
 import java.util.Base64
 
 /**
  * 从导入的私钥 PEM 派生 OpenSSH 公钥串与 SHA256 指纹；推送公钥到 `authorized_keys` 前需要它。
  *
- * 用 sshj 的 `loadKeys` 解析主流私钥格式（OpenSSH-v1 / PKCS#8 / PKCS#1 / SEC1；Ed25519 / ECDSA / RSA），
- * 再取公钥 wire blob，用 [SshWire.fingerprintSha256] 出指纹。纯 JVM，无 Android 依赖。
+ * 解析在手机嵌的 Rust 核心里（`Core.publicKeyOf`：与连接时解这把钥匙的是同一份代码，认得的格式也就是连得上的格式）；
+ * 指纹由公钥 wire blob 用 [SshWire.fingerprintSha256] 出。要那份 .so ⇒ 判据在 androidTest。
  */
 object PublicKeyDeriver {
     data class Derived(
@@ -23,22 +21,16 @@ object PublicKeyDeriver {
     )
 
     /**
-     * 从私钥 PEM 派生公钥。带 passphrase、格式不识别或没有公钥时返回 null，调用方退回空串；
-     * 派生失败不能让导入失败，私钥仍可用于连接。
+     * 从私钥 PEM 派生公钥。带 passphrase、格式不识别或没有公钥时返回 null（调用方当场拒，不存）。
      */
     fun fromPrivatePem(
         pem: ByteArray,
         comment: String = "",
-    ): Derived? =
-        runCatching {
-            SSHClient(SshjConfigFactory.create()).use { client ->
-                val kp = client.loadKeys(String(pem, Charsets.UTF_8), null, null)
-                val pub = kp.public ?: return null
-                val wire = Buffer.PlainBuffer().putPublicKey(pub).compactData
-                val type = KeyType.fromKey(pub).toString()
-                val b64 = Base64.getEncoder().encodeToString(wire)
-                val openSsh = "$type $b64" + if (comment.isNotBlank()) " $comment" else ""
-                Derived(openSsh, SshWire.fingerprintSha256(wire), type)
-            }
-        }.getOrNull()
+    ): Derived? {
+        val line = Core.publicKeyOf(pem, comment) ?: return null
+        val parts = line.split(' ')
+        if (parts.size < 2) return null
+        val wire = runCatching { Base64.getDecoder().decode(parts[1]) }.getOrNull() ?: return null
+        return Derived(line, SshWire.fingerprintSha256(wire), parts[0])
+    }
 }

@@ -10,7 +10,7 @@
  * 读的状态：`TabStore`（tab 集合 · 顺序 · 当前 tab · 账号快照）与 `TabBarPrefs`（集合）。
  */
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
-import { accountAvatarEl } from "./account-color";
+import { accountAvatarEl, accountColorOf } from "./account-color";
 import type { TabCollection } from "./tab-collections";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
 import { activityFace } from "./session-status";
@@ -531,7 +531,7 @@ export class TabBarView {
     return out;
   }
 
-  /** 组 `gid` 的整块 · 组头 · 组员列表（拖拽画目标框 · 点亮引导线 · 拖整组时变暗用）；没有 ⇒ `undefined`。 */
+  /** 组 `gid` 的整块 · 组头 · 组员列表（拖拽画目标框 · 点亮那一块 · 拖整组时变暗用）；没有 ⇒ `undefined`。 */
   groupParts(gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } | undefined {
     return this.groupEls.get(gid);
   }
@@ -851,6 +851,7 @@ export class TabBarView {
     g.caret.setAttribute("aria-label", collapsed ? copyText("tabMenu.group.expand") : copyText("tabMenu.group.collapse"));
     g.wrap.classList.toggle("is-collapsed", collapsed);
     g.head.classList.toggle("is-current", current);
+    g.wrap.classList.toggle("has-current", current);
     const chips: HTMLElement[] = [];
     const word = (dot: "needs-you" | "running" | "background"): string => (dot === "needs-you" ? sum.needsWord : dot === "running" ? sum.runningWord : sum.backgroundWord);
     const chip = (dot: "needs-you" | "running" | "background", text: string): HTMLElement => {
@@ -1008,12 +1009,12 @@ export class TabBarView {
     if (account === null) return hide();
     const current = this.store.currentByOrigin.get(tab.origin) ?? null;
     if (!detectAccountMismatch(account.name, current)) return hide();
-    const drawn = `${account.name}\u0000${account.ghost ? 1 : 0}`;
+    const drawn = `${account.name}\u0000${account.ghost ? 1 : 0}\u0000${accountColorOf(account.name, tab.origin) ?? ""}`;
     if (refs.acctDrawn === drawn) return;
     refs.acctDrawn = drawn;
     refs.acctBadge.textContent = "";
     refs.acctBadge.className = "tab-acct-badge";
-    refs.acctBadge.appendChild(accountAvatarEl(account.name, { size: 14, ghost: account.ghost }));
+    refs.acctBadge.appendChild(accountAvatarEl(account.name, { size: 14, ghost: account.ghost, origin: tab.origin }));
     refs.acctBadge.title = copyText("tabBar.hover.account", { name: account.name });
     refs.acctBadge.style.display = "";
   }
@@ -1106,7 +1107,9 @@ export class TabBarView {
       d.textContent = text;
       return d;
     };
-    card.appendChild(line("tab-hover-title", fullTitle(tab)));
+    // 窄栏看不见组名 ⇒ 组员的悬停卡首行带上（I8：收起后看不见的信息进提示）。
+    const col = folded() && tab.group !== null ? this.prefs.collections.find((c) => c.id === tab.group) : undefined;
+    card.appendChild(line("tab-hover-title", col ? copyText("tabBar.group.memberHint", { group: col.name, title: fullTitle(tab) }) : fullTitle(tab)));
     const where = line("tab-hover-row", machineOf(tab));
     card.appendChild(where);
     if (tab.projectDir) card.appendChild(line("tab-hover-row tab-hover-mono", tab.projectDir));

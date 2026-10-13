@@ -35,6 +35,8 @@ sealed interface IdentityOp {
 class IdentityViewModel(
     private val repo: IdentityRepository,
     private val io: CoroutineDispatcher = Dispatchers.IO, // 可注入，便于 JVM 测试
+    // 导入时派生公钥：生产是 Rust 核心那一份（要 .so）；JVM 单测注入替身（解析本身的判据在 core-ssh 的 androidTest）。
+    private val derive: (ByteArray, String) -> PublicKeyDeriver.Derived? = PublicKeyDeriver::fromPrivatePem,
 ) : ViewModel() {
     val identities: StateFlow<List<Identity>> =
         repo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -109,7 +111,7 @@ class IdentityViewModel(
         // 从 PEM 派生公钥与指纹；派生不出（只贴进了一部分 · 格式认不出 · 带口令）⇒ 当场拒、不存：
         // 存下来也登不进去，而且要到连的那一刻才以「认证方式用尽」的面目出来。keyType 保持 "imported"。
         val derived =
-            PublicKeyDeriver.fromPrivatePem(pem, comment = label.ifBlank { "imported" })
+            derive(pem, label.ifBlank { "imported" })
                 ?: throw UnreadableKey()
         repo.save(
             Identity(

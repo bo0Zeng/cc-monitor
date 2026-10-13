@@ -53,10 +53,13 @@ import { UNTIL_CEILING } from "../../test-support/wall-ceiling";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 
-/** 生产段（剥注释）里匹配 `re` 的文件集合。 */
-function filesMatching(re: RegExp, skip: readonly string[] = []): string[] {
+/** 生成的 typed 命令表（命令名 ⇒ 入参 · 回包的类型）：里面也写着命令名，可它是类型，不是发送点。 */
+const TYPED_MAP = "src/frontend/ui/generated/TypedCommands.ts";
+
+/** 生产段（剥注释）里匹配 `re` 的文件集合（typed 命令表不算）。 */
+function filesMatching(re: RegExp): string[] {
   return productionTsFiles()
-    .filter((f) => !skip.includes(f.file))
+    .filter((f) => f.file !== TYPED_MAP)
     .filter((f) => re.test(stripComments(f.text, "ts")))
     .map((f) => f.file)
     .sort();
@@ -112,13 +115,12 @@ describe("K3 · 列不出 ⇒ 不铸名（三态不许压成两态）", () => {
     }));
   };
 
-  it("★ 问不到 ⇒ mintFreshTmuxName 回 ok:false 且带原因；形状不认 ⇒ 同样不铸；正控：那台铸了 ⇒ 用它铸的", async () => {
+  // 「回了认不得的形状」那一态不在这里判了：`terminal-name-mint` 是 typed 命令，两端形状由握手指纹核过（对不上 monitor 事前就拒，那一句它写好）。
+  it("★ 问不到 ⇒ mintFreshTmuxName 回 ok:false 且带原因；正控：那台铸了 ⇒ 用它铸的", async () => {
     replyMint(null);
     const no = await mintFreshTmuxName("devbox", "/home/u/proj");
     expect(no.ok).toBe(false);
     expect(no.ok ? "" : no.why).not.toBe("");
-    replyMint({ bad: { name: "proj-cc", extra: 1 } });
-    expect((await mintFreshTmuxName("devbox", "/home/u/proj")).ok).toBe(false);
     replyMint("proj-cc-2");
     expect(await mintFreshTmuxName("devbox", "/home/u/proj")).toEqual({ ok: true, name: "proj-cc-2" });
     expect(mintAsks).toEqual([{ origin: "devbox", args: { cwd: "/home/u/proj" } }]);

@@ -120,8 +120,8 @@ impl SessionFate {
 /// 字段私有：帧上这几格只能经 [`ActivityFace::of`] 来，不许哪一处另拼。
 ///
 /// 在跑 ⇒ 运行中 · `now`；在等人 ⇒ 需手动 · `need`；闲着 ⇒ 空闲 · `plain`；一轮停了、后台命令还在跑 ⇒ 后台任务运行中 · `busy`；
-/// 活着、那一家没说在干什么（`None`）⇒ 运行中 · `now`（出口照画，不自己补一种默认）。
-/// 序：等人 0 · 在干活 1 · 后台任务运行中 2 · 闲着 3 · 说不清 4（要人操作的先看）。
+/// 活着、那一家没说在干什么（`None`）⇒ 说不清 · `plain`（出口照画，不自己补一种默认）。
+/// 序：等人 0 · 在干活 1 · 后台任务运行中 2 · 闲着 / 说不清 3（要人操作的先看；序跟着语气走）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ActivityFace {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -155,10 +155,11 @@ impl ActivityFace {
                 Tone::Plain,
                 3,
             ),
+            // 判不出就照实说「状态不明」：不说一句没判出来的「运行中」。语气 plain、序跟着语气走（与闲着同一档）。
             None => (
                 copy_core::copy_text("beSession.activity.unclear", &[]),
-                Tone::Now,
-                4,
+                Tone::Plain,
+                3,
             ),
         };
         ActivityFace {
@@ -166,6 +167,15 @@ impl ActivityFace {
             activity_text: Words(text),
             activity_tone: tone,
             activity_order: order,
+        }
+    }
+
+    /// 宣告时判不出、要等记录读完才判得出的那一刻（这一家没有进程状态文件、此刻在干什么只有记录说）：
+    /// 与「说不清」同一格（`activity` 缺席、语气与序同那一格，界面照它画），字照实说「读记录中」—— 不先说一句读完才会知道真假的。
+    pub(crate) fn reading() -> Self {
+        ActivityFace {
+            activity_text: Words(copy_core::copy_text("beSession.activity.reading", &[])),
+            ..Self::of(None)
         }
     }
 }
@@ -255,6 +265,8 @@ pub use crate::stream::topic::Topic;
 /// 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 message
 /// 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct Unavailable {
     /// 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`）。
     /// ⚠ 它**必须**同时出现在 `commands` 里：本表说的是「接得下但做不到」，
@@ -393,6 +405,11 @@ pub enum Frame {
         /// 空/缺 = 没有把握（旧后端）⇒ 客户端照旧补发、看回话。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         uncancellable: Vec<String>,
+        /// typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：
+        /// 这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算）。客户端拿它自己编进来的那一张比：
+        /// 对得上就直接按类型用，对不上就说「那台后端版本不同」、一个字节不发。没有 typed 命令 ⇒ 省略。
+        #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+        shapes: std::collections::BTreeMap<String, String>,
     },
     /// 会话记录里的一行 —— 带的是**成品**：这一行在界面里是什么（`record`，通用记录 `agents::record::Record`；
     /// 缺 ＝ 不进界面、照占号）与它自己的 `cwd`。解释住后端适配层，monitor 只原样转交。
@@ -468,12 +485,6 @@ pub enum Frame {
         /// 天然从 tail 的 seq 0 起全量到达，无需快照。
         #[serde(skip_serializing_if = "Option::is_none")]
         path: Option<String>,
-        /// Batch8 审计 D-I2（additive）：宣告时 prime 的完整行数 L
-        /// ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend
-        /// 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强）。
-        /// 全量模式 None。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        lines: Option<u64>,
         /// 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，[`ActivityFace`]，平铺在帧上）。
         #[serde(flatten)]
         face: ActivityFace,
@@ -495,6 +506,22 @@ pub enum Frame {
         /// 它在 ↗ 点那一刻从这个 pid 往上找窗口（`bind::bring_local_window`）只能从这一格拿 pid。
         /// 不要它的出口在声明里去掉（`omit: {session_added: ["pid"]}`）。
         pid: u32,
+    },
+    /// 这条会话的记录读完了（宣告之后后台那一趟预读做完）：从这一帧起它的 `line` 帧从第 `lines` 行起、连续地来。
+    ///
+    /// 宣告（`session_added`）不等记录：会话一认出来就报；预读在后台线程池里做，做完才发这一帧。在它之前，这条会话的
+    /// `line` · `turn_end` · `session_runs` · `session_branch` 一帧都不发。`lines` 是此刻那份记录（`path`，同 `session_added`
+    /// 那一格的取法）已计完的完整行数 L —— 客户端补 `[0, L)`（快照）、接实时 `[L, …)`，并拿它核快照拉全了没有。
+    /// 会话没有记录（刚起还没写首行）⇒ 两格都缺：之后的行天然从 0 起全量到。
+    SessionPrimed {
+        /// 会话 id。
+        sid: String,
+        /// 读完的那份记录（修改时刻最新的那份）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        path: Option<String>,
+        /// 那份记录此刻的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        lines: Option<u64>,
     },
     /// Batch9-F27：会话 status 变化（pidfile modify diff；CC 仅状态转换时重写，
     /// 天然稀疏）。远端红绿灯数据源；旧 monitor 未知 kind 忽略（additive）。
@@ -1131,6 +1158,8 @@ impl Frame {
             //
             // 一次差分的结果，别处不存在 —— 这三个正是 B-3 的正题。
             Frame::SessionAdded { .. } => false,
+            // 一次性的「读完了、从第几行起」：没有「下一次必然重发」⇒ 丢了客户端不知道从哪接、也不拉快照。
+            Frame::SessionPrimed { .. } => false,
             Frame::SessionRemoved { .. } => false,
             // 账本的成品：一次裁决的结果，别处没有 ⇒ 不可恢复。
             Frame::SessionState { .. } => false,
@@ -1186,6 +1215,7 @@ impl Frame {
             Frame::SessionBranch { sid, .. } => Some(sid),
             Frame::Hello { .. }
             | Frame::SessionAdded { .. }
+            | Frame::SessionPrimed { .. }
             | Frame::SessionStatus { .. }
             | Frame::SessionState { .. }
             | Frame::SessionRemoved { .. }
@@ -1215,6 +1245,7 @@ impl Frame {
             Frame::Hello { .. } => ("hello", None),
             Frame::Line { session_id, .. } => ("line", Some(session_id.clone())),
             Frame::SessionAdded { sid, .. } => ("session_added", Some(sid.clone())),
+            Frame::SessionPrimed { sid, .. } => ("session_primed", Some(sid.clone())),
             Frame::SessionStatus { sid, .. } => ("session_status", Some(sid.clone())),
             Frame::SessionRemoved { sid, .. } => ("session_removed", Some(sid.clone())),
             Frame::SessionState { sid, .. } => ("session_state", Some(sid.clone())),
@@ -1252,87 +1283,8 @@ impl Frame {
     }
 }
 
-/// base64 的字母表（RFC 4648 §4，标准字母表、带 `=` 补位）。
-const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-/// 不在字母表里的字节在 [`B64_DECODE`] 里的值。
-const NOT_B64: u8 = 0xff;
-
-/// 字节 ⇒ 它在 [`B64`] 里的位置（不在 ⇒ [`NOT_B64`]）：解码每个字符查一次表。
-const B64_DECODE: [u8; 256] = {
-    let mut t = [NOT_B64; 256];
-    let mut i = 0;
-    while i < 64 {
-        t[B64[i] as usize] = i as u8;
-        i += 1;
-    }
-    t
-};
-
-/// 链路字节进 JSON 串的编码（`link_data` 帧 / `link-data` 命令的 `data`）。
-///
-/// ⚠ **为什么手写而不加一条依赖**：本 crate 每加一条依赖都要过 `readonly_guard` 的依赖签字，
-/// 而这一段是 20 行、无状态、有 RFC 4648 §10 的七条标准向量可对拍
-/// （`wire_tests::b64_matches_the_rfc_4648_test_vectors` 与 monitor 侧那一份的判据
-/// **各拿同一组 RFC 向量**核自己 —— 异源是 RFC，不是对面的实现）。
-pub fn b64_encode(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
-    for chunk in bytes.chunks(3) {
-        let b = [
-            chunk[0],
-            chunk.get(1).copied().unwrap_or(0),
-            chunk.get(2).copied().unwrap_or(0),
-        ];
-        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
-        for i in 0..4 {
-            if i <= chunk.len() {
-                out.push(char::from(B64[((n >> (18 - 6 * i)) & 63) as usize]));
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
-}
-
-/// [`b64_encode`] 的逆。**严格**：长度不是 4 的倍数、字母表外的字符、补位不在末尾 ⇒ `Err`
-/// （坏的就是坏的，不猜）。
-pub fn b64_decode(text: &str) -> Result<Vec<u8>, String> {
-    let s = text.as_bytes();
-    if s.len() % 4 != 0 {
-        return Err(crate::common::contract::malformed(&format!(
-            "base64 length {s_count} is not a multiple of 4",
-            s_count = s.len()
-        )));
-    }
-    let val = |c: u8| -> Option<u32> {
-        (B64_DECODE[usize::from(c)] != NOT_B64).then(|| u32::from(B64_DECODE[usize::from(c)]))
-    };
-    let mut out = Vec::with_capacity(s.len() / 4 * 3);
-    let quads = s.len() / 4;
-    for (qi, q) in s.chunks(4).enumerate() {
-        let pad = q.iter().rev().take_while(|&&c| c == b'=').count();
-        if pad > 2 || (pad > 0 && qi + 1 != quads) {
-            return Err(crate::common::contract::malformed(
-                "base64 padding is not at the end",
-            ));
-        }
-        let mut n: u32 = 0;
-        for &c in &q[..4 - pad] {
-            let v = val(c).ok_or_else(|| {
-                crate::common::contract::malformed(&format!(
-                    "base64 has a character outside the alphabet: {char:?}",
-                    char = char::from(c)
-                ))
-            })?;
-            n = (n << 6) | v;
-        }
-        n <<= 6 * pad as u32;
-        let bytes = [(n >> 16) as u8, (n >> 8) as u8, n as u8];
-        out.extend_from_slice(&bytes[..3 - pad]);
-    }
-    Ok(out)
-}
+/// 链路字节进 JSON 串的编码与它的逆：住拨号核心那一份（`ssh_dial::b64`；那边的 files 一问一答也用它，两处只许一份）。
+pub use ssh_dial::b64::{b64_decode, b64_encode};
 
 impl Frame {
     /// **推出去那一下**按这条流看的那一台的时区写钟面（`main.rs::writer_task` 对出方向每一帧调它；应答在答的那一下已按请求的 `tz` 写好）：
@@ -1524,6 +1476,11 @@ impl SeqCounter {
     /// 调用方先发 `session_file_reread` 再发重读出来的行（下游据它把这个会话的旧号整份作废）。
     pub fn restart(&mut self, path: &str) {
         self.next.remove(path);
+    }
+
+    /// 预读交回时装回计数：这份文件已计完 `n` 行（下一个分配的 seq 就是 `n`）。
+    pub fn set(&mut self, path: &str, n: u64) {
+        self.next.insert(path.to_string(), n);
     }
 
     /// Return the current seq for `path`, then bump it by one.

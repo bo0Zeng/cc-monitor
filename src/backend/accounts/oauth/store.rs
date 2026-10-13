@@ -1,4 +1,8 @@
-//! 那个号的凭据文件：读 · 续期时的锁 · 整份原子写回。只碰这一份文件与那两把锁目录。
+//! 那个号的凭据文件：读 · 续期时的锁 · 整份原子写回。只碰这一份文件与那几把锁目录。
+//!
+//! **写这份文件只有一处**（[`rewrite`]）：在那一家整份写时拿的那把锁里（`LoginFace::write_lock`）重读盘 → 调用方看此刻的样子
+//! 决定写什么（写前比对就在这一步）→ 整份原子写。续期写回、各号之间同步 MCP 登录都经它；那一家自己存盘也拿同一把、也在锁里重读，
+//! 所以两边谁都不会拿一份旧的整份盖掉对方刚写进去的那一格。写锁有人持着 ⇒ 当场答 `Busy`，不等。
 //!
 //! 锁与那个号自己的 claude 用同一套（这样两边不会同时拿同一个刷新令牌去续）：
 //! 配置目录里那一把（`<目录>/<inside>`）＋ 配置目录旁边那一把（`<目录><beside>`），都是 `mkdir` 成功即持有、`rmdir` 即放；
@@ -26,7 +30,11 @@ pub(crate) fn creds_path(dir: &Path, face: &LoginFace) -> PathBuf {
 }
 
 pub(crate) fn read(dir: &Path, face: &LoginFace) -> Read {
-    crate::common::own_state::read_bytes(&creds_path(dir, face), MAX_BYTES).and_then(|b| {
+    read_at(&creds_path(dir, face))
+}
+
+fn read_at(path: &Path) -> Read {
+    crate::common::own_state::read_bytes(path, MAX_BYTES).and_then(|b| {
         match serde_json::from_slice::<Value>(&b) {
             Ok(Value::Object(m)) => Read::Present(m),
             Ok(_) => Read::Unreadable(copy_text("beOauthStore.read.notObject", &[]).into()),
@@ -48,7 +56,13 @@ pub(crate) struct Reclaimed(pub(crate) Vec<&'static str>);
 
 /// 这个号的凭据窄句柄（从写句柄铸；能写的只有那份凭据文件与那两把续期锁目录）。
 pub(crate) fn creds_of(own: &Own, dir: &Path, face: &LoginFace) -> Result<AccountCreds, Said> {
-    own.account_creds(dir, face.creds_file, face.lock_inside, face.lock_beside)
+    own.account_creds(
+        dir,
+        face.creds_file,
+        face.lock_inside,
+        face.lock_beside,
+        face.write_lock,
+    )
 }
 
 /// 在续期锁里做一件事：跨进程锁（配置目录）→ 里面那一把 → 旁边那一把 → `work`（收那把跨进程锁，写回要它）→ 守卫倒序放掉。
@@ -58,15 +72,25 @@ pub(crate) fn with_refresh_lock<T>(
     work: impl FnOnce(&Reclaimed, &CredsLock) -> T,
 ) -> Result<Locked<T>, Said> {
     let held = creds.lock()?;
-    let stale = Duration::from_millis(face.lock_stale_ms);
+    let stale = face.lock_stale_ms;
     let mut reclaimed = Reclaimed::default();
-    let Some(_inside) = take(creds, RenewLock::Inside, stale, "里面那把", &mut reclaimed)?
+    let Some(_inside) = take(
+        creds,
+        RenewLock::Inside,
+        stale,
+        Some(("里面那把", &mut reclaimed)),
+    )?
     else {
         return Ok(Locked::Busy);
     };
-    let _beside = match creds.lock_path(RenewLock::Beside) {
+    let _beside = match creds.lock_path(&RenewLock::Beside) {
         None => None,
-        Some(_) => match take(creds, RenewLock::Beside, stale, "旁边那把", &mut reclaimed)? {
+        Some(_) => match take(
+            creds,
+            RenewLock::Beside,
+            stale,
+            Some(("旁边那把", &mut reclaimed)),
+        )? {
             Some(g) => Some(g),
             None => return Ok(Locked::Busy),
         },
@@ -74,16 +98,55 @@ pub(crate) fn with_refresh_lock<T>(
     Ok(Locked::Held(work(&reclaimed, &held)))
 }
 
+/// 续某一条登录（`key`）时那一家拿的那把锁里做一件事：跨进程锁（配置目录）→ 那一把 → `work`（收那把跨进程锁，写要它）。
+/// 那一把有人持着（那个号自己的 claude 正在续这一条）⇒ `Busy`：它续完存盘会再来一个文件事件，到时再同步。
+pub(crate) fn with_entry_lock<T>(
+    creds: &AccountCreds,
+    entries: &crate::agents::EntryLogins,
+    key: &str,
+    work: impl FnOnce(&CredsLock) -> T,
+) -> Result<Locked<T>, Said> {
+    let held = creds.lock()?;
+    let which = RenewLock::OneLogin((entries.renew_lock)(key));
+    let Some(_entry) = take(creds, which, entries.renew_lock_stale_ms, None)? else {
+        return Ok(Locked::Busy);
+    };
+    Ok(Locked::Held(work(&held)))
+}
+
+/// 在那一家的整份写锁里改这份凭据文件（见模块头注）：拿写锁（登记了的话）→ 重读盘 → `edit` 看此刻的样子，
+/// 回 `(Some(新的整份), r)` ⇒ 整份原子写；`(None, r)` ⇒ 不写 → 放锁。写锁有人持着 ⇒ `Busy`（一个字节不写）。
+/// `held` 是配置目录那把跨进程锁（续期锁 / 那一条的续期锁里拿到的那一把）。
+pub(crate) fn rewrite<T>(
+    creds: &AccountCreds,
+    face: &LoginFace,
+    held: &CredsLock,
+    edit: impl FnOnce(Read) -> (Option<Map<String, Value>>, T),
+) -> Result<Locked<T>, Said> {
+    let _write = match creds.lock_path(&RenewLock::Write) {
+        None => None,
+        Some(_) => match take(creds, RenewLock::Write, face.write_lock_stale_ms, None)? {
+            Some(g) => Some(g),
+            None => return Ok(Locked::Busy),
+        },
+    };
+    let (doc, r) = edit(read_at(creds.file()));
+    if let Some(doc) = doc {
+        write_doc(creds, held, &doc)?;
+    }
+    Ok(Locked::Held(r))
+}
+
 /// 持着的一把 `mkdir` 锁：守卫离开作用域就放（正常返回 · 提前返回 · panic 都走这里）。
 struct Hold<'a>(&'a AccountCreds, RenewLock);
 
 impl Drop for Hold<'_> {
-    /// 放不掉要留一行日志：那把锁会一直挡着那个号自己的 claude 续期，直到它过期被收回。
+    /// 放不掉要留一行日志：那把锁会一直挡着那个号自己的 claude 续期 / 存盘，直到它过期被收回。
     fn drop(&mut self) {
-        if let Err(e) = self.0.drop_lock(self.1) {
+        if let Err(e) = self.0.drop_lock(&self.1) {
             let shown = self
                 .0
-                .lock_path(self.1)
+                .lock_path(&self.1)
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
             tracing::warn!("[oauth] {shown}: {e}");
@@ -91,30 +154,34 @@ impl Drop for Hold<'_> {
     }
 }
 
-/// 拿一把 `mkdir` 锁：建成 ⇒ 持有；已在而修改时刻早过 `stale` ⇒ 删了重拿（记进 `reclaimed`）；否则别人持着 ⇒ `None`。
+/// 拿一把 `mkdir` 锁：建成 ⇒ 持有；已在而修改时刻早过 `stale_ms` 毫秒 ⇒ 删了重拿（给了 `reclaimed` 就把那个名字记进去）；
+/// 否则别人持着 ⇒ `None`。
 fn take<'a>(
     creds: &'a AccountCreds,
     which: RenewLock,
-    stale: Duration,
-    name: &'static str,
-    reclaimed: &mut Reclaimed,
+    stale_ms: u64,
+    reclaimed: Option<(&'static str, &mut Reclaimed)>,
 ) -> Result<Option<Hold<'a>>, Said> {
-    if make(creds, which)? {
+    let stale = Duration::from_millis(stale_ms);
+    if make(creds, &which)? {
         return Ok(Some(Hold(creds, which)));
     }
     let age = creds
-        .lock_path(which)
-        .and_then(|p| Ro::metadata(p).and_then(|m| m.modified()).ok())
+        .lock_path(&which)
+        .and_then(|p| Ro::metadata(&p).and_then(|m| m.modified()).ok())
         .and_then(|t| crate::common::time::now().duration_since(t).ok());
-    if !age.is_some_and(|a| a > stale) || creds.drop_lock(which).is_err() || !make(creds, which)? {
+    if !age.is_some_and(|a| a > stale) || creds.drop_lock(&which).is_err() || !make(creds, &which)?
+    {
         return Ok(None);
     }
-    reclaimed.0.push(name);
+    if let Some((name, r)) = reclaimed {
+        r.0.push(name);
+    }
     Ok(Some(Hold(creds, which)))
 }
 
 /// `mkdir`：建成 ⇒ `true`；已在 ⇒ `false`。
-fn make(creds: &AccountCreds, which: RenewLock) -> Result<bool, Said> {
+fn make(creds: &AccountCreds, which: &RenewLock) -> Result<bool, Said> {
     creds.make_lock(which).map_err(|e| {
         Said::with_raw(
             copy_text(
@@ -135,12 +202,8 @@ fn make(creds: &AccountCreds, which: RenewLock) -> Result<bool, Said> {
     })
 }
 
-/// 整份原子写回（只在续期锁里调：`held` 是那把跨进程锁；出生即只给本人 → 写满 → 原子挪过去）。
-pub(crate) fn write_tokens(
-    creds: &AccountCreds,
-    held: &CredsLock,
-    doc: &Map<String, Value>,
-) -> Result<(), Said> {
+/// 整份原子写（只经 [`rewrite`]：`held` 是那把跨进程锁；出生即只给本人 → 写满 → 原子挪过去）。
+fn write_doc(creds: &AccountCreds, held: &CredsLock, doc: &Map<String, Value>) -> Result<(), Said> {
     let body = serde_json::to_vec(&Value::Object(doc.clone())).map_err(|e| {
         Said::with_raw(
             copy_text(

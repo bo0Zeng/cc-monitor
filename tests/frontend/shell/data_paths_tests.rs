@@ -212,6 +212,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
             "file",
         ),
         row("launch-pending/", h.join(rr::LAUNCH_NOTES_DIR_REL), "dir"),
+        row("answer-plugin/", h.join(rr::ANSWER_PLUGIN_DIR_REL), "dir"),
         row("known_hosts", h.join(rr::KNOWN_HOSTS_REL), "file"),
         row("accounts/", h.join(rr::ACCOUNTS_DIR_REL), "dir"),
         row("accounts-mcp.json", h.join(rr::ACCOUNTS_MCP_REL), "file"),
@@ -228,6 +229,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
                 .to_path_buf(),
             "dir",
         ),
+        row("cache/skeleton/", h.join(rr::SKELETON_DIR_REL), "dir"),
         row("backups/", h.join(rr::EXT_BACKUPS_DIR_REL), "dir"),
     ];
     assert_eq!(got, want);

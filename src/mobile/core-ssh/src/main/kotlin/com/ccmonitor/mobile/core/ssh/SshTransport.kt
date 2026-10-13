@@ -1,6 +1,5 @@
 package com.ccmonitor.mobile.core.ssh
 
-import com.ccmonitor.mobile.core.remote.RemoteDuplex
 import com.ccmonitor.mobile.core.remote.RemoteExecutor
 import kotlinx.coroutines.flow.Flow
 import java.io.Closeable
@@ -19,7 +18,7 @@ interface SshTransport :
     val isConnected: Boolean
 
     /**
-     * 活性探测。[isConnected] 只读 sshj 本地标志，死 TCP 在内核超时前仍是 true，复用连接前要真走一次往返。
+     * 活性探测。[isConnected] 只读本地标志，死 TCP 在内核超时前仍是 true，复用连接前要真走一次往返。
      * 默认实现就是 [isConnected]；[SshConnection] 实现为开关一次 session，超过 [timeoutMs] 判死并关整条连接。
      * [timeoutMs] 不设默认值，由调用方显式传。
      */
@@ -43,8 +42,11 @@ interface SshTransport :
 
     fun execStream(command: String): Flow<ByteArray>
 
-    /** 双向长 exec：stdin 写得进、stdout 读得出（常驻流 `--resident-attach` 用它）。 */
-    suspend fun execDuplex(command: String): RemoteDuplex
+    /**
+     * 这条连接的拨号身份那一份请求（JSON，不带用法）：常驻流在嵌的核心里，核心照它在同一条连接上开自己的链路。
+     * 没连着 · 不是走核心的传输 ⇒ `null`。
+     */
+    val dialRequest: String? get() = null
 
     suspend fun sftpList(path: String = "."): List<SftpEntry>
 

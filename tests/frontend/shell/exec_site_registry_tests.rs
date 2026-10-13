@@ -63,7 +63,7 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    `K-R72` / `K-R104` / `K-R112` 那几笔：那两处的一次性 SSH exec 整条没了
     //    （改走长连接的 `history-read` / `history-tail`，`frame_query`）
     //    ⇒ 它们不再是「远端执行点」。
-    // `stream_source/` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，`remote_resident::attach`）。
+    // `stream_source/` 起远端流模式那一处出去了：那一形删了（远端只剩常驻，接它的是重连循环 `resident_client::feed`）。
     // `tmux.rs / list_remote_tmux` 出去了：列会话改问那台后端 `tmux-list`。
     // ── 只转发，不构造（命令来自调用方）
     // `stream_source/` 那一行（原语自己的定义）出去了：最后一个调用方（公钥推送）进了本机后端，原语随之删了
@@ -307,8 +307,8 @@ enum StillShell {
 }
 
 const STILL_SHELL: &[(&str, &str, StillShell, &str)] = &[
-    ("remote_resident.rs", "ensure", StillShell::Bootstrap,
-     "起 / 找那台的**常驻后端本身**（`--resident-ensure`）—— 接上它之前没有后端可问"),
+    ("run.rs", "capture", StillShell::Bootstrap,
+     "起 / 找 / 换那台的**常驻后端本身**（`--resident-ensure [--replace]`，重连循环经 `DeskLink::capture` 发）—— 接上它之前没有后端可问"),
     ("remote_resident.rs", "stop", StillShell::Bootstrap,
      "停那台的常驻后端（`--resident-stop`）—— 不能请被停的那一位自己经它那条流停自己（流随之断、答不回来）"),
     // `sftp.rs` 那一行（部署后端之前扫落点那一份的身份戳）摘了：身份判定进了本机常驻后端（`deploy-plan` 沿池里那条 SSH 自己扫）。
@@ -349,10 +349,10 @@ fn still_shell_population() -> std::collections::BTreeSet<(String, String)> {
 fn every_remaining_dial_shell_says_why_it_is_not_a_backend_command() {
     let found = still_shell_population();
     // 正控：人群里真有东西（起那台常驻后端那一问必在）—— 抽取器坏了会拿空集比。
-    // 原来认 `byte_table.rs` 那一处（问 `uname`），那一问进了后端 ⇒ 换认 `remote_resident.rs::ensure`。
+    // 原来认 `byte_table.rs` 那一处（问 `uname`），那一问进了后端 ⇒ 换认起常驻那一问（`stream_source/run.rs` 的 `DeskLink::capture`）。
     assert!(
-        found.contains(&("remote_resident.rs".to_string(), "ensure".to_string())),
-        "抽取器没认出 `remote_resident.rs::ensure` —— 本条此刻在空转：{found:?}"
+        found.contains(&("run.rs".to_string(), "capture".to_string())),
+        "抽取器没认出 `stream_source/run.rs` 的 `DeskLink::capture` —— 本条此刻在空转：{found:?}"
     );
     let want: std::collections::BTreeSet<(String, String)> = STILL_SHELL
         .iter()

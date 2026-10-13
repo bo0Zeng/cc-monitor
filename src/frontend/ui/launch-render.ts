@@ -4,20 +4,17 @@
  * - `launch-render-cli` —— 那台机器要跑的那一行（远端每一条 · 本机就地 resume 键入的那一行）；渲不出来是拒；
  * - `launch-local` —— 本机起会话那一行 ＋ 身份 token，开窗口交 monitor（`open_local_terminal`）。
  *
- * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做。本文件只做调用方那一侧：发请求 · 按形状收（多一格缺一格都不收）·
- * 失败说成一句（`control-said.ts::settle`）。
+ * 环境、中转地址、身份标记由那台机器上的 `ccm` 自己做。本文件只做调用方那一侧：发请求 · 失败说成一句（`control-said.ts::settleTyped`）。
  */
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody } from "./ipc/chan-caller";
-import { machineName, settle, unreadable, type Refusals } from "./control-said";
-import { exactKeys, isObj } from "./ipc/decode";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { machineName, settleTyped, type Refusals } from "./control-said";
 import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { openLocalTerminal } from "./terminal-open";
 import { defaultLauncherOf } from "./agent-profile";
 import type { CliRenderRequest, CliRendered } from "./launch-cli-wire";
 import type { AccountAsk } from "./generated/AccountAsk";
-import type { LaunchedAccount } from "./generated/LaunchedAccount";
+import type { Rendered } from "./generated/Rendered";
 import { copyText } from "./copy-table";
 
 /** 渲染是纯函数（本机那条多问一次目录在不在）；这个期限只挡「那台后端没在答」。 */
@@ -31,29 +28,11 @@ function refusals(origin: Origin): Refusals {
   };
 }
 
-/** 应答里 `account` 那一格：`null` 或 `{name, configDir, model}`。 */
-function launchedOf(v: unknown): LaunchedAccount | null | undefined {
-  if (v === null) return null;
-  return isObj(v) &&
-    exactKeys(v, ["name", "configDir", "model"]) &&
-    typeof v.name === "string" &&
-    typeof v.configDir === "string" &&
-    (v.model === null || typeof v.model === "string")
-    ? (v as unknown as LaunchedAccount)
-    : undefined;
-}
-
-/** 那一行 `ccm …` ＋ 那台判出来实际用的号。通道 / 形状上的失败与那台后端的拒都抛（[`ControlError`]；
- *  要的号选不了 ⇒ `launch-account.ts::accountUnavailableOf` 认得出）。 */
+/** 那一行 `ccm …` ＋ 那台判出来实际用的号（typed 帧命令：回包类型从 Rust 生成，形状由握手指纹核过）。通道上的失败与那台后端的拒都抛
+ *  （[`ControlError`]；要的号选不了 ⇒ `launch-account.ts::accountUnavailableOf` 认得出）。 */
 export async function renderCli(origin: Origin, req: CliRenderRequest): Promise<CliRendered> {
-  const body = jsonBody({ ...req });
   const budget = budgetWithin(RENDER_BUDGET_MS);
-  const v = await settle(origin, "launch-render-cli", chan.call(origin, "launch-render-cli", body, budget), refusals(origin));
-  const account = isObj(v) ? launchedOf(v.account) : undefined;
-  if (!isObj(v) || !exactKeys(v, ["cmd", "account"]) || typeof v.cmd !== "string" || v.cmd === "" || account === undefined) {
-    throw unreadable(origin, "launch-render-cli", "cmd/account");
-  }
-  return { cmd: v.cmd, account };
+  return settleTyped(origin, "launch-render-cli", callTyped(origin, "launch-render-cli", req, budget), refusals(origin));
 }
 
 /** 本机起会话那一问的动作（新起走 `session-new` 那一个请求，不经这里）。 */
@@ -72,10 +51,7 @@ export interface LocalLaunchRequest {
 }
 
 /** 本机后端出的成品：要在新终端里跑的那一行 ＋ 实际用的号。 */
-export interface LocalLaunchPlan {
-  cmd: string;
-  account: LaunchedAccount | null;
-}
+export type LocalLaunchPlan = Rendered;
 
 /** 问本机后端要这次拉起的那一行（不开窗口）。拒 ⇒ 抛。 */
 export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLaunchPlan> {
@@ -88,20 +64,8 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
     tmuxName: req.tmuxName,
     defaultLauncher: defaultLauncherOf(req.agent),
   };
-  const body = jsonBody(args);
   const budget = budgetWithin(RENDER_BUDGET_MS);
-  const v = await settle(LOCAL_ORIGIN, "launch-local", chan.call(LOCAL_ORIGIN, "launch-local", body, budget), refusals(LOCAL_ORIGIN));
-  const account = isObj(v) ? launchedOf(v.account) : undefined;
-  if (
-    !isObj(v) ||
-    !exactKeys(v, ["cmd", "account"]) ||
-    typeof v.cmd !== "string" ||
-    v.cmd === "" ||
-    account === undefined
-  ) {
-    throw unreadable(LOCAL_ORIGIN, "launch-local", "cmd/account");
-  }
-  return { cmd: v.cmd, account };
+  return settleTyped(LOCAL_ORIGIN, "launch-local", callTyped(LOCAL_ORIGIN, "launch-local", args, budget), refusals(LOCAL_ORIGIN));
 }
 
 /** 本机起一个会话：问本机后端要那一行，交 monitor 在 `cwd` 开一个终端窗口跑它。回那份成品（`preflight` 说不起 ⇒ `null`，没开窗）。

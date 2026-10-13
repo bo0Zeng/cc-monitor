@@ -53,11 +53,8 @@ fn the_backend_frame_dispatch_has_no_catch_all_arm() {
         "只扫到 {arms} 条 `Some(InboundFrame::` 臂（08-06 实测 9）—— 抽取坏了，本条此刻是空转的"
     );
     // 豁免登记（**默认拒绝**：不在这张表里的兜底臂一律红）。按**函数名**登记，不按行号。
-    const ALLOWED: &[(&str, &str)] = &[(
-        "route_inbound_frame",
-        "它上面紧挨着另一条 match，已用具名臂 `other =>` 把非入方向帧拦下并 `warn!` \
-             报了身份（E4）。到这条 match 时只可能是 Reply/Cancelled，兜底臂不可达，不吞新帧。",
-    )];
+    // 豁免表空了：从前豁免的那条应答路由 match 随重连循环搬进 `resident-client`（`feed.rs::route`，按 `kind` 字串分，不是帧类型）。
+    const ALLOWED: &[(&str, &str)] = &[];
     let fn_of = |line_no: usize| -> String {
         lines[..line_no.min(lines.len())]
             .iter()
@@ -115,11 +112,11 @@ fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
     // 『只扫到 0 条臂』」。那个 `arms >= 8` 的地板**这一次恰好承重**（缩水到 908 行
     // 之后臂数归零），但它是**地板** —— 只在归零方向上咬人。
     // ⇒ 这条把「那条分派与它的豁免函数都还在扫描面里」钉成逐针的事：
-    //    第一条 `Some(InboundFrame::` 臂在 2553 行、`fn route_inbound_frame(` 在 2761 行。
+    //    第一条 `Some(InboundFrame::` 臂与它所在的 `async fn dispatch(` 都在第一个测试模块之后。
     guard_core::assert_stripper_keeps(
         "stream_source::frame_dispatch_shape",
         &crate::guard_support::stream_source_raw(),
-        &["Some(InboundFrame::", "fn route_inbound_frame("],
+        &["Some(InboundFrame::", "async fn dispatch("],
     );
 }
 
@@ -131,7 +128,7 @@ fn the_remote_stream_hands_tap_frames_to_the_session_tap_with_its_own_origin() {
     let arm = prod
         .lines()
         .find(|l| l.trim_start().starts_with("Some(InboundFrame::Tap(t)) =>"))
-        .expect("stream_loop 里找不到 Tap 那一臂");
+        .expect("dispatch 里找不到 Tap 那一臂");
     assert!(
         arm.contains("crate::session_tap::deliver(&host_label, t)"),
         "远端流的 tap 帧没交 session_tap（或 origin 不是这台）：{arm}"

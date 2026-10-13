@@ -143,8 +143,16 @@ export class TabMenu {
     private readonly actions: TabSessionActions,
   ) {}
 
-  /** 右键一个标签页（开在指针底下）或锚在一颗按钮上（行尾 / 会话头「更多」）⇒ 组这一代菜单、开、再把要问那台的几格发出去。 */
-  open(e: MouseEvent | HTMLElement, sid: string, extra: readonly MenuItem[] = []): void {
+  /**
+   * 会话头借这份菜单里的一项画成一颗按钮（ui3「会话头按钮」：字、能不能点、点了做什么都是这一项，不另写一份）。
+   * 这个会话此刻没有这一项 ⇒ `null`。只给同步就定下来的那几项（在新窗口打开 · 账号 · 固定 · 分组 · 恢复 · 关闭标签页）。
+   */
+  itemFor(sid: string, id: "popOut" | "account" | "pin" | "group" | "resume" | "close"): MenuItem | null {
+    return this.build(sid).items.find((i) => i.id === id && !i.divider) ?? null;
+  }
+
+  /** 这个标签页的菜单项（右键与会话头「⋯」同一份；要问那台的几格先画成转圈）。 */
+  private build(sid: string): { items: MenuItem[]; t: Tab | undefined; unseen: boolean; remote: string | null; local: boolean } {
     const t = this.host.tab(sid);
     const unseen = t?.state.liveness === "unseen";
     const unseenWhy = t && unseen ? copyText("tabMenu.unseen.why", { machine: machineName(t.origin) }) : undefined;
@@ -154,7 +162,7 @@ export class TabMenu {
     const items: MenuItem[] = [];
 
     // ① 看它
-    items.push({ icon: "popOut", label: copyText("tabMenu.open.openInWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
+    items.push({ id: "popOut", icon: "popOut", label: copyText("tabMenu.open.openInWindow"), detail: keyOf("tab.pop-out"), onClick: () => void this.actions.openInNewWindow(sid) });
     if (t?.projectDir) items.push({ icon: "folder", label: copyText("tabMenu.open.cwd"), detail: keyOf("tab.open-cwd"), onClick: () => this.host.openCwd(sid) });
     if (t && hasTerminal(t.state) && terminalFrontAvailable()) {
       items.push({ icon: "front", label: copyText("tabMenu.open.front"), detail: keyOf("terminal.bring-front"), onClick: () => this.host.front(sid) });
@@ -165,13 +173,14 @@ export class TabMenu {
     items.push({ label: "", divider: true });
     if (t && this.host.pinnedLoaded()) {
       items.push({
+        id: "pin",
         icon: "pin",
         label: t.pinned ? copyText("tabMenu.pin.unpin") : copyText("tabMenu.pin.pin"),
         title: t.pinned ? copyText("sessionState.pin.unpinHint") : copyText("sessionState.pin.pinHint"),
         onClick: () => this.host.togglePin(sid),
       });
     }
-    if (this.host.collectionsLoaded()) items.push({ icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
+    if (this.host.collectionsLoaded()) items.push({ id: "group", icon: "list", label: copyText("tabMenu.collection.add"), submenu: this.groupItems([sid]) });
 
     // ③ 恢复 · 在终端里打开 · 账号
     items.push({ label: "", divider: true });
@@ -190,6 +199,7 @@ export class TabMenu {
     if (t) {
       const closable = isResumeOnly(t.state);
       items.push({
+        id: "close",
         icon: "close",
         label: copyText("tabMenu.item.close"),
         enabled: closable,
@@ -203,10 +213,20 @@ export class TabMenu {
       items.push({ label: "", divider: true });
       items.push(grey({ id: "kill", icon: "failed", label: copyText("tabMenu.kill.label"), danger: true, pending: true }));
     }
-    // 会话头「⋯」多出来的那几个开关（流的开关，不归那台机器能不能做）。
-    if (extra.length > 0) items.push({ label: "", divider: true }, ...extra);
     // 那台握手时说过做不到的那几项置灰（事实住 monitor 那份 `Offer`）。
-    const shown = tidyDividers(t ? items.map((i) => gateByOffer(t.origin, i)) : items);
+    return { items: t ? items.map((i) => gateByOffer(t.origin, i)) : items, t, unseen, remote, local };
+  }
+
+  /**
+   * 右键一个标签页（开在指针底下）或锚在一颗按钮上（行尾 / 会话头「更多」）⇒ 组这一代菜单、开、再把要问那台的几格发出去。
+   * 会话头「⋯」多交两组：`top` ＝ 会话头放不下收进来的（排最上面）；`bottom` ＝ 流的开关 ＋「调整会话头按钮…」（排最后）。
+   */
+  open(e: MouseEvent | HTMLElement, sid: string, extra: { top?: readonly MenuItem[]; bottom?: readonly MenuItem[] } = {}): void {
+    const { items: base, t, unseen, remote, local } = this.build(sid);
+    const items = [...(extra.top ?? []), ...base];
+    // 会话头「⋯」多出来的那几个开关（流的开关，不归那台机器能不能做）。
+    if (extra.bottom && extra.bottom.length > 0) items.push({ label: "", divider: true }, ...extra.bottom);
+    const shown = tidyDividers(items);
     openMenu(e instanceof HTMLElement ? { el: e, align: "end" } : { x: e.clientX, y: e.clientY }, shown);
     if (unseen) return;
     if (remote !== null && t) void this.resolveRemoteTmuxItems(remote, sid, fullTitle(t));

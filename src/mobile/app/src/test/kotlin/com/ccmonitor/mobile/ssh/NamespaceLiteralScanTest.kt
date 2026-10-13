@@ -15,7 +15,7 @@ import java.io.File
  * | # | 问什么 |
  * |---|---|
  * | ① | `.aterm` 与 `atermpipe-` 两个字面在生产代码里一次都不出现 |
- * | ② | `.cc-monitor` 只出现在 `BackendBin`（部署落点）那一处 |
+ * | ② | `.cc-monitor` 一次都不出现（后端落点在嵌的核心里拼，桌面同一份） |
  *
  * 注意：一条读别的模块源文件的判据，必须住在那个 task 的输入涵盖得到的地方。放在 `core-claude` 里的话，
  * 改 `app/` 下的文件不会让 `:core-claude:test` 重跑（它照样 `UP-TO-DATE`），判据就成了恒绿。
@@ -51,31 +51,20 @@ class NamespaceLiteralScanTest {
     }
 
     /**
-     * `.cc-monitor` 这个字面在生产代码里只许出现在 `BackendBin`：那里它是 `"$HOME"/.cc-monitor/bin/ccm`，
-     * 拼后端命令只在那一处，手机不往后端的名字空间写别的东西。
-     *
-     * 定值钉：多一个文件红（有人往后端名字空间伸手了），少一个也红（落点挪窝，要重新过眼）。
+     * `.cc-monitor` 这个字面在 Kotlin 生产代码里一次都不出现：后端落点 `"$HOME"/.cc-monitor/bin/ccm` 只在嵌的核心里拼
+     * （`resident-client`，桌面同一份），手机不往后端的名字空间写任何东西。判别力押在扫描器自检上（真字面一定认得出）。
      */
     @Test
-    fun theCcMonitorLiteralOnlyLivesInBackendBin() {
+    fun theCcMonitorLiteralAppearsNowhere() {
         val root = repoRoot()
         val sources = productionSources(root)
         assertTrue("前提：得真扫到源文件，否则这条是空跑（实得 ${sources.size} 个）", sources.size > 100)
-
-        val found = sortedSetOf<String>()
-        var hits = 0
+        val found = sortedMapOf<String, Int>()
         for (f in sources) {
             val n = countLiteral(codeOnly(f.readText()), CC_MONITOR)
-            hits += n
-            if (n > 0) found += f.relativeTo(root).invariantSeparatorsPath
+            if (n > 0) found[f.relativeTo(root).invariantSeparatorsPath] = n
         }
-        assertTrue("前提：`$CC_MONITOR` 整份语料一次都没命中 ⇒ 扫描器瞎了、这条判据恒绿", hits > 0)
-        assertEquals(
-            "`$CC_MONITOR` 是后端的名字空间：我们只读、绝不写。" +
-                "合法住处只有 `BackendBin`（部署落点）。",
-            PINNED_CC_MONITOR_FILES,
-            found.toSet(),
-        )
+        assertEquals("`$CC_MONITOR` 是后端的名字空间：落点在嵌的核心里拼，Kotlin 这一侧不碰。", emptyMap<String, Int>(), found.toMap())
     }
 
     /**
@@ -166,13 +155,5 @@ class NamespaceLiteralScanTest {
         private const val DOT_ATERM = ".aterm"
         private const val PIPE_PREFIX = "atermpipe-"
         private const val CC_MONITOR = ".cc-monitor"
-
-        /**
-         * 定值钉：`.cc-monitor` 的合法住处——`BackendBin`（部署落点 `~/.cc-monitor/bin/ccm`，拼后端命令只在那里）。
-         */
-        private val PINNED_CC_MONITOR_FILES =
-            setOf(
-                "core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/OneShot.kt",
-            )
     }
 }

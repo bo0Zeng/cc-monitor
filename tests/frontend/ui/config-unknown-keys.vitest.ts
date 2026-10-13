@@ -85,6 +85,7 @@ const CENSUS: readonly string[] = [
   "remote", // src/frontend/ui/remote-config.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
   "tabCollections", // src/frontend/ui/tab-collections.ts
+  "sessionHead", // src/frontend/ui/session-head.ts（会话头按钮）
   "contextLimits", // src/frontend/ui/usage-hud.ts（只读）
   "autoFollowUserActive", // ── src/frontend/ui/behavior.ts 那一族 ──
   "bringMonitorToFrontOnUserActive",
@@ -212,7 +213,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     // 9 → 10：补上 `src/frontend/shell/src/logging.rs`（`diagnostics` 那一键的主人，Rust 写的）。多的就是它这一个。
     // 10 → 11：补上 `src/frontend/ui/local-machine-prefs.ts`（本机那一格恢复命令覆盖 `localResumeCommand` 的主人）。
     // 11 → 12：`terminal` 那一键（设置 → 通用 → 恢复 → 终端，`src/frontend/ui/settings/terminal-row.ts`）。
-    expect(owners.size, `主人 ${owners.size} 个（现打 12）`).toBe(12);
+    // 12 → 13：`sessionHead` 那一键（会话头按钮，`src/frontend/ui/session-head.ts`）。
+    expect(owners.size, `主人 ${owners.size} 个（现打 13）`).toBe(13);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

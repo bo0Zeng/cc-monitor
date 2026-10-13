@@ -8,19 +8,32 @@
 //! 又会让「加一家 agent 要回来改的地方」多一处（`agent_locality_guard` 那张只许降的表）。CLI 那一面的家目录
 //! 由 `main.rs` 解析好传进去；帧面没有那一跳 ⇒ 由这层顶层壳补上，与 `read_face` 拿家目录是同一句。
 //!
-//! **零写盘**：写的是本体（`control/fork_write.rs`，`readonly_guard` 白名单层那一处 `O_EXCL` 新建），本文件只转交与读。
+//! **写盘只在本体**：本文件领一只只会新建的手（`NewFile`）交给 `control/fork_write.rs`（那一处 `O_EXCL` 新建），自己只转交与读。
 
 use crate::control::fork_launch;
+use crate::control::fork_write::{ForkErr, ForkReq, Forked};
+use crate::stream::inbound::typed::{Blocking, Command, Cx};
 use std::path::Path;
 
-/// 帧面入口：`{sid, uuid} → {sessionId, jsonlPath, launch}`（形状与失败码住本体那一份）。
-pub(crate) fn answer(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (&'static str, String)> {
-    let home = crate::observe::history_query::agent_home();
-    crate::control::fork_write::answer_wire_at(&home, args, &|source, sid| {
-        launch_of(&home, source, sid).to_json()
-    })
+/// `session-fork`：从某条消息处分叉出一个新会话。读整份 jsonl ⇒ 阻塞档。
+pub(crate) struct SessionFork;
+
+impl Command for SessionFork {
+    const NAME: &'static str = "session-fork";
+    type Req = ForkReq;
+    type Reply = Forked;
+    type Err = ForkErr;
+}
+
+impl Blocking for SessionFork {
+    fn run(req: ForkReq, _cx: &Cx) -> Result<Forked, ForkErr> {
+        let home = crate::observe::history_query::agent_home();
+        // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
+        let nf = crate::platform::fs::NewFile::issue();
+        crate::control::fork_write::fork_at(&nf, &home, &req, &|source, sid| {
+            launch_of(&home, source, sid)
+        })
+    }
 }
 
 /// 源会话的三格事实。名单读不出 ⇒ 那一半落「不知道 / 不在任何终端里」（同推断的规矩），不挡分叉。

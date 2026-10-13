@@ -21,15 +21,11 @@ import { button, setBusy, setDisabled } from "./kit/button";
 import { kbd } from "./kit/badge";
 import { needsOf } from "./session-face";
 import { waitedNow } from "./duration-format";
+import type { AnswerReq } from "./generated/AnswerReq";
 import s from "./answer-block.module.css";
 
 /** 交给 `needs-answer` 的那一份（`sid` 由宿主按 tab 补上）。 */
-export interface AnswerRequest {
-  ask: string;
-  choice: string;
-  note?: string;
-  picks?: Record<string, { options: string[]; text: string }>;
-}
+export type AnswerRequest = Omit<AnswerReq, "sid">;
 
 /** 答的结局：交到了 · 别处先答了 / 撤了（`said` 是核心那一句）· 没答成（别的原因，块照旧可答）。 */
 export type AnswerOutcome = { kind: "answered" } | { kind: "gone"; said: string } | { kind: "failed"; said: string; detail: string };

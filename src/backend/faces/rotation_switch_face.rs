@@ -72,12 +72,14 @@ pub(crate) fn restart_args(item: &Value, target: &str) -> Value {
 /// `session-restart` 的结局 ⇒ 重启换那一格：报出了 ⇒ 成；起了没报出 ⇒ `notArrived`（旧的已停）；
 /// 失败 ⇒ 码原样，`data.stopped` 说旧的停没停。
 pub(crate) fn restart_outcome(
-    r: &Result<Value, crate::control::session_restart::Fault>,
+    r: &Result<crate::control::session_restart::Restarted, crate::control::session_restart::Fault>,
 ) -> RestartOutcome {
     match r {
-        Ok(v) if v["started"] == "arrived" => RestartOutcome::Restarted {
-            terminal: v["terminal"].as_str().unwrap_or_default().to_string(),
-        },
+        Ok(v) if v.started == crate::control::session_restart::Arrival::Arrived => {
+            RestartOutcome::Restarted {
+                terminal: v.terminal.clone(),
+            }
+        }
         Ok(_) => RestartOutcome::NotRestarted {
             code: "notArrived".into(),
             old: OldSession::Ended,
@@ -126,12 +128,17 @@ pub(crate) async fn answer_switch(
     }
     for item in ask.items {
         let sid = item["sid"].as_str().unwrap_or_default().to_string();
-        let r = crate::faces::session_restart_face::answer(
+        // 每一项是 `session-restart` 的入参（缺 `account`，用 `target`）：按它的入参类型解，形状不对同那一条回 `bad_args`。
+        let r = match serde_json::from_value::<crate::control::session_restart::RestartReq>(
             restart_args(&item, &ask.target),
-            until,
-            files,
-        )
-        .await;
+        ) {
+            Ok(req) => crate::faces::session_restart_face::answer(req, until, files).await,
+            Err(e) => Err((
+                "bad_args".to_string(),
+                crate::common::contract::malformed(&e.to_string()),
+                None,
+            )),
+        };
         let mut o = restart_outcome(&r);
         if r.is_ok() {
             // 换过去了（报没报出都算）⇒ 记一条；写不进 ⇒ `ioFailed`（旧的已停）。

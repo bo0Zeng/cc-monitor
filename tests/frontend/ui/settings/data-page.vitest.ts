@@ -92,9 +92,9 @@ const report = (over: Record<string, unknown> = {}) => ({
   tmux: false,
   chores: 1,
   own: [
-    { id: "profiles", path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 2048 },
-    { id: "accounts", path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
-    { id: "bin", path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: false, size: null },
+    { id: "profiles", what: copyText("rsDataPaths.backend.profiles"), path: "~/.cc-monitor/profiles.toml", dir: false, class: "truth", exists: true, size: 2048 },
+    { id: "accounts", what: copyText("rsDataPaths.backend.accounts"), path: "~/.cc-monitor/accounts", dir: true, class: "truth", exists: true, size: null },
+    { id: "bin", what: copyText("rsDataPaths.backend.bin"), path: "~/.cc-monitor/bin", dir: true, class: "cache", exists: false, size: null },
   ],
   ...over,
 });
@@ -139,8 +139,9 @@ describe("data-report 的应答严格收", () => {
     expect(() => decodeDataReport(report({ todo: [chore({ state: "copied" })] })), "「已复制」只住界面").toThrow();
     expect(() => decodeDataReport(report({ todo: [{ ...chore({}), extra: 1 }] }))).toThrow();
     expect(() => decodeDataReport(report({ todo: [chore({ diff: [{ n: 0, op: "add", text: "" }] })] }))).toThrow();
-    expect(() => decodeDataReport(report({ own: [{ id: "x", path: "~/.cc-monitor/x", dir: false, class: "maybe", exists: true, size: 1 }] })), "class 闭集").toThrow();
-    expect(() => decodeDataReport(report({ own: [{ id: "x", path: "~/.cc-monitor/x", dir: false, class: "cache", exists: true, size: -1 }] }))).toThrow();
+    expect(() => decodeDataReport(report({ own: [{ id: "x", what: "x", path: "~/.cc-monitor/x", dir: false, class: "maybe", exists: true, size: 1 }] })), "class 闭集").toThrow();
+    expect(() => decodeDataReport(report({ own: [{ id: "x", what: "x", path: "~/.cc-monitor/x", dir: false, class: "cache", exists: true, size: -1 }] }))).toThrow();
+    expect(() => decodeDataReport(report({ own: [{ id: "x", path: "~/.cc-monitor/x", dir: false, class: "cache", exists: true, size: 1 }] })), "每一样带写好的那一句").toThrow();
     const { own: _o, ...noOwn } = report();
     expect(() => decodeDataReport(noOwn)).toThrow();
   });
@@ -273,7 +274,7 @@ describe("cc-monitor 放了什么", () => {
 
   it("★ 远端那台的「cc-monitor 的文件」照那台 own 排：名字 · 是什么 · 删了会怎样 · 大小；不在的不给打开；打开 ＝ 在文件窗口里打开那一样", async () => {
     answers.set(LOCAL_ORIGIN, report());
-    answers.set("devbox", report({ home: "/home/u" }));
+    answers.set("devbox", report({ home: "/home/u", own: [...report().own, { id: "fresh", what: "编的一句：界面照抄", path: "~/.cc-monitor/fresh", dir: true, class: "cache", exists: false, size: null }] }));
     const { page } = mount();
     page.openTab("placed");
     page.loadNow();
@@ -284,7 +285,8 @@ describe("cc-monitor 放了什么", () => {
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
     expect(remote.hidden).toBe(false);
     const rows = [...remote.querySelectorAll<HTMLElement>("[data-own]")];
-    expect(rows.map((r) => r.dataset.own)).toEqual(["profiles", "accounts", "bin"]);
+    expect(rows.map((r) => r.dataset.own)).toEqual(["profiles", "accounts", "bin", "fresh"]);
+    expect(rows[3].textContent, "认不认得这个 id 都照抄后端那一句").toContain("编的一句：界面照抄");
     expect(rows[0].textContent).toContain("profiles.toml");
     expect(rows[0].textContent).toContain(copyText("rsDataPaths.backend.profiles"));
     expect(rows[0].textContent).toContain(copyText("data.class.keep"));

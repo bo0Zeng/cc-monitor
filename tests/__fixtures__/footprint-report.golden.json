@@ -122,7 +122,7 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份 · 别的内容不碰",
+      "note": "账号库：清单 accounts.json、各号目录与改动前的备份都在此\n启用多账号时 · 该机当前登录的身份文件（~/.claude/.credentials.json、~/.claude.json）搬进默认号的目录\n之后各号 .claude.json 里只有用户级 MCP 段会被同步改写 · 各号共用一份\n.credentials.json 里只有 MCP 登录段会被同步改写 · 别的内容不碰",
       "path_declared": "~/.cc-monitor/accounts/",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/accounts",
       "source_label": "由 cc-monitor 现场生成的文本",
@@ -139,7 +139,7 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "本机或远端",
       "installable": true,
-      "note": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n内含 MCP 密钥 · 仅本人可读",
+      "note": "该机各账号共用的用户级 MCP · 及上次同步时各号的样子\n任一号里加或改的 MCP 会进此处 · 再同步到所有号\n另记各号 MCP 登录上次同步后的指纹（不含令牌）\n内含 MCP 密钥 · 仅本人可读",
       "path_declared": "~/.cc-monitor/accounts-mcp.json",
       "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/accounts-mcp.json",
       "source_label": "由 cc-monitor 现场生成的文本",
@@ -214,6 +214,23 @@
       "state": {
         "kind": "undetermined",
         "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/launch-pending；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
+      },
+      "tier": "AppInstalls",
+      "tool_id": "accounts",
+      "tool_name": "多账号账号库",
+      "uninstallable": false
+    },
+    {
+      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
+      "host_label": "本机或远端",
+      "installable": true,
+      "note": "答题插件 · 自定义启动器起会话时用 · 由后端生成",
+      "path_declared": "~/.cc-monitor/answer-plugin",
+      "path_resolved": "/nonexistent-footprint-golden/.cc-monitor/answer-plugin",
+      "source_label": "由 cc-monitor 现场生成的文本",
+      "state": {
+        "kind": "undetermined",
+        "why": "本机未找到 /nonexistent-footprint-golden/.cc-monitor/answer-plugin；它装在运行 Claude Code 的机器上 · 可能在远端\n本页不连 SSH · 远端状态到对应页面查"
       },
       "tier": "AppInstalls",
       "tool_id": "accounts",

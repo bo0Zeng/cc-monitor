@@ -26,7 +26,7 @@
 //! # 走全流程
 //!
 //! [`walk`] 把假 agent 推过六段，每一段都经通用层：发现（`agents::visible_among`）· 宣告（`wire::Frame::Hello`）·
-//! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve_json_among`）。
+//! 读会话 / 判活 / 账号（注册表里这一家那几格，经 `agents::*_among`）· resume（`resolve_query::resolve`）。
 //! 挖掉任一种能力（[`FakeCaps::without`]），那一格的面就拼不出来，流程停在点得出名字的那一段。
 
 use crate::platform::fs::Ro;
@@ -436,6 +436,7 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
         user_mcp_key: "servers",
         shared_root: |h| h.join("shared"),
         email_in: |_| None,
+        login: None,
         session_env: crate::agents::SessionEnvKeys {
             config_dir: account_env,
             base_url: "CCM_FAKE_UPSTREAM",
@@ -496,6 +497,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         unavailable: vec![],
         host_env: Default::default(),
         uncancellable: vec![],
+        shapes: Default::default(),
     })
     .map_err(|_| Stop::MissingCapability {
         stage: STAGES[1],
@@ -664,13 +666,17 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
         }),
         ..bare_row(home_fn)
     }];
-    let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{sid}\"}}");
-    let plan =
-        crate::control::resolve_query::resolve_json_among(&registry, &spec).map_err(|_| {
-            Stop::MissingCapability {
-                stage: STAGES[5],
-                capability: "resume 命令形",
-            }
+    let spec = crate::control::resolve_query::ResumeSpec {
+        session_id: sid.to_string(),
+        launch_candidates: Vec::new(),
+        agent_kind: AGENT_KIND.to_string(),
+    };
+    let plan = crate::control::resolve_query::resolve(&registry, &spec)
+        .ok()
+        .and_then(|p| serde_json::to_value(p).ok())
+        .ok_or_else(|| Stop::MissingCapability {
+            stage: STAGES[5],
+            capability: "resume 命令形",
         })?;
     let head: String = sid.chars().take(8).collect();
     if plan["command"] != serde_json::json!(cmd(base, sid))

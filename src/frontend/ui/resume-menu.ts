@@ -40,7 +40,7 @@ export interface ResumeAccount {
 }
 
 /** 账号组的事实：`list` 那台可选的号 · `none` 这一家没有账号这一维（灰着一行说）· `off` 那台没开多账号 / 读不到（这一组不出）。 */
-export type ResumeAccounts = { kind: "list"; items: ResumeAccount[] } | { kind: "none"; agentName: string } | { kind: "off" };
+export type ResumeAccounts = { kind: "list"; items: ResumeAccount[]; /** 号在哪一台（头像照那台账号库的号色画）；缺 ⇒ 本机。 */ origin?: Origin } | { kind: "none"; agentName: string } | { kind: "off" };
 
 export interface ResumeMenuSpec {
   accounts: ResumeAccounts;
@@ -105,7 +105,7 @@ export async function resumeAccounts(
   const five = (account: string): string | null => (prof.known ? fiveHourCell(q, prof.facts.adapterId, account) : null);
   const items: ResumeAccount[] = names.map((name) => ({ name, label: accountLabel(name), quota: five(name), last: name === facts.last }));
   items.push({ name: null, label: copyText("resumeMenu.account.base"), quota: five("_"), last: false });
-  return { kind: "list", items };
+  return { kind: "list", items, origin };
 }
 
 /** 号那一行右侧那一格：`5h 41%` · 上次用的 `5h 41% · 上次`（右对齐，几行的数对得齐）。 */
@@ -138,7 +138,7 @@ export function resumeMenuItems(spec: ResumeMenuSpec): MenuItem[] {
           label: a.label,
           radio: "account",
           checked: on,
-          avatar: a.name === null ? undefined : accountAvatarEl(a.name, { size: 16 }),
+          avatar: a.name === null ? undefined : accountAvatarEl(a.name, { size: 16, origin: accounts.origin }),
           detail: accountDetail(a),
           onClick: () => {
             pick.account = a.name ?? undefined;

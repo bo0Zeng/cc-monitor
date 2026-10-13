@@ -578,9 +578,9 @@ mod tests {
          ⚠ 「没有任何一层重试」这句同样是**登记理由里的话**，没被独立重打过。",
     ),
         (
-        // 住址 `dial/mod.rs` → `dial/connect.rs`（拨号那一段拆出去了，值与理由不变，
+        // 住址 `dial/mod.rs` → `ssh-dial/connect.rs`（拨号那一段拆出去了，值与理由不变，
         // 名字叫 `KEEPALIVE`）。同一份文件里还有下一条（`PROBE_INACTIVITY`，同一个值、不同的用途）。
-        "dial/connect.rs",
+        "ssh-dial/connect.rs",
         "Duration::from_millis(30_000)",
         "`K-P6b` 的拨号代理交给 `russh` 的 **SSH 层 keepalive 间隔**（`client::Config`）。\
          🔴 **这一条的理由与上面三条不同族，别照着上面读**：它**不是**「不是定时器」——\
@@ -600,7 +600,7 @@ mod tests {
          （那正是 `g6_reach` 说的那一格），这一条就该从「登记」改成「正面回答」。",
     ),
         (
-        "dial/connect.rs",
+        "ssh-dial/connect.rs",
         "Duration::from_millis(30_000)",
         "〔C2 09-24 新增〕拨号代理**短命探活**（`probe=true`，只有「测试连接」那一条）交给 `russh` 的 \
          `inactivity_timeout`：一条**一次性**连接空闲这么久就拆掉 —— 它是「这一次等待最多多久」的上限，\
@@ -662,11 +662,20 @@ mod tests {
     ),
     (
         "accounts/oauth/store.rs",
-        "Duration::from_millis(face.lock_stale_ms)",
-        "续期锁目录的过期门限（`LoginFace::lock_stale_ms`）：拿锁那一刻拿锁目录的修改时刻比一次，\
+        "Duration::from_millis(stale_ms)",
+        "凭据文件那几把 mkdir 锁的过期门限（续期锁 `LoginFace::lock_stale_ms` · 整份写锁 `write_lock_stale_ms` · \
+         MCP 登录那一条的续期锁 `EntryLogins::renew_lock_stale_ms`）：拿锁那一刻拿锁目录的修改时刻比一次，\
          早过它就当无主收回。只是一次比较的尺子，不等、不睡、不让任何线程醒来。不是定时器。",
         "收窄人群",
-        "续期锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
+        "这几把锁不再按修改时刻判过期（或不再用 mkdir 锁）的那天。",
+    ),
+    (
+        "accounts/oauth/writeback.rs",
+        "Duration::from_millis(face.write_wait_ms)",
+        "续成了、写回在等那一家放整份写锁时那一次有界等待的期限（`LoginFace::write_wait_ms`，交给登记过的 \
+         `rx.recv_timeout(within)`）：锁一放由文件事件当场叫醒，到期只再试一次写回、照实报。不循环、不复用。不是定时器。",
+        "收窄人群",
+        "写回不再等那一家放锁（或那一家不再有整份写锁）的那天。",
     ),
     (
         "common/time.rs",
@@ -726,6 +735,14 @@ mod tests {
             "`STDIN_QUIET`（1 秒）；第一个字节或 EOF 先到就立刻醒。",
         ),
         (
+            "accounts/oauth/writeback.rs",
+            "rx.recv_timeout(within)",
+            "续期写回碰上那一家的整份写锁时那一次有界等待（`writeback::wait_and_write`）：新令牌先留在内存里照用，\
+             写锁目录被删 / 凭据文件被换的文件事件当场叫醒写回；一直没放开就要有个头，到期再试一次、照实报写回失败（那个号可能要重新登录）。\
+             一个号一条线程、等一次、不循环。",
+            "`LoginFace::write_wait_ms`（Claude 20 秒，长于它写锁的过期门限 15 秒）；锁先放开就立刻醒。",
+        ),
+        (
             "observe/one_wait.rs",
             "tokio::time::timeout(wait, self.hit)",
             "换号重启等压缩摘要 / 等会话报出的**一次有界等待**：到了由文件事件（inotify）当场叫醒，没到就等到发起方给的期限、回「没等到」。\
@@ -743,7 +760,7 @@ mod tests {
          装总期限时读一次、每发起之前读一次，只用来把那一次有界等待截短，不驱动任何循环、不产生节拍。",
     ),
     (
-        "dial/pool.rs",
+        "ssh-dial/pool.rs",
         "tokio::time::Instant::now()",
         "SSH 连接「最后一次收到对端字节」的时刻（`pool::mono_ms` / `pool::Heard`）：TCP 那一层读到字节时记一笔，\
          复用一条连接开通道之前比一次「多久没收包了」—— 久了就与新建一条同时起跑（`uses::race`，谁先站住用谁，两边都是事件）。\
@@ -782,6 +799,16 @@ mod tests {
             "Windows 臂：在进程句柄上至多等宽限期（`win_proc::wait_within`），同上一行，只由 `Stoppable::exited_within` 调。",
         ),
     ];
+
+    /// 〔read8a〕**常驻的线程池**：线程起来之后一直在的那几处，`(文件, 生产段里的片段——恰好一处, why)`。
+    /// 它们只阻塞在任务队列上（无期限的 `recv()`）：没有任务就睡在内核里，不定时、不自己醒 —— 本护栏守的性质不受影响；
+    /// 登在这里是为了让「后端又多了一种常驻线程」这件事有人看过：多一处、少一处、等法变了（带了期限）都红。
+    pub(super) const REGISTERED_QUEUE_WORKERS: &[(&str, &str, &str)] = &[(
+        "observe/par.rs",
+        "q.recv()",
+        "记录预读的线程池（`par::Pool`，watcher 在 `watch_loop` 起一份 `PrimePool`）：各会话的预读在这里并行，\
+         线程数照 `par_workers`；取任务就是这一处无期限的 `recv()`，队列的发送端没了（池子丢了）它回错、线程退出。",
+    )];
 
     /// 生产段里**全部带期限**的内核等待：`libc::poll(` 与 `WaitForSingleObject(` 的调用，最后一个实参不是「一直等」（`-1` / `WAIT_FOREVER`）。
     /// 回 `(文件, 调用原文)`。纯文本；括号配平取整个调用。
@@ -825,7 +852,7 @@ mod tests {
     /// # 为什么必须递归（2026-08-01，U-1）
     ///
     /// 原来是单层 `read_dir` + `extension != "rs"` 跳过 —— **目录没有扩展名，于是被整个跳过**。
-    /// `readonly_guard::scan` 在 Phase G 已经改成递归并留了警示注释，**这条没跟**。
+    /// `readonly_guard` 当年那条扫描在 Phase G 已经改成递归并留了警示注释，**这条没跟**。
     ///
     /// 失效形态实测（unified-backend 计划自审）：一旦生产代码搬进
     /// `src/<子目录>/`，扫到的文件只剩顶层那几个 mod 声明 + 本护栏 + `wire.rs`，
@@ -926,12 +953,12 @@ mod tests {
     /// ⇒ **U3 实测兑现**：`watcher.rs` 搬进 `observe/` 的那一刻这个分支第一次真生效。
     /// 变异（退回全等）当场产出上面那句预言过的误导性诊断。
     ///
-    /// # 为什么这里可以裸文件名，而 `readonly_guard` 的白名单不行
+    /// # 为什么这里可以裸文件名，而 `readonly_guard` 当年的写盘白名单不行
     ///
     /// U3 刚花整段论证「按裸文件名钉写盘白名单 = 给写盘能力开第二个洞」，本函数却正是那种匹配。
     /// **两者方向相反，风险不对称**：
     ///
-    /// | | `readonly_guard` 白名单 | 本登记表 |
+    /// | | `readonly_guard` 当年的写盘白名单（今天换成类型挡，表已删） | 本登记表 |
     /// |---|---|---|
     /// | 匹配命中的后果 | **放行** —— 该文件获得写盘豁免 | **认账** —— 承认「这处 `Duration` 我看过、不是定时器」 |
     /// | 误配一个同名文件 | 那个文件获得它不该有的写盘权限，**静默开洞** | 少红一次；而**另一半判据 `code.contains(snippet)` 仍要求那份代码里真有那段片段** |
@@ -1182,6 +1209,43 @@ mod tests {
                 assert!(
                     !rest.contains(&pat),
                     "{file} 剥掉登记的片段之后仍有 `{pat}`"
+                );
+            }
+        }
+    }
+
+    /// 〔read8a〕**登记的每一个常驻线程池都还在盘上、取任务那一处恰好一个、等法是无期限的 `recv()`**：
+    /// 那份文件生产段里没有带期限的等（`recv_timeout` · `sleep` …），线程起法（`thread::Builder::new()`）恰好一处 ——
+    /// 多起一种线程、把等法换成带期限的，都当场红。
+    #[test]
+    fn every_registered_queue_worker_blocks_on_its_queue_without_a_deadline() {
+        for (file, snippet, why) in REGISTERED_QUEUE_WORKERS {
+            assert!(why.chars().count() >= 40, "{file} 的登记没写清它是什么");
+            let code = backend_sources()
+                .into_iter()
+                .find(|(n, _)| matches_registered(n, file))
+                .map(|(_, c)| c)
+                .unwrap_or_else(|| panic!("登记的 {file} 不在了"));
+            assert_eq!(
+                code.matches(snippet).count(),
+                1,
+                "{file} 里 `{snippet}` 不是恰好一处"
+            );
+            assert_eq!(
+                code.matches("thread::Builder::new()").count(),
+                1,
+                "{file} 里起线程的地方不是恰好一处（多了一种常驻线程？）"
+            );
+            for call in [
+                "recv_timeout",
+                "sleep",
+                "park_timeout",
+                "wait_timeout",
+                "timeout",
+            ] {
+                assert!(
+                    !code.lines().any(|l| is_call_of(l, call)),
+                    "{file} 里有带期限的等 `{call}(` —— 线程池只许阻塞在任务队列上"
                 );
             }
         }
@@ -1470,7 +1534,7 @@ mod g6_reach {
         // ⚠ 那一条的登记理由**与前三条不同族** —— 它没说「这不是定时器」，
         //   它说的是「有一个，而它长在依赖 crate 里、在本护栏的人群外面」。
         //   ⇒ 这个分母涨了 1，而**护栏能拦住的形状一个都没多**。别把涨读成变强。
-        // 4 → **5**：多的那一条是 `dial/connect.rs` 的 `PROBE_INACTIVITY`（「测试连接」
+        // 4 → **5**：多的那一条是 `ssh-dial/connect.rs` 的 `PROBE_INACTIVITY`（「测试连接」
         //   那条一次性连接的 inactivity 上限，从界面侧搬进拨号代理）。keepalive 那一条只是换了住址。
         // 5 → **6**：多的那一条是 `relay/machine.rs` 的 `PROBE_DEADLINE`（远端「口上是不是我们的中转」
         //   那两发差分探针的一次阻塞上限）。同族于中转那两条 socket 期限，不驱动任何循环。
@@ -1486,9 +1550,11 @@ mod g6_reach {
         // 11 → **12**：多的那一条是 `control/cli_args.rs` 的 `STDIN_QUIET`（CLI 面读入参的静默窗，一次性进程里等一次；
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
         // 12 → **13**：多的那一条是 `common/time.rs` 的截图台架拨钟（只在特性 `shots` 下编，台架交的起点毫秒换成时刻、比一次系统钟）。
+        // 13 → **14**：多的那一条是 `accounts/oauth/writeback.rs` 的等写锁期限（续成了、写回等那一家放整份写锁，
+        //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
         assert_eq!(
-            registered, 13,
-            "登记表从 13 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 14,
+            "登记表从 14 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

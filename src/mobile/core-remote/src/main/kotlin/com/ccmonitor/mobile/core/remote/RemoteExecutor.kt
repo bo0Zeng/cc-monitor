@@ -52,7 +52,7 @@ class RemoteExecException(
  * 不给 [RemoteCommandChannel] 加方法：它是 `fun interface`，各处的 SAM lambda 会编译不过。
  *
  * 实现方必须守的两条：
- * 1. 无条件排空 stderr：sshj 的 stderr 与 stdout 共用同一个 `lwin` 通道窗口，不读 stderr 会耗尽窗口、把 stdout 一起拖停。
+ * 1. 无条件排空 stderr：stderr 与 stdout 共用同一个通道窗口，不读 stderr 会耗尽窗口、把 stdout 一起拖停。
  * 2. 绝不分配 PTY：PTY 的 ONLCR 会污染字节流。
  */
 fun interface RemoteExecutor {

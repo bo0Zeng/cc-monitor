@@ -128,7 +128,7 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("后台任务运行中：点单独一档 · 状态一句照抄核心、时长那一截按此刻走 · 拿不到 ⇒ 核心写的那个字 · peek 照空闲（它最后一句）", () => {
     const from = NOW - 64 * 60_000;
-    const bw = { text: "写好的一句", clock: { text: "L · {dur}", from }, what: "make", count: 1, tone: "busy" };
+    const bw = { text: "写好的一句", clock: { text: "L · {dur}", from }, what: "make", count: 1, tone: "busy" as const };
     const t = tab("a", { activity: bgAct, backgroundWork: bw, lastSay: { text: "最后一句", at: null, atMs: null } });
     expect(dotOf(t)).toBe("background");
     expect(stateWord(t)).toBe(bgAct.text);
@@ -392,7 +392,7 @@ describe("「需手动」· 窗口标题 · 系统通知（消息流底部那一
 
 describe("会话头", () => {
   const head = (t: Tab | null) => {
-    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null };
+    const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [] };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
     h.render(NOW);
@@ -400,15 +400,16 @@ describe("会话头", () => {
   };
   const labels = (el: HTMLElement): string[] => [...el.querySelectorAll("button")].map((b) => b.getAttribute("aria-label") ?? b.textContent ?? "");
 
-  it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 看它的终端 · 查找 · 更多", () => {
+  it("★ 标题全名 · 机器 · 目录 · 状态一句；在等你时状态那一句琥珀；右边：目录（本机）· 看它的终端 · 显示 · 查找 · 更多", () => {
     const { h, host } = head(tab("a", { label: "加重试", labelProject: "orders", projectDir: "/w/orders", activity: waiting, needs: approve() }));
     expect(h.el.textContent).toContain("orders 加重试");
     expect(h.el.textContent).toContain(copyText("sessionFace.machine.local"));
     expect(h.el.textContent).toContain("/w/orders");
-    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
+    // 默认那一排（ui3 · `session-head-buttons.vitest.ts`）；这台宿主不给「⋯」里的项 ⇒ 借那份菜单的几颗（在新窗口打开 · 账号）不出。
+    expect(labels(h.el)).toEqual([copyText("tabBarView.tab.cwdHint"), copyText("sessionHead.act.terminal"), copyText("sessionHead.act.display"), copyText("sessionHead.act.find"), copyText("tabBarView.tab.moreHint")]);
     h.el.querySelectorAll("button")[1].click();
     expect(host.viewTerminal).toHaveBeenCalled();
-    h.el.querySelectorAll("button")[2].click();
+    h.el.querySelectorAll("button")[3].click();
     expect(host.find).toHaveBeenCalled();
   });
 

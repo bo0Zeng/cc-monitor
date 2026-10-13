@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 237,
+  "ceiling": 212,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -309,13 +309,6 @@
       "why": "V12：断开的原因码 ⇒ 字（机器状态成品带 said）"
     },
     {
-      "file": "src/frontend/ui/settings/remote-own.ts",
-      "rule": "caseWord",
-      "n": 24,
-      "kind": "第 7 批",
-      "why": "V12：文件 id ⇒ 字（本机远端都问 data-report 拿写好的字）"
-    },
-    {
       "file": "src/frontend/ui/tab-batch-menu.ts",
       "rule": "codeWord",
       "n": 1,
@@ -398,13 +391,6 @@
       "n": 3,
       "kind": "第 1 批",
       "why": "会话内查找命中的种类（user · report · tool）⇒ 字：同 history-rows，命中带写好的种类字"
-    },
-    {
-      "file": "src/frontend/shell/src/remote_resident.rs",
-      "rule": "durUnit",
-      "n": 1,
-      "kind": "留",
-      "why": "复制详情里的原话（`raw`：「试了几次 × 每次等多久」那一行诊断），不是给人看的句子；原话照原样进详情、不上句子（同 C-W18）"
     },
     {
       "file": "src/mobile/app/src/main/kotlin/com/ccmonitor/mobile/ui/session/ButtonEditDialog.kt",

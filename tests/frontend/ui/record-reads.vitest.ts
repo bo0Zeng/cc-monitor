@@ -5,6 +5,7 @@
  * |---|---|
  * | 按偏移取一段 · 按行号取一段带声明；声明就是 `src/shared/views/folded-record.json` 那一份，放在 `chan_call` 的 `view` 那一格、不进载荷 | 「带声明」那一条 |
  * | 按记录 id 取回那一行不带声明（展开那一下要的就是全文） | 「不带声明」那一条 |
+ * | 一页的行数不设上限（一页按字节算 1 MiB，短行能有几十万行）：拼页不把一页展开成实参（V8 的实参上限） | 「一页 20 万行」那一条 |
  *
  * 买不到：后端照声明裁得对不对（后端 `record_page_tests` 用同一份文件量）；monitor 那一跳把它搬进信封（`webview_tests` · `inbound_client_tests`）。
  */
@@ -72,5 +73,14 @@ describe("记录读面：折起那一行的声明", () => {
     const rec = await readRecordById("<local>", "/p/s.jsonl", places, "r3");
     expect(rec).toEqual({ id: "r3" });
     expect(calls().map((c) => [c.op, c.view])).toEqual([["history-page", null]]);
+  });
+
+  it("一页 20 万行（合成的短行）：拼页不抛，行一条不少", async () => {
+    const n = 200_000;
+    const many = Array.from({ length: n }, (_, i) => line(i, `r${i}`));
+    invokeMock.mockImplementation(() => Promise.resolve(chanReply({ lines: many, next: 90, nextSeq: n, eof: true })));
+    const rows = await readRange("<local>", "/p/s.jsonl", 0, 90, 0);
+    expect(rows.length).toBe(n);
+    expect(rows[n - 1].seq).toBe(n - 1);
   });
 });

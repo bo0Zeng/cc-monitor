@@ -1,5 +1,5 @@
 //! 资产域够用户文件的那一扇门：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门就是本进程里那几条 `files-*` 帧命令本身
-//! （实现住 `stream/inbound/doors.rs::LocalFiles`：`readonly_guard` 第三层只许 `stream/inbound/` 够得着写面）。
+//! （实现住 `stream/inbound/doors.rs::LocalFiles`：文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
 //! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
 
 use copy_core::copy_text;

@@ -162,8 +162,22 @@ export function backendPool({ repo, sandbox }) {
       writeFileSync(path.join(setup, "warm.json"), JSON.stringify({ pid: "__PID__", next: m.warm }).replace('"__PID__"', "__PID__"));
       sh.push("sleep 3600 & pid=$!", `sed "s/__PID__/$pid/" ${H}/.shots-setup/warm.json > ${H}/.cc-monitor/quota-warm.json`);
     }
+    // 「开着即活」那一家的替身：开着那份记录写（追加方式打开、一个字不写），后端照真的那一套认写者。
+    for (const rel of m.writers ?? []) {
+      if (rel.startsWith("/") || rel.split("/").includes("..")) throw new Error(`替身开着写的记录要相对家目录：${rel}`);
+      sh.push(`sleep 3600 3>>${q(`${H}/${rel}`)} &`);
+    }
     // 看的那一台的时区（同壳 attach 行带的 `tz`）：推来的钟面（记录的时刻字 · 子运行的起始字）按它写。
-    sh.push(`exec /tmp/ccm-shots/cc-monitor-backend -- --stream --tz ${SHOTS_TZ}`);
+    const backend = `/tmp/ccm-shots/cc-monitor-backend -- --stream --tz ${SHOTS_TZ}`;
+    const held = m.primeHeld ?? [];
+    if (held.length === 0) sh.push(`exec ${backend}`);
+    else {
+      // 预读演成一直没读完：这几个会话宣告之后的格不往壳那一跳交（后端预读没完成时压着的就是这几种，另加「读完了」那一帧本身）。
+      for (const sid of held) if (!/^[0-9a-f-]+$/.test(sid)) throw new Error(`primeHeld 里的 sid 形状不对：${sid}`);
+      const kinds = "session_primed|session_status|line|session_runs|session_branch|turn_end";
+      const pat = `"kind":"(${kinds})","(sid|session_id)":"(${held.join("|")})"`;
+      sh.push(`${backend} | grep --line-buffered -v -E ${q(pat)}`);
+    }
     writeFileSync(path.join(setup, "run.sh"), sh.join("\n") + "\n");
     const env = {
       PATH: "/usr/bin:/bin",

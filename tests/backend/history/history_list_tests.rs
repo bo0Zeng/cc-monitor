@@ -25,6 +25,7 @@
 
 use super::*;
 use crate::history::history_annotations::{Entry, Table};
+use serde_json::json;
 use std::path::PathBuf;
 
 // 判据照线上的样子读（成品与清单都过一遍真序列化器）：下面四个把有类型的那几个口包成 JSON 进出，盖住 `super::*` 里的同名口。
@@ -58,6 +59,22 @@ fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_an
     let mut l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
     super::with_own_annotations(&mut l, loaded);
     *listing = serde_json::to_value(l).unwrap();
+}
+
+/// 入参照帧面那一处解（typed：形状不对 ⇒ `bad_args`）再核值域，盖住 `super::*` 里的同名口。
+fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
+    let req: HistoryListReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::parse_ask(&req)
+}
+
+/// 帧面那一臂（入参照 typed 那一处解、回包过一遍真序列化器），盖住 `super::*` 里的同名口。
+async fn answer_wire(args: Value) -> Result<Value, (&'static str, String)> {
+    let req: HistoryListReq =
+        crate::stream::inbound::typed::take(&args).map_err(|f| ("bad_args", f.message))?;
+    super::answer(req, Default::default())
+        .await
+        .map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn listing_annotations(listing: &Value) -> Result<Table, String> {
@@ -417,6 +434,7 @@ fn sort_key_and_limit() {
         json!({"within_days": "7"}),
         json!({"query": 1}),
         json!({"hidden": "y"}),
+        json!({"extra": 1}),
     ] {
         assert_eq!(parse_ask(&bad).unwrap_err().0, "bad_args", "{bad}");
     }
@@ -474,7 +492,7 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
 /// 行与组带 `origin`；`listing` 不带 `origin` / 形状不对 ⇒ `bad_args`。
 #[tokio::test]
 async fn a_remote_listing_is_handed_in_and_kept_for_typing() {
-    let ask = |args: Value| crate::history::history_list::answer(args, Default::default());
+    let ask = answer_wire;
     // 每个判据用自己的机器名（缓存是进程级的一张表）。
     let e = ask(json!({"origin": "list-dev"})).await.unwrap_err();
     assert_eq!(e.0, "no_listing", "没记着那台的清单却答了：{e:?}");
@@ -732,9 +750,10 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let there = dir.join("history-metadata.json");
-    crate::history::history_annotations::answer_annotate_at(
+    crate::history::history_annotations::annotate_at(
         &crate::platform::fs::Own::issue_data_at(&dir),
-        &json!({"sid": S1, "patch": {"starred": true}}),
+        crate::stream::inbound::typed::take(&json!({"sid": S1, "patch": {"starred": true}}))
+            .expect("入参"),
         5,
     )
     .expect("那台写下");
@@ -780,4 +799,69 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
         "那台没标的就是没标"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// ★ 手机读的这一条，线上字节钉住：换成类型之前用旧代码跑出的字节存在 `tests/__fixtures__/history-list.wire-bytes.txt`（每行 `名字<TAB>字节`），
+/// 之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。没有重写开关：字节变了就是线上形状变了，先问手机那一侧。
+/// A 手机那一问（不带 `origin`）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 截 ＋ 隐藏的也出 · R1 R2 `raw` 那一形（带注解 / 带读不到的那一句）·
+/// D 经帧面那一臂交进远端那份（行组带 `origin`）。
+#[test]
+fn the_wire_bytes_the_phone_reads_stay_the_same() {
+    use crate::history::history_annotations::Loaded;
+    let pinned: BTreeMap<String, String> =
+        std::fs::read_to_string(fixtures().join("history-list.wire-bytes.txt"))
+            .expect("钉住的字节")
+            .lines()
+            .map(|l| {
+                let (n, b) = l.split_once('\t').expect("名字<TAB>字节");
+                (n.to_string(), b.to_string())
+            })
+            .collect();
+    let wire = |v: Value| serde_json::to_string(&v).unwrap();
+    let tz = crate::Tz::default();
+    let a = answer_from(&listing(), None, Ok(&ann()), &ask(json!({})), 1_000, &tz);
+    let b = answer_from(
+        &listing(),
+        None,
+        annotations(&Loaded::NoPath),
+        &ask(json!({"query": "回调"})),
+        1_000,
+        &tz,
+    );
+    let c = answer_from(
+        &listing(),
+        None,
+        Ok(&ann()),
+        &ask(json!({"limit": 2, "sort": "created", "hidden": true})),
+        1_000,
+        &tz,
+    );
+    let mut r1 = listing();
+    with_own_annotations(&mut r1, &Loaded::Read(ann()));
+    let mut r2 = listing();
+    with_own_annotations(&mut r2, &Loaded::NoPath);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let d = rt
+        .block_on(answer_wire(
+            json!({"origin": "pin-wire", "listing": r1.clone(), "within_days": 1}),
+        ))
+        .unwrap();
+    let got: BTreeMap<String, String> = [
+        ("A", a),
+        ("B", b),
+        ("C", c),
+        ("R1", r1),
+        ("R2", r2),
+        ("D", d),
+    ]
+    .into_iter()
+    .map(|(n, v)| (n.to_string(), wire(v)))
+    .collect();
+    assert_eq!(got.len(), pinned.len(), "钉住的条数对不上");
+    for (n, want) in &pinned {
+        assert_eq!(got.get(n), Some(want), "`{n}` 那一份的线上字节变了");
+    }
 }

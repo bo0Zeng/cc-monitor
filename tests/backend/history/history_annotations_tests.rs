@@ -19,6 +19,22 @@
 //! - 两个后端进程同时写；真 Windows 上的原子挪。
 
 use super::*;
+use crate::stream::inbound::spec::Fail;
+use crate::stream::inbound::typed::{take, Codes as _};
+
+/// 线上那一份入参照分派那一层解（`typed::take`）再交本体；回包 · 失败都投成线上那一份（判据比的是线上形状）。
+fn answer_annotate_at(own: &Own, args: &Value, now: i64) -> Result<Value, Fail> {
+    let req = take::<AnnotateReq>(args)?;
+    let got = annotate_at(own, req, now).map_err(|e| e.into_fail())?;
+    Ok(serde_json::to_value(got).expect("回包总能序列化"))
+}
+
+/// 同 [`answer_annotate_at`]，`history-forget` 那一条。
+fn answer_forget_at(own: &Own, args: &Value) -> Result<Value, Fail> {
+    let req = take::<ForgetReq>(args)?;
+    let got = forget_at(own, req).map_err(|e| e.into_fail())?;
+    Ok(serde_json::to_value(got).expect("回包总能序列化"))
+}
 
 fn fixture_dir() -> PathBuf {
     crate::guard_support::repo_root().join("tests/__fixtures__")

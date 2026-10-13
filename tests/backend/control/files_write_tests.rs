@@ -34,10 +34,11 @@
 //!    本族判据一格都没量。模块头注里登记的兜底（`O_EXCL` 挡住最后那一段）
 //!    这里只验了「同名第二次会失败」，**没有**验「父目录在窗里被换掉」那一形。
 //! 4. 🔴 **「这个模块该不该有写盘能力」不是这里判的**。那是政策，住
-//!    `readonly_guard::WRITE_WHITELIST_MODULES` 那张登记表。
+//!    写句柄只递给命令表文件管理那一族（`Run::BlockingFace`，`readonly_guard` 钉着）。
 //!    本族只判「围栏在不在、拦不拦得住」。
 
 use super::*;
+use crate::platform::fs::Face;
 
 /// 删会话那两问今天由门递进来（[`SessionPort`]）；下面各条照旧按两参写，
 /// 递的就是生产那一个窄口（适配层注册表那一格）。
@@ -47,13 +48,13 @@ const PORT: SessionPort = SessionPort {
     file_name: crate::agents::session_file_name_of,
 };
 fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
-    super::answer_wire(wire_name, args, &PORT)
+    super::answer_wire(&Face::issue(), wire_name, args, &PORT)
 }
 fn delete_session_with(
     sid: &str,
     locate: impl FnOnce(&str) -> Result<std::path::PathBuf, String>,
 ) -> Result<std::path::PathBuf, WriteRefusal> {
-    super::delete_session_with(sid, locate, PORT.is_record, PORT.file_name)
+    super::delete_session_with(&Face::issue(), sid, locate, PORT.is_record, PORT.file_name)
 }
 
 /// 一个这次运行独占的临时目标根。`tag` 区分用例，`pid` 区分并发跑的进程。
@@ -205,7 +206,7 @@ fn a_symlink_onto_a_session_file_passes_inside_the_root_and_is_refused_only_for_
     let got = resolve_parent_in_root(&root, &lexical)
         .expect("🔴 解完落到根里的一份会话记录上，竟然被拒了");
     assert_eq!(
-        got,
+        got.into_path_buf(),
         std::fs::canonicalize(&live)
             .expect("解会话目录")
             .join("abc.jsonl"),
@@ -271,17 +272,18 @@ fn a_write_into_a_claude_tree_that_is_not_session_data_really_lands() {
     // 目标根**自己**就在一棵名字以 `.claude` 开头的树里 —— 09-23 之前这是当场拒。
     let root = base.join(".claude/skills");
     std::fs::create_dir_all(&root).expect("建 skills 根");
-    let got = create_new_file(&root, "my-skill/../SKILL.md", b"x");
+    let got = create_new_file(&Face::issue(), &root, "my-skill/../SKILL.md", b"x");
     assert!(got.is_err(), "围栏① 的「不做规范化」那条口径松了");
 
-    let got =
-        create_new_file(&root, "SKILL.md", b"hello").expect("🔴 要求是「可以」，而这一次写被拒了");
+    let got = create_new_file(&Face::issue(), &root, "SKILL.md", b"hello")
+        .expect("🔴 要求是「可以」，而这一次写被拒了");
     assert_eq!(std::fs::read(&got).expect("读回"), b"hello");
 
     // 同一棵树底下，**会话文件那一形也写得进去**（从前这里是阳性对照「照旧写不进去」）。
     let live = base.join(".claude/projects");
     std::fs::create_dir_all(live.join("-x")).expect("建 projects 根");
-    let got = create_new_file(&live, "-x/s.jsonl", b"x").expect("🔴 会话记录那一格被拒了");
+    let got = create_new_file(&Face::issue(), &live, "-x/s.jsonl", b"x")
+        .expect("🔴 会话记录那一格被拒了");
     assert_eq!(std::fs::read(&got).expect("读回"), b"x");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -328,7 +330,7 @@ fn the_resolved_fence_lets_a_clean_path_through() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 父目录不在盘上 ⇒ 正常拒绝（本模块**不建目录**，那是白名单层明令禁止的）。
+/// 父目录不在盘上 ⇒ 正常拒绝（新建这一条**不顺手建目录**，建目录是 `files-mkdir` 那一条的事）。
 #[test]
 fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     let root = temp_root("noparent");
@@ -340,7 +342,7 @@ fn a_missing_parent_directory_is_a_plain_refusal_not_a_silent_mkdir() {
     );
     assert!(
         !root.join("nope").exists(),
-        "父目录被顺手建出来了 —— 白名单层不许建目录"
+        "父目录被顺手建出来了 —— 新建这一条不许建目录"
     );
     std::fs::remove_dir_all(&root).ok();
 }
@@ -358,7 +360,7 @@ fn the_write_entry_point_actually_goes_through_the_fence() {
     std::fs::create_dir_all(&root).expect("建目标根");
     let outside = base.join("escape.txt");
 
-    let err = create_new_file(&root, "../escape.txt", b"x")
+    let err = create_new_file(&Face::issue(), &root, "../escape.txt", b"x")
         .expect_err("写入口放过了一个上跳段 —— 围栏没接上");
     assert_eq!(
         err.code(),
@@ -389,7 +391,7 @@ fn the_write_entry_point_writes_a_session_file_too() {
     std::fs::create_dir_all(root.join("projects/-x")).expect("建会话目录");
     std::fs::create_dir_all(root.join("sessions")).expect("建 pidfile 目录");
     for rel in ["projects/-x/abc.jsonl", "sessions/4321.json"] {
-        let got = create_new_file(&root, rel, b"{}\n")
+        let got = create_new_file(&Face::issue(), &root, rel, b"{}\n")
             .unwrap_or_else(|e| panic!("🔴 写入口拒了 {rel}：{e:?}"));
         assert_eq!(std::fs::read(&got).expect("读回"), b"{}\n", "{rel}");
     }
@@ -412,14 +414,15 @@ fn a_clean_write_lands_once_and_never_overwrites() {
         root.display()
     );
 
-    let first = create_new_file(&root, "a.md", b"first").expect("干净的写被误拒");
+    let first = create_new_file(&Face::issue(), &root, "a.md", b"first").expect("干净的写被误拒");
     assert_eq!(
         std::fs::read(&first).expect("读回刚写的"),
         b"first",
         "写进去的字节不对"
     );
 
-    let err = create_new_file(&root, "a.md", b"second").expect_err("同名第二次竟然成功了");
+    let err = create_new_file(&Face::issue(), &root, "a.md", b"second")
+        .expect_err("同名第二次竟然成功了");
     // 🔴 档位在这一格是**承重**的：同名第二次是 `O_EXCL` 在开文件那一步兜住的，
     //    **不是**围栏拦的（围栏只判路径形状，它对「这条路径上已经有东西了」一无所知）。
     //    ⇒ 码必须是 `exists`（落点名被占了）；写成 `refused` 就说明有人把两档混成了一档。
@@ -473,7 +476,7 @@ fn the_write_entry_point_is_still_fenced_after_a_symlink_is_resolved() {
     std::fs::create_dir_all(&outside).expect("建根外目录");
     std::os::unix::fs::symlink(&outside, root.join("docs")).expect("放 symlink");
 
-    let err = create_new_file(&root, "docs/abc.txt", b"x")
+    let err = create_new_file(&Face::issue(), &root, "docs/abc.txt", b"x")
         .expect_err("词法上干净、解完却落到根外 —— 写入口竟然放行了");
     assert_eq!(err.code(), "refused", "档位不对：{err:?}");
     assert!(
@@ -500,7 +503,8 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
     std::fs::create_dir_all(root.join("real")).expect("建真目录");
     std::os::unix::fs::symlink(root.join("real"), root.join("link")).expect("放 symlink");
 
-    let got = create_new_file(&root, "link/a.md", b"ok").expect("根内 symlink 被误拒");
+    let got =
+        create_new_file(&Face::issue(), &root, "link/a.md", b"ok").expect("根内 symlink 被误拒");
     assert_eq!(std::fs::read(&got).expect("读回"), b"ok");
     assert!(
         got.starts_with(std::fs::canonicalize(&root).expect("解目标根")),
@@ -532,7 +536,7 @@ fn a_symlink_that_stays_inside_the_target_root_still_writes() {
 /// ⇒ 人群是后端生产树上**除本模块自己以外**的每一份 `.rs` 的生产段。
 ///
 /// ⚠ 它**只判「有」，不判「只从那一面来」** —— 后者是第 3 步那条判准
-///（`readonly_guard` 第三层），本条刻意不替它作证。
+///（写句柄只递给文件管理那一族，`readonly_guard` 钉着），本条刻意不替它作证。
 #[test]
 fn the_write_primitive_is_no_longer_a_zero_consumer_symbol() {
     let root = crate::guard_support::src_root();
@@ -755,19 +759,20 @@ fn mkdir_builds_one_level_even_where_a_session_file_would_sit() {
     let root = base.join(".claude"); // 09-23 之后：根在 `.claude` 底下是合法的
     std::fs::create_dir_all(root.join("projects")).expect("建根");
     // 正控：`skills` 那一类 —— 建得出来。
-    let got =
-        make_dir(&root, "skills").expect("🔴 `~/.claude/skills` 建不出来 —— 09-23 那一裁没落地");
+    let got = make_dir(&Face::issue(), &root, "skills")
+        .expect("🔴 `~/.claude/skills` 建不出来 —— 09-23 那一裁没落地");
     assert!(got.is_dir(), "说建了，盘上没有");
     // 不顺手补中间几层。
-    let err = make_dir(&root, "a/b/c").expect_err("父目录不在，竟然建成了");
+    let err = make_dir(&Face::issue(), &root, "a/b/c").expect_err("父目录不在，竟然建成了");
     assert_eq!(err.code(), "refused", "{err:?}");
     assert!(!root.join("a").exists(), "中间那几层被顺手补出来了");
     // 一条长成会话文件形状的路径，建目录**也建得出来**（从前是阴性「不许」）。
-    make_dir(&root, "projects/-x").expect("🔴 项目目录建不出来");
-    make_dir(&root, "projects/-x/abc.jsonl").expect("🔴 会话文件那个位置上建目录被拒了");
+    make_dir(&Face::issue(), &root, "projects/-x").expect("🔴 项目目录建不出来");
+    make_dir(&Face::issue(), &root, "projects/-x/abc.jsonl")
+        .expect("🔴 会话文件那个位置上建目录被拒了");
     assert!(root.join("projects/-x/abc.jsonl").is_dir());
     // 那一段已经有一项 ⇒ `exists`（换名字才有意义），不是 `io_failed`。
-    let err = make_dir(&root, "skills").expect_err("同名第二次竟然建成了");
+    let err = make_dir(&Face::issue(), &root, "skills").expect_err("同名第二次竟然建成了");
     assert_eq!(err.code(), "exists", "{err:?}");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -806,12 +811,13 @@ fn rename_moves_inside_the_root_never_overwrites_and_moves_a_session_file_too() 
     std::fs::write(root.join("b.md"), b"B").expect("铺 b");
 
     // 正控：改名成一个不存在的名字。
-    let got = rename_entry(&root, "a.md", "c.md").expect("干净的改名被误拒");
+    let got = rename_entry(&Face::issue(), &root, "a.md", "c.md").expect("干净的改名被误拒");
     assert_eq!(std::fs::read(&got).expect("读回"), b"A");
     assert!(!root.join("a.md").exists(), "改名之后旧名还在");
 
     // 🔴 目标已在 ⇒ 拒，而且**两份内容都没动**。
-    let err = rename_entry(&root, "c.md", "b.md").expect_err("改名顶掉了一份既有文件");
+    let err =
+        rename_entry(&Face::issue(), &root, "c.md", "b.md").expect_err("改名顶掉了一份既有文件");
     assert_eq!(err.code(), "exists", "{err:?}");
     assert_eq!(
         std::fs::read(root.join("b.md")).expect("b"),
@@ -821,15 +827,21 @@ fn rename_moves_inside_the_root_never_overwrites_and_moves_a_session_file_too() 
     assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"A");
 
     // from 是会话文件 ⇒ **改得走**；to 是会话文件的名字 ⇒ **改得进去**（从前两向都拒）。
-    let moved =
-        rename_entry(&root, "projects/-x/abc.jsonl", "moved.jsonl").expect("🔴 会话文件改不走");
+    let moved = rename_entry(
+        &Face::issue(),
+        &root,
+        "projects/-x/abc.jsonl",
+        "moved.jsonl",
+    )
+    .expect("🔴 会话文件改不走");
     assert_eq!(std::fs::read(&moved).expect("读改走的"), bytes);
     assert!(!live.exists(), "改名之后会话文件的旧名还在");
-    let into = rename_entry(&root, "c.md", "projects/-x/new.jsonl")
+    let into = rename_entry(&Face::issue(), &root, "c.md", "projects/-x/new.jsonl")
         .expect("🔴 普通文件改名成会话记录被拒了");
     assert_eq!(std::fs::read(&into).expect("读改进去的"), b"A");
     // 🔴 两个参数各过一遍路径解析：`to` 带上跳段 ⇒ 拒，源原样。
-    let err = rename_entry(&root, "moved.jsonl", "../escaped.jsonl").expect_err("改名逃出了根");
+    let err = rename_entry(&Face::issue(), &root, "moved.jsonl", "../escaped.jsonl")
+        .expect_err("改名逃出了根");
     assert_eq!(err.code(), "refused", "{err:?}");
     assert!(
         root.join("moved.jsonl").exists(),
@@ -852,12 +864,12 @@ fn delete_removes_files_empty_dirs_links_and_session_files_but_never_a_subtree()
     std::os::unix::fs::symlink(&live, root.join("link.jsonl")).expect("放一条指向会话的链接");
 
     // 正控：文件 · 空目录。
-    delete_entry(&root, "x.md").expect("删普通文件被误拒");
+    delete_entry(&Face::issue(), &root, "x.md").expect("删普通文件被误拒");
     assert!(!root.join("x.md").exists());
-    delete_entry(&root, "empty").expect("删空目录被误拒");
+    delete_entry(&Face::issue(), &root, "empty").expect("删空目录被误拒");
     assert!(!root.join("empty").exists());
     // 链接：删的是链接本身，目标一个字节没动。
-    delete_entry(&root, "link.jsonl").expect("删链接被误拒");
+    delete_entry(&Face::issue(), &root, "link.jsonl").expect("删链接被误拒");
     assert!(
         std::fs::symlink_metadata(root.join("link.jsonl")).is_err(),
         "链接还在"
@@ -869,12 +881,13 @@ fn delete_removes_files_empty_dirs_links_and_session_files_but_never_a_subtree()
     );
 
     // 🔴 不递归：非空目录 ⇒ 系统报错，里面的东西还在。
-    let err = delete_entry(&root, "full").expect_err("非空目录被删掉了 —— 递归删没签字");
+    let err =
+        delete_entry(&Face::issue(), &root, "full").expect_err("非空目录被删掉了 —— 递归删没签字");
     assert_eq!(err.code(), "io_failed", "{err:?}");
     assert!(root.join("full/keep.md").exists(), "非空目录里的东西没了");
 
     // 会话文件本身 ⇒ **删得掉**（从前是阴性「拒，盘上原样」）。
-    delete_entry(&root, "projects/-x/abc.jsonl").expect("🔴 会话文件删不掉");
+    delete_entry(&Face::issue(), &root, "projects/-x/abc.jsonl").expect("🔴 会话文件删不掉");
     assert!(!live.exists(), "说删了，会话文件还在");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -896,7 +909,7 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
     std::os::unix::fs::symlink(&outside, root.join("away.txt")).expect("放指到根外的链接");
 
     // 正控。
-    change_mode(&root, "run.sh", 0o700).expect("干净的改权限被误拒");
+    change_mode(&Face::issue(), &root, "run.sh", 0o700).expect("干净的改权限被误拒");
     let m = std::fs::metadata(root.join("run.sh"))
         .expect("读")
         .permissions()
@@ -904,7 +917,8 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
     assert_eq!(m & 0o7777, 0o700, "说改了，盘上的权限位不对");
 
     // 名字干净（`innocent.txt`），解到底是会话文件 ⇒ **照改**，改的是那份真文件。
-    change_mode(&root, "innocent.txt", 0o600).expect("🔴 经链接改会话文件的权限被拒了");
+    change_mode(&Face::issue(), &root, "innocent.txt", 0o600)
+        .expect("🔴 经链接改会话文件的权限被拒了");
     let m = std::fs::metadata(&live)
         .expect("读会话元数据")
         .permissions()
@@ -913,8 +927,8 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
     // 🔴 阴性：名字干净（`away.txt`），解到底跑出了根 ⇒ 拒，而且根外那一份权限位没变。
     //    只解父目录的那一道（`resolve_in_root`）在这一形上是**瞎的** —— 这一格就是
     //    `resolve_existing_in_root` 存在的理由。
-    let err =
-        change_mode(&root, "away.txt", 0o000).expect_err("借一条链接把根外那一份改成了不可读");
+    let err = change_mode(&Face::issue(), &root, "away.txt", 0o000)
+        .expect_err("借一条链接把根外那一份改成了不可读");
     assert_eq!(err.code(), "refused", "{err:?}");
     let after = std::fs::metadata(&outside)
         .expect("读根外元数据")
@@ -923,7 +937,7 @@ fn chmod_follows_links_so_it_resolves_to_the_end_before_judging() {
     assert_eq!(before, after, "🔴 根外那一份的权限位被改了");
 
     // 超出低 12 位 ⇒ 拒。
-    let err = change_mode(&root, "run.sh", 0o100000).expect_err("高位被收下了");
+    let err = change_mode(&Face::issue(), &root, "run.sh", 0o100000).expect_err("高位被收下了");
     assert_eq!(err.code(), "refused", "{err:?}");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -940,18 +954,20 @@ fn overwrite_replaces_an_existing_regular_file_and_nothing_else() {
     std::os::unix::fs::symlink(&outside, root.join("away.md")).expect("放指到根外的链接");
 
     // 正控。
-    let got = overwrite_text(&root, "a.md", b"new").expect("干净的覆盖写被误拒");
+    let got = overwrite_text(&Face::issue(), &root, "a.md", b"new").expect("干净的覆盖写被误拒");
     assert_eq!(std::fs::read(&got).expect("读回"), b"new");
 
     // 链接指向会话文件 ⇒ **照写**，写的是那份真文件，链接还是链接。
-    overwrite_text(&root, "notes.md", b"edited\n").expect("🔴 经链接覆盖会话文件被拒了");
+    overwrite_text(&Face::issue(), &root, "notes.md", b"edited\n")
+        .expect("🔴 经链接覆盖会话文件被拒了");
     assert_eq!(std::fs::read(&live).expect("读会话"), b"edited\n");
     assert!(std::fs::symlink_metadata(root.join("notes.md"))
         .expect("meta")
         .file_type()
         .is_symlink());
     // 🔴 阴性：链接指到根外 ⇒ 拒，根外那一份一个字节没动。
-    let err = overwrite_text(&root, "away.md", b"PWNED").expect_err("借链接覆盖了根外那一份");
+    let err = overwrite_text(&Face::issue(), &root, "away.md", b"PWNED")
+        .expect_err("借链接覆盖了根外那一份");
     assert_eq!(err.code(), "refused", "{err:?}");
     assert_eq!(
         std::fs::read(&outside).expect("读根外"),
@@ -960,12 +976,12 @@ fn overwrite_replaces_an_existing_regular_file_and_nothing_else() {
     );
     // 不存在 ⇒ 拒（新建走 O_EXCL 那条路，不在这里）。
     assert!(
-        overwrite_text(&root, "nope.md", b"x").is_err(),
+        overwrite_text(&Face::issue(), &root, "nope.md", b"x").is_err(),
         "覆盖写顺手新建了文件"
     );
     assert!(!root.join("nope.md").exists());
     // 目录 ⇒ 拒。
-    let err = overwrite_text(&root, "projects", b"x").expect_err("对着目录覆盖写");
+    let err = overwrite_text(&Face::issue(), &root, "projects", b"x").expect_err("对着目录覆盖写");
     assert_eq!(err.code(), "refused", "{err:?}");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -1105,11 +1121,13 @@ fn copy_lands_a_byte_exact_copy_and_never_overwrites_unless_asked() {
     let root = base.join("cfg");
     std::fs::create_dir_all(&root).expect("建根");
     std::fs::write(root.join("a.md"), b"AAAA\n").expect("铺 a");
-    let (got, n) = copy_entry(&root, "a.md", "b.md", false).expect("干净的复制被误拒");
+    let (got, n) =
+        copy_entry(&Face::issue(), &root, "a.md", "b.md", false).expect("干净的复制被误拒");
     assert_eq!(std::fs::read(&got).expect("读回"), b"AAAA\n");
     assert_eq!(n, 5, "回报的字节数与真复制的不相等");
     std::fs::write(root.join("b.md"), b"OLD").expect("改 b");
-    let err = copy_entry(&root, "a.md", "b.md", false).expect_err("🔴 缺省复制顶掉了一份既有文件");
+    let err = copy_entry(&Face::issue(), &root, "a.md", "b.md", false)
+        .expect_err("🔴 缺省复制顶掉了一份既有文件");
     assert_eq!(err.code(), "io_failed", "{err:?}");
     assert_eq!(
         std::fs::read(root.join("b.md")).expect("b"),
@@ -1146,7 +1164,7 @@ fn a_copy_carries_the_source_permission_bits_on_both_branches() {
         std::fs::set_permissions(root.join(src), std::fs::Permissions::from_mode(bits))
             .expect("设源权限");
         let fresh = format!("{src}.new");
-        copy_entry(&root, src, &fresh, false).expect("不覆盖那一支被拒");
+        copy_entry(&Face::issue(), &root, src, &fresh, false).expect("不覆盖那一支被拒");
         assert_eq!(
             mode(&root.join(&fresh)),
             bits,
@@ -1156,7 +1174,7 @@ fn a_copy_carries_the_source_permission_bits_on_both_branches() {
         std::fs::write(root.join(&old), b"o").expect("铺旧目标");
         std::fs::set_permissions(root.join(&old), std::fs::Permissions::from_mode(0o644))
             .expect("设旧目标权限");
-        copy_entry(&root, src, &old, true).expect("覆盖那一支被拒");
+        copy_entry(&Face::issue(), &root, src, &old, true).expect("覆盖那一支被拒");
         assert_eq!(
             mode(&root.join(&old)),
             bits,
@@ -1176,13 +1194,14 @@ fn explicit_overwrite_replaces_the_link_itself_and_leaves_no_side_file() {
     let (live, bytes) = plant_live_session(&base);
     std::fs::write(root.join("a.md"), b"NEW").expect("铺 a");
     std::fs::write(root.join("b.md"), b"OLD").expect("铺 b");
-    copy_entry(&root, "a.md", "b.md", true).expect("显式覆盖被拒了");
+    copy_entry(&Face::issue(), &root, "a.md", "b.md", true).expect("显式覆盖被拒了");
     assert_eq!(std::fs::read(root.join("b.md")).expect("b"), b"NEW");
     // 目标是一条指向会话文件的链接：不覆盖 ⇒ `O_EXCL` 在链接上就失败；覆盖 ⇒ 顶掉链接。
     std::os::unix::fs::symlink(&live, root.join("ln.md")).expect("铺链接");
-    let err = copy_entry(&root, "a.md", "ln.md", false).expect_err("链接上 O_EXCL 竟然成了");
+    let err = copy_entry(&Face::issue(), &root, "a.md", "ln.md", false)
+        .expect_err("链接上 O_EXCL 竟然成了");
     assert_eq!(err.code(), "io_failed", "{err:?}");
-    copy_entry(&root, "a.md", "ln.md", true).expect("覆盖一条链接被拒了");
+    copy_entry(&Face::issue(), &root, "a.md", "ln.md", true).expect("覆盖一条链接被拒了");
     assert!(
         !std::fs::symlink_metadata(root.join("ln.md"))
             .expect("ln")
@@ -1222,7 +1241,7 @@ fn copy_is_fenced_on_the_source_the_target_and_through_a_link() {
         ("peek.md", "copied.md", &bytes[..]),
         ("a.md", "projects/-x/new.jsonl", &b"A"[..]),
     ] {
-        let (at, _) = copy_entry(&root, from, to, false)
+        let (at, _) = copy_entry(&Face::issue(), &root, from, to, false)
             .unwrap_or_else(|e| panic!("🔴 {from} → {to} 被拒了：{e:?}"));
         assert_eq!(std::fs::read(&at).expect("读复制品"), want, "{from} → {to}");
     }
@@ -1231,7 +1250,7 @@ fn copy_is_fenced_on_the_source_the_target_and_through_a_link() {
         ("a.md", "../stolen.md", "目标带上跳段"),
     ] {
         for overwrite in [false, true] {
-            let err = copy_entry(&root, from, to, overwrite)
+            let err = copy_entry(&Face::issue(), &root, from, to, overwrite)
                 .expect_err(&format!("🔴 {why}（overwrite={overwrite}）竟然复制成了"));
             assert_eq!(err.code(), "refused", "{why}：{err:?}");
         }
@@ -1357,7 +1376,7 @@ fn a_recursive_delete_removes_the_whole_tree_and_counts_every_entry_but_never_fo
     std::fs::write(outside.join("keep.md"), b"keep").expect("铺树外文件");
     std::os::unix::fs::symlink(&outside, root.join("t/a/out")).expect("放链接");
 
-    let (at, removed) = delete_tree(&root, "t").expect("干净的递归删被误拒");
+    let (at, removed) = delete_tree(&Face::issue(), &root, "t").expect("干净的递归删被误拒");
     assert_eq!(at.file_name().and_then(|n| n.to_str()), Some("t"));
     assert_eq!(
         removed,
@@ -1377,7 +1396,12 @@ fn a_recursive_delete_removes_the_whole_tree_and_counts_every_entry_but_never_fo
     );
     // 一份普通文件走递归那条路也只删它自己。
     std::fs::write(root.join("solo.md"), b"s").expect("铺");
-    assert_eq!(delete_tree(&root, "solo.md").expect("删单个文件").1, 1);
+    assert_eq!(
+        delete_tree(&Face::issue(), &root, "solo.md")
+            .expect("删单个文件")
+            .1,
+        1
+    );
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -1399,13 +1423,15 @@ fn a_session_file_anywhere_in_the_tree_goes_with_the_tree() {
         "t/a/projects/-y/s1.jsonl",
     ]);
 
-    let (_, removed) = delete_tree(&root, "t").expect("🔴 底下藏着会话文件，递归删被拒了");
+    let (_, removed) =
+        delete_tree(&Face::issue(), &root, "t").expect("🔴 底下藏着会话文件，递归删被拒了");
     assert_eq!(removed, all.len(), "删掉的条数不对");
     assert!(still_there(&root, &all).is_empty(), "树里还剩东西");
 
     // 目标就是那个项目目录本身。
     assert!(!bytes.is_empty());
-    let (_, removed) = delete_tree(&root, "projects/-x").expect("🔴 项目目录连同会话文件删不掉");
+    let (_, removed) =
+        delete_tree(&Face::issue(), &root, "projects/-x").expect("🔴 项目目录连同会话文件删不掉");
     assert_eq!(removed, 2, "项目目录 ＋ 一份会话文件");
     assert!(!live.exists());
     // 命令面同一件事：`recursive: true` ⇒ 整个 `projects` 删掉。
@@ -1442,7 +1468,7 @@ fn the_execution_pass_only_deletes_what_was_planned_and_stops_on_a_newcomer() {
     let mut removed = 0usize;
     let mut stopped = None;
     for p in plan.iter().rev() {
-        match remove_planned(&root, p) {
+        match remove_planned(&Face::issue(), &root, p) {
             Ok(_) => removed += 1,
             Err(e) => {
                 stopped = Some((p.rel.clone(), e));
@@ -1484,7 +1510,8 @@ fn the_execution_pass_refences_every_entry_so_a_swapped_in_link_is_caught() {
         .iter()
         .find(|p| p.rel == Path::new("t/a/b/three.md"))
         .expect("计划里有那一条");
-    let err = remove_planned(&root, victim).expect_err("🔴 顺着换进来的链接删到了树外");
+    let err =
+        remove_planned(&Face::issue(), &root, victim).expect_err("🔴 顺着换进来的链接删到了树外");
     assert_eq!(err.code(), "refused", "{err:?}");
     assert_eq!(
         std::fs::read(outside.join("three.md")).expect("读受害者"),
@@ -1492,7 +1519,7 @@ fn the_execution_pass_refences_every_entry_so_a_swapped_in_link_is_caught() {
         "🔴 树外那一份被删了"
     );
     // 重新计划再整趟跑：那一层这回被看成**一条链接**（不跟过去）⇒ 删的是链接本身，树外原样。
-    delete_tree(&root, "t").expect("重新计划之后整棵树（连同那条链接本身）删不掉");
+    delete_tree(&Face::issue(), &root, "t").expect("重新计划之后整棵树（连同那条链接本身）删不掉");
     assert!(std::fs::symlink_metadata(root.join("t")).is_err(), "树还在");
     assert_eq!(
         std::fs::read(outside.join("three.md")).expect("读受害者"),
@@ -1677,7 +1704,7 @@ fn a_recursive_delete_walks_through_non_utf8_children() {
     let odd = std::ffi::OsStr::from_bytes(b"d\xff");
     std::fs::create_dir_all(root.join("t").join(odd)).expect("铺乱码目录");
     std::fs::write(root.join("t").join(odd).join("f"), b"f").expect("铺");
-    let (_, removed) = delete_tree(&root, "t").expect("🔴 树里有乱码名就删不动了");
+    let (_, removed) = delete_tree(&Face::issue(), &root, "t").expect("🔴 树里有乱码名就删不动了");
     assert_eq!(removed, 3);
     assert!(std::fs::symlink_metadata(root.join("t")).is_err());
     std::fs::remove_dir_all(&base).ok();
@@ -1742,7 +1769,7 @@ fn put_is_compare_and_swap_and_a_stale_expectation_writes_nothing() {
     std::fs::create_dir_all(&root).expect("建根");
     std::fs::write(root.join("a.txt"), "A").expect("铺 a");
     for expect in [Some(&b"X"[..]), None] {
-        match put_text(&root, "a.txt", b"B", expect, false, false) {
+        match put_text(&Face::issue(), &root, "a.txt", b"B", expect, false, false) {
             Err(WriteRefusal::Stale(_)) => {}
             other => panic!("🔴 期望对不上却没回 stale：{other:?}"),
         }
@@ -1752,18 +1779,45 @@ fn put_is_compare_and_swap_and_a_stale_expectation_writes_nothing() {
             "stale 那一趟动了盘"
         );
     }
-    match put_text(&root, "new.txt", b"N", Some(b"old"), false, false) {
+    match put_text(
+        &Face::issue(),
+        &root,
+        "new.txt",
+        b"N",
+        Some(b"old"),
+        false,
+        false,
+    ) {
         Err(WriteRefusal::Stale(_)) => {}
         other => panic!("🔴 「读的时候在、现在不在」没回 stale：{other:?}"),
     }
     assert!(!root.join("new.txt").exists(), "stale 那一趟建出了文件");
-    let done = put_text(&root, "a.txt", b"B", Some(b"A"), false, false).expect("对上了就该写");
+    let done = put_text(
+        &Face::issue(),
+        &root,
+        "a.txt",
+        b"B",
+        Some(b"A"),
+        false,
+        false,
+    )
+    .expect("对上了就该写");
     assert!(done.changed && !done.created && done.backup.is_none());
     assert_eq!(std::fs::read(root.join("a.txt")).expect("a"), b"B");
-    let same = put_text(&root, "a.txt", b"B", Some(b"B"), true, false).expect("相同");
+    let same = put_text(
+        &Face::issue(),
+        &root,
+        "a.txt",
+        b"B",
+        Some(b"B"),
+        true,
+        false,
+    )
+    .expect("相同");
     assert!(!same.changed, "内容相同该一个字节不写");
     assert!(same.backup.is_none(), "没写就不该留备份");
-    let made = put_text(&root, "new.txt", b"N", None, false, false).expect("不在 ⇒ 建");
+    let made =
+        put_text(&Face::issue(), &root, "new.txt", b"N", None, false, false).expect("不在 ⇒ 建");
     assert!(made.changed && made.created);
     assert_eq!(std::fs::read(root.join("new.txt")).expect("new"), b"N");
     for n in ["a.txt", "new.txt"] {
@@ -1781,14 +1835,23 @@ fn put_builds_parents_only_when_asked_and_each_level_is_fenced() {
     let base = temp_root("ppar");
     let root = base.join("r");
     std::fs::create_dir_all(&root).expect("建根");
-    match put_text(&root, "d/e/f.txt", b"x", None, false, false) {
+    match put_text(&Face::issue(), &root, "d/e/f.txt", b"x", None, false, false) {
         Err(WriteRefusal::Refused(_)) => {}
         other => panic!("🔴 没要 `parents` 却补了父目录 / 没拒：{other:?}"),
     }
     assert!(!root.join("d").exists(), "没要 `parents` 也建了目录");
-    put_text(&root, "d/e/f.txt", b"x", None, false, true).expect("要了就补");
+    put_text(&Face::issue(), &root, "d/e/f.txt", b"x", None, false, true).expect("要了就补");
     assert_eq!(std::fs::read(root.join("d/e/f.txt")).expect("f"), b"x");
-    assert!(put_text(&root, "../out/f.txt", b"x", None, false, true).is_err());
+    assert!(put_text(
+        &Face::issue(),
+        &root,
+        "../out/f.txt",
+        b"x",
+        None,
+        false,
+        true
+    )
+    .is_err());
     assert!(!base.join("out").exists(), "补父目录那一步逃出了目标根");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -1804,6 +1867,7 @@ fn put_backup_keeps_the_original_bytes_and_the_mode_survives_the_swap() {
     std::fs::write(&rc, "# mine\n").expect("铺 rc");
     std::fs::set_permissions(&rc, std::fs::Permissions::from_mode(0o600)).expect("600");
     let done = put_text(
+        &Face::issue(),
         &root,
         ".bashrc",
         b"# mine\nnew\n",
@@ -1835,7 +1899,16 @@ fn put_through_a_link_changes_the_real_file_and_the_link_stays_a_link() {
     std::os::unix::fs::symlink("dotfiles/bashrc", root.join(".bashrc")).expect("建链接");
     let got = peek_text(&root, ".bashrc").expect("经链接读");
     assert_eq!(got.text.as_deref(), Some("old\n"));
-    put_text(&root, ".bashrc", b"new\n", Some(b"old\n"), false, false).expect("经链接写");
+    put_text(
+        &Face::issue(),
+        &root,
+        ".bashrc",
+        b"new\n",
+        Some(b"old\n"),
+        false,
+        false,
+    )
+    .expect("经链接写");
     assert!(
         std::fs::symlink_metadata(root.join(".bashrc"))
             .expect("meta")
@@ -1851,7 +1924,15 @@ fn put_through_a_link_changes_the_real_file_and_the_link_stays_a_link() {
     // 从前这里的语料是「链接指到一份会话文件上」，今天那一形放行（见下一条）。
     let (outside, bytes) = plant_outside(&base);
     std::os::unix::fs::symlink(&outside, root.join("sneaky.txt")).expect("建链接");
-    let got = put_text(&root, "sneaky.txt", b"x", Some(&bytes), false, false);
+    let got = put_text(
+        &Face::issue(),
+        &root,
+        "sneaky.txt",
+        b"x",
+        Some(&bytes),
+        false,
+        false,
+    );
     assert!(matches!(got, Err(WriteRefusal::Refused(_))), "{got:?}");
     assert_eq!(std::fs::read(&outside).expect("根外"), bytes);
     std::fs::remove_dir_all(&base).ok();
@@ -1863,6 +1944,7 @@ fn put_writes_a_session_file_like_any_other_under_the_same_cas() {
     let base = temp_root("psess");
     let (live, bytes) = plant_live_session(&base);
     let stale = put_text(
+        &Face::issue(),
         &base,
         "cfg/projects/-x/abc.jsonl",
         b"x",
@@ -1877,6 +1959,7 @@ fn put_writes_a_session_file_like_any_other_under_the_same_cas() {
         "stale 那一趟动了盘"
     );
     let done = put_text(
+        &Face::issue(),
         &base,
         "cfg/projects/-x/abc.jsonl",
         b"x",
@@ -2065,6 +2148,7 @@ fn put_keeps_explicit_acl_entries_on_windows() {
         return;
     }
     put_text(
+        &Face::issue(),
         &root,
         "profile.ps1",
         b"Set-Alias g git\nnew\n",
@@ -2107,19 +2191,22 @@ fn a_delete_with_expect_removes_only_the_bytes_it_was_told_about() {
 
     // 不等 ⇒ stale，盘上逐字节不变（长度不同 · **长度相同、字节不同** 两形 —— 后一形是死值验 K7 首刀没砍中补的格）。
     for other in [&b"someone else"[..], &b"PLANNED"[..]] {
-        let err = delete_file_expecting(&root, "a.json", other).expect_err("🔴 不等也删了");
+        let err = delete_file_expecting(&Face::issue(), &root, "a.json", other)
+            .expect_err("🔴 不等也删了");
         assert_eq!(err.code(), "stale", "{err:?}");
     }
     assert_eq!(std::fs::read(root.join("a.json")).expect("读"), b"planned");
     // 正控：等 ⇒ 删。
-    delete_file_expecting(&root, "a.json", b"planned").expect("逐字节相等却被拒");
+    delete_file_expecting(&Face::issue(), &root, "a.json", b"planned").expect("逐字节相等却被拒");
     assert!(!root.join("a.json").exists(), "说删了，盘上还在");
     // 已经不在 ⇒ stale（读的时候还在）。
-    let err = delete_file_expecting(&root, "a.json", b"planned").expect_err("不在也回成功");
+    let err = delete_file_expecting(&Face::issue(), &root, "a.json", b"planned")
+        .expect_err("不在也回成功");
     assert_eq!(err.code(), "stale", "{err:?}");
     // 目录 / 链接 ⇒ refused，原样（链接指向的那份字节等于 expect 也不删）。
     for rel in ["d", "l.json"] {
-        let err = delete_file_expecting(&root, rel, b"planned").expect_err("非普通文件被删了");
+        let err = delete_file_expecting(&Face::issue(), &root, rel, b"planned")
+            .expect_err("非普通文件被删了");
         assert_eq!(err.code(), "refused", "{rel}: {err:?}");
     }
     assert!(root.join("d").is_dir());
@@ -2128,11 +2215,11 @@ fn a_delete_with_expect_removes_only_the_bytes_it_was_told_about() {
     );
     assert_eq!(std::fs::read(root.join("t.json")).expect("读"), b"planned");
     // 会话文件：expect 对得上 ⇒ 删（从前「对得上也拒，围栏在 CAS 之前」）；对不上 ⇒ stale。
-    let err = delete_file_expecting(&root, "projects/-x/abc.jsonl", b"not it")
+    let err = delete_file_expecting(&Face::issue(), &root, "projects/-x/abc.jsonl", b"not it")
         .expect_err("🔴 不等也删了");
     assert_eq!(err.code(), "stale", "{err:?}");
     assert_eq!(std::fs::read(&live).expect("读会话"), bytes);
-    delete_file_expecting(&root, "projects/-x/abc.jsonl", &bytes)
+    delete_file_expecting(&Face::issue(), &root, "projects/-x/abc.jsonl", &bytes)
         .expect("🔴 会话文件对得上也删不掉");
     assert!(!live.exists());
     std::fs::remove_dir_all(&base).ok();
@@ -2307,7 +2394,7 @@ fn a_recursive_copy_lands_the_whole_tree_with_bytes_and_modes() {
     .expect("设权限");
     std::fs::set_permissions(root.join("t/a/b"), std::fs::Permissions::from_mode(0o555))
         .expect("设只读目录");
-    let got = copy_tree(&root, "t", "u").expect("干净的复制目录被拒了");
+    let got = copy_tree(&Face::issue(), &root, "t", "u").expect("干净的复制目录被拒了");
     assert_eq!(
         (got.files, got.dirs, got.bytes),
         (3, 4, 3),
@@ -2338,7 +2425,7 @@ fn a_recursive_copy_refuses_whole_and_builds_nothing() {
     let fifo = std::ffi::CString::new(root.join("t/a/pipe").to_string_lossy().as_bytes().to_vec())
         .expect("路径");
     assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o644) }, 0, "铺管道");
-    let e = copy_tree(&root, "t", "u").expect_err("树里有管道却复制成了");
+    let e = copy_tree(&Face::issue(), &root, "t", "u").expect_err("树里有管道却复制成了");
     assert_eq!(e.code(), "refused", "{e:?}");
     assert!(
         std::fs::symlink_metadata(root.join("u")).is_err(),
@@ -2348,7 +2435,7 @@ fn a_recursive_copy_refuses_whole_and_builds_nothing() {
     // ② 目标已在：建目录那一步就失败，已在那一份一个字节不动。
     std::fs::create_dir(root.join("u")).expect("铺已在的目标");
     std::fs::write(root.join("u/keep"), b"K").expect("铺");
-    let e = copy_tree(&root, "t", "u").expect_err("目标已在却合并进去了");
+    let e = copy_tree(&Face::issue(), &root, "t", "u").expect_err("目标已在却合并进去了");
     assert_eq!(e.code(), "io_failed", "{e:?}");
     assert_eq!(std::fs::read(root.join("u/keep")).expect("keep"), b"K");
     assert!(
@@ -2356,18 +2443,20 @@ fn a_recursive_copy_refuses_whole_and_builds_nothing() {
         "合并进去了"
     );
     // ③ 目标在源里面。
-    let e = copy_tree(&root, "t", "t/a/inner").expect_err("复制进自己里面竟然成了");
+    let e = copy_tree(&Face::issue(), &root, "t", "t/a/inner").expect_err("复制进自己里面竟然成了");
     assert_eq!(e.code(), "refused", "{e:?}");
     assert!(std::fs::symlink_metadata(root.join("t/a/inner")).is_err());
     // ④ 超上限（计划 7 条，上限 3）。
-    let e = copy_tree_with(&root, Path::new("t"), Path::new("v"), 3).expect_err("超上限却复制了");
+    let e = copy_tree_with(&Face::issue(), &root, Path::new("t"), Path::new("v"), 3)
+        .expect_err("超上限却复制了");
     assert_eq!(e.code(), "refused", "{e:?}");
     assert!(
         std::fs::symlink_metadata(root.join("v")).is_err(),
         "超上限那一趟建了东西"
     );
     // 正控：同一棵、上限够 ⇒ 成。
-    copy_tree_with(&root, Path::new("t"), Path::new("v"), 7).expect("上限恰好够却被拒了");
+    copy_tree_with(&Face::issue(), &root, Path::new("t"), Path::new("v"), 7)
+        .expect("上限恰好够却被拒了");
     std::fs::remove_dir_all(&base).ok();
 }
 
@@ -2389,7 +2478,7 @@ fn a_recursive_copy_copies_each_link_itself_with_its_target_text_verbatim() {
     for (at, to) in &links {
         std::os::unix::fs::symlink(to, root.join(at)).expect("铺链接");
     }
-    let got = copy_tree(&root, "t", "u").expect("树里有链接的复制目录被拒了");
+    let got = copy_tree(&Face::issue(), &root, "t", "u").expect("树里有链接的复制目录被拒了");
     assert_eq!(
         (got.files, got.dirs, got.links),
         (3, 4, 3),
@@ -2429,7 +2518,7 @@ fn a_recursive_copy_that_fails_midway_undoes_what_it_built() {
         std::fs::Permissions::from_mode(0o000),
     )
     .expect("设不可读");
-    let e = copy_tree(&root, "t", "u").expect_err("读不了的源却复制成了");
+    let e = copy_tree(&Face::issue(), &root, "t", "u").expect_err("读不了的源却复制成了");
     assert_eq!(e.code(), "io_failed", "{e:?}");
     assert!(
         copy_core::copy_matches("beFilesWrite.copyTree.undoneAll", e.message()),
@@ -2721,12 +2810,30 @@ fn own_home_child_entry_point() {
     }
     let home = PathBuf::from(std::env::var("HOME").unwrap());
     // 补父目录那一路会把 `~/.cc-monitor` 本身建出来（别名文件第一次写就是这一形）。
-    put_text(&home, ".cc-monitor/aliases.sh", b"a", None, false, true).unwrap();
-    make_dir(&home, ".cc-monitor/backups").unwrap();
-    create_new_file(&home, ".cc-monitor/backups/one.json", b"{}").unwrap();
-    put_text(&home, "elsewhere/rc", b"x", None, false, true).unwrap();
-    make_dir(&home, "elsewhere/sub").unwrap();
-    create_new_file(&home, "elsewhere/new.txt", b"y").unwrap();
+    put_text(
+        &Face::issue(),
+        &home,
+        ".cc-monitor/aliases.sh",
+        b"a",
+        None,
+        false,
+        true,
+    )
+    .unwrap();
+    make_dir(&Face::issue(), &home, ".cc-monitor/backups").unwrap();
+    create_new_file(&Face::issue(), &home, ".cc-monitor/backups/one.json", b"{}").unwrap();
+    put_text(
+        &Face::issue(),
+        &home,
+        "elsewhere/rc",
+        b"x",
+        None,
+        false,
+        true,
+    )
+    .unwrap();
+    make_dir(&Face::issue(), &home, "elsewhere/sub").unwrap();
+    create_new_file(&Face::issue(), &home, "elsewhere/new.txt", b"y").unwrap();
     // 已在的文件覆盖写沿用原权限位（不因为住在自家目录里就被改）。
     let kept = home.join(".cc-monitor/kept.json");
     std::fs::write(&kept, b"1").unwrap();
@@ -2735,6 +2842,7 @@ fn own_home_child_entry_point() {
         std::fs::set_permissions(&kept, std::fs::Permissions::from_mode(0o640)).unwrap();
     }
     put_text(
+        &Face::issue(),
         &home,
         ".cc-monitor/kept.json",
         b"2",
@@ -2817,7 +2925,8 @@ fn a_recursive_delete_in_slices_stops_between_entries_and_says_how_many_are_left
     let planted = plant_tree(&root);
     let total = planted.len();
     // 一趟只许删 0 条：照样删一条再停（一趟接一趟才删得完）。
-    let (_, removed, left) = delete_tree_upto(&root, "t", Some(0)).expect("删够了不是失败");
+    let (_, removed, left) =
+        delete_tree_upto(&Face::issue(), &root, "t", Some(0)).expect("删够了不是失败");
     assert_eq!((removed, left), (1, total - 1), "删够了没停在两条之间");
     assert_eq!(
         still_there(&root, &planted).len(),
@@ -2826,9 +2935,9 @@ fn a_recursive_delete_in_slices_stops_between_entries_and_says_how_many_are_left
     );
     // 帧面那一条：带 `limit` ⇒ 回 `remaining`；接着删到 0。
     let args = |n: u64| serde_json::json!({ "root": root.to_string_lossy(), "rel": "t", "recursive": true, "limit": n });
-    let v = answer_delete(&args(2)).expect("第二趟");
+    let v = answer_delete(&Face::issue(), &args(2)).expect("第二趟");
     assert_eq!(v["remaining"], serde_json::json!(total - 3));
-    let v = answer_delete(&args(1_000)).expect("第三趟");
+    let v = answer_delete(&Face::issue(), &args(1_000)).expect("第三趟");
     assert_eq!(v["remaining"], serde_json::json!(0));
     assert!(still_there(&root, &planted).is_empty(), "说删完了，树还在");
     std::fs::remove_dir_all(&base).ok();

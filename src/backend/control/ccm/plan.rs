@@ -108,6 +108,22 @@ pub(crate) struct Env {
     pub(crate) answer_hook_entry: Option<String>,
     /// 读用户自己给的会话级设置文件（并进答题 hook 用）；`None` ＝ 不读（预览 / 判据没喂）：用户给了那个旗标就原样交出去、不并、也不说。
     pub(crate) read_text: Option<fn(&std::path::Path) -> Option<String>>,
+    /// 换了启动器那一支要问的这台事实（插件目录变量继承来的值 · 那一家的版本 · 本机 managed 策略 · 读不读得出别的进程的环境）；
+    /// `None` ＝ 不问（预览 / 判据没喂）⇒ 照「自定义启动器」标挂不上。
+    pub(crate) sideload: Option<fn(&crate::agents::PluginFace) -> Sideload>,
+}
+
+/// 换了启动器那一支起会话前看的这台事实（[`Env::sideload`]）。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Sideload {
+    /// 调用方继承来的那个插件目录变量（用户自己设的）：我们的目录接在它后面。
+    pub(crate) inherited: Option<String>,
+    /// `PATH` 上那一家的版本；认不出 ⇒ `None`。
+    pub(crate) version: Option<[u64; 3]>,
+    /// 本机 managed 策略不许这一路。
+    pub(crate) policy_blocked: bool,
+    /// 这台读得出别的进程起来时的环境（hook 判子进程、会话事实判接没接上都靠它；今天只 Linux）。
+    pub(crate) env_readable: bool,
 }
 
 /// 环境里认出调用方那个会话（[`Env::inherited_parent`]）：各家登记的变量按注册序，头一个有值、值过段闸的。
@@ -178,6 +194,7 @@ impl Env {
             ),
             answer_hook_entry: crate::platform::paths::installed_ccm_entry(),
             read_text: Some(|p| crate::platform::fs::Ro::read_to_string(p).ok()),
+            sideload: Some(sideload_here),
             home,
         }
     }
@@ -223,6 +240,7 @@ impl Env {
             // 预览不挂答题 hook：那一串设置是起会话那一下的事，别名本身不带它（真跑那一份照常挂）。
             answer_hook_entry: None,
             read_text: None,
+            sideload: None,
             home,
         }
     }
@@ -567,6 +585,10 @@ pub(crate) struct Direct {
     /// 答题 hook 挂不上（用户自己给的会话级设置并不进去 · 自定义启动器起的）⇒ 起的进程环境里带 [`crate::agents::asks::ANSWER_HOOK_OFF_ENV`]
     /// （值是原因的短码），会话事实据此写明为什么在这里答不了。
     pub(crate) answer_hook_off: Option<crate::agents::asks::HookOff>,
+    /// 换了启动器那一支：答题插件经环境交下去 ⇒ `(变量名, 整串值)`（用户已有的在前、我们的目录接在后面）。
+    pub(crate) plugin_dirs: Option<(String, String)>,
+    /// 同上那一支：插件目录里的每一份（相对路径, 内容）；exec 之前经写自家状态的句柄写进 [`crate::agents::asks::plugin_dir_under`]。
+    pub(crate) plugin_files: Vec<(&'static str, String)>,
 }
 
 /// 一家怎么指到中转，落到计划里的样子（[`crate::agents::Inject`] 的两形；没登记 ⇒ [`RelayVia::None`]）。
@@ -600,7 +622,7 @@ pub(crate) fn qarg(s: &str) -> String {
 /// 结果可能是空串（输入全是分隔符 / 根目录），调用方给兜底。
 ///
 /// 全仓**唯一一份**：前端那份（`shell-quote.ts::tmuxNameSegment` · `remote-launch.ts::deriveTmuxName`）删了，
-/// 界面要名字就问这台后端的 `terminal-name-mint`（[`super::answer_terminal_name_mint`]）。
+/// 界面要名字就问这台后端的 `terminal-name-mint`（[`super::TerminalNameMint`]）。
 fn name_segment(raw: &str) -> String {
     let trimmed = raw.trim_end_matches('/');
     let base = trimmed.rsplit('/').next().unwrap_or("");
@@ -1288,9 +1310,12 @@ pub(crate) fn build_among(
     //   透传里没有那个旗标 ⇒ 垫在透传之前；有 ⇒ 读他那一份（JSON 串原样 / 文件按工作目录补全）、并进我们那一组、换成并好的 JSON 串交出去；
     //   读不出 / 形状不认 ⇒ 原样交出去，标「挂不上」（进程环境里带一个变量，会话事实据此写明只能在终端里答批准）。
     //   换了启动器（不是这一家默认的那一个）⇒ 不垫：它后面的词由那个启动器自己原样转交（`env VAR=x <agent>` 那一形头几个词是 env 的），
-    //   ccm 不知道它认不认这一家的旗标；没挂上的会话照「只能在终端里答」那一态画。
+    //   ccm 不知道它认不认这一家的旗标 ⇒ 同一组 hook 做成小插件、经环境交下去（启动器只要把环境往下传就挂得上）；
+    //   本机策略不许 · 版本太低 · 这台判不了子进程 ⇒ 不设，标挂不上（原因各一种）。
     let mut passthru = o.passthru.clone();
     let mut answer_hook_off = None;
+    let mut plugin_dirs = None;
+    let mut plugin_files = Vec::new();
     let own_launcher = face.is_some_and(|f| launcher == f.default_launcher);
     if let (Some(entry), Some(f)) = (
         env.answer_hook_entry.as_deref(),
@@ -1298,7 +1323,13 @@ pub(crate) fn build_among(
     ) {
         use crate::agents::asks::{HookOff, SettingsWhy};
         if !own_launcher {
-            answer_hook_off = Some(HookOff::Launcher);
+            match sideload_of(f.plugin, env) {
+                Ok(v) => {
+                    plugin_dirs = Some(v);
+                    plugin_files = f.plugin.map_or_else(Vec::new, |p| (p.files)(entry));
+                }
+                Err(why) => answer_hook_off = Some(why),
+            }
         } else {
             match settings_value_at(&passthru, f.launch_flag) {
                 None => argv.extend((f.launch_args)(entry)),
@@ -1358,7 +1389,51 @@ pub(crate) fn build_among(
         keeps_user_base_url,
         clears_inherited_relay,
         answer_hook_off,
+        plugin_dirs,
+        plugin_files,
     }))
+}
+
+/// 换了启动器那一支：答题插件能不能经环境交下去 ⇒ `(变量名, 整串值)`，或挂不上的原因。
+fn sideload_of(
+    face: Option<crate::agents::PluginFace>,
+    env: &Env,
+) -> Result<(String, String), crate::agents::asks::HookOff> {
+    use crate::agents::asks::HookOff;
+    let (Some(face), Some(probe)) = (face, env.sideload) else {
+        return Err(HookOff::Launcher);
+    };
+    let s = probe(&face);
+    if !s.env_readable {
+        return Err(HookOff::Launcher);
+    }
+    if s.policy_blocked {
+        return Err(HookOff::Policy);
+    }
+    if !s.version.is_some_and(|v| v >= face.min_version) {
+        return Err(HookOff::Version);
+    }
+    let dir = crate::agents::asks::plugin_dir_under(&env.home);
+    Ok((
+        face.env.to_string(),
+        crate::agents::asks::dirs_with(s.inherited.as_deref(), &dir),
+    ))
+}
+
+/// 真跑那一份 [`Env::sideload`]：只读环境与这台的几份文件，不写。
+fn sideload_here(face: &crate::agents::PluginFace) -> Sideload {
+    let policy_blocked = (face.policy_files)().iter().any(|p| {
+        crate::platform::fs::Ro::read_to_string(p)
+            .ok()
+            .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+            .is_some_and(|v| (face.policy_blocks)(&v))
+    });
+    Sideload {
+        inherited: std::env::var(face.env).ok().filter(|v| !v.is_empty()),
+        version: (face.installed_version)(std::env::var("PATH").ok().as_deref()),
+        policy_blocked,
+        env_readable: cfg!(target_os = "linux"),
+    }
 }
 
 /// 透传里会话级设置那个旗标的值在哪：`<旗标> <值>`（下一个词）或 `<旗标>=<值>`（同一个词）；旗标在末尾没给值也算（值读不出）。
@@ -1623,6 +1698,9 @@ fn render_direct(d: &Direct) -> String {
             off.env_value(),
         ));
     }
+    if let Some((var, value)) = &d.plugin_dirs {
+        line.push_str(&posix::export(var, &sq(value)));
+    }
     if !d.cwd.is_empty() {
         line.push_str(&format!("cd {} && ", sq(&d.cwd)));
     }
@@ -1686,6 +1764,9 @@ fn render_direct_ps(d: &Direct) -> String {
             crate::agents::asks::ANSWER_HOOK_OFF_ENV,
             &pq(off.env_value()),
         ));
+    }
+    if let Some((var, value)) = &d.plugin_dirs {
+        line.push_str(&ps::set_env(var, &pq(value)));
     }
     if !d.cwd.is_empty() {
         line.push_str(&ps::set_location(&pq(&d.cwd)));

@@ -1545,3 +1545,45 @@ fn a_fake_adapter_gives_the_extra_run_cells() {
 fn claude_code_gives_the_extra_run_cells() {
     extra_cells_scenario(&claude_code());
 }
+
+/// d：子运行记录第一次被认领时按块读 —— 一份 8 MiB 的子运行记录，读的时候本线程手里最多两块多一点（今天整份读进一个 `Vec`）；
+/// 读完运行表照样对上。
+#[test]
+fn a_first_child_read_holds_about_a_block_not_the_file() {
+    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    let shape = claude_code();
+    let dir = scratch("held");
+    let parent = (shape.parent_of)(&dir, SID);
+    append(
+        &parent,
+        &[(shape.spawn)("t1", "L1"), (shape.spawned)("t1", "w1")],
+    );
+    let book = Arc::new(RunBook::default());
+    let mut track = RunTrack::new(shape.faces, book.clone());
+    for l in [(shape.spawn)("t1", "L1"), (shape.spawned)("t1", "w1")] {
+        track.main_record(SID, &l);
+    }
+    let child = (shape.child_of)(&parent, "w1");
+    std::fs::create_dir_all(child.parent().unwrap()).unwrap();
+    big_record(&child, BIG, false);
+    append(&child, &[(shape.child_tool)("w1", "r-w1a", "Bash")]);
+    let base = crate::alloc_probe::reset_peak();
+    let adopted = track.adopt(SID, &parent);
+    let held = crate::alloc_probe::peak_since(base);
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(adopted, "会话宣告时它已有的子运行没被发现");
+    assert_eq!(
+        states(&book),
+        vec![(
+            "w1".into(),
+            Some("L1".into()),
+            Some("t1".into()),
+            RunState::Running
+        )],
+        "运行表：子运行的标签与父侧工具调用对上、在跑"
+    );
+    assert!(
+        held <= HELD_BOUND,
+        "第一次读 {BIG} 字节的子运行记录，本线程手里最多 {held} 字节，上界 {HELD_BOUND}"
+    );
+}

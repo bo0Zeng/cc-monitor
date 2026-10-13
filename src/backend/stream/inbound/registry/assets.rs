@@ -25,7 +25,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "data-report",
         summary: "「文件与数据」那一份成品",
         codes: &["bad_args", "failed"],
-        fields: &[arg("client", "同 `footprint-report`（本机那一栏才带）"), out("changedFiles", "cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点）"), out("chores", "「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的"), out("home", "这台家目录（显示时 `~` 缩写按它）"), out("own", "cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null`"), out("tmux", "这台有没有 tmux（查不动 ⇒ `null`）"), out("todo", "「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙")],
+        fields: &[arg("client", "同 `footprint-report`（本机那一栏才带）"), out("changedFiles", "cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点）"), out("chores", "「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的"), out("home", "这台家目录（显示时 `~` 缩写按它）"), out("own", "cc-monitor 在这台自己家里放的每一样 `{id, what, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`what` ＝ 写好的那一句「是什么」（界面照抄）；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null`"), out("tmux", "这台有没有 tmux（查不动 ⇒ `null`）"), out("todo", "「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙")],
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::footprint::data_answer(&LocalFiles, &r.args)
@@ -112,7 +112,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // **资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
-    //   `~/.cc-monitor/assets-catalog.json`（第四层，变了才写）、回整份目录 ＋「这台缺什么」的判定。
+    //   `~/.cc-monitor/assets-catalog.json`（自家状态，经 `Own`，变了才写）、回整份目录 ＋「这台缺什么」的判定。
     //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。
     CommandSpec {
         name: "assets-catalog",
@@ -138,7 +138,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     // **资产目录的自动同步**：本机常驻后端沿池里那条 SSH 连接（多开一个 exec 通道，零新连接）
     //   拉远端的目录、并进本机、把远端缺的推过去。写口（`answer_merge`）由这扇门递进去 —— `asset_sync.rs`
-    //   自己不直呼它（`readonly_guard` 第四层 ④：写口只从本族进来）。真异步（拨号 / 等远端）。
+    //   自己不直呼它（写口只从本族进来：`Own` 由分派那一层递）。真异步（拨号 / 等远端）。
     CommandSpec {
         name: "assets-sync",
         summary: "本机常驻后端沿池里那条 SSH 同步资产目录",
@@ -193,7 +193,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map(Some)
         }),
     },
-    // 装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（第四层；
+    // 装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（自家状态，经 `Own`；
     //   skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。卸在 `ext-uninstall-*`（判 · 删 · 摘同一台）。阻塞档。
     CommandSpec {
         name: "skill-install-record",
@@ -250,7 +250,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // cc-bus 装到这台（扩展页经枢纽问被写那台）：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（第四层 ④）。
+    // cc-bus 装到这台（扩展页经枢纽问被写那台）：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（`Own` 由分派那一层递）。
     CommandSpec {
         name: "cc-bus-install-state",
         summary: "装 cc-bus 到这台之前看一眼",
@@ -496,7 +496,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 〔D 组〕skill 装 / 卸的写那一半（`assets/skill_flow.rs`）：判（`skill_install`）· 写（[`LocalFiles`]）·
-    //   记（`skill_ledger::answer_record`，第四层写口只从这扇门递进去）同一台。
+    //   记（`skill_ledger::answer_record`，写口只从这扇门递进去）同一台。
     CommandSpec {
         name: "skill-install-apply",
         summary: "在要被写的那一台把勾的那几个 skill 文件写进去",

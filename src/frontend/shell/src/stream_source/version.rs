@@ -134,7 +134,7 @@ pub(super) fn version_health_kind(
 }
 
 /// 把协商结论变成给用户看的提示文案（`None` = 兼容、无需提示）。`label` 是出问题的远端机器。
-/// `remote_older` = 接上那一刻本机常驻后端答的「那台比手上这一版旧」（`remote_resident::Replayed::remote_is_older`）。
+/// `remote_older` = 接上那一刻本机常驻后端答的「那台比手上这一版旧」（重连循环交的 `State::Up` 里带不带「要更新」那一句）。
 pub(super) fn version_warning(
     reported_v: u64,
     reported_build_id: &str,

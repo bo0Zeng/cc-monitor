@@ -2,9 +2,22 @@
 declare const classes: {
   readonly shActs: string;
   readonly shDir: string;
+  readonly shEdit: string;
+  readonly shEditFixed: string;
+  readonly shEditFoot: string;
+  readonly shEditGrip: string;
+  readonly shEditHint: string;
+  readonly shEditLine: string;
+  readonly shEditList: string;
+  readonly shEditName: string;
+  readonly shEditNote: string;
+  readonly shEditRow: string;
+  readonly shEditSep: string;
+  readonly shEditTitle: string;
   readonly shExtra: string;
   readonly shHead: string;
   readonly shIb: string;
+  readonly shIbDrop: string;
   readonly shNeed: string;
   readonly shPlan: string;
   readonly shPlanSlot: string;

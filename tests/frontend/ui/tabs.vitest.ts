@@ -8,6 +8,7 @@
 // 把重协作者 mock 成空壳，于是能在真 TabManager 实例上断言状态翻转。
 
 import { fmtDur } from "../../../src/frontend/ui/duration-format";
+import { owned } from "../../test-support/owned-tab-manager.ts";
 import { fullTitle } from "../../../src/frontend/ui/session-face";
 import { type Mock, describe, it, expect, vi, beforeEach, afterEach, onTestFinished } from "vitest";
 import { clipboardWrites } from "../../test-support/clipboard-fake";
@@ -221,7 +222,6 @@ import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-act
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
 /** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
@@ -283,7 +283,7 @@ function makeTM(): TabManager {
   const barEl = document.createElement("div");
   const streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  return new TabManager(barEl, streamRootEl);
+  return owned(new TabManager(barEl, streamRootEl));
 }
 
 /** 这个 tab 的悬停卡（标签页栏的 `hoverCard`；取代原先挂在按钮上的原生 title）。 */
@@ -342,7 +342,7 @@ describe("TabManager 生命周期", () => {
     });
     tm.createSkeletonTab("sk2", "/root/proj", LOCAL_ORIGIN);
     const tab = tm.ensureTab("sk2", null, "/fake/sk2.jsonl", LOCAL_ORIGIN);
-    tab.skeleton = { ledger: { uuidToSeq: new Map([["r1", 0]]), factsOf: () => ({ o: 0, n: 10 }) } } as unknown as typeof tab.skeleton;
+    tab.skeleton = { ledger: { uuidToSeq: new Map([["r1", 0]]), factsOf: () => ({ o: 0, n: 10 }) }, dispose: () => {} } as unknown as typeof tab.skeleton;
     await tab.fullRecord("r1").catch(() => null);
     expect(asked).toEqual(["/fake/sk2.jsonl"]);
   });
@@ -1233,7 +1233,7 @@ describe("「tab 集合变了」那一格也跟着状态变（会话头 · 终�
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
     const seen: number[] = [];
-    const tm = new TabManager(barEl, streamRootEl, (s) => seen.push(s.total));
+    const tm = owned(new TabManager(barEl, streamRootEl, (s) => seen.push(s.total)));
     tm.ensureTab("st1", "/home/u", "p", LOCAL_ORIGIN);
     tm.ensureTab("st2", "/home/u", "p", LOCAL_ORIGIN);
     tm.updateActivity("st1", "working", null, copyText("beSession.activity.working"), "now", 1);
@@ -2310,7 +2310,6 @@ describe("：↗ 远端那一格按顺序问三方", () => {
       [{ terminals: TERMINALS }, { chain: [], why: "elsewhere", addr: "203.0.113.8" }, copyText("front.title.elsewhere"), copyText("front.body.elsewhere", { addr: "203.0.113.8" }), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "mismatch" }, copyText("front.title.unsure"), copyText("front.body.mismatch"), [], "grey"],
       [{ terminals: TERMINALS }, { chain: [], why: "query-failed" }, copyText("front.title.unknown"), "", [copyText("front.act.retry"), copyText("detail.act.copy")], "red"],
-      [{ terminals: [], why: "<新原因>" }, null, copyText("front.title.badShape"), "", [copyText("detail.act.copy")], "red"],
     ];
     const tm = makeTM();
     tm.createSkeletonTab("r1", "/p", "devbox", false, null);
@@ -2550,9 +2549,9 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
     const paint = (pending: Tab["pending"], needs: Tab["needs"]): void => {
       tab.pending = pending;
       tab.needs = needs;
-      (tm as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab);
+      (home(tm).view as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab); // 流里补画住流视图（8a ④）
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need", rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), ask: null, manualText: null, receivedAt: Date.now() });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need" as const, rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), ask: null, manualText: null, receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
     expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe(fmtDur(125));
@@ -2789,7 +2788,7 @@ describe("已结束的 tab 留在原位灰着（原「P7a-1 独立归档区」�
     const orphanBar = document.createElement("div"); // 刻意不 append 到 body
     const streamRootEl = document.createElement("div");
     document.body.append(streamRootEl);
-    const tm2 = new TabManager(orphanBar, streamRootEl);
+    const tm2 = owned(new TabManager(orphanBar, streamRootEl));
     tm2.ensureTab("a", "/c", "p", LOCAL_ORIGIN);
     tm2.ensureTab("b", "/c", "p", LOCAL_ORIGIN);
     tm2.switchTo("a");
@@ -4550,7 +4549,8 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   });
 
   // 「照起但说一句『查不到记录还在不在』；形状不对报两端契约对不上（出声不静默）」。
-  it("★ 〔FIX2〕问不到 ⇒ 照起，但说一句查不到；形状不对 ⇒ 那一句说回的认不出（不猜版本）", async () => {
+  // 回包形状不对那一形不在界面判了：`history-record` 是 typed 命令，两端形状由握手指纹管（对不上 monitor 事前就拒、说「后端版本不同」）。
+  it("★ 〔FIX2〕问不到 ⇒ 照起，但说一句查不到", async () => {
     remoteRunnerAsksPreflight();
     tm.ensureTab("g4", "/home/pi/proj", "/p/g4.jsonl", "devbox");
     tm.archiveTab("g4");
@@ -4559,11 +4559,6 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     await home(tm).actions.resumeTab("g4");
     expect(openedRemote).toEqual(["g4"]);
     expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toEqual([title]);
-    vi.mocked(showActionFailureToast).mockClear();
-    probe = { present: true } as unknown as { present: boolean; root: string }; // 少一格 ⇒ 形状不对
-    await home(tm).actions.resumeTab("g4");
-    expect(openedRemote).toEqual(["g4", "g4"]);
-    expect(showActionFailureToast).toHaveBeenCalledWith(title, peerVersionSaid("reply_unreadable", "devbox"));
   });
 
   it("★ G1：可重连的会话记录没了也不落「记录已不在」（终端还在，接得回去）", () => {
@@ -5165,6 +5160,16 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   const settle = async (): Promise<void> => {
     for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0));
   };
+  /**
+   * 后台 tab 的第一趟会话事实排在当前那一趟之后、空闲时一个一个要（`tab-cold-reads.ts`；jsdom 没有 requestIdleCallback，走 200 ms 的兜底）：
+   * 等 `n` 个后台 tab 都轮到。
+   */
+  const idleTurns = async (n = 1): Promise<void> => {
+    for (let i = 0; i < n; i++) {
+      await new Promise((r) => setTimeout(r, 220));
+      await settle();
+    }
+  };
   /** 记下每一问的 `(origin, path, prior)`；答法由 `answer` 现算（抛 ⇒ 通道那一跳的失败形状原样抛）。 */
   let asked: { origin: string; path: string; prior: unknown }[] = [];
   const answerFacts = (answer: (path: string, prior: unknown) => unknown): void => {
@@ -5266,6 +5271,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("f3", 0));
     tm.onLine(line("fr", 0, "pi"));
     await settle();
+    await idleTurns(); // fr 是后台 tab：它的第一趟空闲时才轮到
     const tab = home(tm).store.tabs.get("f3")!;
     tm.updateName("f3", "我的功能", "proj");
     expect(tab.title).toBe("↳ [proj] 我的功能");
@@ -5302,7 +5308,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect([...home(tm).store.tabs.get("t")!.touchedFiles]).toEqual(["/f3"]);
   });
 
-  it("批期不问；批结束每个「没要过或又长了」的 tab 各问一次（不只 active）", async () => {
+  it("批期不问；批结束当前 tab 当场问，后台 tab 空闲时轮到再问（不只 active，一个一个）", async () => {
     answerFacts((path) => facts({ forkedFrom: path.includes("b1") ? "src" : null }));
     tm.onBatchStart();
     tm.onLine(line("b1", 0));
@@ -5312,8 +5318,10 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(asked).toEqual([]);
     tm.onBatchEnd();
     await settle();
+    expect(asked.map((a) => a.path), "批结束当场只问当前那一个").toEqual(["/home/u/proj/b1.jsonl"]);
+    await idleTurns();
     expect(asked.map((a) => a.path).sort()).toEqual(["/home/u/proj/b1.jsonl", "/home/u/proj/b2.jsonl"]);
-    expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src"); // 后台 tab 也有 ↳
+    expect(home(tm).store.tabs.get("b1")!.forkedFromSessionId).toBe("src");
   });
 
   it("改动文件集：成品原样透传给监控板 peek（近因序由后端排）；远端问的是那台", async () => {
@@ -5321,6 +5329,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     tm.onLine(line("s-local", 0));
     tm.onLine(line("s-remote", 0, "devbox"));
     await settle();
+    await idleTurns(); // s-remote 是后台 tab
     expect(tm.peekSession("s-local")!.recentFiles).toEqual(["/proj/b.rs", "/proj/a.ts"]); // F91b：尾 = 最近改
     expect(asked.find((a) => a.path.includes("s-remote"))?.origin).toBe("devbox"); // 远端问的是那台
   });
@@ -6343,6 +6352,7 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
         return c[0] === "chan_call" && a.op === "history-turns" && (JSON.parse(new TextDecoder().decode(new Uint8Array(a.payload ?? []))) as { path?: string }).path === "/p/wf.jsonl";
       }).length;
     for (let s = 0; s < 10; s++) tm.onLine(line("wf", s));
+    tm.switchTo("wf"); // 后台 tab 的第一趟排着（`tab-cold-reads.ts`）；切过来才当场要
     for (let k = 0; k < 5; k++) await settle();
     const before = turnsAsks();
     tm.onLine(line("wf", 50));
@@ -6428,7 +6438,11 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
       const a = home(tm).store.tabs.get(codexSid)!.activity;
       if (seen[seen.length - 1] !== (a?.doing ?? null)) seen.push(a?.doing ?? null);
     }
-    expect(seen).toEqual(["idle", "working", "idle", "working", "idle"]);
+    // 宣告不等记录（这一家没有进程状态文件 ⇒ 宣告那一帧判不出，照实写「读记录中」、不先说「运行中」）；读完记录紧跟一帧说闲着。
+    expect(seen).toEqual([null, "idle", "working", "idle", "working", "idle"]);
+    expect(announced.activity_text).toBe(copyText("beSession.activity.reading"));
+    expect(announced.activity_text).not.toBe(copyText("beSession.activity.working"));
+    expect(announced.activity_tone).toBe("plain");
     const last = home(tm).store.tabs.get(codexSid)!.activity!;
     expect([last.text, last.tone]).toEqual([copyText("beSession.activity.idle"), "plain"]);
   });
@@ -6459,7 +6473,7 @@ describe("标签页的名字照抄核心那一格", () => {
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = new TabManager(barEl, streamRootEl, () => {});
+    const tm = owned(new TabManager(barEl, streamRootEl, () => {}));
     tm.updateName("n1", "修一下登录", "proj");
     tm.ensureTab("n1", "/w/proj", "/p/n1.jsonl", LOCAL_ORIGIN);
     const tab = home(tm).store.tabs.get("n1")!;
@@ -6469,5 +6483,270 @@ describe("标签页的名字照抄核心那一格", () => {
     tm.ensureTab("n2", "/w/q", "/p/n2.jsonl", "box");
     tm.updateName("n2", "登录修复", "q");
     expect(home(tm).store.tabs.get("n2")!.title).toBe("[box] [q] 登录修复");
+  });
+});
+
+// ==========================================================================
+// ui3（10-11 稿「标签页分组-边界」方案 A）：组画成一块。块边说「在组里」，拖的时候「进组」点亮的是那一块、
+// 插入线画在块里面；组外的线画在块外。窄栏组员的悬停卡首行带组名（I8）。
+// ==========================================================================
+describe("ui3 · 组成块：落点反馈看块、窄栏悬停带组名", () => {
+  let tm: TabManager;
+  const parts = (gid: string): { wrap: HTMLElement; head: HTMLElement; list: HTMLElement } => home(tm).bar.groupParts(gid)!;
+  const rect = (el: HTMLElement, left: number, right: number, top = 0, height = 0): void => {
+    el.getBoundingClientRect = (): DOMRect => ({ left, right, top, height, bottom: top + height, width: right - left }) as DOMRect;
+  };
+  const mark = (t: DropTarget | null): void => (home(tm).dragger as unknown as { mark(t: DropTarget | null): void }).mark(t);
+  const line = (): HTMLElement => document.body.querySelector<HTMLElement>(`.${tg.dropLine}`)!;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    tm = makeTM();
+    home(tm).prefs.collectionsLoaded = true;
+    tm.ensureTab("a", "/c1", "p", LOCAL_ORIGIN);
+    tm.ensureTab("b", "/c2", "p", LOCAL_ORIGIN);
+    tm.ensureTab("c", "/c3", "p", LOCAL_ORIGIN);
+    setGroups(tm, [{ id: "g1", name: "订单", tabs: ["b", "c"] }]);
+    (tm as unknown as { refreshTabBar: () => void }).refreshTabBar();
+    rect(home(tm).bar.listEl, 0, 260, 0, 400);
+    rect(parts("g1").wrap, 6, 254);
+    // 起拖（a），线才建出来。
+    home(tm).bar.tabButtons.get("a")!.root.dispatchEvent(new MouseEvent("mousedown", { button: 0, buttons: 1, clientX: 0, clientY: 5, bubbles: true }));
+    document.dispatchEvent(new MouseEvent("mousemove", { buttons: 1, clientX: 0, clientY: 40, bubbles: true }));
+  });
+  afterEach(() => {
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+    document.body.querySelectorAll(".tab-drag-ghost").forEach((n) => n.remove());
+    delete document.body.dataset.tabBar;
+  });
+
+  it("落在组里 ⇒ 点亮的是整块（不是组员那一列）；线画在块里面", () => {
+    mark(before("c", "g1"));
+    expect(parts("g1").wrap.classList.contains(tg.hot), "进组要看得出：块边变 accent").toBe(true);
+    expect(parts("g1").list.classList.contains(tg.hot), "引导线那一套撤了：组员那一列不再挂 hot").toBe(false);
+    expect(line().hidden).toBe(false);
+    expect(line().style.left, "线从块的左内边起（块左 6 ＋ 线内缩 6），不再按缩进 12 算").toBe("12px");
+    expect(line().style.width, "线止于块的右内边").toBe(`${254 - 6 - 12}px`);
+  });
+
+  it("落在组外 ⇒ 哪块都不亮，线通栏", () => {
+    mark(before("a"));
+    expect(parts("g1").wrap.classList.contains(tg.hot)).toBe(false);
+    expect(line().style.left).toBe("6px");
+    expect(line().style.width).toBe(`${260 - 6 - 6}px`);
+  });
+
+  it("压在组员中间停住（进组）· 落在组头 ⇒ 块亮；压在散的上（建组）⇒ 不亮", () => {
+    mark({ kind: "onto", sid: "b" });
+    expect(parts("g1").wrap.classList.contains(tg.hot), "压住组员 ＝ 进这一组").toBe(true);
+    mark({ kind: "insert", at: null, gid: null, head: "g1" } as DropTarget);
+    expect(parts("g1").wrap.classList.contains(tg.hot), "落在组头 ＝ 进这一组").toBe(true);
+    mark({ kind: "onto", sid: "a" });
+    expect(parts("g1").wrap.classList.contains(tg.hot), "建新组不点亮别的块").toBe(false);
+    mark(null);
+    expect(parts("g1").wrap.classList.contains(tg.hot), "收尾清干净").toBe(false);
+  });
+
+  it("当前标签页在收着的组里 ⇒ 块边升一档（块上挂 has-current）；展开着不挂", () => {
+    document.dispatchEvent(new MouseEvent("mouseup", { bubbles: true })); // 先收掉 beforeEach 起的拖（拖拽中整刷挂起）
+    tm.switchTo("b");
+    const caret = (): HTMLElement => parts("g1").head.querySelector<HTMLElement>(".tab-group-caret")!;
+    caret().click();
+    expect(parts("g1").wrap.classList.contains("is-collapsed"), "前提：收起来了").toBe(true);
+    expect(parts("g1").wrap.classList.contains("has-current")).toBe(true);
+    caret().click();
+    expect(parts("g1").wrap.classList.contains("has-current"), "展开着：当前行自己有 accent，块边不变色").toBe(false);
+  });
+
+  it("窄栏：组员悬停卡首行「组名 · 标题」；散的照旧；宽栏照旧", () => {
+    const title = (sid: string): string => cardOf(tm, sid)!.querySelector(".tab-hover-title")!.textContent!;
+    const plain = title("b");
+    document.body.dataset.tabBar = "folded";
+    expect(title("b")).toBe(copyText("tabBar.group.memberHint", { group: "订单", title: plain }));
+    expect(title("b").startsWith("订单 · ")).toBe(true);
+    expect(title("a"), "散的不带组名").toBe(fullTitle(home(tm).store.tabs.get("a")!));
+    delete document.body.dataset.tabBar;
+    expect(title("b"), "宽栏看得见组，不重复").toBe(plain);
+  });
+
+  it("块的样子：`--group-fill` 是 3% 白；组是淡底 ＋ 细边 ＋ 圆角 8，组员不缩进、没有引导线", () => {
+    const tokens = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles/tokens.css"), "utf8");
+    expect(tokens).toMatch(/--group-fill:\s*#ffffff08;/);
+    const css = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/styles.css"), "utf8");
+    const rule = (sel: string): string => {
+      const m = new RegExp(`\\n${sel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{([^}]*)\\}`).exec(css);
+      expect(m, `styles.css 里没有 ${sel} 这一条`).not.toBeNull();
+      return m![1];
+    };
+    const group = rule(".tab-group");
+    expect(group).toMatch(/background:\s*var\(--group-fill\)/);
+    expect(group).toMatch(/border:\s*1px solid var\(--border-soft\)/);
+    expect(group).toMatch(/border-radius:\s*var\(--radius-l\)/);
+    const list = rule(".tab-group-list");
+    expect(list, "组员不另缩进").not.toMatch(/margin-left/);
+    expect(list, "引导线去掉").not.toMatch(/border-left/);
+  });
+});
+
+// 8a ④：N 个 tab 冷起，到当前 tab 画出尾段、它那一趟落地之前，后端只收到当前那一个会话的冷读命令；
+// 后台的冷读排在它之后、空闲时一个一个来；切进来停住的插到最前。数命令，不按墙钟。
+// 冷读 ＝ 后端要从头扫的那几问：`history-facts` 不带 prior · `history-turns` from 0 · 骨架索引 · 大纲清单。夹具只造结构（sid / 路径）。
+describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 tab 那一趟之后、一个一个来", () => {
+  const COLD_OPS = new Set(["history-facts", "history-turns", "history-index", "history-user-inputs"]);
+  const facts = (): SessionFacts => ({
+    agent: "claude",
+    end: 100,
+    forkedFrom: null,
+    touchedFiles: [],
+    usage: null,
+    projectDir: null,
+    writers: [],
+    pending: [],
+    lastSay: null,
+    needs: null,
+    handedBack: [],
+    retries: [],
+    permissionMode: null,
+    tokens: null,
+    cost: null,
+    bgTasks: [],
+    background: null,
+    mcp: [],
+    answerOff: null,
+  });
+  const line = (sid: string, seq: number) =>
+    ({ session_id: sid, cwd: "/p", path: `/p/${sid}.jsonl`, seq, record: { t: "reply", id: `${sid}-${seq}` } }) as never;
+  const settle = async (): Promise<void> => {
+    for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+  /** 发出去的冷读：哪一问 · 哪个会话（按路径认）。 */
+  let cold: { op: string; sid: string }[] = [];
+  /** 扣着不答的会话（它的 facts / turns 挂起，`release` 才答）。 */
+  let holding = new Set<string>();
+  let held: { sid: string; go: () => void }[] = [];
+  let idle: IdleRequestCallback[] = [];
+  /** 排过的空闲回调一共几个 · 撤掉了哪几个（编号 ＝ 排的次序）。 */
+  let idleAsked = 0;
+  let idleCancelled: number[] = [];
+  let hadIdle: typeof window.requestIdleCallback;
+  let hadCancel: typeof window.cancelIdleCallback;
+  const sidOf = (path: string): string => path.replace(/^.*\//, "").replace(/\.jsonl$/, "");
+  const release = (sid: string): void => {
+    for (const h of held.filter((x) => x.sid === sid)) h.go();
+    held = held.filter((x) => x.sid !== sid);
+  };
+  /** 在途的冷读各属哪个会话（发了、还没答）。 */
+  const inflight = (): Set<string> => new Set(held.map((h) => h.sid));
+  let tm: TabManager;
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cold = [];
+    holding = new Set();
+    held = [];
+    idle = [];
+    idleAsked = 0;
+    idleCancelled = [];
+    hadIdle = window.requestIdleCallback;
+    hadCancel = window.cancelIdleCallback;
+    window.requestIdleCallback = ((cb: IdleRequestCallback) => {
+      idle.push(cb);
+      return ++idleAsked;
+    }) as typeof window.requestIdleCallback;
+    window.cancelIdleCallback = ((id: number) => void idleCancelled.push(id)) as typeof window.cancelIdleCallback;
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd !== "chan_call") return undefined;
+      const a = args as { op: string };
+      if (!COLD_OPS.has(a.op)) return undefined;
+      const body = chanArgsJson(args as never) as { path: string; prior?: unknown; from?: number };
+      const sid = sidOf(body.path);
+      if (!["A", "B", "C"].includes(sid)) return undefined; // 前面几组留下的 TabManager 还在排它们的空闲回调：不算这一组的
+      const isCold = a.op === "history-facts" ? body.prior == null : a.op === "history-turns" ? body.from === 0 : true;
+      if (isCold) cold.push({ op: a.op, sid });
+      if (a.op !== "history-facts" && a.op !== "history-turns") throw UNSUPPORTED;
+      const reply = chanReply(a.op === "history-facts" ? facts() : { from: 0, end: 0, turns: [] });
+      if (!holding.has(sid) && !holding.has("*")) return reply;
+      return new Promise((resolve) => held.push({ sid, go: () => resolve(reply) }));
+    });
+    tm = makeTM();
+  });
+  afterEach(() => {
+    window.requestIdleCallback = hadIdle;
+    window.cancelIdleCallback = hadCancel;
+    vi.mocked(invoke).mockReset();
+    vi.mocked(invoke).mockResolvedValue(undefined);
+  });
+  /** 冷起：一批里三个会话（A 是第一个 ⇒ 当前），每个一格红绿灯，那台推一次「需手动变了」⇒ 各 tab 再问会话事实。 */
+  const coldStart = (): void => {
+    tm.onBatchStart();
+    for (const sid of ["A", "B", "C"]) for (let s = 0; s < 3; s++) tm.onLine(line(sid, s));
+    for (const sid of ["A", "B", "C"]) tm.updateActivity(sid, "idle", null, "核心·空闲", "plain", 3);
+    tm.rereadFactsOn(LOCAL_ORIGIN);
+    tm.onBatchEnd();
+  };
+
+  it("当前 tab 那一趟落地之前，冷读只有当前那一个会话的（正控：它的 facts 与 turns 都已发）", async () => {
+    holding = new Set(["*"]);
+    coldStart();
+    await settle();
+    expect(home(tm).store.activeId).toBe("A");
+    expect(home(tm).store.tabs.get("A")!.window.floorSeq, "当前 tab 尾段已物化").not.toBeNull();
+    expect(cold.map((c) => c.op).sort(), "正控：当前 tab 的冷读发了").toEqual(expect.arrayContaining(["history-facts", "history-turns"]));
+    // 空闲回调也跑一遍：前台那一趟没落地，空闲时也不发后台的。
+    for (let i = 0; i < 10 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 50 });
+    await settle();
+    expect([...new Set(cold.map((c) => c.sid))], "后端只收到当前那个会话的冷读").toEqual(["A"]);
+  });
+
+  it("当前那一趟落地 ⇒ 后台空闲时一个一个来：任一时刻在途的后台冷读只属一个会话", async () => {
+    holding = new Set(["B", "C"]); // 当前那一趟照答（落地），后台的扣着、一个一个放
+    coldStart();
+    await settle();
+    const seen: string[] = [];
+    for (let round = 0; round < 10; round++) {
+      for (let i = 0; i < 10 && idle.length > 0; i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 50 });
+      await settle();
+      const now = [...inflight()];
+      expect(now.length, `第 ${round} 轮在途的会话：${now.join(",")}`).toBeLessThanOrEqual(1);
+      if (now.length === 0) break;
+      seen.push(now[0]);
+      release(now[0]);
+      await settle();
+    }
+    expect(seen, "B · C 都轮到了，一个一个").toEqual(["B", "C"]);
+    expect(cold.filter((c) => c.op === "history-facts").map((c) => c.sid), "每个会话只冷读一次 facts").toEqual(["A", "B", "C"]);
+  });
+
+  it("当前那一趟还扣着时切到 C、停住 ⇒ C 的冷读先于排在前面的 B 发出", async () => {
+    holding = new Set(["A", "B", "C"]);
+    coldStart();
+    await settle();
+    tm.switchTo("C");
+    await new Promise((r) => setTimeout(r, 200)); // 停住（过了 STAY_MS）
+    await settle();
+    const sids = [...new Set(cold.map((c) => c.sid))];
+    expect(sids.slice(0, 2), "C 插到 B 前面").toEqual(["A", "C"]);
+    expect(sids, "B 还在排着").not.toContain("B");
+  });
+  // 主人拆掉之后才回来的读（测试拆了环境、窗口关了）：不许再排下一趟、不许碰 window；挂着的空闲回调当场撤掉。
+  it("主人拆掉以后，在途的冷读再回来 ⇒ 不再排、不碰 window；挂着的空闲回调撤掉", async () => {
+    holding = new Set(["B", "C"]); // 当前那一趟照答；后台的扣着
+    coldStart();
+    await settle();
+    for (let i = 0; i < 10 && idle.length > 0 && cold.every((c) => c.sid !== "B"); i++) idle.shift()!({ didTimeout: false, timeRemaining: () => 50 });
+    await settle();
+    expect([...inflight()], "前提：B 那一趟在途").toEqual(["B"]);
+    const pendingIds = Array.from({ length: idle.length }, (_, k) => idleAsked - idle.length + 1 + k);
+    tm.dispose();
+    expect(idleCancelled.sort(), "挂着的空闲回调（空闲物化那几个）当场撤掉").toEqual(pendingIds.sort());
+    const askedAtDispose = idleAsked;
+    const coldAtDispose = cold.length;
+    // 拆掉以后 window 上的空闲回调一碰就记一笔（测试环境拆掉之后 window 已经不在：碰了就是 ReferenceError）。
+    let touched = 0;
+    window.requestIdleCallback = (() => ++touched) as typeof window.requestIdleCallback;
+    release("B");
+    await settle();
+    expect(touched, "回来以后又去排下一趟（碰了 window）").toBe(0);
+    expect(idleAsked).toBe(askedAtDispose);
+    expect(cold.length, "拆掉以后不再发新的冷读").toBe(coldAtDispose);
   });
 });

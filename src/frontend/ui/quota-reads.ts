@@ -50,6 +50,11 @@ export function decodeQuotaRead(v: unknown): QuotaRead {
       bad(`unseen[${i}]`);
   }
   arr(o.usableNow, "usableNow");
+  for (const [i, c] of arr(o.candidates, "candidates").entries()) {
+    const x = obj(c, `candidates[${i}]`);
+    if (typeof x.agent !== "string" || typeof x.account !== "string" || typeof x.kind !== "string")
+      bad(`candidates[${i}]`);
+  }
   takeNames(o.names);
   return o as unknown as QuotaRead;
 }

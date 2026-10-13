@@ -1,0 +1,30 @@
+[package]
+name = "mobcore"
+version = "0.0.0"
+edition = "2021"
+workspace = "../../../backend"
+publish = false
+description = "手机嵌的 Rust 核心：只有 FFI 外壳（手写 JNI · 一份 tokio 运行时 · 边界上接住 panic）；拨号是后端那一份拨号核心（ssh-dial）。"
+
+# 住后端那一棵 workspace（`../../../backend/Cargo.toml` 的 `[workspace] members`）：同一份 lock、同一个打补丁版 russh。
+# 编法与两个构建类型各自那一个 ABI 由 `../build.gradle.kts` 定（Gradle 调 cargo）；两份 profile（`mobile` · `mobile-dev`）住 workspace 根清单。
+[lib]
+path = "lib.rs"
+# cdylib：装进 APK 的那一份 `libmobcore.so`；rlib：本机跑本 crate 自己的单测（不起 JVM）。
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+ssh-dial = { path = "../../../backend/ssh-dial" }
+serde_json = "1"
+copy-core = { path = "../../../common/copy-core" }
+# 连远端常驻后端的客户端那一侧（帧客户端 · 握手 · 退避 · 版本门 · 在看名单）：桌面 monitor 同一份。
+resident-client = { path = "../../../comms/resident-client" }
+# 事前就拒的那几种问答怎么说（`route_call_error`）：通信层面 A 那一份。
+comms-inward = { path = "../../../comms/inward" }
+# 同后端那一行（版本 · feature 集）：解 PEM 私钥、拼 Keystore 那把公钥要它的 `keys`。
+russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+# 现生成钥匙的种子取系统随机数（同 russh 那一棵 ring，不新增包）。
+ring = "0.17"
+tokio = { version = "1", features = ["rt-multi-thread", "io-util", "sync", "time"] }
+# 手写 JNI 的那一层（`JNIEnv` · 字符串 · 异常）。版本同方案试编那一份（0.21.1，本机缓存里有），缺省 feature 关掉（不要 invocation，不起 JVM）。
+jni = { version = "0.21", default-features = false }

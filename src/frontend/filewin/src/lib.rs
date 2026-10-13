@@ -240,6 +240,8 @@ pub mod chunk_upload;
 // 窗口的框：工具条 · 命令栏 · 左栏 · 状态栏（作用于焦点那一栏）。
 pub mod chrome;
 pub mod copy;
+// 合成语料（判据用，采结构不采内容）：只在测试里编，发版那份二进制里没有它。
+#[cfg(test)]
 pub mod corpus;
 // **复制到另一台机器**（§7 第 9 条 Q2）：A 下到本机暂存 → 传到 B → B 提交，一条进度、可撤、半路清暂存。
 pub mod cross_copy;
@@ -284,7 +286,11 @@ pub mod picture;
 pub mod platform;
 // **计划反查**（稿 06）：目录落在某一片的仓库里 ⇒「格」一列 · 预览头「归属」· 右键「在计划里看」（后端 `plan-files` 判，这里只排版）。
 pub mod plan;
+// 渲染器挑哪块显卡：真显卡在前、软件渲染垫底（规则只住这一处；Windows 上接 wgpu 的那几行住 `platform.rs`）。
+pub mod render;
 pub mod rows;
+// 秤 F1（首屏 · 滚动帧 · 内存，判据用）：只在测试里编，发版那份二进制里没有它。
+#[cfg(test)]
 pub mod scale;
 // 🔴**选中态 · 键位 · 右键菜单那张表**。
 //    三件问的是同一个问题（「选中了哪几行、能对它们做什么」），纯的一份住这儿；

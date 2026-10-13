@@ -8,9 +8,9 @@ use std::path::{Path, PathBuf};
 const REGISTERED: &[(&str, &str, &str, &str)] = &[
     (
         "src/stream_source/run.rs",
-        "stream_loop",
+        "on_attached",
         "remote",
-        "流循环 hello 那一臂解出的**远端** `claude_dir`（打日志用）。说的是远端主机的 claude 目录 ⇒ 不属本机读面。",
+        "接上那一刻 hello 那一臂解出的**远端** `claude_dir`（打日志用）。说的是远端主机的 claude 目录 ⇒ 不属本机读面。",
     ),
     (
         "src/stream_source/frame.rs",

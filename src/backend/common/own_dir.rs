@@ -1,5 +1,5 @@
 //! 后端自家目录的几个名字与权限位（`~/.cc-monitor` · 它底下那个不出会话的工作目录 · 建目录给的那个权限位）。
-//! 只是常量：建目录经 `platform::fs::Own::ensure_dir`（本机）；远端 SFTP 部署建目录用同一个 [`PRIVATE_DIR_MODE`]（`dial/sftp.rs::make_dir`）。
+//! 只是常量：建目录经 `platform::fs::Own::ensure_dir`（本机）；远端 SFTP 部署建目录用同一个 [`PRIVATE_DIR_MODE`]（`ssh-dial/sftp.rs::make_dir`）。
 
 /// 后端在每台机器上的家目录名（相对用户家目录）。
 pub const DIR_NAME: &str = ".cc-monitor";

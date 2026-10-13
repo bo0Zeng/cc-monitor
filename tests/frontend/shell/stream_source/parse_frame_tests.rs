@@ -19,6 +19,7 @@ fn parses_hello_and_captures_build_id() {
             commands: Vec::new(),
             unavailable: vec![],
             uncancellable: vec![],
+            shapes: vec![],
         }
     );
 }
@@ -401,7 +402,6 @@ fn known_kind_with_extra_fields_still_parses() {
             project_dir: None,
             name: None,
             path: None,
-            lines: None,
             activity: crate::session_book::ActivityCells {
                 activity: None,
                 activity_text: "T".into(),
@@ -422,7 +422,7 @@ fn known_kind_with_extra_fields_still_parses() {
 /// session_added 附加元信息正确解析：读后端判好的 `background` / `activity`，不读 pidfile 原词（`session_kind` · `status`）。
 #[test]
 fn session_added_metadata_parses() {
-    let line = r#"{"kind":"session_added","agent_kind":"claude","sid":"s-bg","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"interactive","background":true,"status":"busy","activity":"needs_you","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
+    let line = r#"{"kind":"session_added","agent_kind":"claude","sid":"s-bg","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","session_kind":"interactive","background":true,"status":"busy","activity":"needs_you","cwd":"/proj/x","project_dir":"/proj","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl"}"#;
     let frame = parse_frame(line).expect("must parse");
     assert_eq!(
         frame,
@@ -434,7 +434,6 @@ fn session_added_metadata_parses() {
             project_dir: Some("/proj".to_string()),
             name: Some("评估任务".to_string()),
             path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
-            lines: Some(42),
             activity: crate::session_book::ActivityCells {
                 activity: Some(SessionActivity::NeedsYou),
                 activity_text: "T".into(),

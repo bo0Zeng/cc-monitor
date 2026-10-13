@@ -1,9 +1,9 @@
 /**
- * 标签页分组的拖放反馈（`tab-bar-drag.ts`）：插入线 · 点亮的引导线 · 目标小标签 ·
+ * 标签页分组的拖放反馈（`tab-bar-drag.ts`）：插入线 · 点亮的那一块 · 目标小标签 ·
  * 出栏取消的影子 · 落下那几行的底色淡出。目标框本身走全局 `.drop-onto`（组头与标签页共用）。
  */
 @layer components {
-  /* 插入线：2px accent，左端一个空心圆；落在组里从组员缩进处起（left 由脚本按落点写）。 */
+  /* 插入线：2px accent，左端一个空心圆；落在组里画在块里面（left · width 由脚本按落点写）。 */
   .dropLine {
     position: fixed;
     z-index: var(--z-drag);
@@ -25,10 +25,10 @@
     background: var(--bg-2);
   }
 
-  /* 落在这个组里：引导线变 2px accent（左移 1px 不挤内容）。 */
+  /* 落在这个组里（插入线在块里 · 压住组员 · 落在组头）：块边变 2px accent（1px 边 ＋ 1px 外圈，不改盒模型、不挪矩形）。 */
   .hot {
-    border-left: 2px solid var(--accent);
-    margin-left: 11px;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
   }
 
   /* 目标那一行右侧的小标签：松手会发生什么（建分组 / 进「名字」）。 */

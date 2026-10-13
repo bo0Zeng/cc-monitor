@@ -12,6 +12,11 @@ use serde::{Deserialize, Serialize};
 /// 是一个**非透明**的单字段元组结构：serde 序列化它时经 `serialize_newtype_struct("Words", …)`，
 /// 格目录的走查器认这个名字；`serde_json` 照样只写里面那个字符串。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../../frontend/ui/generated/", type = "string")
+)]
 pub struct Words(pub String);
 
 impl From<&str> for Words {

@@ -24,6 +24,7 @@ Handshake sent once when a client connects。
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
 | `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
 | `uncancellable` | [string]? | `commands` 里**撤不动**的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
+| `shapes` | {string: string}? | typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算） |
 
 ### `line`
 
@@ -53,12 +54,21 @@ A new session file appeared。
 | `project_dir` | string? | 会话的项目目录：会话起在哪个目录（tab 标题 · 打开工作目录 · 分组都用它） |
 | `name` | string? | pidfile 里的会话名 |
 | `path` | string? | 该会话 jsonl 的远端绝对路径（同 sid 多文件时取 mtime 最新者）——monitor 旁路快照（`--read-session`）用 |
-| `lines` | number? | Batch8 审计 D-I2（additive）：宣告时 prime 的完整行数 L ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强） |
 | `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
+
+### `session_primed`
+
+这条会话的记录读完了（宣告之后后台那一趟预读做完）：从这一帧起它的 `line` 帧从第 `lines` 行起、连续地来。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `path` | string? | 读完的那份记录（修改时刻最新的那份） |
+| `lines` | number? | 那份记录此刻的完整行数 L（之后的第一帧 `line` 的 `seq` 就是它） |
 
 ### `session_status`
 
@@ -1119,6 +1129,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | 字段 | 向 | 说明 |
 |---|---|---|
 | `accounts` | ← | 每个号一条，按 `(agent, account)` 排：`agent` 路由第 1 段（哪一家）· `account` 路由第 2 段（哪个号 |
+| `candidates` | ← | 换号 · 加号那几处的候选 `{agent, account, kind}`：出过数的在前、没出过的在后，起会话时没说是哪个号的 `_` 不在里面（判断只住 `name_words::is_candidate`）；界面照它画，不另拼、不另滤 |
 | `detail` | ← | 只在 `unreadable` 时有：复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
 | `earliestReturn` | ← | 被拒 / 超额在兜的号里最早回来的那个 `{account, at}`；没有、或都说不出时刻 ⇒ `null` |
 | `fiveHour` | ← | 「5h 那一格」写好的字：顶上那一格只在 `unreadable` 时有（`5h 读不到`）、否则 `null`；`accounts[]` 每个出过数的订阅号一格（`5h 41%` · 卡着的照语义位的字），按量号 ⇒ `null`；`unseen[]` 恒 `null` |
@@ -1473,7 +1484,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `accounts` | ← | 每账号一个对象 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable, keyMasked, baseUrl, badge}`；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`） |
+| `accounts` | ← | 每账号一个对象 `{name, email, configDir, isDefault, mode, exists, loggedIn, authKind, authReady, selectable, keyMasked, baseUrl, badge, color}`；`selectable` ＝ 能拿来起会话 / 选为默认（`acct_core::account_selectable`）；`color` ＝ 号色（`--acct-c0..c7` 第几格，账号库里的事实：加号时分第一个空格、存在清单里，`Manifest::with_colors`），界面只画它 |
 | `agent` | → | 必填：这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`） |
 | `meta` | ← | `{enabled, acctsDir, manifestPath, updatedAt, sharedStore, count, error, unsupported, nextDefault, effectiveDefault, home}`；`effectiveDefault` ＝ 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`） |
 | `notice` | ← | 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）· 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null` |
@@ -1742,7 +1753,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `accounts-mcp-sync`
 
-停 / 开各账号之间同步用户级 MCP。
+停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-mcp-sync`
 
@@ -1771,17 +1782,36 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-annotate`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `customTitle` | ← | 自定义标题（`null` = 没改过名） |
-| `entry` | ← | 改完的那一条：`starred` · `customTitle`（`null` = 没改过名）· `hidden` · `updatedAt`（毫秒，= 这一次） |
-| `hidden` | ← | 隐藏 |
-| `patch` | → | 要改的那几格：`starred` / `customTitle` / `hidden`（`customTitle` 也认蛇形 `custom_title`） |
-| `sid` | → | 会话 id |
-| `starred` | → ← | 星标 |
-| `updatedAt` | ← | 毫秒，= 这一次 |
+入参 `AnnotateReq` · 回包 `Annotated`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`annotations_unreadable` · `bad_args` · `io_failed` · `no_annotations`
+```ts
+type AnnotateReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 要改的那几格。
+ */
+patch: Patch, };
+type Annotated = { entry: Entry, };
+type Entry = { starred: boolean, customTitle: string | null, hidden: boolean, updatedAt: number, };
+type Patch = { 
+/**
+ * 星标。
+ */
+starred?: boolean | null, 
+/**
+ * 自定义标题：`null` = 不改；空白串 = 清空（也认蛇形 `custom_title`）。
+ */
+customTitle?: string | null, 
+/**
+ * 隐藏。
+ */
+hidden?: boolean | null, };
+```
+
+码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
 
 #### `history-forget`
 
@@ -1789,12 +1819,22 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-forget`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `removed` | ← | 真删了一条没有（`false` = 本来就没有这一条，文件没动） |
-| `sid` | → | 会话 id |
+入参 `ForgetReq` · 回包 `Forgotten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`annotations_unreadable` · `bad_args` · `io_failed` · `no_annotations`
+```ts
+type ForgetReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, };
+type Forgotten = { 
+/**
+ * 真删了一条没有（`false` = 本来就没有这一条，文件没动）。
+ */
+removed: boolean, };
+```
+
+码：`bad_args` · `annotations_unreadable` · `io_failed` · `no_annotations`
 
 #### `history-last-accounts`
 
@@ -1802,11 +1842,18 @@ sid → 上次用哪个号起。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-last-accounts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `accounts` | ← | `{sid: 账号名}` |
+入参 `NoArgs` · 回包 `LastAccounts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`unreadable`
+```ts
+type LastAccounts = { 
+/**
+ * `{sid: 账号名}`：只含真记过的那几条。
+ */
+accounts: { [key in string]: string }, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `unreadable`
 
 #### `history-list`
 
@@ -1814,21 +1861,146 @@ sid → 上次用哪个号起。
 
 收 `args` · 可撤 · CLI：`ccm -- --history-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `groups` | ← | 按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin` |
-| `hidden` | → | 可缺席：`true` ⇒ 隐藏的也出（默认不出） |
-| `limit` | → | 可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated` |
-| `listing` | → | 可缺席：那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` / 没有 `rows` 数组 ⇒ `bad_args` |
-| `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
-| `origin` | → | 可缺席：那台的名字（`listing` 是它的；行与组都标上它） |
-| `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
-| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations \| annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份、不拿本机那份去盖 |
-| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按看的那一台的时区（请求的 `tz`）写好，界面照抄 |
-| `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
-| `total` | ← | 筛完留下几个（截之前，不含 `context`） |
-| `truncated` | ← | `rows` 被 `limit` 截过 |
-| `within_days` | → | 可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650） |
+入参 `HistoryListReq` · 回包 `HistoryListReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type Entry = { starred: boolean, customTitle: string | null, hidden: boolean, updatedAt: number, };
+type HistoryFailedDir = { projectDir: string, error: string, };
+type HistoryGroup = { key: string, agent: string, projectName: string, projectPath: string, projectDir: string, count: number, 
+/**
+ * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
+ */
+hasLive: boolean | null, starred: boolean, lastActivity: number, 
+/**
+ * 几台的组并成一列时按它（大的在前）。
+ */
+order: number, 
+/**
+ * 读不了的那个记录目录：原因。
+ */
+failed: string | null, 
+/**
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ */
+origin?: string, };
+type HistoryList = { rows: Array<HistoryRow>, groups: Array<HistoryGroup>, total: number, truncated: boolean, 
+/**
+ * 注解没并上的那一句；并上了 ⇒ `null`。
+ */
+notice: string | null, };
+type HistoryListReply = HistoryListing | HistoryList;
+type HistoryListReq = { 
+/**
+ * `true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations | annotationsNotice}`（不筛不排、不看别的入参）——
+ * 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份。
+ */
+raw?: boolean, 
+/**
+ * 那台的名字（`listing` 是它的；行与组都标上它）。缺 ⇒ 这台。
+ */
+origin?: string, 
+/**
+ * 那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。
+ * 缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` ⇒ `bad_args`。
+ */
+listing?: HistoryListing, 
+/**
+ * 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
+ */
+sid?: string, 
+/**
+ * 只留显示标题 · 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）。
+ */
+query?: string, 
+/**
+ * 缺 ⇒ 按最后活动。
+ */
+sort?: HistorySort, 
+/**
+ * 只留那个键（同 `sort`）落在最近 N 天里的（1–3650）。
+ */
+within_days?: number, 
+/**
+ * `true` ⇒ 隐藏的也出（缺省不出）。
+ */
+hidden?: boolean, 
+/**
+ * 最多回几行（缺省 2000，1–20000）；多出的不回、`truncated`。
+ */
+limit?: number, };
+type HistoryListing = { rows: Array<HistoryRawRow>, failed: Array<HistoryFailedDir>, 
+/**
+ * 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
+ */
+annotations?: { [key in string]: Entry }, annotationsNotice?: string, };
+type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
+/**
+ * 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
+ */
+title: string, startedAt: number, updatedAt: number, jsonlPath: string, 
+/**
+ * 判不了活（合成历史没有 pidfile）⇒ `null`。
+ */
+isLive: boolean | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, hidden: boolean, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+/**
+ * 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
+ */
+projectDir: string, 
+/**
+ * 分组键：哪一家 ＋ 真实目录。
+ */
+group: string, lastAccount?: string, };
+type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, hidden: boolean, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
+/**
+ * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
+ */
+label: Words, 
+/**
+ * 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
+ */
+untitled: boolean, 
+/**
+ * `live` · `ended` · `unknown`（活不活只出这一格）。
+ */
+status: "live" | "ended" | "unknown", can: Can, 
+/**
+ * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
+ */
+agentTag: Words | null, 
+/**
+ * 被筛掉、只为挂住分叉子会话才带上的父会话（界面淡显）。
+ */
+context?: true, 
+/**
+ * 排序键（`activity` ⇒ 最后活动，`created` ⇒ 开始；毫秒）。
+ */
+at: number, atText: Words, sectionText: Words, spanText: Words, 
+/**
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ */
+origin?: string, };
+type HistorySort = "activity" | "created";
+type Words = string;
+```
 
 码：`bad_args` · `failed` · `no_listing`
 
@@ -1838,17 +2010,115 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-search`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `after_ms` | → | 可选：只要这一刻（毫秒）之后的 |
-| `include_tools` | → | 可选布尔：工具调用与结果也搜 |
-| `limit` | → | 可选：全局片段上限（`hitCount` 仍报全量） |
-| `lines` | ← | 每命中会话一行 `SessionHits`（带 `agent`：只扫记录树 ⇒ 记录树那一家） |
-| `query` | → | 搜索词（必填） |
-| `scope` | → | 可选，`user`（人说的）/ `assistant`（那一家说的）/ `report`（agent 回报：子 agent 交回 / 发来的话 · 另一个会话发来的话），= `--scope` |
-| `skipped` | ← | 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）：它们的会话不在结果里 |
-| `titles` | → | 可选布尔：只比会话标题与第一句（不搜内容）；命中的会话照样一行，`hitCount` 为 `0`、`hits` 空 |
-| `unreadable` | ← | 这一趟有几份会话记录读不动、没搜到（权限 / IO 错 / 不是合法 UTF-8） |
+入参 `HistorySearchReq` · 回包 `HistorySearchReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type HistorySearchReply = { 
+/**
+ * 每命中会话一行，最近优先。
+ */
+sessions: Array<SessionHits>, 
+/**
+ * 这一趟有几份会话记录读不动、没搜到。
+ */
+unreadable: number, 
+/**
+ * 内容搜索不覆盖、这台上又有它的会话记录的那几家（对用户的叫法）。
+ */
+skipped: Array<string>, };
+type HistorySearchReq = { 
+/**
+ * 搜索词（不分大小写，子串）。
+ */
+query: string, 
+/**
+ * 工具调用与结果也搜。
+ */
+include_tools?: boolean, 
+/**
+ * 只搜哪一种：人说的话 · agent 的回答 · agent 回报；缺 ⇒ 全部。
+ */
+scope?: SearchScope, 
+/**
+ * 只要这一刻（毫秒）之后的。
+ */
+after_ms?: number, 
+/**
+ * 全局片段上限（`hitCount` 仍报全量）。
+ */
+limit?: number, 
+/**
+ * 只比会话标题与第一句（不搜内容）。
+ */
+titles?: boolean, };
+type Liveness = "live" | "ended";
+type SearchHit = { 
+/**
+ * 消息 uuid：打开查看器后据此滚动定位、高亮。
+ */
+uuid: string, tsMs: number, 
+/**
+ * `user` · `assistant` · `tool` · `report`。
+ */
+kind: string, before: string, matched: string, after: string, 
+/**
+ * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
+ */
+tool?: string, };
+type SearchScope = "user" | "assistant" | "report";
+type SessionHits = { 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, 
+/**
+ * 本会话命中总数（可能 > `hits` 条数）。
+ */
+hitCount: number, hits: Array<SearchHit>, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
+ */
+status: Liveness, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -1858,12 +2128,136 @@ sid → 上次用哪个号起。
 
 收 `args` · 可撤 · CLI：`ccm -- --history-search-merge`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `sessionCount` | ← | 会话数 |
-| `sessions` | → ← | 各台的会话行（远端的带 `origin`）；回的是合好的、按 `updatedAt` 倒序，每行添 `atText`（行尾那一格）· `spanText`（内容头那一段）：按 `updatedAt`、按看的那一台的时区（请求的 `tz`）写好 |
-| `totalHits` | ← | `hitCount` 之和 |
-| `truncated` | ← | 任一行 `hitsTruncated` |
+入参 `HistorySearchMergeReq` · 回包 `Merged`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type HistorySearchMergeReq = { machines: Array<MachineHits>, };
+type Liveness = "live" | "ended";
+type MachineHits = { origin: string, sessions: Array<SessionHits>, };
+type Merged = { 
+/**
+ * `hitCount` 之和。
+ */
+totalHits: number, sessionCount: number, 
+/**
+ * 任一行 `hitsTruncated`。
+ */
+truncated: boolean, 
+/**
+ * 各台的会话行，按 `updatedAt` 倒序。
+ */
+sessions: Array<MergedRow>, };
+type MergedRow = { 
+/**
+ * 那台远端的名字；本机 ⇒ 缺。
+ */
+origin?: string, 
+/**
+ * 行尾那一格。
+ */
+atText: string, 
+/**
+ * 内容头那一段。
+ */
+spanText: string, 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, 
+/**
+ * 本会话命中总数（可能 > `hits` 条数）。
+ */
+hitCount: number, hits: Array<SearchHit>, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
+ */
+status: Liveness, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, };
+type SearchHit = { 
+/**
+ * 消息 uuid：打开查看器后据此滚动定位、高亮。
+ */
+uuid: string, tsMs: number, 
+/**
+ * `user` · `assistant` · `tool` · `report`。
+ */
+kind: string, before: string, matched: string, after: string, 
+/**
+ * 它落在哪次工具调用的卡里（调用 id，同会话内查找的 `tool`）；缺 ⇒ 落在它自己那张卡上。
+ */
+tool?: string, };
+type SessionHits = { 
+/**
+ * 这个会话是哪一家（线上的 kind）：恢复按它起。全文搜索只扫记录树 ⇒ 都是记录树那一家。
+ */
+agent: string, sessionId: string, projectPath: string, projectName: string, jsonlPath: string, 
+/**
+ * 显示标题（ai-title / 首条 user 摘要 / sid 前 8 位之一）。
+ */
+title: string, 
+/**
+ * 记录文件最后改动的毫秒。
+ */
+updatedAt: number, 
+/**
+ * 本会话命中总数（可能 > `hits` 条数）。
+ */
+hitCount: number, hits: Array<SearchHit>, 
+/**
+ * 本会话有命中被「全局 snippet 预算用完」挡下了。
+ */
+hitsTruncated: boolean, 
+/**
+ * 后台分身会话。
+ */
+isBg: boolean, 
+/**
+ * 那台判的：在跑 · 已结束（全文搜索只扫记录树，判得了活）。
+ */
+status: Liveness, 
+/**
+ * 那台判的：这个会话能做什么（与历史清单的行同一张规则）。
+ */
+can: Can, };
+```
 
 码：`bad_args`
 
@@ -1873,16 +2267,323 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`rows[].record` 是 `record`） · CLI：`ccm -- --history-run`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `end` | ← | 读到哪了（最后一个整行之后） |
-| `from` | → | 从这个字节起读（缺 ＝ 0）；续读拿上一次的 `end` |
-| `more` | ← | 这一页没读到头（再从 `end` 读） |
-| `parent` | → | 父会话的记录路径（读会话那道围栏照旧；越界 ⇒ `path_refused`） |
-| `path` | ← | 那份子运行记录（不透明，给查看器整份打开用） |
-| `rows` | ← | 这一页里每一条进界面的记录：`record` 通用记录（与主会话同一形）· `rid` 它的对账键（没有 ⇒ 省略） |
-| `run` | → ← | 子运行标识（运行表 `session_runs` 里那一格）；与 `tool` 至少给一个，都给以它为准 |
-| `tool` | → | 派出它的那次工具调用的 id：后端在父记录里找那次调用的派出链接（适配层 `child_link`）；还没对上（前台子运行跑完才写明是哪一个）⇒ `not_found` |
+入参 `HistoryRunReq` · 回包 `HistoryRun`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
+type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
+type AskOption = { label: string, description?: string, };
+type AskQuestion = { 
+/**
+ * 题前那一小格（原文）。没有 ⇒ 缺。
+ */
+header?: string, 
+/**
+ * 题目（原文）。
+ */
+question: string, 
+/**
+ * 可以选几项（`true` ＝ 多选）。
+ */
+multi: boolean, options: Array<AskOption>, };
+type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+/**
+ * 对的是哪次工具调用。
+ */
+for: string, 
+/**
+ * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
+ */
+content: Array<Block>, isError: boolean, } | { "type": "image", 
+/**
+ * 图片来源原样（形状照那一家的写法透传）。
+ */
+source: unknown, };
+type ChildRunTag = { label: string, kind?: string, };
+type HistoryRun = { 
+/**
+ * 读的是哪个子运行。
+ */
+run: string, 
+/**
+ * 那份子运行记录（不透明，给查看器整份打开用）。
+ */
+path: string, 
+/**
+ * 这一页里每一条进界面的记录。
+ */
+rows: Array<RunRow>, 
+/**
+ * 读到哪了（最后一个整行之后）。
+ */
+end: number, 
+/**
+ * 这一页没读到头（再从 `end` 读）。
+ */
+more: boolean, };
+type HistoryRunReq = { 
+/**
+ * 父会话的记录路径（围栏照旧；越界 ⇒ `path_refused`）。
+ */
+parent: string, 
+/**
+ * 子运行标识（运行表里那一格）；与 `tool` 至少给一个，都给以它为准。
+ */
+run?: string, 
+/**
+ * 派出它的那次工具调用的 id。
+ */
+tool?: string, 
+/**
+ * 从这个字节起读（缺 ⇒ 0）；续读拿上一次的 `end`。
+ */
+from?: number | null, };
+type LineRecord = { 
+/**
+ * 哪一家（注册表里那一家的 `kind`）。
+ */
+agent: string, 
+/**
+ * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
+ */
+id: string, 
+/**
+ * 记录时刻（ISO-8601 原样）；记录里没有 ⇒ 缺。
+ */
+at?: string, 
+/**
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, 
+/**
+ * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
+ */
+atMs?: number, } & ({ "t": "said", 
+/**
+ * 谁说的、要显示的正文（判定只在适配层）。
+ */
+who: UserText, blocks: Array<Block>, 
+/**
+ * 这条里每个工具结果的一句（工具调用 id ⇒ [`StepResult`]）。没有 ⇒ 缺。
+ */
+results?: { [key in string]: StepResult }, 
+/**
+ * 这条记录自己的工作目录。
+ */
+cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+/**
+ * 型号名原样。
+ */
+model?: string, 
+/**
+ * 代理那一侧自动写的应答（不是模型说的，不建卡）。
+ */
+autoReply: boolean, 
+/**
+ * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
+ */
+endsTurn: boolean, 
+/**
+ * 工具调用 id ⇒ 卡型（普通工具卡不列）。
+ */
+cards?: { [key in string]: ToolCard }, 
+/**
+ * 工具调用 id ⇒ 一行人话。
+ */
+steps?: { [key in string]: ToolStep }, 
+/**
+ * 派出子运行的那几次工具调用 ⇒ 标签与类别。
+ */
+runs?: { [key in string]: ChildRunTag }, 
+/**
+ * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
+ */
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+/**
+ * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
+ */
+type: string | null, 
+/**
+ * 写好的一句（[`unread_text`]）。
+ */
+text: string, 
+/**
+ * 恒 `warn`。
+ */
+tone: "warn", 
+/**
+ * 原文截到 [`EXCERPT_BYTES`]（按字符截，不截半个字）：给［复制详情］，出口照抄、不解析。
+ */
+excerpt: string, 
+/**
+ * 并了几条（适配层每行给 1）。
+ */
+count: number, });
+type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
+/**
+ * 正文的行数（两头的空行不算）。
+ */
+lines: number, };
+type PatchHunk = { 
+/**
+ * 改之前这段从第几行起（1 起）· 占几行；改之后同。
+ */
+oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
+type PlanTitle = { 
+/**
+ * 等着批。
+ */
+waiting: string, 
+/**
+ * 批了。
+ */
+approved: string, 
+/**
+ * 没批（接着规划）。
+ */
+kept: string, };
+type ReplyError = { reason: ApiReason, 
+/**
+ * HTTP 状态码（只有 HTTP 类错误有）。
+ */
+status?: number, };
+type ResultKind = "launched" | "handback";
+type RunRow = { 
+/**
+ * 通用记录（同 [`RecordLine::record`]）。
+ */
+record: LineRecord, 
+/**
+ * 它的对账键（界面拿它撤那个子运行的活卡）；没有 ⇒ 这一格不出现。
+ */
+rid?: string, };
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "peerSession", from?: string, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "coordinator", 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+/**
+ * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
+ */
+body?: string, } | { "kind": "compactSummary", 
+/**
+ * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+ */
+charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepResult = { 
+/**
+ * 成功（`false` ＝ 失败或被拒）。
+ */
+ok: boolean, 
+/**
+ * 人没批准这一步（批准框里选了「不」/ 计划没批）。只在 `ok == false` 时可能为真。
+ */
+rejected?: boolean, 
+/**
+ * 读了几行（读文件）/ 输出几行（命令）/ 命中几行（搜索）。
+ */
+lines?: number, 
+/**
+ * 改动：加了几行 · 删了几行。
+ */
+added?: number, removed?: number, 
+/**
+ * 命中几个文件（搜索 / 列文件）。
+ */
+files?: number, 
+/**
+ * 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
+ */
+answer?: Answer, 
+/**
+ * 命令失败时的退出码（结果里写着才有）。
+ */
+exitCode?: number, 
+/**
+ * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
+ */
+file?: string, 
+/**
+ * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ */
+patch?: Array<PatchHunk>, 
+/**
+ * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
+ */
+patchTruncated?: boolean, 
+/**
+ * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+ */
+text: string, 
+/**
+ * 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+ */
+timed?: string, 
+/**
+ * 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
+ */
+preview?: string, 
+/**
+ * 结果正文多少字（按字符，与预览同一份正文）：派出子运行那张卡写「交回结果 · N 字」读它（出口省掉正文之后照样有）。结果是空的 ⇒ 缺。
+ */
+chars?: number, 
+/**
+ * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
+ */
+kind?: ResultKind, };
+type TitleBy = "agent" | "user";
+type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
+type ToolStep = { 
+/**
+ * 工具名（原样）。
+ */
+tool: string, 
+/**
+ * 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
+ */
+arg?: string, 
+/**
+ * 主参数是不是路径（界面「中间省略」与「打开文件」按它）。
+ */
+path?: boolean, 
+/**
+ * 说明（Bash 的 `description` 那一类）。
+ */
+note?: string, 
+/**
+ * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
+ */
+known: boolean, 
+/**
+ * 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
+ */
+text?: string, 
+/**
+ * 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
+ * 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
+ */
+ask?: StepAsk, };
+type UnreadWhy = "unknownType" | "parseFailed";
+type UserText = { speaker: Speaker, 
+/**
+ * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ */
+text: string, 
+/**
+ * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ */
+pasted?: Array<Pasted>, };
+```
 
 码：`bad_args` · `failed` · `not_found` · `path_refused` · `refused` · `too_large`
 
@@ -1892,12 +2593,28 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-record`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `configDir` | → | 可选：这次 resume 要用的**账号配置目录** |
-| `present` | ← | 这条会话的记录文件在那棵记录树里找得到（根那一层或项目目录那一层 |
-| `root` | ← | 查的那棵记录树的根（报错时说清查了什么） |
-| `sid` | → | 会话 id |
+入参 `HistoryRecordReq` · 回包 `RecordProbe`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HistoryRecordReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 这次 resume 要用的账号配置目录（缺 / `null` ⇒ 这台的家目录）。
+ */
+configDir?: string, };
+type RecordProbe = { 
+/**
+ * `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
+ */
+present: boolean, 
+/**
+ * 查的那棵记录树的根。
+ */
+root: string, };
+```
 
 码：`bad_args`
 
@@ -1907,14 +2624,327 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`lines[].record` 是 `record`） · CLI：`ccm -- --history-lines`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `eof` | ← | 读到了最后一个完整行之后 |
-| `from` | → ← | 第一行的行号（缺省 0） |
-| `lines` | ← | **记录行**（形状同 `history-page` 的 `lines`）：`[from, next)` 里进界面的那些，第 k 个可计行的行号是 `from + k`（不进界面的照占号、不出现） |
-| `next` | ← | 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数） |
-| `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
-| `until` | → | 可选右端（半开区间 `[from, until)`）；缺 ＝ 到最后一个完整行为止 |
+入参 `HistoryLinesReq` · 回包 `HistoryLines`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
+type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
+type AskOption = { label: string, description?: string, };
+type AskQuestion = { 
+/**
+ * 题前那一小格（原文）。没有 ⇒ 缺。
+ */
+header?: string, 
+/**
+ * 题目（原文）。
+ */
+question: string, 
+/**
+ * 可以选几项（`true` ＝ 多选）。
+ */
+multi: boolean, options: Array<AskOption>, };
+type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+/**
+ * 对的是哪次工具调用。
+ */
+for: string, 
+/**
+ * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
+ */
+content: Array<Block>, isError: boolean, } | { "type": "image", 
+/**
+ * 图片来源原样（形状照那一家的写法透传）。
+ */
+source: unknown, };
+type ChildRunTag = { label: string, kind?: string, };
+type HistoryLines = { 
+/**
+ * 第一行的行号。
+ */
+from: number, 
+/**
+ * 下一段从这一行起（恒 ＝ `from` ＋ 这一段的可计行数）。
+ */
+next: number, 
+/**
+ * 读到了最后一个完整行之后。
+ */
+eof: boolean, 
+/**
+ * `[from, next)` 里进界面的那些（不进界面的照占号、不出现）。
+ */
+lines: Array<RecordLine>, };
+type HistoryLinesReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 第一行的行号（缺 ⇒ 0）。
+ */
+from?: number | null, 
+/**
+ * 可选右端（半开区间）；缺 ⇒ 到最后一个完整行为止。
+ */
+until?: number | null, };
+type LineRecord = { 
+/**
+ * 哪一家（注册表里那一家的 `kind`）。
+ */
+agent: string, 
+/**
+ * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
+ */
+id: string, 
+/**
+ * 记录时刻（ISO-8601 原样）；记录里没有 ⇒ 缺。
+ */
+at?: string, 
+/**
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, 
+/**
+ * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
+ */
+atMs?: number, } & ({ "t": "said", 
+/**
+ * 谁说的、要显示的正文（判定只在适配层）。
+ */
+who: UserText, blocks: Array<Block>, 
+/**
+ * 这条里每个工具结果的一句（工具调用 id ⇒ [`StepResult`]）。没有 ⇒ 缺。
+ */
+results?: { [key in string]: StepResult }, 
+/**
+ * 这条记录自己的工作目录。
+ */
+cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+/**
+ * 型号名原样。
+ */
+model?: string, 
+/**
+ * 代理那一侧自动写的应答（不是模型说的，不建卡）。
+ */
+autoReply: boolean, 
+/**
+ * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
+ */
+endsTurn: boolean, 
+/**
+ * 工具调用 id ⇒ 卡型（普通工具卡不列）。
+ */
+cards?: { [key in string]: ToolCard }, 
+/**
+ * 工具调用 id ⇒ 一行人话。
+ */
+steps?: { [key in string]: ToolStep }, 
+/**
+ * 派出子运行的那几次工具调用 ⇒ 标签与类别。
+ */
+runs?: { [key in string]: ChildRunTag }, 
+/**
+ * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
+ */
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+/**
+ * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
+ */
+type: string | null, 
+/**
+ * 写好的一句（[`unread_text`]）。
+ */
+text: string, 
+/**
+ * 恒 `warn`。
+ */
+tone: "warn", 
+/**
+ * 原文截到 [`EXCERPT_BYTES`]（按字符截，不截半个字）：给［复制详情］，出口照抄、不解析。
+ */
+excerpt: string, 
+/**
+ * 并了几条（适配层每行给 1）。
+ */
+count: number, });
+type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
+/**
+ * 正文的行数（两头的空行不算）。
+ */
+lines: number, };
+type PatchHunk = { 
+/**
+ * 改之前这段从第几行起（1 起）· 占几行；改之后同。
+ */
+oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
+type PlanTitle = { 
+/**
+ * 等着批。
+ */
+waiting: string, 
+/**
+ * 批了。
+ */
+approved: string, 
+/**
+ * 没批（接着规划）。
+ */
+kept: string, };
+type RecordLine = { 
+/**
+ * 这份记录是哪个会话的（那一家按路径认）。
+ */
+session_id: string, 
+/**
+ * 那份记录的路径。
+ */
+path: string, 
+/**
+ * 行号（可计行，从 0 起）。
+ */
+seq: number, 
+/**
+ * 那一行记的工作目录；没有 ⇒ `null`。
+ */
+cwd: string | null, 
+/**
+ * 通用记录。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
+ */
+record: LineRecord, };
+type ReplyError = { reason: ApiReason, 
+/**
+ * HTTP 状态码（只有 HTTP 类错误有）。
+ */
+status?: number, };
+type ResultKind = "launched" | "handback";
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "peerSession", from?: string, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "coordinator", 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+/**
+ * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
+ */
+body?: string, } | { "kind": "compactSummary", 
+/**
+ * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+ */
+charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepResult = { 
+/**
+ * 成功（`false` ＝ 失败或被拒）。
+ */
+ok: boolean, 
+/**
+ * 人没批准这一步（批准框里选了「不」/ 计划没批）。只在 `ok == false` 时可能为真。
+ */
+rejected?: boolean, 
+/**
+ * 读了几行（读文件）/ 输出几行（命令）/ 命中几行（搜索）。
+ */
+lines?: number, 
+/**
+ * 改动：加了几行 · 删了几行。
+ */
+added?: number, removed?: number, 
+/**
+ * 命中几个文件（搜索 / 列文件）。
+ */
+files?: number, 
+/**
+ * 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
+ */
+answer?: Answer, 
+/**
+ * 命令失败时的退出码（结果里写着才有）。
+ */
+exitCode?: number, 
+/**
+ * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
+ */
+file?: string, 
+/**
+ * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ */
+patch?: Array<PatchHunk>, 
+/**
+ * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
+ */
+patchTruncated?: boolean, 
+/**
+ * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+ */
+text: string, 
+/**
+ * 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+ */
+timed?: string, 
+/**
+ * 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
+ */
+preview?: string, 
+/**
+ * 结果正文多少字（按字符，与预览同一份正文）：派出子运行那张卡写「交回结果 · N 字」读它（出口省掉正文之后照样有）。结果是空的 ⇒ 缺。
+ */
+chars?: number, 
+/**
+ * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
+ */
+kind?: ResultKind, };
+type TitleBy = "agent" | "user";
+type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
+type ToolStep = { 
+/**
+ * 工具名（原样）。
+ */
+tool: string, 
+/**
+ * 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
+ */
+arg?: string, 
+/**
+ * 主参数是不是路径（界面「中间省略」与「打开文件」按它）。
+ */
+path?: boolean, 
+/**
+ * 说明（Bash 的 `description` 那一类）。
+ */
+note?: string, 
+/**
+ * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
+ */
+known: boolean, 
+/**
+ * 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
+ */
+text?: string, 
+/**
+ * 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
+ * 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
+ */
+ask?: StepAsk, };
+type UnreadWhy = "unknownType" | "parseFailed";
+type UserText = { speaker: Speaker, 
+/**
+ * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ */
+text: string, 
+/**
+ * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ */
+pasted?: Array<Pasted>, };
+```
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
 
@@ -1924,14 +2954,319 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`rows[]` 是 `read_row`，`rows[].record` 是 `record`） · CLI：`ccm -- --history-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `eof` | ← | 区间到头了（`until` 或读时的文件长度） |
-| `next` | ← | 下一页从这里起（= `offset` ＋ 这一页的原始字节数） |
-| `offset` | → | 从这个字节起（缺省 0） |
-| `path` | → | jsonl 路径，围栏同 `history-read`（越界 ⇒ `refused`） |
-| `rows` | ← | 这一页里每个**可计行**一条（空白 / 纯 BOM 行不占）：`end` ＝ 这一行（含 `\n`）之后那个字节的偏移（原始字节，永远说得准；残尾 ⇒ `null`）· `hash` 这一行正文的摘要 · `record` 通用记录（缺 ＝ 不进界面）· `cwd` |
-| `until` | → | 可选右端（半开区间 `[offset, until)`），= `--until` |
+入参 `HistoryReadReq` · 回包 `HistoryRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
+type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
+type AskOption = { label: string, description?: string, };
+type AskQuestion = { 
+/**
+ * 题前那一小格（原文）。没有 ⇒ 缺。
+ */
+header?: string, 
+/**
+ * 题目（原文）。
+ */
+question: string, 
+/**
+ * 可以选几项（`true` ＝ 多选）。
+ */
+multi: boolean, options: Array<AskOption>, };
+type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+/**
+ * 对的是哪次工具调用。
+ */
+for: string, 
+/**
+ * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
+ */
+content: Array<Block>, isError: boolean, } | { "type": "image", 
+/**
+ * 图片来源原样（形状照那一家的写法透传）。
+ */
+source: unknown, };
+type ChildRunTag = { label: string, kind?: string, };
+type HistoryRead = { 
+/**
+ * 这一页里每个可计行一条（空白 / 纯 BOM 行不占）。
+ */
+rows: Array<ReadRow>, 
+/**
+ * 下一页从这里起（＝ `offset` ＋ 这一页的原始字节数）。
+ */
+next: number, 
+/**
+ * 区间到头了（`until` 或读时的文件长度）。
+ */
+eof: boolean, };
+type HistoryReadReq = { 
+/**
+ * jsonl 路径（围栏：记录树里）。
+ */
+path: string, 
+/**
+ * 从这个字节起（缺 ⇒ 0）。
+ */
+offset?: number | null, 
+/**
+ * 可选右端（半开区间）；缺 ⇒ 读到文件尾。
+ */
+until?: number | null, };
+type LineRecord = { 
+/**
+ * 哪一家（注册表里那一家的 `kind`）。
+ */
+agent: string, 
+/**
+ * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
+ */
+id: string, 
+/**
+ * 记录时刻（ISO-8601 原样）；记录里没有 ⇒ 缺。
+ */
+at?: string, 
+/**
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, 
+/**
+ * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
+ */
+atMs?: number, } & ({ "t": "said", 
+/**
+ * 谁说的、要显示的正文（判定只在适配层）。
+ */
+who: UserText, blocks: Array<Block>, 
+/**
+ * 这条里每个工具结果的一句（工具调用 id ⇒ [`StepResult`]）。没有 ⇒ 缺。
+ */
+results?: { [key in string]: StepResult }, 
+/**
+ * 这条记录自己的工作目录。
+ */
+cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+/**
+ * 型号名原样。
+ */
+model?: string, 
+/**
+ * 代理那一侧自动写的应答（不是模型说的，不建卡）。
+ */
+autoReply: boolean, 
+/**
+ * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
+ */
+endsTurn: boolean, 
+/**
+ * 工具调用 id ⇒ 卡型（普通工具卡不列）。
+ */
+cards?: { [key in string]: ToolCard }, 
+/**
+ * 工具调用 id ⇒ 一行人话。
+ */
+steps?: { [key in string]: ToolStep }, 
+/**
+ * 派出子运行的那几次工具调用 ⇒ 标签与类别。
+ */
+runs?: { [key in string]: ChildRunTag }, 
+/**
+ * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
+ */
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+/**
+ * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
+ */
+type: string | null, 
+/**
+ * 写好的一句（[`unread_text`]）。
+ */
+text: string, 
+/**
+ * 恒 `warn`。
+ */
+tone: "warn", 
+/**
+ * 原文截到 [`EXCERPT_BYTES`]（按字符截，不截半个字）：给［复制详情］，出口照抄、不解析。
+ */
+excerpt: string, 
+/**
+ * 并了几条（适配层每行给 1）。
+ */
+count: number, });
+type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
+/**
+ * 正文的行数（两头的空行不算）。
+ */
+lines: number, };
+type PatchHunk = { 
+/**
+ * 改之前这段从第几行起（1 起）· 占几行；改之后同。
+ */
+oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
+type PlanTitle = { 
+/**
+ * 等着批。
+ */
+waiting: string, 
+/**
+ * 批了。
+ */
+approved: string, 
+/**
+ * 没批（接着规划）。
+ */
+kept: string, };
+type ReadRow = { 
+/**
+ * 这一行（含 `\n`）之后那个字节的偏移；没 `\n` 收尾的残尾 ⇒ `null`。
+ */
+end: number | null, 
+/**
+ * 这一行正文的摘要（[`line_hash`]；64 位，过 JSON 数会失精度，只拿来比相等）。
+ */
+hash: number, 
+/**
+ * 通用记录（缺 ＝ 不进界面，照占号）。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
+ */
+record?: LineRecord, 
+/**
+ * 那一行记的工作目录（只在有记录时带）。
+ */
+cwd?: string, };
+type ReplyError = { reason: ApiReason, 
+/**
+ * HTTP 状态码（只有 HTTP 类错误有）。
+ */
+status?: number, };
+type ResultKind = "launched" | "handback";
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "peerSession", from?: string, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "coordinator", 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+/**
+ * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
+ */
+body?: string, } | { "kind": "compactSummary", 
+/**
+ * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+ */
+charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepResult = { 
+/**
+ * 成功（`false` ＝ 失败或被拒）。
+ */
+ok: boolean, 
+/**
+ * 人没批准这一步（批准框里选了「不」/ 计划没批）。只在 `ok == false` 时可能为真。
+ */
+rejected?: boolean, 
+/**
+ * 读了几行（读文件）/ 输出几行（命令）/ 命中几行（搜索）。
+ */
+lines?: number, 
+/**
+ * 改动：加了几行 · 删了几行。
+ */
+added?: number, removed?: number, 
+/**
+ * 命中几个文件（搜索 / 列文件）。
+ */
+files?: number, 
+/**
+ * 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
+ */
+answer?: Answer, 
+/**
+ * 命令失败时的退出码（结果里写着才有）。
+ */
+exitCode?: number, 
+/**
+ * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
+ */
+file?: string, 
+/**
+ * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ */
+patch?: Array<PatchHunk>, 
+/**
+ * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
+ */
+patchTruncated?: boolean, 
+/**
+ * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+ */
+text: string, 
+/**
+ * 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+ */
+timed?: string, 
+/**
+ * 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
+ */
+preview?: string, 
+/**
+ * 结果正文多少字（按字符，与预览同一份正文）：派出子运行那张卡写「交回结果 · N 字」读它（出口省掉正文之后照样有）。结果是空的 ⇒ 缺。
+ */
+chars?: number, 
+/**
+ * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
+ */
+kind?: ResultKind, };
+type TitleBy = "agent" | "user";
+type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
+type ToolStep = { 
+/**
+ * 工具名（原样）。
+ */
+tool: string, 
+/**
+ * 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
+ */
+arg?: string, 
+/**
+ * 主参数是不是路径（界面「中间省略」与「打开文件」按它）。
+ */
+path?: boolean, 
+/**
+ * 说明（Bash 的 `description` 那一类）。
+ */
+note?: string, 
+/**
+ * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
+ */
+known: boolean, 
+/**
+ * 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
+ */
+text?: string, 
+/**
+ * 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
+ * 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
+ */
+ask?: StepAsk, };
+type UnreadWhy = "unknownType" | "parseFailed";
+type UserText = { speaker: Speaker, 
+/**
+ * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ */
+text: string, 
+/**
+ * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ */
+pasted?: Array<Pasted>, };
+```
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
 
@@ -1941,16 +3276,331 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（`lines[].record` 是 `record`） · CLI：`ccm -- --history-page`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `eof` | ← | 同 `history-read` |
-| `lines` | ← | 只装**进界面**的记录行：`session_id` · `path` · `seq`（第 k 个可计行 ＝ `seq + k`）· `cwd` · `record`（通用记录，形状见协议文档「通用记录」一节） |
-| `next` | ← | 同 `history-read` |
-| `nextSeq` | ← | 下一页第一行的行号 |
-| `offset` | → | 同 `history-read` |
-| `path` | → | 同 `history-read` |
-| `seq` | → | `offset` 那一行的行号（缺省 0）；续页交上一页的 `nextSeq` |
-| `until` | → | 同 `history-read` |
+入参 `HistoryPageReq` · 回包 `HistoryPage`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Answer = { "kind": "approved" } | { "kind": "picked", options: Array<string>, };
+type ApiReason = "overloaded" | "quota" | "network" | "auth" | "context" | "unknown";
+type AskOption = { label: string, description?: string, };
+type AskQuestion = { 
+/**
+ * 题前那一小格（原文）。没有 ⇒ 缺。
+ */
+header?: string, 
+/**
+ * 题目（原文）。
+ */
+question: string, 
+/**
+ * 可以选几项（`true` ＝ 多选）。
+ */
+multi: boolean, options: Array<AskOption>, };
+type Block = { "type": "text", text: string, } | { "type": "thinking", text: string, } | { "type": "tool_use", id: string, name: string, input: unknown, } | { "type": "tool_result", 
+/**
+ * 对的是哪次工具调用。
+ */
+for: string, 
+/**
+ * 结果内容（正文 / 图片块；原文是一个字符串时已归成一个正文块）。
+ */
+content: Array<Block>, isError: boolean, } | { "type": "image", 
+/**
+ * 图片来源原样（形状照那一家的写法透传）。
+ */
+source: unknown, };
+type ChildRunTag = { label: string, kind?: string, };
+type HistoryPage = { 
+/**
+ * 只装进界面的记录行（第 k 个可计行 ＝ `seq + k`）。
+ */
+lines: Array<RecordLine>, 
+/**
+ * 同 `history-read`。
+ */
+next: number, 
+/**
+ * 下一页第一行的行号。
+ */
+nextSeq: number, 
+/**
+ * 同 `history-read`。
+ */
+eof: boolean, };
+type HistoryPageReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 从这个字节起（缺 ⇒ 0）。
+ */
+offset?: number | null, 
+/**
+ * 可选右端（半开区间）。
+ */
+until?: number | null, 
+/**
+ * `offset` 那一行的行号（缺 ⇒ 0）；续页交上一页的 `nextSeq`。
+ */
+seq?: number | null, };
+type LineRecord = { 
+/**
+ * 哪一家（注册表里那一家的 `kind`）。
+ */
+agent: string, 
+/**
+ * 这条记录在本会话里的身份：非空、会话内唯一（主线外清单、分叉、跳转都按它认）。
+ */
+id: string, 
+/**
+ * 记录时刻（ISO-8601 原样）；记录里没有 ⇒ 缺。
+ */
+at?: string, 
+/**
+ * `at` 在看的那一台钟上的钟面 `HH:MM`（出口那一下按请求 / 流带来的时区写，[`Record::stamp`]；界面照抄、不换算）；没有时刻 / 解不出 ⇒ 缺。
+ */
+timeText?: string, 
+/**
+ * `at` 的毫秒（自 1970；出口那一下随钟面一起写）：界面算「两条记录之间多久」只用这一格（交那一个读口），不自己解析 `at`；解不出 ⇒ 缺。
+ */
+atMs?: number, } & ({ "t": "said", 
+/**
+ * 谁说的、要显示的正文（判定只在适配层）。
+ */
+who: UserText, blocks: Array<Block>, 
+/**
+ * 这条里每个工具结果的一句（工具调用 id ⇒ [`StepResult`]）。没有 ⇒ 缺。
+ */
+results?: { [key in string]: StepResult }, 
+/**
+ * 这条记录自己的工作目录。
+ */
+cwd?: string, } | { "t": "reply", blocks: Array<Block>, 
+/**
+ * 型号名原样。
+ */
+model?: string, 
+/**
+ * 代理那一侧自动写的应答（不是模型说的，不建卡）。
+ */
+autoReply: boolean, 
+/**
+ * 这条是一轮的结束（与帧 `turn_end` 同一个判定）。
+ */
+endsTurn: boolean, 
+/**
+ * 工具调用 id ⇒ 卡型（普通工具卡不列）。
+ */
+cards?: { [key in string]: ToolCard }, 
+/**
+ * 工具调用 id ⇒ 一行人话。
+ */
+steps?: { [key in string]: ToolStep }, 
+/**
+ * 派出子运行的那几次工具调用 ⇒ 标签与类别。
+ */
+runs?: { [key in string]: ChildRunTag }, 
+/**
+ * 这条是上游最终失败写的报错（报错正文在 `blocks` 的正文里）。不是 ⇒ 缺。
+ */
+error?: ReplyError, } | { "t": "retry", reason: ApiReason, attempt?: number, max?: number, } | { "t": "title", text: string, by: TitleBy, } | { "t": "queued", who: UserText, } | { "t": "unread", why: UnreadWhy, 
+/**
+ * 那一行自己说的类型原样（标签，出口不许按它取字）；没有 ⇒ `null`。
+ */
+type: string | null, 
+/**
+ * 写好的一句（[`unread_text`]）。
+ */
+text: string, 
+/**
+ * 恒 `warn`。
+ */
+tone: "warn", 
+/**
+ * 原文截到 [`EXCERPT_BYTES`]（按字符截，不截半个字）：给［复制详情］，出口照抄、不解析。
+ */
+excerpt: string, 
+/**
+ * 并了几条（适配层每行给 1）。
+ */
+count: number, });
+type Pasted = { id?: string, start: number, end: number, bodyStart: number, bodyEnd: number, 
+/**
+ * 正文的行数（两头的空行不算）。
+ */
+lines: number, };
+type PatchHunk = { 
+/**
+ * 改之前这段从第几行起（1 起）· 占几行；改之后同。
+ */
+oldStart: number, oldLines: number, newStart: number, newLines: number, lines: Array<string>, };
+type PlanTitle = { 
+/**
+ * 等着批。
+ */
+waiting: string, 
+/**
+ * 批了。
+ */
+approved: string, 
+/**
+ * 没批（接着规划）。
+ */
+kept: string, };
+type RecordLine = { 
+/**
+ * 这份记录是哪个会话的（那一家按路径认）。
+ */
+session_id: string, 
+/**
+ * 那份记录的路径。
+ */
+path: string, 
+/**
+ * 行号（可计行，从 0 起）。
+ */
+seq: number, 
+/**
+ * 那一行记的工作目录；没有 ⇒ `null`。
+ */
+cwd: string | null, 
+/**
+ * 通用记录。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
+ */
+record: LineRecord, };
+type ReplyError = { reason: ApiReason, 
+/**
+ * HTTP 状态码（只有 HTTP 类错误有）。
+ */
+status?: number, };
+type ResultKind = "launched" | "handback";
+type Speaker = { "kind": "human" } | { "kind": "slashCommand", name: string, args: string, } | { "kind": "bashInput", command: string, } | { "kind": "bashOutput", stdout: string, stderr: string, } | { "kind": "commandOutput" } | { "kind": "taskNotification", taskId?: string, status?: string, summary?: string, toolUseId?: string, } | { "kind": "agentMessage", from?: string, name?: string, handback: boolean, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "peerSession", from?: string, 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "coordinator", 
+/**
+ * 那段话的正文（记录级 `origin.body`，没有就取框里那段；剥过两头空白）。没有正文 ⇒ 缺。
+ */
+body?: string, } | { "kind": "agentTask" } | { "kind": "system", 
+/**
+ * 注入的原文（剥过两头空白）；这一家给不出 ⇒ 缺。只随记录成品给界面，不进日志。
+ */
+body?: string, } | { "kind": "compactSummary", 
+/**
+ * 摘要有多少字（写好的数，`copy_core::count_text`；界面拼进「摘要 {n} 字」）。
+ */
+charsText: string, } | { "kind": "interrupt" } | { "kind": "toolResult" };
+type StepAsk = { "kind": "questions", questions: Array<AskQuestion>, } | { "kind": "plan", text: string, title: PlanTitle, };
+type StepResult = { 
+/**
+ * 成功（`false` ＝ 失败或被拒）。
+ */
+ok: boolean, 
+/**
+ * 人没批准这一步（批准框里选了「不」/ 计划没批）。只在 `ok == false` 时可能为真。
+ */
+rejected?: boolean, 
+/**
+ * 读了几行（读文件）/ 输出几行（命令）/ 命中几行（搜索）。
+ */
+lines?: number, 
+/**
+ * 改动：加了几行 · 删了几行。
+ */
+added?: number, removed?: number, 
+/**
+ * 命中几个文件（搜索 / 列文件）。
+ */
+files?: number, 
+/**
+ * 提问 / 计划的结果（B7）：批准了 · 选了哪几项。没批准走 `rejected`。
+ */
+answer?: Answer, 
+/**
+ * 命令失败时的退出码（结果里写着才有）。
+ */
+exitCode?: number, 
+/**
+ * 这次改动说的是哪个文件（结果里写着的路径，原样）。只有改文件那几类结果有。
+ */
+file?: string, 
+/**
+ * 逐段的改动本身（[`PatchHunk`]）。新建整份文件 / 没有改动 ⇒ 缺。
+ */
+patch?: Array<PatchHunk>, 
+/**
+ * diff 太大、只给了前几段（`added` / `removed` 仍是整份的数）。
+ */
+patchTruncated?: boolean, 
+/**
+ * 过程那一行右侧那一句（[`StepResult::written`] 写）：改动 `+38 −6` · 读了几行（只读文件那一类）· 几个文件 ·
+ * 失败 · 未批准 · 提问 / 计划答了什么（已选「…」· 已批准）；都说不上 ⇒ 空串（出口写耗时）。
+ */
+text: string, 
+/**
+ * 同一句带耗时的那一形（耗时那一截留 `{dur}`，出口填两条记录之间的用时）：失败 · 都说不上的那一步才有；没有 ⇒ 缺（照 `text`）。
+ */
+timed?: string, 
+/**
+ * 结果的首行预览：第一条非空行、去掉两头空白、至多 60 字（按字符），截了以「…」收尾；界面不再截。结果是空的 ⇒ 缺。
+ */
+preview?: string, 
+/**
+ * 结果正文多少字（按字符，与预览同一份正文）：派出子运行那张卡写「交回结果 · N 字」读它（出口省掉正文之后照样有）。结果是空的 ⇒ 缺。
+ */
+chars?: number, 
+/**
+ * 派出子运行那次调用的结果是哪一种（[`ResultKind`]）：派出卡照它画（回执不画「交回结果」）。不是派出子运行的结果 ⇒ 缺。
+ */
+kind?: ResultKind, };
+type TitleBy = "agent" | "user";
+type ToolCard = "agent" | "interactive" | "diff" | "md" | "command";
+type ToolStep = { 
+/**
+ * 工具名（原样）。
+ */
+tool: string, 
+/**
+ * 主参数（命令 · 路径 · 搜索词 · 网址 · 任务说明）：一行（换行压成空格），至多 200 字（按字符），截了以「…」收尾；界面不再截。认不出主参数 ⇒ 缺。
+ */
+arg?: string, 
+/**
+ * 主参数是不是路径（界面「中间省略」与「打开文件」按它）。
+ */
+path?: boolean, 
+/**
+ * 说明（Bash 的 `description` 那一类）。
+ */
+note?: string, 
+/**
+ * 这一家认不认得这个工具（`false` ⇒ 界面画问号、给原文）。
+ */
+known: boolean, 
+/**
+ * 认不出的工具：结果到了之后右侧那一句（「未识别结果」）；认得的 ⇒ 缺（照结果那一句）。
+ */
+text?: string, 
+/**
+ * 提问 / 计划那几张卡要画的东西（从入参里读出来的，各家的格式知识）：界面只按这一格建卡，不认入参结构。
+ * 不是这两类、或入参形状不对 ⇒ 缺（界面画普通工具卡）。
+ */
+ask?: StepAsk, };
+type UnreadWhy = "unknownType" | "parseFailed";
+type UserText = { speaker: Speaker, 
+/**
+ * 要显示的正文（剥过注入、trim 过）：人说的话 · 压缩摘要 · 派给子 agent 的活；别的来源是空串。
+ */
+text: string, 
+/**
+ * `text` 里人粘贴进来的块（UTF-16 下标，含两头的标记）。
+ */
+pasted?: Array<Pasted>, };
+```
 
 码：`bad_args` · `failed` · `oversized_line` · `refused`
 
@@ -1960,12 +3610,122 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-turns`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `end` | ← | 最后一个完整行的末字节（残尾不计） |
-| `from` | → ← | 可选，缺 ⇒ 0：从这个字节起扫 |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `turns` | ← | 这一段里的每一轮，文件序；起止（`start` · `end`）旁边各有一格 `startText` · `endText`：看的那一台钟上的 `HH:MM`（界面照抄、不换算；解不出 ⇒ 空串） |
+入参 `HistoryTurnsReq` · 回包 `HistoryTurns`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FoldSegment = { 
+/**
+ * 这一段跟在哪一条后面：这一轮你那句，或露着的某一条（uuid）。一段只有一个 `after`，界面按它认段。
+ */
+after: string, 
+/**
+ * 那一行的字（后端写好，界面按语气排版、段间加分隔）。
+ */
+parts: Array<TurnPart>, 
+/**
+ * 那一行右端那一截。
+ */
+span: TurnSpan, 
+/**
+ * 这一段管到哪一条为止（不含）：段后面紧跟的那一条 —— 这一轮下一条露着的，或下一轮你那句（那一轮在不在主线上都一样：
+ * 回退掉的那一轮不归上一轮的段）；还开着的最后一轮的尾巴那一段 ⇒ 没有（到记录尾）。
+ * 界面按 `after` 与它在账本里取这一段的那几行，不自己找下一个边界。
+ */
+until: string | null, 
+/**
+ * 此刻：只有还没收尾的那一轮的尾巴那一段会是在跑 / 在等你（[`dress_live`]）。
+ */
+phase: TurnPhase, };
+type HistoryTurns = { 
+/**
+ * 起点字节（＝ 请求的 `from`）。
+ */
+from: number, 
+/**
+ * 最后一个完整行的末字节（残尾不计）。
+ */
+end: number, 
+/**
+ * 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+ */
+next: number | null, 
+/**
+ * 这一段里的每一轮，文件序；`startText` · `endText` 是看的那一台钟上的 `HH:MM`（界面照抄；解不出 ⇒ 空串）。
+ */
+turns: Array<TurnRow>, };
+type HistoryTurnsReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 从这个字节起扫（缺 ⇒ 0；续取传还在跑的那一轮的 `at`）。
+ */
+from?: number | null, 
+/**
+ * 可选：一页最多几轮。这一版还不分段：给了也整份出，`next` 恒 `null`。
+ */
+limit?: number | null, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type TurnPart = { text: string, tone: Tone, };
+type TurnPhase = "idle" | "running" | "awaiting";
+type TurnRow = { 
+/**
+ * 这一轮开头那一行（你说的那句）的字节位置 ⇒ 下次从这里接着取；这一轮的范围到下一轮的 `at`（最后一轮到文件尾）。
+ */
+at: number, 
+/**
+ * 你那句的 uuid（跳过去用）。
+ */
+uuid: string, 
+/**
+ * 起：你那句的时刻；止：这一轮最后一条主线记录的时刻（还没有回应 ⇒ 同起）。
+ */
+start: string, end: string, 
+/**
+ * 起止各自在看的那一台钟上的钟面 `HH:MM`（答 `history-turns` 那一下按请求的时区写，[`TurnRow::stamp`]；解不出 ⇒ 空串）。界面照抄、不换算。
+ */
+startText: string, endText: string, 
+/**
+ * 你那句的第一行（≤ [`SAID_MAX`] 字）。
+ */
+said: string, 
+/**
+ * 整轮合计：工具调用几次（派 agent 不算）· 思考几段 · 派出几个 agent · 后台任务通知几条（交回过的子 agent 的收场通知不算）·
+ * API 重试几次 · 另一会话 / 子 agent 来话几段（交回不算）。
+ */
+tools: number, thinking: number, agents: number, background: number, retries: number, peers: number, 
+/**
+ * 失败合计：工具（含派 agent）结果标了出错、且不是人拒的 ＋ 后台任务 / 子 agent 收场说失败。
+ */
+fails: number, 
+/**
+ * 露着的那几条（uuid，文件序）：带正文的 assistant 记录（中间说的话与结论）＋ 停下这一轮的那一条中断标记 / 报错卡。
+ */
+shown: Array<string>, 
+/**
+ * 回复头三行（≤ [`REPLY_MAX`] 字）：最后一次工具调用之后的结论正文的开头；没有结论 ⇒ 空串。
+ */
+reply: string, 
+/**
+ * 这一轮收尾了：后面又有你的一句，或 Claude 说完了（`end_turn`），或你中断了它。
+ */
+done: boolean, 
+/**
+ * 此刻：没在跑（收尾了 / 没有活进程）· 在跑 · 在等你（[`dress_live`] 按这台的会话事实现判）。
+ */
+phase: TurnPhase, 
+/**
+ * 过程段（文件序）：一段一行，界面把那一行插在 `after` 那张卡后面、把这一段的卡收进去。空 ⇒ 这一轮什么都不折。
+ */
+folds: Array<FoldSegment>, 
+/**
+ * 这一轮里落成了人话的排队插话（排队那一条的记录 id）：下一句你说的原文与它一字不差 ⇒ 那句话已经作为你的一句进了记录，
+ * 界面不再单独出排队那一条（同一句不上屏两次）；还在排队 / 下一句不是它 ⇒ 不在这里（照常露着）。
+ */
+landed: Array<string>, };
+type TurnSpan = { text: string, from: number | null, to: number | null, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -1975,11 +3735,143 @@ sid → 上次用哪个号起。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --sessions-needs`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `needs` | ← | 它在等什么 `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`：与 `history-facts` 对同一份记录答的 `needs` 是同一份（`kind` 种类 · `text` 写好的字 · `head` 钉条第一行、`headCode` 它等宽那一段 · `tone` 语气 · `rank` 先答哪个、0 最先 · `sinceMs` 起点 · `waitedMs` 到答出那一刻已等多久、在那台的钟上算 · `waitedText` 它写好的字，没有起点 ⇒ 这两格 `null`；都照那一处）；记录找不到 ⇒ 不挂哪一步（`tool` · `call` · `what` 为 `null`），种类照那台说的框；`ask` 这一条可以怎么答 `{id, kind, tool, run {id, kind}, what, detail, sinceMs, choices[] {id, text, tone, note}, questions[] {id, text, header, multi, other, options[] {id, text, detail}}}`（挂着的待答请求：`id` 答的时候交回 `needs-answer`；`run` 子运行（子 agent）发的才有：它的 id 与种类；`choices` 选项写好字与语气、`note` 要不要附话 none · optional · required；`questions` 提问那一种的题，`other` 恒真 ＝ 许写自由文本）；没有挂着的 ⇒ `null`，`manualText` 写好「只能在终端里答」那一句（有 `ask` ⇒ `null`）；挡着终端的子 agent 请求 pidfile 不说在等，照它补出一份 |
-| `sid` | ← | 会话 id |
-| `waiting` | ← | 此刻活着、那台说在等人的会话，每项 `{sid, needs}`，先答的在前（`needs.rank`，同一档等得久的在前）；一个都没有 ⇒ 空数组 |
+入参 `NoArgs` · 回包 `NeedsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AskKind = "approve" | "answer" | "plan";
+type Needs = { kind: NeedsKind, 
+/**
+ * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
+ */
+tool: string | null, 
+/**
+ * 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
+ */
+call: string | null, 
+/**
+ * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
+ */
+sinceMs: number | null, 
+/**
+ * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+ */
+text: Words, 
+/**
+ * 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+ */
+head: Words, 
+/**
+ * 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
+ */
+headCode: string | null, 
+/**
+ * 语气（恒 `need`）。
+ */
+tone: Tone, 
+/**
+ * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ */
+rank: number, 
+/**
+ * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ */
+waitedMs: number | null, 
+/**
+ * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
+ */
+waitedText: Words | null, 
+/**
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ */
+ask: NeedsAsk | null, 
+/**
+ * `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+ */
+manualText: Words | null, };
+type NeedsAsk = { 
+/**
+ * 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
+ */
+id: string, 
+/**
+ * 种类（同 `needs.kind` 那一套里的三种：approve · answer · plan）。
+ */
+kind: AskKind, 
+/**
+ * 工具名原样。
+ */
+tool: string, 
+/**
+ * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ */
+run: NeedsAskRun | null, 
+/**
+ * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 要批的东西的全文（命令全文 · 写哪个文件写成什么 · 计划原文），不截。
+ */
+detail: string, 
+/**
+ * 能选的几项，排好序（「以后不再问」那几项不放第一位）。
+ */
+choices: Array<NeedsChoice>, 
+/**
+ * 提问那一种的题目；别的种类为空。
+ */
+questions: Array<NeedsQuestion>, 
+/**
+ * 何时挂上的（epoch ms，这台的钟）。
+ */
+sinceMs: number, };
+type NeedsAskRun = { id: string, 
+/**
+ * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ */
+kind: string | null, };
+type NeedsChoice = { 
+/**
+ * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
+ */
+id: string, text: Words, tone: Tone, 
+/**
+ * 要不要附一句话：none · optional · required。
+ */
+note: NeedsNote, };
+type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
+type NeedsList = { 
+/**
+ * 此刻活着、那台说在等人的会话（`needs.rank` 先答的在前，同一档等得久的在前）；一个都没有 ⇒ 空。
+ */
+waiting: Array<NeedsRow>, };
+type NeedsNote = "none" | "optional" | "required";
+type NeedsQuestion = { 
+/**
+ * `q0` · `q1` …（答的时候 `picks` 按它键）。
+ */
+id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+/**
+ * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
+ */
+other: boolean, };
+type NeedsQuestionOption = { 
+/**
+ * `q0o0` …
+ */
+id: string, text: string, detail: string | null, };
+type NeedsRow = { sid: string, needs: Needs, };
+type NoArgs = Record<symbol, never>;
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type Words = string;
+```
+
+码：`bad_args`
 
 #### `needs-ask`
 
@@ -2001,14 +3893,46 @@ sid → 上次用哪个号起。
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `ask` | → | `needs.ask.id` |
-| `choice` | → | `needs.ask.choices[].id` |
-| `note` | → | 可缺：附的那句话（选项 `note` 是 required 时必给） |
-| `picks` | → | 提问那一种选 `answer` 时必给：`{<题 id>: {options: [<选项 id>…], text: <自由文本>}}`，每题都要答、单选至多一项 |
-| `result` | ← | 恒 `answered`（交到了 hook 那一头；终端那边若同时答了，以先到的为准，晚到的那一家自己丢掉、不会落到别的框上） |
-| `sid` | → | 会话 id |
+入参 `AnswerReq` · 回包 `Answered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AnswerReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * `needs.ask.id`。
+ */
+ask: string, 
+/**
+ * `needs.ask.choices[].id`。
+ */
+choice: string, 
+/**
+ * 可缺：附的那句话（选项 `note` 是 required 时必给）。
+ */
+note?: string | null, 
+/**
+ * 提问那一种选 `answer` 时必给：题 id ⇒ 那一题的答，每题都要答、单选至多一项。
+ */
+picks?: { [key in string]: AskPick } | null, };
+type AnswerResult = "answered";
+type Answered = { 
+/**
+ * 恒 `answered`。
+ */
+result: AnswerResult, };
+type AskPick = { 
+/**
+ * 选项 id（`needs.ask.questions[].options[].id`）；缺 ⇒ 没选。
+ */
+options?: Array<string>, 
+/**
+ * 自由文本；缺 / 空白 ⇒ 没写。
+ */
+text?: string | null, };
+```
 
 码：`bad_args` · `not_found` · `already_answered` · `closed_elsewhere` · `bad_choice` · `note_required`
 
@@ -2018,30 +3942,390 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（整份是 `facts`） · CLI：`ccm -- --history-facts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | ← | 这份记录是哪一家的（线上的 kind，适配层按记录认）；认不出 ⇒ `null` |
-| `answerOff` | ← | 答题口没接上 ⇒ 写好的那一句（ccm 起它时用户自己给的会话级设置读不出 / 形状不认，答题 hook 挂不上：这条会话只能在终端里答批准；那时 `needs.manualText` 也是这一句）；接上了 / 判不了 ⇒ `null`（每次按持着它的进程现查） |
-| `background` | ← | 那台说一轮停了、后台命令还在跑 ⇒ `{text, clock, what, count, tone}`：`text` 写好的一句（「后台任务运行中 · make test-all · 12m」，发出那一刻的钟；命令拿不到 ⇒ 只那个字）· `clock` 同一句时长留 `{dur}` 的 `{text, from}`（填 现在 − `from` 毫秒）· `what` 命令那一格（「{cmd} 等 {n} 条」）· `count` 这一次进程起来之后起、还没收场的几条 · `tone` 恒 busy；不是这一态 ⇒ `null`（每次现查） |
-| `bgTasks` | ← | 还没收场的后台命令 `{call, task, cmd, at}`（起它的调用 id · 任务号 · 命令原样 · 起它的那条记录的时刻），文件序，至多 16 条（续传令牌的一部分） |
-| `cost` | ← | 全会话花费（记录里那一家自己记的那一条，最后一条为准）`{micros, partial, text}`（`text` 写好）；记录里没有 ⇒ `null`（不按定价自己算） |
-| `end` | ← | 最后一个完整行的末字节 |
-| `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null` |
-| `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
-| `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
-| `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
-| `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 断开时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
-| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null`；`ask` 这一条可以怎么答 `{id, kind, tool, run {id, kind}, what, detail, sinceMs, choices[] {id, text, tone, note}, questions[] {id, text, header, multi, other, options[] {id, text, detail}}}`（挂着的待答请求：`id` 答的时候交回 `needs-answer`；`run` 子运行（子 agent）发的才有：它的 id 与种类；`choices` 选项写好字与语气、`note` 要不要附话 none · optional · required；`questions` 提问那一种的题，`other` 恒真 ＝ 许写自由文本）；没有挂着的 ⇒ `null`，`manualText` 写好「只能在终端里答」那一句（有 `ask` ⇒ `null`）；挡着终端的子 agent 请求 pidfile 不说在等，照它补出一份 |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（判不了活：这一家没声明怎么判，或这台认不出写者） |
-| `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
-| `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌）。带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答 |
-| `projectDir` | ← | 会话起在哪个目录（记录开头）；还没读到 ⇒ `null` |
-| `retries` | ← | 一串相邻的 API 重试按首条的 `uuid` 记一件 `{id, outcome}`：retrying（还没下文）· recovered（后面来了正常回复）· failed（来了报错那条）· interrupted（人发了一句 / 打断）；文件序，至多 200 件 |
-| `tokens` | ← | 全会话用量（按请求去重）`{input, output, cacheRead, cacheWrite5m, cacheWrite1h, requests, text, last}`（写缓存分 5 分钟 / 1 小时两档；`text` 写好）；一条带用量的回复都没有 ⇒ `null` |
-| `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
-| `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
-| `writers` | ← | 此刻持着这条会话的活进程 pid，照那一家声明的判活方式查（认 pidfile 的 ⇒ 这台的 pidfile；认开着写的 ⇒ 此刻开着记录写的进程），升序；判不了 ⇒ 空 |
+入参 `HistoryFactsReq` · 回包 `SessionFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AskKind = "approve" | "answer" | "plan";
+type BgTask = { 
+/**
+ * 起它的那次工具调用 id。
+ */
+call: string, 
+/**
+ * 它当场拿到的任务号；还没回 ⇒ `null`。
+ */
+task: string | null, 
+/**
+ * 那条命令原样（适配层给的）；没有 ⇒ `null`。
+ */
+cmd: string | null, 
+/**
+ * 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+ */
+at: string | null, };
+type FactsBackground = { 
+/**
+ * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
+ */
+text: Words, 
+/**
+ * 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`duration-format.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
+ * 命令或起始时刻拿不到 ⇒ `null`。
+ */
+clock: FactsClock | null, 
+/**
+ * 命令那一格（「make test-all」·「python train.py 等 2 条」）；拿不到 ⇒ `null`。
+ */
+what: Words | null, 
+/**
+ * 还在跑的后台命令几条（这一次进程起来之后起的；记录里一条都对不上 ⇒ 0）。
+ */
+count: number, 
+/**
+ * 语气（恒 `busy`）。
+ */
+tone: Tone, };
+type FactsClock = { text: Words, from: number, };
+type FactsCost = { micros: number, partial: boolean, text: Words, };
+type FactsLastRequest = { id: string, tokens: Array<number>, };
+type HistoryFactsReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 可缺：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args`。
+ */
+limits?: { [key in string]: number }, 
+/**
+ * 可缺：**上一次应答原样**（续传令牌）。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 每一层键集合必须恰好是本命令出的那一形
+ * （`facts_query::prior_from` 判，不对 ⇒ `bad_args`），从它的 `end` 接着扫、累加在它上面。
+ * 带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答。
+ */
+prior?: SessionFacts, };
+type LastSay = { text: string, 
+/**
+ * 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+ */
+at: string | null, 
+/**
+ * `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
+ */
+atMs: number | null, };
+type LimitFrom = "relay" | "setting" | "model" | "observed" | "assumed";
+type McpStatus = "needsLogin" | "failed" | "pending" | "disabled" | "unknown";
+type McpTrouble = { name: string, 
+/**
+ * `needsLogin` · `failed` · `pending`（[`crate::agents::McpStatus`] 的这三种）。
+ */
+status: McpStatus, 
+/**
+ * 断开时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
+ */
+detail: string | null, 
+/**
+ * 说它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+ */
+at: string | null, };
+type Needs = { kind: NeedsKind, 
+/**
+ * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
+ */
+tool: string | null, 
+/**
+ * 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
+ */
+call: string | null, 
+/**
+ * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
+ */
+sinceMs: number | null, 
+/**
+ * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+ */
+text: Words, 
+/**
+ * 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+ */
+head: Words, 
+/**
+ * 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
+ */
+headCode: string | null, 
+/**
+ * 语气（恒 `need`）。
+ */
+tone: Tone, 
+/**
+ * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ */
+rank: number, 
+/**
+ * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ */
+waitedMs: number | null, 
+/**
+ * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
+ */
+waitedText: Words | null, 
+/**
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ */
+ask: NeedsAsk | null, 
+/**
+ * `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+ */
+manualText: Words | null, };
+type NeedsAsk = { 
+/**
+ * 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
+ */
+id: string, 
+/**
+ * 种类（同 `needs.kind` 那一套里的三种：approve · answer · plan）。
+ */
+kind: AskKind, 
+/**
+ * 工具名原样。
+ */
+tool: string, 
+/**
+ * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ */
+run: NeedsAskRun | null, 
+/**
+ * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 要批的东西的全文（命令全文 · 写哪个文件写成什么 · 计划原文），不截。
+ */
+detail: string, 
+/**
+ * 能选的几项，排好序（「以后不再问」那几项不放第一位）。
+ */
+choices: Array<NeedsChoice>, 
+/**
+ * 提问那一种的题目；别的种类为空。
+ */
+questions: Array<NeedsQuestion>, 
+/**
+ * 何时挂上的（epoch ms，这台的钟）。
+ */
+sinceMs: number, };
+type NeedsAskRun = { id: string, 
+/**
+ * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ */
+kind: string | null, };
+type NeedsChoice = { 
+/**
+ * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
+ */
+id: string, text: Words, tone: Tone, 
+/**
+ * 要不要附一句话：none · optional · required。
+ */
+note: NeedsNote, };
+type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
+type NeedsNote = "none" | "optional" | "required";
+type NeedsQuestion = { 
+/**
+ * `q0` · `q1` …（答的时候 `picks` 按它键）。
+ */
+id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+/**
+ * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
+ */
+other: boolean, };
+type NeedsQuestionOption = { 
+/**
+ * `q0o0` …
+ */
+id: string, text: string, detail: string | null, };
+type PendingCall = { 
+/**
+ * 工具调用 id（等它的 `tool_result` 来摘）。
+ */
+id: string, 
+/**
+ * 工具名原样。
+ */
+name: string, 
+/**
+ * 主参数一行（[`WHAT_KEYS`]；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
+ */
+at: string | null, 
+/**
+ * `at` 的毫秒（自 1970）：出口算「已经跑了多久」只用这一格（交那一个读口走字），不自己解析 `at`；解不出 ⇒ `null`。
+ */
+atMs: number | null, 
+/**
+ * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
+ */
+state: StepWait, 
+/**
+ * `state` 是 `unclear` 时为什么判不了；别的 ⇒ `null`。
+ */
+why: UnclearWhy | null, 
+/**
+ * 过程那一行右侧那一句（状态不明 ⇒「状态不明」；在跑 · 在等你 ⇒ `null`，在等你那一格出口写已等多久）。
+ */
+text: Words | null, 
+/**
+ * 状态不明时那一行悬停说的为什么（照 `why` 写好）；别的 ⇒ `null`。
+ */
+whyText: Words | null, };
+type RetryOutcome = "retrying" | "recovered" | "failed" | "interrupted";
+type RetryRun = { 
+/**
+ * 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
+ */
+id: string, outcome: RetryOutcome, };
+type SessionFacts = { 
+/**
+ * 最后一个完整行的末字节 ＝ 下一次的续点。
+ */
+end: number, 
+/**
+ * 源会话 sid；不是分叉来的 ⇒ `null`。
+ */
+forkedFrom: string | null, 
+/**
+ * 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
+ */
+touchedFiles: Array<string>, 
+/**
+ * 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
+ */
+usage: UsageFact | null, 
+/**
+ * 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
+ * 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
+ */
+projectDir: string | null, 
+/**
+ * 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
+ */
+agent: string | null, 
+/**
+ * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查（`prior` 里那一份不用）。
+ * 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
+ */
+writers: Array<number>, 
+/**
+ * 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
+ */
+pending: Array<PendingCall>, 
+/**
+ * 最后一段正文的头一行（悬停卡「它最后一句」）。
+ */
+lastSay: LastSay | null, 
+/**
+ * **需手动**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+ */
+needs: Needs | null, 
+/**
+ * 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
+ */
+handedBack: Array<string>, 
+/**
+ * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
+ */
+retries: Array<RetryRun>, 
+/**
+ * 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
+ */
+permissionMode: string | null, 
+/**
+ * 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
+ */
+tokens: TokenUse | null, 
+/**
+ * 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
+ */
+cost: FactsCost | null, 
+/**
+ * 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+ */
+bgTasks: Array<BgTask>, 
+/**
+ * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+ */
+background: FactsBackground | null, 
+/**
+ * **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）· 不是 ccm 起的、持着它的进程身上看不出挂过 ⇒ 写好的那一句
+ * （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
+ */
+answerOff: Words | null, 
+/**
+ * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
+ */
+mcp: Array<McpTrouble>, };
+type StepWait = "running" | "awaiting" | "unclear";
+type TokenUse = { input: number, output: number, cacheRead: number, cacheWrite5m: number, cacheWrite1h: number, 
+/**
+ * 算进来的请求数。
+ */
+requests: number, 
+/**
+ * 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
+ */
+text: Words, 
+/**
+ * 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
+ */
+last: FactsLastRequest | null, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type UnclearWhy = "noWriter" | "untracked";
+type UsageFact = { 
+/**
+ * `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。
+ */
+promptTokens: number, model: string | null, 
+/**
+ * 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档）。
+ */
+peakPromptTokens: number, 
+/**
+ * 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
+ */
+limit: number, limitFrom: LimitFrom, 
+/**
+ * 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
+ */
+percent: number | null, 
+/**
+ * 上下文那一格的字：上限判得出写百分比（`35%`），判不出只写用了多少（`350k`）。
+ */
+contextText: Words, 
+/**
+ * 那一格的语气：到了 [`CONTEXT_WARN_AT`] ⇒ `warn`，否则 `plain`（判不出上限 ⇒ 恒 `plain`）。
+ */
+contextTone: Tone, 
+/**
+ * 最新一轮用了多少（`350k`）。
+ */
+promptTokensText: Words, 
+/**
+ * 上限（`1M`）。
+ */
+limitText: Words, 
+/**
+ * 上限从哪来的字（中转请求 · 设置 · 模型名 · 用量超过 200k）；判不出 ⇒ `null`。
+ */
+limitFromText: Words | null, };
+type Words = string;
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -2051,11 +4335,24 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-branch`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `end` | ← | 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说） |
-| `off` | ← | 回退掉的那几条记录的 `id`（只含进界面的；文件序）；这一家的记录没有链 ⇒ 恒空 |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
+入参 `PathReq` · 回包 `Branch`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Branch = { 
+/**
+ * 回退掉的那几条记录的 `id`（只含进界面的；文件序）；这一家的记录没有链 ⇒ 恒空。
+ */
+off: Array<string>, 
+/**
+ * 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）。
+ */
+end: number, };
+type PathReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -2065,14 +4362,74 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-find`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `hits` | ← | 命中，每条 `{uuid, kind, before, matched, after, turn, tsMs, tsText, tool?}`；只搜流里画的那几张卡（自动写的应答不搜）；`tool` ＝ 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡，派出子运行的结果收在派出卡里），落在自己那张卡上 ⇒ 缺；`tsText` ＝ 那条的时刻按看的那一台的时区（请求的 `tz`）写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串） |
-| `include_tools` | → | 可选，缺省 `false`：工具结果也搜 |
-| `limit` | → | 可选，缺省 500、封顶 2000 |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `query` | → | 查询串（原样；以 `--` 起头也照样是查询，不是选项） |
-| `total` | ← | 全量命中数（≥ 条数；大于 ⇒ 被上限砍过） |
+入参 `HistoryFindReq` · 回包 `HistoryFind`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FindHit = { 
+/**
+ * 命中的那条记录的 uuid（界面按骨架索引 `uuid → seq` 跳过去）。
+ */
+uuid: string, 
+/**
+ * `user` · `assistant` · `report`（agent 回报）· `tool`。
+ */
+kind: string, 
+/**
+ * 片段三段（同全局搜索的 `Hit`）。
+ */
+before: string, matched: string, after: string, 
+/**
+ * 第几轮（这条之前含它人说过几句；第一句之前 ＝ 0）。
+ */
+turn: number, 
+/**
+ * 那条记录的时刻（毫秒；读不出 ＝ 0）。
+ */
+tsMs: number, 
+/**
+ * `tsMs` 按看的那一台的时区写好（今天 `HH:MM` · 昨天 · 更早带日期；读不出 ⇒ 空串）：出口那一下添（[`with_hit_text`]）。
+ */
+tsText: string, 
+/**
+ * 它收在哪次工具调用的那一块里（调用 id；工具结果流里不自己成卡）；落在自己那张卡上 ⇒ 缺。
+ */
+tool?: string, };
+type HistoryFind = { 
+/**
+ * 全量命中数（≥ 条数；大于 ⇒ 被上限砍过）。
+ */
+total: number, 
+/**
+ * 这一页的命中，文件序；只搜流里画的那几张卡（自动写的应答不搜）。
+ */
+hits: Array<FindHit>, };
+type HistoryFindReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 查询串（原样；以 `--` 起头也照样是查询，不是选项）。
+ */
+query: string, 
+/**
+ * 工具结果也搜（缺 ⇒ 不搜）。
+ */
+include_tools?: boolean, 
+/**
+ * 只留谁说的，同 `history-search` 同名同义（`user` 时工具内容不搜）。
+ */
+scope?: SearchScope, 
+/**
+ * 最多列几条（缺 ⇒ 500，封顶 2000）。
+ */
+limit?: number | null, 
+/**
+ * 跳过前几条（续下一页；缺 ⇒ 0）。
+ */
+skip?: number | null, };
+type SearchScope = "user" | "assistant" | "report";
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -2082,38 +4439,108 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-index`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `body` | ← | 稀疏表：正文那五个数（`at` 行号差 · `ch` `cj` `pl` `cb` `cl`；五个全 0 的行不进表） |
-| `classes` | ← | 本份里出现过的记录类（`t` 列的号从 1 起指它） |
-| `count` | ← | 行数（每一列都这么长） |
-| `end` | ← | 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset` |
-| `fd` | ← | 列：折叠单元数（0 ＝ 没有） |
-| `from` | ← | 起点字节 |
-| `inputs` | ← | 稀疏表：用户输入的摘要 `x` 与时刻 `ts`（`at` 行号差；没有时刻 ⇒ 空串） |
-| `n` | ← | 列：行字节长（含换行） |
-| `o` | ← | 列：行起点与上一行末尾的字节差（第一行与 `from` 比；连着 ＝ 0） |
-| `offset` | → | 从哪个字节起（缺省 0；续传带上次尾行的 `end`） |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `sp` | ← | 稀疏表：来源（`at` 行号差 · `v`） |
-| `t` | ← | 列：记录类的号（0 ＝ 不进界面） |
-| `u` | ← | 列：记录 id（没有 ⇒ null） |
-| `until` | → | 可选：只收起点 `< until` 的行 |
+入参 `HistoryIndexReq` · 回包 `HistoryIndex`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HistoryIndex = { 
+/**
+ * 起点字节。
+ */
+from: number, 
+/**
+ * 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`。
+ */
+end: number, 
+/**
+ * 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+ */
+next: number | null, 
+/**
+ * 行数（每一列都这么长）。
+ */
+count: number, 
+/**
+ * 本份里出现过的记录类（`t` 列的号从 1 起指它）。
+ */
+classes: Array<RecordClass>, o: Array<number>, n: Array<number>, t: Array<number>, fd: Array<number>, u: Array<string | null>, body: IndexBody, sp: IndexSpeaker, inputs: IndexInputs, };
+type HistoryIndexReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 从哪个字节起（缺 ⇒ 0；续传带上次的 `end`）。
+ */
+offset?: number | null, 
+/**
+ * 可选：只收起点 `< until` 的行。
+ */
+until?: number | null, 
+/**
+ * 可选：一页最多几行。这一版还不分段：给了也整份出，`next` 恒 `null`。
+ */
+limit?: number | null, };
+type IndexBody = { 
+/**
+ * 行号差。
+ */
+at: Array<number>, ch: Array<number>, cj: Array<number>, pl: Array<number>, cb: Array<number>, cl: Array<number>, };
+type IndexInputs = { 
+/**
+ * 行号差。
+ */
+at: Array<number>, x: Array<string>, ts: Array<string>, };
+type IndexSpeaker = { 
+/**
+ * 行号差。
+ */
+at: Array<number>, v: Array<string>, };
+type RecordClass = "said" | "reply" | "retry" | "title" | "queued" | "unread";
+```
 
 码：`bad_args` · `failed` · `too_large`
 
 #### `history-user-inputs`
 
-「你说过的话」清单。
+「人说过的话」清单。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-user-inputs`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `end` | ← | 最后一个完整行的末字节 ＝ 下一次增量该带的 `from` |
-| `entries` | ← | 每条用户输入 `{uuid, timestamp, excerpt}`（对话序） |
-| `from` | → ← | 增量起点（缺省 0；传上次尾行的 `end`） |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
+入参 `FromReq` · 回包 `UserInputs`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FromReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 增量起点（缺 ⇒ 0；传上次的 `end`）。
+ */
+from?: number | null, };
+type UserInputRow = { uuid: string, 
+/**
+ * 记录的 `timestamp`；没有 ⇒ 空串。
+ */
+timestamp: string, 
+/**
+ * 摘要：多行/多空白压成一行，截到 [`EXCERPT_MAX`]。
+ */
+excerpt: string, };
+type UserInputs = { 
+/**
+ * 这份清单从哪个字节起（＝ 请求的 `from`）。
+ */
+from: number, 
+/**
+ * 最后一个完整行的末字节 ＝ 下一次增量该带的 `from`。
+ */
+end: number, 
+/**
+ * 每条用户输入，对话序。
+ */
+entries: Array<UserInputRow>, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -2123,14 +4550,36 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-tail`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `end` | ← | 最后一个完整行之后的字节位置 |
-| `n` | → | 要最新几行 |
-| `path` | → | jsonl 路径（路径围栏同 `history-read`） |
-| `split_at` | ← | 尾段第一行的字节起点 |
-| `tail_from` | ← | 尾段第一行的行号 |
-| `total` | ← | 可计行总数 |
+入参 `HistoryTailReq` · 回包 `TailPlan`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HistoryTailReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 要最新几行。
+ */
+n: number, };
+type TailPlan = { 
+/**
+ * 可计行总数（`line_counts` 口径）。
+ */
+total: number, 
+/**
+ * 尾段第一行的行号。
+ */
+tail_from: number, 
+/**
+ * 尾段第一行的字节起点（＝ 头段的字节终点）。
+ */
+split_at: number, 
+/**
+ * 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
+ */
+end: number, };
+```
 
 码：`bad_args` · `failed`
 
@@ -2140,21 +4589,43 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-fork`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | ← | `process`（源会话进程此刻的配置目录，同 `accounts-sessions`：没设 ＝ 账号 0，设了 ＝ 账号库里认得那个目录的号）\|`exited`（源会话已退出）· `live_no_account`（活着，但说不出号：进程名单里没有它 · 那个目录账号库不认得 · 环境这一刻读不出） |
-| `cwd` | ← | `record`\|`no_cwd`（记录里没有） |
-| `from` | ← | `known` 时值的来源 |
-| `host` | ← | `terminal` 那一格的终端宿主 |
-| `jsonlPath` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
-| `kind` | ← | `launch` 三格每格的状态：`known` · `unknown` |
-| `launch` | ← | 起分叉出来的新会话要的三格：`cwd` · `account` · `terminal`，每格 `{kind:"known", value, from}` 或 `{kind:"unknown", why}` |
-| `sessionId` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
-| `sid` | → | 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件，`branch_core::find_session_file`） |
-| `terminal` | ← | `terminal_list`（挂着它的 `@ccm_sid`、前台是 agent 的那一个；命中多个取第一个）\|`exited` |
-| `uuid` | → | 从哪条消息处分叉 |
-| `value` | ← | `known` 时的值 |
-| `why` | ← | `unknown` 时为什么说不出 |
+入参 `ForkReq` · 回包 `Forked`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForkLaunch = { cwd: ForkSlot<string>, 
+/**
+ * 值 `null` ＝ 账号 0，串 ＝ 号名。
+ */
+account: ForkSlot<string | null>, terminal: ForkSlot<ForkTerminal>, };
+type ForkReq = { 
+/**
+ * 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件）。
+ */
+sid: string, 
+/**
+ * 从哪条消息处分叉。
+ */
+uuid: string, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkTerminal = { "host": "tmux", terminal: string, } | { "host": "none" };
+type ForkWhence = "record" | "process" | "terminal_list";
+type ForkWhy = "exited" | "no_cwd" | "live_no_account";
+type Forked = { 
+/**
+ * 新会话的 id。
+ */
+sessionId: string, 
+/**
+ * 新会话的落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）。
+ */
+jsonlPath: string, 
+/**
+ * 起分叉出来的新会话要的三格。
+ */
+launch: ForkLaunch, };
+```
 
 码：`bad_args` · `fork_failed`
 
@@ -2164,16 +4635,55 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `added` | ← | 这次补宣告 |
-| `caught_up` | ← | 在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加） |
-| `removed` | ← | 补移除的会话数（各份 watcher 取最大：看的是同一台机器） |
-| `retagged` | ← | 这次真写了几处 `@ccm_sid`（值一样的不写） |
-| `sid` | → | 可选 |
-| `uncancellable` | ← | 这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`，后者按字母排、当集合用） |
-| `unavailable` | ← | 这台**当下**的能力事实，与 hello 那两格同一个函数、同形（`[{command, code}]` · `[op]`，后者按字母排、当集合用） |
-| `watchers` | ← | 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份） |
+入参 `ResyncReq` · 回包 `Resynced`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ResyncReq = { 
+/**
+ * 可缺：给了 ⇒ 只对那一个会话（关卡 2「对齐后重试」，不许空串）；不给 / `null` ⇒ 整机。
+ */
+sid?: string | null, };
+type Resynced = { 
+/**
+ * 这次补宣告的会话数。
+ */
+added: number, 
+/**
+ * 补移除的会话数（各份 watcher 取最大：看的是同一台机器）。
+ */
+removed: number, 
+/**
+ * 这次真写了几处 `@ccm_sid`（值一样的不写）。
+ */
+retagged: number, 
+/**
+ * 在跟的会话这次从游标补读出几行（带 `sid` 只数那一个；各份 watcher 相加）。
+ */
+caught_up: number, 
+/**
+ * 几份 watcher 做完了对齐（常驻后端每条连接一份 ＋ 空转那一份）。
+ */
+watchers: number, 
+/**
+ * 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
+ */
+unavailable: Array<Unavailable>, 
+/**
+ * 这台当下开跑之后打不断的命令，按字母排（同 hello 那一格）。
+ */
+uncancellable: Array<string>, };
+type Unavailable = { 
+/**
+ * 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`）。
+ * ⚠ 它**必须**同时出现在 `commands` 里：本表说的是「接得下但做不到」，
+ * 「根本不接」那一格由不在 `commands` 里表达（客户端 `accepts()` 一个字节都不发）。
+ */
+command: string, 
+/**
+ * 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`）。
+ */
+code: string, };
+```
 
 码：`bad_args`
 
@@ -2183,17 +4693,49 @@ sid → 上次用哪个号起。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --tasks-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `activeForm` | ← | 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串 |
-| `blockedBy` | ← | 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务） |
-| `blocks` | ← | 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务） |
-| `description` | ← | 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串 |
-| `id` | ← | 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过） |
-| `sid` | → | 会话 id |
-| `status` | ← | 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过） |
-| `subject` | ← | 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过） |
-| `tasks` | ← | **成品**：`<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序（此前是原样对象的 `lines`，字段由 monitor 解） |
+入参 `TasksListReq` · 回包 `TasksList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Task = { 
+/**
+ * 每格必有、是串（缺 / 不是串的那个对象不算任务，跳过）。
+ */
+id: string, 
+/**
+ * 同上。
+ */
+subject: string, 
+/**
+ * 同上。
+ */
+status: string, 
+/**
+ * 串的数组；原文缺 ⇒ `[]`（原文是 `null` / 别的类型 ⇒ 那个对象不算任务）。
+ */
+blocks: Array<string>, 
+/**
+ * 同上。
+ */
+blockedBy: Array<string>, 
+/**
+ * 可缺（原文缺或 `null` ⇒ 这一格不出现），出现就是串。
+ */
+description?: string, 
+/**
+ * 同上。
+ */
+activeForm?: string, };
+type TasksList = { 
+/**
+ * `<tasks>/<sid>/<数字>.json` 里每个任务一格，按那个数字升序。
+ */
+tasks: Array<Task>, };
+type TasksListReq = { 
+/**
+ * 会话 id（围栏在本体里：走出任务根 ⇒ `bad_args`）。
+ */
+sid: string, };
+```
 
 码：`bad_args` · `failed` · `too_large`
 
@@ -2203,7 +4745,42 @@ sid → 上次用哪个号起。
 
 收 `args` · 可撤 · CLI：`ccm -- --resolve`
 
-码：`bad_args` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`
+入参 `ResumeSpec` · 回包 `CommandPlan`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Capabilities = { supportsSendKeys: boolean, supportsCapture: boolean, supportsMultiClient: boolean, supportsMultiWindow: boolean, };
+type CommandPlan = { 
+/**
+ * **唯一可信的一项**。
+ */
+command: string, 
+/**
+ * "PtyInject"（resume 走 pty send-keys 注入 §5④）| "ExecOnce"（未来）。MVP 恒 PtyInject。
+ */
+mode: string, 
+/**
+ * **典型档，不是探测结果**（见结构体头注）。
+ */
+capabilities: Capabilities, 
+/**
+ * **纯从 sid 派生，不是探测结果**（见结构体头注）——
+ * 拿它去 attach 一个「并不存在」的 tmux 会话是现实风险。要判断会话是否真的存在，
+ * 问 `terminals-list`（那是真 `tmux list-panes`）。
+ */
+sessionName?: string, launchLabel?: string, substitutedFrom?: string, };
+type ResumeSpec = { sessionId: string, 
+/**
+ * 可缺：候选启动命令，取第一个非空的；都没有 ⇒ 这一家的默认启动器。
+ */
+launchCandidates?: Array<string | null>, 
+/**
+ * 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`）。
+ * 注册表里的一家 = 那一家；缺 / `""` = 默认那一家；别的名字 ⇒ `bad_args`。
+ */
+agentKind?: string, };
+```
+
+码：`bad_args` · `invalid_session_id` · `unsafe_launch_candidate`
 
 ### 4.5 资产
 
@@ -2235,7 +4812,7 @@ sid → 上次用哪个号起。
 | `changedFiles` | ← | cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点） |
 | `chores` | ← | 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的 |
 | `home` | ← | 这台家目录（显示时 `~` 缩写按它） |
-| `own` | ← | cc-monitor 在这台自己家里放的每一样 `{id, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null` |
+| `own` | ← | cc-monitor 在这台自己家里放的每一样 `{id, what, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`what` ＝ 写好的那一句「是什么」（界面照抄）；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null` |
 | `tmux` | ← | 这台有没有 tmux（查不动 ⇒ `null`） |
 | `todo` | ← | 「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
 
@@ -3044,19 +5621,51 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → | 缺席（不表态：继承；接回那一形）· 同 `launch-render-cli`（`follow` 什么都没选上 ⇒ 也是不表态） |
-| `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach"}`（接回 `tmuxName` 那个会话，不起 agent） |
-| `cmd` | ← | 那一行 `ccm …` |
-| `configDir` | ← | 应答 `account` 里：那个号的配置目录 |
-| `cwd` | → | 只用来核「新起」那一格的目录在不在 |
-| `defaultLauncher` | → | 这一家 agent 的默认启动器（等于它就不吐 `--launcher`） |
-| `kind` | → ← | `action` 的种类：`new` · `resume` · `attach`；`account` 的种类：`follow` · `base` · `named` |
-| `launcher` | → | 自定义启动命令（空 = 没设） |
-| `model` | ← | 应答 `account` 里：用的模型 |
-| `name` | ← | `account` 为 `named` 时的号名；应答 `account` 里是实际用的号 |
-| `tmuxName` | → | 建进 tmux 时的会话名（界面铸名口铸的，这里不铸）；缺 ⇒ 直路 |
+入参 `LocalLaunchRequest` · 回包 `Rendered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type LocalAction = { "kind": "new" } | { "kind": "resume", sid: string, } | { "kind": "attach" };
+type LocalLaunchRequest = { 
+/**
+ * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
+ */
+agent: string, action: LocalAction, 
+/**
+ * 只用来核「新起」那一格的目录在不在；终端的工作目录由 monitor 开窗口时给。
+ */
+cwd?: string | null, 
+/**
+ * 自定义启动命令（空 / 纯空白 = 没设）。
+ */
+launcher?: string | null, 
+/**
+ * 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
+ */
+account?: AccountAsk | null, 
+/**
+ * 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
+ */
+tmuxName?: string | null, 
+/**
+ * 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
+ */
+defaultLauncher: string, };
+type Rendered = { 
+/**
+ * 那一行 `ccm …`。
+ */
+cmd: string, 
+/**
+ * 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, };
+```
 
 码：`bad_args` · `refused` · `account_unavailable`
 
@@ -3066,21 +5675,40 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --launch-render-cli`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → | `{"kind":"follow"}` · `{"kind":"base"}` · `{"kind":"named","name":…}`（按名字判）—— 生成的类型 `AccountAsk` |
-| `action` | → | `{"kind":"new"}` · `{"kind":"resume","sid":…}` · `{"kind":"attach","name":…}` |
-| `ccmSid` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `cmd` | ← | 那一行 `ccm …` |
-| `configDir` | ← | 应答 `account` 里：那个号的配置目录 |
-| `container` | → | `{"kind":"none"}`（直路）· `{"kind":"tmux","name":…,"send_into":bool}`（建会话 / 键进已有 pane） |
-| `cwd` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `defaultLauncher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `kind` | → ← | `action` / `account` 的种类（同 `launch-local`） |
-| `launcher` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `model` | → | 这次拉起的修饰（`deny_unknown_fields`：多送一格就拒）；`model` = 显式指定的模型（压过 `models`） |
-| `models` | → | 可缺：这台的模型偏好表（`{号: 模型}`，用户设置的原值）；判出来的号在表里 ⇒ `--model` 用那一条 |
-| `name` | → ← | 号名（同 `launch-local`） |
+入参 `CliRenderRequest` · 回包 `Rendered`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type CliRenderRequest = { 
+/**
+ * 这个会话是哪一家（线上的 kind）。必填：没说就不知道该怎么起，不落默认那一家。
+ */
+agent: string, action: WireAction, container: WireContainer, cwd: string | null, account: AccountAsk, ccmSid: string | null, 
+/**
+ * 显式指定的模型（压过下面那张表）。
+ */
+model: string | null, 
+/**
+ * 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
+ */
+models?: { [key in string]: string }, launcher: string, defaultLauncher: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type Rendered = { 
+/**
+ * 那一行 `ccm …`。
+ */
+cmd: string, 
+/**
+ * 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, };
+type WireAction = { "kind": "new" } | { "kind": "resume", sid: string, } | { "kind": "attach", name: string, };
+type WireContainer = { "kind": "none" } | { "kind": "tmux", name: string, send_into: boolean, };
+```
 
 码：`bad_args` · `refused` · `account_unavailable`
 
@@ -3102,14 +5730,72 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `addr` | ← | `elsewhere` 时对面那个地址 |
-| `chain` | ← | 这台上开着那条连接的进程链（自下而上），每格 `{pid, name, start}` |
-| `name` | ← | 进程名 |
-| `pid` | ← | 进程号 |
-| `start` | ← | 启动时刻（系统原值；拿不到 ⇒ 0） |
-| `why` | ← | 对不上时：`mismatch`（经跳板 / 端口转换）· `elsewhere`（不是这台开的）… |
+入参 `TerminalProcessesReq` · 回包 `Processes`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Link = { 
+/**
+ * 进程号。
+ */
+pid: number, 
+/**
+ * 进程名。
+ */
+name: string, 
+/**
+ * 启动时刻（系统原值；拿不到 ⇒ 0）。
+ */
+start: number, };
+type Processes = { 
+/**
+ * 这台上开着那条连接的进程链（自下而上）。
+ */
+chain: Array<Link>, 
+/**
+ * 对不上时：`not-ssh` · `elsewhere`（不是这台开的）· `mismatch`（经跳板 / 端口转换）· `query-failed`。
+ */
+why?: "not-ssh" | "elsewhere" | "mismatch" | "query-failed", 
+/**
+ * `elsewhere` 时对面那个地址。
+ */
+addr?: string, };
+type SshConnection = { 
+/**
+ * 对面地址。
+ */
+clientAddr: string, 
+/**
+ * 对面端口。
+ */
+clientPort: number, 
+/**
+ * 本机地址。
+ */
+serverAddr: string, 
+/**
+ * 本机端口。
+ */
+serverPort: number, };
+type Terminal = { 
+/**
+ * 经 ssh 连过来的那条连接；`null` = 那个终端不是经 ssh 连的（这台机器自己的屏幕上，或别的方式）。
+ * 键恒在：产这一格的 `session-terminals` 不是经 ssh 也写 `null`；交来的缺这一键 ⇒ 认不得的形（`bad_args`），不当「不是经 ssh」。
+ */
+ssh: SshConnection | null, 
+/**
+ * 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
+ */
+activity: number | null, 
+/**
+ * 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
+ */
+window?: string, };
+type TerminalProcessesReq = { 
+/**
+ * 1–16 个，最近动静在前。
+ */
+terminals: Array<Terminal>, };
+```
 
 码：`bad_args`
 
@@ -3119,16 +5805,55 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `activity` | ← | 最近动静（Unix 秒；不在 tmux 里 ⇒ `null`） |
-| `clientAddr` | ← | 对面地址 |
-| `clientPort` | ← | 对面端口 |
-| `serverAddr` | ← | 本机地址 |
-| `serverPort` | ← | 本机端口 |
-| `ssh` | ← | 那个终端的 `SSH_CONNECTION` 四段；不是经 ssh 连的 ⇒ `null` |
-| `terminals` | ← | 此刻显示它的终端，每格 `{ssh, activity}`，最近动静在前，最多 16 格 |
-| `why` | ← | 一个都没有时：`detached` · `no-terminal` · `unreadable` |
+入参 `SidReq` · 回包 `Showing`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Showing = { 
+/**
+ * 此刻显示它的终端，最近动静在前，最多 16 个。
+ */
+terminals: Array<Terminal>, 
+/**
+ * 一个都没有时：`detached`（在 tmux 里、没终端连着）· `no-terminal`（不在 tmux 里、进程没有终端）· `unreadable`（读不了）。
+ */
+why?: "detached" | "no-terminal" | "unreadable", };
+type SidReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, };
+type SshConnection = { 
+/**
+ * 对面地址。
+ */
+clientAddr: string, 
+/**
+ * 对面端口。
+ */
+clientPort: number, 
+/**
+ * 本机地址。
+ */
+serverAddr: string, 
+/**
+ * 本机端口。
+ */
+serverPort: number, };
+type Terminal = { 
+/**
+ * 经 ssh 连过来的那条连接；`null` = 那个终端不是经 ssh 连的（这台机器自己的屏幕上，或别的方式）。
+ * 键恒在：产这一格的 `session-terminals` 不是经 ssh 也写 `null`；交来的缺这一键 ⇒ 认不得的形（`bad_args`），不当「不是经 ssh」。
+ */
+ssh: SshConnection | null, 
+/**
+ * 最近一次动静（tmux 客户端的 `client_activity`，Unix 秒）；不在 tmux 里 ⇒ `null`。
+ */
+activity: number | null, 
+/**
+ * 本机那个终端窗口的标签（`LC_CCM_WINDOW`，形如 `<进程号>-<起始时刻>`）；没送过来 / 形状不对 ⇒ 不带。
+ */
+window?: string, };
+```
 
 码：`bad_args` · `no_such_session` · `failed` · `child_timed_out`
 
@@ -3138,31 +5863,118 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminals-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | ← | `session` 里：哪一家（没标就缺） |
-| `can` | ← | 这个调用方能做什么：`input` · `end`，做不了的写成 `{no: 原因, said: 给人看的那一句}`（抓屏不过身份门、恒可用，不在这里） |
-| `client` | → ← | 请求里可选：自报的前端，决定每行的 `can` 与 `started_by.mine`；`started_by` 里：会话上的 `@ccm_client`（没声明 ⇒ `null`） |
-| `clients` | ← | 此刻连着它的终端客户端，每项 `{kind, since, last_activity}`；空 ＝ 后台 |
-| `complete` | ← | `false` ＝ 名单里有读不懂的行（画「部分」） |
-| `cwd` | ← | 当前目录 |
-| `end` | ← | 能不能结束（`{no: "not_yours" \| "not_managed" \| "other_windows"}`） |
-| `host` | ← | 终端宿主（这一版是 `tmux`） |
-| `input` | ← | 输入方式：`shared`（tmux：各端都能打字） |
-| `kind` | ← | `clients` 一项：客户端种类（`terminal-window` …） |
-| `last_activity` | ← | 最近动静（秒） |
-| `mine` | ← | `started_by` 里：这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`） |
-| `no` | ← | 做不了的原因 |
-| `program` | ← | 前台程序名 |
-| `session` | ← | 里面跑着会话（`@ccm_sid`）时才有：`{sid, agent?}` |
-| `sid` | ← | `session` 里：会话 id |
-| `since` | ← | `clients` 一项：连上的时刻（秒） |
-| `started_by` | ← | 谁起的：`{client, mine}` |
-| `state` | ← | `running` · `idle`（没会话、前台是 shell）· `program_exited`（有会话、前台是 shell） |
-| `terminal` | ← | 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回） |
-| `terminals` | ← | 终端名单（每行一个终端） |
-| `title` | ← | 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名 |
-| `tmux_name` | ← | tmux 会话名 |
+入参 `TerminalsListReq` · 回包 `TerminalsList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Attached = { 
+/**
+ * 客户端种类（`terminal-window`）。
+ */
+kind: "terminal-window", 
+/**
+ * 连上的时刻（秒）。
+ */
+since: number, 
+/**
+ * 最近动静（秒）。
+ */
+last_activity: number, };
+type StartedBy = { 
+/**
+ * 会话上的 `@ccm_client`（没声明 ⇒ `null`）。
+ */
+client: string | null, 
+/**
+ * 这个调用方过不过身份门（与 `can.input` 是不是 `true` 同一个判定；结束还要看 `can.end`）。
+ */
+mine: boolean, };
+type TermSession = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 哪一家（没标就缺）。
+ */
+agent?: string, };
+type TermState = "running" | "idle" | "program_exited";
+type TerminalCan = { 
+/**
+ * 能不能送字 / 送键。
+ */
+input: true | { no: "not_yours" | "not_managed", said: string }, 
+/**
+ * 能不能结束。
+ */
+end: true | { no: "not_yours" | "not_managed" | "other_windows", said: string }, };
+type TerminalItem = { 
+/**
+ * 名单里那一行的不透明句柄（前端不拼、不解析；送字 / 抓屏时交回）。
+ */
+terminal: string, 
+/**
+ * 终端宿主（这一版是 `tmux`）。
+ */
+host: "tmux", 
+/**
+ * tmux 会话名。
+ */
+tmux_name: string, 
+/**
+ * 里面跑着会话、前台不是 shell 时是窗格标题；否则是前台程序名。
+ */
+title: string, 
+/**
+ * 前台程序名。
+ */
+program: string, 
+/**
+ * 当前目录。
+ */
+cwd: string, 
+/**
+ * 里面跑着会话（`@ccm_sid`）时才有。
+ */
+session?: TermSession, 
+/**
+ * 谁起的。
+ */
+started_by: StartedBy, 
+/**
+ * 此刻连着它的终端客户端；空 ＝ 后台。
+ */
+clients: Array<Attached>, 
+/**
+ * 输入方式：`shared`（tmux：各端都能打字）。
+ */
+input: "shared", 
+/**
+ * 此刻的样子。
+ */
+state: TermState, 
+/**
+ * 最近动静（秒）。
+ */
+last_activity: number, 
+/**
+ * 这个调用方能做什么（抓屏不过身份门、恒可用，不在这里）。
+ */
+can: TerminalCan, };
+type TerminalsList = { 
+/**
+ * 终端名单（每行一个终端）。
+ */
+terminals: Array<TerminalItem>, 
+/**
+ * `false` ＝ 名单里有读不懂的行（画「部分」）。
+ */
+complete: boolean, };
+type TerminalsListReq = { 
+/**
+ * 自报的前端（1–32 个 `[a-z0-9-]`）：决定每行的 `can` 与 `started_by.mine`。
+ */
+client?: string, };
+```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
 
@@ -3172,25 +5984,125 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-preview` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `capped` | ← | 要的比上限多、截到了上限 |
-| `captured_at` | ← | 抓屏时刻（秒） |
-| `captured_at_text` | ← | 抓屏时刻在看的那一台钟上的（请求的 `tz`） `HH:MM:SS`（界面照抄、不换算） |
-| `color` | → | 要不要颜色；缺省 `true` |
-| `cols` | ← | 列数 |
-| `cursor` | ← | 光标 `{x, y, visible}` |
-| `lines` | ← | 自上而下的行，每行 `{text, spans?}`（往回要的在最前） |
-| `rows` | ← | 行数 |
-| `screen` | ← | 这一屏的指纹（16 位十六进制）：内容一变就变，送字时带回来 |
-| `scrollback` | → | 往回多要几行；缺省 0、上限 2000 |
-| `scrollback_lines` | ← | 实际往回给了几行 |
-| `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `spans` | ← | 着色段 `{from, to, fg?, bg?, bold?, dim?, italic?, underline?, inverse?}`；`color:false` ⇒ 不给 |
-| `terminal` | → | 目标：名单里的句柄（与 `sid` 恰给一个） |
-| `text` | ← | `lines` 一项：那一行的文字 |
+入参 `TerminalPreviewReq` · 回包 `Preview`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_target` · `bad_args` · `not_known` · `ambiguous` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+```ts
+type Cursor = { 
+/**
+ * 列。
+ */
+x: number, 
+/**
+ * 行。
+ */
+y: number, 
+/**
+ * 看得见。
+ */
+visible: boolean, };
+type Preview = { 
+/**
+ * 这一屏的指纹（16 位十六进制）：内容一变就变，送字时带回来。
+ */
+screen: string, 
+/**
+ * 列数。
+ */
+cols: number, 
+/**
+ * 行数。
+ */
+rows: number, 
+/**
+ * 光标。
+ */
+cursor: Cursor, 
+/**
+ * 自上而下的行（往回要的在最前）。
+ */
+lines: Array<ScreenLine>, 
+/**
+ * 实际往回给了几行。
+ */
+scrollback_lines: number, 
+/**
+ * 要的比上限多、截到了上限。
+ */
+capped: boolean, 
+/**
+ * 抓屏时刻（秒）。
+ */
+captured_at: number, 
+/**
+ * 抓屏时刻在看的那一台钟上的（请求的 `tz`）`HH:MM:SS`（界面照抄、不换算）。
+ */
+captured_at_text: string, };
+type ScreenLine = { 
+/**
+ * 那一行的文字。
+ */
+text: string, 
+/**
+ * 着色段（默认样子不出段）；`color: false` ⇒ 不给。
+ */
+spans?: Array<Span>, };
+type Span = { 
+/**
+ * 起（含）。
+ */
+from: number, 
+/**
+ * 止（不含）。
+ */
+to: number, 
+/**
+ * 前景：16 色名（`red` · `bright-red` …）或 `#rrggbb`。
+ */
+fg?: string, 
+/**
+ * 背景：同 `fg`。
+ */
+bg?: string, 
+/**
+ * 粗。
+ */
+bold?: true, 
+/**
+ * 暗。
+ */
+dim?: true, 
+/**
+ * 斜。
+ */
+italic?: true, 
+/**
+ * 下划线。
+ */
+underline?: true, 
+/**
+ * 反显。
+ */
+inverse?: true, };
+type TerminalPreviewReq = { 
+/**
+ * 目标：名单里的句柄（与 `sid` 恰给一个）。
+ */
+terminal?: string, 
+/**
+ * 目标：会话 id（与 `terminal` 恰给一个）。
+ */
+sid?: string, 
+/**
+ * 要不要颜色；缺省 `true`。
+ */
+color?: boolean, 
+/**
+ * 往回多要几行；缺省 0、上限 2000（超了截到上限、回包 `capped: true`）。
+ */
+scrollback?: number, };
+```
+
+码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `terminal-input`
 
@@ -3198,21 +6110,60 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 18 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --terminal-input` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `client` | → | 自报的前端（过「哪个前端的会话」那一维） |
-| `enter` | → | `text` 之后补一个回车；缺省 `true` |
-| `key` | → | 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down` |
-| `result` | ← | `delivered` · `unsure`（不知道送没送到，别重发）· `refused` |
-| `said` | ← | `refused` 时给人看的那一句（后端写好） |
-| `screen` | ← | `screen_changed` 时带的新指纹 |
-| `seen_screen` | → | 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed` |
-| `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `terminal` | → | 目标：名单里的不透明句柄（前端不拼、不解析） |
-| `text` | → | 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个） |
-| `why` | ← | `refused` 的原因：`not_known` · `ambiguous` · `ended` · `not_yours` · `not_managed` · `screen_changed` |
+入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_target` · `bad_args` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+```ts
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed";
+type Sent = { 
+/**
+ * 结局。
+ */
+result: SentResult, 
+/**
+ * `refused` 的原因。
+ */
+why?: Refused, 
+/**
+ * `refused` 时给人看的那一句（后端写好）。
+ */
+said?: string, 
+/**
+ * `screen_changed` 时带的新指纹。
+ */
+screen?: string, };
+type SentResult = "delivered" | "unsure" | "refused";
+type TerminalInputReq = { 
+/**
+ * 目标：名单里的不透明句柄（前端不拼、不解析）。
+ */
+terminal?: string, 
+/**
+ * 目标：会话 id（与 `terminal` 恰给一个）。
+ */
+sid?: string, 
+/**
+ * 送字：字面字，原样送、不解释成键名；多行按粘贴送（与 `key` 恰给一个）。
+ */
+text?: string, 
+/**
+ * `text` 之后补一个回车；缺省 `true`（只跟 `text`）。
+ */
+enter?: boolean, 
+/**
+ * 送键：`esc` · `ctrl-c` · `ctrl-d` · `up` · `down` · `left` · `right` · `tab` · `shift-tab` · `enter` · `backspace` · `page-up` · `page-down`。
+ */
+key?: string, 
+/**
+ * 送之前看到的那一屏的指纹；画面已经变了 ⇒ 不送、回 `refused` ＋ `screen_changed`。
+ */
+seen_screen?: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
 #### `terminal-follow`
 
@@ -3260,9 +6211,24 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-name-mint`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `name` | ← | 铸出来的终端名（这台避让过） |
+入参 `TerminalNameMintReq` · 回包 `Minted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Minted = { 
+/**
+ * 铸出来的终端名（这台避让过）。
+ */
+name: string, };
+type TerminalNameMintReq = { 
+/**
+ * 工作目录 ⇒ `<项目名>-cc`。
+ */
+cwd?: string, 
+/**
+ * 分叉出来的那一条：源会话的终端名或工作目录 ⇒ `<…>-fork-cc`。
+ */
+forkOf?: string, };
+```
 
 码：`bad_args` · `child_timed_out`
 
@@ -3272,14 +6238,66 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --kill` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bus` | ← | 顺手从 cc-bus 注销的结果 `{removed, failed, unread, said, detail}`：`said` 是那几行句子（没有 ⇒ `null`），`detail` 是复制详情（没有 ⇒ 空串） |
-| `client` | → | 自报的前端（过「哪个前端的会话」那一维） |
-| `killed` | ← | 杀成了 |
-| `name` | → | 要杀的 tmux 会话名 |
-| `session` | ← | 杀掉的 tmux 会话名 |
-| `sid` | → | 可带：只结束挂着这个会话（`@ccm_sid`）的窗格 |
+入参 `KillReq` · 回包 `Killed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusFailed = { 
+/**
+ * 那个 id。
+ */
+id: string, 
+/**
+ * 原话。
+ */
+why: string, };
+type BusNote = { 
+/**
+ * 注销掉了的 id。
+ */
+removed: Array<string>, 
+/**
+ * 没注销成的那几个（`why` 是原话）。
+ */
+failed: Array<BusFailed>, 
+/**
+ * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
+ */
+unread: string | null, 
+/**
+ * 给人看的那几行（没有 ⇒ `null`）。
+ */
+said: string | null, 
+/**
+ * 复制详情（没有 ⇒ 空串）。
+ */
+detail: string, };
+type KillReq = { 
+/**
+ * 要杀的 tmux 会话名。
+ */
+name: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维）。
+ */
+client?: string, 
+/**
+ * 可带：只结束挂着这个会话（`@ccm_sid`）的窗格（1–128 个 `[A-Za-z0-9_-]`）。
+ */
+sid?: string, };
+type Killed = { 
+/**
+ * 杀掉的 tmux 会话名。
+ */
+session: string, 
+/**
+ * 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
+ */
+killed: true, 
+/**
+ * 顺手从 cc-bus 注销的结局。
+ */
+bus: BusNote, };
+```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `too_many_windows` · `kill_failed` · `child_timed_out`
 
@@ -3289,20 +6307,117 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 392 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --sessions-stop`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bus` | ← | 同 `kill` |
-| `client` | → | 自报的前端，同 `kill` |
-| `cmd` | → ← | 只有开终端那一形有 |
-| `copyDetail` | ← | 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串） |
-| `detail` | ← | 那一个的原话 |
-| `said` | ← | 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null` |
-| `outcome` | ← | `done` · `skipped` · `failed` |
-| `results` | ← | 逐个结果，与入参同序 |
-| `session` | ← | 落在哪个 tmux 会话上 |
-| `sid` | → ← | 会话 id |
-| `sids` | → | 要停的会话（1–64 个，不重复） |
-| `why` | ← | `skipped` / `failed` 的码 |
+入参 `SidsReq` · 回包 `Batched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
+type Batched = { results: Array<Outcome>, };
+type BusFailed = { 
+/**
+ * 那个 id。
+ */
+id: string, 
+/**
+ * 原话。
+ */
+why: string, };
+type BusNote = { 
+/**
+ * 注销掉了的 id。
+ */
+removed: Array<string>, 
+/**
+ * 没注销成的那几个（`why` 是原话）。
+ */
+failed: Array<BusFailed>, 
+/**
+ * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
+ */
+unread: string | null, 
+/**
+ * 给人看的那几行（没有 ⇒ `null`）。
+ */
+said: string | null, 
+/**
+ * 复制详情（没有 ⇒ 空串）。
+ */
+detail: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type Outcome = { 
+/**
+ * 会话 id（与入参同序）。
+ */
+sid: string, 
+/**
+ * `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
+ */
+outcome: "done" | "skipped" | "failed", 
+/**
+ * 跳过 / 失败的原因码（做成了 ⇒ `null`）。
+ */
+why: string | null, 
+/**
+ * 那一个的原话。
+ */
+detail: string, 
+/**
+ * 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`。
+ */
+said: string | null, 
+/**
+ * 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ */
+copyDetail: string, 
+/**
+ * 落在哪个 tmux 会话上。
+ */
+session: string | null, 
+/**
+ * 停做成了那一个：同 `kill` 应答的 `bus`。
+ */
+bus: BusNote | null, 
+/**
+ * 开终端那一形要跑的那一行。
+ */
+cmd: string | null, 
+/**
+ * 起的那一条实际用的号（停 / 没起 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, 
+/**
+ * 选不了号的那一项：带要的号与替代（别的 ⇒ `null`）。
+ */
+unavailable: AccountUnavailable | null, };
+type SidsReq = { 
+/**
+ * 那几个会话（1–64 个，不重复）。
+ */
+sids: Array<string>, 
+/**
+ * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
+ */
+client?: string, };
+```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
 
@@ -3312,17 +6427,47 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --sessions-where`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `client` | → | 自报的前端，同 `kill` |
-| `host` | ← | 终端宿主 |
-| `names` | ← | 带着它的 tmux 会话名 |
-| `results` | ← | 逐个结果，与入参同序 |
-| `sid` | → ← | 会话 id |
-| `sids` | → | 要问的会话（1–64 个，不重复） |
-| `standing` | ← | `running` · `ambiguous` · `idle` · `none` · `no_tmux` |
-| `terminal` | ← | 名单里那一行的句柄 |
-| `terminals` | ← | 与 `names` 同序同数，每项 `{host, terminal}` |
+入参 `SidsReq` · 回包 `Whereabouts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type SidsReq = { 
+/**
+ * 那几个会话（1–64 个，不重复）。
+ */
+sids: Array<string>, 
+/**
+ * 自报的前端（「哪个前端的会话」那一维，同 `kill`）。
+ */
+client?: string, };
+type StandingWord = "running" | "ambiguous" | "idle" | "none" | "no_tmux";
+type TerminalAt = { 
+/**
+ * 终端宿主。
+ */
+host: string, 
+/**
+ * 名单里那一行的句柄。
+ */
+terminal: string, };
+type Whereabout = { 
+/**
+ * 会话 id（与入参同序）。
+ */
+sid: string, 
+/**
+ * `running` · `ambiguous` · `idle` · `none` · `no_tmux`。
+ */
+standing: StandingWord, 
+/**
+ * 带着它的 tmux 会话名。
+ */
+names: Array<string>, 
+/**
+ * 与 `names` 同序同数：名单里那一行的句柄。
+ */
+terminals: Array<TerminalAt>, };
+type Whereabouts = { results: Array<Whereabout>, };
+```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
 
@@ -3332,32 +6477,164 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 392 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --sessions-start`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → ← | 那一项用哪个号：缺 ＝ 跟随 · `{kind:"base"}` · `{kind:"named", name}`；应答里是实际用的号 |
-| `client` | → | 自报的前端，同 `kill` |
-| `cmd` | → ← | 开终端那一形要跑的那一行 |
-| `configDir` | ← | `account` 里：那个号的配置目录 |
-| `cwd` | → | 那一项的工作目录 |
-| `defaultLauncher` | → | 整批一份：那一家的默认启动器 |
-| `fork_of` | → | 可缺：源会话 sid（只许与 `fresh_terminal: true` 一起） |
-| `copyDetail` | ← | 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串） |
-| `detail` | ← | 那一个的原话 |
-| `said` | ← | 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null` |
-| `fresh_terminal` | → | 可缺：分叉出来的那一条 ⇒ 必铸新终端名 |
-| `items` | → | 要起的会话，每项 `{sid, cwd, account?, fresh_terminal?, fork_of?}` |
-| `kind` | → | `account` 的种类（应答 `account` 是实际用的号，不带种类） |
-| `launcher` | → | 整批一份：用户设置的 resume 命令原值 |
-| `local` | → | 这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行） |
-| `mode` | → | `tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开） |
-| `model` | ← | `account` 里：用的模型 |
-| `name` | → ← | `account` 为 `named` 时的号名 |
-| `outcome` | ← | `done` · `skipped` · `failed` |
-| `results` | ← | 逐个结果，与入参同序 |
-| `session` | ← | 落在哪个 tmux 会话上 |
-| `sid` | → ← | 会话 id |
-| `unavailable` | ← | 选不了号的那一项：`{requested, pinned, listKnown, alternative}` |
-| `why` | ← | `skipped` / `failed` 的码 |
+入参 `SessionsStartReq` · 回包 `Batched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type AccountUnavailable = { 
+/**
+ * 要的那个号。
+ */
+requested: string, 
+/**
+ * 它是这条会话上次用的号（跟随），不是这一次点名的。
+ */
+pinned: boolean, 
+/**
+ * 这台的账号清单读得出来。
+ */
+listKnown: boolean, 
+/**
+ * 给的显式替代（这台的默认号）；`null` ⇒ 只能「不指定号」。
+ */
+alternative: string | null, };
+type Batched = { results: Array<Outcome>, };
+type BusFailed = { 
+/**
+ * 那个 id。
+ */
+id: string, 
+/**
+ * 原话。
+ */
+why: string, };
+type BusNote = { 
+/**
+ * 注销掉了的 id。
+ */
+removed: Array<string>, 
+/**
+ * 没注销成的那几个（`why` 是原话）。
+ */
+failed: Array<BusFailed>, 
+/**
+ * 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
+ */
+unread: string | null, 
+/**
+ * 给人看的那几行（没有 ⇒ `null`）。
+ */
+said: string | null, 
+/**
+ * 复制详情（没有 ⇒ 空串）。
+ */
+detail: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type Outcome = { 
+/**
+ * 会话 id（与入参同序）。
+ */
+sid: string, 
+/**
+ * `done` 做成了 · `skipped` 这一个不用做 / 做不了 · `failed` 做了没成。
+ */
+outcome: "done" | "skipped" | "failed", 
+/**
+ * 跳过 / 失败的原因码（做成了 ⇒ `null`）。
+ */
+why: string | null, 
+/**
+ * 那一个的原话。
+ */
+detail: string, 
+/**
+ * 停失败那一个的那一句（与 `kill` 被拒同一张表）；别的 ⇒ `null`。
+ */
+said: string | null, 
+/**
+ * 失败那一个的复制详情（码 ＋ 原话；别的 ⇒ 空串）。
+ */
+copyDetail: string, 
+/**
+ * 落在哪个 tmux 会话上。
+ */
+session: string | null, 
+/**
+ * 停做成了那一个：同 `kill` 应答的 `bus`。
+ */
+bus: BusNote | null, 
+/**
+ * 开终端那一形要跑的那一行。
+ */
+cmd: string | null, 
+/**
+ * 起的那一条实际用的号（停 / 没起 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, 
+/**
+ * 选不了号的那一项：带要的号与替代（别的 ⇒ `null`）。
+ */
+unavailable: AccountUnavailable | null, };
+type SessionsStartReq = { 
+/**
+ * `tmux`（在 tmux 里后台起）· `window`（只渲那一行交回，窗口由界面开）。
+ */
+mode: StartMode, 
+/**
+ * 这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）。
+ */
+local: boolean, 
+/**
+ * 整批一家（线上的 kind）。
+ */
+agent: string, 
+/**
+ * 整批一份：用户设置的 resume 命令原值。
+ */
+launcher: string, 
+/**
+ * 整批一份：那一家的默认启动器。
+ */
+defaultLauncher: string, 
+/**
+ * 这台的模型偏好表（原值）。
+ */
+models?: { [key in string]: string }, 
+/**
+ * 要起的会话（1–64 项，sid 不重复）。
+ */
+items: Array<StartItemReq>, 
+/**
+ * 自报的前端，同 `kill`。
+ */
+client?: string, };
+type StartItemReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 那一项的工作目录。
+ */
+cwd: string, 
+/**
+ * 用哪个号：缺 ＝ 跟随。
+ */
+account?: AccountAsk, 
+/**
+ * 分叉出来的那一条 ⇒ 必铸新终端名。
+ */
+fresh_terminal?: boolean, 
+/**
+ * 源会话 sid（只许与 `fresh_terminal: true` 一起）：新名从源会话此刻所在终端的名字铸。
+ */
+fork_of?: string, };
+type StartMode = "tmux" | "window";
+```
 
 码：`bad_args` · `unobservable` · `child_timed_out`
 
@@ -3367,33 +6644,131 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rotation` | → | 可缺：打开哪份轮换配置。缺 ＝ 本机默认那份（不写）· `{config: id}` ＝ 起之前这台先定好 sid（那一家起新会话认的旗标，如 `--session-id`）、按它记成打开那一份，回包 `sid` 就是它；配置不在 ⇒ `no_such_config`；那一家不认先定 sid ⇒ `bad_args` |
-| `account` | → ← | 可缺 ＝ 跟随（分叉跟源会话上次的号；新起的 ⇒ 这台的默认号）· `{kind:"base"}` · `{kind:"named", name}`；应答里是实际用的号（账号 0 / 不指定 ⇒ `null`） |
-| `agent` | → ← | 哪一家（线上的 kind）；应答里是起的那一家 |
-| `cmd` | → ← | `open` 时界面要在终端里跑的那一行 |
-| `command` | → | 启动命令；空 / 缺 ⇒ 那一家的默认启动器 |
-| `configDir` | ← | 应答 `account` 里：那个号的配置目录 |
-| `cwd` | → ← | 工作目录（开头的 `~` 按这台的家目录读）；应答里是展开之后的（认报到的会话按它） |
-| `field` | ← | 失败时不行的那一格（`agent` · `command` · `cwd` · `account` · `place` · `tmuxName`；整体的 ⇒ `null`） |
-| `forkFrom` | → | 可缺 |
-| `kind` | → | `account` 的种类：`follow` · `base` · `named`（应答 `account` 是实际用的号，不带种类） |
-| `local` | → | 发请求的界面就在这台上（开窗那一形本机与远端渲法不同） |
-| `model` | ← | 应答 `account` 里：用的模型 |
-| `model` | → | 可缺：这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随 |
-| `models` | → | 可缺 |
-| `name` | → ← | `account` 为 `named` 时的号名；应答 `account` 里是实际用的号 |
-| `outcome` | ← | `started`（tmux 里起好了，`session` 是会话名）· `open`（界面开一个终端跑 `cmd`） |
-| `permissionMode` | → | 可缺：起在哪一个权限档（那一家声明的档之一，原值）；缺 ＝ 跟随那一家自己的默认；那一家没有 / 不给的档 ⇒ `bad_args` |
-| `place` | → | `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑） |
-| `prompt` | → ← | 入参：可缺，第一句（只跟 `place: tmux`；空 ⇒ `bad_args`）—— 作为启动参数交给那一家（交给它的那一半末尾、`--` 之后，可以跨行），那一家自己在启动画面 · 信任框过了之后交进会话；那一家声明不认起的时候带第一句 ⇒ `bad_args`。应答：交的结局 `{result, why, said}`（同 `terminal-input` 那三格；起好了 ⇒ `delivered`），没给第一句 ⇒ `null` |
-| `session` | ← | `started` 时的 tmux 会话名 |
-| `sid` | ← | 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid 的旗标）；那一家不认 ⇒ `null`（报到之前说不出） |
-| `ticket` | → | 可缺：这一趟的票（界面每次点［新建］一张）；同一张票再问 ⇒ 起好了回原样那一份 · 还在起 ⇒ `launch_pending` · 没见过 / 没起成 ⇒ 照常起。票只记在这台常驻后端的进程里（最近 64 张），后端重启就忘了 ⇒ 照常起（已知边界） |
-| `tmuxName` | → | 可缺 ⇒ 这台铸 |
-| `unavailable` | ← | `account_unavailable` 时那一形，带替代号 |
-| `uuid` | → | `forkFrom` 里：从哪条消息处分叉 |
+入参 `NewRequest` · 回包 `SessionNew`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAsk = { "kind": "follow" } | { "kind": "base" } | { "kind": "named", name: string, };
+type FirstSay = { 
+/**
+ * `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
+ */
+result: string, 
+/**
+ * `refused` 的原因（同 `terminal-input`）；别的 ⇒ `null`。
+ */
+why: string | null, 
+/**
+ * `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
+ */
+said: string | null, };
+type ForkFrom = { 
+/**
+ * 源会话 id。
+ */
+sid: string, 
+/**
+ * 从哪条消息处分叉。
+ */
+uuid: string, };
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type NewRequest = { 
+/**
+ * 哪一家（线上的 kind）。必填。
+ */
+agent: string, 
+/**
+ * 工作目录（开头的 `~` 按这台的家目录读）。
+ */
+cwd: string, 
+/**
+ * 缺席 ＝ 跟随（分叉跟随源会话上次的号；新起的 ⇒ 这台的默认号）。
+ */
+account?: AccountAsk, 
+/**
+ * `tmux`（在这台 tmux 里后台起，关终端不断）· `window`（开一个新终端窗口直接跑）。
+ */
+place: Place, 
+/**
+ * 用户改过的终端名；缺席 ⇒ 这台铸（分叉不收这一格：名字从源会话的终端名铸）。
+ */
+tmuxName?: string, 
+/**
+ * 启动命令（空 / 缺席 ⇒ 那一家的默认启动器）。
+ */
+command?: string, 
+/**
+ * 分叉自哪一条（只在这一步写分支记录）。
+ */
+forkFrom?: ForkFrom, 
+/**
+ * 这台的模型偏好表（号 → 模型，用户设置的原值）。
+ */
+models?: { [key in string]: string }, 
+/**
+ * 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
+ */
+local: boolean, 
+/**
+ * 这一趟的票（界面每次点［新建］一张；期限到了再问一次带同一张 ⇒ 认出同一趟，不起第二个：[`super::session_new_ticket`]）。缺 ⇒ 不认。
+ */
+ticket?: string, 
+/**
+ * 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
+ */
+rotation?: RotationPick, 
+/**
+ * 第一句（B4）：起好了之后由这台交进会话（宿主等它就绪 · 信任框过了再送）；只跟 `place: tmux`。缺 ⇒ 不交。
+ */
+prompt?: string, 
+/**
+ * 这一趟用的模型（压过 `models` 偏好表）；缺 ＝ 跟随。
+ */
+model?: string, 
+/**
+ * 起在哪一个权限档（那一家声明的档之一，`LaunchFace::permission`）；缺 ＝ 跟随那一家自己的默认。
+ */
+permissionMode?: string, };
+type Place = "tmux" | "window";
+type RotationPick = { 
+/**
+ * 配置的 id（非空）。
+ */
+config: string, };
+type SessionNew = { outcome: SessionNewOutcome, 
+/**
+ * tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
+ */
+session: string | null, 
+/**
+ * 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid）；那一家不认 ⇒ `null`（报到之前说不出）。
+ */
+sid: string | null, 
+/**
+ * 开窗那一形要跑的那一行（`started` ⇒ `null`）。
+ */
+cmd: string | null, 
+/**
+ * 实际用的号（账号 0 / 不指定 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, 
+/**
+ * 起的是哪一家。
+ */
+agent: string, 
+/**
+ * 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
+ */
+cwd: string, 
+/**
+ * 第一句交进去的结局；没给第一句 ⇒ `null`。
+ */
+prompt: FirstSay | null, };
+type SessionNewOutcome = "started" | "open";
+```
 
 码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_such_config`
 
@@ -3403,20 +6778,73 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-facts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | → | 哪一家（线上的 kind） |
-| `agents` | ← | 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序） |
-| `at` | → | 可缺（随 `forkOf`） |
-| `cwd` | → | 工作目录（开头的 `~` 按这台的家目录读） |
-| `fork` | ← | 没给 `forkOf` ⇒ `null` |
-| `forkOf` | → | 可缺 |
-| `lastMs` | ← | `recent` 一项：那个目录最近一次会话的修改时刻（毫秒） |
-| `launch` | ← | `fork` 里：起分叉会话要的三格（同 `session-fork` 的 `launch`） |
-| `recent` | ← | 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个；`lastMs` 是那个目录最近一次会话的修改时刻） |
-| `startText` | ← | `fork` 里：那一轮你那句在看的那一台钟上的（请求的 `tz`）钟面 `HH:MM`（界面照抄；说不出 ⇒ `null`） |
-| `tmux` | ← | 这台有没有 tmux（`false` ⇒ 只能开终端窗口） |
-| `turn` | ← | `fork` 里：`at` 那一条在第几轮 |
+入参 `NewFactsReq` · 回包 `NewFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForkFacts = { 
+/**
+ * 源会话是哪一家（说不出 ⇒ 空串）。
+ */
+agent: string, 
+/**
+ * 起分叉会话要的三格（同 `session-fork` 的 `launch`）。
+ */
+launch: ForkLaunch, 
+/**
+ * `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。
+ */
+turn: number | null, 
+/**
+ * 那一轮那句在看的那一台钟上的（请求的 `tz`） `HH:MM`（说不出 ⇒ `null`）。
+ */
+startText: string | null, };
+type ForkLaunch = { cwd: ForkSlot<string>, 
+/**
+ * 值 `null` ＝ 账号 0，串 ＝ 号名。
+ */
+account: ForkSlot<string | null>, terminal: ForkSlot<ForkTerminal>, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkTerminal = { "host": "tmux", terminal: string, } | { "host": "none" };
+type ForkWhence = "record" | "process" | "terminal_list";
+type ForkWhy = "exited" | "no_cwd" | "live_no_account";
+type NewFacts = { 
+/**
+ * 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
+ */
+recent: Array<RecentDir>, 
+/**
+ * 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
+ */
+tmux: boolean, 
+/**
+ * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）。
+ */
+agents: Array<string>, 
+/**
+ * 没给 `forkOf` ⇒ `null`。
+ */
+fork: ForkFacts | null, };
+type NewFactsReq = { 
+/**
+ * 可缺：分叉源会话 sid。
+ */
+forkOf?: string, 
+/**
+ * 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。
+ */
+at?: string, };
+type RecentDir = { 
+/**
+ * 工作目录。
+ */
+cwd: string, 
+/**
+ * 那个目录最近一次会话的修改时刻（毫秒）。
+ */
+lastMs: number, };
+```
 
 码：`bad_args` · `fork_failed`
 
@@ -3426,12 +6854,28 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-new-dir`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `cwd` | → | 工作目录（开头的 `~` 按这台的家目录读） |
-| `exists` | ← | 这个目录在不在 |
-| `forkOf` | → | 可缺 |
-| `tmuxName` | ← | 这台此刻会给它铸的终端名（没 tmux ⇒ `null`） |
+入参 `SessionNewDirReq` · 回包 `DirChecked`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DirChecked = { 
+/**
+ * 这个目录在不在。
+ */
+exists: boolean, 
+/**
+ * 这台此刻会给它铸的终端名（没 tmux ⇒ `null`）。
+ */
+tmuxName: string | null, };
+type SessionNewDirReq = { 
+/**
+ * 工作目录（开头的 `~` 按这台的家目录读）。
+ */
+cwd: string, 
+/**
+ * 分叉出来的那一条：源会话 sid（铸名按它此刻所在的终端名派生 `<…>-fork-cc`）。
+ */
+forkOf?: string, };
+```
 
 码：`bad_args`
 
@@ -3441,14 +6885,24 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-interrupts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `families` | ← | 按族的清单，空族不出现；一族都没有 ⇒ `[]`（界面直接做，不问） |
-| `family` | ← | `turn`（那个会话有一轮在跑：活着的会话进程状态说在干活）· `agent`（它派出去还在跑的子运行）· `task`（它任务表里 `in_progress` 的） |
-| `names` | ← | 显示名：子运行的标签（无标签用种类 / 运行号）· 任务主题；`turn` 那一族为空表 |
-| `sid` | → | 会话 id（空 / 缺 ⇒ `bad_args`） |
+入参 `SessionInterruptsReq` · 回包 `SessionInterrupts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args` · `failed`
+```ts
+type InterruptFamily = { family: InterruptKind, 
+/**
+ * 显示名（`turn` 那一族没有名字 ⇒ 空表）。
+ */
+names: Array<string>, };
+type InterruptKind = "turn" | "agent" | "task";
+type SessionInterrupts = { families: Array<InterruptFamily>, };
+type SessionInterruptsReq = { 
+/**
+ * 会话 id（空 ⇒ `bad_args`）。
+ */
+sid: string, };
+```
+
+码：`bad_args`
 
 #### `session-restart`
 
@@ -3456,36 +6910,85 @@ cc-bus 钩子诊断。
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → ← | 用户点名的号（只收名字）；应答里是实际用的号 |
-| `agent` | → | 同 `sessions-start` 的整批那几格 |
-| `alternative` | ← | `account_unavailable` 失败的 `data`：给的显式替代号（这台的默认号；`null` ⇒ 只能「不指定号」） |
-| `arrive_within_ms` | → | 等新进程报出的期限（≤ 3 600 000） |
-| `client` | → | 自报的前端，同 `kill` |
-| `compact` | ← | 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed` |
-| `compact_first` | → | 先请求压缩、等记录里出现压缩摘要再停 |
-| `compact_within_ms` | → | 等压缩的期限（≤ 3 600 000） |
-| `configDir` | ← | 应答 `account` 里：配置目录 |
-| `cwd` | → | 工作目录 |
-| `defaultLauncher` | → | 同 `sessions-start` |
-| `launcher` | → | 同 `sessions-start` |
-| `listKnown` | ← | `account_unavailable` 失败的 `data`：这台的账号清单读得出来 |
-| `local` | → | 同 `sessions-start` |
-| `model` | ← | 应答 `account` 里：模型 |
-| `models` | → | 可缺：这台的模型偏好表原值 |
-| `name` | ← | 应答 `account` 里：实际用的号 |
-| `names` | ← | `ambiguous` 失败的 `data`：在跑的那几个终端名 |
-| `pids` | ← | `session_already_live` 失败的 `data`：那几个 pid |
-| `pinned` | ← | `account_unavailable` 失败的 `data`：要的号是这条会话上次用的（跟随），不是这次点名的 |
-| `requested` | ← | `account_unavailable` 失败的 `data`：要的那个号 |
-| `sid` | → | 会话 id |
-| `started` | ← | `arrived`（新进程报出了）· `missed` |
-| `stopped` | ← | 停完旧的之后才失败（`session_already_live` · `start_failed`）的 `data`：恒 `true`，旧会话已经不在了 |
-| `terminal` | ← | 所在的终端（会话名） |
-| `why` | ← | `stop_failed` / `start_failed` 失败的 `data`：那一步的码 |
+入参 `RestartReq` · 回包 `Restarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed`
+```ts
+type Arrival = "arrived" | "missed";
+type Compact = "done" | "timed_out" | "skipped" | "unsupported" | "failed";
+type LaunchedAccount = { name: string, configDir: string, 
+/**
+ * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
+ */
+model: string | null, };
+type RestartReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 工作目录。
+ */
+cwd: string, 
+/**
+ * 用户点名的号（只收名字，非空）。
+ */
+account: string, 
+/**
+ * 先请求压缩、等记录里出现压缩摘要再停。
+ */
+compact_first: boolean, 
+/**
+ * 等压缩的期限（≤ 3 600 000）。
+ */
+compact_within_ms: number, 
+/**
+ * 等新进程报出的期限（≤ 3 600 000）。
+ */
+arrive_within_ms: number, 
+/**
+ * 这台是不是界面所在那台（同 `sessions-start`）。
+ */
+local: boolean, 
+/**
+ * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。
+ */
+agent: string, 
+/**
+ * 用户设置的 resume 命令原值（同 `sessions-start`）。
+ */
+launcher: string, 
+/**
+ * 那一家的默认启动器（同 `sessions-start`）。
+ */
+defaultLauncher: string, 
+/**
+ * 可缺：这台的模型偏好表原值。
+ */
+models?: { [key in string]: string }, 
+/**
+ * 自报的前端，同 `kill`。
+ */
+client?: string, };
+type Restarted = { 
+/**
+ * 先压缩那一步：`done` · `timed_out` · `skipped` · `unsupported` · `failed`。
+ */
+compact: Compact, 
+/**
+ * 新进程报没报出：`arrived` · `missed`。
+ */
+started: Arrival, 
+/**
+ * 所在的终端（会话名）。
+ */
+terminal: string, 
+/**
+ * 实际用的号（账号 0 / 不指定 ⇒ `null`）。
+ */
+account: LaunchedAccount | null, };
+```
+
+码：`bad_args` · `unobservable` · `account_unavailable` · `not_in_terminal` · `ambiguous` · `session_already_live` · `stop_failed` · `start_failed` · `child_timed_out`
 
 #### `launch`
 
@@ -3493,20 +6996,61 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 8 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --launch` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | → | 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家） |
-| `ccm_sid` | → | 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格 |
-| `client` | → | 可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`） |
-| `created` | ← | 这一次新建了会话 |
-| `cwd` | → | 可选，仅 create-or-attach |
-| `height` | → | 同 `width` |
-| `mode` | → | `create-or-attach`（建或接）· `send-into`（往已在的会话里键入） |
-| `name` | → | tmux 会话名 |
-| `payload` | → | 要键入的那一行 |
-| `session` | ← | 落在哪个会话上 |
-| `typed` | ← | `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉） |
-| `width` | → | 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给 |
+入参 `LaunchReq` · 回包 `Launched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LaunchReq = { 
+/**
+ * `create-or-attach`（建或接）· `send-into`（往已在的会话里键入）。
+ */
+mode: Mode, 
+/**
+ * tmux 会话名。
+ */
+name: string, 
+/**
+ * 要键入的那一行（`create-or-attach` 放行换行 · 制表）。
+ */
+payload: string, 
+/**
+ * 可选，仅 create-or-attach。
+ */
+cwd?: string, 
+/**
+ * 可选：create-or-attach 写成意图键 `@ccm_sid_expect`；send-into 键入挂着它的那个窗格。
+ */
+ccm_sid?: string, 
+/**
+ * 可选，仅 create-or-attach：注册表里的一家（空 ⇒ 默认那一家）。
+ */
+agent?: string, 
+/**
+ * 可选，仅 create-or-attach：1–4 位十进制字符串，与 `height` 同时给或都不给。
+ */
+width?: string, 
+/**
+ * 同 `width`。
+ */
+height?: string, 
+/**
+ * 可选：自报的前端（send-into 过「哪个前端的会话」那一维；create-or-attach 写成会话的 `@ccm_client`）。
+ */
+client?: string, };
+type Launched = { 
+/**
+ * 落在哪个会话上。
+ */
+session: string, 
+/**
+ * 这一次新建了会话。
+ */
+created: boolean, 
+/**
+ * `send-keys` 退出 0：只有 `send-keys` 的退出码那么强（pane 在 copy-mode 时照样退 0、键被吃掉）。
+ */
+typed: boolean, };
+type Mode = "create-or-attach" | "send-into";
+```
 
 码：`bad_args` · `no_tmux` · `no_such_session` · `wrong_owner` · `create_failed` · `typed_unconfirmed` · `child_timed_out`
 
@@ -3693,7 +7237,7 @@ cc-bus 钩子诊断。
 | `id` | ← | 这条转发的号（`fwd-<n>`，本进程内单调） |
 | `jump` | → | 跳板那一台的配置（可缺） |
 | `localPort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `machine` | → | 那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`dial/machine.rs`，同 `remote-probe`），不拒 |
+| `machine` | → | 那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`ssh-dial/machine.rs`，同 `remote-probe`），不拒 |
 | `origin` | → | 那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求） |
 | `remoteHost` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
 | `remotePort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
@@ -4003,7 +7547,7 @@ cc-bus 钩子诊断。
 | `--accounts-mcp-pick` | ＝ 帧命令 `accounts-mcp-pick`：两边都改了的那一条用哪一版 |
 | `--accounts-mcp-read` | ＝ 帧命令 `accounts-mcp-read`：这台各账号共用的用户级 MCP 此刻的样子 |
 | `--accounts-mcp-remove` | ＝ 帧命令 `accounts-mcp-remove`：从各账号共用的用户级 MCP 里删一条 |
-| `--accounts-mcp-sync` | ＝ 帧命令 `accounts-mcp-sync`：停 / 开各账号之间同步用户级 MCP |
+| `--accounts-mcp-sync` | ＝ 帧命令 `accounts-mcp-sync`：停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关） |
 | `--accounts-remove` | ＝ 帧命令 `accounts-remove`：删一个号 |
 | `--accounts-repair` | ＝ 帧命令 `accounts-repair`：修复账号库（幂等） |
 | `--accounts-rollback` | ＝ 帧命令 `accounts-rollback`：按一份备份还原 |
@@ -4089,7 +7633,7 @@ cc-bus 钩子诊断。
 | `--history-search-merge` | ＝ 帧命令 `history-search-merge`：把各台的搜索结果合成一份 |
 | `--history-tail` | ＝ 帧命令 `history-tail`：一份会话的尾段从哪个字节起 |
 | `--history-turns` | ＝ 帧命令 `history-turns`：一轮的摘要 |
-| `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「你说过的话」清单 |
+| `--history-user-inputs` | ＝ 帧命令 `history-user-inputs`：「人说过的话」清单 |
 | `--hooks-diag` | ＝ 帧命令 `hooks-diag`：cc-bus 钩子诊断 |
 | `--kill` | ＝ 帧命令 `kill`：杀一个 tmux 会话 |
 | `--last-seen-read` | ＝ 帧命令 `last-seen-read`：读离线那台的上次值 |
@@ -4181,7 +7725,7 @@ cc-bus 钩子诊断。
 | 字段 | 类型 | 说明 |
 |---|---|---|
 | `sessionId` | string |  |
-| `launchCandidates` | [string]? |  |
+| `launchCandidates` | [string]? | 可缺：候选启动命令，取第一个非空的；都没有 ⇒ 这一家的默认启动器 |
 | `agentKind` | string? | 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`） |
 
 #### `Capabilities`
@@ -4210,14 +7754,24 @@ cc-bus 钩子诊断。
 
 ### `session-fork` 的出参（应答另多 `launch` 一格）
 
-#### `ForkResult`
+#### `ForkReq`
 
-成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
+`session-fork` 的入参：从 `sid` 那条会话的 `uuid` 那条消息处分叉。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sessionId` | string |  |
-| `jsonlPath` | string |  |
+| `sid` | string | 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件） |
+| `uuid` | string | 从哪条消息处分叉 |
+
+#### `Forked`
+
+`session-fork` 的回包。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sessionId` | string | 新会话的 id |
+| `jsonlPath` | string | 新会话的落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
+| `launch` | Launch | 起分叉出来的新会话要的三格 |
 
 ### 骨架索引的一行（`history-index` 的 `rows` 装运之前）
 
@@ -4227,10 +7781,26 @@ cc-bus 钩子诊断。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `resume` | string | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
+| `resume` | CanResume | `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话） |
 | `accounts` | bool | 恢复时能不能选号 |
 | `fork` | bool | 能不能从某一轮分叉 |
-| `delete` | string | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
+| `delete` | CanDelete | `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑 |
+
+#### `CanResume`
+
+`Can::resume` 的三个词。
+
+- `yes`
+- `switch`
+- `bg`
+
+#### `CanDelete`
+
+`Can::delete` 的三个词。
+
+- `yes`
+- `live`
+- `unsure`
 
 #### `IndexRow`
 

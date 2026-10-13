@@ -433,10 +433,7 @@ fn every_registered_command_declares_its_run_kind() {
                 // 文件窗口反查：读认可那份小文件（同步文件 I/O；不起 pb）。
                 | "plan-files"
         );
-        let is_blocking = matches!(
-            spec.run,
-            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        );
+        let is_blocking = spec.run.blocking();
         assert_eq!(
             is_blocking, expected_blocking,
             "`{}` 的 Run 档位与预期不符 —— 放错档的代价是「占住 worker」或「假装能取消」",
@@ -726,92 +723,17 @@ fn every_registered_command_declares_its_run_kind() {
     );
 }
 
-/// ★ `launch` 的 `fields` 必须与**真正的解析器 / 输出构造器**实测一致。
-///
-/// # 为什么非有这一层不可
-///
-/// `CommandSpec::fields` 是**手写镜子**。拿它去钉文档（R3）时，如果它自己会漂，
-/// 那就是**用一个手写清单证明另一个手写清单** —— 一点强度都没有。
-/// 所以它必须先与代码里真正读/写这些键的地方对上。
-///
-/// 抽取面：`parse_request` 里每个 `get_str("…")`（= args 侧）+
-/// `launch_for_inbound` 里 `json!` 的键（= data 侧）。
-#[test]
-fn launch_fields_match_its_parser_and_output() {
-    let src = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/control/launch.rs"
-    ));
-    let mut found: Vec<String> = Vec::new();
-
-    // args 侧：`get_str("<key>")`
-    let key = "get_str(\"";
-    let mut from = 0usize;
-    while let Some(rel) = src[from..].find(key) {
-        let at = from + rel + key.len();
-        let end = src[at..].find('"').map(|k| at + k).unwrap_or(at);
-        found.push(src[at..end].to_string());
-        from = end;
-    }
-    // 请求自报的前端经 `gate::requester_of`（与 `kill` · `sessions-*` 同一个取法）读 `client`。
-    if src.contains("requester_of(args)") {
-        found.push("client".to_string());
-    }
-    let args_n = found.len();
-    assert!(
-        args_n >= 5,
-        "只从解析器抠到 {args_n} 个 args 字段 —— 抽取坏了，本断言在空转"
-    );
-
-    // data 侧：`json!({ "<key>": … })` —— 取 `json!` 块里的所有 `"key":`
-    let j = src
-        .find("serde_json::json!({")
-        .expect("找不到 launch 的输出构造 —— 抽取坏了");
-    let jend = src[j..].find("})").map(|k| j + k).expect("json! 没收尾");
-    let block = &src[j..jend];
-    let mut data_n = 0usize;
-    for part in block.split('"').skip(1).step_by(2) {
-        if !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
-            found.push(part.to_string());
-            data_n += 1;
-        }
-    }
-    assert!(
-        data_n >= 3,
-        "只从输出构造抠到 {data_n} 个 data 字段 —— 抽取坏了，本断言在空转"
-    );
-
-    found.sort();
-    found.dedup();
-    let spec = super::REGISTRY
-        .iter()
-        .find(|s| s.name == "launch")
-        .expect("注册表里没有 launch");
-    let mut declared: Vec<String> = spec.field_names().map(str::to_string).collect();
-    declared.sort();
-    assert_eq!(
-        declared, found,
-        "\n`launch` 登记的 fields 与它真正读/写的键对不上。\n\
-             这面镜子是用来钉文档的（R3）—— 它自己先漂了，钉出来的就是假的。"
-    );
-}
-
 /// ★**「声明零字段」不许成为免检开关**：零字段的命令在协议参考里就没有字段表，
 /// 而有载荷却声明成空等于让契约面整个消失 ⇒ 默认拒绝 ＋ 豁免登记（写明为什么）。
 #[test]
 fn declaring_zero_fields_needs_a_reason() {
     /// `(命令名, 为什么它可以声明零载荷字段)`。
-    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[
-        (
-            "resolve",
-            "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体：协议参考的出入参那一节从结构体本身生成，\
-             在这里再列一份字段名就是第二个源头。",
-        ),
-        ("ping", "零载荷：问活，回 `ok`。"),
-    ];
+    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[("ping", "零载荷：问活，回 `ok`。")];
     let mut unexplained: Vec<&str> = Vec::new();
     let mut zero = 0usize;
     for spec in super::REGISTRY {
-        if !spec.fields.is_empty() {
+        // typed 命令的字段从类型来（协议参考照类型写），不手写镜子。
+        if !spec.fields.is_empty() || matches!(spec.run, super::spec::Run::Typed(_)) {
             continue;
         }
         zero += 1;
@@ -892,7 +814,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
     //   （现打：不减的话逐字报 `files-create` 在 wired 里而不在 declared 里）。
     //   ⚠ 减法是**按那张表**减，不是按名字手写一份 —— 手写第二份就是下一个漂移源。
     // 写那一侧从此是**两张表**：写面 `MANAGE_COMMANDS` ＋ 上传提交
-    //   `files_commit::COMMIT_COMMANDS`（`readonly_guard` 第三层第二个登记的模块）。减法按两张表的并。
+    //   `files_commit::COMMIT_COMMANDS`（写经 `Face`，同一族）。减法按两张表的并。
     let write_face: std::collections::BTreeSet<String> =
         crate::control::files_write::MANAGE_COMMANDS
             .iter()
@@ -905,7 +827,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
                     .map(|c| c.name)
                     .collect::<Vec<_>>(),
             )
-            // 解压（`control/files_extract.rs`，第三层第四个模块）。
+            // 解压（`control/files_extract.rs`，写经 `Face`）。
             .chain(
                 crate::control::files_extract::EXTRACT_COMMANDS
                     .iter()
@@ -951,20 +873,21 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         "\n文件管理**写**面登记的那一组与 `inbound::REGISTRY` 上真上线的那一组对不上。\n\
          登记了而没上线 ⇒ 调用方发过去拿到 `unknown_command`（静默不可用）；\n\
          上线了而没登记 ⇒ 🔴 **写能力长出了一个没签字的命令** ——\n\
-         而 `readonly_guard` 第三层那条「只从声明过的那一面来」判的正是这张表。"
+         而 `readonly_guard` 那条「拿得到 `Face` 的命令 == 写面登记的命令」判的正是这张表。"
     );
     // ★ 写那一面的每条命令，`codes` / `fields` 与它自己的登记逐字对上（同读族那一半）。
     type WriteAnswer = fn(&str, &serde_json::Value) -> crate::control::files_write::Answer;
     let tables: [(&[crate::control::files_write::ManageCommand], WriteAnswer); 2] = [
         (crate::control::files_write::MANAGE_COMMANDS, |c, a| {
             crate::control::files_write::answer_wire(
+                &crate::platform::fs::Face::issue(),
                 c,
                 a,
                 &super::registry::file_manager::SESSION_PORT,
             )
         }),
         (crate::control::files_commit::COMMIT_COMMANDS, |c, a| {
-            crate::control::files_commit::answer_wire(c, a)
+            crate::control::files_commit::answer_wire(&crate::platform::fs::Face::issue(), c, a)
         }),
     ];
     for (cap, answer) in tables
@@ -1159,10 +1082,8 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
 }
 
 mod typed_replies {
-    pub(super) use crate::control::session_batch as sb;
-    pub(super) use crate::control::session_new as sn;
     pub(super) use crate::faces::rotation_face as rf;
-    pub(super) use crate::guard_support::{merged, sampled, sampled_and, Sampled};
+    pub(super) use crate::guard_support::{sampled, Sampled};
 }
 use typed_replies::*;
 
@@ -1177,74 +1098,14 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "sessions-needs",
-        sampled::<crate::faces::read_face::NeedsList>,
-        &["needs", "sid"],
-        &[],
-    ),
-    (
         "needs-ask",
         sampled::<crate::control::asks::AskReply>,
         &[],
         &[],
     ),
     (
-        "needs-answer",
-        sampled::<crate::control::asks::Answered>,
-        &[],
-        &[],
-    ),
-    (
         "plan-command",
         sampled::<crate::plan::wire::PlanCmdReply>,
-        &[],
-        &[],
-    ),
-    (
-        "history-annotate",
-        sampled::<crate::history::history_annotations::Annotated>,
-        &["customTitle", "hidden", "starred", "updatedAt"],
-        &[],
-    ),
-    (
-        "history-branch",
-        sampled::<crate::faces::read_face::Branch>,
-        &[],
-        &[],
-    ),
-    (
-        "history-forget",
-        sampled::<crate::history::history_annotations::Forgotten>,
-        &[],
-        &[],
-    ),
-    (
-        "history-last-accounts",
-        sampled::<crate::control::launch_account::LastAccounts>,
-        &[],
-        &[],
-    ),
-    (
-        "history-record",
-        sampled::<crate::observe::history_query::RecordProbe>,
-        &[],
-        &[],
-    ),
-    (
-        "history-search",
-        sampled::<crate::faces::read_face::Searched>,
-        &[],
-        &[],
-    ),
-    (
-        "history-search-merge",
-        sampled::<crate::observe::search_query::Merged>,
-        &[],
-        &[],
-    ),
-    (
-        "history-tail",
-        sampled::<crate::observe::history_query::TailPlan>,
         &[],
         &[],
     ),
@@ -1256,101 +1117,9 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ),
     ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
-        "session-terminals",
-        sampled::<crate::observe::session_terminals::Showing>,
-        &[
-            "activity",
-            "clientAddr",
-            "clientPort",
-            "serverAddr",
-            "serverPort",
-            "ssh",
-        ],
-        &[],
-    ),
-    (
-        "session-interrupts",
-        sampled::<crate::observe::interrupts_query::SessionInterrupts>,
-        &["family", "names"],
-        &[],
-    ),
-    (
-        "session-new",
-        sampled_and::<sn::SessionNew, sn::SessionNewRefusal>,
-        &["configDir", "model", "name"],
-        &[],
-    ),
-    ("session-new-dir", sampled::<sn::DirChecked>, &[], &[]),
-    (
-        "session-new-facts",
-        sampled::<crate::faces::session_new_face::NewFacts>,
-        &["lastMs", "launch", "startText", "turn"],
-        &[],
-    ),
-    (
-        "session-restart",
-        restart_samples,
-        &["configDir", "model", "name"],
-        &[],
-    ),
-    (
-        "sessions-start",
-        sampled::<sb::Batched>,
-        &[
-            "account",
-            "cmd",
-            "configDir",
-            "copyDetail",
-            "detail",
-            "model",
-            "name",
-            "outcome",
-            "said",
-            "session",
-            "sid",
-            "unavailable",
-            "why",
-        ],
-        &[],
-    ),
-    (
-        "sessions-stop",
-        sampled::<sb::Batched>,
-        &[
-            "bus",
-            "cmd",
-            "copyDetail",
-            "detail",
-            "outcome",
-            "said",
-            "session",
-            "sid",
-            "why",
-        ],
-        &[],
-    ),
-    (
-        "sessions-where",
-        sampled::<sb::Whereabouts>,
-        &["host", "names", "sid", "standing", "terminal", "terminals"],
-        &[],
-    ),
-    (
         "terminal-follow",
         sampled::<crate::control::terminal_follow::Refused>,
         &[],
-        &[],
-    ),
-    (
-        "terminal-name-mint",
-        sampled::<crate::control::ccm::Minted>,
-        &[],
-        &[],
-    ),
-    (
-        "terminal-processes",
-        sampled::<crate::dial::terminal_processes::Processes>,
-        &["name", "pid", "start"],
         &[],
     ),
     (
@@ -1393,16 +1162,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
     ("rotation-strategy-try", sampled::<rf::TryReply>, &[], &[]),
 ];
 
-/// `session-restart`：成功那一形 ＋ 失败信封按码定形的 `data`（自己那几形 ＋ 选不了号那一形）。
-fn restart_samples() -> Sampled {
-    use crate::control::session_restart as sr;
-    merged(vec![
-        sampled::<sr::Restarted>(),
-        sampled::<sr::Refused>(),
-        sampled::<crate::control::launch_account::AccountUnavailable>(),
-    ])
-}
-
 /// ★★ **注册表登的出参字段 ＝ 那条命令真序列化出来的字段**（两向相等）。
 ///
 /// 镜子（`CommandSpec::fields`）是手写的，协议参考从它生成：它比真出参少一格，照文档接的人就看不到那一格
@@ -1431,21 +1190,13 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const FORWARD_LIST: &str = include_str!("../../__fixtures__/forward-list.golden.json");
-    const HISTORY_LIST: &str = include_str!("../../__fixtures__/history-list.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
     const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
     const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
-    const RECORD_READS: &str = include_str!("../../__fixtures__/record-reads.golden.json");
     const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
-    const RESYNC: &str = include_str!("../../__fixtures__/resync.golden.json");
-    const SESSION_FORK: &str = include_str!("../../__fixtures__/session-fork.golden.json");
-    const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
-    const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
-    const TERMINALS: &str = include_str!("../../__fixtures__/terminals.golden.json");
-    const TMUX_CONTROL: &str = include_str!("../../__fixtures__/tmux-control.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1495,21 +1246,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &["class", "from", "text", "ts"],
             &[],
         ),
-        ("history-lines", RECORD_READS, "/history-lines", &[], &[]),
-        ("history-page", RECORD_READS, "/history-page", &[], &[]),
-        ("history-read", RECORD_READS, "/history-read", &[], &[]),
-        ("history-run", RECORD_READS, "/history-run", &[], &[]),
-        ("history-facts", SESSION_READS, "/history-facts", &[], &[]),
-        ("history-find", SESSION_READS, "/history-find", &[], &[]),
-        ("history-index", SESSION_READS, "/history-index", &[], &[]),
-        ("history-turns", SESSION_READS, "/history-turns", &[], &[]),
-        (
-            "history-user-inputs",
-            SESSION_READS,
-            "/history-user-inputs",
-            &[],
-            &[],
-        ),
         (
             "ssh-config-aliases",
             SSH_CONFIG,
@@ -1544,51 +1280,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         (
-            "terminals-list",
-            TERMINALS,
-            "/terminals-list/reply",
-            &[
-                "agent",
-                "can",
-                "client",
-                "clients",
-                "cwd",
-                "end",
-                "host",
-                "input",
-                "kind",
-                "last_activity",
-                "mine",
-                "no",
-                "program",
-                "session",
-                "sid",
-                "since",
-                "started_by",
-                "state",
-                "terminal",
-                "title",
-                "tmux_name",
-            ],
-            &[],
-        ),
-        (
-            "terminal-preview",
-            TERMINALS,
-            "/terminal-preview/reply",
-            &["spans", "text"],
-            &[],
-        ),
-        (
-            "terminal-input",
-            TERMINALS,
-            "/terminal-input/replies",
-            &[],
-            &[],
-        ),
-        ("kill", TMUX_CONTROL, "/kill/reply", &[], &[]),
-        ("launch", TMUX_CONTROL, "/launch/reply", &[], &[]),
-        (
             "mcp-read",
             MCP_READ,
             "/reply",
@@ -1621,8 +1312,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("profiles-write", PROFILES, "/writeReply", &[], &[]),
         ("aliases-read", ALIASES, "/readReply", &[], &[]),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
-        ("resync", RESYNC, "/reply", &[], &[]),
-        ("history-list", HISTORY_LIST, "", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
         (
             "forward-list",
@@ -1648,51 +1337,32 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         ("relay-optin", RELAY_OPTIN, "", &[], &[]),
-        (
-            "tasks-list",
-            TASKS_LIST,
-            "/product",
-            &[
-                "activeForm",
-                "blockedBy",
-                "blocks",
-                "description",
-                "id",
-                "status",
-                "subject",
-            ],
-            &[],
-        ),
         ("pubkey-push", PUBKEY_PUSH, "/product", &[], &[]),
         ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
         ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
         ("rotation-switch", ROTATION_SWITCH_RESTART, "", &[], &[]),
-        (
-            "session-fork",
-            SESSION_FORK,
-            "/product",
-            &[
-                "account", "cwd", "from", "host", "kind", "terminal", "value",
-            ],
-            &[(
-                "why",
-                "`launch.kind` 是 `unknown` 那一支才有；金样走的是 `known` 那一支",
-            )],
-        ),
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
-        ("aliases-block-install", "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`"),
+        (
+            "aliases-block-install",
+            "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`",
+        ),
         ("aliases-block-remove", "同 `aliases-block-install`"),
         ("cancel", "撤单的结果是 `cancelled` 帧，应答只回 ok"),
         ("link-close", "只回 ok；链路的收尾走 `link_end` 帧"),
         ("link-credit", "只回 ok（还信用）"),
         ("link-data", "只回 ok；字节走 `link_data` 帧"),
-        ("link-open", "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧"),
+        (
+            "link-open",
+            "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧",
+        ),
         ("ping", "问活，回 ok"),
-        ("resolve", "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体，协议参考从结构体本身生成（冻结金样 `resolve-contract`）"),
-        ("terminal-follow-ack", "只回 ok；下一帧画面走 `terminal_screen`"),
+        (
+            "terminal-follow-ack",
+            "只回 ok；下一帧画面走 `terminal_screen`",
+        ),
         ("terminal-unfollow", "只回 ok（幂等）"),
         ("transfer-download", "只回 ok；进度与终局走 `transfer` 帧"),
         ("transfer-start", "只回 ok；进度与终局走 `transfer` 帧"),
@@ -1701,7 +1371,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 87;
+    const UNSHAPED_CEILING: usize = 85;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1768,8 +1438,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "forward-stop",
         "last-seen-read",
         "last-seen-write",
-        "launch-local",
-        "launch-render-cli",
         "machine-interrupts",
         "mcp-sync-apply",
         "mcp-sync-plan",
@@ -1894,6 +1562,10 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     let mut want_shaped_or_listed = std::collections::BTreeSet::new();
     let mut zero_out = std::collections::BTreeSet::new();
     for spec in super::REGISTRY {
+        // typed 命令不手写字段镜子：出参就是它的回包类型（`typed.rs`），不在这四张表里。
+        if matches!(spec.run, super::spec::Run::Typed(_)) {
+            continue;
+        }
         if out_of(spec).is_empty() {
             zero_out.insert(spec.name);
         } else {
@@ -2036,5 +1708,48 @@ fn typed_enum_replies_sample_every_variant() {
         bad.is_empty(),
         "顶层是枚举的 typed 应答要每个变体一个样本（漏了的那一支，它的格判据就看不见）：\n{}",
         bad.join("\n")
+    );
+}
+
+/// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::AsyncOwn(` …）只许在
+/// `stream/inbound/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面
+/// 各写一份 `match`，枢纽那一份漏了两档，问本机那一跳的 8 条一律 `unknown_command`。
+#[test]
+fn only_one_place_matches_on_how_a_command_runs() {
+    const TIERS: &[&str] = &[
+        "Run::Blocking(",
+        "Run::BlockingData(",
+        "Run::BlockingOwn(",
+        "Run::Async(",
+        "Run::AsyncData(",
+        "Run::AsyncOwn(",
+    ];
+    let root = crate::guard_support::src_root();
+    let mut at: Vec<String> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
+        .into_iter()
+        .filter_map(|(path, src)| {
+            let rel = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let code = crate::guard_support::production_code(&src);
+            // 前面紧挨标识符字符的不算（`TypedRun::Blocking(` 是 typed 那一份自己的两种，不是 `Run` 的档）。
+            let names_a_tier = TIERS.iter().any(|t| {
+                code.match_indices(t).any(|(i, _)| {
+                    !code[..i]
+                        .chars()
+                        .next_back()
+                        .is_some_and(|c| c.is_alphanumeric() || c == '_')
+                })
+            });
+            (!rel.starts_with("stream/inbound/registry/") && names_a_tier).then_some(rel)
+        })
+        .collect();
+    at.sort();
+    assert_eq!(
+        at,
+        vec!["stream/inbound/spec.rs".to_string()],
+        "按档分派该只有 `spec::prepare` 一处"
     );
 }

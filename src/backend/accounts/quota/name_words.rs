@@ -14,6 +14,12 @@ use std::collections::BTreeMap;
 /// 起会话时没说是哪个号 ⇒ 记成这个（是哪一份登录说不准；不等于账号 0）。
 pub(crate) const HOME_ACCOUNT: &str = "_";
 
+/// 一个号能不能当换号 · 加号的候选（唯一一处）：`_`（起会话时没说是哪个号）不是 —— 它不顶任何一份登录，放上去只能回「需登录」。
+/// `quota-read` 的 `candidates` 与会话那一份的候选行都调它，界面只照抄。
+pub(crate) fn is_candidate(account: &str) -> bool {
+    account != HOME_ACCOUNT
+}
+
 /// 一个号在人眼里叫什么：`_` ⇒「未指定账号」· 账号 0 ⇒ `~/.claude`；其余照原名。
 pub(crate) fn account_text(name: &str) -> String {
     if name == HOME_ACCOUNT {

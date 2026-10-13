@@ -692,6 +692,7 @@ pub(crate) const PRODUCTS: &[Product] = &[
     },
     // 会话三帧：第二个前端（手机）照下面点名的格逐格读，缺一格整帧当坏帧丢（会话列表有、点进去空白）——
     // 这几格就是它的冻结表（从前住 `wire_tests::SECOND_FRONTEND_READS`，10-10 挪来，一处登记）。`container` · `pid` 不在内。
+    // `lines` 10-12 挪出这一帧（read8a：宣告不等预读，行数改由读完那一帧 `session_primed` 带）：手机从来没读过它，只有桌面壳在读、同一刀跟上。
     Product {
         name: "session_added",
         tags: &[],
@@ -701,7 +702,6 @@ pub(crate) const PRODUCTS: &[Product] = &[
             "path",
             "cwd",
             "name",
-            "lines",
             "waiting_for",
             "agent_kind",
             "attachable",
@@ -1259,7 +1259,6 @@ mod specimens {
             project_dir: some("/w"),
             name: some("n"),
             path: some("/p"),
-            lines: Some(1),
             face: ActivityFace::of(Some(activity)),
             name_face: named(),
             waiting_for: some("w"),

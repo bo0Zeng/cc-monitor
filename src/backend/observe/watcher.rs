@@ -21,6 +21,10 @@
 //!   that back-pressure stops at the channel — it never reaches the inotify
 //!   reader, so the kernel inotify queue is the only thing that can overflow.
 //!
+//! 〔read8a〕**整台一份**：一个进程只起一份 reader（会话账本 · 每份记录的读者 · 运行簿都只一份）；
+//! 每条流连接经 [`WatcherPoke::attach`] 拿一条自己的有界通道（[`Sub`]：名单 · 丢帧账按连接），reader 逐条连接投帧。
+//! 记录的预读不在 reader 线程上做：宣告先发，预读交线程池（[`PrimePool`]），读完交回再接着出那条会话的行。
+//!
 //! The reader runs on a dedicated blocking thread (`notify-debouncer-mini` is a
 //! synchronous, `std::sync::mpsc`-based API) and talks to the async writer
 //! through `tokio::sync::mpsc`.
@@ -43,16 +47,16 @@
 //! re-read (`session_file_reread`) — seq is the line number in the file as it is
 //! now, never a number past it (see [`process_jsonl`]).
 //!
-//! On a mid-read I/O error this reader gives up the whole pass (cursor untouched)
-//! — at-least-once-safe. (The deleted monitor copy kept the complete lines it had
-//! already consumed; that difference left with it.)
+//! 读在块上（8a d，[`NewLines`]）：一趟从起读处按块读到尾，一块一块地出行，不把那一截一次读进内存。
+//! 读到一半出错 ⇒ 这一趟停在已经交出去的最后一块之后（交出去的行不再发一遍），其余的下一趟接着读；
+//! 读的那一下文件缩了 ⇒ 游标留旧高水位，下一趟按截短从 0 重读并出声。
 //!
 //! ⚠ 这段话此前写的是 "reads via one `fs::read` snapshot" —— 那**曾经是真的**，
 //! 而它只评了**错误语义**那一面，对**内存与 IO 后果一个字没记**（audit-0805 B-4）：
 //! 每个 debounce 事件把整份 jsonl 读进内存，257 MB 的活跃会话 ⇒ 每次读 257 MB，
 //! 只为提取约 500 字节的新行；而本地 monitor 同一件事一直是 `seek` + `read_until`
 //! ⇒ **强机器流式、弱机器整读，正好反了**（backend 住树莓派那类小机器）。
-//! F04 已改成只读新字节（`read_tail_from` + `read_new_lines_at`），
+//! F04 已改成只读新字节（`read_tail_from` + `read_new_lines_at`；d 之后按块读，见上），
 //! 由 `the_two_tail_readers_do_not_slurp_the_whole_session_file` 钉住不许改回去。
 //! ★ 留这段话是因为**「未登记的缺陷」比「登记过的取舍」更难发现** ——
 //! 当时那条头注读起来完全像一条深思熟虑的取舍。
@@ -146,9 +150,17 @@ enum WatchEvent {
     },
     /// 这条流报了它此刻在看哪几个会话（`stream-watch`，整份换）：回刚进名单的那几个从第几行起上流（[`watch_sessions`]）。
     Watch {
+        /// 哪条连接报的（[`Attachment`] 的号）。
+        sub: u64,
         sids: Vec<String>,
         done: tokio::sync::oneshot::Sender<Vec<crate::stream::wire::WatchFrom>>,
     },
+    /// 一条流连接接上来了：从这一刻起它收这台的帧（先收一份此刻的样子，[`join`]）。
+    Join(Sub),
+    /// 那条流连接走了（[`Attachment`] 丢了）。
+    Leave(u64),
+    /// 一条会话的后台预读做完了（线程池交回，[`primed`] 装回）。
+    Primed(PrimeDone),
 }
 
 /// P2：把 debouncer 的事件转投进统一 channel（零额外线程——`notify` 本来就在自己的
@@ -809,25 +821,72 @@ impl WatcherPoke {
         let _ = self.0.send(WatchEvent::Shutdown);
     }
 
+    /// 接上一条流连接：回它的出方向通道（这台的帧从这里来；先来一份此刻的样子）与它在这台 watcher 上的那一份（丢了 ＝ 走了）。
+    /// 这条连接要的时区（`wants.tz`）给按连接现写的那几帧用（任务清单变了那一帧的体）。
+    pub fn attach(&self, wants: &crate::StreamWants) -> (mpsc::Receiver<Frame>, Attachment) {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let id = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
+        let _ = self
+            .0
+            .send(WatchEvent::Join(Sub::new(id, tx, wants.tz.clone())));
+        (
+            rx,
+            Attachment(WatchHandle {
+                id,
+                tx: self.0.clone(),
+            }),
+        )
+    }
+}
+
+/// 一条流连接在这台 watcher 上的那一份：丢了 ⇒ watcher 把它摘掉（它的通道 · 名单 · 欠的丢帧账一起走）。
+pub struct Attachment(WatchHandle);
+
+impl Attachment {
+    /// 这条连接报「在看哪几个」的口（可以有好几份，丢了不算走）。
+    pub fn handle(&self) -> WatchHandle {
+        self.0.clone()
+    }
+}
+
+impl Drop for Attachment {
+    fn drop(&mut self) {
+        let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));
+    }
+}
+
+/// 一条流连接报名单的口（[`Attachment::handle`]）。
+#[derive(Clone)]
+pub struct WatchHandle {
+    id: u64,
+    tx: std::sync::mpsc::Sender<WatchEvent>,
+}
+
+impl WatchHandle {
     /// 这条流此刻在看哪几个会话（整份换）；回刚进名单的那几个从第几行起上流。watcher 已停 ⇒ 回的那一头直接断。
     pub fn watch(
         &self,
         sids: Vec<String>,
     ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>> {
         let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>();
-        let _ = self.0.send(WatchEvent::Watch { sids, done });
+        let _ = self.tx.send(WatchEvent::Watch {
+            sub: self.id,
+            sids,
+            done,
+        });
         rx
     }
 }
 
+/// 起这台的 watcher（**一个进程一份**：本机远端、stdio 与常驻都只起这一份；各条流连接经 [`WatcherPoke::attach`] 接上来）。
+/// 回戳它的句柄 ＋ 这台的运行簿（整台一本：watcher 写、各连接的流归位读）。
 /// `own`：写自家状态的句柄（启动时造的那一份）—— 认起会话便条、记 `sid → 号` 经它写。
 pub fn spawn(
     agent_home: PathBuf,
-    wants: crate::StreamWants,
-    book: std::sync::Arc<crate::observe::runs::RunBook>,
     own: crate::platform::fs::Own,
-) -> (mpsc::Receiver<Frame>, WatcherPoke) {
-    let (tx, rx) = mpsc::channel::<Frame>(CHANNEL_CAPACITY);
+) -> (WatcherPoke, std::sync::Arc<crate::observe::runs::RunBook>) {
+    let book = crate::observe::runs::RunBook::shared();
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
     // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
@@ -835,14 +894,15 @@ pub fn spawn(
     let poke = WatcherPoke(events_tx.clone());
     // 登记在起线程之前：刚 spawn 完的那一刻来的 SIGUSR1 / `resync` 也够得着它。
     let me = live_enter(events_tx.clone());
+    let b = book.clone();
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            watch_loop(agent_home, tx, wants, book, events_tx, events_rx, own);
+            watch_loop(agent_home, b, events_tx, events_rx, own);
             live_leave(me);
         })
         .expect("spawn jsonl-watcher thread");
-    (rx, poke)
+    (poke, book)
 }
 
 /// 此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份 / stdio 那一份）—— **唯一的名单**：
@@ -943,9 +1003,6 @@ fn arm_ears(
 /// turns dropped frames into an [`Frame::Overflow`] signal (#32).
 fn watch_loop(
     agent_home: PathBuf,
-    tx: mpsc::Sender<Frame>,
-    // 这条流索要了什么，与 `spawn` 收到的同一组。
-    wants: crate::StreamWants,
     book: std::sync::Arc<crate::observe::runs::RunBook>,
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
@@ -975,16 +1032,18 @@ fn watch_loop(
         .filter(|r| r.by_writer)
         .map(|r| r.root.clone())
         .collect();
+    state.skeletons = Some(crate::observe::skeleton::Skeletons::new(own.clone()));
     state.launch = Some(own);
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
     state.annotations = annotations_table();
-    // 运行簿：与这条连接的流归位共用一本（流按它定归哪个运行）。
+    // 运行簿：整台一本，与各连接的流归位共用（流按它定归哪个运行）。
     state.set_book(book);
-    // All frames go out through a FrameSink: a bounded-channel sender that counts
-    // frames dropped on a full channel and emits a single `Overflow` signal once
-    // the channel drains enough to accept it (#32). Never blocks this reader.
-    let mut sink = FrameSink::with_ledger(tx);
+    // 预读交线程池（各会话并行、上限按 CPU 数；同一会话内部照顺序读）：做完经事件通道交回本线程装回（[`primed`]）。
+    state.pool = Some(PrimePool::start(events_tx.clone()));
+    // All frames go out through a FrameSink: 整台一份会话账本 ＋ 每条连接一份有界通道（各自记丢帧、各自的名单）。
+    // 连接经 `Join` / `Leave` 进出；没有连接时帧照算、发不出去（会话账本 · 打标照常）。Never blocks this reader.
+    let mut sink = FrameSink::hub();
 
     // P2：**唯一**的事件 channel（账本第 1 行最终形态）。notify / pidfd / tmux 全走它。
     //
@@ -1115,7 +1174,6 @@ fn watch_loop(
             crate::common::time::now(),
         ) {
             Ok(Some(e)) => e,
-            Ok(None) if sink.is_closed() => break,
             Ok(None) => continue,
             Err(_) => break,
         };
@@ -1150,8 +1208,11 @@ fn watch_loop(
                 }
                 // 任务目录里的动静 ⇒ 每个动过的会话一帧 `changed {tasks, key: sid}`（批内合并）。
                 for sid in tasks_touched(events.iter().map(|ev| ev.path.as_path()), &ears.tasks) {
-                    let body = crate::stream::topic_hook::body(Topic::Tasks, Some(&sid), &wants.tz);
-                    sink.send(Frame::changed(Topic::Tasks, Some(sid), None, body));
+                    // 体按各连接看的那一台的时区现写。
+                    sink.send_each(|tz| {
+                        let body = crate::stream::topic_hook::body(Topic::Tasks, Some(&sid), tz);
+                        Frame::changed(Topic::Tasks, Some(sid.clone()), None, body)
+                    });
                 }
                 // 记录文件的表先跟上这一批（同一批里 pidfile 先到、记录文件后到时，宣告也查得到它）。
                 for ev in &events {
@@ -1359,9 +1420,12 @@ fn watch_loop(
                 }
             }
             // 与起步同一套：耳朵重挂 · 账号清单重读（整机时）· pidfile 对表（顺手对账标签）· 重探 tmux。
-            WatchEvent::Watch { sids, done } => {
-                let _ = done.send(watch_sessions(sids, &mut state, &mut sink));
+            WatchEvent::Watch { sub, sids, done } => {
+                let _ = done.send(watch_sessions(sub, sids, &mut state, &mut sink));
             }
+            WatchEvent::Join(sub) => join(sub, &mut state, &mut sink),
+            WatchEvent::Leave(id) => sink.leave(id),
+            WatchEvent::Primed(done) => primed(done, &mut state, &mut sink),
             WatchEvent::Resync { only, done } => {
                 if only.is_none() {
                     // 整机重对表：记录文件的表作废，下一次宣告整棵走一遍重建（事件可能丢过）。
@@ -1391,10 +1455,6 @@ fn watch_loop(
         // 有摘除了的会话在等一份「摘除之后才起」的 tmux 观测来裁去向 ⇒ 起一份（在途的那份是摘除之前起的，它回来再起）。
         if sink.awaits_observation() {
             start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);
-        }
-
-        if sink.is_closed() {
-            break;
         }
     }
 }
@@ -1460,6 +1520,19 @@ struct ReaderState {
     launch: Option<crate::platform::fs::Own>,
     /// 这台的会话注解（在 monitor 里改的名住这里；叫会话什么的第一档）。默认空、不进 `new` 的签名；生产由 [`watch_loop`] 读、那份文件动了重读。
     annotations: crate::history::history_annotations::Table,
+    /// 大记录的骨架落在哪（生产由 [`watch_loop`] 照启动时的写句柄装上；`None`（夹具）⇒ 不读也不落）。
+    skeletons: Option<crate::observe::skeleton::Skeletons>,
+    /// 预读的线程池（生产由 [`watch_loop`] 装上）。`None`（夹具）⇒ 同一个任务就地跑、就地装回（[`announce`]）。
+    pool: Option<PrimePool>,
+    /// 预读还没交回的会话 → 那一趟的代号（会话退休 / 重新宣告 ⇒ 旧的那一趟交回时认不上、丢掉）。
+    priming: HashMap<String, u64>,
+    next_prime: u64,
+    /// 装回过的预读一共读了多少字节（判据数它：同一份记录接几条连接都只预读一次）。
+    prime_bytes: u64,
+    /// 每个宣告过的活会话那一帧 `session_added`（接上来的连接拿它的现值补一份，[`join`]）。
+    added: HashMap<String, Frame>,
+    /// 宣告时说的是「读记录中」的会话（此刻在干什么只有记录说、记录还没读完）：读完必说一次判出来的那一态（判不出 ⇒ 说不清）。
+    reading: HashSet<String>,
 }
 
 impl ReaderState {
@@ -1631,9 +1704,16 @@ impl ReaderState {
             pidfile_kind: "",
             book: std::sync::Arc::default(),
             launch: None,
+            skeletons: None,
             branches: HashMap::new(),
             typed: HashMap::new(),
             annotations: Default::default(),
+            pool: None,
+            priming: HashMap::new(),
+            next_prime: 0,
+            prime_bytes: 0,
+            added: HashMap::new(),
+            reading: HashSet::new(),
         }
     }
 }
@@ -1913,111 +1993,169 @@ fn scan_new_lines(
 /// 取更多只是多读几个字节，取更少（< 36）就可能只落在行尾那几个常见的 `"}` 上。
 /// ⚠ 买不到的（如实登记）：**长度一字不差**的原地改写（只改了已读过的几行里的同长字）⇒ 对得齐、后面照读，
 ///   那几行已经画出去的旧样子不会变（「看的，不是管的」）。
-pub const TAIL_PROBE: u64 = 64;
+pub const TAIL_PROBE: u64 = crate::observe::skeleton::WITNESS;
 
 /// 一次续读前看到的那一份。
 enum Look {
     /// 盘上不在了（删了 / 改名走了）。
     Gone,
-    /// 在，但这一趟读不出来（权限 · 读到一半出错）—— 与从前一样静默跳过这一趟（至少一次语义，游标不动）。
+    /// 在，但这一趟开不了 / 核指纹那一下读不出（权限 · 出错）—— 静默跳过这一趟（游标不动）。读到一半出错的见 [`NewLines`]。
     Unreadable,
-    /// 读到了：`chunk` 覆盖 `[chunk_start, file_len)`；`from` 是这一趟该接着的游标（被改写 ⇒ 归零）；
-    /// `reread` = 这一趟要从 0 重读、以及为什么。
-    Read {
-        chunk: Vec<u8>,
-        chunk_start: u64,
-        file_len: u64,
-        from: ReadCursor,
-        reread: Option<RereadWhy>,
-    },
+    /// 看过了、停在起读处：按块读到尾（[`NewLines`]）。
+    Read(NewLines),
 }
 
-/// 只读新字节：从游标处 `seek` 到 EOF〔audit-0805 F04 第 2 步〕。
+/// 只读新字节〔audit-0805 F04〕＋先认出「不在了 / 被截短 / 被原地改写」三形，**读之前**就判定，交回停在起读处的块读者
+/// （[`NewLines`]，按块读到尾，不把那一截一次读进内存）。
 ///
-/// 返回 [`Look`]：读到的那一形里 `(chunk, chunk_start, file_len)` 直接喂 [`read_new_lines_at`]（配 `from`）。
-///
-/// # 两件必须想清楚的事
-///
-/// 1. **截断时退回整读。** `read_new_lines_at` 的断言②要求判定为截断时 `chunk_start == 0`，
-///    因为截断的语义就是「从头重来、重发 seq」。这里先用 `metadata` 的长度判一次。
-/// 2. ★ **`file_len` 用「真读到多少」算，不用 `metadata` 那个数。**
-///    `metadata()` 与 `read_to_end()` 之间文件还在被 CC 追加 —— 拿元数据那个长度当 `file_len`
-///    会让断言①（chunk 必须覆盖到 EOF）在**完全正常的并发追加**下炸。
-///    改用 `start + chunk.len()`：多读到的字节这一轮就一起处理掉，天然自洽。
-///    ⚠ 反过来（读的时候文件缩了）也自洽：`file_len` 变小 ⇒ 下一次事件 `file_len < seen_len`
-///    ⇒ 判截断 ⇒ 整读重来。**两个方向都不需要额外分支。**
-///
-/// 只读新字节（F04）＋先认出「不在了 / 被截短 / 被原地改写」三形。
-///
-/// - 截短：`metadata` 的长度 < 高水位 ⇒ 整读、`reread = Truncated`（`scan_new_lines` 自己也会判出截断、从 0 起）。
-/// - 续读：从 `consumed − k` 读起（`k = min(TAIL_PROBE, consumed)`），多读的那 `k` 字节与 `tail`（上一趟记下的）逐字节比；
-///   对不上 ⇒ 整读、游标归零、`reread = Rewritten`。`tail` 为 `None`（第一次读 / 刚丢过游标）⇒ 不核。
-/// - ★ `file_len` 用「真读到多少」算（理由见原注：`metadata` 与读之间文件还在长）。
+/// - 截短：`metadata` 的长度 < 高水位 ⇒ 从 0 读、`reread = Truncated`、行号从 0 数。
+/// - 续读：先读游标前 `k = min(TAIL_PROBE, consumed)` 字节与 `tail`（上一趟记下的）逐字节比；对不上 ⇒ 从 0 读、游标归零、
+///   `reread = Rewritten`。`tail` 为 `None`（第一次读 / 刚丢过游标）⇒ 不核。
+/// - ★ 这一趟看到的文件长度用「真读到多少」算（`metadata` 与读之间文件还在长；多读到的字节这一趟一起处理掉），见 [`NewLines::finish`]。
 fn read_tail_from(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>) -> Look {
+    read_tail_in_blocks(path, cursor, tail, crate::observe::fs::READ_BLOCK)
+}
+
+/// [`read_tail_from`] 的本体（块多大是参数：判据拿小块验「按块扫 == 一整块扫」）。
+fn read_tail_in_blocks(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>, block: usize) -> Look {
     use std::io::{Read, Seek, SeekFrom};
     let meta_len = match Ro::metadata(path) {
         Ok(m) => m.len(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Look::Gone,
         Err(_) => return Look::Unreadable,
     };
-    let read_from = |start: u64| -> Option<(Vec<u8>, u64, u64)> {
-        let mut f = Ro::open(path).ok()?;
-        if start > 0 {
-            f.seek(SeekFrom::Start(start)).ok()?;
-        }
-        let mut chunk = Vec::new();
-        f.read_to_end(&mut chunk).ok()?;
-        let file_len = start + chunk.len() as u64;
-        Some((chunk, start, file_len))
+    let Ok(mut f) = Ro::open(path) else {
+        return Look::Unreadable;
     };
-    let whole = |why: RereadWhy| match read_from(0) {
-        Some((chunk, chunk_start, file_len)) => Look::Read {
-            chunk,
-            chunk_start,
-            file_len,
-            from: ReadCursor::default(),
-            reread: Some(why),
-        },
-        None => Look::Unreadable,
+    let from_zero = |f: RoFile, from: ReadCursor, why: RereadWhy| {
+        Look::Read(NewLines::new(f, block, 0, Vec::new(), from, Some(why)))
     };
     if meta_len < cursor.seen_len {
-        // 截短：游标原样交给扫描（它按高水位判截断、从 0 起、seq 照旧往上）。
-        return match read_from(0) {
-            Some((chunk, chunk_start, file_len)) => Look::Read {
-                chunk,
-                chunk_start,
-                file_len,
-                from: cursor,
-                reread: Some(RereadWhy::Truncated),
-            },
-            None => Look::Unreadable,
-        };
+        // 截短：从 0 起、行号从 0 数（读的那一下文件又长回去了也照样从 0：这一趟已经判定）。
+        if meta_len > 0 {
+            tracing::warn!(
+                "jsonl truncated (len {meta_len} < seen_len {}), full re-read with new seqs: {}",
+                cursor.seen_len,
+                path.display()
+            );
+        }
+        return from_zero(f, cursor, RereadWhy::Truncated);
     }
     let consumed = cursor.consumed.min(meta_len);
     let k = TAIL_PROBE.min(consumed);
-    let Some((chunk, chunk_start, file_len)) = read_from(consumed - k) else {
+    let mut probe = vec![0u8; k as usize];
+    // 读不满（读的那一下文件缩了）也算读不出：下一趟按 `metadata` 长度判截短。
+    let read = f
+        .seek(SeekFrom::Start(consumed - k))
+        .and_then(|_| f.read_exact(&mut probe));
+    if read.is_err() {
         return Look::Unreadable;
-    };
-    if let Some(t) = tail {
-        if chunk.get(..k as usize) != Some(t) {
-            return whole(RereadWhy::Rewritten);
-        }
     }
-    Look::Read {
-        chunk,
-        chunk_start,
-        file_len,
-        from: cursor,
-        reread: None,
+    if tail.is_some_and(|t| t != probe.as_slice()) {
+        return match f.seek(SeekFrom::Start(0)) {
+            Ok(_) => from_zero(f, ReadCursor::default(), RereadWhy::Rewritten),
+            Err(_) => Look::Unreadable,
+        };
     }
+    if f.seek(SeekFrom::Start(cursor.consumed)).is_err() {
+        return Look::Unreadable;
+    }
+    Look::Read(NewLines::new(
+        f,
+        block,
+        cursor.consumed,
+        probe,
+        cursor,
+        None,
+    ))
 }
 
-/// 扫完之后记下新游标之前那 `TAIL_PROBE` 字节（下一趟续读前核它）。`chunk` 覆盖 `[chunk_start, ..)`。
-fn tail_of(chunk: &[u8], chunk_start: u64, consumed: u64) -> Vec<u8> {
-    let k = TAIL_PROBE.min(consumed);
-    let from = (consumed - k).saturating_sub(chunk_start) as usize;
-    let to = (consumed.saturating_sub(chunk_start) as usize).min(chunk.len());
-    chunk.get(from..to).map(<[u8]>::to_vec).unwrap_or_default()
+/// 一趟续读：从起读处按块读到尾，每块止于一个 `\n`，交给同一段扫描（[`read_new_lines_at`]）出行；
+/// 末尾没写完的那截不交（留给下一趟）。手里最多 ≈ 一块 ＋ 正在读的那一行。
+struct NewLines {
+    blocks: crate::observe::fs::Blocks<RoFile>,
+    /// 下一块在文件里的起点（起读处 ＋ 已交出的块）。
+    at: u64,
+    /// 起读处。
+    start: u64,
+    /// 这一趟接着的游标（被改写 ⇒ 归零）。
+    from: ReadCursor,
+    /// 这一趟要从 0 重读、以及为什么（读之前就判定了）。
+    reread: Option<RereadWhy>,
+    /// 新游标之前那 `TAIL_PROBE` 字节（滚动着记；起读处之前那几字节打底）。
+    tail: Vec<u8>,
+    /// 读到一半出错了：这一趟停在已交出的最后一块之后。
+    broke: bool,
+}
+
+impl NewLines {
+    fn new(
+        f: RoFile,
+        block: usize,
+        start: u64,
+        tail: Vec<u8>,
+        from: ReadCursor,
+        reread: Option<RereadWhy>,
+    ) -> Self {
+        Self {
+            blocks: crate::observe::fs::Blocks::new(f, block),
+            at: start,
+            start,
+            from,
+            reread,
+            tail,
+            broke: false,
+        }
+    }
+
+    /// 下一块里的行（号从 `seqs` 接着发）；读到尾 / 读出错 ⇒ `None`。
+    fn next(&mut self, key: &str, seqs: &mut SeqCounter) -> Option<Vec<ReadLine>> {
+        let whole = match self.blocks.next() {
+            Ok(Some(b)) => b,
+            Ok(None) => return None,
+            Err(_) => {
+                self.broke = true;
+                return None;
+            }
+        };
+        let at = self.at;
+        let end = at + whole.len() as u64;
+        // 每块当一段「读到这里为止」的完整区扫：起点就是这块的起点、没有高水位 ⇒ 号 · 字节位与整段扫的逐个相同。
+        let here = ReadCursor {
+            consumed: at,
+            seen_len: 0,
+        };
+        let (lines, _) = read_new_lines_at(&whole, at, end, here, key, seqs);
+        let keep = TAIL_PROBE as usize;
+        if whole.len() >= keep {
+            self.tail.clear();
+            self.tail.extend_from_slice(&whole[whole.len() - keep..]);
+        } else {
+            self.tail.extend_from_slice(&whole);
+            let over = self.tail.len().saturating_sub(keep);
+            self.tail.drain(..over);
+        }
+        self.at = end;
+        Some(lines)
+    }
+
+    /// 读完：（新游标, 新游标之前那几个指纹字节）。`seen_len` ＝ 这一趟真读到的长度；比旧的高水位还短（读的那一下文件缩了 ·
+    /// 读到一半出错）而这一趟不是从 0 读的 ⇒ 留旧的高水位：下一趟按截短从 0 重读并出声。
+    fn finish(self) -> (ReadCursor, Vec<u8>) {
+        let seen = self.start + self.blocks.read();
+        let seen_len = if (seen < self.from.seen_len || self.broke) && self.reread.is_none() {
+            seen.max(self.from.seen_len)
+        } else {
+            seen
+        };
+        (
+            ReadCursor {
+                consumed: self.at,
+                seen_len,
+            },
+            self.tail,
+        )
+    }
 }
 
 /// 跟着一份记录往下读（一次性等待用）：与续读同一套读法 —— 只读新字节 · 截短 / 改写从 0 重读 · 残行等 `\n` · 不在了丢游标。
@@ -2051,18 +2189,13 @@ impl Follow {
                 Vec::new()
             }
             Look::Unreadable => Vec::new(),
-            Look::Read {
-                chunk,
-                chunk_start,
-                file_len,
-                from,
-                ..
-            } => {
-                let (lines, next) =
-                    read_new_lines_at(&chunk, chunk_start, file_len, from, "", &mut self.seqs);
-                self.tail = tail_of(&chunk, chunk_start, next.consumed);
-                self.cursor = next;
-                lines.into_iter().map(|l| l.raw).collect()
+            Look::Read(mut new) => {
+                let mut out = Vec::new();
+                while let Some(lines) = new.next("", &mut self.seqs) {
+                    out.extend(lines.into_iter().map(|l| l.raw));
+                }
+                (self.cursor, self.tail) = new.finish();
+                out
             }
         }
     }
@@ -2086,40 +2219,37 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     if !state.active_sids.contains(&session_id) {
         return 0;
     }
+    // 预读还没交回：游标在那一趟手里，这一截等它交回时接着读（[`primed`]）⇒ 先宣告、读完之前一行都不出。
+    if state.priming.contains_key(&session_id) {
+        return 0;
+    }
     let key = path_key(path);
     let key_str = key.to_string_lossy().into_owned();
     let prev_cursor = state.offsets.get(&key).copied().unwrap_or_default();
     let path_str = path.to_string_lossy().into_owned();
-    // F04：只读新字节（截断 / 改写时 `read_tail_from` 自己退回整读）。此前是 `fs::read` 整读 ——
-    // 257 MB 会话的每一次文件事件都要把整份读进内存，只为提取约 500 字节的新行。
+    // F04：只读新字节（截断 / 改写时 `read_tail_from` 判成从 0 读）；d：按块读、一块一块地出行，不把那一截一次读进内存。
     // 活会话的 jsonl 是「看的，不是管的」（之后文件管理器改得动它）：
     //   不在了 ⇒ 出声一次、丢游标（同名再出现从 0 读）；截短 / 原地改写 ⇒ 从 0 重读并出声。都不碰判活。
-    let (chunk, chunk_start, file_len, from, reread) =
-        match read_tail_from(path, prev_cursor, state.tails.get(&key).map(Vec::as_slice)) {
-            Look::Gone => {
-                forget_cursor(state, &key);
-                if state.gone.insert(key) {
-                    sink.send(Frame::SessionFileGone {
-                        session_id,
-                        path: path_str,
-                    });
-                }
-                return 0;
+    let mut new = match read_tail_from(path, prev_cursor, state.tails.get(&key).map(Vec::as_slice))
+    {
+        Look::Gone => {
+            forget_cursor(state, &key);
+            if state.gone.insert(key) {
+                sink.send(Frame::SessionFileGone {
+                    session_id,
+                    path: path_str,
+                });
             }
-            Look::Unreadable => return 0,
-            Look::Read {
-                chunk,
-                chunk_start,
-                file_len,
-                from,
-                reread,
-            } => (chunk, chunk_start, file_len, from, reread),
-        };
+            return 0;
+        }
+        Look::Unreadable => return 0,
+        Look::Read(new) => new,
+    };
     // 这一趟要从 0 重读 ⇒ 行号从 0 重数（seq ＝ 当前文件里的行号），出声那一帧排在重读的行之前。
-    //   三种来路：`read_tail_from` 认出的截短 / 改写 · 读的那一下文件又缩了（扫描自己按高水位判截断）· 删了之后同名又长出来。
+    //   来路：`read_tail_from` 认出的截短 / 改写 · 删了之后同名又长出来（读的那一下文件又缩了的，下一趟按截短办，见 [`NewLines::finish`]）。
     let reappeared = state.gone.remove(&key);
-    let reread = reread
-        .or_else(|| (file_len < from.seen_len).then_some(RereadWhy::Truncated))
+    let reread = new
+        .reread
         .or_else(|| reappeared.then_some(RereadWhy::Rewritten));
     if reread.is_some() {
         state.seqs.restart(&key_str);
@@ -2130,19 +2260,6 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
             .branches
             .remove(&key)
             .is_some_and(|c| !c.off().is_empty());
-    let (lines, new_cursor) = read_new_lines_at(
-        &chunk,
-        chunk_start,
-        file_len,
-        from,
-        &key_str,
-        &mut state.seqs,
-    );
-    state.tails.insert(
-        key.clone(),
-        tail_of(&chunk, chunk_start, new_cursor.consumed),
-    );
-    state.offsets.insert(key, new_cursor);
     if let Some(why) = reread {
         sink.send(Frame::SessionFileReread {
             session_id: session_id.clone(),
@@ -2150,13 +2267,18 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
             why,
         });
     }
-    let n = lines.len();
+    let mut n = 0;
     let mut runs_changed = adopt_runs(state, &session_id, path);
-    for line in lines {
-        let (r, b) = send_line(&session_id, &path_str, line, state, sink);
-        runs_changed |= r;
-        branch_changed |= b;
+    while let Some(lines) = new.next(&key_str, &mut state.seqs) {
+        n += lines.len();
+        for line in lines {
+            runs_changed |= send_line(&session_id, &path_str, line, state, sink);
+        }
     }
+    let (new_cursor, tail) = new.finish();
+    state.tails.insert(key.clone(), tail);
+    state.offsets.insert(key, new_cursor);
+    branch_changed |= settle_chain(state, path);
     if runs_changed {
         sink.send(state.runs_frame(&session_id));
     }
@@ -2180,21 +2302,30 @@ fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
 /// 不在看的那段时间里它们变了也没上流），并回它的每份记录从第几行起上流 —— 号取游标此刻的值：之前读过的那些没上流，
 /// 之后读到的（含已落盘、还没读到的）都上流 ⇒ 客户端按骨架补 `[0, seq)`、接实时 `[seq, …)`，不重复也不漏。
 /// 在看的会话照读照数（行号与运行表、链索引都照常推进），只是那几种帧不上这条流（拦在 [`FrameSink::send`]）。
+/// 名单是按连接的（`sub` ＝ 那条连接的号）：补发的帧只给它。预读还没交回的会话不补（读完那一帧之后照名单发）、也不回续点（它的续点由 `session_primed` 给）。
 fn watch_sessions(
+    sub: u64,
     sids: Vec<String>,
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) -> Vec<crate::stream::wire::WatchFrom> {
     let next: HashSet<String> = sids.into_iter().collect();
-    let fresh: Vec<String> = match &sink.watching {
+    let Some(me) = sink.subs.iter_mut().find(|s| s.id == sub) else {
+        return Vec::new();
+    };
+    let fresh: Vec<String> = match &me.watching {
         None => Vec::new(),
         Some(old) => {
-            let mut v: Vec<String> = next.difference(old).cloned().collect();
+            let mut v: Vec<String> = next
+                .difference(old)
+                .filter(|s| !state.priming.contains_key(*s))
+                .cloned()
+                .collect();
             v.sort_unstable();
             v
         }
     };
-    sink.watching = Some(next);
+    me.watching = Some(next);
     let mut from = Vec::new();
     for sid in fresh {
         let mut mine: Vec<PathBuf> = state
@@ -2204,9 +2335,9 @@ fn watch_sessions(
             .cloned()
             .collect();
         mine.sort();
-        sink.send(state.runs_frame(&sid));
+        sink.send_to(sub, state.runs_frame(&sid));
         for p in &mine {
-            sink.send(branch_frame(state, &sid, p));
+            sink.send_to(sub, branch_frame(state, &sid, p));
             from.push(crate::stream::wire::WatchFrom {
                 sid: sid.clone(),
                 path: p.to_string_lossy().into_owned(),
@@ -2215,6 +2346,87 @@ fn watch_sessions(
         }
     }
     from
+}
+
+/// 一条流连接接上来了：先给它一份这台此刻的样子，之后它与别的连接一样收每一帧。
+///
+/// 那一份 ＝ 每个活会话一帧 `session_added`（宣告那一帧，此刻的活动 · 名字 · 在等什么 · 记录路径换成现值）·
+/// 已读完的再一帧 `session_primed`（`lines` ＝ 此刻已计完的行数：之后的行从这里接）· 有子运行的运行表 · 有主线外的清单 ·
+/// 会话账本的那一份（可重连的 · 清单报完了没有）。**不重读记录**：预读整台只做一次（read8a ＋ §5.2 a）。
+fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
+    let id = sub.id;
+    sink.subs.push(sub);
+    let mut sids: Vec<String> = state.active_sids.iter().cloned().collect();
+    sids.sort_unstable();
+    for sid in sids {
+        let Some(mut added) = state.added.get(&sid).cloned() else {
+            continue;
+        };
+        let entry = state.sessions.values().find(|e| e.sid == sid);
+        if let (
+            Frame::SessionAdded {
+                face,
+                name_face,
+                waiting_for,
+                path,
+                ..
+            },
+            Some(e),
+        ) = (&mut added, entry)
+        {
+            *face = if state.reading.contains(&sid) {
+                crate::stream::wire::ActivityFace::reading()
+            } else {
+                crate::stream::wire::ActivityFace::of(e.activity)
+            };
+            *name_face = crate::stream::wire::NameFace::of(&e.facts);
+            waiting_for.clone_from(&e.waiting_for);
+            if e.path.is_some() {
+                path.clone_from(&e.path);
+            }
+        }
+        let path = match &added {
+            Frame::SessionAdded { path, .. } => path.clone(),
+            _ => None,
+        };
+        sink.send_to(id, added);
+        if state.priming.contains_key(&sid) {
+            continue;
+        }
+        sink.send_to(
+            id,
+            Frame::SessionPrimed {
+                sid: sid.clone(),
+                lines: path
+                    .as_ref()
+                    .map(|p| state.seqs.peek(&path_key(Path::new(p)).to_string_lossy())),
+                path,
+            },
+        );
+        if state.book.has_runs(&sid) {
+            sink.send_to(id, state.runs_frame(&sid));
+        }
+        let mut mine: Vec<PathBuf> = state
+            .offsets
+            .keys()
+            .filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str()))
+            .cloned()
+            .collect();
+        mine.sort();
+        for p in &mine {
+            if state.branches.get(p).is_some_and(|c| !c.off().is_empty()) {
+                sink.send_to(id, branch_frame(state, &sid, p));
+            }
+        }
+    }
+    for f in sink
+        .ledger
+        .as_ref()
+        .map(|l| l.snapshot())
+        .unwrap_or_default()
+    {
+        sink.send_to(id, f);
+    }
 }
 
 /// 这份记录此刻的主线外清单那一帧（整份）。
@@ -2230,16 +2442,24 @@ fn branch_frame(state: &ReaderState, sid: &str, path: &Path) -> Frame {
     }
 }
 
-/// 一行喂进这份记录的链索引（这一家有链才喂）；回：主线外清单变没变。
-fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) -> bool {
+/// 一行记进这份记录的链索引（这一家有链才记）；不算 —— 这一趟读的行都记完了由 [`settle_chain`] 算一次。
+fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) {
     let Some(fact) = state
         .root_of(path)
         .and_then(|i| state.roots[i].face.chain)
         .and_then(|c| c(raw))
     else {
-        return false;
+        return;
     };
-    state.branches.entry(path_key(path)).or_default().push(fact)
+    state.branches.entry(path_key(path)).or_default().load(fact);
+}
+
+/// 这份记录的链索引把记下的一次算掉；回：主线外清单变没变。一趟读进多少行都只算这一次（逐行算是平方：hot1）。
+fn settle_chain(state: &mut ReaderState, path: &Path) -> bool {
+    state
+        .branches
+        .get_mut(&path_key(path))
+        .is_some_and(crate::agents::mainline::Chain::settle)
 }
 
 /// 这条会话的记录路径定下来了 / 换了一份（读到的这一行不在客户端手里那份上）⇒ 记下，发一帧 `session_status` 带上它（活动那几格照记着的带全）。
@@ -2266,15 +2486,15 @@ fn note_path(session_id: &str, path_str: &str, state: &mut ReaderState, sink: &m
 /// 一行交出去：`Line` 帧，是轮次结束就紧跟一帧 `TurnEnd`。增量读与写端死后收尾（[`catch_up_session`]）共用这一份。
 ///
 /// 这一行在渲染模型里是什么、是不是一轮的结束，都问注册表里流式那一家的记录解释面（`agents::record_face`）；
-/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿，链事实记进链索引（回：运行表变没变 · 主线外清单变没变）。
+/// 本函数只搬。解析不出 ⇒ 帧照发（占号）、不带成品。对账键与派出链接记进运行簿，链事实记进链索引（不算：调用方读完这一趟再 `settle_chain`）。回：运行表变没变。
 fn send_line(
     session_id: &str,
     path_str: &str,
     line: ReadLine,
     state: &mut ReaderState,
     sink: &mut FrameSink,
-) -> (bool, bool) {
-    let branch_changed = feed_chain(state, Path::new(path_str), &line.raw);
+) -> bool {
+    feed_chain(state, Path::new(path_str), &line.raw);
     let root = state.root_of(Path::new(path_str));
     let face = root.map(|i| state.roots[i].face);
     let translated = face.and_then(|f| (f.parse)(&line.raw, line.start).ok().flatten());
@@ -2333,7 +2553,7 @@ fn send_line(
     if let Some(a) = activity {
         note_activity(session_id, a, state, sink);
     }
-    (rec.changed, branch_changed)
+    rec.changed
 }
 
 /// 记录说这条会话此刻进到 `a` 这一态 ⇒ 记账；真变了 ⇒ 一帧 `session_status`（带全，与进程状态文件那一路同一形）。
@@ -2420,19 +2640,23 @@ fn catch_up_session(
 
 /// [`catch_up_session`] 的收尾那一半：`[consumed, EOF)` 是一整个 JSON 对象 ⇒ 交出去（号 = 计数器现值，不推进）。
 fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut FrameSink) {
-    use std::io::{Read, Seek, SeekFrom};
+    use std::io::{Seek, SeekFrom};
     let key = path_key(path);
     let Some(cursor) = state.offsets.get(&key).copied() else {
         return;
     };
-    let mut rest = Vec::new();
-    let read = Ro::open(path).and_then(|mut f| {
-        f.seek(SeekFrom::Start(cursor.consumed))?;
-        f.read_to_end(&mut rest)
-    });
-    if read.is_err() || rest.contains(&b'\n') {
+    // 按块读：读出一整块（有 `\n`）就不往下读了 —— 只剩一截半行时才真读到尾。
+    let Ok(mut f) = Ro::open(path) else {
+        return;
+    };
+    if f.seek(SeekFrom::Start(cursor.consumed)).is_err() {
+        return;
+    }
+    let mut blocks = crate::observe::fs::Blocks::new(f, crate::observe::fs::READ_BLOCK);
+    if !matches!(blocks.next(), Ok(None)) {
         return; // 读不动 / 还有完整行没消费（补读那一步没读动）⇒ 不猜
     }
+    let rest = blocks.rest();
     let text = String::from_utf8_lossy(&rest);
     let raw = text.trim_start_matches('\u{feff}').trim_end_matches('\r');
     if !raw.trim_start().starts_with('{')
@@ -2447,7 +2671,8 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         byte_offset: cursor.consumed + rest.len() as u64,
         start: cursor.consumed,
     };
-    let (runs_changed, branch_changed) = send_line(sid, &path.to_string_lossy(), line, state, sink);
+    let runs_changed = send_line(sid, &path.to_string_lossy(), line, state, sink);
+    let branch_changed = settle_chain(state, path);
     if runs_changed {
         sink.send(state.runs_frame(sid));
     }
@@ -2692,21 +2917,19 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         .first()
         .and_then(|p| crate::agents::project_dir_of(p))
         .or_else(|| a.cwd.clone());
-    // 叫它什么：同一个 sid 已经记着 ⇒ 接着用那一份（第二份 pidfile 不重扫）；否则记录里的标题 · 第一句走清单缓存（与历史清单同一份扫描），注解并上。
-    let facts = state
+    // 叫它什么：同一个 sid 已经记着 ⇒ 接着用那一份（第二份 pidfile 不重扫）；否则此刻只有项目目录与注解 ——
+    // 记录里的标题 · 第一句（清单缓存冷时要整份扫）交给后台预读那一趟一起做，做完名字变了再发一帧 `session_status`。
+    let known = state
         .sessions
         .values()
         .find(|e| e.sid == sid)
-        .map(|e| e.facts.clone())
-        .unwrap_or_else(|| {
-            let mut f = jsonls
-                .first()
-                .map(|p| super::history_query::label_facts_of(p))
-                .unwrap_or_default();
-            f.project_dir = f.project_dir.or_else(|| project_dir.clone());
-            f.custom = state.custom_title(&sid);
-            f
-        });
+        .map(|e| e.facts.clone());
+    let fresh_name = known.is_none();
+    let facts = known.unwrap_or_else(|| super::search_rules::LabelFacts {
+        project_dir: project_dir.clone(),
+        custom: state.custom_title(&sid),
+        ..Default::default()
+    });
     let name_face = crate::stream::wire::NameFace::of(&facts);
     state.sessions.insert(
         key,
@@ -2736,24 +2959,18 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     if announced {
         return wrote;
     }
-    // 历史不重放：先 prime（推进 cursor/seq 到当前完整行数 L，零行帧）—— 帧带 first 文件的 L 供客户端核快照拉全了没有，
-    // 之后的新行 seq 从 L 起；`[0, L)` 由客户端经骨架 / 尾段补。
-    let mut first_lines: Option<u64> = None;
-    // 那一家没有进程状态文件说此刻在干什么 ⇒ 当前那份记录里最后一件说了的事（适配层 `RecordFace.activity` 翻）。
-    let mut activity = a.activity;
-    for (i, p) in jsonls.iter().enumerate() {
-        let (n, said) = prime_file_cursor(p, state);
-        if i == 0 {
-            first_lines = Some(n);
-            activity = activity.or(said);
-        }
+    // **先宣告、后读**（read8a）：认出来就报，不等记录。记录交后台预读（推进游标 / 行号到此刻的完整行数 L，零行帧），
+    // 读完发 `session_primed` 带 L —— 之后的新行 seq 从 L 起；`[0, L)` 由客户端经骨架 / 尾段补。读完之前这条会话的行帧一帧不出。
+    // 此刻在干什么只有记录说（这一家没有进程状态文件）、而记录还没读 ⇒ 照实说「读记录中」，读完再说判出来的那一态（[`primed`]）。
+    let reading = a.activity.is_none()
+        && jsonls
+            .first()
+            .and_then(|p| state.root_of(p))
+            .is_some_and(|i| state.roots[i].face.activity.is_some());
+    if reading {
+        state.reading.insert(sid.clone());
     }
-    if activity != a.activity {
-        if let Some(e) = state.sessions.get_mut(&key_for_watch) {
-            e.activity = activity;
-        }
-    }
-    sink.send(Frame::SessionAdded {
+    let added = Frame::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
         background: a.background,
@@ -2762,34 +2979,102 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         project_dir,
         name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
-        lines: first_lines,
-        face: crate::stream::wire::ActivityFace::of(activity),
+        face: if reading {
+            crate::stream::wire::ActivityFace::reading()
+        } else {
+            crate::stream::wire::ActivityFace::of(a.activity)
+        },
         name_face,
         waiting_for: a.waiting_for,
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
         container,
         // pid 与 verdict 核过的是同一个进程（见 `wire::Frame::SessionAdded::pid`）。
         pid,
-    });
-    // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
-    let mut runs_changed = false;
-    for p in &jsonls {
-        runs_changed |= adopt_runs(state, &sid, p);
-    }
-    if runs_changed || state.book.has_runs(&sid) {
-        sink.send(state.runs_frame(&sid));
-    }
-    // 冷接（只推游标）时历史里已经有主线外的 ⇒ 宣告之后整份发一次（之后变了才发）。
-    for p in &jsonls {
-        if state
-            .branches
-            .get(&path_key(p))
-            .is_some_and(|c| !c.off().is_empty())
-        {
-            sink.send(branch_frame(state, &sid, p));
+    };
+    state.added.insert(sid.clone(), added.clone());
+    sink.send(added);
+    start_prime(&sid, &jsonls, fresh_name, state, sink);
+    wrote
+}
+
+/// 给一条刚宣告的会话起一趟预读：记下代号、这条会话的内容帧从此刻拦下（[`FrameSink::send`]），交线程池（夹具没有池 ⇒ 就地跑、就地装回）。
+/// 这几份记录的游标 · 指纹 · 链索引交给那一趟带走，读完连同新的一起交回 ⇒ 读的过程中本线程不碰它们（它们的文件事件也不读，[`process_jsonl`]）。
+fn start_prime(
+    sid: &str,
+    jsonls: &[PathBuf],
+    fresh_name: bool,
+    state: &mut ReaderState,
+    sink: &mut FrameSink,
+) {
+    state.next_prime += 1;
+    let gen = state.next_prime;
+    state.priming.insert(sid.to_string(), gen);
+    sink.priming.insert(sid.to_string());
+    let files = jsonls
+        .iter()
+        .map(|p| {
+            let key = path_key(p);
+            let key_str = key.to_string_lossy().into_owned();
+            FilePrime {
+                path: p.clone(),
+                prev: state.offsets.get(&key).copied().unwrap_or_default(),
+                tail: state.tails.get(&key).cloned(),
+                seq: state.seqs.peek(&key_str),
+                chain: state.branches.remove(&key),
+                face: state.root_of(p).map(|i| state.roots[i].face),
+                runs: state.root_of(p).map(|i| {
+                    crate::observe::runs::RunTrack::new(
+                        state.roots[i].runs.faces,
+                        state.book.clone(),
+                    )
+                }),
+                skel: state.skeletons.clone(),
+                key,
+            }
+        })
+        .collect();
+    let job = PrimeJob {
+        sid: sid.to_string(),
+        gen,
+        files,
+        label: fresh_name.then(|| jsonls.first().cloned()).flatten(),
+    };
+    match state.pool.as_mut() {
+        Some(pool) => {
+            pool.queue.push_back(job);
+            dispatch_primes(state, sink);
+        }
+        None => {
+            let (done, later) = run_prime(job);
+            primed(done, state, sink);
+            store_skeletons(later);
         }
     }
-    wrote
+}
+
+/// **先读正在看的**（read8a ②）：池子有空位就从排着的预读里挑下一份交出去 —— 有连接在看（`stream-watch` 名单里点了名）的先，
+/// 其余照排队的先后。挑在交出去那一刻（名单一变，下一个空位就按新名单挑）；已经在读的不撤。
+/// 排着的那一份对应的会话已退休 / 又被重新宣告（代号对不上）⇒ 扔掉（它带走的游标与链本来就作废了）。
+/// 名单是「点了名」才算：没报过名单的连接（＝ 全看）不把谁顶到前面。
+fn dispatch_primes(state: &mut ReaderState, sink: &FrameSink) {
+    let watched = |sid: &str| {
+        sink.subs
+            .iter()
+            .any(|s| s.watching.as_ref().is_some_and(|w| w.contains(sid)))
+    };
+    let Some(pool) = state.pool.as_mut() else {
+        return;
+    };
+    pool.queue
+        .retain(|j| state.priming.get(&j.sid) == Some(&j.gen));
+    while pool.in_flight < pool.pool.size() {
+        let at = pool.queue.iter().position(|j| watched(&j.sid)).unwrap_or(0);
+        let Some(job) = pool.queue.remove(at) else {
+            break;
+        };
+        pool.in_flight += 1;
+        pool.pool.submit(job);
+    }
 }
 
 // ============ 「开着即活」那一路：没有 pidfile 的那几家 ============
@@ -3109,6 +3394,11 @@ fn retire_sid_if_unreferenced(
     }
     catch_up_session(sid, true, state, sink); // 写端已死：补读 ＋ 收尾残行（D 块）
     state.active_sids.remove(sid);
+    state.added.remove(sid);
+    state.reading.remove(sid);
+    // 预读还在跑 ⇒ 那一趟交回时认不上、丢掉（[`primed`]）。
+    state.priming.remove(sid);
+    sink.priming.remove(sid);
     if let Some(f) = state.retire_runs(sid) {
         sink.send(f);
     }
@@ -3191,84 +3481,286 @@ fn note_jsonl(state: &mut ReaderState, p: &Path) {
     }
 }
 
-/// Batch8-F25：初扫/宣告路径——把 cursor 与 seq 计数器推进到当前
+/// 一份记录的预读那一份（[`start_prime`] 从本线程的账上取下来、交给线程池带走）：起点是此刻记着的游标 · 指纹 · 行号 · 链索引。
+pub(crate) struct FilePrime {
+    path: PathBuf,
+    key: PathBuf,
+    prev: ReadCursor,
+    tail: Option<Vec<u8>>,
+    /// 行号计数器此刻的值（这一趟从 0 起 ⇒ 不用它，从 0 数）。
+    seq: u64,
+    /// 这份记录此刻的链索引（这一趟从 0 起 ⇒ 扔掉、从头记）。
+    chain: Option<crate::agents::mainline::Chain>,
+    /// 那一家的记录解释面（链事实 · 活动 · 子运行归属问它）。
+    face: Option<crate::agents::RecordFace>,
+    /// 子运行补记那一半（只用它的运行面与整台那本运行簿，[`crate::observe::runs::RunTrack::prime`]）。
+    runs: Option<crate::observe::runs::RunTrack>,
+    /// 骨架的家（进程里还没有这份的游标时从它接着读、读完落一份；`None` ⇒ 不读不落）。
+    skel: Option<crate::observe::skeleton::Skeletons>,
+}
+
+/// 预读那一路落的骨架（[`crate::observe::skeleton`]）：读到哪了 · 行号 · 链索引 · 说到子运行的那几行原文 · 最后一件说了的活动。
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PrimeSkel {
+    mark: crate::observe::skeleton::Mark,
+    seq: u64,
+    #[serde(with = "crate::agents::mainline::skel")]
+    chain: crate::agents::mainline::Chain,
+    runs: Vec<String>,
+    activity: Option<crate::agents::SessionActivity>,
+}
+
+/// 骨架里这一样叫什么（与冷开扫描图那一份分开两个文件）。
+const PRIME_SKEL: &str = "prime";
+
+/// 一条会话的预读任务：会话里的几份记录照顺序读（新的在前，同 `session_added.path` 那一格的取法）。
+pub(crate) struct PrimeJob {
+    sid: String,
+    gen: u64,
+    files: Vec<FilePrime>,
+    /// 要不要顺手取名字那几样（这条会话头一次宣告 ⇒ 第一份记录的标题 · 第一句，走历史清单缓存）。
+    label: Option<PathBuf>,
+}
+
+/// 一份记录预读完交回的：读到了 ⇒ 新游标 · 指纹 · 行号 · 链索引；不在了 ⇒ `gone`；读不出 ⇒ 都没有（游标不装，下一趟再来）。
+pub(crate) struct FileDone {
+    key: PathBuf,
+    read: Option<FileRead>,
+    gone: bool,
+    /// 这一趟读了多少字节。
+    bytes: u64,
+}
+
+pub(crate) struct FileRead {
+    cursor: ReadCursor,
+    tail: Vec<u8>,
+    /// 读完时行号计数器该是的值（＝ 完整行数）。
+    seq: u64,
+    chain: Option<crate::agents::mainline::Chain>,
+    /// 这一趟从 0 起（排队打字时刻表跟着作废）。
+    from_zero: bool,
+}
+
+/// 一条会话预读完交回本线程的（[`primed`] 装回）。
+pub(crate) struct PrimeDone {
+    sid: String,
+    gen: u64,
+    files: Vec<FileDone>,
+    /// 第一份记录里最后一件说了「此刻在干什么」的事（这一家的记录说这件事才有）。
+    activity: Option<crate::agents::SessionActivity>,
+    /// 名字那几样（[`PrimeJob::label`] 要了才有）。
+    facts: Option<super::search_rules::LabelFacts>,
+}
+
+/// 读完要落的骨架（交回之后再落：几十 MB 的写不挡「读完了」那一帧）。
+struct SkelLater {
+    home: crate::observe::skeleton::Skeletons,
+    path: PathBuf,
+    body: PrimeSkel,
+}
+
+fn store_skeletons(later: Vec<SkelLater>) {
+    for l in later {
+        l.home.store(&l.path, PRIME_SKEL, &l.body);
+    }
+}
+
+/// 线程池里跑的那一趟（夹具没有池时就地跑同一个函数）：几份记录照顺序预读，再取名字。只读盘、不碰 watcher 的账。
+/// 另回读完要落的骨架（调用方先交回、再落）。
+fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<SkelLater>) {
+    let PrimeJob {
+        sid,
+        gen,
+        files,
+        label,
+    } = job;
+    let mut activity = None;
+    let mut out = Vec::with_capacity(files.len());
+    let mut later = Vec::new();
+    for (i, f) in files.into_iter().enumerate() {
+        let (done, said, skel) = prime_file_cursor(&sid, f);
+        if i == 0 {
+            activity = said;
+        }
+        out.push(done);
+        later.extend(skel);
+    }
+    let done = PrimeDone {
+        sid,
+        gen,
+        files: out,
+        activity,
+        facts: label.map(|p| super::history_query::label_facts_of(&p)),
+    };
+    (done, later)
+}
+
+/// Batch8-F25：宣告之后的预读——把 cursor 与 seq 计数器推进到当前
 /// **最后一个完整行**（F14 torn-line 语义：残行不计数、留给 tail 阶段），
 /// 不发任何行帧。之后 notify 到来的新行 seq == 此刻完整行数 L（行号语义），
 /// 与 monitor 快照侧的 0..L'-1 编号同处一个行号空间，重叠区被 (sid,seq)
-/// 去重精确吸收（-batch8 §2）。
+/// 去重精确吸收（-batch8 §2）。read8a 起它跑在线程池里：入参是从账上取下来的那一份，交回新的一份。
 fn prime_file_cursor(
-    path: &Path,
-    state: &mut ReaderState,
-) -> (u64, Option<crate::agents::SessionActivity>) {
-    let Some(session_id) = state.sid_of(path) else {
-        return (0, None);
-    };
-    let root = state.root_of(path);
-    let chain = root.and_then(|i| state.roots[i].face.chain);
-    let said_activity = root.and_then(|i| state.roots[i].face.activity);
-    if !state.active_sids.contains(&session_id) {
-        return (0, None);
-    }
-    let key = path_key(path);
+    session_id: &str,
+    job: FilePrime,
+) -> (
+    FileDone,
+    Option<crate::agents::SessionActivity>,
+    Option<SkelLater>,
+) {
+    let FilePrime {
+        path,
+        key,
+        mut prev,
+        tail: mut probe,
+        mut seq,
+        chain: prev_chain,
+        face,
+        runs,
+        skel,
+    } = job;
+    let chain = face.and_then(|f| f.chain);
+    let said_activity = face.and_then(|f| f.activity);
     let key_str = key.to_string_lossy().into_owned();
-    let prev = state.offsets.get(&key).copied().unwrap_or_default();
-    // 冷接时游标在 0、而主记录可能上百 MB ⇒ 按块读（[`PrimeReader`]），不攒整份 —— 要的只是行数与说到子运行的那几行。
-    // 「不在 ⇒ 丢游标 · 变短 / 改写 ⇒ 从 0 重数」与续读同一套；这里不出声：prime 发生在宣告之前，那句话由之后的 `process_jsonl` 说。
-    let mut reader = match PrimeReader::open(path, prev, state.tails.get(&key).map(Vec::as_slice)) {
-        Ok(r) => r,
-        Err(Look::Gone) => {
-            forget_cursor(state, &key);
-            return (0, None);
-        }
-        Err(_) => return (0, None),
+    let none = |key: PathBuf, gone: bool| FileDone {
+        key,
+        read: None,
+        gone,
+        bytes: 0,
     };
-    if reader.from == 0 && (prev.consumed > 0 || prev.seen_len > 0) {
-        state.seqs.restart(&key_str);
+    // 进程里还没有这份的游标（重启 · 头一次宣告）⇒ 盘上有骨架就照它：没变 ⇒ 不读；变长了 ⇒ 从骨架的游标接着读（先核见证）；
+    // 别的 ⇒ 整份。读完（大记录）落一份新的。
+    let fresh = prev == ReadCursor::default() && probe.is_none();
+    let home = skel.filter(|_| fresh);
+    let mut seeded: Option<PrimeSkel> = None;
+    if let Some(k) = home
+        .as_ref()
+        .and_then(|h| h.load::<PrimeSkel>(&path, PRIME_SKEL))
+    {
+        let meta = match Ro::metadata(&path) {
+            Ok(m) => m,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return (none(key, true), None, None)
+            }
+            Err(_) => return (none(key, false), None, None),
+        };
+        match k
+            .mark
+            .look(meta.len(), crate::observe::skeleton::mtime_of(&meta))
+        {
+            crate::observe::skeleton::Look::Same => {
+                if let Some(r) = runs.as_ref() {
+                    r.prime(session_id, &said_lines(&k.runs));
+                }
+                let read = FileRead {
+                    cursor: ReadCursor {
+                        consumed: k.mark.cursor,
+                        seen_len: k.mark.len,
+                    },
+                    tail: k.mark.witness,
+                    seq: k.seq,
+                    chain: chain.map(|_| k.chain),
+                    from_zero: false,
+                };
+                let done = FileDone {
+                    key,
+                    read: Some(read),
+                    gone: false,
+                    bytes: 0,
+                };
+                return (done, k.activity, None);
+            }
+            crate::observe::skeleton::Look::Grown => {
+                prev = ReadCursor {
+                    consumed: k.mark.cursor,
+                    seen_len: k.mark.len,
+                };
+                probe = Some(k.mark.witness.clone());
+                seeded = Some(k);
+            }
+            crate::observe::skeleton::Look::Changed => {}
+        }
     }
-    if reader.from == 0 {
-        state.branches.remove(&key);
-        state.typed.remove(&key);
-    }
+    // 冷接时游标在 0、而主记录可能上百 MB ⇒ 按块读（[`PrimeReader`]），不攒整份 —— 要的只是行数与说到子运行的那几行。
+    // 「不在 ⇒ 丢游标 · 变短 / 改写 ⇒ 从 0 重数」与续读同一套；这里不出声：那句话由之后的 `process_jsonl` 说。
+    let mut reader = match PrimeReader::open(&path, prev, probe.as_deref()) {
+        Ok(r) => r,
+        Err(Look::Gone) => return (none(key, true), None, None),
+        Err(_) => return (none(key, false), None, None),
+    };
+    let from_zero = reader.from == 0;
+    // 骨架的见证对不上 ⇒ 当没有骨架（整份）；对得上 ⇒ 行号 · 链 · 子运行那几行 · 活动接着骨架的。
+    let (mut said_runs, seed_activity, seed_chain) = match seeded.filter(|_| !from_zero) {
+        Some(k) => {
+            seq = k.seq;
+            if let Some(r) = runs.as_ref() {
+                r.prime(session_id, &said_lines(&k.runs));
+            }
+            (k.runs, k.activity, Some(k.chain))
+        }
+        None => (Vec::new(), None, None),
+    };
+    // 从 0 起 ⇒ 行号从 0 数、链从头记；否则接着此刻的计数与链。
+    let start = if from_zero && (prev.consumed > 0 || prev.seen_len > 0) {
+        0
+    } else {
+        seq
+    };
+    let mut c = if from_zero {
+        crate::agents::mainline::Chain::default()
+    } else {
+        seed_chain.or(prev_chain).unwrap_or_default()
+    };
+    let mut seqs = SeqCounter::new();
     let mut cursor = ReadCursor {
         consumed: reader.from,
         seen_len: reader.from,
     };
     let mut tail = std::mem::take(&mut reader.probe);
     let mut n_lines = 0;
-    // 这一趟读到的最后一件说了「此刻在干什么」的事（这一家的记录说这件事才问）。
-    let mut activity = None;
+    // 到这一趟读完为止最后一件说了「此刻在干什么」的事（这一家的记录说这件事才问；接着骨架读 ⇒ 起点是骨架记的那一件）。
+    let mut activity = seed_activity;
     while let Some(block) = reader.next_block() {
         let Ok(block) = block else {
-            // 读到一半出错：游标不动（至少一次语义，下一趟再来）。
-            return (state.seqs.peek(&key_str), activity);
+            // 读到一半出错：游标不装（至少一次语义，下一趟再来）；这一趟记的链一起扔掉。
+            return (none(key, false), None, None);
         };
-        // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行 · 推 seq），不会有残行。
+        // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行），不会有残行。
         let (n, next) = count_new_lines_at(
             &block,
             cursor.consumed,
             cursor.consumed + block.len() as u64,
             cursor,
             &key_str,
-            &mut state.seqs,
+            &mut seqs,
         );
         n_lines += n;
         cursor = next;
-        // 这一块里派出 / 收场过的子运行补进运行簿（宣告之后那一帧运行表带出去）。
-        if let Some(i) = root {
-            state.roots[i].runs.prime(&session_id, &block);
+        // 这一块里派出 / 收场过的子运行补进运行簿（读完之后那一帧运行表带出去）。
+        if let Some(r) = runs.as_ref() {
+            r.prime(session_id, &block);
+            // 要落骨架 ⇒ 过了预筛的那几行原文留着（读回来照样补进簿里）。
+            if home.is_some() {
+                said_runs.extend(
+                    block
+                        .split(|&b| b == b'\n')
+                        .filter_map(|l| std::str::from_utf8(l).ok())
+                        .filter(|t| r.hint(t))
+                        .map(str::to_string),
+                );
+            }
         }
-        // 链事实补进链索引（宣告之后那一帧主线外清单带出去）。
+        // 链事实补进链索引（读完之后那一帧主线外清单带出去）。
         if let Some(chain) = chain {
-            let c = state.branches.entry(key.clone()).or_default();
             for line in block.split(|&b| b == b'\n') {
                 if let Some(f) = std::str::from_utf8(line).ok().and_then(chain) {
-                    c.push(f);
+                    c.load(f);
                 }
             }
         }
         if let Some(said) = said_activity {
             // 子运行的记录不说主运行此刻在干什么（与续读那一路同一条：`send_line`）。
-            let run_of = root.and_then(|i| state.roots[i].face.run_of);
+            let run_of = face.and_then(|f| f.run_of);
             let main = |line: &str| {
                 run_of.is_none_or(|f| {
                     serde_json::from_str::<serde_json::Value>(line)
@@ -3290,17 +3782,223 @@ fn prime_file_cursor(
         let drop = tail.len().saturating_sub(TAIL_PROBE as usize);
         tail.drain(..drop);
     }
+    // 链事实整份记完才算一次（逐条算是平方：hot1）。
+    c.settle();
     cursor.seen_len = reader.len.max(cursor.consumed);
-    state.tails.insert(key.clone(), tail);
-    state.offsets.insert(key, cursor);
     tracing::debug!(
-        "primed {key_str}: cursor→{} (+{n_lines} lines suppressed, tail seq starts here)",
-        cursor.consumed
+        "primed {key_str}: cursor→{} (+{n_lines} lines suppressed, tail seq starts here; chain walked {})",
+        cursor.consumed,
+        c.walked()
     );
-    // Batch8 审计 D-I2：返回 prime 后的行号计数器现值（= 完整行总数 L），
-    // session_added 帧带给 monitor 做快照完整性校验（拉到的行数 < L = 快照
-    // 中途断/backend 报错——exit status 拿不到，行数校验更强）。另回这一趟读到的最后一件「此刻在干什么」。
-    (state.seqs.peek(&key_str), activity)
+    let bytes = reader.probed + (reader.len - reader.from);
+    let seq = start + n_lines as u64;
+    let mut later = None;
+    if let Some(h) = home.as_ref().filter(|h| h.wants(reader.len)) {
+        // 修改时刻只在读完时长度没再变才记（读的过程中又写进来 ⇒ 不记，下一次就不算「没变」）。
+        let mtime = Ro::metadata(&path)
+            .ok()
+            .filter(|m| m.len() == reader.len)
+            .and_then(|m| crate::observe::skeleton::mtime_of(&m));
+        later = Some(SkelLater {
+            home: h.clone(),
+            path: path.clone(),
+            body: PrimeSkel {
+                mark: crate::observe::skeleton::Mark {
+                    len: reader.len,
+                    mtime,
+                    cursor: cursor.consumed,
+                    witness: tail.clone(),
+                },
+                seq,
+                chain: c.clone(),
+                runs: said_runs,
+                activity,
+            },
+        });
+    }
+    (
+        FileDone {
+            key,
+            read: Some(FileRead {
+                cursor,
+                tail,
+                seq,
+                chain: chain.map(|_| c),
+                from_zero,
+            }),
+            gone: false,
+            bytes,
+        },
+        activity,
+        later,
+    )
+}
+
+/// 预读交回了（本线程）：装回游标 · 指纹 · 行号 · 链索引，然后按这个次序出帧 ——
+/// ① `session_primed`（读完了、从第几行起）② 名字 / 活动变了的 `session_status` ③ 运行表 · 主线外清单
+/// ④ 预读期间长出来的行（对这几份记录当场续读一次：从预读停下处接着读 ⇒ 第一帧 `line` 的 `seq` ＝ ① 的 `lines`，之后连续）。
+/// 这条会话已退休 / 又被重新宣告（代号对不上）⇒ 丢掉这一趟（它补进运行簿的那几笔一起摘）。
+fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
+    let PrimeDone {
+        sid,
+        gen,
+        files,
+        activity,
+        facts,
+    } = done;
+    // 池子空出一位 ⇒ 按此刻的名单交下一份（不论这一趟认不认得上）。
+    if let Some(pool) = state.pool.as_mut() {
+        pool.in_flight = pool.in_flight.saturating_sub(1);
+    }
+    dispatch_primes(state, sink);
+    if state.priming.get(&sid) != Some(&gen) {
+        if !state.active_sids.contains(&sid) {
+            state.book.forget(&sid);
+        }
+        return;
+    }
+    state.priming.remove(&sid);
+    sink.priming.remove(&sid);
+    if let Some(pool) = state.pool.as_ref() {
+        let load = pool.pool.load();
+        tracing::debug!(
+            "prime landed for {sid}: {} still priming here, {} running now (high {}, pool {})",
+            state.priming.len(),
+            load.running(),
+            load.high(),
+            pool.pool.size()
+        );
+    }
+    let mut paths = Vec::new();
+    for f in files {
+        state.prime_bytes += f.bytes;
+        let key_str = f.key.to_string_lossy().into_owned();
+        match f.read {
+            Some(r) => {
+                if r.from_zero {
+                    state.typed.remove(&f.key);
+                }
+                state.seqs.set(&key_str, r.seq);
+                state.tails.insert(f.key.clone(), r.tail);
+                state.offsets.insert(f.key.clone(), r.cursor);
+                if let Some(c) = r.chain {
+                    state.branches.insert(f.key.clone(), c);
+                }
+            }
+            None if f.gone => forget_cursor(state, &f.key),
+            None => {}
+        }
+        paths.push(f.key);
+    }
+    let path = state
+        .sessions
+        .values()
+        .find(|e| e.sid == sid)
+        .and_then(|e| e.path.clone());
+    let lines = path
+        .as_ref()
+        .map(|p| state.seqs.peek(&path_key(Path::new(p)).to_string_lossy()));
+    sink.send(Frame::SessionPrimed {
+        sid: sid.clone(),
+        path,
+        lines,
+    });
+    if let Some(mut f) = facts {
+        let custom = state.custom_title(&sid);
+        state.renamed(
+            &sid,
+            |e| {
+                f.project_dir = f.project_dir.take().or_else(|| e.project_dir.clone());
+                f.custom = custom.clone();
+                let changed = *e != f;
+                *e = f.clone();
+                changed
+            },
+            sink,
+        );
+    }
+    // 那一家没有进程状态文件说此刻在干什么 ⇒ 当前那份记录里最后一件说了的事（适配层 `RecordFace.activity` 翻）。
+    let unsaid = state
+        .sessions
+        .values()
+        .filter(|e| e.sid == sid)
+        .all(|e| e.activity.is_none());
+    let was_reading = state.reading.remove(&sid);
+    match (activity, unsaid) {
+        (Some(a), true) => note_activity(&sid, a, state, sink),
+        // 宣告时说的是「读记录中」、读完记录也没说 ⇒ 改口说不清（不留着一句已经不成立的话）。
+        (None, true) if was_reading => {
+            let e = state.sessions.values().find(|e| e.sid == sid);
+            let (waiting_for, path) =
+                e.map_or((None, None), |e| (e.waiting_for.clone(), e.path.clone()));
+            sink.send(Frame::SessionStatus {
+                sid: sid.clone(),
+                face: crate::stream::wire::ActivityFace::of(None),
+                name_face: state.name_face(&sid),
+                waiting_for,
+                path,
+            });
+        }
+        _ => {}
+    }
+    // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
+    let jsonls: Vec<PathBuf> = paths
+        .iter()
+        .filter(|k| state.offsets.contains_key(*k))
+        .cloned()
+        .collect();
+    let mut runs_changed = false;
+    for p in &jsonls {
+        runs_changed |= adopt_runs(state, &sid, p);
+    }
+    if runs_changed || state.book.has_runs(&sid) {
+        sink.send(state.runs_frame(&sid));
+    }
+    // 历史里已经有主线外的 ⇒ 整份发一次（之后变了才发）。
+    for p in &jsonls {
+        if state.branches.get(p).is_some_and(|c| !c.off().is_empty()) {
+            sink.send(branch_frame(state, &sid, p));
+        }
+    }
+    // 预读期间长出来的那一截（文件事件那时没读）。
+    for p in &jsonls {
+        process_jsonl(p, state, sink);
+    }
+}
+
+/// 预读的线程池：各会话并行（上限按 CPU 数），一条会话一趟、趟内照顺序读。做完经 watcher 的事件通道交回（`WatchEvent::Primed`）。
+/// 池子里的线程只阻塞在任务队列上（[`crate::observe::par::Pool`]），不睡、不定时。
+/// 排队在本线程（[`dispatch_primes`] 按名单挑），池子里同时至多线程数那么多份 ⇒ 名单一变就能改先后，已交出去的不撤。
+pub(crate) struct PrimePool {
+    pool: crate::observe::par::Pool<PrimeJob>,
+    /// 还没交出去的（宣告的先后）。
+    queue: std::collections::VecDeque<PrimeJob>,
+    /// 交出去了、还没交回的份数。
+    in_flight: usize,
+}
+
+impl PrimePool {
+    fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
+        PrimePool {
+            pool: crate::observe::par::Pool::new("record-prime", move |job| {
+                let (done, later) = run_prime(job);
+                let _ = events.send(WatchEvent::Primed(done));
+                store_skeletons(later);
+            }),
+            queue: std::collections::VecDeque::new(),
+            in_flight: 0,
+        }
+    }
+}
+
+/// 骨架里那几行子运行原文接成一块（每行一个 `\n`），喂 [`crate::observe::runs::RunTrack::prime`]。
+fn said_lines(lines: &[String]) -> Vec<u8> {
+    let mut b = Vec::with_capacity(lines.iter().map(|l| l.len() + 1).sum());
+    for l in lines {
+        b.extend_from_slice(l.as_bytes());
+        b.push(b'\n');
+    }
+    b
 }
 
 /// 冷接宣告那一趟每次至多读多少字节（一行比它长就接着读，直到那一行读完）。
@@ -3314,6 +4012,8 @@ struct PrimeReader {
     from: u64,
     /// 起读处之前那几个指纹字节（从 0 起 ⇒ 空）。
     probe: Vec<u8>,
+    /// 核指纹读了几个字节（对不上也读了）。
+    probed: u64,
     /// 到此刻读到的长度（读完才是这一趟看到的文件长度）。
     len: u64,
     carry: Vec<u8>,
@@ -3332,6 +4032,7 @@ impl PrimeReader {
         let mut file = Ro::open(path).map_err(|_| Look::Unreadable)?;
         let mut from = 0;
         let mut probe = Vec::new();
+        let mut probed = 0;
         if meta_len >= cursor.seen_len {
             let consumed = cursor.consumed.min(meta_len);
             let k = TAIL_PROBE.min(consumed);
@@ -3339,6 +4040,7 @@ impl PrimeReader {
             file.seek(SeekFrom::Start(consumed - k))
                 .and_then(|_| file.read_exact(&mut got))
                 .map_err(|_| Look::Unreadable)?;
+            probed = k;
             if tail.is_none_or(|t| t == got.as_slice()) {
                 from = consumed;
                 probe = got;
@@ -3350,6 +4052,7 @@ impl PrimeReader {
             file,
             from,
             probe,
+            probed,
             len: from,
             carry: Vec::new(),
             done: false,
@@ -3571,7 +4274,24 @@ fn parse_session_id(bytes: &[u8]) -> Option<String> {
     v.get("sessionId")?.as_str().map(str::to_string)
 }
 
-/// The reader's send half: a bounded-channel sender that turns a wedged pipe
+/// 这台 watcher 的发帧口：**整台一份**的那几样（会话账本 · 预读还没交回的会话）＋ **每条连接一份**的投影（[`Sub`]）。
+///
+/// 每一帧先过整台那一层一次（预读没交回的会话的内容帧拦下；会话账本决定它自己发不发、紧跟着补发哪几帧），
+/// 再逐条连接按那条连接的名单投进它自己的有界通道（各自记丢帧，`Overflow` 按连接说）。
+struct FrameSink {
+    /// 此刻接着的连接（[`join`] 加、`Leave` 摘；通道关了的投帧时顺手摘）。
+    subs: Vec<Sub>,
+    /// 整台的会话账本（`observe::session_ledger`）：每一帧发出去之前过它，
+    /// 它补发可重连 / 已结束的成品帧、压住 `sessions_replayed` 直到第一份 tmux 快照。生产由 [`watch_loop`] 装上；
+    /// 夹具走 [`FrameSink::new`] 不装（它们钉的是 watcher 自己发的帧）。
+    ledger: Option<crate::observe::session_ledger::SessionLedger>,
+    /// 预读还没交回的会话：它们的整行帧（[`Frame::content_of`]）一帧不发（[`start_prime`] 加、[`primed`] 摘）。
+    priming: HashSet<String>,
+}
+
+/// 一条流连接在这台 watcher 上的投影：它的有界通道 · 它的名单 · 它欠的丢帧账。
+///
+/// The per-connection send half: a bounded-channel sender that turns a wedged pipe
 /// into an explicit **overflow signal** (#32) instead of silently losing data.
 ///
 /// A full channel means the writer/SSH pipe is wedged. We still `try_send` (never
@@ -3579,8 +4299,11 @@ fn parse_session_id(bytes: &[u8]) -> Option<String> {
 /// and, once the channel drains enough to accept it, emit a single
 /// [`Frame::Overflow`] carrying that count. The client warns the user that live
 /// lines were lost. One signal per congestion burst — naturally throttled.
-struct FrameSink {
+pub(crate) struct Sub {
+    id: u64,
     tx: mpsc::Sender<Frame>,
+    /// 这条连接看的那一台的时区（按连接现写的那几帧用）。
+    tz: crate::Tz,
     /// Frames dropped since the last successfully-sent `Overflow` signal.
     dropped: u64,
     /// 那批丢帧里**不可恢复**的那些的身份。
@@ -3590,12 +4313,8 @@ struct FrameSink {
     lost: Vec<LostFrame>,
     /// 身份表触顶过（超出 [`LOST_IDENTITY_CAP`] 的那些只计数、不留身份）。
     lost_truncated: bool,
-    /// 这条流的会话账本（`observe::session_ledger`）：每一帧发出去之前过它，
-    /// 它补发可重连 / 已结束的成品帧、压住 `sessions_replayed` 直到第一份 tmux 快照。生产由 [`watch_loop`] 装上；
-    /// 夹具走 [`FrameSink::new`] 不装（它们钉的是 watcher 自己发的帧）。
-    ledger: Option<crate::observe::session_ledger::SessionLedger>,
     /// 这条流此刻在看哪几个会话（`stream-watch` 报的）：`None` ＝ 没报过 ＝ 全看。
-    /// 不在名单里的会话，它的整行帧（[`Frame::content_of`]）在这里拦下，别的帧不挑。
+    /// 不在名单里的会话，它的整行帧（[`Frame::content_of`]）不投给这条连接，别的帧不挑。
     watching: Option<HashSet<String>>,
 }
 
@@ -3611,22 +4330,12 @@ struct FrameSink {
 const LOST_IDENTITY_CAP: usize = 64;
 
 impl FrameSink {
-    fn new(tx: mpsc::Sender<Frame>) -> Self {
+    /// 生产那一份：带会话账本，起步没有连接（[`join`] 接上来）。
+    fn hub() -> Self {
         FrameSink {
-            tx,
-            dropped: 0,
-            lost: Vec::new(),
-            lost_truncated: false,
-            ledger: None,
-            watching: None,
-        }
-    }
-
-    /// 生产那一份：带会话账本。
-    fn with_ledger(tx: mpsc::Sender<Frame>) -> Self {
-        FrameSink {
+            subs: Vec::new(),
             ledger: Some(crate::observe::session_ledger::SessionLedger::new()),
-            ..FrameSink::new(tx)
+            priming: HashSet::new(),
         }
     }
 
@@ -3649,26 +4358,86 @@ impl FrameSink {
         };
         let (raw, observation) = observation_parts(obs);
         for f in l.on_tmux(&raw, observation) {
-            self.push(f);
+            self.fan(f);
         }
     }
 
-    /// 发一帧：先过会话账本（有的话）—— 它决定这一帧自己发不发、紧跟着补发哪几帧。
+    /// 发一帧：预读没交回的会话的内容帧拦下；再过会话账本（有的话）—— 它决定这一帧自己发不发、紧跟着补发哪几帧。
     fn send(&mut self, frame: Frame) {
-        if let (Some(w), Some(sid)) = (&self.watching, frame.content_of()) {
-            if !w.contains(sid) {
-                return;
-            }
+        if frame
+            .content_of()
+            .is_some_and(|sid| self.priming.contains(sid))
+        {
+            return;
         }
         let (pass, extra) = match self.ledger.as_mut() {
             Some(l) => l.on_frame(&frame),
             None => (true, Vec::new()),
         };
         if pass {
-            self.push(frame);
+            self.fan(frame);
         }
         for f in extra {
-            self.push(f);
+            self.fan(f);
+        }
+    }
+
+    /// 按连接现写的一帧（体按各连接的时区写，如任务清单变了那一帧）：不过会话账本（它只看会话那几帧）。
+    fn send_each(&mut self, make: impl Fn(&crate::Tz) -> Frame) {
+        for s in &mut self.subs {
+            let f = make(&s.tz);
+            if s.wants(&f) {
+                s.push(f);
+            }
+        }
+        self.subs.retain(|s| !s.tx.is_closed());
+    }
+
+    /// 只给一条连接（名单补发 · 接上来那一份）：不过会话账本、不看名单。
+    fn send_to(&mut self, id: u64, frame: Frame) {
+        if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
+            s.push(frame);
+        }
+    }
+
+    /// 逐条连接按名单投（最后一条拿原帧，前面的拿副本）；通道关了的连接顺手摘掉。
+    fn fan(&mut self, frame: Frame) {
+        let to: Vec<usize> = (0..self.subs.len())
+            .filter(|&i| self.subs[i].wants(&frame))
+            .collect();
+        if let Some((&last, rest)) = to.split_last() {
+            for &i in rest {
+                self.subs[i].push(frame.clone());
+            }
+            self.subs[last].push(frame);
+        }
+        self.subs.retain(|s| !s.tx.is_closed());
+    }
+
+    /// 那条连接走了。
+    fn leave(&mut self, id: u64) {
+        self.subs.retain(|s| s.id != id);
+    }
+}
+
+impl Sub {
+    pub(crate) fn new(id: u64, tx: mpsc::Sender<Frame>, tz: crate::Tz) -> Self {
+        Sub {
+            id,
+            tx,
+            tz,
+            dropped: 0,
+            lost: Vec::new(),
+            lost_truncated: false,
+            watching: None,
+        }
+    }
+
+    /// 这条连接要不要这一帧（只挑整行帧：名单外的会话不投）。
+    fn wants(&self, frame: &Frame) -> bool {
+        match (&self.watching, frame.content_of()) {
+            (Some(w), Some(sid)) => w.contains(sid),
+            _ => true,
         }
     }
 
@@ -3678,7 +4447,7 @@ impl FrameSink {
     /// frame so the client learns "you lost N frames" no later than the next
     /// frame it receives. If the channel is still full, we keep owing the count
     /// (it only ever grows until a send succeeds); a closed channel is a quiet
-    /// shutdown (the loop checks `is_closed`).
+    /// shutdown (the sink drops this connection).
     fn push(&mut self, frame: Frame) {
         if self.dropped > 0 {
             match self.tx.try_send(Frame::Overflow {
@@ -3729,13 +4498,9 @@ impl FrameSink {
                 );
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                // Writer gone (shutdown). Nothing to do; the loop checks is_closed.
+                // Writer gone. The sink drops this connection on its next fan-out.
             }
         }
-    }
-
-    fn is_closed(&self) -> bool {
-        self.tx.is_closed()
     }
 }
 
@@ -3764,3 +4529,7 @@ mod watch_tests;
 #[cfg(all(test, target_os = "linux"))]
 #[path = "../../../tests/backend/observe/watcher_writer_tests.rs"]
 mod writer_tests;
+
+#[cfg(all(test, target_os = "linux"))]
+#[path = "../../../tests/backend/observe/watcher_prime_tests.rs"]
+mod prime_tests;

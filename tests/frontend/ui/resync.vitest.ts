@@ -36,8 +36,7 @@ vi.mock("../../../src/frontend/ui/history-reads", () => ({ lastAccounts: async (
 import { invoke } from "@tauri-apps/api/core";
 import { TabSessionActions } from "../../../src/frontend/ui/tab-session-actions";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
-import { ControlError } from "../../../src/frontend/ui/control-said";
-import { decodeResynced, offerResyncRetry, resync } from "../../../src/frontend/ui/resync";
+import { offerResyncRetry, resync } from "../../../src/frontend/ui/resync";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
 
@@ -64,7 +63,7 @@ function sentCalls(): [string, string, unknown][] {
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe("〔RESYNC〕手动对齐", () => {
-  it("★ 金样：带 sid 的请求体 == 金样那份；整机不带 sid；成品按金样解", async () => {
+  it("★ 金样：带 sid 的请求体 == 金样那份；整机不带 sid；成品按类型用（形状由握手指纹管）", async () => {
     invokeMock.mockImplementation(async () => chanReply(golden.reply));
     const { added, removed, retagged, caught_up: caughtUp, watchers } = golden.reply as Record<string, number>;
     expect(await resync("devbox", golden.request.sid)).toEqual({ added, removed, retagged, caughtUp, watchers });
@@ -73,8 +72,6 @@ describe("〔RESYNC〕手动对齐", () => {
       ["devbox", "resync", golden.request],
       ["devbox", "resync", {}],
     ]);
-    expect(() => decodeResynced("devbox", { ...golden.reply, extra: 1 })).toThrow(ControlError);
-    expect(() => decodeResynced("devbox", { ...golden.reply, added: -1 })).toThrow(ControlError);
   });
 
   it("★★ 对齐后重试：点那条提示 ⇒ 先只对那一个会话对齐，再做一次原动作", async () => {

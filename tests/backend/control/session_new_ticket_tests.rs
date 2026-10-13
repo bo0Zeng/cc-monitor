@@ -39,7 +39,7 @@ fn a_ticket_still_starting_answers_pending_instead_of_starting_again() {
 #[test]
 fn a_failed_start_forgets_its_ticket_so_asking_again_starts_it() {
     let t = Tickets::default();
-    let a: Run<&str> = t.with(Some("t-3"), pending, || Err("tmux_taken"));
+    let a: Run<serde_json::Value, &str> = t.with(Some("t-3"), pending, || Err("tmux_taken"));
     assert_eq!(a, Err("tmux_taken"));
     let b = t.with(Some("t-3"), pending, || Ok(json!({"outcome": "started"})));
     assert_eq!(
@@ -54,7 +54,7 @@ fn without_a_ticket_every_ask_starts() {
     let t = Tickets::default();
     let runs = Cell::new(0);
     for _ in 0..2 {
-        let _: Run<&str> = t.with(None, pending, || {
+        let _: Run<serde_json::Value, &str> = t.with(None, pending, || {
             runs.set(runs.get() + 1);
             Ok(json!({}))
         });
@@ -66,15 +66,17 @@ fn without_a_ticket_every_ask_starts() {
 fn only_the_last_few_tickets_are_kept() {
     let t = Tickets::default();
     for i in 0..=KEEP {
-        let _: Run<&str> = t.with(Some(&format!("k-{i}")), pending, || Ok(json!({ "n": i })));
+        let _: Run<serde_json::Value, &str> =
+            t.with(Some(&format!("k-{i}")), pending, || Ok(json!({ "n": i })));
     }
-    let oldest: Run<&str> = t.with(Some("k-0"), pending, || Ok(json!({"n": "again"})));
+    let oldest: Run<serde_json::Value, &str> =
+        t.with(Some("k-0"), pending, || Ok(json!({"n": "again"})));
     assert_eq!(
         oldest,
         Ok(json!({"n": "again"})),
         "最早那张被挤掉了 ⇒ 当没见过"
     );
-    let newest: Run<&str> = t.with(Some(&format!("k-{KEEP}")), pending, || {
+    let newest: Run<serde_json::Value, &str> = t.with(Some(&format!("k-{KEEP}")), pending, || {
         Ok(json!({"n": "again"}))
     });
     assert_eq!(newest, Ok(json!({ "n": KEEP })));

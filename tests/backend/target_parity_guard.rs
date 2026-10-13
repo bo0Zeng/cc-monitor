@@ -780,8 +780,52 @@ fn handler_files(
             .find("const SPECS: &[CommandSpec] = &[")
             .expect("命令表族文件里锚不住 `SPECS`");
         handler_files_of(&src[at..], &mods, &mut out);
+        typed_handler_files_of(&src[at..], tree, &mods, &mut out);
     }
     out
+}
+
+/// 一族命令表里 typed 那几行（`typed::blocking::<路径>()` · `typed::asynchronous::<路径>()`）：本体就是那个类型住的文件，
+/// 命令名从那份文件里它的 `impl Command for <类型>` 那一段的 `const NAME` 读（异源：不读 `REGISTRY`）。
+fn typed_handler_files_of(
+    table: &str,
+    tree: &Tree,
+    mods: &std::collections::BTreeMap<Vec<String>, String>,
+    out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+) {
+    for ctor in [
+        "typed::blocking::<",
+        "typed::with_files::<",
+        "typed::with_own::<",
+        "typed::owning::<",
+        "typed::asynchronous::<",
+        "typed::async_with_files::<",
+    ] {
+        for (at, _) in table.match_indices(ctor) {
+            let rest = &table[at + ctor.len()..];
+            let path: Vec<String> = rest[..rest.find('>').expect("typed 那一行没收尾")]
+                .split(':')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty() && s != "crate")
+                .collect();
+            let ty = path.last().expect("typed 那一行没有类型名").clone();
+            let file = file_of(mods, &path)
+                .unwrap_or_else(|| panic!("typed 那一行的 `{ty}` 找不到它住的文件"));
+            let src = &tree[&file];
+            let imp = src
+                .find(&format!("Command for {ty} {{"))
+                .unwrap_or_else(|| panic!("`{file}` 里没有 `impl Command for {ty}`"));
+            let n = src[imp..]
+                .find("const NAME: &'static str = \"")
+                .expect("没有 `const NAME`")
+                + imp;
+            let name: String = src[n + "const NAME: &'static str = \"".len()..]
+                .chars()
+                .take_while(|c| *c != '"')
+                .collect();
+            out.insert(name, std::iter::once(file).collect());
+        }
+    }
 }
 
 /// 一族命令表（`SPECS` 那张表起）里逐块取 `run:` 闭包点名的文件，并进 `out`。
@@ -791,6 +835,11 @@ fn handler_files_of(
     out: &mut std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
 ) {
     for block in table.split("CommandSpec {").skip(1) {
+        // 块到下一条 typed 那一行为止（typed 那几行不是 `CommandSpec {` 块，由 [`typed_handler_files_of`] 另认）。
+        let block = block
+            .split("crate::stream::inbound::typed::")
+            .next()
+            .unwrap_or(block);
         let Some(n) = block.find("name: \"") else {
             continue;
         };

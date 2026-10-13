@@ -10,7 +10,6 @@
 //! 等不到答复时本来就按「有东西在跑」处理，这里不再替它猜。
 
 use serde::Serialize;
-use serde_json::Value;
 use std::path::Path;
 
 /// 一族会被打断的东西。
@@ -73,40 +72,29 @@ fn tasks_in_progress(home: &Path, sid: &str) -> Vec<String> {
     crate::observe::tasks_query::session_tasks(home, sid)
         .unwrap_or_default()
         .iter()
-        .filter(|t| t.get("status").and_then(Value::as_str) == Some("in_progress"))
-        .filter_map(|t| t.get("subject").and_then(Value::as_str).map(str::to_string))
+        .filter(|t| t.status == "in_progress")
+        .map(|t| t.subject.clone())
         .collect()
 }
 
-/// 帧面入口（宿主 `faces/feature_face.rs` 给家目录）。
-pub(crate) fn answer_at(home: &Path, args: &Value) -> Result<Value, (String, String)> {
-    let sid = args
-        .get("sid")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            (
-                "bad_args".to_string(),
-                crate::common::contract::malformed("missing `sid` (a non-empty string)"),
-            )
-        })?;
+/// 帧面入口（宿主 `faces/feature_face.rs` 给家目录）。sid 空 ⇒ `Err`（那一句，码是 `bad_args`）。
+pub(crate) fn answer_at(home: &Path, sid: &str) -> Result<SessionInterrupts, String> {
+    if sid.is_empty() {
+        return Err(crate::common::contract::malformed(
+            "`sid` must be a non-empty string",
+        ));
+    }
     let busy = |s: &str| crate::observe::watcher::session_busy(home, s);
     let agents = |s: &str| crate::observe::runs::running_names(s);
     let tasks = |s: &str| tasks_in_progress(home, s);
-    let out = interrupts_of(
+    Ok(interrupts_of(
         sid,
         &Sources {
             busy: &busy,
             agents: &agents,
             tasks: &tasks,
         },
-    );
-    serde_json::to_value(out).map_err(|e| {
-        (
-            "failed".to_string(),
-            crate::common::contract::malformed(&e.to_string()),
-        )
-    })
+    ))
 }
 
 #[cfg(test)]

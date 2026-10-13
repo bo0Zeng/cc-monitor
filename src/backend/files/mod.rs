@@ -507,10 +507,8 @@ fn dirs_arg(args: &serde_json::Value) -> Result<Vec<std::path::PathBuf>, (&'stat
 
 /// 一个时刻换成 Unix 纪元秒。
 ///
-/// ⚠ **参数刻意写成 `io::Result<SystemTime>` 而不是那个元数据类型** ——
-/// 那个类型的名字带大写，而 `readonly_guard` 的只读白名单是按**动词**认的、
-/// 表里那一条是小写的 `metadata`（大小写不同 ⇒ 认不出来 ⇒ 当场红），
-/// 而把它 `use` 进来又正好撞上同一条判据的「条目导入 = 逃生口」那一格。
+/// ⚠ **参数刻意写成 `io::Result<SystemTime>` 而不是那个元数据类型**：那个类型只有 `platform/fs/` 许点名（`readonly_guard` 的命名空间那一条），
+/// 这里只要时刻那一格。
 /// ⇒ 两头都不碰：**不提那个类型名**。这不是绕过护栏，是不去动它。
 fn epoch_secs(t: std::io::Result<std::time::SystemTime>) -> Option<u64> {
     t.ok()?
@@ -627,8 +625,8 @@ where
     })
 }
 
-/// `files.stat` —— 一个路径的元数据。它跟 symlink（拿链接指向的那个东西的元数据）：不跟的读法要另一个动词，
-/// 那个动词不在 `readonly_guard` 的只读白名单上。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
+/// `files.stat` —— 一个路径的元数据。它跟 symlink（拿链接指向的那个东西的元数据）：不跟的读法是另一个动词（`Ro::symlink_metadata`），
+/// 这一条不用它。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
 fn answer_stat(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
     let path = path_arg(args)?;
     let md = Ro::metadata(&path).map_err(|e| {
@@ -979,10 +977,10 @@ pub const READ_TEXT_MAX_BYTES: usize = 8 * 1024 * 1024;
 /// 调用方给的 `len` 越界 ⇒ `bad_args`、不夹小（同 [`READ_TEXT_MAX_BYTES`] 那一条理由）。
 pub const READ_CHUNK_MAX_BYTES: u64 = 256 * 1024;
 
-/// CAS 摘要形里十六进制串的长度（SHA-256 = 32 字节）。
-pub const SHA256_HEX_LEN: usize = 64;
+// 摘要算法（流式那一形 ＋ 十六进制长度）住 `common/digest.rs`：传输台（原生那一块）上传时也边传边算，两块各引各的。
+pub use crate::common::digest::{ContentDigest, SHA256_HEX_LEN};
 
-/// 一份字节的 SHA-256，64 位小写十六进制 —— **CAS 摘要形 `expect: {"sha256": …}` 的唯一算法住址**。
+/// 一份字节的 SHA-256，64 位小写十六进制 —— CAS 摘要形 `expect: {"sha256": …}` 整份那一形（算法本身住 `common/digest.rs`）。
 ///
 /// 读的那一趟（[`answer_read_text`]）对交出去的字节算它；写面（`control/files_write.rs::overwrite_text_expecting`）
 /// 拿它比「盘上此刻那一份」、写成之后对新内容再算一次交回去。住读族这一侧，是因为读族不许伸手进写面
@@ -991,35 +989,6 @@ pub fn content_sha256(bytes: &[u8]) -> String {
     let mut d = ContentDigest::new();
     d.update(bytes);
     d.finish()
-}
-
-/// [`content_sha256`] 的**流式**那一形（同一个算法、同一种十六进制）：上传一边传一边算整份的摘要
-/// （`control/transfer.rs::upload_to_staging`），提交那一侧对暂存件逐块读着算（[`file_sha256`]）—— 几个 G 的文件不整份进内存。
-pub struct ContentDigest(ring::digest::Context);
-
-impl ContentDigest {
-    pub fn new() -> Self {
-        ContentDigest(ring::digest::Context::new(&ring::digest::SHA256))
-    }
-    pub fn update(&mut self, bytes: &[u8]) {
-        self.0.update(bytes);
-    }
-    /// 64 位小写十六进制。
-    pub fn finish(self) -> String {
-        use std::fmt::Write as _;
-        let d = self.0.finish();
-        let mut out = String::with_capacity(SHA256_HEX_LEN);
-        for b in d.as_ref() {
-            let _ = write!(out, "{b:02x}");
-        }
-        out
-    }
-}
-
-impl Default for ContentDigest {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// 一份文件的 [`content_sha256`]，**逐块读**（64 KiB 一块）。读不出 ⇒ 原样的 IO 错。

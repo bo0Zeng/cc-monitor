@@ -82,6 +82,8 @@ pub enum InboundFrame {
         unavailable: Vec<(String, String)>,
         /// `hello.uncancellable`：撤不动的那几条。旧后端无此字段 ⇒ 空（没把握，照旧补发撤单）。
         uncancellable: Vec<String>,
+        /// `hello.shapes`：typed 命令的形状指纹。旧后端无此字段 ⇒ 空（typed 命令一律当对不上，见 `Offer::unavailable`）。
+        shapes: Vec<(String, String)>,
     },
     /// 一行从后端 session jsonl 尾随读到的原始行（远端流与本机流同一种帧）。字段语义见 [`JsonlLine`]。
     Line {
@@ -108,10 +110,8 @@ pub enum InboundFrame {
         /// 会话的项目目录（那台后端读记录开头给的；tab 标题用它）。老后端不带 ⇒ `None`。
         project_dir: Option<String>,
         name: Option<String>,
-        /// 远端 jsonl 绝对路径 —— 旁路快照用。
+        /// 远端 jsonl 绝对路径（宣告那一刻的；旁路快照等 [`InboundFrame::SessionPrimed`] 那一格）。
         path: Option<String>,
-        /// backend prime 时的完整行数 L（快照完整性校验）。
-        lines: Option<u64>,
         /// 宣告时此刻在干什么（那一态 · 字 · 语气 · 序）＋ 在等什么（连接建立灯就对）。
         activity: crate::session_book::ActivityCells,
         /// 叫它什么（核心写的名字 ＋ 项目那一格）。
@@ -124,6 +124,13 @@ pub enum InboundFrame {
         /// 〔additive〕那个 claude 进程的 pid。本机活会话的成品（`session_book::LiveMeta::pid`）
         /// 拿它给本机 ↗ 点那一刻找窗口（`bind::bring_local_window`）；没带 ⇒ `None`。远端那一支不读它。
         pid: Option<u32>,
+    },
+    /// 那台后端把这条会话的记录读完了（宣告之后后台那一趟预读，`session_primed`）：它的行从第 `lines` 行起来。
+    /// 旁路快照在这一帧排（`path` 有才排），`lines` 拿去核快照拉全了没有。
+    SessionPrimed {
+        sid: String,
+        path: Option<String>,
+        lines: Option<u64>,
     },
     /// 后端的活会话清单报完了（Phase 1 走完）。无载荷。
     SessionsReplayed,
@@ -476,6 +483,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 commands: strings("commands"),
                 unavailable,
                 uncancellable,
+                shapes: crate::chan::wire::Offer::shapes_of(obj),
             }
         }
         // 键序不是直解那一形时落到这里，同一个解码结构。
@@ -493,7 +501,6 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                 project_dir: opt("project_dir"),
                 name: opt("name"),
                 path: opt("path"),
-                lines: obj.get("lines").and_then(|v| v.as_u64()),
                 activity: activity_cells(obj, k)?,
                 naming: name_cells(obj, k)?,
                 waiting_for: opt("waiting_for"),
@@ -512,6 +519,11 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     .and_then(|n| u32::try_from(n).ok()),
             }
         }
+        "session_primed" => InboundFrame::SessionPrimed {
+            sid: req_str(obj, k, "sid")?,
+            path: obj.get("path").and_then(|v| v.as_str()).map(str::to_string),
+            lines: obj.get("lines").and_then(|v| v.as_u64()),
+        },
         "sessions_replayed" => InboundFrame::SessionsReplayed,
         "session_file_gone" => InboundFrame::SessionFileNotice {
             sid: req_str(obj, k, "session_id")?,

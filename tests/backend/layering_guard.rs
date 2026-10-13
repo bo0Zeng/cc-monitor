@@ -411,6 +411,27 @@ mod tests {
         );
     }
 
+    /// ★ **`stderr_log.rs` 与最下两层同档**：`main.rs` 一起来就装它、各层都往它写，
+    /// 它自己只许引 `platform/` 与 `common/`（上层名单同样从 `lib.rs` 现取）。
+    /// 起因：一次性模式的诊断落点曾引 `crate::control::resident::STDERR_LOG_REL`；常量现住 `stderr_log` 自己，控制面反过来引它。
+    #[test]
+    fn the_stderr_log_module_only_references_the_bottom_layers() {
+        let path = crate::guard_support::src_root().join("stderr_log.rs");
+        let src = std::fs::read_to_string(&path).expect("读 stderr_log.rs");
+        let files = vec![("stderr_log.rs".to_string(), production_code(&src))];
+        crate::guard_support::assert_no_test_code("stderr_log.rs", &files[0].1);
+        assert!(
+            files[0].1.contains("crate::platform::"),
+            "stderr_log.rs 生产段里连 platform 都没引到 —— 剥法坏了，下面的判是空的"
+        );
+        let bad = upward_refs(&files, &["stderr_log", "common", "platform"]);
+        assert!(
+            bad.is_empty(),
+            "stderr_log.rs 引了上层：\n  {}\n常量或类型挪到 stderr_log / platform 里，让上层反过来引它。",
+            bad.join("\n  ")
+        );
+    }
+
     /// ★ **正向要显式列举且条数钉死**：`observe/` 只许用登记过的那几个 control 符号。
     #[test]
     fn observe_to_control_interface_is_exactly_the_registered_set() {
@@ -487,8 +508,9 @@ mod tests {
     /// 形状照 [`ALLOWED_OBSERVE_TO_CONTROL`]：不是禁绝（调用口本来就是给人用的），
     /// 是**让每一条边被人看见一次**。
     ///
-    /// 扫描面加了 **`accounts/`**：账号域经本口起 `cc-acct-iso`
+    /// 扫描面加了 **`accounts/`**：当时账号域经本口起外部脚本 `cc-acct-iso`
     /// （`accounts/iso.rs`），不把它纳进来，那几条边就落在盲区里、本条照绿。
+    /// 今天那份脚本与 `accounts/iso.rs` 都删了（账号库由 `accounts/manage/` 自己建），`accounts/` 照旧留在扫描面里。
     ///
     /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
     /// 「今天只有 control 在用」是**读数**，不是性质。观测层哪天伸手过来（它一旦这么做，

@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.di
 
 import android.util.Log
+import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
 import com.ccmonitor.mobile.link.HostBackends
@@ -31,7 +32,7 @@ val appModule =
         viewModel {
             val open = it.get<ChatOpen>()
             val backends = get<HostBackends>()
-            ChatViewModel(get<ChatController>().sessionOf(open, { h -> backends.of(h).also { f -> f.ensure() } }, backends::watchOf))
+            ChatViewModel(get<ChatController>().sessionOf(open, { h -> backends.of(h).also { f -> f.ensure() } }, backends::of))
         }
         // 应用级的对话持有者，tail 活在这里，不活在屏幕里。逐出要记日志，否则「对话怎么没了」无从查起。
         single {
@@ -61,7 +62,10 @@ val appModule =
         }
 
         // 每台一条常驻流（进程级）；「对话」一屏与抽屉「最近」共用同一个清单 VM。参数顺序 = `parametersOf(hostId, machine)`。
-        single { HostBackends(get()) }
+        single {
+            val hosts = get<HostRepository>()
+            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id })
+        }
         viewModel { params ->
             ConversationsViewModel(backend = get<HostBackends>().of(params.get(0)), machine = params.get(1))
         }

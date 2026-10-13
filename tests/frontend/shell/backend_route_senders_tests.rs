@@ -114,6 +114,9 @@ const SENDERS: &[(&str, Verdict)] = &[
     // 每条长连接报「在看哪几个会话」（`stream_watch.rs`，那台后端 `stream-watch`）：没报上只记一行日志、那条连接照旧全看 ——
     //   没有第二条路，成败也不交给任何人（下一次名单变 / 换连接再报）。
     ("stream_watch.rs", Verdict::ProbeOnlyNoFallbackDecision),
+    // 手机那一侧一台的常驻流（`resident-client/feed.rs`）：报在看名单 · 问那台新旧只记一行日志、没有第二条路；
+    //   替宿主转发的一问一答把 `CallError` 原样交回宿主（手机核心按它说那一句），这里不做回落判断。
+    ("feed.rs", Verdict::ProbeOnlyNoFallbackDecision),
 ];
 
 /// 分流器的**两个出口**：分层结果（`05` 形状）与从它收拢出来的旧三态。

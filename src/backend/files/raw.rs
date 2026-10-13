@@ -17,18 +17,10 @@ pub fn path_bytes(p: &std::path::Path) -> &[u8] {
     p.as_os_str().as_encoded_bytes()
 }
 
-// 路径字节的线上两种形（字符串 / `{"b16": …}`）住 `common/path_wire.rs`：文件管理与原生那一块（`dial/terminal.rs`）都要读这一形，
+// 路径字节的线上两种形（字符串 / `{"b16": …}`）与字节还原成 `PathBuf` 住 `common/path_wire.rs`：文件管理与原生那一块
+// （`dial/terminal.rs` · 传输台 `control/transfer.rs`）都要读这一形，
 // 两块之间零互相依赖（`files/module_boundary_guard.rs`），共用的只许住 `common/`。
-pub use crate::common::path_wire::{from_json, to_json, HEX_KEY};
-
-/// 把一串路径字节还原成能交给标准库的 `PathBuf`。本族唯一一处 `unsafe`：`from_encoded_bytes_unchecked` 要求字节来自同一平台的
-/// `as_encoded_bytes`；本族满足它 —— 字节要么由 [`path_bytes`] 在这台机器上取出，要么由 [`from_json`] 从我们自己发出去的那两种形里读回来。
-/// 拿外来字节喂它是未定义行为 ⇒ 入方向的路径参数只许从本机发出去的那一份回流；这一条只能靠协议纪律，机器钉不住。
-pub fn to_path_buf(bytes: &[u8]) -> std::path::PathBuf {
-    // SAFETY: 见上面那段 —— 字节来自同一平台的 `as_encoded_bytes`。
-    let os: &std::ffi::OsStr = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(bytes) };
-    std::path::PathBuf::from(os)
-}
+pub use crate::common::path_wire::{from_json, to_json, to_path_buf, HEX_KEY};
 
 /// 一个条目是不是 `dir` 的**直接子项**。
 ///

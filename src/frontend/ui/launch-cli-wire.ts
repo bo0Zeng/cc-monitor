@@ -1,43 +1,16 @@
 /**
  * 帧命令 `launch-render-cli` 的上线形状（TS 侧）：那台机器要跑的那一行 `ccm …`（经 `launch-render.ts` 问那台后端）。
  *
- * Rust 对侧是 `src/backend/control/launch_render/wire.rs` 的 `CliRenderRequest`，带 `deny_unknown_fields`
- * —— **多送一个字段会被拒**。这是一份手写镜像，`tests/frontend/ui/launch-cli-wire.vitest.ts` 读 Rust 源码逐字段比对。
+ * 入参 · 回包的类型都从 Rust 生成（`src/backend/control/launch_render/wire.rs` 的 `CliRenderRequest`，带 `deny_unknown_fields`；
+ * 回包 `Rendered`），两端形状由握手指纹核过。本文件只留「把意图摊成那一份入参」。
  */
-export type CliWireAction =
-  | { kind: "new" }
-  | { kind: "resume"; sid: string }
-  | { kind: "attach"; name: string };
-
-/** `send_into`：那台后端的渲染口还收这一格（`true` = 往已有的空 tmux 会话里键入直路那一行）；界面恒发 `false`。 */
-export type CliWireContainer = { kind: "none" } | { kind: "tmux"; name: string; send_into: boolean };
-
-/** 用哪个号：跟随 · 账号 0 · 用户点名（生成的类型，那台后端判）。 */
-export type { AccountAsk as CliWireAccount } from "./generated/AccountAsk";
-import type { AccountAsk } from "./generated/AccountAsk";
-import type { LaunchedAccount } from "./generated/LaunchedAccount";
+import type { CliRenderRequest } from "./generated/CliRenderRequest";
 import type { LaunchContext } from "./launch-types.ts";
 import { defaultLauncherOf } from "./agent-profile.ts";
 
-export interface CliRenderRequest {
-  agent: string;
-  action: CliWireAction;
-  container: CliWireContainer;
-  cwd: string | null;
-  account: AccountAsk;
-  ccmSid: string | null;
-  model: string | null;
-  /** 那台的模型偏好表（原值，号 → 模型）：判出来的号在表里 ⇒ 用那一条。 */
-  models: Record<string, string>;
-  launcher: string;
-  defaultLauncher: string;
-}
-
+export type { CliRenderRequest };
 /** `launch-render-cli` 的成品：那一行 ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。 */
-export interface CliRendered {
-  cmd: string;
-  account: LaunchedAccount | null;
-}
+export type { Rendered as CliRendered } from "./generated/Rendered";
 
 /** 空白 ⇒ 那一家的默认启动器（没配就是没配，不是一个判定）。字符集只在后端判。 */
 function launcherOrDefault(agent: string, launcher: string): string {

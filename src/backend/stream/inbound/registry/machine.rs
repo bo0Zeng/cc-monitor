@@ -185,7 +185,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "full",
             "failed",
         ],
-        fields: &[out("id", "这条转发的号（`fwd-<n>`，本进程内单调）"), arg("jump", "跳板那一台的配置（可缺）"), arg("localPort", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("machine", "那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`dial/machine.rs`，同 `remote-probe`），不拒"), arg("origin", "那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求）"), arg("remoteHost", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("remotePort", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("saved", "已保存的那一份机器配置（可缺）")],
+        fields: &[out("id", "这条转发的号（`fwd-<n>`，本进程内单调）"), arg("jump", "跳板那一台的配置（可缺）"), arg("localPort", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("machine", "那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`ssh-dial/machine.rs`，同 `remote-probe`），不拒"), arg("origin", "那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求）"), arg("remoteHost", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("remotePort", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("saved", "已保存的那一份机器配置（可缺）")],
         takes_input: true,
         run: Run::Async(|r| {
             Box::pin(async move {

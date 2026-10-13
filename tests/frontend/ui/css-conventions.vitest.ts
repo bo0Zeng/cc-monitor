@@ -497,7 +497,7 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
   "src/frontend/ui/tab-bar-drag.ts · classList.add(s.ghostStack)":
     "CSS Modules（`tab-group.module.css`）：几个一起拖时影子叠一层；哈希过的类名，只活在一次拖拽的影子上，不是状态名",
   "src/frontend/ui/tab-bar-drag.ts · classList.add(s.hot)":
-    "CSS Modules（`tab-group.module.css`）：拖放时点亮落点所在组的引导线；哈希过的类名，只活在一次拖拽里，不是状态名",
+    "CSS Modules（`tab-group.module.css`）：拖放时点亮落点所在的那一块组（ui3 组成块）；哈希过的类名，只活在一次拖拽里，不是状态名",
   "src/frontend/ui/tab-bar-drag.ts · classList.remove(s.hot)":
     "同上那一格的摘掉（换落点 / 收尾）",
   "src/frontend/ui/tab-bar-drag.ts · classList.add(s.landed)":

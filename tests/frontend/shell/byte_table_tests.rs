@@ -139,7 +139,7 @@ fn uname_answers_map_to_a_key_or_a_named_refusal() {
 /// 要求：「**拒绝是一个会到达用户的结论，不是一行 `debug` 日志**；文案照」
 /// 与第 4 条「**OS 问不出 ＝ 拒绝，不是回落**」；读数
 /// 「Windows 远端 `uname` 的回话在 toast / 日志里是**乱码**：PowerShell 按控制台代码页（GBK）吐错误，我们按 UTF-8 解」。
-/// 异源：语料是**手写的 GBK 字节**（「无法将“uname”」），走与后端 `dial/uses.rs` 同一种有损解（`from_utf8_lossy`）；
+/// 异源：语料是**手写的 GBK 字节**（「无法将“uname”」），走与后端 `ssh-dial/uses.rs` 同一种有损解（`from_utf8_lossy`）；
 /// 期望是「整句里零个 U+FFFD」＋「说得出不是 UTF-8」，不从被测常量里抠。正控：UTF-8 的回话照旧原样带出。
 #[test]
 fn an_answer_that_is_not_utf8_is_not_parroted_as_mojibake() {
@@ -662,10 +662,8 @@ fn my_version_is_read_only_through_my_backend_id() {
     let want: BTreeSet<String> = [
         // 槽的身份（三槽同一个值）
         "byte_table.rs",
-        // 版本判定 · 版本提示 · 跳预检 · 已验版本记忆 · 乐观能力集
+        // 版本判定 · 版本提示 · 跳预检 · 已验版本记忆 · 乐观能力集 · 交给重连循环的「手上这一版」（版本门问不问由它判）
         "stream_source/run.rs",
-        // resident-verdict 问不问
-        "remote_resident.rs",
         // 本机常驻 hello 比对
         "local_backend_host.rs",
         // Windows 预检

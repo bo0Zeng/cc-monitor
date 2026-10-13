@@ -7,7 +7,7 @@
 //! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
 
 use crate::observe::fence::Fence;
-use crate::observe::fs::{split_whole_lines, Step, Tailed};
+use crate::observe::fs::{Blocks, Step, Tailed};
 use crate::observe::listing_scan::SessionScan;
 use crate::platform::fs::{Ro, RoFile};
 use copy_core::copy_text;
@@ -32,33 +32,58 @@ pub(crate) fn status_of(is_live: Option<bool>) -> &'static str {
 pub(crate) fn can_of(kind: &str, status: &str, bg: bool) -> Can {
     Can {
         resume: if status == "live" {
-            "switch"
+            CanResume::Switch
         } else if bg {
-            "bg"
+            CanResume::Bg
         } else {
-            "yes"
+            CanResume::Yes
         },
         accounts: crate::agents::account_env_of(kind).is_some(),
         fork: crate::agents::record_face(kind).is_some_and(|r| r.branch.is_some()) && !bg,
         delete: match status {
-            "live" => "live",
-            "unknown" => "unsure",
-            _ => "yes",
+            "live" => CanDelete::Live,
+            "unknown" => CanDelete::Unsure,
+            _ => CanDelete::Yes,
         },
     }
 }
 
 /// `history-list` 每行（与全文搜索每个会话）的「这一行能做什么」（[`can_of`] 的成品）：闭集的词与两个开关。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Can {
     /// `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
-    pub(crate) resume: &'static str,
+    pub(crate) resume: CanResume,
     /// 恢复时能不能选号。
     pub(crate) accounts: bool,
     /// 能不能从某一轮分叉。
     pub(crate) fork: bool,
     /// `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
-    pub(crate) delete: &'static str,
+    pub(crate) delete: CanDelete,
+}
+
+/// [`Can::resume`] 的三个词。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum CanResume {
+    Yes,
+    Switch,
+    Bg,
+}
+
+/// [`Can::delete`] 的三个词。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum CanDelete {
+    Yes,
+    Live,
+    Unsure,
 }
 
 /// 项目清单的本体，出口是参数（资产目录 `asset_catalog` 写内存）。
@@ -342,19 +367,32 @@ impl ListingEntry {
         e
     }
 
-    /// 尾巴上新读到的那一段并进来（`new` 从上次的完整行之后起，可能以半行结尾）。
-    fn extend(&mut self, p: &Path, mtime: Option<std::time::SystemTime>, new: &[u8]) {
-        let end = self.read.consumed() + new.len() as u64;
-        let (whole, rest) = split_whole_lines(new);
-        for line in whole.split_inclusive(|&b| b == b'\n') {
-            self.done.absorb_bytes(line);
+    /// 尾巴上新长的那一截按块读进来（`new` 停在上次的完整行之后，读到尾；末尾可能是半行）。读出错 ⇒ `false`（这一份调用方整份重扫）。
+    fn extend<R: std::io::Read>(
+        &mut self,
+        p: &Path,
+        mtime: Option<std::time::SystemTime>,
+        new: &mut Blocks<R>,
+    ) -> bool {
+        let base = self.read.consumed();
+        loop {
+            match new.next() {
+                Ok(Some(whole)) => {
+                    for line in whole.split_inclusive(|&b| b == b'\n') {
+                        self.done.absorb_bytes(line);
+                    }
+                    self.read.took(&whole);
+                }
+                Ok(None) => break,
+                Err(_) => return false,
+            }
         }
-        self.read.took(whole);
-        self.read.saw((mtime, end));
+        self.read.saw((mtime, base + new.read()));
         self.tail = SessionScan::default();
-        self.tail.absorb_bytes(rest);
-        self.last_bytes = new.len() as u64;
+        self.tail.absorb_bytes(&new.rest());
+        self.last_bytes = new.read();
         self.row = self.done.joined(&self.tail).row(p);
+        true
     }
 }
 
@@ -384,6 +422,23 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
 
 /// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
 pub(crate) fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
+    label_facts_among(crate::agents::REGISTRY, p)
+}
+
+/// [`label_facts_of`] 的可喂夹具那一半（注册表是参数）。
+pub(crate) fn label_facts_among(
+    registry: &[crate::agents::Adapter],
+    p: &Path,
+) -> super::search_rules::LabelFacts {
+    // 有合成历史面的那一家（记录格式不是记录树那一家的）：第一句照它自己的读法（与历史清单那一行同一个摘录）；它没有标题记录。
+    if let Some(excerpt) = crate::agents::synth_excerpt_among(registry, p) {
+        return super::search_rules::LabelFacts {
+            custom: None,
+            title: None,
+            first: excerpt(p),
+            project_dir: crate::agents::project_dir_among(registry, p),
+        };
+    }
     let row = analyze_session_cached(p);
     super::search_rules::LabelFacts {
         custom: None,
@@ -418,9 +473,12 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
             e.last_bytes = 0;
             e
         }
-        (Step::Appended(new), Some(mut e)) => {
-            e.extend(p, seen.0, &new);
-            e.last_bytes = bytes;
+        (Step::Appended(mut new), Some(mut e)) => {
+            // 读到一半读不动 ⇒ 与见证那一下读不动同一形：这一次现扫、不留。
+            if !e.extend(p, seen.0, &mut new) {
+                return analyze_session(p);
+            }
+            e.last_bytes = bytes + new.read();
             e
         }
         _ => ListingEntry::scan(p, seen.0),
@@ -742,7 +800,7 @@ pub(crate) fn scan_session_index<R: std::io::BufRead>(
 /// ⚠ **口径是近似的，而且近似得有方向**：它不知道前端哪些记录最终不建卡（`stripInternalNoise`、
 /// ESC 折叠、slash/compact 细条…），只按记录的**原料**数。前端据 `t` / `sp` / `fd` 分档，
 /// 分不准的那几档落到偏保守的常数（`§2.5b`：「粗估用偏保守的常数，精算后往下修」）。
-#[derive(Debug, Default, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
 pub(crate) struct IndexRow {
     /// 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)`。
     pub(crate) o: u64,
@@ -938,14 +996,20 @@ fn count_prose(s: &str, row: &mut IndexRow) {
 ///
 /// 帧面那条（`history-tail`）只要**这张图**，正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TailPlan {
     /// 可计行总数（`line_counts` 口径）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub total: u64,
     /// 尾段第一行的行号。
+    #[cfg_attr(test, ts(type = "number"))]
     pub tail_from: u64,
     /// 尾段第一行的字节起点（＝ 头段的字节终点）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub split_at: u64,
     /// 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
+    #[cfg_attr(test, ts(type = "number"))]
     pub end: u64,
 }
 
@@ -1301,6 +1365,8 @@ pub(crate) fn record_for(
 
 /// [`record_in`] 的答案。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RecordProbe {
     /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
     pub present: bool,

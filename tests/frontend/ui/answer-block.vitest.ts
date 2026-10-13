@@ -18,7 +18,6 @@ import { AnswerBlock, type AnswerHost, type AnswerOutcome } from "../../../src/f
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import type { Ask, Needs } from "../../../src/frontend/ui/session-reads";
 import { LIVE, LIVE_ATTACHABLE } from "../../../src/frontend/ui/tab-session-state";
-import { NEEDS_KIND } from "../../../src/frontend/ui/session-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { waitedNow } from "../../../src/frontend/ui/duration-format";
@@ -308,12 +307,11 @@ describe("入口：跳到等批准的会话 ⇒ 焦点进块", () => {
 });
 
 describe("每一种需手动都有地方出（钉条删了以后）", () => {
-  it("★ 核心能出的每一种 needs.kind（读 Rust 那份枚举，两向相等）在桌面都画成块：头一行 ＋ 那一句（没有按钮）", () => {
+  it("★ 核心能出的每一种 needs.kind（读 Rust 那份枚举）在桌面都画成块：头一行 ＋ 那一句（没有按钮）", () => {
     const src = readFileSync(resolve(__dirname, "../../../src/backend/observe/facts_query.rs"), "utf8");
     const body = src.slice(src.indexOf("pub(crate) enum NeedsKind {"));
     const variants = [...body.slice(0, body.indexOf("}")).matchAll(/^\s*([A-Z][A-Za-z]*),/gm)].map((m) => m[1][0].toLowerCase() + m[1].slice(1));
     expect(variants.length).toBeGreaterThanOrEqual(8);
-    expect([...NEEDS_KIND].sort()).toEqual([...variants].sort());
     for (const kind of variants) {
       document.body.innerHTML = "";
       const { b } = rig(tab(needs(null, { kind: kind as Needs["kind"], head: `核心·${kind}`, manualText: `核心·${kind}·那一句` })));

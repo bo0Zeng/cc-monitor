@@ -1,6 +1,16 @@
 //! 主线外清单：分叉选最新 · 多根只折死胡同的人话根 · 重复投递幂等 · 排队裸叶豁免 · 逐条喂与整批算逐条相同。
 use super::*;
 
+/// 一批事实 ⇒ 主线外清单（判据的对照：与 [`Chain`] 逐条记、逐条算的结果相同；冷读那一路改成扫描图里的 [`Chain`] 接着记）。
+pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
+    let mut c = Chain::new();
+    for f in facts {
+        c.load(f);
+    }
+    c.settle();
+    c.off
+}
+
 #[derive(Clone, Copy)]
 enum K {
     Said,
@@ -42,6 +52,12 @@ fn off(facts: &[ChainFact]) -> Vec<String> {
     let mut v = off_of(facts.iter().cloned());
     v.sort();
     v
+}
+
+/// 实时那一路一条一条来：记一条、算一次；回：清单变没变。
+fn feed(c: &mut Chain, f: ChainFact) -> bool {
+    c.load(f);
+    c.settle()
 }
 
 fn s(v: &[&str]) -> Vec<String> {
@@ -243,7 +259,7 @@ fn feeding_one_by_one_reports_changes_and_agrees_with_the_batch() {
         node("D2", Some("C2"), "t06", K::Reply),
     ];
     let mut c = Chain::new();
-    let changed: Vec<bool> = r.iter().cloned().map(|f| c.push(f)).collect();
+    let changed: Vec<bool> = r.iter().cloned().map(|f| feed(&mut c, f)).collect();
     assert_eq!(changed, [false, false, false, false, true, false]);
     assert_eq!(c.off(), ["C1", "D1"]);
 }
@@ -271,10 +287,51 @@ fn incremental_and_batch_agree_on_every_prefix_of_mixed_shapes() {
     ];
     let mut c = Chain::new();
     for k in 0..r.len() {
-        c.push(r[k].clone());
+        feed(&mut c, r[k].clone());
         let mut inc = c.off().to_vec();
         inc.sort();
         assert_eq!(inc, off(&r[..=k]), "prefix {k}");
+    }
+}
+
+/// 攒着记（`load`）、隔几条算一次（`settle`）与记一条算一次在每个算过的点上清单相同；`settle` 回的「变没变」是相对上一次算的。
+#[test]
+fn loading_in_batches_and_settling_agrees_with_pushing_one_by_one() {
+    let r = [
+        ChainFact::Queued("qq".into()),
+        node("R1", None, "t01", K::Said),
+        node("A1", Some("R1"), "t02", K::Reply),
+        interrupt("I1", Some("A1"), "t03"),
+        node("R2", None, "t04", K::Said),
+        node("A2", Some("R2"), "t05", K::Reply),
+        node("U3", Some("A2"), "t07", K::Said),
+        said_text("b", Some("U3"), "t08", "qq"),
+        node("A3", Some("U3"), "t09", K::Reply),
+        node("late-child", Some("late-parent"), "t12", K::Said),
+        node("late-parent", Some("A3"), "t11", K::Reply),
+        node("U5", Some("A2"), "t14", K::Said),
+        node("A5", Some("U5"), "t15", K::Reply),
+        ChainFact::Queued("zz".into()),
+    ];
+    for every in 1..=r.len() {
+        let mut one = Chain::new();
+        let mut many = Chain::new();
+        let mut before = Vec::<String>::new();
+        for (k, f) in r.iter().enumerate() {
+            feed(&mut one, f.clone());
+            many.load(f.clone());
+            if (k + 1) % every == 0 || k + 1 == r.len() {
+                let changed = many.settle();
+                assert_eq!(many.off(), one.off(), "每 {every} 条算一次，第 {k} 条");
+                assert_eq!(
+                    changed,
+                    many.off() != before.as_slice(),
+                    "每 {every} 条算一次，第 {k} 条：变没变"
+                );
+                before = many.off().to_vec();
+                assert!(!many.settle(), "算完再算一次 ⇒ 没变");
+            }
+        }
     }
 }
 

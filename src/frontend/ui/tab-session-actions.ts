@@ -26,7 +26,7 @@ import { startInTmuxThenAttach } from "./tmux-resume";
 // 标签页里的会话都是流跟的那一家（记录树那一家）。
 import type { Tab } from "./tab-model";
 import { copyText } from "./copy-table";
-import { decodeKilled, type KillNote } from "./tmux-control";
+import type { KillNote } from "./tmux-control";
 import { offerResyncRetry, resyncMachines, resyncMachinesSaid } from "./resync";
 
 /** DEV 断言出口：把状态转移写成可 grep 的 `[e2e]` 行。`import.meta.env.DEV` 门控，生产构建整支消除。 */
@@ -291,12 +291,7 @@ export class TabSessionActions {
         return;
       }
       // 顺手从 cc-bus 名册注销的结局说一句（没有要说的就不说；说法同单个 `kill` 那一份）。
-      let bus: KillNote = { said: null, detail: "" };
-      try {
-        bus = decodeKilled(origin, r.session ?? name, { session: r.session ?? name, killed: true, bus: r.bus });
-      } catch {
-        bus = { said: null, detail: "" };
-      }
+      const bus: KillNote = { said: r.bus?.said ?? null, detail: r.bus?.detail ?? "" };
       toast(copyText("sessionState.kill.done", { title }), bus.said ?? "", { level: "success", detail: bus.detail });
     };
     void (async () => {

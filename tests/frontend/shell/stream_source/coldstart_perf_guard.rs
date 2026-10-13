@@ -16,12 +16,13 @@
 const PHASES: &[(&str, &str, &str)] = &[
     (
         "部署预检",
-        "async fn open_round",
+        "async fn preflight",
         "[perf] stream_source [{host_label}] 部署预检 {}ms（",
     ),
     (
         "起流",
-        "async fn open_round",
+        // 重连循环每接一次都经 `DeskLink::stream` 开那条链路（SSH 登录 ＋ exec 小中继），开完报一行。
+        "fn perf_dialed",
         "[perf] stream_source [{host_label}] 起流 {}ms（",
     ),
     (
@@ -30,7 +31,7 @@ const PHASES: &[(&str, &str, &str)] = &[
         "[perf] stream_source [{host_label}] 首个 hello T+{}ms（",
     ),
     // 握手那一段搬进了拨号代理，量它的埋点跟着搬到宿主 `dial_host.rs::open`
-    //   （原住 `stream_source/` 里的 `connect_session`；SFTP 那一份也随 `inproc_dial.rs` 整份删了，握手今天只在本机后端 `dial/connect.rs`）。
+    //   （原住 `stream_source/` 里的 `connect_session`；SFTP 那一份也随 `inproc_dial.rs` 整份删了，握手今天只在本机后端 `ssh-dial/connect.rs`）。
     //   ⚠ 量的东西多了一次**起代理进程** —— 那是认下来的代价，埋点让它看得见。
     (
         "SSH 握手+鉴权",
@@ -53,7 +54,7 @@ fn source_of(sig: &str) -> String {
 ///
 /// ⚠ **锚点必须带换行与左括号**（`\n{sig}(`）：不带的话 `src.find(sig)` 会先命中
 /// **本模块 `PHASES` 表里的那个字符串字面量**，于是抽出来的是守卫自己的函数体 ——
-/// 实测第一次跑就栽在这里，诊断说「`stream_loop` 里没有埋点」而埋点明明在。
+/// 实测第一次跑就栽在这里，诊断说「流循环里没有埋点」而埋点明明在。
 /// ★ 这是本区**第四次**「判据匹配到自己」（F12 注释 · F13 `RULE` 常量 ·
 /// F18 自己的登记表 · 本条自己的阶段表）。**判据要读的东西和判据本身写在同一片文本里时，
 /// 锚点必须能把两者分开。**

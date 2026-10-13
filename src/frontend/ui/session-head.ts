@@ -1,9 +1,15 @@
 /**
- * **会话头**（主区顶上 40px）：状态点 · 标题全名 · 「机器 · 目录」· 状态一句；右边：打开工作目录（本机）· 切到终端（Windows）· 看它的终端 ·
- * 在会话里找 · 更多（＝这个标签页的右键菜单）。按状态多一颗：已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］·
- * 状态不明［重新连接］。窄时先藏目录、再藏状态一句（CSS 容器查询）。
+ * **会话头**（主区顶上 40px）：状态点 · 标题全名 · 「机器 · 目录」· 状态一句；右边一排按钮 ＋ 最右「⋯」（＝这个标签页的右键菜单）。
+ * 按状态多一颗、永远在最左：已结束［恢复 ▾］· Claude 已退出（远端）［在终端里打开］· 状态不明［重新连接］。
  *
- * 「看它的终端」开底部抽屉的终端页（会话还有终端可去才出）。
+ * 右边那一排由用户自己排（ui3 · 10-11 稿「会话头按钮」方案②，默认 ＝ 方案①：打开工作目录 · 切到终端 · 看它的终端 · 在新窗口打开 ·
+ * 账号 · 显示 ▾ · 在会话里找）：存 `config.json` 的 `sessionHead.buttons`（这扇界面自己的偏好；删掉这个键 ＝ 恢复默认）。
+ * 入口：按钮那一排右键（调整… · 从会话头移走「x」）·「⋯」最后一项 · 命令面板；编辑浮层见 `session-head-edit.ts`。
+ * 本会话用不上的（远端无目录、不是 Windows 无 ↗、已结束无终端）不出、不留空位。窄时先藏目录、再藏状态一句（CSS 容器查询）；
+ * 还放不下 ⇒ 从排在最后的那颗起收进「⋯」最上面一组（不改设置，变宽就回来）。
+ *
+ * 「看它的终端」开底部抽屉的终端页（会话还有终端可去才出）。「显示 ▾」是两个流开关（过程默认展开 · 显示系统注入）合成的一颗。
+ * 在新窗口打开 · 账号 · 固定 · 分组 · 恢复 · 关闭标签页那几颗借「⋯」那份菜单的同一项（字、能不能点、点了做什么都是那一项）。
  *
  * 只排版：一句话怎么写从 `session-face.ts` 取；做事的都交宿主（`TabManager` 那几条）。
  */
@@ -18,7 +24,27 @@ import { statusDot, setDot } from "./kit/status-dot";
 import { attachTooltip } from "./kit/tooltip";
 import { button } from "./kit/button";
 import { dotOf, fullTitle, machineOf, stateLine, stateWord } from "./session-face";
+import { openMenu, type MenuItem } from "./kit/menu";
+import { closePopover, openPopover, popoverOpenOn } from "./kit/popover";
+import { undoToast } from "./kit/toast";
+import { loadConfig, patchConfig, removeAt, setAt } from "./config";
+import { DEFAULT_HEAD_BUTTONS, headButtonsThatFit, sanitizeHeadButtons, type HeadButtonId } from "./session-head-buttons";
+import { HEAD_BUTTON_FACE, HeadEditor } from "./session-head-edit";
 import s from "./session-head.module.css";
+
+/** `config.json` 里这扇界面自己那一格（登记在 `config.ts::CONFIG_KEY_OWNERS`）。 */
+const KEY = "sessionHead";
+/** 放不下时标题至少留这么宽（再窄就收按钮）。 */
+const TITLE_MIN_PX = 160;
+
+/** 借「⋯」那份菜单的哪一项（宿主照这个会话现拼）。 */
+export type HeadMenuId = "popOut" | "account" | "pin" | "group" | "resume" | "close";
+
+/** 交给「⋯」的那几组：最上面 ＝ 放不下收进来的；最后 ＝ 两个流开关 ＋「调整会话头按钮…」。 */
+export interface HeadMoreExtra {
+  top: MenuItem[];
+  bottom: MenuItem[];
+}
 
 export interface SessionHeadHost {
   active(): Tab | null;
@@ -27,12 +53,16 @@ export interface SessionHeadHost {
   openCwd(sid: string): void;
   front(sid: string): void;
   find(): void;
-  more(anchor: HTMLElement, sid: string): void;
+  more(anchor: HTMLElement, sid: string, extra: HeadMoreExtra): void;
   resume(anchor: HTMLElement, sid: string): void;
   attach(sid: string): void;
   reconnect(origin: string): void;
   /** 这个会话是计划里哪一块的接手 ⇒ 那一枚标的字与点了去哪；不是 ⇒ `null`。 */
   planMark(tab: Tab): { slice: string; label: string; open: () => void } | null;
+  /** 「⋯」那份菜单里的这一项（这个会话此刻没有这一项 ⇒ `null`）。 */
+  menuItem(sid: string, id: HeadMenuId): MenuItem | null;
+  /** 两个流开关（「显示 ▾」的下拉与「⋯」里同一份）。 */
+  displayItems(): MenuItem[];
 }
 
 /**
@@ -43,12 +73,27 @@ export function terminalActsOf(tab: Tab): { front: boolean; attach: boolean } {
   return { front: terminalFrontAvailable() && hasTerminal(tab.state), attach: dotOf(tab) === "exited" && isRemoteOrigin(tab.origin) };
 }
 
+type Chorded = Parameters<typeof dispatcher.effectiveChord>[0];
+
+/** 此刻的键位（没绑 ⇒ `undefined`）。 */
+function chordOf(action: Chorded | null): string | undefined {
+  const chord = action === null ? null : dispatcher.effectiveChord(action);
+  return chord ? KeybindingDispatcher.prettyChord(chord) : undefined;
+}
+
 /** 悬停「名字 · 当前键位」（按 `config.json.keybindings` 现拼）。 */
-function keyed(name: string, action: Parameters<typeof dispatcher.effectiveChord>[0] | null): () => string {
+function keyed(name: string, action: Chorded | null): () => string {
   return () => {
-    const chord = action === null ? null : dispatcher.effectiveChord(action);
-    return chord ? `${name} · ${KeybindingDispatcher.prettyChord(chord)}` : name;
+    const k = chordOf(action);
+    return k ? `${name} · ${k}` : name;
   };
+}
+
+/** 一颗画出来的按钮 ＋ 收进「⋯」时它那一项。 */
+interface Built {
+  id: HeadButtonId;
+  el: HTMLButtonElement;
+  item: MenuItem;
 }
 
 export class SessionHead {
@@ -62,6 +107,17 @@ export class SessionHead {
   private readonly extra: HTMLSpanElement;
   private readonly acts: HTMLSpanElement;
   private drawn: string | null = null;
+  /** 盘上那一格（`null` ＝ 没设过 ⇒ 默认）。 */
+  private saved: HeadButtonId[] | null = null;
+  /** 此刻画在会话头上的那几颗（含收进「⋯」的）与「⋯」本身。 */
+  private built: Built[] = [];
+  /** 最右「⋯」：一直是这一颗（编辑浮层锚在它上面，换会话、改排法都不换它）。 */
+  private readonly moreBtn: HTMLButtonElement;
+  /** 上次画出去的那一排（一样就不换 DOM：悬停提示、↗ 的结果浮层都锚在这些按钮上）。 */
+  private actsDrawn = "";
+  /** 收进「⋯」的那几颗（从后往前收，这里按会话头顺序）。 */
+  private folded: Built[] = [];
+  private editor: HeadEditor | null = null;
 
   /** 宿主拿 `el` 顶掉 `index.html` 里那一格占位（`#session-head`，认领 `#app` 网格的 `head` 区）。 */
   constructor(private readonly host: SessionHeadHost) {
@@ -71,6 +127,7 @@ export class SessionHead {
     this.dot = statusDot("running", copyText("sessionFace.dot.running"), "compact");
     this.title = document.createElement("span");
     this.title.className = s.shTitle;
+    this.title.dataset.headTitle = "";
     attachTooltip(this.title, () => (this.title.scrollWidth > this.title.clientWidth ? (this.title.textContent ?? "") : null));
     this.where = document.createElement("span");
     this.where.className = s.shWhere;
@@ -86,8 +143,91 @@ export class SessionHead {
     this.extra.className = s.shExtra;
     this.acts = document.createElement("span");
     this.acts.className = s.shActs;
+    this.acts.addEventListener("contextmenu", (e) => this.onActsMenu(e));
+    this.moreBtn = this.iconButton("more", copyText("tabBarView.tab.moreHint"), () => copyText("tabBarView.tab.moreHint"), (b) => {
+      const t = this.host.active();
+      if (t) this.host.more(b, t.sessionId, this.moreExtra());
+    });
+    this.moreBtn.dataset.head = "more";
     this.el.append(this.dot, this.title, this.where, this.dir, this.state, this.plan, sp, this.extra, this.acts);
     this.el.style.display = "none";
+    // 窗口宽窄变了 ⇒ 重新看放不放得下（收进去的变宽就回来）。
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => this.fit()).observe(this.el);
+  }
+
+  /** 会话头上此刻排的那几颗（没设过 ⇒ 默认那一排）。 */
+  buttons(): readonly HeadButtonId[] {
+    return this.saved ?? DEFAULT_HEAD_BUTTONS;
+  }
+
+  /** 读盘上那一格（启动时一次）。认不出的 id 跳过。 */
+  async loadButtons(): Promise<void> {
+    const cfg = (await loadConfig()) as Record<string, unknown>;
+    const v = cfg[KEY];
+    this.saved = sanitizeHeadButtons(v && typeof v === "object" ? (v as Record<string, unknown>).buttons : undefined);
+    this.repaint();
+  }
+
+  /** 改成这一排：当场重画、落盘（按键补丁，只动 `sessionHead.buttons`）。 */
+  private setButtons(next: HeadButtonId[] | null): void {
+    this.saved = next === null ? null : [...next];
+    this.repaint();
+    void patchConfig([next === null ? removeAt([KEY]) : setAt([KEY, "buttons"], [...next])]).catch((e: unknown) => console.warn("[session-head] 写会话头按钮失败：", e));
+  }
+
+  /** 设置变了 / 开关变了：整个重画（按钮排与浮层清单）。 */
+  private repaint(): void {
+    this.drawn = null;
+    this.actsDrawn = "";
+    this.render();
+    this.editor?.update();
+  }
+
+  /** 编辑浮层（锚在「⋯」下方；已开着 ⇒ 关）。命令面板「调整会话头按钮…」也走这里。 */
+  openEditor(): void {
+    const anchor = this.moreBtn;
+    if (!anchor.isConnected) return;
+    if (popoverOpenOn(anchor)) {
+      closePopover();
+      return;
+    }
+    const ed = new HeadEditor({
+      buttons: () => this.buttons(),
+      set: (next) => this.setButtons(next),
+      reset: () => this.resetButtons(),
+    });
+    if (!openPopover(anchor, ed.el, { label: copyText("sessionHead.edit.title"), onClose: () => (this.editor = null) })) return;
+    this.editor = ed;
+    ed.focusFirst();
+  }
+
+  /** ［恢复默认］：删掉这个键，toast 可撤（撤 ＝ 写回原来那一排）。 */
+  private resetButtons(): void {
+    const was = this.saved;
+    this.setButtons(null);
+    undoToast(copyText("sessionHead.edit.resetDone"), () => this.setButtons(was), () => {});
+  }
+
+  /** 按钮那一排右键：调整… · 指着哪颗（能移走的）就多一项「从会话头移走「x」」。 */
+  private onActsMenu(e: MouseEvent): void {
+    e.preventDefault();
+    e.stopPropagation();
+    const at = (e.target as HTMLElement | null)?.closest<HTMLElement>("[data-head]")?.dataset.head;
+    const hit = this.built.find((b) => b.id === at);
+    const items: MenuItem[] = [{ icon: "sliders", label: copyText("sessionHead.edit.open"), onClick: () => this.openEditor() }];
+    if (hit) {
+      const name = HEAD_BUTTON_FACE[hit.id].name();
+      items.push({
+        icon: "minimize",
+        label: copyText("sessionHead.edit.remove", { name }),
+        onClick: () => {
+          const was = this.saved;
+          this.setButtons(this.buttons().filter((x) => x !== hit.id));
+          undoToast(copyText("sessionHead.edit.removed", { name }), () => this.setButtons(was), () => {});
+        },
+      });
+    }
+    openMenu({ x: e.clientX, y: e.clientY }, items);
   }
 
   private iconButton(name: IconName, label: string, hint: () => string, onClick: (b: HTMLButtonElement) => void): HTMLButtonElement {
@@ -99,6 +239,70 @@ export class SessionHead {
     attachTooltip(b, hint);
     b.addEventListener("click", () => onClick(b));
     return b;
+  }
+
+  /** 借「⋯」那一项画一颗：字 · 能不能点（灰着的悬停说为什么）· 有子菜单 ⇒ 锚在按钮上开。 */
+  private fromItem(id: HeadButtonId, it: MenuItem, label: string, action: Chorded | null): Built {
+    const off = it.enabled === false;
+    const hint = off && it.why ? () => `${label} · ${it.why}` : keyed(label, action);
+    const el = this.iconButton(HEAD_BUTTON_FACE[id].icon, label, hint, (b) => {
+      if (off) return;
+      if (it.submenu) openMenu({ el: b, align: "end" }, it.submenu);
+      else it.onClick?.();
+    });
+    if (off) el.setAttribute("aria-disabled", "true");
+    // 收进「⋯」时与菜单里原来那一项同在一份菜单里 ⇒ 摘掉 id（菜单按 id 就地换项，不能撞）。
+    return { id, el, item: { ...it, id: undefined, icon: HEAD_BUTTON_FACE[id].icon } };
+  }
+
+  /** 两个流开关；点了之后会话头「显示」那一颗的开 / 关样跟着变。 */
+  private displayItems(): MenuItem[] {
+    return this.host.displayItems().map((it) => ({ ...it, onClick: () => (it.onClick?.(), this.repaint()) }));
+  }
+
+  /** 这一颗在这个会话上画成什么样；本会话用不上 ⇒ `null`（不出、不留空位）。 */
+  private build(id: HeadButtonId, tab: Tab, extra: string): Built | null {
+    const sid = tab.sessionId;
+    const face = HEAD_BUTTON_FACE[id];
+    const plain = (label: string, action: Chorded | null, run: (b: HTMLButtonElement) => void, menuLabel = label): Built => ({
+      id,
+      el: this.iconButton(face.icon, label, keyed(label, action), run),
+      item: { icon: face.icon, label: menuLabel, detail: chordOf(action), onClick: () => run(this.moreBtn) },
+    });
+    switch (id) {
+      case "cwd":
+        return !isRemoteOrigin(tab.origin) && tab.projectDir ? plain(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd", () => this.host.openCwd(sid), copyText("tabMenu.open.cwd")) : null;
+      case "front": {
+        if (!terminalActsOf(tab).front) return null;
+        const b = plain(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front", () => this.host.front(sid), copyText("tabMenu.open.front"));
+        // ↗ 的结果浮层锚在这一颗上（按会话找）。
+        b.el.dataset.role = "head-front";
+        b.el.dataset.sid = sid;
+        return b;
+      }
+      case "terminal":
+        return hasTerminal(tab.state) ? plain(copyText("sessionHead.act.terminal"), "panel.toggle-terminal", () => this.host.viewTerminal()) : null;
+      case "find":
+        return plain(copyText("sessionHead.act.find"), "session.find", () => this.host.find());
+      case "display": {
+        const items = this.displayItems();
+        const on = items.some((x) => x.checked === true);
+        const label = copyText("sessionHead.act.display");
+        const el = this.iconButton("list", label, () => label, (b) => openMenu({ el: b, align: "end" }, this.displayItems()));
+        el.appendChild(icon("caretDown", "compact"));
+        el.className = `${s.shIb} ${s.shIbDrop}`;
+        el.setAttribute("aria-pressed", String(on));
+        return { id, el, item: { icon: "list", label, submenu: items } };
+      }
+      default: {
+        // 按状态那一颗已经是［恢复 ▾］⇒ 不出第二颗。
+        if (id === "resume" && extra === "resume") return null;
+        const it = this.host.menuItem(sid, id as HeadMenuId);
+        if (!it) return null;
+        const label = id === "popOut" ? copyText("sessionHead.act.popOut") : id === "account" ? copyText("sessionHead.act.account") : it.label;
+        return this.fromItem(id, it, label, id === "popOut" ? "tab.pop-out" : null);
+      }
+    }
   }
 
   /** 当前 tab 变了 / 它的状态变了 ⇒ 重画（与上次画出去的一样就一个 DOM 都不写）。 */
@@ -120,9 +324,8 @@ export class SessionHead {
     const term = hasTerminal(tab.state);
     const extra = canResume(tab.state) ? "resume" : acts.attach ? "attach" : d === "unknown" ? "reconnect" : "";
     const mark = this.host.planMark(tab);
-    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? ""].join("\u0000");
+    const drawn = [tab.sessionId, d, fullTitle(tab), machineOf(tab), tab.projectDir ?? "", st.text, st.needs ? 1 : 0, remote ? 1 : 0, front ? 1 : 0, term ? 1 : 0, extra, mark?.label ?? "", tab.pinned ? 1 : 0, tab.state.liveness].join("\u0000");
     if (drawn === this.drawn) return;
-    const sameSession = this.drawn?.split("\u0000")[0] === tab.sessionId;
     this.drawn = drawn;
     this.el.style.display = "";
     setDot(this.dot, d, stateWord(tab));
@@ -152,23 +355,39 @@ export class SessionHead {
       b.addEventListener("click", () => mark.open());
       this.plan.replaceChildren(b);
     } else this.plan.replaceChildren();
-    // 右边一排随会话种类变（本机才有目录、Windows 才有 ↗）；同一个会话只在这两样变了时重建。
-    const shape = `${remote ? 1 : 0}${front ? 1 : 0}${term ? 1 : 0}`;
-    if (!sameSession || this.acts.dataset.shape !== shape) {
-      this.acts.dataset.shape = shape;
-      const btns: HTMLButtonElement[] = [];
-      if (!remote && tab.projectDir) btns.push(this.iconButton("folder", copyText("tabBarView.tab.cwdHint"), keyed(copyText("tabBarView.tab.cwdHint"), "tab.open-cwd"), () => this.host.openCwd(sid)));
-      if (front) {
-        const b = this.iconButton("front", copyText("tabBarView.tab.terminalHint"), keyed(copyText("tabBarView.tab.terminalHint"), "terminal.bring-front"), () => this.host.front(sid));
-        // ↗ 的结果浮层锚在这一颗上（按会话找）。
-        b.dataset.role = "head-front";
-        b.dataset.sid = sid;
-        btns.push(b);
-      }
-      if (term) btns.push(this.iconButton("terminal", copyText("sessionHead.act.terminal"), keyed(copyText("sessionHead.act.terminal"), "panel.toggle-terminal"), () => this.host.viewTerminal()));
-      btns.push(this.iconButton("search", copyText("sessionHead.act.find"), keyed(copyText("sessionHead.act.find"), "session.find"), () => this.host.find()));
-      btns.push(this.iconButton("more", copyText("tabBarView.tab.moreHint"), () => copyText("tabBarView.tab.moreHint"), (b) => this.host.more(b, sid)));
-      this.acts.replaceChildren(...btns);
-    }
+    // 右边一排：照用户排的那几颗，本会话用不上的不出；最右「⋯」。和上次画的一样 ⇒ 不换。
+    const built = this.buttons().map((id) => this.build(id, tab, extra)).filter((b): b is Built => b !== null);
+    const actsDrawn = [sid, ...built.map((b) => `${b.id}:${b.el.getAttribute("aria-label")}:${b.el.getAttribute("aria-disabled") ?? ""}:${b.el.getAttribute("aria-pressed") ?? ""}`)].join("\u0000");
+    if (actsDrawn === this.actsDrawn) return;
+    this.actsDrawn = actsDrawn;
+    this.built = built;
+    for (const b of built) b.el.dataset.head = b.id;
+    this.acts.replaceChildren(...built.map((b) => b.el), this.moreBtn);
+    this.fit();
+  }
+
+  /** 「⋯」最上面一组（收进来的）与最后一组（两个流开关 ＋ 调整会话头按钮…）。 */
+  private moreExtra(): HeadMoreExtra {
+    const top = this.folded.map((b) => b.item);
+    return {
+      top: top.length > 0 ? [...top, { label: "", divider: true }] : [],
+      bottom: [...this.displayItems(), { label: "", divider: true }, { icon: "sliders", label: copyText("sessionHead.edit.open"), onClick: () => this.openEditor() }],
+    };
+  }
+
+  /**
+   * 放不下时收：标题挤到 160 以下（或它本来就短 ⇒ 挤到它的全长以下）⇒ 从排在最后的那颗起收进「⋯」。
+   * 先全露出来再量（变宽了收进去的就回来）；不改用户的设置。
+   */
+  fit(): void {
+    const btns = this.built;
+    const show = (k: number): number => {
+      btns.forEach((b, i) => (b.el.style.display = i < k ? "" : "none"));
+      return this.title.clientWidth;
+    };
+    show(btns.length);
+    const k = headButtonsThatFit(btns.length, show, this.title.scrollWidth, TITLE_MIN_PX);
+    show(k);
+    this.folded = btns.slice(k);
   }
 }

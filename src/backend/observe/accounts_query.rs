@@ -293,6 +293,7 @@ fn scan_accounts(
             Vec::new(),
         ),
         Ok(m) => {
+            let colors = colors_at(accts_dir);
             let mut lines = Vec::new();
             for a in &m.accounts {
                 // configDir 缺席 = 账号 0：它的 config dir 就是共享库 ⇒ 登录态查那儿，`configDir` 在帧里出 null（下游据此不注入 CLAUDE_CONFIG_DIR）。
@@ -349,6 +350,11 @@ fn scan_accounts(
                         "authReady": ready,
                         // 能拿来起会话 / 选为默认：规则只住 `acct_core::account_selectable`，界面与起会话都读这一格。
                         "selectable": acct_core::account_selectable(&mode, ready, exists, a.config_dir.is_some()),
+                        // 号色（`--acct-c0..c7` 第几格）：账号库里的事实，界面只画它（[`colors_at`]；形状不合规矩的那条按名字哈希兜底）。
+                        "color": colors
+                            .get(&a.name)
+                            .copied()
+                            .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(&a.name)),
                 }));
             }
             let count = lines.len();
@@ -377,12 +383,31 @@ pub(crate) const CREDENTIALS_FILE: &str = CREDENTIALS_NAME;
 /// 删掉默认号之后新会话默认谁（默认号只有清单里那一份）：问写侧那一条规则（`Manifest::without`），这里不另判。
 /// 清单读不出 / 没有默认号 / 删了之后没有别的号 ⇒ `None`。
 fn next_default(accts_dir: &Path) -> Option<String> {
-    let bytes = Ro::read_regular_capped(&manifest_path(accts_dir), MAX_MANIFEST_BYTES).ok()?;
-    let text = String::from_utf8(bytes).ok()?;
-    let m = crate::accounts::manage::model::Manifest::parse(text.trim_start_matches('\u{feff}'))
-        .ok()?;
+    let m = library_model(accts_dir)?;
     let current = m.managed().find(|a| a.is_default)?.name.clone();
     m.without(&current).1
+}
+
+/// 写侧那份模型读出来的清单（读不出 ⇒ `None`）。
+fn library_model(accts_dir: &Path) -> Option<crate::accounts::manage::model::Manifest> {
+    let bytes = Ro::read_regular_capped(&manifest_path(accts_dir), MAX_MANIFEST_BYTES).ok()?;
+    let text = String::from_utf8(bytes).ok()?;
+    crate::accounts::manage::model::Manifest::parse(text.trim_start_matches('\u{feff}')).ok()
+}
+
+/// 清单里每个号的号色（名 ⇒ 第几格）：盘上有就照盘上；还没补过色的照补色那一处现算（`Manifest::with_colors`，
+/// 与常驻那一个补完写回去的同一份）。读不出 ⇒ 空表（行上按名字哈希兜底）。
+fn colors_at(accts_dir: &Path) -> std::collections::BTreeMap<String, u8> {
+    let Some(m) = library_model(accts_dir).map(|m| m.with_colors()) else {
+        return Default::default();
+    };
+    m.managed()
+        .filter_map(|a| a.color.map(|c| (a.name.clone(), c)))
+        .chain(
+            m.zero_color
+                .map(|c| (acct_core::BARE_ACCOUNT.to_string(), c)),
+        )
+        .collect()
 }
 
 /// 帧面 `accounts-list` 的成品（账号域读自己那台的 apikey 表，agent 随请求带）。
@@ -613,6 +638,11 @@ fn pidfiles(agent_home: &Path) -> Vec<(u32, serde_json::Value)> {
     out
 }
 
+/// 这台此刻活着的会话（[`live_session_ids`]，家取这台那一家的家）：轮换数「另 N 会话也在用」· 判「会话走了」都问它。
+pub(crate) fn live_here() -> std::collections::BTreeSet<String> {
+    live_session_ids(&super::history_query::agent_home())
+}
+
 /// 这台机器上此刻活着的会话（sid 集合）—— 历史跨机 join 的本机判活源头：pidfile 里的会话 id ＋ 进程还是不是同一个
 /// （`platform::proc::session_alive`：存在性 ＋ 有 `procStart` 时对拍启动时刻 —— 与 watcher 加会话那一道闸同一个平台原语，
 /// 不是账号归属那道更严的「缺 `procStart` 就不认」）。
@@ -833,6 +863,8 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 
 /// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct NeedsRow {
     pub(crate) sid: String,
     pub(crate) needs: super::facts_query::Needs,

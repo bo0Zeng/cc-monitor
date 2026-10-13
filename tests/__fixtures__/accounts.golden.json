@@ -18,7 +18,8 @@
         "loggedIn": false,
         "mode": "isolated",
         "name": "zero",
-        "selectable": false
+        "selectable": false,
+        "color": 3
       },
       {
         "authKind": "subscription",
@@ -37,7 +38,8 @@
         "loggedIn": true,
         "mode": "isolated",
         "name": "a",
-        "selectable": true
+        "selectable": true,
+        "color": 0
       },
       {
         "authKind": "api-key",
@@ -56,7 +58,8 @@
         "loggedIn": false,
         "mode": "isolated",
         "name": "b",
-        "selectable": true
+        "selectable": true,
+        "color": 1
       }
     ],
     "meta": {

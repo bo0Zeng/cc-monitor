@@ -1645,12 +1645,6 @@
         {
           "frozen": true,
           "kind": "value",
-          "path": "lines",
-          "type": "number"
-        },
-        {
-          "frozen": true,
-          "kind": "value",
           "path": "name",
           "type": "string"
         },
@@ -2101,6 +2095,24 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "candidates[].account",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "candidates[].agent",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "candidates[].kind",
+          "type": "enum"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "detail",
@@ -2415,7 +2427,7 @@
           "frozen": false,
           "kind": "value",
           "path": "rows[].can.delete",
-          "type": "string"
+          "type": "enum"
         },
         {
           "frozen": false,
@@ -2427,7 +2439,7 @@
           "frozen": false,
           "kind": "value",
           "path": "rows[].can.resume",
-          "type": "string"
+          "type": "enum"
         },
         {
           "frozen": false,

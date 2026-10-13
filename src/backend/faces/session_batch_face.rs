@@ -7,19 +7,18 @@
 
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
 use crate::faces::launch_face::{pretrust_with, Files};
-use serde_json::Value;
 
-type Answer = Result<Value, (&'static str, String)>;
+use crate::stream::inbound::typed::{self, Blocking, Command, WithFiles};
 
-/// `client` ＝ 请求自报的前端（`args.client`，「哪个前端的会话」那一维）：杀与就地键入都带它过门。
-fn with_deps(args: &Value, files: Option<Files>, f: impl FnOnce(&Deps) -> Answer) -> Answer {
-    let client = crate::control::gate::requester_of(args)?;
-    // 批量起说是哪一家（整批一格）；停 / 问样子用不着挑号。
-    let agent = args
-        .get("agent")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    with_deps_as(client.as_deref(), agent, files, f)
+/// `client` ＝ 请求自报的前端（「哪个前端的会话」那一维）：杀与就地键入都带它过门。`agent` ＝ 批量起那一家（整批一格；停 / 问样子用不着挑号）。
+fn with_deps<T>(
+    client: Option<&str>,
+    agent: &str,
+    files: Option<Files>,
+    f: impl FnOnce(&Deps) -> Result<T, batch::CmdErr>,
+) -> Result<T, BatchErr> {
+    let client = crate::control::gate::requester(client).map_err(BatchErr::from)?;
+    with_deps_as(client.as_deref(), agent, files, f).map_err(BatchErr::from)
 }
 
 /// 同 [`with_deps`]，前端与那一家已经取好（换号重启每一步在自己的阻塞线程上各拼一份）。
@@ -39,25 +38,26 @@ pub(crate) fn with_deps_as<T>(
         )
         .map(|p| (p.present, p.root))
     };
-    let kill = |name: &str, sid: &str| {
-        crate::control::kill::run_as(name, sid, client).map(|b| b.to_json())
-    };
+    let kill =
+        |name: &str, sid: &str| crate::control::kill::run_as(name, sid, client).map(|b| b.note());
     let send_into = |name: &str, sid: &str, line: &str| {
-        let mut req = serde_json::json!({ "mode": "send-into", "name": name, "payload": line, "ccm_sid": sid });
-        if let Some(c) = client {
-            req["client"] = c.into();
-        }
-        let req = crate::control::launch::parse_request(&req)?;
+        let req = crate::control::launch::parse_request(crate::control::launch::LaunchReq {
+            mode: crate::control::launch::Mode::SendInto,
+            name: name.to_string(),
+            payload: line.to_string(),
+            cwd: None,
+            ccm_sid: Some(sid.to_string()),
+            agent: None,
+            width: None,
+            height: None,
+            client: client.map(str::to_string),
+        })?;
         crate::control::launch::run(&req).map(|_| ())
     };
     let run_ccm = |argv: &[String]| crate::control::session_batch::run_self_as_ccm(argv);
     let mint = |base: batch::NameBase| {
-        let args = match base {
-            batch::NameBase::Cwd(cwd) => serde_json::json!({ "cwd": cwd }),
-            batch::NameBase::ForkOf(source) => serde_json::json!({ "forkOf": source }),
-        };
         crate::control::ccm::terminal_name_mint_with(
-            &args,
+            base,
             crate::common::session_snapshot::global(),
         )
         .map(|m| m.name)
@@ -113,17 +113,80 @@ pub(crate) fn tmux_rows() -> Result<Option<Vec<TmuxEntry>>, (&'static str, Strin
     }))
 }
 
-/// `sessions-where`：`{sids}` ⇒ 每个的样子（菜单就绪时问）。
-pub(crate) fn where_(args: &Value) -> Answer {
-    with_deps(args, None, |d| batch::where_(args, d))
+typed::codes! {
+    /// `sessions-where` · `sessions-stop` · `sessions-start` 的码（三条同一份：都先列一次这台的 tmux 名单）。
+    pub(crate) enum BatchErr {
+        /// 列不出这台的 tmux 名单。
+        Unobservable = "unobservable",
+        /// 列名单那一次 `tmux` 过了期限。
+        ChildTimedOut = "child_timed_out",
+    }
 }
 
-/// `sessions-stop`：`{sids}` ⇒ `{results}`。
-pub(crate) fn stop(args: &Value) -> Answer {
-    with_deps(args, None, |d| batch::stop(args, d))
+impl From<batch::CmdErr> for BatchErr {
+    /// 下层只回这三个码：形状 / 组合不对 · 列名单过了期限 · 列不出（`batch::listed` 把别的都收成 `unobservable`）。
+    fn from((code, said): batch::CmdErr) -> Self {
+        match code {
+            "bad_args" => BatchErr::BadArgs(said),
+            crate::platform::child::TIMED_OUT => BatchErr::ChildTimedOut(said),
+            _ => {
+                debug_assert_eq!(code, "unobservable");
+                BatchErr::Unobservable(said)
+            }
+        }
+    }
 }
 
-/// `sessions-start`：`{mode, local, items}` ⇒ `{results}`。
-pub(crate) fn start(args: &Value, files: Files) -> Answer {
-    with_deps(args, Some(files), |d| batch::start(args, d))
+/// `sessions-where`：一批会话各在这台哪个终端里（菜单就绪时问）。
+pub(crate) struct SessionsWhere;
+
+impl Command for SessionsWhere {
+    const NAME: &'static str = "sessions-where";
+    type Req = batch::SidsReq;
+    type Reply = batch::Whereabouts;
+    type Err = BatchErr;
+}
+
+impl Blocking for SessionsWhere {
+    fn run(req: batch::SidsReq, _cx: &typed::Cx) -> Result<batch::Whereabouts, BatchErr> {
+        with_deps(req.client.as_deref(), "", None, |d| batch::where_(&req, d))
+    }
+}
+
+/// `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个）。
+pub(crate) struct SessionsStop;
+
+impl Command for SessionsStop {
+    const NAME: &'static str = "sessions-stop";
+    type Req = batch::SidsReq;
+    type Reply = batch::Batched;
+    type Err = BatchErr;
+}
+
+impl Blocking for SessionsStop {
+    fn run(req: batch::SidsReq, _cx: &typed::Cx) -> Result<batch::Batched, BatchErr> {
+        with_deps(req.client.as_deref(), "", None, |d| batch::stop(&req, d))
+    }
+}
+
+/// `sessions-start`：起 / 接回一批会话（逐个答）。
+pub(crate) struct SessionsStart;
+
+impl Command for SessionsStart {
+    const NAME: &'static str = "sessions-start";
+    type Req = batch::SessionsStartReq;
+    type Reply = batch::Batched;
+    type Err = BatchErr;
+}
+
+impl WithFiles for SessionsStart {
+    fn run(
+        req: batch::SessionsStartReq,
+        _cx: &typed::Cx,
+        files: Files,
+    ) -> Result<batch::Batched, BatchErr> {
+        with_deps(req.client.as_deref(), &req.agent, Some(files), |d| {
+            batch::start(&req, d)
+        })
+    }
 }

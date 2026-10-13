@@ -1,6 +1,6 @@
 //! 拨号宿主（`dial_host`）的判据。起它不再起任何进程：链路开在本机常驻后端里。
 //!
-//! 买到：请求是这台原样的配置（与后端 `dial/machine.rs::resolve` 读的那几格逐键对拍，异源：后端源码）·
+//! 买到：请求是这台原样的配置（与后端 `ssh-dial/machine.rs::resolve` 读的那几格逐键对拍，异源：后端源码）·
 //! 只放私钥**路径**不放本体 · 上次赢的那条当 `prefer` 交（配置改过就不交）· **没有进程内回落、也不起代理进程**
 //! （本文件生产段零 `russh`、零起进程；monitor 生产段 `--dial` 那一套零命中）。
 //! **买不到**：真后端 × 真 sshd（读数脚本 `tests/evidence/SR1a-link-loopback.py`）。
@@ -20,7 +20,7 @@ fn cfg(label: &str) -> RemoteConfig {
     }
 }
 
-/// 〔「一个判定一个家」〕交给本机后端的是**这台原样的配置**：键 == 后端 `dial/machine.rs::resolve` 读的那几格
+/// 〔「一个判定一个家」〕交给本机后端的是**这台原样的配置**：键 == 后端 `ssh-dial/machine.rs::resolve` 读的那几格
 /// （`machine` · `saved` · `jump` · `prefer` · `use`）＋ 其余照进 `DialRequest` 的可选格。异源：从后端源码里现抠。
 #[test]
 fn the_request_hands_over_the_machine_as_is() {
@@ -28,9 +28,9 @@ fn the_request_hands_over_the_machine_as_is() {
     let req = request(&c, "stream", serde_json::json!({"command": "x"})).expect("造不出请求");
     let written: std::collections::BTreeSet<String> =
         req.as_object().unwrap().keys().cloned().collect();
-    let machine_rs = include_str!("../../../src/backend/dial/machine.rs");
+    let machine_rs = include_str!("../../../src/backend/ssh-dial/machine.rs");
     let resolve = &machine_rs[machine_rs
-        .find("pub(crate) fn resolve(")
+        .find("pub fn resolve(")
         .expect("后端没有 resolve 了")..];
     let resolve = &resolve[..resolve.find("\n}\n").unwrap()];
     for k in ["machine", "saved", "jump", "prefer", "use"] {
@@ -40,7 +40,7 @@ fn the_request_hands_over_the_machine_as_is() {
             "后端 resolve 不读 `{k}` —— 两端契约漂了"
         );
     }
-    let backend = include_str!("../../../src/backend/dial/mod.rs");
+    let backend = include_str!("../../../src/backend/ssh-dial/lib.rs");
     let body = &backend[backend
         .find("pub struct DialRequest {")
         .expect("后端没有 DialRequest 了")..];
@@ -309,10 +309,10 @@ async fn the_one_shot_deadline_really_cuts_a_silent_link_and_only_after_its_time
 /// 长活那三形：`(文件, 所在函数, 处数, 为什么它不要总时限)`。**这就是「逐处豁免」那张表**（`NT2.md §1.2`）。
 const LIVES_LONG: &[(&str, &str, usize, &str)] = &[
     (
-        "remote_resident.rs",
-        "attach",
+        "stream_source/run.rs",
+        "stream",
         1,
-        "远端后端长连接流（远端只剩常驻这一形）是订阅：「`Budget` 只盖建流；流建起来之后没有总期限」；握手那几行仍在一次性总时限里；死链靠 keepalive ＋ EOF",
+        "远端后端长连接流（远端只剩常驻这一形，重连循环 `resident_client::feed` 经它开）是订阅：「`Budget` 只盖建流；流建起来之后没有总期限」；握手那两行各有自己的期限（`HANDSHAKE_LINE`，合计不超过一次性总时限）；死链靠 keepalive ＋ EOF",
     ),
     (
         "dial_host.rs",
@@ -645,7 +645,7 @@ fn vis2_pinning_writes_only_that_hosts_fingerprint_through_the_patch_door() {
 }
 
 /// 默认转严格：盘上那一份当 `saved` 一并交过去（固化之后，手里那份起来时读的 `cfg` 还没有指纹也照样转严格）——
-/// 「表单 / 手里那份没有 ⇒ 用盘上同一个 host 的」那条继承规则只在后端 `dial/machine.rs::request`
+/// 「表单 / 手里那份没有 ⇒ 用盘上同一个 host 的」那条继承规则只在后端 `ssh-dial/machine.rs::request`
 /// （`dial_machine_tests::the_request_carries_the_form_and_only_inherits_a_same_host_fingerprint`）。
 #[test]
 fn vis2_the_saved_copy_goes_over_so_a_pinned_key_makes_the_next_dial_strict() {
