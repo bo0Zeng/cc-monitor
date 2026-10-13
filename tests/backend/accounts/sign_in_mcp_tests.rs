@@ -196,6 +196,24 @@ impl Rig {
             .to_string()
     }
 
+    /// 等假的那一家打完第 `n` 次提示符（它每次打完、要读之前往沙箱家的 `.fake-mcp-asked` 记一行）。
+    /// 粘在提示符之前 ⇒ 终端的回显照样有、照样打码，只是落在它还没打完的那几行中间（CI 上见过）；要核回显那一行就得先等它真在问。
+    fn asked(&self, n: usize) {
+        let p = self.root.join(".fake-mcp-asked");
+        let seen = || {
+            std::fs::read_to_string(&p)
+                .map(|s| s.lines().count())
+                .unwrap_or(0)
+        };
+        for _ in guard_core::wall::rounds() {
+            if seen() >= n {
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        assert!(seen() >= n, "假的那一家没打出第 {n} 次提示符");
+    }
+
     fn start(&self, target: &'static str, acct: &str) -> Result<Started, Said> {
         let dir: &'static str = Box::leak(self.dir(acct).into_boxed_str());
         let then: &'static [String] = Box::leak(vec!["notes".to_string()].into_boxed_slice());
@@ -255,7 +273,8 @@ fn a_mcp_login_in_one_account_lands_there_and_the_sync_carries_it_to_every_accou
 }
 
 /// 粘的不是这一趟的回跳地址 ⇒ 核心不写；那一家说「不像回跳地址」⇒ 作业还在；码被令牌端点拒 ⇒ `Refused`，
-/// 原话里有它说的那一句，没有粘进去的码（终端把粘的那一行回显了，打成 `…`）。
+/// 原话里有它说的那一句，没有粘进去的码（终端把粘的那一行回显了，打成 `…`）。前两次核心就挡了、没写进去 ⇒ 它还在第一次提示符那儿；
+/// 等它真在问了再粘第三次，回显才落在提示符那一行上。
 #[test]
 fn a_wrong_way_back_keeps_the_job_and_a_refused_code_never_shows_in_what_is_said() {
     let svc = serve(1);
@@ -267,6 +286,7 @@ fn a_wrong_way_back_keeps_the_job_and_a_refused_code_never_shows_in_what_is_said
     );
     assert_eq!(finish(&s.job, "abc#st9"), Err(FinishFail::BadPaste));
     let wrong = "http://localhost:43117/callback?code=wrong-code-9876543210&state=st9";
+    rig.asked(1);
     match finish(&s.job, wrong) {
         Err(FinishFail::Refused(said)) => {
             let raw = said.raw.unwrap_or_default();

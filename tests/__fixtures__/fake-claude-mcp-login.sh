@@ -3,6 +3,7 @@
 # 判据在前面接一行 `AUTH=<假 MCP 登录服务的地址>`。stdin · stdout 不是终端 ⇒ 照官方那句退出（核心得起在伪终端里）。
 # 粘对了 ⇒ 拿码去假服务的令牌端点换，换来的写进 `$CLAUDE_CONFIG_DIR/.credentials.json` 的 `mcpOAuth`、删掉需登录缓存、退 0；
 # 换不成 ⇒ 退 1；粘的不是这一趟的回跳地址 ⇒ 说一句、接着等。
+# 每次打完提示符往起它的目录（判据的沙箱家）里的 `.fake-mcp-asked` 记一行：判据据此等它真在问了再粘（否则粘得比提示符早，终端的回显落在别处）。
 # 后端交来的是 `mcp login --no-browser <名>`：前两个核过跳过，第三个不对就照实退出（`protocol_doc_guard` 从这里读它认的旗标）。
 [ "$1 $2" = "mcp login" ] || { echo "unexpected args: $*" >&2; exit 2; }
 shift 2
@@ -19,6 +20,8 @@ if [ ! -t 0 ] || [ ! -t 1 ]; then
 fi
 while :; do
   printf 'Or paste the redirect URL here: '
+  # 判据的旁路（真 claude 没有）：提示符已经打完、马上要读 ⇒ 在起它的目录里记一笔（判据等到它再粘，见判据里 `Rig::asked`）。
+  echo asked >> .fake-mcp-asked
   read -r line || exit 1
   case "$line" in
     "$back?"*"state=st9"*) ;;
