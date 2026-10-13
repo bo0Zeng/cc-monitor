@@ -195,6 +195,16 @@ def tap_in_row(label, button):
     raise Step.Fail(f"「{label}」那一行上没有「{button}」")
 
 
+def open_import():
+    """钥匙页点「+」开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
+    for _ in range(3):
+        tap("+")
+        if wait(t("mobIdentity.add.import"), 4):
+            break
+    tap(t("mobIdentity.add.import"))
+    time.sleep(1)
+
+
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
@@ -262,8 +272,7 @@ def main():
     with Step("1-加机器连上"):
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
-        tap("+"); time.sleep(1)
-        tap(t("mobIdentity.add.import")); time.sleep(1)
+        open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         typed(key[0])  # 只贴一行：要当场拒
@@ -275,8 +284,7 @@ def main():
             raise Step.Fail("拒了却没出那条提示")
         if fab_under_notice("+", t("detail.act.copy")):
             raise Step.Fail("提示盖住了「+」（按钮没让开）")
-        tap("+"); time.sleep(1)
-        tap(t("mobIdentity.add.import")); time.sleep(1)
+        open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         for line in key:
