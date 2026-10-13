@@ -515,3 +515,35 @@ fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
     assert!(skel() != first, "过了门槛还没重落");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// R9（read8b，瓶颈 #5，数字节）：续取（轮次 / 大纲 / 索引从上次的末端续）遇到留着的图而记录又长了 ⇒ 接着扫追加的那一截
+/// （读 k ＋ 见证），出的轮次与整份扫的一样；没留着 ⇒ `None`、一个字节都不读（不为一次续取冷开整份）。
+#[test]
+fn r9_a_continuation_extends_the_held_map_by_the_appended_bytes_only() {
+    let d = sandbox("r9");
+    let p = d.join("s.jsonl");
+    std::fs::write(&p, branched(4)).unwrap();
+    let scans = RecordScans::new(4, 64 << 20);
+    assert!(scans.held(&p).is_none(), "没留着却给了一张");
+    assert_eq!(scans.bytes_read(), 0, "没留着也读了记录");
+    scans.get(&p).unwrap();
+    let before = scans.bytes_read();
+    let more = "{\"type\":\"user\",\"uuid\":\"late\",\"parentUuid\":\"b3\",\"timestamp\":\"2026-10-01T02:00:00.000Z\",\"message\":{\"role\":\"user\",\"content\":\"后来的一句\"}}\n";
+    append(&p, more);
+    let m = scans.held(&p).expect("留着的图记录又长了，续取却拿不到");
+    assert_eq!(
+        scans.bytes_read() - before,
+        more.len() as u64 + crate::observe::skeleton::WITNESS,
+        "续取把整份又扫了一遍"
+    );
+    let all = std::fs::read(&p).unwrap();
+    let fresh = ScanMap::scan_with(
+        &all[..],
+        all.len() as u64,
+        crate::agents::record_tree_kind().unwrap_or_default(),
+        crate::agents::claudecode::RECORDS.chain,
+    )
+    .unwrap();
+    assert_eq!(whole(&m), whole(&fresh), "接着扫的跟整份扫的不一样");
+    std::fs::remove_dir_all(&d).ok();
+}

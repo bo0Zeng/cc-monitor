@@ -576,3 +576,23 @@ describe("系统注入的旁注细条", () => {
     setInjectedShown(false);
   });
 });
+
+describe("续取只碰变了的那几轮（read8b，瓶颈 #5）", () => {
+  it("几千轮之后又来一批新行：续取回来一轮 ⇒ 只摘、只记那一轮，不按全部轮重建；排版照新的那份", async () => {
+    const n = 3000;
+    const all = Array.from({ length: n }, (_, i) => turn(`t${i}`, i * 10, { done: i < n - 1 }));
+    const last = turn(`t${n - 1}`, (n - 1) * 10, { done: false, folds: [seg(`t${n - 1}`), seg("tail-a", { until: null })] });
+    const { content, fold } = rig([card("said", `t${n - 1}`), card("tool"), card("reply", "tail-a"), card("tool")], [
+      { available: true, from: 0, end: n * 10, turns: all },
+      { available: true, from: (n - 1) * 10, end: n * 10 + 5, turns: [last] },
+    ]);
+    await fold.refresh();
+    const before = fold.indexed;
+    await fold.refresh();
+    expect(fold.indexed - before, "续取一次碰了全部轮").toBeLessThanOrEqual(2);
+    expect(fold.all.length).toBe(n);
+    expect(fold.all[n - 1].folds.length, "新的那一轮没换进来").toBe(2);
+    // 新来的那一段（after = tail-a）照新的那份排了过程行
+    expect(content.querySelector(`[data-fold="tail-a"]`), "新的那一段没排过程行").not.toBeNull();
+  });
+});
