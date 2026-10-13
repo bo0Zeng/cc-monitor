@@ -42,7 +42,7 @@ export interface Scene {
   pointer?: string;
   /**
    * 截之前拿真鼠标拖一下（按下 · 一路移 · 松开，CDP `Input.dispatchMouseEvent`；页里派的事件不算真拖）：从 `from` 中央按下，
-   * 松在 `to` 顶边往里 3px（落在它前头）。松开之后调 `check`：回一句话 ⇒ 进问题表（这一张算没过）；回 `null` ⇒ 过。
+   * 松在 `to` 横向正中、顶边往里 3px（落在它前头）。松开之后调 `check`：回一句话 ⇒ 进问题表（这一张算没过）；回 `null` ⇒ 过。
    */
   drag?: () => { from: HTMLElement; to: HTMLElement; check: () => Promise<string | null> };
   /** 开页之后：等界面画好、点开要截的那一块。返回即可截。 */

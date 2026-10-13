@@ -69,7 +69,7 @@ window.addEventListener("DOMContentLoaded", () => {
         d.from.scrollIntoView({ block: "center" });
         const a = d.from.getBoundingClientRect();
         const b = d.to.getBoundingClientRect();
-        handle.drag = { x0: a.left + a.width / 2, y0: a.top + a.height / 2, y1: b.top + 3 };
+        handle.drag = { x0: a.left + a.width / 2, y0: a.top + a.height / 2, x1: b.left + b.width / 2, y1: b.top + 3 };
         handle.afterDrag = d.check;
       }
       if (scene.pointer) {

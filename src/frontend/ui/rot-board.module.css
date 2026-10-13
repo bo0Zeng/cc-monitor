@@ -434,7 +434,16 @@
   }
 
   .rotSimSwitch {
+    top: 14px;
     color: var(--text);
+  }
+
+  .rotSimSwitch[data-lane="1"] {
+    top: 0;
+  }
+
+  .rotSimSwitches {
+    height: 30px;
   }
 
   .rotSimTop,

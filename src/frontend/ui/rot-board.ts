@@ -844,7 +844,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   axis.appendChild(now);
   for (const t of tl.ticks) {
     // 挨着「此刻」那一格的刻度让开（字会叠在一起）。
-    if (t.at >= b || X(t.at) < 0.08) continue;
+    if (t.at >= b || X(t.at) < 0.14) continue;
     const k = el("span", (e) => (e.className = s.rotSimTick), t.text);
     at(k, X(t.at));
     axis.appendChild(k);
@@ -852,8 +852,14 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   box.appendChild(grid(null, axis));
   // 将来每次换号：时刻 ＋ 换到谁。
   const sw = el("div", (e) => (e.className = s.rotSimSwitches));
+  // 两排轮着放：同一排里前后两个至少隔 18%，放不下就放另一排；两排都放不下就省掉（时刻在最上那条的段里看得出）。
+  const lanes = [-1, -1];
   for (const w of tl.switches) {
     if (w.at <= a || w.at >= b) continue;
+    const x = X(w.at);
+    const lane = x - lanes[0] >= 0.18 ? 0 : x - lanes[1] >= 0.18 ? 1 : -1;
+    if (lane < 0) continue;
+    lanes[lane] = x;
     const k = el(
       "span",
       (e) => (e.className = s.rotSimSwitch),
@@ -862,7 +868,8 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
         account: accountLabel(w.account),
       }),
     );
-    at(k, X(w.at));
+    at(k, x);
+    if (lane === 1) k.dataset.lane = "1";
     sw.appendChild(k);
   }
   box.appendChild(grid(null, sw));

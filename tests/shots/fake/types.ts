@@ -100,8 +100,8 @@ export interface ShotsHandle {
   /** 场景要真鼠标停的那一点（页坐标）；截图工具停好之后调 `remeasure` 重量一遍排版。 */
   pointer?: { x: number; y: number };
   remeasure?: () => string[];
-  /** 场景要真鼠标拖的那一下（页坐标：从 `(x0, y0)` 按下、竖着拖到 `y1` 松开）；松开之后截图工具调 `afterDrag`，回一句话 ⇒ 进问题表。 */
-  drag?: { x0: number; y0: number; y1: number };
+  /** 场景要真鼠标拖的那一下（页坐标：从 `(x0, y0)` 按下、拖到 `(x1, y1)` 松开（竖着的列表 x1 ＝ x0））；松开之后截图工具调 `afterDrag`，回一句话 ⇒ 进问题表。 */
+  drag?: { x0: number; y0: number; x1: number; y1: number };
   afterDrag?: () => Promise<string | null>;
   /** 会话到了几个：世界宣告的 · 假后端已经交出 `live` 那一格的。等 tab 等不到时拿它分「后端没交」与「交了界面没收」。 */
   sessions?: () => { declared: number; sent: number };
