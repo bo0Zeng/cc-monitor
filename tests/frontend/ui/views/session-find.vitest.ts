@@ -18,6 +18,7 @@
  * **买不到**：真 webview 里的滚动落点与面板长相（jsdom 无布局）· 真后端（后端那侧的判据在 Rust 里）。
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { owned } from "../../../test-support/owned-tab-manager.ts";
 
 const stub = vi.hoisted(() => ({
   /** `find_in_session` 回什么（按调用顺序一份一份给；给的是 Promise 就原样回）。 */
@@ -344,7 +345,7 @@ function liveSetup(): void {
   const barEl = document.createElement("div");
   streamRootEl = document.createElement("div");
   document.body.append(barEl, streamRootEl);
-  tm = new TabManager(barEl, streamRootEl);
+  tm = owned(new TabManager(barEl, streamRootEl));
 }
 
 describe("SE2 · 实时 tab 上的查找面板", () => {

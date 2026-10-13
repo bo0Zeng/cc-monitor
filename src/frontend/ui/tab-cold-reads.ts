@@ -14,6 +14,47 @@
 import type { Tab } from "./tab-model";
 import type { TabStore } from "./tab-store";
 
+/**
+ * 一个空闲回调的位子（同时至多挂一个），挂在它的主人身上：主人拆掉（[`stop`]）⇒ 撤掉挂着的那一个；
+ * 停了以后再来排一概不排、不碰 `window`（主人拆掉之后才回来的读，回来时会再排下一趟）。
+ */
+export class IdleSlot {
+  /** 撤掉挂着的那一个（排的那一刻连同撤法一起记下：排的是哪一种就用哪一种撤）。 */
+  private cancel: (() => void) | null = null;
+  private stoppedFlag = false;
+
+  get stopped(): boolean {
+    return this.stoppedFlag;
+  }
+
+  /** 排一个（`fallbackMs`：没有 requestIdleCallback 的引擎上隔多久）。已停 ⇒ 不排。 */
+  schedule(run: (deadline?: IdleDeadline) => void, fallbackMs: number): void {
+    if (this.stoppedFlag) return;
+    const go = (deadline?: IdleDeadline): void => {
+      this.cancel = null;
+      if (!this.stoppedFlag) run(deadline);
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      // 调度：自链 —— 主人的空闲队列（后台 tab 的第一趟读 · 后台 tab 的空闲物化）：处理一个再排自己，队空或主人拆掉即停
+      const id = window.requestIdleCallback(go, { timeout: 2000 });
+      const off = window.cancelIdleCallback;
+      this.cancel = () => off?.call(window, id);
+    } else {
+      // 调度：自链 —— 上面那条在没有 rIC 的引擎（WebKitGTK）上的兜底，同一条链
+      const id = window.setTimeout(() => go(), fallbackMs);
+      this.cancel = () => window.clearTimeout(id);
+    }
+  }
+
+  /** 主人拆掉：撤掉挂着的那一个，之后不再排。 */
+  stop(): void {
+    this.stoppedFlag = true;
+    const c = this.cancel;
+    this.cancel = null;
+    c?.();
+  }
+}
+
 export class ColdReads {
   /** 第一趟已经发过的 tab。 */
   private readonly warmed = new WeakSet<Tab>();
@@ -25,6 +66,8 @@ export class ColdReads {
   private running: Promise<unknown> | null = null;
   /** 已经排了一个空闲回调。 */
   private scheduled = false;
+  /** 空闲回调挂在哪（主人拆掉时 [`stop`] 撤掉）。 */
+  private readonly slot = new IdleSlot();
 
   constructor(private readonly store: TabStore) {}
 
@@ -87,6 +130,15 @@ export class ColdReads {
     this.pump();
   }
 
+  /** 主人（流视图）拆掉：撤掉挂着的空闲回调、清队；之后回来的读不再排下一趟，也不再发新的。 */
+  stop(): void {
+    this.slot.stop();
+    this.queue = [];
+    this.front = null;
+    this.running = null;
+    this.scheduled = false;
+  }
+
   /** 关掉的 tab 出队。 */
   drop(sid: string): void {
     this.queue = this.queue.filter((s) => s !== sid);
@@ -94,14 +146,14 @@ export class ColdReads {
 
   /** 发第一趟（facts ＋ turns），两问都回来（成没成都算）才落地。路径还没到（tab 先于首条行建出来）⇒ 不算发过，下次再说。 */
   private warm(tab: Tab): Promise<unknown> | null {
-    if (!tab.parentPath) return null;
+    if (!tab.parentPath || this.slot.stopped) return null;
     this.warmed.add(tab);
     return Promise.allSettled([tab.facts.refresh(), tab.turnFold.refresh()]);
   }
 
   /** 前台那一趟落地了、没有在途的后台 ⇒ 空闲时要队首那一个。 */
   private pump(): void {
-    if (this.front || this.running || this.scheduled || this.queue.length === 0) return;
+    if (this.slot.stopped || this.front || this.running || this.scheduled || this.queue.length === 0) return;
     this.scheduled = true;
     const run = (): void => {
       this.scheduled = false;
@@ -121,12 +173,7 @@ export class ColdReads {
         return;
       }
     };
-    if (typeof window.requestIdleCallback === "function") {
-      // 调度：自链 —— 后台 tab 的第一趟会话事实与轮次：空闲时要一个，回来了再排下一个，队空即停
-      window.requestIdleCallback(run, { timeout: 2000 });
-    } else {
-      // 调度：自链 —— 上面那条在没有 rIC 的引擎（WebKitGTK）上的兜底，同一条链
-      window.setTimeout(run, 200);
-    }
+    // 后台 tab 的第一趟会话事实与轮次：空闲时要一个，回来了再排下一个，队空或主人拆掉即停
+    this.slot.schedule(run, 200);
   }
 }
