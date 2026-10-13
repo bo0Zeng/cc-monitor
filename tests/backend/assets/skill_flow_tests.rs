@@ -3,6 +3,35 @@ use super::*;
 use crate::assets::mcp_sync::There;
 use crate::stream::inbound::LocalFiles;
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &Value,
+    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f(&req).map(|t| serde_json::to_value(t).unwrap())
+}
+
+fn answer_install(
+    d: &dyn crate::assets::door::Door,
+    facts: &dyn crate::assets::mcp_sync::Facts,
+    root: Option<&std::path::Path>,
+    record: Record,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    via(args, |r| super::answer_install(d, facts, root, record, r))
+}
+
+fn plan_with(
+    facts: &dyn crate::assets::mcp_sync::Facts,
+    root: Option<&std::path::Path>,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    via(args, |r| {
+        crate::assets::skill_install::answer_plan_with(facts, root, r)
+    })
+}
+
 /// 写句柄：家目录 ＝ 那份装记录上两级（`<家>/.cc-monitor/skill-installs.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_at(
@@ -48,7 +77,7 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     std::fs::write(root.join("demo/lib/a.txt"), "old a\n").unwrap();
     let record =
         |a: &Value| crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a);
-    let plan = crate::assets::skill_install::answer_plan_with(
+    let plan = plan_with(
         &NoFacts,
         Some(&root),
         &json!({ "name": "demo", "source": g["source"] }),

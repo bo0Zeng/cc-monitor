@@ -14705,18 +14705,6 @@
       "zh": "从设置「扩展」装过来的 MCP\n另一台机器上的该条照合进该机选定项目的 .mcp.json\n带密钥的值不抄过来 · 在确认卡上填或沿用该机已有的",
       "args": []
     },
-    "rsToolRegistry.tools.projectMcpNote": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "相对选定的项目目录",
-      "args": []
-    },
-    "rsToolRegistry.tools.projectMcpWhat": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "现场生成的一段 JSON · 写进选定的项目目录",
-      "args": []
-    },
     "rsToolRegistry.tools.projectMcpName": {
       "kind": "title",
       "role": "标题",

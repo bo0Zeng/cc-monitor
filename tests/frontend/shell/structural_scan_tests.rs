@@ -2307,6 +2307,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_history_projects",
             1,
         ),
+        // 测试替身里那一格（`mcp-server-put` 帧命令删了，替身那一格跟着删）一直替这处病史遮着「还活着」。
+        (
+            "tests/frontend/shell/remote_write_registry_tests.rs",
+            "write_project_mcp_server",
+            1,
+        ),
         // `("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // `("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
         // `("src/doc/INVARIANTS.md", "path_shell_safe", 1)` 摘了：那一句改成点 `acct-core::config_dir_posix_ok`，不再点外部脚本里的旧名。

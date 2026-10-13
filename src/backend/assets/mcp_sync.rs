@@ -1,4 +1,4 @@
-//! **MCP 资产同步的判定**（B）：帧面 `mcp-sync-plan` —— 只读。
+//! **MCP 资产同步的判定**（B）：差异四态 · 可疑项 · 写哪几条（`skill-install-plan` 与 `mcp-sync-preview` 用它）—— 只读。
 //!
 //! # 要求
 //!
@@ -48,7 +48,6 @@ pub(crate) const SUSPECT_KINDS: &[&str] = &["abs-path", "command-missing", "comm
 pub(crate) const THERE: &[&str] = &["present", "absent", "foreign", "unknown"];
 
 /// 本族的应答。
-pub(crate) type SyncAnswer = Result<Value, (&'static str, String)>;
 
 /// 一个条目名在两边的样子。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -414,80 +413,6 @@ pub(crate) fn names_arg(
             crate::common::contract::malformed(&format!("`{key}` must be an array of strings")),
         )),
     }
-}
-
-/// 帧面入口。
-pub(crate) fn answer(args: &Value) -> SyncAnswer {
-    answer_with(&Live::from_env(), args)
-}
-
-/// [`answer`] 的本体：事实是参数（判据拿临时目录与给定的 `PATH` 喂，不去改进程环境）。
-pub(crate) fn answer_with(facts: &dyn Facts, args: &Value) -> SyncAnswer {
-    let source = args.get("source").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(
-                "missing `source` (the copied text), or it is not a string",
-            ),
-        )
-    })?;
-    let target =
-        match args.get("target") {
-            None => return Err((
-                "bad_args",
-                crate::common::contract::malformed(
-                    "missing `target` (the text to write into; `null` if that file does not exist)",
-                ),
-            )),
-            Some(Value::Null) => None,
-            Some(Value::String(s)) => Some(s.as_str()),
-            Some(_) => {
-                return Err((
-                    "bad_args",
-                    crate::common::contract::malformed("`target` must be a string or `null`"),
-                ))
-            }
-        };
-    let take = names_arg(args.get("take"), "take")?;
-    let overwrite = names_arg(args.get("overwrite"), "overwrite")?;
-    if take.is_none() && overwrite.is_some() {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed("`overwrite` given without `take`"),
-        ));
-    }
-    let src = servers_of(
-        Some(source),
-        &copy_text("beMcpSync.answerWith.sourceSide", &[]),
-    )?;
-    let tgt = servers_of(target, &copy_text("beMcpSync.answerWith.targetSide", &[]))?;
-    let rows = diff(&src, &tgt);
-    let rows_json: Vec<Value> = rows
-        .iter()
-        .map(|(name, state)| {
-            // 只有会被写过去的两态才值得看可疑项（`same` 写不写都一样，`only-there` 不是这一趟拷的东西）。
-            let suspects: Vec<Value> = match state {
-                State::New | State::Differs => judge(&candidates(&src[name]), facts)
-                    .into_iter()
-                    .map(|s| {
-                        json!({
-                            "kind": s.kind,
-                            "field": s.field,
-                            "value": s.value,
-                            "there": s.there.map(There::wire),
-                        })
-                    })
-                    .collect(),
-                State::Same | State::OnlyThere => Vec::new(),
-            };
-            json!({ "name": name, "state": state.wire(), "suspects": suspects })
-        })
-        .collect();
-    let write = match take {
-        Some(t) => Some(plan(&rows, &t, &overwrite.unwrap_or_default())?),
-        None => None,
-    };
-    Ok(json!({ "rows": rows_json, "write": write }))
 }
 
 #[cfg(test)]

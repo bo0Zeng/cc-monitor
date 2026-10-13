@@ -7,6 +7,8 @@ pub(crate) mod door;
 // 设置「扩展」页的后端：跨机器一张表 · 从一台卸（装那一件的枢纽住 `hub`）。
 pub(crate) mod ext;
 pub(crate) mod hub;
+// 枢纽问各台的那 8 条内层命令的线上形（两台后端之间）。
+pub(crate) mod hub_wire;
 pub(crate) mod mcp_edit;
 pub(crate) mod mcp_sync_flow;
 // 公钥推进那台的 `authorized_keys`（`pubkey-push` 本机那一跳 · `authorized-keys-add` 被写那台）。
@@ -36,6 +38,6 @@ pub(crate) fn mcp_servers_key() -> &'static str {
 
 pub mod asset_catalog; // 资产目录：帧面 `assets-catalog` / `assets-catalog-merge`（后端自有状态 `~/.cc-monitor/assets-catalog.json`，经 `Own`；一个用户文件都不写）
 pub mod asset_sync; // 资产目录的自动同步：帧面 `assets-sync`（本机常驻后端沿池里那条 SSH 拉 / 并 / 推；写口由 inbound 递进来）
-pub mod mcp_sync; // MCP 资产同步的判定：帧面 `mcp-sync-plan`（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
+pub mod mcp_sync; // MCP 资产同步的判定：（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
 pub mod skill_install; // skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
 pub mod skill_ledger; // skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，经 `Own`）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写

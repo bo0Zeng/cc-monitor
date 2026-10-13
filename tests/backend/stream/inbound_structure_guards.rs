@@ -352,8 +352,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "first-run"
                 // 别名预览：读账号库 manifest ＋ 问会话快照（同步 I/O），不起进程。
                 | "ccm-print"
-                // MCP 同步的判定：对可疑路径逐条 stat、在 PATH 上找名字（同步文件 I/O）。
-                | "mcp-sync-plan"
                 // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：读 / 规划 / 经本进程文件管理面写（同步文件 I/O）。
                 | "skill-install-apply"
                 | "cc-bus-install"
@@ -387,8 +385,6 @@ fn every_registered_command_declares_its_run_kind() {
                 // 起一次那一代 PowerShell 设执行策略再现问（同步子进程）。
                 | "powershell-policy-set"
                 | "ext-uninstall-apply"
-                | "mcp-server-put"
-                | "mcp-server-remove"
                 | "mcp-sync-source"
                 | "mcp-sync-preview"
                 | "mcp-sync-apply"
@@ -631,8 +627,6 @@ fn every_registered_command_declares_its_run_kind() {
         "files-peek",
         "files-put",
         "files-delete-session",
-        // MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
-        "mcp-sync-plan",
         // `~/.ssh/config` 导入（阻塞档，理由在上面 `expected_blocking`）。
         "ssh-config-import",
         // 起会话的计划与渲染（本机那条阻塞档，两条渲染异步）。
@@ -671,8 +665,6 @@ fn every_registered_command_declares_its_run_kind() {
         "profiles-write",
         "powershell-policy-set",
         "ext-uninstall-apply",
-        "mcp-server-put",
-        "mcp-server-remove",
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
@@ -1109,7 +1101,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
     const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
-    const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
@@ -1134,14 +1125,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
                 "sourcePath",
                 "status",
             ],
-            &[],
-        ),
-        ("mcp-server-put", MCP_EDIT, "/putReply", &[], &[]),
-        (
-            "mcp-server-remove",
-            MCP_EDIT,
-            "/removeAbsentReply",
-            &[],
             &[],
         ),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
@@ -1178,19 +1161,15 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 36;
+    const UNSHAPED_CEILING: usize = 25;
     const UNSHAPED: &[&str] = &[
         "accounts-sessions",
         "agent-home-check",
         "apikey-key-set",
         "assets-catalog",
         "assets-catalog-merge",
-        "cc-bus-install",
-        "cc-bus-install-state",
         "chores-mark",
         "data-report",
-        "ext-hub-apply",
-        "ext-hub-preview",
         "ext-list",
         "ext-list-here",
         "ext-note-set",
@@ -1200,10 +1179,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "last-seen-read",
         "last-seen-write",
         "machine-interrupts",
-        "mcp-sync-apply",
-        "mcp-sync-plan",
-        "mcp-sync-preview",
-        "mcp-sync-source",
         "plan-ack",
         "plan-cell-view",
         "plan-list",
@@ -1212,10 +1187,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-unack",
         "remote-probe",
         "resident-verdict",
-        "skill-install-apply",
-        "skill-install-plan",
         "skill-install-record",
-        "skill-read",
     ];
     fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
         match v {

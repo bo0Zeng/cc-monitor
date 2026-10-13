@@ -11,6 +11,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &Value,
+    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f(&req).map(|t| serde_json::to_value(t).unwrap())
+}
+
 /// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_at(
@@ -406,31 +415,40 @@ impl M {
             )
         };
         let r = match cmd {
-            "skill-read" => super::super::skill_install::answer_read_at(Some(&root), args),
-            "skill-install-plan" => {
-                super::super::skill_install::answer_plan_with(&NoFacts, Some(&root), args)
+            "skill-read" => via(args, |r| {
+                super::super::skill_install::answer_read_at(Some(&root), r)
+            }),
+            "skill-install-plan" => via(args, |r| {
+                super::super::skill_install::answer_plan_with(&NoFacts, Some(&root), r)
+            }),
+            "skill-install-apply" => via(args, |r| {
+                super::super::skill_flow::answer_install(
+                    &self.door(),
+                    &NoFacts,
+                    Some(&root),
+                    &record,
+                    r,
+                )
+            }),
+            "mcp-sync-source" => via(args, |r| {
+                super::super::mcp_sync_flow::answer_source(
+                    &self.door(),
+                    self.env.user_mcp.as_deref(),
+                    r,
+                )
+            }),
+            "mcp-sync-preview" => via(args, |r| {
+                super::super::mcp_sync_flow::answer_preview(&self.door(), &NoFacts, r)
+            }),
+            "mcp-sync-apply" => via(args, |r| {
+                super::super::mcp_sync_flow::answer_apply(&self.door(), &record, r)
+            }),
+            "cc-bus-install-state" => {
+                Ok(serde_json::to_value(super::super::cc_bus_install::state_at(&skills)).unwrap())
             }
-            "skill-install-apply" => super::super::skill_flow::answer_install(
-                &self.door(),
-                &NoFacts,
-                Some(&root),
-                &record,
-                args,
-            ),
-            "mcp-sync-source" => super::super::mcp_sync_flow::answer_source(
-                &self.door(),
-                self.env.user_mcp.as_deref(),
-                args,
-            ),
-            "mcp-sync-preview" => {
-                super::super::mcp_sync_flow::answer_preview(&self.door(), &NoFacts, args)
-            }
-            "mcp-sync-apply" => {
-                super::super::mcp_sync_flow::answer_apply(&self.door(), &record, args)
-            }
-            "cc-bus-install-state" => Ok(super::super::cc_bus_install::state_at(&skills)),
             "cc-bus-install" => {
                 super::super::cc_bus_install::install_at(&self.door(), &skills, &record)
+                    .map(|t| serde_json::to_value(t).unwrap())
             }
             other => Err(crate::stream::inbound::spec::Fail::from((
                 "unknown_command",
@@ -1352,3 +1370,64 @@ async fn the_wire_matches_the_cross_language_golden() {
         assert_eq!(got[k], want[k], "`{k}` 的线上形状变了");
     }
 }
+
+/// 「装到几台」那一对（`ext-hub-preview` / `-apply`）的回包是界面读的线上形：换形前后逐字节不许变。
+/// 换形之前用旧代码跑出来、钉成字面量（临时目录换 `<BASE>`）；没有重写开关。
+/// 勾远端那一台（看卡 · 装）；再勾上本机（与来源同一处 ⇒ 没有共同的那一处）。
+#[tokio::test]
+async fn the_many_hub_pair_keeps_its_wire_bytes() {
+    let (base, t) = two("many-wire");
+    let src = t.a.env.skills.clone().unwrap().join("demo");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
+    let cb = t.b.refresh(None);
+    let ca = t.a.refresh(Some(cb.machines.clone()));
+    crate::dial::remote_ask::lock(&t.reach)
+        .get_mut("laptop")
+        .unwrap()
+        .peer = Some(cb.self_id.clone());
+    let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
+    let b = base.display().to_string();
+    let wire = |v: Value| v.to_string().replace(&*b, "<BASE>");
+    // 入参照旧用 JSON 写、经 `typed::take` 解成入参类型（同帧面那一跳）。
+    use crate::assets::hub_wire::{HubApplyReq, HubReq};
+    use crate::stream::inbound::typed::take;
+    let ask =
+        |to: Value| take::<HubReq>(&json!({ "kind": "skill", "name": "demo", "to": to })).unwrap();
+    let pre = crate::assets::hub::ext_preview_many(
+        &t.here,
+        &ask(json!(["laptop"])),
+        &t.reach,
+        &t.remote,
+        &current,
+    )
+    .await
+    .unwrap();
+    assert_eq!(wire(json!(pre)), MANY_PREVIEW);
+    let card = pre.machines[0].card.clone().unwrap();
+    let apply = take::<HubApplyReq>(
+        &json!({ "kind": "skill", "name": "demo", "to": ["laptop"], "place": pre.place,
+                              "tokens": { "laptop": card.tokens }, "fill": {} }),
+    )
+    .unwrap();
+    let done = crate::assets::hub::ext_apply_many(&t.here, &apply, &t.reach, &t.remote, &current)
+        .await
+        .unwrap();
+    assert_eq!(wire(json!(done)), MANY_APPLY);
+    // 两台没有共同的那一处 ⇒ 各台各说一句、`place` 为 `null`。
+    let none = crate::assets::hub::ext_preview_many(
+        &t.here,
+        &ask(json!(["laptop", null])),
+        &t.reach,
+        &t.remote,
+        &current,
+    )
+    .await
+    .unwrap();
+    assert_eq!(wire(json!(none)), MANY_NO_PLACE);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+const MANY_PREVIEW: &str = r#"{"machines":[{"card":{"config":null,"kind":"skill","name":"demo","path":"<BASE>/b/.claude/skills/demo","slots":[],"stop":null,"suspects":[],"tokens":{"source":"f8dce283cc18be65","target":"9c3ddcd3288c214b"},"unchanged":false,"writes":["SKILL.md"]},"error":null,"files":["<BASE>/b/.claude/skills/demo · SKILL.md"],"name":"laptop","to":"laptop"}],"place":{"level":"user"},"places":[{"at":{"level":"user"},"note":null,"ok":true},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":null,"ok":true}],"slots":[]}"#;
+const MANY_APPLY: &str = r#"{"machines":[{"done":{"changed":["SKILL.md"],"note":null,"path":"<BASE>/b/.claude/skills/demo"},"error":null,"name":"laptop","to":"laptop"}]}"#;
+const MANY_NO_PLACE: &str = r#"{"machines":[{"card":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"laptop","to":"laptop"},{"card":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"本机","to":null}],"place":null,"places":[{"at":{"level":"user"},"note":"来源与目标相同","ok":false},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":"本机无此位置","ok":false},{"at":{"dir":"<BASE>/a/proj","level":"project"},"note":"laptop 无此位置","ok":false}],"slots":[]}"#;

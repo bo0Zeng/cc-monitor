@@ -9,24 +9,17 @@
 //! 没有 ⇒ 它住 agent 自己的热状态文件，只当来源读，这里不往它里面写。
 
 use super::door::{self, Door, Refused};
-use super::ext::ExtLoc;
+use super::ext::{ExtLoc, ExtSlot};
 use super::mcp_edit::{mcp_json, plan_project_mcp, upsert_mcp_server_value};
 use super::skill_flow::Record;
 use crate::assets::asset_catalog::MCP_KEYS_ONLY_FIELDS;
+use crate::assets::hub_wire::{
+    McpApplied, McpApplyReq, McpPreview, McpPreviewReq, McpSource, McpSourceReq, McpSourceSlot,
+    McpSuspect,
+};
 use crate::assets::mcp_sync::{candidates, judge, servers_of, Facts, There};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
-
-type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
-
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, crate::stream::inbound::spec::Fail> {
-    args.get(k).and_then(Value::as_str).ok_or_else(|| {
-        crate::stream::inbound::spec::Fail::from((
-            "bad_args",
-            crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
-        ))
-    })
-}
 
 /// 一条定义里装密钥的那几格换成空位：交回（换好的那一条, [(字段, 键)]）。**纯**；不是对象的原样交回、没有空位。
 pub(crate) fn redact(def: &Value) -> (Value, Vec<(String, String)>) {
@@ -78,10 +71,10 @@ fn file_of(
 pub(crate) fn answer_source(
     d: &dyn Door,
     user_mcp: Option<&std::path::Path>,
-    args: &Value,
-) -> Answer {
-    let name = str_arg(args, "name")?;
-    let at = ExtLoc::from_arg(args.get("at"), "at")?;
+    req: &McpSourceReq,
+) -> Result<McpSource, crate::stream::inbound::spec::Fail> {
+    let name = req.name.as_str();
+    let at = req.at.here()?;
     let (root, rel) = file_of(&at, user_mcp)?;
     let got = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
     let text = got.text.ok_or_else(|| {
@@ -104,30 +97,25 @@ pub(crate) fn answer_source(
         ))
     })?;
     let (open, slots) = redact(def);
-    let slots: Vec<Value> = slots
-        .into_iter()
-        .map(|(field, key)| json!({ "field": field, "key": key }))
-        .collect();
-    Ok(json!({
-        "path": got.path,
-        "def": open,
-        "slots": slots,
-        "token": crate::assets::ext::token_of(def),
-    }))
+    Ok(McpSource {
+        path: got.path,
+        def: open,
+        slots: slots
+            .into_iter()
+            .map(|(field, key)| McpSourceSlot { field, key })
+            .collect(),
+        token: crate::assets::ext::token_of(def),
+    })
 }
 
 /// 被写那台：`args.def` 必须是一条对象、且装密钥的那几格一个值都没有（来源交出来就该是空位）。
-fn def_arg(args: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let def = args
-        .get("def")
-        .cloned()
-        .filter(Value::is_object)
-        .ok_or_else(|| {
-            crate::stream::inbound::spec::Fail::from((
-                "bad_args",
-                crate::common::contract::malformed("missing `def` (an object)"),
-            ))
-        })?;
+fn def_arg(def: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let def = Some(def.clone()).filter(Value::is_object).ok_or_else(|| {
+        crate::stream::inbound::spec::Fail::from((
+            "bad_args",
+            crate::common::contract::malformed("missing `def` (an object)"),
+        ))
+    })?;
     if redact(&def).0 != def {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
@@ -154,10 +142,14 @@ fn has_value(existing: Option<&Value>, field: &str, key: &str) -> Option<String>
 }
 
 /// `mcp-sync-preview {name, at, def}`（要被写的那一台）：读自己那份、判「新 / 一样 / 不同」、可疑项、每个空位这台有没有原值。
-pub(crate) fn answer_preview(d: &dyn Door, facts: &dyn Facts, args: &Value) -> Answer {
-    let name = str_arg(args, "name")?;
-    let at = ExtLoc::from_arg(args.get("at"), "at")?;
-    let def = def_arg(args)?;
+pub(crate) fn answer_preview(
+    d: &dyn Door,
+    facts: &dyn Facts,
+    req: &McpPreviewReq,
+) -> Result<McpPreview, crate::stream::inbound::spec::Fail> {
+    let name = req.name.as_str();
+    let at = req.at.here()?;
+    let def = def_arg(&req.def)?;
     let (_, tgt, servers) = target_of(d, &at)?;
     let existing = servers.get(name);
     let state = match existing.map(|e| redact(e).0) {
@@ -165,45 +157,49 @@ pub(crate) fn answer_preview(d: &dyn Door, facts: &dyn Facts, args: &Value) -> A
         Some(e) if e == def => "same",
         Some(_) => "differs",
     };
-    let slots: Vec<Value> = redact(&def)
+    let slots = redact(&def)
         .1
         .into_iter()
-        .map(|(field, key)| {
-            let kept = has_value(existing, &field, &key).is_some();
-            json!({ "field": field, "key": key, "kept": kept })
+        .map(|(field, key)| ExtSlot {
+            kept: has_value(existing, &field, &key).is_some(),
+            field,
+            key,
         })
         .collect();
-    let suspects: Vec<Value> = judge(&candidates(&def), facts)
+    let suspects = judge(&candidates(&def), facts)
         .into_iter()
-        .map(|s| json!({ "kind": s.kind, "field": s.field, "value": s.value, "there": s.there.map(There::wire) }))
+        .map(|s| McpSuspect {
+            kind: s.kind.to_string(),
+            field: s.field,
+            value: s.value,
+            there: s.there.map(|t| There::wire(t).to_string()),
+        })
         .collect();
-    Ok(json!({
-        "path": tgt.path,
-        "state": state,
-        "def": def,
-        "slots": slots,
-        "suspects": suspects,
-        "target": tgt.text.as_deref().map(crate::assets::skill_ledger::digest_of),
-    }))
+    Ok(McpPreview {
+        path: tgt.path,
+        state: state.to_string(),
+        def,
+        slots,
+        suspects,
+        target: tgt
+            .text
+            .as_deref()
+            .map(crate::assets::skill_ledger::digest_of),
+    })
 }
 
 /// `mcp-sync-apply {name, at, def, fill, target}`：`target` = 看卡时这台那份的记号（不存在 = `null`）；`fill` = `{env: {键: 值}, headers: {…}}`
 /// （用户填的；没填的键沿用这台原有的值）。写完记进装记录（写口由 `stream/inbound/` 递进来）。回 `{path, written, recordFailed}`。
-pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer {
-    let name = str_arg(args, "name")?;
-    let at = ExtLoc::from_arg(args.get("at"), "at")?;
-    let def = def_arg(args)?;
+pub(crate) fn answer_apply(
+    d: &dyn Door,
+    record: Record,
+    req: &McpApplyReq,
+) -> Result<McpApplied, crate::stream::inbound::spec::Fail> {
+    let name = req.name.as_str();
+    let at = req.at.here()?;
+    let def = def_arg(&req.def)?;
     let (root, tgt, servers) = target_of(d, &at)?;
-    let seen = match args.get("target") {
-        Some(Value::String(s)) => Some(s.as_str()),
-        Some(Value::Null) | None => None,
-        _ => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "bad_args",
-                crate::common::contract::malformed("`target` must be a string or `null`"),
-            )))
-        }
-    };
+    let seen = req.target.as_deref();
     let now = tgt
         .text
         .as_deref()
@@ -215,15 +211,15 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
         )));
     }
     let existing = servers.get(name);
-    let fill = args.get("fill").cloned().unwrap_or(Value::Null);
     let mut full = def.clone();
     for (field, key) in redact(&def).1 {
-        let typed = fill
-            .get(&field)
+        let typed = req
+            .fill
+            .as_ref()
+            .and_then(|f| f.get(&field))
             .and_then(|m| m.get(&key))
-            .and_then(Value::as_str)
             .filter(|v| !v.is_empty())
-            .map(str::to_string);
+            .cloned();
         let value = typed
             .or_else(|| has_value(existing, &field, &key))
             .ok_or_else(|| {
@@ -242,13 +238,21 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
         ExtLoc::Project { .. } => door::join_under(&root, mcp_json()),
     };
     if existing == Some(&full) {
-        return Ok(json!({ "path": at_path, "written": false, "recordFailed": null }));
+        return Ok(McpApplied {
+            path: at_path,
+            written: false,
+            record_failed: None,
+        });
     }
     if at == ExtLoc::User {
         // 全局 = 这台各账号共用的那一份：写进它、同步到所有号（不记装记录：从全局删只有一条路，各账号一起撤）。
         let view = crate::accounts::manage::mcp_share_exec::put(d, name, &full)?;
         let note = (!view.notes.is_empty()).then(|| view.notes.join(" "));
-        return Ok(json!({ "path": at_path, "written": true, "recordFailed": note }));
+        return Ok(McpApplied {
+            path: at_path,
+            written: true,
+            record_failed: note,
+        });
     }
     let next = plan_project_mcp(&at_path, tgt.text.as_deref(), &mut |v: &mut Value| {
         upsert_mcp_server_value(v, name.to_string(), full.clone())?;
@@ -287,7 +291,11 @@ pub(crate) fn answer_apply(d: &dyn Door, record: Record, args: &Value) -> Answer
     }))
     .err()
     .map(|f| copy_text("beExt.apply.recordFailed", &[("why", &f.into_note())]));
-    Ok(json!({ "path": landed.path, "written": landed.changed, "recordFailed": record_failed }))
+    Ok(McpApplied {
+        path: landed.path,
+        written: landed.changed,
+        record_failed,
+    })
 }
 
 #[cfg(test)]

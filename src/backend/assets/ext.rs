@@ -276,6 +276,16 @@ impl ExtLoc {
         Self::judged(v, key, Some(super::mcp_edit::PathForm::HERE))
     }
 
+    /// 已解出来的位置按**这台**的路径写法再判一次（项目目录须是这台上的绝对路径）：内层命令收到 typed 入参之后用。
+    pub(crate) fn here(&self) -> Result<ExtLoc, crate::stream::inbound::spec::Fail> {
+        match self {
+            ExtLoc::User => Ok(ExtLoc::User),
+            ExtLoc::Project { dir } => Ok(ExtLoc::Project {
+                dir: super::mcp_edit::project_root_as(dir, super::mcp_edit::PathForm::HERE)?,
+            }),
+        }
+    }
+
     /// 只认形状（`{level: user}` · `{level: project, dir}` 且 dir 非空）：枢纽用，别台的路径由那台自己判。
     pub(crate) fn shape_of(
         v: Option<&Value>,
@@ -1422,10 +1432,15 @@ fn ensure_backups_dir(d: &dyn Door, home: &str) -> Result<(), crate::stream::inb
 // ───────────────────────── 可疑项的那句话（枢纽拼卡时用） ─────────────────────────
 
 /// 一条可疑项 → 那句话（`machine` = 被写那台给人看的名字）。种类闭集：MCP 与 skill 两边的并集。
-pub(crate) fn suspect_said(s: &Value, machine: &str) -> String {
-    let get = |k: &str| s.get(k).and_then(Value::as_str).unwrap_or_default();
-    let (field, value, there) = (get("field"), get("value"), get("there"));
-    match (get("kind"), there) {
+/// skill 那一边没有 `field`（交空串）；`there` 缺 = 不问那台的那几种。
+pub(crate) fn suspect_said(
+    kind: &str,
+    field: &str,
+    value: &str,
+    there: Option<&str>,
+    machine: &str,
+) -> String {
+    match (kind, there.unwrap_or_default()) {
         ("abs-path", "present") => copy_text(
             "beExt.suspect.absPresent",
             &[("field", field), ("value", value), ("machine", machine)],

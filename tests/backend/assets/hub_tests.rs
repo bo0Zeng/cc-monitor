@@ -1,6 +1,7 @@
 //! 要求：两台之间「装」那一件不经前端中继 —— 界面只问本机一次，本机常驻后端当枢纽向来源那台取、交被写那台判与写；
 //! skill 与 MCP 同一对命令（`ext-hub-preview` / `ext-hub-apply`），看过之后任一头变了 ⇒ `stale`、一个字节不写。
 use super::*;
+use crate::assets::ext::ExtSlot;
 use crate::dial::remote_ask::{register, Remote, Table};
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -224,13 +225,15 @@ async fn an_unregistered_machine_is_unreachable_and_never_dialed() {
 async fn skill_preview_and_apply_go_through_the_same_pair() {
     let files =
         json!([{ "path": "SKILL.md", "text": "a", "exec": false, "why": null, "bytes": 1 }]);
-    let plan = json!({ "dir": "/s/demo", "target": [], "base": "/s", "prefix": "demo",
-                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }] });
+    let plan = json!({ "root": "/s", "dir": "/s/demo", "target": [], "base": "/s", "prefix": "demo",
+                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }],
+                       "write": null, "ledger": null });
     let t = table_with("devbox");
     let (h, dyn_h) = here(&[("skill-install-plan", plan)]);
     let r = remote(&[
-        json!({ "files": files }),
-        json!({ "files": [{ "path": "SKILL.md", "text": "CHANGED", "exec": false }] }),
+        json!({ "root": "/r", "dir": "/r/demo", "files": files, "skipped": [] }),
+        json!({ "root": "/r", "dir": "/r/demo", "skipped": [],
+                "files": [{ "path": "SKILL.md", "text": "CHANGED", "exec": false, "why": null, "bytes": 7 }] }),
     ]);
     let args = json!({ "kind": "skill", "name": "demo", "from": "devbox", "to": null,
                        "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
@@ -377,10 +380,14 @@ async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
     use crate::assets::mcp_edit::{project_root_as, PathForm};
     let files =
         json!([{ "path": "SKILL.md", "text": "a", "exec": false, "why": null, "bytes": 1 }]);
-    let plan = json!({ "dir": "/home/user/.claude/skills/demo", "target": [], "base": "/home/user/.claude/skills", "prefix": "demo",
+    let plan = json!({ "root": "/home/user/.claude/skills", "dir": "/home/user/.claude/skills/demo", "target": [],
+                       "base": "/home/user/.claude/skills", "prefix": "demo", "write": null, "ledger": null,
                        "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }] });
     let here: Arc<dyn Here> = Arc::new(WindowsHere {
-        answers: [("skill-read", json!({ "files": files }))]
+        answers: [(
+            "skill-read",
+            json!({ "root": "C:\\w\\.claude\\skills", "dir": "C:\\w\\.claude\\skills\\demo", "files": files, "skipped": [] }),
+        )]
             .into_iter()
             .collect(),
     });
@@ -516,7 +523,10 @@ fn slots_merge_into_one_list_and_say_which_machines_already_have_each() {
     };
     let (a, b) = (card(false), card(true));
     assert_eq!(
-        merge_slots(&[("laptop".to_string(), &a), ("nano".to_string(), &b)]),
+        json!(merge_slots(&[
+            ("laptop".to_string(), &a),
+            ("nano".to_string(), &b)
+        ])),
         json!([{"field": "env", "key": "API_KEY", "kept": ["nano"]}])
     );
     assert_eq!(
@@ -535,4 +545,65 @@ fn slots_merge_into_one_list_and_say_which_machines_already_have_each() {
         files_of(&skill),
         vec!["/h/.claude/skills/demo · SKILL.md, a.sh".to_string()]
     );
+}
+
+/// ★ 那台回的包解不出（后端版本不同：少了一格 · 一格换了型）⇒ `backend_differs`、说是哪台（本机说「本机」），解码器那一句进原话；
+/// 不拿半截回包拼卡。
+#[tokio::test]
+async fn a_reply_that_does_not_parse_says_that_backend_differs() {
+    let t = table_with("devbox");
+    // 远端那台（来源）：回包缺 `token`。
+    let r = remote(&[json!({ "path": "/r/.mcp.json", "def": { "command": "c" }, "slots": [] })]);
+    let (_h, dyn_h) = here(&[]);
+    let (code, said) = ext_preview(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
+        .await
+        .expect_err("半截回包也拼了卡");
+    assert_eq!(code, "backend_differs", "{said}");
+    assert!(
+        said.starts_with(&copy_core::backend_differs("devbox")),
+        "{said}"
+    );
+    assert!(said.contains("token"), "解码器那一句没进原话：{said}");
+    // 本机那一跳（被写那台）：`state` 换了型。
+    let (_h, dyn_h) = here(&[
+        (
+            "mcp-sync-source",
+            json!({ "path": "/a/.mcp.json", "def": { "command": "c" }, "slots": [], "token": "S" }),
+        ),
+        (
+            "mcp-sync-preview",
+            json!({ "path": "/l/.mcp.json", "state": 3, "def": { "command": "c" }, "slots": [], "suspects": [], "target": null }),
+        ),
+    ]);
+    let (code, said) = ext_preview(
+        &dyn_h,
+        &mcp_args(Value::Null, Value::Null),
+        &t,
+        &remote(&[]),
+    )
+    .await
+    .expect_err("本机回的半截包也拼了卡");
+    assert_eq!(code, "backend_differs", "{said}");
+    assert!(
+        said.starts_with(&copy_core::backend_differs(&copy_core::copy_text(
+            "beExt.machine.here",
+            &[]
+        ))),
+        "{said}"
+    );
+}
+
+/// 回包多出来的键照收（对面可能更新）。
+#[tokio::test]
+async fn a_reply_with_an_extra_key_still_parses() {
+    let t = table_with("devbox");
+    let r = remote(&[
+        json!({ "path": "/r/.mcp.json", "def": { "command": "c" }, "slots": [], "token": "t", "newer": 1 }),
+    ]);
+    let preview = json!({ "path": "/l/.mcp.json", "state": "new", "def": { "command": "c" }, "slots": [], "suspects": [], "target": null, "newer": true });
+    let (_h, dyn_h) = here(&[("mcp-sync-preview", preview)]);
+    let card = ext_preview(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
+        .await
+        .expect("多一格就拒了");
+    assert_eq!(card["tokens"]["source"], "t");
 }

@@ -12,9 +12,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAssetsSynced, syncAssets } from "../../../src/frontend/ui/assets-sync-reads";
 import {
-  decodeExtCard,
-  decodeExtManyCard,
-  decodeExtManyDone,
   decodeExtDone,
   decodeExtList,
   decodeExtUninstallCard,
@@ -61,7 +58,6 @@ describe("金样：后端出的成品，TS 读得懂", () => {
       ["project", true],
     ]);
     expect(list.rows[1].cells[0].places.map((p) => [p.at.level, p.state, p.uninstall])).toEqual([["user", "same", true]]);
-    expect(decodeExtCard(EXT.card).writes).toEqual(["SKILL.md"]);
     expect(decodeExtDone(EXT.done).changed).toEqual(["SKILL.md"]);
     expect(decodeExtUninstallCard(EXT.uninstallCard).recorded).toBe(true);
     expect(decodeExtDone(EXT.uninstallDone).changed).toEqual(["SKILL.md"]);
@@ -70,7 +66,6 @@ describe("金样：后端出的成品，TS 读得懂", () => {
 
 describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
   const list = EXT.list as { machines: object[]; rows: Array<{ cells: object[] }> };
-  const card = EXT.card as Record<string, unknown>;
   it.each([
     ["表多一格", () => decodeExtList({ ...list, x: 1 })],
     ["一行的格数与机器数对不上", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: list.rows[0].cells.slice(1) }] })],
@@ -78,18 +73,17 @@ describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
     ["一格带了摘要", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: [{ ...list.rows[0].cells[0], digest: "d" }, list.rows[0].cells[1]] }] })],
     ["一行缺备注那一格", () => decodeExtList({ ...list, rows: [(({ note: _n, ...r }) => r)(list.rows[0] as Record<string, unknown>)] })],
     ["备注不是串", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], note: 1 }] })],
-    ["卡缺记号", () => decodeExtCard((({ tokens: _t, ...r }) => r)(card))],
     ["装完类型不对", () => decodeExtDone({ ...(EXT.done as object), changed: "SKILL.md" })],
   ] as const)("%s", (_n, f) => {
     expect(f).toThrow(BAD);
   });
 });
 
-// ★ 源码那一侧：「装」只问本机（枢纽），不经前端中继 —— 人群 = `ext-reads.ts` 里每一处 `chan.call(`；内层命令一条都不许界面直问。
+// ★ 源码那一侧：「装」只问本机（枢纽），不经前端中继 —— 人群 = `ext-reads.ts` 里每一处 `chan.call(` / `callTyped(`；内层命令一条都不许界面直问。
 describe("装只问本机（枢纽）；内层命令界面一条都不直问", () => {
   it("ext-reads.ts：枢纽那两条的第一参恰是 LOCAL_ORIGIN，内层命令零出现", () => {
     const src = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/ext-reads.ts"), "utf8");
-    const calls = [...src.matchAll(/chan\.call\(\s*([^,]+),\s*"([^"]+)"/g)].map((m) => [m[1].trim(), m[2]]);
+    const calls = [...src.matchAll(/(?:chan\.call|callTyped)\(\s*([^,]+),\s*"([^"]+)"/g)].map((m) => [m[1].trim(), m[2]]);
     expect(calls.map(([, op]) => op).sort()).toEqual(["ext-hub-apply", "ext-hub-preview", "ext-list", "ext-note-set", "ext-uninstall-apply", "ext-uninstall-preview", "mcp-read"]);
     expect(calls.filter(([, op]) => op.startsWith("ext-hub-") || op === "ext-list" || op === "ext-note-set").every(([o]) => o === "LOCAL_ORIGIN")).toBe(true);
     const inner = ["mcp-sync-source", "mcp-sync-preview", "mcp-sync-apply", "skill-read", "skill-install-plan", "skill-install-apply", "cc-bus-install", "cc-bus-install-state"];
@@ -129,13 +123,6 @@ describe("请求：问对那台、说对那条", () => {
       ["laptop", "ext-uninstall-preview", { kind: "skill", name: "demo", at: { level: "user" } }],
       ["laptop", "ext-uninstall-apply", { kind: "skill", name: "demo", at: { level: "user" }, token: u.token }],
     ]);
-  });
-  it("那一张卡严格收：多一格 / 缺一格 / 那台的错不是一句话 ⇒ 收不下", () => {
-    const ok = { places: [], place: null, slots: [{ field: "env", key: "K", kept: ["laptop"] }], machines: [{ to: null, name: "here", card: null, files: [], error: "x" }] };
-    expect(decodeExtManyCard(ok).slots[0].kept).toEqual(["laptop"]);
-    expect(() => decodeExtManyCard({ ...ok, extra: 1 })).toThrow();
-    expect(() => decodeExtManyCard({ ...ok, machines: [{ ...ok.machines[0], error: { code: "x" } }] })).toThrow();
-    expect(() => decodeExtManyDone({ machines: [{ to: null, name: "here", done: null }] })).toThrow();
   });
   it("备注：问本机后端，种类 · 名字 · 正文原样交；回现在生效的那一份", async () => {
     invokeMock.mockResolvedValueOnce(chanReply({ note: "先加钩子" }));
