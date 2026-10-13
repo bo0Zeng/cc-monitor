@@ -68,7 +68,11 @@ impl Home {
         let fx = crate::guard_support::repo_root().join("tests/__fixtures__/rotation");
         let read = |n: &str| std::fs::read_to_string(fx.join(n)).expect("判据夹具");
         let third = read("by-list.rhai").replace("\"name\": \"照号牌\"", "\"name\": \"第三份\"");
-        for (id, text) in [("by-list", read("by-list.rhai")), ("by-reset", read("by-reset.rhai")), ("third", third)] {
+        for (id, text) in [
+            ("by-list", read("by-list.rhai")),
+            ("by-reset", read("by-reset.rhai")),
+            ("third", third),
+        ] {
             rotation::strategy_file_write(&h.own(), id, &text).expect("写策略");
         }
         rotation::face_change(
@@ -270,7 +274,10 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
     assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
     assert_eq!(v.listed, 1);
-    assert_eq!(v.decision.as_ref().and_then(|d| d.pick.as_deref()), Some("a"));
+    assert_eq!(
+        v.decision.as_ref().and_then(|d| d.pick.as_deref()),
+        Some("a")
+    );
     assert!(!v.dirty, "没改过");
     assert!(
         v.hints.iter().all(|h| matches!(h, RotHint::TzUnknown)),

@@ -1,18 +1,16 @@
 /**
- * 额度与账号：状态栏账号按钮各态 ＋ 悬停卡 · 「账号」面板（头下那一句 · 读不出 · 未实时显示 · `切换…` 浮层：选号 · 重启切换）·
- * 消息流换号条 · 会话头下提示条 · 标签页 `✕ 5h` · 右键「账号…」。轮换本身（配置 · 合图 · 号详情 · 设置窗）在 `rotation.ts`。
+ * 额度与账号：状态栏账号按钮各态 ＋ 悬停卡 · 「账号」面板（读不出 · 未实时显示 · 底栏）· 右键「账号…」。
+ * 轮换那几块（会话面板里的轮换 · 设置窗「轮换」· 换号条 · 停发提示）第 4 刀照 `轮换-v5` 的稿施工，场景随它一起加。
  *
- * 账号库 · 额度账 · 轮换账本 · 血缘落成本机家目录里的原始文件（`acctDisk`），额度 · 轮换 · 时间轴的成品全是真后端读它们算的；
- * 只有切换（要真 tmux / 中转）由场景替那台答。号名是编的。时刻按此刻的钟现算。
+ * 账号库 · 额度账 · 轮换账本 · 血缘落成本机家目录里的原始文件（`acctDisk`），额度 · 在用的号的成品全是真后端读它们算的。
+ * 号名是编的。时刻按此刻的钟现算。
  */
 import type { Scene } from "./index";
 import { putAccounts, putBrokenQuota, putLineage, putQuota, putRotation, putWarm, type QuotaSpec, type RotationSessionSpec } from "../disk";
-import type { OpHandler, World } from "../fake/types";
+import type { World } from "../fake/types";
 import { defaultWorld, LOCAL } from "../fake/world";
 import {
-  byText,
   click,
-  key,
   mainReady,
   openTab,
   rightClick,
@@ -40,8 +38,6 @@ interface Acct {
 interface Sess {
   start: string;
   current: string;
-  /** 换号记录（盘上那一形：`leave` 引擎这一侧）。`at` 是距此刻多少秒。 */
-  history: Record<string, unknown>[];
   absent?: boolean;
   /** 会话血缘里的父（tab 序号）。 */
   parent?: number;
@@ -52,8 +48,6 @@ interface AcctWorld {
   noBook?: boolean;
   /** 按 tab 序号（0 起）。 */
   sessions: Record<number, Sess>;
-  /** 重启那一形 `rotation-switch` 每个会话答什么（形状照 `rotation-switch-restart` 金样）；不给 ⇒ 成了、开 `proj-cc`。 */
-  restartReply?: Record<string, unknown>;
   /** 时间轴：卡住（池里都被拒）· quota-warm 在跑。 */
   /** quota-warm 在跑：号 → 下一次开窗（距此刻多少秒）。 */
   warm?: { account: string; at: number }[];
@@ -101,20 +95,7 @@ function baseAccounts(): Acct[] {
 }
 
 function swappedSess(over: Partial<Sess> = {}): Sess {
-  return {
-    start: "work",
-    current: "personal",
-    history: [
-      {
-        at: -0.4 * H1,
-        from: "work",
-        to: "personal",
-        leave: { k: "unusable", why: { k: "@full", at: 2.3 * H1 } },
-        fromResetsAt: 2.3 * H1,
-      },
-    ],
-    ...over,
-  };
+  return { start: "work", current: "personal", ...over };
 }
 
 function abs(t: number | undefined): number | undefined {
@@ -141,7 +122,7 @@ function ledgerOf(a: Acct): QuotaSpec {
   };
 }
 
-/** 账号世界落成本机家目录里的原始文件：账号库 · 额度账 · 轮换账本（第二版：一份配置 ＋ 每个会话打开的那一份）· 会话血缘。 */
+/** 账号世界落成本机家目录里的原始文件：账号库 · 额度账 · 轮换账本（第三版：每个会话那一条，不轮换）· 会话血缘。 */
 function acctDisk(aw: AcctWorld, w: World): void {
   const d = w.disk[LOCAL];
   const t = now();
@@ -156,56 +137,11 @@ function acctDisk(aw: AcctWorld, w: World): void {
     const parent = s.parent === undefined ? undefined : sidAt(s.parent);
     if (parent !== undefined) parents[sid] = parent;
     if (s.absent) continue;
-    sessions[sid] = {
-      start: s.start,
-      current: s.current,
-      since: t - 1800,
-      config: { id: "c_daily", rev: 3 },
-      history: s.history.map((h) => {
-        const leave = h.leave as { k: string; why?: { at?: number } };
-        const why = leave.why?.at === undefined ? leave.why : { ...leave.why, at: abs(leave.why.at) };
-        return { ...h, at: abs(h.at as number), leave: why === undefined ? leave : { ...leave, why }, ...(h.fromResetsAt === undefined ? {} : { fromResetsAt: abs(h.fromResetsAt as number) }) };
-      }),
-    };
+    sessions[sid] = { start: s.start, current: s.current, since: t - 1800 };
   }
-  if (!aw.noBook) {
-    // 日常（内置策略 1）：起会话的号 ＋ personal · team · api，到 90% 换。
-    const params = { line: 90, slots: [], mode: "normal", stint: null };
-    putRotation(d, {
-      defaultConfig: "c_daily",
-      configs: {
-        c_daily: {
-          name: "日常",
-          strategy: "1",
-          accounts: [{ start: true, params }, ...["personal", "team", "api"].map((id) => ({ id, params: { ...params, mode: id === "api" ? "standby" : "normal" } }))],
-          params: { back: false, delay: 0, standby_wait: 40, all_out: "go" },
-          acctInit: params,
-          rev: 3,
-          updatedAt: t - 3600,
-        },
-      },
-      sessions,
-    });
-  }
+  if (!aw.noBook) putRotation(d, { sessions });
   if (Object.keys(parents).length > 0) putLineage(d, parents, t - 1800);
   if (aw.warm) putWarm(d, aw.warm.map((x) => ({ account: x.account, at: t + x.at })));
-}
-
-/**
- * 真后端够不着的那一条：切换。重启切换要真 tmux 起新会话、热切换要这台的中转正经手那个会话的请求 —— 台架里都没有，
- * 所以由这里替那台答（重启那一形照 `rotation-switch-restart` 金样）。切过之后盘上那份不变（读还是切之前的样子）。
- */
-function acctOps(aw: AcctWorld): Record<string, OpHandler> {
-  return {
-    "rotation-switch": (_o, req) => {
-      const out: Record<string, unknown> = {};
-      for (const it of req.sessions as unknown[]) {
-        const sid = typeof it === "string" ? it : (it as { sid: string }).sid;
-        out[sid] = req.mode === "restart" ? (aw.restartReply ?? { state: "done", terminal: "proj-cc" }) : { state: "done" };
-      }
-      return { sessions: out };
-    },
-  };
 }
 
 function world(
@@ -220,7 +156,6 @@ function world(
     };
     build(aw);
     acctDisk(aw, w);
-    Object.assign(w.ops, acctOps(aw));
     return w;
   };
 }
@@ -267,33 +202,6 @@ async function openPanel(): Promise<void> {
   await sleep(700);
 }
 
-const SWITCH = '[role="dialog"][data-kit-popover], [role="dialog"]:not(aside):not([aria-modal])';
-
-/** 开面板、点列表头 `切换…`，等浮层出来。 */
-async function openSwitch(): Promise<void> {
-  await openPanel();
-  await click('aside[role="dialog"] [data-rot-switch]');
-  await waitFor('input[type="radio"][name^="acct-mode"]');
-  await sleep(400);
-}
-
-/** `切换…` 里选 重启切换 再点；问会打断什么的框出来就点确认；等那一条报错 toast 出来。 */
-async function restartThroughConfirm(): Promise<void> {
-  await openSwitch();
-  const r = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="acct-mode"]')][1];
-  r.checked = true;
-  r.dispatchEvent(new Event("change"));
-  await sleep(300);
-  await click(await byText(`${SWITCH} button`, "重启切换"));
-  const confirm = await waitFor('[role="alertdialog"]', 3000).catch(() => null);
-  if (confirm) {
-    await sleep(300);
-    await click(await byText('[role="alertdialog"] button', "重启切换"));
-  }
-  await waitFor('#kit-toast-stack [role="alert"]');
-  await sleep(500);
-}
-
 export const ACCT_SCENES: Scene[] = [
   // ── 状态栏按钮各态（每张都带悬停卡）
   scene(
@@ -337,7 +245,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "work",
         current: "work",
-        history: [],
       };
       aw.accounts[1] = {
         ...aw.accounts[1],
@@ -370,7 +277,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "work",
         current: "work",
-        history: [],
       };
     }),
   ),
@@ -386,7 +292,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "api",
         current: "api",
-        history: [],
       };
     }),
   ),
@@ -407,7 +312,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "api",
         current: "api",
-        history: [],
       };
     }),
   ),
@@ -433,7 +337,6 @@ export const ACCT_SCENES: Scene[] = [
       aw.sessions[0] = {
         start: "team",
         current: "team",
-        history: [],
       };
     }),
   ),
@@ -494,94 +397,18 @@ export const ACCT_SCENES: Scene[] = [
   scene(
     "acct-panel",
     "面板 · 本会话 · 第一屏",
-    "点状态栏按钮：头下一句 起会话的号 · 能热换 · 轮换（打开的配置 · 描述 · 参数… 刷新策略 切换… · 合图）· 底栏新会话默认",
+    "点状态栏按钮：底栏新会话默认 · 管理账号…（轮换那一块第 4 刀照稿施工，此刻空着）",
     openPanel,
     world(() => {}),
   ),
   scene(
     "acct-panel-norelay",
     "面板 · 未实时显示（热切换不成立）",
-    "中转没见过：头下一条 未实时显示 · 无用量 · 不自动轮换 [接入…]；只剩 切换…（热切换灰、写原因）",
+    "中转没见过：头下一条 未实时显示 [接入…]",
     openPanel,
     world((aw) => {
       aw.sessions[0] = { ...swappedSess(), absent: true };
     }),
-  ),
-  scene(
-    "acct-panel-pick",
-    "面板 · 选号下拉",
-    "切换… 浮层里的下拉：在用项灰 在用、被拒项琥珀、按量 按量",
-    async () => {
-      await openSwitch();
-      const pick = document.querySelector<HTMLElement>('button[aria-label="选账号"]');
-      if (pick) await click(pick);
-      await sleep(500);
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-panel-restart",
-    "面板 · 重启切换 ⇒ 先问会打断什么",
-    "选 重启切换 再点：标题 重启切换 → team，中断 当前轮次 · 保留 会话记录 · 续接",
-    async () => {
-      await openSwitch();
-      const r = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="acct-mode"]')][1];
-      r.checked = true;
-      r.dispatchEvent(new Event("change"));
-      await sleep(300);
-      await click(await byText(`${SWITCH} button`, "重启切换"));
-      await waitFor(
-        '[role="alertdialog"], dialog[open], [role="dialog"][aria-modal]',
-      );
-      await sleep(500);
-    },
-    world(() => {}),
-  ),
-  scene(
-    "acct-restart-fail-kept",
-    "面板 · 重启切换失败 · 原会话保留",
-    "重启切换确认后那台答 failed · not_in_terminal · old=kept：toast 重启切换失败 · 原会话保留 · 原因，不自动消失、无按钮",
-    async () => {
-      await restartThroughConfirm();
-    },
-    world((aw) => {
-      aw.restartReply = {
-        state: "failed",
-        code: "not_in_terminal",
-        old: "kept",
-      };
-    }),
-  ),
-  scene(
-    "acct-restart-fail-ended",
-    "面板 · 重启切换失败 · 原会话已结束",
-    "重启切换确认后那台答 failed · start_failed · old=ended：toast 重启切换失败 · 原会话已结束 · 原因 ＋［恢复…］［日志］，不自动消失",
-    async () => {
-      await restartThroughConfirm();
-    },
-    world((aw) => {
-      aw.restartReply = { state: "failed", code: "start_failed", old: "ended" };
-    }),
-  ),
-  scene(
-    "acct-switch-strip",
-    "消息流 · 换号条",
-    "切换… 里热切换到 team（不出提示）：消息流末尾一行 ⇄ 时刻 personal → team · 手动 · 账号…",
-    async (ctx) => {
-      await openSwitch();
-      await click(await byText(`${SWITCH} button`, "切换"));
-      await sleep(400);
-      ctx.backend.pushChanged(LOCAL, "rotation", { key: ctx.backend.world.sessions[0].sid });
-      await sleep(800);
-      await key("Escape");
-      await key("Escape");
-      await sleep(200);
-      document
-        .querySelector<HTMLElement>("[data-acct-strip]")
-        ?.scrollIntoView({ block: "center" });
-      await sleep(400);
-    },
-    world(() => {}),
   ),
   scene(
     "acct-tab-menu",

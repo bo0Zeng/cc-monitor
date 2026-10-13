@@ -106,8 +106,7 @@ impl Home {
             None => serde_json::json!({}),
         };
         let src = std::fs::read_to_string(
-            crate::guard_support::repo_root()
-                .join("tests/__fixtures__/rotation/by-list.rhai"),
+            crate::guard_support::repo_root().join("tests/__fixtures__/rotation/by-list.rhai"),
         )
         .expect("判据夹具");
         let mut head = script::parse(&src).expect("读得懂").head;

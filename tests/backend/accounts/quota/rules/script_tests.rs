@@ -59,8 +59,17 @@ fn ctx_of(now: u64) -> Ctx<'static> {
 fn every_fixture_and_upgrade_material_reads() {
     let mut all = fixtures();
     let mdir = crate::guard_support::repo_root().join("src/backend/accounts/quota/rules/upgrade");
-    all.extend(guard_core::scan_tree!(&mdir, &["rhai"]).into_iter().map(|(p, t)| (p.display().to_string(), t)));
-    assert_eq!(all.len(), 5, "两份夹具 ＋ 三份升级材料：{:?}", all.iter().map(|x| &x.0).collect::<Vec<_>>());
+    all.extend(
+        guard_core::scan_tree!(&mdir, &["rhai"])
+            .into_iter()
+            .map(|(p, t)| (p.display().to_string(), t)),
+    );
+    assert_eq!(
+        all.len(),
+        5,
+        "两份夹具 ＋ 三份升级材料：{:?}",
+        all.iter().map(|x| &x.0).collect::<Vec<_>>()
+    );
     for (id, src) in &all {
         let f = parse(src).unwrap_or_else(|e| panic!("{id} 读不懂：{e:?}"));
         let v = f

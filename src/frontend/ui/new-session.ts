@@ -20,7 +20,6 @@ import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { readConfigs, type ConfigsShown } from "./rot-reads";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
@@ -407,36 +406,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
-  // 轮换：打开哪份配置（缺省本机默认那份，带「本机默认」）· 那台的各份配置。读不出那台的配置表 ⇒ 不出这一行。
-  const rotSel = select({ label: copyText("newSession.label.rot"), options: [] });
-  const rotRow = row(copyText("newSession.label.rot"), rotSel.el, false);
-  rotRow.root.hidden = true;
-  form.appendChild(rotRow.root);
-  let rotSeq = 0;
-  let defaultConfig = "";
-  const paintRotation = async (): Promise<void> => {
-    const my = ++rotSeq;
-    let configs: ConfigsShown | null = null;
-    try {
-      configs = accounts === null ? null : await readConfigs(origin);
-    } catch {
-      configs = null;
-    }
-    if (my !== rotSeq) return;
-    rotRow.root.hidden = configs === null;
-    if (configs === null) return;
-    defaultConfig = configs.defaultConfig;
-    rotSel.setOptions(
-      configs.configs.map((c) => ({
-        value: c.id,
-        label: c.name,
-        note: c.isDefault ? copyText("rot.cfg.tagDefault") : undefined,
-        detail: c.text,
-      })),
-      configs.defaultConfig,
-    );
-  };
-
   // 运行于
   const places = el("div");
   places.className = s.nsPlaces;
@@ -519,7 +488,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     opts.push(...accounts.map(accountOption));
     accountSel.setOptions(opts, accountPick(fork !== null, forkAccount, accounts[0].name));
     paintAccountNote();
-    void paintRotation();
   };
 
   const checkDir = async (): Promise<void> => {
@@ -599,9 +567,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
     if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
-    // 本机默认那份不写（新会话本来就打开它）；挑了别的 ⇒ 起之前写成打开那一份。
-    const rot = rotRow.root.hidden ? defaultConfig : rotSel.value();
-    if (rot !== "" && rot !== defaultConfig) req.rotation = { config: rot };
     return req;
   };
 

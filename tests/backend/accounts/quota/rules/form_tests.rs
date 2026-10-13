@@ -116,7 +116,10 @@ fn a_bad_form_is_refused_when_the_file_is_read() {
     f[0].key = ACCOUNTS.into();
     assert!(check_form(&f).is_err());
     let mut f = full_form();
-    let i = f.iter().position(|c| c.kind == Kind::OneOf).expect("有一格选项");
+    let i = f
+        .iter()
+        .position(|c| c.kind == Kind::OneOf)
+        .expect("有一格选项");
     f[i].choices.clear();
     assert!(check_form(&f).is_err());
     let mut f = full_form();
@@ -124,7 +127,10 @@ fn a_bad_form_is_refused_when_the_file_is_read() {
     f[i].scope = Scope::All;
     assert!(check_form(&f).is_err());
     let mut f = full_form();
-    let i = f.iter().position(|c| c.kind == Kind::CardRow).expect("有分排那一格");
+    let i = f
+        .iter()
+        .position(|c| c.kind == Kind::CardRow)
+        .expect("有分排那一格");
     f[i].scope = Scope::All;
     assert!(check_form(&f).is_err(), "分排只能每号一份");
 }

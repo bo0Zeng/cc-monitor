@@ -197,27 +197,6 @@
       "why": "远端健康事件 kind ⇒ 标题（版本三类 · overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
     },
     {
-      "file": "src/frontend/ui/rot-chart.ts",
-      "rule": "pct",
-      "n": 2,
-      "kind": "留",
-      "why": "排版几何（合图上 CSS 位置 / 宽度的百分比），不是描述数据的字"
-    },
-    {
-      "file": "src/frontend/ui/rot-chart.ts",
-      "rule": "toFixed",
-      "n": 2,
-      "kind": "留",
-      "why": "排版几何（合图上 CSS 位置 / 宽度的百分比取三位小数），不是描述数据的字"
-    },
-    {
-      "file": "src/frontend/ui/rot-form.ts",
-      "rule": "pct",
-      "n": 3,
-      "kind": "留",
-      "why": "排版几何（时段 24h 色带上 CSS 位置 / 宽度的百分比 · 刻度位置），不是描述数据的字"
-    },
-    {
       "file": "src/frontend/ui/runs.ts",
       "rule": "codeWord",
       "n": 3,

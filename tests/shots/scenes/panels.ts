@@ -6,8 +6,7 @@ import { copyPattern } from "../../test-support/copy-pattern";
 import { hms } from "../fake/clock";
 import type { Scene } from "./index";
 import { Refuse, type World } from "../fake/types";
-import { defaultWorld, LOCAL } from "../fake/world";
-import { putRotation } from "../disk";
+import { defaultWorld } from "../fake/world";
 import { byText, click, hover, key, mainReady, openTab, rightClick, sleep, type, waitFor } from "./helpers";
 import { emit } from "@tauri-apps/api/event";
 
@@ -15,22 +14,6 @@ const ALL_TABS = 7;
 
 function panel(id: string, title: string, desc: string, act: Scene["act"], world: () => World = defaultWorld): Scene {
   return { id, page: "index", dir: "主窗口-面板", title, desc, width: 1280, height: 800, world, act };
-}
-
-/** 这几张要那台的配置表（多选右键「轮换配置 ▸」· 起新会话框「轮换」）：日常（本机默认）· 夜间 · 省额度。 */
-function rotConfigsWorld(): World {
-  const w = defaultWorld();
-  const params = { line: 90, slots: [], mode: "normal", stint: null };
-  const cfg = (name: string) => ({
-    name,
-    strategy: "1",
-    accounts: [{ start: true as const, params }, { id: "personal", params }, { id: "work", params }],
-    params: { back: false, delay: 0, standby_wait: 40, all_out: "go" },
-    acctInit: params,
-    updatedAt: Math.floor(Date.now() / 1000) - 86_400,
-  });
-  putRotation(w.disk[LOCAL], { defaultConfig: "c_daily", configs: { c_daily: cfg("日常"), c_night: cfg("夜间"), c_save: cfg("省额度") } });
-  return w;
 }
 
 async function scrollStreamTop(): Promise<void> {
@@ -208,34 +191,6 @@ export const PANEL_SCENES: Scene[] = [
     await key("Enter");
     await waitFor('[role="dialog"] button[aria-label="账号"]:not([data-value=""])');
     await sleep(600);
-  }),
-  panel("panel-new-session-rot", "起新会话 · 轮换", "账号下一行「轮换」点开：那台的各份配置（本机默认那份带「本机默认」、缺省选它）· 右侧后端写好的描述", async () => {
-    await openCommandBar();
-    await type("[data-role=command-input]", "新建会话");
-    await key("Enter");
-    await waitFor('[role="dialog"] button[aria-label="轮换"]');
-    await sleep(400);
-    await click('[role="dialog"] button[aria-label="轮换"]');
-    await sleep(500);
-  }, rotConfigsWorld),
-  panel("panel-batch-rot", "多选右键 · 轮换配置 ▸", "本机三个标签页多选、右键「轮换配置」：各份配置 · 管理配置…（有没存改动的会话不动、结果里照说）", async () => {
-    await mainReady(ALL_TABS);
-    const tabs = [...document.querySelectorAll<HTMLElement>("#tab-bar .tab")].slice(0, 3);
-    for (const t of tabs) {
-      const r = t.getBoundingClientRect();
-      t.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, ctrlKey: true, clientX: r.left + 10, clientY: r.top + 5 }));
-      await sleep(60);
-    }
-    await rightClick(tabs[0]);
-    await sleep(600);
-    const item = await byText("[role^=menuitem]", copyText("tabBatch.menu.rot", { n: 3 }));
-    item.closest<HTMLElement>("[role=none]")?.dispatchEvent(new MouseEvent("mouseenter"));
-    await sleep(500);
-  }, rotConfigsWorld),
-  panel("panel-cmdk-rot", "命令面板 · 轮换", "命令面板里输入「轮换」：换轮换配置… · 管理本机轮换配置…", async () => {
-    await openCommandBar();
-    await type("[data-role=command-input]", "轮换");
-    await sleep(300);
   }),
   panel("panel-new-session-account", "起新会话 · 挑账号", "账号那一格点开：头像在前 · 当前项打勾 · 默认 / 5h 用量灰字跟在名字后", async () => {
     await openCommandBar();

@@ -148,14 +148,22 @@ fn with_reset(id: &str, used5h: f64, in_min: u64) -> Acct {
 
 #[test]
 fn s03_the_strategys_order_within_a_row_overrides_the_cards() {
-    let f = [acct("A", 95.0), with_reset("B", 50.0, 200), with_reset("C", 10.0, 30)];
+    let f = [
+        acct("A", 95.0),
+        with_reset("B", 50.0, 200),
+        with_reset("C", 10.0, 30),
+    ];
     let d = turn(&sig("A", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
     assert_eq!(used(&d), "C", "同一排里快重置的先");
 }
 
 #[test]
 fn s04_ties_within_a_row_follow_the_cards() {
-    let f = [acct("A", 95.0), with_reset("B", 30.0, 60), with_reset("C", 30.0, 60)];
+    let f = [
+        acct("A", 95.0),
+        with_reset("B", 30.0, 60),
+        with_reset("C", 30.0, 60),
+    ];
     let d = turn(&sig("A", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
     assert_eq!(used(&d), "B");
 }
@@ -176,7 +184,11 @@ fn rows(r: [u64; 3]) -> Value {
 fn s06_within_a_row_a_recovered_account_does_not_take_over() {
     let f = [acct("A", 10.0), acct("B", 50.0), acct("C", 10.0)];
     assert_eq!(used(&run(&base(), &sig("B", &[]), &f, T)), "B");
-    let f = [with_reset("A", 10.0, 5), with_reset("B", 50.0, 200), acct("C", 10.0)];
+    let f = [
+        with_reset("A", 10.0, 5),
+        with_reset("B", 50.0, 200),
+        acct("C", 10.0),
+    ];
     let d = turn(&sig("B", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
     assert_eq!(used(&d), "B", "快重置的在同一排里也不抢");
 }
@@ -196,7 +208,11 @@ fn s07_a_higher_row_with_quota_takes_over_at_once() {
 fn s08_using_a_lower_row_any_upper_account_recovering_brings_it_back_up() {
     let s = rows([0, 0, 1]);
     let out = [acct("A", 95.0), acct("B", 95.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &sig("A", &[]), &out, T)), "C", "上排都没额度才落到下排");
+    assert_eq!(
+        used(&run(&s, &sig("A", &[]), &out, T)),
+        "C",
+        "上排都没额度才落到下排"
+    );
     let b_back = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
     assert_eq!(used(&run(&s, &sig("C", &[]), &b_back, T)), "B");
     let both = [acct("A", 10.0), acct("B", 10.0), acct("C", 10.0)];
@@ -211,11 +227,23 @@ fn s25_an_account_that_took_over_is_used_until_it_is_out() {
     let d = run(&s, &sig("C", &[]), &f, T);
     assert_eq!(used(&d), "B", "B 抢上来");
     let f = [acct("A", 10.0), acct("B", 60.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &d.sigma, &f, T + 10 * MIN)), "B", "A 恢复了，B 还没满，不换");
+    assert_eq!(
+        used(&run(&s, &d.sigma, &f, T + 10 * MIN)),
+        "B",
+        "A 恢复了，B 还没满，不换"
+    );
     let f = [acct("A", 10.0), acct("B", 90.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &d.sigma, &f, T + 20 * MIN)), "A", "B 满了先换同一排的 A");
+    assert_eq!(
+        used(&run(&s, &d.sigma, &f, T + 20 * MIN)),
+        "A",
+        "B 满了先换同一排的 A"
+    );
     let f = [acct("A", 95.0), acct("B", 90.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &d.sigma, &f, T + 30 * MIN)), "C", "同一排都没额度才落到下排");
+    assert_eq!(
+        used(&run(&s, &d.sigma, &f, T + 30 * MIN)),
+        "C",
+        "同一排都没额度才落到下排"
+    );
 }
 
 #[test]

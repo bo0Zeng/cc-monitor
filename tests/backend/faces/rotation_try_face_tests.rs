@@ -76,10 +76,7 @@ fn it_decides_and_simulates_from_the_given_facts() {
         got.timeline.lanes[2].segs[0].sendable,
         "lab 只是到了策略的上限，事实上发得出去"
     );
-    assert_eq!(
-        (got.name.as_str(), got.use_now_refused),
-        ("照号牌", None)
-    );
+    assert_eq!((got.name.as_str(), got.use_now_refused), ("照号牌", None));
     let src = got.source.expect("给了设置 ⇒ 回换了头的原文");
     assert_eq!(
         crate::accounts::quota::rules::script::parse(&src)

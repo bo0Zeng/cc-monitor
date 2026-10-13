@@ -280,13 +280,21 @@ fn u8_the_result_round_trips() {
 /// 其余时候 99%，都到上限就停。两个会话带着副本、一个照配置。
 fn ours() -> Value {
     let p = |line: u64| json!({"line": line, "slots": [], "mode": "normal"});
-    let mut rows: Vec<Value> = (1..=5).map(|i| row(json!({"id": format!("p{i}")}), p(90))).collect();
+    let mut rows: Vec<Value> = (1..=5)
+        .map(|i| row(json!({"id": format!("p{i}")}), p(90)))
+        .collect();
     rows.push(row(
         json!({"id": "p6"}),
         json!({"line": 99, "slots": [{"at": "17:00-02:00", "line": 80}], "mode": "normal"}),
     ));
     rows.push(row(json!({"id": "p7"}), p(99)));
-    let cfg = config("七个号", "2", Value::Array(rows), json!({"back": false, "all_out": "stop"}), p(90));
+    let cfg = config(
+        "七个号",
+        "2",
+        Value::Array(rows),
+        json!({"back": false, "all_out": "stop"}),
+        p(90),
+    );
     json!({
       "version": 2,
       "defaultConfig": "c_7",
@@ -326,11 +334,18 @@ fn u9_our_three_sessions_keep_every_setting() {
         let src = file(&u, &id);
         let h = head(src);
         assert_eq!(h.settings, want, "{sid} 的设置没照搬");
-        assert_eq!(code(src), code(material(2)), "{sid} 的代码不是先用快要重置的那份");
+        assert_eq!(
+            code(src),
+            code(material(2)),
+            "{sid} 的代码不是先用快要重置的那份"
+        );
         ids.push(id);
     }
     assert_eq!(ids[2], "c_7");
-    assert!(ids[0] != ids[1] && ids[0].starts_with("s_"), "两个副本该各写一份：{ids:?}");
+    assert!(
+        ids[0] != ids[1] && ids[0].starts_with("s_"),
+        "两个副本该各写一份：{ids:?}"
+    );
 
     use super::super::decide::{turn, Pick, Sigma};
     use super::super::Acct;
@@ -350,22 +365,40 @@ fn u9_our_three_sessions_keep_every_setting() {
         current: c.into(),
         ..Sigma::default()
     };
-    let pick = |facts: &[Acct], c: &str| turn(&sig(c), facts, &h_settings(&f), &f, 720, t, &[]).pick;
+    let pick =
+        |facts: &[Acct], c: &str| turn(&sig(c), facts, &h_settings(&f), &f, 720, t, &[]).pick;
     fn h_settings(f: &script::File) -> Value {
         f.head.settings.clone()
     }
-    let mut facts: Vec<Acct> = (1..=7).map(|i| a(&format!("p{i}"), 10.0, Some(200 + i * 10))).collect();
+    let mut facts: Vec<Acct> = (1..=7)
+        .map(|i| a(&format!("p{i}"), 10.0, Some(200 + i * 10)))
+        .collect();
     facts[3].resets[0] = Some(t + 30 * 60);
-    assert_eq!(pick(&facts, "p1"), Pick::Use("p1".into()), "同一排里别的号快重置也不抢在用的号");
+    assert_eq!(
+        pick(&facts, "p1"),
+        Pick::Use("p1".into()),
+        "同一排里别的号快重置也不抢在用的号"
+    );
     facts[0].used[0] = 90.0;
-    assert_eq!(pick(&facts, "p1"), Pick::Use("p4".into()), "到 90% ⇒ 换到同一排里最快重置的");
+    assert_eq!(
+        pick(&facts, "p1"),
+        Pick::Use("p4".into()),
+        "到 90% ⇒ 换到同一排里最快重置的"
+    );
     facts[6].used[0] = 95.0;
     for (i, x) in facts.iter_mut().enumerate() {
         if i != 6 {
             x.used[0] = 99.0;
         }
     }
-    assert_eq!(pick(&facts, "p1"), Pick::Use("p7".into()), "单独 99% 的号 95% 还有额度");
+    assert_eq!(
+        pick(&facts, "p1"),
+        Pick::Use("p7".into()),
+        "单独 99% 的号 95% 还有额度"
+    );
     facts[6].used[0] = 99.0;
-    assert!(matches!(pick(&facts, "p7"), Pick::Hold { .. }), "硬上限全到 ⇒ 停发");
+    assert!(
+        matches!(pick(&facts, "p7"), Pick::Hold { .. }),
+        "硬上限全到 ⇒ 停发"
+    );
 }

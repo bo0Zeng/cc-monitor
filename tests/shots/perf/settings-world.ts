@@ -10,7 +10,7 @@ import { defaultConfig, defaultDisk, defaultWorld, LOCAL, session, sidOf } from 
 import { Convo } from "../fake/records";
 
 /** 规模表（改它就改整个世界的量级）。 */
-export const SETTINGS_SCALE = { remotes: 11, accounts: 24, rules: 30, ext: 300, sessions: 48 };
+export const SETTINGS_SCALE = { remotes: 11, accounts: 24, ext: 300, sessions: 48 };
 
 const remoteNames = (): string[] => Array.from({ length: SETTINGS_SCALE.remotes }, (_, i) => `node-${String(i + 1).padStart(2, "0")}`);
 const acctNames = (): string[] => Array.from({ length: SETTINGS_SCALE.accounts }, (_, i) => `acct-${String(i + 1).padStart(2, "0")}`);
@@ -65,18 +65,7 @@ export function settingsPerfWorld(): World {
     }),
   );
   const sids = w.sessions.map((s) => s.sid);
-  const cfgId = (k: number): string => `c_${String(k).padStart(8, "0")}`;
-  putRotation(d, {
-    defaultConfig: cfgId(0),
-    configs: Object.fromEntries(
-      Array.from({ length: SETTINGS_SCALE.rules }, (_, k) => {
-        const params = { line: k % 2 ? null : 80 + (k % 20), slots: [], mode: "normal", stint: null };
-        const accounts = [{ start: true as const, params }, ...Array.from({ length: 4 }, (_, j) => ({ id: accts[(k + j) % accts.length], params }))];
-        return [cfgId(k), { name: `配置 ${k + 1}`, strategy: "1", accounts, params: { back: false, delay: 0, standby_wait: 40, all_out: "go" }, acctInit: params, rev: 2, updatedAt: t - 86_400 }];
-      }),
-    ),
-    sessions: Object.fromEntries(sids.map((sid, j) => [sid, { start: accts[0], current: accts[0], since: t - 3600, config: { id: cfgId(j % SETTINGS_SCALE.rules), rev: 2 } }])),
-  });
+  putRotation(d, { sessions: Object.fromEntries(sids.map((sid) => [sid, { start: accts[0], current: accts[0], since: t - 3600 }])) });
   putWarm(d, [{ account: accts[1], at: t + 2.5 * 3600 }]);
   w.ops["accounts-sessions"] = (origin, _req, world) => ({
     lines: world.sessions

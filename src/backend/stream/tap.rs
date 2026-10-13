@@ -125,7 +125,7 @@ pub trait TapSource {
 pub struct TapRx {
     rx: tokio::sync::mpsc::Receiver<TapEvent>,
     /// 轮换的节点通道（[`crate::accounts::quota::nodes`]）：事实变了推 `changed {quota}`；某个会话那一条变了推
-    /// `changed {rotation, key: sid}`；策略 / 配置表 / 本机默认变了推 `changed {rotation_configs}`。`None` ＝ 不订（判据自己接的那一形）。
+    /// `changed {rotation, key: sid}`；策略目录 · 新会话用哪份变了推 `changed {rotation_strategies}`。`None` ＝ 不订（判据自己接的那一形）。
     nodes: Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
