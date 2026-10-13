@@ -861,38 +861,53 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     // 现在：连发 `REPLY_BURST` 条应答之后**强制让位一次**给出方向。
     // 仍然偏向应答（正常场景一条命令一两帧，够不到预算），但偏置是**有界**的。
     const REPLY_BURST: u32 = 8;
+    // 另一道：自上一帧出方向起写出去的应答**字节**到了一页（`REPLY_PAGE_BYTES`）⇒ 也让位一次。
+    //   分页取一份大会话（index · turns …）时应答是一页接一页来的；按条数，那台别的会话的实时行要等 8 页（几 MB）之后；
+    //   按字节，至多再等一页 —— 「大应答分页取到一半，别的会话来了一行，它在下一页之前上线」就靠这一道（8a b）。
     let mut burst = 0u32;
+    let mut burst_bytes = 0usize;
     loop {
         // tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
         //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
         //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
         //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、这一轮不参与，不会空转。
-        let frame = if burst < REPLY_BURST {
-            tokio::select! {
-                biased;
-                Some(f) = reply_rx.recv() => { burst += 1; f }
-                f = rx.recv() => match f {
-                    Some(mut f) => { burst = 0; f.stamp(&tz); f }
-                    None => return, // 出方向通道关了 = 寿终
-                },
-                Some(f) = tap_rx.next() => f,
-            }
-        } else {
-            burst = 0;
-            tokio::select! {
-                biased;
-                f = rx.recv() => match f {
-                    Some(mut f) => { f.stamp(&tz); f }
-                    None => return,
-                },
-                Some(f) = reply_rx.recv() => f,
-                Some(f) = tap_rx.next() => f,
+        let (frame, reply) =
+            if burst < REPLY_BURST && burst_bytes < cc_monitor_backend::REPLY_PAGE_BYTES {
+                tokio::select! {
+                    biased;
+                    Some(f) = reply_rx.recv() => { burst += 1; (f, true) }
+                    f = rx.recv() => match f {
+                        Some(mut f) => { f.stamp(&tz); (f, false) }
+                        None => return, // 出方向通道关了 = 寿终
+                    },
+                    Some(f) = tap_rx.next() => (f, false),
+                }
+            } else {
+                burst = 0;
+                burst_bytes = 0;
+                tokio::select! {
+                    biased;
+                    f = rx.recv() => match f {
+                        Some(mut f) => { f.stamp(&tz); (f, false) }
+                        None => return,
+                    },
+                    Some(f) = reply_rx.recv() => (f, true),
+                    Some(f) = tap_rx.next() => (f, false),
+                }
+            };
+        let wrote = match write_frame(&mut out, &frame, &tz, view.as_ref()).await {
+            Ok(n) => n,
+            Err(e) => {
+                // Broken pipe (client gone) is the normal end-of-life; stop quietly.
+                tracing::warn!("stdout write failed ({e}); stopping writer");
+                return;
             }
         };
-        if let Err(e) = write_frame(&mut out, &frame, &tz, view.as_ref()).await {
-            // Broken pipe (client gone) is the normal end-of-life; stop quietly.
-            tracing::warn!("stdout write failed ({e}); stopping writer");
-            return;
+        if reply {
+            burst_bytes += wrote;
+        } else {
+            burst = 0;
+            burst_bytes = 0;
         }
         if let Err(e) = out.flush().await {
             tracing::warn!("stdout flush failed ({e}); stopping writer");
@@ -902,6 +917,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
 }
 
 /// Serialize one frame to its wire line and write it (no flush).
+/// 回：写了几个字节。
 /// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`stamp_detail_slots`）；
 /// 推送帧照这条流的出口声明裁格（`view`；应答的 kind 不在声明的住处表里，原样）。
 async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
@@ -909,11 +925,12 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     frame: &Frame,
     tz: &cc_monitor_backend::Tz,
     view: Option<&cc_monitor_backend::StreamView>,
-) -> std::io::Result<()> {
+) -> std::io::Result<usize> {
     let line = cc_monitor_backend::stream::wire::to_line_viewed(frame, view)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    out.write_all(cc_monitor_backend::stamp_detail_slots(&line, tz).as_bytes())
-        .await
+    let line = cc_monitor_backend::stamp_detail_slots(&line, tz);
+    out.write_all(line.as_bytes()).await?;
+    Ok(line.len())
 }
 
 /// 解析会话数据根：后端盯着的那一家的家目录（注册表 `LocalFace::home_at`）。

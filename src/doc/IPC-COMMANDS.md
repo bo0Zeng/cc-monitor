@@ -250,7 +250,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 |---|---|---|
 | `sid` | string | 会话 id |
 | `path` | string | 这份会话记录在那台机器上的绝对路径 |
-| `off` | [string] | 主线外那几条的 `id` |
+| `at` | number | 前几条照旧 |
+| `off` | [string] | 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止） |
 
 ### `terminal_screen`
 
@@ -4153,11 +4154,11 @@ type HistoryTurns = {
  */
 from: number, 
 /**
- * 最后一个完整行的末字节（残尾不计）。
+ * 这一页管到哪个字节（有下一页 ⇒ ＝ `next`；最后一页 ⇒ 最后一个完整行的末字节，残尾不计）。
  */
 end: number, 
 /**
- * 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+ * 下一页从哪个字节起（＝ 下一页第一轮的 `at`）；没有下一页 ⇒ `null`。
  */
 next: number | null, 
 /**
@@ -4174,7 +4175,7 @@ path: string,
  */
 from?: number | null, 
 /**
- * 可选：一页最多几轮。这一版还不分段：给了也整份出，`next` 恒 `null`。
+ * 可选：一页最多几轮（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
 limit?: number | null, };
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
@@ -4846,26 +4847,38 @@ type Words = string;
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-branch`
 
-入参 `PathReq` · 回包 `Branch`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `BranchReq` · 回包 `Branch`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type Branch = { 
 /**
- * 回退掉的那几条记录的 `id`（只含进界面的；文件序）；这一家的记录没有链 ⇒ 恒空。
+ * 回退掉的那几条记录的 `id`（只含进界面的；文件序），这一页是清单里从 `from` 起的那几条；这一家的记录没有链 ⇒ 恒空。
  */
 off: Array<string>, 
 /**
  * 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）。
  */
-end: number, };
-type PathReq = { 
+end: number, 
+/**
+ * 下一页从清单第几条起；没有下一页 ⇒ `null`。
+ */
+next: number | null, };
+type BranchReq = { 
 /**
  * jsonl 路径（围栏同 `history-read`）。
  */
-path: string, };
+path: string, 
+/**
+ * 从清单第几条起（缺 ⇒ 0；下一页传 `next`）。
+ */
+from?: number | null, 
+/**
+ * 可选：一页最多几条（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
+ */
+limit?: number | null, };
 ```
 
-码：`bad_args` · `failed` · `too_large`
+码：`bad_args` · `failed`
 
 #### `history-find`
 
@@ -4959,11 +4972,11 @@ type HistoryIndex = {
  */
 from: number, 
 /**
- * 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`。
+ * 这一页最后一行的末字节 ＝ 下一次续传该带的 `offset`（最后一页 ⇒ 最后一个完整行的末字节）。
  */
 end: number, 
 /**
- * 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+ * 下一页从哪个字节起（＝ 下一页第一行的起点）；没有下一页 ⇒ `null`。
  */
 next: number | null, 
 /**
@@ -4988,7 +5001,7 @@ offset?: number | null,
  */
 until?: number | null, 
 /**
- * 可选：一页最多几行。这一版还不分段：给了也整份出，`next` 恒 `null`。
+ * 可选：一页最多几行（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
 limit?: number | null, };
 type IndexBody = { 
@@ -5017,19 +5030,14 @@ type RecordClass = "said" | "reply" | "retry" | "title" | "queued" | "unread";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --history-user-inputs`
 
-入参 `FromReq` · 回包 `UserInputs`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `UserInputsReq` · 回包 `UserInputs`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FromReq = { 
+type UserInputRow = { 
 /**
- * jsonl 路径（围栏同 `history-read`）。
+ * 这一句那一行在记录里的字节起点（分页的续点按它给；逐条认的那一处不知道位置时是 0，由扫的那一处填）。
  */
-path: string, 
-/**
- * 增量起点（缺 ⇒ 0；传上次的 `end`）。
- */
-from?: number | null, };
-type UserInputRow = { uuid: string, 
+at: number, uuid: string, 
 /**
  * 记录的 `timestamp`；没有 ⇒ 空串。
  */
@@ -5044,13 +5052,30 @@ type UserInputs = {
  */
 from: number, 
 /**
- * 最后一个完整行的末字节 ＝ 下一次增量该带的 `from`。
+ * 这一页管到哪个字节 ＝ 下一次增量该带的 `from`（最后一页 ⇒ 最后一个完整行的末字节）。
  */
 end: number, 
+/**
+ * 下一页从哪个字节起（＝ 下一页第一条那一行的起点）；没有下一页 ⇒ `null`。
+ */
+next: number | null, 
 /**
  * 每条用户输入，对话序。
  */
 entries: Array<UserInputRow>, };
+type UserInputsReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 起点（缺 ⇒ 0；增量传上次的 `end`，下一页传 `next`）。
+ */
+from?: number | null, 
+/**
+ * 可选：一页最多几条（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
+ */
+limit?: number | null, };
 ```
 
 码：`bad_args` · `failed` · `too_large`

@@ -9,8 +9,13 @@
 //! - 格式带版本号（[`VERSION`]），认不出 · 解析不了 · 路径对不上 ⇒ 当没有，整份重扫（不迁移）。
 //! - 只给大记录落（[`MIN_LEN`] 起）；目录里份数超了 [`MAX_FILES`] ⇒ 删最久没写的那些。它是从记录推出来的缓存：
 //!   删了能从记录重建，足迹里归「能重建」一类（`relay_route_core::SKELETON_DIR_REL`）。
-//! - 写只经 [`Own`]：建目录 · 拿目录锁 · 原子写 · 删文件。
+//! - 写只经 [`Own`]：建目录 · 拿目录锁 · 原子写（流式）· 删文件。
+//! - **按块读写**：写的时候边序列化边往盘上流（缓冲一块 [`READ_BLOCK`]），每过一块在两项之间插一个换行（JSON 允许）⇒ 文件是一行行
+//!   不长于约一块的；读的时候经 [`Blocks`] 一块一块读、边读边解析 ⇒ 手里不再有整份原文，峰值 ≈ 一块 ＋ 解出来的那份结构。
+//! - **键是规范化之后的路径**（[`crate::observe::fence::real_path`]）：预读那一路拿的是走出来的路径（可能经符号链接），冷开扫描图拿的是
+//!   围栏放行之后的路径 —— 同一份记录两种写法落到同一个键上，两样各自的那份文件都在同一个摘要底下，谁都能按这个键找到对方那一份。
 
+use super::fs::{Blocks, READ_BLOCK};
 use crate::platform::fs::{Own, OwnPath, Ro};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -18,7 +23,7 @@ use std::path::Path;
 use std::sync::OnceLock;
 
 /// 格式版本：骨架里任何一样的形状变了就加一（旧的那几份读出来版本对不上 ⇒ 整份重扫、覆盖）。
-pub(crate) const VERSION: u32 = 1;
+pub(crate) const VERSION: u32 = 2;
 
 /// 见证多长：游标前这么多字节（续读核「游标之前没被改写」的那一段，watcher 的续读指纹也是这个数）。
 pub const WITNESS: u64 = 64;
@@ -135,6 +140,11 @@ impl Skeletons {
         Skeletons { own, min_len }
     }
 
+    /// 上一次落盘时读到 `stored`，之后读进来多少才再落一份（实时回写的门槛：落一份是整份重写，按长度的四分之一摊开 ⇒ 写的总量是读的常数倍）。
+    pub(crate) fn rewrite_after(&self, stored: u64) -> u64 {
+        self.min_len.max(stored / 4)
+    }
+
     /// 这么长的记录落不落。
     pub(crate) fn wants(&self, len: u64) -> bool {
         len >= self.min_len
@@ -144,24 +154,32 @@ impl Skeletons {
         self.own.path(dir_rel()).ok()
     }
 
-    fn file(&self, path: &Path, what: &str) -> Option<OwnPath> {
+    fn file(&self, key: &Path, what: &str) -> Option<OwnPath> {
         self.dir()?
-            .join(&format!("{}.{what}.json", digest(path)))
+            .join(&format!("{}.{what}.json", digest(key)))
             .ok()
     }
 
     /// 读 `path` 那一样（`what`：`prime` · `scan`）。没有 · 读不出 · 版本或路径对不上 ⇒ `None`。
     pub(crate) fn load<T: DeserializeOwned>(&self, path: &Path, what: &str) -> Option<T> {
-        let f = self.file(path, what)?;
-        // 不在 ⇒ 没落过（不出声）；别的读不出（超了上限 · 读错）· 解析不了 ⇒ 说一声是哪一份，当没有、照记录整份重扫。
-        Ro::metadata(f.as_path()).ok()?;
-        let raw = Ro::read_regular_capped(f.as_path(), MAX_READ)
+        let key = key_of(path);
+        let f = self.file(&key, what)?;
+        // 不在 ⇒ 没落过（不出声）；别的读不出（超了上限 · 不是文件 · 读错）· 解析不了 ⇒ 说一声是哪一份，当没有、照记录整份重扫。
+        let meta = Ro::metadata(f.as_path()).ok()?;
+        if !meta.is_file() || meta.len() > MAX_READ {
+            tracing::warn!(
+                "skeleton {what} for {} skipped: not a file or over the cap",
+                path.display()
+            );
+            return None;
+        }
+        let blocks = Blocks::open(f.as_path())
             .map_err(|e| tracing::warn!("skeleton {what} for {} skipped: {e}", path.display()))
             .ok()?;
-        let got: File<T> = serde_json::from_slice(&raw)
+        let got: File<T> = serde_json::from_reader(std::io::BufReader::new(BlockRead::new(blocks)))
             .map_err(|e| tracing::debug!("skeleton {what} for {} unreadable: {e}", path.display()))
             .ok()?;
-        (got.v == VERSION && Path::new(&got.path) == path).then_some(got.body)
+        (got.v == VERSION && Path::new(&got.path) == key).then_some(got.body)
     }
 
     /// 落 `path` 那一样（整份原子写）。写不成只记一笔调试日志：缓存，下一次照记录重扫。
@@ -178,16 +196,20 @@ impl Skeletons {
             at = at.join(seg).map_err(|e| e.to_string())?;
             self.own.ensure_dir(&at).map_err(|e| e.to_string())?;
         }
-        let file = self.file(path, what).ok_or("bad name")?;
-        let bytes = serde_json::to_vec(&File {
-            v: VERSION,
-            path: path.to_string_lossy().into_owned(),
-            body,
-        })
-        .map_err(|e| e.to_string())?;
+        let key = key_of(path);
+        let file = self.file(&key, what).ok_or("bad name")?;
         let held = self.own.lock(&dir).map_err(|e| format!("{e:?}"))?;
         self.own
-            .write(&file, &held, &bytes)
+            .write_streamed(&file, &held, |f| {
+                write_lined(
+                    f,
+                    &File {
+                        v: VERSION,
+                        path: key.to_string_lossy().into_owned(),
+                        body,
+                    },
+                )
+            })
             .map_err(|e| e.to_string())?;
         self.prune(&dir);
         Ok(())
@@ -228,6 +250,122 @@ impl Skeletons {
                 }
             }
         }
+    }
+}
+
+/// 一份骨架的键：规范化之后的路径（解不开 ⇒ 原样）。
+fn key_of(path: &Path) -> std::path::PathBuf {
+    crate::observe::fence::real_path(path).unwrap_or_else(|| path.to_path_buf())
+}
+
+/// 边序列化边写：缓冲一块，写出去的字节每过一块就在下一个数组元素 / 对象键之前插一个换行 ⇒ 文件一行行不长于约一块（[`Blocks`] 读得动）。
+fn write_lined<T: Serialize>(f: &mut dyn std::io::Write, v: &T) -> std::io::Result<()> {
+    use std::io::Write as _;
+    let since = std::rc::Rc::new(std::cell::Cell::new(0usize));
+    let mut w = Counting {
+        inner: std::io::BufWriter::with_capacity(READ_BLOCK, f),
+        since: since.clone(),
+    };
+    let mut ser = serde_json::Serializer::with_formatter(&mut w, Lined { since });
+    v.serialize(&mut ser).map_err(std::io::Error::other)?;
+    w.inner.flush()
+}
+
+/// 数着自上一个换行起写了多少字节的写者（[`Lined`] 看它决定插不插换行）。
+struct Counting<W> {
+    inner: W,
+    since: std::rc::Rc<std::cell::Cell<usize>>,
+}
+
+impl<W: std::io::Write> std::io::Write for Counting<W> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let n = self.inner.write(buf)?;
+        let at = buf[..n].iter().rposition(|&b| b == b'\n');
+        self.since.set(match at {
+            Some(i) => n - i - 1,
+            None => self.since.get() + n,
+        });
+        Ok(n)
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.inner.flush()
+    }
+}
+
+/// 紧凑写法，只在两项之间、自上一个换行起过了一块时插一个换行。
+struct Lined {
+    since: std::rc::Rc<std::cell::Cell<usize>>,
+}
+
+impl Lined {
+    fn gap<W: ?Sized + std::io::Write>(&self, w: &mut W, first: bool) -> std::io::Result<()> {
+        if !first {
+            w.write_all(b",")?;
+        }
+        if self.since.get() >= READ_BLOCK {
+            w.write_all(b"\n")?;
+        }
+        Ok(())
+    }
+}
+
+impl serde_json::ser::Formatter for Lined {
+    fn begin_array_value<W: ?Sized + std::io::Write>(
+        &mut self,
+        w: &mut W,
+        first: bool,
+    ) -> std::io::Result<()> {
+        self.gap(w, first)
+    }
+
+    fn begin_object_key<W: ?Sized + std::io::Write>(
+        &mut self,
+        w: &mut W,
+        first: bool,
+    ) -> std::io::Result<()> {
+        self.gap(w, first)
+    }
+}
+
+/// [`Blocks`] 当一个 `Read` 用：一块一块往外给，读到尾再给没有换行的那一截。
+struct BlockRead {
+    blocks: Blocks<crate::platform::fs::RoFile>,
+    cur: Vec<u8>,
+    pos: usize,
+    done: bool,
+}
+
+impl BlockRead {
+    fn new(blocks: Blocks<crate::platform::fs::RoFile>) -> Self {
+        BlockRead {
+            blocks,
+            cur: Vec::new(),
+            pos: 0,
+            done: false,
+        }
+    }
+}
+
+impl std::io::Read for BlockRead {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        while self.pos >= self.cur.len() {
+            if self.done {
+                return Ok(0);
+            }
+            self.cur = match self.blocks.next()? {
+                Some(b) => b,
+                None => {
+                    self.done = true;
+                    self.blocks.rest()
+                }
+            };
+            self.pos = 0;
+        }
+        let n = buf.len().min(self.cur.len() - self.pos);
+        buf[..n].copy_from_slice(&self.cur[self.pos..self.pos + n]);
+        self.pos += n;
+        Ok(n)
     }
 }
 

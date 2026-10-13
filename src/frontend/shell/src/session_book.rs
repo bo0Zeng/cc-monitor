@@ -215,11 +215,14 @@ pub enum In {
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
     },
-    /// `session_branch`：那台后端给的一个会话的主线外清单（记录 `id` 的 JSON 数组原文，不解释）。
+    /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
+    /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。
     Branch {
         origin: crate::origin::Origin,
         sid: String,
-        off: crate::ui_contract::RecordBody,
+        path: String,
+        at: u64,
+        off: Vec<String>,
     },
 }
 
@@ -276,8 +279,8 @@ struct OriginBook {
             crate::ui_contract::RecordBody,
         ),
     >,
-    /// 活会话的最新主线外清单（F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
-    branch: BTreeMap<String, crate::ui_contract::RecordBody>,
+    /// 活会话的最新主线外清单（哪份记录的 · 整份；F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
+    branch: BTreeMap<String, (String, Vec<String>)>,
 }
 
 /// F5 重放那一趟要发的东西：骨架先（`before`，在留存行之前），终局后（`after`，在留存行之后 —— 否则远端行会把刚归档的 tab 翻活）。
@@ -285,6 +288,14 @@ struct OriginBook {
 pub struct Replay {
     pub before: Vec<Out>,
     pub after: Vec<Out>,
+}
+
+/// 拼好的整份清单写成交给界面的那一格（JSON 数组原文）。
+fn branch_body(off: &[String]) -> crate::ui_contract::RecordBody {
+    crate::ui_contract::RecordBody::from_json(serde_json::to_string(off).unwrap_or_default())
+        .unwrap_or_else(|| {
+            crate::ui_contract::RecordBody::from_json("[]".to_string()).expect("[] is JSON")
+        })
 }
 
 /// 全部机器的成品账（见模块头注）。
@@ -367,13 +378,31 @@ impl Book {
                     ended,
                 }]
             }
-            In::Branch { origin, sid, off } => {
-                self.origins
+            In::Branch {
+                origin,
+                sid,
+                path,
+                at,
+                off,
+            } => {
+                let held = self
+                    .origins
                     .entry(origin.as_wire_str().to_string())
                     .or_default()
                     .branch
-                    .insert(sid.clone(), off.clone());
-                vec![Out::Branch { origin, sid, off }]
+                    .entry(sid.clone())
+                    .or_default();
+                // 换了一份记录 ⇒ 从空的起拼（那一份从 `at = 0` 发起）。
+                if held.0 != path {
+                    *held = (path, Vec::new());
+                }
+                held.1.truncate(usize::try_from(at).unwrap_or(usize::MAX));
+                held.1.extend(off);
+                vec![Out::Branch {
+                    origin,
+                    sid,
+                    off: branch_body(&held.1),
+                }]
             }
             In::Listed { origin } => {
                 self.origins.entry(origin.clone()).or_default().listed = true;
@@ -478,11 +507,11 @@ impl Book {
                                 ended: ended.clone(),
                             });
                         }
-                        if let Some(off) = b.branch.get(sid) {
+                        if let Some((_, off)) = b.branch.get(sid) {
                             r.before.push(Out::Branch {
                                 origin: crate::origin::Origin((*o).clone()),
                                 sid: sid.clone(),
-                                off: off.clone(),
+                                off: branch_body(off),
                             });
                         }
                     }

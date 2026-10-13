@@ -5,10 +5,14 @@
  */
 export type Branch = { 
 /**
- * 回退掉的那几条记录的 `id`（只含进界面的；文件序）；这一家的记录没有链 ⇒ 恒空。
+ * 回退掉的那几条记录的 `id`（只含进界面的；文件序），这一页是清单里从 `from` 起的那几条；这一家的记录没有链 ⇒ 恒空。
  */
 off: Array<string>, 
 /**
  * 最后一个完整行的末字节（之后的由实时帧 `session_branch` 接着说）。
  */
-end: number, };
+end: number, 
+/**
+ * 下一页从清单第几条起；没有下一页 ⇒ `null`。
+ */
+next: number | null, };

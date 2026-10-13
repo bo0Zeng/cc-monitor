@@ -51,6 +51,8 @@ pub(crate) struct ScanMap {
     rest: Rest,
     /// 估算的常驻字节（字节上限按它算）。
     bytes: usize,
+    /// 盘上骨架照的是读到哪的这一份（没落过 ⇒ 0）：接着扫过了门槛才再落（[`super::skeleton::Skeletons::rewrite_after`]）。
+    stored: u64,
 }
 
 /// 接着扫要的：游标前的见证 · 没滤主线外的用户输入与收了尾的轮次 · 还没收尾那一轮 · 链索引。
@@ -200,7 +202,8 @@ impl Scan {
             let Some(v) = v else {
                 continue;
             };
-            if let Some(row) = super::user_inputs::user_input_of(&v) {
+            if let Some(mut row) = super::user_inputs::user_input_of(&v) {
+                row.at = start;
                 self.rest.inputs.push(row);
             }
             if let Some(row) = self.rest.open.line(start, &v) {
@@ -238,6 +241,7 @@ impl Scan {
             facts: self.facts,
             rest: self.rest,
             bytes: 0,
+            stored: 0,
         };
         map.bytes = map.estimate();
         map
@@ -520,12 +524,21 @@ impl RecordScans {
         let len = meta.len();
         let mtime = super::skeleton::mtime_of(meta);
         let home = self.skeletons().filter(|s| s.wants(len));
+        let mut stored = base.as_ref().map_or(0, |b| b.stored);
         let mut from = base.filter(|b| len > b.seen).map(|b| b.resume());
         if from.is_none() {
+            stored = 0;
             if let Some(k) = home.and_then(|h| h.load::<Skel>(path, SKEL_WHAT)) {
                 match k.mark.look(len, mtime) {
-                    Look::Same => return Ok((k.scan.done(len), None)),
-                    Look::Grown => from = Some(k.scan),
+                    Look::Same => {
+                        let mut map = k.scan.done(len);
+                        map.stored = map.end;
+                        return Ok((map, None));
+                    }
+                    Look::Grown => {
+                        stored = k.mark.cursor;
+                        from = Some(k.scan);
+                    }
                     Look::Changed => {}
                 }
             }
@@ -536,6 +549,8 @@ impl RecordScans {
             self.read.fetch_add(k, Ordering::Relaxed);
             if holds {
                 scan = s;
+            } else {
+                stored = 0;
             }
         }
         file.seek(SeekFrom::Start(scan.end))?;
@@ -544,13 +559,19 @@ impl RecordScans {
         let chain = crate::agents::record_face_of(path).and_then(|f| f.chain);
         let kind = crate::agents::record_kind_of(path).unwrap_or_default();
         scan.feed(std::io::BufReader::new(file), len, kind, chain)?;
-        let map = scan.done(len);
-        let mark = home.map(|_| Mark {
+        let mut map = scan.done(len);
+        map.stored = stored;
+        // 盘上那份照的是 `stored`：没落过 · 接着扫过了门槛 ⇒ 落一份新的（落了就记成照到此刻）；没过门槛 ⇒ 不重写几十 MB。
+        let due = home.filter(|h| stored == 0 || map.end >= stored + h.rewrite_after(stored));
+        let mark = due.map(|_| Mark {
             len,
             mtime,
             cursor: map.end,
             witness: map.rest.witness.clone(),
         });
+        if mark.is_some() {
+            map.stored = map.end;
+        }
         Ok((map, mark))
     }
 

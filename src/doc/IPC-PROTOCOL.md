@@ -207,7 +207,8 @@
 - **过程一行的主参数 `steps.*.arg` 是定长一行**：换行与连串空白压成一个空格，至多 200 字（按字符，不切半个字），截了以 `…` 收尾；两个前端都不再截。完整内容照旧在 `blocks` 的入参里。
 - 要哪几格由出口交的声明定（请求信封的 `view`，见 §4）：折起那一行只要 `omit: {record: ["blocks", "results.*.patch", "results.*.patchTruncated"]}`；
   正文按需（工具卡展开时再取那一行全文）交 `omit: {record: ["blocks[type=tool_use].input", "blocks[type=tool_result].content", "results.*.patch", "results.*.patchTruncated"]}`。`line` 不带原文。
-- 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch`（整份）· 冷读 `history-branch`。没有链的那一家恒空。
+- 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch {sid, path, at, off}` ——「这份记录的清单前 `at` 条照旧，其后换成 `off`」，变了只发变了的那一截；整份（宣告之后历史里已经有 · 进名单补发 · 连接接上来 · 这条连接丢过它一帧）从 `at = 0` 起按页切几帧接着发 · 冷读 `history-branch`（同样分页）。没有链的那一家恒空。
+- 分页（`history-index` · `-user-inputs` · `-turns` · `-branch`）：一条应答至多 `REPLY_PAGE_BYTES` 字节（一项单独超了 ⇒ 那一页只有它）；有下一页 ⇒ `next` 是下一页的续点（前三条是字节、`-branch` 是条数），没有 ⇒ `null`；入参可缺的 `limit` 管一页至多几项。写出方向写完一页应答就先让实时帧走 ⇒ 分页取到一半时别的会话来的行至多再等一页。
 
 ## 8. CLI 一次性调用
 

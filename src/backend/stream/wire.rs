@@ -818,13 +818,19 @@ pub enum Frame {
         ended: Vec<RunEnded>,
     },
     /// 一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`（与记录成品的 `id` 同值；只含进界面的，文件序）。
-    /// 整份、变了才发（宣告之后历史里已经有就发一次）；从没发过 ＝ 空。冷读那一路是读命令 `history-branch`。这一家的记录没有链 ⇒ 从不发。
+    ///
+    /// **「前 `at` 条照旧，其后换成 `off`」**：变了才发，只发变了的那一截（新的分叉接在尾上 ⇒ `at` ＝ 原来的条数、`off` 只有新的几条）；
+    /// 整份（宣告之后历史里已经有 · 进名单补发 · 连接接上来 · 这条连接丢过它的一帧）从 `at = 0` 起，按 `REPLY_PAGE_BYTES` 切成几帧接着发
+    /// （后一帧的 `at` ＝ 前几帧累计的条数）。一帧至多那么多字节（一条 `id` 单独超了 ⇒ 那一帧只有它）。
+    /// 从没发过 ＝ 空。冷读那一路是读命令 `history-branch`（同样分页）。这一家的记录没有链 ⇒ 从不发。
     SessionBranch {
         /// 会话 id。
         sid: String,
         /// 这份会话记录在那台机器上的绝对路径。
         path: String,
-        /// 主线外那几条的 `id`。
+        /// 前几条照旧。
+        at: u64,
+        /// 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止）。
         off: Vec<String>,
     },
 
@@ -1196,7 +1202,7 @@ impl Frame {
             Frame::Tap { .. } => true,
             // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
             Frame::SessionRuns { .. } => false,
-            // 同上：整份快照，下一次变就整份重发。
+            // 只发变了的那一截：丢了那一帧，那条连接手上的清单就对不上 —— 发帧那一层记下（`FrameSink`），下一次给它整份。
             Frame::SessionBranch { .. } => false,
             // 终端实时预览：丢了在途那一帧，客户端等不到它就不回执，订阅停住；也走应答通道。
             Frame::TerminalScreen { .. } => false,
@@ -1280,6 +1286,41 @@ impl Frame {
             }
         };
         LostFrame { kind, subject }
+    }
+}
+
+impl Frame {
+    /// 一份主线外清单「前 `at` 条照旧，其后是 `off[at..]`」切成几帧 `session_branch`（每帧至多 `REPLY_PAGE_BYTES` 字节，一条单独超了 ⇒ 那一帧只有它）。
+    /// 后面没有了（`at` 就是全长）也发一帧空的：它说「清单到第 `at` 条为止」。
+    pub fn branch_pages(sid: &str, path: &str, off: &[String], at: usize) -> Vec<Frame> {
+        let at = at.min(off.len());
+        let page = |at: usize, ids: &[String]| Frame::SessionBranch {
+            sid: sid.to_string(),
+            path: path.to_string(),
+            at: at as u64,
+            off: ids.to_vec(),
+        };
+        let fixed = serde_json::to_vec(&page(usize::MAX, &[])).map_or(0, |b| b.len()) + 1;
+        let room = crate::REPLY_PAGE_BYTES.saturating_sub(fixed);
+        let mut out = Vec::new();
+        let mut start = at;
+        loop {
+            let mut used = 0;
+            let mut end = start;
+            while end < off.len() {
+                let c = serde_json::to_vec(&off[end]).map_or(0, |b| b.len()) + 1;
+                if end > start && used + c > room {
+                    break;
+                }
+                used += c;
+                end += 1;
+            }
+            out.push(page(start, &off[start..end]));
+            if end >= off.len() {
+                return out;
+            }
+            start = end;
+        }
     }
 }
 

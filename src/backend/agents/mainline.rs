@@ -56,6 +56,8 @@ pub(crate) struct Chain {
     root_of: Vec<usize>,
     winner: Option<usize>,
     off: Vec<String>,
+    /// 自上一次 [`Chain::take_kept`] 起清单变过 ⇒ 那时的清单与此刻的公共前缀至多这么长（`session_branch` 只发变了的那一截）；没变过 ⇒ `None`。
+    kept: Option<usize>,
     /// 记进来了、还没重算（[`Chain::load`] 攒着，[`Chain::settle`] 一次算掉）。
     dirty: bool,
     /// 到此刻整条走过几格（每次整份重算记一遍节点数）：冷接那一趟的日志带它；判据判「一趟读多少行都只走一遍」也数它，不按墙钟。
@@ -139,6 +141,12 @@ impl Chain {
         &self.off
     }
 
+    /// 上一次问它到此刻，清单前几条没动（主线外清单是文件序，新的分叉一般接在尾上 ⇒ 只有后面那几条是新的）；问完重新记。
+    /// 中间变了几次都算上（取最短的公共前缀）⇒ 拿上一次发出去的那一份接上这一截，就是此刻的清单。
+    pub(crate) fn take_kept(&mut self) -> usize {
+        self.kept.take().unwrap_or(self.off.len())
+    }
+
     /// 记了几个节点。
     pub(crate) fn len(&self) -> usize {
         self.nodes.len()
@@ -168,6 +176,12 @@ impl Chain {
         if off == self.off {
             return false;
         }
+        let k = off
+            .iter()
+            .zip(&self.off)
+            .take_while(|(a, b)| a == b)
+            .count();
+        self.kept = Some(self.kept.map_or(k, |was| was.min(k)));
         self.off = off;
         true
     }

@@ -962,7 +962,8 @@ export class TabStreamView {
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
     const origin = tab.origin;
-    const first = readSessionIndex(origin, jsonlPath, 0);
+    // 只要尾段之上那一截（`[0, floor)`：floor 往后是尾段，实时行管）—— 正在看的 tab 先取它要的那一截，不等整份。
+    const first = readSessionIndex(origin, jsonlPath, 0, tab.window.floorSeq);
     // 〔欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
     // 只读一遍；带不回（老后端 / 零条 / 失败）⇒ 它自己照旧从 0 要一份清单。
     tab.outline.awaitSeed(first.then(outlineSeedFromIndex));

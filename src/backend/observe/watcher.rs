@@ -1528,6 +1528,8 @@ struct ReaderState {
     skeletons: Option<crate::observe::skeleton::Skeletons>,
     /// 预读的线程池（生产由 [`watch_loop`] 装上）。`None`（夹具）⇒ 同一个任务就地跑、就地装回（[`announce`]）。
     pool: Option<PrimePool>,
+    /// 有骨架的大记录（键 ＝ 路径键）：实时读进来的接着记，读过门槛就照账上此刻的样子回写一份（[`write_back`]）。
+    skel_live: HashMap<PathBuf, SkelLive>,
     /// 预读还没交回的会话 → 那一趟的代号（会话退休 / 重新宣告 ⇒ 旧的那一趟交回时认不上、丢掉）。
     priming: HashMap<String, u64>,
     next_prime: u64,
@@ -1709,6 +1711,7 @@ impl ReaderState {
             book: std::sync::Arc::default(),
             launch: None,
             skeletons: None,
+            skel_live: HashMap::new(),
             branches: HashMap::new(),
             typed: HashMap::new(),
             annotations: Default::default(),
@@ -2207,6 +2210,7 @@ impl Follow {
 
 /// 这份文件的游标、指纹一起丢（不在了 ⇒ 同名再出现从 0 读；那一趟当改写办：先出声、行号从 0 重数）。
 fn forget_cursor(state: &mut ReaderState, key: &Path) {
+    state.skel_live.remove(key);
     state.offsets.remove(key);
     state.tails.remove(key);
     state.branches.remove(key);
@@ -2257,6 +2261,8 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
         .or_else(|| reappeared.then_some(RereadWhy::Rewritten));
     if reread.is_some() {
         state.seqs.restart(&key_str);
+        // 从 0 重读：骨架照的那一份作废（下一次重启整份重扫、落一份新的）。
+        state.skel_live.remove(&key);
     }
     // 从 0 重读 ⇒ 链从头记；先前说过有主线外的 ⇒ 重读完这一趟一定再说一次（哪怕变成空）。
     let mut branch_changed = reread.is_some()
@@ -2281,13 +2287,14 @@ fn process_jsonl(path: &Path, state: &mut ReaderState, sink: &mut FrameSink) -> 
     }
     let (new_cursor, tail) = new.finish();
     state.tails.insert(key.clone(), tail);
-    state.offsets.insert(key, new_cursor);
+    state.offsets.insert(key.clone(), new_cursor);
     branch_changed |= settle_chain(state, path);
+    write_back(state, &key);
     if runs_changed {
         sink.send(state.runs_frame(&session_id));
     }
     if branch_changed {
-        sink.send(branch_frame(state, &session_id, path));
+        send_branch(state, sink, &session_id, path, reread.is_some());
     }
     n
 }
@@ -2341,7 +2348,7 @@ fn watch_sessions(
         mine.sort();
         sink.send_to(sub, state.runs_frame(&sid));
         for p in &mine {
-            sink.send_to(sub, branch_frame(state, &sid, p));
+            branch_to(state, sink, sub, &sid, p);
             from.push(crate::stream::wire::WatchFrom {
                 sid: sid.clone(),
                 path: p.to_string_lossy().into_owned(),
@@ -2419,7 +2426,7 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
         mine.sort();
         for p in &mine {
             if state.branches.get(p).is_some_and(|c| !c.off().is_empty()) {
-                sink.send_to(id, branch_frame(state, &sid, p));
+                branch_to(state, sink, id, &sid, p);
             }
         }
     }
@@ -2433,17 +2440,26 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
     }
 }
 
-/// 这份记录此刻的主线外清单那一帧（整份）。
-fn branch_frame(state: &ReaderState, sid: &str, path: &Path) -> Frame {
-    Frame::SessionBranch {
-        sid: sid.to_string(),
-        path: path.to_string_lossy().into_owned(),
-        off: state
-            .branches
-            .get(&path_key(path))
-            .map(|c| c.off().to_vec())
-            .unwrap_or_default(),
-    }
+/// 这份记录的主线外清单变了 ⇒ 发变了的那一截（`whole` ⇒ 从头整份：从 0 重读 · 读完那一刻）。
+/// 从上一次发起清单前几条没动由链索引记着（[`crate::agents::mainline::Chain::take_kept`]）；丢过它一帧的连接拿整份（[`FrameSink::branch`]）。
+fn send_branch(state: &mut ReaderState, sink: &mut FrameSink, sid: &str, path: &Path, whole: bool) {
+    let (off, kept) = match state.branches.get_mut(&path_key(path)) {
+        Some(c) => {
+            let kept = c.take_kept();
+            (c.off(), if whole { 0 } else { kept })
+        }
+        None => (&[][..], 0),
+    };
+    sink.branch(sid, &path.to_string_lossy(), off, kept);
+}
+
+/// 给一条连接这份记录此刻的整份主线外清单（名单补发 · 接上来那一份）。
+fn branch_to(state: &ReaderState, sink: &mut FrameSink, id: u64, sid: &str, path: &Path) {
+    let off = state
+        .branches
+        .get(&path_key(path))
+        .map_or(&[][..], |c| c.off());
+    sink.branch_to(id, sid, &path.to_string_lossy(), off);
 }
 
 /// 一行记进这份记录的链索引（这一家有链才记）；不算 —— 这一趟读的行都记完了由 [`settle_chain`] 算一次。
@@ -2515,6 +2531,18 @@ fn send_line(
         .and_then(|f| f.activity)
         .and_then(|f| f(&line.raw))
         .filter(|_| !rec.in_run);
+    let skel_key = path_key(Path::new(path_str));
+    if state.skel_live.contains_key(&skel_key) {
+        let hint = root.is_some_and(|i| state.roots[i].runs.hint(&line.raw));
+        if let Some(sl) = state.skel_live.get_mut(&skel_key) {
+            if hint {
+                sl.runs.push(line.raw.clone());
+            }
+            if activity.is_some() {
+                sl.activity = activity;
+            }
+        }
+    }
     if let Some(body) = translated
         .as_ref()
         .and_then(|t| t.record.as_ref())
@@ -2681,7 +2709,7 @@ fn flush_final_line(path: &Path, sid: &str, state: &mut ReaderState, sink: &mut 
         sink.send(state.runs_frame(sid));
     }
     if branch_changed {
-        sink.send(branch_frame(state, sid, path));
+        send_branch(state, sink, sid, path, false);
     }
 }
 
@@ -3543,6 +3571,56 @@ pub(crate) struct FileRead {
     chain: Option<crate::agents::mainline::Chain>,
     /// 这一趟从 0 起（排队打字时刻表跟着作废）。
     from_zero: bool,
+    /// 这份记录有骨架（照它读的 · 或读完落了一份）⇒ 实时接着记要的那几样（[`SkelLive`]）。
+    skel: Option<SkelLive>,
+}
+
+/// 一份有骨架的大记录在账上接着记的：骨架的家 · 路径 · 上一次落盘时的游标 · 说到子运行的那几行原文 · 最后一件说了的活动 · 正在落的那一趟。
+/// 实时读过门槛（[`crate::observe::skeleton::Skeletons::rewrite_after`]）⇒ 照账上此刻的游标 · 见证 · 行号 · 链索引现落一份（[`write_back`]）。
+pub(crate) struct SkelLive {
+    home: crate::observe::skeleton::Skeletons,
+    path: PathBuf,
+    stored: u64,
+    runs: Vec<String>,
+    activity: Option<crate::agents::SessionActivity>,
+    writing: Option<std::thread::JoinHandle<()>>,
+}
+
+/// 实时读进来的过了门槛 ⇒ 在旁线程上回写这份记录的预读骨架（同一份上一趟还在落 ⇒ 这一次不落：晚一步只是下一次重启多读一截）。
+fn write_back(state: &mut ReaderState, key: &Path) {
+    let Some(cursor) = state.offsets.get(key).copied() else {
+        return;
+    };
+    let Some(sl) = state.skel_live.get_mut(key) else {
+        return;
+    };
+    if cursor.consumed < sl.stored + sl.home.rewrite_after(sl.stored)
+        || sl.writing.as_ref().is_some_and(|h| !h.is_finished())
+    {
+        return;
+    }
+    let mtime = Ro::metadata(&sl.path)
+        .ok()
+        .filter(|m| m.len() == cursor.consumed)
+        .and_then(|m| crate::observe::skeleton::mtime_of(&m));
+    let body = PrimeSkel {
+        mark: crate::observe::skeleton::Mark {
+            len: cursor.seen_len.max(cursor.consumed),
+            mtime,
+            cursor: cursor.consumed,
+            witness: state.tails.get(key).cloned().unwrap_or_default(),
+        },
+        seq: state.seqs.peek(&key.to_string_lossy()),
+        chain: state.branches.get(key).cloned().unwrap_or_default(),
+        runs: sl.runs.clone(),
+        activity: sl.activity,
+    };
+    sl.stored = cursor.consumed;
+    let (home, path) = (sl.home.clone(), sl.path.clone());
+    // 线程：一份骨架回写（几十 MB 的写不挡 watcher 线程），落完即退。
+    sl.writing = Some(std::thread::spawn(move || {
+        home.store(&path, PRIME_SKEL, &body)
+    }));
 }
 
 /// 一条会话预读完交回本线程的（[`primed`] 装回）。
@@ -3656,6 +3734,14 @@ fn prime_file_cursor(
                 if let Some(r) = runs.as_ref() {
                     r.prime(session_id, &said_lines(&k.runs));
                 }
+                let skel = home.as_ref().map(|h| SkelLive {
+                    home: h.clone(),
+                    path: path.clone(),
+                    stored: k.mark.cursor,
+                    runs: k.runs.clone(),
+                    activity: k.activity,
+                    writing: None,
+                });
                 let read = FileRead {
                     cursor: ReadCursor {
                         consumed: k.mark.cursor,
@@ -3665,6 +3751,7 @@ fn prime_file_cursor(
                     seq: k.seq,
                     chain: chain.map(|_| k.chain),
                     from_zero: false,
+                    skel,
                 };
                 let done = FileDone {
                     key,
@@ -3815,11 +3902,19 @@ fn prime_file_cursor(
                 },
                 seq,
                 chain: c.clone(),
-                runs: said_runs,
+                runs: said_runs.clone(),
                 activity,
             },
         });
     }
+    let skel = later.as_ref().map(|l| SkelLive {
+        home: l.home.clone(),
+        path: path.clone(),
+        stored: cursor.consumed,
+        runs: said_runs,
+        activity,
+        writing: None,
+    });
     (
         FileDone {
             key,
@@ -3829,6 +3924,7 @@ fn prime_file_cursor(
                 seq,
                 chain: chain.map(|_| c),
                 from_zero,
+                skel,
             }),
             gone: false,
             bytes,
@@ -3887,6 +3983,14 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
                 state.offsets.insert(f.key.clone(), r.cursor);
                 if let Some(c) = r.chain {
                     state.branches.insert(f.key.clone(), c);
+                }
+                match r.skel {
+                    Some(sl) => {
+                        state.skel_live.insert(f.key.clone(), sl);
+                    }
+                    None => {
+                        state.skel_live.remove(&f.key);
+                    }
                 }
             }
             None if f.gone => forget_cursor(state, &f.key),
@@ -3961,7 +4065,7 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     // 历史里已经有主线外的 ⇒ 整份发一次（之后变了才发）。
     for p in &jsonls {
         if state.branches.get(p).is_some_and(|c| !c.off().is_empty()) {
-            sink.send(branch_frame(state, &sid, p));
+            send_branch(state, sink, &sid, p, true);
         }
     }
     // 预读期间长出来的那一截（文件事件那时没读）。
@@ -4320,6 +4424,8 @@ pub(crate) struct Sub {
     /// 这条流此刻在看哪几个会话（`stream-watch` 报的）：`None` ＝ 没报过 ＝ 全看。
     /// 不在名单里的会话，它的整行帧（[`Frame::content_of`]）不投给这条连接，别的帧不挑。
     watching: Option<HashSet<String>>,
+    /// 丢过它一帧 `session_branch` 的那几份记录（路径）：只发变了的那一截，丢了一帧手上的就对不上 ⇒ 下一次给整份（[`FrameSink::branch`]）。
+    branch_stale: HashSet<String>,
 }
 
 /// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
@@ -4418,6 +4524,42 @@ impl FrameSink {
         self.subs.retain(|s| !s.tx.is_closed());
     }
 
+    /// 一份记录的主线外清单变了：给在看它的每条连接发「前 `kept` 条照旧，其后是这些」（按页切几帧，[`Frame::branch_pages`]）；
+    /// 丢过这份一帧的连接（[`Sub::push`] 记下的）手上的对不上 ⇒ 给它整份。预读没交回的会话不发（同 [`Self::send`]）。
+    fn branch(&mut self, sid: &str, path: &str, off: &[String], kept: usize) {
+        if self.priming.contains(sid) {
+            return;
+        }
+        let delta = Frame::branch_pages(sid, path, off, kept);
+        let mut whole: Option<Vec<Frame>> = None;
+        for s in &mut self.subs {
+            if !delta.first().is_some_and(|f| s.wants(f)) {
+                continue;
+            }
+            let frames = if s.branch_stale.remove(path) {
+                whole
+                    .get_or_insert_with(|| Frame::branch_pages(sid, path, off, 0))
+                    .clone()
+            } else {
+                delta.clone()
+            };
+            for f in frames {
+                s.push(f);
+            }
+        }
+        self.subs.retain(|s| !s.tx.is_closed());
+    }
+
+    /// 只给一条连接整份清单（名单补发 · 接上来那一份）：不看名单。
+    fn branch_to(&mut self, id: u64, sid: &str, path: &str, off: &[String]) {
+        if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
+            s.branch_stale.remove(path);
+            for f in Frame::branch_pages(sid, path, off, 0) {
+                s.push(f);
+            }
+        }
+    }
+
     /// 那条连接走了。
     fn leave(&mut self, id: u64) {
         self.subs.retain(|s| s.id != id);
@@ -4434,6 +4576,7 @@ impl Sub {
             lost: Vec::new(),
             lost_truncated: false,
             watching: None,
+            branch_stale: HashSet::new(),
         }
     }
 
@@ -4484,6 +4627,9 @@ impl Sub {
             Ok(()) => {}
             Err(mpsc::error::TrySendError::Full(frame)) => {
                 self.dropped += 1;
+                if let Frame::SessionBranch { path, .. } = &frame {
+                    self.branch_stale.insert(path.clone());
+                }
                 // **不可恢复的那些要留下身份**，否则客户端只知道
                 // 「丢了 N 条」，而状态增量帧丢了别处没有、它无从重同步。
                 // 有界：超出 `LOST_IDENTITY_CAP` 的仍计入 `dropped`，只是不再留身份并置位标志。

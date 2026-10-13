@@ -3,7 +3,11 @@
 /**
  * 一条可点的清单项。键名全称（一个会话最多几百条，省字节不值得牺牲可读）。
  */
-export type UserInputRow = { uuid: string, 
+export type UserInputRow = { 
+/**
+ * 这一句那一行在记录里的字节起点（分页的续点按它给；逐条认的那一处不知道位置时是 0，由扫的那一处填）。
+ */
+at: number, uuid: string, 
 /**
  * 记录的 `timestamp`；没有 ⇒ 空串。
  */

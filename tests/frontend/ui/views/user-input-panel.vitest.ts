@@ -40,6 +40,7 @@ import { copyText } from "../../../../src/frontend/ui/copy-table";
 const HINT = "这一条还没加载出来 —— 上翻到更早的消息之后再点";
 
 const entry = (uuid: string, excerpt: string): UserInputEntry => ({
+  at: 0,
   uuid,
   excerpt,
   timestamp: "2026-09-10T00:00:00.000Z",
