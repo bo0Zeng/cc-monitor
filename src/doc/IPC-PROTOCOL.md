@@ -35,7 +35,7 @@
 
 ### 流只发要看的会话
 
-一条流用 `stream-watch {sids}` 报它此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · `turn_end` · 文件重读 / 不在了 · `changed` 照发。
+一条流用 `stream-watch {sids, branch}` 报它此刻在看哪几个会话（整份换；从没报过 ＝ 全看）。不在名单里的会话，它的 `line` · `session_runs` · `session_branch` 不上这条流（后端照读照数，行号不断）；宣告 · 状态 · 去向 · `turn_end` · 文件重读 / 不在了 · `changed` 照发。`session_branch` 另要订：只给 `branch` 里列了的会话（`[{sid, path?, at, sum?}]`，交回手上那份的条数与摘要），后端照它只补缺的那一截；不读主线外清单的一头（手机）交空的，一帧都不收。
 应答 `from[]` 给刚进名单的会话每份记录一格 `{sid, path, seq}`：这条流从第 `seq` 行起发它，`[0, seq)` 由客户端按骨架补（`history-index` 从上次的末端续）；同时补发一帧整份的运行表与主线外清单。两段合起来不重复也不漏（重叠处按 `(sid, seq)` 去重）。
 
 桌面那一侧（monitor）：每台的名单 ＝ 主窗口当前那个 tab ∪ 开着查看窗跟着的会话；名单一变、或那台换了一条新连接（新连接 ＝ 没报过），就在那台的长连接上重报一次（`src/frontend/shell/src/stream_watch.rs`）。主窗口还没报过之前一台都不报（全看）。
@@ -140,7 +140,7 @@
 `login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了），重问 `manual-list`。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
-历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`turn_end` · `session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 主线外清单 · 可重连的 `session_state` · 清单已报完就一帧 `sessions_replayed`。
+历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`turn_end` · `session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 可重连的 `session_state`（主线外清单不在里面：报名单时照 `branch` 给） · 清单已报完就一帧 `sessions_replayed`。
 
 ## 6. 会话归属与身份门
 
@@ -207,7 +207,7 @@
 - **过程一行的主参数 `steps.*.arg` 是定长一行**：换行与连串空白压成一个空格，至多 200 字（按字符，不切半个字），截了以 `…` 收尾；两个前端都不再截。完整内容照旧在 `blocks` 的入参里。
 - 要哪几格由出口交的声明定（请求信封的 `view`，见 §4）：折起那一行只要 `omit: {record: ["blocks", "results.*.patch", "results.*.patchTruncated"]}`；
   正文按需（工具卡展开时再取那一行全文）交 `omit: {record: ["blocks[type=tool_use].input", "blocks[type=tool_result].content", "results.*.patch", "results.*.patchTruncated"]}`。`line` 不带原文。
-- 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch {sid, path, at, off}` ——「这份记录的清单前 `at` 条照旧，其后换成 `off`」，变了只发变了的那一截；整份（宣告之后历史里已经有 · 进名单补发 · 连接接上来 · 这条连接丢过它一帧）从 `at = 0` 起按页切几帧接着发 · 冷读 `history-branch`（同样分页）。没有链的那一家恒空。
+- 主线外清单（ESC 回退掉的那几条记录的 `id`）不在记录上，单独给：实时帧 `session_branch {sid, path, at, off, sum}` ——「这份记录的清单前 `at` 条照旧，其后换成 `off`」，`sum` ＝ 到这一帧末尾那一截的摘要（FNV-1a 64，客户端只记、在 `stream-watch.branch` 里交回）；变了只发变了的那一截；刚订上时照交回的那份补缺的，对不上 · 换了记录 · 这条连接丢过它一帧 ⇒ 从 `at = 0` 起整份，按页切几帧接着发 · 冷读 `history-branch`（同样分页）。没有链的那一家恒空。
 - 分页（`history-index` · `-user-inputs` · `-turns` · `-branch`）：一条应答至多 `REPLY_PAGE_BYTES` 字节（一项单独超了 ⇒ 那一页只有它）；有下一页 ⇒ `next` 是下一页的续点（前三条是字节、`-branch` 是条数），没有 ⇒ `null`；入参可缺的 `limit` 管一页至多几项。写出方向写完一页应答就先让实时帧走 ⇒ 分页取到一半时别的会话来的行至多再等一页。
 
 ## 8. CLI 一次性调用
