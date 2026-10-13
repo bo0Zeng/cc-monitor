@@ -270,6 +270,11 @@ fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             DataClass::Truth,
         ),
         file(
+            rr::PREFS_HANDOFF_REL,
+            copy_text("rsDataPaths.backend.prefsHandoff", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::PROFILES_REL,
             copy_text("rsDataPaths.backend.profiles", &[]),
             DataClass::Truth,

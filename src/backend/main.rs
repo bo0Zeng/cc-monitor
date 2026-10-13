@@ -243,6 +243,10 @@ async fn main() {
     observe::history_query::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
     assets::aliases::migrate_here();
+    // 这台的偏好换了住处（`config.json` 那几格 ⇒ 各台 `prefs.json`）：只由常驻那一位换一次、远端那几份记成待交（下一版删）。
+    if resident {
+        control::prefs_migration::migrate_here(&own);
+    }
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //

@@ -105,6 +105,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     ("console.rs", "tty_title", None, "不是盘上的文件：往本机 bash / zsh 接入块记下的那个终端设备写改标题的控制序列（终端程序据此改窗口标题）"),
     ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
     ("config.rs", "patch_config_stamping", None, "monitor 自己的配置文件（唯一写口：进程级锁内现读 ＋ 按键补丁）"),
+    ("prefs_migration.rs", "finish_at", None, "第 7 批换形（下一版删）：monitor 自己的配置文件删旧键前另存原文 `config.json.pre-7`（删键本身走 `patch_config_stamping`）"),
     // ── 这里原来有一行 `creds_store.rs` 的凭据写口（K-H2a：账号的第三方 API key 那份文件）。
     //    「每台机器上这份文件的程序写者恰好一个 ＝ 那台的后端」⇒ 本机那一份也交本机常驻后端写
     //    （`apikey-key-set` → `src/backend/accounts/upstream_select/file_face.rs`，后端自有状态，写经 `Own`），本进程一个字节不落 ⇒ 摘行。
@@ -427,6 +428,7 @@ const SITE_CLASS: &[(&str, &str, Lands)] = &[
     ("console.rs", "tty_title", Lands::TerminalDevice),
     ("bind.rs", "cleanup_dead", Lands::OwnState),
     ("config.rs", "patch_config_stamping", Lands::OwnState),
+    ("prefs_migration.rs", "finish_at", Lands::OwnState),
     // `creds_store.rs` 的凭据写口那一行摘了（理由同上一张表）。
     ("fs.rs", "atomic_replace", Lands::OwnState), // 原住 `config.rs`
     ("lib.rs", "open_log_dir", Lands::OwnState),

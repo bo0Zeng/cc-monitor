@@ -1044,6 +1044,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/prefs_migration.rs",
+        "MAX_BYTES",
+        "第 7 批换形（下一版删）读 monitor 的 `config.json` 与「待交」`~/.cc-monitor/prefs-handoff.json`（读不出来 ⇒ 不搬、不写；待交读不懂 ⇒ 当没有、不写回）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/control/launch_account.rs",
         "MAX_BYTES",
         "后端自有的「会话用的号」记录 `~/.cc-monitor/launch-accounts.json`（读不出来就不覆盖、`unreadable`）",

@@ -925,6 +925,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ACCOUNTS_MANIFEST_NAME: NONE,
     BACKEND_POLICY_REL: NONE,
     PREFS_REL: NONE,
+    PREFS_HANDOFF_REL: NONE,
     file_name_of: NONE,
     // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
     LISTEN_DIR_REL: NONE,

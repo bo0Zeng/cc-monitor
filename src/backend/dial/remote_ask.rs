@@ -226,11 +226,14 @@ impl crate::stream::inbound::typed::Command for RemoteReach {
 impl crate::stream::inbound::typed::Async for RemoteReach {
     fn run(
         req: ReachReq,
-        _cx: crate::stream::inbound::typed::Cx,
+        cx: crate::stream::inbound::typed::Cx,
     ) -> impl Future<Output = Result<Reached, ReachErr>> + Send + 'static {
-        std::future::ready(
-            answer_reach_with(&req, &REACH).map_err(|(_, said)| ReachErr::BadArgs(said)),
-        )
+        let got = answer_reach_with(&req, &REACH).map_err(|(_, said)| ReachErr::BadArgs(said));
+        // 第 7 批换形：那台连上了 ⇒ 从旧设置搬来、还待交给它的那一份偏好后台交一次（只在常驻那一位；下一版删）。
+        if let Ok(r) = &got {
+            crate::control::prefs_migration::after_reach(&r.origin, cx.tz.clone());
+        }
+        std::future::ready(got)
     }
 }
 

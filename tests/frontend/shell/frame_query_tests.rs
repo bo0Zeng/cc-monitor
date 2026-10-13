@@ -745,6 +745,12 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "流握手那一刻（`asset_sync.rs::on_remote_ready`）交「怎么够到那台」并顺手同步一趟 —— 宿主交事实，\
          应答只记日志、不给界面（界面那一问经通道直问本机后端）",
     ),
+    (
+        "prefs-read",
+        1,
+        "第 7 批换形的壳那一半（`prefs_migration.rs::after_local_ready`，下一版删）：本机通道登记上那一刻问一次本机那一份写成没有，\
+         说 `ok` 才删 `config.json` 里搬走的那几个键 —— 它的答案不给界面",
+    ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
     //   monitor 零处再问它。
@@ -1333,6 +1339,12 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         3,
         "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）；\
 续传时多一件：读正文之前先读回续点那一行核见证（一问，`PAGE_BUDGET`）—— 2 → 3，多的就是这一处",
+    ),
+    (
+        "prefs_migration.rs",
+        "after_local_ready",
+        1,
+        "第 7 批换形（下一版删）：本机通道登记上那一刻问一次本机的偏好写成没有（一问，10 秒）",
     ),
     // LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // acct-iso 两问那两个发起点摘了：界面经通道直问（`src/frontend/ui/acct-iso-reads.ts`），期限在那边造。

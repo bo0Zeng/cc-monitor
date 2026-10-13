@@ -12742,6 +12742,12 @@
       "zh": "机器偏好 · 启动命令 · 每个号的模型 · 上下文上限",
       "args": []
     },
+    "rsDataPaths.backend.prefsHandoff": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "待交给远端的机器偏好 · 从旧设置搬来 · 连上后交过去",
+      "args": []
+    },
     "rsDataPaths.backend.aliasesPosix": {
       "kind": "body",
       "role": "说明",

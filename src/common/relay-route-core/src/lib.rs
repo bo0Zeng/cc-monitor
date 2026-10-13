@@ -109,6 +109,10 @@ pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
 /// 〔同上〕这台的偏好：每一家的启动命令 · 恢复进不进 tmux · 每个号的模型 · 上下文上限表（只有后端写，`control/machine_prefs.rs`）。
 pub const PREFS_REL: &str = ".cc-monitor/prefs.json";
 
+/// 〔同上〕第 7 批换形那一次的「待交」：本机 `config.json` 里远端每台那几格，连上那台、它还没有偏好时交过去，交完删那一条
+/// （只有本机常驻后端写，`control/prefs_migration.rs`；下一版删迁移时一起删）。
+pub const PREFS_HANDOFF_REL: &str = ".cc-monitor/prefs-handoff.json";
+
 /// 〔同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
 pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
 
@@ -415,6 +419,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("listenDir", LISTEN_DIR_REL, true, true),
     ("policy", BACKEND_POLICY_REL, false, true),
     ("prefs", PREFS_REL, false, true),
+    ("prefsHandoff", PREFS_HANDOFF_REL, false, true),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
     ("profilesWritten", PROFILES_WRITTEN_REL, false, false),

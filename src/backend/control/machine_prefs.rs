@@ -2,7 +2,7 @@
 //! 住这台后端的家（`~/.cc-monitor/prefs.json`，[`relay_route_core::PREFS_REL`]），不住各个前端：手机直连这台，
 //! 从来不经过桌面那一份设置，偏好住在这里两端才拿到同一份。
 //!
-//! - 谁写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）与迁移那一次（[`migrate`]）；前端从不碰这个文件。
+//! - 谁写：只有本模块的 [`answer_set`]（帧面 `prefs-set` ＋ 派生的 CLI 面）与第 7 批换形那一次（[`super::prefs_migration`]，下一版删）；前端从不碰这个文件。
 //! - 谁读：起会话那几条（启动命令 · 模型表 · 进不进 tmux）· `history-facts`（上限表）在要用的那一刻现读（[`read_now`]），不缓存。
 //! - 读不懂：照缺省办（空表 · 不进 tmux），`prefs-read` 照实报 `unreadable`；不写回，`prefs-set` 也拒（不拿空的盖掉原文）。
 //! - 没人设过（文件不在）：照缺省办，报 `absent`。
