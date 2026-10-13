@@ -993,6 +993,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 轮换第五版：rotation.json 第三版（带升级链）· 策略目录与策略文件新格式 · 中转改成 turn ＋ 节点缓存；第三版那 15 条 rotation-*
 /// （配置 · 会话副本 · 推演 · 现在就换）删了，换成 typed 的 rotation-facts / -try / -strategies / -view / -settings / -save / -revert /
 /// -use / -for-new / -temp / -use-now / -strategy-copy / -strategy-rename / -day-paint（子命令与通道各一）。
+/// 冻结格变了：线上 tap 帧删了，换成 typed 的 live_card 帧（活卡挪进后端 stream/live.rs）；逐字流也按 stream-watch 名单筛。
 pub const BUILD_ID: &str = "p10k-typed-accounts";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
