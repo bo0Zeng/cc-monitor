@@ -404,10 +404,12 @@ const run: Record<string, () => void | Promise<void>> = {
   "kit-detail-toast": detailToasts,
   "kit-detail-messages": detailMessages,
 };
-window.__shots = { state: "booting", error: null, unhandled: [], layout: [] } satisfies ShotsHandle;
+let finish: () => void = () => undefined;
+window.__shots = { state: "booting", finished: new Promise<void>((r) => (finish = r)), error: null, unhandled: [], layout: [] } satisfies ShotsHandle;
 Promise.resolve(run[scene]?.())
   .then(() => (window.__shots!.state = "done"))
   .catch((e: unknown) => {
     window.__shots!.state = "failed";
     window.__shots!.error = String(e);
-  });
+  })
+  .finally(finish);

@@ -165,9 +165,9 @@ async function shootWeb() {
   // 先热一次：vite 第一次按需编译整张模块图要几秒，别算进第一张图的时限。
   const warm = await Page.open(cdp, 1280, 800, 1, { boot: pinDateSource() + NO_CARET, reducedMotion: true });
   await warm.goto(`${base}/index.html?scene=`);
-  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS).catch(() => {});
+  await pageFinished(warm).catch(() => {});
   await warm.goto(`${base}/settings.html?scene=`);
-  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS).catch(() => {});
+  await pageFinished(warm).catch(() => {});
   await warm.close();
 
   for (const s of scenes) {
@@ -178,7 +178,7 @@ async function shootWeb() {
     let note = "";
     try {
       await page.goto(`${base}/${s.page}.html?scene=${encodeURIComponent(s.id)}${s.query ? `&${s.query}` : ""}`);
-      await page.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS);
+      await pageFinished(page);
       const h = await page.eval("({ state: window.__shots.state, error: window.__shots.error, unhandled: window.__shots.unhandled, layout: window.__shots.layout ?? [] })");
       const drag = await page.eval("window.__shots.drag ?? null");
       if (drag) {
@@ -234,6 +234,23 @@ async function shootWeb() {
     console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}${ok ? "" : ` —— ${note.split("\n")[0].slice(0, 300)}`}`);
   }
   cdp.close();
+}
+
+/**
+ * 等这一页的场景落定（`window.__shots.finished`：做完 / 没做成，按事件等）。场景里每一处等都有兜底上限、到了就说在等什么（`state: failed` ＋ 原话），
+ * 所以这里不另起一个同样长的钟：从前两边都是 300 秒，这边先到就只剩一句「还在 booting」，真正卡在哪一步的那句被盖掉。
+ * 只兜「页里连那一步都没走到」（假适配层没装上 · 场景里有一处不带上限的等）：两倍上限还没落定 ⇒ 抛。
+ */
+async function pageFinished(page) {
+  let timer;
+  const cap = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`等了 ${(2 * WALL_CEILING_MS) / 1000} 秒，场景既没做完也没报错（页里有一处不带上限的等？）`)), 2 * WALL_CEILING_MS);
+  });
+  try {
+    await Promise.race([page.eval("window.__shots ? window.__shots.finished : Promise.reject(new Error('页里没有 window.__shots：假适配层没装上'))"), cap]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function findChrome() {

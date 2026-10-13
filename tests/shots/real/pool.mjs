@@ -109,6 +109,7 @@ export function backendPool({ repo, sandbox }) {
     const w = worlds.get(key);
     if (!w) return;
     worlds.delete(key);
+    w.trace("世界收掉了（无头壳连同各台后端整组杀）");
     for (const pid of [-w.shell.pid]) {
       try {
         process.kill(pid, "SIGKILL");
