@@ -273,3 +273,69 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
     expect(revealed).toEqual(["config.json", "apikey-credentials.json", "EBWebView"].map((l) => `/h/.cc-monitor/${l}`));
   });
 });
+
+describe("每一行的每一格都在网格里认领了一个区（本机后端那一块 · 远端那一块 · 界面那张卡同一套行）", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  /** `settings.css` 里 `.settings-data-item` 的模板声明的区名 ＋「类名 → 它认领的区」。 */
+  function gridOf(): { areas: Set<string>; claims: Map<string, string> } {
+    const css = readFileSync("src/frontend/ui/styles/settings.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
+    const tpl = rules.find((r) => r.sel === ".settings-data-item")?.body.match(/grid-template-areas:([^;]+);/)?.[1] ?? "";
+    const areas = new Set([...tpl.matchAll(/"([^"]+)"/g)].flatMap((m) => m[1].trim().split(/\s+/)));
+    const claims = new Map<string, string>();
+    for (const r of rules) {
+      const area = r.body.match(/grid-area:\s*([\w-]+)/)?.[1];
+      const cls = r.sel.match(/^\.([\w-]+)$/)?.[1];
+      if (area && cls) claims.set(cls, area);
+    }
+    return { areas, claims };
+  }
+
+  /** 没认领区的那几格（`标签 · 第几格`）：没认领 ⇒ 浏览器给它另开一条隐式行、字照外头的字号。 */
+  function unclaimed(rows: HTMLElement[]): string[] {
+    const { areas, claims } = gridOf();
+    const out: string[] = [];
+    for (const r of rows) {
+      [...r.children].forEach((c, i) => {
+        const area = [...c.classList].map((k) => claims.get(k)).find((a) => a !== undefined);
+        if (area === undefined || !areas.has(area)) out.push(`${r.querySelector(".settings-data-item-label")?.textContent} · 第 ${i + 1} 格`);
+      });
+    }
+    return out;
+  }
+
+  it("自检：模板里有区名、量具看得见一格没认领的", () => {
+    const { areas } = gridOf();
+    expect(areas.size, "settings.css 里读不出 .settings-data-item 的区名 —— 下面两条在空模板上判").toBeGreaterThan(3);
+    const li = document.createElement("li");
+    li.className = "settings-data-item";
+    const label = document.createElement("span");
+    label.className = "settings-data-item-label";
+    li.append(label, document.createElement("span"));
+    expect(unclaimed([li])).toEqual([" · 第 2 格"]);
+  });
+
+  it("★★ 界面那张卡（连同「在「日志」页打开」那一行）", async () => {
+    const mk = (label: string, cls: string) => ({ label, class: cls, path: `/h/.cc-monitor/${label}`, kind: "file", description: `${label} 是什么`, exists: true, sizeBytes: 1 });
+    paths.value = { monitorDataDir: "/h", entries: [mk("config.json", "truth"), mk(LOGS_DIR_LABEL, "cache")], webviewUserDataDir: null };
+    const sec = new DataSection({ headless: true });
+    document.body.appendChild(sec.element);
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
+    expect(rows.length).toBe(2);
+    expect(unclaimed(rows)).toEqual([]);
+  });
+
+  it("★★ 那台后端家里那一块（本机 · 远端同一个 ownBlock）", async () => {
+    const { ownBlock, remoteOpen } = await import("../../../../src/frontend/ui/settings/own-block");
+    const items = [
+      { id: "bin", what: "编的一句", path: "~/.cc-monitor/bin", dir: true, class: "cache" as const, exists: true, size: null },
+      { id: "policy", what: "编的一句", path: "~/.cc-monitor/backend.json", dir: false, class: "truth" as const, exists: false, size: null },
+    ];
+    const rows = [...ownBlock(items, "/h", remoteOpen(null)).querySelectorAll<HTMLElement>(".settings-data-item")];
+    expect(rows.length).toBe(2);
+    expect(unclaimed(rows)).toEqual([]);
+  });
+});

@@ -5,7 +5,7 @@
  */
 import { copyText } from "../copy-table";
 import { sizeText } from "../format";
-import { describeDataClass } from "./data-section";
+import { dataClassCell } from "./data-section";
 import type { OwnItem } from "./data-reads";
 
 /** `~/.cc-monitor/x` ⇒ 显示名（去掉家那一段；目录带尾 `/`）。 */
@@ -52,9 +52,6 @@ export function ownBlock(
     const desc = document.createElement("span");
     desc.className = "settings-data-item-desc";
     desc.textContent = o.what;
-    const cls = document.createElement("span");
-    cls.dataset.dataClass = o.class;
-    cls.textContent = describeDataClass(o.class);
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
     meta.textContent = !o.exists ? copyText("data.item.notCreated") : o.size !== null ? sizeText(o.size) : copyText("data.item.created");
@@ -66,7 +63,7 @@ export function ownBlock(
     path.className = "settings-data-item-path";
     path.textContent = o.path;
     path.title = abs;
-    li.append(label, desc, cls, meta, acts, path);
+    li.append(label, desc, dataClassCell(o.class), meta, acts, path);
     list.appendChild(li);
   }
   block.appendChild(list);
