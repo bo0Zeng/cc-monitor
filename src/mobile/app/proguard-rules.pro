@@ -23,8 +23,9 @@
 -keepclasseswithmembernames class * { native <methods>; }
 
 # ── moshi ──
-# 本项目仅用 moshi.adapter(Any)（内建 Map/List/基元适配器），不反射 Kotlin data class，
-# 故无需 keep 业务模型。仅压制告警。
+# 帧客户端用 moshi.adapter(Any)（内建 Map/List/基元适配器）；core-claude 的线上类（link/wire/）走 KSP 生成的解码器
+# （@JsonClass(generateAdapter = true)）：解码器的 keep 由 KSP 随生成物写进 core-claude 的 META-INF/proguard；
+# 枚举标 @JsonClass(generateAdapter = false)，keep 在 moshi 自带的规则里。这里不另写。混淆过的包冒烟一趟（smoke.sh 的 minified 那一趟）核它。仅压制告警。
 -dontwarn com.squareup.moshi.**
 
 # ── Koin / Compose / Room / Markwon ──

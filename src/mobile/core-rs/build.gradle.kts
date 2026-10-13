@@ -35,14 +35,23 @@ android {
     buildTypes {
         getByName("debug") { ndk { abiFilters += abiOf("debug") } }
         getByName("release") { ndk { abiFilters += abiOf("release") } }
+        // app 的混淆冒烟包（R8 照正式包、调试签名、模拟器的 ABI）：核心在这里只换 ABI。
+        create("minified") {
+            initWith(getByName("release"))
+            ndk {
+                abiFilters.clear()
+                abiFilters += abiOf("minified")
+            }
+        }
     }
 }
 
 // 每个构建类型一份 cargo 任务 ＋ 一个 jniLibs 目录。
-listOf("debug", "release").forEach { buildType ->
+listOf("debug", "release", "minified").forEach { buildType ->
     val abi = abiOf(buildType)
     val triple = tripleOf(abi)
-    // release ⇒ `mobile`（opt-level z · lto · 去符号 · panic=unwind）；debug ⇒ `mobile-dev`（增量快、去调试信息）。两份都住后端那一棵 workspace 的根清单。
+    // release ⇒ `mobile`（opt-level z · lto · 去符号 · panic=unwind）；debug · minified ⇒ `mobile-dev`（增量快、去调试信息；
+    // minified 那一趟验的是 JVM 那一侧的混淆，核心照调试那一份编）。两份都住后端那一棵 workspace 的根清单。
     val profile = if (buildType == "release") "mobile" else "mobile-dev"
     val cap = buildType.replaceFirstChar(Char::uppercase)
     val jniDir = layout.buildDirectory.dir("rustJniLibs/$buildType")

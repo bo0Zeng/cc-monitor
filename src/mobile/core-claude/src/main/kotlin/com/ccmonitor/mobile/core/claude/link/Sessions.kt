@@ -129,21 +129,20 @@ object TerminalInput {
     }
 
     /** 核心按 `cmd-wire` 那一份解过的回包 ⇒ 结局。被拒却没带那一句 ⇒ `null`（没有可上屏的话）。 */
-    fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it.result.name.lowercase(), it.why, it.said) }
+    fun of(data: Any?): Result? = Wire.bind<SentWire>(data)?.let { of(it.result, it.why, it.said) }
 
-    /** 起会话时第一句的结局（同三格，`result` 是字）。 */
-    fun of(first: FirstSay): Result? = of(first.result, first.why, first.said)
+    /** 起会话时第一句的结局（同三格，`result` 是字：照 [SentResult] 的线上字认）。 */
+    fun of(first: FirstSay): Result? = Wire.bind<SentResult>(first.result)?.let { of(it, first.why, first.said) }
 
     private fun of(
-        result: String,
+        result: SentResult,
         why: String?,
         said: String?,
     ): Result? =
         when (result) {
-            SentResult.DELIVERED.name.lowercase() -> Result.Delivered
-            SentResult.UNSURE.name.lowercase() -> Result.Unsure
-            SentResult.REFUSED.name.lowercase() -> said?.let { Result.Refused(it, why) }
-            else -> null
+            SentResult.DELIVERED -> Result.Delivered
+            SentResult.UNSURE -> Result.Unsure
+            SentResult.REFUSED -> said?.let { Result.Refused(it, why) }
         }
 }
 

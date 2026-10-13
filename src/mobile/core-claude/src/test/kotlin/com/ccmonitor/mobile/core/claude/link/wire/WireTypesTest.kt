@@ -8,8 +8,10 @@ import org.junit.Test
 import java.io.File
 
 /**
- * 手机的线上类（`WireTypes.kt`）只是出口声明：每一格都要在 `cmd-wire` 导出的那份 TS 里（`src/frontend/ui/generated/<名>.ts`）、
- * 型对得上；这里不可空的，那边必有且不为 null；枚举两向相等（那边多一个值这边就红，不会装成别的）。
+ * 手机的线上类（`WireTypes.kt`）只是出口声明，Moshi 照它在编译期生成解码器：每一格的线上键（`@Json(name)`，没写 ⇒ 参数名）
+ * 都要在 `cmd-wire` 导出的那份 TS 里（`src/frontend/ui/generated/<名>.ts`）、型对得上；这里不可空的，那边必有且不为 null；
+ * 枚举的线上字（每个常量的 `@Json(name)`）与 TS 那一列两向相等（那边多一个值这边就红，不会装成别的）。
+ * 每个类都要有生成的解码器（`<名>JsonAdapter`）：不靠运行时反射认名字，混淆过的包里照样成立。
  * 防的是：后端改了一格的名字或型，Rust 那一份解得开、这里却悄悄装成 null。
  */
 class WireTypesTest {
@@ -17,8 +19,18 @@ class WireTypesTest {
     fun everyDeclaredCellIsInTheGeneratedTypeWithTheSameShape() {
         val decl = Decl.parse(SOURCE.readText())
         assertTrue("WireTypes.kt 里一个线上类都没认出来 —— 本条在空转", decl.classes.size >= 10)
-        val problems = decl.classes.flatMap { c -> check(decl, c) }
+        val problems = decl.problems + decl.classes.flatMap { c -> check(decl, c) }
         assertTrue(problems.joinToString("\n"), problems.isEmpty())
+    }
+
+    /** Moshi 那一侧：每个声明类都有 KSP 生成的解码器（没有 ⇒ Moshi 退回反射，混淆过的包里认不出名字）。 */
+    @Test
+    fun everyDeclaredClassHasAGeneratedAdapter() {
+        val decl = Decl.parse(SOURCE.readText())
+        assertTrue("WireTypes.kt 里一个线上类都没认出来 —— 本条在空转", decl.classes.size >= 10)
+        val missing =
+            decl.classes.map { "$PACKAGE.${it.name}JsonAdapter" }.filter { runCatching { Class.forName(it) }.isFailure }
+        assertTrue("没有生成的解码器：$missing", missing.isEmpty())
     }
 
     /** 自检：改坏一格（键不在 · 可空性对不上 · 枚举少一个值）都认得出。 */
@@ -28,29 +40,48 @@ class WireTypesTest {
             Decl.parse(
                 """
                 @WireOf("TailPlan")
+                @JsonClass(generateAdapter = true)
                 data class TailPlan(
                     val end: Long,
-                    @Key("split_at") val splitAt: Long?,
+                    @Json(name = "split_at") val splitAt: Long?,
                     val tailFromX: Long,
                 )
 
                 @WireOf("Sent")
+                @JsonClass(generateAdapter = true)
                 data class Sent(
                     val result: SentResult,
                     val why: String,
                 )
 
-                enum class SentResult { DELIVERED, REFUSED }
+                @WireOf("Killed")
+                data class Killed(
+                    val killed: Boolean,
+                )
+
+                @JsonClass(generateAdapter = false)
+                enum class SentResult {
+                    @Json(name = "delivered") DELIVERED,
+                    @Json(name = "refused") REFUSED,
+                }
+
+                @JsonClass(generateAdapter = false)
+                enum class ModeSwitchResult {
+                    @Json(name = "done") DONE,
+                    UNSURE,
+                }
                 """.trimIndent(),
             )
-        val got = bad.classes.flatMap { check(bad, it) }.joinToString("\n")
+        val got = (bad.problems + bad.classes.flatMap { check(bad, it) }).joinToString("\n")
         assertTrue(got, got.contains("tailFromX"))
         assertTrue(got, got.contains("Sent.why"))
         assertTrue(got, got.contains("SentResult"))
-        assertEquals("可空那一格 TS 那边必有 ⇒ 不算错", 3, got.lines().size)
+        assertTrue("少了 @JsonClass 的类认得出：$got", got.contains("Killed"))
+        assertTrue("没写线上字的枚举常量认得出：$got", got.contains("ModeSwitchResult.UNSURE"))
+        assertEquals("可空那一格 TS 那边必有 ⇒ 不算错", 5, got.lines().size)
     }
 
-    /** 装：嵌套 · 列表 · 枚举 · 线上键；不可空那一格来了 null ⇒ 装不进（null），不补默认值。 */
+    /** 装（Moshi 生成的解码器）：嵌套 · 列表 · 枚举 · 线上键；多出来的键照收；不可空那一格缺了或来了 null ⇒ 装不进（null），不补默认值。 */
     @Test
     fun bindFillsTheDeclaredCellsAndRefusesANullInANonNullCell() {
         val list =
@@ -108,10 +139,9 @@ class WireTypesTest {
             val el = Regex("^Array<(.+)>$").find(ts) ?: return "List 对的是 `$ts`"
             return fits(decl, list.groupValues[1], el.groupValues[1])
         }
-        decl.enums[kt]?.let { consts ->
+        decl.enums[kt]?.let { words ->
             val lits = Ts.load(ts)?.literals ?: return "枚举 $kt 对的 `$ts` 不是一列字面量"
-            val want = lits.map(String::uppercase).toSet()
-            return if (want == consts.toSet()) null else "枚举 $kt 是 $consts，$ts 是 $lits"
+            return if (lits.toSet() == words.toSet()) null else "枚举 $kt 的线上字是 $words，$ts 是 $lits"
         }
         decl.classes.firstOrNull { it.name == kt }?.let { return if (it.wire == ts) null else "$kt 声明的是 ${it.wire}，这里是 `$ts`" }
         val literal = Regex("^\"[^\"]*\"( \\| \"[^\"]*\")*$")
@@ -126,10 +156,11 @@ class WireTypesTest {
         return if (ok) null else "$kt 对的是 `$ts`"
     }
 
-    /** `WireTypes.kt` 按行读（格式在那份头注里守死）。 */
+    /** `WireTypes.kt` 按行读（格式在那份头注里守死）。[problems]：格式本身的毛病（类少了 `@JsonClass` · 枚举常量没写线上字）。 */
     private class Decl(
         val classes: List<Klass>,
         val enums: Map<String, List<String>>,
+        val problems: List<String>,
     ) {
         class Cell(
             val name: String,
@@ -145,9 +176,13 @@ class WireTypesTest {
         )
 
         companion object {
-            private val CLASS = Regex("""@WireOf\("(\w+)"\)\s*data class (\w+)\(\n(.*?)\n\)""", RegexOption.DOT_MATCHES_ALL)
-            private val CELL = Regex("""^(?:@Key\("(\w+)"\)\s*)?val (\w+): ([\w<>]+)(\?)?,?$""")
-            private val ENUM = Regex("""enum class (\w+) \{([^}]*)\}""")
+            private val CLASS =
+                Regex("""@WireOf\("(\w+)"\)\s*@JsonClass\(generateAdapter = true\)\s*data class (\w+)\(\n(.*?)\n\)""", RegexOption.DOT_MATCHES_ALL)
+            private val ANY_CLASS = Regex("""data class (\w+)\(""")
+            private val CELL = Regex("""^(?:@Json\(name = "(\w+)"\)\s*)?val (\w+): ([\w<>]+)(\?)?,?$""")
+            private val ENUM = Regex("""@JsonClass\(generateAdapter = false\)\s*enum class (\w+) \{([^}]*)\}""")
+            private val ANY_ENUM = Regex("""enum class (\w+)""")
+            private val CONSTANT = Regex("""^@Json\(name = "([^"]*)"\)\s*(\w+)$""")
 
             fun parse(src: String): Decl {
                 val classes =
@@ -159,15 +194,27 @@ class WireTypesTest {
                             }
                         Klass(m.groupValues[2], m.groupValues[1], cells)
                     }
+                val problems = mutableListOf<String>()
                 val enums =
-                    ENUM.findAll(src).associate {
-                        it.groupValues[1] to
-                            it.groupValues[2]
+                    ENUM.findAll(src).associate { m ->
+                        val name = m.groupValues[1]
+                        name to
+                            m.groupValues[2]
                                 .split(",")
                                 .map(String::trim)
                                 .filter(String::isNotEmpty)
+                                .mapNotNull { c ->
+                                    CONSTANT.find(c)?.groupValues?.get(1) ?: null.also { problems += "$name.$c：枚举常量没写线上字（@Json(name = …)）" }
+                                }
                     }
-                return Decl(classes.toList(), enums)
+                val classes2 = classes.toList()
+                ANY_CLASS.findAll(src).map { it.groupValues[1] }.filter { n -> classes2.none { it.name == n } }.forEach {
+                    problems += "$it：线上类要写成 `@WireOf(…)` ＋ `@JsonClass(generateAdapter = true)`"
+                }
+                ANY_ENUM.findAll(src).map { it.groupValues[1] }.filter { it !in enums }.forEach {
+                    problems += "$it：枚举要写 `@JsonClass(generateAdapter = false)`（Moshi 自带的混淆规则只保这样的枚举）"
+                }
+                return Decl(classes2, enums, problems)
             }
         }
     }
@@ -239,5 +286,6 @@ class WireTypesTest {
                 ?: error("往上找不到仓根")
         val GENERATED = File(ROOT, "src/frontend/ui/generated")
         val SOURCE = File(ROOT, "src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/wire/WireTypes.kt")
+        const val PACKAGE = "com.ccmonitor.mobile.core.claude.link.wire"
     }
 }

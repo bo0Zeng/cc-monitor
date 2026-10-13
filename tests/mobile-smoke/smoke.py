@@ -215,6 +215,38 @@ def add_host(name):
     time.sleep(2)
 
 
+def switch_model(name):
+    """终端屏的命令面板里换模型：列的是那台给的那一家的模型（session-new-facts），点一个 ⇒ session-model。
+    替身读到 `/model <值>` 就落那一家的读回 ⇒ 结局「换成了」，那台写好的那一句上屏（Toast，经无障碍事件看）；
+    回包解不开 · 没换成 ⇒ 提示条「发送失败」。"""
+    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+                                      capture_output=True, text=True).stdout or "{}")
+    agents = (facts.get("data") or {}).get("agents") or []
+    models = next((a["models"] for a in agents if a.get("kind") == "claude"), [])
+    if not models:
+        raise Step.Fail(f"那台没给 claude 的模型：{facts!r}"[:200])
+    pick = models[-1]
+    hide_keyboard()
+    tap(t("mobDefaultButtons.label.command"))
+    time.sleep(1.5)
+    events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    try:
+        tap(pick["text"])
+        end = time.time() + 20
+        while time.time() < end and f"> /model {pick['value']}" not in rig("tmux", "capture-pane", "-p", "-t", name).stdout:
+            time.sleep(1)
+        if time.time() >= end:
+            raise Step.Fail(f"点了「{pick['text']}」，那个会话里没收到 /model {pick['value']}")
+        said = t("beSessionModel.set.saved", model=pick["value"])
+        if wait(t("mobTerm.model.sendFailed"), 8):
+            raise Step.Fail("换模型那一问上屏的是「发送失败」（回包没解开或没换成）")
+    finally:
+        events.terminate()
+    seen = events.communicate(timeout=5)[0]
+    if said not in seen:
+        raise Step.Fail(f"没看到那台写好的那一句「{said}」")
+
+
 def main():
     adb("shell", "pm", "clear", PKG)
     adb("shell", "pm", "grant", PKG, "android.permission.POST_NOTIFICATIONS")
@@ -382,6 +414,7 @@ def main():
         pane = rig("tmux", "capture-pane", "-p", "-t", name).stdout
         if f"> {T} from phone terminal" not in pane or f"> {T} from desk" not in pane:
             raise Step.Fail("两侧打的字没都进那个会话")
+        switch_model(name)
         adb("shell", "input", "keyevent", "4")
 
     with Step("10-Codex"):

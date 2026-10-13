@@ -2,6 +2,7 @@
 // 任务名因此不同：测试是 `test`，静态分析是 `detektMain`（带类型解析；plain `detekt` 不做类型解析，会漏规则）。
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.ksp) // 线上类（`link/wire/`）的 Moshi 解码器在编译期生成
 }
 
 java {
@@ -44,8 +45,6 @@ tasks.matching { it.name.startsWith("runKtlint") || it.name.startsWith("ktlint")
 }
 
 kotlin {
-    // 线上类（`link/wire/`）按构造参数名装：参数名要进字节码。
-    compilerOptions { javaParameters.set(true) }
     sourceSets.named("main") {
         kotlin.srcDir(genEmbeddedBuild.map { embeddedBuildDir.get() })
     }
@@ -65,6 +64,7 @@ dependencies {
     // 用 api：RemoteExecutor 出现在公开构造参数里（OneShot），消费方的 compile classpath 上要见到它。
     api(project(":core-remote"))
     implementation(libs.moshi)
+    ksp(libs.moshi.kotlin.codegen)
     // 传输用 Flow<ByteArray>。用 -core（纯 JVM artifact），不引 Android 耦合。
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)

@@ -22,7 +22,7 @@ androidxTestRunner = "1.6.2"
 androidxTestRules = "1.6.1"
 # --- 功能库 ---
 room = "2.8.4"
-moshi = "1.15.1"
+moshi = "1.15.2"   # 运行时与 KSP 生成器同一版（core-claude 的线上类走生成的解码器）
 markwon = "4.6.2"
 prism4j = "2.0.0"   # 语法高亮：Prism4j（io.noties）；bundler 是 Java 注解处理器
 tink = "1.17.0"
@@ -67,6 +67,7 @@ androidx-test-rules = { group = "androidx.test", name = "rules", version.ref = "
 kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 tink-android = { group = "com.google.crypto.tink", name = "tink-android", version.ref = "tink" }
 moshi = { group = "com.squareup.moshi", name = "moshi", version.ref = "moshi" }
+moshi-kotlin-codegen = { group = "com.squareup.moshi", name = "moshi-kotlin-codegen", version.ref = "moshi" }
 connectbot-termlib = { group = "org.connectbot", name = "termlib", version.ref = "termlib" }
 # Markwon —— Markdown 渲染（View 系，经 AndroidView 进 Compose）。代码块语法高亮见下方 Prism4j。
 markwon-core = { group = "io.noties.markwon", name = "core", version.ref = "markwon" }
