@@ -927,7 +927,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         named: "$MCP_COMMAND",
         host: HostScope::ProjectDir,
         why: Text(|| copy_text("rsToolRegistry.env.mcpServerWhy", &[])),
-        site: "mcp_edit.rs::answer_put",
+        site: "mcp_edit.rs::upsert_mcp_server_value",
     },
 ];
 

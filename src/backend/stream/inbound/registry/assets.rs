@@ -96,21 +96,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // **MCP 资产同步的判定**（B）：两份原文进、
-    //   差异四态 ＋ 可疑项（带这台机器的事实）＋「写哪几条」出。由**要被写的那一台**跑（事实是那台的）。
-    //   只读：原文由 monitor 经 `files-peek` 读来，写经 `files-put`（CAS）—— 本条一个字节都不落盘。阻塞档（`stat`）。
-    CommandSpec {
-        name: "mcp-sync-plan",
-        summary: "MCP 资产同步的判定",
-        codes: &["bad_args", "bad_file", "needs_consent"],
-        fields: &[arg("overwrite", "可缺席"), out("rows", "每个条目名一行 `{name, state, suspects}`"), arg("source", "拷出来的那一份原文（字符串，必给）"), arg("take", "可缺席"), arg("target", "要写进去的那一份原文；那份文件不存在 ⇒ `null`（**必给**：缺席不当成不存在）"), out("write", "没给 `take` ⇒ `null`；给了 ⇒ 真要写的条目名（排序）：`same` 不写、`new` 写、`differs` 在 `overwrite` 里才写")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::mcp_sync::answer(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
     // **资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
     //   `~/.cc-monitor/assets-catalog.json`（自家状态，经 `Own`，变了才写）、回整份目录 ＋「这台缺什么」的判定。
     //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。
@@ -186,7 +171,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             "needs_consent",
             "too_large",
         ],
-        fields: &[out("base", "写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`"), out("dir", "要写进去的目录"), arg("name", "skill 的目录名"), arg("overwrite", "可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名）"), out("prefix", "写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`"), arg("project", "同 `skill-read`（装到哪一级）"), out("root", "这台 skill 的根"), out("rows", "每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集同 `mcp-sync-plan`"), arg("source", "`skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个）"), arg("take", "可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名）"), out("target", "这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望"), out("write", "没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序）"), out("ledger", "没给 `take` ⇒ `null`")],
+        fields: &[out("base", "写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`"), out("dir", "要写进去的目录"), arg("name", "skill 的目录名"), arg("overwrite", "可缺席（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名）"), out("prefix", "写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`"), arg("project", "同 `skill-read`（装到哪一级）"), out("root", "这台 skill 的根"), out("rows", "每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集 `new` · `same` · `differs` · `only-there`"), arg("source", "`skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个）"), arg("take", "可缺席（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名）"), out("target", "这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望"), out("write", "没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序）"), out("ledger", "没给 `take` ⇒ `null`")],
         takes_input: true,
         run: Run::BlockingData(|r| {
             crate::assets::skill_install::answer_plan(&r.args)
@@ -221,31 +206,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::faces::feature_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // 〔D 组〕项目 `.mcp.json` 增改 / 删：计算（`assets/mcp_edit.rs`）与写（本进程文件管理面 [`LocalFiles`]）在同一台。
-    CommandSpec {
-        name: "mcp-server-put",
-        summary: "增 / 改这台一个项目 `.mcp.json` 里的一条",
-        codes: &["bad_args", "bad_path", "refused"],
-        fields: &[out("changed", "真写了吗（算出来与盘上逐字节相同 ⇒ `false`，一个字节不动）"), arg("name", "server 名（空 ⇒ 拒）"), out("path", "写到了哪（解过链接的那一份）"), arg("projectDir", "这台机器上的绝对路径（不含 `..`）；落点恒是 `<它>/.mcp.json`（写面只此一个，agent 自己的配置一个字节不碰）"), arg("server", "那一条的配置，原样写进 `mcpServers[name]`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::mcp_edit::answer_put(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "mcp-server-remove",
-        summary: "删这台一个项目 `.mcp.json` 里的一条",
-        codes: &["bad_args", "bad_path", "refused"],
-        fields: &[out("changed", "文件不在 / 那一条不在 ⇒ `false`（一个字节不写、不建文件）"), arg("name", "要删的那一条"), out("path", "那份文件"), arg("projectDir", "同 `mcp-server-put`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
                 .map(Some)
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
@@ -462,7 +422,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         name: "mcp-sync-preview",
         summary: "在要被写的那一台看装上之后那一条",
         codes: &["bad_args", "bad_file", "bad_path", "refused"],
-        fields: &[arg("at", "同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`）"), arg("def", "来源那台交回的那一条，原样；`env` / `headers` 里夹着值 ⇒ `bad_args`"), out("field", "空位 / 可疑项在哪一格"), out("key", "空位的键名"), out("kept", "这台那一条原来就有这个键的值（不填就沿用）"), out("kind", "可疑项的种类（闭集同 `mcp-sync-plan`）"), arg("name", "同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`）"), out("path", "这台那份的路径"), out("slots", "每个空位 `{field, key, kept}`：`kept` = 这台那一条原来就有这个键的值（不填就沿用）"), out("state", "`new`（这台没有这一条）· `same`（除空位外一样）· `differs`"), out("suspects", "可疑项，每条 `{kind, field, value, there}`，闭集同 `mcp-sync-plan`"), out("target", "这台那份的记号（不存在 ⇒ `null`）—— 写的时候原样交回"), out("there", "它在这台指向的东西在不在"), out("value", "可疑的那个值")],
+        fields: &[arg("at", "同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`）"), arg("def", "来源那台交回的那一条，原样；`env` / `headers` 里夹着值 ⇒ `bad_args`"), out("field", "空位 / 可疑项在哪一格"), out("key", "空位的键名"), out("kept", "这台那一条原来就有这个键的值（不填就沿用）"), out("kind", "可疑项的种类（闭集 `abs-path` · `command-missing` · `command-relative`）"), arg("name", "同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`）"), out("path", "这台那份的路径"), out("slots", "每个空位 `{field, key, kept}`：`kept` = 这台那一条原来就有这个键的值（不填就沿用）"), out("state", "`new`（这台没有这一条）· `same`（除空位外一样）· `differs`"), out("suspects", "可疑项，每条 `{kind, field, value, there}`，闭集 `abs-path` · `command-missing` · `command-relative`"), out("target", "这台那份的记号（不存在 ⇒ `null`）—— 写的时候原样交回"), out("there", "它在这台指向的东西在不在"), out("value", "可疑的那个值")],
         takes_input: true,
         run: Run::BlockingData(|r| {
             crate::assets::mcp_sync_flow::answer_preview(

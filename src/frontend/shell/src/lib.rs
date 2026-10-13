@@ -844,7 +844,7 @@ pub fn run() {
             clipboard::clipboard_write,
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
-            //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
+            //   （`mcp-read` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
             config::list_remote_mcp_origins,
             // 资产目录同步（`assets_sync`）与 skill 装 / 卸三条退役：界面经通道直问那台后端

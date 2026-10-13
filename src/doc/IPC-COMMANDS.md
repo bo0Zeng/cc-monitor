@@ -5529,23 +5529,6 @@ agentKind?: string, };
 
 码：`bad_args`
 
-#### `mcp-sync-plan`
-
-MCP 资产同步的判定。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-sync-plan`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `overwrite` | → | 可缺席 |
-| `rows` | ← | 每个条目名一行 `{name, state, suspects}` |
-| `source` | → | 拷出来的那一份原文（字符串，必给） |
-| `take` | → | 可缺席 |
-| `target` | → | 要写进去的那一份原文；那份文件不存在 ⇒ `null`（**必给**：缺席不当成不存在） |
-| `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的条目名（排序）：`same` 不写、`new` 写、`differs` 在 `overwrite` 里才写 |
-
-码：`bad_args` · `bad_file` · `needs_consent`
-
 #### `assets-catalog`
 
 资产目录。
@@ -5625,13 +5608,13 @@ MCP 资产同步的判定。
 | `base` | ← | 写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>` |
 | `dir` | ← | 要写进去的目录 |
 | `name` | → | skill 的目录名 |
-| `overwrite` | → | 可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
+| `overwrite` | → | 可缺席（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
 | `prefix` | ← | 写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>` |
 | `project` | → | 同 `skill-read`（装到哪一级） |
 | `root` | ← | 这台 skill 的根 |
-| `rows` | ← | 每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集同 `mcp-sync-plan` |
+| `rows` | ← | 每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集 `new` · `same` · `differs` · `only-there` |
 | `source` | → | `skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个） |
-| `take` | → | 可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
+| `take` | → | 可缺席（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
 | `target` | ← | 这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望 |
 | `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序） |
 | `ledger` | ← | 没给 `take` ⇒ `null` |
@@ -5684,37 +5667,6 @@ skill 装记录的写口。
 | `status` | ← | 闭集：`needsLogin`（agent 最近一次连它时要登录、还在有效期内）· `disabled`（这个项目里停用了）· `unknown`（配置层判不出：不说连上了） |
 
 码：`bad_args` · `too_large`
-
-#### `mcp-server-put`
-
-增 / 改这台一个项目 `.mcp.json` 里的一条。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-server-put`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 真写了吗（算出来与盘上逐字节相同 ⇒ `false`，一个字节不动） |
-| `name` | → | server 名（空 ⇒ 拒） |
-| `path` | ← | 写到了哪（解过链接的那一份） |
-| `projectDir` | → | 这台机器上的绝对路径（不含 `..`）；落点恒是 `<它>/.mcp.json`（写面只此一个，agent 自己的配置一个字节不碰） |
-| `server` | → | 那一条的配置，原样写进 `mcpServers[name]` |
-
-码：`bad_args` · `bad_path` · `refused`
-
-#### `mcp-server-remove`
-
-删这台一个项目 `.mcp.json` 里的一条。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-server-remove`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 文件不在 / 那一条不在 ⇒ `false`（一个字节不写、不建文件） |
-| `name` | → | 要删的那一条 |
-| `path` | ← | 那份文件 |
-| `projectDir` | → | 同 `mcp-server-put` |
-
-码：`bad_args` · `bad_path` · `refused`
 
 #### `cc-bus-install-state`
 
@@ -5898,12 +5850,12 @@ skill 装记录的写口。
 | `field` | ← | 空位 / 可疑项在哪一格 |
 | `key` | ← | 空位的键名 |
 | `kept` | ← | 这台那一条原来就有这个键的值（不填就沿用） |
-| `kind` | ← | 可疑项的种类（闭集同 `mcp-sync-plan`） |
+| `kind` | ← | 可疑项的种类（闭集 `abs-path` · `command-missing` · `command-relative`） |
 | `name` | → | 同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`） |
 | `path` | ← | 这台那份的路径 |
 | `slots` | ← | 每个空位 `{field, key, kept}`：`kept` = 这台那一条原来就有这个键的值（不填就沿用） |
 | `state` | ← | `new`（这台没有这一条）· `same`（除空位外一样）· `differs` |
-| `suspects` | ← | 可疑项，每条 `{kind, field, value, there}`，闭集同 `mcp-sync-plan` |
+| `suspects` | ← | 可疑项，每条 `{kind, field, value, there}`，闭集 `abs-path` · `command-missing` · `command-relative` |
 | `target` | ← | 这台那份的记号（不存在 ⇒ `null`）—— 写的时候原样交回 |
 | `there` | ← | 它在这台指向的东西在不在 |
 | `value` | ← | 可疑的那个值 |
@@ -9400,10 +9352,7 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
 | `--manual-list` | ＝ 帧命令 `manual-list`：会话外的需手动清单：需登录的号 · 需登录的 MCP |
 | `--mcp-read` | ＝ 帧命令 `mcp-read`：这台机器的 MCP 列表成品 |
-| `--mcp-server-put` | ＝ 帧命令 `mcp-server-put`：增 / 改这台一个项目 `.mcp.json` 里的一条 |
-| `--mcp-server-remove` | ＝ 帧命令 `mcp-server-remove`：删这台一个项目 `.mcp.json` 里的一条 |
 | `--mcp-sync-apply` | ＝ 帧命令 `mcp-sync-apply`：在要被写的那一台把那一条写进去 |
-| `--mcp-sync-plan` | ＝ 帧命令 `mcp-sync-plan`：MCP 资产同步的判定 |
 | `--mcp-sync-preview` | ＝ 帧命令 `mcp-sync-preview`：在要被写的那一台看装上之后那一条 |
 | `--mcp-sync-source` | ＝ 帧命令 `mcp-sync-source`：装到别的机器时来源那一条 |
 | `--ping` | ＝ 帧命令 `ping`：问活：零载荷，回 `ok` |

@@ -343,23 +343,6 @@
       "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
       "host_label": "项目目录",
       "installable": true,
-      "note": "相对选定的项目目录",
-      "path_declared": ".mcp.json",
-      "path_resolved": null,
-      "source_label": "由 cc-monitor 现场生成的文本",
-      "state": {
-        "kind": "undetermined",
-        "why": "相对项目目录（.mcp.json） · 先选定项目才知道查哪里"
-      },
-      "tier": "AppInstalls",
-      "tool_id": "project-mcp",
-      "tool_name": "项目 MCP 配置",
-      "uninstallable": true
-    },
-    {
-      "effect_label": "整个文件由 cc-monitor 拥有，部署时整体覆盖",
-      "host_label": "项目目录",
-      "installable": true,
       "note": "相对所选项目目录 · 项目在确认卡上选\n只加或覆盖该条 · 其余不动",
       "path_declared": ".mcp.json",
       "path_resolved": null,

@@ -669,8 +669,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
-        // MCP 同步的判定：逐条 stat ＋ PATH 上找名字。
-        "mcp-sync-plan",
         // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：同步文件 I/O（经本进程文件管理面）。
         "skill-install-apply",
         "cc-bus-install",
@@ -701,8 +699,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "profiles-write",
         "powershell-policy-set",
         "ext-uninstall-apply",
-        "mcp-server-put",
-        "mcp-server-remove",
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
@@ -880,8 +876,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
-        // MCP 同步的判定，阻塞档。
-        "mcp-sync-plan",
         // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条，阻塞档。
         "skill-install-apply",
         "cc-bus-install",
@@ -912,8 +906,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "profiles-write",
         "powershell-policy-set",
         "ext-uninstall-apply",
-        "mcp-server-put",
-        "mcp-server-remove",
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",

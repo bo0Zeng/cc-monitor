@@ -31,12 +31,6 @@ export function mcpChanShim(invoke: Invoke) {
         ]);
         return reply({ entries: entries ?? [], dirs: dirs ?? [], problems: [] });
       }
-      case "mcp-server-put":
-        await invoke("write_project_mcp_server", { origin, ...a });
-        return reply({ path: `${dir}/.mcp.json`, changed: true });
-      case "mcp-server-remove":
-        await invoke("remove_project_mcp_server", { origin, ...a });
-        return reply({ path: `${dir}/.mcp.json`, changed: true });
       case "mcp-sync-source": {
         const p = (await invoke("mcp_sync_source", { origin, ...a })) as { path: string; text: string };
         return reply(p);

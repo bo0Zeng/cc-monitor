@@ -690,7 +690,6 @@ fn every_host_declaration_is_pinned() {
         // 自释放那一份的本机落点并进 `ccm` 那一条（`~/.cc-monitor/bin/ccm*`）；旧释放名挂成那一条的 `RetiredLegacy`。
         // `$BACKEND_PATH` → 固定落点（它就是远端的 `ccm`，与下面 `ccm` 那一行是同一个文件的两种说法）。
         ("backend", "~/.cc-monitor/bin/ccm", Remote),
-        ("project-mcp", ".mcp.json", ProjectDir),
         // 同一份文件的第二个写入来源（推 / 拉：条目原样从另一台机器拷来）。
         //    `ProjectDir` 与上一行同一条理由：写在你选定的那个项目目录里，那个目录在哪台机器上就算哪台的。
         ("project-mcp", ".mcp.json", ProjectDir),
@@ -988,17 +987,13 @@ fn declared_destinations_are_pinned_to_the_real_writers() {
             .iter()
             .map(|c| &c.destination)
             .collect::<Vec<_>>(),
-        // 两个载体（单条写 · 推 / 拉）落同一个文件。两者都进了那台后端，落点只问
-        //    `mcp_edit.rs::mcp_json` 一处（推 / 拉那一趟 `mcp_sync_flow.rs` 引它）。
-        vec![
-            &ToolDestination::ProjectRelative(".mcp.json"),
-            &ToolDestination::ProjectRelative(".mcp.json")
-        ]
+        // 一个载体（推 / 拉）。落点只问 `mcp_edit.rs::mcp_json` 一处（推 / 拉那一趟 `mcp_sync_flow.rs` 引它）。
+        vec![&ToolDestination::ProjectRelative(".mcp.json")]
     );
 
     // ③ 反向自检：确认上面读到的是真源码，不是空串
     assert!(
-        sftp.len() > 10_000 && mcp.len() > 5_000,
+        sftp.len() > 10_000 && mcp.len() > 3_000,
         "include_str! 读空了"
     );
 }
