@@ -6,9 +6,9 @@ import type { RotStrategyError } from "./RotStrategyError";
  */
 export type RotStrategyItem = { id: string, 
 /**
- * 标题 ＝ 文件名（＝ `id`，§2.1）· 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。
+ * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
  */
-name: string, about: string, rev: string, error?: RotStrategyError, 
+description: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */

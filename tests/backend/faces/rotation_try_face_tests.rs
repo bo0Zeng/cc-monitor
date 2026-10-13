@@ -75,9 +75,9 @@ fn it_decides_and_simulates_from_the_given_facts() {
     );
     assert_eq!(got.use_now_refused, None);
     assert!(
-        got.about.starts_with("换号时按账号列表顺序"),
+        got.description.starts_with("换号时按账号列表顺序"),
         "说明照原文开头的注释：{}",
-        got.about
+        got.description
     );
     let src = got.source.expect("给了设置 ⇒ 回换了头的原文");
     assert_eq!(

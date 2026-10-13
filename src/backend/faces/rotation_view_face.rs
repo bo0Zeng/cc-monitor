@@ -41,9 +41,8 @@ impl RotStrategyError {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotStrategyItem {
     pub(crate) id: String,
-    /// 标题 ＝ 文件名（＝ `id`，§2.1）· 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。
-    pub(crate) name: String,
-    pub(crate) about: String,
+    /// 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
+    pub(crate) description: String,
     pub(crate) rev: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -112,8 +111,7 @@ pub(crate) fn item_of(
     let head = s.file.as_ref().ok().map(|f| &f.head);
     RotStrategyItem {
         id: s.id.clone(),
-        name: s.id.clone(),
-        about: s
+        description: s
             .file
             .as_ref()
             .map_or_else(|_| String::new(), |f| f.about.clone()),
@@ -395,8 +393,7 @@ pub(crate) fn view_with(
         Some(s) => item_of(s, &book, live),
         None => RotStrategyItem {
             id: loaded.id.clone(),
-            name: loaded.id.clone(),
-            about: String::new(),
+            description: String::new(),
             rev: String::new(),
             error: loaded.broken().as_ref().map(RotStrategyError::of),
             in_use: Vec::new(),

@@ -1270,7 +1270,7 @@ type RotationTryReply = { now: number,
 /**
  * 这份策略的说明（原文开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段）。
  */
-about: string, 
+description: string, 
 /**
  * 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
  */
@@ -1328,9 +1328,9 @@ agent?: string, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
- * 标题 ＝ 文件名（＝ `id`，§2.1）· 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。
+ * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
  */
-name: string, about: string, rev: string, error?: RotStrategyError, 
+description: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */
@@ -1405,9 +1405,9 @@ type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { 
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
- * 标题 ＝ 文件名（＝ `id`，§2.1）· 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。
+ * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
  */
-name: string, about: string, rev: string, error?: RotStrategyError, 
+description: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */

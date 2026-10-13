@@ -9,7 +9,7 @@ export type RotationTryReply = { now: number,
 /**
  * 这份策略的说明（原文开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段）。
  */
-about: string, 
+description: string, 
 /**
  * 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
  */
