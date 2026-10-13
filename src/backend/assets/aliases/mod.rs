@@ -82,6 +82,15 @@ const FILE_END: &str = "# === cc-monitor aliases END ===";
 /// 从前叫 `AccountAliasRc`，只答「接没接上别名文件」；别名块（`cc` / `cct` ·
 /// `__ccm_bind`）装进的是**同一批**文件，却另有一条命令、另一份候选（`AL1d.md §1.2`）。
 /// 今天一份候选、一次扫描，两件事都在这一格上（`block`）。
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "AliasStartupFile"
+    )
+)]
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct StartupFile {
@@ -99,6 +108,7 @@ pub(crate) struct StartupFile {
     /// 加载它的那一代 PowerShell 的执行策略（现问；块装在这里它会不会跑）。POSIX 与人另指的那一份 ⇒ `None`。
     pub policy: Option<crate::platform::shell::powershell::ExecPolicy>,
     /// 把别名块装进这一份会写几行（与装进去的那一块同源：[`block::render_block`]，方言按这份的扩展名；渲染不出 ⇒ 0）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub block_lines: usize,
 }
 
@@ -169,6 +179,8 @@ impl Alias {
 }
 
 /// 读回口的产物：启动文件候选（接入那一格）。清单在配置文件那一页（`page.rs::answer_read`）。
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AliasListing {
@@ -887,90 +899,232 @@ fn write_ours(
 // ＋ 表单两向 `aliases-to-form` · `aliases-from-form`
 // ═══════════════════════════════════════════════════════════════════════════
 
-type Answer = Result<Value, (&'static str, String)>;
-
-fn bad(msg: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(msg))
-}
-
-fn shell_arg(args: &Value) -> Result<Shell, (&'static str, String)> {
-    serde_json::from_value(args.get("shell").cloned().unwrap_or(Value::Null))
-        .map_err(|_| bad("`shell` must be \"posix\" or \"powershell\""))
-}
-
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(k)
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad(&format!("missing `{k}`")))
-}
-
-fn opt_str<'a>(args: &'a Value, k: &str) -> Result<Option<&'a str>, (&'static str, String)> {
-    match args.get(k) {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => v
-            .as_str()
-            .map(Some)
-            .ok_or_else(|| bad(&format!("`{k}` must be a string or null"))),
-    }
-}
-
 fn refused(said: String) -> (&'static str, String) {
     ("refused", said)
 }
 
-fn to_value<T: serde::Serialize>(v: &T) -> Answer {
-    serde_json::to_value(v).map_err(|e| ("io_failed", e.to_string()))
+/// `aliases-read` 的入参：哪种 shell 的候选 · 人另指的那一份启动文件（`null` = 不指；过围栏后并进候选）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct AliasesReadReq {
+    /// `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）。
+    pub(crate) shell: Shell,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) rc_path: Option<String>,
 }
 
-/// `aliases-read {shell, rcPath?}` → [`AliasListing`]。
-pub(crate) fn answer_read(d: &dyn Door, args: &Value) -> Answer {
-    let shell = shell_arg(args)?;
-    dialect_here(shell).map_err(refused)?;
-    to_value(&read_via(d, shell, opt_str(args, "rcPath")?).map_err(refused)?)
+/// `aliases-read`：启动文件候选（接入那一格）。
+pub(crate) fn answer_read(
+    d: &dyn Door,
+    req: &AliasesReadReq,
+) -> Result<AliasListing, (&'static str, String)> {
+    dialect_here(req.shell).map_err(refused)?;
+    read_via(d, req.shell, req.rc_path.as_deref()).map_err(refused)
+}
+
+/// 别名块那三条的入参：目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct BlockReq {
+    pub(crate) rc_path: String,
 }
 
 /// 别名块那三条：`rcPath` 那份文件过围栏、方言按它的扩展名定、再过方言闸。
-fn block_target(d: &dyn Door, args: &Value) -> Result<(String, String), (&'static str, String)> {
-    let raw = str_arg(args, "rcPath")?;
+fn block_target(d: &dyn Door, req: &BlockReq) -> Result<(String, String), (&'static str, String)> {
     let home = door::home(d).map_err(refused)?;
-    let p = block::fence(&home, raw).map_err(refused)?;
+    let p = block::fence(&home, &req.rc_path).map_err(refused)?;
     dialect_here(Shell::of_target(Path::new(&p))).map_err(refused)?;
     Ok((home, p))
 }
 
+/// `aliases-block-render` 的应答：往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct BlockText {
+    pub(crate) text: String,
+}
+
+/// 装好 / 卸掉了（零出参）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct BlockDone {}
+
 /// `aliases-block-render {rcPath}` → `{text}`（纯：往一份空文件里装一次会写成什么；方言由 `rcPath` 的扩展名定）。
-pub(crate) fn answer_block_render(d: &dyn Door, args: &Value) -> Answer {
-    let raw = str_arg(args, "rcPath")?;
-    let shell = Shell::of_target(Path::new(raw));
+pub(crate) fn answer_block_render(
+    d: &dyn Door,
+    req: &BlockReq,
+) -> Result<BlockText, (&'static str, String)> {
+    let shell = Shell::of_target(Path::new(&req.rc_path));
     dialect_here(shell).map_err(refused)?;
     let home = door::home(d).map_err(refused)?;
-    let code = block::render_block(shell, &home).map_err(refused)?;
-    Ok(json!({ "text": code }))
+    let text = block::render_block(shell, &home).map_err(refused)?;
+    Ok(BlockText { text })
 }
 
 /// `aliases-block-install {rcPath}` → `{}`（幂等，整块替换；经这台的 `files-put`）。
-pub(crate) fn answer_block_install(d: &dyn Door, args: &Value) -> Answer {
-    let (_, p) = block_target(d, args)?;
+pub(crate) fn answer_block_install(
+    d: &dyn Door,
+    req: &BlockReq,
+) -> Result<BlockDone, (&'static str, String)> {
+    let (_, p) = block_target(d, req)?;
     block::install_to_profile(d, Path::new(&p)).map_err(refused)?;
-    Ok(json!({}))
+    Ok(BlockDone {})
 }
 
 /// `aliases-block-remove {rcPath}` → `{}`（整块删，块外一个字节不动；围栏损坏 ⇒ 中止）。
-pub(crate) fn answer_block_remove(d: &dyn Door, args: &Value) -> Answer {
-    let (_, p) = block_target(d, args)?;
+pub(crate) fn answer_block_remove(
+    d: &dyn Door,
+    req: &BlockReq,
+) -> Result<BlockDone, (&'static str, String)> {
+    let (_, p) = block_target(d, req)?;
     block::uninstall_from_profile(d, Path::new(&p)).map_err(refused)?;
-    Ok(json!({}))
+    Ok(BlockDone {})
+}
+
+/// `powershell-policy-set` 的入参：哪一代 PowerShell。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PolicySetReq {
+    /// `powershell`（5.1）· `pwsh`（7）。
+    pub(crate) host: crate::platform::shell::PsHost,
+}
+
+/// `powershell-policy-set` 的应答：设完现问的那一份 ＋ 设的那一下没成的原因词。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PolicySet {
+    /// 形状同 `aliases-read` 候选里的 `policy`。
+    pub(crate) policy: crate::platform::shell::powershell::ExecPolicy,
+    /// 设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报。
+    pub(crate) set_error: Option<String>,
 }
 
 /// `powershell-policy-set {host}` → `{policy, setError}`：那一代 PowerShell 当前用户那一档设成
 /// `RemoteSigned`，再现问一次。只做这一件固定的事（不收策略值）；界面只在用户点了、确认了之后发。这台不说 PowerShell ⇒ 拒。
-pub(crate) fn answer_policy_set(args: &Value) -> Answer {
+pub(crate) fn answer_policy_set(req: &PolicySetReq) -> Result<PolicySet, (&'static str, String)> {
     dialect_here(Shell::PowerShell).map_err(refused)?;
-    let host: crate::platform::shell::PsHost =
-        serde_json::from_value(args.get("host").cloned().unwrap_or(Value::Null))
-            .map_err(|_| bad("`host` must be \"powershell\" or \"pwsh\""))?;
-    let (policy, set_error) = crate::platform::shell::powershell::allow_local_scripts(host);
-    Ok(json!({ "policy": policy, "setError": set_error }))
+    let (policy, set_error) = crate::platform::shell::powershell::allow_local_scripts(req.host);
+    Ok(PolicySet { policy, set_error })
+}
+
+crate::stream::inbound::typed::codes! {
+    /// 别名那几条的码：这台的方言不认 · 过不了围栏 · 读写没成（那一句说清哪一样）。
+    pub(crate) enum AliasErr {
+        Refused = "refused",
+    }
+}
+
+/// `aliases-read`：启动文件候选（接入那一格）（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct AliasesRead;
+
+impl crate::stream::inbound::typed::Command for AliasesRead {
+    const NAME: &'static str = "aliases-read";
+    type Req = AliasesReadReq;
+    type Reply = AliasListing;
+    type Err = AliasErr;
+}
+
+impl crate::stream::inbound::typed::WithFiles for AliasesRead {
+    fn run(
+        req: AliasesReadReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+    ) -> Result<AliasListing, AliasErr> {
+        answer_read(files, &req).map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+    }
+}
+
+/// `aliases-block-render`：别名块预览（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct AliasesBlockRender;
+
+impl crate::stream::inbound::typed::Command for AliasesBlockRender {
+    const NAME: &'static str = "aliases-block-render";
+    type Req = BlockReq;
+    type Reply = BlockText;
+    type Err = AliasErr;
+}
+
+impl crate::stream::inbound::typed::WithFiles for AliasesBlockRender {
+    fn run(
+        req: BlockReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+    ) -> Result<BlockText, AliasErr> {
+        answer_block_render(files, &req)
+            .map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+    }
+}
+
+/// `aliases-block-install`：别名块装进人选的那份启动文件（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct AliasesBlockInstall;
+
+impl crate::stream::inbound::typed::Command for AliasesBlockInstall {
+    const NAME: &'static str = "aliases-block-install";
+    type Req = BlockReq;
+    type Reply = BlockDone;
+    type Err = AliasErr;
+}
+
+impl crate::stream::inbound::typed::WithFiles for AliasesBlockInstall {
+    fn run(
+        req: BlockReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+    ) -> Result<BlockDone, AliasErr> {
+        answer_block_install(files, &req)
+            .map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+    }
+}
+
+/// `aliases-block-remove`：别名块卸掉（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct AliasesBlockRemove;
+
+impl crate::stream::inbound::typed::Command for AliasesBlockRemove {
+    const NAME: &'static str = "aliases-block-remove";
+    type Req = BlockReq;
+    type Reply = BlockDone;
+    type Err = AliasErr;
+}
+
+impl crate::stream::inbound::typed::WithFiles for AliasesBlockRemove {
+    fn run(
+        req: BlockReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+    ) -> Result<BlockDone, AliasErr> {
+        answer_block_remove(files, &req)
+            .map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+    }
+}
+
+/// `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（起一次那一代 PowerShell ⇒ 阻塞档）。
+pub(crate) struct PowershellPolicySet;
+
+impl crate::stream::inbound::typed::Command for PowershellPolicySet {
+    const NAME: &'static str = "powershell-policy-set";
+    type Req = PolicySetReq;
+    type Reply = PolicySet;
+    type Err = AliasErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for PowershellPolicySet {
+    fn run(
+        req: PolicySetReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<PolicySet, AliasErr> {
+        answer_policy_set(&req).map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+    }
 }
 
 #[cfg(test)]

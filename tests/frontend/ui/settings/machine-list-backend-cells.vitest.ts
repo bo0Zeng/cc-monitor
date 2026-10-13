@@ -39,12 +39,7 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
             return Promise.resolve({ channel: true, pid: 7 });
           // 「退出行为」那一问改走通道：一发 `chan_call`（op = `exit-policy-read`），回后端那份字节。
           case "chan_call": {
-            // 「导入」下拉那一问（`ssh-config-aliases`）也经这一跳：回空清单。
-            const op = (args as { op?: string } | undefined)?.op;
-            const body =
-              op === "ssh-config-aliases"
-                ? { aliases: [] }
-                : { state: "absent", killOnExit: false, said: "退出时后台照常跑" };
+            const body = { state: "absent", killOnExit: false, said: "退出时后台照常跑" };
             const u = new TextEncoder().encode(JSON.stringify(body));
             return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
           }

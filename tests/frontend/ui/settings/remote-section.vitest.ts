@@ -74,8 +74,8 @@ vi.mock("../../../../src/frontend/ui/remote-probe", () => ({
     return Promise.resolve({ message: "", stages: [], backendGaps: [], ...(reply as object) });
   },
 }));
-// 「从 ~/.ssh/config 导入」那三问改问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
-//   记名（帧命令名）、按名回（`Error` ⇒ reject）。解码器本身由 `tests/frontend/ui/ssh-config-reads.vitest.ts` 对金样钉。
+// 「从 ~/.ssh/config 导入」那一问问本机常驻后端（`ssh-config-reads.ts` 经通道）⇒ 替身同一本账：
+//   记名（帧命令名）、按名回（`Error` ⇒ reject）。
 vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
   // 没设的回那一问成品的空形（真模块只回解码过的值，不会回 `undefined`）。
   const ask = (op: string, empty: unknown) => () => {
@@ -84,8 +84,6 @@ vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
     return reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply);
   };
   return {
-    listSshHostAliases: ask("ssh-config-aliases", []),
-    resolveSshHost: ask("ssh-config-resolve", undefined),
     importSshHosts: ask("ssh-config-import", []),
   };
 });

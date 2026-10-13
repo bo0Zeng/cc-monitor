@@ -157,6 +157,22 @@ fn backend_command_names() -> Vec<String> {
             from = at + end;
         }
     }
+    // typed 那几行（第 8 批起）不写 `name:`：名字从后端类型生成的命令表读（`generated/TypedCommands.ts` 每条一行 `"名字": { req: …`）。
+    let map = std::fs::read_to_string(
+        crate::guard_support::repo_root().join("src/frontend/ui/generated/TypedCommands.ts"),
+    )
+    .expect("生成的命令表");
+    // 逐字认：行首（去空白）一个带引号的名字、紧跟 `: { req:`。
+    for row in map.lines() {
+        let mut cs = row.trim_start().chars();
+        if cs.next() != Some('"') {
+            continue;
+        }
+        let name: String = cs.by_ref().take_while(|c| *c != '"').collect();
+        if cs.take(8).eq(": { req:".chars()) {
+            out.push(name);
+        }
+    }
     out
 }
 

@@ -30,25 +30,30 @@ pub struct Machine {
     pub jump: Option<String>,
 }
 
-fn nonempty(v: Option<&Value>) -> Option<String> {
-    v.and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-        .map(str::to_string)
+/// 一台机器的配置里本模块读的那几格（原样，还没判空白）：[`Machine::of`] 的入参。
+#[derive(Debug, Clone, Default)]
+pub struct Fields<'a> {
+    pub host: Option<&'a str>,
+    pub user: Option<&'a str>,
+    pub label: Option<&'a str>,
+    pub port: Option<u16>,
+    pub key_path: Option<&'a str>,
+    pub fingerprint: Option<&'a str>,
+    pub addresses: Vec<String>,
+    pub jump: Option<&'a str>,
 }
 
 impl Machine {
     /// 读界面那一格。缺 `host` / `user` ⇒ `bad_args`（调用方是我们自己的界面：契约错）。
     pub fn parse(v: &Value) -> Result<Machine, (&'static str, String)> {
         let bad = |d: &str| ("bad_args", crate::malformed(d));
-        let host = nonempty(v.get("host")).ok_or_else(|| bad("machine without `host`"))?;
-        let user = nonempty(v.get("user")).ok_or_else(|| bad("machine without `user`"))?;
         let port = match v.get("port") {
-            None | Some(Value::Null) => 22,
-            Some(p) => p
-                .as_u64()
-                .and_then(|n| u16::try_from(n).ok())
-                .ok_or_else(|| bad("`port` is not a port number"))?,
+            None | Some(Value::Null) => None,
+            Some(p) => Some(
+                p.as_u64()
+                    .and_then(|n| u16::try_from(n).ok())
+                    .ok_or_else(|| bad("`port` is not a port number"))?,
+            ),
         };
         let addresses = v
             .get("addresses")
@@ -60,14 +65,38 @@ impl Machine {
                     .collect()
             })
             .unwrap_or_default();
-        Ok(Machine {
-            label: nonempty(v.get("label")).unwrap_or_default(),
+        let s = |k: &str| v.get(k).and_then(Value::as_str);
+        Machine::of(Fields {
+            host: s("host"),
+            user: s("user"),
+            label: s("label"),
             port,
-            user,
-            key_path: nonempty(v.get("keyPath")),
-            fingerprint: nonempty(v.get("hostKeyFingerprint")),
+            key_path: s("keyPath"),
+            fingerprint: s("hostKeyFingerprint"),
             addresses,
-            jump: nonempty(v.get("jump")),
+            jump: s("jump"),
+        })
+    }
+
+    /// 已经按类型收下的那几格 ⇒ 一台机器（空白当没给；缺 `host` / `user` ⇒ `bad_args`；口缺 ⇒ 22）。
+    /// 线上那一份（[`Machine::parse`]）与按类型收的那一份（后端帧命令的入参）都经这里，判法只有这一处。
+    pub fn of(f: Fields<'_>) -> Result<Machine, (&'static str, String)> {
+        let bad = |d: &str| ("bad_args", crate::malformed(d));
+        let nonempty = |v: Option<&str>| {
+            v.map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+        };
+        let host = nonempty(f.host).ok_or_else(|| bad("machine without `host`"))?;
+        let user = nonempty(f.user).ok_or_else(|| bad("machine without `user`"))?;
+        Ok(Machine {
+            label: nonempty(f.label).unwrap_or_default(),
+            port: f.port.unwrap_or(22),
+            user,
+            key_path: nonempty(f.key_path),
+            fingerprint: nonempty(f.fingerprint),
+            addresses: f.addresses,
+            jump: nonempty(f.jump),
             host,
         })
     }
@@ -212,16 +241,32 @@ pub fn resolve(v: &Value) -> Result<crate::DialRequest, (&'static str, String)> 
     for k in ["machine", "saved", "jump", "prefer", "use"] {
         extra.remove(k);
     }
-    let req = request(
+    dial_request(
         &machine,
         saved.as_ref(),
         jump.as_ref(),
         prefer.as_ref(),
         use_,
         Value::Object(extra),
-    )?;
-    <crate::DialRequest as serde::Deserialize>::deserialize(&req)
-        .map_err(|e| bad(&format!("dial request unreadable: {e}")))
+    )
+}
+
+/// 同 [`request`]，组好之后读成拨号请求（线上那一份 [`resolve`] 与按类型收的帧命令入参都经这里）。
+pub fn dial_request(
+    machine: &Machine,
+    saved: Option<&Machine>,
+    jump: Option<&Machine>,
+    prefer: Option<&(String, u16)>,
+    use_: &str,
+    extra: Value,
+) -> Result<crate::DialRequest, (&'static str, String)> {
+    let req = request(machine, saved, jump, prefer, use_, extra)?;
+    <crate::DialRequest as serde::Deserialize>::deserialize(&req).map_err(|e| {
+        (
+            "bad_args",
+            crate::malformed(&format!("dial request unreadable: {e}")),
+        )
+    })
 }
 
 /// 帧命令入参里那三格（`machine` · `saved?` · `jump?`）一次读齐。

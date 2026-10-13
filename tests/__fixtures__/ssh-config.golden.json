@@ -1,18 +1,4 @@
 {
-  "ssh-config-aliases": {
-    "aliases": [
-      "devbox-lan",
-      "devbox-wan",
-      "pi"
-    ]
-  },
-  "ssh-config-resolve": {
-    "host": "192.0.2.2",
-    "port": 2222,
-    "user": "user",
-    "keyPath": null,
-    "proxyJump": "bastion"
-  },
   "ssh-config-import": {
     "groups": [
       {

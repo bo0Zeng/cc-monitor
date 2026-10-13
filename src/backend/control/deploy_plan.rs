@@ -39,6 +39,7 @@ use std::pin::Pin;
 
 use copy_core::copy_text;
 use deploy_contract::{Arch, DeployAction, Key, Marks, Os, Refusal, RemoteIdentity, Route, LINES};
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
@@ -343,39 +344,70 @@ pub async fn plan(
     })
 }
 
-/// 计划 → 帧面那一格（线上形状住 `IPC-PROTOCOL.md` 的 `deploy-plan` 那一节）。
-pub fn plan_json(p: &Plan) -> Value {
+/// `deploy-plan` 的应答：换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Planned {
+    /// 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）。
+    pub(crate) os: &'static str,
+    pub(crate) arch: &'static str,
+    pub(crate) label: String,
+    /// 那一格这一版带着的字节自报的身份（对照物）。
+    pub(crate) expected: String,
+    /// `skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）。
+    #[cfg_attr(test, ts(type = "\"skip\" | \"deploy\" | \"keep\""))]
+    pub(crate) action: &'static str,
+    /// 人读原因（`skip` 时空串）。
+    pub(crate) why: String,
+    /// `keep` 时那台上那一份自报的身份，否则 `null`。
+    pub(crate) theirs: Option<String>,
+    /// 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
+    pub(crate) leftovers: Vec<String>,
+    /// 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
+    #[cfg_attr(test, ts(type = "unknown"))]
+    pub(crate) ack: Value,
+}
+
+/// 计划 → 帧面那一格。
+pub fn plan_json(p: &Plan) -> Planned {
     let (action, why, theirs) = match &p.action {
         DeployAction::Skip => ("skip", String::new(), None),
         DeployAction::Deploy(why) => ("deploy", why.clone(), None),
         DeployAction::Keep { theirs, why } => ("keep", why.clone(), Some(theirs.clone())),
     };
-    json!({
-        "os": p.key.os.label(),
-        "arch": p.key.arch.label(),
-        "label": p.key.label(),
-        "expected": p.expected,
-        "action": action,
-        "why": why,
-        "theirs": theirs,
-        "leftovers": p.leftovers,
-        "ack": p.ack,
-    })
+    Planned {
+        os: p.key.os.label(),
+        arch: p.key.arch.label(),
+        label: p.key.label(),
+        expected: p.expected.clone(),
+        action,
+        why,
+        theirs,
+        leftovers: p.leftovers.clone(),
+        ack: p.ack.clone(),
+    }
 }
 
-/// `carried` 那一格：`[{os, arch, id}]`。键认不出 / 身份空 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
-pub fn carried_of(args: &Value) -> Result<Vec<(Key, String)>, Fail> {
+/// `carried` 的一行：monitor 手上带着的那一格字节自报的身份。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct Carried {
+    pub(crate) os: String,
+    pub(crate) arch: String,
+    pub(crate) id: String,
+}
+
+/// `carried` 那几行 ⇒ 表 A 的键 ＋ 身份。键认不出 / 身份空 ⇒ `bad_args`（monitor 交的是它自己表里的词，认不出就是两侧漂了）。
+pub fn carried_of(rows: &[Carried]) -> Result<Vec<(Key, String)>, Fail> {
     let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
-    let rows = args
-        .get("carried")
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad("missing `carried` (array)"))?;
     rows.iter()
         .map(|r| {
-            let s = |k: &str| r.get(k).and_then(Value::as_str).unwrap_or("");
-            let key = deploy_contract::key_of(s("os"), s("arch"))
+            let key = deploy_contract::key_of(&r.os, &r.arch)
                 .map_err(|_| bad("`carried` row names a machine outside table A"))?;
-            match s("id") {
+            match r.id.as_str() {
                 "" => Err(bad("`carried` row without `id`")),
                 id => Ok((key, id.to_string())),
             }
@@ -443,26 +475,72 @@ impl Facing for DialFacing {
     }
 }
 
-/// 帧面入口：`{dial, carried, machine?}` → 计划。
-pub async fn answer(args: &Value, facing: &dyn Facing) -> Result<Value, Fail> {
-    let carried = carried_of(args)?;
-    let machine = args
-        .get("machine")
-        .and_then(Value::as_str)
-        .filter(|m| !m.trim().is_empty())
-        .ok_or_else(|| {
-            Fail::new(
-                "bad_args",
-                crate::common::contract::malformed("missing `machine` (string)"),
-            )
-        })?;
+/// `deploy-plan` 的入参：怎么够到那台 · monitor 手上带着的那几格 · 对人说话时那台叫什么。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct DeployPlanReq {
+    pub(crate) dial: crate::dial::pick::MachineDial,
+    pub(crate) carried: Vec<Carried>,
+    /// 那台的名字（非空）。
+    pub(crate) machine: String,
+}
+
+/// `deploy-plan` 的本体（对面由调用方给）。
+pub async fn answer(req: &DeployPlanReq, facing: &dyn Facing) -> Result<Planned, Fail> {
+    let carried = carried_of(&req.carried)?;
+    if req.machine.trim().is_empty() {
+        return Err(Fail::new(
+            "bad_args",
+            crate::common::contract::malformed("missing `machine` (string)"),
+        ));
+    }
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    plan(facing, &carried, machine, now)
+    plan(facing, &carried, &req.machine, now)
         .await
         .map(|p| plan_json(&p))
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `deploy-plan` 的码：读那台没读成 · 那一格这一版不承诺 · 够不到那台 · 那台那一份说不清自己是谁。
+    pub(crate) enum DeployPlanErr {
+        IoFailed = "io_failed",
+        Refused = "refused",
+        Unreachable = "unreachable",
+        Undecidable = "undecidable",
+    }
+}
+
+/// `deploy-plan`：那台的后端要不要换、换成哪一格。真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。
+pub(crate) struct DeployPlan;
+
+impl crate::stream::inbound::typed::Command for DeployPlan {
+    const NAME: &'static str = "deploy-plan";
+    type Req = DeployPlanReq;
+    type Reply = Planned;
+    type Err = DeployPlanErr;
+}
+
+impl crate::stream::inbound::typed::Async for DeployPlan {
+    fn run(
+        req: DeployPlanReq,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<Planned, DeployPlanErr>> + Send + 'static {
+        async move {
+            let dial = req
+                .dial
+                .stored()
+                .map_err(|(_, said)| DeployPlanErr::BadArgs(said))?;
+            let facing = DialFacing::new(dial);
+            answer(&req, &facing)
+                .await
+                .map_err(|f| crate::stream::inbound::typed::of_fail(f, DeployPlanErr::IoFailed))
+        }
+    }
 }
 
 // ═══ 远端常驻后端 hello 的新旧（帧命令 `resident-verdict`）═══════════════════════════
@@ -547,31 +625,90 @@ pub fn place_verdict(
     }
 }
 
-/// 帧面入口：`{dest, machine}` → `{action: "place" | "keep", why}`。`dest` 缺 / 不是绝对路径 · `machine` 缺 ⇒ `bad_args`。
+/// `place-verdict` 的入参：落点的绝对路径 · 对人说话时这台叫什么（monitor 交「本机」，不是机器名）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct PlaceReq {
+    /// 不在 ⇒ 没装 ⇒ 放；读不了 ⇒ `undecidable`，不当成没装。
+    pub(crate) dest: String,
+    pub(crate) machine: String,
+}
+
+/// `place-verdict` 的应答。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct PlaceAnswer {
+    /// `place`（放 / 换上去）· `keep`（盘上那一份不比这一份旧 ⇒ 不动、用它）。
+    #[cfg_attr(test, ts(type = "\"place\" | \"keep\""))]
+    pub(crate) action: &'static str,
+    /// 人读原因（`keep` 时点名两边各是哪一版）。
+    pub(crate) why: String,
+}
+
+/// `place-verdict` 的本体：`dest` 不是绝对路径 · `machine` 空 ⇒ `bad_args`。
 /// 只读落点那一个文件（不在 ⇒ 没装）；这份字节自己的键与身份取自编译期（`Key::this_machine` · `crate::BUILD_ID`）。
-pub fn answer_place(args: &Value) -> Result<Value, Fail> {
+pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Fail> {
     let bad = |m: &str| Fail::new("bad_args", crate::common::contract::malformed(m));
-    let dest = args
-        .get("dest")
-        .and_then(Value::as_str)
-        .filter(|d| std::path::Path::new(d).is_absolute())
-        .ok_or_else(|| bad("missing `dest` (absolute path)"))?;
-    let machine = args
-        .get("machine")
-        .and_then(Value::as_str)
-        .filter(|m| !m.is_empty())
-        .ok_or_else(|| bad("missing `machine` (non-empty string)"))?;
-    let disk = match Ro::read(dest) {
+    if !std::path::Path::new(&req.dest).is_absolute() {
+        return Err(bad("missing `dest` (absolute path)"));
+    }
+    if req.machine.is_empty() {
+        return Err(bad("missing `machine` (non-empty string)"));
+    }
+    let disk = match Ro::read(&req.dest) {
         Ok(b) => Ok(Some(b)),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e.to_string()),
     };
     Ok(
-        match place_verdict(Key::this_machine(), disk, crate::BUILD_ID, machine, dest)? {
-            Placed::Place(why) => json!({ "action": "place", "why": why }),
-            Placed::Keep(why) => json!({ "action": "keep", "why": why }),
+        match place_verdict(
+            Key::this_machine(),
+            disk,
+            crate::BUILD_ID,
+            &req.machine,
+            &req.dest,
+        )? {
+            Placed::Place(why) => PlaceAnswer {
+                action: "place",
+                why,
+            },
+            Placed::Keep(why) => PlaceAnswer {
+                action: "keep",
+                why,
+            },
         },
     )
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `place-verdict` 的码：这一格不承诺 · 落点那一份说不清自己是谁 / 读不了。
+    pub(crate) enum PlaceErr {
+        Refused = "refused",
+        Undecidable = "undecidable",
+    }
+}
+
+/// `place-verdict`：本机那一份放不放（只读落点那一个文件 ⇒ 阻塞档）。
+pub(crate) struct PlaceVerdict;
+
+impl crate::stream::inbound::typed::Command for PlaceVerdict {
+    const NAME: &'static str = "place-verdict";
+    type Req = PlaceReq;
+    type Reply = PlaceAnswer;
+    type Err = PlaceErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for PlaceVerdict {
+    fn run(
+        req: PlaceReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<PlaceAnswer, PlaceErr> {
+        answer_place(&req)
+            .map_err(|f| crate::stream::inbound::typed::of_fail(f, PlaceErr::Undecidable))
+    }
 }
 
 #[cfg(test)]

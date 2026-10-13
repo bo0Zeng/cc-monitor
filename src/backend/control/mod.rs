@@ -23,6 +23,7 @@
 pub mod asks;
 pub mod capture_pane;
 pub(crate) mod cc_bus;
+pub(crate) mod cc_bus_wire; // cc-bus 那七条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 pub mod ccm;
 pub mod cli_args;
 pub mod cli_control;

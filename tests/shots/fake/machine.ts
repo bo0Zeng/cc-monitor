@@ -218,7 +218,6 @@ export function machineOps(): Record<string, OpHandler> {
     "terminal-follow": () => ({}),
     "terminal-follow-ack": () => ({}),
     "terminal-unfollow": () => ({}),
-    "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
     // 文件与数据：devbox 照稿 25 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
     // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
     // 「开始用」那份数：只有本机的那个世界（刚装好）三步都没做；有远端的世界第三步勾上、终端已接上。

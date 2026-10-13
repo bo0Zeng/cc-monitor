@@ -416,18 +416,99 @@ const PRINT_MAX_WORD_BYTES: usize = 4096;
 /// 应答是**成品** `{version, capabilities, agents, build}`（此前是那几行原文、由 monitor 解析）：
 /// 界面经通道直问、按形状收（`src/ccm-probe.ts`，金样 `tests/__fixtures__/ccm-probe.golden.json`），monitor 那一跳删了。
 /// 纯函数：不起进程、不碰盘。
-pub(crate) fn answer_probe() -> serde_json::Value {
+pub(crate) fn answer_probe() -> CcmCard {
     answer_probe_for(crate::TMUX_PLATFORM)
 }
 
+/// `ccm-probe` 的应答：这台的 `ccm` 会哪些（与名片 `ccm --ccm-probe` 同一组常量）。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct CcmCard {
+    /// CLI 契约版本（`CCM_VERSION`）。
+    pub(crate) version: &'static str,
+    /// 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份）。
+    pub(crate) capabilities: Vec<&'static str>,
+    /// 认得的 agent 种类。
+    pub(crate) agents: Vec<&'static str>,
+    /// 这一份的 `BUILD_ID`。
+    pub(crate) build: &'static str,
+}
+
 /// [`answer_probe`] 的内核（平台档是入参，与 [`probe_output_for`] 同一组来源）。
-pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> serde_json::Value {
-    serde_json::json!({
-        "version": CCM_VERSION,
-        "capabilities": crate::ccm_launcher_with(platform),
-        "agents": agents(),
-        "build": crate::BUILD_ID,
-    })
+pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> CcmCard {
+    CcmCard {
+        version: CCM_VERSION,
+        capabilities: crate::ccm_launcher_with(platform),
+        agents: agents(),
+        build: crate::BUILD_ID,
+    }
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `ccm-probe` 没有别的码。
+    pub(crate) enum ProbeErr {}
+}
+
+/// `ccm-probe`：这台的 `ccm` 会哪些。纯函数（不起进程、不碰盘）⇒ 不进阻塞档。
+pub(crate) struct CcmProbe;
+
+impl crate::stream::inbound::typed::Command for CcmProbe {
+    const NAME: &'static str = "ccm-probe";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = CcmCard;
+    type Err = ProbeErr;
+}
+
+impl crate::stream::inbound::typed::Async for CcmProbe {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<CcmCard, ProbeErr>> + Send + 'static {
+        std::future::ready(Ok(answer_probe()))
+    }
+}
+
+/// `ccm-print` 的入参：一条别名的预置参数（原样 ccm argv，`<交给 agent 的…> -- <ccm 的…>` 那一形）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct CcmPrintReq {
+    /// 最多 64 个、每个最长 4096 字节。
+    pub(crate) args: Vec<String>,
+}
+
+/// `ccm-print` 的应答：`ccm --ccm-print` 那一行。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct CcmLine {
+    pub(crate) line: String,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `ccm-print` 的码：ccm 自己拒了这组参数（原话带回）· 给的是 `--help` 这类不起会话的那一形。
+    pub(crate) enum PrintErr {
+        Refused = "refused",
+    }
+}
+
+/// `ccm-print`：一条别名实际会执行什么。只读（读账号库 manifest ＋ 问会话快照）⇒ 阻塞档。
+pub(crate) struct CcmPrint;
+
+impl crate::stream::inbound::typed::Command for CcmPrint {
+    const NAME: &'static str = "ccm-print";
+    type Req = CcmPrintReq;
+    type Reply = CcmLine;
+    type Err = PrintErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for CcmPrint {
+    fn run(req: CcmPrintReq, _cx: &crate::stream::inbound::typed::Cx) -> Result<CcmLine, PrintErr> {
+        answer_print(&req).map_err(crate::stream::inbound::typed::of_pair(PrintErr::Refused))
+    }
 }
 
 /// 帧命令 `ccm-print`：**一条别名实际会执行什么**（
@@ -440,20 +521,10 @@ pub(crate) fn answer_probe_for(platform: crate::TmuxPlatform) -> serde_json::Val
 ///
 /// 错误码：`bad_args`（入参形状不对 / 超上界）· `refused`（ccm 自己拒了这组参数 —— 原话带回；
 /// 或给的是 `--help` 这类不起会话的那一形）。只读：不起进程、不写盘。
-pub(crate) fn answer_print(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (&'static str, String)> {
-    // 前四种拒是**契约错**（调用方是 monitor，用户手敲不出来）⇒ 英文诊断经 `contract::malformed`；
+pub(crate) fn answer_print(req: &CcmPrintReq) -> Result<CcmLine, (&'static str, String)> {
+    // 前两种拒是**契约错**（调用方是 monitor，用户手敲不出来）⇒ 英文诊断经 `contract::malformed`；
     // 「不起会话的那一形」是用户清单里真能出现的（手写进别名文件的 `--help`）⇒ 进表说人话。
-    let words = args
-        .get("args")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("missing `args` (an array of strings)"),
-            )
-        })?;
+    let words = &req.args;
     if words.len() > PRINT_MAX_WORDS {
         return Err((
             "bad_args",
@@ -463,25 +534,16 @@ pub(crate) fn answer_print(
             )),
         ));
     }
-    let mut argv = Vec::with_capacity(words.len());
-    for w in words {
-        let w = w.as_str().ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("every element of `args` must be a string"),
-            )
-        })?;
-        if w.len() > PRINT_MAX_WORD_BYTES {
-            return Err((
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "an arg is too long: {} bytes (max {PRINT_MAX_WORD_BYTES})",
-                    w.len()
-                )),
-            ));
-        }
-        argv.push(w.to_string());
+    if let Some(w) = words.iter().find(|w| w.len() > PRINT_MAX_WORD_BYTES) {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "an arg is too long: {} bytes (max {PRINT_MAX_WORD_BYTES})",
+                w.len()
+            )),
+        ));
     }
+    let argv = words.clone();
     let o = match parse_entry(&argv, || {
         crate::assets::aliases::profile::read_at(&Env::for_preview().home)
     }) {
@@ -495,7 +557,9 @@ pub(crate) fn answer_print(
         Err(Die(msg)) => return Err(("refused", msg)),
     };
     let plan = plan_of(&o, Env::for_preview(), false).map_err(|Die(msg)| ("refused", msg))?;
-    Ok(serde_json::json!({ "line": plan::render_for(&plan, plan::terminal_shell()) }))
+    Ok(CcmLine {
+        line: plan::render_for(&plan, plan::terminal_shell()),
+    })
 }
 
 /// 设置窗合并预览的「等于」那一行：合好的意图 ＋「假设在这个目录敲」（`at`：`~` 打头按这台家目录展开；空 ⇒ 家目录）。

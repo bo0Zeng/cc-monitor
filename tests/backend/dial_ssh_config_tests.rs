@@ -213,10 +213,10 @@ fn expand_tilde_basics() {
     );
 }
 
-/// 「成品的两侧对拍」：三条 `ssh-config-*` 的线上形状 == 跨语言金样 `tests/__fixtures__/ssh-config.golden.json`
-/// （TS 解码器 `src/frontend/ui/ssh-config-reads.ts` 读同一份）。成品由生产构造器出（`answer_*` 用的同一个 `to_value` ＋ 聚合）。
+/// 「成品的两侧对拍」：`ssh-config-import` 的线上形状 == 金样 `tests/__fixtures__/ssh-config.golden.json`
+/// （界面那一侧的判据喂同一份）。成品由生产构造器出（聚合 ＋ 标「已在列表里」，经线上类型 `SshImported`）。
 #[test]
-fn the_three_products_match_the_cross_language_golden() {
+fn the_import_product_matches_the_cross_language_golden() {
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../__fixtures__/ssh-config.golden.json")).unwrap();
     let resolved = parse_ssh_g_output(
@@ -241,14 +241,9 @@ fn the_three_products_match_the_cross_language_golden() {
         }],
     );
     let got = serde_json::json!({
-        "ssh-config-aliases": { "aliases": parse_host_aliases("Host devbox-lan devbox-wan\nHost pi *\n") },
-        "ssh-config-resolve": to_value(&resolved),
-        "ssh-config-import": { "groups": to_value(&groups) },
+        "ssh-config-import": serde_json::to_value(SshImported { groups }).unwrap(),
     });
-    assert_eq!(
-        got, golden,
-        "三条成品的线上形状变了 ⇒ 金样与 TS 解码器同拍改"
-    );
+    assert_eq!(got, golden, "成品的线上形状变了 ⇒ 金样同拍改");
 }
 
 /// 「已在列表里」按地址 ＋ 用户 ＋ 端口认（不只按名字）：同地址换了用户 / 端口的不算；去首尾空白比。
@@ -303,7 +298,7 @@ fn in_list_is_judged_by_host_user_and_port() {
     }
     // 不交列表 ⇒ 拒（界面那一侧恒交，缺了是两侧对不上）。
     assert_eq!(
-        answer_import(&serde_json::json!({}))
+        crate::stream::inbound::typed::take::<SshImportReq>(&serde_json::json!({}))
             .map(|_| ())
             .unwrap_err()
             .code,

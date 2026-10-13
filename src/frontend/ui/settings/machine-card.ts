@@ -24,7 +24,6 @@ import type { ConnectStage } from "../generated/ConnectStage";
 import { openNewSession } from "../new-session";
 import { probeMachine, ProbeStalled, type ConnTestResult, type ProbeStop } from "../remote-probe";
 import { pushPublicKey } from "../pubkey-push";
-import type { ResolvedHost } from "../ssh-config-reads";
 import { confirmDialog } from "../kit/dialog";
 import { copyText } from "../copy-table";
 import { fold, setFoldSummary } from "../kit/fold";
@@ -324,18 +323,6 @@ export class MachineCard {
     this.connect = on;
     this.connectSwitch.set(on);
     this.hooks.onChange();
-  }
-
-  /** 导入别名时填充连接参数（host/port/user/keyPath + label=别名）。 */
-  applyResolved(resolved: ResolvedHost, alias: string): void {
-    if (!this.labelInput.value.trim()) this.labelInput.value = alias;
-    this.hostInput.value = resolved.host;
-    this.portInput.value = resolved.port ? String(resolved.port) : "22";
-    this.userInput.value = resolved.user;
-    this.keyPathInput.value = resolved.keyPath ?? "";
-    if (resolved.proxyJump) this.jumpInput.value = resolved.proxyJump; // 单别名也填跳板
-    this.acceptInputs();
-    this.updateLegend();
   }
 
   /** 把输入框里此刻的名字 / 地址 / 端口记成「被接受的」（初值与导入时用；用户改的走各自的校验）。 */

@@ -32,7 +32,6 @@ import {
   agentOnline,
   broadcast,
   checkSpawnShape,
-  decodeAgents,
   killAgent,
   MONITOR_BUS_ID,
   saidOfBroadcast,
@@ -43,6 +42,9 @@ import {
   spawnAgent,
 } from "../../../src/frontend/ui/cc-bus-control";
 import { ControlError } from "../../../src/frontend/ui/control-said";
+import type { BusSent } from "../../../src/frontend/ui/generated/BusSent";
+import type { BusSpawnedNow } from "../../../src/frontend/ui/generated/BusSpawnedNow";
+import type { BusBroadcast } from "../../../src/frontend/ui/generated/BusBroadcast";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, refusedReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
 import { copyText, type CopyKey } from "../../../src/frontend/ui/copy-table";
@@ -125,11 +127,6 @@ function thrownBy(act: () => unknown): string {
 
 describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出的成品", () => {
   it("★★ 查在线（bus-list）", async () => {
-    expect(decodeAgents("devbox", LIST.reply).map((a) => [a.id, a.live])).toEqual([
-      ["alpha_cc", true],
-      ["gone_cc", false],
-      ["x_cc", true],
-    ]);
     answer({ ok: LIST.reply });
     await expect(agentOnline("devbox", "alpha_cc")).resolves.toBe(true);
     await expect(agentOnline("devbox", "gone_cc")).resolves.toBe(false);
@@ -172,19 +169,6 @@ describe("〔C4e〕金样：请求体 == 金样、解码器读得懂后端真出
     await killAgent("devbox", "alpha_cc");
     const leftMs = (invokeMock.mock.calls[0][1] as ChanCallArgs).leftMs;
     expect(leftMs, "期限没交").toBeGreaterThan(0);
-  });
-
-  it("★ 形状不对 ⇒ 抛（多一格 / 缺一格 / 类型不对），不猜", () => {
-    const badList = [{ ...LIST.reply, extra: 1 }, { agents: [{ id: "a" }] }, { agents: "x" }, null];
-    for (const v of badList) expect(() => decodeAgents("devbox", v), JSON.stringify(v)).toThrow(ControlError);
-    const badSend = [{ ...SEND.reply, extra: 1 }, { ...SEND.reply, sent: false }, { ...SEND.reply, registered: "yes" }];
-    for (const v of badSend) expect(() => saidOfDelivery("devbox", "alpha_cc", v), JSON.stringify(v)).toThrow(ControlError);
-    const badBcast = [
-      { ...BCAST.reply, extra: 1 },
-      { ...BCAST.reply, sent: "1" },
-      { ...BCAST.reply, failed: [{ id: "x_cc", code: "child_timed_out", message: "d" }] },
-    ];
-    for (const v of badBcast) expect(() => saidOfBroadcast("devbox", v), JSON.stringify(v)).toThrow(ControlError);
   });
 });
 
@@ -249,10 +233,10 @@ describe("〔C4e〕查在线：问不到 ≠ 不在线", () => {
 describe("〔C4e〕回值几态逐态一句", () => {
   it("★★ 发消息：在线 / 不在线 / 没登记过 / 问不到在不在线 —— 四句两两不同", () => {
     const said = [
-      saidOfDelivery("devbox", "a_cc", { ...SEND.reply, live: true }),
-      saidOfDelivery("devbox", "a_cc", { ...SEND.reply, live: false }),
-      saidOfDelivery("devbox", "a_cc", { ...SEND.reply, registered: false, live: null }),
-      saidOfDelivery("devbox", "a_cc", { ...SEND.reply, live: null }),
+      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), live: true }),
+      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), live: false }),
+      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), registered: false, live: null }),
+      saidOfDelivery("a_cc", { ...(SEND.reply as unknown as BusSent), live: null }),
     ];
     expect(new Set(said).size, JSON.stringify(said)).toBe(4);
     expect(said[1]).toMatch(copyText("ccBus.check.offline"));
@@ -260,37 +244,34 @@ describe("〔C4e〕回值几态逐态一句", () => {
     expect(said[3]).toMatch(copyPattern("ccBus.send.unknownLive"));
   });
 
-  it("★★ 收掉：真收了 / 只摘了登记 / 两样都没发生 三句不同；形状不认识 ⇒「不知道收掉了没有」而不是「没收掉」", () => {
+  it("★★ 收掉：真收了 / 只摘了登记 / 两样都没发生 三句不同", () => {
     const said = [
-      saidOfKill("devbox", "a_cc", { id: "a_cc", killed: true, stale_only: false }),
-      saidOfKill("devbox", "a_cc", { id: "a_cc", killed: false, stale_only: true }),
-      saidOfKill("devbox", "a_cc", { id: "a_cc", killed: false, stale_only: false }),
+      saidOfKill("a_cc", { id: "a_cc", killed: true, stale_only: false }),
+      saidOfKill("a_cc", { id: "a_cc", killed: false, stale_only: true }),
+      saidOfKill("a_cc", { id: "a_cc", killed: false, stale_only: false }),
     ];
     expect(new Set(said).size, JSON.stringify(said)).toBe(3);
     expect(said[1]).toMatch(copyPattern("ccBus.kill.staleOnly"));
-    const unsure = thrownBy(() => saidOfKill("devbox", "a_cc", { id: "a_cc", killed: "yes" }));
-        expect(unsure).toMatch(copyPattern("ccBus.kill.unsure"));
   });
 
-  it("★★ 派生：认不出名字 ≠ 没起来（明说别重试）；形状不认识 ⇒「不确定起没起」", () => {
-    const done = saidOfSpawn(SPAWN.reply);
-    const noName = saidOfSpawn({ ...SPAWN.reply, id: null });
+  it("★★ 派生：认不出名字 ≠ 没起来（明说别重试）", () => {
+    const reply = SPAWN.reply as unknown as BusSpawnedNow;
+    const done = saidOfSpawn(reply);
+    const noName = saidOfSpawn({ ...reply, id: null });
     expect(done).toMatch(copyPattern("ccBus.spawn.done", { id: "proj_cc" }));
     expect(noName).toMatch(copyPattern("ccBus.spawn.noName"));
     expect(noName).toMatch(copyPattern("ccBus.spawn.noName"));
     expect(noName).not.toMatch(/失败|没有派生/);
-    const unsure = thrownBy(() => saidOfSpawn({ ...SPAWN.reply, spawned: false }));
-    expect(unsure).toMatch(copyText("ccBus.spawn.unsure"));
   });
 
   it("★★ 广播：发到几个 · 跳过几个 · 失败几个分开说；问不到谁在线时明说全发了 —— 四形两两不同", () => {
-    const base = { sent: 3, skipped_offline: 2, liveness_unknown: false, failed: [] as unknown[] };
+    const base: BusBroadcast = { sent: 3, skipped_offline: 2, liveness_unknown: false, failed: [] };
     const one = [{ id: "x_cc", error: "child_timed_out", detail: "d" }];
     const said = [
-      saidOfBroadcast("devbox", base),
-      saidOfBroadcast("devbox", { ...base, failed: one }),
-      saidOfBroadcast("devbox", { ...base, skipped_offline: 0, liveness_unknown: true }),
-      saidOfBroadcast("devbox", { ...base, skipped_offline: 0, liveness_unknown: true, failed: one }),
+      saidOfBroadcast(base),
+      saidOfBroadcast({ ...base, failed: one }),
+      saidOfBroadcast({ ...base, skipped_offline: 0, liveness_unknown: true }),
+      saidOfBroadcast({ ...base, skipped_offline: 0, liveness_unknown: true, failed: one }),
     ];
     expect(new Set(said).size, JSON.stringify(said)).toBe(4);
     expect(said[0]).toMatch(copyPattern("ccBus.broadcast.done", { sent: 3, skipped: 2 }));

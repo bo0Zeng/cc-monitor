@@ -1,11 +1,8 @@
 /**
- * 「成品的两侧对拍：界面按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛「两端契约对不上」，不猜）；线上形状由一份跨语言金样钉住」。
- *
- * 别名接入那几问（`aliases-*`）走通道：解码器读后端测试对拍过的同一份金样（`aliases.golden.json`）；
- * 请求问对那台、说对那条、参数原样。
+ * 别名接入那几问（`aliases-*`）走通道、按类型问：后端测试对拍过的同一份金样（`aliases.golden.json`）原样交到调用方
+ * （回包形状由握手时的形状指纹管，这里不逐格判）；请求问对那台、说对那条、参数原样。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { peerVersionSaid, ReplyUnreadable } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -13,7 +10,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
 import {
-  decodeAliasListing,
   installAliasBlock,
   readAliases,
   removeAliasBlock,
@@ -32,31 +28,12 @@ beforeEach(() => {
   invokeMock.mockReset();
 });
 
-describe("金样：后端出的成品，TS 读得懂", () => {
-  it("aliases-read：启动文件候选", () => {
-    const l = decodeAliasListing(G.readReply);
+describe("金样：后端出的成品，原样交到调用方", () => {
+  it("aliases-read：启动文件候选", async () => {
+    invokeMock.mockResolvedValueOnce(chanReply(G.readReply));
+    const l = await readAliases("<local>", "posix", null);
     expect(l.home).toBe("<HOME>");
     expect(l.rcCandidates.map((c) => c.block.present)).toEqual([false]);
-  });
-});
-
-describe("严格收", () => {
-  it("多一格 / 缺一格 / 类型不对 ⇒ 抛（每一层都查）", () => {
-    const r = G.readReply as Record<string, unknown>;
-    expect(() => decodeAliasListing({ ...r, boundTerminals: 2 })).toThrow(ReplyUnreadable);
-    const { otherRc: _o, ...short } = r;
-    expect(() => decodeAliasListing(short)).toThrow(ReplyUnreadable);
-    const cands = r.rcCandidates as Record<string, unknown>[];
-    const c0 = cands[0] as Record<string, unknown>;
-    expect(() => decodeAliasListing({ ...r, rcCandidates: [{ ...c0, block: { ...(c0.block as object), extra: 1 } }] })).toThrow(
-      ReplyUnreadable,
-    );
-  });
-  it("块那三口：预览只收 `{text}`；装 / 卸只收 `{}`", async () => {
-    invokeMock.mockResolvedValueOnce(chanReply({ text: "x", more: 1 }));
-    await expect(renderAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(peerVersionSaid("reply_unreadable", "devbox"));
-    invokeMock.mockResolvedValueOnce(chanReply({ ok: true }));
-    await expect(removeAliasBlock("devbox", "~/.bashrc")).rejects.toThrow(peerVersionSaid("reply_unreadable", "devbox"));
   });
 });
 

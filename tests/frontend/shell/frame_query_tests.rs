@@ -89,12 +89,14 @@ fn backend_command_blocks() -> Vec<(String, String)> {
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
-        // 全文搜索那两条、读一份会话记录的那几条成了 typed 命令，只读宿主是 `faces/search_face.rs` · `faces/history_face.rs`（第 8 批从 `read_face` 分出去）。
+        // 全文搜索那两条、读一份会话记录的那几条成了 typed 命令，只读宿主是 `faces/search_face.rs` · `faces/history_face.rs`（第 8 批从 `read_face` 分出去）；
+        //   `backend-log` 成了 typed，类型仍住 `faces/read_face.rs`。
         .filter(|(_, blk)| {
             blk.contains("read_face::answer")
                 || (blk.starts_with("typed::")
                     && (blk.contains("faces::search_face::")
-                        || blk.contains("faces::history_face::")))
+                        || blk.contains("faces::history_face::")
+                        || blk.contains("faces::read_face::")))
         })
         .map(|(name, _)| name)
         .collect();

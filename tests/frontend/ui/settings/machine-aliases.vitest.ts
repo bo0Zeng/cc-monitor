@@ -3,7 +3,8 @@
 // 这里钉的是接入那一半与整块的读法：接入在最上 · 同名函数交给清单那一块画三个选择 · 构造零 I/O · 重读 · 远端同一个组件。
 // shell 文本长什么样归后端 `tests/backend/assets/aliases/`，本文件一个字节的 shell 文本都不断言。
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import type { ExecPolicy, NameClash } from "../../../../src/frontend/ui/alias-reads";
+import type { ExecPolicy } from "../../../../src/frontend/ui/alias-reads";
+import type { AliasNameClash as NameClash } from "../../../../src/frontend/ui/generated/AliasNameClash";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { factsOn } from "../../../test-support/host-facts";
 

@@ -4,6 +4,40 @@ use super::*;
 use std::sync::atomic::AtomicUsize;
 use tokio::io::AsyncWriteExt;
 
+// 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份（判据照线上形比）。
+async fn start_with<F, Fut>(
+    args: &Value,
+    reach: &remote_ask::Table,
+    ledger: &Ledger,
+    serve: F,
+) -> Result<Value, (&'static str, String)>
+where
+    F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    let req: ForwardStartReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::start_with(&req, reach, ledger, serve)
+        .await
+        .map(|r| serde_json::to_value(r).unwrap())
+}
+
+fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
+    let req: ForwardStartReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    spec_of(&req)
+}
+
+fn list_with(ledger: &Ledger) -> Value {
+    serde_json::to_value(super::list_with(ledger)).unwrap()
+}
+
+fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, (&'static str, String)> {
+    let req: ForwardId =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::stop_with(req, ledger).map(|r| serde_json::to_value(r).unwrap())
+}
+
 fn table_with(origin: &str) -> remote_ask::Table {
     let t: remote_ask::Table = Mutex::new(BTreeMap::new());
     remote_ask::register(

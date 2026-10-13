@@ -14,7 +14,6 @@ const RAW_NAMES: &[&str] = &["e", "err", "stderr", "stdout", "out"];
 
 /// 今天还在的那几处（文件 → 处数），各带理由。改好一处就减一（两向相等：多了红、少了不减也红）。
 const LEDGER: &[(&str, usize, &str)] = &[
-    ("assets/aliases/mod.rs", 1, "自己的应答序列化不出（实际到不了）"),
     ("assets/ext.rs", 3, "自己的应答序列化不出（实际到不了）"),
     ("control/session_batch.rs", 2, "批量起：第二格是那一项的「原话」格（进 detail，那一句另由 said 出），另一处是找不到自身可执行文件"),
     ("faces/read_face.rs", 3, "读面开文件 / 序列化：待收进带原话的读法"),

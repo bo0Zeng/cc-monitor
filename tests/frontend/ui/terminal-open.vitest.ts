@@ -19,7 +19,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import {
   openTerminal,
-  decodeTerminalLine,
   NoTerminalWindow,
 } from "../../../src/frontend/ui/terminal-open";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
@@ -34,7 +33,6 @@ import {
   productionTsFiles,
 } from "../../test-support/production-sources.ts";
 import { stripComments } from "../../test-support/strip-comments.ts";
-import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const FACTS = {
@@ -122,19 +120,11 @@ describe("不开窗", () => {
 });
 
 describe("问不到", () => {
-  it("★ 后端不在 / 形状不认 ⇒ 抛，一个窗口都不开；正控：认得的那一形照开", async () => {
+  // 回包的形状由握手时的形状指纹管（对不上就不发、说「后端版本不同」），界面不再逐格判。
+  it("★ 后端不在 ⇒ 抛，一个窗口都不开", async () => {
     serve(() => undefined);
     await expect(openTerminal("devbox", "x")).rejects.toThrow();
-    serve(() => ({ command: LINE, extra: 1 }));
-    await expect(openTerminal("devbox", "x")).rejects.toThrow(
-      copyPattern("peerVersion.said.unreadable"),
-    );
-    serve(() => ({ command: "" }));
-    await expect(openTerminal("devbox", "x")).rejects.toThrow(
-      copyPattern("peerVersion.said.unreadable"),
-    );
     expect(calls("open_terminal_window")).toEqual([]);
-    expect(decodeTerminalLine({ command: LINE })).toBe(LINE);
   });
 });
 

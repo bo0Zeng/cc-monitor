@@ -22,7 +22,7 @@
         { "id": "x_cc", "target": "x_cc:0.0", "unread": 1, "live": true, "ccm_sid": null }
       ]
     },
-    "codes": ["not_installed", "child_timed_out", "failed"]
+    "codes": ["bad_args", "not_installed", "child_timed_out", "failed"]
   },
   "bus-send": {
     "request": { "to": "alpha_cc", "text": "hi", "from": "cc-monitor" },

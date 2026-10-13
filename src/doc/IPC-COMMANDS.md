@@ -5879,13 +5879,96 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --aliases-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `home` | ← | 这台的家目录 |
-| `otherRc` | ← | `rcPath` 过了围栏之后的绝对路径 |
-| `rcCandidates` | ← | 启动文件候选（方言答列哪几份）：每份 `{path, sourced, exists, block, unreadable, policy, blockLines}`（`blockLines` = 把别名块装进这一份会写几行），`block` = 别名块现状 `{present, conflictingFunctions}`（`conflictingFunctions` = 块外自己定义的、与配置文件里某一段同名的函数 `{name, line, wins}`；`wins` = 新开的终端里敲这个名字起的是哪一个：`yours`（你写的）· `list`（清单那条）· `unclear`（说不清）） |
-| `rcPath` | → | 人另指的那一份（`null` = 不指）：过围栏（只许落在 home 之内 · 符号链接不许跑出去）后并进候选 |
-| `shell` | → | `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒） |
+入参 `AliasesReadReq` · 回包 `AliasListing`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AliasBlockState = { 
+/**
+ * 这份文件里有没有 cc-monitor 的别名块（**悬空的 BEGIN 也算在**，见 `block_presence`）。
+ */
+present: boolean, 
+/**
+ * 块外自己定义的、与清单里某条同名的函数（只提醒，不替人改）。
+ */
+conflictingFunctions: Array<AliasNameClash>, };
+type AliasListing = { 
+/**
+ * 这台的家目录（界面拿它把路径写成 `~/…` 短形，只做这一步缩写）。
+ */
+home: string, 
+/**
+ * 这台机器上这种 shell 的启动文件候选（「那一行 source 加进哪份」·「别名块装进哪份」，同一批）。
+ */
+rcCandidates: Array<AliasStartupFile>, 
+/**
+ * 人另指的那一份（`read_via` 的 `extra_rc`）过了围栏之后的绝对路径 —— 界面拿它在候选里认出「刚指的是哪一份」。
+ */
+otherRc: string | null, };
+type AliasNameClash = { name: string, 
+/**
+ * 1 起的行号。
+ */
+line: number, 
+/**
+ * 新开的终端里敲这个名字，起的是哪一个（[`Wins`]）。
+ */
+wins: AliasWins, };
+type AliasStartupFile = { 
+/**
+ * 绝对路径。
+ */
+path: string, 
+/**
+ * 这份文件今天已经把生成文件 `source` 进去了吗（装过 ccm 别名块的人这一格就是 true）。
+ */
+sourced: boolean, 
+/**
+ * 这份文件在不在盘上。POSIX 只列在的（恒 true）；PowerShell 的 `$PROFILE` 常常要装的时候才建。
+ */
+exists: boolean, 
+/**
+ * 这份文件里别名块的现状（不在盘上 ⇒ 全空）。
+ */
+block: AliasBlockState, 
+/**
+ * 在盘上、可那台后端读不了它（非 UTF-8 · 太大 · 解到 home 外 · I/O）—— 后端原话；`None` = 读得了或不在。
+ * 从前本机直读时这一形被吞成「没有别名块」。
+ */
+unreadable: string | null, 
+/**
+ * 加载它的那一代 PowerShell 的执行策略（现问；块装在这里它会不会跑）。POSIX 与人另指的那一份 ⇒ `None`。
+ */
+policy: PsExecPolicy | null, 
+/**
+ * 把别名块装进这一份会写几行（与装进去的那一块同源：[`block::render_block`]，方言按这份的扩展名；渲染不出 ⇒ 0）。
+ */
+blockLines: number, };
+type AliasWins = "yours" | "list" | "unclear";
+type AliasesReadReq = { 
+/**
+ * `posix` / `powershell`（这台后端不在 Windows ⇒ `powershell` 拒）。
+ */
+shell: ShellKind, rcPath?: string | null, };
+type PsExecPolicy = { host: PsHost, 
+/**
+ * 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原因词在 `error`。
+ */
+effective: string | null, 
+/**
+ * 按这一档，这一代会不会加载本地、未签名的 profile；说不清 ⇒ `None`。
+ */
+loads: boolean | null, 
+/**
+ * 组策略（`MachinePolicy` / `UserPolicy`）钉着 ⇒ 改当前用户那一档没用。
+ */
+groupPolicy: boolean, 
+/**
+ * 问不到的原因词（原因词闭集里的一个；PowerShell / 系统的原话只记一行日志，不随应答走）。
+ */
+error: string | null, };
+type PsHost = "powershell" | "pwsh";
+type ShellKind = "posix" | "powershell";
+```
 
 码：`bad_args` · `refused`
 
@@ -5979,10 +6062,12 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-block-render`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rcPath` | → | 目标文件（方言由它的扩展名定：`.ps1` ⇒ PowerShell） |
-| `text` | ← | 往一份空文件里装一次会写成什么（与 `aliases-block-install` 调同一个 `plan_install`） |
+入参 `BlockReq` · 回包 `BlockText`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BlockReq = { rcPath: string, };
+type BlockText = { text: string, };
+```
 
 码：`bad_args` · `refused`
 
@@ -5992,9 +6077,12 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-block-install`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rcPath` | → | 人选的那份启动文件（过围栏；方言由扩展名定，再过方言那一道闸） |
+入参 `BlockReq` · 回包 `BlockDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BlockDone = Record<symbol, never>;
+type BlockReq = { rcPath: string, };
+```
 
 码：`bad_args` · `refused`
 
@@ -6004,9 +6092,12 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --aliases-block-remove`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `rcPath` | → | 同 `aliases-block-install` |
+入参 `BlockReq` · 回包 `BlockDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BlockDone = Record<symbol, never>;
+type BlockReq = { rcPath: string, };
+```
 
 码：`bad_args` · `refused`
 
@@ -6018,16 +6109,35 @@ cc-bus 钩子诊断。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agents` | ← | 在线成员，每项 `{id, target, unread, live, ccm_sid}` |
-| `ccm_sid` | ← | 那个会话绑的会话 id，没绑 ⇒ `null` |
-| `id` | → ← | 总线身份 |
-| `live` | ← | 这个地址**今天还在不在** |
-| `target` | ← | tmux 地址 |
-| `unread` | ← | 待读条数 |
+入参 `NoArgs` · 回包 `BusList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`not_installed` · `child_timed_out` · `failed`
+```ts
+type BusAgent = { 
+/**
+ * 总线身份。
+ */
+id: string, 
+/**
+ * tmux 地址。
+ */
+target: string, 
+/**
+ * 待读条数。
+ */
+unread: number, 
+/**
+ * 这个地址今天还在不在：`true` / `false` / `null`（问不到身份空间，**不是**「不在」）。
+ */
+live: boolean | null, 
+/**
+ * 那个会话绑的会话 id，没绑 ⇒ `null`。
+ */
+ccm_sid: string | null, };
+type BusList = { agents: Array<BusAgent>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
 
 #### `bus-broadcast`
 
@@ -6035,17 +6145,33 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-broadcast`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `detail` | ← | 失败那一项的原话 |
-| `error` | ← | 失败那一项的码（`bus-send` 那一套） |
-| `failed` | ← | 逐个列， `{id, error, detail}`，`error` 是 `bus-send` 那一套码；键刻意不叫 `code` / `message` —— 那一对是整条失败的错误信封 |
-| `from` | → | **可选**，同 `bus-send`：以谁的身份发，也用来「不发给自己」 |
-| `id` | → ← | 失败那一项的收件人 |
-| `liveness_unknown` | ← | 问不到身份空间（全是 `null`），退回发给所有登记的 |
-| `sent` | ← | 投出去几条 |
-| `skipped_offline` | ← | 因不在线跳过几个 |
-| `text` | → | 正文（非空） |
+入参 `BusBroadcastReq` · 回包 `BusBroadcast`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusBroadcast = { sent: number, skipped_offline: number, 
+/**
+ * 问不到身份空间（全是 `null`），退回发给所有登记的。
+ */
+liveness_unknown: boolean, failed: Array<BusUndelivered>, };
+type BusBroadcastReq = { 
+/**
+ * 正文（非空）。
+ */
+text: string, 
+/**
+ * 以谁的身份发，也用来「不发给自己」（可缺）。
+ */
+from?: string | null, };
+type BusUndelivered = { id: string, 
+/**
+ * `bus-send` 那一套码。
+ */
+error: string, 
+/**
+ * 原话。
+ */
+detail: string, };
+```
 
 码：`bad_args` · `not_installed` · `child_timed_out` · `failed` · `bad_id`
 
@@ -6055,11 +6181,24 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-kill`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → ← | 总线身份 |
-| `killed` | ← | 会话真的被杀了 |
-| `stale_only` | ← | 身份对不上：只摘掉那条陈旧登记，会话与收件箱都没动 |
+入参 `BusKillReq` · 回包 `BusKilled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusKillReq = { 
+/**
+ * 总线身份。
+ */
+id: string, };
+type BusKilled = { id: string, 
+/**
+ * 会话真的被杀了。
+ */
+killed: boolean, 
+/**
+ * 身份对不上：只摘掉那条陈旧登记，会话与收件箱都没动。
+ */
+stale_only: boolean, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
@@ -6069,13 +6208,36 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-send`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `from` | → ← | **可选**：自报的发件人；应答里回显实际用的那个 |
-| `live` | ← | 那个会话今天活着吗，与 `bus-list` 同一套三态 |
-| `registered` | ← | 在总线名单里吗 |
-| `sent` | ← | 投出去了 |
-| `to` | → ← | 收件人身份 |
+入参 `BusSendReq` · 回包 `BusSent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusSendReq = { 
+/**
+ * 收件人身份。
+ */
+to: string, text: string, 
+/**
+ * 以谁的身份发（可缺；空白当没给）。
+ */
+from?: string | null, };
+type BusSent = { to: string, 
+/**
+ * 投出去了（恒 `true`）。
+ */
+sent: boolean, 
+/**
+ * 在总线名单里吗。
+ */
+registered: boolean, 
+/**
+ * 那个会话今天活着吗，与 `bus-list` 同一套三态。
+ */
+live: boolean | null, 
+/**
+ * 实际以谁的身份发的（没给 ⇒ `null`）。
+ */
+from: string | null, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `rejected` · `child_timed_out` · `too_long` · `failed`
 
@@ -6085,11 +6247,44 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-spawn`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → ← | 新会话的总线身份；从 `cc-spawn` 的回显里认，**认不出就是 `null`** —— 那是「起了，但名字没认出来」，**不是**「没起来」 |
-| `said` | ← | `cc-spawn` 的原始回显，给人看 |
-| `spawned` | ← | 恒 `true` |
+入参 `BusSpawnReq` · 回包 `BusSpawnedNow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusSpawnReq = { 
+/**
+ * 哪一家（缺 / 空 ⇒ 默认那一家）。
+ */
+tool?: string | null, 
+/**
+ * 工作目录（非空）。
+ */
+dir: string, 
+/**
+ * 交给新会话的任务（可缺）。
+ */
+task?: string | null, 
+/**
+ * 用哪个号起。
+ */
+account?: string | null, 
+/**
+ * 显式不注入账号。
+ */
+base?: boolean | null, };
+type BusSpawnedNow = { 
+/**
+ * 恒 `true`。
+ */
+spawned: boolean, 
+/**
+ * 新会话的总线身份；从回显里认不出 ⇒ `null`（起了，只是名字没认出来，**不是**没起来）。
+ */
+id: string | null, 
+/**
+ * `cc-spawn` 的原始回显，给人看。
+ */
+said: string, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
@@ -6099,22 +6294,48 @@ cc-bus 钩子诊断。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-state`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agents` | ← | 名册，每项 `{id, target, registered_at, unread, live, ccm_sid}` |
-| `ccm_sid` | ← | 后两格与 `bus-list` 同一套：对身份空间对账，「登记 ≠ 在线」 |
-| `dir` | ← | 派生时的目录 |
-| `id` | → ← | 总线身份 |
-| `live` | ← | 三态：`true` / `false` / `null` = 核不了，**不是**「不在」 |
-| `registered_at` | ← | 登记时间，cc-bus 原样 |
-| `skipped` | ← | 两张表里读不懂的行数 |
-| `spawned` | ← | `cc-spawn` 派生过的会话，每项 `{id, dir, spawned_at, task, live}` |
-| `spawned_at` | ← | 派生时间 |
-| `target` | ← | 登记的 pane 地址 |
-| `task` | ← | 余下全部，含 TAB |
-| `unread` | ← | 待读条数 |
+入参 `NoArgs` · 回包 `BusState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`not_installed` · `child_timed_out` · `failed`
+```ts
+type BusRosterRow = { id: string, 
+/**
+ * 登记的 pane 地址。
+ */
+target: string, 
+/**
+ * 登记时间，cc-bus 原样。
+ */
+registered_at: string, unread: number, 
+/**
+ * 三态，同 [`BusAgent::live`]。
+ */
+live: boolean | null, ccm_sid: string | null, };
+type BusSpawned = { id: string, 
+/**
+ * 派生时的目录。
+ */
+dir: string, 
+/**
+ * 派生时间。
+ */
+spawned_at: string, 
+/**
+ * 余下全部，含 TAB。
+ */
+task: string, 
+/**
+ * 三态：`true` / `false` / `null` = 核不了。
+ */
+live: boolean | null, };
+type BusState = { agents: Array<BusRosterRow>, spawned: Array<BusSpawned>, 
+/**
+ * 两张表里读不懂的行数。
+ */
+skipped: number, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
 
 #### `bus-inbox`
 
@@ -6122,17 +6343,45 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-inbox`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `class` | ← | 消息类别（cc-bus 原样） |
-| `from` | ← | 发件人 |
-| `id` | → | 必给；交给 `cc-log` 之前先过 `bus_id_ok`，不过 ⇒ `bad_id`、一个进程都不起 |
-| `lines` | → | 可缺席，1..=2000，缺省 200 |
-| `messages` | ← | 逐行解析，只取 `from` · `ts` · `text` · `class`；`from` 与 `text` 都空的行不算消息 |
-| `skipped` | ← | 读不懂的行数 |
-| `text` | ← | 正文 |
-| `truncated` | ← | 回显超过 4 MiB ⇒ 保尾，`true` |
-| `ts` | ← | 时间 |
+入参 `BusInboxReq` · 回包 `BusInbox`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusInbox = { messages: Array<BusMessage>, 
+/**
+ * 读不懂的行数。
+ */
+skipped: number, 
+/**
+ * 回显超过 4 MiB ⇒ 保尾，`true`。
+ */
+truncated: boolean, };
+type BusInboxReq = { 
+/**
+ * 交给 `cc-log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
+ */
+id: string, 
+/**
+ * 1..=2000，缺 ⇒ 200。
+ */
+lines?: number, };
+type BusMessage = { 
+/**
+ * 发件人。
+ */
+from: string, 
+/**
+ * 时间。
+ */
+ts: string, 
+/**
+ * 正文。
+ */
+text: string, 
+/**
+ * 消息类别（cc-bus 原样）。
+ */
+class: string, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
@@ -6254,9 +6503,74 @@ type WireContainer = { "kind": "none" } | { "kind": "tmux", name: string, send_i
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-ssh`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'` |
+入参 `TerminalSshReq` · 回包 `SshCommand`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type Prefer = { host: string, port: number, };
+type SshCommand = { 
+/**
+ * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
+ */
+command: string, };
+type TerminalSshReq = { 
+/**
+ * 那台的配置（可能还没保存）。
+ */
+machine: MachineConfig, 
+/**
+ * 已保存的那一份（指纹只从同一个 host 的那一份继承）。
+ */
+saved?: MachineConfig | null, 
+/**
+ * 跳板那一台的配置（`machine.jump` 指它时必给）。
+ */
+jump?: MachineConfig | null, 
+/**
+ * 上次赢的那条地址（仍在这台的地址里 ⇒ 用它）。
+ */
+prefer?: Prefer | null, 
+/**
+ * 要在那台跑的命令。
+ */
+command?: string, 
+/**
+ * 在那台的这个目录开登录 shell（串，或非 UTF-8 的 `{"b16": "<hex>"}`）。
+ */
+cwd?: string | { b16: string }, };
+```
 
 码：`bad_args` · `bad_jump` · `refused` · `no_ssh_client` · `unobservable`
 
@@ -7841,10 +8155,16 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `args` | → | 一条别名的预置参数（原样 ccm argv，`<交给 agent 的…> -- <ccm 的…>` 那一形；最多 64 个、每个最长 4096 字节） |
-| `line` | ← | `ccm --print` 那一行 |
+入参 `CcmPrintReq` · 回包 `CcmLine`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CcmLine = { line: string, };
+type CcmPrintReq = { 
+/**
+ * 最多 64 个、每个最长 4096 字节。
+ */
+args: Array<string>, };
+```
 
 码：`bad_args` · `refused`
 
@@ -7854,12 +8174,30 @@ type Mode = "create-or-attach" | "send-into";
 
 不收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agents` | ← | 认得的 agent 种类 |
-| `build` | ← | 这一份的 `BUILD_ID` |
-| `capabilities` | ← | 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份） |
-| `version` | ← | CLI 契约版本（`CCM_VERSION`） |
+入参 `NoArgs` · 回包 `CcmCard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CcmCard = { 
+/**
+ * CLI 契约版本（`CCM_VERSION`）。
+ */
+version: string, 
+/**
+ * 这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份）。
+ */
+capabilities: Array<string>, 
+/**
+ * 认得的 agent 种类。
+ */
+agents: Array<string>, 
+/**
+ * 这一份的 `BUILD_ID`。
+ */
+build: string, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
 
 #### `deploy-plan`
 
@@ -7867,17 +8205,88 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · CLI：`ccm -- --deploy-plan`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `ack` | ← | 问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定） |
-| `action` | ← | `skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它） |
-| `arch` | ← | 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`） |
-| `expected` | ← | 那一格这一版带着的字节自报的身份（对照物） |
-| `label` | ← | 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`） |
-| `leftovers` | ← | 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问） |
-| `os` | ← | 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`） |
-| `theirs` | ← | `keep` 时那台上那一份自报的身份，否则 `null` |
-| `why` | ← | 人读原因（`skip` 时空串） |
+入参 `DeployPlanReq` · 回包 `Planned`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Carried = { os: string, arch: string, id: string, };
+type DeployPlanReq = { dial: MachineDial, carried: Array<Carried>, 
+/**
+ * 那台的名字（非空）。
+ */
+machine: string, };
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+/**
+ * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+ */
+use?: string | null, 
+/**
+ * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+ */
+agent_sock?: string | null, };
+type Planned = { 
+/**
+ * 那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）。
+ */
+os: string, arch: string, label: string, 
+/**
+ * 那一格这一版带着的字节自报的身份（对照物）。
+ */
+expected: string, 
+/**
+ * `skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）。
+ */
+action: "skip" | "deploy" | "keep", 
+/**
+ * 人读原因（`skip` 时空串）。
+ */
+why: string, 
+/**
+ * `keep` 时那台上那一份自报的身份，否则 `null`。
+ */
+theirs: string | null, 
+/**
+ * 落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）。
+ */
+leftovers: Array<string>, 
+/**
+ * 问 `uname` 那一趟拨号的 ack 原样（逐地址指纹 · 严格与否，拨号核心 `DialAck` 那一形）：monitor 按它固化指纹。
+ */
+ack: unknown, };
+type Prefer = { host: string, port: number, };
+```
 
 码：`bad_args` · `io_failed` · `refused` · `unreachable` · `undecidable`
 
@@ -7903,12 +8312,24 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --place-verdict`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `action` | ← | `place`（放 / 换上去）· `keep`（盘上那一份不比这一份旧 ⇒ 不动、用它） |
-| `dest` | → | 落点的绝对路径（不在 ⇒ 没装 ⇒ 放；读不了 ⇒ `undecidable`，不当成没装） |
-| `machine` | → | 对人说话时这台叫什么（monitor 交「本机」） |
-| `why` | ← | 人读原因（`keep` 时点名两边各是哪一版） |
+入参 `PlaceReq` · 回包 `PlaceAnswer`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PlaceAnswer = { 
+/**
+ * `place`（放 / 换上去）· `keep`（盘上那一份不比这一份旧 ⇒ 不动、用它）。
+ */
+action: "place" | "keep", 
+/**
+ * 人读原因（`keep` 时点名两边各是哪一版）。
+ */
+why: string, };
+type PlaceReq = { 
+/**
+ * 不在 ⇒ 没装 ⇒ 放；读不了 ⇒ `undecidable`，不当成没装。
+ */
+dest: string, machine: string, };
+```
 
 码：`bad_args` · `refused` · `undecidable`
 
@@ -7918,15 +8339,75 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · CLI：`ccm -- --pubkey-push`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `jump` | → | 同 `remote-probe` |
-| `machine` | → | 同 `remote-probe` |
-| `outcome` | ← | `added`（新加的）· `already`（本就有整行相等的一行，没写） |
-| `pubKeyPath` | → | 本机那份 `.pub` 的路径；缺席 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让用户挑文件） |
-| `pubPath` | ← | 实际推的是哪一份（给人看） |
-| `saved` | → | 同 `remote-probe` |
-| `via` | ← | 走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec） |
+入参 `PubkeyPushReq` · 回包 `PubkeyPushed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type PubkeyPushReq = { 
+/**
+ * 那台的配置（设置页表单里那台，可能还没保存）。
+ */
+machine: MachineConfig, 
+/**
+ * 已保存的那一份。
+ */
+saved?: MachineConfig | null, 
+/**
+ * 跳板那一台。
+ */
+jump?: MachineConfig | null, 
+/**
+ * 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
+ */
+pubKeyPath?: string | null, };
+type PubkeyPushed = { 
+/**
+ * `added`（新加的）· `already`（本就有整行相等的一行，没写）。
+ */
+outcome: PushOutcome, 
+/**
+ * 实际推的是哪一份（给人看）。
+ */
+pubPath: string, 
+/**
+ * 走了哪条。
+ */
+via: PushVia, };
+type PushOutcome = "added" | "already";
+type PushVia = "backend" | "exec";
+```
 
 码：`bad_args` · `bad_jump` · `refused` · `failed`
 
@@ -7936,10 +8417,13 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --authorized-keys-add`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `key` | → | 一行公钥（本条自己也校验一遍） |
-| `outcome` | ← | `added` · `already` |
+入参 `KeyAddReq` · 回包 `KeyAdded`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type KeyAddReq = { key: string, };
+type KeyAdded = { outcome: PushOutcome, };
+type PushOutcome = "added" | "already";
+```
 
 码：`bad_args` · `refused` · `io_failed`
 
@@ -7949,14 +8433,38 @@ type Mode = "create-or-attach" | "send-into";
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --exit-policy-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `detail` | ← | `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话 |
-| `killOnExit` | ← | monitor 退出时结束本机常驻后端 |
-| `path` | ← | 那份文件的路径（在 `~/.cc-monitor/` 下） |
-| `reason` | ← | `unreadable` 时的原因 |
-| `said` | ← | 这个值意味着什么的一句话 |
-| `state` | ← | `absent`（没设过）· `chosen` · `unreadable`（读不出：也是 `ok:true`） |
+入参 `NoArgs` · 回包 `ExitPolicy`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExitPolicy = { 
+/**
+ * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）。
+ */
+state: "absent" | "chosen" | "unreadable", 
+/**
+ * 生效值：monitor 退出时结束本机常驻后端。
+ */
+killOnExit: boolean, 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答）。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（在 `~/.cc-monitor/` 下；家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 这个值意味着什么的一句话。
+ */
+said: string, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
 
 #### `exit-policy-set`
 
@@ -7964,14 +8472,36 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --exit-policy-set`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `detail` | ← | 同 `exit-policy-read` |
-| `killOnExit` | → ← | 要写的值（布尔） |
-| `path` | ← | 同 `exit-policy-read` |
-| `reason` | ← | 同 `exit-policy-read` |
-| `said` | ← | 同 `exit-policy-read` |
-| `state` | ← | 写完再读一遍的状态 |
+入参 `ExitPolicySet` · 回包 `ExitPolicy`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExitPolicy = { 
+/**
+ * `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）。
+ */
+state: "absent" | "chosen" | "unreadable", 
+/**
+ * 生效值：monitor 退出时结束本机常驻后端。
+ */
+killOnExit: boolean, 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答）。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（在 `~/.cc-monitor/` 下；家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 这个值意味着什么的一句话。
+ */
+said: string, };
+type ExitPolicySet = { killOnExit: boolean, };
+```
 
 码：`bad_args` · `io_failed`
 
@@ -7981,15 +8511,36 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | → | 哪一家的那一份（适配器 id）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家 |
-| `listening` | ← | 这台我们的中转此刻在不在听（与 `accounts-list` 账号徽章的「中转未运行」同一个判准：`relay::our_relay_listening`） |
-| `missing` | ← | 那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串 |
-| `note` | ← | 那份文件为什么读不了（`unreadable` 才有，其余空串） |
-| `snippet` | ← | 要合并进那份文件的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null` |
-| `source` | ← | 读的是哪份文件（这台后端看到的路径） |
-| `state` | ← | `installed`（写着的就是现在那一条）· `stale`（是我们那一形 |
+入参 `OptinReq` · 回包 `Optin`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Optin = { 
+/**
+ * `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
+ */
+state: "installed" | "stale" | "absent" | "other" | "unreadable", 
+/**
+ * 那份文件为什么读不了（`unreadable` 才有，其余空串）。
+ */
+note: string, 
+/**
+ * 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
+ */
+missing: string, 
+/**
+ * 读的是哪份文件（这台后端看到的路径）。
+ */
+source: string, 
+/**
+ * 要合并进那份文件的那一段（**带钥匙**）；已装或生成不了 ⇒ `null`。
+ */
+snippet: string | null, 
+/**
+ * 这台我们的中转此刻在不在听。
+ */
+listening: boolean, };
+type OptinReq = { agent: string, };
+```
 
 码：`bad_args` · `failed`
 
@@ -8011,16 +8562,73 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | ← | 这条转发的号（`fwd-<n>`，本进程内单调） |
-| `jump` | → | 跳板那一台的配置（可缺） |
-| `localPort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `machine` | → | 那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`ssh-dial/machine.rs`，同 `remote-probe`），不拒 |
-| `origin` | → | 那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求） |
-| `remoteHost` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `remotePort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `saved` | → | 已保存的那一份机器配置（可缺） |
+入参 `ForwardStartReq` · 回包 `ForwardStarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForwardStartReq = { 
+/**
+ * 那台的名字（可达表的键）。
+ */
+origin: string, 
+/**
+ * 绑本机 `127.0.0.1:localPort`。
+ */
+localPort: number, 
+/**
+ * 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
+ */
+remoteHost: string, remotePort: number, 
+/**
+ * 那台的配置（可达表里**没有**那台、流没起来时按它组请求去拨，不拒）。
+ */
+machine?: MachineConfig | null, 
+/**
+ * 已保存的那一份。
+ */
+saved?: MachineConfig | null, 
+/**
+ * 跳板那一台。
+ */
+jump?: MachineConfig | null, };
+type ForwardStarted = { 
+/**
+ * `fwd-<n>`，本进程内单调。
+ */
+id: string, };
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+```
 
 码：`bad_args` · `bad_spec` · `unreachable` · `bad_jump` · `full` · `failed`
 
@@ -8054,9 +8662,15 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → ← | 转发号（`fwd-<n>`） |
+入参 `ForwardId` · 回包 `ForwardId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForwardId = { 
+/**
+ * 转发号（`fwd-<n>`）。
+ */
+id: string, };
+```
 
 码：`bad_args` · `not_found`
 
@@ -8066,16 +8680,27 @@ type Mode = "create-or-attach" | "send-into";
 
 不收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `connCount` | ← | 累计接进的连接数 |
-| `forwards` | ← | 转发清单，每项 `{id, origin, localPort, remoteHost, remotePort, state, connCount}` |
-| `id` | → ← | 转发号 |
-| `localPort` | ← | 本机口 |
-| `origin` | ← | 那台的名字 |
-| `remoteHost` | ← | 那台上的目标 host |
-| `remotePort` | ← | 那台上的目标口 |
-| `state` | ← | `running`（链路还在）· `error`（链路自己收工了，留在账上等用户停） |
+入参 `NoArgs` · 回包 `Forwards`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForwardRow = { id: string, 
+/**
+ * 那台的名字。
+ */
+origin: string, localPort: number, remoteHost: string, remotePort: number, 
+/**
+ * `running`（链路还在）· `error`（链路自己收工了，留在账上等人停）。
+ */
+state: "running" | "error", 
+/**
+ * 累计接进的连接数。
+ */
+connCount: number, };
+type Forwards = { forwards: Array<ForwardRow>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
 
 #### `remote-reach`
 
@@ -8083,11 +8708,72 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · CLI：`ccm -- --remote-reach`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体） |
-| `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
-| `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
+入参 `ReachReq` · 回包 `Reached`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+/**
+ * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+ */
+use?: string | null, 
+/**
+ * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+ */
+agent_sock?: string | null, };
+type Prefer = { host: string, port: number, };
+type ReachReq = { 
+/**
+ * 那台的名字（monitor 的 origin 名）。
+ */
+origin: string, 
+/**
+ * 那台的拨号（只有路径，没有私钥本体）。
+ */
+dial: MachineDial, };
+type ReachRow = { 
+/**
+ * 那台的名字。
+ */
+origin: string, 
+/**
+ * 对面的资产目录 id。
+ */
+machine: string | null, };
+type Reached = { origin: string, reach: Array<ReachRow>, };
+```
 
 码：`bad_args`
 
@@ -8097,13 +8783,32 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --backend-log`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `maxBytes` | → | 可选，缺省 = 封顶 256 KiB：只回尾部这么多字节 |
-| `path` | ← | 本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null` |
-| `size` | ← | 那份文件的总字节数 |
-| `text` | ← | 尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行 |
-| `truncated` | ← | 前面还有没回的字节 |
+入参 `BackendLogReq` · 回包 `LogTail`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BackendLogReq = { 
+/**
+ * 只回尾部这么多字节；缺 ⇒ 封顶 256 KiB（给多了也照封顶）。
+ */
+maxBytes?: number, };
+type LogTail = { 
+/**
+ * 本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null`。
+ */
+path: string | null, 
+/**
+ * 那份文件的总字节数。
+ */
+size: number, 
+/**
+ * 尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行。
+ */
+text: string, 
+/**
+ * 前面还有没回的字节。
+ */
+truncated: boolean, };
+```
 
 码：`bad_args` · `failed`
 
@@ -8113,40 +8818,44 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --powershell-policy-set`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `host` | → | 哪一代：`powershell`（5.1）· `pwsh`（7） |
-| `policy` | ← | 设完现问的那一份（形状同 `aliases-read` 候选里的 `policy`） |
-| `setError` | ← | 设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报 |
+入参 `PolicySetReq` · 回包 `PolicySet`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type PolicySet = { 
+/**
+ * 形状同 `aliases-read` 候选里的 `policy`。
+ */
+policy: PsExecPolicy, 
+/**
+ * 设的那一下没成的原因词（组策略压着时 PowerShell 会报；它的原话只记后端日志）；`null` = 没报。
+ */
+setError: string | null, };
+type PolicySetReq = { 
+/**
+ * `powershell`（5.1）· `pwsh`（7）。
+ */
+host: PsHost, };
+type PsExecPolicy = { host: PsHost, 
+/**
+ * 生效那一档的原词（`Get-ExecutionPolicy`）；问不到 ⇒ `None`，原因词在 `error`。
+ */
+effective: string | null, 
+/**
+ * 按这一档，这一代会不会加载本地、未签名的 profile；说不清 ⇒ `None`。
+ */
+loads: boolean | null, 
+/**
+ * 组策略（`MachinePolicy` / `UserPolicy`）钉着 ⇒ 改当前用户那一档没用。
+ */
+groupPolicy: boolean, 
+/**
+ * 问不到的原因词（原因词闭集里的一个；PowerShell / 系统的原话只记一行日志，不随应答走）。
+ */
+error: string | null, };
+type PsHost = "powershell" | "pwsh";
+```
 
 码：`bad_args` · `refused`
-
-#### `ssh-config-aliases`
-
-这台 `~/.ssh/config` 里可点的别名。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ssh-config-aliases`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | ← | `Host` 行里非通配的别名（去重保序）；没有 config ⇒ `[]` |
-
-#### `ssh-config-resolve`
-
-一个别名的有效连接参数。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ssh-config-resolve`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `alias` | → | 必填 |
-| `host` | ← | `ssh -G` 的 `hostname`（缺省回退别名） |
-| `keyPath` | ← | 第一个**展开后存在**的 `identityfile`（只问在不在，不读内容）；都不存在 ⇒ `null` |
-| `port` | ← | `port`（缺省 22） |
-| `proxyJump` | ← | `proxyjump`（`none` ⇒ `null`） |
-| `user` | ← | `user`（缺省空串） |
-
-码：`bad_args` · `bad_alias` · `failed` · `child_timed_out`
 
 #### `ssh-config-import`
 
@@ -8154,21 +8863,27 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --ssh-config-import`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `addresses` | ← | 其余地址，端口不同则 `host:port` |
-| `alias` | ← | 成员的别名 |
-| `groups` | ← | 聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}` |
-| `host` | → ← | 组首的 host |
-| `inList` | ← | 组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比 |
-| `jump` | ← | 组内首个非空 proxyjump |
-| `keyPath` | ← | 组首 |
-| `known` | → | 机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `bad_args` |
-| `label` | ← | 单成员组 = 完整别名，多成员 = 基名 |
-| `members` | ← | `alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原 |
-| `port` | → ← | 组首的端口 |
-| `proxyJump` | ← | 成员的跳板 |
-| `user` | → ← | 组首的用户 |
+入参 `SshImportReq` · 回包 `SshImported`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type KnownHost = { host: string, user: string, port: number, };
+type SshImportGroup = { label: string, host: string, port: number, user: string, keyPath: string | null, 
+/**
+ * 组内除 `host` 外的其余地址（去重；端口与组首不同则 `host:port`）。单机组为空。
+ */
+addresses: Array<string>, 
+/**
+ * 组内首个非空 proxyjump（别名）。
+ */
+jump: string | null, members: Array<SshImportMember>, 
+/**
+ * 这一组已在机器列表里（组里任一地址 ＋ 用户 ＋ 端口与列表里某台相同；列表由界面交来）。
+ */
+inList: boolean, };
+type SshImportMember = { alias: string, host: string, port: number, proxyJump: string | null, };
+type SshImportReq = { known: Array<KnownHost>, };
+type SshImported = { groups: Array<SshImportGroup>, };
+```
 
 码：`bad_args`
 
@@ -8487,9 +9202,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--skill-install-plan` | ＝ 帧命令 `skill-install-plan`：在要被写的那一台判 skill 装不装得过来 |
 | `--skill-install-record` | ＝ 帧命令 `skill-install-record`：skill 装记录的写口 |
 | `--skill-read` | ＝ 帧命令 `skill-read`：读来源那台上的一个 skill |
-| `--ssh-config-aliases` | ＝ 帧命令 `ssh-config-aliases`：这台 `~/.ssh/config` 里可点的别名 |
 | `--ssh-config-import` | ＝ 帧命令 `ssh-config-import`：批量导入预览 |
-| `--ssh-config-resolve` | ＝ 帧命令 `ssh-config-resolve`：一个别名的有效连接参数 |
 | `--tasks-list` | ＝ 帧命令 `tasks-list`：一个会话的任务列表 |
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
 | `--terminal-name-mint` | ＝ 帧命令 `terminal-name-mint`：起会话要的终端名 |

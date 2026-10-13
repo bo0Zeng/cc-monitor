@@ -16,6 +16,13 @@
 
 use super::*;
 
+// 入参经 typed 那一处收（同分派），再交本体（盖住 `super::*` 里的同名口）。
+fn answer_optin(args: &Value) -> Result<Value, (&'static str, String)> {
+    let req: crate::faces::relay_optin_face::OptinReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    crate::faces::relay_optin_face::answer_optin(&req).map(|r| serde_json::to_value(r).unwrap())
+}
+
 fn named(d: &str) -> LaunchAccount {
     LaunchAccount::Named {
         config_dir: d.to_string(),
@@ -292,14 +299,15 @@ fn put_settings(home: &std::path::Path, raw: &str) {
 }
 
 fn optin(home: &std::path::Path, routed: &[String], registered: bool) -> Value {
-    optin_at(
+    serde_json::to_value(optin_at(
         home,
         "claude-code",
         &crate::agents::claudecode::paths::SETTINGS_ENV,
         routed,
         registered,
         &|p| p == 8788,
-    )
+    ))
+    .unwrap()
 }
 
 /// 片段里那一个地址（解析片段本身，不比原文排版）。

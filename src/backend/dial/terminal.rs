@@ -24,6 +24,7 @@
 use copy_core::copy_text;
 use serde_json::Value;
 
+use super::pick::{MachineConfig, Pick, Prefer};
 use crate::platform::shell::dialect::ps_literal;
 use crate::platform::shell::posix;
 use crate::platform::ssh_client::SshClient;
@@ -191,15 +192,6 @@ pub(crate) fn render(
     ))
 }
 
-fn command_arg(args: &Value) -> Result<&str, CmdErr> {
-    args.get("command").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `command` (a string)"),
-        )
-    })
-}
-
 /// 「在此打开终端」要在那台跑的那一串（窗口只交意图 `{cwd}`，命令由这里拼）。
 ///
 /// 逐字：`cd <quoted> && exec ${SHELL:-bash} -l`（`cwd` 为空 ⇒ 只有后半段）。当前目录是那台列出来的**自由文本路径** ⇒
@@ -241,19 +233,98 @@ pub(crate) fn command_for_cwd(cwd: &Value) -> Result<String, CmdErr> {
     }
 }
 
-/// 帧命令 `terminal-ssh`：`{machine, saved?, jump?, prefer?, command | cwd}` ⇒ `{command: "<本机终端里跑的那一行>"}`。
-/// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由 [`command_for_cwd`] 拼）**恰好给一个**。
-pub(crate) fn answer(args: &Value) -> Result<Value, CmdErr> {
-    answer_in(
-        args,
-        crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
-        &crate::platform::ssh_client::locate(),
-    )
+/// `terminal-ssh` 的入参：拨哪台那几格 ＋ 要在那台跑什么。
+/// `command`（主界面交成品命令）与 `cwd`（文件窗口「在此打开终端」只交意图，命令由后端拼）**恰好给一个**。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct TerminalSshReq {
+    /// 那台的配置（可能还没保存）。
+    pub(crate) machine: MachineConfig,
+    /// 已保存的那一份（指纹只从同一个 host 的那一份继承）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) saved: Option<MachineConfig>,
+    /// 跳板那一台的配置（`machine.jump` 指它时必给）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) jump: Option<MachineConfig>,
+    /// 上次赢的那条地址（仍在这台的地址里 ⇒ 用它）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) prefer: Option<Prefer>,
+    /// 要在那台跑的命令。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) command: Option<String>,
+    /// 在那台的这个目录开登录 shell（串，或非 UTF-8 的 `{"b16": "<hex>"}`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "string | { b16: string }"))]
+    pub(crate) cwd: Option<Value>,
 }
 
-/// [`answer`] 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）。
-pub(crate) fn answer_in(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, CmdErr> {
-    let req = super::machine::resolve(&dial_args(args)?)?;
+crate::stream::inbound::typed::codes! {
+    /// `terminal-ssh` 的码：跳板查无 / 成环 · 哪一格过不了白名单 · 这台没装 ssh 客户端 · 查的时候出了错（判不了）。
+    pub(crate) enum TerminalSshErr {
+        BadJump = "bad_jump",
+        Refused = "refused",
+        NoSshClient = "no_ssh_client",
+        Unobservable = "unobservable",
+    }
+}
+
+/// `terminal-ssh`：给一台远端开终端要跑的那一串。查几个文件找 ssh 客户端 ⇒ 阻塞档；不拨号、不起进程。
+pub(crate) struct TerminalSsh;
+
+impl crate::stream::inbound::typed::Command for TerminalSsh {
+    const NAME: &'static str = "terminal-ssh";
+    type Req = TerminalSshReq;
+    type Reply = SshCommand;
+    type Err = TerminalSshErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for TerminalSsh {
+    fn run(
+        req: TerminalSshReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<SshCommand, TerminalSshErr> {
+        answer_in(
+            &req,
+            crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
+            &crate::platform::ssh_client::locate(),
+        )
+        .map_err(crate::stream::inbound::typed::of_pair(
+            TerminalSshErr::Refused,
+        ))
+    }
+}
+
+/// 按给定的本机终端方言与找 ssh 客户端的结果渲（判据各种都量）。
+pub(crate) fn answer_in(
+    req: &TerminalSshReq,
+    powershell: bool,
+    ssh: &SshClient,
+) -> Result<SshCommand, CmdErr> {
+    let command = match (&req.command, &req.cwd) {
+        (Some(c), None) => c.clone(),
+        (None, Some(cwd)) => command_for_cwd(cwd)?,
+        _ => {
+            return Err((
+                "bad_args",
+                crate::common::contract::malformed(
+                    "exactly one of `command` (a string) or `cwd` (a path)",
+                ),
+            ))
+        }
+    };
+    let pick = Pick {
+        machine: &req.machine,
+        saved: req.saved.as_ref(),
+        jump: req.jump.as_ref(),
+        prefer: req.prefer.as_ref(),
+    };
+    let dial = pick.request("stream", serde_json::json!({ "command": command }))?;
     let ssh = match ssh {
         SshClient::At(p) => p,
         SshClient::Missing => {
@@ -271,35 +342,18 @@ pub(crate) fn answer_in(args: &Value, powershell: bool, ssh: &SshClient) -> Resu
             ));
         }
     };
-    crate::stream::inbound::spec::wire(&SshCommand {
-        command: render(&req, powershell, ssh)?,
+    Ok(SshCommand {
+        command: render(&dial, powershell, ssh)?,
     })
 }
 
 /// `terminal-ssh` 的应答：那一整行命令。
-#[derive(serde::Serialize)]
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SshCommand {
+    /// 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
     pub(crate) command: String,
-}
-
-/// `command` 与 `cwd` 恰好给一个；给的是 `cwd` ⇒ 由 [`command_for_cwd`] 拼好放进 `command`（拨号请求只认 `command`）。
-fn dial_args(args: &Value) -> Result<Value, CmdErr> {
-    match (args.get("command"), args.get("cwd")) {
-        (Some(_), Some(_)) => Err((
-            "bad_args",
-            crate::common::contract::malformed(
-                "exactly one of `command` (a string) or `cwd` (a path)",
-            ),
-        )),
-        (None, Some(cwd)) => {
-            let command = command_for_cwd(cwd)?;
-            let mut dial = args.as_object().cloned().unwrap_or_default();
-            dial.remove("cwd");
-            dial.insert("command".to_string(), Value::String(command));
-            Ok(Value::Object(dial))
-        }
-        _ => command_arg(args).map(|_| args.clone()),
-    }
 }
 
 #[cfg(test)]

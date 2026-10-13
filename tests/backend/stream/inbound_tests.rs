@@ -844,9 +844,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
         "session-permission", // 读 pidfile ＋ 起 tmux（抓屏 · 送键 · 等重画）
         "session-commands",   // 读记录开头 ＋ 扫命令 · skill 目录
-        "ssh-config-aliases", // 读一份文件
         "ssh-config-import",  // 逐个起 `ssh -G`
-        "ssh-config-resolve", // 起一次 `ssh -G`
         "hooks-diag",         //
         "resync",             //
         "apikey-key-set",

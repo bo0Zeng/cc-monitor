@@ -182,57 +182,128 @@ fn said(r: &Read, resident: bool) -> String {
 }
 
 /// 一次读数的线上形状（`exit-policy-read` 与 `exit-policy-set` 共用）。`said` 是成品，界面原样摆。
-fn wire(r: &Read, path: Option<&Path>) -> serde_json::Value {
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ExitPolicy {
+    /// `absent`（没设过）· `chosen` · `unreadable`（读不出：也照答，不是失败）。
+    #[cfg_attr(test, ts(type = "\"absent\" | \"chosen\" | \"unreadable\""))]
+    pub(crate) state: &'static str,
+    /// 生效值：monitor 退出时结束本机常驻后端。
+    pub(crate) kill_on_exit: bool,
+    /// `unreadable` 时的原因（那一句不带原话）。
+    pub(crate) reason: Option<String>,
+    /// `unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答）。
+    pub(crate) detail: Option<String>,
+    /// 那份文件的路径（在 `~/.cc-monitor/` 下；家目录说不出 ⇒ `null`）。
+    pub(crate) path: Option<String>,
+    /// 这个值意味着什么的一句话。
+    pub(crate) said: String,
+}
+
+fn wire(r: &Read, path: Option<&Path>) -> ExitPolicy {
     wire_as(r, path, resident_now())
 }
 
-fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> serde_json::Value {
+fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> ExitPolicy {
     let why = match r {
         Read::Unreadable(why) => Some(why),
         _ => None,
     };
     let (reason, detail) = crate::stream::detail::unreadable("exit-policy-read", why);
-    serde_json::json!({
-        "state": r.state(),
-        "killOnExit": r.kill_on_exit(),
-        "reason": reason,
-        "detail": detail,
-        "path": path.map(|p| p.display().to_string()),
-        "said": said(r, resident),
-    })
+    let text = |v: serde_json::Value| v.as_str().map(str::to_string);
+    ExitPolicy {
+        state: r.state(),
+        kill_on_exit: r.kill_on_exit(),
+        reason: text(reason),
+        detail: text(detail),
+        path: path.map(|p| p.display().to_string()),
+        said: said(r, resident),
+    }
 }
 
 /// `exit-policy-read`：现读一次，原样报三态。**从不报错** —— 「读不出来」是一个状态，不是一次失败。
-pub fn answer_read() -> serde_json::Value {
+pub(crate) fn answer_read() -> ExitPolicy {
     let path = policy_path();
     wire(&read_now(), path.as_deref())
 }
 
-/// `exit-policy-set`：写 `args.killOnExit`，**写完再读一遍**，回读到的那份
-/// （回的是盘上的事实，不是「我以为写进去了」）。
-pub fn answer_set(
-    args: &serde_json::Value,
+/// `exit-policy-set` 的入参：要写的值。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct ExitPolicySet {
+    pub(crate) kill_on_exit: bool,
+}
+
+/// `exit-policy-set`：写 `killOnExit`，**写完再读一遍**，回读到的那份（回的是盘上的事实，不是「我以为写进去了」）。
+pub(crate) fn answer_set(
+    req: &ExitPolicySet,
     own: &Own,
-) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
-    let kill = args
-        .get(KEY_KILL_ON_EXIT)
-        .and_then(|v| v.as_bool())
-        .ok_or_else(|| {
-            crate::stream::inbound::spec::Fail::new(
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "missing `{KEY_KILL_ON_EXIT}`, or it is not a bool"
-                )),
-            )
-        })?;
+) -> Result<ExitPolicy, crate::stream::inbound::spec::Fail> {
     let path = policy_path().ok_or_else(|| {
         crate::stream::inbound::spec::Fail::new(
             "io_failed",
             copy_text("beExitPolicy.answerSet.noHome", &[]),
         )
     })?;
-    write_at(own, kill).map_err(|e| ("io_failed", e))?;
+    write_at(own, req.kill_on_exit).map_err(|e| ("io_failed", e))?;
     Ok(wire(&read_at(&path), Some(&path)))
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `exit-policy-read` 没有别的码：「读不出来」是一个状态（`state: "unreadable"` ＋ `reason`），不是一次失败。
+    pub(crate) enum ExitReadErr {}
+}
+
+/// `exit-policy-read`：读「退出行为」那个值（值住后端所在那台；同步文件 I/O ⇒ 阻塞档）。
+pub(crate) struct ExitPolicyRead;
+
+impl crate::stream::inbound::typed::Command for ExitPolicyRead {
+    const NAME: &'static str = "exit-policy-read";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = ExitPolicy;
+    type Err = ExitReadErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for ExitPolicyRead {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<ExitPolicy, ExitReadErr> {
+        Ok(answer_read())
+    }
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `exit-policy-set` 的码：家目录说不出 · 写没成。
+    pub(crate) enum ExitSetErr {
+        IoFailed = "io_failed",
+    }
+}
+
+/// `exit-policy-set`：写「退出行为」那个值，写完读回（写自家状态 ⇒ 只递写句柄）。
+pub(crate) struct ExitPolicySetCmd;
+
+impl crate::stream::inbound::typed::Command for ExitPolicySetCmd {
+    const NAME: &'static str = "exit-policy-set";
+    type Req = ExitPolicySet;
+    type Reply = ExitPolicy;
+    type Err = ExitSetErr;
+}
+
+impl crate::stream::inbound::typed::Owning for ExitPolicySetCmd {
+    fn run(
+        req: ExitPolicySet,
+        _cx: &crate::stream::inbound::typed::Cx,
+        own: &Own,
+    ) -> Result<ExitPolicy, ExitSetErr> {
+        answer_set(&req, own)
+            .map_err(|f| crate::stream::inbound::typed::of_fail(f, ExitSetErr::IoFailed))
+    }
 }
 
 #[cfg(test)]

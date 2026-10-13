@@ -97,30 +97,22 @@ pub(crate) fn lock(t: &Table) -> std::sync::MutexGuard<'_, BTreeMap<String, Reac
     t.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 可达表**唯一的写口**：`{origin, dial}` 两格齐了才记（那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）（`origin` 是 monitor 交来的名字，本后端只当不透明的键用）。
-/// 同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
-/// `remote-reach` 与 `assets-sync` 都经它。
-pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
-    let o = args.get("origin").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `origin` (the machine name)"),
-        )
-    })?;
-    if o.is_empty() {
+/// 可达表**唯一的写口**：那台的名字 ＋ 怎么够到它（那台后端的路径不再由 monitor 交：落点恒是 `relay_route_core::BACKEND_LANDING_SHELL`）
+/// （名字是 monitor 交来的，本后端只当不透明的键用）。同一台再记一次 ⇒ 换新的拨号请求，`peer`（对面的资产目录 id）留着。
+/// `remote-reach`（按类型收）与 `assets-sync`（[`register`]）都经它。
+pub(crate) fn insert(
+    table: &Table,
+    origin: &str,
+    dial: Value,
+) -> Result<String, (&'static str, String)> {
+    if origin.is_empty() {
         return Err((
             "bad_args",
             crate::common::contract::malformed("`origin` is empty").into(),
         ));
     }
-    let dial = args.get("dial").filter(|d| d.is_object()).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("`origin` given without `dial` (a dial request)"),
-        )
-    })?;
     let mut t = lock(table);
-    if !t.contains_key(o) && t.len() >= MAX_REACH {
+    if !t.contains_key(origin) && t.len() >= MAX_REACH {
         return Err((
             "bad_args",
             copy_text(
@@ -129,34 +121,117 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
             ),
         ));
     }
-    let peer = t.get(o).and_then(|r| r.peer.clone());
-    t.insert(
-        o.to_string(),
-        Reach {
-            dial: dial.clone(),
-            peer,
-        },
-    );
-    Ok(o.to_string())
+    let peer = t.get(origin).and_then(|r| r.peer.clone());
+    t.insert(origin.to_string(), Reach { dial, peer });
+    Ok(origin.to_string())
 }
 
-/// 可达表现状的线上形状：`[{origin, machine}]`（`machine` = 对面的资产目录 id，没拉过 ⇒ `null`）。
-pub(crate) fn reach_rows(table: &Table) -> Vec<Value> {
+/// `assets-sync` 那一份入参（`{origin, dial}`，`dial` 同 `remote-reach` 那一格、按同一个类型收）⇒ [`insert`]。
+pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
+    let o = args.get("origin").and_then(Value::as_str).ok_or_else(|| {
+        (
+            "bad_args",
+            crate::common::contract::malformed("missing `origin` (the machine name)"),
+        )
+    })?;
+    let dial: super::pick::MachineDial = args
+        .get("dial")
+        .ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(
+                    "`origin` given without `dial` (a dial request)",
+                ),
+            )
+        })
+        .and_then(|d| {
+            crate::stream::inbound::typed::take(d).map_err(|f| ("bad_args", f.message))
+        })?;
+    insert(table, o, dial.stored()?)
+}
+
+/// 可达表的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ReachRow {
+    /// 那台的名字。
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    /// 对面的资产目录 id。
+    pub(crate) machine: Option<String>,
+}
+
+/// 可达表现状：`[{origin, machine}]`。
+pub(crate) fn reach_rows(table: &Table) -> Vec<ReachRow> {
     lock(table)
         .iter()
-        .map(|(o, r)| json!({ "origin": o, "machine": r.peer }))
+        .map(|(o, r)| ReachRow {
+            origin: cmd_wire::Machine(o.clone()),
+            machine: r.peer.clone(),
+        })
         .collect()
 }
 
-/// `remote-reach`：只登记、不做别的（monitor 在每台远端流握手那一刻交；老远端也登记）。回 `{origin, reach}`。
-pub fn answer_reach(args: &Value) -> Result<Value, (&'static str, String)> {
-    answer_reach_with(args, &REACH)
+/// `remote-reach` 的入参：那台的名字 ＋ 怎么够到它。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ReachReq {
+    /// 那台的名字（monitor 的 origin 名）。
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    /// 那台的拨号（只有路径，没有私钥本体）。
+    pub(crate) dial: super::pick::MachineDial,
 }
 
-/// [`answer_reach`] 的可喂夹具那一半：可达表由调用方给。
-pub fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static str, String)> {
-    let o = register(table, args)?;
-    Ok(json!({ "origin": o, "reach": reach_rows(table) }))
+/// `remote-reach` 的应答：登记的那台 ＋ 登记之后的可达表。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Reached {
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) reach: Vec<ReachRow>,
+}
+
+/// `remote-reach` 的本体（可达表由调用方给）：只登记、不做别的（monitor 在每台远端流握手那一刻交；老远端也登记）。
+pub(crate) fn answer_reach_with(
+    req: &ReachReq,
+    table: &Table,
+) -> Result<Reached, (&'static str, String)> {
+    let o = insert(table, req.origin.as_wire_str(), req.dial.stored()?)?;
+    Ok(Reached {
+        origin: cmd_wire::Machine(o),
+        reach: reach_rows(table),
+    })
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `remote-reach` 只有 `bad_args`（名字空 · 拨号读不动 · 表满了）。
+    pub(crate) enum ReachErr {}
+}
+
+/// `remote-reach`：本机后端的可达表登记。纯内存（一把锁、插一行）⇒ 不进阻塞档。
+pub(crate) struct RemoteReach;
+
+impl crate::stream::inbound::typed::Command for RemoteReach {
+    const NAME: &'static str = "remote-reach";
+    type Req = ReachReq;
+    type Reply = Reached;
+    type Err = ReachErr;
+}
+
+impl crate::stream::inbound::typed::Async for RemoteReach {
+    fn run(
+        req: ReachReq,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl Future<Output = Result<Reached, ReachErr>> + Send + 'static {
+        std::future::ready(
+            answer_reach_with(&req, &REACH).map_err(|(_, said)| ReachErr::BadArgs(said)),
+        )
+    }
 }
 
 /// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv 每一格都过 POSIX 单引号。

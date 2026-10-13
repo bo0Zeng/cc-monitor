@@ -169,41 +169,82 @@ fn this_module_holds_no_sync_rule() {
     assert!(backend.contains("push_plan("));
 }
 
-/// 跨半边：可达表登记那一条 —— 本侧发的三格 ＋ 读回的那一格 == 后端 `REGISTRY` 里 `remote-reach` 声明的 `fields`（两向），
-/// 且那条命令真在后端命令表里；发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
+/// 一份生成的 TS 声明（`{ 格: 类型, … }`）的顶层格名：逐字扫，跳过 `/* … */` 注释，只认对象那一层里「名字 ＋ 可缺的 `?` ＋ `:`」。
+fn decl_keys(decl: &str) -> std::collections::BTreeSet<String> {
+    let cs: Vec<char> = decl.chars().collect();
+    let (mut i, mut depth, mut word, mut out) =
+        (0, 0usize, String::new(), std::collections::BTreeSet::new());
+    while i < cs.len() {
+        let c = cs[i];
+        if c == '/' && cs.get(i + 1) == Some(&'*') {
+            i += 2;
+            while i + 1 < cs.len() && !(cs[i] == '*' && cs[i + 1] == '/') {
+                i += 1;
+            }
+            i += 2;
+            continue;
+        }
+        if c == '/' && cs.get(i + 1) == Some(&'/') {
+            while i < cs.len() && cs[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
+        match c {
+            '{' | '<' => depth += 1,
+            '}' | '>' => depth = depth.saturating_sub(1),
+            ':' if depth == 1 && !word.is_empty() => {
+                out.insert(word.trim_end_matches('?').to_string());
+            }
+            _ => {}
+        }
+        if c.is_alphanumeric() || c == '_' || c == '?' {
+            word.push(c);
+        } else {
+            word.clear();
+        }
+        i += 1;
+    }
+    out
+}
+
+/// 跨半边：可达表登记那一条 —— 本侧发的格 == 后端 `remote-reach` 入参类型的格，读回的那一格（`reach`）在它回包类型里；
+/// 发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
 ///
 /// 守的要求：「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在（`backend_path` 那一格随 `backendPath` 删了，落点是固定常量）
 /// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {
-    let families = crate::guard_support::backend_registry_sources();
-    let (family, at) = families
-        .iter()
-        .find_map(|(_, prod)| {
-            prod.find(&format!("name: \"{REACH_CMD}\""))
-                .map(|at| (prod, at))
-        })
-        .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{REACH_CMD}`"));
-    let block = &family[at..at + family[at..].find("run:").expect("那一条的 run")];
-    let declared = declared_fields(block);
-    let args = args_for(&cfg()).unwrap();
-    let mut used: std::collections::BTreeSet<String> =
-        args.as_object().unwrap().keys().cloned().collect();
-    used.insert("reach".to_string());
-    assert_eq!(
-        declared, used,
-        "本侧发 / 读的字段与后端 `remote-reach` 声明的不相等（两向）"
-    );
-    let registered: std::collections::BTreeSet<&str> = families
-        .iter()
-        .flat_map(|(_, prod)| {
-            prod.split("name: \"")
-                .skip(1)
-                .filter_map(|t| t.split('"').next())
-        })
-        .collect();
+    let gen = |f: &str| {
+        std::fs::read_to_string(crate::guard_support::repo_root().join(f)).expect("生成的类型声明")
+    };
+    // 命令表那一行点的是这两个类型（`generated/TypedCommands.ts`；改了名这里跟着改，下面那条断言会先红）。
     assert!(
-        registered.contains(REACH_CMD),
-        "后端命令表里没有 `{REACH_CMD}`"
+        gen("src/frontend/ui/generated/TypedCommands.ts")
+            .lines()
+            .any(|l| l.trim()
+                == "\"remote-reach\": { req: ReachReq; reply: Reached; code: \"bad_args\" };"),
+        "后端命令表里没有 `{REACH_CMD}`（或它的入参 · 回包类型换了名）"
+    );
+    let req = decl_keys(&gen("src/frontend/ui/generated/ReachReq.ts"));
+    let reply = decl_keys(&gen("src/frontend/ui/generated/Reached.ts"));
+    let args = args_for(&cfg()).unwrap();
+    let sent: std::collections::BTreeSet<String> =
+        args.as_object().unwrap().keys().cloned().collect();
+    assert_eq!(
+        sent, req,
+        "本侧发的格与后端 `remote-reach` 入参类型的格不相等（两向）"
+    );
+    assert!(
+        reply.contains("reach"),
+        "后端 `remote-reach` 回包里没有本侧读的 `reach`：{reply:?}"
+    );
+    // 拨号那一格的每一格也都在后端那一份类型里（多一格后端就回 bad_args）。
+    let dial: std::collections::BTreeSet<String> =
+        args["dial"].as_object().unwrap().keys().cloned().collect();
+    let declared = decl_keys(&gen("src/frontend/ui/generated/MachineDial.ts"));
+    assert!(
+        dial.is_subset(&declared),
+        "本侧 `dial` 的格 {dial:?} 不全在后端 `MachineDial` 里 {declared:?}"
     );
 }

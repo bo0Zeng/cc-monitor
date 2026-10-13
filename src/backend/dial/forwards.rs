@@ -54,42 +54,54 @@ fn invalid(detail: &str) -> (&'static str, String) {
     ("bad_args", crate::common::contract::malformed(detail))
 }
 
-fn port_of(args: &Value, key: &str) -> Result<u16, (&'static str, String)> {
-    let n = args
-        .get(key)
-        .and_then(Value::as_u64)
-        .ok_or_else(|| invalid(&format!("missing `{key}` (a port number)")))?;
-    u16::try_from(n).map_err(|_| invalid(&format!("`{key}` is not a port number")))
+/// `forward-start` 的入参：规格四格 ＋ 那台的配置（可达表里没有那台时按它自己组请求去拨）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct ForwardStartReq {
+    /// 那台的名字（可达表的键）。
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    /// 绑本机 `127.0.0.1:localPort`。
+    pub(crate) local_port: u16,
+    /// 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
+    pub(crate) remote_host: String,
+    pub(crate) remote_port: u16,
+    /// 那台的配置（可达表里**没有**那台、流没起来时按它组请求去拨，不拒）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) machine: Option<super::pick::MachineConfig>,
+    /// 已保存的那一份。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) saved: Option<super::pick::MachineConfig>,
+    /// 跳板那一台。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) jump: Option<super::pick::MachineConfig>,
 }
 
 /// 读规格并过围栏 —— **在任何查表 / 拨号之前**（`INVARIANTS §47`：外部值交给对端之前本侧先判）。
-/// 端口 0 · 远端 host 空白 ⇒ `bad_spec`；缺格 / 类型不对 ⇒ `bad_args`。
-pub(crate) fn parse_spec(args: &Value) -> Result<Spec, (&'static str, String)> {
-    let origin = args
-        .get("origin")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| invalid("missing `origin` (the machine name)"))?;
-    let local_port = port_of(args, "localPort")?;
-    let remote_port = port_of(args, "remotePort")?;
-    let remote_host = args
-        .get("remoteHost")
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid("missing `remoteHost`"))?;
-    if local_port == 0 {
+/// 端口 0 · 远端 host 空白 ⇒ `bad_spec`；名字空 ⇒ `bad_args`（缺格 / 类型不对在解入参那一步就回了）。
+pub(crate) fn spec_of(req: &ForwardStartReq) -> Result<Spec, (&'static str, String)> {
+    if req.origin.as_wire_str().is_empty() {
+        return Err(invalid("`origin` is empty (the machine name)"));
+    }
+    if req.local_port == 0 {
         return Err(("bad_spec", copy_text("beForwards.spec.localPort", &[])));
     }
-    if remote_host.trim().is_empty() {
+    if req.remote_host.trim().is_empty() {
         return Err(("bad_spec", copy_text("beForwards.spec.remoteHost", &[])));
     }
-    if remote_port == 0 {
+    if req.remote_port == 0 {
         return Err(("bad_spec", copy_text("beForwards.spec.remotePort", &[])));
     }
     Ok(Spec {
-        origin: origin.to_string(),
-        local_port,
-        remote_host: remote_host.to_string(),
-        remote_port,
+        origin: req.origin.as_wire_str().to_string(),
+        local_port: req.local_port,
+        remote_host: req.remote_host.clone(),
+        remote_port: req.remote_port,
     })
 }
 
@@ -153,29 +165,35 @@ fn id_num(id: &str) -> Option<u64> {
 /// `forward-start` 的本体：账与可达表由调用方给，`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身）。
 /// `serve` 拿到的是：改好的拨号请求 · 上行读端（本侧一个字节都不写，丢了 = 界面走了）· 下行写端（ack ＋ 计数行）。
 pub(crate) async fn start_with<F, Fut>(
-    args: &Value,
+    req: &ForwardStartReq,
     reach: &remote_ask::Table,
     ledger: &Ledger,
     serve: F,
-) -> Result<Value, (&'static str, String)>
+) -> Result<ForwardStarted, (&'static str, String)>
 where
     F: FnOnce(DialRequest, DuplexStream, DuplexStream) -> Fut,
     Fut: Future<Output = ()> + Send + 'static,
 {
-    let spec = parse_spec(args)?;
+    let spec = spec_of(req)?;
     // 那台的流握手过 ⇒ 用可达表里那份（带着 monitor 排好的 last-good 顺序与它的 agent 套接字）；
     //   没握手过（流没起来）⇒ **不拒**：按界面交来的那台配置自己组请求、自己拨（与起流同一个池，`ssh-dial/machine.rs`）。
     let reached = remote_ask::lock(reach)
         .get(&spec.origin)
         .map(|r| r.dial.clone());
-    let dial = match reached {
-        Some(d) => d,
-        // 界面交来的那台原样的配置（线上那一份拨号的形状，组法在 `ssh-dial/machine.rs::resolve`）；先读一遍，坏了当场拒。
-        None if args.get("machine").is_some_and(|m| !m.is_null()) => {
-            super::machine::from_args(args)?;
-            json!({ "machine": args.get("machine"), "saved": args.get("saved"), "jump": args.get("jump") })
+    let dial = match (reached, &req.machine) {
+        (Some(d), _) => d,
+        // 界面交来的那台原样的配置（组法在 `ssh-dial/machine.rs`）；先读一遍，坏了当场拒。
+        (None, Some(machine)) => {
+            let pick = super::pick::Pick {
+                machine,
+                saved: req.saved.as_ref(),
+                jump: req.jump.as_ref(),
+                prefer: None,
+            };
+            pick.machines()?;
+            pick.dial_value()
         }
-        None => return Err(("unreachable", remote_ask::unreachable_message(&spec.origin))),
+        (None, None) => return Err(("unreachable", remote_ask::unreachable_message(&spec.origin))),
     };
     if ledger.rows().len() >= MAX_FORWARDS {
         return Err((
@@ -254,45 +272,94 @@ where
             conn_count,
         },
     );
-    Ok(json!({ "id": id_text(n) }))
+    Ok(ForwardStarted { id: id_text(n) })
+}
+
+/// `forward-start` 的应答：这条转发的号。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ForwardStarted {
+    /// `fwd-<n>`，本进程内单调。
+    pub(crate) id: String,
+}
+
+/// `forward-stop` 的入参 · 应答（应答回显那个号）。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ForwardId {
+    /// 转发号（`fwd-<n>`）。
+    pub(crate) id: String,
 }
 
 /// `forward-stop` 的本体：从账上摘掉（丢掉那一条 ⇒ 收掉链路 ⇒ 后端放掉本地口、收掉在飞隧道）。
-pub(crate) fn stop_with(args: &Value, ledger: &Ledger) -> Result<Value, (&'static str, String)> {
-    let id = args
-        .get("id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| invalid("missing `id`"))?;
-    let entry = id_num(id)
+pub(crate) fn stop_with(
+    req: ForwardId,
+    ledger: &Ledger,
+) -> Result<ForwardId, (&'static str, String)> {
+    let entry = id_num(&req.id)
         .and_then(|n| ledger.rows().remove(&n))
         .ok_or_else(|| {
             (
                 "not_found",
-                copy_text("beForwards.stop.notFound", &[("id", id)]),
+                copy_text("beForwards.stop.notFound", &[("id", &req.id)]),
             )
         })?;
     drop(entry);
-    Ok(json!({ "id": id }))
+    Ok(req)
+}
+
+/// 账上一条转发此刻的样子。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ForwardRow {
+    pub(crate) id: String,
+    /// 那台的名字。
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    pub(crate) local_port: u16,
+    pub(crate) remote_host: String,
+    pub(crate) remote_port: u16,
+    /// `running`（链路还在）· `error`（链路自己收工了，留在账上等人停）。
+    #[cfg_attr(test, ts(type = "\"running\" | \"error\""))]
+    pub(crate) state: &'static str,
+    /// 累计接进的连接数。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) conn_count: u64,
+}
+
+/// `forward-list` 的应答。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Forwards {
+    pub(crate) forwards: Vec<ForwardRow>,
 }
 
 /// `forward-list` 的本体：账上每一条的规格 · 状态（`running` = 链路还在 · `error` = 链路收工了）· 累计连接数。
-pub(crate) fn list_with(ledger: &Ledger) -> Value {
-    let rows: Vec<Value> = ledger
+pub(crate) fn list_with(ledger: &Ledger) -> Forwards {
+    let forwards = ledger
         .rows()
         .iter()
-        .map(|(n, e)| {
-            json!({
-                "id": id_text(*n),
-                "origin": e.spec.origin,
-                "localPort": e.spec.local_port,
-                "remoteHost": e.spec.remote_host,
-                "remotePort": e.spec.remote_port,
-                "state": if e.pump.0.is_finished() { "error" } else { "running" },
-                "connCount": e.conn_count.load(Ordering::Relaxed),
-            })
+        .map(|(n, e)| ForwardRow {
+            id: id_text(*n),
+            origin: cmd_wire::Machine(e.spec.origin.clone()),
+            local_port: e.spec.local_port,
+            remote_host: e.spec.remote_host.clone(),
+            remote_port: e.spec.remote_port,
+            state: if e.pump.0.is_finished() {
+                "error"
+            } else {
+                "running"
+            },
+            conn_count: e.conn_count.load(Ordering::Relaxed),
         })
         .collect();
-    json!({ "forwards": rows })
+    Forwards { forwards }
 }
 
 /// 账上通往 `origin` 那台、链路还在的几条（`machine-interrupts` 的 `forwards` 一格）。
@@ -318,28 +385,103 @@ pub(crate) fn running_all() -> u32 {
         .count() as u32
 }
 
-/// 生产的 `forward-start`：进程里那张可达表 ＋ 那张账 ＋ 真拨号。
-pub async fn answer_start(args: &Value) -> Result<Value, (&'static str, String)> {
-    start_with(
-        args,
-        &remote_ask::REACH,
-        &LEDGER,
-        |req, up_r, mut down_w| async move {
-            let stages = crate::dial::StageSink::new(false);
-            crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
-        },
-    )
-    .await
+crate::stream::inbound::typed::codes! {
+    /// `forward-start` 的码：规格不对 · 那台不在可达表里也没交配置 · 跳板查无 / 成环 · 账满了 · 链路没起来。
+    pub(crate) enum ForwardStartErr {
+        BadSpec = "bad_spec",
+        Unreachable = "unreachable",
+        BadJump = "bad_jump",
+        Full = "full",
+        Failed = "failed",
+    }
 }
 
-/// 生产的 `forward-stop`。
-pub fn answer_stop(args: &Value) -> Result<Value, (&'static str, String)> {
-    stop_with(args, &LEDGER)
+/// `forward-start`：起一条本地端口转发。真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断。
+pub(crate) struct ForwardStart;
+
+impl crate::stream::inbound::typed::Command for ForwardStart {
+    const NAME: &'static str = "forward-start";
+    type Req = ForwardStartReq;
+    type Reply = ForwardStarted;
+    type Err = ForwardStartErr;
 }
 
-/// 生产的 `forward-list`。
-pub fn answer_list() -> Value {
-    list_with(&LEDGER)
+impl crate::stream::inbound::typed::Async for ForwardStart {
+    fn run(
+        req: ForwardStartReq,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl Future<Output = Result<ForwardStarted, ForwardStartErr>> + Send + 'static {
+        async move {
+            start_with(
+                &req,
+                &remote_ask::REACH,
+                &LEDGER,
+                |req, up_r, mut down_w| async move {
+                    let stages = crate::dial::StageSink::new(false);
+                    crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;
+                },
+            )
+            .await
+            .map_err(crate::stream::inbound::typed::of_pair(
+                ForwardStartErr::Failed,
+            ))
+        }
+    }
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `forward-stop` 的码：账上没有这个号。
+    pub(crate) enum ForwardStopErr {
+        NotFound = "not_found",
+    }
+}
+
+/// `forward-stop`：停一条转发（纯内存，一把锁）。
+pub(crate) struct ForwardStop;
+
+impl crate::stream::inbound::typed::Command for ForwardStop {
+    const NAME: &'static str = "forward-stop";
+    type Req = ForwardId;
+    type Reply = ForwardId;
+    type Err = ForwardStopErr;
+}
+
+impl crate::stream::inbound::typed::Async for ForwardStop {
+    fn run(
+        req: ForwardId,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl Future<Output = Result<ForwardId, ForwardStopErr>> + Send + 'static {
+        std::future::ready(
+            stop_with(req, &LEDGER).map_err(crate::stream::inbound::typed::of_pair(
+                ForwardStopErr::NotFound,
+            )),
+        )
+    }
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `forward-list` 没有别的码。
+    pub(crate) enum ForwardListErr {}
+}
+
+/// `forward-list`：列转发（纯内存，一把锁）。
+pub(crate) struct ForwardList;
+
+impl crate::stream::inbound::typed::Command for ForwardList {
+    const NAME: &'static str = "forward-list";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = Forwards;
+    type Err = ForwardListErr;
+}
+
+impl crate::stream::inbound::typed::Async for ForwardList {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl Future<Output = Result<Forwards, ForwardListErr>> + Send + 'static {
+        std::future::ready(Ok(list_with(&LEDGER)))
+    }
 }
 
 #[cfg(test)]
