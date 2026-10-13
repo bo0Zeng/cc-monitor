@@ -1861,21 +1861,146 @@ type NoArgs = Record<symbol, never>;
 
 收 `args` · 可撤 · CLI：`ccm -- --history-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `groups` | ← | 按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin` |
-| `hidden` | → | 可缺席：`true` ⇒ 隐藏的也出（默认不出） |
-| `limit` | → | 可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated` |
-| `listing` | → | 可缺席：那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` / 没有 `rows` 数组 ⇒ `bad_args` |
-| `notice` | ← | 注解没并上的那句话；`null` = 并上了 |
-| `origin` | → | 可缺席：那台的名字（`listing` 是它的；行与组都标上它） |
-| `query` | → | 可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`） |
-| `raw` | → | 可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations \| annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份、不拿本机那份去盖 |
-| `rows` | ← | 每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按看的那一台的时区（请求的 `tz`）写好，界面照抄 |
-| `sort` | → | 可缺席：`activity`（默认，按最后活动）· `created`（按开始） |
-| `total` | ← | 筛完留下几个（截之前，不含 `context`） |
-| `truncated` | ← | `rows` 被 `limit` 截过 |
-| `within_days` | → | 可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650） |
+入参 `HistoryListReq` · 回包 `HistoryListReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Can = { 
+/**
+ * `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（恢复主会话）。
+ */
+resume: CanResume, 
+/**
+ * 恢复时能不能选号。
+ */
+accounts: boolean, 
+/**
+ * 能不能从某一轮分叉。
+ */
+fork: boolean, 
+/**
+ * `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。
+ */
+delete: CanDelete, };
+type CanDelete = "yes" | "live" | "unsure";
+type CanResume = "yes" | "switch" | "bg";
+type Entry = { starred: boolean, customTitle: string | null, hidden: boolean, updatedAt: number, };
+type HistoryFailedDir = { projectDir: string, error: string, };
+type HistoryGroup = { key: string, agent: string, projectName: string, projectPath: string, projectDir: string, count: number, 
+/**
+ * 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
+ */
+hasLive: boolean | null, starred: boolean, lastActivity: number, 
+/**
+ * 几台的组并成一列时按它（大的在前）。
+ */
+order: number, 
+/**
+ * 读不了的那个记录目录：原因。
+ */
+failed: string | null, 
+/**
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ */
+origin?: string, };
+type HistoryList = { rows: Array<HistoryRow>, groups: Array<HistoryGroup>, total: number, truncated: boolean, 
+/**
+ * 注解没并上的那一句；并上了 ⇒ `null`。
+ */
+notice: string | null, };
+type HistoryListReply = HistoryListing | HistoryList;
+type HistoryListReq = { 
+/**
+ * `true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations | annotationsNotice}`（不筛不排、不看别的入参）——
+ * 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份。
+ */
+raw?: boolean, 
+/**
+ * 那台的名字（`listing` 是它的；行与组都标上它）。缺 ⇒ 这台。
+ */
+origin?: string, 
+/**
+ * 那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。
+ * 缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` ⇒ `bad_args`。
+ */
+listing?: HistoryListing, 
+/**
+ * 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
+ */
+sid?: string, 
+/**
+ * 只留显示标题 · 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）。
+ */
+query?: string, 
+/**
+ * 缺 ⇒ 按最后活动。
+ */
+sort?: HistorySort, 
+/**
+ * 只留那个键（同 `sort`）落在最近 N 天里的（1–3650）。
+ */
+within_days?: number, 
+/**
+ * `true` ⇒ 隐藏的也出（缺省不出）。
+ */
+hidden?: boolean, 
+/**
+ * 最多回几行（缺省 2000，1–20000）；多出的不回、`truncated`。
+ */
+limit?: number, };
+type HistoryListing = { rows: Array<HistoryRawRow>, failed: Array<HistoryFailedDir>, 
+/**
+ * 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
+ */
+annotations?: { [key in string]: Entry }, annotationsNotice?: string, };
+type HistoryRawRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, 
+/**
+ * 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
+ */
+title: string, startedAt: number, updatedAt: number, jsonlPath: string, 
+/**
+ * 判不了活（合成历史没有 pidfile）⇒ `null`。
+ */
+isLive: boolean | null, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, hidden: boolean, forkedFromSessionId?: string, forkedFromMessageUuid?: string, 
+/**
+ * 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
+ */
+projectDir: string, 
+/**
+ * 分组键：哪一家 ＋ 真实目录。
+ */
+group: string, lastAccount?: string, };
+type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, hidden: boolean, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
+/**
+ * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
+ */
+label: Words, 
+/**
+ * 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
+ */
+untitled: boolean, 
+/**
+ * `live` · `ended` · `unknown`（活不活只出这一格）。
+ */
+status: "live" | "ended" | "unknown", can: Can, 
+/**
+ * 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
+ */
+agentTag: Words | null, 
+/**
+ * 被筛掉、只为挂住分叉子会话才带上的父会话（界面淡显）。
+ */
+context?: true, 
+/**
+ * 排序键（`activity` ⇒ 最后活动，`created` ⇒ 开始；毫秒）。
+ */
+at: number, atText: Words, sectionText: Words, spanText: Words, 
+/**
+ * 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
+ */
+origin?: string, };
+type HistorySort = "activity" | "created";
+type Words = string;
+```
 
 码：`bad_args` · `failed` · `no_listing`
 

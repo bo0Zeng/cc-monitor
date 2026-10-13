@@ -20,6 +20,8 @@ import type { HistoryIndex } from "./HistoryIndex";
 import type { HistoryIndexReq } from "./HistoryIndexReq";
 import type { HistoryLines } from "./HistoryLines";
 import type { HistoryLinesReq } from "./HistoryLinesReq";
+import type { HistoryListReply } from "./HistoryListReply";
+import type { HistoryListReq } from "./HistoryListReq";
 import type { HistoryPage } from "./HistoryPage";
 import type { HistoryPageReq } from "./HistoryPageReq";
 import type { HistoryRead } from "./HistoryRead";
@@ -88,6 +90,7 @@ export interface TypedCommands {
   "history-index": { req: HistoryIndexReq; reply: HistoryIndex; code: "bad_args" | "failed" | "too_large" };
   "history-last-accounts": { req: NoArgs; reply: LastAccounts; code: "bad_args" | "unreadable" };
   "history-lines": { req: HistoryLinesReq; reply: HistoryLines; code: "bad_args" | "failed" | "oversized_line" | "refused" };
+  "history-list": { req: HistoryListReq; reply: HistoryListReply; code: "bad_args" | "failed" | "no_listing" };
   "history-page": { req: HistoryPageReq; reply: HistoryPage; code: "bad_args" | "failed" | "oversized_line" | "refused" };
   "history-read": { req: HistoryReadReq; reply: HistoryRead; code: "bad_args" | "failed" | "oversized_line" | "refused" };
   "history-record": { req: HistoryRecordReq; reply: RecordProbe; code: "bad_args" };

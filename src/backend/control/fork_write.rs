@@ -149,7 +149,7 @@ pub(crate) fn fork_at(
     })
 }
 
-/// 起新会话那一条（`session-new` 带 `forkFrom`）写分支记录：同 [`answer_wire_at`] 那一份本体，回新会话的 sid。
+/// 起新会话那一条（`session-new` 带 `forkFrom`）写分支记录：同 [`fork_at`] 那一份本体，回新会话的 sid。
 pub(crate) fn fork_for_launch(
     nf: &NewFile,
     agent_home: &Path,

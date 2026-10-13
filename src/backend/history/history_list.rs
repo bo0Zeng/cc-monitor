@@ -5,7 +5,7 @@
 //! # 形状
 //!
 //! ```text
-//! history-list {origin?, listing?, raw?, sid?, query?, sort?, within_days?, hidden?, limit?}
+//! history-list {origin?, listing?, raw?, sid?, query?, sort?, within_days?, hidden?, limit?}   （入参 · 回包 · 码都是类型）
 //!   raw: true      这台自己的清单 `{rows, failed}`（不并注解、不筛不排）—— 远端那一份就是那台常驻答的它（热缓存）
 //!   origin 缺席    这台；给了 = 那一台：`listing` 是界面经已开着的长连接问那台 `raw` 拿回来的原样（那台自己判活、自己读上次的号），
 //!                  本进程记着它；不带 `listing` ⇒ 用记着的那份（敲字搜索），没记着 ⇒ `no_listing`（界面先问那台、再带着来）
@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 use crate::common::cells::Words;
 use crate::history::history_annotations::{Loaded, Table};
@@ -45,18 +45,39 @@ pub(crate) struct LiveSet(pub(crate) BTreeSet<String>);
 
 /// 一台自己的清单（`raw` 那一形，也是远端那一支带回来的样子）：行 · 读不了的记录目录 · 那台自己的注解（或读不到它的那一句）。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "HistoryListing"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Listing {
     pub(crate) rows: Vec<RawRow>,
     pub(crate) failed: Vec<FailedDir>,
+    /// 那台自己那份注解（sid ⇒ 注解）；读不到 ⇒ 缺，`annotationsNotice` 说为什么。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) annotations: Option<Table>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) annotations_notice: Option<String>,
 }
 
 /// 读不了的一个记录目录。
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "HistoryFailedDir"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FailedDir {
     pub(crate) project_dir: String,
@@ -65,6 +86,15 @@ pub(crate) struct FailedDir {
 
 /// 清单里的一行（这台判过活、注解格先按没有填）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "HistoryRawRow"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RawRow {
     pub(crate) agent: String,
@@ -75,7 +105,9 @@ pub(crate) struct RawRow {
     pub(crate) first_user_excerpt: String,
     /// 显示标题（用户改过的另在 `customTitle`）：与全文搜索同一条规则。
     pub(crate) title: String,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) started_at: i64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) updated_at: i64,
     pub(crate) jsonl_path: String,
     /// 判不了活（合成历史没有 pidfile）⇒ `null`。
@@ -86,22 +118,28 @@ pub(crate) struct RawRow {
     pub(crate) custom_title: Option<String>,
     pub(crate) hidden: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) forked_from_session_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) forked_from_message_uuid: Option<String>,
     /// 读它那一组用的键（记录目录名 · 合成历史 `<kind>:<cwd>`）。
     pub(crate) project_dir: String,
     /// 分组键：哪一家 ＋ 真实目录。
     pub(crate) group: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) last_account: Option<String>,
 }
 
 /// `history-list` 的成品。
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct HistoryList<'o> {
-    pub(crate) rows: Vec<HistoryRow<'o>>,
-    pub(crate) groups: Vec<HistoryGroup<'o>>,
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HistoryList {
+    pub(crate) rows: Vec<HistoryRow>,
+    pub(crate) groups: Vec<HistoryGroup>,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) total: usize,
     pub(crate) truncated: bool,
     /// 注解没并上的那一句；并上了 ⇒ `null`。
@@ -110,8 +148,10 @@ pub(crate) struct HistoryList<'o> {
 
 /// 成品的一行。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct HistoryRow<'o> {
+pub(crate) struct HistoryRow {
     pub(crate) agent: String,
     pub(crate) session_id: String,
     pub(crate) project_path: String,
@@ -119,7 +159,9 @@ pub(crate) struct HistoryRow<'o> {
     pub(crate) ai_title: Option<String>,
     pub(crate) first_user_excerpt: String,
     pub(crate) title: String,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) started_at: i64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) updated_at: i64,
     pub(crate) jsonl_path: String,
     pub(crate) message_count_approx: u32,
@@ -128,56 +170,69 @@ pub(crate) struct HistoryRow<'o> {
     pub(crate) custom_title: Option<String>,
     pub(crate) hidden: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) forked_from_session_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) forked_from_message_uuid: Option<String>,
     pub(crate) project_dir: String,
     pub(crate) group: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub(crate) last_account: Option<String>,
     /// 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
     pub(crate) label: Words,
     /// 改过的标题 · 标题 · 第一句都没有（界面写「没有说过话的会话」）。
     pub(crate) untitled: bool,
     /// `live` · `ended` · `unknown`（活不活只出这一格）。
+    #[cfg_attr(test, ts(type = "\"live\" | \"ended\" | \"unknown\""))]
     pub(crate) status: &'static str,
     pub(crate) can: Can,
     /// 行上那一家的小牌（对用户的叫法）；默认那一家 ⇒ `null`。
     pub(crate) agent_tag: Option<Words>,
     /// 被筛掉、只为挂住分叉子会话才带上的父会话（界面淡显）。
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional, type = "true"))]
     pub(crate) context: Option<bool>,
     /// 排序键（`activity` ⇒ 最后活动，`created` ⇒ 开始；毫秒）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) at: i64,
     pub(crate) at_text: Words,
     pub(crate) section_text: Words,
     pub(crate) span_text: Words,
     /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) origin: Option<&'o str>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) origin: Option<String>,
 }
 
 /// 按项目看时的一组。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-pub(crate) struct HistoryGroup<'o> {
+pub(crate) struct HistoryGroup {
     pub(crate) key: String,
     pub(crate) agent: String,
     pub(crate) project_name: String,
     pub(crate) project_path: String,
     pub(crate) project_dir: String,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) count: u64,
     /// 有在跑的 ⇒ `true`；有答不了的 ⇒ `null`；都没在跑 ⇒ `false`。
     pub(crate) has_live: Option<bool>,
     pub(crate) starred: bool,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) last_activity: i64,
     /// 几台的组并成一列时按它（大的在前）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) order: i64,
     /// 读不了的那个记录目录：原因。
     pub(crate) failed: Option<String>,
     /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) origin: Option<&'o str>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) origin: Option<String>,
 }
 
 /// 注解这一维：读到了 ⇒ 那张表；读不到 ⇒ 为什么（给 `notice`）。
@@ -382,7 +437,117 @@ pub(crate) fn listing_from(
 
 // ───────────────────────── 成品 ─────────────────────────
 
-/// 入参（帧面那几格）。
+/// `history-list` 的排法：按最后活动（缺省）· 按开始。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "HistorySort"
+    )
+)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Sort {
+    #[default]
+    Activity,
+    Created,
+}
+
+/// `history-list` 的入参（全可缺）。`raw: true` ⇒ 只回这台自己的清单，别的几格不看。
+#[derive(Debug, Clone, Default, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryListReq {
+    /// `true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations | annotationsNotice}`（不筛不排、不看别的入参）——
+    /// 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) raw: Option<bool>,
+    /// 那台的名字（`listing` 是它的；行与组都标上它）。缺 ⇒ 这台。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) origin: Option<String>,
+    /// 那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。
+    /// 缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` ⇒ `bad_args`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) listing: Option<Listing>,
+    /// 只要这一个会话那一行（独立查看窗；别的筛一概不看、不补父会话）。形状同 `history-record`（`[A-Za-z0-9-]`，1..=64）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) sid: Option<String>,
+    /// 只留显示标题 · 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) query: Option<String>,
+    /// 缺 ⇒ 按最后活动。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) sort: Option<Sort>,
+    /// 只留那个键（同 `sort`）落在最近 N 天里的（1–3650）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub(crate) within_days: Option<u64>,
+    /// `true` ⇒ 隐藏的也出（缺省不出）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) hidden: Option<bool>,
+    /// 最多回几行（缺省 2000，1–20000）；多出的不回、`truncated`。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "number"))]
+    pub(crate) limit: Option<u64>,
+}
+
+/// `history-list` 的回包：`raw` ⇒ 这台自己那份清单；平时 ⇒ 并好 · 筛好 · 排好的成品。线上不带标签（两形的键不重：成品有 `groups`）。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(untagged)]
+pub(crate) enum HistoryListReply {
+    Listing(Listing),
+    List(HistoryList),
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `history-list` 的码。
+    pub(crate) enum HistoryListErr {
+        /// 读不了这台的记录树 · 读的那一趟没做完。
+        Failed = "failed",
+        /// 问的是那一台、本进程还没记着它的清单（界面先问那台 `raw`、再带着来）。
+        NoListing = "no_listing",
+    }
+}
+
+/// `history-list`：历史页的平铺会话清单。扫记录树在阻塞池里做，并 · 筛 · 排是纯计算 ⇒ 异步档。
+pub(crate) struct HistoryListCmd;
+
+impl crate::stream::inbound::typed::Command for HistoryListCmd {
+    const NAME: &'static str = "history-list";
+    type Req = HistoryListReq;
+    type Reply = HistoryListReply;
+    type Err = HistoryListErr;
+}
+
+impl crate::stream::inbound::typed::Async for HistoryListCmd {
+    fn run(
+        req: HistoryListReq,
+        cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<HistoryListReply, HistoryListErr>> + Send + 'static
+    {
+        async move {
+            answer(req, cx.tz)
+                .await
+                .map_err(crate::stream::inbound::typed::of_pair(
+                    HistoryListErr::Failed,
+                ))
+        }
+    }
+}
+
+/// 筛排那几格（入参解好、值域核过）。
 #[derive(Debug, Default)]
 pub(crate) struct Ask {
     /// 只要这一个会话（别的筛不看）。
@@ -398,53 +563,40 @@ fn bad(what: &str) -> (&'static str, String) {
     ("bad_args", crate::common::contract::malformed(what))
 }
 
-pub(crate) fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
-    // 会话 ID 的形状与 `history-record` 同一条（`[A-Za-z0-9-]`，1..=64），先于任何 IO。
-    let sid = match args.get("sid") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(s))
+/// 入参 ⇒ [`Ask`]：值域不对 ⇒ `bad_args`（先于任何 IO）。
+pub(crate) fn parse_ask(req: &HistoryListReq) -> Result<Ask, (&'static str, String)> {
+    // 会话 ID 的形状与 `history-record` 同一条（`[A-Za-z0-9-]`，1..=64）。
+    let sid = match req.sid.as_deref() {
+        None => None,
+        Some(s)
             if (1..=64).contains(&s.len())
                 && s.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') =>
         {
-            Some(s.clone())
+            Some(s.to_string())
         }
         Some(_) => return Err(bad("`sid` must be a session id ([A-Za-z0-9-], 1..=64)")),
     };
-    let query = match args.get("query") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(s)) => Some(s.trim().to_lowercase()).filter(|s| !s.is_empty()),
-        Some(_) => return Err(bad("`query` must be a string")),
+    let query = req
+        .query
+        .as_deref()
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| !s.is_empty());
+    let within_ms = match req.within_days {
+        None => None,
+        Some(d @ 1..=3650) => Some(d as i64 * 86_400_000),
+        Some(_) => return Err(bad("`within_days` must be 1..=3650")),
     };
-    let by_created = match args.get("sort").map(|v| v.as_str()) {
-        None | Some(Some("activity")) => false,
-        Some(Some("created")) => true,
-        _ => return Err(bad("`sort` must be `activity` or `created`")),
-    };
-    let within_ms = match args.get("within_days") {
-        None | Some(Value::Null) => None,
-        Some(v) => match v.as_u64() {
-            Some(d @ 1..=3650) => Some(d as i64 * 86_400_000),
-            _ => return Err(bad("`within_days` must be 1..=3650")),
-        },
-    };
-    let flag = |k: &str| match args.get(k) {
-        None | Some(Value::Null) => Ok(false),
-        Some(Value::Bool(b)) => Ok(*b),
-        Some(_) => Err(bad(&format!("`{k}` must be a boolean"))),
-    };
-    let limit = match args.get("limit") {
-        None | Some(Value::Null) => DEFAULT_LIMIT,
-        Some(v) => match v.as_u64() {
-            Some(n @ 1..=20_000) => n as usize,
-            _ => return Err(bad("`limit` must be 1..=20000")),
-        },
+    let limit = match req.limit {
+        None => DEFAULT_LIMIT,
+        Some(n @ 1..=20_000) => n as usize,
+        Some(_) => return Err(bad("`limit` must be 1..=20000")),
     };
     Ok(Ask {
         sid,
         query,
-        by_created,
+        by_created: req.sort == Some(Sort::Created),
         within_ms,
-        hidden: flag("hidden")?,
+        hidden: req.hidden == Some(true),
         limit,
     })
 }
@@ -502,7 +654,7 @@ fn hits(f: &Finished, q: &str) -> bool {
 }
 
 /// 一行成品（活不活只出 `status` 一格：`isLive` 是它的来路，两格并存读的人就得猜听哪一格）。
-fn row_of<'o>(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> HistoryRow<'o> {
+fn row_of(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) -> HistoryRow {
     let r = f.raw;
     let (at_text, section_text, span_text) =
         crate::common::time::history_times(at, r.started_at, r.updated_at, now_ms, tz);
@@ -543,14 +695,14 @@ fn row_of<'o>(f: Finished, at: i64, context: bool, now_ms: i64, tz: &crate::Tz) 
 
 /// 一台的清单（`raw` 那一形）＋ 注解 ＋ 入参 ⇒ 成品。`origin` ＝ 问的是哪一台（缺 ＝ 这台）。`now_ms` 由调用方给（时间筛的「现在」）；
 /// `tz` ＝ 看的那一台的时区（请求信封带来的）：每行的行尾 · 分段 · 时间段三格按它写好（偏移按各自那一刻）。
-pub(crate) fn answer_from<'o>(
+pub(crate) fn answer_from(
     listing: &Listing,
-    origin: Option<&'o str>,
+    origin: Option<&str>,
     ann: Result<&Table, String>,
     ask: &Ask,
     now_ms: i64,
     tz: &crate::Tz,
-) -> HistoryList<'o> {
+) -> HistoryList {
     let t = ann.as_ref().ok().copied();
     let all: Vec<Finished> = listing
         .rows
@@ -593,7 +745,7 @@ pub(crate) fn answer_from<'o>(
             context.push(true);
         }
     }
-    let mut rows: Vec<HistoryRow<'o>> = out
+    let mut rows: Vec<HistoryRow> = out
         .into_iter()
         .zip(context)
         .map(|(f, cx)| {
@@ -610,8 +762,10 @@ pub(crate) fn answer_from<'o>(
     let mut groups = groups_of(&rows, listing);
     // 问的是哪一台：每行每组都带上（界面把几台并成一列时认得出是哪台的）。
     if let Some(o) = origin {
-        rows.iter_mut().for_each(|r| r.origin = Some(o));
-        groups.iter_mut().for_each(|g| g.origin = Some(o));
+        rows.iter_mut().for_each(|r| r.origin = Some(o.to_string()));
+        groups
+            .iter_mut()
+            .for_each(|g| g.origin = Some(o.to_string()));
     }
     HistoryList {
         rows,
@@ -623,7 +777,7 @@ pub(crate) fn answer_from<'o>(
 }
 
 /// 一组有没有在跑的：档位（有在跑的 2 · 说不清 1 · 都没在跑 0）。
-fn live_rank(g: &HistoryGroup<'_>) -> i64 {
+fn live_rank(g: &HistoryGroup) -> i64 {
     match g.has_live {
         Some(true) => 2,
         None => 1,
@@ -633,8 +787,8 @@ fn live_rank(g: &HistoryGroup<'_>) -> i64 {
 
 /// 按项目看时的分组：在列的那几行按 `group` 归，每组 {key · 那一家 · 名字 · 目录 · 读它的键 · 几个 · 有没有在跑的 · 最后动过 · 机器}；
 /// 读不了的那几个记录目录也是一组（`failed` 带原因）。排序：有在跑的 → 有星标的 → 最近动过的。
-fn groups_of<'o>(rows: &[HistoryRow<'o>], listing: &Listing) -> Vec<HistoryGroup<'o>> {
-    let mut by: BTreeMap<String, HistoryGroup<'o>> = BTreeMap::new();
+fn groups_of(rows: &[HistoryRow], listing: &Listing) -> Vec<HistoryGroup> {
+    let mut by: BTreeMap<String, HistoryGroup> = BTreeMap::new();
     for v in rows.iter().filter(|v| v.context.is_none()) {
         let g = by.entry(v.group.clone()).or_insert_with(|| HistoryGroup {
             key: v.group.clone(),
@@ -660,10 +814,10 @@ fn groups_of<'o>(rows: &[HistoryRow<'o>], listing: &Listing) -> Vec<HistoryGroup
         g.starred |= v.starred;
         g.last_activity = g.last_activity.max(v.updated_at);
     }
-    let mut out: Vec<HistoryGroup<'o>> = by.into_values().collect();
+    let mut out: Vec<HistoryGroup> = by.into_values().collect();
     // 有在跑的 ＞ 说不清的 ＞ 都没在跑（同项目清单）。
     out.sort_by(|a, b| {
-        let rank = |g: &HistoryGroup<'_>| (live_rank(g), g.starred, g.last_activity);
+        let rank = |g: &HistoryGroup| (live_rank(g), g.starred, g.last_activity);
         rank(b).cmp(&rank(a)).then_with(|| a.key.cmp(&b.key))
     });
     // 各台各自排好，界面要把几台的组并成一列 ⇒ 把这个序压成一个数交出去（`order` 大的在前；界面只按它并，不另判）：
@@ -695,7 +849,7 @@ fn groups_of<'o>(rows: &[HistoryRow<'o>], listing: &Listing) -> Vec<HistoryGroup
 }
 
 /// 格目录与出参对拍的样本：每个可缺的格都填上、每个列表都不空。
-pub(crate) fn specimen() -> HistoryList<'static> {
+pub(crate) fn specimen() -> HistoryList {
     let s = |v: &str| v.to_string();
     let w = |v: &str| Words(v.to_string());
     HistoryList {
@@ -730,7 +884,7 @@ pub(crate) fn specimen() -> HistoryList<'static> {
             at_text: w("t"),
             section_text: w("s"),
             span_text: w("p"),
-            origin: Some("m"),
+            origin: Some(s("m")),
         }],
         groups: vec![HistoryGroup {
             key: s("agent:/w"),
@@ -744,7 +898,7 @@ pub(crate) fn specimen() -> HistoryList<'static> {
             last_activity: 2,
             order: 2,
             failed: Some(s("x")),
-            origin: Some("m"),
+            origin: Some(s("m")),
         }],
         total: 1,
         truncated: false,
@@ -774,27 +928,23 @@ async fn blocking<T: Send + 'static>(
     })?
 }
 
-/// 帧面 `history-list`（`tz` ＝ 看的那一台的时区：行上那几格时刻字按它写）。
-pub async fn answer(args: Value, tz: crate::Tz) -> Result<Value, (&'static str, String)> {
-    if args.get("raw").and_then(Value::as_bool) == Some(true) {
-        return blocking(|| {
-            machine_listing().map(|l| serde_json::to_value(l).unwrap_or(Value::Null))
-        })
-        .await;
+/// 帧面 `history-list` 的本体（`tz` ＝ 看的那一台的时区：行上那几格时刻字按它写）。
+pub(crate) async fn answer(
+    req: HistoryListReq,
+    tz: crate::Tz,
+) -> Result<HistoryListReply, (&'static str, String)> {
+    if req.raw == Some(true) {
+        return blocking(machine_listing)
+            .await
+            .map(HistoryListReply::Listing);
     }
-    let ask = parse_ask(&args)?;
-    let origin = match args.get("origin") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(s)) if !s.is_empty() => Some(s.clone()),
+    let ask = parse_ask(&req)?;
+    let origin = match req.origin {
+        None => None,
+        Some(s) if !s.is_empty() => Some(s),
         Some(_) => return Err(bad("`origin` must be a non-empty string")),
     };
-    let handed = match args.get("listing") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(serde_json::from_value::<Listing>(v.clone()).map_err(|_| {
-            bad("`listing` must be a machine's raw listing `{rows, failed, annotations | annotationsNotice}`")
-        })?),
-    };
-    let listing = match (&origin, handed) {
+    let listing = match (&origin, req.listing) {
         (None, None) => {
             let only = ask.sid.clone();
             blocking(move || machine_listing_for(only.as_deref())).await?
@@ -805,15 +955,14 @@ pub async fn answer(args: Value, tz: crate::Tz) -> Result<Value, (&'static str, 
     blocking(move || {
         // 并的是清单自己带来的那台的注解（本机的那份只并本机会话；远端那台自己并好了它那份）。
         let ann = listing_annotations(&listing);
-        let got = answer_from(
+        Ok(HistoryListReply::List(answer_from(
             &listing,
             origin.as_deref(),
             ann.as_ref().map_err(Clone::clone),
             &ask,
             now_ms(),
             &tz,
-        );
-        Ok(serde_json::to_value(got).unwrap_or(Value::Null))
+        )))
     })
     .await
 }

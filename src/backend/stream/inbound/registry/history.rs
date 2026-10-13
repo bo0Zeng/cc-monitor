@@ -32,21 +32,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **历史页的平铺清单**（`history_list.rs`）：跨项目一次出成品 —— 每行的状态与「能做什么」· 按项目的分组 · 搜标题 / 第一句 / 项目名。
     //   远端那一份由界面经已开着的长连接问那台常驻 `raw`（那台热缓存）、带着交进来（`listing`），本进程记着给敲字用；并注解、筛、排都在这台。
     //   这台不替界面去问那台（原先经 `remote_ask` 在那台起一次性进程冷扫）。
-    CommandSpec {
-        name: "history-list",
-        summary: "历史页的平铺会话清单",
-        codes: &["bad_args", "failed", "no_listing"],
-        fields: &[out("groups", "按项目看时的分组（只数 `rows` 里不是 `context` 的）：`key` · `agent` · `projectName` · `projectPath` · `projectDir` · `count` · `hasLive`（`null` = 有判不了活的、又没有确定在跑的）· `starred`（组里有星标的）· `lastActivity` · `order`（几台的组并成一列时的序，大的在前：档位 × 10¹⁴ ＋ 有星标 × 10¹³ ＋ 最后动过的毫秒；界面只按它并）· `failed`（读不了的那个记录目录 ⇒ 一组、`count` 0、带那一句；别的 ⇒ `null`）· `origin`"), arg("hidden", "可缺席：`true` ⇒ 隐藏的也出（默认不出）"), arg("limit", "可缺席：最多回几行（默认 2000，1–20000）；多出的不回、`truncated`"), arg("listing", "可缺席：那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` / 没有 `rows` 数组 ⇒ `bad_args`"), out("notice", "注解没并上的那句话；`null` = 并上了"), arg("origin", "可缺席：那台的名字（`listing` 是它的；行与组都标上它）"), arg("query", "可缺席：只留显示标题（`label`）· 第一句 · 项目名里含这几个字的（不分大小写，子串；不比路径、不搜内容 —— 内容走 `history-search`）"), arg("raw", "可缺席：`true` ⇒ 只回**这台自己**的清单 `{rows, failed, annotations | annotationsNotice}`（不筛不排、不认别的入参；`annotations` 是这台自己那份注解 sid ⇒ `{starred, customTitle, hidden, updatedAt}`，读不到 ⇒ `annotationsNotice` 一句为什么）—— 远端那一份就是那台常驻答的它；注解跟着会话住在那台，并的是清单带来的那份、不拿本机那份去盖"), out("rows", "每会话一行，按 `at` 倒序：`agent` · `agentTag`（行上那一家的小牌，对用户的叫法）· `atText`（行尾那一格）· `sectionText`（分段头）· `spanText`（内容头那一段）—— 这三格按看的那一台的时区（请求的 `tz`）写好，界面照抄"), arg("sort", "可缺席：`activity`（默认，按最后活动）· `created`（按开始）"), out("total", "筛完留下几个（截之前，不含 `context`）"), out("truncated", "`rows` 被 `limit` 截过"), arg("within_days", "可缺席：只留那个键（同 `sort`）落在最近 N 天里的（1–3650）")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::history::history_list::answer(r.args, r.tz)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::history::history_list::HistoryListCmd>(
+        "历史页的平铺会话清单",
+    ),
     // 全文搜索那两条：入参 · 回包 · 错误码都是类型（`faces/search_face.rs`）。搜索扫全库 ⇒ 阻塞档；合并是纯计算 ⇒ 异步档（同 `ping`）。
     crate::stream::inbound::typed::blocking::<crate::faces::search_face::HistorySearch>("全文搜索"),
     crate::stream::inbound::typed::asynchronous::<crate::faces::search_face::HistorySearchMerge>(

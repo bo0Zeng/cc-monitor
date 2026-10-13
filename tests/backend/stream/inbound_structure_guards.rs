@@ -1190,7 +1190,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const FORWARD_LIST: &str = include_str!("../../__fixtures__/forward-list.golden.json");
-    const HISTORY_LIST: &str = include_str!("../../__fixtures__/history-list.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
     const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
@@ -1313,7 +1312,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("profiles-write", PROFILES, "/writeReply", &[], &[]),
         ("aliases-read", ALIASES, "/readReply", &[], &[]),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
-        ("history-list", HISTORY_LIST, "", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
         (
             "forward-list",

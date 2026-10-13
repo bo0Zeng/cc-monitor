@@ -25,6 +25,7 @@
 
 use super::*;
 use crate::history::history_annotations::{Entry, Table};
+use serde_json::json;
 use std::path::PathBuf;
 
 // 判据照线上的样子读（成品与清单都过一遍真序列化器）：下面四个把有类型的那几个口包成 JSON 进出，盖住 `super::*` 里的同名口。
@@ -58,6 +59,22 @@ fn with_own_annotations(listing: &mut Value, loaded: &crate::history::history_an
     let mut l: Listing = serde_json::from_value(listing.clone()).expect("清单读不回来");
     super::with_own_annotations(&mut l, loaded);
     *listing = serde_json::to_value(l).unwrap();
+}
+
+/// 入参照帧面那一处解（typed：形状不对 ⇒ `bad_args`）再核值域，盖住 `super::*` 里的同名口。
+fn parse_ask(args: &Value) -> Result<Ask, (&'static str, String)> {
+    let req: HistoryListReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::parse_ask(&req)
+}
+
+/// 帧面那一臂（入参照 typed 那一处解、回包过一遍真序列化器），盖住 `super::*` 里的同名口。
+async fn answer_wire(args: Value) -> Result<Value, (&'static str, String)> {
+    let req: HistoryListReq =
+        crate::stream::inbound::typed::take(&args).map_err(|f| ("bad_args", f.message))?;
+    super::answer(req, Default::default())
+        .await
+        .map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn listing_annotations(listing: &Value) -> Result<Table, String> {
@@ -417,6 +434,7 @@ fn sort_key_and_limit() {
         json!({"within_days": "7"}),
         json!({"query": 1}),
         json!({"hidden": "y"}),
+        json!({"extra": 1}),
     ] {
         assert_eq!(parse_ask(&bad).unwrap_err().0, "bad_args", "{bad}");
     }
@@ -474,7 +492,7 @@ fn groups_rank_live_then_starred_then_recent_and_keep_failed_dirs() {
 /// 行与组带 `origin`；`listing` 不带 `origin` / 形状不对 ⇒ `bad_args`。
 #[tokio::test]
 async fn a_remote_listing_is_handed_in_and_kept_for_typing() {
-    let ask = |args: Value| crate::history::history_list::answer(args, Default::default());
+    let ask = answer_wire;
     // 每个判据用自己的机器名（缓存是进程级的一张表）。
     let e = ask(json!({"origin": "list-dev"})).await.unwrap_err();
     assert_eq!(e.0, "no_listing", "没记着那台的清单却答了：{e:?}");
@@ -827,9 +845,8 @@ fn the_wire_bytes_the_phone_reads_stay_the_same() {
         .build()
         .unwrap();
     let d = rt
-        .block_on(crate::history::history_list::answer(
+        .block_on(answer_wire(
             json!({"origin": "pin-wire", "listing": r1.clone(), "within_days": 1}),
-            Default::default(),
         ))
         .unwrap();
     let got: BTreeMap<String, String> = [
