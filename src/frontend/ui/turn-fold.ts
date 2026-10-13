@@ -215,6 +215,20 @@ export class TurnFold {
     }
   }
 
+  /**
+   * 正文重来、轮次接着续（宿主 `restartTail`）：接过上一代手上的那份成品与各段单独点过的开合，下一次续取从还没收尾那一轮起，
+   * 不从 0 再要。上一代在途那一趟作废（它已 `dispose`），这一代之后照常 `refresh`。
+   */
+  adopt(prev: TurnFold): void {
+    this.turns = prev.turns;
+    this.bounds = prev.bounds;
+    this.landed = prev.landed;
+    this.byAfter = prev.byAfter;
+    this.overrides = new Map(prev.overrides);
+    this.expandedDefault = prev.expandedDefault;
+    this.onTurns?.();
+  }
+
   /** `Ctrl+O` / 会话头开关：默认展开与否；各段单独记的作废。 */
   setDefault(expanded: boolean, later = false): void {
     this.expandedDefault = expanded;

@@ -6379,6 +6379,53 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(t.seenSeqs.has(1400) && t.seenSeqs.has(2000) && t.seenSeqs.has(END - 1)).toBe(true);
   });
 
+  it("★ 缺得多整份重来时，已经拿过的轮次与大纲接着续：轮次从还没收尾那一轮的开头、大纲从上次的末端，不从 0 再要", async () => {
+    answerLines();
+    const lines = vi.mocked(invoke).getMockImplementation()!;
+    const turn = { at: 100, uuid: "wr-u", shown: [], folds: [], landed: [], done: false } as never;
+    vi.mocked(invoke).mockImplementation((async (cmd: string, args?: unknown) => {
+      if (isChanCall(cmd, args, "history-turns")) {
+        const from = (chanArgsJson(args as never) as { from: number }).from;
+        return chanReply({ from, end: 900, next: null, turns: from <= 100 ? [turn] : [] });
+      }
+      if (isChanCall(cmd, args, "history-user-inputs")) {
+        const from = (chanArgsJson(args as never) as { from: number }).from;
+        return chanReply({ from, end: 500, next: null, entries: [] });
+      }
+      return lines(cmd, args as never);
+    }) as never);
+    const asks = (op: string) =>
+      vi.mocked(invoke).mock.calls
+        .filter((c) => isChanCall(c[0] as string, c[1], op))
+        .map((c) => chanArgsJson(c[1] as never) as { path: string; from: number })
+        .filter((a) => a.path === "/p/wr.jsonl")
+        .map((a) => a.from);
+    for (let s = 0; s < 10; s++) tm.onLine(line("wr", s));
+    tm.switchTo("wr");
+    await new Promise((r) => setTimeout(r, 200)); // 停够了才要第一趟（`STAY_MS`）
+    for (let k = 0; k < 5; k++) await settle();
+    const t0 = home(tm).store.tabs.get("wr")!;
+    await t0.outline.refresh();
+    expect(asks("history-turns"), "切进来第一趟轮次从 0").toContain(0);
+    tm.switchTo("front");
+    const turnsBefore = asks("history-turns").length;
+    const inputsBefore = asks("history-user-inputs").length;
+    tm.onSessionWatch(LOCAL_ORIGIN, { session_id: "wr", path: "/p/wr.jsonl", seq: 2000 });
+    for (let k = 0; k < 5; k++) await settle();
+    const t = home(tm).store.tabs.get("wr")!;
+    expect(t, "缺得多却没重来正文").not.toBe(t0);
+    tm.switchTo("wr");
+    await new Promise((r) => setTimeout(r, 200));
+    await t.outline.refresh();
+    for (let k = 0; k < 5; k++) await settle();
+    const turnsAfter = asks("history-turns").slice(turnsBefore);
+    const inputsAfter = asks("history-user-inputs").slice(inputsBefore);
+    expect(turnsAfter.length, "重来之后没再要轮次").toBeGreaterThan(0);
+    expect(turnsAfter, "重来之后轮次又从 0 整份要").not.toContain(0);
+    expect(inputsAfter, "重来之后大纲又从 0 整份要").not.toContain(0);
+    expect(t.turnFold.all.map((x) => x.at), "轮次没接过来").toEqual([100]);
+  });
+
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {
     answerLines();
     for (let s = 0; s < 10; s++) tm.onLine(line("wc", s));
