@@ -4,6 +4,7 @@
 //! 写不重读重算：用户确认的是他看到的那份差异；看过之后变了 ⇒ `stale` 就停，说清前面写了 / 删了哪几个。
 
 use super::door::{self, Door, Refused};
+use crate::assets::hub_wire::{SkillApplied, SkillApplyReq, SkillPlanReq, SkillSourceFile};
 use crate::assets::mcp_sync::Facts;
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
@@ -85,61 +86,48 @@ fn stopped_said(doing: Doing, at: &str, why: &str, done: &[String]) -> String {
 }
 
 /// `skill-install-apply {name, source, target, take, overwrite}`：`source` = 来源那台 `skill-read` 的 `files`（原样），
-/// `target` = 看差异时这台回的那几份原文（CAS 期望）。回 `{dir, written, chmodFailed, recordFailed}`。
+/// `target` = 看差异时这台回的那几份原文（CAS 期望）。
 pub(crate) fn answer_install(
     d: &dyn Door,
     facts: &dyn Facts,
     root: Option<&std::path::Path>,
     record: Record,
-    args: &Value,
-) -> Answer {
-    let name = args
-        .get("name")
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
-    let source = texts_by_path(args.get("source"), "source")?;
-    let target = texts_by_path(args.get("target"), "target")?;
-    let wire_source: Vec<Value> = source
-        .values()
-        .map(|f| json!({ "path": f["path"], "text": f["text"], "exec": f.get("exec").cloned().unwrap_or(json!(false)) }))
-        .collect();
+    req: &SkillApplyReq,
+) -> Result<SkillApplied, crate::stream::inbound::spec::Fail> {
     let plan = crate::assets::skill_install::answer_plan_with(
         facts,
         root,
-        &json!({ "name": name, "source": wire_source, "take": args.get("take"), "overwrite": args.get("overwrite"), "project": args.get("project") }),
+        &SkillPlanReq {
+            name: req.name.clone(),
+            source: req.source.clone(),
+            project: req.project.clone(),
+            take: req.take.clone(),
+            overwrite: req.overwrite.clone(),
+        },
     )?;
-    let (dir, base, prefix) = (
-        str_of(&plan, "dir"),
-        str_of(&plan, "base"),
-        str_of(&plan, "prefix"),
-    );
-    let ledger = plan
-        .get("ledger")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
+    let source: std::collections::BTreeMap<&str, &SkillSourceFile> =
+        req.source.iter().map(|f| (f.path.as_str(), f)).collect();
+    let target: std::collections::BTreeMap<&str, &str> = req
+        .target
+        .iter()
+        .map(|t| (t.path.as_str(), t.text.as_str()))
+        .collect();
+    let (base, prefix) = (&plan.base, &plan.prefix);
+    let ledger = plan.ledger.clone().unwrap_or_default();
     let mut written = Vec::new();
     let mut chmod_failed = Vec::new();
     let mut stopped: Option<String> = None;
-    for path in names(&plan, "write") {
-        let Some(text) = source
-            .get(&path)
-            .and_then(|f| f.get("text"))
-            .and_then(Value::as_str)
-        else {
+    for path in plan.write.clone().unwrap_or_default() {
+        let Some(text) = source.get(path.as_str()).and_then(|f| f.text.as_deref()) else {
             stopped = Some(copy_text(
                 "beSkillFlow.install.noOriginal",
                 &[("path", &path)],
             ));
             break;
         };
-        let expect = target
-            .get(&path)
-            .and_then(|t| t.get("text"))
-            .and_then(Value::as_str);
+        let expect = target.get(path.as_str()).copied();
         let rel = format!("{prefix}/{path}");
-        match door::put(d, &base, &rel, text, expect, false, true) {
+        match door::put(d, base, &rel, text, expect, false, true) {
             Ok(_) => written.push(path.clone()),
             Err(e) => {
                 let why = match &e {
@@ -150,12 +138,8 @@ pub(crate) fn answer_install(
                 break;
             }
         }
-        let exec = source
-            .get(&path)
-            .and_then(|f| f.get("exec"))
-            .and_then(Value::as_bool)
-            == Some(true);
-        if exec && door::chmod(d, &base, &rel, 0o755).is_err() {
+        let exec = source.get(path.as_str()).is_some_and(|f| f.exec);
+        if exec && door::chmod(d, base, &rel, 0o755).is_err() {
             chmod_failed.push(path.clone());
         }
     }
@@ -164,11 +148,17 @@ pub(crate) fn answer_install(
     } else {
         let files: Map<String, Value> = written
             .iter()
-            .filter_map(|p| ledger.get(p).map(|v| (p.clone(), v.clone())))
+            .filter_map(|p| {
+                let f = ledger.get(p)?;
+                Some((
+                    p.clone(),
+                    json!({ "digest": f.digest, "created": f.created }),
+                ))
+            })
             .collect();
-        let mut rec = json!({ "op": "add", "name": name, "files": files });
-        if let Some(p) = args.get("project").filter(|p| p.is_string()) {
-            rec["project"] = p.clone();
+        let mut rec = json!({ "op": "add", "name": req.name, "files": files });
+        if let Some(p) = &req.project {
+            rec["project"] = json!(p);
         }
         record(&rec).err().map(|f| {
             copy_text(
@@ -184,9 +174,12 @@ pub(crate) fn answer_install(
         };
         return Err(crate::stream::inbound::spec::Fail::from(("stale", why)));
     }
-    Ok(
-        json!({ "dir": dir, "written": written, "chmodFailed": chmod_failed, "recordFailed": record_failed }),
-    )
+    Ok(SkillApplied {
+        dir: plan.dir,
+        written,
+        chmod_failed,
+        record_failed,
+    })
 }
 
 /// 卸 `{dir, seen, take, confirm}`：`seen` = 看的时候这台那几份现有原文（CAS 期望）。

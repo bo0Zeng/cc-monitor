@@ -11,6 +11,15 @@ use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &Value,
+    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f(&req).map(|t| serde_json::to_value(t).unwrap())
+}
+
 /// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_at(
@@ -406,31 +415,40 @@ impl M {
             )
         };
         let r = match cmd {
-            "skill-read" => super::super::skill_install::answer_read_at(Some(&root), args),
-            "skill-install-plan" => {
-                super::super::skill_install::answer_plan_with(&NoFacts, Some(&root), args)
+            "skill-read" => via(args, |r| {
+                super::super::skill_install::answer_read_at(Some(&root), r)
+            }),
+            "skill-install-plan" => via(args, |r| {
+                super::super::skill_install::answer_plan_with(&NoFacts, Some(&root), r)
+            }),
+            "skill-install-apply" => via(args, |r| {
+                super::super::skill_flow::answer_install(
+                    &self.door(),
+                    &NoFacts,
+                    Some(&root),
+                    &record,
+                    r,
+                )
+            }),
+            "mcp-sync-source" => via(args, |r| {
+                super::super::mcp_sync_flow::answer_source(
+                    &self.door(),
+                    self.env.user_mcp.as_deref(),
+                    r,
+                )
+            }),
+            "mcp-sync-preview" => via(args, |r| {
+                super::super::mcp_sync_flow::answer_preview(&self.door(), &NoFacts, r)
+            }),
+            "mcp-sync-apply" => via(args, |r| {
+                super::super::mcp_sync_flow::answer_apply(&self.door(), &record, r)
+            }),
+            "cc-bus-install-state" => {
+                Ok(serde_json::to_value(super::super::cc_bus_install::state_at(&skills)).unwrap())
             }
-            "skill-install-apply" => super::super::skill_flow::answer_install(
-                &self.door(),
-                &NoFacts,
-                Some(&root),
-                &record,
-                args,
-            ),
-            "mcp-sync-source" => super::super::mcp_sync_flow::answer_source(
-                &self.door(),
-                self.env.user_mcp.as_deref(),
-                args,
-            ),
-            "mcp-sync-preview" => {
-                super::super::mcp_sync_flow::answer_preview(&self.door(), &NoFacts, args)
-            }
-            "mcp-sync-apply" => {
-                super::super::mcp_sync_flow::answer_apply(&self.door(), &record, args)
-            }
-            "cc-bus-install-state" => Ok(super::super::cc_bus_install::state_at(&skills)),
             "cc-bus-install" => {
                 super::super::cc_bus_install::install_at(&self.door(), &skills, &record)
+                    .map(|t| serde_json::to_value(t).unwrap())
             }
             other => Err(crate::stream::inbound::spec::Fail::from((
                 "unknown_command",

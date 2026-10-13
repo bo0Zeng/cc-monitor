@@ -7,6 +7,8 @@ pub(crate) mod door;
 // 设置「扩展」页的后端：跨机器一张表 · 从一台卸（装那一件的枢纽住 `hub`）。
 pub(crate) mod ext;
 pub(crate) mod hub;
+// 枢纽问各台的那 8 条内层命令的线上形（两台后端之间）。
+pub(crate) mod hub_wire;
 pub(crate) mod mcp_edit;
 pub(crate) mod mcp_sync_flow;
 // 公钥推进那台的 `authorized_keys`（`pubkey-push` 本机那一跳 · `authorized-keys-add` 被写那台）。

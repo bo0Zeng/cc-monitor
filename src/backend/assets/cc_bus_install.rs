@@ -16,6 +16,7 @@ use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
 use crate::assets::door::{self, Door};
+use crate::assets::hub_wire::{CcBusInstalled, CcBusState};
 
 type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 /// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
@@ -210,23 +211,23 @@ pub(crate) fn embedded_digest() -> String {
 
 /// 装之前看一眼（**只读**）：`{dest, writes, existing, version}` —— 内容会变的那几个（缺的 ＋ 不一样的）· 落点上有没有东西
 /// （在而且要写 ⇒ 装的时候整个改名留作备份）· 内嵌那一份的摘要。确认卡由枢纽拿它拼。
-pub(crate) fn state_at(skills: &Path) -> Value {
+pub(crate) fn state_at(skills: &Path) -> CcBusState {
     let dest = skills.join(NAME);
-    let writes: Vec<&str> = FILES
+    let writes: Vec<String> = FILES
         .iter()
         .filter(|(rel, bytes)| {
             Ro::read(dest.join(rel))
                 .map(|got| got != *bytes)
                 .unwrap_or(true)
         })
-        .map(|(rel, _)| *rel)
+        .map(|(rel, _)| (*rel).to_string())
         .collect();
-    json!({
-        "dest": dest.display().to_string(),
-        "writes": writes,
-        "existing": dest.exists(),
-        "version": embedded_digest(),
-    })
+    CcBusState {
+        dest: dest.display().to_string(),
+        writes,
+        existing: dest.exists(),
+        version: embedded_digest(),
+    }
 }
 
 fn skills_root() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
@@ -241,17 +242,24 @@ fn skills_root() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
 }
 
 /// `cc-bus-install-state {}` → [`state_at`]。
-pub(crate) fn answer_state() -> Answer {
+pub(crate) fn answer_state() -> Result<CcBusState, crate::stream::inbound::spec::Fail> {
     Ok(state_at(&skills_root()?))
 }
 
 /// `cc-bus-install {}` → `{dest, written, backup, recordFailed}`（`written` = 写了的那几个相对路径；全都一致 ⇒ 空、一个字节不动）。
-pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {
+pub(crate) fn answer_install(
+    d: &dyn Door,
+    record: Record,
+) -> Result<CcBusInstalled, crate::stream::inbound::spec::Fail> {
     install_at(d, &skills_root()?, record)
 }
 
 /// 装到给定的 skills 根（可注入，判据拿临时目录跑）。
-pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer {
+pub(crate) fn install_at(
+    d: &dyn Door,
+    skills: &Path,
+    record: Record,
+) -> Result<CcBusInstalled, crate::stream::inbound::spec::Fail> {
     let (top, dest) = fenced_root(skills)
         .map_err(|e| crate::stream::inbound::spec::Fail::from(("refused", e)))?;
     let root = top.display().to_string();
@@ -269,7 +277,12 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
         }
     }
     if all_same {
-        return Ok(json!({ "dest": dest_s, "written": [], "backup": null, "recordFailed": null }));
+        return Ok(CcBusInstalled {
+            dest: dest_s,
+            written: Vec::new(),
+            backup: None,
+            record_failed: None,
+        });
     }
     // ★ 可撤销：整个目录改名（原子）。已经一致时走不到这里 ⇒ 不攒垃圾备份。
     let backup = if door::stat_kind(d, &dest_s)
@@ -320,12 +333,12 @@ pub(crate) fn install_at(d: &dyn Door, skills: &Path, record: Record) -> Answer 
     let record_failed = record(&json!({ "op": "add", "name": NAME, "files": files }))
         .err()
         .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
-    Ok(json!({
-        "dest": dest_s,
-        "written": FILES.iter().map(|(rel, _)| *rel).collect::<Vec<_>>(),
-        "backup": backup,
-        "recordFailed": record_failed,
-    }))
+    Ok(CcBusInstalled {
+        dest: dest_s,
+        written: FILES.iter().map(|(rel, _)| (*rel).to_string()).collect(),
+        backup,
+        record_failed,
+    })
 }
 
 #[cfg(test)]

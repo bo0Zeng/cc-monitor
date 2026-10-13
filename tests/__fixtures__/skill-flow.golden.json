@@ -5,8 +5,8 @@
   ],
   "name": "demo",
   "source": [
-    { "path": "SKILL.md", "text": "---\ndescription: d\n---\n", "exec": false, "why": null },
-    { "path": "lib/a.txt", "text": "new a\n", "exec": false, "why": null }
+    { "path": "SKILL.md", "text": "---\ndescription: d\n---\n", "exec": false },
+    { "path": "lib/a.txt", "text": "new a\n", "exec": false }
   ],
   "before": { "lib/a.txt": "old a\n" },
   "take": ["SKILL.md", "lib/a.txt"],
@@ -15,6 +15,6 @@
   "uninstallTake": ["SKILL.md"],
   "uninstallReply": { "dir": "<ROOT>/demo", "deleted": ["SKILL.md"], "recordFailed": null, "dirRemoved": false, "dirFailed": null },
   "codes": {
-    "skill-install-apply": ["bad_args", "bad_file", "io_failed", "needs_consent", "stale"]
+    "skill-install-apply": ["bad_args", "bad_file", "io_failed", "needs_consent", "stale", "too_large"]
   }
 }

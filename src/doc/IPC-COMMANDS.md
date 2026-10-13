@@ -5872,14 +5872,37 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --skill-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dir` | ← | 这个 skill 的目录（绝对路径） |
-| `files` | ← | 每个普通文件一条 `{path, text, bytes, exec, why}`：`path` 是 skill 里的相对路径（`/` 分段） |
-| `name` | → | skill 的目录名（一段：不许分隔符 / `..` / 点开头） |
-| `project` | → | 可缺席：给了 ⇒ 那个项目里的 skill（项目目录是这台上的绝对路径）；缺 ⇒ 用户级 |
-| `root` | ← | 这台 skill 的根 |
-| `skipped` | ← | 没读的那几处（指向目录的链接 / 特殊文件） |
+入参 `SkillReadReq` · 回包 `SkillRead`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type SkillRead = { 
+/**
+ * 这台 skill 的根。
+ */
+root: string, 
+/**
+ * 这个 skill 的目录（绝对路径）。
+ */
+dir: string, files: Array<SkillReadFile>, 
+/**
+ * 没读的那几处（指向目录的链接 / 特殊文件）。
+ */
+skipped: Array<string>, };
+type SkillReadFile = { 
+/**
+ * skill 里的相对路径（`/` 分段）。
+ */
+path: string, 
+/**
+ * 原文；不是文本 / 太大 / 读不出来 ⇒ `null`（这一个装不过去），原因在 `why`。
+ */
+text: string | null, bytes: bigint, exec: boolean, why: string | null, };
+type SkillReadReq = { 
+/**
+ * skill 的目录名（一段：不许分隔符 / `..` / 点开头）。
+ */
+name: string, project: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `not_found` · `too_large`
 
@@ -5889,21 +5912,41 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --skill-install-plan`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `base` | ← | 写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>` |
-| `dir` | ← | 要写进去的目录 |
-| `name` | → | skill 的目录名 |
-| `overwrite` | → | 可缺席（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
-| `prefix` | ← | 写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>` |
-| `project` | → | 同 `skill-read`（装到哪一级） |
-| `root` | ← | 这台 skill 的根 |
-| `rows` | ← | 每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集 `new` · `same` · `differs` · `only-there` |
-| `source` | → | `skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个） |
-| `take` | → | 可缺席（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名） |
-| `target` | ← | 这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望 |
-| `write` | ← | 没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序） |
-| `ledger` | ← | 没给 `take` ⇒ `null` |
+入参 `SkillPlanReq` · 回包 `SkillPlan`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type SkillLedgerFile = { digest: string, created: boolean, };
+type SkillPlan = { root: string, dir: string, 
+/**
+ * 写的时候 `files-put` 用的 `root`。
+ */
+base: string, 
+/**
+ * 写的时候 `files-put` 用的相对前缀：`rel` = `<prefix>/<path>`。
+ */
+prefix: string, rows: Array<SkillPlanRow>, target: Array<SkillTargetFile>, 
+/**
+ * 没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序）。
+ */
+write: Array<string> | null, 
+/**
+ * 没给 `take` ⇒ `null`。
+ */
+ledger: { [key in string]: SkillLedgerFile } | null, };
+type SkillPlanReq = { name: string, source: Array<SkillSourceFile>, project: string | null, take: Array<string> | null, overwrite: Array<string> | null, };
+type SkillPlanRow = { path: string, state: string, suspects: Array<SkillSuspect>, 
+/**
+ * 这台那一份盖不了（读不出原文 / 不是普通文件）的原因。
+ */
+blocked: string | null, };
+type SkillSourceFile = { path: string, 
+/**
+ * `null` = 装不过去的那一个。
+ */
+text: string | null, exec: boolean, };
+type SkillSuspect = { kind: string, value: string, there: string | null, };
+type SkillTargetFile = { path: string, text: string, };
+```
 
 码：`bad_args` · `bad_file` · `io_failed` · `needs_consent` · `too_large`
 
@@ -5960,14 +6003,30 @@ skill 装记录的写口。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --cc-bus-install-state`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dest` | ← | 落点（`<skills 根>/cc-bus`） |
-| `existing` | ← | 落点上已经有东西（要写时先整个改名留作备份） |
-| `version` | ← | 内嵌那一份的摘要（只答「相同 / 不同」；枢纽拿它当卡上的记号） |
-| `writes` | ← | 与这台二进制带着的那一份逐文件比，内容会变的那几个（缺的 ＋ 不一样的；清单外的文件不算）；空 ⇒ 已是这一版 |
+入参 `NoReq` · 回包 `CcBusState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`refused`
+```ts
+type CcBusState = { 
+/**
+ * 落点（`<skills 根>/cc-bus`）。
+ */
+dest: string, 
+/**
+ * 内容会变的那几个（缺的 ＋ 不一样的）；空 ⇒ 已是这一版。
+ */
+writes: Array<string>, 
+/**
+ * 落点上已经有东西（要写时先整个改名留作备份）。
+ */
+existing: boolean, 
+/**
+ * 内嵌那一份的摘要。
+ */
+version: string, };
+type NoReq = Record<symbol, never>;
+```
+
+码：`bad_args` · `refused`
 
 #### `cc-bus-install`
 
@@ -5975,14 +6034,22 @@ skill 装记录的写口。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --cc-bus-install`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `backup` | ← | 覆盖前整个目录改名成的那一份（`cc-bus.bak-<秒>`，`null` = 之前没装过） |
-| `dest` | ← | 落点（`<skills 根>/cc-bus`，过独立 realpath 围栏） |
-| `recordFailed` | ← | 装好了但没记进 skill 装记录时那一句（这一趟装的卸不掉）；装卸账复用 `skill-install-record` 那一份 |
-| `written` | ← | 写了的那几个相对路径（全一致 ⇒ 空：一个字节不写、不备份、不记） |
+入参 `NoReq` · 回包 `CcBusInstalled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_file` · `refused`
+```ts
+type CcBusInstalled = { dest: string, 
+/**
+ * 写了的那几个相对路径（全一致 ⇒ 空）。
+ */
+written: Array<string>, 
+/**
+ * 覆盖前整个目录改名成的那一份（`null` = 之前没装过）。
+ */
+backup: string | null, recordFailed: string | null, };
+type NoReq = Record<symbol, never>;
+```
+
+码：`bad_args` · `bad_file` · `refused`
 
 #### `ext-hub-preview`
 
@@ -6110,16 +6177,30 @@ skill 装记录的写口。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-sync-source`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | 在这台上哪一级：`{level:"project", dir}`（`<dir>/.mcp.json`）或 `{level:"user"}`（agent 自己那份用户级配置，只读） |
-| `def` | ← | 那一条；**`env` / `headers` 的值在这台就换成 `null`**（值不出来源机，只交键名） |
-| `field` | ← | 空位在哪一格：`env` · `headers` |
-| `key` | ← | 空位的键名 |
-| `name` | → | server 名 |
-| `path` | ← | 读的是哪一份 |
-| `slots` | ← | 换成空位的那几格 `[{field, key}]` |
-| `token` | ← | 按原样那一条（含密钥值）算的记号：它变了（连只改了一个密钥值也算）⇒ 应用时判 `stale` |
+入参 `McpSourceReq` · 回包 `McpSource`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type McpSource = { 
+/**
+ * 读的是哪一份。
+ */
+path: string, 
+/**
+ * 那一条；`env` / `headers` 的值在这台就换成 `null`。
+ */
+def: unknown, slots: Array<McpSourceSlot>, 
+/**
+ * 按原样那一条（含密钥值）算的记号。
+ */
+token: string, };
+type McpSourceReq = { name: string, at: ExtLoc, };
+type McpSourceSlot = { 
+/**
+ * `env` · `headers`。
+ */
+field: string, key: string, };
+```
 
 码：`bad_args` · `bad_file` · `bad_path` · `io_failed` · `missing` · `refused`
 
@@ -6129,22 +6210,35 @@ skill 装记录的写口。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-sync-preview`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | 同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`） |
-| `def` | → | 来源那台交回的那一条，原样；`env` / `headers` 里夹着值 ⇒ `bad_args` |
-| `field` | ← | 空位 / 可疑项在哪一格 |
-| `key` | ← | 空位的键名 |
-| `kept` | ← | 这台那一条原来就有这个键的值（不填就沿用） |
-| `kind` | ← | 可疑项的种类（闭集 `abs-path` · `command-missing` · `command-relative`） |
-| `name` | → | 同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`） |
-| `path` | ← | 这台那份的路径 |
-| `slots` | ← | 每个空位 `{field, key, kept}`：`kept` = 这台那一条原来就有这个键的值（不填就沿用） |
-| `state` | ← | `new`（这台没有这一条）· `same`（除空位外一样）· `differs` |
-| `suspects` | ← | 可疑项，每条 `{kind, field, value, there}`，闭集 `abs-path` · `command-missing` · `command-relative` |
-| `target` | ← | 这台那份的记号（不存在 ⇒ `null`）—— 写的时候原样交回 |
-| `there` | ← | 它在这台指向的东西在不在 |
-| `value` | ← | 可疑的那个值 |
+入参 `McpPreviewReq` · 回包 `McpPreview`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtSlot = { 
+/**
+ * `env` 或 `headers`。
+ */
+field: string, key: string, 
+/**
+ * 目标机那一条里已有这个键的值（可以沿用；不填就沿用）。
+ */
+kept: boolean, };
+type McpPreview = { 
+/**
+ * 这台那份的路径。
+ */
+path: string, 
+/**
+ * `new` · `same` · `differs`。
+ */
+state: string, def: unknown, slots: Array<ExtSlot>, suspects: Array<McpSuspect>, 
+/**
+ * 这台那份的记号（不存在 ⇒ `null`）—— 写的时候原样交回。
+ */
+target: string | null, };
+type McpPreviewReq = { name: string, at: ExtLoc, def: unknown, };
+type McpSuspect = { kind: string, field: string, value: string, there: string | null, };
+```
 
 码：`bad_args` · `bad_file` · `bad_path` · `refused`
 
@@ -6154,16 +6248,17 @@ skill 装记录的写口。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-sync-apply`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | 同 `mcp-sync-preview` |
-| `def` | → | 同 `mcp-sync-preview` |
-| `fill` | → | 用户在确认卡上填的值 `{env: {键: 值}, headers: {…}}`；没填的键沿用这台原有的值，两样都没有 ⇒ `needs_input`、一个字节不写 |
-| `name` | → | 同 `mcp-sync-preview` |
-| `path` | ← | 写到了哪 |
-| `recordFailed` | ← | 装记录没记下来时那一句（`null` = 记下了） |
-| `target` | → | 看卡时这台那份的记号：这台在那之后变了 ⇒ `stale`，**一个字节不写、不重读重算** |
-| `written` | ← | 真写了吗（与原有那一条逐字相同 ⇒ `false`） |
+入参 `McpApplyReq` · 回包 `McpApplied`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type McpApplied = { path: string, 
+/**
+ * 真写了吗（与原有那一条逐字相同 ⇒ `false`）。
+ */
+written: boolean, recordFailed: string | null, };
+type McpApplyReq = { name: string, at: ExtLoc, def: unknown, fill: { [key in string]: { [key in string]: string } } | null, target: string | null, };
+```
 
 码：`bad_args` · `bad_file` · `bad_path` · `needs_input` · `refused` · `stale`
 
@@ -6173,20 +6268,32 @@ skill 装记录的写口。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --skill-install-apply`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `chmodFailed` | ← | 写成了但执行位没置上的那几个 |
-| `dir` | ← | 装到了哪 |
-| `name` | → | 同 `skill-read` |
-| `overwrite` | → | 同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`） |
-| `project` | → | 同 `skill-read` |
-| `recordFailed` | ← | 装记录没记下来时那一句（`null` = 记下了）—— 记不下来 ⇒ 这一趟装的卸不掉 |
-| `source` | → | 来源那台 `skill-read` 的 `files`，原样（`path` · `text` · `exec`；`text` 为 `null` 的装不过去） |
-| `take` | → | 同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`） |
-| `target` | → | 看差异时这台 `skill-install-plan` 回的 `target`（这台那几份原文），原样 —— 写时的 CAS 期望 |
-| `written` | ← | 真写成了的那几个（按写的顺序） |
+入参 `SkillApplyReq` · 回包 `SkillApplied`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args` · `bad_file` · `io_failed` · `needs_consent` · `stale`
+```ts
+type SkillApplied = { dir: string, 
+/**
+ * 真写成了的那几个（按写的顺序）。
+ */
+written: Array<string>, 
+/**
+ * 写成了但执行位没置上的那几个。
+ */
+chmodFailed: Array<string>, 
+/**
+ * 装记录没记下来时那一句（`null` = 记下了）。
+ */
+recordFailed: string | null, };
+type SkillApplyReq = { name: string, project: string | null, source: Array<SkillSourceFile>, target: Array<SkillTargetFile>, take: Array<string> | null, overwrite: Array<string> | null, };
+type SkillSourceFile = { path: string, 
+/**
+ * `null` = 装不过去的那一个。
+ */
+text: string | null, exec: boolean, };
+type SkillTargetFile = { path: string, text: string, };
+```
+
+码：`bad_args` · `bad_file` · `io_failed` · `needs_consent` · `stale` · `too_large`
 
 #### `hooks-diag`
 

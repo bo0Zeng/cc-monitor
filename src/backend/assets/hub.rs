@@ -35,7 +35,13 @@ use std::sync::Arc;
 
 use super::ext::{
     builtin_refused, is_builtin, same_place, token_of, ExtBring, ExtCard, ExtDone, ExtKind,
-    ExtList, ExtLoc, ExtSlot, ExtTarget, ExtTokens,
+    ExtList, ExtLoc, ExtTarget, ExtTokens,
+};
+use super::hub_wire::{
+    CcBusInstallCmd, CcBusState, CcBusStateCmd, Inner, McpApplyCmd, McpApplyReq, McpPreview,
+    McpPreviewCmd, McpPreviewReq, McpSource, McpSourceCmd, McpSourceReq, NoReq, SkillApplyCmd,
+    SkillApplyReq, SkillPlan, SkillPlanCmd, SkillPlanReq, SkillRead, SkillReadCmd, SkillReadReq,
+    SkillSourceFile,
 };
 use crate::dial::remote_ask::{Remote, Table};
 
@@ -73,20 +79,21 @@ fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (String, String)> {
 }
 
 /// 问一台跑一条内层命令：这台自己 ⇒ [`Here`]（阻塞档，挪到阻塞线程上跑）；别的台 ⇒ 可达表 ＋ capture。
-async fn ask_one(
+/// 发出去的是入参类型序列化的那一份，收回来按回包类型解；解不出（那台后端版本不同）⇒ `backend_differs`、说是哪台，解码器那一句进原话。
+async fn ask_one<C: Inner>(
     here: &Arc<dyn Here>,
     machine: Option<&str>,
-    cmd: &'static str,
-    args: Value,
+    req: &C::Req,
     table: &Table,
     remote: &dyn Remote,
-) -> Answer {
-    match machine {
+) -> Result<C::Reply, (String, String)> {
+    let args = serde_json::to_value(req).map_err(|e| ("io_failed".to_string(), e.to_string()))?;
+    let got = match machine {
         None => {
             let h = Arc::clone(here);
-            tokio::task::spawn_blocking(move || h.ask(cmd, args))
+            tokio::task::spawn_blocking(move || h.ask(C::NAME, args))
                 .await
-                .map_err(|e| ("io_failed".to_string(), e.to_string()))?
+                .map_err(|e| ("io_failed".to_string(), e.to_string()))??
         }
         Some(m) => {
             if !crate::dial::remote_ask::lock(table).contains_key(m) {
@@ -96,16 +103,25 @@ async fn ask_one(
                 ));
             }
             // 码随原话一起交回（`stale` / `refused` / …照那台的原码）；读不出码（拨号 / 链路坏了）⇒ `unreachable`。
-            crate::dial::remote_ask::ask_json(m, cmd, &args, &here.viewer_tz(), table, remote)
+            crate::dial::remote_ask::ask_json(m, C::NAME, &args, &here.viewer_tz(), table, remote)
                 .await
                 .map_err(|s| {
                     (
                         s.code.unwrap_or_else(|| "unreachable".to_string()),
                         s.message,
                     )
-                })
+                })?
         }
-    }
+    };
+    serde_json::from_value(got).map_err(|e| {
+        (
+            "backend_differs".to_string(),
+            crate::common::contract::joined(
+                copy_core::backend_differs(&machine_name(machine)),
+                Some(format!("{}: {e}", C::NAME)),
+            ),
+        )
+    })
 }
 
 /// 给人看的那台的名字（`null` = 本机后端这一台）。
@@ -126,15 +142,17 @@ fn scope_of(args: &Value) -> Result<(ExtLoc, ExtLoc), (String, String)> {
 }
 
 /// 来源那台 `skill-read` 的 `files` → 装那一跳要的三格（`path` · `text` · `exec`），按路径排好（比较用同一个形）。
-fn source_files(read: &Value) -> Vec<Value> {
-    let mut v: Vec<Value> = read
-        .get("files")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .map(|f| json!({ "path": f.get("path"), "text": f.get("text"), "exec": f.get("exec") }))
+fn source_files(read: &SkillRead) -> Vec<SkillSourceFile> {
+    let mut v: Vec<SkillSourceFile> = read
+        .files
+        .iter()
+        .map(|f| SkillSourceFile {
+            path: f.path.clone(),
+            text: f.text.clone(),
+            exec: f.exec,
+        })
         .collect();
-    v.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str()));
+    v.sort_by(|a, b| a.path.cmp(&b.path));
     v
 }
 
@@ -173,8 +191,8 @@ fn ask_of(args: &Value) -> Result<Ask<'_>, (String, String)> {
     })
 }
 
-fn project_arg(at: &ExtLoc) -> Value {
-    at.project().map_or(Value::Null, |d| json!(d))
+fn project_arg(at: &ExtLoc) -> Option<String> {
+    at.project().map(str::to_string)
 }
 
 /// skill 两跳：来源读一趟、被写那台判一趟。回（来源那几份, 被写那台的判定）。
@@ -183,22 +201,29 @@ async fn skill_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<(Vec<Value>, Value), (String, String)> {
-    let read = ask_one(
+) -> Result<(Vec<SkillSourceFile>, SkillPlan), (String, String)> {
+    let read = ask_one::<SkillReadCmd>(
         here,
         a.from.as_deref(),
-        "skill-read",
-        json!({ "name": a.name, "project": project_arg(&a.at_from) }),
+        &SkillReadReq {
+            name: a.name.to_string(),
+            project: project_arg(&a.at_from),
+        },
         table,
         remote,
     )
     .await?;
     let source = source_files(&read);
-    let plan = ask_one(
+    let plan = ask_one::<SkillPlanCmd>(
         here,
         a.to.as_deref(),
-        "skill-install-plan",
-        json!({ "name": a.name, "source": source, "project": project_arg(&a.at_to) }),
+        &SkillPlanReq {
+            name: a.name.to_string(),
+            source: source.clone(),
+            project: project_arg(&a.at_to),
+            take: None,
+            overwrite: None,
+        },
         table,
         remote,
     )
@@ -212,21 +237,26 @@ async fn mcp_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Result<(Value, Value), (String, String)> {
-    let src = ask_one(
+) -> Result<(McpSource, McpPreview), (String, String)> {
+    let src = ask_one::<McpSourceCmd>(
         here,
         a.from.as_deref(),
-        "mcp-sync-source",
-        json!({ "name": a.name, "at": a.at_from }),
+        &McpSourceReq {
+            name: a.name.to_string(),
+            at: a.at_from.clone(),
+        },
         table,
         remote,
     )
     .await?;
-    let pre = ask_one(
+    let pre = ask_one::<McpPreviewCmd>(
         here,
         a.to.as_deref(),
-        "mcp-sync-preview",
-        json!({ "name": a.name, "at": a.at_to, "def": src["def"] }),
+        &McpPreviewReq {
+            name: a.name.to_string(),
+            at: a.at_to.clone(),
+            def: src.def.clone(),
+        },
         table,
         remote,
     )
@@ -234,68 +264,41 @@ async fn mcp_look(
     Ok((src, pre))
 }
 
-fn strs(v: &Value) -> Vec<String> {
-    v.as_array()
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.as_str().map(str::to_string))
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 /// skill 的确认卡：写哪几个 · 可疑项 · 装不了的原因（来源读不出原文 · 这台那一份盖不了 · 非文本）。
-fn skill_card(a: &Ask<'_>, source: &[Value], plan: &Value) -> ExtCard {
-    let rows = plan["rows"].as_array().cloned().unwrap_or_default();
+fn skill_card(a: &Ask<'_>, source: &[SkillSourceFile], plan: &SkillPlan) -> ExtCard {
     let to = machine_name(a.to.as_deref());
-    let writes: Vec<String> = rows
+    let writes: Vec<String> = plan
+        .rows
         .iter()
-        .filter(|r| r["state"] == "new" || r["state"] == "differs")
-        .filter_map(|r| r["path"].as_str().map(str::to_string))
+        .filter(|r| r.state == "new" || r.state == "differs")
+        .map(|r| r.path.clone())
         .collect();
     let mut suspects = Vec::new();
     let mut stop = None;
-    for r in &rows {
-        for s in r["suspects"].as_array().into_iter().flatten() {
+    for r in &plan.rows {
+        for s in &r.suspects {
             suspects.push(format!(
                 "{}{}",
-                copy_text(
-                    "beExt.card.fileLead",
-                    &[("path", r["path"].as_str().unwrap_or_default())]
-                ),
-                super::ext::suspect_said(s, &to)
+                copy_text("beExt.card.fileLead", &[("path", &r.path)]),
+                super::ext::suspect_said(&s.kind, "", &s.value, s.there.as_deref(), &to)
             ));
-            if s["kind"] == "binary" && stop.is_none() {
-                stop = Some(copy_text(
-                    "beExt.card.binary",
-                    &[("path", r["path"].as_str().unwrap_or_default())],
-                ));
+            if s.kind == "binary" && stop.is_none() {
+                stop = Some(copy_text("beExt.card.binary", &[("path", &r.path)]));
             }
         }
-        if let Some(why) = r["blocked"].as_str() {
+        if let Some(why) = &r.blocked {
             stop.get_or_insert_with(|| {
-                copy_text(
-                    "beExt.card.blocked",
-                    &[
-                        ("path", r["path"].as_str().unwrap_or_default()),
-                        ("why", why),
-                    ],
-                )
+                copy_text("beExt.card.blocked", &[("path", &r.path), ("why", why)])
             });
         }
     }
-    if let Some(p) = source.iter().find(|f| f["text"].is_null()) {
-        stop.get_or_insert_with(|| {
-            copy_text(
-                "beExt.card.binary",
-                &[("path", p["path"].as_str().unwrap_or_default())],
-            )
-        });
+    if let Some(p) = source.iter().find(|f| f.text.is_none()) {
+        stop.get_or_insert_with(|| copy_text("beExt.card.binary", &[("path", &p.path)]));
     }
     ExtCard {
         kind: ExtKind::Skill,
         name: a.name.to_string(),
-        path: plan["dir"].as_str().unwrap_or_default().to_string(),
+        path: plan.dir.clone(),
         unchanged: writes.is_empty(),
         writes,
         suspects,
@@ -304,29 +307,17 @@ fn skill_card(a: &Ask<'_>, source: &[Value], plan: &Value) -> ExtCard {
         slots: Vec::new(),
         tokens: ExtTokens {
             source: token_of(&json!(source)),
-            target: Some(token_of(&plan["target"])),
+            target: Some(token_of(&json!(plan.target))),
         },
     }
 }
 
-fn mcp_card(a: &Ask<'_>, src: &Value, pre: &Value) -> ExtCard {
+fn mcp_card(a: &Ask<'_>, src: &McpSource, pre: &McpPreview) -> ExtCard {
     let to = machine_name(a.to.as_deref());
-    let slots: Vec<ExtSlot> = pre["slots"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|s| ExtSlot {
-            field: s["field"].as_str().unwrap_or_default().to_string(),
-            key: s["key"].as_str().unwrap_or_default().to_string(),
-            kept: s["kept"] == true,
-        })
-        .collect();
-    let path = pre["path"].as_str().unwrap_or_default().to_string();
-    let mut suspects: Vec<String> = pre["suspects"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|s| super::ext::suspect_said(s, &to))
+    let mut suspects: Vec<String> = pre
+        .suspects
+        .iter()
+        .map(|s| super::ext::suspect_said(&s.kind, &s.field, &s.value, s.there.as_deref(), &to))
         .collect();
     if a.at_to == ExtLoc::User {
         // 全局 = 这台各账号共用的那一份：卡上说清删除只有一条路、什么时候用上。
@@ -336,16 +327,16 @@ fn mcp_card(a: &Ask<'_>, src: &Value, pre: &Value) -> ExtCard {
     ExtCard {
         kind: ExtKind::Mcp,
         name: a.name.to_string(),
-        unchanged: pre["state"] == "same" && slots.is_empty(),
-        writes: vec![path.clone()],
-        path,
+        unchanged: pre.state == "same" && pre.slots.is_empty(),
+        writes: vec![pre.path.clone()],
+        path: pre.path.clone(),
         suspects,
         stop: None,
-        config: serde_json::to_string_pretty(&json!({ a.name: pre["def"] })).ok(),
-        slots,
+        config: serde_json::to_string_pretty(&json!({ a.name: pre.def })).ok(),
+        slots: pre.slots.clone(),
         tokens: ExtTokens {
-            source: src["token"].as_str().unwrap_or_default().to_string(),
-            target: pre["target"].as_str().map(str::to_string),
+            source: src.token.clone(),
+            target: pre.target.clone(),
         },
     }
 }
@@ -356,29 +347,21 @@ async fn builtin_look(
     a: &Ask<'_>,
     table: &Table,
     remote: &dyn Remote,
-) -> Answer {
-    ask_one(
-        here,
-        a.to.as_deref(),
-        "cc-bus-install-state",
-        json!({}),
-        table,
-        remote,
-    )
-    .await
+) -> Result<CcBusState, (String, String)> {
+    ask_one::<CcBusStateCmd>(here, a.to.as_deref(), &NoReq {}, table, remote).await
 }
 
 /// 自带的那一个的确认卡：写哪几个（内容会变的）· 那台已有目录 ⇒ 装之前整个改名留作备份。
-fn builtin_card(a: &Ask<'_>, st: &Value) -> ExtCard {
-    let writes = strs(&st["writes"]);
+fn builtin_card(a: &Ask<'_>, st: &CcBusState) -> ExtCard {
+    let writes = st.writes.clone();
     let mut suspects = Vec::new();
-    if st["existing"] == true && !writes.is_empty() {
+    if st.existing && !writes.is_empty() {
         suspects.push(copy_text("beExt.card.builtinBackup", &[]));
     }
     ExtCard {
         kind: a.kind,
         name: a.name.to_string(),
-        path: st["dest"].as_str().unwrap_or_default().to_string(),
+        path: st.dest.clone(),
         unchanged: writes.is_empty(),
         writes,
         suspects,
@@ -386,8 +369,8 @@ fn builtin_card(a: &Ask<'_>, st: &Value) -> ExtCard {
         config: None,
         slots: Vec::new(),
         tokens: ExtTokens {
-            source: st["version"].as_str().unwrap_or_default().to_string(),
-            target: Some(token_of(st)),
+            source: st.version.clone(),
+            target: Some(token_of(&json!(st))),
         },
     }
 }
@@ -420,6 +403,18 @@ pub(crate) async fn ext_preview(
     }
 }
 
+/// 用户在卡上填的值（`{field: {key: 值}}`）；缺 / `null` ⇒ 没填。
+type Fill = std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>;
+
+fn fill_of(args: &Value) -> Result<Option<Fill>, (String, String)> {
+    match args.get("fill") {
+        None | Some(Value::Null) => Ok(None),
+        Some(v) => serde_json::from_value(v.clone())
+            .map(Some)
+            .map_err(|e| bad(&format!("`fill` has the wrong shape: {e}"))),
+    }
+}
+
 fn changed_since() -> (String, String) {
     ("stale".to_string(), copy_text("beExt.apply.changed", &[]))
 }
@@ -447,27 +442,20 @@ pub(crate) async fn ext_apply(
             if builtin_card(&a, &st).tokens != tokens {
                 return Err(changed_since());
             }
-            let out = ask_one(
-                here,
-                a.to.as_deref(),
-                "cc-bus-install",
-                json!({}),
-                table,
-                remote,
-            )
-            .await?;
+            let out =
+                ask_one::<CcBusInstallCmd>(here, a.to.as_deref(), &NoReq {}, table, remote).await?;
             let note: Vec<String> = [
-                out["backup"]
-                    .as_str()
+                out.backup
+                    .as_deref()
                     .map(|b| copy_text("beExt.done.builtinBackup", &[("path", b)])),
-                out["recordFailed"].as_str().map(str::to_string),
+                out.record_failed,
             ]
             .into_iter()
             .flatten()
             .collect();
             ExtDone {
-                path: out["dest"].as_str().unwrap_or_default().to_string(),
-                changed: strs(&out["written"]),
+                path: out.dest,
+                changed: out.written,
                 note: (!note.is_empty()).then(|| note.join(" ")),
             }
         }
@@ -480,41 +468,38 @@ pub(crate) async fn ext_apply(
             if let Some(why) = card.stop {
                 return Err(("refused".to_string(), why));
             }
-            let overwrite: Vec<Value> = plan["rows"]
-                .as_array()
-                .into_iter()
-                .flatten()
-                .filter(|r| r["state"] == "differs")
-                .map(|r| r["path"].clone())
+            let overwrite: Vec<String> = plan
+                .rows
+                .iter()
+                .filter(|r| r.state == "differs")
+                .map(|r| r.path.clone())
                 .collect();
-            let out = ask_one(
+            let out = ask_one::<SkillApplyCmd>(
                 here,
                 a.to.as_deref(),
-                "skill-install-apply",
-                json!({
-                    "name": a.name,
-                    "project": project_arg(&a.at_to),
-                    "source": source,
-                    "target": plan["target"],
-                    "take": card.writes,
-                    "overwrite": overwrite,
-                }),
+                &SkillApplyReq {
+                    name: a.name.to_string(),
+                    project: project_arg(&a.at_to),
+                    source,
+                    target: plan.target,
+                    take: Some(card.writes),
+                    overwrite: Some(overwrite),
+                },
                 table,
                 remote,
             )
             .await?;
-            let failed = strs(&out["chmodFailed"]);
             let mut note: Vec<String> = Vec::new();
-            if !failed.is_empty() {
+            if !out.chmod_failed.is_empty() {
                 note.push(copy_text(
                     "beExt.done.chmodFailed",
-                    &[("list", &failed.join(", "))],
+                    &[("list", &out.chmod_failed.join(", "))],
                 ));
             }
-            note.extend(out["recordFailed"].as_str().map(str::to_string));
+            note.extend(out.record_failed);
             ExtDone {
-                path: out["dir"].as_str().unwrap_or_default().to_string(),
-                changed: strs(&out["written"]),
+                path: out.dir,
+                changed: out.written,
                 note: (!note.is_empty()).then(|| note.join(" ")),
             }
         }
@@ -524,29 +509,28 @@ pub(crate) async fn ext_apply(
             if card.tokens != tokens {
                 return Err(changed_since());
             }
-            let out = ask_one(
+            let out = ask_one::<McpApplyCmd>(
                 here,
                 a.to.as_deref(),
-                "mcp-sync-apply",
-                json!({
-                    "name": a.name,
-                    "at": a.at_to,
-                    "def": pre["def"],
-                    "fill": args.get("fill").cloned().unwrap_or(Value::Null),
-                    "target": pre["target"],
-                }),
+                &McpApplyReq {
+                    name: a.name.to_string(),
+                    at: a.at_to.clone(),
+                    def: pre.def,
+                    fill: fill_of(args)?,
+                    target: pre.target,
+                },
                 table,
                 remote,
             )
             .await?;
             ExtDone {
-                path: out["path"].as_str().unwrap_or_default().to_string(),
-                changed: if out["written"] == true {
+                path: out.path,
+                changed: if out.written {
                     vec![a.name.to_string()]
                 } else {
                     Vec::new()
                 },
-                note: out["recordFailed"].as_str().map(str::to_string),
+                note: out.record_failed,
             }
         }
     };

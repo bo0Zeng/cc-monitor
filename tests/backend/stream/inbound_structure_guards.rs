@@ -1161,15 +1161,13 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 35;
+    const UNSHAPED_CEILING: usize = 27;
     const UNSHAPED: &[&str] = &[
         "accounts-sessions",
         "agent-home-check",
         "apikey-key-set",
         "assets-catalog",
         "assets-catalog-merge",
-        "cc-bus-install",
-        "cc-bus-install-state",
         "chores-mark",
         "data-report",
         "ext-hub-apply",
@@ -1183,9 +1181,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "last-seen-read",
         "last-seen-write",
         "machine-interrupts",
-        "mcp-sync-apply",
-        "mcp-sync-preview",
-        "mcp-sync-source",
         "plan-ack",
         "plan-cell-view",
         "plan-list",
@@ -1194,10 +1189,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-unack",
         "remote-probe",
         "resident-verdict",
-        "skill-install-apply",
-        "skill-install-plan",
         "skill-install-record",
-        "skill-read",
     ];
     fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
         match v {
