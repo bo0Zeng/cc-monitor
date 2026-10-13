@@ -205,7 +205,36 @@ export class TabStreamView {
     const sk = tab.skeleton;
     if (!sk) return;
     const w = tab.stream.contentElement.getBoundingClientRect().width;
-    if (w > 0 && sk.relayout(w)) this.refineNearby(tab);
+    if (w > 0 && sk.relayout(w)) {
+      this.refineNearby(tab);
+      this.settleLayoutLater(sk);
+    }
+  }
+
+  /** 改列宽之后远处还没按新列宽估的行：空闲时一段一段补（每段至多这么多行）。 */
+  private static readonly SETTLE_ROWS = 20_000;
+  /** 等着补估的骨架（先来先补）与它们共用的那一个空闲回调位子。 */
+  private settling: SkeletonView[] = [];
+  private readonly settleSlot = new IdleSlot();
+  private settleScheduled = false;
+
+  /** 这个骨架改过列宽、远处还有没估的 ⇒ 排进空闲补估（同一个已排着的不重复排）。 */
+  private settleLayoutLater(sk: SkeletonView): void {
+    if (!this.settling.includes(sk)) this.settling.push(sk);
+    if (this.settleScheduled) return;
+    this.settleScheduled = true;
+    this.settleSlot.schedule(() => this.settleStep(), 16);
+  }
+
+  private settleStep(): void {
+    this.settleScheduled = false;
+    const sk = this.settling[0];
+    if (!sk) return;
+    if (!sk.settleLayout(TabStreamView.SETTLE_ROWS)) this.settling.shift();
+    if (this.settling.length > 0) {
+      this.settleScheduled = true;
+      this.settleSlot.schedule(() => this.settleStep(), 16);
+    }
   }
 
   /**
@@ -848,7 +877,7 @@ export class TabStreamView {
     this.applyInjected(on);
     for (const tab of this.store.tabs.values()) {
       const w = tab.stream.contentElement.getBoundingClientRect().width;
-      if (tab.skeleton && w > 0) tab.skeleton.relayout(w, true);
+      if (tab.skeleton && w > 0 && tab.skeleton.relayout(w, true)) this.settleLayoutLater(tab.skeleton);
     }
     if (t && pin?.isConnected) t.streamEl.scrollTop += pin.getBoundingClientRect().top - before;
   }
@@ -1531,6 +1560,8 @@ export class TabStreamView {
   dispose(): void {
     this.cold.stop();
     this.idleSlot.stop();
+    this.settleSlot.stop(); // 改列宽之后的空闲补估同样撤掉
+    this.settling = [];
     this.materializeQueue = [];
     for (const t of [...this.store.tabs.values()]) this.disposeTab(t);
   }
