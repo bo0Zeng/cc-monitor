@@ -360,14 +360,18 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .unwrap_or("");
+                let holders = history_query::facts_holders(home, path).unwrap_or_default();
+                let off =
+                    answer_off_of(&holders, history_query::facts_agent(home, path).as_deref());
                 let needs = dress_ask(
                     crate::observe::facts_query::needs_of(
                         &last.pending,
                         accounts_query::session_wait(home, sid).as_ref(),
                     ),
                     sid,
+                    off.as_ref(),
                 );
-                let live = history_query::facts_holders(home, path).is_some_and(|h| !h.is_empty());
+                let live = !holders.is_empty();
                 crate::observe::turns::dress_live(last, needs.as_ref(), live);
             }
             let mut rows = CappedRows::default();
@@ -476,38 +480,17 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             let holders = history_query::facts_holders(home, path);
             facts.writers = holders.clone().unwrap_or_default();
             // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
-            // 答题口没接上（ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量）：每次按持着它的进程现查。
-            //   换了启动器那一支（ccm 的便条说插件是经环境交下去的）：持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去。
-            facts.answer_off = facts.writers.iter().find_map(|pid| {
-                match crate::platform::proc::proc_env_var(
-                    *pid,
-                    crate::agents::asks::ANSWER_HOOK_OFF_ENV,
-                ) {
-                    crate::platform::proc::EnvRead::Value(v) => {
-                        Some(crate::agents::asks::hook_off_words(&v))
-                    }
-                    crate::platform::proc::EnvRead::Unset => plugin_lost(*pid).then(|| {
-                        crate::agents::asks::hook_off_words(
-                            crate::agents::asks::HookOff::EnvLost.env_value(),
-                        )
-                    }),
-                    crate::platform::proc::EnvRead::Unreadable => None,
-                }
-            });
-            // 配上挂着的待答请求（`needs.ask`：可以怎么答；挡着终端的那种 pidfile 不说在等，照它补出一份）。
+            // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
+            // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
+            facts.answer_off = answer_off_of(&facts.writers, facts.agent.as_deref());
             facts.needs = dress_ask(
                 facts_query::needs_of(
                     &facts.pending,
                     accounts_query::session_wait(home, sid).as_ref(),
                 ),
                 sid,
+                facts.answer_off.as_ref(),
             );
-            // 没接上的那条会话：「只能在终端里答」那一句换成它为什么（同 `answerOff`）。
-            if let (Some(n), Some(off)) = (facts.needs.as_mut(), facts.answer_off.as_ref()) {
-                if n.ask.is_none() {
-                    n.manual_text = Some(off.clone());
-                }
-            }
             // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
             facts.background = accounts_query::session_background(home, sid).map(|born| {
                 let now = crate::common::time::now()
@@ -527,7 +510,16 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
         // 这台上需手动的会话清单（一次问一台）：活着、那台说在等人的每一个，带它在等什么（同 `history-facts.needs`，不另判）。
         "sessions-needs" => crate::stream::inbound::spec::wire(&NeedsList {
             waiting: accounts_query::live_needs(home, &crate::control::asks::sids(), &|n, sid| {
-                dress_ask(n, sid)
+                let path = history_query::session_record(home, sid)
+                    .ok()
+                    .map(|p| p.to_string_lossy().into_owned());
+                let off = path.as_deref().and_then(|path| {
+                    answer_off_of(
+                        &history_query::facts_holders(home, path).unwrap_or_default(),
+                        history_query::facts_agent(home, path).as_deref(),
+                    )
+                });
+                dress_ask(n, sid, off.as_ref())
             }),
         }),
         // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
@@ -825,22 +817,81 @@ fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String
 #[path = "../../../tests/backend/faces/read_face_tests.rs"]
 mod tests;
 
-/// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `facts_query::dress_ask_with`）。
+/// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `facts_query::dress_ask_with`）；
+/// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。
+/// 会话事实 · 过程那一轮 · 需手动清单三处都经这里（同一条会话三处说的是同一句）。
 fn dress_ask(
     needs: Option<crate::observe::facts_query::Needs>,
     sid: &str,
+    off: Option<&crate::common::cells::Words>,
 ) -> Option<crate::observe::facts_query::Needs> {
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-    crate::observe::facts_query::dress_ask_with(
+    let mut needs = crate::observe::facts_query::dress_ask_with(
         needs,
         crate::control::asks::pending(sid).into_iter().next(),
         now,
-    )
+    );
+    if let (Some(n), Some(off)) = (needs.as_mut(), off) {
+        if n.ask.is_none() {
+            n.manual_text = Some(off.clone());
+        }
+    }
+    needs
+}
+
+/// 答题口没接上 ⇒ 写好的那一句（会话事实 `answerOff`）；接上了 / 判不了 ⇒ `None`。按持着它的进程现查（`writers` 是它们的 pid）：
+/// ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量（值说原因）；换了启动器那一支（ccm 的便条说插件是经环境交下去的）、
+/// 持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去；身上看不出 ccm 挂过 ⇒ 别处起的（`agent` 那一家有答题口才这么说）。
+fn answer_off_of(writers: &[u32], agent: Option<&str>) -> Option<crate::common::cells::Words> {
+    use crate::agents::asks::HookOff;
+    use crate::platform::proc::EnvRead;
+    writers.iter().find_map(|pid| {
+        match crate::platform::proc::proc_env_var(*pid, crate::agents::asks::ANSWER_HOOK_OFF_ENV) {
+            EnvRead::Value(v) => Some(crate::agents::asks::hook_off_words(&v)),
+            EnvRead::Unset => {
+                let off = if plugin_lost(*pid) {
+                    Some(HookOff::EnvLost)
+                } else if started_elsewhere(*pid, agent) {
+                    Some(HookOff::Elsewhere)
+                } else {
+                    None
+                };
+                off.map(|o| crate::agents::asks::hook_off_words(o.env_value()))
+            }
+            EnvRead::Unreadable => None,
+        }
+    })
 }
 
 /// ccm 给这个进程留的便条说答题插件经环境交下去了，它的环境里却没有我们那个目录（启动器把环境清掉了）。
+/// 持着会话的这个进程是不是别处起的（判法住 `agents::asks::started_elsewhere`；这里只把那几样从进程身上读出来）。
+fn started_elsewhere(pid: u32, agent: Option<&str>) -> bool {
+    let has_ask_face = agent.and_then(crate::agents::ask_face).is_some();
+    let noted = crate::platform::paths::data_home().is_some_and(|data| {
+        let started = crate::platform::proc::start_epoch_from_ticks(
+            crate::platform::proc::proc_starttime(pid),
+        );
+        crate::control::launch_account::note_of(&data, pid, started).is_some()
+    });
+    let plugin_here = crate::platform::paths::home_dir().is_some_and(|home| {
+        let ours = crate::agents::asks::plugin_dir_under(&home.to_string_lossy());
+        crate::agents::plugin_envs().into_iter().any(|var| {
+            matches!(
+                crate::platform::proc::proc_env_var(pid, var),
+                crate::platform::proc::EnvRead::Value(v) if crate::agents::asks::dirs_have(&v, &ours)
+            )
+        })
+    });
+    crate::agents::asks::started_elsewhere(
+        has_ask_face,
+        crate::platform::proc::proc_cmdline(pid).as_deref(),
+        plugin_here,
+        noted,
+    )
+}
+
 fn plugin_lost(pid: u32) -> bool {
     let (Some(data), Some(home)) = (
         crate::platform::paths::data_home(),

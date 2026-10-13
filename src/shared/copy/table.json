@@ -17852,6 +17852,12 @@
       "zh": "启动器没把环境传下去，答题口没接上 · 只能在终端里答",
       "args": []
     },
+    "beAsk.manual.offElsewhere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "别处起的会话，没挂答题口 · 只能在终端里答",
+      "args": []
+    },
     "beAsk.manual.offSettings": {
       "kind": "body",
       "role": "说明",

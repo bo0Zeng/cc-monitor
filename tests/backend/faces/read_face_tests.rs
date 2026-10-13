@@ -630,7 +630,7 @@ fn facts_say_what_the_session_is_waiting_for() {
     let (waited, rest) = split_waited(&waiting);
     assert_eq!(
         rest,
-        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1, "ask": null, "manualText": copy_core::copy_text("beAsk.manual.terminal", &[])})
+        serde_json::json!({"kind": "approve", "tool": "Bash", "call": "b1", "what": "rm -rf build/", "sinceMs": 1_700_000_000_000u64, "text": copy_core::copy_text("beSession.needs.approve", &[]), "head": copy_core::copy_text("needs.bar.approve", &[("tool", "Bash")]), "headCode": "rm -rf build/", "tone": "need", "rank": 1, "ask": null, "manualText": copy_core::copy_text("beAsk.manual.offElsewhere", &[])})
     );
     // 已等多久在这台算（这台读 pidfile 那一刻减那份 pidfile 里的起点），字由时长那一处写。
     let ms = waited.expect("有起点就有已等多久");
@@ -1649,7 +1649,7 @@ fn the_index_is_packed_by_column_with_offsets_as_differences() {
 }
 
 /// ccm 起会话时答题 hook 挂不上（起的进程环境里带那个变量）⇒ 会话事实 `answerOff` 写明只能在终端里答批准，
-/// 在等批准时 `needs.manualText` 也是这一句；没带那个变量的进程 ⇒ `null`。
+/// 在等批准时 `needs.manualText` 也是这一句（没带那个变量的进程见下一条：看它是不是 ccm 起的）。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
@@ -1741,13 +1741,82 @@ fn a_session_whose_answer_hook_could_not_be_hung_says_so() {
     seen.sort();
     seen.dedup();
     assert_eq!(seen.len(), 5, "五种原因五句不同的话");
-    let on = facts_with(None);
     let _ = std::fs::remove_dir_all(&home);
-    assert_eq!(on["answerOff"], serde_json::Value::Null);
-    assert_eq!(
-        on["needs"]["manualText"],
-        serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]))
-    );
+}
+
+/// 不是 ccm 起的会话（持着它的进程身上看不出挂过答题口：命令行里没有 hook 客户端那个旗标 · 插件目录变量里没有我们那个目录 ·
+/// ccm 没给它留过便条）⇒ `answerOff` 与 `needs.manualText` 写明「别处起的会话，没挂答题口」；看得出挂过的 ⇒ `answerOff` 是 `null`、
+/// 只说「只能在终端里答」（那一步不是答题口管得着的框）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_session_started_elsewhere_says_why_it_cannot_be_answered_here() {
+    let home = scratch("answer-elsewhere");
+    let sid = "cccccccc-1111-2222-3333-777777777777";
+    let dir = home.join("projects").join("-n");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{sid}.jsonl"));
+    std::fs::write(
+        &path,
+        "{\"type\":\"assistant\",\"timestamp\":\"t1\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b1\",\"name\":\"Bash\",\"input\":{\"command\":\"true\"}}]}}\n",
+    )
+    .unwrap();
+    let pids = crate::observe::watcher::pidfile_dir(&home);
+    std::fs::create_dir_all(&pids).unwrap();
+    let data = crate::platform::paths::data_home().expect("测试档有数据目录");
+    let own = crate::platform::fs::Own::issue_data_at(&data);
+    let var = crate::agents::claudecode::asks::PLUGIN_ENV;
+    // `extra` 接在 sh 的位置参数后面（只为让它出现在命令行里）；`noted` ⇒ 像 ccm 那样给这个进程留一张便条。
+    let facts_with = |extra: &[&str], noted: bool| {
+        let mut cmd = std::process::Command::new("sh");
+        cmd.args(["-c", "sleep 30; :", "sh"]).args(extra);
+        cmd.env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV);
+        cmd.env_remove(var);
+        let mut c = cmd.spawn().unwrap();
+        let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
+        let until = std::time::Instant::now() + guard_core::wall::CEILING;
+        while std::fs::read(&cmdline).map_or(true, |b| !b.starts_with(b"sh\0-c\0"))
+            && std::time::Instant::now() < until
+        {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        if noted {
+            let now = crate::common::time::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs();
+            crate::control::launch_account::leave_note(&own, c.id(), "acct", now + 1).unwrap();
+        }
+        let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
+        let body = format!(
+            r#"{{"pid":{},"sessionId":"{sid}","kind":"interactive","procStart":"{ticks}","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":1700000000000}}"#,
+            c.id()
+        );
+        let pf = pids.join(format!("{}.json", c.id()));
+        std::fs::write(&pf, body).unwrap();
+        let v = answer_at(
+            &home,
+            "history-facts",
+            &serde_json::json!({ "path": path }),
+            &Default::default(),
+        )
+        .unwrap();
+        let _ = c.kill();
+        let _ = c.wait();
+        let _ = std::fs::remove_file(&pf);
+        v
+    };
+    let elsewhere = facts_with(&[], false);
+    let hooked = facts_with(&[crate::ANSWER_HOOK_FLAG, "claude"], false);
+    let noted = facts_with(&[], true);
+    let _ = std::fs::remove_dir_all(&home);
+    let said = copy_core::copy_text("beAsk.manual.offElsewhere", &[]);
+    assert_eq!(elsewhere["answerOff"], serde_json::json!(said));
+    assert_eq!(elsewhere["needs"]["manualText"], serde_json::json!(said));
+    let terminal = serde_json::json!(copy_core::copy_text("beAsk.manual.terminal", &[]));
+    for (what, v) in [("命令行里挂着 hook", &hooked), ("ccm 留过便条", &noted)] {
+        assert_eq!(v["answerOff"], serde_json::Value::Null, "{what}");
+        assert_eq!(v["needs"]["manualText"], terminal, "{what}");
+    }
 }
 
 /// 换了启动器那一支：ccm 给那个进程留的便条说「走的是环境那一路」，而持着会话的进程环境里没有我们那个插件目录
