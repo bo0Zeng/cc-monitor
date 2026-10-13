@@ -628,12 +628,6 @@ pub fn delete_empty_dir(
     }
 }
 
-/// `files-delete` 的 `expect` 那一格（给了的话）：逐字节那一形 · 「只删空目录」那一形。
-enum DeleteExpect {
-    Bytes(Vec<u8>),
-    EmptyDir,
-}
-
 /// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
 ///
 /// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
