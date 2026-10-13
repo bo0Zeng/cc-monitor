@@ -1003,6 +1003,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// rotation-view 多过去那一截 · 提示带文件路径与时区名 · baseRev，rotation-try / -day-paint · session-new 形状跟着变。
 /// 第 7 批：子命令集多 --prefs-read / --prefs-set · --machines-read / --machines-try / --machines-set（子命令与通道各一）；
 /// 偏好（启动命令 · 每号模型 · 上限表）住那台的 prefs.json、机器表住本机后端的 machines.json，推送主题多 machines。
+/// 足迹那一族 5 条（agent-home-check · first-run · chores-mark · last-seen-read / -write）换成 typed，「装到几台」每台多 detail；
+/// login-* 多 MCP 那一种（kind: mcp，经伪终端驱动 claude mcp login --no-browser），形状指纹表跟着变、子命令集不变。
 pub const BUILD_ID: &str = "p10l-typed-hub";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
