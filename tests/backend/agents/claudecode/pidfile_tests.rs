@@ -49,7 +49,7 @@ fn unknown_words_are_booked_not_silent() {
     let snap = crate::agents::claudecode::drift::snapshot();
     let has = |face: DriftFace, key: &str| {
         snap.iter()
-            .any(|f| f.face == face && f.entries.iter().any(|e| e.key == key))
+            .any(|f| f.face == face.word() && f.entries.iter().any(|e| e.key == key))
     };
     assert!(has(DriftFace::UnknownSessionKind, "af2-kind-probe"));
     assert!(has(DriftFace::UnknownSessionStatus, "af2-status-probe"));
@@ -118,8 +118,10 @@ fn every_waiting_word_maps_to_what_is_awaited() {
         "认不出 ⇒ 说不清，不猜"
     );
     let snap = crate::agents::claudecode::drift::snapshot();
-    assert!(snap.iter().any(|f| f.face == DriftFace::UnknownWaitingFor
-        && f.entries.iter().any(|e| e.key == "c2-new-wait")));
+    assert!(snap
+        .iter()
+        .any(|f| f.face == DriftFace::UnknownWaitingFor.word()
+            && f.entries.iter().any(|e| e.key == "c2-new-wait")));
 }
 
 /// 「在等什么」那几个词只在适配层认：后端别处 ＋ monitor 的壳，生产段零处拼它们（零命中 ＋ 正控）。

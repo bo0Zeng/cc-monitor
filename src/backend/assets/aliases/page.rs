@@ -21,9 +21,35 @@ use crate::control::ccm::argv::{self, flag, Origin};
 // 表单那几格 · 标签
 // ═══════════════════════════════════════════════════════════════════════════
 
+/// 表单的哪一格（[`ProfileForm`] 里那一格的名字）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileSlotId"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum SlotId {
+    Account,
+    Tmux,
+    CwdIf,
+    Cwd,
+    Agent,
+    Args,
+    Launcher,
+    TmuxSize,
+    Detach,
+    BusRegister,
+    BusNote,
+}
+
 /// 表单的一格：`id`（[`ProfileForm`] 里那一格的名字）· 标签（文案键）· 落在配置文件里的哪几个键。
 pub(crate) struct Slot {
-    pub id: &'static str,
+    pub id: SlotId,
     /// 标签（文案表里那一句）。
     pub label: fn() -> String,
     /// ccm 选项（去掉 `--` 就是配置文件里的键）；空 ＝ 交给 agent 的那串（键 `args`）。
@@ -39,57 +65,57 @@ impl Slot {
 /// 表单的各格，按表单里从上到下的顺序（合并表、树里摘要也按这个顺序）。
 pub(crate) const SLOTS: &[Slot] = &[
     Slot {
-        id: "account",
+        id: SlotId::Account,
         label: || copy_text("beProfile.slot.account", &[]),
         flags: &[flag::ACCOUNT, flag::BASE],
     },
     Slot {
-        id: "tmux",
+        id: SlotId::Tmux,
         label: || copy_text("beProfile.slot.tmux", &[]),
         flags: &[flag::TMUX, flag::TMUX_BASE],
     },
     Slot {
-        id: "cwdIf",
+        id: SlotId::CwdIf,
         label: || copy_text("beProfile.slot.cwdIf", &[]),
         flags: &[flag::CWD_IF],
     },
     Slot {
-        id: "cwd",
+        id: SlotId::Cwd,
         label: || copy_text("beProfile.slot.cwd", &[]),
         flags: &[flag::CWD],
     },
     Slot {
-        id: "agent",
+        id: SlotId::Agent,
         label: || copy_text("beProfile.slot.agent", &[]),
         flags: &[flag::AGENT],
     },
     Slot {
-        id: "args",
+        id: SlotId::Args,
         label: || copy_text("beProfile.slot.args", &[]),
         flags: &[],
     },
     Slot {
-        id: "launcher",
+        id: SlotId::Launcher,
         label: || copy_text("beProfile.slot.launcher", &[]),
         flags: &[flag::LAUNCHER],
     },
     Slot {
-        id: "tmuxSize",
+        id: SlotId::TmuxSize,
         label: || copy_text("beProfile.slot.tmuxSize", &[]),
         flags: &[flag::TMUX_SIZE],
     },
     Slot {
-        id: "detach",
+        id: SlotId::Detach,
         label: || copy_text("beProfile.slot.detach", &[]),
         flags: &[flag::DETACH],
     },
     Slot {
-        id: "busRegister",
+        id: SlotId::BusRegister,
         label: || copy_text("beProfile.slot.busRegister", &[]),
         flags: &[flag::BUS_REGISTER],
     },
     Slot {
-        id: "busNote",
+        id: SlotId::BusNote,
         label: || copy_text("beProfile.slot.busNote", &[]),
         flags: &[flag::BUS_NOTE],
     },
@@ -124,6 +150,15 @@ pub(crate) fn said_of(f: Option<&str>, vals: &[String]) -> String {
 
 /// 号那一格：哪个号，或显式不用账号。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileAccountPick"
+    )
+)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) enum AccountPick {
     Account { name: String },
@@ -132,6 +167,15 @@ pub(crate) enum AccountPick {
 
 /// 「在哪起」那一格（子那一段只能写 tmux 的几种：当前终端是没写 tmux，继承来的 tmux 关不掉）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileTmuxMode"
+    )
+)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum TmuxMode {
     /// tmux，名字自动取。
@@ -143,6 +187,15 @@ pub(crate) enum TmuxMode {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileTmuxPick"
+    )
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct TmuxPick {
     pub mode: TmuxMode,
@@ -152,6 +205,15 @@ pub(crate) struct TmuxPick {
 
 /// 按目录的一条：在 `at` 敲 ⇒ 进 `to`。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileCwdCase"
+    )
+)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct CwdCase {
     pub at: String,
@@ -159,7 +221,10 @@ pub(crate) struct CwdCase {
 }
 
 /// 一段配置的表单：名字 · 基于谁 · 各格（`None` / `false` ＝ 继承，没写进这一段）。
+/// 入参里缺的格当继承（`null` / `false`）；回包里格格都在。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ProfileForm {
     pub name: String,
@@ -358,7 +423,7 @@ fn summary_of(p: &Profile, shell: Shell) -> String {
     let mut out: Vec<String> = parts.into_iter().map(|(_, s)| s).collect();
     let has_tmux = words_of(p)
         .iter()
-        .any(|(f, _)| slot_of(Some(f)).id == "tmux");
+        .any(|(f, _)| slot_of(Some(f)).id == SlotId::Tmux);
     if !child && !has_tmux {
         out.insert(
             0,
@@ -384,41 +449,100 @@ fn here_shell() -> Shell {
     }
 }
 
+/// 一段自己写的一项：配置文件里的键 · 归表单哪一格 · 值 · 第几行。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileOwnItem"
+    )
+)]
 #[serde(rename_all = "camelCase")]
-struct OwnItem {
+pub(crate) struct OwnItem {
     key: String,
-    slot: &'static str,
+    slot: SlotId,
     vals: Vec<String>,
+    #[cfg_attr(test, ts(type = "number"))]
     line: usize,
 }
 
+/// 一段（或整份文件）的坏处：第几行 · 那一句 · 复制详情。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileProblem"
+    )
+)]
 #[serde(rename_all = "camelCase")]
-struct ProblemOut {
+pub(crate) struct ProblemOut {
+    #[cfg_attr(test, ts(type = "number | null"))]
     line: Option<usize>,
     message: String,
     /// 复制详情（有下层原话时才有：TOML 解析器那一句）；没有 ⇒ `null`。
     detail: Option<String>,
 }
 
+/// 这一段装成什么：`~/.cc-monitor/bin` 里的链接 · 终端函数（撞了 PATH 上的同名程序 · Windows 上恒是函数）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ProfileKind {
+    Link,
+    Function,
+}
+
+/// 「账号那一形」：号与 tmux 按合并下来的算。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileAccountShape"
+    )
+)]
+pub(crate) struct AccountShape {
+    account: String,
+    tmux: bool,
+}
+
+/// 树里的一段：自己写的几项 · 能不能用 · 链接还是终端函数 · 树里那一行 · 表单回填。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileRow"
+    )
+)]
 #[serde(rename_all = "camelCase")]
-struct ProfileOut {
+pub(crate) struct ProfileOut {
     name: String,
     from: Option<String>,
     own: Vec<OwnItem>,
     agent: Vec<String>,
     usable: bool,
     problem: Option<ProblemOut>,
-    kind: &'static str,
+    kind: ProfileKind,
     function_why: Option<String>,
     /// 写成函数时写在哪份文件、写成什么。
     function_line: Option<String>,
+    /// 树里那一行（按表单同一套词写好）。
     said: String,
     form: ProfileForm,
-    /// 「账号那一形」（自己只写了号、可再加 tmux）⇒ `{account, tmux}`，号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
-    account_shape: Option<Value>,
+    /// 「账号那一形」（自己只写了号、可再加 tmux）⇒ 号与 tmux 按合并下来的算；其余 ⇒ `null`（账号页按它列各号的命令名）。
+    account_shape: Option<AccountShape>,
 }
 
 fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> ProfileOut {
@@ -463,7 +587,11 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> Prof
         agent: p.agent.clone(),
         usable: resolved.is_ok(),
         problem,
-        kind: if fun { "function" } else { "link" },
+        kind: if fun {
+            ProfileKind::Function
+        } else {
+            ProfileKind::Link
+        },
         function_why: fun.then(|| {
             super::collision_note(&p.name, shell)
                 .unwrap_or_else(|| copy_text("beProfile.function.always", &[]))
@@ -480,7 +608,7 @@ fn profile_out(book: &Book, p: &Profile, shell: Shell, alias_file: &str) -> Prof
         said: summary_of(p, shell),
         form: form_of(p),
         account_shape: crate::accounts::manage::aliases::shape_of(book, p)
-            .map(|(account, tmux)| json!({ "account": account, "tmux": tmux })),
+            .map(|(account, tmux)| AccountShape { account, tmux }),
     }
 }
 
@@ -508,11 +636,7 @@ fn chain_problem_line(book: &Book, name: &str) -> Option<usize> {
     }
 }
 
-type Answer = Result<Value, (&'static str, String)>;
-
-fn bad(msg: &str) -> (&'static str, String) {
-    ("bad_args", crate::common::contract::malformed(msg))
-}
+type Answer<T> = Result<T, (&'static str, String)>;
 
 fn refused(said: String) -> (&'static str, String) {
     ("refused", said)
@@ -541,20 +665,72 @@ fn edited_at(d: &dyn Door, store: &super::Store, path: &str, tz: &crate::Tz) -> 
     ))
 }
 
+/// 旧别名清单一次性转进配置文件之后的那张说明（写的那一头 [`super::migrate`]，读的这一头页首说一次）。
+#[derive(Debug, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfilesMigrated"
+    )
+)]
+pub(crate) struct Migrated {
+    /// 转进来几段。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) count: usize,
+    /// 配置文件的路径。
+    pub(crate) path: String,
+    /// 没能转的那几行（原样）。
+    pub(crate) skipped: Vec<String>,
+}
+
 /// 一次性迁移的说明（在 ⇒ 页首说一次）。
-fn migrated_note(d: &dyn Door, home: &str) -> Option<Value> {
+fn migrated_note(d: &dyn Door, home: &str) -> Option<Migrated> {
     let p = door::peek(d, home, relay_route_core::PROFILES_MIGRATED_REL).ok()?;
     serde_json::from_str(&p.text?).ok()
 }
 
-/// `profiles-read {}` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
+/// `profiles-read` 的应答：配置文件整份。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ProfilesBook {
+    /// 这台的家目录（界面拿它把路径写成 `~/…`）。
+    home: String,
+    /// 配置文件的路径。
+    path: String,
+    /// 配置文件在不在。
+    exists: bool,
+    /// 盘上那份的指纹（不在 ⇒ `null`），存的时候交回 `profiles-write`。
+    fingerprint: Option<String>,
+    /// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好）；没改过 ⇒ `null`。
+    edited_at: Option<String>,
+    /// TOML 本身写坏 ⇒ 那一处（这时 `profiles` 为空、不能按条目改）；否则 `null`。
+    file_problem: Option<ProblemOut>,
+    profiles: Vec<ProfileOut>,
+    /// 配置文件不在时首建那两条的预览（在 ⇒ 空）。
+    seed: Vec<ProfileOut>,
+    /// 旧别名清单一次性转进来之后那张说明（「知道了」之后 `null`）。
+    migrated: Option<Migrated>,
+    /// 链接住的目录（`~/.cc-monitor/bin`）。
+    bin_dir: String,
+    /// 这台的账号表（具名号，按账号库的顺序；表单「账号」那一格的选项）。
+    accounts: Vec<String>,
+    /// 这台有没有 tmux（「在哪起」那一格选不选得了 tmux 看它）；探不出 ⇒ `null`。
+    tmux: Option<bool>,
+}
+
+/// `profiles-read` → 整份：每段的成品 ＋ 文件级错误 ＋ 指纹 ＋ 手改过没有 ＋ 迁移说明 ＋ 空态那两条的预览 ＋ 这台有没有 tmux。
 /// `tz` ＝ 看的那一台的时区：手改时刻 `editedAt` 按它写。
-pub(crate) fn answer_read(d: &dyn Door, args: &Value, tz: &crate::Tz) -> Answer {
-    read_with(d, args, crate::footprint::tmux_here(), tz)
+pub(crate) fn answer_read(d: &dyn Door, tz: &crate::Tz) -> Answer<ProfilesBook> {
+    read_with(d, crate::footprint::tmux_here(), tz)
 }
 
 /// [`answer_read`] 的本体：有没有 tmux 是参数（判据喂定值，不去探这台）。
-pub(crate) fn read_with(d: &dyn Door, _args: &Value, tmux: Option<bool>, tz: &crate::Tz) -> Answer {
+pub(crate) fn read_with(d: &dyn Door, tmux: Option<bool>, tz: &crate::Tz) -> Answer<ProfilesBook> {
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
     let path = profile::path_in(&store.home);
@@ -588,20 +764,20 @@ pub(crate) fn read_with(d: &dyn Door, _args: &Value, tmux: Option<bool>, tz: &cr
     } else {
         Vec::new()
     };
-    Ok(json!({
-        "home": store.home,
-        "path": path,
-        "exists": store.text.is_some(),
-        "fingerprint": super::fingerprint_of(store.text.as_deref()),
-        "editedAt": edited_at(d, &store, &path, tz),
-        "fileProblem": file_problem,
-        "profiles": profiles,
-        "seed": seed,
-        "migrated": migrated_note(d, &store.home),
-        "binDir": door::join_under(&store.home, links::bin_rel()),
-        "accounts": super::account_table(&store.home),
-        "tmux": tmux,
-    }))
+    Ok(ProfilesBook {
+        exists: store.text.is_some(),
+        fingerprint: super::fingerprint_of(store.text.as_deref()),
+        edited_at: edited_at(d, &store, &path, tz),
+        file_problem,
+        profiles,
+        seed,
+        migrated: migrated_note(d, &store.home),
+        bin_dir: door::join_under(&store.home, links::bin_rel()),
+        accounts: super::account_table(&store.home),
+        tmux,
+        path,
+        home: store.home,
+    })
 }
 
 /// 首建那两条（`cc` · `cct` 基于 `cc`；名字由默认那一家的 wrapper 名派生）。
@@ -624,11 +800,21 @@ fn seed_changes() -> Vec<Change> {
 
 // ── 合并表 ──
 
+/// 合并表的一行：哪一项 · 归哪一格 · 标签 · 值与它的说法 · 来自哪一段 · 被哪一段盖掉（留下来的 ⇒ `null`）。
 #[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileMergeRow"
+    )
+)]
 #[serde(rename_all = "camelCase")]
-struct Row {
+pub(crate) struct MergeRow {
     key: String,
-    slot: &'static str,
+    slot: SlotId,
     label: String,
     vals: Vec<String>,
     said: String,
@@ -637,7 +823,7 @@ struct Row {
 }
 
 /// `name` 合下来的每一项（父 → 子，层内照写的顺序）：留下来的与被后来那一层盖掉的都在，盖掉的带 `overriddenBy`。
-fn rows_of(book: &Book, chain: &[String], origins: &[Origin]) -> Vec<Row> {
+fn rows_of(book: &Book, chain: &[String], origins: &[Origin]) -> Vec<MergeRow> {
     let mut rows = Vec::new();
     for (li, name) in chain.iter().enumerate() {
         let Some(p) = book.find(name) else { continue };
@@ -660,7 +846,7 @@ fn rows_of(book: &Book, chain: &[String], origins: &[Origin]) -> Vec<Row> {
                     .cloned()
                     .unwrap_or_default()
             });
-            rows.push(Row {
+            rows.push(MergeRow {
                 key: f.trim_start_matches('-').to_string(),
                 slot: slot.id,
                 label: slot.label_text(),
@@ -672,7 +858,7 @@ fn rows_of(book: &Book, chain: &[String], origins: &[Origin]) -> Vec<Row> {
         }
         if !p.agent.is_empty() {
             let slot = slot_of(None);
-            rows.push(Row {
+            rows.push(MergeRow {
                 key: profile::ARGS_KEY.to_string(),
                 slot: slot.id,
                 label: slot.label_text(),
@@ -691,27 +877,71 @@ fn text_after(text: Option<&str>, changes: &[Change]) -> Result<String, String> 
     profile::apply_changes(text.or(Some("")), changes)
 }
 
-/// `profiles-resolve {name, edit?, at?}` → `{chain, rows, line, lineShort, lineError, problem}`（`lineShort` ＝ 「等于」那一格的短形，[`crate::control::ccm::plan::render_short`]）。`edit`：按表单那一刻算（未存）；
+/// `profiles-resolve` 的入参：哪一段 · 未存的表单（`null` ＝ 按盘上那份算）· 假设在这个目录敲（`null` ＝ 家目录）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ProfilesResolveReq {
+    /// 哪一段（带 `edit` 时是正在改的那一段原来的名字，新增写表单里的名字）。
+    pub(crate) name: String,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) edit: Option<ProfileForm>,
+    /// `~` 打头按这台家目录展开。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) at: Option<String>,
+}
+
+/// `profiles-resolve` 的应答：继承链 · 合并表 · 「等于」那一行（整条与短形）· 合不下来的那一句。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileResolved"
+    )
+)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Resolved {
+    /// 继承链（父 → 子）。
+    chain: Vec<String>,
+    rows: Vec<MergeRow>,
+    /// 这台后端算的「等于」那一行（同 `ccm @名 -- --ccm-print`）；算不出 ⇒ `null`。
+    line: Option<String>,
+    /// 「等于」那一行的短形（设置页那一格照抄）；算不出 ⇒ `null`。
+    line_short: Option<String>,
+    /// 算不出那一行时 ccm 的原话。
+    line_error: Option<String>,
+    /// 合不下来 ⇒ 那一句（同终端里敲这个名字）；否则 `null`。
+    problem: Option<String>,
+}
+
+impl Resolved {
+    fn unmerged(problem: String) -> Self {
+        Resolved {
+            chain: Vec::new(),
+            rows: Vec::new(),
+            line: None,
+            line_short: None,
+            line_error: None,
+            problem: Some(problem),
+        }
+    }
+}
+
+/// `profiles-resolve` → [`Resolved`]（`lineShort` ＝ 「等于」那一格的短形，[`crate::control::ccm::plan::render_short`]）。`edit`：按表单那一刻算（未存）；
 /// `at`：假设在这个目录敲（缺省家目录）。
-pub(crate) fn answer_resolve(d: &dyn Door, args: &Value) -> Answer {
-    let name = args
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `name`"))?;
-    let at = match args.get("at") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(
-            v.as_str()
-                .ok_or_else(|| bad("`at` must be a string or null"))?,
-        ),
-    };
+pub(crate) fn answer_resolve(d: &dyn Door, req: &ProfilesResolveReq) -> Answer<Resolved> {
+    let name = req.name.as_str();
     let store = super::load(d).map_err(refused)?;
-    let (book, problem_text) = match args.get("edit") {
-        None | Some(Value::Null) => (store.book.clone(), None),
-        Some(v) => {
-            let f: ProfileForm = serde_json::from_value(v.clone())
-                .map_err(|_| bad("`edit` must be the profile form"))?;
-            let e = edit_of_form(&f).map_err(refused)?;
+    let (book, problem_text) = match &req.edit {
+        None => (store.book.clone(), None),
+        Some(f) => {
+            let e = edit_of_form(f).map_err(refused)?;
             let was = store.book.find(name).map(|p| p.name.clone());
             match changes_of_set(&store.book, was.as_deref(), &e)
                 .and_then(|c| text_after(store.text.as_deref(), &c))
@@ -721,32 +951,31 @@ pub(crate) fn answer_resolve(d: &dyn Door, args: &Value) -> Answer {
             }
         }
     };
-    let target = args
-        .get("edit")
-        .and_then(|e| e.get("name"))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .unwrap_or(name);
+    let target = req.edit.as_ref().map_or(name, |f| f.name.trim());
     if let Some(e) = problem_text {
-        return Ok(
-            json!({"chain": [], "rows": [], "line": null, "lineShort": null, "lineError": null, "problem": e}),
-        );
+        return Ok(Resolved::unmerged(e));
     }
     match profile::resolve(&book, target, &[]) {
         Ok(r) => {
             let rows = rows_of(&book, &r.chain, &r.origins);
-            let (line, line_short, line_error) =
-                match crate::control::ccm::preview_resolved(r.parsed, &store.home, at) {
-                    Ok((l, short)) => (Some(l), Some(short), None),
-                    Err(e) => (None, None, Some(e)),
-                };
-            Ok(
-                json!({"chain": r.chain, "rows": rows, "line": line, "lineShort": line_short, "lineError": line_error, "problem": null}),
-            )
+            let (line, line_short, line_error) = match crate::control::ccm::preview_resolved(
+                r.parsed,
+                &store.home,
+                req.at.as_deref(),
+            ) {
+                Ok((l, short)) => (Some(l), Some(short), None),
+                Err(e) => (None, None, Some(e)),
+            };
+            Ok(Resolved {
+                chain: r.chain,
+                rows,
+                line,
+                line_short,
+                line_error,
+                problem: None,
+            })
         }
-        Err(e) => Ok(
-            json!({"chain": [], "rows": [], "line": null, "lineShort": null, "lineError": null, "problem": e}),
-        ),
+        Err(e) => Ok(Resolved::unmerged(e)),
     }
 }
 
@@ -754,8 +983,17 @@ pub(crate) fn answer_resolve(d: &dyn Door, args: &Value) -> Answer {
 
 /// 线上那一种改动。
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileOp"
+    )
+)]
 #[serde(tag = "op", rename_all = "camelCase", deny_unknown_fields)]
-enum Op {
+pub(crate) enum Op {
     /// 新增（`was` ＝ `null`）或改 `was` 那一段；名字变了 ⇒ 改名，基于它的那几段跟着改「基于」。
     Set {
         was: Option<String>,
@@ -765,6 +1003,7 @@ enum Op {
     Remove {
         name: String,
         #[serde(default)]
+        #[cfg_attr(test, ts(optional))]
         children: Option<Children>,
     },
     /// 配置文件还不在时建出来：`seed` ⇒ 带首建那两条，否则一段都没有。
@@ -774,8 +1013,17 @@ enum Op {
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileChildren"
+    )
+)]
 #[serde(rename_all = "camelCase")]
-enum Children {
+pub(crate) enum Children {
     Reparent,
     Cascade,
 }
@@ -879,11 +1127,6 @@ fn changes_of_remove(
     Ok(out)
 }
 
-fn ops_arg(args: &Value) -> Result<Vec<Op>, (&'static str, String)> {
-    serde_json::from_value(args.get("changes").cloned().unwrap_or(Value::Null))
-        .map_err(|e| bad(&format!("`changes` must be a list of {{op, …}}: {e}")))
-}
-
 /// 线上那几种改动 ⇒ 配置文件的改动（`AckMigrated` / `Init` 另说，不在这里）。
 /// **依次**判：每一条都在「盘上那份 ＋ 前面几条改完」那一份上判（后一条看得见前一条新增 / 改名的段）。
 fn changes_of(text: Option<&str>, ops: &[Op]) -> Result<Vec<Change>, String> {
@@ -929,12 +1172,64 @@ fn broken(book: &Book) -> std::collections::BTreeMap<Option<String>, String> {
     out
 }
 
-/// `profiles-impact {changes}` → `{affected: [{name, changes: [{slot, label, before, after}], problem}]}`：
+/// `profiles-impact` 的入参：同 `profiles-write` 的 `changes`（一个字节不写）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProfilesImpactReq {
+    pub(crate) changes: Vec<Op>,
+}
+
+/// 连带的一格：哪一格 · 标签 · 改前改后各怎么说。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileSlotChange"
+    )
+)]
+pub(crate) struct SlotChange {
+    slot: SlotId,
+    label: String,
+    before: String,
+    after: String,
+}
+
+/// 改动直接点名的那几段之外、合下来会变的一段（变得合不下来 ⇒ `problem` 是那一句，`changes` 空）。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileAffected"
+    )
+)]
+pub(crate) struct Affected {
+    name: String,
+    changes: Vec<SlotChange>,
+    problem: Option<String>,
+}
+
+/// `profiles-impact` 的应答。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ProfilesImpact {
+    affected: Vec<Affected>,
+}
+
+/// `profiles-impact` → [`ProfilesImpact`]：
 /// 这几处改动会让哪几段（改动直接点名的那几段之外）合下来变，改前改后各怎么说。一个字节不写。
-pub(crate) fn answer_impact(d: &dyn Door, args: &Value) -> Answer {
-    let ops = ops_arg(args)?;
+pub(crate) fn answer_impact(d: &dyn Door, req: &ProfilesImpactReq) -> Answer<ProfilesImpact> {
+    let ops = &req.changes;
     let store = super::load(d).map_err(refused)?;
-    let changes = changes_of(store.text.as_deref(), &ops).map_err(refused)?;
+    let changes = changes_of(store.text.as_deref(), ops).map_err(refused)?;
     let after_text = text_after(store.text.as_deref(), &changes).map_err(refused)?;
     let after = profile::parse_book(&after_text);
     let named: Vec<String> = changes
@@ -947,7 +1242,7 @@ pub(crate) fn answer_impact(d: &dyn Door, args: &Value) -> Answer {
         })
         .flat_map(|s| s.split('\n').map(str::to_string).collect::<Vec<_>>())
         .collect();
-    let slots_of = |b: &Book, n: &str| -> Result<Vec<(&'static str, String)>, String> {
+    let slots_of = |b: &Book, n: &str| -> Result<Vec<(SlotId, String)>, String> {
         let r = profile::resolve(b, n, &[])?;
         let rows = rows_of(b, &r.chain, &r.origins);
         Ok(SLOTS
@@ -974,32 +1269,77 @@ pub(crate) fn answer_impact(d: &dyn Door, args: &Value) -> Answer {
         let now = slots_of(&after, &p.name);
         match (before, now) {
             (Ok(b), Ok(a)) => {
-                let diffs: Vec<Value> = b
+                let diffs: Vec<SlotChange> = b
                     .iter()
                     .zip(&a)
                     .filter(|(x, y)| x.1 != y.1)
                     .map(|((id, bs), (_, as_))| {
                         let s = SLOTS.iter().find(|s| s.id == *id).expect("slot listed");
-                        json!({"slot": id, "label": s.label_text(), "before": bs, "after": as_})
+                        SlotChange {
+                            slot: *id,
+                            label: s.label_text(),
+                            before: bs.clone(),
+                            after: as_.clone(),
+                        }
                     })
                     .collect();
                 if !diffs.is_empty() {
-                    affected.push(json!({"name": p.name, "changes": diffs, "problem": null}));
+                    affected.push(Affected {
+                        name: p.name.clone(),
+                        changes: diffs,
+                        problem: None,
+                    });
                 }
             }
-            (Ok(_), Err(e)) => affected.push(json!({"name": p.name, "changes": [], "problem": e})),
+            (Ok(_), Err(e)) => affected.push(Affected {
+                name: p.name.clone(),
+                changes: Vec::new(),
+                problem: Some(e),
+            }),
             _ => {}
         }
     }
-    Ok(json!({ "affected": affected }))
+    Ok(ProfilesImpact { affected })
 }
 
-/// `profiles-bases {name}` → `{bases: [{name, from, said, selectable}]}`：「基于」下拉能选的（选了不成圈的）＋ 自己（灰着）。
-pub(crate) fn answer_bases(d: &dyn Door, args: &Value) -> Answer {
-    let name = args
-        .get("name")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("missing `name`"))?;
+/// `profiles-bases` 的入参：正在改 / 新建的那一段的名字。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProfilesBasesReq {
+    pub(crate) name: String,
+}
+
+/// 「基于」下拉的一项：名字 · 它基于谁 · 树里那一行 · 选不选得了（自己那一项 `false`）。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ProfileBase"
+    )
+)]
+pub(crate) struct Base {
+    name: String,
+    from: Option<String>,
+    said: String,
+    selectable: bool,
+}
+
+/// `profiles-bases` 的应答。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ProfilesBases {
+    bases: Vec<Base>,
+}
+
+/// `profiles-bases` → [`ProfilesBases`]：「基于」下拉能选的（选了不成圈的）＋ 自己（灰着）。
+pub(crate) fn answer_bases(d: &dyn Door, req: &ProfilesBasesReq) -> Answer<ProfilesBases> {
+    let name = req.name.as_str();
     let store = super::load(d).map_err(refused)?;
     let shell = here_shell();
     let loops = |cand: &str| -> bool {
@@ -1017,30 +1357,55 @@ pub(crate) fn answer_bases(d: &dyn Door, args: &Value) -> Answer {
         }
         false
     };
-    let mut bases: Vec<Value> = store
+    let mut bases: Vec<Base> = store
         .book
         .profiles
         .iter()
         .filter(|p| p.name == name || !loops(&p.name))
-        .map(|p| json!({"name": p.name, "from": p.from, "said": summary_of(p, shell), "selectable": p.name != name}))
+        .map(|p| Base {
+            name: p.name.clone(),
+            from: p.from.clone(),
+            said: summary_of(p, shell),
+            selectable: p.name != name,
+        })
         .collect();
     if store.book.find(name).is_none() && !name.is_empty() {
-        bases.push(json!({"name": name, "from": null, "said": "", "selectable": false}));
+        bases.push(Base {
+            name: name.to_string(),
+            from: None,
+            said: String::new(),
+            selectable: false,
+        });
     }
-    Ok(json!({ "bases": bases }))
+    Ok(ProfilesBases { bases })
 }
 
-/// `profiles-write {changes, fingerprint}` → `{wrote, fingerprint, reload}`。盘上被别处改过 ⇒ `stale`；
+/// `profiles-write` 的入参：依次做的改动 ＋ 读回时的指纹（必给，字符串或 `null`；盘上此刻不是那一份 ⇒ `stale`）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProfilesWriteReq {
+    pub(crate) changes: Vec<Op>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    pub(crate) fingerprint: Option<String>,
+}
+
+/// `profiles-write` 的应答：配置文件 / 终端函数文件 / 链接动没动 · 写完那一份的指纹 · 终端函数那份真改了 ⇒ 「已开的终端要重读」那一句。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ProfilesWriteDone {
+    wrote: bool,
+    fingerprint: Option<String>,
+    reload: Option<String>,
+}
+
+/// `profiles-write` → [`ProfilesWriteDone`]。盘上被别处改过 ⇒ `stale`；
 /// 改完多出坏处（原来就坏的不算）⇒ `refused`，一个字节不写。
-pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
-    let ops = ops_arg(args)?;
-    if !args
-        .get("fingerprint")
-        .is_some_and(|v| v.is_null() || v.is_string())
-    {
-        return Err(bad("missing `fingerprint` (string or null)"));
-    }
-    let fp = args.get("fingerprint").and_then(Value::as_str);
+pub(crate) fn answer_write(d: &dyn Door, req: &ProfilesWriteReq) -> Answer<ProfilesWriteDone> {
+    let ops = &req.changes;
+    let fp = req.fingerprint.as_deref();
     let store = super::load(d).map_err(refused)?;
     let path = profile::path_in(&store.home);
     if ops.iter().any(|o| matches!(o, Op::AckMigrated {})) {
@@ -1056,9 +1421,11 @@ pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
     }
     let touches_file = ops.iter().any(|o| !matches!(o, Op::AckMigrated {}));
     if !touches_file {
-        return Ok(
-            json!({"wrote": false, "fingerprint": super::fingerprint_of(store.text.as_deref()), "reload": null}),
-        );
+        return Ok(ProfilesWriteDone {
+            wrote: false,
+            fingerprint: super::fingerprint_of(store.text.as_deref()),
+            reload: None,
+        });
     }
     if super::fingerprint_of(store.text.as_deref()).as_deref() != fp {
         return Err((
@@ -1069,7 +1436,7 @@ pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
             ),
         ));
     }
-    let changes = changes_of(store.text.as_deref(), &ops).map_err(refused)?;
+    let changes = changes_of(store.text.as_deref(), ops).map_err(refused)?;
     let base = match (
         &store.text,
         ops.iter().any(|o| matches!(o, Op::Init { .. })),
@@ -1107,11 +1474,120 @@ pub(crate) fn answer_write(d: &dyn Door, args: &Value) -> Answer {
         return Err(refused(p.clone()));
     }
     let shell_file = super::alias_file_in(&store.home, here_shell());
-    Ok(json!({
-        "wrote": wrote || out.links_changed || !out.rewrote.is_empty(),
-        "fingerprint": super::fingerprint_of(Some(&text)),
-        "reload": out.rewrote.contains(&shell_file).then(|| super::reload_hint(&shell_file)),
-    }))
+    Ok(ProfilesWriteDone {
+        wrote: wrote || out.links_changed || !out.rewrote.is_empty(),
+        fingerprint: super::fingerprint_of(Some(&text)),
+        reload: out
+            .rewrote
+            .contains(&shell_file)
+            .then(|| super::reload_hint(&shell_file)),
+    })
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 帧命令（typed）：经这台的文件管理面读写 ⇒ 阻塞档，带文件面
+// ═══════════════════════════════════════════════════════════════════════════
+
+use crate::stream::inbound::typed::{of_pair, Command, Cx, Files, NoArgs, WithFiles};
+
+crate::stream::inbound::typed::codes! {
+    /// 配置文件那几条只读的码：读没成 · 表单写不成配置（那一句说清哪一样）。
+    pub(crate) enum ProfilesErr {
+        Refused = "refused",
+    }
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `profiles-write` 的码：读写没成 · 改完多出坏处（那一句说清哪一样）· 盘上那份在读回之后被别处改过（一个字节没写）。
+    pub(crate) enum ProfilesWriteErr {
+        Refused = "refused",
+        Stale = "stale",
+    }
+}
+
+/// `profiles-read`：读回配置文件整份（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct ProfilesRead;
+
+impl Command for ProfilesRead {
+    const NAME: &'static str = "profiles-read";
+    const TAKES_INPUT: bool = false;
+    type Req = NoArgs;
+    type Reply = ProfilesBook;
+    type Err = ProfilesErr;
+}
+
+impl WithFiles for ProfilesRead {
+    fn run(_req: NoArgs, cx: &Cx, files: Files) -> Result<ProfilesBook, ProfilesErr> {
+        answer_read(files, &cx.tz).map_err(of_pair(ProfilesErr::Refused))
+    }
+}
+
+/// `profiles-resolve`：一段合下来的合并表与「等于」那一行（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct ProfilesResolve;
+
+impl Command for ProfilesResolve {
+    const NAME: &'static str = "profiles-resolve";
+    type Req = ProfilesResolveReq;
+    type Reply = Resolved;
+    type Err = ProfilesErr;
+}
+
+impl WithFiles for ProfilesResolve {
+    fn run(req: ProfilesResolveReq, _cx: &Cx, files: Files) -> Result<Resolved, ProfilesErr> {
+        answer_resolve(files, &req).map_err(of_pair(ProfilesErr::Refused))
+    }
+}
+
+/// `profiles-impact`：这几处改动会连带哪几段（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct ProfilesImpactCmd;
+
+impl Command for ProfilesImpactCmd {
+    const NAME: &'static str = "profiles-impact";
+    type Req = ProfilesImpactReq;
+    type Reply = ProfilesImpact;
+    type Err = ProfilesErr;
+}
+
+impl WithFiles for ProfilesImpactCmd {
+    fn run(req: ProfilesImpactReq, _cx: &Cx, files: Files) -> Result<ProfilesImpact, ProfilesErr> {
+        answer_impact(files, &req).map_err(of_pair(ProfilesErr::Refused))
+    }
+}
+
+/// `profiles-bases`：「基于」下拉能选的几段（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct ProfilesBasesCmd;
+
+impl Command for ProfilesBasesCmd {
+    const NAME: &'static str = "profiles-bases";
+    type Req = ProfilesBasesReq;
+    type Reply = ProfilesBases;
+    type Err = ProfilesErr;
+}
+
+impl WithFiles for ProfilesBasesCmd {
+    fn run(req: ProfilesBasesReq, _cx: &Cx, files: Files) -> Result<ProfilesBases, ProfilesErr> {
+        answer_bases(files, &req).map_err(of_pair(ProfilesErr::Refused))
+    }
+}
+
+/// `profiles-write`：按条目改配置文件（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
+pub(crate) struct ProfilesWrite;
+
+impl Command for ProfilesWrite {
+    const NAME: &'static str = "profiles-write";
+    type Req = ProfilesWriteReq;
+    type Reply = ProfilesWriteDone;
+    type Err = ProfilesWriteErr;
+}
+
+impl WithFiles for ProfilesWrite {
+    fn run(
+        req: ProfilesWriteReq,
+        _cx: &Cx,
+        files: Files,
+    ) -> Result<ProfilesWriteDone, ProfilesWriteErr> {
+        answer_write(files, &req).map_err(of_pair(ProfilesWriteErr::Refused))
+    }
 }
 
 #[cfg(test)]

@@ -164,6 +164,19 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
         ),
         ("aliases-block-remove", json!({ "rcPath": 7 })),
         ("powershell-policy-set", json!({ "host": "cmd" })),
+        ("profiles-read", json!({ "extra": 1 })),
+        ("profiles-resolve", json!({ "name": "cc", "extra": 1 })),
+        ("profiles-resolve", json!({ "name": 3 })),
+        (
+            "profiles-resolve",
+            json!({ "name": "cc", "edit": { "name": "cc", "tmux-x": 1 } }),
+        ),
+        ("profiles-impact", json!({ "changes": [], "extra": 1 })),
+        ("profiles-impact", json!({ "changes": [{ "op": "drop" }] })),
+        ("profiles-bases", json!({ "name": "cc", "extra": 1 })),
+        // 指纹必给（字符串或 `null`）：缺了不当 `null`。
+        ("profiles-write", json!({ "changes": [] })),
+        ("profiles-write", json!({ "changes": [], "fingerprint": 3 })),
     ] {
         let got = run_any(cmd, args.clone());
         assert_eq!(

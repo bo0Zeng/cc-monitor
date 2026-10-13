@@ -1,8 +1,163 @@
-//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）· 缺格表与目录不重 · 帧面那条命令出的就是它。
+//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）· 缺格表与目录不重。
+//!
+//! 格目录的测试档那一半也住这里：整份目录（[`catalog`]）· 冻结格（[`FROZEN`]）· 缺格表（[`PENDING`]）。
+//! 判据 · 金样 `cells-catalog.golden.json` · `build_id_guard` 的冻结格指纹读它；生产里只有 `view` 投影读成品名与路径（[`PRODUCTS`]）。
+//! 原先的帧命令 `cells-catalog` 没有调用方，第 8 批删了。
 
 use super::*;
 use serde_json::Value;
 use std::collections::BTreeSet;
+
+/// 一件成品哪几格冻结。
+pub(crate) enum Frozen {
+    /// 没有前端照它逐格读到「缺一格就坏」的地步。
+    No,
+    /// 整件：每一格都冻结（今天的、以后加的）。
+    All,
+    /// 只这几格（目录里的路径写法）：第二个前端读的那一截；其余的格照常可改。
+    Cells(&'static [&'static str]),
+}
+
+impl Frozen {
+    /// 这一格冻结不冻结。
+    pub(crate) fn holds(&self, path: &str) -> bool {
+        match self {
+            Frozen::No => false,
+            Frozen::All => true,
+            Frozen::Cells(c) => c.contains(&path),
+        }
+    }
+}
+
+/// 已经判了要补、还没落地的一格。
+#[derive(Debug, Clone, Copy, serde::Serialize)]
+pub(crate) struct Pending {
+    pub(crate) product: &'static str,
+    pub(crate) path: &'static str,
+    pub(crate) kind: &'static str,
+}
+
+/// 还缺的格（手机端 10-09 缺格清单）。落地那一刻删掉这里那一行（判据两向钉）。今天一条都不缺；机制留着，下一张缺格清单进这里。
+///
+/// 已落地 / 不补的（这里不再登记）：
+/// - G1 会话灯「后台任务运行中」那一档 ⇒ `activity` 的闭集多了 `backgroundWork`（不是新格），字与语气在 `activity_text` · `activity_tone`。
+/// - G2 会话状态的字与语气 ⇒ `session_*.activity_text` · `activity_tone` · `session_state.state_text` …
+/// - G3 「在等什么」的字与先答哪个 ⇒ `facts.needs.text` · `facts.needs.rank`。那台 pidfile 的 `waitingFor` 六个原值由适配层翻成
+///   [`WaitOn`](crate::agents::WaitOn)，再与记录里没结果的那一步一起在 `facts_query::needs_of` 判成八种 `needs.kind`（映射只在这两处）；
+///   字与序跟着种类走，不另挂在 `session_status` 上。
+/// - G4 上下文的字 ⇒ `facts.usage.contextText`（判得出上限写百分比、判不出只写用了多少）· `limitText` · `promptTokensText` ·
+///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`facts_query::context_limit`），出口不再按型号猜。
+/// - G5 骨架行的时刻：**不补**（10-09 定走法甲）。时刻在骨架上唯一的用处是算「最新的那一支」，手机改吃 `history-branch.off`
+///   拿主线之后这一用处没了；要画时刻的地方读正文时记录本身带 `at` · `timeText`。
+pub(crate) const PENDING: &[Pending] = &[];
+
+/// 整份目录（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}], pending: [{product, path, kind}]}`。
+pub(crate) fn catalog() -> serde_json::Value {
+    let products: Vec<serde_json::Value> = PRODUCTS
+        .iter()
+        .map(|p| {
+            let cells: Vec<serde_json::Value> = cells_of(p)
+                .0
+                .into_iter()
+                .map(|c| {
+                    serde_json::json!({"path": c.path, "kind": c.kind, "type": c.ty, "frozen": frozen_of(p.name).holds(&c.path)})
+                })
+                .collect();
+            serde_json::json!({"name": p.name, "cells": cells})
+        })
+        .collect();
+    serde_json::json!({"products": products, "pending": PENDING})
+}
+
+/// 每件成品哪几格冻结（[`PRODUCTS`] 每件恰好一行，判据钉）：两个前端（桌面界面 · 手机）都照它读的那几格 —— 删 / 改名 / 换类型 ⇒ 判据红
+/// （对的是落盘的格目录金样：金样里标了冻结的格、目录里没了或换了样，重写金样也不放行）。
+pub(crate) const FROZEN: &[(&str, Frozen)] = &[
+    ("record", Frozen::All),
+    ("facts", Frozen::No),
+    ("needs_row", Frozen::No),
+    ("index_row", Frozen::No),
+    ("read_row", Frozen::All),
+    (
+        "session_added",
+        Frozen::Cells(&[
+            "sid",
+            "path",
+            "cwd",
+            "name",
+            "waiting_for",
+            "agent_kind",
+            "attachable",
+            "activity",
+            "activity_text",
+            "activity_tone",
+            "background",
+        ]),
+    ),
+    (
+        "session_status",
+        Frozen::Cells(&[
+            "sid",
+            "waiting_for",
+            "activity",
+            "activity_text",
+            "activity_tone",
+        ]),
+    ),
+    ("session_state", Frozen::No),
+    ("session_removed", Frozen::Cells(&["sid", "cause"])),
+    (
+        "quota_read",
+        Frozen::Cells(&[
+            "state",
+            "text",
+            "detail",
+            "usableNow[]",
+            "names.accounts.*",
+            "names.slots.*",
+            "accounts[].account",
+            "accounts[].rows[][].text",
+            "accounts[].rows[][].tone",
+            "accounts[].fiveHour",
+            "accounts[].warm.act",
+            "accounts[].warm.at",
+            "accounts[].warm.text",
+            "unseen[].account",
+            "unseen[].rows[][].text",
+            "unseen[].rows[][].tone",
+            "unseen[].fiveHour",
+            "unseen[].warm.act",
+            "unseen[].warm.at",
+            "unseen[].warm.text",
+        ]),
+    ),
+    (
+        "history_list",
+        Frozen::Cells(&[
+            "rows[].sessionId",
+            "rows[].label",
+            "rows[].atText",
+            "rows[].sectionText",
+            "rows[].projectPath",
+            "rows[].jsonlPath",
+            "rows[].agent",
+            "rows[].agentTag",
+            "rows[].starred",
+            "rows[].customTitle",
+            "rows[].hidden",
+            "notice",
+            "truncated",
+        ]),
+    ),
+    ("cell_error", Frozen::No),
+];
+
+/// 那件成品的冻结格（[`FROZEN`] 里没登 ⇒ 不冻结；登没登全由判据管）。
+pub(crate) fn frozen_of(name: &str) -> &'static Frozen {
+    FROZEN
+        .iter()
+        .find(|(n, _)| *n == name)
+        .map_or(&Frozen::No, |(_, f)| f)
+}
 
 fn product(name: &str) -> &'static Product {
     PRODUCTS
@@ -461,29 +616,10 @@ fn pending_cells_are_not_in_the_catalog_yet() {
     }
 }
 
-/// 帧面那条命令出的就是目录。
-#[test]
-fn the_frame_command_answers_the_catalog() {
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "cells-catalog")
-        .expect("注册表里没有 cells-catalog");
-    assert!(!spec.takes_input);
-    let v = catalog();
-    let names: Vec<&str> = v["products"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["name"].as_str().unwrap())
-        .collect();
-    assert_eq!(names, PRODUCTS.iter().map(|p| p.name).collect::<Vec<_>>());
-    assert_eq!(v["pending"].as_array().unwrap().len(), PENDING.len());
-}
-
 /// 金样重写开关（人读过「现打」再落盘）。
 const REGEN: &str = "CCM_REGEN_CELLS_CATALOG";
 
-/// ★ 格目录的金样 ＝ 帧命令真写出来的那一份（出口不起后端也能读；注册表出参对拍也用它）。改了成品就重写：
+/// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重写：
 /// `CCM_REGEN_CELLS_CATALOG=1 cargo test --lib -- cells_catalog`。
 ///
 /// 冻结的格（[`Product::frozen`]，目录里每格的 `frozen`）不许删、改名、换类别或类型：金样里标了冻结的每一格，
@@ -536,9 +672,9 @@ fn the_golden_is_what_the_command_writes() {
 fn every_named_frozen_cell_is_in_the_catalog() {
     let mut named = 0;
     for p in PRODUCTS {
-        if let Frozen::Cells(list) = p.frozen {
+        if let Frozen::Cells(list) = frozen_of(p.name) {
             let cat = catalog_of(p.name);
-            for c in list {
+            for c in list.iter() {
                 named += 1;
                 assert!(
                     cat.contains_key(*c),
@@ -549,4 +685,14 @@ fn every_named_frozen_cell_is_in_the_catalog() {
         }
     }
     assert!(named >= 10, "按格冻结的只有 {named} 格 —— 本条在空转");
+}
+
+/// 冻结表与成品表一一对上：每件成品恰好一行（新成品要写明冻不冻，不许漏成「默认不冻」）。
+#[test]
+fn every_product_states_what_is_frozen_exactly_once() {
+    let mut got: Vec<&str> = FROZEN.iter().map(|(n, _)| *n).collect();
+    let mut want: Vec<&str> = PRODUCTS.iter().map(|p| p.name).collect();
+    got.sort_unstable();
+    want.sort_unstable();
+    assert_eq!(got, want);
 }

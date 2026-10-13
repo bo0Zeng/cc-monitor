@@ -161,6 +161,33 @@ impl crate::stream::inbound::typed::Blocking for BackendLog {
     }
 }
 
+crate::stream::inbound::typed::codes! {
+    /// `drift-report` 没有别的码。
+    pub(crate) enum DriftReportErr {}
+}
+
+/// `drift-report`：这台后端的漂移账（看不懂的记录类型），各家的面并在一起、注册序（纯内存读一把锁，同 `forward-list`）。
+pub(crate) struct DriftReportCmd;
+
+impl crate::stream::inbound::typed::Command for DriftReportCmd {
+    const NAME: &'static str = "drift-report";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = crate::agents::drift::DriftReport;
+    type Err = DriftReportErr;
+}
+
+impl crate::stream::inbound::typed::Async for DriftReportCmd {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<crate::agents::drift::DriftReport, DriftReportErr>>
+           + Send
+           + 'static {
+        std::future::ready(Ok(crate::agents::drift_report()))
+    }
+}
+
 /// 本族的应答：`data` 或 `(code, message)`。
 pub(crate) type Answer = Result<Value, (&'static str, String)>;
 
@@ -175,14 +202,6 @@ pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
 pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
     use crate::observe::accounts_query;
     match cmd {
-        // 这台后端的漂移账（看不懂的记录类型）出成品：`{faces: [...]}`（各家的面并在一起，注册序）。
-        "drift-report" => {
-            let faces: Vec<Value> = crate::agents::drift_reports()
-                .into_iter()
-                .flat_map(|r| r["faces"].as_array().cloned().unwrap_or_default())
-                .collect();
-            Ok(json!({ "faces": faces }))
-        }
         // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
         //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
         "machine-interrupts" => {

@@ -391,7 +391,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "quota-read", // 这台的额度账（纯读、不收输入）
         // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
-        "cells-catalog", // 格目录（纯计算、不收输入）
         "files-index-status",
         "ping",
         // 问这台机器登记了哪些插件市场：无入参，输出 `lines`。
@@ -406,6 +405,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "hooks-diag",
         // 会话外的需手动清单：无入参（问的就是「这台」）。
         "manual-list",
+        // 读回配置文件整份：无入参（问的就是「这台」那一份）。
+        "profiles-read",
         // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。
     ];
     let declared: Vec<&str> = REGISTRY
@@ -661,11 +662,11 @@ fn a_bad_view_on_the_cli_face_is_refused_before_the_command_runs() {
     assert_eq!(refuse(&["--history-read", v, "{}", v, "{}"]), "bad_args");
     // 不出成品的命令带声明：拒
     assert_eq!(
-        refuse(&["--cells-catalog", v, r#"{"omit":{"record":["id"]}}"#]),
+        refuse(&["--ping", v, r#"{"omit":{"record":["id"]}}"#]),
         "bad_args"
     );
     // 认得的声明：照常走到命令自己（EOF ⇒ 空入参 ⇒ 命令说缺 path，也是 bad_args —— 换一条不收入参的看它真放行）
-    let (rc, _, _) = run_cli(&strs(&["--cells-catalog", v, "{}"]), std::io::empty());
+    let (rc, _, _) = run_cli(&strs(&["--ping", v, "{}"]), std::io::empty());
     assert_eq!(rc, 0, "空声明 ＝ 全量，该放行");
 }
 

@@ -13,16 +13,15 @@
  *
  * # 本文件做的只有三件（都是调用方那一侧的事）
  *
- * 1. **按类型收**：按偏移 · 按行号 · 子运行 · 主线外这四条是 typed 命令，回包按后端生成的类型用（两端形状由握手指纹管）；
- *    漂移账照旧按形状收（外层键集合恰好是后端出的那一形，不对 ⇒ 抛）。记录本身**不解释**。
+ * 1. **按类型收**：按偏移 · 按行号 · 子运行 · 主线外 · 漂移账这五条是 typed 命令，回包按后端生成的类型用（两端形状由握手指纹管）。
+ *    记录本身**不解释**。
  * 2. **给载荷打上它从哪台来**（`origin`：本机不带、远端是那台的名字 —— 与实时流那一条同一个口径，这是地址不是解释）。
  * 3. **期限与翻页**：一件事一个期限，翻页只把后端交回的续点（`next` / `nextSeq`）原样交回去。
  *
  * 按偏移取一段 · 按行号取一段交「折起那一行」那份声明（`src/shared/views/folded-record.json`：省掉工具入参 · 结果正文 · 逐段改动；
  * 壳的旁路快照交同一份）；按记录 id 取回那一行不交（展开那一下要的就是全文）。
  */
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, callTyped, jsonBody, readJson, ReplyUnreadable, saidFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { JsonlLinePayload } from "./generated/JsonlLinePayload";
 import type { LineRecord } from "./generated/LineRecord";
@@ -31,7 +30,7 @@ import type { HistoryLines } from "./generated/HistoryLines";
 import type { HistoryPage } from "./generated/HistoryPage";
 import type { HistoryRun } from "./generated/HistoryRun";
 import type { RecordLine } from "./generated/RecordLine";
-import { exactKeys, isObj } from "./ipc/decode";
+import type { DriftFaceReport } from "./generated/DriftFaceReport";
 import { copyText } from "./copy-table";
 import FOLDED from "../../shared/views/folded-record.json";
 
@@ -49,27 +48,13 @@ export interface SessionLinesPage {
 /** 主线外清单（后端 `history-branch`）：回退掉的那几条记录的 `id`（文件序）· 读到哪个字节（之后的由实时帧接着说）。 */
 export type BranchOff = Branch;
 
-/** 那台后端漂移账的一个面（后端 `agents/claudecode/drift.rs::DriftFaceReport`，键名一字不差）。 */
-export interface RecordDriftFace {
-  face: string;
-  consequence: string;
-  entries: Array<{ key: string; count: number; first_sample: string | null }>;
-  overflowed: boolean;
-}
+/** 那台后端漂移账的一个面（各家的面并在一起；面名 · 后果那一句都是那一家写好的）。 */
+export type RecordDriftFace = DriftFaceReport;
 
 /** 按偏移取一段 · 子 agent 那一份：同它上一个住址（一次性远端那一趟的天花板，120 秒）。 */
 const PIECE_BUDGET_MS = 120_000;
 /** 漂移账：一问（30 秒，同会话读面那几问）。 */
 const DRIFT_BUDGET_MS = 30_000;
-
-const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v >= 0;
-const isStr = (v: unknown): v is string => typeof v === "string";
-
-
-/** 应答形状不对：哪条命令只进细目（给人看的那句由 [`answered`] 按码取）。 */
-function badShape(op: string): never {
-  throw new ReplyUnreadable(`${op} reply shape`);
-}
 
 /** 一条记录行（后端 `record_page::RecordLine`）⇒ 载荷；`origin` 由问的那一方打上（这是地址，不是解释）。 */
 function payloadOf(origin: Origin, v: RecordLine): JsonlLinePayload {
@@ -88,46 +73,7 @@ export function linesOf(origin: Origin, v: HistoryLines): SessionLinesPage {
   return { from: v.from, next: v.next, eof: v.eof, payloads: v.lines.map((l) => payloadOf(origin, l)) };
 }
 
-/** `drift-report` 的成品 ⇒ 各面。 */
-export function decodeDrift(v: unknown): RecordDriftFace[] {
-  if (!isObj(v) || !exactKeys(v, ["faces"]) || !Array.isArray(v.faces)) return badShape("drift-report");
-  return v.faces.map((f): RecordDriftFace => {
-    if (
-      !isObj(f) ||
-      !exactKeys(f, ["face", "consequence", "entries", "overflowed"]) ||
-      !isStr(f.face) ||
-      !isStr(f.consequence) ||
-      typeof f.overflowed !== "boolean" ||
-      !Array.isArray(f.entries)
-    ) {
-      return badShape("drift-report");
-    }
-    const entries = f.entries.map((e) => {
-      if (
-        !isObj(e) ||
-        !exactKeys(e, ["key", "count", "first_sample"]) ||
-        !isStr(e.key) ||
-        !isNum(e.count) ||
-        !(e.first_sample === null || isStr(e.first_sample))
-      ) {
-        return badShape("drift-report");
-      }
-      return { key: e.key, count: e.count, first_sample: e.first_sample as string | null };
-    });
-    return { face: f.face, consequence: f.consequence, entries, overflowed: f.overflowed };
-  });
-}
-
-/** 一问的结局 ⇒ 按形状收好的成品；失败 ⇒ 抛一个给人看的 `Error`（`ipc/chan-caller.ts::saidFrom`）。 */
-async function answered<T>(origin: Origin, reply: Promise<Uint8Array>, decode: (v: unknown) => T): Promise<T> {
-  try {
-    return decode(readJson(await reply));
-  } catch (e) {
-    throw new Error(saidFrom(e, origin));
-  }
-}
-
-/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 同 [`answered`]。 */
+/** typed 那几条的一问：回包按类型用（形状由握手指纹管）；失败 ⇒ 抛一个给人看的 `Error`（`ipc/chan-caller.ts::saidFrom`）。 */
 async function asked<T>(origin: Origin, reply: Promise<T>): Promise<T> {
   try {
     return await reply;
@@ -231,7 +177,7 @@ export async function readBranch(origin: Origin, jsonlPath: string): Promise<Bra
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */
 export async function readRecordDrift(origin: Origin): Promise<RecordDriftFace[]> {
-  const body = jsonBody({});
   const budget = budgetWithin(DRIFT_BUDGET_MS);
-  return await answered(origin, chan.call(origin, "drift-report", body, budget), decodeDrift);
+  const { faces } = await asked(origin, callTyped(origin, "drift-report", {}, budget));
+  return faces;
 }
