@@ -987,7 +987,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// （accounts-add 回包删 loginCmd，accounts-list 每号多 label），hello 带的形状指纹表跟着变；握手那一行上限 8 KiB → 64 KiB。
 /// 同一版里再多 --session-say / -permission / -commands / -model 四条（子命令与通道各一，指纹行换成现打的：这一版还没发过）；
 /// session-new-facts 每家带名字与可选的模型 · 权限档。四条大回包分页（history-branch 入参换 BranchReq）· 写出按字节让位 ·
-/// session_branch 只发变的 · 骨架按块读写。
+/// session_branch 只发变的 · 骨架按块读写。子命令集再少 --ssh-config-aliases / --ssh-config-resolve（子命令与通道各一）；
+/// 拨号 · 部署 · 机器 · 总线 7 条 · 别名 4 条 ＋ powershell-policy-set 换成 typed，形状指纹表跟着变。
 pub const BUILD_ID: &str = "p10k-typed-accounts";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
