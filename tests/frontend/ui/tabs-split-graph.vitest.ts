@@ -201,6 +201,9 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-status.ts",
     "src/frontend/ui/tab-session-state.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
     "src/frontend/ui/terminal-front.ts",
+    "src/frontend/ui/acct-words.ts", // 悬停卡「从 work 换过来」里号的显示名
+    "src/frontend/ui/rot-words.ts", // 停发标与悬停那一句（后端写好的停发提示，填「还有多久」）
+    "src/frontend/ui/tab-quota.module.css", // 停发标那一格的样式
   ],
   // ④ 拖拽：落点算术 ＋ 建组时铸一个集合 id。
   // 「松开 → 独立窗口」进了文案表 ⇒ 取文口。

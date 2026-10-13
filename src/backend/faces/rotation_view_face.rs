@@ -207,6 +207,86 @@ pub(crate) enum RotHint {
     BookUnreadable { text: String },
 }
 
+/// 一条提示：哪一种（界面照它挑颜色）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RotNote {
+    pub(crate) hint: RotHint,
+    pub(crate) text: String,
+}
+
+/// 一条换号记录 ＋ 为什么那一句（策略写的；没写 ⇒ 后端看得见的原因）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RotLogRow {
+    #[serde(flatten)]
+    #[cfg_attr(test, ts(flatten))]
+    pub(crate) log: book::Log,
+    pub(crate) because: String,
+}
+
+/// 提示写成一句（字照文案表）。`name` ＝ 那份策略的标题。
+fn note_of(hint: RotHint, name: &str) -> RotNote {
+    let text = match &hint {
+        RotHint::Hold {
+            until_text: Some(at),
+            account: Some(a),
+            ..
+        } => copy_core::copy_text(
+            "beRotation.hint.holdUntil",
+            &[("at", at), ("account", a), ("dur", "{dur}")],
+        ),
+        RotHint::Hold {
+            until_text: Some(at),
+            ..
+        } => copy_core::copy_text("beRotation.hint.holdAt", &[("at", at), ("dur", "{dur}")]),
+        RotHint::Hold { .. } => copy_core::copy_text("beRotation.hint.hold", &[]),
+        RotHint::StrategyError { error } => match error.line {
+            Some(l) => copy_core::copy_text(
+                "beRotation.hint.errorLine",
+                &[
+                    ("name", name),
+                    ("line", &l.to_string()),
+                    ("msg", &error.msg),
+                ],
+            ),
+            None => copy_core::copy_text(
+                "beRotation.hint.error",
+                &[("name", name), ("msg", &error.msg)],
+            ),
+        },
+        RotHint::TzUnknown => copy_core::copy_text("beRotation.hint.tz", &[]),
+        RotHint::OldScripts { n } => {
+            copy_core::copy_text("beRotation.hint.old", &[("n", &n.to_string())])
+        }
+        RotHint::WordsBad => copy_core::copy_text("beRotation.hint.words", &[]),
+        RotHint::BookUnreadable { text } => text.clone(),
+    };
+    RotNote { hint, text }
+}
+
+/// 换号记录配上为什么那一句。
+fn log_rows(log: &[book::Log]) -> Vec<RotLogRow> {
+    log.iter()
+        .map(|h| RotLogRow {
+            because: match (&h.why, &h.cause) {
+                (Some(w), _) if !w.is_empty() => w.clone(),
+                (_, book::Cause::Order) => copy_core::copy_text("beRotation.cause.order", &[]),
+                (_, book::Cause::Unusable) => {
+                    copy_core::copy_text("beRotation.cause.unusable", &[("account", &h.from)])
+                }
+                (_, book::Cause::Temp) => copy_core::copy_text("beRotation.cause.temp", &[]),
+                (_, book::Cause::UseNow) => copy_core::copy_text("beRotation.cause.useNow", &[]),
+                (_, book::Cause::Hold { .. }) => copy_core::copy_text("beRotation.cause.hold", &[]),
+                (_, book::Cause::Error) => copy_core::copy_text("beRotation.cause.error", &[]),
+            },
+            log: h.clone(),
+        })
+        .collect()
+}
+
 /// `rotation-view` 的应答。
 #[derive(Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -236,8 +316,8 @@ pub(crate) struct RotationViewReply {
     pub(crate) decision: Option<RotTryDecision>,
     pub(crate) timeline: Option<RotTryTimeline>,
     /// 换号记录（会话才有）。
-    pub(crate) log: Vec<book::Log>,
-    pub(crate) hints: Vec<RotHint>,
+    pub(crate) log: Vec<RotLogRow>,
+    pub(crate) hints: Vec<RotNote>,
 }
 
 crate::stream::inbound::typed::codes! {
@@ -366,7 +446,7 @@ pub(crate) fn view_with(
     if session.strategy.id.is_empty() {
         let mut hints = Vec::new();
         if let Some(e) = ctx.hop.store.unreadable() {
-            hints.push(RotHint::BookUnreadable { text: e.said });
+            hints.push(note_of(RotHint::BookUnreadable { text: e.said }, ""));
         }
         return Ok(RotationViewReply {
             now,
@@ -381,7 +461,7 @@ pub(crate) fn view_with(
             listed: 0,
             decision: None,
             timeline: None,
-            log: session.log.clone(),
+            log: log_rows(&session.log),
             hints,
         });
     }
@@ -475,6 +555,7 @@ pub(crate) fn view_with(
             settings.is_some() && head.map(|h| &h.settings) != settings.as_ref()
         }
     };
+    let name = item.id.clone();
     Ok(RotationViewReply {
         now,
         now_text: now_face(now),
@@ -494,10 +575,10 @@ pub(crate) fn view_with(
             &crate::Tz::default(),
         )),
         log: match &req.target {
-            RotTarget::Session { .. } => session.log.clone(),
+            RotTarget::Session { .. } => log_rows(&session.log),
             RotTarget::Strategy { .. } => Vec::new(),
         },
-        hints,
+        hints: hints.into_iter().map(|h| note_of(h, &name)).collect(),
     })
 }
 

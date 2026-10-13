@@ -170,6 +170,25 @@ describe("点［新建］：交那台的那一份", () => {
     expect(sent.some((s) => s.op === "terminal-name-mint" || s.op.startsWith("launch-render")), "界面不再自己拼那一串").toBe(false);
   });
 
+  it("★ 轮换：缺省新会话用的那份（不写进请求）；选「不轮换」⇒ 请求带 `rotation: {strategy: null}`", async () => {
+    replies.set("rotation-strategies", {
+      strategies: [{ id: "按权重轮换", description: "第一行说明\n第二行", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false }],
+      forNew: "按权重轮换",
+      oldScripts: 0,
+    });
+    const done = openNewSession({ origin: "devbox" });
+    await flush();
+    const sel = document.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.new.label")}"]`)!;
+    expect(sel.textContent).toContain("按权重轮换");
+    sel.click();
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="option"]')].find((e) => e.textContent?.includes(copyText("rot.none.label")))!.click();
+    createBtn().click();
+    await flush();
+    await done;
+    expect(newRequests()[0].rotation).toEqual({ strategy: null });
+    replies.delete("rotation-strategies");
+  });
+
   it("开窗那一形：那台给那一行 ⇒ 开窗跑它，按展开过的目录认报到的会话", async () => {
     replies.set("session-new", { ...OK, outcome: "open", session: null, cmd: "ccm -- new", cwd: "/home/u/x" });
     void openNewSession({ origin: "devbox" });

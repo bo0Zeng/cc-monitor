@@ -65,11 +65,11 @@ export function mountRotation(spec: RotMountSpec): RotMount {
   let readErr: string | null = null;
   let conflict = false;
   let seq = 0;
-  const confirm = spec.confirm ?? confirmDialog;
+  const confirmFn = spec.confirm ?? confirmDialog;
   const ask =
     spec.ask ??
-    ((title: string, initial: string) =>
-      askText({
+    (async (title: string, initial: string): Promise<string | null> =>
+      await askText({
         title,
         action: copyText("rot.ask.go"),
         label: copyText("rot.ask.name"),
@@ -199,7 +199,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         } catch (e) {
           if (refusedCode(e)?.code !== "dirty")
             return void failToast(copyText("rot.fail.use"), e);
-          const ok = await confirm({
+          const ok = await confirmFn({
             title: copyText("rot.ask.discardTitle"),
             action: copyText("rot.ask.discardGo"),
             body: copyText("rot.ask.discardBody"),
@@ -243,7 +243,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       ),
     remove: (id) =>
       void (async () => {
-        const ok = await confirm({
+        const ok = await confirmFn({
           title: copyText("rot.ask.deleteTitle", { name: id }),
           action: copyText("rot.ask.deleteGo"),
           danger: true,

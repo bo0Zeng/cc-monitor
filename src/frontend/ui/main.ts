@@ -13,7 +13,6 @@
  */
 // `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
-import { acctSessionWiring } from "./acct-session";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
@@ -88,6 +87,7 @@ import { AccountChip } from "./account-chip";
 import { onQuotaChanged, syncSessions } from "./acct-center";
 import { planMoves, pushedProducts } from "./changed-stream";
 import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
+import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";

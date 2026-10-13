@@ -278,7 +278,7 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     );
     assert!(!v.dirty, "没改过");
     assert!(
-        v.hints.iter().all(|h| matches!(h, RotHint::TzUnknown)),
+        v.hints.iter().all(|h| matches!(h.hint, RotHint::TzUnknown)),
         "{:?}",
         v.hints
     );
@@ -291,7 +291,7 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     assert!(
         v.hints
             .iter()
-            .any(|h| matches!(h, RotHint::StrategyError { .. })),
+            .any(|h| matches!(h.hint, RotHint::StrategyError { .. }) && h.text.contains("gone")),
         "{:?}",
         v.hints
     );
@@ -422,12 +422,17 @@ fn a_session_view_writes_every_time_it_carries() {
     // 停发：到几点那一刻也写好。
     seen(&ctx, "a", 1.0, Some(now() + 3600));
     let v = session_view(&ctx, &home, S1);
-    let held = v.hints.iter().find_map(|h| match h {
-        RotHint::Hold { until_text, .. } => Some(until_text.clone()),
+    let held = v.hints.iter().find_map(|h| match &h.hint {
+        RotHint::Hold { until_text, .. } => Some((until_text.clone(), h.text.clone())),
         _ => None,
     });
-    let text = held.expect("停发").expect("到几点说得出");
-    assert!(hm(&text), "{text}");
+    let (at, said) = held.expect("停发");
+    let at = at.expect("到几点说得出");
+    assert!(hm(&at), "{at}");
+    assert!(
+        said.contains(&at) && said.contains("{dur}"),
+        "停发那一句写好了到几点、留着「还有多久」给界面填：{said}"
+    );
 }
 
 // ── quota-read ────────────────────────────────────────────────────────────────

@@ -85,9 +85,18 @@
     color: var(--text-faint);
   }
 
-  .rotCard[data-open="true"] {
+  .rotCard[aria-expanded="true"] {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .rotCard[data-lifted="true"] {
+    z-index: var(--z-drag);
+    border-color: var(--border-medium);
+    background: var(--card);
+    box-shadow: var(--shadow-float);
+    cursor: grabbing;
+    transform: translate(4px, -4px) rotate(-1.5deg);
   }
 
   .rotCard[data-blocked="true"] {
@@ -159,6 +168,7 @@
     top: 0;
     bottom: 0;
     left: 0;
+    width: calc(var(--rot-w, 0) * 100%);
     background: var(--text-2);
   }
 
@@ -283,6 +293,8 @@
   }
 
   .rotDaySeg {
+    left: calc(var(--rot-x, 0) * 100%);
+    width: calc(var(--rot-w, 0) * 100%);
     position: absolute;
     top: 0;
     bottom: 0;
@@ -311,6 +323,8 @@
   }
 
   .rotDayGhost {
+    left: calc(var(--rot-x, 0) * 100%);
+    width: calc(var(--rot-w, 0) * 100%);
     position: absolute;
     top: 0;
     bottom: 0;
@@ -328,6 +342,7 @@
   }
 
   .rotDayTick {
+    left: calc(var(--rot-x, 0) * 100%);
     position: absolute;
     transform: translateX(-50%);
   }
@@ -369,7 +384,7 @@
     white-space: nowrap;
   }
 
-  .rotSimHead[draggable="true"] {
+  .rotSimHead[data-drag="true"] {
     cursor: grab;
   }
 
@@ -389,6 +404,7 @@
   .rotSimTick,
   .rotSimSwitch {
     position: absolute;
+    left: calc(var(--rot-x, 0) * 100%);
     transform: translateX(-50%);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
@@ -417,6 +433,8 @@
   .rotSimUse,
   .rotSimSeg {
     position: absolute;
+    left: calc(var(--rot-x, 0) * 100%);
+    width: calc(var(--rot-w, 0) * 100%);
     top: 1px;
     bottom: 1px;
     padding: 0 var(--space-2);
@@ -508,6 +526,7 @@
 
   .rotSimSkip {
     position: absolute;
+    left: calc(var(--rot-x, 0) * 100%);
     top: -14px;
     padding: 0 var(--space-2);
     border: 1px dashed var(--text-faint);

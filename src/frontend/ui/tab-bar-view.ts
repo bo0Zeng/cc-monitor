@@ -9,7 +9,7 @@
  * `TabBarViewHost` 交给宿主（路由 / 拖拽 / 菜单 / 会话动作），本文件不 import 它们。
  * 读的状态：`TabStore`（tab 集合 · 顺序 · 当前 tab · 账号快照）与 `TabBarPrefs`（集合）。
  */
-import { holdOf } from "./acct-session";
+import { holdOf } from "./rot-words";
 import { accountLabel } from "./acct-words";
 import qs from "./tab-quota.module.css";
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";

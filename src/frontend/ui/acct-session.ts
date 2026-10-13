@@ -2,8 +2,8 @@
  * 会话里的两样（轮换第五版）：**换号条**（消息流里换号那一刻一行居中的 `⇄ work → team · 权重最高  账号…`）与
  * **停发提示**（会话停发时，会话头下、消息流上：`已停发 · 一个号都用不了 · 18:30 team 恢复后接着发（还有 4 小时）` ［账号…］）。
  *
- * - 都只照这个会话的 `rotation-view`（`appStore.sessionRotation`）画：换号记录 `log`（为什么那一句是策略写的，没有就照后端看得见的原因）·
- *   提示 `hints` 里的停发（字与面板同一处 `hintText`）。
+ * - 都只照这个会话的 `rotation-view`（`appStore.sessionRotation`）画：换号记录 `log`（为什么那一句 `because` 是后端配好的：策略写的，没写就照后端看得见的原因）·
+ *   提示 `hints` 里的停发（字是后端写好的，与面板同一处 `hintText` 填「还有多久」）。
  * - 换号条按到达那一刻追加在消息流内容层末尾；打开窗口之前就有的换号不回填（那一刻在流里的位置说不准）。
  * 只在主窗口接（带一份 CSS Module，理由同 `record-file-notice.ts`）。判据：`tests/frontend/ui/acct-session.vitest.ts`。
  */
@@ -14,9 +14,7 @@ import { banner } from "./kit/banner";
 import { button } from "./kit/button";
 import { icon } from "./kit/icon";
 import { accountLabel } from "./acct-words";
-import { hintText } from "./rot-board";
-import type { RotLog } from "./generated/RotLog";
-import type { RotationViewReply } from "./generated/RotationViewReply";
+import { holdOf } from "./rot-words";
 import s from "./acct-session.module.css";
 
 export interface AcctSessionHost {
@@ -27,39 +25,11 @@ export interface AcctSessionHost {
 /** 每个会话见过的最新一条换号记录的时刻（第一次见到的那一份只记下，不回填）。 */
 const seenLog = new Map<string, number>();
 
-function span(cls: string, text: string): HTMLSpanElement {
+function span(cls: (e: HTMLSpanElement) => void, text: string): HTMLSpanElement {
   const e = document.createElement("span");
-  e.className = cls;
+  cls(e);
   e.textContent = text;
   return e;
-}
-
-/** 一条换号记录为什么：策略写的那一句；没有 ⇒ 后端看得见的原因。 */
-export function whyOfLog(h: RotLog): string {
-  if (h.why !== undefined && h.why !== "") return h.why;
-  switch (h.cause.k) {
-    case "order":
-      return copyText("rot.cause.order");
-    case "unusable":
-      return copyText("rot.cause.unusable", { account: accountLabel(h.from) });
-    case "temp":
-      return copyText("rot.cause.temp");
-    case "useNow":
-      return copyText("rot.cause.useNow");
-    case "hold":
-      return copyText("rot.cause.hold");
-    case "error":
-      return copyText("rot.cause.error");
-  }
-}
-
-/** 停发那一句（没停发 ⇒ `null`）。标签页的悬停也照它。 */
-export function holdOf(
-  read: RotationViewReply | null | undefined,
-): string | null {
-  if (!read) return null;
-  const h = read.hints.find((x) => x.k === "hold");
-  return h ? hintText(h, read).text : null;
 }
 
 /** 一条换号记录 ⇒ 换号条。 */
@@ -79,14 +49,14 @@ export function stripOf(
   text.append(
     icon("swap", "compact"),
     span(
-      s.acctSessStripMove,
+      (e) => (e.className = s.acctSessStripMove),
       copyText("rot.strip.move", {
         from: accountLabel(h.from),
         to: accountLabel(h.to),
       }),
     ),
-    span(s.acctSessStripSep, copyText("kit.text.sep")),
-    span(s.acctSessStripWhy, whyOfLog(h)),
+    span((e) => (e.className = s.acctSessStripSep), copyText("kit.text.sep")),
+    span((e) => (e.className = s.acctSessStripWhy), h.because),
   );
   const open = button({
     label: copyText("rot.strip.open"),
@@ -95,10 +65,10 @@ export function stripOf(
     onClick: () => host.openPanel(sid, entry.origin),
   });
   root.append(
-    span(s.acctSessStripLine, ""),
+    span((e) => (e.className = s.acctSessStripLine), ""),
     text,
     open,
-    span(s.acctSessStripLine, ""),
+    span((e) => (e.className = s.acctSessStripLine), ""),
   );
   return root;
 }
@@ -111,7 +81,7 @@ function paintNotice(
 ): void {
   const content = host.streamContentOf(sid);
   if (!content) return;
-  let el = content.querySelector<HTMLElement>(`:scope > .${s.acctSessNotice}`);
+  let el = content.querySelector<HTMLElement>(":scope > [data-acct-notice]");
   const text = holdOf(entry?.read);
   if (text === null || !entry) {
     el?.remove();
@@ -120,6 +90,7 @@ function paintNotice(
   if (!el) {
     el = document.createElement("div");
     el.className = s.acctSessNotice;
+    el.dataset.acctNotice = "";
     content.prepend(el);
   }
   el.replaceChildren(

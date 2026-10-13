@@ -199,7 +199,7 @@ describe("S2 设置面板分页结构", () => {
   /** 等 RemoteSection 那边异步注册完本机页（真实实现是在 `refresh()` 里注册的）。 */
   const tick = () => new Promise((r) => setTimeout(r, 0));
 
-  it("★ 逐页完整清单 —— 15 个叶子块一个不少、一个不错位", async () => { // 轮换 −1（第三版的「轮换」块摘了，第 4 刀照稿再加）；P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）；扩展页 −3 ＋1（机器页里 MCP · 资产目录 · 插件三块搬走，顶层「扩展」一块）；轮换规则 +1（机器页「轮换」栏）
+  it("★ 逐页完整清单 —— 16 个叶子块一个不少、一个不错位", async () => { // 轮换 −1 ＋1（第三版的「轮换」块摘了，第 4 刀照第五版的稿再加回来）；P8a +1（插件（marketplace））；〔AL1〕+1（别名）；〔AL1c〕−1（终端集成并进别名）；扩展页 −3 ＋1（机器页里 MCP · 资产目录 · 插件三块搬走，顶层「扩展」一块）；轮换规则 +1（机器页「轮换」栏）
     // 这是最重要的一条：S2 只搬不改，**搬丢一块 = 一个功能凭空消失**，
     // 而它在 UI 上的表现只是「某个设置项找不到了」，不会报错。
     // 用**完整相等**而不是 `toContain`：后者对「多出一块」和「顺序乱了」都是瞎的。
@@ -233,7 +233,8 @@ describe("S2 设置面板分页结构", () => {
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       copyText("machinePage.tab.accounts"),
-      // 「轮换」栏（那台的策略目录）第 4 刀照稿施工，此刻空着、没有块。
+      // 策略文件按机器存：「轮换」栏那一块（第五版）。
+      copyText("machinePage.tab.rot"),
       // 「终端集成」并进了下面「别名」那一块（Windows 上它是 PowerShell 那一侧的别名块）。
       // 别名并进机器页，从「应用 → 行为」搬来。
       copyText("settingsPanel.group.aliases"),
@@ -396,6 +397,7 @@ describe("S2 设置面板分页结构", () => {
     // 隔离没有因此被打破：那几块**都还在 DOM 里**，只是先藏着、等机器页来了就搬走。
     expect(pageTitles("machines")).toEqual([
       copyText("machinePage.tab.accounts"),
+      copyText("machinePage.tab.rot"),
       copyText("settingsPanel.group.aliases"), // 本机那一格的 ②，跟着 per-machine 那几块一起留在兜底落点（终端集成并进了它）
     ]);
   });

@@ -5,7 +5,6 @@
  * `emit(SETTINGS_APPLIED_EVENT)` 让主窗口重读）；主窗口内浮层（`windowMode:false`，行为改动经 `onBehaviorChange` 同窗直连）。
  */
 
-import { RotationSection } from "./rot-section";
 import { onMachineState } from "../machine-feed";
 import { buildTerminalRow } from "./terminal-row";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
@@ -70,6 +69,7 @@ import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError } from "../control-said";
+import { RotationSection } from "./rot-section";
 
 /**
  * 字段控件类型：

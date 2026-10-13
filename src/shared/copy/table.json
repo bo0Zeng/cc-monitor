@@ -30977,20 +30977,20 @@
       "args": ["path"]
     },
     "rot.top.pick": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "control",
+      "role": "标签",
       "zh": "轮换策略",
       "args": []
     },
     "rot.top.unreadable": {
       "kind": "body",
       "role": "说明",
-      "zh": "读不懂这份策略",
+      "zh": "这份策略出错",
       "args": []
     },
     "rot.top.dirty": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "没存",
       "args": []
     },
@@ -31031,8 +31031,8 @@
       "args": []
     },
     "rot.more.label": {
-      "kind": "aria",
-      "role": "读屏",
+      "kind": "action",
+      "role": "按钮",
       "zh": "策略操作",
       "args": []
     },
@@ -31064,7 +31064,8 @@
       "kind": "body",
       "role": "片段",
       "zh": "{n} 个会话在用",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {"C-W11": "用户定的说法（轮换-v5.md 布局第 1 条「删除」那一项）"}
     },
     "rot.more.add": {
       "kind": "action",
@@ -31111,7 +31112,7 @@
     "rot.card.hover": {
       "kind": "body",
       "role": "悬停",
-      "zh": "5 小时用了 {u5}% · 7 天用了 {u7}%",
+      "zh": "5h 用量 {u5}% · 7d 用量 {u7}%",
       "args": ["u5", "u7"]
     },
     "rot.card.add": {
@@ -31123,7 +31124,7 @@
     "rot.acct.line": {
       "kind": "body",
       "role": "片段",
-      "zh": "5 小时 {u5}% · 7 天 {u7}%",
+      "zh": "5h {u5}% · 7d {u7}%",
       "args": ["u5", "u7"]
     },
     "rot.acct.reset": {
@@ -31135,7 +31136,7 @@
     "rot.acct.useNow": {
       "kind": "action",
       "role": "按钮",
-      "zh": "现在用 {account}",
+      "zh": "立即用 {account}",
       "args": ["account"]
     },
     "rot.acct.remove": {
@@ -31148,7 +31149,8 @@
       "kind": "body",
       "role": "说明",
       "zh": "{account} 现在用不了：{why}",
-      "args": ["account", "why"]
+      "args": ["account", "why"],
+      "waive": {"C-W17": "用户定的句子（轮换-v5.md 临时条目第 6 条）"}
     },
     "rot.cell.win": {
       "kind": "control",
@@ -31156,16 +31158,16 @@
       "zh": "{label} · {win}",
       "args": ["label", "win"]
     },
-    "rot.win.5h": {
+    "rot.win.fiveHour": {
       "kind": "body",
       "role": "片段",
-      "zh": "5 小时",
+      "zh": "5h",
       "args": []
     },
-    "rot.win.7d": {
+    "rot.win.sevenDay": {
       "kind": "body",
       "role": "片段",
-      "zh": "7 天",
+      "zh": "7d",
       "args": []
     },
     "rot.win.other": {
@@ -31217,9 +31219,9 @@
       "args": ["from", "to"]
     },
     "rot.day.popLabel": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "这一段的上限",
+      "kind": "control",
+      "role": "标签",
+      "zh": "分段上限",
       "args": []
     },
     "rot.day.del": {
@@ -31229,26 +31231,26 @@
       "args": []
     },
     "rot.sim.range": {
-      "kind": "aria",
-      "role": "读屏",
-      "zh": "模拟多长",
+      "kind": "control",
+      "role": "标签",
+      "zh": "模拟时长",
       "args": []
     },
     "rot.sim.h12": {
       "kind": "action",
       "role": "按钮",
-      "zh": "12 小时",
+      "zh": "12h",
       "args": []
     },
     "rot.sim.h24": {
       "kind": "action",
       "role": "按钮",
-      "zh": "24 小时",
+      "zh": "24h",
       "args": []
     },
     "rot.sim.manual": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "手动 {n} 段",
       "args": ["n"]
     },
@@ -31288,51 +31290,57 @@
       "zh": "↻{at}",
       "args": ["at"]
     },
-    "rot.hint.hold": {
+    "beRotation.hint.hold": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "已停发 · 一个号都用不了",
-      "args": []
+      "args": [],
+      "waive": {"C-W17": "用户定的句子（轮换-v5.md「提示」表）"}
     },
-    "rot.hint.holdAt": {
+    "beRotation.hint.holdAt": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "已停发 · 一个号都用不了 · {at} 恢复后接着发（还有 {dur}）",
-      "args": ["at", "dur"]
+      "args": ["at", "dur"],
+      "waive": {"C-W17": "用户定的句子（轮换-v5.md「提示」表）"}
     },
-    "rot.hint.holdUntil": {
+    "beRotation.hint.holdUntil": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "已停发 · 一个号都用不了 · {at} {account} 恢复后接着发（还有 {dur}）",
-      "args": ["at", "account", "dur"]
+      "args": ["at", "account", "dur"],
+      "waive": {"C-W17": "用户定的句子（轮换-v5.md「提示」表）"}
     },
-    "rot.hint.error": {
+    "beRotation.hint.error": {
       "kind": "error",
       "role": "报错",
       "zh": "策略「{name}」出错：{msg} · 改按默认优先级",
-      "args": ["name", "msg"]
+      "args": ["name", "msg"],
+      "waive": {"C-W10": "用户定的句子（轮换-v5.md「提示」表）"}
     },
-    "rot.hint.errorLine": {
+    "beRotation.hint.errorLine": {
       "kind": "error",
       "role": "报错",
       "zh": "策略「{name}」出错：第 {line} 行，{msg} · 改按默认优先级",
-      "args": ["name", "line", "msg"]
+      "args": ["name", "line", "msg"],
+      "waive": {"C-W10": "用户定的句子（轮换-v5.md「提示」表）", "C-W11": "用户定的句子（轮换-v5.md「提示」表）"}
     },
-    "rot.hint.tz": {
+    "beRotation.hint.tz": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "需手动 · 时区不明 · 分时段上限暂按 UTC 算",
       "args": []
     },
-    "rot.hint.old": {
+    "beRotation.hint.old": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "需手动 · {n} 份旧格式的策略没有加载",
-      "args": ["n"]
+      "args": ["n"],
+      "waive": {"C-W11": "用户定的句子（轮换-v5.md「提示」表）"}
     },
-    "rot.hint.words": {
+    "beRotation.hint.words": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "这份策略的说明写法不合规",
       "args": []
     },
@@ -31381,7 +31389,7 @@
     "rot.ask.deleteBody": {
       "kind": "body",
       "role": "确认框",
-      "zh": "策略文件从这台删掉，撤不回",
+      "zh": "删除后撤不回",
       "args": []
     },
     "rot.ask.discardTitle": {
@@ -31399,7 +31407,7 @@
     "rot.ask.discardBody": {
       "kind": "body",
       "role": "确认框",
-      "zh": "这个会话里改过的设置没存，换了就丢掉",
+      "zh": "会话里没存的改动随之丢弃",
       "args": []
     },
     "rot.read.retry": {
@@ -31410,9 +31418,10 @@
     },
     "rot.hint.newer": {
       "kind": "body",
-      "role": "状态",
+      "role": "说明",
       "zh": "这份策略在别处被改了",
-      "args": []
+      "args": [],
+      "waive": {"C-W17": "用户定的句子（轮换-v5.md「提示」表）"}
     },
     "rot.hint.loadNew": {
       "kind": "action",
@@ -31465,7 +31474,7 @@
     "rot.fail.settings": {
       "kind": "error",
       "role": "报错",
-      "zh": "这一处改动没收下",
+      "zh": "改动没收下",
       "args": []
     },
     "rot.fail.save": {
@@ -31483,7 +31492,7 @@
     "rot.fail.useNow": {
       "kind": "error",
       "role": "报错",
-      "zh": "没换成这个号",
+      "zh": "没换号",
       "args": []
     },
     "rot.fail.temp": {
@@ -31498,37 +31507,37 @@
       "zh": "{from} → {to}",
       "args": ["from", "to"]
     },
-    "rot.cause.order": {
+    "beRotation.cause.order": {
       "kind": "body",
       "role": "片段",
       "zh": "照策略的先后",
       "args": []
     },
-    "rot.cause.unusable": {
+    "beRotation.cause.unusable": {
       "kind": "body",
       "role": "片段",
-      "zh": "{account} 用不了",
+      "zh": "{account} 不可用",
       "args": ["account"]
     },
-    "rot.cause.temp": {
+    "beRotation.cause.temp": {
       "kind": "body",
       "role": "片段",
       "zh": "手动顺序",
       "args": []
     },
-    "rot.cause.useNow": {
+    "beRotation.cause.useNow": {
       "kind": "body",
       "role": "片段",
       "zh": "手动切换",
       "args": []
     },
-    "rot.cause.hold": {
+    "beRotation.cause.hold": {
       "kind": "body",
       "role": "片段",
       "zh": "停发后恢复",
       "args": []
     },
-    "rot.cause.error": {
+    "beRotation.cause.error": {
       "kind": "body",
       "role": "片段",
       "zh": "策略出错 · 改按默认优先级",
@@ -31536,7 +31545,7 @@
     },
     "rot.tab.hold": {
       "kind": "body",
-      "role": "状态",
+      "role": "片段",
       "zh": "停发",
       "args": []
     },
