@@ -905,7 +905,7 @@ pub fn spawn(
     (poke, book)
 }
 
-/// 此刻在跑的 watcher（常驻后端每条连接一份 ＋ 空转那一份 / stdio 那一份）—— **唯一的名单**：
+/// 此刻在跑的 watcher（一个进程一份，见 [`spawn`]；判据在同一进程里会起好几份）—— **唯一的名单**：
 /// SIGUSR1（[`poke_all`]）与 `resync` 都按它找人。`spawn` 登记、`watch_loop` 返回即摘
 /// ⇒ 不会去 poke 一个已经退掉的 watcher（`K-P1`：那不报错，它只是再也不响应 tmux hook）。
 static LIVE: std::sync::Mutex<Vec<(u64, std::sync::mpsc::Sender<WatchEvent>)>> =
