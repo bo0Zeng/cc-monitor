@@ -160,64 +160,16 @@
       "zh": "放弃填写",
       "args": []
     },
-    "kit.interrupts.agent": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "在跑 agent",
-      "args": []
-    },
     "kit.interrupts.cut": {
       "kind": "body",
       "role": "片段",
       "zh": "中断",
       "args": []
     },
-    "kit.interrupts.edit": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "未保存编辑",
-      "args": []
-    },
     "kit.interrupts.keep": {
       "kind": "body",
       "role": "片段",
       "zh": "保留",
-      "args": []
-    },
-    "kit.interrupts.many": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{label} ×{n}",
-      "args": ["label", "n"]
-    },
-    "kit.interrupts.named": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "{label} {names}",
-      "args": ["label", "names"]
-    },
-    "kit.interrupts.noAnswer": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "在跑的任务未确认 · 无应答",
-      "args": []
-    },
-    "kit.interrupts.task": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "后台任务",
-      "args": []
-    },
-    "kit.interrupts.transfer": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "在传文件",
-      "args": []
-    },
-    "kit.interrupts.turn": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "当前轮次",
       "args": []
     },
     "kit.toast.close": {

@@ -1268,9 +1268,9 @@ type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean
 capUnknown: boolean, skipped: Array<string>, };
 type RotationTryReply = { now: number, 
 /**
- * 这份策略的名字 · 下拉里那一行灰字（照 `lang`）。
+ * 这份策略的说明（原文开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段）。
  */
-name: string, line: string, 
+about: string, 
 /**
  * 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
  */
@@ -1309,10 +1309,6 @@ hours?: number,
  */
 useNow?: string, 
 /**
- * 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
- */
-lang?: string, 
-/**
  * 哪一家（缺 ⇒ 有账号库的那一家）。
  */
 agent?: string, };
@@ -1332,9 +1328,9 @@ agent?: string, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
- * 名字 · 下拉里那一行灰字（读不懂 ⇒ 名字是 id、灰字空）。
+ * 标题 ＝ 文件名（＝ `id`，§2.1）· 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。
  */
-name: string, line: string, rev: string, error?: RotStrategyError, 
+name: string, about: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */
@@ -1356,11 +1352,7 @@ strategies: Array<RotStrategyItem>, forNew: string,
  * `strategies/v3/` 里没有加载的第三版脚本几份。
  */
 oldScripts: number, };
-type RotationStrategiesReq = { 
-/**
- * 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
- */
-lang?: string, };
+type RotationStrategiesReq = Record<symbol, never>;
 ```
 
 码：`bad_args`
@@ -1405,7 +1397,7 @@ windows?: Array<string>, min?: number, max?: number, unit?: string, default: unk
  */
 nullable?: StrategyText, };
 type RotFormChoice = { v: string, label: StrategyText, };
-type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments" | "row";
+type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
 type RotFormScope = "all" | "each";
 type RotHint = { "k": "hold", until?: number, account?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLog = { at: number, from: string, to: string, cause: RotLogCause, why?: string, };
@@ -1413,9 +1405,9 @@ type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { 
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
- * 名字 · 下拉里那一行灰字（读不懂 ⇒ 名字是 id、灰字空）。
+ * 标题 ＝ 文件名（＝ `id`，§2.1）· 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。
  */
-name: string, line: string, rev: string, error?: RotStrategyError, 
+name: string, about: string, rev: string, error?: RotStrategyError, 
 /**
  * 此刻还活着、用着它的会话。
  */
@@ -1513,7 +1505,7 @@ type RotationViewReq = { target: RotTarget,
 /**
  * 往后推几小时（1–48，缺 ⇒ 12）。
  */
-hours?: number, lang?: string, };
+hours?: number, };
 type StrategyText = string | { zh: string, en?: string, };
 type WinFact = { open: boolean, used: number, resets?: number, 
 /**
@@ -1681,13 +1673,13 @@ type RotationUseNowReq = { sid: string, account: string, };
 type RotStrategyId = { id: string, };
 type RotationStrategyAddReq = { 
 /**
- * 一份策略文件的原文（头 ＋ 代码）。
+ * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
  */
 source: string, 
 /**
- * 换掉头里的名字。
+ * 存成的文件名（＝ 标题）。
  */
-name?: string, };
+name: string, };
 ```
 
 码：`bad_args` · `bad_strategy` · `io_failed`
@@ -1713,10 +1705,10 @@ type RotationStrategyCopyReq = { id: string, name: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-rename`
 
-入参 `RotationStrategyRenameReq` · 回包 `RotRev`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `RotationStrategyRenameReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type RotRev = { rev: string, };
+type RotStrategyId = { id: string, };
 type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
 ```
 

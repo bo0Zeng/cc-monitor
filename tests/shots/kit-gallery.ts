@@ -24,7 +24,6 @@ import { spinner } from "../../src/frontend/ui/kit/progress";
 import { statusDot, type DotState } from "../../src/frontend/ui/kit/status-dot";
 import { icon } from "../../src/frontend/ui/kit/icon";
 import { confirmDialog, askText } from "../../src/frontend/ui/kit/dialog";
-import { confirmInterrupts } from "../../src/frontend/ui/kit/interrupts";
 import { openMenu } from "../../src/frontend/ui/kit/menu";
 import { attachTooltip } from "../../src/frontend/ui/kit/tooltip";
 import { toast, undoToast } from "../../src/frontend/ui/kit/toast";
@@ -195,11 +194,14 @@ function overview(): void {
 
 async function dialogs(): Promise<void> {
   document.body.append(h("h1", "g-h1", "对话框 · 「会打断什么」"), stage(fakeRows(8)));
-  void confirmInterrupts({
-    title: "重启切换 → work",
-    action: "重启切换",
-    keep: ["会话记录 · 终端 orders-cc"],
-    ask: async () => ({ families: [{ family: "turn", names: [] }, { family: "agent", names: ["Explore", "Plan"] }, { family: "task", names: ["写判据"] }] }),
+  void confirmDialog({
+    title: "结束会话 orders-cc",
+    action: "结束",
+    danger: true,
+    rows: [
+      { label: copyText("kit.interrupts.cut"), items: ["当前轮次", "在跑 agent Explore · Plan", "后台任务 写判据"] },
+      { label: copyText("kit.interrupts.keep"), items: ["会话记录 · 终端 orders-cc"] },
+    ],
   });
   await new Promise((r) => setTimeout(r, 50));
 }

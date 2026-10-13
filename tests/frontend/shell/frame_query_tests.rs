@@ -617,7 +617,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "session-interrupts",
         "新帧命令（只读）：动一个会话之前会打断什么，后端按族出成品（`observe/interrupts_query.rs`），\
-         界面 `interrupt-reads.ts::decodeInterrupts` 按形状收；monitor 这一侧从来没有过这条命令",
+         界面眼下不问（轮换第五版的「现在用」是热换，不重启、不问打断），CLI `--session-interrupts` 照答；monitor 这一侧从来没有过这条命令",
     ),
     // 驾驶舱读面两条：后端转调 cc-bus 新加的机器可读读命令、出成品，界面 `cc-bus-control.ts` 按形状收；
     //   monitor 那两条 Tauri 命令与整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路）删了。

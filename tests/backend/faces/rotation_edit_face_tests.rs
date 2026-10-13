@@ -28,7 +28,7 @@ fn mine() -> Value {
 /// ★ 会话里改设置 ⇒ 存成草稿（跟文件相同 ⇒ 草稿丢掉）；不合声明 ⇒ `refused` 带那一格、草稿不动。
 #[test]
 fn session_settings_become_a_draft_and_are_checked() {
-    let home = Home::new("draft");
+    let home = Home::new("edit-draft");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
     let target = RotWhere::Session { sid: S1.into() };

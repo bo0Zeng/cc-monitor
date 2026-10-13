@@ -21,7 +21,6 @@ import type { Rendered } from "./Rendered";
 import type { RestartReq } from "./RestartReq";
 import type { Restarted } from "./Restarted";
 import type { RotDone } from "./RotDone";
-import type { RotRev } from "./RotRev";
 import type { RotStrategyId } from "./RotStrategyId";
 import type { RotationDayPaintReply } from "./RotationDayPaintReply";
 import type { RotationDayPaintReq } from "./RotationDayPaintReq";
@@ -82,7 +81,7 @@ export interface TypedCommands {
   "rotation-strategy-add": { req: RotationStrategyAddReq; reply: RotStrategyId; code: "bad_args" | "bad_strategy" | "io_failed" };
   "rotation-strategy-copy": { req: RotationStrategyCopyReq; reply: RotStrategyId; code: "bad_args" | "no_strategy" | "io_failed" };
   "rotation-strategy-delete": { req: RotationStrategyDeleteReq; reply: RotDone; code: "bad_args" | "no_strategy" | "in_use" | "io_failed" };
-  "rotation-strategy-rename": { req: RotationStrategyRenameReq; reply: RotRev; code: "bad_args" | "no_strategy" | "conflict" | "io_failed" };
+  "rotation-strategy-rename": { req: RotationStrategyRenameReq; reply: RotStrategyId; code: "bad_args" | "no_strategy" | "conflict" | "io_failed" };
   "rotation-temp": { req: RotationTempReq; reply: RotationTempReply; code: "bad_args" | "no_session" | "not_listed" | "io_failed" };
   "rotation-try": { req: RotationTryReq; reply: RotationTryReply; code: "bad_args" | "bad_strategy" };
   "rotation-use": { req: RotationUseReq; reply: RotDone; code: "bad_args" | "no_session" | "no_strategy" | "dirty" | "io_failed" };

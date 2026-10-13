@@ -127,13 +127,6 @@
       "why": "［复制详情］按钮自己的状态（已复制 · 复制失败），骨架词"
     },
     {
-      "file": "src/frontend/ui/kit/interrupts.ts",
-      "rule": "caseWord",
-      "n": 5,
-      "kind": "第 1 批",
-      "why": "会话里在跑的那几族（turn · agent · task · transfer · edit）⇒ 族名：session-interrupts 成品带写好的族名"
-    },
-    {
       "file": "src/frontend/ui/launch-slot.ts",
       "rule": "codeWord",
       "n": 2,

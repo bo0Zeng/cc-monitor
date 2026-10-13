@@ -16,7 +16,7 @@
  * | 格 | 判什么 | 形态 |
  * |---|---|---|
  * | D1 | 生产 TS 里引用原生 `confirm` / `prompt`（裸调用，或 `window.` / `globalThis.` / `self.` 成员，调用或取值） | TS AST，**零命中**；正控：合成样本逐形各恰 1 处、近似形 0 处 |
- * | D1b | 生产 TS 里每一处**调用** `confirmDialog` / `askText` / `confirmInterrupts` 都是 `await` 的操作数（没 `await` 的 Promise 恒真值 —— 正是原生替身那个病） | TS AST，未 await 的调用 **零命中**；正控同上；另钉「被调用的地方恰好是改过的那几份文件」两向相等 |
+ * | D1b | 生产 TS 里每一处**调用** `confirmDialog` / `askText` 都是 `await` 的操作数（没 `await` 的 Promise 恒真值 —— 正是原生替身那个病） | TS AST，未 await 的调用 **零命中**；正控同上；另钉「被调用的地方恰好是改过的那几份文件」两向相等 |
  * | D2 | `confirmDialog` / `askText` 的结算语义 | 确定 / 取消 / 遮罩 / Esc（经真 `dispatcher`）/ Enter / 顶掉上一个 / 挂 body / 正文不解释 HTML · 标题与动作名 · 逐项清单 · 填了东西点遮罩不关 · 框里报错 · Tab 不出框 |
  *
  * `alert` 不在 D1：它归 `INVARIANTS §12`，由 `tests/frontend/ui/invariants-frontend-guard.vitest.ts` ① 守。
@@ -131,7 +131,7 @@ describe("D1 · 生产 TS 零处原生 confirm / prompt", () => {
 
 // ─────────────────────────────── D1b ───────────────────────────────
 
-const ASKS = new Set(["confirmDialog", "askText", "confirmInterrupts"]);
+const ASKS = new Set(["confirmDialog", "askText"]);
 
 /** 一份源码里调用对话框的地方：`[全部调用, 其中没被 await 的]`。 */
 function askCalls(file: string, text: string): { all: Hit[]; unawaited: Hit[] } {
@@ -271,7 +271,7 @@ describe("D2 · confirmDialog / askText 的结算语义", () => {
   it("逐项 `中断` / `保留`：空的那段不画；清单超过 8 项只列前 8 ＋「另外 n 个」", async () => {
     const p = ask({
       rows: [
-        { label: copyText("kit.interrupts.cut"), items: [copyText("kit.interrupts.turn")] },
+        { label: copyText("kit.interrupts.cut"), items: ["当前轮次"] },
         { label: "保留", items: [] },
       ],
       list: Array.from({ length: LIST_MAX + 3 }, (_, i) => `s${i}`),
