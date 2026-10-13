@@ -11,7 +11,8 @@ use crate::stream::inbound::typed::{codes, of_pair, Blocking, Command, Cx, NoArg
 use std::path::Path;
 
 use super::read_face::{
-    answer_off_of, dress_ask, reader, record_face, too_large, LINES_CAP_BYTES, LINE_CAP_BYTES, READ_PAGE_BYTES,
+    answer_off_of, dress_ask, reader, record_face, too_large, LINES_CAP_BYTES, LINE_CAP_BYTES,
+    READ_PAGE_BYTES,
 };
 
 /// 整份回包过 [`LINES_CAP_BYTES`] ⇒ `too_large` 那一句（不截断：截断的清单会被当成完整的用）。
