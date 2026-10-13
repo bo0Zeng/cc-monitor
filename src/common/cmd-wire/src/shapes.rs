@@ -19,6 +19,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("ccm-print", "03add13c"),
     ("ccm-probe", "16a75bb0"),
     ("deploy-plan", "6c6a4813"),
+    ("drift-report", "b7712bed"),
     ("exit-policy-read", "35c58ba9"),
     ("exit-policy-set", "4c75a61d"),
     ("forward-list", "2ce405f2"),

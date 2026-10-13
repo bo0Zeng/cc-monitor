@@ -68,6 +68,8 @@ pub(crate) mod asks;
 pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
+// 漂移账的通用形（各家的账本交出来的都是它）。
+pub(crate) mod drift;
 pub(crate) mod mainline;
 pub(crate) mod record;
 pub(crate) mod sse_anthropic;
@@ -558,8 +560,8 @@ pub(crate) struct RecordFace {
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
     /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
     pub(crate) branch: Option<BranchFn>,
-    /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
-    pub(crate) drift: Option<fn() -> serde_json::Value>,
+    /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 各面的快照（通用形 [`drift::DriftFaceReport`]）；`None` ＝ 这一家不记。
+    pub(crate) drift: Option<fn() -> Vec<drift::DriftFaceReport>>,
     /// 这一家的记录文本面（正文 / 工具内容怎么抽 · CLI 注入怎么剥）；`None` ＝ 这一家不进搜索 / 摘录那几条通用路。
     pub(crate) text: Option<TextFace>,
     /// 删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
@@ -1787,12 +1789,15 @@ pub(crate) fn synth_excerpt_among(registry: &[Adapter], p: &Path) -> Option<fn(&
     adapter_among(registry, kind)?.history.map(|h| h.excerpt)
 }
 
-/// 注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
-pub(crate) fn drift_reports() -> Vec<serde_json::Value> {
-    REGISTRY
-        .iter()
-        .filter_map(|a| a.records.and_then(|r| r.drift).map(|f| f()))
-        .collect()
+/// 注册表里每一家的漂移账并成一份（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
+pub(crate) fn drift_report() -> drift::DriftReport {
+    drift::DriftReport {
+        faces: REGISTRY
+            .iter()
+            .filter_map(|a| a.records.and_then(|r| r.drift))
+            .flat_map(|f| f())
+            .collect(),
+    }
 }
 
 /// 见 [`Adapter::footprint`]。

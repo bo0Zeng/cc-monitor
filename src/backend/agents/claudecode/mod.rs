@@ -232,7 +232,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     chain: Some(chain::chain_fact),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
-    drift: Some(drift::report),
+    drift: Some(drift::snapshot),
     text: Some(super::TextFace {
         main: text::extract_text_blocks,
         tool: text::extract_tool_text,

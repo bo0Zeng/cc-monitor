@@ -83,11 +83,10 @@ const FAMILY: &[&str] = &[
     "history-read",
     // 记录还在不在（resume 一跳先问；异源是手抄的要求，不是 `stream/inbound/`）。
     "history-record",
-    // 按字节分页出记录行 · 漂移账（异源是手抄的要求，不是 `stream/inbound/`）。
+    // 按字节分页出记录行（异源是手抄的要求，不是 `stream/inbound/`）。
     // 按运行读一个子运行的记录（异源是「子 agent 的流归各自的运行、通用层按运行读」那条要求，不是 `stream/inbound/`）。
     "history-run",
     "history-page",
-    "drift-report",
     "history-tail",
 ];
 

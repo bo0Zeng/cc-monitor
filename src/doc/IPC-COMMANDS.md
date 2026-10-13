@@ -7915,9 +7915,42 @@ type OptinReq = { agent: string, };
 
 不收 `args` · 可撤 · CLI：`ccm -- --drift-report`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `faces` | ← | 各家记录解释面记下的「看不懂的记录」：`face` |
+入参 `NoArgs` · 回包 `DriftReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DriftEntry = { 
+/**
+ * 看不懂的那个值（记录 type / kind / status / token）。
+ */
+key: string, 
+/**
+ * 见过多少次（本进程内的计数，不落盘）。
+ */
+count: number, 
+/**
+ * **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
+ */
+first_sample: string | null, };
+type DriftFaceReport = { 
+/**
+ * 那一家的面的名字（那一家自己的词）。
+ */
+face: string, 
+/**
+ * 这个面「看不懂时会发生什么」（那一家写好的那一句）。
+ */
+consequence: string, 
+/**
+ * 按 `count` 降序、同数按键名升序。
+ */
+entries: Array<DriftEntry>, 
+/**
+ * 该面是否已经溢出（键数触顶）。溢出后新键并进那一家的溢出键。
+ */
+overflowed: boolean, };
+type DriftReport = { faces: Array<DriftFaceReport>, };
+type NoArgs = Record<symbol, never>;
+```
 
 码：`bad_args`
 

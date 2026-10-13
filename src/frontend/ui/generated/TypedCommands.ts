@@ -30,6 +30,7 @@ import type { CliRenderRequest } from "./CliRenderRequest";
 import type { CommandPlan } from "./CommandPlan";
 import type { DeployPlanReq } from "./DeployPlanReq";
 import type { DirChecked } from "./DirChecked";
+import type { DriftReport } from "./DriftReport";
 import type { ExitPolicy } from "./ExitPolicy";
 import type { ExitPolicySet } from "./ExitPolicySet";
 import type { ForgetReq } from "./ForgetReq";
@@ -153,6 +154,7 @@ export interface TypedCommands {
   "ccm-print": { req: CcmPrintReq; reply: CcmLine; code: "bad_args" | "refused" };
   "ccm-probe": { req: NoArgs; reply: CcmCard; code: "bad_args" };
   "deploy-plan": { req: DeployPlanReq; reply: Planned; code: "bad_args" | "io_failed" | "refused" | "unreachable" | "undecidable" };
+  "drift-report": { req: NoArgs; reply: DriftReport; code: "bad_args" };
   "exit-policy-read": { req: NoArgs; reply: ExitPolicy; code: "bad_args" };
   "exit-policy-set": { req: ExitPolicySet; reply: ExitPolicy; code: "bad_args" | "io_failed" };
   "forward-list": { req: NoArgs; reply: Forwards; code: "bad_args" };

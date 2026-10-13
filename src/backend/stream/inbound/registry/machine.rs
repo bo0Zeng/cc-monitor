@@ -62,20 +62,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形），那一族随回落一形删了。
     // 漂移账出成品（`read_face.rs` 那一臂 ＋ 注册表 `RecordFace.drift`）。纯内存读一把锁，不进阻塞档（同 `forward-list`）。
-    CommandSpec {
-        name: "drift-report",
-        summary: "这台后端的漂移账",
-        codes: &["bad_args"],
-        fields: &[out("faces", "各家记录解释面记下的「看不懂的记录」：`face`")],
-        takes_input: false,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::faces::read_face::DriftReportCmd>("这台后端的漂移账"),
     // 端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
     //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
     //   停 / 列 = 纯内存（一把锁），同 `remote-reach` 不进阻塞档。三条都只在流面上有意义（`cli_control::STREAM_ONLY`）。

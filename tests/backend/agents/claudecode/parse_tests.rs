@@ -4,10 +4,10 @@ use super::*;
 fn ledger_entry(
     face: super::super::drift::DriftFace,
     key: &str,
-) -> Option<super::super::drift::DriftEntry> {
+) -> Option<crate::agents::drift::DriftEntry> {
     super::super::drift::snapshot()
         .into_iter()
-        .find(|f| f.face == face)
+        .find(|f| f.face == face.word())
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key))
 }
 

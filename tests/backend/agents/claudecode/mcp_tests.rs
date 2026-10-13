@@ -213,7 +213,7 @@ fn the_records_mcp_lists_are_read_and_an_unknown_one_is_drift() {
     );
     assert!(snapshot()
         .iter()
-        .any(|f| f.face == DriftFace::UnknownMcpList
+        .any(|f| f.face == DriftFace::UnknownMcpList.word()
             && f.entries.iter().any(|e| e.key == "c2NewMcpServers")));
     assert_eq!(said_of(&rec(serde_json::json!({"type": "date"}))), None);
     assert_eq!(said_of(&serde_json::json!({"type": "user"})), None);
