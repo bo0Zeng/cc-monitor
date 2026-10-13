@@ -53,14 +53,19 @@ pub(crate) trait Codes: Sized {
     fn of_code(code: &str, said: String) -> Result<Self, String>;
 }
 
-/// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码不在这一条的码表里 ⇒ 落 `fallback`（测试档当场红：下层回了没登的码）。
+/// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码在这一条的码表里 ⇒ 照交；不在 ⇒ 落 `fallback`
+/// （这一条自己的那一格失败：资产域那扇门把文件管理那一族的码原样交上来，外层命令的码表不必都有），那一句照旧，原码与原话进原话。
 /// 原话跟着那一句走（[`Fail::into_said`]），投出去时照原样拆回复制详情。
 pub(crate) fn of_fail<E: Codes>(f: Fail, fallback: fn(String) -> E) -> E {
     let code = f.code.clone();
-    E::of_code(&code, f.into_said()).unwrap_or_else(|said| {
-        debug_assert!(false, "下层回了码表里没有的码 `{code}`（{:?}）", E::ALL);
-        tracing::warn!("typed: 下层回了码表里没有的码 `{code}`");
-        fallback(said)
+    let (message, raw) = (f.message.clone(), f.raw.clone());
+    E::of_code(&code, f.into_said()).unwrap_or_else(|_| {
+        tracing::warn!("typed: 下层回了码表里没有的码 `{code}`，落这一条自己的那一格");
+        let lower = match raw {
+            Some(r) => format!("{code}: {message}\n{r}"),
+            None => format!("{code}: {message}"),
+        };
+        fallback(crate::common::contract::joined(message, Some(lower)))
     })
 }
 
