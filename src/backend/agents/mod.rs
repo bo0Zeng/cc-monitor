@@ -1750,9 +1750,21 @@ pub(crate) fn first_in_head(
 
 /// 这份会话记录的项目目录：记录归哪一家就问哪一家（[`RecordFace::project_dir`]）；那一家不声明 / 开头里没有 ⇒ `None`。
 pub(crate) fn project_dir_of(p: &Path) -> Option<String> {
-    record_face_of(p)
+    project_dir_among(REGISTRY, p)
+}
+
+/// [`project_dir_of`] 的可喂夹具那一半。
+pub(crate) fn project_dir_among(registry: &[Adapter], p: &Path) -> Option<String> {
+    record_face_among(registry, p)
         .and_then(|f| f.project_dir)
         .and_then(|f| f(p))
+}
+
+/// 这份记录归的那一家若有合成历史面（记录不住记录树、首句另有读法）⇒ 那一家的首句摘录法
+/// （与历史清单那一行同一个，[`HistoryFace::excerpt`]）；归记录树那一家 · 认不出 ⇒ `None`。
+pub(crate) fn synth_excerpt_among(registry: &[Adapter], p: &Path) -> Option<fn(&Path) -> String> {
+    let kind = record_kind_among(registry, p)?;
+    adapter_among(registry, kind)?.history.map(|h| h.excerpt)
 }
 
 /// 注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
