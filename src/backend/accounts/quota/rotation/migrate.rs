@@ -4,7 +4,7 @@
 //!
 //! | 第一版 | 第二版 |
 //! |---|---|
-//! | 每条 `rules[id]` | `configs[id]`，`strategy: "1"`，名字照留；种子那条名「默认」⇒「默认配置 1」；`tz` 缺 ⇒ 做换形那台的本地时区（4.1.7 以前的后端按本机钟判时段）；那台说不出 ⇒ 不写、标 `tzUnknown`（上屏需手动，不猜 UTC） |
+//! | 每条 `rules[id]` | `configs[id]`，`strategy: "1"`，名字照留（没有规则 ⇒ 补一条种子 `r_00000000`，名「默认」、内容照更早一版的 `default`；`defaultRule` 指空 ⇒ 名字最小的那条）；`tz` 缺 ⇒ 做换形那台的本地时区（4.1.7 以前的后端按本机钟判时段）；那台说不出 ⇒ 不写、标 `tzUnknown`（上屏需手动，不猜 UTC） |
 //! | `order` ＋ `enabled` | `accounts`：按 `order`，具名的只留勾上的 |
 //! | `cap["*"]` | `acctInit.line`；并给每一行没有自己那一位的线补上 |
 //! | `cap[号]` 数 · 分窗口 · `7d:<模型>` | 那一行的 `params.line`（`7d:<模型>` 并进 `7d` 取小的）；`0` ⇒ 整天不用（`slots: [{at: "00:00-24:00", line: 0}]`） |
@@ -14,7 +14,7 @@
 //! | — | `params.delay: 0`（「默认配置 2 · 3」不再补：第三版有随包三份） |
 //! | 会话 `follow` · `rule` · `custom` · `parent` | `config: {id, rev, copy?}`（`parent` 追到的那个会话此刻的那份；追不到按 `follow`） |
 //! | `blockedAbove` | 丢掉 |
-//! | `history[].why` | `leave` ＋ `pick` |
+//! | `history[].why` | `leave`（只留下一节认的那几种，认不出的 ⇒ `top`）；`at` · `from` · `to` · `fromResetsAt` 照搬 |
 
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -468,3 +468,7 @@ pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Value, String
         "sessions": sessions,
     }))
 }
+
+#[cfg(test)]
+#[path = "../../../../../tests/backend/accounts/quota/rotation/migrate_tests.rs"]
+mod tests;

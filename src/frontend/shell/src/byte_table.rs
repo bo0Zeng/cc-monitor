@@ -77,7 +77,7 @@ fn native_backend() -> Option<Picked> {
 /// 文件窗口那份程序（`build.rs::embed_native_filewin`，按这一份产物的 `TARGET` 编）。没有身份戳。
 ///
 /// ⚠ **不挂表 A、不经 [`pick`]**：它是 monitor 自己的窗口进程，只在跑着这个 monitor 的这台机器上起，
-/// 从不部署到别的机器 ⇒ 没有「目标机器是哪一格」这一问。唯一的消费者是 `filewin::proc::resolve_window_bin`（旁边没有时放下来再起）。
+/// 从不部署到别的机器 ⇒ 没有「目标机器是哪一格」这一问。唯一的消费者是 `filewin::proc::resolve_window_bin`（环境变量没指别的那份时，放到 `~/.cc-monitor/bin/` 再起；exe 旁边不找）。
 /// 🔴 路径必须是字面量（同上）⇒ 名字定死在两处：这一行与 `build.rs` 的 `NATIVE_BACKEND_DIR` ＋ `NATIVE_FILEWIN_FILE`。
 #[cfg(embedded_native_filewin)]
 pub(crate) fn native_filewin() -> Option<&'static [u8]> {

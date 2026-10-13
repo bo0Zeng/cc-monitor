@@ -46,7 +46,8 @@ echo "== F40 E2E 套件(display $DISPLAY) =="
 SID=$(python3 -c 'import uuid;print(uuid.uuid4())')
 SID8="${SID:0:8}"
 sleep 600 & HOST_PID=$!
-PROC_START=$(awk '{print $22}' "/proc/$HOST_PID/stat")
+# 起始时刻：先剥到最后一个 `) ` 再数（同 sandbox-env.sh 的 `proc_start`；本套件用真家目录，不 source 它）。
+PROC_START=$(sed 's/.*) //' "/proc/$HOST_PID/stat" | awk '{print $20}')
 PIDFILE="$HOME/.claude/sessions/$HOST_PID.json"
 printf '{"pid":%s,"sessionId":"%s","cwd":"/tmp/e2e-fork","startedAt":%s,"procStart":"%s","kind":"interactive","entrypoint":"cli","status":"idle"}\n' \
   "$HOST_PID" "$SID" "$(date +%s%3N)" "$PROC_START" > "$PIDFILE"

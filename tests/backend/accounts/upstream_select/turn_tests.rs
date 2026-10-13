@@ -387,6 +387,49 @@ fn hard_caps_on_every_account_hold_the_send() {
     assert_eq!(holds, 1, "同一个 until 重记了");
 }
 
+/// ★ 同一刻同一换法只记一条：两发同一秒、都照换号前那一份会话判出「a → b」（两条请求并发、各自拿着旧的那一份），
+/// 落账是在锁里对盘上那一条重做一遍 ⇒ 第二发看到已经在 b 上，不再记；换号记录里那一刻只有一条 a → b。
+#[test]
+fn two_sends_in_the_same_second_judging_the_same_switch_log_it_once() {
+    let home = Home::new("same-second", [None, None]);
+    home.strategy(Some(50), false);
+    let hop = home.hop();
+    let own = home.own();
+    let t = now();
+    home.seen(&hop.quota, None, "a", 0.6, t);
+    let b = body();
+    let none = |_: &str| None;
+    let turn = Turn {
+        agent: "claude-code",
+        start: "a",
+        sid: SID,
+        body: &b,
+        row: &none,
+        now: t + 1,
+    };
+    let stale = hop.entry(&own, &turn).expect("会话记下了");
+    assert_eq!(stale.current, "a");
+    let loaded = hop.load(&stale.strategy);
+    let facts = hop.accts(&stale, &loaded.settings, &none, t + 1);
+    let d = hop.judge_session(&stale, &loaded, &facts, t + 1, &[]);
+    assert_eq!(
+        d.pick,
+        crate::accounts::quota::rules::decide::Pick::Use("b".into()),
+        "该判出换到 b"
+    );
+    for _ in 0..2 {
+        hop.settle(&own, SID, &stale, &d, &facts, t + 1);
+    }
+    let log = home.session().log;
+    assert_eq!(
+        log.iter()
+            .map(|l| (l.at, l.from.as_str(), l.to.as_str()))
+            .collect::<Vec<_>>(),
+        vec![(t + 1, "a", "b")],
+        "同一刻同一换法记了不止一条：{log:?}"
+    );
+}
+
 // ── 推演的用速：只量、不借、量不到不编数 ───────────────────────────────────────────────
 
 fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quota::rules::Acct {

@@ -313,21 +313,22 @@ fn embed_native_backend(carried: &mut Vec<(String, String)>) {
 }
 
 /// 文件窗口那份程序的文件名（落点目录同 [`NATIVE_BACKEND_DIR`]，旁挂 `.target` 清单同那两份）。
-/// 与 `filewin::proc::BIN_STEM`（monitor 包那个 `[[bin]]` 的名字）是同一个词；`byte_table.rs` 用**同一条路径的字面量**
+/// 与 `filewin::proc::BIN_STEM`（文件窗口包 `src/frontend/filewin/` 那个 `[[bin]]` 的名字）是同一个词；`byte_table.rs` 用**同一条路径的字面量**
 /// `include_bytes!` 它；`re-embed.sh --native` 与 `release.yml` 两个 job 按同一个名字铺（判据对拍）。
 const NATIVE_FILEWIN_FILE: &str = "cc-monitor-filewin";
 
-/// **把文件窗口那份程序也内嵌进 exe**：单文件的 monitor 自己带着它，开窗时旁边没有就放到 `~/.cc-monitor/bin/` 再起
-/// （`filewin::proc::resolve_window_bin`）。
+/// **把文件窗口那份程序也内嵌进 exe**：单文件的 monitor 自己带着它，开窗时放到 `~/.cc-monitor/bin/` 再起
+/// （`filewin::proc::resolve_window_bin`；exe 旁边不找）。
 ///
 /// # 形状与 [`embed_native_backend`] 同一套
 ///
 /// 定死名字（消费侧 `include_bytes!` 要字面量）· 旁挂 `.target` 清单（名字里没有 triple）· 清单写着别的 target ⇒ 这一趟当它不在、清单缺席 ⇒ 当场 panic
 /// （内嵌一个别的平台的程序 = 放到用户盘上起不来）· 缺席 ⇒ 不置 cfg ＋ **可见的** warning。
 /// ⚠ 没有身份戳：它是哪一版由字节本身答（放的时候逐字节比，见 `local_backend::place_local_program`）。
-/// ⚠ **它不能在同一趟 cargo 里现编现嵌**：它是本包的另一个 `[[bin]]`，编它要先编本包的库（本函数就跑在那一步里）
+/// ⚠ **它不能在同一趟 cargo 里现编现嵌**：它是文件窗口包（`src/frontend/filewin/`）的 `[[bin]]`，不是本包的；
+/// build script 没法依赖别的包编出来的二进制（cargo 的二进制依赖还没稳定），在这里再起一趟 cargo 又要等同一个构建目录的锁
 /// ⇒ 先单编它、铺进落点，再编 monitor（`re-embed.sh --native` 与 `release.yml` 都是这个次序）。
-/// 没铺时开窗只剩「exe 旁边」那一支（开发树 `target/<档>/` 里两个二进制本来就挨着，安装包也把它装在主程序旁）。
+/// 没铺时开窗只剩环境变量 `filewin::proc::BIN_ENV` 指的那一份（开发树里先 `cargo build -p cc-monitor-filewin`）；安装包不带它。
 fn embed_native_filewin() {
     println!("cargo:rustc-check-cfg=cfg(embedded_native_filewin)");
     let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown-target".into());
