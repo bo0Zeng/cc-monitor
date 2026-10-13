@@ -255,3 +255,220 @@ fn the_registered_names_are_the_ones_the_file_window_calls() {
     same::<FilesHome>();
     same::<FilesGrep>();
 }
+
+// ── 写的那几条 ─────────────────────────────────────
+
+/// 写面那几条的回包换形之前那一版的字节（每行 `名字<TAB>字节`），同读的那一份的写法。
+fn pinned_writes() -> BTreeMap<String, String> {
+    let p = crate::guard_support::repo_root().join("tests/__fixtures__/files-write.wire-bytes.txt");
+    std::fs::read_to_string(&p)
+        .unwrap_or_default()
+        .lines()
+        .map(|l| {
+            let (n, b) = l.split_once('\t').expect("名字<TAB>字节");
+            (n.to_string(), b.to_string())
+        })
+        .collect()
+}
+
+#[cfg(unix)]
+fn tar_of(items: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut b = tar::Builder::new(Vec::new());
+    for (name, body) in items {
+        let mut h = tar::Header::new_gnu();
+        h.set_path(name).unwrap();
+        h.set_size(body.len() as u64);
+        h.set_mode(0o644);
+        h.set_mtime(PINNED_AT);
+        h.set_entry_type(tar::EntryType::Regular);
+        h.set_cksum();
+        b.append(&h, *body).unwrap();
+    }
+    b.into_inner().unwrap()
+}
+
+/// ★ 文件窗口读的写面回包（写面 · 上传提交 · 解压）：回包字节与换形之前那一版逐字节相同。
+/// 一趟按次序跑（写会改盘）；删会话那一条要铺一份会话记录，回包只有一格 `path`，不钉（形状由类型和指纹表管）。
+#[test]
+#[cfg(unix)]
+fn the_write_replies_the_file_window_reads_keep_their_wire_bytes() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = std::env::temp_dir().join(format!("ccm-files-wire-w-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(root.join("tree/sub")).unwrap();
+    std::fs::write(root.join("tree/x.txt"), b"xx").unwrap();
+    std::fs::write(root.join("tree/sub/y.txt"), b"yyy").unwrap();
+    std::fs::write(root.join("ct.txt"), b"old").unwrap();
+    std::fs::write(
+        root.join("a.tar"),
+        tar_of(&[("a/one.txt", b"1"), ("a/two.txt", b"22")]),
+    )
+    .unwrap();
+    std::fs::set_permissions(root.join("ct.txt"), std::fs::Permissions::from_mode(0o644)).unwrap();
+    let r = root.to_string_lossy().to_string();
+    let sha = |b: &[u8]| json!({ "sha256": crate::files::content_sha256(b) });
+    let odd = json!({ "b16": hex(b"odd-\xff.txt") });
+    let (k1, k2) = (
+        "0123456789abcdef0123456789abcdef",
+        "fedcba9876543210fedcba9876543210",
+    );
+    let steps: Vec<(&str, &str, Value)> = vec![
+        (
+            "create",
+            "files-create",
+            json!({ "root": r, "rel": "made.txt", "content": "abc" }),
+        ),
+        (
+            "create-odd",
+            "files-create",
+            json!({ "root": r, "rel": odd }),
+        ),
+        (
+            "mkdir",
+            "files-mkdir",
+            json!({ "root": r, "rel": "dir1", "single": true }),
+        ),
+        (
+            "rename",
+            "files-rename",
+            json!({ "root": r, "from": "made.txt", "to": "moved.txt" }),
+        ),
+        (
+            "copy",
+            "files-copy",
+            json!({ "root": r, "from": "moved.txt", "to": "copied.txt" }),
+        ),
+        (
+            "copy-tree",
+            "files-copy",
+            json!({ "root": r, "from": "tree", "to": "tree2", "recursive": true }),
+        ),
+        (
+            "chmod-first",
+            "files-chmod",
+            json!({ "root": r, "rel": "copied.txt", "mode": 384 }),
+        ),
+        (
+            "chmod",
+            "files-chmod",
+            json!({ "root": r, "rel": "copied.txt", "mode": 416 }),
+        ),
+        (
+            "write-text",
+            "files-write-text",
+            json!({ "root": r, "rel": "moved.txt", "content": "abcd", "expect": sha(b"abc") }),
+        ),
+        (
+            "peek",
+            "files-peek",
+            json!({ "root": r, "rel": "moved.txt" }),
+        ),
+        (
+            "peek-missing",
+            "files-peek",
+            json!({ "root": r, "rel": "nope.txt" }),
+        ),
+        (
+            "put-new",
+            "files-put",
+            json!({ "root": r, "rel": "put.txt", "content": "p1", "expect": null }),
+        ),
+        (
+            "put-backup",
+            "files-put",
+            json!({ "root": r, "rel": "put.txt", "content": "p2", "expect": "p1", "backup": true }),
+        ),
+        (
+            "put-same",
+            "files-put",
+            json!({ "root": r, "rel": "put.txt", "content": "p2", "expect": "p2" }),
+        ),
+        (
+            "link",
+            "files-link",
+            json!({ "root": r, "rel": "ln", "target": "moved.txt" }),
+        ),
+        (
+            "delete",
+            "files-delete",
+            json!({ "root": r, "rel": "copied.txt" }),
+        ),
+        (
+            "delete-expect",
+            "files-delete",
+            json!({ "root": r, "rel": "moved.txt", "expect": "abcd" }),
+        ),
+        (
+            "delete-empty-dir",
+            "files-delete",
+            json!({ "root": r, "rel": "dir1", "expect": { "empty_dir": true } }),
+        ),
+        (
+            "delete-tree-slice",
+            "files-delete",
+            json!({ "root": r, "rel": "tree2", "recursive": true, "limit": 2 }),
+        ),
+        (
+            "delete-tree",
+            "files-delete",
+            json!({ "root": r, "rel": "tree2", "recursive": true }),
+        ),
+        (
+            "extract",
+            "files-extract",
+            json!({ "root": r, "rel": "a.tar" }),
+        ),
+        (
+            "extract-fresh",
+            "files-extract",
+            json!({ "root": r, "rel": "a.tar", "fresh": true }),
+        ),
+        (
+            "stage-chunk",
+            "files-stage-chunk",
+            json!({ "key": k1, "seq": 0, "content": "hello" }),
+        ),
+        (
+            "commit-text",
+            "files-commit-text",
+            json!({ "root": r, "rel": "ct.txt", "key": k1, "chunks": 1, "bytes": 5, "expect": sha(b"old") }),
+        ),
+        (
+            "stage-chunk-b16",
+            "files-stage-chunk",
+            json!({ "key": k2, "seq": 0, "content": { "b16": "0001" } }),
+        ),
+        (
+            "stage-chunk-2",
+            "files-stage-chunk",
+            json!({ "key": k2, "seq": 1, "content": "zz" }),
+        ),
+        (
+            "commit-upload",
+            "files-commit-upload",
+            json!({ "root": r, "rel": "up.bin", "key": k2, "overwrite": false, "expect": sha(b"\x00\x01zz"), "chunks": 2, "bytes": 4 }),
+        ),
+    ];
+    let mut got = BTreeMap::new();
+    for (name, cmd, args) in steps {
+        let mut v = run(cmd, args).unwrap_or_else(|e| panic!("{name}（{cmd}）没答出来：{e}"));
+        if let Some(b) = v.get_mut("backup") {
+            if !b.is_null() {
+                *b = json!("<BACKUP>");
+            }
+        }
+        // 第一次改权限位：改之前那一格跟这台的 umask 走，不钉（只为让下一趟的 `before` 定下来）。
+        if name == "chmod-first" {
+            continue;
+        }
+        scrub(&mut v, &r);
+        got.insert(name.to_string(), serde_json::to_string(&v).unwrap());
+    }
+    std::fs::remove_dir_all(&root).ok();
+    let want = pinned_writes();
+    let dump: String = got.iter().map(|(n, b)| format!("{n}\t{b}\n")).collect();
+    assert_eq!(
+        want, got,
+        "文件管理写面那几条的线上字节变了（文件窗口读的那一形）。这一版写出来的是：\n{dump}"
+    );
+}
