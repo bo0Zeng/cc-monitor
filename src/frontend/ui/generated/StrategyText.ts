@@ -3,4 +3,4 @@
 /**
  * 头里能写成一句、也能分语言写的字。
  */
-export type StrategyText = string | { zh: string, en: string, };
+export type StrategyText = string | { zh: string, en?: string, };

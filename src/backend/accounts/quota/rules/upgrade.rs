@@ -269,7 +269,7 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
     let heads = shipped_heads(env)?;
     let mut out = Upgraded {
         book: Book {
-            version: book::VERSION,
+            version: book::BOOK_VERSION,
             ..Book::default()
         },
         files: Vec::new(),

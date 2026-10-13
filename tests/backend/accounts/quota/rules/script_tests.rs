@@ -160,7 +160,7 @@ fn unreadable_files_say_why_and_where() {
     assert!(parse(&with_code("fn other(ctx) { #{} }")).is_err());
 }
 
-/// ★ 后端不认随包策略：生产源码里搜不到它们的文件名与名字（一次性的升级那一份除外）；三份全部改 `name`，判出来一个不变。
+/// ★ 后端不认随包策略：生产源码里搜不到它们的文件名与名字（一次性的升级那两份 · 打包那一层的文件清单除外）；三份全部改 `name`，判出来一个不变。
 /// 积木库里那几项设置的名字（`capKind` · `margin`）也不在后端源码里（`back` · `delay` 这种常见词别处另有用处，不搜）。
 #[test]
 fn the_backend_knows_no_shipped_strategy_and_no_rule() {
@@ -176,13 +176,10 @@ fn the_backend_knows_no_shipped_strategy_and_no_rule() {
     let hits: Vec<String> = guard_core::scan_tree!(&root, &["rs"])
         .into_iter()
         .filter(|(p, _)| {
+            // 一次性的升级那两份（认第三版编号 1 2 3 对哪几份）· 打包那一层的文件清单（只把文件原样带上）。
             !p.ends_with("rotation/migrate.rs")
-                && !p.to_string_lossy().contains("/strategy/")
-                && !p.ends_with("quota/rotation.rs")
-                && !p.ends_with("rotation/doc.rs")
-                && !p.ends_with("faces/rotation_face.rs")
-                && !p.ends_with("quota/decide.rs")
-                && !p.ends_with("quota/plan.rs")
+                && !p.ends_with("rules/upgrade.rs")
+                && !p.ends_with("rules/shipped.rs")
         })
         .flat_map(|(p, t)| {
             let t = crate::guard_support::production_code(&t);

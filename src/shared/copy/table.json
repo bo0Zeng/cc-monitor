@@ -31605,7 +31605,7 @@
     "beRotation.strategy.gone": {
       "kind": "error",
       "role": "报错",
-      "zh": "策略「{name}」没读到 · 此刻照内置策略 1 排",
+      "zh": "策略「{name}」没读到",
       "args": ["name"]
     },
     "beRotation.strategy.missing": {
@@ -31641,7 +31641,7 @@
     "beRotation.strategy.inUse": {
       "kind": "error",
       "role": "原因格",
-      "zh": "在用它的配置 {n} · 先换掉再删",
+      "zh": "{n} 个会话在用 · 先换掉再删",
       "args": ["n"]
     },
     "beRotation.val.on": {
@@ -32774,6 +32774,48 @@
       "role": "说明",
       "zh": "需手动 · {said}",
       "args": ["said"]
+    },
+    "beRotation.edit.conflict": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "这份策略在别处被改了",
+      "args": []
+    },
+    "beRotation.edit.dirty": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "会话里有没存的设置",
+      "args": []
+    },
+    "beRotation.edit.forNew": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "新会话用的就是这份 · 先换一份再删",
+      "args": []
+    },
+    "beRotation.edit.noName": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "名字要 1–24 个字",
+      "args": []
+    },
+    "beRotation.edit.notListed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{acct} 不在这台的账号里",
+      "args": ["acct"]
+    },
+    "beRotation.edit.refused": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "有几格设置不对",
+      "args": []
+    },
+    "beRotation.edit.unusable": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "{acct} 现在用不了",
+      "args": ["acct"]
     },
     "beRotation.write.v1Pending": {
       "kind": "error",

@@ -79,6 +79,7 @@ fn a_reading_lands_under_its_account_on_disk_and_on_the_wire_field_for_field() {
     record_seen(
         &l,
         &own,
+        None,
         "claude-code",
         "q",
         reading(0.42, false),
@@ -133,10 +134,26 @@ fn only_a_change_you_could_see_pushes_and_quiet_repeats_reach_disk_at_most_once_
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
     let (l, mut rx) = ringing(Some(path.clone()));
-    record_seen(&l, &own, "claude-code", "q", reading(0.420, false), 1_000);
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        reading(0.420, false),
+        1_000,
+    );
     rx.mark_unchanged();
     // 取整后的百分比没变（42%）⇒ 不推、盘上的时刻不动。
-    record_seen(&l, &own, "claude-code", "q", reading(0.4204, false), 1_010);
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        reading(0.4204, false),
+        1_010,
+    );
     assert!(!rx.has_changed().expect("通道在"));
     assert_eq!(on_disk(&path).accounts[0].seen_at, 1_000);
     assert_eq!(l.entry("claude-code", "q").map(|e| e.seen_at), Some(1_010));
@@ -144,6 +161,7 @@ fn only_a_change_you_could_see_pushes_and_quiet_repeats_reach_disk_at_most_once_
     record_seen(
         &l,
         &own,
+        None,
         "claude-code",
         "q",
         reading(0.4204, false),
@@ -155,6 +173,7 @@ fn only_a_change_you_could_see_pushes_and_quiet_repeats_reach_disk_at_most_once_
     record_seen(
         &l,
         &own,
+        None,
         "claude-code",
         "q",
         reading(0.43, false),
@@ -175,8 +194,8 @@ fn two_accounts_keep_two_rows_and_a_restart_remembers_both() {
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
     let (l, _rx) = ringing(Some(path.clone()));
-    record_seen(&l, &own, "claude-code", "q", reading(0.1, false), 10);
-    record_seen(&l, &own, "claude-code", "a", reading(1.0, true), 11);
+    record_seen(&l, &own, None, "claude-code", "q", reading(0.1, false), 10);
+    record_seen(&l, &own, None, "claude-code", "a", reading(1.0, true), 11);
     let book = on_disk(&path);
     let names: Vec<&str> = book.accounts.iter().map(|e| e.account.as_str()).collect();
     assert_eq!(names, ["a", "q"]);
@@ -197,7 +216,7 @@ fn a_file_it_cannot_read_is_left_alone_and_said_so() {
     let own = crate::platform::fs::Own::issue_data_at(&d);
     std::fs::write(&path, "not json").expect("write");
     let (l, _rx) = ringing(Some(path.clone()));
-    record_seen(&l, &own, "claude-code", "q", reading(0.1, false), 10);
+    record_seen(&l, &own, None, "claude-code", "q", reading(0.1, false), 10);
     assert_eq!(std::fs::read_to_string(&path).expect("read"), "not json");
     assert_eq!(answered(Some(&path), 0)["state"], "unreadable");
     assert_eq!(answered(Some(&d.join("absent.json")), 0)["state"], "absent");
@@ -238,7 +257,7 @@ fn a_probe_merges_windows_into_the_same_entry_and_headers_do_not_wash_them_out()
     // 写句柄的数据目录那一根就是这个临时目录（落点同 `path`）。
     let own = crate::platform::fs::Own::issue_data_at(&d);
     let (l, mut rx) = ringing(Some(path.clone()));
-    record_seen(&l, &own, "claude-code", "q", reading(0.42, true), 100);
+    record_seen(&l, &own, None, "claude-code", "q", reading(0.42, true), 100);
     rx.mark_unchanged();
     let got = record_probe(
         &l,
@@ -266,7 +285,7 @@ fn a_probe_merges_windows_into_the_same_entry_and_headers_do_not_wash_them_out()
     assert!(rx.has_changed().expect("通道在"), "显示变了 ⇒ 推");
     assert_eq!(on_disk(&path).accounts, vec![got.clone()]);
     // 下一份回包头只带 five_hour：盖掉它、留着 seven_day_fable（与它几点、从哪看到的）。
-    record_seen(&l, &own, "claude-code", "q", reading(0.5, false), 300);
+    record_seen(&l, &own, None, "claude-code", "q", reading(0.5, false), 300);
     let after = on_disk(&path).accounts.remove(0);
     assert_eq!(names(&after), ["five_hour", "seven_day_fable"]);
     assert!(!after.reading.refused);
@@ -299,6 +318,7 @@ fn two_writers_interleaving_never_lose_a_window() {
     record_seen(
         &resident,
         &own,
+        None,
         "claude-code",
         "q",
         reading(0.10, false),
@@ -322,6 +342,7 @@ fn two_writers_interleaving_never_lose_a_window() {
     record_seen(
         &resident,
         &own,
+        None,
         "claude-code",
         "q",
         reading(0.20, false),
@@ -345,6 +366,7 @@ fn two_writers_interleaving_never_lose_a_window() {
     record_seen(
         &resident,
         &own,
+        None,
         "claude-code",
         "q",
         reading(0.2001, false),
@@ -448,7 +470,15 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
     let t = 1_800_000_000;
     let reset = t + 18_000;
     let trend = |l: &Ledger| l.entry("claude-code", "q").expect("entry").trend["five_hour"];
-    record_seen(&l, &own, "claude-code", "q", reading_until(0.40, reset), t);
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        reading_until(0.40, reset),
+        t,
+    );
     assert_eq!(
         trend(&l),
         Trend {
@@ -459,6 +489,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
     record_seen(
         &l,
         &own,
+        None,
         "claude-code",
         "q",
         reading_until(0.40, reset),
@@ -475,6 +506,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
     record_seen(
         &l,
         &own,
+        None,
         "claude-code",
         "q",
         reading_until(0.46, reset),
@@ -496,6 +528,7 @@ fn a_window_keeps_its_last_different_sample_until_it_resets() {
     record_seen(
         &l,
         &own,
+        None,
         "claude-code",
         "q",
         reading_until(0.02, reset + 18_000),
@@ -524,12 +557,21 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     let own = crate::platform::fs::Own::for_tests();
     let t = 1_800_000_000;
     let reset = t + 18_000;
-    record_seen(&l, &own, "claude-code", "q", reading_until(0.40, reset), t);
+    record_seen(
+        &l,
+        &own,
+        None,
+        "claude-code",
+        "q",
+        reading_until(0.40, reset),
+        t,
+    );
     let o = l.entry("claude-code", "q").expect("entry");
     assert_eq!(o.rate("five_hour", t + 10), None, "只有一个采样");
     record_seen(
         &l,
         &own,
+        None,
         "claude-code",
         "q",
         reading_until(0.46, reset),
@@ -550,6 +592,7 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     record_seen(
         &down,
         &own,
+        None,
         "claude-code",
         "q",
         reading_until(0.46, reset),
@@ -558,6 +601,7 @@ fn the_rate_is_the_slope_of_two_recent_samples_in_points_per_minute() {
     record_seen(
         &down,
         &own,
+        None,
         "claude-code",
         "q",
         reading_until(0.40, reset),

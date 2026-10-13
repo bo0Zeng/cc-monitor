@@ -913,7 +913,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 stream/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
 /// 请求信封带 view {cells, omit}（帧面 Request · CLI --view），核心一个 project 统一投影；summaryOnly 删（折起那一行 ＝ omit blocks · results.*.patch）；history-facts 带 view 时应答多 prior（投影前整份，续算令牌）。
-/// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；轮换规则 CellError 与机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
+/// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
 ///
 /// p9y-viewer-tz-skeleton：时刻按看的人那一台的钟——请求信封 · CLI `--tz` · attach 行带 tz（IANA 名，缺 · 认不得 ⇒ UTC），回包的「几点」「今天 / 昨天」与复制详情那一行都按它写；
 /// 推送帧里现算的小成品按这条连接 attach 带来的 tz 写；轮换规则盖上 rotation.tz、按规则自己的时区判；rotation-rule-save / rename 回 savedAtText；记录带 atMs。
@@ -1122,29 +1122,24 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-files",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--quota-probe",
-    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // 规则表那四条（`--rotation-rules-read` · `-rule-save` · `-rule-rename` · `-rule-delete`）随第二版存储删了，换成配置 · 策略 · 会话副本那几条。
-    "--rotation-configs-read",
-    // 轮换第五版的事实（typed `rotation-facts`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`，轮换第五版，typed）自动派生的 CLI 面；入参从 stdin 读。
+    // ⚠ 第三版那 15 条（配置 · 会话副本 · 推演 · 现在就换）随第五版删了，换成下面这些 ⇒ BUILD_ID 打版本号时统一 bump。
     "--rotation-facts",
-    // 试跑一份策略（typed `rotation-try`）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
     "--rotation-try",
-    "--rotation-config-save",
-    "--rotation-config-rename",
-    "--rotation-config-delete",
-    "--rotation-default-set",
-    "--rotation-strategies-read",
+    "--rotation-strategies",
+    "--rotation-view",
+    "--rotation-settings",
+    "--rotation-save",
+    "--rotation-revert",
+    "--rotation-use",
+    "--rotation-for-new",
+    "--rotation-temp",
+    "--rotation-use-now",
     "--rotation-strategy-add",
+    "--rotation-strategy-copy",
+    "--rotation-strategy-rename",
     "--rotation-strategy-delete",
-    "--rotation-strategy-try",
-    "--rotation-plan",
-    "--rotation-session-read",
-    "--rotation-session-open",
-    "--rotation-session-edit",
-    "--rotation-session-save",
-    "--rotation-session-revert",
-    "--rotation-session-set",
-    "--rotation-switch",
+    "--rotation-day-paint",
     "--exit-policy-set",
     // 上游选择那份凭据文件在这台机器上的写口（`inbound::REGISTRY` 的 `apikey-key-set`）自动派生的 CLI 面。
     // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。

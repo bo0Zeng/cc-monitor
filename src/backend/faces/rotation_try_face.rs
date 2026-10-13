@@ -107,7 +107,8 @@ pub(crate) struct RotTryUse {
     #[cfg_attr(test, ts(optional))]
     pub(crate) account: Option<String>,
     pub(crate) from_temp: bool,
-    pub(crate) guessed: bool,
+    /// 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
+    pub(crate) cap_unknown: bool,
     pub(crate) skipped: Vec<String>,
 }
 
@@ -209,8 +210,8 @@ impl Blocking for RotationTry {
         let agent = req
             .agent
             .as_deref()
-            .unwrap_or(crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT);
-        let row = |a: &str| (ctx.rows)(agent, a);
+            .unwrap_or(crate::faces::rotation_face::LIBRARY_AGENT);
+        let row = ctx.row(agent);
         let now = crate::accounts::quota::now_unix();
         let facts: Vec<Acct> = ctx
             .hop
@@ -235,17 +236,8 @@ pub(crate) fn try_with(
             f.msg
         )))
     })?;
-    let tz = file
-        .head
-        .tz
-        .as_deref()
-        .and_then(crate::Tz::iana)
-        .unwrap_or_default();
-    let clock_of = |t: u64| {
-        let t = i64::try_from(t).unwrap_or(i64::MAX);
-        let local = i128::from(t) + i128::from(tz.offset_secs(t));
-        u16::try_from(local.rem_euclid(86_400) / 60).unwrap_or(0)
-    };
+    let tz = crate::accounts::quota::rules::tz_of(Some(&file.head));
+    let clock_of = |t: u64| crate::accounts::quota::rules::clock_at(&tz, t);
     let settings = req
         .settings
         .clone()
@@ -292,76 +284,86 @@ pub(crate) fn try_with(
         None => None,
     };
     let en = req.lang.as_deref() == Some("en");
-    let (pick, hold_until, hold_account) = match &d.pick {
-        Pick::Use(a) => (Some(a.clone()), None, None),
-        Pick::Hold { until, account } => (None, *until, account.clone()),
-    };
     Ok(RotationTryReply {
         now,
         name: file.head.name.pick(en).to_string(),
         line: file.head.line.pick(en).to_string(),
         source,
         use_now_refused,
-        decision: RotTryDecision {
-            pick,
-            hold_until,
-            hold_account,
-            order: d.order.clone(),
-            why: d
-                .why
-                .iter()
-                .map(|(a, w)| RotTryRow {
-                    account: a.clone(),
-                    why: w.clone(),
-                })
-                .collect(),
-            from_temp: d.from_temp,
-            skipped: d.skipped.clone(),
-            temp: d.sigma.temp.clone(),
-            next_node: d.tn,
-            strategy_error: d.strategy_error.as_ref().map(|e| e.msg.clone()),
-        },
-        timeline: RotTryTimeline {
-            switches: tl
-                .switches()
-                .into_iter()
-                .map(|(at, account)| RotTrySwitch { at, account })
-                .collect(),
-            uses: tl
-                .uses
-                .iter()
-                .map(|u| RotTryUse {
-                    from: u.from,
-                    to: u.to,
-                    account: match &u.pick {
-                        Pick::Use(a) => Some(a.clone()),
-                        Pick::Hold { .. } => None,
-                    },
-                    from_temp: u.from_temp,
-                    guessed: u.guessed,
-                    skipped: u.skipped.clone(),
-                })
-                .collect(),
-            lanes: tl
-                .lanes
-                .iter()
-                .map(|(a, segs)| RotTryLane {
-                    account: a.clone(),
-                    segs: segs
-                        .iter()
-                        .map(|s| RotTryLaneSeg {
-                            from: s.from,
-                            to: s.to,
-                            sendable: s.sendable,
-                            used: s.used,
-                            reset: s.reset,
-                        })
-                        .collect(),
-                })
-                .collect(),
-            truncated: tl.truncated,
-        },
+        decision: decision_of(&d),
+        timeline: timeline_of(&tl),
     })
+}
+
+/// 一判写成线上的形（`rotation-try` · `rotation-view` 同用）。
+pub(crate) fn decision_of(d: &decide::Decision) -> RotTryDecision {
+    let (pick, hold_until, hold_account) = match &d.pick {
+        Pick::Use(a) => (Some(a.clone()), None, None),
+        Pick::Hold { until, account } => (None, *until, account.clone()),
+    };
+    RotTryDecision {
+        pick,
+        hold_until,
+        hold_account,
+        order: d.order.clone(),
+        why: d
+            .why
+            .iter()
+            .map(|(a, w)| RotTryRow {
+                account: a.clone(),
+                why: w.clone(),
+            })
+            .collect(),
+        from_temp: d.from_temp,
+        skipped: d.skipped.clone(),
+        temp: d.sigma.temp.clone(),
+        next_node: d.tn,
+        strategy_error: d.strategy_error.as_ref().map(|e| e.msg.clone()),
+    }
+}
+
+/// 推演写成线上的形（`rotation-try` · `rotation-view` 同用）。
+pub(crate) fn timeline_of(tl: &simulate::Timeline) -> RotTryTimeline {
+    RotTryTimeline {
+        switches: tl
+            .switches()
+            .into_iter()
+            .map(|(at, account)| RotTrySwitch { at, account })
+            .collect(),
+        uses: tl
+            .uses
+            .iter()
+            .map(|u| RotTryUse {
+                from: u.from,
+                to: u.to,
+                account: match &u.pick {
+                    Pick::Use(a) => Some(a.clone()),
+                    Pick::Hold { .. } => None,
+                },
+                from_temp: u.from_temp,
+                cap_unknown: u.cap_unknown,
+                skipped: u.skipped.clone(),
+            })
+            .collect(),
+        lanes: tl
+            .lanes
+            .iter()
+            .map(|(a, segs)| RotTryLane {
+                account: a.clone(),
+                segs: segs
+                    .iter()
+                    .map(|s| RotTryLaneSeg {
+                        from: s.from,
+                        to: s.to,
+                        sendable: s.sendable,
+                        used: s.used,
+                        reset: s.reset,
+                    })
+                    .collect(),
+            })
+            .collect(),
+        truncated: tl.truncated,
+    }
 }
 
 #[cfg(test)]

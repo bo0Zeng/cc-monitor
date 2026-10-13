@@ -1,10 +1,10 @@
 //! ★ 推演（算法 §5）：离散事件模拟，状态是 (Σ, F) 的一份拷贝；每个事件点调的是和真用时同一个 [`turn`]。
-//! 只模拟这个会话自己在用的号的消耗；别的会话用掉的额度在下一次读数时进事实，下一次重算跟上。
-//! 事件只有事实（重置 · 被拒到期 · 用到 100）和策略约的叫醒（时刻 · 读数 —— 在用号的读数按用速换算成时刻）。
+//! 每个号照它自己在额度账里量出来的用速涨（所有会话的用量都在那个号的读数里）；量不到的不涨、不换算时刻。
+//! 事件只有事实（重置 · 被拒到期 · 用到 100）和策略约的叫醒（时刻 · 读数 —— 量得到用速的号按用速换算成时刻，量不到不编数）。
 
 use super::decide::{turn, Pick, Sigma, Strategy};
 use super::standing;
-use super::{Acct, RATE_DEFAULT, WINDOW_SECS};
+use super::{Acct, WINDOW_SECS};
 use serde_json::Value;
 
 /// 一次推演最多几个事件。
@@ -18,8 +18,8 @@ pub(crate) struct UseSeg {
     pub(crate) pick: Pick,
     /// 这一段的号来自用户拖出来的顺序。
     pub(crate) from_temp: bool,
-    /// 用速是默认值估的（在用的号没有用速）。
-    pub(crate) guessed: bool,
+    /// 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
+    pub(crate) cap_unknown: bool,
     /// 这一判丢掉的拖出来的条目（画成「跳过」）。
     pub(crate) skipped: Vec<String>,
 }
@@ -105,30 +105,41 @@ pub(crate) fn simulate(
             }
         }
         points.push((t, f.clone()));
-        // 下一个事件：已知节点 · 在用号用到 100 · 在用号的读数叫醒（按用速换算成时刻）· 视窗末尾。
+        // 下一个事件：已知节点 · 用到 100 · 读数叫醒（按用速换算成时刻）· 视窗末尾。
         let mut ev: Vec<u64> = vec![t1];
         ev.extend(d.tn);
-        let mut guessed = false;
-        if let Some(a) = &using {
-            if let Some(x) = f.iter().find(|x| &x.id == a).filter(|x| !x.api) {
-                let rate = |w: usize, guessed: &mut bool| {
-                    x.rate[w].unwrap_or_else(|| {
-                        *guessed = true;
-                        RATE_DEFAULT[w]
-                    })
-                };
-                let mut at = |w: usize, n: f64, guessed: &mut bool| {
-                    let r = rate(w, guessed);
-                    let room = n - standing::used_at(x, w, t);
-                    if r > 0.0 && room > 0.0 {
-                        ev.push(t + ((room / r) * 60.0).ceil() as u64);
-                    }
-                };
-                for w in 0..2 {
-                    at(w, 100.0, &mut guessed);
+        // 用速是每个号自己在额度账里量出来的（别的会话在用的号也量得到）：量得到的号照它涨、照它换算用到 100 · 读数叫醒的时刻；
+        // 量不到 ⇒ 不编数，那一窗的这几个时刻不换算，只排确定的事件。在用的号量不到 ⇒ 这一段标「用到上限的时刻还不知道」。
+        let mut unknown = false;
+        for x in f.iter().filter(|x| !x.api) {
+            let in_use = using.as_deref() == Some(x.id.as_str());
+            for w in 0..2 {
+                let open = in_use || x.resets[w].is_some_and(|r| r > t);
+                let mut ns: Vec<f64> = Vec::new();
+                if open {
+                    ns.push(100.0);
                 }
-                for k in d.sigma.wake_when.iter().filter(|k| &k.acct == a) {
-                    at(k.w, k.used_at_least, &mut guessed);
+                ns.extend(
+                    d.sigma
+                        .wake_when
+                        .iter()
+                        .filter(|k| k.acct == x.id && k.w == w)
+                        .map(|k| k.used_at_least),
+                );
+                if ns.is_empty() {
+                    continue;
+                }
+                match x.rate[w] {
+                    Some(r) if open && r > 0.0 => {
+                        for n in ns {
+                            let room = n - standing::used_at(x, w, t);
+                            if room > 0.0 {
+                                ev.push(t + ((room / r) * 60.0).ceil() as u64);
+                            }
+                        }
+                    }
+                    Some(_) => {}
+                    None => unknown |= in_use,
                 }
             }
         }
@@ -144,14 +155,13 @@ pub(crate) fn simulate(
             to: te,
             pick: d.pick.clone(),
             from_temp: d.from_temp,
-            guessed: guessed && using.is_some(),
+            cap_unknown: unknown,
             skipped: d.skipped.clone(),
         });
-        // 推进到 te：只有在用的号涨。
-        if let Some(a) = &using {
-            if let Some(x) = f.iter_mut().find(|x| &x.id == a).filter(|x| !x.api) {
-                for w in 0..2 {
-                    let r = x.rate[w].unwrap_or(RATE_DEFAULT[w]);
+        // 推进到 te：量得到用速的号照它涨（窗口开着的；在用的号上面已经开窗）。
+        for x in f.iter_mut().filter(|x| !x.api) {
+            for w in 0..2 {
+                if let (Some(r), true) = (x.rate[w], x.resets[w].is_some_and(|r| r > t)) {
                     x.used[w] = standing::used_at(x, w, t) + r * (te - t) as f64 / 60.0;
                 }
             }
@@ -175,7 +185,8 @@ pub(crate) fn simulate(
     for u in uses {
         match merged.last_mut() {
             Some(m) if m.pick == u.pick && m.from_temp == u.from_temp && u.skipped.is_empty() => {
-                m.to = u.to
+                m.to = u.to;
+                m.cap_unknown |= u.cap_unknown;
             }
             _ => merged.push(u),
         }

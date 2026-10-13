@@ -24,7 +24,12 @@ const HEAD_CLOSE: &str = "\n---*/";
 )]
 pub enum Text {
     One(String),
-    Langs { zh: String, en: String },
+    Langs {
+        zh: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        en: Option<String>,
+    },
 }
 
 impl Text {
@@ -32,13 +37,10 @@ impl Text {
     pub(crate) fn pick(&self, en: bool) -> &str {
         match self {
             Text::One(s) => s,
-            Text::Langs { zh, en: e } => {
-                if en {
-                    e
-                } else {
-                    zh
-                }
-            }
+            Text::Langs { zh, en: e } => match e {
+                Some(e) if en => e,
+                _ => zh,
+            },
         }
     }
 }
@@ -58,6 +60,9 @@ pub(crate) struct Head {
     pub(crate) tz_unknown: bool,
     /// 这份策略自己的设置（形状它自己定，后端原样交给它）。
     pub(crate) settings: serde_json::Value,
+    /// 设置怎么画、怎么校验（`轮换-v5-分层.md` §6.4.1）：界面照它画，后端照它校验形状，不认意思。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) form: Vec<super::form::Cell>,
 }
 
 /// 这一版的格式号。
@@ -105,6 +110,11 @@ fn split(source: &str) -> Result<(&str, &str), Fail> {
     Ok((&rest[..end], &rest[end + HEAD_CLOSE.len()..]))
 }
 
+/// 这一份是不是第五版的策略文件（开头是那一段头）：不是的（第三版脚本）升级时挪开。
+pub(crate) fn has_head(source: &str) -> bool {
+    source.starts_with(HEAD_OPEN)
+}
+
 /// ★ 读一份策略文件：头照形状解、代码编一次、要有 `decide`。
 pub(crate) fn parse(source: &str) -> Result<File, Fail> {
     let (head, code) = split(source)?;
@@ -116,6 +126,16 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
             Some(2),
             format!("format {} is not {FORMAT}", head.format),
         ));
+    }
+    super::form::check_form(&head.form).map_err(|m| fail(FailKind::BadShape, Some(2), m))?;
+    if let Some(b) = super::form::check(&head.form, &head.settings).first() {
+        if !head.form.is_empty() {
+            return Err(fail(
+                FailKind::BadShape,
+                Some(2),
+                format!("settings.{} does not fit the form ({})", b.cell, b.code),
+            ));
+        }
     }
     let e = engine().map_err(|m| fail(FailKind::Broke, None, m))?;
     // 代码的行号接在头后面（报第几行时与文件对得上）。

@@ -3,10 +3,125 @@
 //!
 //! 拼装只有一处（[`crate::accounts::upstream_select::rotate::Hop::facts`]，它手上有额度账与账号库）；这里是形状与纯函数。
 
-use super::decide::{self, Kind};
 use super::show::LoginState;
 use crate::agents::QuotaReading;
 use serde::Serialize;
+
+/// 号的种类：线上 `sub` · `api`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "QuotaKind"
+    )
+)]
+pub enum Kind {
+    Sub,
+    Api,
+}
+
+fn live(t: Option<u64>, now: u64) -> bool {
+    !super::reset_since_seen(t, now)
+}
+
+/// 「额度账上这个号此刻被拒着」的唯一判法：上次那一发被拒、它说的回来时刻还没到（说不出时刻的旧账 ⇒ 不算）。显示态同问这一处。
+pub(crate) fn refused_at(r: &QuotaReading, now: u64) -> bool {
+    r.refused && r.resets_at.is_some_and(|t| t > now)
+}
+
+/// 订阅号正在用付费超额、卡着的窗口还没重置。
+pub(crate) fn overage_in_use(r: &QuotaReading, kind: Kind, now: u64) -> bool {
+    kind == Kind::Sub && r.overage.as_ref().is_some_and(|o| o.in_use) && live(r.resets_at, now)
+}
+
+/// 一个窗口此刻的用量（已重置、未计时 ⇒ 0）。
+pub(crate) fn used_now(w: &crate::agents::QuotaWindow, now: u64) -> f64 {
+    if super::reset_since_seen(w.resets_at, now) {
+        0.0
+    } else {
+        w.used.unwrap_or(0.0)
+    }
+}
+
+/// 一个语义位此刻的窗口：在计时吗 · 用了几点 · 几点重置。
+struct Win {
+    open: bool,
+    used: f64,
+    resets: Option<u64>,
+}
+
+/// 一个语义位（`5h` / `7d`）此刻的窗口。那一位有几个窗口（`7d` 分档）⇒ 取用得最多的那个。
+fn window_fact(
+    r: Option<&QuotaReading>,
+    w: &str,
+    now: u64,
+    slot: &dyn Fn(&str) -> Option<&'static str>,
+) -> Win {
+    let closed = Win {
+        open: false,
+        used: 0.0,
+        resets: None,
+    };
+    let Some(r) = r else { return closed };
+    r.windows
+        .iter()
+        .filter(|x| slot(&x.name) == Some(w))
+        .filter(|x| x.used.is_some() && x.resets_at.is_some_and(|t| t > now))
+        .map(|x| Win {
+            open: true,
+            used: used_now(x, now) * 100.0,
+            resets: x.resets_at,
+        })
+        .max_by(|a, b| a.used.total_cmp(&b.used))
+        .unwrap_or(closed)
+}
+
+/// 事实上用不了的几种（判的那一下）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WhyNot {
+    Refused,
+    Full,
+    Overage,
+    Login,
+}
+
+/// ★ 一个号此刻**事实上**能不能用（唯一一处）：被拒 · 超额在兜 · 用满（某个窗口用到 100%、还没重置）· 要重新登录。
+/// 回 `(为什么不能用, 几点回来)`；能用 ⇒ `None`。
+fn standing(
+    r: Option<&QuotaReading>,
+    kind: Kind,
+    login_ok: bool,
+    now: u64,
+) -> Option<(WhyNot, Option<u64>)> {
+    if let Some(r) = r {
+        if refused_at(r, now) {
+            return Some((WhyNot::Refused, r.resets_at));
+        }
+        if overage_in_use(r, kind, now) {
+            return Some((WhyNot::Overage, r.resets_at));
+        }
+        let full: Vec<Option<u64>> = r
+            .windows
+            .iter()
+            .filter(|w| w.used.is_some_and(|u| u >= 1.0) && live(w.resets_at, now))
+            .map(|w| w.resets_at)
+            .collect();
+        if !full.is_empty() {
+            // 几个窗口都满着 ⇒ 都重置的那一刻；有一个说不出 ⇒ 说不出。
+            let back = full
+                .iter()
+                .copied()
+                .collect::<Option<Vec<u64>>>()
+                .and_then(|v| v.into_iter().max());
+            return Some((WhyNot::Full, back));
+        }
+    }
+    (!login_ok).then_some((WhyNot::Login, None))
+}
 
 /// 一个窗口（`5h` / `7d`）的事实：在计时吗 · 用了多少（0–100）· 几点重置 · 用速（%/分，没根据 ⇒ 缺）。
 /// 一个语义位有几个窗口（按模型分的 7 天额度）⇒ 取用得最多的那个。
@@ -91,14 +206,14 @@ fn win_of(
     rate: &dyn Fn(&str) -> Option<f64>,
     when: &dyn Fn(u64) -> String,
 ) -> WinFact {
-    let w = decide::window_fact(r, slot, now, slot_of);
+    let w = window_fact(r, slot, now, slot_of);
     // 用速取那一位上用得最多的那个窗口（同 window_fact 的取法）。
     let name = r.and_then(|r| {
         r.windows
             .iter()
             .filter(|x| slot_of(&x.name) == Some(slot))
             .filter(|x| x.used.is_some() && x.resets_at.is_some_and(|t| t > now))
-            .max_by(|a, b| decide::used_now(a, now).total_cmp(&decide::used_now(b, now)))
+            .max_by(|a, b| used_now(a, now).total_cmp(&used_now(b, now)))
             .map(|x| x.name.clone())
     });
     WinFact {
@@ -123,14 +238,14 @@ pub(crate) fn fact_of(
     rate: &dyn Fn(&str) -> Option<f64>,
     when: &dyn Fn(u64) -> String,
 ) -> Fact {
-    let st = decide::standing(r, false, kind, login == LoginState::Ok, now);
+    let st = standing(r, kind, login == LoginState::Ok, now);
     let blocked = st.map(|(w, until)| {
         let why = match w {
-            super::strategy::ctx::WhyNot::Refused => FactWhy::Refused,
-            super::strategy::ctx::WhyNot::Overage => FactWhy::Overage,
-            super::strategy::ctx::WhyNot::Full => FactWhy::Used,
-            super::strategy::ctx::WhyNot::Login if login == LoginState::NeedsKey => FactWhy::Key,
-            super::strategy::ctx::WhyNot::Login => FactWhy::Login,
+            WhyNot::Refused => FactWhy::Refused,
+            WhyNot::Overage => FactWhy::Overage,
+            WhyNot::Full => FactWhy::Used,
+            WhyNot::Login if login == LoginState::NeedsKey => FactWhy::Key,
+            WhyNot::Login => FactWhy::Login,
         };
         FactBlocked {
             why,

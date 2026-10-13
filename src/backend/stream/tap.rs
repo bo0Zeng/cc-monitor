@@ -250,16 +250,17 @@ async fn node_moved(
                 out.push((Topic::Quota, None));
             }
             if n.source == Source::Strategies {
-                out.push((Topic::RotationConfigs, None));
+                out.push((Topic::RotationStrategies, None));
             }
             if let Some(sid) = n.sid {
                 out.push((Topic::Rotation, Some(sid)));
             }
             Some(out)
         }
-        Err(RecvError::Lagged(_)) => {
-            Some(vec![(Topic::Quota, None), (Topic::RotationConfigs, None)])
-        }
+        Err(RecvError::Lagged(_)) => Some(vec![
+            (Topic::Quota, None),
+            (Topic::RotationStrategies, None),
+        ]),
         Err(RecvError::Closed) => None,
     }
 }

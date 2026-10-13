@@ -49,7 +49,7 @@ local: boolean,
  */
 ticket?: string, 
 /**
- * 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
+ * 轮换：缺 ＝ 用「新会话用」的那份策略（新会话本来就这样，不写）· `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
  */
 rotation?: RotationPick, 
 /**

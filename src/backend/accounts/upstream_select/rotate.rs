@@ -1,6 +1,7 @@
 //! 上游选择里「这个会话这一发该走哪个号」那一问：问轮换（钉在哪 · 满了换谁），拿那个号的令牌与身份，备好这一发的去处。
 //!
-//! - 判换不换、换谁只在 [`crate::accounts::quota::decide`]；这里只备料（令牌 · 身份 · 改写后的请求体）、钉号、记一条。
+//! - 判换不换、换谁归策略（[`crate::accounts::quota::rules::decide::turn`] 叫它）；只在节点上判、结论缓存到下一个节点（[`super::turn`]）。
+//!   这里只备料（令牌 · 身份 · 改写后的请求体）。
 //! - 起会话的号照今天走（[`Go::Start`]，那张决策表一个字节不变）；只有换到**别的号**时才由这里备料：
 //!   订阅号 ⇒ 鉴权头换成那个号的访问令牌（账号域 `oauth` 给，快过期就续），请求体里账号身份那一格一起换；
 //!   按量号 ⇒ 照它在 key 表里那一行，身份格换成空串。
@@ -9,15 +10,11 @@
 
 use super::table::RoutingTable;
 use crate::accounts::oauth::{self, TokenEndpoint};
-use crate::accounts::quota::decide::{self, Kind, Verdict};
+use crate::accounts::quota::facts::Kind;
 use crate::accounts::quota::ledger::Ledger;
-use crate::accounts::quota::rotation::{
-    self, Base, Baseline, Book, ConfigBody, InPlace, Leave, Params, Pick, RotationStore,
-    SessionEntry, SwitchRecord, Unready, Who,
-};
+use crate::accounts::quota::rotation::RotationStore;
 use crate::accounts::quota::show::{self, LoginState};
-use crate::accounts::quota::strategy::ctx::{Facts, Stint};
-use crate::agents::{IdentityCell, LoginFace, QuotaReading};
+use crate::agents::{IdentityCell, LoginFace};
 use crate::platform::fs::{Own, Ro};
 use crate::relay::{AuthSwap, Destination, Mode, RouteKey};
 use creds_core::SecretKey;
@@ -95,14 +92,19 @@ pub(crate) enum Go {
     Hold { reply: crate::agents::LimitReply },
 }
 
-/// 一家的窗口名 → 窗口键（这一家没给 ⇒ 一个都没有）。
-fn key_fn(agent: &str) -> impl Fn(&str) -> Option<String> {
-    let f = crate::agents::window_key_of(agent);
-    move |w: &str| f.and_then(|f| f(w))
+/// 为什么一个号接不上（备料那一下）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unready {
+    /// 拿不到这个号能用的登录（没登录 · 续期失败 · 读不出账号身份）。
+    NeedsLogin,
+    /// 按量号在这台的 key 表里没有 key。
+    NeedsKey,
+    /// 这一发的请求体里账号身份那一格认不准，换不了。
+    UnsureBody,
 }
 
 /// 一家的窗口名 → 语义位。
-fn slot_fn(agent: &str) -> impl Fn(&str) -> Option<&'static str> {
+pub(super) fn slot_fn(agent: &str) -> impl Fn(&str) -> Option<&'static str> {
     let f = crate::agents::window_slot_of(agent);
     move |w: &str| f.and_then(|f| f(w))
 }
@@ -133,9 +135,11 @@ pub(crate) struct Hop {
     pub(crate) home: Option<PathBuf>,
     pub(crate) library: LibraryRead,
     pub(crate) token: Option<TokenEndpoint>,
-    /// 这台此刻活着的会话（「另 N 会话也在用」只数它们）。
+    /// 这台此刻活着的会话。
     pub(crate) live: Live,
     identities: IdentityCache,
+    /// 每个会话上一判的结论，缓存到下一个节点（[`super::turn`]）。
+    pub(super) cache: Mutex<super::turn::Cache>,
 }
 
 impl Hop {
@@ -150,10 +154,11 @@ impl Hop {
     ) -> Self {
         Self {
             store,
-            quota,
+            quota: quota.clone(),
             home,
             library,
             token,
+            cache: Mutex::new(super::turn::Cache::new(quota.nodes())),
             live,
             identities: Mutex::new(BTreeMap::new()),
         }
@@ -163,29 +168,6 @@ impl Hop {
         self.home
             .as_deref()
             .map(|h| (self.library)(h))
-            .unwrap_or_default()
-    }
-
-    /// 额度账上这个号此刻各窗口的用量（换进它那一刻记成这一段的基线）；没见过 ⇒ 空（之后第一次说得出时补）。
-    pub(crate) fn baseline_of(&self, agent: &str, account: &str, now: u64) -> Baseline {
-        let key = key_fn(agent);
-        self.quota
-            .entry(agent, account)
-            .map(|o| {
-                o.reading
-                    .windows
-                    .iter()
-                    .filter_map(|w| {
-                        Some((
-                            key(&w.name)?,
-                            Base {
-                                used: decide::used_now(w, now),
-                                resets_at: w.resets_at,
-                            },
-                        ))
-                    })
-                    .collect()
-            })
             .unwrap_or_default()
     }
 
@@ -276,7 +258,12 @@ impl Hop {
 
     /// ★ 一个号此刻接不接得上（只读，不续令牌）—— 帧面（[`Self::view`]）只问它，真换号（[`Self::prepare`]）先问它再拿令牌，
     /// 两边同一处判：起会话的号 ⇒ 接得上；按量号 ⇒ key 表里那一行接得上；订阅号 ⇒ 盘上有登录、读得出账号身份。
-    fn reach(&self, a: &Turn<'_>, lib: &Library, account: &str) -> Result<Reach, Unready> {
+    pub(super) fn reach(
+        &self,
+        a: &Turn<'_>,
+        lib: &Library,
+        account: &str,
+    ) -> Result<Reach, Unready> {
         if account == a.start {
             return Ok(Reach::Start);
         }
@@ -288,7 +275,7 @@ impl Hop {
     }
 
     /// 备好走 `account` 的这一发（起会话的号 ⇒ [`Go::Start`]）。
-    fn prepare(
+    pub(super) fn prepare(
         &self,
         own: &Own,
         a: &Turn<'_>,
@@ -320,410 +307,6 @@ impl Hop {
         }
     }
 
-    /// ★ 一个会话此刻的场面：打开的那份配置展开成参与的号（起会话的号 · 点名的号 · 其余订阅号），每个号带事实与这一行的参数；
-    /// 在用号这一段用了几点 · 用速。`heard` ＝ 刚回来的那个回包（它答的那个号按它判）。
-    /// `live(sid)` ＝ 那个会话此刻还活着：「另 N 会话也在用」（事实 `others`）只数活着的，走了的会话还留在账本里也不算。
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn scene(
-        &self,
-        book: &Book,
-        live: &dyn Fn(&str) -> bool,
-        sid: Option<&str>,
-        agent: &str,
-        start: &str,
-        current: &str,
-        body: &ConfigBody,
-        lib: &Library,
-        row: &dyn Fn(&str) -> Option<bool>,
-        now: u64,
-        heard: Option<(&str, &QuotaReading)>,
-        baseline: &Baseline,
-        since: u64,
-    ) -> Scene {
-        let a = Turn {
-            agent,
-            start,
-            sid: sid.unwrap_or(""),
-            body: b"",
-            row,
-            now,
-        };
-        let slot = slot_fn(agent);
-        let mut named: Vec<String> = body
-            .accounts
-            .iter()
-            .filter_map(|r| match &r.who {
-                Who::Id(x) => Some(x.clone()),
-                _ => None,
-            })
-            .collect();
-        named.push(start.to_string());
-        let mut out: Vec<(Facts, Params)> = Vec::new();
-        let mut from_rest = Vec::new();
-        let mut push = |id: &str, p: &Params, rest: bool, out: &mut Vec<(Facts, Params)>| {
-            if out.iter().any(|(f, _)| f.id == id) {
-                return;
-            }
-            let kind = kind_of(&a, lib, id);
-            let reading = match heard {
-                Some((h, r)) if h == id => Some(r.clone()),
-                _ => self.quota.entry(agent, id).map(|o| o.reading),
-            };
-            let others = book
-                .sessions
-                .iter()
-                .filter(|(x, s)| {
-                    Some(x.as_str()) != sid && s.agent == agent && s.current == id && live(x)
-                })
-                .count() as u32;
-            let login_ok = self.reach(&a, lib, id).is_ok();
-            let f = decide::facts_of(
-                id,
-                reading.as_ref(),
-                heard.is_some_and(|(h, _)| h == id),
-                kind,
-                login_ok,
-                others,
-                now,
-                &slot,
-            );
-            out.push((f, p.clone()));
-            if rest {
-                from_rest.push(id.to_string());
-            }
-        };
-        for r in &body.accounts {
-            match &r.who {
-                Who::Start => push(start, &r.params, false, &mut out),
-                Who::Id(x) => push(x, &r.params, false, &mut out),
-                Who::Rest => {
-                    let rest =
-                        rest_members(lib.accounts.iter().map(|x| x.id.as_str()), &named, |x| {
-                            kind_of(&a, lib, x) == Kind::Sub
-                        });
-                    for x in &rest {
-                        push(x, &r.params, true, &mut out);
-                    }
-                }
-            }
-        }
-        let (stint, rate) = match self.pinch_of(agent, current, now) {
-            Some((o, raw, _, pct)) => {
-                let key = key_fn(agent)(&raw);
-                let base = key
-                    .as_deref()
-                    .and_then(|k| baseline.get(k))
-                    .map_or(f64::from(pct), |b| (b.used * 100.0).max(0.0));
-                (
-                    Stint {
-                        since,
-                        used: (f64::from(pct) - base).max(0.0),
-                    },
-                    o.rate(&raw, now),
-                )
-            }
-            None => (Stint { since, used: 0.0 }, None),
-        };
-        Scene {
-            accounts: out,
-            from_rest,
-            stint,
-            rate,
-        }
-    }
-
-    /// 这一家有可换的订阅号登录、这一发带着会话 id ⇒ 这个会话在这台的轮换状态（第一次看见 / 换了起它的号 ⇒ 记下）。
-    fn entry(&self, own: &Own, a: &Turn<'_>) -> Option<(Book, SessionEntry)> {
-        if a.sid.is_empty() || crate::agents::login_of(a.agent).is_none() {
-            return None;
-        }
-        let book = self.store.now();
-        let fresh = !book
-            .sessions
-            .get(a.sid)
-            .is_some_and(|s| s.start == a.start && s.agent == a.agent);
-        let stale_seen = book
-            .sessions
-            .get(a.sid)
-            .is_some_and(|s| a.now.saturating_sub(s.last_seen()) >= rotation::SEEN_REFRESH);
-        if !fresh && !stale_seen {
-            let s = book.sessions.get(a.sid)?.clone();
-            return Some((book, s));
-        }
-        let base = fresh.then(|| self.baseline_of(a.agent, a.start, a.now));
-        match rotation::relay_change(&self.store, own, |b| {
-            b.saw(a.sid, a.agent, a.start, a.now);
-            if let Some(base) = &base {
-                b.rebase(a.sid, base);
-            }
-            b.clone()
-        }) {
-            Ok(b) => {
-                let s = b.sessions.get(a.sid)?.clone();
-                Some((b, s))
-            }
-            Err(e) => {
-                tracing::warn!("[rotate] {}", e.logged());
-                None
-            }
-        }
-    }
-
-    /// 判一次：场面 → 跑策略 → 有效优先级 → 挑。回结论 ＋ 判的时候备好的那一发（换成了才有）＋ 这一判的备忘 ＋ 热换要不要清。
-    #[allow(clippy::too_many_arguments)]
-    fn judge(
-        &self,
-        own: &Own,
-        a: &Turn<'_>,
-        lib: &Library,
-        book: &Book,
-        s: &SessionEntry,
-        current: &str,
-        heard: Option<(&str, &QuotaReading)>,
-        tried: &[String],
-    ) -> Option<(Verdict, Option<Go>, Option<serde_json::Value>, bool, bool)> {
-        let o = book.opened(s)?;
-        // 判活要扫一遍 pidfile：只在真有别的会话也在某个号上时才扫（每一发都走这里）。
-        let alive = std::cell::OnceCell::new();
-        let sc = self.scene(
-            book,
-            &|x| alive.get_or_init(|| (self.live)()).contains(x),
-            Some(a.sid),
-            a.agent,
-            &s.start,
-            current,
-            o.body,
-            lib,
-            a.row,
-            a.now,
-            heard,
-            &s.baseline,
-            s.since,
-        );
-        let all = super::super::quota::strategy::all(self.store.strategy_dir().as_deref());
-        let st = super::super::quota::strategy::find(&all, &o.body.strategy);
-        let memo = s.memo.clone().unwrap_or(serde_json::Value::Null);
-        let j = decide::judge(&decide::Judge {
-            strategy: st.as_deref(),
-            body: o.body,
-            accounts: &sc.accounts,
-            now: a.now,
-            current,
-            stint: sc.stint,
-            rate: sc.rate,
-            memo: &memo,
-        });
-        if let Some(e) = &j.error {
-            tracing::warn!(
-                "[rotate] 策略「{}」这一判照内置策略 1 排：{}",
-                o.body.strategy,
-                e.msg
-            );
-        }
-        let (eff, clear_hot) = decide::effective(&j.rows, &s.manual, &sc.accounts);
-        let mut ready: Option<Go> = None;
-        let v = decide::decide(
-            &eff,
-            &decide::Pickable {
-                facts: &sc.accounts,
-                current,
-                tried,
-                can_hold: crate::agents::limit_reply_of(a.agent).is_some(),
-            },
-            &j.strategy,
-            &mut |x| {
-                self.prepare(own, a, lib, x).map(|g| {
-                    ready = Some(g);
-                })
-            },
-        );
-        let all_shut = !sc.accounts.iter().any(|(f, _)| f.ok);
-        Some((v, ready, j.memo, clear_hot, all_shut))
-    }
-
-    /// 结论落账：换成了 ⇒ 钉住、记一条（只在真换成的那一下记），交出备好的那一发；停发 ⇒ 记一条、交出「用满」回包；
-    /// 备忘 · 清热换跟着这一下写。
-    fn settle(
-        &self,
-        own: &Own,
-        a: &Turn<'_>,
-        current: &str,
-        (v, ready, memo, clear_hot): (Verdict, Option<Go>, Option<serde_json::Value>, bool),
-    ) -> Option<Go> {
-        let rec = |to: &str, leave: Leave, pick: Option<Pick>, back: Option<u64>| SwitchRecord {
-            at: a.now,
-            at_text: None,
-            from: current.to_string(),
-            to: to.to_string(),
-            leave,
-            pick,
-            from_resets_at: back,
-            from_resets_at_text: None,
-            text: None,
-        };
-        let from_back = self
-            .quota
-            .entry(a.agent, current)
-            .and_then(|o| o.reading.resets_at);
-        match v {
-            Verdict::Stay { overage } => {
-                let r = overage.then(|| rec(current, Leave::Overage, None, from_back));
-                self.write(own, |b| {
-                    let mut changed = b.set_memo(a.sid, memo.clone());
-                    if clear_hot {
-                        changed |= b.clear_hot(a.sid);
-                    }
-                    if let Some(r) = &r {
-                        changed |= b.note_stuck(a.sid, r.clone());
-                    }
-                    changed
-                });
-                None
-            }
-            Verdict::Switch { to, leave, pick } => {
-                let base = self.baseline_of(a.agent, &to, a.now);
-                let r = rec(&to, leave, Some(pick), from_back);
-                self.write(own, |b| {
-                    b.set_memo(a.sid, memo.clone());
-                    if clear_hot {
-                        b.clear_hot(a.sid);
-                    }
-                    if b.pin(a.sid, r.clone()) {
-                        b.rebase(a.sid, &base);
-                    }
-                    true
-                });
-                ready
-            }
-            Verdict::Hold { back, w } => {
-                let Some((_, at)) = back else {
-                    self.write(own, |b| b.set_memo(a.sid, memo.clone()));
-                    return None;
-                };
-                let r = rec(current, Leave::Held, None, Some(at));
-                self.write(own, |b| {
-                    let mut changed = b.set_memo(a.sid, memo.clone());
-                    if clear_hot {
-                        changed |= b.clear_hot(a.sid);
-                    }
-                    changed | b.note_stuck(a.sid, r.clone())
-                });
-                let reply = crate::agents::limit_reply_of(a.agent)?;
-                Some(Go::Hold {
-                    reply: reply(at, a.now, w.as_deref()),
-                })
-            }
-        }
-    }
-
-    /// 中转那一路写一下：先在内存里那一份上试，没改就不进锁、不写盘；改了才在锁里照同一个改法写。写不成只出声。
-    fn write(&self, own: &Own, f: impl Fn(&mut Book) -> bool) {
-        let mut probe = self.store.now();
-        let before = probe.clone();
-        f(&mut probe);
-        if probe == before {
-            return;
-        }
-        if let Err(e) = rotation::relay_change(&self.store, own, |b| {
-            f(b);
-        }) {
-            tracing::warn!("[rotate] {}", e.logged());
-        }
-    }
-
-    /// ★ 发之前：这个会话此刻照打开的那份配置判一次；换成了 ⇒ 走新号；停发 ⇒ 回「用满」。
-    /// 钉着的号接不上了（登录过期续不上…）⇒ 回到起会话的号、记一条为什么。
-    pub(crate) fn steer(&self, a: &Turn<'_>, own: &Own) -> Go {
-        let Some((book, s)) = self.entry(own, a) else {
-            return Go::Start;
-        };
-        let lib = self.library();
-        if let Some((v, ready, memo, clear, _)) =
-            self.judge(own, a, &lib, &book, &s, &s.current, None, &[])
-        {
-            if let Some(go) = self.settle(own, a, &s.current, (v, ready, memo, clear)) {
-                return go;
-            }
-        }
-        let s = self.store.now().sessions.get(a.sid).cloned().unwrap_or(s);
-        // 换进来时说不出的窗口，这会儿额度账上有了 ⇒ 补进这一段的基线。
-        let base = self.baseline_of(a.agent, &s.current, a.now);
-        if base.keys().any(|k| !s.baseline.contains_key(k)) {
-            if let Err(e) = rotation::relay_change(&self.store, own, |b| b.rebase(a.sid, &base)) {
-                tracing::warn!("[rotate] {}", e.logged());
-            }
-        }
-        if s.current == s.start {
-            return Go::Start;
-        }
-        match self.prepare(own, a, &lib, &s.current) {
-            Ok(go) => go,
-            Err(_) => {
-                let rec = SwitchRecord {
-                    at: a.now,
-                    at_text: None,
-                    from: s.current.clone(),
-                    to: s.start.clone(),
-                    leave: Leave::Unusable {
-                        why: serde_json::json!({"k": "@login"}),
-                    },
-                    pick: None,
-                    from_resets_at: None,
-                    from_resets_at_text: None,
-                    text: None,
-                };
-                let base = self.baseline_of(a.agent, &s.start, a.now);
-                if let Err(e) = rotation::relay_change(&self.store, own, |b| {
-                    if b.pin(a.sid, rec) {
-                        b.rebase(a.sid, &base);
-                    }
-                }) {
-                    tracing::warn!("[rotate] {}", e.logged());
-                }
-                Go::Start
-            }
-        }
-    }
-
-    /// ★ 回包被拒：照打开的那份配置再判一次（`tried` ＝ 这一发已经发过的号，`heard_from` 是答这一发的那个）。
-    /// 别的请求刚把这个会话换走了 ⇒ 跟上它（不另记）。没得换 ⇒ `None`（中转原样交回拒绝）。
-    pub(crate) fn on_refused(
-        &self,
-        a: &Turn<'_>,
-        heard_from: &str,
-        heard: &QuotaReading,
-        tried: &[String],
-        own: &Own,
-    ) -> Option<Go> {
-        self.quota
-            .notify(super::super::quota::nodes::Source::Refused, Some(a.sid));
-        let (book, s) = self.entry(own, a)?;
-        let lib = self.library();
-        if s.current != heard_from && !tried.contains(&s.current) {
-            if let Ok(go) = self.prepare(own, a, &lib, &s.current) {
-                return Some(go);
-            }
-        }
-        let judged = self.judge(
-            own,
-            a,
-            &lib,
-            &book,
-            &s,
-            heard_from,
-            Some((heard_from, heard)),
-            tried,
-        )?;
-        // 一个号事实上都不能用（都被拒着）⇒ 上游那份拒绝就是真的「用满」：照记一条，原样交回（不另造一份）。
-        let all_shut = matches!(judged.0, Verdict::Hold { .. }) && judged.4;
-        let go = self.settle(own, a, heard_from, (judged.0, judged.1, judged.2, judged.3));
-        if all_shut {
-            return None;
-        }
-        go
-    }
-
-    /// 订阅号「拿得到登录」的只读那一版（不续令牌）：配置目录在 · 有凭据文件 · 读得出身份（交回身份）。
     fn who_on_disk(&self, agent: &str, lib: &Library, account: &str) -> Result<String, Unready> {
         let face = crate::agents::login_of(agent).ok_or(Unready::NeedsLogin)?;
         let (dir, base) = self
@@ -773,8 +356,7 @@ impl Hop {
         }
     }
 
-    /// ★ 这台这一家每个号此刻的事实（`rotation-facts` 与以后的判 · 推演同用这一处；只读：不续令牌、不记）。
-    /// 号照账号库的先后。
+    /// ★ 这台这一家每个号此刻的事实（`rotation-facts` 与判 · 推演同用这一处；只读：不续令牌、不记）。号照账号库的先后。
     pub(crate) fn facts(
         &self,
         agent: &str,
@@ -783,6 +365,22 @@ impl Hop {
         tz: &crate::Tz,
     ) -> Vec<crate::accounts::quota::facts::Fact> {
         let lib = self.library();
+        lib.accounts
+            .iter()
+            .map(|a| self.fact_one(agent, &lib, &a.id, row, now, tz))
+            .collect()
+    }
+
+    /// 一个号的事实（不在账号库里的号也拼得出：开会话用的号没说是哪个号时）。
+    pub(crate) fn fact_one(
+        &self,
+        agent: &str,
+        lib: &Library,
+        id: &str,
+        row: &dyn Fn(&str) -> Option<bool>,
+        now: u64,
+        tz: &crate::Tz,
+    ) -> crate::accounts::quota::facts::Fact {
         let slot = slot_fn(agent);
         let when = |t: u64| {
             crate::common::time::fmt_at(
@@ -791,325 +389,19 @@ impl Hop {
                 tz,
             )
         };
-        lib.accounts
-            .iter()
-            .map(|a| {
-                let o = self.quota.entry(agent, &a.id);
-                let rate = |name: &str| o.as_ref().and_then(|o| o.rate(name, now));
-                crate::accounts::quota::facts::fact_of(
-                    &a.id,
-                    o.as_ref().map(|o| &o.reading),
-                    o.as_ref().map(|o| o.seen_at),
-                    kind_with(row, &lib, &a.id),
-                    self.show_facts(agent, &lib, &a.id, row).login,
-                    now,
-                    &slot,
-                    &rate,
-                    &when,
-                )
-            })
-            .collect()
-    }
-
-    /// 帧面「现在就换」：目标号此刻接不接得上（订阅号要真拿到令牌 —— 快过期就续，续不上照实报）。
-    pub(crate) fn check_target(
-        &self,
-        own: &Own,
-        agent: &str,
-        start: &str,
-        target: &str,
-        row: &dyn Fn(&str) -> Option<bool>,
-        now: u64,
-    ) -> Result<(), Unready> {
-        let a = Turn {
-            agent,
-            start,
-            sid: "",
-            body: b"",
-            row,
+        let o = self.quota.entry(agent, id);
+        let rate = |name: &str| o.as_ref().and_then(|o| o.rate(name, now));
+        crate::accounts::quota::facts::fact_of(
+            id,
+            o.as_ref().map(|o| &o.reading),
+            o.as_ref().map(|o| o.seen_at),
+            kind_with(row, lib, id),
+            self.show_facts(agent, lib, id, row).login,
             now,
-        };
-        self.prepare(own, &a, &self.library(), target).map(|_| ())
-    }
-
-    /// 一个号此刻卡人的窗口：那一条账 · 那个窗口在这一家的原名 · 语义位（没有 ⇒ 窗口键）· 用了多少（%）。额度账说卡在哪个窗口就取它，没说 ⇒ 用得最多的那个；没出过数 ⇒ `None`。
-    fn pinch_of(
-        &self,
-        agent: &str,
-        account: &str,
-        now: u64,
-    ) -> Option<(
-        crate::accounts::quota::ledger::Observed,
-        String,
-        String,
-        u32,
-    )> {
-        let o = self.quota.entry(agent, account)?;
-        let (slot, key) = (slot_fn(agent), key_fn(agent));
-        let ws = &o.reading.windows;
-        let w = o
-            .reading
-            .limiting
-            .as_deref()
-            .and_then(|l| ws.iter().find(|w| w.name == l && w.used.is_some()))
-            .or_else(|| {
-                ws.iter()
-                    .filter(|w| w.used.is_some())
-                    .max_by(|a, b| decide::used_now(a, now).total_cmp(&decide::used_now(b, now)))
-            })?;
-        let name = slot(&w.name).map_or_else(|| key(&w.name), |s| Some(s.to_string()))?;
-        let pct = (decide::used_now(w, now) * 100.0).round().max(0.0) as u32;
-        let raw = w.name.clone();
-        Some((o, raw, name, pct))
-    }
-
-    /// 帧面：一个会话的那一份（打开的配置 · 场面 · 有效优先级 · 结论 · 此刻那个号的显示态）。只读：不记、不续令牌。
-    /// `live(sid)` ＝ 这个会话的进程此刻还活着。中转没见过它 ⇒ `Err(能不能不重启换)`。
-    pub(crate) fn view(
-        &self,
-        book: &Book,
-        sid: &str,
-        row: &dyn Fn(&str) -> Option<bool>,
-        live: &dyn Fn(&str) -> bool,
-        now: u64,
-    ) -> Result<SessionView, InPlace> {
-        let lib = self.library();
-        let Some(s) = book.sessions.get(sid) else {
-            return Err(InPlace::NoRelay);
-        };
-        let in_place = if !live(sid) {
-            InPlace::Ended
-        } else if crate::agents::login_of(&s.agent).is_none() {
-            InPlace::AgentHasNoAccounts
-        } else if !lib.enabled {
-            InPlace::MachineNotMulti
-        } else {
-            InPlace::Ok
-        };
-        let o = book.opened(s).ok_or(InPlace::NoRelay)?;
-        let (id, rev, dirty, body) = (o.id.to_string(), o.rev, o.dirty, o.body.clone());
-        let sc = self.scene(
-            book,
-            live,
-            Some(sid),
-            &s.agent,
-            &s.start,
-            &s.current,
-            &body,
-            &lib,
-            row,
-            now,
-            None,
-            &s.baseline,
-            s.since,
-        );
-        let all = super::super::quota::strategy::all(self.store.strategy_dir().as_deref());
-        let strategy = super::super::quota::strategy::find(&all, &body.strategy);
-        let memo = s.memo.clone().unwrap_or(serde_json::Value::Null);
-        let judged = decide::judge(&decide::Judge {
-            strategy: strategy.as_deref(),
-            body: &body,
-            accounts: &sc.accounts,
-            now,
-            current: &s.current,
-            stint: sc.stint,
-            rate: sc.rate,
-            memo: &memo,
-        });
-        let a = Turn {
-            agent: &s.agent,
-            start: &s.start,
-            sid,
-            body: b"",
-            row,
-            now,
-        };
-        let (eff, hot_stale) = decide::effective(&judged.rows, &s.manual, &sc.accounts);
-        let verdict = decide::decide(
-            &eff,
-            &decide::Pickable {
-                facts: &sc.accounts,
-                current: &s.current,
-                tried: &[],
-                can_hold: crate::agents::limit_reply_of(&s.agent).is_some(),
-            },
-            &judged.strategy,
-            &mut |x| self.reach(&a, &lib, x).map(|_| ()),
-        );
-        let slot_of = slot_fn(&s.agent);
-        let key = key_fn(&s.agent);
-        let held = self.quota.entry(&s.agent, &s.current);
-        let cur_params = sc
-            .accounts
-            .iter()
-            .find(|(f, _)| f.id == s.current)
-            .map(|(_, p)| p.clone());
-        let mut quota = show::show(
-            held.as_ref().map(|o| (&o.reading, o.seen_at)),
-            self.show_facts(&s.agent, &lib, &s.current, row),
-            &show::lines_of(cur_params.as_ref(), body.clock_at(now), &slot_of),
-            now,
-            &slot_of,
-        );
-        if let Some(o) = &held {
-            quota.windows = show::windows_of(o, &key, now);
-        }
-        Ok(SessionView {
-            entry: s.clone(),
-            in_place,
-            config_id: id,
-            rev,
-            dirty,
-            body,
-            scene: sc,
-            judged,
-            eff,
-            hot_stale,
-            verdict,
-            quota,
-        })
-    }
-
-    /// 帧面：一份配置（或草稿）此刻在这台的场面（推演 · 试跑用；没有会话 ⇒ 起会话的号取 `start`，在用的号取有效优先级第一个能用的）。
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn scene_of(
-        &self,
-        book: &Book,
-        live: &dyn Fn(&str) -> bool,
-        agent: &str,
-        start: &str,
-        current: &str,
-        body: &ConfigBody,
-        row: &dyn Fn(&str) -> Option<bool>,
-        now: u64,
-    ) -> Scene {
-        let lib = self.library();
-        self.scene(
-            book,
-            live,
-            None,
-            agent,
-            start,
-            current,
-            body,
-            &lib,
-            row,
-            now,
-            None,
-            &Baseline::new(),
-            now,
+            &slot,
+            &rate,
+            &when,
         )
-    }
-
-    /// 一个号接不接得上（只读）。
-    pub(crate) fn ready(
-        &self,
-        agent: &str,
-        start: &str,
-        account: &str,
-        row: &dyn Fn(&str) -> Option<bool>,
-        now: u64,
-    ) -> bool {
-        let a = Turn {
-            agent,
-            start,
-            sid: "",
-            body: b"",
-            row,
-            now,
-        };
-        self.reach(&a, &self.library(), account).is_ok()
-    }
-}
-
-/// 一个会话此刻的场面：参与的号（按写下的先后，事实 ＋ 这一行的参数）· 哪几个是从「其余的订阅号」那一行来的 · 这一段 · 用速。
-#[derive(Debug, Clone)]
-pub(crate) struct Scene {
-    pub(crate) accounts: Vec<(Facts, Params)>,
-    pub(crate) from_rest: Vec<String>,
-    pub(crate) stint: Stint,
-    pub(crate) rate: Option<f64>,
-}
-
-/// [`Hop::view`] 的结果。
-pub(crate) struct SessionView {
-    pub(crate) entry: SessionEntry,
-    pub(crate) in_place: InPlace,
-    pub(crate) config_id: String,
-    pub(crate) rev: u64,
-    pub(crate) dirty: bool,
-    pub(crate) body: ConfigBody,
-    pub(crate) scene: Scene,
-    pub(crate) judged: decide::Judged,
-    pub(crate) eff: Vec<decide::Ranked>,
-    /// 热换的号已经到线 / 不能用了（下一发会清掉）。
-    pub(crate) hot_stale: bool,
-    pub(crate) verdict: Verdict,
-    pub(crate) quota: show::QuotaShow,
-}
-
-impl SessionView {
-    /// ★ 面板上那张列表（有效优先级照它显示、拖的位置也照它数）：第一行固定是在用的号，往下照有效优先级排；
-    /// `_`（起会话时没说是哪个号）不进候选：它不是一个能放、能换过去的号；场面里没有事实的号不列。
-    pub(crate) fn shown(&self) -> Vec<&decide::Ranked> {
-        let mut out: Vec<&decide::Ranked> = self
-            .eff
-            .iter()
-            .filter(|r| crate::accounts::quota::name_words::is_candidate(&r.account))
-            .filter(|r| self.scene.accounts.iter().any(|(f, _)| f.id == r.account))
-            .collect();
-        if let Some(i) = out.iter().position(|r| r.account == self.entry.current) {
-            let r = out.remove(i);
-            out.insert(0, r);
-        }
-        out
-    }
-
-    /// ★ 把 `account` 拖到面板那张列表（[`SessionView::shown`]）的第 `at` 行（`at ≥ 1`；越界取末尾）之后，手动调整里的 `place` 该是什么样：
-    /// 有效优先级里把它挪到落点下面那一行的前头（落在末尾 ⇒ 挪到最后），拖过的号（连它）各钉在挪完之后的那一位
-    /// （数的是除热换的号之外的那张列表，同 [`decide::overlay`]）⇒ 叠回去恰好是拖完的样子。拖的是热换过去的号 ⇒ 不变。它不在那张列表里 ⇒ `None`。
-    pub(crate) fn placed(&self, account: &str, at: usize) -> Option<Vec<rotation::Place>> {
-        let shown: Vec<&str> = self.shown().iter().map(|r| r.account.as_str()).collect();
-        let from = shown.iter().position(|a| *a == account)?;
-        let mut after = shown.clone();
-        after.remove(from);
-        let to = at.min(after.len());
-        let below = after.get(to).copied();
-        let mut eff: Vec<&str> = self
-            .eff
-            .iter()
-            .map(|r| r.account.as_str())
-            .filter(|a| *a != account)
-            .collect();
-        let i = below
-            .and_then(|b| eff.iter().position(|a| *a == b))
-            .unwrap_or(eff.len());
-        eff.insert(i, account);
-        let hot = (!self.hot_stale)
-            .then_some(self.entry.manual.hot.as_ref())
-            .flatten()
-            .map(|h| h.account.as_str());
-        if hot == Some(account) {
-            // 热换过去的那个号恒在第一行（面板也把在用的提到第一行）：拖它不改先后。
-            return Some(self.entry.manual.place.clone());
-        }
-        eff.retain(|a| Some(*a) != hot);
-        let mut place: Vec<rotation::Place> = self
-            .entry
-            .manual
-            .place
-            .iter()
-            .filter(|p| p.account != account)
-            .map(|p| rotation::Place {
-                account: p.account.clone(),
-                at: eff.iter().position(|a| *a == p.account).unwrap_or(p.at),
-            })
-            .collect();
-        place.push(rotation::Place {
-            account: account.to_string(),
-            at: eff.iter().position(|a| *a == account)?,
-        });
-        Some(place)
     }
 }
 
@@ -1127,7 +419,7 @@ fn kind_with(row: &dyn Fn(&str) -> Option<bool>, lib: &Library, account: &str) -
 }
 
 /// [`Hop::reach`] 的答：接得上的是哪一种。
-enum Reach {
+pub(super) enum Reach {
     Start,
     Api,
     Sub,

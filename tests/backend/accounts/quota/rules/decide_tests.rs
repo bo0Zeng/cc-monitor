@@ -664,7 +664,7 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
     (s, f, sigma)
 }
 
-/// 照估计往前走一分钟（同推演：只有在用的号涨 · 到点重置 · 被拒到期 · 开始用时窗口开始计时；重置落在这一分钟里照拆开算）。
+/// 照估计往前走一分钟（同推演：量得到用速的号照它涨（窗口开着的）· 到点重置 · 被拒到期 · 开始用时窗口开始计时；重置落在这一分钟里照拆开算）。
 fn step(f: &mut [Acct], using: Option<&str>, t: u64, dt: u64) {
     for x in f.iter_mut() {
         let in_use = using == Some(x.id.as_str());
@@ -684,8 +684,8 @@ fn step(f: &mut [Acct], using: Option<&str>, t: u64, dt: u64) {
                         x.resets[w] = None;
                     }
                 }
-                _ if in_use => x.used[w] += rate * dt as f64 / 60.0,
-                _ => {}
+                Some(_) => x.used[w] += rate * dt as f64 / 60.0,
+                None => {}
             }
         }
         if x.refused_until.is_some_and(|u| u <= t + dt) {

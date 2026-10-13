@@ -291,23 +291,21 @@ fn every_registered_command_declares_its_run_kind() {
                 | "rotation-try"
                 // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
                 | "quota-probe"
-                // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
-                | "rotation-configs-read"
-                | "rotation-config-save"
-                | "rotation-config-rename"
-                | "rotation-config-delete"
-                | "rotation-default-set"
-                | "rotation-strategies-read"
+                // 轮换：读 / 锁里原子写 `rotation.json` 与策略目录（同步文件 I/O，读的那几条还在沙箱里跑策略）。
+                | "rotation-strategies"
+                | "rotation-view"
+                | "rotation-settings"
+                | "rotation-save"
+                | "rotation-revert"
+                | "rotation-use"
+                | "rotation-for-new"
+                | "rotation-temp"
+                | "rotation-use-now"
                 | "rotation-strategy-add"
+                | "rotation-strategy-copy"
+                | "rotation-strategy-rename"
                 | "rotation-strategy-delete"
-                | "rotation-strategy-try"
-                | "rotation-plan"
-                | "rotation-session-read"
-                | "rotation-session-open"
-                | "rotation-session-edit"
-                | "rotation-session-save"
-                | "rotation-session-revert"
-                | "rotation-session-set"
+                | "rotation-day-paint"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
                 // 动一个会话之前会打断什么：读 pidfile 目录 ＋ 任务目录（同步文件 I/O）。
@@ -572,22 +570,20 @@ fn every_registered_command_declares_its_run_kind() {
         "quota-probe",
         "rotation-facts",
         "rotation-try",
-        "rotation-configs-read",
-        "rotation-config-save",
-        "rotation-config-rename",
-        "rotation-config-delete",
-        "rotation-default-set",
-        "rotation-strategies-read",
+        "rotation-strategies",
+        "rotation-view",
+        "rotation-settings",
+        "rotation-save",
+        "rotation-revert",
+        "rotation-use",
+        "rotation-for-new",
+        "rotation-temp",
+        "rotation-use-now",
         "rotation-strategy-add",
+        "rotation-strategy-copy",
+        "rotation-strategy-rename",
         "rotation-strategy-delete",
-        "rotation-strategy-try",
-        "rotation-plan",
-        "rotation-session-read",
-        "rotation-session-open",
-        "rotation-session-edit",
-        "rotation-session-save",
-        "rotation-session-revert",
-        "rotation-session-set",
+        "rotation-day-paint",
         "tasks-list",
         "session-interrupts",
         "mcp-read",
@@ -696,8 +692,6 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-files",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
-        // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
-        "rotation-switch",
         // 终端管理 L1 三条：阻塞（起 tmux）。
         "terminals-list",
         "terminal-preview",
@@ -1189,38 +1183,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    ("rotation-config-delete", sampled::<rf::ConfigDropped>, &[], &[]),
-    ("rotation-config-rename", sampled::<rf::ConfigSaved>, &[], &[]),
-    ("rotation-config-save", sampled::<rf::ConfigSaved>, &[], &[]),
-    ("rotation-configs-read", sampled::<rf::ConfigsRead>, &[], &[]),
-    ("rotation-default-set", sampled::<rf::Done>, &[], &[]),
-    (
-        "rotation-plan",
-        sampled::<rf::PlanReply>,
-        &[],
-        &[(
-            "names",
-            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
-        )],
-    ),
-    (
-        "rotation-session-read",
-        sampled::<rf::SessionRead>,
-        &[],
-        &[(
-            "names",
-            "出口那一遍添的号名 / 位名表（`accounts::quota::name_words::with_names`），不在结构体里",
-        )],
-    ),
-    ("rotation-session-edit", sampled::<rf::SessionEdited>, &[], &[]),
-    ("rotation-session-open", sampled::<rf::SessionOpened>, &[], &[]),
-    ("rotation-session-revert", sampled::<rf::Done>, &[], &[]),
-    ("rotation-session-save", sampled::<rf::SessionSaved>, &[], &[]),
-    ("rotation-session-set", sampled::<rf::Placed>, &[], &[]),
-    ("rotation-strategies-read", sampled::<rf::StrategiesRead>, &[], &[]),
-    ("rotation-strategy-add", sampled::<rf::StrategyChanged>, &[], &[]),
-    ("rotation-strategy-delete", sampled::<rf::StrategyChanged>, &[], &[]),
-    ("rotation-strategy-try", sampled::<rf::TryReply>, &[], &[]),
 ];
 
 /// ★★ **注册表登的出参字段 ＝ 那条命令真序列化出来的字段**（两向相等）。
@@ -1239,8 +1201,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
 #[test]
 fn every_command_declares_exactly_the_fields_it_puts_out() {
     const FOOTPRINT_REPORT: &str = include_str!("../../__fixtures__/footprint-report.golden.json");
-    const ROTATION_SWITCH_RESTART: &str =
-        include_str!("../../__fixtures__/rotation-switch-restart.golden.json");
     const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
     const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
@@ -1440,7 +1400,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
         ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
-        ("rotation-switch", ROTATION_SWITCH_RESTART, "", &[], &[]),
         (
             "session-fork",
             SESSION_FORK,
@@ -1697,122 +1656,9 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     );
 }
 
-/// ★ **顶层是枚举的 typed 应答，样本数不少于变体数**（[`crate::guard_support::Shaped`] 头注那条规矩的硬下限）。
-///
-/// 变体数从源码数：类型全名（`std::any::type_name`）⇒ 模块路径 ⇒ `src/backend/<路径>.rs` 或 `…/mod.rs`，在那份生产段里找
-/// `enum <名>` / `struct <名>`，枚举体在顶层按逗号切、去掉属性与注释后数。找不到定义 ⇒ 红（量具坏了，不当它是结构体放过）。
-/// 只管个数：样本是不是恰好每个变体各一个，它看不出（那要靠写样本的人照规矩来）。
-#[test]
-fn typed_enum_replies_sample_every_variant() {
-    fn variants_of(type_path: &str) -> Option<usize> {
-        let mut segs: Vec<&str> = type_path.split("::").collect();
-        let name = segs.pop().expect("类型全名为空");
-        assert_eq!(
-            segs.first().copied(),
-            Some("cc_monitor_backend"),
-            "`{type_path}` 不在本 crate 里"
-        );
-        let rel = segs[1..].join("/");
-        let root = crate::guard_support::src_root();
-        let file = [format!("{rel}.rs"), format!("{rel}/mod.rs")]
-            .into_iter()
-            .map(|r| root.join(r))
-            .find(|p| p.is_file())
-            .unwrap_or_else(|| panic!("`{type_path}`：找不到模块文件 `{rel}.rs` / `{rel}/mod.rs`"));
-        let raw = std::fs::read_to_string(&file).unwrap();
-        let code: String = crate::guard_support::production_code(&raw)
-            .lines()
-            .map(|l| l.find("//").map_or(l, |i| &l[..i]))
-            .collect::<Vec<_>>()
-            .join("\n");
-        let is_word = |c: char| c.is_alphanumeric() || c == '_';
-        let find_item = |kw: &str| {
-            code.match_indices(kw).map(|(i, _)| i).find(|&i| {
-                let before = code[..i].chars().next_back();
-                let after = &code[i + kw.len()..];
-                before.is_none_or(|c| !is_word(c))
-                    && after.starts_with(char::is_whitespace)
-                    && after
-                        .trim_start()
-                        .strip_prefix(name)
-                        .is_some_and(|rest| !rest.starts_with(is_word))
-            })
-        };
-        let at = match (find_item("enum"), find_item("struct")) {
-            (Some(i), None) => i,
-            (None, Some(_)) => return None,
-            (None, None) => panic!(
-                "`{type_path}`：`{}` 里找不到 `enum {name}` / `struct {name}`",
-                file.display()
-            ),
-            (Some(_), Some(_)) => panic!(
-                "`{type_path}`：`{}` 里 `{name}` 既有 enum 又有 struct",
-                file.display()
-            ),
-        };
-        let open = at + code[at..].find('{').expect("枚举没有体");
-        let (mut depth, mut count, mut piece) = (0i32, 0usize, String::new());
-        let mut flush = |piece: &mut String| {
-            let mut t = piece.trim().to_string();
-            while let Some(rest) = t.strip_prefix("#[") {
-                let mut d = 1;
-                let end = rest
-                    .char_indices()
-                    .find(|(_, c)| {
-                        match c {
-                            '[' => d += 1,
-                            ']' => d -= 1,
-                            _ => {}
-                        }
-                        d == 0
-                    })
-                    .map(|(i, _)| i)
-                    .expect("属性没收口");
-                t = rest[end + 1..].trim().to_string();
-            }
-            if !t.is_empty() {
-                count += 1;
-            }
-            piece.clear();
-        };
-        for c in code[open + 1..].chars() {
-            match c {
-                '{' | '(' | '[' | '<' => depth += 1,
-                '}' if depth == 0 => break,
-                '}' | ')' | ']' | '>' => depth -= 1,
-                ',' if depth == 0 => {
-                    flush(&mut piece);
-                    continue;
-                }
-                _ => {}
-            }
-            piece.push(c);
-        }
-        flush(&mut piece);
-        Some(count)
-    }
-    let mut bad = Vec::new();
-    let mut enums = 0usize;
-    for (cmd, of, _, _) in TYPED {
-        for (ty, n) in of().census {
-            if let Some(v) = variants_of(ty) {
-                enums += 1;
-                if n < v {
-                    bad.push(format!("  {cmd}：`{ty}` 有 {v} 个变体，样本只有 {n} 个"));
-                }
-            }
-        }
-    }
-    assert!(
-        enums >= 2,
-        "`TYPED` 里只数到 {enums} 个顶层是枚举的应答 —— 量具坏了（`rotation-config-save` · `rotation-session-save` 都是），本条在空转"
-    );
-    assert!(
-        bad.is_empty(),
-        "顶层是枚举的 typed 应答要每个变体一个样本（漏了的那一支，它的格判据就看不见）：\n{}",
-        bad.join("\n")
-    );
-}
+// `typed_enum_replies_sample_every_variant` 摘了：顶层是枚举的那几条应答（`rotation-config-save` · `rotation-session-save`）
+// 随轮换第五版删了，手写字段表的那一族里再没有顶层是枚举的应答，那条判据数到 0 就是空转。第五版的命令都是 typed，
+// 形状从类型生成（`stream::typed` 的形状指纹），不经这张表。
 
 /// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::AsyncOwn(` …）只许在
 /// `stream/inbound/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面

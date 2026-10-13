@@ -16,7 +16,7 @@ fn cap_at(segs, clock) {
   100.0
 }
 
-// 某组分段从此刻起到下一条边界还有几分钟（没有分段 ⇒ ()）。
+// 某组分段从此刻起到下一条边界还有几分钟（没有分段 ⇒ ()）。边界两边上限一样的不算（一整天一段的，零点不是边界）。
 fn next_edge(segs, clock) {
   if segs == () { return (); }
   let best = ();
@@ -25,6 +25,7 @@ fn next_edge(segs, clock) {
       let e = e % 1440;
       let d = (e + 1440 - clock) % 1440;
       if d == 0 { continue; }
+      if cap_at(segs, (e + 1439) % 1440) == cap_at(segs, e) { continue; }
       if best == () || d < best { best = d; }
     }
   }

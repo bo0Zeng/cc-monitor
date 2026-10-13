@@ -53,7 +53,6 @@ fn ctx(root: &std::path::Path) -> crate::faces::rotation_face::Ctx {
             None,
         ),
         rows: Box::new(|_, a| (a == "api").then_some(true)),
-        tz: crate::Tz::default(),
     }
 }
 
@@ -96,6 +95,7 @@ fn each_account_comes_back_with_its_facts_field_for_field() {
     ledger::record_seen(
         &c.hop.quota,
         &own,
+        None,
         "claude-code",
         "b",
         reading(0.42, false),
@@ -107,7 +107,7 @@ fn each_account_comes_back_with_its_facts_field_for_field() {
             agent: Some("claude-code".into()),
         },
         NOW,
-        &c.tz,
+        &crate::Tz::default(),
     );
     assert_eq!(got.now, NOW);
     let names: Vec<&str> = got.accounts.iter().map(|f| f.account.as_str()).collect();
@@ -116,7 +116,7 @@ fn each_account_comes_back_with_its_facts_field_for_field() {
     assert_eq!(
         (b.kind, b.login, b.seen_at, &b.blocked),
         (
-            crate::accounts::quota::decide::Kind::Sub,
+            crate::accounts::quota::facts::Kind::Sub,
             LoginState::Ok,
             Some(NOW),
             &None
@@ -141,7 +141,7 @@ fn each_account_comes_back_with_its_facts_field_for_field() {
     assert_eq!(
         (api.kind, api.login, &api.blocked),
         (
-            crate::accounts::quota::decide::Kind::Api,
+            crate::accounts::quota::facts::Kind::Api,
             LoginState::Ok,
             &None
         )
@@ -158,15 +158,16 @@ fn a_refused_or_used_up_account_says_why_and_until_when() {
     ledger::record_seen(
         &c.hop.quota,
         &own,
+        None,
         "claude-code",
         "b",
         reading(1.02, true),
         NOW,
     );
-    let got = facts_with(&c, &RotationFactsReq::default(), NOW, &c.tz);
+    let got = facts_with(&c, &RotationFactsReq::default(), NOW, &crate::Tz::default());
     let b = got.accounts[0].blocked.clone().expect("被拒");
     assert_eq!((b.why, b.until), (FactWhy::Refused, Some(NOW + 3_600)));
-    let at = crate::common::time::fmt_at((NOW + 3_600) as i64, NOW as i64, &c.tz);
+    let at = crate::common::time::fmt_at((NOW + 3_600) as i64, NOW as i64, &crate::Tz::default());
     assert_eq!(
         b.text,
         copy_core::copy_text("beRotation.fact.refused", &[("at", &at)])
@@ -174,12 +175,18 @@ fn a_refused_or_used_up_account_says_why_and_until_when() {
     ledger::record_seen(
         &c.hop.quota,
         &own,
+        None,
         "claude-code",
         "b",
         reading(1.0, false),
         NOW + 1,
     );
-    let got = facts_with(&c, &RotationFactsReq::default(), NOW + 1, &c.tz);
+    let got = facts_with(
+        &c,
+        &RotationFactsReq::default(),
+        NOW + 1,
+        &crate::Tz::default(),
+    );
     let b = got.accounts[0].blocked.clone().expect("用满");
     assert_eq!(b.why, FactWhy::Used);
     let _ = std::fs::remove_dir_all(&root);

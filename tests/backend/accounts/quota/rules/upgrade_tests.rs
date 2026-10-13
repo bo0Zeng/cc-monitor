@@ -271,7 +271,7 @@ fn u7_session_state_maps_over() {
             },
         ]
     );
-    assert_eq!(u.book.version, book::VERSION);
+    assert_eq!(u.book.version, book::BOOK_VERSION);
 }
 
 #[test]

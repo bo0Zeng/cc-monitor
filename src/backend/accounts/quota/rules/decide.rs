@@ -110,6 +110,8 @@ pub(crate) struct Decision {
     pub(crate) from_temp: bool,
     /// 下一个已知节点（重置 · 被拒到期 · 挡着的到期 · 策略约的时刻 · 停发到期）。
     pub(crate) tn: Option<u64>,
+    /// 策略约的时刻（原样存进会话，推演与下一判从它接着）。
+    pub(crate) wake_at: Option<u64>,
     pub(crate) strategy_error: Option<super::super::strategy::Fail>,
 }
 
@@ -146,11 +148,7 @@ pub(crate) fn ctx_of<'a>(
                 used: [standing::used_at(x, 0, t), standing::used_at(x, 1, t)],
                 resets: x.resets.map(|r| r.filter(|r| *r > t)),
                 refused_until: x.refused_until.filter(|u| *u > t),
-                rate: if x.id == sigma.current {
-                    x.rate
-                } else {
-                    [None, None]
-                },
+                rate: x.rate,
             })
             .collect(),
     }
@@ -270,6 +268,7 @@ pub(crate) fn turn(
         why: v.why,
         from_temp,
         tn: tn.into_iter().filter(|x| *x > t).min(),
+        wake_at,
         strategy_error,
     }
 }

@@ -294,6 +294,18 @@ impl Ledger {
         }
     }
 
+    /// 换一条节点通道（判据各用自己的一条，不跟并行的判据串）。
+    #[cfg(test)]
+    pub(crate) fn with_nodes(mut self, tx: super::nodes::Nodes) -> Self {
+        self.nodes = tx;
+        self
+    }
+
+    /// 发节点的那一条（判的缓存订它）。
+    pub(crate) fn nodes(&self) -> &super::nodes::Nodes {
+        &self.nodes
+    }
+
     /// 发一件事实的节点（被拒 · 续期失败由换号那一路调；显示变了由记账这里自己调）。
     pub(crate) fn notify(&self, source: super::nodes::Source, sid: Option<&str>) {
         super::nodes::emit(&self.nodes, source, sid);
@@ -308,8 +320,9 @@ impl Ledger {
             .cloned()
     }
 
-    fn ring(&self) {
-        self.notify(super::nodes::Source::Reading, None);
+    /// 显示变了：哪个会话的回包带来的（官方客户端报的 ⇒ 空，算外来的）。
+    fn ring(&self, sid: Option<&str>) {
+        self.notify(super::nodes::Source::Reading, sid);
     }
 
     /// 落了盘之后：戳跟上；内存那一条换成盘上合并好的那份（内存里那条没更新过才换）。
@@ -337,11 +350,13 @@ pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf>
         .map(|d| d.join(FILE_NAME))
 }
 
-/// 记一条观测（中转那一路的写口，来源 `headers`）。显示变了 ⇒ 推一下、立刻落盘；没变 ⇒ 盘上的时刻落后够久才落。
+/// 记一条观测（中转那一路的写口，来源 `headers`）。显示变了 ⇒ 发一件读数节点（带这一发的会话）、立刻落盘；没变 ⇒ 盘上的时刻落后够久才落。
 /// 落盘失败只出声，不影响这一发（额度账不是请求的前提）。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn record_seen(
     ledger: &Ledger,
     own: &Own,
+    sid: Option<&str>,
     agent: &str,
     account: &str,
     reading: QuotaReading,
@@ -391,7 +406,7 @@ pub(crate) fn record_seen(
         }
     }
     if changed {
-        ledger.ring();
+        ledger.ring(sid);
     }
 }
 
@@ -440,7 +455,7 @@ pub(crate) fn record_probe(
     let changed = before.is_none_or(|b| shown(&b.reading) != shown(&written.reading));
     ledger.landed(written.clone(), at);
     if changed {
-        ledger.ring();
+        ledger.ring(None);
     }
     Ok(written)
 }

@@ -784,12 +784,6 @@ pub(crate) const PRODUCTS: &[Product] = &[
             "truncated",
         ]),
     },
-    Product {
-        name: "cell_error",
-        tags: &[],
-        specimens: specimens::cell_error,
-        frozen: Frozen::No,
-    },
 ];
 
 /// 帧面 `cells-catalog` 的应答（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}], pending: [{product, path, kind}]}`。
@@ -1182,14 +1176,6 @@ mod specimens {
     }
 
     /// `sessions-needs` 的一行：会话 id ＋ 那一份 `needs`（与 `facts.needs` 同一个类型）。
-    /// 配置编辑器里一格填错了（`rotation-config-save` · `rotation-session-edit` 的 `errors[]`）：那一句 `said` 由核心写。
-    pub(super) fn cell_error() -> Vec<Specimen> {
-        vec![node_of(&crate::accounts::quota::rotation::cell_err(
-            s("accounts[1].slots[1].at"),
-            "overlap",
-        ))]
-    }
-
     pub(super) fn quota_read() -> Vec<Specimen> {
         vec![node_of(&crate::faces::quota_read::specimen())]
     }

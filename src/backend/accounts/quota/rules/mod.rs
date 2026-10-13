@@ -7,7 +7,10 @@
 
 pub(crate) mod book;
 pub(crate) mod decide;
+pub(crate) mod form;
 pub(crate) mod script;
+pub(crate) mod shelf;
+pub(crate) mod shipped;
 pub(crate) mod simulate;
 pub(crate) mod standing;
 pub(crate) mod upgrade;
@@ -28,7 +31,7 @@ pub(crate) struct Acct {
     pub(crate) refused_until: Option<u64>,
     /// 跟窗口无关的「用不了」：要重新登录 · 缺 key · 在超额上兜着（到 `until` 为止，说不出 ⇒ 空 ＝ 一直）。
     pub(crate) barred: Option<Barred>,
-    /// 用速（%/分，只在在用的号上有；没根据 ⇒ 空）。
+    /// 用速（%/分）：这个号自己在额度账里量出来的（最近 30 分钟读数在涨；所有会话的用量都在里面）；量不到 ⇒ 空。
     pub(crate) rate: [Option<f64>; 2],
 }
 
@@ -57,7 +60,7 @@ impl Acct {
             .map(|b| b.until.unwrap_or(u64::MAX));
         Self {
             id: f.account.clone(),
-            api: f.kind == super::decide::Kind::Api,
+            api: f.kind == super::facts::Kind::Api,
             used: [f.w5h.used, f.w7d.used],
             resets: [f.w5h.resets, f.w7d.resets],
             refused_until,
@@ -67,5 +70,16 @@ impl Acct {
     }
 }
 
-/// 默认用速（`rate` 空时推演用的，%/分）：5 小时窗按 5 小时用满 · 7 天窗按 7 天用满。
-pub(crate) const RATE_DEFAULT: [f64; 2] = [100.0 / 300.0, 100.0 / 10_080.0];
+/// 策略所在时区里 `t` 是一天的第几分钟（判与推演交给策略的 `clock`）。
+pub(crate) fn clock_at(tz: &crate::Tz, t: u64) -> u16 {
+    let t = i64::try_from(t).unwrap_or(i64::MAX);
+    let local = i128::from(t) + i128::from(tz.offset_secs(t));
+    u16::try_from(local.rem_euclid(86_400) / 60).unwrap_or(0)
+}
+
+/// 策略头里的时区（缺 · 认不出 ⇒ UTC，界面另提示「时区不明」）。
+pub(crate) fn tz_of(head: Option<&script::Head>) -> crate::Tz {
+    head.and_then(|h| h.tz.as_deref())
+        .and_then(crate::Tz::iana)
+        .unwrap_or_default()
+}

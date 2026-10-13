@@ -290,7 +290,7 @@ fn a_plan_change_becomes_one_changed_frame() {
 }
 
 /// ★ 订阅节点：事实那几种 ⇒ 推一帧 `changed {quota}`；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
-/// 策略那一种 ⇒ `changed {rotation_configs}`。没订那条通道的连接永远不推。
+/// 策略那一种 ⇒ `changed {rotation_strategies}`。没订那条通道的连接永远不推。
 #[test]
 fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
     use crate::accounts::quota::nodes::{emit, Source};
@@ -335,7 +335,7 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
                 q(Source::Refused),
                 (Source::Refused, Topic::Rotation, Some("s9".to_string())),
                 (Source::Book, Topic::Rotation, Some("s1".to_string())),
-                (Source::Strategies, Topic::RotationConfigs, None),
+                (Source::Strategies, Topic::RotationStrategies, None),
             ]
         );
         // 没再来 ⇒ 不再推。
@@ -347,7 +347,8 @@ fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
     });
 }
 
-/// 帧里的小成品经这条连接的 `bodies` 现算（生产 ＝ 重问那条命令的处理器；这里喂假的）：轮换那一帧带上那个会话的那一份。
+/// 帧里带不带小成品照主题表：轮换那一帧（`rotation`）不带（客户端照 `{target: {sid}}` 重问 `rotation-view`），
+/// 即便这条连接的 `bodies` 现算得出东西也不带。
 #[test]
 fn a_rotation_change_carries_the_body_the_table_asks_for() {
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -382,15 +383,7 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
                 key,
                 body,
                 ..
-            }) => assert_eq!(
-                (key.as_deref(), body),
-                (
-                    Some("s1"),
-                    Some(
-                        serde_json::json!({"topic": "rotation", "key": "s1", "tz": "Asia/Shanghai"})
-                    )
-                )
-            ),
+            }) => assert_eq!((key.as_deref(), body), (Some("s1"), None)),
             other => panic!("{other:?}"),
         }
     });

@@ -3,4 +3,8 @@
 /**
  * 「用哪个号」那一条的一段。
  */
-export type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, guessed: boolean, skipped: Array<string>, };
+export type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
+/**
+ * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
+ */
+capUnknown: boolean, skipped: Array<string>, };

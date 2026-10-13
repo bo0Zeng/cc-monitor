@@ -57,7 +57,8 @@ pub(crate) mod file_face;
 pub(crate) mod endpoint;
 mod policy; // 热重载（`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
 pub mod rotate;
-pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值** // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）
+pub(crate) mod table;
+pub(crate) mod turn; // 第五版那一判：叫策略、缓存到下一个节点 // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值** // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）
 
 pub(crate) use policy::Reload;
 
@@ -207,13 +208,27 @@ impl Upstreams {
 pub fn host_relay(library: rotate::LibraryRead, own: crate::platform::fs::Own) -> String {
     let hosted = crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Rotating(library, own.clone()),
+        &Rotating(library.clone(), own.clone()),
         crate::stream::tap::port(),
         &own,
     );
-    // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是第一版，这一下换形写回（全机只这一处写回）。
+    // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是旧版，这一下升级写回、播种（全机只这一处写回）。
     if hosted.listening() {
-        crate::accounts::quota::rotation::migrate_here(&own);
+        let lib = crate::platform::paths::home_dir()
+            .map(|h| library(&h))
+            .unwrap_or_default();
+        let rest = rotate::rest_members(lib.accounts.iter().map(|a| a.id.as_str()), &[], |x| {
+            lib.accounts.iter().any(|a| a.id == x && !a.api)
+        });
+        let live = crate::observe::accounts_query::live_here();
+        crate::accounts::quota::rotation::migrate_here(
+            &own,
+            &crate::accounts::quota::rotation::UpgradeEnv {
+                live: &|sid| live.contains(sid),
+                rest,
+                title: &|_| None,
+            },
+        );
     }
     hosted.to_string()
 }
@@ -583,7 +598,7 @@ impl Destinations for Accounts {
         rotate::dispatch_go(&table, &self.upstreams, mode, key, ask.names, go, act);
     }
 
-    fn observe(&self, _mode: Mode, key: &RouteKey, _ask: &Ask<'_>, seen: &Heard<'_>) {
+    fn observe(&self, _mode: Mode, key: &RouteKey, ask: &Ask<'_>, seen: &Heard<'_>) {
         let agent = key.seg1.as_str();
         if let Some(line) = auth_refusal_line(seen.tag, seen.status) {
             tracing::warn!("{line}");
@@ -604,7 +619,8 @@ impl Destinations for Accounts {
                     refusal_line(seen.tag, seen.status, &reading, retry_after)
                 );
             }
-            ledger::record_seen(&self.quota, &self.own, agent, seen.tag, reading, now);
+            let sid = (!ask.label.is_empty()).then_some(ask.label);
+            ledger::record_seen(&self.quota, &self.own, sid, agent, seen.tag, reading, now);
         }
     }
 }
