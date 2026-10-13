@@ -696,6 +696,8 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-files",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
+        // 换模型：异步（送那一行挪到阻塞线程池；等读回是一次有界等待）。
+        "session-model",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
         "rotation-switch",
         // 终端管理 L1 三条：阻塞（起 tmux）。

@@ -332,6 +332,28 @@ pub(crate) struct LaunchFace {
     pub(crate) has_identity: bool,
     /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
     pub(crate) models: Option<&'static [Choice]>,
+    /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
+    pub(crate) model_switch: Option<ModelSwitch>,
+}
+
+/// 会话开着时换模型的说法（[`LaunchFace::model_switch`]）：往会话里送一行，再从记录里此后长出的那一条读回换成了什么。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModelSwitch {
+    /// 送进会话的那一行（交的是 [`LaunchFace::models`] 里的原值）。
+    pub(crate) command: fn(&str) -> String,
+    /// 从记录里的一条认出读回的那一句；不是 ⇒ `None`。
+    pub(crate) read: fn(&serde_json::Value) -> Option<ModelSaid>,
+}
+
+/// 换模型读回的那一句（[`ModelSwitch::read`]）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ModelSaid {
+    /// 那一家写的显示名（原样）。
+    pub(crate) name: String,
+    /// 那一家说「没变」（本来就是它）。
+    pub(crate) kept: bool,
+    /// 那一家顺带说的思考档（有才有，原样）。
+    pub(crate) effort: Option<String>,
 }
 
 /// 一个可选值：交给那一家的原值 ＋ 写给人看的那一句（模型 · 权限档）。

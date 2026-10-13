@@ -11,6 +11,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("launch-render-cli", "7fc9d2a8"),
     ("session-commands", "83324947"),
     ("session-interrupts", "6b0c632f"),
+    ("session-model", "62d3c84a"),
     ("session-new", "af0ce8f1"),
     ("session-new-dir", "2c86c180"),
     ("session-new-facts", "eb214f62"),

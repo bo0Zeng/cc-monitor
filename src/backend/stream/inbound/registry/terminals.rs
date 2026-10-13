@@ -53,6 +53,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::faces::session_commands_face::SessionCommandsCmd>(
         "一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）",
     ),
+    crate::stream::inbound::typed::asynchronous::<crate::faces::session_model_face::SessionModel>(
+        "会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送）",
+    ),
     crate::stream::inbound::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
         "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
     ),

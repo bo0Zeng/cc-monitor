@@ -52,3 +52,65 @@ fn the_mode_is_read_from_the_bottom_line_and_never_guessed() {
     assert_eq!(read(&screen(&["> ", "  ? for shortcuts"])), None);
     assert_eq!(read(&[]), None);
 }
+
+/// 一条本地命令的输出记录（只放那一句；别的格合成）。
+fn stdout_line(said: &str) -> serde_json::Value {
+    serde_json::json!({
+        "type": "system",
+        "subtype": "local_command",
+        "content": format!("<local-command-stdout>{said}</local-command-stdout>"),
+        "uuid": "u-1"
+    })
+}
+
+/// ★ 换模型读回：认 `/model` 之后那条本地命令输出里的 `Set model to …` / `Kept model as …`，取反引号里的显示名（带括号的照原样），
+/// effort 那一词有就取；别的记录、别的输出 ⇒ 认不出（不猜）。原文照 Claude Code 实际写的那几句。
+#[test]
+fn the_model_is_read_back_from_the_local_command_output() {
+    let read = super::model_said;
+    let set = read(&stdout_line(
+        "Set model to `Opus 5.5` and saved as your default for new sessions",
+    ))
+    .unwrap();
+    assert_eq!(
+        (set.name.as_str(), set.kept, set.effort.as_deref()),
+        ("Opus 5.5", false, None)
+    );
+    let set = read(&stdout_line(
+        "Set model to `Opus 5.5 (1M context)` and saved as your default for new sessions with `xhigh` effort",
+    ))
+    .unwrap();
+    assert_eq!(
+        (set.name.as_str(), set.effort.as_deref()),
+        ("Opus 5.5 (1M context)", Some("xhigh"))
+    );
+    let set = read(&stdout_line(
+        "Set model to `Opus 5.5 (1M context) (default)` and saved as your default for new sessions with `high` effort",
+    ))
+    .unwrap();
+    assert_eq!(set.name, "Opus 5.5 (1M context) (default)");
+    assert_eq!(
+        read(&stdout_line(
+            "Set model to `Fable 5.1` and saved as your default for new sessions"
+        ))
+        .unwrap()
+        .name,
+        "Fable 5.1"
+    );
+    let kept = read(&stdout_line("Kept model as `Opus 5 (1M context)`")).unwrap();
+    assert_eq!(
+        (kept.name.as_str(), kept.kept),
+        ("Opus 5 (1M context)", true)
+    );
+    // 别的本地命令输出 · 不是本地命令输出的记录 ⇒ 认不出。
+    assert!(read(&stdout_line("Conversation compacted")).is_none());
+    assert!(read(&serde_json::json!({"type": "user", "message": {"role": "user", "content": "Set model to `X`"}})).is_none());
+    assert!(read(&stdout_line("Set model to Opus")).is_none());
+}
+
+/// ★ 换模型送的那一行：`/model <值>`。
+#[test]
+fn the_model_command_is_slash_model_and_the_value() {
+    assert_eq!(super::model_command("opus"), "/model opus");
+    assert_eq!(super::model_command("sonnet[1m]"), "/model sonnet[1m]");
+}

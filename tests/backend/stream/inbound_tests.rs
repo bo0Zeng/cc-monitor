@@ -933,6 +933,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "session-new-dir",
         // 换号重启：可撤档（步与步之间 await；起 tmux 那几步自己挪到阻塞线程池）。
         "session-restart",
+        // 换模型：异步（送那一行挪到阻塞线程池；等读回是一次有界等待）。
+        "session-model",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
         "rotation-switch",
         // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
@@ -1963,6 +1965,11 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "sid": "s-1", "cwd": "/w" }),
         ),
         ("session-commands", serde_json::json!({})),
+        (
+            "session-model",
+            serde_json::json!({ "sid": "s-1", "model": "opus", "effort": "high" }),
+        ),
+        ("session-model", serde_json::json!({ "sid": "s-1" })),
         ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
         ("kill", serde_json::json!({ "name": 1 })),
         (

@@ -1778,6 +1778,30 @@
       "zh": "此会话不支持中途切换权限档",
       "args": []
     },
+    "beSessionModel.set.saved": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已换成 {model} · 同时存为此号新会话的默认",
+      "args": ["model"]
+    },
+    "beSessionModel.set.kept": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "模型未变 · {model}",
+      "args": ["model"]
+    },
+    "beSessionModel.unsure.noReadback": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "换模型结果未知\n未读到换成了哪个模型",
+      "args": []
+    },
+    "beSessionModel.switch.unsupported": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "此会话不支持中途换模型",
+      "args": []
+    },
     "beSessionCommands.builtin.clear": {
       "kind": "body",
       "role": "片段",

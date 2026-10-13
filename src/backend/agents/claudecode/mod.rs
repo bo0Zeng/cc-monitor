@@ -189,6 +189,10 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     needs_bus_id: false,
     has_identity: true,
     models: Some(resume::MODEL_ALIASES),
+    model_switch: Some(super::ModelSwitch {
+        command: resume::model_command,
+        read: resume::model_said,
+    }),
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。
