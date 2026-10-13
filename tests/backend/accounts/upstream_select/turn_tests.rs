@@ -287,6 +287,37 @@ fn an_own_reading_reruns_only_past_its_wake_reading() {
     );
 }
 
+/// ★ 这个会话自己的读数没越过 `wake.when`，但让在用的号事实上发不出去了（回包说已拒）⇒ 照样作废、重跑、换到 b。
+#[test]
+fn an_own_reading_that_bars_the_account_in_use_reruns() {
+    let home = Home::new("ownbar", [None, None]);
+    home.strategy(Some(80), false);
+    let hop = home.hop();
+    let own = home.own();
+    let t = now();
+    home.seen(&hop.quota, Some(SID), "a", 0.5, t);
+    assert_eq!(which(&steer(&hop, &own, t)), "a");
+    let r = QuotaReading {
+        status: Some(QuotaStatus::Rejected),
+        refused: true,
+        limiting: Some("five_hour".into()),
+        resets_at: Some(t + 3_600),
+        windows: vec![QuotaWindow {
+            name: "five_hour".into(),
+            used: Some(0.5),
+            resets_at: Some(t + 3_600),
+            warned_at: None,
+        }],
+        overage: None,
+    };
+    ledger::record_seen(&hop.quota, &own, Some(SID), "claude-code", "a", r, t + 1);
+    assert_eq!(
+        which(&steer(&hop, &own, t + 2)),
+        "b",
+        "在用的号发不出去了还照缓存发"
+    );
+}
+
 /// ★ #27：回包被拒 ⇒ 同一发里带着 `tried` 再判一次，换到 b、记「事实上发不出去」。
 #[test]
 fn a_refusal_rejudges_in_the_same_send() {

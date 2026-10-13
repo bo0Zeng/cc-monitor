@@ -445,19 +445,27 @@ impl Hop {
         }
         if hit.own_reading {
             let when = hit.when.clone();
+            let using = match &hit.pick {
+                Pick::Use(x) => Some(x.clone()),
+                Pick::Hold { .. } => None,
+            };
             drop(c);
             let lib = self.library();
-            let crossed = when.iter().any(|w| {
-                let f = Acct::of_fact(&self.fact_one(
+            let fact = |acct: &str| {
+                Acct::of_fact(&self.fact_one(
                     a.agent,
                     &lib,
-                    &w.acct,
+                    acct,
                     a.row,
                     a.now,
                     &crate::Tz::default(),
-                ));
-                standing::used_at(&f, w.w, a.now) >= w.used_at_least
-            });
+                ))
+            };
+            // 自己的读数只在越过约的读数时作废；读数让在用的号事实上发不出去了（超额在兜 · 被拒）也作废 —— 那是事实变了。
+            let crossed = when
+                .iter()
+                .any(|w| standing::used_at(&fact(&w.acct), w.w, a.now) >= w.used_at_least)
+                || using.is_some_and(|x| !standing::sendable(&fact(&x), a.now));
             let mut c = self.cache.lock().unwrap_or_else(|e| e.into_inner());
             if crossed {
                 c.forget(a.sid);
