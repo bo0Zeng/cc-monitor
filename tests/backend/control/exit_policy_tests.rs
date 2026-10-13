@@ -357,8 +357,8 @@ fn code_of(path: &std::path::Path, src: &str) -> String {
 
 /// ★★ `E1` 的全仓半：**`backend.json` 这个名字在 `src/` 全部生产代码里谁叫得出**（字面量或契约常量名）。
 ///
-/// 〔「家里的都进数据位置那一份唯一枚举」〕三个家：定义（契约 crate `relay_route_core::BACKEND_POLICY_REL`）·
-/// 写者（本模块）· monitor 数据位置页（`data_paths.rs`，只 stat 在不在 / 多大，不读不写）。前端 `.ts` 仍零命中。
+/// 〔「家里的都进数据位置那一份唯一枚举」〕两个家：定义（契约 crate `relay_route_core::BACKEND_POLICY_REL`）·
+/// 写者（本模块）。数据页那一行由后端照契约那张表（`OWN_HOME_ENTRIES`）列，monitor 不再另叫它的名字；前端 `.ts` 仍零命中。
 /// **两向集合相等**：多一个家 = 第二个写者（或读者）冒出来了；少了本模块 = 正控失败（判据在一个空集上绿）。
 ///
 /// ⚠ 漏判面（如实登记）：把名字拆开拼（`format!("{}.json", "backend")`）骗得过它；
@@ -389,7 +389,6 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let want: std::collections::BTreeSet<String> = [
         "common/relay-route-core/src/lib.rs".to_string(),
         "backend/control/exit_policy.rs".to_string(),
-        "frontend/shell/src/data_paths.rs".to_string(),
     ]
     .into();
     assert_eq!(

@@ -297,14 +297,13 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
         }
     }
     assert!(scanned > 500, "只扫到 {scanned} 份源码 —— 遍历坏了");
-    // 四个家、各一个身份：定义（契约 crate）· 写者（本模块）· 足迹里的**申报字面量**（`skill-install` 那一格，随 Claude 布局那一半住
-    // `agents/claudecode/footprint.rs`；不读不写 ——「足迹里看得见」）· monitor 数据位置页（只 stat）。
-    // 第五个家 ⇒ 红（第二个写者或者第二份申报）。
+    // 三个家、各一个身份：定义（契约 crate）· 写者（本模块）· 足迹里的**申报字面量**（`skill-install` 那一格，随 Claude 布局那一半住
+    // `agents/claudecode/footprint.rs`；不读不写 ——「足迹里看得见」）。数据页那一行由后端照契约那张表列（`OWN_HOME_ENTRIES`，同一个家）。
+    // 第四个家 ⇒ 红（第二个写者或者第二份申报）。
     let want: std::collections::BTreeSet<String> = [
         "common/relay-route-core/src/lib.rs".to_string(),
         "backend/assets/skill_ledger.rs".to_string(),
         "backend/agents/claudecode/footprint.rs".to_string(),
-        "frontend/shell/src/data_paths.rs".to_string(),
     ]
     .into();
     assert_eq!(

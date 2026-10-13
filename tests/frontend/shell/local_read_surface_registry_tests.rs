@@ -130,14 +130,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "足迹里 monitor 自己那几行的根（`home` 那一格）",
         "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
     ),
-    // 数据位置页列本机后端住在家里的那几样：只 stat（在不在 · 多大），不读内容。
-    (
-        "data_paths.rs",
-        "collect",
-        "`~/.cc-monitor` 里后端那几样（`bin/` · `staging/` · 两把钥匙）",
-        "**不是伸手拿用户的东西**：cc-monitor 自己的家（后端与 monitor 同住）。只 `is_file` / `is_dir` / 长度，\
-             不读字节 —— 两把钥匙的内容一个字节都不碰；`home_dir()` 只为「每个用户各一份」",
-    ),
+    // 数据位置页列本机后端家里那几样的那一行摘了：那一块改照本机后端 `data-report` 的 `own` 画，壳不再伸手进家目录。
     (
         "ccm_probe.rs",
         "local_ccm_entry_now",

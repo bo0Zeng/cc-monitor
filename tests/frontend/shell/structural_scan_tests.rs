@@ -2307,6 +2307,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "list_history_projects",
             1,
         ),
+        // 那份壳命令登记表的改数史（「−2：…机器表搬进本机后端」）点了已删的壳命令名；它一直被截图台架那份假壳命令表遮着「还活着」，
+        // 台架那一条换成假后端的 `machines-try` 以后才被看见。那句是病史，该留。
+        (
+            "tests/frontend/shell/parity_ledger_tests.rs",
+            "machine_table_try",
+            1,
+        ),
         // `("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1)` 摘了：开发文档按 4.0.0 重写，「刻意不做的」那一节只讲理由、不再点那个旧名。
         // `("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1)` 摘了：那段示例改写成读本机活会话表，不再点那个说明性的名字。
         // `("src/doc/INVARIANTS.md", "path_shell_safe", 1)` 摘了：那一句改成点 `acct-core::config_dir_posix_ok`，不再点外部脚本里的旧名。

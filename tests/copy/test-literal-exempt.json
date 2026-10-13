@@ -295,7 +295,6 @@
     ],
     "tests/shots/fake/machine.ts": [
       { "text": "日志", "use": "回显" },
-      { "text": "账号", "use": "回显" },
       { "text": "本机", "use": "输入" },
       { "text": "配置", "use": "回显" }
     ],

@@ -428,8 +428,8 @@ fn a_malformed_incoming_catalog_is_refused_not_guessed() {
 }
 
 /// 目录文件名在 `src/` 全部生产代码里**谁叫得出它**（字面量或契约常量名）—— 两向相等 ＋ 本模块自己必须命中 = 正控。
-/// 字面量挪进契约 crate（`relay_route_core::ASSET_CATALOG_REL`）：定义那一处 · 写者（本模块）·
-/// monitor 数据位置页（只 stat、不读写）三个家；第四个 ⇒ 红（第二个写者冒出来了）。
+/// 字面量挪进契约 crate（`relay_route_core::ASSET_CATALOG_REL`）：定义那一处 · 写者（本模块）两个家
+/// （数据页那一行由后端照契约那张表 `OWN_HOME_ENTRIES` 列，同一个家）；第三个 ⇒ 红（第二个写者冒出来了）。
 #[test]
 fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let src = crate::guard_support::repo_root().join("src");
@@ -457,7 +457,6 @@ fn the_file_name_has_exactly_one_home_in_all_production_code() {
     let want: std::collections::BTreeSet<String> = [
         "common/relay-route-core/src/lib.rs".to_string(),
         "backend/assets/asset_catalog.rs".to_string(),
-        "frontend/shell/src/data_paths.rs".to_string(),
     ]
     .into();
     assert_eq!(

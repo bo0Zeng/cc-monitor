@@ -12773,13 +12773,13 @@
       "zh": "各机器 skill 与 MCP 清单 · 删后会重新扫出",
       "args": []
     },
-    "rsDataPaths.backend.apikey": {
+    "rsDataPaths.monitor.apikey": {
       "kind": "body",
       "role": "片段",
       "zh": "填入的 API key",
       "args": []
     },
-    "rsDataPaths.backend.logs": {
+    "rsDataPaths.monitor.backendLogs": {
       "kind": "body",
       "role": "说明",
       "zh": "本机后端错误输出 · 每份 ≤4 MB · 留 2 份",
