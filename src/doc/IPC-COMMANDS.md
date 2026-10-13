@@ -5838,7 +5838,7 @@ type SeenKind = "accounts" | "data";
 入参 `ChoresMarkReq` · 回包 `ChoresMarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type ChoresMarkReq = { "op": "decline", id: string, } | { "op": "undecline", id: string, } | { "op": "selfPaste", rc: string, } | { "op": "unselfPaste" } | { "op": "skipStart" } | { "op": "unskipStart" };
+type ChoresMarkReq = { "op": "decline", id: string, } | { "op": "undecline", id: string, } | { "op": "selfPaste", rc: string, } | { "op": "unselfPaste", } | { "op": "skipStart", } | { "op": "unskipStart", };
 type ChoresMarks = { 
 /**
  * 点过「不用了」的那几件（件的 `id`）。

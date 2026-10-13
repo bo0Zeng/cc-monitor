@@ -127,3 +127,46 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     assert_eq!(read("nobody"), r#"{"accounts":null,"data":null}"#);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 帧面那一跳（按名找命令、照它的档跑）：入参多一个键 ⇒ `bad_args`、一个字节不写（原来不管多出来的键）。
+#[test]
+fn an_extra_key_is_bad_args_on_the_frame_path() {
+    use crate::stream::inbound::spec::{prepare, Prepared};
+    let d = tmp("extra");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    let cases = [
+        (
+            "agent-home-check",
+            json!({ "path": d.join("nope"), "bogus": 1 }),
+        ),
+        ("first-run", json!({ "remotes": 0, "bogus": 1 })),
+        ("chores-mark", json!({ "op": "skipStart", "bogus": 1 })),
+        ("last-seen-read", json!({ "origin": "devbox", "bogus": 1 })),
+        (
+            "last-seen-write",
+            json!({ "origin": "devbox", "forget": true, "bogus": 1 }),
+        ),
+    ];
+    for (cmd, args) in cases {
+        let spec = crate::stream::inbound::REGISTRY
+            .iter()
+            .find(|s| s.name == cmd)
+            .unwrap();
+        let Some(Prepared::Blocking(run)) = prepare(spec.run, Some(&own)) else {
+            panic!("{cmd} 不在阻塞档");
+        };
+        let req = crate::stream::wire::Request {
+            id: "t".to_string(),
+            cmd: cmd.to_string(),
+            args,
+            within_ms: None,
+            view: Value::Null,
+            tz: Default::default(),
+            until: None,
+        };
+        let got = run(req).map(|_| ()).map_err(|f| f.code);
+        assert_eq!(got, Err("bad_args".to_string()), "{cmd}");
+    }
+    assert!(!d.join(".cc-monitor").exists(), "多一个键的那几问写了盘");
+    let _ = std::fs::remove_dir_all(&d);
+}

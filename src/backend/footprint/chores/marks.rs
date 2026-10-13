@@ -38,7 +38,7 @@ pub(crate) fn marks_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(relay_route_core::CHORES_REL))
 }
 
-/// `chores-mark` 的入参：按 `op` 分（多一个键 ⇒ `bad_args`）。
+/// `chores-mark` 的入参：按 `op` 分（多一个键 ⇒ `bad_args`；不带参数的那几种也写成空结构体：内标签枚举的单元变体不拒多出来的键）。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -51,11 +51,11 @@ pub(crate) enum ChoresMarkReq {
     /// 我自己贴（那一份启动文件，绝对路径）。
     SelfPaste { rc: String },
     /// 改回让 cc-monitor 接上。
-    UnselfPaste,
+    UnselfPaste {},
     /// 首次运行「开始用」那一块跳过。
-    SkipStart,
+    SkipStart {},
     /// 撤回跳过。
-    UnskipStart,
+    UnskipStart {},
 }
 
 /// 读一次（三态）。
@@ -139,9 +139,9 @@ pub(crate) fn mark_at(
         }
         ChoresMarkReq::Undecline { id } => m.declined.retain(|d| d != id),
         ChoresMarkReq::SelfPaste { rc } => m.self_paste = Some(rc.clone()),
-        ChoresMarkReq::UnselfPaste => m.self_paste = None,
-        ChoresMarkReq::SkipStart => m.start_skipped = true,
-        ChoresMarkReq::UnskipStart => m.start_skipped = false,
+        ChoresMarkReq::UnselfPaste {} => m.self_paste = None,
+        ChoresMarkReq::SkipStart {} => m.start_skipped = true,
+        ChoresMarkReq::UnskipStart {} => m.start_skipped = false,
     }
     let body = crate::common::own_state::json_body(path, &m).map_err(io)?;
     own.write(&file, &held, &body).map_err(io)?;
