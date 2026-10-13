@@ -988,7 +988,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// 同一版里再多 --session-say / -permission / -commands / -model 四条（子命令与通道各一，指纹行换成现打的：这一版还没发过）；
 /// session-new-facts 每家带名字与可选的模型 · 权限档。四条大回包分页（history-branch 入参换 BranchReq）· 写出按字节让位 ·
 /// session_branch 只发变的 · 骨架按块读写。子命令集再少 --ssh-config-aliases / --ssh-config-resolve（子命令与通道各一）；
-/// 拨号 · 部署 · 机器 · 总线 7 条 · 别名 4 条 ＋ powershell-policy-set 换成 typed，形状指纹表跟着变。
+/// 拨号 · 部署 · 机器 · 总线 7 条 · 别名 4 条 ＋ powershell-policy-set 换成 typed，形状指纹表跟着变。文件管理读的 11 条换成 typed
+/// （files-ls 多 dirs_only）；profiles-* 5 条 · drift-report 换成 typed；子命令集再少 --cells-catalog（子命令与通道各一）。
 pub const BUILD_ID: &str = "p10k-typed-accounts";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
