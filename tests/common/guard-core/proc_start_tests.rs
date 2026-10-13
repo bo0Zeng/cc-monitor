@@ -60,7 +60,10 @@ fn every_shell_read_of_proc_stat_columns_strips_the_process_name_first() {
             }
         }
     }
-    assert!(seen > 0, "一处读 /proc/<pid>/stat 的都没扫到 —— 人群空了，判据空真");
+    assert!(
+        seen > 0,
+        "一处读 /proc/<pid>/stat 的都没扫到 —— 人群空了，判据空真"
+    );
     assert!(
         bad.is_empty(),
         "这几行按列号取 /proc/<pid>/stat、没先剥到最后一个 `) `（进程名带空格时列会错位；e2e 里用 `sandbox-env.sh` 的 `proc_start`）：\n{}",
@@ -114,7 +117,12 @@ fn the_shared_e2e_helper_reads_start_time_of_a_process_whose_name_has_spaces() {
     let _ = child.wait();
     let _ = std::fs::remove_dir_all(&dir);
     let got = String::from_utf8_lossy(&out.stdout).trim().to_string();
-    assert_eq!(got, want, "proc_start 对名字带空格的进程读错了格（stderr：{}）", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(
+        got,
+        want,
+        "proc_start 对名字带空格的进程读错了格（stderr：{}）",
+        String::from_utf8_lossy(&out.stderr)
+    );
 }
 
 #[test]
