@@ -5,7 +5,7 @@
 //!
 //! 中转住常驻后端进程里（`listen::host`），那个进程的 stdout 是 wire（stdio 载体）或 null（脱离载体），不能写行 ⇒ 落点是一个
 //! [`TapPort`]：每个 SSE 事件交一个 [`TapEvent`]（**结构体，不是格式串** —— 线上字段名住
-//! `wire.rs::Frame::Tap` 的 serde 名，那道「字段名住哪」的答案），由宿主转成 `tap` 帧。
+//! 宿主那一侧），由宿主拼成活卡（`live_card` 帧）。
 //!
 //! - **四样东西**：`stream`（请求自带的会话标识头，中转不解释它）· `resp`（本进程第几个响应）·
 //!   `n`（这一个响应里第几个事件，从 0 连续）· 事件原文 / 收尾方式。**不带路由那两段**：挂载物 ① 不问账号。
@@ -154,7 +154,7 @@ impl TeeSink {
     /// **tap 口**落点：常驻后端进程内那一份中转用它（`listen::host`）。
     ///
     /// 那个进程的 stdout 在 stdio 载体上**就是 wire**（一行一帧，`wire.rs` 头注），在脱离载体上是 null
-    /// ⇒ 不写行，把每个事件交给宿主的 [`TapPort`]（宿主转成 `tap` 帧，走它自己那条有界通道）。
+    /// ⇒ 不写行，把每个事件交给宿主的 [`TapPort`]（宿主拼成活卡，走它自己那个有界发件箱）。
     pub fn to_port(port: std::sync::Arc<dyn TapPort>) -> Self {
         Self {
             port,

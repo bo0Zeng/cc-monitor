@@ -416,8 +416,16 @@ impl Sess {
 #[derive(Default)]
 pub struct RunBook {
     inner: Mutex<HashMap<String, Sess>>,
-    /// 新学到对账键的归属 ⇒ 叫醒流归位（挂起的那几段可能对上了）。
-    wake: tokio::sync::Notify,
+    /// 谁要知道「记录到了 · 会话走了」（活卡，`stream::tap::adopt` 装一次；没装 ⇒ 不说）。
+    watch: std::sync::OnceLock<Arc<dyn BookWatch>>,
+}
+
+/// 运行簿往外说的两件事（活卡听）：一条带对账键的记录过了（主或子运行）· 一个会话走了。
+/// 在运行簿的锁外调（听的一方会回头问运行簿）。
+pub(crate) trait BookWatch: Send + Sync {
+    /// `owner`：这个对账键归哪个运行（`Some(None)` ＝ 主运行；`None` ＝ 说不出）。
+    fn rid(&self, sid: &str, rid: &str, owner: Option<Option<String>>);
+    fn gone(&self, sid: &str);
 }
 
 /// 这个进程里活着的运行簿（watcher 那一本 ＋ 夹具造的，见 [`RunBook::shared`]）。只读查询（`session-interrupts`）在这里看全部。
@@ -474,19 +482,19 @@ impl RunBook {
         let own_rid = rid.clone().filter(|_| mark.is_some());
         let links = faces.child_links(v);
         let now = crate::common::time::now();
-        let (changed, learned) = self.with(|m| {
+        let (changed, heard) = self.with(|m| {
             let s = m.entry(sid.to_string()).or_default();
-            let mut learned = false;
+            let mut heard = None;
             if let Some(rid) = rid {
                 let owner = match (&mark, child.is_some()) {
                     (Some(mk), _) => Some(Some(mk.run.clone())),
                     (None, false) => Some(None),
                     (None, true) => None,
                 };
-                if let Some(o) = owner {
-                    s.learn_rid(rid, o);
-                    learned = true;
+                if let Some(o) = &owner {
+                    s.learn_rid(rid.clone(), o.clone());
                 }
+                heard = Some((rid, owner));
             }
             let mut changed = false;
             let at = child.unwrap_or(now);
@@ -499,10 +507,10 @@ impl RunBook {
                 changed |= s.link(l, at, when, from.as_deref());
             }
             changed |= s.settle(now);
-            (changed, learned)
+            (changed, heard)
         });
-        if learned {
-            self.wake.notify_one();
+        if let (Some((rid, owner)), Some(w)) = (heard, self.watch.get()) {
+            w.rid(sid, &rid, owner);
         }
         changed
     }
@@ -608,11 +616,18 @@ impl RunBook {
     /// 会话走了。
     pub(crate) fn forget(&self, sid: &str) {
         self.with(|m| m.remove(sid));
+        if let Some(w) = self.watch.get() {
+            w.gone(sid);
+        }
     }
 
     /// 会话退休：还算在跑的子运行改成状态不明，表变了就回最后那一帧（交出去之后各家的跟踪再 `RunTrack::forget`）。
     pub(crate) fn retire(&self, sid: &str) -> Option<Frame> {
-        self.orphan(sid).then(|| self.frame(sid))
+        let f = self.orphan(sid).then(|| self.frame(sid));
+        if let Some(w) = self.watch.get() {
+            w.gone(sid);
+        }
+        f
     }
 
     /// 这个会话此刻有没有子运行（宣告那一刻有就发一帧运行表）。
@@ -633,9 +648,12 @@ impl RunBook {
             .collect()
     }
 
-    /// 等下一次「学到了对账键的归属」（之前已学到而没人在等 ⇒ 立刻返回一次）。
-    pub(crate) async fn learned(&self) {
-        self.wake.notified().await;
+
+    /// 装听的一方（只一次；再装忽略）。
+    pub(crate) fn watch_with(&self, w: Arc<dyn BookWatch>) {
+        if self.watch.set(w).is_err() {
+            tracing::warn!("运行簿的听者装了第二次 —— 忽略（一本运行簿只交给一份活卡）");
+        }
     }
 }
 

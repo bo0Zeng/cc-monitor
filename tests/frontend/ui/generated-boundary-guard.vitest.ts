@@ -545,7 +545,7 @@ describe("C02 事件名钉死", () => {
     // `ORIGIN_SESSIONS_LISTED`（"listed 格"，某台的活会话清单报完了）。两条都由 `events.ts` 订阅。
     // 14 → 12：`JSONL_LINE` / `JSONL_BATCH` 退役（会话内容改走通道 `subscribe`，交格的事件名
     //   `chan-items` 住 `chan/webview.rs::ITEMS_EVENT`、由 `src/comms/inward/chan.ts` 听 —— 它是通道那一跳的，不是 `ui_contract.rs` 的业务事件）。
-    // 不加事件名：tap 走通道 `subscribe`（会话流 `session-tap`），不开裸 Tauri 事件。
+    // 不加事件名：活卡走通道 `subscribe`（会话流 `session-live-card`），不开裸 Tauri 事件。
     // 12 → 13：`SESSION_UNSEEN`（"session-unseen"，那台机器看不见了 ⇒ 说不清）。由 `events.ts` 订阅。
     // 13 → 12：`REMOTE_BACKEND_READY`（"remote-backend-ready"）退役 —— 前端经通道订每台的 `changed/accounts`
     //   （`events.ts::bindEvents` 的 `accounts` 那一种流，句柄 `event_replay.rs`），「前端只有两个动作」。

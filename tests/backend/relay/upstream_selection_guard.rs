@@ -148,6 +148,8 @@ pub(super) mod tests {
         "Startup",
         // 常驻后端进程内起中转的入口；上游选择的 `host_relay` 把 `Rotating` 递进去。
         "host",
+        // tee 的落点：`host_relay` 只把宿主交进来的那个 tap 口原样递给 `host`（不碰它交出去的任何一件事）。
+        "TapPort",
         // 出「直接敲的也走中转」那一段（`relay-optin`）时把这台的钥匙插进地址（只交插好的地址）。
         "keyed_with_key_on_disk",
         // 非得经 shell 那一趟、地址拼进参数的那一家：照字面插的只许直通那一把（根钥匙派生，`ccm` 拼那一行时要）。

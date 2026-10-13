@@ -972,7 +972,7 @@ mod tests {
             end - open
         );
         let span = &src[open + 1..end];
-        // 只取**深度 1** 的变体名：行首（去缩进后）是大写字母开头的标识符，后跟 `{` 或 `,`。
+        // 只取**深度 1** 的变体名：行首（去缩进后）是大写字母开头的标识符，后跟 `{` · `(` 或 `,`。
         let mut out = Vec::new();
         let mut depth = 0usize;
         for line in span.lines() {
@@ -984,7 +984,12 @@ mod tests {
                     .filter(|w| !w.is_empty() && w.starts_with(char::is_uppercase))
                 {
                     let rest = t[name.len()..].trim_start();
-                    if rest.starts_with('{') || rest.starts_with(',') || rest.is_empty() {
+                    // 新类型变体（`Live(LiveCard),`）：体是一个带名字的结构，kind 照变体名。
+                    if rest.starts_with('{')
+                        || rest.starts_with(',')
+                        || rest.starts_with('(')
+                        || rest.is_empty()
+                    {
                         let mut snake = String::new();
                         for (i, ch) in name.chars().enumerate() {
                             if ch.is_uppercase() && i > 0 {

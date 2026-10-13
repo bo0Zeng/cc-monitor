@@ -1434,7 +1434,7 @@ const CHILD_TEST_NAME: &str = "relay::server_tests::relay_child_process_entry_po
 ///
 /// 独立的 `--relay` 进程删了，中转只住常驻后端里 ⇒ 这里调 `main.rs` 流模式**真调的那一个**
 /// （`accounts::upstream_select::host_relay`：真环境 · 真上游选择 · tee 落进程级 tap 口）。
-/// tee 的采集面：照两条载体的写者那样从进程级 hub 接一条（`crate::stream::tap::hub().attach()`），
+/// tee 的采集面：交给装配口一个只收不折的 tap 口（生产交的是进程级那一个，`crate::stream::tap::port()`），
 /// 每件逐字写成 tee 交出的那一行（本文件的 `tee_line`：中转那一侧原样交了什么）落 stdout。
 #[test]
 #[ignore = "子进程入口：只在被父判据用 CCM_RELAY_TEST_CHILD 拉起时才当中转跑"]
@@ -1442,7 +1442,8 @@ fn relay_child_process_entry_point() {
     if std::env::var(CHILD_MARK).is_err() {
         return;
     }
-    let mut rx = crate::stream::tap::hub().attach();
+    let taps = std::sync::Arc::new(Taps::default());
+    let mut rx = taps.attach();
     std::thread::spawn(move || {
         use std::io::Write;
         while let Some(ev) = rx.blocking_recv() {
@@ -1457,6 +1458,7 @@ fn relay_child_process_entry_point() {
     // 写句柄同 `main.rs` 那一份：根取这个子进程的环境（父进程已把家与数据目录指到夹具）。
     let said = crate::accounts::upstream_select::host_relay(
         std::sync::Arc::new(|_| Default::default()),
+        taps,
         crate::platform::fs::Own::issue(),
     );
     eprintln!("[relay-child] {said}");
@@ -4304,4 +4306,27 @@ fn relay_overhead_bench() {
         )
     });
     println!("perf.relay.added_p50={:.3}ms", r - d);
+}
+
+/// tee 交出的原样事件（判据量中转那一侧交了什么）：一个只收不折的 tap 口，每条接收端各收一份、满了丢。
+#[derive(Default)]
+pub(super) struct Taps(std::sync::Mutex<Vec<tokio::sync::mpsc::Sender<crate::relay::TapEvent>>>);
+
+impl Taps {
+    pub(super) fn attach(&self) -> tokio::sync::mpsc::Receiver<crate::relay::TapEvent> {
+        self.attach_bounded(4096)
+    }
+    pub(super) fn attach_bounded(&self, cap: usize) -> tokio::sync::mpsc::Receiver<crate::relay::TapEvent> {
+        let (tx, rx) = tokio::sync::mpsc::channel::<crate::relay::TapEvent>(cap);
+        self.0.lock().unwrap().push(tx);
+        rx
+    }
+}
+
+impl comms_outward::TapPort for Taps {
+    fn note_marks(&self, _: &str, _: &[((&'static str, &'static str), bool)]) {}
+    fn offer(&self, ev: crate::relay::TapEvent) -> bool {
+        let g = self.0.lock().unwrap();
+        g.iter().fold(false, |took, tx| tx.try_send(ev.clone()).is_ok() || took)
+    }
 }

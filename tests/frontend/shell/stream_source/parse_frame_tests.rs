@@ -776,62 +776,32 @@ fn json(text: &str) -> serde_json::Value {
     serde_json::from_str(text).expect("合法 JSON")
 }
 
-/// `tap` 的几形（字面量与后端 `wire_tests::tap_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）；
-/// `ev` 与 `end` 都缺 · `end` 不认识 · `ev` 不是对象 · 缺 `n` · `run` 不是串 ⇒ 整帧 `None`（坏帧，不猜）。
+/// `live` 的几形（字面量与后端 `wire_tests::live_frames_have_exactly_these_bytes` 同一串 —— 异源 = 各自对手写字面量）：
+/// 帧体去掉 `kind` 原样转交；缺 `sid` / `card` / `n` / `op` · `run` 不是串 ⇒ 整帧 `None`（坏帧，不猜）。
 #[test]
-fn tap_frames_parse_into_their_shapes_and_bad_ones_are_none() {
-    use crate::session_tap::{Tap, TapBody, TapEnd};
-    let start = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":0,\"ev\":{\"t\":\"start\",\"rid\":\"r-1\"}}";
-    match parse_frame(start) {
-        Ok(InboundFrame::Tap(Tap {
-            stream,
-            run,
-            resp,
-            n,
-            body: TapBody::Ev(ev),
-        })) => {
-            assert_eq!(
-                (stream.as_str(), run, resp, n),
-                ("0b6c1f7e-sid", None, 12, 0)
-            );
-            assert_eq!(json(ev.0.get()), json(r#"{"t":"start","rid":"r-1"}"#));
+fn live_frames_parse_into_their_body_and_bad_ones_are_none() {
+    let open = "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":0,\"op\":\"open\",\"rid\":\"r-1\",\"phase\":\"streaming\",\"clipped\":false,\"blocks\":[{\"kind\":\"thinking\"},{\"kind\":\"text\",\"text\":\"你好\"}]}";
+    let block = "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"card\":12,\"n\":1,\"op\":\"block\",\"i\":2,\"block\":\"tool\",\"tool\":\"Bash\"}";
+    for line in [open, block] {
+        match parse_frame(line) {
+            Ok(InboundFrame::LiveCard(l)) => {
+                let mut want = json(line);
+                want.as_object_mut().unwrap().remove("kind");
+                assert_eq!(json(l.body.0.get()), want, "帧体没原样转交");
+            }
+            other => panic!("没解成活卡：{other:?}"),
         }
-        other => panic!("起头那一形没解出来：{other:?}"),
-    }
-    let block = "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"resp\":12,\"n\":1,\"ev\":{\"t\":\"block\",\"i\":0,\"kind\":\"tool\",\"tool\":\"Bash\"}}";
-    match parse_frame(block) {
-        Ok(InboundFrame::Tap(t)) => {
-            assert_eq!(t.run.as_deref(), Some("a1"));
-            assert_eq!(t.n, 1);
-            assert!(matches!(t.body, TapBody::Ev(_)));
-        }
-        other => panic!("带运行的那一形没解出来：{other:?}"),
-    }
-    for (word, want) in [("done", TapEnd::Done), ("broken", TapEnd::Broken)] {
-        let line = format!(
-            "{{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"{word}\"}}"
-        );
-        assert_eq!(
-            parse_frame(&line),
-            Ok(InboundFrame::Tap(Tap {
-                stream: "0b6c1f7e-sid".into(),
-                run: None,
-                resp: 12,
-                n: 9,
-                body: TapBody::End(want),
-            }))
-        );
     }
     for bad in [
-        r#"{"kind":"tap","stream":"s","resp":1,"n":0}"#,
-        r#"{"kind":"tap","stream":"s","resp":1,"n":0,"end":"maybe"}"#,
-        r#"{"kind":"tap","stream":"s","resp":1,"n":0,"ev":"{}"}"#,
-        r#"{"kind":"tap","stream":"s","resp":1,"ev":{"t":"stop","ok":true}}"#,
-        r#"{"kind":"tap","stream":"s","run":7,"resp":1,"n":0,"ev":{"t":"stop","ok":true}}"#,
+        r#"{"kind":"live_card","card":1,"n":0,"op":"awaiting"}"#,
+        r#"{"kind":"live_card","sid":"s","n":0,"op":"awaiting"}"#,
+        r#"{"kind":"live_card","sid":"s","card":1,"op":"awaiting"}"#,
+        r#"{"kind":"live_card","sid":"s","card":1,"n":0}"#,
+        r#"{"kind":"live_card","sid":"s","run":7,"card":1,"n":0,"op":"awaiting"}"#,
     ] {
         assert!(
-            parse_frame(bad).is_err(),
-            "坏的 tap 帧被当成好帧解了：{bad}"
+            !matches!(parse_frame(bad), Ok(InboundFrame::LiveCard(_))),
+            "坏的活卡帧被当成好帧解了：{bad}"
         );
     }
 }
@@ -866,41 +836,14 @@ fn session_runs_frames_carry_the_runs_verbatim() {
     }
 }
 
-/// 转交是纯照搬：帧 → `session-tap` 的 payload（origin 由调用方给；`end` 用线上那个字）。
+/// 转交是纯照搬：帧体 → `session-live-card` 的 payload（origin 由调用方给）。
 #[test]
-fn a_tap_frame_becomes_the_session_tap_payload_field_for_field() {
-    use crate::session_tap::{to_payload, Tap, TapBody, TapEnd};
-    let p = to_payload(
-        "<local>",
-        Tap {
-            stream: "sid".into(),
-            run: None,
-            resp: 4,
-            n: 2,
-            body: TapBody::End(TapEnd::Broken),
-        },
-    );
-    assert_eq!(
-        serde_json::to_string(&p).unwrap(),
-        r#"{"origin":"<local>","stream":"sid","resp":4,"n":2,"end":"broken"}"#
-    );
-    let p = to_payload(
-        "<local>",
-        Tap {
-            stream: "sid".into(),
-            run: Some("a1".into()),
-            resp: 4,
-            n: 1,
-            body: TapBody::Ev(
-                crate::ui_contract::RecordBody::from_json(r#"{"t":"stop","ok":true}"#.into())
-                    .unwrap(),
-            ),
-        },
-    );
-    assert_eq!(
-        serde_json::to_string(&p).unwrap(),
-        r#"{"origin":"<local>","stream":"sid","run":"a1","resp":4,"n":1,"ev":{"t":"stop","ok":true}}"#
-    );
+fn a_live_frame_becomes_the_session_live_payload_verbatim() {
+    use crate::live_card::{to_payload, LiveCard};
+    let body = crate::ui_contract::RecordBody::from_json(r#"{"sid":"s","card":1,"n":0,"op":"awaiting"}"#.into()).unwrap();
+    let p = to_payload("pi", LiveCard { body: body.clone() });
+    assert_eq!(p.origin, crate::origin::Origin("pi".into()));
+    assert_eq!(p.card, body);
 }
 
 /// `session_added.pid` 的读侧：装得进 u32 的非负整数才认，别的一律当没带（缺席 = 老后端 / 没索要）。

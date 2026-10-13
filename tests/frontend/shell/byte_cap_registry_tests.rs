@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "LIVE_TEXT_KEEP",
+        "**字数**（Unicode 字符数）不是字节：`backend/stream/live.rs` 一张活卡的正文只留尾巴这么多字，截过头的卡带 `clipped`、整张重发；定稿归记录，什么都不丢。",
+    ),
+    (
+        "LIVE_TEXT_SLACK",
+        "**字数**不是字节：`backend/stream/live.rs` 活卡正文超过留尾多少字才截一次（截一次就整张重发一次，这个数定的是重发的疏密）。",
+    ),
+    (
         "EVENT_QUEUE",
         "**条数**不是体量：`stream_source/run.rs` 重连循环交给收事那一头的那条队列至多排几件事；排满了循环就等（背压回到那台），不丢不截。",
     ),

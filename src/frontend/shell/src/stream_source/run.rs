@@ -605,7 +605,7 @@ async fn dispatch(
         }
         // 远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
         //   （origin = 这台；标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。
-        Some(InboundFrame::Tap(t)) => crate::session_tap::deliver(&host_label, t),
+        Some(InboundFrame::LiveCard(l)) => crate::live_card::deliver(&host_label, l),
         // 终端实时预览：这台推来的一屏 / 收尾 ⇒ 交订了这台 `terminal-screen/<票>` 的那条订阅（从不阻塞）。
         Some(
             InboundFrame::TerminalScreen { ticket, cell }

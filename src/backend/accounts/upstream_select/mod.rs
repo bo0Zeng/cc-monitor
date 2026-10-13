@@ -199,16 +199,20 @@ impl Upstreams {
 /// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
 /// 取值器是**真环境**。回一句给宿主日志看的话。
 /// 先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
-/// tee 的落点是进程级那一个 tap 口（`crate::stream::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
+/// `tap`：tee 的落点（生产 ＝ 进程级那一个 tap 口 `crate::stream::tap::port`，宿主交进来）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （② 不碰响应体）。
 ///
 /// `library`：这台的账号库怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 /// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
-pub fn host_relay(library: rotate::LibraryRead, own: crate::platform::fs::Own) -> String {
+pub fn host_relay(
+    library: rotate::LibraryRead,
+    tap: std::sync::Arc<dyn crate::relay::TapPort>,
+    own: crate::platform::fs::Own,
+) -> String {
     let hosted = crate::relay::host(
         &|k| std::env::var(k).ok(),
         &Rotating(library, own.clone()),
-        crate::stream::tap::port(),
+        tap,
         &own,
     );
     // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是第一版，这一下换形写回（全机只这一处写回）。

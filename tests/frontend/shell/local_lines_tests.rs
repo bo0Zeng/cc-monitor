@@ -182,10 +182,10 @@ const FRAMES: &[(&str, &str)] = &[
         "terminal_follow_end",
         r#"{"kind":"terminal_follow_end","ticket":"no-such-ticket","why":"gone","said":"x"}"#,
     ),
-    // 中转抄出来的 SSE 事件 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
+    // 活卡 —— 不是会话内容（jsonl 才是），就地转给前端，不进内容通道。
     (
-        "tap",
-        r#"{"kind":"tap","stream":"s1","resp":0,"n":0,"ev":{"t":"stop","ok":true}}"#,
+        "live_card",
+        r#"{"kind":"live_card","sid":"s1","card":0,"n":0,"op":"awaiting"}"#,
     ),
     // 一个会话的运行表 —— 会话成品，与起停同一条有序通道。
     (

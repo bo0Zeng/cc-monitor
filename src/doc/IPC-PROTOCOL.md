@@ -157,7 +157,7 @@
 桌面端（monitor）与第二个前端（手机端）吃同一个后端。第二个前端按下面这些格读，缺一格就把整帧当坏帧丢 ⇒ 它们**冻结**：不许改名、删、换类型，只许加新字段；非改不可就两边同拍。
 
 - 帧：`hello` `v` `build_id` `host_arch` `claude_dir` `emits` · `line` `session_id` `path` `seq` `byte_offset` `record` ·
-  `overflow` `dropped` `lost` `lost_truncated` · `turn_end` `session_id` `uuid` · `tap` `stream` `run` `resp` `n` `ev` ·
+  `overflow` `dropped` `lost` `lost_truncated` · `turn_end` `session_id` `uuid` · `live` `sid` `run` `card` `n` `op` `rid` `phase` `clipped` `blocks` ·
   `reply` `id` `ok` `code` `message` `detail` `data` · `cancelled` `id` · 请求信封 `id` `cmd` `args` `within_ms`（可缺）`tz`（可缺）`view`（可缺）。
 - 会话三帧与成品面在格目录里：每格带 `frozen`。`session_added`（`sid` `path` `cwd` `name` `waiting_for` `agent_kind` `attachable` `activity` `activity_text` `activity_tone` `background`）·
   `session_status`（`sid` `waiting_for` `activity` `activity_text` `activity_tone`）· `session_removed`（`sid` `cause`）只冻这几格；

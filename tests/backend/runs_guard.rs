@@ -15,7 +15,7 @@
 use crate::agents::{RunEnd, RunFaces, StreamEv, StreamFamily};
 use crate::observe::runs::{next_event, RunBook, RunTrack, RUNS_KEEP, STALE_AFTER};
 use crate::relay::{TapBody, TapEvent};
-use crate::stream::run_route::RunRouter;
+use crate::stream::run_route::{Routed, RunRouter};
 use crate::stream::wire::{Frame, RunState};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -354,7 +354,7 @@ fn append(p: &Path, lines: &[String]) {
 }
 
 /// 一段流交给流归位（`owner` 空 ＝ 请求没自报运行）：回放出来的帧。
-fn feed(router: &mut RunRouter, resp: u64, owner: &str, data: Vec<String>) -> Vec<Frame> {
+fn feed(router: &mut RunRouter, resp: u64, owner: &str, data: Vec<String>) -> Vec<Routed> {
     let n = data.len() as u64;
     let mut out = Vec::new();
     for (i, d) in data.into_iter().enumerate() {
@@ -377,11 +377,11 @@ fn feed(router: &mut RunRouter, resp: u64, owner: &str, data: Vec<String>) -> Ve
 }
 
 /// 帧的摘要：（第几段, 归哪个运行, 这一件是什么）。
-fn said(frames: &[Frame]) -> Vec<(u64, Option<String>, String)> {
+fn said(frames: &[Routed]) -> Vec<(u64, Option<String>, String)> {
     frames
         .iter()
         .map(|f| match f {
-            Frame::Tap {
+            Routed {
                 resp, run, ev, end, ..
             } => (
                 *resp,
@@ -396,7 +396,6 @@ fn said(frames: &[Frame]) -> Vec<(u64, Option<String>, String)> {
                     (None, None) => "?".into(),
                 },
             ),
-            other => panic!("流归位只该出 tap 帧：{other:?}"),
         })
         .collect()
 }

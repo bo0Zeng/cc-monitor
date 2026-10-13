@@ -2189,9 +2189,9 @@ pub const EMITS: &[&str] = &[
     // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "probe",
-    // 中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
-    // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
-    "tap",
+    // 活卡（中转抄出来的流在 `stream::live` 拼成的成品，`tap::attach` 那一路经 `writer_task` 真发，登记 = 承诺真发）。
+    // 只有进程里住着中转的那个后端（本机常驻）才会有；只发这条流名单里的会话。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
+    "live_card",
     // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "session_runs",
     // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。

@@ -226,7 +226,7 @@ async fn main() {
         }
         tracing::info!(
             "{}",
-            accounts::upstream_select::host_relay(faces::rotation_face::library(), relay_own)
+            accounts::upstream_select::host_relay(faces::rotation_face::library(), stream::tap::port(), relay_own)
         );
         if resident {
             inbound::fill_account_colors();
@@ -405,12 +405,15 @@ async fn run_over_stdio(
     // (c) Start the watcher reader（这台一份）并接上这一条流：回这条连接的有界出方向通道。
     // 运行簿：整台一本，watcher 写、tap 那一路的流归位读。
     let (poke, book) = observe::watcher::spawn(agent_home, own.clone());
+    tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
     let (rx, attached) = poke.attach(&wants);
+    // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
+    let tap_rx = tap::attach(tz.clone());
     let inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
-        watch_desk(&attached),
+        watch_desk(&attached, &tap_rx),
         own,
         hello_flushed,
     );
@@ -434,8 +437,6 @@ async fn run_over_stdio(
     // 收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = inbound::shutdown_listener();
-    // 这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
-    let tap_rx = tap::attach(book, tz.clone());
     let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz, view);
     tokio::pin!(writer);
     let signalled = tokio::select! {
@@ -464,9 +465,14 @@ async fn run_over_stdio(
 }
 
 /// 这条连接的 `stream-watch` 口接到它在这台 watcher 上的那一份（名单按连接）。
-fn watch_desk(attached: &observe::watcher::Attachment) -> inbound::WatchDesk {
+/// `stream-watch` 那一口：名单只有一份，同拍交给这条连接在 watcher 上的那一份（行 · 运行表 · 主线外清单）与活卡（`live` 帧）。
+fn watch_desk(attached: &observe::watcher::Attachment, tap_rx: &tap::TapRx) -> inbound::WatchDesk {
     let h = attached.handle();
-    inbound::WatchDesk::new(move |sids| h.watch(sids))
+    let live = tap_rx.watch_handle();
+    inbound::WatchDesk::new(move |sids| {
+        live.watch(&sids);
+        h.watch(sids)
+    })
 }
 
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
@@ -733,6 +739,7 @@ async fn serve_listening(
     // 这台一份 watcher（read8a：整台一份读者）：从起来到退一直这一份 —— 没人连着时它照样看 `sessions/`、打标；
     //   每接上一条流就 `attach` 一份投影（名单 · 续点 · 没送出去的帧按连接），记录整台只预读一次。
     let (watcher, book) = observe::watcher::spawn(agent_home.clone(), own.clone());
+    tap::adopt(&book);
 
     // 多客户：认证通过的连接排进这里；每条自己一份 watcher / inbound / writer。
     let (attached_tx, mut attached_rx) = tokio::sync::mpsc::channel::<Attached>(1);
@@ -770,10 +777,10 @@ async fn serve_listening(
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
+                // 这条流连接最低优先那一路（活卡的发件箱：整台一份活卡、每条连接按名单一个发件箱）。
+                let tap_rx = tap::attach(tz.clone());
                 let mut inbound_task =
-                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), own.clone(), hello_flushed);
-                // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
-                let tap_rx = tap::attach(book.clone(), tz.clone());
+                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke, &tap_rx), own.clone(), hello_flushed);
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（此刻 {} 条）", clients.count());
                 tokio::spawn(async move {
@@ -863,10 +870,9 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     const REPLY_BURST: u32 = 8;
     let mut burst = 0u32;
     loop {
-        // tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
-        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
-        //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
-        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、这一轮不参与，不会空转。
+        // 活卡那一路**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
+        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— 它走自己那个
+        //   有界发件箱（`live::LIVE_OUTBOX_CAP`），满了合成整卡。
         let frame = if burst < REPLY_BURST {
             tokio::select! {
                 biased;
