@@ -216,13 +216,14 @@ pub enum In {
         ended: crate::ui_contract::RecordBody,
     },
     /// `session_branch`：那台后端给的一个会话的主线外清单的一截 ——「那份记录（`path`）的清单前 `at` 条照旧，其后换成 `off`」
-    /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。
+    /// （记录 `id`，不解释）。账照它拼成整份，交出去的是整份。`sum` ＝ 那台铸的「到这一帧末尾为止」那一截的摘要（只记、在 `stream-watch` 里交回）。
     Branch {
         origin: crate::origin::Origin,
         sid: String,
         path: String,
         at: u64,
         off: Vec<String>,
+        sum: String,
     },
 }
 
@@ -279,8 +280,14 @@ struct OriginBook {
             crate::ui_contract::RecordBody,
         ),
     >,
-    /// 活会话的最新主线外清单（哪份记录的 · 整份；F5 重放跟在它的宣告后面再说一次）；会话离开 ⇒ 摘。
-    branch: BTreeMap<String, (String, Vec<String>)>,
+}
+
+/// 手上一个会话的主线外清单：哪份记录的 · 拼好的整份 · 那台给的摘要（`None` ＝ 拼的时候中间缺过一截，说不准 ⇒ 下次要整份）。
+#[derive(Debug, Default, Clone)]
+struct BranchCopy {
+    path: String,
+    off: Vec<String>,
+    sum: Option<String>,
 }
 
 /// F5 重放那一趟要发的东西：骨架先（`before`，在留存行之前），终局后（`after`，在留存行之后 —— 否则远端行会把刚归档的 tab 翻活）。
@@ -302,6 +309,9 @@ fn branch_body(off: &[String]) -> crate::ui_contract::RecordBody {
 #[derive(Debug, Default)]
 pub struct Book {
     origins: HashMap<String, OriginBook>,
+    /// 每台每个会话手上那份主线外清单（F5 重放跟在宣告后面再说一次 · 报名单时交回手上有什么）。
+    /// **断线不摘**（不跟 `origins` 那一台一起走）：重接之后交回它，那台只补缺的那一截。会话离开 · 关 tab · 那台报完清单时不在了 ⇒ 摘。
+    branch: HashMap<String, BTreeMap<String, BranchCopy>>,
     /// 订了会话流的那几台（机器表：本机 ＋ 注册着的远端）；`None` = 还不知道 ⇒ 不立「各台都报完」。
     machines: Option<Vec<String>>,
 }
@@ -352,7 +362,9 @@ impl Book {
                 b.sessions
                     .insert(sid.clone(), Product::Left(fate, words.clone()));
                 b.runs.remove(&sid);
-                b.branch.remove(&sid);
+                if let Some(m) = self.branch.get_mut(&origin) {
+                    m.remove(&sid);
+                }
                 vec![Out::Left {
                     origin,
                     sid,
@@ -384,28 +396,40 @@ impl Book {
                 path,
                 at,
                 off,
+                sum,
             } => {
                 let held = self
-                    .origins
+                    .branch
                     .entry(origin.as_wire_str().to_string())
                     .or_default()
-                    .branch
                     .entry(sid.clone())
                     .or_default();
                 // 换了一份记录 ⇒ 从空的起拼（那一份从 `at = 0` 发起）。
-                if held.0 != path {
-                    *held = (path, Vec::new());
+                if held.path != path {
+                    *held = BranchCopy {
+                        path,
+                        ..BranchCopy::default()
+                    };
                 }
-                held.1.truncate(usize::try_from(at).unwrap_or(usize::MAX));
-                held.1.extend(off);
+                let at = usize::try_from(at).unwrap_or(usize::MAX);
+                // 「前 `at` 条照旧」而手上没有那么多 ⇒ 中间缺过一截：拼出来的不是那台那份，摘要不记（下次交 `at: 0` 要整份）。
+                let whole = at <= held.off.len();
+                held.off.truncate(at);
+                held.off.extend(off);
+                held.sum = whole.then_some(sum);
                 vec![Out::Branch {
                     origin,
                     sid,
-                    off: branch_body(&held.1),
+                    off: branch_body(&held.off),
                 }]
             }
             In::Listed { origin } => {
                 self.origins.entry(origin.clone()).or_default().listed = true;
+                // 清单报完了：那台此刻不在的会话，手上那份清单没用了。
+                let live = &self.origins[&origin].sessions;
+                if let Some(m) = self.branch.get_mut(&origin) {
+                    m.retain(|sid, _| matches!(live.get(sid), Some(Product::Live(_))));
+                }
                 let all = self.all_listed();
                 vec![Out::Listed { origin, all }]
             }
@@ -425,6 +449,30 @@ impl Book {
                 vec![Out::Unseen { origin, sids }]
             }
         }
+    }
+
+    /// 报名单时交回的那一格（`stream-watch.branch`）：那台这几个会话的主线外清单手上各有什么（没有 / 说不准 ⇒ `at: 0`）。
+    pub fn branch_held(
+        &self,
+        origin: &crate::origin::Origin,
+        sids: &std::collections::BTreeSet<String>,
+    ) -> Vec<resident_client::watch::BranchHeld> {
+        let mine = self.branch.get(origin.as_wire_str());
+        sids.iter()
+            .map(|sid| match mine.and_then(|m| m.get(sid)) {
+                Some(BranchCopy {
+                    path,
+                    off,
+                    sum: Some(sum),
+                }) => resident_client::watch::BranchHeld {
+                    sid: sid.clone(),
+                    path: Some(path.clone()),
+                    at: off.len() as u64,
+                    sum: Some(sum.clone()),
+                },
+                _ => resident_client::watch::BranchHeld::nothing(sid),
+            })
+            .collect()
     }
 
     /// 机器表里的每一台都报完了活会话清单（表还不知道 / 空 ⇒ 否）。
@@ -476,7 +524,9 @@ impl Book {
         for b in self.origins.values_mut() {
             b.sessions.remove(sid);
             b.runs.remove(sid);
-            b.branch.remove(sid);
+        }
+        for m in self.branch.values_mut() {
+            m.remove(sid);
         }
     }
 
@@ -507,11 +557,11 @@ impl Book {
                                 ended: ended.clone(),
                             });
                         }
-                        if let Some((_, off)) = b.branch.get(sid) {
+                        if let Some(c) = self.branch.get(*o).and_then(|m| m.get(sid)) {
                             r.before.push(Out::Branch {
                                 origin: crate::origin::Origin((*o).clone()),
                                 sid: sid.clone(),
-                                off: branch_body(off),
+                                off: branch_body(&c.off),
                             });
                         }
                     }

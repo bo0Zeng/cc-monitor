@@ -67,6 +67,13 @@ impl FrameSink {
             priming: HashSet::new(),
         }
     }
+
+    /// 同 [`Self::new`]，那条连接还要了这几个会话的主线外清单（`stream-watch.branch`）。
+    pub(in crate::observe::watcher) fn wanting_branches(tx: mpsc::Sender<Frame>, sids: &[&str]) -> Self {
+        let mut s = Self::new(tx);
+        s.subs[0].branching.extend(sids.iter().map(|x| x.to_string()));
+        s
+    }
 }
 
 // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------
@@ -1399,7 +1406,7 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
             path: Some(path.to_string_lossy().into_owned()),
         },
     );
-    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
+    watch_sessions(0, crate::stream::wire::WatchAsk { sids: vec!["other".into()], branch: vec![] }, &mut state, &mut sink);
     let names = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut got = Vec::new();
         while let Ok(f) = rx.try_recv() {
@@ -4244,7 +4251,7 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
         + line("u3", "a1", "t4", "user").as_str();
     std::fs::write(&jsonl, &body).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &["br-sid"]);
     let mut state = ReaderState::new(dir.join("projects"));
     let pidfile = dir.join(format!("{pid}.json"));
     std::fs::write(
@@ -4255,7 +4262,7 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut branches = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { sid, path, at, off } = f {
+        if let Frame::SessionBranch { sid, path, at, off, .. } = f {
             assert_eq!(sid, "br-sid");
             assert_eq!(path, jsonl.to_string_lossy());
             branches.push((at, off));
@@ -4350,7 +4357,7 @@ fn announce_record(dir: &Path, sid: &str, body: &str) -> (Vec<Frame>, ReaderStat
     )
     .unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 16);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &[sid]);
     let mut state = ReaderState::new(dir.join("projects"));
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut got = Vec::new();
@@ -4425,7 +4432,7 @@ fn reading_a_big_batch_of_new_lines_walks_the_chain_once() {
     let path = dir.join("projects").join("proj-h").join("hot-sid2.jsonl");
     std::fs::write(&path, &body).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 16);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &["hot-sid2"]);
     process_jsonl(&path, &mut state, &mut sink);
     let mut frames = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -4477,7 +4484,7 @@ fn queued_lines_without_forks_do_not_walk_the_chain() {
 #[test]
 fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(4);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &["s", "other"]);
     let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let branches = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut v = Vec::new();

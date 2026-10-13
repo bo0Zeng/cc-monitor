@@ -152,7 +152,7 @@ enum WatchEvent {
     Watch {
         /// 哪条连接报的（[`Attachment`] 的号）。
         sub: u64,
-        sids: Vec<String>,
+        ask: crate::stream::wire::WatchAsk,
         done: tokio::sync::oneshot::Sender<Vec<crate::stream::wire::WatchFrom>>,
     },
     /// 一条流连接接上来了：从这一刻起它收这台的帧（先收一份此刻的样子，[`join`]）。
@@ -867,12 +867,12 @@ impl WatchHandle {
     /// 这条流此刻在看哪几个会话（整份换）；回刚进名单的那几个从第几行起上流。watcher 已停 ⇒ 回的那一头直接断。
     pub fn watch(
         &self,
-        sids: Vec<String>,
+        ask: crate::stream::wire::WatchAsk,
     ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>> {
         let (done, rx) = tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>();
         let _ = self.tx.send(WatchEvent::Watch {
             sub: self.id,
-            sids,
+            ask,
             done,
         });
         rx
@@ -1422,8 +1422,8 @@ fn watch_loop(
                 }
             }
             // 与起步同一套：耳朵重挂 · 账号清单重读（整机时）· pidfile 对表（顺手对账标签）· 重探 tmux。
-            WatchEvent::Watch { sub, sids, done } => {
-                let _ = done.send(watch_sessions(sub, sids, &mut state, &mut sink));
+            WatchEvent::Watch { sub, ask, done } => {
+                let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));
             }
             WatchEvent::Join(sub) => join(sub, &mut state, &mut sink),
             WatchEvent::Leave(id) => sink.leave(id),
@@ -2307,35 +2307,23 @@ fn adopt_runs(state: &mut ReaderState, sid: &str, path: &Path) -> bool {
     }
 }
 
-/// **流只发要看的会话**：这条流报了它此刻在看 `sids`（整份换）。
+/// **流只发要看的会话**：这条流报了它此刻在看 `ask.sids`（整份换）、要其中哪几个的主线外清单（`ask.branch`，带上它手上各有什么）。
 ///
-/// 刚进名单的会话（先前报过、又不在里面的；没报过 ＝ 全在流上，谁都不算刚进）：补一帧运行表 ＋ 每份记录一帧主线外清单（整份；
-/// 不在看的那段时间里它们变了也没上流），并回它的每份记录从第几行起上流 —— 号取游标此刻的值：之前读过的那些没上流，
-/// 之后读到的（含已落盘、还没读到的）都上流 ⇒ 客户端按骨架补 `[0, seq)`、接实时 `[seq, …)`，不重复也不漏。
+/// 刚进名单的会话（先前报过、又不在里面的；没报过 ＝ 全在流上，谁都不算刚进）：补一帧运行表，并回它的每份记录从第几行起上流 ——
+/// 号取游标此刻的值：之前读过的那些没上流，之后读到的（含已落盘、还没读到的）都上流 ⇒ 客户端按骨架补 `[0, seq)`、接实时 `[seq, …)`，不重复也不漏。
+/// 刚要起主线外清单的会话（这一次的 `branch` 里有、在看，上一次没有 —— 换了一条连接的头一次报都算）：照它手上那份只补缺的那一截
+/// （[`FrameSink::branch_to`]）。不要清单的会话（`branch` 里没有）一帧清单都不收。
 /// 在看的会话照读照数（行号与运行表、链索引都照常推进），只是那几种帧不上这条流（拦在 [`FrameSink::send`]）。
-/// 名单是按连接的（`sub` ＝ 那条连接的号）：补发的帧只给它。预读还没交回的会话不补（读完那一帧之后照名单发）、也不回续点（它的续点由 `session_primed` 给）。
+/// 名单是按连接的（`sub` ＝ 那条连接的号）：补发的帧只给它。预读还没交回的会话不补（读完那一帧之后照名单发，[`primed`]）、也不回续点（它的续点由 `session_primed` 给）。
 fn watch_sessions(
     sub: u64,
-    sids: Vec<String>,
+    ask: crate::stream::wire::WatchAsk,
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) -> Vec<crate::stream::wire::WatchFrom> {
-    let next: HashSet<String> = sids.into_iter().collect();
+    let next: HashSet<String> = ask.sids.into_iter().collect();
     let Some(me) = sink.subs.iter_mut().find(|s| s.id == sub) else {
         return Vec::new();
-    };
-    // 出名单的会话：这条连接手上那份主线外清单停在此刻（之后变了也不上流）⇒ 记下它手上有几条，回来时只补缺的那一截。
-    // 没报过 ＝ 全看 ⇒ 名单外的都算刚出去。
-    let leaving: Vec<String> = {
-        let known: HashSet<String> = state
-            .offsets
-            .keys()
-            .filter_map(|k| state.sid_of(k))
-            .collect();
-        match &me.watching {
-            None => known.difference(&next).cloned().collect(),
-            Some(old) => old.difference(&next).cloned().collect(),
-        }
     };
     let fresh: Vec<String> = match &me.watching {
         None => Vec::new(),
@@ -2349,37 +2337,50 @@ fn watch_sessions(
             v
         }
     };
+    // 要清单的：只算在看的那几个（不在看的清单本来就不上流）。
+    let held: HashMap<String, crate::stream::wire::BranchHeld> = ask
+        .branch
+        .into_iter()
+        .filter(|h| next.contains(&h.sid))
+        .map(|h| (h.sid.clone(), h))
+        .collect();
+    let mut starting: Vec<String> = held
+        .keys()
+        .filter(|sid| !me.branching.contains(*sid))
+        .cloned()
+        .collect();
+    starting.sort_unstable();
+    me.branching = held.keys().cloned().collect();
+    me.branch_held = held
+        .into_iter()
+        .filter(|(sid, _)| starting.contains(sid))
+        .filter_map(|(_, h)| Some((h.path?, (h.at, h.sum?))))
+        .collect();
     me.watching = Some(next);
-    for sid in &leaving {
-        for p in state
+    let mine = |state: &ReaderState, sid: &str| -> Vec<PathBuf> {
+        let mut v: Vec<PathBuf> = state
             .offsets
             .keys()
-            .filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str()))
-        {
-            let off = state
-                .branches
-                .get(&path_key(p))
-                .map_or(&[][..], |c| c.off());
-            sink.hold_branch(sub, &p.to_string_lossy(), off);
-        }
-    }
-    let mut from = Vec::new();
-    for sid in fresh {
-        let mut mine: Vec<PathBuf> = state
-            .offsets
-            .keys()
-            .filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str()))
+            .filter(|k| state.sid_of(k).as_deref() == Some(sid))
             .cloned()
             .collect();
-        mine.sort();
+        v.sort();
+        v
+    };
+    let mut from = Vec::new();
+    for sid in fresh {
         sink.send_to(sub, state.runs_frame(&sid));
-        for p in &mine {
-            branch_to(state, sink, sub, &sid, p);
+        for p in mine(state, &sid) {
             from.push(crate::stream::wire::WatchFrom {
                 sid: sid.clone(),
                 path: p.to_string_lossy().into_owned(),
                 seq: state.seqs.peek(&p.to_string_lossy()),
             });
+        }
+    }
+    for sid in starting.iter().filter(|s| !state.priming.contains_key(*s)) {
+        for p in mine(state, sid) {
+            branch_to(state, sink, sub, sid, &p);
         }
     }
     from
@@ -2388,8 +2389,8 @@ fn watch_sessions(
 /// 一条流连接接上来了：先给它一份这台此刻的样子，之后它与别的连接一样收每一帧。
 ///
 /// 那一份 ＝ 每个活会话一帧 `session_added`（宣告那一帧，此刻的活动 · 名字 · 在等什么 · 记录路径换成现值）·
-/// 已读完的再一帧 `session_primed`（`lines` ＝ 此刻已计完的行数：之后的行从这里接）· 有子运行的运行表 · 有主线外的清单 ·
-/// 会话账本的那一份（可重连的 · 清单报完了没有）。**不重读记录**：预读整台只做一次（read8a ＋ §5.2 a）。
+/// 已读完的再一帧 `session_primed`（`lines` ＝ 此刻已计完的行数：之后的行从这里接）· 有子运行的运行表 ·
+/// 会话账本的那一份（可重连的 · 清单报完了没有）。主线外清单不在里面：它只给在 `stream-watch` 里要了的连接、照它手上的只补缺的（[`watch_sessions`]）。**不重读记录**：预读整台只做一次（read8a ＋ §5.2 a）。
 fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
     let id = sub.id;
     sink.subs.push(sub);
@@ -2443,18 +2444,6 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
         if state.book.has_runs(&sid) {
             sink.send_to(id, state.runs_frame(&sid));
         }
-        let mut mine: Vec<PathBuf> = state
-            .offsets
-            .keys()
-            .filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str()))
-            .cloned()
-            .collect();
-        mine.sort();
-        for p in &mine {
-            if state.branches.get(p).is_some_and(|c| !c.off().is_empty()) {
-                branch_to(state, sink, id, &sid, p);
-            }
-        }
     }
     for f in sink
         .ledger
@@ -2479,7 +2468,7 @@ fn send_branch(state: &mut ReaderState, sink: &mut FrameSink, sid: &str, path: &
     sink.branch(sid, &path.to_string_lossy(), off, kept);
 }
 
-/// 给一条连接这份记录此刻的整份主线外清单（名单补发 · 接上来那一份）。
+/// 给一条连接这份记录此刻的主线外清单（它刚要起这份清单：照它交回的手上那份只补缺的）。
 fn branch_to(state: &ReaderState, sink: &mut FrameSink, id: u64, sid: &str, path: &Path) {
     let off = state
         .branches
@@ -4450,18 +4439,12 @@ pub(crate) struct Sub {
     /// 这条流此刻在看哪几个会话（`stream-watch` 报的）：`None` ＝ 没报过 ＝ 全看。
     /// 不在名单里的会话，它的整行帧（[`Frame::content_of`]）不投给这条连接，别的帧不挑。
     watching: Option<HashSet<String>>,
+    /// 这条连接要哪几个会话的主线外清单（`stream-watch.branch`，只算在看的）：不在里面的会话，清单一帧不投给它。
+    branching: HashSet<String>,
     /// 丢过它一帧 `session_branch` 的那几份记录（路径）：只发变了的那一截，丢了一帧手上的就对不上 ⇒ 下一次给整份（[`FrameSink::branch`]）。
     branch_stale: HashSet<String>,
-    /// 切出名单时这条连接手上那份主线外清单（路径 ⇒ 条数 · 摘要）：回到名单时只补缺的那一截（[`FrameSink::branch_to`]）。
-    branch_held: HashMap<String, (usize, u64)>,
-}
-
-/// 一份主线外清单的摘要（只在本进程里比，用 std 的哈希）。
-fn prefix_hash(off: &[String]) -> u64 {
-    use std::hash::{Hash, Hasher};
-    let mut h = std::collections::hash_map::DefaultHasher::new();
-    off.hash(&mut h);
-    h.finish()
+    /// 刚要起清单、还没给它发过的那几份记录：它交回的手上那份（路径 ⇒ 条数 · 摘要）。头一次给它这份时照它只补缺的那一截，用完即摘。
+    branch_held: HashMap<String, (u64, String)>,
 }
 
 /// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
@@ -4572,7 +4555,11 @@ impl FrameSink {
             if !delta.first().is_some_and(|f| s.wants(f)) {
                 continue;
             }
-            let frames = if s.branch_stale.remove(path) {
+            let frames = if s.branch_held.contains_key(path) {
+                // 刚要起这份、预读那会儿没发成：照它交回的手上那份补（[`Sub::held_at`]）。
+                let at = s.held_at(path, off);
+                Frame::branch_pages(sid, path, off, at)
+            } else if s.branch_stale.remove(path) {
                 whole
                     .get_or_insert_with(|| Frame::branch_pages(sid, path, off, 0))
                     .clone()
@@ -4586,34 +4573,13 @@ impl FrameSink {
         self.subs.retain(|s| !s.tx.is_closed());
     }
 
-    /// 只给一条连接整份清单（名单补发 · 接上来那一份）：不看名单。
-    /// 给那一条连接这份记录的主线外清单（进名单补发）：它出名单时手上那份（[`Self::hold_branch`]）前缀没动、也没丢过帧 ⇒
-    /// 只发它缺的那一截（`at` ＝ 它手上的条数）；否则整份。
+    /// 给那一条连接这份记录的主线外清单（它刚要起这份）：它交回的手上那份前缀没动、也没丢过帧 ⇒ 只发它缺的那一截
+    /// （`at` ＝ 它手上的条数）；否则整份。
     fn branch_to(&mut self, id: u64, sid: &str, path: &str, off: &[String]) {
         if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
-            let at = match s.branch_held.remove(path) {
-                Some((n, h))
-                    if !s.branch_stale.contains(path)
-                        && n <= off.len()
-                        && prefix_hash(&off[..n]) == h =>
-                {
-                    n
-                }
-                _ => 0,
-            };
-            s.branch_stale.remove(path);
+            let at = s.held_at(path, off);
             for f in Frame::branch_pages(sid, path, off, at) {
                 s.push(f);
-            }
-        }
-    }
-
-    /// 这条连接把这份记录切出名单了：记下它手上那份清单（条数 ＋ 摘要），回来时 [`Self::branch_to`] 照它只补缺的。丢过帧的不记（手上的对不上）。
-    fn hold_branch(&mut self, id: u64, path: &str, off: &[String]) {
-        if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
-            if !s.branch_stale.contains(path) {
-                s.branch_held
-                    .insert(path.to_string(), (off.len(), prefix_hash(off)));
             }
         }
     }
@@ -4634,13 +4600,30 @@ impl Sub {
             lost: Vec::new(),
             lost_truncated: false,
             watching: None,
+            branching: HashSet::new(),
             branch_stale: HashSet::new(),
             branch_held: HashMap::new(),
         }
     }
 
+    /// 这条连接手上这份记录的主线外清单从第几条起要补：它交回的那份（[`Self::branch_held`]，用完即摘）前缀摘要对得上、
+    /// 这条连接也没丢过它的帧 ⇒ 它手上的条数；否则 0（整份）。
+    fn held_at(&mut self, path: &str, off: &[String]) -> usize {
+        let stale = self.branch_stale.remove(path);
+        match self.branch_held.remove(path) {
+            Some((n, sum)) if !stale => usize::try_from(n)
+                .ok()
+                .filter(|&n| n <= off.len() && crate::stream::wire::branch_sum(&off[..n]) == sum)
+                .unwrap_or(0),
+            _ => 0,
+        }
+    }
+
     /// 这条连接要不要这一帧（只挑整行帧：名单外的会话不投）。
     fn wants(&self, frame: &Frame) -> bool {
+        if let Frame::SessionBranch { sid, .. } = frame {
+            return self.branching.contains(sid);
+        }
         match (&self.watching, frame.content_of()) {
             (Some(w), Some(sid)) => w.contains(sid),
             _ => true,

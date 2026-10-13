@@ -172,6 +172,8 @@ pub enum InboundFrame {
         path: String,
         at: u64,
         off: Vec<String>,
+        /// 到这一帧末尾为止那一截的摘要（那台铸的；会话账记下、报名单时交回）。
+        sum: String,
     },
     /// 远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）；monitor 收到后经 remote-health 通道提示用户。
     /// `lost` / `lost_truncated`（additive）：那批丢帧里不可恢复的那些的身份 —— 决定了要对用户说哪句话：丢内容帧「重开会话可看完整历史」是真的，
@@ -563,6 +565,7 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             path: req_str(obj, k, "path")?,
             at: req_u64(obj, k, "at")?,
             off: req_strings(obj, k, "off")?,
+            sum: req_str(obj, k, "sum")?,
         },
         "session_removed" => InboundFrame::SessionRemoved {
             sid: req_str(obj, k, "sid")?,

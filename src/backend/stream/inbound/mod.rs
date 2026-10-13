@@ -117,7 +117,7 @@ pub fn command_names() -> Vec<&'static str> {
 #[derive(Clone)]
 pub struct WatchDesk(
     Arc<
-        dyn Fn(Vec<String>) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+        dyn Fn(crate::stream::wire::WatchAsk) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
             + Send
             + Sync,
     >,
@@ -126,7 +126,7 @@ pub struct WatchDesk(
 impl WatchDesk {
     /// 接上这条连接的 watcher（入参就是它的 `watch` 口）。
     pub fn new(
-        f: impl Fn(Vec<String>) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+        f: impl Fn(crate::stream::wire::WatchAsk) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
             + Send
             + Sync
             + 'static,
@@ -141,13 +141,11 @@ pub(crate) struct Given {
     pub(crate) own: crate::platform::Own,
 }
 
-/// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）。别的形状 ⇒ `bad_args`。
-fn watch_sids(args: &serde_json::Value) -> Option<Vec<String>> {
-    args.get("sids")?
-        .as_array()?
-        .iter()
-        .map(|v| v.as_str().map(str::to_string))
-        .collect()
+/// `stream-watch` 的入参：`sids` 是串数组（整份换；空 ＝ 一个都不看）；`branch` 可缺（＝ 一份主线外清单都不要），给了就是 `[{sid, path?, at?, sum?}]`。
+/// 别的形状 ⇒ `bad_args`。
+fn watch_ask(args: &serde_json::Value) -> Option<crate::stream::wire::WatchAsk> {
+    args.get("sids")?.as_array()?;
+    serde_json::from_value(args.clone()).ok()
 }
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -444,16 +442,16 @@ fn dispatch(
             }),
         ),
         "stream-watch" => {
-            let Some(sids) = watch_sids(&req.args) else {
+            let Some(ask) = watch_ask(&req.args) else {
                 return Disposition::Reply(Frame::err(
                     &req.id,
                     "bad_args",
                     &crate::common::contract::malformed(
-                        "stream-watch: `sids` must be an array of strings",
+                        "stream-watch: `sids` must be an array of strings, `branch` an array of {sid, path?, at?, sum?}",
                     ),
                 ));
             };
-            let answer = (given.watch.0)(sids);
+            let answer = (given.watch.0)(ask);
             Disposition::SpawnData(
                 req,
                 Box::new(move |_r: Request| -> DataFut {

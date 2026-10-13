@@ -29,3 +29,30 @@ fn the_reply_turns_into_rows_and_a_bad_row_is_left_out() {
     );
     assert!(from_of(None).is_empty());
 }
+
+/// read8c：入参带上要哪几个的主线外清单、手上各有什么 —— 手上有的交回条数与摘要（那台铸的、原样），没有的只交 `at: 0`；
+/// 不读清单的那一头交空的。
+#[test]
+fn the_ask_hands_back_what_each_branch_list_holds() {
+    let sids: BTreeSet<String> = ["a".to_string(), "b".to_string()].into();
+    let held = [
+        BranchHeld {
+            sid: "a".into(),
+            path: Some("/p/a.jsonl".into()),
+            at: 12,
+            sum: Some("00ff".into()),
+        },
+        BranchHeld::nothing("b"),
+    ];
+    assert_eq!(
+        args(&sids, &held),
+        serde_json::json!({ "sids": ["a", "b"], "branch": [
+            { "sid": "a", "path": "/p/a.jsonl", "at": 12, "sum": "00ff" },
+            { "sid": "b", "at": 0 },
+        ]})
+    );
+    assert_eq!(
+        args(&sids, &[]),
+        serde_json::json!({ "sids": ["a", "b"], "branch": [] })
+    );
+}

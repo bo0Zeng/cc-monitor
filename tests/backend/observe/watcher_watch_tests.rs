@@ -61,8 +61,11 @@ fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
     out
 }
 
-fn ids(v: &[&str]) -> Vec<String> {
-    v.iter().map(|s| s.to_string()).collect()
+fn ids(v: &[&str]) -> crate::stream::wire::WatchAsk {
+    crate::stream::wire::WatchAsk {
+        sids: v.iter().map(|s| s.to_string()).collect(),
+        branch: Vec::new(),
+    }
 }
 
 #[test]

@@ -554,12 +554,14 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                 path: s("/p/s1.jsonl"),
                 at: 0,
                 off: vec![s("u2"), s("a2")],
+                sum: crate::stream::wire::branch_sum(&[s("u2"), s("a2")]),
             },
             Frame::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
                 at: 2,
                 off: vec![],
+                sum: crate::stream::wire::branch_sum(&[s("u2"), s("a2")]),
             },
         ],
         [
@@ -2078,15 +2080,20 @@ fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
             "一帧 {} 字节",
             line.len()
         );
-        let Frame::SessionBranch { at, off, .. } = f else {
+        let Frame::SessionBranch { at, off, sum, .. } = f else {
             panic!()
         };
         assert_eq!(*at as usize, all.len());
         all.extend(off.iter().cloned());
+        // read8c：每帧的摘要 ＝ 到它末尾为止那一截的摘要（客户端交回的就是它）。
+        assert_eq!(*sum, crate::stream::wire::branch_sum(&all), "第 {at} 条起那一帧的摘要不是到它末尾的那一截");
     }
     assert_eq!(all, off);
     let tail = Frame::branch_pages("s", "/p/s.jsonl", &off[..10], 8);
-    assert!(matches!(&tail[..], [Frame::SessionBranch { at: 8, off, .. }] if off.len() == 2));
+    assert!(matches!(&tail[..], [Frame::SessionBranch { at: 8, off: o, sum, .. }] if o.len() == 2 && *sum == crate::stream::wire::branch_sum(&off[..10])));
+    // 摘要跨进程稳定：钉一个数（FNV-1a 64），换了算法 ⇒ 客户端交回的旧摘要全对不上（只是多发整份，但要有意为之）。
+    assert_eq!(crate::stream::wire::branch_sum(&[]), "cbf29ce484222325");
+    assert_eq!(crate::stream::wire::branch_sum(&["a".to_string()]), format!("{:016x}", (((0xcbf2_9ce4_8422_2325u64 ^ 0x61).wrapping_mul(0x0100_0000_01b3)) ^ 0x0a).wrapping_mul(0x0100_0000_01b3)));
     let none = Frame::branch_pages("s", "/p/s.jsonl", &off[..3], 3);
     assert!(matches!(&none[..], [Frame::SessionBranch { at: 3, off, .. }] if off.is_empty()));
 }

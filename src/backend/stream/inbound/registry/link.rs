@@ -14,9 +14,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 流只发要看的会话：本连接那份 watcher 的名单 ⇒ **只在帧面**。
     CommandSpec {
         name: "stream-watch",
-        summary: "这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单不上这条流，宣告 · 状态 · 轮次边沿照发；回刚进名单的那几个从第几行起上流",
+        summary: "这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单不上这条流，宣告 · 状态 · 轮次边沿照发；主线外清单只给 `branch` 里要了的会话、照手上那份只补缺的；回刚进名单的那几个从第几行起上流",
         codes: &["bad_args"],
-        fields: &[arg("sids", "在看的会话 id（串数组；空 ＝ 一个都不看）"), out("from", "刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回）"), out("path", "`from[]`：那份记录在那台机器上的绝对路径"), out("seq", "`from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补"), out("sid", "`from[]`：会话 id")],
+        fields: &[arg("branch", "要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）：`[{sid, path?, at?, sum?}]`，`at` · `sum` 照手上最后一帧 `session_branch` 的 `at + off.len()` 与 `sum`，手上没有 ⇒ `at: 0`"), arg("sids", "在看的会话 id（串数组；空 ＝ 一个都不看）"), out("from", "刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回）"), out("path", "`from[]`：那份记录在那台机器上的绝对路径"), out("seq", "`from[]`：这条流从这一行起发它（与行帧同一个行号空间）；`[0, seq)` 按骨架补"), out("sid", "`from[]`：会话 id")],
         takes_input: true,
         run: Run::Builtin,
     },

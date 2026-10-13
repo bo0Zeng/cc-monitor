@@ -20,9 +20,33 @@ pub struct WatchFrom {
     pub seq: u64,
 }
 
-/// 请求的入参（整份名单）。
-pub fn args(sids: &BTreeSet<String>) -> serde_json::Value {
-    serde_json::json!({ "sids": sids })
+/// `branch` 的一格：要这个会话的主线外清单，手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（都照手上最后一帧 `session_branch`：
+/// `at + off.len()` 与它的 `sum`）。手上没有 / 说不准 ⇒ [`BranchHeld::nothing`]（那台给整份）。摘要是那台铸的，这里只记、只交回。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct BranchHeld {
+    pub sid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    pub at: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sum: Option<String>,
+}
+
+impl BranchHeld {
+    /// 要这个会话的清单、手上什么都没有。
+    pub fn nothing(sid: &str) -> Self {
+        BranchHeld {
+            sid: sid.to_string(),
+            path: None,
+            at: 0,
+            sum: None,
+        }
+    }
+}
+
+/// 请求的入参：整份名单 ＋ 要哪几个的主线外清单、手上各有什么（空 ＝ 一份都不要：不读清单的那一头就交空的，那台一帧清单都不推）。
+pub fn args(sids: &BTreeSet<String>, branch: &[BranchHeld]) -> serde_json::Value {
+    serde_json::json!({ "sids": sids, "branch": branch })
 }
 
 /// 应答 `{from: [{sid, path, seq}]}` ⇒ 那几格。形状不对的那一格不收（记一行）。

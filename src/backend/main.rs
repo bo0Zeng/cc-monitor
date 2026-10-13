@@ -466,7 +466,7 @@ async fn run_over_stdio(
 /// 这条连接的 `stream-watch` 口接到它在这台 watcher 上的那一份（名单按连接）。
 fn watch_desk(attached: &observe::watcher::Attachment) -> inbound::WatchDesk {
     let h = attached.handle();
-    inbound::WatchDesk::new(move |sids| h.watch(sids))
+    inbound::WatchDesk::new(move |ask| h.watch(ask))
 }
 
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**

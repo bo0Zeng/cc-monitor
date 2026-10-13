@@ -704,7 +704,8 @@ impl<T: Transport> Feed<T> {
     }
 
     /// 名单变了 · 换了一条新连接 ⇒ 在当前连接上整份重报；`from[]` 交宿主。报没成不重试：下一次接上照样整份重报。
-    /// 宿主从没报过名单 ⇒ 不报（那台照旧全发）。
+    /// 宿主从没报过名单 ⇒ 不报（那台照旧全发）。经这里报名单的宿主（手机）不读主线外清单 ⇒ `branch` 交空的（一帧清单都不要）；
+    /// 读它的宿主（桌面壳 `stream_watch.rs`）自己报，照手上那份交回。
     async fn report_watch(self: Arc<Self>) {
         let mut tick = self.watch_tick.subscribe();
         while tick.changed().await.is_ok() {
@@ -715,7 +716,7 @@ impl<T: Transport> Feed<T> {
                 continue;
             };
             match client
-                .call(watch::WATCH_CMD, watch::args(&sids), watch::WATCH_BUDGET)
+                .call(watch::WATCH_CMD, watch::args(&sids, &[]), watch::WATCH_BUDGET)
                 .await
             {
                 Ok(data) => {

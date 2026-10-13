@@ -832,6 +832,9 @@ pub enum Frame {
         at: u64,
         /// 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止）。
         off: Vec<String>,
+        /// 清单前 `at + off.len()` 条的摘要（[`branch_sum`]）：客户端记下最后一帧的条数与它，在 `stream-watch` 的 `branch` 里原样交回，
+        /// 后端照它判手上那份前缀还对不对、只补缺的那一截（换一条连接也一样）。
+        sum: String,
     },
 
     /// **一个终端此刻的一整屏**（终端实时预览，`control/terminal_follow.rs`；`terminal-follow` 之后才出现）。
@@ -1294,13 +1297,19 @@ impl Frame {
     /// 后面没有了（`at` 就是全长）也发一帧空的：它说「清单到第 `at` 条为止」。
     pub fn branch_pages(sid: &str, path: &str, off: &[String], at: usize) -> Vec<Frame> {
         let at = at.min(off.len());
-        let page = |at: usize, ids: &[String]| Frame::SessionBranch {
+        // 摘要沿清单一趟滚过去：第 k 帧的 `sum` ＝ 到它末尾为止那一截的摘要。
+        let mut sum = BranchSum::default();
+        off[..at].iter().for_each(|id| sum.push(id));
+        let page = |at: usize, ids: &[String], sum: String| Frame::SessionBranch {
             sid: sid.to_string(),
             path: path.to_string(),
             at: at as u64,
             off: ids.to_vec(),
+            sum,
         };
-        let fixed = serde_json::to_vec(&page(usize::MAX, &[])).map_or(0, |b| b.len()) + 1;
+        let fixed = serde_json::to_vec(&page(usize::MAX, &[], BranchSum::default().hex()))
+            .map_or(0, |b| b.len())
+            + 1;
         let room = crate::REPLY_PAGE_BYTES.saturating_sub(fixed);
         let mut out = Vec::new();
         let mut start = at;
@@ -1313,15 +1322,46 @@ impl Frame {
                     break;
                 }
                 used += c;
+                sum.push(&off[end]);
                 end += 1;
             }
-            out.push(page(start, &off[start..end]));
+            out.push(page(start, &off[start..end], sum.hex()));
             if end >= off.len() {
                 return out;
             }
             start = end;
         }
     }
+}
+
+/// 主线外清单一段前缀的摘要（FNV-1a 64，每条 `id` 后跟一个换行；十六进制串）：跨进程、跨版本稳定 —— 客户端交回的是上一条连接、
+/// 甚至上一个后端进程铸的。对不上只是多发（整份），不会错。
+#[derive(Debug, Clone, Copy)]
+pub struct BranchSum(u64);
+
+impl Default for BranchSum {
+    fn default() -> Self {
+        BranchSum(0xcbf2_9ce4_8422_2325)
+    }
+}
+
+impl BranchSum {
+    fn push(&mut self, id: &str) {
+        for b in id.bytes().chain(std::iter::once(b'\n')) {
+            self.0 = (self.0 ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3);
+        }
+    }
+
+    fn hex(self) -> String {
+        format!("{:016x}", self.0)
+    }
+}
+
+/// 清单前几条（`ids`）的摘要（同 `session_branch.sum`）。
+pub fn branch_sum(ids: &[String]) -> String {
+    let mut s = BranchSum::default();
+    ids.iter().for_each(|id| s.push(id));
+    s.hex()
 }
 
 /// 链路字节进 JSON 串的编码与它的逆：住拨号核心那一份（`ssh_dial::b64`；那边的 files 一问一答也用它，两处只许一份）。
@@ -1357,6 +1397,27 @@ pub struct WatchFrom {
     pub path: String,
     /// 这条流从这一行起发它。
     pub seq: u64,
+}
+
+/// `stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct WatchAsk {
+    pub sids: Vec<String>,
+    #[serde(default)]
+    pub branch: Vec<BranchHeld>,
+}
+
+/// `stream-watch.branch` 的一格：这条连接要这个会话的主线外清单；手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（上一帧 `session_branch` 给的）。
+/// 手上什么都没有 ⇒ `at: 0`、不带 `path` / `sum`。
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+pub struct BranchHeld {
+    pub sid: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub at: u64,
+    #[serde(default)]
+    pub sum: Option<String>,
 }
 
 /// `stream-watch` 的应答。
