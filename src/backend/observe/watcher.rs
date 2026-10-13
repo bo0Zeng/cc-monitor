@@ -2324,6 +2324,15 @@ fn watch_sessions(
     let Some(me) = sink.subs.iter_mut().find(|s| s.id == sub) else {
         return Vec::new();
     };
+    // 出名单的会话：这条连接手上那份主线外清单停在此刻（之后变了也不上流）⇒ 记下它手上有几条，回来时只补缺的那一截。
+    // 没报过 ＝ 全看 ⇒ 名单外的都算刚出去。
+    let leaving: Vec<String> = {
+        let known: HashSet<String> = state.offsets.keys().filter_map(|k| state.sid_of(k)).collect();
+        match &me.watching {
+            None => known.difference(&next).cloned().collect(),
+            Some(old) => old.difference(&next).cloned().collect(),
+        }
+    };
     let fresh: Vec<String> = match &me.watching {
         None => Vec::new(),
         Some(old) => {
@@ -2337,6 +2346,12 @@ fn watch_sessions(
         }
     };
     me.watching = Some(next);
+    for sid in &leaving {
+        for p in state.offsets.keys().filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str())) {
+            let off = state.branches.get(&path_key(p)).map_or(&[][..], |c| c.off());
+            sink.hold_branch(sub, &p.to_string_lossy(), off);
+        }
+    }
     let mut from = Vec::new();
     for sid in fresh {
         let mut mine: Vec<PathBuf> = state
@@ -4426,6 +4441,16 @@ pub(crate) struct Sub {
     watching: Option<HashSet<String>>,
     /// 丢过它一帧 `session_branch` 的那几份记录（路径）：只发变了的那一截，丢了一帧手上的就对不上 ⇒ 下一次给整份（[`FrameSink::branch`]）。
     branch_stale: HashSet<String>,
+    /// 切出名单时这条连接手上那份主线外清单（路径 ⇒ 条数 · 摘要）：回到名单时只补缺的那一截（[`FrameSink::branch_to`]）。
+    branch_held: HashMap<String, (usize, u64)>,
+}
+
+/// 一份主线外清单的摘要（只在本进程里比，用 std 的哈希）。
+fn prefix_hash(off: &[String]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    off.hash(&mut h);
+    h.finish()
 }
 
 /// 丢帧身份表的上限〔audit-0805 F03，定框 **E5**：上限与超限语义成对定义〕。
@@ -4551,12 +4576,34 @@ impl FrameSink {
     }
 
     /// 只给一条连接整份清单（名单补发 · 接上来那一份）：不看名单。
+    /// 给那一条连接这份记录的主线外清单（进名单补发）：它出名单时手上那份（[`Self::hold_branch`]）前缀没动、也没丢过帧 ⇒
+    /// 只发它缺的那一截（`at` ＝ 它手上的条数）；否则整份。
     fn branch_to(&mut self, id: u64, sid: &str, path: &str, off: &[String]) {
         if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
+            let at = match s.branch_held.remove(path) {
+                Some((n, h)) if !s.branch_stale.contains(path) && n <= off.len() && prefix_hash(&off[..n]) == h => n,
+                _ => 0,
+            };
             s.branch_stale.remove(path);
-            for f in Frame::branch_pages(sid, path, off, 0) {
+            for f in Frame::branch_pages(sid, path, off, at) {
                 s.push(f);
             }
+        }
+    }
+
+    /// 这条连接把这份记录切出名单了：记下它手上那份清单（条数 ＋ 摘要），回来时 [`Self::branch_to`] 照它只补缺的。丢过帧的不记（手上的对不上）。
+    fn hold_branch(&mut self, id: u64, path: &str, off: &[String]) {
+        if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
+            if !s.branch_stale.contains(path) {
+                s.branch_held.insert(path.to_string(), (off.len(), prefix_hash(off)));
+            }
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn mark_branch_stale_for_tests(&mut self, id: u64, path: &str) {
+        if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
+            s.branch_stale.insert(path.to_string());
         }
     }
 
@@ -4577,6 +4624,7 @@ impl Sub {
             lost_truncated: false,
             watching: None,
             branch_stale: HashSet::new(),
+            branch_held: HashMap::new(),
         }
     }
 

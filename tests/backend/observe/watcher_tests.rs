@@ -4506,3 +4506,46 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
     sink.branch("s", "/p/s.jsonl", &ids(&["a", "b", "c", "d"]), 3);
     assert_eq!(branches(&mut rx), [(3, ids(&["d"]))]);
 }
+
+/// read8b：同一条连接把一条会话切出名单、再切回来（换 tab 回来）⇒ 主线外清单只补它缺的那一截：
+/// 出名单那一刻它手上那份前缀没动 ⇒ 从 `at = 它手上的条数` 发（这里一条都没变 ⇒ 只一帧空的），不再整份重发。
+/// 丢过它一帧（手上的对不上）⇒ 照旧整份。
+#[cfg(target_os = "linux")]
+#[test]
+fn rewatching_on_the_same_connection_sends_only_the_branch_tail_it_lacks() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-read8b-rewatch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let body = long_branchy_record(600, 30, usize::MAX);
+    let (_, mut state) = announce_record(&dir, "rw-sid", &body);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
+    let mut sink = FrameSink::new(tx);
+    let drain = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
+        let mut v = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionBranch { at, off, .. } = f {
+                v.push((at, off.len()));
+            }
+        }
+        v
+    };
+    let path = dir.join("projects/proj-h/rw-sid.jsonl");
+    // 接上来那一份此刻的样子（整份清单），之后它报了名单。
+    branch_to(&state, &mut sink, 0, "rw-sid", &path);
+    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
+    let first = drain(&mut rx);
+    let whole: usize = first.iter().map(|(_, n)| n).sum();
+    assert!(whole > 0, "这份记录该有主线外（{first:?}）");
+    assert_eq!(first[0].0, 0, "接上来那一份是整份");
+    // 切走再切回来：清单没变 ⇒ 只一帧，从它手上的条数起、一条不带。
+    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
+    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
+    assert_eq!(drain(&mut rx), [(whole as u64, 0)], "换 tab 回来又整份重发了主线外清单");
+    // 丢过它一帧主线外清单（手上的对不上）⇒ 下一次进名单整份。
+    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
+    sink.mark_branch_stale_for_tests(0, &path.to_string_lossy());
+    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
+    let again = drain(&mut rx);
+    assert_eq!((again[0].0, again.iter().map(|(_, n)| n).sum::<usize>()), (0, whole), "丢过帧却没给整份");
+    std::fs::remove_dir_all(&dir).ok();
+}
