@@ -1942,6 +1942,11 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             "launch-local",
             serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "defaultLauncher": "claude", "x": 1 }),
         ),
+        (
+            "session-say",
+            serde_json::json!({ "sid": "s-1", "text": "hi", "enter": false }),
+        ),
+        ("session-say", serde_json::json!({ "sid": "s-1" })),
         ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
         ("kill", serde_json::json!({ "name": 1 })),
         (

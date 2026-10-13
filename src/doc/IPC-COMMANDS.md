@@ -3770,7 +3770,7 @@ scrollback?: number, };
 入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
 type Sent = { 
 /**
  * 结局。
@@ -3821,6 +3821,51 @@ client?: string, };
 ```
 
 码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+
+#### `session-say`
+
+往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-say` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionSayReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type Sent = { 
+/**
+ * 结局。
+ */
+result: SentResult, 
+/**
+ * `refused` 的原因。
+ */
+why?: Refused, 
+/**
+ * `refused` 时给人看的那一句（后端写好）。
+ */
+said?: string, 
+/**
+ * `screen_changed` 时带的新指纹。
+ */
+screen?: string, };
+type SentResult = "delivered" | "unsure" | "refused";
+type SessionSayReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 那一句（字面字，原样送；多行按粘贴送；后端补回车）。
+ */
+text: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
 
 #### `terminal-follow`
 
@@ -4438,6 +4483,23 @@ type SessionNewOutcome = "started" | "open";
 入参 `NewFactsReq` · 回包 `NewFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentFacts = { 
+/**
+ * 线上的 kind（交回 `session-new.agent` 的那一格）。
+ */
+kind: string, 
+/**
+ * 这一家写给人看的名字。
+ */
+text: string, 
+/**
+ * 起会话可选的模型（不选 ＝ 跟着那一家自己的默认）；这一家没声明 ⇒ 空。
+ */
+models: Array<NewSessionPick>, 
+/**
+ * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
+ */
+permissionModes: Array<NewSessionPick>, };
 type ForkFacts = { 
 /**
  * 源会话是哪一家（说不出 ⇒ 空串）。
@@ -4465,9 +4527,9 @@ recent: Array<RecentDir>,
  */
 tmux: boolean, 
 /**
- * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）。
+ * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
  */
-agents: Array<string>, 
+agents: Array<AgentFacts>, 
 /**
  * 没给 `forkOf` ⇒ `null`。
  */
@@ -4481,6 +4543,15 @@ forkOf?: string,
  * 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。
  */
 at?: string, };
+type NewSessionPick = { 
+/**
+ * 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+ */
+value: string, 
+/**
+ * 写给人看的字。
+ */
+text: string, };
 type RecentDir = { 
 /**
  * 工作目录。
@@ -4489,7 +4560,11 @@ cwd: string,
 /**
  * 那个目录最近一次会话的修改时刻（毫秒）。
  */
-lastMs: number, };
+lastMs: number, 
+/**
+ * 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
+ */
+lastText: string, };
 ```
 
 码：`bad_args` · `fork_failed`

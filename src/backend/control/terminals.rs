@@ -303,6 +303,8 @@ pub(crate) enum Refused {
     Ended,
     /// 画面变了（带新指纹）。
     ScreenChanged,
+    /// 那台说这条会话在等人（批准 · 回答）：此刻打的字会落进那个框里（`session-say` 才回它）。
+    Waiting,
 }
 
 /// 原因 ⇒ 给人看的那一句。
@@ -314,6 +316,7 @@ pub(crate) fn no_said(why: Refused) -> String {
         Refused::NotKnown | Refused::Ended => copy_text("beTerminal.no.gone", &[]),
         Refused::Ambiguous => copy_text("beTerminal.no.ambiguous", &[]),
         Refused::ScreenChanged => copy_text("beTerminal.no.screenChanged", &[]),
+        Refused::Waiting => copy_text("beTerminal.no.waiting", &[]),
     }
 }
 

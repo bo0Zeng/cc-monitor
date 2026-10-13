@@ -366,7 +366,9 @@ fn start(
     let permission_args: Vec<String> = match req.permission_mode.as_deref() {
         None => Vec::new(),
         Some(m) => match face.permission {
-            Some(p) if p.modes.contains(&m) => vec![p.flag.to_string(), m.to_string()],
+            Some(p) if p.modes.iter().any(|c| c.value == m) => {
+                vec![p.flag.to_string(), m.to_string()]
+            }
             Some(_) => return Err(malformed("`permissionMode` is not one this agent offers")),
             None => return Err(malformed("this agent has no permission modes")),
         },

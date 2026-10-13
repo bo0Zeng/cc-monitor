@@ -330,10 +330,17 @@ pub(crate) struct LaunchFace {
     pub(crate) needs_bus_id: bool,
     /// 这一家的会话有身份面（`@ccm_sid` 回填）。
     pub(crate) has_identity: bool,
-    /// 这一家认得的模型名（账号页「默认模型」下拉的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
-    // 后端里的读者只有生成器（`agents_tests.rs::render_agent_profile_table`，测试档）：它写进 `generated/agent-profile-table.ts`，界面读那一份。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) models: Option<&'static [&'static str]>,
+    /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
+    pub(crate) models: Option<&'static [Choice]>,
+}
+
+/// 一个可选值：交给那一家的原值 ＋ 写给人看的那一句的文案键（模型 · 权限档）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Choice {
+    /// 原值（交给那一家的就是它，也是界面交回的那一格）。
+    pub(crate) value: &'static str,
+    /// 写给人看的那一句（文案表的键）。
+    pub(crate) text: &'static str,
 }
 
 /// 一家起会话时选权限档的说法（[`LaunchFace::permission`]）。
@@ -341,8 +348,21 @@ pub(crate) struct LaunchFace {
 pub(crate) struct PermissionFace {
     /// 交给那一家的旗标（`claude --permission-mode <档>`）。
     pub(crate) flag: &'static str,
-    /// 可选的档（原值，交给那一家的就是它）。
-    pub(crate) modes: &'static [&'static str],
+    /// 可选的档（原值 ＋ 字）。
+    pub(crate) modes: &'static [Choice],
+    /// 会话开着时怎么切档；这一家切不了 ⇒ `None`。
+    pub(crate) switch: Option<ModeSwitch>,
+}
+
+/// 会话开着时切权限档的说法（[`PermissionFace::switch`]）：那一家只有「按一下换到下一档」的循环，没有直接切到某档的命令。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModeSwitch {
+    /// 换到下一档按哪个键（`terminal-input` 键表里的名字）。
+    pub(crate) key: &'static str,
+    /// 循环里最多几档（按满这么多下还没到 ⇒ 不在循环里）。
+    pub(crate) cycle_max: usize,
+    /// 从此刻那一屏（纯文本行）认出此刻的档（原值）；认不出 ⇒ `None`。
+    pub(crate) read: fn(&[String]) -> Option<&'static str>,
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。

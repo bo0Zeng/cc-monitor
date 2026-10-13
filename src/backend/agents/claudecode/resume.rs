@@ -11,6 +11,8 @@
 //! golden-parity 手机端。⚠ 两边**只有这三件事不同** —— sid 校验、base 的 shell-safe 校验、
 //! `CommandPlan` 骨架、错误出口全都共用，留在 `control/resolve_query.rs`。
 
+use crate::agents::Choice;
+
 /// 无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "claude";
 
@@ -42,8 +44,68 @@ pub(crate) const NESTED_ENV: &[&str] = &[
 /// resume 会话名前缀（Codex 是 `cx`）。
 pub(crate) const SESSION_NAME_PREFIX: &str = "cc";
 
-/// `claude --model` 认得的别名（不写 ＝ 它自己的默认）。全名（`claude-sonnet-…`）也收，这里只列别名。
-pub(crate) const MODEL_ALIASES: &[&str] = &["sonnet", "opus", "haiku", "sonnet[1m]", "opusplan"];
+/// `claude --model` 认得的别名与字（不写 ＝ 它自己的默认）。全名（`claude-sonnet-…`）也收，这里只列别名。
+pub(crate) const MODEL_ALIASES: &[Choice] = &[
+    Choice {
+        value: "sonnet",
+        text: "beSessionNew.model.sonnet",
+    },
+    Choice {
+        value: "opus",
+        text: "beSessionNew.model.opus",
+    },
+    Choice {
+        value: "haiku",
+        text: "beSessionNew.model.haiku",
+    },
+    Choice {
+        value: "sonnet[1m]",
+        text: "beSessionNew.model.sonnetLong",
+    },
+    Choice {
+        value: "opusplan",
+        text: "beSessionNew.model.opusPlan",
+    },
+];
+
+/// `claude --permission-mode` 收的、起会话框给的档（不给越过批准那一档）。字与答批计划那一组同字。
+pub(crate) const PERMISSION_MODES: &[Choice] = &[
+    Choice {
+        value: "default",
+        text: "beAsk.choice.planManual",
+    },
+    Choice {
+        value: "acceptEdits",
+        text: "beAsk.choice.planEdits",
+    },
+    Choice {
+        value: "plan",
+        text: "beSessionNew.mode.plan",
+    },
+];
+
+/// Shift+Tab 那一圈最多几档：`default → acceptEdits → plan`，开了的 `bypassPermissions` · `auto` 接在 `plan` 后面。
+pub(crate) const MODE_CYCLE_MAX: usize = 5;
+
+/// 屏底那一行写的档（官方文档：`⏸ manual mode on` · `⏵⏵ accept edits on` · `⏸ plan mode on` · `⏵⏵ auto mode on`；越过批准那一档写 `bypass permissions on`）。
+const MODE_MARKS: &[(&str, &str)] = &[
+    ("accept edits on", "acceptEdits"),
+    ("plan mode on", "plan"),
+    ("auto mode on", "auto"),
+    ("bypass permissions on", "bypassPermissions"),
+    ("manual mode on", "default"),
+];
+
+/// 从此刻那一屏认档：自下而上找第一行带档标的（屏底那一行在最下面；正文里引了同样的字也盖不过它）。认不出 ⇒ `None`（不按「没有标就是默认」猜）。
+pub(crate) fn mode_on_screen(lines: &[String]) -> Option<&'static str> {
+    lines.iter().rev().find_map(|l| {
+        let l = l.to_ascii_lowercase();
+        MODE_MARKS
+            .iter()
+            .find(|(mark, _)| l.contains(mark))
+            .map(|(_, mode)| *mode)
+    })
+}
 
 /// resume 命令：**flag 形**，与 Codex 的子命令形不同。
 pub(crate) fn resume_command(base: &str, session_id: &str) -> String {

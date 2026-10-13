@@ -172,7 +172,12 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     first_prompt_arg: true,
     permission: Some(super::PermissionFace {
         flag: resume::PERMISSION_MODE_FLAG,
-        modes: &["default", "acceptEdits", "plan"],
+        modes: resume::PERMISSION_MODES,
+        switch: Some(super::ModeSwitch {
+            key: "shift-tab",
+            cycle_max: resume::MODE_CYCLE_MAX,
+            read: resume::mode_on_screen,
+        }),
     }),
     self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],

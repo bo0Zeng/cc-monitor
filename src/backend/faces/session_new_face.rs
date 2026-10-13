@@ -124,8 +124,8 @@ pub(crate) struct NewFacts {
     pub(crate) recent: Vec<RecentDir>,
     /// 这台有没有 tmux（`false` ⇒ 只能开终端窗口）。
     pub(crate) tmux: bool,
-    /// 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）。
-    pub(crate) agents: Vec<&'static str>,
+    /// 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
+    pub(crate) agents: Vec<AgentFacts>,
     /// 没给 `forkOf` ⇒ `null`。
     pub(crate) fork: Option<ForkFacts>,
 }
@@ -141,6 +141,67 @@ pub(crate) struct RecentDir {
     /// 那个目录最近一次会话的修改时刻（毫秒）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) last_ms: i64,
+    /// 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) last_text: crate::common::cells::Words,
+}
+
+/// 这台能起的一家。
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentFacts {
+    /// 线上的 kind（交回 `session-new.agent` 的那一格）。
+    pub(crate) kind: &'static str,
+    /// 这一家写给人看的名字。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) text: crate::common::cells::Words,
+    /// 起会话可选的模型（不选 ＝ 跟着那一家自己的默认）；这一家没声明 ⇒ 空。
+    pub(crate) models: Vec<Pick>,
+    /// 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
+    pub(crate) permission_modes: Vec<Pick>,
+}
+
+/// 一个可选值：交回去的原值 ＋ 写给人看的字。
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NewSessionPick"
+    )
+)]
+pub(crate) struct Pick {
+    /// 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+    pub(crate) value: &'static str,
+    /// 写给人看的字。
+    #[cfg_attr(test, ts(type = "string"))]
+    pub(crate) text: crate::common::cells::Words,
+}
+
+/// 一家的起会话事实（名字 · 可选的模型与权限档）；`kind` 认不出 ⇒ 名字照 kind、两张表空。
+pub(crate) fn agent_facts(kind: &'static str) -> AgentFacts {
+    let face = crate::agents::pick_kind(Some(kind)).ok().map(|(_, f)| f);
+    let picks = |cs: &[crate::agents::Choice]| {
+        cs.iter()
+            .map(|c| Pick {
+                value: c.value,
+                text: crate::common::cells::Words(copy_core::copy_text(c.text, &[])),
+            })
+            .collect()
+    };
+    AgentFacts {
+        kind,
+        text: crate::common::cells::Words(face.map_or(kind, |f| f.display_name).to_string()),
+        models: face.and_then(|f| f.models).map(picks).unwrap_or_default(),
+        permission_modes: face
+            .and_then(|f| f.permission)
+            .map(|p| picks(p.modes))
+            .unwrap_or_default(),
+    }
 }
 
 /// 分叉源会话的那几格。
@@ -165,6 +226,7 @@ pub(crate) struct ForkFacts {
 pub(crate) fn recent_dirs(
     items: &[(String, i64)],
     hidden: &dyn Fn(&str) -> bool,
+    clock: &crate::common::time::TextClock,
 ) -> Vec<RecentDir> {
     let mut best: BTreeMap<&str, i64> = BTreeMap::new();
     for (cwd, ms) in items {
@@ -181,6 +243,7 @@ pub(crate) fn recent_dirs(
         .map(|(cwd, ms)| RecentDir {
             cwd: cwd.to_string(),
             last_ms: ms,
+            last_text: clock.text(u64::try_from(ms.div_euclid(1000)).unwrap_or(0)),
         })
         .collect()
 }
@@ -309,9 +372,16 @@ pub(crate) fn facts(req: &NewFactsReq, tz: &crate::Tz) -> Result<NewFacts, (&'st
         recent: recent_dirs(
             &record_dirs(&home),
             &crate::observe::history_query::hidden_cwd,
+            &crate::common::time::TextClock::new(
+                u64::try_from(crate::common::time::now_secs()).unwrap_or(0),
+                tz,
+            ),
         ),
         tmux,
-        agents: launchable_here(&launcher_found),
+        agents: launchable_here(&launcher_found)
+            .into_iter()
+            .map(agent_facts)
+            .collect(),
         fork,
     })
 }

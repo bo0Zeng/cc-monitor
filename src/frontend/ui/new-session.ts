@@ -502,8 +502,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     const offered = facts?.agents ?? [];
     agentRow.root.hidden = offered.length <= 1;
     agentSel.setOptions(
-      offered.map((k) => ({ value: k, label: k })),
-      offered.includes(agent) ? agent : undefined,
+      offered.map((a) => ({ value: a.kind, label: a.text })),
+      offered.some((a) => a.kind === agent) ? agent : undefined,
     );
     cmdInput.placeholder = copyText("newSession.command.placeholder", { launcher: safeLauncher(agent) });
   };
@@ -552,8 +552,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const applyFacts = (f: NewFacts): void => {
     if (fork && f.fork) {
       applyForkFacts(fork.title, f.fork);
-    } else if (!f.agents.includes(agent) && f.agents.length > 0 && !f.agents.includes(DEFAULT_AGENT)) {
-      agent = f.agents[0];
+    } else {
+      const kinds = f.agents.map((a) => a.kind);
+      if (!kinds.includes(agent) && kinds.length > 0 && !kinds.includes(DEFAULT_AGENT)) agent = kinds[0];
     }
     if (cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
   };

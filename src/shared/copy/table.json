@@ -1718,6 +1718,42 @@
         "C-Y4": "「?」是 tmux 会话名里被禁的字符本身"
       }
     },
+    "beSessionNew.model.sonnet": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Sonnet",
+      "args": []
+    },
+    "beSessionNew.model.opus": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Opus",
+      "args": []
+    },
+    "beSessionNew.model.haiku": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Haiku",
+      "args": []
+    },
+    "beSessionNew.model.sonnetLong": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Sonnet · 1M 上下文",
+      "args": []
+    },
+    "beSessionNew.model.opusPlan": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Opus 规划 · Sonnet 执行",
+      "args": []
+    },
+    "beSessionNew.mode.plan": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "规划模式",
+      "args": []
+    },
     "beResident.claim.pathTooLong": {
       "kind": "error",
       "role": "报错",
@@ -12930,6 +12966,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "画面已变",
+      "args": []
+    },
+    "beTerminal.no.waiting": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "会话在等批准或回答",
       "args": []
     },
     "beTerminal.refuse.empty": {

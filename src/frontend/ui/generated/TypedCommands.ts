@@ -25,6 +25,7 @@ import type { SessionInterrupts } from "./SessionInterrupts";
 import type { SessionInterruptsReq } from "./SessionInterruptsReq";
 import type { SessionNew } from "./SessionNew";
 import type { SessionNewDirReq } from "./SessionNewDirReq";
+import type { SessionSayReq } from "./SessionSayReq";
 import type { SessionsStartReq } from "./SessionsStartReq";
 import type { Showing } from "./Showing";
 import type { SidReq } from "./SidReq";
@@ -50,6 +51,7 @@ export interface TypedCommands {
   "session-new-dir": { req: SessionNewDirReq; reply: DirChecked; code: "bad_args" };
   "session-new-facts": { req: NewFactsReq; reply: NewFacts; code: "bad_args" | "fork_failed" };
   "session-restart": { req: RestartReq; reply: Restarted; code: "bad_args" | "unobservable" | "account_unavailable" | "not_in_terminal" | "ambiguous" | "session_already_live" | "stop_failed" | "start_failed" | "child_timed_out" };
+  "session-say": { req: SessionSayReq; reply: Sent; code: "bad_args" | "no_tmux" | "no_such_session" | "unobservable" | "child_timed_out" };
   "session-terminals": { req: SidReq; reply: Showing; code: "bad_args" | "no_such_session" | "failed" | "child_timed_out" };
   "sessions-start": { req: SessionsStartReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };
   "sessions-stop": { req: SidsReq; reply: Batched; code: "bad_args" | "unobservable" | "child_timed_out" };

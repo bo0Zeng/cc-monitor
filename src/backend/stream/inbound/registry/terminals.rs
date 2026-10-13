@@ -50,6 +50,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalInputCmd>(
         "往一个终端送字或送键（过身份门）",
     ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_say_face::SessionSay>(
+        "往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车）",
+    ),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     CommandSpec {

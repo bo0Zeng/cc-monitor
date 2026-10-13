@@ -11,4 +11,8 @@ cwd: string,
 /**
  * 那个目录最近一次会话的修改时刻（毫秒）。
  */
-lastMs: number, };
+lastMs: number, 
+/**
+ * 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
+ */
+lastText: string, };
