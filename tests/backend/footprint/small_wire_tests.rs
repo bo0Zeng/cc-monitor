@@ -4,6 +4,11 @@
 
 use serde_json::{json, Value};
 
+/// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳）。
+fn take<R: serde::de::DeserializeOwned>(a: Value) -> R {
+    crate::stream::inbound::typed::take(&a).unwrap()
+}
+
 /// 帧面那一跳的写法（键按字典序）。
 fn wire(v: &impl serde::Serialize) -> String {
     serde_json::to_string(&serde_json::to_value(v).unwrap()).unwrap()
@@ -20,7 +25,7 @@ fn tmp(tag: &str) -> std::path::PathBuf {
 fn agent_home_check_keeps_its_wire_bytes() {
     let d = tmp("home");
     let check = |p: &std::path::Path| {
-        wire(&super::agent_home_check::answer_check(&json!({ "path": p })).unwrap())
+        wire(&super::agent_home_check::answer_check(&take(json!({ "path": p }))).unwrap())
     };
     assert_eq!(check(&d.join("nope")), r#"{"state":"missing"}"#);
     std::fs::write(d.join("f"), "x").unwrap();
@@ -47,7 +52,7 @@ fn first_run_keeps_its_wire_bytes() {
 fn chores_mark_keeps_its_wire_bytes() {
     let d = tmp("marks");
     let own = crate::platform::fs::Own::issue_at(&d);
-    let mark = |a: Value| wire(&super::chores::marks::answer_mark(&a, &own).unwrap());
+    let mark = |a: Value| wire(&super::chores::marks::answer_mark(&take(a), &own).unwrap());
     assert_eq!(
         mark(json!({"op": "decline", "id": "relay"})),
         r#"{"declined":["relay"],"selfPaste":null,"startSkipped":false}"#
@@ -80,8 +85,11 @@ fn last_seen_pair_keeps_its_wire_bytes() {
     let d = tmp("seen");
     let own = crate::platform::fs::Own::issue_at(&d);
     let file = d.join(relay_route_core::LAST_SEEN_REL);
-    let ls = &super::last_seen::write_at;
-    let read = |o: &str| wire(&super::last_seen::read_at(&file, &json!({ "origin": o })).unwrap());
+    let ls = |own: &crate::platform::fs::Own, a: &Value, now: u64| {
+        super::last_seen::write_at(own, &take(a.clone()), now)
+    };
+    let read =
+        |o: &str| wire(&super::last_seen::read_at(&file, &take(json!({ "origin": o }))).unwrap());
     assert_eq!(read("devbox"), r#"{"accounts":null,"data":null}"#);
     let v = json!({"meta": {"enabled": true}, "accounts": [{"name": "work"}]});
     assert_eq!(

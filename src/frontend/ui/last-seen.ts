@@ -4,18 +4,16 @@
  * 界面不自己写文件；本机那台不记（问不到本机后端时也问不到这一份）。同一份内容这次运行里只交一次。
  * 机器从列表删掉（撤销条到点）⇒ 交本机后端清掉那台（`last-seen-write` 带 `forget`）。
  */
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { isObj } from "./ipc/decode";
+import type { SeenKind } from "./generated/SeenKind";
+import type { SeenEntry } from "./generated/SeenEntry";
 
-export type SeenKind = "accounts" | "data";
+export type { SeenKind };
 
-/** 一份上次值：原样那一份应答 ＋ 记下的时刻。 */
-export interface Seen {
-  atMs: number;
-  value: unknown;
-}
+/** 一份上次值：原样那一份应答 ＋ 记下的时刻（形状由握手指纹核过）。 */
+export type Seen = SeenEntry;
 
 const BUDGET_MS = 10_000;
 /** 这次运行里交过的那一份（键 ＝ 机器 ＋ 种类），同样的不再交。 */
@@ -29,9 +27,7 @@ export async function rememberSeen(origin: Origin, kind: SeenKind, value: unknow
   if (sent.get(key) === text) return;
   sent.set(key, text);
   try {
-    const body = jsonBody({ origin, kind, value });
-    const budget = budgetWithin(BUDGET_MS);
-    await chan.call(LOCAL_ORIGIN, "last-seen-write", body, budget);
+    await callTyped(LOCAL_ORIGIN, "last-seen-write", { origin, kind, value }, budgetWithin(BUDGET_MS));
   } catch (e) {
     sent.delete(key);
     console.warn(`[last-seen] ${origin} 的 ${kind} 没记下：`, e);
@@ -42,12 +38,8 @@ export async function rememberSeen(origin: Origin, kind: SeenKind, value: unknow
 export async function recallSeen(origin: Origin, kind: SeenKind): Promise<Seen | null> {
   if (isLocalOrigin(origin)) return null;
   try {
-    const body = jsonBody({ origin });
-    const budget = budgetWithin(BUDGET_MS);
-    const got = readJson(await chan.call(LOCAL_ORIGIN, "last-seen-read", body, budget));
-    const e = isObj(got) ? got[kind] : null;
-    if (!isObj(e) || typeof e.atMs !== "number" || !isObj(e.value)) return null;
-    return { atMs: e.atMs, value: e.value };
+    const got = await callTyped(LOCAL_ORIGIN, "last-seen-read", { origin }, budgetWithin(BUDGET_MS));
+    return got[kind];
   } catch (e) {
     console.warn(`[last-seen] ${origin} 的上次值问不到：`, e);
     return null;
@@ -59,9 +51,7 @@ export async function forgetSeen(origin: Origin): Promise<void> {
   if (isLocalOrigin(origin)) return;
   for (const k of [...sent.keys()]) if (k.startsWith(`${origin}\u0000`)) sent.delete(k);
   try {
-    const body = jsonBody({ origin, forget: true });
-    const budget = budgetWithin(BUDGET_MS);
-    await chan.call(LOCAL_ORIGIN, "last-seen-write", body, budget);
+    await callTyped(LOCAL_ORIGIN, "last-seen-write", { origin, forget: true }, budgetWithin(BUDGET_MS));
   } catch (e) {
     console.warn(`[last-seen] ${origin} 的上次值没清掉：`, e);
   }

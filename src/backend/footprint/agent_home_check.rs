@@ -4,11 +4,39 @@
 
 use crate::common::contract::malformed;
 use crate::platform::fs::Ro;
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+/// `agent-home-check` 的入参。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AgentHomeCheckReq {
+    /// 要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开）。
+    pub(crate) path: String,
+}
+
+/// `agent-home-check` 的回包。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct AgentHomeCheck {
+    pub(crate) state: Verdict,
+}
+
 /// 判出来的那一态（线上 `state`）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "AgentHomeState"
+    )
+)]
+#[serde(rename_all = "snake_case")]
 pub(crate) enum Verdict {
     /// 在、是目录、里面有记录树（那一家没有记录树 ⇒ 在、是目录就算）。
     Ok,
@@ -18,17 +46,6 @@ pub(crate) enum Verdict {
     NotDir,
     /// 是目录，但里面没有记录树 ⇒ 读不出一条会话。
     NoRecords,
-}
-
-impl Verdict {
-    fn wire(self) -> &'static str {
-        match self {
-            Verdict::Ok => "ok",
-            Verdict::Missing => "missing",
-            Verdict::NotDir => "not_dir",
-            Verdict::NoRecords => "no_records",
-        }
-    }
 }
 
 /// 判一个目录。
@@ -47,20 +64,21 @@ pub(crate) fn verdict(dir: &Path) -> Verdict {
 }
 
 /// 帧面入口：`{path}`（绝对路径，或 `~/` 开头按这台家目录展开）⇒ `{state}`。
-pub(crate) fn answer_check(args: &Value) -> Result<Value, (&'static str, String)> {
-    answer_check_with(args, crate::platform::paths::home_dir())
+pub(crate) fn answer_check(
+    req: &AgentHomeCheckReq,
+) -> Result<AgentHomeCheck, (&'static str, String)> {
+    answer_check_with(req, crate::platform::paths::home_dir())
 }
 
 /// [`answer_check`] 的本体：家目录是参数（判据拿临时目录喂）。
 pub(crate) fn answer_check_with(
-    args: &Value,
+    req: &AgentHomeCheckReq,
     home: Option<PathBuf>,
-) -> Result<Value, (&'static str, String)> {
-    let raw = args
-        .get("path")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| ("bad_args", malformed("`path` must be a non-empty string")))?;
+) -> Result<AgentHomeCheck, (&'static str, String)> {
+    let raw = req.path.as_str();
+    if raw.is_empty() {
+        return Err(("bad_args", malformed("`path` must be a non-empty string")));
+    }
     let path = if raw == "~" || raw.starts_with("~/") {
         let home = home.ok_or_else(|| ("bad_args", malformed("home directory unresolvable")))?;
         if raw == "~" {
@@ -77,7 +95,9 @@ pub(crate) fn answer_check_with(
             malformed(&format!("`path` is not absolute: {raw}")),
         ));
     }
-    Ok(json!({ "state": verdict(&path).wire() }))
+    Ok(AgentHomeCheck {
+        state: verdict(&path),
+    })
 }
 
 #[cfg(test)]

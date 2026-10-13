@@ -4,14 +4,22 @@
 
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 /// 那份文件最大多少字节（超了当读不懂）。
 pub(crate) const MAX_BYTES: u64 = 64 * 1024;
 
-/// 记下的那两样。
+/// 记下的那几样（盘上那一份，也是 `chores-mark` 的回包：改完记着的整份）。
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ChoresMarks"
+    )
+)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Marks {
     /// 点过「不用了」的那几件（件的 `id`）。
@@ -30,6 +38,26 @@ pub(crate) fn marks_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(relay_route_core::CHORES_REL))
 }
 
+/// `chores-mark` 的入参：按 `op` 分（多一个键 ⇒ `bad_args`）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "op", rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) enum ChoresMarkReq {
+    /// 不用了（`id` 同 `data-report` 的 `todo[].id`）。
+    Decline { id: String },
+    /// 还是要做。
+    Undecline { id: String },
+    /// 我自己贴（那一份启动文件，绝对路径）。
+    SelfPaste { rc: String },
+    /// 改回让 cc-monitor 接上。
+    UnselfPaste,
+    /// 首次运行「开始用」那一块跳过。
+    SkipStart,
+    /// 撤回跳过。
+    UnskipStart,
+}
+
 /// 读一次（三态）。
 pub(crate) fn read_at(path: &Path) -> crate::common::own_state::Read<Marks> {
     crate::common::own_state::read_json(path, MAX_BYTES)
@@ -43,24 +71,27 @@ pub(crate) fn current(path: Option<&Path>) -> Marks {
     }
 }
 
-/// 改一样：`{op: "decline" | "undecline", id}` · `{op: "selfPaste", rc}` · `{op: "unselfPaste"}` ⇒ 改完的那一份。
+/// 改一样（[`ChoresMarkReq`]）⇒ 改完的那一份。
 pub(crate) fn mark_at(
     own: &crate::platform::fs::Own,
-    args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    req: &ChoresMarkReq,
+) -> Result<Marks, crate::stream::inbound::spec::Fail> {
     let bad = |d: &str| {
         crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
     };
-    let op = args
-        .get("op")
-        .and_then(Value::as_str)
-        .ok_or_else(|| bad("`op` missing"))?;
-    let str_arg = |k: &str| {
-        args.get(k)
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
+    let nonempty = |s: &str, k: &str| {
+        if s.is_empty() {
+            Err(bad(&format!("`{k}` missing")))
+        } else {
+            Ok(())
+        }
     };
+    if let ChoresMarkReq::Decline { id } | ChoresMarkReq::Undecline { id } = req {
+        nonempty(id, "id")?;
+    }
+    if let ChoresMarkReq::SelfPaste { rc } = req {
+        nonempty(rc, "rc")?;
+    }
     let io =
         |e: crate::common::said::Said| crate::stream::inbound::spec::Fail::from(("io_failed", e));
     let dir = own.home_dir().map_err(|_| {
@@ -100,38 +131,29 @@ pub(crate) fn mark_at(
             )))
         }
     };
-    match op {
-        "decline" => {
-            let id = str_arg("id").ok_or_else(|| bad("`id` missing"))?;
-            if !m.declined.contains(&id) {
-                m.declined.push(id);
+    match req {
+        ChoresMarkReq::Decline { id } => {
+            if !m.declined.contains(id) {
+                m.declined.push(id.clone());
             }
         }
-        "undecline" => {
-            let id = str_arg("id").ok_or_else(|| bad("`id` missing"))?;
-            m.declined.retain(|d| *d != id);
-        }
-        "selfPaste" => m.self_paste = Some(str_arg("rc").ok_or_else(|| bad("`rc` missing"))?),
-        "unselfPaste" => m.self_paste = None,
-        "skipStart" => m.start_skipped = true,
-        "unskipStart" => m.start_skipped = false,
-        _ => {
-            return Err(bad(
-                "`op` is not one of decline / undecline / selfPaste / unselfPaste / skipStart / unskipStart",
-            ))
-        }
+        ChoresMarkReq::Undecline { id } => m.declined.retain(|d| d != id),
+        ChoresMarkReq::SelfPaste { rc } => m.self_paste = Some(rc.clone()),
+        ChoresMarkReq::UnselfPaste => m.self_paste = None,
+        ChoresMarkReq::SkipStart => m.start_skipped = true,
+        ChoresMarkReq::UnskipStart => m.start_skipped = false,
     }
     let body = crate::common::own_state::json_body(path, &m).map_err(io)?;
     own.write(&file, &held, &body).map_err(io)?;
-    Ok(json!({"declined": m.declined, "selfPaste": m.self_paste, "startSkipped": m.start_skipped}))
+    Ok(m)
 }
 
 /// `chores-mark`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
 pub(crate) fn answer_mark(
-    args: &Value,
+    req: &ChoresMarkReq,
     own: &crate::platform::fs::Own,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    mark_at(own, args)
+) -> Result<Marks, crate::stream::inbound::spec::Fail> {
+    mark_at(own, req)
 }
 
 #[cfg(test)]

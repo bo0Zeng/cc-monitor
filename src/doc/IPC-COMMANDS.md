@@ -5746,12 +5746,30 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --first-run`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `left` | ← | 必做而还没打勾的几步（主窗口状态栏那一枚只数它） |
-| `remotes` | → | 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上） |
-| `skipped` | ← | 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写） |
-| `steps` | ← | 三步 `{id, done, required}`（`required` = 必做；今天只有 `terminal`），`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0） |
+入参 `FirstRunReq` · 回包 `FirstRun`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FirstRun = { steps: Array<FirstRunStep>, 
+/**
+ * 必做而还没打勾的几步（主窗口状态栏那一枚只数它）。
+ */
+left: number, 
+/**
+ * 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）。
+ */
+skipped: boolean, };
+type FirstRunReq = { 
+/**
+ * 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）。
+ */
+remotes: number, };
+type FirstRunStep = { id: FirstRunStepId, done: boolean, 
+/**
+ * 必做（今天只有 `terminal`）。
+ */
+required: boolean, };
+type FirstRunStepId = "terminal" | "named" | "remote";
+```
 
 码：`bad_args`
 
@@ -5761,11 +5779,25 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --last-seen-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `origin` | → | 哪台（机器名） |
-| `accounts` | ← | 上次读成的 `accounts-list` 应答 `{atMs, value}`；没记过 ⇒ `null` |
-| `data` | ← | 上次读成的 `data-report` 应答 `{atMs, value}`；没记过 ⇒ `null` |
+入参 `LastSeenReadReq` · 回包 `LastSeen`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LastSeen = { accounts: SeenEntry | null, data: SeenEntry | null, };
+type LastSeenReadReq = { 
+/**
+ * 哪台（机器名）。
+ */
+origin: string, };
+type SeenEntry = { 
+/**
+ * 记下的时刻（毫秒）。
+ */
+atMs: number, 
+/**
+ * 那一份应答原样。
+ */
+value: Record<string, unknown>, };
+```
 
 码：`bad_args` · `io_failed`
 
@@ -5775,13 +5807,25 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --last-seen-write`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `atMs` | ← | 记下的时刻（毫秒） |
-| `forget` | → | `true` ⇒ 清掉这台的上次值（删机器时；不带 `kind` / `value`） |
-| `kind` | → | 闭集 `accounts` · `data` |
-| `origin` | → | 哪台（机器名） |
-| `value` | → | 那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台 |
+入参 `LastSeenWriteReq` · 回包 `LastSeenWritten`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LastSeenWriteReq = { origin: string, kind?: SeenKind, 
+/**
+ * 那一份应答（对象，序列化后 ≤ 256 KiB）。
+ */
+value?: Record<string, unknown>, 
+/**
+ * `true` ⇒ 清掉这台的上次值（删机器时）。
+ */
+forget?: boolean, };
+type LastSeenWritten = { 
+/**
+ * 记下的时刻（毫秒）。
+ */
+atMs: number, };
+type SeenKind = "accounts" | "data";
+```
 
 码：`bad_args` · `io_failed` · `too_large`
 
@@ -5791,14 +5835,24 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --chores-mark`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | `decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`） |
-| `op` | → | `decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回） |
-| `rc` | → | `selfPaste` 那一份启动文件（绝对路径） |
-| `declined` | ← | 改完记着的「不用了」那几件 |
-| `selfPaste` | ← | 改完记着的「我自己贴」那份启动文件；没选 ⇒ `null` |
-| `startSkipped` | ← | 改完记着的「开始用」跳过没有 |
+入参 `ChoresMarkReq` · 回包 `ChoresMarks`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ChoresMarkReq = { "op": "decline", id: string, } | { "op": "undecline", id: string, } | { "op": "selfPaste", rc: string, } | { "op": "unselfPaste" } | { "op": "skipStart" } | { "op": "unskipStart" };
+type ChoresMarks = { 
+/**
+ * 点过「不用了」的那几件（件的 `id`）。
+ */
+declined: Array<string>, 
+/**
+ * 选了「我自己贴」的那份启动文件（绝对路径）；没选 ⇒ `None`。
+ */
+selfPaste: string | null, 
+/**
+ * 首次运行「开始用」那一块点过「跳过」（`footprint/readiness.rs` 读它）。
+ */
+startSkipped: boolean, };
+```
 
 码：`bad_args` · `io_failed` · `marks_unreadable`
 
@@ -5808,10 +5862,17 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --agent-home-check`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | → | 要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开） |
-| `state` | ← | `ok`（在、是目录、里面有那一家的记录树）· `missing`（不在）· `not_dir`（不是目录）· `no_records`（里面没有记录树） |
+入参 `AgentHomeCheckReq` · 回包 `AgentHomeCheck`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AgentHomeCheck = { state: AgentHomeState, };
+type AgentHomeCheckReq = { 
+/**
+ * 要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开）。
+ */
+path: string, };
+type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
+```
 
 码：`bad_args`
 
