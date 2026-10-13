@@ -169,41 +169,74 @@ fn this_module_holds_no_sync_rule() {
     assert!(backend.contains("push_plan("));
 }
 
-/// 跨半边：可达表登记那一条 —— 本侧发的三格 ＋ 读回的那一格 == 后端 `REGISTRY` 里 `remote-reach` 声明的 `fields`（两向），
-/// 且那条命令真在后端命令表里；发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
+/// 一条 typed 帧命令入参 · 回包的顶层格名（从后端类型生成的 TS 声明里读：`generated/TypedCommands.ts` 那一行点名两个类型，
+/// 各自的 `generated/<类型>.ts` 是 `{ 格: 类型, … }`）。命令表里没有这一条 ⇒ `None`。
+fn typed_fields(
+    cmd: &str,
+) -> Option<(
+    std::collections::BTreeSet<String>,
+    std::collections::BTreeSet<String>,
+)> {
+    let gen = crate::guard_support::repo_root().join("src/frontend/ui/generated");
+    let map = std::fs::read_to_string(gen.join("TypedCommands.ts")).expect("生成的命令表");
+    let line = map
+        .lines()
+        .find(|l| l.trim_start().starts_with(&format!("\"{cmd}\":")))?;
+    let ty = |k: &str| -> String {
+        let at = line.find(&format!("{k}: ")).expect("那一行的类型") + k.len() + 2;
+        line[at..].split(';').next().unwrap().trim().to_string()
+    };
+    let keys = |name: &str| -> std::collections::BTreeSet<String> {
+        let decl = std::fs::read_to_string(gen.join(format!("{name}.ts"))).expect("生成的类型声明");
+        let mut text = String::new();
+        let mut rest = decl.as_str();
+        while let Some(i) = rest.find("/*") {
+            text.push_str(&rest[..i]);
+            rest = &rest[i + rest[i..].find("*/").expect("注释没收尾") + 2..];
+        }
+        text.push_str(rest);
+        let body = &text[text.find("= {").expect("对象类型") + 3..text.rfind('}').unwrap()];
+        body.split(',')
+            .filter_map(|f| f.split(':').next())
+            .map(|k| k.trim().trim_end_matches('?').to_string())
+            .filter(|k| !k.is_empty())
+            .collect()
+    };
+    Some((keys(&ty("req")), keys(&ty("reply"))))
+}
+
+/// 跨半边：可达表登记那一条 —— 本侧发的格 == 后端 `remote-reach` 入参类型的格，读回的那一格（`reach`）在它回包类型里；
+/// 发的入参就是 `assets-sync` 那一份（同一个 `args_for`，逐键相等）。
 ///
 /// 守的要求：「可达表 origin → {dial, backend_path, 对面 id} 由 monitor 在（`backend_path` 那一格随 `backendPath` 删了，落点是固定常量）
 /// 远端流握手成功那一刻交给本机后端」—— C4d 让它对每台远端都成立（不只认资产目录的那几台）。
 #[test]
 fn the_reach_registration_sends_what_the_backend_registers() {
-    let families = crate::guard_support::backend_registry_sources();
-    let (family, at) = families
-        .iter()
-        .find_map(|(_, prod)| {
-            prod.find(&format!("name: \"{REACH_CMD}\""))
-                .map(|at| (prod, at))
-        })
-        .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{REACH_CMD}`"));
-    let block = &family[at..at + family[at..].find("run:").expect("那一条的 run")];
-    let declared = declared_fields(block);
+    let (req, reply) =
+        typed_fields(REACH_CMD).unwrap_or_else(|| panic!("后端命令表里没有 `{REACH_CMD}`"));
     let args = args_for(&cfg()).unwrap();
-    let mut used: std::collections::BTreeSet<String> =
+    let sent: std::collections::BTreeSet<String> =
         args.as_object().unwrap().keys().cloned().collect();
-    used.insert("reach".to_string());
     assert_eq!(
-        declared, used,
-        "本侧发 / 读的字段与后端 `remote-reach` 声明的不相等（两向）"
+        sent, req,
+        "本侧发的格与后端 `remote-reach` 入参类型的格不相等（两向）"
     );
-    let registered: std::collections::BTreeSet<&str> = families
-        .iter()
-        .flat_map(|(_, prod)| {
-            prod.split("name: \"")
-                .skip(1)
-                .filter_map(|t| t.split('"').next())
-        })
-        .collect();
     assert!(
-        registered.contains(REACH_CMD),
-        "后端命令表里没有 `{REACH_CMD}`"
+        reply.contains("reach"),
+        "后端 `remote-reach` 回包里没有本侧读的 `reach`：{reply:?}"
     );
+    // 拨号那一格的每一格也都在后端那一份类型里（多一格后端就回 bad_args）。
+    let dial: std::collections::BTreeSet<String> =
+        args["dial"].as_object().unwrap().keys().cloned().collect();
+    let gen = crate::guard_support::repo_root().join("src/frontend/ui/generated/ReachDial.ts");
+    let decl = std::fs::read_to_string(gen).expect("ReachDial 的生成声明");
+    for k in &dial {
+        assert!(
+            decl.contains(&format!(" {k}:"))
+                || decl.contains(&format!(" {k}?:"))
+                || decl.contains(&format!("\n{k}:"))
+                || decl.contains(&format!("\n{k}?:")),
+            "本侧 `dial` 里的 `{k}` 不在后端 `ReachDial` 里"
+        );
+    }
 }

@@ -89,11 +89,19 @@ impl Remote {
     }
 }
 
-const HELLO: &str = r#"{"kind":"hello","v":1,"build_id":"rc-build","host_arch":"x86_64","claude_dir":"/c","commands":["ping","cancel","history-tail","history-read"]}"#;
+/// 替身那一句 hello：`history-tail` · `history-read` 是 typed 命令 ⇒ 交与本份同一张形状指纹（不交 ⇒ 客户端事前就拒、一帧都不发）。
+fn hello() -> String {
+    let shape = |c: &str| cmd_wire::shapes::shape_of(c).expect("typed 命令");
+    format!(
+        r#"{{"kind":"hello","v":1,"build_id":"rc-build","host_arch":"x86_64","claude_dir":"/c","commands":["ping","cancel","history-tail","history-read"],"shapes":{{"history-tail":"{}","history-read":"{}"}}}}"#,
+        shape("history-tail"),
+        shape("history-read")
+    )
+}
 
 async fn serve(s: tokio::io::DuplexStream, remote: Arc<Remote>) {
     let mut r = tokio::io::BufReader::new(s);
-    let _ = r.get_mut().write_all(format!("{HELLO}\n").as_bytes()).await;
+    let _ = r.get_mut().write_all(format!("{}\n", hello()).as_bytes()).await;
     let mut line = String::new();
     if r.read_line(&mut line).await.unwrap_or(0) == 0 {
         return;

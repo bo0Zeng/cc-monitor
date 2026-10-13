@@ -25,19 +25,13 @@ use crate::assets::door::{self, Door};
 use crate::platform::shell::posix;
 
 /// 推送结果：key 是新加的还是本就存在。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum PushOutcome {
     Added,
     Already,
-}
-
-impl PushOutcome {
-    fn as_str(self) -> &'static str {
-        match self {
-            PushOutcome::Added => "added",
-            PushOutcome::Already => "already",
-        }
-    }
 }
 
 /// shell 那一串打的两个记号。
@@ -144,14 +138,11 @@ pub(crate) fn plan_authorized_keys(
 }
 
 /// `authorized-keys-add {key}`（被写那台）：算 → 经这台自己的文件管理面写 → 收紧权限。
-pub(crate) fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
-    let raw = args.get("key").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `key` (string)"),
-        )
-    })?;
-    let key = sanitize_public_key(raw).map_err(|e| ("refused", e))?;
+pub(crate) fn answer_add(
+    d: &dyn Door,
+    req: &KeyAddReq,
+) -> Result<KeyAdded, (&'static str, String)> {
+    let key = sanitize_public_key(&req.key).map_err(|e| ("refused", e))?;
     let home = door::home(d).map_err(|e| ("io_failed", e))?;
     let rel = format!("{SSH_DIR}/{AUTH_FILE}");
     let mut outcome = PushOutcome::Already;
@@ -163,7 +154,52 @@ pub(crate) fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, (&'static 
     .map_err(|e| ("io_failed", e))?;
     door::chmod(d, &home, SSH_DIR, 0o700).map_err(|e| ("io_failed", e))?;
     door::chmod(d, &home, &rel, 0o600).map_err(|e| ("io_failed", e))?;
-    Ok(json!({ "outcome": outcome.as_str() }))
+    Ok(KeyAdded { outcome })
+}
+
+/// `authorized-keys-add` 的入参：一行公钥（本条自己也校验一遍）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct KeyAddReq {
+    pub(crate) key: String,
+}
+
+/// `authorized-keys-add` 的应答。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct KeyAdded {
+    pub(crate) outcome: PushOutcome,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `authorized-keys-add` 的码：那一行不是一把公钥 · 读写那份文件没成。
+    pub(crate) enum KeyAddErr {
+        Refused = "refused",
+        IoFailed = "io_failed",
+    }
+}
+
+/// `authorized-keys-add`（被写那台答）：算经本文件，写经文件管理面（CAS ＋ 建父目录 ＋ 700 / 600）。
+pub(crate) struct AuthorizedKeysAdd;
+
+impl crate::stream::inbound::typed::Command for AuthorizedKeysAdd {
+    const NAME: &'static str = "authorized-keys-add";
+    type Req = KeyAddReq;
+    type Reply = KeyAdded;
+    type Err = KeyAddErr;
+}
+
+impl crate::stream::inbound::typed::WithFiles for AuthorizedKeysAdd {
+    fn run(
+        req: KeyAddReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+        files: crate::stream::inbound::typed::Files,
+    ) -> Result<KeyAdded, KeyAddErr> {
+        answer_add(files, &req).map_err(crate::stream::inbound::typed::of_pair(KeyAddErr::IoFailed))
+    }
 }
 
 /// 本机那份 `.pub` 在哪：显式给的 ⇒ 它；否则私钥同名 `.pub`；都没有 ⇒ 说一句（界面让用户挑文件）。**纯函数**。
@@ -257,18 +293,99 @@ impl Reach for Wire {
     }
 }
 
-/// `pubkey-push {machine, saved?, jump?, pubKeyPath?}`（本机常驻后端）：见头注。回 `{outcome, pubPath, via}`（`via` = `backend` / `exec`，给人看走了哪条）。
+/// `pubkey-push` 的入参：拨哪台那几格（同 `remote-probe`）＋ 本机那份 `.pub` 的路径。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct PubkeyPushReq {
+    /// 那台的配置（设置页表单里那台，可能还没保存）。
+    pub(crate) machine: crate::dial::pick::MachineConfig,
+    /// 已保存的那一份。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) saved: Option<crate::dial::pick::MachineConfig>,
+    /// 跳板那一台。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) jump: Option<crate::dial::pick::MachineConfig>,
+    /// 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) pub_key_path: Option<String>,
+}
+
+/// 走了哪条：那台后端的文件管理面 · 那一次 exec。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum PushVia {
+    Backend,
+    Exec,
+}
+
+/// `pubkey-push` 的应答。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct PubkeyPushed {
+    /// `added`（新加的）· `already`（本就有整行相等的一行，没写）。
+    pub(crate) outcome: PushOutcome,
+    /// 实际推的是哪一份（给人看）。
+    pub(crate) pub_path: String,
+    /// 走了哪条。
+    pub(crate) via: PushVia,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `pubkey-push` 的码：跳板查无 / 成环 · 那份 `.pub` 找不到 / 不是公钥 · 那台没加上。
+    pub(crate) enum PushErr {
+        BadJump = "bad_jump",
+        Refused = "refused",
+        Failed = "failed",
+    }
+}
+
+/// `pubkey-push`（本机常驻后端答）：见头注。真异步（拨号 / 问那台）。
+pub(crate) struct PubkeyPush;
+
+impl crate::stream::inbound::typed::Command for PubkeyPush {
+    const NAME: &'static str = "pubkey-push";
+    type Req = PubkeyPushReq;
+    type Reply = PubkeyPushed;
+    type Err = PushErr;
+}
+
+impl crate::stream::inbound::typed::Async for PubkeyPush {
+    fn run(
+        req: PubkeyPushReq,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<PubkeyPushed, PushErr>> + Send + 'static {
+        async move {
+            answer_push(&req, &Wire, &read_local_pub)
+                .await
+                .map_err(crate::stream::inbound::typed::of_pair(PushErr::Failed))
+        }
+    }
+}
+
+/// `pubkey-push` 的本体（可达表 · 读 `.pub` 由调用方给，判据用替身）。
 pub(crate) async fn answer_push(
-    args: &Value,
+    req: &PubkeyPushReq,
     reach: &dyn Reach,
     read_pub: &(dyn Fn(&str) -> Result<String, (&'static str, String)> + Send + Sync),
-) -> Result<Value, (&'static str, String)> {
-    let (machine, _saved, _jump) = crate::dial::machine::from_args(args)?;
-    let path = pub_key_path(
-        args.get("pubKeyPath").and_then(Value::as_str),
-        machine.key_path.as_deref(),
-    )
-    .map_err(|e| ("refused", e))?;
+) -> Result<PubkeyPushed, (&'static str, String)> {
+    let pick = crate::dial::pick::Pick {
+        machine: &req.machine,
+        saved: req.saved.as_ref(),
+        jump: req.jump.as_ref(),
+        prefer: None,
+    };
+    let (machine, _saved, _jump) = pick.machines()?;
+    let path = pub_key_path(req.pub_key_path.as_deref(), machine.key_path.as_deref())
+        .map_err(|e| ("refused", e))?;
     let key = sanitize_public_key(&read_pub(&path)?).map_err(|e| ("refused", e))?;
     let name = machine.name().to_string();
     let (outcome, via) = if reach.backend_up(&name) {
@@ -276,29 +393,32 @@ pub(crate) async fn answer_push(
             .ask_add(&name, &key)
             .await
             .map_err(|e| ("failed", e))?;
-        match o.as_str() {
-            "added" | "already" => (o, "backend"),
+        let outcome = match o.as_str() {
+            "added" => PushOutcome::Added,
+            "already" => PushOutcome::Already,
             _ => {
                 return Err((
                     "failed",
                     copy_text("bePubkey.add.noOutcome", &[("machine", &name)]),
                 ))
             }
-        }
+        };
+        (outcome, PushVia::Backend)
     } else {
-        let dial = json!({
-            "machine": args.get("machine"),
-            "saved": args.get("saved"),
-            "jump": args.get("jump"),
-        });
         let out = reach
-            .exec_once(&dial, authorized_keys_cmd(&key))
+            .exec_once(&pick.dial_value(), authorized_keys_cmd(&key))
             .await
             .map_err(|e| ("failed", e))?;
-        let o = parse_push_outcome(&out).map_err(|e| ("failed", e))?;
-        (o.as_str().to_string(), "exec")
+        (
+            parse_push_outcome(&out).map_err(|e| ("failed", e))?,
+            PushVia::Exec,
+        )
     };
-    Ok(json!({ "outcome": outcome, "pubPath": path, "via": via }))
+    Ok(PubkeyPushed {
+        outcome,
+        pub_path: path,
+        via,
+    })
 }
 
 /// 生产那一个读口：本机那份 `.pub`（有界，超了就不是公钥）。

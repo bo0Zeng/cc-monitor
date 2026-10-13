@@ -87,38 +87,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     // **公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
     //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。
-    CommandSpec {
-        name: "pubkey-push",
-        summary: "把本机公钥推进那台的 `authorized_keys`",
-        codes: &["bad_args", "bad_jump", "refused", "failed"],
-        fields: &[arg("jump", "同 `remote-probe`"), arg("machine", "同 `remote-probe`"), out("outcome", "`added`（新加的）· `already`（本就有整行相等的一行，没写）"), arg("pubKeyPath", "本机那份 `.pub` 的路径；缺席 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让用户挑文件）"), out("pubPath", "实际推的是哪一份（给人看）"), arg("saved", "同 `remote-probe`"), out("via", "走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec）")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::assets::pubkey::answer_push(
-                    &r.args,
-                    &crate::assets::pubkey::Wire,
-                    &crate::assets::pubkey::read_local_pub,
-                )
-                .await
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::assets::pubkey::PubkeyPush>(
+        "把本机公钥推进那台的 `authorized_keys`",
+    ),
     // **公钥写进这台的 `authorized_keys`**（被写那台答）：算经 `assets/pubkey.rs`，写经 [`LocalFiles`]（CAS ＋ 建父目录 ＋ 700 / 600）。
-    CommandSpec {
-        name: "authorized-keys-add",
-        summary: "把一行公钥并进这台的 `authorized_keys`",
-        codes: &["bad_args", "refused", "io_failed"],
-        fields: &[arg("key", "一行公钥（本条自己也校验一遍）"), out("outcome", "`added` · `already`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::pubkey::answer_add(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::assets::pubkey::AuthorizedKeysAdd>(
+        "把一行公钥并进这台的 `authorized_keys`",
+        &LocalFiles,
+    ),
     // 「退出行为」那个值的两条命令 —— 值住**后端所在那台机器**
     //   （`~/.cc-monitor/backend.json`），前端要读要改都经这两条，**前端从不碰那个文件**。
     //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
@@ -174,28 +150,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 端口转发（F58）的账住本机常驻后端（`dial/forwards.rs`；monitor 那三条 Tauri 命令退役）。
     //   起 = 真异步（查可达表 · 池里那条 SSH 上开 `use: forward` 链路 · 等 ack），`cancel` 能在 await 点打断；
     //   停 / 列 = 纯内存（一把锁），同 `remote-reach` 不进阻塞档。三条都只在流面上有意义（`cli_control::STREAM_ONLY`）。
-    CommandSpec {
-        name: "forward-start",
-        summary: "起一条本地端口转发",
-        codes: &[
-            "bad_args",
-            "bad_spec",
-            "unreachable",
-            "bad_jump",
-            "full",
-            "failed",
-        ],
-        fields: &[out("id", "这条转发的号（`fwd-<n>`，本进程内单调）"), arg("jump", "跳板那一台的配置（可缺）"), arg("localPort", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("machine", "那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`ssh-dial/machine.rs`，同 `remote-probe`），不拒"), arg("origin", "那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求）"), arg("remoteHost", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("remotePort", "绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip"), arg("saved", "已保存的那一份机器配置（可缺）")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::dial::forwards::answer_start(&r.args)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::dial::forwards::ForwardStart>("起一条本地端口转发"),
     // 〔「后端持有全部 SSH」〕测试连接：
     //   真异步（拨号 · 读 hello · 控制通道往返；本后端零定时器，期限归发起方），`cancel` 能在 await 点打断；短命探活、不进连接池。
     // 进度边拨边推（`probe` 帧，走本连接的应答通道）⇒ `Run::Builtin`：只在帧面，分派在 `dispatch` 那条硬臂。
@@ -207,48 +162,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Builtin,
     },
-    CommandSpec {
-        name: "forward-stop",
-        summary: "停一条转发",
-        codes: &["bad_args", "not_found"],
-        fields: &[both("id", "转发号（`fwd-<n>`）")],
-        takes_input: true,
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::dial::forwards::answer_stop(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
-    CommandSpec {
-        name: "forward-list",
-        summary: "列转发",
-        codes: &[],
-        fields: &[out("connCount", "累计接进的连接数"), out("forwards", "转发清单，每项 `{id, origin, localPort, remoteHost, remotePort, state, connCount}`"), both("id", "转发号"), out("localPort", "本机口"), out("origin", "那台的名字"), out("remoteHost", "那台上的目标 host"), out("remotePort", "那台上的目标口"), out("state", "`running`（链路还在）· `error`（链路自己收工了，留在账上等用户停）")],
-        takes_input: false,
-        run: Run::Async(|_r| {
-            Box::pin(async move { Ok(Some(crate::dial::forwards::answer_list())) })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::dial::forwards::ForwardStop>("停一条转发"),
+    crate::stream::inbound::typed::asynchronous::<crate::dial::forwards::ForwardList>("列转发"),
     // **可达表登记**：monitor（宿主，只交事实）在每台远端流握手成功那一刻交「怎么够到那台」
     //   （拨号请求 ＋ 那台后端的路径），本机后端记进内存可达表（`remote_ask`，后端重启就空）。**只登记，不拨号**：
     //   之后「本机后端问远端后端」的两路（资产目录同步 · 历史跨机 join）都查这张表。老远端也登记（历史问它的是老子命令）。
-    CommandSpec {
-        name: "remote-reach",
-        summary: "本机后端的可达表登记",
-        codes: &["bad_args"],
-        fields: &[arg("dial", "那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体）"), arg("origin", "那台的名字（monitor 的 origin 名，本后端只当不透明的键用）"), out("reach", "登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格）")],
-        takes_input: true,
-        // 纯内存（一把锁、插一行）⇒ 不进阻塞档，同 `ping` / `resolve`。
-        run: Run::Async(|r| {
-            Box::pin(async move {
-                crate::dial::remote_ask::answer_reach(&r.args)
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::dial::remote_ask::RemoteReach>("本机后端的可达表登记"),
     CommandSpec {
         name: "backend-log",
         summary: "这台后端的 stderr 诊断文件尾部",
@@ -274,30 +193,6 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`，从 monitor `stream_source/` 原样搬来）。
-    //   阻塞档：读一份文件 ／ 起 `ssh -G`（只读配置、不建连接）并等它退出。
-    CommandSpec {
-        name: "ssh-config-aliases",
-        summary: "这台 `~/.ssh/config` 里可点的别名",
-        codes: &[],
-        fields: &[out("aliases", "`Host` 行里非通配的别名（去重保序）；没有 config ⇒ `[]`")],
-        takes_input: false,
-        run: Run::Blocking(|_r| Ok(Some(crate::dial::ssh_config::answer_aliases()))),
-    },
-    CommandSpec {
-        name: "ssh-config-resolve",
-        summary: "一个别名的有效连接参数",
-        codes: &["bad_args", "bad_alias", "failed", "child_timed_out"],
-        fields: &[arg("alias", "必填"), out("host", "`ssh -G` 的 `hostname`（缺省回退别名）"), out("keyPath", "第一个**展开后存在**的 `identityfile`（只问在不在，不读内容）；都不存在 ⇒ `null`"), out("port", "`port`（缺省 22）"), out("proxyJump", "`proxyjump`（`none` ⇒ `null`）"), out("user", "`user`（缺省空串）")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::dial::ssh_config::answer_resolve(&r.args).map(Some)),
-    },
-    CommandSpec {
-        name: "ssh-config-import",
-        summary: "批量导入预览",
-        codes: &["bad_args"],
-        fields: &[out("addresses", "其余地址，端口不同则 `host:port`"), out("alias", "成员的别名"), out("groups", "聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}`"), both("host", "组首的 host"), out("inList", "组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比"), out("jump", "组内首个非空 proxyjump"), out("keyPath", "组首"), arg("known", "机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `bad_args`"), out("label", "单成员组 = 完整别名，多成员 = 基名"), out("members", "`alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原"), both("port", "组首的端口"), out("proxyJump", "成员的跳板"), both("user", "组首的用户")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::dial::ssh_config::answer_import(&r.args).map(Some)),
-    },
+    // `~/.ssh/config` 的解读（`dial/ssh_config.rs`）：读一份文件 ／ 逐个起 `ssh -G`（只读配置、不建连接）并等它退出 ⇒ 阻塞档。
+    crate::stream::inbound::typed::blocking::<crate::dial::ssh_config::SshConfigImport>("批量导入预览"),
 ];

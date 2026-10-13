@@ -1348,10 +1348,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--sessions-start",
     "--sessions-stop",
     "--sessions-where",
-    // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    "--ssh-config-aliases",
+    // `ssh-config-import` 帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ssh-config-import",
-    "--ssh-config-resolve",
     // `tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。

@@ -5718,9 +5718,74 @@ type WireContainer = { "kind": "none" } | { "kind": "tmux", name: string, send_i
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --terminal-ssh`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `command` | → ← | 要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'` |
+入参 `TerminalSshReq` · 回包 `SshCommand`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type Prefer = { host: string, port: number, };
+type SshCommand = { 
+/**
+ * 这台电脑终端里跑的那一行（Windows：PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`；别处：同一组参数的 POSIX shell 一行）。
+ */
+command: string, };
+type TerminalSshReq = { 
+/**
+ * 那台的配置（可能还没保存）。
+ */
+machine: MachineConfig, 
+/**
+ * 已保存的那一份（指纹只从同一个 host 的那一份继承）。
+ */
+saved?: MachineConfig | null, 
+/**
+ * 跳板那一台的配置（`machine.jump` 指它时必给）。
+ */
+jump?: MachineConfig | null, 
+/**
+ * 上次赢的那条地址（仍在这台的地址里 ⇒ 用它）。
+ */
+prefer?: Prefer | null, 
+/**
+ * 要在那台跑的命令。
+ */
+command?: string, 
+/**
+ * 在那台的这个目录开登录 shell（串，或非 UTF-8 的 `{"b16": "<hex>"}`）。
+ */
+cwd?: string | { b16: string }, };
+```
 
 码：`bad_args` · `bad_jump` · `refused` · `no_ssh_client` · `unobservable`
 
@@ -7139,15 +7204,75 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · CLI：`ccm -- --pubkey-push`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `jump` | → | 同 `remote-probe` |
-| `machine` | → | 同 `remote-probe` |
-| `outcome` | ← | `added`（新加的）· `already`（本就有整行相等的一行，没写） |
-| `pubKeyPath` | → | 本机那份 `.pub` 的路径；缺席 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让用户挑文件） |
-| `pubPath` | ← | 实际推的是哪一份（给人看） |
-| `saved` | → | 同 `remote-probe` |
-| `via` | ← | 走了哪条：`backend`（那台后端的文件管理面）· `exec`（那一次 exec） |
+入参 `PubkeyPushReq` · 回包 `PubkeyPushed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type PubkeyPushReq = { 
+/**
+ * 那台的配置（设置页表单里那台，可能还没保存）。
+ */
+machine: MachineConfig, 
+/**
+ * 已保存的那一份。
+ */
+saved?: MachineConfig | null, 
+/**
+ * 跳板那一台。
+ */
+jump?: MachineConfig | null, 
+/**
+ * 本机那份 `.pub` 的路径；缺 / 空 ⇒ 私钥同名 `.pub`（两样都没有 ⇒ `refused`，界面让人挑文件）。
+ */
+pubKeyPath?: string | null, };
+type PubkeyPushed = { 
+/**
+ * `added`（新加的）· `already`（本就有整行相等的一行，没写）。
+ */
+outcome: PushOutcome, 
+/**
+ * 实际推的是哪一份（给人看）。
+ */
+pubPath: string, 
+/**
+ * 走了哪条。
+ */
+via: PushVia, };
+type PushOutcome = "added" | "already";
+type PushVia = "backend" | "exec";
+```
 
 码：`bad_args` · `bad_jump` · `refused` · `failed`
 
@@ -7157,10 +7282,13 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --authorized-keys-add`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `key` | → | 一行公钥（本条自己也校验一遍） |
-| `outcome` | ← | `added` · `already` |
+入参 `KeyAddReq` · 回包 `KeyAdded`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type KeyAddReq = { key: string, };
+type KeyAdded = { outcome: PushOutcome, };
+type PushOutcome = "added" | "already";
+```
 
 码：`bad_args` · `refused` · `io_failed`
 
@@ -7232,16 +7360,73 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | ← | 这条转发的号（`fwd-<n>`，本进程内单调） |
-| `jump` | → | 跳板那一台的配置（可缺） |
-| `localPort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `machine` | → | 那台的配置（界面 `remote-config` 那一格，camelCase）· 已保存的那一份 · 跳板那一台：可达表里**没有**那台（流没起来）时按它自己组请求去拨（`ssh-dial/machine.rs`，同 `remote-probe`），不拒 |
-| `origin` | → | 那台的名字（可达表 `remote-reach` 的键：那台的流握手过 ⇒ 用那一份拨号请求） |
-| `remoteHost` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `remotePort` | → | 绑本机 `127.0.0.1:localPort`，每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip |
-| `saved` | → | 已保存的那一份机器配置（可缺） |
+入参 `ForwardStartReq` · 回包 `ForwardStarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForwardStartReq = { 
+/**
+ * 那台的名字（可达表的键）。
+ */
+origin: string, 
+/**
+ * 绑本机 `127.0.0.1:localPort`。
+ */
+localPort: number, 
+/**
+ * 每接进一条连接开一条到那台 `remoteHost:remotePort` 的 direct-tcpip。
+ */
+remoteHost: string, remotePort: number, 
+/**
+ * 那台的配置（可达表里**没有**那台、流没起来时按它组请求去拨，不拒）。
+ */
+machine?: MachineConfig | null, 
+/**
+ * 已保存的那一份。
+ */
+saved?: MachineConfig | null, 
+/**
+ * 跳板那一台。
+ */
+jump?: MachineConfig | null, };
+type ForwardStarted = { 
+/**
+ * `fwd-<n>`，本进程内单调。
+ */
+id: string, };
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+```
 
 码：`bad_args` · `bad_spec` · `unreachable` · `bad_jump` · `full` · `failed`
 
@@ -7275,9 +7460,15 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → ← | 转发号（`fwd-<n>`） |
+入参 `ForwardId` · 回包 `ForwardId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForwardId = { 
+/**
+ * 转发号（`fwd-<n>`）。
+ */
+id: string, };
+```
 
 码：`bad_args` · `not_found`
 
@@ -7287,16 +7478,27 @@ type Mode = "create-or-attach" | "send-into";
 
 不收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `connCount` | ← | 累计接进的连接数 |
-| `forwards` | ← | 转发清单，每项 `{id, origin, localPort, remoteHost, remotePort, state, connCount}` |
-| `id` | → ← | 转发号 |
-| `localPort` | ← | 本机口 |
-| `origin` | ← | 那台的名字 |
-| `remoteHost` | ← | 那台上的目标 host |
-| `remotePort` | ← | 那台上的目标口 |
-| `state` | ← | `running`（链路还在）· `error`（链路自己收工了，留在账上等用户停） |
+入参 `NoArgs` · 回包 `Forwards`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForwardRow = { id: string, 
+/**
+ * 那台的名字。
+ */
+origin: string, localPort: number, remoteHost: string, remotePort: number, 
+/**
+ * `running`（链路还在）· `error`（链路自己收工了，留在账上等人停）。
+ */
+state: "running" | "error", 
+/**
+ * 累计接进的连接数。
+ */
+connCount: number, };
+type Forwards = { forwards: Array<ForwardRow>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
 
 #### `remote-reach`
 
@@ -7304,11 +7506,72 @@ type Mode = "create-or-attach" | "send-into";
 
 收 `args` · 可撤 · CLI：`ccm -- --remote-reach`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 那台的拨号请求（同 `link-open` 的 `dial`；只有路径，没有私钥本体） |
-| `origin` | → | 那台的名字（monitor 的 origin 名，本后端只当不透明的键用） |
-| `reach` | ← | 登记之后的可达表 `[{origin, machine}]`（同 `assets-sync` 的那一格） |
+入参 `ReachReq` · 回包 `Reached`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type Prefer = { host: string, port: number, };
+type ReachDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+/**
+ * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+ */
+use?: string | null, 
+/**
+ * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+ */
+agent_sock?: string | null, };
+type ReachReq = { 
+/**
+ * 那台的名字（monitor 的 origin 名）。
+ */
+origin: string, 
+/**
+ * 那台的拨号（只有路径，没有私钥本体）。
+ */
+dial: ReachDial, };
+type ReachRow = { 
+/**
+ * 那台的名字。
+ */
+origin: string, 
+/**
+ * 对面的资产目录 id。
+ */
+machine: string | null, };
+type Reached = { origin: string, reach: Array<ReachRow>, };
+```
 
 码：`bad_args`
 
@@ -7342,54 +7605,33 @@ type Mode = "create-or-attach" | "send-into";
 
 码：`bad_args` · `refused`
 
-#### `ssh-config-aliases`
-
-这台 `~/.ssh/config` 里可点的别名。
-
-不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ssh-config-aliases`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | ← | `Host` 行里非通配的别名（去重保序）；没有 config ⇒ `[]` |
-
-#### `ssh-config-resolve`
-
-一个别名的有效连接参数。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ssh-config-resolve`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `alias` | → | 必填 |
-| `host` | ← | `ssh -G` 的 `hostname`（缺省回退别名） |
-| `keyPath` | ← | 第一个**展开后存在**的 `identityfile`（只问在不在，不读内容）；都不存在 ⇒ `null` |
-| `port` | ← | `port`（缺省 22） |
-| `proxyJump` | ← | `proxyjump`（`none` ⇒ `null`） |
-| `user` | ← | `user`（缺省空串） |
-
-码：`bad_args` · `bad_alias` · `failed` · `child_timed_out`
-
 #### `ssh-config-import`
 
 批量导入预览。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --ssh-config-import`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `addresses` | ← | 其余地址，端口不同则 `host:port` |
-| `alias` | ← | 成员的别名 |
-| `groups` | ← | 聚成组的机器，每组 `{label, host, port, user, keyPath, addresses, jump, members, inList}` |
-| `host` | → ← | 组首的 host |
-| `inList` | ← | 组首或任一成员的地址 ＋ 组的用户 ＋ 端口与 `known` 里某台相同，去首尾空白比 ⇒ 已在列表里，界面照它灰、不自己比 |
-| `jump` | ← | 组内首个非空 proxyjump |
-| `keyPath` | ← | 组首 |
-| `known` | → | 机器列表里已有的那几台，`[{host, user, port}]`；缺 / 形状不对 ⇒ `bad_args` |
-| `label` | ← | 单成员组 = 完整别名，多成员 = 基名 |
-| `members` | ← | `alias` / `host` / `port` / `proxyJump`，界面「拆分」时据此还原 |
-| `port` | → ← | 组首的端口 |
-| `proxyJump` | ← | 成员的跳板 |
-| `user` | → ← | 组首的用户 |
+入参 `SshImportReq` · 回包 `SshImported`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type KnownHost = { host: string, user: string, port: number, };
+type SshImportGroup = { label: string, host: string, port: number, user: string, keyPath: string | null, 
+/**
+ * 组内除 `host` 外的其余地址（去重；端口与组首不同则 `host:port`）。单机组为空。
+ */
+addresses: Array<string>, 
+/**
+ * 组内首个非空 proxyjump（别名）。
+ */
+jump: string | null, members: Array<SshImportMember>, 
+/**
+ * 这一组已在机器列表里（组里任一地址 ＋ 用户 ＋ 端口与列表里某台相同；列表由界面交来）。
+ */
+inList: boolean, };
+type SshImportMember = { alias: string, host: string, port: number, proxyJump: string | null, };
+type SshImportReq = { known: Array<KnownHost>, };
+type SshImported = { groups: Array<SshImportGroup>, };
+```
 
 码：`bad_args`
 
@@ -7703,9 +7945,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--skill-install-plan` | ＝ 帧命令 `skill-install-plan`：在要被写的那一台判 skill 装不装得过来 |
 | `--skill-install-record` | ＝ 帧命令 `skill-install-record`：skill 装记录的写口 |
 | `--skill-read` | ＝ 帧命令 `skill-read`：读来源那台上的一个 skill |
-| `--ssh-config-aliases` | ＝ 帧命令 `ssh-config-aliases`：这台 `~/.ssh/config` 里可点的别名 |
 | `--ssh-config-import` | ＝ 帧命令 `ssh-config-import`：批量导入预览 |
-| `--ssh-config-resolve` | ＝ 帧命令 `ssh-config-resolve`：一个别名的有效连接参数 |
 | `--tasks-list` | ＝ 帧命令 `tasks-list`：一个会话的任务列表 |
 | `--terminal-input` | ＝ 帧命令 `terminal-input`：往一个终端送字或送键（过身份门） |
 | `--terminal-name-mint` | ＝ 帧命令 `terminal-name-mint`：起会话要的终端名 |

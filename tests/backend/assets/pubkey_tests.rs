@@ -4,6 +4,25 @@ use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 use std::sync::Mutex;
 
+// 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份（判据照线上形比）。
+async fn answer_push(
+    args: &Value,
+    reach: &dyn Reach,
+    read_pub: &(dyn Fn(&str) -> Result<String, (&'static str, String)> + Send + Sync),
+) -> Result<Value, (&'static str, String)> {
+    let req: PubkeyPushReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::answer_push(&req, reach, read_pub)
+        .await
+        .map(|r| serde_json::to_value(r).unwrap())
+}
+
+fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
+    let req: KeyAddReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::answer_add(d, &req).map(|r| serde_json::to_value(r).unwrap())
+}
+
 /// 替身两条路：记下走了哪一条、交了什么。
 struct FakeReach {
     up: bool,
@@ -100,7 +119,11 @@ async fn it_asks_that_backend_when_it_is_up_and_execs_once_only_when_it_is_not()
     assert!(down.added.lock().unwrap().is_empty());
     let execs = down.execs.lock().unwrap();
     assert_eq!(execs.len(), 1, "只许一次 exec");
-    assert_eq!(execs[0].0["machine"], args()["machine"]);
+    // 那台原样的配置按类型收过一遍（拨号读的几格；缺的不写出来，`resolve` 照缺读）。
+    assert_eq!(
+        execs[0].0["machine"],
+        json!({ "host": "192.0.2.2", "label": "dev", "user": "u", "keyPath": "/k/id_ed25519", "addresses": [] })
+    );
     assert_eq!(execs[0].1, authorized_keys_cmd(KEY));
     assert_eq!(
         (v["outcome"].clone(), v["via"].clone(), v["pubPath"].clone()),

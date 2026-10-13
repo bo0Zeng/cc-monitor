@@ -388,8 +388,6 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         // 列这台的 tmux 会话：无入参（问的就是「这台」）。
         // 列转发：无入参（问的就是本进程那张账）。
         "forward-list",
-        // 这台 `~/.ssh/config` 的别名清单：无入参（`ssh-config-resolve` 要 `alias`、`ssh-config-import` 要 `known`，都收输入）。
-        "ssh-config-aliases",
         // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
         // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。

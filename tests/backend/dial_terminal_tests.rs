@@ -10,7 +10,14 @@ use serde_json::json;
 
 // 下面除末尾 POSIX 那一节外都量 PowerShell 那一形（Windows 上开终端的那一行）：按方言显式取，不随跑测试的这台机器变。
 fn answer(args: &Value) -> Result<Value, CmdErr> {
-    answer_in(args, true, &found())
+    answer_at(args, true, &found())
+}
+
+/// 线上那一份入参经 typed 那一处收（同分派），再按给定方言渲；回包写成线上那一份。
+fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, CmdErr> {
+    let req: TerminalSshReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    answer_in(&req, powershell, ssh).map(|r| serde_json::to_value(r).unwrap())
 }
 
 /// 这台找到的 ssh 客户端（Windows 系统可选功能装的那一处）。
@@ -440,7 +447,7 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
     let mut m = machine("192.0.2.3", "u", 2222, Some("/home/u/my key's/id"));
     m["jump"] = json!("bastion");
     let jump = json!({ "host": "jump.local", "user": "pi", "port": 22, "label": "bastion" });
-    let line = answer_in(
+    let line = answer_at(
         &json!({ "machine": m, "jump": jump, "command": cmd }),
         false,
         &SshClient::At(fake.to_str().unwrap().into()),
@@ -496,18 +503,18 @@ fn the_posix_line_hands_ssh_the_same_arguments_a_real_shell_would() {
 #[test]
 fn only_the_powershell_line_refuses_double_quotes() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": r#"echo "a b""# });
-    assert_eq!(answer_in(&args, true, &found()).unwrap_err().0, "refused");
-    assert!(answer_in(&args, false, &SshClient::At("/usr/bin/ssh".into())).is_ok());
+    assert_eq!(answer_at(&args, true, &found()).unwrap_err().0, "refused");
+    assert!(answer_at(&args, false, &SshClient::At("/usr/bin/ssh".into())).is_ok());
 }
 
 /// 这台没装 ssh 客户端 ⇒ 不出那一行，照实说没装（按本机终端方言说怎么装）。
 #[test]
 fn no_ssh_client_here_says_so_instead_of_rendering_a_line_that_cannot_run() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": "x" });
-    let (code, said) = answer_in(&args, true, &SshClient::Missing).unwrap_err();
+    let (code, said) = answer_at(&args, true, &SshClient::Missing).unwrap_err();
     assert_eq!(code, "no_ssh_client");
     assert_eq!(said, copy_text("beTerminal.ssh.missingWindows", &[]));
-    let (code, said) = answer_in(&args, false, &SshClient::Missing).unwrap_err();
+    let (code, said) = answer_at(&args, false, &SshClient::Missing).unwrap_err();
     assert_eq!(code, "no_ssh_client");
     assert_eq!(said, copy_text("beTerminal.ssh.missingPosix", &[]));
 }
@@ -517,7 +524,7 @@ fn no_ssh_client_here_says_so_instead_of_rendering_a_line_that_cannot_run() {
 fn a_failed_check_says_it_cannot_tell_and_never_claims_missing() {
     let args = json!({ "machine": machine("h", "u", 22, None), "command": "x" });
     let why = "PATH not set or empty";
-    let (code, said) = answer_in(&args, true, &SshClient::Unknown(why.into())).unwrap_err();
+    let (code, said) = answer_at(&args, true, &SshClient::Unknown(why.into())).unwrap_err();
     assert_eq!(code, "unobservable");
     assert_eq!(said, copy_text("beTerminal.ssh.unknown", &[("why", why)]));
     for missing in [
@@ -525,13 +532,5 @@ fn a_failed_check_says_it_cannot_tell_and_never_claims_missing() {
         "beTerminal.ssh.missingPosix",
     ] {
         assert_ne!(said, copy_text(missing, &[]));
-    }
-}
-
-impl crate::guard_support::Shaped for SshCommand {
-    fn samples() -> Vec<Self> {
-        vec![SshCommand {
-            command: "ssh -t host".into(),
-        }]
     }
 }

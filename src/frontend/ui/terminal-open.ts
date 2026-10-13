@@ -10,14 +10,8 @@
  */
 import { commands, type TerminalOpened } from "./ipc/commands";
 import { copyText } from "./copy-table";
-import { chan } from "../../comms/inward/chan";
-import {
-  budgetWithin,
-  jsonBody,
-  readJson,
-  ReplyUnreadable,
-  saidFrom,
-} from "./ipc/chan-caller";
+import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import type { TerminalSshReq } from "./generated/TerminalSshReq";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { toast } from "./kit/toast";
 import { writeClipboard } from "./clipboard";
@@ -27,27 +21,11 @@ import { openSettingsWindow } from "./settings/open-settings";
 /** 期限：`terminal-ssh` 是本机后端里的纯计算（不拨号），给足本机那条流的往返即可。 */
 const RENDER_BUDGET_MS = 10_000;
 
-/** `terminal-ssh` 的成品 `{command}` ⇒ 那一行；形状不认 ⇒ 抛。严格收（恰好一个键、非空串）。 */
-export function decodeTerminalLine(v: unknown): string {
-  if (v !== null && typeof v === "object" && !Array.isArray(v)) {
-    const o = v as Record<string, unknown>;
-    const keys = Object.keys(o);
-    if (
-      keys.length === 1 &&
-      keys[0] === "command" &&
-      typeof o.command === "string" &&
-      o.command !== ""
-    ) {
-      return o.command;
-    }
-  }
-  throw new ReplyUnreadable("terminalOpen reply shape");
-}
-
-/** 本机后端那一问（`terminal-ssh`）的成品 ⇒ 那一串。问不到 ⇒ 抛一句人话。 */
-async function lineOf(ask: Promise<Uint8Array>): Promise<string> {
+/** 本机后端那一问（`terminal-ssh`）⇒ 那一串。问不到 ⇒ 抛一句人话。 */
+async function lineOf(req: TerminalSshReq): Promise<string> {
   try {
-    return decodeTerminalLine(readJson(await ask));
+    const { command } = await callTyped(LOCAL_ORIGIN, "terminal-ssh", req, budgetWithin(RENDER_BUDGET_MS));
+    return command;
   } catch (e) {
     throw new Error(saidFrom(e, LOCAL_ORIGIN));
   }
@@ -118,11 +96,7 @@ export async function openTerminal(
     await openWindow(command);
     return;
   }
-  const facts = await commands.terminal_dial({ origin });
-  const body = jsonBody({ ...(facts as Record<string, unknown>), command });
-  const budget = budgetWithin(RENDER_BUDGET_MS);
-  const line = await lineOf(
-    chan.call(LOCAL_ORIGIN, "terminal-ssh", body, budget),
-  );
-  await openWindow(line);
+  // 那台的机器事实由壳交（`dial_host::machine_facts`：`{machine, saved, jump, prefer}`，同 `TerminalSshReq` 那几格）。
+  const facts = (await commands.terminal_dial({ origin })) as Omit<TerminalSshReq, "command" | "cwd">;
+  await openWindow(await lineOf({ ...facts, command }));
 }

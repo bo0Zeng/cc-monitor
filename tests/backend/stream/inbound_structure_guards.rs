@@ -318,10 +318,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "terminal-processes"
                 // 铸 tmux 名：问一次会话快照 = 起一次 `tmux` 并等它退出。
                 | "terminal-name-mint"
-                // `~/.ssh/config` 三条：读一份文件 ／ 起 `ssh -G` 并等它退出。
-                | "ssh-config-aliases"
+                // `~/.ssh/config` 导入：读一份文件 ／ 逐个起 `ssh -G` 并等它退出。
                 | "ssh-config-import"
-                | "ssh-config-resolve"
                 // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O）。
                 | "hooks-diag"
                 // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux）。
@@ -623,10 +621,8 @@ fn every_registered_command_declares_its_run_kind() {
         "files-delete-session",
         // MCP 同步的判定（阻塞档，理由在上面 `expected_blocking`）。
         "mcp-sync-plan",
-        // `~/.ssh/config` 三条（阻塞档，理由在上面 `expected_blocking`）。
-        "ssh-config-aliases",
+        // `~/.ssh/config` 导入（阻塞档，理由在上面 `expected_blocking`）。
         "ssh-config-import",
-        "ssh-config-resolve",
         // 起会话的计划与渲染（本机那条阻塞档，两条渲染异步）。
         "launch-local",
         "launch-render-cli",
@@ -1122,12 +1118,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    (
-        "terminal-ssh",
-        sampled::<crate::dial::terminal::SshCommand>,
-        &[],
-        &[],
-    ),
     ("rotation-config-delete", sampled::<rf::ConfigDropped>, &[], &[]),
     ("rotation-config-rename", sampled::<rf::ConfigSaved>, &[], &[]),
     ("rotation-config-save", sampled::<rf::ConfigSaved>, &[], &[]),
@@ -1189,14 +1179,11 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const CELLS_CATALOG: &str = include_str!("../../__fixtures__/cells-catalog.golden.json");
     const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
-    const FORWARD_LIST: &str = include_str!("../../__fixtures__/forward-list.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
     const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
-    const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
     const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
-    const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1247,39 +1234,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         (
-            "ssh-config-aliases",
-            SSH_CONFIG,
-            "/ssh-config-aliases",
-            &[],
-            &[],
-        ),
-        (
-            "ssh-config-resolve",
-            SSH_CONFIG,
-            "/ssh-config-resolve",
-            &[],
-            &[],
-        ),
-        (
-            "ssh-config-import",
-            SSH_CONFIG,
-            "/ssh-config-import",
-            &[
-                "addresses",
-                "alias",
-                "host",
-                "inList",
-                "jump",
-                "keyPath",
-                "label",
-                "members",
-                "port",
-                "proxyJump",
-                "user",
-            ],
-            &[],
-        ),
-        (
             "mcp-read",
             MCP_READ,
             "/reply",
@@ -1313,21 +1267,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("aliases-read", ALIASES, "/readReply", &[], &[]),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
-        (
-            "forward-list",
-            FORWARD_LIST,
-            "",
-            &[
-                "connCount",
-                "id",
-                "localPort",
-                "origin",
-                "remoteHost",
-                "remotePort",
-                "state",
-            ],
-            &[],
-        ),
         ("files-grep", FILES_GREP, "", &[], &[]),
         (
             "hooks-diag",
@@ -1337,7 +1276,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         ("relay-optin", RELAY_OPTIN, "", &[], &[]),
-        ("pubkey-push", PUBKEY_PUSH, "/product", &[], &[]),
         ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
         ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
@@ -1371,7 +1309,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 85;
+    const UNSHAPED_CEILING: usize = 81;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1391,7 +1329,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "apikey-key-set",
         "assets-catalog",
         "assets-catalog-merge",
-        "authorized-keys-add",
         "backend-log",
         "cc-bus-install",
         "cc-bus-install-state",
@@ -1434,8 +1371,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "files-stat",
         "files-write-text",
         "first-run",
-        "forward-start",
-        "forward-stop",
         "last-seen-read",
         "last-seen-write",
         "machine-interrupts",
@@ -1452,7 +1387,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-unack",
         "powershell-policy-set",
         "remote-probe",
-        "remote-reach",
         "resident-verdict",
         "skill-install-apply",
         "skill-install-plan",

@@ -3,6 +3,10 @@
 
 /// `(命令, 形状指纹)`，按命令名排。
 pub const SHAPES: &[(&str, &str)] = &[
+    ("authorized-keys-add", "ce9dcc7d"),
+    ("forward-list", "2ce405f2"),
+    ("forward-start", "fb481a7a"),
+    ("forward-stop", "b80516fb"),
     ("history-annotate", "e40c5678"),
     ("history-branch", "cd82bf99"),
     ("history-facts", "e1b462af"),
@@ -26,6 +30,8 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("launch-local", "d359d78c"),
     ("launch-render-cli", "7fc9d2a8"),
     ("needs-answer", "b543494a"),
+    ("pubkey-push", "404f00e5"),
+    ("remote-reach", "1dc7568f"),
     ("resolve", "91c7f681"),
     ("resync", "95dff17f"),
     ("session-fork", "24c3fb6a"),
@@ -39,11 +45,13 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("sessions-start", "264d59fb"),
     ("sessions-stop", "0a1aa1a6"),
     ("sessions-where", "8c20eb86"),
+    ("ssh-config-import", "1d9c7860"),
     ("tasks-list", "3d711ecf"),
     ("terminal-input", "b2a383a2"),
     ("terminal-name-mint", "f0db66f2"),
     ("terminal-preview", "d60b74d2"),
     ("terminal-processes", "abba2221"),
+    ("terminal-ssh", "c6ba4b3c"),
     ("terminals-list", "09490ec0"),
 ];
 
