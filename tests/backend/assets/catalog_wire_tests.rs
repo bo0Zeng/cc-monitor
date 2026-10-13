@@ -4,6 +4,11 @@
 
 use serde_json::{json, Value};
 
+/// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳）。
+fn take<R: serde::de::DeserializeOwned>(a: Value) -> R {
+    crate::stream::inbound::typed::take(&a).unwrap()
+}
+
 /// 帧面那一跳的写法（键按字典序）。
 fn wire(v: &impl serde::Serialize) -> String {
     serde_json::to_string(&serde_json::to_value(v).unwrap()).unwrap()
@@ -109,7 +114,7 @@ fn ext_note_set_keeps_its_wire_bytes() {
         super::asset_catalog::set_note(&mut c, key, text, 7);
         Ok(c)
     };
-    let note = |a: Value| wire(&super::ext::answer_note(&a, &write).unwrap());
+    let note = |a: Value| wire(&super::ext::answer_note(&take(a), &write).unwrap());
     assert_eq!(
         note(json!({"kind": "skill", "name": "a", "text": "  new  "})),
         r#"{"note":"new"}"#
@@ -126,7 +131,7 @@ fn skill_install_record_keeps_its_wire_bytes() {
     let own = crate::platform::fs::Own::issue_at(&d);
     let root = d.join("skills");
     let rec = |a: Value| {
-        let got = wire(&super::skill_ledger::record_at(&own, Some(&root), &a).unwrap());
+        let got = wire(&super::skill_ledger::record_at(&own, Some(&root), &take(a)).unwrap());
         got.replace(&d.display().to_string(), "<D>")
     };
     let digest = "0123456789abcdef";
@@ -162,5 +167,50 @@ fn skill_install_record_keeps_its_wire_bytes() {
         rec(json!({"op": "mcp-drop", "file": "/p/.mcp.json", "name": "m"})),
         r#"{"changed":false,"dir":"/p/.mcp.json","name":"m","remaining":0}"#
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+/// 帧面那一跳（按名找命令、照它的档跑）：入参多一个键 ⇒ `bad_args`、一个字节不写（原来不管多出来的键）。
+#[test]
+fn an_extra_key_is_bad_args_on_the_frame_path() {
+    use crate::stream::inbound::spec::{prepare, Prepared};
+    let d = tmp("extra");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    let digest = "0123456789abcdef";
+    let cases = [
+        ("assets-catalog", json!({ "bogus": 1 })),
+        (
+            "assets-catalog-merge",
+            json!({ "catalog": { "machines": [] }, "bogus": 1 }),
+        ),
+        (
+            "ext-note-set",
+            json!({ "kind": "skill", "name": "a", "text": "t", "bogus": 1 }),
+        ),
+        (
+            "skill-install-record",
+            json!({ "op": "mcp-add", "file": "/p/.mcp.json", "name": "m", "digest": digest, "bogus": 1 }),
+        ),
+    ];
+    for (cmd, args) in cases {
+        let spec = crate::stream::inbound::REGISTRY
+            .iter()
+            .find(|s| s.name == cmd)
+            .unwrap();
+        let Some(Prepared::Blocking(run)) = prepare(spec.run, Some(&own)) else {
+            panic!("{cmd} 不在阻塞档");
+        };
+        let req = crate::stream::wire::Request {
+            id: "t".to_string(),
+            cmd: cmd.to_string(),
+            args,
+            within_ms: None,
+            view: Value::Null,
+            tz: Default::default(),
+            until: None,
+        };
+        let got = run(req).map(|_| ()).map_err(|f| f.code);
+        assert_eq!(got, Err("bad_args".to_string()), "{cmd}");
+    }
+    assert!(!d.join(".cc-monitor").exists(), "多一个键的那几问写了盘");
     let _ = std::fs::remove_dir_all(&d);
 }

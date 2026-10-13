@@ -5878,20 +5878,59 @@ type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
 
 #### `assets-catalog`
 
-资产目录。
+这台现扫一次、记下，回整份资产目录 ＋「这台缺什么」。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --assets-catalog`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 这一趟目录有没有变（变了才写盘） |
-| `machines` | ← | 各台一份快照 `{id, label, gen, seenAt, assets}`：`gen` 是那台**自己**的代数（它自己那份变了才 +1）；`seenAt` 是那一代的时刻（那台的钟，只给人看、不参与合并） |
-| `path` | ← | 目录文件在这台上的路径 |
-| `problems` | ← | 这一趟扫描读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」分开说 |
-| `rows` | ← | 别的机器有的每个（`kind`, `name`）一行 `{kind, name, state, from}`：`state` 闭集 `missing`（这台一条同名的都没有）· `differs`（有同名的，摘要都不同）· `same`（有一条摘要相同）；`from` 是别处那几条 `{machine, project, digest, summary}` |
-| `self` | ← | 这台机器的 id（第一次记目录时生成，之后不变） |
+入参 `NoArgs` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`catalog_unreadable` · `io_failed`
+```ts
+type CatalogAsset = { kind: string, name: string, 
+/**
+ * 那台上的项目目录（项目级）；`None` = 用户级。
+ */
+project?: string, 
+/**
+ * 它在那台上住哪（skill：那个目录；MCP：那份配置文件）。只给人看、给「在文件窗口里打开」用，不参与判定。
+ */
+dir?: string, digest: string, 
+/**
+ * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+ */
+summary: unknown, };
+type CatalogFrom = { 
+/**
+ * 那台目录的 id。
+ */
+machine: string, 
+/**
+ * 那台上的项目目录；用户级 ⇒ `null`。
+ */
+project: string | null, digest: string, summary: unknown, };
+type CatalogMachine = { id: string, label: string, gen: number, seenAt: number, assets: Array<CatalogAsset>, projectDirs: Array<string>, notes: { [key in string]: CatalogNote }, sharedMcp: boolean, };
+type CatalogNote = { text: string, rev: number, };
+type CatalogReply = { 
+/**
+ * 这台机器的 id。
+ */
+self: string, machines: Array<CatalogMachine>, rows: Array<CatalogRow>, 
+/**
+ * 这一趟扫描读不出来的那几份（一句话一份）。
+ */
+problems: Array<string>, 
+/**
+ * 这一趟目录有没有变（变了才写盘）。
+ */
+changed: boolean, 
+/**
+ * 目录文件在这台上的路径。
+ */
+path: string | null, };
+type CatalogRow = { kind: string, name: string, state: string, from: Array<CatalogFrom>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `catalog_unreadable` · `io_failed`
 
 #### `assets-catalog-merge`
 
@@ -5899,15 +5938,54 @@ type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --assets-catalog-merge`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `catalog` | → | 另一台后端的整份目录，形状就是 `assets-catalog` 的应答（只读它的 `machines`） |
-| `changed` | ← | 这一次有没有改动 |
-| `machines` | → ← | 各台的快照（同一台取 `gen` 大的那一份整份） |
-| `path` | ← | 目录文件的路径 |
-| `problems` | ← | 读不出的那几处各一句 |
-| `rows` | ← | 并完之后的资产行 |
-| `self` | → ← | 这台的机器 id |
+入参 `CatalogMergeReq` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CatalogAsset = { kind: string, name: string, 
+/**
+ * 那台上的项目目录（项目级）；`None` = 用户级。
+ */
+project?: string, 
+/**
+ * 它在那台上住哪（skill：那个目录；MCP：那份配置文件）。只给人看、给「在文件窗口里打开」用，不参与判定。
+ */
+dir?: string, digest: string, 
+/**
+ * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+ */
+summary: unknown, };
+type CatalogFrom = { 
+/**
+ * 那台目录的 id。
+ */
+machine: string, 
+/**
+ * 那台上的项目目录；用户级 ⇒ `null`。
+ */
+project: string | null, digest: string, summary: unknown, };
+type CatalogIn = { machines: Array<CatalogMachine>, };
+type CatalogMachine = { id: string, label: string, gen: number, seenAt: number, assets: Array<CatalogAsset>, projectDirs: Array<string>, notes: { [key in string]: CatalogNote }, sharedMcp: boolean, };
+type CatalogMergeReq = { catalog: CatalogIn, };
+type CatalogNote = { text: string, rev: number, };
+type CatalogReply = { 
+/**
+ * 这台机器的 id。
+ */
+self: string, machines: Array<CatalogMachine>, rows: Array<CatalogRow>, 
+/**
+ * 这一趟扫描读不出来的那几份（一句话一份）。
+ */
+problems: Array<string>, 
+/**
+ * 这一趟目录有没有变（变了才写盘）。
+ */
+changed: boolean, 
+/**
+ * 目录文件在这台上的路径。
+ */
+path: string | null, };
+type CatalogRow = { kind: string, name: string, state: string, from: Array<CatalogFrom>, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -6017,19 +6095,38 @@ skill 装记录的写口。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --skill-install-record`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | `add` 可缺席：缺 ⇒ 目录按 skill 根算；`"home"` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）；其余值 ⇒ `bad_args` |
-| `changed` | ← | 记录变没变（没变不写） |
-| `digest` | → | 装进去的那一条的摘要（`mcp-add`；卸时对得上就不用问） |
-| `dir` | → ← | `drop` 的入参：记录里那个 skill 目录；应答里是这一条记录的目录 |
-| `file` | → | `mcp-add` / `mcp-drop`：配置文件的绝对路径（键） |
-| `files` | → | `add`：`{<相对路径>: {digest, created}}` —— `skill-install-plan` 答的 `ledger` 里真写成了的那几个 |
-| `name` | → | `add`：skill 的目录名 |
-| `op` | → | `add`（装完记）或 `drop`（卸掉 / 已经不在的摘掉）；MCP 那一条：`mcp-add` · `mcp-drop` |
-| `paths` | → | `drop`：要摘的相对路径（不在记录里 ⇒ `bad_args`，一个字节不动）；摘到零个 ⇒ 整条记录摘掉 |
-| `project` | → | `add` 可缺席：给了 ⇒ 目录按那个项目里的 skill 根算 |
-| `remaining` | ← | 这一条还剩几个文件（MCP：那份配置里还记着几条） |
+入参 `RecordReq` · 回包 `RecordReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LedgerFile = { digest: string, created: boolean, };
+type RecordAt = "home";
+type RecordReply = { 
+/**
+ * 这一条记录的目录（MCP：那份配置文件）。
+ */
+dir: string, name: string, 
+/**
+ * 记录变没变（没变不写）。
+ */
+changed: boolean, 
+/**
+ * 这一条还剩几个文件（MCP：那份配置里还记着几条）。
+ */
+remaining: number, };
+type RecordReq = { "op": "add", 
+/**
+ * skill 的目录名。
+ */
+name: string, files: { [key in string]: LedgerFile }, 
+/**
+ * 给了 ⇒ 目录按那个项目里的 skill 根算。
+ */
+project?: string, 
+/**
+ * 缺 ⇒ 目录按 skill 根算；`home` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）。
+ */
+at?: RecordAt, } | { "op": "drop", dir: string, paths: Array<string>, } | { "op": "mcp-add", file: string, name: string, digest: string, } | { "op": "mcp-drop", file: string, name: string, };
+```
 
 码：`bad_args` · `io_failed` · `ledger_unreadable` · `not_found` · `too_large`
 
@@ -6243,12 +6340,17 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-note-set`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `kind` | → | `skill` / `mcp` |
-| `name` | → | 名字 |
-| `note` | ← | 现在生效的那一份（清掉了 ⇒ `null`） |
-| `text` | → | 备注正文（首尾空白去掉；空串 = 清掉；最长 2000 字，超了拒、不截断） |
+入参 `ExtNoteReq` · 回包 `ExtNote`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtKind = "skill" | "mcp";
+type ExtNote = { note: string | null, };
+type ExtNoteReq = { kind: ExtKind, name: string, 
+/**
+ * 备注正文（首尾空白去掉；空串 = 清掉；最长 [`NOTE_MAX_CHARS`] 字，超了拒、不截断）。
+ */
+text: string, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -9784,7 +9886,7 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--aliases-read` | ＝ 帧命令 `aliases-read`：启动文件候选（接入那一格） |
 | `--answer-hook` `<agent>` | 会话级答题 hook 的客户端（那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 断开 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0 |
 | `--apikey-key-set` | ＝ 帧命令 `apikey-key-set`：给一个账号写 key，写完读回 |
-| `--assets-catalog` | ＝ 帧命令 `assets-catalog`：资产目录 |
+| `--assets-catalog` | ＝ 帧命令 `assets-catalog`：这台现扫一次、记下，回整份资产目录 ＋「这台缺什么」 |
 | `--assets-catalog-merge` | ＝ 帧命令 `assets-catalog-merge`：把另一台后端的整份目录并进来 |
 | `--assets-sync` | ＝ 帧命令 `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录 |
 | `--authorized-keys-add` | ＝ 帧命令 `authorized-keys-add`：把一行公钥并进这台的 `authorized_keys` |

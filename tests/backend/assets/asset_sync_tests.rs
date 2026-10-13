@@ -81,6 +81,7 @@ impl Machine {
     ) -> Result<Value, crate::stream::inbound::spec::Fail> {
         let inc = incoming.map(|c| cat::machines_from_wire(c).expect("载荷形状"));
         cat::update_at(&own_at(&self.path), skills(&self.scan), self.label, inc)
+            .map(|r| serde_json::to_value(r).unwrap())
     }
     fn fold(&self) -> Fold {
         let me = self.clone();

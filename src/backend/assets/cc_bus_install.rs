@@ -12,15 +12,14 @@
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 use crate::assets::door::{self, Door};
 use crate::assets::hub_wire::{CcBusInstalled, CcBusState};
 
-/// 装记录的写口（`skill_ledger::answer_record`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
-pub(crate) type Record<'a> =
-    &'a dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail>;
+pub(crate) use super::skill_ledger::Record;
+use super::skill_ledger::{RecordReq, Recorded};
 
 /// 装记录里这一件叫什么（记录按 `skills 根 / name` 算目录 ⇒ 就是 `<skills 根>/cc-bus`）。
 pub(crate) const NAME: &str = "cc-bus";
@@ -308,7 +307,7 @@ pub(crate) fn install_at(
     } else {
         None
     };
-    let mut files = Map::new();
+    let mut files = std::collections::BTreeMap::new();
     for (rel, bytes) in FILES {
         let text = std::str::from_utf8(bytes).map_err(|_| {
             (
@@ -326,10 +325,18 @@ pub(crate) fn install_at(
         }
         files.insert(
             (*rel).to_string(),
-            json!({ "digest": crate::assets::skill_ledger::digest_of(text), "created": true }),
+            Recorded {
+                digest: crate::assets::skill_ledger::digest_of(text),
+                created: true,
+            },
         );
     }
-    let record_failed = record(&json!({ "op": "add", "name": NAME, "files": files }))
+    let record_failed = record(&RecordReq::Add {
+        name: NAME.to_string(),
+        files,
+        project: None,
+        at: None,
+    })
         .err()
         .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
     Ok(CcBusInstalled {

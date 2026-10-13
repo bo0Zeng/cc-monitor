@@ -53,6 +53,8 @@ pub type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 一个装时写进去的文件。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/", rename = "LedgerFile"))]
 #[serde(deny_unknown_fields)]
 pub struct Recorded {
     pub digest: String,
@@ -176,27 +178,17 @@ fn write_at(
 // 读—改—写整段在那个目录的跨进程锁里（`platform/lock.rs`，[`record_at`] 开头拿）：两个后端进程同时记装记录时，
 // 后写的整份会盖掉先写的一条 ⇒ 那一趟装的文件从此卸不掉。
 
-/// `add` 的入参：`files: {path: {digest, created}}`。
-fn files_arg(
-    args: &Value,
-) -> Result<BTreeMap<String, Recorded>, crate::stream::inbound::spec::Fail> {
-    let obj = args
-        .get("files")
-        .and_then(Value::as_object)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("missing `files` or it is not an object")
-                    .to_string(),
-            )
-        })?;
-    if obj.is_empty() {
+/// `add` 的 `files`：非空、不超上限、每个路径都在 skill 里、摘要是 16 位小写十六进制。
+fn check_files(
+    files: &BTreeMap<String, Recorded>,
+) -> Result<(), crate::stream::inbound::spec::Fail> {
+    if files.is_empty() {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`files` is empty"),
         )));
     }
-    if obj.len() > MAX_FILES {
+    if files.len() > MAX_FILES {
         return Err(crate::stream::inbound::spec::Fail::from((
             "too_large",
             copy_text(
@@ -205,8 +197,7 @@ fn files_arg(
             ),
         )));
     }
-    let mut out = BTreeMap::new();
-    for (path, rec) in obj {
+    for (path, rec) in files {
         if !crate::assets::skill_install::valid_rel(path) {
             return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
@@ -215,14 +206,6 @@ fn files_arg(
                 )),
             )));
         }
-        let rec: Recorded = serde_json::from_value(rec.clone()).map_err(|e| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "entry {path:?} must be {{digest, created}}: {e}"
-                )),
-            )
-        })?;
         if !valid_digest(&rec.digest) {
             return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
@@ -231,10 +214,68 @@ fn files_arg(
                 )),
             )));
         }
-        out.insert(path.clone(), rec);
     }
-    Ok(out)
+    Ok(())
 }
+
+/// `skill-install-record` 的入参：按 `op` 分（多一个键 ⇒ `bad_args`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "op", rename_all = "kebab-case", deny_unknown_fields)]
+pub(crate) enum RecordReq {
+    /// 装完记：`files` = `skill-install-plan` 答的 `ledger` 里真写成了的那几个。
+    Add {
+        /// skill 的目录名。
+        name: String,
+        files: BTreeMap<String, Recorded>,
+        /// 给了 ⇒ 目录按那个项目里的 skill 根算。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        project: Option<String>,
+        /// 缺 ⇒ 目录按 skill 根算；`home` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        at: Option<RecordAt>,
+    },
+    /// 卸掉 / 已经不在的摘掉：`paths` 不在记录里 ⇒ `bad_args`，一个字节不动；摘到零个 ⇒ 整条记录摘掉。
+    Drop { dir: String, paths: Vec<String> },
+    /// MCP 装完记：`file` 配置文件的绝对路径（键）· 装进去的那一条的摘要。
+    McpAdd {
+        file: String,
+        name: String,
+        digest: String,
+    },
+    /// MCP 卸掉摘。
+    McpDrop { file: String, name: String },
+}
+
+/// `add` 的 `at`（闭集，只此一个值）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum RecordAt {
+    Home,
+}
+
+/// `skill-install-record` 的回包。
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RecordReply {
+    /// 这一条记录的目录（MCP：那份配置文件）。
+    pub dir: String,
+    pub name: String,
+    /// 记录变没变（没变不写）。
+    pub changed: bool,
+    /// 这一条还剩几个文件（MCP：那份配置里还记着几条）。
+    pub remaining: usize,
+}
+
+/// 装记录的写口（生产 = [`answer_record`]，由 `stream/inbound/` 递进来；装 · 卸那几处不直呼它）。
+pub(crate) type Record<'a> =
+    &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::stream::inbound::spec::Fail>;
 
 /// `add`：并进那个目录的记录。回 `(目录, 变没变)`。**纯**（目录由调用方算好）。
 pub fn add(ledger: &mut Ledger, dir: &str, name: &str, files: BTreeMap<String, Recorded>) -> bool {
@@ -289,13 +330,11 @@ pub fn drop_paths(
 }
 
 /// [`answer_record`] 的本体：记录文件路径与 skill 根都可喂（判据拿临时目录喂，不改进程环境）。
-pub fn record_at(own: &Own, skills_root: Option<&Path>, args: &Value) -> Answer {
-    let op = args.get("op").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `op` (add, drop, mcp-add or mcp-drop)"),
-        )
-    })?;
+pub(crate) fn record_at(
+    own: &Own,
+    skills_root: Option<&Path>,
+    req: &RecordReq,
+) -> Result<RecordReply, crate::stream::inbound::spec::Fail> {
     // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
     let no_home = |_| {
         crate::stream::inbound::spec::Fail::from((
@@ -328,175 +367,123 @@ pub fn record_at(own: &Own, skills_root: Option<&Path>, args: &Value) -> Answer 
         crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut ledger = load_at(path)?;
-    let (dir, name, changed, left) = match op {
-        "add" => {
-            let name = args
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|n| crate::assets::skill_install::valid_name(n))
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed(
-                            "missing `name` or it is not a valid skill directory name",
-                        ),
-                    )
-                })?
-                .to_string();
-            let files = files_arg(args)?;
+    let (dir, name, changed, left) = match req {
+        RecordReq::Add {
+            name,
+            files,
+            project,
+            at,
+        } => {
+            if !crate::assets::skill_install::valid_name(name) {
+                return Err(crate::stream::inbound::spec::Fail::from((
+                    "bad_args",
+                    crate::common::contract::malformed(
+                        "`name` is not a valid skill directory name",
+                    ),
+                )));
+            }
+            check_files(files)?;
             // 目录自己算：与 `skill-install-plan` 答 `dir` 的是同一个根（不收调用方给的路径）。
-            // `at: "home"`（闭集，只此一个值）：装的东西落在家目录底下、不在 skill 根下
+            // `at: "home"`：装的东西落在家目录底下、不在 skill 根下
             //   ⇒ 键 = 本记录自己所在的那个家（`<家>/.cc-monitor/<本文件>` 的上两层），
             //   `files` 的路径相对它。同一份账、同一个形（不另立第二份账）。
-            let project = args.get("project").and_then(Value::as_str);
-            let dir = match args.get("at").and_then(Value::as_str) {
+            let dir = match (at, project) {
+                (Some(RecordAt::Home), _) => path
+                    .parent()
+                    .and_then(Path::parent)
+                    .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
+                    .display()
+                    .to_string(),
                 // 项目级 skill：根由适配层按那个项目算（同 `skill-install-plan` 答 `dir` 的那一处）。
-                None if project.is_some() => {
-                    let p = crate::assets::mcp_edit::project_root(project.unwrap_or_default())?;
+                (None, Some(p)) => {
+                    let p = crate::assets::mcp_edit::project_root(p)?;
                     super::asset_kind()
                         .and_then(|k| crate::agents::skill_root_at(k, Some(Path::new(&p))))
                         .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
-                        .join(&name)
+                        .join(name)
                         .display()
                         .to_string()
                 }
-                None => {
+                (None, None) => {
                     let root = match skills_root {
                         Some(r) => r.to_path_buf(),
                         None => super::asset_kind()
                             .and_then(crate::agents::skills_root)
                             .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?,
                     };
-                    root.join(&name).display().to_string()
-                }
-                Some("home") => path
-                    .parent()
-                    .and_then(Path::parent)
-                    .ok_or(("io_failed", copy_text("beSkillLedger.add.noRoot", &[])))?
-                    .display()
-                    .to_string(),
-                Some(other) => {
-                    return Err(crate::stream::inbound::spec::Fail::from((
-                        "bad_args",
-                        crate::common::contract::malformed(&format!(
-                            "`at` must be absent or \"home\", got {other:?}"
-                        )),
-                    )))
+                    root.join(name).display().to_string()
                 }
             };
-            let changed = add(&mut ledger, &dir, &name, files);
+            let changed = add(&mut ledger, &dir, name, files.clone());
             let left = ledger.installs.get(&dir).map_or(0, |i| i.files.len());
-            (dir, name, changed, left)
+            (dir, name.clone(), changed, left)
         }
-        "drop" => {
-            let dir = args
-                .get("dir")
-                .and_then(Value::as_str)
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed("missing `dir`"),
-                    )
-                })?
-                .to_string();
-            let paths: Vec<String> = args
-                .get("paths")
-                .and_then(Value::as_array)
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed("missing `paths` or it is not an array"),
-                    )
-                })?
-                .iter()
-                .map(|p| {
-                    p.as_str().map(str::to_string).ok_or_else(|| {
-                        (
-                            "bad_args",
-                            crate::common::contract::malformed("`paths` must contain only strings"),
-                        )
-                    })
-                })
-                .collect::<Result<_, _>>()?;
+        RecordReq::Drop { dir, paths } => {
             let name = ledger
                 .installs
-                .get(&dir)
+                .get(dir)
                 .map(|i| i.name.clone())
                 .unwrap_or_default();
-            let left = drop_paths(&mut ledger, &dir, &paths)?;
-            (dir, name, !paths.is_empty(), left)
+            let left = drop_paths(&mut ledger, dir, paths)?;
+            (dir.clone(), name, !paths.is_empty(), left)
         }
-        "mcp-add" | "mcp-drop" => {
-            let file = args
-                .get("file")
-                .and_then(Value::as_str)
-                .filter(|f| Path::new(f).is_absolute())
-                .ok_or_else(|| {
-                    (
+        RecordReq::McpAdd { file, name, .. } | RecordReq::McpDrop { file, name } => {
+            if !Path::new(file).is_absolute() {
+                return Err(crate::stream::inbound::spec::Fail::from((
+                    "bad_args",
+                    crate::common::contract::malformed("`file` is not an absolute path"),
+                )));
+            }
+            if name.trim().is_empty() {
+                return Err(crate::stream::inbound::spec::Fail::from((
+                    "bad_args",
+                    crate::common::contract::malformed("`name` is empty"),
+                )));
+            }
+            let changed = if let RecordReq::McpAdd { digest, .. } = req {
+                if !valid_digest(digest) {
+                    return Err(crate::stream::inbound::spec::Fail::from((
                         "bad_args",
-                        crate::common::contract::malformed("missing `file` (an absolute path)"),
-                    )
-                })?
-                .to_string();
-            let name = args
-                .get("name")
-                .and_then(Value::as_str)
-                .filter(|n| !n.trim().is_empty())
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed("missing `name`"),
-                    )
-                })?
-                .to_string();
-            let changed = if op == "mcp-add" {
-                let digest = args
-                    .get("digest")
-                    .and_then(Value::as_str)
-                    .filter(|d| valid_digest(d))
-                    .ok_or_else(|| {
-                        (
-                            "bad_args",
-                            crate::common::contract::malformed(
-                                "`digest` must be 16 lowercase hex digits",
-                            ),
-                        )
-                    })?;
+                        crate::common::contract::malformed(
+                            "`digest` must be 16 lowercase hex digits",
+                        ),
+                    )));
+                }
                 let slot = ledger.mcp.entry(file.clone()).or_default();
-                slot.insert(name.clone(), digest.to_string()) != Some(digest.to_string())
+                slot.insert(name.clone(), digest.clone()) != Some(digest.clone())
             } else {
                 let gone = ledger
                     .mcp
-                    .get_mut(&file)
-                    .and_then(|m| m.remove(&name))
+                    .get_mut(file)
+                    .and_then(|m| m.remove(name))
                     .is_some();
-                if ledger.mcp.get(&file).is_some_and(BTreeMap::is_empty) {
-                    ledger.mcp.remove(&file);
+                if ledger.mcp.get(file).is_some_and(BTreeMap::is_empty) {
+                    ledger.mcp.remove(file);
                 }
                 gone
             };
-            let left = ledger.mcp.get(&file).map_or(0, BTreeMap::len);
-            (file, name, changed, left)
-        }
-        other => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "`op` must be add, drop, mcp-add or mcp-drop, got {other:?}"
-                )),
-            )))
+            let left = ledger.mcp.get(file).map_or(0, BTreeMap::len);
+            (file.clone(), name.clone(), changed, left)
         }
     };
     if changed {
         write_at(own, &file, &held, &ledger)
             .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
     }
-    Ok(json!({ "dir": dir, "name": name, "changed": changed, "remaining": left }))
+    Ok(RecordReply {
+        dir,
+        name,
+        changed,
+        remaining: left,
+    })
 }
 
 /// `skill-install-record`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub fn answer_record(args: &Value, own: &Own) -> Answer {
-    record_at(own, None, args)
+pub(crate) fn answer_record(
+    req: &RecordReq,
+    own: &Own,
+) -> Result<RecordReply, crate::stream::inbound::spec::Fail> {
+    record_at(own, None, req)
 }
 
 #[cfg(test)]

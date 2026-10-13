@@ -144,9 +144,9 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         json!([{ "field": "env", "key": "API_KEY", "kept": true }, { "field": "env", "key": "TOKEN", "kept": false }])
     );
     let recorded = RefCell::new(Vec::new());
-    let record = |a: &Value| {
-        recorded.borrow_mut().push(a.clone());
-        Ok(json!({}))
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
+        recorded.borrow_mut().push(serde_json::to_value(a).unwrap());
+        Ok(Default::default())
     };
     let before = std::fs::read_to_string(dst.join(mcp_json())).unwrap();
     let crate::stream::inbound::spec::Fail { code, .. } = answer_apply(
@@ -207,7 +207,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     )
     .unwrap();
     std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{\"z\":{}}}").unwrap();
-    let record = |_: &Value| Ok(json!({}));
+    let record = |_: &crate::assets::skill_ledger::RecordReq| Ok(Default::default());
     let crate::stream::inbound::spec::Fail { code, .. } = answer_apply(
         &LocalFiles,
         &record,

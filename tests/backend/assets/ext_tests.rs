@@ -406,7 +406,7 @@ impl M {
             .unwrap(),
             None => skills.clone(),
         };
-        let record = |a: &Value| {
+        let record = |a: &crate::assets::skill_ledger::RecordReq| {
             super::super::skill_ledger::record_at(
                 &crate::platform::fs::Own::issue_at(
                     ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -651,7 +651,7 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -734,7 +734,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -996,7 +996,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -1196,7 +1196,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let dir = m.env.skills.clone().unwrap().join("mine");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("SKILL.md"), "mine\n").unwrap();
-    let record = |_: &Value| Ok(json!({}));
+    let record = |_: &crate::assets::skill_ledger::RecordReq| Ok(Default::default());
     let u = json!({ "kind": "skill", "name": "mine", "at": { "level": "user" } });
     let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     assert_eq!(card["recorded"], false);
@@ -1317,7 +1317,7 @@ async fn the_wire_matches_the_cross_language_golden() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),

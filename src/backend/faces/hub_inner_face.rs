@@ -21,7 +21,10 @@ fn own_err<E: Codes>(fallback: fn(String) -> E) -> impl Fn(Fail) -> E {
 /// 装记录的写口（`skill-install-record` 那一份本体，写句柄由分派那一层递）。
 fn record(
     own: &crate::platform::Own,
-) -> impl Fn(&serde_json::Value) -> Result<serde_json::Value, Fail> + '_ {
+) -> impl Fn(
+    &crate::assets::skill_ledger::RecordReq,
+) -> Result<crate::assets::skill_ledger::RecordReply, Fail>
+       + '_ {
     move |a| crate::assets::skill_ledger::answer_record(a, own)
 }
 

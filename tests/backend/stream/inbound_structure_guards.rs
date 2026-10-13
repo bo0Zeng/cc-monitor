@@ -1161,16 +1161,13 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 20;
+    const UNSHAPED_CEILING: usize = 16;
     const UNSHAPED: &[&str] = &[
         "accounts-sessions",
         "apikey-key-set",
-        "assets-catalog",
-        "assets-catalog-merge",
         "data-report",
         "ext-list",
         "ext-list-here",
-        "ext-note-set",
         "ext-uninstall-apply",
         "ext-uninstall-preview",
         "machine-interrupts",
@@ -1182,7 +1179,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "plan-unack",
         "remote-probe",
         "resident-verdict",
-        "skill-install-record",
     ];
     fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
         match v {

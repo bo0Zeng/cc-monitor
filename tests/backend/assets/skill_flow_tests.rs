@@ -76,7 +76,7 @@ fn the_skill_flow_matches_the_cross_language_golden() {
     std::fs::create_dir_all(root.join("demo/lib")).unwrap();
     std::fs::write(root.join("demo/lib/a.txt"), "old a\n").unwrap();
     let record =
-        |a: &Value| crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a);
+        |a: &crate::assets::skill_ledger::RecordReq| crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a);
     let plan = plan_with(
         &NoFacts,
         Some(&root),
@@ -139,7 +139,7 @@ fn a_file_changed_after_the_preview_stops_the_install_there() {
     std::fs::create_dir_all(root.join("demo/lib")).unwrap();
     std::fs::write(root.join("demo/lib/a.txt"), "changed since\n").unwrap();
     let record =
-        |a: &Value| crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a);
+        |a: &crate::assets::skill_ledger::RecordReq| crate::assets::skill_ledger::record_at(&own_at(&ledger), Some(&root), a);
     let crate::stream::inbound::spec::Fail { code, message: why, .. } = answer_install(
         &LocalFiles,
         &NoFacts,

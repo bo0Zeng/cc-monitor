@@ -1,7 +1,7 @@
 //! 命令表 · 资产：`assets-*` · `ext-*` · `skill-*` · `mcp-*` · `hooks-*` · `footprint-report` · `data-report` · `cc-bus-*`。
 
 use crate::stream::inbound::doors::hub_here;
-use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
+use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
 
 pub(super) const SPECS: &[CommandSpec] = &[
@@ -47,28 +47,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
     //   `~/.cc-monitor/assets-catalog.json`（自家状态，经 `Own`，变了才写）、回整份目录 ＋「这台缺什么」的判定。
     //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。
-    CommandSpec {
-        name: "assets-catalog",
-        summary: "资产目录",
-        codes: &["catalog_unreadable", "io_failed"],
-        fields: &[out("changed", "这一趟目录有没有变（变了才写盘）"), out("machines", "各台一份快照 `{id, label, gen, seenAt, assets}`：`gen` 是那台**自己**的代数（它自己那份变了才 +1）；`seenAt` 是那一代的时刻（那台的钟，只给人看、不参与合并）"), out("path", "目录文件在这台上的路径"), out("problems", "这一趟扫描读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」分开说"), out("rows", "别的机器有的每个（`kind`, `name`）一行 `{kind, name, state, from}`：`state` 闭集 `missing`（这台一条同名的都没有）· `differs`（有同名的，摘要都不同）· `same`（有一条摘要相同）；`from` 是别处那几条 `{machine, project, digest, summary}`"), out("self", "这台机器的 id（第一次记目录时生成，之后不变）")],
-        takes_input: false,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::asset_catalog::answer_catalog(&r.args, own)
-                .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "assets-catalog-merge",
-        summary: "把另一台后端的整份目录并进来",
-        codes: &["bad_args", "catalog_unreadable", "io_failed"],
-        fields: &[arg("catalog", "另一台后端的整份目录，形状就是 `assets-catalog` 的应答（只读它的 `machines`）"), out("changed", "这一次有没有改动"), both("machines", "各台的快照（同一台取 `gen` 大的那一份整份）"), out("path", "目录文件的路径"), out("problems", "读不出的那几处各一句"), out("rows", "并完之后的资产行"), both("self", "这台的机器 id")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::asset_catalog::answer_merge(&r.args, own)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::faces::catalog_face::AssetsCatalogCmd>("这台现扫一次、记下，回整份资产目录 ＋「这台缺什么」"),
+    crate::stream::inbound::typed::owning::<crate::faces::catalog_face::AssetsCatalogMergeCmd>("把另一台后端的整份目录并进来"),
     // **资产目录的自动同步**：本机常驻后端沿池里那条 SSH 连接（多开一个 exec 通道，零新连接）
     //   拉远端的目录、并进本机、把远端缺的推过去。写口（`answer_merge`）由这扇门递进去 —— `asset_sync.rs`
     //   自己不直呼它（写口只从本族进来：`Own` 由分派那一层递）。真异步（拨号 / 等远端）。
@@ -82,7 +62,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::AsyncOwn(|r, own| {
             Box::pin(async move {
                 let fold: crate::assets::asset_sync::Fold = std::sync::Arc::new(move |a| {
-                    crate::assets::asset_catalog::answer_merge(a, &own)
+                    let req = crate::stream::inbound::typed::take(a)?;
+                    crate::assets::asset_catalog::answer_merge(req, &own)
+                        .and_then(|r| crate::stream::inbound::spec::wire(&r))
                 });
                 crate::assets::asset_sync::answer(
                     &r.args,
@@ -102,23 +84,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::faces::hub_inner_face::SkillPlanCmd>("在要被写的那一台判 skill 装不装得过来"),
     // 装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（自家状态，经 `Own`；
     //   skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。卸在 `ext-uninstall-*`（判 · 删 · 摘同一台）。阻塞档。
-    CommandSpec {
-        name: "skill-install-record",
-        summary: "skill 装记录的写口",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "ledger_unreadable",
-            "not_found",
-            "too_large",
-        ],
-        fields: &[arg("at", "`add` 可缺席：缺 ⇒ 目录按 skill 根算；`\"home\"` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）；其余值 ⇒ `bad_args`"), out("changed", "记录变没变（没变不写）"), arg("digest", "装进去的那一条的摘要（`mcp-add`；卸时对得上就不用问）"), both("dir", "`drop` 的入参：记录里那个 skill 目录；应答里是这一条记录的目录"), arg("file", "`mcp-add` / `mcp-drop`：配置文件的绝对路径（键）"), arg("files", "`add`：`{<相对路径>: {digest, created}}` —— `skill-install-plan` 答的 `ledger` 里真写成了的那几个"), arg("name", "`add`：skill 的目录名"), arg("op", "`add`（装完记）或 `drop`（卸掉 / 已经不在的摘掉）；MCP 那一条：`mcp-add` · `mcp-drop`"), arg("paths", "`drop`：要摘的相对路径（不在记录里 ⇒ `bad_args`，一个字节不动）；摘到零个 ⇒ 整条记录摘掉"), arg("project", "`add` 可缺席：给了 ⇒ 目录按那个项目里的 skill 根算"), out("remaining", "这一条还剩几个文件（MCP：那份配置里还记着几条）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::skill_ledger::answer_record(&r.args, own)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::faces::catalog_face::SkillInstallRecordCmd>("skill 装记录的写口"),
     // MCP 列表成品：user / local / project 三段 ＋ 用过的项目目录 ＋ 读不出来的那几份。阻塞档（同步文件 I/O）。
     CommandSpec {
         name: "mcp-read",
@@ -180,19 +146,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 用户写 / 改 / 清一个条目的备注：资产目录的写口从这扇门递进去（记进本机自己那一格，随目录同步）。
-    CommandSpec {
-        name: "ext-note-set",
-        summary: "写 / 改 / 清一个扩展的备注",
-        codes: &["bad_args", "catalog_unreadable", "io_failed"],
-        fields: &[arg("kind", "`skill` / `mcp`"), arg("name", "名字"), out("note", "现在生效的那一份（清掉了 ⇒ `null`）"), arg("text", "备注正文（首尾空白去掉；空串 = 清掉；最长 2000 字，超了拒、不截断）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::ext::answer_note(&r.args, &|k, t| {
-                crate::assets::asset_catalog::answer_note(k, t, own)
-            })
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::faces::catalog_face::ExtNoteSetCmd>("写 / 改 / 清一个扩展的备注"),
     // 从这台卸一个扩展：装记录里有 ⇒ 只撤装时写的；没有 ⇒ 先挪进 `~/.cc-monitor/backups/` 再删。判与写都在这台（写经 [`LocalFiles`]，
     //   装记录的写口从这扇门递进去）。
     CommandSpec {
@@ -238,7 +192,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
             crate::assets::ext::answer_uninstall_apply(
                 &LocalFiles,
                 &crate::assets::ext::Env::here(),
-                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
+                &|a| crate::assets::skill_ledger::answer_record(a, own),
                 &r.args,
             )
             .map(Some)

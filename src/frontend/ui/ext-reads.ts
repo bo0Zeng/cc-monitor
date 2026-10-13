@@ -228,14 +228,10 @@ export function extUninstallApply(on: Origin, card: ExtUninstallCard, at: ExtLoc
   return ask((body, budget) => chan.call(on, "ext-uninstall-apply", body, budget), args, WRITE_BUDGET_MS, decodeExtDone);
 }
 
-/** `ext-note-set` 的成品：现在生效的那一份备注（清掉了 ⇒ `null`）。 */
-export function decodeExtNote(v: unknown): string | null {
-  return optStr(obj(v, ["note"]).note);
-}
-
-/** 写 / 改 / 清（空串）一个条目的备注（记进本机后端的目录，随目录同步到别的后端）。 */
-export function extNoteSet(kind: ExtKind, name: string, text: string): Promise<string | null> {
-  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-note-set", body, budget), { kind, name, text }, LIST_BUDGET_MS, decodeExtNote);
+/** 写 / 改 / 清（空串）一个条目的备注（记进本机后端的目录，随目录同步到别的后端）：回现在生效的那一份（清掉了 ⇒ `null`）。 */
+export async function extNoteSet(kind: ExtKind, name: string, text: string): Promise<string | null> {
+  const got = await askTyped((budget) => callTyped(LOCAL_ORIGIN, "ext-note-set", { kind, name, text }, budget), LIST_BUDGET_MS);
+  return got.note;
 }
 
 /** `mcp-read` 一条的「需登录」那几格（后端写好的字：抽屉那一句 · 悬停那一截 · ［去登录］复制的那条命令）。 */

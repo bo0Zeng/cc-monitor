@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 
 use super::asset_catalog::{self, Asset, Catalog, KIND_MCP, KIND_SKILL};
 use super::door::{self, Door, Refused};
-use super::skill_flow::Record;
+use super::skill_ledger::{Record, RecordReq};
 
 type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
@@ -897,19 +897,38 @@ pub const NOTE_MAX_CHARS: usize = 2000;
 pub(crate) type NoteWrite<'a> =
     &'a dyn Fn(&str, &str) -> Result<Catalog, crate::stream::inbound::spec::Fail>;
 
-/// `ext-note-set {kind, name, text}`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
-/// 回 `{note}`（现在生效的那一份，清掉了 ⇒ `null`）。
-pub(crate) fn answer_note(args: &Value, write: NoteWrite) -> Answer {
-    let kind = ExtKind::from_arg(args)?;
-    let name = str_arg(args, "name")?;
-    if name.trim().is_empty() {
+/// `ext-note-set` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExtNoteReq {
+    pub kind: ExtKind,
+    pub name: String,
+    /// 备注正文（首尾空白去掉；空串 = 清掉；最长 [`NOTE_MAX_CHARS`] 字，超了拒、不截断）。
+    pub text: String,
+}
+
+/// `ext-note-set` 的回包：现在生效的那一份（清掉了 ⇒ `null`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ExtNote {
+    pub note: Option<String>,
+}
+
+/// `ext-note-set`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
+pub(crate) fn answer_note(
+    req: &ExtNoteReq,
+    write: NoteWrite,
+) -> Result<ExtNote, crate::stream::inbound::spec::Fail> {
+    if req.name.trim().is_empty() {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`name` is empty"),
         )));
     }
-    let text = str_arg(args, "text")?;
-    if text.chars().count() > NOTE_MAX_CHARS {
+    if req.text.chars().count() > NOTE_MAX_CHARS {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             copy_text(
@@ -918,9 +937,11 @@ pub(crate) fn answer_note(args: &Value, write: NoteWrite) -> Answer {
             ),
         )));
     }
-    let key = asset_catalog::entry_key(kind.wire(), name);
-    let cat = write(&key, text)?;
-    Ok(json!({ "note": asset_catalog::note_of(&cat, &key) }))
+    let key = asset_catalog::entry_key(req.kind.wire(), &req.name);
+    let cat = write(&key, &req.text)?;
+    Ok(ExtNote {
+        note: asset_catalog::note_of(&cat, &key),
+    })
 }
 
 /// 可达表的一份快照：`(origin, 那台目录的 id)`。
@@ -1393,7 +1414,10 @@ pub(crate) fn answer_uninstall_apply(
                 }
             }
             if m.recorded.is_some() {
-                if let Err(f) = record(&json!({ "op": "mcp-drop", "file": m.path, "name": name })) {
+                if let Err(f) = record(&RecordReq::McpDrop {
+                    file: m.path.clone(),
+                    name: name.to_string(),
+                }) {
                     note = Some(copy_text(
                         "beExt.uninstall.dropFailed",
                         &[("why", &f.into_note())],
