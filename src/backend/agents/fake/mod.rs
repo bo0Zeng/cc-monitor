@@ -374,7 +374,9 @@ fn records_face(
 
 /// 链事实（与 Claude 每一格都不同名）：`{"node", "up", "when", "role": human | bot | note, "cut": bool, "words"}`；
 /// 排队那句是 `{"queued": "…"}`。只有 `human` / `bot` 进界面。
-pub(crate) fn chain_fact(line: &crate::agents::Line<'_>) -> Option<crate::agents::mainline::ChainFact> {
+pub(crate) fn chain_fact(
+    line: &crate::agents::Line<'_>,
+) -> Option<crate::agents::mainline::ChainFact> {
     use crate::agents::mainline::{ChainFact, Link};
     let v = line.value()?;
     let s = |k: &str| {

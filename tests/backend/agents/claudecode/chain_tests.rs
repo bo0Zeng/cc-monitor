@@ -59,11 +59,17 @@ fn placeholders_join_the_chain_but_are_not_shown() {
 #[test]
 fn queued_text_comes_from_enqueue_only() {
     assert_eq!(
-        chain_fact(&crate::agents::Line::new(r#"{"type":"queue-operation","operation":"enqueue","content":" later words ","timestamp":"t8"}"#, 0)),
+        chain_fact(&crate::agents::Line::new(
+            r#"{"type":"queue-operation","operation":"enqueue","content":" later words ","timestamp":"t8"}"#,
+            0
+        )),
         Some(ChainFact::Queued("later words".into()))
     );
     assert_eq!(
-        chain_fact(&crate::agents::Line::new(r#"{"type":"queue-operation","operation":"remove","content":"later words","timestamp":"t9"}"#, 0)),
+        chain_fact(&crate::agents::Line::new(
+            r#"{"type":"queue-operation","operation":"remove","content":"later words","timestamp":"t9"}"#,
+            0
+        )),
         None
     );
 }

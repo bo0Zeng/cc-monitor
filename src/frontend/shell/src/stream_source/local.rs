@@ -151,16 +151,20 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
             runs: runs.clone(),
             ended: ended.clone(),
         }),
-        LocalItem::Frame(InboundFrame::SessionBranch { sid, path, at, off, sum }) => {
-            Some(BookIn::Branch {
-                origin: crate::origin::Origin(label.to_string()),
-                sid: sid.clone(),
-                path: path.clone(),
-                at: *at,
-                off: off.clone(),
-                sum: sum.clone(),
-            })
-        }
+        LocalItem::Frame(InboundFrame::SessionBranch {
+            sid,
+            path,
+            at,
+            off,
+            sum,
+        }) => Some(BookIn::Branch {
+            origin: crate::origin::Origin(label.to_string()),
+            sid: sid.clone(),
+            path: path.clone(),
+            at: *at,
+            off: off.clone(),
+            sum: sum.clone(),
+        }),
         LocalItem::Frame(_) => None,
     }
 }

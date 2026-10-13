@@ -69,9 +69,14 @@ impl FrameSink {
     }
 
     /// 同 [`Self::new`]，那条连接还要了这几个会话的主线外清单（`stream-watch.branch`）。
-    pub(in crate::observe::watcher) fn wanting_branches(tx: mpsc::Sender<Frame>, sids: &[&str]) -> Self {
+    pub(in crate::observe::watcher) fn wanting_branches(
+        tx: mpsc::Sender<Frame>,
+        sids: &[&str],
+    ) -> Self {
         let mut s = Self::new(tx);
-        s.subs[0].branching.extend(sids.iter().map(|x| x.to_string()));
+        s.subs[0]
+            .branching
+            .extend(sids.iter().map(|x| x.to_string()));
         s
     }
 }
@@ -1406,7 +1411,15 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
             path: Some(path.to_string_lossy().into_owned()),
         },
     );
-    watch_sessions(0, crate::stream::wire::WatchAsk { sids: vec!["other".into()], branch: vec![] }, &mut state, &mut sink);
+    watch_sessions(
+        0,
+        crate::stream::wire::WatchAsk {
+            sids: vec!["other".into()],
+            branch: vec![],
+        },
+        &mut state,
+        &mut sink,
+    );
     let names = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut got = Vec::new();
         while let Ok(f) = rx.try_recv() {
@@ -4262,7 +4275,10 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut branches = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { sid, path, at, off, .. } = f {
+        if let Frame::SessionBranch {
+            sid, path, at, off, ..
+        } = f
+        {
             assert_eq!(sid, "br-sid");
             assert_eq!(path, jsonl.to_string_lossy());
             branches.push((at, off));
@@ -4337,10 +4353,9 @@ fn long_branchy_record(records: usize, fork_every: usize, queue_every: usize) ->
 
 /// 主线外清单 = 这份记录整批算一次（与冷读同一个算法）。
 fn off_of_record(body: &str) -> Vec<String> {
-    crate::agents::mainline::tests::off_of(
-        body.lines()
-            .filter_map(|l| crate::agents::claudecode::chain::chain_fact(&crate::agents::Line::new(l, 0))),
-    )
+    crate::agents::mainline::tests::off_of(body.lines().filter_map(|l| {
+        crate::agents::claudecode::chain::chain_fact(&crate::agents::Line::new(l, 0))
+    }))
 }
 
 /// 一份合成记录的冷接宣告：起一个认得出的活会话（本进程当写它的那个），宣告出去；回（帧，这份记录的链索引整条走过几格）。
@@ -4542,12 +4557,19 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
         sids: vec!["rw-sid".into()],
         branch: held.into_iter().collect(),
     };
-    let none = BranchHeld { sid: "rw-sid".into(), ..Default::default() };
+    let none = BranchHeld {
+        sid: "rw-sid".into(),
+        ..Default::default()
+    };
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
     let mut sink = FrameSink::new(tx);
     // 接上来那一份此刻的样子：不带清单。
     let (tx1, mut rx1) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
-    join(Sub::new(1, tx1, crate::Tz::default()), &mut state, &mut sink);
+    join(
+        Sub::new(1, tx1, crate::Tz::default()),
+        &mut state,
+        &mut sink,
+    );
     assert!(drain(&mut rx1).is_empty(), "新连接一接上就推了主线外清单");
     // 只报名单、不要清单 ⇒ 一帧不收。
     watch_sessions(0, ask(None), &mut state, &mut sink);
@@ -4556,32 +4578,70 @@ fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
     watch_sessions(0, ask(Some(none.clone())), &mut state, &mut sink);
     let first = drain(&mut rx);
     let whole: u64 = first.iter().map(|(_, n, _)| n).sum();
-    assert!(whole > 0 && first[0].0 == 0, "手上没有却没给整份：{first:?}");
+    assert!(
+        whole > 0 && first[0].0 == 0,
+        "手上没有却没给整份：{first:?}"
+    );
     let last = first.last().unwrap().2.clone();
-    let held = BranchHeld { sid: "rw-sid".into(), path: Some(p.clone()), at: whole, sum: Some(last.clone()) };
+    let held = BranchHeld {
+        sid: "rw-sid".into(),
+        path: Some(p.clone()),
+        at: whole,
+        sum: Some(last.clone()),
+    };
     // 换一条连接、交回手上那份 ⇒ 只一帧，从它手上的条数起、一条不带。
     watch_sessions(1, ask(Some(held.clone())), &mut state, &mut sink);
-    assert_eq!(drain(&mut rx1), [(whole, 0, last.clone())], "新连接交回了手上那份，却又整份重发");
+    assert_eq!(
+        drain(&mut rx1),
+        [(whole, 0, last.clone())],
+        "新连接交回了手上那份，却又整份重发"
+    );
     // 同一条连接切走再切回来（客户端照样交回手上那份）⇒ 同上。
-    watch_sessions(0, WatchAsk { sids: vec!["other".into()], branch: vec![] }, &mut state, &mut sink);
+    watch_sessions(
+        0,
+        WatchAsk {
+            sids: vec!["other".into()],
+            branch: vec![],
+        },
+        &mut state,
+        &mut sink,
+    );
     watch_sessions(0, ask(Some(held.clone())), &mut state, &mut sink);
-    assert_eq!(drain(&mut rx), [(whole, 0, last.clone())], "换 tab 回来又整份重发了主线外清单");
+    assert_eq!(
+        drain(&mut rx),
+        [(whole, 0, last.clone())],
+        "换 tab 回来又整份重发了主线外清单"
+    );
     // 摘要对不上 · 换了一份记录 ⇒ 整份。
     for bad in [
-        BranchHeld { sum: Some("0000000000000000".into()), ..held.clone() },
-        BranchHeld { path: Some("/elsewhere.jsonl".into()), ..held.clone() },
+        BranchHeld {
+            sum: Some("0000000000000000".into()),
+            ..held.clone()
+        },
+        BranchHeld {
+            path: Some("/elsewhere.jsonl".into()),
+            ..held.clone()
+        },
     ] {
         watch_sessions(1, WatchAsk::default(), &mut state, &mut sink);
         watch_sessions(1, ask(Some(bad.clone())), &mut state, &mut sink);
         let got = drain(&mut rx1);
-        assert_eq!((got[0].0, got.iter().map(|(_, n, _)| n).sum::<u64>()), (0, whole), "{bad:?} 却没给整份");
+        assert_eq!(
+            (got[0].0, got.iter().map(|(_, n, _)| n).sum::<u64>()),
+            (0, whole),
+            "{bad:?} 却没给整份"
+        );
     }
     // 丢过它一帧（手上的对不上）⇒ 整份。
     watch_sessions(0, WatchAsk::default(), &mut state, &mut sink);
     sink.subs[0].branch_stale.insert(p.clone());
     watch_sessions(0, ask(Some(held)), &mut state, &mut sink);
     let again = drain(&mut rx);
-    assert_eq!((again[0].0, again.iter().map(|(_, n, _)| n).sum::<u64>()), (0, whole), "丢过帧却没给整份");
+    assert_eq!(
+        (again[0].0, again.iter().map(|(_, n, _)| n).sum::<u64>()),
+        (0, whole),
+        "丢过帧却没给整份"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -4611,7 +4671,17 @@ fn a_live_line_is_parsed_from_text_once() {
         kinds.push(f.loss_identity().kind);
     }
     std::fs::remove_dir_all(&dir).ok();
-    assert_eq!(kinds.iter().filter(|k| **k == "line").count(), 3, "{kinds:?}");
-    assert!(kinds.contains(&"turn_end"), "一轮结束那一行没报出来：{kinds:?}");
-    assert_eq!(parses, 3, "3 行实时读进来从文本解析了 {parses} 次（该一行一次）");
+    assert_eq!(
+        kinds.iter().filter(|k| **k == "line").count(),
+        3,
+        "{kinds:?}"
+    );
+    assert!(
+        kinds.contains(&"turn_end"),
+        "一轮结束那一行没报出来：{kinds:?}"
+    );
+    assert_eq!(
+        parses, 3,
+        "3 行实时读进来从文本解析了 {parses} 次（该一行一次）"
+    );
 }

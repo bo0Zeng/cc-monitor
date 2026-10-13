@@ -716,7 +716,11 @@ impl<T: Transport> Feed<T> {
                 continue;
             };
             match client
-                .call(watch::WATCH_CMD, watch::args(&sids, &[]), watch::WATCH_BUDGET)
+                .call(
+                    watch::WATCH_CMD,
+                    watch::args(&sids, &[]),
+                    watch::WATCH_BUDGET,
+                )
                 .await
             {
                 Ok(data) => {

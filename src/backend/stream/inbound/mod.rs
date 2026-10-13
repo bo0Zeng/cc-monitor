@@ -117,7 +117,9 @@ pub fn command_names() -> Vec<&'static str> {
 #[derive(Clone)]
 pub struct WatchDesk(
     Arc<
-        dyn Fn(crate::stream::wire::WatchAsk) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+        dyn Fn(
+                crate::stream::wire::WatchAsk,
+            ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
             + Send
             + Sync,
     >,
@@ -126,7 +128,9 @@ pub struct WatchDesk(
 impl WatchDesk {
     /// 接上这条连接的 watcher（入参就是它的 `watch` 口）。
     pub fn new(
-        f: impl Fn(crate::stream::wire::WatchAsk) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
+        f: impl Fn(
+                crate::stream::wire::WatchAsk,
+            ) -> tokio::sync::oneshot::Receiver<Vec<crate::stream::wire::WatchFrom>>
             + Send
             + Sync
             + 'static,

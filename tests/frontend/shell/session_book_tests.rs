@@ -329,7 +329,11 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
         off: ids.iter().map(|i| i.to_string()).collect(),
         sum: sum.into(),
     };
-    let sids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<std::collections::BTreeSet<_>>();
+    let sids = |v: &[&str]| {
+        v.iter()
+            .map(|s| s.to_string())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
     let mut b = Book::default();
     b.step(live("pi", "a"));
     b.step(live("pi", "b"));
@@ -337,11 +341,18 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     b.step(branch("a", 2, &["u3"], "s3"));
     b.step(branch("b", 0, &["x"], "sx"));
     b.step(branch("b", 5, &["y"], "sy")); // 前 5 条照旧，手上只有 1 条 ⇒ 中间缺过
-    b.step(In::LinkLost { origin: "pi".into() });
+    b.step(In::LinkLost {
+        origin: "pi".into(),
+    });
     assert_eq!(
         b.branch_held(&pi, &sids(&["a", "b", "c"])),
         vec![
-            BranchHeld { sid: "a".into(), path: Some("/a.jsonl".into()), at: 3, sum: Some("s3".into()) },
+            BranchHeld {
+                sid: "a".into(),
+                path: Some("/a.jsonl".into()),
+                at: 3,
+                sum: Some("s3".into())
+            },
             BranchHeld::nothing("b"),
             BranchHeld::nothing("c"),
         ],
@@ -349,6 +360,11 @@ fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
     );
     // 重接：那台报完清单时 a 不在了 ⇒ 摘。
     b.step(live("pi", "b"));
-    b.step(In::Listed { origin: "pi".into() });
-    assert_eq!(b.branch_held(&pi, &sids(&["a"])), vec![BranchHeld::nothing("a")]);
+    b.step(In::Listed {
+        origin: "pi".into(),
+    });
+    assert_eq!(
+        b.branch_held(&pi, &sids(&["a"])),
+        vec![BranchHeld::nothing("a")]
+    );
 }

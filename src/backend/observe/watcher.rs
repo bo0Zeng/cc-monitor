@@ -2531,8 +2531,7 @@ fn send_line(
 ) -> bool {
     // 一行只从文本解一次（瓶颈 #8）：成品 · 链事实 · 运行簿 · 轮次结束 · 此刻在干什么都吃这一份；
     //   这一路几问都要整行 ⇒ 先解好（只要几格的那几问从这一份里取，不再各自解文本）。
-    let parsed = crate::agents::Line::new(&line.raw, line.start);
-    let _ = parsed.value();
+    let parsed = crate::agents::Line::whole(&line.raw, line.start);
     feed_chain(state, Path::new(path_str), &parsed);
     let root = state.root_of(Path::new(path_str));
     let face = root.map(|i| state.roots[i].face);

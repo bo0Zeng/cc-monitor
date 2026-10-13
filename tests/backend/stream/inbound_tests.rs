@@ -1489,12 +1489,23 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
     assert_eq!(
         *asked.lock().unwrap(),
         vec![
-            WatchAsk { sids: vec!["a".to_string(), "b".to_string()], branch: vec![] },
+            WatchAsk {
+                sids: vec!["a".to_string(), "b".to_string()],
+                branch: vec![]
+            },
             WatchAsk {
                 sids: vec!["a".to_string()],
                 branch: vec![
-                    BranchHeld { sid: "a".into(), path: Some("/p/a.jsonl".into()), at: 3, sum: Some("00ff".into()) },
-                    BranchHeld { sid: "b".into(), ..Default::default() },
+                    BranchHeld {
+                        sid: "a".into(),
+                        path: Some("/p/a.jsonl".into()),
+                        at: 3,
+                        sum: Some("00ff".into())
+                    },
+                    BranchHeld {
+                        sid: "b".into(),
+                        ..Default::default()
+                    },
                 ],
             },
         ]

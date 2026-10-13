@@ -1553,6 +1553,13 @@ impl<'a> Line<'a> {
         }
     }
 
+    /// 同 [`Self::new`]，当场把整行解好：几问都要整行的那一路（实时 `send_line`）用它，只要几格的那几问也从这一份里取。
+    pub(crate) fn whole(raw: &'a str, start: u64) -> Self {
+        let line = Self::new(raw, start);
+        line.value();
+        line
+    }
+
     /// 原文（预筛用：认得出不是这一类的行就不解）。
     pub(crate) fn text(&self) -> &'a str {
         self.text
@@ -1576,11 +1583,6 @@ impl<'a> Line<'a> {
                 serde_json::from_str(self.text).ok()
             })
             .as_ref()
-    }
-
-    /// 解过整行没有（解过 ⇒ 那一份；没解过 ⇒ `None`，不替你解）。
-    pub(crate) fn parsed(&self) -> Option<&serde_json::Value> {
-        self.value.get().and_then(Option::as_ref)
     }
 
     /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过就从文本直接解那几格。

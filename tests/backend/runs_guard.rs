@@ -603,7 +603,10 @@ fn claude_codes_real_shape_runs_the_same_general_criteria() {
 fn an_adapter_that_declares_no_runs_keeps_everything_on_the_main_run() {
     let book = Arc::new(RunBook::default());
     let track = RunTrack::new(RunFaces::NONE, book.clone());
-    let rec = track.main_record(SID, &crate::agents::Line::new(r#"{"lane":"w1","resp":"r1"}"#, 0));
+    let rec = track.main_record(
+        SID,
+        &crate::agents::Line::new(r#"{"lane":"w1","resp":"r1"}"#, 0),
+    );
     assert!(!rec.in_run && rec.rid.is_none() && !rec.changed);
     assert!(book.runs(SID).is_empty());
     let mut router = RunRouter::new(

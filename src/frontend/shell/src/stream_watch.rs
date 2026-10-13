@@ -73,7 +73,9 @@ async fn send_loop(
             continue; // 那条连接已经走了（新连接来时总循环会再交一份）
         };
         // 交回手上各份主线外清单有什么（读在发的这一刻：断线期间那几帧的拼法已落进会话账），那台只补缺的那一截。
-        let held = crate::session_book::book().read().branch_held(&origin, &sids);
+        let held = crate::session_book::book()
+            .read()
+            .branch_held(&origin, &sids);
         let args = resident_client::watch::args(&sids, &held);
         match client.call(WATCH_CMD, args, WATCH_BUDGET).await {
             Ok(data) => {
