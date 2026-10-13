@@ -44,6 +44,8 @@ mod cli_only;
 mod doors;
 mod drain;
 pub(crate) mod files_face;
+pub(crate) mod files_session_face;
+pub(crate) mod files_write_face;
 mod sniff;
 pub(crate) mod spec;
 pub(crate) mod typed;

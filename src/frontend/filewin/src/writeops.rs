@@ -336,7 +336,7 @@ pub async fn apply_remote_coded(
     origin: &Origin,
     op: &WriteOp,
     root_raw: Option<&[u8]>,
-) -> Result<serde_json::Value, super::source::Failed> {
+) -> Result<Applied, super::source::Failed> {
     apply_named(line, origin, op, root_raw, None).await
 }
 
@@ -348,8 +348,27 @@ pub async fn apply_typed(
     op: &WriteOp,
     root_raw: Option<&[u8]>,
     typed: &str,
-) -> Result<serde_json::Value, super::source::Failed> {
+) -> Result<Applied, super::source::Failed> {
     apply_named(line, origin, op, root_raw, Some(typed)).await
+}
+
+/// 写面一件交回来的那一份（按命令的回包类型解好的）：改权限的 `before` 撤销要用。
+#[derive(Clone, Debug, PartialEq)]
+pub enum Applied {
+    /// 新建目录 · 改名：落点。
+    Path(cmd_wire::files::FilesPathReply),
+    /// 删（整棵树时是最后那一趟）。
+    Deleted(cmd_wire::files::FilesDeleteReply),
+    /// 改权限。
+    Chmod(cmd_wire::files::FilesChmodReply),
+}
+
+/// 尾段：有损名发原始字节，否则发那一串。
+fn rel_wire(shown: &str, raw: Option<&[u8]>) -> cmd_wire::files::WirePath {
+    match raw {
+        Some(b) => cmd_wire::files::WirePath(b.to_vec()),
+        None => cmd_wire::files::WirePath::from(shown),
+    }
 }
 
 /// `path` 切成 `(root, rel)`；`typed` 是框里敲的名字时按它切（`path` ＝ 目录 ＋ `/` ＋ 它），名字里的 `/` 不当分隔符。
@@ -373,32 +392,49 @@ async fn apply_named(
     op: &WriteOp,
     root_raw: Option<&[u8]>,
     typed: Option<&str>,
-) -> Result<serde_json::Value, super::source::Failed> {
-    let (cmd, mut args) = match op {
+) -> Result<Applied, super::source::Failed> {
+    use super::source::ask_typed;
+    use cmd_wire::files as w;
+    // 根：当前目录不是合法 UTF-8 时由调用方给字节（写操作的对象恒是当前目录的直接子项，根就是当前目录）。
+    let root = |shown: String| match root_raw {
+        Some(r) => w::WirePath(r.to_vec()),
+        None => w::WirePath::from(shown.as_str()),
+    };
+    // 用户敲的名字：带 `single: true`（合不合法、是不是一段由那台判）。
+    let single = typed.map(|_| true);
+    let t = budget_for(op);
+    match op {
         WriteOp::Mkdir { path } => {
-            let (root, rel) = root_rel(path, typed);
-            (
-                "files-mkdir",
-                serde_json::json!({ "root": root, "rel": rel }),
-            )
+            let (dir, rel) = root_rel(path, typed);
+            let req = w::FilesMkdirReq {
+                root: root(dir),
+                rel: w::WirePath::from(rel),
+                single,
+            };
+            ask_typed(line, origin, &req, t).await.map(Applied::Path)
         }
         // 目录 ⇒ `recursive: true`（连同里面全部内容，后端逐条目过路径解析）；文件 ⇒ 不带（射程同此前）。
+        // 删一整棵树：一趟一段（`limit`），`remaining` 不是 0 就接着发同一个请求，直到删完 / 出错
+        // （此前一趟删到底，窗口 120 秒等不到就说失败，而后端照删）。
         WriteOp::Delete { path, is_dir, raw } => {
-            let mut a = serde_json::json!({
-                "root": parent_dir(path),
-                "rel": rel_json(remote_basename(path), raw.as_deref()),
-            });
-            if *is_dir {
-                a["recursive"] = serde_json::Value::Bool(true);
-                // 一趟只删一段：删够了后端停在两条之间、回还剩几条，这里接着发（见下）。
-                a["limit"] = serde_json::json!(TREE_SLICE);
+            let req = w::FilesDeleteReq {
+                root: root(parent_dir(path)),
+                rel: rel_wire(remote_basename(path), raw.as_deref()),
+                recursive: is_dir.then_some(true),
+                expect: None,
+                limit: is_dir.then_some(TREE_SLICE),
+            };
+            loop {
+                let d = ask_typed(line, origin, &req, t).await?;
+                if d.remaining == 0 {
+                    return Ok(Applied::Deleted(d));
+                }
             }
-            ("files-delete", a)
         }
         WriteOp::Rename { from, to, raw } => {
-            let root = parent_dir(from);
+            let dir = parent_dir(from);
             let (to_root, to_rel) = root_rel(to, typed);
-            if to_root != root {
+            if to_root != dir {
                 return Err(super::source::Failed {
                     code: None,
                     said: copy_text(
@@ -408,45 +444,23 @@ async fn apply_named(
                     detail: String::new(),
                 });
             }
-            (
-                "files-rename",
-                serde_json::json!({
-                    "root": root,
-                    "from": rel_json(remote_basename(from), raw.as_deref()),
-                    "to": to_rel,
-                }),
-            )
+            let req = w::FilesRenameReq {
+                root: root(dir),
+                from: rel_wire(remote_basename(from), raw.as_deref()),
+                to: w::WirePath::from(to_rel),
+                single,
+            };
+            ask_typed(line, origin, &req, t).await.map(Applied::Path)
         }
-        WriteOp::Chmod { path, mode, raw } => (
-            "files-chmod",
-            serde_json::json!({
-                "root": parent_dir(path),
-                "rel": rel_json(remote_basename(path), raw.as_deref()),
-                "mode": mode,
-            }),
-        ),
-    };
-    if let Some(r) = root_raw {
-        args["root"] = super::source::wire_bytes(r);
-    }
-    if typed.is_some() {
-        args["single"] = serde_json::Value::Bool(true);
-    }
-    // 删一整棵树：一趟一段，`remaining` 不是 0 就接着发同一个请求，直到删完 / 出错
-    // （此前一趟删到底，窗口 120 秒等不到就说失败，而后端照删）。别的写操作一趟就完。
-    loop {
-        let d = super::source::ask_coded(line, origin, cmd, &args, budget_for(op)).await?;
-        if remaining_of(&d) == 0 {
-            return Ok(d);
+        WriteOp::Chmod { path, mode, raw } => {
+            let req = w::FilesChmodReq {
+                root: root(parent_dir(path)),
+                rel: rel_wire(remote_basename(path), raw.as_deref()),
+                mode: *mode,
+            };
+            ask_typed(line, origin, &req, t).await.map(Applied::Chmod)
         }
     }
-}
-
-/// 递归删那一趟回的「还剩几条」（缺 ⇒ 0：一趟删完了）。
-pub fn remaining_of(d: &serde_json::Value) -> u64 {
-    d.get("remaining")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0)
 }
 
 /// 这一件的往返上限：删目录（整棵树）放宽到 [`TREE_BUDGET`]，其余照旧 [`WRITE_BUDGET`]。
@@ -918,26 +932,23 @@ pub fn mode_readout(modes: &[Option<u32>]) -> ModeReadout {
 }
 
 /// `files-stat` 一次应答里的 `mode`（缺席 / 不是非负整数 / 超出低 12 位 ⇒ `None`：当读不到，不猜）。
-pub fn mode_of(reply: &serde_json::Value) -> Option<u32> {
-    reply
-        .get("mode")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|m| u32::try_from(m).ok())
-        .filter(|m| *m <= 0o7777)
+pub fn mode_of(reply: &cmd_wire::files::StatReply) -> Option<u32> {
+    low12(reply.mode)
+}
+
+/// 只认低 12 位那一段（超出 ⇒ 不是一个权限位）。
+fn low12(m: Option<u32>) -> Option<u32> {
+    m.filter(|m| *m <= 0o7777)
 }
 
 /// 逐项问一次 `files-stat`（同 [`super::transfer::probe_remote`] 那一问、同一个期限），按入参顺序交回。
 pub async fn probe_modes(line: &Line, origin: &Origin, paths: &[String]) -> Vec<Option<u32>> {
     let mut out = Vec::with_capacity(paths.len());
     for p in paths {
-        let got = super::source::ask(
-            line,
-            origin,
-            "files-stat",
-            &serde_json::json!({ "path": p }),
-            super::transfer::PROBE_BUDGET,
-        )
-        .await;
+        let req = cmd_wire::files::StatReq {
+            path: cmd_wire::files::WirePath::from(p.as_str()),
+        };
+        let got = super::source::ask_typed(line, origin, &req, super::transfer::PROBE_BUDGET).await;
         out.push(got.ok().as_ref().and_then(mode_of));
     }
     out
@@ -1113,11 +1124,11 @@ pub fn receipt_of(
 }
 
 /// 改权限那一趟的应答 → 撤销它要做的那一件（后端回了 `before` 才有；没回 ⇒ `None`：撤不了就不给撤销，不猜）。
-pub fn chmod_undo(op: &WriteOp, reply: &serde_json::Value) -> Option<WriteOp> {
-    let WriteOp::Chmod { path, raw, .. } = op else {
+pub fn chmod_undo(op: &WriteOp, reply: &Applied) -> Option<WriteOp> {
+    let (WriteOp::Chmod { path, raw, .. }, Applied::Chmod(r)) = (op, reply) else {
         return None;
     };
-    let before = mode_of(&serde_json::json!({ "mode": reply.get("before")? }))?;
+    let before = low12(r.before)?;
     Some(WriteOp::Chmod {
         path: path.clone(),
         mode: before,

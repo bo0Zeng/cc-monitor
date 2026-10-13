@@ -3,11 +3,12 @@
 //! 用量只记在额度账这一处；同一种事实两个来源：中转经手的回包头（读法住适配层，[`crate::agents::quota_read_of`]）·
 //! 官方客户端报的用量（帧命令 `quota-probe`，读法同住适配层，[`crate::agents::usage_of`]）。
 
-pub(crate) mod decide;
+pub(crate) mod facts;
 pub(crate) mod ledger;
 pub(crate) mod name_words;
-pub(crate) mod plan;
+pub(crate) mod nodes;
 pub(crate) mod rotation;
+pub(crate) mod rules;
 pub(crate) mod show;
 pub(crate) mod strategy;
 

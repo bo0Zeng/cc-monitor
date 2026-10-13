@@ -59,9 +59,11 @@ pub(super) mod tests {
         "file_face.rs",
         "mod.rs",
         "policy.rs",
-        // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）；账号库由宿主读好交进来。
+        // 换号：这个会话这一发走哪个号的料（令牌与身份 · 改写后的请求体）；账号库由宿主读好交进来。
         "rotate.rs",
         "table.rs",
+        // 第五版那一判：叫策略、缓存到下一个节点（只在节点上判）。
+        "turn.rs",
     ];
 
     /// 账号**域**里、上游选择**之外**的那几份（相对账号域根）。
@@ -97,23 +99,29 @@ pub(super) mod tests {
         "oauth/store.rs",
         // 续成了、写回在等那一家放写锁：新令牌留在内存里照用，文件事件叫醒写回（有总期限）。
         "oauth/writeback.rs",
-        // 额度与轮换：额度账（用量的唯一住址）。上游选择可以问它（换号要看各号的额度），它不许认识上游选择与账号库管理。
-        "quota/decide.rs",
+        // 额度与轮换：额度账（用量的唯一住址）· 每个号的事实（纯拼装）· 节点通道（事实或设置变了的那一刻）。不认识上游选择与账号库管理。
+        "quota/facts.rs",
         "quota/ledger.rs",
         "quota/mod.rs",
-        // 轮换配置（rotation.json）与换号的唯一判定（纯）：上游选择换号时问它们；它们不认识上游选择与账号库管理。
-        "quota/plan.rs",
+        "quota/nodes.rs",
+        // 轮换第五版的积木（纯）：rotation.json 第三版的形 · 一判 · 设置的声明 · 推演 · 策略文件与沙箱 · 策略目录 ·
+        // 第二版 → 第三版的换形 · 事实上发不发得出去。不认识上游选择与账号库管理。
+        "quota/rules/book.rs",
+        "quota/rules/decide.rs",
+        "quota/rules/form.rs",
+        "quota/rules/mod.rs",
+        "quota/rules/script.rs",
+        "quota/rules/shelf.rs",
+        "quota/rules/simulate.rs",
+        "quota/rules/standing.rs",
+        "quota/rules/upgrade.rs",
+        // rotation.json 的存取与升级链（第一版 → 第二版那一节）。
         "quota/rotation.rs",
-        "quota/rotation/doc.rs",
         "quota/rotation/migrate.rs",
         // 额度显示态（纯）：帧面宿主与上游选择出显示态时问它；它不认识上游选择与账号库管理。
         "quota/show.rs",
-        // 轮换策略（加载的 `.rhai`、沙箱、声明与参数值、写字）：引擎判的时候调它；它不认识上游选择与账号库管理。
-        "quota/strategy/ctx.rs",
-        "quota/strategy/form.rs",
+        // 轮换策略的沙箱（Rhai 的上限 · 调用 · 失败的形）：判的时候调它。
         "quota/strategy/mod.rs",
-        "quota/strategy/run.rs",
-        "quota/strategy/words.rs",
     ];
 
     /// 账号域里**给上游选择用**的那几块（相对账号域根的顶层名）：上游选择可以引它们；

@@ -604,6 +604,11 @@ async fn a_chunk_that_fails_stops_the_save_before_the_commit() {
 #[test]
 fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
     use crate::source::Failed;
+    let written = |sha: &str| cmd_wire::files::FilesWrittenReply {
+        path: cmd_wire::files::WirePath::from("/srv/x"),
+        bytes: 1,
+        sha256: cmd_wire::files::Sha256Hex(sha.to_string()),
+    };
     let failed = |code: Option<&str>| Failed {
         code: code.map(str::to_string),
         said: "原话".to_string(),
@@ -611,7 +616,7 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
     };
     let sha = crate::find::testing::fake_sha256("x");
     assert_eq!(
-        saved_from_reply("x", Ok(serde_json::json!({ "sha256": sha.clone() }))),
+        saved_from_reply("x", Ok(written(&sha))),
         Ok(Saved {
             sent: "x".into(),
             sha256: Some(sha.clone())
@@ -628,19 +633,15 @@ fn a_save_reply_splits_into_saved_stale_and_failed_by_the_peers_code() {
             "`{code:?}` 被当成了 stale —— 那会给人摆一颗对这件事没用的「仍然覆盖」"
         );
     }
-    for bad in [
-        serde_json::json!({}),
-        serde_json::json!({ "sha256": sha.to_uppercase() }),
-    ] {
-        assert_eq!(
-            saved_from_reply("x", Ok(bad.clone())),
-            Ok(Saved {
-                sent: "x".into(),
-                sha256: None
-            }),
-            "{bad}：后端已经写了、只是没交（像样的）新摘要 ⇒ 算存成了（不许报「没保存」），摘要那格空着"
-        );
-    }
+    let bad = sha.to_uppercase();
+    assert_eq!(
+        saved_from_reply("x", Ok(written(&bad))),
+        Ok(Saved {
+            sent: "x".into(),
+            sha256: None
+        }),
+        "{bad}：后端已经写了、只是没交像样的新摘要 ⇒ 算存成了（不许报「没保存」），摘要那格空着"
+    );
 }
 
 /// 读回来有文本却没有摘要 ⇒ **不打开**（存不回去的编辑面不立起来）；有摘要 ⇒ 带着它打开。
@@ -872,7 +873,7 @@ fn big_file_mode_has_no_find_and_says_so() {
 #[test]
 fn a_lossy_path_is_saved_by_its_bytes() {
     let at = crate::source::RemotePath::from_bytes(b"/srv/d\xff/f.txt");
-    let v = save_args_at(&at, "x", SHA0);
+    let v = serde_json::to_value(save_args_at(&at, "x", SHA0)).unwrap();
     assert_eq!(v["root"], serde_json::json!({ "b16": "2f7372762f64ff" }));
     assert_eq!(v["rel"], "f.txt");
     let plain = crate::source::RemotePath::plain("/srv/a.txt");

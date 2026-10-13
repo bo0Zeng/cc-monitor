@@ -702,6 +702,14 @@ mod tests {
         "切档不再靠「按键 → 等重画 → 读屏」（那一家给了直接切档的接口）的那天。",
     ),
     (
+        "accounts/quota/rules/script.rs",
+        "Duration::from_millis(500)",
+        "一趟推演里给策略的总耗时（`rules::script::SIMULATE_BUDGET`）：每调一次策略前后读一次钟、把耗时加起来跟它比，\
+         到了就不再调、推演停在那里。只是累计耗时的一把尺子，不等、不睡、不让任何线程醒来。不是定时器。",
+        "收窄人群",
+        "推演里不再在沙箱里跑策略（或策略的耗时改由别处兜住）的那天。",
+    ),
+    (
         "common/time.rs",
         "Duration::from_millis(ms)",
         "截图台架的拨钟（`common::time::shots_clock`，只在特性 `shots` 下编）：台架交来的起点毫秒换成一个时刻，\
@@ -1602,9 +1610,11 @@ mod g6_reach {
         //   等它换码，各一次有界等待；调用那两处另住 `REGISTERED_DEADLINE_WAKES`）。
         // 16 → **17**：多的那一条是 `control/terminal_follow.rs` 的 `REDRAW_WAIT`（切权限档按一下键之后等重画的期限，
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`）。
+        // 17 → **18**：多的那一条是 `accounts/quota/rules/script.rs` 的 `SIMULATE_BUDGET`（一趟推演里给策略的总耗时，
+        //   累计耗时比一次，不等不睡）。
         assert_eq!(
-            registered, 17,
-            "登记表从 17 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 18,
+            "登记表从 18 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

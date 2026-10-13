@@ -80,7 +80,7 @@
   为什么是 IANA 名而不是偏移：偏移只说得准「此刻」，历史页 · 记录里的时刻一跨夏令时就差一小时；看的那一台本来就叫得出自己的名（`Intl` · `ZoneId` · 系统设置），给名不多花一个字节的心思。
   原始时刻（`at` · `resetsAt` · `tsMs` · `mtime_secs` …）照旧是数，要它跟着走的「已经多久」由出口按此刻自己走字（见 §7 的时长约定）。
   复制详情（`detail`）里那一行时刻同样按它写，并带偏移（`2026-10-10 04:30:15 +08:00`，跟哪台的日志都对得上）：详情在深处拼好时先留空位，出去那一下（流的写者按这条连接看的那一台的时区 · CLI 按 `--tz`）填。
-  轮换配置的时段（每号参数 `slots`）按**配置自己的时区**判：写配置那一下（`rotation-config-save` · `rotation-session-save` 等）后端把请求的 `tz` 盖进配置（`tz`，IANA 名；`local` 盖不进来），判的时候按它，跟后端那台在哪个时区、此刻有没有人在看都无关；盘上缺 ⇒ UTC。入参里带的 `tz` 不认。
+  轮换策略的分时段按**策略文件头里的时区**判（`tz`，IANA 名；播种 · 升级那一下写上那台的本地时区，取不到标 `tzUnknown`、按 UTC 判），跟此刻有没有人在看都无关。请求信封的 `tz` 只管回包里时刻的字。
 - **超时归客户端**：后端零定时器，不替客户端掐表；客户端的期限覆盖「写入 ＋ 等应答」两段，到点就撤单（`cancel`）。
 - **取消是一条普通命令**。撤一个不存在的 `id` 也回 `ok`。阻塞档的命令开跑之后打不断，`cancel` 回 `not_cancellable`（去等它自己的应答），不会回一条假的 `cancelled`。
 - **应答走独立的小通道**（256 条），与出方向的实时帧（10 000 条）分开：丢一条内容帧可恢复，丢一条应答客户端会永远等下去。writer 有界地优先应答。
@@ -125,8 +125,8 @@
 | `accounts` | 否 | — | — | — | `accounts-list` |
 | `profiles` | 否 | — | — | — | `profiles-read` |
 | `quota` | 是 | — | — | 带（≤ 8192 B） | `quota-read` |
-| `rotation` | 是 | 带 | — | 带（≤ 4096 B） | `rotation-session-read` |
-| `rotation_configs` | 是 | — | — | 带（≤ 8192 B） | `rotation-configs-read` |
+| `rotation` | 是 | 带 | — | — | `rotation-view` |
+| `rotation_strategies` | 是 | — | — | 带（≤ 8192 B） | `rotation-strategies` |
 | `plan` | 是 | 带 | 带 | 带（≤ 64 B） | `plan-read` |
 | `tasks` | 否 | 带 | — | 带（≤ 8192 B） | `tasks-list` |
 | `needs` | 是 | 带 | — | — | `sessions-needs` |
@@ -135,7 +135,7 @@
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：那个会话挂着的待答请求变了（答题 hook 挂上 · 撤掉 · 有人答掉），重读它的 `needs`（`sessions-needs` 或那个会话的 `history-facts`）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
-`body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`rotation` 问 `{sids: [key]}`、`tasks` 问 `{sid: key}`、另两样不带参数），由同一个处理器在发帧时现算，超了上限或答不成就不带。
+`body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`tasks` 问 `{sid: key}`、另两样不带参数；`rotation` 不带，客户端照 `{target: {sid: key}}` 重问 `rotation-view`），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
 `login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了），重问 `manual-list`。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
@@ -173,7 +173,7 @@
 - 会话是不是后台、此刻在干什么只看后端判好的 `background` · `activity`；那一家的原词不上线。
 - 判据：`wire_tests::the_shapes_the_second_frontend_reads_stay_put`（帧那张表，类型逐格对）· `cells_catalog_tests::the_golden_is_what_the_command_writes`（格目录里冻结的格）· `build_id_guard::tests::adding_a_subcommand_forces_a_build_id_bump`（子命令集或冻结格变了 ⇒ 打版本号）· `wire_tests::the_subcommands_the_second_frontend_calls_stay_put`（子命令那三条）。
 - 跨语言金样：`tests/__fixtures__/session-stream.golden.jsonl`，每种帧两行（「全格」与「最少格」），由后端真序列化器写；最少格里的格就是必填格。
-  终端管理 `tests/__fixtures__/terminals.golden.json` · `resolve` `tests/__fixtures__/resolve-contract.golden.json` · 换号重启 `tests/__fixtures__/rotation-switch-restart.golden.json`。
+  终端管理 `tests/__fixtures__/terminals.golden.json` · `resolve` `tests/__fixtures__/resolve-contract.golden.json`。
 - 部署：第二个前端不部署后端。它连上一台先 `--backend-probe`，那台的 `BUILD_ID` 与自己这一版不同就提示那台要更新、不接；远端的后端由桌面端按 `deploy-plan` 放。Release 资产名（含两个 musl 后端与 `SHA256SUMS-linux.txt`）登记在 [RELEASING.md](RELEASING.md)。
 
 ### 通用记录

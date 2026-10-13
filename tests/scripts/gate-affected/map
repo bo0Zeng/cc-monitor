@@ -32,6 +32,8 @@
 @e2e-local local-backend
 # 弱网台架：自带 docker 镜像与脚本，不起真后端（rig.sh 头注），只读 tests/e2e/weak-net/。
 @weaknet weak-net
+# 轮换一致性的大样本（perf 档单编一趟，几分钟）：只在改到判 · 推演 · 积木库 · 随包策略时跑。
+@rotation500 rotation-500
 # 覆盖率：只量 src/**/*.ts，与 npm 同一批 vitest 再带插桩跑一遍；TS 与它的测试不动，覆盖率就动不了。
 @coverage coverage
 # 截图台架的无头壳（例子 ccm-shots-shell，源在 tests/shots/real/shell_main.rs，链壳的 lib）编不编得过：
@@ -113,6 +115,9 @@ src/backend/Cargo.toml          mobile  后端那一棵 workspace 的根清单�
 src/backend/Cargo.lock          mobile  同一份 lock：手机那份 .so 的依赖版本也锁在这里
 src/vendor/**                   backendrs,e2e  后端链的 vendored russh
 tests/backend/**                backendrs  后端的测试（#[path] 引进 lib 的 test 档）；被壳那边 include 的由规则 ① 另加
+src/backend/accounts/quota/rules/**  rotation500  轮换的判与推演：一致性大样本比的就是它
+tests/backend/accounts/quota/rules/**  rotation500  一致性判据本身
+src/shared/rotation/**          rotation500  积木库与随包策略：大样本跑的就是它们
 tests/benches/**                backendrs  后端 Cargo.toml 里登记的 bench 目标（--all-targets 编它）
 
 # ── 部署到远端 / 共用的那几份 ───────────────────────────────────────────────────────────

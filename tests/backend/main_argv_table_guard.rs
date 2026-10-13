@@ -476,8 +476,8 @@ fn kept_oneshot_subcommands_are_still_dispatched() {
         "--assets-catalog-merge",
         "--quota-read",
         "--quota-probe",
-        "--rotation-plan",
-        "--rotation-switch",
+        "--rotation-view",
+        "--rotation-use-now",
         "--history-branch",
         "--resolve",
     ] {

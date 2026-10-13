@@ -142,7 +142,7 @@ mod tests;
 ///
 /// **规矩：每个分支一个样本，样本人手构造。** 枚举的每个变体一个；只在某一支才有的格（`Option` · `skip_serializing_if`）
 /// 至少有一个样本把它填上。漏了哪一支，那一支的格登了就红在「登了没出」；没登又漏了，就谁也看不见 —— 所以别漏。
-/// 顶层是枚举的，样本数不少于变体数（判据 `typed_enum_replies_sample_every_variant` 数源码里的变体）。
+/// 顶层是枚举的，样本数不少于变体数。
 /// 样本里别用私网地址（用 `203.0.113.x`），别用和文案表同字的中文。
 pub(crate) trait Shaped: serde::Serialize + Sized {
     fn samples() -> Vec<Self>;

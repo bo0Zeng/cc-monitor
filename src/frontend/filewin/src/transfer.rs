@@ -122,10 +122,32 @@ pub struct Pending {
 
 impl Pending {
     /// 提交的 `root`：目标目录有字节 ⇒ 按字节发；否则照旧切字符串路径。
-    pub fn root_wire(&self) -> serde_json::Value {
+    pub fn root_path(&self) -> cmd_wire::files::WirePath {
         match &self.remote_dir_raw {
-            Some(b) => super::source::wire_bytes(b),
-            None => serde_json::Value::String(super::source::parent_dir(&self.remote_path)),
+            Some(b) => cmd_wire::files::WirePath(b.clone()),
+            None => cmd_wire::files::WirePath::from(
+                super::source::parent_dir(&self.remote_path).as_str(),
+            ),
+        }
+    }
+
+    /// 提交的那一份入参（`chunks` · `bytes` 只在块形给）。
+    pub fn commit_req(
+        &self,
+        key: &str,
+        sha256: String,
+        chunked: Option<(u64, u64)>,
+    ) -> cmd_wire::files::FilesCommitUploadReq {
+        cmd_wire::files::FilesCommitUploadReq {
+            root: self.root_path(),
+            rel: cmd_wire::files::WirePath::from(super::source::remote_basename(&self.remote_path)),
+            key: key.to_string(),
+            overwrite: self.overwrite,
+            expect: cmd_wire::files::Sha256Expect {
+                sha256: cmd_wire::files::Sha256Hex(sha256),
+            },
+            chunks: chunked.map(|c| c.0),
+            bytes: chunked.map(|c| c.1),
         }
     }
 
@@ -592,17 +614,10 @@ async fn upload_once(
     let sha256 = watched
         .sha256
         .ok_or_else(|| Once::Failed(copy_text("rsFilewinTransfer.upload.noDigest", &[]).into()))?;
-    super::source::ask_coded(
+    super::source::ask_typed(
         line,
         origin,
-        CMD_COMMIT,
-        &serde_json::json!({
-            "key": key,
-            "root": p.root_wire(),
-            "rel": super::source::remote_basename(&p.remote_path),
-            "overwrite": p.overwrite,
-            "expect": { "sha256": sha256 },
-        }),
+        &p.commit_req(&key, sha256, None),
         COMMIT_BUDGET,
     )
     .await

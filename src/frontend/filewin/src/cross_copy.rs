@@ -564,25 +564,19 @@ where
     };
     let own = format!("{}/.cc-monitor", lhome.trim_end_matches('/'));
     let staging = format!("{own}/staging");
-    if super::source::ask(
-        line,
-        &local,
-        "files-mkdir",
-        &serde_json::json!({ "root": own, "rel": "staging" }),
-        super::writeops::WRITE_BUDGET,
-    )
-    .await
-    .is_ok()
-    {
-        if let Err(e) = super::source::ask(
-            line,
-            &local,
-            "files-chmod",
-            &serde_json::json!({ "root": own, "rel": "staging", "mode": STAGING_MODE }),
-            super::writeops::WRITE_BUDGET,
-        )
-        .await
-        {
+    use cmd_wire::files as w;
+    let mkdir = w::FilesMkdirReq {
+        root: w::WirePath::from(own.as_str()),
+        rel: w::WirePath::from("staging"),
+        single: None,
+    };
+    if write(line, &local, &mkdir).await.is_ok() {
+        let chmod = w::FilesChmodReq {
+            root: w::WirePath::from(own.as_str()),
+            rel: w::WirePath::from("staging"),
+            mode: STAGING_MODE,
+        };
+        if let Err(e) = write(line, &local, &chmod).await {
             return failed(e.into());
         }
     }
@@ -620,14 +614,7 @@ where
     };
     // ⑤ 清暂存：本机那一份不论成败都删（下载半路留下的 `.part` 一起）；B 那头半路失败 / 撤 ⇒ 开过单的暂存件删掉。
     for rel in [kept.clone(), format!("{kept}.part")] {
-        let _ = super::source::ask(
-            line,
-            &local,
-            "files-delete",
-            &serde_json::json!({ "root": staging, "rel": rel }),
-            super::writeops::WRITE_BUDGET,
-        )
-        .await;
+        let _ = write(line, &local, &delete_req(&staging, &rel)).await;
     }
     match pushed {
         Ok(()) => Outcome::Done {
@@ -639,17 +626,32 @@ where
         Err(why) => {
             let bstaging = format!("{}/{}", bhome.trim_end_matches('/'), STAGING_DIR);
             for k in board.push.take_staged() {
-                let _ = super::source::ask(
-                    line,
-                    &to,
-                    "files-delete",
-                    &serde_json::json!({ "root": bstaging, "rel": format!("{k}.part") }),
-                    super::writeops::WRITE_BUDGET,
-                )
-                .await;
+                let _ = write(line, &to, &delete_req(&bstaging, &format!("{k}.part"))).await;
             }
             failed(why)
         }
+    }
+}
+
+/// 写面一件（同写面其余几条的往返上限）；没成 ⇒ 那一句。
+async fn write<C: cmd_wire::files::Call>(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    req: &C,
+) -> Result<C::Reply, String> {
+    super::source::ask_typed(line, origin, req, super::writeops::WRITE_BUDGET)
+        .await
+        .map_err(|f| f.said)
+}
+
+/// 删暂存区里的一份（不递归、不带 CAS）。
+fn delete_req(root: &str, rel: &str) -> cmd_wire::files::FilesDeleteReq {
+    cmd_wire::files::FilesDeleteReq {
+        root: cmd_wire::files::WirePath::from(root),
+        rel: cmd_wire::files::WirePath::from(rel),
+        recursive: None,
+        expect: None,
+        limit: None,
     }
 }
 

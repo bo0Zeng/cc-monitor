@@ -63,6 +63,8 @@ impl comms_inward::chan::router::Backends for Two {
             let part = &self.body[off.min(end)..end];
             serde_json::json!({ "path": a["path"], "offset": off, "size": self.body.len(),
                 "eof": end >= self.body.len(), "content": { "b16": crate::chunk_upload::hex(part) } })
+        } else if op.0 == "files-stage-chunk" {
+            serde_json::json!({ "bytes": 1 })
         } else {
             serde_json::json!({ "path": "/x", "bytes": 0 })
         };

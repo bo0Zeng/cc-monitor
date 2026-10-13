@@ -347,8 +347,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `accounts` —— 这台的账号清单（账号 manifest 被改写）
 - `profiles` —— 这台的配置文件（`~/.cc-monitor/profiles.toml`）
 - `quota` —— 这台的额度账显示得出来的那几格
-- `rotation` —— 这台某个会话的轮换或「账号」格（`key` ＝ sid）
-- `rotation_configs` —— 这台的轮换配置表 · 本机默认 · 策略
+- `rotation` —— 这台某个会话的轮换（`key` ＝ sid）：那一条 · 它用的那份策略 · 事实变了
+- `rotation_strategies` —— 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
 - `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
@@ -644,14 +644,17 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-create`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 这一趟写进去了几个字节 |
-| `content` | → | 要写进去的字节 |
-| `path` | ← | 真正落盘的那个绝对路径，**解完 symlink 的**（原始字节形） |
-| `rel` | → | 相对 `root` 的那一段 |
-| `root` | → | **用户指定的那个文件管理目标根** |
-| `single` | → | 可选布尔：`true` ⇒ `rel` 只许是**一段名字**（界面就地新建 / 改名敲的那一格）；`files-mkdir` 的 `rel`、`files-rename` 的 `to` 同 |
+入参 `FilesCreateReq` · 回包 `FilesPathBytesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCreateReq = { root: WirePath, rel: WirePath, content?: WirePath, 
+/**
+ * `true` ⇒ `rel` 只许是一段名字（界面就地新建 / 改名敲的那一格）。
+ */
+single?: boolean, };
+type FilesPathBytesReply = { path: WirePath, bytes: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_name` · `bad_path` · `exists` · `io_failed` · `refused`
 
@@ -661,12 +664,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-mkdir`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | ← | 建出来的那个目录（父目录解完 symlink 的） |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `root` | → | 目标根 ＋ 相对段 |
-| `single` | → | 可选布尔：`true` ⇒ `rel` 只许一段名字；名字规则同 `files-create`，不合 ⇒ `bad_name` |
+入参 `FilesMkdirReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesMkdirReq = { root: WirePath, rel: WirePath, single?: boolean, };
+type FilesPathReply = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_name` · `bad_path` · `exists` · `io_failed` · `refused`
 
@@ -676,13 +680,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-rename`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `from` | → | 两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外） |
-| `path` | ← | 新名字的落点 |
-| `root` | → | 目标根 |
-| `single` | → | 可选布尔：`true` ⇒ `to` 只许一段名字；`to` 的名字规则同 `files-create`，不合 ⇒ `bad_name` |
-| `to` | → | 两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外） |
+入参 `FilesRenameReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesPathReply = { path: WirePath, };
+type FilesRenameReq = { root: WirePath, from: WirePath, to: WirePath, single?: boolean, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_name` · `bad_path` · `exists` · `io_failed` · `refused`
 
@@ -692,16 +696,14 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-delete`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `expect` | → | 可选，字符串或 `{"b16": …}`：「我读到的是这一份」 |
-| `limit` | → | 可选，只对 `recursive: true`：这一趟至多删几条 |
-| `path` | ← | 删掉的那一项 |
-| `recursive` | → | 布尔，**缺省 `false`** |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `remaining` | ← | 还剩几条没删（只有带 `limit` 删够了停下时不是 `0`）：调用方再发一趟同样的请求接着删 |
-| `removed` | ← | 这一趟真删掉了几条（含目标自己；不递归那一支恒 `1`） |
-| `root` | → | 目标根 ＋ 相对段 |
+入参 `FilesDeleteReq` · 回包 `FilesDeleteReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DeleteExpect = { empty_dir: true } | string | { b16: string };
+type FilesDeleteReply = { path: WirePath, removed: number, remaining: number, };
+type FilesDeleteReq = { root: WirePath, rel: WirePath, recursive?: boolean, expect?: DeleteExpect, limit?: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -711,13 +713,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-chmod` · 没有 unix 权限位的机器上做不到
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `before` | ← | **改之前**的权限位（十进制、低 12 位）：撤销 ＝ 拿它再发一趟 |
-| `mode` | → ← | **十进制数值**（`493` = `0o755`），只收低 12 位；超出 ⇒ `refused` |
-| `path` | ← | **解到底**的那个真路径 |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `root` | → | 目标根 ＋ 相对段 |
+入参 `FilesChmodReq` · 回包 `FilesChmodReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesChmodReply = { path: WirePath, mode: number, before?: number, };
+type FilesChmodReq = { root: WirePath, rel: WirePath, mode: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `no_unix_mode` · `refused`
 
@@ -727,18 +729,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-copy`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 复制了几个字节（整棵时是全部普通文件之和） |
-| `dirs` | ← | 几个目录（单文件那一形恒是 `1` / `0`） |
-| `files` | ← | 复制了几个普通文件 |
-| `from` | → | 两个相对段 |
-| `links` | ← | 照原样复制了几条符号链接（单文件那一形恒是 `0`） |
-| `overwrite` | → | 🔴 **覆盖策略显式** |
-| `path` | ← | 落点（父目录解完 symlink 的） |
-| `recursive` | → | **复制目录显式** |
-| `root` | → | 目标根（与写面其余几条同形） |
-| `to` | → | 两个相对段 |
+入参 `FilesCopyReq` · 回包 `FilesTreeReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCopyReq = { root: WirePath, from: WirePath, to: WirePath, overwrite?: boolean, recursive?: boolean, };
+type FilesTreeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused`
 
@@ -748,16 +745,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-extract`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 文件字节之和 |
-| `dirs` | ← | 几个目录（含补出来的上级） |
-| `files` | ← | 建了几份文件（含硬链接落成的拷贝） |
-| `fresh` | → | 可缺席的布尔 |
-| `links` | ← | 几条符号链接 |
-| `path` | ← | 落点目录（父目录解完 symlink 的） |
-| `rel` | → | 包在 `root` 下的相对段；格式按名字后缀认：`.zip` · `.tar` · `.tar.gz` · `.tgz`（不分大小写），其余 ⇒ `unsupported`（「不认这种包」） |
-| `root` | → | 那个目录（字符串或 `{"b16": …}`） |
+入参 `FilesExtractReq` · 回包 `FilesTreeReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesExtractReq = { root: WirePath, rel: WirePath, fresh?: boolean, };
+type FilesTreeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `exists` · `io_failed` · `refused` · `unsupported`
 
@@ -767,12 +761,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-link`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | ← | 建出来的那条链接（父目录解完 symlink 的） |
-| `rel` | → | 链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{"b16": …}`） |
-| `root` | → | 链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{"b16": …}`） |
-| `target` | → | 链接的目标文本，**原样**写进去（不解、不判，同 `cp -P`） |
+入参 `FilesLinkReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesLinkReq = { root: WirePath, rel: WirePath, target: WirePath, };
+type FilesPathReply = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused`
 
@@ -782,15 +777,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-write-text`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 写进去了几个字节 |
-| `content` | → | 字符串或 `{"b16":…}` |
-| `expect` | → | 🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：「我看的时候那一份」的摘要（`files-read-text` 交的那个） |
-| `path` | ← | **解到底**的那个真路径（它跟链接，理由同 `files-chmod`） |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `root` | → | 目标根 ＋ 相对段 |
-| `sha256` | ← | 写进去那份的摘要 —— 调用方拿它当下一次存的 `expect`（连存两次不自撞） |
+入参 `FilesWriteTextReq` · 回包 `FilesWrittenReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesWriteTextReq = { root: WirePath, rel: WirePath, content: WirePath, expect: Sha256Expect, };
+type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
+type Sha256Expect = { sha256: Sha256Hex, };
+type Sha256Hex = string;
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -800,13 +795,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-peek`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `exists` | ← | `false` ⇒ **确定不存在**（`text` 为 `null`） |
-| `path` | ← | 读的是哪一份（最后一段是链接时是解到底的那一份） |
-| `rel` | → | 与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份） |
-| `root` | → | 与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份） |
-| `text` | ← | 全文（UTF-8）；不在时 `null` |
+入参 `FilesPeekReq` · 回包 `FilesPeekReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesPeekReply = { path: WirePath, exists: boolean, text: string | null, };
+type FilesPeekReq = { root: WirePath, rel: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `not_text` · `refused` · `too_large`
 
@@ -816,18 +811,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-put`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `backup` | → | 可缺席的布尔（缺省否） |
-| `bytes` | ← | 新内容的字节数 |
-| `changed` | ← | 真的写了吗（新内容与盘上逐字节相同 ⇒ `false`，一个字节不动） |
-| `content` | → | 新全文（字符串或 `{"b16":…}`），**必须给** |
-| `created` | ← | 这份文件是这一次新建的 |
-| `expect` | → | 🔴 **必须给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」 |
-| `parents` | → | 可缺席的布尔（缺省否） |
-| `path` | ← | 落点 |
-| `rel` | → | 同 `files-peek` |
-| `root` | → | 同 `files-peek` |
+入参 `FilesPutReq` · 回包 `FilesPutReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesPutReply = { path: WirePath, bytes: number, changed: boolean, created: boolean, backup: WirePath | null, };
+type FilesPutReq = { root: WirePath, rel: WirePath, content: WirePath, expect: WirePath | null, backup?: boolean, parents?: boolean, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -837,10 +827,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-delete-session`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | ← | 删掉的那一份 |
-| `sid` | → | 🔴 **只收 sid**：多给任何一个键 ⇒ `bad_args` |
+入参 `FilesDeleteSessionReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesDeleteSessionReq = { sid: string, };
+type FilesPathReply = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `io_failed` · `refused`
 
@@ -850,12 +843,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-stage-chunk`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 这一块写进去的字节数 |
-| `content` | → | 字符串或 `{"b16":…}`，**至少 1 字节**（空块 ⇒ `bad_args`） |
-| `key` | → | 这一次存盘的键：**恰好 32 位小写十六进制**（调用方每次存盘现造一个） |
-| `seq` | → | 块号，从 0 起的非负整数 |
+入参 `FilesStageChunkReq` · 回包 `FilesStageChunkReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ChunkBytes = string | { b16: string };
+type FilesStageChunkReply = { bytes: number, };
+type FilesStageChunkReq = { key: string, seq: number, content: ChunkBytes, };
+```
 
 码：`bad_args` · `io_failed` · `refused`
 
@@ -865,16 +859,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-commit-text`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | → | 拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args` |
-| `chunks` | → | 块数：读回 `0..chunks` 这几块 |
-| `expect` | → | 🔴 **必须给**，与 `files-write-text` 的 `expect` 同形同义（摘要形 CAS）：盘上那份对不上 ⇒ `stale`，目标一个字节没动（块照样删掉） |
-| `key` | → | 与 `files-stage-chunk` 同一个键 |
-| `path` | ← | 解到底的那个真路径 |
-| `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`） |
-| `root` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`） |
-| `sha256` | ← | 写进去那份的摘要 |
+入参 `FilesCommitTextReq` · 回包 `FilesWrittenReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCommitTextReq = { root: WirePath, rel: WirePath, key: string, chunks: number, bytes: number, expect: Sha256Expect, };
+type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
+type Sha256Expect = { sha256: Sha256Hex, };
+type Sha256Hex = string;
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -884,16 +877,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-commit-upload`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | → | 可缺席（缺席 ＝ 此前那一形） |
-| `chunks` | → | 可缺席（缺席 ＝ 此前那一形） |
-| `expect` | → | 🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来） |
-| `key` | → | 暂存件的键：**恰好 32 位小写十六进制** |
-| `overwrite` | → | 🔴 **必须给**（`true` / `false`），不给默认值 |
-| `path` | ← | 落点（父目录解过 symlink 的那一个） |
-| `rel` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{"b16": …}` |
-| `root` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{"b16": …}` |
+入参 `FilesCommitUploadReq` · 回包 `FilesPathBytesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, overwrite: boolean, expect: Sha256Expect, chunks?: number, bytes?: number, };
+type FilesPathBytesReply = { path: WirePath, bytes: number, };
+type Sha256Expect = { sha256: Sha256Hex, };
+type Sha256Hex = string;
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -1264,303 +1256,597 @@ type WirePath = string | { b16: string };
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
 
-#### `rotation-configs-read`
+#### `rotation-facts`
 
-这台的轮换配置表。
+每个号此刻的事实。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-configs-read`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-facts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `configs` | ← | 每份一项（本机默认在最前、其余按名字）：`{id, name, strategy, accounts, params, acctInit, parked, tz?, rev, updatedAt, savedBy, text, strategyName, inUse, isDefault}`；`text` 是后端写好的描述（策略的 `describe` 片段写成字），`inUse` ＝ 开着它的会话 |
-| `defaultConfig` | ← | 本机默认那份的 id |
-| `lang` | → | 可缺：策略自己的字写哪种语言（`zh` 缺省 · `en`） |
-| `detail` | ← | 只在 `unreadable` 时有：复制详情 |
-| `path` | ← | 那份文件的绝对路径（家推不出 ⇒ `null`） |
-| `reason` | ← | 只在 `unreadable` 时有 |
-| `state` | ← | `"present"` · `"absent"`（没动过：内置三份）· `"unreadable"` |
+入参 `RotationFactsReq` · 回包 `RotationFactsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-#### `rotation-config-save`
+```ts
+type Fact = { 
+/**
+ * 路由第 2 段。
+ */
+account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, login: LoginState, 
+/**
+ * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
+ */
+seenAt?: number, 
+/**
+ * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
+ */
+blocked?: FactBlocked, };
+type FactBlocked = { why: FactWhy, until?: number, text: string, };
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type QuotaKind = "sub" | "api";
+type RotationFactsReply = { 
+/**
+ * 这台此刻（unix 秒）。
+ */
+now: number, 
+/**
+ * 照账号库的先后。
+ */
+accounts: Array<Fact>, };
+type RotationFactsReq = { 
+/**
+ * 哪一家（适配器 id）；缺 ⇒ 有账号库的那一家。
+ */
+agent?: string, };
+type WinFact = { open: boolean, used: number, resets?: number, 
+/**
+ * `resets` 写给人看的样子（按看的那一台的时区）。
+ */
+resetsText?: string, rate?: number, };
+```
 
-存一份轮换配置（新建或覆盖）。
+码：`bad_args`
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-config-save`
+#### `rotation-try`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `config` | → | 整份内容 `{name, strategy, accounts: [{start: true} \| {rest: true} \| {id}, params], params, acctInit, parked?}`；参数照那份策略的声明逐格校验，缺的格补齐 |
-| `errors` | ← | 只在 `refused` 时有：`[{cell, code, said}]`（`name` · `strategy` · `accounts[i]` · `params.<k>` · `accounts[i].<k>` · `acctInit.<k>`，时段细到 `[j].at` / `[j].line`） |
-| `force` | → | 可缺：`true` ⇒ `ifRev` 对不上也覆盖 |
-| `id` | → ← | 入参：改哪份；缺 ＝ 新建。应答：写成的那份 |
-| `ifRev` | → | 可缺：改之前读到的 `rev`；对不上 ⇒ `conflict` |
-| `rev` | → ← | 写成的版本 · `conflict` 时此刻的版本 |
-| `savedAtText` | ← | 只在 `saved` 时有：写成那一刻的钟面 `HH:MM` |
-| `state` | ← | `"saved"` · `"refused"` · `"conflict"` |
-| `theirs` | ← | 只在 `conflict` 时有：别处那一版跟这一份差哪几格 `[{acct?, k, from, to, text}]` |
+试跑一份策略。
 
-码：`bad_args` · `io_failed` · `no_such_config`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-try`
 
-#### `rotation-config-rename`
+入参 `RotationTryReq` · 回包 `RotationTryReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-给一份轮换配置改名。
+```ts
+type RotTryDecision = { 
+/**
+ * 用哪个号（停发 ⇒ 缺）。
+ */
+pick?: string, 
+/**
+ * 停发到几点 · 到时恢复的号（停发才有）。
+ */
+holdUntil?: number, holdAccount?: string, 
+/**
+ * 策略交的先后（此刻愿意用的号）。
+ */
+order: Array<string>, 
+/**
+ * 每个号一句（策略写的）。
+ */
+why: Array<RotTryRow>, 
+/**
+ * 这一号来自用户拖出来的顺序。
+ */
+fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+/**
+ * 策略这一判出错（走了兜底）：原话。
+ */
+strategyError?: string, };
+type RotTryLane = { account: string, segs: Array<RotTryLaneSeg>, };
+type RotTryLaneSeg = { from: number, to: number, 
+/**
+ * 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
+ */
+sendable: boolean, 
+/**
+ * 这一段开头两窗的用量（5 小时 · 7 天）。
+ */
+used: [number, number], reset: boolean, };
+type RotTryRow = { account: string, why: string, };
+type RotTrySwitch = { at: number, account: string, };
+type RotTryTimeline = { 
+/**
+ * 将来每次换到别的号（时间轴上方那几个「16:07 work」）。
+ */
+switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, };
+type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
+/**
+ * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
+ */
+capUnknown: boolean, skipped: Array<string>, };
+type RotationTryReply = { now: number, 
+/**
+ * 这份策略的说明（原文开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段）。
+ */
+description: string, 
+/**
+ * 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
+ */
+source?: string, 
+/**
+ * 试跑「现在用」碰上用不了：几点恢复（说不出 ⇒ `null`）；这时 `decision` 是不换的那一判。
+ */
+useNowRefused?: number | null, decision: RotTryDecision, timeline: RotTryTimeline, };
+type RotationTryReq = { 
+/**
+ * 一份策略文件的原文（头 ＋ 代码）。
+ */
+source: string, 
+/**
+ * 换掉头里的设置（形状由这份策略自己定；缺 ⇒ 用头里的）。
+ */
+settings?: unknown, 
+/**
+ * 开会话用的号（缺 ⇒ 事实里第一个号）。
+ */
+start?: string, 
+/**
+ * 在用的号（缺 ⇒ 开会话用的号）。
+ */
+current?: string, 
+/**
+ * 临时条目。
+ */
+temp: Array<string>, 
+/**
+ * 往后推几小时（1–48，缺 ⇒ 12）。
+ */
+hours?: number, 
+/**
+ * 试跑「现在用这个号」：事实上发得出去 ⇒ 判的是换过去、放进拖出来的顺序最前之后的那一判；发不出去 ⇒ `useNowRefused` 带几点恢复。
+ */
+useNow?: string, 
+/**
+ * 哪一家（缺 ⇒ 有账号库的那一家）。
+ */
+agent?: string, };
+```
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-config-rename`
+码：`bad_args` · `bad_strategy`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `errors` | ← | 同 `rotation-config-save` |
-| `id` | → ← | 哪份 |
-| `ifRev` | → | 同 `rotation-config-save` |
-| `name` | → | 新名字（1–24 字，本机不重名） |
-| `rev` | ← | 同 `rotation-config-save` |
-| `savedAtText` | ← | 同 `rotation-config-save` |
-| `state` | ← | 同 `rotation-config-save` |
-| `theirs` | ← | 同 `rotation-config-save`（改名撞版本时为空） |
+#### `rotation-strategies`
 
-码：`bad_args` · `io_failed` · `no_such_config`
+策略目录。
 
-#### `rotation-config-delete`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategies`
 
-删一份轮换配置。
+入参 `RotationStrategiesReq` · 回包 `RotationStrategiesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-config-delete`
+```ts
+type RotStrategyError = { line?: number, msg: string, };
+type RotStrategyItem = { id: string, 
+/**
+ * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
+ */
+description: string, rev: string, error?: RotStrategyError, 
+/**
+ * 此刻还活着、用着它的会话。
+ */
+inUse: Array<string>, forNew: boolean, 
+/**
+ * 这份的设置说明写法不合文案规矩（设置照样能用）。
+ */
+wordsBad: boolean, 
+/**
+ * 文件头里没写时区（分时段按 UTC 算）。
+ */
+tzUnknown: boolean, };
+type RotationStrategiesReply = { 
+/**
+ * 照 id 排。
+ */
+strategies: Array<RotStrategyItem>, forNew: string, 
+/**
+ * `strategies/v3/` 里没有加载的第三版脚本几份。
+ */
+oldScripts: number, };
+type RotationStrategiesReq = Record<symbol, never>;
+```
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 哪份 |
-| `inUse` | ← | 只在 `refused` 时有：开着它的会话 |
-| `isDefault` | ← | 只在 `refused` 时有：是本机默认 |
-| `said` | ← | 只在 `refused` 时有：那一句 |
-| `state` | ← | `"done"` · `"refused"`（有会话开着 · 是本机默认） |
+码：`bad_args`
 
-码：`bad_args` · `io_failed` · `no_such_config`
+#### `rotation-view`
 
-#### `rotation-default-set`
+一个会话或一份策略此刻的轮换。
 
-设这台的本机默认配置。
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-view`
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-default-set`
+入参 `RotationViewReq` · 回包 `RotationViewReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → | 设为本机默认的那份（已开着的会话不跟着换） |
-| `state` | ← | `"done"` |
+```ts
+type Fact = { 
+/**
+ * 路由第 2 段。
+ */
+account: string, kind: QuotaKind, w5h: WinFact, w7d: WinFact, login: LoginState, 
+/**
+ * 额度账上最后一次看到它（没出过数 ⇒ 缺）。
+ */
+seenAt?: number, 
+/**
+ * 事实上用不了 ⇒ 有；能用 ⇒ 缺。
+ */
+blocked?: FactBlocked, };
+type FactBlocked = { why: FactWhy, until?: number, text: string, };
+type FactWhy = "refused" | "overage" | "used" | "login" | "key";
+type LoginState = "ok" | "needsLogin" | "needsKey";
+type QuotaKind = "sub" | "api";
+type RotFormCell = { key: string, kind: RotFormKind, scope: RotFormScope, 
+/**
+ * 只对 `scope: each`：号没另设就跟总体（总体那一份在 `settings[key]`）。
+ */
+inherit?: boolean, label: StrategyText, help?: StrategyText, 
+/**
+ * 只对 `daySegments`：哪几个窗口（`5h` · `7d`）。
+ */
+windows?: Array<string>, min?: number, max?: number, unit?: string, default: unknown, choices?: Array<RotFormChoice>, 
+/**
+ * 能是空（`null`）：空的那一项怎么叫（例如「不回切」）。
+ */
+nullable?: StrategyText, };
+type RotFormChoice = { v: string, label: StrategyText, };
+type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
+type RotFormScope = "all" | "each";
+type RotHint = { "k": "hold", until?: number, account?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+type RotLog = { at: number, from: string, to: string, cause: RotLogCause, why?: string, };
+type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
+type RotStrategyError = { line?: number, msg: string, };
+type RotStrategyItem = { id: string, 
+/**
+ * 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。标题就是 `id`（文件名，§2.1）。
+ */
+description: string, rev: string, error?: RotStrategyError, 
+/**
+ * 此刻还活着、用着它的会话。
+ */
+inUse: Array<string>, forNew: boolean, 
+/**
+ * 这份的设置说明写法不合文案规矩（设置照样能用）。
+ */
+wordsBad: boolean, 
+/**
+ * 文件头里没写时区（分时段按 UTC 算）。
+ */
+tzUnknown: boolean, };
+type RotTarget = { sid: string, } | { strategy: string, settings?: unknown, };
+type RotTryDecision = { 
+/**
+ * 用哪个号（停发 ⇒ 缺）。
+ */
+pick?: string, 
+/**
+ * 停发到几点 · 到时恢复的号（停发才有）。
+ */
+holdUntil?: number, holdAccount?: string, 
+/**
+ * 策略交的先后（此刻愿意用的号）。
+ */
+order: Array<string>, 
+/**
+ * 每个号一句（策略写的）。
+ */
+why: Array<RotTryRow>, 
+/**
+ * 这一号来自用户拖出来的顺序。
+ */
+fromTemp: boolean, skipped: Array<string>, temp: Array<string>, nextNode?: number, 
+/**
+ * 策略这一判出错（走了兜底）：原话。
+ */
+strategyError?: string, };
+type RotTryLane = { account: string, segs: Array<RotTryLaneSeg>, };
+type RotTryLaneSeg = { from: number, to: number, 
+/**
+ * 事实上发得出去吗（被拒 · 登录 · key · 超额 · 用到 100 都算发不出去）。
+ */
+sendable: boolean, 
+/**
+ * 这一段开头两窗的用量（5 小时 · 7 天）。
+ */
+used: [number, number], reset: boolean, };
+type RotTryRow = { account: string, why: string, };
+type RotTrySwitch = { at: number, account: string, };
+type RotTryTimeline = { 
+/**
+ * 将来每次换到别的号（时间轴上方那几个「16:07 work」）。
+ */
+switches: Array<RotTrySwitch>, uses: Array<RotTryUse>, lanes: Array<RotTryLane>, truncated: boolean, };
+type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean, 
+/**
+ * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
+ */
+capUnknown: boolean, skipped: Array<string>, };
+type RotationViewReply = { now: number, 
+/**
+ * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
+ */
+strategy: RotStrategyItem | null, 
+/**
+ * 设置怎么画（策略的声明）。
+ */
+form: Array<RotFormCell>, 
+/**
+ * 生效的设置（会话有草稿 ⇒ 草稿）。
+ */
+settings: unknown, 
+/**
+ * 跟文件里的不同（会话 ⇒ 有草稿；设置页 ⇒ 交来的跟文件里的不同）。
+ */
+dirty: boolean, 
+/**
+ * 开会话用的号 · 此刻在用的号。
+ */
+start: string, current: string, 
+/**
+ * 每个号的事实，照号列表的先后（列表里没有的接在后面）。
+ */
+accounts: Array<Fact>, 
+/**
+ * 号列表里有几个（`accounts` 前这么多个是列表里的）。
+ */
+listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null, 
+/**
+ * 换号记录（会话才有）。
+ */
+log: Array<RotLog>, hints: Array<RotHint>, };
+type RotationViewReq = { target: RotTarget, 
+/**
+ * 往后推几小时（1–48，缺 ⇒ 12）。
+ */
+hours?: number, };
+type StrategyText = string | { zh: string, en?: string, };
+type WinFact = { open: boolean, used: number, resets?: number, 
+/**
+ * `resets` 写给人看的样子（按看的那一台的时区）。
+ */
+resetsText?: string, rate?: number, };
+```
 
-码：`bad_args` · `io_failed` · `no_such_config`
+码：`bad_args` · `no_session` · `no_strategy` · `refused`
 
-#### `rotation-strategies-read`
+#### `rotation-settings`
 
-这台加载的轮换策略。
+改一份设置。
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategies-read`
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-settings`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `lang` | → | 可缺：参数名 · 选项 · 灰字写哪种语言（`zh` 缺省 · `en`） |
-| `lib` | ← | 共用小函数库 `{source}`（随引擎走，只读） |
-| `strategies` | ← | 每份一项（内置在前、本机按文件名）：`{id, name, builtin, path?, ordered, text, params: [Decl＋字], acctParams: [Decl＋字], source, error?: {kind, line?, col?, msg, text}, usedBy}`；`Decl＋字` ＝ `{k, type, init, of?, min?, max?, label, hint?, options?: [{v, label, hint?}]}`，界面只照它画格 |
+入参 `RotationSettingsReq` · 回包 `RotationSettingsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotWhere = { sid: string, } | { strategy: string, };
+type RotationSettingsReply = { 
+/**
+ * 跟文件里的不同（会话 ⇒ 存成了草稿；相同 ⇒ 草稿丢掉）。
+ */
+dirty: boolean, };
+type RotationSettingsReq = { target: RotWhere, 
+/**
+ * 整份设置（形状照那份策略的声明）。
+ */
+settings: unknown, 
+/**
+ * 改之前读到的那份策略文件的版本；对不上 ⇒ `conflict`。
+ */
+ifRev?: string, };
+```
+
+码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
+
+#### `rotation-save`
+
+存设置。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-save`
+
+入参 `RotationSaveReq` · 回包 `RotationSaveReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotSaveAs = { name: string, };
+type RotWhere = { sid: string, } | { strategy: string, };
+type RotationSaveReply = { id: string, rev: string, };
+type RotationSaveReq = { target: RotWhere, 
+/**
+ * 要存的设置（会话缺 ⇒ 存它的草稿；策略缺 ⇒ `bad_args`）。
+ */
+settings?: unknown, 
+/**
+ * 改之前读到的那份策略文件的版本。
+ */
+ifRev: string, 
+/**
+ * 另存成一份新的（会话改用它）；缺 ⇒ 写回原来那份。
+ */
+as?: RotSaveAs, };
+```
+
+码：`bad_args` · `no_session` · `no_strategy` · `refused` · `conflict` · `io_failed`
+
+#### `rotation-revert`
+
+丢掉会话里没存的设置。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-revert`
+
+入参 `RotationRevertReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotDone = Record<symbol, never>;
+type RotationRevertReq = { sid: string, };
+```
+
+码：`bad_args` · `no_session` · `io_failed`
+
+#### `rotation-use`
+
+会话换一份策略。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-use`
+
+入参 `RotationUseReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotDone = Record<symbol, never>;
+type RotationUseReq = { sid: string, 
+/**
+ * `null` ⇒ 这个会话不再轮换（只用开会话的号）。
+ */
+strategy: string | null, 
+/**
+ * 有没存的设置也换（丢掉它）。
+ */
+discard: boolean, };
+```
+
+码：`bad_args` · `no_session` · `no_strategy` · `dirty` · `io_failed`
+
+#### `rotation-for-new`
+
+新会话用哪份策略。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-for-new`
+
+入参 `RotationForNewReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotDone = Record<symbol, never>;
+type RotationForNewReq = { 
+/**
+ * `null` ⇒ 新会话不轮换（只用开会话的号）。
+ */
+strategy: string | null, };
+```
+
+码：`bad_args` · `no_strategy` · `io_failed`
+
+#### `rotation-temp`
+
+排接下来先用谁。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-temp`
+
+入参 `RotationTempReq` · 回包 `RotationTempReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotTempOp = { "place": { account: string, at: number, } } | "clear";
+type RotationTempReply = { temp: Array<string>, };
+type RotationTempReq = { sid: string, op: RotTempOp, };
+```
+
+码：`bad_args` · `no_session` · `not_listed` · `io_failed`
+
+#### `rotation-use-now`
+
+现在用这个号。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-use-now`
+
+入参 `RotationUseNowReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotDone = Record<symbol, never>;
+type RotationUseNowReq = { sid: string, account: string, };
+```
+
+码：`bad_args` · `no_session` · `not_listed` · `unusable` · `io_failed`
 
 #### `rotation-strategy-add`
 
-装一份轮换策略进本机策略目录。
+加一份策略。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-add`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `error` | ← | 只在 `refused` 时有：读不懂那一处 `{kind, line?, col?, msg, text}` |
-| `id` | → ← | 文件名去 `.rhai`（路由段闸那一套字符，至多 32 字，不以 `@` 开头；与内置同 id ⇒ 不收） |
-| `said` | ← | 只在 `refused` 时有：那一句 |
-| `source` | → | 策略文件的全文（至多 64 KiB） |
-| `state` | ← | `"done"` · `"refused"` |
-| `usedBy` | ← | 删不了时：用它的配置 |
+入参 `RotationStrategyAddReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args` · `io_failed`
+```ts
+type RotStrategyId = { id: string, };
+type RotationStrategyAddReq = { 
+/**
+ * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
+ */
+source: string, 
+/**
+ * 存成的文件名（＝ 标题）。
+ */
+name: string, };
+```
+
+码：`bad_args` · `bad_strategy` · `io_failed`
+
+#### `rotation-strategy-copy`
+
+复制一份策略。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-copy`
+
+入参 `RotationStrategyCopyReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotStrategyId = { id: string, };
+type RotationStrategyCopyReq = { id: string, name: string, };
+```
+
+码：`bad_args` · `no_strategy` · `io_failed`
+
+#### `rotation-strategy-rename`
+
+给策略改名。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-rename`
+
+入参 `RotationStrategyRenameReq` · 回包 `RotStrategyId`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotStrategyId = { id: string, };
+type RotationStrategyRenameReq = { id: string, name: string, ifRev: string, };
+```
+
+码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
 
 #### `rotation-strategy-delete`
 
-删本机的一份轮换策略。
+删一份策略。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-delete`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `error` | ← | 同 `rotation-strategy-add` |
-| `id` | → ← | 哪份（内置的删不了） |
-| `said` | ← | 同 `rotation-strategy-add` |
-| `state` | ← | `"done"` · `"refused"`（内置的 · 有配置在用） |
-| `usedBy` | ← | 只在有配置在用时有：那几份的 id |
+入参 `RotationStrategyDeleteReq` · 回包 `RotDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_args` · `io_failed` · `no_such_strategy`
+```ts
+type RotDone = Record<symbol, never>;
+type RotationStrategyDeleteReq = { id: string, };
+```
 
-#### `rotation-strategy-try`
+码：`bad_args` · `no_strategy` · `in_use` · `io_failed`
 
-按此刻的事实试跑一份策略（不写盘不换号）。
+#### `rotation-day-paint`
 
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-try`
+在 24 小时条上刷一段。
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `config` | → | 跑哪份配置（与 `draft` · `sid` 三选一） |
-| `draft` | → | 草稿：一份完整配置内容 |
-| `id` | → | 可缺：用哪份已加载的策略（缺 ⇒ 配置写的那份） |
-| `lang` | → | 可缺：字写哪种语言 |
-| `maxOps` | ← | 一判的操作数上限 |
-| `memo` | ← | 这一判回的 `@memo`（没写 ⇒ 缺） |
-| `ops` | ← | 这一判用了几次操作 |
-| `pick` | ← | 会挑谁（停发 ⇒ 缺） |
-| `rows` | ← | 有效优先级的先后 `[{account, p, why, back?, backText?}]`：`p` 为 `null` ＝ 此刻不挑 |
-| `sid` | → | 这个会话此刻那一份（从它此刻的号起，手动调整 · 备忘照叠） |
-| `source` | → | 可缺：现编的一份策略全文（不装，只跑） |
-| `strategyError` | ← | 出错 / 超时 / 形状不对时：为什么（这一判照内置策略 1 排） |
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-day-paint`
 
-码：`bad_args` · `no_such_config` · `no_such_session`
+入参 `RotationDayPaintReq` · 回包 `RotationDayPaintReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-#### `rotation-plan`
+```ts
+type RotSeg = { from: bigint, to: bigint, v: number, };
+type RotationDayPaintReply = { segs: Array<RotSeg>, };
+type RotationDayPaintReq = { segs: Array<RotSeg>, 
+/**
+ * 刷哪一截（一天里的分钟；`to ≤ from` ⇒ 跨午夜，相等 ⇒ 一整天）。
+ */
+from: bigint, to: bigint, 
+/**
+ * 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
+ */
+v: number | null, };
+```
 
-推演：一份配置接下来会怎么换（都不写）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-plan`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `config` | → | 跑哪份配置（与 `draft` · `sid` 三选一；没有会话 ⇒ 从起会话的号起） |
-| `draft` | → | 草稿：一份完整配置内容（带 `sid` 时 ＝ 这个会话的草稿） |
-| `names` | ← | 号名与语义位名的字 |
-| `from` | ← | 视窗起（此刻之前那一截的起点） |
-| `grid` | ← | 刻度 `[{at, atText, label?}]`，按看的那一台的时区对齐 |
-| `lang` | → | 可缺：字写哪种语言 |
-| `now` | ← | 这台此刻的 unix 秒 |
-| `nowText` | ← | `now` 写好的字 |
-| `plan` | ← | `[{from, fromText, to, toText, account, why?, est?}]`：`account` 为 `null` ＝ 停发；`why` ＝ 那一段开头为什么换过来；此刻之后的都是估的（`est`） |
-| `rows` | ← | 合图每个号一行 `{account, bars: [{from, to, k, est?}], resets: [{w, at, atText}]}`：`k` ＝ `use` · `line`（策略声明了 `line` 且到线才出）· `off` · `refused` · `full` · `overage` · `login` · `skip` |
-| `sid` | → | 一个会话：此刻那一份，从它此刻的号起；此刻之前那一截照换号记录 |
-| `source` | → | 可缺：现编的一份策略全文（不装，只跑） |
-| `strategyError` | ← | 此刻这一判出错时：为什么 |
-| `until` | ← | 视窗止 |
-| `view` | → ← | `12h`（缺省：前 3h · 后 9h）· `24h`（前 6h · 后 18h） |
-
-码：`bad_args` · `no_such_config` · `no_such_session`
-
-#### `rotation-session-read`
-
-一批会话的轮换。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-read`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `detail` | ← | 同 `rotation-configs-read` |
-| `lang` | → | 可缺：字写哪种语言 |
-| `names` | ← | 号名与语义位名的字：`{accounts: {码: 字}, slots: {码: 字}}` |
-| `now` | ← | 这台此刻的 unix 秒；回包里每个时刻旁有 `…Text` |
-| `reason` | ← | 同 `rotation-configs-read` |
-| `sessions` | ← | 每个 sid 一份：`{state: "present", agent, start, current, since, history: [{at, from, to, leave, pick?, text}], inPlace, config: {id, name, rev, dirty, newer?: {rev, at, by, text}, diff?}, text, strategy: {id, name, ordered}, values: {params, accounts: [{who, params}], acctInit}, rows: [{account, why, skip?, back?, backText?, alsoUsed, facts, fromRest?}], hot?, blocked?: {earliest?, text}, strategyError?, quota}` · 中转没见过 ⇒ `{state: "absent", inPlace}`；`rows` 是有效优先级的先后，第一行在用 |
-| `sids` | → | 会话 id 的数组 |
-| `state` | ← | 那份文件的三态（同 `rotation-configs-read`） |
-
-码：`bad_args` · `failed`
-
-#### `rotation-session-open`
-
-会话打开一份配置。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-open`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `config` | → | 打开哪份 |
-| `diff` | ← | 只在 `dirty` 时有：本会话副本改了哪几格 |
-| `discard` | → | 可缺：`true` ⇒ 丢掉本会话没存的改动再打开 |
-| `sid` | → | 哪个会话 |
-| `state` | ← | `"opened"`（手动调整与备忘清掉）· `"dirty"`（副本有没存的改动，先问） |
-
-码：`bad_args` · `io_failed` · `no_such_config`
-
-#### `rotation-session-edit`
-
-改会话打开的那份配置的副本。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-edit`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `add` | → | 可缺：加进来的号（新的一行抄 `acctInit`） |
-| `diff` | ← | 副本跟原样差哪几格 `[{acct?, k, from, to, text}]` |
-| `dirty` | ← | 副本改没改过（改回原样 ⇒ `false`，副本丢掉） |
-| `drop` | → | 可缺：不参与的号（删那一行） |
-| `errors` | ← | 收不下的格 `[{cell, code, said}]`（那几格不改） |
-| `lang` | → | 可缺：字写哪种语言 |
-| `set` | → | `[{acct?, k, v}]`：`acct` 缺 ＝ 整份参数 · `@start` · `@rest` · `@init`（新加的号缺省）· 号 id（`rest` 底下的号 ⇒ 给它单写一行） |
-| `sid` | → | 哪个会话 |
-| `strategy` | → | 可缺：换一份策略（旧参数收进 `parked`，同名同类型的照搬） |
-
-码：`bad_args` · `io_failed` · `no_such_session`
-
-#### `rotation-session-save`
-
-存会话的副本（写回或另存为）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-save`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `as` | → | 可缺：`{name?}` ⇒ 另存为（新 id，本会话改开它；不起名 ⇒ `配置 N`） |
-| `errors` | ← | 只在 `refused` 时有 |
-| `force` | → | 可缺：`true` ⇒ 撞版本也覆盖 |
-| `id` | ← | 只在 `saved` 时有：写成的那份 |
-| `ifRev` | → | 打开时的 `rev`；对不上且没 `force` ⇒ `conflict` |
-| `mine` | ← | 只在 `conflict` 时有：本会话的改动 |
-| `rev` | ← | 写成的版本 · `conflict` 时此刻的版本 |
-| `sid` | → | 哪个会话 |
-| `state` | ← | `"saved"` · `"conflict"` · `"refused"` |
-| `theirs` | ← | 只在 `conflict` 时有：别处那一版跟本会话的差 |
-
-码：`bad_args` · `io_failed`
-
-#### `rotation-session-revert`
-
-丢掉会话副本的改动。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-revert`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `sid` | → | 哪个会话 |
-| `state` | ← | `"done"` |
-| `toLatest` | → | 可缺：载入新版本（同一件事：副本丢掉、版本跟上） |
-
-码：`bad_args` · `io_failed` · `no_such_session`
-
-#### `rotation-session-set`
-
-会话的手动调整（拖一行 · 刷新策略）。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-session-set`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `place` | → | `{account, at}`：把那个号放到第 `at` 位（0 起；`0` ＝ 现在就换过去，同 `rotation-switch` 热换，不出任何提示） |
-| `refresh` | → | `true` ⇒ 清掉全部手动调整与备忘，照策略重算 |
-| `sid` | → | 哪个会话 |
-| `state` | ← | `"done"` · `"skipped"` · `"failed"` |
-| `why` | ← | 没换成时的码（同 `rotation-switch` 的 `hot` 那一格） |
-
-码：`bad_args` · `io_failed` · `no_such_session`
-
-#### `rotation-switch`
-
-现在就换。
-
-收 `args` · 可撤 · CLI：`ccm -- --rotation-switch`
-
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `mode` | → | `hot`（不重启，下一发起就走它）· `restart`（换号重启） |
-| `sessions` | → ← | `hot`：会话 id；`restart`：每项是 `session-restart` 的入参（不带 `account`）；应答里是逐个结果 |
-| `target` | → | 换到哪个号 |
-
-码：`bad_args` · `failed`
+码：`bad_args`
 
 #### `apikey-key-set`
 
@@ -7963,7 +8249,7 @@ local: boolean,
  */
 ticket?: string, 
 /**
- * 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
+ * 轮换：缺 ＝ 用「新会话用」的那份策略（新会话本来就这样，不写）· `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
  */
 rotation?: RotationPick, 
 /**
@@ -7981,9 +8267,9 @@ permissionMode?: string, };
 type Place = "tmux" | "window";
 type RotationPick = { 
 /**
- * 配置的 id（非空）。
+ * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）。
  */
-config: string, };
+strategy: string, };
 type SessionNew = { outcome: SessionNewOutcome, 
 /**
  * tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
@@ -8016,7 +8302,7 @@ prompt: FirstSay | null, };
 type SessionNewOutcome = "started" | "open";
 ```
 
-码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_such_config`
+码：`bad_args` · `unknown_agent` · `bad_command` · `no_dir` · `account_unavailable` · `place_unavailable` · `bad_tmux_name` · `tmux_taken` · `unobservable` · `fork_failed` · `refused` · `start_failed` · `child_timed_out` · `launch_pending` · `no_strategy`
 
 #### `session-new-facts`
 
@@ -9380,23 +9666,22 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--resident-stop` `[--grace <秒>]` | 停这台的常驻后端：核身份 → SIGTERM → 宽限（缺省 35 秒）→ SIGKILL；回 `{stopped: graceful\|killed\|not_running, pid}` |
 | `--resident-verdict` | ＝ 帧命令 `resident-verdict`：远端常驻后端要不要换一次 |
 | `--resolve` | ＝ 帧命令 `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan` |
-| `--rotation-config-delete` | ＝ 帧命令 `rotation-config-delete`：删一份轮换配置 |
-| `--rotation-config-rename` | ＝ 帧命令 `rotation-config-rename`：给一份轮换配置改名 |
-| `--rotation-config-save` | ＝ 帧命令 `rotation-config-save`：存一份轮换配置（新建或覆盖） |
-| `--rotation-configs-read` | ＝ 帧命令 `rotation-configs-read`：这台的轮换配置表 |
-| `--rotation-default-set` | ＝ 帧命令 `rotation-default-set`：设这台的本机默认配置 |
-| `--rotation-plan` | ＝ 帧命令 `rotation-plan`：推演：一份配置接下来会怎么换（都不写） |
-| `--rotation-session-edit` | ＝ 帧命令 `rotation-session-edit`：改会话打开的那份配置的副本 |
-| `--rotation-session-open` | ＝ 帧命令 `rotation-session-open`：会话打开一份配置 |
-| `--rotation-session-read` | ＝ 帧命令 `rotation-session-read`：一批会话的轮换 |
-| `--rotation-session-revert` | ＝ 帧命令 `rotation-session-revert`：丢掉会话副本的改动 |
-| `--rotation-session-save` | ＝ 帧命令 `rotation-session-save`：存会话的副本（写回或另存为） |
-| `--rotation-session-set` | ＝ 帧命令 `rotation-session-set`：会话的手动调整（拖一行 · 刷新策略） |
-| `--rotation-strategies-read` | ＝ 帧命令 `rotation-strategies-read`：这台加载的轮换策略 |
-| `--rotation-strategy-add` | ＝ 帧命令 `rotation-strategy-add`：装一份轮换策略进本机策略目录 |
-| `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删本机的一份轮换策略 |
-| `--rotation-strategy-try` | ＝ 帧命令 `rotation-strategy-try`：按此刻的事实试跑一份策略（不写盘不换号） |
-| `--rotation-switch` | ＝ 帧命令 `rotation-switch`：现在就换 |
+| `--rotation-day-paint` | ＝ 帧命令 `rotation-day-paint`：在 24 小时条上刷一段 |
+| `--rotation-facts` | ＝ 帧命令 `rotation-facts`：每个号此刻的事实 |
+| `--rotation-for-new` | ＝ 帧命令 `rotation-for-new`：新会话用哪份策略 |
+| `--rotation-revert` | ＝ 帧命令 `rotation-revert`：丢掉会话里没存的设置 |
+| `--rotation-save` | ＝ 帧命令 `rotation-save`：存设置 |
+| `--rotation-settings` | ＝ 帧命令 `rotation-settings`：改一份设置 |
+| `--rotation-strategies` | ＝ 帧命令 `rotation-strategies`：策略目录 |
+| `--rotation-strategy-add` | ＝ 帧命令 `rotation-strategy-add`：加一份策略 |
+| `--rotation-strategy-copy` | ＝ 帧命令 `rotation-strategy-copy`：复制一份策略 |
+| `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删一份策略 |
+| `--rotation-strategy-rename` | ＝ 帧命令 `rotation-strategy-rename`：给策略改名 |
+| `--rotation-temp` | ＝ 帧命令 `rotation-temp`：排接下来先用谁 |
+| `--rotation-try` | ＝ 帧命令 `rotation-try`：试跑一份策略 |
+| `--rotation-use` | ＝ 帧命令 `rotation-use`：会话换一份策略 |
+| `--rotation-use-now` | ＝ 帧命令 `rotation-use-now`：现在用这个号 |
+| `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |

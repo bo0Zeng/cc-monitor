@@ -360,21 +360,13 @@ fn the_command_face_answers_with_the_declared_fields() {
         "p.tar",
         &tar_bytes(&[TarItem::File(b"f", b"1", 0o644)]),
     );
-    let v = answer_wire(
-        &Face::issue(),
+    let v = crate::control::files_write::tests::ask(
         "files-extract",
         &serde_json::json!({"root": base.to_string_lossy(), "rel": {"b16": "702e746172"}}),
     )
     .expect("解压被拒");
-    let got: std::collections::BTreeSet<&str> = v
-        .as_object()
-        .expect("对象")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let declared: std::collections::BTreeSet<&str> =
-        EXTRACT_COMMANDS[0].fields.iter().copied().collect();
-    assert_eq!(got, declared);
+    // 回包就是那一份线上类型（多一格 · 少一格都解不回来）。
+    serde_json::from_value::<cmd_wire::files::FilesTreeReply>(v).expect("回包照类型解得回来");
     assert_eq!(std::fs::read(base.join("p/f")).expect("f"), b"1");
     std::fs::remove_dir_all(&base).ok();
 }

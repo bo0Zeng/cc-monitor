@@ -185,6 +185,7 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #
 # ② **不按墙钟判的格让路**（`nice -n 10`：负载涨上来时 CPU 先给按墙钟判的那些）：
 #    · 按墙钟判（有期限、超时即红 ⇒ 普通优先级）—— `npm` · `coverage`（vitest 每条有期限）· `cargo` · `backend`
+#      · `rotation-500`（沙箱里的策略每判有墙钟兜底）
 #      · `comm-boundary` · `test-tiers`（`cargo test` 里有带期限 / 等待上限的用例；这两格的 `cargo test --no-run` 那一半让路，
 #      见 `gate_cargo_test_nonet`）· `ccbus-twophase`（真跑、带等待上限）· e2e 各套 · `env-sandbox` · `weak-net`
 #      · `mobile`（手机端的 JVM 单测里有带等待上限的进程与协程用例）· `android-device`（模拟器上的设备测，带等待上限）；
@@ -193,7 +194,7 @@ gate_vitest_share() { ( export GATE_VITEST_WORKERS="$GATE_VITEST_EACH"; "$@" ); 
 #      读文本类 `worktree-clean` · `hooks` · `copy2` · `shellcheck` · `e2e-smoke` · `release-gate` · `platform` · `installface`
 #      · `fmt` · `fmt-backend` · `audit` · `generated` · `tmux-default`。
 #    两张表与盘上的格两向相等（同一个判据文件钉）：新加一格就得在这里归一边。
-GATE_WALL_CELLS=" npm coverage cargo backend comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
+GATE_WALL_CELLS=" npm coverage cargo backend rotation-500 comm-boundary test-tiers ccbus-twophase e2e env-sandbox weak-net mobile android-device "
 GATE_YIELD_CELLS=" deadcode deadcode-backend clippy clippy-backend appbuild shotsshell winchk winchk-backend winlink muslbuild androidbuild tsc e2e-prep worktree-clean hooks copy2 shellcheck e2e-smoke release-gate platform installface fmt fmt-backend audit generated tmux-default "
 gate_yields() { case "$GATE_YIELD_CELLS" in *" $1 "*) return 0 ;; esac; return 1; }
 # 只降调它所在的那个子 shell（`$BASHPID`）及其往后起的子进程；调用方负责把它放进子 shell 里。
@@ -1071,6 +1072,11 @@ fi
 gate_backend_libs() { gate_workspace_libs src/backend; }
 run_gate_sum backend gate_backend_libs \
          gate_cargo_test_nonet src/backend --workspace
+# ── `rotation-500`：轮换一致性的大样本（#22 · #26 · #36 各 500 组；常规那一趟里只跑 20 · 5 · 2 组）──
+# 测试档的 Rhai 慢几十倍（100 组二十多分钟）⇒ 用 `perf` 档（发布档的优化、不做 LTO，后端 Cargo.toml 里那一节）单编一趟、只跑这一条。
+# gate-affected 里只在改到轮换那几处时点到（map 的 @rotation500），全量里恒跑。
+run_gate rotation-500 '判过的条数 = 1（一条测试里 #22 · #26 · #36 各 500 组随机设置 ＋ 事实，逐发判与推演两边比）；perf 档编、无网沙箱里跑' \
+         gate_cargo_test_nonet src/backend --profile perf --lib -- --ignored --exact accounts::quota::rules::decide::tests::consistency_500_groups
 run_gate deadcode-backend '不是数出来的数：`src/backend` 的 `cargo check`（非 test，lib ＋ bin）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
          gate_deadcode deadcode-backend src/backend cc_monitor_backend
 run_gate clippy-backend '不是数出来的数：`cargo clippy --workspace --all-targets` 只有绿/红两态，射程 = `src/backend` 那一棵 workspace（后端 ＋ 拨号核心）的全部 target，与 `ci.yml` 的 `backend` job 那一步同一条命令（不带 `-D warnings` ⇒ 只有 deny 档的 lint 与编译错红）' \

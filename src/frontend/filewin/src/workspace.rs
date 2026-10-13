@@ -1597,18 +1597,21 @@ pub fn common_dir(a: &str, b: &str) -> String {
 /// ⚠ 同目录那一形（「复制为」那个框）走的是 `copy::copy_args`，它**刻意拒**跨目录（防「当前目录」与
 ///   「那一行的路径」写法不一致时拼到别处去）—— 这里是另一件事（用户明说「放到另一栏那个目录」），
 ///   所以另起一个，不去放宽那一道。后端的 `from` / `to` 本来就收多段相对路径（逐段过词法围栏）。
-pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
+pub fn across_args(
+    job: &CopyJob,
+    overwrite: bool,
+) -> Result<cmd_wire::files::FilesCopyReq, String> {
     // 〔有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同：`common_dir` 与它同一个按段比的口径）。
     let (from, to) = (job.from_path(), job.to_path());
     let root = super::source::common_dir_bytes(&from.parent().bytes(), &to.parent().bytes());
     let root_path = super::source::RemotePath::from_bytes(&root);
-    let rel = |p: &super::source::RemotePath| -> Result<serde_json::Value, String> {
+    let rel = |p: &super::source::RemotePath| -> Result<cmd_wire::files::WirePath, String> {
         let b = p.bytes();
         let cut = if root == b"/" { 1 } else { root.len() + 1 };
         (b.starts_with(&root)
             && b.len() > cut
             && (root == b"/" || b.get(root.len()) == Some(&b'/')))
-        .then(|| super::source::wire_bytes(&b[cut..]))
+        .then(|| cmd_wire::files::WirePath(b[cut..].to_vec()))
         .ok_or_else(|| {
             copy_text(
                 "rsFilewinWorkspace.acrossArgs.notUnder",
@@ -1616,14 +1619,13 @@ pub fn across_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, 
             )
         })
     };
-    let mut v = serde_json::json!({
-        "root": root_path.wire(),
-        "from": rel(&from)?,
-        "to": rel(&to)?,
-        "overwrite": overwrite,
-    });
-    super::copy::mark_recursive(&mut v, job);
-    Ok(v)
+    Ok(cmd_wire::files::FilesCopyReq {
+        root: root_path.path(),
+        from: rel(&from)?,
+        to: rel(&to)?,
+        overwrite: Some(overwrite),
+        recursive: super::copy::recursive_of(job),
+    })
 }
 
 /// 跨目录复制那一趟（经通道问后端 `files-copy`）。回这一件复制了什么（目录那一件是整棵）。
@@ -1633,16 +1635,11 @@ pub async fn copy_across(
     job: &CopyJob,
     overwrite: bool,
 ) -> Result<super::copy::Copied, String> {
-    let args = across_args(job, overwrite)?;
-    let d = super::source::ask(
-        line,
-        origin,
-        super::copy::CMD_COPY,
-        &args,
-        super::copy::COPY_BUDGET,
-    )
-    .await?;
-    super::copy::copied_from_reply(job, &d)
+    let req = across_args(job, overwrite)?;
+    let d = super::source::ask_typed(line, origin, &req, super::copy::COPY_BUDGET)
+        .await
+        .map_err(|f| f.said)?;
+    Ok(super::copy::copied_from_reply(job, &d))
 }
 
 impl eframe::App for Workspace {

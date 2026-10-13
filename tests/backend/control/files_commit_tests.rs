@@ -288,6 +288,24 @@ fn a_bad_key_is_refused_before_anything_lands() {
     );
 }
 
+type Answer = crate::control::files_write::tests::Answer;
+use crate::control::files_write::tests::via;
+
+/// 照登记那一行的问法问一条（见 `files_write::tests::answer`）。
+fn answer_wire(_face: &Face, name: &str, args: &serde_json::Value) -> Answer {
+    crate::control::files_write::tests::ask(name, args)
+}
+/// 家由判据给的那三形（不改进程的 `HOME`）。
+fn answer_commit_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
+    via(args, |r| commit_upload_at(face, home, r))
+}
+fn answer_stage_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
+    via(args, |r| stage_chunk_at(face, home, r))
+}
+fn answer_commit_text_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
+    via(args, |r| commit_text_at(face, home, r))
+}
+
 /// ★ 线上那一面：覆盖策略**必须显式给**（不给 ⇒ `bad_args`，不默认成哪一边）；
 /// 未知命令名 ⇒ `bad_args`；命令表与分派两向对得上。
 #[test]
@@ -302,9 +320,6 @@ fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
     });
     assert_eq!(e.code, "bad_args");
     assert!(diag.contains("overwrite"), "{}", e.said);
-    let e = answer_wire(&Face::issue(), "files-create", &serde_json::json!({}))
-        .expect_err("不是这一面的");
-    assert_eq!(e.code, "bad_args");
     assert_eq!(
         COMMIT_COMMANDS.iter().map(|c| c.name).collect::<Vec<_>>(),
         vec![
@@ -318,7 +333,10 @@ fn the_wire_face_requires_an_explicit_overwrite_and_knows_only_its_command() {
         let e =
             answer_wire(&Face::issue(), c.name, &serde_json::json!({})).expect_err("空参数该拒");
         assert!(
-            ["bad_args", "bad_path"].contains(&e.code) && c.codes.contains(&e.code),
+            ["bad_args", "bad_path"].contains(&e.code)
+                && crate::stream::inbound::REGISTRY
+                    .iter()
+                    .any(|s| s.name == c.name && s.codes.contains(&e.code)),
             "{}：{e:?}",
             c.name
         );

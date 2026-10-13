@@ -35,10 +35,11 @@
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
 
 use crate::control::files_write::{
-    content_sha256, overwrite_text_expecting, resolve_in_root, sha256_expect_of, Answer,
+    content_sha256, overwrite_text_expecting, rel_of, resolve_in_root, root_of, wire_of, Act,
     ManageCommand, WriteFail, WriteRefusal,
 };
 use crate::platform::fs::{Face, Resolved, Ro};
+use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason};
 use std::path::{Path, PathBuf};
 
@@ -80,26 +81,17 @@ pub const COMMIT_COMMANDS: &[ManageCommand] = &[
             "把暂存区里一份传完的上传件挪进用户指定的目标（先过路径解析；先核整份摘要 `expect: {sha256}`，\
              不等 ⇒ 删掉坏暂存件、`stale`；不覆盖时 `O_EXCL` 占位再改名上位）",
         // +`chunks`（入，可缺席；`bytes` 同时是入）：块形 ⇒ 先把块拼成暂存件（`files_upload_chunks`）再走这同一条提交。
-        args: &["bytes", "chunks", "expect", "key", "overwrite", "rel", "root"],
-        fields: &["bytes", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     // ── 存盘装不进一行时的两步（头注「第二种件」一节）──────────────
     ManageCommand {
         name: "files-stage-chunk",
         purpose: "把存盘的一块写进暂存区 `<key>.<seq>.chunk`（`O_EXCL` 新建：同一块写第二次就拒；暂存区不在就建）",
-        args: &["content", "key", "seq"],
-        fields: &["bytes"],
-        codes: &["bad_args", "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-commit-text",
         purpose: "按块号读回 `0..chunks` 块、拼起来、总长必须等于 `bytes`，再覆盖写目标（原子换，与 \
                `files-write-text` 同一个原语：跟链接、只收已在的普通文件）；`expect: {sha256}` 必给，\
                盘上那份对不上 ⇒ `stale`、一个字节不写；不论成败都删掉这些块",
-        args: &["bytes", "chunks", "expect", "key", "rel", "root"],
-        fields: &["bytes", "path", "sha256"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
 ];
 /// `key` 合不合法：恰好 [`KEY_LEN`] 位、只有 `0-9a-f`。
@@ -551,7 +543,7 @@ pub fn commit_text(
     chunks: u64,
     bytes: u64,
     root: &Path,
-    rel: &str,
+    rel: &Path,
     expect_sha256: &str,
 ) -> Result<(PathBuf, u64, String), WriteRefusal> {
     // 与 `files-write-text` 同一道 CAS（`overwrite_text_expecting`）：两支存盘同一种结果，含「盘上被改过 ⇒ stale」。
@@ -619,47 +611,6 @@ pub fn sweep_stale(face: &Face, home: &Path, now_secs: u64, keep: &str) -> Vec<S
     gone
 }
 
-/// 取一个路径参数（字符串 或 `{"b16": …}`，与写面同一口径）。
-fn path_arg(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
-    let v = args.get(key).ok_or_else(|| {
-        (
-            "bad_path",
-            crate::common::contract::malformed(&format!("missing `{key}`")),
-        )
-    })?;
-    let raw = crate::files::raw::from_json(v).ok_or_else(|| {
-        (
-            "bad_path",
-            crate::common::contract::malformed(&format!(
-                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-            )),
-        )
-    })?;
-    if raw.is_empty() {
-        return Err((
-            "bad_path",
-            crate::common::contract::malformed(&format!("`{key}` is empty")),
-        ));
-    }
-    Ok(crate::files::raw::to_path_buf(&raw))
-}
-
-/// 取一个字符串参数。
-fn str_arg<'a>(args: &'a serde_json::Value, key: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(key)
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(&format!("missing `{key}` or not a string")),
-            )
-        })
-}
-
-fn answer_commit(face: &Face, args: &serde_json::Value) -> Result<serde_json::Value, Fail> {
-    answer_commit_at(face, &home_dir().map_err(plain)?, args)
-}
-
 /// 这一面的失败：与写面同一形（码 ＋ 那一句 ＋ 下层原话；命令表那一层把原话交给应答的复制详情）。
 /// 不借流那一层的类型：文件管理后端只许够 platform / common（`module_boundary_guard`）。
 pub type Fail = WriteFail;
@@ -674,112 +625,118 @@ fn plain(f: (&'static str, String)) -> Fail {
     WriteFail::from(f)
 }
 
-/// [`answer_commit`] 去掉「家在哪」那一问之后的全部 —— 判据从这里进（不改进程的 `HOME`：
-/// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。
-fn answer_commit_at(
-    face: &Face,
-    home: &Path,
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, Fail> {
-    let root = path_arg(args, "root").map_err(plain)?;
-    // `rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
-    let rel = path_arg(args, "rel").map_err(plain)?;
-    let key = str_arg(args, "key").map_err(plain)?.to_string();
-    // 覆盖策略必须显式给：默认成哪一边都是替用户做了一个他没做的决定。
-    let overwrite = args
-        .get("overwrite")
-        .and_then(serde_json::Value::as_bool)
-        .ok_or_else(|| {
-            plain((
-                "bad_args",
-                crate::common::contract::malformed(
-                    "missing `overwrite` (true / false, no default)",
-                ),
-            ))
-        })?;
-    // 整份摘要**必给**（传输台 done 帧交的那个）：没有「不核就上位」这一形。
-    let expect = sha256_expect_of(args).map_err(plain)?;
-    // 块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
-    if args.get("chunks").is_some() {
-        let (chunks, bytes) = (
-            u64_arg(args, "chunks").map_err(plain)?,
-            u64_arg(args, "bytes").map_err(plain)?,
-        );
-        super::files_upload_chunks::assemble_part(face, home, &key, chunks, bytes)
-            .map_err(refused)?;
-    }
-    let (landed, bytes) =
-        commit_upload(face, home, &key, &root, &rel, overwrite, &expect).map_err(refused)?;
-    // 暂存区清理「孤儿」那一格的事件：一次提交成功。
+/// 这台后端的家（暂存区拼在它底下）。
+fn home_dir() -> Result<PathBuf, Fail> {
+    crate::platform::paths::home_dir()
+        .ok_or(("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
+        .map_err(plain)
+}
+
+/// 一次提交成功 ⇒ 顺手扫孤儿（暂存区清理「孤儿」那一格的事件）。
+fn sweep_after(face: &Face, home: &Path, key: &str) {
     let now = crate::common::time::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    sweep_stale(face, home, now, &key);
-    Ok(serde_json::json!({
-        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
-        "bytes": bytes,
-    }))
+    sweep_stale(face, home, now, key);
 }
 
-/// 取一个非负整数参数。
-fn u64_arg(args: &serde_json::Value, key: &str) -> Result<u64, (&'static str, String)> {
-    args.get(key)
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| {
-            (
+crate::control::files_write::acts! {
+    FilesCommitUploadReq => FilesPathBytesReply, |r, f| commit_upload_of(f, r);
+    FilesStageChunkReq => FilesStageChunkReply, |r, f| stage_chunk_of(f, r);
+    FilesCommitTextReq => FilesWrittenReply, |r, f| commit_text_of(f, r);
+}
+
+/// `files-commit-upload`。
+fn commit_upload_of(
+    face: &Face,
+    req: wire::FilesCommitUploadReq,
+) -> Result<wire::FilesPathBytesReply, Fail> {
+    commit_upload_at(face, &home_dir()?, req)
+}
+
+/// [`commit_upload_of`] 去掉「家在哪」那一问之后的全部 —— 判据从这里进（不改进程的 `HOME`：
+/// 那是全进程共享的，改了会波及同一进程里并发跑的别的判据）。
+/// 覆盖策略 · 整份摘要都必须显式给（缺席在解入参那一步就拒了）：默认成哪一边都是替用户做了一个他没做的决定。
+pub fn commit_upload_at(
+    face: &Face,
+    home: &Path,
+    req: wire::FilesCommitUploadReq,
+) -> Result<wire::FilesPathBytesReply, Fail> {
+    let root = root_of(&req.root, "root")?;
+    // `rel` 也收 `{"b16": …}`：本机落点是非 UTF-8 名（有损名下载在 Linux 上按原始字节落名）时经这条提交。
+    let rel = root_of(&req.rel, "rel")?;
+    // 块形（SFTP 起始目录不是后端 home ⇒ 窗口改走后端链路分块写）：先拼成暂存件，下面照旧同一条提交。
+    if let Some(chunks) = req.chunks {
+        let bytes = req.bytes.ok_or_else(|| {
+            plain((
                 "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "missing `{key}` or not a non-negative integer"
-                )),
-            )
-        })
-}
-
-/// 这台后端的家（暂存区拼在它底下）。
-fn home_dir() -> Result<PathBuf, (&'static str, String)> {
-    crate::platform::paths::home_dir()
-        .ok_or(("io_failed", copy_text("beFilesCommit.staging.noHome", &[])))
+                crate::common::contract::malformed("`chunks` given without `bytes`"),
+            ))
+        })?;
+        super::files_upload_chunks::assemble_part(face, home, &req.key, chunks, bytes)
+            .map_err(refused)?;
+    }
+    let (landed, bytes) = commit_upload(
+        face,
+        home,
+        &req.key,
+        &root,
+        &rel,
+        req.overwrite,
+        &req.expect.sha256.0,
+    )
+    .map_err(refused)?;
+    sweep_after(face, home, &req.key);
+    Ok(wire::FilesPathBytesReply {
+        path: wire_of(&landed),
+        bytes,
+    })
 }
 
 /// `files-stage-chunk`。
-fn answer_stage_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
-    let key = str_arg(args, "key")?.to_string();
-    let seq = u64_arg(args, "seq")?;
-    let v = args.get("content").ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `content` (at least 1 byte)"),
-        )
-    })?;
-    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(
-                "`content` must be a string or {\"b16\": \"<hex>\"}",
-            ),
-        )
-    })?;
-    if bytes.is_empty() {
-        return Err(WriteFail::from((
+fn stage_chunk_of(
+    face: &Face,
+    req: wire::FilesStageChunkReq,
+) -> Result<wire::FilesStageChunkReply, Fail> {
+    stage_chunk_at(face, &home_dir()?, req)
+}
+
+/// [`stage_chunk_of`] 去掉「家在哪」那一问（判据从这里进）。空块 ⇒ `bad_args`（每块至少 1 字节）。
+pub fn stage_chunk_at(
+    face: &Face,
+    home: &Path,
+    req: wire::FilesStageChunkReq,
+) -> Result<wire::FilesStageChunkReply, Fail> {
+    if req.content.bytes().is_empty() {
+        return Err(plain((
             "bad_args",
             crate::common::contract::malformed("empty chunk (each chunk is at least 1 byte)"),
         )));
     }
-    let n = stage_chunk(face, home, &key, seq, &bytes).map_err(WriteFail::from)?;
-    Ok(serde_json::json!({ "bytes": n }))
+    let n = stage_chunk(face, home, &req.key, req.seq, req.content.bytes()).map_err(refused)?;
+    Ok(wire::FilesStageChunkReply { bytes: n })
 }
 
 /// `files-commit-text`。
-fn answer_commit_text_at(face: &Face, home: &Path, args: &serde_json::Value) -> Answer {
-    let root = path_arg(args, "root")?;
-    let rel = str_arg(args, "rel")?.to_string();
-    let key = str_arg(args, "key")?.to_string();
-    let chunks = u64_arg(args, "chunks")?;
-    let bytes = u64_arg(args, "bytes")?;
+fn commit_text_of(
+    face: &Face,
+    req: wire::FilesCommitTextReq,
+) -> Result<wire::FilesWrittenReply, Fail> {
+    commit_text_at(face, &home_dir()?, req)
+}
+
+/// [`commit_text_of`] 去掉「家在哪」那一问（判据从这里进）。
+pub fn commit_text_at(
+    face: &Face,
+    home: &Path,
+    req: wire::FilesCommitTextReq,
+) -> Result<wire::FilesWrittenReply, Fail> {
+    let root = root_of(&req.root, "root")?;
+    let (chunks, bytes) = (req.chunks, req.bytes);
     let cap = crate::files::READ_TEXT_MAX_BYTES as u64;
     if bytes > cap {
-        return Err(WriteFail::from((
+        return Err(plain((
             "bad_args",
             copy_text(
                 "beFilesCommit.text.tooLarge",
@@ -788,44 +745,30 @@ fn answer_commit_text_at(face: &Face, home: &Path, args: &serde_json::Value) -> 
         )));
     }
     if chunks == 0 || chunks > bytes {
-        return Err(WriteFail::from((
+        return Err(plain((
             "bad_args",
             crate::common::contract::malformed(&format!(
                 "`chunks` is {chunks} and `bytes` is {bytes}; chunks must be within 1..=bytes"
             )),
         )));
     }
-    let expect = sha256_expect_of(args)?;
-    let (landed, n, sha) = commit_text(face, home, &key, chunks, bytes, &root, &rel, &expect)
-        .map_err(WriteFail::from)?;
-    // 提交成功 ⇒ 顺手扫孤儿（同上传那一条的事件）。
-    let now = crate::common::time::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    sweep_stale(face, home, now, &key);
-    Ok(serde_json::json!({
-        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
-        "bytes": n,
-        "sha256": sha,
-    }))
-}
-
-/// 这一面的**唯一入口**（形状照写面那一个）。
-pub fn answer_wire(
-    face: &Face,
-    wire_name: &str,
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, Fail> {
-    match wire_name {
-        "files-commit-upload" => answer_commit(face, args),
-        "files-stage-chunk" => answer_stage_at(face, &home_dir().map_err(plain)?, args),
-        "files-commit-text" => answer_commit_text_at(face, &home_dir().map_err(plain)?, args),
-        other => Err(plain((
-            "bad_args",
-            crate::common::contract::malformed(&format!("unknown command `{other}`")),
-        ))),
-    }
+    let (landed, n, sha) = commit_text(
+        face,
+        home,
+        &req.key,
+        chunks,
+        bytes,
+        &root,
+        &rel_of(&req.rel),
+        &req.expect.sha256.0,
+    )
+    .map_err(refused)?;
+    sweep_after(face, home, &req.key);
+    Ok(wire::FilesWrittenReply {
+        path: wire_of(&landed),
+        bytes: n,
+        sha256: wire::Sha256Hex(sha),
+    })
 }
 
 #[cfg(test)]

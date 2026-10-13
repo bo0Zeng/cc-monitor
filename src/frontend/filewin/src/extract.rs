@@ -32,25 +32,15 @@ pub struct Extracted {
     pub bytes: u64,
 }
 
-/// `files-extract` 的 `data` → [`Extracted`]。缺字段 ⇒ 失败（不补 0）。
-pub fn extracted_from_reply(d: &serde_json::Value) -> Result<Extracted, String> {
-    let n = |k: &str| -> Result<u64, String> {
-        d.get(k)
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| copy_text("rsFilewinExtract.reply.missingField", &[("field", k)]))
-    };
-    let path = d
-        .get("path")
-        .and_then(super::find::decode_path)
-        .map(|b| String::from_utf8_lossy(&b).to_string())
-        .ok_or_else(|| copy_text("rsFilewinExtract.reply.missingField", &[("field", "path")]))?;
-    Ok(Extracted {
-        path,
-        files: n("files")?,
-        dirs: n("dirs")?,
-        links: n("links")?,
-        bytes: n("bytes")?,
-    })
+/// `files-extract` 的回包（按类型解好的）→ [`Extracted`]。
+pub fn extracted_from_reply(d: &cmd_wire::files::FilesTreeReply) -> Extracted {
+    Extracted {
+        path: String::from_utf8_lossy(d.path.bytes()).to_string(),
+        files: d.files,
+        dirs: d.dirs,
+        links: d.links,
+        bytes: d.bytes,
+    }
 }
 
 /// 一趟的结局。
@@ -100,24 +90,25 @@ pub fn outcome_copy(name: &str, o: &Outcome) -> Option<String> {
 pub async fn extract_remote(
     line: &super::source::Line,
     origin: &super::source::Origin,
-    root: &serde_json::Value,
-    rel: &serde_json::Value,
+    root: &cmd_wire::files::WirePath,
+    rel: &cmd_wire::files::WirePath,
     fresh: bool,
 ) -> Result<Extracted, super::source::Failed> {
-    let mut args = serde_json::json!({ "root": root, "rel": rel });
-    if fresh {
-        args["fresh"] = serde_json::Value::Bool(true);
-    }
-    let d = super::source::ask_coded(line, origin, CMD_EXTRACT, &args, EXTRACT_BUDGET).await?;
-    extracted_from_reply(&d).map_err(super::source::Failed::from)
+    let req = cmd_wire::files::FilesExtractReq {
+        root: root.clone(),
+        rel: rel.clone(),
+        fresh: fresh.then_some(true),
+    };
+    let d = super::source::ask_typed(line, origin, &req, EXTRACT_BUDGET).await?;
+    Ok(extracted_from_reply(&d))
 }
 
 /// 整趟：先发一次；后端说 `exists` ⇒ 把原话交给 `ask`（人答「另起一个名字」⇒ `true`）⇒ 带 `fresh` 再发一次。
 pub async fn run<A, AFut>(
     line: &super::source::Line,
     origin: &super::source::Origin,
-    root: &serde_json::Value,
-    rel: &serde_json::Value,
+    root: &cmd_wire::files::WirePath,
+    rel: &cmd_wire::files::WirePath,
     ask: A,
 ) -> Outcome
 where

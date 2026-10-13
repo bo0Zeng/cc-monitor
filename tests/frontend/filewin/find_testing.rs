@@ -883,7 +883,7 @@ impl FakeBackend {
                     None,
                     None,
                     Some(
-                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs }),
+                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs, "links": 0 }),
                     ),
                 )
             }
@@ -950,9 +950,9 @@ impl FakeBackend {
                     reply["before"] = serde_json::json!(0o644);
                 }
                 if cmd == "files-delete" {
-                    if let Some(n) = self.delete_left.lock().unwrap().pop_front() {
-                        reply["remaining"] = serde_json::json!(n);
-                    }
+                    let n = self.delete_left.lock().unwrap().pop_front().unwrap_or(0);
+                    reply["removed"] = serde_json::json!(1);
+                    reply["remaining"] = serde_json::json!(n);
                 }
                 (true, None, None, Some(reply))
             }
