@@ -388,7 +388,7 @@ pub(crate) struct HubSlot {
     pub kept: Vec<String>,
 }
 
-/// 勾上的一台那张卡：拼不成 ⇒ `card` 为 `null`、`error` = 那台说的那一句。
+/// 勾上的一台那张卡：拼不成 ⇒ `card` 为 `null`、`error` = 那台说的那一句、`detail` = 原话（进那一行的复制详情；没有 ⇒ `null`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -399,6 +399,7 @@ pub(crate) struct HubMachineCard {
     /// 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）。
     pub files: Vec<String>,
     pub error: Option<String>,
+    pub detail: Option<String>,
 }
 
 /// `ext-hub-preview` 的回包。
@@ -414,7 +415,7 @@ pub(crate) struct HubPreview {
     pub machines: Vec<HubMachineCard>,
 }
 
-/// 一台的结局：没成 ⇒ `done` 为 `null`、`error` = 那台说的那一句。
+/// 一台的结局：没成 ⇒ `done` 为 `null`、`error` = 那台说的那一句、`detail` = 原话（同 [`HubMachineCard`]）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
@@ -423,6 +424,7 @@ pub(crate) struct HubMachineDone {
     pub name: String,
     pub done: Option<super::ext::ExtDone>,
     pub error: Option<String>,
+    pub detail: Option<String>,
 }
 
 /// `ext-hub-apply` 的回包：每台各自结局，一台没成不挡别台。

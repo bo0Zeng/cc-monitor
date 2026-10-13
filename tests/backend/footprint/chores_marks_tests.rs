@@ -3,6 +3,15 @@
 use super::*;
 use serde_json::json;
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn mark_at(
+    own: &crate::platform::fs::Own,
+    a: &serde_json::Value,
+) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::mark_at(own, &req).map(|x| serde_json::to_value(x).unwrap())
+}
+
 fn tmp(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!(
         "st8-marks-{tag}-{}-{}",

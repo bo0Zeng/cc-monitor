@@ -688,9 +688,9 @@ fn picked(to: &[Option<String>]) -> Result<(), (String, String)> {
     Ok(())
 }
 
-/// 那一台说的那一句（给人看；契约错的诊断那一截不上卡）。
-fn said_of(m: String) -> String {
-    crate::common::contract::parts(&m, None).0
+/// 那一台说的那一句（给人看）与原话（契约错的诊断 · 解码器那一句：不上卡，进那一行的复制详情）。
+fn said_of(m: String) -> (String, Option<String>) {
+    crate::common::contract::parts(&m, None)
 }
 
 /// 目录那一份的读口（生产 = `asset_catalog::answer_current` 带上那份写句柄，由命令表那扇门递进来）；`Sync` ⇒ 跨 await 送得出去。
@@ -745,16 +745,21 @@ pub(crate) async fn ext_preview_many(
                     files: files_of(&card),
                     card: Some(card.clone()),
                     error: None,
+                    detail: None,
                 });
                 cards.push((p.name.clone(), card));
             }
-            Err((_, m)) => machines.push(HubMachineCard {
-                to: p.to.clone(),
-                name: p.name.clone(),
-                card: None,
-                files: Vec::new(),
-                error: Some(said_of(m)),
-            }),
+            Err((_, m)) => {
+                let (said, detail) = said_of(m);
+                machines.push(HubMachineCard {
+                    to: p.to.clone(),
+                    name: p.name.clone(),
+                    card: None,
+                    files: Vec::new(),
+                    error: Some(said),
+                    detail,
+                })
+            }
         }
     }
     let refs: Vec<(String, &ExtCard)> = cards.iter().map(|(n, c)| (n.clone(), c)).collect();
@@ -833,13 +838,18 @@ pub(crate) async fn ext_apply_many(
                 name: p.name.clone(),
                 done: Some(d),
                 error: None,
+                detail: None,
             },
-            Err((_, m)) => HubMachineDone {
-                to: p.to.clone(),
-                name: p.name.clone(),
-                done: None,
-                error: Some(said_of(m)),
-            },
+            Err((_, m)) => {
+                let (said, detail) = said_of(m);
+                HubMachineDone {
+                    to: p.to.clone(),
+                    name: p.name.clone(),
+                    done: None,
+                    error: Some(said),
+                    detail,
+                }
+            }
         });
     }
     Ok(HubApplied { machines })

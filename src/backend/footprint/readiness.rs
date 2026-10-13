@@ -9,42 +9,91 @@
 
 use crate::assets::door::Door;
 use crate::platform::shell::dialect::Shell;
-use serde_json::{json, Value};
+use serde::{Deserialize, Serialize};
 
-type Answer = Result<Value, (&'static str, String)>;
+/// `first-run` 的入参。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FirstRunReq {
+    /// 机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) remotes: u64,
+}
+
+/// 三步里的哪一步。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "FirstRunStepId"
+    )
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum StepId {
+    /// 让终端认得 ccm 和别名：某份启动文件里有别名块。
+    Terminal,
+    /// 给现在登录的号起名字：启用了多账号。
+    Named,
+    /// 加一台远端：`remotes` > 0。
+    Remote,
+}
+
+/// 一步。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct FirstRunStep {
+    pub(crate) id: StepId,
+    pub(crate) done: bool,
+    /// 必做（今天只有 `terminal`）。
+    pub(crate) required: bool,
+}
+
+/// `first-run` 的回包。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct FirstRun {
+    pub(crate) steps: Vec<FirstRunStep>,
+    /// 必做而还没打勾的几步（主窗口状态栏那一枚只数它）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) left: usize,
+    /// 「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）。
+    pub(crate) skipped: bool,
+}
 
 /// 三步的事实 ⇒ 成品。**纯函数**。
-pub(crate) fn product(terminal: bool, named: bool, remotes: u64, skipped: bool) -> Value {
-    let steps = [
-        ("terminal", terminal, true),
-        ("named", named, false),
-        ("remote", remotes > 0, false),
+pub(crate) fn product(terminal: bool, named: bool, remotes: u64, skipped: bool) -> FirstRun {
+    let steps = vec![
+        FirstRunStep {
+            id: StepId::Terminal,
+            done: terminal,
+            required: true,
+        },
+        FirstRunStep {
+            id: StepId::Named,
+            done: named,
+            required: false,
+        },
+        FirstRunStep {
+            id: StepId::Remote,
+            done: remotes > 0,
+            required: false,
+        },
     ];
-    let left = steps
-        .iter()
-        .filter(|(_, done, required)| *required && !done)
-        .count();
-    json!({
-        "steps": steps
-            .iter()
-            .map(|(id, done, required)| json!({"id": id, "done": done, "required": required}))
-            .collect::<Vec<_>>(),
-        "left": left,
-        "skipped": skipped,
-    })
+    let left = steps.iter().filter(|s| s.required && !s.done).count();
+    FirstRun {
+        steps,
+        left,
+        skipped,
+    }
 }
 
-/// 问的那一方带上的机器表台数（必填，非负整数）。
-pub(crate) fn remotes_arg(args: &Value) -> Result<u64, (&'static str, String)> {
-    args.get("remotes").and_then(Value::as_u64).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("`remotes` must be a non-negative integer"),
-        )
-    })
-}
-
-/// 这台某一份启动文件里有别名块（读不动 ⇒ 当没接上：那一步照实没打勾）。
 fn terminal_here(door: &dyn Door) -> bool {
     let shell = if cfg!(windows) {
         Shell::PowerShell
@@ -58,16 +107,16 @@ fn terminal_here(door: &dyn Door) -> bool {
 }
 
 /// `first-run {remotes}`：帧面入口（只读）。
-pub(crate) fn answer(door: &dyn Door, args: &Value) -> Answer {
-    let remotes = remotes_arg(args)?;
+pub(crate) fn answer(door: &dyn Door, req: &FirstRunReq) -> FirstRun {
+    let remotes = req.remotes;
     let skipped =
         super::chores::marks::current(super::chores::marks::marks_path().as_deref()).start_skipped;
-    Ok(product(
+    product(
         terminal_here(door),
         crate::observe::accounts_query::accounts_enabled_here(),
         remotes,
         skipped,
-    ))
+    )
 }
 
 #[cfg(test)]

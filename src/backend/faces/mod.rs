@@ -4,6 +4,8 @@ pub mod accounts_face; // 改账号库那几条命令的帧面宿主：本体在
 pub(crate) mod cells_catalog; // 格目录：每件成品有哪些格（从成品的 Rust 类型序列化出来，不手写第二份；`view` 投影按它认成品名与路径）
 pub(crate) mod ext_hub_face; // 两台之间「装」那一件的枢纽那一对（typed）：ext-hub-preview · ext-hub-apply
 pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
+pub(crate) mod first_run_face; // 帧面 `first-run`（typed）：「开始用」三步，本体在 footprint/readiness.rs
+pub(crate) mod footprint_face; // 足迹那一族四条小命令（typed）：agent-home-check · chores-mark · last-seen-read / -write
 pub mod fork_face;
 pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub(crate) mod hub_inner_face; // 枢纽问各台的那 8 条内层命令（typed）：名字 · 入参 · 回包取 `assets::hub_wire` 那三样

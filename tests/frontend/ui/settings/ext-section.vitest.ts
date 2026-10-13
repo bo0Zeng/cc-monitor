@@ -74,10 +74,10 @@ const manyCard = (a: ManyArgs, over: Record<string, unknown> = {}) => ({
   places: targets(),
   place: a.place ?? user,
   slots: [],
-  machines: a.to.map((t) => ({ to: t, name: nameOf(t), card, files: ["/g/.claude/skills/demo · SKILL.md"], error: null })),
+  machines: a.to.map((t) => ({ to: t, name: nameOf(t), card, files: ["/g/.claude/skills/demo · SKILL.md"], error: null, detail: null })),
   ...over,
 });
-const manyDone = (a: ManyArgs) => chanReply({ machines: a.to.map((t) => ({ to: t, name: nameOf(t), done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null })) });
+const manyDone = (a: ManyArgs) => chanReply({ machines: a.to.map((t) => ({ to: t, name: nameOf(t), done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null, detail: null })) });
 
 /** 各台 `mcp-read` 答什么（按 origin；没写 ⇒ 空表；`Error` ⇒ 那一问没成）。 */
 let mcpAnswers: Record<string, unknown> = {};
@@ -344,8 +344,8 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
       chanReply({
         machines: a.to.map((t) =>
           t === "nano"
-            ? { to: t, name: "nano", done: null, error: "看过之后又变了，一个字节都没写。" }
-            : { to: t, name: t, done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null },
+            ? { to: t, name: "nano", done: null, error: "看过之后又变了，一个字节都没写。", detail: null }
+            : { to: t, name: t, done: { path: "/g", changed: ["SKILL.md"], note: null }, error: null, detail: null },
         ),
       }),
     );
@@ -367,7 +367,7 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
   it("那台没拼成卡 ⇒ 会写的文件那一行就是「装到 <那台> 失败：」＋ 它那一句本身，码不上屏；别台照装", async () => {
     const said = copyText("beMcpEdit.path.notAbsolute", { dir: "w/x" });
     const s = await page([listWith(demoMissing)], undefined, (a) =>
-      manyCard(a, { machines: a.to.map((t) => ({ to: t, name: nameOf(t), card: null, files: [], error: said })) }),
+      manyCard(a, { machines: a.to.map((t) => ({ to: t, name: nameOf(t), card: null, files: [], error: said, detail: null })) }),
     );
     open(s, "skill/demo");
     pick(s, "laptop");
@@ -375,6 +375,44 @@ describe("扩展页：表 · 抽屉 · 确认卡", () => {
     expect(installBox(s).querySelector('.ext-install-files[data-machine="laptop"]')!.textContent).toBe(copyText("extPage.error.install", { machine: "laptop", said }));
     expect(installBox(s).querySelectorAll(".ext-targets input").length).toBe(2);
     expect(installBtn(s).disabled, "一台都装不了 ⇒ 不给点").toBe(true);
+  });
+
+  it("★ 那台没成且带原话（如后端版本不同）⇒ 那一行只说那一句，原话进那一行的［复制详情］；卡上与结局两处都是", async () => {
+    const said = "laptop 后端版本不同";
+    const detail = "skill-install-apply: missing field `changed`";
+    const text = copyText("extPage.error.install", { machine: "laptop", said });
+    const copied = async (line: Element): Promise<string[]> => {
+      expect(line.firstChild?.textContent).toBe(text);
+      expect(line.textContent).not.toContain("missing field");
+      const copy = line.querySelector<HTMLElement>('[data-part="copy-detail"] button');
+      expect(copy).not.toBeNull();
+      invokeMock.mockClear();
+      copy!.click();
+      await settle();
+      return invokeMock.mock.calls.filter(([c]) => c === "clipboard_write").map(([, a]) => (a as { text: string }).text);
+    };
+    // 卡上：那台没拼成卡。
+    let s = await page([listWith(demoMissing)], undefined, (a) =>
+      manyCard(a, { machines: a.to.map((t) => ({ to: t, name: nameOf(t), card: null, files: [], error: said, detail })) }),
+    );
+    open(s, "skill/demo");
+    pick(s, "laptop");
+    await settle();
+    const onCard = await copied(installBox(s).querySelector('.ext-install-files[data-machine="laptop"]')!);
+    expect(onCard.length).toBe(1);
+    expect(onCard[0]).toContain(detail);
+    // 结局：卡拼成了、装那一步没成。
+    s = await page([listWith(demoMissing)], (a) =>
+      chanReply({ machines: a.to.map((t) => ({ to: t, name: nameOf(t), done: null, error: said, detail })) }),
+    );
+    open(s, "skill/demo");
+    pick(s, "laptop");
+    await settle();
+    installBtn(s).click();
+    await settle();
+    const onResult = await copied(installBox(s).querySelector('[data-result="laptop"]')!);
+    expect(onResult.length).toBe(1);
+    expect(onResult[0]).toContain(detail);
   });
 });
 

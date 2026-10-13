@@ -3,6 +3,21 @@
 use super::*;
 use serde_json::json;
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn answer_check_with(
+    a: &serde_json::Value,
+    home: Option<std::path::PathBuf>,
+) -> Result<serde_json::Value, (String, String)> {
+    let req: AgentHomeCheckReq =
+        crate::stream::inbound::typed::take(a).map_err(|f| (f.code, f.message))?;
+    super::answer_check_with(&req, home)
+        .map(|x| serde_json::to_value(x).unwrap())
+        .map_err(|(c, m)| (c.to_string(), m))
+}
+fn answer_check(a: &serde_json::Value) -> Result<serde_json::Value, (String, String)> {
+    answer_check_with(a, crate::platform::paths::home_dir())
+}
+
 struct TmpDir(std::path::PathBuf);
 impl TmpDir {
     fn path(&self) -> &std::path::Path {

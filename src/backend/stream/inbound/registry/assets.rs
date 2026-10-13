@@ -34,68 +34,16 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 首次运行「开始用 · 剩 N 步」那份数（`footprint/readiness.rs`）：三步各自由这台的事实打勾；机器表台数由问的那一方带上。只读，阻塞档。
-    CommandSpec {
-        name: "first-run",
-        summary: "首次运行「开始用」三步各自打没打勾",
-        codes: &["bad_args"],
-        fields: &[out("left", "必做而还没打勾的几步（主窗口状态栏那一枚只数它）"), arg("remotes", "机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）"), out("skipped", "「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）"), out("steps", "三步 `{id, done, required}`（`required` = 必做；今天只有 `terminal`），`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::footprint::readiness::answer(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::faces::first_run_face::FirstRunCmd>("首次运行「开始用」三步各自打没打勾", &LocalFiles),
     // 离线那台的上次值（`footprint/last_seen.rs`）：本机后端替界面记下每台最近一次读成的账号清单 · 「文件与数据」那一份，
     //   断开时界面照它画「上次的」，跨重启还在。写后端自己的 `~/.cc-monitor/last-seen.json`（锁里读—改—写、原子写）。阻塞档。
-    CommandSpec {
-        name: "last-seen-read",
-        summary: "读离线那台的上次值",
-        codes: &["bad_args", "io_failed"],
-        fields: &[arg("origin", "哪台（机器名）"), out("accounts", "上次读成的 `accounts-list` 应答 `{atMs, value}`；没记过 ⇒ `null`"), out("data", "上次读成的 `data-report` 应答 `{atMs, value}`；没记过 ⇒ `null`")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::footprint::last_seen::answer_read(&r.args)
-                .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "last-seen-write",
-        summary: "记下一台这一次读成的那一份（或清掉那台）",
-        codes: &["bad_args", "io_failed", "too_large"],
-        fields: &[out("atMs", "记下的时刻（毫秒）"), arg("forget", "`true` ⇒ 清掉这台的上次值（删机器时；不带 `kind` / `value`）"), arg("kind", "闭集 `accounts` · `data`"), arg("origin", "哪台（机器名）"), arg("value", "那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::footprint::last_seen::answer_write(&r.args, own)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::footprint_face::LastSeenReadCmd>("读离线那台的上次值"),
+    crate::stream::inbound::typed::owning::<crate::faces::footprint_face::LastSeenWriteCmd>("记下一台这一次读成的那一份（或清掉那台）"),
     // 「待办」里界面记下的两样选择（不用了 / 还是要做 · 我自己贴 / 改回让 cc-monitor 接上）：写后端自己的 `~/.cc-monitor/chores.json`
     //   （`footprint/chores/marks.rs`，读—改—写在跨进程锁里、原子写）。一个用户文件都不写。阻塞档（同步文件 I/O）。
-    CommandSpec {
-        name: "chores-mark",
-        summary: "记下「待办」里的一个选择",
-        codes: &["bad_args", "io_failed", "marks_unreadable"],
-        fields: &[arg("id", "`decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`）"), arg("op", "`decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回）"), arg("rc", "`selfPaste` 那一份启动文件（绝对路径）"), out("declined", "改完记着的「不用了」那几件"), out("selfPaste", "改完记着的「我自己贴」那份启动文件；没选 ⇒ `null`"), out("startSkipped", "改完记着的「开始用」跳过没有")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::footprint::chores::marks::answer_mark(&r.args, own)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::faces::footprint_face::ChoresMarkCmd>("记下「待办」里的一个选择"),
     // 设置里换 agent 家目录存之前那一问：在不在 · 是不是目录 · 有没有那一家的记录树，回一个码（`footprint/agent_home_check.rs`）。只读，阻塞档（stat）。
-    CommandSpec {
-        name: "agent-home-check",
-        summary: "那个目录能不能当 agent 家目录",
-        codes: &["bad_args"],
-        fields: &[arg("path", "要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开）"), out("state", "`ok`（在、是目录、里面有那一家的记录树）· `missing`（不在）· `not_dir`（不是目录）· `no_records`（里面没有记录树）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::footprint::agent_home_check::answer_check(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::footprint_face::AgentHomeCheckCmd>("那个目录能不能当 agent 家目录"),
     // **资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
     //   `~/.cc-monitor/assets-catalog.json`（自家状态，经 `Own`，变了才写）、回整份目录 ＋「这台缺什么」的判定。
     //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。

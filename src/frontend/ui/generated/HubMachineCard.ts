@@ -2,10 +2,10 @@
 import type { ExtCard } from "./ExtCard";
 
 /**
- * 勾上的一台那张卡：拼不成 ⇒ `card` 为 `null`、`error` = 那台说的那一句。
+ * 勾上的一台那张卡：拼不成 ⇒ `card` 为 `null`、`error` = 那台说的那一句、`detail` = 原话（进那一行的复制详情；没有 ⇒ `null`）。
  */
 export type HubMachineCard = { to: string | null, name: string, card: ExtCard | null, 
 /**
  * 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）。
  */
-files: Array<string>, error: string | null, };
+files: Array<string>, error: string | null, detail: string | null, };

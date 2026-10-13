@@ -3,6 +3,16 @@
 use super::*;
 use serde_json::json;
 
+/// 成品序列化回 JSON 比（同帧面那一跳）。
+fn product(terminal: bool, named: bool, remotes: u64, skipped: bool) -> serde_json::Value {
+    serde_json::to_value(super::product(terminal, named, remotes, skipped)).unwrap()
+}
+fn remotes_arg(a: &serde_json::Value) -> Result<u64, (String, String)> {
+    crate::stream::inbound::typed::take::<FirstRunReq>(a)
+        .map(|r| r.remotes)
+        .map_err(|f| (f.code, f.message))
+}
+
 #[test]
 fn 三步照事实打勾_哪步必做由这里说_剩几步只数必做的() {
     assert_eq!(
