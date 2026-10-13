@@ -5,19 +5,11 @@ use crate::accounts::quota::rules::decide::{turn, Ctx, CtxAcct, Pick, Sigma, Str
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::strategy::FailKind;
 
-/// 判据夹具里的几份策略：（文件 id, 原文）。
+/// 判据用的几份策略：三份升级材料（材料只编进升级那一处，判据照原文跑）。
 fn fixtures() -> Vec<(String, String)> {
-    [
-        ("by-list", "tests/__fixtures__/rotation-by-list.rhai"),
-        ("by-reset", "tests/__fixtures__/rotation-by-reset.rhai"),
-    ]
-    .iter()
-    .map(|(id, p)| {
-        let t =
-            std::fs::read_to_string(crate::guard_support::repo_root().join(p)).expect("判据夹具");
-        ((*id).to_string(), t)
-    })
-    .collect()
+    (0..3)
+        .map(|n| (format!("material-{}", n + 1), super::super::upgrade::material(n).to_string()))
+        .collect()
 }
 
 fn with_code(code: &str) -> String {
@@ -47,23 +39,10 @@ fn ctx_of(now: u64) -> Ctx<'static> {
     }
 }
 
-/// ★ 判据夹具与升级材料都读得懂、跑得通（升级材料编进升级那一处，这里照原文读）。
+/// ★ 三份升级材料都读得懂、跑得通（只有一个号 ⇒ 就用它）。
 #[test]
-fn every_fixture_and_upgrade_material_reads() {
-    let mut all = fixtures();
-    let mdir = crate::guard_support::repo_root().join("src/backend/accounts/quota/rules/upgrade");
-    all.extend(
-        guard_core::scan_tree!(&mdir, &["rhai"])
-            .into_iter()
-            .map(|(p, t)| (p.display().to_string(), t)),
-    );
-    assert_eq!(
-        all.len(),
-        5,
-        "两份夹具 ＋ 三份升级材料：{:?}",
-        all.iter().map(|x| &x.0).collect::<Vec<_>>()
-    );
-    for (id, src) in &all {
+fn every_upgrade_material_reads() {
+    for (id, src) in &fixtures() {
         let f = parse(src).unwrap_or_else(|e| panic!("{id} 读不懂：{e:?}"));
         let v = f
             .decide(&ctx_of(4_000_000_000))
@@ -81,7 +60,7 @@ fn rewriting_the_head_leaves_the_code_byte_for_byte() {
         h.settings["accounts"]
             .as_array_mut()
             .expect("accounts")
-            .push(serde_json::json!({"id": "lab", "delay": 30, "row": 1}));
+            .push(serde_json::json!({"id": "lab", "fallback": true, "delay": 30}));
         let out = with_head(&src, &h).expect("写");
         let code_of = |s: &str| s[s.find("\n---*/").expect("头尾")..].to_string();
         assert_eq!(code_of(&out), code_of(&src), "{id}：代码变了");
@@ -133,8 +112,8 @@ fn returns_are_shape_checked_and_deterministic() {
     let f = parse(
         &fixtures()
             .into_iter()
-            .find(|(i, _)| i == "by-reset")
-            .expect("by-reset")
+            .find(|(i, _)| i == "material-2")
+            .expect("material-2")
             .1,
     )
     .expect("读");
@@ -151,7 +130,7 @@ fn unreadable_files_say_why_and_where() {
     assert!(parse(&with_code("fn other(ctx) { #{} }")).is_err());
 }
 
-/// ★ 后端不认任何一份策略：生产源码里搜不到判据夹具的文件名与名字（一次性的升级那两份除外）；夹具全部改 `name`，判出来一个不变。
+/// ★ 后端不认任何一份策略：生产源码里搜不到判据用的那几份的文件名与名字（一次性的升级那两份除外）；全部改 `name`，判出来一个不变。
 /// 积木库里那几项设置的名字（`capKind`）也不在后端源码里（`row` · `delay` 这种常见词别处另有用处，不搜）。
 #[test]
 fn the_backend_knows_no_strategy_and_no_rule() {
@@ -161,7 +140,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
         needles.push(format!("{id}.rhai"));
         needles.push(format!("\"{id}\""));
         if let Ok(f) = parse(&src) {
-            needles.push(f.head.name.pick(false).to_string());
+            needles.extend(Some(f.head.name.pick(false).to_string()).filter(|n| !n.is_empty()));
         }
     }
     let hits: Vec<String> = guard_core::scan_tree!(&root, &["rs"])
@@ -209,7 +188,7 @@ fn the_backend_knows_no_strategy_and_no_rule() {
             rate: [None, None],
         },
     ];
-    assert!(fixtures().len() >= 2, "夹具没读到");
+    assert_eq!(fixtures().len(), 3, "材料没读到");
     for (_, src) in fixtures() {
         let mut head = parse(&src).expect("读").head;
         head.settings["accounts"] = serde_json::json!([{"id": "a"}, {"id": "b"}, {"id": "c"}]);

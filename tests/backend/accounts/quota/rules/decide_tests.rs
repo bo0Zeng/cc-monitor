@@ -1,4 +1,4 @@
-//! 后端的一判与推演（`轮换-v5-算法.md` §7）。「策」＝ 拿判据夹具里的策略（`tests/__fixtures__/rotation-by-list.rhai` · `rotation-by-reset.rhai`）＋ 积木库跑后端的 `turn`；
+//! 后端的一判与推演（`轮换-v5-算法.md` §7）。「策」＝ 拿三份升级材料（`rules::upgrade::material`：照号列表 · 离重置近的权重高 · 余量多的权重高，同一段换号的写法，`轮换-v5-分层.md` §2.5）＋ 积木库跑后端的 `turn`；
 //! 「后」＝ 只测后端积木，策略是判据里的假策略。
 
 use super::*;
@@ -18,24 +18,26 @@ fn clock(t: u64) -> u16 {
     ((t % 86_400) / 60) as u16
 }
 
-fn fixture(path: &str) -> String {
-    std::fs::read_to_string(crate::guard_support::repo_root().join(path)).expect("判据夹具")
+fn material(n: usize) -> File {
+    script::parse(crate::accounts::quota::rules::upgrade::material(n)).expect("读得懂")
 }
 
-/// 同一排里照号牌左右。
+/// 权重恒 0：照号列表先后（升级材料 1）。
 fn by_list() -> &'static File {
     static F: OnceLock<File> = OnceLock::new();
-    F.get_or_init(|| {
-        script::parse(&fixture("tests/__fixtures__/rotation-by-list.rhai")).expect("读得懂")
-    })
+    F.get_or_init(|| material(0))
 }
 
-/// 同一排里先用快要重置的。
+/// 离 5 小时重置越近权重越高（升级材料 2）。
 fn by_reset() -> &'static File {
     static F: OnceLock<File> = OnceLock::new();
-    F.get_or_init(|| {
-        script::parse(&fixture("tests/__fixtures__/rotation-by-reset.rhai")).expect("读得懂")
-    })
+    F.get_or_init(|| material(1))
+}
+
+/// 余量多的权重高（升级材料 3）。
+fn by_left() -> &'static File {
+    static F: OnceLock<File> = OnceLock::new();
+    F.get_or_init(|| material(2))
 }
 
 fn acct(id: &str, used5h: f64) -> Acct {
@@ -120,7 +122,7 @@ impl Strategy for Fixed {
     }
 }
 
-// ── 策：判据夹具 ＋ 积木库 ─────────────────────────────────────────────────────
+// ── 策：升级材料 ＋ 积木库 ─────────────────────────────────────────────────────
 
 #[test]
 fn s01_never_switches_to_an_account_that_cannot_be_used() {
@@ -145,19 +147,23 @@ fn with_reset(id: &str, used5h: f64, in_min: u64) -> Acct {
     }
 }
 
+/// ★ 用满了换谁：权重高的先（离重置近的）。
 #[test]
-fn s03_the_strategys_order_within_a_row_overrides_the_cards() {
+fn s03_the_weight_picks_who_is_next() {
     let f = [
         acct("A", 95.0),
         with_reset("B", 50.0, 200),
         with_reset("C", 10.0, 30),
     ];
     let d = turn(&sig("A", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
-    assert_eq!(used(&d), "C", "同一排里快重置的先");
+    assert_eq!(used(&d), "C", "离重置近的权重高");
+    let d = turn(&sig("A", &[]), &f, &base(), by_left(), clock(T), T, &[]);
+    assert_eq!(used(&d), "C", "余量多的权重高");
 }
 
+/// ★ 同权照号列表先后：权重一样；或较高的超出较低的不到权重容差。
 #[test]
-fn s04_ties_within_a_row_follow_the_cards() {
+fn s04_equal_weights_follow_the_account_list() {
     let f = [
         acct("A", 95.0),
         with_reset("B", 30.0, 60),
@@ -165,22 +171,22 @@ fn s04_ties_within_a_row_follow_the_cards() {
     ];
     let d = turn(&sig("A", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
     assert_eq!(used(&d), "B");
-}
-
-/// 分排：`rows` 里依次是各号的第几排。
-fn rows(r: [u64; 3]) -> Value {
+    let f = [
+        acct("A", 95.0),
+        with_reset("B", 30.0, 60),
+        with_reset("C", 30.0, 50),
+    ];
+    let d = turn(&sig("A", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
+    assert_eq!(used(&d), "C", "容差 0：C 高 20% 就排前");
     let mut s = base();
-    for (id, k) in ["A", "B", "C"].iter().zip(r) {
-        if k > 0 {
-            set_row(&mut s, id, "row", json!(k));
-        }
-    }
-    s
+    s["close"] = json!(25);
+    let d = turn(&sig("A", &[]), &f, &s, by_reset(), clock(T), T, &[]);
+    assert_eq!(used(&d), "B", "容差 25%：C 只高 20%，算同权，照号列表");
 }
 
-/// ★ 同一排里不抢：在用的号没满，同一排里排在它前面的号恢复了也不换（快重置的也不换）。
+/// ★ 在用的号没到用量上限就不换：权重再高的号也不换过去（没设强制切换阈值）。
 #[test]
-fn s06_within_a_row_a_recovered_account_does_not_take_over() {
+fn s06_an_account_under_its_limit_is_kept() {
     let f = [acct("A", 10.0), acct("B", 50.0), acct("C", 10.0)];
     assert_eq!(used(&run(&base(), &sig("B", &[]), &f, T)), "B");
     let f = [
@@ -189,65 +195,87 @@ fn s06_within_a_row_a_recovered_account_does_not_take_over() {
         acct("C", 10.0),
     ];
     let d = turn(&sig("B", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
-    assert_eq!(used(&d), "B", "快重置的在同一排里也不抢");
+    assert_eq!(used(&d), "B", "快重置的权重高，也不换");
 }
 
-/// ★ 上排的号一有额度就换上去（在用的下排号没满也换）。
+fn forced(pct: u64) -> Value {
+    let mut s = base();
+    s["force"] = json!(pct);
+    s
+}
+
+/// ★ 强制切换阈值：在用的号没满时，只有重置比它早、权重超出它这一比例的号直接换过去。
 #[test]
-fn s07_a_higher_row_with_quota_takes_over_at_once() {
-    let s = rows([0, 1, 1]);
-    let f = [acct("A", 10.0), acct("B", 50.0), acct("C", 10.0)];
-    let d = run(&s, &sig("B", &[]), &f, T);
-    assert_eq!(used(&d), "A");
+fn s07_a_forced_switch_needs_an_earlier_reset_and_the_threshold() {
+    let f = [
+        with_reset("A", 10.0, 5),
+        with_reset("B", 50.0, 200),
+        acct("C", 10.0),
+    ];
+    let d = turn(&sig("B", &[]), &f, &forced(25), by_reset(), clock(T), T, &[]);
+    assert_eq!(used(&d), "A", "A 先重置、权重高出远超 25%");
     assert_eq!(d.order.first().map(String::as_str), Some("A"));
+    // 余量：B 剩得多但后重置 ⇒ 不换；C 先重置、剩得多 ⇒ 换。
+    let f = [
+        with_reset("A", 80.0, 30),
+        with_reset("B", 0.0, 200),
+        with_reset("C", 10.0, 10),
+    ];
+    let d = turn(&sig("A", &[]), &f, &forced(25), by_left(), clock(T), T, &[]);
+    assert_eq!(used(&d), "C");
+    let f = [
+        with_reset("A", 80.0, 30),
+        with_reset("B", 0.0, 200),
+        with_reset("C", 10.0, 40),
+    ];
+    let d = turn(&sig("A", &[]), &f, &forced(25), by_left(), clock(T), T, &[]);
+    assert_eq!(used(&d), "A", "后重置的不换过去");
+    // 超出不到阈值 ⇒ 不换：A 剩 10、C 剩 12（高 20%）。
+    let f = [
+        with_reset("A", 80.0, 30),
+        with_reset("B", 90.0, 200),
+        with_reset("C", 78.0, 10),
+    ];
+    let d = turn(&sig("A", &[]), &f, &forced(25), by_left(), clock(T), T, &[]);
+    assert_eq!(used(&d), "A", "只高 20%，不到 25%");
 }
 
-/// ★ 用着下排的号时，上排任何一个号恢复，就换回上排（上排里照它的先后取第一个有额度的）。
-#[test]
-fn s08_using_a_lower_row_any_upper_account_recovering_brings_it_back_up() {
-    let s = rows([0, 0, 1]);
-    let out = [acct("A", 95.0), acct("B", 95.0), acct("C", 10.0)];
-    assert_eq!(
-        used(&run(&s, &sig("A", &[]), &out, T)),
-        "C",
-        "上排都没额度才落到下排"
-    );
-    let b_back = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &sig("C", &[]), &b_back, T)), "B");
-    let both = [acct("A", 10.0), acct("B", 10.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &sig("C", &[]), &both, T)), "A");
+fn fallback(s: &mut Value, id: &str) {
+    set_row(s, id, "fallback", json!(true));
 }
 
-/// ★ 被抢上来的号用到满才换：同一排里排在它前面的号恢复了也不换；它满了 ⇒ 先换同一排的，同一排都没额度才落到下排。
+/// ★ 耗尽后启用：其余的号都没额度才用它；其余的号一有额度就换走（它没满也换）。
 #[test]
-fn s25_an_account_that_took_over_is_used_until_it_is_out() {
-    let s = rows([0, 0, 1]);
-    let f = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
-    let d = run(&s, &sig("C", &[]), &f, T);
-    assert_eq!(used(&d), "B", "B 抢上来");
-    let f = [acct("A", 10.0), acct("B", 60.0), acct("C", 10.0)];
-    assert_eq!(
-        used(&run(&s, &d.sigma, &f, T + 10 * MIN)),
-        "B",
-        "A 恢复了，B 还没满，不换"
-    );
-    let f = [acct("A", 10.0), acct("B", 90.0), acct("C", 10.0)];
-    assert_eq!(
-        used(&run(&s, &d.sigma, &f, T + 20 * MIN)),
-        "A",
-        "B 满了先换同一排的 A"
-    );
-    let f = [acct("A", 95.0), acct("B", 90.0), acct("C", 10.0)];
-    assert_eq!(
-        used(&run(&s, &d.sigma, &f, T + 30 * MIN)),
-        "C",
-        "同一排都没额度才落到下排"
-    );
+fn s08_a_fallback_is_used_only_while_the_others_are_out() {
+    let mut s = base();
+    fallback(&mut s, "A");
+    let f = [acct("A", 10.0), acct("B", 50.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &sig("A", &[]), &f, T)), "B", "列表最前也排最后");
+    let out = [acct("A", 10.0), acct("B", 95.0), acct("C", 95.0)];
+    assert_eq!(used(&run(&s, &sig("B", &[]), &out, T)), "A");
+    let back = [acct("A", 20.0), acct("B", 95.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &sig("A", &[]), &back, T)), "C", "C 一有额度就换走");
+}
+
+/// ★ 强制切换之后，被换下来的号重置得晚，不会再换回去（不来回换）。
+#[test]
+fn s25_after_a_forced_switch_the_later_one_does_not_come_back() {
+    let s = forced(25);
+    let f = [with_reset("A", 80.0, 60), with_reset("B", 10.0, 20)];
+    let d = turn(&sig("A", &[]), &f, &s, by_left(), clock(T), T, &[]);
+    assert_eq!(used(&d), "B");
+    let f = [with_reset("A", 80.0, 60), with_reset("B", 85.0, 20)];
+    let d = turn(&d.sigma, &f, &s, by_left(), clock(T + 10 * MIN), T + 10 * MIN, &[]);
+    assert_eq!(used(&d), "B", "A 剩得多了，但重置得晚，B 没满不换");
+    let f = [with_reset("A", 80.0, 60), with_reset("B", 90.0, 20)];
+    let d = turn(&d.sigma, &f, &s, by_left(), clock(T + 15 * MIN), T + 15 * MIN, &[]);
+    assert_eq!(used(&d), "A", "B 满了才换：{d:?}");
 }
 
 #[test]
 fn s09_activation_delay_holds_then_lets_it_in() {
-    let mut s = rows([0, 0, 1]);
+    let mut s = base();
+    fallback(&mut s, "C");
     set_row(&mut s, "C", "delay", json!(30));
     let f = [acct("A", 95.0), acct("B", 95.0), acct("C", 10.0)];
     let d = run(&s, &sig("A", &[]), &f, T);
@@ -265,9 +293,11 @@ fn s09_activation_delay_holds_then_lets_it_in() {
 
 #[test]
 fn s10_two_delays_ending_together_take_the_front_one() {
-    let mut s = rows([0, 1, 1]);
-    set_row(&mut s, "B", "delay", json!(30));
-    set_row(&mut s, "C", "delay", json!(30));
+    let mut s = base();
+    for id in ["B", "C"] {
+        fallback(&mut s, id);
+        set_row(&mut s, id, "delay", json!(30));
+    }
     let f = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
     let d = run(&s, &sig("A", &[]), &f, T);
     assert_eq!(used(&run(&s, &d.sigma, &f, T + 30 * MIN)), "B");
@@ -275,7 +305,8 @@ fn s10_two_delays_ending_together_take_the_front_one() {
 
 #[test]
 fn s11_a_break_in_the_outage_restarts_the_delay() {
-    let mut s = rows([0, 0, 1]);
+    let mut s = base();
+    fallback(&mut s, "C");
     set_row(&mut s, "C", "delay", json!(30));
     let bad = [acct("A", 95.0), acct("B", 95.0), acct("C", 10.0)];
     let good = [acct("A", 10.0), acct("B", 95.0), acct("C", 10.0)];
@@ -294,15 +325,43 @@ fn s11_a_break_in_the_outage_restarts_the_delay() {
     assert_eq!(used(&run(&s, &d.sigma, &bad, T + 50 * MIN)), "C");
 }
 
+/// ★ 单次用量上限：换到耗尽后启用的号以后，5 小时用量涨够这一比例就不再用它，直到其余的号恢复。
 #[test]
-fn s14_a_dragged_order_does_not_stop_a_higher_row_from_taking_over() {
-    let s = rows([0, 1, 1]);
-    let f = [acct("A", 10.0), acct("B", 10.0), acct("C", 10.0)];
-    let d = run(&s, &sig("B", &["B"]), &f, T);
+fn s34_a_per_use_limit_stops_a_fallback_until_the_others_recover() {
+    let mut s = base();
+    fallback(&mut s, "C");
+    set_row(&mut s, "C", "stint", json!(20));
+    let at = |c: f64| [acct("A", 95.0), acct("B", 95.0), acct("C", c)];
+    let d = run(&s, &sig("A", &[]), &at(10.0), T);
+    assert_eq!(used(&d), "C");
+    assert!(
+        d.sigma.wake_when.iter().any(|w| w.acct == "C" && (w.used_at_least - 30.0).abs() < 1e-9),
+        "涨够的那一读数约来问：{:?}",
+        d.sigma.wake_when
+    );
+    let d = run(&s, &d.sigma, &at(25.0), T + 10 * MIN);
+    assert_eq!(used(&d), "C", "涨了 15，还没够");
+    let d = run(&s, &d.sigma, &at(30.0), T + 20 * MIN);
+    assert!(matches!(d.pick, Pick::Hold { .. }), "涨够 20：{d:?}");
+    let back = [acct("A", 10.0), acct("B", 95.0), acct("C", 30.0)];
+    let d = run(&s, &d.sigma, &back, T + 30 * MIN);
+    assert_eq!(used(&d), "A");
+    let d = run(&s, &d.sigma, &at(30.0), T + 40 * MIN);
+    assert_eq!(used(&d), "C", "其余的号恢复过一次，账清了，从头记");
+}
+
+#[test]
+fn s14_a_dragged_order_does_not_stop_a_forced_switch() {
+    let f = [
+        with_reset("A", 10.0, 5),
+        with_reset("B", 10.0, 200),
+        acct("C", 10.0),
+    ];
+    let d = turn(&sig("B", &["B"]), &f, &forced(25), by_reset(), clock(T), T, &[]);
     assert_eq!(
         used(&d),
         "A",
-        "拖出来的顺序只在该换时生效；上排有额度就照换"
+        "拖出来的顺序只在在用的号该换时生效"
     );
 }
 
@@ -394,13 +453,15 @@ fn s20_a_zero_percent_segment_skips_the_account_until_it_ends() {
     assert_eq!(used(&run(&s, &sig("A", &[]), &f, DAY + 23 * 3600)), "B");
 }
 
+/// ★ 耗尽后启用的号只在节点上换走：其余的号被拒到期那一刻（已知节点）才换回去，之前一发都不换。
 #[test]
-fn s29_taking_over_happens_only_at_a_known_node() {
-    let s = rows([0, 1, 1]);
+fn s29_leaving_a_fallback_happens_only_at_a_known_node() {
+    let mut s = base();
+    fallback(&mut s, "B");
     let f = [
         refused(acct("A", 50.0), T + 30 * MIN),
         acct("B", 10.0),
-        acct("C", 10.0),
+        acct("C", 95.0),
     ];
     let d = run(&s, &sig("B", &[]), &f, T);
     assert_eq!((used(&d), d.tn), ("B", Some(T + 30 * MIN)));
@@ -408,29 +469,23 @@ fn s29_taking_over_happens_only_at_a_known_node() {
     assert_eq!(used(&run(&s, &sig("B", &[]), &f, T + 30 * MIN)), "A");
 }
 
-/// ★ #32 同一排不来回换：先用快要重置的，两个号同一排、用速一样；推演 24 小时，每次换号都落在「在用的号到上限」那一刻
-/// （用量涨的过程中先后不变，重置只让那个号排到后面去）。
+/// ★ #32 不来回换：余量多的权重高、强制切换阈值 25%，三个号用速一样；推演 24 小时，换号次数有上限、不挨着换。
 #[test]
-fn s32_a_row_never_flip_flops() {
+fn s32_never_flip_flops() {
     let s = json!({
-        "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]}, "capKind": "hard",
-        "accounts": [{"id": "A"}, {"id": "B"}]
+        "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]}, "capKind": "hard", "force": 25,
+        "accounts": [{"id": "A"}, {"id": "B"}, {"id": "C"}]
     });
-    let f = [
-        Acct {
-            rate: [Some(0.3), Some(0.0)],
-            resets: [Some(T + 5 * 3600), None],
-            ..acct("A", 40.0)
-        },
-        Acct {
-            rate: [Some(0.3), Some(0.0)],
-            resets: [Some(T + 3 * 3600), None],
-            ..acct("B", 42.0)
-        },
-    ];
-    let tl = simulate(&sig("A", &[]), &f, &s, by_reset(), &clock, T, T + 24 * 3600);
+    let a = |id: &str, u: f64, r: u64| Acct {
+        rate: [Some(0.5), Some(0.0)],
+        resets: [Some(T + r * 60), None],
+        ..acct(id, u)
+    };
+    let f = [a("A", 40.0, 300), a("B", 42.0, 180), a("C", 20.0, 100)];
+    let tl = simulate(&sig("A", &[]), &f, &s, by_left(), &clock, T, T + 24 * 3600);
     let sw = tl.switches();
     assert!(!tl.truncated, "推演跑满了 200 个事件：换了 {} 次", sw.len());
+    assert!(sw.len() >= 2, "本条在空转：{sw:?}");
     assert!(sw.len() <= 12, "24 小时换了 {} 次：{sw:?}", sw.len());
     assert!(
         sw.windows(2).all(|w| w[1].0 - w[0].0 >= 30 * MIN),
@@ -636,20 +691,19 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
             json!([{"from": 0, "to": 1440, "v": 70 + g.upto(30)}])
         }
     };
-    let mut row = 0;
     let rows: Vec<Value> = ids
         .iter()
         .map(|a| {
-            let d = [0, 0, 10, 30][g.upto(4) as usize];
-            let mut r = json!({"id": a, "delay": d});
+            let mut r = json!({"id": a});
             if g.upto(3) == 0 {
                 r["caps"] = json!({"5h": seg(&mut g)});
             }
             if g.upto(3) == 0 {
-                row += 1;
-            }
-            if row > 0 {
-                r["row"] = json!(row);
+                r["fallback"] = json!(true);
+                r["delay"] = json!([0, 0, 10, 30][g.upto(4) as usize]);
+                if g.upto(2) == 0 {
+                    r["stint"] = json!(10 + g.upto(30));
+                }
             }
             r
         })
@@ -859,20 +913,24 @@ fn s22_groups(n: u64) -> (usize, usize) {
     (total, crowd)
 }
 
-/// #26 跑 `n` 组（先用快要重置的，延迟都设 0）。
+/// #26 跑 `n` 组（余量多的权重高 ＋ 强制切换阈值 25% ＋ 权重容差 10%：权重交叉靠按时刻 · 按读数叫醒；延迟都设 0）。
 fn s26_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
     for seed in 1..=n {
         let (mut s, f, sigma) = group(seed);
         for r in s["accounts"].as_array_mut().expect("accounts") {
-            r["delay"] = json!(0);
+            if r.get("delay").is_some() {
+                r["delay"] = json!(0);
+            }
         }
+        s["force"] = json!(25);
+        s["close"] = json!(10);
         let (c, k) = consistent(
             &s,
             &f,
             &sigma,
-            by_reset(),
-            &format!("第 {seed} 组（先用快要重置的）"),
+            by_left(),
+            &format!("第 {seed} 组（余量 · 强制切换）"),
         );
         total += c;
         crowd += k;
@@ -889,7 +947,7 @@ fn s22_simulation_agrees_with_per_request_decisions() {
 }
 
 #[test]
-fn s26_waking_on_readings_keeps_reset_first_exact() {
+fn s26_forced_switches_agree_with_per_request_decisions() {
     s26_groups(5);
 }
 

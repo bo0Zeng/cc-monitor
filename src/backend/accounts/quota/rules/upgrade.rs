@@ -1,6 +1,6 @@
 //! 第二版 `rotation.json` → 第三版。纯函数：读第二版的原文（JSON），出第三版 ＋ 要写的策略文件 ＋ 要挪开的旧脚本。
 //! 写盘 · 挪文件 · 留 `.v2` 由调用方在锁里做。第二版的每份配置、每个活会话的副本都写成用户自己的策略文件（`轮换-v5-分层.md` §6.7）：
-//! 代码照第二版文件里的编号取下面三份升级材料之一，设置照搬。材料只在这里，不进策略目录、不进任何默认。
+//! 代码照第二版文件里的编号取下面三份升级材料之一，设置照搬。材料只在这里（和判据里），不进策略目录、不进任何默认。
 
 use super::book::{self, Book};
 use serde_json::Value;
@@ -30,12 +30,18 @@ pub(crate) struct Upgraded {
 /// 一天里的分钟数（[`super::form::DAY_MIN`]）。
 const DAY_MIN: usize = super::form::DAY_MIN as usize;
 
-/// 升级材料：第二版文件里的编号 `"1"` · `"2"` · `"3"` 依次对的代码（头里的设置是空号列表，名字由配置名填）。
+/// 升级材料：第二版文件里的编号 `"1"` · `"2"` · `"3"` 依次对的那份。每份 ＝ 头（设置是空号列表，名字由配置名填）＋ 它自己的权重 `weight`
+/// ＋ 三份共用的那一段换号的写法（`upgrade/turn.rhai`，§2.5）。拼出来是一份自足的策略文件，写给用户。
 const MATERIALS: [&str; 3] = [
-    include_str!("upgrade/v2-1.rhai"),
-    include_str!("upgrade/v2-2.rhai"),
-    include_str!("upgrade/v2-3.rhai"),
+    concat!(include_str!("upgrade/v2-1.rhai"), include_str!("upgrade/turn.rhai")),
+    concat!(include_str!("upgrade/v2-2.rhai"), include_str!("upgrade/turn.rhai")),
+    concat!(include_str!("upgrade/v2-3.rhai"), include_str!("upgrade/turn.rhai")),
 ];
+
+/// 第 `n` 份升级材料的原文（`n` ＝ 0 · 1 · 2，对第二版的编号 1 · 2 · 3）。判据拿它当策略跑。
+pub(crate) fn material(n: usize) -> &'static str {
+    MATERIALS[n.min(MATERIALS.len() - 1)]
+}
 
 /// 第二版一行参数里某窗的线：数 ⇒ 两窗都是它；`{5h, 7d}` ⇒ 各自（`null` ＝ 用满为止）；`null` ⇒ 用满为止。
 fn line_of(line: Option<&Value>, w: &str) -> u64 {
@@ -105,9 +111,9 @@ fn caps_default(p: &Value) -> Value {
     Value::Object(m)
 }
 
-/// 一份配置（或会话的副本）换成升级材料认的设置形状（§6.7 第 4 条），照搬每一格：`line` · `slots` ⇒ `caps`；`all_out` ⇒ `capKind`；
-/// `mode` 的 `first` · `normal` · `standby` ⇒ 上 · 中 · 下三排（只留用到的、从 0 编号，只有一排不写）；编号 1 的 `standby_wait` ⇒ 备用号的 `delay`；
-/// 整份 `delay` ⇒ 不在最上一排、又没另设的号的 `delay`。`back` · `stint` 不搬（§6.7 第 6 条）。
+/// 一份配置（或会话的副本）换成升级材料认的设置形状（§2.5），照搬每一格：`line` · `slots` ⇒ `caps`；`all_out` ⇒ `capKind`；
+/// `mode` 的 `first` ⇒ 号列表最前 · `normal` 照旧 · `standby` ⇒ `fallback: true`（耗尽后启用）；编号 1 的 `standby_wait` ⇒ 它的 `delay`；
+/// 整份 `delay` ⇒ 没另设的耗尽后启用号的 `delay`。强制切换阈值 · 权重容差取材料里的默认（不强制切换 · 0）。`back` · `stint` 不搬（§6.8）。
 fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
     let params = c.get("params").cloned().unwrap_or(Value::Null);
     let init = c.get("acctInit").cloned().unwrap_or(Value::Null);
@@ -124,7 +130,7 @@ fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
         .flatten()
         .filter_map(|r| r.get("id").and_then(Value::as_str))
         .collect();
-    // （位次：上 ⇒ 0 · 中 ⇒ 1 · 下 ⇒ 2, 那一行）
+    // （先后：first ⇒ 0 · normal ⇒ 1 · standby ⇒ 2, 那一行）
     let mut rows: Vec<(u8, serde_json::Map<String, Value>)> = Vec::new();
     for r in c
         .get("accounts")
@@ -147,8 +153,13 @@ fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
                 serde_json::json!({"5h": full[0].clone(), "7d": full[1].clone()}),
             );
         }
-        if first_strategy && mode == "standby" {
-            if let Some(d) = params.get("standby_wait").and_then(Value::as_u64) {
+        if mode == "standby" {
+            extra.insert("fallback".into(), Value::Bool(true));
+            let own = params
+                .get("standby_wait")
+                .and_then(Value::as_u64)
+                .filter(|_| first_strategy);
+            if let Some(d) = own.or(all_delay) {
                 extra.insert("delay".into(), Value::from(d));
             }
         }
@@ -169,22 +180,7 @@ fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
         }
     }
     rows.sort_by_key(|r| r.0);
-    let mut used: Vec<u8> = rows.iter().map(|r| r.0).collect();
-    used.dedup();
-    let top = used.first().copied();
-    let accounts: Vec<Value> = rows
-        .into_iter()
-        .map(|(rank, mut m)| {
-            let k = used.iter().position(|x| *x == rank).unwrap_or(0);
-            if used.len() > 1 && k > 0 {
-                m.insert("row".into(), Value::from(k));
-            }
-            if let Some(d) = all_delay.filter(|_| Some(rank) != top) {
-                m.entry("delay").or_insert(Value::from(d));
-            }
-            Value::Object(m)
-        })
-        .collect();
+    let accounts: Vec<Value> = rows.into_iter().map(|(_, m)| Value::Object(m)).collect();
     let mut s = base.clone();
     if let Some(m) = s.as_object_mut() {
         m.insert("caps".into(), caps_default(&init));
@@ -214,7 +210,7 @@ fn place(c: &Value, id: &str, name: &str, env: &Env<'_>, out: &mut Upgraded) -> 
     if !matches!(n, "1" | "2" | "3" | "") && !out.old_scripts.iter().any(|x| x == n) {
         out.old_scripts.push(n.to_string());
     }
-    let src = MATERIALS[idx];
+    let src = material(idx);
     let head = super::script::parse(src)
         .map_err(|e| format!("upgrade material {}: {}", idx + 1, e.msg))?
         .head;

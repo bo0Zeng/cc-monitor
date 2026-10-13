@@ -111,9 +111,10 @@ fn u1_every_config_becomes_a_users_own_file_and_new_sessions_do_not_rotate() {
     assert_eq!(u.book.for_new, "", "升级出来的不进任何默认");
 }
 
-/// ★ 设置一格不丢：线 · 时段 ⇒ 分段上限；都到上限就停 ⇒ 硬上限；优先 · 平常 · 备用 ⇒ 上 · 中 · 下三排；回切不搬（上排抢下排就是回切）。
+/// ★ 设置一格不丢：线 · 时段 ⇒ 分段上限；都到上限就停 ⇒ 硬上限；优先 ⇒ 号列表最前、备用 ⇒ 耗尽后启用（不出排）；
+/// 不强制切换、权重容差 0（第二版里同一组不抢）。
 #[test]
-fn u2_settings_come_out_in_rows() {
+fn u2_settings_come_out_without_rows() {
     let u = run(Some("Asia/Shanghai"));
     let h = head(file(&u, "c_00000002"));
     assert_eq!(h.name, script::Text::One("夜里省着用".into()));
@@ -124,14 +125,16 @@ fn u2_settings_come_out_in_rows() {
         json!({
           "caps": {"5h": all(90), "7d": all(90)},
           "capKind": "hard",
+          "close": 0,
+          "force": null,
           "accounts": [
             {"id": "f",
              "caps": {"5h": [{"from": 0, "to": 1200, "v": 80}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 80}],
                       "7d": [{"from": 0, "to": 1200, "v": 100}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 100}]}},
-            {"start": true, "row": 1},
-            {"id": "r1", "row": 1},
-            {"id": "r2", "row": 1},
-            {"id": "s", "row": 2}
+            {"start": true},
+            {"id": "r1"},
+            {"id": "r2"},
+            {"id": "s", "fallback": true}
           ]
         })
     );
@@ -141,35 +144,41 @@ fn u2_settings_come_out_in_rows() {
     assert_eq!(super::super::form::check(&h.form, &h.settings), []);
 }
 
-/// 编号 1 的「用备用号前先等」⇒ 备用那几号的启用延迟；整份的延迟 ⇒ 不在最上一排、又没另设的号。
+/// 编号 1 的「用备用号前先等」⇒ 耗尽后启用那几号的启用延迟；整份的延迟 ⇒ 没另设的耗尽后启用号（启用延迟只对它们生效）。
 #[test]
-fn u3_waits_become_start_delays() {
-    let mut v = v2();
-    v["configs"]["c_00000002"]["strategy"] = json!("1");
-    v["configs"]["c_00000002"]["params"]["delay"] = json!(5);
-    let u = from_v2(
-        &v,
-        &Env {
-            rest: &[],
-            live: &|_| false,
-            title: &|_| None,
-            local_tz: None,
-        },
-    )
-    .expect("读得懂");
-    let h = head(file(&u, "c_00000002"));
-    let rows = h.settings["accounts"].as_array().expect("号列表").clone();
-    let delay = |id: &str| {
-        rows.iter()
-            .find(|r| r["id"] == id || (id == "start" && r["start"] == true))
-            .expect("那一号")
-            .get("delay")
-            .cloned()
+fn u3_waits_become_start_delays_of_fallbacks() {
+    let delays = |strategy: &str| {
+        let mut v = v2();
+        v["configs"]["c_00000002"]["strategy"] = json!(strategy);
+        v["configs"]["c_00000002"]["params"]["delay"] = json!(5);
+        let u = from_v2(
+            &v,
+            &Env {
+                rest: &[],
+                live: &|_| false,
+                title: &|_| None,
+                local_tz: None,
+            },
+        )
+        .expect("读得懂");
+        let src = file(&u, "c_00000002").to_string();
+        let rows = head(&src).settings["accounts"].as_array().expect("号列表").clone();
+        let delay = |id: &str| {
+            rows.iter()
+                .find(|r| r["id"] == id || (id == "start" && r["start"] == true))
+                .expect("那一号")
+                .get("delay")
+                .cloned()
+        };
+        ((delay("s"), delay("start"), delay("f")), src)
     };
-    assert_eq!(delay("s"), Some(json!(30)), "备用号照「先等」");
-    assert_eq!(delay("start"), Some(json!(5)), "中间一排照整份的延迟");
-    assert_eq!(delay("f"), None, "最上一排不等");
-    assert_eq!(code(file(&u, "c_00000002")), code(material(1)));
+    let ((s, start, f), src) = delays("1");
+    assert_eq!(s, Some(json!(30)), "编号 1：备用号照「先等」");
+    assert_eq!((start, f), (None, None), "不是耗尽后启用的号没有启用延迟");
+    assert_eq!(code(&src), code(material(1)));
+    let ((s, _, _), src) = delays("2");
+    assert_eq!(s, Some(json!(5)), "别的编号：备用号照整份的延迟");
+    assert_eq!(code(&src), code(material(2)));
 }
 
 #[test]
@@ -276,7 +285,7 @@ fn u8_the_result_round_trips() {
     assert_eq!(back, u.book);
 }
 
-/// 用户那三个会话的样子（号名是合成的）：七个号同一排、先用快要重置的，总体 90%，一个号单独 99%，一个号 17:00–02:00 到 80%、
+/// 用户那三个会话的样子（号名是合成的）：七个号、先用快要重置的，总体 90%，一个号单独 99%，一个号 17:00–02:00 到 80%、
 /// 其余时候 99%，都到上限就停。两个会话带着副本、一个照配置。
 fn ours() -> Value {
     let p = |line: u64| json!({"line": line, "slots": [], "mode": "normal"});
@@ -303,8 +312,8 @@ fn ours() -> Value {
     })
 }
 
-/// ★ 用户那三个会话升级后设置照搬：同一排（不写排）· 总体 90% · 单独 99% · 分时段 80% / 99% · 硬上限；代码是「先用快要重置的」那份。
-/// 照它判：在用的号到上限 ⇒ 换到同一排里最快重置的；同一排里别的号快重置也不抢在用的号；全到上限 ⇒ 停发。
+/// ★ 用户那三个会话升级后设置照搬：总体 90% · 单独 99% · 分时段 80% / 99% · 硬上限 · 不强制切换；代码是「离重置近的权重高」那份。
+/// 照它判：在用的号到上限 ⇒ 换到最快重置的；别的号快重置也不换掉没满的在用号；全到上限 ⇒ 停发。
 #[test]
 fn u9_our_three_sessions_keep_every_setting() {
     let u = from_v2(
@@ -322,6 +331,8 @@ fn u9_our_three_sessions_keep_every_setting() {
     let want = json!({
       "caps": {"5h": all(90), "7d": all(90)},
       "capKind": "hard",
+      "close": 0,
+      "force": null,
       "accounts": [
         {"id": "p1"}, {"id": "p2"}, {"id": "p3"}, {"id": "p4"}, {"id": "p5"},
         {"id": "p6", "caps": {"5h": night, "7d": night}},
@@ -337,7 +348,7 @@ fn u9_our_three_sessions_keep_every_setting() {
         assert_eq!(
             code(src),
             code(material(2)),
-            "{sid} 的代码不是先用快要重置的那份"
+            "{sid} 的代码不是离重置近的权重高那份"
         );
         ids.push(id);
     }
@@ -377,13 +388,13 @@ fn u9_our_three_sessions_keep_every_setting() {
     assert_eq!(
         pick(&facts, "p1"),
         Pick::Use("p1".into()),
-        "同一排里别的号快重置也不抢在用的号"
+        "别的号快重置也不换掉没满的在用号"
     );
     facts[0].used[0] = 90.0;
     assert_eq!(
         pick(&facts, "p1"),
         Pick::Use("p4".into()),
-        "到 90% ⇒ 换到同一排里最快重置的"
+        "到 90% ⇒ 换到最快重置的"
     );
     facts[6].used[0] = 95.0;
     for (i, x) in facts.iter_mut().enumerate() {

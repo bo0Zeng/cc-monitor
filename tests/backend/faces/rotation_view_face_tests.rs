@@ -65,12 +65,12 @@ impl Home {
             root,
             live: Arc::default(),
         };
-        let read = |p: &str| {
-            std::fs::read_to_string(crate::guard_support::repo_root().join(p)).expect("判据夹具")
+        let named = |n: usize, name: &str| {
+            crate::accounts::quota::rules::upgrade::material(n).replacen("\"name\": \"\"", &format!("\"name\": \"{name}\""), 1)
         };
-        let list = read("tests/__fixtures__/rotation-by-list.rhai");
-        let third = list.replace("\"name\": \"照号牌\"", "\"name\": \"第三份\"");
-        let reset = read("tests/__fixtures__/rotation-by-reset.rhai");
+        let list = named(0, "照号牌");
+        let third = named(0, "第三份");
+        let reset = named(1, "先用快重置的");
         for (id, text) in [("by-list", list), ("by-reset", reset), ("third", third)] {
             rotation::strategy_file_write(&h.own(), id, &text).expect("写策略");
         }
@@ -269,7 +269,7 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let v = session_view(&ctx, &home, S1);
     let st = v.strategy.as_ref().expect("在轮换");
     assert_eq!(st.id, "by-list");
-    assert_eq!(v.form.len(), 4, "夹具那份的声明");
+    assert_eq!(v.form.len(), 5, "照号列表那份的声明（用量上限 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）");
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
     assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
     assert_eq!(v.listed, 1);

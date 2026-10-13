@@ -3,4 +3,4 @@
 /**
  * 格的种类。
  */
-export type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments" | "row";
+export type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";

@@ -463,14 +463,11 @@ impl Home {
                 .map(|a| serde_json::json!({"id": a})),
         );
         let kind = if at_limit == "stop" { "hard" } else { "soft" };
-        let src = std::fs::read_to_string(
-            crate::guard_support::repo_root().join("tests/__fixtures__/rotation-by-list.rhai"),
-        )
-        .expect("判据夹具");
-        let mut head = script::parse(&src).expect("读得懂").head;
+        let src = crate::accounts::quota::rules::upgrade::material(0);
+        let mut head = script::parse(src).expect("读得懂").head;
         head.settings = serde_json::json!({"caps": caps, "capKind": kind, "accounts": accounts});
         head.tz = Some("UTC".into());
-        let text = script::with_head(&src, &head).expect("头");
+        let text = script::with_head(src, &head).expect("头");
         rotation::strategy_file_write(&self.own(), "t-default", &text).expect("写策略");
         rotation::face_change(
             &RotationStore::at(Some(self.rotation_path())),
