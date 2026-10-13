@@ -37,7 +37,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// 文件名（与 `backend.json` / `assets-catalog.json` 同一个家）。字面量只住契约 crate（`relay_route_core::SKILL_LEDGER_REL`，数据位置页按它列），写者只有本模块（判据钉）。
 pub const FILE_NAME: &str = relay_route_core::file_name_of(relay_route_core::SKILL_LEDGER_REL);
@@ -47,9 +47,6 @@ pub const FORMAT_V: u64 = 1;
 pub const MAX_BYTES: u64 = 4 * 1024 * 1024;
 /// 一趟 `add` 最多收这么多个文件（与 skill 读 / 装同一个上限，不另起一份）。
 use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
-
-/// 这一族的应答。
-pub type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
 /// 一个装时写进去的文件。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

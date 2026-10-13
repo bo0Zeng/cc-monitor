@@ -107,97 +107,20 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::async_owning::<crate::faces::ext_hub_face::ExtHubApply>("装到几台，本机后端当枢纽；各台各自结局", hub_here),
     // 扩展页那张表：这台现扫一次、记下（资产目录的写口从这扇门递进去），各台目录合成「条目 × 机器」。
     //   读可达表认出每台的名字 ⇒ 只在流面上。
-    CommandSpec {
-        name: "ext-list",
-        summary: "设置「扩展」页那张表",
-        codes: &["bad_args", "catalog_unreadable", "io_failed"],
-        fields: &[out("machines", "每台一列 `{key, here, reachable, name, projects}`：`key` = 枢纽认它的键（本机后端自己 = `null`"), out("problems", "这台扫的时候读不出来的那几份"), out("rows", "每个条目一行 `{kind, name, about, detail, new, builtin, note, cells}`，`cells` 与 `machines` 同序"), arg("visit", "可缺席：`true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::ext::answer_list(
-                &r.args,
-                &|visit| crate::assets::asset_catalog::answer_current(visit, own),
-                &crate::assets::ext::reach_of(&crate::dial::remote_ask::REACH),
-            )
-            .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::faces::ext_list_face::ExtListCmd>("设置「扩展」页那张表"),
     // 〔第二个前端 2026-10-08〕扩展页那张表的**本机那一半**：同一份 `assets::ext::answer_list`，只是目录先裁到这台自己那一格。
     //   凭据在 `ext::columns`：本机那一列**压根不问可达表**（`here` 为真 ⇒ `reachable` 恒真、`key` 恒 `null`、`name` 取目录里那台自报的 label），
     //   可达表只被**别的台**那几列用来认名字与连没连上。裁完一列不剩 ⇒ 可达表无从参与 ⇒ 这一条在一次性进程里与常驻那一个**答得一样真**，
     //   照派生规则（`cli_control::cli_exposed`）上 CLI 面。
     //   跨机那一整张（别的台叫什么 · 连没连上 · 「装到…」从哪台拿哪一版）仍只在 `ext-list`（`cli_control::STREAM_ONLY`，理由在 `cli_control_tests::NOT_ON_CLI`）。
     //   ⚠ 不是把 `ext-list` 加一个参数：上不上 CLI 面按**命令名**派生，同一条命令没法「带这个参数才上」。
-    CommandSpec {
-        name: "ext-list-here",
-        summary: "设置「扩展」页那张表的本机那一半（不问可达表）",
-        codes: &["bad_args", "catalog_unreadable", "io_failed"],
-        fields: &[out("machines", "恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表"), out("problems", "同 `ext-list`：这台扫的时候读不出来的那几份"), out("rows", "同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格"), arg("visit", "同 `ext-list`：`true` = 这一问算「来看了一次」")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            // 裁到这台那一格再交给同一个本体。`answer_current` 仍是那扇门（现扫 ＋ 记下整份目录，别的台那几格一个字节不动）。
-            let here = |visit: bool| {
-                let (mut cat, problems) = crate::assets::asset_catalog::answer_current(visit, own)?;
-                let me = cat.self_id.clone();
-                cat.machines.retain(|id, _| *id == me);
-                Ok((cat, problems))
-            };
-            crate::assets::ext::answer_list(&r.args, &here, &[]).map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::faces::catalog_face::ExtListHereCmd>("设置「扩展」页那张表的本机那一半（不问可达表）"),
     // 用户写 / 改 / 清一个条目的备注：资产目录的写口从这扇门递进去（记进本机自己那一格，随目录同步）。
     crate::stream::inbound::typed::owning::<crate::faces::catalog_face::ExtNoteSetCmd>("写 / 改 / 清一个扩展的备注"),
     // 从这台卸一个扩展：装记录里有 ⇒ 只撤装时写的；没有 ⇒ 先挪进 `~/.cc-monitor/backups/` 再删。判与写都在这台（写经 [`LocalFiles`]，
     //   装记录的写口从这扇门递进去）。
-    CommandSpec {
-        name: "ext-uninstall-preview",
-        summary: "从这台卸一个扩展之前那张卡",
-        codes: &[
-            "bad_args",
-            "bad_file",
-            "bad_path",
-            "io_failed",
-            "ledger_unreadable",
-            "not_found",
-            "refused",
-        ],
-        fields: &[arg("at", "在这台哪一级（用户级 MCP：这台有账号库 ⇒ 从各账号共用的那一份里删、所有号一起撤；没有 ⇒ 只读、`refused`）"), out("backup", "不是 cc-monitor 装的：删之前先放到哪（`~/.cc-monitor/backups/`）；否则 `null`"), out("files", "要删的那几个（skill：相对路径；MCP：那一条）"), arg("kind", "种类"), arg("name", "名字"), out("path", "skill 目录 / MCP 配置文件"), out("recorded", "装记录里有（cc-monitor 装的）⇒ 只撤装时写进去的；没有 ⇒ 不是 cc-monitor 装的"), out("said", "这一趟会做什么（说人话：改过没有 · 删了回不回得去）"), out("token", "看到的那一份的记号 —— 卸的时候原样交回")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::ext::answer_uninstall_preview(
-                &LocalFiles,
-                &crate::assets::ext::Env::here(),
-                &r.args,
-            )
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "ext-uninstall-apply",
-        summary: "从这台卸一个扩展",
-        codes: &[
-            "bad_args",
-            "bad_file",
-            "bad_path",
-            "io_failed",
-            "ledger_unreadable",
-            "needs_consent",
-            "not_found",
-            "refused",
-            "stale",
-        ],
-        fields: &[arg("at", "同 `ext-uninstall-preview`"), out("changed", "删了的那几个"), arg("kind", "同 `ext-uninstall-preview`"), arg("name", "同 `ext-uninstall-preview`"), out("note", "要知道的一件（挪 / 抄到了哪 · 没从装记录里摘掉 · 空目录没收掉）"), out("path", "卸的是哪"), arg("token", "卡上那一份：现在对不上 ⇒ `stale`、一个字节不动")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::ext::answer_uninstall_apply(
-                &LocalFiles,
-                &crate::assets::ext::Env::here(),
-                &|a| crate::assets::skill_ledger::answer_record(a, own),
-                &r.args,
-            )
-            .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::faces::ext_list_face::ExtUninstallPreviewCmd>("从这台卸一个扩展之前那张卡", &LocalFiles),
+    crate::stream::inbound::typed::with_own::<crate::faces::ext_list_face::ExtUninstallApplyCmd>("从这台卸一个扩展", &LocalFiles),
     // 〔D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
     crate::stream::inbound::typed::with_files::<crate::faces::hub_inner_face::McpSourceCmd>("装到别的机器时来源那一条", &LocalFiles),
     crate::stream::inbound::typed::with_files::<crate::faces::hub_inner_face::McpPreviewCmd>("在要被写的那一台看装上之后那一条", &LocalFiles),

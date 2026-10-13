@@ -112,3 +112,30 @@ impl Owning for SkillInstallRecordCmd {
         skill_ledger::answer_record(&req, own).map_err(|f| typed::of_fail(f, RecordErr::IoFailed))
     }
 }
+
+/// `ext-list-here`：扩展页那张表的**本机那一半**（同一个本体，目录先裁到这台自己那一格；不问可达表 ⇒ 上 CLI 面）。
+pub(crate) struct ExtListHereCmd;
+
+impl Command for ExtListHereCmd {
+    const NAME: &'static str = "ext-list-here";
+    type Req = ext::ExtListReq;
+    type Reply = ext::ExtList;
+    type Err = CatalogErr;
+}
+
+impl Owning for ExtListHereCmd {
+    fn run(
+        req: ext::ExtListReq,
+        _cx: &Cx,
+        own: &crate::platform::Own,
+    ) -> Result<ext::ExtList, CatalogErr> {
+        // 裁到这台那一格再交给同一个本体。`answer_current` 仍是那扇门（现扫 ＋ 记下整份目录，别的台那几格一个字节不动）。
+        let here = |visit: bool| {
+            let (mut cat, problems) = asset_catalog::answer_current(visit, own)?;
+            let me = cat.self_id.clone();
+            cat.machines.retain(|id, _| *id == me);
+            Ok((cat, problems))
+        };
+        ext::answer_list(&req, &here, &[]).map_err(|f| typed::of_fail(f, CatalogErr::IoFailed))
+    }
+}

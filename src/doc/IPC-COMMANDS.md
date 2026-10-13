@@ -6310,12 +6310,84 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `machines` | ← | 每台一列 `{key, here, reachable, name, projects}`：`key` = 枢纽认它的键（本机后端自己 = `null` |
-| `problems` | ← | 这台扫的时候读不出来的那几份 |
-| `rows` | ← | 每个条目一行 `{kind, name, about, detail, new, builtin, note, cells}`，`cells` 与 `machines` 同序 |
-| `visit` | → | 可缺席：`true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算 |
+入参 `ExtListReq` · 回包 `ExtList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtBring = { from: string | null, 
+/**
+ * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
+ */
+fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
+type ExtBuiltin = { note: string, 
+/**
+ * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
+ */
+hooks: boolean, };
+type ExtCell = { 
+/**
+ * 表上那个点。
+ */
+state: ExtState, 
+/**
+ * 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
+ */
+places: Array<ExtPlace>, bring: ExtBring | null, 
+/**
+ * 没有「装到…」时为什么（现状 ＋ 能做什么）。
+ */
+note: string | null, };
+type ExtDetail = { label: string, value: string, };
+type ExtKind = "skill" | "mcp";
+type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, };
+type ExtListReq = { 
+/**
+ * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
+ */
+visit?: boolean, };
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtMachine = { 
+/**
+ * 枢纽认它的键：本机后端自己 = `null`；别的台 = 可达表里的名字；没连上 = `null` 且 `reachable = false`。
+ */
+key: string | null, 
+/**
+ * 就是本机后端这一台。
+ */
+here: boolean, reachable: boolean, 
+/**
+ * 给人看的名字（可达表里的名字；没有就是那台自报的称呼）。
+ */
+name: string, 
+/**
+ * 那台上开过会话的项目目录（装到项目时给人选）。
+ */
+projects: Array<string>, };
+type ExtPlace = { at: ExtLoc, 
+/**
+ * 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
+ */
+state: ExtState, 
+/**
+ * skill：那一处的目录（「在文件窗口里打开」用）。
+ */
+dir: string | null, 
+/**
+ * 这一处有「卸载」。
+ */
+uninstall: boolean, 
+/**
+ * 有它、却没有「卸载」时为什么。
+ */
+note: string | null, };
+type ExtRow = { kind: ExtKind, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+/**
+ * 用户写的备注（随目录在后端之间同步）。
+ */
+note: string | null, cells: Array<ExtCell>, };
+type ExtScope = { from: ExtLoc, to: ExtLoc, };
+type ExtState = "same" | "differs" | "missing" | "project";
+type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -6325,12 +6397,84 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-list-here`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `machines` | ← | 恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表 |
-| `problems` | ← | 同 `ext-list`：这台扫的时候读不出来的那几份 |
-| `rows` | ← | 同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格 |
-| `visit` | → | 同 `ext-list`：`true` = 这一问算「来看了一次」 |
+入参 `ExtListReq` · 回包 `ExtList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtBring = { from: string | null, 
+/**
+ * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
+ */
+fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
+type ExtBuiltin = { note: string, 
+/**
+ * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
+ */
+hooks: boolean, };
+type ExtCell = { 
+/**
+ * 表上那个点。
+ */
+state: ExtState, 
+/**
+ * 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
+ */
+places: Array<ExtPlace>, bring: ExtBring | null, 
+/**
+ * 没有「装到…」时为什么（现状 ＋ 能做什么）。
+ */
+note: string | null, };
+type ExtDetail = { label: string, value: string, };
+type ExtKind = "skill" | "mcp";
+type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, };
+type ExtListReq = { 
+/**
+ * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
+ */
+visit?: boolean, };
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtMachine = { 
+/**
+ * 枢纽认它的键：本机后端自己 = `null`；别的台 = 可达表里的名字；没连上 = `null` 且 `reachable = false`。
+ */
+key: string | null, 
+/**
+ * 就是本机后端这一台。
+ */
+here: boolean, reachable: boolean, 
+/**
+ * 给人看的名字（可达表里的名字；没有就是那台自报的称呼）。
+ */
+name: string, 
+/**
+ * 那台上开过会话的项目目录（装到项目时给人选）。
+ */
+projects: Array<string>, };
+type ExtPlace = { at: ExtLoc, 
+/**
+ * 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
+ */
+state: ExtState, 
+/**
+ * skill：那一处的目录（「在文件窗口里打开」用）。
+ */
+dir: string | null, 
+/**
+ * 这一处有「卸载」。
+ */
+uninstall: boolean, 
+/**
+ * 有它、却没有「卸载」时为什么。
+ */
+note: string | null, };
+type ExtRow = { kind: ExtKind, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+/**
+ * 用户写的备注（随目录在后端之间同步）。
+ */
+note: string | null, cells: Array<ExtCell>, };
+type ExtScope = { from: ExtLoc, to: ExtLoc, };
+type ExtState = "same" | "differs" | "missing" | "project";
+type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -6360,17 +6504,34 @@ text: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-uninstall-preview`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | 在这台哪一级（用户级 MCP：这台有账号库 ⇒ 从各账号共用的那一份里删、所有号一起撤；没有 ⇒ 只读、`refused`） |
-| `backup` | ← | 不是 cc-monitor 装的：删之前先放到哪（`~/.cc-monitor/backups/`）；否则 `null` |
-| `files` | ← | 要删的那几个（skill：相对路径；MCP：那一条） |
-| `kind` | → | 种类 |
-| `name` | → | 名字 |
-| `path` | ← | skill 目录 / MCP 配置文件 |
-| `recorded` | ← | 装记录里有（cc-monitor 装的）⇒ 只撤装时写进去的；没有 ⇒ 不是 cc-monitor 装的 |
-| `said` | ← | 这一趟会做什么（说人话：改过没有 · 删了回不回得去） |
-| `token` | ← | 看到的那一份的记号 —— 卸的时候原样交回 |
+入参 `ExtUninstallReq` · 回包 `ExtUninstallCard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtKind = "skill" | "mcp";
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtUninstallCard = { kind: ExtKind, name: string, path: string, 
+/**
+ * cc-monitor 装的（装记录里有）。
+ */
+recorded: boolean, 
+/**
+ * 要删的那几个（skill：相对路径；MCP：那份配置文件里的那一条）。
+ */
+files: Array<string>, 
+/**
+ * 删之前先放到哪（不是 cc-monitor 装的才有）。
+ */
+backup: string | null, 
+/**
+ * 这一趟会做什么（说人话：装的 / 不是装的 · 改过没有 · 删了回不回得去）。
+ */
+said: string, token: string, };
+type ExtUninstallReq = { kind: ExtKind, name: string, 
+/**
+ * 在这台哪一级（项目目录须是这台上的绝对路径）。
+ */
+at: ExtLoc, };
+```
 
 码：`bad_args` · `bad_file` · `bad_path` · `io_failed` · `ledger_unreadable` · `not_found` · `refused`
 
@@ -6380,15 +6541,22 @@ text: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-uninstall-apply`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | 同 `ext-uninstall-preview` |
-| `changed` | ← | 删了的那几个 |
-| `kind` | → | 同 `ext-uninstall-preview` |
-| `name` | → | 同 `ext-uninstall-preview` |
-| `note` | ← | 要知道的一件（挪 / 抄到了哪 · 没从装记录里摘掉 · 空目录没收掉） |
-| `path` | ← | 卸的是哪 |
-| `token` | → | 卡上那一份：现在对不上 ⇒ `stale`、一个字节不动 |
+入参 `ExtUninstallApplyReq` · 回包 `ExtDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtDone = { path: string, 
+/**
+ * 写了 / 删了的那几个。
+ */
+changed: Array<string>, 
+/**
+ * 做成了，但有一件要知道的（执行位没改成 · 没记下来 · 空目录没收掉 …）。
+ */
+note: string | null, };
+type ExtKind = "skill" | "mcp";
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtUninstallApplyReq = { kind: ExtKind, name: string, at: ExtLoc, token: string, };
+```
 
 码：`bad_args` · `bad_file` · `bad_path` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found` · `refused` · `stale`
 

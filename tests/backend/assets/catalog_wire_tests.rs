@@ -178,6 +178,16 @@ fn an_extra_key_is_bad_args_on_the_frame_path() {
     let digest = "0123456789abcdef";
     let cases = [
         ("assets-catalog", json!({ "bogus": 1 })),
+        ("ext-list", json!({ "visit": false, "bogus": 1 })),
+        ("ext-list-here", json!({ "visit": false, "bogus": 1 })),
+        (
+            "ext-uninstall-preview",
+            json!({ "kind": "skill", "name": "a", "at": { "level": "user" }, "bogus": 1 }),
+        ),
+        (
+            "ext-uninstall-apply",
+            json!({ "kind": "skill", "name": "a", "at": { "level": "user" }, "token": "t", "bogus": 1 }),
+        ),
         (
             "assets-catalog-merge",
             json!({ "catalog": { "machines": [] }, "bogus": 1 }),

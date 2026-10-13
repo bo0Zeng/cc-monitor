@@ -3,7 +3,6 @@
  * 线上形状由跨语言金样钉住（后端测试产出 == `ext-flow.golden.json`，这里读同一份）；「装」只问本机后端（它当枢纽），「卸」问被卸的那一台。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -12,9 +11,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 import { invoke } from "@tauri-apps/api/core";
 import { decodeAssetsSynced, syncAssets } from "../../../src/frontend/ui/assets-sync-reads";
 import {
-  decodeExtDone,
-  decodeExtList,
-  decodeExtUninstallCard,
   extHubApply,
   extHubPreview,
   extList,
@@ -24,6 +20,9 @@ import {
   decodeMcpRead,
   mcpRead,
 } from "../../../src/frontend/ui/ext-reads";
+import type { ExtDone } from "../../../src/frontend/ui/generated/ExtDone";
+import type { ExtList } from "../../../src/frontend/ui/generated/ExtList";
+import type { ExtUninstallCard } from "../../../src/frontend/ui/generated/ExtUninstallCard";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
@@ -33,7 +32,6 @@ const golden = (n: string) =>
   JSON.parse(readFileSync(resolve(REPO_ROOT, `tests/__fixtures__/${n}.golden.json`), "utf8")) as Record<string, unknown>;
 const SYNC = golden("assets-sync");
 const EXT = golden("ext-flow");
-const BAD = peerVersionSaid("reply_unreadable", "<local>");
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -42,7 +40,7 @@ beforeEach(() => {
 describe("金样：后端出的成品，TS 读得懂", () => {
   it("assets-sync · ext-list · ext-hub-preview / -apply · ext-uninstall-preview / -apply", () => {
     expect(decodeAssetsSynced(SYNC.reply).reach).toEqual([{ origin: "o", machine: null }]);
-    const list = decodeExtList(EXT.list);
+    const list = EXT.list as ExtList;
     expect(list.machines.map((m) => [m.key, m.here])).toEqual([
       [null, true],
       ["laptop", false],
@@ -58,24 +56,9 @@ describe("金样：后端出的成品，TS 读得懂", () => {
       ["project", true],
     ]);
     expect(list.rows[1].cells[0].places.map((p) => [p.at.level, p.state, p.uninstall])).toEqual([["user", "same", true]]);
-    expect(decodeExtDone(EXT.done).changed).toEqual(["SKILL.md"]);
-    expect(decodeExtUninstallCard(EXT.uninstallCard).recorded).toBe(true);
-    expect(decodeExtDone(EXT.uninstallDone).changed).toEqual(["SKILL.md"]);
-  });
-});
-
-describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
-  const list = EXT.list as { machines: object[]; rows: Array<{ cells: object[] }> };
-  it.each([
-    ["表多一格", () => decodeExtList({ ...list, x: 1 })],
-    ["一行的格数与机器数对不上", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: list.rows[0].cells.slice(1) }] })],
-    ["格态不在闭集里", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: [{ ...list.rows[0].cells[0], state: "maybe" }, list.rows[0].cells[1]] }] })],
-    ["一格带了摘要", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: [{ ...list.rows[0].cells[0], digest: "d" }, list.rows[0].cells[1]] }] })],
-    ["一行缺备注那一格", () => decodeExtList({ ...list, rows: [(({ note: _n, ...r }) => r)(list.rows[0] as Record<string, unknown>)] })],
-    ["备注不是串", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], note: 1 }] })],
-    ["装完类型不对", () => decodeExtDone({ ...(EXT.done as object), changed: "SKILL.md" })],
-  ] as const)("%s", (_n, f) => {
-    expect(f).toThrow(BAD);
+    expect((EXT.done as ExtDone).changed).toEqual(["SKILL.md"]);
+    expect((EXT.uninstallCard as ExtUninstallCard).recorded).toBe(true);
+    expect((EXT.uninstallDone as ExtDone).changed).toEqual(["SKILL.md"]);
   });
 });
 

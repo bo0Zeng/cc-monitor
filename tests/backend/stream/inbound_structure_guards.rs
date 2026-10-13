@@ -1161,15 +1161,11 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 16;
+    const UNSHAPED_CEILING: usize = 12;
     const UNSHAPED: &[&str] = &[
         "accounts-sessions",
         "apikey-key-set",
         "data-report",
-        "ext-list",
-        "ext-list-here",
-        "ext-uninstall-apply",
-        "ext-uninstall-preview",
         "machine-interrupts",
         "plan-ack",
         "plan-cell-view",

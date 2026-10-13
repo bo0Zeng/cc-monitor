@@ -2,6 +2,26 @@
 //! 装 / 卸跨两台走同一对枢纽命令，装到哪由用户选（skill：全局 / 项目；MCP：只项目，全局由后端拒），看过之后源变了 ⇒ `stale`、目标零写；
 //! 卸：cc-monitor 装的按装记录撤，不是的先备份再删；备注随目录同步到别的后端；cc-bus 是自带的一行，装它用被写那台二进制里那一份。
 use super::*;
+
+/// 卸那一对的入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
+fn answer_uninstall_preview(
+    d: &dyn Door,
+    env: &Env,
+    a: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::answer_uninstall_preview(d, env, &req).map(|r| serde_json::to_value(r).unwrap())
+}
+
+fn answer_uninstall_apply(
+    d: &dyn Door,
+    env: &Env,
+    record: Record,
+    a: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::answer_uninstall_apply(d, env, record, &req).map(|r| serde_json::to_value(r).unwrap())
+}
 use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::tests::{ap, pv};
