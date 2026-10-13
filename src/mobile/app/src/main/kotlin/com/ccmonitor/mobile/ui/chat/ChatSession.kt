@@ -10,7 +10,6 @@ import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNew
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
-import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.str
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
@@ -413,7 +412,8 @@ class ChatSession(
     private fun watchRunning(s: String) {
         scope.launch {
             link.table.collect { t ->
-                val running = t.sessions[s]?.activity?.tone == Tone.NOW
+                // 只有那台判得出「在跑」才亮停止键；判不出（说不清 · 读记录中）不亮。
+                val running = t.sessions[s]?.running == true
                 if (running != _state.value.running) _state.value = _state.value.copy(running = running)
             }
         }

@@ -71,8 +71,12 @@ internal class FakeCoreLink :
         cwd: String,
         tone: Tone = Tone.PLAIN,
         path: String? = "/p/$sid.jsonl",
+        running: Boolean = tone == Tone.NOW,
     ) {
-        table.value = table.value.copy(sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd, activity = Toned("空闲", tone))))
+        table.value =
+            table.value.copy(
+                sessions = table.value.sessions + (sid to LiveSession(sid, path = path, cwd = cwd, activity = Toned("空闲", tone), running = running)),
+            )
     }
 
     companion object {

@@ -19,8 +19,11 @@ class ProductsTest {
         val t = SessionTable().step(full, breaks::add)
         assertEquals(Toned("需手动", Tone.NEED), t.sessions.getValue("s1").activity)
         assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path)
+        assertFalse("需手动不算在跑", t.sessions.getValue("s1").running)
         val t2 = SessionTable().step(least, breaks::add)
-        assertEquals(Toned("运行中", Tone.NOW), t2.sessions.getValue("s1").activity)
+        // 最少格：那台判不出在干什么（`activity` 缺席）⇒ 核心照实写「说不清」、语气 plain；不算在跑（停止键不亮）。
+        assertEquals(Toned("说不清", Tone.PLAIN), t2.sessions.getValue("s1").activity)
+        assertFalse("判不出不算在跑", t2.sessions.getValue("s1").running)
         assertTrue(breaks.toString(), breaks.isEmpty())
     }
 
@@ -29,7 +32,8 @@ class ProductsTest {
         val breaks = mutableListOf<String>()
         var t = SessionTable().step(golden("session_added")[0], breaks::add)
         t = t.step(golden("session_status")[1], breaks::add)
-        assertEquals(Toned("运行中", Tone.NOW), t.sessions.getValue("s1").activity)
+        assertEquals(Toned("说不清", Tone.PLAIN), t.sessions.getValue("s1").activity)
+        assertFalse("判不出不算在跑", t.sessions.getValue("s1").running)
         assertEquals("/p/s1.jsonl", t.sessions.getValue("s1").path) // 状态帧不抹掉宣告时的格
         t = t.step(golden("sessions_replayed")[0], breaks::add)
         assertTrue(t.replayed)

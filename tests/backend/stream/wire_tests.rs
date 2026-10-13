@@ -1319,7 +1319,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1332,7 +1332,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n"
     );
 }
 
@@ -1380,7 +1380,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n",
         "agent_kind 每条都带"
     );
 
@@ -1393,7 +1393,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n",
         "缺的格不上线"
     );
 }
@@ -1527,18 +1527,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":0}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
@@ -1603,7 +1603,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"运行中\",\"activity_tone\":\"now\",\"activity_order\":4,\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
@@ -1968,15 +1968,20 @@ fn session_frames_carry_the_state_written_and_toned() {
         assert_eq!(v["activity_text"], copy_core::copy_text(key, &[]), "{a:?}");
         assert_eq!(v["activity_tone"], tone, "{a:?}");
     }
-    // 说不清在干什么（活着、那一家没说）⇒ 核心也给一格字与语气（出口不自己补「运行中」）。
+    // 说不清在干什么（活着、那一家没说）⇒ 核心照实写「说不清」、语气 plain（不说一句没判出来的「运行中」）。
     let none = status(None);
     assert_eq!(
         none["activity_text"],
         copy_core::copy_text("beSession.activity.unclear", &[])
     );
-    assert_eq!(none["activity_tone"], "now");
+    assert_ne!(
+        none["activity_text"],
+        copy_core::copy_text("beSession.activity.working", &[]),
+        "判不出却写了运行中"
+    );
+    assert_eq!(none["activity_tone"], "plain");
 
-    // V10 监控板组内的序由核心给（`activity_order`，小的在前）：等人 > 在干活 > 后台任务运行中 > 闲着 > 说不清。
+    // V10 监控板组内的序由核心给（`activity_order`，小的在前）：等人 > 在干活 > 后台任务运行中 > 闲着 ＝ 说不清（序跟着语气走）。
     let order = |a: Option<A>| {
         status(a)["activity_order"]
             .as_u64()
@@ -1987,11 +1992,23 @@ fn session_frames_carry_the_state_written_and_toned() {
         Some(A::Working),
         Some(A::BackgroundWork),
         Some(A::Idle),
-        None,
     ];
     for w in ranked.windows(2) {
         assert!(order(w[0]) < order(w[1]), "{:?} 应排在 {:?} 前", w[0], w[1]);
     }
+    assert_eq!(
+        order(None),
+        order(Some(A::Idle)),
+        "说不清与闲着同一档（语气都是 plain）"
+    );
+    // 读记录中：同「说不清」那一格，字照实说。
+    let reading = serde_json::to_value(crate::stream::wire::ActivityFace::reading()).unwrap();
+    assert_eq!(reading["activity_tone"], "plain");
+    assert_eq!(reading["activity_order"], none["activity_order"]);
+    assert!(
+        reading.get("activity").is_none(),
+        "读记录中不说判出了哪一态"
+    );
 
     for (f, name, hint) in [
         (

@@ -1528,6 +1528,8 @@ struct ReaderState {
     prime_bytes: u64,
     /// 每个宣告过的活会话那一帧 `session_added`（接上来的连接拿它的现值补一份，[`join`]）。
     added: HashMap<String, Frame>,
+    /// 宣告时说的是「读记录中」的会话（此刻在干什么只有记录说、记录还没读完）：读完必说一次判出来的那一态（判不出 ⇒ 说不清）。
+    reading: HashSet<String>,
 }
 
 impl ReaderState {
@@ -1707,6 +1709,7 @@ impl ReaderState {
             next_prime: 0,
             prime_bytes: 0,
             added: HashMap::new(),
+            reading: HashSet::new(),
         }
     }
 }
@@ -2328,7 +2331,11 @@ fn join(sub: Sub, state: &mut ReaderState, sink: &mut FrameSink) {
             Some(e),
         ) = (&mut added, entry)
         {
-            *face = crate::stream::wire::ActivityFace::of(e.activity);
+            *face = if state.reading.contains(&sid) {
+                crate::stream::wire::ActivityFace::reading()
+            } else {
+                crate::stream::wire::ActivityFace::of(e.activity)
+            };
             *name_face = crate::stream::wire::NameFace::of(&e.facts);
             waiting_for.clone_from(&e.waiting_for);
             if e.path.is_some() {
@@ -2907,6 +2914,15 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
     }
     // **先宣告、后读**（read8a）：认出来就报，不等记录。记录交后台预读（推进游标 / 行号到此刻的完整行数 L，零行帧），
     // 读完发 `session_primed` 带 L —— 之后的新行 seq 从 L 起；`[0, L)` 由客户端经骨架 / 尾段补。读完之前这条会话的行帧一帧不出。
+    // 此刻在干什么只有记录说（这一家没有进程状态文件）、而记录还没读 ⇒ 照实说「读记录中」，读完再说判出来的那一态（[`primed`]）。
+    let reading = a.activity.is_none()
+        && jsonls
+            .first()
+            .and_then(|p| state.root_of(p))
+            .is_some_and(|i| state.roots[i].face.activity.is_some());
+    if reading {
+        state.reading.insert(sid.clone());
+    }
     let added = Frame::SessionAdded {
         sid: sid.clone(),
         agent_kind: a.kind.to_string(),
@@ -2916,7 +2932,11 @@ fn announce(key: PathBuf, a: Announce, state: &mut ReaderState, sink: &mut Frame
         project_dir,
         name: a.name,
         path: jsonls.first().map(|p| p.to_string_lossy().into_owned()),
-        face: crate::stream::wire::ActivityFace::of(a.activity),
+        face: if reading {
+            crate::stream::wire::ActivityFace::reading()
+        } else {
+            crate::stream::wire::ActivityFace::of(a.activity)
+        },
         name_face,
         waiting_for: a.waiting_for,
         // 判不了 ⇒ `None` ⇒ 不上线（与本字段加进来之前逐字节相同）。
@@ -2971,12 +2991,40 @@ fn start_prime(
         files,
         label: fresh_name.then(|| jsonls.first().cloned()).flatten(),
     };
-    match state.pool.as_ref() {
-        Some(pool) => pool.submit(job),
+    match state.pool.as_mut() {
+        Some(pool) => {
+            pool.queue.push_back(job);
+            dispatch_primes(state, sink);
+        }
         None => {
             let done = run_prime(job);
             primed(done, state, sink);
         }
+    }
+}
+
+/// **先读正在看的**（read8a ②）：池子有空位就从排着的预读里挑下一份交出去 —— 有连接在看（`stream-watch` 名单里点了名）的先，
+/// 其余照排队的先后。挑在交出去那一刻（名单一变，下一个空位就按新名单挑）；已经在读的不撤。
+/// 排着的那一份对应的会话已退休 / 又被重新宣告（代号对不上）⇒ 扔掉（它带走的游标与链本来就作废了）。
+/// 名单是「点了名」才算：没报过名单的连接（＝ 全看）不把谁顶到前面。
+fn dispatch_primes(state: &mut ReaderState, sink: &FrameSink) {
+    let watched = |sid: &str| {
+        sink.subs
+            .iter()
+            .any(|s| s.watching.as_ref().is_some_and(|w| w.contains(sid)))
+    };
+    let Some(pool) = state.pool.as_mut() else {
+        return;
+    };
+    pool.queue
+        .retain(|j| state.priming.get(&j.sid) == Some(&j.gen));
+    while pool.in_flight < pool.pool.size() {
+        let at = pool.queue.iter().position(|j| watched(&j.sid)).unwrap_or(0);
+        let Some(job) = pool.queue.remove(at) else {
+            break;
+        };
+        pool.in_flight += 1;
+        pool.pool.submit(job);
     }
 }
 
@@ -3298,6 +3346,7 @@ fn retire_sid_if_unreferenced(
     catch_up_session(sid, true, state, sink); // 写端已死：补读 ＋ 收尾残行（D 块）
     state.active_sids.remove(sid);
     state.added.remove(sid);
+    state.reading.remove(sid);
     // 预读还在跑 ⇒ 那一趟交回时认不上、丢掉（[`primed`]）。
     state.priming.remove(sid);
     sink.priming.remove(sid);
@@ -3610,6 +3659,11 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
         activity,
         facts,
     } = done;
+    // 池子空出一位 ⇒ 按此刻的名单交下一份（不论这一趟认不认得上）。
+    if let Some(pool) = state.pool.as_mut() {
+        pool.in_flight = pool.in_flight.saturating_sub(1);
+    }
+    dispatch_primes(state, sink);
     if state.priming.get(&sid) != Some(&gen) {
         if !state.active_sids.contains(&sid) {
             state.book.forget(&sid);
@@ -3619,13 +3673,13 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
     state.priming.remove(&sid);
     sink.priming.remove(&sid);
     if let Some(pool) = state.pool.as_ref() {
-        let load = pool.0.load();
+        let load = pool.pool.load();
         tracing::debug!(
             "prime landed for {sid}: {} still priming here, {} running now (high {}, pool {})",
             state.priming.len(),
             load.running(),
             load.high(),
-            pool.0.size()
+            pool.pool.size()
         );
     }
     let mut paths = Vec::new();
@@ -3682,8 +3736,23 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
         .values()
         .filter(|e| e.sid == sid)
         .all(|e| e.activity.is_none());
-    if let (Some(a), true) = (activity, unsaid) {
-        note_activity(&sid, a, state, sink);
+    let was_reading = state.reading.remove(&sid);
+    match (activity, unsaid) {
+        (Some(a), true) => note_activity(&sid, a, state, sink),
+        // 宣告时说的是「读记录中」、读完记录也没说 ⇒ 改口说不清（不留着一句已经不成立的话）。
+        (None, true) if was_reading => {
+            let e = state.sessions.values().find(|e| e.sid == sid);
+            let (waiting_for, path) =
+                e.map_or((None, None), |e| (e.waiting_for.clone(), e.path.clone()));
+            sink.send(Frame::SessionStatus {
+                sid: sid.clone(),
+                face: crate::stream::wire::ActivityFace::of(None),
+                name_face: state.name_face(&sid),
+                waiting_for,
+                path,
+            });
+        }
+        _ => {}
     }
     // 这个会话此刻已有的子运行（宣告之前就派出去的那几个）：收进来、从头读一遍，有就发一帧运行表。
     let jsonls: Vec<PathBuf> = paths
@@ -3712,17 +3781,24 @@ fn primed(done: PrimeDone, state: &mut ReaderState, sink: &mut FrameSink) {
 
 /// 预读的线程池：各会话并行（上限按 CPU 数），一条会话一趟、趟内照顺序读。做完经 watcher 的事件通道交回（`WatchEvent::Primed`）。
 /// 池子里的线程只阻塞在任务队列上（[`crate::observe::par::Pool`]），不睡、不定时。
-pub(crate) struct PrimePool(crate::observe::par::Pool<PrimeJob>);
+/// 排队在本线程（[`dispatch_primes`] 按名单挑），池子里同时至多线程数那么多份 ⇒ 名单一变就能改先后，已交出去的不撤。
+pub(crate) struct PrimePool {
+    pool: crate::observe::par::Pool<PrimeJob>,
+    /// 还没交出去的（宣告的先后）。
+    queue: std::collections::VecDeque<PrimeJob>,
+    /// 交出去了、还没交回的份数。
+    in_flight: usize,
+}
 
 impl PrimePool {
     fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
-        PrimePool(crate::observe::par::Pool::new("record-prime", move |job| {
-            let _ = events.send(WatchEvent::Primed(run_prime(job)));
-        }))
-    }
-
-    fn submit(&self, job: PrimeJob) {
-        self.0.submit(job);
+        PrimePool {
+            pool: crate::observe::par::Pool::new("record-prime", move |job| {
+                let _ = events.send(WatchEvent::Primed(run_prime(job)));
+            }),
+            queue: std::collections::VecDeque::new(),
+            in_flight: 0,
+        }
     }
 }
 

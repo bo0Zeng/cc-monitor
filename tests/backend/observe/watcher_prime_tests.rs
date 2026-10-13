@@ -48,6 +48,13 @@ impl Rig {
         self.proj.join(format!("{sid}.jsonl"))
     }
 
+    /// 同 [`Self::session`]，另回它的 pidfile（要一份一份地按次序宣告时用）。
+    fn session_and_pidfile(&mut self, sid: &str) -> (PathBuf, PathBuf) {
+        let rec = self.session(sid);
+        let pid = self.kids.last().expect("刚起的那一个").id();
+        (rec, self.sessions.join(format!("{pid}.json")))
+    }
+
     fn state(&self) -> ReaderState {
         ReaderState::new(self.dir.join("projects"))
     }
@@ -219,7 +226,7 @@ fn no_more_primes_run_at_once_than_the_pool_has_threads() {
     let mut rig = Rig::new("cap");
     let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
     let pool = PrimePool::start(ev_tx);
-    let (cap, load) = (pool.0.size(), pool.0.load());
+    let (cap, load) = (pool.pool.size(), pool.pool.load());
     let mut ends = Vec::new();
     for i in 0..cap + 2 {
         let p = rig.session(&format!("p-cap-{i}"));
@@ -298,4 +305,61 @@ fn three_connections_on_one_record_prime_it_once() {
             ]
         );
     }
+}
+
+/// ⑤ 先读正在看的（read8a ②）：两份都没预读完时报名单 [B] ⇒ B 先读完（按完成次序判）。
+/// 池子先被卡住的几份占满，A、B 依宣告次序排在后面；报名单 [B] 之后空出一位 ⇒ 交出去的是 B，不是先排的 A。已在读的不撤。
+#[test]
+fn the_watched_session_is_primed_first() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let mut rig = Rig::new("watched");
+    let (ev_tx, ev_rx) = std::sync::mpsc::channel::<WatchEvent>();
+    let pool = PrimePool::start(ev_tx);
+    let cap = pool.pool.size();
+    let mut state = rig.state();
+    state.pool = Some(pool);
+    let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let mut sink = FrameSink::new(tx);
+    // 先把池子占满（各卡在读里）。
+    let mut stuck = Vec::new();
+    for i in 0..cap {
+        let (rec, pidfile) = rig.session_and_pidfile(&format!("p-w-stuck-{i}"));
+        let w = stuck_record(&rec, b"{\"cwd\":\"/w\"}\n");
+        process_session_added(&pidfile, &mut state, &mut sink);
+        stuck.push((rec, w));
+    }
+    // A 先宣告、B 后宣告：两份都排着。
+    for sid in ["p-w-a", "p-w-b"] {
+        let (rec, pidfile) = rig.session_and_pidfile(sid);
+        std::fs::write(&rec, lines(0..4)).unwrap();
+        process_session_added(&pidfile, &mut state, &mut sink);
+    }
+    assert_eq!(state.priming.len(), cap + 2, "都还没读完");
+    // 这条连接说它在看 B。
+    let _ = watch_sessions(0, vec!["p-w-b".to_string()], &mut state, &mut sink);
+    // 放开一份卡住的 ⇒ 空出一位。
+    let (rec, w) = stuck.remove(0);
+    release(&rec, w);
+    let mut order = Vec::new();
+    let d = next_primed(&ev_rx);
+    order.push(d.sid.clone());
+    primed(d, &mut state, &mut sink);
+    let d = next_primed(&ev_rx);
+    order.push(d.sid.clone());
+    primed(d, &mut state, &mut sink);
+    // 其余放开、收齐。
+    for (rec, w) in stuck {
+        release(&rec, w);
+    }
+    while !state.priming.is_empty() {
+        let d = next_primed(&ev_rx);
+        order.push(d.sid.clone());
+        primed(d, &mut state, &mut sink);
+    }
+    let at = |sid: &str| order.iter().position(|s| s == sid).unwrap();
+    assert_eq!(order[1], "p-w-b", "空出的那一位交给了在看的 B：{order:?}");
+    assert!(
+        at("p-w-b") < at("p-w-a"),
+        "B 要先于先排的 A 读完：{order:?}"
+    );
 }

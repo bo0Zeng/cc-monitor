@@ -34,8 +34,10 @@ data class LiveSession(
     val name: String? = null,
     val agentKind: String? = null,
     val attachable: Boolean? = null,
-    /** 「运行中 · 空闲 · 后台任务运行中 · 需手动」那一句与语气，照抄。 */
+    /** 「运行中 · 空闲 · 后台任务运行中 · 需手动 · 说不清 · 读记录中」那一句与语气，照抄。 */
     val activity: Toned,
+    /** 那台判得出它一轮在跑（帧上 `activity` 是 `working`）。判不出（`activity` 缺席：说不清 · 读记录中）⇒ 不算在跑。聊天屏的停止键只认它。 */
+    val running: Boolean = false,
 )
 
 /**
@@ -74,7 +76,12 @@ data class SessionTable(
         val sid = frame.str("sid") ?: return null
         val text = frame.str("activity_text") ?: return null
         val prior = sessions[sid] ?: return this
-        val now = prior.copy(activity = Toned(text, Tone.of(frame.str("activity_tone"))), path = frame.str("path") ?: prior.path)
+        val now =
+            prior.copy(
+                activity = Toned(text, Tone.of(frame.str("activity_tone"))),
+                running = frame.str("activity") == RUNNING,
+                path = frame.str("path") ?: prior.path,
+            )
         return copy(sessions = sessions + (sid to now))
     }
 
@@ -92,8 +99,12 @@ data class SessionTable(
                 agentKind = m.str("agent_kind"),
                 attachable = m.bool("attachable"),
                 activity = Toned(text, Tone.of(m.str("activity_tone"))),
+                running = m.str("activity") == RUNNING,
             )
         }
+
+        /** 帧上 `activity` 那一格判得出「一轮在跑」的那个词（核心的闭集；缺席 ＝ 判不出）。 */
+        private const val RUNNING = "working"
 
         /** 丢的里头有会话帧（或身份表截过）⇒ 一次性结论丢了，别处补不回来。 */
         private fun lostSessionFrames(m: Map<String, Any?>): Boolean =
