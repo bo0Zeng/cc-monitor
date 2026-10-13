@@ -808,8 +808,7 @@ mod tests {
         assert_eq!(decode_reply("history-tail", tail.clone()), Some(Ok(tail)));
         let short = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10});
         assert!(matches!(decode_reply("history-tail", short), Some(Err(_))));
-        let refused =
-            serde_json::json!({"result": "refused", "why": "not_yours", "said": "x"});
+        let refused = serde_json::json!({"result": "refused", "why": "not_yours", "said": "x"});
         assert_eq!(
             decode_reply("terminal-input", refused.clone()),
             Some(Ok(refused))

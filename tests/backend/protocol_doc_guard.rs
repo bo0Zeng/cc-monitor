@@ -635,16 +635,7 @@ mod tests {
                 "typed 帧命令 `session-fork` 的入参（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
             ),
             ("control/fork_write.rs", "Forked", "同上，出参"),
-            (
-                "control/fork_launch.rs",
-                "Launch",
-                "`session-fork` 回包与 `session-new-facts` 的 `fork.launch`：分叉之后起要的三格（生成类型从它来）",
-            ),
-            ("control/fork_launch.rs", "Slot", "同上，三格里的每一格"),
-            ("control/fork_launch.rs", "Whence", "同上，`known` 那一格从哪知道"),
-            ("control/fork_launch.rs", "Why", "同上，`unknown` 那一格为什么"),
             ("control/fork_launch.rs", "AccountFact", "同上，号那一格的值（`null` ＝ 账号 0）"),
-            ("control/fork_launch.rs", "TerminalFact", "同上，终端那一格的值"),
             (
                 "observe/accounts_query.rs",
                 "NeedsRow",
@@ -675,12 +666,6 @@ mod tests {
                 "IndexRow",
                 "骨架索引的一行（`history-index` 按列装运之前的那一形），\
                  不是流协议帧；形状登记在 `IPC-PROTOCOL.md` §10.3",
-            ),
-            (
-                "observe/history_query.rs",
-                "TailPlan",
-                "帧命令 `history-tail` 的应答 `data`（请求-应答，不是推送帧）；出参登在命令注册表，\
-                 由 `every_command_declares_exactly_the_fields_it_puts_out` 与真序列化对拍",
             ),
             (
                 "observe/history_query.rs",
