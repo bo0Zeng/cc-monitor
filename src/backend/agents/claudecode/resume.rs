@@ -84,6 +84,29 @@ pub(crate) const PERMISSION_MODES: &[Choice] = &[
     },
 ];
 
+/// Shift+Tab 那一圈最多几档：`default → acceptEdits → plan`，开了的 `bypassPermissions` · `auto` 接在 `plan` 后面。
+pub(crate) const MODE_CYCLE_MAX: usize = 5;
+
+/// 屏底那一行写的档（官方文档：`⏸ manual mode on` · `⏵⏵ accept edits on` · `⏸ plan mode on` · `⏵⏵ auto mode on`；越过批准那一档写 `bypass permissions on`）。
+const MODE_MARKS: &[(&str, &str)] = &[
+    ("accept edits on", "acceptEdits"),
+    ("plan mode on", "plan"),
+    ("auto mode on", "auto"),
+    ("bypass permissions on", "bypassPermissions"),
+    ("manual mode on", "default"),
+];
+
+/// 从此刻那一屏认档：自下而上找第一行带档标的（屏底那一行在最下面；正文里引了同样的字也盖不过它）。认不出 ⇒ `None`（不按「没有标就是默认」猜）。
+pub(crate) fn mode_on_screen(lines: &[String]) -> Option<&'static str> {
+    lines.iter().rev().find_map(|l| {
+        let l = l.to_ascii_lowercase();
+        MODE_MARKS
+            .iter()
+            .find(|(mark, _)| l.contains(mark))
+            .map(|(_, mode)| *mode)
+    })
+}
+
 /// resume 命令：**flag 形**，与 Codex 的子命令形不同。
 pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
     format!("{base} {RESUME_TOKEN} {session_id}")

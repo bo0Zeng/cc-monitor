@@ -350,6 +350,19 @@ pub(crate) struct PermissionFace {
     pub(crate) flag: &'static str,
     /// 可选的档（原值 ＋ 字）。
     pub(crate) modes: &'static [Choice],
+    /// 会话开着时怎么切档；这一家切不了 ⇒ `None`。
+    pub(crate) switch: Option<ModeSwitch>,
+}
+
+/// 会话开着时切权限档的说法（[`PermissionFace::switch`]）：那一家只有「按一下换到下一档」的循环，没有直接切到某档的命令。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModeSwitch {
+    /// 换到下一档按哪个键（`terminal-input` 键表里的名字）。
+    pub(crate) key: &'static str,
+    /// 循环里最多几档（按满这么多下还没到 ⇒ 不在循环里）。
+    pub(crate) cycle_max: usize,
+    /// 从此刻那一屏（纯文本行）认出此刻的档（原值）；认不出 ⇒ `None`。
+    pub(crate) read: fn(&[String]) -> Option<&'static str>,
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。

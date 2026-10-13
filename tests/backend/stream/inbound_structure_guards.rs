@@ -229,6 +229,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "terminal-input"
                 // 往会话说一句：读 pidfile 判在不在等 ＋ 送字那一条（起 tmux）。
                 | "session-say"
+                // 切权限档：读 pidfile ＋ 起 tmux 几发 ＋ 等重画。
+                | "session-permission"
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
@@ -700,6 +702,7 @@ fn every_registered_command_declares_its_run_kind() {
         "terminal-input",
         // 往会话说一句：阻塞（读 pidfile ＋ 起 tmux）。
         "session-say",
+        "session-permission",
         // 传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

@@ -50,6 +50,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalInputCmd>(
         "往一个终端送字或送键（过身份门）",
     ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
+        "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
+    ),
     crate::stream::inbound::typed::blocking::<crate::faces::session_say_face::SessionSay>(
         "往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车）",
     ),

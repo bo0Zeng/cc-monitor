@@ -1754,6 +1754,30 @@
       "zh": "规划模式",
       "args": []
     },
+    "beSessionMode.unsure.unread": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "权限档切换结果未知 · 认不出此刻的档",
+      "args": []
+    },
+    "beSessionMode.unsure.notInCycle": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未切换权限档 · 此会话的循环里没有这一档",
+      "args": []
+    },
+    "beSessionMode.unsure.noRedraw": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "权限档切换结果未知 · 按键后屏幕未变",
+      "args": []
+    },
+    "beSessionMode.switch.unsupported": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "此会话不支持中途切换权限档",
+      "args": []
+    },
     "beResident.claim.pathTooLong": {
       "kind": "error",
       "role": "报错",

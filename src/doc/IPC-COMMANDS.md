@@ -3822,6 +3822,55 @@ client?: string, };
 
 码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
+#### `session-permission`
+
+会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-permission` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionPermissionReq` · 回包 `ModeSwitched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ModeSwitchResult = "done" | "unsure" | "refused";
+type ModeSwitched = { 
+/**
+ * 结局。
+ */
+result: ModeSwitchResult, 
+/**
+ * 最后读到的档（原值）；没读 · 认不出 ⇒ `null`。
+ */
+mode: string | null, 
+/**
+ * 同一档写给人看的字；那一家起会话不给这一档 · 没读到 ⇒ `null`。
+ */
+modeText: string | null, 
+/**
+ * `refused` 的原因（同 `terminal-input`）。
+ */
+why?: Refused, 
+/**
+ * `unsure` · `refused` 时给人看的那一句。
+ */
+said?: string, };
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type SessionPermissionReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 要切到的档（原值；必须是 `session-new-facts` 那一家 `permissionModes` 里的一个）。
+ */
+mode: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `unsupported` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+
 #### `session-say`
 
 往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车）。
@@ -5416,6 +5465,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
 | `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |

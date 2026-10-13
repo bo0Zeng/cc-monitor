@@ -13,6 +13,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("session-new", "af0ce8f1"),
     ("session-new-dir", "2c86c180"),
     ("session-new-facts", "eb214f62"),
+    ("session-permission", "5bd1d2a2"),
     ("session-restart", "d223b9ce"),
     ("session-say", "461750a1"),
     ("session-terminals", "7c85cbeb"),
