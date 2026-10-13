@@ -209,7 +209,11 @@ fn cancel_replace_and_a_dropped_connection_end_the_job_quietly() {
 fn a_login_that_completes_by_itself_is_reported() {
     let rig = Rig::new(
         "auto",
-        &format!("echo \"visit: {FAKE_URL}\"\nsleep 0.2\necho \"Login successful.\""),
+        // 等判据放行（`start` 已经回了）才自己退：不等的话机器一忙，`start` 那条线程还没醒、它已经退了、作业已经收了，
+        //   `start` 就回「没给出链接就退了」——比的是快慢。工作目录是这份临时目录；目录没了（判据中途红了）也退。
+        &format!(
+            "echo \"visit: {FAKE_URL}\"\nwhile [ ! -e go ] && [ -d bin ]; do sleep 0.02; done\necho \"Login successful.\""
+        ),
     );
     let (tx, rx) = std::sync::mpsc::channel::<(String, SignInEnd)>();
     let tx = Mutex::new(tx);
@@ -222,6 +226,7 @@ fn a_login_that_completes_by_itself_is_reported() {
         }),
     )
     .unwrap();
+    std::fs::write(rig.root.join("go"), "").unwrap();
     let job = s.job.clone();
     // 等那一件事（它自己退了 ⇒ 回调来一次），兜底是那个统一的上限。
     let got = rx
