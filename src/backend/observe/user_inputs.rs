@@ -24,7 +24,7 @@ use serde_json::Value;
 pub(crate) const EXCERPT_MAX: usize = 80;
 
 /// 一条可点的清单项。键名全称（一个会话最多几百条，省字节不值得牺牲可读）。
-#[derive(Debug, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 pub(crate) struct UserInputRow {
     pub(crate) uuid: String,
     /// 记录的 `timestamp`；没有 ⇒ 空串。

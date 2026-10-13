@@ -375,6 +375,11 @@ fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             DataClass::Cache,
         ),
         dir(
+            rr::SKELETON_DIR_REL,
+            copy_text("rsDataPaths.backend.skeleton", &[]),
+            DataClass::Cache,
+        ),
+        dir(
             rr::EXT_BACKUPS_DIR_REL,
             copy_text("rsDataPaths.backend.extBackups", &[]),
             DataClass::Truth,

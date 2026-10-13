@@ -21646,6 +21646,12 @@
       "args": [],
       "limited": ["SSH"]
     },
+    "rsDataPaths.backend.skeleton": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "记录骨架 · 大记录的扫描索引 · 重启后接着读 · 可重建",
+      "args": []
+    },
     "rsDataPaths.backend.launchAccounts": {
       "kind": "body",
       "role": "说明",

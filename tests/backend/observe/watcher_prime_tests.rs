@@ -363,3 +363,92 @@ fn the_watched_session_is_primed_first() {
         "B 要先于先排的 A 读完：{order:?}"
     );
 }
+
+/// 链上的几行（带一处回退：u2 · a2 是主线外的），后面接结构性的假行。
+fn chained(n: std::ops::Range<usize>) -> String {
+    let rows = [
+        r#"{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"2026-10-01T00:00:00.000Z","message":{"role":"user","content":"first ask"}}"#,
+        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"2026-10-01T00:00:01.000Z","message":{"model":"m-x","stop_reason":"end_turn","content":[{"type":"text","text":"ok"}]}}"#,
+        r#"{"type":"user","uuid":"u2","parentUuid":"a1","timestamp":"2026-10-01T00:00:02.000Z","message":{"role":"user","content":"old wording"}}"#,
+        r#"{"type":"assistant","uuid":"a2","parentUuid":"u2","timestamp":"2026-10-01T00:00:03.000Z","message":{"model":"m-x","stop_reason":"end_turn","content":[{"type":"text","text":"r2"}]}}"#,
+        r#"{"type":"user","uuid":"u3","parentUuid":"a1","timestamp":"2026-10-01T00:00:04.000Z","message":{"role":"user","content":"new wording"}}"#,
+    ];
+    rows.join("\n") + "\n" + lines(n).as_str()
+}
+
+/// 一趟预读（夹具没有池 ⇒ 就地跑、就地装回）：回读了多少字节 · 读完那一帧的 `lines` · 主线外清单。
+fn prime_once(
+    rig: &Rig,
+    home: &crate::observe::skeleton::Skeletons,
+    rec: &Path,
+) -> (u64, Vec<String>, Vec<String>) {
+    let mut state = rig.state();
+    state.skeletons = Some(home.clone());
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(256);
+    let mut sink = FrameSink::new(tx);
+    initial_session_scan(&rig.sessions, &mut state, &mut sink);
+    let got: Vec<String> = brief(&drain(&mut rx))
+        .into_iter()
+        .filter(|s| s.starts_with("primed"))
+        .collect();
+    let off = state
+        .branches
+        .get(&path_key(rec))
+        .map(|c| c.off().to_vec())
+        .unwrap_or_default();
+    (state.prime_bytes, got, off)
+}
+
+/// ⑥ 骨架落盘（数字节）：重启后（新的一份读者、同一个骨架的家）记录没变 ⇒ 预读读 0 字节、
+/// 行数与主线外清单跟整份读的一样；追加 k 字节 ⇒ 读 k ＋ 见证；改写过（同长）⇒ 整份。
+#[test]
+fn a_restart_reads_only_what_the_skeleton_has_not_seen() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let mut rig = Rig::new("skel");
+    let rec = rig.session("p-skel");
+    let body = chained(0..40);
+    std::fs::write(&rec, &body).unwrap();
+    let (d, own) = crate::observe::skeleton::tests::sandbox("prime-skel");
+    let home = crate::observe::skeleton::Skeletons::at(own, 0);
+
+    let (bytes, got, off) = prime_once(&rig, &home, &rec);
+    assert_eq!(bytes, body.len() as u64, "头一次读整份");
+    assert_eq!(got, vec!["primed p-skel Some(45)".to_string()]);
+    assert_eq!(off, ["u2", "a2"], "夹具的回退没认出来");
+
+    let (bytes, got2, off2) = prime_once(&rig, &home, &rec);
+    assert_eq!(bytes, 0, "重启后没变，还是读了记录");
+    assert_eq!(
+        (got2, off2),
+        (got, off.clone()),
+        "照骨架装回的跟整份读的不一样"
+    );
+
+    let more = lines(40..43);
+    {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&rec).unwrap();
+        f.write_all(more.as_bytes()).unwrap();
+    }
+    let (bytes, got3, off3) = prime_once(&rig, &home, &rec);
+    assert_eq!(
+        bytes,
+        more.len() as u64 + TAIL_PROBE,
+        "追加 k 字节应只读 k ＋ 见证"
+    );
+    assert_eq!(got3, vec!["primed p-skel Some(48)".to_string()]);
+    assert_eq!(off3, off, "接着骨架读，链索引丢了");
+
+    // 改写（同长、内容变了、修改时刻变了）⇒ 整份。
+    let now = std::fs::read_to_string(&rec).unwrap();
+    let flipped = now.replace("old wording", "odd wording");
+    assert_eq!(flipped.len(), now.len());
+    std::fs::write(&rec, &flipped).unwrap();
+    let f = std::fs::OpenOptions::new().write(true).open(&rec).unwrap();
+    f.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(5))
+        .unwrap();
+    drop(f);
+    let (bytes, _, _) = prime_once(&rig, &home, &rec);
+    assert_eq!(bytes, now.len() as u64, "改写过还照骨架读了");
+    let _ = std::fs::remove_dir_all(&d);
+}
