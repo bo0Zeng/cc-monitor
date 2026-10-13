@@ -2876,6 +2876,13 @@ mod g6_dependency_signoff {
             "inotify 观测：backend 只拿它订阅被观测目录底下的变化，一条写路径都不经它",
         ),
         (
+            "portable-pty",
+            DEPS,
+            UNMEASURED,
+            "伪终端：只在 `platform/child.rs::converse_in_terminal` 开一对终端、在里面起子进程（要终端才肯问的官方登录子命令）。\
+             它自己不写盘：只开系统给的伪终端设备、读写那一对终端；子进程写什么归子进程（同 `Child` 别的几种用法）",
+        ),
+        (
             "notify-debouncer-mini",
             DEPS,
             UNMEASURED,

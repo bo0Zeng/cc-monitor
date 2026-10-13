@@ -266,6 +266,8 @@ pub(crate) enum Stop {
 pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace {
     read: read_mcp,
     login_command: "/fake-mcp",
+    sign_in: None,
+    needs_login_file: None,
 };
 
 fn read_mcp(project_dir: Option<&Path>, _look: &crate::agents::McpLook) -> crate::agents::McpRead {

@@ -179,6 +179,8 @@ tokio = { version = "1", features = [
 # （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
 # 只用 SYS_pidfd_open / poll / pollfd 三样，不引入任何 feature。
 libc = "0.2"
+# 伪终端（`platform/child.rs::converse_in_terminal`：要终端才肯问的官方子命令，如 `claude mcp login`）。三个系统一套。
+portable-pty = "0.9"
 # K-H1〔裁-1，08-25〕：**backend 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
 #
 # ⚠ 口径订正〔回修轮 08-25，承接 D1 `重要-4`〕：先前这里逐字写的是「**本仓**第一条加密依赖」，

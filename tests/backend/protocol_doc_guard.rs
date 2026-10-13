@@ -84,7 +84,7 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/claudecode/resume.rs",
         include_str!("../../src/backend/agents/claudecode/resume.rs"),
     ),
-    // claude 那一家在 app 里登录一个号（`sign_in::FACE.args = ["auth", "login", "--claudeai"]`）：发给 claude 这个子进程的旗标，同上。
+    // claude 那一家在 app 里登录一个号 · 一个 MCP 服务器（`sign_in::FACE.args` 里的 `--claudeai` · `MCP_FACE.args` 里的 `--no-browser`）：发给 claude 这个子进程的旗标，同上。
     (
         "agents/claudecode/sign_in.rs",
         include_str!("../../src/backend/agents/claudecode/sign_in.rs"),
@@ -192,6 +192,13 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         &["--claudeai"],
         "`claude auth login` 选订阅号那一支的旗标（`agents/claudecode/sign_in.rs::FACE`）：claude 这个子进程的命令面，后端 argv 从不认它，\
          线上契约里也没有它的位置。仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假登录子命令（它照实只认这一个）。",
+    ),
+    (
+        "agents/claudecode/sign_in.rs",
+        "tests/__fixtures__/fake-claude-mcp-login.sh",
+        &["--no-browser"],
+        "`claude mcp login <名>` 不开浏览器、只打印授权链接那一支的旗标（`agents/claudecode/sign_in.rs::MCP_FACE`）：claude 这个子进程的命令面，\
+         后端 argv 从不认它，线上契约里也没有它的位置。仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假 MCP 登录子命令（它照实只认这一个）。",
     ),
     (
         "agents/codex/resume.rs",

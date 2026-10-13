@@ -63,8 +63,9 @@ impl Rig {
         (
             SignInAsk {
                 face: face(),
-                account,
+                target: account,
                 dir: None,
+                then: &[],
                 conn,
                 cwd: Some(self.root.clone()),
                 path: Some(self.path()),

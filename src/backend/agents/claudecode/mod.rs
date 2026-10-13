@@ -224,6 +224,8 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
 pub(crate) const MCP: super::McpFace = super::McpFace {
     read: mcp::read,
     login_command: mcp::LOGIN_COMMAND,
+    sign_in: Some(sign_in::MCP_FACE),
+    needs_login_file: Some(mcp::NEEDS_AUTH_CACHE),
 };
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。

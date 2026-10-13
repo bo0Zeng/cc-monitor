@@ -495,3 +495,142 @@ fn closing_a_streaming_childs_stdin_lets_it_leave_on_its_own() {
     let status = s.child.wait().expect("收尸");
     assert!(status.success(), "它是自己退的，不是被杀的：{status:?}");
 }
+
+// ── 在伪终端里一问一答（`Child::converse_in_terminal`）──────────────────────────────────────────
+
+/// 收它说的话，直到它退了（有界：判据的墙钟上限）。
+fn heard_until_exit(rx: &mpsc::Receiver<Heard>) -> (Vec<String>, Option<Option<i32>>) {
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+    let mut lines = Vec::new();
+    while std::time::Instant::now() < deadline {
+        match rx.recv_timeout(std::time::Duration::from_millis(200)) {
+            Ok(Heard::Out(l) | Heard::Err(l)) => lines.push(l),
+            Ok(Heard::Exited(c)) => return (lines, Some(c)),
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+        }
+    }
+    (lines, None)
+}
+
+/// 起在终端里（stdin · stdout 都是终端）；程序照交给它的 `PATH` 找；显式环境 · 工作目录照交；
+/// 输出逐行交、去掉回车与控制序列（OSC 8 超链接只留可见的字）；写进去的一行它读得到；退出码最后一件。
+#[cfg(unix)]
+#[test]
+fn a_terminal_conversation_runs_on_a_tty_and_hands_back_plain_lines() {
+    use std::os::unix::fs::PermissionsExt;
+    let d = scratch("pty-talk");
+    std::fs::create_dir_all(d.join("bin")).unwrap();
+    let prog = d.join("bin").join("talker");
+    std::fs::write(
+        &prog,
+        "#!/bin/sh\n[ -t 0 ] && [ -t 1 ] || { echo notty; exit 3; }\n\
+         echo \"env:$KEEP_ME own:${CCM_RESIDENT:-none}\"; pwd\n\
+         printf 'Visit:\\n  \\033]8;;https://x.test/a?b=1\\007\\033[94mhttps://x.test/a?b=1\\033[39m\\033]8;;\\007\\n'\n\
+         printf 'prompt: '\nread -r l\necho \"got:$l\"\nexit 4\n",
+    )
+    .unwrap();
+    std::fs::set_permissions(&prog, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let mut conv = Child::new("talker")
+        .env("PATH", format!("{}:/usr/bin:/bin", d.join("bin").display()))
+        .env("KEEP_ME", "1")
+        .current_dir(&d)
+        .converse_in_terminal()
+        .expect("起在终端里");
+    let rx = conv.take_heard().expect("说的话");
+    // 等它问了再答（提示符没有换行，不单独成一行；等 `Visit` 那两行到了就答）。
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+    let mut early = Vec::new();
+    while !early.iter().any(|l: &String| l.contains("x.test"))
+        && std::time::Instant::now() < deadline
+    {
+        if let Ok(Heard::Out(l)) = rx.recv_timeout(std::time::Duration::from_millis(200)) {
+            early.push(l);
+        }
+    }
+    conv.say("hello").expect("写一行");
+    let (rest, code) = heard_until_exit(&rx);
+    let all: Vec<String> = early.into_iter().chain(rest).collect();
+    assert_eq!(code, Some(Some(4)), "退出码最后一件：{all:?}");
+    assert!(
+        !all.iter().any(|l| l.contains("notty")),
+        "不是终端：{all:?}"
+    );
+    assert!(
+        all.contains(&"env:1 own:none".to_string()),
+        "显式环境 · 自有格照摘：{all:?}"
+    );
+    let real = std::fs::canonicalize(&d).unwrap().display().to_string();
+    assert!(
+        all.iter()
+            .any(|l| *l == real || *l == d.display().to_string()),
+        "工作目录：{all:?}"
+    );
+    assert!(
+        all.contains(&"  https://x.test/a?b=1".to_string()),
+        "超链接只留可见的字：{all:?}"
+    );
+    assert!(
+        all.iter().any(|l| l.ends_with("got:hello")),
+        "写进去的那一行：{all:?}"
+    );
+    assert!(
+        all.iter()
+            .all(|l| !l.contains('\u{1b}') && !l.contains('\r') && !l.contains('\u{7}')),
+        "控制序列 · 回车没去干净：{all:?}"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 放手即收：它与它起的孙进程都没了，直接子进程已收尸。
+#[cfg(target_os = "linux")]
+#[test]
+fn dropping_a_terminal_conversation_kills_its_whole_group() {
+    let d = scratch("pty-drop");
+    let script = format!(
+        "sleep {s} & echo $! > {g}; echo $$ > {c}; echo ready; wait",
+        s = 2 * guard_core::wall::CEILING_SECS,
+        g = d.join("grand").display(),
+        c = d.join("child").display()
+    );
+    let mut conv = Child::new("sh")
+        .args(["-c", &script])
+        .converse_in_terminal()
+        .expect("起在终端里");
+    let rx = conv.take_heard().expect("说的话");
+    let deadline = std::time::Instant::now() + guard_core::wall::CEILING;
+    while std::time::Instant::now() < deadline {
+        if let Ok(Heard::Out(l)) = rx.recv_timeout(std::time::Duration::from_millis(200)) {
+            if l == "ready" {
+                break;
+            }
+        }
+    }
+    let grand = std::fs::read_to_string(d.join("grand")).expect("孙进程 pid");
+    let child = std::fs::read_to_string(d.join("child")).expect("子进程 pid");
+    drop(conv);
+    assert_eq!(
+        gone_within(grand.trim(), 100),
+        Ok(()),
+        "孙进程 {grand} 没跟着组一起没"
+    );
+    assert_eq!(
+        gone_within(child.trim(), 100),
+        Ok(()),
+        "直接子进程 {child} 没被收尸"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 终端输出的一行 ⇒ 人看得见的字：CSI（颜色 · 光标）· OSC（含 OSC 8 超链接，BEL 或 ST 收尾）· 两字节转义 · 回车都去掉。
+#[test]
+fn terminal_text_keeps_only_what_is_visible() {
+    assert_eq!(plain_line(b"\x1b[94mhi\x1b[39m\r"), "hi");
+    assert_eq!(
+        plain_line(b"\x1b]8;;https://a.test/x\x07link\x1b]8;;\x07"),
+        "link"
+    );
+    assert_eq!(plain_line(b"\x1b]0;title\x1b\\a\x1b(Bb"), "ab");
+    assert_eq!(plain_line(b"\x1b[2K\x1b[1Gprompt: "), "prompt: ");
+    assert_eq!(plain_line("中文\u{1b}[0m".as_bytes()), "中文");
+}

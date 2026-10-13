@@ -21408,7 +21408,7 @@
     "beLogin.finish.badPaste": {
       "kind": "error",
       "role": "报错",
-      "zh": "粘贴的内容不是本次登录页上的码 · 可重新粘贴",
+      "zh": "粘贴的内容对不上本次登录 · 可重新粘贴",
       "args": []
     },
     "beLogin.finish.noJob": {
@@ -21434,6 +21434,12 @@
       "role": "原因格",
       "zh": "{account} 是 API 号 · 不用登录",
       "args": ["account"]
+    },
+    "beLogin.mcp.notFound": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "配置里没有 MCP 服务器 {server}",
+      "args": ["server"]
     },
     "beLogin.agent.unsupported": {
       "kind": "error",
