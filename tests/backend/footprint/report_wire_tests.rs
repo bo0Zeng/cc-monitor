@@ -40,11 +40,12 @@ fn env_of(pairs: Vec<(&'static str, String)>) -> impl Fn(&str) -> Option<String>
 #[test]
 fn footprint_report_local_column_keeps_its_wire_bytes() {
     let home = "/nonexistent-footprint-pin";
+    let req = crate::stream::inbound::typed::take(&json!({"client": {"home": "/nonexistent-footprint-pin-client", "path": "/nonexistent-footprint-pin-client/bin"}})).unwrap();
     let got = super::answer_with(
         &env_of(vec![("HOME", home.to_string())]),
         &|| None,
         &std::path::Path::new(home).join(".claude"),
-        &json!({"client": {"home": "/nonexistent-footprint-pin-client", "path": "/nonexistent-footprint-pin-client/bin"}}),
+        &req,
     )
     .unwrap();
     check("footprint-report.local", wire(&got));
@@ -266,4 +267,42 @@ fn data_report_own_rows_keep_their_wire_bytes() {
     let got = wire(&super::data::own_rows(&d));
     let _ = std::fs::remove_dir_all(&d);
     check("data-report.own", got);
+}
+
+/// 帧面那一跳（按名找命令、照档跑）：入参多一个键 ⇒ `bad_args`，`client` 那一层也拒（一份事实都不读）。
+#[test]
+fn an_extra_key_is_bad_args_on_the_frame_path() {
+    use crate::stream::inbound::spec::{prepare, Prepared};
+    let cases = [
+        ("footprint-report", json!({ "bogus": 1 })),
+        (
+            "footprint-report",
+            json!({ "client": { "home": "/nonexistent-footprint-pin", "bogus": 1 } }),
+        ),
+        ("data-report", json!({ "bogus": 1 })),
+        (
+            "data-report",
+            json!({ "client": { "home": "/nonexistent-footprint-pin", "path": null, "bogus": 1 } }),
+        ),
+    ];
+    for (cmd, args) in cases {
+        let spec = crate::stream::inbound::REGISTRY
+            .iter()
+            .find(|s| s.name == cmd)
+            .unwrap();
+        let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
+            panic!("{cmd} 不在阻塞档");
+        };
+        let req = crate::stream::wire::Request {
+            id: "t".to_string(),
+            cmd: cmd.to_string(),
+            args: args.clone(),
+            within_ms: None,
+            view: serde_json::Value::Null,
+            tz: Default::default(),
+            until: None,
+        };
+        let got = run(req).map(|_| ()).map_err(|f| f.code);
+        assert_eq!(got, Err("bad_args".to_string()), "{cmd} {args}");
+    }
 }

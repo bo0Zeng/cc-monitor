@@ -5712,13 +5712,38 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --footprint-report`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent_home` | ← | 解析基准：这台那一家的家目录（展示用） |
-| `client` | → | 可选 |
-| `home` | ← | 这台的家目录 |
-| `rows` | ← | 每个足迹一行（落在哪 · 是谁写的 · 怎么收） |
-| `settings_scopes` | ← | 各层设置文件（用户 · 项目 · 本地）的读法与先后 |
+入参 `FootprintReq` · 回包 `ConfigSurfaceReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ConfigSurfaceReport = { rows: Array<SurfaceRow>, settings_scopes: Array<SettingsScope>, 
+/**
+ * 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
+ */
+agent_home: string, home: string, };
+type EnvTier = "AppInstalls" | "AppShipsNoInstallerYet" | "UserInstallsWePrompt" | "AppOnlyChecks";
+type FootprintClient = { home: string, path?: string | null, };
+type FootprintReq = { client?: FootprintClient | null, };
+type SettingsScope = { scope: string, path: string, state: SurfaceState, 
+/**
+ * 文件里有没有 cc-bus 那两个钩子程序的字样。读不到 → `None`（**不猜**）。
+ */
+has_cc_bus_hooks: boolean | null, precedence_note: string, };
+type SurfaceRow = { tool_id: string, tool_name: string, 
+/**
+ * 🔴 **档进线上形状了。**
+ *
+ * 上一版 `config-surface-section.ts` 的 `describeUndo` 逐字写着
+ * 「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格」——
+ * 于是「不该由我们装」与「该我们装而还没写」在前端只能靠一句和稀泥的措辞盖过去。
+ * 今天档在行上，前端按**值**分档，不按措辞猜。
+ */
+tier: EnvTier, source_label: string, path_declared: string, 
+/**
+ * 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
+ */
+path_resolved: string | null, note: string | null, host_label: string, effect_label: string, state: SurfaceState, installable: boolean, uninstallable: boolean, };
+type SurfaceState = { "kind": "present", detail: string, } | { "kind": "absent" } | { "kind": "undetermined", why: string, };
+```
 
 码：`bad_args` · `failed`
 
@@ -5728,15 +5753,67 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --data-report`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `client` | → | 同 `footprint-report`（本机那一栏才带） |
-| `changedFiles` | ← | cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点） |
-| `chores` | ← | 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的 |
-| `home` | ← | 这台家目录（显示时 `~` 缩写按它） |
-| `own` | ← | cc-monitor 在这台自己家里放的每一样 `{id, what, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`what` ＝ 写好的那一句「是什么」（界面照抄）；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null` |
-| `tmux` | ← | 这台有没有 tmux（查不动 ⇒ `null`） |
-| `todo` | ← | 「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
+入参 `FootprintReq` · 回包 `DataReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ChangedFile = { path: string, what: string, 
+/**
+ * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
+ */
+undo: UndoAt | null, };
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+/**
+ * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
+ */
+wholeCovers: Array<string>, file: string | null, 
+/**
+ * 去哪一处做（设置窗的页 · 栏 · 锚点）。
+ */
+go: UndoAt | null, howUrl: string | null, 
+/**
+ * 显示时要遮住的那把钥匙。
+ */
+mask: string | null, action: ChoreAction, };
+type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
+type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
+type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type DataReport = { 
+/**
+ * 这台家目录（显示时 `~` 缩写按它）。
+ */
+home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>, 
+/**
+ * 这台有没有 tmux（查不动 ⇒ `null`）。
+ */
+tmux: boolean | null, 
+/**
+ * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
+ */
+chores: number, own: Array<OwnItem>, };
+type DiffOp = "same" | "del" | "add";
+type DiffRow = { n: number | null, op: DiffOp, text: string, };
+type FootprintClient = { home: string, path?: string | null, };
+type FootprintReq = { client?: FootprintClient | null, };
+type OwnClass = "truth" | "cache";
+type OwnItem = { 
+/**
+ * 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
+ */
+id: string, 
+/**
+ * 是什么（写好的那一句，界面照抄）。
+ */
+what: string, 
+/**
+ * `~/.cc-monitor/…` 写法。
+ */
+path: string, dir: boolean, class: OwnClass, exists: boolean, 
+/**
+ * 文件的字节数；目录 / 不在 ⇒ `null`。
+ */
+size: number | null, };
+type UndoAt = { page: string, tab?: string, anchor?: string, };
+```
 
 码：`bad_args` · `failed`
 
@@ -5995,13 +6072,101 @@ type CatalogRow = { kind: string, name: string, state: string, from: Array<Catal
 
 收 `args` · 可撤 · CLI：`ccm -- --assets-sync`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 可缺席 |
-| `origin` | → | 可缺席 |
-| `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
-| `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
-| `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self` |
+入参 `AssetsSyncReq` · 回包 `AssetsSynced`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AssetsSyncReq = { 
+/**
+ * 那台的名字（monitor 的 origin 名）。
+ */
+origin?: string, 
+/**
+ * 那台的拨号（只有路径，没有私钥本体）。
+ */
+dial?: MachineDial, };
+type AssetsSyncRow = { 
+/**
+ * 可达表的键（monitor 交来的 origin 串）。
+ */
+origin: string, 
+/**
+ * 那台目录的 `self`（没拉成 ⇒ `null`）。
+ */
+peer: string | null, 
+/**
+ * 本机目录因这一趟变了没有。
+ */
+changed: boolean, 
+/**
+ * 推过去几台快照。
+ */
+pushed: number, 
+/**
+ * 那一趟哪里没办成（`null` ＝ 全办成了）。
+ */
+error: string | null, };
+type AssetsSynced = { 
+/**
+ * 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>`。
+ */
+self: string, synced: Array<AssetsSyncRow>, 
+/**
+ * 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
+ */
+reach: Array<ReachRow>, };
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+/**
+ * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+ */
+use?: string | null, 
+/**
+ * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+ */
+agent_sock?: string | null, };
+type Prefer = { host: string, port: number, };
+type ReachRow = { 
+/**
+ * 那台的名字。
+ */
+origin: string, 
+/**
+ * 对面的资产目录 id。
+ */
+machine: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `unreachable`
 

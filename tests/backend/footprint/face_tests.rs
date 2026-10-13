@@ -13,6 +13,20 @@
 use super::*;
 use crate::footprint::registry::HostScope;
 use crate::footprint::rows::host_label;
+use serde_json::{json, Value};
+
+// 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份。
+fn answer_with(
+    get: &dyn Fn(&str) -> Option<String>,
+    session_path: &dyn Fn() -> Option<String>,
+    agent_home: &Path,
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (&'static str, String)> {
+    let req: FootprintReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::answer_with(get, session_path, agent_home, &req)
+        .map(|r| serde_json::to_value(r).unwrap())
+}
 
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-footprint-{tag}-{}", std::process::id()));

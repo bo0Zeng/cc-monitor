@@ -76,6 +76,8 @@ pub enum PathResolution {
 
 /// 现状。**没有"疑似缺失"这一档**（见模块文档）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SurfaceState {
     Present {
@@ -511,6 +513,8 @@ pub fn effect_label(e: TouchEffect) -> String {
 
 /// 表格里的一行。
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct SurfaceRow {
     pub tool_id: &'static str,
     pub tool_name: String,
@@ -820,6 +824,8 @@ pub fn build_rows(env: &SurfaceEnv, client: Option<&SurfaceEnv>) -> Vec<SurfaceR
 /// ——B04 登记项：那时只看 `<cfg>/settings.json` 一处，而钩子可以定义在别的作用域里，
 /// 于是"没装"的结论可能是错的。
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct SettingsScope {
     pub scope: String,
     pub path: String,
@@ -898,6 +904,8 @@ pub fn build_settings_scopes(
 
 /// 一次审计的完整回报。
 #[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct ConfigSurfaceReport {
     pub rows: Vec<SurfaceRow>,
     pub settings_scopes: Vec<SettingsScope>,

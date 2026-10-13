@@ -9,7 +9,8 @@ import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { decodeAssetsSynced, syncAssets } from "../../../src/frontend/ui/assets-sync-reads";
+import { syncAssets } from "../../../src/frontend/ui/assets-sync-reads";
+import type { AssetsSynced } from "../../../src/frontend/ui/generated/AssetsSynced";
 import {
   extHubApply,
   extHubPreview,
@@ -39,7 +40,7 @@ beforeEach(() => {
 
 describe("金样：后端出的成品，TS 读得懂", () => {
   it("assets-sync · ext-list · ext-hub-preview / -apply · ext-uninstall-preview / -apply", () => {
-    expect(decodeAssetsSynced(SYNC.reply).reach).toEqual([{ origin: "o", machine: null }]);
+    expect((SYNC.reply as AssetsSynced).reach).toEqual([{ origin: "o", machine: null }]);
     const list = EXT.list as ExtList;
     expect(list.machines.map((m) => [m.key, m.here])).toEqual([
       [null, true],

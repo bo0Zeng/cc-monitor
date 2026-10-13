@@ -1591,7 +1591,6 @@ fn this_module_only_reads() {
         [
             "use crate::platform::fs::Ro;",
             "use copy_core::copy_text;",
-            "use serde_json::{json, Value};",
             "use std::path::{Path, PathBuf};",
             "use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};"
         ],

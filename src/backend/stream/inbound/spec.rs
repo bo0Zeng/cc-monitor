@@ -146,8 +146,6 @@ pub(crate) enum Run {
     /// 同 [`Run::BlockingData`]，只是要写后端自家状态（`~/.cc-monitor` 底下）：多收一个 [`crate::platform::Own`]。
     /// `Request` 是从线上解出来的，装不进句柄 ⇒ 句柄由分派那一层递（它手里那一份是启动时造的）。只有写自家状态的那几族用这一档。
     BlockingOwn(fn(Request, &crate::platform::Own) -> Outcome),
-    /// 同 [`Run::Async`]，只是要写后端自家状态：句柄按值递（交出去的 future 要 `'static`）。
-    AsyncOwn(fn(Request, crate::platform::Own) -> BoxFut),
     /// 入参 · 回包 · 错误码都从 Rust 类型来的那一种（`typed.rs`）：阻塞还是异步由它自己那一份说。
     Typed(super::typed::Typed),
     Builtin,
@@ -167,13 +165,13 @@ impl Run {
         matches!(
             self,
             Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..)))
+        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_)))
     }
 
     /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
     pub(crate) fn writes(self) -> bool {
-        matches!(self, Run::BlockingOwn(_) | Run::AsyncOwn(_))
-            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_) | super::typed::TypedRun::AsyncOwning(..)) || t.hands_the_face())
+        matches!(self, Run::BlockingOwn(_))
+            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_)) || t.hands_the_face())
     }
 }
 
@@ -190,12 +188,6 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
         Run::Async(f) => Prepared::Async(Box::new(move |r| {
             Box::pin(async move { f(r).await.map_err(Fail::from) })
         })),
-        Run::AsyncOwn(f) => {
-            let own = own?.clone();
-            Prepared::Async(Box::new(move |r| {
-                Box::pin(async move { f(r, own).await.map_err(Fail::from) })
-            }))
-        }
         Run::Blocking(f) => Prepared::Blocking(Box::new(move |r| f(r).map_err(Fail::from))),
         Run::BlockingData(f) => Prepared::Blocking(Box::new(f)),
         Run::BlockingOwn(f) => {
@@ -226,6 +218,10 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
             super::typed::TypedRun::AsyncOwning(f, hub) => {
                 let own = own?.clone();
                 Prepared::Async(Box::new(move |r| f(r, own, hub)))
+            }
+            super::typed::TypedRun::AsyncOwn(f) => {
+                let own = own?.clone();
+                Prepared::Async(Box::new(move |r| f(r, own)))
             }
         },
         Run::Builtin => return None,

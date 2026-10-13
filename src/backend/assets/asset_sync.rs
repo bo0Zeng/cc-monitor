@@ -26,14 +26,16 @@
 //! （对可达表里每一台各一趟）。一趟的期限归调用方。
 //! 「问远端」那一跳（`DialRemote`）与可达表住 `crate::dial::remote_ask`；本模块只管资产目录拉什么、并什么、推什么、扇不扇出。
 
+use crate::assets::asset_catalog::{CatalogIn, CatalogMachine, CatalogMergeReq, CatalogReply};
 use crate::common::said::IntoNote as _;
+use crate::stream::inbound::spec::Fail;
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 
 use serde_json::{json, Value};
 
 // 问远端那一跳与可达表住 `remote_ask`（原样搬过去的）；这里只取用，不再导出。
-use crate::dial::remote_ask::{lock, Reach, Remote, Table, REACH};
+use crate::dial::remote_ask::{lock, Reach, ReachRow, Remote, Table, REACH};
 
 /// 一块推的载荷（JSON 本身）的上限。
 /// 原理由是「`sh -c` 那一个参数 128 KiB，留出引号转义的余量」—— 载荷改走 stdin 之后那条上限不在了，
@@ -45,9 +47,56 @@ pub const PULL_FLAG: &str = "--assets-catalog";
 pub const PUSH_FLAG: &str = "--assets-catalog-merge";
 
 /// 本机写口（`asset_catalog::answer_merge`）—— **由门（`stream/inbound/`）递进来**，本模块不直呼它（`Own` 由分派那一层递）。
-pub type Fold = std::sync::Arc<
-    dyn Fn(&Value) -> Result<Value, crate::stream::inbound::spec::Fail> + Send + Sync,
->;
+pub type Fold = std::sync::Arc<dyn Fn(CatalogMergeReq) -> Result<CatalogReply, Fail> + Send + Sync>;
+
+/// `assets-sync` 的入参：都缺 ⇒ 对可达表里每一台各一趟；只给 `origin` ⇒ 那一台（可达表里要有）；
+/// `origin` ＋ `dial` ⇒ 先登记（同 `remote-reach` 那一份）再对它做一趟。只给 `dial` ⇒ `bad_args`。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AssetsSyncReq {
+    /// 那台的名字（monitor 的 origin 名）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+    pub(crate) origin: Option<cmd_wire::Machine>,
+    /// 那台的拨号（只有路径，没有私钥本体）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) dial: Option<crate::dial::pick::MachineDial>,
+}
+
+/// 一趟对一台的结局（`synced[]` 的一行）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct AssetsSyncRow {
+    /// 可达表的键（monitor 交来的 origin 串）。
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    /// 那台目录的 `self`（没拉成 ⇒ `null`）。
+    pub(crate) peer: Option<String>,
+    /// 本机目录因这一趟变了没有。
+    pub(crate) changed: bool,
+    /// 推过去几台快照。
+    pub(crate) pushed: usize,
+    /// 那一趟哪里没办成（`null` ＝ 全办成了）。
+    pub(crate) error: Option<String>,
+}
+
+/// `assets-sync` 的回包。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct AssetsSynced {
+    /// 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>`。
+    #[serde(rename = "self")]
+    #[cfg_attr(test, ts(rename = "self"))]
+    pub(crate) self_id: String,
+    pub(crate) synced: Vec<AssetsSyncRow>,
+    /// 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
+    pub(crate) reach: Vec<ReachRow>,
+}
 
 /// 远端上那两条命令的完整字面（**只此一处拼**）。
 pub fn pull_command() -> String {
@@ -71,14 +120,15 @@ fn outcome(
     changed: bool,
     pushed: usize,
     errors: &[String],
-) -> Value {
-    json!({
-        "origin": key,
-        "peer": peer,
-        "changed": changed,
-        "pushed": pushed,
-        "error": if errors.is_empty() { Value::Null } else { json!(errors.join(&copy_text("beAssetSync.report.errorSep", &[]))) },
-    })
+) -> AssetsSyncRow {
+    AssetsSyncRow {
+        origin: cmd_wire::Machine(key.to_string()),
+        peer: peer.map(str::to_string),
+        changed,
+        pushed,
+        error: (!errors.is_empty())
+            .then(|| errors.join(&copy_text("beAssetSync.report.errorSep", &[]))),
+    }
 }
 
 /// 单独一台就超过一趟上限时那一句（`push_plan` 说出口、记进 `warn!`）。
@@ -90,38 +140,27 @@ fn too_big_to_push(id: &str, len: usize, cap: usize) -> String {
     )
 }
 
-/// 远端缺的 / 比远端新的那几台快照（不含远端自己那格），切成不超过 [`PUSH_MAX_BYTES`] 的块。
+/// 远端缺的 / 比远端新的那几台快照（不含远端自己那格：`their_self` ＝ 对面目录的 id），切成不超过 [`PUSH_MAX_BYTES`] 的块。
 /// 单独一台就超了的 ⇒ 进第二个返回值（说出来，不推、不截断）。**纯函数**。
-pub fn push_plan(mine: &Value, theirs: &Value) -> (Vec<Vec<Value>>, Vec<String>) {
-    let their_self = theirs.get("self").and_then(Value::as_str).unwrap_or("");
+pub fn push_plan(
+    mine: &CatalogReply,
+    theirs: &CatalogIn,
+    their_self: Option<&str>,
+) -> (Vec<Vec<CatalogMachine>>, Vec<String>) {
     let their_gen: BTreeMap<&str, u64> = theirs
-        .get("machines")
-        .and_then(Value::as_array)
-        .map(|a| {
-            a.iter()
-                .filter_map(|m| Some((m.get("id")?.as_str()?, m.get("gen")?.as_u64()?)))
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut chunks: Vec<Vec<Value>> = Vec::new();
+        .machines
+        .iter()
+        .map(|m| (m.id.as_str(), m.gen))
+        .collect();
+    let mut chunks: Vec<Vec<CatalogMachine>> = Vec::new();
     let mut too_big: Vec<String> = Vec::new();
-    let (mut cur, mut cur_len): (Vec<Value>, usize) = (Vec::new(), 0);
-    for m in mine
-        .get("machines")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let (Some(id), Some(gen)) = (
-            m.get("id").and_then(Value::as_str),
-            m.get("gen").and_then(Value::as_u64),
-        ) else {
-            continue;
-        };
-        if id == their_self || their_gen.get(id).is_some_and(|g| *g >= gen) {
+    let (mut cur, mut cur_len): (Vec<CatalogMachine>, usize) = (Vec::new(), 0);
+    for m in &mine.machines {
+        let (id, gen) = (m.id.as_str(), m.gen);
+        if Some(id) == their_self || their_gen.get(id).is_some_and(|g| *g >= gen) {
             continue;
         }
-        let len = m.to_string().len();
+        let len = json!(m).to_string().len();
         if cur_len + len > PUSH_MAX_BYTES && !cur.is_empty() {
             chunks.push(std::mem::take(&mut cur));
             cur_len = 0;
@@ -141,10 +180,19 @@ pub fn push_plan(mine: &Value, theirs: &Value) -> (Vec<Vec<Value>>, Vec<String>)
     (chunks, too_big)
 }
 
+/// 写口回的失败（或对面那一份解不成并的入参）⇒ 那一趟的那一句。
+fn fold_failed(f: Fail) -> String {
+    let c = f.code.clone();
+    copy_text(
+        "beAssetSync.foldBlocking.failed",
+        &[("c", &c), ("m", &f.into_note())],
+    )
+}
+
 /// 经写口并一次（同步文件 I/O ⇒ 挪到阻塞线程池，不占 tokio worker）。
-async fn fold_blocking(fold: &Fold, args: Value) -> Result<Value, String> {
+async fn fold_blocking(fold: &Fold, req: CatalogMergeReq) -> Result<CatalogReply, String> {
     let f = fold.clone();
-    tokio::task::spawn_blocking(move || f(&args))
+    tokio::task::spawn_blocking(move || f(req))
         .await
         .map_err(|e| {
             crate::common::said::Said::with_raw(
@@ -153,13 +201,7 @@ async fn fold_blocking(fold: &Fold, args: Value) -> Result<Value, String> {
             )
             .into_note()
         })?
-        .map_err(|f| {
-            let c = f.code.clone();
-            copy_text(
-                "beAssetSync.foldBlocking.failed",
-                &[("c", &c), ("m", &f.into_note())],
-            )
-        })
+        .map_err(fold_failed)
 }
 
 /// 对一台做一趟 ①–③。`key` 是可达表的键（monitor 交来的 origin 串，本后端只当不透明的键用）。
@@ -170,7 +212,7 @@ async fn sync_one(
     fold: &Fold,
     remote: &dyn Remote,
     table: &Table,
-) -> (bool, Value) {
+) -> (bool, AssetsSyncRow) {
     let mut errors = Vec::new();
     // ① 拉
     let theirs: Value = match remote.run(&r.dial, pull_command(), None).await {
@@ -202,17 +244,25 @@ async fn sync_one(
     if let Some(row) = lock(table).get_mut(key) {
         row.peer = peer.clone();
     }
-    // ② 并
-    let mine = match fold_blocking(fold, json!({ "catalog": theirs })).await {
+    // ② 并（对面那一份按并的入参收：形状不对 ⇒ 那一句同写口拒的那一形）
+    let req: CatalogMergeReq =
+        match crate::stream::inbound::typed::take(&json!({ "catalog": theirs })) {
+            Ok(r) => r,
+            Err(f) => {
+                return (
+                    false,
+                    outcome(key, peer.as_deref(), false, 0, &[fold_failed(f)]),
+                )
+            }
+        };
+    let theirs = req.catalog.clone();
+    let mine = match fold_blocking(fold, req).await {
         Ok(v) => v,
         Err(e) => return (false, outcome(key, peer.as_deref(), false, 0, &[e])),
     };
-    let changed = mine
-        .get("changed")
-        .and_then(Value::as_bool)
-        .unwrap_or(false);
+    let changed = mine.changed;
     // ③ 推
-    let (chunks, too_big) = push_plan(&mine, &theirs);
+    let (chunks, too_big) = push_plan(&mine, &theirs, peer.as_deref());
     errors.extend(too_big);
     let mut pushed = 0usize;
     for chunk in chunks {
@@ -235,24 +285,24 @@ async fn sync_one(
 /// `assets-sync`：给了 `origin`（＋ `dial`）⇒ 记进可达表、对它做一趟，本机因此变了再对其余各台各一趟；
 /// 什么都没给 ⇒ 对可达表里每一台各一趟。开头先让本机现扫一次：本机自己那份变了也算「目录变了」（扇出到每一台）。
 /// 回 `{self, synced, reach}`（`self` = 本机目录的 id，界面据它把目录里本机那一格对回 `<local>`）。
-pub async fn answer(
-    args: &Value,
+pub(crate) async fn answer(
+    req: &AssetsSyncReq,
     fold: Fold,
     remote: &dyn Remote,
-) -> Result<Value, (&'static str, String)> {
-    answer_with(args, fold, remote, &REACH).await
+) -> Result<AssetsSynced, (&'static str, String)> {
+    answer_with(req, fold, remote, &REACH).await
 }
 
 /// [`answer`] 的可喂夹具那一半：可达表由调用方给（判据各用各的表，不共享进程里那一张）。
-pub async fn answer_with(
-    args: &Value,
+pub(crate) async fn answer_with(
+    req: &AssetsSyncReq,
     fold: Fold,
     remote: &dyn Remote,
     table: &Table,
-) -> Result<Value, (&'static str, String)> {
-    let origin = args.get("origin").and_then(Value::as_str);
+) -> Result<AssetsSynced, (&'static str, String)> {
+    let origin = req.origin.as_ref().map(cmd_wire::Machine::as_wire_str);
     let mut first: Option<String> = None;
-    if let (Some(o), None) = (origin.filter(|o| !o.is_empty()), args.get("dial")) {
+    if let (Some(o), None) = (origin.filter(|o| !o.is_empty()), &req.dial) {
         // 界面经通道直问（只给 `origin`）：怎么够到那台由握手那一刻的 `remote-reach` 登记过 —— 查不到就明说，不猜。
         if !lock(table).contains_key(o) {
             return Err((
@@ -261,10 +311,18 @@ pub async fn answer_with(
             ));
         }
         first = Some(o.to_string());
-    } else if origin.is_some() {
+    } else if let Some(o) = origin {
         // 登记走 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
-        first = Some(crate::dial::remote_ask::register(table, args)?);
-    } else if args.get("dial").is_some() {
+        let dial = req.dial.as_ref().ok_or_else(|| {
+            (
+                "bad_args",
+                crate::common::contract::malformed(
+                    "`origin` given without `dial` (a dial request)",
+                ),
+            )
+        })?;
+        first = Some(crate::dial::remote_ask::register(table, o, dial)?);
+    } else if req.dial.is_some() {
         return Err((
             "bad_args",
             crate::common::contract::malformed("`dial` given without `origin`").into(),
@@ -276,11 +334,13 @@ pub async fn answer_with(
         .collect();
     // 这一趟先让本机现扫一次（并一份空的进来 = 只刷新自己那一格）：拿到本机目录的 id，
     // 并且本机自己那份变了（刚装了 / 删了一个 skill）就算「目录变了」—— 下面对可达表里每一台都做一趟。
-    let own = fold_blocking(&fold, json!({ "catalog": { "machines": [] } }))
+    let nothing = CatalogMergeReq {
+        catalog: CatalogIn { machines: vec![] },
+    };
+    let own = fold_blocking(&fold, nothing)
         .await
         .map_err(|e| ("io_failed", e))?;
-    let own_id = own.get("self").cloned().unwrap_or(Value::Null);
-    let own_changed = own.get("changed").and_then(Value::as_bool).unwrap_or(false);
+    let own_changed = own.changed;
     let mut synced = Vec::new();
     match &first {
         Some(o) => {
@@ -303,8 +363,11 @@ pub async fn answer_with(
             }
         }
     }
-    let reach_rows = crate::dial::remote_ask::reach_rows(table);
-    Ok(json!({ "self": own_id, "synced": synced, "reach": reach_rows }))
+    Ok(AssetsSynced {
+        self_id: own.self_id,
+        synced,
+        reach: crate::dial::remote_ask::reach_rows(table),
+    })
 }
 
 #[cfg(test)]

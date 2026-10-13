@@ -32,6 +32,16 @@ fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static str
     super::answer_reach_with(&req, table).map(|r| serde_json::to_value(r).unwrap())
 }
 
+// `assets-sync` 那一扇门的登记：入参经 typed 那一处收（`AssetsSyncReq`），两格都在 ⇒ 交唯一的写口（同 `asset_sync::answer_with`）。
+fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
+    let req: crate::assets::asset_sync::AssetsSyncReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let (Some(o), Some(d)) = (&req.origin, &req.dial) else {
+        panic!("夹具两格都给");
+    };
+    super::register(table, o.as_wire_str(), d)
+}
+
 /// 生产段（剥测试模块 ＋ 整行注释 ＋ 行尾注释）—— 指纹只认代码，不认说起它的散文。
 fn code_of(body: &str) -> String {
     let prod = crate::guard_support::production_code(body);

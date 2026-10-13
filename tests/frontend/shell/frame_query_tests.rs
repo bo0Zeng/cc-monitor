@@ -52,6 +52,7 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             "typed::asynchronous::<",
             "typed::async_with_files::<",
             "typed::async_owning::<",
+            "typed::async_own::<",
             "typed::facing::<",
         ] {
             for (at, _) in prod.match_indices(ctor) {
@@ -428,8 +429,8 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     // 文件与数据：同一份足迹重排的成品（`src/backend/footprint/data.rs`）。
     (
         "data-report",
-        "后端出成品 `{home, changedFiles, todo, tmux, chores, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问、\
-         `decodeDataReport` 按恰好的键集合收；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
+        "后端出成品 `{home, changedFiles, todo, tmux, chores, own}`；前端 `src/frontend/ui/settings/data-reads.ts::readDataReport` 问（typed，\
+         形状由握手指纹核过）；monitor 这一侧零发送点，本机那一栏只答它自己那台那几行的事实（`footprint_client_facts`）",
     ),
     // 首次运行「开始用」那份数：本机后端判三步、剩几步；机器表台数由界面带上。
     (
@@ -638,7 +639,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "assets-sync",
         "界面直问本机常驻后端（远端那一页只报 `origin`，够到那台用握手时 `remote-reach` 登记的那一行）；成品 `{self, synced, reach}`，\
-         `assets-sync-reads.ts::decodeAssetsSynced` 按形状收",
+         `assets-sync-reads.ts::syncAssets` 问（typed，形状由握手指纹核过）",
     ),
     (
         "aliases-block-install",

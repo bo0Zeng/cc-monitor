@@ -1096,10 +1096,8 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
 /// ③ [`ZERO_OUT`]：零出参（`fields` 里没有 out / both），逐条写结果走哪儿。
 #[test]
 fn every_command_declares_exactly_the_fields_it_puts_out() {
-    const FOOTPRINT_REPORT: &str = include_str!("../../__fixtures__/footprint-report.golden.json");
     const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
-    const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1107,9 +1105,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[
         ("accounts-list", ACCOUNTS, "/accounts-list", &[], &[]),
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
-        ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
-        ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
@@ -1134,11 +1130,10 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 12;
+    const UNSHAPED_CEILING: usize = 11;
     const UNSHAPED: &[&str] = &[
         "accounts-sessions",
         "apikey-key-set",
-        "data-report",
         "machine-interrupts",
         "plan-ack",
         "plan-cell-view",
@@ -1284,7 +1279,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     );
 }
 
-/// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::AsyncOwn(` …）只许在
+/// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::BlockingOwn(` …）只许在
 /// `stream/inbound/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面
 /// 各写一份 `match`，枢纽那一份漏了两档，问本机那一跳的 8 条一律 `unknown_command`。
 #[test]
@@ -1294,7 +1289,6 @@ fn only_one_place_matches_on_how_a_command_runs() {
         "Run::BlockingData(",
         "Run::BlockingOwn(",
         "Run::Async(",
-        "Run::AsyncOwn(",
     ];
     let root = crate::guard_support::src_root();
     let mut at: Vec<String> = guard_core::scan_tree_excluding(&root, &["rs"], &[])

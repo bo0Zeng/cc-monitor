@@ -549,7 +549,11 @@ fn two_with(tag: &str, prep: impl FnOnce(&mut M)) -> (PathBuf, Two) {
     let reach: Table = Mutex::new(BTreeMap::new());
     register(
         &reach,
-        &json!({ "origin": "laptop", "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}} }),
+        "laptop",
+        &serde_json::from_value(
+            json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}),
+        )
+        .unwrap(),
     )
     .unwrap();
     let here: Arc<dyn Here> = Arc::new(HereM(a.clone()));

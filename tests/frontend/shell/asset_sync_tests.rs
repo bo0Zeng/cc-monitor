@@ -3,7 +3,7 @@
 //! 守的要求：用户原话「本机后端在本机看见一个skill并记录下来, 就会和远端后端同步」·
 //! （一切判定都在后端）· 观测方沿它本来就拥有的那条连接去拉（拉的是本机常驻后端，不是 monitor）。
 //!
-//! 买到：握手那一刻交的是「拨号请求（`capture`）＋ origin」；发的字段 ⊆ 后端登记的那一条（跨半边，读后端源码）；monitor 这一侧零合并规则。
+//! 买到：握手那一刻交的是「拨号请求（`capture`）＋ origin」；发的字段 == 后端那一条的入参类型（跨半边，读生成的类型声明）；monitor 这一侧零合并规则。
 //! 买不到：🔴 真远端 / 真本机后端（本机后端那一跳是替身）；连上那一刻的钩子只验「不认就不碰」这一半。
 
 use super::*;
@@ -72,57 +72,41 @@ async fn the_handshake_hands_over_how_to_reach_that_machine() {
     );
 }
 
-/// 跨半边：本侧发的命令名与字段 ⊆ 后端 `REGISTRY` 那一条声明的 `fields`，读的两格也在里面；远端要认的那条命令真在后端命令表里。
-/// 一条登记里 `fields: &[…]` 声明的字段名：每个 `arg(` / `out(` / `both(` 的第一个实参（第二个是说明）。
-fn declared_fields(block: &str) -> std::collections::BTreeSet<String> {
-    let at = block.find("fields: &[").expect("fields 那一格");
-    let list = &block[at..at + block[at..].find("],").expect("fields 没收尾")];
-    let mut out = std::collections::BTreeSet::new();
-    for ctor in ["arg(\"", "out(\"", "both(\""] {
-        for (i, _) in list.match_indices(ctor) {
-            let name = &list[i + ctor.len()..];
-            out.insert(name[..name.find('"').expect("字段名没收尾")].to_string());
-        }
-    }
-    assert!(
-        !out.is_empty(),
-        "从 fields 里一个字段名都没抠到 —— 登记的写法变了"
-    );
-    out
-}
-
+/// 跨半边：本侧发的格 == 后端 `assets-sync` 入参类型的格，回包类型的格 == 本侧认的那三格（两向）；远端要认的那条命令真在后端命令表里。
+/// 两条都是 typed（命令表那一行点类型名、不写字面名）⇒ 读生成的类型声明与编进来的形状指纹表。
 #[test]
 fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
-    let families = crate::guard_support::backend_registry_sources();
-    let (family, at) = families
-        .iter()
-        .find_map(|(_, prod)| prod.find(&format!("name: \"{CMD}\"")).map(|at| (prod, at)))
-        .unwrap_or_else(|| panic!("后端 REGISTRY 里没有 `{CMD}`"));
-    let block = &family[at..at + family[at..].find("run:").expect("那一条的 run")];
-    let declared = declared_fields(block);
-    let used: std::collections::BTreeSet<String> = ["origin", "dial", "self", "synced", "reach"]
+    let gen = |f: &str| {
+        std::fs::read_to_string(crate::guard_support::repo_root().join(f)).expect("生成的类型声明")
+    };
+    assert!(
+        gen("src/frontend/ui/generated/TypedCommands.ts")
+            .lines()
+            .any(|l| l
+                .trim()
+                .starts_with(&format!("\"{CMD}\": {{ req: AssetsSyncReq; reply: AssetsSynced;"))),
+        "后端命令表里没有 `{CMD}`（或它的入参 · 回包类型换了名）"
+    );
+    let req = decl_keys(&gen("src/frontend/ui/generated/AssetsSyncReq.ts"));
+    let reply = decl_keys(&gen("src/frontend/ui/generated/AssetsSynced.ts"));
+    let sent: std::collections::BTreeSet<String> = args_for(&cfg())
+        .unwrap()
+        .as_object()
+        .unwrap()
+        .keys()
+        .cloned()
+        .collect();
+    assert_eq!(sent, req, "本侧发的格与后端 `{CMD}` 入参类型的格不相等（两向）");
+    let read: std::collections::BTreeSet<String> = ["self", "synced", "reach"]
         .iter()
         .map(|s| s.to_string())
         .collect();
-    assert_eq!(
-        declared, used,
-        "本侧发 / 读的字段与后端声明的不相等（两向）"
-    );
-    // 远端要认的那条在后端命令表里
-    let registered: std::collections::BTreeSet<&str> = families
-        .iter()
-        .flat_map(|(_, prod)| {
-            prod.split("name: \"")
-                .skip(1)
-                .filter_map(|t| t.split('"').next())
-        })
-        .collect();
-    // 远端要认的那条换成了 typed（命令表那一行点类型名、不写字面名）⇒ 认编进来的形状指纹表里有它。
+    assert_eq!(reply, read, "后端 `{CMD}` 回包的格与本侧认的不相等（两向）");
+    assert!(cmd_wire::shapes::shape_of(CMD).is_some(), "形状指纹表里没有 `{CMD}`");
     assert!(
-        registered.contains(REMOTE_NEEDS) || cmd_wire::shapes::shape_of(REMOTE_NEEDS).is_some(),
+        cmd_wire::shapes::shape_of(REMOTE_NEEDS).is_some(),
         "后端命令表里没有 `{REMOTE_NEEDS}`"
     );
-    assert!(registered.contains(CMD), "后端命令表里没有 `{CMD}`");
 }
 
 /// 判定没长第二个家：monitor 这一侧零合并 / 推送规则的字样（人群从后端两份源码现抠：它们的公开函数名）。

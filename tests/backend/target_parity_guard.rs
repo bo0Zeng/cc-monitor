@@ -807,6 +807,7 @@ fn typed_handler_files_of(
         "typed::asynchronous::<",
         "typed::async_with_files::<",
         "typed::async_owning::<",
+        "typed::async_own::<",
         "typed::facing::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
@@ -873,7 +874,7 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ),
     (
         "footprint-report",
-        "足迹：与 `data-report` 同住 `footprint/mod.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
+        "足迹：与 `data-report` 同住 `footprint/mod.rs` 与帧面 `faces/footprint_report_face.rs`（引用图按文件取），它自己不问 tmux（tmux 那一行只 stat PATH）",
     ),
     (
         "first-run",

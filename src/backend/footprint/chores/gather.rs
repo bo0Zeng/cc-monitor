@@ -31,7 +31,7 @@ fn read_small(p: &Path) -> Option<String> {
 }
 
 /// 收齐。`needs_install` 是同一份足迹里这台确实缺的那几样。
-pub(crate) fn facts(door: &dyn Door, needs_install: Vec<Value>) -> Facts {
+pub(crate) fn facts(door: &dyn Door, needs_install: Vec<crate::footprint::data::Missing>) -> Facts {
     let windows = cfg!(windows);
     let shell = if windows {
         Shell::PowerShell

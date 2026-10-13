@@ -22,7 +22,6 @@ pub(crate) mod rows;
 
 use crate::platform::fs::Ro;
 use copy_core::copy_text;
-use serde_json::{json, Value};
 use std::path::{Path, PathBuf};
 
 use rows::{build_rows, build_settings_scopes, ConfigSurfaceReport, FsProbe, SurfaceEnv, Vantage};
@@ -32,46 +31,56 @@ pub(crate) const MAX_ENTRIES: usize = 4096;
 /// 查字样的文件最大多少字节（`settings.json` 那一类，远小于它）。
 pub(crate) const MAX_HOOK_FILE_BYTES: u64 = 1 << 20;
 
-/// 本族的应答。
-pub(crate) type FootprintAnswer = Result<Value, (&'static str, String)>;
+/// 本族的失败（码 ＋ 那一句：`bad_args` · `failed`）。
+pub(crate) type FootprintFail = (&'static str, String);
 
-/// 帧面入口。
-pub(crate) fn answer(args: &Value) -> FootprintAnswer {
+/// `footprint-report` / `data-report` 的入参：远端那一栏 `{}`；本机那一栏带 `client`（monitor 自己进程的那几条，原样）。
+#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FootprintReq {
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) client: Option<FootprintClient>,
+}
+
+/// monitor 交来的它自己那台独有的事实：家目录（绝对路径）· `PATH`（取不到 ⇒ `null`）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct FootprintClient {
+    pub(crate) home: String,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) path: Option<String>,
+}
+
+/// 帧面入口（`footprint-report`）。
+pub(crate) fn answer(req: &FootprintReq) -> Result<ConfigSurfaceReport, FootprintFail> {
     let get = |k: &str| std::env::var(k).ok();
     answer_with(
         &get,
         &crate::platform::shell::session_shell_path,
         &crate::observe::history_query::agent_home(),
-        args,
+        req,
     )
 }
 
-/// monitor 交来的它自己那台独有的事实。
+/// 解过的 `client`：家目录是绝对路径。
 struct Client {
     home: PathBuf,
     path: Option<String>,
 }
 
-/// [`answer`] 的本体：环境取值器、起会话那个 shell 的 `PATH` 与 agent 家目录都是参数（判据拿夹具喂，不去改进程环境、不起登录 shell）。
-pub(crate) fn answer_with(
-    get: &dyn Fn(&str) -> Option<String>,
-    session_path: &dyn Fn() -> Option<String>,
-    agent_home: &Path,
-    args: &Value,
-) -> FootprintAnswer {
-    Ok(json!(report_with(get, session_path, agent_home, args)?))
-}
-
 /// 「文件与数据」那一份成品（帧面 `data-report`）：同一份足迹按「改过你的文件 · 待办 · 有没有 tmux」重排（[`data`] · [`chores`]）。
 /// `door` 是这台的文件管理面（别名块的候选经它读）。
-pub(crate) fn data_answer(door: &dyn crate::assets::door::Door, args: &Value) -> FootprintAnswer {
-    let get = |k: &str| std::env::var(k).ok();
-    let report = report_with(
-        &get,
-        &crate::platform::shell::session_shell_path,
-        &crate::observe::history_query::agent_home(),
-        args,
-    )?;
+pub(crate) fn data_answer(
+    door: &dyn crate::assets::door::Door,
+    req: &FootprintReq,
+) -> Result<data::DataReport, FootprintFail> {
+    let report = answer(req)?;
     let todo = chores::chores(&chores::gather::facts(door, data::needs_install(&report)));
     let tmux = tmux_here();
     let own = crate::platform::paths::home_dir()
@@ -89,14 +98,15 @@ pub(crate) fn tmux_here() -> Option<bool> {
     }
 }
 
-/// 整份足迹（两种问法共用这一份）。
-fn report_with(
+/// [`answer`] 的本体（整份足迹，两种问法共用这一份）：环境取值器、起会话那个 shell 的 `PATH` 与 agent 家目录都是参数
+/// （判据拿夹具喂，不去改进程环境、不起登录 shell）。
+pub(crate) fn answer_with(
     get: &dyn Fn(&str) -> Option<String>,
     session_path: &dyn Fn() -> Option<String>,
     agent_home: &Path,
-    args: &Value,
-) -> Result<ConfigSurfaceReport, (&'static str, String)> {
-    let client = client_arg(args.get("client"))?;
+    req: &FootprintReq,
+) -> Result<ConfigSurfaceReport, FootprintFail> {
+    let client = req.client.as_ref().map(client_of).transpose()?;
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into))
         .ok_or(("failed", copy_text("beFootprint.env.noHome", &[])))?;
     let path_env = get("PATH");
@@ -183,30 +193,22 @@ fn hooks_in(p: &Path) -> Option<bool> {
     Some(rows::HOOK_PROGRAMS.iter().any(|n| s.contains(n)))
 }
 
-/// `client` 入参：`{home, path?}`（monitor 自己进程的那几条，原样）。
-fn client_arg(v: Option<&Value>) -> Result<Option<Client>, (&'static str, String)> {
-    let bad = |m: &str| ("bad_args", crate::common::contract::malformed(m));
-    let Some(c) = v.filter(|v| !v.is_null()) else {
-        return Ok(None);
-    };
-    let env = c
-        .as_object()
-        .ok_or_else(|| bad("`client` must be an object"))?;
-    let abs = |k: &str| -> Result<PathBuf, (&'static str, String)> {
-        let s = env
-            .get(k)
-            .and_then(Value::as_str)
-            .ok_or_else(|| bad(&format!("`client.{k}` must be a string")))?;
-        let p = PathBuf::from(s);
-        if p.is_absolute() {
-            Ok(p)
-        } else {
-            Err(bad(&format!("`client.{k}`: {s:?} is not an absolute path")))
-        }
-    };
-    let home = abs("home")?;
-    let path = env.get("path").and_then(Value::as_str).map(str::to_string);
-    Ok(Some(Client { home, path }))
+/// `client` 入参：家目录要是绝对路径（解码器判不了的那一样）。
+fn client_of(c: &FootprintClient) -> Result<Client, FootprintFail> {
+    let home = PathBuf::from(&c.home);
+    if !home.is_absolute() {
+        return Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!(
+                "`client.home`: {:?} is not an absolute path",
+                c.home
+            )),
+        ));
+    }
+    Ok(Client {
+        home,
+        path: c.path.clone(),
+    })
 }
 
 #[cfg(test)]

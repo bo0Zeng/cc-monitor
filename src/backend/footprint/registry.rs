@@ -716,6 +716,8 @@ impl Provisioning {
 /// [`EnvTier::UserInstallsWePrompt`]。每一档都要有成员（`every_tier_has_members_so_absence_never_encodes_a_judgement`）：
 /// 没有成员的档不留。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub enum EnvTier {
     /// **app 装的** —— 该我们装，而且今天真有装口。
     AppInstalls,

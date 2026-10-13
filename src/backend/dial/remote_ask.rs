@@ -126,28 +126,13 @@ pub(crate) fn insert(
     Ok(origin.to_string())
 }
 
-/// `assets-sync` 那一份入参（`{origin, dial}`，`dial` 同 `remote-reach` 那一格、按同一个类型收）⇒ [`insert`]。
-pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
-    let o = args.get("origin").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `origin` (the machine name)"),
-        )
-    })?;
-    let dial: super::pick::MachineDial = args
-        .get("dial")
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(
-                    "`origin` given without `dial` (a dial request)",
-                ),
-            )
-        })
-        .and_then(|d| {
-            crate::stream::inbound::typed::take(d).map_err(|f| ("bad_args", f.message))
-        })?;
-    insert(table, o, dial.stored()?)
+/// 登记一台：那台的名字 ＋ 怎么够到它（`remote-reach` 与 `assets-sync` 那一份入参，按同一个类型收）⇒ [`insert`]。
+pub(crate) fn register(
+    table: &Table,
+    origin: &str,
+    dial: &super::pick::MachineDial,
+) -> Result<String, (&'static str, String)> {
+    insert(table, origin, dial.stored()?)
 }
 
 /// 可达表的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
@@ -201,7 +186,7 @@ pub(crate) fn answer_reach_with(
     req: &ReachReq,
     table: &Table,
 ) -> Result<Reached, (&'static str, String)> {
-    let o = insert(table, req.origin.as_wire_str(), req.dial.stored()?)?;
+    let o = register(table, req.origin.as_wire_str(), &req.dial)?;
     Ok(Reached {
         origin: cmd_wire::Machine(o),
         reach: reach_rows(table),
