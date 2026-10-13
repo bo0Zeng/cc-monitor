@@ -699,8 +699,10 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             let mut body = obj.clone();
             body.remove("kind");
             InboundFrame::LiveCard(crate::live_card::LiveCard {
-                body: crate::ui_contract::RecordBody::from_json(serde_json::Value::Object(body).to_string())
-                    .ok_or_else(|| bad(k, "body is not an object"))?,
+                body: crate::ui_contract::RecordBody::from_json(
+                    serde_json::Value::Object(body).to_string(),
+                )
+                .ok_or_else(|| bad(k, "body is not an object"))?,
             })
         }
         // `uuid` 照样判形状（不用：一轮只报一次由后端保证，去抖在界面）。

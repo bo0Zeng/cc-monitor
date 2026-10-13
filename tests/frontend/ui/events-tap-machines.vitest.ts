@@ -1,5 +1,5 @@
-// 主界面 `bindEvents` 的 tap 订阅清单（读 `src/frontend/ui/main.ts` 的接线；`events-tap.vitest.ts` 管订阅本身）。
-// 守的要求（住址）：「远端常驻、本机远端同形」—— 远端中转住远端常驻后端，tap 沿那台的流回 monitor。
+// 主界面 `bindEvents` 的活卡订阅清单（读 `src/frontend/ui/main.ts` 的接线；`events-tap.vitest.ts` 管订阅本身）。
+// 守的要求（住址）：「远端常驻、本机远端同形」—— 远端的活卡住远端常驻后端，沿那台的流回 monitor。
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -7,10 +7,10 @@ import { describe, it, expect } from "vitest";
 
 import { REPO_ROOT } from "../../test-support/repo-root.ts";
 
-describe("〔HOST〕主界面的 tap 订阅覆盖每台机器", () => {
-  it("taps 与 streams 同一份 machines（相等，不是子集）", () => {
+describe("〔HOST〕主界面的活卡订阅覆盖每台机器", () => {
+  it("liveCards 与 streams 同一份 machines（相等，不是子集）", () => {
     const src = readFileSync(resolve(REPO_ROOT, "src", "frontend", "ui", "main.ts"), "utf8");
-    expect(/^\s*taps:\s*([^,\n]+),/m.exec(src)?.[1]).toBe("machines");
+    expect(/^\s*liveCards:\s*([^,\n]+),/m.exec(src)?.[1]).toBe("machines");
     expect(/^\s*streams:\s*(\w+)\.map/m.exec(src)?.[1]).toBe("machines");
   });
 });

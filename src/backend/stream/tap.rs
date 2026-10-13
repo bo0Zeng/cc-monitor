@@ -78,7 +78,8 @@ pub(crate) fn port() -> Arc<dyn TapPort> {
 /// 起这台 watcher 之后一次：活卡改用它写的那一本运行簿（流归位按它定归哪个运行），运行簿记录到了 / 会话走了告诉活卡。
 pub fn adopt(book: &Arc<crate::observe::runs::RunBook>) {
     let h = hub();
-    h.live().adopt(book.clone(), crate::agents::stream_families());
+    h.live()
+        .adopt(book.clone(), crate::agents::stream_families());
     book.watch_with(h);
 }
 

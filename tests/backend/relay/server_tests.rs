@@ -4316,7 +4316,10 @@ impl Taps {
     pub(super) fn attach(&self) -> tokio::sync::mpsc::Receiver<crate::relay::TapEvent> {
         self.attach_bounded(4096)
     }
-    pub(super) fn attach_bounded(&self, cap: usize) -> tokio::sync::mpsc::Receiver<crate::relay::TapEvent> {
+    pub(super) fn attach_bounded(
+        &self,
+        cap: usize,
+    ) -> tokio::sync::mpsc::Receiver<crate::relay::TapEvent> {
         let (tx, rx) = tokio::sync::mpsc::channel::<crate::relay::TapEvent>(cap);
         self.0.lock().unwrap().push(tx);
         rx
@@ -4327,6 +4330,7 @@ impl comms_outward::TapPort for Taps {
     fn note_marks(&self, _: &str, _: &[((&'static str, &'static str), bool)]) {}
     fn offer(&self, ev: crate::relay::TapEvent) -> bool {
         let g = self.0.lock().unwrap();
-        g.iter().fold(false, |took, tx| tx.try_send(ev.clone()).is_ok() || took)
+        g.iter()
+            .fold(false, |took, tx| tx.try_send(ev.clone()).is_ok() || took)
     }
 }

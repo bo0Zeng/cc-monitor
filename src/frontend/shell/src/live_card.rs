@@ -27,7 +27,9 @@ fn sink() -> &'static OnceLock<Sink> {
 }
 
 /// 装出口。**只装一次**（第二次装被忽略并记一句 —— setup 只跑一次，多装一定是接线错了）。
-pub fn install_sink(f: impl Fn(crate::ui_contract::SessionLiveCardPayload) + Send + Sync + 'static) {
+pub fn install_sink(
+    f: impl Fn(crate::ui_contract::SessionLiveCardPayload) + Send + Sync + 'static,
+) {
     if sink().set(Box::new(f)).is_err() {
         tracing::warn!("live_card 的出口装了第二次 —— 忽略（setup 只该装一次）");
     }

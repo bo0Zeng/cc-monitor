@@ -154,4 +154,3 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
         }
     });
 }
-

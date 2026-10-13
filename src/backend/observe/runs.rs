@@ -648,7 +648,6 @@ impl RunBook {
             .collect()
     }
 
-
     /// 装听的一方（只一次；再装忽略）。
     pub(crate) fn watch_with(&self, w: Arc<dyn BookWatch>) {
         if self.watch.set(w).is_err() {

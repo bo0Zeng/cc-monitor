@@ -122,7 +122,9 @@ fn every_kind_of_drop_is_counted_and_spoken_at_powers_of_two() {
 #[test]
 fn an_owner_equal_to_the_stream_is_the_main_run() {
     let mut r = router();
-    let run_of = |frames: Vec<Routed>| -> Vec<Option<String>> { frames.into_iter().map(|f| f.run).collect() };
+    let run_of = |frames: Vec<Routed>| -> Vec<Option<String>> {
+        frames.into_iter().map(|f| f.run).collect()
+    };
     let owned = |owner: &str, resp: u64| TapEvent {
         owner: owner.into(),
         ..data(SID, resp, 0, OPEN)

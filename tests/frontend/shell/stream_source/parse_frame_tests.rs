@@ -840,7 +840,10 @@ fn session_runs_frames_carry_the_runs_verbatim() {
 #[test]
 fn a_live_frame_becomes_the_session_live_payload_verbatim() {
     use crate::live_card::{to_payload, LiveCard};
-    let body = crate::ui_contract::RecordBody::from_json(r#"{"sid":"s","card":1,"n":0,"op":"awaiting"}"#.into()).unwrap();
+    let body = crate::ui_contract::RecordBody::from_json(
+        r#"{"sid":"s","card":1,"n":0,"op":"awaiting"}"#.into(),
+    )
+    .unwrap();
     let p = to_payload("pi", LiveCard { body: body.clone() });
     assert_eq!(p.origin, crate::origin::Origin("pi".into()));
     assert_eq!(p.card, body);

@@ -26,10 +26,20 @@ struct Seg {
 
 impl Seg {
     fn new(sid: &'static str, resp: u64) -> Self {
-        Self { sid, owner: "", resp, n: 0 }
+        Self {
+            sid,
+            owner: "",
+            resp,
+            n: 0,
+        }
     }
     fn run(sid: &'static str, owner: &'static str, resp: u64) -> Self {
-        Self { sid, owner, resp, n: 0 }
+        Self {
+            sid,
+            owner,
+            resp,
+            n: 0,
+        }
     }
     fn put(&mut self, l: &mut Live, d: &str) {
         l.tap(TapEvent {
@@ -85,18 +95,40 @@ impl Screen {
     fn eat(&mut self, fs: &[LiveCard]) {
         for f in fs {
             match &f.op {
-                LiveOp::Open { rid: _, phase, clipped, blocks } => {
+                LiveOp::Open {
+                    rid: _,
+                    phase,
+                    clipped,
+                    blocks,
+                } => {
                     assert_eq!(f.n, 0, "整卡的 n 不是 0：{f:?}");
-                    self.cards.insert(f.card, (f.sid.clone(), f.run.clone(), *phase, *clipped, blocks.clone()));
+                    self.cards.insert(
+                        f.card,
+                        (
+                            f.sid.clone(),
+                            f.run.clone(),
+                            *phase,
+                            *clipped,
+                            blocks.clone(),
+                        ),
+                    );
                 }
                 op => {
-                    assert_eq!(self.next.get(&f.card).copied(), Some(f.n), "n 没接上：{f:?}");
+                    assert_eq!(
+                        self.next.get(&f.card).copied(),
+                        Some(f.n),
+                        "n 没接上：{f:?}"
+                    );
                     let c = self.cards.get_mut(&f.card).expect("没开过的卡来了增量");
                     match op {
                         LiveOp::Block { i, block, tool } => {
                             let i = *i as usize;
                             while c.4.len() <= i {
-                                c.4.push(LiveBlock { kind: BlockKind::Other, text: None, tool: None });
+                                c.4.push(LiveBlock {
+                                    kind: BlockKind::Other,
+                                    text: None,
+                                    tool: None,
+                                });
                             }
                             c.4[i] = LiveBlock {
                                 kind: *block,
@@ -104,7 +136,9 @@ impl Screen {
                                 tool: tool.clone(),
                             };
                         }
-                        LiveOp::Text { i, s } => c.4[*i as usize].text.as_mut().unwrap().push_str(s),
+                        LiveOp::Text { i, s } => {
+                            c.4[*i as usize].text.as_mut().unwrap().push_str(s)
+                        }
                         LiveOp::Awaiting => c.2 = LivePhase::Awaiting,
                         LiveOp::Close { .. } => {
                             self.cards.remove(&f.card);
@@ -119,7 +153,9 @@ impl Screen {
         }
     }
     fn text(&self, card: u64) -> Option<String> {
-        self.cards.get(&card).map(|c| c.4.iter().filter_map(|b| b.text.clone()).collect())
+        self.cards
+            .get(&card)
+            .map(|c| c.4.iter().filter_map(|b| b.text.clone()).collect())
     }
 }
 
@@ -147,7 +183,10 @@ fn a_connection_only_gets_the_sessions_on_its_watch_list() {
     }
     let fs = drain(&mut l, id);
     assert!(!fs.is_empty(), "A 的一帧都没有");
-    assert!(fs.iter().all(|f| f.sid == "A"), "名单外的会话上了这条流：{fs:?}");
+    assert!(
+        fs.iter().all(|f| f.sid == "A"),
+        "名单外的会话上了这条流：{fs:?}"
+    );
     let mut s = Screen::default();
     s.eat(&fs);
     assert_eq!(s.text(1).as_deref(), Some("xxxxx"));
@@ -179,7 +218,10 @@ fn joining_the_list_mid_reply_hands_over_the_whole_card_and_leaving_closes_it() 
     l.watch(id, &["A".into(), "B".into()]);
     b.say(&mut l, "!");
     let fs = drain(&mut l, id);
-    assert!(matches!(fs[0].op, LiveOp::Open { .. }), "刚进名单头一帧不是整卡：{fs:?}");
+    assert!(
+        matches!(fs[0].op, LiveOp::Open { .. }),
+        "刚进名单头一帧不是整卡：{fs:?}"
+    );
     let mut s = Screen::default();
     s.eat(&fs);
     assert_eq!(s.text(2).as_deref(), Some("hello!"));
@@ -258,7 +300,10 @@ fn a_sub_run_card_carries_its_run_and_waits_for_its_own_record() {
     assert!(!fs.is_empty());
     assert!(fs.iter().all(|f| f.run.as_deref() == Some("a1")), "{fs:?}");
     l.record("A", "rr", None);
-    assert_eq!(closes(&drain(&mut l, id)), vec![("A".into(), 3, LiveWhy::Record)]);
+    assert_eq!(
+        closes(&drain(&mut l, id)),
+        vec![("A".into(), 3, LiveWhy::Record)]
+    );
 }
 
 /// 断在半路 ⇒ 撤；报错收尾 ⇒ 撤；说完以后再断（内容是全的）⇒ 照等记录。
@@ -278,7 +323,10 @@ fn a_broken_or_failed_reply_is_closed_but_one_broken_after_it_finished_is_kept()
     let got = closes(&drain(&mut l, id));
     assert_eq!(
         got,
-        vec![("A".into(), 1, LiveWhy::Broken), ("A".into(), 2, LiveWhy::Error)],
+        vec![
+            ("A".into(), 1, LiveWhy::Broken),
+            ("A".into(), 2, LiveWhy::Error)
+        ],
         "断的 · 报错的该撤，说完以后才断的那张不该撤"
     );
 }
@@ -302,7 +350,14 @@ fn a_run_keeps_at_most_two_cards() {
 fn the_machine_keeps_at_most_sixteen_cards_and_never_drops_a_speaking_main_run_for_a_sub_run() {
     let mut l = live();
     for k in 0..LIVE_CARDS_KEEP as u64 {
-        Seg::new(["s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "sa", "sb", "sc", "sd", "se", "sf"][k as usize], k).open(&mut l, "r");
+        Seg::new(
+            [
+                "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8", "s9", "sa", "sb", "sc", "sd",
+                "se", "sf",
+            ][k as usize],
+            k,
+        )
+        .open(&mut l, "r");
     }
     Seg::run("x", "a1", 100).open(&mut l, "rr");
     assert!(!l.cards.contains_key(&100), "满了还收了子运行");
@@ -323,7 +378,10 @@ fn a_long_reply_keeps_only_its_tail_and_is_resent_whole_once_clipped() {
         a.say(&mut l, &chunk);
         fs.extend(drain(&mut l, id));
     }
-    let opens = fs.iter().filter(|f| matches!(f.op, LiveOp::Open { .. })).count();
+    let opens = fs
+        .iter()
+        .filter(|f| matches!(f.op, LiveOp::Open { .. }))
+        .count();
     assert_eq!(opens, 2, "截头那一次没有整张重发（或重发了不止一次）");
     let mut s = Screen::default();
     s.eat(&fs);
@@ -371,7 +429,10 @@ fn a_session_that_goes_takes_its_cards_with_it() {
     Seg::new("A", 1).open(&mut l, "r");
     drain(&mut l, id);
     l.gone("A");
-    assert_eq!(closes(&drain(&mut l, id)), vec![("A".into(), 1, LiveWhy::Gone)]);
+    assert_eq!(
+        closes(&drain(&mut l, id)),
+        vec![("A".into(), 1, LiveWhy::Gone)]
+    );
 }
 
 /// 读数（不是判据）：两条会话各流同样一段、名单只报 A，这条连接收到的逐字流字节（改前用 `tap` 帧量过：408 帧 · 34148 字节）。
@@ -390,7 +451,10 @@ fn live_bytes_reading() {
         for k in 0..200 {
             s.say(&mut l, &format!("word{k} "));
             for f in drain(&mut l, id) {
-                bytes += crate::stream::wire::to_line(&Frame::LiveCard(f)).unwrap().len() + 1;
+                bytes += crate::stream::wire::to_line(&Frame::LiveCard(f))
+                    .unwrap()
+                    .len()
+                    + 1;
                 frames += 1;
             }
         }
@@ -398,7 +462,10 @@ fn live_bytes_reading() {
         s.end(&mut l, false);
     }
     for f in drain(&mut l, id) {
-        bytes += crate::stream::wire::to_line(&Frame::LiveCard(f)).unwrap().len() + 1;
+        bytes += crate::stream::wire::to_line(&Frame::LiveCard(f))
+            .unwrap()
+            .len()
+            + 1;
         frames += 1;
     }
     println!("READING after: frames={frames} bytes={bytes}");

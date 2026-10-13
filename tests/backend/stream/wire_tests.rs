@@ -246,9 +246,8 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 fn golden_pairs() -> Vec<[Frame; 2]> {
     use crate::agents::{BlockKind, RunDid};
     use crate::stream::wire::{
-        AgentHome, LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded,
-        RunInfo, RunState, RunWhy, SessionContainer, SessionFate, TerminalHost, TransferEnd,
-        Unavailable,
+        AgentHome, LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo,
+        RunState, RunWhy, SessionContainer, SessionFate, TerminalHost, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
@@ -506,8 +505,16 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
                     phase: LivePhase::Awaiting,
                     clipped: true,
                     blocks: vec![
-                        LiveBlock { kind: BlockKind::Text, text: Some(s("hi")), tool: None },
-                        LiveBlock { kind: BlockKind::Tool, text: None, tool: Some(s("Bash")) },
+                        LiveBlock {
+                            kind: BlockKind::Text,
+                            text: Some(s("hi")),
+                            tool: None,
+                        },
+                        LiveBlock {
+                            kind: BlockKind::Tool,
+                            text: None,
+                            tool: Some(s("Bash")),
+                        },
                     ],
                 },
             }),
@@ -857,8 +864,15 @@ fn live_frames_have_exactly_these_bytes() {
     ];
     for (frame, want) in cases {
         assert_eq!(to_line(&frame).unwrap(), want);
-        assert!(frame.loss_is_recoverable(), "活卡帧可丢（jsonl 保对），却被判成不可恢复");
-        assert_eq!(frame.content_of(), Some("0b6c1f7e-sid"), "活卡帧不按名单走（`stream-watch`）");
+        assert!(
+            frame.loss_is_recoverable(),
+            "活卡帧可丢（jsonl 保对），却被判成不可恢复"
+        );
+        assert_eq!(
+            frame.content_of(),
+            Some("0b6c1f7e-sid"),
+            "活卡帧不按名单走（`stream-watch`）"
+        );
     }
 }
 

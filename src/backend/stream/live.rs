@@ -21,7 +21,9 @@ use crate::agents::{BlockKind, StreamEv};
 use crate::observe::runs::RunBook;
 use crate::relay::TapEvent;
 use crate::stream::run_route::{Routed, RunRouter};
-use crate::stream::wire::{Frame, LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy, RunState, TapEnd};
+use crate::stream::wire::{
+    Frame, LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy, RunState, TapEnd,
+};
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
@@ -156,7 +158,9 @@ impl Conn {
     }
 
     fn has_snap(&self, c: u64) -> bool {
-        self.q.iter().any(|e| matches!(e, Entry::Snap(x) if *x == c))
+        self.q
+            .iter()
+            .any(|e| matches!(e, Entry::Snap(x) if *x == c))
     }
 
     /// 欠一张整卡：排着的这张卡的件全撤（整卡里都有）。
@@ -206,7 +210,8 @@ impl Conn {
             let Some((&victim, _)) = count.iter().max_by_key(|(_, n)| **n) else {
                 return; // 全是整卡与撤卡（卡数有上界，到不了这里）
             };
-            self.q.retain(|e| !matches!(e, Entry::Op(x, _) if *x == victim));
+            self.q
+                .retain(|e| !matches!(e, Entry::Op(x, _) if *x == victim));
             if !self.has_snap(victim) {
                 self.q.push_back(Entry::Snap(victim));
             }
@@ -276,10 +281,7 @@ impl Live {
     /// 这条连接此刻在看哪几个会话（整份换，`stream-watch` 那一份）。刚进的补整卡，出去的撤卡。
     pub(crate) fn watch(&mut self, id: u64, sids: &[String]) {
         let next: HashSet<String> = sids.iter().cloned().collect();
-        let vis: Vec<(u64, String)> = self
-            .visible()
-            .map(|(k, c)| (k, c.sid.clone()))
-            .collect();
+        let vis: Vec<(u64, String)> = self.visible().map(|(k, c)| (k, c.sid.clone())).collect();
         let Some(c) = self.conns.iter_mut().find(|c| c.id == id) else {
             return;
         };
@@ -309,12 +311,16 @@ impl Live {
                     (k, 0, op)
                 }
                 Entry::Op(k, op) => {
-                    let Some(n) = c.next_n.get_mut(&k) else { continue };
+                    let Some(n) = c.next_n.get_mut(&k) else {
+                        continue;
+                    };
                     *n += 1;
                     (k, *n - 1, op)
                 }
                 Entry::Close(k, why) => {
-                    let Some(n) = c.next_n.remove(&k) else { continue };
+                    let Some(n) = c.next_n.remove(&k) else {
+                        continue;
+                    };
                     (k, n, LiveOp::Close { why })
                 }
             };
@@ -456,7 +462,9 @@ impl Live {
                 self.fan_owe(k);
             }
             StreamEv::Block { i, kind, tool } => {
-                let Some(c) = self.cards.get_mut(&k) else { return };
+                let Some(c) = self.cards.get_mut(&k) else {
+                    return;
+                };
                 let i = i as usize;
                 while c.blocks.len() <= i {
                     c.blocks.push(LiveBlock {
@@ -470,19 +478,20 @@ impl Live {
                     text: (kind == BlockKind::Text).then(String::new),
                     tool: tool.clone(),
                 };
-                self.fan(k, LiveOp::Block {
-                    i: i as u64,
-                    block: kind,
-                    tool,
-                });
+                self.fan(
+                    k,
+                    LiveOp::Block {
+                        i: i as u64,
+                        block: kind,
+                        tool,
+                    },
+                );
             }
             StreamEv::Text { i, s } => {
-                let Some(c) = self.cards.get_mut(&k) else { return };
-                let Some(t) = c
-                    .blocks
-                    .get_mut(i as usize)
-                    .and_then(|b| b.text.as_mut())
-                else {
+                let Some(c) = self.cards.get_mut(&k) else {
+                    return;
+                };
+                let Some(t) = c.blocks.get_mut(i as usize).and_then(|b| b.text.as_mut()) else {
                     return;
                 };
                 t.push_str(&s);
@@ -547,7 +556,9 @@ impl Live {
 
     /// 说完了：等记录。
     fn settle(&mut self, k: u64) {
-        let Some(c) = self.cards.get_mut(&k) else { return };
+        let Some(c) = self.cards.get_mut(&k) else {
+            return;
+        };
         if c.stopped {
             return;
         }
@@ -556,7 +567,9 @@ impl Live {
     }
 
     fn kill(&mut self, k: u64, why: LiveWhy) {
-        let Some(card) = self.cards.remove(&k) else { return };
+        let Some(card) = self.cards.remove(&k) else {
+            return;
+        };
         self.dead.add(k);
         for c in &mut self.conns {
             if c.next_n.contains_key(&k) {
@@ -582,7 +595,12 @@ impl Live {
     }
 
     fn fan(&mut self, k: u64, op: LiveOp) {
-        let Some(sid) = self.cards.get(&k).filter(|c| c.rid.is_some()).map(|c| c.sid.clone()) else {
+        let Some(sid) = self
+            .cards
+            .get(&k)
+            .filter(|c| c.rid.is_some())
+            .map(|c| c.sid.clone())
+        else {
             return;
         };
         for c in &mut self.conns {
@@ -593,7 +611,12 @@ impl Live {
     }
 
     fn fan_owe(&mut self, k: u64) {
-        let Some(sid) = self.cards.get(&k).filter(|c| c.rid.is_some()).map(|c| c.sid.clone()) else {
+        let Some(sid) = self
+            .cards
+            .get(&k)
+            .filter(|c| c.rid.is_some())
+            .map(|c| c.sid.clone())
+        else {
             return;
         };
         for c in &mut self.conns {

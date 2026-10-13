@@ -127,7 +127,10 @@ fn the_remote_stream_hands_live_frames_to_the_session_live_with_its_own_origin()
     let prod = crate::guard_support::stream_source_production();
     let arm = prod
         .lines()
-        .find(|l| l.trim_start().starts_with("Some(InboundFrame::LiveCard(l)) =>"))
+        .find(|l| {
+            l.trim_start()
+                .starts_with("Some(InboundFrame::LiveCard(l)) =>")
+        })
         .expect("dispatch 里找不到 Live 那一臂");
     assert!(
         arm.contains("crate::live_card::deliver(&host_label, l)"),
@@ -136,7 +139,7 @@ fn the_remote_stream_hands_live_frames_to_the_session_live_with_its_own_origin()
     let local = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/local_backend.rs"
     ));
-    let n = prod.matches("live_card::deliver(").count()
-        + local.matches("live_card::deliver(").count();
+    let n =
+        prod.matches("live_card::deliver(").count() + local.matches("live_card::deliver(").count();
     assert_eq!(n, 2, "交活卡的地方不是恰好「远端一臂 ＋ 本机吸收点」");
 }
