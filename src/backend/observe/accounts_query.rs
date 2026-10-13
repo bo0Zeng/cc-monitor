@@ -336,6 +336,8 @@ fn scan_accounts(
                 let ready = auth_ready(auth_kind, credentials_present);
                 lines.push(serde_json::json!({
                         "name": a.name,
+                        // 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）：唯一一处 `name_words::account_text`，界面 · 手机照抄。
+                        "label": crate::accounts::quota::name_words::account_text(&a.name),
                         "email": a.email.clone().unwrap_or_default(),
                         "configDir": cfg_out,
                         "isDefault": a.is_default,

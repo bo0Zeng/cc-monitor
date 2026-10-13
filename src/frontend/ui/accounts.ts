@@ -19,6 +19,8 @@ export type { AuthKind };
 /** manifest 里的一个账号（后端已剔除 configDir 不安全的条目；逐键同后端成品）。 */
 export interface Account {
   name: string;
+  /** 号在人眼里叫什么（那台后端写好：账号 0 叫「~/.claude」那一句，其余照原名）。线上恒有这一格，本地造的夹具可以不写。 */
+  label?: string;
   email: string;
   /** `null` = 账号 0（不设 `CLAUDE_CONFIG_DIR`）。 */
   configDir: string | null;

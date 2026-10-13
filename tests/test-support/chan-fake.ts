@@ -357,6 +357,8 @@ const ACCOUNT_KEYS = ["name", "email", "configDir", "isDefault", "mode", "exists
 function productAccount(a: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of ACCOUNT_KEYS) out[k] = a[k];
+  // 号名那一格是那台后端写好的（`name_words::account_text`）：夹具不写 ⇒ 照原名。
+  out.label = a.label ?? a.name;
   out.email = a.email ?? "";
   out.configDir = a.configDir ?? null;
   out.isDefault = a.isDefault ?? false;
