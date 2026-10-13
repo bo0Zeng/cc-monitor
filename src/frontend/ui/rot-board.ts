@@ -312,6 +312,7 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     const c = el("button", (e) => (e.className = s.rotCard));
     c.type = "button";
     c.dataset.account = f.account;
+    c.dataset.rotCard = "";
     if (f.account === view.current && spec.where === "session")
       c.dataset.inUse = "true";
     if (f.blocked) c.dataset.blocked = "true";
@@ -343,11 +344,12 @@ function cards(spec: BoardSpec, view: RotationViewReply): HTMLElement {
           spec.acts.open(spec.state.open === f.account ? null : f.account);
           return;
         }
-        const cardsNow = [...wrap.querySelectorAll<HTMLElement>("[data-account]")];
-        const to = cardsNow.findIndex((k) => {
+        // 拖的时候面板可能已经照推送重画过（这一排换了一份新的）⇒ 照此刻页上的号牌找落点，按号认第几张。
+        const hit = [...document.querySelectorAll<HTMLElement>("button[data-rot-card]")].find((k) => {
           const r = k.getBoundingClientRect();
           return u.clientX >= r.left && u.clientX <= r.right && u.clientY >= r.top && u.clientY <= r.bottom;
         });
+        const to = hit ? listed.findIndex((x) => x.account === hit.dataset.account) : -1;
         if (to < 0 || to === i || i >= rows.length) return;
         const next = rows.slice();
         const [moved] = next.splice(i, 1);
@@ -712,7 +714,11 @@ function dayBar(
     start = minAt(e.clientX);
     ghost = el("span", (e) => (e.className = s.rotDayGhost));
     bar.appendChild(ghost);
-    bar.setPointerCapture?.(e.pointerId);
+    try {
+      bar.setPointerCapture(e.pointerId);
+    } catch {
+      // 不是真指针（派出来的事件）⇒ 没得捕获，照样画。
+    }
   });
   bar.addEventListener("pointermove", (e) => {
     if (start === null || !ghost) return;
@@ -837,7 +843,8 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   at(now, 0);
   axis.appendChild(now);
   for (const t of tl.ticks) {
-    if (t.at >= b) continue;
+    // 挨着「此刻」那一格的刻度让开（字会叠在一起）。
+    if (t.at >= b || X(t.at) < 0.08) continue;
     const k = el("span", (e) => (e.className = s.rotSimTick), t.text);
     at(k, X(t.at));
     axis.appendChild(k);

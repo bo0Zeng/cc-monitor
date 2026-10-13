@@ -60,7 +60,7 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
         { account: "work", segs: [{ from: NOW, to: NOW + 43_200, sendable: false, used: [100, 40], reset: false, fromText: "14:30", left: 0 }] },
       ],
       truncated: false,
-      ticks: [{ at: NOW + 1800, text: "15:00" }],
+      ticks: [{ at: NOW + 1800, text: "15:00" }, { at: NOW + 9000, text: "17:00" }],
     },
     log: [],
     hints: [],
@@ -222,7 +222,8 @@ describe("模拟", () => {
   it("★ 时刻的字全照回包：此刻 · 刻度 · 换号时刻；最上那条左边留空；每号行此刻那段写剩多少、重置那段写 ↻ 钟面、发不出去的不写字", () => {
     const root = draw(view(), state(), acts());
     expect(root.textContent).toContain("14:30");
-    expect(root.textContent).toContain("15:00");
+    expect(root.textContent).toContain("17:00");
+    expect(root.textContent, "挨着此刻的刻度让开").not.toContain("15:00");
     expect(root.textContent).toContain(copyText("rot.sim.switch", { at: "16:00", account: "lab" }));
     const segs = texts(root, '[data-state]');
     expect(segs).toEqual([copyText("rot.sim.left", { n: 42 }), copyText("rot.sim.reset", { at: "15:30" }), ""]);

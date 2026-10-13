@@ -242,6 +242,16 @@
     justify-self: start;
   }
 
+  /* 开关自己的字照留给读屏（左边那一格已写了同一个名字），看得见的只留开关。 */
+  .rotSwitch > :first-child {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   .rotNum {
     display: inline-flex;
     align-items: center;
@@ -260,13 +270,20 @@
   }
 
   .rotNumInput {
-    width: 4ch;
+    width: 5ch;
+    appearance: textfield;
     border: 0;
     background: transparent;
     color: inherit;
     font: inherit;
     font-variant-numeric: tabular-nums;
     text-align: right;
+  }
+
+  .rotNumInput::-webkit-inner-spin-button,
+  .rotNumInput::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
   }
 
   .rotNumUnit {
