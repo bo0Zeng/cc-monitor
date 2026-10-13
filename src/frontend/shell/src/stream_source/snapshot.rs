@@ -259,10 +259,9 @@ fn snapshot_inflight_change(replay: &EventReplay, delta: isize) {
     drop(n);
 }
 
-/// F5 电平同步（审计 D）：inflight 是变化沿，重载后前端初值 0 ⇒ 就绪点在重放最前面补一格当前电平（`event_replay::lifecycle_replay`）。
-pub fn snapshot_inflight_level() -> u32 {
-    *SNAPSHOT_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner()) as u32
-}
+// F5 电平同步（审计 D）：inflight 是变化沿，重载后前端初值 0 ⇒ 就绪点在重放最前面补一格当前电平 ——
+// 电平由 `EventReplay::on_snapshot_inflight` 在会话流自己的锁里记一份，重放读那一份（`event_replay::lifecycle_replay`），
+// **不回头读本锁**：本锁持着交电平（本锁 → 会话流的锁），反过来那一向会两条线程互等。
 
 /// fetch 的三态结果：完成（行数）/ 被取消（不重试）。错误走 Err。
 enum FetchOutcome {
