@@ -1,4 +1,4 @@
-//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）· 缺格表与目录不重 · 帧面那条命令出的就是它。
+//! 格目录的判据：目录 ＝ 成品真序列化出来的格（两向）· 缺格表与目录不重。
 
 use super::*;
 use serde_json::Value;
@@ -461,29 +461,10 @@ fn pending_cells_are_not_in_the_catalog_yet() {
     }
 }
 
-/// 帧面那条命令出的就是目录。
-#[test]
-fn the_frame_command_answers_the_catalog() {
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "cells-catalog")
-        .expect("注册表里没有 cells-catalog");
-    assert!(!spec.takes_input);
-    let v = catalog();
-    let names: Vec<&str> = v["products"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["name"].as_str().unwrap())
-        .collect();
-    assert_eq!(names, PRODUCTS.iter().map(|p| p.name).collect::<Vec<_>>());
-    assert_eq!(v["pending"].as_array().unwrap().len(), PENDING.len());
-}
-
 /// 金样重写开关（人读过「现打」再落盘）。
 const REGEN: &str = "CCM_REGEN_CELLS_CATALOG";
 
-/// ★ 格目录的金样 ＝ 帧命令真写出来的那一份（出口不起后端也能读；注册表出参对拍也用它）。改了成品就重写：
+/// ★ 格目录的金样 ＝ [`catalog`] 真写出来的那一份（出口不起后端也能读）。改了成品就重写：
 /// `CCM_REGEN_CELLS_CATALOG=1 cargo test --lib -- cells_catalog`。
 ///
 /// 冻结的格（[`Product::frozen`]，目录里每格的 `frozen`）不许删、改名、换类别或类型：金样里标了冻结的每一格，

@@ -181,7 +181,7 @@ mod tests {
         out.push_str("\n#options\n");
         out.push_str(&opts.join("\n"));
         // 第四段：两个前端照着读的冻结格（格目录里 `frozen` 的每一格 ＋ 帧那张冻结表）。改了它们同样要打版本号 ——
-        //   手机连上之后只核 `BUILD_ID` 这一处，不再读 `cells-catalog` 逐格核。写成一行摘要（格多，整份放进历史表太长）。
+        //   手机连上之后只核 `BUILD_ID` 这一处，不再逐格核。写成一行摘要（格多，整份放进历史表太长）。
         out.push('\n');
         out.push_str(&frozen_fingerprint());
         out

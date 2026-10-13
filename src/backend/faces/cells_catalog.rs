@@ -1,4 +1,4 @@
-//! **格目录**（`cells-catalog`）：核心出的每件成品有哪些格、各是值还是写好的字。
+//! **格目录**：核心出的每件成品有哪些格、各是值还是写好的字（金样 `tests/__fixtures__/cells-catalog.golden.json`；原先的帧命令 `cells-catalog` 没有调用方，删了）。
 //!
 //! 出口据它写自己的声明（要哪几格），不读核心代码就知道「有没有那一格」（`src/doc/ARCHITECTURE.md` §「核心与适配层」）。
 //!
@@ -592,11 +592,13 @@ pub(crate) struct Product {
     /// 样本：每个可缺的格都填上、每个列表都不空、每种变体各一个。
     pub(crate) specimens: fn() -> Vec<Specimen>,
     /// **冻结**：两个前端（桌面界面 · 手机）都照它读的那几格 —— 删 / 改名 / 换类型 ⇒ 判据红
-    /// （对的是落盘的格目录金样：金样里标了冻结的格、目录里没了或换了样，重写金样也不放行）。
+    /// （对的是落盘的格目录金样：金样里标了冻结的格、目录里没了或换了样，重写金样也不放行）。只在测试档（判据与指纹读它）。
+    #[cfg(test)]
     pub(crate) frozen: Frozen,
 }
 
-/// 一件成品哪几格冻结。
+/// 一件成品哪几格冻结（测试档：冻结格判据 · `build_id_guard` 的指纹读它）。
+#[cfg(test)]
 pub(crate) enum Frozen {
     /// 没有前端照它逐格读到「缺一格就坏」的地步。
     No,
@@ -606,6 +608,7 @@ pub(crate) enum Frozen {
     Cells(&'static [&'static str]),
 }
 
+#[cfg(test)]
 impl Frozen {
     /// 这一格冻结不冻结。
     pub(crate) fn holds(&self, path: &str) -> bool {
@@ -630,7 +633,8 @@ pub(crate) fn cells_of(p: &Product) -> (Vec<Cell>, Vec<String>) {
     (hoist(out).into_values().collect(), holes)
 }
 
-/// 已经判了要补、还没落地的一格。
+/// 已经判了要补、还没落地的一格（测试档：目录与缺格表两向判）。
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, serde::Serialize)]
 pub(crate) struct Pending {
     pub(crate) product: &'static str,
@@ -650,6 +654,7 @@ pub(crate) struct Pending {
 ///   `percent` · `contextTone` · `limitFromText`；上限只有核心一套判定（`facts_query::context_limit`），出口不再按型号猜。
 /// - G5 骨架行的时刻：**不补**（10-09 定走法甲）。时刻在骨架上唯一的用处是算「最新的那一支」，手机改吃 `history-branch.off`
 ///   拿主线之后这一用处没了；要画时刻的地方读正文时记录本身带 `at` · `timeText`。
+#[cfg(test)]
 pub(crate) const PENDING: &[Pending] = &[];
 
 /// 全部成品（目录的次序）。
@@ -664,30 +669,35 @@ pub(crate) const PRODUCTS: &[Product] = &[
             ("answer", "kind"),
         ],
         specimens: specimens::record,
+        #[cfg(test)]
         frozen: Frozen::All,
     },
     Product {
         name: "facts",
         tags: &[],
         specimens: specimens::facts,
+        #[cfg(test)]
         frozen: Frozen::No,
     },
     Product {
         name: "needs_row",
         tags: &[],
         specimens: specimens::needs_row,
+        #[cfg(test)]
         frozen: Frozen::No,
     },
     Product {
         name: "index_row",
         tags: &[],
         specimens: specimens::index_row,
+        #[cfg(test)]
         frozen: Frozen::No,
     },
     Product {
         name: "read_row",
         tags: &[],
         specimens: specimens::read_row,
+        #[cfg(test)]
         frozen: Frozen::All,
     },
     // 会话三帧：第二个前端（手机）照下面点名的格逐格读，缺一格整帧当坏帧丢（会话列表有、点进去空白）——
@@ -697,6 +707,7 @@ pub(crate) const PRODUCTS: &[Product] = &[
         name: "session_added",
         tags: &[],
         specimens: specimens::session_added,
+        #[cfg(test)]
         frozen: Frozen::Cells(&[
             "sid",
             "path",
@@ -715,6 +726,7 @@ pub(crate) const PRODUCTS: &[Product] = &[
         name: "session_status",
         tags: &[],
         specimens: specimens::session_status,
+        #[cfg(test)]
         frozen: Frozen::Cells(&[
             "sid",
             "waiting_for",
@@ -727,12 +739,14 @@ pub(crate) const PRODUCTS: &[Product] = &[
         name: "session_state",
         tags: &[],
         specimens: specimens::session_state,
+        #[cfg(test)]
         frozen: Frozen::No,
     },
     Product {
         name: "session_removed",
         tags: &[],
         specimens: specimens::session_removed,
+        #[cfg(test)]
         frozen: Frozen::Cells(&["sid", "cause"]),
     },
     // 额度账（`quota-read`）：手机照每号写好的几行 · 5h 那一格 · 开窗那一句与号名表读。
@@ -740,6 +754,7 @@ pub(crate) const PRODUCTS: &[Product] = &[
         name: "quota_read",
         tags: &[],
         specimens: specimens::quota_read,
+        #[cfg(test)]
         frozen: Frozen::Cells(&[
             "state",
             "text",
@@ -768,6 +783,7 @@ pub(crate) const PRODUCTS: &[Product] = &[
         name: "history_list",
         tags: &[],
         specimens: specimens::history_list,
+        #[cfg(test)]
         frozen: Frozen::Cells(&[
             "rows[].sessionId",
             "rows[].label",
@@ -788,11 +804,14 @@ pub(crate) const PRODUCTS: &[Product] = &[
         name: "cell_error",
         tags: &[],
         specimens: specimens::cell_error,
+        #[cfg(test)]
         frozen: Frozen::No,
     },
 ];
 
-/// 帧面 `cells-catalog` 的应答（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}], pending: [{product, path, kind}]}`。
+/// 整份目录（纯计算，不读盘）：`{products: [{name, cells: [{path, kind, type, frozen}]}], pending: [{product, path, kind}]}`。
+/// 只在测试档：它是冻结格判据与金样 `cells-catalog.golden.json` 的出处。
+#[cfg(test)]
 pub(crate) fn catalog() -> serde_json::Value {
     let products: Vec<serde_json::Value> = PRODUCTS
         .iter()
