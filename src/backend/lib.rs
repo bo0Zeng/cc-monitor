@@ -994,7 +994,11 @@ pub const PROTO_VERSION: u32 = 1;
 /// （配置 · 会话副本 · 推演 · 现在就换）删了，换成 typed 的 rotation-facts / -try / -strategies / -view / -settings / -save / -revert /
 /// -use / -for-new / -temp / -use-now / -strategy-copy / -strategy-rename / -day-paint（子命令与通道各一）。
 /// 冻结格变了：线上 tap 帧删了，换成 typed 的 live_card 帧（活卡挪进后端 stream/live.rs）；逐字流也按 stream-watch 名单筛。
-pub const BUILD_ID: &str = "p10k-typed-accounts";
+///
+/// p10l-typed-hub：子命令集少 --mcp-server-put / --mcp-server-remove / --mcp-sync-plan（子命令与通道各一，没人调了）；
+/// 枢纽内层 8 条（skill 三条 · MCP 三条 · cc-bus 两条，两台后端之间那一跳）与 ext-hub-preview / -apply 换成 typed，
+/// hello 带的形状指纹表跟着变；某台回包解不出 ⇒ backend_differs「{机器} 后端版本不同」。
+pub const BUILD_ID: &str = "p10l-typed-hub";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
