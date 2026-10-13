@@ -205,8 +205,8 @@ interface Install {
   error: string | null;
   fill: Record<string, Record<string, string>>;
   busy: boolean;
-  /** 各台这一趟的结局（成了那一句 · 没成那一句）。 */
-  results: Map<string, { ok: boolean; text: string }>;
+  /** 各台这一趟的结局（成了那一句 · 没成那一句 ＋ 那一台的原话，进那一行的复制详情）。 */
+  results: Map<string, { ok: boolean; text: string; detail?: string | null }>;
 }
 
 const freshInstall = (): Install => ({ picked: new Set(), place: null, card: null, loading: false, error: null, fill: {}, busy: false, results: new Map() });
@@ -873,8 +873,12 @@ export class ExtSection {
       for (const m of card.machines) {
         const line = el("div", "ext-install-files");
         line.dataset.machine = m.to ?? "";
-        if (m.error) line.textContent = copyText("extPage.error.install", { machine: m.name, said: m.error });
-        else if (m.card?.unchanged) line.textContent = copyText("extPage.install.filesSame", { machine: m.name });
+        if (m.error) {
+          const text = copyText("extPage.error.install", { machine: m.name, said: m.error });
+          line.textContent = text;
+          const copy = m.detail === null ? null : copyDetailButton(text, m.detail);
+          if (copy) line.appendChild(copy);
+        } else if (m.card?.unchanged) line.textContent = copyText("extPage.install.filesSame", { machine: m.name });
         else line.textContent = copyText("extPage.install.filesLine", { machine: m.name, files: m.files.join(copyText("extPage.list.sep")) });
         box.appendChild(line);
         for (const x of m.card?.suspects ?? []) box.appendChild(el("div", "ext-card-suspect", copyText("extPage.install.machineSaid", { machine: m.name, said: x })));
@@ -884,6 +888,8 @@ export class ExtSection {
     for (const [key, res] of inst.results) {
       const line = el("div", res.ok ? "settings-hint ext-done" : "ext-error", res.text);
       line.dataset.result = key;
+      const copy = res.detail ? copyDetailButton(res.text, res.detail) : null;
+      if (copy) line.appendChild(copy);
       box.appendChild(line);
     }
     const ready = card?.machines.filter((m) => m.card && !m.card.stop && !m.card.unchanged) ?? [];
@@ -912,7 +918,7 @@ export class ExtSection {
           inst.results.set(key, { ok: true, text: warn ? `${text} ${copyText("extPage.done.warn", { said: warn })}` : text });
           inst.picked.delete(key);
         } else if (m.error) {
-          inst.results.set(key, { ok: false, text: copyText("extPage.error.install", { machine: m.name, said: m.error }) });
+          inst.results.set(key, { ok: false, text: copyText("extPage.error.install", { machine: m.name, said: m.error }), detail: m.detail });
         }
       }
     } catch (e) {

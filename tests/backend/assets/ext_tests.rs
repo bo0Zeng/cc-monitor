@@ -1518,9 +1518,13 @@ async fn a_done_that_does_not_parse_says_that_backend_differs() {
         m.error.as_deref(),
         Some(copy_core::backend_differs("laptop").as_str())
     );
+    // 解码器那一句进那一台的 `detail`（界面那一行的复制详情带上它），不上卡。
+    let detail = m.detail.as_deref().expect("那一台没带原话");
+    assert!(detail.starts_with("skill-install-apply: "), "{detail}");
     let _ = std::fs::remove_dir_all(&base);
 }
 
-const MANY_PREVIEW: &str = r#"{"machines":[{"card":{"config":null,"kind":"skill","name":"demo","path":"<BASE>/b/.claude/skills/demo","slots":[],"stop":null,"suspects":[],"tokens":{"source":"f8dce283cc18be65","target":"9c3ddcd3288c214b"},"unchanged":false,"writes":["SKILL.md"]},"error":null,"files":["<BASE>/b/.claude/skills/demo · SKILL.md"],"name":"laptop","to":"laptop"}],"place":{"level":"user"},"places":[{"at":{"level":"user"},"note":null,"ok":true},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":null,"ok":true}],"slots":[]}"#;
-const MANY_APPLY: &str = r#"{"machines":[{"done":{"changed":["SKILL.md"],"note":null,"path":"<BASE>/b/.claude/skills/demo"},"error":null,"name":"laptop","to":"laptop"}]}"#;
-const MANY_NO_PLACE: &str = r#"{"machines":[{"card":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"laptop","to":"laptop"},{"card":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"本机","to":null}],"place":null,"places":[{"at":{"level":"user"},"note":"来源与目标相同","ok":false},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":"本机无此位置","ok":false},{"at":{"dir":"<BASE>/a/proj","level":"project"},"note":"laptop 无此位置","ok":false}],"slots":[]}"#;
+// 第四手（batch8-6d）换形：每台多一格 `detail`（那一台的原话，进那一行的复制详情；没有 ⇒ `null`），这三份只多了这一格，其余逐字节同换形之前。
+const MANY_PREVIEW: &str = r#"{"machines":[{"card":{"config":null,"kind":"skill","name":"demo","path":"<BASE>/b/.claude/skills/demo","slots":[],"stop":null,"suspects":[],"tokens":{"source":"f8dce283cc18be65","target":"9c3ddcd3288c214b"},"unchanged":false,"writes":["SKILL.md"]},"detail":null,"error":null,"files":["<BASE>/b/.claude/skills/demo · SKILL.md"],"name":"laptop","to":"laptop"}],"place":{"level":"user"},"places":[{"at":{"level":"user"},"note":null,"ok":true},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":null,"ok":true}],"slots":[]}"#;
+const MANY_APPLY: &str = r#"{"machines":[{"detail":null,"done":{"changed":["SKILL.md"],"note":null,"path":"<BASE>/b/.claude/skills/demo"},"error":null,"name":"laptop","to":"laptop"}]}"#;
+const MANY_NO_PLACE: &str = r#"{"machines":[{"card":null,"detail":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"laptop","to":"laptop"},{"card":null,"detail":null,"error":"勾选的机器无共同的可安装位置","files":[],"name":"本机","to":null}],"place":null,"places":[{"at":{"level":"user"},"note":"来源与目标相同","ok":false},{"at":{"dir":"<BASE>/b/proj","level":"project"},"note":"本机无此位置","ok":false},{"at":{"dir":"<BASE>/a/proj","level":"project"},"note":"laptop 无此位置","ok":false}],"slots":[]}"#;

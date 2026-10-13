@@ -6102,7 +6102,7 @@ type HubMachineCard = { to: string | null, name: string, card: ExtCard | null,
 /**
  * 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）。
  */
-files: Array<string>, error: string | null, };
+files: Array<string>, error: string | null, detail: string | null, };
 type HubPreview = { 
 /**
  * 各台能装的各处并起来：勾上的每台都能装才 `ok`。
@@ -6141,7 +6141,7 @@ type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
 type ExtTokens = { source: string, target: string | null, };
 type HubApplied = { machines: Array<HubMachineDone>, };
 type HubApplyReq = { kind: ExtKind, name: string, to: Array<string | null>, place: ExtLoc | null, tokens: { [key in string]: ExtTokens }, fill: { [key in string]: { [key in string]: string } }, };
-type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, error: string | null, };
+type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, error: string | null, detail: string | null, };
 ```
 
 码：`bad_args` · `missing` · `catalog_unreadable` · `io_failed`

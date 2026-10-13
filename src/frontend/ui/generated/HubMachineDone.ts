@@ -2,6 +2,6 @@
 import type { ExtDone } from "./ExtDone";
 
 /**
- * 一台的结局：没成 ⇒ `done` 为 `null`、`error` = 那台说的那一句。
+ * 一台的结局：没成 ⇒ `done` 为 `null`、`error` = 那台说的那一句、`detail` = 原话（同 [`HubMachineCard`]）。
  */
-export type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, error: string | null, };
+export type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, error: string | null, detail: string | null, };
