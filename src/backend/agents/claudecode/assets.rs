@@ -384,16 +384,7 @@ fn scan_commands_at(root: &Path, project: bool, out: &mut crate::agents::Session
         else {
             continue;
         };
-        match Ro::read_regular_capped(&path, COMMAND_DOC_MAX_BYTES) {
-            Ok(bytes) => {
-                let (description, needs_args) = command_doc(&String::from_utf8_lossy(&bytes));
-                found.push(crate::agents::CommandSeen {
-                    name,
-                    project,
-                    description,
-                    needs_args,
-                });
-            }
+        let bytes = match Ro::read_regular_capped(&path, COMMAND_DOC_MAX_BYTES) {
             Err(e) => {
                 tracing::warn!("一条会话能用的命令：跳过读不出的 {}", path.display());
                 out.problems.push(
@@ -405,8 +396,17 @@ fn scan_commands_at(root: &Path, project: bool, out: &mut crate::agents::Session
                     })
                     .into_note(),
                 );
+                continue;
             }
-        }
+            Ok(b) => b,
+        };
+        let (description, needs_args) = command_doc(&String::from_utf8_lossy(&bytes));
+        found.push(crate::agents::CommandSeen {
+            name,
+            project,
+            description,
+            needs_args,
+        });
     }
     found.sort_by(|a, b| a.name.cmp(&b.name));
     out.commands.extend(found);
