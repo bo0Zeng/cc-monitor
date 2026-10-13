@@ -51,6 +51,12 @@ impl comms_inward::chan::router::Backends for Rig {
             (_, "transfer-upload") => {
                 Ok(serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }))
             }
+            // 写面那几条照各自的回包类型答。
+            (_, "files-mkdir") => Ok(serde_json::json!({ "path": "/x" })),
+            (_, "files-chmod") => Ok(serde_json::json!({ "path": "/x", "mode": 448 })),
+            (_, "files-delete") => {
+                Ok(serde_json::json!({ "path": "/x", "removed": 1, "remaining": 0 }))
+            }
             _ => Ok(serde_json::json!({ "path": "/x", "bytes": 5 })),
         };
         Box::pin(async move { answer.map(|v| Body(serde_json::to_vec(&v).unwrap_or_default())) })

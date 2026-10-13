@@ -20,7 +20,7 @@
 //!
 //! - 写只经 [`crate::platform::fs::Face`]：它的写方法只收 [`Resolved`]（已过路径解析的路径），而 `Resolved` 只由本模块的路径解析担保
 //!   （[`resolve_parent_in_root`] · [`resolve_existing_in_root`]，外加删会话那一道 [`fenced_session_file`]）⇒ 没过路径解析的路径递不进去；
-//! - `Face` 只有分派那一层造，按命令表文件管理那一族（`Run::BlockingFace`）递进来 ⇒ 别的命令拿不到它，也就写不出来；
+//! - `Face` 只有分派那一层造，按命令表文件管理那一族（typed 的 `Facing` 那一档）递进来 ⇒ 别的命令拿不到它，也就写不出来；
 //! - 动词闭集就是 `Face` 的方法表：`O_EXCL` 新建 · 覆盖写 · 建目录 · 改名（含不覆盖改名）· 删文件 · 删空目录 · 改权限 · 建链接；开文件一律不跟链接，做在方法里。
 //!   一步递归删 · 一步复制那类库函数 `Face` 上没有：递归删由删文件 ＋ 删空目录逐条拼（[`delete_tree`]），复制由新建 ＋ 改名拼（[`copy_entry`]）。
 //!
@@ -63,6 +63,7 @@
 //!    那几处全不在本模块里。**「能力在、还没接线」这件事不许被读成「已经能用了」。**
 
 use crate::platform::fs::{Face, Perms, Resolved, Ro};
+use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason};
 use std::path::{Component, Path, PathBuf};
 
@@ -123,7 +124,7 @@ pub const BAD_NAME: &str = "bad_name";
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
-    /// 线上错误码。**闭集四个**，与 [`MANAGE_COMMANDS`] 那一栏逐字对得上
+    /// 线上错误码。**闭集四个**，与各条错误枚举（`stream/inbound/files_write_face.rs`）的码对得上
     /// （第三个只有 `files-chmod` 会回，也只有它声明；第四个 `stale` 只有 `files-put` 会回
     /// ——`files-delete` 带 `expect` 那一形也回它，也声明了）。
     pub fn code(&self) -> &'static str {
@@ -627,12 +628,6 @@ pub fn delete_empty_dir(
     }
 }
 
-/// `files-delete` 的 `expect` 那一格（给了的话）：逐字节那一形 · 「只删空目录」那一形。
-enum DeleteExpect {
-    Bytes(Vec<u8>),
-    EmptyDir,
-}
-
 /// 改 unix 权限位（只收低 12 位）。**跟链接** ⇒ 走 [`resolve_existing_in_root`]。
 ///
 /// ⚠ 非 unix 平台上**如实回失败**，不假装改成了（`Permissions` 在那边只有一个只读位）。
@@ -812,42 +807,6 @@ pub(crate) fn in_place_reason(links: u64, owner: u32, me: u32) -> Option<String>
 //   `readonly_guard` 「写面只有一扇门」那条钉着）。
 
 pub use crate::files::{content_sha256, SHA256_HEX_LEN};
-
-/// 取**必给**的摘要形 `expect`：恰好 `{"sha256": "<64 位小写十六进制>"}`，多一个键、少一个键、串的形状不对都拒（不猜）。
-pub fn sha256_expect_of(args: &serde_json::Value) -> Result<String, (&'static str, String)> {
-    let v = args.get("expect").ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(
-                "missing `expect` ({\"sha256\": ...} handed out by the read)",
-            ),
-        )
-    })?;
-    let bad = || {
-        (
-            "bad_args",
-            format!(
-                "`expect` 只收 `{{\"sha256\": \"<{SHA256_HEX_LEN} 位小写十六进制>\"}}`（给的是 {v}）"
-            ),
-        )
-    };
-    let obj = v.as_object().ok_or_else(bad)?;
-    if obj.len() != 1 {
-        return Err(bad());
-    }
-    let hex = obj
-        .get("sha256")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(bad)?;
-    if hex.len() != SHA256_HEX_LEN
-        || !hex
-            .bytes()
-            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-    {
-        return Err(bad());
-    }
-    Ok(hex.to_string())
-}
 
 /// **带 CAS 的覆盖写**：盘上那份的摘要 == `expect_sha256` 才交给 [`overwrite_text`]，否则一个字节不写。
 ///
@@ -2558,7 +2517,7 @@ pub fn delete_session(
 
 /// 删会话那一条要问的两件事（落点 · 形状）是 agent 记录布局的知识，
 /// 本模块一家都不认 ⇒ 由门（命令注册那一处）从原生那一侧的窄口（`agents::locate_session_for_delete` ·
-/// `agents::is_session_record`）取来递进 [`answer_wire`]。
+/// `agents::is_session_record`）取来递进 [`delete_session_of`]。
 #[derive(Clone, Copy)]
 pub struct SessionPort {
     /// sid ⇒ 要删的那一份。
@@ -2642,15 +2601,12 @@ fn fenced_session_file(
 //  （现打：加完之后 `every_cli_exposed_command_is_in_the_query_mode_gate` 当场红，
 //   逐字点名 `["--files-create"]`）。⇒ 两个宿主共用同一个 `run`，
 //   那正是说的「一份代码两种宿主」。
-//   ⇒ **窄在别的地方**：写要 `Face`，而 `Face` 只递给命令表文件管理那一族（`Run::BlockingFace`），
+//   ⇒ **窄在别的地方**：写要 `Face`，而 `Face` 只递给命令表文件管理那一族（typed 的 `Facing` 那一档），
 //   不是「谁发得出命令」。别把两者混起来读。
 //
 // ⚠ 本节**买不到**什么：接上的是「命令面够得到这份原语」这一跳。
 //   「真远端那台机器上跑过」**没有**（同本模块头注第 3 条），
 //   本机跑得到的是本机文件系统上的那一趟。
-
-/// 这一面回一条什么：成功交 JSON，失败交 [`WriteFail`]（码 ＋ 那一句 ＋ 下层原话）。
-pub type Answer = Result<serde_json::Value, WriteFail>;
 
 /// 写面一条命令没成：码 ＋ 给人看的那一句 ＋ 下层原话（可缺；不上句子，进应答的复制详情）。
 /// 参数那几道（`(码, 话)`）与盘上那几步（[`WriteRefusal`]）都经 `?` 换成它。
@@ -2707,12 +2663,6 @@ pub struct ManageCommand {
     pub name: &'static str,
     /// 它做什么（登记散文，只给判据读、不上界面 ⇒ 不叫 `what`：那个字段名会被普查当成文案出口）。
     pub purpose: &'static str,
-    /// 入方向参数名。
-    pub args: &'static [&'static str],
-    /// 出方向字段名。
-    pub fields: &'static [&'static str],
-    /// 本命令自己可能回的 code。
-    pub codes: &'static [&'static str],
 }
 
 /// 🔴 **文件管理写面的唯一住址。**
@@ -2723,24 +2673,15 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
     ManageCommand {
         name: "files-create",
         purpose: "在用户指定的文件管理目标根底下，新建一份**此前不存在**的文件（`O_EXCL`）",
-        args: &["content", "rel", "root", "single"],
-        fields: &["bytes", "path"],
-        codes: &["bad_args", BAD_NAME, "bad_path", EXISTS, "io_failed", "refused"],
     },
     // ── **改动既有数据**的那五件 ──────────
     ManageCommand {
         name: "files-mkdir",
         purpose: "新建一个目录（只建最后那一段；父目录不在就失败，不顺手补）",
-        args: &["rel", "root", "single"],
-        fields: &["path"],
-        codes: &["bad_args", BAD_NAME, "bad_path", EXISTS, "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-rename",
         purpose: "改名 / 同根内移动；**两个参数各过一遍路径解析**，目标已存在就拒（不覆盖）",
-        args: &["from", "root", "single", "to"],
-        fields: &["path"],
-        codes: &["bad_args", BAD_NAME, "bad_path", EXISTS, "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-delete",
@@ -2750,17 +2691,11 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
                ⇒ 只删一份普通文件、且盘上逐字节等于它才删（否则 `stale`，一个字节不动）；`expect: {\"empty_dir\": true}` \
                ⇒ 只删一个空目录（不空 / 不在 ⇒ `stale`；不是目录 ⇒ `refused`）；递归删可带 `limit`：\
                这一趟至多删几条、停在两条之间，`remaining` 回还剩几条（再发一趟接着删）",
-        args: &["expect", "limit", "recursive", "rel", "root"],
-        fields: &["path", "remaining", "removed"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     ManageCommand {
         name: "files-chmod",
         purpose: "改 unix 权限位（低 12 位）；**跟链接**，所以落点解到底再判一次；\
 没有 unix 权限位的平台上回 `no_unix_mode`",
-        args: &["mode", "rel", "root"],
-        fields: &["before", "mode", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", NO_UNIX_MODE, "refused"],
     },
     // ── 窗口的「复制」换走通道 ──────────────────
     ManageCommand {
@@ -2769,148 +2704,102 @@ pub const MANAGE_COMMANDS: &[ManageCommand] = &[
                显式 `overwrite` 才经暂存旁名原子顶掉；权限位从源抄；显式 `recursive: true` \
                才复制目录 —— 逐条目过路径解析，跨挂载点 / 超上限整趟拒，中途失败回滚自己建的（`copy_tree`）；\
 树里的链接复制**链接本身**（目标文本原样，`links` 计数）",
-        args: &["from", "overwrite", "recursive", "root", "to"],
-        fields: &["bytes", "dirs", "files", "links", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
     ManageCommand {
         name: "files-write-text",
         purpose: "覆盖写一份**已经在**的普通文件；**跟链接**，所以落点解到底再判一次；\
 `expect: {sha256}` **必给**：盘上那份的摘要对得上才写（否则 `stale`，一个字节不动），应答交新摘要",
-        args: &["content", "expect", "rel", "root"],
-        fields: &["bytes", "path", "sha256"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     // ── 用户文件的读改写 ＋ 删历史会话（只管用户的文件、本机也管）──
     ManageCommand {
         name: "files-peek",
         purpose: "读改写的**读那一半**：与写同一道路径解析；不在 ⇒ `exists: false`（与「读不出来」分得开）",
-        args: &["rel", "root"],
-        fields: &["exists", "path", "text"],
-        codes: &["bad_args", "bad_path", "io_failed", "not_text", "refused", "too_large"],
     },
     ManageCommand {
         name: "files-put",
         purpose: "整份替换一份文本文件：**CAS（`expect` 必给）→ 相同不写 → 备份 → 暂存旁名换名上位 → \
                回读比对 → 不符回滚** —— 用户文件的写规则只有这一份",
-        args: &["backup", "content", "expect", "parents", "rel", "root"],
-        fields: &["backup", "bytes", "changed", "created", "path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused", "stale"],
     },
     ManageCommand {
         name: "files-delete-session",
         purpose: "删一份历史会话 —— **只收 sid**，落点由后端按 sid 在记录树里找（历史浏览器的删会话，不是文件管理器）",
-        args: &["sid"],
-        fields: &["path"],
-        codes: &["bad_args", "io_failed", "refused"],
     },
 ];
-/// 取一个**路径**参数（字符串 或 `{"b16": …}`，与 `files-read` 那一族同一口径）。
-fn path_of(
-    args: &serde_json::Value,
-    key: &str,
-) -> Result<std::path::PathBuf, (&'static str, String)> {
-    let v = args.get(key).ok_or_else(|| {
-        (
-            "bad_path",
-            crate::common::contract::malformed(&format!(
-                "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
-            )),
-        )
-    })?;
-    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
-        (
-            "bad_path",
-            crate::common::contract::malformed(&format!(
-                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-            )),
-        )
-    })?;
-    if bytes.is_empty() {
-        return Err((
+/// 一条写命令的入参类型就选中了那条命令的本体（同读那一族的 `files::Ask`）：命令那一层只经 [`answer`] 这一扇门进来。
+pub trait Act {
+    type Reply;
+    fn act(self, face: &Face) -> Result<Self::Reply, WriteFail>;
+}
+
+/// 文件管理写的那几条（写面 · 上传提交 · 解压）的**入口**：写经分派递进来的 `face`。
+/// 删会话那一条另走 [`delete_session_of`]（它还要门递进来的那两问）。
+pub fn answer<A: Act>(req: A, face: &Face) -> Result<A::Reply, WriteFail> {
+    req.act(face)
+}
+
+macro_rules! acts {
+    ($($req:ident => $reply:ident, |$r:ident, $f:ident| $body:expr;)*) => {
+        $(impl Act for wire::$req {
+            type Reply = wire::$reply;
+            #[allow(unused_variables)]
+            fn act(self, $f: &Face) -> Result<wire::$reply, WriteFail> {
+                let $r = self;
+                $body
+            }
+        })*
+    };
+}
+pub(crate) use acts;
+
+acts! {
+    FilesCreateReq => FilesPathBytesReply, |r, f| create(f, r);
+    FilesMkdirReq => FilesPathReply, |r, f| mkdir(f, r);
+    FilesRenameReq => FilesPathReply, |r, f| rename(f, r);
+    FilesDeleteReq => FilesDeleteReply, |r, f| delete(f, r);
+    FilesChmodReq => FilesChmodReply, |r, f| chmod(f, r);
+    FilesCopyReq => FilesTreeReply, |r, f| copy(f, r);
+    FilesWriteTextReq => FilesWrittenReply, |r, f| write_text(f, r);
+    FilesPeekReq => FilesPeekReply, |r, f| peek(r);
+    FilesPutReq => FilesPutReply, |r, f| put(f, r);
+}
+
+/// 目标根（或别的绝对路径那一格）⇒ `PathBuf`。空的 ⇒ `bad_path`（缺 · 形状不对在解入参那一步就回了 `bad_args`）。
+pub fn root_of(p: &wire::WirePath, key: &str) -> Result<PathBuf, WriteFail> {
+    if p.0.is_empty() {
+        return Err(WriteFail::from((
             "bad_path",
             crate::common::contract::malformed(&format!("`{key}` is empty")),
-        ));
+        )));
     }
-    Ok(crate::files::raw::to_path_buf(&bytes))
+    Ok(crate::files::raw::to_path_buf(&p.0))
 }
 
-/// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。
-///
-/// 路径解析按 `Path` 逐段判；相对段与 `root` 同形（字符串或 `{"b16": …}`），取法住 [`rel_of`]。
-fn answer_create(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let rel = rel_of(args, "rel")?;
-    names_ok(args, &rel)?;
-    // 不给 `content` ⇒ 新建一份**空文件**（那正是「新建空文件」这件事的形状）。
-    let bytes = match args.get("content") {
-        None => Vec::new(),
-        Some(v) => crate::files::raw::from_json(v).ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(
-                    "`content` must be a string or {\"b16\": \"<hex>\"}",
-                ),
-            )
-        })?,
-    };
-    // 🔴 码由那个枚举自己答，**不在这里猜字符串前缀** —— 理由住 [`WriteRefusal`]。
-    let landed = create_new_file(face, &root, &rel, &bytes).map_err(refusal)?;
-    Ok(serde_json::json!({
-        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&landed)),
-        "bytes": bytes.len(),
-    }))
+/// 相对段 ⇒ `PathBuf`。⚠ **空串不在这里拒**：交给路径解析①（它拒空段、码是 `refused`）。
+pub fn rel_of(p: &wire::WirePath) -> PathBuf {
+    crate::files::raw::to_path_buf(&p.0)
 }
 
-/// 取一个**相对段**参数：字符串 或 `{"b16": …}`（与 `root` 同一口径）。
-///
-/// 此前只收 UTF-8 字符串 —— 非 UTF-8 的名字（乱码文件名）在写面上**一件都做不了**。
-/// 路径解析按 `Path` 逐段判之后这条限制没有理由了。⚠ **空串不在这里拒**：交给路径解析①
-/// （它拒空段、码是 `refused`），与此前的行为逐字相同。
-/// 码：缺了 / 形状不对 ⇒ `bad_args`（相对段这一格历来是这个码，与 `root` 的 `bad_path` 刻意不同）。
-fn rel_of(args: &serde_json::Value, key: &str) -> Result<PathBuf, (&'static str, String)> {
-    let v = args.get(key).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "missing `{key}` (a string or {{\"b16\": \"<hex>\"}})"
-            )),
-        )
-    })?;
-    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-            )),
-        )
-    })?;
-    Ok(crate::files::raw::to_path_buf(&bytes))
+/// 一个落点交回线上（原始字节形）。
+pub fn wire_of(p: &Path) -> wire::WirePath {
+    wire::WirePath(crate::files::raw::path_bytes(p).to_vec())
 }
 
-/// 取 `single`（缺 ⇒ `false`）；给了 ⇒ 这一格只许是一段名字（界面「新建 / 改名」那一格敲的就是一个名字）。
+/// `single`（缺 ⇒ `false`）：给了 ⇒ 这一格只许是一段名字（界面「新建 / 改名」那一格敲的就是一个名字）。
 /// 每一段都过这台的名字规则（`platform::paths::name_problem`）。不合 ⇒ 码 [`BAD_NAME`]。
-fn names_ok(args: &serde_json::Value, rel: &Path) -> Result<(), (&'static str, String)> {
-    let single = match args.get("single") {
-        None | Some(serde_json::Value::Null) => false,
-        Some(serde_json::Value::Bool(b)) => *b,
-        Some(_) => {
-            return Err((
-                "bad_args",
-                crate::common::contract::malformed("`single` must be a boolean"),
-            ))
-        }
-    };
+fn names_ok(single: bool, rel: &Path) -> Result<(), WriteFail> {
     let shown = rel.to_string_lossy();
     let parts: Vec<Component> = rel.components().collect();
     if single && parts.is_empty() {
-        return Err((BAD_NAME, copy_text("beFilesWrite.name.empty", &[])));
+        return Err(WriteFail::from((
+            BAD_NAME,
+            copy_text("beFilesWrite.name.empty", &[]),
+        )));
     }
     if single && !matches!(parts.as_slice(), [Component::Normal(_)]) {
-        return Err((
+        return Err(WriteFail::from((
             BAD_NAME,
             copy_text("beFilesWrite.name.notOne", &[("name", &shown)]),
-        ));
+        )));
     }
     for part in parts {
         let Component::Normal(seg) = part else {
@@ -2930,14 +2819,9 @@ fn names_ok(args: &serde_json::Value, rel: &Path) -> Result<(), (&'static str, S
                 copy_text("beFilesWrite.name.trailing", &[("name", &name)])
             }
         };
-        return Err((BAD_NAME, said));
+        return Err(WriteFail::from((BAD_NAME, said)));
     }
     Ok(())
-}
-
-/// 把一个落点交回去（原始字节形）。
-fn path_json(p: &Path) -> serde_json::Value {
-    crate::files::raw::to_json(crate::files::raw::path_bytes(p))
 }
 
 /// 一次拒绝交回线上：码由那个枚举自己答（理由住 [`WriteRefusal`]）。
@@ -2945,124 +2829,96 @@ fn refusal(e: WriteRefusal) -> WriteFail {
     WriteFail::from(e)
 }
 
-fn answer_mkdir(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let rel = rel_of(args, "rel")?;
-    names_ok(args, &rel)?;
+fn n(x: usize) -> u64 {
+    x as u64
+}
+
+/// `files-create` —— 把两道路径解析与那一处 `O_EXCL` 落盘接到线上。不给 `content` ⇒ 新建一份**空文件**。
+fn create(face: &Face, req: wire::FilesCreateReq) -> Result<wire::FilesPathBytesReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let rel = rel_of(&req.rel);
+    names_ok(req.single.unwrap_or(false), &rel)?;
+    let bytes = req.content.map(|c| c.0).unwrap_or_default();
+    // 🔴 码由那个枚举自己答，**不在这里猜字符串前缀** —— 理由住 [`WriteRefusal`]。
+    let landed = create_new_file(face, &root, &rel, &bytes).map_err(refusal)?;
+    Ok(wire::FilesPathBytesReply {
+        path: wire_of(&landed),
+        bytes: n(bytes.len()),
+    })
+}
+
+/// `files-mkdir`。
+fn mkdir(face: &Face, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let rel = rel_of(&req.rel);
+    names_ok(req.single.unwrap_or(false), &rel)?;
     let done = make_dir(face, &root, &rel).map_err(refusal)?;
-    Ok(serde_json::json!({ "path": path_json(&done) }))
+    Ok(wire::FilesPathReply {
+        path: wire_of(&done),
+    })
 }
 
-fn answer_rename(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let from = rel_of(args, "from")?;
-    let to = rel_of(args, "to")?;
-    names_ok(args, &to)?;
+/// `files-rename`。
+fn rename(face: &Face, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let (from, to) = (rel_of(&req.from), rel_of(&req.to));
+    names_ok(req.single.unwrap_or(false), &to)?;
     let done = rename_entry(face, &root, &from, &to).map_err(refusal)?;
-    Ok(serde_json::json!({ "path": path_json(&done) }))
+    Ok(wire::FilesPathReply {
+        path: wire_of(&done),
+    })
 }
 
-fn answer_delete(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let rel = rel_of(args, "rel")?;
-    // 递归**显式**：不给 ⇒ 不递归（射程与此前一个字节不差）；给了就必须是布尔，不猜。
-    let recursive = match args.get("recursive") {
-        None => false,
-        Some(v) => v.as_bool().ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("`recursive` must be a boolean"),
-            )
-        })?,
-    };
-    // CAS **显式**：不给 ⇒ 射程与此前一个字节不差。给了 ⇒ 只删一份普通文件、盘上逐字节等于它才删。
-    //   `null` 拒（删的前提就是它在 —— 「我读的时候它不在」没有可删的东西）；与 `recursive` 同给拒（CAS 只对一份文件）。
-    let expect = match args.get("expect") {
-        None => None,
-        Some(serde_json::Value::Null) => {
-            return Err(WriteFail::from((
-                "bad_args",
-                crate::common::contract::malformed("`expect` must not be null here"),
-            )))
-        }
-        // 〔SU1 问 2〕恰好 `{"empty_dir": true}` ⇒ 只删空目录；别的对象形照旧按逐字节那一形取（`{"b16": …}`，认不出 ⇒ `bad_args`）。
-        Some(serde_json::Value::Object(o))
-            if o.len() == 1 && o.get("empty_dir") == Some(&serde_json::Value::Bool(true)) =>
-        {
-            Some(DeleteExpect::EmptyDir)
-        }
-        Some(v) => Some(DeleteExpect::Bytes(bytes_of(v, "expect")?)),
-    };
-    if recursive && expect.is_some() {
+/// `files-delete`：递归**显式**；CAS 给了 ⇒ 只删一份普通文件（逐字节）或一个空目录（`{"empty_dir": true}`）；
+/// 递归删可带 `limit`：这一趟至多删几条，停在两条之间、回 `remaining`（调用方再发一趟接着删）。
+fn delete(face: &Face, req: wire::FilesDeleteReq) -> Result<wire::FilesDeleteReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let rel = rel_of(&req.rel);
+    let recursive = req.recursive.unwrap_or(false);
+    if recursive && req.expect.is_some() {
         return Err(WriteFail::from((
             "bad_args",
             crate::common::contract::malformed("`expect` and `recursive` are mutually exclusive"),
         )));
     }
-    // 递归删可带 `limit`：这一趟至多删几条，停在两条之间、回 `remaining`（还剩几条），调用方再发一趟接着删。
-    let limit = match args.get("limit") {
-        None => None,
-        Some(v) => Some(v.as_u64().map(|n| n as usize).ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("`limit` must be a non-negative integer"),
-            )
-        })?),
-    };
+    let limit = req.limit.map(|l| l as usize);
     let (done, removed, remaining) = if recursive {
         delete_tree_upto(face, &root, &rel, limit).map_err(refusal)?
-    } else if let Some(want) = expect {
+    } else if let Some(want) = req.expect {
         let done = match want {
-            DeleteExpect::Bytes(b) => delete_file_expecting(face, &root, &rel, &b),
-            DeleteExpect::EmptyDir => delete_empty_dir(face, &root, &rel),
+            wire::DeleteExpect::Bytes(b) => delete_file_expecting(face, &root, &rel, &b.0),
+            wire::DeleteExpect::EmptyDir => delete_empty_dir(face, &root, &rel),
         };
         (done.map_err(refusal)?, 1, 0)
     } else {
         (delete_entry(face, &root, &rel).map_err(refusal)?, 1, 0)
     };
-    Ok(serde_json::json!({ "path": path_json(&done), "removed": removed, "remaining": remaining }))
+    Ok(wire::FilesDeleteReply {
+        path: wire_of(&done),
+        removed: n(removed),
+        remaining: n(remaining),
+    })
 }
 
-fn answer_chmod(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let rel = rel_of(args, "rel")?;
-    let mode = args
-        .get("mode")
-        .and_then(serde_json::Value::as_u64)
-        .and_then(|m| u32::try_from(m).ok())
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(
-                    "missing `mode` or not a non-negative integer (decimal, e.g. 420 = 0o644)",
-                ),
-            )
-        })?;
-    let (done, before) = change_mode_reporting(face, &root, &rel, mode).map_err(refusal)?;
-    // `before`：改之前的低 12 位（撤销 ＝ 拿它再改一次）；读不到 ⇒ 不给这一格（不编一个数）。
-    let mut out = serde_json::json!({ "path": path_json(&done), "mode": mode });
-    if let Some(b) = before {
-        out["before"] = serde_json::json!(b);
-    }
-    Ok(out)
+/// `files-chmod`：`before` ＝ 改之前的低 12 位（撤销 ＝ 拿它再改一次）；读不到 ⇒ 缺这一格（不编一个数）。
+fn chmod(face: &Face, req: wire::FilesChmodReq) -> Result<wire::FilesChmodReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let rel = rel_of(&req.rel);
+    let (done, before) = change_mode_reporting(face, &root, &rel, req.mode).map_err(refusal)?;
+    Ok(wire::FilesChmodReply {
+        path: wire_of(&done),
+        mode: req.mode,
+        before,
+    })
 }
 
-fn answer_copy(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let from = rel_of(args, "from")?;
-    let to = rel_of(args, "to")?;
-    // 覆盖策略**显式**：不给 ⇒ 不覆盖（`O_EXCL`）；给了就必须是布尔，不猜「1」「"yes"」。
-    let overwrite = match args.get("overwrite") {
-        None => false,
-        Some(v) => v.as_bool().ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("`overwrite` must be a boolean"),
-            )
-        })?,
-    };
-    // 复制目录**显式**：不给 ⇒ 射程与此前一个字节不差；与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
-    if flag_of(args, "recursive")? {
+/// `files-copy`：覆盖策略**显式**（缺 ⇒ 不覆盖，`O_EXCL`）；复制目录**显式**，与 `overwrite: true` 同给 ⇒ 拒（目录复制不合并、不覆盖）。
+/// 两形同一张回包（`files` / `dirs` 恒在）：调用方不必按问法猜回来的键。
+fn copy(face: &Face, req: wire::FilesCopyReq) -> Result<wire::FilesTreeReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let (from, to) = (rel_of(&req.from), rel_of(&req.to));
+    let overwrite = req.overwrite.unwrap_or(false);
+    if req.recursive.unwrap_or(false) {
         if overwrite {
             return Err(WriteFail::from((
                 "bad_args",
@@ -3070,187 +2926,93 @@ fn answer_copy(face: &Face, args: &serde_json::Value) -> Answer {
             )));
         }
         let t = copy_tree(face, &root, &from, &to).map_err(refusal)?;
-        return Ok(serde_json::json!({
-            "path": path_json(&t.path),
-            "bytes": t.bytes,
-            "files": t.files,
-            "dirs": t.dirs,
-            "links": t.links,
-        }));
+        return Ok(wire::FilesTreeReply {
+            path: wire_of(&t.path),
+            bytes: t.bytes,
+            files: n(t.files),
+            dirs: n(t.dirs),
+            links: n(t.links),
+        });
     }
-    let (done, n) = copy_entry(face, &root, &from, &to, overwrite).map_err(refusal)?;
-    // 两形同一张应答表（`files` / `dirs` 恒在）：调用方不必按问法猜回来的键。
-    Ok(
-        serde_json::json!({ "path": path_json(&done), "bytes": n, "files": 1, "dirs": 0, "links": 0 }),
-    )
-}
-
-fn answer_write_text(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let rel = rel_of(args, "rel")?;
-    // 🔴 这里**必须给** `content`：不给就把一份既有文件写成空的，那不是一个该有默认值的动作。
-    let v = args.get("content").ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `content` (no default)"),
-        )
-    })?;
-    let bytes = crate::files::raw::from_json(v).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(
-                "`content` must be a string or {\"b16\": \"<hex>\"}",
-            ),
-        )
-    })?;
-    // CAS **必给**：没有「不问就盖」这一形（同 `files-put`）。形状先判、再碰盘。
-    let expect = sha256_expect_of(args)?;
-    let done = overwrite_text_expecting(face, &root, &rel, &bytes, &expect).map_err(refusal)?;
-    Ok(serde_json::json!({
-        "path": path_json(&done),
-        "bytes": bytes.len(),
-        "sha256": content_sha256(&bytes),
-    }))
-}
-
-/// 取一个**正文**参数（字符串或 `{"b16": …}`）。
-fn bytes_of(v: &serde_json::Value, key: &str) -> Result<Vec<u8>, (&'static str, String)> {
-    crate::files::raw::from_json(v).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "`{key}` must be a string or {{\"b16\": \"<hex>\"}}"
-            )),
-        )
+    let (done, bytes) = copy_entry(face, &root, &from, &to, overwrite).map_err(refusal)?;
+    Ok(wire::FilesTreeReply {
+        path: wire_of(&done),
+        bytes,
+        files: 1,
+        dirs: 0,
+        links: 0,
     })
 }
 
-/// 取一个**可缺席的布尔**：不给 ⇒ `false`；给了就必须是布尔（不猜 `1` / `"yes"`）。
-fn flag_of(args: &serde_json::Value, key: &str) -> Result<bool, (&'static str, String)> {
-    match args.get(key) {
-        None => Ok(false),
-        Some(v) => v.as_bool().ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(&format!("`{key}` must be a boolean")),
-            )
-        }),
-    }
+/// `files-write-text`：`content` · `expect`（摘要形 CAS）都**必给**：没有「不问就盖」这一形（同 `files-put`）。
+fn write_text(
+    face: &Face,
+    req: wire::FilesWriteTextReq,
+) -> Result<wire::FilesWrittenReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let rel = rel_of(&req.rel);
+    let bytes = req.content.0;
+    let done = overwrite_text_expecting(face, &root, &rel, &bytes, &req.expect.sha256.0)
+        .map_err(refusal)?;
+    Ok(wire::FilesWrittenReply {
+        path: wire_of(&done),
+        bytes: n(bytes.len()),
+        sha256: wire::Sha256Hex(content_sha256(&bytes)),
+    })
 }
 
-fn answer_peek(args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let rel = rel_of(args, "rel")?;
+/// `files-peek`：读改写的读那一半（不写，不要句柄）。
+fn peek(req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let rel = rel_of(&req.rel);
     let got = peek_text(&root, &rel)?;
-    Ok(serde_json::json!({
-        "path": path_json(&got.path),
-        "exists": got.text.is_some(),
-        "text": got.text,
-    }))
+    Ok(wire::FilesPeekReply {
+        path: wire_of(&got.path),
+        exists: got.text.is_some(),
+        text: got.text,
+    })
 }
 
-fn answer_put(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_of(args, "root")?;
-    let rel = rel_of(args, "rel")?;
-    let content = args.get("content").ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `content` (no default)"),
-        )
-    })?;
-    let content = bytes_of(content, "content")?;
-    // 🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」。
-    //    缺席 ⇒ 拒 —— 没有「不问就盖」这一形（理由住本节头注）。
-    let expect = match args.get("expect") {
-        None => {
-            return Err(WriteFail::from((
-                "bad_args",
-                crate::common::contract::malformed(
-                    "missing `expect` (null means absent at read time)",
-                ),
-            )))
-        }
-        Some(serde_json::Value::Null) => None,
-        Some(v) => Some(bytes_of(v, "expect")?),
-    };
-    let backup = flag_of(args, "backup")?;
-    let parents = flag_of(args, "parents")?;
+/// `files-put`：🔴 `expect` **必给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」（缺席在解入参那一步就拒了）。
+fn put(face: &Face, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, WriteFail> {
+    let root = root_of(&req.root, "root")?;
+    let rel = rel_of(&req.rel);
+    let expect = req.expect.map(|e| e.0);
     let done = put_text(
         face,
         &root,
         &rel,
-        &content,
+        &req.content.0,
         expect.as_deref(),
-        backup,
-        parents,
+        req.backup.unwrap_or(false),
+        req.parents.unwrap_or(false),
     )
     .map_err(refusal)?;
-    Ok(serde_json::json!({
-        "path": path_json(&done.path),
-        "bytes": done.bytes,
-        "changed": done.changed,
-        "created": done.created,
-        "backup": done.backup.as_deref().map(path_json),
-    }))
+    Ok(wire::FilesPutReply {
+        path: wire_of(&done.path),
+        bytes: n(done.bytes),
+        changed: done.changed,
+        created: done.created,
+        backup: done.backup.as_deref().map(wire_of),
+    })
 }
 
-fn answer_delete_session(face: &Face, args: &serde_json::Value, sessions: &SessionPort) -> Answer {
-    // 🔴 **只收 sid**：多给任何一个键都拒 —— 这一条只按 sid 找那一份、从不收路径，
-    //    「顺手也收一个路径」那一形连表达的机会都不给。
-    if let Some(obj) = args.as_object() {
-        if let Some(extra) = obj.keys().find(|k| k.as_str() != "sid") {
-            return Err(WriteFail::from((
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "`files-delete-session` takes only `sid`, got `{extra}`"
-                )),
-            )));
-        }
-    }
-    let sid = args
-        .get("sid")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("missing `sid` or not a string"),
-            )
-        })?;
-    let done = delete_session(face, sid, sessions).map_err(refusal)?;
-    Ok(serde_json::json!({ "path": path_json(&done) }))
-}
-
-/// 这一面的**唯一入口**（形状照 `files::answer_wire`）。
-///
-/// 🔴 分派写成一个对 [`MANAGE_COMMANDS`] 的 `match`，而「表里有、分派没有」
-/// 那种静默的不可用由判据钉住（本仓 `p1t-removal-cause` 那次真 bug 就是这一形）。
-pub fn answer_wire(
+/// `files-delete-session`：🔴 **只收 sid**（多给任何一个键在解入参那一步就是 `bad_args`）——
+/// 这一条只按 sid 找那一份、从不收路径，「顺手也收一个路径」那一形连表达的机会都不给。
+pub fn delete_session_of(
     face: &Face,
-    wire_name: &str,
-    args: &serde_json::Value,
+    req: wire::FilesDeleteSessionReq,
     sessions: &SessionPort,
-) -> Answer {
-    match wire_name {
-        "files-create" => answer_create(face, args),
-        "files-mkdir" => answer_mkdir(face, args),
-        "files-rename" => answer_rename(face, args),
-        "files-delete" => answer_delete(face, args),
-        "files-chmod" => answer_chmod(face, args),
-        "files-write-text" => answer_write_text(face, args),
-        "files-copy" => answer_copy(face, args),
-        "files-peek" => answer_peek(args),
-        "files-put" => answer_put(face, args),
-        "files-delete-session" => answer_delete_session(face, args, sessions),
-        other => Err(WriteFail::from((
-            "bad_args",
-            crate::common::contract::malformed(&format!("unknown write command `{other}`")),
-        ))),
-    }
+) -> Result<wire::FilesPathReply, WriteFail> {
+    let done = delete_session(face, &req.sid, sessions).map_err(refusal)?;
+    Ok(wire::FilesPathReply {
+        path: wire_of(&done),
+    })
 }
 
 #[cfg(test)]
 #[path = "../../../tests/backend/control/files_write_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 // 覆盖写原子化的判据（写到一半被收掉 · 权限位 / 链接 / 旁名 · 生产段 `fs::write(` 只剩 Windows 臂）。
 #[cfg(test)]

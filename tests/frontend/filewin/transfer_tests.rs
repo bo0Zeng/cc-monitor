@@ -699,6 +699,8 @@ impl comms_inward::chan::router::Backends for XferHost {
             "transfer-upload" => serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }),
             "transfer-download" => serde_json::json!({ "id": "x-down" }),
             "files-home" => serde_json::json!({ "path": "/srv/a.bin" }),
+            // 回包照那条命令的类型（块：只有 `bytes`；提交：落点 ＋ 字节数）。
+            "files-stage-chunk" => serde_json::json!({ "bytes": 3 }),
             _ => serde_json::json!({ "path": "/srv/a.bin", "bytes": 3 }),
         };
         Box::pin(async move {

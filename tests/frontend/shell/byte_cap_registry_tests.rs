@@ -525,13 +525,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/comms/resident-client/attach.rs",
         "HANDSHAKE_LINE_CAP",
-        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测 ~8.5 KB（带命令表与 typed 命令的形状指纹）",
+        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测 8.6 KB（随 typed 命令变多）",
         "拒收+回错",
     ),
     (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
-        "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 ~8.5 KB（带命令表与 typed 命令的形状指纹）",
+        "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",
         "拒收+回错",
     ),
     // 历史页的平铺清单（`history_list.rs`）：一台一次最多回多少行；多出的不回、`truncated` ⇒ 列表底「更早的用搜索找」。

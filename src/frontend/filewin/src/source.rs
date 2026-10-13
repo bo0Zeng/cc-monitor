@@ -393,6 +393,16 @@ impl RemotePath {
         wire_bytes(&self.bytes())
     }
 
+    /// 发出去的那一格（线上类型：原始字节）。
+    pub fn path(&self) -> cmd_wire::files::WirePath {
+        cmd_wire::files::WirePath(self.bytes())
+    }
+
+    /// 尾段那一格（线上类型）。
+    pub fn tail(&self) -> cmd_wire::files::WirePath {
+        cmd_wire::files::WirePath(tail_bytes(&self.bytes()).to_vec())
+    }
+
     /// 上一级（按字节切）。
     pub fn parent(&self) -> Self {
         Self::from_bytes(&parent_bytes(&self.bytes()))

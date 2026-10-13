@@ -232,8 +232,8 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     // 窗口那几问的答复送回等答的那一趟（它已收场 ⇒ 没人要）· 暂存件收尾删不掉交孤儿扫（不盖下载 / 复制本身的结局）。
     ("src/frontend/filewin/src/extract.rs", "tx.send(fresh).ok();", Why::PeerGone, "解压撞名那一问的答复；等答的那一趟已收场就没人要"),
     ("src/frontend/filewin/src/cross_copy.rs", "tx.send(overwrite).ok();", Why::PeerGone, "复制到另一台「盖不盖」那一问的答复；等答的那一趟已收场就没人要"),
-    ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &local, \"files-delete\", &serde_json::json!({ \"root\": staging, \"rel\": rel }), super::wri", Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
-    ("src/frontend/filewin/src/cross_copy.rs", "let _ = super::source::ask(line, &to, \"files-delete\", &serde_json::json!({ \"root\": bstaging, \"rel\": format!(\"{k}.part\") ", Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
+    ("src/frontend/filewin/src/cross_copy.rs", "let _ = write(line, &local, &delete_req(&staging, &rel)).await;", Why::CleanupAfterFailure, "清本机暂存件（成败都清）；删不掉只剩一份垃圾，不改复制本身的结局"),
+    ("src/frontend/filewin/src/cross_copy.rs", "let _ = write(line, &to, &delete_req(&bstaging, &format!(\"{k}.part\"))).await;", Why::CleanupAfterFailure, "半路失败之后清 B 那头开过单的暂存件；主错误已在回，删不掉交那台的孤儿扫"),
     // `history.rs` 那一处（读整份会话末块交前端、前端已走）随那条命令退役。
     ("src/frontend/shell/src/platform/terminal.rs", "let _ = child.wait();", Why::Reap, ""), // 原 `launch.rs`
     // 下面九行原住 `lib.rs`（主窗口拉前 · 单实例回调）：随两个平台臂搬进 `platform/window.rs`，处数不变。

@@ -644,14 +644,17 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-create`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 这一趟写进去了几个字节 |
-| `content` | → | 要写进去的字节 |
-| `path` | ← | 真正落盘的那个绝对路径，**解完 symlink 的**（原始字节形） |
-| `rel` | → | 相对 `root` 的那一段 |
-| `root` | → | **用户指定的那个文件管理目标根** |
-| `single` | → | 可选布尔：`true` ⇒ `rel` 只许是**一段名字**（界面就地新建 / 改名敲的那一格）；`files-mkdir` 的 `rel`、`files-rename` 的 `to` 同 |
+入参 `FilesCreateReq` · 回包 `FilesPathBytesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCreateReq = { root: WirePath, rel: WirePath, content?: WirePath, 
+/**
+ * `true` ⇒ `rel` 只许是一段名字（界面就地新建 / 改名敲的那一格）。
+ */
+single?: boolean, };
+type FilesPathBytesReply = { path: WirePath, bytes: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_name` · `bad_path` · `exists` · `io_failed` · `refused`
 
@@ -661,12 +664,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-mkdir`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | ← | 建出来的那个目录（父目录解完 symlink 的） |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `root` | → | 目标根 ＋ 相对段 |
-| `single` | → | 可选布尔：`true` ⇒ `rel` 只许一段名字；名字规则同 `files-create`，不合 ⇒ `bad_name` |
+入参 `FilesMkdirReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesMkdirReq = { root: WirePath, rel: WirePath, single?: boolean, };
+type FilesPathReply = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_name` · `bad_path` · `exists` · `io_failed` · `refused`
 
@@ -676,13 +680,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-rename`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `from` | → | 两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外） |
-| `path` | ← | 新名字的落点 |
-| `root` | → | 目标根 |
-| `single` | → | 可选布尔：`true` ⇒ `to` 只许一段名字；`to` 的名字规则同 `files-create`，不合 ⇒ `bad_name` |
-| `to` | → | 两个相对段，**各过一遍路径解析**（只解 `from` 的话，`to` 半路一条链接就能把东西搬到根外） |
+入参 `FilesRenameReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesPathReply = { path: WirePath, };
+type FilesRenameReq = { root: WirePath, from: WirePath, to: WirePath, single?: boolean, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_name` · `bad_path` · `exists` · `io_failed` · `refused`
 
@@ -692,16 +696,14 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-delete`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `expect` | → | 可选，字符串或 `{"b16": …}`：「我读到的是这一份」 |
-| `limit` | → | 可选，只对 `recursive: true`：这一趟至多删几条 |
-| `path` | ← | 删掉的那一项 |
-| `recursive` | → | 布尔，**缺省 `false`** |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `remaining` | ← | 还剩几条没删（只有带 `limit` 删够了停下时不是 `0`）：调用方再发一趟同样的请求接着删 |
-| `removed` | ← | 这一趟真删掉了几条（含目标自己；不递归那一支恒 `1`） |
-| `root` | → | 目标根 ＋ 相对段 |
+入参 `FilesDeleteReq` · 回包 `FilesDeleteReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type DeleteExpect = { empty_dir: true } | string | { b16: string };
+type FilesDeleteReply = { path: WirePath, removed: number, remaining: number, };
+type FilesDeleteReq = { root: WirePath, rel: WirePath, recursive?: boolean, expect?: DeleteExpect, limit?: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -711,13 +713,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-chmod` · 没有 unix 权限位的机器上做不到
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `before` | ← | **改之前**的权限位（十进制、低 12 位）：撤销 ＝ 拿它再发一趟 |
-| `mode` | → ← | **十进制数值**（`493` = `0o755`），只收低 12 位；超出 ⇒ `refused` |
-| `path` | ← | **解到底**的那个真路径 |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `root` | → | 目标根 ＋ 相对段 |
+入参 `FilesChmodReq` · 回包 `FilesChmodReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesChmodReply = { path: WirePath, mode: number, before?: number, };
+type FilesChmodReq = { root: WirePath, rel: WirePath, mode: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `no_unix_mode` · `refused`
 
@@ -727,18 +729,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-copy`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 复制了几个字节（整棵时是全部普通文件之和） |
-| `dirs` | ← | 几个目录（单文件那一形恒是 `1` / `0`） |
-| `files` | ← | 复制了几个普通文件 |
-| `from` | → | 两个相对段 |
-| `links` | ← | 照原样复制了几条符号链接（单文件那一形恒是 `0`） |
-| `overwrite` | → | 🔴 **覆盖策略显式** |
-| `path` | ← | 落点（父目录解完 symlink 的） |
-| `recursive` | → | **复制目录显式** |
-| `root` | → | 目标根（与写面其余几条同形） |
-| `to` | → | 两个相对段 |
+入参 `FilesCopyReq` · 回包 `FilesTreeReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCopyReq = { root: WirePath, from: WirePath, to: WirePath, overwrite?: boolean, recursive?: boolean, };
+type FilesTreeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused`
 
@@ -748,16 +745,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-extract`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 文件字节之和 |
-| `dirs` | ← | 几个目录（含补出来的上级） |
-| `files` | ← | 建了几份文件（含硬链接落成的拷贝） |
-| `fresh` | → | 可缺席的布尔 |
-| `links` | ← | 几条符号链接 |
-| `path` | ← | 落点目录（父目录解完 symlink 的） |
-| `rel` | → | 包在 `root` 下的相对段；格式按名字后缀认：`.zip` · `.tar` · `.tar.gz` · `.tgz`（不分大小写），其余 ⇒ `unsupported`（「不认这种包」） |
-| `root` | → | 那个目录（字符串或 `{"b16": …}`） |
+入参 `FilesExtractReq` · 回包 `FilesTreeReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesExtractReq = { root: WirePath, rel: WirePath, fresh?: boolean, };
+type FilesTreeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `exists` · `io_failed` · `refused` · `unsupported`
 
@@ -767,12 +761,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-link`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | ← | 建出来的那条链接（父目录解完 symlink 的） |
-| `rel` | → | 链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{"b16": …}`） |
-| `root` | → | 链接自己那条路径：`rel` 在 `root` 下过路径解析（同写面其余几条；字符串或 `{"b16": …}`） |
-| `target` | → | 链接的目标文本，**原样**写进去（不解、不判，同 `cp -P`） |
+入参 `FilesLinkReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesLinkReq = { root: WirePath, rel: WirePath, target: WirePath, };
+type FilesPathReply = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused`
 
@@ -782,15 +777,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-write-text`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 写进去了几个字节 |
-| `content` | → | 字符串或 `{"b16":…}` |
-| `expect` | → | 🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：「我看的时候那一份」的摘要（`files-read-text` 交的那个） |
-| `path` | ← | **解到底**的那个真路径（它跟链接，理由同 `files-chmod`） |
-| `rel` | → | 目标根 ＋ 相对段 |
-| `root` | → | 目标根 ＋ 相对段 |
-| `sha256` | ← | 写进去那份的摘要 —— 调用方拿它当下一次存的 `expect`（连存两次不自撞） |
+入参 `FilesWriteTextReq` · 回包 `FilesWrittenReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesWriteTextReq = { root: WirePath, rel: WirePath, content: WirePath, expect: Sha256Expect, };
+type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
+type Sha256Expect = { sha256: Sha256Hex, };
+type Sha256Hex = string;
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -800,13 +795,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-peek`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `exists` | ← | `false` ⇒ **确定不存在**（`text` 为 `null`） |
-| `path` | ← | 读的是哪一份（最后一段是链接时是解到底的那一份） |
-| `rel` | → | 与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份） |
-| `root` | → | 与写面其余几条同形；**与 `files-put` 同一道围栏**（读的那一份就是写的那一份） |
-| `text` | ← | 全文（UTF-8）；不在时 `null` |
+入参 `FilesPeekReq` · 回包 `FilesPeekReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesPeekReply = { path: WirePath, exists: boolean, text: string | null, };
+type FilesPeekReq = { root: WirePath, rel: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `not_text` · `refused` · `too_large`
 
@@ -816,18 +811,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-put`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `backup` | → | 可缺席的布尔（缺省否） |
-| `bytes` | ← | 新内容的字节数 |
-| `changed` | ← | 真的写了吗（新内容与盘上逐字节相同 ⇒ `false`，一个字节不动） |
-| `content` | → | 新全文（字符串或 `{"b16":…}`），**必须给** |
-| `created` | ← | 这份文件是这一次新建的 |
-| `expect` | → | 🔴 **必须给**：`null` = 「我读的时候它不在」；字符串 / b16 = 「我读到的就是这一份」 |
-| `parents` | → | 可缺席的布尔（缺省否） |
-| `path` | ← | 落点 |
-| `rel` | → | 同 `files-peek` |
-| `root` | → | 同 `files-peek` |
+入参 `FilesPutReq` · 回包 `FilesPutReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesPutReply = { path: WirePath, bytes: number, changed: boolean, created: boolean, backup: WirePath | null, };
+type FilesPutReq = { root: WirePath, rel: WirePath, content: WirePath, expect: WirePath | null, backup?: boolean, parents?: boolean, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -837,10 +827,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-delete-session`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | ← | 删掉的那一份 |
-| `sid` | → | 🔴 **只收 sid**：多给任何一个键 ⇒ `bad_args` |
+入参 `FilesDeleteSessionReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesDeleteSessionReq = { sid: string, };
+type FilesPathReply = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `io_failed` · `refused`
 
@@ -850,12 +843,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-stage-chunk`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 这一块写进去的字节数 |
-| `content` | → | 字符串或 `{"b16":…}`，**至少 1 字节**（空块 ⇒ `bad_args`） |
-| `key` | → | 这一次存盘的键：**恰好 32 位小写十六进制**（调用方每次存盘现造一个） |
-| `seq` | → | 块号，从 0 起的非负整数 |
+入参 `FilesStageChunkReq` · 回包 `FilesStageChunkReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ChunkBytes = string | { b16: string };
+type FilesStageChunkReply = { bytes: number, };
+type FilesStageChunkReq = { key: string, seq: number, content: ChunkBytes, };
+```
 
 码：`bad_args` · `io_failed` · `refused`
 
@@ -865,16 +859,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-commit-text`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | → | 拼起来**必须恰好**这么长；最多 8 MiB（`files-read-text` 一趟的天花板：存得回的要读得回来），超了 ⇒ `bad_args` |
-| `chunks` | → | 块数：读回 `0..chunks` 这几块 |
-| `expect` | → | 🔴 **必须给**，与 `files-write-text` 的 `expect` 同形同义（摘要形 CAS）：盘上那份对不上 ⇒ `stale`，目标一个字节没动（块照样删掉） |
-| `key` | → | 与 `files-stage-chunk` 同一个键 |
-| `path` | ← | 解到底的那个真路径 |
-| `rel` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`） |
-| `root` | → | 目标，语义与 `files-write-text` **完全相同**：必须已经在、是普通文件；跟链接（解到底再判一次）；原子地换（权限位沿用；属主 / 硬链接不再保留，见 `files-write-text`） |
-| `sha256` | ← | 写进去那份的摘要 |
+入参 `FilesCommitTextReq` · 回包 `FilesWrittenReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCommitTextReq = { root: WirePath, rel: WirePath, key: string, chunks: number, bytes: number, expect: Sha256Expect, };
+type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
+type Sha256Expect = { sha256: Sha256Hex, };
+type Sha256Hex = string;
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 
@@ -884,16 +877,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-commit-upload`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | → | 可缺席（缺席 ＝ 此前那一形） |
-| `chunks` | → | 可缺席（缺席 ＝ 此前那一形） |
-| `expect` | → | 🔴 **必须给**，恰好 `{"sha256": "<64 位小写十六进制>"}`：传输台上传时对**本机那份整份**算的摘要（`transfer` 帧 `end.sha256`，窗口原样交来） |
-| `key` | → | 暂存件的键：**恰好 32 位小写十六进制** |
-| `overwrite` | → | 🔴 **必须给**（`true` / `false`），不给默认值 |
-| `path` | ← | 落点（父目录解过 symlink 的那一个） |
-| `rel` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{"b16": …}` |
-| `root` | → | 目标根 ＋ 相对段，先过写面那两道路径解析（词法 ＋ 父目录解 symlink；「会话文件那一问」删了）；`rel` 也收 `{"b16": …}` |
+入参 `FilesCommitUploadReq` · 回包 `FilesPathBytesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FilesCommitUploadReq = { root: WirePath, rel: WirePath, key: string, overwrite: boolean, expect: Sha256Expect, chunks?: number, bytes?: number, };
+type FilesPathBytesReply = { path: WirePath, bytes: number, };
+type Sha256Expect = { sha256: Sha256Hex, };
+type Sha256Hex = string;
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `io_failed` · `refused` · `stale`
 

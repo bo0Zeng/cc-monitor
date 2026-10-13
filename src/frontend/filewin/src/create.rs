@@ -61,8 +61,13 @@ pub async fn create_typed_coded(
     dir: &super::source::RemotePath,
     typed: &str,
 ) -> Result<(), super::source::Failed> {
-    let args = serde_json::json!({ "root": dir.wire(), "rel": typed, "single": true });
-    super::source::ask_coded(line, origin, CMD_CREATE, &args, WRITE_BUDGET)
+    let req = cmd_wire::files::FilesCreateReq {
+        root: dir.path(),
+        rel: cmd_wire::files::WirePath::from(typed),
+        content: None,
+        single: Some(true),
+    };
+    super::source::ask_typed(line, origin, &req, WRITE_BUDGET)
         .await
         .map(|_| ())
 }
@@ -73,13 +78,16 @@ pub async fn create_remote_at(
     origin: &Origin,
     at: &super::source::RemotePath,
 ) -> Result<(), String> {
-    let args = serde_json::json!({
-        "root": at.parent().wire(),
-        "rel": at.tail_wire(),
-    });
-    super::source::ask(line, origin, CMD_CREATE, &args, WRITE_BUDGET)
+    let req = cmd_wire::files::FilesCreateReq {
+        root: at.parent().path(),
+        rel: at.tail(),
+        content: None,
+        single: None,
+    };
+    super::source::ask_typed(line, origin, &req, WRITE_BUDGET)
         .await
         .map(|_| ())
+        .map_err(|f| f.said)
 }
 
 impl FileWindow {

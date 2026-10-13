@@ -482,7 +482,7 @@ fn files_and_directories_with_addressable_names_can_be_copied() {
 #[test]
 fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory() {
     assert_eq!(
-        copy_args(&job(), true).unwrap(),
+        serde_json::to_value(copy_args(&job(), true).unwrap()).unwrap(),
         serde_json::json!({
             "root": "/srv/data",
             "from": "big.bin",
@@ -490,7 +490,7 @@ fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory
             "overwrite": true,
         })
     );
-    assert_eq!(copy_args(&job(), false).unwrap()["overwrite"], false);
+    assert_eq!(copy_args(&job(), false).unwrap().overwrite, Some(false));
     let elsewhere = CopyJob {
         from: "/srv/data/big.bin".into(),
         to: "/srv/other/big.bin".into(),
@@ -505,7 +505,10 @@ fn copy_args_split_the_paths_like_the_other_writes_and_refuse_a_second_directory
     );
     // 正控：`beside` 造出来的（含当前目录带尾斜杠那一形）都拼得出来。
     let j = CopyJob::beside("/srv/data/big.bin", "/srv/data/", "x").unwrap();
-    assert_eq!(copy_args(&j, false).unwrap()["root"], "/srv/data");
+    assert_eq!(
+        copy_args(&j, false).unwrap().root,
+        cmd_wire::files::WirePath::from("/srv/data")
+    );
 }
 
 /// ★ 经真回环口、真钥匙到合成后端：线上那一行逐格相等；回的字节数原样带回；
@@ -575,7 +578,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         prod.len()
     );
     // 〔有损名全寻址〕探目标换成 `probe_remote_at`（路径可以是字节；`probe_remote` 是它路径为串时的那一形，同一个口径）。
-    for needle in ["source::ask_coded(", "transfer::probe_remote_at("] {
+    for needle in ["source::ask_typed(", "transfer::probe_remote_at("] {
         assert_eq!(
             prod.matches(needle).count(),
             1,
@@ -602,7 +605,7 @@ fn the_real_adapter_asks_the_backend_and_touches_no_transfer_machinery() {
         );
     }
     // 反空真：这把尺子认得出「有」。
-    assert!(prod.contains("source::ask_coded("));
+    assert!(prod.contains("source::ask_typed("));
 }
 
 // ════════════════════════════════════════════════════════════════════════
@@ -740,30 +743,22 @@ fn a_directory_job_says_recursive_and_its_reply_must_count() {
     let d = CopyJob::beside("/srv/a/x", "/srv/a", "y")
         .unwrap()
         .dir(true);
-    assert_eq!(copy_args(&f, false).unwrap().get("recursive"), None);
-    assert_eq!(copy_args(&d, false).unwrap()["recursive"], true);
-    let old = serde_json::json!({"bytes": 5});
-    assert_eq!(
-        copied_from_reply(&f, &old),
-        Ok(Copied {
-            name: "y".into(),
-            bytes: 5,
-            files: 1,
-            dirs: 0
-        })
-    );
-    assert!(
-        copied_from_reply(&d, &old).is_err(),
-        "目录那件缺条数竟然收了"
-    );
-    let new = serde_json::json!({"bytes": 9, "files": 3, "dirs": 2});
+    assert_eq!(copy_args(&f, false).unwrap().recursive, None);
+    assert_eq!(copy_args(&d, false).unwrap().recursive, Some(true));
+    let new = cmd_wire::files::FilesTreeReply {
+        path: cmd_wire::files::WirePath::from("/srv/a/y"),
+        bytes: 9,
+        files: 3,
+        dirs: 2,
+        links: 0,
+    };
     assert_eq!(
         copied_from_reply(&d, &new),
-        Ok(Copied {
+        Copied {
             name: "y".into(),
             bytes: 9,
             files: 3,
             dirs: 2
-        })
+        }
     );
 }

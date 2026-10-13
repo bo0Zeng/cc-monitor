@@ -988,7 +988,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 同一版里再多 --session-say / -permission / -commands / -model 四条（子命令与通道各一，指纹行换成现打的：这一版还没发过）；
 /// session-new-facts 每家带名字与可选的模型 · 权限档。四条大回包分页（history-branch 入参换 BranchReq）· 写出按字节让位 ·
 /// session_branch 只发变的 · 骨架按块读写。子命令集再少 --ssh-config-aliases / --ssh-config-resolve（子命令与通道各一）；
-/// 拨号 · 部署 · 机器 · 总线 7 条 · 别名 4 条 ＋ powershell-policy-set 换成 typed，形状指纹表跟着变。文件管理读的 11 条换成 typed
+/// 拨号 · 部署 · 机器 · 总线 7 条 · 别名 4 条 ＋ powershell-policy-set 换成 typed，形状指纹表跟着变。文件管理读的 11 条 · 写的 15 条换成 typed
 /// （files-ls 多 dirs_only）；profiles-* 5 条 · drift-report 换成 typed；子命令集再少 --cells-catalog（子命令与通道各一）。
 pub const BUILD_ID: &str = "p10k-typed-accounts";
 
@@ -1253,7 +1253,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
     // ⚠ **如实登记一条代价**：因此「写这一面只从帧面进来」这句话**做不到**，
     //   两个宿主共用同一个 `run`（「一份代码两种宿主」正是这一形）。
-    //   写面的「窄」因此**不靠命令面**，而靠写句柄：`Face` 只递给命令表文件管理那一族（`Run::BlockingFace`），
+    //   写面的「窄」因此**不靠命令面**，而靠写句柄：`Face` 只递给命令表文件管理那一族（typed 的 `Facing` 那一档），
     //   判的是**谁拿得到句柄**，不是谁发得出命令。
     "--files-create",
     // 同一面的另外五条。登记理由与上一行逐字相同。

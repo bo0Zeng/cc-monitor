@@ -400,7 +400,7 @@ pub const COPY_BUDGET: std::time::Duration = std::time::Duration::from_secs(600)
 /// 🔴 **目标不在源的同一个目录里 ⇒ 报错，不发。** [`CopyJob::beside`] 造出来的都是同目录的；
 /// 这一道防的是「当前目录」与「那一行的路径」写法不一致（尾斜杠之类）时，
 /// 拼出一条落到别处的路径 —— 那是把文件放到了他没在看的目录里。
-pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, String> {
+pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<cmd_wire::files::FilesCopyReq, String> {
     // 〔有损名全寻址〕按**字节**切（合法 UTF-8 时与按串切逐字节同）。
     let (from, to) = (job.from_path(), job.to_path());
     let root = from.parent();
@@ -410,44 +410,29 @@ pub fn copy_args(job: &CopyJob, overwrite: bool) -> Result<serde_json::Value, St
             &[("from", &job.from.to_string()), ("to", &job.to.to_string())],
         ));
     }
-    let mut v = serde_json::json!({
-        "root": root.wire(),
-        "from": from.tail_wire(),
-        "to": to.tail_wire(),
-        "overwrite": overwrite,
-    });
-    mark_recursive(&mut v, job);
-    Ok(v)
-}
-
-/// 源是目录 ⇒ 参数里加 `recursive: true`（后端复制整棵；与 `overwrite: true` 同给会被拒 ——
-/// 目录那一件从来不问覆盖，所以这里的 `overwrite` 恒是 `false`）。文件那一形一个键都不多。
-pub fn mark_recursive(v: &mut serde_json::Value, job: &CopyJob) {
-    if job.is_dir {
-        v["recursive"] = serde_json::Value::Bool(true);
-    }
-}
-
-/// `files-copy` 的应答 → [`Copied`]。`bytes` 必须在；`files` / `dirs` 是这一波新加的键 ——
-/// 文件那一件在旧后端上没有它们 ⇒ 按「一个文件」记（旧后端只会复制文件）；目录那一件必须有（旧后端根本不会复制目录）。
-pub fn copied_from_reply(job: &CopyJob, d: &serde_json::Value) -> Result<Copied, String> {
-    let bytes = d
-        .get("bytes")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
-    let count = |k: &str, old: u64| -> Result<u64, String> {
-        match d.get(k).and_then(serde_json::Value::as_u64) {
-            Some(n) => Ok(n),
-            None if !job.is_dir => Ok(old),
-            None => Err(copy_text("rsFilewinCopy.remote.noCount", &[("field", k)])),
-        }
-    };
-    Ok(Copied {
-        name: job.name.clone(),
-        bytes,
-        files: count("files", 1)?,
-        dirs: count("dirs", 0)?,
+    Ok(cmd_wire::files::FilesCopyReq {
+        root: root.path(),
+        from: from.tail(),
+        to: to.tail(),
+        overwrite: Some(overwrite),
+        recursive: recursive_of(job),
     })
+}
+
+/// 源是目录 ⇒ `recursive: true`（后端复制整棵；与 `overwrite: true` 同给会被拒 ——
+/// 目录那一件从来不问覆盖，所以这里的 `overwrite` 恒是 `false`）。文件那一形不带这一格。
+pub fn recursive_of(job: &CopyJob) -> Option<bool> {
+    job.is_dir.then_some(true)
+}
+
+/// `files-copy` 的回包 → [`Copied`]（回包按类型解好了：几个字节 · 几份文件 · 几个目录都在）。
+pub fn copied_from_reply(job: &CopyJob, d: &cmd_wire::files::FilesTreeReply) -> Copied {
+    Copied {
+        name: job.name.clone(),
+        bytes: d.bytes,
+        files: d.files,
+        dirs: d.dirs,
+    }
 }
 
 /// 真起一趟复制 —— 经通道问后端 `files-copy`。
@@ -463,11 +448,9 @@ pub async fn copy_remote(
     job: &CopyJob,
     overwrite: bool,
 ) -> Result<u64, super::source::Failed> {
-    let args = copy_args(job, overwrite)?;
-    let d = super::source::ask_coded(line, origin, CMD_COPY, &args, COPY_BUDGET).await?;
-    d.get("bytes")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]).into())
+    let req = copy_args(job, overwrite)?;
+    let d = super::source::ask_typed(line, origin, &req, COPY_BUDGET).await?;
+    Ok(d.bytes)
 }
 
 // ═══════════════════════════════════════════════════════════════════════

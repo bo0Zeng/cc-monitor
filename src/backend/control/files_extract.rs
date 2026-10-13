@@ -17,10 +17,11 @@
 //! 认下的：不设解压字节上限 · 修改时间 / 扩展属性 / 属主 / 特殊权限位都不还原。库自带的「一步解到盘上」不用（不经我们的路径解析）。
 
 use super::files_write::{
-    lexical_in_root, resolve_existing_in_root, resolve_in_root, Answer, ManageCommand, WriteFail,
-    WriteRefusal, TREE_ENTRY_CAP,
+    lexical_in_root, resolve_existing_in_root, resolve_in_root, wire_of, Act, ManageCommand,
+    WriteFail, WriteRefusal, TREE_ENTRY_CAP,
 };
 use crate::platform::fs::{Face, Ro, RoFile};
+use cmd_wire::files as wire;
 use copy_core::{copy_text, io_reason};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -715,33 +716,14 @@ pub const EXTRACT_COMMANDS: &[ManageCommand] = &[
         name: "files-extract",
         purpose: "extract a zip / tar / tar.gz / tgz archive into a new directory next to it (named after the archive); \
            every entry is path-checked first; see IPC-PROTOCOL `files-extract`",
-        args: &["fresh", "rel", "root"],
-        fields: &["bytes", "dirs", "files", "links", "path"],
-        codes: &["bad_args", "bad_path", "exists", "io_failed", "refused", "unsupported"],
     },
     // [`land_link`] 的帧面入口（写一条符号链接，目标文本原样）。
     ManageCommand {
         name: "files-link",
         purpose: "create one symbolic link at root/rel whose target text is `target` verbatim (like `cp -P`); \
            the link path is resolved under root; an existing entry there is refused; see IPC-PROTOCOL `files-link`",
-        args: &["rel", "root", "target"],
-        fields: &["path"],
-        codes: &["bad_args", "bad_path", "io_failed", "refused"],
     },
 ];
-fn path_arg(args: &serde_json::Value, key: &str) -> Result<PathBuf, Fail> {
-    let bytes = args
-        .get(key)
-        .and_then(crate::files::raw::from_json)
-        .filter(|b| !b.is_empty())
-        .ok_or_else(|| {
-            (
-                "bad_path",
-                copy_text("beFilesExtract.args.path", &[("key", key)]),
-            )
-        })?;
-    Ok(crate::files::raw::to_path_buf(&bytes))
-}
 
 /// `fresh` 那一形最多往后试几个编号（`名 (2)` … `名 (FRESH_TRIES + 1)`）。
 pub const FRESH_TRIES: u32 = 999;
@@ -792,46 +774,43 @@ pub fn extract_here(face: &Face, root: &Path, rel: &Path, fresh: bool) -> Result
     )))
 }
 
-fn answer_extract(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_arg(args, "root")?;
-    let rel = path_arg(args, "rel")?;
-    let fresh = match args.get("fresh") {
-        None => false,
-        Some(v) => v
-            .as_bool()
-            .ok_or(("bad_args", copy_text("beFilesExtract.args.fresh", &[])))?,
-    };
-    let got = extract_here(face, &root, &rel, fresh)?;
-    Ok(serde_json::json!({
-        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&got.path)),
-        "files": got.files,
-        "dirs": got.dirs,
-        "links": got.links,
-        "bytes": got.bytes,
-    }))
+/// 一格路径（目标根 · 包 · 链接目标）⇒ `PathBuf`；空的 ⇒ `bad_path`（缺 · 形状不对在解入参那一步就回了 `bad_args`）。
+fn non_empty(p: &wire::WirePath, key: &str) -> Result<PathBuf, Fail> {
+    if p.0.is_empty() {
+        return Err(WriteFail::from((
+            "bad_path",
+            copy_text("beFilesExtract.args.path", &[("key", key)]),
+        )));
+    }
+    Ok(crate::files::raw::to_path_buf(&p.0))
+}
+
+super::files_write::acts! {
+    FilesExtractReq => FilesTreeReply, |r, f| extract_of(f, r);
+    FilesLinkReq => FilesPathReply, |r, f| link_of(f, r);
+}
+
+/// `files-extract`。
+fn extract_of(face: &Face, req: wire::FilesExtractReq) -> Result<wire::FilesTreeReply, Fail> {
+    let root = non_empty(&req.root, "root")?;
+    let rel = non_empty(&req.rel, "rel")?;
+    let got = extract_here(face, &root, &rel, req.fresh.unwrap_or(false))?;
+    Ok(wire::FilesTreeReply {
+        path: wire_of(&got.path),
+        files: got.files as u64,
+        dirs: got.dirs as u64,
+        links: got.links as u64,
+        bytes: got.bytes,
+    })
 }
 
 /// `files-link {root, rel, target}` → `{path}`。
-fn answer_link(face: &Face, args: &serde_json::Value) -> Answer {
-    let root = path_arg(args, "root")?;
-    let rel = path_arg(args, "rel")?;
-    let target = path_arg(args, "target")?;
+fn link_of(face: &Face, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Fail> {
+    let root = non_empty(&req.root, "root")?;
+    let rel = non_empty(&req.rel, "rel")?;
+    let target = non_empty(&req.target, "target")?;
     let at = land_link(face, &root, &rel, &target).map_err(WriteFail::from)?;
-    Ok(serde_json::json!({
-        "path": crate::files::raw::to_json(crate::files::raw::path_bytes(&at)),
-    }))
-}
-
-/// 线上入口（只从 `stream/inbound/` 那一扇门来）。
-pub fn answer_wire(face: &Face, wire_name: &str, args: &serde_json::Value) -> Answer {
-    match wire_name {
-        "files-extract" => answer_extract(face, args),
-        "files-link" => answer_link(face, args),
-        other => Err(WriteFail::from((
-            "bad_args",
-            copy_text("beFilesExtract.args.unknownCmd", &[("cmd", other)]),
-        ))),
-    }
+    Ok(wire::FilesPathReply { path: wire_of(&at) })
 }
 
 #[cfg(test)]
