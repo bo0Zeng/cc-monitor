@@ -171,7 +171,7 @@ describe("提示里的按钮", () => {
     expect(tz.title).toBe(copyText("rot.hint.setTzTip", { zone: "Asia/Shanghai" }));
     tz.click();
     expect(a.setTz).toHaveBeenCalledWith("Asia/Shanghai");
-    const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, text: "出错" }, { hint: { k: "tzUnknown" }, text: "时区" }] }), state(), acts());
+    const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, text: "夹具·出错那一句" }, { hint: { k: "tzUnknown" }, text: "时区" }] }), state(), acts());
     expect(button(bare, copyText("rot.hint.code"))).toBeUndefined();
     expect(button(bare, copyText("rot.hint.setTz"))).toBeUndefined();
   });
@@ -190,8 +190,8 @@ describe("提示里的按钮", () => {
 
   it("★ 别处改了 ⇒ 载入新的 · 留着这边的", () => {
     const a = acts();
-    const root = draw(view({ dirty: true, hints: [{ hint: { k: "newer" }, text: "这份策略在别处被改了" }] }), state(), a);
-    expect(root.querySelector("[data-rot-hint=\"newer\"]")?.textContent).toContain("这份策略在别处被改了");
+    const root = draw(view({ dirty: true, hints: [{ hint: { k: "newer" }, text: "夹具·别处改了那一句" }] }), state(), a);
+    expect(root.querySelector("[data-rot-hint=\"newer\"]")?.textContent).toContain("夹具·别处改了那一句");
     button(root, copyText("rot.hint.loadNew"))!.click();
     button(root, copyText("rot.hint.keepMine"))!.click();
     expect(a.loadNew).toHaveBeenCalledOnce();

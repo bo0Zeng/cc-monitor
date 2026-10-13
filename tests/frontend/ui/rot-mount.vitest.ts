@@ -145,9 +145,9 @@ describe("提示里的按钮", () => {
     strategy: { ...LIST.strategies[0], rev: "h:2" },
     baseRev: "h:1",
     hints: [
-      { hint: { k: "newer" }, text: "这份策略在别处被改了" },
+      { hint: { k: "newer" }, text: "夹具·别处改了那一句" },
       { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, text: "时区不明" },
-      { hint: { k: "strategyError", error: { msg: "坏了" }, path: "/夹具/strategies/按权重轮换.rhai" }, text: "出错" },
+      { hint: { k: "strategyError", error: { msg: "坏了" }, path: "/夹具/strategies/按权重轮换.rhai" }, text: "夹具·出错那一句" },
     ],
     ...over,
   });

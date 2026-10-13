@@ -567,7 +567,6 @@
     left: calc(var(--rot-x, 0) * 100%);
     top: -2px;
     bottom: -2px;
-    z-index: 1;
     width: 2px;
     margin-left: -1px;
     background: var(--accent);

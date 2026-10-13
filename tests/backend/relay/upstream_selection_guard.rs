@@ -108,6 +108,7 @@ pub(super) mod tests {
         "quota/rules/decide.rs",
         "quota/rules/form.rs",
         "quota/rules/mod.rs",
+        "quota/rules/past.rs",
         "quota/rules/script.rs",
         "quota/rules/shelf.rs",
         "quota/rules/simulate.rs",
