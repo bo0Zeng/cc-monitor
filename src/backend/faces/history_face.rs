@@ -1493,15 +1493,13 @@ pub(crate) struct HistoryFactsReq {
         ts(optional, as = "Option<std::collections::BTreeMap<String, u32>>")
     )]
     pub(crate) limits: Option<serde_json::Value>,
-    /// 可缺：**上一次应答原样**（续传令牌）。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 每一层键集合必须恰好是本命令出的那一形
-    /// （`facts_query::prior_from` 判，不对 ⇒ `bad_args`），从它的 `end` 接着扫、累加在它上面。
-    /// 带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答。
+    /// 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
+    /// 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
+    ///
+    /// [`facts_cache`]: crate::observe::facts_cache
     #[serde(default)]
-    #[cfg_attr(
-        test,
-        ts(optional, as = "Option<crate::observe::facts_query::SessionFacts>")
-    )]
-    pub(crate) prior: Option<serde_json::Value>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) prior: Option<crate::observe::facts_cache::FactsToken>,
 }
 
 codes! {
@@ -1511,6 +1509,8 @@ codes! {
         Failed = "failed",
         /// 整份回包过上限（不截断）。
         TooLarge = "too_large",
+        /// 续传令牌对不上这台续算表里的任何一份（挤掉了 · 后端重启过 · 一次性进程）：调用方不带令牌从 0 要一份。
+        StalePrior = "stale_prior",
     }
 }
 
@@ -1538,12 +1538,19 @@ pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,
 ) -> Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr> {
-    use crate::observe::{accounts_query, facts_query};
+    use crate::observe::{accounts_query, facts_cache, facts_query};
     let path = req.path.as_str();
     let malformed = |e: String| HistoryFactsErr::BadArgs(crate::common::contract::malformed(&e));
-    let prior = match req.prior.as_ref().filter(|v| !v.is_null()) {
+    let prior = match req.prior {
         None => None,
-        Some(v) => Some(facts_query::prior_from(v).map_err(malformed)?),
+        Some(token) => Some(
+            facts_cache::find(path, token).ok_or_else(|| {
+                HistoryFactsErr::StalePrior(format!(
+                    "resume token {}@{} is not in this backend's table",
+                    token.rev, token.end
+                ))
+            })?,
+        ),
     };
     let limits = facts_query::limits_from(req.limits.as_ref()).map_err(malformed)?;
     // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
@@ -1572,6 +1579,8 @@ pub(crate) fn facts_at(
     if facts.agent.is_none() {
         facts.agent = history_query::facts_agent(home, path);
     }
+    // 记进续算表、铸新 rev（项目目录 · 哪一家读到即锁定、跟着进表；下面那几格每次现查，不进表）；从哪一份续来的那一份同时摘掉。
+    facts_cache::keep(path, &mut facts, req.prior.map(|t| t.rev));
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
     let holders = history_query::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();

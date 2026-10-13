@@ -5128,6 +5128,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   const facts = (p: Partial<SessionFacts> = {}): SessionFacts => ({
     agent: "claude",
     end: 100,
+    rev: 7,
     forkedFrom: null,
     touchedFiles: [],
     usage: null,
@@ -5279,7 +5280,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(home(tm).store.tabs.get("fr")!.title.startsWith("↳ [pi] ")).toBe(true);
   });
 
-  it("续传：第二问把上一份成品**原样**当 prior 交回去；成品整份替换（后端说什么就是什么）", async () => {
+  it("续传：第二问把上一份成品的 {end, rev} 当 prior 交回去；成品整份替换（后端说什么就是什么）", async () => {
     let n = 0;
     const first = facts({ end: 10, forkedFrom: "p1", touchedFiles: ["/a"] });
     const second = facts({ end: 20, forkedFrom: "p1", touchedFiles: ["/b", "/a"] });
@@ -5288,16 +5289,16 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     await settle();
     tm.onLine(line("s", 1));
     await settle();
-    expect(asked.map((a) => a.prior)).toEqual([null, first]);
+    expect(asked.map((a) => a.prior)).toEqual([null, { end: first.end, rev: first.rev }]);
     const tab = home(tm).store.tabs.get("s")!;
     expect([...tab.touchedFiles]).toEqual(["/b", "/a"]);
   });
 
-  it("带着 prior 要不到（续点越过文件尾 = 截断 / 重写）⇒ 不带 prior 从 0 重要一趟", async () => {
+  it("带着 prior 要不到（那台续算表里没有了 stale_prior · 续点越过文件尾 = 截断 / 重写）⇒ 不带 prior 从 0 重要一趟", async () => {
     let n = 0;
     answerFacts((_p, prior) => {
       n++;
-      if (n === 2 && prior !== null) throw { err: "Refused", body: [...new TextEncoder().encode('{"code":"failed","message":"past EOF"}')] };
+      if (n === 2 && prior !== null) throw { err: "Refused", body: [...new TextEncoder().encode('{"code":"stale_prior","message":"not in table"}')] };
       return facts({ end: n * 10, touchedFiles: [`/f${n}`] });
     });
     tm.onLine(line("t", 0));
@@ -6596,6 +6597,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
   const facts = (): SessionFacts => ({
     agent: "claude",
     end: 100,
+    rev: 7,
     forkedFrom: null,
     touchedFiles: [],
     usage: null,

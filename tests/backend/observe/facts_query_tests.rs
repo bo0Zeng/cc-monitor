@@ -124,7 +124,7 @@ fn only_complete_lines_count() {
     assert_eq!(f.end as usize, body.rfind('\n').unwrap() + 1);
 }
 
-/// ★★ **续传 == 一次扫完**：夹具在**每一个**行边界切成两段，前一段的成品（过一遍 JSON，与线上回传同形）
+/// ★★ **续传 == 一次扫完**：夹具在**每一个**行边界切成两段，前一段的成品（常驻后端表里记的那一份，`facts_cache`）
 /// 当 `prior` 接着扫后一段 ⇒ 与一次扫完逐格相等（两向：`assert_eq` 比整个结构）。
 #[test]
 fn resuming_from_any_line_boundary_equals_one_pass() {
@@ -140,9 +140,7 @@ fn resuming_from_any_line_boundary_equals_one_pass() {
     for cut in cuts {
         let head = scan_all(&text[..cut]);
         assert_eq!(head.end as usize, cut);
-        let wire = serde_json::to_value(&head).unwrap();
-        let prior = prior_from(&wire).expect("自己出的成品必须能原样回传");
-        let resumed = scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap();
+        let resumed = scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap();
         assert_eq!(resumed, whole, "在字节 {cut} 处接力，结果与一次扫完不同");
     }
 }
@@ -186,30 +184,6 @@ fn the_fast_path_never_changes_the_answer() {
         br#"{"type":"user","message":{"content":[{"type":"tool_result"}]}}"#,
         &f
     ));
-}
-
-/// `prior` 形状必须恰好是本文件出的那一形：缺格 / 多格 / 类型不对 ⇒ 拒（不把缺格读成「没有」）。
-#[test]
-fn a_prior_of_the_wrong_shape_is_refused() {
-    let good = serde_json::to_value(scan_all(&jsonl(&mixed()))).unwrap();
-    assert!(prior_from(&good).is_ok());
-    let mut missing = good.clone();
-    missing.as_object_mut().unwrap().remove("usage");
-    let mut extra = good.clone();
-    extra["more"] = json!(1);
-    let mut bad_type = good.clone();
-    bad_type["end"] = json!("12");
-    let mut usage_extra = good.clone();
-    usage_extra["usage"]["x"] = json!(0);
-    for (what, v) in [
-        ("缺一格", missing),
-        ("多一格", extra),
-        ("类型不对", bad_type),
-        ("usage 多一格", usage_extra),
-        ("不是对象", json!([1])),
-    ] {
-        assert!(prior_from(&v).is_err(), "{what} 的 prior 被收下了");
-    }
 }
 
 #[test]
@@ -349,14 +323,14 @@ fn the_peak_survives_a_compaction_and_a_resume_and_the_setting_applies_each_time
         (40_000, 350_000, CONTEXT_EXTENDED, LimitFrom::Observed)
     );
     let cut = text.find('\n').unwrap() + 1;
-    let head = prior_from(&serde_json::to_value(scan_all(&text[..cut])).unwrap()).unwrap();
+    let head = scan_all(&text[..cut]);
     assert_eq!(
         scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap(),
         f
     );
 
     let small = jsonl(&[usage_rec("claude-haiku-4", 90_000)]);
-    let prior = prior_from(&serde_json::to_value(scan_all(&small)).unwrap()).unwrap();
+    let prior = scan_all(&small);
     let again = scan_facts(&b""[..], prior, &vec![("haiku".into(), 200_000)], None).unwrap();
     let u = again.usage.unwrap();
     assert_eq!((u.limit, u.limit_from), (200_000, LimitFrom::Setting));
@@ -661,10 +635,8 @@ fn handed_back_runs_are_the_ones_that_handed_back() {
     let cut = jsonl(&recs[..3]).len();
     let head = scan_all(&text[..cut]);
     assert_eq!(head.handed_back, ["a2"]);
-    let prior =
-        prior_from(&serde_json::to_value(&head).unwrap()).expect("带着交回那一格的成品能原样回传");
     assert_eq!(
-        scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(),
+        scan_facts(&text.as_bytes()[cut..], head, &Vec::new(), None).unwrap(),
         whole
     );
 
@@ -674,31 +646,6 @@ fn handed_back_runs_are_the_ones_that_handed_back() {
     let f = scan_all(&jsonl(&many));
     assert_eq!(f.handed_back.len(), HANDED_BACK_KEEP);
     assert_eq!(f.handed_back[0], "r3", "超了丢最早的");
-}
-
-/// 在等你的那一份（带 `needs.call`）也能原样回传当续传令牌（之前 `prior.needs` 的键集合少了 `call`，等你时每次都得从头扫）。
-#[test]
-fn a_product_that_is_waiting_on_you_round_trips_as_prior() {
-    let f = SessionFacts {
-        needs: Some(Needs {
-            kind: NeedsKind::Approve,
-            tool: Some("Bash".into()),
-            call: Some("b1".into()),
-            what: None,
-            since_ms: Some(1),
-            text: crate::common::cells::Words(copy_core::copy_text("beSession.needs.approve", &[])),
-            head: crate::common::cells::Words(String::new()),
-            head_code: None,
-            tone: crate::common::cells::Tone::Need,
-            rank: 1,
-            waited_ms: Some(1),
-            waited_text: Some(crate::common::cells::Words(copy_core::short_duration(1))),
-            ask: None,
-            manual_text: None,
-        }),
-        ..SessionFacts::default()
-    };
-    assert_eq!(prior_from(&serde_json::to_value(&f).unwrap()), Ok(f));
 }
 
 /// ★ 一步还没结果时的样子只在这里判：那台说在等的正是它 ⇒ 在等你；有活进程 ⇒ 在跑；没有 ⇒ 状态不明、带原因码
@@ -755,8 +702,6 @@ fn a_step_without_a_result_is_running_only_when_a_live_process_holds_the_session
         ),
         (json!("awaiting"), Value::Null)
     );
-    let back = prior_from(&wire).expect("带着 state 的成品能原样回传");
-    assert_eq!(back.pending[0].state, StepWait::Awaiting);
     f.writers.clear();
     f.needs = None;
     settle_pending(&mut f, true);
@@ -808,8 +753,7 @@ fn a_retry_run_is_settled_by_what_follows_it_and_keyed_by_its_first_record() {
     let mut cuts = vec![0usize];
     cuts.extend(text.match_indices('\n').map(|(i, _)| i + 1));
     for cut in cuts {
-        let prior = prior_from(&serde_json::to_value(scan_all(&text[..cut])).unwrap())
-            .expect("带着重试那一格的成品能原样回传");
+        let prior = scan_all(&text[..cut]);
         assert_eq!(
             scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap(),
             whole,
@@ -898,7 +842,7 @@ fn tokens_count_each_request_once_with_two_cache_write_tiers() {
         None,
     )
     .unwrap();
-    let prior = prior_from(&serde_json::to_value(&first).unwrap()).unwrap();
+    let prior = first;
     let resumed = scan_facts(&text.as_bytes()[cut..], prior, &Vec::new(), None).unwrap();
     assert_eq!(resumed.tokens, f.tokens);
 }

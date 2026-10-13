@@ -4500,6 +4500,7 @@ tone: Tone, };
 type FactsClock = { text: Words, from: number, };
 type FactsCost = { micros: number, partial: boolean, text: Words, };
 type FactsLastRequest = { id: string, tokens: Array<number>, };
+type FactsToken = { end: number, rev: number, };
 type HistoryFactsReq = { 
 /**
  * jsonl 路径（围栏同 `history-read`）。
@@ -4510,11 +4511,12 @@ path: string,
  */
 limits?: { [key in string]: number }, 
 /**
- * 可缺：**上一次应答原样**（续传令牌）。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 每一层键集合必须恰好是本命令出的那一形
- * （`facts_query::prior_from` 判，不对 ⇒ `bad_args`），从它的 `end` 接着扫、累加在它上面。
- * 带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答。
+ * 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
+ * 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
+ *
+ * [`facts_cache`]: crate::observe::facts_cache
  */
-prior?: SessionFacts, };
+prior?: FactsToken, };
 type LastSay = { text: string, 
 /**
  * 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
@@ -4705,9 +4707,14 @@ type RetryRun = {
 id: string, outcome: RetryOutcome, };
 type SessionFacts = { 
 /**
- * 最后一个完整行的末字节 ＝ 下一次的续点。
+ * 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
  */
 end: number, 
+/**
+ * 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`super::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
+ * 扫描本身不读它；只在出成品那一刻由续算表铸。
+ */
+rev: number, 
 /**
  * 源会话 sid；不是分叉来的 ⇒ `null`。
  */
@@ -4839,7 +4846,7 @@ limitFromText: Words | null, };
 type Words = string;
 ```
 
-码：`bad_args` · `failed` · `too_large`
+码：`bad_args` · `failed` · `too_large` · `stale_prior`
 
 #### `history-branch`
 

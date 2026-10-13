@@ -31,7 +31,6 @@ import { ChanError } from "../../../src/comms/inward/chan";
 import {
   readTurns,
   factsOf,
-  wireOf,
   unpackIndex,
   failureOf,
   findInSession,
@@ -182,6 +181,7 @@ describe("〔STC〕第五问：会话事实", () => {
     const f = factsOf(wire);
     expect(f).toEqual({
       end: 3081,
+      rev: 1,
       forkedFrom: "src-0",
       touchedFiles: ["/w/a.ts"],
       usage: {
@@ -233,12 +233,10 @@ describe("〔STC〕第五问：会话事实", () => {
     });
   });
 
-  it("★ 需手动记上本机收到的时刻（不在线上）；交回令牌时去掉那一格，别的原样", () => {
+  it("★ 需手动记上本机收到的时刻（不在线上）", () => {
     const needs: WireFacts["needs"] = { kind: "approve", tool: "Bash", call: "toolu_1", what: "rm -rf build/", sinceMs: 42, text: copyText("beSession.needs.approve"), head: "等批准 · Bash", headCode: "rm -rf build/", tone: "need", rank: 1, waitedMs: 1000, waitedText: "1 秒", ask: null, manualText: copyText("beAsk.manual.terminal") };
     const f = factsOf({ ...wire, needs }, 777);
     expect(f.needs).toEqual({ ...needs, receivedAt: 777 });
-    expect(wireOf(f)).toEqual({ ...wire, needs });
-    expect(wireOf(factsOf(wire))).toEqual(wire);
   });
 
   it("★★ 答题口的成品（needs.ask）：后端真出的四种（跨语言金样 needs-ask.golden.json）原样收下", () => {
@@ -252,7 +250,7 @@ describe("〔STC〕第五问：会话事实", () => {
     expect(read(null), "没有挂着的").toBeNull();
   });
 
-  it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ 令牌原样放进 prior；失败折成 available:false ＋ 种类", async () => {
+  it("★ 说对的帧命令、对的请求体：没有令牌 ⇒ 只带 path；有 ⇒ prior 只带上一份的 {end, rev}；失败折成 available:false ＋ 种类", async () => {
     const product = factsOf(wire);
     invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
     const r1 = await readSessionFacts("<local>", "/p/s.jsonl", null);
@@ -265,13 +263,7 @@ describe("〔STC〕第五问：会话事实", () => {
     await readSessionFacts("pi", "/p/s.jsonl", product);
     const a2 = invokeMock.mock.calls[1][1] as ChanCallArgs;
     expect(a2.origin).toBe("pi");
-    expect(chanArgsJson(a2)).toEqual({ path: "/p/s.jsonl", prior: golden["history-facts"] });
-
-    // 令牌里带着需手动：交回的是线上那一形（本机收到的时刻不跟着去，后端按恰好的键集合收）。
-    const needs: WireFacts["needs"] = { kind: "plan", tool: null, call: null, what: null, sinceMs: null, text: "t", head: "h", headCode: null, tone: "need", rank: 0, waitedMs: null, waitedText: null, ask: null, manualText: null };
-    invokeMock.mockResolvedValueOnce(chanReply(golden["history-facts"]));
-    await readSessionFacts("pi", "/p/s.jsonl", factsOf({ ...wire, needs }, 5));
-    expect(chanArgsJson(invokeMock.mock.calls[2][1] as ChanCallArgs)).toEqual({ path: "/p/s.jsonl", prior: { ...wire, needs } });
+    expect(chanArgsJson(a2)).toEqual({ path: "/p/s.jsonl", prior: { end: wire.end, rev: wire.rev } });
     invokeMock.mockClear();
 
     invokeMock.mockRejectedValueOnce(UNSUPPORTED);

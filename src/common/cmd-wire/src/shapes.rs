@@ -38,7 +38,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("forward-stop", "b80516fb"),
     ("history-annotate", "e40c5678"),
     ("history-branch", "984ec3ae"),
-    ("history-facts", "e1b462af"),
+    ("history-facts", "9a82968a"),
     ("history-find", "1f44cd85"),
     ("history-forget", "bf6099c2"),
     ("history-index", "a521b94a"),

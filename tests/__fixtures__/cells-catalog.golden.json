@@ -1103,6 +1103,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "rev",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "tokens.cacheRead",
           "type": "number"
         },
