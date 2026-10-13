@@ -8,10 +8,8 @@ import type { Origin } from "./ipc/origin";
 import { saidOfTransport } from "./control-said";
 import { detailOf } from "./kit/detail";
 import { exactKeys, isObj } from "./ipc/decode";
-import type { ForkLaunch } from "./session-writes";
-import { decodeForkLaunch } from "./session-writes";
 import type { DirChecked } from "./generated/DirChecked";
-import type { NewFacts as FactsReply } from "./generated/NewFacts";
+import type { NewFacts } from "./generated/NewFacts";
 import type { NewRequest } from "./generated/NewRequest";
 import type { SessionNew } from "./generated/SessionNew";
 import type { SessionNewField } from "./generated/SessionNewField";
@@ -22,28 +20,12 @@ const READ_BUDGET_MS = 15_000;
 /** 起：铸名 ＋ 起 ccm（那台自己的期限 15 s）＋ 回程。到了 ⇒「启动无应答」，按结果未知处理。 */
 export const NEW_BUDGET_MS = 25_000;
 
-export interface NewFacts {
-  recent: { cwd: string; lastMs: number }[];
-  tmux: boolean;
-  agents: string[];
-  fork: { agent: string; launch: ForkLaunch; turn: number | null; startText: string | null } | null;
-}
-
-
-/** `session-new-facts` 的回包 ⇒ 框要的那几样（分叉三格那一形随 `session-fork` 那一族换类型之前仍按形状收：[`decodeForkLaunch`]）。 */
-export function factsOf(v: FactsReply): NewFacts {
-  const f = v.fork;
-  return {
-    recent: v.recent,
-    tmux: v.tmux,
-    agents: v.agents,
-    fork: f === null ? null : { agent: f.agent, launch: decodeForkLaunch(f.launch), turn: f.turn, startText: f.startText },
-  };
-}
+/** 框打开时那一问的回包（分叉源会话的三格同 `session-fork` 的 `launch`）。 */
+export type { NewFacts };
 
 /** 框打开时问一次：typed 帧命令（回包类型从 Rust 生成，形状由握手指纹核过）。 */
 export async function askFacts(origin: Origin, fork: { sid: string; uuid: string } | null): Promise<NewFacts> {
-  return factsOf(await callTyped(origin, "session-new-facts", fork ? { forkOf: fork.sid, at: fork.uuid } : {}, budgetWithin(READ_BUDGET_MS)));
+  return callTyped(origin, "session-new-facts", fork ? { forkOf: fork.sid, at: fork.uuid } : {}, budgetWithin(READ_BUDGET_MS));
 }
 
 /** 目录失焦：typed 帧命令（回包类型从 Rust 生成，形状由握手指纹核过）。 */

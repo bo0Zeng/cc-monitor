@@ -1197,7 +1197,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
     const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
     const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
-    const SESSION_FORK: &str = include_str!("../../__fixtures__/session-fork.golden.json");
     const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
@@ -1347,18 +1346,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
         ("rotation-switch", ROTATION_SWITCH_RESTART, "", &[], &[]),
-        (
-            "session-fork",
-            SESSION_FORK,
-            "/product",
-            &[
-                "account", "cwd", "from", "host", "kind", "terminal", "value",
-            ],
-            &[(
-                "why",
-                "`launch.kind` 是 `unknown` 那一支才有；金样走的是 `known` 那一支",
-            )],
-        ),
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[

@@ -7,42 +7,109 @@
 //! 句子不在这里：只回码，由各前端照码说。事实由入口（`faces/fork_face.rs`）收齐交进来。
 
 use super::session_batch::{carriers, Standing, TmuxEntry};
-use serde_json::{json, Value};
+use serde_json::Value;
 
-/// 来源码：会话记录 · 源会话的进程 · 终端名单。
-pub(crate) const FROM_RECORD: &str = "record";
-pub(crate) const FROM_PROCESS: &str = "process";
-pub(crate) const FROM_TERMINAL_LIST: &str = "terminal_list";
-/// 原因码：源会话已退出 · 记录里没有工作目录 · 活着但说不出号。
-pub(crate) const WHY_EXITED: &str = "exited";
-pub(crate) const WHY_NO_CWD: &str = "no_cwd";
-pub(crate) const WHY_LIVE_NO_ACCOUNT: &str = "live_no_account";
-
-/// 一格：知道（值 ＋ 从哪知道）或不知道（为什么）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum Slot<T> {
-    Known { value: T, from: &'static str },
-    Unknown { why: &'static str },
+/// 「知道」那一格从哪知道：会话记录 · 源会话的进程 · 终端名单。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ForkWhence"
+    )
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Whence {
+    Record,
+    Process,
+    TerminalList,
 }
 
-/// 号：账号 0（不设配置目录）或账号库里的一个号的名字。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 「不知道」那一格为什么：源会话已退出 · 记录里没有工作目录 · 活着但说不出号。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(export, export_to = "../../frontend/ui/generated/", rename = "ForkWhy")
+)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum Why {
+    Exited,
+    NoCwd,
+    LiveNoAccount,
+}
+
+/// 一格：知道（值 ＋ 从哪知道）或不知道（为什么）。线上 `{kind:"known", value, from}` · `{kind:"unknown", why}`。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ForkSlot"
+    )
+)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub(crate) enum Slot<T> {
+    Known { value: T, from: Whence },
+    Unknown { why: Why },
+}
+
+/// 号：账号 0（不设配置目录）或账号库里的一个号的名字。线上 `null` ＝ 账号 0、串 ＝ 号名。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(into = "Option<String>")]
 pub(crate) enum AccountFact {
     Base,
     Named(String),
 }
 
-/// 源会话在哪个终端：某个终端（句柄）· 不在任何终端里。
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl From<AccountFact> for Option<String> {
+    fn from(a: AccountFact) -> Self {
+        match a {
+            AccountFact::Base => None,
+            AccountFact::Named(n) => Some(n),
+        }
+    }
+}
+
+/// 源会话在哪个终端：某个终端（句柄）· 不在任何终端里。线上同会话容器那一格：`{host:"tmux", terminal}` · `{host:"none"}`
+/// （两个 `host` 词与 `stream::wire::TerminalHost::as_wire` · `HOST_NONE` 同字，判据钉着）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ForkTerminal"
+    )
+)]
+#[serde(tag = "host")]
 pub(crate) enum TerminalFact {
+    #[serde(rename = "tmux")]
     Hosted { terminal: String },
+    #[serde(rename = "none")]
     None,
 }
 
-/// 三格推断的结果（线上 `session-fork` 回复的 `launch`）。
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// 三格推断的结果（线上 `session-fork` 回复的 `launch`，`session-new-facts` 的 `fork.launch` 同一形）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "ForkLaunch"
+    )
+)]
 pub(crate) struct Launch {
     pub(crate) cwd: Slot<String>,
+    /// 值 `null` ＝ 账号 0，串 ＝ 号名。
+    #[cfg_attr(test, ts(as = "Slot<Option<String>>"))]
     pub(crate) account: Slot<AccountFact>,
     pub(crate) terminal: Slot<TerminalFact>,
 }
@@ -65,19 +132,19 @@ pub(crate) fn infer(s: &Source) -> Launch {
     let cwd = match s.cwd.as_deref().filter(|c| !c.trim().is_empty()) {
         Some(c) => Slot::Known {
             value: c.to_string(),
-            from: FROM_RECORD,
+            from: Whence::Record,
         },
-        None => Slot::Unknown { why: WHY_NO_CWD },
+        None => Slot::Unknown { why: Why::NoCwd },
     };
     // 号：活着才可能知道；已退出一律不知道，不看 `account` 里塞了什么。
     let account = match (s.live, &s.account) {
-        (false, _) => Slot::Unknown { why: WHY_EXITED },
+        (false, _) => Slot::Unknown { why: Why::Exited },
         (true, None) => Slot::Unknown {
-            why: WHY_LIVE_NO_ACCOUNT,
+            why: Why::LiveNoAccount,
         },
         (true, Some(a)) => Slot::Known {
             value: a.clone(),
-            from: FROM_PROCESS,
+            from: Whence::Process,
         },
     };
     let terminal = if s.live {
@@ -88,10 +155,10 @@ pub(crate) fn infer(s: &Source) -> Launch {
                 },
                 _ => TerminalFact::None,
             },
-            from: FROM_TERMINAL_LIST,
+            from: Whence::TerminalList,
         }
     } else {
-        Slot::Unknown { why: WHY_EXITED }
+        Slot::Unknown { why: Why::Exited }
     };
     Launch {
         cwd,
@@ -151,36 +218,6 @@ pub(crate) fn source_of(
         cwd,
         account: row.and_then(account_of),
         terminal: running,
-    }
-}
-
-impl Launch {
-    /// 线上那一形：每格 `{kind:"known", value, from}` 或 `{kind:"unknown", why}`；
-    /// 号的值 `null` ＝ 账号 0、串 ＝ 号名；终端的值同会话容器那一格（`{host, terminal}` · `{host:"none"}`）。
-    pub(crate) fn to_json(&self) -> Value {
-        json!({
-            "cwd": slot_json(&self.cwd, |c| json!(c)),
-            "account": slot_json(&self.account, |a| match a {
-                AccountFact::Base => Value::Null,
-                AccountFact::Named(n) => json!(n),
-            }),
-            "terminal": slot_json(&self.terminal, |t| match t {
-                TerminalFact::Hosted { terminal } => json!({
-                    "host": crate::stream::wire::TerminalHost::Tmux.as_wire(),
-                    "terminal": terminal,
-                }),
-                TerminalFact::None => json!({ "host": crate::stream::wire::HOST_NONE }),
-            }),
-        })
-    }
-}
-
-fn slot_json<T>(s: &Slot<T>, value: impl Fn(&T) -> Value) -> Value {
-    match s {
-        Slot::Known { value: v, from } => {
-            json!({ "kind": "known", "value": value(v), "from": from })
-        }
-        Slot::Unknown { why } => json!({ "kind": "unknown", "why": why }),
     }
 }
 

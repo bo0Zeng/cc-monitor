@@ -1972,6 +1972,14 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ),
         ("session-new-facts", serde_json::json!({ "at": 1 })),
         (
+            "session-fork",
+            serde_json::json!({ "sid": "s-1", "uuid": "u-1", "extra": 1 }),
+        ),
+        (
+            "session-fork",
+            serde_json::json!({ "sid": 1, "uuid": "u-1" }),
+        ),
+        (
             "session-restart",
             serde_json::json!({ "sid": "s-1", "cwd": "/w", "compact_first": false, "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),
         ),

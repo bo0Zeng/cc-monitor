@@ -104,19 +104,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 分叉：本体 `control/fork_write.rs::run_inner`（
     //   读 → 适配层的分叉变换（`agents::build_branch_records`）→ `O_EXCL` 新建）。本机远端同一条长连接；读整份 jsonl ⇒ 阻塞档。
     //   回复多一格 `launch`：分叉之后起要的三格事实（`control/fork_launch.rs`，宿主 `faces/fork_face.rs` 收齐）。
-    CommandSpec {
-        name: "session-fork",
-        summary: "从某条消息处分叉出一个新会话",
-        codes: &["bad_args", "fork_failed"],
-        fields: &[out("account", "`process`（源会话进程此刻的配置目录，同 `accounts-sessions`：没设 ＝ 账号 0，设了 ＝ 账号库里认得那个目录的号）|`exited`（源会话已退出）· `live_no_account`（活着，但说不出号：进程名单里没有它 · 那个目录账号库不认得 · 环境这一刻读不出）"), out("cwd", "`record`|`no_cwd`（记录里没有）"), out("from", "`known` 时值的来源"), out("host", "`terminal` 那一格的终端宿主"), out("jsonlPath", "新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）"), out("kind", "`launch` 三格每格的状态：`known` · `unknown`"), out("launch", "起分叉出来的新会话要的三格：`cwd` · `account` · `terminal`，每格 `{kind:\"known\", value, from}` 或 `{kind:\"unknown\", why}`"), out("sessionId", "新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）"), arg("sid", "源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件，`branch_core::find_session_file`）"), out("terminal", "`terminal_list`（挂着它的 `@ccm_sid`、前台是 agent 的那一个；命中多个取第一个）|`exited`"), arg("uuid", "从哪条消息处分叉"), out("value", "`known` 时的值"), out("why", "`unknown` 时为什么说不出")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            // 分叉写分支记录：这一条在这里领一只只会新建的手（别的命令拿不到它）。
-            crate::faces::fork_face::answer(&r.args, &crate::platform::fs::NewFile::issue())
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::fork_face::SessionFork>(
+        "从某条消息处分叉出一个新会话",
+    ),
     // 手动对齐：整机（或 `sid` 只对一个会话）重跑起步那套对齐，回差异。阻塞档：等每份 watcher 做完。
     crate::stream::inbound::typed::blocking::<crate::faces::resync_face::ResyncCmd>(
         "手动对齐：重发这条流上的会话状态",

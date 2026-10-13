@@ -4104,21 +4104,43 @@ end: number, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-fork`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | ← | `process`（源会话进程此刻的配置目录，同 `accounts-sessions`：没设 ＝ 账号 0，设了 ＝ 账号库里认得那个目录的号）\|`exited`（源会话已退出）· `live_no_account`（活着，但说不出号：进程名单里没有它 · 那个目录账号库不认得 · 环境这一刻读不出） |
-| `cwd` | ← | `record`\|`no_cwd`（记录里没有） |
-| `from` | ← | `known` 时值的来源 |
-| `host` | ← | `terminal` 那一格的终端宿主 |
-| `jsonlPath` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
-| `kind` | ← | `launch` 三格每格的状态：`known` · `unknown` |
-| `launch` | ← | 起分叉出来的新会话要的三格：`cwd` · `account` · `terminal`，每格 `{kind:"known", value, from}` 或 `{kind:"unknown", why}` |
-| `sessionId` | ← | 新会话的 id 与落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
-| `sid` | → | 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件，`branch_core::find_session_file`） |
-| `terminal` | ← | `terminal_list`（挂着它的 `@ccm_sid`、前台是 agent 的那一个；命中多个取第一个）\|`exited` |
-| `uuid` | → | 从哪条消息处分叉 |
-| `value` | ← | `known` 时的值 |
-| `why` | ← | `unknown` 时为什么说不出 |
+入参 `ForkReq` · 回包 `Forked`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ForkLaunch = { cwd: ForkSlot<string>, 
+/**
+ * 值 `null` ＝ 账号 0，串 ＝ 号名。
+ */
+account: ForkSlot<string | null>, terminal: ForkSlot<ForkTerminal>, };
+type ForkReq = { 
+/**
+ * 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件）。
+ */
+sid: string, 
+/**
+ * 从哪条消息处分叉。
+ */
+uuid: string, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkTerminal = { "host": "tmux", terminal: string, } | { "host": "none" };
+type ForkWhence = "record" | "process" | "terminal_list";
+type ForkWhy = "exited" | "no_cwd" | "live_no_account";
+type Forked = { 
+/**
+ * 新会话的 id。
+ */
+sessionId: string, 
+/**
+ * 新会话的落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）。
+ */
+jsonlPath: string, 
+/**
+ * 起分叉出来的新会话要的三格。
+ */
+launch: ForkLaunch, };
+```
 
 码：`bad_args` · `fork_failed`
 
@@ -6280,9 +6302,9 @@ type ForkFacts = {
  */
 agent: string, 
 /**
- * 起分叉会话要的三格（同 `session-fork` 的 `launch`；那一形随 `session-fork` 那一族换成类型）。
+ * 起分叉会话要的三格（同 `session-fork` 的 `launch`）。
  */
-launch: unknown, 
+launch: ForkLaunch, 
 /**
  * `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。
  */
@@ -6291,6 +6313,17 @@ turn: number | null,
  * 那一轮那句在看的那一台钟上的（请求的 `tz`） `HH:MM`（说不出 ⇒ `null`）。
  */
 startText: string | null, };
+type ForkLaunch = { cwd: ForkSlot<string>, 
+/**
+ * 值 `null` ＝ 账号 0，串 ＝ 号名。
+ */
+account: ForkSlot<string | null>, terminal: ForkSlot<ForkTerminal>, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkSlot<T> = { "kind": "known", value: T, from: ForkWhence, } | { "kind": "unknown", why: ForkWhy, };
+type ForkTerminal = { "host": "tmux", terminal: string, } | { "host": "none" };
+type ForkWhence = "record" | "process" | "terminal_list";
+type ForkWhy = "exited" | "no_cwd" | "live_no_account";
 type NewFacts = { 
 /**
  * 这台最近用过的工作目录（各家记录里的，新的在前、同一个目录一次、最多 8 个）。
@@ -7236,14 +7269,24 @@ type Mode = "create-or-attach" | "send-into";
 
 ### `session-fork` 的出参（应答另多 `launch` 一格）
 
-#### `ForkResult`
+#### `ForkReq`
 
-成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
+`session-fork` 的入参：从 `sid` 那条会话的 `uuid` 那条消息处分叉。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `sessionId` | string |  |
-| `jsonlPath` | string |  |
+| `sid` | string | 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件） |
+| `uuid` | string | 从哪条消息处分叉 |
+
+#### `Forked`
+
+`session-fork` 的回包。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sessionId` | string | 新会话的 id |
+| `jsonlPath` | string | 新会话的落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖） |
+| `launch` | Launch | 起分叉出来的新会话要的三格 |
 
 ### 骨架索引的一行（`history-index` 的 `rows` 装运之前）
 

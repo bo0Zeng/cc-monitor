@@ -10,6 +10,8 @@ import type { CommandPlan } from "./CommandPlan";
 import type { DirChecked } from "./DirChecked";
 import type { ForgetReq } from "./ForgetReq";
 import type { Forgotten } from "./Forgotten";
+import type { ForkReq } from "./ForkReq";
+import type { Forked } from "./Forked";
 import type { FromReq } from "./FromReq";
 import type { HistoryFind } from "./HistoryFind";
 import type { HistoryFindReq } from "./HistoryFindReq";
@@ -99,6 +101,7 @@ export interface TypedCommands {
   "needs-answer": { req: AnswerReq; reply: Answered; code: "bad_args" | "not_found" | "already_answered" | "closed_elsewhere" | "bad_choice" | "note_required" };
   "resolve": { req: ResumeSpec; reply: CommandPlan; code: "bad_args" | "invalid_session_id" | "unsafe_launch_candidate" };
   "resync": { req: ResyncReq; reply: Resynced; code: "bad_args" };
+  "session-fork": { req: ForkReq; reply: Forked; code: "bad_args" | "fork_failed" };
   "session-interrupts": { req: SessionInterruptsReq; reply: SessionInterrupts; code: "bad_args" };
   "session-new": { req: NewRequest; reply: SessionNew; code: "bad_args" | "unknown_agent" | "bad_command" | "no_dir" | "account_unavailable" | "place_unavailable" | "bad_tmux_name" | "tmux_taken" | "unobservable" | "fork_failed" | "refused" | "start_failed" | "child_timed_out" | "launch_pending" | "no_such_config" };
   "session-new-dir": { req: SessionNewDirReq; reply: DirChecked; code: "bad_args" };
