@@ -36,7 +36,17 @@ enum Loose {
 /// 一行原文 ⇒ 链事实；不在链上 / 解不出 ⇒ `None`。
 pub(crate) fn chain_fact(raw: &str) -> Option<ChainFact> {
     let raw = raw.trim_start_matches('\u{feff}').trim();
-    let p: Probe = serde_json::from_str(raw).ok()?;
+    // user 行要整行（判打断、取原文）⇒ 按文本认得出是 user 行就只整行解析这一次，那几格短串从这一份里取；
+    // 别的行只解那几格短串（认错了也对：不是 user 行照样从整行里取短串，只是白解了整行）。
+    let full: Option<serde_json::Value> = if raw.contains(USER_NEEDLE) {
+        Some(parsed(serde_json::from_str(raw)).ok()?)
+    } else {
+        None
+    };
+    let p: Probe = match &full {
+        Some(v) => Probe::deserialize(v).ok()?,
+        None => parsed(serde_json::from_str(raw)).ok()?,
+    };
     let kind = p.kind.as_deref().unwrap_or("");
     if kind == "queue-operation" {
         return match (p.operation.as_deref(), p.content) {
@@ -55,7 +65,10 @@ pub(crate) fn chain_fact(raw: &str) -> Option<ChainFact> {
         _ => (false, false, false),
     };
     let (interrupt, text) = if said {
-        let v: serde_json::Value = serde_json::from_str(raw).ok()?;
+        let v: serde_json::Value = match full {
+            Some(v) => v,
+            None => parsed(serde_json::from_str(raw)).ok()?,
+        };
         let content = v
             .get("message")
             .and_then(|m| m.get("content"))
@@ -76,6 +89,21 @@ pub(crate) fn chain_fact(raw: &str) -> Option<ChainFact> {
         text,
         shown,
     }))
+}
+
+/// 紧凑写法的 user 行在原文里一定带这一截（那一家写的是不带空格的 JSON）。
+const USER_NEEDLE: &str = r#""type":"user""#;
+
+/// 一次整行 / 短串的文本解析（判据数它：一行至多解析一次文本）。
+fn parsed<T>(r: serde_json::Result<T>) -> serde_json::Result<T> {
+    #[cfg(test)]
+    PARSES.with(|c| c.set(c.get() + 1));
+    r
+}
+
+#[cfg(test)]
+thread_local! {
+    pub(crate) static PARSES: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
 }
 
 /// 正文：字符串本身，或第一个带 `text` 的块。
