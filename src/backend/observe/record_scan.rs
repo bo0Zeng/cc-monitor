@@ -449,6 +449,16 @@ impl RecordScans {
         Some(s.map.clone())
     }
 
+    /// 续取用（分页的后几页 · 轮次 / 大纲 / 索引从上次的末端续）：这一份的图留着（哪怕记录已经又长了）⇒ 接着扫到此刻、回那张
+    /// （追加只读新的那一截 ＋ 见证，同 [`Self::get`]）；没留着 ⇒ `None`（调用方从文件那一处扫，不为一次续取冷开整份）。
+    pub(crate) fn held(&self, path: &Path) -> Option<Arc<ScanMap>> {
+        let held = self.lock().slots.iter().any(|s| s.path == path);
+        if !held {
+            return None;
+        }
+        self.get(path).ok()
+    }
+
     /// `path` 那一份此刻的扫描图：没变 ⇒ 留着的那张；变长了 ⇒ 从留着的那张（或盘上的骨架）接着扫追加的那一截；
     /// 别的 ⇒ 现扫整份（同一份正在扫 ⇒ 等它）。
     pub(crate) fn get(&self, path: &Path) -> std::io::Result<Arc<ScanMap>> {

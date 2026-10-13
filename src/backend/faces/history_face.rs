@@ -1031,7 +1031,7 @@ pub(crate) fn index_page(
     } else if offset == 0 {
         Some(history_query::cold_scan(home, &req.path).map_err(HistoryIndexErr::Failed)?)
     } else {
-        history_query::peek_scan(home, &req.path)
+        history_query::held_scan(home, &req.path)
             .map_err(HistoryIndexErr::Failed)?
             .filter(|m| offset <= m.end)
     };
@@ -1156,7 +1156,7 @@ pub(crate) fn user_inputs_page(
     let map = if from == 0 {
         Some(history_query::cold_scan(home, &req.path).map_err(UserInputsErr::Failed)?)
     } else {
-        history_query::peek_scan(home, &req.path)
+        history_query::held_scan(home, &req.path)
             .map_err(UserInputsErr::Failed)?
             .filter(|m| from <= m.end)
     };
@@ -1301,7 +1301,7 @@ pub(crate) fn turns_page(
     let map = if from == 0 {
         Some(history_query::cold_scan(home, path).map_err(HistoryTurnsErr::Failed)?)
     } else {
-        history_query::peek_scan(home, path)
+        history_query::held_scan(home, path)
             .map_err(HistoryTurnsErr::Failed)?
             .filter(|m| from <= m.end)
     };

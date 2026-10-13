@@ -91,6 +91,12 @@ function isStructural(f: OutlineFailure | undefined): boolean {
   return f === "oldBackend";
 }
 
+/** 正文重来时上一代交给下一代的那一份（`OutlineSource.handoff`）。 */
+export interface OutlineHandoff {
+  entries: UserInputEntry[];
+  end: number;
+}
+
 export class OutlineSource {
   private end = 0;
   private readonly uuids = new Set<string>();
@@ -101,6 +107,8 @@ export class OutlineSource {
   private fetched = false;
   private stale = false;
   private rows = 0;
+  /** 列着的那几条（正文重来时交给下一代：`adopt`）。 */
+  private entries: UserInputEntry[] = [];
   /**
    * 结构性失败（或连续瞬时失败到上限）⇒ 本宿主不再要（`reset` 才清）：
    * 不然每次切 tab、每句输入都起一次注定失败的本机进程 / ssh exec。
@@ -177,6 +185,7 @@ export class OutlineSource {
         this.transientFailures = 0;
         this.uuids.clear();
         this.panel.setEntries(s.entries);
+        this.entries = [...s.entries];
         for (const e of s.entries) this.uuids.add(e.uuid);
         this.rows = s.entries.length;
         this.end = s.end;
@@ -196,12 +205,33 @@ export class OutlineSource {
     this.inflight = run;
   }
 
+  /**
+   * 正文重来、大纲接着续（宿主 `restartTail`）：上一代交出它列着的那几条与续点（在它 `reset` 之前取），
+   * 这一代接过来，之后从那个末端要新的一截，不从 0 再要。上一代没要到过 / 已放弃 ⇒ `null`（这一代照常从 0 要）。
+   */
+  handoff(): OutlineHandoff | null {
+    if (!this.fetched || this.gaveUp) return null;
+    return { entries: [...this.entries], end: this.end };
+  }
+
+  adopt(h: OutlineHandoff | null): void {
+    if (!h) return;
+    this.panel.setEntries(h.entries);
+    this.entries = [...h.entries];
+    for (const e of h.entries) this.uuids.add(e.uuid);
+    this.rows = h.entries.length;
+    this.end = h.end;
+    this.fetched = true;
+    this.stale = true;
+  }
+
   /** 换会话 / 关 tab：清空、收起，在途那趟作废。 */
   reset(): void {
     this.gen++;
     this.end = 0;
     this.uuids.clear();
     this.rows = 0;
+    this.entries = [];
     this.gaveUp = false;
     this.transientFailures = 0;
     this.again = false;
@@ -243,8 +273,10 @@ export class OutlineSource {
       this.uuids.clear();
       this.rows = 0;
       this.panel.setEntries(res.entries);
+      this.entries = [...res.entries];
     } else {
       this.panel.appendEntries(res.entries);
+      this.entries.push(...res.entries);
     }
     for (const e of res.entries) this.uuids.add(e.uuid);
     this.rows += res.entries.length;
@@ -265,6 +297,7 @@ export class OutlineSource {
     this.end = 0;
     this.uuids.clear();
     this.rows = 0;
+    this.entries = [];
     this.gaveUp = true;
     this.panel.setUnavailable(reason);
   }

@@ -170,6 +170,10 @@ export class TabStreamView {
    * 接骨架要插占位、量几何、补可见区 —— 在收起的 tab 里做是白干还逼排版；快速连切时一串旧切换的活全堆在后面。
    */
   private readonly parkedSkeletons = new WeakMap<Tab, SkeletonLedger>();
+  /** 〔骨架〕每个 tab 的索引拉到了哪个字节（下一次续传从这里接；`restartTail` 把它连同账本交给新的一代）。 */
+  private readonly indexEnds = new WeakMap<Tab, number>();
+  /** 〔骨架〕正文重来时从上一代接过来的账本与它的末字节：要骨架时从这里续，不从 0 再要（`restartTail`）。 */
+  private readonly carriedSkeletons = new WeakMap<Tab, { ledger: SkeletonLedger; end: number }>();
   /** 每个 tab 的第一趟会话事实 ＋ 轮次什么时候问（当前的先、后台的空闲时一个一个，`tab-cold-reads.ts`）。 */
   private readonly cold: ColdReads;
 
@@ -201,7 +205,36 @@ export class TabStreamView {
     const sk = tab.skeleton;
     if (!sk) return;
     const w = tab.stream.contentElement.getBoundingClientRect().width;
-    if (w > 0 && sk.relayout(w)) this.refineNearby(tab);
+    if (w > 0 && sk.relayout(w)) {
+      this.refineNearby(tab);
+      this.settleLayoutLater(sk);
+    }
+  }
+
+  /** 改列宽之后远处还没按新列宽估的行：空闲时一段一段补（每段至多这么多行）。 */
+  private static readonly SETTLE_ROWS = 20_000;
+  /** 等着补估的骨架（先来先补）与它们共用的那一个空闲回调位子。 */
+  private settling: SkeletonView[] = [];
+  private readonly settleSlot = new IdleSlot();
+  private settleScheduled = false;
+
+  /** 这个骨架改过列宽、远处还有没估的 ⇒ 排进空闲补估（同一个已排着的不重复排）。 */
+  private settleLayoutLater(sk: SkeletonView): void {
+    if (!this.settling.includes(sk)) this.settling.push(sk);
+    if (this.settleScheduled) return;
+    this.settleScheduled = true;
+    this.settleSlot.schedule(() => this.settleStep(), 16);
+  }
+
+  private settleStep(): void {
+    this.settleScheduled = false;
+    const sk = this.settling[0];
+    if (!sk) return;
+    if (!sk.settleLayout(TabStreamView.SETTLE_ROWS)) this.settling.shift();
+    if (this.settling.length > 0) {
+      this.settleScheduled = true;
+      this.settleSlot.schedule(() => this.settleStep(), 16);
+    }
   }
 
   /**
@@ -388,14 +421,14 @@ export class TabStreamView {
   }
 
   /** 关 tab 时拆它的流 DOM、断大对象引用、摘监听（原是 `closeTab` 里的一段，逐字）。 */
-  disposeTab(tab: Tab): void {
+  disposeTab(tab: Tab, keepFacts = false): void {
     releaseEnhanceRoot(tab.streamEl); // 本 tab 那一个 IO 断开
     tab.stream.dispose();
     tab.streamEl.remove();
     // 大纲跟着走（`reset` 也让在途那趟回来后不许回写）。
     // 查找面板是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
     tab.outline.reset();
-    tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写
+    if (!keepFacts) tab.facts.reset(); // 会话事实同理：在途那趟回来后不许回写（正文重来、事实接着续的那一形不清）
     this.cold.drop(tab.sessionId); // 第一趟还排着的出队
     tab.streamEl.removeEventListener("scroll", tab.turnRail.onScroll);
     tab.turnRail.el.remove(); // 刻度挂在流外，不随 `streamEl.remove()` 一起走
@@ -426,9 +459,9 @@ export class TabStreamView {
    * **换一个新的 `Tab` 对象进表**：在途那几趟（骨架索引 · 按偏移取正文 · 往下 / 往后补）回来时认的是「表里还是不是它」，
    * 认不出就自己作废 —— 旧的一代的行不会落进新的一代。
    */
-  restartContent(old: Tab): Tab {
+  restartContent(old: Tab, keepFacts = false): Tab {
     const wasActive = this.store.activeId === old.sessionId;
-    this.disposeTab(old);
+    this.disposeTab(old, keepFacts);
     const tab: Tab = {
       ...old,
       ...this.mountTabDom(old.sessionId),
@@ -437,6 +470,22 @@ export class TabStreamView {
     this.store.tabs.set(tab.sessionId, tab);
     this.wireTab(tab);
     if (wasActive) this.showOnly(tab.sessionId);
+    return tab;
+  }
+
+  /**
+   * **只重来正文那一半**（没在看了很久、缺得多：`catchUpTo`）：流 DOM · 去重集 · 尾部窗口 · 骨架视图照 `restartContent` 重建；
+   * 已经拿过的四样接着续 —— 骨架账本（要骨架时从上次索引的末字节续到新的尾段之上，接之前照旧对拍 seq 空间）· 轮次（从还没收尾那一轮）·
+   * 大纲（从上次的末端）· 会话事实（带上一份的令牌）。文件被截断 / 改写不走这里（后端出声 ⇒ `restartContent` 整份重来）。
+   */
+  private restartTail(old: Tab): Tab {
+    const ledger = old.skeleton?.ledger ?? this.parkedSkeletons.get(old) ?? null;
+    const end = this.indexEnds.get(old);
+    const outline = old.outline.handoff(); // 在 `restartContent` 拆掉它之前取
+    const tab = this.restartContent(old, true);
+    tab.turnFold.adopt(old.turnFold);
+    tab.outline.adopt(outline);
+    if (ledger && end !== undefined) this.carriedSkeletons.set(tab, { ledger, end });
     return tab;
   }
 
@@ -828,7 +877,7 @@ export class TabStreamView {
     this.applyInjected(on);
     for (const tab of this.store.tabs.values()) {
       const w = tab.stream.contentElement.getBoundingClientRect().width;
-      if (tab.skeleton && w > 0) tab.skeleton.relayout(w, true);
+      if (tab.skeleton && w > 0 && tab.skeleton.relayout(w, true)) this.settleLayoutLater(tab.skeleton);
     }
     if (t && pin?.isConnected) t.streamEl.scrollTop += pin.getBoundingClientRect().top - before;
   }
@@ -962,6 +1011,12 @@ export class TabStreamView {
     tab.skeletonFetch = "pending";
     const jsonlPath = tab.parentPath;
     const origin = tab.origin;
+    const carried = this.carriedSkeletons.get(tab);
+    if (carried) {
+      this.carriedSkeletons.delete(tab);
+      this.continueSkeleton(tab, carried.ledger, carried.end);
+      return;
+    }
     // 只要尾段之上那一截（`[0, floor)`：floor 往后是尾段，实时行管）—— 正在看的 tab 先取它要的那一截，不等整份。
     const first = readSessionIndex(origin, jsonlPath, 0, tab.window.floorSeq);
     // 〔欠账〕大纲**等这一趟**：索引顺带出清单（后端 `IndexRow::x`）⇒ 首屏同一份文件
@@ -979,10 +1034,15 @@ export class TabStreamView {
         }
         // 索引拉回来之前 tab 可能又长了：floor 之下还有索引没覆盖到的行 ⇒ **续传**（从上次的 end 接着要）
         const floor = tab.window.floorSeq ?? 0;
+        let end = got.end;
         if (floor > got.ledger.endSeq) {
           const more = await readSessionIndex(origin, jsonlPath, got.end);
-          if (more.available) got.ledger.append(more.rows);
+          if (more.available) {
+            got.ledger.append(more.rows);
+            end = more.end;
+          }
         }
+        this.indexEnds.set(tab, end);
         if (this.store.tabs.get(tab.sessionId) !== tab) return;
         if (this.store.activeId !== tab.sessionId) {
           this.parkedSkeletons.set(tab, got.ledger); // 已经切走：停着，切回来再接
@@ -993,6 +1053,36 @@ export class TabStreamView {
       .catch((e: unknown) => {
         failed(true);
         console.warn(`[tabs] 骨架索引拉取失败（${tab.sessionId.slice(0, 8)}）：`, e);
+      });
+  }
+
+  /**
+   * 〔骨架〕从上一代接过来的账本：只续它没覆盖到、尾段之上的那一截（`[endSeq, floor)`，从它的末字节要），续上了照常接；
+   * 续不上（要不到）⇒ 这一份不用了，下一次触发点从 0 要（同瞬时失败）。
+   */
+  private continueSkeleton(tab: Tab, ledger: SkeletonLedger, end: number): void {
+    const floor = tab.window.floorSeq ?? 0;
+    const want = floor - ledger.endSeq;
+    const more = want > 0 ? readSessionIndex(tab.origin, tab.parentPath!, end, want) : Promise.resolve(null);
+    void more
+      .then((res) => {
+        if (this.store.tabs.get(tab.sessionId) !== tab) return;
+        if (res && !res.available) {
+          tab.skeletonFetch = "again";
+          return;
+        }
+        if (res) ledger.append(res.rows);
+        this.indexEnds.set(tab, res ? res.end : end);
+        tab.skeletonFetch = "done";
+        if (this.store.activeId !== tab.sessionId) {
+          this.parkedSkeletons.set(tab, ledger);
+          return;
+        }
+        this.attachSkeleton(tab, ledger);
+      })
+      .catch((e: unknown) => {
+        tab.skeletonFetch = "again";
+        console.warn(`[tabs] 骨架续传失败（${tab.sessionId.slice(0, 8)}）：`, e);
       });
   }
 
@@ -1224,7 +1314,7 @@ export class TabStreamView {
       this.readForward(tab, path, have + 1, seq);
       return;
     }
-    const fresh = have >= 0 ? this.restartContent(tab) : tab;
+    const fresh = have >= 0 ? this.restartTail(tab) : tab;
     // 取回来的进的是账本（批语义、不建卡）⇒ 取完了它还在眼前，就照切进来那样物化尾段、停下来看时接骨架。
     this.readForward(fresh, path, Math.max(0, seq - TabStreamView.WATCH_REFILL_MAX), undefined, () => {
       if (this.inFront(fresh)) this.activate(fresh);
@@ -1470,6 +1560,8 @@ export class TabStreamView {
   dispose(): void {
     this.cold.stop();
     this.idleSlot.stop();
+    this.settleSlot.stop(); // 改列宽之后的空闲补估同样撤掉
+    this.settling = [];
     this.materializeQueue = [];
     for (const t of [...this.store.tabs.values()]) this.disposeTab(t);
   }
