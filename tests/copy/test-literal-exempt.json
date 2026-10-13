@@ -25,9 +25,6 @@
     "tests/backend/control/exit_policy_tests.rs": [
       { "text": "类型不对", "use": "用例名" }
     ],
-    "tests/backend/observe/facts_query_tests.rs": [
-      { "text": "类型不对", "use": "用例名" }
-    ],
     "tests/frontend/ui/settings/accounts-section.vitest.ts": [
       { "text": "超时", "use": "输入" }
     ],
