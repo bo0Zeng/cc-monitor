@@ -376,70 +376,49 @@ fn builtin_card(a: &Ask<'_>, st: &CcBusState) -> ExtCard {
     }
 }
 
-fn card_value(card: ExtCard) -> Answer {
-    serde_json::to_value(card).map_err(|e| ("io_failed".to_string(), e.to_string()))
-}
-
 /// `ext-hub-preview {kind, name, from, to, scope}` → 确认卡（[`ExtCard`]）。只读。
 pub(crate) async fn ext_preview(
     here: &Arc<dyn Here>,
     args: &Value,
     table: &Table,
     remote: &dyn Remote,
-) -> Answer {
+) -> Result<ExtCard, (String, String)> {
     let a = ask_of(args)?;
     if is_builtin(a.kind, a.name) {
         let st = builtin_look(here, &a, table, remote).await?;
-        return card_value(builtin_card(&a, &st));
+        return Ok(builtin_card(&a, &st));
     }
-    match a.kind {
+    Ok(match a.kind {
         ExtKind::Skill => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
-            card_value(skill_card(&a, &source, &plan))
+            skill_card(&a, &source, &plan)
         }
         ExtKind::Mcp => {
             let (src, pre) = mcp_look(here, &a, table, remote).await?;
-            card_value(mcp_card(&a, &src, &pre))
+            mcp_card(&a, &src, &pre)
         }
-    }
-}
-
-/// 用户在卡上填的值（`{field: {key: 值}}`）；缺 / `null` ⇒ 没填。
-
-fn fill_of(args: &Value) -> Result<Option<Fill>, (String, String)> {
-    match args.get("fill") {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => serde_json::from_value(v.clone())
-            .map(Some)
-            .map_err(|e| bad(&format!("`fill` has the wrong shape: {e}"))),
-    }
+    })
 }
 
 fn changed_since() -> (String, String) {
     ("stale".to_string(), copy_text("beExt.apply.changed", &[]))
 }
 
-/// `ext-hub-apply {kind, name, from, to, scope, tokens, fill?}` → [`ExtDone`]。两头都再看一次：记号对不上 ⇒ `stale`、一个字节不写。
+/// 装一台：`{kind, name, from, to, scope}` ＋ 那张卡上的记号 ＋ 用户填的值（`{field: {key: 值}}`；`None` ⇒ 没填）→ [`ExtDone`]。
+/// 两头都再看一次：记号对不上 ⇒ `stale`、一个字节不写。
 pub(crate) async fn ext_apply(
     here: &Arc<dyn Here>,
     args: &Value,
+    tokens: &ExtTokens,
+    fill: Option<&Fill>,
     table: &Table,
     remote: &dyn Remote,
-) -> Answer {
+) -> Result<ExtDone, (String, String)> {
     let a = ask_of(args)?;
-    let tokens: ExtTokens = serde_json::from_value(
-        args.get("tokens").cloned().unwrap_or(Value::Null),
-    )
-    .map_err(|e| {
-        (
-            "bad_args".to_string(),
-            crate::common::contract::malformed(&format!("`tokens` has the wrong shape: {e}")),
-        )
-    })?;
     let done = match a.kind {
         _ if is_builtin(a.kind, a.name) => {
             let st = builtin_look(here, &a, table, remote).await?;
-            if builtin_card(&a, &st).tokens != tokens {
+            if builtin_card(&a, &st).tokens != *tokens {
                 return Err(changed_since());
             }
             let out =
@@ -462,7 +441,7 @@ pub(crate) async fn ext_apply(
         ExtKind::Skill => {
             let (source, plan) = skill_look(here, &a, table, remote).await?;
             let card = skill_card(&a, &source, &plan);
-            if card.tokens != tokens {
+            if card.tokens != *tokens {
                 return Err(changed_since());
             }
             if let Some(why) = card.stop {
@@ -506,7 +485,7 @@ pub(crate) async fn ext_apply(
         ExtKind::Mcp => {
             let (src, pre) = mcp_look(here, &a, table, remote).await?;
             let card = mcp_card(&a, &src, &pre);
-            if card.tokens != tokens {
+            if card.tokens != *tokens {
                 return Err(changed_since());
             }
             let out = ask_one::<McpApplyCmd>(
@@ -516,7 +495,7 @@ pub(crate) async fn ext_apply(
                     name: a.name.to_string(),
                     at: a.at_to.clone(),
                     def: pre.def,
-                    fill: fill_of(args)?,
+                    fill: fill.cloned(),
                     target: pre.target,
                 },
                 table,
@@ -534,7 +513,7 @@ pub(crate) async fn ext_apply(
             }
         }
     };
-    serde_json::to_value(done).map_err(|e| ("io_failed".to_string(), e.to_string()))
+    Ok(done)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -755,12 +734,7 @@ pub(crate) async fn ext_preview_many(
             )),
             (Some(_), None) => Err(("refused".to_string(), copy_text("beExt.many.noPlace", &[]))),
             (Some(b), Some(place)) => {
-                ext_preview(here, &ask_for(kind, name, p, b, place), table, remote)
-                    .await
-                    .and_then(|v| {
-                        serde_json::from_value::<ExtCard>(v)
-                            .map_err(|e| ("io_failed".to_string(), e.to_string()))
-                    })
+                ext_preview(here, &ask_for(kind, name, p, b, place), table, remote).await
             }
         };
         match got {
@@ -833,22 +807,19 @@ pub(crate) async fn ext_apply_many(
         let key = p.to.clone().unwrap_or_default();
         let done = match (&p.bring, &plan.place) {
             (Some(b), Some(place)) if want.as_ref() == Some(place) => {
-                let ask = ask_for(kind, name, p, b, place);
-                async {
-                    let card: ExtCard =
-                        serde_json::from_value(ext_preview(here, &ask, table, remote).await?)
-                            .map_err(|e| ("io_failed".to_string(), e.to_string()))?;
-                    let tokens = req
-                        .tokens
-                        .get(&key)
-                        .ok_or_else(|| bad("`tokens` has no entry for this machine"))?;
-                    let mut a = ask.clone();
-                    a["tokens"] = json!(tokens);
-                    a["fill"] = json!(fill_for(&card, &req.fill));
-                    serde_json::from_value::<ExtDone>(ext_apply(here, &a, table, remote).await?)
-                        .map_err(|e| ("io_failed".to_string(), e.to_string()))
+                // 界面交回的记号里没有这台（看卡时它没出卡）⇒ 这台的卡没被看过：同「又有变动」，重看再装。
+                match req.tokens.get(&key) {
+                    None => Err(changed_since()),
+                    Some(tokens) => {
+                        let ask = ask_for(kind, name, p, b, place);
+                        async {
+                            let card = ext_preview(here, &ask, table, remote).await?;
+                            let fill = fill_for(&card, &req.fill);
+                            ext_apply(here, &ask, tokens, Some(&fill), table, remote).await
+                        }
+                        .await
+                    }
                 }
-                .await
             }
             (None, _) => Err((
                 "refused".to_string(),
@@ -876,7 +847,7 @@ pub(crate) async fn ext_apply_many(
 
 #[cfg(test)]
 #[path = "../../../tests/backend/assets/hub_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 #[cfg(test)]
 #[path = "../../../tests/backend/assets/hub_inner_wire_tests.rs"]

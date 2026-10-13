@@ -1,4 +1,7 @@
 use super::*;
+use crate::assets::door::Said;
+use crate::stream::inbound::LocalFiles;
+use cmd_wire::files as wire;
 use std::path::PathBuf;
 
 // 判据照线上那一份比：入参经 typed 那一处收（同分派）再交本体，回包写成线上那一份（盖住 `super::*` 里的同名口）。
@@ -16,15 +19,44 @@ fn answer_block_render(d: &dyn Door, args: &Value) -> Result<Value, (&'static st
 
 const P: Shell = Shell::Posix;
 
-/// 判据用的门：本进程那几条 `files-*` 原样走（[`crate::stream::inbound::LocalFiles`]），只有 `files-home` 答临时目录 ——
+/// 判据用的门：其余各问原样交本进程那扇门（[`crate::stream::inbound::LocalFiles`]），只有 `home` 答临时目录 ——
 /// 写的规则不在这里判（那一份住后端 `files_write_tests.rs`），也**绝不碰真实家目录**。
 pub(crate) struct HomeDoor(pub PathBuf);
 impl Door for HomeDoor {
-    fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)> {
-        if cmd == "files-home" {
-            return Ok(json!({ "path": self.0.display().to_string() }));
-        }
-        crate::stream::inbound::LocalFiles.ask(cmd, args)
+    fn home(&self, _req: wire::HomeReq) -> Result<wire::FilesPathReply, Said> {
+        Ok(wire::FilesPathReply {
+            path: self.0.display().to_string().as_str().into(),
+        })
+    }
+    fn stat(&self, req: wire::StatReq) -> Result<wire::StatReply, Said> {
+        LocalFiles.stat(req)
+    }
+    fn ls(&self, req: wire::LsReq) -> Result<wire::LsReply, Said> {
+        LocalFiles.ls(req)
+    }
+    fn peek(&self, req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, Said> {
+        LocalFiles.peek(req)
+    }
+    fn put(&self, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, Said> {
+        LocalFiles.put(req)
+    }
+    fn delete(&self, req: wire::FilesDeleteReq) -> Result<wire::FilesDeleteReply, Said> {
+        LocalFiles.delete(req)
+    }
+    fn copy(&self, req: wire::FilesCopyReq) -> Result<wire::FilesTreeReply, Said> {
+        LocalFiles.copy(req)
+    }
+    fn mkdir(&self, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, Said> {
+        LocalFiles.mkdir(req)
+    }
+    fn link(&self, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Said> {
+        LocalFiles.link(req)
+    }
+    fn rename_to(&self, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, Said> {
+        LocalFiles.rename_to(req)
+    }
+    fn chmod(&self, req: wire::FilesChmodReq) -> Result<wire::FilesChmodReply, Said> {
+        LocalFiles.chmod(req)
     }
 }
 

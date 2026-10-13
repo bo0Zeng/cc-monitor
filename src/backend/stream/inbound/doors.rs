@@ -2,41 +2,50 @@
 
 use super::spec::{prepare, Prepared};
 use super::REGISTRY;
+use crate::assets::door::{Door, Said};
 use crate::stream::wire::Request;
+use cmd_wire::files as wire;
 
-/// 资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
-/// 住入方向是因为文件管理面的写句柄（`Face`）只有分派这一层造：这扇门就是进程内的那一次分派，
-/// 照命令表那一族的档位（typed 的 `Facing` 那一档）递一份进去；资产模块只拿这个门，拿不到句柄，也不直呼 `files_write`。
+/// 资产域（`assets/`）够用户文件的那一扇门：这台文件管理那一族的本体，每一问按入参类型直接问它那一条
+/// （读的经 `files_face::in_process`，写的经 `files_write_face::in_process`：同那几条帧命令的本体、同一份线上类型）。
+/// 住入方向是因为文件管理面的写句柄（`Face`）只有分派这一层造：写的那几问经 `spec::with_face` 领一份、只活这一问；
+/// 资产模块只拿这个门，拿不到句柄，也不直呼 `files_write`。
 #[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
 
-impl crate::assets::door::Door for LocalFiles {
-    fn ask(
-        &self,
-        cmd: &str,
-        args: serde_json::Value,
-    ) -> Result<serde_json::Value, (String, String)> {
-        let spec = REGISTRY
-            .iter()
-            .find(|s| s.name == cmd && s.name.starts_with("files-"))
-            .ok_or_else(|| ("unknown_command".to_string(), cmd.to_string()))?;
-        let req = Request {
-            id: "in-process".to_string(),
-            cmd: cmd.to_string(),
-            args,
-            within_ms: None,
-            view: serde_json::Value::Null,
-            tz: Default::default(),
-            until: None,
-        };
-        // 门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。文件管理那一族不写自家状态 ⇒ 不递 `Own`；
-        //   文件管理写句柄由 `prepare` 照档位（typed 的 `Facing` 那一档）造了递进去。
-        let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
-            return Err(("unknown_command".to_string(), cmd.to_string()));
-        };
-        run(req)
-            .map(|v| v.unwrap_or(serde_json::Value::Null))
-            .map_err(|f| (f.code, f.message))
+impl Door for LocalFiles {
+    fn home(&self, req: wire::HomeReq) -> Result<wire::FilesPathReply, Said> {
+        super::files_face::in_process(req)
+    }
+    fn stat(&self, req: wire::StatReq) -> Result<wire::StatReply, Said> {
+        super::files_face::in_process(req)
+    }
+    fn ls(&self, req: wire::LsReq) -> Result<wire::LsReply, Said> {
+        super::files_face::in_process(req)
+    }
+    fn peek(&self, req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, Said> {
+        super::files_write_face::in_process(req)
+    }
+    fn put(&self, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, Said> {
+        super::files_write_face::in_process(req)
+    }
+    fn delete(&self, req: wire::FilesDeleteReq) -> Result<wire::FilesDeleteReply, Said> {
+        super::files_write_face::in_process(req)
+    }
+    fn copy(&self, req: wire::FilesCopyReq) -> Result<wire::FilesTreeReply, Said> {
+        super::files_write_face::in_process(req)
+    }
+    fn mkdir(&self, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, Said> {
+        super::files_write_face::in_process(req)
+    }
+    fn link(&self, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Said> {
+        super::files_write_face::in_process(req)
+    }
+    fn rename_to(&self, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, Said> {
+        super::files_write_face::in_process(req)
+    }
+    fn chmod(&self, req: wire::FilesChmodReq) -> Result<wire::FilesChmodReply, Said> {
+        super::files_write_face::in_process(req)
     }
 }
 

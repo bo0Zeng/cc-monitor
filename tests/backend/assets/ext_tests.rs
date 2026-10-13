@@ -4,7 +4,8 @@
 use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
-use crate::assets::hub::{ext_apply, ext_preview, Here};
+use crate::assets::hub::tests::{ap, pv};
+use crate::assets::hub::Here;
 use crate::assets::mcp_sync::{Facts, There};
 use crate::dial::remote_ask::{register, Remote, Said, Table};
 use std::future::Future;
@@ -599,15 +600,13 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     let args =
         json!({ "kind": "skill", "name": "demo", "from": from, "to": "laptop", "scope": scope });
 
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .expect("看卡");
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.expect("看卡");
     assert_eq!(card["writes"], json!(["SKILL.md", "lib/x.txt"]));
     // 看过之后源变了 ⇒ `stale`，远端一个字节不写。
     std::fs::write(src.join("lib/x.txt"), "two\n").unwrap();
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ext_apply(&t.here, &apply, &t.reach, &t.remote)
+    let (code, _) = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect_err("源变了还装了");
     assert_eq!(code, "stale");
@@ -627,11 +626,9 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
         "stale 了还叫远端去写"
     );
 
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .expect("重看");
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.expect("重看");
     apply["tokens"] = card["tokens"].clone();
-    let done = ext_apply(&t.here, &apply, &t.reach, &t.remote)
+    let done = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect("装不上");
     assert_eq!(done["changed"], json!(["SKILL.md", "lib/x.txt"]));
@@ -698,9 +695,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
         "MCP 只装进项目：替那台先挑了它开过会话的那一个"
     );
     let args = json!({ "kind": "mcp", "name": "m", "from": from, "to": "laptop", "scope": scope });
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .expect("看卡");
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.expect("看卡");
     assert_eq!(
         card["slots"],
         json!([{ "field": "env", "key": "KEY", "kept": false }])
@@ -711,12 +706,12 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     );
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ext_apply(&t.here, &apply, &t.reach, &t.remote)
+    let (code, _) = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect_err("没填值也装了");
     assert_eq!(code, "needs_input");
     apply["fill"] = json!({ "env": { "KEY": "typed-B" } });
-    ext_apply(&t.here, &apply, &t.reach, &t.remote)
+    ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect("装不上");
     let written = std::fs::read_to_string(t.b.proj.join(".mcp.json")).unwrap();
@@ -785,12 +780,10 @@ async fn a_user_level_skill_goes_into_a_project_on_the_other_machine() {
     );
     let args = json!({ "kind": "skill", "name": "demo", "from": b.from, "to": "laptop",
         "scope": { "from": b.scope.from, "to": proj } });
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .expect("看卡");
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.expect("看卡");
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    ext_apply(&t.here, &apply, &t.reach, &t.remote)
+    ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect("装不进项目");
     assert!(t.b.proj.join(".claude/skills/demo/SKILL.md").is_file());
@@ -846,11 +839,11 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
     ] {
         let args = json!({ "kind": kind, "name": name, "from": b.from, "to": "laptop",
             "scope": { "from": b.scope.from, "to": to }, "tokens": { "source": "s", "target": null } });
-        let (code, said) = ext_preview(&t.here, &args, &t.reach, &t.remote)
+        let (code, said) = pv(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给看卡了");
         assert_eq!((code.as_str(), said), ("refused", copy_text(why, &[])));
-        let (code, _) = ext_apply(&t.here, &args, &t.reach, &t.remote)
+        let (code, _) = ap(&t.here, &args, &t.reach, &t.remote)
             .await
             .expect_err("不可选的那一处也给装了");
         assert_eq!(code, "refused");
@@ -961,9 +954,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
     );
     let args = json!({ "kind": "mcp", "name": "m", "from": there.from, "to": "laptop",
         "scope": { "from": there.scope.from, "to": { "level": "user" } } });
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .expect("看卡");
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.expect("看卡");
     // 逐条比字符串本身（不比 JSON 文本：句子里有换行时 JSON 里是转义的 `\n`）。
     let suspects: Vec<&str> = card["suspects"]
         .as_array()
@@ -983,7 +974,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
     apply["fill"] = json!({ "env": { "KEY": "typed-B" } });
-    ext_apply(&t.here, &apply, &t.reach, &t.remote)
+    ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect("装不到全局");
     assert_eq!(
@@ -1085,14 +1076,12 @@ async fn cc_bus_installs_from_the_target_binary_and_shows_as_this_version() {
     let (from, scope) = bring_of(&there);
     let args =
         json!({ "kind": "skill", "name": "cc-bus", "from": from, "to": "laptop", "scope": scope });
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .expect("看卡");
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.expect("看卡");
     assert_eq!(card["unchanged"], false);
     assert_eq!(card["suspects"], json!([]), "那台原来没有 ⇒ 不用备份");
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let done = ext_apply(&t.here, &apply, &t.reach, &t.remote)
+    let done = ap(&t.here, &apply, &t.reach, &t.remote)
         .await
         .expect("装不上");
     assert_eq!(done["changed"], card["writes"]);
@@ -1108,9 +1097,7 @@ async fn cc_bus_installs_from_the_target_binary_and_shows_as_this_version() {
     let there = t.cell(&t.list(), "cc-bus", 1);
     assert_eq!(there.state, ExtState::Same, "装完那一格没变 ●");
     assert_eq!(removable(&there), ExtLoc::User);
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .unwrap();
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.unwrap();
     assert_eq!(card["unchanged"], true, "装好之后再看：没有要写的");
     let _ = std::fs::remove_dir_all(&base);
 }
@@ -1320,14 +1307,10 @@ async fn the_wire_matches_the_cross_language_golden() {
     let (from, scope) = bring_of(&t.cell(&list, "demo", 1));
     let args =
         json!({ "kind": "skill", "name": "demo", "from": from, "to": "laptop", "scope": scope });
-    let card = ext_preview(&t.here, &args, &t.reach, &t.remote)
-        .await
-        .unwrap();
+    let card = pv(&t.here, &args, &t.reach, &t.remote).await.unwrap();
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let done = ext_apply(&t.here, &apply, &t.reach, &t.remote)
-        .await
-        .unwrap();
+    let done = ap(&t.here, &apply, &t.reach, &t.remote).await.unwrap();
     let u = json!({ "kind": "skill", "name": "demo", "at": { "level": "user" } });
     let ucard = answer_uninstall_preview(&t.b.door(), &t.b.env, &u).unwrap();
     let mut ua = u.clone();
@@ -1425,6 +1408,116 @@ async fn the_many_hub_pair_keeps_its_wire_bytes() {
     .await
     .unwrap();
     assert_eq!(wire(json!(none)), MANY_NO_PLACE);
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 「装到几台」：界面交回的 `tokens` 里没有勾上的那一台（看卡时那台没出卡、装时又出了）⇒ 那一台说「重看再装」那句（文案表里的正式说法），
+/// 不把线上键名放上卡，也不写那一台。
+#[tokio::test]
+async fn a_machine_without_a_token_is_told_to_look_again() {
+    let (base, t) = two("many-no-token");
+    let src = t.a.env.skills.clone().unwrap().join("demo");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
+    let cb = t.b.refresh(None);
+    let ca = t.a.refresh(Some(cb.machines.clone()));
+    crate::dial::remote_ask::lock(&t.reach)
+        .get_mut("laptop")
+        .unwrap()
+        .peer = Some(cb.self_id.clone());
+    let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
+    use crate::assets::hub_wire::HubApplyReq;
+    use crate::stream::inbound::typed::take;
+    let apply = take::<HubApplyReq>(&json!({ "kind": "skill", "name": "demo", "to": ["laptop"],
+        "place": { "level": "user" }, "tokens": {}, "fill": {} }))
+    .unwrap();
+    let done = crate::assets::hub::ext_apply_many(&t.here, &apply, &t.reach, &t.remote, &current)
+        .await
+        .unwrap();
+    let m = &done.machines[0];
+    assert!(m.done.is_none(), "没看过卡的那台也装了：{m:?}");
+    let said = m.error.clone().unwrap_or_default();
+    assert_eq!(said, copy_text("beExt.apply.changed", &[]), "{said}");
+    assert!(!said.contains("tokens"), "线上键名上了卡：{said}");
+    assert!(
+        !t.b.env.skills.clone().unwrap().join("demo").exists(),
+        "那台被写了"
+    );
+    let _ = std::fs::remove_dir_all(&base);
+}
+
+/// 远端那一跳：交给那台跑一条，回包里去掉一格（那台后端版本不同）。
+struct ShortReply(RemoteM, &'static str, &'static str);
+impl Remote for ShortReply {
+    fn run<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + 'a>> {
+        self.0.run(dial, command, stdin)
+    }
+    fn run_coded<'a>(
+        &'a self,
+        dial: &'a Value,
+        command: String,
+        stdin: Option<String>,
+    ) -> Pin<Box<dyn Future<Output = Result<String, Said>> + Send + 'a>> {
+        let hit = command.contains(&format!("'--{}'", self.1));
+        let drop = self.2;
+        let out = self.0.run_coded(dial, command, stdin);
+        Box::pin(async move {
+            let s = out.await?;
+            if !hit {
+                return Ok(s);
+            }
+            let mut v: Value = serde_json::from_str(s.trim()).unwrap();
+            v.as_object_mut().unwrap().remove(drop);
+            Ok(v.to_string())
+        })
+    }
+}
+
+/// 「装到几台」：那台装完回的包解不出（后端版本不同）⇒ 那一台说「{机器} 后端版本不同」（同内层那一跳），解码器那句不上卡；别台不受牵连。
+#[tokio::test]
+async fn a_done_that_does_not_parse_says_that_backend_differs() {
+    let (base, t) = two("many-short-done");
+    let src = t.a.env.skills.clone().unwrap().join("demo");
+    std::fs::create_dir_all(&src).unwrap();
+    std::fs::write(src.join("SKILL.md"), "---\ndescription: d\n---\n").unwrap();
+    let cb = t.b.refresh(None);
+    let ca = t.a.refresh(Some(cb.machines.clone()));
+    crate::dial::remote_ask::lock(&t.reach)
+        .get_mut("laptop")
+        .unwrap()
+        .peer = Some(cb.self_id.clone());
+    let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
+    use crate::assets::hub_wire::{HubApplyReq, HubReq};
+    use crate::stream::inbound::typed::take;
+    let pre = crate::assets::hub::ext_preview_many(
+        &t.here,
+        &take::<HubReq>(&json!({ "kind": "skill", "name": "demo", "to": ["laptop"] })).unwrap(),
+        &t.reach,
+        &t.remote,
+        &current,
+    )
+    .await
+    .unwrap();
+    let card = pre.machines[0].card.clone().unwrap();
+    let apply = take::<HubApplyReq>(&json!({ "kind": "skill", "name": "demo", "to": ["laptop"],
+        "place": pre.place, "tokens": { "laptop": card.tokens }, "fill": {} }))
+    .unwrap();
+    let Two { remote, .. } = t;
+    let short = ShortReply(remote, "skill-install-apply", "written");
+    let done = crate::assets::hub::ext_apply_many(&t.here, &apply, &t.reach, &short, &current)
+        .await
+        .unwrap();
+    let m = &done.machines[0];
+    assert!(m.done.is_none(), "半截回包也拼了结局：{m:?}");
+    assert_eq!(
+        m.error.as_deref(),
+        Some(copy_core::backend_differs("laptop").as_str())
+    );
     let _ = std::fs::remove_dir_all(&base);
 }
 

@@ -179,6 +179,12 @@ impl Run {
 
 /// 按档把处理器装成 [`Prepared`]。`own` ＝ 调用方手里那一份写句柄；没有（文件门 · 小成品重问）⇒ 写自家状态的那几档交不出来（`None`）。
 /// `Builtin` 那几条在分派的硬臂里，这里也是 `None`。
+/// 文件管理面的写句柄只在这一处造、只活这一问：[`prepare`] 的 `Facing` 那一档（帧面 · CLI 面），
+/// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
+pub(crate) fn with_face<T>(f: impl FnOnce(&crate::platform::fs::Face) -> T) -> T {
+    f(&crate::platform::fs::Face::issue())
+}
+
 pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Prepared> {
     Some(match run {
         Run::Async(f) => Prepared::Async(Box::new(move |r| {
@@ -211,7 +217,7 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
             }
             // 文件管理写面：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
             super::typed::TypedRun::BlockingFace(f) => {
-                Prepared::Blocking(Box::new(move |r| f(r, &crate::platform::fs::Face::issue())))
+                Prepared::Blocking(Box::new(move |r| with_face(|face| f(r, face))))
             }
             super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
             super::typed::TypedRun::AsyncFiles(f, files) => {

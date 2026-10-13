@@ -743,7 +743,7 @@ mod tests {
     const ISSUERS: &[(&str, &[&str])] = &[
         ("Own::issue", &["main.rs"]),
         ("DiagLog::issue", &["main.rs"]),
-        // 文件管理面的写句柄：只有分派那一层造 —— 按档装处理器的那一处（`spec.rs::prepare`，帧面 · CLI 面 · 资产域经门的进程内分派都经它），
+        // 文件管理面的写句柄：只有分派那一层造 —— `spec.rs::with_face`（按档装处理器的 `prepare` 那一档 · 资产域那扇门的进程内分派都经它，句柄只活那一问），
         //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
         (
             "Face::issue",
