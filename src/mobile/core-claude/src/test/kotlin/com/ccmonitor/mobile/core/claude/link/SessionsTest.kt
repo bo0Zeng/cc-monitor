@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.SessionNewOutcome
+import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -32,7 +34,7 @@ class SessionsTest {
     @Test
     fun `session-new：应答解出结局 · tmux 名 · 展开后的目录；新起的 sid 为空`() {
         val a = SessionNew.of(mapOf("outcome" to "started", "session" to "proj-cc", "sid" to null, "cmd" to null, "account" to null, "agent" to "claude", "cwd" to "/h/proj"))
-        assertEquals(SessionNew.Answer(outcome = "started", session = "proj-cc", sid = null, cwd = "/h/proj", prompt = null), a)
+        assertEquals(SessionNew.Answer(outcome = SessionNewOutcome.STARTED, session = "proj-cc", sid = null, cwd = "/h/proj", prompt = null), a)
         assertNull("缺 cwd ⇒ 认不出报到的会话 ⇒ 解不出", SessionNew.of(mapOf("outcome" to "started", "agent" to "claude")))
     }
 
@@ -72,7 +74,7 @@ class SessionsTest {
     @Test
     fun `history-tail · history-read：尾段起点与每行的记录照抄；不进界面的行不出`() {
         assertEquals(mapOf("path" to "/p/a.jsonl", "n" to 50L), HistoryTail.args("/p/a.jsonl", 50))
-        assertEquals(HistoryTail.Answer(end = 900, splitAt = 300, tailFrom = 7, total = 9), HistoryTail.of(mapOf("end" to 900, "split_at" to 300, "tail_from" to 7, "total" to 9)))
+        assertEquals(TailPlan(end = 900, splitAt = 300, tailFrom = 7, total = 9), HistoryTail.of(mapOf("end" to 900, "split_at" to 300, "tail_from" to 7, "total" to 9)))
         assertEquals(mapOf("path" to "/p/a.jsonl", "offset" to 3L, "until" to 9L), HistoryRead.args("/p/a.jsonl", 3, 9))
         val page = HistoryRead.of(reads["history-read"])!!
         assertEquals(273L, page.next)

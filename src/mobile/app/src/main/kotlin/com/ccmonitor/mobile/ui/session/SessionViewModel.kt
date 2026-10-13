@@ -2,8 +2,6 @@ package com.ccmonitor.mobile.ui.session
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ccmonitor.mobile.agent.agentKindOrDefault
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
@@ -189,7 +187,7 @@ class SessionViewModel(
     val tmuxSession: StateFlow<String?> = _tmuxSession.asStateFlow()
 
     /** 要那台核心做的终端那几件（tmux 管理窗 · 切模型 · 抓屏 · 进终端那一行）。 */
-    val terminals = TerminalOps(backends.of(hostId)) { hostRepo.get(hostId)?.label ?: hostId }
+    val terminals = TerminalOps(backends.of(hostId), { hostRepo.get(hostId)?.label ?: hostId }, { hostRepo.get(hostId)?.agentKind })
 
     /** 可推送公钥的身份列表（命令面板「推送公钥」用）。 */
     val identities: StateFlow<List<Identity>> =
@@ -294,9 +292,8 @@ class SessionViewModel(
         ts: TerminalSession,
     ) {
         attachTo?.let { name ->
-            val profile = AgentProfile.of(host.agentKindOrDefault())
             terminals
-                .attachLine(name, profile.wireName, profile.invocation.resolveLaunchCommand(emptyList()))
+                .attachLine(name)
                 .onSuccess { ts.send("$it\n".toByteArray()) }
                 .onFailure { _notices.trySend(it.message.orEmpty()) }
             return

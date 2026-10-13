@@ -1,17 +1,15 @@
 package com.ccmonitor.mobile.ui.nav
 
-import com.ccmonitor.mobile.core.claude.model.AgentKind
 import com.ccmonitor.mobile.testing.CopyTableForTests
 import com.ccmonitor.mobile.testing.KotlinSourceScanner
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
 /**
- * 两家都落聊天屏、都能送字（送字走 `terminal-input`，不分哪家）；落点只看新界面开没开。产品名按种类各说各的。
+ * 两家都落聊天屏、都能送字（送字走 `terminal-input`，不分哪家）；落点只看新界面开没开。产品名是那台给的。
  */
 class AgentArchetypeTest {
     @Test
@@ -19,24 +17,6 @@ class AgentArchetypeTest {
         fun launch(host: String?) = launchDestination(landingHostId = host, newConversationId = { "s-new" })
         assertEquals("没有上次那台机器时先去服务器列表", Screen.Hosts.route, launch(null))
         assertEquals("有 ⇒ 聊天屏上空的新对话（Claude、Codex 一样）", Screen.Chat.of("h1", "s-new", isNew = true), launch("h1"))
-    }
-
-    /**
-     * 产品名从一个地方来，两种服务器各说各的名字。
-     */
-    @Test
-    fun theProductNameComesFromOnePlaceAndDiffersByKind() {
-        assertEquals("Claude", agentDisplayName(AgentKind.ClaudeCode))
-        assertEquals("Codex", agentDisplayName(AgentKind.Codex))
-        assertNotEquals(
-            "两种服务器的产品名必须不同：相同就等于又把 Codex 叫成了 Claude",
-            agentDisplayName(AgentKind.ClaudeCode),
-            agentDisplayName(AgentKind.Codex),
-        )
-        // 覆盖全枚举：以后加一种 agent 时，这里会因为 `when` 穷尽性当场编译不过（而不是静默漏一档）
-        val names = AgentKind.entries.map(::agentDisplayName)
-        assertEquals("每一种 agent 都要有名字，且互不相同：$names", AgentKind.entries.size, names.toSet().size)
-        assertTrue("名字不能是空的：$names", names.all { it.isNotBlank() })
     }
 
     /**
@@ -53,7 +33,7 @@ class AgentArchetypeTest {
      * |---|---|
      * | `Text("…Claude…")` 新增一句 | 红 |
      * | `"Cla" + "ude"` 拼接 | 抓不到 |
-     * | 产品名住一个常量再 `Text(那个常量)` | 抓不到（聊天屏顶栏的标题已改读 `AgentProfile.displayName`） |
+     * | 产品名住一个常量再 `Text(那个常量)` | 抓不到（聊天屏顶栏的标题读那台 `session-new-facts` 给的名字） |
      * | `strings.xml` 里的任何一句 | 扫不到 |
      */
     @Test
@@ -71,7 +51,7 @@ class AgentArchetypeTest {
         }
         assertTrue("前提：扫描器得真认出 `Text(` 调用，否则恒绿（实得 $calls 处）", calls > 100)
         assertEquals(
-            "上屏的产品名要走 agentDisplayName(kind)。多出来的那条请改掉；" +
+            "上屏的产品名要读那台给的名字（session-new-facts 的 agents[].text）。多出来的那条请改掉；" +
                 "确属「远端那个 Claude」而非本服务器产品名的，连同理由加进 PINNED_HARDCODED_PRODUCT_NAMES。",
             PINNED_HARDCODED_PRODUCT_NAMES,
             found.toMap(),

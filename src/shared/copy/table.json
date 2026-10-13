@@ -29591,12 +29591,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "mobTerm.model.sent": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "已发送 /model {model}",
-      "args": ["model"]
-    },
     "mobTerm.model.sendFailed": {
       "kind": "body",
       "role": "toast",

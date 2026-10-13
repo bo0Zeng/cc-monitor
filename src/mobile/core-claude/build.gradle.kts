@@ -44,6 +44,8 @@ tasks.matching { it.name.startsWith("runKtlint") || it.name.startsWith("ktlint")
 }
 
 kotlin {
+    // 线上类（`link/wire/`）按构造参数名装：参数名要进字节码。
+    compilerOptions { javaParameters.set(true) }
     sourceSets.named("main") {
         kotlin.srcDir(genEmbeddedBuild.map { embeddedBuildDir.get() })
     }
@@ -55,6 +57,8 @@ kotlin {
 // 判据读仓根夹具目录里的跨语言金样（通用记录那几份等）：整个目录登记成测试任务的输入，金样一变就重跑，不吃缓存的绿。
 tasks.named<Test>("test") {
     inputs.dir(rootProject.file("../../tests/__fixtures__")).withPathSensitivity(PathSensitivity.RELATIVE)
+    // 线上类的判据对着 `cmd-wire` 导出的 TS 核：生成物一变就重跑。
+    inputs.dir(rootProject.file("../frontend/ui/generated")).withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 dependencies {

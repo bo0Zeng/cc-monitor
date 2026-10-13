@@ -26,9 +26,9 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.ccmonitor.mobile.agent.agentKindOrDefault
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
 import com.ccmonitor.mobile.core.claude.link.CoreLink
+import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
@@ -67,6 +67,7 @@ fun ChatRoute(
     val link by rememberHostLink(hostId, chatHolder(chatKey(hostId, sessionId)), retainWhileComposed = false)
     KeepAliveWhileLinked(link)
     val host = rememberChatHost(hostId) ?: return
+    val product = rememberProductName(hostId, host.agent)
     val open = if (isNew) ChatOpen(hostId, chatKey(hostId, sessionId), ChatTarget.Draft(ticket = sessionId, cwd = host.cwd, agent = host.agent), host.machine) else existingChat(hostId, sessionId, host.machine)
     val vm: ChatViewModel =
         org.koin.androidx.compose
@@ -83,7 +84,7 @@ fun ChatRoute(
     ChatDrawer(hostId, link is HostLink.Ready, drawerState, onDrawerAction) {
         Scaffold(
             modifier = modifier,
-            topBar = { ChatTopBar(title = host.product, onOpenDrawer = { scope.launch { drawerState.open() } }) },
+            topBar = { ChatTopBar(title = product, onOpenDrawer = { scope.launch { drawerState.open() } }) },
         ) { inner ->
             ChatScreen(
                 state = state,
@@ -134,9 +135,8 @@ fun ChatController.sessionOf(
 private data class ChatHost(
     val machine: String,
     val cwd: String,
-    /** 这台的种类：新建会话起哪一家（线上名）· 顶栏叫什么。 */
-    val agent: String,
-    val product: String,
+    /** 这台存的那一家（线上 kind；没选 ⇒ `null`）：新建会话起哪一家由那台按它认。 */
+    val agent: String?,
 )
 
 @Composable
@@ -144,14 +144,26 @@ private fun rememberChatHost(hostId: String): ChatHost? {
     val hosts = koinInject<HostRepository>()
     val got by produceState<ChatHost?>(null, hostId) {
         val h = runCatching { hosts.get(hostId) }.getOrNull()
-        val profile = AgentProfile.of(h?.agentKindOrDefault() ?: AgentProfile.DEFAULT.kind)
         value =
             ChatHost(
                 machine = h?.label ?: hostId,
                 cwd = h?.defaultWorkingDir?.trim()?.ifEmpty { null } ?: HOME_DIR,
-                agent = profile.wireName,
-                product = profile.displayName,
+                agent = h?.agentKind,
             )
+    }
+    return got
+}
+
+/** 顶栏的名字：这台那一家写给人看的名字（那台 `session-new-facts` 给的）；还没问到 ⇒ 空。 */
+@Composable
+private fun rememberProductName(
+    hostId: String,
+    stored: String?,
+): String {
+    val backends = koinInject<HostBackends>()
+    val got by produceState("", hostId, stored) {
+        val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap())
+        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }?.let { SessionNewFacts.pick(it, stored)?.text }.orEmpty()
     }
     return got
 }
@@ -167,7 +179,7 @@ private const val HOME_DIR = "~"
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ChatTopBar(
-    /** 这台那一家的产品名（`AgentProfile.displayName`）。不写主机名，界面上不出现「连接」那套说法。 */
+    /** 这台那一家写给人看的名字（那台给的）。不写主机名，界面上不出现「连接」那套说法。 */
     title: String,
     onOpenDrawer: () -> Unit,
 ) {

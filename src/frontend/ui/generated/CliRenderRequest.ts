@@ -18,4 +18,12 @@ model: string | null,
 /**
  * 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
  */
-models?: { [key in string]: string }, launcher: string, defaultLauncher: string, };
+models?: { [key in string]: string }, 
+/**
+ * 启动命令；缺 ⇒ 那一家的默认（手机不交：进终端只交意图，attach 那一形本来不读它）。
+ */
+launcher?: string, 
+/**
+ * 那一家的默认启动器；缺 ⇒ 适配层那一份。
+ */
+defaultLauncher?: string, };

@@ -154,7 +154,7 @@ private fun TmuxManagerBody(
             },
             onNewDetachedCc = { n ->
                 scope.launch {
-                    terminals.startClaude(n)
+                    terminals.startAgent(n)
                     onCreated()
                 }
             },

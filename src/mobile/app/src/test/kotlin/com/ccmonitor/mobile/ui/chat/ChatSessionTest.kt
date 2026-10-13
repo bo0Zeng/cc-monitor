@@ -27,7 +27,7 @@ import org.junit.Test
 class ChatSessionTest {
     private fun TestScope.draft(
         link: FakeCoreLink,
-        agent: String = "claude",
+        agent: String? = "claude",
     ) = ChatSession(link, link, ChatTarget.Draft(ticket = "t-1", cwd = "~/proj", agent = agent), "box", backgroundScope)
 
     private fun TestScope.existing(link: FakeCoreLink) = ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).also { it.open() }
@@ -345,5 +345,28 @@ class ChatSessionTest {
             ChatSession(link, link, ChatTarget.Existing("s1"), "box", backgroundScope).stop()
             runCurrent()
             assertEquals(listOf(mapOf("sid" to "s1", "key" to "esc")), link.calls("terminal-input"))
+        }
+
+    @Test
+    fun `起哪一家问那台：没存 ⇒ 那台列的第一家；存的那台认不出（旧值）⇒ 也是第一家；认得 ⇒ 存的那一家`() =
+        runTest {
+            val facts =
+                mapOf(
+                    "agents" to
+                        listOf("codex", "claude").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
+                )
+            for ((stored, want) in listOf(null to "codex", "ClaudeCode" to "codex", "claude" to "claude")) {
+                val link = FakeCoreLink()
+                link.answer = { cmd, _ ->
+                    when (cmd) {
+                        "session-new-facts" -> ok(facts)
+                        "session-new" -> ok(started)
+                        else -> Reply.LinkDown
+                    }
+                }
+                draft(link, agent = stored).send("你好")
+                runCurrent()
+                assertEquals("存的是 $stored", want, link.calls("session-new").single()?.get("agent"))
+            }
         }
 }

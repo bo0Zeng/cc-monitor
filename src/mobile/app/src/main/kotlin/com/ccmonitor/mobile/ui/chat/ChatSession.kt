@@ -8,9 +8,11 @@ import com.ccmonitor.mobile.core.claude.link.HistoryTail
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionNew
+import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
 import com.ccmonitor.mobile.core.claude.link.str
+import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -62,8 +64,8 @@ sealed interface ChatTarget {
         val ticket: String,
         /** 在哪个目录起（开头的 `~` 那台按它的家目录读）。 */
         val cwd: String,
-        /** 起哪一家（线上名，这台的种类：`claude` · `codex`）。 */
-        val agent: String,
+        /** 这台存的那一家（线上 kind，主机设置里选的）；没选 ⇒ `null`。起的时候照那台 `session-new-facts` 认：认得 ⇒ 它，否则那台列的第一家。 */
+        val agent: String?,
     ) : ChatTarget
 }
 
@@ -262,8 +264,11 @@ class ChatSession(
     ) {
         _state.value = _state.value.copy(failedWhy = null)
         val before = link.table.value.sessions.keys
+        // 起哪一家问那台（存的那一家认得 ⇒ 它，否则第一家）；问不到 ⇒ 照存的交，认不出由那台那一句说。
+        val facts = (link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS) as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }
+        val agent = facts?.let { SessionNewFacts.pick(it, d.agent)?.kind } ?: d.agent.orEmpty()
         val answer =
-            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, d.agent, first.text), NEW_MS)) {
+            when (val r = link.call(SessionNew.COMMAND, SessionNew.args(d.cwd, d.ticket, agent, first.text), NEW_MS)) {
                 is Reply.Ok -> SessionNew.of(r.data) ?: return failSession(unreadableReply(machine, SessionNew.COMMAND, r.data.toString()).text)
                 else -> return failSession(r.problem(machine, SessionNew.COMMAND)?.text)
             }
@@ -436,7 +441,7 @@ class ChatSession(
     private suspend fun readTail(
         p: String,
         n: Int,
-    ): HistoryTail.Answer? =
+    ): TailPlan? =
         when (val r = link.call(HistoryTail.COMMAND, HistoryTail.args(p, n), READ_MS)) {
             is Reply.Ok -> HistoryTail.of(r.data) ?: null.also { readFailed(unreadableReply(machine, HistoryTail.COMMAND, r.data.toString()).text) }
             else -> null.also { readFailed(r.problem(machine, HistoryTail.COMMAND)?.text) }

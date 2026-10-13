@@ -2,7 +2,7 @@
 
 Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户自己服务器上的 Claude Code。不做云同步。
 
-它是 cc-monitor 的一个**输出适配层**（出口）：判定与写字都在后端核心，手机端只挑格、排版、装运（见 [`../doc/ARCHITECTURE.md`](../doc/ARCHITECTURE.md)「核心与适配层」一节）。它经 SSH 连服务器上那份常驻后端（`~/.cc-monitor/bin/ccm`）：先 `--backend-probe` 核同一个 `BUILD_ID`、`--resident-ensure` 起常驻，再开一条长连接 `--resident-attach`（双向帧协议，和桌面连远端同一条路），一问一答与会话帧都走它；与桌面端共用同一份后端，一台服务器装一次。
+它是 cc-monitor 的一个**输出适配层**（出口）：判定与写字都在后端核心，手机端只挑格、排版、装运（见 [`../doc/ARCHITECTURE.md`](../doc/ARCHITECTURE.md)「核心与适配层」一节）。它经 SSH 连服务器上那份常驻后端（`~/.cc-monitor/bin/ccm`）：直接开一条长连接 `--resident-attach`（双向帧协议，和桌面连远端同一条路），接不上才 `--resident-ensure` 起常驻；一问一答与会话帧都走它。版本门和桌面一条规矩：那台比手上这一版旧才换（手机还装不了 ⇒ 照接、说要更新），同或新照接，能不能用逐条命令按形状指纹判；与桌面端共用同一份后端，一台服务器装一次。
 
 版本号跟仓里的走：`versionName` 就是仓根 `package.json` 的 `version`，`versionCode` 由它算（主 × 1_000_000 ＋ 次 × 1_000 ＋ 修订），都在 `app/build.gradle.kts` 里构建时现读，手机这边不另写一份。包名与 `applicationId` 是 `com.ccmonitor.mobile`（与桌面端的 `com.ccmonitor.app` 同一个根）。
 
@@ -11,7 +11,7 @@ Claude Code 的手机前端：长得像 Claude app 的聊天，背后是用户�
 | 模块 | 管什么 |
 |---|---|
 | `app` | 屏与导航、注入、前台保活、拨号网关与 tmux 网关（`ssh/TmuxCommands.kt` 只留用户在 ssh 里也会敲的「进 / 建一个会话」两条；终端屏列会话 · 附着 · 结束 · 抓屏都问那台核心，附着那一行照后端 `launch-render-cli` 渲的原样敲）；聊天屏起会话 · 送字 · 正文都走那台核心（`ui/chat/ChatSession.kt`）；文件屏（`ui/sftp/`）经手机自己那条 SSH 走 SFTP |
-| `core-claude` | `link/`：常驻流的帧客户端（门槛只核 `BUILD_ID` · 起常驻 · attach · 一问一答 · 断了自己接回去）与核心成品的解码（会话表 · 需手动 · `history-list` · `quota-read` · `turn_end` 折成一轮一条 · `session-new` · `terminal-input` · `history-tail/read` · `line` 帧）；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元；其余（自己读原文那一族：`model/JsonlParser.kt` · `catalog/` · `transport/`）生产屏已经不调，只剩测试在用 |
+| `core-claude` | `link/`：那台常驻流交来的事落成手机这一侧的几条流（接 · 重连 · 握手 · 版本门 · 一问一答整条在 `core-rs` 里那份 `resident-client`，桌面同一份：那台比手上旧才换、同或新照接，能不能用逐条命令按形状指纹判）；会话族那几条的回包由 `core-rs` 按 `cmd-wire` 的类型解过，`link/wire/` 只声明手机读哪几格、装进去（判据 `WireTypesTest` 对着导出的 TS 核）；会话帧 · `history-list` · `sessions-needs` · `quota-read` · `history-read/lines` · `line` 帧还按名字取（那几份的类型还住后端，下一步挪）；手机里没有任何一家 agent 的知识：哪几家 · 叫什么 · 能换哪些模型都问那台 `session-new-facts`；`model/RecordUnits.kt` 把核心的通用记录映射成渲染单元 |
 | `core-remote` | 中立的远端抽象：一次性 exec · 流式 exec · 双向长 exec（`RemoteDuplex`）· shell 引号 |
 | `core-ssh` | 连接管理（按机器单飞 · 探活 · 退避重连）与 `RustTransport`：SSH 本身走 `core-rs` 那份 Rust 核心（竞速 · 跳板 · SFTP · host key · 鉴权都在核心里）；`~/.ssh/config` 导入与钥匙派生也经它 |
 | `core-rs` | 手机嵌的 Rust 核心 `libmobcore.so`：后端那一份拨号核心（`src/backend/ssh-dial`）的 FFI 外壳，手写 JNI、窄口、走消息；Rust 源在 `core-rs/rust/`（后端那一棵 cargo workspace 的成员），Gradle 调 cargo 编 |

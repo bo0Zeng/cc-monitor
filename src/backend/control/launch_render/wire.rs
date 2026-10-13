@@ -28,7 +28,13 @@ pub struct CliRenderRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<_>"))]
     pub models: BTreeMap<String, String>,
+    /// 启动命令；缺 ⇒ 那一家的默认（手机不交：进终端只交意图，attach 那一形本来不读它）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
     pub launcher: String,
+    /// 那一家的默认启动器；缺 ⇒ 适配层那一份。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
     pub default_launcher: String,
     /// 不上线（后端自己起会话时填）：垫在交给那一家的那一串里的参数（起新会话先定 sid：`--session-id <uuid>`）。
     #[serde(skip)]
@@ -140,6 +146,18 @@ fn with_spec<T>(
         ),
     };
     let args: Vec<&str> = req.preset_args.iter().map(String::as_str).collect();
+    // 没交 ⇒ 那一家适配层的默认（认不出那一家 ⇒ 空，渲的时候照拒）；启动命令没交 ⇒ 就是默认那一个（不吐 `--launcher`）。
+    let default_launcher = if req.default_launcher.is_empty() {
+        crate::agents::launch_face_among(crate::agents::REGISTRY, &req.agent)
+            .map_or("", |f| f.default_launcher)
+    } else {
+        req.default_launcher.as_str()
+    };
+    let launcher = if req.launcher.is_empty() {
+        default_launcher
+    } else {
+        req.launcher.as_str()
+    };
     let spec = CliSpec {
         agent: &req.agent,
         action,
@@ -148,8 +166,8 @@ fn with_spec<T>(
         account,
         ccm_sid: req.ccm_sid.as_deref(),
         model: req.model.as_deref().or(picked_model),
-        launcher: &req.launcher,
-        default_launcher: &req.default_launcher,
+        launcher,
+        default_launcher,
         args: &args,
         ccm_path,
         detach,
