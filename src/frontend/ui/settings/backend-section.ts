@@ -4,13 +4,14 @@
  *
  * 退出时会发生什么按机器分档（脱没脱离 × 勾没勾），那一句由那台后端出成品（`exit-policy-read` 的 `said`），本文件原样摆、不判哪一档。
  * 那个勾的值住后端所在那台：画之前问（`exit-policy-read`）、改勾交后端写（`exit-policy-set`），画的是写完读回来的那一份，
- * 都经通道直接问那台后端（[`askExitPolicy`] / [`putExitPolicy`]）。问不到 ⇒ 勾禁用、那一行不说话 ——
+ * 都经通道直接问那台后端（[`askExitPolicy`] / [`putExitPolicy`]，入参回包都是后端类型生成的）。问不到 ⇒ 勾禁用、那一行不说话 ——
  * 不知道那台机器上是什么就不替它说，更不拿本地缺省值画一个看起来能用的勾。
  */
 
 import { commands, type StopAnswer } from "../ipc/commands";
-import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, peerVersionSaid, readJson, saidFrom, unreadableFrom } from "../ipc/chan-caller";
+import { budgetWithin, callTyped, peerVersionSaid, saidFrom } from "../ipc/chan-caller";
+import type { ExitPolicy } from "../generated/ExitPolicy";
+import type { LogTail } from "../generated/LogTail";
 import { isLocalOrigin, type Origin } from "../ipc/origin";
 import { hostFacts } from "./host-os";
 import { askLocalCcm } from "./machine-aliases";
@@ -50,85 +51,51 @@ export function stopSaid(a: StopAnswer): string {
   }
 }
 
-/** 那个值现读出来的三态（与后端 `exit_policy::Read::state` 逐字对齐）。 */
-type ExitPolicyState = "chosen" | "absent" | "unreadable";
-
 /** 后端 `exit-policy-read` / `exit-policy-set` 回的那一份里，本区要用的三格（`said` 是成品那一句）。 */
 interface ExitAnswer {
-  policy: ExitPolicyState;
+  policy: ExitPolicy["state"];
   killOnExit: boolean;
   said: string;
   /** 只在 `unreadable` 时有：复制详情（原话在这里，不在那一句）。 */
   detail: string;
 }
 
-/** 从后端那份不透明 JSON 里取「退出行为」两格；缺一格 / 形状不对 ⇒ `null`（＝ 问不到，不替后端补缺省值）。 */
-function readExitAnswer(raw: unknown): ExitAnswer | null {
-  if (typeof raw !== "object" || raw === null) return null;
-  const v = raw as Record<string, unknown>;
-  const policy =
-    v.state === "chosen" || v.state === "absent" || v.state === "unreadable" ? v.state : null;
-  if (policy === null || typeof v.killOnExit !== "boolean") return null;
-  // 成品那一句缺了 / 空了 ⇒ 当问不到（不替后端补一句）。
-  if (typeof v.said !== "string" || v.said === "") return null;
-  return { policy, killOnExit: v.killOnExit, said: v.said, detail: typeof v.detail === "string" ? v.detail : "" };
+/** 后端那一份 ⇒ 本区要用的三格（形状由握手时的形状指纹管，这里不逐格判）。 */
+function exitAnswerOf(v: ExitPolicy): ExitAnswer {
+  return { policy: v.state, killOnExit: v.killOnExit, said: v.said, detail: v.detail ?? "" };
 }
 
 /** 「退出行为」那两问的期限：10 秒。 */
 const EXIT_POLICY_BUDGET_MS = 10_000;
 
-/** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道），原样交 [`readExitAnswer`] 收。失败就抛（说法住 `chan-caller.ts::saidFrom`）。 */
-async function askExitPolicy(origin: Origin): Promise<unknown> {
+/** 问那台机器（本机也一样）「退出行为」的值（`exit-policy-read`，经通道）。失败就抛（说法住 `chan-caller.ts::saidFrom`）。 */
+async function askExitPolicy(origin: Origin): Promise<ExitAnswer> {
   try {
-    const body = jsonBody({});
-    const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
-    return readJson(await chan.call(origin, "exit-policy-read", body, budget));
+    return exitAnswerOf(await callTyped(origin, "exit-policy-read", {}, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
     throw new Error(saidFrom(e, origin));
   }
 }
 
 /** 交那台机器写那个值：后端 `exit-policy-set`，经通道；回**写完读回来**的那一份。失败就抛。 */
-async function putExitPolicy(origin: Origin, kill: boolean): Promise<unknown> {
+async function putExitPolicy(origin: Origin, kill: boolean): Promise<ExitAnswer> {
   try {
-    const body = jsonBody({ killOnExit: kill });
-    const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
-    return readJson(await chan.call(origin, "exit-policy-set", body, budget));
+    return exitAnswerOf(await callTyped(origin, "exit-policy-set", { killOnExit: kill }, budgetWithin(EXIT_POLICY_BUDGET_MS)));
   } catch (e) {
     throw new Error(saidFrom(e, origin));
   }
 }
 
 /** 那台后端的 stderr 诊断文件尾部（后端 `backend-log` 的应答）。 */
-export interface BackendLog {
-  path: string | null;
-  size: number;
-  text: string;
-  truncated: boolean;
-}
+export type BackendLog = LogTail;
 
-/** `backend-log` 那一份 ⇒ [`BackendLog`]；缺格 / 形状不对 ⇒ `null`。 */
-export function readBackendLog(v: unknown): BackendLog | null {
-  const o = v as Partial<BackendLog> | null;
-  if (!o || typeof o !== "object") return null;
-  if (!(o.path === null || typeof o.path === "string")) return null;
-  if (typeof o.size !== "number" || typeof o.text !== "string" || typeof o.truncated !== "boolean") return null;
-  return { path: o.path, size: o.size, text: o.text, truncated: o.truncated };
-}
-
-/** 问那台机器的后端要它的诊断文件尾部（经通道、只读面）。失败 / 形状不对就抛（一句人话）。 */
+/** 问那台机器的后端要它的诊断文件尾部（经通道、只读面）。失败就抛（一句人话）。 */
 async function askBackendLog(origin: Origin): Promise<BackendLog> {
-  let raw: unknown;
   try {
-    const body = jsonBody({});
-    const budget = budgetWithin(EXIT_POLICY_BUDGET_MS);
-    raw = readJson(await chan.call(origin, "backend-log", body, budget));
+    return await callTyped(origin, "backend-log", {}, budgetWithin(EXIT_POLICY_BUDGET_MS));
   } catch (e) {
     throw new Error(saidFrom(e, origin));
   }
-  const log = readBackendLog(raw);
-  if (!log) throw unreadableFrom(origin, "backend-log reply shape");
-  return log;
 }
 
 /** 那一份怎么摆：头一行（路径 · 大小 · 截没截）＋ 正文；没落文件 ⇒ 只一行说清。 */
@@ -624,8 +591,7 @@ export class BackendSection {
   /** 拨开关：交那台的后端写，画的是它写完读回来的那一份；存不下 ⇒ 开关退回、说一句。 */
   private async toggleKill(origin: string, want: boolean): Promise<boolean> {
     try {
-      const back = readExitAnswer(await putExitPolicy(origin, want));
-      if (back === null) throw new Error(peerVersionSaid("reply_unreadable", origin));
+      await putExitPolicy(origin, want);
       // 开关变了 ⇒ 那句「退出时会发生什么」也变了，同一拍重画。
       void this.paintStatus(origin);
       return true;
@@ -669,7 +635,7 @@ export class BackendSection {
       // 那个值问那台机器的后端要（**每次现问**，不用上一次的）；问不到就是 `null`。
       let answer: ExitAnswer | null;
       try {
-        answer = readExitAnswer(await askExitPolicy(origin));
+        answer = await askExitPolicy(origin);
       } catch (e) {
         console.warn(`[B2] ${origin} 的退出策略问不到：${String(e)}`);
         answer = null;

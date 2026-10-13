@@ -21,6 +21,23 @@
 
 use super::*;
 
+// 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
+fn wire(r: &Read, path: Option<&Path>) -> serde_json::Value {
+    serde_json::to_value(super::wire(r, path)).unwrap()
+}
+
+fn wire_as(r: &Read, path: Option<&Path>, resident: bool) -> serde_json::Value {
+    serde_json::to_value(super::wire_as(r, path, resident)).unwrap()
+}
+
+fn answer_set(
+    args: &serde_json::Value,
+    own: &Own,
+) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
+    let req: ExitPolicySet = crate::stream::inbound::typed::take(args)?;
+    super::answer_set(&req, own).map(|r| serde_json::to_value(r).unwrap())
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-exitpol-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);
@@ -162,13 +179,10 @@ fn the_unreadable_said_names_the_reason_and_keeps_the_raw_value_off_the_line() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 线上形状**恰好**是登记的那几格 —— 两侧异源、按集合相等：
+/// 线上形状**恰好**是那几格：真跑出来的 JSON（三态 × 常驻 / 被监护各跑一遍 `wire_as`，取键的并集）对一份手写的字面量
+/// （四格 ＋ 成品 `said`）。两条命令的回包是同一个类型 `ExitPolicy`，协议参考与形状指纹都从它生成，不另有手写的 `fields`。
 ///
-/// - 一侧是**真跑出来的** JSON（三态 × 常驻 / 被监护各跑一遍 `wire_as`，取键的并集）；
-/// - 另一侧是 `stream/inbound/mod.rs::REGISTRY` 里两条命令手写的 `fields`（也是 `protocol_doc_guard` 拿去钉文档的那一份）。
-///
-/// 它防的是 `shell` 那一格的回潮（「折进前端进程」那一档已放弃）。任何一侧单独加回一格都红；
-/// 两侧一起加回 ⇒ 下面那条字面量对照红（第三个来源：四格 ＋ 成品 `said`）。
+/// 它防的是 `shell` 那一格的回潮（「折进前端进程」那一档已放弃）。
 #[test]
 fn the_wire_shape_is_exactly_the_registered_fields() {
     let mut produced = std::collections::BTreeSet::new();
@@ -182,18 +196,6 @@ fn the_wire_shape_is_exactly_the_registered_fields() {
             let obj = v.as_object().expect("wire 回的不是对象");
             produced.extend(obj.keys().cloned());
         }
-    }
-    for name in ["exit-policy-read", "exit-policy-set"] {
-        let spec = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == name)
-            .unwrap_or_else(|| panic!("注册表里没有 {name}"));
-        let declared: std::collections::BTreeSet<String> =
-            spec.field_names().map(str::to_string).collect();
-        assert_eq!(
-            produced, declared,
-            "`{name}` 真跑出来的键与登记的 `fields` 对不上（两向）"
-        );
     }
     let want: std::collections::BTreeSet<String> =
         ["detail", "killOnExit", "path", "reason", "said", "state"]

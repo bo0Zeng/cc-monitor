@@ -134,7 +134,7 @@ pub(crate) fn register(table: &Table, args: &Value) -> Result<String, (&'static 
             crate::common::contract::malformed("missing `origin` (the machine name)"),
         )
     })?;
-    let dial: ReachDial = args
+    let dial: super::pick::MachineDial = args
         .get("dial")
         .ok_or_else(|| {
             (
@@ -183,50 +183,7 @@ pub(crate) struct ReachReq {
     #[cfg_attr(test, ts(as = "String"))]
     pub(crate) origin: cmd_wire::Machine,
     /// 那台的拨号（只有路径，没有私钥本体）。
-    pub(crate) dial: ReachDial,
-}
-
-/// 可达表里存的那一份拨号：拨哪台那几格 ＋ 用法 ＋ 界面进程此刻的 ssh-agent 套接字。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct ReachDial {
-    pub(crate) machine: super::pick::MachineConfig,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) saved: Option<super::pick::MachineConfig>,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) jump: Option<super::pick::MachineConfig>,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) prefer: Option<super::pick::Prefer>,
-    /// 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
-    #[serde(default, rename = "use")]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) use_: Option<String>,
-    /// ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) agent_sock: Option<String>,
-}
-
-impl ReachDial {
-    /// 存进可达表的那一份（线上拨号的形状：之后经 `ssh_dial::machine::resolve` 读，先在这里读一遍，坏了当场拒）。
-    fn stored(&self) -> Result<Value, (&'static str, String)> {
-        let pick = super::pick::Pick {
-            machine: &self.machine,
-            saved: self.saved.as_ref(),
-            jump: self.jump.as_ref(),
-            prefer: self.prefer.as_ref(),
-        };
-        pick.machines()?;
-        let mut v = pick.dial_value();
-        v["use"] = json!(self.use_);
-        v["agent_sock"] = json!(self.agent_sock);
-        Ok(v)
-    }
+    pub(crate) dial: super::pick::MachineDial,
 }
 
 /// `remote-reach` 的应答：登记的那台 ＋ 登记之后的可达表。

@@ -1175,15 +1175,12 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
     const CC_BUS_CONTROL: &str = include_str!("../../__fixtures__/cc-bus-control.golden.json");
     const CC_BUS_READ: &str = include_str!("../../__fixtures__/cc-bus-read.golden.json");
-    const CCM_PROBE: &str = include_str!("../../__fixtures__/ccm-probe.golden.json");
     const CELLS_CATALOG: &str = include_str!("../../__fixtures__/cells-catalog.golden.json");
-    const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
     const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
-    const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1275,9 +1272,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &["command", "kind", "note", "path", "session_start", "stop"],
             &[],
         ),
-        ("relay-optin", RELAY_OPTIN, "", &[], &[]),
-        ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
-        ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
         ("rotation-switch", ROTATION_SWITCH_RESTART, "", &[], &[]),
     ];
@@ -1309,7 +1303,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 81;
+    const UNSHAPED_CEILING: usize = 76;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1329,15 +1323,11 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "apikey-key-set",
         "assets-catalog",
         "assets-catalog-merge",
-        "backend-log",
         "cc-bus-install",
         "cc-bus-install-state",
-        "ccm-print",
         "chores-mark",
         "data-report",
         "drift-report",
-        "exit-policy-read",
-        "exit-policy-set",
         "ext-hub-apply",
         "ext-hub-preview",
         "ext-list",
@@ -1378,7 +1368,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "mcp-sync-plan",
         "mcp-sync-preview",
         "mcp-sync-source",
-        "place-verdict",
         "plan-ack",
         "plan-cell-view",
         "plan-list",

@@ -31,10 +31,7 @@ use super::CREDENTIALS_FILE_AGENT;
 use crate::agents::{SettingsBaseUrl, SettingsEnvFace, SettingsUnreadable};
 use copy_core::copy_text;
 use relay_route_core::{base_url, RouteMode, PORT};
-use serde_json::{json, Value};
-
-/// 本族的应答：`data` 或 `(code, message)`。
-pub(crate) type EndpointAnswer = Result<Value, (&'static str, String)>;
+use serde_json::Value;
 
 /// 账号 0（不注入 `CLAUDE_CONFIG_DIR` 那一档）在 `/t/` 路由里的账号段。只是标签（`/t/` 从不查它的 key）。
 pub(crate) const BASE_ACCOUNT_SEGMENT: &str = acct_core::BARE_ACCOUNT;
@@ -317,26 +314,27 @@ pub(crate) fn optin_state(found: &SettingsBaseUrl, expected: Option<&str>) -> Op
     }
 }
 
-/// `relay-optin`：入参 `{agent}`（适配器 id）→ 那一家的 `{state, note, missing, source, snippet, listening}`。
-///
-/// 该贴的那一条 ＝ 决策表里「没表态是哪个号」那一发（[`decide_launch`]，全量注入按「是」—— 贴这一段就是用户自己选了全量）插上这台的钥匙；
-/// 已装 ⇒ 不再带那一段（钥匙只在要贴的时候才出这台）。只读：那份文件由用户自己合并，后端一个字节不写。
-pub(crate) fn answer_optin(args: &Value) -> EndpointAnswer {
-    let agent = agent_arg(args)?;
-    let home = crate::platform::paths::home_dir()
-        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noHome", &[])))?;
-    let face = crate::agents::settings_env_face(agent)
-        .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
-    let registered =
-        super::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
-    Ok(optin_at(
-        &home,
-        agent,
-        &face,
-        &super::file_face::machine_rows(),
-        registered,
-        &crate::relay::our_relay_listening,
-    ))
+/// `relay-optin` 的应答。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct Optin {
+    /// `installed`（写着的就是现在那一条）· `stale`（是我们那一形，钥匙 / 端口 / 路由换了）· `absent` · `other`（别的上游）· `unreadable`。
+    #[cfg_attr(
+        test,
+        ts(type = "\"installed\" | \"stale\" | \"absent\" | \"other\" | \"unreadable\"")
+    )]
+    pub(crate) state: &'static str,
+    /// 那份文件为什么读不了（`unreadable` 才有，其余空串）。
+    pub(crate) note: String,
+    /// 那一段为什么生成不了；已装 / 生成得了 ⇒ 空串。
+    pub(crate) missing: String,
+    /// 读的是哪份文件（这台后端看到的路径）。
+    pub(crate) source: String,
+    /// 要合并进那份文件的那一段（**带钥匙**）；已装或生成不了 ⇒ `null`。
+    pub(crate) snippet: Option<String>,
+    /// 这台我们的中转此刻在不在听。
+    pub(crate) listening: bool,
 }
 
 /// 一家「直接敲的也走中转」此刻的样子（帧命令 `relay-optin` 与「待办」那一件同读这一份）。
@@ -442,16 +440,16 @@ pub(crate) fn optin_at(
     routed: &[String],
     registered: bool,
     listening: &dyn Fn(u16) -> bool,
-) -> Value {
+) -> Optin {
     let r = optin_report_at(home, agent, face, routed, registered);
-    json!({
-        "state": r.state.name(),
-        "note": r.note,
-        "missing": r.missing,
-        "source": r.source.display().to_string(),
-        "snippet": r.url.as_deref().map(face.snippet),
-        "listening": listening(PORT),
-    })
+    Optin {
+        state: r.state.name(),
+        note: r.note,
+        missing: r.missing,
+        source: r.source.display().to_string(),
+        snippet: r.url.as_deref().map(face.snippet),
+        listening: listening(PORT),
+    }
 }
 
 /// 线上 `agent`（适配器 id）→ 那一家。缺席 / 不是串 ⇒ `bad_args`（入参形状，调用方没表态是哪一家就不猜）；

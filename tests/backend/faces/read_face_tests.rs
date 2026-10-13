@@ -42,6 +42,15 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
         "history-find" => via::<h::HistoryFindCmd>(args, |r| h::find_at(home, r, tz)),
         "history-facts" => via::<h::HistoryFactsCmd>(args, |r| h::facts_at(home, r)),
+        "backend-log" => via::<super::BackendLog>(args, |r| {
+            <super::BackendLog as crate::stream::inbound::typed::Blocking>::run(
+                r,
+                &crate::stream::inbound::typed::Cx {
+                    tz: tz.clone(),
+                    until: None,
+                },
+            )
+        }),
         _ => super::answer_at(home, cmd, args, tz),
     }
 }
@@ -80,8 +89,6 @@ const FAMILY: &[&str] = &[
     "history-page",
     "drift-report",
     "history-tail",
-    // 这台后端的 stderr 诊断文件尾部（异源是手抄的要求「经那台后端的只读面」，不是 `stream/inbound/`）。
-    "backend-log",
 ];
 
 fn scratch(tag: &str) -> PathBuf {
@@ -1191,11 +1198,12 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
     let home = scratch("gap1-log");
     let p = home.join("stderr.log");
     std::fs::write(&p, "first line\nsecond line\nthird\n").unwrap();
+    let log_tail = |p: Option<&Path>, max| serde_json::to_value(log_tail(p, max).unwrap()).unwrap();
     assert_eq!(
-        log_tail(None, 100).unwrap(),
+        log_tail(None, 100),
         serde_json::json!({"path": null, "size": 0, "text": "", "truncated": false})
     );
-    let all = log_tail(Some(&p), 1000).unwrap();
+    let all = log_tail(Some(&p), 1000);
     assert_eq!(
         (
             all["text"].as_str(),
@@ -1209,7 +1217,7 @@ fn gap1_backend_log_returns_the_tail_cut_at_a_line() {
         )
     );
     // 尾 10 字节 = "ine\nthird\n" ⇒ 截点落在 second line 中间 ⇒ 从下一行起。
-    let tail = log_tail(Some(&p), 10).unwrap();
+    let tail = log_tail(Some(&p), 10);
     assert_eq!(
         (tail["text"].as_str(), tail["truncated"].as_bool()),
         (Some("third\n"), Some(true))

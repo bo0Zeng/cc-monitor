@@ -112,3 +112,46 @@ impl Pick<'_> {
         })
     }
 }
+
+/// 一份拨号（线上形）：拨哪台那几格 ＋ 用法 ＋ 界面进程此刻的 ssh-agent 套接字。可达表存它（`remote-reach` · `assets-sync`），部署计划拿它去问那台（`deploy-plan`）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct MachineDial {
+    pub(crate) machine: MachineConfig,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) saved: Option<MachineConfig>,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) jump: Option<MachineConfig>,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) prefer: Option<Prefer>,
+    /// 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+    #[serde(default, rename = "use")]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) use_: Option<String>,
+    /// ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) agent_sock: Option<String>,
+}
+
+impl MachineDial {
+    /// 交给还收原样拨号的那几处的那一份（之后经 `ssh_dial::machine::resolve` 读；先在这里读一遍，坏了当场拒）。
+    pub(crate) fn stored(&self) -> Result<Value, (&'static str, String)> {
+        let pick = Pick {
+            machine: &self.machine,
+            saved: self.saved.as_ref(),
+            jump: self.jump.as_ref(),
+            prefer: self.prefer.as_ref(),
+        };
+        pick.machines()?;
+        let mut v = pick.dial_value();
+        v["use"] = json!(self.use_);
+        v["agent_sock"] = json!(self.agent_sock);
+        Ok(v)
+    }
+}

@@ -56,11 +56,11 @@ describe("B2 · 「退出行为」那个值不住前端", () => {
       ).toEqual([]);
     }
     // ★ 正控：问 / 交写那两问**真的**还在（否则上面那几条零命中可能只是「整片都没了」）。
-    // 两条包装层命令退役，设置页经通道直接说后端那两条帧命令 ⇒ 正控改成钉那两处 `chan.call`。
+    // 两条包装层命令退役，设置页经通道直接说后端那两条帧命令（按类型问）⇒ 正控钉那两处 `callTyped`。
     const sec = files.find((f) => f.rel === "src/frontend/ui/settings/backend-section.ts");
     expect(sec, "找不到 settings/backend-section.ts —— 人群坏了").toBeDefined();
     for (const op of ["exit-policy-read", "exit-policy-set"]) {
-      expect(sec!.code.includes(`chan.call(origin, "${op}"`), `设置页没有经通道说 ${op}`).toBe(true);
+      expect(sec!.code.includes(`callTyped(origin, "${op}"`), `设置页没有经通道说 ${op}`).toBe(true);
     }
   });
 });

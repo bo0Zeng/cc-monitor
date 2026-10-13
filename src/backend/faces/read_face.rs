@@ -60,10 +60,18 @@ pub fn note_backend_log(path: std::path::PathBuf) {
 }
 
 /// 那份文件的尾部 ⇒ `{path, size, text, truncated}`；没装 ⇒ `path: null`。截断时从截点后第一个换行起（不给半行）。
-pub(crate) fn log_tail(path: Option<&std::path::Path>, max: u64) -> Answer {
+pub(crate) fn log_tail(
+    path: Option<&std::path::Path>,
+    max: u64,
+) -> Result<LogTail, (&'static str, String)> {
     use std::io::{Read, Seek, SeekFrom};
     let Some(path) = path else {
-        return Ok(json!({ "path": null, "size": 0, "text": "", "truncated": false }));
+        return Ok(LogTail {
+            path: None,
+            size: 0,
+            text: String::new(),
+            truncated: false,
+        });
     };
     let mut f = Ro::open(path).map_err(|e| ("failed", e.to_string()))?;
     let size = f.metadata().map_err(|e| ("failed", e.to_string()))?.len();
@@ -79,12 +87,71 @@ pub(crate) fn log_tail(path: Option<&std::path::Path>, max: u64) -> Answer {
     } else {
         &buf[..]
     };
-    Ok(json!({
-        "path": path.display().to_string(),
-        "size": size,
-        "text": String::from_utf8_lossy(body),
-        "truncated": from > 0,
-    }))
+    Ok(LogTail {
+        path: Some(path.display().to_string()),
+        size,
+        text: String::from_utf8_lossy(body).into_owned(),
+        truncated: from > 0,
+    })
+}
+
+/// `backend-log` 的应答：这台后端 stderr 诊断文件的尾部。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct LogTail {
+    /// 本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null`。
+    pub(crate) path: Option<String>,
+    /// 那份文件的总字节数。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) size: u64,
+    /// 尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行。
+    pub(crate) text: String,
+    /// 前面还有没回的字节。
+    pub(crate) truncated: bool,
+}
+
+/// `backend-log` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct BackendLogReq {
+    /// 只回尾部这么多字节；缺 ⇒ 封顶 256 KiB（给多了也照封顶）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable, type = "number"))]
+    pub(crate) max_bytes: Option<u64>,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `backend-log` 的码：那份文件读不了。
+    pub(crate) enum BackendLogErr {
+        Failed = "failed",
+    }
+}
+
+/// `backend-log`：这台后端的 stderr 诊断文件尾部（读一份文件 ⇒ 阻塞档）。
+pub(crate) struct BackendLog;
+
+impl crate::stream::inbound::typed::Command for BackendLog {
+    const NAME: &'static str = "backend-log";
+    type Req = BackendLogReq;
+    type Reply = LogTail;
+    type Err = BackendLogErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for BackendLog {
+    fn run(
+        req: BackendLogReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<LogTail, BackendLogErr> {
+        let max = req
+            .max_bytes
+            .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
+        log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max).map_err(
+            crate::stream::inbound::typed::of_pair(BackendLogErr::Failed),
+        )
+    }
 }
 
 /// 本族的应答：`data` 或 `(code, message)`。
@@ -101,11 +168,6 @@ pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
 pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
     use crate::observe::accounts_query;
     match cmd {
-        // 这台后端自己的 stderr 诊断文件（尾部）—— 机器页「日志」经这台后端的只读面取回来看。
-        "backend-log" => {
-            let max = u64_arg(args, "maxBytes")?.map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
-            log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
-        }
         // 这台后端的漂移账（看不懂的记录类型）出成品：`{faces: [...]}`（各家的面并在一起，注册序）。
         "drift-report" => {
             let faces: Vec<Value> = crate::agents::drift_reports()
@@ -252,20 +314,6 @@ fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'sta
             "bad_args",
             crate::common::contract::malformed(&format!("{key} must be a string")),
         )),
-    }
-}
-
-fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {
-    match args.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => v.as_u64().map(Some).ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "`{key}` must be a non-negative integer"
-                )),
-            )
-        }),
     }
 }
 

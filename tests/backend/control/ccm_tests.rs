@@ -1,5 +1,16 @@
 use super::*;
 
+// 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
+fn answer_print(args: &serde_json::Value) -> Result<serde_json::Value, (&'static str, String)> {
+    let req: CcmPrintReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::answer_print(&req).map(|r| serde_json::to_value(r).unwrap())
+}
+
+fn answer_probe() -> serde_json::Value {
+    serde_json::to_value(super::answer_probe()).unwrap()
+}
+
 /// ★★ **`KR96D2` 死值验第一刀：铸名避让只许问那一张快照，且算完就定死。**
 ///
 /// 「另起一份名字集合」有两种长法，这里各钉一条：

@@ -117,7 +117,7 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 // 「重新对齐」做完经 Tauri 事件通知主窗口；这里没有 Tauri 运行时 ⇒ 换成空的 emit。
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn(async () => {}), listen: vi.fn(async () => () => {}) }));
 
-import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, readBackendLog, stopSaid } from "../../../../src/frontend/ui/settings/backend-section";
+import { BACKEND_COLUMNS, BackendSection, decodeHealthFace, stopSaid } from "../../../../src/frontend/ui/settings/backend-section";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { interruptRows, type Interrupts } from "../../../../src/frontend/ui/settings/interrupts";
 import type { DialogRow } from "../../../../src/frontend/ui/kit/dialog";
@@ -260,19 +260,6 @@ describe("P2s backend 开关区", () => {
     await flush();
     const exit = s.element.querySelector<HTMLElement>(".backend-row-exit");
     expect(exit?.textContent).toBe(EXIT_UNATTENDED);
-  });
-
-  it("★★ 〔㊴〕后端**没给** `said`（旧后端）/ 给了空串 ⇒ 当问不到：勾禁用、那一行不替它说话", async () => {
-    for (const said of [undefined, ""]) {
-      exitAnswer = { state: "absent", killOnExit: false, reason: null, path: "x", ...(said === undefined ? {} : { said }) };
-      const s = new BackendSection({ headless: true });
-      await flush();
-      await flush();
-      const exit = s.element.querySelector<HTMLElement>(".backend-row-exit")!;
-      expect(exit.textContent, `said=${String(said)} 时界面替后端说了一句`).toBe("");
-      expect(exit.dataset.exit).toBe("unasked");
-      expect(isOff(killOf(s.element))).toBe(true);
-    }
   });
 
   it("★ 机器清单问后端要，不自己算（A5：前端自己拼会与 Rust 的 origin 分叉四处）", async () => {
@@ -795,6 +782,5 @@ describe("〔GAP1〕每台一行的「日志」：问的是那一台、摆的是
     await flush();
     expect(local.querySelector("[data-backend-log] .settings-hint")?.textContent).toBe(copyText("backend.log.none"));
     expect(remote.querySelector("[data-backend-log] .settings-hint")?.textContent).toMatch(copyPattern("backend.log.failed", {}, { whole: true }));
-    expect(readBackendLog({ path: "/p", size: 1, text: "x" }), "缺 truncated ⇒ 形状不对").toBeNull();
   });
 });

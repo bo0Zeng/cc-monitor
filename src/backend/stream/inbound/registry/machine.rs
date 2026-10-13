@@ -7,58 +7,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **别名预览**（「生成器旁边显示这条别名实际会执行什么，是真验证，
     //   不是前端拼串」）：与 `ccm --print` 同一个计划函数，环境是「这台机器家目录里的一个新终端」。
     //   只读（不起进程、不写盘），阻塞档（读账号库 manifest ＋ 问会话快照）。
-    CommandSpec {
-        name: "ccm-print",
-        summary: "一条别名实际会执行什么",
-        codes: &["bad_args", "refused"],
-        fields: &[arg("args", "一条别名的预置参数（原样 ccm argv，`<交给 agent 的…> -- <ccm 的…>` 那一形；最多 64 个、每个最长 4096 字节）"), out("line", "`ccm --print` 那一行")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::ccm::answer_print(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::control::ccm::CcmPrint>("一条别名实际会执行什么"),
     // **这台的 `ccm` 会哪些**：`ccm` 就是这台后端本身，「PATH 上那个是谁」退化成问它自己。
     //   纯函数（拼 `--ccm-probe` 那几行），不起进程、不碰盘 ⇒ 不进阻塞档（同 `ping` 那一形）。
-    CommandSpec {
-        name: "ccm-probe",
-        summary: "这台的 `ccm` 会哪些",
-        codes: &[],
-        fields: &[out("agents", "认得的 agent 种类"), out("build", "这一份的 `BUILD_ID`"), out("capabilities", "这台 `ccm` 认得的能力（与名片的 `capabilities=` 行同一份）"), out("version", "CLI 契约版本（`CCM_VERSION`）")],
-        takes_input: false,
-        run: Run::Async(|_r| {
-            Box::pin(async move { Ok(Some(crate::control::ccm::answer_probe())) })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::control::ccm::CcmProbe>("这台的 `ccm` 会哪些"),
     // **部署计划**：`{dial, carried, machine}` → 换成哪一格 · 落点那一份是谁 · 该不该换 · 旧落点那份删不删。
     //   真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。本体 `control/deploy_plan.rs`。
-    CommandSpec {
-        name: "deploy-plan",
-        summary: "那台的后端要不要换、换成哪一格",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "refused",
-            "unreachable",
-            "undecidable",
-        ],
-        fields: &[out("ack", "问 `uname` 那一趟拨号的 `DialAck` 原样（逐地址指纹 · 严格与否）：拨号在本机后端里，monitor 按它固化指纹（与自己开链路那几条同一个判定）"), out("action", "`skip`（已是这一版）· `deploy`（没装 / 0 字节 / 更旧）· `keep`（另一版、不比这一版旧 ⇒ 不动它）"), out("arch", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("expected", "那一格这一版带着的字节自报的身份（对照物）"), out("label", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("leftovers", "落点目录里没人要的上传残件（家目录相对，排序）；列不出那个目录 ⇒ `[]`（下次连上再问）"), out("os", "那台是表 A 的哪一格（`label` 说给人听：`Linux / x86_64`）"), out("theirs", "`keep` 时那台上那一份自报的身份，否则 `null`"), out("why", "人读原因（`skip` 时空串）")],
-        takes_input: true,
-        run: Run::AsyncData(|r| {
-            Box::pin(async move {
-                let facing = crate::control::deploy_plan::DialFacing::new(
-                    r.args
-                        .get("dial")
-                        .cloned()
-                        .unwrap_or(serde_json::Value::Null),
-                );
-                crate::control::deploy_plan::answer(&r.args, &facing)
-                    .await
-                    .map(Some)
-            })
-        }),
-    },
+    crate::stream::inbound::typed::asynchronous::<crate::control::deploy_plan::DeployPlan>(
+        "那台的后端要不要换、换成哪一格",
+    ),
     // **远端常驻后端 hello 的新旧**：`{mine, theirs, replaced}` → `{action, older}`（纯判定，不碰盘不拨号 ⇒ 不进阻塞档）。
     //   本体 `control/deploy_plan.rs::answer_resident_verdict`（判定只在后端）。
     CommandSpec {
@@ -77,14 +34,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     },
     // **本机那一份放不放**：`{dest, machine}` → `{action: place|keep, why}`（只读落点那一个文件 ⇒ 阻塞档）。
     //   monitor 放本机后端之前还没有常驻后端 ⇒ 跑手上那份字节的 CLI 面问它（`--place-verdict`）。本体 `control/deploy_plan.rs::answer_place`。
-    CommandSpec {
-        name: "place-verdict",
-        summary: "本机那一份放不放",
-        codes: &["bad_args", "refused", "undecidable"],
-        fields: &[out("action", "`place`（放 / 换上去）· `keep`（盘上那一份不比这一份旧 ⇒ 不动、用它）"), arg("dest", "落点的绝对路径（不在 ⇒ 没装 ⇒ 放；读不了 ⇒ `undecidable`，不当成没装）"), arg("machine", "对人说话时这台叫什么（monitor 交「本机」）"), out("why", "人读原因（`keep` 时点名两边各是哪一版）")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::control::deploy_plan::answer_place(&r.args).map(Some)),
-    },
+    crate::stream::inbound::typed::blocking::<crate::control::deploy_plan::PlaceVerdict>("本机那一份放不放"),
     // **公钥一键推送**（本机常驻后端答）：`{machine, saved?, jump?, pubKeyPath?}` → `{outcome, pubPath, via}`。
     //   那台在可达表里 ⇒ 问它 `authorized-keys-add`；不在 ⇒ 沿池里那条 SSH 一次 exec（只写这一件）。本体 `assets/pubkey.rs`。
     crate::stream::inbound::typed::asynchronous::<crate::assets::pubkey::PubkeyPush>(
@@ -101,35 +51,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⚠ `exit-policy-read` **没有错误码**：「读不出来」是一个**状态**（`state: "unreadable"` ＋ `reason`），
     //     不是一次失败 —— 调用方要的就是那一句「读不出来，按默认办」（`§3.3b ⑤`）。
     //   ⚠ CLI 面同样是派生的必然（`cli_control::cli_exposed`），理由同 `files-create` 那一段（文件管理那一族开头）。
-    CommandSpec {
-        name: "exit-policy-read",
-        summary: "读「退出行为」那个值（值住后端所在那台）",
-        codes: &[],
-        fields: &[out("detail", "`unreadable` 时的复制详情（时刻 · 机器 · 命令 · 码 · 原话；排法同失败应答），`reason` 那一句不带原话"), out("killOnExit", "monitor 退出时结束本机常驻后端"), out("path", "那份文件的路径（在 `~/.cc-monitor/` 下）"), out("reason", "`unreadable` 时的原因"), out("said", "这个值意味着什么的一句话"), out("state", "`absent`（没设过）· `chosen` · `unreadable`（读不出：也是 `ok:true`）")],
-        takes_input: false,
-        run: Run::Blocking(|_r| Ok(Some(crate::control::exit_policy::answer_read()))),
-    },
-    CommandSpec {
-        name: "exit-policy-set",
-        summary: "写「退出行为」那个值，写完读回",
-        codes: &["bad_args", "io_failed"],
-        fields: &[out("detail", "同 `exit-policy-read`"), both("killOnExit", "要写的值（布尔）"), out("path", "同 `exit-policy-read`"), out("reason", "同 `exit-policy-read`"), out("said", "同 `exit-policy-read`"), out("state", "写完再读一遍的状态")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| crate::control::exit_policy::answer_set(&r.args, own).map(Some)),
-    },
+    crate::stream::inbound::typed::blocking::<crate::control::exit_policy::ExitPolicyRead>(
+        "读「退出行为」那个值（值住后端所在那台）",
+    ),
+    crate::stream::inbound::typed::owning::<crate::control::exit_policy::ExitPolicySetCmd>("写「退出行为」那个值，写完读回"),
     // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
-    CommandSpec {
-        name: "relay-optin",
-        summary: "直接敲的 agent 也走中转",
-        codes: &["bad_args", "failed"],
-        fields: &[arg("agent", "哪一家的那一份（适配器 id）。空串 ⇒ 默认那一家；注册表里没有 ⇒ `bad_args`，那句话列出认得的几家"), out("listening", "这台我们的中转此刻在不在听（与 `accounts-list` 账号徽章的「中转未运行」同一个判准：`relay::our_relay_listening`）"), out("missing", "那一段为什么生成不了（这台的中转还没起来过、没有钥匙 · 决策表不给这一条）；已装 / 生成得了 ⇒ 空串"), out("note", "那份文件为什么读不了（`unreadable` 才有，其余空串）"), out("snippet", "要合并进那份文件的那一段（**带钥匙**：设置文件里写不了 `$(cat …)`）；`installed` 或生成不了 ⇒ `null`"), out("source", "读的是哪份文件（这台后端看到的路径）"), out("state", "`installed`（写着的就是现在那一条）· `stale`（是我们那一形")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::accounts::upstream_select::endpoint::answer_optin(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::relay_optin_face::RelayOptin>(
+        "直接敲的 agent 也走中转",
+    ),
     // 这里原是 `relay-status` / `relay-ensure`（这台机器上脱离的 `--relay` 在不在 · 起一个）：
     //   中转只住常驻后端进程里（本机远端同形），那一族随回落一形删了。
     // 漂移账出成品（`read_face.rs` 那一臂 ＋ 注册表 `RecordFace.drift`）。纯内存读一把锁，不进阻塞档（同 `forward-list`）。
@@ -168,18 +97,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   （拨号请求 ＋ 那台后端的路径），本机后端记进内存可达表（`remote_ask`，后端重启就空）。**只登记，不拨号**：
     //   之后「本机后端问远端后端」的两路（资产目录同步 · 历史跨机 join）都查这张表。老远端也登记（历史问它的是老子命令）。
     crate::stream::inbound::typed::asynchronous::<crate::dial::remote_ask::RemoteReach>("本机后端的可达表登记"),
-    CommandSpec {
-        name: "backend-log",
-        summary: "这台后端的 stderr 诊断文件尾部",
-        codes: &["bad_args", "failed"],
-        fields: &[arg("maxBytes", "可选，缺省 = 封顶 256 KiB：只回尾部这么多字节"), out("path", "本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null`"), out("size", "那份文件的总字节数"), out("text", "尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行"), out("truncated", "前面还有没回的字节")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::faces::read_face::answer(&r.cmd, &r.args, &r.tz)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::read_face::BackendLog>("这台后端的 stderr 诊断文件尾部"),
     // 起一次那一代 PowerShell（同步子进程）⇒ 阻塞档。
     CommandSpec {
         name: "powershell-policy-set",
