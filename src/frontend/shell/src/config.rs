@@ -4,7 +4,7 @@
 //! 只负责读、**按键补丁**写 ＋ 文件缺失时给出最小骨架。
 //!
 //! 配置文件位置走 [`resolve_config_path`] —— monitor 自己的设置永远在
-//! 默认 `~/.cc-monitor/` 下（一台机器一个家，与后端同一个），不跟随 `claudeDir` 字段变化。
+//! 默认 `~/.cc-monitor/` 下（一台机器一个家，与后端同一个），不跟随 Claude 数据目录变化。
 //!
 //! 从前每个前端模块「读整份 → 改自己的键 → 整份写回」，主窗（tab 栏的分组 / 固定 / 顺序）与设置窗
 //! （行为 / 主题 / 快捷键 / 账号 / 远端）是同一进程里的两个 webview，两次读-改-写一交错，
@@ -18,15 +18,14 @@
 //!
 //! # 〔「`config` ＋ `paths` → 一处」〕数据目录与配置文件路径（原 `paths.rs`，整份并进本文件、只挪住址）
 //!
-//! monitor 自己配置文件的路径解析 ＋ 设置里那条「Claude 目录」覆盖的原值。
+//! monitor 自己配置文件的路径解析。
 //!
-//! ### Claude 目录不在这里解析
+//! ### Claude 目录不在这里
 //!
-//! 「这台的 Claude 数据目录在哪」只由那台后端解析（`agents/claudecode/paths.rs::resolve_home`）。monitor 只读出用户在
-//! 设置里填的覆盖（config.json 的 `claudeDir`，[`claude_dir_override`]），起本机后端时**显式**交过去
-//! （`local_backend_host::backend_env`）；没填 ⇒ 不交，后端照它自己那条规矩解析。
+//! 「这台的 Claude 数据目录在哪」只由那台后端解析（`agents/claudecode/paths.rs::resolve_home`）；设置里那一格住本机后端的
+//! `prefs.json`（`agentHomes`），后端起来时自己读，monitor 不读、不交。
 //!
-//! monitor 自己的 config.json 始终保存在**默认位置** `~/.cc-monitor/config.json`，**不**跟随 claudeDir 变化：
+//! monitor 自己的 config.json 始终保存在**默认位置** `~/.cc-monitor/config.json`，**不**跟随 Claude 数据目录变化：
 //! 用户切换 Claude 数据目录后，monitor 的 theme/字体设置不会丢。
 //!
 //! ### 🔴 那句「永远在默认位置」有一个出口
@@ -335,7 +334,7 @@ pub const DATA_DIR_ENV: &str = creds_core::store::DATA_DIR_ENV;
 
 /// Monitor 自己的 user-data 目录。
 ///
-/// 默认 `~/.cc-monitor/`—— **不跟随 `claudeDir` 变化**
+/// 默认 `~/.cc-monitor/`—— **不跟随 Claude 数据目录变化**
 /// （避免循环依赖、且保留用户设置在切换数据目录后仍存在）。
 ///
 /// # 🔴 那个 env 出口为什么必须有
@@ -399,39 +398,6 @@ pub fn monitor_data_dir_from(env_val: Option<&str>, home: Option<PathBuf>) -> Op
 /// Monitor 配置文件：`<monitor_data_dir>/config.json`
 pub fn resolve_config_path() -> Option<PathBuf> {
     Some(resolve_monitor_data_dir()?.join("config.json"))
-}
-
-/// 读取 monitor config.json 的 `claudeDir` 字段（用户在设置面板里写入）——原值，不查在不在、不回退：
-/// 怎么解析是那台后端的事，这里只负责把用户填的那一格交过去。
-pub(crate) fn claude_dir_override() -> Option<PathBuf> {
-    let cfg = resolve_config_path()?;
-    if !cfg.exists() {
-        return None;
-    }
-    // 〔E 吞错普查点名〕文件在而读不动 / 不是 JSON ⇒ 设置里那条「Claude 目录」覆盖这一次**不生效**、回到默认目录。
-    // 原先两个 `.ok()?` 把它折成「没设」—— 用户以为改了目录，实际读的是默认那一份，一句话都没有。
-    // 每次起 / 停本机后端都读一遍 ⇒ 同一个进程里只说一次。
-    let value: serde_json::Value = match std::fs::read_to_string(&cfg)
-        .map_err(|e| e.to_string())
-        .and_then(|raw| serde_json::from_str(&raw).map_err(|e| e.to_string()))
-    {
-        Ok(v) => v,
-        Err(e) => {
-            static SAID: std::sync::Once = std::sync::Once::new();
-            SAID.call_once(|| {
-                tracing::warn!(
-                    "设置里的 Claude 目录覆盖这一次没交给本机后端：{} 读不动或不是 JSON（{e}）—— 后端按它自己的规矩解析",
-                    cfg.display()
-                );
-            });
-            return None;
-        }
-    };
-    let dir_str = value.get("claudeDir")?.as_str()?;
-    if dir_str.trim().is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(dir_str))
 }
 
 #[cfg(test)]

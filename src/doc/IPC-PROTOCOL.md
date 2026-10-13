@@ -246,7 +246,7 @@
 
 | 文件 | 写 | 读 | 是什么 |
 |---|---|---|---|
-| `config.json` | monitor（唯一写口 `config.rs::patch_config_at`：交「改哪几条路径」，进程级锁里现读、逐条应用、原子替换；盘上读不懂就拒写） | monitor 前端 · `logging` · 起本机后端时取 `claudeDir` | 主题 · 字体 · `claudeDir` 覆盖 · 诊断 |
+| `config.json` | monitor（唯一写口 `config.rs::patch_config_at`：交「改哪几条路径」，进程级锁里现读、逐条应用、原子替换；盘上读不懂就拒写） | monitor 前端 · `logging` | 主题 · 字体 · 诊断（Claude 数据目录住本机后端 `prefs.json` 的 `agentHomes`） |
 | `ps-await/<PID>.tty` | Linux bash / zsh 接入块（`src/shared/ccm-aliases.sh`，本机桌面上开的 shell） | monitor `bind.rs` | `{shell_pid, proc_start, tty}`：「去认这个终端的窗口」；认上 / 认不出就删 |
 | `ps-registry/<PID>.json` | monitor `bind.rs` | monitor 拉前 | `{ps_pid, hwnd, owner_pid, owner_proc_start, ps_proc_start, title_at_bind, registered_at}`：那个 shell 显示在哪个窗口；与 shell 进程同寿 |
 | `auto-launch.json` | monitor 设置 · 启动时写自己的路径 | PowerShell 接入块 `__ccm_bind` | `{auto_launch_enabled, monitor_exe_path}`：用 `cc` 起 claude 时要不要顺手开 monitor |

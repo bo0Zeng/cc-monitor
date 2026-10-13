@@ -6,7 +6,7 @@
 //! 机器表（`remote`）搬进本机 `machines.json`：本机 `machines-read` 说 `ok` 才删（[`after_machines_read`]）。
 //!
 //! 搬走的那几个键：`resumeCommand`（通用页那一格）· `localResumeCommand`（本机那一格）· `resumeInTmux` · `contextLimits` ·
-//! `accounts`（只剩 `byMachine.<origin>.modelByAccount`，每号模型）。机器表每台的 `resumeCommand` 那一格界面不再读写，
+//! `accounts`（只剩 `byMachine.<origin>.modelByAccount`，每号模型）· `claudeDir`（数据目录那一格，进本机 `agentHomes`）。机器表每台的 `resumeCommand` 那一格界面不再读写，
 //! 那一台下次存的时候自然没了（机器表那一格不拒多出来的键）。
 
 use crate::copy_table::copy_text;
@@ -15,12 +15,13 @@ use serde_json::{json, Value};
 use std::path::Path;
 
 /// 搬进本机 `prefs.json` 的那几个顶层键（`src/frontend/ui/config.ts` 把它们登记给本文件）：本机 `prefs-read` 说 `ok` 才删。
-pub(crate) const MOVED_KEYS: [&str; 5] = [
+pub(crate) const MOVED_KEYS: [&str; 6] = [
     "resumeCommand",
     "localResumeCommand",
     "resumeInTmux",
     "contextLimits",
     "accounts",
+    "claudeDir",
 ];
 
 /// 搬进本机 `machines.json` 的那一个（机器表）：本机 `machines-read` 说 `ok` 才删（[`after_machines_read`]）。

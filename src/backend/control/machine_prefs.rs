@@ -207,14 +207,24 @@ pub fn apply_agent_homes(own: &Own) {
         Loaded::Absent => super::prefs_migration::agent_homes_before_move(own),
         _ => agent_homes_in(&l),
     };
-    for (kind, d) in homes {
-        let Some(env) = crate::agents::account_env_of(&kind).filter(|e| !e.is_empty()) else {
-            tracing::warn!("这台给 {kind} 设了数据目录，那一家没有目录环境变量，不用");
-            continue;
-        };
-        tracing::info!("这台给 {kind} 设了数据目录：{}", d.display());
+    for (env, d) in agent_home_envs(homes) {
+        tracing::info!("这台设了数据目录：{env}={}", d.display());
         std::env::set_var(env, d);
     }
+}
+
+/// 各家的数据目录 ⇒ `(那一家的目录环境变量, 路径)`（变量名问注册表 `account_env_of`）；认不出 / 没有那个变量的那一家不交、说一句。
+pub(crate) fn agent_home_envs(homes: BTreeMap<String, PathBuf>) -> Vec<(&'static str, PathBuf)> {
+    homes
+        .into_iter()
+        .filter_map(|(kind, d)| {
+            let env = crate::agents::account_env_of(&kind).filter(|e| !e.is_empty());
+            if env.is_none() {
+                tracing::warn!("这台给 {kind} 设了数据目录，那一家没有目录环境变量，不用");
+            }
+            Some((env?, d))
+        })
+        .collect()
 }
 
 /// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁）。

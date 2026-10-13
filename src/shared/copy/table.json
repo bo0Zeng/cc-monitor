@@ -16854,6 +16854,12 @@
       "args": ["machine"],
       "limited": ["连接"]
     },
+    "settingsPanel.claudeDir.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读不到本机设的 Claude 数据目录",
+      "args": []
+    },
     "settingsPanel.claudeDir.pickFailed": {
       "kind": "error",
       "role": "报错",

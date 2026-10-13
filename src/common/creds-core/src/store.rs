@@ -51,7 +51,7 @@ pub const LEGACY_ACCOUNT_ID: &str = "default";
 /// 但**落点必须是同一个** —— 两边各写一份字符串，漂开的那天没有任何东西会说，而症状是
 /// 「界面上配好了，上游选择说没配」这种**查不出来**的形状。
 ///
-/// ⚠ 它**不**跟随 `claudeDir` 覆盖（数据目录本来就不跟随，`INVARIANTS §2`）。
+/// ⚠ 它**不**跟随设置里的 Claude 数据目录（数据目录本来就不跟随，`INVARIANTS §2`）。
 pub const FILE_NAME: &str = "apikey-credentials.json";
 
 /// monitor 数据目录的覆盖变量（monitor `paths::DATA_DIR_ENV` 与远端常驻后端的默认推导共用这一个名字）。

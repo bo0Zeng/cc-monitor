@@ -130,7 +130,7 @@ vi.mock("../../../../src/frontend/ui/theme", () => ({
   saveTheme: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../../../src/frontend/ui/paths", () => ({
-  claudeDirIn: () => null,
+  readClaudeDir: () => Promise.resolve(null),
   setClaudeDirOverride: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({

@@ -2,12 +2,12 @@
  * 行为类设置的桥接。
  *
  * `autoFollowUserActive` 和 `bringMonitorToFrontOnUserActive` 与 `theme` /
- * `claudeDir` / `diagnostics` 字段平级，存在同一个 config.json 顶层。
+ * `diagnostics` 字段平级，存在同一个 config.json 顶层。
  *
- * 这两个 toggle **运行时可热更**（不像 claudeDir 需要重启）。设置面板 toggle
+ * 这两个 toggle **运行时可热更**（不像 Claude 数据目录需要重启）。设置面板 toggle
  * 改了 → 立即 save → tabs.ts 下次 userActive 触发时读最新值。
  *
- * 设计：跟 paths.ts 模式一致 —— Rust config 命令通透（serde_json::Value）
+ * 设计：跟 theme.ts 模式一致 —— Rust config 命令通透（serde_json::Value）
  * 不解释 schema，所有 schema 收敛在前端 TS。
  */
 

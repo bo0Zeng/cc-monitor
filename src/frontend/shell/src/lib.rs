@@ -992,8 +992,7 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 /// 合法 host → 空 Vec。
 ///
 /// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
-/// `config::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
-/// `config.rs::claude_dir_override`（同一个 config.json，同样的 best-effort 容错）。
+/// `config::resolve_config_path()` 的文件，自己取 `remote` 子对象。
 ///
 /// remote 段 schema（S6/S7 的设置 UI 负责写）：
 /// ```json

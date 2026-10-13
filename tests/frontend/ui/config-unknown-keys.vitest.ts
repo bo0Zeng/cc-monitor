@@ -73,16 +73,16 @@ const sorted = (xs: readonly string[]): string[] => [...xs].sort();
  * 本工作区吃过这个亏（「恒等两侧同源会恒真」）。
  *
  * 这一份的来源是**现打的反向全扫**（2026-09-21）：`src/` 下每个 `import … from "./config"`
- * 的模块，逐个读它对 `cfg[…]` / `cfg.…` 的顶层存取。Rust 侧另读三个
- *（`claudeDir` / `showBgSessions` / `remote`），都已在列。
+ * 的模块，逐个读它对 `cfg[…]` / `cfg.…` 的顶层存取。Rust 侧另读两个
+ *（`showBgSessions` / `remote`），都已在列；`claudeDir` 第 7 批起只剩迁移那一段删它。
  */
 const CENSUS: readonly string[] = [
   "theme", // src/frontend/ui/theme.ts
-  "claudeDir", // src/frontend/ui/paths.ts
   "keybindings", // src/frontend/ui/keybindings/store.ts
   // 第 7 批搬到各台后端的那几格（`accounts` · `contextLimits` · `resumeCommand` · `localResumeCommand` · `resumeInTmux`）：
   //   只剩迁移那一段读、迁完由壳删（`src/frontend/shell/src/prefs_migration.rs`）；下一版删迁移时这几行一起删。
   "accounts",
+  "claudeDir", // 本机 `agentHomes`
   // `backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
   "remote", // src/frontend/ui/remote-config.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
@@ -219,7 +219,7 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     // 13 → 11：第 7 批这台的偏好搬到各台后端 ⇒ `accounts.ts` · `main.ts` · `local-machine-prefs.ts` 不再是主人，
     //   那几个键改登记给迁移那一段 `src/frontend/shell/src/prefs_migration.rs`（多它一个）。
     // 11 → 10：机器表搬进本机后端 `machines.json` ⇒ `remote-config.ts` 不再是 `remote` 的主人，那一键也改登记给迁移那一段。
-    expect(owners.size, `主人 ${owners.size} 个（现打 10）`).toBe(10);
+    expect(owners.size, `主人 ${owners.size} 个（现打 9）`).toBe(9);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

@@ -89,9 +89,8 @@ const EXPECTED: Record<string, unknown> = {
   tabBar: { order: ["sid-b", "sid-a"], pinned: [PIN], groupOf: { "sid-a": "c1", "sid-b": "c1" } },
   ...BEHAVIOR,
   theme: { bg: "#010203" },
-  claudeDir: "/tmp/cfg1-claude",
   keybindings: KEYS,
-  // 机器表不在这份文件里了（住本机后端 `machines.json`，写口是 `machines-set`），不在本条的写者里。
+  // 机器表 · Claude 数据目录不在这份文件里了（住本机后端 `machines.json` / `prefs.json`，写口是 `machines-set` / `prefs-set`），不在本条的写者里。
 };
 
 /** 一个 realm 的全部写者（一份模块实例）。 */
@@ -104,7 +103,6 @@ async function realm(): Promise<{
   const bar = await import("../../../src/frontend/ui/tab-bar-state");
   const beh = await import("../../../src/frontend/ui/behavior");
   const theme = await import("../../../src/frontend/ui/theme");
-  const paths = await import("../../../src/frontend/ui/paths");
   const kb = await import("../../../src/frontend/ui/keybindings/store");
   return {
     // 主窗：tab 栏那几条（E1 的原形：拖放同拍发分组 ＋ 顺序）。
@@ -122,7 +120,6 @@ async function realm(): Promise<{
     settings: () => [
       beh.setBehavior(BEHAVIOR),
       theme.saveTheme({ bg: "#010203" }),
-      paths.setClaudeDirOverride("/tmp/cfg1-claude"),
       kb.setKeybindings(KEYS),
     ],
   };
@@ -155,7 +152,6 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
         "set tabBar.pinned",
         ...Object.keys(BEHAVIOR).map((k) => `set ${k}`),
         "set theme",
-        "set claudeDir",
         "set keybindings",
       ].sort(),
     );

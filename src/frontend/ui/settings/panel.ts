@@ -15,7 +15,7 @@ import {
   themeIn,
   type ThemeConfig,
 } from "../theme";
-import { claudeDirIn, setClaudeDirOverride } from "../paths";
+import { readClaudeDir, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
 import { openRotationAt, RotationSection } from "./rot-section";
@@ -313,7 +313,7 @@ export class SettingsPanel {
   }
 
   private async openInner(): Promise<void> {
-    // 先开窗，再读一次配置派生外观 · 数据目录 · 行为三格。
+    // 先开窗，再读一次配置派生外观 · 行为两格。
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
     // 重开设置 ＝ 每一页的「首次可见」重新算，但仍只拉用户此刻看得见的那一页。
@@ -333,7 +333,7 @@ export class SettingsPanel {
     this.applyPendingTarget();
     // `navigate()` 在「已经在这一页」时提前返回、不通知订阅者 ⇒ 第二次打开时落地页的首次可见必须在这里补一刀。
     this.flushPage(this.router.activeId);
-    // 读回之前三格的控件是 pending（禁用）：勾选框此刻显示的是上一次的值，点上去就点在旧值上。
+    // 读回之前两格的控件是 pending（禁用）：勾选框此刻显示的是上一次的值，点上去就点在旧值上。
     this.setConfigCellsPending(true);
     this.el.classList.add("open");
     this.isOpen = true;
@@ -345,32 +345,29 @@ export class SettingsPanel {
       // 「config.json 里有认不出的项」那条跟着这一份重算（窗口是藏起来再开，那条不会自己重建）。
       rerenderUnknownKeys(cfg);
     } catch (e) {
-      // 读不回来 ⇒ 三格各回落到缺省，外观不重刷。
-      console.warn("设置窗读配置失败，外观 / 数据目录 / 行为按缺省显示：", e);
+      // 读不回来 ⇒ 两格各回落到缺省，外观不重刷。
+      console.warn("设置窗读配置失败，外观 / 行为按缺省显示：", e);
       this.fillConfigCells({}, false);
     } finally {
       this.setConfigCellsPending(false);
     }
   }
 
-  /** 外观 · 数据目录 · 行为三格读回之前的 pending 态：这几格的控件一律禁用。 */
+  /** 外观 · 行为两格读回之前的 pending 态：这几格的控件一律禁用（数据目录那一格另读本机偏好，[`loadClaudeDir`]）。 */
   private setConfigCellsPending(pending: boolean): void {
     const controls: HTMLInputElement[] = [
       ...[...this.inputs.values()].filter((c): c is HTMLInputElement => c instanceof HTMLInputElement),
-      this.claudeDirInput,
     ];
     for (const c of controls) c.disabled = pending;
     for (const sw of this.behaviorSwitches()) sw.input.setAttribute("aria-disabled", String(pending));
     if (!pending) this.updateBringFrontEnabled();
   }
 
-  /** 从**一份**配置派生三格（派生规则各住 `theme.ts` / `paths.ts` / `behavior.ts`，这里不另写）。 */
+  /** 从**一份**配置派生外观 · 行为两格（派生规则各住 `theme.ts` / `behavior.ts`，这里不另写）。 */
   private fillConfigCells(cfg: Record<string, unknown>, applyLoadedTheme = true): void {
     this.original = themeIn(cfg);
     if (applyLoadedTheme) applyTheme(this.original);
     this.current = { ...this.original };
-    this.claudeDirOriginal = claudeDirIn(cfg) ?? "";
-    this.claudeDirInput.value = this.claudeDirOriginal;
     // 每次打开拉最新的行为设置
     const behavior = behaviorIn(cfg);
     this.behaviorNow = behavior;
@@ -691,6 +688,19 @@ export class SettingsPanel {
     this.banner.textContent =
       copyText("settingsPanel.claudeDir.updated");
     this.banner.classList.add("settings-banner-show");
+  }
+
+  /** 「Claude 数据目录」那一格读本机后端的偏好（数据页第一次可见时问）：读回之前那一格禁用；读不到 ⇒ 说出来、那一格仍禁用。 */
+  private async loadClaudeDir(): Promise<void> {
+    this.claudeDirInput.disabled = true;
+    try {
+      this.claudeDirOriginal = (await readClaudeDir()) ?? "";
+      this.claudeDirInput.value = this.claudeDirOriginal;
+      this.claudeDirInput.disabled = false;
+    } catch (e) {
+      sayFailure(this.banner, copyText("settingsPanel.claudeDir.readFailed"), e);
+      this.banner.classList.add("settings-banner-show");
+    }
   }
 
   /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
@@ -1058,6 +1068,7 @@ export class SettingsPanel {
     this.loadOnFirstVisit(PAGE.data, () => {
       this.dataSection?.loadNow();
       this.dataPage?.loadNow();
+      if (this.claudeDirInput) void this.loadClaudeDir();
     });
 
     // ---- 扩展：跨机器的 skill / MCP ----
@@ -1306,6 +1317,8 @@ export class SettingsPanel {
     this.claudeDirInput.className = "settings-input settings-input-mono data-claude-input";
     this.claudeDirInput.placeholder = copyText("settingsPanel.dataDir.pathHint");
     this.claudeDirInput.spellcheck = false;
+    // 值住本机后端的偏好：数据页第一次可见时读回（[`loadClaudeDir`]）之前不让改。
+    this.claudeDirInput.disabled = true;
     // 全即时：失焦 / 回车（`change`）就落。逐键写盘没意义（路径没打完是个半截串）。
     this.claudeDirInput.addEventListener("change", () => {
       void this.persistClaudeDir().catch((e: unknown) =>

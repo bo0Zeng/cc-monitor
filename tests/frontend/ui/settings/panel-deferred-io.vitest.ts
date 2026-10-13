@@ -305,8 +305,8 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
   });
 });
 
-// 「先画框架，再并行取值填进去」：设置窗先开窗，再读一次配置派生三格。
-describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数据目录 · 行为三格", () => {
+// 「先画框架，再并行取值填进去」：设置窗先开窗，再读一次配置派生外观 · 行为两格；数据目录那一格读本机后端的偏好，切到数据页才问。
+describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 行为两格", () => {
   beforeEach(() => {
     ipc.calls = [];
     ipc.hold = {};
@@ -315,7 +315,7 @@ describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数�
     __setHostFactsForTests(factsOn("windows"));
   });
 
-  it("★ 配置没读回之前窗已开、三格控件 pending；读回之后恰好一发 load_config 填三格", async () => {
+  it("★ 配置没读回之前窗已开、外观那几格 pending；读回之后恰好一发 load_config；数据目录那一格不靠它（落地页上一直禁用）", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await tick();
     let release!: (v: unknown) => void;
@@ -324,13 +324,15 @@ describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数�
     const opening = p.open();
     await tick();
     const el = document.querySelector(".settings-panel")!;
+    const color = document.querySelector<HTMLInputElement>(".settings-panel input[type=color]")!;
     const claudeDir = (p as unknown as { claudeDirInput: HTMLInputElement }).claudeDirInput;
     expect(el.classList.contains("open"), "配置还没回来，窗却没开").toBe(true);
-    expect(claudeDir.disabled, "配置还没回来，那一格却能点").toBe(true);
+    expect(color.disabled, "配置还没回来，那一格却能点").toBe(true);
     release({ claudeDir: "/fix2/probe" });
     await opening;
     expect(ipc.calls.filter((c) => c === "load_config")).toEqual(["load_config"]);
-    expect(claudeDir.value).toBe("/fix2/probe");
-    expect(claudeDir.disabled).toBe(false);
+    expect(color.disabled).toBe(false);
+    expect(claudeDir.value, "数据目录那一格还在读 config.json").toBe("");
+    expect(claudeDir.disabled, "数据目录那一格没读本机偏好就能点了").toBe(true);
   });
 });

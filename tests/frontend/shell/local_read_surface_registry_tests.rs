@@ -30,31 +30,6 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "remote",
         "hello 里远端后端自陈的 Claude home（优先 `homes`、回退 `claude_dir`）。远端的目录 ⇒ 不属本机读面。",
     ),
-    (
-        "src/config.rs",
-        "claude_dir_override",
-        "hub",
-        "**路径源头**：设置里 `claudeDir` 覆盖原值那一格，只回答「用户填了什么」，自己不读内容；\
-             Claude 目录本身只由那台后端解析 ⇒ 不属退役范围。",
-    ),
-    (
-        "src/local_backend_host.rs",
-        "CLAUDE_DIR_ENV",
-        "non-read",
-        "交给后端的那个环境变量名。一个字节的用户数据都不读 ⇒ 不属退役范围。",
-    ),
-    (
-        "src/local_backend_host.rs",
-        "backend_env",
-        "non-read",
-        "把设置里填的 Claude 目录原样交给后端（起常驻后端、一次性 `--resident-stop` 都走它）。不读内容 ⇒ 不属退役范围。",
-    ),
-    (
-        "src/local_backend_host.rs",
-        "backend_env_from",
-        "non-read",
-        "同上一行的纯函数那一半：有就塞进环境变量。不读内容 ⇒ 不属退役范围。",
-    ),
 ];
 
 fn root() -> &'static Path {

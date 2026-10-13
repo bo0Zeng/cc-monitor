@@ -34,13 +34,13 @@ const PREFS_MIGRATION = "src/frontend/shell/src/prefs_migration.rs";
 export const CONFIG_KEY_OWNERS = {
   // src/frontend/ui/theme.ts
   theme: "src/frontend/ui/theme.ts",
-  // src/frontend/ui/paths.ts
-  claudeDir: "src/frontend/ui/paths.ts",
   // src/frontend/ui/keybindings/store.ts
   keybindings: "src/frontend/ui/keybindings/store.ts",
   // ── 第 7 批搬走的那几格（这台的偏好住各台后端 `prefs.json`）：只剩迁移那一段读、迁完由壳删（原文留 `config.json.pre-7`）──
   // `accounts.byMachine.<origin>.modelByAccount`（每号模型）。
   accounts: PREFS_MIGRATION,
+  // Claude 数据目录（搬进本机后端 `prefs.json` 的 `agentHomes`）。
+  claudeDir: PREFS_MIGRATION,
   // 机器表（搬进本机后端 `machines.json`：后端换形那一段只读它，本机 `machines-read` 说 `ok` 之后由壳删）。
   remote: PREFS_MIGRATION,
   // src/frontend/ui/tab-bar-state.ts

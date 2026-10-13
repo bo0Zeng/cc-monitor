@@ -101,3 +101,19 @@ fn context_limits_come_out_lowercased_for_the_facts_scan() {
     };
     assert_eq!(p.limits(), vec![("opus".to_string(), 500_000)]);
 }
+
+/// 这台给哪家设了数据目录 ⇒ 起来时交成那一家的目录环境变量（名字问注册表）；注册表里没有 / 没有目录变量的那一家不交。
+#[test]
+fn the_agent_homes_become_each_familys_dir_env() {
+    let kind = crate::agents::default_kind();
+    let env = crate::agents::account_env_of(kind).expect("默认那一家有目录变量");
+    let homes = BTreeMap::from([
+        (kind.to_string(), PathBuf::from("/srv/one")),
+        ("nobody".to_string(), PathBuf::from("/srv/two")),
+    ]);
+    assert_eq!(
+        agent_home_envs(homes),
+        vec![(env, PathBuf::from("/srv/one"))]
+    );
+    assert_eq!(agent_home_envs(BTreeMap::new()), vec![]);
+}

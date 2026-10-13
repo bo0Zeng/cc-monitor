@@ -16,7 +16,7 @@ use creds_core::store;
 /// （从前那一格 `CCM_APIKEY_CREDENTIALS` 删了，后端按家推 `creds_core::store::credentials_path`）。
 #[test]
 fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
-    let envs = crate::local_backend_host::backend_env_from(&|_| None, None);
+    let envs = crate::local_backend_host::backend_env_from(&|_| None);
     let names: Vec<&str> = envs.iter().map(|(k, _)| k.as_str()).collect();
     assert_eq!(
         names,
@@ -24,10 +24,9 @@ fn nobody_hands_the_backend_a_path_for_the_credentials_file() {
         "交给本机后端的环境多了一格：{envs:?}"
     );
     // 反空真：这把尺子看得见被交的格（家那一格在设了的时候出现）。
-    let iso = crate::local_backend_host::backend_env_from(
-        &|k| (k == crate::config::DATA_DIR_ENV).then(|| "/iso/home".to_string()),
-        None,
-    );
+    let iso = crate::local_backend_host::backend_env_from(&|k| {
+        (k == crate::config::DATA_DIR_ENV).then(|| "/iso/home".to_string())
+    });
     assert!(iso
         .iter()
         .any(|(k, v)| k == crate::config::DATA_DIR_ENV && v == "/iso/home"));

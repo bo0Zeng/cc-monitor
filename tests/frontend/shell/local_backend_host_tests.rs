@@ -85,7 +85,7 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
         k.sort_unstable();
         k
     };
-    let plain = backend_env_from(&|_| None, None);
+    let plain = backend_env_from(&|_| None);
     assert_eq!(
         keys(&plain),
         vec!["CCM_RELAY_PORT"],
@@ -96,36 +96,16 @@ fn both_carriers_hand_the_backend_the_same_relay_envs() {
         relay_route_core::PORT.to_string(),
         "端口不是注入侧那个常量 —— 注入侧拼的 URL 会指向一个没人听的口"
     );
-    let iso = backend_env_from(
-        &|k| (k == "CCM_DATA_DIR").then(|| "/iso/home".to_string()),
-        None,
-    );
+    let iso = backend_env_from(&|k| (k == "CCM_DATA_DIR").then(|| "/iso/home".to_string()));
     assert_eq!(keys(&iso), vec!["CCM_DATA_DIR", "CCM_RELAY_PORT"]);
     assert!(iso.contains(&("CCM_DATA_DIR".into(), "/iso/home".into())));
     // 空串的家 == 没设（不交一格空值）。
     assert_eq!(
         keys(&backend_env_from(
-            &|k| (k == "CCM_DATA_DIR").then(String::new),
-            None
+            &|k| (k == "CCM_DATA_DIR").then(String::new)
         )),
         vec!["CCM_RELAY_PORT"]
     );
-    // 设置里填了 Claude 目录 ⇒ 原值交成后端认的那个名字（解析只在后端）；没填 ⇒ 不交（上面那两份）。
-    let over = backend_env_from(&|_| None, Some("/data/claude-b".into()));
-    assert_eq!(keys(&over), vec!["CCM_RELAY_PORT", "CLAUDE_CONFIG_DIR"]);
-    assert!(over.contains(&("CLAUDE_CONFIG_DIR".into(), "/data/claude-b".into())));
-    // 名字与后端认的那一个逐字相等（读后端源码现抠，异源）。
-    let paths = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../backend/agents/claudecode/paths.rs"),
-    )
-    .expect("读后端 paths.rs");
-    guard_core::pin_line(
-        &guard_core::production_code(&paths),
-        "pub(crate) const CONFIG_DIR_ENV: &str = \"CLAUDE_CONFIG_DIR\";",
-    )
-    .unwrap_or_else(|e| panic!("后端认的 Claude 目录变量名变了（或不是恰好一处）：{e}"));
-    assert_eq!(CLAUDE_DIR_ENV, "CLAUDE_CONFIG_DIR");
 
     let prod = guard_core::production_code(include_str!(
         "../../../src/frontend/shell/src/local_backend_host.rs"
@@ -3795,8 +3775,8 @@ fn environ_of(pid: u32) -> Vec<(String, String)> {
         .collect()
 }
 
-/// 门牌只跟着家走：**改了设置里的 Claude 目录、又从带另一个 `CLAUDE_CONFIG_DIR` 的终端起 monitor，本机后端照样接得上**
-/// （同一个进程，不起第二个）；停它的那一趟（`--resident-stop`，后端自己按家算口）找得到同一个；再起时设置里那一格**显式**交了过去。
+/// 门牌只跟着家走：**从带另一个 `CLAUDE_CONFIG_DIR` 的终端起 monitor，本机后端照样接得上**
+/// （同一个进程，不起第二个）；停它的那一趟（`--resident-stop`，后端自己按家算口）找得到同一个；再起时 monitor 不另交数据目录。
 /// 守的要求：「一台机器一个常驻后端」「门牌只跟着家走」；体检读数：改一个设置 ⇒ 本机后端一个都接不上 / 一台两个后端。
 /// 非空对照：KPY2 那一条「换一个家 = 换一个口 ⇒ 真的起出第二个」。
 #[test]
@@ -3844,7 +3824,7 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         let seen = |pid: u32| -> Option<String> {
             environ_of(pid)
                 .into_iter()
-                .find(|(k, _)| k == CLAUDE_DIR_ENV)
+                .find(|(k, _)| k == "CLAUDE_CONFIG_DIR")
                 .map(|(_, v)| v)
         };
         assert_eq!(
@@ -3853,20 +3833,12 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
             "没填覆盖时后端该沿用起它的那个环境"
         );
 
-        // ── 设置里改了 Claude 目录，并且换一个带别的 `CLAUDE_CONFIG_DIR` 的终端起 monitor ──
+        // ── 换一个带别的 `CLAUDE_CONFIG_DIR` 的终端起 monitor ──
         sb.forget_like_a_host_that_exited();
         let home_dir = std::path::PathBuf::from(std::env::var("HOME").expect("沙箱 HOME"));
-        let (claude_b, claude_c) = (home_dir.join("claude-b"), home_dir.join("claude-c"));
-        std::fs::create_dir_all(&claude_b).expect("建 claude-b");
+        let claude_c = home_dir.join("claude-c");
         std::fs::create_dir_all(&claude_c).expect("建 claude-c");
-        let cfg = crate::config::resolve_config_path().expect("沙箱的 config.json");
-        std::fs::write(
-            &cfg,
-            serde_json::json!({ "claudeDir": claude_b.display().to_string() }).to_string(),
-        )
-        .expect("写设置");
-        std::env::set_var(CLAUDE_DIR_ENV, &claude_c);
-        assert_eq!(crate::config::claude_dir_override(), Some(claude_b.clone()));
+        std::env::set_var("CLAUDE_CONFIG_DIR", &claude_c);
         let bin2 = sb.bin.clone();
         expect_adopted(
             start_detached(&|| Ok(bin2.clone()), &env_now()),
@@ -3875,9 +3847,9 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         assert_eq!(
             DETACHED.lock().expect("锁").as_ref().expect("句柄").pid,
             pid1,
-            "改了 Claude 目录之后接上的不是同一个后端"
+            "换了 Claude 目录之后接上的不是同一个后端"
         );
-        println!("E2E-OK HOME-1 改了设置里的 Claude 目录、换了终端：本机后端照样接得上，还是同一个（pid={pid1}）");
+        println!("E2E-OK HOME-1 换了带别的 Claude 目录的终端：本机后端照样接得上，还是同一个（pid={pid1}）");
 
         // ── 停：一次性 `--resident-stop` 自己按家算口、在家里找 pid 记录 ──
         match stop_detached() {
@@ -3894,7 +3866,7 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         );
         println!("E2E-OK HOME-2 停的那一趟（后端自己按家算口）找到了同一个后端并让它收尾退出");
 
-        // ── 再起：设置里那一格显式交过去，压过终端带来的那一个 ──
+        // ── 再起：monitor 不交数据目录（设置里那一格由后端自己读 `prefs.json`，`machine_prefs_tests` 钉），后端拿到的是起它的那个环境 ──
         sb.forget_like_a_host_that_exited();
         let bin3 = sb.bin.clone();
         expect_started(
@@ -3906,10 +3878,10 @@ fn e2e_the_door_follows_the_home_not_the_claude_dir() {
         assert_ne!(pid2, pid1);
         assert_eq!(
             seen(pid2),
-            Some(claude_b.display().to_string()),
-            "设置里填的 Claude 目录没交给后端（或被终端带来的那一个压了）"
+            Some(claude_c.display().to_string()),
+            "monitor 另交了一个 Claude 目录（数据目录那一格该由后端自己读）"
         );
-        println!("E2E-OK HOME-3 再起时设置里的 Claude 目录显式交给了后端（压过终端带来的那一个）");
+        println!("E2E-OK HOME-3 再起时 monitor 不另交 Claude 目录，后端拿到的是起它的那个环境");
         let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN");
     }
 }
@@ -4451,7 +4423,7 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
     backend.sort();
     mine.sort();
     assert_eq!(mine, backend, "monitor 交的名 ≠ 后端回显的名");
-    let mut handed: Vec<String> = backend_env_from(&|_| Some("/iso".into()), None)
+    let mut handed: Vec<String> = backend_env_from(&|_| Some("/iso".into()))
         .into_iter()
         .map(|(k, _)| k)
         .collect();

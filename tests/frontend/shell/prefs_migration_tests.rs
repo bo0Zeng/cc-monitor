@@ -20,18 +20,19 @@ fn old_shape() -> serde_json::Value {
         "resumeInTmux": true,
         "contextLimits": {"opus": 1000000},
         "accounts": {"byMachine": {"<local>": {"modelByAccount": {"work": "opus"}}}},
+        "claudeDir": "/srv/claude",
         "remote": {"hosts": [{"label": "gpu", "host": "g.lan"}]},
     })
 }
 
-/// 旧形状：搬进 `prefs.json` 的那五个键删掉、别的原样；原文逐字存进 `config.json.pre-7`；再跑一次什么都不做、原文那份不被盖。
+/// 旧形状：搬进 `prefs.json` 的那六个键删掉、别的原样；原文逐字存进 `config.json.pre-7`；再跑一次什么都不做、原文那份不被盖。
 #[test]
 fn the_moved_keys_go_and_the_original_is_kept_once() {
     let d = tmpdir("old");
     let path = d.join("config.json");
     let text = serde_json::to_string_pretty(&old_shape()).unwrap();
     std::fs::write(&path, &text).unwrap();
-    assert_eq!(finish_at(&path, &MOVED_KEYS).unwrap(), Finished::Removed(5));
+    assert_eq!(finish_at(&path, &MOVED_KEYS).unwrap(), Finished::Removed(6));
     let left: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(
@@ -106,7 +107,7 @@ fn an_earlier_original_is_never_overwritten() {
     let path = d.join("config.json");
     std::fs::write(d.join(BACKUP_NAME), "最早那一份").unwrap();
     std::fs::write(&path, serde_json::to_string(&old_shape()).unwrap()).unwrap();
-    assert_eq!(finish_at(&path, &MOVED_KEYS).unwrap(), Finished::Removed(5));
+    assert_eq!(finish_at(&path, &MOVED_KEYS).unwrap(), Finished::Removed(6));
     assert_eq!(
         std::fs::read_to_string(d.join(BACKUP_NAME)).unwrap(),
         "最早那一份"
@@ -128,7 +129,7 @@ fn the_machine_table_goes_on_its_own_turn_and_the_original_stays_the_first_one()
     let left: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     assert!(left.get("remote").is_none() && left.get("resumeCommand").is_some());
-    assert_eq!(finish_at(&path, &MOVED_KEYS).unwrap(), Finished::Removed(5));
+    assert_eq!(finish_at(&path, &MOVED_KEYS).unwrap(), Finished::Removed(6));
     assert_eq!(std::fs::read_to_string(d.join(BACKUP_NAME)).unwrap(), text);
     assert_eq!(
         finish_at(&path, &MOVED_MACHINES).unwrap(),
