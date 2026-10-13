@@ -8,11 +8,11 @@
  *
  * ⚠ 本文件**不说 `chan.call`**：`frame_query_tests` 按 `chan.call(` 的字面量操作名数前端经通道说哪几条、
  * `comm_boundary_registry` 的 `X6` 按调用点核期限 —— 那一下必须留在各调用点、操作名写字面量；
- * 这里的 [`settle`] 只接一个已经发出去的 `Promise`。
+ * 这里的 [`settleTyped`] 只接一个已经发出去的 `Promise`。
  */
 import { copyText } from "./copy-table";
 import { chan, ChanError, unavailableCode, type CallError } from "../../comms/inward/chan";
-import { machineName, peerVersionSaid, readJson, refusalOf } from "./ipc/chan-caller";
+import { machineName, peerVersionSaid, refusalOf } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 
 export { machineName };
@@ -74,26 +74,8 @@ export interface Refusals {
 }
 
 /**
- * 等一发控制类帧命令的结局，拿成品（JSON 值）。
- * 失败 ⇒ 抛 [`ControlError`]（那一句已经按层 / 按码说好了；通道上的失败带着分好层的 `error`）。
- */
-export async function settle(origin: Origin, op: string, sent: Promise<Uint8Array>, refusals: Refusals): Promise<unknown> {
-  let body: Uint8Array;
-  try {
-    body = await sent;
-  } catch (e) {
-    throw controlErrorOf(origin, e, refusals);
-  }
-  try {
-    return readJson(body);
-  } catch {
-    throw unreadable(origin, op, "is not JSON");
-  }
-}
-
-/**
- * 同 [`settle`]，接的是一发 **typed** 帧命令（`callTyped`：回包已按类型解好、形状由握手指纹核过）。
- * 回的不是 JSON ⇒ 同 [`settle`] 说「读不懂」。
+ * 等一发 **typed** 帧命令的结局（`callTyped`：回包已按类型解好、形状由握手指纹核过），拿成品。
+ * 失败 ⇒ 抛 [`ControlError`]（那一句已经按层 / 按码说好了；通道上的失败带着分好层的 `error`）；回的不是 JSON ⇒ 说「读不懂」。
  */
 export async function settleTyped<T>(origin: Origin, op: string, sent: Promise<T>, refusals: Refusals): Promise<T> {
   try {
