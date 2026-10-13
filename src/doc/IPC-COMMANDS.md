@@ -5416,6 +5416,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |
