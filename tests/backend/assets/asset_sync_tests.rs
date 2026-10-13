@@ -79,7 +79,10 @@ impl Machine {
         &self,
         incoming: Option<&Value>,
     ) -> Result<Value, crate::stream::inbound::spec::Fail> {
-        let inc = incoming.map(|c| cat::machines_from_wire(c).expect("载荷形状"));
+        let inc = incoming.map(|c| {
+            let c: cat::CatalogIn = serde_json::from_value(c.clone()).expect("载荷形状");
+            cat::machines_of(c.machines).expect("载荷形状")
+        });
         cat::update_at(&own_at(&self.path), skills(&self.scan), self.label, inc)
             .map(|r| serde_json::to_value(r).unwrap())
     }

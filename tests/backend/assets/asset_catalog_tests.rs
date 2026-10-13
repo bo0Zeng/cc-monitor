@@ -19,6 +19,15 @@
 
 use super::*;
 
+/// 线上 `catalog`（JSON）→ 各台快照：同 `assets-catalog-merge` 那一跳（解码器管形状，`machines_of` 判 id 与种类）。
+fn machines_from_wire(
+    v: &serde_json::Value,
+) -> Result<std::collections::BTreeMap<String, crate::assets::asset_catalog::Snapshot>, String> {
+    let cat: crate::assets::asset_catalog::CatalogIn =
+        serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
+    crate::assets::asset_catalog::machines_of(cat.machines)
+}
+
 /// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_at(

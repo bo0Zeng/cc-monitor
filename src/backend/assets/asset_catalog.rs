@@ -792,14 +792,6 @@ pub fn machines_of(incoming: Vec<CatalogMachine>) -> Result<BTreeMap<String, Sna
     Ok(out)
 }
 
-/// 线上 `catalog`（JSON）→ 各台快照（判据用：形状不对 ⇒ 解码器那一句）。
-#[cfg(test)]
-pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, String> {
-    let cat: CatalogIn = serde_json::from_value(v.clone())
-        .map_err(|e| crate::common::contract::malformed(&e.to_string()))?;
-    machines_of(cat.machines)
-}
-
 // ───────────────────────── 这台机器的事实 ─────────────────────────
 
 fn home() -> Option<PathBuf> {

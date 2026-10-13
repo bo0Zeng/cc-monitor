@@ -23,6 +23,15 @@ fn tmp(tag: &str) -> std::path::PathBuf {
 
 use super::asset_catalog::{Asset, Catalog, Note, Snapshot};
 
+/// 线上 `catalog`（JSON）→ 各台快照：同 `assets-catalog-merge` 那一跳（解码器管形状，`machines_of` 判 id 与种类）。
+fn machines_from_wire(
+    v: &serde_json::Value,
+) -> Result<std::collections::BTreeMap<String, crate::assets::asset_catalog::Snapshot>, String> {
+    let cat: crate::assets::asset_catalog::CatalogIn =
+        serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
+    crate::assets::asset_catalog::machines_of(cat.machines)
+}
+
 fn sample() -> Catalog {
     let mut me = Snapshot {
         label: "me@box".into(),
@@ -103,7 +112,7 @@ fn the_merge_reads_only_the_machines_of_another_reply() {
         .as_object_mut()
         .unwrap()
         .remove("sharedMcp");
-    let got = super::asset_catalog::machines_from_wire(&incoming).unwrap();
+    let got = machines_from_wire(&incoming).unwrap();
     assert_eq!(got, sample().machines);
 }
 
