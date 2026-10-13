@@ -26,6 +26,8 @@ pub(crate) struct AskReply {
 
 /// `needs-answer` 的应答。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Answered {
     /// 恒 `answered`。
     pub(crate) result: AnswerResult,
@@ -33,6 +35,8 @@ pub(crate) struct Answered {
 
 /// `needs-answer` 成功那一形（闭集一个词：失败各走自己的码）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum AnswerResult {
     Answered,
@@ -235,7 +239,7 @@ pub(crate) fn verdict_of(
     product: &Ask,
     choice: &str,
     note: Option<&str>,
-    picks: Option<&Value>,
+    picks: Option<&BTreeMap<String, Pick>>,
 ) -> Result<Option<Verdict>, Refusal> {
     let spec = product
         .choices
@@ -298,29 +302,21 @@ pub(crate) fn verdict_of(
 
 /// `picks` ＝ `{<题 id>: {options: [<选项 id>…], text: <自由文本>}}`；每题都要有答案，单选至多一项；
 /// 多选几项用「, 」连（那一家框里多选的写法），自由文本接在后面。
-fn answers_of(product: &Ask, picks: Option<&Value>) -> Result<Vec<(String, String)>, Refusal> {
+fn answers_of(
+    product: &Ask,
+    picks: Option<&BTreeMap<String, Pick>>,
+) -> Result<Vec<(String, String)>, Refusal> {
     let bad = || refuse("bad_args", copy_text("beAsk.answer.picks", &[]));
-    let picks = picks.and_then(Value::as_object).ok_or_else(bad)?;
+    let picks = picks.ok_or_else(bad)?;
     let mut out = Vec::new();
     for q in &product.questions {
         let p = picks.get(&q.id).ok_or_else(bad)?;
         let mut parts: Vec<String> = Vec::new();
-        for o in p
-            .get("options")
-            .and_then(Value::as_array)
-            .map(Vec::as_slice)
-            .unwrap_or_default()
-        {
-            let o = o.as_str().ok_or_else(bad)?;
-            let opt = q.options.iter().find(|x| x.id == o).ok_or_else(bad)?;
+        for o in &p.options {
+            let opt = q.options.iter().find(|x| x.id == *o).ok_or_else(bad)?;
             parts.push(opt.text.clone());
         }
-        if let Some(t) = p
-            .get("text")
-            .and_then(Value::as_str)
-            .map(str::trim)
-            .filter(|t| !t.is_empty())
-        {
+        if let Some(t) = p.text.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
             parts.push(t.to_string());
         }
         if parts.is_empty() || (!q.multi && parts.len() > 1) {
@@ -331,18 +327,86 @@ fn answers_of(product: &Ask, picks: Option<&Value>) -> Result<Vec<(String, Strin
     Ok(out)
 }
 
-/// `needs-answer` 的本体：`{sid, ask, choice, note?, picks?}` ⇒ `{result: "answered"}`；
+/// `needs-answer` 的入参。
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AnswerReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+    /// `needs.ask.id`。
+    pub(crate) ask: String,
+    /// `needs.ask.choices[].id`。
+    pub(crate) choice: String,
+    /// 可缺：附的那句话（选项 `note` 是 required 时必给）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) note: Option<String>,
+    /// 提问那一种选 `answer` 时必给：题 id ⇒ 那一题的答，每题都要答、单选至多一项。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) picks: Option<BTreeMap<String, Pick>>,
+}
+
+/// 提问那一种里一题的答：选了哪几项 ＋ 自由文本。
+#[derive(Debug, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[cfg_attr(test, ts(rename = "AskPick"))] // 不叫 `Pick`：TS 里那是内建的工具类型。
+#[serde(deny_unknown_fields)]
+pub(crate) struct Pick {
+    /// 选项 id（`needs.ask.questions[].options[].id`）；缺 ⇒ 没选。
+    #[serde(default)]
+    #[cfg_attr(test, ts(as = "Option<Vec<String>>", optional))]
+    pub(crate) options: Vec<String>,
+    /// 自由文本；缺 / 空白 ⇒ 没写。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
+    pub(crate) text: Option<String>,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `needs-answer` 的码。
+    pub(crate) enum AnswerErr {
+        /// 没这一条（或不是这个会话的）。
+        NotFound = "not_found",
+        /// 别处先答了。
+        AlreadyAnswered = "already_answered",
+        /// hook 那头已经走了（终端那边答了 · 被打断）。
+        ClosedElsewhere = "closed_elsewhere",
+        /// 选项不在这一条的选项里 / 那一家写不出这个决定。
+        BadChoice = "bad_choice",
+        /// 选项要附一句话，没给。
+        NoteRequired = "note_required",
+    }
+}
+
+/// `needs-answer`：答一条挂着的待答请求，第一个答案落下。锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 异步档。
+pub(crate) struct NeedsAnswerCmd;
+
+impl crate::stream::inbound::typed::Command for NeedsAnswerCmd {
+    const NAME: &'static str = "needs-answer";
+    type Req = AnswerReq;
+    type Reply = Answered;
+    type Err = AnswerErr;
+}
+
+impl crate::stream::inbound::typed::Async for NeedsAnswerCmd {
+    fn run(
+        req: AnswerReq,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<Answered, AnswerErr>> + Send + 'static {
+        std::future::ready(
+            answer(req).map_err(crate::stream::inbound::typed::of_pair(AnswerErr::NotFound)),
+        )
+    }
+}
+
+/// `needs-answer` 的本体 ⇒ `{result: "answered"}`；
 /// 别处先答了 ⇒ `already_answered`；hook 那头已经走了（终端那边答了 · 被打断）⇒ `closed_elsewhere`；没这一条 ⇒ `not_found`。
-pub(crate) fn answer(args: &Value) -> Result<Value, Refusal> {
-    let s = |k: &str| args.get(k).and_then(Value::as_str);
-    let (Some(sid), Some(id), Some(choice)) = (s("sid"), s("ask"), s("choice")) else {
-        return Err((
-            "bad_args",
-            crate::common::contract::malformed(
-                "needs-answer: `sid`, `ask`, `choice` must be strings",
-            ),
-        ));
-    };
+pub(crate) fn answer(req: AnswerReq) -> Result<Answered, Refusal> {
+    let (sid, id, choice) = (req.sid.as_str(), req.ask.as_str(), req.choice.as_str());
     let mut b = book();
     let Some(o) = b.open.get(id).filter(|o| o.ask.sid == sid) else {
         return Err(match b.settled(id) {
@@ -355,7 +419,13 @@ pub(crate) fn answer(args: &Value) -> Result<Value, Refusal> {
             None => refuse("not_found", copy_text("beAsk.answer.notFound", &[])),
         });
     };
-    let verdict = verdict_of(&o.ask, &o.product, choice, s("note"), args.get("picks"))?;
+    let verdict = verdict_of(
+        &o.ask,
+        &o.product,
+        choice,
+        req.note.as_deref(),
+        req.picks.as_ref(),
+    )?;
     let decision = match &verdict {
         Some(v) => match crate::agents::ask_face(&o.agent).and_then(|f| (f.decide)(&o.ask, v)) {
             Some(d) => Some(d),
@@ -381,7 +451,7 @@ pub(crate) fn answer(args: &Value) -> Result<Value, Refusal> {
     drop(b);
     moved(sid);
     if delivered {
-        crate::stream::inbound::spec::wire(&Answered {
+        Ok(Answered {
             result: AnswerResult::Answered,
         })
     } else {

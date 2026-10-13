@@ -3763,9 +3763,21 @@ fn resync_waits_for_every_live_watcher_and_never_hangs_on_a_gone_one() {
 /// 界面那一侧 `tests/frontend/ui/resync.vitest.ts` 按同一份金样解。
 #[test]
 fn resync_face_reply_matches_the_cross_language_golden() {
+    /// 照分派那一层解入参（`typed::take`）再跑；回包投成线上那一份，失败只留码。
+    fn answer(args: &serde_json::Value) -> Result<serde_json::Value, String> {
+        use crate::stream::inbound::typed::{Blocking as _, Codes as _};
+        let req = crate::stream::inbound::typed::take(args).map_err(|f| f.code)?;
+        let cx = crate::stream::inbound::typed::Cx {
+            tz: Default::default(),
+            until: None,
+        };
+        let got =
+            crate::faces::resync_face::ResyncCmd::run(req, &cx).map_err(|e| e.into_fail().code)?;
+        Ok(serde_json::to_value(got).expect("回包总能序列化"))
+    }
     let golden: serde_json::Value =
         serde_json::from_str(include_str!("../../__fixtures__/resync.golden.json")).unwrap();
-    let got = crate::faces::resync_face::answer(&golden["request"]).expect("金样那份请求该答得出");
+    let got = answer(&golden["request"]).expect("金样那份请求该答得出");
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         k.sort();
@@ -3796,10 +3808,11 @@ fn resync_face_reply_matches_the_cross_language_golden() {
     for bad in [
         serde_json::json!({"sid": 5}),
         serde_json::json!({"sid": ""}),
+        serde_json::json!({"sid": "s", "x": 1}),
     ] {
         assert_eq!(
-            crate::faces::resync_face::answer(&bad).map_err(|(c, _)| c),
-            Err("bad_args"),
+            answer(&bad).map(|_| ()),
+            Err("bad_args".to_string()),
             "{bad}"
         );
     }
@@ -4319,7 +4332,7 @@ fn long_branchy_record(records: usize, fork_every: usize, queue_every: usize) ->
 
 /// 主线外清单 = 这份记录整批算一次（与冷读同一个算法）。
 fn off_of_record(body: &str) -> Vec<String> {
-    crate::agents::mainline::off_of(
+    crate::agents::mainline::tests::off_of(
         body.lines()
             .filter_map(crate::agents::claudecode::chain::chain_fact),
     )

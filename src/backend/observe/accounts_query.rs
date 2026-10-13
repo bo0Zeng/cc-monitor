@@ -865,6 +865,8 @@ pub(crate) fn live_doing(agent_home: &Path) -> std::collections::BTreeMap<String
 
 /// 这台上需手动的会话清单（`sessions-needs` 的一行）：会话 id ＋ 它在等什么（同 `history-facts.needs` 那一份成品）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct NeedsRow {
     pub(crate) sid: String,
     pub(crate) needs: super::facts_query::Needs,

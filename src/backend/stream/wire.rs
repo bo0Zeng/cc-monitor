@@ -265,6 +265,8 @@ pub use crate::stream::topic::Topic;
 /// 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 message
 /// 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct Unavailable {
     /// 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`）。
     /// ⚠ 它**必须**同时出现在 `commands` 里：本表说的是「接得下但做不到」，

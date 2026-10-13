@@ -44,6 +44,7 @@
  * 复算：`npx vitest run tests/frontend/ui/scale3-one-screen-gate.vitest.ts`
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { owned } from "../../test-support/owned-tab-manager.ts";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { estimateStreamNodeHeight, __resetUnknownCardWarnings } from "../../../src/frontend/ui/height-estimate";
@@ -507,7 +508,7 @@ describe("秤 3 · 丁：生产门控（驱动真 TabStreamView ＋ 假布局）
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = new TabManager(barEl, streamRootEl);
+    const tm = owned(new TabManager(barEl, streamRootEl));
     const tabOf = (sid: string): Tab =>
       (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
     const blks = storm(blocks, perBlock);
@@ -623,7 +624,7 @@ describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab", () => {
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = new TabManager(barEl, streamRootEl);
+    const tm = owned(new TabManager(barEl, streamRootEl));
     const tabOf = (sid: string): Tab =>
       (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
     // 非批期：act（第一个 ⇒ 当前）· b（一张细条卡钉水位）· c（一张高卡钉水位）· d（一张细条卡钉水位）
@@ -651,7 +652,7 @@ describe("秤 3 · 戊：B5 空闲物化队列收哪些后台 tab", () => {
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = new TabManager(barEl, streamRootEl);
+    const tm = owned(new TabManager(barEl, streamRootEl));
     const tabOf = (sid: string): Tab =>
       (tm as unknown as { store: { tabs: Map<string, Tab> } }).store.tabs.get(sid)!;
     tm.onLine(sys("act", 5000, true) as never);

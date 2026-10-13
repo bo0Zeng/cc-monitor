@@ -151,9 +151,8 @@ pub(crate) struct RecentDir {
 pub(crate) struct ForkFacts {
     /// 源会话是哪一家（说不出 ⇒ 空串）。
     pub(crate) agent: &'static str,
-    /// 起分叉会话要的三格（同 `session-fork` 的 `launch`；那一形随 `session-fork` 那一族换成类型）。
-    #[cfg_attr(test, ts(type = "unknown"))]
-    pub(crate) launch: Value,
+    /// 起分叉会话要的三格（同 `session-fork` 的 `launch`）。
+    pub(crate) launch: crate::control::fork_launch::Launch,
     /// `at` 那一条在第几轮（没给 / 说不出 ⇒ `null`）。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) turn: Option<u64>,
@@ -298,7 +297,7 @@ pub(crate) fn facts(req: &NewFactsReq, tz: &crate::Tz) -> Result<NewFacts, (&'st
             });
             Some(ForkFacts {
                 agent: crate::agents::record_kind_of(&source).unwrap_or_default(),
-                launch: super::fork_face::launch_of(&home, &source, sid).to_json(),
+                launch: super::fork_face::launch_of(&home, &source, sid),
                 turn: turn.as_ref().map(|t| t.0),
                 start_text: turn.and_then(|t| crate::common::time::iso_hm(&t.1, tz)),
             })

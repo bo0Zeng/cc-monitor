@@ -89,11 +89,24 @@ impl Remote {
     }
 }
 
-const HELLO: &str = r#"{"kind":"hello","v":1,"build_id":"rc-build","host_arch":"x86_64","claude_dir":"/c","commands":["ping","cancel","history-tail","history-read"]}"#;
+/// 替身的握手：typed 那两条（`history-tail` · `history-read`）照这一版的形状指纹交（对不上 monitor 事前就拒、一个字节不发）。
+fn hello() -> String {
+    let commands = ["ping", "cancel", "history-tail", "history-read"];
+    let shapes: serde_json::Map<String, serde_json::Value> = commands
+        .iter()
+        .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.into())))
+        .collect();
+    serde_json::json!({"kind": "hello", "v": 1, "build_id": "rc-build", "host_arch": "x86_64",
+        "claude_dir": "/c", "commands": commands, "shapes": shapes})
+    .to_string()
+}
 
 async fn serve(s: tokio::io::DuplexStream, remote: Arc<Remote>) {
     let mut r = tokio::io::BufReader::new(s);
-    let _ = r.get_mut().write_all(format!("{HELLO}\n").as_bytes()).await;
+    let _ = r
+        .get_mut()
+        .write_all(format!("{}\n", hello()).as_bytes())
+        .await;
     let mut line = String::new();
     if r.read_line(&mut line).await.unwrap_or(0) == 0 {
         return;

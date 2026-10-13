@@ -404,7 +404,9 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
 
     // ④ resume：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
-    let (code, said) = crate::control::resolve_query::resolve_json_for_inbound(&spec)
+    let spec: crate::control::resolve_query::ResumeSpec =
+        crate::stream::inbound::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
+    let (code, said) = crate::control::resolve_query::resolve(crate::agents::REGISTRY, &spec)
         .expect_err("`resolve` 对注册表里没有的 agentKind 落了默认那一家");
     assert_eq!(code, "bad_args");
     assert_eq!(
@@ -551,7 +553,12 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             "{{\"agentKind\":\"{}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}",
             a.kind
         );
-        let rp = crate::control::resolve_query::resolve_json_among(&reg, &spec).expect("解析得动");
+        let spec: crate::control::resolve_query::ResumeSpec =
+            crate::stream::inbound::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
+        let rp = serde_json::to_value(
+            crate::control::resolve_query::resolve(&reg, &spec).expect("解析得动"),
+        )
+        .unwrap();
         assert_eq!(
             rp["command"],
             serde_json::json!((face.resume_command)(

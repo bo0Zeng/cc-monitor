@@ -231,7 +231,7 @@ fn corpus(name: &str) -> Vec<Value> {
             rows
         }
         "index_row" => {
-            // 逐行那一形只在 CLI 那一臂（帧面按列排，`read_face.rs::pack_index`）⇒ 用真函数逐行现算：
+            // 逐行那一形只在 CLI 那一臂（帧面按列排，`history_face.rs::pack_index`）⇒ 用真函数逐行现算：
             // 用户说的话（摘要 · 时刻）· 带工具调用的回复 · 系统注入 · 子运行里带代码块与全宽字的一行。
             let mut rows: Vec<Value> = [
                 r#"{"type":"user","uuid":"in-1","timestamp":"t1","message":{"role":"user","content":"alpha zqx beta"}}"#,
@@ -529,50 +529,6 @@ fn the_golden_is_what_the_command_writes() {
     }
     let want = std::fs::read_to_string(&path).unwrap_or_default();
     assert!(got == want, "格目录与金样不一致（{REGEN}=1 重写）");
-}
-
-/// 注册表里叫 `needs` 的出参（`history-facts` · `sessions-needs`）说明里点得出它的每一格 —— 第二个前端照说明读，
-/// 说「同一份」不算点名（协议文档是它唯一不读核心代码就看得到的地方）。
-#[test]
-fn every_needs_out_field_names_each_needs_cell() {
-    let cells: Vec<String> = catalog_of("facts")
-        .into_keys()
-        .filter_map(|p| p.strip_prefix("needs.").map(str::to_string))
-        .collect();
-    assert!(
-        cells.len() >= 8,
-        "needs 只有 {} 格 —— 本条在空转",
-        cells.len()
-    );
-    let mut seen = 0;
-    for spec in crate::stream::inbound::REGISTRY {
-        for f in spec.fields.iter().filter(|f| f.name == "needs") {
-            seen += 1;
-            // 反引号里出现过的词（`{kind, tool}` 那种一口气列的也算）。
-            let named: BTreeSet<&str> = f
-                .doc
-                .split('`')
-                .skip(1)
-                .step_by(2)
-                .flat_map(|span| span.split(|ch: char| !ch.is_ascii_alphanumeric()))
-                .collect();
-            // 嵌套的格（`ask.choices[].id`）：路径上每一段都点到了才算（`ask {choices[] {id, …}}` 那种一口气列的也算）。
-            let missing: Vec<&String> = cells
-                .iter()
-                .filter(|c| {
-                    !c.split(|ch: char| !ch.is_ascii_alphanumeric())
-                        .filter(|w| !w.is_empty())
-                        .all(|w| named.contains(w))
-                })
-                .collect();
-            assert!(
-                missing.is_empty(),
-                "{} 的 `needs` 说明没点这几格：{missing:?}",
-                spec.name
-            );
-        }
-    }
-    assert!(seen >= 2, "叫 needs 的出参只找到 {seen} 个 —— 本条在空转");
 }
 
 /// 只冻结几格的成品：点名的每一格都得是目录里真有的格（写错路径 ＝ 以为冻住了、其实什么也没冻）。

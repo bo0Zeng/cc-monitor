@@ -20,6 +20,7 @@
 //! 买不到：Windows 上「原子挪过去」是覆盖既有文件的那一下改名（`Own::write`），没在真 Windows 上跑过。
 
 use crate::platform::fs::{Own, OwnLock, OwnPath};
+use crate::stream::inbound::typed::{codes, of_fail, Command, Cx, Owning};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -34,6 +35,8 @@ pub const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
 /// 一条注解（别名与缺省见各字段）。
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub struct Entry {
     #[serde(default)]
     pub starred: bool,
@@ -42,6 +45,7 @@ pub struct Entry {
     #[serde(default)]
     pub hidden: bool,
     #[serde(default, rename = "updatedAt", alias = "updated_at")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub updated_at: i64,
 }
 
@@ -152,36 +156,26 @@ fn lock_for_write(own: &Own, dir: &OwnPath) -> Result<OwnLock, crate::stream::in
 
 /// 一次改动（线上 `patch`）：缺格 / `null` = 不改；标题给空白串 = 清空。
 #[derive(Debug, Default, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
-struct Patch {
+pub(crate) struct Patch {
+    /// 星标。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     starred: Option<bool>,
+    /// 自定义标题：`null` = 不改；空白串 = 清空（也认蛇形 `custom_title`）。
     #[serde(default, rename = "customTitle", alias = "custom_title")]
+    #[cfg_attr(test, ts(type = "string | null", optional))]
     custom_title: Option<Option<String>>,
+    /// 隐藏。
     #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable))]
     hidden: Option<bool>,
 }
 
 /// 被改那一条身上要摘掉的蛇形别名（写回时一律驼峰）。
 const ALIASES: [&str; 2] = ["custom_title", "updated_at"];
-
-fn sid_arg(args: &Value) -> Result<&str, crate::stream::inbound::spec::Fail> {
-    let sid = args.get("sid").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `sid` (a string)"),
-        )
-    })?;
-    if sid.is_empty() || sid.len() > 256 || sid.chars().any(char::is_control) {
-        return Err(crate::stream::inbound::spec::Fail::from((
-            "bad_args",
-            crate::common::contract::malformed(&format!(
-                "`sid` does not look like a session id: {sid:?}"
-            )),
-        )));
-    }
-    Ok(sid)
-}
 
 fn now_ms() -> i64 {
     crate::common::time::now()
@@ -282,38 +276,100 @@ fn need_path(own: &Own) -> Result<(OwnPath, OwnPath), crate::stream::inbound::sp
     Ok((dir, file))
 }
 
-/// `history-annotate {sid, patch}`：改一条，回改完的那一条（`{entry}`）。
-pub fn answer_annotate(
-    args: &Value,
-    own: &Own,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    answer_annotate_at(own, args, now_ms())
+// ───────────────────────── 帧命令（typed，`stream/inbound/typed.rs`）─────────────────────────
+
+codes! {
+    /// `history-annotate` · `history-forget` 的码。
+    pub(crate) enum AnnotationErr {
+        /// 这份文件此刻读不懂（坏 JSON · 类型不对 · 同一格驼峰与蛇形都在）⇒ 拒写，原文件一个字节不动。
+        Unreadable = "annotations_unreadable",
+        /// 写不下去（建目录 · 拿锁 · 原子写）。
+        IoFailed = "io_failed",
+        /// 推不出家 ⇒ 不知道往哪写。
+        NoAnnotations = "no_annotations",
+    }
 }
 
-/// [`answer_annotate`] 的本体：「现在」由调用方给（判据喂临时目录的写句柄与固定时刻）。
-pub(crate) fn answer_annotate_at(
+/// 下层那一份 [`Fail`](crate::stream::inbound::spec::Fail) ⇒ 这两条的码（不在表里 ⇒ 落 `io_failed`）。
+fn err(f: crate::stream::inbound::spec::Fail) -> AnnotationErr {
+    of_fail(f, AnnotationErr::IoFailed)
+}
+
+/// 会话 id：非空、至多 256 字节、不含控制字符；不像 ⇒ `bad_args`（形状对、值不对，由处理器回）。
+fn checked_sid(sid: &str) -> Result<&str, AnnotationErr> {
+    if sid.is_empty() || sid.len() > 256 || sid.chars().any(char::is_control) {
+        return Err(AnnotationErr::BadArgs(crate::common::contract::malformed(
+            &format!("`sid` does not look like a session id: {sid:?}"),
+        )));
+    }
+    Ok(sid)
+}
+
+/// `history-annotate` 的入参：改哪一条 ＋ 改哪几格。
+#[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AnnotateReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+    /// 要改的那几格。
+    pub(crate) patch: Patch,
+}
+
+/// `history-forget` 的入参。
+#[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ForgetReq {
+    /// 会话 id。
+    pub(crate) sid: String,
+}
+
+/// `history-annotate`：改一条历史注解（星标 / 改名 / 隐藏），回改完的那一条。
+pub(crate) struct HistoryAnnotateCmd;
+
+impl Command for HistoryAnnotateCmd {
+    const NAME: &'static str = "history-annotate";
+    type Req = AnnotateReq;
+    type Reply = Annotated;
+    type Err = AnnotationErr;
+}
+
+impl Owning for HistoryAnnotateCmd {
+    fn run(req: AnnotateReq, _cx: &Cx, own: &Own) -> Result<Annotated, AnnotationErr> {
+        annotate_at(own, req, now_ms())
+    }
+}
+
+/// `history-forget`：删一条历史注解（删会话时连带）。不在 ⇒ 不写。
+pub(crate) struct HistoryForgetCmd;
+
+impl Command for HistoryForgetCmd {
+    const NAME: &'static str = "history-forget";
+    type Req = ForgetReq;
+    type Reply = Forgotten;
+    type Err = AnnotationErr;
+}
+
+impl Owning for HistoryForgetCmd {
+    fn run(req: ForgetReq, _cx: &Cx, own: &Own) -> Result<Forgotten, AnnotationErr> {
+        forget_at(own, req)
+    }
+}
+
+/// [`HistoryAnnotateCmd`] 的本体：「现在」由调用方给（判据喂临时目录的写句柄与固定时刻）。
+pub(crate) fn annotate_at(
     own: &Own,
-    args: &Value,
+    req: AnnotateReq,
     now: i64,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let sid = sid_arg(args)?;
-    let patch: Patch = match args.get("patch") {
-        Some(p @ Value::Object(_)) => serde_json::from_value(p.clone()).map_err(|e| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(&format!("`patch` unreadable: {e}")),
-            )
-        })?,
-        _ => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "bad_args",
-                crate::common::contract::malformed("missing `patch` (an object)"),
-            )))
-        }
-    };
-    let (dir, file) = need_path(own)?;
-    let held = lock_for_write(own, &dir)?;
-    let (doc, mut raw) = read_for_write(file.as_path())?;
+) -> Result<Annotated, AnnotationErr> {
+    let sid = checked_sid(&req.sid)?;
+    let patch = req.patch;
+    let (dir, file) = need_path(own).map_err(err)?;
+    let held = lock_for_write(own, &dir).map_err(err)?;
+    let (doc, mut raw) = read_for_write(file.as_path()).map_err(err)?;
     let mut entry = doc.entries.get(sid).cloned().unwrap_or_default();
     if let Some(s) = patch.starred {
         entry.starred = s;
@@ -327,43 +383,40 @@ pub(crate) fn answer_annotate_at(
     entry.updated_at = now;
     put_entry(&mut raw, sid, Some(&entry));
     write_at(own, &file, &held, &raw)
-        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
-    crate::stream::inbound::spec::wire(&Annotated { entry })
+        .map_err(|e| err(crate::stream::inbound::spec::Fail::from(("io_failed", e))))?;
+    Ok(Annotated { entry })
 }
 
-/// `history-annotate` 的应答：改完的那一条。
+/// `history-annotate` 的回包：改完的那一条。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Annotated {
     pub(crate) entry: Entry,
 }
 
-/// `history-forget` 的应答：真删了一条没有（`false` = 本来就没有这一条，文件没动）。
+/// `history-forget` 的回包。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Forgotten {
+    /// 真删了一条没有（`false` = 本来就没有这一条，文件没动）。
     pub(crate) removed: bool,
 }
 
-/// `history-forget {sid}`：删那一条（删会话时连带）。不在 ⇒ 不写。回 `{removed}`。
-pub fn answer_forget(args: &Value, own: &Own) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    answer_forget_at(own, args)
-}
-
-/// [`answer_forget`] 的本体。
-pub(crate) fn answer_forget_at(
-    own: &Own,
-    args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let sid = sid_arg(args)?;
-    let (dir, file) = need_path(own)?;
-    let held = lock_for_write(own, &dir)?;
-    let (doc, mut raw) = read_for_write(file.as_path())?;
+/// [`HistoryForgetCmd`] 的本体。
+pub(crate) fn forget_at(own: &Own, req: ForgetReq) -> Result<Forgotten, AnnotationErr> {
+    let sid = checked_sid(&req.sid)?;
+    let (dir, file) = need_path(own).map_err(err)?;
+    let held = lock_for_write(own, &dir).map_err(err)?;
+    let (doc, mut raw) = read_for_write(file.as_path()).map_err(err)?;
     if !doc.entries.contains_key(sid) {
-        return crate::stream::inbound::spec::wire(&Forgotten { removed: false });
+        return Ok(Forgotten { removed: false });
     }
     put_entry(&mut raw, sid, None);
     write_at(own, &file, &held, &raw)
-        .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
-    crate::stream::inbound::spec::wire(&Forgotten { removed: true })
+        .map_err(|e| err(crate::stream::inbound::spec::Fail::from(("io_failed", e))))?;
+    Ok(Forgotten { removed: true })
 }
 
 #[cfg(test)]

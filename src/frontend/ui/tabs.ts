@@ -333,6 +333,14 @@ export class TabManager {
     "terminal.bring-front",
   ]);
 
+  /**
+   * 拆掉这一份（窗口关掉 · 判据收场）：流视图那一半跟着停 —— 冷读排班与空闲物化撤掉挂着的空闲回调，每个 tab 照关掉那样拆；
+   * 之后才回来的读直接丢掉，不再排、不碰 `window`。
+   */
+  dispose(): void {
+    this.view.dispose();
+  }
+
   /** DEV 探针：当前 tab 状态一行 JSON（形状见 `tab-stream-view.ts`）。生产不接线，无副作用。 */
   debugSnapshot(): string {
     return this.view.debugSnapshot();

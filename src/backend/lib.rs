@@ -977,7 +977,12 @@ pub const PROTO_VERSION: u32 = 1;
 /// quota-read 多 candidates，accounts-list 每号多 color；history-find 多可选 scope。各号 MCP 登录实时同步；「另 N 会话」只数活会话。
 /// 读会话先宣告、后台读（冻结格跟着变，同一个 BUILD_ID 里换了指纹：这一版还没发过）：session_added 不再带 lines，读完发新帧 session_primed {sid, path?, lines?}（这条会话的行在它之前一帧不出）；整台一份 watcher，各连接拿投影。
 /// 答题 hook 做成小插件经 CLAUDE_CODE_PLUGIN_DIRS 交下去（自定义启动器起的会话也能在消息流里答）；data-report 自家每一样带写好的 what。
-pub const BUILD_ID: &str = "p10i-typed-wire-mobile-core";
+///
+/// p10j-typed-history：子命令集不变，hello 带的形状指纹表变了：历史族（history-read / -page / -lines / -run / -tail / -branch / -record /
+/// -facts / -find / -index / -user-inputs / -turns / -annotate / -forget / -list / -last-accounts · sessions-needs · needs-answer · resolve · resync ·
+/// session-fork · tasks-list）换成 typed，会话事实那一串类型生成 TS；session-new-facts 形状跟着变。骨架落盘（足迹多一格骨架目录）；整份读改成按块读；
+/// 先读正在看的、判不出状态照实写「说不清」；桌面与手机共用一条重连循环；answerOff 多一种原因：别处起的会话、持着它的进程身上看不出挂过答题口。
+pub const BUILD_ID: &str = "p10j-typed-history";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 

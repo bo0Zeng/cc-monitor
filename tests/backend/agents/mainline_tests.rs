@@ -1,6 +1,16 @@
 //! 主线外清单：分叉选最新 · 多根只折死胡同的人话根 · 重复投递幂等 · 排队裸叶豁免 · 逐条喂与整批算逐条相同。
 use super::*;
 
+/// 一批事实 ⇒ 主线外清单（判据的对照：与 [`Chain`] 逐条记、逐条算的结果相同；冷读那一路改成扫描图里的 [`Chain`] 接着记）。
+pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
+    let mut c = Chain::new();
+    for f in facts {
+        c.load(f);
+    }
+    c.settle();
+    c.off
+}
+
 #[derive(Clone, Copy)]
 enum K {
     Said,

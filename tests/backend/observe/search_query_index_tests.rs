@@ -436,7 +436,7 @@ fn records_that_can_never_hit_take_no_room_in_the_index() {
             None,
             FindPage { skip: 0, limit: 10 },
             |v| {
-                hits.push(v["uuid"].as_str().unwrap_or_default().to_string());
+                hits.push(v.uuid.clone());
                 Ok(())
             },
         )

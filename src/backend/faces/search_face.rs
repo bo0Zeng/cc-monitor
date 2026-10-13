@@ -47,7 +47,7 @@ pub(crate) enum SearchScope {
 
 impl SearchScope {
     /// 口径那一层（`search_query::in_scope`）认的那个词。
-    fn word(self) -> &'static str {
+    pub(crate) fn word(self) -> &'static str {
         match self {
             SearchScope::User => "user",
             SearchScope::Assistant => "assistant",

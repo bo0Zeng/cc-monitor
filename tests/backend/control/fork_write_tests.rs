@@ -4,8 +4,30 @@ use crate::platform::fs::NewFile;
 use std::path::PathBuf;
 
 /// 帧面那一格 `launch` 的替身（推断本身由 `fork_launch_tests.rs` 钉）。
-fn no_launch(_: &Path, _: &str) -> serde_json::Value {
-    serde_json::Value::Null
+fn no_launch(_: &Path, _: &str) -> crate::control::fork_launch::Launch {
+    use crate::control::fork_launch::{Launch, Slot, Why};
+    Launch {
+        cwd: Slot::Unknown { why: Why::NoCwd },
+        account: Slot::Unknown { why: Why::Exited },
+        terminal: Slot::Unknown { why: Why::Exited },
+    }
+}
+
+/// 帧面那一跳：入参照 typed 那一处解（形状不对 ⇒ `bad_args`），再交本体；失败投成 `(码, 那一句)`。
+fn ask(
+    root: &Path,
+    args: serde_json::Value,
+    launch: &dyn Fn(&Path, &str) -> crate::control::fork_launch::Launch,
+) -> Result<serde_json::Value, (String, String)> {
+    use crate::stream::inbound::typed::Codes;
+    let req: ForkReq =
+        crate::stream::inbound::typed::take(&args).map_err(|f| (f.code, f.message))?;
+    fork_at(&NewFile::issue(), root, &req, launch)
+        .map(|r| serde_json::to_value(&r).unwrap())
+        .map_err(|e| {
+            let f = e.into_fail();
+            (f.code, f.message)
+        })
 }
 
 fn tmp(tag: &str) -> PathBuf {
@@ -177,9 +199,9 @@ fn new_session_id_has_uuid_shape_and_varies() {
 // 要求：「本机那几问从『exec 一次性本机后端』改走 `<local>` 长连接」—— 分叉上了帧面之后，
 // 帧面与本体必须是**同一份**实现（「业务解释只有一个家」）。
 
-/// ★ J3：同一份夹具会话、同一个 uuid，帧面 `answer_wire_at` 与本体 `run_inner` 落盘的**内容**逐字相同（只差新 sid），
-/// 帧面的 `data` 键集 == `ForkResult` 的键集 ＋ `launch`；金样 `tests/__fixtures__/session-fork.golden.json`
-/// 的 `product` 键集 == 真产出的键集（monitor 那一侧读同一份金样解码）。
+/// ★ J3：同一份夹具会话、同一个 uuid，帧面 `fork_at` 与本体 `run_inner` 落盘的**内容**逐字相同（只差新 sid），
+/// 帧面回包的 id 与落点就是本体那一份；金样 `tests/__fixtures__/session-fork.golden.json`
+/// 的 `product` 键集 == 真产出的键集（界面那一侧的生成类型同一形）。
 #[test]
 fn the_frame_face_and_the_core_are_one_fork() {
     let root = tmp("wire");
@@ -187,15 +209,14 @@ fn the_frame_face_and_the_core_are_one_fork() {
     let via_cli = run_inner(&NewFile::issue(), &root, "srcsid", "u2").unwrap();
     // 帧面那一格 `launch` 由入口交：它拿到的是源会话那份记录与源 sid。
     let asked = std::cell::RefCell::new(Vec::new());
-    let via_wire = answer_wire_at(
-        &NewFile::issue(),
+    let via_wire = ask(
         &root,
-        &serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
+        serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
         &|source, sid| {
             asked
                 .borrow_mut()
                 .push((source.to_path_buf(), sid.to_string()));
-            serde_json::json!({"facts": "from the face"})
+            no_launch(source, sid)
         },
     )
     .unwrap();
@@ -208,19 +229,13 @@ fn the_frame_face_and_the_core_are_one_fork() {
     );
     assert_eq!(
         via_wire["launch"],
-        serde_json::json!({"facts": "from the face"})
+        serde_json::to_value(no_launch(Path::new(""), "")).unwrap()
     );
-    let cli_v = serde_json::to_value(&via_cli).unwrap();
     let keys = |v: &serde_json::Value| -> Vec<String> {
         let mut k: Vec<String> = v.as_object().unwrap().keys().cloned().collect();
         k.sort();
         k
     };
-    // 帧面只比 `ForkResult` 多 `launch` 一格。
-    let mut cli_keys = keys(&cli_v);
-    cli_keys.push("launch".into());
-    cli_keys.sort();
-    assert_eq!(keys(&via_wire), cli_keys, "两个入口的形状不一样了");
     let read_rows = |p: &str, sid: &str| -> String {
         std::fs::read_to_string(p).unwrap().replace(sid, "<SID>")
     };
@@ -246,7 +261,7 @@ fn the_frame_face_and_the_core_are_one_fork() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 入参缺 / 空 / 不是串 ⇒ `bad_args`，一个字节都不写；找不到 ⇒ `fork_failed`（原因原样带回）。
+/// 入参缺 / 空 / 不是串 / 多一格 ⇒ `bad_args`，一个字节都不写；找不到 ⇒ `fork_failed`（原因原样带回）。
 #[test]
 fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
     let root = tmp("wirebad");
@@ -258,15 +273,14 @@ fn the_frame_face_refuses_bad_args_before_touching_the_disk() {
         serde_json::json!({"sid": "srcsid"}),
         serde_json::json!({"sid": "", "uuid": "u2"}),
         serde_json::json!({"sid": 1, "uuid": "u2"}),
+        serde_json::json!({"sid": "srcsid", "uuid": "u2", "extra": 1}),
     ] {
-        let (code, _) =
-            answer_wire_at(&NewFile::issue(), &root, &bad, &no_launch).expect_err("该拒");
+        let (code, _) = ask(&root, bad.clone(), &no_launch).expect_err("该拒");
         assert_eq!(code, "bad_args", "{bad}");
     }
-    let (code, msg) = answer_wire_at(
-        &NewFile::issue(),
+    let (code, msg) = ask(
         &root,
-        &serde_json::json!({"sid": "nosuch", "uuid": "u2"}),
+        serde_json::json!({"sid": "nosuch", "uuid": "u2"}),
         &no_launch,
     )
     .unwrap_err();
@@ -299,8 +313,7 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
             serde_json::json!({"sid": bad, "uuid": "u2"}),
             serde_json::json!({"sid": "srcsid", "uuid": bad}),
         ] {
-            let (code, msg) =
-                answer_wire_at(&NewFile::issue(), &root, &args, &no_launch).expect_err("该拒");
+            let (code, msg) = ask(&root, args.clone(), &no_launch).expect_err("该拒");
             assert_eq!(code, "bad_args", "{args} ⇒ {msg}");
             assert!(
                 copy_core::copy_matches("rsRemoteBranch.forkId.badChar", &msg)
@@ -310,23 +323,22 @@ fn the_fork_ids_are_whitelisted_at_the_frame_face() {
         }
     }
     assert_eq!(std::fs::read(&src).unwrap(), before, "拒了却动了源文件");
-    let ok = answer_wire_at(
-        &NewFile::issue(),
+    let ok = ask(
         &root,
-        &serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
+        serde_json::json!({"sid": "srcsid", "uuid": "u2"}),
         &no_launch,
     )
     .expect("真实形状的 id 放得过");
     assert!(ok["sessionId"].as_str().is_some_and(|s| s.len() <= 64));
     assert!(
-        answer_wire_at(
-            &NewFile::issue(),
+        ask(
             &root,
-            &serde_json::json!({"sid": "srcsid", "uuid": "a".repeat(64)}),
+            serde_json::json!({"sid": "srcsid", "uuid": "a".repeat(64)}),
             &no_launch
         )
         .map_err(|(c, _)| c)
         .err()
+        .as_deref()
             != Some("bad_args"),
         "64 位是上界本身，不该被形状判定拒"
     );

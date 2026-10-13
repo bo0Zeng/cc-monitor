@@ -61,7 +61,6 @@ describe("needs-answer", () => {
     };
     const r = await answerNeeds("devbox", "s1", { ask: "a", choice: "allow" });
     expect(r.kind).toBe("failed");
-    reply = async () => enc({ result: "maybe" });
-    expect((await answerNeeds("devbox", "s1", { ask: "a", choice: "allow" })).kind, "回的不是 answered ⇒ 认不出").toBe("failed");
+    // 回包认不出那一层不在这里判：needs-answer 是 typed 命令，形状由握手指纹管（第 8 批）。
   });
 });

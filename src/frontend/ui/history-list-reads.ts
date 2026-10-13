@@ -5,95 +5,22 @@
  * 远端：开页 / 「刷新」（`fresh`）先经已开着的长连接问那台常驻 `raw`（那台热缓存），再把那份原样（`listing`）交本机后端并注解 · 筛 · 排；
  * 敲字只问本机后端（它记着那份），它说 `no_listing`（没记着：本机后端重启过 / 头一次）⇒ 同开页那一套。照全文搜索的做法：扇出在这里、判定在后端。
  * 判定都在后端：显示标题 · 搜什么 · 怎么排（`at`）· 每行能做什么（`can`）· 分组。这里只做三件事：
- * 问谁（含远端那一份的装运）、按形状严格收（多一格 / 缺一格 / 类型不对 ⇒ 抛，跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
+ * 问谁（含远端那一份的装运）、按类型收（入参 · 回包从后端类型生成，形状由握手指纹核；跨语言金样 `tests/__fixtures__/history-list.golden.json`）、
  * 把各台各自排好的行按 `at` 并成一列。
  */
-import { chan, ChanError } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf, saidFrom } from "./ipc/chan-caller";
+import { ChanError } from "../../comms/inward/chan";
+import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { HistoryShapeError } from "./history-reads";
-import { isObj } from "./ipc/decode";
+import type { HistoryList } from "./generated/HistoryList";
+import type { HistoryRow } from "./generated/HistoryRow";
+import type { HistoryGroup } from "./generated/HistoryGroup";
+import type { HistoryListing } from "./generated/HistoryListing";
+import type { HistoryListReply } from "./generated/HistoryListReply";
+import type { HistoryListReq } from "./generated/HistoryListReq";
 
-/** 这一行能做什么（后端按这一行判好，界面照画）。 */
-export interface HistoryCan {
-  /** `yes` 能恢复 · `switch` 在跑（切过去）· `bg` 分身会话（要恢复主会话）。 */
-  resume: "yes" | "switch" | "bg";
-  /** 恢复时能不能选号（那一家有没有账号这一维）。 */
-  accounts: boolean;
-  /** 能不能从某一轮分叉。 */
-  fork: boolean;
-  /** `yes` · `live` 在跑（先结束它）· `unsure` 说不清在不在跑。 */
-  delete: "yes" | "live" | "unsure";
-}
-
-/** 一行会话（成品）。 */
-export interface HistoryRow {
-  agent: string;
-  /** 行上那一家的小牌（如 `Codex`）；默认那一家 ⇒ `null`。 */
-  agentTag: string | null;
-  sessionId: string;
-  projectDir: string;
-  projectPath: string;
-  projectName: string;
-  group: string;
-  aiTitle: string | null;
-  firstUserExcerpt: string;
-  /** 原标题（改标题时「留空 = 原标题」那一个）。 */
-  title: string;
-  /** 显示的标题。 */
-  label: string;
-  /** 没改过、没标题、没第一句。 */
-  untitled: boolean;
-  startedAt: number;
-  updatedAt: number;
-  /** 这一次排序用的那个时刻（毫秒）。 */
-  at: number;
-  /** 行尾那一格 · 分段头 · 内容头那一段：那台后端按它的本地钟写好的字（界面照抄、不换算）。 */
-  atText: string;
-  sectionText: string;
-  spanText: string;
-  jsonlPath: string;
-  messageCountApprox: number;
-  isBg: boolean;
-  starred: boolean;
-  customTitle: string | null;
-  hidden: boolean;
-  forkedFromSessionId?: string;
-  forkedFromMessageUuid?: string;
-  lastAccount?: string;
-  status: "live" | "ended" | "unknown";
-  can: HistoryCan;
-  /** 只因为有在列的分叉从它分出来才带上（它自己被筛掉 / 隐藏了）。 */
-  context?: true;
-  origin?: string;
-}
-
-/** 按项目看时的一组。 */
-export interface HistoryGroup {
-  key: string;
-  agent: string;
-  projectName: string;
-  projectPath: string;
-  projectDir: string;
-  count: number;
-  /** `null` = 有判不了活的、又没有确定在跑的。 */
-  hasLive: boolean | null;
-  starred: boolean;
-  lastActivity: number;
-  /** 几台的组并成一列时的序（大的在前；后端算好，界面只按它并）。 */
-  order: number;
-  /** 读不了的那个记录目录 ⇒ 那一句；别的 ⇒ `null`。 */
-  failed: string | null;
-  origin?: string;
-}
-
-export interface HistoryList {
-  rows: HistoryRow[];
-  groups: HistoryGroup[];
-  total: number;
-  truncated: boolean;
-  notice: string | null;
-}
+/** 一行会话 · 按项目看时的一组 · 一台的成品（类型从后端生成）。 */
+export type { HistoryList, HistoryRow, HistoryGroup };
 
 /** 问的那几格（缺 = 后端缺省）。 */
 export interface HistoryListAsk {
@@ -110,132 +37,22 @@ export interface HistoryListAsk {
 /** 一问 30 秒（远端那台常驻热着那份清单；盖住一整份经长连接回来、本机后端并一遍）。 */
 const LIST_BUDGET_MS = 30_000;
 
-const isStr = (v: unknown): v is string => typeof v === "string";
-const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
-const isBool = (v: unknown): v is boolean => typeof v === "boolean";
-const orNull =
-  <T>(p: (v: unknown) => v is T) =>
-  (v: unknown): v is T | null =>
-    v === null || p(v);
-const opt =
-  <T>(p: (v: unknown) => v is T) =>
-  (v: unknown): v is T | undefined =>
-    v === undefined || p(v);
-const oneOf =
-  (...words: string[]) =>
-  (v: unknown): boolean =>
-    isStr(v) && words.includes(v);
-
-function keysOk(o: Record<string, unknown>, must: readonly string[], may: readonly string[]): boolean {
-  return must.every((k) => k in o) && Object.keys(o).every((k) => must.includes(k) || may.includes(k));
+/** 回包两形里平时那一形（成品带 `groups`）；问的不是 `raw` 却回了清单 ⇒ 抛（细目只进日志）。 */
+function listOf(r: HistoryListReply): HistoryList {
+  if ("groups" in r) return r;
+  throw new HistoryShapeError("history-list answered a raw listing to a non-raw ask");
 }
 
-const ROW_KEYS = [
-  "agent", "agentTag", "sessionId", "projectDir", "projectPath", "projectName", "group", "aiTitle", "firstUserExcerpt",
-  "title", "label", "untitled", "startedAt", "updatedAt", "at", "atText", "sectionText", "spanText", "jsonlPath", "messageCountApprox", "isBg",
-  "starred", "customTitle", "hidden", "status", "can",
-] as const;
-const ROW_MAY = ["forkedFromSessionId", "forkedFromMessageUuid", "lastAccount", "context", "origin"] as const;
-const GROUP_KEYS = [
-  "key", "agent", "projectName", "projectPath", "projectDir", "count", "hasLive", "starred", "lastActivity", "order", "failed",
-] as const;
-
-/** `can` 那一格严格收（历史清单的行与全文搜索的命中同一张规则）。 */
-export function canOk(c: unknown): c is HistoryCan {
-  return (
-    isObj(c) &&
-    keysOk(c, ["resume", "accounts", "fork", "delete"], []) &&
-    oneOf("yes", "switch", "bg")(c.resume) &&
-    isBool(c.accounts) &&
-    isBool(c.fork) &&
-    oneOf("yes", "live", "unsure")(c.delete)
-  );
-}
-
-function rowOk(r: unknown): r is HistoryRow {
-  return (
-    isObj(r) &&
-    keysOk(r, ROW_KEYS, ROW_MAY) &&
-    isStr(r.agent) &&
-    orNull(isStr)(r.agentTag) &&
-    isStr(r.sessionId) &&
-    isStr(r.projectDir) &&
-    isStr(r.projectPath) &&
-    isStr(r.projectName) &&
-    isStr(r.group) &&
-    orNull(isStr)(r.aiTitle) &&
-    isStr(r.firstUserExcerpt) &&
-    isStr(r.title) &&
-    isStr(r.label) &&
-    isBool(r.untitled) &&
-    isNum(r.startedAt) &&
-    isNum(r.updatedAt) &&
-    isNum(r.at) &&
-    isStr(r.atText) &&
-    isStr(r.sectionText) &&
-    isStr(r.spanText) &&
-    isStr(r.jsonlPath) &&
-    isNum(r.messageCountApprox) &&
-    isBool(r.isBg) &&
-    isBool(r.starred) &&
-    orNull(isStr)(r.customTitle) &&
-    isBool(r.hidden) &&
-    (r.forkedFromSessionId === undefined) === (r.forkedFromMessageUuid === undefined) &&
-    opt(isStr)(r.forkedFromSessionId) &&
-    opt(isStr)(r.forkedFromMessageUuid) &&
-    opt(isStr)(r.lastAccount) &&
-    oneOf("live", "ended", "unknown")(r.status) &&
-    canOk(r.can) &&
-    (r.context === undefined || r.context === true) &&
-    opt(isStr)(r.origin)
-  );
-}
-
-function groupOk(g: unknown): g is HistoryGroup {
-  return (
-    isObj(g) &&
-    keysOk(g, GROUP_KEYS, ["origin"]) &&
-    isStr(g.key) &&
-    isStr(g.agent) &&
-    isStr(g.projectName) &&
-    isStr(g.projectPath) &&
-    isStr(g.projectDir) &&
-    isNum(g.count) &&
-    orNull(isBool)(g.hasLive) &&
-    isBool(g.starred) &&
-    isNum(g.lastActivity) &&
-    isNum(g.order) &&
-    orNull(isStr)(g.failed) &&
-    opt(isStr)(g.origin)
-  );
-}
-
-/** `history-list` 的成品 ⇒ 清单。形状不对 ⇒ 抛 [`HistoryShapeError`]（细目只进日志）。 */
-export function decodeList(v: unknown): HistoryList {
-  if (
-    !isObj(v) ||
-    !keysOk(v, ["rows", "groups", "total", "truncated", "notice"], []) ||
-    !Array.isArray(v.rows) ||
-    !Array.isArray(v.groups) ||
-    !isNum(v.total) ||
-    !isBool(v.truncated) ||
-    !orNull(isStr)(v.notice)
-  ) {
-    throw new HistoryShapeError("history-list reply is not exactly {rows, groups, total, truncated, notice}");
-  }
-  for (const r of v.rows) {
-    if (!rowOk(r)) throw new HistoryShapeError(`history-list row has the wrong shape: ${JSON.stringify(r)}`);
-  }
-  for (const g of v.groups) {
-    if (!groupOk(g)) throw new HistoryShapeError(`history-list group has the wrong shape: ${JSON.stringify(g)}`);
-  }
-  return v as unknown as HistoryList;
+/** 回包两形里 `raw` 那一形（这台自己的清单）；回了成品 ⇒ 抛。 */
+function listingOf(r: HistoryListReply): HistoryListing {
+  if (!("groups" in r)) return r;
+  throw new HistoryShapeError("history-list answered a product to a raw ask");
 }
 
 /** 一台的清单（`origin` 缺席 = 本机）。失败 ⇒ 抛（给人看的那句：`history-reads.ts::historyReasonOf`）。 */
 export async function fetchList(origin: string | undefined, ask: HistoryListAsk): Promise<HistoryList> {
   // 只带给了的那几格（缺 = 后端缺省）。
-  const args = {
+  const args: HistoryListReq = {
     ...(origin ? { origin } : {}),
     ...(ask.sid ? { sid: ask.sid } : {}),
     ...(ask.query ? { query: ask.query } : {}),
@@ -251,28 +68,25 @@ export async function fetchList(origin: string | undefined, ask: HistoryListAsk)
       if (!notHeld(e)) throw e;
     }
   }
-  // 那台常驻答的 `raw` 原样交过去（不在这里解：形状由本机后端认）。
-  const listing = readJson(await askRemoteRaw(origin));
+  // 那台常驻答的 `raw` 原样交过去（并 · 筛 · 排在本机后端）。
+  const listing = await askRemoteRaw(origin);
   return askLocal({ origin, listing, ...args });
 }
 
-/** 本机后端那一问（并 · 筛 · 排都在它那里）。 */
-async function askLocal(args: Record<string, unknown>): Promise<HistoryList> {
-  const body = jsonBody(args);
-  const budget = budgetWithin(LIST_BUDGET_MS);
-  const reply = await chan.call(LOCAL_ORIGIN, "history-list", body, budget);
-  return decodeList(readJson(reply));
+/** 本机后端那一问（并 · 筛 · 排都在它那里；形状由握手指纹核）。 */
+async function askLocal(args: HistoryListReq): Promise<HistoryList> {
+  return listOf(await callTyped(LOCAL_ORIGIN, "history-list", args, budgetWithin(LIST_BUDGET_MS)));
 }
 
 /** 经已开着的长连接问那台常驻它自己的清单。失败 ⇒ 抛那台那一句（谁老了 / 谁够不到说的是那台）。 */
-async function askRemoteRaw(origin: string): Promise<Uint8Array> {
+async function askRemoteRaw(origin: string): Promise<HistoryListing> {
+  let reply: HistoryListReply;
   try {
-    const body = jsonBody({ raw: true });
-    const budget = budgetWithin(LIST_BUDGET_MS);
-    return await chan.call(origin, "history-list", body, budget);
+    reply = await callTyped(origin, "history-list", { raw: true }, budgetWithin(LIST_BUDGET_MS));
   } catch (e) {
     throw new Error(saidFrom(e, origin));
   }
+  return listingOf(reply);
 }
 
 /** 本机后端说「那台的清单还没取回」。 */

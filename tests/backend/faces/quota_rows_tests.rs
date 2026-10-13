@@ -283,3 +283,41 @@ fn the_wire_golden_is_what_the_exit_writes() {
         "quota-read 线上金样与真出口不一致（CCM_REGEN_QUOTA_READ=1 重写）"
     );
 }
+
+/// ★ 额度账读不懂（一份坏的夹具：不是 JSON）⇒ 一个号都不发：账号库里的每个号 `warm` 都是 `wait`（过一阵再看），
+/// 那一句照实说哪一份读不懂、为什么（就是 `reason`：路径 ＋ 原因词）。从前这时每号照「无采样 · 发一句才知道」判成 `send`。
+#[test]
+fn an_unreadable_ledger_sends_nothing_and_says_which_file_and_why() {
+    let d = std::env::temp_dir().join(format!("ccm-quota-bad-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).unwrap();
+    let p = d.join("quota.json");
+    std::fs::write(&p, "{\"accounts\": [ 这不是 JSON").unwrap();
+    let now = 1_791_189_600u64;
+    let read = crate::accounts::quota::ledger::answer_of(Some(&p), now);
+    let _ = std::fs::remove_dir_all(&d);
+    assert_eq!(read.state, "unreadable");
+    let why = read.reason.as_str().expect("读不懂要有原因").to_string();
+    assert!(
+        why.contains(&p.display().to_string()),
+        "原因里说是哪一份：{why}"
+    );
+    let mut reply = serde_json::to_value(&read).unwrap();
+    reply["unseen"] = serde_json::json!([
+        {"account": "work", "agent": "claude-code", "kind": "sub", "login": "ok"},
+        {"account": "team", "agent": "claude-code", "kind": "sub", "login": "ok"},
+    ]);
+    reply["usableNow"] = serde_json::json!([]);
+    let v = through_the_exit(&reply, &crate::Tz::default());
+    let unseen = v["unseen"].as_array().unwrap();
+    assert_eq!(unseen.len(), 2);
+    let said = copy_text("acct.warm.unreadable", &[("why", &why)]);
+    for a in unseen {
+        assert_eq!(a["warm"]["act"], "wait", "{}", a["account"]);
+        assert_eq!(a["warm"]["text"], Value::String(said.clone()));
+        assert_eq!(
+            a["warm"]["at"],
+            serde_json::json!(now as i64 + WARM_UNREADABLE_RETRY_S)
+        );
+    }
+}

@@ -21,6 +21,8 @@ pub(crate) enum HookOff {
     Version,
     /// 换了启动器、ccm 经环境交了插件，持着会话的进程环境里却没有它：启动器没把环境传下去（会话事实读出来的，ccm 不写这个值）。
     EnvLost,
+    /// 会话不是 ccm 起的：持着它的进程身上看不出挂过答题口（[`started_elsewhere`]；会话事实读出来的，ccm 不写这个值）。
+    Elsewhere,
 }
 
 /// 用户自带的会话级设置并不进去的原因。
@@ -45,6 +47,7 @@ impl HookOff {
             HookOff::Policy => "policy",
             HookOff::Version => "version",
             HookOff::EnvLost => "env-lost",
+            HookOff::Elsewhere => "elsewhere",
         }
     }
 
@@ -58,6 +61,7 @@ impl HookOff {
             HookOff::Policy,
             HookOff::Version,
             HookOff::EnvLost,
+            HookOff::Elsewhere,
         ]
         .into_iter()
         .find(|o| o.env_value() == v)
@@ -90,6 +94,21 @@ pub(crate) fn dirs_with(list: Option<&str>, dir: &str) -> String {
     }
 }
 
+/// 持着会话的那个进程（环境里没有挂不上的那个变量）是不是别处起的（纯函数）：那一家有答题口，而它身上一样 ccm 挂过的痕迹都没有 ——
+/// 命令行里没有 hook 客户端那个旗标（`--settings` 那一路垫进去的）· 插件目录变量里没有我们那个目录（换了启动器那一路）· ccm 没给它留过便条。
+/// 命令行读不出（非 Linux · 进程刚没了）⇒ 不下这个判断（`false`：只说只能在终端里答，不编原因）。
+pub(crate) fn started_elsewhere(
+    has_ask_face: bool,
+    cmdline: Option<&str>,
+    plugin_here: bool,
+    noted: bool,
+) -> bool {
+    let Some(cmdline) = cmdline else {
+        return false;
+    };
+    has_ask_face && !plugin_here && !noted && !cmdline.contains(crate::ANSWER_HOOK_FLAG)
+}
+
 /// 「这条会话在这里答不了」那一句（会话事实的 `answerOff` · `needs.manualText`）：照环境里那个值说原因。
 pub(crate) fn hook_off_words(env_value: &str) -> Words {
     Words(match HookOff::from_env_value(env_value) {
@@ -105,6 +124,7 @@ pub(crate) fn hook_off_words(env_value: &str) -> Words {
         Some(HookOff::Policy) => copy_text("beAsk.manual.offPolicy", &[]),
         Some(HookOff::Version) => copy_text("beAsk.manual.offVersion", &[]),
         Some(HookOff::EnvLost) => copy_text("beAsk.manual.offEnvLost", &[]),
+        Some(HookOff::Elsewhere) => copy_text("beAsk.manual.offElsewhere", &[]),
         None => copy_text("beAsk.manual.offUnknown", &[]),
     })
 }
@@ -116,6 +136,15 @@ use serde_json::Value;
 /// 一条待答请求的成品（`needs.ask`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsAsk"
+    )
+)]
 pub(crate) struct Ask {
     /// 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
     pub(crate) id: String,
@@ -134,12 +163,22 @@ pub(crate) struct Ask {
     /// 提问那一种的题目；别的种类为空。
     pub(crate) questions: Vec<Question>,
     /// 何时挂上的（epoch ms，这台的钟）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) since_ms: u64,
 }
 
 /// 发请求的那一趟子运行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsAskRun"
+    )
+)]
 pub(crate) struct AskRun {
     pub(crate) id: String,
     /// 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
@@ -149,6 +188,15 @@ pub(crate) struct AskRun {
 /// 一个选项。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsChoice"
+    )
+)]
 pub(crate) struct Choice {
     /// 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
     pub(crate) id: String,
@@ -161,6 +209,15 @@ pub(crate) struct Choice {
 /// 选项要不要附一句话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsNote"
+    )
+)]
 pub(crate) enum NoteNeed {
     None,
     Optional,
@@ -170,6 +227,15 @@ pub(crate) enum NoteNeed {
 /// 一道题（提问那一种）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsQuestion"
+    )
+)]
 pub(crate) struct Question {
     /// `q0` · `q1` …（答的时候 `picks` 按它键）。
     pub(crate) id: String,
@@ -184,6 +250,15 @@ pub(crate) struct Question {
 /// 一道题的一个选项。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsQuestionOption"
+    )
+)]
 pub(crate) struct QuestionOption {
     /// `q0o0` …
     pub(crate) id: String,

@@ -219,6 +219,8 @@ pub(crate) struct AskIn {
 
 /// 待答请求的种类（线上同 `needs.kind` 那一套里的三个词）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum AskKind {
     #[serde(rename = "approve")]
     Approve,
@@ -1097,6 +1099,24 @@ pub enum Speaker {
     ToolResult,
 }
 
+/// [`Speaker::kind`] 那一份闭集（骨架读回来认词用）。
+pub(crate) const SPEAKER_KINDS: [&str; 14] = [
+    "human",
+    "slashCommand",
+    "bashInput",
+    "bashOutput",
+    "commandOutput",
+    "taskNotification",
+    "agentMessage",
+    "peerSession",
+    "coordinator",
+    "agentTask",
+    "system",
+    "compactSummary",
+    "interrupt",
+    "toolResult",
+];
+
 impl Speaker {
     /// 线上 `kind` 那一格（骨架索引的 `sp` 也用它）。
     pub(crate) fn kind(&self) -> &'static str {
@@ -1750,9 +1770,21 @@ pub(crate) fn first_in_head(
 
 /// 这份会话记录的项目目录：记录归哪一家就问哪一家（[`RecordFace::project_dir`]）；那一家不声明 / 开头里没有 ⇒ `None`。
 pub(crate) fn project_dir_of(p: &Path) -> Option<String> {
-    record_face_of(p)
+    project_dir_among(REGISTRY, p)
+}
+
+/// [`project_dir_of`] 的可喂夹具那一半。
+pub(crate) fn project_dir_among(registry: &[Adapter], p: &Path) -> Option<String> {
+    record_face_among(registry, p)
         .and_then(|f| f.project_dir)
         .and_then(|f| f(p))
+}
+
+/// 这份记录归的那一家若有合成历史面（记录不住记录树、首句另有读法）⇒ 那一家的首句摘录法
+/// （与历史清单那一行同一个，[`HistoryFace::excerpt`]）；归记录树那一家 · 认不出 ⇒ `None`。
+pub(crate) fn synth_excerpt_among(registry: &[Adapter], p: &Path) -> Option<fn(&Path) -> String> {
+    let kind = record_kind_among(registry, p)?;
+    adapter_among(registry, kind)?.history.map(|h| h.excerpt)
 }
 
 /// 注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
@@ -1889,6 +1921,8 @@ pub(crate) struct McpLook {
 /// 会话事实（`history-facts` 的 `mcp`）只列那一家在记录里说有毛病的：要登录 · 断开 · 还在连。两处都不说「连上了」。
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum McpStatus {
     NeedsLogin,
     Failed,

@@ -5598,60 +5598,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "sessionReads.record.badShape": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "不是恰好 present / root 两格",
-      "args": []
-    },
-    "sessionReads.missing.facts": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺格、多格或某格类型不对",
-      "args": []
-    },
-    "sessionReads.missing.indexRow": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "里有一行缺 o / n 字段",
-      "args": []
-    },
-    "sessionReads.missing.index": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 from / end / rows 字段",
-      "args": []
-    },
-    "sessionReads.missing.inputsEntry": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "里有一条缺字段",
-      "args": []
-    },
-    "sessionReads.missing.turns": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 from / end / turns 字段，或某一轮的字段不对",
-      "args": []
-    },
-    "sessionReads.missing.inputs": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 from / end / entries 字段",
-      "args": []
-    },
-    "sessionReads.missing.findHit": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "里有一条命中缺字段",
-      "args": []
-    },
-    "sessionReads.missing.find": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "缺 total / hits 字段",
-      "args": []
-    },
     "skeletonView.ledgerFromIndex.noIndex": {
       "kind": "error",
       "role": "报错",
@@ -17852,6 +17798,12 @@
       "zh": "启动器没把环境传下去，答题口没接上 · 只能在终端里答",
       "args": []
     },
+    "beAsk.manual.offElsewhere": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "别处起的会话，没挂答题口 · 只能在终端里答",
+      "args": []
+    },
     "beAsk.manual.offSettings": {
       "kind": "body",
       "role": "说明",
@@ -21718,6 +21670,12 @@
       "args": [],
       "limited": ["SSH"]
     },
+    "rsDataPaths.backend.skeleton": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "记录骨架 · 大记录的扫描索引 · 重启后接着读 · 可重建",
+      "args": []
+    },
     "rsDataPaths.backend.launchAccounts": {
       "kind": "body",
       "role": "说明",
@@ -21951,6 +21909,12 @@
       "role": "报错",
       "zh": "读取失败 · 用量记录 · 原因不明",
       "args": []
+    },
+    "acct.warm.unreadable": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{why} · 不发",
+      "args": ["why"]
     },
     "acct.warm.unseen": {
       "kind": "body",

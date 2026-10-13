@@ -2,6 +2,7 @@
 // 行为口径：单键只在上面没有浮层 / 对话框 / 输入焦点时生效、模态只放行 Esc；组字中的 Enter 归输入法；
 // 危险确认默认焦点在「取消」；实时更新不夺焦点、读失败不丢已显示的。
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { owned } from "../../test-support/owned-tab-manager.ts";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openPath: vi.fn().mockResolvedValue(undefined) }));
@@ -92,7 +93,7 @@ function makeTabs(sids: readonly string[]): TabManager {
   const bar = document.createElement("div");
   const root = document.createElement("div");
   document.body.append(bar, root);
-  const tm = new TabManager(bar, root);
+  const tm = owned(new TabManager(bar, root));
   for (const sid of sids) tm.ensureTab(sid, `/w/${sid}`, `/p/${sid}.jsonl`, LOCAL_ORIGIN);
   return tm;
 }
@@ -527,6 +528,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     mcp: [],
     bgTasks: [],
     background: null,
+    answerOff: null,
     usage: {
       promptTokens: 350_000,
       model: "claude-opus-5-5",

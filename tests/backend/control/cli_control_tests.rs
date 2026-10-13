@@ -1203,7 +1203,7 @@ fn a_one_shot_without_its_args_says_what_is_missing_in_the_detail() {
     );
     let detail = v["detail"].as_str().unwrap();
     assert!(
-        detail.contains("missing `path`"),
+        detail.contains("missing field `path`"),
         "详情没说缺什么：{detail}"
     );
     assert!(

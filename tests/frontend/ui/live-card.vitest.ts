@@ -13,6 +13,7 @@
  * T7（台架夹具：真 jsonl × 真 tap 按对账键比正文）随上游协议的折法搬进后端：`tests/backend/agents/sse_anthropic_tests.rs`。
  */
 import { describe, it, expect, vi, afterEach } from "vitest";
+import { owned } from "../../test-support/owned-tab-manager.ts";
 
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../test-support/session-viewer-rig");
@@ -337,7 +338,7 @@ describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口�
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = new TabManager(barEl, streamRootEl);
+    const tm = owned(new TabManager(barEl, streamRootEl));
     tm.setLivePainter(livePainter);
     tm.onLine(jsonl[0] as never);
     for (const t of tapSeq) tm.onSessionTap(t);
@@ -375,7 +376,7 @@ describe("T8 SSE 断 / 丢不碰 jsonl 那条对的路（抄流可以有缺口�
     const barEl = document.createElement("div");
     const streamRootEl = document.createElement("div");
     document.body.append(barEl, streamRootEl);
-    const tm = new TabManager(barEl, streamRootEl);
+    const tm = owned(new TabManager(barEl, streamRootEl));
     tm.setLivePainter(livePainter);
     const trailer = (): string =>
       [...streamRootEl.querySelectorAll(".stream")].map((s) => [...s.children].slice(1).map((c) => c.textContent).join("|")).join("#");

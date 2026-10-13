@@ -1032,6 +1032,7 @@ fn watch_loop(
         .filter(|r| r.by_writer)
         .map(|r| r.root.clone())
         .collect();
+    state.skeletons = Some(crate::observe::skeleton::Skeletons::new(own.clone()));
     state.launch = Some(own);
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
@@ -1523,6 +1524,8 @@ struct ReaderState {
     launch: Option<crate::platform::fs::Own>,
     /// 这台的会话注解（在 monitor 里改的名住这里；叫会话什么的第一档）。默认空、不进 `new` 的签名；生产由 [`watch_loop`] 读、那份文件动了重读。
     annotations: crate::history::history_annotations::Table,
+    /// 大记录的骨架落在哪（生产由 [`watch_loop`] 照启动时的写句柄装上；`None`（夹具）⇒ 不读也不落）。
+    skeletons: Option<crate::observe::skeleton::Skeletons>,
     /// 预读的线程池（生产由 [`watch_loop`] 装上）。`None`（夹具）⇒ 同一个任务就地跑、就地装回（[`announce`]）。
     pool: Option<PrimePool>,
     /// 预读还没交回的会话 → 那一趟的代号（会话退休 / 重新宣告 ⇒ 旧的那一趟交回时认不上、丢掉）。
@@ -1705,6 +1708,7 @@ impl ReaderState {
             pidfile_kind: "",
             book: std::sync::Arc::default(),
             launch: None,
+            skeletons: None,
             branches: HashMap::new(),
             typed: HashMap::new(),
             annotations: Default::default(),
@@ -1993,7 +1997,7 @@ fn scan_new_lines(
 /// 取更多只是多读几个字节，取更少（< 36）就可能只落在行尾那几个常见的 `"}` 上。
 /// ⚠ 买不到的（如实登记）：**长度一字不差**的原地改写（只改了已读过的几行里的同长字）⇒ 对得齐、后面照读，
 ///   那几行已经画出去的旧样子不会变（「看的，不是管的」）。
-pub const TAIL_PROBE: u64 = 64;
+pub const TAIL_PROBE: u64 = crate::observe::skeleton::WITNESS;
 
 /// 一次续读前看到的那一份。
 enum Look {
@@ -3028,6 +3032,7 @@ fn start_prime(
                         state.book.clone(),
                     )
                 }),
+                skel: state.skeletons.clone(),
                 key,
             }
         })
@@ -3044,8 +3049,9 @@ fn start_prime(
             dispatch_primes(state, sink);
         }
         None => {
-            let done = run_prime(job);
+            let (done, later) = run_prime(job);
             primed(done, state, sink);
+            store_skeletons(later);
         }
     }
 }
@@ -3493,7 +3499,23 @@ pub(crate) struct FilePrime {
     face: Option<crate::agents::RecordFace>,
     /// 子运行补记那一半（只用它的运行面与整台那本运行簿，[`crate::observe::runs::RunTrack::prime`]）。
     runs: Option<crate::observe::runs::RunTrack>,
+    /// 骨架的家（进程里还没有这份的游标时从它接着读、读完落一份；`None` ⇒ 不读不落）。
+    skel: Option<crate::observe::skeleton::Skeletons>,
 }
+
+/// 预读那一路落的骨架（[`crate::observe::skeleton`]）：读到哪了 · 行号 · 链索引 · 说到子运行的那几行原文 · 最后一件说了的活动。
+#[derive(serde::Serialize, serde::Deserialize)]
+struct PrimeSkel {
+    mark: crate::observe::skeleton::Mark,
+    seq: u64,
+    #[serde(with = "crate::agents::mainline::skel")]
+    chain: crate::agents::mainline::Chain,
+    runs: Vec<String>,
+    activity: Option<crate::agents::SessionActivity>,
+}
+
+/// 骨架里这一样叫什么（与冷开扫描图那一份分开两个文件）。
+const PRIME_SKEL: &str = "prime";
 
 /// 一条会话的预读任务：会话里的几份记录照顺序读（新的在前，同 `session_added.path` 那一格的取法）。
 pub(crate) struct PrimeJob {
@@ -3534,8 +3556,22 @@ pub(crate) struct PrimeDone {
     facts: Option<super::search_rules::LabelFacts>,
 }
 
+/// 读完要落的骨架（交回之后再落：几十 MB 的写不挡「读完了」那一帧）。
+struct SkelLater {
+    home: crate::observe::skeleton::Skeletons,
+    path: PathBuf,
+    body: PrimeSkel,
+}
+
+fn store_skeletons(later: Vec<SkelLater>) {
+    for l in later {
+        l.home.store(&l.path, PRIME_SKEL, &l.body);
+    }
+}
+
 /// 线程池里跑的那一趟（夹具没有池时就地跑同一个函数）：几份记录照顺序预读，再取名字。只读盘、不碰 watcher 的账。
-fn run_prime(job: PrimeJob) -> PrimeDone {
+/// 另回读完要落的骨架（调用方先交回、再落）。
+fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<SkelLater>) {
     let PrimeJob {
         sid,
         gen,
@@ -3544,20 +3580,23 @@ fn run_prime(job: PrimeJob) -> PrimeDone {
     } = job;
     let mut activity = None;
     let mut out = Vec::with_capacity(files.len());
+    let mut later = Vec::new();
     for (i, f) in files.into_iter().enumerate() {
-        let (done, said) = prime_file_cursor(&sid, f);
+        let (done, said, skel) = prime_file_cursor(&sid, f);
         if i == 0 {
             activity = said;
         }
         out.push(done);
+        later.extend(skel);
     }
-    PrimeDone {
+    let done = PrimeDone {
         sid,
         gen,
         files: out,
         activity,
         facts: label.map(|p| super::history_query::label_facts_of(&p)),
-    }
+    };
+    (done, later)
 }
 
 /// Batch8-F25：宣告之后的预读——把 cursor 与 seq 计数器推进到当前
@@ -3568,16 +3607,21 @@ fn run_prime(job: PrimeJob) -> PrimeDone {
 fn prime_file_cursor(
     session_id: &str,
     job: FilePrime,
-) -> (FileDone, Option<crate::agents::SessionActivity>) {
+) -> (
+    FileDone,
+    Option<crate::agents::SessionActivity>,
+    Option<SkelLater>,
+) {
     let FilePrime {
         path,
         key,
-        prev,
-        tail: probe,
-        seq,
+        mut prev,
+        tail: mut probe,
+        mut seq,
         chain: prev_chain,
         face,
         runs,
+        skel,
     } = job;
     let chain = face.and_then(|f| f.chain);
     let said_activity = face.and_then(|f| f.activity);
@@ -3588,14 +3632,78 @@ fn prime_file_cursor(
         gone,
         bytes: 0,
     };
+    // 进程里还没有这份的游标（重启 · 头一次宣告）⇒ 盘上有骨架就照它：没变 ⇒ 不读；变长了 ⇒ 从骨架的游标接着读（先核见证）；
+    // 别的 ⇒ 整份。读完（大记录）落一份新的。
+    let fresh = prev == ReadCursor::default() && probe.is_none();
+    let home = skel.filter(|_| fresh);
+    let mut seeded: Option<PrimeSkel> = None;
+    if let Some(k) = home
+        .as_ref()
+        .and_then(|h| h.load::<PrimeSkel>(&path, PRIME_SKEL))
+    {
+        let meta = match Ro::metadata(&path) {
+            Ok(m) => m,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return (none(key, true), None, None)
+            }
+            Err(_) => return (none(key, false), None, None),
+        };
+        match k
+            .mark
+            .look(meta.len(), crate::observe::skeleton::mtime_of(&meta))
+        {
+            crate::observe::skeleton::Look::Same => {
+                if let Some(r) = runs.as_ref() {
+                    r.prime(session_id, &said_lines(&k.runs));
+                }
+                let read = FileRead {
+                    cursor: ReadCursor {
+                        consumed: k.mark.cursor,
+                        seen_len: k.mark.len,
+                    },
+                    tail: k.mark.witness,
+                    seq: k.seq,
+                    chain: chain.map(|_| k.chain),
+                    from_zero: false,
+                };
+                let done = FileDone {
+                    key,
+                    read: Some(read),
+                    gone: false,
+                    bytes: 0,
+                };
+                return (done, k.activity, None);
+            }
+            crate::observe::skeleton::Look::Grown => {
+                prev = ReadCursor {
+                    consumed: k.mark.cursor,
+                    seen_len: k.mark.len,
+                };
+                probe = Some(k.mark.witness.clone());
+                seeded = Some(k);
+            }
+            crate::observe::skeleton::Look::Changed => {}
+        }
+    }
     // 冷接时游标在 0、而主记录可能上百 MB ⇒ 按块读（[`PrimeReader`]），不攒整份 —— 要的只是行数与说到子运行的那几行。
     // 「不在 ⇒ 丢游标 · 变短 / 改写 ⇒ 从 0 重数」与续读同一套；这里不出声：那句话由之后的 `process_jsonl` 说。
     let mut reader = match PrimeReader::open(&path, prev, probe.as_deref()) {
         Ok(r) => r,
-        Err(Look::Gone) => return (none(key, true), None),
-        Err(_) => return (none(key, false), None),
+        Err(Look::Gone) => return (none(key, true), None, None),
+        Err(_) => return (none(key, false), None, None),
     };
     let from_zero = reader.from == 0;
+    // 骨架的见证对不上 ⇒ 当没有骨架（整份）；对得上 ⇒ 行号 · 链 · 子运行那几行 · 活动接着骨架的。
+    let (mut said_runs, seed_activity, seed_chain) = match seeded.filter(|_| !from_zero) {
+        Some(k) => {
+            seq = k.seq;
+            if let Some(r) = runs.as_ref() {
+                r.prime(session_id, &said_lines(&k.runs));
+            }
+            (k.runs, k.activity, Some(k.chain))
+        }
+        None => (Vec::new(), None, None),
+    };
     // 从 0 起 ⇒ 行号从 0 数、链从头记；否则接着此刻的计数与链。
     let start = if from_zero && (prev.consumed > 0 || prev.seen_len > 0) {
         0
@@ -3605,7 +3713,7 @@ fn prime_file_cursor(
     let mut c = if from_zero {
         crate::agents::mainline::Chain::default()
     } else {
-        prev_chain.unwrap_or_default()
+        seed_chain.or(prev_chain).unwrap_or_default()
     };
     let mut seqs = SeqCounter::new();
     let mut cursor = ReadCursor {
@@ -3614,12 +3722,12 @@ fn prime_file_cursor(
     };
     let mut tail = std::mem::take(&mut reader.probe);
     let mut n_lines = 0;
-    // 这一趟读到的最后一件说了「此刻在干什么」的事（这一家的记录说这件事才问）。
-    let mut activity = None;
+    // 到这一趟读完为止最后一件说了「此刻在干什么」的事（这一家的记录说这件事才问；接着骨架读 ⇒ 起点是骨架记的那一件）。
+    let mut activity = seed_activity;
     while let Some(block) = reader.next_block() {
         let Ok(block) = block else {
             // 读到一半出错：游标不装（至少一次语义，下一趟再来）；这一趟记的链一起扔掉。
-            return (none(key, false), None);
+            return (none(key, false), None, None);
         };
         // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行），不会有残行。
         let (n, next) = count_new_lines_at(
@@ -3635,6 +3743,16 @@ fn prime_file_cursor(
         // 这一块里派出 / 收场过的子运行补进运行簿（读完之后那一帧运行表带出去）。
         if let Some(r) = runs.as_ref() {
             r.prime(session_id, &block);
+            // 要落骨架 ⇒ 过了预筛的那几行原文留着（读回来照样补进簿里）。
+            if home.is_some() {
+                said_runs.extend(
+                    block
+                        .split(|&b| b == b'\n')
+                        .filter_map(|l| std::str::from_utf8(l).ok())
+                        .filter(|t| r.hint(t))
+                        .map(str::to_string),
+                );
+            }
         }
         // 链事实补进链索引（读完之后那一帧主线外清单带出去）。
         if let Some(chain) = chain {
@@ -3676,14 +3794,39 @@ fn prime_file_cursor(
         cursor.consumed,
         c.walked()
     );
-    let bytes = reader.len - reader.from;
+    let bytes = reader.probed + (reader.len - reader.from);
+    let seq = start + n_lines as u64;
+    let mut later = None;
+    if let Some(h) = home.as_ref().filter(|h| h.wants(reader.len)) {
+        // 修改时刻只在读完时长度没再变才记（读的过程中又写进来 ⇒ 不记，下一次就不算「没变」）。
+        let mtime = Ro::metadata(&path)
+            .ok()
+            .filter(|m| m.len() == reader.len)
+            .and_then(|m| crate::observe::skeleton::mtime_of(&m));
+        later = Some(SkelLater {
+            home: h.clone(),
+            path: path.clone(),
+            body: PrimeSkel {
+                mark: crate::observe::skeleton::Mark {
+                    len: reader.len,
+                    mtime,
+                    cursor: cursor.consumed,
+                    witness: tail.clone(),
+                },
+                seq,
+                chain: c.clone(),
+                runs: said_runs,
+                activity,
+            },
+        });
+    }
     (
         FileDone {
             key,
             read: Some(FileRead {
                 cursor,
                 tail,
-                seq: start + n_lines as u64,
+                seq,
                 chain: chain.map(|_| c),
                 from_zero,
             }),
@@ -3691,6 +3834,7 @@ fn prime_file_cursor(
             bytes,
         },
         activity,
+        later,
     )
 }
 
@@ -3841,12 +3985,24 @@ impl PrimePool {
     fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
         PrimePool {
             pool: crate::observe::par::Pool::new("record-prime", move |job| {
-                let _ = events.send(WatchEvent::Primed(run_prime(job)));
+                let (done, later) = run_prime(job);
+                let _ = events.send(WatchEvent::Primed(done));
+                store_skeletons(later);
             }),
             queue: std::collections::VecDeque::new(),
             in_flight: 0,
         }
     }
+}
+
+/// 骨架里那几行子运行原文接成一块（每行一个 `\n`），喂 [`crate::observe::runs::RunTrack::prime`]。
+fn said_lines(lines: &[String]) -> Vec<u8> {
+    let mut b = Vec::with_capacity(lines.iter().map(|l| l.len() + 1).sum());
+    for l in lines {
+        b.extend_from_slice(l.as_bytes());
+        b.push(b'\n');
+    }
+    b
 }
 
 /// 冷接宣告那一趟每次至多读多少字节（一行比它长就接着读，直到那一行读完）。
@@ -3860,6 +4016,8 @@ struct PrimeReader {
     from: u64,
     /// 起读处之前那几个指纹字节（从 0 起 ⇒ 空）。
     probe: Vec<u8>,
+    /// 核指纹读了几个字节（对不上也读了）。
+    probed: u64,
     /// 到此刻读到的长度（读完才是这一趟看到的文件长度）。
     len: u64,
     carry: Vec<u8>,
@@ -3878,6 +4036,7 @@ impl PrimeReader {
         let mut file = Ro::open(path).map_err(|_| Look::Unreadable)?;
         let mut from = 0;
         let mut probe = Vec::new();
+        let mut probed = 0;
         if meta_len >= cursor.seen_len {
             let consumed = cursor.consumed.min(meta_len);
             let k = TAIL_PROBE.min(consumed);
@@ -3885,6 +4044,7 @@ impl PrimeReader {
             file.seek(SeekFrom::Start(consumed - k))
                 .and_then(|_| file.read_exact(&mut got))
                 .map_err(|_| Look::Unreadable)?;
+            probed = k;
             if tail.is_none_or(|t| t == got.as_slice()) {
                 from = consumed;
                 probe = got;
@@ -3896,6 +4056,7 @@ impl PrimeReader {
             file,
             from,
             probe,
+            probed,
             len: from,
             carry: Vec::new(),
             done: false,

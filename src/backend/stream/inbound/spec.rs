@@ -180,7 +180,7 @@ impl Run {
         matches!(
             self,
             Run::BlockingOwn(_) | Run::AsyncOwn(_) | Run::BlockingFace(_)
-        ) || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..)))
+        ) || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_)))
     }
 }
 
@@ -216,6 +216,10 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
             super::typed::TypedRun::BlockingOwn(f, files) => {
                 let own = own?.clone();
                 Prepared::Blocking(Box::new(move |r| f(r, files, &own)))
+            }
+            super::typed::TypedRun::BlockingOwning(f) => {
+                let own = own?.clone();
+                Prepared::Blocking(Box::new(move |r| f(r, &own)))
             }
             super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
             super::typed::TypedRun::AsyncFiles(f, files) => {

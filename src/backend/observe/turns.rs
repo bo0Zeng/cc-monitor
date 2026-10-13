@@ -23,7 +23,7 @@ pub(crate) const REPLY_MAX: usize = 120;
 pub(crate) const REPLY_LINES: usize = 3;
 
 /// 一轮。键名全称。
-#[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TurnRow {
@@ -74,7 +74,7 @@ pub(crate) struct TurnRow {
 }
 
 /// 一段过程（一行）。
-#[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[cfg_attr(test, ts(rename = "FoldSegment"))]
@@ -102,7 +102,7 @@ pub(crate) struct Fold {
 }
 
 /// 一轮 / 一段此刻的样子。
-#[derive(Debug, Default, Clone, Copy, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[cfg_attr(test, ts(rename = "TurnPhase"))]
@@ -115,7 +115,7 @@ pub(crate) enum Phase {
 }
 
 /// 过程行的一段字。
-#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[cfg_attr(test, ts(rename = "TurnPart"))]
@@ -128,7 +128,7 @@ pub(crate) struct Part {
 pub(crate) use crate::common::cells::Tone;
 
 /// 右端那一截：字里若有 `{dur}`，界面填 `to − from`（`to` 缺 ⇒ 现在 − `from`，毫秒）的用时；别的照抄。
-#[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[cfg_attr(test, ts(rename = "TurnSpan"))]
@@ -144,7 +144,7 @@ pub(crate) struct Span {
 const DUR_SLOT: &str = "{dur}";
 
 /// 一条主线记录在这一轮里记下的（收尾时按它划段、数合计）。
-#[derive(Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 struct Item {
     uuid: Option<String>,
     ts: String,
@@ -251,8 +251,10 @@ impl Tally {
     }
 }
 
-#[derive(Default)]
+/// 还没收尾的那一轮（扫描状态；骨架落它，续扫从它接着来）。
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 struct Open {
+    #[serde(with = "skel::row")]
     row: TurnRow,
     reply_text: String,
     /// 派出 agent 的那几次工具调用 id（它们的结果不算工具，算 agent）。
@@ -688,16 +690,105 @@ pub(crate) fn scan_turns<R: std::io::BufRead>(
 }
 
 /// 逐条记录攒轮次：[`TurnScan::line`] 收一条（`at` = 它的字节位置），新的一句收尾了上一轮就交出上一轮；
-/// [`TurnScan::finish`] 交出还开着的那一轮。
+/// [`TurnScan::finish`] 交出还开着的那一轮。可以抄一份接着扫（骨架落的就是它：还没收尾那一轮的扫描状态）。
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct TurnScan {
+    #[serde(skip, default = "tree_kind")]
     tree: &'static str,
     open: Option<Open>,
+}
+
+fn tree_kind() -> &'static str {
+    crate::agents::record_tree_kind().unwrap_or_default()
+}
+
+/// 骨架落盘那一形（`observe::skeleton`）：线上那一形跳过的几格（过程段的起止时刻与钟面 · 尾巴那一段 · 没结果的调用）也要留着，
+/// 不然从骨架接着扫出来的跟整份扫的对不上。
+pub(crate) mod skel {
+    use super::{Fold, PendingCall, TurnRow};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    /// 线上那一形跳过的那几格。
+    #[derive(Serialize, Deserialize)]
+    struct Side {
+        tail_fold: bool,
+        pending: Vec<PendingCall>,
+        /// 每段过程的（起 · 止 · 起的钟面）。
+        folds: Vec<(String, String, String)>,
+    }
+
+    #[derive(Serialize)]
+    struct RowRef<'a> {
+        row: &'a TurnRow,
+        side: Side,
+    }
+
+    #[derive(Deserialize)]
+    struct RowOwned {
+        row: TurnRow,
+        side: Side,
+    }
+
+    fn side_of(r: &TurnRow) -> Side {
+        Side {
+            tail_fold: r.tail_fold,
+            pending: r.pending.clone(),
+            folds: r
+                .folds
+                .iter()
+                .map(|f: &Fold| (f.start.clone(), f.end.clone(), f.start_text.clone()))
+                .collect(),
+        }
+    }
+
+    fn rebuild(o: RowOwned) -> TurnRow {
+        let RowOwned { mut row, side } = o;
+        row.tail_fold = side.tail_fold;
+        row.pending = side.pending;
+        for (f, (start, end, start_text)) in row.folds.iter_mut().zip(side.folds) {
+            f.start = start;
+            f.end = end;
+            f.start_text = start_text;
+        }
+        row
+    }
+
+    /// 一轮。
+    pub(crate) mod row {
+        use super::*;
+        pub(crate) fn serialize<S: Serializer>(r: &TurnRow, s: S) -> Result<S::Ok, S::Error> {
+            RowRef {
+                row: r,
+                side: side_of(r),
+            }
+            .serialize(s)
+        }
+        pub(crate) fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<TurnRow, D::Error> {
+            RowOwned::deserialize(d).map(rebuild)
+        }
+    }
+
+    /// 几轮。
+    pub(crate) mod rows {
+        use super::*;
+        pub(crate) fn serialize<S: Serializer>(v: &[TurnRow], s: S) -> Result<S::Ok, S::Error> {
+            s.collect_seq(v.iter().map(|r| RowRef {
+                row: r,
+                side: side_of(r),
+            }))
+        }
+        pub(crate) fn deserialize<'de, D: Deserializer<'de>>(
+            d: D,
+        ) -> Result<Vec<TurnRow>, D::Error> {
+            Vec::<RowOwned>::deserialize(d).map(|v| v.into_iter().map(rebuild).collect())
+        }
+    }
 }
 
 impl Default for TurnScan {
     fn default() -> Self {
         TurnScan {
-            tree: crate::agents::record_tree_kind().unwrap_or_default(),
+            tree: tree_kind(),
             open: None,
         }
     }

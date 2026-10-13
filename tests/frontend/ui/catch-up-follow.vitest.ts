@@ -5,6 +5,7 @@
  * 起因：起页时的探针 —— 前端就绪之后各会话的记录才到，每个会话里最后那句人话都走了一次 `onRealUserInput`，tab 连跳七下。
  */
 import { describe, it, expect, vi } from "vitest";
+import { owned } from "../../test-support/owned-tab-manager.ts";
 
 vi.mock("@tauri-apps/api/core", async () => {
   const rig = await import("../../test-support/session-viewer-rig");
@@ -33,7 +34,7 @@ function rig(): TabManager {
   const barEl = document.createElement("div");
   const streamRootEl = document.createElement("div");
   document.body.replaceChildren(barEl, streamRootEl);
-  return new TabManager(barEl, streamRootEl);
+  return owned(new TabManager(barEl, streamRootEl));
 }
 
 const said = (sid: string, seq: number, catchUp: boolean): RigPayload =>

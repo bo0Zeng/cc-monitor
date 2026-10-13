@@ -797,6 +797,7 @@ fn typed_handler_files_of(
         "typed::blocking::<",
         "typed::with_files::<",
         "typed::with_own::<",
+        "typed::owning::<",
         "typed::asynchronous::<",
         "typed::async_with_files::<",
     ] {

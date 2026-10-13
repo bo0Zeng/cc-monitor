@@ -422,6 +422,23 @@ pub(crate) fn warm_listing(agent_home: &Path) -> usize {
 
 /// 一份会话记录里叫它什么的那几样（标题 · 第一句 · 项目目录；注解那一格由调用方并），走清单缓存（没变不重扫、变长只扫尾巴）。
 pub(crate) fn label_facts_of(p: &Path) -> super::search_rules::LabelFacts {
+    label_facts_among(crate::agents::REGISTRY, p)
+}
+
+/// [`label_facts_of`] 的可喂夹具那一半（注册表是参数）。
+pub(crate) fn label_facts_among(
+    registry: &[crate::agents::Adapter],
+    p: &Path,
+) -> super::search_rules::LabelFacts {
+    // 有合成历史面的那一家（记录格式不是记录树那一家的）：第一句照它自己的读法（与历史清单那一行同一个摘录）；它没有标题记录。
+    if let Some(excerpt) = crate::agents::synth_excerpt_among(registry, p) {
+        return super::search_rules::LabelFacts {
+            custom: None,
+            title: None,
+            first: excerpt(p),
+            project_dir: crate::agents::project_dir_among(registry, p),
+        };
+    }
     let row = analyze_session_cached(p);
     super::search_rules::LabelFacts {
         custom: None,
@@ -783,7 +800,7 @@ pub(crate) fn scan_session_index<R: std::io::BufRead>(
 /// ⚠ **口径是近似的，而且近似得有方向**：它不知道前端哪些记录最终不建卡（`stripInternalNoise`、
 /// ESC 折叠、slash/compact 细条…），只按记录的**原料**数。前端据 `t` / `sp` / `fd` 分档，
 /// 分不准的那几档落到偏保守的常数（`§2.5b`：「粗估用偏保守的常数，精算后往下修」）。
-#[derive(Debug, Default, serde::Serialize, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, serde::Serialize, PartialEq, Eq)]
 pub(crate) struct IndexRow {
     /// 行起点字节偏移（绝对，0-based）—— 按需取正文就是 `[o, o+n)`。
     pub(crate) o: u64,
@@ -979,14 +996,20 @@ fn count_prose(s: &str, row: &mut IndexRow) {
 ///
 /// 帧面那条（`history-tail`）只要**这张图**，正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TailPlan {
     /// 可计行总数（`line_counts` 口径）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub total: u64,
     /// 尾段第一行的行号。
+    #[cfg_attr(test, ts(type = "number"))]
     pub tail_from: u64,
     /// 尾段第一行的字节起点（＝ 头段的字节终点）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub split_at: u64,
     /// 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
+    #[cfg_attr(test, ts(type = "number"))]
     pub end: u64,
 }
 
@@ -1342,6 +1365,8 @@ pub(crate) fn record_for(
 
 /// [`record_in`] 的答案。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RecordProbe {
     /// `<sid>.jsonl` 在记录树里（根那一层或项目目录那一层）找得到。
     pub present: bool,

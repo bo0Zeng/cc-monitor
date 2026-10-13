@@ -2,8 +2,8 @@
  * Issue #11: Claude Code CLI 的 task 列表展示。
  *
  * 数据源：那台机器的后端 `tasks-list`（本机与远端同一条路，按 `origin` 问）。
- * Tab 创建时**经通道直接问**（`chan.call(origin, "tasks-list")`），后端出成品 `{tasks}`，
- * 这里按形状严格收（{@link decodeTasks}；字段语义只住后端 `observe/tasks_query.rs::task_entry`）。
+ * Tab 创建时**经通道按类型问**（`callTyped(origin, "tasks-list")`），后端出成品 `{tasks}`（字段语义只住后端 `observe/tasks_query.rs::task_entry`）；
+ * 帧里推来的那一份由 {@link decodeTasks} 严格收。
  * **变更推送本机远端同形**：那台后端自己盯任务目录，变了发 `changed {tasks, key: sid}` 帧；
  * monitor 交进通道 `subscribe(origin, "changed/tasks")`（`changed-stream.ts`），界面收到那个 sid 就重问一次
  * （`changed-stream.ts::changedItems` 读那一批格）。monitor 自己那条 notify 与 `task-update` 事件删了。
@@ -23,26 +23,18 @@ import { chip } from "./kit/chip";
 import { attachTooltip } from "./kit/tooltip";
 import { icon, type IconName } from "./kit/icon";
 import { emptyState } from "./kit/empty";
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import type { Task } from "./generated/Task";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 import type { Tab } from "./tab-model";
 
 import { copyText } from "./copy-table";
 
 /**
- * `tasks-list` 成品里的一个任务（线上形状：跨语言金样 `tests/__fixtures__/tasks-list.golden.json` 钉住，{@link decodeTasks} 严格收）。
- * 原来是 monitor `tasks.rs::TaskEntry` 的生成物；那份文件随任务 notify 进后端删了，形状手写在这里。
+ * `tasks-list` 成品里的一个任务：形状从后端类型生成（`observe/tasks_query.rs::Task`）。
+ * 帧里推来的那一份（同 `tasks-list` 的回包）由 {@link decodeTasks} 严格收；问回来的那一份按类型用（形状由握手指纹管）。
  */
-export type TaskEntry = {
-  id: string;
-  subject: string;
-  description?: string;
-  activeForm?: string;
-  status: string;
-  blocks: string[];
-  blockedBy: string[];
-};
+export type TaskEntry = Task;
 
 
 /** 一个任务行前面那颗图标（状态 ⇒ 图标名）。 */
@@ -291,9 +283,8 @@ export async function fetchSessionTasks(
   originBySid.set(sessionId, origin);
   try {
     const budget = budgetWithin(TASKS_BUDGET_MS);
-    const body = jsonBody({ sid: sessionId });
-    const reply = await chan.call(origin, "tasks-list", body, budget);
-    return decodeTasks(readJson(reply));
+    const { tasks } = await callTyped(origin, "tasks-list", { sid: sessionId }, budget);
+    return tasks;
   } catch (e) {
     console.warn(`[tasks-panel] fetch ${sessionId}@${origin} failed:`, e);
     return [];

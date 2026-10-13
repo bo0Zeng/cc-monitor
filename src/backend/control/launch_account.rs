@@ -7,6 +7,7 @@
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
 use crate::platform::fs::{Own, OwnPath};
+use crate::stream::inbound::typed::codes;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -453,21 +454,56 @@ fn failed(path: &Path, e: &std::io::Error) -> crate::common::said::Said {
     )
 }
 
-/// `history-last-accounts`：这台记着的 `{accounts: {sid: 号}}`。读不懂 ⇒ `unreadable`。
-pub(crate) fn answer_last_accounts() -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let book = match crate::platform::paths::data_home() {
-        Some(h) => read_book(&h)
-            .map_err(|e| crate::stream::inbound::spec::Fail::from(("unreadable", e)))?,
+codes! {
+    /// `history-last-accounts` 的码。
+    pub(crate) enum LastAccountsErr {
+        /// 这台那份起会话账号记录读不懂。
+        Unreadable = "unreadable",
+    }
+}
+
+/// `history-last-accounts`：这台记着的「每条会话上次用哪个号起的」。
+pub(crate) struct HistoryLastAccountsCmd;
+
+impl crate::stream::inbound::typed::Command for HistoryLastAccountsCmd {
+    const NAME: &'static str = "history-last-accounts";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = LastAccounts;
+    type Err = LastAccountsErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for HistoryLastAccountsCmd {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<LastAccounts, LastAccountsErr> {
+        last_accounts_at(crate::platform::paths::data_home().as_deref())
+    }
+}
+
+/// [`HistoryLastAccountsCmd`] 的本体，家是参数（推不出家 ⇒ 空表）。读不懂 ⇒ `unreadable`。
+pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, LastAccountsErr> {
+    let book = match home {
+        Some(h) => read_book(h).map_err(|e| {
+            crate::stream::inbound::typed::of_fail(
+                crate::stream::inbound::spec::Fail::from(("unreadable", e)),
+                LastAccountsErr::Unreadable,
+            )
+        })?,
         None => Book::default(),
     };
-    crate::stream::inbound::spec::wire(&LastAccounts {
+    Ok(LastAccounts {
         accounts: book.sessions,
     })
 }
 
-/// `history-last-accounts` 的应答：`{sid: 号}`。
+/// `history-last-accounts` 的回包。
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct LastAccounts {
+    /// `{sid: 账号名}`：只含真记过的那几条。
     pub(crate) accounts: BTreeMap<String, String>,
 }
 

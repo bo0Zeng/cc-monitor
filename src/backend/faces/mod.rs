@@ -4,6 +4,7 @@ pub mod accounts_face; // 改账号库那几条命令的帧面宿主：本体在
 pub(crate) mod cells_catalog; // 帧面 `cells-catalog`：每件成品有哪些格（从成品的 Rust 类型序列化出来，不手写第二份）
 pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …）—— 薄壳，本体在 observe/，与 read_face 分家的理由在它头注
 pub mod fork_face;
+pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub mod launch_face; // 帧面 `launch-local` / `launch-render-cli` 的宿主壳：交起会话挑号要的事实（账号库 · 上次的号） // 帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
 pub mod login_face; // 在 app 里登录一个号（`login-*`）· 会话外的需手动清单（`manual-list`）
 pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：计划读面要的这台事实（pb 装在哪 · 会话在哪些目录 · id 是哪个会话）

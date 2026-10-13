@@ -2,6 +2,17 @@
 //! 例子与界面原先那两组（推断 · 从两份名单推源会话事实）同一组。
 
 use super::*;
+use serde_json::json;
+
+trait Wire {
+    fn wire(&self) -> Value;
+}
+
+impl Wire for Launch {
+    fn wire(&self) -> Value {
+        serde_json::to_value(self).unwrap()
+    }
+}
 
 fn live(account: Option<AccountFact>, terminal: Option<&str>) -> Source {
     Source {
@@ -12,11 +23,11 @@ fn live(account: Option<AccountFact>, terminal: Option<&str>) -> Source {
     }
 }
 
-fn known<T>(value: T, from: &'static str) -> Slot<T> {
+fn known<T>(value: T, from: Whence) -> Slot<T> {
     Slot::Known { value, from }
 }
 
-fn unknown<T>(why: &'static str) -> Slot<T> {
+fn unknown<T>(why: Why) -> Slot<T> {
     Slot::Unknown { why }
 }
 
@@ -29,10 +40,10 @@ fn an_exited_source_knows_no_account_even_when_one_is_handed_in() {
         account: Some(AccountFact::Named("z".into())),
         terminal: Some("tmux-p".into()),
     });
-    assert_eq!(f.account, unknown(WHY_EXITED));
-    assert_eq!(f.terminal, unknown(WHY_EXITED));
+    assert_eq!(f.account, unknown(Why::Exited));
+    assert_eq!(f.terminal, unknown(Why::Exited));
     // 工作目录来自记录本身，已退出的会话照样答得出。
-    assert_eq!(f.cwd, known("/home/u/p".to_string(), FROM_RECORD));
+    assert_eq!(f.cwd, known("/home/u/p".to_string(), Whence::Record));
 }
 
 #[test]
@@ -40,7 +51,7 @@ fn a_live_source_knows_account_and_terminal_and_says_where_from() {
     let f = infer(&live(Some(AccountFact::Named("z".into())), Some("tmux-p")));
     assert_eq!(
         f.account,
-        known(AccountFact::Named("z".into()), FROM_PROCESS)
+        known(AccountFact::Named("z".into()), Whence::Process)
     );
     assert_eq!(
         f.terminal,
@@ -48,7 +59,7 @@ fn a_live_source_knows_account_and_terminal_and_says_where_from() {
             TerminalFact::Hosted {
                 terminal: "tmux-p".into()
             },
-            FROM_TERMINAL_LIST
+            Whence::TerminalList
         )
     );
 }
@@ -56,13 +67,13 @@ fn a_live_source_knows_account_and_terminal_and_says_where_from() {
 #[test]
 fn account_zero_is_a_known_answer_not_an_unknown_one() {
     let f = infer(&live(Some(AccountFact::Base), None));
-    assert_eq!(f.account, known(AccountFact::Base, FROM_PROCESS));
+    assert_eq!(f.account, known(AccountFact::Base, Whence::Process));
 }
 
 #[test]
 fn live_but_account_unreadable_is_unknown_and_distinct_from_account_zero() {
     let f = infer(&live(None, None));
-    assert_eq!(f.account, unknown(WHY_LIVE_NO_ACCOUNT));
+    assert_eq!(f.account, unknown(Why::LiveNoAccount));
 }
 
 #[test]
@@ -71,7 +82,7 @@ fn live_and_in_no_terminal_is_known_none_not_unknown() {
         let f = infer(&live(Some(AccountFact::Base), t));
         assert_eq!(
             f.terminal,
-            known(TerminalFact::None, FROM_TERMINAL_LIST),
+            known(TerminalFact::None, Whence::TerminalList),
             "{t:?}"
         );
     }
@@ -85,7 +96,7 @@ fn no_cwd_or_a_blank_one_is_unknown() {
             cwd,
             ..Source::default()
         });
-        assert_eq!(f.cwd, unknown(WHY_NO_CWD));
+        assert_eq!(f.cwd, unknown(Why::NoCwd));
     }
 }
 
@@ -120,7 +131,7 @@ fn the_wire_shape_is_codes_and_facts_only() {
         Some(AccountFact::Named("z".into())),
         Some("tmux-3-7"),
     ))
-    .to_json();
+    .wire();
     assert_eq!(
         v,
         json!({
@@ -129,10 +140,10 @@ fn the_wire_shape_is_codes_and_facts_only() {
             "terminal": {"kind": "known", "value": {"host": "tmux", "terminal": "tmux-3-7"}, "from": "terminal_list"},
         })
     );
-    let v = infer(&live(Some(AccountFact::Base), None)).to_json();
+    let v = infer(&live(Some(AccountFact::Base), None)).wire();
     assert_eq!(v["account"]["value"], Value::Null);
     assert_eq!(v["terminal"]["value"], json!({"host": "none"}));
-    let v = infer(&Source::default()).to_json();
+    let v = infer(&Source::default()).wire();
     assert_eq!(
         v,
         json!({
@@ -187,7 +198,7 @@ fn found_in_a_terminal_but_not_in_the_process_list_means_account_unknown_not_zer
     let s = src(&[], Some(&[term("p-cc", SID, true)]));
     assert!(s.live, "终端名单命中即证明它活着");
     assert_eq!(s.account, None);
-    assert_eq!(infer(&s).account, unknown(WHY_LIVE_NO_ACCOUNT));
+    assert_eq!(infer(&s).account, unknown(Why::LiveNoAccount));
 }
 
 #[test]
@@ -293,11 +304,28 @@ fn the_golden_launch_is_what_the_inference_emits() {
         account: Some(AccountFact::Named("work".into())),
         terminal: Some("tmux-3-7".into()),
     };
-    assert_eq!(golden["product"]["launch"], infer(&live).to_json());
+    assert_eq!(golden["product"]["launch"], infer(&live).wire());
     let exited = Source {
         live: false,
         cwd: Some("/home/u/proj".into()),
         ..Source::default()
     };
-    assert_eq!(golden["launchExited"], infer(&exited).to_json());
+    assert_eq!(golden["launchExited"], infer(&exited).wire());
+}
+
+/// 终端那一格的两个 `host` 词与会话容器那一格同字（`stream::wire` 那一份是唯一的字面量出处）。
+#[test]
+fn the_terminal_host_words_are_the_container_words() {
+    let hosted = serde_json::to_value(TerminalFact::Hosted {
+        terminal: "t".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        hosted["host"],
+        crate::stream::wire::TerminalHost::Tmux.as_wire()
+    );
+    assert_eq!(
+        serde_json::to_value(TerminalFact::None).unwrap()["host"],
+        crate::stream::wire::HOST_NONE
+    );
 }

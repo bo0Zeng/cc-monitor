@@ -50,13 +50,13 @@
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | 主题 · 字体 · `claudeDir` · 快捷键 · 机器表 · 诊断开关 —— 全是用户手填 |
-| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::answer_annotate` | 按 sid 的星标 · 改名 · 隐藏 |
+| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` | 按 sid 的星标 · 改名 · 隐藏 |
 | `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件窗口进程，旁件 `.lock` 上独占锁读改写） | 每台机器一份收藏目录 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
-| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `known_hosts` `profiles-written.json` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 主机钥匙 · 上次写出的配置指纹 |
+| `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `known_hosts` `profiles-written.json` `cache/skeleton/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 主机钥匙 · 上次写出的配置指纹 · 大记录的骨架（照记录重扫） |
 | `relay-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号。名字取契约常量（`relay_route_core` · `creds_core::store`），`data_paths.rs::backend_entries` 列它们 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。

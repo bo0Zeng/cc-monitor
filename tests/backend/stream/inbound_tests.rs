@@ -1525,7 +1525,10 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         .unwrap();
     let a = until_pending("t-inbound-1").await;
     crate::control::asks::answer(
-        &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
+        crate::stream::inbound::typed::take(
+            &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
+        )
+        .unwrap(),
     )
     .unwrap();
     let f = rx.recv().await.expect("应答");
@@ -1559,7 +1562,10 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     assert!(crate::control::asks::pending("t-inbound-2").is_empty());
     assert_eq!(
         crate::control::asks::answer(
-            &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
+            crate::stream::inbound::typed::take(
+                &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
+            )
+            .unwrap()
         )
         .unwrap_err()
         .0,
@@ -1970,6 +1976,14 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "forkOf": "s-1", "extra": 1 }),
         ),
         ("session-new-facts", serde_json::json!({ "at": 1 })),
+        (
+            "session-fork",
+            serde_json::json!({ "sid": "s-1", "uuid": "u-1", "extra": 1 }),
+        ),
+        (
+            "session-fork",
+            serde_json::json!({ "sid": 1, "uuid": "u-1" }),
+        ),
         (
             "session-restart",
             serde_json::json!({ "sid": "s-1", "cwd": "/w", "compact_first": false, "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),

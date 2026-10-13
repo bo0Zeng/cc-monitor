@@ -9,7 +9,7 @@
 //!
 //! 写经 [`crate::platform::fs::NewFile`]：那只手只有一件事 —— `O_EXCL` 新建一份此前不存在的文件、一次写满；
 //! 目标已存在直接失败。删、改名、复制、截断、追加、覆盖、建目录它都没有（projects 目录本来就在）。
-//! 它由分叉那两条命令（`session-fork` · `session-new`）在命令表里领，别处拿不到。
+//! 它由分叉那两条命令（`session-fork` · `session-new`）在各自的实现里领，别处拿不到。
 //!
 //! 这条边界背后的判据不是「backend 不许碰文件系统」，而是
 //! **「backend 不许改动用户既有数据」**。`O_EXCL` 新建一个此前不存在的文件不违反后者
@@ -32,15 +32,47 @@
 use crate::platform::fs::{NewFile, NewFileFail};
 use std::path::Path;
 
-/// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
-#[derive(Debug, serde::Serialize)]
-#[serde(rename_all = "camelCase")]
+/// 本体落完盘的结果（帧面回包由它 ＋ `launch` 那三格拼成 [`Forked`]）。
+#[derive(Debug)]
 struct ForkResult {
     session_id: String,
     jsonl_path: String,
-    /// 源会话那份记录（不上线：帧面拿它收「分叉之后起」的事实）。
-    #[serde(skip)]
+    /// 源会话那份记录（帧面拿它收「分叉之后起」的事实）。
     source: std::path::PathBuf,
+}
+
+/// `session-fork` 的入参：从 `sid` 那条会话的 `uuid` 那条消息处分叉。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ForkReq {
+    /// 源会话 id（只收 sid、不收路径：按 sid 在记录树里找那份文件）。
+    pub(crate) sid: String,
+    /// 从哪条消息处分叉。
+    pub(crate) uuid: String,
+}
+
+/// `session-fork` 的回包。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Forked {
+    /// 新会话的 id。
+    pub(crate) session_id: String,
+    /// 新会话的落点（源文件同目录，`O_EXCL` 新建：撞了就失败，绝不覆盖）。
+    pub(crate) jsonl_path: String,
+    /// 起分叉出来的新会话要的三格。
+    pub(crate) launch: super::fork_launch::Launch,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `session-fork` 的码。
+    pub(crate) enum ForkErr {
+        /// 记录树读不出 · 源会话找不着 · 那条消息不在 · 落盘失败。
+        ForkFailed = "fork_failed",
+    }
 }
 
 /// 单份会话 jsonl 的读取上限。
@@ -98,43 +130,26 @@ fn new_session_id(source_sid: &str) -> String {
     )
 }
 
-/// 帧面 `session-fork {sid, uuid} → {sessionId, jsonlPath, launch}`：本体是 [`run_inner`]（读 → `branch-core` 变换 → `O_EXCL` 落盘）。
+/// 帧面 `session-fork` 的本体：两个 id 过放行判定 → [`run_inner`]（读 → `branch-core` 变换 → `O_EXCL` 落盘）。
 ///
-/// 本机远端都经那台机器常驻后端的长连接说这一条（从前是每次 exec 一个一次性后端跑 `--fork-session`，那条子命令删了）。
-/// ⚠ 入口住顶层壳 `fork_face.rs`（它找家目录）：本层自己找就得问 `observe::`（反向边）或多问一次适配层。
-/// 帧面 `session-fork` 的本体（家目录由顶层壳 `fork_face` 交进来；判据直接喂夹具家目录）。
-///
-/// 帧面回复比 [`ForkResult`] 多一格 `launch`（分叉之后起要的三格事实）：由入口按「源会话那份记录 ＋ 源 sid」收齐交回（`launch`），
-/// 本层不读观测层。
-pub(crate) fn answer_wire_at(
+/// 本机远端都经那台机器常驻后端的长连接说这一条。家目录由顶层壳 `fork_face` 交进来（本层自己找就得问 `observe::`，反向边）；
+/// 判据直接喂夹具家目录。回包比本体多一格 `launch`：由入口按「源会话那份记录 ＋ 源 sid」收齐交回，本层不读观测层。
+pub(crate) fn fork_at(
     nf: &NewFile,
     agent_home: &Path,
-    args: &serde_json::Value,
-    launch: &dyn Fn(&Path, &str) -> serde_json::Value,
-) -> Result<serde_json::Value, (&'static str, String)> {
-    let field = |k: &str| {
-        args.get(k)
-            .and_then(serde_json::Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(str::to_string)
-            .ok_or_else(|| {
-                (
-                    "bad_args",
-                    crate::common::contract::malformed(&format!(
-                        "missing `{k}` (a non-empty string)"
-                    )),
-                )
-            })
-    };
-    let (sid, uuid) = (field("sid")?, field("uuid")?);
-    let res = fork_checked(nf, agent_home, &sid, &uuid)?;
-    let mut v =
-        serde_json::to_value(&res).map_err(|e| ("fork_failed", format!("serialize: {e}")))?;
-    v["launch"] = launch(&res.source, &sid);
-    Ok(v)
+    req: &ForkReq,
+    launch: &dyn Fn(&Path, &str) -> super::fork_launch::Launch,
+) -> Result<Forked, ForkErr> {
+    let res = fork_checked(nf, agent_home, &req.sid, &req.uuid)
+        .map_err(crate::stream::inbound::typed::of_pair(ForkErr::ForkFailed))?;
+    Ok(Forked {
+        launch: launch(&res.source, &req.sid),
+        session_id: res.session_id,
+        jsonl_path: res.jsonl_path,
+    })
 }
 
-/// 起新会话那一条（`session-new` 带 `forkFrom`）写分支记录：同 [`answer_wire_at`] 那一份本体，回新会话的 sid。
+/// 起新会话那一条（`session-new` 带 `forkFrom`）写分支记录：同 [`fork_at`] 那一份本体，回新会话的 sid。
 pub(crate) fn fork_for_launch(
     nf: &NewFile,
     agent_home: &Path,

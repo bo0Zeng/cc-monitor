@@ -40,6 +40,7 @@ import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
 import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
+import type { ForkSlot } from "./generated/ForkSlot";
 import s from "./new-session.module.css";
 
 /** 设置窗 → 主窗口：切到那个会话（载荷 `{origin, sid}`）。 */
@@ -303,7 +304,7 @@ function windowNote(origin: Origin, hasTmux: boolean): string {
 }
 
 /** 账号那一格预选哪一项：分叉且那台说得出源会话的号 ⇒ 那个号；分叉说不出 ⇒ 跟随；不分叉 ⇒ 排第一的。 */
-function accountPick(forking: boolean, forkAccount: { kind: string; value?: string | null } | undefined, first: string): string {
+function accountPick(forking: boolean, forkAccount: ForkSlot<string | null> | undefined, first: string): string {
   if (forking && forkAccount?.kind === "known" && forkAccount.value != null) return forkAccount.value;
   return forking ? ACCOUNT_FOLLOW : first;
 }
