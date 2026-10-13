@@ -746,6 +746,8 @@ fn two_families() -> Vec<Adapter> {
         mcp: Some(McpFace {
             read: mcp,
             login_command: "/m",
+            sign_in: None,
+            needs_login_file: None,
         }),
         footprint: None,
         accounts: Some(acc),

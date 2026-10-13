@@ -1,7 +1,10 @@
-//! **登录一个号**（官方客户端自己登）：核心在后台起那一家的登录子命令（Claude：`claude auth login`），从它的输出里认出登录链接交给界面；
-//! 人在浏览器里登完，把页面上给的码粘回来，核心原样写进那个子进程的 stdin。令牌由那一家自己换、自己写盘，**核心碰不到令牌**。
+//! **在 app 里登录**（官方客户端自己登）：一个号（Claude：`claude auth login`）· 一个号里的一个 MCP 服务器（`claude mcp login <名>`，
+//! 要终端 ⇒ 起在伪终端里）。核心在后台起那一家的登录子命令，从它的输出里认出登录链接交给界面；
+//! 人在浏览器里登完，把页面上给的码（MCP：浏览器回跳的那一整条地址）粘回来，核心原样写进那个子进程的 stdin。
+//! 令牌由那一家自己换、自己写盘，**核心碰不到令牌**。
 //!
-//! - 作业表：每个号最多一份作业，新开就替掉旧的；放手即杀组（[`Conversation`]）。
+//! - 作业表：每个目标（帧面给的一个不透明的键）最多一份作业，新开就替掉旧的；放手即杀组（[`Conversation`]）。
+//! - 粘进去的东西在它输出里的回显（终端会回显）换成 `…` 才进原话。
 //! - 不装定时器：作业只在这几种时刻收 —— 它自己退了（登成 / 登不成）· 取消 · 被替掉 · 发起它的那条连接断了（[`Desk`]）。
 //!   等链接 · 等换码结果那两处是**发起方的有界等待**（[`START_WITHIN`] · [`FINISH_WITHIN`]），不是节拍。
 //! - 粘回来的东西不进 argv · 日志 · 应答；链接里的 `state` 也不进日志。
@@ -35,11 +38,13 @@ pub(crate) enum SignInEnd {
 /// 「结束了」回调：作业号 · 怎么收的。只在作业自己退了时调（取消 · 替掉 · 连接断不调）。
 pub(crate) type OnEnd = Box<dyn Fn(&str, &SignInEnd) + Send>;
 
-/// 起一份作业要的：那一家的登录形 · 号（名 ＋ 配置目录；账号 0 ⇒ 无目录）· 发起它的那条连接。
+/// 起一份作业要的：那一家的登录形 · 目标（帧面给的键：同一个键新开就替掉旧的；`finish` 原样交回）· 号的配置目录（账号 0 ⇒ 无目录）·
+/// 子命令最后再接的几个参数（MCP：服务器名）· 发起它的那条连接。
 pub(crate) struct SignInAsk<'a> {
     pub(crate) face: SignInFace,
-    pub(crate) account: &'a str,
+    pub(crate) target: &'a str,
     pub(crate) dir: Option<&'a str>,
+    pub(crate) then: &'a [String],
     pub(crate) conn: u64,
     /// 起它时的工作目录（家）。
     pub(crate) cwd: Option<std::path::PathBuf>,
@@ -69,7 +74,9 @@ pub(crate) enum FinishFail {
 
 struct Job {
     conn: u64,
-    account: String,
+    target: String,
+    /// 粘进去过的东西（及其中够长的几段）：它的回显不进原话。
+    secrets: Vec<String>,
     conv: Conversation,
     face: SignInFace,
     url: String,
@@ -103,7 +110,7 @@ fn new_job_id() -> String {
 /// 起不来 · 没给出链接就退了 · 等不到链接 ⇒ `Err(那一句 ＋ 原话)`。
 pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     let f = a.face;
-    let mut child = Child::new(f.program).args(f.args);
+    let mut child = Child::new(f.program).args(f.args).args(a.then);
     child = match a.dir {
         Some(d) => child.env(f.dir_env, d),
         None => child.env_remove(f.dir_env),
@@ -117,7 +124,12 @@ pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     if let Some(d) = &a.cwd {
         child = child.current_dir(d);
     }
-    let mut conv = child.converse().map_err(|e| {
+    let conv = if f.terminal {
+        child.converse_in_terminal()
+    } else {
+        child.converse()
+    };
+    let mut conv = conv.map_err(|e| {
         e.into_cmd_said("failed", |why| {
             copy_core::copy_text(
                 "beLogin.start.failed",
@@ -131,12 +143,12 @@ pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
         .ok_or_else(|| Said::from(copy_core::copy_text("beLogin.start.noLink", &[])))?;
     let job = new_job_id();
     let (link_tx, link_rx) = mpsc::channel::<Result<String, String>>();
-    // 先替掉同一个号的旧作业（它的读线程看到作业不在了就不出声）。
+    // 先替掉同一个目标的旧作业（它的读线程看到作业不在了就不出声）。
     let old: Vec<Job> = {
         let mut t = jobs();
         let ids: Vec<String> = t
             .iter()
-            .filter(|(_, j)| j.account == a.account)
+            .filter(|(_, j)| j.target == a.target)
             .map(|(id, _)| id.clone())
             .collect();
         ids.into_iter().filter_map(|id| t.remove(&id)).collect()
@@ -146,7 +158,8 @@ pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
         job.clone(),
         Job {
             conn: a.conn,
-            account: a.account.to_string(),
+            target: a.target.to_string(),
+            secrets: Vec::new(),
             conv,
             face: f,
             url: String::new(),
@@ -215,6 +228,10 @@ fn listen(
                         let _ = w.send(Waited::BadPaste);
                     }
                 }
+                let l = scrubbed(
+                    &l,
+                    jobs().get(job).map(|j| j.secrets.as_slice()).unwrap_or(&[]),
+                );
                 push(&mut tail, &l);
             }
             Ok(Heard::Exited(code)) => break code,
@@ -248,6 +265,7 @@ fn listen(
 }
 
 /// 把粘回来的东西交给那份作业，等那一家的结局（至多 [`FINISH_WITHIN`]）。格式对不上这一趟的链接 ⇒ 不写、`BadPaste`。
+/// 成 ⇒ 那份作业的目标键（起它时交的那一个）。
 pub(crate) fn finish(job: &str, pasted: &str) -> Result<String, FinishFail> {
     let (tx, rx) = mpsc::channel::<Waited>();
     let account = {
@@ -257,11 +275,12 @@ pub(crate) fn finish(job: &str, pasted: &str) -> Result<String, FinishFail> {
         if !(j.face.paste_fits)(pasted, &j.url) {
             return Err(FinishFail::BadPaste);
         }
+        j.secrets.extend(secret_pieces(pasted));
         if j.conv.say(pasted).is_err() {
             return Err(FinishFail::NoJob);
         }
         j.waiter = Some(tx);
-        j.account.clone()
+        j.target.clone()
     };
     match rx.recv_timeout(FINISH_WITHIN) {
         Ok(Waited::SignInEnd(SignInEnd::Done)) => Ok(account),
@@ -275,6 +294,32 @@ pub(crate) fn finish(job: &str, pasted: &str) -> Result<String, FinishFail> {
         }
         Err(mpsc::RecvTimeoutError::Disconnected) => Err(FinishFail::NoJob),
     }
+}
+
+/// 粘进去的东西里要打码的几段：整段 ＋ 按 `? & # =` 切开后够长的几段（终端按屏宽折行 · 只回显一截时也认得出）。
+fn secret_pieces(pasted: &str) -> Vec<String> {
+    const LONG: usize = 8;
+    std::iter::once(pasted)
+        .chain(pasted.split(['?', '&', '#', '=']))
+        .filter(|p| p.len() >= LONG)
+        .map(str::to_string)
+        .collect()
+}
+
+/// 打码那一格（不是文案：只是把一段换成一个省略号）。
+const MASK: char = '\u{2026}';
+
+/// 一行里粘进去过的那几段换成 [`MASK`]（长的先换）。
+fn scrubbed(line: &str, secrets: &[String]) -> String {
+    let mut by_len: Vec<&String> = secrets.iter().collect();
+    by_len.sort_by_key(|s| std::cmp::Reverse(s.len()));
+    let mut mask = [0u8; 4];
+    let mask: &str = MASK.encode_utf8(&mut mask);
+    let mut out = line.to_string();
+    for s in by_len {
+        out = out.replace(s.as_str(), mask);
+    }
+    out
 }
 
 /// 取消一份作业（杀它）。回：有没有这一份。
@@ -297,7 +342,7 @@ fn withdraw_conn(conn: u64) {
     drop(gone);
 }
 
-/// 进程里那条「会话外的需手动清单可能变了」的铃（流的 tap 订它推 `changed {manual}`）：账号清单动了 · 一份登录作业收了都敲。
+/// 进程里那条「会话外的需手动清单可能变了」的铃（流的 tap 订它推 `changed {manual}`）：账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了（watcher）都敲。
 pub(crate) fn manual_changes() -> &'static tokio::sync::broadcast::Sender<()> {
     static MANUAL_BELL: std::sync::OnceLock<tokio::sync::broadcast::Sender<()>> =
         std::sync::OnceLock::new();
@@ -330,3 +375,7 @@ impl Drop for Desk {
 #[cfg(test)]
 #[path = "../../../tests/backend/accounts/sign_in_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/accounts/sign_in_mcp_tests.rs"]
+mod mcp_tests;

@@ -249,6 +249,23 @@ fn manifest_touched<'a>(mut paths: impl Iterator<Item = &'a Path>, manifest: &Pa
     paths.any(|p| p == manifest)
 }
 
+/// 这一批文件事件里有没有哪个号记「MCP 要登录」的那份文件（`files`：注册表里各家的那个名字）：在那一家的家目录里，
+/// 或在账号库里某个号的目录里（都只认直接子项：watcher 盯的就是这两层，不递归）。同 [`manifest_touched`] 抽出来给判据。
+fn needs_login_touched<'a>(
+    mut paths: impl Iterator<Item = &'a Path>,
+    accts_dir: Option<&Path>,
+    agent_home: &Path,
+    files: &[&str],
+) -> bool {
+    paths.any(|p| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .is_some_and(|n| files.contains(&n))
+            && (p.parent() == Some(agent_home)
+                || accts_dir.is_some_and(|a| p.parent().and_then(Path::parent) == Some(a)))
+    })
+}
+
 /// P2：挂 pidfd 看守的幂等入口。`events_tx` 为 `None`（单元测试）时什么都不做。
 fn arm_pid_watcher(key: &Path, pid: u32, expected_start: Option<u64>, state: &mut ReaderState) {
     let Some(tx) = state.events_tx.clone() else {
@@ -1194,6 +1211,15 @@ fn watch_loop(
                 {
                     sink.send(Frame::changed(Topic::Accounts, None, None, None));
                     // 账号清单动了 ⇒ 需登录的那几个号可能变了。
+                    crate::accounts::sign_in::ring_manual();
+                }
+                // 哪个号记「MCP 要登录」的那份文件翻了（那一家连它碰到要登录 · 登完自己删掉那一条）⇒ 需手动清单可能变了。
+                if needs_login_touched(
+                    events.iter().map(|ev| ev.path.as_path()),
+                    accounts_manifest.parent(),
+                    &agent_home,
+                    &crate::agents::mcp_needs_login_files(),
+                ) {
                     crate::accounts::sign_in::ring_manual();
                 }
                 // 配置文件动了 ⇒ 一帧 `changed {profiles}`（批内合并）。

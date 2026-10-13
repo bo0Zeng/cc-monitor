@@ -138,7 +138,7 @@
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：那个会话挂着的待答请求变了（答题 hook 挂上 · 撤掉 · 有人答掉），重读它的 `needs`（`sessions-needs` 或那个会话的 `history-facts`）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
 `body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`tasks` 问 `{sid: key}`、另两样不带参数；`rotation` 不带，客户端照 `{target: {sid: key}}` 重问 `rotation-view`），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
-`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。
+`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
 历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`turn_end` · `session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 主线外清单 · 可重连的 `session_state` · 清单已报完就一帧 `sessions_replayed`。

@@ -346,7 +346,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
 - `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
-- `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了；重问 `manual-list`）
+- `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）
 - `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 
 #### `Unavailable`
@@ -2717,36 +2717,40 @@ notes: Array<string>, };
 
 #### `login-start`
 
-在 app 里登录一个号：起那一家的登录子命令，交回登录链接（本连接断了 ⇒ 作业收）。
+在 app 里登录一个号或一个号里的一个 MCP 服务器：起那一家的登录子命令，交回登录链接（本连接断了 ⇒ 作业收）。
 
 收 `args` · 连接内就地做完 · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `account` | → | 账号库里的号（账号 0 是 `0`） |
+| `account` | → | 账号库里的号（账号 0 是 `0`；`mcp` 那一种可为 `null`：那一家的默认配置目录） |
 | `agent` | → | 哪一家（同 `accounts-list` 的 `agent`） |
+| `kind` | → | 登录什么：`account`（一个号）· `mcp`（一个号里的一个 MCP 服务器） |
+| `projectDir` | → | `mcp` 那一种：那一条配置所属的项目目录（用户级 ⇒ `null`） |
+| `server` | → | `mcp` 那一种：服务器名（`mcp-read` 里那一条） |
 | `auto` | ← | 会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推 `changed {login}`，粘码只是后备） |
 | `job` | ← | 作业号（`login-finish` · `login-cancel` 交它） |
-| `paste` | ← | 粘回来的是什么：`code`（登录页上给的那一段） |
+| `paste` | ← | 粘回来的是什么：`code`（登录页上给的那一段）· `redirectUrl`（浏览器回跳到本机的那一整条地址） |
 | `url` | ← | 登录链接（在浏览器里打开，不用内嵌网页） |
 
 码：`bad_args` · `not_found` · `unsupported` · `failed`
 
 #### `login-finish`
 
-把登录页上给的码交给那份登录作业，等那一家换完。
+把粘回来的那一段（登录页上的码 · 浏览器回跳的地址）交给那份登录作业，等那一家换完。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
 入参 `LoginFinishReq` · 回包 `LoginDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type LoginDone = { account: string, };
+type LoginDone = { target: LoginStartReq, };
 type LoginFinishReq = { job: string, 
 /**
  * 登录页上给的那一段（原样；不进日志、不回显）。
  */
 pasted: string, };
+type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
 ```
 
 码：`bad_args` · `bad_paste` · `refused` · `no_job` · `child_timed_out`
@@ -2775,13 +2779,13 @@ type LoginCancelled = { was: boolean, };
 入参 `NoArgs` · 回包 `ManualList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type LoginStartReq = { agent: string, account: string, };
+type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
 type ManualFix = { command: string, args: LoginStartReq, };
 type ManualItem = { "kind": "accountLogin", agent: string, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
 /**
  * 在哪个号里；没设账号的那一份 ⇒ `null`。
  */
-account: string | null, server: string, scope: string, said: string, };
+account: string | null, server: string, scope: string, said: string, fix: ManualFix | null, };
 type ManualList = { items: Array<ManualItem>, };
 type NoArgs = Record<symbol, never>;
 ```

@@ -2917,6 +2917,58 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
     assert!(ask < emit && emit < per_event, "问与发要排在逐条处理之前");
 }
 
+/// 各号记「MCP 要登录」的那份文件（那一家的家目录 · 账号库里各号的目录，直接子项）出现 · 变了 · 删了 ⇒ 认；
+/// 别的文件 · 更深一层 · 账号库外面同名的 ⇒ 不认。
+#[test]
+fn a_needs_login_cache_in_an_account_dir_or_the_agent_home_is_recognised() {
+    let accts = Path::new("/h/.cc-monitor/accounts");
+    let home = Path::new("/h/.claude");
+    let files = ["mcp-needs-auth-cache.json"];
+    let hit = |p: &str| needs_login_touched([Path::new(p)].into_iter(), Some(accts), home, &files);
+    assert!(hit(
+        "/h/.cc-monitor/accounts/work/mcp-needs-auth-cache.json"
+    ));
+    assert!(hit("/h/.claude/mcp-needs-auth-cache.json"));
+    assert!(!hit("/h/.cc-monitor/accounts/work/.credentials.json"));
+    assert!(!hit(
+        "/h/.cc-monitor/accounts/work/deep/mcp-needs-auth-cache.json"
+    ));
+    assert!(!hit("/h/elsewhere/mcp-needs-auth-cache.json"));
+    assert!(!hit("/h/.cc-monitor/accounts/mcp-needs-auth-cache.json"));
+    assert!(!needs_login_touched(
+        [Path::new("/h/.claude/mcp-needs-auth-cache.json")].into_iter(),
+        Some(accts),
+        home,
+        &[]
+    ));
+}
+
+/// 接线：`Notify` 那一臂里**恰好一处**问 `needs_login_touched`、真了敲需手动的铃（推 `changed {manual}`），
+/// 排在逐条处理事件的 `for` 之前（同 `manifest_touched` 那一条的理由）。
+#[test]
+fn the_notify_arm_rings_the_manual_bell_when_a_needs_login_cache_turns() {
+    let src = include_str!("../../../src/backend/observe/watcher.rs");
+    let prod = crate::guard_support::production_code(src);
+    let ask = guard_core::find_pinned(&prod, "if needs_login_touched(")
+        .expect("Notify 那一臂里不是恰好一处问 needs_login_touched");
+    let ring = prod[ask..]
+        .find("crate::accounts::sign_in::ring_manual();")
+        .map(|k| ask + k)
+        .expect("问完之后没有敲需手动的铃");
+    let next_if = prod[ask + 3..]
+        .find("\n                if ")
+        .map(|k| ask + 3 + k)
+        .unwrap_or(usize::MAX);
+    let per_event = prod[ask..]
+        .find("for ev in events {")
+        .map(|k| ask + k)
+        .expect("问完之后没有逐条处理事件的 for —— 结构变了");
+    assert!(
+        ring < next_if && ring < per_event,
+        "敲铃要紧跟着问、排在逐条处理之前"
+    );
+}
+
 /// 一个 tmux 会话里两个窗格各跑一个 claude：各自的标签打在各自的窗格上，对账一轮就稳 —— 之后每一轮一次都不写。
 /// 标签若还是会话级单值，两个 claude 每一轮都把对方改回来，而每次「真写了」都会再起一次探测（探测 ↔ 打标死循环）。
 ///

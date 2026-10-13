@@ -1957,6 +1957,10 @@ pub(crate) struct McpFace {
     pub(crate) read: fn(Option<&Path>, &McpLook) -> McpRead,
     /// 在那一家的会话里登录 MCP 服务器要敲的那条命令（扩展页「去登录」· 待办那一件复制它）。
     pub(crate) login_command: &'static str,
+    /// 在 app 里登录一个 MCP 服务器那一形（子命令最后再接服务器名）；`None` ＝ 只能在会话里登。
+    pub(crate) sign_in: Option<SignInFace>,
+    /// 各号家目录里记「要登录」的那份文件（盯它：翻过来 ⇒ 会话外的需手动清单可能变了）。
+    pub(crate) needs_login_file: Option<&'static str>,
 }
 
 /// 判状态要看的：这台各号的家目录（账号库里的名字 · 那个号的家；没设账号的那一份名字是 `None`）＋ 此刻（epoch ms）。
@@ -2038,6 +2042,19 @@ pub(crate) fn mcp_login_command(kind: &str) -> Option<&'static str> {
     adapter_among(REGISTRY, kind)
         .and_then(|a| a.mcp)
         .map(|f| f.login_command)
+}
+
+/// `kind` 那一家的 MCP 面（[`McpFace`]）。那一家不认得 MCP ⇒ `None`。
+pub(crate) fn mcp_face(kind: &str) -> Option<McpFace> {
+    adapter_among(REGISTRY, kind).and_then(|a| a.mcp)
+}
+
+/// 这台注册表里各家记「MCP 要登录」的那份文件名（watcher 认它）。
+pub(crate) fn mcp_needs_login_files() -> Vec<&'static str> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.mcp.and_then(|m| m.needs_login_file))
+        .collect()
 }
 
 /// `kind` 那一家没设账号时的家目录（注册表 `home` 那一格）。认不出 / 说不出 ⇒ `None`。
@@ -2200,6 +2217,19 @@ pub(crate) struct SignInFace {
     pub(crate) paste_fits: fn(pasted: &str, link: &str) -> bool,
     /// 输出的一行说「粘的码不对」（子命令接着等）。
     pub(crate) said_bad_paste: fn(&str) -> bool,
+    /// 它要终端才肯问（起在伪终端里：`platform::child::Child::converse_in_terminal`）。
+    pub(crate) terminal: bool,
+    /// 粘回来的是什么（界面据此说「粘登录页上给的码」还是「粘浏览器地址栏里那一整条」）。
+    pub(crate) paste: PasteShape,
+}
+
+/// 粘回来的那一段是什么（中立值；线上名由帧面那一份给）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PasteShape {
+    /// 登录页上给的那一段码。
+    Code,
+    /// 浏览器回跳到本机那一整条地址（回不来时地址栏里那一条）。
+    RedirectUrl,
 }
 
 /// 一家的订阅号登录的格式知识（读写与续期在账号域 `accounts/oauth/`，这里只有这一家的名字与地址）。

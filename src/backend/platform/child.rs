@@ -570,7 +570,18 @@ mod os {
 
     impl Group {
         pub(super) fn adopt(child: &std::process::Child) -> Group {
-            Group(child.id() as libc::pid_t)
+            Group::of_pid(child.id())
+        }
+
+        /// 放手即收整棵的那一种（一问一答那一类）。Unix 上同 [`Group::adopt`]：组本来就是整棵
+        /// （逃出组的、自己 `setsid` 的不算）；收尸之后组号可能已不归它 ⇒ 那时不杀（调用方守着）。
+        pub(super) fn adopt_tree(child: &std::process::Child) -> Group {
+            Group::adopt(child)
+        }
+
+        /// 自成一组的那个进程（组号 = 它的 pid：`process_group(0)` 或会话首进程）。
+        pub(super) fn of_pid(pid: u32) -> Group {
+            Group(pid as libc::pid_t)
         }
 
         /// 整组 SIGKILL。只在直接子进程还没被收尸时调（组号仍被它占着，不会落到别的组上）。
@@ -583,7 +594,12 @@ mod os {
 
     /// 等直接子进程退出但**不收尸**（`WNOWAIT`）：收尸之前它的 pid 一直占着，杀组那一下不会误伤。
     pub(super) fn exited_unreaped(child: &mut std::process::Child) {
-        let pid = child.id() as libc::id_t;
+        exited_unreaped_pid(child.id());
+    }
+
+    /// 同 [`exited_unreaped`]，按 pid 等（伪终端起的那一个不是 `std::process::Child`）。
+    pub(super) fn exited_unreaped_pid(pid: u32) {
+        let pid = pid as libc::id_t;
         loop {
             let mut info: libc::siginfo_t = unsafe { std::mem::zeroed() };
             let r =
@@ -621,6 +637,12 @@ mod os {
     #[link(name = "kernel32")]
     extern "system" {
         fn CreateJobObjectW(attrs: *mut core::ffi::c_void, name: *const u16) -> RawHandle;
+        fn SetInformationJobObject(
+            job: RawHandle,
+            class: i32,
+            info: *const core::ffi::c_void,
+            len: u32,
+        ) -> i32;
         fn AssignProcessToJobObject(job: RawHandle, process: RawHandle) -> i32;
         fn TerminateJobObject(job: RawHandle, exit_code: u32) -> i32;
         fn TerminateProcess(process: RawHandle, exit_code: u32) -> i32;
@@ -628,32 +650,83 @@ mod os {
     }
 
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    /// `SetInformationJobObject` 的信息类 `JobObjectExtendedLimitInformation`。
+    const EXTENDED_INFO_CLASS: i32 = 9;
+    /// 标志位 `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`：最后一个 Job 句柄关掉 ⇒ 系统终止 Job 里的每一个进程。
+    const KILL_ON_JOB_CLOSE: u32 = 0x0000_2000;
+
+    /// `JOBOBJECT_BASIC_LIMIT_INFORMATION`（字段照 winnt.h 的次序与宽度）。
+    #[repr(C)]
+    #[derive(Default)]
+    struct BasicLimits {
+        per_process_user_time_limit: i64,
+        per_job_user_time_limit: i64,
+        limit_flags: u32,
+        minimum_working_set_size: usize,
+        maximum_working_set_size: usize,
+        active_process_limit: u32,
+        affinity: usize,
+        priority_class: u32,
+        scheduling_class: u32,
+    }
+
+    /// `JOBOBJECT_EXTENDED_LIMIT_INFORMATION`（`IoInfo` 是六个 u64 的 `IO_COUNTERS`）。
+    #[repr(C)]
+    #[derive(Default)]
+    struct ExtendedLimits {
+        basic: BasicLimits,
+        io_info: [u64; 6],
+        process_memory_limit: usize,
+        job_memory_limit: usize,
+        peak_process_memory_used: usize,
+        peak_job_memory_used: usize,
+    }
+
+    // 64 位上 winnt.h 那份是 144 字节；对不上 ⇒ 系统按长度拒收、退成不设「关句柄即杀」，这里先在编译期拦住。
+    #[cfg(target_pointer_width = "64")]
+    const _: () = assert!(std::mem::size_of::<ExtendedLimits>() == 144);
 
     pub(super) fn own_group(_cmd: &mut Command) {}
 
-    /// 一个 Job（子进程起来后放进去，它再起的默认都在里面）。不设「关句柄即杀」：
-    /// 正常结束后留下的后台进程（如第一次起的 tmux server）不跟着没；只在超时时终止整个 Job。
+    /// 一个 Job（子进程起来后放进去，它再起的默认都在里面）。两种：
+    /// - [`Group::adopt`]（`run` · `stream`）：不设「关句柄即杀」—— 正常结束后留下的后台进程（如第一次起的 tmux server）
+    ///   不跟着没；只在到点 / 放手时终止整个 Job。
+    /// - [`Group::adopt_tree`] · [`Group::tree_of_handle`]（一问一答那一类）：设「关句柄即杀」—— 放手时直接子进程已经退了、
+    ///   孙进程还在（`claude` 起的那一类）也跟着收；我们这边整个进程没了（句柄随之关）也一样。
+    ///
+    /// 放进去之前那一小段里它已经起的孙进程不在 Job 里（起子进程之后才放：`std` 与伪终端库都不给先挂起再放）。
     /// 放不进去（老系统不许嵌套 Job）⇒ 退成只杀直接子进程。
     pub(super) struct Group {
         job: Option<RawHandle>,
-        /// 直接子进程的句柄（归等待线程里的 `Child` 所有；只在它还没被收尸时用）。
+        /// 直接子进程的句柄（归等待线程里的那个子进程所有；只在它还没被收尸时用）。
         process: RawHandle,
     }
 
     impl Group {
         pub(super) fn adopt(child: &std::process::Child) -> Group {
+            Group::of_handle(child.as_raw_handle(), OnClose::Leave)
+        }
+
+        pub(super) fn adopt_tree(child: &std::process::Child) -> Group {
+            Group::of_handle(child.as_raw_handle(), OnClose::KillAll)
+        }
+
+        /// 同 [`Group::adopt_tree`]，按进程句柄（伪终端起的那一个不是 `std::process::Child`）。
+        pub(super) fn tree_of_handle(process: RawHandle) -> Group {
+            Group::of_handle(process, OnClose::KillAll)
+        }
+
+        fn of_handle(process: RawHandle, on_close: OnClose) -> Group {
             let job = unsafe { CreateJobObjectW(core::ptr::null_mut(), core::ptr::null()) };
             let job = (!job.is_null()).then_some(job).filter(|&j| {
-                let ok = unsafe { AssignProcessToJobObject(j, child.as_raw_handle()) } != 0;
+                let ok = (on_close == OnClose::Leave || set_kill_on_close(j))
+                    && unsafe { AssignProcessToJobObject(j, process) } != 0;
                 if !ok {
                     unsafe { CloseHandle(j) };
                 }
                 ok
             });
-            Group {
-                job,
-                process: child.as_raw_handle(),
-            }
+            Group { job, process }
         }
 
         pub(super) fn kill(&self) {
@@ -665,6 +738,34 @@ mod os {
                     TerminateProcess(self.process, 1);
                 },
             }
+        }
+    }
+
+    /// Job 句柄关掉时 Job 里还活着的那些怎么办。
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum OnClose {
+        /// 留着（`run` · `stream`）。
+        Leave,
+        /// 系统全部终止（一问一答那一类）。
+        KillAll,
+    }
+
+    /// 设不上 ⇒ `false`（调用方据此不用这个 Job、退成只杀直接子进程）。
+    fn set_kill_on_close(job: RawHandle) -> bool {
+        let info = ExtendedLimits {
+            basic: BasicLimits {
+                limit_flags: KILL_ON_JOB_CLOSE,
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        unsafe {
+            SetInformationJobObject(
+                job,
+                EXTENDED_INFO_CLASS,
+                (&info as *const ExtendedLimits).cast(),
+                std::mem::size_of::<ExtendedLimits>() as u32,
+            ) != 0
         }
     }
 
@@ -724,10 +825,14 @@ pub(crate) enum Heard {
 /// 一问一答的子进程（官方登录那一类：打印一段、等 stdin 一行、再打印结局）：stdin 能写一行；两条输出逐行进 [`Conversation::heard`]。
 /// **放手即收**：`Drop` ⇒ 它还没退就杀整组（Windows：终止 Job）。收尸在等待线程里，与杀组互斥（同 [`Child::run`]）。没有期限 —— 活多久由拿着它的那一方定。
 pub(crate) struct Conversation {
-    stdin: Option<std::process::ChildStdin>,
+    stdin: Option<Box<dyn std::io::Write + Send>>,
+    /// 放手时收的那一整棵（Unix：自成一组 —— 管道那一种 `process_group(0)`、终端那一种是会话首进程，组号即 pid；
+    /// Windows：设了「关句柄即杀」的 Job，见 `os::Group`）。
     group: os::Group,
     reaped: Arc<Mutex<bool>>,
     heard: Option<mpsc::Receiver<Heard>>,
+    /// 一行收尾用什么：管道 ⇒ `\n`；终端 ⇒ `\r`（终端里的回车）。
+    eol: &'static [u8],
 }
 
 // 同 [`Streaming`]：Windows 的 `Group` 里是内核句柄（裸指针 ⇒ 不是 Send），内核句柄不认线程，挪到别的线程上用、在那边 Drop 是安全的。
@@ -742,7 +847,7 @@ impl Conversation {
             .as_mut()
             .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::BrokenPipe))?;
         w.write_all(line.as_bytes())?;
-        w.write_all(b"\n")?;
+        w.write_all(self.eol)?;
         w.flush()
     }
 
@@ -782,7 +887,7 @@ impl Child {
             .stderr(Stdio::piped());
         os::own_group(&mut cmd);
         let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;
-        let group = os::Group::adopt(&child);
+        let group = os::Group::adopt_tree(&child);
         let stdin = child.stdin.take();
         let (tx, rx) = mpsc::channel::<Heard>();
         let mut readers = Vec::new();
@@ -811,10 +916,190 @@ impl Child {
             let _ = tx.send(Heard::Exited(status.ok().and_then(|s| s.code())));
         });
         Ok(Conversation {
-            stdin,
+            stdin: stdin.map(|w| Box::new(w) as Box<dyn std::io::Write + Send>),
             group,
             reaped,
             heard: Some(rx),
+            eol: b"\n",
         })
     }
+}
+
+/// 伪终端的大小：列数放宽，长链接（几百字）不被那一家按屏宽折行。
+const TERMINAL_SIZE: portable_pty::PtySize = portable_pty::PtySize {
+    rows: 50,
+    cols: 4000,
+    pixel_width: 0,
+    pixel_height: 0,
+};
+
+impl Child {
+    /// 同 [`Child::converse`]，但起在一个伪终端里（stdin · stdout · stderr 都是那个终端：要终端才肯问的官方子命令，
+    /// 如 `claude mcp login`）。输出逐行交成 [`Heard::Out`]，只留人看得见的字（[`plain_line`]）；[`Conversation::say`] 以回车收尾。
+    /// 环境与 [`Child::run`] 同一套（自有格 · 内部格照摘）；程序照交给它的 `PATH` 找。
+    pub(crate) fn converse_in_terminal(self) -> Result<Conversation, ChildFail> {
+        let cmd = self.command();
+        let mut b = portable_pty::CommandBuilder::new(cmd.get_program());
+        b.args(cmd.get_args());
+        // 环境算全再交：继承的（`inherit_only` ⇒ 不继承）叠上 `command()` 里显式设 · 摘的那几格。
+        let mut env: std::collections::BTreeMap<OsString, OsString> = if self.inherit_only.is_some()
+        {
+            Default::default()
+        } else {
+            std::env::vars_os().collect()
+        };
+        for (k, v) in cmd.get_envs() {
+            match v {
+                Some(v) => env.insert(k.to_os_string(), v.to_os_string()),
+                None => env.remove(k),
+            };
+        }
+        b.env_clear();
+        for (k, v) in &env {
+            b.env(k, v);
+        }
+        if let Some(d) = cmd.get_current_dir() {
+            b.cwd(d);
+        }
+        let pair = portable_pty::native_pty_system()
+            .openpty(TERMINAL_SIZE)
+            .map_err(pty_fail)?;
+        let mut child = pair.slave.spawn_command(b).map_err(|e| {
+            // 找不到程序那一形照 `run` 那一套报（调用方据此说「没装」）。
+            let s = e.to_string();
+            if s.contains("does not exist") || s.contains("No such file") || s.contains("not found")
+            {
+                ChildFail::of_spawn(std::io::Error::from(std::io::ErrorKind::NotFound))
+            } else {
+                pty_fail(e)
+            }
+        })?;
+        // 我们这边那一端的从端要关掉：它退了之后主端才读得到头。
+        drop(pair.slave);
+        let master = pair.master;
+        let reader = master.try_clone_reader().map_err(pty_fail)?;
+        let writer = master.take_writer().map_err(pty_fail)?;
+        // Windows 上句柄占着进程，不用 pid 去等、去杀 ⇒ 只在 Unix 上取。
+        #[cfg(unix)]
+        let pid = child.process_id();
+        // 说不出 pid（Windows：句柄）⇒ 杀不准它那一组（组号 0 会落到我们自己头上）⇒ 当场收掉、照实报起不来。
+        #[cfg(unix)]
+        let group = pid.filter(|&p| p > 0).map(os::Group::of_pid);
+        // Windows：按它的进程句柄放进一个「关句柄即杀」的 Job（伪终端库那一把只杀直接子进程，孙进程会留下）。
+        #[cfg(windows)]
+        let group = child.as_raw_handle().map(os::Group::tree_of_handle);
+        let Some(group) = group else {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(pty_fail("no pid"));
+        };
+        let (tx, rx) = mpsc::channel::<Heard>();
+        let reader = {
+            let tx = tx.clone();
+            std::thread::spawn(move || read_terminal(reader, tx))
+        };
+        let reaped = Arc::new(Mutex::new(false));
+        let reaped_w = Arc::clone(&reaped);
+        std::thread::spawn(move || {
+            #[cfg(unix)]
+            if let Some(pid) = pid {
+                os::exited_unreaped_pid(pid);
+            }
+            let status = {
+                let mut r = reaped_w.lock().unwrap_or_else(|p| p.into_inner());
+                *r = true;
+                child.wait()
+            };
+            // Windows 的伪终端它退了也不给读的那一端读到头 ⇒ 先关终端；Unix 上先读完再关（关早了会丢它最后那几行）。
+            #[cfg(windows)]
+            drop(master);
+            let _ = reader.join();
+            #[cfg(unix)]
+            drop(master);
+            let _ = tx.send(Heard::Exited(
+                status
+                    .ok()
+                    .map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX)),
+            ));
+        });
+        Ok(Conversation {
+            stdin: Some(writer),
+            group,
+            reaped,
+            heard: Some(rx),
+            eol: b"\r",
+        })
+    }
+}
+
+fn pty_fail(e: impl std::fmt::Display) -> ChildFail {
+    ChildFail::Io(std::io::Error::other(e.to_string()))
+}
+
+/// 终端那一端逐行读（按 `\n` 切），每行交 [`plain_line`] 之后的样子；读到头时没收尾的那半行也交（提示符那一类）。
+fn read_terminal(mut r: impl Read, tx: mpsc::Sender<Heard>) {
+    let mut buf: Vec<u8> = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        let n = match r.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => n,
+        };
+        buf.extend_from_slice(&chunk[..n]);
+        while let Some(at) = buf.iter().position(|&b| b == b'\n') {
+            let line: Vec<u8> = buf.drain(..=at).collect();
+            if tx.send(Heard::Out(plain_line(&line[..at]))).is_err() {
+                return;
+            }
+        }
+    }
+    if !buf.is_empty() {
+        let _ = tx.send(Heard::Out(plain_line(&buf)));
+    }
+}
+
+/// 终端输出的一行 ⇒ 人看得见的字：去掉 CSI（`ESC [ … 终字`）· OSC（`ESC ] … BEL` 或 `ESC \\`；OSC 8 超链接的目标在这里面，
+/// 可见的那段字留下）· 别的两字节转义（`ESC X`，字符集选择那种再吞一个字）· 回车 · 其余控制字（制表符留下）。
+pub(crate) fn plain_line(raw: &[u8]) -> String {
+    let mut out: Vec<u8> = Vec::with_capacity(raw.len());
+    let mut i = 0;
+    while i < raw.len() {
+        let b = raw[i];
+        if b == 0x1b {
+            match raw.get(i + 1) {
+                Some(b'[') => {
+                    i += 2;
+                    while i < raw.len() && !(0x40..=0x7e).contains(&raw[i]) {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                Some(b']') => {
+                    i += 2;
+                    while i < raw.len() {
+                        if raw[i] == 0x07 {
+                            i += 1;
+                            break;
+                        }
+                        if raw[i] == 0x1b && raw.get(i + 1) == Some(&b'\\') {
+                            i += 2;
+                            break;
+                        }
+                        i += 1;
+                    }
+                }
+                Some(b'(' | b')' | b'*' | b'+') => i += 3,
+                Some(_) => i += 2,
+                None => i += 1,
+            }
+            continue;
+        }
+        if b < 0x20 && b != b'\t' || b == 0x7f {
+            i += 1;
+            continue;
+        }
+        out.push(b);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }

@@ -355,6 +355,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "CREATE_NO_WINDOW",
         "同上：Win32 进程创建标志位。",
     ),
+    (
+        "KILL_ON_JOB_CLOSE",
+        "**Win32 Job 限制标志位**（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，`0x2000`：最后一个 Job 句柄关掉就终止 Job 里的进程）。\
+             是位掩码不是尺寸（同 `CREATE_NO_WINDOW` 那一族）。",
+    ),
     // ── HTTP 中转带进来的。**刻意不并进上面那组「七个」**：
     // 那一组是 08-06 那次普查的读数，往里塞新的会让「七个全都不是字节上限」变成假话。
     // ⚠ 上面的 `CHUNK` 一条**盖不住它** —— `every_size_typed_constant_…` 里的
