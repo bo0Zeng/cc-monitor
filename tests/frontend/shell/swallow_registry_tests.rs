@@ -161,7 +161,6 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().and_then(|s| s.code())));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
     ("src/backend/stream/inbound/mod.rs", "let _ = push.blocking_send(Frame::changed(Topic::Login, Some(job.to_string()), None, body));", Why::PeerGone, "发起登录的那条连接已断 ⇒ 「登录作业收了」那一帧没人收（作业本来就跟着它收）"),
     ("src/backend/platform/child.rs", "let _ = child.kill();", Why::Reap, "伪终端里起的那一个说不出 pid（杀不准它那一组）⇒ 当场杀掉、收尸、照实报起不来；杀 / 收失败没有更好的补救"),
-    ("src/backend/platform/child.rs", "let _ = k.kill();", Why::Reap, "Windows 上伪终端里那一个放手时杀它；杀不成也没有更好的补救（它自己退了时就是这样）"),
     ("src/backend/platform/child.rs", "let _ = reader.join();", Why::Reap, "伪终端那一问一答收尾：等读线程读到头；读线程自己不会 panic（只往通道里送行），join 失败没有更好的补救"),
     ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Exited(status.ok().map(|s| i32::try_from(s.exit_code()).unwrap_or(i32::MAX))));", Why::PeerGone, "拿着它的那一方已放手（作业收了）⇒ 「退了」那一件没人收"),
     ("src/backend/platform/child.rs", "let _ = tx.send(Heard::Out(plain_line(&buf)));", Why::PeerGone, "伪终端读到头时没收尾的那半行：拿着它的那一方已放手 ⇒ 没人收"),
