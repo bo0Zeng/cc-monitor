@@ -611,5 +611,5 @@ private fun rememberAgentsOf(hostId: String?): List<AgentFacts> {
     return got
 }
 
-/** 主机设置里问那台有哪几家，最多等这么久（连不上就不列）。 */
+/** 主机设置里问那台有哪几家，最多等这么久（问不到就不列）。 */
 private const val AGENTS_MS = 8_000L

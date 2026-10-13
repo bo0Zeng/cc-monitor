@@ -31,7 +31,6 @@ pub(crate) struct SessionModelReq {
     pub(crate) client: Option<String>,
 }
 
-
 /// `session-model` 的回包：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::ModelSwitched;
 

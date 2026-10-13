@@ -158,7 +158,6 @@ impl crate::stream::inbound::typed::Codes for SessionNewErr {
     }
 }
 
-
 /// 哪一格不行（`data.field`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -183,8 +182,6 @@ pub struct SessionNewRefusal {
     /// 选不了号（码 `account_unavailable`）⇒ 那一形；别的 ⇒ `null`。
     pub unavailable: Option<la::AccountUnavailable>,
 }
-
-
 
 /// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了策略时起之前把那个会话写成用那一份（策略不在 ⇒ `no_strategy`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {

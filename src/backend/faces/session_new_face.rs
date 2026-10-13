@@ -115,10 +115,6 @@ pub(crate) fn launchable_here(found: &dyn Fn(&str) -> bool) -> Vec<&'static str>
         .collect()
 }
 
-
-
-
-
 /// `session-new-facts` 的应答与它引到的几样：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::{AgentFacts, ForkFacts, NewFacts, Pick, RecentDir};
 
@@ -144,7 +140,6 @@ pub(crate) fn agent_facts(kind: &'static str) -> AgentFacts {
     }
 }
 
-
 /// 各家记录里的工作目录 ⇒ 最近用过的那几个（新的在前，同一个目录只出一次；不出会话的那个目录不算）。
 pub(crate) fn recent_dirs(
     items: &[(String, i64)],
@@ -166,7 +161,9 @@ pub(crate) fn recent_dirs(
         .map(|(cwd, ms)| RecentDir {
             cwd: cwd.to_string(),
             last_ms: ms,
-            last_text: clock.text(u64::try_from(ms.div_euclid(1000)).unwrap_or(0)).0,
+            last_text: clock
+                .text(u64::try_from(ms.div_euclid(1000)).unwrap_or(0))
+                .0,
         })
         .collect()
 }
@@ -283,7 +280,9 @@ pub(crate) fn facts(req: &NewFactsReq, tz: &crate::Tz) -> Result<NewFacts, (&'st
                 crate::observe::turns::turn_at(std::io::BufReader::new(f), uuid)
             });
             Some(ForkFacts {
-                agent: crate::agents::record_kind_of(&source).unwrap_or_default().to_string(),
+                agent: crate::agents::record_kind_of(&source)
+                    .unwrap_or_default()
+                    .to_string(),
                 launch: super::fork_face::launch_of(&home, &source, sid),
                 turn: turn.as_ref().map(|t| t.0),
                 start_text: turn.and_then(|t| crate::common::time::iso_hm(&t.1, tz)),

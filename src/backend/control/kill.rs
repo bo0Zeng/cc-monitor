@@ -48,7 +48,6 @@ pub(crate) struct KillReq {
     pub(crate) sid: Option<String>,
 }
 
-
 /// `kill` 的回包：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::Killed;
 

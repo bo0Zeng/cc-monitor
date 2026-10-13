@@ -15,9 +15,6 @@ pub(crate) use cmd_wire::session::{
     ForkWhy as Why,
 };
 
-
-
-
 /// 号：账号 0（不设配置目录）或账号库里的一个号的名字。线上 `null` ＝ 账号 0、串 ＝ 号名。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(into = "Option<String>")]
@@ -34,8 +31,6 @@ impl From<AccountFact> for Option<String> {
         }
     }
 }
-
-
 
 /// 源会话的事实（收齐之后）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

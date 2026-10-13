@@ -330,7 +330,9 @@ pub(crate) fn terminal_json(
     let nonempty = |s: &str| (!s.is_empty()).then(|| s.to_string());
     TerminalItem {
         terminal: row.handle(),
-        host: crate::stream::wire::TerminalHost::Tmux.as_wire().to_string(),
+        host: crate::stream::wire::TerminalHost::Tmux
+            .as_wire()
+            .to_string(),
         tmux_name: row.name.clone(),
         title,
         program: row.program.clone(),

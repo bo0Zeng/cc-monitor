@@ -49,10 +49,7 @@ fn an_exited_source_knows_no_account_even_when_one_is_handed_in() {
 #[test]
 fn a_live_source_knows_account_and_terminal_and_says_where_from() {
     let f = infer(&live(Some(AccountFact::Named("z".into())), Some("tmux-p")));
-    assert_eq!(
-        f.account,
-        known(Some("z".to_string()), Whence::Process)
-    );
+    assert_eq!(f.account, known(Some("z".to_string()), Whence::Process));
     assert_eq!(
         f.terminal,
         known(

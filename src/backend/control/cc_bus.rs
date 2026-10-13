@@ -881,8 +881,6 @@ pub(crate) struct BusCleanup {
     pub(crate) unread: Option<String>,
 }
 
-
-
 /// 注销结局的线上形：住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::{BusFailed, BusNote};
 

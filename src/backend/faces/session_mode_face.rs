@@ -51,7 +51,6 @@ pub(crate) struct ModeSwitched {
     pub(crate) said: Option<String>,
 }
 
-
 /// 切模型 · 切档的结局：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::SwitchResult;
 

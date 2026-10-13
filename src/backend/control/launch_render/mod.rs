@@ -30,7 +30,6 @@ pub(crate) fn unavailable(u: la::AccountUnavailable) -> LaunchRenderErr {
     LaunchRenderErr::AccountUnavailable(said, u)
 }
 
-
 /// `launch-render-cli` · `launch-local` 的应答：线上形住 `cmd-wire::session`。
 pub(crate) use cmd_wire::session::Rendered;
 

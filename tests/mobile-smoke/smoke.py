@@ -195,7 +195,7 @@ def tap_in_row(label, button):
     raise Step.Fail(f"「{label}」那一行上没有「{button}」")
 
 
-def add_host(name, codex=False):
+def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
     tap("+")
@@ -208,8 +208,6 @@ def add_host(name, codex=False):
     typed(PORT)
     tap(t("mobHostEdit.field.user")); typed(USER)
     hide_keyboard()
-    if codex:
-        tap("Codex")
     adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
     time.sleep(1)
     tap("smoke")
@@ -388,7 +386,21 @@ def main():
 
     with Step("10-Codex"):
         launch()
-        add_host("smokecodex", codex=True)
+        add_host("smokecodex")
+        # 哪几家是那台给的（session-new-facts）：存好、连上以后进编辑页才列得出，手机自己不认识 Codex。
+        drawer(t("mobDrawer.server.named", name=""))
+        time.sleep(1.5)
+        tap_in_row("smokecodex", t("mobHosts.row.edit"))
+        if not wait("Codex", 40):
+            raise Step.Fail("主机设置里列不出那台能起的几家")
+        tap("Codex")
+        adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
+        time.sleep(1)
+        tap(t("mobHostEdit.page.save"))
+        time.sleep(2)
+        tap("smokecodex")
+        time.sleep(2)
+        to_chat()
         hide_keyboard()
         tap(t("mobChat.input.placeholder")); typed(f"{T} codex")
         hide_keyboard()

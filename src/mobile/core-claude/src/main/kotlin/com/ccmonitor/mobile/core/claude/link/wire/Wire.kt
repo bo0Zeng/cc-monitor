@@ -48,30 +48,45 @@ object Wire {
 
     private class Mismatch : RuntimeException()
 
+    /** 装不进：在 [bind] 里接住。 */
+    private fun mismatch(): Nothing = throw Mismatch()
+
+    private inline fun <reified T> Any.or(): T = this as? T ?: mismatch()
+
+    /** 基本型（装箱的与原始的两份 `Class` 都认）⇒ 怎么从 JSON 值取。 */
+    private val SCALARS: Map<Class<*>, (Any) -> Any> =
+        listOf<Pair<List<Class<*>?>, (Any) -> Any>>(
+            listOf(String::class.java) to { v -> v.or<String>() },
+            listOf(java.lang.Long::class.java, Long::class.javaPrimitiveType) to { v -> v.or<Number>().toLong() },
+            listOf(java.lang.Integer::class.java, Int::class.javaPrimitiveType) to { v -> v.or<Number>().toInt() },
+            listOf(java.lang.Double::class.java, Double::class.javaPrimitiveType) to { v -> v.or<Number>().toDouble() },
+            listOf(java.lang.Boolean::class.java, Boolean::class.javaPrimitiveType) to { v -> v.or<Boolean>() },
+            listOf(Any::class.java) to { v -> v },
+        ).flatMap { (types, read) -> types.filterNotNull().map { it to read } }
+            .toMap()
+
     private fun value(
         type: Type,
         v: Any?,
-    ): Any? {
-        if (v == null) return null
-        return when (type) {
-            is ParameterizedType -> parameterized(type, v)
-            is WildcardType -> value(type.upperBounds.first(), v)
-            is Class<*> -> plain(type, v)
-            else -> throw Mismatch()
+    ): Any? =
+        when {
+            v == null -> null
+            type is ParameterizedType -> parameterized(type, v)
+            type is WildcardType -> value(type.upperBounds.first(), v)
+            type is Class<*> -> plain(type, v)
+            else -> mismatch()
         }
-    }
 
     private fun parameterized(
         type: ParameterizedType,
-        v: Any?,
-    ): Any? {
+        v: Any,
+    ): Any {
         val raw = type.rawType as Class<*>
         val arg = type.actualTypeArguments
         return when {
-            List::class.java.isAssignableFrom(raw) -> (v as? List<*> ?: throw Mismatch()).map { value(arg[0], it) }
-            Map::class.java.isAssignableFrom(raw) ->
-                (v as? Map<*, *> ?: throw Mismatch()).entries.associate { (k, x) -> (k as String) to value(arg[1], x) }
-            else -> throw Mismatch()
+            List::class.java.isAssignableFrom(raw) -> v.or<List<*>>().map { value(arg[0], it) }
+            Map::class.java.isAssignableFrom(raw) -> v.or<Map<*, *>>().entries.associate { (k, x) -> k.toString() to value(arg[1], x) }
+            else -> mismatch()
         }
     }
 
@@ -79,30 +94,26 @@ object Wire {
         type: Class<*>,
         v: Any,
     ): Any =
-        when {
-            type == String::class.java -> v as? String ?: throw Mismatch()
-            type == java.lang.Long::class.java || type == Long::class.javaPrimitiveType -> (v as? Number ?: throw Mismatch()).toLong()
-            type == java.lang.Integer::class.java || type == Int::class.javaPrimitiveType -> (v as? Number ?: throw Mismatch()).toInt()
-            type == java.lang.Double::class.java || type == Double::class.javaPrimitiveType -> (v as? Number ?: throw Mismatch()).toDouble()
-            type == java.lang.Boolean::class.java || type == Boolean::class.javaPrimitiveType -> v as? Boolean ?: throw Mismatch()
-            type == Any::class.java -> v
-            type.isEnum -> type.enumConstants.firstOrNull { (it as Enum<*>).name.lowercase() == v } ?: throw Mismatch()
-            type.isAnnotationPresent(WireOf::class.java) -> record(type, v as? Map<*, *> ?: throw Mismatch())
-            else -> throw Mismatch()
-        }
+        SCALARS[type]?.invoke(v)
+            ?: when {
+                type.isEnum -> type.enumConstants.firstOrNull { (it as Enum<*>).name.lowercase() == v } ?: mismatch()
+                type.isAnnotationPresent(WireOf::class.java) -> record(type, v.or<Map<*, *>>())
+                else -> mismatch()
+            }
 
+    // 构造参数个数随声明类而定：只能整列交（spread）。
+    @Suppress("SpreadOperator")
     private fun record(
         type: Class<*>,
         m: Map<*, *>,
     ): Any {
         val ctor = primary(type)
         val args =
-            ctor.parameters
-                .mapIndexed { i, p ->
-                    val key = p.getAnnotation(Key::class.java)?.name ?: p.name
-                    value(ctor.genericParameterTypes[i], m[key])
-                }.toTypedArray()
-        return ctor.newInstance(*args)
+            ctor.parameters.mapIndexed { i, p ->
+                val key = p.getAnnotation(Key::class.java)?.name ?: p.name
+                value(ctor.genericParameterTypes[i], m[key])
+            }
+        return ctor.newInstance(*args.toTypedArray())
     }
 
     /** 声明类的主构造（参数最多、不是编译器补的默认参数那一份）。 */
@@ -111,5 +122,5 @@ object Wire {
             .filter { c -> c.parameterTypes.none { it.name == "kotlin.jvm.internal.DefaultConstructorMarker" } }
             .maxByOrNull { it.parameterCount }
             ?.also { check(it.parameters.all { p -> p.isNamePresent }) { "${type.name}: -java-parameters" } }
-            ?: throw Mismatch()
+            ?: mismatch()
 }

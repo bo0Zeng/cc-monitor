@@ -394,7 +394,10 @@ mod tests {
         let short = j("history-tail", serde_json::json!({"total": 1}));
         assert_eq!(short["unreadable"], true);
         assert!(short.get("ok").is_none());
-        assert!(short["detail"].as_str().unwrap().starts_with("history-tail: "));
+        assert!(short["detail"]
+            .as_str()
+            .unwrap()
+            .starts_with("history-tail: "));
         let raw = serde_json::json!({"anything": [1, 2]});
         assert_eq!(j("history-list", raw.clone())["data"], raw);
     }

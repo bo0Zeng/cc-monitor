@@ -1001,7 +1001,6 @@ fn count_prose(s: &str, row: &mut IndexRow) {
     }
 }
 
-
 /// 尾段那一趟扫描的结果：线上形住 `cmd-wire::session`（`history-tail` 的回包）。
 pub(crate) use cmd_wire::session::TailPlan;
 

@@ -255,7 +255,7 @@ impl<'de> Deserialize<'de> for Ability {
         match AbilityWire::deserialize(d)? {
             AbilityWire::Yes(true) => Ok(Ability::Yes),
             AbilityWire::Yes(false) => Err(serde::de::Error::custom(
-                "能做那一形只有 true（不能是 {no, said}）",
+                "an ability is `true` or `{no, said}`, never `false`",
             )),
             AbilityWire::No { no, said } => Ok(Ability::No { no, said }),
         }
@@ -518,11 +518,7 @@ pub struct AgentFacts {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "NewSessionPick"
-    )
+    ts(export, rename = "NewSessionPick", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct Pick {
     /// 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
@@ -557,11 +553,7 @@ pub struct ForkFacts {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "ForkWhence"
-    )
+    ts(export, rename = "ForkWhence", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "snake_case")]
 pub enum ForkWhence {
@@ -575,11 +567,7 @@ pub enum ForkWhence {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "ForkWhy"
-    )
+    ts(export, rename = "ForkWhy", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "snake_case")]
 pub enum ForkWhy {
@@ -593,11 +581,7 @@ pub enum ForkWhy {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "ForkSlot"
-    )
+    ts(export, rename = "ForkSlot", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ForkSlot<T> {
@@ -611,11 +595,7 @@ pub enum ForkSlot<T> {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "ForkTerminal"
-    )
+    ts(export, rename = "ForkTerminal", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(tag = "host")]
 pub enum ForkTerminal {
@@ -630,11 +610,7 @@ pub enum ForkTerminal {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "ForkLaunch"
-    )
+    ts(export, rename = "ForkLaunch", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct ForkLaunch {
     pub cwd: ForkSlot<String>,
@@ -648,11 +624,7 @@ pub struct ForkLaunch {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(
-        export,
-        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"),
-        rename = "ModeSwitchResult"
-    )
+    ts(export, rename = "ModeSwitchResult", export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 #[serde(rename_all = "snake_case")]
 pub enum SwitchResult {
@@ -837,7 +809,7 @@ mod tests {
         let short = serde_json::json!({"total": 3, "tail_from": 1, "split_at": 10});
         assert!(matches!(decode_reply("history-tail", short), Some(Err(_))));
         let refused =
-            serde_json::json!({"result": "refused", "why": "not_yours", "said": "别的前端的会话"});
+            serde_json::json!({"result": "refused", "why": "not_yours", "said": "x"});
         assert_eq!(
             decode_reply("terminal-input", refused.clone()),
             Some(Ok(refused))
