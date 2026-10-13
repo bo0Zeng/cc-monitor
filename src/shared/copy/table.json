@@ -30949,7 +30949,7 @@
     "beRotation.edit.noName": {
       "kind": "error",
       "role": "报错",
-      "zh": "名字要 1–32 个字，只用字母、数字、空格和 -_·()+",
+      "zh": "名字要 1–32 个字，只用字母、数字、空格和 - _ · ( ) +",
       "args": []
     },
     "beRotation.edit.notListed": {
