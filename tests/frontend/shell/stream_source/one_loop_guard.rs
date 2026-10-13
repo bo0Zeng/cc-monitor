@@ -55,7 +55,8 @@ fn the_reconnect_loop_is_born_once_and_only_in_resident_client() {
                 path.strip_prefix(&repo)
                     .unwrap_or(&path)
                     .display()
-                    .to_string(),
+                    .to_string()
+                    .replace('\\', "/"),
             );
         }
     }
