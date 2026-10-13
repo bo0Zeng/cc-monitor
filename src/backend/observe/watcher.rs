@@ -2036,10 +2036,11 @@ fn read_tail_in_blocks(path: &Path, cursor: ReadCursor, tail: Option<&[u8]>, blo
     }
     let consumed = cursor.consumed.min(meta_len);
     let k = TAIL_PROBE.min(consumed);
-    let mut probe = Vec::new();
+    let mut probe = vec![0u8; k as usize];
+    // 读不满（读的那一下文件缩了）也算读不出：下一趟按 `metadata` 长度判截短。
     let read = f
         .seek(SeekFrom::Start(consumed - k))
-        .and_then(|_| (&mut f).take(k).read_to_end(&mut probe));
+        .and_then(|_| f.read_exact(&mut probe));
     if read.is_err() {
         return Look::Unreadable;
     }
@@ -2133,8 +2134,7 @@ impl NewLines {
 
     /// 读完：（新游标, 新游标之前那几个指纹字节）。`seen_len` ＝ 这一趟真读到的长度；比旧的高水位还短（读的那一下文件缩了 ·
     /// 读到一半出错）而这一趟不是从 0 读的 ⇒ 留旧的高水位：下一趟按截短从 0 重读并出声。
-    fn finish(mut self) -> (ReadCursor, Vec<u8>) {
-        let _ = self.blocks.rest();
+    fn finish(self) -> (ReadCursor, Vec<u8>) {
         let seen = self.start + self.blocks.read();
         let seen_len = if (seen < self.from.seen_len || self.broke) && self.reread.is_none() {
             seen.max(self.from.seen_len)

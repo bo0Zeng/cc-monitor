@@ -808,7 +808,8 @@ fn reading_in_blocks_gives_the_same_entry_as_one_block() {
     }
     // 正控：后半那一段里的 `bg` 并进来了（完整行里的才算数：今天的金样只有它在残尾里那一形）。
     let mut e = FileEntry::empty(false);
-    e.take(None, &mut Blocks::new(&good[..], 7)).expect("读得动");
+    e.take(None, &mut Blocks::new(&good[..], 7))
+        .expect("读得动");
     assert!(e.done.bg, "`sessionKind:\"bg\"` 在一整行里，并段之后丢了");
     // 正控：坏的那一句的位置按整段算。
     let mut e = FileEntry::empty(false);
