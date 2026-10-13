@@ -363,6 +363,7 @@
       "refused"
     ],
     "profiles-read": [
+      "bad_args",
       "refused"
     ],
     "profiles-resolve": [

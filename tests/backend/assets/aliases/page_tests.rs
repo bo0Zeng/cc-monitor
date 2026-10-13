@@ -5,6 +5,39 @@ use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 use std::path::PathBuf;
 
+// 五口经帧面那一跳：入参按类型收（同 `typed::take`），回包成 `Value`（同 `spec::wire`）——下面的判据照线上那一形读。
+// 本地这几个同名函数盖住 `super::*` 里那几个。
+type Wired = Result<Value, (&'static str, String)>;
+
+fn taken<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, (&'static str, String)> {
+    crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))
+}
+
+fn wired<T: serde::Serialize>(got: Result<T, (&'static str, String)>) -> Wired {
+    got.map(|v| serde_json::to_value(v).unwrap())
+}
+
+fn read_with(d: &HomeDoor, args: &Value, tmux: Option<bool>, tz: &crate::Tz) -> Wired {
+    let crate::stream::inbound::typed::NoArgs {} = taken(args)?;
+    wired(super::read_with(d, tmux, tz))
+}
+
+fn answer_resolve(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_resolve(d, &taken(args)?))
+}
+
+fn answer_impact(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_impact(d, &taken(args)?))
+}
+
+fn answer_bases(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_bases(d, &taken(args)?))
+}
+
+fn answer_write(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_write(d, &taken(args)?))
+}
+
 struct Tmp(PathBuf);
 impl Drop for Tmp {
     fn drop(&mut self) {

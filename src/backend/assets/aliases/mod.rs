@@ -468,12 +468,12 @@ pub(crate) fn migrate(d: &dyn Door, home: &str) -> Result<bool, String> {
     }
     let text = profile::apply_changes(None, &changes)?;
     write_profiles(d, home, None, &text).map_err(|e| e.said())?;
-    let note = serde_json::json!({
-        "count": profile::parse_book(&text).profiles.len(),
-        "path": profile::path_in(home),
-        "skipped": notes,
+    let note = serde_json::to_string(&page::Migrated {
+        count: profile::parse_book(&text).profiles.len(),
+        path: profile::path_in(home),
+        skipped: notes,
     })
-    .to_string();
+    .map_err(|e| e.to_string())?;
     if let Err(e) = write_ours(
         d,
         home,

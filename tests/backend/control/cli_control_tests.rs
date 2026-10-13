@@ -390,6 +390,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "forward-list",
         // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
+        // 读回配置文件整份：无入参（问的就是「这台」那一份）。
+        "profiles-read",
         // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。
     ];
     let declared: Vec<&str> = REGISTRY
