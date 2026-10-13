@@ -1543,14 +1543,12 @@ pub(crate) fn facts_at(
     let malformed = |e: String| HistoryFactsErr::BadArgs(crate::common::contract::malformed(&e));
     let prior = match req.prior {
         None => None,
-        Some(token) => Some(
-            facts_cache::find(path, token).ok_or_else(|| {
-                HistoryFactsErr::StalePrior(format!(
-                    "resume token {}@{} is not in this backend's table",
-                    token.rev, token.end
-                ))
-            })?,
-        ),
+        Some(token) => Some(facts_cache::find(path, token).ok_or_else(|| {
+            HistoryFactsErr::StalePrior(format!(
+                "resume token {}@{} is not in this backend's table",
+                token.rev, token.end
+            ))
+        })?),
     };
     let limits = facts_query::limits_from(req.limits.as_ref()).map_err(malformed)?;
     // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。

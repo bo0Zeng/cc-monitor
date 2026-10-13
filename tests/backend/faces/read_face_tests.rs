@@ -561,7 +561,13 @@ fn the_three_products_match_the_cross_language_golden() {
     let home = scratch("c4b-golden");
     let path = golden_session(&home);
     // `history-facts` 的 `rev` 是续算表现铸的号（从进程起来那一刻的钟往上数）：比较前换成金样里的 1，只核它在、是数。
-    let mut facts = answer_at(&home, "history-facts", &serde_json::json!({"path": golden_facts_session(&home)}), &Default::default()).unwrap();
+    let mut facts = answer_at(
+        &home,
+        "history-facts",
+        &serde_json::json!({"path": golden_facts_session(&home)}),
+        &Default::default(),
+    )
+    .unwrap();
     assert!(facts["rev"].as_u64().is_some_and(|r| r > 1), "{facts}");
     facts["rev"] = serde_json::json!(1);
     let got = serde_json::json!({
@@ -807,7 +813,9 @@ fn history_facts_resumes_from_its_end_rev_token_and_refuses_a_stale_one() {
     assert!(wire["rev"].as_u64().is_some(), "成品里没有 rev：{wire}");
     // 旧的整份成品当令牌 ⇒ 认不得（不留旧兼容）。
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": wire })).unwrap_err().0,
+        ask(serde_json::json!({ "path": path, "prior": wire }))
+            .unwrap_err()
+            .0,
         "bad_args"
     );
     let more = r#"{"type":"assistant","uuid":"f-5","message":{"content":[{"type":"tool_use","id":"tu-4","name":"Write","input":{"file_path":"/w/b.ts"}}]}}"#;
@@ -820,11 +828,18 @@ fn history_facts_resumes_from_its_end_rev_token_and_refuses_a_stale_one() {
     // `end` 不是那一份的 · `rev` 认不得 ⇒ stale_prior（调用方从 0 重要）。
     let mut off = token(&wire);
     off["end"] = serde_json::json!(wire["end"].as_u64().unwrap() - 1);
-    assert_eq!(ask(serde_json::json!({ "path": path, "prior": off })).unwrap_err().0, "stale_prior");
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "prior": off }))
+            .unwrap_err()
+            .0,
+        "stale_prior"
+    );
     let mut unknown = token(&wire);
     unknown["rev"] = serde_json::json!(wire["rev"].as_u64().unwrap() + 1_000_000);
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": unknown })).unwrap_err().0,
+        ask(serde_json::json!({ "path": path, "prior": unknown }))
+            .unwrap_err()
+            .0,
         "stale_prior"
     );
     let resumed = ask(serde_json::json!({ "path": path, "prior": token(&wire) })).unwrap();
@@ -842,7 +857,9 @@ fn history_facts_resumes_from_its_end_rev_token_and_refuses_a_stale_one() {
     );
     // 续过一次的旧令牌被换掉了 ⇒ stale_prior。
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": token(&wire) })).unwrap_err().0,
+        ask(serde_json::json!({ "path": path, "prior": token(&wire) }))
+            .unwrap_err()
+            .0,
         "stale_prior"
     );
 
@@ -869,12 +886,16 @@ fn history_facts_resumes_from_its_end_rev_token_and_refuses_a_stale_one() {
         serde_json::json!({ "end": wire["end"], "rev": wire["rev"], "usage": null }),
     ] {
         assert_eq!(
-            ask(serde_json::json!({ "path": path, "prior": bad })).unwrap_err().0,
+            ask(serde_json::json!({ "path": path, "prior": bad }))
+                .unwrap_err()
+                .0,
             "bad_args"
         );
     }
     assert_eq!(
-        ask(serde_json::json!({ "prior": token(&wire) })).unwrap_err().0,
+        ask(serde_json::json!({ "prior": token(&wire) }))
+            .unwrap_err()
+            .0,
         "bad_args"
     );
     // 围栏同族：`projects` 之外的文件不读。
@@ -1604,8 +1625,14 @@ fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
     let whole1 = ask(None);
     let seen1 = plan.apply(Some(ask(None))).unwrap();
     assert!(seen1.get("touchedFiles").is_none(), "{seen1}");
-    assert!(seen1.get("prior").is_none(), "应答里不该再塞一整份：{seen1}");
-    assert_eq!(seen1["end"], whole1["end"], "令牌那两格被投影去掉了：{seen1}");
+    assert!(
+        seen1.get("prior").is_none(),
+        "应答里不该再塞一整份：{seen1}"
+    );
+    assert_eq!(
+        seen1["end"], whole1["end"],
+        "令牌那两格被投影去掉了：{seen1}"
+    );
     assert!(seen1["rev"].as_u64().is_some(), "{seen1}");
     assert_ne!(seen1["rev"], whole1["rev"], "两问各铸各的 rev");
     assert_eq!(

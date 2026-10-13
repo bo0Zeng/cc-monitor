@@ -34,12 +34,18 @@ struct Table {
 static TABLE: Mutex<Option<Table>> = Mutex::new(None);
 
 fn with<T>(f: impl FnOnce(&mut Table) -> T) -> T {
-    let mut g = TABLE.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut g = TABLE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let t = g.get_or_insert_with(|| Table {
         // 毫秒 × 1000：到 2255 年都还在 2^53 之内（界面那一侧是 JS 的数）。
         next: crate::common::time::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .map_or(1, |d| u64::try_from(d.as_millis()).unwrap_or(1).saturating_mul(1000)),
+            .map_or(1, |d| {
+                u64::try_from(d.as_millis())
+                    .unwrap_or(1)
+                    .saturating_mul(1000)
+            }),
         rows: VecDeque::new(),
     });
     f(t)
