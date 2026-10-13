@@ -6,7 +6,7 @@ use super::*;
 const REGEN: &str = "CCM_REGEN_RECORD_GOLDEN";
 
 fn one(raw: &str) -> Option<Record> {
-    let rec = crate::agents::claudecode::parse::parse_line(raw)
+    let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
         .unwrap()
         .unwrap();
     record_of(rec, &crate::agents::line_id(4096)).map(|mut r| {
@@ -241,7 +241,7 @@ fn the_cheap_class_agrees_with_the_record() {
     let mut seen = std::collections::BTreeSet::new();
     for raw in &lines {
         let v: serde_json::Value = serde_json::from_str(raw).unwrap();
-        let want = crate::agents::claudecode::parse::parse_line(raw)
+        let want = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
             .and_then(|r| record_of(r, "L1"))
             .map(|r| r.body.class());
@@ -301,7 +301,7 @@ fn records_without_a_reader_do_not_come_out() {
         r#"{"type":"permission-mode","permissionMode":"plan","sessionId":"s"}"#,
         r#"{"type":"queue-operation","operation":"enqueue","content":"x","timestamp":"t"}"#,
     ] {
-        let rec = crate::agents::claudecode::parse::parse_line(raw)
+        let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(raw, 0))
             .unwrap()
             .unwrap();
         assert!(record_of(rec, "L1").is_none(), "{raw}");
@@ -321,7 +321,7 @@ fn claude_status_lines_are_known_and_stay_off_screen() {
         "frame-link",
     ] {
         let raw = format!(r#"{{"type":"{t}","sessionId":"s","x":1}}"#);
-        let rec = crate::agents::claudecode::parse::parse_line(&raw)
+        let rec = crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(&raw, 0))
             .unwrap()
             .unwrap();
         assert!(
@@ -427,7 +427,10 @@ fn scale_records(inflated: bool) -> String {
         };
         let start = off;
         off += line.len() as u64 + 1;
-        let Some(rec) = crate::agents::claudecode::parse::parse_line(&line).unwrap() else {
+        let Some(rec) =
+            crate::agents::claudecode::parse::parse_line(&crate::agents::Line::new(&line, 0))
+                .unwrap()
+        else {
             continue;
         };
         if let Some(mut r) = record_of(rec, &crate::agents::line_id(start)) {

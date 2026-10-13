@@ -399,7 +399,9 @@ fn record_classes_equal_the_table_with_a_reader_for_each() {
     ];
     let mut got = std::collections::BTreeMap::new();
     for l in lines {
-        let r = super::super::parse::parse_line(l).unwrap().unwrap();
+        let r = super::super::parse::parse_line(&crate::agents::Line::new(l, 0))
+            .unwrap()
+            .unwrap();
         let c = class_of(&r);
         got.insert(c, super::super::record_of::record_of(r, "@0").is_some());
     }
@@ -446,7 +448,9 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
         ),
     ];
     for (line, want) in cases {
-        let rec = super::super::parse::parse_line(line).unwrap().unwrap();
+        let rec = super::super::parse::parse_line(&crate::agents::Line::new(line, 0))
+            .unwrap()
+            .unwrap();
         let v = serde_json::to_value(&rec).unwrap();
         assert_eq!(v["userText"], want, "{line}");
         for k in ["isMeta", "isCompactSummary", "origin"] {
@@ -454,7 +458,7 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
         }
     }
     let asst = super::super::parse::parse_line(
-        r#"{"type":"assistant","uuid":"c","timestamp":"t","message":{"role":"assistant","content":"hi"}}"#,
+        &crate::agents::Line::new(r#"{"type":"assistant","uuid":"c","timestamp":"t","message":{"role":"assistant","content":"hi"}}"#, 0),
     )
     .unwrap()
     .unwrap();
@@ -462,9 +466,10 @@ fn a_parsed_user_record_carries_the_one_speaker_product() {
         .unwrap()
         .get("userText")
         .is_none());
-    let dequeue = super::super::parse::parse_line(
+    let dequeue = super::super::parse::parse_line(&crate::agents::Line::new(
         r#"{"type":"queue-operation","operation":"dequeue","timestamp":"t"}"#,
-    )
+        0,
+    ))
     .unwrap()
     .unwrap();
     assert!(serde_json::to_value(&dequeue)

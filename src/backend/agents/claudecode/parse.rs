@@ -15,15 +15,11 @@ use super::schema::JsonlRecord;
 ///
 /// 看不懂的东西记在这台后端自己的漂移账上（[`drift_ledger`]）：账本天然按机器分。
 ///
-/// 产品里各路都已改吃 [`crate::agents::Line`]（走 [`translated`]）；照原文解一行这一形只剩测试在用 ⇒ 收进 test 构建。
-#[cfg(test)]
-pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
-    record_at(&crate::agents::Line::new(raw, 0))
-}
-
-/// `parse_line` 的本体，吃通用层那一份 [`crate::agents::Line`]：整行别人解过就从那一份里反序列化（不再解文本），没解过才解文本；
+/// 吃通用层那一份 [`crate::agents::Line`]：整行别人解过就从那一份里反序列化（不再解文本），没解过才解文本；
 /// 抢救那两支要整行 ⇒ 用同一份（解过就不再解）。
-fn record_at(line: &crate::agents::Line<'_>) -> Result<Option<JsonlRecord>, serde_json::Error> {
+pub(crate) fn parse_line(
+    line: &crate::agents::Line<'_>,
+) -> Result<Option<JsonlRecord>, serde_json::Error> {
     if line.is_blank() {
         return Ok(None);
     }
@@ -68,7 +64,7 @@ fn record_at(line: &crate::agents::Line<'_>) -> Result<Option<JsonlRecord>, serd
     }
 }
 
-/// [`record_at`] 交给通用层的那一形（注册表 `RecordFace.parse`）：通用记录（[`super::record_of`]）＋ 它自己的 `cwd`
+/// [`parse_line`] 交给通用层的那一形（注册表 `RecordFace.parse`）：通用记录（[`super::record_of`]）＋ 它自己的 `cwd`
 /// ＋ 排队那一对（`enqueue` ＝ 打字那一刻 · 出了 `queued` 记录的那条 `remove` ＝ 插进去的那一句；按原句配）。
 /// 没有自己身份的记录（标题 · 排队）`id` 按起点偏移合成（[`crate::agents::line_id`]）。
 pub(crate) fn translated(
@@ -76,7 +72,7 @@ pub(crate) fn translated(
 ) -> Result<Option<crate::agents::Translated>, String> {
     use crate::agents::QueueMark;
     let start = line.start();
-    let Some(rec) = record_at(line).map_err(|e| e.to_string())? else {
+    let Some(rec) = parse_line(line).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
     let cwd = rec.cwd().map(str::to_string);
