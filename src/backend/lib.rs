@@ -998,6 +998,9 @@ pub const PROTO_VERSION: u32 = 1;
 /// p10l-typed-hub：子命令集少 --mcp-server-put / --mcp-server-remove / --mcp-sync-plan（子命令与通道各一，没人调了）；
 /// 枢纽内层 8 条（skill 三条 · MCP 三条 · cc-bus 两条，两台后端之间那一跳）与 ext-hub-preview / -apply 换成 typed，
 /// hello 带的形状指纹表跟着变；某台回包解不出 ⇒ backend_differs「{机器} 后端版本不同」。
+/// 资产域那扇门按类型收发（Door 每一问一个方法，收发文件管理那一族的线上类型）。
+/// 轮换第五版界面跟上：子命令集多 --rotation-strategy-tz（子命令与通道各一，指纹行换成现打的：这一版还没发过）；
+/// rotation-view 多过去那一截 · 提示带文件路径与时区名 · baseRev，rotation-try / -day-paint · session-new 形状跟着变。
 pub const BUILD_ID: &str = "p10l-typed-hub";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
