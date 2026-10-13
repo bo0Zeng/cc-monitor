@@ -1982,3 +1982,42 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         );
     }
 }
+
+/// 账号库那一族的入参按类型收：多一个键 · 缺必填 · 类型不对 · 不收入参的那两条带了键 ⇒ `bad_args`，下层一个字节不碰。
+#[test]
+fn the_account_library_refuses_what_its_request_types_do_not_have() {
+    for (cmd, args) in [
+        (
+            "accounts-init",
+            serde_json::json!({ "name": "z", "extra": 1 }),
+        ),
+        ("accounts-init", serde_json::Value::Null),
+        (
+            "accounts-add",
+            serde_json::json!({ "name": "z", "kind": "other" }),
+        ),
+        (
+            "accounts-add",
+            serde_json::json!({ "name": "z", "kind": "subscription", "loginCmd": "x" }),
+        ),
+        ("accounts-remove", serde_json::json!({ "name": 3 })),
+        ("accounts-set-default", serde_json::json!({})),
+        ("accounts-repair", serde_json::json!({ "dryRun": "yes" })),
+        ("accounts-rollback", serde_json::json!({ "backup": 1 })),
+        ("accounts-verify", serde_json::json!({ "x": 1 })),
+        (
+            "accounts-login-cmd",
+            serde_json::json!({ "name": "z", "extra": 1 }),
+        ),
+        ("accounts-mcp-read", serde_json::json!({ "x": 1 })),
+        ("accounts-mcp-remove", serde_json::json!({})),
+        (
+            "accounts-mcp-pick",
+            serde_json::json!({ "name": "s", "from": 1 }),
+        ),
+        ("accounts-mcp-sync", serde_json::json!({ "on": "yes" })),
+    ] {
+        let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
+        assert_eq!(got.code, "bad_args", "{cmd} {args}：{got:?}");
+    }
+}

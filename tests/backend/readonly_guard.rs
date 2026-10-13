@@ -2778,7 +2778,14 @@ mod g6_dependency_signoff {
             "cmd-wire",
             DEPS,
             MEASURED_CLEAN,
-            "帧命令两端对上的形状（机器名 `Machine` · typed 命令的形状指纹表），纯数据；仓内 crate，现打 0 处写面",
+            "帧命令两端对上的形状（机器名 `Machine` · typed 命令的形状指纹表 · 账号库那几条的入参与成品），纯数据；仓内 crate，现打 0 处写面",
+        ),
+        (
+            // 同一个依赖在测试构建里多开 `ts`（入参 · 成品的 TS 派生，形状指纹与生成类型用）。
+            "cmd-wire",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上一行那个仓内 crate，测试构建多开 `ts` feature（多出来的只是类型的 TS 派生），0 处写面",
         ),
         (
             "comms-outward",

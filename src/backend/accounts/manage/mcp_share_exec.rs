@@ -14,7 +14,7 @@ use super::model::Manifest;
 use super::scan::{item_at, join};
 use crate::assets::door::{self, Door, Refused};
 use crate::platform::acct_view::Item;
-use acct_core::wire::{AccountMcpChoice, AccountMcpConflict, AccountMcpView};
+use cmd_wire::accounts::{AccountMcpChoice, AccountMcpConflict, AccountMcpView};
 use copy_core::copy_text;
 use serde_json::Value;
 use std::path::Path;

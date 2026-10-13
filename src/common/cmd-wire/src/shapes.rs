@@ -3,6 +3,18 @@
 
 /// `(命令, 形状指纹)`，按命令名排。
 pub const SHAPES: &[(&str, &str)] = &[
+    ("accounts-add", "1d9bb24c"),
+    ("accounts-init", "4095c5f9"),
+    ("accounts-login-cmd", "338150e2"),
+    ("accounts-mcp-pick", "6a47c008"),
+    ("accounts-mcp-read", "978d848c"),
+    ("accounts-mcp-remove", "a6daefca"),
+    ("accounts-mcp-sync", "8a2c3a8d"),
+    ("accounts-remove", "4c3f8b01"),
+    ("accounts-repair", "8466b0b5"),
+    ("accounts-rollback", "7e0731f8"),
+    ("accounts-set-default", "f81867a1"),
+    ("accounts-verify", "123d62bb"),
     ("history-search", "84a3f656"),
     ("history-search-merge", "32be9716"),
     ("kill", "6de86725"),

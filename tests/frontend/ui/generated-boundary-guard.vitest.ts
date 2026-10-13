@@ -92,7 +92,7 @@ function tsDerivingSources(): string[] {
   //   后端那一侧也在范围里，否则下面几条通用性质对 `JsonlRecord` 一族静默失效（C04d 那一课）。
   walk("src/backend");
   walk("src/comms"); // 通信层那两个 crate
-  walk("src/common"); // 共用 crate（账号库线上形状 `acct-core::wire` 在这里派生）
+  walk("src/common"); // 共用 crate（账号库线上形状 `cmd-wire::accounts` 在这里派生）
   return out.sort();
 }
 

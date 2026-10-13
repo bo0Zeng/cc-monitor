@@ -123,7 +123,7 @@ function launchOutcome(out: unknown): { unavailable?: unknown; account: unknown;
 //  账号库那几条帧命令（`accounts-init` · `accounts-add` · … · `accounts-login-cmd`）：判据里那台后端的罐头答复
 // ════════════════════════════════════════════════════════════════════════════
 //
-// 这里只造「形状对的成品」（与后端 `acct_core::wire` 导出的类型同一套键），不在 JS 里再写一份规划器：
+// 这里只造「形状对的成品」（与后端 `cmd_wire::accounts` 导出的类型同一套键），不在 JS 里再写一份规划器：
 // 预演回一句「（预演）<命令> <名字>」、真做回一份备份名；别名名字是罐头里写死的 `<名>cc`，不是规则。
 
 /** 账号库那几条帧命令。 */
@@ -174,7 +174,6 @@ export function accountsFakeInvoke(args: ChanCallArgs, over: Record<string, unkn
       notes: [],
       backup: dry ? null : "20260101-000000",
       account: add ? { name, configDir: `/h/.claude-alt/${name}` } : null,
-      loginCmd: add && !dry && a.kind === "subscription" && a.credFile === undefined ? fakeLoginCmd(name) : null,
       aliasNames: name ? [`${name}cc`, `${name}cct`] : [],
       keyMasked: add && !dry && typeof a.key === "string" ? "sk-…abcd" : null,
       keyProblem: null,

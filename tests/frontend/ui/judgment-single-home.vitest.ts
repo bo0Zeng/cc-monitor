@@ -178,7 +178,7 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J4: {
     what: "POSIX 单引号 ＋ 账号那几条要在终端里跑的命令串",
-    // 今天终端里唯一要跑的账号命令是登录那一行：后端出（帧命令 `accounts-login-cmd` · `accounts-add` 的 `loginCmd`，
+    // 今天终端里唯一要跑的账号命令是登录那一行：后端出（帧命令 `accounts-login-cmd`，
     //   `src/backend/accounts/manage/wire.rs::login_line`，值过唯一的 quote），界面原样交给开终端那一步 —— TS 零拼 shell 串。
     //   那时的 `sq` · 命令构造器 · 快照路径那道 `validatePathArg` 一起删；账号名的即时反馈读生成物（J18）。
     homes: ["shell-quote-core::posix_quote", "src/backend/accounts/manage/wire.rs::login_line"],

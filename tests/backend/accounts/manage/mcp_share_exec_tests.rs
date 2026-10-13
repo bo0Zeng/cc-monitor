@@ -7,7 +7,7 @@
 use super::*;
 use crate::accounts::upstream_select::file_face;
 use crate::assets::aliases::tests::HomeDoor;
-use crate::faces::accounts_face::{answer, KeyDoor};
+use crate::faces::accounts_face::{tests::answer, KeyDoor};
 use serde_json::json;
 use std::os::unix::fs::PermissionsExt;
 use std::path::PathBuf;

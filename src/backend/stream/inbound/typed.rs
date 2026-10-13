@@ -31,6 +31,13 @@ pub(crate) trait Command: 'static {
     type Err: Codes;
 }
 
+/// 不收入参的那几条命令的入参：缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`。
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NoArgs {}
+
 /// 一条命令自己可能回的那几个码（[`codes!`] 声明）。
 pub(crate) trait Codes: Sized {
     /// 全部码，声明次序。
@@ -184,7 +191,7 @@ pub(super) enum TypedRun {
 }
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`（解码器那一句进原话）。
-fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Fail> {
+pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Fail> {
     let v = if args.is_null() {
         serde_json::Value::Object(Default::default())
     } else {

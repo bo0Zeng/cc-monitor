@@ -721,10 +721,10 @@ export class AccountsSection {
     await this.reload(true, true);
   }
 
-  private async login(origin: Origin, a: Account, cmd?: string): Promise<void> {
+  private async login(origin: Origin, a: Account): Promise<void> {
     const key = this.key(a.name, origin);
     try {
-      if ((await openLoginWindow(origin, a.name, cmd)) === "opened") {
+      if ((await openLoginWindow(origin, a.name)) === "opened") {
         this.noWindow.delete(key);
         this.waiting.add(key);
       } else {
@@ -800,7 +800,7 @@ export class AccountsSection {
     this.closeForm();
     const key = this.key(req.name, origin);
     if (req.kind !== "api-key" && !req.credFile) {
-      const got = await openLoginWindow(origin, req.name, change.loginCmd ?? undefined).catch(() => "noWindow" as const);
+      const got = await openLoginWindow(origin, req.name).catch(() => "noWindow" as const);
       if (got === "opened") this.waiting.add(key);
       else this.noWindow.add(key);
       // 下一行照后端回的那几句（如「已开的终端要重读别名」），界面不另拼。
