@@ -15,28 +15,15 @@
 import { ChanError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
-import type { ProfileAccountPick } from "./generated/ProfileAccountPick";
-import type { ProfileTmuxMode } from "./generated/ProfileTmuxMode";
-import type { ProfileTmuxPick } from "./generated/ProfileTmuxPick";
-import type { ProfileCwdCase } from "./generated/ProfileCwdCase";
 import type { ProfileForm as ProfileFormWire } from "./generated/ProfileForm";
 import type { ProfileSlotId } from "./generated/ProfileSlotId";
-import type { ProfileOwnItem } from "./generated/ProfileOwnItem";
-import type { ProfileProblem } from "./generated/ProfileProblem";
 import type { ProfileRow as ProfileRowWire } from "./generated/ProfileRow";
-import type { ProfilesMigrated } from "./generated/ProfilesMigrated";
 import type { ProfilesBook as ProfilesBookWire } from "./generated/ProfilesBook";
-import type { ProfileMergeRow } from "./generated/ProfileMergeRow";
 import type { ProfileResolved } from "./generated/ProfileResolved";
 import type { ProfileAffected } from "./generated/ProfileAffected";
 import type { ProfileBase } from "./generated/ProfileBase";
 import type { ProfileOp as ProfileOpWire } from "./generated/ProfileOp";
 import type { ProfilesWriteDone } from "./generated/ProfilesWriteDone";
-
-export type AccountPick = ProfileAccountPick;
-export type TmuxMode = ProfileTmuxMode;
-export type TmuxPick = ProfileTmuxPick;
-export type CwdCase = ProfileCwdCase;
 
 /** 一段的表单：`null` / `false` ＝ 继承（没写进这一段）。 */
 export type ProfileForm = ProfileFormWire;
@@ -44,15 +31,10 @@ export type ProfileForm = ProfileFormWire;
 /** 表单里可以写的几格（`detach` / `busRegister` 是开关，其余是值）。 */
 export type SlotId = ProfileSlotId;
 
-export type OwnItem = ProfileOwnItem;
-/** 一段（或整份文件）的坏处；`detail` ＝ 复制详情（有下层原话时才有）。 */
-export type Problem = ProfileProblem;
 /** 树里的一段（`said` 是后端按表单同一套词写好的那一行；`accountShape` 是「账号那一形」，其余 `null`）。 */
 export type ProfileRow = ProfileRowWire;
-export type Migrated = ProfilesMigrated;
 /** `profiles-read` 的成品（`editedAt` 后端写好；`tmux` 是那台后端判的，查不动 ⇒ `null`）。 */
 export type ProfilesBook = ProfilesBookWire;
-export type MergeRow = ProfileMergeRow;
 /** `profiles-resolve` 的成品：`line` 整条（「复制整条」交它）· `lineShort` 那一格的短形（照抄）。 */
 export type Resolved = ProfileResolved;
 export type Affected = ProfileAffected;
