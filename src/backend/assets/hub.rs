@@ -868,3 +868,7 @@ pub(crate) async fn ext_apply_many(
 #[cfg(test)]
 #[path = "../../../tests/backend/assets/hub_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/assets/hub_inner_wire_tests.rs"]
+mod inner_wire_tests;
