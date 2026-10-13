@@ -288,7 +288,6 @@ export function defaultConfig(): Record<string, unknown> {
         hostKeyPinnedAt: "2026-09-30",
         addresses: [],
         jump: "",
-        resumeCommand: "",
         connect: true,
       })),
     },

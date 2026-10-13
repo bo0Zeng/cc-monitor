@@ -3,6 +3,7 @@
  * 形状挂在产品生成物类型上 ⇒ 后端改了线上形状，这里当场编不过。
  */
 import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
+import type { Prefs } from "../../../src/frontend/ui/generated/Prefs";
 import type { Convo } from "./records";
 
 export interface TaskSpec {
@@ -76,6 +77,8 @@ export interface World {
   /** 订阅时看得见、交完会话之后断了的那几台（交完清单一会儿之后那台后端被杀：壳那一侧照真的那一套作废它的成品、通道说断了）。 */
   droppedMachines?: string[];
   config: Record<string, unknown>;
+  /** 那台后端 `prefs.json` 里的偏好（启动命令 · 恢复到 tmux 里 · 每号模型 · 上下文上限 · 数据目录）：机器 → 那一份。没有那一台 ⇒ 那台没设过（`prefs-read` 答「没有这份」）。 */
+  prefs?: Record<string, Prefs>;
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */
   ops: Record<string, OpHandler>;

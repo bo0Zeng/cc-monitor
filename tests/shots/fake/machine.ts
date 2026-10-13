@@ -7,6 +7,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
+import type { Prefs } from "../../../src/frontend/ui/generated/Prefs";
 
 const HOME = "/home/user";
 
@@ -47,6 +48,9 @@ function extList(w: World): unknown {
   } as never);
   return g;
 }
+
+/** 那台没设过偏好时后端照用的那一份（`control/machine_prefs.rs` 的 `Prefs::default()`）。 */
+export const PREFS_UNSET: Prefs = { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {} };
 
 export function machineOps(): Record<string, OpHandler> {
   return {
@@ -252,19 +256,22 @@ export function machineOps(): Record<string, OpHandler> {
             }
           : null,
     }),
-    // 机器表住本机后端（`machines.json`）：照场景那份 `config.remote.hosts` 答（盘上那一形没有 `resumeCommand`）。
+    // 机器表住本机后端（`machines.json`）：照场景那份 `config.remote.hosts` 答。
     "machines-read": (o, _r, w) => {
       if (o !== "<local>") throw new Error("机器表只问本机后端");
       const hosts = ((w.config.remote ?? {}) as { hosts?: Record<string, unknown>[] }).hosts ?? [];
-      return { state: "ok", reason: null, detail: null, path: `${HOME}/.cc-monitor/machines.json`, hosts: hosts.map(({ resumeCommand: _drop, ...h }) => h) };
+      return { state: "ok", reason: null, detail: null, path: `${HOME}/.cc-monitor/machines.json`, hosts };
     },
     // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
     "machines-try": (o, r, w) => {
       if (o !== "<local>") throw new Error("机器表只问本机后端");
       return { fault: tryMachineTable(r.edits as Record<string, unknown>[], w) };
     },
-    // 这台的偏好（`prefs.json`）：场景都没设过 ⇒ 照「没有这份」答，各格用缺省。
-    "prefs-read": () => ({ state: "absent", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: true, models: {}, contextLimits: {}, agentHomes: {} } }),
+    // 那台的偏好（`prefs.json`）：场景写了那一台 ⇒ 答那一份；没写 ⇒ 照「没有这份」答、后端缺省那一份。
+    "prefs-read": (o, _r, w) => {
+      const p = w.prefs?.[o];
+      return { state: p ? "ok" : "absent", reason: null, detail: null, path: `${HOME}/.cc-monitor/prefs.json`, prefs: p ?? PREFS_UNSET };
+    },
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];

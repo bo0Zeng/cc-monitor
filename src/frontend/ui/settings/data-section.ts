@@ -40,6 +40,18 @@ export function describeDataClass(c: DataClass): string {
   }
 }
 
+/**
+ * 「删了会怎样」那一格（界面那张卡 · 本机后端那一块 · 远端那一块同一个）：类别进 DOM（`data-data-class`），判据与用户看的是同一份值；
+ * 排在行头、名字与大小之间（`settings.css` 的 `class` 区）。
+ */
+export function dataClassCell(c: DataClass): HTMLElement {
+  const cell = document.createElement("span");
+  cell.className = "settings-data-item-class";
+  cell.dataset.dataClass = c;
+  cell.textContent = describeDataClass(c);
+  return cell;
+}
+
 /** 一个 `<strong>`：强调由 DOM 结构承担，不由字符串里的标记承担。 */
 function strong(text: string): HTMLElement {
   const el = document.createElement("strong");
@@ -215,12 +227,8 @@ export class DataSection {
     desc.textContent = info.description;
     li.appendChild(desc);
 
-    // 「删了会怎样」那一格：类别进 DOM（`data-class`），判据与用户看的是同一份值；不挂类名（只要字，不要样式）。
     li.dataset.class = info.class;
-    const cls = document.createElement("span");
-    cls.dataset.dataClass = info.class;
-    cls.textContent = describeDataClass(info.class);
-    li.appendChild(cls);
+    li.appendChild(dataClassCell(info.class));
 
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
@@ -236,6 +244,7 @@ export class DataSection {
     if (info.label.startsWith(LOGS_DIR_LABEL)) {
       // 日志目录（连同后端那一份 `logs/backend/`）：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
       const see = document.createElement("span");
+      see.className = "settings-data-item-see";
       see.dataset.seeAlso = "logs";
       see.textContent = copyText("data.item.inLogsPage");
       li.appendChild(see);
