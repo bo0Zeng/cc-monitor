@@ -13,7 +13,7 @@
 //!
 //! 4. **机器表**（`config.json` 的 `remote` ⇒ 本机 `machines.json`，[`super::machines`]）：同一位、同一把锁里只读，`machines.json` 不在才换；
 //!    每台残留的 `resumeCommand` 等旧格不带过去；`remote` 在而认不出（没有 `hosts` 数组）⇒ 不写、留原样。monitor 读到本机 `machines-read`
-//!    说 `ok` 才删 `remote`。`claudeDir`（默认那一家的数据目录）并进本机那一份 `prefs.json` 的 `agentHomes`。
+//!    说 `ok` 才删 `remote`。各家旧的那一格数据目录（键名问注册表 `old_home_pref_of`）并进本机那一份 `prefs.json` 的 `agentHomes`。
 //!
 //! 旧形状（今天各写者的那几格）：通用页 `resumeCommand` · 本机 `localResumeCommand` · 机器表每台 `remote.hosts[].resumeCommand`
 //! （空 ⇒ 通用页那一格）· `resumeInTmux`（各台同一格）· `contextLimits`（各台同一张）· `accounts.byMachine.<origin>.modelByAccount`
@@ -33,12 +33,6 @@ pub(crate) const CONFIG_NAME: &str = "config.json";
 
 /// 本机在 `accounts.byMachine` 里的键（界面的 `LOCAL_ORIGIN`）。
 const LOCAL_ORIGIN: &str = "<local>";
-
-/// `config.json` 里旧的那一格「默认那一家的数据目录」的键名：monitor 当年按 `<kind>Dir` 起的名（只默认那一家有这一格）。
-/// 只在换形这一段读，下一版随本文件删；新的那一格是 `prefs.json` 的 `agentHomes`（按 kind）。
-fn old_home_key() -> String {
-    format!("{}Dir", crate::agents::default_kind())
-}
 
 /// 「待交」那一版。
 const HANDOFF_VERSION: u32 = 1;
@@ -107,8 +101,8 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
         &cmd_wire::Machine(LOCAL_ORIGIN.to_string()),
         text(cfg, "localResumeCommand"),
     );
-    // 数据目录只说本机（设置页那一格从来只管这一台），记给默认那一家。
-    local.agent_homes = old_home(cfg).into_iter().collect();
+    // 数据目录只说本机（设置页那一格从来只管这一台）。
+    local.agent_homes = old_homes(cfg);
     let mut remote = BTreeMap::new();
     let hosts = cfg.pointer("/remote/hosts").and_then(Value::as_array);
     for h in hosts.into_iter().flatten() {
@@ -341,11 +335,17 @@ pub(crate) fn migrate_machines_in(own: &Own) -> MachinesMoved {
     }
 }
 
-/// `config.json` 那一格旧的数据目录 ⇒ `(默认那一家, 路径)`；空 / 不是绝对路径 ⇒ 没有。
-fn old_home(cfg: &Value) -> Option<(String, String)> {
-    Some(text(cfg, &old_home_key()).trim().to_string())
-        .filter(|d| machine_prefs::agent_home_ok(d))
-        .map(|d| (crate::agents::default_kind().to_string(), d))
+/// `config.json` 里各家旧的那一格数据目录 ⇒ `{kind: 路径}`：键名问注册表（[`crate::agents::old_home_pref_of`]，
+/// 各家自己的旧键，只给换形用、下一版随本文件删）；空 / 不是绝对路径 ⇒ 那一家没有。
+fn old_homes(cfg: &Value) -> BTreeMap<String, String> {
+    crate::agents::registered_kinds()
+        .filter_map(|kind| {
+            let key = crate::agents::old_home_pref_of(kind)?;
+            Some(text(cfg, key).trim().to_string())
+                .filter(|d| machine_prefs::agent_home_ok(d))
+                .map(|d| (kind.to_string(), d))
+        })
+        .collect()
 }
 
 /// 换形之前那一次（`prefs.json` 还不在）：数据目录还在 `config.json` 那一格旧键里 ⇒ 照它（只读）。
@@ -356,9 +356,9 @@ pub(crate) fn agent_homes_before_move(own: &Own) -> BTreeMap<String, std::path::
         return BTreeMap::new();
     };
     match read_json::<Value>(at.as_path(), MAX_BYTES) {
-        Read::Present(v) => old_home(&v)
-            .map(|(k, d)| (k, std::path::PathBuf::from(d)))
+        Read::Present(v) => old_homes(&v)
             .into_iter()
+            .map(|(k, d)| (k, std::path::PathBuf::from(d)))
             .collect(),
         _ => BTreeMap::new(),
     }

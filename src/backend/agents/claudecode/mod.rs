@@ -154,6 +154,10 @@ fn mcp_renew_lock(key: &str) -> String {
     format!("mcp-refresh-{safe}.lock.lock")
 }
 
+/// monitor `config.json` 里旧的那一格「Claude 数据目录」的键名（设置页那一格当年就叫它）。
+/// 只给换形用（注册表 `Adapter::old_home_pref`），下一版随 `control/prefs_migration.rs` 一起删。
+pub(crate) const OLD_HOME_PREF: &str = "claudeDir";
+
 /// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。
 pub(crate) const COMPACT_REQUEST: &str = "/compact";
 
