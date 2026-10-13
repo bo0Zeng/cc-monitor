@@ -108,6 +108,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "删一份策略",
         &LocalFiles,
     ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyTz>(
+        "给策略设时区",
+        &LocalFiles,
+    ),
     // 算术 —— 24 小时条上拖出一段（分段的算术，不是换号的想法）。
     crate::stream::inbound::typed::blocking::<crate::faces::rotation_edit_face::RotationDayPaint>(
         "在 24 小时条上刷一段",

@@ -127,6 +127,17 @@ impl Home {
 
 /// 额度账上记一条：`account` 的 5 小时窗用到 `used_5h`（0–1）；`refused_until` 有 ⇒ 被拒到那一刻。
 pub(crate) fn seen(ctx: &Ctx, account: &str, used_5h: f64, refused_until: Option<u64>) {
+    seen_resetting(ctx, account, used_5h, refused_until, now() + 3_600);
+}
+
+/// 同 [`seen`]，5 小时窗在 `resets_at` 重置。
+pub(crate) fn seen_resetting(
+    ctx: &Ctx,
+    account: &str,
+    used_5h: f64,
+    refused_until: Option<u64>,
+    resets_at: u64,
+) {
     use crate::agents::{QuotaReading, QuotaStatus, QuotaWindow};
     let now = now();
     let r = match refused_until {
@@ -142,11 +153,11 @@ pub(crate) fn seen(ctx: &Ctx, account: &str, used_5h: f64, refused_until: Option
             status: Some(QuotaStatus::Allowed),
             refused: false,
             limiting: Some("five_hour".into()),
-            resets_at: Some(now + 3_600),
+            resets_at: Some(resets_at),
             windows: vec![QuotaWindow {
                 name: "five_hour".into(),
                 used: Some(used_5h),
-                resets_at: Some(now + 3_600),
+                resets_at: Some(resets_at),
                 warned_at: None,
             }],
             overage: None,
@@ -170,6 +181,7 @@ fn session_view(ctx: &Ctx, home: &Home, sid: &str) -> RotationViewReply {
             hours: None,
         },
         now(),
+        &crate::Tz::default(),
         &home.alive(),
     )
     .expect("读得到")
@@ -200,6 +212,7 @@ fn the_registry_has_the_v5_commands_and_none_of_the_old_ones() {
         "rotation-strategy-copy",
         "rotation-strategy-rename",
         "rotation-strategy-delete",
+        "rotation-strategy-tz",
         "rotation-day-paint",
         "quota-read",
     ] {
@@ -278,7 +291,9 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     );
     assert!(!v.dirty, "没改过");
     assert!(
-        v.hints.iter().all(|h| matches!(h.hint, RotHint::TzUnknown)),
+        v.hints
+            .iter()
+            .all(|h| matches!(h.hint, RotHint::TzUnknown { .. })),
         "{:?}",
         v.hints
     );
@@ -320,6 +335,7 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
         target: RotTarget::Strategy {
             strategy: id.into(),
             settings,
+            rev: None,
         },
         hours: Some(24),
     };
@@ -328,6 +344,7 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
         &ctx,
         &req(Some(draft.clone()), "by-list"),
         now(),
+        &crate::Tz::default(),
         &home.alive(),
     )
     .expect("ok");
@@ -338,13 +355,20 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
         &ctx,
         &req(Some(json!({"nope": 99})), "by-list"),
         now(),
+        &crate::Tz::default(),
         &home.alive(),
     ) {
         Err(RotationViewErr::Refused(_, r)) => assert_eq!(r.cells[0].cell, "nope"),
         other => panic!("该拒：{other:?}"),
     }
     assert!(matches!(
-        view_with(&ctx, &req(None, "nope"), now(), &home.alive()),
+        view_with(
+            &ctx,
+            &req(None, "nope"),
+            now(),
+            &crate::Tz::default(),
+            &home.alive()
+        ),
         Err(RotationViewErr::NoStrategy(_))
     ));
     assert!(matches!(
@@ -355,6 +379,7 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
                 hours: None,
             },
             now(),
+            &crate::Tz::default(),
             &home.alive()
         ),
         Err(RotationViewErr::NoSession(_))
@@ -405,7 +430,9 @@ fn a_session_view_writes_every_time_it_carries() {
     assert!(tl.ticks.len() >= 5, "12 小时每 2 小时一格：{:?}", tl.ticks);
     for t in &tl.ticks {
         assert!(
-            hm(&t.text) && t.text.ends_with(":00") && t.at > v.now,
+            hm(&t.text)
+                && t.text.ends_with(":00")
+                && t.at > v.past.as_ref().map_or(v.now, |p| p.from),
             "{t:?}"
         );
     }
@@ -433,6 +460,244 @@ fn a_session_view_writes_every_time_it_carries() {
         said.contains(&at) && said.contains("{dur}"),
         "停发那一句写好了到几点、留着「还有多久」给界面填：{said}"
     );
+}
+
+/// 会话那一形，带看的那一台的时区。
+fn session_view_in(ctx: &Ctx, home: &Home, sid: &str, tz: &crate::Tz) -> RotationViewReply {
+    view_with(
+        ctx,
+        &RotationViewReq {
+            target: RotTarget::Session { sid: sid.into() },
+            hours: None,
+        },
+        now(),
+        tz,
+        &home.alive(),
+    )
+    .expect("读得到")
+}
+
+/// ★ 时间轴过去那一截（只会话有）：往前推演时长的 1/6；最上那条照换号记录切段（停发停到 `until`）；
+/// 每号一行只画说得出的：窗口开在这一截里 ⇒ 重置那段；此刻用满、记录里它被换下 ⇒ 那一刻起发不出去；刻度从这一截开头起。
+#[test]
+fn a_session_view_draws_what_already_happened() {
+    let home = Home::new("view-past");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    let n = now();
+    seen_resetting(&ctx, "a", 0.3, None, n + 4 * 3600);
+    seen(&ctx, "b", 1.0, None);
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        let s = b.sessions.get_mut(S1).expect("s1");
+        s.strategy.draft = Some(json!({"caps": {}, "capKind": "hard",
+            "accounts": [{"start": true}, {"id": "b"}]}));
+        s.log = vec![
+            book::Log {
+                at: n - 9000,
+                from: "a".into(),
+                to: "b".into(),
+                cause: book::Cause::Order,
+                why: None,
+            },
+            book::Log {
+                at: n - 5400,
+                from: "b".into(),
+                to: "a".into(),
+                cause: book::Cause::Unusable,
+                why: None,
+            },
+            book::Log {
+                at: n - 1800,
+                from: "a".into(),
+                to: "a".into(),
+                cause: book::Cause::Hold {
+                    until: Some(n - 900),
+                },
+                why: None,
+            },
+        ];
+    })
+    .expect("w");
+    let v = session_view(&ctx, &home, S1);
+    let p = v.past.as_ref().expect("会话有过去那一截");
+    let near = |x: u64, y: u64| x.abs_diff(y) <= 5;
+    assert!(near(p.from, n - 7200), "12 小时往前 2 小时：{}", p.from);
+    let tops: Vec<(Option<&str>, bool, bool)> = p
+        .uses
+        .iter()
+        .map(|u| {
+            (
+                u.account.as_deref(),
+                near(u.from, n - 7200)
+                    || near(u.from, n - 5400)
+                    || near(u.from, n - 1800)
+                    || near(u.from, n - 900),
+                near(u.to, v.now)
+                    || near(u.to, n - 5400)
+                    || near(u.to, n - 1800)
+                    || near(u.to, n - 900),
+            )
+        })
+        .collect();
+    assert_eq!(
+        tops.iter().map(|t| t.0).collect::<Vec<_>>(),
+        [Some("b"), Some("a"), None, Some("a")],
+        "{:?}",
+        p.uses
+    );
+    assert!(tops.iter().all(|t| t.1 && t.2), "{:?}", p.uses);
+    let lane = |id: &str| p.lanes.iter().find(|l| l.account == id).expect("那一行");
+    let a = lane("a");
+    assert_eq!(a.segs.len(), 1, "{:?}", a.segs);
+    assert!(a.segs[0].reset && a.segs[0].sendable && near(a.segs[0].from, n - 3600));
+    assert!(a.segs[0].from_text.len() == 5, "{:?}", a.segs[0]);
+    let b = lane("b");
+    assert_eq!(
+        b.segs.iter().map(|s| s.sendable).collect::<Vec<_>>(),
+        [true, false],
+        "{:?}",
+        b.segs
+    );
+    assert!(near(b.segs[1].from, n - 5400));
+    let tl = v.timeline.as_ref().expect("推演");
+    assert!(
+        tl.ticks.iter().any(|t| t.at < v.now && t.at > p.from),
+        "刻度从过去那一截起：{:?}",
+        tl.ticks
+    );
+
+    // 设置页没有会话 ⇒ 没有过去那一截。
+    let s = view_with(
+        &ctx,
+        &RotationViewReq {
+            target: RotTarget::Strategy {
+                strategy: "by-list".into(),
+                settings: None,
+                rev: None,
+            },
+            hours: None,
+        },
+        now(),
+        &crate::Tz::default(),
+        &home.alive(),
+    )
+    .expect("ok");
+    assert!(s.past.is_none());
+}
+
+/// ★ 提示带上按钮要的东西：出错 ⇒ 那份文件的路径；时区不明 ⇒ 看的那一台的时区名；旧格式 ⇒ 哪几份、在哪。
+/// 时刻的字照看的那一台的时区写。
+#[test]
+fn the_hints_carry_what_their_buttons_need() {
+    let home = Home::new("view-hint-acts");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    std::fs::create_dir_all(home.root.join("strategies/v3")).expect("mkdir");
+    std::fs::write(
+        home.root.join("strategies/v3/old-one.rhai"),
+        "fn score() {}",
+    )
+    .expect("w");
+    let tz = crate::Tz::iana("Asia/Shanghai").expect("tz");
+    let v = session_view_in(&ctx, &home, S1, &tz);
+    assert_eq!(
+        v.now_text,
+        crate::common::time::hm(tz.local(i64::try_from(v.now).expect("i64"))),
+        "此刻的字按看的那一台的时区"
+    );
+    assert!(
+        v.hints.iter().any(|h| h.hint
+            == RotHint::TzUnknown {
+                zone: Some("Asia/Shanghai".into())
+            }),
+        "{:?}",
+        v.hints
+    );
+    let old = v.hints.iter().find_map(|h| match &h.hint {
+        RotHint::OldScripts { n, files } => Some((*n, files.clone())),
+        _ => None,
+    });
+    let (n, files) = old.expect("旧格式那一条");
+    assert_eq!(n, 1);
+    assert_eq!(files[0].name, "old-one.rhai");
+    assert!(
+        files[0].path.ends_with("old-one.rhai") && files[0].path.contains("v3"),
+        "{:?}",
+        files
+    );
+
+    std::fs::write(
+        home.root.join("strategies/broken.rhai"),
+        "/*--- rotation\n{\"format\": 5}\n---*/\n",
+    )
+    .expect("w");
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").strategy.id = "broken".into();
+    })
+    .expect("w");
+    let v = session_view(&ctx, &home, S1);
+    let path = v.hints.iter().find_map(|h| match &h.hint {
+        RotHint::StrategyError { path, .. } => Some(path.clone()),
+        _ => None,
+    });
+    let path = path.expect("出错那一条").expect("带着文件的路径");
+    assert!(
+        path.ends_with("broken.rhai") && path.contains("strategies"),
+        "{path}"
+    );
+}
+
+/// ★ 别处改了：会话有草稿、草稿基于的版本跟文件此刻的不同 ⇒ 提示；没草稿 ⇒ 不提示（照新的走）。
+/// 设置页同理（草稿基于的版本随 `target.rev` 交来）。`baseRev` ＝ 写的时候拿去当 `ifRev` 的那个。
+#[test]
+fn a_draft_on_an_older_version_is_flagged_as_changed_elsewhere() {
+    let home = Home::new("view-newer");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    let newer = |v: &RotationViewReply| v.hints.iter().any(|h| h.hint == RotHint::Newer);
+    let file_rev = session_view(&ctx, &home, S1).strategy.expect("在轮换").rev;
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").strategy.rev = "h:000000000000".into();
+    })
+    .expect("w");
+    let v = session_view(&ctx, &home, S1);
+    assert!(!newer(&v), "没草稿不该提示");
+    assert_eq!(v.base_rev, file_rev);
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").strategy.draft =
+            Some(json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}]}));
+    })
+    .expect("w");
+    let v = session_view(&ctx, &home, S1);
+    assert!(newer(&v), "{:?}", v.hints);
+    assert!(v
+        .hints
+        .iter()
+        .any(|h| h.hint == RotHint::Newer && h.text.contains("别处")));
+    assert_eq!(v.base_rev, "h:000000000000");
+
+    let page = |rev: Option<&str>| {
+        view_with(
+            &ctx,
+            &RotationViewReq {
+                target: RotTarget::Strategy {
+                    strategy: "by-list".into(),
+                    settings: Some(
+                        json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}]}),
+                    ),
+                    rev: rev.map(str::to_string),
+                },
+                hours: None,
+            },
+            now(),
+            &crate::Tz::default(),
+            &home.alive(),
+        )
+        .expect("ok")
+    };
+    assert!(newer(&page(Some("h:000000000000"))));
+    assert!(!newer(&page(Some(&file_rev))));
+    assert_eq!(page(Some(&file_rev)).base_rev, file_rev);
 }
 
 // ── quota-read ────────────────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
 //! 策略目录（`<家>/strategies/`）：一份策略 ＝ 一个 `.rhai` 文件，文件名去 `.rhai` 就是 id，也就是标题（§2.1）；全是用户自己的（没有随包策略）。
 //! 目录的戳变了才重读；读不懂的那一份也列着、带原因。
-//! 第三版的脚本升级时挪进 `v3/`，不加载（[`old_count`] 只数一下，界面提示「N 份旧格式的策略没有加载」）。
+//! 第三版的脚本升级时挪进 `v3/`，不加载（[`old_files`] 列出来，界面提示「N 份旧格式的策略没有加载」、点开看是哪几份）。
 
 use super::script;
 use crate::accounts::quota::strategy::{Fail, FailKind};
@@ -197,12 +197,25 @@ pub(crate) fn find(all: &[Arc<Shelved>], id: &str) -> Option<Arc<Shelved>> {
 
 /// `v3/` 里挪开的第三版脚本有几份（不加载）。
 pub(crate) fn old_count(dir: Option<&Path>) -> usize {
-    let Some(dir) = dir else { return 0 };
-    crate::platform::fs::Ro::read_dir(&dir.join(OLD_DIR))
+    old_files(dir).len()
+}
+
+/// `v3/` 里挪开的第三版脚本（不加载），按文件名排。
+pub(crate) fn old_files(dir: Option<&Path>) -> Vec<PathBuf> {
+    let Some(dir) = dir else { return Vec::new() };
+    let mut v: Vec<PathBuf> = crate::platform::fs::Ro::read_dir(&dir.join(OLD_DIR))
         .map(|rd| {
             rd.filter_map(Result::ok)
-                .filter(|e| e.path().extension().and_then(|x| x.to_str()) == Some("rhai"))
-                .count()
+                .map(|e| e.path())
+                .filter(|p| p.extension().and_then(|x| x.to_str()) == Some("rhai"))
+                .collect()
         })
-        .unwrap_or(0)
+        .unwrap_or_default();
+    v.sort();
+    v
+}
+
+/// 一份策略在目录里的文件（id 已照 [`id_ok`] 过，拼不出目录外）。
+pub(crate) fn path_of(dir: &Path, id: &str) -> PathBuf {
+    dir.join(format!("{id}.rhai"))
 }

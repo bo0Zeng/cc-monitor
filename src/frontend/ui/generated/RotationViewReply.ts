@@ -3,6 +3,7 @@ import type { Fact } from "./Fact";
 import type { RotFormCell } from "./RotFormCell";
 import type { RotLogRow } from "./RotLogRow";
 import type { RotNote } from "./RotNote";
+import type { RotPast } from "./RotPast";
 import type { RotStrategyItem } from "./RotStrategyItem";
 import type { RotTryDecision } from "./RotTryDecision";
 import type { RotTryTimeline } from "./RotTryTimeline";
@@ -43,6 +44,14 @@ accounts: Array<Fact>,
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
 listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null, 
+/**
+ * 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
+ */
+past: RotPast | null, 
+/**
+ * 显示的这份设置照哪个版本（会话有草稿 ⇒ 草稿基于的；否则 ＝ 文件此刻的）：写的时候当 `ifRev`。
+ */
+baseRev: string, 
 /**
  * 换号记录（会话才有）。
  */

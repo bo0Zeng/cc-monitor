@@ -1420,10 +1420,15 @@ type RotHint = { "k": "hold", until?: number, account?: string,
 /**
  * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
  */
-untilText?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone?: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
 type RotNote = { hint: RotHint, text: string, };
+type RotOldFile = { name: string, path: string, };
+type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane>, };
+type RotPastLane = { account: string, segs: Array<RotPastSeg>, };
+type RotPastSeg = { from: number, to: number, sendable: boolean, reset: boolean, fromText: string, };
+type RotPastUse = { from: number, to: number, account?: string, };
 type RotStrategyError = { line?: number, msg: string, };
 type RotStrategyItem = { id: string, 
 /**
@@ -1442,7 +1447,11 @@ wordsBad: boolean,
  * 文件头里没写时区（分时段按 UTC 算）。
  */
 tzUnknown: boolean, };
-type RotTarget = { sid: string, } | { strategy: string, settings?: unknown, };
+type RotTarget = { sid: string, } | { strategy: string, settings?: unknown, 
+/**
+ * `settings` 是照哪个版本改出来的（缺 ⇒ 不比）：跟文件此刻的不同 ⇒ 提示「别处被改了」。
+ */
+rev?: string, };
 type RotTryDecision = { 
 /**
  * 用哪个号（停发 ⇒ 缺）。
@@ -1540,6 +1549,14 @@ accounts: Array<Fact>,
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
 listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null, 
+/**
+ * 时间轴过去那一截（会话才有；设置页没有会话 ⇒ `null`）。
+ */
+past: RotPast | null, 
+/**
+ * 显示的这份设置照哪个版本（会话有草稿 ⇒ 草稿基于的；否则 ＝ 文件此刻的）：写的时候当 `ifRev`。
+ */
+baseRev: string, 
 /**
  * 换号记录（会话才有）。
  */
@@ -1771,6 +1788,21 @@ type RotationStrategyDeleteReq = { id: string, };
 ```
 
 码：`bad_args` · `no_strategy` · `in_use` · `io_failed`
+
+#### `rotation-strategy-tz`
+
+给策略设时区。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --rotation-strategy-tz`
+
+入参 `RotationStrategyTzReq` · 回包 `RotStrategyRev`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type RotStrategyRev = { rev: string, };
+type RotationStrategyTzReq = { id: string, tz: string, ifRev: string, };
+```
+
+码：`bad_args` · `no_strategy` · `conflict` · `io_failed`
 
 #### `rotation-day-paint`
 
@@ -5667,6 +5699,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--rotation-strategy-copy` | ＝ 帧命令 `rotation-strategy-copy`：复制一份策略 |
 | `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删一份策略 |
 | `--rotation-strategy-rename` | ＝ 帧命令 `rotation-strategy-rename`：给策略改名 |
+| `--rotation-strategy-tz` | ＝ 帧命令 `rotation-strategy-tz`：给策略设时区 |
 | `--rotation-temp` | ＝ 帧命令 `rotation-temp`：排接下来先用谁 |
 | `--rotation-try` | ＝ 帧命令 `rotation-try`：试跑一份策略 |
 | `--rotation-use` | ＝ 帧命令 `rotation-use`：会话换一份策略 |

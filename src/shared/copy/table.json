@@ -30922,6 +30922,12 @@
       "zh": "默认",
       "args": []
     },
+    "beRotation.edit.badTz": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "认不出时区「{tz}」",
+      "args": ["tz"]
+    },
     "beRotation.edit.conflict": {
       "kind": "error",
       "role": "报错",
@@ -31343,6 +31349,13 @@
       "role": "说明",
       "zh": "这份策略的说明写法不合规",
       "args": []
+    },
+    "beRotation.hint.newer": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "这份策略在别处被改了",
+      "args": [],
+      "waive": {"C-W17": "用户定的句子（轮换-v5.md「提示」表）"}
     },
     "rot.ask.go": {
       "kind": "action",

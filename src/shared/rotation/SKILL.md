@@ -21,7 +21,7 @@ description: cc-monitor 的账号轮换（第五版）怎么用、怎么写策�
 
 - 读：`--rotation-strategies`（策略目录：每份的 `id`（＝ 文件名 ＝ 标题）· 说明 `description`（文件开头的注释）· 版本 `rev` · 读不懂的原因 · 哪几个活会话在用 · 新会话用哪份）· `--rotation-view {target: {sid} | {strategy, settings?}, hours?}`（一个会话或一份策略此刻的设置 · 声明 · 每个号的事实 · 这一判 · 推演 · 提示）。
 - 写：`--rotation-settings {target: {sid} | {strategy}, settings, ifRev?}`（整份设置，照声明校验；会话 ⇒ 存成草稿）· `--rotation-save {target, settings?, ifRev, as?: {name}}`（只重写头那一块，说明和代码一个字不动；`as` ⇒ 另存成文件名 `name`、会话改用它）· `--rotation-revert {sid}` · `--rotation-use {sid, strategy | null, discard?}`（`null` ⇒ 这个会话不再轮换）· `--rotation-for-new {strategy | null}`（`null` ⇒ 新会话不轮换，这是默认） · `--rotation-temp {sid, op: {place: {account, at}} | "clear"}` · `--rotation-use-now {sid, account}`。
-- 策略文件：`--rotation-strategy-add {source, name}`（存成 `name.rhai`）· `--rotation-strategy-copy {id, name}`（另起一个文件名，内容不改）· `--rotation-strategy-rename {id, name, ifRev}`（换文件名，指它的会话与「新会话用」跟着改）· `--rotation-strategy-delete {id}`（有活会话在用 · 是新会话用的那份 ⇒ 不删）。名字：1–32 字，字母数字（含中文）与 ` -_·()（）+`；同名已有 ⇒ `bad_args`。
+- 策略文件：`--rotation-strategy-add {source, name}`（存成 `name.rhai`）· `--rotation-strategy-copy {id, name}`（另起一个文件名，内容不改）· `--rotation-strategy-rename {id, name, ifRev}`（换文件名，指它的会话与「新会话用」跟着改）· `--rotation-strategy-delete {id}`（有活会话在用 · 是新会话用的那份 ⇒ 不删） · `--rotation-strategy-tz {id, tz, ifRev}`（只把设置块里的 `tz` 换成这个 IANA 名，说明与代码不动）。名字：1–32 字，字母数字（含中文）与 ` -_·()（）+`；同名已有 ⇒ `bad_args`。
 - 试跑：`--rotation-try {source, settings?, start?, current?, temp?, hours?, useNow?}`：拿一份原文照此刻的事实判一次、往后推演，不写盘不换号。
 - 算术：`--rotation-day-paint {segs, from, to, v}`：24 小时条上刷一段（`v: null` 删那一截）。
 

@@ -303,7 +303,7 @@ pub(crate) fn try_with(
         source,
         use_now_refused,
         decision: decision_of(&d),
-        timeline: timeline_of(&tl, now, now + hours * 3600, &crate::Tz::default()),
+        timeline: timeline_of(&tl, now, now, now + hours * 3600, &crate::Tz::default()),
     })
 }
 
@@ -336,8 +336,10 @@ pub(crate) fn decision_of(d: &decide::Decision) -> RotTryDecision {
 
 /// 推演写成线上的形（`rotation-try` · `rotation-view` 同用）。
 /// `[now, end)` 是推演的那一截；`tz` 是看的那一台的时区（钟面都按它写）。
+/// 刻度从 `ticks_from` 起（有过去那一截 ⇒ 它的开头；否则此刻），步长照往后推多久定。
 pub(crate) fn timeline_of(
     tl: &simulate::Timeline,
+    ticks_from: u64,
     now: u64,
     end: u64,
     tz: &crate::Tz,
@@ -388,22 +390,18 @@ pub(crate) fn timeline_of(
             })
             .collect(),
         truncated: tl.truncated,
-        ticks: ticks_of(now, end, tz)
+        ticks: ticks_of(ticks_from, end, end.saturating_sub(now) <= 12 * 3600, tz)
             .into_iter()
             .map(|at| RotTryTick { at, text: face(at) })
             .collect(),
     }
 }
 
-/// 刻度落在哪几刻：此刻之后、`end` 以内，看的那一台的整点；推 12 小时以内每 2 小时，更长每 4 小时。
-fn ticks_of(now: u64, end: u64, tz: &crate::Tz) -> Vec<u64> {
-    let step: i64 = if end.saturating_sub(now) <= 12 * 3600 {
-        2
-    } else {
-        4
-    };
+/// 刻度落在哪几刻：`from` 之后、`end` 以内，看的那一台的整点；推 12 小时以内（`short`）每 2 小时，更长每 4 小时。
+fn ticks_of(from: u64, end: u64, short: bool, tz: &crate::Tz) -> Vec<u64> {
+    let step: i64 = if short { 2 } else { 4 };
     let mut out = Vec::new();
-    let Ok(mut t) = i64::try_from(now) else {
+    let Ok(mut t) = i64::try_from(from) else {
         return out;
     };
     let end = i64::try_from(end).unwrap_or(i64::MAX);
