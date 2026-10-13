@@ -131,7 +131,7 @@ pub(crate) fn item_of(
 /// 本体（测试给假的账本 · 判活）。
 pub(crate) fn strategies_with(
     ctx: &Ctx,
-    req: &RotationStrategiesReq,
+    _req: &RotationStrategiesReq,
     live: &dyn Fn(&str) -> bool,
 ) -> RotationStrategiesReply {
     let book = ctx.hop.store.now();

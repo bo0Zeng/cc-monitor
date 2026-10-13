@@ -32,19 +32,6 @@ pub enum Text {
     },
 }
 
-impl Text {
-    /// 照语言挑（`en` 才挑英文）。
-    pub(crate) fn pick(&self, en: bool) -> &str {
-        match self {
-            Text::One(s) => s,
-            Text::Langs { zh, en: e } => match e {
-                Some(e) if en => e,
-                _ => zh,
-            },
-        }
-    }
-}
-
 /// JSON 头。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
