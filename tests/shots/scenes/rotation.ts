@@ -7,7 +7,7 @@
  * 号名 work · team · lab · personal · api 与会话都是合成的；时刻按此刻的钟现算。
  */
 import type { Scene } from "./index";
-import { putAccounts, putQuota, putRotation, putStrategy, type QuotaSpec, type RotationSessionSpec } from "../disk";
+import { putAccounts, putOldScript, putQuota, putRotation, putStrategy, type QuotaSpec, type RotationSessionSpec } from "../disk";
 import type { World } from "../fake/types";
 import { defaultWorld, LOCAL, sidOf } from "../fake/world";
 import { emit } from "@tauri-apps/api/event";
@@ -42,6 +42,8 @@ interface RotWorld {
   sessions: Record<number, Omit<RotationSessionSpec, "since"> & { since?: number }>;
   strategies: Record<string, string>;
   forNew: string;
+  /** `strategies/v3/` 里没加载的旧格式（文件名 ⇒ 原文）。 */
+  old?: Record<string, string>;
 }
 
 function rotWorld(build: (rw: RotWorld) => void = () => {}): () => World {
@@ -65,6 +67,7 @@ function rotWorld(build: (rw: RotWorld) => void = () => {}): () => World {
     }
     putRotation(d, { forNew: rw.forNew, sessions });
     for (const [id, src] of Object.entries(rw.strategies)) putStrategy(d, id, src);
+    for (const [f, src] of Object.entries(rw.old ?? {})) putOldScript(d, f, src);
     return w;
   };
 }
@@ -143,6 +146,63 @@ export const ROTATION_SCENES: Scene[] = [
     rotWorld((rw) => {
       rw.strategies["夜里省着用"] = `// 夜里只用 lab 和 team（示意：decide 里有一处写错了）\n\n/*--- rotation\n{ "format": 5, "tz": "UTC", "settings": { "accounts": [{ "id": "team" }, { "id": "lab" }] }, "form": [] }\n---*/\n\nfn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: ["lab"] }\n}\n`;
       rw.sessions[0] = { start: "work", current: "team", strategy: "夜里省着用" };
+    }),
+  ),
+  panelScene(
+    "rot-past",
+    "面板 · 时间轴过去那一截",
+    "往前 2 小时照会话的换号记录与读数画成实心：最上那条 team → work（停发 10 分钟）→ team；work 那一行从被换下那一刻起发不出去、lab 从开窗那一刻起写 ↻；此刻一条竖线，往后浅色虚边",
+    openPanel,
+    rotWorld((rw) => {
+      const t = now();
+      rw.quota = [ledger("work", [100, 97], [40, 3 * 1440]), ledger("team", [58, 127], [30, 4 * 1440]), ledger("lab", [35, 197], [20, 3 * 1440]), ledger("personal", undefined, [20, 2 * 1440])];
+      rw.sessions[0] = {
+        start: "work",
+        current: "team",
+        strategy: NAME,
+        since: t - 70 * M,
+        log: [
+          { at: t - 100 * M, from: "team", to: "work", cause: { k: "order" } },
+          { at: t - 80 * M, from: "work", to: "work", cause: { k: "hold", until: t - 70 * M } },
+          { at: t - 70 * M, from: "work", to: "team", cause: { k: "unusable" } },
+        ],
+      };
+    }),
+  ),
+  {
+    ...panelScene(
+      "rot-hints",
+      "面板 · 提示带按钮",
+      "策略出错 ⇒［看代码］（照「在文件窗口打开」那一路开那份文件）· 时区不明 ⇒［设时区］（悬停写设成哪一个）· 旧格式没加载 ⇒［看是哪几份］，点开列出 strategies/v3/ 里的文件名",
+      async () => {
+        await openPanel();
+        const which = await byText(`${PANEL} button`, /看是哪几份/);
+        which.click();
+        await sleep(600);
+      },
+      rotWorld((rw) => {
+        rw.strategies["夜里省着用"] = `// 夜里只用 lab 和 team（示意：decide 里有一处写错了，头里也没写时区）\n\n/*--- rotation\n{ "format": 5, "settings": { "accounts": [{ "id": "team" }, { "id": "lab" }] }, "form": [] }\n---*/\n\nfn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: ["lab"] }\n}\n`;
+        rw.sessions[0] = { start: "work", current: "team", strategy: "夜里省着用" };
+        rw.old = { "旧的按顺序.rhai": "fn score(ctx) { 0 }\n", "旧的夜里.rhai": "fn score(ctx) { 1 }\n" };
+      }),
+    ),
+  },
+  panelScene(
+    "rot-newer",
+    "面板 · 这份策略在别处被改了",
+    "会话里有没存的改动、而策略文件在别处被改过：蓝条「这份策略在别处被改了」［载入新的］［留着这边的］；第一行照旧 没存 · 还原 · 存成这份策略",
+    openPanel,
+    rotWorld((rw) => {
+      rw.sessions[0] = {
+        ...rw.sessions[0],
+        rev: "h:000000000000",
+        draft: {
+          accounts: [{ id: "work" }, { id: "team" }, { id: "lab" }, { id: "personal" }, { id: "api", fallback: true, delay: 30, stint: 20 }],
+          caps: { "5h": [{ from: 0, to: 1440, v: 90 }], "7d": [{ from: 0, to: 1440, v: 90 }] },
+          close: 30,
+          force: 25,
+        },
+      };
     }),
   ),
   panelScene(

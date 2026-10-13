@@ -936,8 +936,11 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       if (slot !== null) seg.dataset.c = String(slot);
     } else seg.dataset.hold = "true";
   };
+  // 接着此刻、跟推演第一段同一个号的那一段不再写号名（同一段只写一次，写在推演那一截）。
+  const first = tl.uses[0];
   for (const u of past?.uses ?? []) {
-    const seg = el("span", (e) => (e.className = s.rotSimUse), u.account ? accountLabel(u.account) : copyText("rot.sim.hold"));
+    const joins = u.to === view.now && first !== undefined && first.from === view.now && (first.account ?? null) === (u.account ?? null);
+    const seg = el("span", (e) => (e.className = s.rotSimUse), joins ? "" : u.account ? accountLabel(u.account) : copyText("rot.sim.hold"));
     place(seg, u.from, u.to);
     useColor(seg, u.account);
     seg.dataset.past = "true";

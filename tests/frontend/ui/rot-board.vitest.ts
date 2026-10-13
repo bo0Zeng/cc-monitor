@@ -301,7 +301,7 @@ describe("模拟", () => {
     v.timeline!.ticks.unshift({ at: NOW - 5400, text: "13:00" });
     const root = draw(v, state(), acts());
     const pastTop = [...root.querySelectorAll<HTMLElement>('[data-past="true"]')].filter((e) => !e.dataset.state);
-    expect(pastTop.map((e) => e.textContent)).toEqual(["work", copyText("rot.sim.hold"), "team"]);
+    expect(pastTop.map((e) => e.textContent), "接着此刻、跟推演第一段同一个号的那一段不再写号名").toEqual(["work", copyText("rot.sim.hold"), ""]);
     expect(pastTop.every((e) => e.dataset.future === undefined)).toBe(true);
     // 12 小时往后 ＋ 2 小时往前：此刻在 1/7 处。
     expect(Number(pastTop[0].style.getPropertyValue("--rot-x"))).toBe(0);

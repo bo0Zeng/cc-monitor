@@ -25,7 +25,9 @@
   }
 
   .rotDirty {
+    flex: none;
     color: var(--warn);
+    white-space: nowrap;
   }
 
   .rotWhere {
