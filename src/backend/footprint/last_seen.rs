@@ -5,10 +5,98 @@
 
 use crate::platform::fs::{Own, OwnPath};
 use copy_core::copy_text;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::path::{Path, PathBuf};
 
-/// 记哪几样（闭集）：`accounts` ＝ `accounts-list` 的应答 · `data` ＝ `data-report` 的应答。
+/// 记哪一样。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum SeenKind {
+    /// `accounts-list` 的应答。
+    Accounts,
+    /// `data-report` 的应答。
+    Data,
+}
+
+impl SeenKind {
+    fn key(self) -> &'static str {
+        match self {
+            SeenKind::Accounts => "accounts",
+            SeenKind::Data => "data",
+        }
+    }
+}
+
+/// `last-seen-read` 的入参。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LastSeenReadReq {
+    /// 哪台（机器名）。
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+}
+
+/// `last-seen-write` 的入参：记一份 `{origin, kind, value}`，或清掉那台 `{origin, forget: true}`（不带 `kind` / `value`）。
+#[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct LastSeenWriteReq {
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) kind: Option<SeenKind>,
+    /// 那一份应答（对象，序列化后 ≤ 256 KiB）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional, type = "Record<string, unknown>"))]
+    pub(crate) value: Option<Map<String, Value>>,
+    /// `true` ⇒ 清掉这台的上次值（删机器时）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) forget: Option<bool>,
+}
+
+/// 记下的一份。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SeenEntry {
+    /// 记下的时刻（毫秒）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) at_ms: u64,
+    /// 那一份应答原样。
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub(crate) value: Map<String, Value>,
+}
+
+/// `last-seen-read` 的回包：没记过的那一样 ⇒ `null`。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct LastSeen {
+    pub(crate) accounts: Option<SeenEntry>,
+    pub(crate) data: Option<SeenEntry>,
+}
+
+/// `last-seen-write` 的回包。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LastSeenWritten {
+    /// 记下的时刻（毫秒）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) at_ms: u64,
+}
+
+/// 记哪几样（闭集，同 [`SeenKind`]）：`accounts` ＝ `accounts-list` 的应答 · `data` ＝ `data-report` 的应答。
 pub(crate) const KINDS: [&str; 2] = ["accounts", "data"];
 /// 一份最大多少字节（序列化后）。
 pub(crate) const MAX_VALUE_BYTES: usize = 256 * 1024;
@@ -19,7 +107,7 @@ const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 /// 机器名最长多少字节。
 const MAX_ORIGIN_BYTES: usize = 256;
 
-type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
+type Answer<T> = Result<T, crate::stream::inbound::spec::Fail>;
 
 fn bad(d: &str) -> crate::stream::inbound::spec::Fail {
     crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
@@ -30,9 +118,8 @@ pub(crate) fn store_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(relay_route_core::LAST_SEEN_REL))
 }
 
-fn origin_arg(args: &Value) -> Result<&str, crate::stream::inbound::spec::Fail> {
-    args.get("origin")
-        .and_then(Value::as_str)
+fn origin_arg(m: &cmd_wire::Machine) -> Result<&str, crate::stream::inbound::spec::Fail> {
+    Some(m.0.as_str())
         .filter(|s| !s.trim().is_empty() && s.len() <= MAX_ORIGIN_BYTES)
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
 }
@@ -52,41 +139,36 @@ fn load(path: &Path) -> Map<String, Value> {
     }
 }
 
-/// `{origin}` ⇒ `{accounts: {atMs, value} | null, data: … | null}`。
-pub(crate) fn read_at(path: &Path, args: &Value) -> Answer {
-    let origin = origin_arg(args)?;
+/// `{origin}` ⇒ `{accounts: {atMs, value} | null, data: … | null}`（盘上那一项形状不对 ⇒ 照没记过）。
+pub(crate) fn read_at(path: &Path, req: &LastSeenReadReq) -> Answer<LastSeen> {
+    let origin = origin_arg(&req.origin)?;
     let all = load(path);
     let mine = all.get(origin);
-    let mut out = Map::new();
-    for k in KINDS {
-        let got = mine
-            .and_then(|m| m.get(k))
-            .filter(|e| {
-                e.get("atMs").is_some_and(Value::is_u64)
-                    && e.get("value").is_some_and(Value::is_object)
-            })
-            .cloned()
-            .unwrap_or(Value::Null);
-        out.insert(k.to_string(), got);
-    }
-    Ok(Value::Object(out))
+    let got = |k: SeenKind| {
+        mine.and_then(|m| m.get(k.key()))
+            .and_then(|e| serde_json::from_value::<SeenEntry>(e.clone()).ok())
+    };
+    Ok(LastSeen {
+        accounts: got(SeenKind::Accounts),
+        data: got(SeenKind::Data),
+    })
 }
 
 /// `{origin, kind, value}` ⇒ 记下（时刻由这里盖）；`{origin, forget: true}` ⇒ 清掉那台（删机器时）。回 `{atMs}`。
-pub(crate) fn write_at(own: &Own, args: &Value, now_ms: u64) -> Answer {
-    if args.get("forget").is_some() {
-        return forget_at(own, args, now_ms);
+pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenWritten> {
+    if req.forget.is_some() {
+        return forget_at(own, req, now_ms);
     }
-    let origin = origin_arg(args)?.to_string();
-    let kind = args
-        .get("kind")
-        .and_then(Value::as_str)
-        .filter(|k| KINDS.contains(k))
-        .ok_or_else(|| bad("`kind` is not one of accounts / data"))?;
-    let value = args
-        .get("value")
-        .filter(|v| v.is_object())
-        .ok_or_else(|| bad("`value` must be an object"))?;
+    let origin = origin_arg(&req.origin)?.to_string();
+    let kind = req
+        .kind
+        .ok_or_else(|| bad("`kind` is not one of accounts / data"))?
+        .key();
+    let value = Value::Object(
+        req.value
+            .clone()
+            .ok_or_else(|| bad("`value` must be an object"))?,
+    );
     let size = value.to_string().len();
     if size > MAX_VALUE_BYTES {
         return Err(crate::stream::inbound::spec::Fail::from((
@@ -117,10 +199,10 @@ pub(crate) fn write_at(own: &Own, args: &Value, now_ms: u64) -> Answer {
         )
     })?;
     locked_edit(own, &dir, &file, |all| {
-        record(all, origin, kind, value, now_ms);
+        record(all, origin, kind, &value, now_ms);
         true
     })?;
-    Ok(json!({ "atMs": now_ms }))
+    Ok(LastSeenWritten { at_ms: now_ms })
 }
 
 /// 锁里读—改—写那一份（本文件唯一拿跨进程锁的地方）；`edit` 回 `false` ⇒ 没改、不写。
@@ -186,22 +268,19 @@ fn record(all: &mut Map<String, Value>, origin: String, kind: &str, value: &Valu
 }
 
 /// 清掉一台的上次值（两样都清）。只认 `{origin, forget: true}`：带着 `kind` / `value` 不收。那台没记过 ⇒ 照样回成、盘上不动。
-fn forget_at(own: &Own, args: &Value, now_ms: u64) -> Answer {
-    let origin = origin_arg(args)?;
-    if args.get("forget") != Some(&Value::Bool(true))
-        || args.get("kind").is_some()
-        || args.get("value").is_some()
-    {
+fn forget_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer<LastSeenWritten> {
+    let origin = origin_arg(&req.origin)?;
+    if req.forget != Some(true) || req.kind.is_some() || req.value.is_some() {
         return Err(bad(
             "`forget` must be `true` and come without `kind` / `value`",
         ));
     }
     let (dir, file) = place(own)?;
     if !dir.as_path().is_dir() {
-        return Ok(json!({ "atMs": now_ms }));
+        return Ok(LastSeenWritten { at_ms: now_ms });
     }
     locked_edit(own, &dir, &file, |all| all.remove(origin).is_some())?;
-    Ok(json!({ "atMs": now_ms }))
+    Ok(LastSeenWritten { at_ms: now_ms })
 }
 
 fn now_ms() -> u64 {
@@ -211,14 +290,14 @@ fn now_ms() -> u64 {
 }
 
 /// `last-seen-read`：帧面入口（只读）。
-pub(crate) fn answer_read(args: &Value) -> Answer {
+pub(crate) fn answer_read(req: &LastSeenReadReq) -> Answer<LastSeen> {
     let path = store_path().ok_or(("io_failed", copy_text("beLastSeen.store.noHome", &[])))?;
-    read_at(&path, args)
+    read_at(&path, req)
 }
 
 /// `last-seen-write`：帧面入口（**写口**，只从 `stream/inbound/` 进）。
-pub(crate) fn answer_write(args: &Value, own: &Own) -> Answer {
-    write_at(own, args, now_ms())
+pub(crate) fn answer_write(req: &LastSeenWriteReq, own: &Own) -> Answer<LastSeenWritten> {
+    write_at(own, req, now_ms())
 }
 
 #[cfg(test)]

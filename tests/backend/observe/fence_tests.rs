@@ -60,7 +60,8 @@ fn fn_chunk<'a>(code: &'a str, head: &str) -> &'a str {
     &code[at..at + head.len() + end]
 }
 
-/// ★ F1：`canonicalize(` 在 observe 生产段只住 `fence.rs`，而且恰好是 `Fence::at` / `Fence::admit` 各一处。
+/// ★ F1：`canonicalize(` 在 observe 生产段只住 `fence.rs`，而且恰好是 `Fence::at` / `Fence::admit` / `real_path` 各一处
+/// （`real_path` 只规范化、不放行：骨架缓存的键用它，8a b 后续）。
 #[test]
 fn path_resolution_has_exactly_one_home() {
     let src = observe_sources();
@@ -83,10 +84,10 @@ fn path_resolution_has_exactly_one_home() {
         .1;
     assert_eq!(
         fence.matches("canonicalize(").count(),
-        2,
-        "`fence.rs` 里不是恰好两处解开（根 · 目标）"
+        3,
+        "`fence.rs` 里不是恰好三处解开（根 · 目标 · 缓存的键）"
     );
-    for head in ["fn at(", "fn admit("] {
+    for head in ["fn at(", "fn admit(", "fn real_path("] {
         assert_eq!(
             fn_chunk(fence, head).matches("canonicalize(").count(),
             1,
@@ -95,7 +96,8 @@ fn path_resolution_has_exactly_one_home() {
     }
 }
 
-/// ★ F2：observe 里点名围栏的读者 == `{history_query.rs, search_query.rs}`（两向相等）。
+/// ★ F2：observe 里点名围栏的读者 == `{history_query.rs, search_query.rs, skeleton.rs}`（两向相等；
+/// `skeleton.rs` 只拿 `fence::real_path` 规范化缓存的键，不靠它放行 —— 它读的是自家数据目录）。
 #[test]
 fn both_readers_in_observe_go_through_the_fence() {
     let users: BTreeSet<String> = observe_sources()
@@ -112,7 +114,8 @@ fn both_readers_in_observe_go_through_the_fence() {
         users,
         BTreeSet::from([
             "history_query.rs".to_string(),
-            "search_query.rs".to_string()
+            "search_query.rs".to_string(),
+            "skeleton.rs".to_string()
         ]),
         "\n经围栏的 observe 读者变了：{users:?}\n\
          ⇒ 少了一个 ⇒ 那一份的越界防护没了（F1 在这一形下照绿）；\n\

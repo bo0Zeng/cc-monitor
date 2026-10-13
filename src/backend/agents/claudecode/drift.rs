@@ -13,6 +13,7 @@
 //! 记录在那台机器自己的后端里解析 ⇒ 账天然按机器分；界面按机器经通道问那台后端（帧命令 `drift-report`）。
 //! 计数是每条记录一次（解析热路径）；要看的是键的集合，不是数字。
 
+use crate::agents::drift::{DriftEntry, DriftFaceReport};
 use copy_core::copy_text;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -23,8 +24,7 @@ pub const MAX_KEYS: usize = 64;
 pub const OVERFLOW_KEY: &str = "<overflow>";
 
 /// 记录那两个「降级点」。每一个都对应一处**刻意的**宽容。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DriftFace {
     /// jsonl 里我们不认识的记录 `type`（`parse.rs` 抢救成 `Unrecognized`，刻意不 warn）。
     UnknownRecordType,
@@ -41,6 +41,18 @@ pub enum DriftFace {
 }
 
 impl DriftFace {
+    /// 线上那个词（漂移账里 `face` 那一格；界面按它排、壳不认）。
+    pub fn word(self) -> &'static str {
+        match self {
+            DriftFace::UnknownRecordType => "unknown_record_type",
+            DriftFace::KnownTypeParseFailed => "known_type_parse_failed",
+            DriftFace::UnknownSessionKind => "unknown_session_kind",
+            DriftFace::UnknownSessionStatus => "unknown_session_status",
+            DriftFace::UnknownWaitingFor => "unknown_waiting_for",
+            DriftFace::UnknownMcpList => "unknown_mcp_list",
+        }
+    }
+
     /// 给人看的一句话：**这个面看不懂东西时会发生什么**。诊断面直接显示它。
     pub fn consequence(self) -> String {
         match self {
@@ -62,29 +74,6 @@ impl DriftFace {
             DriftFace::UnknownMcpList => copy_text("rsDriftLedger.consequence.unknownMcpList", &[]),
         }
     }
-}
-
-/// 一个键的记账。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct DriftEntry {
-    /// 看不懂的那个值（记录 type / kind / status / token）。
-    pub key: String,
-    /// 见过多少次。本进程内的计数，不落盘。`u64` 必须显式声明 TS 侧类型，否则 ts-rs 默认吐 `bigint`，与 JSON IPC 的运行时（`number`）不一致。
-    pub count: u64,
-    /// **首见**的一条样例（截断）。后来的不再覆盖 —— 第一条最接近「它刚出现时长什么样」。
-    pub first_sample: Option<String>,
-}
-
-/// 一个面的快照。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-pub struct DriftFaceReport {
-    pub face: DriftFace,
-    /// 这个面「看不懂时会发生什么」（`DriftFace::consequence`）。
-    pub consequence: String,
-    /// 按 `count` 降序、同数按键名升序。
-    pub entries: Vec<DriftEntry>,
-    /// 该面是否已经溢出（键数触顶）。溢出后新键并进 `<overflow>`。
-    pub overflowed: bool,
 }
 
 /// 这台机器的账：面 → 键 → 记账。
@@ -143,8 +132,8 @@ fn record_into(led: &mut Ledger, face: DriftFace, key: &str, sample: Option<&str
     }
 }
 
-/// 只读快照。按需调用，不轮询。
-pub fn snapshot() -> Vec<DriftFaceReport> {
+/// 只读快照（也是诊断面的读口：帧命令 `drift-report` 经注册表 `RecordFace.drift` 够到它）。按需调用，不轮询。
+pub(crate) fn snapshot() -> Vec<DriftFaceReport> {
     snapshot_of(&lock())
 }
 
@@ -156,18 +145,13 @@ fn snapshot_of(led: &Ledger) -> Vec<DriftFaceReport> {
         // count 降序、同数按键名升序 —— 稳定顺序，诊断面不许每次刷新都跳。
         entries.sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.key.cmp(&b.key)));
         out.push(DriftFaceReport {
-            face: *face,
+            face: face.word().to_string(),
             consequence: face.consequence(),
             overflowed: per_face.contains_key(OVERFLOW_KEY),
             entries,
         });
     }
     out
-}
-
-/// 诊断面读口的成品（帧命令 `drift-report`，经注册表 `RecordFace.drift` 够到）：`{faces: [...]}`。只读、按需，不新增任何轮询。
-pub(crate) fn report() -> serde_json::Value {
-    serde_json::json!({ "faces": snapshot() })
 }
 
 #[cfg(test)]

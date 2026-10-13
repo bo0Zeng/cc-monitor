@@ -53,14 +53,19 @@ pub(crate) trait Codes: Sized {
     fn of_code(code: &str, said: String) -> Result<Self, String>;
 }
 
-/// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码不在这一条的码表里 ⇒ 落 `fallback`（测试档当场红：下层回了没登的码）。
+/// 下层那一份失败（码 ＋ 那一句 ＋ 原话）⇒ 这一条的错误枚举：码在这一条的码表里 ⇒ 照交；不在 ⇒ 落 `fallback`
+/// （这一条自己的那一格失败：资产域那扇门把文件管理那一族的码原样交上来，外层命令的码表不必都有），那一句照旧，原码与原话进原话。
 /// 原话跟着那一句走（[`Fail::into_said`]），投出去时照原样拆回复制详情。
 pub(crate) fn of_fail<E: Codes>(f: Fail, fallback: fn(String) -> E) -> E {
     let code = f.code.clone();
-    E::of_code(&code, f.into_said()).unwrap_or_else(|said| {
-        debug_assert!(false, "下层回了码表里没有的码 `{code}`（{:?}）", E::ALL);
-        tracing::warn!("typed: 下层回了码表里没有的码 `{code}`");
-        fallback(said)
+    let (message, raw) = (f.message.clone(), f.raw.clone());
+    E::of_code(&code, f.into_said()).unwrap_or_else(|_| {
+        tracing::warn!("typed: 下层回了码表里没有的码 `{code}`，落这一条自己的那一格");
+        let lower = match raw {
+            Some(r) => format!("{code}: {message}\n{r}"),
+            None => format!("{code}: {message}"),
+        };
+        fallback(crate::common::contract::joined(message, Some(lower)))
     })
 }
 
@@ -95,6 +100,16 @@ pub(crate) trait Owning: Command {
     fn run(req: Self::Req, cx: &Cx, own: &crate::platform::Own) -> Result<Self::Reply, Self::Err>;
 }
 
+/// 同 [`Blocking`]，多递一份**文件管理写句柄**（[`crate::platform::fs::Face`]：改用户的文件）。只有文件管理写面那几条用这一档
+/// （`readonly_guard::only_the_file_manager_commands_are_handed_the_face`）；句柄由分派那一层造了递进来（[`super::spec::prepare`]）。
+pub(crate) trait Facing: Command {
+    fn run(
+        req: Self::Req,
+        cx: &Cx,
+        face: &crate::platform::fs::Face,
+    ) -> Result<Self::Reply, Self::Err>;
+}
+
 /// 真异步的那一种：交给独立 task，`cancel` 能在 await 点打断。
 pub(crate) trait Async: Command {
     fn run(
@@ -109,6 +124,22 @@ pub(crate) trait AsyncFiles: Command {
         req: Self::Req,
         cx: Cx,
         files: Files,
+    ) -> impl std::future::Future<Output = Result<Self::Reply, Self::Err>> + Send + 'static;
+}
+
+/// 两台之间那几件的枢纽问**这台自己**的那一跳（生产 = `doors::hub_here`，由命令表那一行递进来，同 [`Files`]）：
+/// 按引起这一趟的请求时区与写句柄造一份。
+pub(crate) type Hub =
+    fn(&crate::Tz, &crate::platform::Own) -> std::sync::Arc<dyn crate::assets::hub::Here>;
+
+/// 同 [`Async`]，多递一份**写自家状态的句柄**（按值：交出去的 future 要 `'static`；同 [`super::Run::AsyncOwn`]）
+/// 与枢纽问这台自己的那一跳（[`Hub`]，命令表那一行递的）。分派那一层手里没有写句柄的入口交不出来（同 [`Owning`]）。
+pub(crate) trait AsyncOwning: Command {
+    fn run(
+        req: Self::Req,
+        cx: Cx,
+        own: crate::platform::Own,
+        hub: Hub,
     ) -> impl std::future::Future<Output = Result<Self::Reply, Self::Err>> + Send + 'static;
 }
 
@@ -189,6 +220,13 @@ pub(crate) struct Typed {
     pub(crate) shape: fn() -> tests::Shape,
 }
 
+impl Typed {
+    /// 这一份拿不拿得到文件管理写句柄（[`Facing`] 那一档）。
+    pub(crate) fn hands_the_face(&self) -> bool {
+        matches!(self.run, TypedRun::BlockingFace(_))
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum TypedRun {
     Blocking(fn(Request) -> Outcome),
@@ -198,9 +236,13 @@ pub(super) enum TypedRun {
     BlockingOwn(fn(Request, Files, &crate::platform::Own) -> Outcome, Files),
     /// 阻塞、只要写句柄（[`Owning`]）：写句柄由分派那一层递。
     BlockingOwning(fn(Request, &crate::platform::Own) -> Outcome),
+    /// 阻塞、要文件管理写句柄（[`Facing`]）：句柄由分派那一层造了递。
+    BlockingFace(fn(Request, &crate::platform::fs::Face) -> Outcome),
     Async(fn(Request) -> DataFut),
     /// 异步、要文件管理面（[`AsyncFiles`]）。
     AsyncFiles(fn(Request, Files) -> DataFut, Files),
+    /// 异步、要写句柄 ＋ 枢纽那一跳（[`AsyncOwning`]）：写句柄由分派那一层递，枢纽那一跳是命令表那一行递的。
+    AsyncOwning(fn(Request, crate::platform::Own, Hub) -> DataFut, Hub),
 }
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`（解码器那一句进原话）。
@@ -259,6 +301,15 @@ fn run_owning<C: Owning>(r: Request, own: &crate::platform::Own) -> Outcome {
     settle::<C>(C::run(req, &cx, own))
 }
 
+fn run_facing<C: Facing>(r: Request, face: &crate::platform::fs::Face) -> Outcome {
+    let req = take::<C::Req>(&r.args)?;
+    let cx = Cx {
+        tz: r.tz,
+        until: r.until,
+    };
+    settle::<C>(C::run(req, &cx, face))
+}
+
 fn run_async<C: Async>(r: Request) -> DataFut {
     Box::pin(async move {
         let req = take::<C::Req>(&r.args)?;
@@ -278,6 +329,17 @@ fn run_async_files<C: AsyncFiles>(r: Request, files: Files) -> DataFut {
             until: r.until,
         };
         settle::<C>(C::run(req, cx, files).await)
+    })
+}
+
+fn run_async_owning<C: AsyncOwning>(r: Request, own: crate::platform::Own, hub: Hub) -> DataFut {
+    Box::pin(async move {
+        let req = take::<C::Req>(&r.args)?;
+        let cx = Cx {
+            tz: r.tz,
+            until: r.until,
+        };
+        settle::<C>(C::run(req, cx, own, hub).await)
     })
 }
 
@@ -301,12 +363,22 @@ pub(crate) const fn owning<C: Owning>(summary: &'static str) -> CommandSpec {
     spec::<C>(summary, TypedRun::BlockingOwning(run_owning::<C>))
 }
 
+/// 阻塞、要文件管理写句柄的一行登记（只有文件管理写面那一族用）。
+pub(crate) const fn facing<C: Facing>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, TypedRun::BlockingFace(run_facing::<C>))
+}
+
 /// 异步、要文件管理面的一行登记。
 pub(crate) const fn async_with_files<C: AsyncFiles>(
     summary: &'static str,
     files: Files,
 ) -> CommandSpec {
     spec::<C>(summary, TypedRun::AsyncFiles(run_async_files::<C>, files))
+}
+
+/// 异步、要写句柄 ＋ 枢纽那一跳的一行登记（`hub` ＝ 命令表递的那一份）。
+pub(crate) const fn async_owning<C: AsyncOwning>(summary: &'static str, hub: Hub) -> CommandSpec {
+    spec::<C>(summary, TypedRun::AsyncOwning(run_async_owning::<C>, hub))
 }
 
 /// 异步档的一行登记。

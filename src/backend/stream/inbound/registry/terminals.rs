@@ -1,6 +1,6 @@
 //! 命令表 · 终端与会话：`terminal-*`（含实时预览三条）· `terminals-list` · `session-terminals` · `launch*` · `kill` · `sessions-*`。
 
-use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
+use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
 
 pub(super) const SPECS: &[CommandSpec] = &[
@@ -17,18 +17,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // 〔「待迁」最后一行〕**开终端那一串**：`{machine, saved?, jump?, prefer?, command}` ⇒ `{command}`（按本机终端方言的一行：
     //   Windows `& '<ssh 全路径>' -t[ -J …] -p … [-i …] user@host -- '<bash -lic …>'`，别处同一组参数的 POSIX shell 一行）。组请求走 `ssh-dial/machine.rs::resolve`，本体 `dial/terminal.rs`。
     //   查几个文件找 ssh 客户端（`platform/ssh_client.rs`）⇒ 阻塞档；不拨号、不起进程。
-    CommandSpec {
-        name: "terminal-ssh",
-        summary: "给一台远端开终端要跑的那一串",
-        codes: &["bad_args", "bad_jump", "refused", "no_ssh_client", "unobservable"],
-        fields: &[both("command", "要在那台跑的命令；应答里是那一整行 PowerShell `& '<ssh 全路径>' -t … -- 'bash -lic …'`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::dial::terminal::answer(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::dial::terminal::TerminalSsh>(
+        "给一台远端开终端要跑的那一串",
+    ),
     // 那台报来的终端 ⇒ 这台电脑上开着那条连接的进程链：`{terminals}` ⇒ `{chain:[{pid, name, start}…], why?, addr?}`
     //   （`dial/terminal_processes.rs`）。阻塞档：读连接表 ＋ 进程表四格（Windows 直调系统接口、每个进程开一次句柄问启动时刻 · Linux 读 `/proc`）。只在被问时答。
     crate::stream::inbound::typed::blocking::<crate::dial::terminal_processes::TerminalProcesses>(
@@ -49,6 +40,19 @@ pub(super) const SPECS: &[CommandSpec] = &[
     ),
     crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalInputCmd>(
         "往一个终端送字或送键（过身份门）",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_commands_face::SessionCommandsCmd>(
+        "一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）",
+    ),
+    crate::stream::inbound::typed::asynchronous::<crate::faces::session_model_face::SessionModel>(
+        "会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送）",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
+        "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
+    ),
+    crate::stream::inbound::typed::with_files::<crate::faces::session_say_face::SessionSay>(
+        "往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）",
+        &LocalFiles,
     ),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。

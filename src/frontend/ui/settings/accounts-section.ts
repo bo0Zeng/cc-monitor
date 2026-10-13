@@ -16,15 +16,14 @@ import { openLoginWindow, loginInTmux } from "./account-login";
 import { machineHasTmux } from "../resume-defaults";
 import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
 import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
-import { setModelForAccount, getModelForAccount } from "../account-prefs";
+import { readPrefs, setPrefs } from "../machine-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
 import { slotLabel, slotText, type QuotaRead, accountLabel } from "../acct-words";
 import type { QuotaShow } from "../generated/QuotaShow";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
-import { revealInFolder } from "../reveal-in-folder";
-import { openFileWindow } from "../file-window";
+import { openOnMachine } from "../file-window";
 import { findHostByOrigin, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { bindEvents } from "../events";
 import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, validateAcctName, type VerifyReport } from "../account-ops";
@@ -585,13 +584,17 @@ export class AccountsSection {
       model.value = saved ?? "";
     };
     fill(undefined);
-    void getModelForAccount(origin, a.name).then((m) => {
-      if (document.activeElement !== model) fill(m);
-    });
+    // 这个号的默认模型住那台的偏好（`prefs-read`）；问不到 ⇒ 照「默认」那一项。
+    void readPrefs(origin).then(
+      (p) => {
+        if (document.activeElement !== model) fill(p.prefs.models[a.name]);
+      },
+      () => {},
+    );
     const modelErr = document.createElement("span");
     modelErr.className = "acct-detail-err";
     model.addEventListener("change", () => {
-      void setModelForAccount(origin, a.name, model.value || null).then(
+      void setPrefs(origin, { models: { [a.name]: model.value || null } }).then(
         () => (modelErr.textContent = ""),
         (e: unknown) => (modelErr.textContent = saidOfControl(e)),
       );
@@ -711,7 +714,7 @@ export class AccountsSection {
     if (!yes) return;
     try {
       await accountsRemove(origin, { name: a.name, force: a.isDefault });
-      await setModelForAccount(origin, a.name, null).catch(() => {});
+      await setPrefs(origin, { models: { [a.name]: null } }).catch(() => {});
       this.open.delete(this.key(a.name, origin));
       toast(copyText("acctPage.remove.done", { name: a.name, machine }), "");
       if (a.isDefault) void emit(SETTINGS_APPLIED_EVENT);
@@ -721,10 +724,10 @@ export class AccountsSection {
     await this.reload(true, true);
   }
 
-  private async login(origin: Origin, a: Account, cmd?: string): Promise<void> {
+  private async login(origin: Origin, a: Account): Promise<void> {
     const key = this.key(a.name, origin);
     try {
-      if ((await openLoginWindow(origin, a.name, cmd)) === "opened") {
+      if ((await openLoginWindow(origin, a.name)) === "opened") {
         this.noWindow.delete(key);
         this.waiting.add(key);
       } else {
@@ -751,12 +754,7 @@ export class AccountsSection {
 
   private async reveal(origin: Origin, dir: string): Promise<void> {
     try {
-      if (isLocalOrigin(origin)) {
-        await revealInFolder(dir);
-        return;
-      }
-      const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
-      if (host) await openFileWindow(host, { dir });
+      await openOnMachine(origin, { dir });
     } catch (e) {
       failToast(copyText("acctPage.reveal.failed"), e, { level: "error" });
     }
@@ -800,7 +798,7 @@ export class AccountsSection {
     this.closeForm();
     const key = this.key(req.name, origin);
     if (req.kind !== "api-key" && !req.credFile) {
-      const got = await openLoginWindow(origin, req.name, change.loginCmd ?? undefined).catch(() => "noWindow" as const);
+      const got = await openLoginWindow(origin, req.name).catch(() => "noWindow" as const);
       if (got === "opened") this.waiting.add(key);
       else this.noWindow.add(key);
       // 下一行照后端回的那几句（如「已开的终端要重读别名」），界面不另拼。

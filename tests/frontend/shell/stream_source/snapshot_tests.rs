@@ -96,3 +96,47 @@ fn snapshot_lines_before_the_announced_count_are_catch_up_and_later_ones_are_liv
     assert!(!catch_up_at(Some(10), 11));
     assert!(catch_up_at(None, 12345));
 }
+
+/// **快照在途电平那把锁与会话流的锁只许一个先后**：电平变的那一刻持着 [`SNAPSHOT_INFLIGHT`] 交给会话流（要 replay 的锁，
+/// [`snapshot_inflight_change`]）⇒ 反过来那一向不许有 —— 持着 replay 的锁的那几条路（登记一条只跟一个会话的订阅 · 就绪点）不许再要电平锁。
+/// 起因：截图台架偶发「一个 tab 都不来 / 少一个 / 收场等到上限」，抓栈是这一对互等（主线程在 `subscribe` 里持 replay 的锁等电平锁，
+/// 交电平的那条线程持电平锁等 replay 的锁），之后整条会话流与帧命令一起停住；产品里是独立窗口开窗 / F5 撞上一份旁路快照开始或收尾，整个窗口永远不再动。
+/// 判法：本线程持着电平锁（同交电平那一刻），另一条线程登记 ＋ 过就绪点，必须不等这把锁就做完。
+#[test]
+fn subscribing_and_the_ready_point_never_wait_for_the_inflight_level_lock() {
+    struct Quiet;
+    impl crate::event_replay::ItemSink for Quiet {
+        fn deliver(&self, _: &str, _: u64, _: Vec<crate::chan::wire::Item>) {}
+    }
+    let replay = Arc::new(EventReplay::new());
+    replay.attach_sink(Arc::new(Quiet));
+    let held = SNAPSHOT_INFLIGHT.lock().unwrap_or_else(|e| e.into_inner());
+    let (tx, rx) = std::sync::mpsc::channel();
+    let r = replay.clone();
+    let worker = std::thread::spawn(move || {
+        let local = crate::origin::Origin::local();
+        r.subscribe("viewer", 1, &local, "session-lines/s1", None, 8);
+        tx.send("登记一条只跟一个会话的订阅").ok();
+        r.subscribe("main", 2, &local, "session-lines", None, 8);
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("起一个单线程运行时")
+            .block_on(r.ready_point(None));
+        tx.send("过就绪点").ok();
+    });
+    let mut done = Vec::new();
+    while done.len() < 2 {
+        match rx.recv_timeout(guard_core::wall::CEILING) {
+            Ok(step) => done.push(step),
+            Err(_) => break,
+        }
+    }
+    drop(held);
+    worker.join().expect("登记 / 就绪点那条线程没崩");
+    assert_eq!(
+        done,
+        vec!["登记一条只跟一个会话的订阅", "过就绪点"],
+        "持着快照在途电平锁的时候，登记 / 就绪点卡住了（要的是 replay 锁 → 电平锁，与交电平那一向相反：两条线程会互等卡死）"
+    );
+}

@@ -16,14 +16,17 @@
  *
  * # 第五问：会话事实（`history-facts`）
  *
- * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`）。续传令牌就是**上一份成品原样**
- * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
+ * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`）。续传令牌是上一份成品里的
+ * `{end, rev}` 两格（[`readSessionFacts`] 的 `prior`；那台常驻后端记着那一份累加器，`observe/facts_cache.rs`）—— 本文件与调用方不读、不合并成品。
  */
 import { ChanError, type CallError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
 import type { RecordProbe } from "./generated/RecordProbe";
 import type { FindHit } from "./generated/FindHit";
 import type { HistoryIndex } from "./generated/HistoryIndex";
+import type { HistoryIndexReq } from "./generated/HistoryIndexReq";
+import type { HistoryTurns } from "./generated/HistoryTurns";
+import type { UserInputs } from "./generated/UserInputs";
 import type { UserInputRow } from "./generated/UserInputRow";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
@@ -115,7 +118,6 @@ export type Needs = WireNeeds & {
 
 /**
  * 一份会话的事实（后端 `facts_query::SessionFacts`，类型从后端生成），`needs` 多一格本机收到的时刻。
- * 下一问当续传令牌交回去时去掉那一格（[`wireOf`]）：后端按恰好的键集合收（`prior_from`）。
  */
 export type SessionFacts = Omit<WireFacts, "needs"> & { needs: Needs | null };
 
@@ -175,13 +177,6 @@ export function factsOf(v: WireFacts, receivedAt: number = Date.now()): SessionF
   return { ...v, needs: v.needs === null ? null : { ...v.needs, receivedAt } };
 }
 
-/** [`SessionFacts`] ⇒ 线上那一形（续传令牌原样交回：去掉本机那一格）。 */
-export function wireOf(f: SessionFacts): WireFacts {
-  if (f.needs === null) return { ...f, needs: null };
-  const { receivedAt: _, ...needs } = f.needs;
-  return { ...f, needs };
-}
-
 // ─── 失败怎么说（唯一住址）───
 
 /** 通道的三层错误 ⇒ 大纲的种类。**穷尽**、不看文字。 */
@@ -226,12 +221,19 @@ export async function findInSession(
   }
 }
 
-/** **「你说过的话」清单**：从字节 `fromOffset` 起（冷启动 0 / 增量传上次的 `end`）。 */
+/** **「你说过的话」清单**：从字节 `fromOffset` 起（冷启动 0 / 增量传上次的 `end`）；那台按页给（一页有字节上限），照 `next` 一页一页接着问、拼成一份。 */
 export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffset: number): Promise<UserInputsResult> {
   try {
-    const budget = budgetWithin(READ_BUDGET_MS);
-    const { from, end, entries } = await callTyped(origin, "history-user-inputs", { path: jsonlPath, from: fromOffset }, budget);
-    return { available: true, from, end, entries };
+    const entries: UserInputEntry[] = [];
+    let at: number | null = fromOffset;
+    let end = fromOffset;
+    while (at !== null) {
+      const page: UserInputs = await callTyped(origin, "history-user-inputs", { path: jsonlPath, from: at }, budgetWithin(READ_BUDGET_MS));
+      entries.push(...page.entries);
+      end = page.end;
+      at = page.next ?? null;
+    }
+    return { available: true, from: fromOffset, end, entries };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     const reason = reasonOf(e, origin);
@@ -242,25 +244,43 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
 /** 每轮的摘要的回包：要不到 ⇒ `available:false`（过程行与刻度不出，正文照常）。 */
 export type TurnsResult = { available: true; from: number; end: number; turns: TurnRow[] } | { available: false; reason: string };
 
-/** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）。 */
+/** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）；照 `next` 一页一页接着问、拼成一份。 */
 export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: number): Promise<TurnsResult> {
   try {
-    const budget = budgetWithin(READ_BUDGET_MS);
-    const { from, end, turns } = await callTyped(origin, "history-turns", { path: jsonlPath, from: fromOffset }, budget);
-    return { available: true, from, end, turns };
+    const turns: TurnRow[] = [];
+    let at: number | null = fromOffset;
+    let end = fromOffset;
+    while (at !== null) {
+      const page: HistoryTurns = await callTyped(origin, "history-turns", { path: jsonlPath, from: at }, budgetWithin(READ_BUDGET_MS));
+      turns.push(...page.turns);
+      end = page.end;
+      at = page.next ?? null;
+    }
+    return { available: true, from: fromOffset, end, turns };
   } catch (e) {
     return { available: false, reason: reasonOf(e, origin) };
   }
 }
 
-/** **骨架索引**：从字节 `fromOffset` 起（冷启动 0 / 续传传上次的 `end`）。要不到 ⇒ `available:false`（退回尾部窗口）。 */
-export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOffset: number): Promise<SessionIndexResult> {
+/**
+ * **骨架索引**：从字节 `fromOffset` 起（冷启动 0 / 续传传上次的 `end`）；照 `next` 一页一页接着问、拼成一份。
+ * `want` ＝ 只要前这么多行（正在看的 tab 只要尾段之上那一截：每页 `limit` ＝ 还差几行，够了就停；`end` 是最后一行的末字节，续传从那里接）。
+ * 要不到 ⇒ `available:false`（退回尾部窗口）。
+ */
+export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOffset: number, want?: number): Promise<SessionIndexResult> {
   try {
-    const budget = budgetWithin(READ_BUDGET_MS);
-    const index = await callTyped(origin, "history-index", { path: jsonlPath, offset: fromOffset }, budget);
-    const { from, end } = index;
-    const rows = unpackIndex(index);
-    return { available: true, from, end, rows };
+    const rows: SkeletonFacts[] = [];
+    let at: number | null = fromOffset;
+    let end = fromOffset;
+    while (at !== null && (want === undefined || rows.length < want)) {
+      const args: HistoryIndexReq = { path: jsonlPath, offset: at };
+      if (want !== undefined) args.limit = want - rows.length;
+      const page = await callTyped(origin, "history-index", args, budgetWithin(READ_BUDGET_MS));
+      rows.push(...unpackIndex(page));
+      end = page.end;
+      at = page.next ?? null;
+    }
+    return { available: true, from: fromOffset, end, rows };
   } catch (e) {
     const reason = reasonOf(e, origin);
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
@@ -269,19 +289,18 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
 }
 
 /**
- * **会话事实**：`prior` = 上一次拿到的那份成品**原样**（续传令牌；`null` ⇒ 从字节 0 扫）。
+ * **会话事实**：`prior` = 上一次拿到的那份成品（只交它的 `{end, rev}` 当续传令牌；`null` ⇒ 从字节 0 扫）。
+ * 那台续算表里没有了 ⇒ `stale_prior`，与别的失败一样落进 `available:false`，调用方不带令牌重要（`facts-source.ts`）。
  * 要不到 ⇒ `available:false` ＋ 种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时）＋ 一句人话。
  */
 export async function readSessionFacts(
   origin: Origin,
   jsonlPath: string,
   prior: SessionFacts | null,
-  limits: Readonly<Record<string, number>> = {},
 ): Promise<FactsResult> {
   try {
     const args: HistoryFactsReq = { path: jsonlPath };
-    if (prior) args.prior = wireOf(prior);
-    if (Object.keys(limits).length > 0) args.limits = { ...limits }; // 设置里的上限表：上限在那台后端定
+    if (prior) args.prior = { end: prior.end, rev: prior.rev };
     const budget = budgetWithin(READ_BUDGET_MS);
     return { available: true, facts: factsOf(await callTyped(origin, "history-facts", args, budget)) };
   } catch (e) {

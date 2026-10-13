@@ -187,8 +187,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/duration-format.ts", // 机器掉线那一行「多久前」没有起点时的 0（那一个读口写，单位不写死）
     "src/frontend/ui/accounts.ts",
-    "src/frontend/ui/acct-view.ts", // 被卡住的会话标题后 `✕ 5h`：排版模型（判定是后端给的 `blocked`）
-    "src/frontend/ui/app-store.ts", // 同上：会话的轮换格从 store 读
+    "src/frontend/ui/app-store.ts", // 账号格照会话那台 `rotation-view` 的在用号：从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位
@@ -201,10 +200,12 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/session-face.ts", // 一个会话读成什么：状态点 · 状态句 · peek · 需手动（标签页行 · 会话头 · 悬停卡同一份）
     "src/frontend/ui/tab-drop.ts", // 照 `barRows` 一趟摆组与散的（组员聚在第一个组员那一格）
     "src/frontend/ui/tab-group-rename.module.css", // 组头就地改名那个输入框的样式（UC2：新样式一律 module）
-    "src/frontend/ui/tab-quota.module.css", // `✕ 5h` 那一格的样式
     "src/frontend/ui/session-status.ts",
     "src/frontend/ui/tab-session-state.ts", // 按钮上的两个状态类 · ↗ / 中键的两道门
     "src/frontend/ui/terminal-front.ts",
+    "src/frontend/ui/acct-words.ts", // 悬停卡「从 work 换过来」里号的显示名
+    "src/frontend/ui/rot-words.ts", // 停发标与悬停那一句（后端写好的停发提示，填「还有多久」）
+    "src/frontend/ui/tab-quota.module.css", // 停发标那一格的样式
   ],
   // ④ 拖拽：落点算术 ＋ 建组时铸一个集合 id。
   // 「松开 → 独立窗口」进了文案表 ⇒ 取文口。

@@ -71,7 +71,10 @@ mod cc_bus;
 mod frame_query;
 mod inbound_client;
 mod local_backend;
-// 标识符放行判定的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）：只读共享 crate 的常量。
+// 第 7 批换形的壳那一半：本机后端那一份偏好写成了 ⇒ 删 `config.json` 里搬走的那几个键（下一版删）。
+mod machine_table;
+mod prefs_migration; // 机器表的最近一份（本机后端 `machines-read` 答的，`changed {machines}` 每帧重问）
+                     // 标识符放行判定的生成物（`src/frontend/ui/generated/judgment-rules.ts`）与共用金样（`INVARIANTS §47` ①）：只读共享 crate 的常量。
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/payload_judgment_rules.rs"]
 mod judgment_rules;
@@ -115,14 +118,14 @@ mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod profile_installer;
 // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
+mod live_card;
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/remote_write_registry.rs"]
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod session_book;
-mod session_tap;
-mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
+mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 后端的 `live_card` 帧（活卡成品）原样转给前端 `session-live-card`
                            // 起子进程的**唯一出口**（三个策略都没有 Default）。
                            // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
                            // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
@@ -750,7 +753,8 @@ pub fn run() {
                 });
             }
             // 远端是在本机那条流之外**额外**的数据源（本地 + 远端会话同时显示）；机器表里每台要连的起一条。
-            // 远端那几条流：启动时与之后每次改机器表（`remote_reconcile`）走同一条对齐路。
+            // 远端那几条流：本机后端答了机器表之后、与之后每帧 `changed {machines}` 走同一条对齐路（`machine_table::refresh`）；
+            //   这里那一趟在本机后端答之前，表是空的、一台不起。
             if REMOTE_CTX
                 .set((replay.clone(), app.handle().clone()))
                 .is_err()
@@ -831,7 +835,6 @@ pub fn run() {
             backend_control::backend_stop,
             config::load_config,
             config::patch_config,
-            config::machine_table_try,
             // K-H2a：apikey 表那把 key 的写（`KS10`）走通道（`apikey-key-set`）；「表里有没有行」并进账号清单的徽章（`accounts-list`）。
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱的两条读命令退役 —— 界面经通道直接问那台后端 `bus-state` / `bus-inbox`
@@ -844,7 +847,7 @@ pub fn run() {
             clipboard::clipboard_write,
             // `ccm …` 调用行 · 载荷渲染两条退役：那台后端的帧命令 `launch-render-cli` / `launch-render-payload`。
             // MCP 读写（`mcp::*` 六条）与推 / 拉两条退役：界面经通道问那台后端
-            //   （`mcp-read` · `mcp-server-put` / `-remove` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
+            //   （`mcp-read` · `mcp-sync-source` / `-preview` / `-apply`，`src/frontend/ui/mcp-reads.ts` · `src/frontend/ui/mcp-sync-reads.ts`）。
             //   列远端配置标签那一条是 monitor 自己的配置，挪进 `config.rs`。
             config::list_remote_mcp_origins,
             // 资产目录同步（`assets_sync`）与 skill 装 / 卸三条退役：界面经通道直问那台后端
@@ -856,7 +859,6 @@ pub fn run() {
             open_session_in_new_window,
             // F82a(#56+#47): 设置独立窗口
             open_settings_window,
-            remote_reconcile,
             bring_terminal_to_front,
             // 远端 Tab ↗ 拉前对应本地终端窗口（界面问过那台与本机后端，交来对上的窗口）
             bring_remote_terminal_to_front,
@@ -990,8 +992,7 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 /// 合法 host → 空 Vec。
 ///
 /// config.rs 是 schema-agnostic（只透传 serde_json::Value），所以这里直接读
-/// `config::resolve_config_path()` 的文件，自己取 `remote` 子对象。读法对齐
-/// `config.rs::claude_dir_override`（同一个 config.json，同样的 best-effort 容错）。
+/// `config::resolve_config_path()` 的文件，自己取 `remote` 子对象。
 ///
 /// remote 段 schema（S6/S7 的设置 UI 负责写）：
 /// ```json
@@ -1028,11 +1029,11 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
     // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
     // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
 
-    // `session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
-    //   订了 `session-tap` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
+    // `live_card` 的出口：后端的 `live_card` 帧（活卡成品）交给会话流的句柄（`EventReplay::on_live_card`），
+    //   订了 `session-live-card` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
     {
         let replay = replay.clone();
-        crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
+        crate::live_card::install_sink(move |payload| replay.on_live_card(payload));
     }
     {
         let replay = replay.clone();
@@ -1094,8 +1095,8 @@ fn remote_respawn(
     })
 }
 
-/// 照 config.json 的机器表对齐远端流（要连的才连；连接参数变了的重起；其余不动）。
-fn reconcile_remote_streams() -> backend_control::Reconciled {
+/// 照机器表（本机后端最近答的那一份）对齐远端流（要连的才连；连接参数变了的重起；其余不动）。
+pub(crate) fn reconcile_remote_streams() -> backend_control::Reconciled {
     let Some((replay, app)) = REMOTE_CTX.get() else {
         return backend_control::Reconciled::default();
     };
@@ -1115,20 +1116,6 @@ fn reconcile_remote_streams() -> backend_control::Reconciled {
     out
 }
 
-/// 机器表改了（增删改 · 某台的「连接这台」）：当场对齐，不要重启 cc-monitor。回这一趟起了 / 停了 / 重起了哪几台。
-#[tauri::command]
-async fn remote_reconcile() -> Result<backend_control::Reconciled, Said> {
-    let r: Result<backend_control::Reconciled, Said> = async move {
-        Ok(
-            tauri::async_runtime::spawn_blocking(reconcile_remote_streams)
-                .await
-                .map_err(Said::crashed)?,
-        )
-    }
-    .await;
-    r.map_err(|s| s.named("remote_reconcile"))
-}
-
 /// 机器表里**要连的**那几台（某台 `"connect": false` ⇒ 不在里面）。
 pub(crate) fn load_remote_configs() -> Vec<stream_source::RemoteConfig> {
     load_all_remote_configs()
@@ -1138,35 +1125,14 @@ pub(crate) fn load_remote_configs() -> Vec<stream_source::RemoteConfig> {
         .collect()
 }
 
-/// 机器表里的每一台，连同它的「连接这台」（缺省 = 连）。
+/// 机器表里的每一台，连同它的「连接这台」（缺省 = 连）。表住本机后端，这里读的是它最近答的那一份（[`machine_table`]）。
 pub(crate) fn load_all_remote_configs() -> Vec<(stream_source::RemoteConfig, bool)> {
-    let Some(cfg_path) = config::resolve_config_path() else {
-        return Vec::new();
-    };
-    if !cfg_path.exists() {
-        return Vec::new();
-    }
-    let Ok(raw) = std::fs::read_to_string(&cfg_path) else {
-        return Vec::new();
-    };
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return Vec::new();
-    };
-    let Some(remote) = value.get("remote").and_then(|v| v.as_object()) else {
-        return Vec::new();
-    };
-
-    match parse_remote_entries(remote) {
-        Ok(cfgs) => cfgs,
-        Err(why) => {
-            tracing::error!("{} 的 remote 段：{why}", cfg_path.display());
-            ui_error::tell(ui_error::UiError::MachinesUnreadable {
-                path: cfg_path.display().to_string(),
-                why: why.to_string(),
-            });
-            Vec::new()
-        }
-    }
+    let mut remote = serde_json::Map::new();
+    remote.insert(
+        "hosts".into(),
+        serde_json::Value::Array(machine_table::hosts_now()),
+    );
+    parse_remote_entries(&remote).unwrap_or_default()
 }
 
 /// `remote` 段没有 `hosts` 数组时那句话（旧单对象写法、或者 `hosts` 写成了别的类型）。

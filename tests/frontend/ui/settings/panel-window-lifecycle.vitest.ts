@@ -49,8 +49,14 @@ vi.mock("../../../../src/frontend/ui/theme", () => ({
   applyTheme: theme.apply,
   applyThemeToken: vi.fn(),
 }));
+// Claude 数据目录那一格住本机后端的偏好：判据替它答（`release` 之前挂着，量「切到数据页才问、问回来之前那一格禁用」）。
+const homeRead = vi.hoisted(() => ({ calls: 0, value: null as string | null, hold: null as Promise<void> | null }));
 vi.mock("../../../../src/frontend/ui/paths", () => ({
-  claudeDirIn: () => null,
+  readClaudeDir: vi.fn(async () => {
+    homeRead.calls++;
+    if (homeRead.hold) await homeRead.hold;
+    return homeRead.value;
+  }),
   setClaudeDirOverride: vi.fn(() => Promise.resolve()),
 }));
 // 存 Claude 数据目录之前问那个目录在不在：判据替后端答（默认「在」）。
@@ -189,6 +195,26 @@ describe("ST1：设置窗关窗 ＝ 隐藏；〔ST2〕全即时：改了就落�
     expect(theme.save.mock.calls[0]).toEqual([expect.objectContaining({ bg: "#123456" })]);
     expect(win.hide).toHaveBeenCalledTimes(1);
     expect(theme.apply, "关窗把改动回滚了 —— 全即时之后没有「丢弃」这回事").not.toHaveBeenCalledWith({});
+  });
+
+  it("★ Claude 数据目录读本机偏好：切到数据页之前不问、那一格禁用；切过去问一次、填上、可改", async () => {
+    homeRead.calls = 0;
+    homeRead.value = "/srv/claude-home";
+    let release!: () => void;
+    homeRead.hold = new Promise<void>((r) => (release = r));
+    await mount();
+    const dir = document.querySelector<HTMLInputElement>('.settings-page[data-route-id="data"] .data-claude-input')!;
+    expect(homeRead.calls, "落地页就去问了数据目录").toBe(0);
+    expect(dir.disabled, "还没读回，那一格却能点").toBe(true);
+    document.querySelector<HTMLButtonElement>('[id="settings-tab-data"]')!.click();
+    await tick();
+    expect(homeRead.calls).toBe(1);
+    expect(dir.disabled, "读回之前那一格就能点了").toBe(true);
+    release();
+    for (let i = 0; i < 3; i++) await tick();
+    homeRead.hold = null;
+    expect(dir.value).toBe("/srv/claude-home");
+    expect(dir.disabled).toBe(false);
   });
 
   it("★ Claude 数据目录：`change` 就落 ＋ 给重启条供货；Esc 不关窗，Ctrl+W 与 X 同一条路", async () => {

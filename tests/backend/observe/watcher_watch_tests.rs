@@ -91,7 +91,7 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     assert_eq!(lines(&mut rx), vec![(A.into(), 0), (A.into(), 1)]);
     // 运行表 · 主线外清单也是那一行的内容：没在看就不上流；在看的照发。
     sink.send(state.book.frame(B));
-    sink.send(branch_frame(&state, B, &file(&dir, B)));
+    send_branch(&mut state, &mut sink, B, &file(&dir, B), true);
     sink.send(state.book.frame(A));
     let mut kinds = Vec::new();
     while let Ok(f) = rx.try_recv() {

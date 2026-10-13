@@ -135,10 +135,7 @@ dependencies = [
 name = "acct-core"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
  "test-home",
- "ts-rs",
 ]
 
 [[package]]
@@ -790,6 +787,7 @@ name = "cc-monitor-filewin"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "cmd-wire",
  "comms-inward",
  "copy-core",
  "creds-core",

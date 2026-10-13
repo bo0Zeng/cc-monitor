@@ -135,6 +135,7 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     needs_bus_id: true,
     has_identity: true,
     models: None,
+    model_switch: None,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -265,6 +266,8 @@ pub(crate) enum Stop {
 pub(crate) const MCP: crate::agents::McpFace = crate::agents::McpFace {
     read: read_mcp,
     login_command: "/fake-mcp",
+    sign_in: None,
+    needs_login_file: None,
 };
 
 fn read_mcp(project_dir: Option<&Path>, _look: &crate::agents::McpLook) -> crate::agents::McpRead {
@@ -306,6 +309,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
         kind: AGENT_KIND,
         home,
         account_env: None,
+        old_home_pref: None,
         assets: None,
         history: None,
         upstream: None,
@@ -326,6 +330,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
 pub(crate) fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
     crate::agents::Adapter {
         account_env: Some(ACCOUNT_DIR_ENV),
+        old_home_pref: None,
         mcp: Some(MCP),
         records: Some(records_face(
             records_root,
@@ -437,6 +442,7 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
         shared_root: |h| h.join("shared"),
         email_in: |_| None,
         login: None,
+        sign_in: None,
         session_env: crate::agents::SessionEnvKeys {
             config_dir: account_env,
             base_url: "CCM_FAKE_UPSTREAM",

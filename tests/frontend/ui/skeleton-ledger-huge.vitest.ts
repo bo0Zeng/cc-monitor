@@ -50,3 +50,24 @@ describe("SkeletonLedger.setFolds 在 4 万轮的账本上", () => {
     expect(l.totalHeight).toBeCloseTo(full);
   });
 });
+
+describe("改列宽只当场估视口附近（read8b，瓶颈 #10）", () => {
+  it("40 万行：给了附近那一段 ⇒ 当场只估那几行，其余一段一段补；补完与整份重估的总高一样", () => {
+    const l = new SkeletonLedger(0, synthRows(), 700);
+    const before = l.estimated;
+    l.relayout(420, [200_000, 200_300]);
+    expect(l.estimated - before, "改列宽当场估了整份").toBe(300);
+    expect(l.staleRows).toBe(ROWS - 300);
+    let steps = 0;
+    const mark = l.estimated;
+    while (l.staleRows > 0) {
+      l.settle(20_000);
+      steps++;
+    }
+    expect(l.estimated - mark, "补估多估了 / 少估了").toBe(ROWS - 300);
+    expect(steps, "补估不是一段一段做的").toBe(Math.ceil((ROWS - 300) / 20_000));
+    const whole = new SkeletonLedger(0, synthRows(), 420);
+    expect(l.totalHeight).toBeCloseTo(whole.totalHeight, 3);
+    expect(l.seqAt(0, ROWS, whole.heightOf(0, 123_456) + 0.5)).toBe(whole.seqAt(0, ROWS, whole.heightOf(0, 123_456) + 0.5));
+  });
+});

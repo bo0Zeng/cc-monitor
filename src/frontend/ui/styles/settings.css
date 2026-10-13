@@ -851,11 +851,11 @@ body.settings-window-mode .settings-panel {
 
 .settings-data-item {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   grid-template-areas:
-    "label  meta  open"
-    "desc   desc  desc"
-    "path   path  path";
+    "label  class  meta  open"
+    "desc   desc   desc  desc"
+    "path   path   path  path";
   gap: 2px 8px;
   padding: 6px 6px;
   border-top: 1px dashed var(--border-soft);
@@ -905,6 +905,13 @@ body.settings-window-mode .settings-panel {
   color: var(--text-2);
 }
 
+/* 「删了会怎样」：行头，名字与大小之间（字号颜色同下面那句「是什么」）。 */
+.settings-data-item-class {
+  grid-area: class;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
+}
+
 .settings-data-item-meta {
   grid-area: meta;
   font-family: var(--font-mono);
@@ -920,6 +927,13 @@ body.settings-window-mode .settings-panel {
   grid-area: open;
   display: flex;
   gap: 4px;
+}
+
+/* 「在「日志」页打开」：住打开那一格（那一行不给按钮）。 */
+.settings-data-item-see {
+  grid-area: open;
+  font-size: var(--font-size-xs);
+  color: var(--text-2);
 }
 
 .settings-data-item-open {
@@ -2848,7 +2862,7 @@ body.settings-window-mode .settings-panel {
   min-width: 180px;
 }
 .data-local-only,
-.data-remote-only {
+.data-own-files {
   margin-bottom: 4px;
 }
 

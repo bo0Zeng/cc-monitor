@@ -1,12 +1,14 @@
-// 远端配置数据层（纯数据，无 DOM）：config.json `remote` 段的类型 ＋ 读写 ＋ 反查 / 筛选纯函数。
-import type { ConfigPatched } from "./generated/ConfigPatched";
-import { loadConfig, patchConfig, type ConfigEdit } from "./config";
-import { commands } from "./ipc/commands";
+// 机器表数据层（纯数据，无 DOM）：表住本机后端（`~/.cc-monitor/machines.json`，后端 `control/machines.rs`），
+// 这里只经 `machines-read` / `machines-try` / `machines-set` 读写 ＋ 反查 / 筛选纯函数。
+import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
+import { LOCAL_ORIGIN } from "./ipc/origin";
+import type { MachineEdit } from "./generated/MachineEdit";
 import type { MachineFault } from "./generated/MachineFault";
-import { copyText } from "./copy-table";
-import { getBehavior } from "./behavior";
-import { getLocalResumeCommand } from "./local-machine-prefs";
-import { isLocalOrigin } from "./ipc/origin";
+import type { MachinesReply } from "./generated/MachinesReply";
+import type { PinnedDay } from "./generated/PinnedDay";
+
+/** 一问的期限：读写一份小文件 ＋ 回程。 */
+const MACHINES_BUDGET_MS = 10_000;
 
 /**
  * 单台远端机器配置（config.json `remote.hosts[]` 的元素）。**key 必须与 Rust reader 一致**。
@@ -32,12 +34,7 @@ export interface RemoteHostConfig {
    * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/断开即报错不直连。
    */
   jump: string;
-  /**
-   * 这台机器的 resume 启动命令；空 = 用全局默认（`behavior.resumeCommand`，通用页那一格）。
-   * 按机器存：A 机装了 ccm、B 机没装时各要各的；全局值留作回退（没填过 = 沿用全局）。
-   */
-  resumeCommand: string;
-  /** 连接这台：关 ⇒ 不连（盘上 `"connect": false`），开 ⇒ 去连；改了当场生效（`remote_reconcile`）。 */
+  /** 连接这台：关 ⇒ 不连（盘上 `"connect": false`），开 ⇒ 去连；改了当场生效（本机后端推 `changed {machines}`，壳照它对齐）。 */
   connect: boolean;
 }
 
@@ -49,20 +46,15 @@ export function parseAddressLines(text: string): string[] {
     .filter((l) => l.length > 0);
 }
 
-/** config.json `remote` 段：机器列表（每台自己的「连接这台」）。 */
+/** 机器表：每台自己的「连接这台」。 */
 export interface RemoteConfig {
   hosts: RemoteHostConfig[];
   /**
-   * `remote` 段在、却认不出（没有 `hosts` 数组 —— 旧的单台写法、或 `hosts` 写成了别的类型）
-   * 时那一句原因；认得出 / 没有 `remote` 段 ⇒ 不给。认不出时 `hosts` 恒空（不猜那是哪台），
-   * 设置页把这一句说在机器列表顶上。Rust 那一侧同一个判准（`lib.rs::parse_remote_hosts`），落 `error!` 日志。
+   * 机器表那份文件在、却读不懂时那一句（本机后端写好的）；读得懂 / 没有那份 ⇒ 不给。读不懂时 `hosts` 恒空（不猜那是哪台），
+   * 设置页把这一句说在机器列表顶上，壳那一侧一台都不连。
    */
   unrecognized?: string;
 }
-
-/** `remote` 段认不出时，机器列表顶上那一句（不猜那是哪台）。 */
-export const REMOTE_CONFIG_UNRECOGNIZED =
-  copyText("remoteConfig.remoteConfigUnrecognized.unrecognized");
 
 /**
  * 能打开文件窗口的远端主机：`host` 与 `user` 都非空（`file-window.ts::openFileWindow` 的前置）。顶栏文件入口据此决定 0 台提示 / 1 台直开 / 多台选单。
@@ -82,7 +74,6 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   hostKeyPinnedAt: "",
   addresses: [],
   jump: "",
-  resumeCommand: "",
   connect: true,
 };
 
@@ -115,38 +106,24 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     hostKeyPinnedAt: str("hostKeyPinnedAt", ""),
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
-    resumeCommand: str("resumeCommand", HOST_DEFAULTS.resumeCommand),
     connect: obj.connect !== false,
   };
 }
 
-/**
- * 读 config.json 的 `remote` 段 → RemoteConfig。有 `hosts` 数组 → 逐台读；`remote` 段在而没有
- * `hosts` 数组 ⇒ 认不出（`hosts` 空 ＋ `unrecognized` 那一句）；没有 `remote` 段 → 空列表。永不抛。
- */
+/** 读本机后端的机器表 → RemoteConfig。读不懂 ⇒ 空表 ＋ 那一句；问不到 ⇒ 空表（记一句日志）。永不抛。 */
 export async function readRemoteConfig(): Promise<RemoteConfig> {
   try {
-    return remoteConfigOf((await loadConfig()) as Record<string, unknown>);
+    return remoteConfigOf(await callTyped(LOCAL_ORIGIN, "machines-read", {}, budgetWithin(MACHINES_BUDGET_MS)));
   } catch (e) {
     console.warn("readRemoteConfig failed:", e);
     return { hosts: [] };
   }
 }
 
-/** 一份已读到的 config → `RemoteConfig`（纯函数）。读盘失败不归它管 —— 那是调用方的事（见 [`patchRemoteConfig`]）。 */
-function remoteConfigOf(cfg: Record<string, unknown>): RemoteConfig {
-  const r = cfg.remote;
-  if (r === null || typeof r !== "object") {
-    return { hosts: [] };
-  }
-  const obj = r as Record<string, unknown>;
-  if (!Array.isArray(obj.hosts)) {
-    return { hosts: [], unrecognized: REMOTE_CONFIG_UNRECOGNIZED };
-  }
-  const raw = obj.hosts.filter(
-    (h): h is Record<string, unknown> => h !== null && typeof h === "object",
-  );
-  return { hosts: raw.map(coerceHost) };
+/** 那一答 → `RemoteConfig`（纯函数）。 */
+export function remoteConfigOf(r: MachinesReply): RemoteConfig {
+  if (r.state === "unreadable") return { hosts: [], unrecognized: r.reason ?? "" };
+  return { hosts: r.hosts.map((h) => coerceHost(h as unknown as Record<string, unknown>)) };
 }
 
 /**
@@ -180,12 +157,11 @@ const REMOTE_HOST_FIELDS = [
   "hostKeyFingerprint",
   "addresses",
   "jump",
-  "resumeCommand",
   "connect",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
 /**
- * 上面清单**漏掉**的字段（应为 `never`）。`hostKeyPinnedAt` 不由界面写：壳写配置时跟着指纹盖上（`config.rs::stamp_pinned_day`），界面只读。
+ * 上面清单**漏掉**的字段（应为 `never`）。`hostKeyPinnedAt` 不由界面写：后端写口跟着指纹盖上（`control/machines.rs::stamp_pinned_day`），界面只读。
  */
 type MissingField = Exclude<
   keyof RemoteHostConfig,
@@ -203,24 +179,6 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
 }
 
 /** 一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
-/** 某台机器该用哪条恢复命令（纯函数）：那台自己那一格优先，空 ⇒ 通用页那一格默认。 */
-export function pickResumeCommand(
-  host: RemoteHostConfig | null,
-  globalDefault: string,
-): string {
-  return (host?.resumeCommand ?? "").trim() || globalDefault;
-}
-
-/**
- * 某台恢复会话用哪条命令：那台自己那一格（远端：机器表里那台的 `resumeCommand`；本机：`local-machine-prefs.ts`）优先，
- * 空 ⇒ 通用页那一格默认（`resumeCommand`）。各处起会话只问这一处。
- */
-export async function resumeCommandFor(origin: string): Promise<string> {
-  const b = await getBehavior();
-  if (isLocalOrigin(origin)) return (await getLocalResumeCommand()).trim() || b.resumeCommand;
-  return pickResumeCommand(await resolveRemoteConfigByOrigin(origin), b.resumeCommand);
-}
-
 export function hostKey(h: RemoteHostConfig): string {
   return h.label.trim() || h.host;
 }
@@ -236,24 +194,53 @@ export interface RemoteHostsPatch {
   remove?: string[];
 }
 
-/**
- * 界面写远端配置的唯一入口。补丁全按键认元素（[`remoteHostsEdits`]），不读、不整段写 ——
- * 认元素在 Rust 写口锁内现读现判（`config.rs::patch_config_at`）。
- */
-export async function patchRemoteConfig(
-  patch: RemoteHostsPatch,
-): Promise<ConfigPatched> {
-  const edits = remoteHostsEdits(patch);
-  return edits.length > 0 ? await patchConfig(edits) : { pinned: [] };
+/** 存完那一答里界面要的：写口替那几台盖上的「指纹记于哪一天」。 */
+export interface RemotePatched {
+  pinned: PinnedDay[];
 }
 
 /**
- * 这一次局部修改若现在落盘，机器表那一道过不过（试算，盘上不动；与写口同一份规则）。过 ⇒ `null`。
+ * 界面写机器表的唯一入口。补丁全按键认那一台（[`remoteHostsEdits`]），不读、不整张写 ——
+ * 认那一台在本机后端写口锁内现读现判（`machines-set`）。拒 / 问不到 ⇒ 抛。
+ */
+export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<RemotePatched> {
+  const edits = remoteHostsEdits(patch);
+  if (edits.length === 0) return { pinned: [] };
+  try {
+    const r = await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS));
+    return { pinned: r.pinned };
+  } catch (e) {
+    throw saidOf(e);
+  }
+}
+
+/** 机器表那一问没成：`message` 是给人看的那一句（后端拒了就是它写好的那一句，别的按层说），`detail` 是复制详情。 */
+export class MachinesFailed extends Error {
+  constructor(
+    said: string,
+    readonly detail: string,
+  ) {
+    super(said);
+    this.name = "MachinesFailed";
+  }
+}
+
+function saidOf(e: unknown): MachinesFailed {
+  const detail = typeof (e as { detail?: unknown } | null)?.detail === "string" ? (e as { detail: string }).detail : "";
+  return new MachinesFailed(saidFrom(e, LOCAL_ORIGIN), detail);
+}
+
+/**
+ * 这一次局部修改若现在落盘，机器表那一道过不过（试算，盘上不动；与写口同一份规则，`machines-try`）。过 ⇒ `null`。
  */
 export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineFault | null> {
   const edits = remoteHostsEdits(patch);
   if (edits.length === 0) return null;
-  return (await commands.machine_table_try({ edits })) ?? null;
+  try {
+    return (await callTyped(LOCAL_ORIGIN, "machines-try", { edits }, budgetWithin(MACHINES_BUDGET_MS))).fault;
+  } catch (e) {
+    throw saidOf(e);
+  }
 }
 
 /**
@@ -266,23 +253,22 @@ export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineF
  *
  * 先删后改再增（写口锁内按序应用）⇒「删掉 A、同时新增一台也叫 A」是替换；刚自动固化的指纹、别的窗口改的格都不会被盖掉。
  */
-export function remoteHostsEdits(patch: RemoteHostsPatch): ConfigEdit[] {
-  const hosts = ["remote", "hosts"];
-  const edits: ConfigEdit[] = [];
-  for (const k of patch.remove ?? []) edits.push({ op: "removein", path: hosts, where: hostWhere(k) });
-  const inserts: ConfigEdit[] = [];
+export function remoteHostsEdits(patch: RemoteHostsPatch): MachineEdit[] {
+  const edits: MachineEdit[] = [];
+  for (const k of patch.remove ?? []) edits.push({ op: "removein", where: hostWhere(k) });
+  const inserts: MachineEdit[] = [];
   for (const u of patch.upsert ?? []) {
     if (u.key !== null && u.was !== undefined) {
       edits.push(...hostCellEdits(u.key, u.was, u.value));
       continue;
     }
-    if (u.key !== null) edits.push({ op: "removein", path: hosts, where: hostWhere(u.key) });
-    inserts.push({ op: "insertin", path: hosts, where: hostWhere(hostKey(u.value)), value: serializeHost(u.value) });
+    if (u.key !== null) edits.push({ op: "removein", where: hostWhere(u.key) });
+    inserts.push({ op: "insertin", where: hostWhere(hostKey(u.value)), value: serializeHost(u.value) });
   }
   return [...edits, ...inserts];
 }
 
-/** 盘上一台机器的认法：`label` 非空取它、否则 `host`（Rust 写口 `ElemKey` 的口径，同 `lib.rs::parse_host_obj`）。 */
+/** 表里一台机器的认法：`label` 非空取它、否则 `host`（后端写口 `ElemKey` 的口径，同 `control/machines.rs::Host::name`）。 */
 function hostWhere(key: string): { fields: string[]; equals: string }[] {
   return [{ fields: ["label", "host"], equals: key }];
 }
@@ -293,19 +279,17 @@ function hostWhere(key: string): { fields: string[]; equals: string }[] {
  * 认它的键就是 origin，改 `label` / `host` 会换掉它 ⇒ 顺序：两者动了任一 ⇒ 先按旧 origin 把 `label` 写成表单值（盘上空 `label`
  * 读进来时被补成了 `host`，照写才与整台写那一形同一个 origin）；其余格随后按新 origin 认（`label` 空 ⇒ 仍是旧 `host`），`host` 排最后。
  */
-export function hostCellEdits(key: string, was: RemoteHostConfig, now: RemoteHostConfig): ConfigEdit[] {
+export function hostCellEdits(key: string, was: RemoteHostConfig, now: RemoteHostConfig): MachineEdit[] {
   const a = serializeHost(was);
   const b = serializeHost(now);
   const moved = (f: (typeof REMOTE_HOST_FIELDS)[number]) => JSON.stringify(a[f]) !== JSON.stringify(b[f]);
-  const cell = (k: string, field: string): ConfigEdit => ({
+  const cell = (k: string, field: string): MachineEdit => ({
     op: "setin",
-    path: ["remote", "hosts"],
     where: hostWhere(k),
     field,
     value: b[field],
-    ifEmpty: false,
   });
-  const out: ConfigEdit[] = [];
+  const out: MachineEdit[] = [];
   let k = key;
   if (moved("label") || moved("host")) {
     out.push(cell(key, "label"));

@@ -140,8 +140,6 @@ pub(super) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
 #[derive(Clone, Copy)]
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
-    /// 同 [`Run::Async`]，只是失败可以带按码定形的 `data`（换号重启：起失败时带终端名）。
-    AsyncData(fn(Request) -> DataFut),
     Blocking(fn(Request) -> CmdResult),
     /// 同 [`Run::Blocking`]，只是失败可以带按码定形的 `data`（起会话那几条：选不了号时带上要的号与替代）。
     BlockingData(fn(Request) -> Outcome),
@@ -150,9 +148,6 @@ pub(crate) enum Run {
     BlockingOwn(fn(Request, &crate::platform::Own) -> Outcome),
     /// 同 [`Run::Async`]，只是要写后端自家状态：句柄按值递（交出去的 future 要 `'static`）。
     AsyncOwn(fn(Request, crate::platform::Own) -> BoxFut),
-    /// 同 [`Run::BlockingData`]，只是要改用户的文件（文件管理面）：多收一个 [`crate::platform::fs::Face`]。
-    /// 只有文件管理那一族用这一档（`readonly_guard::only_the_file_manager_commands_are_handed_the_face`）；句柄由分派那一层造了递进来。
-    BlockingFace(fn(Request, &crate::platform::fs::Face) -> Outcome),
     /// 入参 · 回包 · 错误码都从 Rust 类型来的那一种（`typed.rs`）：阻塞还是异步由它自己那一份说。
     Typed(super::typed::Typed),
     Builtin,
@@ -171,27 +166,30 @@ impl Run {
     pub(crate) fn blocking(self) -> bool {
         matches!(
             self,
-            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_) | Run::BlockingFace(_)
-        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..)))
+            Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
+        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..)))
     }
 
     /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
     pub(crate) fn writes(self) -> bool {
-        matches!(
-            self,
-            Run::BlockingOwn(_) | Run::AsyncOwn(_) | Run::BlockingFace(_)
-        ) || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_)))
+        matches!(self, Run::BlockingOwn(_) | Run::AsyncOwn(_))
+            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_) | super::typed::TypedRun::AsyncOwning(..)) || t.hands_the_face())
     }
 }
 
 /// 按档把处理器装成 [`Prepared`]。`own` ＝ 调用方手里那一份写句柄；没有（文件门 · 小成品重问）⇒ 写自家状态的那几档交不出来（`None`）。
 /// `Builtin` 那几条在分派的硬臂里，这里也是 `None`。
+/// 文件管理面的写句柄只在这一处造、只活这一问：[`prepare`] 的 `Facing` 那一档（帧面 · CLI 面），
+/// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
+pub(crate) fn with_face<T>(f: impl FnOnce(&crate::platform::fs::Face) -> T) -> T {
+    f(&crate::platform::fs::Face::issue())
+}
+
 pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Prepared> {
     Some(match run {
         Run::Async(f) => Prepared::Async(Box::new(move |r| {
             Box::pin(async move { f(r).await.map_err(Fail::from) })
         })),
-        Run::AsyncData(f) => Prepared::Async(Box::new(f)),
         Run::AsyncOwn(f) => {
             let own = own?.clone();
             Prepared::Async(Box::new(move |r| {
@@ -203,10 +201,6 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
         Run::BlockingOwn(f) => {
             let own = own?.clone();
             Prepared::Blocking(Box::new(move |r| f(r, &own)))
-        }
-        // 文件管理那一族：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
-        Run::BlockingFace(f) => {
-            Prepared::Blocking(Box::new(move |r| f(r, &crate::platform::fs::Face::issue())))
         }
         Run::Typed(t) => match t.run {
             super::typed::TypedRun::Blocking(f) => Prepared::Blocking(Box::new(f)),
@@ -221,9 +215,17 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
                 let own = own?.clone();
                 Prepared::Blocking(Box::new(move |r| f(r, &own)))
             }
+            // 文件管理写面：分派这一层造一份文件管理写句柄递进去（别的档拿不到它）。
+            super::typed::TypedRun::BlockingFace(f) => {
+                Prepared::Blocking(Box::new(move |r| with_face(|face| f(r, face))))
+            }
             super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
             super::typed::TypedRun::AsyncFiles(f, files) => {
                 Prepared::Async(Box::new(move |r| f(r, files)))
+            }
+            super::typed::TypedRun::AsyncOwning(f, hub) => {
+                let own = own?.clone();
+                Prepared::Async(Box::new(move |r| f(r, own, hub)))
             }
         },
         Run::Builtin => return None,

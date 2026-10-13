@@ -13,8 +13,6 @@ import { launchLocal } from "./launch-render";
 import { NoTerminalWindow, sayNoTerminal } from "./terminal-open";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import { accountUnavailableOf, refuseUnavailableAccount, type AccountAsk } from "./launch-account";
-import { resumeCommandFor } from "./remote-config";
-import { configuredLauncherFor } from "./launch-requests";
 import { mintFreshTmuxName } from "./terminal-name-mint";
 import { failToast } from "./kit/toast";
 import { copyText } from "./copy-table";
@@ -27,8 +25,6 @@ export interface LocalResumeRequest {
   cwd: string;
   /** 跟随 / 账号 0 / 用户点名（`launch-account.ts`）。 */
   account: AccountAsk;
-  /** 设置里的本机 resume 命令（调用方已经读过就给；空串 = 没配 ⇒ 后端用默认）。缺席 ⇒ 现读（只用在默认那一家的会话上）。 */
-  launcher?: string;
   /**
    * 本机后端判完号、开窗之前问一句（tab 栏那条：「记录还在不在」要问**这次要用的那个账号根**）。
    * 收到的是判出来的那个号的目录（`undefined` = 账号 0 / 不指定）；回 `false` ⇒ 不起（它自己已经说过了）。
@@ -47,7 +43,6 @@ export async function resumeLocalSession(req: LocalResumeRequest): Promise<boole
 
 async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sent"> {
   try {
-    const launcher = req.launcher ?? configuredLauncherFor(req.agent, await resumeCommandFor(LOCAL_ORIGIN));
     // 名字问本机后端铸（`terminal-name-mint`）；问不到 ⇒ `null`（不拿空集去避让）。
     const minted = await mintFreshTmuxName(LOCAL_ORIGIN, req.cwd);
     const tmuxName = minted.ok ? minted.name : null;
@@ -56,7 +51,6 @@ async function resumeLocalCore(req: LocalResumeRequest): Promise<"unsent" | "sen
         action: { kind: "resume", sid: req.sid },
         agent: req.agent,
         cwd: req.cwd,
-        launcher: launcher.trim() === "" ? null : launcher,
         tmuxName,
         account: req.account,
       },

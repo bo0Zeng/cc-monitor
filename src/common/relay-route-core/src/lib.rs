@@ -8,7 +8,7 @@
 //! - **家**（相对家目录，`.cc-monitor/` 开头的每一个常量）：后端落点 [`BACKEND_LANDING_REL`] · 暂存区 ·
 //!   退出行为设置 · 两份别名文件 · skill 装记录 · 资产目录 · 账号库 [`ACCOUNTS_DIR_REL`] 与它的清单 ·
 //!   常驻后端的进程记录 [`listen_pid_for`]。
-//!   后端各写者引它们落盘；monitor 的数据位置页（`data_paths.rs::backend_entries`）按它们列出，判据两向对着这一族。
+//!   后端各写者引它们落盘；后端「文件与数据」那一份成品（`footprint/data.rs::own_rows`，经 [`OWN_HOME_ENTRIES`]）按它们列出，界面照抄；判据两向对着这一族。
 //! - crate 名还是「relay-route」—— 它最早只装中转门牌。
 //!
 //! # 它为什么是一个共享 crate
@@ -30,7 +30,7 @@
 //!   起会话载荷 `control/launch_render/payload.rs`（[`PORT`] · 钥匙段渲成 `$(cat ~/<钥匙>)` 的 [`KEY_FILE_REL`] ·
 //!   中转地址的 fail-closed 校验 [`base_url_shape_ok`]（[`base_url`] 的逆）· 起会话身份 token 的字符集 [`segment_is_safe`]）。
 //! - monitor：起本机后端时交的端口（[`PORT`]）· 常驻后端的套接字（[`listen_socket_for`]）· 后端落点（[`BACKEND_LANDING_REL`]）·
-//!   常驻后端的进程记录（[`listen_pid_for`]）· 数据位置页列家那一族（`data_paths.rs::backend_entries`）。
+//!   常驻后端的进程记录（[`listen_pid_for`]）。家那一族由后端列（[`OWN_HOME_ENTRIES`]），monitor 不另列。
 //! - 后端按家那一族落盘：`control/exit_policy` · `control/files_commit` · `control/resident` ·
 //!   `assets/skill_ledger` · `assets/asset_catalog` · `platform/shell/dialect`（两份别名文件）·
 //!   `accounts/manage`（账号库）；读账号库清单的还有 `observe/accounts_query` · `control/ccm`。
@@ -105,6 +105,17 @@ pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 
 /// 〔「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
 pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
+
+/// 〔同上〕这台的偏好：每一家的启动命令 · 恢复进不进 tmux · 每个号的模型 · 上下文上限表（只有后端写，`control/machine_prefs.rs`）。
+pub const PREFS_REL: &str = ".cc-monitor/prefs.json";
+
+/// 〔同上〕第 7 批换形那一次的「待交」：本机 `config.json` 里远端每台那几格，连上那台、它还没有偏好时交过去，交完删那一条
+/// （只有本机常驻后端写，`control/prefs_migration.rs`；下一版删迁移时一起删）。
+pub const PREFS_HANDOFF_REL: &str = ".cc-monitor/prefs-handoff.json";
+
+/// 〔同上〕这一端连各台用的机器表：每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 指纹 · 备用地址 · 跳板 · 连不连
+/// （只有本机后端写，`control/machines.rs`；桌面的 monitor 只经 `machines-read` 读）。
+pub const MACHINES_REL: &str = ".cc-monitor/machines.json";
 
 /// 〔同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
 pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
@@ -411,6 +422,9 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("relayKey", KEY_FILE_REL, false, true),
     ("listenDir", LISTEN_DIR_REL, true, true),
     ("policy", BACKEND_POLICY_REL, false, true),
+    ("prefs", PREFS_REL, false, true),
+    ("prefsHandoff", PREFS_HANDOFF_REL, false, true),
+    ("machines", MACHINES_REL, false, true),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
     ("profilesWritten", PROFILES_WRITTEN_REL, false, false),

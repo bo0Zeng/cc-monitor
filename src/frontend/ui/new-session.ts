@@ -20,7 +20,6 @@ import { select, type SelectOption } from "./kit/select";
 import { tag } from "./kit/badge";
 import { toast } from "./kit/toast";
 import { copyText } from "./copy-table";
-import { readConfigs, type ConfigsShown } from "./rot-reads";
 import { commands } from "./ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { machineName } from "./control-said";
@@ -31,9 +30,7 @@ import { accountAvatarEl } from "./account-color";
 import { appStore } from "./app-store";
 import { refreshQuota } from "./acct-center";
 import { fiveHourCell, accountLabel } from "./acct-words";
-import { machineModels } from "./account-prefs";
-import { resumeCommandFor } from "./remote-config";
-import { configuredLauncherFor } from "./launch-requests";
+import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { openWindow } from "./tab-batch-run";
 import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
@@ -41,6 +38,8 @@ import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
 import type { ForkSlot } from "./generated/ForkSlot";
+import { firstLine, readStrategies } from "./rot-reads";
+import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import s from "./new-session.module.css";
 
 /** 设置窗 → 主窗口：切到那个会话（载荷 `{origin, sid}`）。 */
@@ -408,33 +407,31 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
-  // 轮换：打开哪份配置（缺省本机默认那份，带「本机默认」）· 那台的各份配置。读不出那台的配置表 ⇒ 不出这一行。
-  const rotSel = select({ label: copyText("newSession.label.rot"), options: [] });
-  const rotRow = row(copyText("newSession.label.rot"), rotSel.el, false);
+  // 轮换：用哪份策略（缺省新会话用的那份）· 不轮换 · 那台的各份策略（标题 ＝ 文件名，灰字 ＝ 说明第一行）。读不出那台的策略目录 ⇒ 不出这一行。
+  const rotSel = select({ label: copyText("rot.new.label"), options: [], menuWidth: 340 });
+  const rotRow = row(copyText("rot.new.label"), rotSel.el, false);
   rotRow.root.hidden = true;
   form.appendChild(rotRow.root);
   let rotSeq = 0;
-  let defaultConfig = "";
+  let forNew = "";
   const paintRotation = async (): Promise<void> => {
     const my = ++rotSeq;
-    let configs: ConfigsShown | null = null;
+    let list: RotationStrategiesReply | null = null;
     try {
-      configs = accounts === null ? null : await readConfigs(origin);
+      list = accounts === null ? null : await readStrategies(origin);
     } catch {
-      configs = null;
+      list = null;
     }
     if (my !== rotSeq) return;
-    rotRow.root.hidden = configs === null;
-    if (configs === null) return;
-    defaultConfig = configs.defaultConfig;
+    rotRow.root.hidden = list === null;
+    if (list === null) return;
+    forNew = list.forNew;
     rotSel.setOptions(
-      configs.configs.map((c) => ({
-        value: c.id,
-        label: c.name,
-        note: c.isDefault ? copyText("rot.cfg.tagDefault") : undefined,
-        detail: c.text,
-      })),
-      configs.defaultConfig,
+      [
+        { value: "", label: copyText("rot.none.label"), detail: copyText("rot.none.desc"), note: list.forNew === "" ? copyText("rot.tag.forNew") : undefined },
+        ...list.strategies.map((st) => ({ value: st.id, label: st.id, note: st.forNew ? copyText("rot.tag.forNew") : undefined, detail: firstLine(st.description) })),
+      ],
+      list.forNew,
     );
   };
 
@@ -503,8 +500,8 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     const offered = facts?.agents ?? [];
     agentRow.root.hidden = offered.length <= 1;
     agentSel.setOptions(
-      offered.map((k) => ({ value: k, label: k })),
-      offered.includes(agent) ? agent : undefined,
+      offered.map((a) => ({ value: a.kind, label: a.text })),
+      offered.some((a) => a.kind === agent) ? agent : undefined,
     );
     cmdInput.placeholder = copyText("newSession.command.placeholder", { launcher: safeLauncher(agent) });
   };
@@ -553,8 +550,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   const applyFacts = (f: NewFacts): void => {
     if (fork && f.fork) {
       applyForkFacts(fork.title, f.fork);
-    } else if (!f.agents.includes(agent) && f.agents.length > 0 && !f.agents.includes(DEFAULT_AGENT)) {
-      agent = f.agents[0];
+    } else {
+      const kinds = f.agents.map((a) => a.kind);
+      if (!kinds.includes(agent) && kinds.length > 0 && !kinds.includes(DEFAULT_AGENT)) agent = kinds[0];
     }
     if (cwdInput.value === "" && f.recent.length > 0) cwdInput.value = f.recent[0].cwd;
   };
@@ -593,16 +591,15 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       cwd: cwdInput.value.trim(),
       place: place(),
       local: isLocalOrigin(origin),
-      models: await machineModels(origin).catch(() => ({})),
       ticket,
     };
     if (account) req.account = account;
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
     if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
-    // 本机默认那份不写（新会话本来就打开它）；挑了别的 ⇒ 起之前写成打开那一份。
-    const rot = rotRow.root.hidden ? defaultConfig : rotSel.value();
-    if (rot !== "" && rot !== defaultConfig) req.rotation = { config: rot };
+    // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
+    const rot = rotRow.root.hidden ? forNew : rotSel.value();
+    if (rot !== forNew) req.rotation = { strategy: rot === "" ? null : rot };
     return req;
   };
 
@@ -759,11 +756,10 @@ function safeLauncher(agent: string): string {
   }
 }
 
-/** 设置里配的启动命令（只给默认那一家；和默认启动器一样 ⇒ 空，表示用默认）。 */
+/** 那台偏好里那一家的启动命令（`prefs-read`；和默认启动器一样 / 没设 / 问不到 ⇒ 空，表示用默认）。 */
 async function configuredCommand(origin: Origin, agent: string): Promise<string> {
   try {
-    const configured = await resumeCommandFor(origin);
-    const c = configuredLauncherFor(agent, configured).trim();
+    const c = ((await readPrefs(origin)).prefs.launchers[agent] ?? "").trim();
     return c === safeLauncher(agent) ? "" : c;
   } catch {
     return "";

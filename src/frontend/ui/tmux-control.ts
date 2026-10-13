@@ -12,7 +12,7 @@ import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import type { Killed } from "./generated/Killed";
 
-// 与 `cc-bus-control.ts` 共用的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 · `settle`）住 `control-said.ts`。
+// 与 `cc-bus-control.ts` 共用的那几样（`ControlError` · 通道三层的说法 · 成品形状核验 · `settleTyped`）住 `control-said.ts`。
 export { ControlError, saidOfControl };
 
 /** 结束成了之后顺手注销 cc-bus 那几行（后端写好的句子 ＋ 复制详情；没什么可说 ⇒ `said` 是 `null`）。 */

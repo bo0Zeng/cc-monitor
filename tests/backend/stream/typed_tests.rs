@@ -173,3 +173,33 @@ fn typed_commands_carry_no_hand_mirror() {
         );
     }
 }
+
+/// 外层命令那道边界：下层（经资产域那扇门交上来的）回了这一条码表里没有的码 ⇒ 落这一条自己的那一格失败（`fallback`），
+/// 那一句照旧，原码与原话进原话（复制详情）；码表里有的照交。
+#[test]
+fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
+    use super::super::spec::Fail;
+    super::codes! {
+        enum OuterErr {
+            IoFailed = "io_failed",
+        }
+    }
+    let kept =
+        super::of_fail(Fail::new("io_failed", "读不了".into()), OuterErr::IoFailed).into_fail();
+    assert_eq!(
+        (kept.code.as_str(), kept.message.as_str()),
+        ("io_failed", "读不了")
+    );
+    assert_eq!(kept.raw, None);
+
+    let lower =
+        Fail::new("not_dir", "那不是一个目录".into()).with_raw(Some("ENOTDIR (os error 20)"));
+    let f = super::of_fail(lower, OuterErr::IoFailed).into_fail();
+    assert_eq!(f.code, "io_failed", "码表里没有的码不上信封");
+    assert_eq!(f.message, "那不是一个目录");
+    assert_eq!(
+        f.raw.as_deref(),
+        Some("not_dir: 那不是一个目录\nENOTDIR (os error 20)"),
+        "原码与原话进原话"
+    );
+}

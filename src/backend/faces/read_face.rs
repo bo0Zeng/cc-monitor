@@ -39,6 +39,13 @@ use serde_json::{json, Value};
 /// 页越大，实时行被挡住的时间越长；页越小，往返越多。1 MiB 在 1 Mbps 的弱网上约 8 秒一页。
 pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 
+/// 分页的那几条帧命令（`history-index` · `-user-inputs` · `-turns` · `-branch`）一条应答至多多少字节，`session_branch` 一帧同此。
+///
+/// 一条应答就是那台流上的一整行，写它的时候那台别的会话的实时帧都在后面等（写出方向写完一页就先让实时帧走，`main.rs::writer_task`）
+/// ⇒ 页越大，实时行被挡得越久；页越小，往返越多。取 1 MiB：同 `history-read` 一页、同远端链路的窗口；
+/// 一份 394 MB 的合成记录冷开一趟分页那四条共 19 页（256 KiB 要 71 页，远端每页一个往返）。
+pub const REPLY_PAGE_BYTES: usize = 1 << 20;
+
 /// 单行比一页还长时，最多续读到多长（超过 ⇒ `oversized_line`）。
 ///
 /// monitor 那头单帧上限 64 MiB（`stream_source::BACKEND_FRAME_LINE_CAP`），而字节进 JSON 串
@@ -60,10 +67,18 @@ pub fn note_backend_log(path: std::path::PathBuf) {
 }
 
 /// 那份文件的尾部 ⇒ `{path, size, text, truncated}`；没装 ⇒ `path: null`。截断时从截点后第一个换行起（不给半行）。
-pub(crate) fn log_tail(path: Option<&std::path::Path>, max: u64) -> Answer {
+pub(crate) fn log_tail(
+    path: Option<&std::path::Path>,
+    max: u64,
+) -> Result<LogTail, (&'static str, String)> {
     use std::io::{Read, Seek, SeekFrom};
     let Some(path) = path else {
-        return Ok(json!({ "path": null, "size": 0, "text": "", "truncated": false }));
+        return Ok(LogTail {
+            path: None,
+            size: 0,
+            text: String::new(),
+            truncated: false,
+        });
     };
     let mut f = Ro::open(path).map_err(|e| ("failed", e.to_string()))?;
     let size = f.metadata().map_err(|e| ("failed", e.to_string()))?.len();
@@ -79,12 +94,98 @@ pub(crate) fn log_tail(path: Option<&std::path::Path>, max: u64) -> Answer {
     } else {
         &buf[..]
     };
-    Ok(json!({
-        "path": path.display().to_string(),
-        "size": size,
-        "text": String::from_utf8_lossy(body),
-        "truncated": from > 0,
-    }))
+    Ok(LogTail {
+        path: Some(path.display().to_string()),
+        size,
+        text: String::from_utf8_lossy(body).into_owned(),
+        truncated: from > 0,
+    })
+}
+
+/// `backend-log` 的应答：这台后端 stderr 诊断文件的尾部。
+#[derive(Debug, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct LogTail {
+    /// 本进程 stderr 此刻落在的那份文件；没装（stdio 载体 · 没被交路径）⇒ `null`。
+    pub(crate) path: Option<String>,
+    /// 那份文件的总字节数。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) size: u64,
+    /// 尾部正文（lossy UTF-8）；截断时从截点后第一个换行起，不给半行。
+    pub(crate) text: String,
+    /// 前面还有没回的字节。
+    pub(crate) truncated: bool,
+}
+
+/// `backend-log` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub(crate) struct BackendLogReq {
+    /// 只回尾部这么多字节；缺 ⇒ 封顶 256 KiB（给多了也照封顶）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable, type = "number"))]
+    pub(crate) max_bytes: Option<u64>,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `backend-log` 的码：那份文件读不了。
+    pub(crate) enum BackendLogErr {
+        Failed = "failed",
+    }
+}
+
+/// `backend-log`：这台后端的 stderr 诊断文件尾部（读一份文件 ⇒ 阻塞档）。
+pub(crate) struct BackendLog;
+
+impl crate::stream::inbound::typed::Command for BackendLog {
+    const NAME: &'static str = "backend-log";
+    type Req = BackendLogReq;
+    type Reply = LogTail;
+    type Err = BackendLogErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for BackendLog {
+    fn run(
+        req: BackendLogReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<LogTail, BackendLogErr> {
+        let max = req
+            .max_bytes
+            .map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
+        log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max).map_err(
+            crate::stream::inbound::typed::of_pair(BackendLogErr::Failed),
+        )
+    }
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `drift-report` 没有别的码。
+    pub(crate) enum DriftReportErr {}
+}
+
+/// `drift-report`：这台后端的漂移账（看不懂的记录类型），各家的面并在一起、注册序（纯内存读一把锁，同 `forward-list`）。
+pub(crate) struct DriftReportCmd;
+
+impl crate::stream::inbound::typed::Command for DriftReportCmd {
+    const NAME: &'static str = "drift-report";
+    const TAKES_INPUT: bool = false;
+    type Req = crate::stream::inbound::typed::NoArgs;
+    type Reply = crate::agents::drift::DriftReport;
+    type Err = DriftReportErr;
+}
+
+impl crate::stream::inbound::typed::Async for DriftReportCmd {
+    fn run(
+        _req: crate::stream::inbound::typed::NoArgs,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<crate::agents::drift::DriftReport, DriftReportErr>>
+           + Send
+           + 'static {
+        std::future::ready(Ok(crate::agents::drift_report()))
+    }
 }
 
 /// 本族的应答：`data` 或 `(code, message)`。
@@ -101,19 +202,6 @@ pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
 pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
     use crate::observe::accounts_query;
     match cmd {
-        // 这台后端自己的 stderr 诊断文件（尾部）—— 机器页「日志」经这台后端的只读面取回来看。
-        "backend-log" => {
-            let max = u64_arg(args, "maxBytes")?.map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
-            log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
-        }
-        // 这台后端的漂移账（看不懂的记录类型）出成品：`{faces: [...]}`（各家的面并在一起，注册序）。
-        "drift-report" => {
-            let faces: Vec<Value> = crate::agents::drift_reports()
-                .into_iter()
-                .flat_map(|r| r["faces"].as_array().cloned().unwrap_or_default())
-                .collect();
-            Ok(json!({ "faces": faces }))
-        }
         // 停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前会打断什么（`observe/accounts_query.rs::machine_product`）：
         //   这台的活会话经不经本机中转 · 活着的几个 · 这台账上通往 `machine` 的转发。只读。
         "machine-interrupts" => {
@@ -255,23 +343,9 @@ fn opt_str_arg<'a>(args: &'a Value, key: &str) -> Result<Option<&'a str>, (&'sta
     }
 }
 
-fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String)> {
-    match args.get(key) {
-        None | Some(Value::Null) => Ok(None),
-        Some(v) => v.as_u64().map(Some).ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "`{key}` must be a non-negative integer"
-                )),
-            )
-        }),
-    }
-}
-
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/read_face_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 /// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `facts_query::dress_ask_with`）；
 /// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。

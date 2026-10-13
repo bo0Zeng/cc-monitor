@@ -326,68 +326,6 @@ fn differing_entries_are_written_only_when_the_user_said_overwrite() {
     );
 }
 
-#[test]
-fn the_answer_carries_rows_suspects_and_the_write_list() {
-    let facts = Table {
-        present: &[],
-        on_path: Some(&["npx"]),
-    };
-    let source = r#"{"mcpServers":{"fs":{"command":"/opt/fs-mcp","args":["/home/u"]},"gh":{"command":"npx"},"same":{"command":"x"}}}"#;
-    let target = "\u{feff}{\"other\":1,\"mcpServers\":{\"same\":{\"command\":\"x\"},\"theirs\":{\"url\":\"u\"}}}";
-    let a = answer_with(&facts, &json!({"source": source, "target": target})).unwrap();
-    assert_eq!(
-        a,
-        json!({
-            "rows": [
-                {"name": "fs", "state": "new", "suspects": [
-                    {"kind": "abs-path", "field": "command", "value": "/opt/fs-mcp", "there": "absent"},
-                    {"kind": "abs-path", "field": "args[0]", "value": "/home/u", "there": "absent"},
-                ]},
-                {"name": "gh", "state": "new", "suspects": []},
-                {"name": "same", "state": "same", "suspects": []},
-                {"name": "theirs", "state": "only-there", "suspects": []},
-            ],
-            "write": null,
-        })
-    );
-    let a = answer_with(
-        &facts,
-        &json!({"source": source, "target": null, "take": ["gh", "fs"]}),
-    )
-    .unwrap();
-    assert_eq!(a["write"], json!(["fs", "gh"]));
-}
-
-#[test]
-fn unreadable_inputs_are_refused_not_replaced_with_a_skeleton() {
-    let f = Table {
-        present: &[],
-        on_path: None,
-    };
-    let code = |args: Value| answer_with(&f, &args).unwrap_err().0;
-    assert_eq!(code(json!({"source": "{", "target": null})), "bad_file");
-    assert_eq!(code(json!({"source": "{}", "target": "[1]"})), "bad_file");
-    assert_eq!(
-        code(json!({"source": "{\"mcpServers\": []}", "target": null})),
-        "bad_file"
-    );
-    assert_eq!(
-        code(json!({"source": "{}"})),
-        "bad_args",
-        "target 缺席不当成不存在"
-    );
-    assert_eq!(code(json!({"target": null})), "bad_args");
-    assert_eq!(code(json!({"source": "{}", "target": 3})), "bad_args");
-    assert_eq!(
-        code(json!({"source": "{}", "target": null, "overwrite": ["a"]})),
-        "bad_args"
-    );
-    assert_eq!(
-        code(json!({"source": "{}", "target": null, "take": "a"})),
-        "bad_args"
-    );
-}
-
 /// 🔴 头注「不读用户的文件（两份原文由调用方经 `files-peek` 读来）」：读的那一份与 CAS 期望的那一份
 /// 必须是同一个读法 —— 本模块自己再读一遍就是第二个读法。生产段读文件内容的原语零命中；正控：同一把尺子
 /// 在一份塞了读原语的副本上数得到。

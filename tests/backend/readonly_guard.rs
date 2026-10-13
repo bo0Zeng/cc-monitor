@@ -282,28 +282,32 @@ mod tests {
         );
         assert_eq!(
             port_users.into_iter().collect::<Vec<_>>(),
-            vec!["stream/inbound/registry/file_manager.rs".to_string()],
+            vec!["stream/inbound/files_session_face.rs".to_string()],
             "删会话落点的窄口只许门引用（它递给写面）—— 别的面拿到它就等于拿到了删会话的落点"
         );
-        let spec = crate::control::files_write::MANAGE_COMMANDS
-            .iter()
-            .find(|c| c.name == "files-delete-session")
-            .expect("写面登记里没有 `files-delete-session` —— 删历史会话那条路断了");
+        assert!(
+            crate::control::files_write::MANAGE_COMMANDS
+                .iter()
+                .any(|c| c.name == "files-delete-session"),
+            "写面登记里没有 `files-delete-session` —— 删历史会话那条路断了"
+        );
+        let keys: Vec<String> = serde_json::to_value(cmd_wire::files::FilesDeleteSessionReq {
+            sid: "abc".to_string(),
+        })
+        .expect("入参总能序列化")
+        .as_object()
+        .expect("对象")
+        .keys()
+        .cloned()
+        .collect();
         assert_eq!(
-            spec.args,
-            &["sid"],
+            keys,
+            vec!["sid".to_string()],
             "删历史会话那条命令**只收 sid** —— 多一个入参就多一种表达「另一份文件」的办法"
         );
-        let port = crate::control::files_write::SessionPort {
-            locate: crate::agents::locate_session_for_delete,
-            is_record: crate::agents::is_session_record,
-            file_name: crate::agents::session_file_name_of,
-        };
-        match crate::control::files_write::answer_wire(
-            &crate::platform::fs::Face::issue(),
+        match crate::control::files_write::tests::ask(
             "files-delete-session",
             &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
-            &port,
         ) {
             Err(crate::control::files_write::WriteFail { code, .. }) => {
                 assert_eq!(code, "bad_args", "多给一个 `path` 该回 bad_args")
@@ -739,8 +743,8 @@ mod tests {
     const ISSUERS: &[(&str, &[&str])] = &[
         ("Own::issue", &["main.rs"]),
         ("DiagLog::issue", &["main.rs"]),
-        // 文件管理面的写句柄：只有分派那一层造 —— 按档装处理器的那一处（`spec.rs::prepare`，帧面 · CLI 面 · 资产域经门的进程内分派都经它），
-        //   按命令表那一族（`Run::BlockingFace`）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
+        // 文件管理面的写句柄：只有分派那一层造 —— `spec.rs::with_face`（按档装处理器的 `prepare` 那一档 · 资产域那扇门的进程内分派都经它，句柄只活那一问），
+        //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
         (
             "Face::issue",
             &["stream/inbound/mod.rs", "stream/inbound/spec.rs"],
@@ -788,7 +792,7 @@ mod tests {
         );
     }
 
-    /// 递 [`crate::platform::fs::Face`] 的那一档（`Run::BlockingFace`）只有文件管理那一族用；用它的命令恰好是
+    /// 递 [`crate::platform::fs::Face`] 的那一档（typed 的 `Facing`，登记那一行写 `typed::facing`）只有文件管理那一族用；用它的命令恰好是
     /// 文件管理写面登记的那几张命令表的并（写面 · 上传提交 · 解压）—— 两侧异源：一侧是命令表里的档位（现打），一侧是写面自己的表。
     /// 命令表按族分住的那个目录。
     const REGISTRY_DIR: &str = "stream/inbound/registry/";
@@ -798,7 +802,7 @@ mod tests {
         use crate::stream::inbound::{Run, REGISTRY};
         let got: std::collections::BTreeSet<&str> = REGISTRY
             .iter()
-            .filter(|s| matches!(s.run, Run::BlockingFace(_)))
+            .filter(|s| matches!(s.run, Run::Typed(t) if t.hands_the_face()))
             .map(|s| s.name)
             .collect();
         let want: std::collections::BTreeSet<&str> = crate::control::files_write::MANAGE_COMMANDS
@@ -814,7 +818,7 @@ mod tests {
         );
         assert_eq!(
             got, want,
-            "拿得到文件管理写句柄的命令与写面登记的命令对不上（左 = 命令表里 `Run::BlockingFace` 那一档）"
+            "拿得到文件管理写句柄的命令与写面登记的命令对不上（左 = 命令表里 typed 的 `Facing` 那一档）"
         );
         // 档位的名字只许住文件管理那一族的命令表（别族一写就红，不等到上面那条相等）。
         let root = crate::guard_support::src_root();
@@ -826,7 +830,7 @@ mod tests {
                 .to_string_lossy()
                 .replace('\\', "/");
             if rel.starts_with(REGISTRY_DIR)
-                && guard_core::contains_word(&guard_core::production_code(&src), "BlockingFace")
+                && guard_core::production_code(&src).contains("typed::facing::<")
             {
                 users.push(rel);
             }
@@ -1241,6 +1245,15 @@ mod spawn_registry {
              **不是**后端进程自身写用户既有数据。只从帧命令 `sessions-start`（tmux 那一形、那台没有带着这个 sid 的会话）进来。",
             "缩性质",
             "起会话改由别的入口在后端起的那天摘掉。⚠ 不许往这一处底下加第二种用途 —— 它起的永远是本二进制的 ccm 那一趟。",
+        ),
+        (
+            "accounts/sign_in.rs",
+            "<非字面量>",
+            "在 app 里登录一个号：起那一家的官方登录子命令（Claude：`claude auth login --claudeai`），程序名与参数来自适配层登记的那一形\
+             （`AccountsFace::sign_in`）、argv 直传不过 shell；stdin 只写人从登录页粘回来的那一段码。令牌由官方客户端自己换、自己写进\
+             **那个号自己的**配置目录（照它自己的样子用它自己的文件），后端一个字节不写。**不是**后端进程自身写用户既有数据。",
+            "缩性质",
+            "官方客户端改成别的登录方式（或后端改走别的路登录）的那天摘掉。",
         ),
         (
             "faces/quota_probe_face.rs",
@@ -2775,7 +2788,20 @@ mod g6_dependency_signoff {
             "cmd-wire",
             DEPS,
             MEASURED_CLEAN,
-            "帧命令两端对上的形状（机器名 `Machine` · typed 命令的形状指纹表），纯数据；仓内 crate，现打 0 处写面",
+            "帧命令两端对上的形状（机器名 `Machine` · typed 命令的形状指纹表 · 账号库那几条的入参与成品），纯数据；仓内 crate，现打 0 处写面",
+        ),
+        (
+            // 同一个依赖在测试构建里多开 `ts`（入参 · 成品的 TS 派生，形状指纹与生成类型用）。
+            "cmd-wire",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同上一行那个仓内 crate，测试构建多开 `ts` feature（多出来的只是类型的 TS 派生），0 处写面",
+        ),
+        (
+            "cmd-wire",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同一个 crate 在测试档多开 `ts`（typed 命令线上类型的 TS 派生 · 形状指纹），只多一个 codegen 派生；现打 0 处写面",
         ),
         (
             "comms-outward",
@@ -2848,6 +2874,13 @@ mod g6_dependency_signoff {
             DEPS,
             UNMEASURED,
             "inotify 观测：backend 只拿它订阅被观测目录底下的变化，一条写路径都不经它",
+        ),
+        (
+            "portable-pty",
+            DEPS,
+            UNMEASURED,
+            "伪终端：只在 `platform/child.rs::converse_in_terminal` 开一对终端、在里面起子进程（要终端才肯问的官方登录子命令）。\
+             它自己不写盘：只开系统给的伪终端设备、读写那一对终端；子进程写什么归子进程（同 `Child` 别的几种用法）",
         ),
         (
             "notify-debouncer-mini",

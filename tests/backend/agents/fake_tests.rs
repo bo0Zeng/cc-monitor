@@ -203,6 +203,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
     let adapter = crate::agents::Adapter {
         kind: AGENT_KIND,
         account_env: None,
+        old_home_pref: None,
         // 最小假 agent 没有资产面（它要证的是「通用层零改动」，不是资产）。
         assets: None,
         history: None,
@@ -427,6 +428,7 @@ fn registry_with_fake() -> Vec<crate::agents::Adapter> {
         kind,
         home,
         account_env: None,
+        old_home_pref: None,
         assets: None,
         history: None,
         upstream: None,
@@ -657,6 +659,7 @@ fn the_fake_agents_mcp_face_is_read_through_the_generic_layer() {
     let adapter = crate::agents::Adapter {
         kind: AGENT_KIND,
         account_env: None,
+        old_home_pref: None,
         assets: None,
         history: None,
         upstream: None,

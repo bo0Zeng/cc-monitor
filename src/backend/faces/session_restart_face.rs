@@ -111,7 +111,7 @@ impl crate::stream::inbound::typed::AsyncFiles for SessionRestart {
     }
 }
 
-/// `until`：发起方的截止时刻（分派那一层给）。「现在就换」的重启那一半逐个也经这里（`rotation_switch_face`）。
+/// `until`：发起方的截止时刻（分派那一层给）。
 pub(crate) async fn answer(
     req: restart::RestartReq,
     until: Option<crate::platform::child::Until>,

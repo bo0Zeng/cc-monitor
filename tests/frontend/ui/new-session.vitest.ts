@@ -54,9 +54,8 @@ vi.mock("../../../src/frontend/ui/account-reads", () => ({
   })),
 }));
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
-vi.mock("../../../src/frontend/ui/account-prefs", () => ({ machineModels: vi.fn(async () => ({})) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
-vi.mock("../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: vi.fn(async () => "") }));
+vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {} } })) }));
 const arrival = vi.hoisted(() => ({ awaitArrival: vi.fn(async () => "new-sid"), liveSince: vi.fn(() => new Set<string>(["seen-0"])) }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => arrival);
 const win = vi.hoisted(() => ({ openWindow: vi.fn(async () => null) }));
@@ -94,7 +93,8 @@ const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*
 const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.action.create"))!;
 const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-new").map((s) => s.body);
 
-const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2 }, { cwd: "/home/u/srv/billing", lastMs: 1 }], tmux: true, agents: ["claude"], fork: null };
+const agentOf = (kind: string) => ({ kind, text: kind === "claude" ? "Claude Code" : "Codex", models: [], permissionModes: [] });
+const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, agents: [agentOf("claude")], fork: null };
 const OK = { outcome: "started", session: "orders-cc", sid: null, cmd: null, account: { name: "work", configDir: "/h/.cc/work", model: null }, agent: "claude", cwd: "/home/u/srv/orders", prompt: null };
 
 beforeEach(() => {
@@ -129,7 +129,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
   });
 
   it("那台能起两家 ⇒ 出 agent 那一行；那台没 tmux ⇒ 只剩终端窗口那一张、灰字说为什么", async () => {
-    replies.set("session-new-facts", { ...FACTS, tmux: false, agents: ["claude", "codex"] });
+    replies.set("session-new-facts", { ...FACTS, tmux: false, agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(false);
@@ -160,7 +160,7 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     await done;
     expect(newRequests()).toEqual([
-      { agent: "claude", cwd: "/home/u/srv/orders", place: "tmux", local: false, models: {}, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
+      { agent: "claude", cwd: "/home/u/srv/orders", place: "tmux", local: false, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
     ]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();
@@ -168,6 +168,25 @@ describe("点［新建］：交那台的那一份", () => {
     expect(arrival.awaitArrival, "主窗口里起的不再等着说「已启动 / 没看到」").not.toHaveBeenCalled();
     setNewSessionPlaceholder(null);
     expect(sent.some((s) => s.op === "terminal-name-mint" || s.op.startsWith("launch-render")), "界面不再自己拼那一串").toBe(false);
+  });
+
+  it("★ 轮换：缺省新会话用的那份（不写进请求）；选「不轮换」⇒ 请求带 `rotation: {strategy: null}`", async () => {
+    replies.set("rotation-strategies", {
+      strategies: [{ id: "按权重轮换", description: "第一行说明\n第二行", rev: "h:1", inUse: [], forNew: true, wordsBad: false, tzUnknown: false }],
+      forNew: "按权重轮换",
+      oldScripts: 0,
+    });
+    const done = openNewSession({ origin: "devbox" });
+    await flush();
+    const sel = document.querySelector<HTMLButtonElement>(`button[aria-label="${copyText("rot.new.label")}"]`)!;
+    expect(sel.textContent).toContain("按权重轮换");
+    sel.click();
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"], [role="option"]')].find((e) => e.textContent?.includes(copyText("rot.none.label")))!.click();
+    createBtn().click();
+    await flush();
+    await done;
+    expect(newRequests()[0].rotation).toEqual({ strategy: null });
+    replies.delete("rotation-strategies");
   });
 
   it("开窗那一形：那台给那一行 ⇒ 开窗跑它，按展开过的目录认报到的会话", async () => {
@@ -358,12 +377,12 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   const top = (): string => dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent ?? "";
 
   it("换一台 ⇒ 目录清空、照新那台重问、重新预填", async () => {
-    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/a", lastMs: 1 }] });
+    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/a", lastMs: 1, lastText: "00:00" }] });
     void openNewSession({ origin: "<local>" });
     await flush();
     const cwd = input(copyText("newSession.label.cwd"));
     cwd.value = "/typed";
-    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1 }] });
+    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1, lastText: "00:00" }] });
     const asked = sent.filter((x) => x.op === "session-new-facts").length;
     choose(sel(copyText("newSession.label.machine")), "devbox");
     await flush();
@@ -402,12 +421,13 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   });
 
   it("换一家 ⇒ 启动命令的占位跟着那一家、号那一行照那一家重列", async () => {
-    replies.set("session-new-facts", { ...FACTS, agents: ["claude", "codex"] });
+    replies.set("session-new-facts", { ...FACTS, agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
     const cmd = input(copyText("newSession.label.command"));
     const before = cmd.placeholder;
-    choose(sel(copyText("newSession.label.agent")), "codex");
+    // 菜单里写那台写好的名字（不是线上的 kind），选中交回的是 kind。
+    choose(sel(copyText("newSession.label.agent")), "Codex");
     await flush();
     expect(sel(copyText("newSession.label.agent")).dataset.value).toBe("codex");
     expect(cmd.placeholder).not.toBe(before);
@@ -526,7 +546,7 @@ describe("分叉：那台说得出源会话的号与终端", () => {
   it("号说得出 ⇒ 预选那个号、没有「跟随」；源会话在终端窗口里 ⇒ 预选终端窗口；那一家照源会话", async () => {
     replies.set("session-new-facts", {
       ...FACTS,
-      agents: ["codex", "claude"],
+      agents: [agentOf("codex"), agentOf("claude")],
       fork: {
         agent: "claude",
         launch: { cwd: { kind: "unknown", why: "exited" }, account: { kind: "known", value: "personal", from: "record" }, terminal: { kind: "known", value: { host: "none" }, from: "record" } },
@@ -543,58 +563,5 @@ describe("分叉：那台说得出源会话的号与终端", () => {
     const acct = sel(copyText("newSession.label.account"));
     expect(acct.dataset.value).toBe("personal");
     expect(optionsOf(acct).some((o) => o.includes(copyText("newSession.account.follow")))).toBe(false);
-  });
-});
-
-describe("起新会话框 · 轮换", () => {
-  const cfg = (id: string, name: string, isDefault: boolean) => ({
-    id,
-    name,
-    isDefault,
-    rev: 1,
-    updatedAt: 0,
-    savedBy: "settings",
-    strategy: "1",
-    strategyName: "S",
-    text: `D-${id}`,
-    inUse: [],
-    accounts: [{ start: true, params: {} }],
-    params: {},
-    acctInit: {},
-    parked: {},
-  });
-  const CONFIGS = { state: "present", reason: null, defaultConfig: "c_daily", configs: [cfg("c_daily", "日常", true), cfg("c_night", "夜间", false)] };
-
-  it("账号下一行「轮换」：各份配置（本机默认那份带「本机默认」，缺省选它）；缺省 ⇒ 请求里不带 rotation", async () => {
-    replies.set("rotation-configs-read", CONFIGS);
-    void openNewSession({ origin: "devbox" });
-    await flush();
-    const b = sel(copyText("newSession.label.rot"));
-    expect(optionsOf(b), "项右侧带后端写好的描述").toEqual([`日常${copyText("rot.cfg.tagDefault")}D-c_daily`, "夜间D-c_night"]);
-    createBtn().click();
-    await flush();
-    expect(newRequests()[0].rotation).toBeUndefined();
-  });
-
-  it("选一份配置起 ⇒ 交那台的请求里带 rotation {config}（那台起之前先定 sid、写成打开那一份）；界面自己不发 rotation-session-open", async () => {
-    replies.set("rotation-configs-read", CONFIGS);
-    replies.set("session-new", { ...OK, sid: "dddddddd-1111-4222-8333-444444444444" });
-    const slot = vi.fn();
-    setNewSessionPlaceholder(slot);
-    void openNewSession({ origin: "devbox" });
-    await flush();
-    choose(sel(copyText("newSession.label.rot")), "夜间");
-    createBtn().click();
-    await flush();
-    expect(newRequests()[0].rotation).toEqual({ config: "c_night" });
-    expect(sent.some((s) => s.op === "rotation-session-open")).toBe(false);
-    expect(slot.mock.calls[0][0].match, "报到按那台定好的 sid 认").toEqual({ sid: "dddddddd-1111-4222-8333-444444444444" });
-    setNewSessionPlaceholder(null);
-  });
-
-  it("那台读不出配置表 ⇒ 没有这一行（起会话照旧）", async () => {
-    void openNewSession({ origin: "devbox" });
-    await flush();
-    expect(rowOf(sel(copyText("newSession.label.rot"))).hidden).toBe(true);
   });
 });

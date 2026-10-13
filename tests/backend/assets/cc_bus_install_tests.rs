@@ -3,6 +3,19 @@
 use super::*;
 use crate::stream::inbound::LocalFiles;
 
+/// 回包按 JSON 比（同帧面那一跳）。
+fn state_at(skills: &Path) -> Value {
+    serde_json::to_value(super::state_at(skills)).unwrap()
+}
+
+fn install_at(
+    d: &dyn Door,
+    skills: &Path,
+    record: Record,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    super::install_at(d, skills, record).map(|t| serde_json::to_value(t).unwrap())
+}
+
 struct TmpDir(PathBuf);
 impl Drop for TmpDir {
     fn drop(&mut self) {

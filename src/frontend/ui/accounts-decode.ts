@@ -59,6 +59,7 @@ export function decodeAccountsList(v: unknown): {
       !isObj(a) ||
       !exactKeys(a, [
         "name",
+        "label",
         "email",
         "configDir",
         "isDefault",
@@ -74,6 +75,7 @@ export function decodeAccountsList(v: unknown): {
         "color",
       ]) ||
       typeof a.name !== "string" ||
+      typeof a.label !== "string" ||
       typeof a.email !== "string" ||
       !nullableStr(a.configDir) ||
       typeof a.isDefault !== "boolean" ||

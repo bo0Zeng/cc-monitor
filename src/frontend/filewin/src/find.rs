@@ -87,45 +87,6 @@ fn rebuild_timeout() -> Duration {
 /// 一屏要几条（`files-find` 的 `limit`）。
 pub const PAGE: usize = 100;
 
-/// `files-find` 出方向的字段名。**唯一住址**，判据按它对拍
-/// `src/doc/IPC-PROTOCOL.md §10` 那张表（两侧不同源）。
-pub const FIND_FIELDS: &[&str] = &[
-    "hits",
-    "total_hits",
-    "truncated",
-    "scanned",
-    "index_age_secs",
-    "index_missing",
-    "stale",
-    "index_root",
-    "out_of_index",
-    "cover_root",
-    "seq",
-    "offset",
-    "start",
-    "sort",
-    "desc",
-];
-
-/// `files-index-status` 出方向的字段名。同上。
-pub const STATUS_FIELDS: &[&str] = &[
-    "index_missing",
-    "entries",
-    "resident_bytes",
-    "unreadable_dirs",
-    "truncated",
-    "age_secs",
-    "rewalk_interval_secs",
-    "stale",
-    "browse_watches",
-    "browse_watch_cap",
-    "cold_first_build_secs",
-    // 后端没走进去的挂载点个数。
-    "skipped_mounts",
-    // 读不进去的那几个目录（前 20 个）。
-    "unreadable_paths",
-];
-
 /// 一条命中。**持有原始字节，不持有字符串** —— 有损解码之后拿着替换字符回去找，找的是一个不存在的名字；
 /// 只在画到屏幕上那一刻才有损地转成人话（[`Self::display`]），有损与否分得开（[`Self::lossy`]）。
 #[derive(Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -220,7 +181,7 @@ impl FindOutcome {
     }
 }
 
-/// 一趟 `files-index-status` 的答案。字段与 [`STATUS_FIELDS`] 一一对应。
+/// 一趟 `files-index-status` 的答案（从回包类型 `cmd_wire::files::IndexStatusReply` 摊过来）。
 ///
 /// 🔴 **这里的每一个数都是后端报的。** 本结构体不派生、不换算、不补默认值 ——
 /// 缺字段就是解析失败（见 [`decode_status`]），不是悄悄当 0。
@@ -248,157 +209,68 @@ pub struct IndexStatus {
     pub unreadable_paths: Vec<Vec<u8>>,
 }
 
-fn field(d: &Value, k: &str) -> Result<Value, String> {
-    d.get(k)
-        .cloned()
-        .ok_or_else(|| copy_text("rsFilewinFind.reply.missingField", &[("k", &k.to_string())]))
-}
-
-fn need_u64(d: &Value, k: &str) -> Result<u64, String> {
-    field(d, k)?
-        .as_u64()
-        .ok_or_else(|| copy_text("rsFilewinFind.reply.notU64", &[("k", &k.to_string())]))
-}
-
-fn need_bool(d: &Value, k: &str) -> Result<bool, String> {
-    field(d, k)?
-        .as_bool()
-        .ok_or_else(|| copy_text("rsFilewinFind.reply.notBool", &[("k", &k.to_string())]))
-}
-
-/// 十六进制（大小写都认）→ 字节。奇数长度 / 非十六进制字符 ⇒ `None`。
-///
-/// 🔴 **不许在这里「尽力而为」**：猜错一个字节就是指到另一个文件
-/// （同 `src/backend/common/path_wire.rs::from_json` 的头注那一条）。
-fn from_hex(s: &str) -> Option<Vec<u8>> {
-    let b = s.as_bytes();
-    if !b.len().is_multiple_of(2) {
-        return None;
-    }
-    let nib = |c: u8| -> Option<u8> {
-        match c {
-            b'0'..=b'9' => Some(c - b'0'),
-            b'a'..=b'f' => Some(c - b'a' + 10),
-            b'A'..=b'F' => Some(c - b'A' + 10),
-            _ => None,
-        }
-    };
-    let mut out = Vec::with_capacity(b.len() / 2);
-    let mut i = 0usize;
-    while i < b.len() {
-        out.push((nib(b[i])? << 4) | nib(b[i + 1])?);
-        i += 2;
-    }
-    Some(out)
-}
-
-/// 线上那两种路径形状 → 原始字节。`None` = 形状不对。
+/// 线上那两种路径形状 → 原始字节。`None` = 形状不对（同 `cmd_wire::files::WirePath` 那一份解法）。
 pub fn decode_path(v: &Value) -> Option<Vec<u8>> {
-    match v {
-        Value::String(s) => Some(s.as_bytes().to_vec()),
-        Value::Object(m) => match m.get(HEX_KEY)? {
-            Value::String(h) => from_hex(h),
-            _ => None,
-        },
-        _ => None,
-    }
+    serde_json::from_value::<cmd_wire::files::WirePath>(v.clone())
+        .ok()
+        .map(|p| p.0)
 }
 
-/// 可以是 `null` 的路径字段。
-fn opt_path(d: &Value, k: &str) -> Result<Option<Vec<u8>>, String> {
-    match field(d, k)? {
-        Value::Null => Ok(None),
-        v => decode_path(&v)
-            .map(Some)
-            .ok_or_else(|| copy_text("rsFilewinFind.reply.badPath", &[("k", &k.to_string())])),
-    }
-}
-
-/// `files-find` 的 `data` → [`FindOutcome`]。
+/// `files-find` 的 `data` → [`FindOutcome`]（按回包类型解，解不出一处 ⇒ 整趟失败）。
 pub fn decode_find(d: &Value) -> Result<FindOutcome, String> {
-    let raw = field(d, "hits")?;
-    let arr = raw
-        .as_array()
-        .ok_or_else(|| copy_text("rsFilewinFind.hits.notArray", &[]))?;
-    let mut hits = Vec::with_capacity(arr.len());
-    for (i, one) in arr.iter().enumerate() {
-        let bad = || copy_text("rsFilewinFind.decodeFind.badHit", &[("i", &i.to_string())]);
-        let path = one.get("path").and_then(decode_path).ok_or_else(bad)?;
-        let kind = one.get("kind").and_then(Value::as_str).ok_or_else(bad)?;
-        let location = match one.get("location") {
-            None | Some(Value::Null) => Vec::new(),
-            Some(v) => decode_path(v).ok_or_else(bad)?,
-        };
-        let marks = one
-            .get("marks")
-            .and_then(Value::as_array)
-            .map(|a| {
-                a.iter()
-                    .filter_map(|m| {
-                        let m = m.as_array()?;
-                        Some((m.first()?.as_u64()? as usize, m.get(1)?.as_u64()? as usize))
-                    })
-                    .collect()
-            })
-            .unwrap_or_default();
-        hits.push(Hit {
-            path,
-            dir: kind == "dir",
-            link: kind == "symlink",
-            location,
-            size: one.get("size").and_then(Value::as_u64),
-            mtime_text: one
-                .get("mtime_text")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            marks,
-        });
-    }
+    use cmd_wire::files::FileKind;
+    let d = super::source::reply_of::<cmd_wire::files::FindReq>(d.clone())
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
     Ok(FindOutcome {
-        hits,
-        total_hits: need_u64(d, "total_hits")? as usize,
-        truncated: need_bool(d, "truncated")?,
-        scanned: need_u64(d, "scanned")? as usize,
-        index_age_secs: need_u64(d, "index_age_secs")?,
-        index_missing: need_bool(d, "index_missing")?,
-        stale: need_bool(d, "stale")?,
-        index_root: opt_path(d, "index_root")?,
-        out_of_index: need_bool(d, "out_of_index")?,
-        cover_root: opt_path(d, "cover_root")?,
-        offset: need_u64(d, "offset")? as usize,
-        start: match d.get("start") {
-            None => None,
-            Some(_) => opt_path(d, "start")?,
-        },
+        hits: d
+            .hits
+            .into_iter()
+            .map(|h| Hit {
+                path: h.path.0,
+                dir: h.kind == FileKind::Dir,
+                link: h.kind == FileKind::Symlink,
+                location: h.location.0,
+                size: h.size,
+                mtime_text: h.mtime_text,
+                marks: h
+                    .marks
+                    .iter()
+                    .map(|[a, b]| (*a as usize, *b as usize))
+                    .collect(),
+            })
+            .collect(),
+        total_hits: d.total_hits as usize,
+        truncated: d.truncated,
+        scanned: d.scanned as usize,
+        index_age_secs: d.index_age_secs,
+        index_missing: d.index_missing,
+        stale: d.stale,
+        index_root: d.index_root.map(|p| p.0),
+        out_of_index: d.out_of_index,
+        cover_root: d.cover_root.map(|p| p.0),
+        offset: d.offset as usize,
+        start: d.start.map(|p| p.0),
     })
 }
 
-/// `files-index-status` 的 `data` → [`IndexStatus`]。
+/// `files-index-status` 的 `data` → [`IndexStatus`]（按回包类型解：缺一格就是解不出，不悄悄当 0）。
 pub fn decode_status(d: &Value) -> Result<IndexStatus, String> {
+    let d = super::source::reply_of::<cmd_wire::files::IndexStatusReq>(d.clone())
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
     Ok(IndexStatus {
-        index_missing: need_bool(d, "index_missing")?,
-        entries: need_u64(d, "entries")?,
-        resident_bytes: need_u64(d, "resident_bytes")?,
-        unreadable_dirs: need_u64(d, "unreadable_dirs")?,
-        truncated: need_bool(d, "truncated")?,
-        age_secs: need_u64(d, "age_secs")?,
-        rewalk_interval_secs: need_u64(d, "rewalk_interval_secs")?,
-        stale: need_bool(d, "stale")?,
-        browse_watches: need_u64(d, "browse_watches")?,
-        browse_watch_cap: need_u64(d, "browse_watch_cap")?,
-        cold_first_build_secs: need_u64(d, "cold_first_build_secs")?,
-        skipped_mounts: need_u64(d, "skipped_mounts")?,
-        unreadable_paths: field(d, "unreadable_paths")?
-            .as_array()
-            .ok_or_else(|| {
-                copy_text(
-                    "rsFilewinFind.reply.missingField",
-                    &[("k", &"unreadable_paths".to_string())],
-                )
-            })?
-            .iter()
-            .filter_map(decode_path)
-            .collect(),
+        index_missing: d.index_missing,
+        entries: d.entries,
+        resident_bytes: d.resident_bytes,
+        unreadable_dirs: d.unreadable_dirs,
+        truncated: d.truncated,
+        age_secs: d.age_secs,
+        rewalk_interval_secs: d.rewalk_interval_secs,
+        stale: d.stale,
+        browse_watches: d.browse_watches,
+        browse_watch_cap: d.browse_watch_cap,
+        cold_first_build_secs: d.cold_first_build_secs,
+        skipped_mounts: d.skipped_mounts,
+        unreadable_paths: d.unreadable_paths.into_iter().map(|p| p.0).collect(),
     })
 }
 
@@ -418,13 +290,15 @@ pub enum SortCol {
 }
 
 impl SortCol {
-    pub fn wire(self) -> &'static str {
+    /// 线上那个词（两端共用的那份类型）。
+    pub fn wire(self) -> cmd_wire::files::FindSort {
+        use cmd_wire::files::FindSort as W;
         match self {
-            Self::Relevance => "relevance",
-            Self::Name => "name",
-            Self::Location => "location",
-            Self::Mtime => "mtime",
-            Self::Size => "size",
+            Self::Relevance => W::Relevance,
+            Self::Name => W::Name,
+            Self::Location => W::Location,
+            Self::Mtime => W::Mtime,
+            Self::Size => W::Size,
         }
     }
 }
@@ -482,35 +356,42 @@ pub struct Asked {
 
 /// `files-find` 的 `args`：原样的搜索词 ＋ 号 ＋ 搜索框名 ＋ 范围 ＋ 排序 ＋ 这一屏从哪起。
 pub fn find_args(asked: &Asked, seq: u64, stream: &str, offset: usize) -> Value {
-    let mut v = serde_json::json!({
-        "query": asked.query,
-        "seq": seq,
-        "stream": stream,
-        "offset": offset,
-        "limit": PAGE,
-        "sort": asked.sort.col.wire(),
-        "desc": asked.sort.desc,
-    });
-    if asked.machine {
-        v["scope"] = Value::String("machine".into());
-    } else if let Some(u) = &asked.under {
-        v["under"] = u.wire();
-    }
-    v
+    use cmd_wire::files::{FindReq, FindScope, WirePath};
+    to_args(&FindReq {
+        query: asked.query.clone(),
+        under: (!asked.machine)
+            .then(|| asked.under.as_ref().map(|u| WirePath(u.bytes())))
+            .flatten(),
+        scope: asked.machine.then_some(FindScope::Machine),
+        seq: Some(seq),
+        stream: Some(stream.to_string()),
+        offset: Some(offset as u64),
+        limit: Some(PAGE as u64),
+        sort: Some(asked.sort.col.wire()),
+        desc: Some(asked.sort.desc),
+    })
 }
 
 /// `files-index-rebuild` 的 `args`：后端给的那个根；没给 ⇒ 不带（后端走家目录）。
 pub fn rebuild_args_at(root: Option<&[u8]>) -> Value {
-    match root {
-        Some(b) => serde_json::json!({ "path": super::source::wire_bytes(b) }),
-        None => serde_json::json!({}),
-    }
+    to_args(&cmd_wire::files::RebuildReq {
+        path: root.map(|b| cmd_wire::files::WirePath(b.to_vec())),
+    })
 }
 
 /// `files-browse` 的 `args` —— **此刻的整份名单**（后端自己算差分）。
 pub fn browse_args_at(dirs: &[super::source::RemotePath]) -> Value {
-    let v: Vec<Value> = dirs.iter().map(super::source::RemotePath::wire).collect();
-    serde_json::json!({ "dirs": v })
+    to_args(&cmd_wire::files::BrowseReq {
+        dirs: dirs
+            .iter()
+            .map(|d| cmd_wire::files::WirePath(d.bytes()))
+            .collect(),
+    })
+}
+
+/// 一份入参照它的线上类型摊成 JSON（这几样序列化不会失败）。
+fn to_args<C: cmd_wire::files::Call>(req: &C) -> Value {
+    serde_json::to_value(req).unwrap_or(Value::Null)
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1121,7 +1002,7 @@ async fn ask_status(line: &Line, origin: &Origin) -> Result<IndexStatus, String>
         line,
         origin,
         CMD_INDEX_STATUS,
-        serde_json::json!({}),
+        to_args(&cmd_wire::files::IndexStatusReq {}),
         call_timeout(),
     )
     .await?;

@@ -236,9 +236,9 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 
 **会走的钟**：核心写的时刻字是发出那一刻的字。手机与 CLI 要它跟着走就按节拍重问（出口零格式化）；桌面秒级走的那几处（过程行 `{dur}` · 「已等」）只留一个时长读口（TS `duration-format.ts::fmtDur`，与 Rust `copy_core::short_duration` 对同一份金样 `short-duration.golden.json`）。
 
-#### 格目录 `cells-catalog`
+#### 格目录
 
-只读帧命令 `cells-catalog`（本体 `faces/cells_catalog.rs`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口据它就知道有没有那一格，不必读核心代码。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以命令本身的输出与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_removed` 只冻手机读的那几格）不删、不改名、不换类型。
+格目录（本体 `faces/cells_catalog.rs`，落盘一份金样 `tests/__fixtures__/cells-catalog.golden.json`）列出每件成品有哪些格（路径 · `value` / `text` / `tone` · 类型），出口照金样就知道有没有那一格，不必读核心代码；`view` 投影按它认成品名与路径。它不是帧命令（原先那条没有调用方，第 8 批删了），整份目录只在测试档现算。目录不手写：每件成品登记一组用自己的 Rust 类型造的样本，经同一份 `Serialize` 走查出格路径。哪些成品已登记、格的路径写法、`pending`（判了要补、还没落地的格）与冻结规则，以金样与 `tests/backend/faces/cells_catalog_tests.rs` 的头注为准；冻结的格（每格带 `frozen`：`record` · `read_row` 整件，会话三帧 `session_added` · `session_status` · `session_removed` 只冻手机读的那几格）不删、不改名、不换类型。
 
 #### 出口怎么挑格：请求信封里的声明
 
@@ -269,7 +269,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 记录解释（一行 → 通用记录） | `agents/<家>/`，Claude 的链与主线在 `agents/claudecode/` · `agents/mainline.rs` |
 | 划段（一轮里哪几条收进「过程」） | `observe/turns.rs` |
 | 子运行（子 agent）表 | `observe/runs.rs`，帧 `session_runs` |
-| 帧定义与发帧 | `stream/wire.rs` · `stream/tap.rs` · 主题表 `stream/topic.rs` |
+| 帧定义与发帧 | `stream/wire.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `stream/topic.rs` |
 | 收口 · 重放 · 就绪点 | 壳 `stream_source/` · `event_replay.rs` · `session_book.rs` · `stream_watch.rs` |
 | 排版 | 界面 `events.ts` → `tabs.ts` → `render-stream-record.ts` → `cards/` |
 | 手机 | `core-claude` 的 `link/`（常驻流客户端 · 帧解码）→ `app` 的聊天屏 |
@@ -295,15 +295,19 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 块 | 住址 | 做什么 |
 |---|---|---|
 | 额度账 | `accounts/quota/ledger.rs`（`~/.cc-monitor/quota.json`） | 每号每窗口的用量、重置时刻、被拒 · 超额。两个来源：中转经手的回包头（读法在适配层 `agents::quota_read_of`）· `quota-probe` 起官方客户端报的用量（`agents::usage_of`） |
-| 轮换存储 | `accounts/quota/rotation.rs`（`~/.cc-monitor/rotation.json`） | 每台一张规则表：一条规则 ＝ 一份有名字的轮换（顺序 · 勾了哪几个 · 换号时机 · 封顶与时段 · 换法 · 最多等几分钟）；本机默认指向其中一条。每个会话按会话 id 存：此刻按哪份走、钉在哪个号、换号记录 |
-| 判 | `accounts/quota/decide.rs` | 「换不换、换谁」唯一一处 |
-| 换 | `accounts/upstream_select/rotate.rs` | 在中转那一发里问轮换、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、钉号、记一条。不重启进程；要重启换就走 `session-restart` |
+| 轮换存储 | `accounts/quota/rotation.rs`（`~/.cc-monitor/rotation.json` 第三版）· `accounts/quota/rules/shelf.rs`（`~/.cc-monitor/strategies/`） | 每个会话按会话 id 存：用哪份策略（空 ⇒ 不轮换）· 改过的设置 · 拖出来的顺序 · 策略约的叫醒 · 换号记录；新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
+| 事实 | `accounts/quota/facts.rs`（拼装在 `upstream_select/rotate.rs` 的 `Hop::facts`） | 每个号的用量 · 重置 · 用速 · 被拒 · 超额 · 登录；只读额度账 ＋ 账号库 ＋ 登录，换一份策略不变 |
+| 节点 | `accounts/quota/nodes.rs` | 事实或设置变了的那一刻（读数 · 被拒 · 续期失败 · `quota.json` · 账号库 · 策略目录 · 会话那一条）；全进程一条通道，判的缓存与推送只订它。重置这类已知时刻不走它，判的那一侧记成下一个节点时刻 |
+| 判 | `accounts/quota/rules/decide.rs`（`turn`，纯函数）· `rules/standing.rs` · 策略文件里的 `decide(ctx)` · 积木库 `src/shared/rotation/lib.rhai` | 「换不换、换谁」全在策略里；后端只照策略交的先后取第一个事实上发得出去的号（`standing`）、停发、兜底 |
+| 推演 | `accounts/quota/rules/simulate.rs` | 离散事件推演，每个事件点调的是同一个 `turn`；每号照自己量出来的用速涨，量不到不编数 |
+| 策略文件 | `accounts/quota/rules/shelf.rs`（目录）· `rules/script.rs`（JSON 头 ＋ Rhai 代码）· 沙箱 `accounts/quota/strategy/` | 一份策略一个 `.rhai`，文件名即 id；没有随包策略；第三版的旧脚本升级时挪进 `strategies/v3/`、不加载 |
+| 换 | `accounts/upstream_select/turn.rs` · `rotate.rs` | 中转那一发里只在节点上判（结论缓存到下一个节点）、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、记一条。不重启进程；要重启换就走 `session-restart` |
 | 血缘 | `src/backend/lineage.rs`（`~/.cc-monitor/lineage.json`） | 谁起的谁，只在中转那一路认 |
-| 帧面 | `faces/rotation_face.rs` · `faces/rotation_switch_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（规则读写 · 推演 `rotation-plan` · 会话读写 · 现在就换）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
+| 帧面 | `faces/rotation_face.rs` · `faces/rotation_view_face.rs` · `faces/rotation_edit_face.rs` · `faces/rotation_try_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（策略目录 · 一个会话或一份策略的四块 `rotation-view` · 设置 · 拖出来的顺序 · 现在用 · 试跑）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
 
 谁调谁：agent → 中转 → 上游选择（问轮换、拿令牌）→ 上游；回包头 → 额度账；界面 / 手机 / skill 经 `quota-read` · `rotation-*` 读写，不自己判。
 
-**去向**：账号轮换要换成「引擎 ＋ 策略 ＋ 有名字的配置」三层。引擎只留事实（被拒 · 用满 · 超额在兜 · 登录 · 消耗速度）和机制（叠上手动调整后挑能用的最高优先级 · 热换 · 推演 · 存策略的备忘）；策略是加载的 Rhai 沙箱脚本，只算每号的优先级，共用引擎给的 `lib::` 帮手库，内置的只是随包带的几份文件；界面上能调的都是策略的参数，表单照策略的声明生成。配置有名字，会话打开的是它的一份副本，改了可以保存 / 另存为 / 还原。
+**去向**：后端已是第五版的分层（上表：事实 · 节点 · 判 · 推演 · 策略文件 · `rotation.json` 第三版，第一版 / 第二版读到时一次升到第三版写回、原文留 `.v1` / `.v2`）。还没进主线的是界面那一刀：设置页与会话面板照第五版的 `rotation-*` 命令读写。
 
 ### 3.4 文件
 
@@ -434,7 +438,7 @@ monitor 起子进程一律经 `spawn_managed.rs`，三个策略都是必填参�
 
 ### 账号：隔离又同步
 
-一个账号 ＝ 一个 `CLAUDE_CONFIG_DIR`：各自一份登录凭据，两个号可以同时跑、互不踢；skill、记忆、历史、设置经符号链接共享同一份（由后端 `accounts/manage/` 建立和维护）。用户级 MCP 的定义与 MCP 登录在各号之间同步（同一个开关）：定义走三方对照（`mcp_share`）；登录（各号凭据文件里 `mcpOAuth` 那一节）任一号一登录或一续期就把最新那一份写进所有号、在一个号里退出则全部撤（`mcp_logins`），写经订阅号凭据的窄句柄、在那一家续这一条的锁与整份写锁里重读比对、只换那一条（`oauth/store::rewrite`，续期写回也只经它；续期写回碰上那一家正在存盘 ⇒ 新令牌先在内存里照用，写锁放开的文件事件来了再写回，有总期限，`oauth/writeback`）。账号分订阅号与 API 号；API 号的 key 只留在它所在的那台机器，经那台的中转注入，不进命令行、不进环境变量。界面只交意图：建库 · 添加 · 删除 · 设默认 · 修复 · 回滚由后端执行，每次改动前先备份；订阅号的登录走真实终端窗口，由 agent 自己完成。
+一个账号 ＝ 一个 `CLAUDE_CONFIG_DIR`：各自一份登录凭据，两个号可以同时跑、互不踢；skill、记忆、历史、设置经符号链接共享同一份（由后端 `accounts/manage/` 建立和维护）。用户级 MCP 的定义与 MCP 登录在各号之间同步（同一个开关）：定义走三方对照（`mcp_share`）；登录（各号凭据文件里 `mcpOAuth` 那一节）任一号一登录或一续期就把最新那一份写进所有号、在一个号里退出则全部撤（`mcp_logins`），写经订阅号凭据的窄句柄、在那一家续这一条的锁与整份写锁里重读比对、只换那一条（`oauth/store::rewrite`，续期写回也只经它；续期写回碰上那一家正在存盘 ⇒ 新令牌先在内存里照用，写锁放开的文件事件来了再写回，有总期限，`oauth/writeback`）。账号分订阅号与 API 号；API 号的 key 只留在它所在的那台机器，经那台的中转注入，不进命令行、不进环境变量。界面只交意图：建库 · 添加 · 删除 · 设默认 · 修复 · 回滚由后端执行，每次改动前先备份；在 app 里登录（一个订阅号 · 一个号里的一个 MCP 服务器，`accounts/sign_in.rs`）：后端在后台起那一家的官方登录子命令（MCP 那一种要终端，起在伪终端里，`platform/child.rs`），只把登录链接交给界面、把粘回来的码或回跳地址写进它的 stdin，令牌由 agent 自己换、自己写；在一个号里登了 MCP，经上面那条同步到所有号。终端窗口只留在「⋯」里当逃生口。
 
 换号重启直接结束旧会话再 resume 同一个 sid；compact 失败不阻断，kill 失败必须中止——绝不在旧进程还活着时续 resume，否则新旧两个进程抢同一份会话。选不了原账号时不静默换号，拒绝并给出「用当前账号」的显式选择。不重启的换号在中转那一发里换凭据（§3.3），进程不知道。
 
@@ -476,7 +480,7 @@ UI Automation 在那个窗口的标签页里找名字带记号的那个、选中
 - **按系统前台窗口切 tab**：Windows Terminal 一个进程多个窗口、多个 tab，前台窗口只拿得到 WT 主进程的把手，分不出是哪个 tab。改为看 jsonl：用户在 claude 里敲回车，claude 写一行 `type=user`，monitor 切到那个 tab（INVARIANTS §20）。
 - **子运行的记录走主会话的行**：子运行（子 agent）的记录数量大，全量推会把重放缓冲撑大数倍、还会混进主时间线。那台后端照样盯着它们
   （与主记录同一条文件事件管线），只出成品：运行表帧 `session_runs`（列在 agent 面板里，不进主 tab 的消息流）；点面板那一行 / 派出它的那张卡的卡头
-  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位（`tap` 帧带 `run`），子运行的流不上主 tab 的活卡。
+  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位、拼成活卡（`live` 帧带 `run`，`stream/live.rs`），子运行的卡不上主 tab。
 - **从 agent 的祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，agent 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。本机改为点 ↗ 那一刻沿 agent 进程往上，每一级问它的控制台显示在哪个窗口（Windows）。远端会话从此刻连着它的终端出发：那台读出那个终端的 `SSH_CONNECTION`（在 tmux 里就问 tmux 此刻哪些客户端连着），本机后端按这四元组在连接表里找到这台电脑上开着那条连接的进程，往上数父进程到 `explorer.exe` 为止，monitor 沿链每一级先问它的控制台显示在哪个窗口，再取第一个有可见窗口的进程。链从连接的拥有者起、不从 agent 起；找不到就照实说原因（在 tmux 后台没人连着 · 不在这台电脑上 · 经跳板或端口转换对不上 · 没有窗口或不止一个）。
 - **换掉 webview**：这个 app 的核心是渲染会话记录（Markdown · 代码高亮 · LaTeX · 可折叠工具卡 · 流式追加 · 上万条记录的虚拟化），正是 HTML 最擅长、原生 GUI 工具箱最不擅长的那一类。文件窗口不渲染会话记录，所以它是原生（egui）的。
 

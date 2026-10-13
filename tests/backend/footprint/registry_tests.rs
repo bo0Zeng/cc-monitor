@@ -1652,7 +1652,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "cc_bus_install.rs::answer_install",
-                definition: "pub(crate) fn answer_install(d: &dyn Door, record: Record) -> Answer {",
+                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    record: Record,\n) -> Result<CcBusInstalled, crate::stream::inbound::spec::Fail> {",
             }),
             uninstall: None,
         },
@@ -1686,14 +1686,14 @@ fn claims() -> Vec<Claim> {
                 addr: "assets/mcp_edit.rs",
                 text: MCP,
             }),
+            // 原文怎么变只有这两样纯函数：装（`mcp-sync-apply`）与卸（`ext-uninstall-apply`）都经它们算新原文。
             install: Some(ImplSite {
-                addr: "assets/mcp_edit.rs::answer_put",
-                // 从 monitor 那条 Tauri 命令搬进那台后端的帧命令 `mcp-server-put`。
-                definition: "pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {",
+                addr: "assets/mcp_edit.rs::upsert_mcp_server_value",
+                definition: "pub(crate) fn upsert_mcp_server_value(\n    root: &mut Value,\n    name: String,\n    server: Value,\n) -> Result<(), String> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "assets/mcp_edit.rs::answer_remove",
-                definition: "pub(crate) fn answer_remove(d: &dyn Door, args: &Value) -> Answer {",
+                addr: "assets/mcp_edit.rs::remove_mcp_server_value",
+                definition: "pub(crate) fn remove_mcp_server_value(root: &mut Value, name: &str) -> Result<bool, String> {",
             }),
         },
         // 资产目录里「装到这台」的 skill；卸只删装记录里那几个文件。
@@ -1706,7 +1706,7 @@ fn claims() -> Vec<Claim> {
             }),
             install: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_install",
-                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    args: &Value,\n) -> Answer {",
+                definition: "pub(crate) fn answer_install(\n    d: &dyn Door,\n    facts: &dyn Facts,\n    root: Option<&std::path::Path>,\n    record: Record,\n    req: &SkillApplyReq,\n) -> Result<SkillApplied, crate::stream::inbound::spec::Fail> {",
             }),
             uninstall: Some(ImplSite {
                 addr: "assets/skill_flow.rs::answer_uninstall",

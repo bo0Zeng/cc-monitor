@@ -62,11 +62,8 @@ class TerminalsTest {
                 "account" to mapOf("kind" to "base"),
                 "ccmSid" to null,
                 "model" to null,
-                "models" to emptyMap<String, String>(),
-                "launcher" to "claude",
-                "defaultLauncher" to "claude",
             ),
-            AttachLine.args(agent = "claude", defaultLauncher = "claude", name = "demo-cc"),
+            AttachLine.args(agent = "claude", name = "demo-cc"),
         )
         assertEquals("ccm -- --attach 'demo-cc'", AttachLine.of(mapOf("cmd" to "ccm -- --attach 'demo-cc'", "account" to null)))
         assertNull(AttachLine.of(mapOf("account" to null)))

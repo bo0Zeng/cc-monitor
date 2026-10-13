@@ -2917,6 +2917,58 @@ fn the_notify_arm_asks_once_per_batch_before_the_per_event_loop() {
     assert!(ask < emit && emit < per_event, "问与发要排在逐条处理之前");
 }
 
+/// 各号记「MCP 要登录」的那份文件（那一家的家目录 · 账号库里各号的目录，直接子项）出现 · 变了 · 删了 ⇒ 认；
+/// 别的文件 · 更深一层 · 账号库外面同名的 ⇒ 不认。
+#[test]
+fn a_needs_login_cache_in_an_account_dir_or_the_agent_home_is_recognised() {
+    let accts = Path::new("/h/.cc-monitor/accounts");
+    let home = Path::new("/h/.claude");
+    let files = ["mcp-needs-auth-cache.json"];
+    let hit = |p: &str| needs_login_touched([Path::new(p)].into_iter(), Some(accts), home, &files);
+    assert!(hit(
+        "/h/.cc-monitor/accounts/work/mcp-needs-auth-cache.json"
+    ));
+    assert!(hit("/h/.claude/mcp-needs-auth-cache.json"));
+    assert!(!hit("/h/.cc-monitor/accounts/work/.credentials.json"));
+    assert!(!hit(
+        "/h/.cc-monitor/accounts/work/deep/mcp-needs-auth-cache.json"
+    ));
+    assert!(!hit("/h/elsewhere/mcp-needs-auth-cache.json"));
+    assert!(!hit("/h/.cc-monitor/accounts/mcp-needs-auth-cache.json"));
+    assert!(!needs_login_touched(
+        [Path::new("/h/.claude/mcp-needs-auth-cache.json")].into_iter(),
+        Some(accts),
+        home,
+        &[]
+    ));
+}
+
+/// 接线：`Notify` 那一臂里**恰好一处**问 `needs_login_touched`、真了敲需手动的铃（推 `changed {manual}`），
+/// 排在逐条处理事件的 `for` 之前（同 `manifest_touched` 那一条的理由）。
+#[test]
+fn the_notify_arm_rings_the_manual_bell_when_a_needs_login_cache_turns() {
+    let src = include_str!("../../../src/backend/observe/watcher.rs");
+    let prod = crate::guard_support::production_code(src);
+    let ask = guard_core::find_pinned(&prod, "if needs_login_touched(")
+        .expect("Notify 那一臂里不是恰好一处问 needs_login_touched");
+    let ring = prod[ask..]
+        .find("crate::accounts::sign_in::ring_manual();")
+        .map(|k| ask + k)
+        .expect("问完之后没有敲需手动的铃");
+    let next_if = prod[ask + 3..]
+        .find("\n                if ")
+        .map(|k| ask + 3 + k)
+        .unwrap_or(usize::MAX);
+    let per_event = prod[ask..]
+        .find("for ev in events {")
+        .map(|k| ask + k)
+        .expect("问完之后没有逐条处理事件的 for —— 结构变了");
+    assert!(
+        ring < next_if && ring < per_event,
+        "敲铃要紧跟着问、排在逐条处理之前"
+    );
+}
+
 /// 一个 tmux 会话里两个窗格各跑一个 claude：各自的标签打在各自的窗格上，对账一轮就稳 —— 之后每一轮一次都不写。
 /// 标签若还是会话级单值，两个 claude 每一轮都把对方改回来，而每次「真写了」都会再起一次探测（探测 ↔ 打标死循环）。
 ///
@@ -4220,7 +4272,7 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
 /// 接在主线末梢上的新行 ⇒ 清单没变、不发。
 #[cfg(target_os = "linux")]
 #[test]
-fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
+fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-branch-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-b");
@@ -4255,13 +4307,13 @@ fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut branches = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { sid, path, off } = f {
+        if let Frame::SessionBranch { sid, path, at, off } = f {
             assert_eq!(sid, "br-sid");
             assert_eq!(path, jsonl.to_string_lossy());
-            branches.push(off);
+            branches.push((at, off));
         }
     }
-    assert_eq!(branches, [vec!["u2".to_string()]]);
+    assert_eq!(branches, [(0, vec!["u2".to_string()])]);
     // 接在主线末梢上 ⇒ 不发。
     body += &line("a3", "u3", "t5", "assistant");
     std::fs::write(&jsonl, &body).unwrap();
@@ -4273,19 +4325,17 @@ fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
         }
     }
     assert!(got.is_empty(), "清单没变不该发：{got:?}");
-    // 在 a1 之后再回退重发 ⇒ 整份再发一次。
+    // 在 a1 之后再回退重发 ⇒ 只发变了的那一截（8a b）：前 1 条（u2）照旧，其后是 u3 · a3。
     body += &line("u4", "a1", "t6", "user");
     std::fs::write(&jsonl, &body).unwrap();
     process_jsonl(&jsonl, &mut state, &mut sink);
+    let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { off, .. } = f {
-            got.push(off);
+        if let Frame::SessionBranch { at, off, .. } = f {
+            got.push((at, off));
         }
     }
-    assert_eq!(
-        got,
-        [vec!["u2".to_string(), "u3".to_string(), "a3".to_string()]]
-    );
+    assert_eq!(got, [(1, vec!["u3".to_string(), "a3".to_string()])]);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -4473,4 +4523,79 @@ fn queued_lines_without_forks_do_not_walk_the_chain() {
         "{n} 条、{} 行排队、没有分叉，链索引整条走了 {walked} 格 —— 排队那一问在逐格数主线",
         n / 2
     );
+}
+
+/// 8a b：`session_branch` 只发变了的那一截 ⇒ 一条连接丢过它一帧，手上的清单就对不上；下一次变的时候它拿整份（`at = 0`）。
+#[test]
+fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let mut sink = FrameSink::new(tx);
+    let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let branches = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
+        let mut v = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionBranch { at, off, .. } = f {
+                v.push((at, off));
+            }
+        }
+        v
+    };
+    sink.branch("s", "/p/s.jsonl", &ids(&["a"]), 0);
+    assert_eq!(branches(&mut rx), [(0, ids(&["a"]))]);
+    // 通道挤满 ⇒ 这一截（前 1 条照旧，其后 b）丢了。
+    for _ in 0..4 {
+        sink.branch("other", "/p/o.jsonl", &[], 0);
+    }
+    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b"]), 1);
+    assert!(
+        branches(&mut rx).iter().all(|(_, o)| o.is_empty()),
+        "丢的那一截不该到"
+    );
+    // 再变一次：这条连接拿整份，不是「前 2 条照旧」。
+    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b", "c"]), 2);
+    assert_eq!(branches(&mut rx), [(0, ids(&["a", "b", "c"]))]);
+    // 之后照旧只拿那一截。
+    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b", "c", "d"]), 3);
+    assert_eq!(branches(&mut rx), [(3, ids(&["d"]))]);
+}
+
+/// read8b：同一条连接把一条会话切出名单、再切回来（换 tab 回来）⇒ 主线外清单只补它缺的那一截：
+/// 出名单那一刻它手上那份前缀没动 ⇒ 从 `at = 它手上的条数` 发（这里一条都没变 ⇒ 只一帧空的），不再整份重发。
+/// （丢过帧 ⇒ 整份，那一支与实时那一路共用 `branch_stale`，`a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time` 钉着。）
+#[cfg(target_os = "linux")]
+#[test]
+fn rewatching_on_the_same_connection_sends_only_the_branch_tail_it_lacks() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-read8b-rewatch-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let body = long_branchy_record(600, 30, usize::MAX);
+    let (_, mut state) = announce_record(&dir, "rw-sid", &body);
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
+    let mut sink = FrameSink::new(tx);
+    let drain = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
+        let mut v = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionBranch { at, off, .. } = f {
+                v.push((at, off.len()));
+            }
+        }
+        v
+    };
+    let path = dir.join("projects/proj-h/rw-sid.jsonl");
+    // 接上来那一份此刻的样子（整份清单），之后它报了名单。
+    branch_to(&state, &mut sink, 0, "rw-sid", &path);
+    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
+    let first = drain(&mut rx);
+    let whole: usize = first.iter().map(|(_, n)| n).sum();
+    assert!(whole > 0, "这份记录该有主线外（{first:?}）");
+    assert_eq!(first[0].0, 0, "接上来那一份是整份");
+    // 切走再切回来：清单没变 ⇒ 只一帧，从它手上的条数起、一条不带。
+    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
+    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
+    assert_eq!(
+        drain(&mut rx),
+        [(whole as u64, 0)],
+        "换 tab 回来又整份重发了主线外清单"
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

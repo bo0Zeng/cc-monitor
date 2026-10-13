@@ -20,11 +20,11 @@ export type HistoryIndex = {
  */
 from: number, 
 /**
- * 最后一个完整行的末字节 ＝ 下一次续传该带的 `offset`。
+ * 这一页最后一行的末字节 ＝ 下一次续传该带的 `offset`（最后一页 ⇒ 最后一个完整行的末字节）。
  */
 end: number, 
 /**
- * 下一页从哪个字节起；没有下一页 ⇒ `null`（这一版不分段，恒 `null`）。
+ * 下一页从哪个字节起（＝ 下一页第一行的起点）；没有下一页 ⇒ `null`。
  */
 next: number | null, 
 /**

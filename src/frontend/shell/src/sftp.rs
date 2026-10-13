@@ -6,7 +6,7 @@
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`。**写已不在本模块**；
-//! 今天由那台后端自己算、自己写（帧命令 `mcp-server-put` / `-remove`，`mcp_edit.rs::project_root` 守落点）。
+//! 今天由那台后端自己算、自己写（帧命令 `mcp-sync-apply` / `ext-uninstall-apply`，`mcp_edit.rs::project_root` 守落点）。
 //!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
 //! **落盘已不在本模块**：那台后端自己读改写（文件管理那一面）；规划那一半
 //!   （`merge_profile_block` / `strip_profile_block`）住 `profile_installer`。

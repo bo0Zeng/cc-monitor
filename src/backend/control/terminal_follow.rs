@@ -285,49 +285,7 @@ impl Desk {
             socket: me.socket.as_deref(),
         };
         let t = terminals::follow_target_on(on, args)?;
-        let v = terminals::tmux_version_on(on)?;
-        if !tmux_version_ok(&v) {
-            return Err(CmdErr::from((
-                "tmux_too_old",
-                copy_text(
-                    "beTermFollow.tmux.tooOld",
-                    &[("version", v.as_str()), ("need", "3.2")],
-                ),
-            )));
-        }
-        // 控制模式客户端：只读、不改尺寸，挂在那个终端所在的 tmux 会话上。它自己不要 `$TMUX`（不当成嵌套），
-        // 但要与别的几条问同一台 server：没给 socket 时照 `$TMUX` 里那一台。
-        let socket = me.socket.clone().or_else(|| {
-            std::env::var("TMUX")
-                .ok()
-                .and_then(|t| t.split(',').next().map(str::to_string))
-                .filter(|s| !s.is_empty())
-        });
-        let mut child = crate::platform::child::Child::new("tmux");
-        if let Some(s) = &socket {
-            child = child.args(["-S", s.as_str()]);
-        }
-        let child = child.env_remove("TMUX").env_remove("TMUX_PANE").args([
-            "-C",
-            "attach-session",
-            "-f",
-            "read-only,ignore-size",
-            "-t",
-            t.session.as_str(),
-        ]);
-        // 起落一个一个来（见 [`SHIFT`]）：占着它起客户端、等 attach 那一问答完，再放开。
-        let shift = SHIFT.lock().unwrap_or_else(|p| p.into_inner());
-        let mut proc = child
-            .stream()
-            .map_err(super::capture_pane::tmux_unavailable)?;
-        let mut out = BufReader::new(proc.take_stdout().ok_or_else(|| {
-            CmdErr::new(
-                "unobservable",
-                crate::common::contract::malformed("no output stream from the tmux control client"),
-            )
-        })?);
-        attached(&mut out);
-        drop(shift);
+        let (proc, out) = open_client(me.socket.as_deref(), &t.session)?;
         let (tx, rx) = smpsc::channel::<Ev>();
         let pending = Arc::new(AtomicBool::new(false));
         {
@@ -419,6 +377,132 @@ impl Drop for Inner {
         for (_, s) in lock(&self.tickets).slots.drain() {
             if let Slot::On(f) = s {
                 let _ = f.tx.send(Ev::Stop);
+            }
+        }
+    }
+}
+
+/// 起一个只读、不改尺寸的控制模式客户端，挂在 `session` 那个 tmux 会话上，读到 attach 那一问答完再交回（起落排 [`SHIFT`]）。
+/// tmux 太老（不到 3.2）⇒ `tmux_too_old`。实时预览与切权限档（[`Watch`]）都从这里起。
+fn open_client(
+    socket: Option<&str>,
+    session: &str,
+) -> Result<
+    (
+        crate::platform::child::Streaming,
+        BufReader<std::process::ChildStdout>,
+    ),
+    CmdErr,
+> {
+    let v = terminals::tmux_version_on(On { socket })?;
+    if !tmux_version_ok(&v) {
+        return Err(CmdErr::from((
+            "tmux_too_old",
+            copy_text(
+                "beTermFollow.tmux.tooOld",
+                &[("version", v.as_str()), ("need", "3.2")],
+            ),
+        )));
+    }
+    // 控制模式客户端：只读、不改尺寸，挂在那个终端所在的 tmux 会话上。它自己不要 `$TMUX`（不当成嵌套），
+    // 但要与别的几条问同一台 server：没给 socket 时照 `$TMUX` 里那一台。
+    let socket = socket.map(str::to_string).or_else(|| {
+        std::env::var("TMUX")
+            .ok()
+            .and_then(|t| t.split(',').next().map(str::to_string))
+            .filter(|s| !s.is_empty())
+    });
+    let mut child = crate::platform::child::Child::new("tmux");
+    if let Some(s) = &socket {
+        child = child.args(["-S", s.as_str()]);
+    }
+    let child = child.env_remove("TMUX").env_remove("TMUX_PANE").args([
+        "-C",
+        "attach-session",
+        "-f",
+        "read-only,ignore-size",
+        "-t",
+        session,
+    ]);
+    // 起落一个一个来（见 [`SHIFT`]）：占着它起客户端、等 attach 那一问答完，再放开。
+    let shift = SHIFT.lock().unwrap_or_else(|p| p.into_inner());
+    let mut proc = child
+        .stream()
+        .map_err(super::capture_pane::tmux_unavailable)?;
+    let mut out = BufReader::new(proc.take_stdout().ok_or_else(|| {
+        CmdErr::new(
+            "unobservable",
+            crate::common::contract::malformed("no output stream from the tmux control client"),
+        )
+    })?);
+    attached(&mut out);
+    drop(shift);
+    Ok((proc, out))
+}
+
+/// 等重画的那一下最多等多久（按一下键之后，那一家重画屏底那一行通常在一百毫秒以内）。
+const REDRAW_WAIT: std::time::Duration = std::time::Duration::from_millis(2_000);
+
+/// 一次性地看一个终端「变没变」：起一个控制模式客户端（同实时预览那一个），之后每问一次 [`Watch::changed`] 等下一次变化，
+/// 带期限 [`REDRAW_WAIT`]（一次一等、不循环；问几次由调用方定、有上限）。放手 ⇒ 关输入等它自己退（不杀，同 [`detach`]）。
+pub(crate) struct Watch {
+    proc: Option<crate::platform::child::Streaming>,
+    rx: smpsc::Receiver<Ev>,
+    pending: Arc<AtomicBool>,
+    closed: bool,
+}
+
+impl Watch {
+    /// 起：挂在那个终端所在的 tmux 会话上，只看它那个窗格的输出（没有窗格 ⇒ 整个会话）。
+    pub(crate) fn open(socket: Option<&str>, t: &terminals::FollowTarget) -> Result<Watch, CmdErr> {
+        let (proc, out) = open_client(socket, &t.session)?;
+        let (tx, rx) = smpsc::channel::<Ev>();
+        let pending = Arc::new(AtomicBool::new(false));
+        spawn_reader(out, t.pane.clone(), tx, Arc::clone(&pending));
+        Ok(Watch {
+            proc: Some(proc),
+            rx,
+            pending,
+            closed: false,
+        })
+    }
+
+    /// 忘掉此刻之前报过的变化（按键之前调：之后等到的才是按键带来的）。
+    pub(crate) fn forget(&mut self) {
+        while let Ok(ev) = self.rx.try_recv() {
+            if matches!(ev, Ev::Closed) {
+                self.closed = true;
+            }
+        }
+        self.pending.store(false, Ordering::Release);
+    }
+
+    /// 等下一次变化，至多 [`REDRAW_WAIT`]：变了 ⇒ `true`；到期 · 客户端退了 ⇒ `false`。
+    pub(crate) fn changed(&mut self) -> bool {
+        if self.closed {
+            return false;
+        }
+        match self.rx.recv_timeout(REDRAW_WAIT) {
+            Ok(Ev::Changed) => {
+                self.pending.store(false, Ordering::Release);
+                true
+            }
+            Ok(Ev::Closed) => {
+                self.closed = true;
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
+impl Drop for Watch {
+    fn drop(&mut self) {
+        if let Some(proc) = self.proc.take() {
+            if self.closed {
+                drop(proc);
+            } else {
+                detach(proc, &self.rx);
             }
         }
     }

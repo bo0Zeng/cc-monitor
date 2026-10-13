@@ -25,16 +25,16 @@ const resumeInTmux = (ccmSid: string | undefined): LaunchContext => ({
   container: { kind: "tmux", name: "cc-p1", mode: "create" },
   cwd: null,
   account: { kind: "follow" },
-  models: {},
-  launcherOverride: "CCMPROBE",
   ccmSid,
 });
+/** 启动命令住那台的偏好：交给渲染那一跳的那一份。 */
+const probe = { launchers: { [DEFAULT_AGENT]: "CCMPROBE" } };
 
 const out: Record<string, string> = {
   // 新建自己的 tmux（兄弟名 cc-p1-2 已存在时，绝不能碰它）
-  resumeTmux: renderCmdViaProduction(resumeInTmux("p1")),
+  resumeTmux: renderCmdViaProduction(resumeInTmux("p1"), false, probe),
   // 往「已存在的 cc-p1」就地 send-keys —— cc-p1 不存在时必须失败，绝不能落进 cc-p1-2
-  resumeIntoExisting: renderCmdViaProduction(resumeInTmux(undefined), true),
+  resumeIntoExisting: renderCmdViaProduction(resumeInTmux(undefined), true, probe),
   attach: renderCmdViaProduction(planAttach(DEFAULT_AGENT, "cc-p1")),
   // 起新会话进 tmux（posixQuote 名路径，与上面的裸名路径是两条不同的引号分支）：起新会话那一个请求（`session-new`）在那台渲的就是这一形。
   launcher: renderCmdViaProduction({
@@ -43,9 +43,7 @@ const out: Record<string, string> = {
     container: { kind: "tmux", name: "cc-p1", mode: "create" },
     cwd: null,
     account: { kind: "follow" },
-    models: {},
-    launcherOverride: "CCMPROBE",
     ccmSid: undefined,
-  }),
+  }, false, probe),
 };
 for (const [k, v] of Object.entries(out)) console.log(`${k}\t${v}`);

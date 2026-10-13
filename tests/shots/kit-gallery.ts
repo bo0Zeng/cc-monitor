@@ -21,11 +21,9 @@ import { emptyState } from "../../src/frontend/ui/kit/empty";
 import { countBadge, tag, kbd } from "../../src/frontend/ui/kit/badge";
 import { copyText } from "../../src/frontend/ui/copy-table";
 import { spinner } from "../../src/frontend/ui/kit/progress";
-import { meter } from "../../src/frontend/ui/kit/meter";
 import { statusDot, type DotState } from "../../src/frontend/ui/kit/status-dot";
 import { icon } from "../../src/frontend/ui/kit/icon";
 import { confirmDialog, askText } from "../../src/frontend/ui/kit/dialog";
-import { confirmInterrupts } from "../../src/frontend/ui/kit/interrupts";
 import { openMenu } from "../../src/frontend/ui/kit/menu";
 import { attachTooltip } from "../../src/frontend/ui/kit/tooltip";
 import { toast, undoToast } from "../../src/frontend/ui/kit/toast";
@@ -175,20 +173,10 @@ function overview(): void {
   const dotList = h("div");
   for (const [st, label] of dots) dotList.appendChild(row(statusDot(st, label), h("span", "g-fake", label)));
   document.body.append(
-    section("状态点 · 图标 · 转圈 · 计量条", "V10 · V9 · C14 · C22", "g-cols4", [
+    section("状态点 · 图标 · 转圈", "V10 · V9 · C14", "g-cols4", [
       ["状态点八态", dotList],
       ["图标（常规 16 · 紧凑 14 · 空态 32）", row(icon("settings"), icon("history"), icon("grid"), icon("folder"), icon("command", "compact"), icon("search", "compact"), icon("empty", "empty"))],
       ["转圈", stage(row(spinner(), h("span", "g-fake", "连接 devbox…")))],
-      [
-        "计量条：常态 · 到阈值 · 被拒 · 数旧 · 无采样",
-        stage(
-          meter({ label: "5h", ratio: 0.42, state: "normal", value: "42%", reset: "↻18:30" }),
-          meter({ label: "7d", ratio: 0.86, state: "near", value: "86%", reset: "↻周一" }),
-          meter({ label: "5h", ratio: 1, state: "refused", value: "104%", reset: "↻18:30" }),
-          meter({ label: "7d", ratio: 0.5, state: "stale", value: "50%", reset: "↻周一" }),
-          meter({ label: "5h", ratio: 0, state: "none", value: "—" }),
-        ),
-      ],
     ]),
   );
 
@@ -206,11 +194,14 @@ function overview(): void {
 
 async function dialogs(): Promise<void> {
   document.body.append(h("h1", "g-h1", "对话框 · 「会打断什么」"), stage(fakeRows(8)));
-  void confirmInterrupts({
-    title: "重启切换 → work",
-    action: "重启切换",
-    keep: ["会话记录 · 终端 orders-cc"],
-    ask: async () => ({ families: [{ family: "turn", names: [] }, { family: "agent", names: ["Explore", "Plan"] }, { family: "task", names: ["写判据"] }] }),
+  void confirmDialog({
+    title: "结束会话 orders-cc",
+    action: "结束",
+    danger: true,
+    rows: [
+      { label: copyText("kit.interrupts.cut"), items: ["当前轮次", "在跑 agent Explore · Plan", "后台任务 写判据"] },
+      { label: copyText("kit.interrupts.keep"), items: ["会话记录 · 终端 orders-cc"] },
+    ],
   });
   await new Promise((r) => setTimeout(r, 50));
 }
@@ -404,10 +395,12 @@ const run: Record<string, () => void | Promise<void>> = {
   "kit-detail-toast": detailToasts,
   "kit-detail-messages": detailMessages,
 };
-window.__shots = { state: "booting", error: null, unhandled: [], layout: [] } satisfies ShotsHandle;
+let finish: () => void = () => undefined;
+window.__shots = { state: "booting", finished: new Promise<void>((r) => (finish = r)), error: null, unhandled: [], layout: [] } satisfies ShotsHandle;
 Promise.resolve(run[scene]?.())
   .then(() => (window.__shots!.state = "done"))
   .catch((e: unknown) => {
     window.__shots!.state = "failed";
     window.__shots!.error = String(e);
-  });
+  })
+  .finally(finish);

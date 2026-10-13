@@ -1,8 +1,7 @@
-//! 项目 `.mcp.json` 的增 / 改 / 删：帧面 `mcp-server-put` / `mcp-server-remove`，那台后端自己算、自己写。
+//! 项目 `.mcp.json` 的增 / 改 / 删那几样纯函数：推 / 拉（`mcp_sync_flow`）与卸（`ext`）都在被写那台后端自己算、自己写。
 //! 写面只 `<项目目录>/.mcp.json`（`INVARIANTS §1` 例外 5）：`~/.claude.json` / `settings.json` 一个字节不碰。
-//! 「原文怎么变成新原文」只有 [`plan_project_mcp`] 一处（推 / 拉那一趟也用它）。
+//! 「原文怎么变成新原文」只有 [`plan_project_mcp`] 一处。
 
-use super::door::{self, Door, Edited};
 use copy_core::copy_text;
 use serde_json::{json, Map, Value};
 
@@ -10,8 +9,6 @@ use serde_json::{json, Map, Value};
 pub(crate) fn mcp_json() -> &'static str {
     super::project_mcp_file()
 }
-
-type Answer = Result<Value, (&'static str, String)>;
 
 /// 一台机器的绝对路径写法。路径只由它所属的那台判（枢纽不替别台判）；判据拿它在 Linux 上换成 Windows 那一形。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -128,54 +125,6 @@ pub(crate) fn plan_project_mcp(
     serde_json::to_string_pretty(&v)
         .map(Some)
         .map_err(|e| e.to_string())
-}
-
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, (&'static str, String)> {
-    args.get(k).and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
-        )
-    })
-}
-
-/// 读改写一趟：不留备份（`.mcp.json` 住用户的仓里）、不建父目录；回 `{path, changed}`。
-fn edit_at(
-    d: &dyn Door,
-    project_dir: &str,
-    mut change: impl FnMut(&mut Value) -> Result<bool, String>,
-) -> Answer {
-    let root = project_root(project_dir)?;
-    let target = door::join_under(&root, mcp_json());
-    match door::edit(d, &root, mcp_json(), false, false, |existing| {
-        plan_project_mcp(&target, existing, &mut change)
-    }) {
-        Ok(Edited::Written(l)) => Ok(json!({ "path": l.path, "changed": true })),
-        Ok(Edited::Unchanged) => Ok(json!({ "path": target, "changed": false })),
-        Err(m) => Err(("refused", m)),
-    }
-}
-
-/// `mcp-server-put {projectDir, name, server}`：增 / 改一条。
-pub(crate) fn answer_put(d: &dyn Door, args: &Value) -> Answer {
-    let dir = str_arg(args, "projectDir")?;
-    let name = str_arg(args, "name")?.to_string();
-    let server = args.get("server").cloned().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `server`"),
-        )
-    })?;
-    edit_at(d, dir, |v| {
-        upsert_mcp_server_value(v, name.clone(), server.clone()).map(|()| true)
-    })
-}
-
-/// `mcp-server-remove {projectDir, name}`：删一条；文件不在或条目不在 ⇒ 一个字节不写、不建文件。
-pub(crate) fn answer_remove(d: &dyn Door, args: &Value) -> Answer {
-    let dir = str_arg(args, "projectDir")?;
-    let name = str_arg(args, "name")?.to_string();
-    edit_at(d, dir, |v| remove_mcp_server_value(v, &name))
 }
 
 #[cfg(test)]

@@ -212,6 +212,22 @@ export const SETTINGS_SCENES: Scene[] = [
     await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
     await sleep(700);
   }),
+  settings("settings-data-placed-own", "设置 · 文件与数据 · 放了什么 · 本机 cc-monitor 的文件", "本机那一块滚到「cc-monitor 的文件」：本机后端家里那几样照本机后端 data-report 的 own 排（与远端同一套行，打开 · 在文件夹中显示）· 再接界面自己那几份", async () => {
+    await go("data");
+    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
+    await sleep(400);
+    (await byText(".settings-page:not([hidden]) [data-pane=placed] .data-section-title", "cc-monitor 的文件")).scrollIntoView({ block: "start" });
+    await sleep(700);
+  }),
+  settings("settings-data-placed-remote-own", "设置 · 文件与数据 · 放了什么 · devbox 的 cc-monitor 的文件", "devbox 那一块滚到「cc-monitor 的文件」：照那台 data-report 的 own 排，打开 ＝ 在文件窗口打开", async () => {
+    await go("data");
+    await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));
+    await sleep(400);
+    await click(await byText(".settings-page:not([hidden]) .data-chip", "devbox"));
+    await sleep(400);
+    [...document.querySelectorAll<HTMLElement>(".settings-page:not([hidden]) [data-pane=placed] .data-section-title")].filter((e) => e.textContent?.includes("cc-monitor 的文件") && e.offsetParent !== null)[0]?.scrollIntoView({ block: "start" });
+    await sleep(700);
+  }),
   settings("settings-data-placed-remote", "设置 · 文件与数据 · 放了什么 · devbox", "第二栏选 devbox：只列那台改过你的文件", async () => {
     await go("data");
     await click(await byText(".settings-page:not([hidden]) button", "cc-monitor 放置的文件"));

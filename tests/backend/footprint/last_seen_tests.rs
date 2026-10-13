@@ -3,6 +3,23 @@
 use super::*;
 use serde_json::json;
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn read_at(
+    p: &std::path::Path,
+    a: &serde_json::Value,
+) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::read_at(p, &req).map(|x| serde_json::to_value(x).unwrap())
+}
+fn write_at(
+    own: &crate::platform::fs::Own,
+    a: &serde_json::Value,
+    now: u64,
+) -> Result<serde_json::Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::write_at(own, &req, now).map(|x| serde_json::to_value(x).unwrap())
+}
+
 struct Dir(std::path::PathBuf);
 impl Dir {
     fn new(tag: &str) -> Self {

@@ -61,7 +61,7 @@ probe() {
   [ "$mode" = late ] || mkdir -p "$F/sessions"
 
   sleep 60 & local vpid=$!
-  local ticks; ticks=$(awk '{print $22}' "/proc/$vpid/stat")
+  local ticks; ticks=$(proc_start "$vpid")
 
   CLAUDE_CONFIG_DIR="$F" timeout "$WALL_CEILING_S" "$D" -- --stream < /dev/null > "$out" 2> "$W/$label.err" &
   local dpid=$!
@@ -114,7 +114,7 @@ _proj_recreate() {
   local F="$W/projre" out="$W/projre.frames"
   rm -rf -- "$F"; mkdir -p "$F/sessions" "$F/projects/p"
   sleep 200 & local vpid=$!
-  local ticks; ticks=$(awk '{print $22}' "/proc/$vpid/stat")
+  local ticks; ticks=$(proc_start "$vpid")
   local sid="projre-1111-2222-3333-444455556666"
   CLAUDE_CONFIG_DIR="$F" timeout "$WALL_CEILING_S" "$D" -- --stream < /dev/null > "$out" 2> "$W/projre.err" &
   local dp=$!

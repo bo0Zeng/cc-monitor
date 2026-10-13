@@ -1,6 +1,6 @@
 /**
- * 额度 / 配置表 / 会话轮换的推送带了成品（同重问那条命令的应答）⇒ 用同一个解码器收、直接放进 store、不再问；
- * 没带 / 解不开 / 期间可能漏了 ⇒ 照旧重问。期望手写。
+ * 额度 / 会话轮换 / 策略目录的推送：额度帧带了成品 ⇒ 用同一个解码器收、直接放进 store、不再问；没带 / 解不开 / 期间可能漏了 ⇒ 照旧重问。
+ * 会话轮换不带成品 ⇒ 重问那一个会话的 `rotation-view`；策略目录变了 ⇒ 那台有 tab 的会话全部重问；中转没见过的会话 ⇒ `read: null`。期望手写。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,52 +15,21 @@ vi.mock("../../../src/frontend/ui/quota-reads", async (importOriginal) => {
     }),
   };
 });
-vi.mock("../../../src/frontend/ui/rot-reads", async (importOriginal) => {
-  const real = await importOriginal<typeof import("../../../src/frontend/ui/rot-reads")>();
-  return {
-    ...real,
-    readConfigs: vi.fn(async () => {
-      asked.push("rotation-configs-read");
-      return null;
-    }),
-    readStrategies: vi.fn(async () => {
-      asked.push("rotation-strategies-read");
-      return null;
-    }),
-    readSessionRotation: vi.fn(async (_o: string, sids: string[]) => {
-      asked.push(`rotation-session-read ${sids.join(",")}`);
-      return { now: 1, sessions: {} };
-    }),
-  };
-});
+vi.mock("../../../src/frontend/ui/rotation-view-reads", () => ({
+  readSessionView: vi.fn(async (o: string, sid: string) => {
+    asked.push(`rotation-view ${o} ${sid}`);
+    return sid === "gone" ? null : { start: "a", current: `cur-${sid}` };
+  }),
+}));
 
-import { onQuotaChanged } from "../../../src/frontend/ui/acct-center";
+import { onQuotaChanged, syncSessions } from "../../../src/frontend/ui/acct-center";
 import { appStore } from "../../../src/frontend/ui/app-store";
 
-const configs = { state: "present", defaultConfig: "c1", configs: [] };
-const rotation = { now: 7, sessions: { s1: { state: "absent", inPlace: "follow" } } };
+const flush = () => new Promise((r) => setTimeout(r, 0));
 
-describe("acct-center 收推送里的成品", () => {
+describe("acct-center 收推送", () => {
   beforeEach(() => {
     asked.length = 0;
-  });
-
-  it("配置表带了成品 ⇒ 进 store、不问；没带 ⇒ 问；可能漏了 ⇒ 带了也问", () => {
-    onQuotaChanged("box-a", "rotation_configs", { cells: [{ key: null, rev: null, body: configs }], all: false });
-    expect(appStore.rotationConfigs.get().get("box-a")?.defaultConfig).toBe("c1");
-    expect(asked).toEqual([]);
-    onQuotaChanged("box-a", "rotation_configs", { cells: [{ key: null, rev: null, body: undefined }], all: false });
-    expect(asked).toEqual(["rotation-configs-read"]);
-    onQuotaChanged("box-a", "rotation_configs", { cells: [], all: true });
-    expect(asked).toEqual(["rotation-configs-read", "rotation-configs-read"]);
-  });
-
-  it("策略目录变了也走这个主题：问过策略表的那台一起重问；没问过的不问", () => {
-    appStore.rotationStrategies.set(new Map([["box-c", null]]));
-    onQuotaChanged("box-c", "rotation_configs", { cells: [{ key: null, rev: null, body: configs }], all: false });
-    expect(asked).toEqual(["rotation-strategies-read"]);
-    onQuotaChanged("box-d", "rotation_configs", { cells: [{ key: null, rev: null, body: configs }], all: false });
-    expect(asked).toEqual(["rotation-strategies-read"]);
   });
 
   it("成品解不开 ⇒ 不放、照旧问", () => {
@@ -69,9 +38,30 @@ describe("acct-center 收推送里的成品", () => {
     expect(asked).toEqual(["quota-read"]);
   });
 
-  it("会话轮换带了那个会话的成品 ⇒ 进 store、不问那一个", () => {
-    onQuotaChanged("box-a", "rotation", { cells: [{ key: "s1", rev: null, body: rotation }], all: false });
-    expect(appStore.sessionRotation.get().get("s1")).toEqual({ origin: "box-a", now: 7, read: rotation.sessions.s1 });
-    expect(asked).toEqual([]);
+  it("★ tab 来了 ⇒ 每个会话问一次 rotation-view，在用的号进 store；中转没见过 ⇒ read 为 null", async () => {
+    syncSessions([
+      { sessionId: "s1", origin: "box-a" },
+      { sessionId: "gone", origin: "box-a" },
+    ]);
+    await flush();
+    expect(asked).toEqual(["quota-read", "rotation-view box-a s1", "rotation-view box-a gone"]);
+    expect(appStore.sessionRotation.get().get("s1")?.read?.current).toBe("cur-s1");
+    expect(appStore.sessionRotation.get().get("gone")).toEqual({ origin: "box-a", read: null });
+  });
+
+  it("★ 会话轮换变了 ⇒ 只重问那一个；不认得的会话不问；策略目录变了 ⇒ 那台有 tab 的全部重问", async () => {
+    syncSessions([
+      { sessionId: "s2", origin: "box-c" },
+      { sessionId: "s3", origin: "box-c" },
+    ]);
+    await flush();
+    asked.length = 0;
+    onQuotaChanged("box-c", "rotation", { cells: [{ key: "s2", rev: null, body: undefined }, { key: "zz", rev: null, body: undefined }], all: false });
+    await flush();
+    expect(asked).toEqual(["rotation-view box-c s2"]);
+    asked.length = 0;
+    onQuotaChanged("box-c", "rotation_strategies", { cells: [{ key: null, rev: null, body: undefined }], all: false });
+    await flush();
+    expect(asked.sort()).toEqual(["rotation-view box-c s2", "rotation-view box-c s3"]);
   });
 });

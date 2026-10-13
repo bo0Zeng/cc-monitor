@@ -4,7 +4,8 @@
  * 设置窗左栏角标与主窗口状态栏那一枚读同一个数（[`choresOf`]），界面不另数。
  */
 import { chan } from "../../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, ReplyUnreadable, saidFrom } from "../ipc/chan-caller";
+import { budgetWithin, callTyped, jsonBody, readJson, ReplyUnreadable, saidFrom } from "../ipc/chan-caller";
+import type { ChoresMarkReq } from "../generated/ChoresMarkReq";
 import { commands } from "../ipc/commands";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { exactKeys, isObj } from "../ipc/decode";
@@ -138,12 +139,10 @@ function decodeChore(c: unknown): Chore {
 }
 
 /** 记下「待办」里的一个选择（那台后端写它自己的 `~/.cc-monitor/chores.json`）。失败抛一句人话。 */
-export async function markChore(origin: Origin, args: { op: "decline" | "undecline"; id: string } | { op: "selfPaste"; rc: string } | { op: "unselfPaste" } | { op: "skipStart" | "unskipStart" }): Promise<void> {
+export async function markChore(origin: Origin, args: ChoresMarkReq): Promise<void> {
   const target = isLocalOrigin(origin) ? LOCAL_ORIGIN : origin;
   try {
-    const body = jsonBody(args);
-    const budget = budgetWithin(MARK_BUDGET_MS);
-    await chan.call(target, "chores-mark", body, budget);
+    await callTyped(target, "chores-mark", args, budgetWithin(MARK_BUDGET_MS));
   } catch (e) {
     throw new Error(saidFrom(e, origin));
   }

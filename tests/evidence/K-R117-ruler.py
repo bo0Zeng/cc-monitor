@@ -501,11 +501,11 @@ CLAIMS_NON_COMMAND_SYMBOLS = {
         "—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
     "block.rs::uninstall_from_profile":
         "同上，摘那一侧（`aliases-block-remove`）",
-    # `project-mcp` 的装 / 卸口进了那台后端：帧命令 `mcp-server-put` / `-remove` 的本体。
-    "assets/mcp_edit.rs::answer_put":
-        "那台后端的帧命令本体（D 组「monitor 算好、后端写」收进后端，界面经通道直问），本来就不是 Tauri 命令",
-    "assets/mcp_edit.rs::answer_remove":
-        "同上，撤那一侧",
+    # `project-mcp` 的装 / 卸那一份新原文只经这两样纯函数算（装：帧命令 `mcp-sync-apply`；卸：`ext-uninstall-apply`），都在那台后端里。
+    "assets/mcp_edit.rs::upsert_mcp_server_value":
+        "那台后端里「项目 .mcp.json 加一条」的纯函数（`mcp-sync-apply` 经它算新原文），本来就不是 Tauri 命令",
+    "assets/mcp_edit.rs::remove_mcp_server_value":
+        "同上，删那一侧（`ext-uninstall-apply`）",
     # 账号库由那台后端自己建：`accounts-init` / `accounts-add` 这一族帧命令共用的执行口。
     "wire.rs::run_change":
         "账号库的建口：那台后端帧命令 `accounts-init` / `accounts-add` 等共用的执行本体，本来就不是 Tauri 命令",

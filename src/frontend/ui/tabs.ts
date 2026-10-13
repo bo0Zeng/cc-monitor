@@ -26,7 +26,6 @@ import { fullTitle, needsOf } from "./session-face";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
-import { type ContextLimitOverrides } from "./views/context-limit";
 import {
   terminalFrontAvailable,
   TERMINAL_FRONT_UNAVAILABLE_TITLE,
@@ -37,7 +36,6 @@ import type { SessionActivity } from "./generated/SessionActivity";
 import { ENDED, LIVE, RECONNECTABLE, closesWithoutMenu, containerEvent, isLive, isResumeOnly, hasTerminal, inTmux, nextState, type StateEvent } from "./tab-session-state";
 import type { SessionContainer } from "./generated/SessionContainer";
 import { isLocalOrigin, isRemoteOrigin, LOCAL_ORIGIN, originFromWire, type Origin } from "./ipc/origin";
-import type { ConfigsShown } from "./rot-reads";
 // `Tab` 的形状与标题函数在 `tab-model.ts`；这里 re-export，调用方只 import 本文件（落点算术直接从 `tab-drop.ts` 取）。
 export type { Tab, TabsSummary } from "./tab-model";
 import { TabMenu } from "./tab-menu";
@@ -47,7 +45,8 @@ import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
-import { LiveCards, type LivePainter, type TapPayload } from "./live-card";
+import { LiveCards, type LivePainter } from "./live-card";
+import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
@@ -105,7 +104,7 @@ export class TabManager {
       agentsPanel.host = {
         open: (sid, run) => void this.openRunWindow(sid, { run }),
         isOpen: (sid, run) => this.runWindows.has(`${sid}\u0000${run}`),
-        liveOf: (sid, run) => this.live.core.liveBlockOf(sid, run),
+        liveOf: (sid, run) => this.live.cards.liveBlockOf(sid, run),
       };
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
@@ -176,13 +175,12 @@ export class TabManager {
   }
 
   /**
-   * 活卡：中转抄出来的 SSE 先上屏，jsonl 那一轮到了整轮覆盖（`live-card.ts`）。
-   * 路由只认「`stream` 就是这个 tab 的 sid、机器也对得上」；对不上 ⇒ 匿名流，不显示。
+   * 活卡：后端拼好的成品照画（`live-card.ts`）。只留「这台上有这个 tab」的卡（没有就没处画）。
    */
   private readonly live = new LiveCards(
-    (origin, stream) => {
-      const t = this.store.tabs.get(stream);
-      return t && t.origin === origin ? t.sessionId : null;
+    (origin, sid) => {
+      const t = this.store.tabs.get(sid);
+      return t !== undefined && t.origin === origin;
     },
     (sid) => this.view.trailerOf(sid),
   );
@@ -423,13 +421,7 @@ export class TabManager {
     closeTabs: (sids) => {
       for (const sid of sids) this.closeTab(sid);
     },
-    // 「轮换配置 ▸」：宿主（main.ts）接上才有（那台的配置表 · 开设置那台的「轮换」栏）。
-    configsOf: (origin) => this.onRotationConfigs?.configsOf(origin),
-    openConfigs: (origin) => this.onRotationConfigs?.openConfigs(origin),
   };
-
-  /** 批量菜单「轮换配置 ▸」要的两样（main.ts 接）；不接 ⇒ 菜单里没有那一项。 */
-  onRotationConfigs: { configsOf(origin: Origin): ConfigsShown | null; openConfigs(origin: Origin): void } | null = null;
 
   private openTabCwd(sid: string): Promise<void> {
     return this.actions.openTabCwd(sid);
@@ -499,9 +491,6 @@ export class TabManager {
     // 文件从头重读先出声、tab 整份重来（`onRecordFileReread`），不会换新 seq 重投同一条。
     // monitor 连着见过、都不可显示的那一段一起记（去重集合成区间，段数有上界）。去重集合是流视图那一半的（`admit`）。
     if (!this.view.admit(tab, payload)) return;
-
-    // jsonl 那一轮到了 ⇒ 同一次应答（`rid`）的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
-    this.live.onRecord(tab.sessionId, payload.rid);
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
     this.view.noteGrew(tab);
@@ -772,7 +761,7 @@ export class TabManager {
         () => {
           // 问的是**当前**那一份 tab 的路径与机器（`parentPath` 由首条行回填；没有 ⇒ 这一趟不要）。
           const t = this.store.tabs.get(sessionId);
-          return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath, limits: this.contextLimits } : null;
+          return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
         },
         {
           facts: (f) => this.onSessionFacts(sessionId, f),
@@ -919,9 +908,9 @@ export class TabManager {
     this.emitTabStateProbe(tab);
   }
 
-  /** `session-tap`：中转抄出来的一件归一事件（`events.ts` 直派）。 */
-  onSessionTap(p: TapPayload): void {
-    this.live.onTap(p);
+  /** `session-live-card`：活卡的一帧（`events.ts` 直派）。 */
+  onLiveCard(p: SessionLiveCardPayload): void {
+    this.live.onCard(p);
   }
 
   /** 开着窗口的那几个子运行（`sid\0run`；agent 窗口开 / 关时自己报，`window-events.ts`）。 */
@@ -996,7 +985,7 @@ export class TabManager {
     this.live.setPainter(p);
   }
 
-  /** 那台机器的 tap 流看不见了 ⇒ 那台的活卡全撤。 */
+  /** 那台机器的活卡流看不见了 ⇒ 那台的活卡全撤。 */
   dropLiveCards(origin: string): void {
     this.live.dropOrigin(origin);
   }
@@ -1122,19 +1111,6 @@ export class TabManager {
     const t = this.store.activeId === null ? undefined : this.store.tabs.get(this.store.activeId);
     if (!t) return;
     this.view.wantFacts(t);
-  }
-
-  /** 设置里的上下文上限表（随会话事实交给那台后端，上限在那里定）。 */
-  private contextLimits: ContextLimitOverrides = {};
-
-  /** 设置里的上限表换了 ⇒ 每个 tab 带着上一份成品再问一次（只有上限会变，文件不重扫）。 */
-  setContextLimits(limits: ContextLimitOverrides): void {
-    if (JSON.stringify(limits) === JSON.stringify(this.contextLimits)) return;
-    this.contextLimits = limits;
-    for (const t of this.store.tabs.values()) {
-      if (!t.facts.everArrived) continue;
-      this.view.wantFacts(t);
-    }
   }
 
   /** 壳说过「各台都报完了」（`listed` 格带 `all`）。 */

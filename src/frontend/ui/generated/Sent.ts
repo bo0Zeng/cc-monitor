@@ -21,4 +21,8 @@ said?: string,
 /**
  * `screen_changed` 时带的新指纹。
  */
-screen?: string, };
+screen?: string, 
+/**
+ * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
+ */
+resumed?: boolean, };

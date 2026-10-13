@@ -37,7 +37,7 @@ pub async fn upload_by_chunks(
     p: &super::transfer::Pending,
     board: &super::transfer::DropBoard,
 ) -> Result<(), super::source::Failed> {
-    use super::source::{ask_coded as ask, Failed};
+    use super::source::{ask_typed, Failed};
     let key = uuid::Uuid::new_v4().simple().to_string();
     // 本机那份读不到：句子只说原因词，系统原话进复制详情。
     let local_err = |e: std::io::Error| {
@@ -50,7 +50,7 @@ pub async fn upload_by_chunks(
                 ],
             ),
             origin,
-            "files-stage-chunk",
+            <cmd_wire::files::FilesStageChunkReq as cmd_wire::files::Call>::NAME,
             Some(&e.to_string()),
         )
     };
@@ -69,36 +69,21 @@ pub async fn upload_by_chunks(
             break;
         }
         sha.update(&buf[..n]);
-        ask(
-            line,
-            origin,
-            "files-stage-chunk",
-            &serde_json::json!({ "key": key, "seq": seq, "content": { "b16": hex(&buf[..n]) } }),
-            CHUNK_BUDGET,
-        )
-        .await?;
+        let req = cmd_wire::files::FilesStageChunkReq {
+            key: key.clone(),
+            seq,
+            content: cmd_wire::files::ChunkBytes::Hex(buf[..n].to_vec()),
+        };
+        ask_typed(line, origin, &req, CHUNK_BUDGET).await?;
         seq += 1;
         got += n as u64;
         board.progress(&p.name, got, total);
     }
     let digest = hex(&sha.finalize());
-    ask(
-        line,
-        origin,
-        super::transfer::CMD_COMMIT,
-        &serde_json::json!({
-            "key": key,
-            "root": p.root_wire(),
-            "rel": super::source::remote_basename(&p.remote_path),
-            "overwrite": p.overwrite,
-            "expect": { "sha256": digest },
-            "chunks": seq,
-            "bytes": got,
-        }),
-        super::transfer::COMMIT_BUDGET,
-    )
-    .await
-    .map(|_| ())
+    let req = p.commit_req(&key, digest, Some((seq, got)));
+    ask_typed(line, origin, &req, super::transfer::COMMIT_BUDGET)
+        .await
+        .map(|_| ())
 }
 
 #[cfg(test)]

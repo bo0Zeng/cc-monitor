@@ -25,7 +25,7 @@ fn counts_and_keeps_only_the_first_sample() {
     let snap = snapshot_of(&led);
     assert_eq!(snap.len(), 1);
     let f = &snap[0];
-    assert_eq!(f.face, DriftFace::UnknownRecordType);
+    assert_eq!(f.face, DriftFace::UnknownRecordType.word());
     assert!(!f.overflowed);
     assert_eq!(f.entries[0].key, "mode"); // count 降序
     assert_eq!(f.entries[0].count, 2);
@@ -113,16 +113,14 @@ fn the_global_entry_points_delegate_to_the_pure_ones() {
     record(DriftFace::KnownTypeParseFailed, key, Some("s"));
     let found = snapshot()
         .into_iter()
-        .find(|f| f.face == DriftFace::KnownTypeParseFailed)
+        .find(|f| f.face == DriftFace::KnownTypeParseFailed.word())
         .and_then(|f| f.entries.into_iter().find(|e| e.key == key));
     let e = found.expect("全局 record/snapshot 没接上纯函数");
     assert!(e.count >= 1);
     assert_eq!(e.first_sample.as_deref(), Some("s"));
-    // 帧命令那一形：`{faces: [...]}`，面名是 snake_case。
-    let v = report();
-    assert!(v["faces"]
-        .as_array()
-        .is_some_and(|fs| fs.iter().any(|f| f["face"] == "known_type_parse_failed")));
+    // 帧命令那一形：各家的面并成一份，面名是那一家的词。
+    let v = crate::agents::drift_report();
+    assert!(v.faces.iter().any(|f| f.face == "known_type_parse_failed"));
 }
 
 /// ★ 每个面都必须说清楚「看不懂时会发生什么」—— 诊断面直接显示这句话。
@@ -138,6 +136,20 @@ fn every_face_states_its_consequence() {
     ];
     for f in faces {
         assert!(f.consequence().len() > 10, "{f:?} 的后果说明太短");
+        // 线上那个词就是变体名的 snake_case（界面与诊断文本照它认）。
+        let snake: String = format!("{f:?}")
+            .chars()
+            .enumerate()
+            .flat_map(|(i, c)| {
+                let lower = c.to_ascii_lowercase();
+                if c.is_ascii_uppercase() && i > 0 {
+                    vec!['_', lower]
+                } else {
+                    vec![lower]
+                }
+            })
+            .collect();
+        assert_eq!(f.word(), snake);
     }
     // 计数自检：枚举加了新面而这里没跟 ⇒ 红。
     let src = guard_core::production_code(include_str!(
@@ -159,5 +171,47 @@ fn every_face_states_its_consequence() {
         faces.len(),
         "`DriftFace` 有 {variants} 个变体，本条只覆盖了 {} 个 —— 新增面必须来这里写后果",
         faces.len()
+    );
+}
+
+/// 界面（`record-reads.ts`）与壳（`diagnostics_report::records_in`）读的漂移账回包：线上字节照旧
+/// （换成 typed 之前用旧代码钉的字面量；经 `Value` 那一跳，同帧面）。两个面 · 一个溢出 · 同数按键名排 · 没有样例的那一条。
+#[test]
+fn the_drift_reply_the_ui_reads_keeps_its_wire_bytes() {
+    let mut led = fresh();
+    record_into(
+        &mut led,
+        DriftFace::UnknownSessionKind,
+        "bg",
+        Some("{\"kind\":\"bg\"}"),
+    );
+    record_into(&mut led, DriftFace::UnknownSessionKind, "bg", None);
+    record_into(&mut led, DriftFace::UnknownSessionKind, "aa", None);
+    for i in 0..=MAX_KEYS {
+        record_into(
+            &mut led,
+            DriftFace::UnknownRecordType,
+            &format!("t{i:02}"),
+            None,
+        );
+    }
+    let reply = crate::agents::drift::DriftReport {
+        faces: snapshot_of(&led),
+    };
+    let wire = serde_json::to_string(&serde_json::to_value(&reply).unwrap()).unwrap();
+    let first =
+        r#"{"consequence":"__C0__","entries":[{"count":1,"first_sample":null,"key":"<overflow>"},"#;
+    let first = first.replace("__C0__", &DriftFace::UnknownRecordType.consequence());
+    assert!(
+        wire.starts_with(&format!(r#"{{"faces":[{first}"#)),
+        "{wire}"
+    );
+    let tail = r#"{"count":1,"first_sample":null,"key":"t63"}],"face":"unknown_record_type","overflowed":true},{"consequence":"__C1__","entries":[{"count":2,"first_sample":"{\"kind\":\"bg\"}","key":"bg"},{"count":1,"first_sample":null,"key":"aa"}],"face":"unknown_session_kind","overflowed":false}]}"#;
+    let tail = tail.replace("__C1__", &DriftFace::UnknownSessionKind.consequence());
+    assert!(wire.ends_with(&tail), "{wire}");
+    assert_eq!(
+        wire.matches(r#""count":1,"first_sample":null,"key":"t"#)
+            .count(),
+        MAX_KEYS
     );
 }

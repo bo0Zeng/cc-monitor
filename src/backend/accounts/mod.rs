@@ -4,6 +4,7 @@
 //! |---|---|---|
 //! | [`upstream`] | 中转的**上游选择**（apikey 端点改写）：`(agent, 账号)` 路由表 · 凭据文件（中转里只读）· 热重载 ＋ 这台机器上那份凭据文件的帧面读写口 | 常驻后端里中转的装配口 `upstream::host_relay` · `stream/inbound/` 的 `apikey-key-set` / `apikey-read` |
 //! | [`manage`] | 这台机器上的**账号库**：建库 · 加号 / 删号 · 核对 · 修复 · 隔离 · 回滚 · 账号别名 | `faces/accounts_face.rs`（`accounts-*` 那几条改账号库的帧命令） |
+//! | [`sign_in`] | 在 app 里**登录一个号**：起那一家的登录子命令、转链接、递码（令牌那一家自己写） | `faces/login_face.rs`（`login-*`） |
 //!
 //! ⚠ **它们不共用一张登记表**：上游选择的那几条判据（`relay::upstream_selection_guard` 的上游选择根、
 //! 中转日志白名单 `relay::creds_guard::LOG_ROOTS`、`comm_boundary_registry` 的上游选择前缀）
@@ -16,4 +17,5 @@
 pub mod manage;
 pub mod oauth;
 pub mod quota;
+pub mod sign_in;
 pub mod upstream_select;

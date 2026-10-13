@@ -14,10 +14,8 @@ vi.mock("../../../src/frontend/ui/last-seen", () => ({ rememberSeen: vi.fn(async
 
 import { invoke } from "@tauri-apps/api/core";
 import { loadConfig } from "../../../src/frontend/ui/config";
-import { fakeCfg } from "./config-patch-fake";
 import { deriveUi, defaultAccount, currentAccountForBadge, accountColorsActive, selectableAccounts, detectAccountMismatch, badgeText, sessionBadge, shouldShowAccountBadge, type AccountsState, type Account, type SessionAccount } from "../../../src/frontend/ui/accounts";
 import { fetchAccounts, fetchSessionAccounts, parseSessionAccountLines, invalidateAccountsCache, __resetAccountsCacheForTest } from "../../../src/frontend/ui/account-reads";
-import { getModelForAccount, setModelForAccount, moveMachinePrefs } from "../../../src/frontend/ui/account-prefs";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { toast as showActionFailureToast } from "../../../src/frontend/ui/kit/toast";
@@ -38,7 +36,6 @@ import { copyPattern } from "../../test-support/copy-pattern";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const loadCfg = loadConfig as unknown as ReturnType<typeof vi.fn>;
-const saveCfg = fakeCfg.saved;
 
 function acct(p: Partial<Account>): Account {
   return {
@@ -288,67 +285,6 @@ describe("sessionBadge（§3 优先级）", () => {
   it("探测到但已死 → —（不贴陈旧账号）", () => {
     const m = live([{ pid: 1, sessionId: "s1", cwd: "/w", configDir: "/h/.claude-alt/z", account: "z", bare: false, alive: false }]);
     expect(sessionBadge("s1", "devbox", m, emailBy)?.known).toBe(false);
-  });
-});
-
-// 默认账号 / 默认模型按机器存（`accounts.byMachine.<机器>`）：在一台上设的不许改到别台的同名号。
-
-// F07：每账号模型偏好 config 读写——按机器分。
-describe("modelByAccount config 读写（F07，按机器）", () => {
-  it("无 accounts 键 → undefined", async () => {
-    loadCfg.mockResolvedValue({});
-    expect(await getModelForAccount("devbox", "z")).toBeUndefined();
-  });
-  it("有这台的 modelByAccount[z] → 读回；未设置的账号名 / 别的机器 → undefined", async () => {
-    loadCfg.mockResolvedValue({ accounts: { byMachine: { devbox: { modelByAccount: { z: "opus" } } } } });
-    expect(await getModelForAccount("devbox", "z")).toBe("opus");
-    expect(await getModelForAccount("devbox", "b")).toBeUndefined();
-    expect(await getModelForAccount("nano", "z")).toBeUndefined();
-  });
-  it("★ 写入保留其它键 + 多账号互不影响 + 别的机器上的同名号不受影响", async () => {
-    loadCfg.mockResolvedValue({
-      theme: "dark",
-      accounts: { byMachine: { devbox: { other: "b", modelByAccount: { b: "sonnet" } }, nano: { modelByAccount: { z: "haiku" } } } },
-    });
-    await setModelForAccount("devbox", "z", "opus");
-    const written = saveCfg.mock.calls[0][0] as Record<string, unknown>;
-    expect(written.theme).toBe("dark");
-    const by = (written.accounts as Record<string, unknown>).byMachine as Record<string, Record<string, unknown>>;
-    expect(by.devbox.other).toBe("b"); // 这台其它键不丢
-    expect(by.devbox.modelByAccount).toEqual({ b: "sonnet", z: "opus" });
-    expect(by.nano.modelByAccount).toEqual({ z: "haiku" });
-  });
-  it("清除（null）→ 只删这台这个号这一条，其余保留", async () => {
-    loadCfg.mockResolvedValue({ accounts: { byMachine: { devbox: { modelByAccount: { z: "opus", b: "sonnet" } } } } });
-    await setModelForAccount("devbox", "z", null);
-    const by = ((saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>).byMachine as Record<string, Record<string, unknown>>;
-    expect(by.devbox.modelByAccount).toEqual({ b: "sonnet" });
-  });
-  // Phase D 审计（阻塞项修复）：非法模型名必须在写入点被拒绝，不能只留给起会话时的
-  // MODEL_DIMENSION.apply() 才发现——那样会让该账号往后每一次会话拉起都统一失败。
-  it("非法模型名（含 shell 元字符/空格）→ throw，不落盘", async () => {
-    loadCfg.mockResolvedValue({ accounts: {} });
-    await expect(setModelForAccount("devbox", "z", "opus; rm -rf /")).rejects.toThrow(copyPattern("accounts.setModel.invalid"));
-    await expect(setModelForAccount("devbox", "z", "Claude Opus 4.5")).rejects.toThrow(copyPattern("accounts.setModel.invalid")); // 空格非法
-    expect(saveCfg).not.toHaveBeenCalled();
-  });
-  // 规则换成共享那一份（生成物）之后，真实模型名都放行：
-  // 原先 TS 那份会拒这几条。正例的全集在共用金样 `identifier-rules.golden.json`（`identifier-rules-parity.vitest.ts`）。
-  it("真实模型名（`sonnet[1m]` · Bedrock · Vertex）写得进去", async () => {
-    loadCfg.mockResolvedValue({ accounts: {} });
-    for (const m of ["sonnet[1m]", "us.anthropic.claude-sonnet-4-5-20250929-v1:0", "claude-sonnet-4-5@20250929"]) {
-      await expect(setModelForAccount("devbox", "z", m)).resolves.toBeUndefined();
-    }
-  });
-  it("清除（null）不受校验约束——恒允许", async () => {
-    loadCfg.mockResolvedValue({ accounts: { byMachine: { devbox: { modelByAccount: { z: "opus" } } } } });
-    await expect(setModelForAccount("devbox", "z", null)).resolves.toBeUndefined();
-  });
-  it("机器改名：那台的偏好整段搬到新名字下", async () => {
-    loadCfg.mockResolvedValue({ accounts: { byMachine: { devbox: { other: "z", modelByAccount: { z: "opus" } }, nano: { other: "a" } } } });
-    await moveMachinePrefs("devbox", "devbox2");
-    const by = ((saveCfg.mock.calls[0][0] as Record<string, unknown>).accounts as Record<string, unknown>).byMachine as Record<string, unknown>;
-    expect(by).toEqual({ devbox2: { other: "z", modelByAccount: { z: "opus" } }, nano: { other: "a" } });
   });
 });
 

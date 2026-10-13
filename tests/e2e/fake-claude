@@ -45,8 +45,9 @@ RELAY=unset
   printf '\n'
 } >>"$CLAUDE_DIR/argv.log"
 
-# procStart:/proc/<pid>/stat 第 22 字段(comm 无空格 → 定位稳,同 tests/e2e/f40-suite.sh)
-PROC_START="$(awk '{print $22}' "/proc/$$/stat")"
+# procStart:/proc/<pid>/stat 第 22 字段。先剥到最后一个 `) ` 再数(进程名带空格时列不错位;
+#   同 sandbox-env.sh 的 `proc_start`。本桩会被拷成 `claude` 单独跑,不 source 旁边的文件,就地写一份)
+PROC_START="$(sed 's/.*) //' "/proc/$$/stat" | awk '{print $20}')"
 
 # (2) pidfile 先落
 PIDFILE="$SESS_DIR/$$.json"

@@ -18,6 +18,15 @@
     "tests/backend/control/deploy_plan_tests.rs": [
       { "text": "本机", "use": "输入" }
     ],
+    "tests/backend/plan/book_tests.rs": [
+      { "text": "超时", "use": "输入" }
+    ],
+    "tests/backend/control/exit_policy_tests.rs": [
+      { "text": "类型不对", "use": "用例名" }
+    ],
+    "tests/frontend/ui/settings/accounts-section.vitest.ts": [
+      { "text": "超时", "use": "输入" }
+    ],
     "tests/backend/plan/fixture.rs": [
       { "text": "没签", "use": "输入" }
     ],
@@ -124,7 +133,6 @@
       { "text": "账号", "use": "输入" },
       { "text": "终端", "use": "输入" },
       { "text": "默认", "use": "输入" },
-      { "text": "本会话", "use": "输入" },
       { "text": "远端", "use": "输入" },
       { "text": "运行中", "use": "输入" },
       { "text": "失败", "use": "输入" },
@@ -274,9 +282,7 @@
     ],
     "tests/shots/fake/machine.ts": [
       { "text": "日志", "use": "回显" },
-      { "text": "账号", "use": "回显" },
-      { "text": "本机", "use": "输入" },
-      { "text": "配置", "use": "回显" }
+      { "text": "本机", "use": "输入" }
     ],
     "tests/test-support/session-viewer-rig.ts": [
       { "text": "加载失败", "use": "词义" }

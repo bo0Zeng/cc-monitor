@@ -1,12 +1,7 @@
 //! **`~/.ssh/config` 的解读住这里** —— 与拨号同一个家（本目录）。
 //!
-//! 三条帧命令（界面经 `chan.call(<local>, …)` 问本机常驻后端；远端后端同一份代码，答的是它自己那台的 config）：
-//!
-//! | 命令 | 成品 |
-//! |---|---|
-//! | `ssh-config-aliases` | `{aliases:[…]}`：`Host` 行里非通配的别名（去重保序） |
-//! | `ssh-config-resolve {alias}` | 一台的有效连接参数（系统 `ssh -G` 解析，Include / Match / 通配都由它处理） |
-//! | `ssh-config-import` | 全部别名逐个解析后按「同一台机器的多个地址」聚合成的预览组 |
+//! 一条帧命令 `ssh-config-import {known}`（界面经 `chan.call(<local>, …)` 问本机常驻后端）：`Host` 行里非通配的别名逐个经系统 `ssh -G`
+//! 解析（Include / Match / 通配都由它处理），按「同一台机器的多个地址」聚合成预览组，标出已在机器列表里的那几组。
 //!
 //! monitor 一处 `.ssh` 都不读、不起 `ssh`。
 //! 只读 `~/.ssh/config`，**不碰任何密钥文件**（`identityfile` 只问「在不在」，不读内容）。
@@ -20,9 +15,8 @@ use serde::Serialize;
 /// 失败：码 ＋ 那一句 ＋ 原话（`ssh -G` 自己说的 · 起不来时的系统报错，进复制详情）。
 type CmdErr = crate::stream::inbound::spec::Fail;
 
-/// 一个别名解析出的有效连接参数（`ssh-config-resolve` 的成品）。线上 camelCase（界面 `ssh-config-reads.ts` 严格收）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+/// 一个别名解析出的有效连接参数（聚合之前的那一份）。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ResolvedHost {
     pub(crate) host: String,
     pub(crate) port: u16,
@@ -35,6 +29,15 @@ pub(crate) struct ResolvedHost {
 
 /// 预览组里的一个来源别名（界面「拆分」时据此还原成独立机器）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "SshImportMember"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportMember {
     pub(crate) alias: String,
@@ -45,6 +48,15 @@ pub(crate) struct ImportMember {
 
 /// 批量导入预览的一组：聚合后的一台建议机器（含多地址与来源成员）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "SshImportGroup"
+    )
+)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportGroup {
     pub(crate) label: String,
@@ -63,6 +75,16 @@ pub(crate) struct ImportGroup {
 
 /// 机器列表里已有的一台（只认地址 ＋ 用户 ＋ 端口）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "KnownHost"
+    )
+)]
+#[serde(deny_unknown_fields)]
 pub(crate) struct Known {
     pub(crate) host: String,
     pub(crate) user: String,
@@ -248,7 +270,7 @@ pub(crate) fn list_aliases() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// `ssh -G` 一发的期限：界面等 `ssh-config-resolve` 的预算是 10 s，收一档到 5 s（只读配置、不建连接，正常毫秒级）。
+/// `ssh -G` 一发的期限（只读配置、不建连接，正常毫秒级；整批的上限见 [`SSH_IMPORT_CAP`]）。
 const SSH_G_WITHIN: Deadline = Deadline::secs(5);
 
 /// 用系统 `ssh -G <alias>` 解析一个别名。别名先过 allowlist、`-` 开头另挡；argv 直传、不过 shell。
@@ -303,46 +325,50 @@ pub(crate) fn import() -> Vec<ImportGroup> {
     aggregate_ssh_hosts(resolved)
 }
 
-fn to_value<T: Serialize>(v: &T) -> serde_json::Value {
-    serde_json::to_value(v).unwrap_or(serde_json::Value::Null)
-}
-
-/// `ssh-config-aliases` 的成品。
-pub(crate) fn answer_aliases() -> serde_json::Value {
-    serde_json::json!({ "aliases": list_aliases() })
-}
-
-/// `ssh-config-resolve {alias}` 的成品。
-pub(crate) fn answer_resolve(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
-    let alias = args.get("alias").and_then(|v| v.as_str()).ok_or_else(|| {
-        CmdErr::from((
-            "bad_args",
-            crate::common::contract::malformed("missing `alias`"),
-        ))
-    })?;
-    resolve(alias).map(|r| to_value(&r))
-}
-
 /// `ssh-config-import` 整条命令总期限的上限（每个别名一发 `ssh -G`，整批共用；用完了剩下的别名各自超时、照「解析失败」跳过）。
 pub(crate) const SSH_IMPORT_CAP: Deadline = Deadline::secs(28);
 
-/// `ssh-config-import {known}` 的成品：每组带上「已在列表里」。
-pub(crate) fn answer_import(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
-    let known: Vec<Known> = args
-        .get("known")
-        .cloned()
-        .and_then(|v| serde_json::from_value(v).ok())
-        .ok_or_else(|| {
-            CmdErr::from((
-                "bad_args",
-                crate::common::contract::malformed(
-                    "missing `known` (an array of {host, user, port})",
-                ),
-            ))
-        })?;
-    let mut groups = import();
-    mark_in_list(&mut groups, &known);
-    Ok(serde_json::json!({ "groups": to_value(&groups) }))
+/// `ssh-config-import` 的入参：机器列表里已有的那几台。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct SshImportReq {
+    pub(crate) known: Vec<Known>,
+}
+
+/// `ssh-config-import` 的应答：聚合成的预览组（每组带上「已在列表里」）。
+#[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct SshImported {
+    pub(crate) groups: Vec<ImportGroup>,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `ssh-config-import` 只有 `bad_args`（解析失败的别名照跳过，不整条回错）。
+    pub(crate) enum ImportErr {}
+}
+
+/// `ssh-config-import`：批量导入预览。阻塞档：读一份文件 ／ 逐个起 `ssh -G`（只读配置、不建连接）并等它退出。
+pub(crate) struct SshConfigImport;
+
+impl crate::stream::inbound::typed::Command for SshConfigImport {
+    const NAME: &'static str = "ssh-config-import";
+    type Req = SshImportReq;
+    type Reply = SshImported;
+    type Err = ImportErr;
+}
+
+impl crate::stream::inbound::typed::Blocking for SshConfigImport {
+    fn run(
+        req: SshImportReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<SshImported, ImportErr> {
+        let mut groups = import();
+        mark_in_list(&mut groups, &req.known);
+        Ok(SshImported { groups })
+    }
 }
 
 #[cfg(test)]

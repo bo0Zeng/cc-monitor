@@ -2,7 +2,6 @@
 declare const classes: {
   readonly acctSessNotice: string;
   readonly acctSessStrip: string;
-  readonly acctSessStripAt: string;
   readonly acctSessStripLine: string;
   readonly acctSessStripMove: string;
   readonly acctSessStripSep: string;

@@ -45,7 +45,6 @@ export function defaultOps(): Record<string, OpHandler> {
             notes: [],
             backup: null,
             account: null,
-            loginCmd: null,
             aliasNames: name ? [`${name}cc`, `${name}cct`] : [],
             keyMasked: null,
             keyProblem: null,
@@ -60,9 +59,9 @@ export function defaultOps(): Record<string, OpHandler> {
       const mine = w.sessions.filter((s) => s.origin === origin);
       const src = w.sessions.find((s) => s.sid === req.forkOf);
       return {
-        recent: [...new Set(mine.map((s) => s.cwd))].map((cwd, i) => ({ cwd, lastMs: Date.now() - i * 60_000 })),
+        recent: [...new Set(mine.map((s) => s.cwd))].map((cwd, i) => ({ cwd, lastMs: Date.now() - i * 60_000, lastText: "09:30" })),
         tmux: !/win/.test(origin),
-        agents: ["claude"],
+        agents: [{ kind: "claude", text: "Claude Code", models: [], permissionModes: [] }],
         fork: src
           ? {
               agent: "claude",

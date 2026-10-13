@@ -77,13 +77,13 @@ object Kill {
 /**
  * 进终端那一行：问 `launch-render-cli` 要那台要跑的 `ccm …`（与桌面「命令已复制」复制的是同一条），
  * 手机在自己的终端里原样敲进去。意图与桌面 `planAttach` 一样：接回 [name] 那个会话、不起 agent。
+ * 启动命令 · 模型偏好表那台自己读（`prefs.json`），不随请求交。
  */
 object AttachLine {
     const val COMMAND: String = "launch-render-cli"
 
     fun args(
         agent: String,
-        defaultLauncher: String,
         name: String,
     ): Map<String, Any?> =
         mapOf(
@@ -94,9 +94,6 @@ object AttachLine {
             "account" to mapOf("kind" to "base"),
             "ccmSid" to null,
             "model" to null,
-            "models" to emptyMap<String, String>(),
-            "launcher" to defaultLauncher,
-            "defaultLauncher" to defaultLauncher,
         )
 
     fun of(data: Any?): String? = decoding { data.asObj().str("cmd").need() }

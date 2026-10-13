@@ -187,8 +187,14 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
             .replace('\\', "/");
         let prod = guard_core::strip_comment_lines(&text);
         for op in ops {
-            let needle = format!("chan.call(origin, \"{op}\"");
-            let c = prod.matches(needle.as_str()).count();
+            // 按类型问的那一口（`callTyped`，第 8 批起）与原先的 `chan.call` 都认。
+            let c = [
+                format!("chan.call(origin, \"{op}\""),
+                format!("callTyped(origin, \"{op}\""),
+            ]
+            .iter()
+            .map(|needle| prod.matches(needle.as_str()).count())
+            .sum::<usize>();
             if c > 0 {
                 homes.entry(op.to_string()).or_default().insert(rel.clone());
                 *counts.entry(op.to_string()).or_default() += c;
@@ -200,7 +206,7 @@ fn the_front_end_speaks_the_bus_ops_only_through_one_module() {
         assert_eq!(
             homes.get(op).cloned().unwrap_or_default().into_iter().collect::<Vec<_>>(),
             vec!["src/frontend/ui/cc-bus-control.ts".to_string()],
-            "`{op}` 的 `chan.call` 出现在 `src/frontend/ui/cc-bus-control.ts` 之外（或那一份里没有了）—— 界面说它的家不止一个"
+            "`{op}` 的调用（`chan.call` / `callTyped`）出现在 `src/frontend/ui/cc-bus-control.ts` 之外（或那一份里没有了）—— 界面说它的家不止一个"
         );
         assert_eq!(
             counts.get(op).copied(),

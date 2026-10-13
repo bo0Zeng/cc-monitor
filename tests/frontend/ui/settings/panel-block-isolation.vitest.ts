@@ -114,7 +114,7 @@ vi.mock("../../../../src/frontend/ui/theme", () => ({
   saveTheme: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../../../src/frontend/ui/paths", () => ({
-  claudeDirIn: () => null,
+  readClaudeDir: () => Promise.resolve(null),
   setClaudeDirOverride: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("../../../../src/frontend/ui/behavior", () => ({
@@ -127,11 +127,11 @@ vi.mock("../../../../src/frontend/ui/behavior", () => ({
     showBgSessions: false,
     notifyTurnEnd: false,
     notifyNeeds: false,
-    resumeCommand: "",
     resumeCommandPresets: behaviorStub.presets,
-    resumeInTmux: false,
   })),
   setBehavior: vi.fn().mockResolvedValue(undefined),
+  getBehavior: vi.fn(async () => ({ resumeCommandPresets: behaviorStub.presets })),
+  rememberResumePreset: vi.fn(async () => behaviorStub.presets),
   withResumePreset: (list: readonly string[], cmd: string) => {
     const v = cmd.trim();
     if (!v) return [...list];
@@ -271,69 +271,22 @@ describe("T07 分区块隔离（真行为）", () => {
 });
 
 // ===== P6c：恢复命令（通用页一格，各台的默认）—— 下拉：默认那一家的启动器 · 用过的 · 自定义… =====
-describe("P6c 恢复命令下拉", () => {
+describe("通用页不再有恢复命令那一格（启动程序 · 恢复到 tmux 里住各台后端，在每台机器页里改）", () => {
   beforeEach(() => {
-    behaviorStub.presets = [];
     document.body.textContent = "";
   });
-  const sel = () => document.querySelector<HTMLButtonElement>("[data-role=resume-select]")!;
-  const labels = (): string[] => {
-    sel().click();
-    const got = [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].map((i) => i.textContent ?? "");
-    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
-    sel().click();
-    return got;
-  };
-  const pick = (label: string): void => {
-    sel().click();
-    [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].find((i) => i.textContent === label)!.click();
-  };
 
-  it("★ P6c-Y1：候选 ＝ 默认（适配层画像的启动器）· 用过的几条 · 自定义…；选一条 ⇒ **真的走保存路径**并记进用过的", async () => {
-    behaviorStub.presets = ["cct", "ccm --tmux"];
+  it("★ 通用页没有启动程序那个下拉，也没有「恢复到 tmux 里」那个开关", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await p.open();
-    const got = labels();
-    expect(got[0], "默认那一项 ＝ 适配层画像里默认那一家的启动器 ＋ 灰字「默认」").toContain(copyText("resumeSelect.option.defaultBare"));
-    expect(got.slice(1)).toEqual(["cct", "ccm --tmux", copyText("resumeSelect.option.custom")]);
-    vi.mocked(setBehavior).mockClear();
-    pick("ccm --tmux");
-    await new Promise((r) => setTimeout(r, 0));
-    expect(vi.mocked(setBehavior)).toHaveBeenCalled();
-    const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
-    expect(saved.resumeCommand).toBe("ccm --tmux");
-    expect(saved.resumeCommandPresets[0]).toBe("ccm --tmux");
-  });
-
-  it("★ P6c-Y3：选的那条要走同一条越层诊断（这一格也是远端几台的默认；候选是放大器，不是绕过口）", async () => {
-    behaviorStub.presets = ["cct"];
-    const p = new SettingsPanel({ windowMode: true });
-    await p.open();
-    const warn = document.querySelector<HTMLElement>(".settings-launcher-warning")!;
-    expect(warn.style.display).toBe("none");
-    pick("cct");
-    await new Promise((r) => setTimeout(r, 0));
-    expect(warn.style.display).toBe("block");
-    expect(warn.textContent ?? "").not.toBe("");
-  });
-
-  it("★ P6c-C：自定义… 展开一格，失焦存成那一条", async () => {
-    const p = new SettingsPanel({ windowMode: true });
-    await p.open();
-    const custom = document.querySelector<HTMLInputElement>("[data-role=resume-custom]")!;
-    expect(custom.hidden).toBe(true);
-    pick(copyText("resumeSelect.option.custom"));
-    expect(custom.hidden).toBe(false);
-    vi.mocked(setBehavior).mockClear();
-    custom.value = "my-claude";
-    custom.dispatchEvent(new Event("change"));
-    await new Promise((r) => setTimeout(r, 0));
-    expect(vi.mocked(setBehavior).mock.calls.at(-1)![0].resumeCommand).toBe("my-claude");
-    expect(sel().dataset.value).toBe("my-claude");
+    const general = [...document.querySelectorAll<HTMLElement>(".settings-switch-row label")].map((l) => l.querySelector("span")?.firstChild?.textContent);
+    expect(general).not.toContain(copyText("settingsPanel.behavior.resumeInTmux"));
+    expect(general.length, "别的开关还在（空真自检）").toBeGreaterThan(0);
+    expect(document.querySelector(".settings-group [data-role=resume-select]")).toBeNull();
   });
 });
 
-// ===== 通用页：开关拨了马上存；存失败拇指退回 ＋ 行下一句（C4）· 恢复到 tmux 里 · 上下文上限锚点 =====
+// ===== 通用页：开关拨了马上存；存失败拇指退回 ＋ 行下一句（C4）=====
 describe("通用页 · 行为与恢复", () => {
   beforeEach(() => {
     behaviorStub.presets = [];
@@ -349,18 +302,6 @@ describe("通用页 · 行为与恢复", () => {
     expect(l, `找不到开关「${label}」—— 下面是空真`).toBeTruthy();
     return { thumb: l!.querySelector<HTMLButtonElement>("[role=switch]")!, row: l!.closest<HTMLElement>(".settings-switch-row")! };
   };
-
-  it("★ 拨「恢复到 tmux 里」⇒ 存的那一份 resumeInTmux 翻过来，别的格原样", async () => {
-    const p = new SettingsPanel({ windowMode: true });
-    await p.open();
-    const { thumb } = sw(copyText("settingsPanel.behavior.resumeInTmux"));
-    expect(thumb.getAttribute("aria-checked")).toBe("false");
-    thumb.click();
-    await new Promise((r) => setTimeout(r, 0));
-    const saved = vi.mocked(setBehavior).mock.calls.at(-1)![0];
-    expect(saved.resumeInTmux).toBe(true);
-    expect(saved.notifyNeeds).toBe(false);
-  });
 
   it("★ 存失败 ⇒ 拇指退回原位 ＋ 那一行下面说为什么（不弹会消失的 toast 了事）", async () => {
     const p = new SettingsPanel({ windowMode: true });
@@ -384,15 +325,5 @@ describe("通用页 · 行为与恢复", () => {
     sw(copyText("settingsPanel.behavior.autoFollow")).thumb.click();
     await new Promise((r) => setTimeout(r, 0));
     expect(sw(copyText("settingsPanel.behavior.autoFront")).thumb.getAttribute("aria-disabled")).toBe("false");
-  });
-
-  it("上下文上限那一节挂锚点 context-limits（主窗口［设上限］跳过来）", () => {
-    new SettingsPanel({ windowMode: true });
-    const spot = document.querySelector<HTMLElement>('[data-anchor="context-limits"]')!;
-    expect(spot).toBeTruthy();
-    // 跳过来那一下展开折着的那一节。
-    expect(spot.querySelector("[aria-expanded]")!.getAttribute("aria-expanded")).toBe("false");
-    spot.dispatchEvent(new Event("settings-reveal"));
-    expect(spot.querySelector("[aria-expanded]")!.getAttribute("aria-expanded")).toBe("true");
   });
 });

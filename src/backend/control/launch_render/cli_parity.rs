@@ -30,6 +30,9 @@ struct Case {
     caps: Vec<String>,
     /// 生产 wire 类型：由 TS 的 `buildCliRenderRequest` 构造、落盘（不另镜像一份）。
     req: super::wire::CliRenderRequest,
+    /// 那台的偏好（启动命令 · 模型表）：不上线，生产上那台自己读 `prefs.json`；对拍这一侧拿它填 `req`（[`super::wire::CliRenderRequest::with_prefs`]）。
+    #[serde(default)]
+    prefs: crate::control::machine_prefs::Prefs,
     ok: bool,
     out: String,
 }

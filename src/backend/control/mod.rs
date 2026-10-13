@@ -23,12 +23,18 @@
 pub mod asks;
 pub mod capture_pane;
 pub(crate) mod cc_bus;
+pub(crate) mod cc_bus_wire; // cc-bus 那七条帧命令的形状（入参 · 回包 · 码表 · 怎么跑）
 pub mod ccm;
 pub mod cli_args;
 pub mod cli_control;
 pub mod deploy_plan;
 pub mod exit_policy;
 pub mod files_commit;
+pub(crate) mod machine_prefs;
+pub use machine_prefs::apply_agent_homes;
+pub(crate) mod machines;
+// 第 7 批那一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`；下一版删）。
+pub mod prefs_migration;
 // 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;
 // 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。

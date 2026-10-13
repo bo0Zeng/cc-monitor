@@ -610,7 +610,8 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
         for (at, _) in prod.match_indices("crate::stream::inbound::typed::") {
             let rest = &prod[at..];
             let Some(lt) = rest.find("::<") else { continue };
-            let path = &rest[lt + 3..rest.find('>').unwrap_or(rest.len())];
+            let after = &rest[lt + 3..];
+            let path = &after[..after.find('>').unwrap_or(after.len())];
             let Some(tail) = path.strip_prefix("crate::control::") else {
                 continue;
             };

@@ -49,7 +49,9 @@ pub fn unhex(s: &str) -> Option<Vec<u8>> {
 }
 
 /// 本机落点（线上那一形）→ `(父目录那一形, 名字那一形)`：按最后一个 `/`（Windows 上还有 `\`）切，都保持字节。
-pub fn split_local(local: &serde_json::Value) -> Option<(serde_json::Value, serde_json::Value)> {
+pub fn split_local(
+    local: &serde_json::Value,
+) -> Option<(cmd_wire::files::WirePath, cmd_wire::files::WirePath)> {
     let b = super::find::decode_path(local)?;
     let cut = b
         .iter()
@@ -59,8 +61,8 @@ pub fn split_local(local: &serde_json::Value) -> Option<(serde_json::Value, serd
         return None;
     }
     Some((
-        super::source::wire_bytes(dir),
-        super::source::wire_bytes(name),
+        cmd_wire::files::WirePath(dir.to_vec()),
+        cmd_wire::files::WirePath(name.to_vec()),
     ))
 }
 
@@ -73,63 +75,67 @@ pub async fn pull_by_bytes(
     overwrite: bool,
     board: &super::download::DownloadBoard,
 ) -> Result<(), String> {
-    use super::source::ask;
+    use super::source::ask_typed;
+    use cmd_wire::files as w;
     use sha2::Digest as _;
     let (root, rel) =
         split_local(&local).ok_or_else(|| copy_text("rsFilewinLossyPull.local.badDest", &[]))?;
     let here = comms_inward::chan::wire::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
     let key = uuid::Uuid::new_v4().simple().to_string();
-    let path = super::source::wire_bytes(remote);
     let mut sha = sha2::Sha256::new();
     let (mut off, mut seq) = (0u64, 0u64);
     loop {
         if board.cancels().is_cancelled() {
             return Err(super::transfer::CANCELLED.to_string());
         }
-        let d = ask(
+        let d = ask_typed(
             line,
             origin,
-            "files-read-chunk",
-            &serde_json::json!({ "path": path, "offset": off, "len": PULL_CHUNK }),
+            &cmd_wire::files::ReadChunkReq {
+                path: cmd_wire::files::WirePath(remote.to_vec()),
+                offset: off,
+                len: PULL_CHUNK,
+            },
             super::chunk_upload::CHUNK_BUDGET,
         )
-        .await?;
-        let body = d["content"]["b16"]
-            .as_str()
-            .and_then(unhex)
-            .ok_or_else(|| copy_text("rsFilewinLossyPull.reply.badChunk", &[]))?;
-        let size = d["size"].as_u64().unwrap_or(0);
+        .await
+        .map_err(|f| f.said)?;
+        let body = d.content.0;
+        let size = d.size;
         if !body.is_empty() {
             sha.update(&body);
-            ask(
-                line,
-                &here,
-                "files-stage-chunk",
-                &serde_json::json!({ "key": key, "seq": seq, "content": { "b16": super::chunk_upload::hex(&body) } }),
-                super::chunk_upload::CHUNK_BUDGET,
-            )
-            .await?;
+            let req = w::FilesStageChunkReq {
+                key: key.clone(),
+                seq,
+                content: w::ChunkBytes::Hex(body.clone()),
+            };
+            ask_typed(line, &here, &req, super::chunk_upload::CHUNK_BUDGET)
+                .await
+                .map_err(|f| f.said)?;
             seq += 1;
             off += body.len() as u64;
         }
         board.progress(off, size);
-        if d["eof"].as_bool() != Some(false) || body.is_empty() {
+        if d.eof || body.is_empty() {
             break;
         }
     }
     let digest = super::chunk_upload::hex(&sha.finalize());
-    ask(
-        line,
-        &here,
-        super::transfer::CMD_COMMIT,
-        &serde_json::json!({
-            "key": key, "root": root, "rel": rel, "overwrite": overwrite,
-            "expect": { "sha256": digest }, "chunks": seq, "bytes": off,
-        }),
-        super::transfer::COMMIT_BUDGET,
-    )
-    .await
-    .map(|_| ())
+    let req = w::FilesCommitUploadReq {
+        root,
+        rel,
+        key,
+        overwrite,
+        expect: w::Sha256Expect {
+            sha256: w::Sha256Hex(digest),
+        },
+        chunks: Some(seq),
+        bytes: Some(off),
+    };
+    ask_typed(line, &here, &req, super::transfer::COMMIT_BUDGET)
+        .await
+        .map(|_| ())
+        .map_err(|f| f.said)
 }
 
 #[cfg(test)]

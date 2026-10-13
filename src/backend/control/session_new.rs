@@ -41,14 +41,15 @@ pub(crate) struct ForkFrom {
     pub(crate) uuid: String,
 }
 
-/// 轮换：打开哪一份配置。
+/// 轮换：用哪一份策略。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RotationPick {
-    /// 配置的 id（非空）。
-    pub(crate) config: String,
+    /// 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub(crate) strategy: Option<String>,
 }
 
 /// `session-new` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
@@ -71,7 +72,7 @@ pub(crate) struct NewRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) tmux_name: Option<String>,
-    /// 启动命令（空 / 缺席 ⇒ 那一家的默认启动器）。
+    /// 这一趟手填的启动命令（空 / 缺席 ⇒ 这台偏好里那一家的启动命令，没设过 ⇒ 那一家的默认启动器）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) command: Option<String>,
@@ -79,17 +80,13 @@ pub(crate) struct NewRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) fork_from: Option<ForkFrom>,
-    /// 这台的模型偏好表（号 → 模型，用户设置的原值）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, String>>"))]
-    pub(crate) models: BTreeMap<String, String>,
     /// 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
     pub(crate) local: bool,
     /// 这一趟的票（界面每次点［新建］一张；期限到了再问一次带同一张 ⇒ 认出同一趟，不起第二个：[`super::session_new_ticket`]）。缺 ⇒ 不认。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) ticket: Option<String>,
-    /// 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
+    /// 轮换：缺 ＝ 用「新会话用」的那份策略（新会话本来就这样，不写）· `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) rotation: Option<RotationPick>,
@@ -128,7 +125,7 @@ pub(crate) const SESSION_NEW_CODES: &[&str] = &[
     "start_failed",
     "child_timed_out",
     "launch_pending",
-    "no_such_config",
+    "no_strategy",
 ];
 
 impl crate::stream::inbound::typed::Codes for SessionNewErr {
@@ -227,21 +224,23 @@ pub struct SessionNew {
     pub prompt: Option<FirstSay>,
 }
 
-/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了配置时起之前把那个会话写成打开那一份（配置不在 ⇒ `no_such_config`）· 起不成撤掉。
+/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了策略（或「不轮换」，id 空）时起之前把那个会话写成用那一份（策略不在 ⇒ `no_strategy`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {
     pub(crate) sid: &'a dyn Fn() -> String,
     pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), (&'static str, String)>,
     pub(crate) forget: &'a dyn Fn(&str),
 }
 
-/// `rotation` 那一格：缺 ⇒ `None`（本机默认）；`{config: id}` ⇒ 那一份；id 空 ⇒ `bad_args`（别的形状在解入参那一步就回了）。
-fn config_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
-    match v {
+/// `rotation` 那一格：缺 ⇒ `None`（新会话用的那份）；`{strategy: id}` ⇒ 那一份；`{strategy: null}` ⇒ `Some("")`（不轮换）；
+/// id 空 ⇒ `bad_args`（别的形状在解入参那一步就回了）。
+fn strategy_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
+    match v.map(|p| p.strategy.as_deref()) {
         None => Ok(None),
-        Some(p) if !p.config.is_empty() => Ok(Some(p.config.clone())),
+        Some(None) => Ok(Some(String::new())),
+        Some(Some(id)) if !id.is_empty() => Ok(Some(id.to_string())),
         Some(_) => Err((
             "bad_args",
-            crate::common::contract::malformed("`rotation` must be {\"config\": id}"),
+            crate::common::contract::malformed("`rotation` must be {\"strategy\": id}"),
             None,
             None,
         )),
@@ -322,13 +321,13 @@ fn start(
     }
     let (kind, face) = crate::agents::pick_kind(Some(&req.agent))
         .map_err(|m| fail("unknown_agent", m, Some(SessionNewField::Agent)))?;
-    let rule = config_of(req.rotation.as_ref())?;
+    let rule = strategy_of(req.rotation.as_ref())?;
     // 新起的要先定 sid 才能起之前写好打开哪一份：那一家不认 ⇒ 不收（分叉的 sid 由分支记录定，不用它）。
     if rule.is_some() && req.fork_from.is_none() && face.preset_sid.is_none() {
         return Err((
             "bad_args",
             crate::common::contract::malformed(
-                "this agent cannot take a rotation config at launch",
+                "this agent cannot take a rotation strategy at launch",
             ),
             None,
             None,
@@ -366,7 +365,9 @@ fn start(
     let permission_args: Vec<String> = match req.permission_mode.as_deref() {
         None => Vec::new(),
         Some(m) => match face.permission {
-            Some(p) if p.modes.contains(&m) => vec![p.flag.to_string(), m.to_string()],
+            Some(p) if p.modes.iter().any(|c| c.value == m) => {
+                vec![p.flag.to_string(), m.to_string()]
+            }
             Some(_) => return Err(malformed("`permissionMode` is not one this agent offers")),
             None => return Err(malformed("this agent has no permission modes")),
         },
@@ -390,7 +391,10 @@ fn start(
             Some(SessionNewField::Command),
         ));
     }
-    let launcher = command.unwrap_or(face.default_launcher).to_string();
+    let launcher = command.map_or_else(
+        || deps.prefs.launcher_for(kind, face.default_launcher),
+        str::to_string,
+    );
     let cwd = expand_home(req.cwd.trim(), home);
     if cwd.is_empty() || !(deps.local_facts.is_dir)(&cwd) {
         return Err(fail(
@@ -424,7 +428,7 @@ fn start(
     // 号：跟随时分叉跟源会话上次那个号。
     let asked = req.account.clone().unwrap_or(AccountAsk::Follow);
     let source = req.fork_from.as_ref().map(|f| f.sid.as_str());
-    let account = la::settle(&asked, source, &req.models, deps.accounts).map_err(|u| {
+    let account = la::settle(&asked, source, &deps.prefs.models, deps.accounts).map_err(|u| {
         let said = la::unavailable_said(&u);
         let data = SessionNewRefusal {
             field: Some(SessionNewField::Account),
@@ -509,7 +513,7 @@ fn start(
                             &cwd,
                             &asked,
                             req.model.as_deref(),
-                            &req.models,
+                            &deps.prefs.models,
                         ),
                         &account,
                         deps.caps,
@@ -573,7 +577,7 @@ fn start(
                             &cwd,
                             &asked,
                             req.model.as_deref(),
-                            &req.models,
+                            &deps.prefs.models,
                         ),
                         &account,
                         deps.caps,

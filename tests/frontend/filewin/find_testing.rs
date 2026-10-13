@@ -452,6 +452,7 @@ impl FakeBackend {
                         "unreadable_dirs": self.declared.unreadable_dirs,
                         "unreadable_paths": self.declared.unreadable_paths,
                         "truncated": self.declared.truncated,
+                        "skipped_mounts": 0,
                     })),
                 )
             }
@@ -471,6 +472,9 @@ impl FakeBackend {
                         "removed": 0,
                         "rejected": 0,
                         "browse_watch_cap": self.declared.browse_watch_cap,
+                        "watching": n,
+                        "watch_failed": 0,
+                        "watch_error": null,
                     })),
                 )
             }
@@ -525,6 +529,9 @@ impl FakeBackend {
                             "cover_root": fresh_root,
                             "seq": seq,
                             "offset": offset,
+                            "start": fresh_root,
+                            "sort": args.get("sort").cloned().unwrap_or("relevance".into()),
+                            "desc": args.get("desc").cloned().unwrap_or(false.into()),
                         })),
                     );
                 };
@@ -651,21 +658,40 @@ impl FakeBackend {
                 };
                 match crate::source::list_local(std::path::Path::new(dir)) {
                     Ok(rows) => {
-                        let entries: Vec<serde_json::Value> = rows
+                        // 照线上类型拼（两端共用的那一份）：形状由类型定，不手写。
+                        let entries: Vec<cmd_wire::files::LsEntry> = rows
                             .iter()
-                            .map(|r| {
-                                serde_json::json!({
-                                    "path": remote_form(&r.path),
-                                    "kind": if r.is_dir { "dir" } else { "file" },
-                                    "size": r.size,
-                                })
+                            .map(|r| cmd_wire::files::LsEntry {
+                                path: cmd_wire::files::WirePath::from(
+                                    remote_form(&r.path).as_str(),
+                                ),
+                                kind: if r.is_dir {
+                                    cmd_wire::files::FileKind::Dir
+                                } else {
+                                    cmd_wire::files::FileKind::File
+                                },
+                                size: Some(r.size),
+                                mtime_secs: None,
+                                mtime_text: None,
+                                mtime_full: None,
+                                link_dir: None,
+                                link_to: None,
                             })
                             .collect();
+                        let total = entries.len() as u64;
                         (
                             true,
                             None,
                             None,
-                            Some(serde_json::json!({ "entries": entries, "truncated": false })),
+                            Some(
+                                serde_json::to_value(cmd_wire::files::LsReply {
+                                    entries,
+                                    truncated: false,
+                                    total,
+                                    unreadable: 0,
+                                })
+                                .unwrap(),
+                            ),
                         )
                     }
                     // 不在了 ⇒ `not_found`（同真后端按 `io::ErrorKind` 分的那几个码）。
@@ -692,14 +718,28 @@ impl FakeBackend {
                     .unwrap_or(false);
                 if hit {
                     // 照后端那一格：unix 上送 `mode`（盘上那个文件真的低 12 位），非 unix 缺席。
-                    let mut v = serde_json::json!({ "path": p, "kind": "file" });
+                    #[allow(unused_mut)]
+                    let mut mode: Option<u32> = None;
                     #[cfg(unix)]
                     {
                         use std::os::unix::fs::PermissionsExt as _;
                         if let Ok(md) = std::fs::metadata(p) {
-                            v["mode"] = serde_json::json!(md.permissions().mode() & 0o7777);
+                            mode = Some(md.permissions().mode() & 0o7777);
                         }
                     }
+                    let v = serde_json::to_value(cmd_wire::files::StatReply {
+                        path: cmd_wire::files::WirePath::from(p),
+                        kind: cmd_wire::files::FileKind::File,
+                        size: 0,
+                        readonly: false,
+                        mode,
+                        mtime_secs: None,
+                        mtime_text: None,
+                        mtime_full: None,
+                        owner: None,
+                        link_target: None,
+                    })
+                    .unwrap();
                     (true, None, None, Some(v))
                 } else {
                     (
@@ -742,7 +782,7 @@ impl FakeBackend {
                     ),
                 )
             }
-            // 按字节分块读：读**真盘**上那份（图片判据要真字节去解码），同后端 `answer_read_chunk` 的应答形
+            // 按字节分块读：读**真盘**上那份（图片判据要真字节去解码），同后端 `files-read-chunk` 的应答形
             //   `{path, offset, size, eof, content: {b16}}`；读不到 ⇒ `unreadable`。
             "files-read-chunk" => {
                 let p = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
@@ -843,7 +883,7 @@ impl FakeBackend {
                     None,
                     None,
                     Some(
-                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs }),
+                        serde_json::json!({ "path": root, "bytes": 42, "files": files, "dirs": dirs, "links": 0 }),
                     ),
                 )
             }
@@ -910,9 +950,9 @@ impl FakeBackend {
                     reply["before"] = serde_json::json!(0o644);
                 }
                 if cmd == "files-delete" {
-                    if let Some(n) = self.delete_left.lock().unwrap().pop_front() {
-                        reply["remaining"] = serde_json::json!(n);
-                    }
+                    let n = self.delete_left.lock().unwrap().pop_front().unwrap_or(0);
+                    reply["removed"] = serde_json::json!(1);
+                    reply["remaining"] = serde_json::json!(n);
                 }
                 (true, None, None, Some(reply))
             }

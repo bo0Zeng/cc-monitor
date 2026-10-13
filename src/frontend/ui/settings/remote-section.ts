@@ -1,6 +1,6 @@
 /**
  * 设置面板「远端 (SSH)」区：配置并启用远端模式 —— monitor 经 SSH 连 0..N 台远端，各台的后端作为数据源（与本机后端那一路聚合）。
- * 配置写进 config.json 的 `remote`（`{ enabled, hosts: [...] }`），Rust 侧 `lib.rs::load_remote_configs` 启动时读。
+ * 机器表住本机后端（`machines.json`，`machines-read` / `-try` / `-set`）；壳按 `changed {machines}` 重问、对齐远端流。
  *
  * camelCase key 必须与 Rust reader 一致（否则后端读不到）：
  *   enabled (bool) / hosts[] 内每台：label (可选，默认 host) / host / port (默认 22) / user / keyPath (可选) / hostKeyFingerprint (可选)。
@@ -8,7 +8,7 @@
  *
  * 没有 `hosts` 键的单对象形状不认：一台都不显示，机器列表顶上说「远端配置认不出：…」（`remote-config.ts::REMOTE_CONFIG_UNRECOGNIZED`）。
  *
- * - 读走 config.ts 的 loadConfig；写经 `remote-config.ts::patchRemoteConfig`（schema-agnostic 透传）。
+ * - 读写都经 `remote-config.ts`（`readRemoteConfig` · `patchRemoteConfig` · `tryRemoteConfig`，问本机后端）。
  * - **只动 `remote` 这一个键**：写口是按键补丁（`config.ts::patchConfigFrom` 现读 → 只交 `set ["remote"]`），
  *   盘上别的键不经这里。
  * - 改动后需**重启 monitor 才生效**（数据源在 setup() 启动时定型），保存后 banner 提示。
@@ -18,7 +18,6 @@
  * 每台各有「测试连接」（问本机后端 `remote-probe`）展示 SSH/指纹/backend，指纹可一键固化。
  */
 
-import { commands } from "../ipc/commands";
 import { openPortForwardPanel } from "../views/port-forward";
 import { listForwards, stopForward } from "../port-forward-reads";
 import { askInterrupts } from "./interrupts";
@@ -49,7 +48,6 @@ import { fetchAccounts, fetchLocalAccounts } from "../account-reads";
 import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
-import { moveMachinePrefs } from "../account-prefs";
 // 本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`），与本机那一页的路由键不是同一个串。
 import { LOCAL_ORIGIN } from "../backend-policy";
 // 调用点（含测试）从本模块 import 它，原样再导出。
@@ -919,11 +917,8 @@ export class RemoteSection {
           .map(([k]) => k),
       });
       // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
-      const renames: [string, string][] = [];
       for (const c of saving) {
-        const next = hostKey(c.collect());
-        if (c.persistedKey && c.persistedKey !== next) renames.push([c.persistedKey, next]);
-        c.persistedKey = next;
+        c.persistedKey = hostKey(c.collect());
         c.renderStatusStrip();
       }
       this.loadedKeys = saving.map((c) => c.persistedKey!);
@@ -931,16 +926,12 @@ export class RemoteSection {
       for (const p of patched.pinned) saving.find((c) => c.persistedKey === p.origin)?.pinnedOn(p.day);
 
       const changed = !sameRemote(next, this.original);
-      // 续跑命令起会话时现读，改了不用重启；但要说一声存上了。
-      const resumeChanged = next.hosts.some((h, i) => h.resumeCommand !== this.original.hosts[i]?.resumeCommand);
       this.original = next;
-      // 那台的默认账号 / 默认模型跟着改名走。
-      for (const [from, to] of renames) await moveMachinePrefs(from, to);
-      if ((changed || resumeChanged) && incompleteCount === 0 && !fingerprintLooksOff) {
+      if (changed && incompleteCount === 0 && !fingerprintLooksOff) {
         this.showBanner(copyText("remote.save.done"));
       }
-      // 机器表改了 ⇒ 当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连），不要重启。
-      if (changed) void this.reconcile();
+      // 机器表改了 ⇒ 本机后端推 `changed {machines}`，壳照它当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连）。
+      if (changed) this.pages?.machinesReconciled?.();
       for (const c of saving) this.repaintRow(c);
       return true;
     } catch (e) {
@@ -948,16 +939,6 @@ export class RemoteSection {
       this.showFailure(copyText("remote.save.failed"), e);
       return false;
     }
-  }
-
-  /** 照盘上的机器表对齐远端那几条流；这一趟断开的那几台点子跟着换。 */
-  private async reconcile(): Promise<void> {
-    try {
-      await commands.remote_reconcile();
-    } catch (e) {
-      this.showFailure(copyText("machineList.reconcile.failed"), e);
-    }
-    this.pages?.machinesReconciled?.();
   }
 
   /** 照这台现在的「连接这台」重画那一行（停用 ⇒ 空心点 ＋「已停用」＋［连接］；开着 ⇒ 照上次问到的连接）。 */

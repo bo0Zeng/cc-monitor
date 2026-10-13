@@ -7,6 +7,7 @@ import { copyText } from "../../../src/frontend/ui/copy-table";
 import EXT_GOLDEN from "../../__fixtures__/ext-flow.golden.json";
 import type { CommandHandler } from "./commands";
 import type { OpHandler, World } from "./types";
+import type { Prefs } from "../../../src/frontend/ui/generated/Prefs";
 
 const HOME = "/home/user";
 
@@ -47,6 +48,9 @@ function extList(w: World): unknown {
   } as never);
   return g;
 }
+
+/** 那台没设过偏好时后端照用的那一份（`control/machine_prefs.rs` 的 `Prefs::default()`）。 */
+export const PREFS_UNSET: Prefs = { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {} };
 
 export function machineOps(): Record<string, OpHandler> {
   return {
@@ -218,7 +222,6 @@ export function machineOps(): Record<string, OpHandler> {
     "terminal-follow": () => ({}),
     "terminal-follow-ack": () => ({}),
     "terminal-unfollow": () => ({}),
-    "ssh-config-aliases": () => ({ aliases: ["devbox", "gpu-01", "win-laptop", "bastion"] }),
     // 文件与数据：devbox 照稿 25 那六件（旧 ccm · 两条重名 · 失效行 · 实时显示 · 收信）；本机缺一个可选的开终端工具、实时显示已做；改过 ~/.bashrc 与扩展装的 skill。
     // 离线那台的上次值（本机后端记着的）：gpu-01 两天前读成的那一份「文件与数据」；记下一律答好。
     // 「开始用」那份数：只有本机的那个世界（刚装好）三步都没做；有远端的世界第三步勾上、终端已接上。
@@ -253,6 +256,22 @@ export function machineOps(): Record<string, OpHandler> {
             }
           : null,
     }),
+    // 机器表住本机后端（`machines.json`）：照场景那份 `config.remote.hosts` 答。
+    "machines-read": (o, _r, w) => {
+      if (o !== "<local>") throw new Error("机器表只问本机后端");
+      const hosts = ((w.config.remote ?? {}) as { hosts?: Record<string, unknown>[] }).hosts ?? [];
+      return { state: "ok", reason: null, detail: null, path: `${HOME}/.cc-monitor/machines.json`, hosts };
+    },
+    // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
+    "machines-try": (o, r, w) => {
+      if (o !== "<local>") throw new Error("机器表只问本机后端");
+      return { fault: tryMachineTable(r.edits as Record<string, unknown>[], w) };
+    },
+    // 那台的偏好（`prefs.json`）：场景写了那一台 ⇒ 答那一份；没写 ⇒ 照「没有这份」答、后端缺省那一份。
+    "prefs-read": (o, _r, w) => {
+      const p = w.prefs?.[o];
+      return { state: p ? "ok" : "absent", reason: null, detail: null, path: `${HOME}/.cc-monitor/prefs.json`, prefs: p ?? PREFS_UNSET };
+    },
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
@@ -313,8 +332,6 @@ function machineOf(origin: string, w: World): Record<string, unknown> {
 
 export function machineCommands(): Record<string, CommandHandler> {
   return {
-    // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
-    machine_table_try: (a, w) => tryMachineTable(a.edits as Record<string, unknown>[], w),
     list_remote_mcp_origins: (_a, w) => w.machines.slice(1).filter((m) => !w.unseenMachines.includes(m)),
     backend_status: (a, w) => ({
       channel: !w.unseenMachines.includes(String(a.origin)),
@@ -341,10 +358,6 @@ export function machineCommands(): Record<string, CommandHandler> {
       entries: [
         { label: "配置", class: "truth", path: `${HOME}/.cc-monitor/config.json`, kind: "file", description: "界面的偏好与机器列表", exists: true, sizeBytes: 4120 },
         { label: "日志", class: "cache", path: `${HOME}/.cc-monitor/logs`, kind: "dir", description: "运行日志（按天滚动）", exists: true, sizeBytes: 3_400_000 },
-      ],
-      backendHome: `${HOME}/.cc-monitor`,
-      backendEntries: [
-        { label: "账号", class: "truth", path: `${HOME}/.cc-monitor/accounts`, kind: "dir", description: "各账号的登录与配置", exists: true, sizeBytes: 820_000 },
       ],
       webviewUserDataDir: null,
     }),

@@ -553,10 +553,6 @@
   overflow-wrap: anywhere;
 }
 
-.tab-hover-blocked {
-  color: var(--error-text);
-}
-
 .tab-hover-foot {
   margin-top: 8px;
   padding-top: 6px;

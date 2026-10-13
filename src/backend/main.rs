@@ -178,6 +178,8 @@ async fn main() {
     // 一次性查询已 exit；到此必是流模式。agent_home 日志放此（审计 correctness-重要①：
     // 一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
     // 「错误 exit2 + stderr 纯 JSON 失败信封」，客户端可整段 JSON-parse stderr）。
+    // 这台设了的各家数据目录（本机 `prefs.json` 的 `agentHomes`）交成那一家的目录环境变量：排在解析家目录、起任何会话之前。
+    control::apply_agent_homes(&own);
     let agent_home = resolve_agent_home();
     tracing::info!("agent_home = {}", agent_home.display());
 
@@ -226,7 +228,11 @@ async fn main() {
         }
         tracing::info!(
             "{}",
-            accounts::upstream_select::host_relay(faces::rotation_face::library(), relay_own)
+            accounts::upstream_select::host_relay(
+                faces::rotation_face::library(),
+                stream::tap::port(),
+                relay_own
+            )
         );
         if resident {
             inbound::fill_account_colors();
@@ -243,6 +249,10 @@ async fn main() {
     observe::history_query::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
     assets::aliases::migrate_here();
+    // 这台的偏好换了住处（`config.json` 那几格 ⇒ 各台 `prefs.json`）：只由常驻那一位换一次、远端那几份记成待交（下一版删）。
+    if resident {
+        control::prefs_migration::migrate_here(&own);
+    }
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //
@@ -405,12 +415,15 @@ async fn run_over_stdio(
     // (c) Start the watcher reader（这台一份）并接上这一条流：回这条连接的有界出方向通道。
     // 运行簿：整台一本，watcher 写、tap 那一路的流归位读。
     let (poke, book) = observe::watcher::spawn(agent_home, own.clone());
+    tap::adopt(&book);
     let (tz, view) = (wants.tz.clone(), wants.view.clone());
     let (rx, attached) = poke.attach(&wants);
+    // 这条流连接最低优先那一路（活卡的发件箱 ＋ 几种推送）；名单与 watcher 那份同拍交给它。
+    let tap_rx = tap::attach(tz.clone());
     let inbound_task = inbound::spawn(
         tokio::io::stdin(),
         reply_tx.clone(),
-        watch_desk(&attached),
+        watch_desk(&attached, &tap_rx),
         own,
         hello_flushed,
     );
@@ -434,8 +447,6 @@ async fn run_over_stdio(
     // 收信号那一支**不丢写者**：排空期间它照常把在飞命令的最终应答写回去（`inbound::exit_after_drain`）；
     //   入方向 reader 也留着 —— 新来的阻塞命令要有人回它一句 `shutting_down`。
     let stop = inbound::shutdown_listener();
-    // 这条流连接的 tap 接收端（中转抄出来的 SSE 事件，最低优先、可丢）。
-    let tap_rx = tap::attach(book, tz.clone());
     let writer = writer_task(stdout, rx, reply_rx, tap_rx, tz, view);
     tokio::pin!(writer);
     let signalled = tokio::select! {
@@ -464,9 +475,14 @@ async fn run_over_stdio(
 }
 
 /// 这条连接的 `stream-watch` 口接到它在这台 watcher 上的那一份（名单按连接）。
-fn watch_desk(attached: &observe::watcher::Attachment) -> inbound::WatchDesk {
+/// `stream-watch` 那一口：名单只有一份，同拍交给这条连接在 watcher 上的那一份（行 · 运行表 · 主线外清单）与活卡（`live` 帧）。
+fn watch_desk(attached: &observe::watcher::Attachment, tap_rx: &tap::TapRx) -> inbound::WatchDesk {
     let h = attached.handle();
-    inbound::WatchDesk::new(move |sids| h.watch(sids))
+    let live = tap_rx.watch_handle();
+    inbound::WatchDesk::new(move |sids| {
+        live.watch(&sids);
+        h.watch(sids)
+    })
 }
 
 /// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
@@ -733,6 +749,7 @@ async fn serve_listening(
     // 这台一份 watcher（read8a：整台一份读者）：从起来到退一直这一份 —— 没人连着时它照样看 `sessions/`、打标；
     //   每接上一条流就 `attach` 一份投影（名单 · 续点 · 没送出去的帧按连接），记录整台只预读一次。
     let (watcher, book) = observe::watcher::spawn(agent_home.clone(), own.clone());
+    tap::adopt(&book);
 
     // 多客户：认证通过的连接排进这里；每条自己一份 watcher / inbound / writer。
     let (attached_tx, mut attached_rx) = tokio::sync::mpsc::channel::<Attached>(1);
@@ -770,10 +787,10 @@ async fn serve_listening(
                 // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
                 let (reply_tx, reply_rx) =
                     tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
+                // 这条流连接最低优先那一路（活卡的发件箱：整台一份活卡、每条连接按名单一个发件箱）。
+                let tap_rx = tap::attach(tz.clone());
                 let mut inbound_task =
-                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke), own.clone(), hello_flushed);
-                // 这条流连接的 tap 接收端（hub 扇出：每条连接一条）。
-                let tap_rx = tap::attach(book.clone(), tz.clone());
+                    inbound::spawn(reader, reply_tx.clone(), watch_desk(&poke, &tap_rx), own.clone(), hello_flushed);
                 let done = done_tx.clone();
                 tracing::info!("一条流已接上（此刻 {} 条）", clients.count());
                 tokio::spawn(async move {
@@ -861,38 +878,52 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
     // 现在：连发 `REPLY_BURST` 条应答之后**强制让位一次**给出方向。
     // 仍然偏向应答（正常场景一条命令一两帧，够不到预算），但偏置是**有界**的。
     const REPLY_BURST: u32 = 8;
+    // 另一道：自上一帧出方向起写出去的应答**字节**到了一页（`REPLY_PAGE_BYTES`）⇒ 也让位一次。
+    //   分页取一份大会话（index · turns …）时应答是一页接一页来的；按条数，那台别的会话的实时行要等 8 页（几 MB）之后；
+    //   按字节，至多再等一页 —— 「大应答分页取到一半，别的会话来了一行，它在下一页之前上线」就靠这一道（8a b）。
     let mut burst = 0u32;
+    let mut burst_bytes = 0usize;
     loop {
-        // tap 帧**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
-        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— tap 走自己那条
-        //   有界通道（`tap::TAP_CAPACITY`），满了在中转那一侧当场丢、位置号原位说。
-        //   tap 通道被换掉（又一条流连接接上了）⇒ `recv` 回 `None`，这一臂的模式不匹配、这一轮不参与，不会空转。
-        let frame = if burst < REPLY_BURST {
-            tokio::select! {
-                biased;
-                Some(f) = reply_rx.recv() => { burst += 1; f }
-                f = rx.recv() => match f {
-                    Some(mut f) => { burst = 0; f.stamp(&tz); f }
-                    None => return, // 出方向通道关了 = 寿终
-                },
-                Some(f) = tap_rx.next() => f,
-            }
-        } else {
-            burst = 0;
-            tokio::select! {
-                biased;
-                f = rx.recv() => match f {
-                    Some(mut f) => { f.stamp(&tz); f }
-                    None => return,
-                },
-                Some(f) = reply_rx.recv() => f,
-                Some(f) = tap_rx.next() => f,
+        // 活卡那一路**排在最后**（`biased` 按书写顺序问）：只有出方向与应答此刻都没有东西时才轮到它。
+        //   它可丢（SSE 只保快，jsonl 保对），而出方向里的 `line` 帧不许因为它晚到或被挤掉 —— 它走自己那个
+        //   有界发件箱（`live::LIVE_OUTBOX_CAP`），满了合成整卡。
+        let (frame, reply) =
+            if burst < REPLY_BURST && burst_bytes < cc_monitor_backend::REPLY_PAGE_BYTES {
+                tokio::select! {
+                    biased;
+                    Some(f) = reply_rx.recv() => { burst += 1; (f, true) }
+                    f = rx.recv() => match f {
+                        Some(mut f) => { f.stamp(&tz); (f, false) }
+                        None => return, // 出方向通道关了 = 寿终
+                    },
+                    Some(f) = tap_rx.next() => (f, false),
+                }
+            } else {
+                burst = 0;
+                burst_bytes = 0;
+                tokio::select! {
+                    biased;
+                    f = rx.recv() => match f {
+                        Some(mut f) => { f.stamp(&tz); (f, false) }
+                        None => return,
+                    },
+                    Some(f) = reply_rx.recv() => (f, true),
+                    Some(f) = tap_rx.next() => (f, false),
+                }
+            };
+        let wrote = match write_frame(&mut out, &frame, &tz, view.as_ref()).await {
+            Ok(n) => n,
+            Err(e) => {
+                // Broken pipe (client gone) is the normal end-of-life; stop quietly.
+                tracing::warn!("stdout write failed ({e}); stopping writer");
+                return;
             }
         };
-        if let Err(e) = write_frame(&mut out, &frame, &tz, view.as_ref()).await {
-            // Broken pipe (client gone) is the normal end-of-life; stop quietly.
-            tracing::warn!("stdout write failed ({e}); stopping writer");
-            return;
+        if reply {
+            burst_bytes += wrote;
+        } else {
+            burst = 0;
+            burst_bytes = 0;
         }
         if let Err(e) = out.flush().await {
             tracing::warn!("stdout flush failed ({e}); stopping writer");
@@ -902,6 +933,7 @@ async fn writer_task<W: tokio::io::AsyncWrite + Unpin>(
 }
 
 /// Serialize one frame to its wire line and write it (no flush).
+/// 回：写了几个字节。
 /// 复制详情里那一行时刻的空位按这条流看的那一台的时区填好（应答 · 推送都过这里；`stamp_detail_slots`）；
 /// 推送帧照这条流的出口声明裁格（`view`；应答的 kind 不在声明的住处表里，原样）。
 async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
@@ -909,11 +941,12 @@ async fn write_frame<W: tokio::io::AsyncWrite + Unpin>(
     frame: &Frame,
     tz: &cc_monitor_backend::Tz,
     view: Option<&cc_monitor_backend::StreamView>,
-) -> std::io::Result<()> {
+) -> std::io::Result<usize> {
     let line = cc_monitor_backend::stream::wire::to_line_viewed(frame, view)
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-    out.write_all(cc_monitor_backend::stamp_detail_slots(&line, tz).as_bytes())
-        .await
+    let line = cc_monitor_backend::stamp_detail_slots(&line, tz);
+    out.write_all(line.as_bytes()).await?;
+    Ok(line.len())
 }
 
 /// 解析会话数据根：后端盯着的那一家的家目录（注册表 `LocalFace::home_at`）。

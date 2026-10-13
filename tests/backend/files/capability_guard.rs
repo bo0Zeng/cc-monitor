@@ -40,6 +40,100 @@ use super::*;
 
 use crate::files::index::tests::resident_lock;
 
+/// 判据里按能力名问一条（同命令表那一扇门：入参先按它的类型解，形状不对 ⇒ `bad_args`；回包按线上那一形摊回 JSON）。
+/// 名字从每条 [`Ask`] 自己声明的 [`Ask::CAPABILITY`] 来，不在里面 ⇒ `unknown_capability`。
+pub(crate) fn answer(
+    name: &str,
+    args: &serde_json::Value,
+    tz: &crate::common::time::Tz,
+) -> Result<serde_json::Value, Refused> {
+    fn one<A: Ask + serde::de::DeserializeOwned>(
+        args: &serde_json::Value,
+        tz: &crate::common::time::Tz,
+    ) -> Result<serde_json::Value, Refused>
+    where
+        A::Reply: serde::Serialize,
+    {
+        let v = if args.is_null() {
+            serde_json::json!({})
+        } else {
+            args.clone()
+        };
+        let req: A = serde_json::from_value(v).map_err(|e| {
+            Refused::from((
+                "bad_args",
+                crate::common::contract::malformed(&e.to_string()),
+            ))
+        })?;
+        super::answer(req, tz).map(|r| serde_json::to_value(r).expect("回包总能序列化"))
+    }
+    use cmd_wire::files as w;
+    match name {
+        n if n == <w::LsReq as Ask>::CAPABILITY => one::<w::LsReq>(args, tz),
+        n if n == <w::StatReq as Ask>::CAPABILITY => one::<w::StatReq>(args, tz),
+        n if n == <w::FindReq as Ask>::CAPABILITY => one::<w::FindReq>(args, tz),
+        n if n == <w::RebuildReq as Ask>::CAPABILITY => one::<w::RebuildReq>(args, tz),
+        n if n == <w::BrowseReq as Ask>::CAPABILITY => one::<w::BrowseReq>(args, tz),
+        n if n == <w::ReadTextReq as Ask>::CAPABILITY => one::<w::ReadTextReq>(args, tz),
+        n if n == <w::ReadChunkReq as Ask>::CAPABILITY => one::<w::ReadChunkReq>(args, tz),
+        n if n == <w::SizeReq as Ask>::CAPABILITY => one::<w::SizeReq>(args, tz),
+        n if n == <w::GrepReq as Ask>::CAPABILITY => one::<w::GrepReq>(args, tz),
+        n if n == <w::HomeReq as Ask>::CAPABILITY => one::<w::HomeReq>(args, tz),
+        n if n == <w::IndexStatusReq as Ask>::CAPABILITY => one::<w::IndexStatusReq>(args, tz),
+        other => Err(Refused::from((
+            "unknown_capability",
+            crate::common::contract::malformed(&format!("unknown capability `{other}`")),
+        ))),
+    }
+}
+
+/// 同 [`answer`]，名字写线上那一形（`files-ls`）。
+pub(crate) fn answer_wire(
+    wire_name: &str,
+    args: &serde_json::Value,
+    tz: &crate::common::time::Tz,
+) -> Result<serde_json::Value, Refused> {
+    answer(&wire_name.replace('-', "."), args, tz)
+}
+
+/// 那条能力在命令表里登记的码（码表从那一行的错误枚举来）。
+fn registered_codes(cap: &str) -> &'static [&'static str] {
+    let wire = cap.replace('.', "-");
+    crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|s| s.name == wire)
+        .unwrap_or_else(|| panic!("`{wire}` 不在命令表里"))
+        .codes
+}
+
+/// 那条能力的入参类型认得的键：喂一个不认得的键，解码器拒的那一句里列着它认得的全部字段（从类型来，不另抄一份）。
+fn req_fields(cap: &str) -> std::collections::BTreeSet<String> {
+    let said = match answer(
+        cap,
+        &serde_json::json!({ "__probe__": 1 }),
+        &Default::default(),
+    ) {
+        Err(Refused {
+            code: "bad_args",
+            said,
+            ..
+        }) => said,
+        other => panic!("`{cap}` 收下了一个不认得的键：{other:?}"),
+    };
+    if said.contains("there are no fields") {
+        return Default::default();
+    }
+    let tail = said
+        .split("expected")
+        .nth(1)
+        .unwrap_or_else(|| panic!("认不出那一句：{said}"));
+    tail.split('`')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect()
+}
+
 /// 「这一族有哪些」那张表里的名字，**逐字抄**。
 ///
 /// 🔴 抄一份在这里是刻意的：它与 [`CAPABILITIES`] 构成**两向**对拍 ——
@@ -423,7 +517,7 @@ fn every_declared_capability_is_reachable_through_the_single_entry_point() {
     );
 }
 
-/// 每条能力的契约面（参数 / 字段 / 错误码）写成数据之后，**不许是空壳**。
+/// 每条能力的登记**不许是空壳**（入参 · 回包 · 码从类型来，不在这里写）。
 #[test]
 fn every_capability_states_its_contract_surface() {
     for cap in CAPABILITIES {
@@ -432,99 +526,12 @@ fn every_capability_states_its_contract_surface() {
             "能力 `{}` 的 `purpose` 太短 —— 写得出来才登记",
             cap.name
         );
-        assert!(
-            !cap.fields.is_empty(),
-            "能力 `{}` 一个出方向字段都没有 —— 那它答什么？",
-            cap.name
-        );
-        let mut sorted = cap.fields.to_vec();
-        sorted.sort_unstable();
-        assert_eq!(
-            cap.fields.to_vec(),
-            sorted,
-            "能力 `{}` 的字段表没排序 —— 排序是为了让 diff 读得出「加了哪一个」",
-            cap.name
-        );
-        let mut args = cap.args.to_vec();
-        args.sort_unstable();
-        assert_eq!(
-            cap.args.to_vec(),
-            args,
-            "能力 `{}` 的参数表没排序",
-            cap.name
-        );
     }
 }
 
-/// 出方向字段表与**真的回出去的那个 JSON** 对拍。
-///
-/// ⚠ 用一个手写清单去证明另一个手写清单是没有意义的（`inbound::CommandSpec::fields`
-/// 那段头注逐字）—— 所以这里拿**真的调用一次**的输出去比。
+/// `files.index.rebuild` 的「条目数」钉成一条**相等**断言（夹具按构造知道自己有多少条）。回包的键由类型管。
 #[test]
-fn the_status_fields_match_what_the_call_really_returns() {
-    let _lock = resident_lock();
-    let v = answer(
-        "files.index.status",
-        &serde_json::json!({}),
-        &Default::default(),
-    )
-    .expect("status 不该失败");
-    let got: std::collections::BTreeSet<String> = v
-        .as_object()
-        .expect("status 回的该是一个对象")
-        .keys()
-        .cloned()
-        .collect();
-    let declared: std::collections::BTreeSet<String> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.index.status")
-        .expect("这条能力必须在表里")
-        .fields
-        .iter()
-        .map(|f| f.to_string())
-        .collect();
-    assert_eq!(
-        got, declared,
-        "`files.index.status` 真的回出去的字段与声明的那张表对不上"
-    );
-}
-
-#[test]
-fn the_find_fields_match_what_the_call_really_returns() {
-    let _lock = resident_lock();
-    let v = answer(
-        "files.find",
-        &serde_json::json!({"query": "nothing-matches-this"}),
-        &Default::default(),
-    )
-    .expect("find 不该失败");
-    let got: std::collections::BTreeSet<String> = v
-        .as_object()
-        .expect("find 回的该是一个对象")
-        .keys()
-        .cloned()
-        .collect();
-    let declared: std::collections::BTreeSet<String> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.find")
-        .expect("这条能力必须在表里")
-        .fields
-        .iter()
-        .map(|f| f.to_string())
-        .collect();
-    assert_eq!(
-        got, declared,
-        "`files.find` 真的回出去的字段与声明的那张表对不上"
-    );
-}
-
-/// `files.index.rebuild` 的出方向字段与**真的回出去的那个 JSON** 对拍，
-/// 而且顺手把「条目数」钉成一条**相等**断言（夹具按构造知道自己有多少条）。
-///
-/// ⚠ 同族那两条（`status` / `find`）为什么也是这么写的：用一个手写清单去证明另一个
-/// 手写清单没有意义（`inbound::CommandSpec::fields` 那段头注逐字）。
-#[test]
-fn the_index_rebuild_fields_match_what_the_call_really_returns() {
+fn the_index_rebuild_counts_what_the_fixture_really_has() {
     let _lock = resident_lock();
     // 🔴 这个位是**进程级**的，而 `cargo test` 默认并行 ⇒ 先串行（理由住 `index_testing.rs`）
     let _serial = crate::files::index::testing::serial();
@@ -535,24 +542,6 @@ fn the_index_rebuild_fields_match_what_the_call_really_returns() {
         &Default::default(),
     )
     .expect("rebuild 不该失败");
-    let got: std::collections::BTreeSet<String> = v
-        .as_object()
-        .expect("rebuild 回的该是一个对象")
-        .keys()
-        .cloned()
-        .collect();
-    let declared: std::collections::BTreeSet<String> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.index.rebuild")
-        .expect("这条能力必须在表里")
-        .fields
-        .iter()
-        .map(|f| f.to_string())
-        .collect();
-    assert_eq!(
-        got, declared,
-        "`files.index.rebuild` 真的回出去的字段与声明的那张表对不上"
-    );
     // ★ 主锚是**相等**，不是「> 0」：地板在「少走了一半」这个方向上是瞎的。
     assert_eq!(
         v.get("entries").and_then(serde_json::Value::as_u64),
@@ -617,12 +606,12 @@ fn a_rebuild_on_an_unreadable_root_is_refused_without_touching_the_resident_inde
     );
 }
 
-/// `files.browse` 的出方向字段与真的回出去的那个 JSON 对拍。
+/// `files.browse` 的差分算对了（回包的键由类型管）。
 ///
 /// ⚠ 顺手钉住**空数组是合法的**那一格：它的语义是「现在什么都没在看」⇒ 全卸。
 /// 「少了 `dirs`」是另一件事（`bad_args`），由下面那条错误码判据行使。
 #[test]
-fn the_browse_fields_match_what_the_call_really_returns() {
+fn the_browse_diff_counts_are_exact() {
     let _lock = resident_lock();
     let fx = crate::files::index::tests::make_tree("browse-fields", 2, 1, 0);
     let one = fx.root.join("d0000");
@@ -632,24 +621,6 @@ fn the_browse_fields_match_what_the_call_really_returns() {
         &Default::default(),
     )
     .expect("browse 不该失败");
-    let got: std::collections::BTreeSet<String> = v
-        .as_object()
-        .expect("browse 回的该是一个对象")
-        .keys()
-        .cloned()
-        .collect();
-    let declared: std::collections::BTreeSet<String> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.browse")
-        .expect("这条能力必须在表里")
-        .fields
-        .iter()
-        .map(|f| f.to_string())
-        .collect();
-    assert_eq!(
-        got, declared,
-        "`files.browse` 真的回出去的字段与声明的那张表对不上"
-    );
     // ★ 相等断言，不是地板：一个目录进去 ⇒ 挂上 1 个、卸掉 0 个、拒掉 0 个。
     assert_eq!(
         (
@@ -700,10 +671,11 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
             serde_json::json!({"path": ""}),
             "bad_path",
         ),
+        // 形状不对（不是字符串也不是 `{"b16"}`）在解入参那一步就拒 ⇒ `bad_args`；解得出、却是空的 ⇒ `bad_path`。
         (
             "files.index.rebuild",
             serde_json::json!({"path": 7}),
-            "bad_path",
+            "bad_args",
         ),
         // `dirs` **自己**的形状不对 ⇒ `bad_args`（少了它 / 不是数组）。
         ("files.browse", serde_json::json!({}), "bad_args"),
@@ -712,12 +684,12 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
             serde_json::json!({"dirs": "/tmp"}),
             "bad_args",
         ),
-        // 数组里**某一项**不是路径 ⇒ `bad_path`。两个码刻意分得开。
-        ("files.browse", serde_json::json!({"dirs": [7]}), "bad_path"),
+        // 数组里某一项形状不对 ⇒ 同样在解入参那一步拒（`bad_args`）；某一项是空的 ⇒ `bad_path`。
+        ("files.browse", serde_json::json!({"dirs": [7]}), "bad_args"),
         (
             "files.browse",
             serde_json::json!({"dirs": [{"b16": "zz"}]}),
-            "bad_path",
+            "bad_args",
         ),
         (
             "files.browse",
@@ -730,11 +702,7 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
             matches!(got, Err(Refused { code: c, .. }) if c == want),
             "`{cap}` 对 {args:?} 该回 `{want}`，回的是 {got:?}"
         );
-        let declared = CAPABILITIES
-            .iter()
-            .find(|c| c.name == cap)
-            .expect("在表里")
-            .codes;
+        let declared = registered_codes(cap);
         assert!(
             declared.contains(&want),
             "`{cap}` 的错误码表里没有 `{want}` —— 它真的会回这个码"
@@ -746,8 +714,8 @@ fn the_new_two_capabilities_declared_codes_are_not_ghosts() {
 ///
 /// # 它补的是哪一格
 ///
-/// 出方向那一侧早就有实打对拍（[`the_status_fields_match_what_the_call_really_returns`]
-/// 那几条 —— **真调一次**，拿回来的键与声明的 `fields` 判相等）。
+/// 出方向那一侧早就有实打对拍（[`the_index_rebuild_counts_what_the_fixture_really_has`]
+/// 那几条；回包的键今天由两端共用的类型管）。
 /// 而**入方向的 `args` 从来没有任何东西拿它去对真解析器** ——
 /// 登记过这条欠账，而且它已经出过一次事：
 /// `files.ls` 的 `args` 里写着 `ignore_ascii_case`，**而 `answer_ls` 一次都没读它**
@@ -829,6 +797,13 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             "limit",
             serde_json::json!({ "path": p(&fx.root), "limit": 1000 }),
             serde_json::json!({ "path": p(&fx.root), "limit": 1 }),
+        ),
+        // 只列文件夹：根底下有文件也有目录 ⇒ 列出来的必然不同。
+        (
+            "files.ls",
+            "dirs_only",
+            serde_json::json!({ "path": p(&sub), "dirs_only": false }),
+            serde_json::json!({ "path": p(&sub), "dirs_only": true }),
         ),
         (
             "files.stat",
@@ -971,7 +946,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
             .filter(|(c, ..)| *c == cap.name)
             .map(|(_, a, ..)| *a)
             .collect();
-        let declared: std::collections::BTreeSet<&str> = cap.args.iter().copied().collect();
+        let declared = req_fields(cap.name);
+        let declared: std::collections::BTreeSet<&str> =
+            declared.iter().map(String::as_str).collect();
         assert_eq!(
             probed, declared,
             "\n能力 `{}` 的**入参探针**与它声明的 `args` 对不上。\n\
@@ -1017,8 +994,9 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     // 14 → 18（`files.grep` 的 `path` · `needle` · `ignore_ascii_case` · `limit` 四对）。
     // 18 → 21（`files.find`：`needle` · `ignore_ascii_case` 两对走了；`query` · `under` · `offset` · `seq` · `stream` 五对来了）。
     // 21 → 24（`files.find` 的 `sort` · `desc` · `scope` 三对）。
+    // 24 → 25（`files.ls` 的 `dirs_only` 一对）。
     assert_eq!(
-        checked, 24,
+        checked, 25,
         "行使的探针对数变了 —— 本条的射程跟着变了，先查探针表"
     );
     std::fs::remove_dir_all(&text_dir).ok();
@@ -1027,289 +1005,34 @@ fn every_declared_arg_is_really_read_by_the_parser() {
     //
     // 🔴 没有这一格，一把「什么都判不同」的坏尺子照样全绿。
     //    用的正是当年那个鬼影：`files.ls` + `ignore_ascii_case`。
+    //    入参类型不认得的键现在当场拒（`bad_args`），所以对照写成：两趟都给同一个认得的值（`limit` 同为 1000），答案必须相同。
     assert!(
-        !CAPABILITIES
-            .iter()
-            .find(|c| c.name == "files.ls")
-            .expect("在表里")
-            .args
-            .contains(&"ignore_ascii_case"),
-        "`files.ls` 又声明了 `ignore_ascii_case` —— 那下面这条阴性对照就不是对照了"
+        !req_fields("files.ls").contains("ignore_ascii_case"),
+        "`files.ls` 又认 `ignore_ascii_case` 了 —— 那下面这条阴性对照就不是对照了"
     );
-    let base = serde_json::json!({ "path": p(&fx.root) });
-    let with_ghost = serde_json::json!({ "path": p(&fx.root), "ignore_ascii_case": true });
+    let base = serde_json::json!({ "path": p(&fx.root), "limit": 1000 });
+    let same = serde_json::json!({ "path": p(&fx.root), "limit": 1000 });
     assert_eq!(
         format!("{:?}", answer("files.ls", &base, &Default::default())),
-        format!("{:?}", answer("files.ls", &with_ghost, &Default::default())),
-        "喂一个**没声明**的参数进去，答案居然变了 —— 那上面那一批「不同」证不了任何事\n\
-         （要么这把尺子坏了，要么 `files.ls` 偷偷长出了一个没登记的参数）"
+        format!("{:?}", answer("files.ls", &same, &Default::default())),
+        "同一份入参问两趟，答案居然变了 —— 那上面那一批「不同」证不了任何事"
+    );
+    assert!(
+        matches!(
+            answer(
+                "files.ls",
+                &serde_json::json!({ "path": p(&fx.root), "ignore_ascii_case": true }),
+                &Default::default()
+            ),
+            Err(Refused {
+                code: "bad_args",
+                ..
+            })
+        ),
+        "`files.ls` 收下了一个它不认得的键 —— 调用方会以为那个开关生效了"
     );
 }
 
-// ── 〔96 #13〕`args` 的另一个方向：**解析器读的键，都在声明里** ──────────────────
-//
-// 要求：「仍开着」逐字「能力声明里的 `args` 没有东西拿它去对真解析器（`fields` 那一侧有）」。
-// 上面那条差分买的是「**声明了的都真被读**」（鬼影那一向）；本条补「**真被读的都声明了**」（漏登那一向）——
-// 解析器偷偷多认一个键而声明与 `IPC-PROTOCOL.md §10` 都没有它，调用方就永远不知道那个开关存在。
-// 两条合起来才是「`args` == 解析器真读的键」的两向相等。
-//
-// # 怎么取「解析器读的键」：从 `files/mod.rs` 的**生产段**现抽，异源于声明表
-//
-// 分派 `answer` 的每一臂 `"<能力>" => <函数>(args)` 定出入口；从入口起，沿「把 `args` 原样递下去的调用」
-// （`path_arg(args)` / `limit_of(args)` 那一族，只认本文件里定义了的函数）走完，收每个函数体里
-// `args.get("<键>")` 与 `args["<键>"]` 的字面量。函数体按大括号配平，字符串与字符字面量里的括号跳过。
-//
-// # ⚠ 买不到（如实）
-//
-// - 只认 `args.get("…")` / `args["…"]` 两种读法、只认参数就叫 `args`、只认原样递 `args` 的调用；
-//   改成 `serde_json::from_value::<某结构>(args)` 之类的读法它看不见 —— 那一形今天零处（下面「读法只有这两种」那一格在数）。
-// - 只看 `files/mod.rs` 一份：解析今天全在这里（其余三份只收已经解析好的结构，如 `index::FindArgs`）。
-
-/// 一份生产段里 `fn <名>(` → 函数体（大括号配平；跳过字符串 / 原始字符串 / 字符字面量）。
-fn fn_bodies(prod: &str) -> std::collections::BTreeMap<String, String> {
-    let b = prod.as_bytes();
-    let mut out = std::collections::BTreeMap::new();
-    let mut search = 0;
-    while let Some(off) = prod[search..].find("fn ") {
-        let at = search + off;
-        search = at + 3;
-        // 前一个字符得是分词边界（别把 `xfn ` 认成定义）。
-        if at > 0 && (b[at - 1].is_ascii_alphanumeric() || b[at - 1] == b'_') {
-            continue;
-        }
-        let name: String = prod[at + 3..]
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if name.is_empty() {
-            continue;
-        }
-        let Some(open_rel) = prod[at..].find('{') else {
-            break;
-        };
-        // 签名里遇到 `;`（trait 里的声明 / 外部函数）⇒ 没有体。
-        if prod[at..at + open_rel].contains(';') {
-            continue;
-        }
-        let open = at + open_rel;
-        let mut depth = 0i32;
-        let mut i = open;
-        let mut end = prod.len();
-        while i < b.len() {
-            match b[i] {
-                b'"' => {
-                    // 原始字符串 `r#"…"#`：前面是 `r` 或 `r#…`。
-                    let mut hashes = 0;
-                    let mut k = i;
-                    while k > 0 && b[k - 1] == b'#' {
-                        hashes += 1;
-                        k -= 1;
-                    }
-                    let raw = k > 0 && b[k - 1] == b'r';
-                    i += 1;
-                    if raw {
-                        let close = format!("\"{}", "#".repeat(hashes));
-                        i = prod[i..]
-                            .find(&close)
-                            .map(|x| i + x + close.len())
-                            .unwrap_or(b.len());
-                    } else {
-                        while i < b.len() && b[i] != b'"' {
-                            if b[i] == b'\\' {
-                                i += 1;
-                            }
-                            i += 1;
-                        }
-                        i += 1;
-                    }
-                    continue;
-                }
-                b'\'' => {
-                    // 字符字面量 `'x'` / `'\n'`；否则是生命周期，照常往下走。
-                    if i + 2 < b.len() && b[i + 1] != b'\\' && b[i + 2] == b'\'' {
-                        i += 3;
-                        continue;
-                    }
-                    if i + 3 < b.len() && b[i + 1] == b'\\' {
-                        if let Some(x) = prod[i + 2..].find('\'') {
-                            i = i + 2 + x + 1;
-                            continue;
-                        }
-                    }
-                }
-                b'{' => depth += 1,
-                b'}' => {
-                    depth -= 1;
-                    if depth == 0 {
-                        end = i + 1;
-                        break;
-                    }
-                }
-                _ => {}
-            }
-            i += 1;
-        }
-        out.entry(name)
-            .or_insert_with(|| prod[open..end].to_string());
-        search = end.min(prod.len()).max(search);
-    }
-    out
-}
-
-/// 从入口函数起，沿「原样递 `args`」的调用收 `args.get("…")` / `args["…"]` 的键。纯。
-fn keys_read_from(
-    entry: &str,
-    bodies: &std::collections::BTreeMap<String, String>,
-) -> std::collections::BTreeSet<String> {
-    let mut keys = std::collections::BTreeSet::new();
-    let mut seen = std::collections::BTreeSet::new();
-    let mut todo = vec![entry.to_string()];
-    while let Some(f) = todo.pop() {
-        if !seen.insert(f.clone()) {
-            continue;
-        }
-        let Some(body) = bodies.get(&f) else { continue };
-        // 空白全挤掉再找：`args\n    .get("…")` 这种 rustfmt 折行（`answer_find` 的 `ignore_ascii_case` 就是这样写的）照样认得出。
-        let body: String = body.chars().filter(|c| !c.is_whitespace()).collect();
-        for pat in ["args.get(\"", "args[\""] {
-            let mut rest = body.as_str();
-            while let Some(p) = rest.find(pat) {
-                let tail = &rest[p + pat.len()..];
-                let key: String = tail.chars().take_while(|c| *c != '"').collect();
-                if !key.is_empty() {
-                    keys.insert(key);
-                }
-                rest = &rest[p + pat.len()..];
-            }
-        }
-        for name in bodies.keys() {
-            for call in [
-                format!("{name}(args)"),
-                format!("{name}(args,"),
-                format!("{name}(&args"),
-            ] {
-                if body.contains(&call) {
-                    todo.push(name.clone());
-                }
-            }
-        }
-    }
-    keys
-}
-
-/// `answer` 的分派臂：能力名 → 入口函数名。纯。
-fn answer_arms(
-    bodies: &std::collections::BTreeMap<String, String>,
-) -> std::collections::BTreeMap<String, String> {
-    let body = bodies
-        .get("answer")
-        .expect("`files/mod.rs` 生产段里找不到 `fn answer` —— 分派改名了，本条跟着改");
-    let mut out = std::collections::BTreeMap::new();
-    for line in body.lines() {
-        let t = line.trim();
-        let Some(rest) = t.strip_prefix('"') else {
-            continue;
-        };
-        let Some(q) = rest.find('"') else { continue };
-        let cap = &rest[..q];
-        let Some(arrow) = rest[q..].find("=>") else {
-            continue;
-        };
-        let callee: String = rest[q + arrow + 2..]
-            .trim()
-            .chars()
-            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-            .collect();
-        if cap.starts_with("files.") && !callee.is_empty() {
-            out.insert(cap.to_string(), callee);
-        }
-    }
-    out
-}
-
-fn files_mod_prod() -> String {
-    let path = crate::guard_support::src_root()
-        .join("files")
-        .join("mod.rs");
-    guard_core::production_code(&std::fs::read_to_string(&path).expect("读 files/mod.rs"))
-}
-
-#[test]
-fn every_key_the_parser_reads_is_a_declared_arg() {
-    let prod = files_mod_prod();
-    let bodies = fn_bodies(&prod);
-    let arms = answer_arms(&bodies);
-    // 分派臂 == 声明表（两向；本条的人群就是这张表，塌了下面的全称恒真）。
-    let caps: std::collections::BTreeSet<&str> = CAPABILITIES.iter().map(|c| c.name).collect();
-    let armed: std::collections::BTreeSet<&str> = arms.keys().map(String::as_str).collect();
-    assert_eq!(
-        armed, caps,
-        "`answer` 的分派臂与 `CAPABILITIES` 对不上 —— 抽臂坏了，或者真漏了一条"
-    );
-    for cap in CAPABILITIES {
-        let read = keys_read_from(&arms[cap.name], &bodies);
-        let declared: std::collections::BTreeSet<String> =
-            cap.args.iter().map(|s| s.to_string()).collect();
-        assert_eq!(
-            read, declared,
-            "\n能力 `{}` 的解析器（`{}` 起、沿原样递 `args` 的调用）**真读的键**与它声明的 `args` 不相等。\n\
-             读了而没声明 ⇒ 🔴 一个调用方永远不知道的开关（`IPC-PROTOCOL.md §10` 是冻结的线上契约，读者在仓外）——\n\
-             把它补进 `args` 与 `§10`（并补上面那条差分的探针），或者别读它。\n\
-             声明了而没读 ⇒ 上面那条差分也会红（`files.ls` 的 `ignore_ascii_case` 鬼影那一形）。",
-            cap.name, arms[cap.name]
-        );
-    }
-    // 读法只有两种：出现第三种（反序列化成结构体）本条就看不见了，先在这里出声。
-    for (name, body) in &bodies {
-        assert!(
-            !(body.contains("from_value") && body.contains("args")),
-            "`files/mod.rs::{name}` 把 `args` 交给 `from_value` 反序列化 —— 本条只认 `args.get(\"…\")` / `args[\"…\"]`，\
-             那一形的键它收不到（会把漏登判成干净）。改本条的取法，别让它悄悄变瞎。"
-        );
-    }
-}
-
-/// 🔴 正反两控：取法在合成源码上认得出「经 helper 递下去的读」，也不把别的值上的 `.get` 算进来。
-#[test]
-fn the_parser_key_ruler_sees_a_synthetic_read_and_ignores_other_values() {
-    let src = r#"
-fn helper(args: &serde_json::Value) -> u32 { args.get("depth").map(|_| 1).unwrap_or(0) }
-fn answer_x(args: &serde_json::Value) -> u32 {
-    let other = serde_json::json!({"ghost": 1});
-    let _ = other.get("ghost");
-    let s = format!("{{literal braces}} {}", 1);
-    let c = '{';
-    helper(args) + args["path"].as_u64().unwrap_or(0) as u32 + s.len() as u32 + c as u32
-}
-pub fn answer(name: &str, args: &serde_json::Value) -> u32 {
-    match name {
-        "files.x" => answer_x(args),
-        _ => 0,
-    }
-}
-"#;
-    let bodies = fn_bodies(src);
-    assert_eq!(
-        answer_arms(&bodies).get("files.x").map(String::as_str),
-        Some("answer_x")
-    );
-    let got = keys_read_from("answer_x", &bodies);
-    let want: std::collections::BTreeSet<String> =
-        ["depth", "path"].iter().map(|s| s.to_string()).collect();
-    assert_eq!(
-        got, want,
-        "经 helper 递下去的 `depth` 与直接下标的 `path` 要收到；别的值上的 `.get(\"ghost\")` 不许收（字符串 / 字符里的大括号不许把函数体配歪）"
-    );
-    // 活样本锚：`files.grep` 真读 `ignore_ascii_case`，`files.ls` 不读（当年那个鬼影的两面）。
-    let live = fn_bodies(&files_mod_prod());
-    let arms = answer_arms(&live);
-    assert!(keys_read_from(&arms["files.grep"], &live).contains("ignore_ascii_case"));
-    assert!(!keys_read_from(&arms["files.ls"], &live).contains("ignore_ascii_case"));
-}
-
-// ══════════════════════ 边界② 跨 target ══════════════════════
-
-/// 🔴 **判的是「能力在不在」，不是「新鲜度一样」**（边界② 逐字）。
 #[test]
 fn the_capability_set_is_equal_across_every_target() {
     assert!(
@@ -1414,15 +1137,7 @@ fn freshness_is_declared_per_target_and_is_deliberately_not_judged_equal() {
 #[test]
 fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable() {
     let _lock = resident_lock();
-    // ① 它在 `files.index.status` 的**声明**字段表里。
-    let status_cap = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.index.status")
-        .expect("这条能力必须在表里");
-    assert!(
-        status_cap.fields.contains(&"rewalk_interval_secs"),
-        "重走周期不在 `files.index.status` 的字段表里 —— 那它就只活在代码里了"
-    );
+    // ① 它是 `files-index-status` 回包类型里的一格（`cmd_wire::files::IndexStatusReply::rewalk_interval_secs`，编得过即在）；
     // ② 它在**真的回出去**的那个 JSON 里，而且等于声明的那个常量。
     let v = answer(
         "files.index.status",
@@ -1437,10 +1152,6 @@ fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable()
     );
     // ③ 界面要显示的那个「多久前更新的」也必须在同一个答案里
     //    （不许让用户猜为什么搜不到）。
-    assert!(
-        status_cap.fields.contains(&"age_secs"),
-        "新鲜度那个数不在字段表里"
-    );
     assert!(v.get("age_secs").is_some(), "新鲜度那个数没有真的回出去");
     // ④ 周期是个**有意义的正数**。0 会让 `stale` 恒真、界面永远显示「该重走了」。
     assert!(
@@ -1456,14 +1167,6 @@ fn the_rewalk_interval_is_part_of_the_declared_surface_and_is_really_queryable()
 #[test]
 fn the_cold_first_build_estimate_is_its_own_declared_and_queryable_number() {
     let _lock = resident_lock();
-    let status_cap = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.index.status")
-        .expect("这条能力必须在表里");
-    assert!(
-        status_cap.fields.contains(&"cold_first_build_secs"),
-        "冷启动首建那个数不在 `files.index.status` 的字段表里 —— 那它就只活在代码里了"
-    );
     let v = answer(
         "files.index.status",
         &serde_json::json!({}),
@@ -1578,13 +1281,10 @@ fn every_lossy_needle_really_bites_on_an_independently_written_sample() {
     );
 }
 
-/// 类型名是个**闭集**，而 [`crate::files::KINDS`] 就是它的住址。
+/// 类型名是个**闭集**，住线上类型 [`FileKind`]：真回出去的那个词解得回它。
 #[test]
 fn the_kind_names_are_a_closed_set_with_one_home() {
     let _lock = resident_lock();
-    let mut sorted = KINDS.to_vec();
-    sorted.sort_unstable();
-    assert_eq!(KINDS.to_vec(), sorted, "类型名表没排序");
     let fx = crate::files::index::tests::make_tree("kinds", 1, 1, 0);
     let v = answer(
         "files.ls",
@@ -1601,33 +1301,37 @@ fn the_kind_names_are_a_closed_set_with_one_home() {
         .get("kind")
         .and_then(|k| k.as_str())
         .expect("每行都要有 kind");
-    assert!(
-        KINDS.contains(&kind),
-        "真的回出去的类型名 `{kind}` 不在那个闭集里"
+    assert_eq!(
+        serde_json::from_value::<FileKind>(serde_json::json!(kind)).ok(),
+        Some(FileKind::Dir),
+        "真的回出去的类型名 `{kind}` 不在那个闭集里，或者夹具根下那一项不是目录"
     );
-    assert_eq!(kind, "dir", "夹具根下那一项是个目录");
 }
 
 /// `files.stat` / `files.ls` 的路径参数**坏了就拒**，不猜。
 #[test]
 fn a_malformed_path_argument_is_refused_with_its_own_code() {
     let _lock = resident_lock();
-    for (cap, args) in [
-        ("files.stat", serde_json::json!({})),
-        ("files.stat", serde_json::json!({"path": 7})),
-        ("files.stat", serde_json::json!({"path": ""})),
-        ("files.ls", serde_json::json!({"path": {"b16": "zz"}})),
+    // 形状不对（缺 · 不是字符串也不是 `{"b16"}` · 十六进制坏了）在解入参那一步拒 ⇒ `bad_args`；解得出、却是空的 ⇒ `bad_path`。
+    for (cap, args, want) in [
+        ("files.stat", serde_json::json!({}), "bad_args"),
+        ("files.stat", serde_json::json!({"path": 7}), "bad_args"),
+        ("files.stat", serde_json::json!({"path": ""}), "bad_path"),
+        (
+            "files.ls",
+            serde_json::json!({"path": {"b16": "zz"}}),
+            "bad_args",
+        ),
+        (
+            "files.ls",
+            serde_json::json!({"path": {"b16": ""}}),
+            "bad_path",
+        ),
     ] {
         let got = answer(cap, &args, &Default::default());
         assert!(
-            matches!(
-                got,
-                Err(Refused {
-                    code: "bad_path",
-                    ..
-                })
-            ),
-            "`{cap}` 对 {args:?} 没有回 `bad_path`，回的是 {got:?}"
+            matches!(got, Err(Refused { code: c, .. }) if c == want),
+            "`{cap}` 对 {args:?} 没有回 `{want}`，回的是 {got:?}"
         );
     }
     // `find` 那一侧是另一个码 —— 两条路的诊断不许混成一句。
@@ -1639,7 +1343,7 @@ fn a_malformed_path_argument_is_refused_with_its_own_code() {
                 ..
             })
         ),
-        "`files.find` 少了 `needle` 却没回 `bad_args`"
+        "`files.find` 少了 `query` 却没回 `bad_args`"
     );
 }
 
@@ -1659,11 +1363,7 @@ fn the_declared_error_codes_are_not_ghosts() {
             matches!(got, Err(Refused { code: c, .. }) if c == want),
             "`{cap}` 对一个不存在的路径没有回 `{want}`，回的是 {got:?}"
         );
-        let declared = CAPABILITIES
-            .iter()
-            .find(|c| c.name == cap)
-            .expect("在表里")
-            .codes;
+        let declared = registered_codes(cap);
         assert!(
             declared.contains(&"unreadable") && declared.contains(&"bad_path"),
             "`{cap}` 的错误码表漏了它真的会回的那几个"
@@ -1758,24 +1458,6 @@ fn a_text_under_the_cap_comes_back_whole_and_its_keys_are_the_declared_fields() 
         "回来的文本与盘上那份不逐字节相等"
     );
     assert_eq!(v["bytes"].as_u64(), Some(body.len() as u64));
-    let got: std::collections::BTreeSet<&str> = v
-        .as_object()
-        .expect("对象")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let declared: std::collections::BTreeSet<&str> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.read.text")
-        .expect("在表里")
-        .fields
-        .iter()
-        .copied()
-        .collect();
-    assert_eq!(
-        got, declared,
-        "`files.read.text` 真回出去的键与声明的 `fields` 对不上"
-    );
     std::fs::remove_dir_all(&d).ok();
 }
 
@@ -1846,7 +1528,11 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
             serde_json::json!({ "path": path_json(&gone), "max_bytes": 100 }),
             "unreadable",
         ),
-        (serde_json::json!({ "max_bytes": 100 }), "bad_path"),
+        (serde_json::json!({ "max_bytes": 100 }), "bad_args"),
+        (
+            serde_json::json!({ "path": "", "max_bytes": 100 }),
+            "bad_path",
+        ),
         (serde_json::json!({ "path": path_json(&big) }), "bad_args"),
         (
             serde_json::json!({ "path": path_json(&big), "max_bytes": 0 }),
@@ -1876,15 +1562,11 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
         .is_ok(),
         "`max_bytes` 恰好等于天花板被拒了"
     );
-    let declared: std::collections::BTreeSet<&str> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.read.text")
-        .expect("在表里")
-        .codes
+    let declared: std::collections::BTreeSet<&str> = registered_codes("files.read.text")
         .iter()
         .copied()
         .collect();
-    assert_eq!(seen, declared, "造得出来的码与声明的码不是同一个集合");
+    assert_eq!(seen, declared, "造得出来的码与登记的码不是同一个集合");
     std::fs::remove_dir_all(&d).ok();
 }
 
@@ -1894,26 +1576,11 @@ fn every_refusal_of_read_text_lands_on_its_own_declared_code() {
 /// 活的那一趟另判一格：本机这台后端真答得出一条**绝对**路径（正控，不与环境对答案）。
 #[test]
 fn home_is_given_when_the_environment_has_one_and_refused_otherwise() {
-    let ok = super::home_from(Some("/home/someone".into())).expect("一条绝对路径被拒了");
+    let ok = serde_json::to_value(
+        super::home_from(Some("/home/someone".into())).expect("一条绝对路径被拒了"),
+    )
+    .unwrap();
     assert_eq!(ok["path"].as_str(), Some("/home/someone"));
-    let keys: std::collections::BTreeSet<&str> = ok
-        .as_object()
-        .expect("对象")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let declared: std::collections::BTreeSet<&str> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.home")
-        .expect("在表里")
-        .fields
-        .iter()
-        .copied()
-        .collect();
-    assert_eq!(
-        keys, declared,
-        "`files.home` 回出去的键与声明的 `fields` 对不上"
-    );
     for (h, what) in [
         (None, "没有"),
         (Some(std::ffi::OsString::new()), "空串"),
@@ -1956,14 +1623,6 @@ fn gp1_stat_reports_the_declared_fields_and_the_real_mode_bits() {
     let d = f7a_dir("gp1-mode");
     let f = d.join("m.txt");
     std::fs::write(&f, b"x").expect("铺文件");
-    let declared: std::collections::BTreeSet<String> = CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.stat")
-        .expect("在表里")
-        .fields
-        .iter()
-        .map(|s| s.to_string())
-        .collect();
     for want in [0o640_u32, 0o4755] {
         std::fs::set_permissions(&f, std::fs::Permissions::from_mode(want)).expect("设权限");
         let v = answer(
@@ -1972,9 +1631,6 @@ fn gp1_stat_reports_the_declared_fields_and_the_real_mode_bits() {
             &Default::default(),
         )
         .expect("stat 一个在的文件不该失败");
-        let got: std::collections::BTreeSet<String> =
-            v.as_object().expect("对象").keys().cloned().collect();
-        assert_eq!(got, declared, "`files.stat` 真回的键与声明对不上");
         assert_eq!(
             v.get("mode").and_then(serde_json::Value::as_u64),
             Some(u64::from(want)),
@@ -2112,7 +1768,8 @@ fn a_directory_entry_that_cannot_be_read_is_counted_not_skipped() {
     let dir = std::env::temp_dir().join(format!("ccm-ls-unreadable-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("a"), b"").unwrap();
-    let v = answer_ls(
+    let v = answer(
+        "files.ls",
         &serde_json::json!({ "path": dir.to_string_lossy() }),
         &Default::default(),
     )
@@ -2152,12 +1809,5 @@ fn ls_and_stat_carry_mtime_texts_written_by_this_machine() {
         (st["mtime_text"].as_str(), st["mtime_full"].as_str()),
         (Some(short.as_str()), Some(full.as_str()))
     );
-    for cap in ["files.ls", "files.stat"] {
-        let fields = CAPABILITIES.iter().find(|c| c.name == cap).unwrap().fields;
-        assert!(
-            fields.contains(&"mtime_text") && fields.contains(&"mtime_full"),
-            "{cap} 的声明表没列这两格"
-        );
-    }
     let _ = std::fs::remove_dir_all(&dir);
 }

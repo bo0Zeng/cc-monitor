@@ -23,10 +23,6 @@ backup: string | null,
  */
 account: AccountRef | null, 
 /**
- * `accounts-add` 的订阅号没导入凭据：在终端里跑这一行登录（claude 自己的登录界面）。
- */
-loginCmd: string | null, 
-/**
  * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
  */
 aliasNames: Array<string>, 

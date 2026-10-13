@@ -1,11 +1,41 @@
 //! 要求：两台之间「装」那一件不经前端中继 —— 界面只问本机一次，本机常驻后端当枢纽向来源那台取、交被写那台判与写；
 //! skill 与 MCP 同一对命令（`ext-hub-preview` / `ext-hub-apply`），看过之后任一头变了 ⇒ `stale`、一个字节不写。
 use super::*;
+use crate::assets::ext::ExtSlot;
 use crate::dial::remote_ask::{register, Remote, Table};
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
+
+/// 判据仍用 JSON 写一台的问法：看卡 ⇒ 卡的线上形。
+pub(crate) async fn pv(
+    here: &Arc<dyn Here>,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<Value, (String, String)> {
+    ext_preview(here, args, table, remote)
+        .await
+        .map(|c| serde_json::to_value(c).unwrap())
+}
+
+/// 同 [`pv`]：装一台，记号与填的值从问法里的 `tokens` · `fill` 取（界面那一侧交回的就是这两格）。
+pub(crate) async fn ap(
+    here: &Arc<dyn Here>,
+    args: &Value,
+    table: &Table,
+    remote: &dyn Remote,
+) -> Result<Value, (String, String)> {
+    let tokens: ExtTokens =
+        serde_json::from_value(args["tokens"].clone()).expect("判据给的 tokens");
+    let fill: Option<Fill> =
+        serde_json::from_value(args.get("fill").cloned().unwrap_or(Value::Null))
+            .expect("判据给的 fill");
+    ext_apply(here, args, &tokens, fill.as_ref(), table, remote)
+        .await
+        .map(|d| serde_json::to_value(d).unwrap())
+}
 
 /// 这台自己：按命令名答一份定好的成品，记下被问了什么。
 struct FakeHere {
@@ -91,7 +121,7 @@ async fn the_hub_takes_from_the_source_and_asks_the_target_itself() {
         json!({ "path": "/r/.mcp.json", "def": { "command": "c", "env": { "K": null } },
                              "slots": [{ "field": "env", "key": "K" }], "token": "t-src" }),
     ]);
-    let card = ext_preview(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
+    let card = pv(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
         .await
         .expect("枢纽没答");
     assert_eq!(card["tokens"], json!({ "source": "t-src", "target": null }));
@@ -146,7 +176,7 @@ async fn the_hub_hands_the_viewers_time_zone_to_the_machine_it_asks() {
             tz,
         });
         let r = remote(&[src.clone()]);
-        ext_preview(
+        pv(
             &h,
             &mcp_args(json!("devbox"), Value::Null),
             &table_with("devbox"),
@@ -179,9 +209,7 @@ async fn the_hub_refuses_to_write_when_the_source_moved_since_the_preview() {
     let mut args = mcp_args(Value::Null, Value::Null);
     args["scope"]["from"]["dir"] = json!("/a");
     args["tokens"] = json!({ "source": "OLD", "target": "t-dst" });
-    let (code, _) = ext_apply(&dyn_h, &args, &t, &r)
-        .await
-        .expect_err("来源变了还写了");
+    let (code, _) = ap(&dyn_h, &args, &t, &r).await.expect_err("来源变了还写了");
     assert_eq!(code, "stale");
     assert!(
         h.asked
@@ -193,7 +221,7 @@ async fn the_hub_refuses_to_write_when_the_source_moved_since_the_preview() {
     );
     args["tokens"]["source"] = json!("NEW");
     args["fill"] = json!({ "env": { "K": "typed" } });
-    let done = ext_apply(&dyn_h, &args, &t, &r).await.expect("写");
+    let done = ap(&dyn_h, &args, &t, &r).await.expect("写");
     assert_eq!(
         done,
         json!({ "path": "/l/.mcp.json", "changed": ["x"], "note": null })
@@ -210,7 +238,7 @@ async fn an_unregistered_machine_is_unreachable_and_never_dialed() {
     let (_h, dyn_h) = here(&[]);
     let t: Table = Mutex::new(BTreeMap::new());
     let r = remote(&[]);
-    let (code, said) = ext_preview(&dyn_h, &mcp_args(json!("ghost"), Value::Null), &t, &r)
+    let (code, said) = pv(&dyn_h, &mcp_args(json!("ghost"), Value::Null), &t, &r)
         .await
         .expect_err("没登记的那台也答了");
     assert_eq!(code, "unreachable");
@@ -224,17 +252,19 @@ async fn an_unregistered_machine_is_unreachable_and_never_dialed() {
 async fn skill_preview_and_apply_go_through_the_same_pair() {
     let files =
         json!([{ "path": "SKILL.md", "text": "a", "exec": false, "why": null, "bytes": 1 }]);
-    let plan = json!({ "dir": "/s/demo", "target": [], "base": "/s", "prefix": "demo",
-                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }] });
+    let plan = json!({ "root": "/s", "dir": "/s/demo", "target": [], "base": "/s", "prefix": "demo",
+                       "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }],
+                       "write": null, "ledger": null });
     let t = table_with("devbox");
     let (h, dyn_h) = here(&[("skill-install-plan", plan)]);
     let r = remote(&[
-        json!({ "files": files }),
-        json!({ "files": [{ "path": "SKILL.md", "text": "CHANGED", "exec": false }] }),
+        json!({ "root": "/r", "dir": "/r/demo", "files": files, "skipped": [] }),
+        json!({ "root": "/r", "dir": "/r/demo", "skipped": [],
+                "files": [{ "path": "SKILL.md", "text": "CHANGED", "exec": false, "why": null, "bytes": 7 }] }),
     ]);
     let args = json!({ "kind": "skill", "name": "demo", "from": "devbox", "to": null,
                        "scope": { "from": { "level": "user" }, "to": { "level": "user" } } });
-    let card = ext_preview(&dyn_h, &args, &t, &r).await.expect("看卡");
+    let card = pv(&dyn_h, &args, &t, &r).await.expect("看卡");
     assert_eq!(card["path"], "/s/demo");
     assert_eq!(card["writes"], json!(["SKILL.md"]));
     assert_eq!(card["stop"], Value::Null);
@@ -246,7 +276,7 @@ async fn skill_preview_and_apply_go_through_the_same_pair() {
     );
     let mut apply = args.clone();
     apply["tokens"] = card["tokens"].clone();
-    let (code, _) = ext_apply(&dyn_h, &apply, &t, &r)
+    let (code, _) = ap(&dyn_h, &apply, &t, &r)
         .await
         .expect_err("来源变了还装了");
     assert_eq!(code, "stale");
@@ -258,7 +288,7 @@ async fn skill_preview_and_apply_go_through_the_same_pair() {
         .all(|(c, _)| c != "skill-install-apply"));
     let mut same = args.clone();
     same["from"] = Value::Null;
-    let (code, _) = ext_preview(&dyn_h, &same, &t, &r)
+    let (code, _) = pv(&dyn_h, &same, &t, &r)
         .await
         .expect_err("同一台同一处也看卡了");
     assert_eq!(code, "refused");
@@ -298,7 +328,7 @@ async fn the_hub_passes_the_remote_code_through() {
         json!({ "path": "/a/.mcp.json", "def": {}, "slots": [], "token": "S" }),
     )]);
     let t = table_with("devbox");
-    let (code, said) = ext_preview(
+    let (code, said) = pv(
         &dyn_h,
         &mcp_args(Value::Null, json!("devbox")),
         &t,
@@ -377,10 +407,14 @@ async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
     use crate::assets::mcp_edit::{project_root_as, PathForm};
     let files =
         json!([{ "path": "SKILL.md", "text": "a", "exec": false, "why": null, "bytes": 1 }]);
-    let plan = json!({ "dir": "/home/user/.claude/skills/demo", "target": [], "base": "/home/user/.claude/skills", "prefix": "demo",
+    let plan = json!({ "root": "/home/user/.claude/skills", "dir": "/home/user/.claude/skills/demo", "target": [],
+                       "base": "/home/user/.claude/skills", "prefix": "demo", "write": null, "ledger": null,
                        "rows": [{ "path": "SKILL.md", "state": "new", "suspects": [], "blocked": null }] });
     let here: Arc<dyn Here> = Arc::new(WindowsHere {
-        answers: [("skill-read", json!({ "files": files }))]
+        answers: [(
+            "skill-read",
+            json!({ "root": "C:\\w\\.claude\\skills", "dir": "C:\\w\\.claude\\skills\\demo", "files": files, "skipped": [] }),
+        )]
             .into_iter()
             .collect(),
     });
@@ -394,13 +428,13 @@ async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
                 "scope": { "from": { "level": "project", "dir": "C:\\w" }, "to": { "level": "project", "dir": dir } } })
     };
 
-    let card = ext_preview(&here, &args(json!("laptop"), "/home/user"), &t, &laptop)
+    let card = pv(&here, &args(json!("laptop"), "/home/user"), &t, &laptop)
         .await
         .expect("枢纽把被写那台的项目目录拒了");
     assert_eq!(card["path"], "/home/user/.claude/skills/demo");
     assert_eq!(laptop.asked.lock().unwrap()[0]["project"], "/home/user");
 
-    let (code, said) = ext_preview(&here, &args(json!("laptop"), "w/x"), &t, &laptop)
+    let (code, said) = pv(&here, &args(json!("laptop"), "w/x"), &t, &laptop)
         .await
         .expect_err("被写那台收下了相对路径");
     let want = project_root_as("w/x", PathForm::Posix).unwrap_err();
@@ -411,7 +445,7 @@ async fn a_project_dir_is_judged_by_the_machine_it_belongs_to() {
         "相对路径该由被写那台判（它要被问到）"
     );
 
-    let (code, _) = ext_preview(&here, &args(Value::Null, "/home/user"), &t, &laptop)
+    let (code, _) = pv(&here, &args(Value::Null, "/home/user"), &t, &laptop)
         .await
         .expect_err("正控：Windows 那一形的这台收下了 /home/user");
     assert_eq!(code, "bad_path");
@@ -516,7 +550,10 @@ fn slots_merge_into_one_list_and_say_which_machines_already_have_each() {
     };
     let (a, b) = (card(false), card(true));
     assert_eq!(
-        merge_slots(&[("laptop".to_string(), &a), ("nano".to_string(), &b)]),
+        json!(merge_slots(&[
+            ("laptop".to_string(), &a),
+            ("nano".to_string(), &b)
+        ])),
         json!([{"field": "env", "key": "API_KEY", "kept": ["nano"]}])
     );
     assert_eq!(
@@ -535,4 +572,65 @@ fn slots_merge_into_one_list_and_say_which_machines_already_have_each() {
         files_of(&skill),
         vec!["/h/.claude/skills/demo · SKILL.md, a.sh".to_string()]
     );
+}
+
+/// ★ 那台回的包解不出（后端版本不同：少了一格 · 一格换了型）⇒ `backend_differs`、说是哪台（本机说「本机」），解码器那一句进原话；
+/// 不拿半截回包拼卡。
+#[tokio::test]
+async fn a_reply_that_does_not_parse_says_that_backend_differs() {
+    let t = table_with("devbox");
+    // 远端那台（来源）：回包缺 `token`。
+    let r = remote(&[json!({ "path": "/r/.mcp.json", "def": { "command": "c" }, "slots": [] })]);
+    let (_h, dyn_h) = here(&[]);
+    let (code, said) = pv(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
+        .await
+        .expect_err("半截回包也拼了卡");
+    assert_eq!(code, "backend_differs", "{said}");
+    assert!(
+        said.starts_with(&copy_core::backend_differs("devbox")),
+        "{said}"
+    );
+    assert!(said.contains("token"), "解码器那一句没进原话：{said}");
+    // 本机那一跳（被写那台）：`state` 换了型。
+    let (_h, dyn_h) = here(&[
+        (
+            "mcp-sync-source",
+            json!({ "path": "/a/.mcp.json", "def": { "command": "c" }, "slots": [], "token": "S" }),
+        ),
+        (
+            "mcp-sync-preview",
+            json!({ "path": "/l/.mcp.json", "state": 3, "def": { "command": "c" }, "slots": [], "suspects": [], "target": null }),
+        ),
+    ]);
+    let (code, said) = pv(
+        &dyn_h,
+        &mcp_args(Value::Null, Value::Null),
+        &t,
+        &remote(&[]),
+    )
+    .await
+    .expect_err("本机回的半截包也拼了卡");
+    assert_eq!(code, "backend_differs", "{said}");
+    assert!(
+        said.starts_with(&copy_core::backend_differs(&copy_core::copy_text(
+            "beExt.machine.here",
+            &[]
+        ))),
+        "{said}"
+    );
+}
+
+/// 回包多出来的键照收（对面可能更新）。
+#[tokio::test]
+async fn a_reply_with_an_extra_key_still_parses() {
+    let t = table_with("devbox");
+    let r = remote(&[
+        json!({ "path": "/r/.mcp.json", "def": { "command": "c" }, "slots": [], "token": "t", "newer": 1 }),
+    ]);
+    let preview = json!({ "path": "/l/.mcp.json", "state": "new", "def": { "command": "c" }, "slots": [], "suspects": [], "target": null, "newer": true });
+    let (_h, dyn_h) = here(&[("mcp-sync-preview", preview)]);
+    let card = pv(&dyn_h, &mcp_args(json!("devbox"), Value::Null), &t, &r)
+        .await
+        .expect("多一格就拒了");
+    assert_eq!(card["tokens"]["source"], "t");
 }

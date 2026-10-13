@@ -1,0 +1,26 @@
+chmod	{"before":384,"mode":416,"path":"<ROOT>/copied.txt"}
+commit-text	{"bytes":5,"path":"<ROOT>/ct.txt","sha256":"2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"}
+commit-upload	{"bytes":4,"path":"<ROOT>/up.bin"}
+copy	{"bytes":3,"dirs":0,"files":1,"links":0,"path":"<ROOT>/copied.txt"}
+copy-tree	{"bytes":5,"dirs":2,"files":2,"links":0,"path":"<ROOT>/tree2"}
+create	{"bytes":3,"path":"<ROOT>/made.txt"}
+create-odd	{"bytes":0,"path":{"b16":"<ROOTHEX>2f6f64642dff2e747874"}}
+delete	{"path":"<ROOT>/copied.txt","remaining":0,"removed":1}
+delete-empty-dir	{"path":"<ROOT>/dir1","remaining":0,"removed":1}
+delete-expect	{"path":"<ROOT>/moved.txt","remaining":0,"removed":1}
+delete-tree	{"path":"<ROOT>/tree2","remaining":0,"removed":2}
+delete-tree-slice	{"path":"<ROOT>/tree2","remaining":2,"removed":2}
+extract	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a"}
+extract-fresh	{"bytes":3,"dirs":1,"files":2,"links":0,"path":"<ROOT>/a (2)"}
+link	{"path":"<ROOT>/ln"}
+mkdir	{"path":"<ROOT>/dir1"}
+peek	{"exists":true,"path":"<ROOT>/moved.txt","text":"abcd"}
+peek-missing	{"exists":false,"path":"<ROOT>/nope.txt","text":null}
+put-backup	{"backup":"<BACKUP>","bytes":2,"changed":true,"created":false,"path":"<ROOT>/put.txt"}
+put-new	{"backup":null,"bytes":2,"changed":true,"created":true,"path":"<ROOT>/put.txt"}
+put-same	{"backup":null,"bytes":2,"changed":false,"created":false,"path":"<ROOT>/put.txt"}
+rename	{"path":"<ROOT>/moved.txt"}
+stage-chunk	{"bytes":5}
+stage-chunk-2	{"bytes":2}
+stage-chunk-b16	{"bytes":2}
+write-text	{"bytes":4,"path":"<ROOT>/moved.txt","sha256":"88d4266fd4e6338d13b845fcf289579d209c897823b9217da3e161936f031589"}

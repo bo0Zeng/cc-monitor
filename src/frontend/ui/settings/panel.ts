@@ -15,10 +15,9 @@ import {
   themeIn,
   type ThemeConfig,
 } from "../theme";
-import { claudeDirIn, setClaudeDirOverride } from "../paths";
+import { readClaudeDir, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
-import { openRotationAt, RotationSection } from "./rot-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
@@ -28,7 +27,6 @@ import { icon, type IconName } from "../kit/icon";
 // 「重启才生效」的改动给常驻条供货（`markRestartNeeded`）。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
-import { ResumeSelect } from "./resume-select";
 import { FirstRun } from "./first-run";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
@@ -45,20 +43,18 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { DataPage } from "./data-page";
-import { ContextLimitsSection } from "./context-limits-section"; // `contextLimits` 的入口
+import { ContextLimitsSection } from "./context-limits-section"; // 那台的上下文上限表
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
 import {
   behaviorIn,
   setBehavior,
-  withResumePreset,
   type BehaviorConfig,
 } from "../behavior";
-import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { buildUnknownOsAliasBlock, localShell, rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
 import { buildConfigPage } from "./config-page";
-import { localResumeRow } from "./local-resume-row"; // 机器页「别名与配置文件」那一栏
+import { machineLaunchRows } from "./machine-launch-rows"; // 每台「这台上的 cc-monitor」里怎么起会话那两格
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // 跨 OS 窗口回调够不到 ⇒ 保存后广播 `settings-applied`，主窗口 listen 后重读（事件名在中立模块 events.ts）。
@@ -70,6 +66,7 @@ import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError } from "../control-said";
+import { RotationSection } from "./rot-section";
 
 /**
  * 字段控件类型：
@@ -265,15 +262,10 @@ export class SettingsPanel {
   private showBgSw!: SwitchHandle;
   private notifyTurnEndSw!: SwitchHandle;
   private notifyNeedsSw!: SwitchHandle;
-  private resumeInTmuxSw!: SwitchHandle;
   /** 打开时读回的那一份行为（开关拨动按它改一格再存）。 */
   private behaviorNow: BehaviorConfig | null = null;
-  /** 恢复命令那一格（各台的默认）与它的预设条 · 存失败时的那一句。 */
-  private resumeSelect!: ResumeSelect;
-  private resumeError!: HTMLElement;
-  /** 「终端」那一行的位置（恢复组里，恢复命令下面；只在要挑终端的平台上画）。 */
+  /** 「终端」那一行的位置（通用页「恢复会话」那一组；只在要挑终端的平台上画）。 */
   private readonly terminalSlot = document.createElement("div");
-  private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** 见 `SettingsPanelOptions.windowMode`。 */
   private readonly windowMode: boolean;
@@ -321,7 +313,7 @@ export class SettingsPanel {
   }
 
   private async openInner(): Promise<void> {
-    // 先开窗，再读一次配置派生外观 · 数据目录 · 行为三格。
+    // 先开窗，再读一次配置派生外观 · 行为两格。
     this.banner.textContent = "";
     this.banner.classList.remove("settings-banner-show");
     // 重开设置 ＝ 每一页的「首次可见」重新算，但仍只拉用户此刻看得见的那一页。
@@ -341,7 +333,7 @@ export class SettingsPanel {
     this.applyPendingTarget();
     // `navigate()` 在「已经在这一页」时提前返回、不通知订阅者 ⇒ 第二次打开时落地页的首次可见必须在这里补一刀。
     this.flushPage(this.router.activeId);
-    // 读回之前三格的控件是 pending（禁用）：勾选框此刻显示的是上一次的值，点上去就点在旧值上。
+    // 读回之前两格的控件是 pending（禁用）：勾选框此刻显示的是上一次的值，点上去就点在旧值上。
     this.setConfigCellsPending(true);
     this.el.classList.add("open");
     this.isOpen = true;
@@ -353,33 +345,29 @@ export class SettingsPanel {
       // 「config.json 里有认不出的项」那条跟着这一份重算（窗口是藏起来再开，那条不会自己重建）。
       rerenderUnknownKeys(cfg);
     } catch (e) {
-      // 读不回来 ⇒ 三格各回落到缺省，外观不重刷。
-      console.warn("设置窗读配置失败，外观 / 数据目录 / 行为按缺省显示：", e);
+      // 读不回来 ⇒ 两格各回落到缺省，外观不重刷。
+      console.warn("设置窗读配置失败，外观 / 行为按缺省显示：", e);
       this.fillConfigCells({}, false);
     } finally {
       this.setConfigCellsPending(false);
     }
   }
 
-  /** 外观 · 数据目录 · 行为三格读回之前的 pending 态：这几格的控件一律禁用。 */
+  /** 外观 · 行为两格读回之前的 pending 态：这几格的控件一律禁用（数据目录那一格另读本机偏好，[`loadClaudeDir`]）。 */
   private setConfigCellsPending(pending: boolean): void {
     const controls: HTMLInputElement[] = [
       ...[...this.inputs.values()].filter((c): c is HTMLInputElement => c instanceof HTMLInputElement),
-      this.claudeDirInput,
     ];
     for (const c of controls) c.disabled = pending;
-    this.resumeSelect.disabled = pending;
     for (const sw of this.behaviorSwitches()) sw.input.setAttribute("aria-disabled", String(pending));
     if (!pending) this.updateBringFrontEnabled();
   }
 
-  /** 从**一份**配置派生三格（派生规则各住 `theme.ts` / `paths.ts` / `behavior.ts`，这里不另写）。 */
+  /** 从**一份**配置派生外观 · 行为两格（派生规则各住 `theme.ts` / `behavior.ts`，这里不另写）。 */
   private fillConfigCells(cfg: Record<string, unknown>, applyLoadedTheme = true): void {
     this.original = themeIn(cfg);
     if (applyLoadedTheme) applyTheme(this.original);
     this.current = { ...this.original };
-    this.claudeDirOriginal = claudeDirIn(cfg) ?? "";
-    this.claudeDirInput.value = this.claudeDirOriginal;
     // 每次打开拉最新的行为设置
     const behavior = behaviorIn(cfg);
     this.behaviorNow = behavior;
@@ -390,9 +378,6 @@ export class SettingsPanel {
     this.showBgOriginal = behavior.showBgSessions;
     this.notifyTurnEndSw.set(behavior.notifyTurnEnd);
     this.notifyNeedsSw.set(behavior.notifyNeeds);
-    this.resumeInTmuxSw.set(behavior.resumeInTmux);
-    this.resumeSelect.set(behavior.resumeCommand, behavior.resumeCommandPresets);
-    this.updateRemoteLauncherWarning();
     this.syncInputs();
   }
 
@@ -404,25 +389,7 @@ export class SettingsPanel {
 
   /** 行为那几个开关（读配置时整组禁用）。 */
   private behaviorSwitches(): SwitchHandle[] {
-    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw, this.resumeInTmuxSw];
-  }
-
-  /** 越层启动器诊断：只读提示 ＋ 引导，不自动降级、不改恢复命令那一格。 */
-  private updateRemoteLauncherWarning(): void {
-    const msg = diagnoseRemoteLauncher(this.resumeSelect.value);
-    this.remoteLauncherWarning.textContent = msg ?? "";
-    this.remoteLauncherWarning.style.display = msg ? "block" : "none";
-  }
-
-  /** 恢复命令那一格选了 / 自定义那格失焦：存，并记进用过的那几条（空 ＝ 用默认那一家的启动器，不记）。 */
-  private async saveResumeCommand(cmd: string): Promise<void> {
-    const b = this.behaviorNow;
-    if (!b) return;
-    this.updateRemoteLauncherWarning();
-    if (!(await this.saveBehavior({ ...b, resumeCommand: cmd, resumeCommandPresets: withResumePreset(b.resumeCommandPresets, cmd) }))) {
-      this.resumeSelect.set(b.resumeCommand, b.resumeCommandPresets);
-      this.updateRemoteLauncherWarning();
-    }
+    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw];
   }
 
   /** 拨一个开关：按读回的那份改这一格再存；没读回 / 存失败 ⇒ `false`（拇指退回）。 */
@@ -433,10 +400,10 @@ export class SettingsPanel {
   }
 
   /**
-   * 存一份行为（开关 · 恢复命令 · 删预设都走这里）。存成了才换内存里那份、重画预设、通知主窗口；
+   * 存一份行为（开关都走这里）。存成了才换内存里那份、重画预设、通知主窗口；
    * 存失败 ⇒ 回 `false`、行下那一句说为什么，盘上与界面都还是原来那份。
    */
-  private async saveBehavior(next: BehaviorConfig, errorAt: HTMLElement = this.resumeError): Promise<boolean> {
+  private async saveBehavior(next: BehaviorConfig, errorAt: HTMLElement): Promise<boolean> {
     errorAt.hidden = true;
     try {
       await setBehavior(next);
@@ -447,7 +414,6 @@ export class SettingsPanel {
       return false;
     }
     this.behaviorNow = next;
-    this.resumeSelect.set(next.resumeCommand, next.resumeCommandPresets);
     this.updateBringFrontEnabled();
     // `showBgSessions` 重启才生效（后端启动时读一次）⇒ 真改了才供货「重启后生效」。
     if (next.showBgSessions !== this.showBgOriginal) {
@@ -607,8 +573,6 @@ export class SettingsPanel {
       this.dataPage?.focus(t.anchor);
       return;
     }
-    // 面板「管理配置…」带 `config:<id>` ·「看说明与源码 ›」带 `strategy:<id>`：「轮换」栏开那一份（那一栏读到那台的表时开）。
-    if (t.machine && t.anchor && /^(config|strategy):/.test(t.anchor)) openRotationAt(isLocalOrigin(t.machine) ? LOCAL_ORIGIN : t.machine, t.anchor);
     const tabs = this.machinePages.get(pageId)?.tabs;
     const tabId = t.tab ? MACHINE_TAB_OF_TARGET[t.tab] : undefined;
     if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);
@@ -724,6 +688,19 @@ export class SettingsPanel {
     this.banner.classList.add("settings-banner-show");
   }
 
+  /** 「Claude 数据目录」那一格读本机后端的偏好（数据页第一次可见时问）：读回之前那一格禁用；读不到 ⇒ 说出来、那一格仍禁用。 */
+  private async loadClaudeDir(): Promise<void> {
+    this.claudeDirInput.disabled = true;
+    try {
+      this.claudeDirOriginal = (await readClaudeDir()) ?? "";
+      this.claudeDirInput.value = this.claudeDirOriginal;
+      this.claudeDirInput.disabled = false;
+    } catch (e) {
+      sayFailure(this.banner, copyText("settingsPanel.claudeDir.readFailed"), e);
+      this.banner.classList.add("settings-banner-show");
+    }
+  }
+
   /** 落盘失败时说出来（全即时的每一格都走它，不许静默吞）。 */
   private reportSaveFailure(what: string, e: unknown): void {
     // 「哪一项」只有界面知道 ⇒ 打头；出错那端写好的那一句跟在后面一格。JS 自己抛的 ⇒「{what}保存失败」，原文进控制台。
@@ -825,7 +802,17 @@ export class SettingsPanel {
     const cc: HTMLElement[] = [];
     if (origin && this.backendSection) {
       try {
-        const rows = parts ? [parts.components] : local ? [localResumeRow()] : [];
+        // 那台的偏好那几格（启动程序 · 恢复到 tmux 里 · 上下文上限）：这一页第一次可见才问那台。
+        const launch = machineLaunchRows(origin, title);
+        const limits = new ContextLimitsSection(origin);
+        limits.element.addEventListener(REVEAL_EVENT, () => limits.reveal());
+        const load = (): void => {
+          launch.load();
+          void limits.load();
+        };
+        if (this.pagesLoaded.has(pageId)) load();
+        else this.loadOnFirstVisit(pageId, load);
+        const rows = [...launch.rows, limits.element, ...(parts ? [parts.components] : [])];
         cc.push(this.backendSection.cellsFor(origin, { rows, trailing: parts?.uninstall }));
       } catch (e) {
         // 那几格没建起来不许把这一页带走（那台退到后端清单的尾巴里）。
@@ -881,19 +868,6 @@ export class SettingsPanel {
     const generalPage = document.createElement("div");
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.resume"), () => this.buildResumeGroup()));
-    let limits: ContextLimitsSection | null = null;
-    const limitsBlock = this.safeBlock(
-      copyText("contextLimits.editor.title"),
-      () => {
-        limits = new ContextLimitsSection();
-        return limits.element;
-      },
-      { untitled: true },
-    );
-    limitsBlock.addEventListener(REVEAL_EVENT, () => limits?.reveal());
-    // 主窗口［设上限］开 `{page: "general", anchor: "context-limits"}`：落到这一节（展开）并高亮。
-    limitsBlock.dataset.anchor = "context-limits";
-    generalPage.appendChild(limitsBlock);
 
     const logsPage = document.createElement("div");
     logsPage.appendChild(
@@ -1033,7 +1007,7 @@ export class SettingsPanel {
         ...this.loadableBlock(copyText("settingsPanel.group.accounts"), () => new AccountsSection()),
       },
       {
-        // 轮换的配置与策略按机器存（那台的 rotation.json · strategies/）：两页都有。渲染归 `rot-section.vitest.ts`。
+        // 「轮换」栏：那台的策略目录 · 新会话用哪份 · 那一份的设置与模拟（策略文件按机器存：两页都有）。渲染归 `rot-section.vitest.ts`。
         appliesTo: "both",
         tab: "rot",
         ...this.loadableBlock(copyText("machinePage.tab.rot"), () => new RotationSection()),
@@ -1092,6 +1066,7 @@ export class SettingsPanel {
     this.loadOnFirstVisit(PAGE.data, () => {
       this.dataSection?.loadNow();
       this.dataPage?.loadNow();
+      if (this.claudeDirInput) void this.loadClaudeDir();
     });
 
     // ---- 扩展：跨机器的 skill / MCP ----
@@ -1281,41 +1256,14 @@ export class SettingsPanel {
   }
 
   /**
-   * 通用页「恢复」：恢复命令（各台的默认；每台可在「这台上的 cc-monitor」里单独设一格盖过它）＋ 用过的几条 ·
-   * 恢复到 tmux 里（历史页［恢复 ▾］与标签页「恢复 ▸」默认的「运行于」）。
+   * 通用页「恢复会话」：只剩「终端」那一行（这台桌面开哪个终端程序）。启动程序 · 恢复到 tmux 里住各台后端，
+   * 在每台机器页「这台上的 cc-monitor」里改（`machine-launch-rows.ts`）。
    */
   private buildResumeGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group settings-headless";
-    const row = document.createElement("label");
-    row.className = "settings-row";
-    const text = document.createElement("span");
-    text.className = "settings-label";
-    text.textContent = copyText("settingsPanel.behavior.resume");
-    const help = document.createElement("span");
-    help.className = "settings-hint";
-    help.textContent = copyText("settingsPanel.behavior.resumeHelp");
-    const textCol = document.createElement("span");
-    textCol.className = "settings-label-col";
-    textCol.append(text, help);
-    row.appendChild(textCol);
-    this.resumeSelect = new ResumeSelect({ inherit: false, onChange: (v) => void this.saveResumeCommand(v) });
-    row.appendChild(this.resumeSelect.element);
-    group.appendChild(row);
-    // 越层启动器诊断：只诊断 ＋ 引导，不自动改这一格。
-    this.remoteLauncherWarning = document.createElement("div");
-    this.remoteLauncherWarning.className = "settings-launcher-warning";
-    this.remoteLauncherWarning.style.display = "none";
-    group.appendChild(this.remoteLauncherWarning);
-    this.resumeError = document.createElement("div");
-    this.resumeError.className = "settings-row-error";
-    this.resumeError.hidden = true;
-    group.appendChild(this.resumeError);
     // 「终端」那一行（判定在壳的平台层）：通用页第一次可见时问、问回来才画。
     group.appendChild(this.terminalSlot);
-    this.resumeInTmuxSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.resumeInTmux"), copyText("settingsPanel.behavior.resumeInTmuxHelp"), (on) => ({
-      resumeInTmux: on,
-    }));
     return group;
   }
 
@@ -1367,6 +1315,8 @@ export class SettingsPanel {
     this.claudeDirInput.className = "settings-input settings-input-mono data-claude-input";
     this.claudeDirInput.placeholder = copyText("settingsPanel.dataDir.pathHint");
     this.claudeDirInput.spellcheck = false;
+    // 值住本机后端的偏好：数据页第一次可见时读回（[`loadClaudeDir`]）之前不让改。
+    this.claudeDirInput.disabled = true;
     // 全即时：失焦 / 回车（`change`）就落。逐键写盘没意义（路径没打完是个半截串）。
     this.claudeDirInput.addEventListener("change", () => {
       void this.persistClaudeDir().catch((e: unknown) =>

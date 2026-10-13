@@ -150,55 +150,29 @@ export function putBrokenQuota(d: MachineDisk): void {
   d.files[".cc-monitor/quota.json"] = "";
 }
 
-// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第二版：配置表 ＋ 每个会话打开的那一份）· 本机策略目录（`<家>/.cc-monitor/strategies/`）──
-
-/** 配置的一行：起会话的号 · 其余的订阅号 · 点名的号（三者恰有其一），每行写全这份策略声明的每号参数。 */
-export type AcctRowSpec = ({ start: true } | { rest: true } | { id: string }) & { params: Record<string, unknown> };
-
-export interface ConfigSpec {
-  name: string;
-  strategy: string;
-  accounts: AcctRowSpec[];
-  params: Record<string, unknown>;
-  acctInit: Record<string, unknown>;
-  tz?: string;
-  rev?: number;
-  updatedAt: number;
-  savedBy?: string;
-}
+// ── 轮换账本（`<家>/.cc-monitor/rotation.json` 第三版：每个会话那一条；策略文件不写 ⇒ 会话不轮换）──
 
 export interface RotationSessionSpec {
   agent?: string;
   start: string;
   current: string;
   since: number;
-  /** 打开的那一份（改过 ⇒ `copy` 是整份副本）。 */
-  config: { id: string; rev: number; copy?: Omit<ConfigSpec, "rev" | "updatedAt" | "savedBy"> };
-  /** 手动调整：热换到的号 · 拖过的号放在第几。 */
-  manual?: { hot?: { account: string; since: number }; place?: { account: string; at: number }[] };
-  memo?: Record<string, unknown>;
-  /** 换号记录（盘上那一形：`leave` 引擎这一侧 · `pick` 策略那一句）。 */
-  history?: Record<string, unknown>[];
   seen?: number;
+  /** 用哪份策略（策略目录里的文件 id）；不给 ⇒ 不轮换。 */
+  strategy?: string;
+  /** 拖出来的「接下来先用谁」。 */
+  temp?: string[];
+  /** 换号记录。 */
+  log?: { at: number; from: string; to: string; cause: { k: string; until?: number }; why?: string }[];
+  /** 会话里没存的改动（整份设置）· 它照哪个版本改出来的（跟文件此刻的不同 ⇒「这份策略在别处被改了」）。 */
+  draft?: unknown;
+  rev?: string;
 }
 
-const bodyOf = (c: Omit<ConfigSpec, "rev" | "updatedAt" | "savedBy">): Record<string, unknown> => ({
-  name: c.name,
-  strategy: c.strategy,
-  accounts: c.accounts,
-  params: c.params,
-  acctInit: c.acctInit,
-  parked: {},
-  tz: c.tz ?? "Asia/Shanghai",
-});
-
-export function putRotation(d: MachineDisk, book: { defaultConfig: string; configs: Record<string, ConfigSpec>; sessions?: Record<string, RotationSessionSpec> }): void {
+export function putRotation(d: MachineDisk, book: { forNew?: string; sessions?: Record<string, RotationSessionSpec> }): void {
   d.files[".cc-monitor/rotation.json"] = json({
-    version: 2,
-    defaultConfig: book.defaultConfig,
-    configs: Object.fromEntries(
-      Object.entries(book.configs).map(([id, c]) => [id, { ...bodyOf(c), rev: c.rev ?? 1, updatedAt: Math.round(c.updatedAt), savedBy: c.savedBy ?? "settings" }]),
-    ),
+    version: 3,
+    forNew: book.forNew ?? "",
     sessions: Object.fromEntries(
       Object.entries(book.sessions ?? {}).map(([sid, s]) => [
         sid,
@@ -208,23 +182,24 @@ export function putRotation(d: MachineDisk, book: { defaultConfig: string; confi
           current: s.current,
           since: Math.round(s.since),
           seen: Math.round(s.seen ?? s.since),
-          config: { id: s.config.id, rev: s.config.rev, ...(s.config.copy ? { copy: bodyOf(s.config.copy) } : {}) },
-          ...(s.manual ? { manual: s.manual } : {}),
-          ...(s.memo ? { memo: s.memo } : {}),
-          history: s.history ?? [],
+          strategy: { id: s.strategy ?? "", ...(s.rev ? { rev: s.rev } : {}), ...(s.draft !== undefined ? { draft: s.draft } : {}) },
+          ...(s.temp ? { temp: s.temp } : {}),
+          ...(s.log ? { log: s.log.map((l) => ({ ...l, at: Math.round(l.at) })) } : {}),
         },
       ]),
     ),
   });
 }
 
-export function putBrokenRotation(d: MachineDisk): void {
-  d.files[".cc-monitor/rotation.json"] = "{";
+// ── 策略文件（`<家>/.cc-monitor/strategies/<文件名>.rhai`：标题 ＝ 文件名）──
+
+export function putStrategy(d: MachineDisk, name: string, source: string): void {
+  d.files[`.cc-monitor/strategies/${name}.rhai`] = source;
 }
 
-/** 本机策略目录里的一份（文件名去 `.rhai` 就是 id）。 */
-export function putStrategy(d: MachineDisk, id: string, source: string): void {
-  d.files[`.cc-monitor/strategies/${id}.rhai`] = source;
+/** 升级时挪进 `strategies/v3/` 的第三版脚本（不加载，界面提示「N 份旧格式的策略没有加载」）。 */
+export function putOldScript(d: MachineDisk, file: string, source: string): void {
+  d.files[`.cc-monitor/strategies/v3/${file}`] = source;
 }
 
 // ── 会话血缘（`<家>/.cc-monitor/lineage.json`）──

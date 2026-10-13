@@ -296,7 +296,7 @@ class SessionViewModel(
         attachTo?.let { name ->
             val profile = AgentProfile.of(host.agentKindOrDefault())
             terminals
-                .attachLine(name, profile.wireName, profile.invocation.resolveLaunchCommand(emptyList()))
+                .attachLine(name, profile.wireName)
                 .onSuccess { ts.send("$it\n".toByteArray()) }
                 .onFailure { _notices.trySend(it.message.orEmpty()) }
             return

@@ -591,25 +591,32 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
+        // 这台的偏好那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor/prefs.json`）。
+        "prefs-read",
+        "prefs-set",
+        "machines-read",
+        "machines-try",
+        "machines-set",
         "quota-read",
         "quota-probe",
-        // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
-        "rotation-configs-read",
-        "rotation-config-save",
-        "rotation-config-rename",
-        "rotation-config-delete",
-        "rotation-default-set",
-        "rotation-strategies-read",
+        "rotation-facts", // 读额度账 ＋ 账号库 ＋ 各号登录文件（同步文件 I/O）
+        "rotation-try",   // 同上，再在沙箱里跑策略、推演
+        // 轮换：读 / 锁里原子写 `rotation.json` 与策略目录（同步文件 I/O，读的那几条还在沙箱里跑策略）。
+        "rotation-strategies",
+        "rotation-view",
+        "rotation-settings",
+        "rotation-save",
+        "rotation-revert",
+        "rotation-use",
+        "rotation-for-new",
+        "rotation-temp",
+        "rotation-use-now",
         "rotation-strategy-add",
+        "rotation-strategy-copy",
+        "rotation-strategy-rename",
         "rotation-strategy-delete",
-        "rotation-strategy-try",
-        "rotation-plan",
-        "rotation-session-read",
-        "rotation-session-open",
-        "rotation-session-edit",
-        "rotation-session-save",
-        "rotation-session-revert",
-        "rotation-session-set",
+        "rotation-strategy-tz",
+        "rotation-day-paint",
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
         "session-interrupts",
@@ -620,6 +627,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
+        "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
+        "session-permission", // 读 pidfile ＋ 起 tmux（抓屏 · 送键 · 等重画）
+        "session-commands",   // 读记录开头 ＋ 扫命令 · skill 目录
         // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
         // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
@@ -666,8 +676,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
-        // MCP 同步的判定：逐条 stat ＋ PATH 上找名字。
-        "mcp-sync-plan",
         // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条：同步文件 I/O（经本进程文件管理面）。
         "skill-install-apply",
         "cc-bus-install",
@@ -698,8 +706,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "profiles-write",
         "powershell-policy-set",
         "ext-uninstall-apply",
-        "mcp-server-put",
-        "mcp-server-remove",
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
@@ -734,8 +740,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-ssh",
         // `history-search-merge`：纯计算，普通 spawn。
         "history-search-merge",
-        // `cells-catalog`：格目录，纯计算，普通 spawn。
-        "cells-catalog",
         "assets-sync",
         "ext-hub-preview",
         "ext-hub-apply",
@@ -811,24 +815,30 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
+        "prefs-read",
+        "prefs-set",
+        "machines-read",
+        "machines-try",
+        "machines-set",
         "quota-read",
         "quota-probe",
-        "rotation-configs-read",
-        "rotation-config-save",
-        "rotation-config-rename",
-        "rotation-config-delete",
-        "rotation-default-set",
-        "rotation-strategies-read",
+        "rotation-facts", // 读额度账 ＋ 账号库 ＋ 各号登录文件（同步文件 I/O）
+        "rotation-try",   // 同上，再在沙箱里跑策略、推演
+        "rotation-strategies",
+        "rotation-view",
+        "rotation-settings",
+        "rotation-save",
+        "rotation-revert",
+        "rotation-use",
+        "rotation-for-new",
+        "rotation-temp",
+        "rotation-use-now",
         "rotation-strategy-add",
+        "rotation-strategy-copy",
+        "rotation-strategy-rename",
         "rotation-strategy-delete",
-        "rotation-strategy-try",
-        "rotation-plan",
-        "rotation-session-read",
-        "rotation-session-open",
-        "rotation-session-edit",
-        "rotation-session-save",
-        "rotation-session-revert",
-        "rotation-session-set",
+        "rotation-strategy-tz",
+        "rotation-day-paint",
         "tasks-list",
         "session-interrupts",
         "mcp-read",
@@ -838,9 +848,10 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
-        "ssh-config-aliases", // 读一份文件
+        "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
+        "session-permission", // 读 pidfile ＋ 起 tmux（抓屏 · 送键 · 等重画）
+        "session-commands",   // 读记录开头 ＋ 扫命令 · skill 目录
         "ssh-config-import",  // 逐个起 `ssh -G`
-        "ssh-config-resolve", // 起一次 `ssh -G`
         "hooks-diag",         //
         "resync",             //
         "apikey-key-set",
@@ -878,8 +889,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "files-peek",
         "files-put",
         "files-delete-session",
-        // MCP 同步的判定，阻塞档。
-        "mcp-sync-plan",
         // MCP 写两条 ＋ 推拉三条 ＋ skill 装卸两条，阻塞档。
         "skill-install-apply",
         "cc-bus-install",
@@ -910,8 +919,6 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "profiles-write",
         "powershell-policy-set",
         "ext-uninstall-apply",
-        "mcp-server-put",
-        "mcp-server-remove",
         "mcp-sync-source",
         "mcp-sync-preview",
         "mcp-sync-apply",
@@ -927,6 +934,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "session-new-dir",
         // 换号重启：可撤档（步与步之间 await；起 tmux 那几步自己挪到阻塞线程池）。
         "session-restart",
+        // 换模型：异步（送那一行挪到阻塞线程池；等读回是一次有界等待）。
+        "session-model",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
         "rotation-switch",
         // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
@@ -944,6 +953,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "needs-ask",
         // 答一条挂着的待答请求：锁一下登记表、交通道，不碰盘不起进程 ⇒ 异步档、不阻塞。
         "needs-answer",
+        // 在 app 里登录：起登录子命令、等它打印链接（有界）⇒ 硬臂里的阻塞档；粘码 · 等它换完（有界）· 读账号清单 ⇒ 阻塞档；收作业只锁一下表，也放阻塞档（同族一档）。
+        "login-start",
+        "login-finish",
+        "login-cancel",
+        "manual-list",
         // 计划七条：起 pb / 读改写小文件 / 起 tmux，阻塞档（上面逐条断）。
         "plan-list",
         "plan-read",
@@ -1677,9 +1691,6 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         "account": { "kind": "base" },
         "ccmSid": null,
         "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude",
     });
     let got = run_registered("launch-render-cli", attach).expect("launch-render-cli 渲得出");
     assert_eq!(
@@ -1929,11 +1940,11 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ("sessions-stop", serde_json::json!({ "sids": "s-1" })),
         (
             "sessions-start",
-            serde_json::json!({ "mode": "tmux", "local": true, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": [{ "sid": "s-1", "cwd": "/w", "extra": 1 }] }),
+            serde_json::json!({ "mode": "tmux", "local": true, "agent": "claude", "items": [{ "sid": "s-1", "cwd": "/w", "extra": 1 }] }),
         ),
         (
             "sessions-start",
-            serde_json::json!({ "mode": "screen", "local": true, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": [] }),
+            serde_json::json!({ "mode": "screen", "local": true, "agent": "claude", "items": [] }),
         ),
         ("session-interrupts", serde_json::json!({ "sid": 1 })),
         (
@@ -1946,8 +1957,28 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ),
         (
             "launch-local",
-            serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "defaultLauncher": "claude", "x": 1 }),
+            serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "x": 1 }),
         ),
+        (
+            "session-say",
+            serde_json::json!({ "sid": "s-1", "text": "hi", "enter": false }),
+        ),
+        ("session-say", serde_json::json!({ "sid": "s-1" })),
+        (
+            "session-permission",
+            serde_json::json!({ "sid": "s-1", "mode": "plan", "key": "shift-tab" }),
+        ),
+        ("session-permission", serde_json::json!({ "sid": "s-1" })),
+        (
+            "session-commands",
+            serde_json::json!({ "sid": "s-1", "cwd": "/w" }),
+        ),
+        ("session-commands", serde_json::json!({})),
+        (
+            "session-model",
+            serde_json::json!({ "sid": "s-1", "model": "opus", "effort": "high" }),
+        ),
+        ("session-model", serde_json::json!({ "sid": "s-1" })),
         ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
         ("kill", serde_json::json!({ "name": 1 })),
         (
@@ -1981,11 +2012,11 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ),
         (
             "session-restart",
-            serde_json::json!({ "sid": "s-1", "cwd": "/w", "compact_first": false, "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),
+            serde_json::json!({ "sid": "s-1", "cwd": "/w", "compact_first": false, "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", }),
         ),
         (
             "session-restart",
-            serde_json::json!({ "sid": "s-1", "cwd": "/w", "account": "work", "compact_first": "no", "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),
+            serde_json::json!({ "sid": "s-1", "cwd": "/w", "account": "work", "compact_first": "no", "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", }),
         ),
     ] {
         let got = run_any(cmd, args.clone());
@@ -1994,5 +2025,51 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             Some("bad_args"),
             "{cmd} 入参 {args} 该回 bad_args：{got:?}"
         );
+    }
+}
+
+/// 账号库那一族的入参按类型收：多一个键 · 缺必填 · 类型不对 · 不收入参的那两条带了键 ⇒ `bad_args`，下层一个字节不碰。
+#[test]
+fn the_account_library_refuses_what_its_request_types_do_not_have() {
+    for (cmd, args) in [
+        (
+            "accounts-init",
+            serde_json::json!({ "name": "z", "extra": 1 }),
+        ),
+        ("accounts-init", serde_json::Value::Null),
+        (
+            "accounts-add",
+            serde_json::json!({ "name": "z", "kind": "other" }),
+        ),
+        (
+            "accounts-add",
+            serde_json::json!({ "name": "z", "kind": "subscription", "loginCmd": "x" }),
+        ),
+        ("accounts-remove", serde_json::json!({ "name": 3 })),
+        ("accounts-set-default", serde_json::json!({})),
+        ("accounts-repair", serde_json::json!({ "dryRun": "yes" })),
+        ("accounts-rollback", serde_json::json!({ "backup": 1 })),
+        ("accounts-verify", serde_json::json!({ "x": 1 })),
+        (
+            "accounts-login-cmd",
+            serde_json::json!({ "name": "z", "extra": 1 }),
+        ),
+        ("accounts-mcp-read", serde_json::json!({ "x": 1 })),
+        ("accounts-mcp-remove", serde_json::json!({})),
+        (
+            "accounts-mcp-pick",
+            serde_json::json!({ "name": "s", "from": 1 }),
+        ),
+        ("accounts-mcp-sync", serde_json::json!({ "on": "yes" })),
+        ("login-finish", serde_json::json!({ "job": "j" })),
+        (
+            "login-finish",
+            serde_json::json!({ "job": "j", "pasted": "x", "extra": 1 }),
+        ),
+        ("login-cancel", serde_json::json!({})),
+        ("manual-list", serde_json::json!({ "x": 1 })),
+    ] {
+        let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
+        assert_eq!(got.code, "bad_args", "{cmd} {args}：{got:?}");
     }
 }

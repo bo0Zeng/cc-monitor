@@ -200,18 +200,21 @@ impl Pictures {
     async fn read(&self, key: &PicKey, l: &Load) -> Result<Option<Vec<u8>>, String> {
         let mut bytes: Vec<u8> = Vec::new();
         loop {
-            let d = super::source::ask(
+            let path = serde_json::from_value::<cmd_wire::files::WirePath>(l.wire.clone())
+                .map_err(|_| copy_text("rsFilewinLossyPull.reply.badChunk", &[]))?;
+            let d = super::source::ask_typed(
                 &l.line,
                 &l.origin,
-                CMD_READ_CHUNK,
-                &serde_json::json!({ "path": l.wire, "offset": bytes.len(), "len": super::lossy_pull::PULL_CHUNK }),
+                &cmd_wire::files::ReadChunkReq {
+                    path,
+                    offset: bytes.len() as u64,
+                    len: super::lossy_pull::PULL_CHUNK,
+                },
                 super::chunk_upload::CHUNK_BUDGET,
             )
-            .await?;
-            let body = d["content"]["b16"]
-                .as_str()
-                .and_then(super::lossy_pull::unhex)
-                .ok_or_else(|| copy_text("rsFilewinLossyPull.reply.badChunk", &[]))?;
+            .await
+            .map_err(|f| f.said)?;
+            let body = d.content.0;
             bytes.extend_from_slice(&body);
             if bytes.len() as u64 > l.cap {
                 return Err(copy_text(
@@ -219,7 +222,7 @@ impl Pictures {
                     &[("limit", &copy_core::size_text(l.cap))],
                 ));
             }
-            let total = d["size"].as_u64().unwrap_or(key.size);
+            let total = d.size;
             match self.slots.lock().unwrap().get_mut(key) {
                 Some(Slot::Reading { got, total: t }) => {
                     *got = bytes.len() as u64;
@@ -230,7 +233,7 @@ impl Pictures {
             if let Some(c) = &l.ctx {
                 c.request_repaint();
             }
-            if d["eof"].as_bool() != Some(false) || body.is_empty() {
+            if d.eof || body.is_empty() {
                 return Ok(Some(bytes));
             }
         }
@@ -293,9 +296,6 @@ pub fn decode(bytes: &[u8], side: u32) -> Result<(egui::ColorImage, [u32; 2]), S
         native,
     ))
 }
-
-/// 按字节寻址分块读回（读族；与有损名下载同一条）。
-pub const CMD_READ_CHUNK: &str = "files-read-chunk";
 
 #[cfg(test)]
 #[path = "../../../../tests/frontend/filewin/picture_tests.rs"]

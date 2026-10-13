@@ -12,6 +12,7 @@ pub mod accounts_query;
 // cc-bus 钩子诊断（`hooks-diag` 帧命令的本体，只读；帧面宿主在顶层 `feature_face`）。
 pub(crate) mod cc_bus_hooks;
 // 会话事实（分叉血缘 · 改动文件集 · agent 列表 · 最新 usage）的本体；帧面宿主在顶层 `read_face`。
+pub(crate) mod facts_cache;
 pub(crate) mod facts_query;
 // 中转看见的请求标记（每个会话的请求带没带扩展上下文那一项）：中转的 tap 口写、会话事实读。
 pub(crate) mod relay_marks;

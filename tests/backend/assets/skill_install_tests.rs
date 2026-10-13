@@ -10,6 +10,37 @@
 use super::*;
 use crate::assets::mcp_sync::There;
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &Value,
+    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f(&req).map(|t| serde_json::to_value(t).unwrap())
+}
+
+fn answer_read_at(
+    root: Option<&Path>,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    via(args, |r| super::answer_read_at(root, r))
+}
+
+fn answer_plan_with(
+    facts: &dyn Facts,
+    root: Option<&Path>,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    via(args, |r| super::answer_plan_with(facts, root, r))
+}
+
+fn suspects_of(text: Option<&str>, exec: bool, facts: &dyn Facts) -> Vec<Value> {
+    super::suspects_of(text, exec, facts)
+        .into_iter()
+        .map(|s| serde_json::to_value(s).unwrap())
+        .collect()
+}
+
 /// 写句柄：家目录 ＝ 那份装记录上两级（`<家>/.cc-monitor/skill-installs.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_at(

@@ -18,6 +18,10 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Map, Value};
 
+use crate::assets::hub_wire::{
+    SkillLedgerFile, SkillPlan, SkillPlanReq, SkillPlanRow, SkillRead, SkillReadFile, SkillReadReq,
+    SkillSourceFile, SkillSuspect, SkillTargetFile,
+};
 use crate::assets::mcp_sync::{self, Facts, State};
 use crate::common::said::IntoNote as _;
 
@@ -53,13 +57,7 @@ pub fn valid_rel(p: &str) -> bool {
             .all(|seg| !seg.is_empty() && seg != "." && seg != "..")
 }
 
-fn name_arg(args: &Value) -> Result<String, crate::stream::inbound::spec::Fail> {
-    let name = args.get("name").and_then(Value::as_str).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `name` (skill directory name)"),
-        )
-    })?;
+fn name_ok(name: &str) -> Result<String, crate::stream::inbound::spec::Fail> {
     if !valid_name(name) {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
@@ -69,21 +67,14 @@ fn name_arg(args: &Value) -> Result<String, crate::stream::inbound::spec::Fail> 
     Ok(name.to_string())
 }
 
-/// skill 的根与目录：`args.project` 给了 ⇒ 那个项目里的（项目目录须是这台上的绝对路径）；没给 ⇒ 用户级。
+/// skill 的根与目录：`project` 给了 ⇒ 那个项目里的（项目目录须是这台上的绝对路径）；没给 ⇒ 用户级。
 fn skill_dir(
-    args: &Value,
+    project: Option<&str>,
     name: &str,
 ) -> Result<(PathBuf, PathBuf), crate::stream::inbound::spec::Fail> {
-    let project = match args.get("project") {
-        None | Some(Value::Null) => None,
-        Some(Value::String(p)) => Some(crate::assets::mcp_edit::project_root(p)?),
-        Some(_) => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "bad_args",
-                crate::common::contract::malformed("`project` must be a string or null"),
-            )))
-        }
-    };
+    let project = project
+        .map(crate::assets::mcp_edit::project_root)
+        .transpose()?;
     let root = super::asset_kind()
         .and_then(|k| crate::agents::skill_root_at(k, project.as_deref().map(Path::new)))
         .ok_or(("io_failed", copy_text("beSkillInstall.read.noRoot", &[])))?;
@@ -165,16 +156,21 @@ fn walk(dir: &Path) -> Result<Walked, crate::stream::inbound::spec::Fail> {
 }
 
 /// `skill-read`：来源那台上这个 skill 的全部文件。
-pub fn answer_read(args: &Value) -> Answer {
-    answer_read_at(None, args)
+pub(crate) fn answer_read(
+    req: &SkillReadReq,
+) -> Result<SkillRead, crate::stream::inbound::spec::Fail> {
+    answer_read_at(None, req)
 }
 
 /// [`answer_read`] 的本体：skill 根可喂（判据拿临时目录喂）。
-pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
-    let name = name_arg(args)?;
+pub(crate) fn answer_read_at(
+    root: Option<&Path>,
+    req: &SkillReadReq,
+) -> Result<SkillRead, crate::stream::inbound::spec::Fail> {
+    let name = name_ok(&req.name)?;
     let (root, dir) = match root {
         Some(r) => (r.to_path_buf(), r.join(&name)),
-        None => skill_dir(args, &name)?,
+        None => skill_dir(req.project.as_deref(), &name)?,
     };
     if !Ro::metadata(&dir).is_ok_and(|m| m.is_dir()) {
         return Err(crate::stream::inbound::spec::Fail::from((
@@ -186,27 +182,26 @@ pub fn answer_read_at(root: Option<&Path>, args: &Value) -> Answer {
         )));
     }
     let (paths, skipped) = walk(&dir)?;
-    let files: Vec<Value> = paths
+    let files = paths
         .iter()
         .map(|(rel, abs)| {
-            let bytes = Ro::metadata(abs).map(|m| m.len()).unwrap_or(0);
             let (text, why) = read_text(abs);
-            json!({
-                "path": rel,
-                "text": text,
-                "bytes": bytes,
+            SkillReadFile {
+                path: rel.clone(),
+                text,
+                bytes: Ro::metadata(abs).map(|m| m.len()).unwrap_or(0),
                 // 读执行位是平台原语：借插件口那一份（`plugin::discover::is_executable`，非 unix 上恒 false）。
-                "exec": crate::plugin::discover::is_executable(abs),
-                "why": why,
-            })
+                exec: crate::plugin::discover::is_executable(abs),
+                why,
+            }
         })
         .collect();
-    Ok(json!({
-        "root": root.display().to_string(),
-        "dir": dir.display().to_string(),
-        "files": files,
-        "skipped": skipped,
-    }))
+    Ok(SkillRead {
+        root: root.display().to_string(),
+        dir: dir.display().to_string(),
+        files,
+        skipped,
+    })
 }
 
 /// 一段文本里像绝对路径的词（两种系统的写法都认；引号 / 括号 / 标点当分隔）。去重、保序、最多 [`MAX_PATHS_PER_FILE`] 条。**纯**。
@@ -258,14 +253,19 @@ pub fn shebang_command(text: &str) -> Option<String> {
 }
 
 /// 一个要拷过去的文件的可疑项（`kind`, `value`, 这台上的事实）。**纯**（事实是参数）。
-pub(crate) fn suspects_of(text: Option<&str>, exec: bool, facts: &dyn Facts) -> Vec<Value> {
+pub(crate) fn suspects_of(text: Option<&str>, exec: bool, facts: &dyn Facts) -> Vec<SkillSuspect> {
+    let one = |kind: &str, value: &str, there: Option<&str>| SkillSuspect {
+        kind: kind.to_string(),
+        value: value.to_string(),
+        there: there.map(str::to_string),
+    };
     let mut out = Vec::new();
     let Some(text) = text else {
-        out.push(json!({ "kind": "binary", "value": "", "there": null }));
+        out.push(one("binary", "", None));
         return out;
     };
     if exec || text.starts_with("#!") {
-        out.push(json!({ "kind": "executable", "value": "", "there": null }));
+        out.push(one("executable", "", None));
     }
     // `#!/usr/bin/env X` 里的 `env` 是「靠 PATH 找 X」那个启动器本身 —— 它要的 X 归 `command-missing`，它自己不标。
     let launcher = shebang_command(text)
@@ -281,7 +281,7 @@ pub(crate) fn suspects_of(text: Option<&str>, exec: bool, facts: &dyn Facts) -> 
             continue;
         }
         let there = facts.path(&p).wire();
-        out.push(json!({ "kind": "abs-path", "value": p, "there": there }));
+        out.push(one("abs-path", &p, Some(there)));
     }
     if let Some(cmd) = shebang_command(text) {
         let there = match facts.command(&cmd) {
@@ -290,30 +290,21 @@ pub(crate) fn suspects_of(text: Option<&str>, exec: bool, facts: &dyn Facts) -> 
             None => Some("unknown"),
         };
         if let Some(there) = there {
-            out.push(json!({ "kind": "command-missing", "value": cmd, "there": there }));
+            out.push(one("command-missing", &cmd, Some(there)));
         }
     }
     out
 }
 
-/// 入参 `source`：`[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个）。
+/// 入参 `source` 里的一个（`text` 为 `null` = 装不过去的那一个）。
 struct SourceFile {
     text: Option<String>,
     exec: bool,
 }
 
 fn source_arg(
-    args: &Value,
+    arr: &[SkillSourceFile],
 ) -> Result<BTreeMap<String, SourceFile>, crate::stream::inbound::spec::Fail> {
-    let arr = args
-        .get("source")
-        .and_then(Value::as_array)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("missing `source` or it is not an array"),
-            )
-        })?;
     if arr.len() > MAX_FILES {
         return Err(crate::stream::inbound::spec::Fail::from((
             "too_large",
@@ -325,38 +316,22 @@ fn source_arg(
     }
     let mut out = BTreeMap::new();
     for f in arr {
-        let path = f
-            .get("path")
-            .and_then(Value::as_str)
-            .filter(|p| valid_rel(p))
-            .ok_or_else(|| {
-                (
-                    "bad_args",
-                    crate::common::contract::malformed(
-                        "a file `path` is missing or not a relative path inside the skill",
-                    ),
-                )
-            })?;
-        let text = match f.get("text") {
-            Some(Value::String(t)) => Some(t.clone()),
-            Some(Value::Null) => None,
-            _ => {
-                return Err(crate::stream::inbound::spec::Fail::from((
-                    "bad_args",
-                    crate::common::contract::malformed(&format!(
-                        "`text` of {path:?} must be a string or null"
-                    )),
-                )))
-            }
-        };
-        let exec = f.get("exec").and_then(Value::as_bool).unwrap_or(false);
-        if out
-            .insert(path.to_string(), SourceFile { text, exec })
-            .is_some()
-        {
+        if !valid_rel(&f.path) {
             return Err(crate::stream::inbound::spec::Fail::from((
                 "bad_args",
-                crate::common::contract::malformed(&format!("{path:?} given twice")),
+                crate::common::contract::malformed(
+                    "a file `path` is missing or not a relative path inside the skill",
+                ),
+            )));
+        }
+        let file = SourceFile {
+            text: f.text.clone(),
+            exec: f.exec,
+        };
+        if out.insert(f.path.clone(), file).is_some() {
+            return Err(crate::stream::inbound::spec::Fail::from((
+                "bad_args",
+                crate::common::contract::malformed(&format!("{:?} given twice", f.path)),
             )));
         }
     }
@@ -364,20 +339,29 @@ fn source_arg(
 }
 
 /// 帧面入口。
-pub fn answer_plan(args: &Value) -> Answer {
-    answer_plan_with(&mcp_sync::Live::from_env(), None, args)
+pub(crate) fn answer_plan(
+    req: &SkillPlanReq,
+) -> Result<SkillPlan, crate::stream::inbound::spec::Fail> {
+    answer_plan_with(&mcp_sync::Live::from_env(), None, req)
 }
 
 /// [`answer_plan`] 的本体：事实与 skill 根都可喂（判据拿临时目录喂，不改进程环境）。
-pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Value) -> Answer {
-    let name = name_arg(args)?;
+pub(crate) fn answer_plan_with(
+    facts: &dyn Facts,
+    root: Option<&Path>,
+    req: &SkillPlanReq,
+) -> Result<SkillPlan, crate::stream::inbound::spec::Fail> {
+    let name = name_ok(&req.name)?;
     let (root, dir) = match root {
         Some(r) => (r.to_path_buf(), r.join(&name)),
-        None => skill_dir(args, &name)?,
+        None => skill_dir(req.project.as_deref(), &name)?,
     };
-    let source = source_arg(args)?;
-    let take = mcp_sync::names_arg(args.get("take"), "take")?;
-    let overwrite = mcp_sync::names_arg(args.get("overwrite"), "overwrite")?;
+    let source = source_arg(&req.source)?;
+    let set = |v: &Option<Vec<String>>| {
+        v.as_ref()
+            .map(|v| v.iter().cloned().collect::<BTreeSet<String>>())
+    };
+    let (take, overwrite) = (set(&req.take), set(&req.overwrite));
     if take.is_none() && overwrite.is_some() {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
@@ -421,7 +405,7 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
         .collect();
     // 差异（键 = 相对路径；值相等才算相同）。
     let rows = mcp_sync::diff(&there, &here);
-    let rows_json: Vec<Value> = rows
+    let rows_out: Vec<SkillPlanRow> = rows
         .iter()
         .map(|(path, state)| {
             let suspects = match (state, source.get(path)) {
@@ -430,12 +414,12 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
                 }
                 _ => Vec::new(),
             };
-            json!({
-                "path": path,
-                "state": state.wire(),
-                "suspects": suspects,
-                "blocked": unwritable.get(path),
-            })
+            SkillPlanRow {
+                path: path.clone(),
+                state: state.wire().to_string(),
+                suspects,
+                blocked: unwritable.get(path).cloned(),
+            }
         })
         .collect();
     let write = match take {
@@ -469,13 +453,13 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
                 let text = source.get(p)?.text.as_deref()?;
                 Some((
                     p.clone(),
-                    json!({
-                        "digest": crate::assets::skill_ledger::digest_of(text),
-                        "created": states.get(p.as_str()) == Some(&State::New),
-                    }),
+                    SkillLedgerFile {
+                        digest: crate::assets::skill_ledger::digest_of(text),
+                        created: states.get(p.as_str()) == Some(&State::New),
+                    },
                 ))
             })
-            .collect::<Map<String, Value>>()
+            .collect::<BTreeMap<String, SkillLedgerFile>>()
     });
     // 只交这一趟拷的那几个路径在这台上的原文（写的时候当 CAS 期望）；只在这台有的那几个不碰，也不回传。
     // 写的落点：`files-put` 的 `root` 必须已在 ⇒ skill 根在就用它，不在就用它的上一层（配置根）、让 `parents` 建出来。
@@ -500,21 +484,24 @@ pub(crate) fn answer_plan_with(facts: &dyn Facts, root: Option<&Path>, args: &Va
         .strip_prefix(&base)
         .map(|p| p.to_string_lossy().replace('\\', "/"))
         .unwrap_or_else(|_| name.clone());
-    let target: Vec<Value> = here_text
+    let target = here_text
         .iter()
         .filter(|(p, _)| source.contains_key(*p))
-        .map(|(p, t)| json!({ "path": p, "text": t }))
+        .map(|(p, t)| SkillTargetFile {
+            path: p.clone(),
+            text: t.clone(),
+        })
         .collect();
-    Ok(json!({
-        "root": root.display().to_string(),
-        "dir": dir.display().to_string(),
-        "base": base.display().to_string(),
-        "prefix": prefix,
-        "rows": rows_json,
-        "target": target,
-        "write": write,
-        "ledger": ledger,
-    }))
+    Ok(SkillPlan {
+        root: root.display().to_string(),
+        dir: dir.display().to_string(),
+        base: base.display().to_string(),
+        prefix,
+        rows: rows_out,
+        target,
+        write: write.map(|w| w.into_iter().collect()),
+        ledger,
+    })
 }
 
 // ═══════════════════════ 卸 ═══════════════════════

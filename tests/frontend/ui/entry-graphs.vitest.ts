@@ -748,13 +748,10 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/views/plan.module.css": { stacked: true, why: "计划页：给 kit 建的按钮 · 开关 · 状态点挂本页的版位类" },
   "src/frontend/ui/views/session-find.module.css": { stacked: false, why: "会话内查找面板本体（外框 .session-find 只在 styles.css 管位置，不叠这些类）" },
   "src/frontend/ui/usage-hud.module.css": { stacked: false, why: "状态栏「上下文」chip 与它的浮层：只挂自己的哈希类（chip 本身叠在 kit chip 的哈希类上，不是全局类）" },
-  "src/frontend/ui/rot-chart.module.css": { stacked: false, why: "轮换合图（会话面板 · 配置编辑器预览共用）：只挂自己的哈希类（`el()` 的挂类写成 `(e) => (e.className = s.x)`，量具认得出）；号色走内联 `--rc-c` / `--rc-ink`，不叠全局头像类" },
-  "src/frontend/ui/rot-form.module.css": { stacked: false, why: "照策略声明生成的表单（号详情 · 参数… · 配置编辑器共用）：只挂自己的哈希类（勾选框 · 单选 · 下拉是 kit 的）" },
-  "src/frontend/ui/rot-session.module.css": { stacked: false, why: "会话面板里的轮换（头一行 · 行头 · 多选那一条 · 号详情 · 参数…）：只挂自己的哈希类（按钮 · 菜单 · 下拉是 kit 的）" },
-  "src/frontend/ui/settings/rot-section.module.css": { stacked: false, why: "设置「轮换」栏（配置列表 · 配置编辑器 · 策略列表）：只挂自己的哈希类（按钮 · 菜单 · 页签是 kit 的）" },
+  "src/frontend/ui/rot-board.module.css": { stacked: false, why: "轮换四块（会话面板 · 设置窗「轮换」栏共用）：只挂自己的哈希类（`el()` 的挂类写成 `(e) => (e.className = s.x)`，量具认得出）；按钮 · 下拉 · 开关是 kit 的，上面加挂的版位类也是本文件的哈希类" },
+  "src/frontend/ui/acct-session.module.css": { stacked: false, why: "换号条 · 停发提示：只挂自己的哈希类（提示条本身是 kit 的警告条）" },
+  "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `停发` 那一格：只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/acct.module.css": { stacked: true, why: "状态栏账号按钮 `.acctChip` 叠在全局 `.status-account` 上（account-chip.ts 里 btn.className 同时挂两样）；面板里经小工具函数挂的类量具认不出挂到哪，按「叠」算" },
-  "src/frontend/ui/acct-session.module.css": { stacked: true, why: "换号条 · 提示条：类经小工具函数挂，量具认不出挂到哪，按「叠」算（实际只挂自己的哈希类）" },
-  "src/frontend/ui/tab-quota.module.css": { stacked: false, why: "tab 标题后 `✕ 5h` 那一格：只挂自己的哈希类（不叠全局类）" },
   "src/frontend/ui/views/history.module.css": { stacked: true, why: "历史页根上同时挂全局 `history-view`、搜索框挂 `history-search`（只当截图 / 端到端找它的钩子，全局 CSS 里没有这两条）" },
   "src/frontend/ui/cards/run-card.module.css": { stacked: false, why: "派出卡（`cards/subagent.ts`）：卡 / 卡头 / 结果只挂自己的哈希类（里面的徽标与图标是 kit 的哈希类）" },
   "src/frontend/ui/cards/brief.module.css": { stacked: false, why: "派活的那段话（`cards/brief.ts`）：框 / 抬头 / 正文只挂自己的哈希类（收起与否走 `data-clamped`）" },
@@ -780,7 +777,6 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/kit/fold.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/menu.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/select.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
-  "src/frontend/ui/kit/meter.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/popover.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/split-button.module.css": { stacked: false, why: "通用组件（拆分按钮，暂定）：只挂自己的哈希类" },
   "src/frontend/ui/views/session-viewer.module.css": { stacked: false, why: "只读查看器的外框（头 · 工具行 · 底一行）：只挂自己的哈希类；判据找元素用 `data-role`" },
@@ -800,7 +796,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
-  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需手动」计数）用上；
+  // banner · drawer · fold · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需手动」计数）用上；
   // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上；
   // field 由设置窗「添加机器」框用上；block · card · list-row 一直没有面，删了。
   [],

@@ -4,7 +4,8 @@
 //! 壳不认主题：按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按 [`Topic`]（生成的类型）订、读。
 //! 加一个主题 ＝ 这里加一行 ＋ 发端发它 ＋ 界面订它，别处不动。
 //!
-//! 可丢性跟着发的那条路走：可丢的走 tap 那条（丢了下一次变化或重问就补上）；不可丢的走 watcher 的出方向（丢了按 `overflow.lost` 报身份）。
+//! 可丢性跟着发的那条路走：可丢的走 tap 那条（丢了下一次变化或重问就补上）；不可丢的走 watcher 的出方向（丢了按 `overflow.lost` 报身份）；
+//! 只推给发起它的那条连接的（`login`）走那条连接的应答通道（不丢）。
 //! 带了 `body` 也不改可丢性。`body` 只带小成品（序列化后 ≤ 那一格的上限，超了就不带、客户端照旧重问）。
 
 use serde::Serialize;
@@ -21,10 +22,10 @@ pub enum Topic {
     Profiles,
     /// 这台的额度账显示得出来的那几格。
     Quota,
-    /// 这台某个会话的轮换或「账号」格（`key` ＝ sid）。
+    /// 这台某个会话的轮换（`key` ＝ sid）：那一条 · 它用的那份策略 · 事实变了。
     Rotation,
-    /// 这台的轮换配置表 · 本机默认 · 策略。
-    RotationConfigs,
+    /// 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份。
+    RotationStrategies,
     /// 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问；
     /// `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
     Plan,
@@ -32,6 +33,12 @@ pub enum Topic {
     Tasks,
     /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）。
     Needs,
+    /// 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done | failed, said?, detail?}`）。只推给发起它的那条连接。
+    Login,
+    /// 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了 · 某个号记「MCP 要登录」的那份文件翻了；重问 `manual-list`）。
+    Manual,
+    /// 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）。
+    Machines,
 }
 
 /// 主题表的一行。
@@ -70,15 +77,18 @@ pub enum Ask {
 
 impl Topic {
     /// 全部主题（表的行序）。
-    pub const ALL: [Topic; 8] = [
+    pub const ALL: [Topic; 11] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
         Topic::Rotation,
-        Topic::RotationConfigs,
+        Topic::RotationStrategies,
         Topic::Plan,
         Topic::Tasks,
         Topic::Needs,
+        Topic::Login,
+        Topic::Manual,
+        Topic::Machines,
     ];
 
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
@@ -119,19 +129,19 @@ impl Topic {
                 lossy: true,
                 key: true,
                 rev: false,
-                body: true,
-                body_cap: 4096,
-                reask: "rotation-session-read",
-                ask: Ask::Sids,
+                body: false,
+                body_cap: 0,
+                reask: "rotation-view",
+                ask: Ask::None,
             },
-            Topic::RotationConfigs => TopicSpec {
-                name: "rotation_configs",
+            Topic::RotationStrategies => TopicSpec {
+                name: "rotation_strategies",
                 lossy: true,
                 key: false,
                 rev: false,
                 body: true,
                 body_cap: 8192,
-                reask: "rotation-configs-read",
+                reask: "rotation-strategies",
                 ask: Ask::NoArgs,
             },
             Topic::Plan => TopicSpec {
@@ -162,6 +172,39 @@ impl Topic {
                 body: false,
                 body_cap: 0,
                 reask: "sessions-needs",
+                ask: Ask::None,
+            },
+            // 走发起它的那条连接的应答通道（不丢）；万一没收到，重问需手动清单就知道那个号登没登上。
+            Topic::Login => TopicSpec {
+                name: "login",
+                lossy: false,
+                key: true,
+                rev: false,
+                body: true,
+                body_cap: 8192,
+                reask: "manual-list",
+                ask: Ask::None,
+            },
+            // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。
+            Topic::Manual => TopicSpec {
+                name: "manual",
+                lossy: true,
+                key: false,
+                rev: false,
+                body: false,
+                body_cap: 0,
+                reask: "manual-list",
+                ask: Ask::None,
+            },
+            // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。
+            Topic::Machines => TopicSpec {
+                name: "machines",
+                lossy: true,
+                key: false,
+                rev: false,
+                body: false,
+                body_cap: 0,
+                reask: "machines-read",
                 ask: Ask::None,
             },
         }

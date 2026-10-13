@@ -3,24 +3,22 @@
 //! | 态 | 判 |
 //! |---|---|
 //! | `unseen` | 额度账上没有它 |
-//! | `refused` | 上次那一发被拒、它说的回来时刻未到（与轮换同一个判法 `decide::refused_at`；过了 ⇒ 照下面几行判，各窗口的数照旧作数） |
+//! | `refused` | 上次那一发被拒、它说的回来时刻未到（与轮换同一个判法 `facts::refused_at`；过了 ⇒ 照下面几行判，各窗口的数照旧作数） |
 //! | `overageInUse` | 订阅号正在用付费超额、卡着的窗口未重置 |
 //! | `resetSinceSeen` | 卡着的那个窗口（被拒 · 超额 · 按钮那个窗口）看到之后已经重置过了：上次的数不再作数 |
-//! | `near` | 有语义位的窗口用到这号这一窗此刻的线（没线 ⇒ [`NEAR_DEFAULT`]）、未重置（同轮换的「过线」一个判法），或回包说越过了预警线 |
+//! | `near` | 有语义位的窗口用到 [`NEAR_DEFAULT`]、未重置，或回包说越过了预警线（线是策略的设置，后端不解它的意思，说不出「到线」） |
 //! | `ok` | 其余 |
 //!
-//! 每个语义位另带一格 `full`（用满：用到 100%、未重置）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」；
-//! 一格 `atLine`（那一窗用到了这号这一窗此刻的线、未重置；没线的窗不出）：悬停卡那一窗行尾写「到线」。
+//! 每个语义位另带一格 `full`（用满：用到 100%、未重置）：画 `✕` 只看它；被拒而没用满画「{pct}% · 被拒」。
 //!
-//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。线由调用方按 [`lines_of`] 给：
-//! 这台的账用默认规则的线，会话那一份用会话那一份的线。
+//! 另叠一格 `stale`：最后一次看到距今超过 [`STALE_AFTER`]。各窗口照原名的那几格（[`windows_of`]）由调用方按额度账那一条补上。
 
-use super::decide::{self, Kind};
+use super::facts::{self, Kind};
 use crate::agents::{QuotaReading, QuotaStatus};
 use crate::common::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
 
-/// 那一窗没线（满了才换）时，「快满」的门槛（%）。
+/// 「快满」的门槛（%）。
 pub(crate) const NEAR_DEFAULT: u8 = 80;
 
 /// 最后一次看到距今超过这么多秒 ⇒ 数旧。
@@ -81,10 +79,6 @@ pub struct SlotShow {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub full: bool,
-    /// 到线：这一窗用到这号这一窗此刻的线、还没重置（没线 ⇒ 不出）。
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
-    pub at_line: bool,
     /// 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
     #[serde(default)]
     #[cfg_attr(test, ts(type = "string"))]
@@ -415,7 +409,7 @@ pub(crate) fn windows_of(
                 key: key(&w.name),
                 pct: w
                     .used
-                    .map(|_| (decide::used_now(w, now) * 100.0).round().max(0.0) as u32),
+                    .map(|_| (facts::used_now(w, now) * 100.0).round().max(0.0) as u32),
                 resets_at: w.resets_at,
                 seen_at: seen.at,
                 from: seen.from,
@@ -425,53 +419,9 @@ pub(crate) fn windows_of(
         .collect()
 }
 
-/// 这个号各窗此刻的线（窗口名 → 线；没线 ⇒ `None`）：照这个号在打开的那份配置里那一行的约定参数 `line` · `slots`
-/// （`clock` ＝ 配置时区的本地钟，一天里第几分钟；时段内取时段的线，`0` ＝ 这段不用）。策略没声明这两格 ⇒ 没线。
-pub(crate) fn lines_of<'a>(
-    params: Option<&'a crate::accounts::quota::rotation::Params>,
-    clock: u32,
-    slot: &'a dyn Fn(&str) -> Option<&'static str>,
-) -> impl Fn(&str) -> Option<u8> + 'a {
-    move |name| {
-        let p = params?;
-        let w = slot(name)?;
-        let n = |v: &serde_json::Value| v.as_u64().and_then(|n| u8::try_from(n).ok());
-        let in_slot = p
-            .get(crate::accounts::quota::strategy::form::SLOTS)
-            .and_then(serde_json::Value::as_array)
-            .and_then(|a| {
-                a.iter().find(|x| {
-                    x.get("at")
-                        .and_then(serde_json::Value::as_str)
-                        .and_then(crate::accounts::quota::strategy::form::span_of)
-                        .is_some_and(|(f, t)| {
-                            let (f, t, c) = (u32::from(f), u32::from(t), clock);
-                            if f < t {
-                                c >= f && c < t
-                            } else {
-                                c >= f || c < t
-                            }
-                        })
-                })
-            });
-        if let Some(x) = in_slot {
-            return x.get("line").and_then(n);
-        }
-        match p.get(crate::accounts::quota::strategy::form::LINE)? {
-            serde_json::Value::Object(m) => m.get(w).and_then(n),
-            v => n(v),
-        }
-    }
-}
-
 /// 「用到 N%」的显示判法：这个窗口用到 `n`%、还没重置。
 fn over(w: &crate::agents::QuotaWindow, n: u8, now: u64) -> bool {
     w.used.is_some_and(|u| u * 100.0 >= f64::from(n)) && !super::reset_since_seen(w.resets_at, now)
-}
-
-/// 这一窗用到它的线、还没重置（显示态「到线」那一枚签）。
-fn at_line(w: &crate::agents::QuotaWindow, n: u8, now: u64) -> bool {
-    n > 0 && over(w, n, now)
 }
 
 /// 一个号除额度账之外的几格（种类 · 登录 · 订阅标识），由宿主读好交进来。
@@ -486,7 +436,6 @@ fn slots_of(
     r: &QuotaReading,
     now: u64,
     slot: &dyn Fn(&str) -> Option<&'static str>,
-    line: &dyn Fn(&str) -> Option<u8>,
 ) -> Vec<SlotShow> {
     SLOTS
         .iter()
@@ -508,9 +457,6 @@ fn slots_of(
                 pct: w.used.map(|u| (u * 100.0).round().max(0.0) as u32),
                 resets_at: w.resets_at,
                 full: full(w, now),
-                at_line: r.windows.iter().any(|x| {
-                    slot(&x.name) == Some(*s) && line(&x.name).is_some_and(|n| at_line(x, n, now))
-                }),
                 text: Words::default(),
                 tone: Tone::Plain,
             })
@@ -523,11 +469,10 @@ fn full(w: &crate::agents::QuotaWindow, now: u64) -> bool {
     w.used.is_some_and(|u| u >= 1.0) && !super::reset_since_seen(w.resets_at, now)
 }
 
-/// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）；`line` ＝ 这号各窗此刻的线（[`lines_of`]）。
+/// ★ 判一个号的显示态。`seen` ＝ 额度账上那一条（快照 ＋ 看到的时刻）。
 pub(crate) fn show(
     seen: Option<(&QuotaReading, u64)>,
     facts: Facts,
-    line: &dyn Fn(&str) -> Option<u8>,
     now: u64,
     slot: &dyn Fn(&str) -> Option<&'static str>,
 ) -> QuotaShow {
@@ -544,7 +489,7 @@ pub(crate) fn show(
             usage: usage_of(facts.kind, QuotaState::Unseen, None, &[], None),
         };
     };
-    let slots = slots_of(r, now, slot, line);
+    let slots = slots_of(r, now, slot);
     let limiting = r
         .limiting
         .as_deref()
@@ -564,22 +509,19 @@ pub(crate) fn show(
         .and_then(|x| x.resets_at)
         .or(r.resets_at);
     let overage = facts.kind == Kind::Sub && r.overage.as_ref().is_some_and(|o| o.in_use);
-    let state = if decide::refused_at(r, now) {
+    let state = if facts::refused_at(r, now) {
         QuotaState::Refused
     } else if overage && passed(r.resets_at) {
         QuotaState::ResetSinceSeen
-    } else if decide::overage_in_use(r, facts.kind, now) {
+    } else if facts::overage_in_use(r, facts.kind, now) {
         QuotaState::OverageInUse
     } else if passed(shown_reset) {
         QuotaState::ResetSinceSeen
-    } else if r.windows.iter().any(|w| {
-        slot(&w.name).is_some()
-            && over(
-                w,
-                line(&w.name).filter(|n| *n > 0).unwrap_or(NEAR_DEFAULT),
-                now,
-            )
-    }) || r.status == Some(QuotaStatus::Warning)
+    } else if r
+        .windows
+        .iter()
+        .any(|w| slot(&w.name).is_some() && over(w, NEAR_DEFAULT, now))
+        || r.status == Some(QuotaStatus::Warning)
     {
         QuotaState::Near
     } else {

@@ -55,7 +55,7 @@
 //! `裁-2`（PM 08-25）要 tee 走「每次响应一个新文件（`O_EXCL` 新建）」；只读护栏的默认层把标准库里「新建文件」的每一种
 //! 写法都禁掉了，绕开它的三条路（把调用放进白名单模块 / 类型别名改写 / 直走 `libc`）都是「让护栏变瞎」⇒ 不落文件。
 //! 中转住常驻后端进程里（`listen::host`，本机与远端同形），那个进程的 stdout 在 stdio 载体上**就是 wire** ⇒ 也不落 stdout：
-//! 落宿主交下来的 tap 口（`TeeSink::to_port`，宿主 `crate::stream::tap`），事件变成 `tap` 帧走 wire 自己那条有界通道。
+//! 落宿主交下来的 tap 口（`TeeSink::to_port`，宿主 `crate::stream::tap`），事件拼成活卡（`live_card` 帧）走 wire 最低优先那一路。
 //! 挡着它的判据：`host_tests::the_production_wiring_hosts_the_relay_and_never_writes_tee_lines_to_stdout`
 //! （真子进程走生产接线，转发之后 stdout 上零 tee 输出）。
 //! 先前独立的 `--relay` 进程把 tee 写成 NDJSON 行落自己的 stdout（零消费者）—— 那一形随它删了。
@@ -75,7 +75,7 @@
 //! 代价是上游那一跳的**响应体**不再压缩（真实带宽，不是回环）。
 //!
 //! **保留**：审计 B §3 说这是「为一个没人读的功能放弃了压缩」——tee 今天有了第一个消费者
-//! （`tap` 帧 → 前端活卡），那条前提没了。保留的理由（读数与全文住仓外）：
+//! （拼成活卡 → 两个前端），那条前提没了。保留的理由（读数与全文住仓外）：
 //! 1. `Accept-Encoding` 只管**响应**那一半；请求体（整份上下文）由 claude 自己决定、中转原样搬。本机语料按 `message.id`
 //!    去重的 `usage`：请求侧 token : 响应侧 token ≈ **330 : 1** ⇒ 就算 SSE 压 5–10 倍，省下的不到这一跳字节的 0.3%；
 //! 2. 上游若对 `text/event-stream` 做 gzip，压缩器按块攒字节会推迟 token 到下游的时刻 —— 伤的正是本层唯一的技术点
@@ -141,7 +141,7 @@ mod upstream;
 pub use door::{tokens_match, Key, Keys};
 pub use server::{apply_downstream_deadline, refuse_busy, serve_one, Relay};
 
-/// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件转成 `tap` 帧）；
+/// tee 的第二个落点的口与它交出去的那件事（宿主 `stream::tap` 实现口、把事件拼成活卡）；
 /// [`TeeSink`] 是中转手里那个落点（后端起中转时用 `TeeSink::to_port` 把口交进来）。
 /// 字段语义与「位置号原位说缺口」住 `tee.rs` 头注「第二个落点」。
 pub use tee::{TapBody, TapEvent, TapPort, TeeSink};

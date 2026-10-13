@@ -27,7 +27,7 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
-import { setResumeInTmux } from "./resume-defaults";
+import { forgetResumeDefaults } from "./resume-defaults";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
@@ -47,8 +47,6 @@ import { PlanNeedsBook } from "./plan-needs";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
-import { readContextLimits } from "./views/context-limit";
-import { loadConfig } from "./config";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { toast, undoLatest } from "./kit/toast";
@@ -84,12 +82,11 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
-import { onQuotaChanged, refreshConfigs, syncSessions } from "./acct-center";
+import { onQuotaChanged, syncSessions } from "./acct-center";
 import { planMoves, pushedProducts } from "./changed-stream";
-import { followActive, openConfigPicker, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
+import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { acctSessionWiring } from "./acct-session";
 import { buildAccountCommands } from "./account-commands";
-import { machineName } from "./control-said";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
@@ -320,7 +317,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   );
   // 「需手动」的入口跳过来 ⇒ 焦点进答题块（块自己出现时不抢焦点）。
   tabs.onAnswerJump = (sid) => answerBlock.focusFor(sid);
-  usageHud.host = { openSettings: () => void openSettingsWindow(undefined, dest.CONTEXT_LIMITS), retry: () => tabs.retryActiveFacts() };
+  usageHud.host = {
+    openSettings: () => {
+      const sid = tabs.activeSessionId();
+      void openSettingsWindow(undefined, dest.contextLimitsOf((sid === null ? null : tabs.originOf(sid)) ?? LOCAL_ORIGIN));
+    },
+    retry: () => tabs.retryActiveFacts(),
+  };
   // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(livePainter);
   // 启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
@@ -338,33 +341,16 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 构造在 `refreshSessionAccounts`（下方 `const`）之前：`onDefaultChanged` 回调间接调它，只在用户切号时才执行，
   //   那时它早已初始化 —— 别在这中间插一个会触发回调的 await（会踩 TDZ）。
   // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
+  // 会话里停发提示的重画（接线在下面 `acctSessionWiring`）。
+  let noticeRepaint = (_sid: string): void => {};
   const panelHost: AcctPanelHost = {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
-    cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
-    agentOf: (sid) => tabs.agentOf(sid),
-    openSession: (sid) => tabs.switchTo(sid),
-    canOpenSession: (sid) => tabs.snapshotSessions().some((x) => x.sessionId === sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
-    openRotation: (origin, at) => void openSettingsWindow(undefined, dest.rotationOf(origin, at)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
-    // 恢复菜单挂在状态栏上（抽屉的底边）：toast 的按钮点了就收起，没有自己的锚。
-    openResume: (sid) => {
-      const anchor = document.getElementById("status-bar");
-      if (anchor) tabs.openResumeFor(anchor, sid);
-    },
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
-  // 多选右键「轮换配置 ▸」：那台的配置表（还没读过 ⇒ 去读，这一回先转圈）· 管理 ⇒ 设置窗那台的「轮换」栏。
-  tabs.onRotationConfigs = {
-    configsOf: (origin) => {
-      const got = appStore.rotationConfigs.get().get(origin);
-      if (got === undefined) void refreshConfigs(origin);
-      return got ?? null;
-    },
-    openConfigs: (origin) => void openSettingsWindow(undefined, dest.rotationOf(origin)),
-  };
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
   tabs.onOpenHere = (sid) => {
@@ -452,15 +438,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     startup?.onManualSwitch();
   };
   // 当前 tab 那一格变了 → 刷新 HUD context% chip（会话事实到了 / 切会话 / 要不到 ⇒ chip 说原因）。订阅 store。
-  // 设置里的上下文上限表：随会话事实交给各台后端（上限在那里定，状态栏与监控板读同一个数）。读不到 ⇒ 空表。
-  const loadContextLimits = async (): Promise<void> => {
-    try {
-      tabs.setContextLimits(readContextLimits((await loadConfig())["contextLimits"]));
-    } catch {
-      /* 读不到设置 ⇒ 后端只按它自己看得到的定 */
-    }
-  };
-  void loadContextLimits();
   activeTab = () => tabs.activeTab();
   // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
   function paintTerminalActs(): void {
@@ -492,21 +469,21 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);
     followActive(cur, panelHost);
-    if (a.sid !== null) acctSession.repaintBanner(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
+    if (a.sid !== null) noticeRepaint(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
-  // 会话里的换号条 · 提示条；tab 栏被卡住的会话 `✕ 5h`。
+
+  // 标签页上的账号格照会话那台 `rotation-view` 的在用号 · 停发标：换了号原地重画。
+  appStore.sessionRotation.subscribe(() => tabs.repaintTabBar());
+  // 会话里的换号条 · 停发提示。
   const acctSession = acctSessionWiring({
     streamContentOf: (sid) => tabs.streamContentOf(sid),
     openPanel: openAcctPanel,
   });
-  appStore.sessionRotation.subscribe(() => tabs.repaintTabBar());
+  noticeRepaint = acctSession.repaintNotice;
 
   // 拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。
-  void getBehavior().then((b) => {
-    tabs.applyBehavior(b);
-    setResumeInTmux(b.resumeInTmux);
-  });
+  void getBehavior().then((b) => tabs.applyBehavior(b));
 
   // 设置在独立窗口里：那边保存 / 改行为后广播 SETTINGS_APPLIED_EVENT → 这里重读并应用主题 ＋ 行为（跨窗口回调够不到）。
   // 状态栏命令 chip 的键位刷新钩子：改键热应用后刷新 chip 上的键位（chip 创建时把重建函数赋进来）。
@@ -534,16 +511,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
-    void getBehavior().then((b) => {
-      tabs.applyBehavior(b); // 行为
-      setResumeInTmux(b.resumeInTmux); // 恢复默认的「运行于」
-    });
+    void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
+    forgetResumeDefaults(); // 恢复默认的「运行于」：各台那一格可能改了，下次重问
     void getKeybindings().then((kb) => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
     });
     void accountChip.refresh(true); // 远端配置 / 默认账号可能变了，刷新账号 chip
-    void loadContextLimits(); // 上下文上限表可能在设置页改过
   });
   // 竖直 tab 栏右缘拖拽调宽（`tab-bar-width.ts`，宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆）。
   mountTabBarResizer();
@@ -700,14 +674,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
         openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL_ORIGIN)),
-        rotation:
-          cur !== null && curOrigin !== null
-            ? {
-                machine: machineName(curOrigin),
-                apply: () => openConfigPicker(cur, curOrigin, panelHost),
-                openConfigs: () => void openSettingsWindow(undefined, dest.rotationOf(curOrigin)),
-              }
-            : null,
       }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
       {
         id: "acct-default-menu",
@@ -880,11 +846,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.markAllListed();
       startup?.onAllListed();
     },
-    // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
-    onSessionTap: (e) => tabs.onSessionTap(e),
+    // 活卡（会话流 `session-live-card`，后端拼好的成品）照画；那台看不见了 ⇒ 活卡全撤。
+    onLiveCard: (e) => tabs.onLiveCard(e),
     onSessionRuns: (p) => tabs.onSessionRuns(p),
     onSessionBranch: (p) => tabs.onSessionBranch(p),
-    onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
+    onLiveCardsLost: (origin) => tabs.dropLiveCards(origin),
     // 记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
     onSessionFileNotice: (sessionId, change) => {
       tabs.onRecordFileReread(sessionId, change); // 从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
@@ -933,7 +899,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
         case "quota":
         case "rotation":
-        case "rotation_configs":
+        case "rotation_strategies":
           onQuotaChanged(origin, topic, change);
           break;
         case "plan": {
@@ -982,12 +948,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     onTurnEnd: (origin, turn) => tabs.onTurnEnd(origin, turn),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
-    // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
-    taps: machines,
+    // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。
+    liveCards: machines,
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
-    //   额度 · 会话轮换 · 配置表 · 计划 · 待答请求。配置文件那一种只设置窗订。
+    //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_configs", "plan", "needs"] as const).map((topic) => ({ origin, topic })),
+      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs"] as const).map((topic) => ({ origin, topic })),
     ),
   });
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。

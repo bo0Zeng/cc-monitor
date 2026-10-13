@@ -1,20 +1,19 @@
 /**
- * 额度与轮换的**取数**：什么时候问哪台、问回来放进 `appStore` 哪一格。画的那几处（状态栏按钮 · 悬停卡 · 账号面板 ·
- * 换号条 · 提示条 · 标签页 · 设置窗「轮换」）只订 `appStore.quota` / `sessionRotation` / `rotationConfigs` / `rotationStrategies`，不自己问。
+ * 额度与轮换的**取数**：什么时候问哪台、问回来放进 `appStore` 哪一格。画的那几处（状态栏按钮 · 悬停卡 · 标签页）
+ * 只订 `appStore.quota` / `sessionRotation`，不自己问。
  *
- * - 问的时机全是事件：tab 来了（新 sid）· 那台推 `changed {quota | rotation | rotation_configs}`（额度账 ⇒ 重读 `quota-read`；某个 sid ⇒ 重问那一个；
- *   配置表 / 本机默认 / 策略变了 ⇒ 重问配置表，策略表问过的也重问；
- *   又接上了 / 丢了格 ⇒ 那台全部重问）· 面板打开 · 写了之后。零定时器。
+ * - 问的时机全是事件：tab 来了（新 sid）· 那台推 `changed {quota | rotation | rotation_strategies}`（额度账 ⇒ 重读 `quota-read`；
+ *   某个 sid ⇒ 重问那一个的 `rotation-view`；策略目录 · 哪个会话用哪份变了 ⇒ 那台有 tab 的会话全部重问）·
+ *   又接上了 / 丢了格 ⇒ 那台全部重问。零定时器。
  * - 判定全在后端；这里不判「能不能换 / 该不该换」。
  */
 import { appStore, putIn } from "./app-store";
 import type { Origin } from "./ipc/origin";
 import { decodeQuotaRead, readQuota } from "./quota-reads";
-import { decodeConfigsRead, decodeSessionRotationRead, readConfigs, readSessionRotation, readStrategies } from "./rot-reads";
+import { readSessionView } from "./rotation-view-reads";
 import { pushedProducts, type Changed } from "./changed-stream";
-import type { StrategiesRead } from "./generated/StrategiesRead";
 
-/** 每台此刻有 tab 的会话（rotation-session-read 一批问这么多）。 */
+/** 每台此刻有 tab 的会话。 */
 const known = new Map<Origin, Set<string>>();
 
 export async function refreshQuota(origin: Origin): Promise<void> {
@@ -26,51 +25,21 @@ export async function refreshQuota(origin: Origin): Promise<void> {
   }
 }
 
-export async function refreshConfigs(origin: Origin): Promise<void> {
-  try {
-    putIn(appStore.rotationConfigs, origin, await readConfigs(origin));
-  } catch (e) {
-    console.warn(`[acct] rotation-configs-read [${origin}] 失败：`, e);
-    putIn(appStore.rotationConfigs, origin, null);
-  }
-}
-
-/** 策略表（表单照它的声明画）：要画的那几处第一次要时问，之后跟着 `rotation_configs` 的推送重问。 */
-export async function refreshStrategies(origin: Origin): Promise<void> {
-  try {
-    putIn(appStore.rotationStrategies, origin, await readStrategies(origin));
-  } catch (e) {
-    console.warn(`[acct] rotation-strategies-read [${origin}] 失败：`, e);
-    putIn(appStore.rotationStrategies, origin, null);
-  }
-}
-
-/** 那台的策略表：问过就照 store 里的；没问过 ⇒ 这就去问（回来了订阅者重画），这一刻回 `undefined`。 */
-export function strategiesOf(origin: Origin): StrategiesRead | null | undefined {
-  const got = appStore.rotationStrategies.get();
-  if (!got.has(origin)) {
-    putIn(appStore.rotationStrategies, origin, null);
-    void refreshStrategies(origin);
-    return undefined;
-  }
-  return got.get(origin);
-}
-
+/** 一批会话各问一次 `rotation-view`（逐个；一个失败不挡别的，那一格照旧）。 */
 export async function refreshSessions(origin: Origin, sids: readonly string[]): Promise<void> {
-  if (sids.length === 0) return;
-  try {
-    const got = await readSessionRotation(origin, [...sids]);
-    const next = new Map(appStore.sessionRotation.get());
-    for (const [sid, read] of Object.entries(got.sessions)) next.set(sid, { origin, now: got.now, read });
-    appStore.sessionRotation.set(next);
-  } catch (e) {
-    console.warn(`[acct] rotation-session-read [${origin}] 失败：`, e);
-  }
+  await Promise.all(
+    sids.map(async (sid) => {
+      try {
+        putIn(appStore.sessionRotation, sid, { origin, read: await readSessionView(origin, sid) });
+      } catch (e) {
+        console.warn(`[acct] rotation-view [${origin}] ${sid} 失败：`, e);
+      }
+    }),
+  );
 }
 
 /**
- * tab 集合变了 ⇒ 新出现的会话问一次（每台一批）；那台第一次出现 ⇒ 额度账与默认轮换也问一次。
- * 已经问过的不重问（之后靠推送）。
+ * tab 集合变了 ⇒ 新出现的会话问一次；那台第一次出现 ⇒ 额度账也问一次。已经问过的不重问（之后靠推送）。
  */
 export function syncSessions(tabs: readonly { sessionId: string; origin: Origin }[]): void {
   const fresh = new Map<Origin, string[]>();
@@ -80,7 +49,6 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
       set = new Set();
       known.set(t.origin, set);
       void refreshQuota(t.origin);
-      void refreshConfigs(t.origin);
     }
     if (set.has(t.sessionId)) continue;
     set.add(t.sessionId);
@@ -90,31 +58,20 @@ export function syncSessions(tabs: readonly { sessionId: string; origin: Origin 
 }
 
 /**
- * 那台推来额度 / 会话轮换 / 配置表变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_configs`）。
- * 帧里带了成品（同重问那条命令的应答）⇒ 用同一个解码器收、直接放进 store，不再问；没带 · 解不开 · `all`（期间可能漏了）⇒ 照旧重问。
+ * 那台推来额度 / 会话轮换 / 策略目录变了（`events.ts` 的 `onChanged`，主题 `quota` · `rotation` · `rotation_strategies`）。
+ * 额度帧里带了成品 ⇒ 用同一个解码器收、直接放进 store；轮换那两种不带成品 ⇒ 重问。`all`（期间可能漏了）⇒ 那台全部重问。
  */
-export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_configs", change: Changed): void {
+export function onQuotaChanged(origin: Origin, topic: "quota" | "rotation" | "rotation_strategies", change: Changed): void {
   if (topic === "quota") {
     const p = pushedProducts(change, decodeQuotaRead);
     const q = p.got.get(null);
     if (q !== undefined) putIn(appStore.quota, origin, q);
     if (p.all || (q === undefined && p.ask.length > 0)) void refreshQuota(origin);
-  } else if (topic === "rotation_configs") {
-    const p = pushedProducts(change, decodeConfigsRead);
-    const r = p.got.get(null);
-    if (r !== undefined) putIn(appStore.rotationConfigs, origin, r);
-    if (p.all || (r === undefined && p.ask.length > 0)) void refreshConfigs(origin);
-    // 策略目录变了也走这个主题：问过策略表的那台一起重问（表单照新的声明画）。
-    if (appStore.rotationStrategies.get().has(origin)) void refreshStrategies(origin);
-  } else {
-    const p = pushedProducts(change, decodeSessionRotationRead);
-    if (p.got.size > 0) {
-      const next = new Map(appStore.sessionRotation.get());
-      for (const got of p.got.values()) for (const [sid, read] of Object.entries(got.sessions)) next.set(sid, { origin, now: got.now, read });
-      appStore.sessionRotation.set(next);
-    }
-    const mine = known.get(origin);
-    const sids = p.all || p.ask.includes(null) ? [...(mine ?? [])] : p.ask.filter((s): s is string => s !== null && (mine?.has(s) ?? false));
-    void refreshSessions(origin, sids);
+    return;
   }
+  const keys = change.cells.map((c) => c.key);
+  const mine = known.get(origin);
+  const every = topic === "rotation_strategies" || change.all || keys.includes(null);
+  const sids = every ? [...(mine ?? [])] : keys.filter((s): s is string => s !== null && (mine?.has(s) ?? false));
+  void refreshSessions(origin, sids);
 }

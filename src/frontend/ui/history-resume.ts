@@ -7,8 +7,6 @@ import { LOCAL_ORIGIN } from "./ipc/origin";
 import { startInTmuxThenAttach } from "./tmux-resume";
 import { resumeLocalSession } from "./local-resume";
 import { runRemoteResume } from "./remote-launch-run";
-import { resumeCommandFor } from "./remote-config";
-import { configuredLauncherFor } from "./launch-requests";
 import type { AccountAsk } from "./launch-account";
 import type { HistoryRow } from "./history-list-reads";
 
@@ -25,8 +23,7 @@ export async function resumeHistoryRow(r: HistoryRow, how: ResumeHow, again: (ac
     return started !== false;
   }
   if (r.origin) {
-    const launcher = configuredLauncherFor(r.agent, await resumeCommandFor(r.origin));
-    await runRemoteResume(r.origin, r.agent, r.sessionId, r.projectPath, launcher, { account: how.account });
+    await runRemoteResume(r.origin, r.agent, r.sessionId, r.projectPath, { account: how.account });
   } else {
     await resumeLocalSession({ agent: r.agent, sid: r.sessionId, cwd: r.projectPath, account: how.account });
   }

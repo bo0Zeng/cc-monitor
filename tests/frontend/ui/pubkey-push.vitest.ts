@@ -1,7 +1,7 @@
 /**
  * 要求：推送公钥是本机后端帧命令 `pubkey-push {machine}`，与 `remote-probe` 同形。
  *
- * ① 应答两侧对拍：后端判据核键集 == 金样 `tests/__fixtures__/pubkey-push.golden.json`，这里的解码器读同一份（多一格 / 缺一格 / 值不在闭集 ⇒ 抛）；
+ * ① 应答：后端判据核金样 `tests/__fixtures__/pubkey-push.golden.json`，这里原样交到调用方（形状由握手时的形状指纹管，不逐格判）；
  * ② 请求发给本机那一台、op 是 `pubkey-push`、体恰是金样那四格（已保存的同名那一份 · 跳板那一台从 `saved` 里找）、带期限。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -19,7 +19,7 @@ vi.mock("../../../src/comms/inward/chan", async (importOriginal) => ({
 }));
 
 import golden from "../../__fixtures__/pubkey-push.golden.json";
-import { decodePush, pushPublicKey } from "../../../src/frontend/ui/pubkey-push";
+import { pushPublicKey } from "../../../src/frontend/ui/pubkey-push";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import type { RemoteHostConfig } from "../../../src/frontend/ui/remote-config";
 
@@ -28,19 +28,6 @@ beforeEach(() => {
 });
 
 describe("MIG-3b 续 公钥推送走通道、本机后端办", () => {
-  it("★ 金样的应答原样收下；多一格 / 缺一格 / 值不在闭集 ⇒ 抛", () => {
-    expect(decodePush(golden.product)).toEqual(golden.product);
-    for (const bad of [
-      { ...golden.product, extra: 1 },
-      { outcome: "added", pubPath: "/k" },
-      { ...golden.product, outcome: "maybe" },
-      { ...golden.product, via: "ssh" },
-      null,
-    ]) {
-      expect(() => decodePush(bad), JSON.stringify(bad)).toThrow();
-    }
-  });
-
   it("发给本机那一台的 `pubkey-push`，体恰是金样那四格、带期限", async () => {
     reply = golden.product;
     const machine = { ...golden.request.machine, port: 22, addresses: [], jump: "", hostKeyFingerprint: null } as unknown as RemoteHostConfig;

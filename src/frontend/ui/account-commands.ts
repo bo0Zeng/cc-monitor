@@ -29,8 +29,6 @@ export interface AccountCommandsInput {
   // —— 动作（由调用方接到 AccountChip）——
   setCurrent: (name: string) => void;
   openSettings: () => void;
-  /** 有当前会话时：那台的名字 · 开配置下拉 · 开那台的「轮换」栏；没有 ⇒ 不给（两条轮换命令都不出）。 */
-  rotation?: { machine: string; apply: () => void; openConfigs: () => void } | null;
 }
 
 /**
@@ -64,24 +62,6 @@ export function buildAccountCommands(input: AccountCommandsInput): AccountComman
     keywords: copyText("accountCommands.manage.keywords"),
     run: () => input.openSettings(),
   });
-
-  const rot = input.rotation;
-  if (rot) {
-    cmds.push(
-      {
-        id: "rot-apply",
-        title: copyText("accountCommands.rotApply.title"),
-        keywords: copyText("accountCommands.rotApply.keywords"),
-        run: () => rot.apply(),
-      },
-      {
-        id: "rot-configs",
-        title: copyText("accountCommands.rotConfigs.title", { machine: rot.machine }),
-        keywords: copyText("accountCommands.rotConfigs.keywords"),
-        run: () => rot.openConfigs(),
-      },
-    );
-  }
 
   return cmds;
 }

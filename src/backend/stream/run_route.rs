@@ -1,4 +1,4 @@
-//! **流归位**：中转抄出来的每一段流（一次上游应答）折成归一事件、定它归哪个运行，然后才变成 `tap` 帧。
+//! **流归位**：中转抄出来的每一段流（一次上游应答）折成归一事件、定它归哪个运行，然后才交活卡（`live.rs`）。
 //!
 //! 只用适配层给的那几格（协议面 `StreamFace` · 请求自报的运行 · 运行簿里学到的对账键），不认任何一家的形状：
 //! 1. 用哪个协议面：头一件事折得出「开始」的那一个（各家上游的协议面挨个问）；都折不出 ⇒ 这段不收。
@@ -11,7 +11,7 @@
 use crate::agents::{StreamEv, StreamFace, StreamFamily};
 use crate::observe::runs::RunBook;
 use crate::relay::{TapBody, TapEvent};
-use crate::stream::wire::{Frame, TapEnd};
+use crate::stream::wire::TapEnd;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 
@@ -23,6 +23,18 @@ pub(crate) const ROUTE_PENDING_KEEP: usize = 512;
 const DEAD_KEEP: usize = 256;
 
 type Item = (Option<StreamEv>, Option<TapEnd>);
+
+/// 归好位的一件（交活卡，[`crate::stream::live`]）：哪个会话 · 哪个运行（`None` ＝ 主运行）· 第几段 · 段里第几件（从 0 连续）·
+/// 归一事件与收尾恰有一个。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Routed {
+    pub(crate) sid: String,
+    pub(crate) run: Option<String>,
+    pub(crate) resp: u64,
+    pub(crate) n: u64,
+    pub(crate) ev: Option<StreamEv>,
+    pub(crate) end: Option<TapEnd>,
+}
 
 /// 一段流为什么没放出去 / 半路收了（这条连接上数）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -56,7 +68,7 @@ struct Resp {
     ended: bool,
 }
 
-/// 一条流连接的流归位（`tap::TapRx` 持有）。
+/// 整台一份的流归位（`live::Live` 持有）。
 pub(crate) struct RunRouter {
     book: Arc<RunBook>,
     families: Vec<StreamFamily>,
@@ -64,7 +76,7 @@ pub(crate) struct RunRouter {
     order: VecDeque<u64>,
     dead: HashSet<u64>,
     dead_order: VecDeque<u64>,
-    /// 这条连接上至今每种丢了几段。
+    /// 至今每种丢了几段。
     lost: BTreeMap<Lost, u64>,
 }
 
@@ -109,7 +121,7 @@ impl RunRouter {
     }
 
     /// 一件中转抄出来的事 ⇒ 此刻能放出去的帧（挂起的不出）。
-    pub(crate) fn on_tap(&mut self, ev: TapEvent) -> Vec<Frame> {
+    pub(crate) fn on_tap(&mut self, ev: TapEvent) -> Vec<Routed> {
         let resp = ev.resp;
         if self.dead.contains(&resp) {
             return Vec::new();
@@ -231,7 +243,7 @@ impl RunRouter {
     }
 
     /// 运行簿学到了新的对账键归属 ⇒ 挂起的那几段里对得上的放出来。
-    pub(crate) fn on_learned(&mut self) -> Vec<Frame> {
+    pub(crate) fn on_learned(&mut self) -> Vec<Routed> {
         let mut out = Vec::new();
         let mut done = Vec::new();
         for resp in self.order.clone() {
@@ -269,7 +281,7 @@ fn fold_body(face: StreamFace, body: &TapBody) -> Vec<StreamEv> {
     }
 }
 
-fn emit(r: &mut Resp, resp: u64, items: Vec<Item>) -> Vec<Frame> {
+fn emit(r: &mut Resp, resp: u64, items: Vec<Item>) -> Vec<Routed> {
     let Route::Run(run) = &r.route else {
         return Vec::new();
     };
@@ -278,8 +290,8 @@ fn emit(r: &mut Resp, resp: u64, items: Vec<Item>) -> Vec<Frame> {
         .map(|(ev, end)| {
             let n = r.out_n;
             r.out_n += 1;
-            Frame::Tap {
-                stream: r.sid.clone(),
+            Routed {
+                sid: r.sid.clone(),
                 run: run.clone(),
                 resp,
                 n,

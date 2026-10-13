@@ -1428,8 +1428,8 @@ pub(crate) fn absorb_local_frame(
             &ticket,
             cell,
         ),
-        // 中转住本机常驻后端：它抄出来的 SSE 事件原样转前端（`session_tap::deliver`，从不阻塞、不进内容通道）。
-        InboundFrame::Tap(t) => crate::session_tap::deliver(origin.as_wire_str(), t),
+        // 活卡（后端拼好的成品）原样转前端（`live_card::deliver`，从不阻塞、不进内容通道）。
+        InboundFrame::LiveCard(l) => crate::live_card::deliver(origin.as_wire_str(), l),
         // 内容三种（`session_added` 在上面那一臂记完容器也交回）：交回读循环，送进本机内容通道。
         // 起停另两种（`session_status` 红绿灯 · `sessions_replayed` 清单报完了）也交回：
         //   本机会话的起停改由本机后端的帧来（`session_map` 的本机活会话表），与内容走同一条有序通道 ——
@@ -1626,6 +1626,8 @@ pub(crate) fn local_stdio_consumer(
             .into_client(witness);
         crate::inbound_client::register(route.origin.as_wire_str(), client.clone());
         registered = Some(client);
+        crate::prefs_migration::after_local_ready();
+        crate::machine_table::refresh();
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
             route.origin.as_wire_str()

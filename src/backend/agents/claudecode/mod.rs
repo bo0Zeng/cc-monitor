@@ -58,6 +58,7 @@ pub(crate) mod usage;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
 pub(crate) mod runs;
 pub(crate) mod schema;
+pub(crate) mod sign_in;
 pub(crate) mod steps;
 // 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
 pub(crate) mod text;
@@ -153,6 +154,10 @@ fn mcp_renew_lock(key: &str) -> String {
     format!("mcp-refresh-{safe}.lock.lock")
 }
 
+/// monitor `config.json` 里旧的那一格「Claude 数据目录」的键名（设置页那一格当年就叫它）。
+/// 只给换形用（注册表 `Adapter::old_home_pref`），下一版随 `control/prefs_migration.rs` 一起删。
+pub(crate) const OLD_HOME_PREF: &str = "claudeDir";
+
 /// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。
 pub(crate) const COMPACT_REQUEST: &str = "/compact";
 
@@ -172,7 +177,12 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     first_prompt_arg: true,
     permission: Some(super::PermissionFace {
         flag: resume::PERMISSION_MODE_FLAG,
-        modes: &["default", "acceptEdits", "plan"],
+        modes: resume::PERMISSION_MODES,
+        switch: Some(super::ModeSwitch {
+            key: "shift-tab",
+            cycle_max: resume::MODE_CYCLE_MAX,
+            read: resume::mode_on_screen,
+        }),
     }),
     self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
@@ -184,6 +194,10 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     needs_bus_id: false,
     has_identity: true,
     models: Some(resume::MODEL_ALIASES),
+    model_switch: Some(super::ModelSwitch {
+        command: resume::model_command,
+        read: resume::model_said,
+    }),
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。
@@ -214,6 +228,8 @@ pub(crate) const LOCAL: super::LocalFace = super::LocalFace {
 pub(crate) const MCP: super::McpFace = super::McpFace {
     read: mcp::read,
     login_command: mcp::LOGIN_COMMAND,
+    sign_in: Some(sign_in::MCP_FACE),
+    needs_login_file: Some(mcp::NEEDS_AUTH_CACHE),
 };
 
 /// 记录解释面（注册表 `Adapter.records` 那一格）。
@@ -232,7 +248,7 @@ pub(crate) const RECORDS: super::RecordFace = super::RecordFace {
     chain: Some(chain::chain_fact),
     find_session: Some(branch::find_session_file),
     branch: Some(branch::build_branch_records),
-    drift: Some(drift::report),
+    drift: Some(drift::snapshot),
     text: Some(super::TextFace {
         main: text::extract_text_blocks,
         tool: text::extract_tool_text,
@@ -269,4 +285,6 @@ pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     project_mcp_file: assets::PROJECT_MCP_FILE,
     servers_key: assets::SERVERS_KEY,
     plugins: assets::plugins,
+    session_scan: assets::session_scan,
+    builtin_commands: assets::BUILTIN_COMMANDS,
 };

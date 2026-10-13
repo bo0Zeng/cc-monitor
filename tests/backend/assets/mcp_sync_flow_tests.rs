@@ -5,6 +5,39 @@ use crate::assets::mcp_sync::There;
 use crate::stream::inbound::LocalFiles;
 use std::cell::RefCell;
 
+/// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
+fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &Value,
+    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f(&req).map(|t| serde_json::to_value(t).unwrap())
+}
+
+fn answer_source(
+    d: &dyn crate::assets::door::Door,
+    user_mcp: Option<&std::path::Path>,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    via(args, |r| super::answer_source(d, user_mcp, r))
+}
+
+fn answer_preview(
+    d: &dyn crate::assets::door::Door,
+    facts: &dyn crate::assets::mcp_sync::Facts,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    via(args, |r| super::answer_preview(d, facts, r))
+}
+
+fn answer_apply(
+    d: &dyn crate::assets::door::Door,
+    record: Record,
+    args: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    via(args, |r| super::answer_apply(d, record, r))
+}
+
 /// 这台上的事实：`PATH` 查不动（`unknown`），路径一律「没有」—— 判据不把开发机烤进去。
 struct NoFacts;
 impl Facts for NoFacts {

@@ -35,6 +35,11 @@ wall_until() {
   done
 }
 
+# `proc_start <pid>`：进程的起始时刻（`/proc/<pid>/stat` 第 22 格 starttime，时钟滴答），喂 pidfile 的 `procStart`。
+# 第 2 格是带括号的进程名，名字里能有空格和 `)` ⇒ 先剥到最后一个 `) ` 再数（剥完第 3 格是 $1，第 22 格是 $20）；
+# 直接 `awk '{print $22}'` 名字带空格时列会错位（判据 `every_shell_read_of_proc_stat_columns_strips_the_process_name_first`）。
+proc_start() { sed 's/.*) //' "/proc/$1/stat" | awk '{print $20}'; }
+
 # `e2e_leftovers <沙箱家目录>`：印还活着的、家目录是它的那些进程（`pid 命令行` 一行一个；本 shell 与这层子 shell 除外）。
 # 按 `/proc/<pid>/environ` 里的 `HOME=` 认，不按名字 —— 同名的可能是别的路、主会话或用户自己的。套件收尾前问一句「这一趟起的都走了没」。
 e2e_leftovers() {

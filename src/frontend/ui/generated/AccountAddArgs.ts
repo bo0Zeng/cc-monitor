@@ -6,7 +6,7 @@ import type { AccountKind } from "./AccountKind";
  */
 export type AccountAddArgs = { name: string, kind: AccountKind, 
 /**
- * 订阅号：导入哪一份凭据文件（家目录底下；`~/` 开头也认）。缺席 ⇒ 建好之后在终端里登录。
+ * 订阅号：导入哪一份凭据文件（家目录底下；`~/` 开头也认）。缺席 ⇒ 建好之后另行登录（`login-start`）。
  */
 credFile?: string, 
 /**

@@ -1,47 +1,75 @@
 /**
- * 会话里的换号条与提示条：第一次见到的换号记录不回填进流；之后新出现的按发生那一刻追加在内容层末尾；卡住才出提示条。期望手写。
+ * 会话里的换号条与停发提示（`acct-session.ts`）：照这个会话的 `rotation-view`（appStore）画；字是后端写好的。期望手写。
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { __resetSeenLogForTests, onSessionEntry } from "../../../src/frontend/ui/acct-session";
+import { holdOf } from "../../../src/frontend/ui/rot-words";
+import { copyText } from "../../../src/frontend/ui/copy-table";
+import type { SessionRotationEntry } from "../../../src/frontend/ui/app-store";
+import type { RotationViewReply } from "../../../src/frontend/ui/generated/RotationViewReply";
 
-import { onSessionEntry } from "../../../src/frontend/ui/acct-session.ts";
-import type { SessionRotationEntry } from "../../../src/frontend/ui/app-store.ts";
-import type { SwitchRecord } from "../../../src/frontend/ui/generated/SwitchRecord.ts";
-import { present, quotaShow } from "../../test-support/rot-fixtures";
-
-const NOW = 1_791_189_600;
-const entry = (history: SwitchRecord[], blocked?: { account: string; at: number; atText?: string; atRelText?: string }): SessionRotationEntry => ({
-  origin: "<local>",
+const NOW = 1_800_000_000;
+const read = (over: Partial<RotationViewReply> = {}): RotationViewReply => ({
   now: NOW,
-  read: present({
-    current: history.at(-1)?.to ?? "work",
-    history,
-    ...(blocked ? { blocked: { earliest: blocked, text: "B-blocked" } } : {}),
-    quota: quotaShow({ state: blocked ? "refused" : "ok" }),
-  }),
+  nowText: "14:30",
+  strategy: null,
+  form: [],
+  settings: {},
+  dirty: false,
+  start: "work",
+  current: "team",
+  accounts: [],
+  listed: 0,
+  decision: null,
+  timeline: null,
+  past: null,
+  baseRev: "",
+  log: [],
+  hints: [],
+  ...over,
+});
+const entry = (r: RotationViewReply): SessionRotationEntry => ({ origin: "<local>", read: r });
+
+let content: HTMLElement;
+const host = { streamContentOf: () => content, openPanel: vi.fn() };
+
+beforeEach(() => {
+  __resetSeenLogForTests();
+  content = document.createElement("div");
+  document.body.replaceChildren(content);
 });
 
-describe("换号条 · 提示条", () => {
-  it("先有的不回填；新来的一条追加；from == to 的（跳过）不出条", () => {
-    const content = document.createElement("div");
-    const host = { streamContentOf: () => content, openPanel: () => {} };
-    const h1: SwitchRecord = { at: NOW - 600, from: "work", to: "personal", leave: { k: "unusable", why: {} }, text: "T-h1" };
-    onSessionEntry("s1", entry([h1]), host);
-    expect(content.querySelectorAll("[data-acct-strip]").length).toBe(0);
-    const h2: SwitchRecord = { at: NOW, from: "personal", to: "team", leave: { k: "manual" }, text: "T-manual" };
-    const skip: SwitchRecord = { at: NOW, from: "team", to: "team", leave: { k: "held" }, text: "T-held" };
-    onSessionEntry("s1", entry([h1, h2, skip]), host);
-    const strips = [...content.querySelectorAll<HTMLElement>("[data-acct-strip]")];
-    expect(strips.length).toBe(1);
-    expect(strips[0].textContent).toContain("personal → team");
-    expect(strips[0].textContent).toContain("T-manual");
+describe("换号条", () => {
+  it("★ 第一次见到的记录不回填；之后新来的一条 ⇒ 流末尾一行 `work → team · 为什么`（为什么照后端配好的那一句）", () => {
+    const old = { at: NOW - 600, from: "work", to: "team", cause: { k: "order" as const }, because: "旧的那一次" };
+    onSessionEntry("s1", entry(read({ log: [old] })), host);
+    expect(content.querySelector("[data-acct-strip]")).toBeNull();
+    const fresh = { at: NOW, from: "team", to: "lab", cause: { k: "unusable" as const }, because: "后端配好的为什么" };
+    onSessionEntry("s1", entry(read({ log: [old, fresh] })), host);
+    const strips = content.querySelectorAll<HTMLElement>("[data-acct-strip]");
+    expect(strips).toHaveLength(1);
+    expect(strips[0].textContent).toContain(copyText("rot.strip.move", { from: "team", to: "lab" }));
+    expect(strips[0].textContent).toContain("后端配好的为什么");
+    [...strips[0].querySelectorAll("button")].find((b) => b.textContent === copyText("rot.strip.open"))!.click();
+    expect(host.openPanel).toHaveBeenCalledWith("s1", "<local>");
   });
-  it("卡住 ⇒ 内容层最前面一条提示条（字照后端写好的那一句）；能发了 ⇒ 摘掉", () => {
-    const content = document.createElement("div");
-    content.appendChild(document.createElement("p"));
-    const host = { streamContentOf: () => content, openPanel: () => {} };
-    onSessionEntry("s2", entry([], { account: "team", at: Math.floor(Date.now() / 1000) + 5400, atText: "13:30", atRelText: "+1h30m" }), host); // 「还有多久」照核心写好的距今
-    expect(content.firstElementChild?.textContent).toContain("B-blocked");
-    onSessionEntry("s2", entry([]), host);
-    expect(content.textContent).not.toContain("B-blocked");
+});
+
+describe("停发提示", () => {
+  const hold = read({ hints: [{ hint: { k: "hold", until: NOW + 3600, untilText: "15:30", account: "lab" }, text: "停发 · 15:30 lab · {dur}" }] });
+
+  it("★ 停发 ⇒ 流最前一条（字照后端那一句，{dur} 填上）；不停了 ⇒ 摘掉", () => {
+    onSessionEntry("s1", entry(hold), host);
+    const notice = content.querySelector<HTMLElement>("[data-acct-notice]");
+    expect(notice?.textContent).toContain("15:30 lab");
+    expect(notice?.textContent).not.toContain("{dur}");
+    onSessionEntry("s1", entry(read()), host);
+    expect(content.querySelector("[data-acct-notice]")).toBeNull();
+  });
+
+  it("holdOf：没停发 ⇒ null；标签页的悬停照它", () => {
+    expect(holdOf(read())).toBeNull();
+    expect(holdOf(null)).toBeNull();
+    expect(holdOf(hold)).toContain("15:30 lab");
   });
 });

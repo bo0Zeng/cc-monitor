@@ -547,7 +547,7 @@ describe("内容头 · 恢复 ▾（乙4-④⑤）", () => {
     inHead(copyText("history.row.resume"))!.click();
     await flush();
     expect(vi.mocked(runRemoteResume).mock.calls.at(-1)!.slice(0, 4)).toEqual(["dev", "claude", "r", "/w/p"]);
-    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)![5]).toEqual({ account: { kind: "base" } });
+    expect(vi.mocked(runRemoteResume).mock.calls.at(-1)![4]).toEqual({ account: { kind: "base" } });
     v.close();
     await v.open();
     await flush();

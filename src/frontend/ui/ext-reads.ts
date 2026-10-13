@@ -9,11 +9,11 @@
  * | 写 / 改 / 清一个条目的备注 | 本机后端（记进它的目录，随目录同步） | `ext-note-set` |
  * | MCP 那几行每台的小标（需登录 · 断开）与抽屉里那一行的字 | 那一台（判定与写字都在它的后端：`mcp-read`） | `mcp-read` |
  *
- * 判定全在后端：这里只按形状严格收（形状由后端的类型生成，`generated/Ext*.ts`；线上形状由金样
+ * 判定全在后端。「装」那一对是 typed（`callTyped`，回包形状由握手指纹核过）；其余几问这里按形状严格收（形状由后端的类型生成，`generated/Ext*.ts`；线上形状由金样
  * `tests/__fixtures__/ext-flow.golden.json` 钉），不比较、不推断。形状不对 ⇒ 抛「两端版本对不上」。
  */
 import { chan, ChanError, type Budget } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody, readJson, refusalOf, saidFrom, unreadableFrom } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, jsonBody, readJson, refusalOf, saidFrom, unreadableFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { ExtBring } from "./generated/ExtBring";
 import type { ExtBuiltin } from "./generated/ExtBuiltin";
@@ -28,6 +28,9 @@ import type { ExtPlace } from "./generated/ExtPlace";
 import type { ExtRow } from "./generated/ExtRow";
 import type { ExtScope } from "./generated/ExtScope";
 import type { ExtSlot } from "./generated/ExtSlot";
+import type { ExtTokens } from "./generated/ExtTokens";
+import type { HubApplied } from "./generated/HubApplied";
+import type { HubPreview } from "./generated/HubPreview";
 import type { ExtTarget } from "./generated/ExtTarget";
 import type { ExtUninstallCard } from "./generated/ExtUninstallCard";
 import { exactKeys, isObj } from "./ipc/decode";
@@ -126,27 +129,6 @@ export function decodeExtList(v: unknown): ExtList {
   return { machines, rows: arr(o.rows, (r) => row(r, machines.length)), problems: arr(o.problems, str) };
 }
 
-/** `ext-hub-preview` 的成品（确认卡）。 */
-export function decodeExtCard(v: unknown): ExtCard {
-  const o = obj(v, ["kind", "name", "path", "writes", "unchanged", "suspects", "stop", "config", "slots", "tokens"]);
-  const t = obj(o.tokens, ["source", "target"]);
-  return {
-    kind: oneOf(o.kind, KINDS),
-    name: str(o.name),
-    path: str(o.path),
-    writes: arr(o.writes, str),
-    unchanged: bool(o.unchanged),
-    suspects: arr(o.suspects, str),
-    stop: optStr(o.stop),
-    config: optStr(o.config),
-    slots: arr(o.slots, (s) => {
-      const x = obj(s, ["field", "key", "kept"]);
-      return { field: str(x.field), key: str(x.key), kept: bool(x.kept) };
-    }),
-    tokens: { source: str(t.source), target: optStr(t.target) },
-  };
-}
-
 /** `ext-uninstall-preview` 的成品。 */
 export function decodeExtUninstallCard(v: unknown): ExtUninstallCard {
   const o = obj(v, ["kind", "name", "path", "recorded", "files", "backup", "said", "token"]);
@@ -162,7 +144,7 @@ export function decodeExtUninstallCard(v: unknown): ExtUninstallCard {
   };
 }
 
-/** `ext-hub-apply` / `ext-uninstall-apply` 的成品。 */
+/** `ext-uninstall-apply` 的成品。 */
 export function decodeExtDone(v: unknown): ExtDone {
   const o = obj(v, ["path", "changed", "note"]);
   return { path: str(o.path), changed: arr(o.changed, str), note: optStr(o.note) };
@@ -207,60 +189,32 @@ export function extList(visit: boolean): Promise<ExtList> {
   return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-list", body, budget), { visit }, LIST_BUDGET_MS, decodeExtList);
 }
 
-/** 「装到 N 台」那一张卡（本机后端当枢纽，向各台问完并好）：落点交集 · 共用的那一处 · 并好的要填格 · 各台的卡。 */
-export interface ExtManyCard {
-  places: ExtTarget[];
-  place: ExtLoc | null;
-  slots: { field: string; key: string; kept: string[] }[];
-  /** 那台没拼成 ⇒ `card` 为 `null`、`error` 是那台说的那一句。 */
-  machines: { to: string | null; name: string; card: ExtCard | null; files: string[]; error: string | null }[];
-}
+/** 「装到 N 台」那一张卡（本机后端当枢纽，向各台问完并好）：落点交集 · 共用的那一处 · 并好的要填格 · 各台的卡（那台没拼成 ⇒ `card` 为 `null`、`error` 是那台说的那一句）。 */
+export type ExtManyCard = HubPreview;
 
 /** 各台各自结局。 */
-export interface ExtManyDone {
-  machines: { to: string | null; name: string; done: ExtDone | null; error: string | null }[];
-}
+export type ExtManyDone = HubApplied;
 
-const keyOrNull = (v: unknown): string | null => (v === null ? null : str(v));
-/** `ext-hub-preview` 的成品。严格收。 */
-export function decodeExtManyCard(v: unknown): ExtManyCard {
-  const o = obj(v, ["places", "place", "slots", "machines"]);
-  return {
-    places: arr(o.places, target),
-    place: o.place === null ? null : loc(o.place),
-    slots: arr(o.slots, (x) => {
-      const s = obj(x, ["field", "key", "kept"]);
-      return { field: str(s.field), key: str(s.key), kept: arr(s.kept, str) };
-    }),
-    machines: arr(o.machines, (x) => {
-      const m = obj(x, ["to", "name", "card", "files", "error"]);
-      return { to: keyOrNull(m.to), name: str(m.name), card: m.card === null ? null : decodeExtCard(m.card), files: arr(m.files, str), error: optStr(m.error) };
-    }),
-  };
-}
-
-/** `ext-hub-apply` 的成品。严格收。 */
-export function decodeExtManyDone(v: unknown): ExtManyDone {
-  const o = obj(v, ["machines"]);
-  return {
-    machines: arr(o.machines, (x) => {
-      const m = obj(x, ["to", "name", "done", "error"]);
-      return { to: keyOrNull(m.to), name: str(m.name), done: m.done === null ? null : decodeExtDone(m.done), error: optStr(m.error) };
-    }),
-  };
+/** typed 那一对：入参 · 回包的类型从后端生成，形状由握手指纹核过；没成 ⇒ [`ExtRefused`]（带后端的码）。 */
+async function askTyped<T>(go: (budget: Budget) => Promise<T>, ms: number): Promise<T> {
+  try {
+    return await go(budgetWithin(ms));
+  } catch (e) {
+    throw refused(e);
+  }
 }
 
 /** 「装到 N 台」那一张卡：勾上的几台（`null` = 本机后端自己）＋ 用户选的那一处（没选 ⇒ 后端建议）。 */
 export function extHubPreview(kind: ExtKind, name: string, to: (string | null)[], place: ExtLoc | null): Promise<ExtManyCard> {
-  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-preview", body, budget), { kind, name, to, place }, WRITE_BUDGET_MS, decodeExtManyCard);
+  return askTyped((budget) => callTyped(LOCAL_ORIGIN, "ext-hub-preview", { kind, name, to, place }, budget), WRITE_BUDGET_MS);
 }
 
 /** 装到那几台：卡上那一处 ＋ 各台卡上的记号原样交回；`fill` 只填一次。 */
 export function extHubApply(kind: ExtKind, name: string, card: ExtManyCard, fill: Record<string, Record<string, string>>): Promise<ExtManyDone> {
-  const tokens: Record<string, unknown> = {};
+  const tokens: Record<string, ExtTokens> = {};
   for (const m of card.machines) if (m.card) tokens[m.to ?? ""] = m.card.tokens;
   const to = card.machines.map((m) => m.to);
-  return ask((body, budget) => chan.call(LOCAL_ORIGIN, "ext-hub-apply", body, budget), { kind, name, to, place: card.place, tokens, fill }, WRITE_BUDGET_MS, decodeExtManyDone);
+  return askTyped((budget) => callTyped(LOCAL_ORIGIN, "ext-hub-apply", { kind, name, to, place: card.place, tokens, fill }, budget), WRITE_BUDGET_MS);
 }
 
 /** 卸之前那张卡（问被卸的那一台）。 */

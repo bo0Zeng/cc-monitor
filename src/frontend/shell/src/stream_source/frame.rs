@@ -165,12 +165,13 @@ pub enum InboundFrame {
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
     },
-    /// 一个会话的主线外清单（`session_branch`，整份、变了才发；`off` 是 JSON 数组原文，记录 `id` 串，不解释）。
+    /// 一个会话的主线外清单（`session_branch`）：「前 `at` 条照旧，其后换成 `off`」（记录 `id` 串，不解释；会话账照它拼成整份）。
     SessionBranch {
         sid: String,
-        /// 那份会话记录（必填格，形状校验用；会话账按 `sid` 记，不往下传）。
+        /// 那份会话记录（会话账按它认「还是不是同一份清单」，不往下传）。
         path: String,
-        off: crate::ui_contract::RecordBody,
+        at: u64,
+        off: Vec<String>,
     },
     /// 远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）；monitor 收到后经 remote-health 通道提示用户。
     /// `lost` / `lost_truncated`（additive）：那批丢帧里不可恢复的那些的身份 —— 决定了要对用户说哪句话：丢内容帧「重开会话可看完整历史」是真的，
@@ -210,9 +211,8 @@ pub enum InboundFrame {
         total: u64,
         end: Option<crate::sftp_pool::End>,
     },
-    /// 中转抄出来的一个 SSE 事件 / 一个响应的收尾（后端 `wire::Frame::Tap`）。只有**本机后端**那条流上会有
-    /// （中转住本机常驻后端），交 `session_tap::deliver`。`data` / `end` 都缺、或 `end` 认不出 ⇒ 整帧 `None`（坏帧）。
-    Tap(crate::session_tap::Tap),
+    /// 活卡的一帧（后端 `wire::Frame::Live`，核心拼好的成品），交 `live_card::deliver`。必填格缺 ⇒ 整帧 `None`（坏帧）。
+    LiveCard(crate::live_card::LiveCard),
     /// 测试连接那一趟的一格进度 / 结局（后端 `wire::Frame::Probe`）。只有**本机后端**那条流上会有
     /// （测试连接在本机常驻后端里跑），交 `probe_relay::deliver`。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
     Probe { ticket: String, cell: String },
@@ -362,6 +362,14 @@ fn req_array_text(
         .then(|| crate::ui_contract::RecordBody::from_json(v.to_string()))
         .flatten()
         .ok_or_else(|| bad(kind, format!("`{key}` is not an array")))
+}
+
+/// 必填的串数组（每一项都得是串）。
+fn req_strings(o: &Obj, kind: &str, key: &str) -> Result<Vec<String>, Unread> {
+    req(o, kind, key)?
+        .as_array()
+        .and_then(|a| a.iter().map(|v| v.as_str().map(str::to_string)).collect())
+        .ok_or_else(|| bad(kind, format!("`{key}` is not an array of strings")))
 }
 
 /// 认得的取值：认不出 ⇒ `BadShape`（不猜成哪一种）。
@@ -552,7 +560,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "session_branch" => InboundFrame::SessionBranch {
             sid: req_str(obj, k, "sid")?,
             path: req_str(obj, k, "path")?,
-            off: req_array_text(obj, k, "off")?,
+            at: req_u64(obj, k, "at")?,
+            off: req_strings(obj, k, "off")?,
         },
         "session_removed" => InboundFrame::SessionRemoved {
             sid: req_str(obj, k, "sid")?,
@@ -688,35 +697,22 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
             })
             .to_string(),
         },
-        // 一件归一事件。`ev` 与 `end` 恰有一个：先认 `ev`（必须是对象，原样转交），没有就必须是认得的 `end`。`run` 缺 ＝ 主运行。
-        "tap" => {
-            let run = match obj.get("run") {
-                None => None,
-                Some(r) => Some(
-                    r.as_str()
-                        .ok_or_else(|| bad(k, "`run` is not a string"))?
-                        .to_string(),
-                ),
-            };
-            let body = match obj.get("ev") {
-                Some(e) => crate::session_tap::TapBody::Ev(
-                    e.as_object()
-                        .and_then(|_| crate::ui_contract::RecordBody::from_json(e.to_string()))
-                        .ok_or_else(|| bad(k, "`ev` is not an object"))?,
-                ),
-                None => crate::session_tap::TapBody::End(req_word(
-                    obj,
-                    k,
-                    "end",
-                    crate::session_tap::TapEnd::from_wire,
-                )?),
-            };
-            InboundFrame::Tap(crate::session_tap::Tap {
-                stream: req_str(obj, k, "stream")?,
-                run,
-                resp: req_u64(obj, k, "resp")?,
-                n: req_u64(obj, k, "n")?,
-                body,
+        // 活卡的一帧：几格必填格判形状（`sid` · `card` · `n` · `op`），帧体去掉 `kind` 原样转交（不解释 `op` 的各格）。
+        "live_card" => {
+            req_str(obj, k, "sid")?;
+            req_u64(obj, k, "card")?;
+            req_u64(obj, k, "n")?;
+            req_str(obj, k, "op")?;
+            if let Some(r) = obj.get("run") {
+                r.as_str().ok_or_else(|| bad(k, "`run` is not a string"))?;
+            }
+            let mut body = obj.clone();
+            body.remove("kind");
+            InboundFrame::LiveCard(crate::live_card::LiveCard {
+                body: crate::ui_contract::RecordBody::from_json(
+                    serde_json::Value::Object(body).to_string(),
+                )
+                .ok_or_else(|| bad(k, "body is not an object"))?,
             })
         }
         // `uuid` 照样判形状（不用：一轮只报一次由后端保证，去抖在界面）。

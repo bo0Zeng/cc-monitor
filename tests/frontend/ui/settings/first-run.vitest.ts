@@ -14,6 +14,11 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
   chan: {
     call: (origin: string, op: string, body: Uint8Array) => {
       const args = JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>;
+      // 机器表住本机后端（`machines-read`）：照这块盘上摆的 `remote.hosts` 答，不记进问过的那几发。
+      if (op === "machines-read") {
+        const hosts = (disk.cfg.remote as { hosts?: unknown[] } | undefined)?.hosts ?? [];
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ state: "ok", reason: null, detail: null, path: null, hosts })));
+      }
       calls.push({ origin, op, args });
       const v = op === "chores-mark" ? { declined: [], selfPaste: null, startSkipped: true } : answer.value;
       return Promise.resolve(new TextEncoder().encode(JSON.stringify(v)));
@@ -22,7 +27,7 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({ commands: { load_config: () => Promise.resolve(structuredClone(disk.cfg)) } }));
 
-import { decodeReadiness, readReadiness } from "../../../../src/frontend/ui/settings/readiness-reads";
+import { readReadiness } from "../../../../src/frontend/ui/settings/readiness-reads";
 import { FirstRun } from "../../../../src/frontend/ui/settings/first-run";
 import { StatusStart } from "../../../../src/frontend/ui/status-start";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
@@ -46,14 +51,10 @@ beforeEach(() => {
 });
 
 describe("那份数", () => {
-  it("★ 问的时候带上机器表台数；严格收（多一格 / 少一格 / 步名不在闭集 ⇒ 收不下）", async () => {
+  it("★ 问的时候带上机器表台数（回包形状由握手指纹核过，界面不再手写解码）", async () => {
     answer.value = reply([false, false, true]);
     expect((await readReadiness())?.left).toBe(1);
     expect(calls).toEqual([{ origin: "<local>", op: "first-run", args: { remotes: 1 } }]);
-    expect(decodeReadiness({ ...reply([true, true, true]), extra: 1 })).toBeNull();
-    const { skipped: _s, ...noSkip } = reply([true, true, true]);
-    expect(decodeReadiness(noSkip)).toBeNull();
-    expect(decodeReadiness({ ...reply([true, true, true]), steps: [{ id: "other", done: true, required: true }] })).toBeNull();
   });
 });
 

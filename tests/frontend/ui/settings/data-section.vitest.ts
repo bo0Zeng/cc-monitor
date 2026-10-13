@@ -114,13 +114,10 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       item("history-metadata.json", "/h/.cc-monitor/history-metadata.json"),
     ];
     const webview = item("EBWebView", "/h/AppData/EBWebView");
-    // 本机后端住在同一个家里的那几样：同样只给路径
-    const backend = [item("relay-key", "/h/.cc-monitor/relay-key"), item("staging/", "/h/.cc-monitor/staging")];
+    // 本机后端家里那几样不在这一块（「文件与数据」页照本机后端 `data-report` 的 `own` 画，`data-page.vitest.ts`）。
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
       entries,
-      backendHome: "/h/.cc-monitor",
-      backendEntries: backend,
       webviewUserDataDir: webview,
     };
     const sec = new DataSection({ headless: true });
@@ -131,7 +128,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       (e) => e.textContent,
     );
     // 「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
-    expect(shown).toEqual([...entries, ...backend, webview].map((e) => e.path));
+    expect(shown).toEqual([...entries, webview].map((e) => e.path));
     // `get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
@@ -163,7 +160,7 @@ describe("数据位置「真相 / 缓存」那一格", () => {
       mk("last-seen.json", "cache"),
       mk("logs/", "cache"),
     ];
-    paths.value = { monitorDataDir: "/h", entries, backendHome: "/h", backendEntries: [], webviewUserDataDir: null };
+    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null };
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);
     sec.loadNow();
@@ -212,10 +209,8 @@ describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [�
     });
     paths.value = {
       monitorDataDir: "/h",
-      entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL)],
-      // 后端那一份错误输出在 `logs/backend/`：同样指向「日志」页
-      backendHome: "/h",
-      backendEntries: [mk(`${LOGS_DIR_LABEL}backend/`)],
+      // 后端那一份错误输出在 `logs/backend/`（住数据目录、同一份枚举里）：同样指向「日志」页
+      entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL), mk(`${LOGS_DIR_LABEL}backend/`)],
       webviewUserDataDir: null,
     };
     const sec = new DataSection({ headless: true });
@@ -257,9 +252,7 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
     });
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
-      entries: [mk("config.json", true), mk("history-metadata.json", false), mk(LOGS_DIR_LABEL, true, "dir")],
-      backendHome: "/h/.cc-monitor",
-      backendEntries: [mk("backend.json", true), mk("staging/", true, "dir")],
+      entries: [mk("config.json", true), mk("history-metadata.json", false), mk(LOGS_DIR_LABEL, true, "dir"), mk("apikey-credentials.json", true)],
       webviewUserDataDir: mk("EBWebView", true, "dir"),
     };
     const sec = new DataSection({ headless: true });
@@ -269,7 +262,7 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
     const label = (r: HTMLElement) => r.querySelector(".settings-data-item-label")!.textContent;
     const withReveal = rows.filter((r) => r.querySelector("button[data-reveal]")).map(label);
-    expect(withReveal).toEqual(["config.json", "backend.json", "staging/", "EBWebView"]);
+    expect(withReveal).toEqual(["config.json", "apikey-credentials.json", "EBWebView"]);
     for (const r of rows) {
       const b = r.querySelector<HTMLButtonElement>("button[data-reveal]");
       if (!b) continue;
@@ -277,6 +270,72 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
       b.click();
     }
     await new Promise((r) => setTimeout(r, 0));
-    expect(revealed).toEqual(["config.json", "backend.json", "staging/", "EBWebView"].map((l) => `/h/.cc-monitor/${l}`));
+    expect(revealed).toEqual(["config.json", "apikey-credentials.json", "EBWebView"].map((l) => `/h/.cc-monitor/${l}`));
+  });
+});
+
+describe("每一行的每一格都在网格里认领了一个区（本机后端那一块 · 远端那一块 · 界面那张卡同一套行）", () => {
+  beforeEach(() => document.body.replaceChildren());
+
+  /** `settings.css` 里 `.settings-data-item` 的模板声明的区名 ＋「类名 → 它认领的区」。 */
+  function gridOf(): { areas: Set<string>; claims: Map<string, string> } {
+    const css = readFileSync("src/frontend/ui/styles/settings.css", "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const rules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({ sel: m[1].trim(), body: m[2] }));
+    const tpl = rules.find((r) => r.sel === ".settings-data-item")?.body.match(/grid-template-areas:([^;]+);/)?.[1] ?? "";
+    const areas = new Set([...tpl.matchAll(/"([^"]+)"/g)].flatMap((m) => m[1].trim().split(/\s+/)));
+    const claims = new Map<string, string>();
+    for (const r of rules) {
+      const area = r.body.match(/grid-area:\s*([\w-]+)/)?.[1];
+      const cls = r.sel.match(/^\.([\w-]+)$/)?.[1];
+      if (area && cls) claims.set(cls, area);
+    }
+    return { areas, claims };
+  }
+
+  /** 没认领区的那几格（`标签 · 第几格`）：没认领 ⇒ 浏览器给它另开一条隐式行、字照外头的字号。 */
+  function unclaimed(rows: HTMLElement[]): string[] {
+    const { areas, claims } = gridOf();
+    const out: string[] = [];
+    for (const r of rows) {
+      [...r.children].forEach((c, i) => {
+        const area = [...c.classList].map((k) => claims.get(k)).find((a) => a !== undefined);
+        if (area === undefined || !areas.has(area)) out.push(`${r.querySelector(".settings-data-item-label")?.textContent} · 第 ${i + 1} 格`);
+      });
+    }
+    return out;
+  }
+
+  it("自检：模板里有区名、量具看得见一格没认领的", () => {
+    const { areas } = gridOf();
+    expect(areas.size, "settings.css 里读不出 .settings-data-item 的区名 —— 下面两条在空模板上判").toBeGreaterThan(3);
+    const li = document.createElement("li");
+    li.className = "settings-data-item";
+    const label = document.createElement("span");
+    label.className = "settings-data-item-label";
+    li.append(label, document.createElement("span"));
+    expect(unclaimed([li])).toEqual([" · 第 2 格"]);
+  });
+
+  it("★★ 界面那张卡（连同「在「日志」页打开」那一行）", async () => {
+    const mk = (label: string, cls: string) => ({ label, class: cls, path: `/h/.cc-monitor/${label}`, kind: "file", description: `${label} 是什么`, exists: true, sizeBytes: 1 });
+    paths.value = { monitorDataDir: "/h", entries: [mk("config.json", "truth"), mk(LOGS_DIR_LABEL, "cache")], webviewUserDataDir: null };
+    const sec = new DataSection({ headless: true });
+    document.body.appendChild(sec.element);
+    sec.loadNow();
+    await new Promise((r) => setTimeout(r, 0));
+    const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
+    expect(rows.length).toBe(2);
+    expect(unclaimed(rows)).toEqual([]);
+  });
+
+  it("★★ 那台后端家里那一块（本机 · 远端同一个 ownBlock）", async () => {
+    const { ownBlock, remoteOpen } = await import("../../../../src/frontend/ui/settings/own-block");
+    const items = [
+      { id: "bin", what: "编的一句", path: "~/.cc-monitor/bin", dir: true, class: "cache" as const, exists: true, size: null },
+      { id: "policy", what: "编的一句", path: "~/.cc-monitor/backend.json", dir: false, class: "truth" as const, exists: false, size: null },
+    ];
+    const rows = [...ownBlock(items, "/h", remoteOpen(null)).querySelectorAll<HTMLElement>(".settings-data-item")];
+    expect(rows.length).toBe(2);
+    expect(unclaimed(rows)).toEqual([]);
   });
 });

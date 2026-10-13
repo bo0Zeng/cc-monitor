@@ -8,6 +8,7 @@ import { Refuse, type World } from "./types";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { diskOf } from "./world";
 import type { Convo } from "./records";
+import { WALL_CEILING_MS } from "../../test-support/wall-ceiling";
 
 /**
  * 交给真后端答的帧命令（`real/pool.mjs` 每台机器起的那一个，读 `world.disk` 那几份原始文件）。场景不许再替它们写答（`world.ops` 里有就报）。
@@ -21,22 +22,16 @@ export const REAL_OPS = new Set([
   "profiles-bases",
   "profiles-write",
   "quota-read",
-  "rotation-configs-read",
-  "rotation-config-save",
-  "rotation-config-rename",
-  "rotation-config-delete",
-  "rotation-default-set",
-  "rotation-strategies-read",
-  "rotation-strategy-add",
-  "rotation-strategy-delete",
-  "rotation-strategy-try",
-  "rotation-session-read",
-  "rotation-session-open",
-  "rotation-session-edit",
-  "rotation-session-save",
-  "rotation-session-revert",
-  "rotation-session-set",
-  "rotation-plan",
+  "rotation-view",
+  "rotation-strategies",
+  // 轮换那几条写（会话的草稿 · 存 · 换策略 · 拖出来的顺序 · 24 小时条算分段）：真后端写台架盘上那几份文件，场景照它回的重画。
+  "rotation-settings",
+  "rotation-save",
+  "rotation-revert",
+  "rotation-use",
+  "rotation-for-new",
+  "rotation-temp",
+  "rotation-day-paint",
   "history-page",
   "history-lines",
   "history-index",
@@ -57,7 +52,7 @@ export const REAL_OPS = new Set([
 /**
  * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
  * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那四种 `changed/<topic>`（含待答请求 `needs`）。
- * 其余几种还是这里合成：`session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
+ * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
  * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
 export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs"]);
@@ -94,6 +89,8 @@ export class FakeBackend {
   private readonly pending: Promise<unknown>[] = [];
   /** 收到过清单的那几台（每台只演一次）。 */
   private readonly listedOrigins = new Set<string>();
+  /** 有一台报完清单了（[`settled`] 按它醒，不按钟点问）。 */
+  private onListed: () => void = () => undefined;
   private screenSeq = 0;
   /** 无头壳已经交出 `live` 那一格的会话（按 sid 去重）：等 tab 等不到时的读数（`window.__shots.sessions`）。 */
   readonly liveSent = new Set<string>();
@@ -114,7 +111,7 @@ export class FakeBackend {
       if (op in world.ops) this.miss(`场景替真后端答了 ${op}（改写 world.disk）`);
     }
     const machines = diskOf(world);
-    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now() }) }).then(async (r) => {
+    this.ready = fetch("/__ccm/world", { method: "POST", body: JSON.stringify({ key: this.key, machines, now: Date.now(), scene: new URLSearchParams(location.search).get("scene") ?? "" }) }).then(async (r) => {
       if (!r.ok) throw new Error(`真后端起不来：${await r.text()}`);
       // 无头壳交的格（同壳交给页的 `chan-items` 事件体），原样当事件发。
       // 事件流**连上了才算起好**：别的问（帧命令 · 订阅）都排在它后面。浏览器对一个源同时只开 6 条连接，
@@ -227,6 +224,7 @@ export class FakeBackend {
     if (!sub || sub.kind !== "session-lines" || this.listedOrigins.has(sub.origin)) return;
     if (!items.some((it) => it.t === "frame" && it.body?.startsWith('{"listed"'))) return;
     this.listedOrigins.add(sub.origin);
+    this.onListed();
     this.pending.push(this.tell("end", { origin: sub.origin }));
     if (this.world.droppedMachines?.includes(sub.origin)) this.pending.push(new Promise((r) => setTimeout(r, 1500)).then(() => this.tell("kill", { origin: sub.origin })));
   }
@@ -234,10 +232,21 @@ export class FakeBackend {
   /** 开页之后台架在演的那几样都落定了（截图在这之后量、截）。 */
   async settled(): Promise<void> {
     await this.ready;
-    // 主界面订了会话流的那几台都报完清单（收场 · 断了那几样是收到清单才排上的），至多等 15 秒。
+    // 主界面订了会话流的那几台都报完清单（收场 · 断了那几样是收到清单才排上的）：按「又一台报完了」醒，不按钟点问；
+    // 到兜底上限还有没报完的 ⇒ 抛、说是哪几台（从前至多等 15 秒就往下走：机器忙时清单晚到，截到的是收场之前那一刻）。
+    const unlisted = (): string[] => [...this.shellSubs.values()].filter((s) => s.kind === "session-lines" && !this.listedOrigins.has(s.origin)).map((s) => s.origin);
     const t0 = Date.now();
-    const unlisted = (): boolean => [...this.shellSubs.values()].some((s) => s.kind === "session-lines" && !this.listedOrigins.has(s.origin));
-    while (unlisted() && Date.now() - t0 < 15_000) await new Promise((r) => setTimeout(r, 50));
+    while (unlisted().length > 0) {
+      const left = WALL_CEILING_MS - (Date.now() - t0);
+      if (left <= 0) throw new Error(`等到上限，这几台的会话流还没报完清单：${unlisted().join("、")}`);
+      await new Promise<void>((r) => {
+        const t = setTimeout(r, left);
+        this.onListed = () => {
+          clearTimeout(t);
+          r();
+        };
+      });
+    }
     for (let n = 0; n < this.pending.length; n = this.pending.length) await Promise.all(this.pending.slice(n));
   }
 
@@ -258,16 +267,16 @@ export class FakeBackend {
         return { ops: Object.keys(this.world.ops), unavailable: [], stoppable: [] };
       case "watch_sessions":
         // 主窗口报在看哪几个（整份换）：转给无头壳，它照产品那一条合每台的名单、经 `stream-watch` 报给那台后端（没在看的会话，行不上流）。
-        void this.tell("watch", { sessions: args.sessions ?? [] });
-        return null;
+        // 交给无头壳的这几条一律等它收下了才回（同产品：Tauri 命令登记完才返回）—— 主界面 `await` 完订阅才发 `frontend-ready`，
+        // 当场回的话就绪点可能抢在订阅前面到无头壳，那条订阅就永远过不了就绪点（判据 `tests/shots/fake-order.vitest.ts`）。
+        return this.tell("watch", { sessions: args.sessions ?? [] }).then(() => null);
       case "chan_subscribe":
-        this.subscribe(args);
-        return null;
+        return this.subscribe(args);
       case "chan_want":
-        if (this.shellSubs.has(Number(args.id))) void this.tell("want", { id: Number(args.id), more: Number(args.more) });
+        if (this.shellSubs.has(Number(args.id))) return this.tell("want", { id: Number(args.id), more: Number(args.more) }).then(() => null);
         return null;
       case "chan_stop":
-        if (this.shellSubs.delete(Number(args.id))) void this.tell("stop", { id: Number(args.id) });
+        if (this.shellSubs.delete(Number(args.id))) return this.tell("stop", { id: Number(args.id) }).then(() => null);
         return null;
       case "chan_cancel":
         return null;
@@ -319,16 +328,16 @@ export class FakeBackend {
     }
   }
 
-  private subscribe(args: Record<string, unknown>): void {
+  private subscribe(args: Record<string, unknown>): Promise<null> | null {
     const sub: Sub = { id: Number(args.id), origin: String(args.origin), kind: String(args.kind) };
     if (shellKind(sub.kind) && !this.world.unseenMachines.includes(sub.origin) && !this.world.closedMachines.includes(sub.origin)) {
       this.shellSubs.set(sub.id, sub);
-      void this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) });
-      return;
+      return this.tell("sub", { id: sub.id, origin: sub.origin, kind: sub.kind, want: Number(args.want ?? 0) }).then(() => null);
     }
     this.subs.set(sub.id, sub);
     // 订阅登记好之后才交格（与真句柄一样：返回之后格才可能到）。
     setTimeout(() => this.deliver(sub), 0);
+    return null;
   }
 
   private deliver(sub: Sub): void {
@@ -354,7 +363,7 @@ export class FakeBackend {
       setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
       if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
       if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
-    } else if (sub.kind === "session-tap" || sub.kind.startsWith("changed/")) {
+    } else if (sub.kind === "session-live-card" || sub.kind.startsWith("changed/")) {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);
@@ -380,9 +389,9 @@ export class FakeBackend {
     }
   }
 
-  pushTap(origin: string, payloads: unknown[]): void {
+  pushLiveCard(origin: string, payloads: unknown[]): void {
     for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind === "session-tap") {
+      if (sub.origin === origin && sub.kind === "session-live-card") {
         this.send(
           sub,
           payloads.map((p, seq) => ({ t: "frame", seq, body: JSON.stringify(p) })),

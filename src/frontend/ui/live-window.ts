@@ -411,6 +411,15 @@ export class SkeletonLedger {
   private linePx = 0;
   /** uuid → seq（无 uuid 的行不占） */
   readonly uuidToSeq = new Map<string, number>();
+  /**
+   * 〔列宽变了、还没按新列宽估的行〕视口附近之外的那两截：`[0, staleBelow)` 与 `[staleAbove, staleEnd)`（下标），
+   * 照旧按上一个列宽的估值占着；[`settle`] 一段一段补估（离视口近的先）。
+   */
+  private staleBelow = 0;
+  private staleAbove = 0;
+  private staleEnd = 0;
+  /** 到此刻按第一级估过几行（判据：改列宽当场只估视口附近那几行）。 */
+  estimated = 0;
 
   constructor(base: number, rows: SkeletonFacts[], colW?: number) {
     this.base = base;
@@ -424,6 +433,7 @@ export class SkeletonLedger {
       const seq = this.base + this.rows.length;
       const kind = skeletonKind(r);
       const h = estimateFromFacts(r, this.colW);
+      this.estimated++;
       this.rows.push(r);
       this.kinds.push(kind);
       this.est.push(h);
@@ -433,21 +443,59 @@ export class SkeletonLedger {
   }
 
   /**
-   * 列宽变了：整份重估（O(n)，纯算术）。精算过的那几行在新列宽下作废 —— 返回它们（「列宽变化只重算已精算过的」，
-   * 调用方把它们重交 Worker）。调用方：`SkeletonView.relayout`（宿主在消息流尺寸变了、现量列宽变了时调）。
+   * 列宽变了：`near`（seq 半开区间，视口附近）那几行当场按新列宽重估，其余的先照旧按上一个列宽的估值占着、
+   * 由 [`settle`] 一段一段补（不给 `near` ⇒ 整份当场重估）。前缀和整份重合一次（只是加法）。
+   * 精算过的那几行在新列宽下作废 —— 返回它们（「列宽变化只重算已精算过的」，调用方把它们重交 Worker）。
+   * 调用方：`SkeletonView.relayout`（宿主在消息流尺寸变了、现量列宽变了时调）。
    */
-  relayout(colW: number | undefined): number[] {
-    const rows = this.rows;
+  relayout(colW: number | undefined, near?: readonly [number, number]): number[] {
     const redo = [...this.refined.keys()];
     this.colW = colW;
-    this.rows = [];
-    this.kinds = [];
-    this.est = [];
     this.refined.clear();
-    this.prefix = [0];
-    this.uuidToSeq.clear();
-    this.append(rows);
+    const n = this.rows.length;
+    const lo = near ? this.clampIdx(near[0]) : 0;
+    const hi = near ? Math.max(lo, this.clampIdx(near[1])) : n;
+    for (let i = lo; i < hi; i++) this.reestimate(i);
+    this.staleBelow = lo;
+    this.staleAbove = hi;
+    this.staleEnd = n;
+    this.rebuildFrom(0);
     return redo;
+  }
+
+  /** 还有几行没按当前列宽估（[`relayout`] 留下的）。 */
+  get staleRows(): number {
+    return this.staleBelow + (this.staleEnd - this.staleAbove);
+  }
+
+  /** 按当前列宽补估至多 `max` 行没估的（离视口近的先：上面那一截往尾推、下面那一截往 0 退，轮流）。回：有没有哪一行变了高。 */
+  settle(max: number): boolean {
+    let lowest = Infinity;
+    let k = 0;
+    while (k < max && (this.staleBelow > 0 || this.staleAbove < this.staleEnd)) {
+      if (this.staleAbove < this.staleEnd) {
+        const i = this.staleAbove++;
+        if (this.reestimate(i) && i < lowest) lowest = i;
+        k++;
+      }
+      if (k < max && this.staleBelow > 0) {
+        const i = --this.staleBelow;
+        if (this.reestimate(i) && i < lowest) lowest = i;
+        k++;
+      }
+    }
+    if (lowest === Infinity) return false;
+    this.rebuildFrom(lowest);
+    return true;
+  }
+
+  /** 一行按当前列宽重估第一级；回：变没变。 */
+  private reestimate(i: number): boolean {
+    const h = estimateFromFacts(this.rows[i], this.colW);
+    this.estimated++;
+    if (this.est[i] === h) return false;
+    this.est[i] = h;
+    return true;
   }
 
   /** 当前列宽（`undefined` = 模块量出来的那个）。 */

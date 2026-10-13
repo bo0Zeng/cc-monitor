@@ -29,7 +29,11 @@ fn emitters(topic: &str) -> Vec<String> {
     let root = crate::guard_support::src_root();
     let needle = format!("Topic::{topic},");
     let mut out = Vec::new();
-    for rel in ["stream/tap.rs", "observe/watcher.rs"] {
+    for rel in [
+        "stream/tap.rs",
+        "observe/watcher.rs",
+        "stream/inbound/mod.rs",
+    ] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读源码");
         if crate::guard_support::production_code(&src).contains(&needle) {
             out.push(rel.to_string());
@@ -44,7 +48,10 @@ fn emitters(topic: &str) -> Vec<String> {
 fn lossy_topics_go_out_on_the_tap_and_the_rest_on_the_watcher() {
     for t in Topic::ALL {
         let variant = format!("{t:?}");
-        let want = if t.spec().lossy {
+        // 只推给发起它的那条连接的那一种（登录作业收了）走那条连接的应答通道（不丢）：发端在分派那一层。
+        let want = if t == Topic::Login {
+            "stream/inbound/mod.rs"
+        } else if t.spec().lossy {
             "stream/tap.rs"
         } else {
             "observe/watcher.rs"
@@ -138,18 +145,25 @@ fn a_computed_body_is_a_declared_body() {
     }
 }
 
-/// 帧里的小成品就是重问那条命令的应答（同一个处理器跑出来的，实现只一处）：规则表 · 一个会话的任务清单 · 额度账；
+/// 帧里的小成品就是重问那条命令的应答（同一个处理器跑出来的，实现只一处）：策略目录 · 一个会话的任务清单 · 额度账；
 /// 不现算的主题（账号清单要带 agent · 配置文件大 · 计划由发端给）⇒ 不带。沙箱家目录里那几份都是空的 / 不在。
 #[test]
 fn a_computed_body_is_the_reask_reply() {
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::RotationConfigs, None, &crate::Tz::default()),
-        crate::faces::rotation_face::answer_configs_read(
-            &serde_json::json!({}),
-            &crate::Tz::default()
-        )
-        .ok(),
-        "配置表的小成品不是 rotation-configs-read 的应答"
+        crate::stream::topic_body::body_now(Topic::RotationStrategies, None, &crate::Tz::default()),
+        {
+            use crate::stream::inbound::typed::Blocking;
+            crate::faces::rotation_view_face::RotationStrategies::run(
+                Default::default(),
+                &crate::stream::inbound::typed::Cx {
+                    tz: crate::Tz::default(),
+                    until: None,
+                },
+            )
+            .ok()
+            .and_then(|r| serde_json::to_value(r).ok())
+        },
+        "策略目录的小成品不是 rotation-strategies 的应答"
     );
     assert_eq!(
         crate::stream::topic_body::body_now(
@@ -200,6 +214,7 @@ fn main_installs_the_body_and_emitters_go_through_the_hook() {
         1,
         "main.rs 不是恰好一处装上现算"
     );
+    // `login` 的小成品由发端自己给（作业怎么收的），不现算 ⇒ 分派那一层不在这里。
     for rel in ["stream/tap.rs", "observe/watcher.rs"] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读发端");
         let code = crate::guard_support::production_code(&src);

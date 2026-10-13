@@ -122,6 +122,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
             kind,
             home,
             account_env: None,
+            old_home_pref: None,
             assets: None,
             history: None,
             upstream: None,

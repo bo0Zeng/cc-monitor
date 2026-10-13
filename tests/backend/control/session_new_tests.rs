@@ -126,11 +126,12 @@ impl Rig {
             accounts: &accounts,
             writers: &writers,
             pretrust: &pretrust,
+            prefs: &crate::control::machine_prefs::Prefs::default(),
         };
         let sid = || PRESET.to_string();
         let write = |sid: &str, kind: &str, rule: &str| -> Result<(), (&'static str, String)> {
             if rule == "c_gone" {
-                return Err(("no_such_config", "配置不在".into()));
+                return Err(("no_strategy", "配置不在".into()));
             }
             let at = self.ccm.borrow().len();
             self.rot
@@ -440,6 +441,7 @@ fn the_directory_question_answers_presence_and_the_name_this_machine_would_mint(
                 accounts: &accounts,
                 writers: &|_| vec![],
                 pretrust: &|_, _| unreachable!("核目录不起会话"),
+                prefs: &crate::control::machine_prefs::Prefs::default(),
             };
             let req: SessionNewDirReq = serde_json::from_value(args).unwrap();
             dir_answer(&req, &deps, Some(std::path::Path::new("/h")))
@@ -524,13 +526,13 @@ fn asking_again_with_the_same_ticket_starts_nothing_more() {
     assert_eq!(rig.ccm.borrow().len(), 2, "另一张票照常起");
 }
 
-/// ★ 选了配置起（`rotation: {config}`）：起之前这台先定好 sid（那一家起新会话时认的 `--session-id`）、把那个会话记成打开那一份，再起；
+/// ★ 选了策略起（`rotation: {strategy}`）：起之前这台先定好 sid（那一家起新会话时认的 `--session-id`）、把那个会话记成用那一份，再起；
 /// 回包带这个 sid（报到按 sid 认），tmux 那一形身份标记也是它。界面不再补写。
 #[test]
 fn a_config_at_launch_is_written_under_a_preset_sid_before_starting() {
     let rig = Rig::new(Some(vec![]));
     let got = rig
-        .call(req(json!({"rotation": {"config": "c_night"}})))
+        .call(req(json!({"rotation": {"strategy": "c_night"}})))
         .expect("ok");
     assert_eq!(got["sid"], PRESET, "{got}");
     assert_eq!(
@@ -565,7 +567,7 @@ fn no_config_at_launch_writes_nothing_and_a_window_launch_carries_the_sid_too() 
     let rig = Rig::new(Some(vec![]));
     let got = rig
         .call(req(
-            json!({"place": "window", "rotation": {"config": "c_night"}}),
+            json!({"place": "window", "rotation": {"strategy": "c_night"}}),
         ))
         .expect("ok");
     assert_eq!(got["sid"], PRESET);
@@ -578,19 +580,35 @@ fn no_config_at_launch_writes_nothing_and_a_window_launch_carries_the_sid_too() 
     );
 }
 
-/// 配置不在 ⇒ `no_such_config`，什么都不起；起不成（ccm 非 0）⇒ 撤掉起之前写的那一条；形状不对 ⇒ `bad_args`。
+/// ★ 选「不轮换」起（`rotation: {strategy: null}`）：起之前照样先定好 sid，把会话写成不轮换（策略 id 空），
+/// 新会话用的那份不碰它。
+#[test]
+fn not_rotating_at_launch_is_written_before_starting() {
+    let rig = Rig::new(Some(vec![]));
+    let got = rig
+        .call(req(json!({"rotation": {"strategy": null}})))
+        .expect("ok");
+    assert_eq!(got["sid"], PRESET, "{got}");
+    assert_eq!(
+        *rig.rot.borrow(),
+        vec![format!("{PRESET} claude  @0")],
+        "起之前写成不轮换"
+    );
+}
+
+/// 策略不在 ⇒ `no_strategy`，什么都不起；起不成（ccm 非 0）⇒ 撤掉起之前写的那一条；形状不对 ⇒ `bad_args`。
 #[test]
 fn a_config_at_launch_that_fails_leaves_nothing_behind() {
     let rig = Rig::new(Some(vec![]));
     let e = rig
-        .call(req(json!({"rotation": {"config": "c_gone"}})))
+        .call(req(json!({"rotation": {"strategy": "c_gone"}})))
         .expect_err("不在");
-    assert_eq!(e.0, "no_such_config");
+    assert_eq!(e.0, "no_strategy");
     assert!(rig.ccm.borrow().is_empty(), "配置不在就不起");
     let mut rig = Rig::new(Some(vec![]));
     rig.ccm_rc = 1;
     let e = rig
-        .call(req(json!({"rotation": {"config": "c_night"}})))
+        .call(req(json!({"rotation": {"strategy": "c_night"}})))
         .expect_err("起不成");
     assert_eq!(e.0, "start_failed");
     assert_eq!(

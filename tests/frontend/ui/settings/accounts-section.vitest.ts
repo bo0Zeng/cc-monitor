@@ -49,9 +49,18 @@ vi.mock("../../../../src/frontend/ui/settings/account-login", () => ({
   loginInTmux: (...a: unknown[]) => loginInTmux(...a),
 }));
 const getModelForAccount = vi.fn();
-vi.mock("../../../../src/frontend/ui/account-prefs", () => ({
-  getModelForAccount: (...a: unknown[]) => getModelForAccount(...a),
-  setModelForAccount: (...a: unknown[]) => setModelForAccount(...a),
+// 每号模型住那台的偏好（`prefs-read` / `prefs-set`）：桩成「读那一号的那一格 · 写那一号的那一格」两件，判据照旧按号说。
+vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
+  readPrefs: async (origin: string) => {
+    // 判据按号给（`getModelForAccount` 的答法与号名无关）⇒ 每个号读到的都是那一个值。
+    const v = (await getModelForAccount(origin)) as string | undefined;
+    const models = new Proxy({}, { get: () => v });
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models } };
+  },
+  setPrefs: async (origin: string, patch: { models?: Record<string, string | null> }) => {
+    for (const [name, m] of Object.entries(patch.models ?? {})) await setModelForAccount(origin, name, m);
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models: {} } };
+  },
 }));
 vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
   ...(await orig<object>()),
@@ -146,10 +155,10 @@ beforeEach(() => {
   confirmed = [];
   answer = true;
   for (const m of [fetchAccounts, readQuota, accountsVerify, accountsRemove, accountsSetDefault, readProfiles, readRemoteConfig, emit, openLoginWindow, loginInTmux, setModelForAccount, accountsInit, accountsRepair, accountsAdd, writeApikeyKey]) m.mockReset();
-  const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, loginCmd: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
+  const change = (p: object = {}) => ({ applied: true, steps: ["一步"], notes: [], backup: null, account: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [], ...p });
   accountsInit.mockResolvedValue(change());
   accountsRepair.mockResolvedValue(change());
-  accountsAdd.mockImplementation((_o: string, a: { dryRun?: boolean }) => Promise.resolve(change(a.dryRun ? {} : { loginCmd: "ccm -- --account team" })));
+  accountsAdd.mockResolvedValue(change());
   readRemoteConfig.mockResolvedValue({ enabled: true, hosts: [{ label: "devbox" }, { label: "gpu-01" }] });
   fetchAccounts.mockResolvedValue(state());
   readQuota.mockResolvedValue(quota());
@@ -379,7 +388,7 @@ describe("登录与指路", () => {
     const relogin = [...document.querySelectorAll<HTMLElement>("[role=menuitem]")].find((m) => m.textContent?.includes(copyText("acctPage.menu.relogin")))!;
     relogin.click();
     await settle();
-    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team", undefined);
+    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team");
     expect(rowOf(el, "team").textContent).toContain(copyText("acctPage.login.noWindow"));
     buttonNamed(rowOf(el, "team"), copyText("acctPage.login.inTmux")).click();
     await settle();
@@ -469,7 +478,7 @@ describe("动作", () => {
     buttonNamed(el, copyText("acctNew.form.createLogin")).click();
     await settle();
     expect(accountsAdd).toHaveBeenLastCalledWith("devbox", { name: "team", kind: "subscription" });
-    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team", "ccm -- --account team");
+    expect(openLoginWindow).toHaveBeenCalledWith("devbox", "team");
     expect(el.querySelector(".acct-new")).toBeNull();
     expect(rowOf(el, "team").querySelector(".acct-row-kind")!.textContent).toBe(copyText("acctPage.row.waiting"));
   });
@@ -477,7 +486,7 @@ describe("动作", () => {
   it("★ 建好那一句的下一行照后端回的提示（如「已开的终端要重读别名」），界面不另拼", async () => {
     openLoginWindow.mockResolvedValue("opened");
     accountsAdd.mockImplementation((_o: string, a: { dryRun?: boolean }) =>
-      Promise.resolve({ applied: true, steps: [], notes: a.dryRun ? [] : ["已开的终端要重读别名-xyz"], backup: null, account: null, loginCmd: "ccm -- --account team", aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [] }),
+      Promise.resolve({ applied: true, steps: [], notes: a.dryRun ? [] : ["已开的终端要重读别名-xyz"], backup: null, account: null, aliasNames: ["teamcc", "teamcct"], keyMasked: null, keyProblem: null, aliases: [] }),
     );
     const el = await mount();
     buttonNamed(el, copyText("acctPage.head.new")).click();

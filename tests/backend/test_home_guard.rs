@@ -123,3 +123,89 @@ fn only_the_real_home_is_moved() {
     ));
     assert!(test_home::must_move(Some(real), None));
 }
+
+/// 外面那个会话漏进来、子测试进程里要看见「都不在」的那几样（名字 ＝ 值随便；真值是什么不要紧，要紧的是进不来）。
+const LEAKS: &[&str] = &[
+    "CLAUDE_CONFIG_DIR",
+    "CLAUDE_CODE_PLUGIN_DIRS",
+    "TMUX",
+    "TMUX_PANE",
+    "CCM_RELAY_PORT",
+    "CCM_DATA_DIR",
+    "CCM_RESIDENT",
+    "ANTHROPIC_BASE_URL",
+    "ANTHROPIC_API_KEY",
+];
+/// 台架 / 人交给判据的输入：照留（反控：清单没把 `CCM_` 一族一刀切）。
+const KEPT: &[&str] = &["CCM_E2E_WORK", "CCM_SHOTS_NOW_MS", "CCM_SANDBOX"];
+const CHILD: &str = "CCM_E2E_TEST_HOME_CHILD";
+
+/// 子进程那一半：只在下面那条判据带着一身外面会话的变量把本测试二进制再拉起来时跑。
+#[test]
+#[ignore = "子进程入口：只在 a_test_process_never_sees_the_outer_session 拉起时跑"]
+fn child_sees_no_outer_session() {
+    if std::env::var_os(CHILD).is_none() {
+        return;
+    }
+    let left: Vec<&str> = LEAKS
+        .iter()
+        .copied()
+        .filter(|k| std::env::var_os(k).is_some())
+        .collect();
+    assert!(left.is_empty(), "这几样从外面漏进了测试进程：{left:?}");
+    for k in KEPT {
+        assert!(std::env::var_os(k).is_some(), "{k} 是判据的输入，不该摘");
+    }
+}
+
+/// ★ 测试进程里没有外面会话的状态：带着 `CLAUDE_CONFIG_DIR` · `TMUX` · `TMUX_PANE` · `CCM_RELAY_PORT` · `CCM_*` · `ANTHROPIC_*`
+/// 把本测试二进制当一次新进程拉起（摘掉换家标记、`HOME` 给真家，像在会话里直接敲 `cargo test` 那样），子进程里一样都看不见；
+/// 判据的输入照留。
+#[test]
+fn a_test_process_never_sees_the_outer_session() {
+    let exe = std::env::current_exe().expect("拿不到测试二进制自己的路径");
+    let mut cmd = std::process::Command::new(exe);
+    cmd.args([
+        "--exact",
+        "test_home_guard::child_sees_no_outer_session",
+        "--ignored",
+        "--test-threads=1",
+    ])
+    .env_remove(test_home::SANDBOX_MARK)
+    .env(CHILD, "1");
+    // 真家查得到 ⇒ 给真家（子进程起来那一刻就换走）；查不到（非 unix）⇒ 不给（没设一样换）。
+    match test_home::account_home() {
+        Some(h) => cmd.env("HOME", h),
+        None => cmd.env_remove("HOME"),
+    };
+    for k in LEAKS.iter().chain(KEPT) {
+        cmd.env(k, "outer-session");
+    }
+    let out = cmd.output().expect("起子测试进程");
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        out.status.success() && text.contains("1 passed"),
+        "子测试进程里看见了外面会话的变量：\n{text}"
+    );
+}
+
+/// 清单本身：摘的与留的各几样（同一份 `leaked`）。
+#[test]
+fn the_scrub_list_takes_session_state_and_keeps_test_inputs() {
+    for k in LEAKS {
+        assert!(test_home::leaked(k), "{k} 该摘");
+    }
+    for k in KEPT.iter().chain(&[
+        "CCM_REGEN_PROTOCOL_DOC",
+        "CCM_BLESS",
+        "CCM_FILEWIN_PROC_CHILD",
+        "HOME",
+        "PATH",
+    ]) {
+        assert!(!test_home::leaked(k), "{k} 不该摘");
+    }
+}

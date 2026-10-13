@@ -7,7 +7,7 @@
  * | 账号 chip「管理账号…」· 命令面板「管理账号…」· 账号面板里的「管理账号…」「设置…」「接入…」 | 那台的「账号」栏 |
  * | 账号面板配置下拉「管理配置…」· 策略那一格「看说明与源码 ›」 | 那台的「轮换」栏（配置页 / 策略页；给了哪份 ⇒ 打开那一份） |
  * | ↗ 浮层的［接上终端］ | 那台 ›「别名与配置文件」› 接上终端那一节 |
- * | 上下文浮层［设上限］ | 通用 › 上下文上限那一节 |
+ * | 上下文浮层［设上限］ | 当前标签页那台 › 上下文上限那一折 |
  * | 快捷键一览「改快捷键…」 | 外观 › 快捷键那一节 |
  * | 一台机器一直看不见时提示里的「打开设置」 | 那台的页 |
  * | 状态栏「待办 N」 | 文件与数据（「待办」那一栏是它的默认栏） |
@@ -24,12 +24,6 @@ export function accountsOf(origin: Origin): SettingsTarget {
   return { machine: origin, tab: "acct" };
 }
 
-/** 那台的「轮换」栏：配置页（给了哪份 ⇒ 打开那一份 `config:<id>`）· 策略页（给了哪份 ⇒ 打开那一份 `strategy:<id>`）。 */
-export function rotationOf(origin: Origin, at?: { config: string } | { strategy: string }): SettingsTarget {
-  const anchor = at === undefined ? undefined : "config" in at ? `config:${at.config}` : `strategy:${at.strategy}`;
-  return { machine: origin, tab: "rot", ...(anchor ? { anchor } : {}) };
-}
-
 /** 那台 ›「别名与配置文件」› 接上终端。 */
 export function connectTerminalOf(origin: Origin): SettingsTarget {
   return { machine: origin, tab: "config", anchor: "connect-terminal" };
@@ -40,8 +34,10 @@ export function machineOf(origin: Origin): SettingsTarget {
   return { machine: origin };
 }
 
-/** 上下文上限那一节。 */
-export const CONTEXT_LIMITS: SettingsTarget = { page: "general", anchor: "context-limits" };
+/** 那台的上下文上限那一折（机器页「这台上的 cc-monitor」里）。 */
+export function contextLimitsOf(origin: Origin): SettingsTarget {
+  return { machine: origin, anchor: "context-limits" };
+}
 
 /** 文件与数据（「待办」那一栏）。 */
 export const CHORES: SettingsTarget = { page: "data" };

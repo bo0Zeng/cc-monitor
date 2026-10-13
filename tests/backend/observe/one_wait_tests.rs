@@ -213,3 +213,24 @@ fn every_one_shot_wait_takes_the_deadline_its_caller_gave() {
         "一次性等待的期限不是发起方给的那一格（或多了一处没登记的等）"
     );
 }
+
+/// ★ 等到的是取出来的那一份：此刻之后长出的、第一条取得出的；装之前就在的不算。
+#[test]
+fn a_pick_hands_back_what_the_new_line_carries() {
+    let d = scratch("pick");
+    let rec = d.join("s.jsonl");
+    append(&rec, r#"{"n":1}"#);
+    let armed = record_pick(&rec, |v| v.get("n").and_then(serde_json::Value::as_u64)).expect("装");
+    let writer = {
+        let rec = rec.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(200));
+            append(&rec, r#"{"other":true}"#);
+            append(&rec, r#"{"n":7}"#);
+        })
+    };
+    let got = rt().block_on(armed.fetch(2_000 * guard_core::wall::CEILING_SECS));
+    writer.join().unwrap();
+    let _ = std::fs::remove_dir_all(&d);
+    assert_eq!(got, Some(7));
+}

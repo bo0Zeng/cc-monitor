@@ -48,11 +48,12 @@ describe("changed 流", () => {
   });
 
   it("流名 changed/<topic>；主题名就是后端生成的那一份（从 Rust 主题表抠，异源）", () => {
-    expect(changedStream("rotation_configs")).toBe("changed/rotation_configs");
+    expect(changedStream("rotation_strategies")).toBe("changed/rotation_strategies");
     const gen = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/generated/Topic.ts"), "utf8");
     const rs = readFileSync(resolve(REPO_ROOT, "src/backend/stream/topic.rs"), "utf8");
     const names = [...rs.matchAll(/name: "([a-z_]+)",/g)].map((m) => m[1]);
-    expect(names.length).toBe(8);
+    // 10 → 11：`machines`（本机机器表变了，第 7 批）。
+    expect(names.length).toBe(11);
     for (const n of names) expect(gen, n).toContain(`"${n}"`);
   });
 });

@@ -30,31 +30,6 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "remote",
         "hello 里远端后端自陈的 Claude home（优先 `homes`、回退 `claude_dir`）。远端的目录 ⇒ 不属本机读面。",
     ),
-    (
-        "src/config.rs",
-        "claude_dir_override",
-        "hub",
-        "**路径源头**：设置里 `claudeDir` 覆盖原值那一格，只回答「用户填了什么」，自己不读内容；\
-             Claude 目录本身只由那台后端解析 ⇒ 不属退役范围。",
-    ),
-    (
-        "src/local_backend_host.rs",
-        "CLAUDE_DIR_ENV",
-        "non-read",
-        "交给后端的那个环境变量名。一个字节的用户数据都不读 ⇒ 不属退役范围。",
-    ),
-    (
-        "src/local_backend_host.rs",
-        "backend_env",
-        "non-read",
-        "把设置里填的 Claude 目录原样交给后端（起常驻后端、一次性 `--resident-stop` 都走它）。不读内容 ⇒ 不属退役范围。",
-    ),
-    (
-        "src/local_backend_host.rs",
-        "backend_env_from",
-        "non-read",
-        "同上一行的纯函数那一半：有就塞进环境变量。不读内容 ⇒ 不属退役范围。",
-    ),
 ];
 
 fn root() -> &'static Path {
@@ -155,14 +130,7 @@ const HOME_REACHES: &[(&str, &str, &str, &str)] = &[
         "足迹里 monitor 自己那几行的根（`home` 那一格）",
         "只读诊断页；只交 monitor 自己进程的几条事实，不 stat，落点由本模块的 claude 棘轮数着",
     ),
-    // 数据位置页列本机后端住在家里的那几样：只 stat（在不在 · 多大），不读内容。
-    (
-        "data_paths.rs",
-        "collect",
-        "`~/.cc-monitor` 里后端那几样（`bin/` · `staging/` · 两把钥匙）",
-        "**不是伸手拿用户的东西**：cc-monitor 自己的家（后端与 monitor 同住）。只 `is_file` / `is_dir` / 长度，\
-             不读字节 —— 两把钥匙的内容一个字节都不碰；`home_dir()` 只为「每个用户各一份」",
-    ),
+    // 数据位置页列本机后端家里那几样的那一行摘了：那一块改照本机后端 `data-report` 的 `own` 画，壳不再伸手进家目录。
     (
         "ccm_probe.rs",
         "local_ccm_entry_now",

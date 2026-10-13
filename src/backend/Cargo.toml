@@ -179,6 +179,8 @@ tokio = { version = "1", features = [
 # （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
 # 只用 SYS_pidfd_open / poll / pollfd 三样，不引入任何 feature。
 libc = "0.2"
+# 伪终端（`platform/child.rs::converse_in_terminal`：要终端才肯问的官方子命令，如 `claude mcp login`）。三个系统一套。
+portable-pty = "0.9"
 # K-H1〔裁-1，08-25〕：**backend 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
 #
 # ⚠ 口径订正〔回修轮 08-25，承接 D1 `重要-4`〕：先前这里逐字写的是「**本仓**第一条加密依赖」，
@@ -317,6 +319,8 @@ mimalloc = { version = "0.1", default-features = false }
 [dev-dependencies]
 # 测试档的家一开始就是沙箱（判据碰不到这台用户的真家）。
 test-home = { path = "../common/test-home" }
+# typed 命令的线上类型住 `cmd-wire`（账号库 · 文件管理那几条）：测试档要它们的 TS 派生（形状指纹 · 生成类型），发布构建不开。
+cmd-wire = { path = "../common/cmd-wire", features = ["ts"] }
 # 测试档不许出网：拨号核心那一句断言（`test-support`）在后端的测试档里也开着（resolver 2 ⇒ 不并进发布构建）。
 ssh-dial = { path = "ssh-dial", features = ["test-support"] }
 # 组合判据（真中转 ＋ 上游选择 / tap / 内存探针）要够到中转的内部件：只在测试档开，不进发布二进制。
@@ -368,6 +372,14 @@ default-members = ["."]
 # ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──
 # release 那一份：体积优先（opt-level z · 胖 LTO · 一个编译单元 · 去符号）；`panic = "unwind"` 是承重的 ——
 #   嵌在 App 进程里，panic 要在 JNI 边界上接住（`catch_unwind`），abort 会带走整个 App。
+# 大样本判据那一档（门禁 `rotation-500` 格：轮换一致性 500 组，沙箱里的 Rhai 在测试档慢几十倍）：发布档的优化，
+# 不做 LTO、多开几路代码生成 —— 只为跑得快，不发货；编一趟比 `--release`（LTO ＋ 单路）快得多。
+[profile.perf]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
+
 [profile.mobile]
 inherits = "release"
 opt-level = "z"

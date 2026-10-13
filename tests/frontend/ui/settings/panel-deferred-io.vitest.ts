@@ -167,8 +167,8 @@ const MACHINE_PAGE_IPC = ["footprint_client_facts", ...FOOTPRINT_IPC] as const;
 
 /** 「应用」下两个子页各自的那几发（原来合在「应用」一页里）。 */
 // 日志页：日志设置 · 文件 · 诊断信息那一份（「未识别数据」那一行与复制读同一份）；诊断信息的原料：
-//   机器表（哪几台，`load_config`）· 各台记录账（经通道 `chan_call` 问 `drift-report`）。
-const LOGS_PAGE_IPC = ["chan_call", "diagnostics_report", "get_diagnostics_config", "get_log_file_info", "load_config"] as const;
+//   机器表（哪几台，经通道问本机后端 `machines-read`）· 各台记录账（经通道 `chan_call` 问 `drift-report`）。
+const LOGS_PAGE_IPC = ["chan_call", "diagnostics_report", "get_diagnostics_config", "get_log_file_info"] as const;
 const DATA_PAGE_IPC = ["get_data_paths"] as const;
 
 /** 点左侧导航的某一项。 */
@@ -232,10 +232,10 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
     await tick();
     await tick();
     // 文件与数据：数据位置那一发 ＋ 本机那几条事实
-    // ＋ 机器表（哪几台，`load_config`）。本机那几条事实这里也是 reject ⇒ 本机那一问不发出去（不拿远端视角冒充本机）。
-    expect(uniq(since(mark)).sort()).toEqual(uniq([...DATA_PAGE_IPC, ...MACHINE_PAGE_IPC, "load_config"]).sort());
+    // ＋ 机器表（哪几台，经通道问本机后端 `machines-read`）。本机那几条事实这里也是 reject ⇒ 本机那一问不发出去（不拿远端视角冒充本机）。
+    expect(uniq(since(mark)).sort()).toEqual(uniq([...DATA_PAGE_IPC, ...MACHINE_PAGE_IPC, "chan_call"]).sort());
     // 两页合起来 == 原来「应用」那一趟的几发（拆开不许丢、也不许多；诊断信息的原料两发是打开设置时本来就有的那两种）。
-    expect(uniq([...LOGS_PAGE_IPC, ...DATA_PAGE_IPC]).filter((n) => n !== "chan_call" && n !== "load_config")).toEqual(uniq([...APP_PAGE_IPC]));
+    expect(uniq([...LOGS_PAGE_IPC, ...DATA_PAGE_IPC]).filter((n) => n !== "chan_call")).toEqual(uniq([...APP_PAGE_IPC]));
   });
 
   it("再点一次那两个子页 ⇒ 一发都不许多（幂等：切页不是轮询）", async () => {
@@ -305,8 +305,8 @@ describe(" 判据 #3：非落地页零 I/O（第一刀 · 步 2）", () => {
   });
 });
 
-// 「先画框架，再并行取值填进去」：设置窗先开窗，再读一次配置派生三格。
-describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数据目录 · 行为三格", () => {
+// 「先画框架，再并行取值填进去」：设置窗先开窗，再读一次配置派生外观 · 行为两格；数据目录那一格读本机后端的偏好，切到数据页才问。
+describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 行为两格", () => {
   beforeEach(() => {
     ipc.calls = [];
     ipc.hold = {};
@@ -315,7 +315,7 @@ describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数�
     __setHostFactsForTests(factsOn("windows"));
   });
 
-  it("★ 配置没读回之前窗已开、三格控件 pending；读回之后恰好一发 load_config 填三格", async () => {
+  it("★ 配置没读回之前窗已开、外观那几格 pending；读回之后恰好一发 load_config；数据目录那一格不靠它（落地页上一直禁用）", async () => {
     const p = new SettingsPanel({ windowMode: true });
     await tick();
     let release!: (v: unknown) => void;
@@ -324,13 +324,15 @@ describe("〔FIX2〕设置窗先开窗，再读一次配置派生外观 · 数�
     const opening = p.open();
     await tick();
     const el = document.querySelector(".settings-panel")!;
+    const color = document.querySelector<HTMLInputElement>(".settings-panel input[type=color]")!;
     const claudeDir = (p as unknown as { claudeDirInput: HTMLInputElement }).claudeDirInput;
     expect(el.classList.contains("open"), "配置还没回来，窗却没开").toBe(true);
-    expect(claudeDir.disabled, "配置还没回来，那一格却能点").toBe(true);
+    expect(color.disabled, "配置还没回来，那一格却能点").toBe(true);
     release({ claudeDir: "/fix2/probe" });
     await opening;
     expect(ipc.calls.filter((c) => c === "load_config")).toEqual(["load_config"]);
-    expect(claudeDir.value).toBe("/fix2/probe");
-    expect(claudeDir.disabled).toBe(false);
+    expect(color.disabled).toBe(false);
+    expect(claudeDir.value, "数据目录那一格还在读 config.json").toBe("");
+    expect(claudeDir.disabled, "数据目录那一格没读本机偏好就能点了").toBe(true);
   });
 });

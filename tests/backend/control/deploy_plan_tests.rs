@@ -9,6 +9,25 @@ use serde_json::Value;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+// 回包写成线上那一份、入参经 typed 那一处收（同分派）：判据照线上形比（盖住 `super::*` 里的同名口）。
+fn plan_json(p: &Plan) -> Value {
+    serde_json::to_value(super::plan_json(p)).unwrap()
+}
+
+fn carried_of(args: &Value) -> Result<Vec<(Key, String)>, Fail> {
+    #[derive(serde::Deserialize)]
+    struct Only {
+        carried: Vec<Carried>,
+    }
+    let only: Only = crate::stream::inbound::typed::take(args)?;
+    super::carried_of(&only.carried)
+}
+
+fn answer_place(args: &Value) -> Result<Value, Fail> {
+    let req: PlaceReq = crate::stream::inbound::typed::take(args)?;
+    super::answer_place(&req).map(|r| serde_json::to_value(r).unwrap())
+}
+
 /// 替身：`exec` 按命令原文查表；`stat` / `read` 按路径查表。没登记的 ⇒ 链路错。
 #[derive(Default)]
 struct Fake {
@@ -324,14 +343,6 @@ fn the_plan_frame_has_exactly_the_golden_keys() {
     };
     let got = plan_json(&p);
     assert_eq!(keys(&got), keys(&golden["product"]));
-    // 帧面登记的 `fields` 与真产出同一组（`protocol_doc_guard` 另核文档）。
-    let spec = crate::stream::inbound::REGISTRY
-        .iter()
-        .find(|s| s.name == "deploy-plan")
-        .expect("deploy-plan 没登记");
-    let mut fields: Vec<String> = spec.field_names().map(str::to_string).collect();
-    fields.sort();
-    assert_eq!(fields, keys(&got));
 }
 
 #[test]

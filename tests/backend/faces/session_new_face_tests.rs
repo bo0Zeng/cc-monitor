@@ -11,22 +11,26 @@ fn recent_dirs_are_newest_first_once_each_and_skip_the_hidden_one() {
         ("".into(), 99),
         ("/hidden".into(), 100),
     ];
-    let got = recent_dirs(&items, &|c| c == "/hidden");
+    // 此刻 ＝ 1970-01-01 00:01（UTC）：40 ms、30 ms 都在当天 ⇒ 时刻字只写 `HH:MM`。
+    let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
+    let got = recent_dirs(&items, &|c| c == "/hidden", &clock);
     assert_eq!(
         got,
         vec![
             RecentDir {
                 cwd: "/a".into(),
-                last_ms: 40
+                last_ms: 40,
+                last_text: crate::common::cells::Words("00:00".into()),
             },
             RecentDir {
                 cwd: "/b".into(),
-                last_ms: 30
+                last_ms: 30,
+                last_text: crate::common::cells::Words("00:00".into()),
             }
         ]
     );
     let many: Vec<(String, i64)> = (0..20).map(|i| (format!("/d{i}"), i)).collect();
-    let got = recent_dirs(&many, &|_| false);
+    let got = recent_dirs(&many, &|_| false, &clock);
     assert_eq!(got.len(), RECENT_MAX);
     assert_eq!(got[0].cwd, "/d19");
 }
@@ -99,15 +103,80 @@ fn a_windows_launcher_counts_the_powershell_forms() {
     let _ = std::fs::remove_dir_all(&d);
 }
 
+/// ★ 起会话框里每一家带写好的名字，和那一家可选的模型 · 权限档（值 ＋ 写好的字）：值就是交回 `session-new` 的那一格，
+/// 字由后端写（界面零拼）；没声明的那一家 ⇒ 两张表都空（不是 `null`：界面照空表不画那颗 chip）。
+#[test]
+fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
+    let claude = agent_facts("claude");
+    assert_eq!(claude.kind, "claude");
+    assert_eq!(claude.text.0, "Claude Code");
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    let models: Vec<(&str, String)> = claude
+        .models
+        .iter()
+        .map(|c| (c.value, c.text.0.clone()))
+        .collect();
+    assert_eq!(
+        models,
+        vec![
+            ("sonnet", t("beSessionNew.model.sonnet")),
+            ("opus", t("beSessionNew.model.opus")),
+            ("haiku", t("beSessionNew.model.haiku")),
+            ("sonnet[1m]", t("beSessionNew.model.sonnetLong")),
+            ("opusplan", t("beSessionNew.model.opusPlan")),
+        ]
+    );
+    // 权限档的字与答批计划那一组同字（同一件事一个说法），「规划模式」是新字。
+    let modes: Vec<(&str, String)> = claude
+        .permission_modes
+        .iter()
+        .map(|c| (c.value, c.text.0.clone()))
+        .collect();
+    assert_eq!(
+        modes,
+        vec![
+            ("default", t("beAsk.choice.planManual")),
+            ("acceptEdits", t("beAsk.choice.planEdits")),
+            ("plan", t("beSessionNew.mode.plan")),
+        ]
+    );
+    // 每一个值都是 `session-new` 收的那一格：模型过全仓模型名判，权限档是那一家起会话认的档。
+    for c in &claude.models {
+        assert!(shell_quote_core::model_name_ok(c.value), "{}", c.value);
+    }
+    let codex = agent_facts("codex");
+    assert_eq!(codex.text.0, "Codex");
+    assert!(codex.models.is_empty() && codex.permission_modes.is_empty());
+}
+
+/// ★ 线上那一形：`agents` 每项 `{kind, text, models, permissionModes}`，`recent` 每项 `{cwd, lastMs, lastText}`。
+#[test]
+fn the_new_session_facts_wire_names_its_cells() {
+    let v = serde_json::to_value(agent_facts("claude")).unwrap();
+    let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(keys, vec!["kind", "models", "permissionModes", "text"]);
+    assert_eq!(
+        v["models"][0],
+        serde_json::json!({"value": "sonnet", "text": copy_core::copy_text("beSessionNew.model.sonnet", &[])})
+    );
+    let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
+    let r = serde_json::to_value(&recent_dirs(&[("/a".into(), 1)], &|_| false, &clock)[0]).unwrap();
+    assert_eq!(
+        r,
+        serde_json::json!({"cwd": "/a", "lastMs": 1, "lastText": "00:00"})
+    );
+}
+
 impl crate::guard_support::Shaped for NewFacts {
     fn samples() -> Vec<Self> {
         vec![NewFacts {
             recent: vec![RecentDir {
                 cwd: "/home/u/proj".into(),
                 last_ms: 1,
+                last_text: crate::common::cells::Words("00:00".into()),
             }],
             tmux: true,
-            agents: vec!["claude"],
+            agents: vec![agent_facts("claude")],
             fork: Some(ForkFacts {
                 agent: "claude",
                 launch: crate::control::fork_launch::infer(&crate::control::fork_launch::Source {

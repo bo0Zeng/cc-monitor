@@ -11,7 +11,8 @@
 //! 包含：
 //! - monitor_data_dir 下所有持久化文件（config / auto-launch / history-metadata）
 //! - cc 集成短期 IPC 目录（ps-await / ps-registry）
-//! - 滚动 log 目录 + 当前 log 文件
+//! - 滚动 log 目录 + 当前 log 文件（连同宿主交给本机后端的错误输出）· 填入的 API key
+//! - 本机后端家里（`~/.cc-monitor/`）那几样**不在这里**：界面照本机后端 `data-report` 的 `own` 画
 //! - WebView2 UserDataFolder 推断路径（基于 Tauri 默认约定）
 
 use crate::copy_table::copy_text;
@@ -34,7 +35,7 @@ pub struct DataPathInfo {
     /// 〔`INVARIANTS §2.1` 末条〕**真相还是缓存**。
     ///
     /// **非可选**：[`probe_file`] / [`probe_dir`] 不收它就编不过 ⇒ 「新文件必须选类」由类型系统兜住，
-    /// 不再只靠 `INVARIANTS §2.1` 那张散文表。设置面板「数据位置」每一行照它说「删了会丢 / 可随手删」。
+    /// 不再只靠 `INVARIANTS §2.1` 那张散文表。设置面板「数据位置」每一行照它说「删除即丢失 / 可重建」。
     pub class: DataClass,
     /// 绝对路径
     pub path: String,
@@ -77,13 +78,10 @@ pub struct DataPathsResponse {
     pub monitor_data_dir: String,
     /// monitor 自己的持久化数据（按类别有序）
     pub entries: Vec<DataPathInfo>,
-    /// 〔「一台机器一个家」〕本机后端的家（`~/.cc-monitor`，按家目录算，不随 `CCM_DATA_DIR` 漂）
-    pub backend_home: String,
-    /// 本机后端住在这个家里的那几样（[`backend_entries`]）
-    pub backend_entries: Vec<DataPathInfo>,
     /// WebView2 用户数据目录推断路径（cache / localStorage / IndexedDB / cookies）
     pub webview_user_data_dir: Option<DataPathInfo>,
     // `$PROFILE` 在哪只由后端方言答，本命令不带它。
+    // 本机后端家里（`~/.cc-monitor/`）那几样也不带：界面照本机后端 `data-report` 的 `own` 画（`footprint/data.rs::own_rows`）。
 }
 
 /// 日志目录那一行的名字。设置面板认它：那一行不自带 [打开]，改成指向「日志」那一块
@@ -97,22 +95,11 @@ pub fn collect(handle: &AppHandle) -> DataPathsResponse {
         crate::config::resolve_monitor_data_dir().unwrap_or_else(|| PathBuf::from("(unknown)"));
 
     let entries = monitor_entries(&monitor_data_dir);
-    // 后端的家按家目录算（它自己也是这么落盘的）；取不到家目录 ⇒ 这一张卡空着，不猜。
-    let (backend_home, backend_entries) = match creds_core::store::home_dir() {
-        Some(home) => (
-            home.join(backend_home_rel()).display().to_string(),
-            backend_entries(&home, &monitor_data_dir),
-        ),
-        None => ("(unknown)".to_string(), Vec::new()),
-    };
-
     let webview_user_data_dir = detect_webview_data_dir(handle);
 
     DataPathsResponse {
         monitor_data_dir: monitor_data_dir.display().to_string(),
         entries,
-        backend_home,
-        backend_entries,
         webview_user_data_dir,
     }
 }
@@ -180,212 +167,41 @@ fn monitor_entries(monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             &copy_text("rsDataPaths.monitor.logs", &[]),
             DataClass::Cache,
         ),
+        // 宿主交给本机后端的错误输出（`logging::backend_stderr_log_path` 所在的目录）：住数据目录、不在后端的家里 ⇒ 由这里列。
+        backend_stderr_dir(monitor_data_dir),
+        // 填入的 API key（`creds_core::store::credentials_path`）：同样住数据目录。
+        {
+            let creds = creds_core::store::credentials_path(monitor_data_dir);
+            let name = creds
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            probe_file(
+                creds,
+                &name,
+                &copy_text("rsDataPaths.monitor.apikey", &[]),
+                DataClass::Truth,
+            )
+        },
     ]
 }
 
-/// 后端的家（相对家目录的那一段）：取自契约常量里后端落点的第一段（`relay_route_core::BACKEND_LANDING_REL`），不另写一份。
-fn backend_home_rel() -> &'static str {
-    relay_route_core::BACKEND_LANDING_REL
-        .split('/')
-        .next()
-        .unwrap_or(relay_route_core::BACKEND_LANDING_REL)
-}
-
-/// 契约里相对家目录的一段 ⇒ 这一行的名字（去掉后端的家那一段；目录带尾 `/`）。
-fn home_rel_label(rel: &str, dir: bool) -> String {
-    let tail = rel
-        .strip_prefix(backend_home_rel())
-        .unwrap_or(rel)
-        .trim_start_matches('/');
-    if dir {
-        format!("{tail}/")
-    } else {
-        tail.to_string()
-    }
-}
-
-/// 〔`INVARIANTS §2.1`〕一台机器一个家，家里的都进这一份枚举。
-/// **本机后端住在同一个家里的那几样**（只给路径，不给删）。
-///
-/// 名字各取唯一住址，这里不写字面量：`~/.cc-monitor/` 下相对家目录的那一族取契约常量（`relay_route_core`，后端按同一份落盘；
-/// 程序目录 = 后端落点的上一层；常驻后端的目录也在这一族）·
-/// API key 那份按数据目录（`creds_core::store::credentials_path`）· 后端错误输出 = 宿主交给它的那份文件所在的目录
-/// （`logging::backend_stderr_log_path`）。后端跑着时要用的（中转钥匙 · 常驻后端的目录）按真相记：删了要重起后端。
-fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
-    use relay_route_core as rr;
-    let bin = rr::BACKEND_LANDING_REL
-        .rsplit_once('/')
-        .map_or(rr::BACKEND_LANDING_REL, |(dir, _)| dir);
-    let stderr_dir = crate::logging::backend_stderr_log_path(monitor_data_dir)
+/// 本机后端错误输出所在的目录那一行：名字 ＝ 相对数据目录的那一段（目录带尾 `/`，落在 `logs/` 下 ⇒ 界面照样指去「日志」页）。
+fn backend_stderr_dir(monitor_data_dir: &Path) -> DataPathInfo {
+    let dir = crate::logging::backend_stderr_log_path(monitor_data_dir)
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| monitor_data_dir.to_path_buf());
-    let stderr_label = stderr_dir
+    let label = dir
         .strip_prefix(monitor_data_dir)
         .map(|p| format!("{}/", p.to_string_lossy().replace('\\', "/")))
-        .unwrap_or_else(|_| stderr_dir.display().to_string());
-    let creds = creds_core::store::credentials_path(monitor_data_dir);
-    let dir = |rel: &str, key_text: String, class: DataClass| {
-        probe_dir(home.join(rel), &home_rel_label(rel, true), &key_text, class)
-    };
-    let file = |rel: &str, key_text: String, class: DataClass| {
-        probe_file(
-            home.join(rel),
-            &home_rel_label(rel, false),
-            &key_text,
-            class,
-        )
-    };
-    let mut out = vec![
-        dir(
-            bin,
-            copy_text("rsDataPaths.backend.bin", &[]),
-            DataClass::Cache,
-        ),
-        dir(
-            rr::STAGING_DIR_REL,
-            copy_text("rsDataPaths.backend.staging", &[]),
-            DataClass::Cache,
-        ),
-        file(
-            rr::KEY_FILE_REL,
-            copy_text("rsDataPaths.backend.relayKey", &[]),
-            DataClass::Truth,
-        ),
-        dir(
-            rr::LISTEN_DIR_REL,
-            copy_text("rsDataPaths.backend.listenDir", &[]),
-            DataClass::Truth,
-        ),
-    ];
-    out.extend([
-        file(
-            rr::BACKEND_POLICY_REL,
-            copy_text("rsDataPaths.backend.policy", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::PROFILES_REL,
-            copy_text("rsDataPaths.backend.profiles", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::PROFILES_MIGRATED_REL,
-            copy_text("rsDataPaths.backend.profilesMigrated", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::PROFILES_WRITTEN_REL,
-            copy_text("rsDataPaths.backend.profilesWritten", &[]),
-            DataClass::Cache,
-        ),
-        file(
-            rr::POSIX_ALIASES_REL,
-            copy_text("rsDataPaths.backend.aliasesPosix", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::PS_ALIASES_REL,
-            copy_text("rsDataPaths.backend.aliasesPs", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::SKILL_LEDGER_REL,
-            copy_text("rsDataPaths.backend.skillLedger", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::CHORES_REL,
-            copy_text("rsDataPaths.backend.chores", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::PLAN_REVIEW_REL,
-            copy_text("rsDataPaths.backend.planReview", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::LAST_SEEN_REL,
-            copy_text("rsDataPaths.backend.lastSeen", &[]),
-            DataClass::Cache,
-        ),
-        file(
-            rr::ASSET_CATALOG_REL,
-            copy_text("rsDataPaths.backend.assetCatalog", &[]),
-            DataClass::Cache,
-        ),
-        file(
-            rr::QUOTA_LEDGER_REL,
-            copy_text("rsDataPaths.backend.quota", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::ROTATION_REL,
-            copy_text("rsDataPaths.backend.rotation", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::LINEAGE_REL,
-            copy_text("rsDataPaths.backend.lineage", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::LAUNCH_ACCOUNTS_REL,
-            copy_text("rsDataPaths.backend.launchAccounts", &[]),
-            DataClass::Truth,
-        ),
-        dir(
-            rr::LAUNCH_NOTES_DIR_REL,
-            copy_text("rsDataPaths.backend.launchNotes", &[]),
-            DataClass::Cache,
-        ),
-        dir(
-            rr::ANSWER_PLUGIN_DIR_REL,
-            copy_text("rsDataPaths.backend.answerPlugin", &[]),
-            DataClass::Cache,
-        ),
-        file(
-            rr::KNOWN_HOSTS_REL,
-            copy_text("rsDataPaths.backend.knownHosts", &[]),
-            DataClass::Cache,
-        ),
-        dir(
-            rr::ACCOUNTS_DIR_REL,
-            copy_text("rsDataPaths.backend.accounts", &[]),
-            DataClass::Truth,
-        ),
-        file(
-            rr::ACCOUNTS_MCP_REL,
-            copy_text("rsDataPaths.backend.accountsMcp", &[]),
-            DataClass::Truth,
-        ),
-        probe_file(
-            creds.clone(),
-            &creds
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_default(),
-            &copy_text("rsDataPaths.backend.apikey", &[]),
-            DataClass::Truth,
-        ),
-        probe_dir(
-            stderr_dir,
-            &stderr_label,
-            &copy_text("rsDataPaths.backend.logs", &[]),
-            DataClass::Cache,
-        ),
-        dir(
-            rr::SKELETON_DIR_REL,
-            copy_text("rsDataPaths.backend.skeleton", &[]),
-            DataClass::Cache,
-        ),
-        dir(
-            rr::EXT_BACKUPS_DIR_REL,
-            copy_text("rsDataPaths.backend.extBackups", &[]),
-            DataClass::Truth,
-        ),
-    ]);
-    out
+        .unwrap_or_else(|_| dir.display().to_string());
+    probe_dir(
+        dir,
+        &label,
+        &copy_text("rsDataPaths.monitor.backendLogs", &[]),
+        DataClass::Cache,
+    )
 }
 
 fn probe_file(path: PathBuf, label: &str, description: &str, class: DataClass) -> DataPathInfo {

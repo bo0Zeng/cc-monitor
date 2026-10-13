@@ -1,6 +1,7 @@
 /**
- * 设置「数据位置」：monitor 所有持久化数据的位置 ＋ WebView2 用户数据目录 ＋ localStorage 键，
- * 每项［打开］与「在文件夹中显示」。纯展示，不做删除 / 清空（用户要的是路径）；
+ * 设置「数据位置」：界面这一侧自己的持久化数据（monitor 数据目录里那几份）＋ WebView2 用户数据目录 ＋ localStorage 键，
+ * 每项［打开］与「在文件夹中显示」。本机后端家里那几样不在这里：「文件与数据」页照本机后端 `data-report` 的 `own` 画（`own-block.ts`）。
+ * 纯展示，不做删除 / 清空（用户要的是路径）；
  * `data-section.vitest.ts` 钉着：效应面两向相等（只读 `get_data_paths`、只会打开 / 显示、localStorage 零写）＋ 路径以纯文本上屏。
  * 不存在的灰显标「尚未创建」；卸载不清 `~/.cc-monitor/`。
  */
@@ -37,6 +38,18 @@ export function describeDataClass(c: DataClass): string {
     default:
       return copyText("data.class.unknown", { kind: String(c) });
   }
+}
+
+/**
+ * 「删了会怎样」那一格（界面那张卡 · 本机后端那一块 · 远端那一块同一个）：类别进 DOM（`data-data-class`），判据与用户看的是同一份值；
+ * 排在行头、名字与大小之间（`settings.css` 的 `class` 区）。
+ */
+export function dataClassCell(c: DataClass): HTMLElement {
+  const cell = document.createElement("span");
+  cell.className = "settings-data-item-class";
+  cell.dataset.dataClass = c;
+  cell.textContent = describeDataClass(c);
+  return cell;
 }
 
 /** 一个 `<strong>`：强调由 DOM 结构承担，不由字符串里的标记承担。 */
@@ -128,16 +141,6 @@ export class DataSection {
       }),
     );
 
-    // 卡片 1b：本机后端住在同一个家里的那几样（只给路径）
-    this.mainBody.appendChild(
-      this.buildBlock({
-        title: copyText("data.card.backend"),
-        subtitle: data.backendHome,
-        subtitlePath: data.backendHome,
-        items: data.backendEntries,
-      }),
-    );
-
     // 卡片 2：WebView2 用户数据
     if (data.webviewUserDataDir) {
       this.mainBody.appendChild(
@@ -164,7 +167,7 @@ export class DataSection {
       copyText("data.note.byDefault"),
       strong(copyText("data.note.notCleared")),
       copyText("data.note.howToClear"),
-      // 那一格怎么读：只想腾空间的话，删「可随手删」的就够了。
+      // 那一格怎么读：只想腾空间的话，删「可重建」的就够了。
       copyText("data.note.classes"),
     );
     this.mainBody.appendChild(note);
@@ -224,12 +227,8 @@ export class DataSection {
     desc.textContent = info.description;
     li.appendChild(desc);
 
-    // 「删了会怎样」那一格：类别进 DOM（`data-class`），判据与用户看的是同一份值；不挂类名（只要字，不要样式）。
     li.dataset.class = info.class;
-    const cls = document.createElement("span");
-    cls.dataset.dataClass = info.class;
-    cls.textContent = describeDataClass(info.class);
-    li.appendChild(cls);
+    li.appendChild(dataClassCell(info.class));
 
     const meta = document.createElement("span");
     meta.className = "settings-data-item-meta";
@@ -245,6 +244,7 @@ export class DataSection {
     if (info.label.startsWith(LOGS_DIR_LABEL)) {
       // 日志目录（连同后端那一份 `logs/backend/`）：这一行只给路径，打开去「日志」那一页（见 `LOGS_DIR_LABEL` 头注）。
       const see = document.createElement("span");
+      see.className = "settings-data-item-see";
       see.dataset.seeAlso = "logs";
       see.textContent = copyText("data.item.inLogsPage");
       li.appendChild(see);
@@ -252,9 +252,7 @@ export class DataSection {
       // [打开] 与「在文件夹中显示」并排住同一格（这一格是网格里的一个区，两颗按钮装进一个盒子）。
       const actions = document.createElement("span");
       actions.className = "settings-data-item-actions";
-      actions.appendChild(this.buildOpenButton(info));
-      // 不在盘上的东西没有可选中的那一项 ⇒ 不给这颗按钮。
-      if (info.exists) actions.appendChild(buildRevealButton(info.path));
+      actions.append(...localOpenButtons(info.path, info.exists));
       li.appendChild(actions);
     }
 
@@ -266,19 +264,6 @@ export class DataSection {
     li.appendChild(pathRow);
 
     return li;
-  }
-
-  private buildOpenButton(info: DataPathInfo): HTMLElement {
-    const open = document.createElement("button");
-    open.type = "button";
-    open.className = "settings-data-item-open";
-    open.textContent = info.exists ? copyText("data.item.open") : copyText("data.item.openNone");
-    open.disabled = !info.exists;
-    open.title = info.exists ? copyText("data.item.openHint", { path: info.path }) : copyText("data.item.missing");
-    if (info.exists) {
-      open.addEventListener("click", () => void openItem(info.path));
-    }
-    return open;
   }
 
   private buildLocalStorageBlock(): HTMLElement {
@@ -330,15 +315,26 @@ export class DataSection {
   }
 }
 
-/** 「在文件夹中显示」：系统文件管理器打开它所在的文件夹并选中它（[打开] 是用默认程序打开它本身）。 */
-function buildRevealButton(path: string): HTMLElement {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "settings-data-item-open";
-  b.dataset.reveal = "";
-  b.textContent = copyText("data.item.reveal");
-  b.addEventListener("click", () => void revealInFolder(path));
-  return b;
+/**
+ * 本机一条路径打开那一格：［打开］（默认程序打开它本身）＋「在文件夹中显示」（系统文件管理器选中它）。
+ * 不在盘上 ⇒［打开］置灰写「—」，不给「在文件夹中显示」（没有可选中的那一项）。本机后端家里那一块（`own-block.ts`）用同一对。
+ */
+export function localOpenButtons(path: string, exists: boolean): HTMLElement[] {
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "settings-data-item-open";
+  open.textContent = exists ? copyText("data.item.open") : copyText("data.item.openNone");
+  open.disabled = !exists;
+  open.title = exists ? copyText("data.item.openHint", { path }) : copyText("data.item.missing");
+  if (!exists) return [open];
+  open.addEventListener("click", () => void openItem(path));
+  const reveal = document.createElement("button");
+  reveal.type = "button";
+  reveal.className = "settings-data-item-open";
+  reveal.dataset.reveal = "";
+  reveal.textContent = copyText("data.item.reveal");
+  reveal.addEventListener("click", () => void revealInFolder(path));
+  return [open, reveal];
 }
 
 function collectMonitorLocalStorageKeys(): { key: string; value: string }[] {

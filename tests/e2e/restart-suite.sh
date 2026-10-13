@@ -39,6 +39,8 @@ printf '{"version":1,"accounts":[{"name":"bold","configDir":"%s","isDefault":fal
 # 中转：一个在听的回环口 ＋ 一把假钥匙（ccm 在最终那一跳判注入）。
 mkdir -p "$HOME/.cc-monitor"
 python3 -c 'import secrets;print(secrets.token_hex(32))' >"$HOME/.cc-monitor/relay-key"
+# 启动命令住这台的偏好（`prefs.json`，那台起会话时现读），不随请求交。
+printf '{"version":1,"launchers":{"claude":"%s"}}\n' "$FAKE" >"$HOME/.cc-monitor/prefs.json"
 python3 -c '
 import socket,sys
 s=socket.socket();s.bind(("127.0.0.1",0));s.listen(64)
@@ -124,8 +126,8 @@ live_pids() {
 }
 resumed_in() { grep -cE "sid=$2 .*argv=--resume $2" "$1/argv.log" 2>/dev/null || true; }
 restart_req() {  # <id> <sid> <account> <compact_first> <compact_ms> <local>
-  printf '{"id":"%s","cmd":"session-restart","args":{"sid":"%s","cwd":"%s","account":"%s","compact_first":%s,"compact_within_ms":%s,"arrive_within_ms":20000,"local":%s,"agent":"claude","launcher":"%s","defaultLauncher":"claude"}}' \
-    "$1" "$2" "$CWD_DIR" "$3" "$4" "$5" "$6" "$FAKE"
+  printf '{"id":"%s","cmd":"session-restart","args":{"sid":"%s","cwd":"%s","account":"%s","compact_first":%s,"compact_within_ms":%s,"arrive_within_ms":20000,"local":%s,"agent":"claude"}}' \
+    "$1" "$2" "$CWD_DIR" "$3" "$4" "$5" "$6"
 }
 
 echo "== 换号重启（session-restart）真进程端到端 =="

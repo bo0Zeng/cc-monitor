@@ -9,7 +9,7 @@
 //! | [`a_directory_on_another_device_is_counted_as_skipped_and_not_entered`] | 注入「这个子目录在另一个设备上」⇒ 不进去、`skipped_mounts == 1`；正控：同一棵不注入 ⇒ 进去 | 期望手写；真挂载点造不出来（如实） |
 //! | [`a_file_measures_as_itself`] | 顶上是文件 ⇒ `files: 1`、`bytes` == 它的长度 | 期望手写 |
 //! | [`the_device_of_two_paths_on_one_filesystem_is_the_same`] | `platform::paths::device_of` 同一文件系统上两条路径相等且非空（unix） | 两次独立读 |
-//! | [`the_command_face_answers_exactly_the_declared_fields`] | 线上回的键 == 声明的 `fields`；读不到 ⇒ `unreadable`；没给 ⇒ `bad_path` | 声明住 `CAPABILITIES` |
+//! | [`the_command_face_answers_exactly_the_declared_fields`] | 读不到 ⇒ `unreadable`；没给 ⇒ `bad_args`；空的 ⇒ `bad_path` | 回包的键由类型管 |
 
 use super::*;
 
@@ -105,29 +105,14 @@ fn the_device_of_two_paths_on_one_filesystem_is_the_same() {
 fn the_command_face_answers_exactly_the_declared_fields() {
     let base = temp_root("face");
     let t = plant(&base);
-    let v = crate::files::answer_wire(
+    let v = crate::files::tests::answer_wire(
         "files-size",
         &serde_json::json!({ "path": t.to_string_lossy() }),
         &Default::default(),
     )
     .expect("一趟干净的算大小被拒了");
-    let got: std::collections::BTreeSet<&str> = v
-        .as_object()
-        .expect("对象")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let declared: std::collections::BTreeSet<&str> = crate::files::CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.size")
-        .expect("声明里没有 files.size")
-        .fields
-        .iter()
-        .copied()
-        .collect();
-    assert_eq!(got, declared);
     assert_eq!(v["bytes"], 3 + 5 + 7 + 11);
-    let e = crate::files::answer_wire(
+    let e = crate::files::tests::answer_wire(
         "files-size",
         &serde_json::json!({ "path": base.join("没有").to_string_lossy() }),
         &Default::default(),
@@ -144,8 +129,16 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         e.raw.as_deref().is_some_and(|r| !r.is_empty()),
         "系统原话丢了：{e:?}"
     );
-    let e = crate::files::answer_wire("files-size", &serde_json::json!({}), &Default::default())
-        .expect_err("没给 path 竟然收了");
+    let e =
+        crate::files::tests::answer_wire("files-size", &serde_json::json!({}), &Default::default())
+            .expect_err("没给 path 竟然收了");
+    assert_eq!(e.code, "bad_args");
+    let e = crate::files::tests::answer_wire(
+        "files-size",
+        &serde_json::json!({ "path": "" }),
+        &Default::default(),
+    )
+    .expect_err("空路径竟然收了");
     assert_eq!(e.code, "bad_path");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -186,7 +179,7 @@ fn stat_reports_the_owner_and_where_a_link_points() {
     std::fs::write(base.join("a.bin"), b"abc").expect("铺");
     std::os::unix::fs::symlink("a.bin", base.join("ln")).expect("铺链接");
     let stat = |name: &str| {
-        crate::files::answer_wire(
+        crate::files::tests::answer_wire(
             "files-stat",
             &serde_json::json!({ "path": base.join(name).to_string_lossy() }),
             &Default::default(),

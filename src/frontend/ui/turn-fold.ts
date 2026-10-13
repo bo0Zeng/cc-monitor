@@ -191,17 +191,14 @@ export class TurnFold {
       if (!res.available && from > 0) {
         res = await this.read(where.origin, where.jsonlPath, 0);
         if (gen !== this.gen) return;
-        if (res.available) this.turns = [];
+        // 续点不在了：回来的从 0 起 ⇒ `replaceFrom(0, …)` 把手上的全换掉（连同三张表）
       }
       if (!res.available) {
         if (++this.failures >= MAX_FAILURES) this.gaveUp = true;
         return;
       }
       this.failures = 0;
-      this.turns = [...this.turns.filter((t) => t.at < res.from), ...res.turns];
-      this.bounds = new Set(this.turns.flatMap((t) => [t.uuid, ...t.shown, ...t.folds.flatMap((f) => (f.until === null ? [] : [f.until]))]));
-      this.landed = new Set(this.turns.flatMap((t) => t.landed));
-      this.byAfter = new Map(this.turns.flatMap((turn) => turn.folds.map((fold): [string, FoldRef] => [fold.after, { key: fold.after, turn, fold }])));
+      this.replaceFrom(res.from, res.turns);
       this.apply();
       this.onTurns?.();
     } finally {
@@ -214,6 +211,58 @@ export class TurnFold {
       }
     }
   }
+
+  /**
+   * 正文重来、轮次接着续（宿主 `restartTail`）：接过上一代手上的那份成品与各段单独点过的开合，下一次续取从还没收尾那一轮起，
+   * 不从 0 再要。上一代在途那一趟作废（它已 `dispose`），这一代之后照常 `refresh`。
+   */
+  adopt(prev: TurnFold): void {
+    this.turns = prev.turns;
+    this.bounds = prev.bounds;
+    this.landed = prev.landed;
+    this.byAfter = prev.byAfter;
+    this.overrides = new Map(prev.overrides);
+    this.expandedDefault = prev.expandedDefault;
+    this.onTurns?.();
+  }
+
+  /**
+   * 续取回来的那几轮换进手上那一份：`at ≥ from` 的旧轮连同它们记进三张表的那几格摘掉，新来的记进去 ——
+   * 只碰变了的那几轮（续取一般就是还没收尾的那一轮），不按全部轮重建（几万轮的会话每批新行一次）。
+   */
+  private replaceFrom(from: number, fresh: readonly TurnRow[]): void {
+    const keep = this.turns.findIndex((t) => t.at >= from);
+    const cut = keep < 0 ? this.turns.length : keep;
+    for (const t of this.turns.slice(cut)) this.forget(t);
+    this.turns = [...this.turns.slice(0, cut), ...fresh];
+    for (const t of fresh) this.remember(t);
+  }
+
+  /** 一轮记进三张表（边界 · 落成人话的排队 · 段）。`indexed` 记碰过几轮（判据数它）。 */
+  private remember(turn: TurnRow): void {
+    this.indexed++;
+    this.bounds.add(turn.uuid);
+    for (const u of turn.shown) this.bounds.add(u);
+    for (const l of turn.landed) this.landed.add(l);
+    for (const fold of turn.folds) {
+      if (fold.until !== null) this.bounds.add(fold.until);
+      this.byAfter.set(fold.after, { key: fold.after, turn, fold });
+    }
+  }
+
+  private forget(turn: TurnRow): void {
+    this.indexed++;
+    this.bounds.delete(turn.uuid);
+    for (const u of turn.shown) this.bounds.delete(u);
+    for (const l of turn.landed) this.landed.delete(l);
+    for (const fold of turn.folds) {
+      if (fold.until !== null) this.bounds.delete(fold.until);
+      if (this.byAfter.get(fold.after)?.turn === turn) this.byAfter.delete(fold.after);
+    }
+  }
+
+  /** 到此刻记表 / 摘表碰过几轮（判据：续取一次只碰变了的那几轮）。 */
+  indexed = 0;
 
   /** `Ctrl+O` / 会话头开关：默认展开与否；各段单独记的作废。 */
   setDefault(expanded: boolean, later = false): void {

@@ -879,7 +879,7 @@ fn location_is_the_parent_relative_to_the_search_start() {
 /// 写它们的口：`rebuild_once` · `set_browsing` 直调；或经这一族的入口（`files::answer` / `answer_wire`）
 /// 调 `files.index.rebuild` / `files.browse` —— 能力名写成字面量以外的东西（循环变量、拼出来的）
 /// 就当它可能是那两条（「每条能力真调一次」那一形）。
-/// `files/` 底下的判据 `use super::*`，入口是裸名 `answer(` / `answer_wire(`；别处要带 `files::`。
+/// `files/` 底下的判据 `use super::*`，入口是裸名 `answer(` / `answer_wire(`；别处要带 `files::tests::`。
 fn touches_resident_state(chunk: &str, bare_entry: bool) -> bool {
     // 针拼出来：本文件自己的源码不该被当成一处调用。
     let writers = [concat!("rebuild", "_once("), concat!("set_", "browsing(")];
@@ -892,9 +892,10 @@ fn touches_resident_state(chunk: &str, bare_entry: bool) -> bool {
         "files.browse",
         "files-browse",
     ];
+    // 判据的问法住 `files/` 的测试模块（`files::tests::answer`）：别处带这一段前缀。
     let mut entries = vec![
-        concat!("files::", "answer("),
-        concat!("files::", "answer_wire("),
+        concat!("tests::", "answer("),
+        concat!("tests::", "answer_wire("),
     ];
     if bare_entry {
         entries.push(concat!(" ", "answer("));
@@ -970,7 +971,7 @@ fn every_test_that_can_touch_the_resident_state_takes_the_one_lock() {
     );
     // 反向自检：这把尺子认得出那一形，也认得出拿了锁的、只碰别的能力的。
     let loop_call =
-        "fn x() {\n    for n in names { let _ = crate::files::answer_wire(&n, &a, &t); }\n}";
+        "fn x() {\n    for n in names { let _ = crate::files::tests::answer_wire(&n, &a, &t); }\n}";
     assert!(
         touches_resident_state(loop_call, false),
         "能力名是变量的那一形没认出来"

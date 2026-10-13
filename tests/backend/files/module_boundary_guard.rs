@@ -497,39 +497,41 @@ enum Door {
 /// ★ 门：`(住址, 符号, 类别)`。**每一个符号都是入口函数，零个内部符号**
 /// （`files::index::*` / `files::raw::*` / 围栏那几个函数 —— 原生后端一个都够不到）。
 const DOORS: &[(&str, &str, Door)] = &[
+    // 读的那几条：入参的类型选中那条能力（[`crate::files::Ask`]），本体只经 `files::answer` 一个入口。
     (
-        "stream/inbound/registry/file_manager.rs",
-        "files::answer_wire",
+        "stream/inbound/files_face.rs",
+        "files::answer",
         Door::Command,
     ),
+    ("stream/inbound/files_face.rs", "files::Ask", Door::Command),
     // 按内容搜要**可撤**（异步档：阻塞线程上那一趟看取消位）⇒ 同一族的第二个入口函数，
     //   不是内部符号：它自己再进 `answer_grep`（与唯一入口 `answer` 里那一臂同一个本体）。
     (
-        "stream/inbound/registry/file_manager.rs",
+        "stream/inbound/files_face.rs",
         "files::answer_grep_cancellable",
         Door::Command,
     ),
+    // 写的那几条（写面 · 上传提交 · 解压）：同读的那一半，一个入口 ＋ 选本体的那个 trait（入参类型挂在它上面）。
     (
-        "stream/inbound/registry/file_manager.rs",
-        "control::files_write::answer_wire",
+        "stream/inbound/files_write_face.rs",
+        "control::files_write::answer",
         Door::Command,
     ),
-    // 上传的提交：同一扇门里的第三个入口函数。
     (
-        "stream/inbound/registry/file_manager.rs",
-        "control::files_commit::answer_wire",
-        Door::Command,
-    ),
-    // 解压（`files-extract`）：同一扇门里的又一个入口函数。
-    (
-        "stream/inbound/registry/file_manager.rs",
-        "control::files_extract::answer_wire",
+        "stream/inbound/files_write_face.rs",
+        "control::files_write::Act",
         Door::Command,
     ),
     // 删会话那两问的窄口：门把适配层那两个函数装进这个类型递给写面（`SESSION_PORT`）。
     (
-        "stream/inbound/registry/file_manager.rs",
+        "stream/inbound/files_session_face.rs",
         "control::files_write::SessionPort",
+        Door::Command,
+    ),
+    // 删会话那一条的本体（它要门递的那两问，不经 `Act`）。
+    (
+        "stream/inbound/files_session_face.rs",
+        "control::files_write::delete_session_of",
         Door::Command,
     ),
     ("lib.rs", "files::capability_names", Door::Ledger),
@@ -601,6 +603,11 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
         let homes: &[&str] = match door {
             Door::Command => &[
                 "stream/inbound/registry/file_manager.rs",
+                // 读的那几条 typed 命令（命令表那一行点它们的名）。
+                "stream/inbound/files_face.rs",
+                // 写的那几条 typed 命令（同上）。
+                "stream/inbound/files_write_face.rs",
+                "stream/inbound/files_session_face.rs",
                 "stream/inbound/mod.rs",
             ],
             Door::Ledger => &["lib.rs"],
@@ -621,12 +628,16 @@ fn the_doors_are_the_command_registry_plus_one_ledger_read() {
         // 7 → 8：多了删会话那两问的窄口类型 `control::files_write::SessionPort`。
         // 8 → 9：读那一面多一个可撤的入口 `files::answer_grep_cancellable`（按内容搜，异步档）。
         // 9 → 6：传输台（`Desk` · `Desk::new` · `Desk::answer_wire`）归原生那一块，不再是这一块的门。
-        command, 6,
-        "命令注册那一处够到的入口从 6 个变成了 {command} 个 —— \
-         四面（读 `files::answer_wire` ／ 写 `control::files_write::answer_wire` ／ \
-         上传提交 `control::files_commit::answer_wire`〔F7c 09-24 +1〕／ 解压 `control::files_extract::answer_wire`〔FILES2 +1〕）各一个入口，\
+        // 6 → 7：读的那几条换成类型，`files::answer_wire` 换成 `files::answer` ＋ 选能力的 `files::Ask`。
+        // 7 → 7：写的那几条换成类型，三面各一个 `answer_wire` 换成 `control::files_write::answer` ＋ 选本体的 `control::files_write::Act`
+        //   ＋ 删会话那一条的本体 `control::files_write::delete_session_of`（它要门递的那两问）。
+        command, 7,
+        "命令注册那一处够到的入口从 7 个变成了 {command} 个 —— \
+         读（`files::answer` ＋ `files::Ask`）／ 写 · 上传提交 · 解压（`control::files_write::answer` ＋ `control::files_write::Act`）／ 删会话（`control::files_write::delete_session_of`），\
          〔SR1b 09-24 +3，layer11 −3〕传输台归原生那一块，三格出列。\
          〔MOD +1〕删会话那两问的窄口类型 `SessionPort`。〔FILES3 +1〕按内容搜那个可撤的入口 `files::answer_grep_cancellable`。\
+         〔第 8 批 +1〕读的那几条换成类型：`files::answer_wire` 换成 `files::answer` ＋ 选能力的那个 trait `files::Ask`。\
+         〔第 8 批 ±0〕写的那几条换成类型：三个 `answer_wire` 换成 `answer` ＋ `Act` ＋ 删会话那一条的 `delete_session_of`。\
          多一个就说明有命令绕过了入口、直接调内部"
     );
 }

@@ -577,71 +577,33 @@ fn vis2_the_pin_verdict_is_exactly_this_table() {
     );
 }
 
-/// 写：只改那一台的 `hostKeyFingerprint`、别的逐值不动；已有 / 找不到 / 两台同名 / 读不懂 ⇒ 一个字节不写。
+/// 写：交本机后端 `machines-set` 一条认 origin 与 `host` 的 `setin`（`ifEmpty`，只动 `hostKeyFingerprint`）；
+/// 认那一台 · 不盖已有 · 盖日子的语义在后端那一处（`machines_tests::pinning_on_dial_touches_only_that_hosts_fingerprint`，同一形入参）。
+/// 那一答 `kept` ＞ 0 ⇒ 已有；被拒 / 问不到 ⇒ 带着那一句回错。
 #[test]
-fn vis2_pinning_writes_only_that_hosts_fingerprint_through_the_patch_door() {
-    let dir = std::env::temp_dir().join(format!("ccm-vis2-pin-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("config.json");
-    let base = serde_json::json!({
-        "theme": {"x": 1},
-        "remote": {"enabled": true, "hosts": [
-            {"label": "devbox", "host": "h1", "user": "u", "hostKeyFingerprint": ""},
-            {"label": "", "host": "h2", "user": "u", "hostKeyFingerprint": "SHA256:old"},
-            {"label": "dup", "host": "h3", "user": "u"},
-            {"label": "dup", "host": "h3", "user": "v"}
-        ]}
-    });
-    let write = |v: &serde_json::Value| {
-        std::fs::write(&path, serde_json::to_string_pretty(v).unwrap()).unwrap()
-    };
-    let read = || {
-        serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&path).unwrap()).unwrap()
-    };
-
-    write(&base);
+fn vis2_pinning_asks_the_backend_machine_table_for_one_if_empty_cell() {
     assert_eq!(
-        pin_host_key_at(&path, "devbox", "h1", "SHA256:new"),
+        pin_request("devbox", "h1", "SHA256:new"),
+        serde_json::json!({ "edits": [{
+            "op": "setin",
+            "where": [
+                { "fields": ["label", "host"], "equals": "devbox" },
+                { "fields": ["host"], "equals": "h1" },
+            ],
+            "field": "hostKeyFingerprint",
+            "value": "SHA256:new",
+            "ifEmpty": true,
+        }] })
+    );
+    assert_eq!(
+        pin_outcome(Ok(serde_json::json!({"kept": 0, "pinned": []}))),
         Ok(PinWrite::Written)
     );
-    let mut want = base.clone();
-    want["remote"]["hosts"][0]["hostKeyFingerprint"] = "SHA256:new".into();
-    let got = read();
-    let day = got["remote"]["hosts"][0]["hostKeyPinnedAt"]
-        .as_str()
-        .unwrap_or_default()
-        .to_string();
-    assert!(
-        day.len() == 10 && day.as_bytes()[4] == b'-' && day.as_bytes()[7] == b'-',
-        "记下指纹那一天没写成 YYYY-MM-DD：{day:?}"
+    assert_eq!(
+        pin_outcome(Ok(serde_json::json!({"kept": 1, "pinned": []}))),
+        Ok(PinWrite::AlreadySet)
     );
-    want["remote"]["hosts"][0]["hostKeyPinnedAt"] = day.into();
-    assert_eq!(got, want, "只该改 devbox 那一台的指纹（＋ 记下的那一天）");
-
-    for (origin, host, why) in [
-        ("h2", "h2", PinWrite::AlreadySet),
-        ("nope", "h9", PinWrite::NotFound),
-        ("dup", "h3", PinWrite::Ambiguous),
-        ("devbox", "h-other", PinWrite::NotFound),
-    ] {
-        write(&base);
-        let before = std::fs::read(&path).unwrap();
-        assert_eq!(
-            pin_host_key_at(&path, origin, host, "SHA256:new"),
-            Ok(why),
-            "{origin}"
-        );
-        assert_eq!(
-            std::fs::read(&path).unwrap(),
-            before,
-            "{origin}：不该写却写了"
-        );
-    }
-    std::fs::write(&path, "{ not json").unwrap();
-    assert!(pin_host_key_at(&path, "devbox", "h1", "SHA256:new").is_err());
-    assert_eq!(std::fs::read_to_string(&path).unwrap(), "{ not json");
-    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(pin_outcome(Err("认不出".into())), Err("认不出".to_string()));
 }
 
 /// 默认转严格：盘上那一份当 `saved` 一并交过去（固化之后，手里那份起来时读的 `cfg` 还没有指纹也照样转严格）——
@@ -759,18 +721,6 @@ fn a_jump_host_is_pinned_under_its_own_entry_and_a_direct_dial_judges_only_the_t
     };
     let (_, _, c, r) = pin_targets(&target, &direct, &strict).remove(0);
     assert_eq!(pin_verdict(false, c, r), PinVerdict::AlreadyStrict);
-}
-
-/// 天数换算的那几个界：纪元第一天 · 闰年 2 月 29 日 · 世纪年不闰 · 跨年。
-#[test]
-fn pinned_day_is_the_civil_date() {
-    use std::time::{Duration, UNIX_EPOCH};
-    let at = |secs: u64| crate::config::pinned_day(UNIX_EPOCH + Duration::from_secs(secs));
-    assert_eq!(at(0), "1970-01-01");
-    assert_eq!(at(951_782_400), "2000-02-29");
-    assert_eq!(at(4_107_542_400), "2100-03-01");
-    assert_eq!(at(1_798_761_599), "2026-12-31");
-    assert_eq!(at(1_798_761_600), "2027-01-01");
 }
 
 /// 本机后端说没拨成：那一句原样、详情是它写的那一份（拨号跑在本机后端里 ⇒ 不补「本机」行）；老后端没写详情 ⇒ 壳写时刻与本机。

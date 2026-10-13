@@ -1,17 +1,21 @@
 /**
- * config.json 的 `contextLimits`（状态栏 ctx% 用的模型上限覆盖表）在设置页露出来，可读可改 ——
- * 「每个配置键要么有入口要么删」。住「通用」页末「高级：上下文上限」那一折（标题行右侧「已改 N」）。
+ * 那台的上下文上限表（状态栏 ctx% 用的模型上限覆盖表）：住**那台**后端（`prefs.json` 的 `contextLimits`，`history-facts` 在那台现读），
+ * 界面经 `prefs-read` / `prefs-set` 问那台、不存副本。住机器页「这台上的 cc-monitor」里「上下文上限」那一折（标题行右侧「已改 N」），
+ * 主窗口［设上限］落到当前标签页那台的这一折（`data-anchor="context-limits"`）。
  *
- * 一行一条「模型名片段 = 上限 tokens」；空 ⇒ 删掉那一键（不覆盖）。读回走 `views/context-limit.ts::readContextLimits`（与状态栏同一份），
- * 写只经 `config.ts::patchConfig`；存好之后广播 `SETTINGS_APPLIED_EVENT`，主窗口的 chip 重读。
+ * 一行一条「模型名片段 = 上限 tokens」；全清空 ⇒ 交一张空表。那台读不懂 ⇒ 文本框禁用、说那台写好的那一句（那台也拒写）。
+ * 交好之后广播 `SETTINGS_APPLIED_EVENT`，主窗口的 chip 重问。
  */
 import { emit } from "@tauri-apps/api/event";
-import { loadConfig, patchConfig, removeAt, setAt } from "../config";
 import { copyText } from "../copy-table";
 import { fold, setFoldSummary } from "../kit/fold";
-import { readContextLimits, type ContextLimitOverrides } from "../views/context-limit";
+import { readPrefs, setPrefs } from "../machine-prefs";
+import type { Origin } from "../ipc/origin";
 import { SETTINGS_APPLIED_EVENT } from "./events";
-import { sayFailure } from "../kit/detail";
+import { sayFailure, sayWithDetail } from "../kit/detail";
+
+/** 模型上限覆盖表：模型串**子串**（大小写不敏感）→ 上限 tokens。 */
+export type ContextLimitOverrides = Record<string, number>;
 
 /** 纯函数：覆盖表 ⇒ 文本框里的几行。 */
 export function limitsToText(t: ContextLimitOverrides): string {
@@ -40,8 +44,10 @@ export class ContextLimitsSection {
   private readonly box: HTMLTextAreaElement;
   private readonly status: HTMLElement;
   private open = false;
+  private readonly origin: Origin;
 
-  constructor() {
+  constructor(origin: Origin) {
+    this.origin = origin;
     const body = document.createElement("div");
     body.className = "ctx-limits-body";
     const intro = document.createElement("div");
@@ -64,7 +70,8 @@ export class ContextLimitsSection {
       onToggle: (o) => (this.open = o),
     });
     this.element.classList.add("ctx-limits");
-    void this.load();
+    this.element.dataset.anchor = "context-limits";
+    this.box.disabled = true;
   }
 
   /** 带目的地跳过来（主窗口［设上限］）：展开。 */
@@ -79,18 +86,25 @@ export class ContextLimitsSection {
     setFoldSummary(this.element, n > 0 ? copyText("contextLimits.editor.count", { n }) : "");
   }
 
+  /** 问那台（建好不问：机器页第一次可见时宿主调）。 */
   async load(): Promise<void> {
     try {
-      const cfg = (await loadConfig()) as Record<string, unknown>;
-      const t = readContextLimits(cfg["contextLimits"]);
+      const r = await readPrefs(this.origin);
+      const t = r.prefs.contextLimits;
       this.box.value = limitsToText(t);
       this.paintCount(t);
+      if (r.state === "unreadable") {
+        sayWithDetail(this.status, r.reason ?? copyText("machinePrefs.read.failed"), r.detail ?? "");
+        return;
+      }
+      this.box.disabled = false;
     } catch (e) {
-      sayFailure(this.status, copyText("contextLimits.editor.loadFailed"), e);
+      sayFailure(this.status, copyText("machinePrefs.read.failed"), e);
     }
   }
 
   async save(): Promise<void> {
+    if (this.box.disabled) return;
     const parsed = textToLimits(this.box.value);
     if ("badLine" in parsed) {
       this.status.textContent = copyText("contextLimits.editor.badLine", { n: parsed.badLine });
@@ -98,9 +112,9 @@ export class ContextLimitsSection {
     }
     const empty = Object.keys(parsed.ok).length === 0;
     try {
-      await patchConfig([empty ? removeAt(["contextLimits"]) : setAt(["contextLimits"], parsed.ok)]);
+      const r = await setPrefs(this.origin, { contextLimits: parsed.ok });
       this.status.textContent = empty ? copyText("contextLimits.editor.cleared") : copyText("contextLimits.editor.saved");
-      this.paintCount(parsed.ok);
+      this.paintCount(r.prefs.contextLimits);
       emit(SETTINGS_APPLIED_EVENT).catch((e: unknown) => console.warn("[context-limits] 通知不到主窗口：", e));
     } catch (e) {
       sayFailure(this.status, copyText("contextLimits.editor.saveFailed"), e);

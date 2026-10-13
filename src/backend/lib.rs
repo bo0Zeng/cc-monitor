@@ -913,7 +913,7 @@ pub const PROTO_VERSION: u32 = 1;
 ///
 /// p9x-changed-topic-view：推送收一种——账号清单 · 配置文件 · 额度 · 会话轮换 · 规则表 · 计划 · 任务清单七种「X 变了」帧换成一种 changed {topic, key?, rev?, body?}（主题表只住 stream/topic.rs，生成 Topic 给界面），额度账 · 规则表 · 一个会话的轮换 · 任务清单随帧带现算的小成品 body；盯盘收进 platform::watch_file 一处。
 /// 请求信封带 view {cells, omit}（帧面 Request · CLI --view），核心一个 project 统一投影；summaryOnly 删（折起那一行 ＝ omit blocks · results.*.patch）；history-facts 带 view 时应答多 prior（投影前整份，续算令牌）。
-/// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；轮换规则 CellError 与机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
+/// 账号清单成品逐号 selectable、meta.effectiveDefault（不带号时回落第一个）；机器表 MachineFault 带写好的 said；quota-read 每号带 fiveHour、读不出时顶上带一格。
 ///
 /// p9y-viewer-tz-skeleton：时刻按看的人那一台的钟——请求信封 · CLI `--tz` · attach 行带 tz（IANA 名，缺 · 认不得 ⇒ UTC），回包的「几点」「今天 / 昨天」与复制详情那一行都按它写；
 /// 推送帧里现算的小成品按这条连接 attach 带来的 tz 写；轮换规则盖上 rotation.tz、按规则自己的时区判；rotation-rule-save / rename 回 savedAtText；记录带 atMs。
@@ -982,7 +982,30 @@ pub const PROTO_VERSION: u32 = 1;
 /// -facts / -find / -index / -user-inputs / -turns / -annotate / -forget / -list / -last-accounts · sessions-needs · needs-answer · resolve · resync ·
 /// session-fork · tasks-list）换成 typed，会话事实那一串类型生成 TS；session-new-facts 形状跟着变。骨架落盘（足迹多一格骨架目录）；整份读改成按块读；
 /// 先读正在看的、判不出状态照实写「说不清」；桌面与手机共用一条重连循环；answerOff 多一种原因：别处起的会话、持着它的进程身上看不出挂过答题口。
-pub const BUILD_ID: &str = "p10j-typed-history";
+///
+/// p10k-typed-accounts：子命令集多 --manual-list · 通道 login-start / login-finish / login-cancel · manual-list；账号库 12 条换成 typed
+/// （accounts-add 回包删 loginCmd，accounts-list 每号多 label），hello 带的形状指纹表跟着变；握手那一行上限 8 KiB → 64 KiB。
+/// 同一版里再多 --session-say / -permission / -commands / -model 四条（子命令与通道各一，指纹行换成现打的：这一版还没发过）；
+/// session-new-facts 每家带名字与可选的模型 · 权限档。四条大回包分页（history-branch 入参换 BranchReq）· 写出按字节让位 ·
+/// session_branch 只发变的 · 骨架按块读写。子命令集再少 --ssh-config-aliases / --ssh-config-resolve（子命令与通道各一）；
+/// 拨号 · 部署 · 机器 · 总线 7 条 · 别名 4 条 ＋ powershell-policy-set 换成 typed，形状指纹表跟着变。文件管理读的 11 条 · 写的 15 条换成 typed
+/// （files-ls 多 dirs_only）；profiles-* 5 条 · drift-report 换成 typed；子命令集再少 --cells-catalog（子命令与通道各一）。
+/// 轮换第五版：rotation.json 第三版（带升级链）· 策略目录与策略文件新格式 · 中转改成 turn ＋ 节点缓存；第三版那 15 条 rotation-*
+/// （配置 · 会话副本 · 推演 · 现在就换）删了，换成 typed 的 rotation-facts / -try / -strategies / -view / -settings / -save / -revert /
+/// -use / -for-new / -temp / -use-now / -strategy-copy / -strategy-rename / -day-paint（子命令与通道各一）。
+/// 冻结格变了：线上 tap 帧删了，换成 typed 的 live_card 帧（活卡挪进后端 stream/live.rs）；逐字流也按 stream-watch 名单筛。
+///
+/// p10l-typed-hub：子命令集少 --mcp-server-put / --mcp-server-remove / --mcp-sync-plan（子命令与通道各一，没人调了）；
+/// 枢纽内层 8 条（skill 三条 · MCP 三条 · cc-bus 两条，两台后端之间那一跳）与 ext-hub-preview / -apply 换成 typed，
+/// hello 带的形状指纹表跟着变；某台回包解不出 ⇒ backend_differs「{机器} 后端版本不同」。
+/// 资产域那扇门按类型收发（Door 每一问一个方法，收发文件管理那一族的线上类型）。
+/// 轮换第五版界面跟上：子命令集多 --rotation-strategy-tz（子命令与通道各一，指纹行换成现打的：这一版还没发过）；
+/// rotation-view 多过去那一截 · 提示带文件路径与时区名 · baseRev，rotation-try / -day-paint · session-new 形状跟着变。
+/// 第 7 批：子命令集多 --prefs-read / --prefs-set · --machines-read / --machines-try / --machines-set（子命令与通道各一）；
+/// 偏好（启动命令 · 每号模型 · 上限表）住那台的 prefs.json、机器表住本机后端的 machines.json，推送主题多 machines。
+/// 足迹那一族 5 条（agent-home-check · first-run · chores-mark · last-seen-read / -write）换成 typed，「装到几台」每台多 detail；
+/// login-* 多 MCP 那一种（kind: mcp，经伪终端驱动 claude mcp login --no-browser），形状指纹表跟着变、子命令集不变。
+pub const BUILD_ID: &str = "p10l-typed-hub";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
@@ -1057,6 +1080,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-rollback",
     "--accounts-set-default",
     "--accounts-verify",
+    // 会话外的需手动清单（`manual-list`，typed）派生的 CLI 面：无入参。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--manual-list",
     // 只读查询面那八条帧命令**自动派生**出来的 CLI 面
     //（`cli_control::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
@@ -1103,8 +1128,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--place-verdict",
     // 这台后端的漂移账（帧面 `drift-report` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
     "--drift-report",
-    // 格目录（帧面 `cells-catalog` 的 CLI 面，自动派生）。⇒ `build_id_guard` 红是预期的（打版本号时统一 bump）。
-    "--cells-catalog",
     // 公钥推送两条（帧面 `pubkey-push` / `authorized-keys-add` 的 CLI 面，自动派生；远端那台被 `remote_ask::ask_json` 走的就是后一条）。
     "--authorized-keys-add",
     "--pubkey-push",
@@ -1127,25 +1150,25 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--plan-files",
     // 用某个号查一次额度（`inbound::REGISTRY` 的 `quota-probe`）派生的 CLI 面，入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--quota-probe",
-    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`）自动派生的 CLI 面；入参从 stdin 读。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // 规则表那四条（`--rotation-rules-read` · `-rule-save` · `-rule-rename` · `-rule-delete`）随第二版存储删了，换成配置 · 策略 · 会话副本那几条。
-    "--rotation-configs-read",
-    "--rotation-config-save",
-    "--rotation-config-rename",
-    "--rotation-config-delete",
-    "--rotation-default-set",
-    "--rotation-strategies-read",
+    // 换号那一族（`inbound::REGISTRY` 的 `rotation-*`，轮换第五版，typed）自动派生的 CLI 面；入参从 stdin 读。
+    // ⚠ 第三版那 15 条（配置 · 会话副本 · 推演 · 现在就换）随第五版删了，换成下面这些 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--rotation-facts",
+    "--rotation-try",
+    "--rotation-strategies",
+    "--rotation-view",
+    "--rotation-settings",
+    "--rotation-save",
+    "--rotation-revert",
+    "--rotation-use",
+    "--rotation-for-new",
+    "--rotation-temp",
+    "--rotation-use-now",
     "--rotation-strategy-add",
+    "--rotation-strategy-copy",
+    "--rotation-strategy-rename",
     "--rotation-strategy-delete",
-    "--rotation-strategy-try",
-    "--rotation-plan",
-    "--rotation-session-read",
-    "--rotation-session-open",
-    "--rotation-session-edit",
-    "--rotation-session-save",
-    "--rotation-session-revert",
-    "--rotation-session-set",
-    "--rotation-switch",
+    "--rotation-strategy-tz",
+    "--rotation-day-paint",
     "--exit-policy-set",
     // 上游选择那份凭据文件在这台机器上的写口（`inbound::REGISTRY` 的 `apikey-key-set`）自动派生的 CLI 面。
     // ⚠ 入参（含 key）**从 stdin 读**（`takes_input: true`），不收 argv —— argv 在同机任何用户的 `ps` 里都看得见。
@@ -1169,14 +1192,9 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--first-run",
     // 帧命令 `ccm-print` 的 CLI 面删了：`--ccm-*` 这族名字归 ccm 的诊断口，二进制叫 `ccm` 时
     //   按本表分流会把 `ccm --ccm-print` 抢进后端（`cli_control::cli_exposed` 排除 ccm 的词）。逼出 `BUILD_ID` bump（打版本号时统一做）。
-    // MCP 资产同步的判定（`inbound::REGISTRY` 的 `mcp-sync-plan`）派生的 CLI 面。只读，入参从 stdin 读。
-    // 加这一行会逼出一次 `BUILD_ID` bump（`build_id_guard`）—— 这里**不 bump**，打版本号时统一做。
     // 帧面 `mcp-read` 自动派生的 CLI 面（MCP 列表成品）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--mcp-read",
-    "--mcp-sync-plan",
-    // MCP 写两条 ＋ 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    "--mcp-server-put",
-    "--mcp-server-remove",
+    // MCP 推拉三条（`inbound::REGISTRY` 派生的 CLI 面）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--mcp-sync-source",
     "--mcp-sync-preview",
     "--mcp-sync-apply",
@@ -1193,6 +1211,13 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--profiles-impact",
     "--profiles-bases",
     "--profiles-write",
+    // 这台的偏好（`prefs-read` / `prefs-set`，第 7 批第一题）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--prefs-read",
+    "--prefs-set",
+    // 这一端的机器表（`machines-read` / `-try` / `-set`，第 7 批第 4 件）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--machines-read",
+    "--machines-try",
+    "--machines-set",
     // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--powershell-policy-set",
     // 资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
@@ -1245,7 +1270,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
     // ⚠ **如实登记一条代价**：因此「写这一面只从帧面进来」这句话**做不到**，
     //   两个宿主共用同一个 `run`（「一份代码两种宿主」正是这一形）。
-    //   写面的「窄」因此**不靠命令面**，而靠写句柄：`Face` 只递给命令表文件管理那一族（`Run::BlockingFace`），
+    //   写面的「窄」因此**不靠命令面**，而靠写句柄：`Face` 只递给命令表文件管理那一族（typed 的 `Facing` 那一档），
     //   判的是**谁拿得到句柄**，不是谁发得出命令。
     "--files-create",
     // 同一面的另外五条。登记理由与上一行逐字相同。
@@ -1345,13 +1370,16 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-new",
     "--session-new-dir",
     "--session-new-facts",
+    // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--session-commands",
+    "--session-model",
+    "--session-permission",
+    "--session-say",
     "--sessions-start",
     "--sessions-stop",
     "--sessions-where",
-    // `ssh-config-*` 三条帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    "--ssh-config-aliases",
+    // `ssh-config-import` 帧命令自动派生的 CLI 面（理由同 `--tasks-list`）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--ssh-config-import",
-    "--ssh-config-resolve",
     // `tasks-list` 帧命令**自动派生**出来的 CLI 面（`cli_control::cli_exposed`），
     // 登记理由同 `C1` 那一段：不在表里 ⇒ `is_query_mode` 当未知 flag ⇒ 静默进流模式。
     // ⚠ 新子命令 ⇒ `build_id_guard` 红是预期的，BUILD_ID 打版本号时统一 bump。
@@ -1835,6 +1863,48 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         rationale: "与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
+        family: "wire-commands",
+        capability: "session-say",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "往会话说一句：送字那一半就是 `terminal-input` 那一条（`send-keys`，声明了 `no_tmux`）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "session-permission",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "会话开着时切权限档：按键走 `terminal-input` 那一条、等重画用 tmux 控制模式客户端（声明了 `no_tmux`）⇒ 同那两条的理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "session-model",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "会话开着时换模型：送那一行走 `terminal-input` 那一条（`send-keys`，声明了 `no_tmux`）⇒ 同那一条的理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--session-model",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `session-model` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--session-permission",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `session-permission` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--session-say",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `session-say` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
         family: "cli-subcommands",
         capability: "--terminal-input",
         target: Target::Windows,
@@ -2189,9 +2259,9 @@ pub const EMITS: &[&str] = &[
     // 测试连接那一趟的进度与结局（`dial/probe.rs` 真发，登记 = 承诺真发）。只在 `remote-probe` 在跑时出现；
     // 旧客户端不认 ⇒ 忽略（additive）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "probe",
-    // 中转抄出来的 SSE 事件（`tap::attach` 的接收端经 `writer_task` 真发，登记 = 承诺真发）。
-    // 只有进程里住着中转的那个后端（本机常驻）才会有；旧客户端不认 ⇒ 忽略（additive）。
-    "tap",
+    // 活卡（中转抄出来的流在 `stream::live` 拼成的成品，`tap::attach` 那一路经 `writer_task` 真发，登记 = 承诺真发）。
+    // 只有进程里住着中转的那个后端（本机常驻）才会有；只发这条流名单里的会话。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
+    "live_card",
     // 一个会话的运行表（watcher 读子运行记录、表变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
     "session_runs",
     // 一份会话记录的主线外清单（watcher 逐行维护链索引、清单变了真发，登记 = 承诺真发）。⚠ hello 字节变了 ⇒ 发版时 bump `BUILD_ID`。
@@ -2235,6 +2305,8 @@ pub const TZ_FLAG: &str = "--tz";
 
 /// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
 pub use common::time::Tz;
+/// 一条分页应答 / 一帧 `session_branch` 至多多少字节（写出方向写完这么多应答就先让实时帧走：`main.rs::writer_task`）。
+pub use faces::read_face::REPLY_PAGE_BYTES;
 
 /// 一行线上字里复制详情那一行时刻的空位，按看的那一台的时区填好（流的写者对每一行调它；本体 `common::time::fill_at`）。
 pub fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {

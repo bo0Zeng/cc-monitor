@@ -124,12 +124,13 @@ impl StartOutcome {
 
 /// 握手那一行（hello / attach 应答）的字节上限。
 ///
-/// hello 帧本机实测 ~1.1 KB（能力集 + emits + commands 三张表）。8 KiB 给了 7 倍余量，
+/// hello 帧本机实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，typed 命令越多越长；
+/// 8 KiB 那一版在文件管理写的那几条换成 typed 时被撑破）。64 KiB 给了 7 倍余量，
 /// 同时把「对端一直发字节不发换行」这条路堵死 —— 这条连接的对端是**同机任何进程**，
 /// 不是我们自己的子进程，不能假设它讲道理。
 /// 超限语义：**拒收 + 出声**（不静默截断成一行「看起来对」的 JSON）。
 /// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
-pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
+pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 64 * 1024;
 
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
 /// 两边同一个函数。
@@ -845,6 +846,8 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
         "本机入方向通道已登记（常驻载体）：origin={}",
         crate::inbound_client::LOCAL_ORIGIN
     );
+    crate::prefs_migration::after_local_ready();
+    crate::machine_table::refresh();
     tauri::async_runtime::spawn(async move {
         use crate::stream_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
         let mut reader = tokio::io::BufReader::new(rd);
@@ -1552,30 +1555,17 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), Said> {
 /// - 中转端口**显式交**：注入侧（`payload::RELAY_PORT`）与后端里 bind 的是同一个值；后端那一侧没有缺省值。
 /// - 家：只在本进程设了 `CCM_DATA_DIR`（隔离跑）时交那一格，原值；没设 ⇒ 缺席，两侧都按家目录推 `~/.cc-monitor`。
 ///   凭据文件 · 历史注解都住家里，由那台后端按家自己推，这里不交任何「另指位置」的路径。
-/// - Claude 目录：用户在设置里填了覆盖 ⇒ 原值交成 `CLAUDE_CONFIG_DIR`（后端只认这一个名字，解析只在后端那一处）；
-///   没填 ⇒ 不交、不改，后端照它自己那条规矩解析（`CLAUDE_CONFIG_DIR` → `~/.claude`）。门牌与它无关。
+/// - 数据目录：不交。设置里那一格住本机后端的 `prefs.json`（`agentHomes`），后端起来时自己读、自己交成那一家的环境变量。
 pub(crate) fn backend_env() -> Vec<(String, String)> {
-    backend_env_from(
-        &|k| std::env::var(k).ok(),
-        crate::config::claude_dir_override(),
-    )
+    backend_env_from(&|k| std::env::var(k).ok())
 }
 
-/// 后端认的 Claude 目录那个名字（后端 `agents/claudecode/paths.rs::CONFIG_DIR_ENV`，判据对拍）。
-pub(crate) const CLAUDE_DIR_ENV: &str = "CLAUDE_CONFIG_DIR";
-
-/// [`backend_env`] 的本体（环境取值器与设置里的覆盖都注入，判据不改进程环境、不读真配置）。
-pub(crate) fn backend_env_from(
-    get: &dyn Fn(&str) -> Option<String>,
-    claude_dir: Option<std::path::PathBuf>,
-) -> Vec<(String, String)> {
+/// [`backend_env`] 的本体（环境取值器注入，判据不改进程环境）。
+pub(crate) fn backend_env_from(get: &dyn Fn(&str) -> Option<String>) -> Vec<(String, String)> {
     let [port_env, home_env] = HANDED_ENVS;
     let mut envs = vec![(port_env.into(), relay_route_core::PORT.to_string())];
     if let Some(v) = get(home_env).filter(|v| !v.trim().is_empty()) {
         envs.push((home_env.into(), v));
-    }
-    if let Some(d) = claude_dir {
-        envs.push((CLAUDE_DIR_ENV.into(), d.display().to_string()));
     }
     envs
 }

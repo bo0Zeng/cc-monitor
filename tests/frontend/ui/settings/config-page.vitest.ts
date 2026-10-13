@@ -12,7 +12,6 @@ vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../../test-support/chan-fake";
 import { buildConfigPage } from "../../../../src/frontend/ui/settings/config-page";
 import { CONFIG_SHOWN_EVENT, SETTINGS_GO_EVENT } from "../../../../src/frontend/ui/settings/events";
-import { decodeAccountMcpView } from "../../../../src/frontend/ui/account-ops";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 
 const VIEW = {
@@ -201,13 +200,5 @@ describe("别名与配置文件 · 账号与扩展", () => {
     document.addEventListener(SETTINGS_GO_EVENT, (e) => got.push((e as CustomEvent).detail), { once: true });
     byText(l, copyText("cfgPage.ext.go"))!.click();
     expect(got).toEqual([{ page: "ext" }]);
-  });
-
-  it("成品形状严格收：多一个键 / 缺 sync / 选项缺一格 ⇒ 读不懂", () => {
-    expect(decodeAccountMcpView(VIEW)).not.toBeNull();
-    expect(decodeAccountMcpView({ ...VIEW, extra: 1 })).toBeNull();
-    const { sync: _s, ...noSync } = VIEW;
-    expect(decodeAccountMcpView(noSync)).toBeNull();
-    expect(decodeAccountMcpView({ ...VIEW, conflicts: [{ name: "x", choices: [{ from: null, holders: [] }] }] })).toBeNull();
   });
 });

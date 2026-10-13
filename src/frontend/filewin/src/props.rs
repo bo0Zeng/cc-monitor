@@ -27,33 +27,17 @@ pub struct Stat {
 
 /// 一趟 `files-stat` 的 `data` → [`Stat`]。`path` 解不出来就是错（不猜）。
 pub fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
-    let path = d
-        .get("path")
-        .and_then(super::find::decode_path)
-        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
-    let text = |v: Option<&serde_json::Value>| -> Option<String> {
-        let v = v?;
-        if v.is_null() {
-            return None;
-        }
-        super::find::decode_path(v).map(|b| String::from_utf8_lossy(&b).into_owned())
-    };
+    let d = super::source::reply_of::<cmd_wire::files::StatReq>(d.clone())
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
     Ok(Stat {
-        path: String::from_utf8_lossy(&path).into_owned(),
-        size: d
-            .get("size")
-            .and_then(serde_json::Value::as_u64)
-            .unwrap_or(0),
-        mtime_full: d
-            .get("mtime_full")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string),
-        mode: super::writeops::mode_of(d),
-        owner: d
-            .get("owner")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string),
-        link_target: text(d.get("link_target")),
+        path: String::from_utf8_lossy(&d.path.0).into_owned(),
+        size: d.size,
+        mtime_full: d.mtime_full,
+        mode: d.mode.filter(|m| *m <= 0o7777),
+        owner: d.owner,
+        link_target: d
+            .link_target
+            .map(|b| String::from_utf8_lossy(&b.0).into_owned()),
     })
 }
 

@@ -1,147 +1,77 @@
 ---
 name: rotation
-description: cc-monitor 的账号轮换怎么拼、怎么写策略。轮换 ＝ 引擎（事实 ＋ 机械动作）＋ 加载的策略（全部偏好，Rhai 脚本，声明参数、算优先级）＋ 有名字的配置（一份策略的参数值）；会话打开配置的副本。讲后端有哪些积木和命令、策略文件的接口与共用小函数 `lib`、怎么试跑和推演、怎么装进加载路径、怎么写成配置给会话打开。不存策略、不跑策略程序。用在——「写一份轮换策略」「按某某办法换号」「改轮换配置」「这个会话为什么换到这个号」「试跑 / 推演一下」「装一份策略」。
+description: cc-monitor 的账号轮换（第五版）怎么用、怎么写策略。后端给积木（每个号的事实 · 热换 · 停发 · 什么时候叫策略来判 · 推演 · 策略出错时照号列表）；「该用哪个号、什么时候换」全在策略里：一份普通的 Rhai 文件，文件名是标题，开头的注释是说明，接着是头（自己的设置和设置的声明），代码里一个 `decide(ctx)`。讲命令、策略文件的接口与积木库 `lib`、怎么试跑和推演、怎么装。不存策略、不常驻跑东西。用在——「写一份轮换策略」「按某某办法换号」「改轮换的设置」「这个会话为什么换到这个号」「试跑 / 推演一下」「装一份策略」。
 ---
 
-# 账号轮换：积木 · 策略 · 配置
+# 账号轮换：积木 · 策略
 
-一句话：**界面上能调的每一样，都是此刻这份策略的参数。** 引擎只管事实和机械动作；偏好（到多少换、时段、备用、延迟、都到上限后停不停、换不换回）一样都不归引擎。
+一句话：**后端没有任何换号的想法。** 权重、权重容差、强制切换阈值、用量上限、耗尽后启用、启用延迟、单次用量上限，都是策略文件里的设置，由策略自己的代码解释（积木库 `lib` 只给算上限 · 余量 · 排先后这类小函数）。没有随包策略：策略文件都是用户自己的（自己写的 · 让 AI 照这份 skill 写的 · 升级时从旧配置换出来的）；没选策略的会话不轮换，只用开会话的号。
 
-本 skill 不存策略、不替用户存策略副本、不常驻跑任何东西；动 `rotation.json` 只经下面的命令。
+本 skill 不存策略、不替用户存草稿、不常驻跑任何东西；动 `rotation.json` 与策略目录只经下面的命令。命令都经 `~/.cc-monitor/bin/ccm -- --<命令>`，参数从 stdin 读一段 JSON，stdout 一行 JSON；形状全表见 `src/doc/IPC-COMMANDS.md`。
 
-## 1. 它是什么
+## 1. 后端给什么
 
-| 层 | 有什么 |
-|---|---|
-| 引擎（后端） | 事实：每号每窗口用量 · 重置 · 被拒 · 用满 · 超额在兜 · 要重新登录 · 在用号的用速 · 别的会话钉在哪。机械动作：拼上下文 · 沙箱里跑策略（出错照内置策略 1 排）· 叠手动调整 · 从头往下挑 · 热换 · 没号可挑就停发 · 推演 · 存策略的备忘 |
-| 策略（`.rhai` 文件） | `meta()` 声明参数；`priority(ctx)` 回每号的优先级与为什么。不碰文件网络、没有钟；不回「换到谁」 |
-| 配置（有名字） | 用哪份策略 · 参与的号（每行写全这份策略的每号参数）· 整份参数 · 新加的号缺省 |
-| 会话 | 打开的副本 `config: {id, rev, copy?}` · 在用的号 · 手动调整 · 备忘 · 换号记录 |
+- **事实**（`--rotation-facts`）：每个号两窗（5 小时 · 7 天）的用量 · 重置时刻 · 用量涨得多快（额度账里量出来的，量不到就空）· 被拒到几点 · 登录 · 超额。
+- **一判**：策略交回「此刻照什么先后用号」，后端取第一个事实上发得出去的号；跟此刻用的不同就热换；一个都没有就停发（回那一家的「用满」回包）到策略说的时刻。
+- **什么时候判**：只在节点上判，结论缓存到下一个节点：被拒 · 重置 · 外来的事实变了 · 设置改了 · 策略约的时刻（`wake.at`）· 策略约的读数（`wake.when`）。节点之间一发都不叫策略。
+- **用户拖出来的顺序**：到策略说该换的那一刻先用它（策略此刻不列的跳过）。
+- **策略出错时**：策略编不过 · 跑出错 · 超时 · 回的形状不对 ⇒ 此刻的号发得出去就照用，否则照设置里号列表的先后取第一个发得出去的；界面上提示「策略出错」带行号。
 
-一判：拼 `ctx` → 调 `priority(ctx)` → 取 `@memo` 存回会话 → 排（`p` 大的先 · 同分按号 id · `()` 最后、按 `back` 早的先）→ 叠手动调整（热换的号最前，拖过的号放回原位）→ 从头往下取第一个「事实上能用 · 接得上 · `p` 不是 `()`」的号 → 不是在用的号就换；一个都没有就停发。
+## 2. 命令
 
-## 2. 读此刻的事实
+- 读：`--rotation-strategies`（策略目录：每份的 `id`（＝ 文件名 ＝ 标题）· 说明 `description`（文件开头的注释）· 版本 `rev` · 读不懂的原因 · 哪几个活会话在用 · 新会话用哪份）· `--rotation-view {target: {sid} | {strategy, settings?}, hours?}`（一个会话或一份策略此刻的设置 · 声明 · 每个号的事实 · 这一判 · 推演 · 提示）。
+- 写：`--rotation-settings {target: {sid} | {strategy}, settings, ifRev?}`（整份设置，照声明校验；会话 ⇒ 存成草稿）· `--rotation-save {target, settings?, ifRev, as?: {name}}`（只重写头那一块，说明和代码一个字不动；`as` ⇒ 另存成文件名 `name`、会话改用它）· `--rotation-revert {sid}` · `--rotation-use {sid, strategy | null, discard?}`（`null` ⇒ 这个会话不再轮换）· `--rotation-for-new {strategy | null}`（`null` ⇒ 新会话不轮换，这是默认） · `--rotation-temp {sid, op: {place: {account, at}} | "clear"}` · `--rotation-use-now {sid, account}`。
+- 策略文件：`--rotation-strategy-add {source, name}`（存成 `name.rhai`）· `--rotation-strategy-copy {id, name}`（另起一个文件名，内容不改）· `--rotation-strategy-rename {id, name, ifRev}`（换文件名，指它的会话与「新会话用」跟着改）· `--rotation-strategy-delete {id}`（有活会话在用 · 是新会话用的那份 ⇒ 不删） · `--rotation-strategy-tz {id, tz, ifRev}`（只把设置块里的 `tz` 换成这个 IANA 名，说明与代码不动）。名字：1–32 字，字母数字（含中文）与 ` -_·()（）+`；同名已有 ⇒ `bad_args`。
+- 试跑：`--rotation-try {source, settings?, start?, current?, temp?, hours?, useNow?}`：拿一份原文照此刻的事实判一次、往后推演，不写盘不换号。
+- 算术：`--rotation-day-paint {segs, from, to, v}`：24 小时条上刷一段（`v: null` 删那一截）。
 
-都经 `~/.cc-monitor/bin/ccm -- --<命令>`，参数从 stdin 读一段 JSON；给人看加 `--text`，时刻按 `--tz`（看的人就在这台 ⇒ `--tz local`）。
+## 3. 策略文件
 
-- `--quota-read`：每号每窗口用量与重置时刻 · 登录 · 被拒。
-- `--rotation-session-read {sids}`：每个会话的 `rows`（有效优先级的先后，第一行在用；每行 `why` 是写好的那一句，`skip` ＝ 此刻不挑）· 打开的配置 · 描述 · `blocked`（停发：最早谁几点回来）· `strategyError`（策略出错，此刻照内置策略 1 排）· `needs`（轮换文件读不懂：需手动，引擎照上一份读懂的接着用）。
-- `--rotation-plan {sid | config | draft, view: 12h | 24h}`：推演，往后怎么换（此刻之后的段都是估的 `est`）。
-
-## 3. 配置
-
-形状：
-
-```json
-{"name": "默认配置 2", "strategy": "2",
- "accounts": [
-   {"start": true, "params": {"line": 90, "slots": [], "mode": "normal"}},
-   {"rest": true,  "params": {"line": 90, "slots": [], "mode": "normal"}},
-   {"id": "lab",   "params": {"line": 99, "slots": [{"at": "17:00-02:00", "line": 80}], "mode": "normal"}}
- ],
- "params": {"grab_min": 30, "grab_left": 30, "skip": 2, "tired_7d": 10, "delay": 0, "all_out": "stop"},
- "acctInit": {"line": 90, "slots": [], "mode": "normal"}}
-```
-
-- `{"start": true}` ＝ 起会话的号；`{"rest": true}` ＝ 账号库里其余的订阅号（没在别的行点名的），都照这一行；点名的号单写一行。
-- 每行写全这份策略声明的每号参数；`acctInit` 只在加新号时抄过去。描述是后端写的（`text`），别自己拼。
-- 命令：`--rotation-configs-read` · `--rotation-config-save {id?, ifRev?, config, force?}`（参数照声明逐格校验，错的格回 `refused{errors:[{cell, code, said}]}`；`ifRev` 对不上 ⇒ `conflict`）· `--rotation-config-rename` · `--rotation-config-delete`（有会话开着 · 是本机默认 ⇒ 不删）· `--rotation-default-set {id}`。
-
-## 4. 改一个会话
-
-- `--rotation-session-edit {sid, set: [{acct?, k, v}], add?, drop?, strategy?}`：改这个会话打开的那份的副本。`acct` 缺 ＝ 整份参数；`@start` · `@rest` · `@init`（新加的号缺省）· 号 id（`rest` 底下的号 ⇒ 给它单写一行）。改回原样 ⇒ 副本自己没了。
-- `--rotation-session-save {sid, ifRev, as?: {name?}, force?}`：写回（撞版本 ⇒ `conflict`，两边各改了哪几格）或另存为（新 id，本会话改开它）。
-- `--rotation-session-revert {sid}` · `--rotation-session-open {sid, config, discard?}`（有没存的改动 ⇒ 先回 `dirty`）。
-- 改了一个会话，别的会话不受影响；要它们也照这样，就保存。
-
-## 5. 写策略
-
-**语言**：Rhai（手册 https://rhai.rs/book/）。能用：变量 · `if` · `for` · 函数 · 数组 · 表 · 闭包 · `?.` · `??`。
-
-**四个函数**：
-
-| 函数 | 回 |
-|---|---|
-| `meta()` | `#{format: 1, name?, ordered?, params: [声明…], acct_params: [声明…]}` |
-| `texts()` | `#{zh: #{键: 句}, en: #{…}}`：`label` · `hint` · `describe` · `why` 用到的每个键两种语言都要有；`choice` 的每个选项要有 `<label>_<选项>`（`<label>_<选项>_h` 可选，是灰字） |
-| `describe(params, accounts)` | 片段数组：`"键"` 或 `#{k: "键", 参数…}`；常接 `lib::describe_common(params, accounts)` |
-| `priority(ctx)` | `#{号: #{p: 数 \| (), why: "键" \| #{k, …}, back?: 时刻}, "@memo"?: 表}` |
-
-**参数声明** `#{k, type, init, label, of?, min?, max?, hint?}`，`type` 七种，界面照它生成格：
-
-| `type` | 值 | 格 |
-|---|---|---|
-| `bool` | `true` · `false` | 勾选框 |
-| `minutes` · `points` · `percent` | 数 · `()` | 数字格 ＋ 单位；`init` 是 `()` 的可空着 |
-| `choice` | `of` 里的一个 | 单选（多了下拉） |
-| `line` | 数 · `#{"5h": n, "7d": n}` · `()` | 用到 n % · 用满才换 · 5h、7d 分开 |
-| `slots` | `[#{at: "HH:MM-HH:MM", line: n}]` | 时段表，`0` ＝ 这段不用 |
-
-`ordered: true` ⇒ 配置里号的先后是这份策略的参数（`ctx.accounts` 按写下的先后；不 `ordered` 的按号 id）。
-
-**约定的参数名**（`lib` 与合图认得，同名必须同类型）：每号 `line`（`line`）· `slots`（`slots`）；整份 `delay`（`minutes`）· `all_out`（`choice` `["stop", "go"]`）。用别的名字也能跑，只是共用小函数和图上的到线段认不得。
-
-**`ctx`**（只有事实 ＋ 参数值）：`now`（unix 秒）· `clock`（配置时区的本地钟，一天里第几分钟）· `current`（在用的号）· `stint: {since, used}`（换进在用号以来卡人那一窗用了几点）· `rate`（在用号最近 30 分的涨速，点/分；没根据 ⇒ `()`）· `memo`（上一判回的 `@memo`）· `params` · `accounts: [{id, kind: "sub" | "api", ok, why_not, back, w5h: {open, used, resets}, w7d, others, params}]`。
-`ok` 只是事实（没被拒 · 没用满 · 不在超额上 · 登录着），**线要自己判** ⇒ 用 `lib::usable`。
-
-**共用小函数 `lib`**（随引擎走，只读，`--rotation-strategies-read` 的 `lib.source` 是源码）：
-
-| 函数 | 回 |
-|---|---|
-| `usable(a, ctx)` | `#{ok, why, back, left}`：事实 ＋ 这个号的 `line` · `slots`；`why` 是 `@refused` · `@full` · `@overage` · `@login` · `@line` · `@off` |
-| `checks(ctx)` | `#{号: usable(…)}` |
-| `line_now(a, ctx)` · `left(a, ctx)` | 此刻对它生效的线 · 离线还剩几点 |
-| `in_slot(at, clock)` · `slot_now(a, ctx)` | 时段判断，跨零点照算 |
-| `delay(ctx, out, mins)` | 换号前延迟：有号排到在用的上面，连着 `mins` 分才让它上去；备忘写进 `out["@memo"].delay` |
-| `keep_going(ctx, out)` · `all_out(ctx, out)` | 都到上限后接着用：一个肯挑的号都没有时，把事实上还能用的号排上，在用的先 |
-| `describe_common(p, accounts)` | 描述里的号数 · 线 · 时段 · 延迟 · 都到上限后 |
-
-**最常见的骨架**：
+`~/.cc-monitor/strategies/<标题>.rhai`：**标题就是文件名**（去 `.rhai`，也是 id）。文件分三段：
 
 ```rhai
-fn priority(ctx) {
-  let p = ctx.params;
-  let ck = lib::checks(ctx);
-  let out = #{};
-  for a in ctx.accounts {
-    let u = ck[a.id];
-    if !u.ok { out[a.id] = #{ p: (), why: u.why, back: u.back }; continue; }
-    out[a.id] = #{ p: 1000 - a.w5h.used.to_int(), why: #{ k: "w_rest", n: a.w5h.used } };
-  }
-  if ctx.current in out && out[ctx.current].p != () {
-    out[ctx.current] = #{ p: 9000, why: "w_keep" };   // 还能用就不换
-  }
-  out = lib::delay(ctx, out, p.delay);
-  lib::all_out(ctx, out)
-}
+// 换号时按权重排序，权重相差在权重容差以内算同权，同权按账号列表顺序。
+// 在用账号未达用量上限时，重置早于它、且权重超出它强制切换阈值的账号立即切入。
+
+/*--- rotation
+{ "format": 5, "tz": "Asia/Shanghai",
+  "settings": { "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]}, "close": 25, "force": 25,
+                "accounts": [{"start": true}, {"id": "lab"}, {"id": "team", "fallback": true, "delay": 30}] },
+  "form": [ {"key": "caps", "kind": "daySegments", "scope": "each", "inherit": true, "label": {"zh": "用量上限"},
+             "help": {"zh": "账号各窗口用量的上限，可按时段分段"}, "windows": ["5h", "7d"], "default": 100},
+            {"key": "close", "kind": "percent", "scope": "all", "label": {"zh": "权重容差"}, "default": 0},
+            {"key": "force", "kind": "percent", "scope": "all", "nullable": {"zh": "不强制切换"}, "label": {"zh": "强制切换阈值"}, "default": null},
+            {"key": "fallback", "kind": "toggle", "scope": "each", "label": {"zh": "耗尽后启用"}, "default": false},
+            {"key": "delay", "kind": "minutes", "scope": "each", "label": {"zh": "启用延迟"}, "default": 0} ] }
+---*/
+
+fn weight(a, left, mins) { if mins == () { 0.0 } else { 300.0 / mins } }
+fn decide(ctx) { … }
 ```
 
-- `p` 怎么给：数大的先，`()` ＝ 此刻不挑。分档（9000 / 5000 / 3000 …）避免交叠。「在用的还能用就不换」＝ 给它高档；「先等」＝ 给 `()` 带 `back`。
-- 要记到下一判的：写 `out["@memo"]`，下一判从 `ctx.memo` 读（引擎替策略存，策略本身不写任何东西）。
-- 字：`why` 写键 ＋ 参数；参数名 `at` · `*_at` 是时刻（引擎按看的那一台的时区写），`acct` 是号，`then` 是接着的一句，别的数字取整写出。
-- 坑：`default` · `use` 是保留字（声明里缺省值的键叫 `init`）；闭包里别同时引用 `ctx` 又遍历 `ctx.accounts`（报 Data race；先取到局部变量，或把 `ctx` 当参数传给函数）；整数没有 `.round()`；不确定的格先判 `== ()`。
-- 上限：一判 20 万次操作 · 调用深度 16 · 字符串 4 KiB · 数组 1024 · 表 256（同样的输入停在同一处）；另有 1 秒墙钟作保险；一份文件至多 64 KiB。超了 / 出错 / 回的形状不对 ⇒ 这一判照内置策略 1 排，面板照实说哪一行。
-- 范例：内置三份（`--rotation-strategies-read` 的 `source`）—— 1：照写下的先后 ＋ 用法（普通 / 优先 / 备用）＋ 延迟 ＋ 用备用号前先等；2：按重置早晚先用；3：快到期的先用、在用的快用完先用完。
+- **说明**：文件最开头连着的 `//` 行（到第一行不是 `//` 的为止；行首的 `// ` 去掉，空的 `//` 行分段）。界面只显示它、不改它。只讲怎么排、怎么换，**不写设置的值**（值在设置里，界面一改就旧了）。
+- **头**（`/*--- rotation … ---*/`）：`format` · `tz` · `settings` · `form`。头里**没有** `name` · `line`（写了 ⇒ 读不懂、形状不对）。后端存设置只重写这一块，说明和代码一个字节不动。
+- `settings`：这份策略自己的设置，形状它自己定；号列表固定在 `settings.accounts`（`{start: true}` ＝ 开会话用的号），**号列表的先后就是默认优先级**（权重同权时照它）。
+- `form`：设置怎么画、怎么校验。格的种类：`percent` · `minutes` · `toggle` · `choice` · `daySegments`；`scope: all` 画在总体设置，`each` 画在每个号下面（`inherit: true` ＝ 号没另设就跟总体）。`label` 用短的正式名字（用量上限 · 权重容差 · 强制切换阈值 · 耗尽后启用 · 启用延迟 · 单次用量上限），定义写在 `help` 里；不用第二人称，不写讲结构的字。
+- `ctx`：`now` · `clock`（策略时区的本地分钟）· `start` · `current` · `settings` · `memo`（上一判交的，原样带回）· `accounts[{id, pos, kind, sendable, used, resets, refusedUntil, rate}]`。没有文件 · 网络 · 钟 · 随机数。
+- `decide(ctx)` 交回 `#{order: [号…], why: #{号: "一句"}, hold_until?, wake: #{at?, when: [#{acct, w, used_at_least}]}, memo?}`。后端照 `order` 第一个事实上发得出去的号用：**在用的号排第一就是不换**。
 
-## 6. 试跑
+**换谁、什么时候换**（常见的写法，全在策略自己的代码里）：
+- 用满了换谁：每个号算一个权重，从高到低；较高的超出较低的不到权重容差就算同权，照号列表先后。
+- 强制切换阈值：在用的号还没到用量上限时，只有重置比它早、权重又超出它这一比例的号才直接换过去（后重置的号剩的不会先作废，不必抢；这样也不会来回换）。不设 ⇒ 用满才换。
+- 耗尽后启用：其余的号都没额度时才用它，其余的号一有额度就换走；启用延迟 ＝ 其余的号都没额度满这么久才用；单次用量上限 ＝ 每次换过来 5 小时用量涨到这么多就停用，直到其余的号恢复。起点和记账放在 `memo` 里。
+- 权重会随时间、随用量变：开着强制切换阈值时，算出它几时超过在用的号，用 `wake.at`（时刻）· `wake.when`（读数）约下次来问；后端只在这些节点上判。
+- 一个都没有：`order` 给空 ⇒ 停发到 `hold_until`。
 
-- `--rotation-strategy-try {source | id, config | draft | sid}`：按此刻的事实跑一次，回每号的 `p` · 为什么 · `back` · 会挑谁 · 备忘 · 用了几次操作；不写盘不换号。`source` 是现编的全文（不用先装）。
-- `--rotation-plan {draft, source, view}`：照草稿和现编的策略往后推演。
-- 验一个例子：照用户说的那几步各造一份草稿（或换一个会话）跑，看第一行与每行的为什么是不是用户要的。
+**积木库 `lib`**（只算、不决定，跟哪种权重都无关）：
+- `cap_at(segs, clock)` · `next_edge(segs, clock)` · `segs_of(s, r, w)`：分段上限、下一条边界、号另设还是跟总体；
+- `cap_of(s, r, w, lift, clock)` · `left_of(s, r, a, lift, clock)` · `has_quota(s, r, a, lift, clock)`：此刻上限、余量（两窗取小）、有没有额度；`lift` ＝ 放开软上限（`capKind: soft` 的号当 100）；
+- `rank(ids, pri, close)`：按权重排先后，`close`% 以内同权、照 `ids` 先后；
+- `delay_start(prev, holds, now)` · `delay_over(start, minutes, now)`：启用延迟的起点（存进 `memo`）、到点没有；
+- `hold_from(s, rows, accts, ids, now, clock, extra)`：一个都没有时停到几点。
 
-## 7. 装进加载路径
+## 4. 怎么装、怎么试
 
-写 `~/.cc-monitor/strategies/<id>.rhai`，或 `--rotation-strategy-add {id, source}`（读得懂才写；与内置同 id 不收）。`--rotation-strategies-read` 看读没读懂：读不懂的带 `error: {line, col, msg, text}`。删：`--rotation-strategy-delete {id}`（有配置在用 · 内置的删不了）。
-
-## 8. 写成一份配置给会话打开
-
-`--rotation-config-save {config: {name, strategy: "<id>", accounts, params, acctInit}}` → `--rotation-session-open {sid, config: <回的 id>}`；所有新会话都用 ⇒ `--rotation-default-set {id}`（已开着的会话不跟着换）。
-
-## 9. 手动调整
-
-`--rotation-session-set {sid, place: {account, at}}`（`at = 0` ＝ 现在就换过去，不出任何提示）· `{sid, refresh: true}`（清掉手动调整与备忘，照策略重算）· `--rotation-switch`。跟会话走、不进配置、不算改配置。
-
-## 10. 不做的
-
-- 不替用户存策略副本；不常驻跑任何东西；动 `rotation.json` 只经命令。
-- 界面与手机不跑策略，只照后端回的显示。
+1. 写好原文，`--rotation-try {source}` 看这一判和推演对不对；
+2. `--rotation-strategy-add {source, name}` 装进策略目录（文件名 ＝ 标题）（读不懂 ⇒ `bad_strategy` 带行号）；
+3. 会话改用它：`--rotation-use {sid, strategy}`；新会话都用：`--rotation-for-new {strategy}`。

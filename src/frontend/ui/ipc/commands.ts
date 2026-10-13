@@ -15,7 +15,6 @@
  */
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import type { Said } from "../generated/Said";
-import type { ConfigPatched } from "../generated/ConfigPatched";
 
 /**
  * 壳命令失败（Rust `detail::Said`：一句 ＋ 复制详情那几行）⇒ 一个 `Error`：`message` 与 `String(e)` 都是那一句，
@@ -58,7 +57,6 @@ import type { WatchedSession } from "../generated/WatchedSession";
 import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { TerminalChoices } from "../generated/TerminalChoices";
 import type { ConfigEdit } from "../generated/ConfigEdit";
-import type { MachineFault } from "../generated/MachineFault";
 import type { DataPathsResponse } from "../generated/DataPathsResponse";
 import type { DiagnosticsConfig } from "../generated/DiagnosticsConfig";
 import type { DiagnosticsReport } from "../generated/DiagnosticsReport";
@@ -134,9 +132,7 @@ export const commands = {
    * 补丁的形状由生成物 `ConfigEdit` 钉（Rust `config.rs::ConfigEdit`）；值本身仍是不透明 JSON（见 `load_config`）。
    */
   patch_config: (args: { edits: ConfigEdit[] }) =>
-    invoke<ConfigPatched>("patch_config", args),
-  machine_table_try: (args: { edits: ConfigEdit[] }) =>
-    invoke<MachineFault | null>("machine_table_try", args),
+    invoke<void>("patch_config", args),
 
   /**
    * 写诊断配置。返回 `RestartHint` —— **它是个只有 unit variant 的外部标记枚举**
@@ -280,12 +276,6 @@ export const commands = {
   /** 开设置窗；`target` 是目的地 JSON（`settings/open-settings.ts`）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: (target: string | null = null) =>
     invoke<void>("open_settings_window", { target }),
-
-  /** 机器表热加载：照 config.json 的机器表起 / 断 / 重起远端那几条流（不要重启 cc-monitor）。 */
-  remote_reconcile: () =>
-    invoke<{ started: string[]; stopped: string[]; restarted: string[] }>(
-      "remote_reconcile",
-    ),
 
   /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
   uninstall_remote_backend: (args: { cfg: unknown }) =>

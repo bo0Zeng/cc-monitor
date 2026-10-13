@@ -775,37 +775,9 @@ pub enum Frame {
         cell: serde_json::Value,
     },
 
-    /// **中转抄出来的一个 SSE 事件**（或一个响应的收尾）。
-    ///
-    /// 常驻后端会发（中转住在它进程里，`relay::host`；本机远端同形）。
-    /// 四样东西，**没有业务词**（字段名就是「tee 线上字段名住哪」的答案：住这里，serde 名）：
-    /// - `stream`：agent 自己请求头里带的会话标识（头名由适配层登记；== 它的 sid，新开 / resume / 分叉同一形）；没带 ⇒ 空串。后端不解释它。
-    /// - `resp`：本进程第几个响应（跨响应单调，后端重启从 0 起）。
-    /// - `n`：这一个响应里第几个事件，**从 0 连续**。后端每个事件先占号再投递 ⇒ 丢了的号不出现 ⇒
-    ///   接收侧看 `n` 连不连得上就知道缺在哪（`Gap{from_seq,to_seq}` 那一形，原位、纯算术）。
-    /// - `data`（与 `end` 恰有一个）：SSE `data:` 后面那段原文，**一个 JSON 串**（上游字节敌手可控，不参与帧结构）。
-    /// - `end`：这个响应不会再有事件了（`done` 上游说完 · `broken` 转发以错误收尾）；这一帧的 `n` = 一共占了几个号。
-    ///
-    /// 🔴 **可丢**：走后端自己那条有界 tap 通道（`tap::TAP_CAPACITY`），满了就丢，不回推中转、不挤出方向的内容帧。
-    /// SSE 只保快，jsonl 保对。旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
-    Tap {
-        /// 请求自带的会话标识头的值。
-        stream: String,
-        /// 这段流归哪个子运行（主运行 ⇒ 不上线）。由后端归位（`run_route`）：请求自报了且不等于 `stream` 就定（等于 ⇒ 主运行）；没自报 ⇒ 没有在跑的子运行就归主，
-        /// 有 ⇒ 先挂起、等记录对上对账键再放出来。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        run: Option<String>,
-        /// 本进程第几段。
-        resp: u64,
-        /// 这一段里第几件，从 0 连续。
-        n: u64,
-        /// 归一事件（上游原始事件已在后端按协议面折过；界面不认任何一家的事件名）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ev: Option<crate::agents::StreamEv>,
-        /// 这一段的收尾（与 `ev` 恰有一个）。
-        #[serde(skip_serializing_if = "Option::is_none")]
-        end: Option<TapEnd>,
-    },
+    /// **活卡**（[`crate::stream::live`] 出的成品）：某个会话某个运行里正在说的那一次上游应答，一张一张地开、长、撤。
+    /// 只发这条流名单里的会话（同 `line`，`stream-watch`）；可丢（写者最低优先，满了合成一张整卡，见 `live.rs` 头注）。
+    LiveCard(LiveCard),
     /// 一个会话的运行表（主运行之外的那几个子运行：标签 · 状态 · 最近一件事 · 派出它的那次工具调用）。表变了就整份发一次；
     /// 按最近一次动静排（最早动过的在前）。`ended`：被挤出运行表的已收场子运行（对上了派出调用的那些，先挤出的在前）——
     /// 派出它们的那几张卡照样标得上终态。
@@ -818,13 +790,19 @@ pub enum Frame {
         ended: Vec<RunEnded>,
     },
     /// 一份会话记录的**主线外清单**（用户回退重发后留在文件里的旧那一支）：那几条记录的 `id`（与记录成品的 `id` 同值；只含进界面的，文件序）。
-    /// 整份、变了才发（宣告之后历史里已经有就发一次）；从没发过 ＝ 空。冷读那一路是读命令 `history-branch`。这一家的记录没有链 ⇒ 从不发。
+    ///
+    /// **「前 `at` 条照旧，其后换成 `off`」**：变了才发，只发变了的那一截（新的分叉接在尾上 ⇒ `at` ＝ 原来的条数、`off` 只有新的几条）；
+    /// 整份（宣告之后历史里已经有 · 进名单补发 · 连接接上来 · 这条连接丢过它的一帧）从 `at = 0` 起，按 `REPLY_PAGE_BYTES` 切成几帧接着发
+    /// （后一帧的 `at` ＝ 前几帧累计的条数）。一帧至多那么多字节（一条 `id` 单独超了 ⇒ 那一帧只有它）。
+    /// 从没发过 ＝ 空。冷读那一路是读命令 `history-branch`（同样分页）。这一家的记录没有链 ⇒ 从不发。
     SessionBranch {
         /// 会话 id。
         sid: String,
         /// 这份会话记录在那台机器上的绝对路径。
         path: String,
-        /// 主线外那几条的 `id`。
+        /// 前几条照旧。
+        at: u64,
+        /// 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止）。
         off: Vec<String>,
     },
 
@@ -875,6 +853,113 @@ pub struct RunEnded {
     pub run: String,
     pub tool: String,
     pub state: RunState,
+}
+
+/// [`Frame::Live`] 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct LiveCard {
+    /// 会话 id。
+    pub sid: String,
+    /// 归哪个子运行；缺 ＝ 主运行（主 tab 只画主运行的）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub run: Option<String>,
+    /// 卡号（本进程的段号，整台唯一）。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub card: u64,
+    /// 这条连接上这张卡的第几帧：`open` 从 0 起，之后连续。不接上一帧 ⇒ 这张卡先不画，等下一张 `open` / `close`。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub n: u64,
+    /// 这一帧做什么。
+    #[serde(flatten)]
+    pub op: LiveOp,
+}
+
+/// 活卡的一帧做什么（`op` 是标签）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum LiveOp {
+    /// 整张卡（新开 · 这条连接刚开始看这个会话 · 发件箱满过 · 正文截过一次头）：照它整张换。
+    Open {
+        /// 对账键（与那一轮记录的 `rid` 同值）。
+        rid: String,
+        phase: LivePhase,
+        /// 正文截过头（只留了尾巴）。
+        clipped: bool,
+        /// 各块，按块号。
+        blocks: Vec<LiveBlock>,
+    },
+    /// 第 `i` 块开始了（种类叫 `block`：`kind` 已是帧的标签）。
+    Block {
+        #[cfg_attr(test, ts(type = "number"))]
+        i: u64,
+        block: crate::agents::BlockKind,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        tool: Option<String>,
+    },
+    /// 第 `i` 块（文字块）接着一段字。
+    Text {
+        #[cfg_attr(test, ts(type = "number"))]
+        i: u64,
+        s: String,
+    },
+    /// 上游说完了，等写入记录。
+    Awaiting,
+    /// 撤卡（为什么见 [`LiveWhy`]；客户端对哪种都一样：撤）。
+    Close { why: LiveWhy },
+}
+
+/// 活卡此刻在哪一相。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum LivePhase {
+    /// 上游还在说。
+    Streaming,
+    /// 上游说完了，那一轮的记录还没到。
+    Awaiting,
+}
+
+/// 活卡里的一块。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct LiveBlock {
+    pub kind: crate::agents::BlockKind,
+    /// 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub text: Option<String>,
+    /// 工具块的工具名。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub tool: Option<String>,
+}
+
+/// 为什么撤卡。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum LiveWhy {
+    /// 那一轮的记录到了（整轮覆盖）。
+    Record,
+    /// 上游断在半路（Esc 打断 · 上游断 · 抄流那一跳缺了号）。
+    Broken,
+    /// 上游报错收尾。
+    Error,
+    /// 满了被挤掉（同一运行 2 张 · 整台 16 张）。
+    Evicted,
+    /// 会话走了 / 子运行收场了。
+    Gone,
+    /// 出了这条连接的名单。
+    Unwatched,
 }
 
 /// 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。三个时刻是自 1970 起的毫秒（记录自己写着的时刻；记录里没写 ⇒ 读到它的时刻）。
@@ -975,9 +1060,8 @@ pub enum RunWhy {
     Orphaned,
 }
 
-/// 一个响应怎么收场的（[`Frame::Tap`] 的 `end`）。
-#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
+/// 一段上游流怎么收场的（流归位交给活卡的那一格）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TapEnd {
     /// 上游把响应说完了（转发正常收尾）。
     Done,
@@ -1193,10 +1277,10 @@ impl Frame {
             Frame::Probe { .. } => false,
             // SSE 只保快：它说的事 jsonl 那一侧都有（落盘保对），丢了由位置号 `n` 原位说出来。
             // ⚠ 它**不走**出方向那条通道（走 tap 自己那条），列在这里只为穷尽。
-            Frame::Tap { .. } => true,
+            Frame::LiveCard(_) => true,
             // 整份快照：下一次表一变就整份重发；丢了那个会话的子运行行停在旧的那一份，直到下一次变（带身份，客户端知道）。
             Frame::SessionRuns { .. } => false,
-            // 同上：整份快照，下一次变就整份重发。
+            // 只发变了的那一截：丢了那一帧，那条连接手上的清单就对不上 —— 发帧那一层记下（`FrameSink`），下一次给它整份。
             Frame::SessionBranch { .. } => false,
             // 终端实时预览：丢了在途那一帧，客户端等不到它就不回执，订阅停住；也走应答通道。
             Frame::TerminalScreen { .. } => false,
@@ -1213,6 +1297,7 @@ impl Frame {
             Frame::Line { session_id, .. } => Some(session_id),
             Frame::SessionRuns { sid, .. } => Some(sid),
             Frame::SessionBranch { sid, .. } => Some(sid),
+            Frame::LiveCard(l) => Some(&l.sid),
             Frame::Hello { .. }
             | Frame::SessionAdded { .. }
             | Frame::SessionPrimed { .. }
@@ -1231,7 +1316,6 @@ impl Frame {
             | Frame::LinkEnd { .. }
             | Frame::Transfer { .. }
             | Frame::Probe { .. }
-            | Frame::Tap { .. }
             | Frame::TerminalScreen { .. }
             | Frame::TerminalFollowEnd { .. } => None,
         }
@@ -1271,7 +1355,7 @@ impl Frame {
             Frame::LinkEnd { link, .. } => ("link_end", Some(link.clone())),
             Frame::Transfer { id, .. } => ("transfer", Some(id.clone())),
             Frame::Probe { ticket, .. } => ("probe", Some(ticket.clone())),
-            Frame::Tap { stream, .. } => ("tap", Some(stream.clone())),
+            Frame::LiveCard(l) => ("live_card", Some(l.sid.clone())),
             Frame::SessionRuns { sid, .. } => ("session_runs", Some(sid.clone())),
             Frame::SessionBranch { sid, .. } => ("session_branch", Some(sid.clone())),
             Frame::TerminalScreen { ticket, .. } => ("terminal_screen", Some(ticket.clone())),
@@ -1280,6 +1364,41 @@ impl Frame {
             }
         };
         LostFrame { kind, subject }
+    }
+}
+
+impl Frame {
+    /// 一份主线外清单「前 `at` 条照旧，其后是 `off[at..]`」切成几帧 `session_branch`（每帧至多 `REPLY_PAGE_BYTES` 字节，一条单独超了 ⇒ 那一帧只有它）。
+    /// 后面没有了（`at` 就是全长）也发一帧空的：它说「清单到第 `at` 条为止」。
+    pub fn branch_pages(sid: &str, path: &str, off: &[String], at: usize) -> Vec<Frame> {
+        let at = at.min(off.len());
+        let page = |at: usize, ids: &[String]| Frame::SessionBranch {
+            sid: sid.to_string(),
+            path: path.to_string(),
+            at: at as u64,
+            off: ids.to_vec(),
+        };
+        let fixed = serde_json::to_vec(&page(usize::MAX, &[])).map_or(0, |b| b.len()) + 1;
+        let room = crate::REPLY_PAGE_BYTES.saturating_sub(fixed);
+        let mut out = Vec::new();
+        let mut start = at;
+        loop {
+            let mut used = 0;
+            let mut end = start;
+            while end < off.len() {
+                let c = serde_json::to_vec(&off[end]).map_or(0, |b| b.len()) + 1;
+                if end > start && used + c > room {
+                    break;
+                }
+                used += c;
+                end += 1;
+            }
+            out.push(page(start, &off[start..end]));
+            if end >= off.len() {
+                return out;
+            }
+            start = end;
+        }
     }
 }
 

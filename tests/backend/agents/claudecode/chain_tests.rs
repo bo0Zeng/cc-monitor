@@ -84,3 +84,19 @@ fn lines_without_identity_or_time_are_off_the_chain() {
         assert_eq!(chain_fact(raw), None, "{raw}");
     }
 }
+
+/// read8b（瓶颈 #8）：一行只解析一次文本 —— user 行要整行（判打断、取原文），那几格短串就从那一份里取，不再先解一遍短串再解一遍整行；
+/// 别的行只解那几格短串。出的链事实与改前一样（上面几条钉着）。
+#[test]
+fn a_line_is_parsed_from_text_at_most_once() {
+    let count = |raw: &str| {
+        PARSES.with(|c| c.set(0));
+        let _ = chain_fact(raw);
+        PARSES.with(std::cell::Cell::get)
+    };
+    let user = r#"{"type":"user","uuid":"u1","parentUuid":"a0","timestamp":"t1","message":{"role":"user","content":"hello"}}"#;
+    let reply = r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"t2","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}"#;
+    assert_eq!(count(user), 1, "user 行解析了不止一遍");
+    assert_eq!(count(reply), 1, "回复行解析了不止一遍");
+    assert!(node(user).said && node(user).text.as_deref() == Some("hello"));
+}

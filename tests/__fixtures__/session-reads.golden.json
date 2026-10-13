@@ -77,6 +77,7 @@
         "outcome": "retrying"
       }
     ],
+    "rev": 1,
     "tokens": {
       "cacheRead": 3,
       "cacheWrite1h": 0,
@@ -363,16 +364,19 @@
     "end": 537,
     "entries": [
       {
+        "at": 0,
         "excerpt": "alpha zqx beta",
         "timestamp": "t1",
         "uuid": "in-1"
       },
       {
+        "at": 424,
         "excerpt": "delta",
         "timestamp": "t2",
         "uuid": "in-2"
       }
     ],
-    "from": 0
+    "from": 0,
+    "next": null
   }
 }

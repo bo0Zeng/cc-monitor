@@ -1103,6 +1103,12 @@
         {
           "frozen": false,
           "kind": "value",
+          "path": "rev",
+          "type": "number"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
           "path": "tokens.cacheRead",
           "type": "number"
         },
@@ -1887,12 +1893,6 @@
         {
           "frozen": false,
           "kind": "value",
-          "path": "accounts[].slots[].atLine",
-          "type": "bool"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
           "path": "accounts[].slots[].full",
           "type": "bool"
         },
@@ -2605,29 +2605,6 @@
         }
       ],
       "name": "history_list"
-    },
-    {
-      "cells": [
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "cell",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "value",
-          "path": "code",
-          "type": "string"
-        },
-        {
-          "frozen": false,
-          "kind": "text",
-          "path": "said",
-          "type": "string"
-        }
-      ],
-      "name": "cell_error"
     }
   ]
 }

@@ -193,9 +193,53 @@ export class SkeletonView {
     if (this.disposed) return false;
     const cur = this.ledger.columnWidth ?? initialColumnWidth();
     if (!force && Math.abs(colW - cur) < 1) return false;
-    for (const s of this.ledger.relayout(colW)) this.stale.add(s);
+    const near = this.ledger.count > SkeletonView.LAZY_ROWS ? this.nearRange(SkeletonView.NEAR_SCREENS) : undefined;
+    for (const s of this.ledger.relayout(colW, near)) this.stale.add(s);
     this.reheightPinned();
     return true;
+  }
+
+  /** 账本行数过了这个数，改列宽才只当场估视口附近（小账本整份估也就几毫秒）。 */
+  static readonly LAZY_ROWS = 20_000;
+  /** 视口上下各几屏算「附近」。 */
+  static readonly NEAR_SCREENS = 3;
+  /** 视口拿不到布局（后台 tab）时「附近」取账本尾上这么多行（tab 多半停在底部）。 */
+  static readonly TAIL_ROWS = 300;
+
+  /**
+   * 改列宽之后远处还没按新列宽估的行，补一段（至多 `max` 行）：变了 ⇒ 占位改高、钉视口（同 `applyRefined`）。
+   * 回：还剩没有（宿主空闲时接着补，`tab-stream-view.ts::settleLayoutLater`）。
+   */
+  settleLayout(max: number): boolean {
+    if (this.disposed) return false;
+    if (this.ledger.settle(max)) this.reheightPinned();
+    return this.ledger.staleRows > 0;
+  }
+
+  /**
+   * 视口上下各 `screens` 屏那一段的 seq 区间（半开）。视口拿不到布局 ⇒ 账本尾上 [`TAIL_ROWS`] 行；
+   * 视口里一块占位都不碰（整屏是已建的卡）⇒ 占位尾上那几行（紧挨着已建的卡）。
+   */
+  private nearRange(screens: number): readonly [number, number] {
+    const end = this.ledger.endSeq;
+    const tail = [Math.max(this.ledger.base, end - SkeletonView.TAIL_ROWS), end] as const;
+    const view = this.scrollEl.getBoundingClientRect();
+    if (view.height <= 0) return tail;
+    const top = view.top - view.height * screens;
+    const bottom = view.bottom + view.height * screens;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (const g of this.gaps) {
+      const r = g.el.getBoundingClientRect();
+      if (r.bottom <= top || r.top >= bottom || r.height <= 0) continue;
+      lo = Math.min(lo, this.ledger.seqAt(g.lo, g.hi, Math.max(0, top - r.top)));
+      hi = Math.max(hi, Math.min(g.hi, this.ledger.seqAt(g.lo, g.hi, Math.min(r.height, bottom - r.top)) + 1));
+    }
+    if (lo === Infinity) {
+      const last = this.gaps.reduce((m, g) => Math.max(m, g.hi), this.ledger.base);
+      return [Math.max(this.ledger.base, last - SkeletonView.TAIL_ROWS), last];
+    }
+    return [lo, hi];
   }
 
   /** 取走至多 `max` 行待重交的精算行（按 seq 升序）。 */

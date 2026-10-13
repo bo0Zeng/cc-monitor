@@ -2,12 +2,12 @@
  * 行为类设置的桥接。
  *
  * `autoFollowUserActive` 和 `bringMonitorToFrontOnUserActive` 与 `theme` /
- * `claudeDir` / `diagnostics` 字段平级，存在同一个 config.json 顶层。
+ * `diagnostics` 字段平级，存在同一个 config.json 顶层。
  *
- * 这两个 toggle **运行时可热更**（不像 claudeDir 需要重启）。设置面板 toggle
+ * 这两个 toggle **运行时可热更**（不像 Claude 数据目录需要重启）。设置面板 toggle
  * 改了 → 立即 save → tabs.ts 下次 userActive 触发时读最新值。
  *
- * 设计：跟 paths.ts 模式一致 —— Rust config 命令通透（serde_json::Value）
+ * 设计：跟 theme.ts 模式一致 —— Rust config 命令通透（serde_json::Value）
  * 不解释 schema，所有 schema 收敛在前端 TS。
  */
 
@@ -18,9 +18,7 @@ const KEY_BRING_FRONT = "bringMonitorToFrontOnUserActive";
 
 const KEY_SHOW_BG = "showBgSessions";
 
-const KEY_RESUME = "resumeCommand";
 const KEY_RESUME_PRESETS = "resumeCommandPresets";
-const KEY_RESUME_IN_TMUX = "resumeInTmux";
 
 /**
  * 预设条数上界（`behavior.vitest.ts` 有一条灌满再验最老被挤出的判据守着）。
@@ -78,15 +76,10 @@ export interface BehaviorConfig {
    */
   showBgSessions: boolean;
   /**
-   * 恢复命令的默认值（通用页那一格，各台都用它；如 `ccm` / `cc`）。空 = 那台后端的默认
-   *（本机：检测 cc，回退 claude；远端：claude）。每台可在「这台上的 cc-monitor」里单独设一格盖过它
-   *（远端在机器表那台的 `resumeCommand`，本机在 `local-machine-prefs.ts`），解析只在 `remote-config.ts::resumeCommandFor`。
+   * 用过的恢复命令，最近用的在最前（每台「恢复会话的启动程序」那一格的下拉）：只是这扇界面的输入历史。
+   * 生效值住各台后端（`prefs.json` 的 `launchers`，经 `machine-prefs.ts`），恢复进不进 tmux 也在那里。
    */
-  resumeCommand: string;
-  /** 用过的恢复命令，最近用的在最前（通用页那一格的下拉）；只影响怎么填，生效值仍是上面那一格。 */
   resumeCommandPresets: string[];
-  /** 历史页［恢复 ▾］与标签页「恢复 ▸」默认「运行于」：`true` ＝ tmux 里（那台没 tmux 时仍落「不用 tmux」）。默认 false。 */
-  resumeInTmux: boolean;
   /**
    * Claude 完成一轮（stop_reason==end_turn）且窗口在后台时发系统通知。
    * 默认 true。热更：turn-notify.ts 每次判定读缓存，设置保存时刷新缓存。
@@ -100,9 +93,7 @@ const DEFAULTS: BehaviorConfig = {
   autoFollowUserActive: true,
   bringMonitorToFrontOnUserActive: false,
   showBgSessions: true,
-  resumeCommand: "",
   resumeCommandPresets: [],
-  resumeInTmux: false,
   notifyTurnEnd: true,
   notifyNeeds: true,
 };
@@ -132,9 +123,7 @@ export function behaviorIn(cfg: Record<string, unknown>): BehaviorConfig {
       typeof cfg[KEY_SHOW_BG] === "boolean"
         ? (cfg[KEY_SHOW_BG] as boolean)
         : DEFAULTS.showBgSessions,
-    resumeCommand: typeof cfg[KEY_RESUME] === "string" ? (cfg[KEY_RESUME] as string) : DEFAULTS.resumeCommand,
     resumeCommandPresets: readPresets(cfg[KEY_RESUME_PRESETS]),
-    resumeInTmux: typeof cfg[KEY_RESUME_IN_TMUX] === "boolean" ? (cfg[KEY_RESUME_IN_TMUX] as boolean) : DEFAULTS.resumeInTmux,
     notifyTurnEnd:
       typeof cfg[KEY_NOTIFY_TURN_END] === "boolean"
         ? (cfg[KEY_NOTIFY_TURN_END] as boolean)
@@ -152,11 +141,18 @@ export async function setBehavior(next: BehaviorConfig): Promise<void> {
     setAt([KEY_AUTO_FOLLOW], next.autoFollowUserActive),
     setAt([KEY_BRING_FRONT], next.bringMonitorToFrontOnUserActive),
     setAt([KEY_SHOW_BG], next.showBgSessions),
-    setAt([KEY_RESUME], next.resumeCommand),
     setAt([KEY_RESUME_PRESETS], next.resumeCommandPresets),
-    setAt([KEY_RESUME_IN_TMUX], next.resumeInTmux),
     setAt([KEY_NOTIFY_TURN_END], next.notifyTurnEnd),
     setAt([KEY_NOTIFY_NEEDS], next.notifyNeeds),
   ]);
 }
 
+
+/** 用过一条恢复命令：并进预设（只写这一键）、回并好的那一份。空 ⇒ 不记、原样回。 */
+export async function rememberResumePreset(cmd: string): Promise<string[]> {
+  const before = (await getBehavior()).resumeCommandPresets;
+  const next = withResumePreset(before, cmd);
+  if (next.length === before.length && next.every((v, i) => v === before[i])) return before;
+  await patchConfig([setAt([KEY_RESUME_PRESETS], next)]);
+  return next;
+}

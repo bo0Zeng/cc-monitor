@@ -25,6 +25,13 @@ use super::*;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex as StdMutex;
 
+// 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份。
+fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static str, String)> {
+    let req: ReachReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::answer_reach_with(&req, table).map(|r| serde_json::to_value(r).unwrap())
+}
+
 /// 生产段（剥测试模块 ＋ 整行注释 ＋ 行尾注释）—— 指纹只认代码，不认说起它的散文。
 fn code_of(body: &str) -> String {
     let prod = crate::guard_support::production_code(body);
@@ -154,7 +161,12 @@ async fn a_registered_origin_is_asked_with_exactly_its_dial_and_a_quoted_command
         .expect_err("替身答的不是 JSON");
     let calls = far.calls.lock().unwrap().clone();
     assert_eq!(calls.len(), 1);
-    assert_eq!(calls[0].0, reach_args("dev", "192.0.2.2")["dial"]);
+    // 表里存的是按类型收过的那一份（缺的几格写成 `null`，`ssh_dial::machine::resolve` 照缺读）。
+    assert_eq!(
+        calls[0].0,
+        json!({"machine": {"host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k", "addresses": []},
+               "saved": null, "jump": null, "prefer": null, "use": null, "agent_sock": null})
+    );
     // 期望值手写成字面量（不拿 `command_line` 去比它自己 —— 那样两侧同源，拿掉引号也恒绿）。
     // 那台后端恒在固定落点：`"$HOME"` 在那台上展开（fish 的双引号里同样展开），其后是安全字节。
     assert_eq!(

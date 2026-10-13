@@ -1,24 +1,21 @@
-//! 升级换形（一次）：第一版 `rotation.json`（没有 `version`：规则表 `rules` ＋ `defaultRule`，会话带 `source`）⇒ 第二版。
-//! 读到第一版的那一下由 [`super::write_locked`] 在锁里写回第二版、原文留一份 `rotation.json.v1`。
+//! 升级链的第一节（一次）：第一版 `rotation.json`（没有 `version`：规则表 `rules` ＋ `defaultRule`，会话带 `source`）⇒ 第二版的形（JSON），
+//! 接着由 [`crate::accounts::quota::rules::upgrade::from_v2`] 换成第三版；写回在 [`super::migrate_at`] 一次做（原文留 `rotation.json.v1`）。
+//! 第二版的类型已经删了：这里直接写出第二版的 JSON，只给下一节读。下一个大版本连这一节一起删。
 //!
 //! | 第一版 | 第二版 |
 //! |---|---|
-//! | 每条 `rules[id]` | `configs[id]`，`strategy: "1"`，名字照留；种子那条名「默认」⇒「默认配置 1」；`tz` 缺 ⇒ 做换形那台的本地时区（4.1.7 以前的后端按本机钟判时段）；那台说不出 ⇒ 不写、标 `tzUnknown`（上屏需手动，不猜 UTC） |
+//! | 每条 `rules[id]` | `configs[id]`，`strategy: "1"`，名字照留（没有规则 ⇒ 补一条种子 `r_00000000`，名「默认」、内容照更早一版的 `default`；`defaultRule` 指空 ⇒ 名字最小的那条）；`tz` 缺 ⇒ 做换形那台的本地时区（4.1.7 以前的后端按本机钟判时段）；那台说不出 ⇒ 不写、标 `tzUnknown`（上屏需手动，不猜 UTC） |
 //! | `order` ＋ `enabled` | `accounts`：按 `order`，具名的只留勾上的 |
 //! | `cap["*"]` | `acctInit.line`；并给每一行没有自己那一位的线补上 |
 //! | `cap[号]` 数 · 分窗口 · `7d:<模型>` | 那一行的 `params.line`（`7d:<模型>` 并进 `7d` 取小的）；`0` ⇒ 整天不用（`slots: [{at: "00:00-24:00", line: 0}]`） |
 //! | `cap[号]` 时段 | 那一行的 `params.slots`（`n` ⇒ `line`） |
 //! | `stint` | 每行 `params.stint`（号自己的先，没有取整份的；分窗口取 5h，没有取 7d） |
 //! | `preempt` · `wait` · `fallback` · `atLimit` | `params.back` · `params.standby_wait` · 那一行 `mode: "standby"` · `params.all_out`（`continue` ⇒ `go`） |
-//! | — | `params.delay: 0`；补建「默认配置 2」「默认配置 3」（同名已有 ⇒ 跳过） |
+//! | — | `params.delay: 0`（「默认配置 2 · 3」不再补：第三版有随包三份） |
 //! | 会话 `follow` · `rule` · `custom` · `parent` | `config: {id, rev, copy?}`（`parent` 追到的那个会话此刻的那份；追不到按 `follow`） |
 //! | `blockedAbove` | 丢掉 |
-//! | `history[].why` | `leave` ＋ `pick` |
+//! | `history[].why` | `leave`（只留下一节认的那几种，认不出的 ⇒ `top`）；`at` · `from` · `to` · `fromResetsAt` 照搬 |
 
-use super::{
-    AcctRow, Book, Config, ConfigBody, Leave, OpenConfig, Params, Pick, SessionEntry, SwitchRecord,
-    Who, SAVED_BY_SETTINGS, SEEDS,
-};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -65,6 +62,18 @@ struct Rotation {
     wait: u8,
     #[serde(default)]
     tz: Option<String>,
+    /// 更早的写法（`cap["*"]` 出现之前）：`"full"` 或 `{"threshold": {"n": 1..=99}}`（到 n% 就换），管所有号、两个窗口。
+    #[serde(default)]
+    when: Option<Value>,
+}
+
+/// `when.threshold.n`（没有 / 是 `"full"` / 形状不对 ⇒ 空）。
+fn when_threshold(w: Option<&Value>) -> Option<u8> {
+    w?.get("threshold")?
+        .get("n")?
+        .as_u64()
+        .and_then(|n| u8::try_from(n).ok())
+        .filter(|n| (1..=99).contains(n))
 }
 
 fn wait_default() -> u8 {
@@ -83,6 +92,7 @@ impl Default for Rotation {
             fallback: Vec::new(),
             wait: wait_default(),
             tz: None,
+            when: None,
         }
     }
 }
@@ -92,10 +102,6 @@ impl Default for Rotation {
 struct Rule {
     name: String,
     rotation: Rotation,
-    #[serde(default)]
-    rev: u64,
-    #[serde(default)]
-    updated_at: u64,
 }
 
 #[derive(Deserialize, Clone)]
@@ -133,8 +139,6 @@ struct OldSession {
     custom: Option<Rotation>,
     #[serde(default)]
     history: Vec<OldRecord>,
-    #[serde(default)]
-    baseline: super::Baseline,
     #[serde(default)]
     seen: u64,
 }
@@ -207,10 +211,7 @@ fn slots_of(row: Option<&BTreeMap<String, CapValue>>) -> Vec<Value> {
     let mut out: Vec<(String, u8)> = Vec::new();
     let Some(row) = row else { return Vec::new() };
     let mut add = |at: &str, n: u8| {
-        if !out
-            .iter()
-            .any(|(x, _)| crate::accounts::quota::strategy::form::overlaps(x, at))
-        {
+        if !out.iter().any(|(x, _)| overlaps(x, at)) {
             out.push((at.to_string(), n));
         }
     };
@@ -243,12 +244,50 @@ fn stint_of(row: Option<&BTreeMap<String, u8>>) -> Option<u8> {
         .copied()
 }
 
-/// 一份第一版轮换换成内置策略 1 的配置内容（名字 · 时区由调用方给）。
-fn body_of(r: &Rotation, name: &str, local_tz: Option<&str>) -> ConfigBody {
+/// `"HH:MM"` ⇒ 一天里的分钟（`24:00` 收）。
+fn clock_of(s: &str) -> Option<u16> {
+    let (h, m) = s.split_once(':')?;
+    if h.len() != 2 || m.len() != 2 {
+        return None;
+    }
+    let (h, m): (u16, u16) = (h.parse().ok()?, m.parse().ok()?);
+    if m >= 60 || h > 24 || (h == 24 && m != 0) {
+        return None;
+    }
+    Some(h * 60 + m)
+}
+
+/// 一段占一天里的哪几截（跨午夜的拆成两截）。
+fn pieces(at: &str) -> Vec<(u16, u16)> {
+    let Some((a, b)) = at.split_once('-') else {
+        return Vec::new();
+    };
+    match (clock_of(a), clock_of(b)) {
+        (Some(f), Some(t)) if f < t => vec![(f, t)],
+        (Some(f), Some(t)) if f != t && f < 24 * 60 => vec![(f, 24 * 60), (0, t)],
+        _ => Vec::new(),
+    }
+}
+
+/// 两段有没有重叠的分钟（含跨午夜的）。
+fn overlaps(a: &str, b: &str) -> bool {
+    pieces(a)
+        .iter()
+        .any(|(f1, t1)| pieces(b).iter().any(|(f2, t2)| f1 < t2 && f2 < t1))
+}
+
+/// 一份第一版轮换换成第二版里内置策略 1 的配置内容（名字 · 时区由调用方给）。
+fn body_of(r: &Rotation, name: &str, local_tz: Option<&str>) -> Value {
     let all = r.cap.get("*");
-    let all_line = line_positions(all);
+    let mut all_line = line_positions(all);
+    // `cap["*"]` 没写的那一位 ⇒ 落回更早的 `when.threshold.n`（10-11 那一次升级漏了这一格：除 cap 点了名的号以外全成了用满才换）。
+    if let Some(n) = when_threshold(r.when.as_ref()) {
+        for p in &mut all_line {
+            p.get_or_insert(n);
+        }
+    }
     let all_stint = stint_of(r.stint.get("*"));
-    let row_params = |id: Option<&str>| -> Params {
+    let row_params = |id: Option<&str>| -> Value {
         let own = id.and_then(|a| r.cap.get(a));
         let mut pos = line_positions(own);
         for i in 0..2 {
@@ -258,130 +297,75 @@ fn body_of(r: &Rotation, name: &str, local_tz: Option<&str>) -> ConfigBody {
         }
         let stint = id.and_then(|a| stint_of(r.stint.get(a))).or(all_stint);
         let standby = id.is_some_and(|a| r.fallback.iter().any(|f| f == a));
-        let mut p = Params::new();
-        p.insert("line".into(), line_value(pos));
-        p.insert("slots".into(), Value::Array(slots_of(own)));
-        p.insert(
-            "mode".into(),
-            Value::from(if standby { "standby" } else { "normal" }),
-        );
-        p.insert("stint".into(), stint.map_or(Value::Null, Value::from));
-        p
+        json!({
+            "line": line_value(pos),
+            "slots": slots_of(own),
+            "mode": if standby { "standby" } else { "normal" },
+            "stint": stint,
+        })
     };
-    let mut accounts: Vec<AcctRow> = Vec::new();
+    let mut accounts: Vec<Value> = Vec::new();
+    let mut seen: Vec<Option<String>> = Vec::new();
     for s in &r.order {
-        let row = match s {
-            Slot::Start { .. } => AcctRow {
-                who: Who::Start,
-                params: row_params(None),
-            },
-            Slot::Named(a) if r.enabled.iter().any(|e| e == a) => AcctRow {
-                who: Who::Id(a.clone()),
-                params: row_params(Some(a)),
-            },
+        let (who, row) = match s {
+            Slot::Start { .. } => (None, json!({"start": true, "params": row_params(None)})),
+            Slot::Named(a) if r.enabled.iter().any(|e| e == a) => (
+                Some(a.clone()),
+                json!({"id": a, "params": row_params(Some(a))}),
+            ),
             Slot::Named(_) => continue,
         };
-        if !accounts.iter().any(|x| x.who == row.who) {
+        if !seen.contains(&who) {
+            seen.push(who);
             accounts.push(row);
         }
     }
-    let mut acct_init = Params::new();
-    acct_init.insert("line".into(), line_value(all_line));
-    acct_init.insert("slots".into(), json!([]));
-    acct_init.insert("mode".into(), json!("normal"));
-    acct_init.insert("stint".into(), all_stint.map_or(Value::Null, Value::from));
-    let mut params = Params::new();
-    params.insert("back".into(), json!(r.preempt));
-    params.insert("delay".into(), json!(0));
-    params.insert("standby_wait".into(), json!(r.wait));
-    params.insert(
-        "all_out".into(),
-        json!(if r.at_limit.as_deref() == Some("stop") {
-            "stop"
-        } else {
-            "go"
-        }),
-    );
-    ConfigBody {
-        name: name.to_string(),
-        strategy: "1".into(),
-        accounts,
-        params,
-        acct_init,
-        parked: BTreeMap::new(),
-        tz: r.tz.clone().or_else(|| local_tz.map(str::to_string)),
-        tz_unknown: r.tz.is_none() && local_tz.is_none(),
-    }
+    let tz = r.tz.clone().or_else(|| local_tz.map(str::to_string));
+    json!({
+        "name": name,
+        "strategy": "1",
+        "accounts": accounts,
+        "params": {
+            "back": r.preempt,
+            "delay": 0,
+            "standby_wait": r.wait,
+            "all_out": if r.at_limit.as_deref() == Some("stop") { "stop" } else { "go" },
+        },
+        "acctInit": {"line": line_value(all_line), "slots": [], "mode": "normal", "stint": all_stint},
+        "tz": tz,
+        "tzUnknown": r.tz.is_none() && local_tz.is_none(),
+    })
 }
 
-/// 第一版换号原因 ⇒ `leave` ＋ `pick`（`n` ＝ 换到的号在那份配置里写在第几）。
-fn record_of(r: &OldRecord, order: &dyn Fn(&str) -> Option<usize>) -> SwitchRecord {
+/// 第一版换号原因 ⇒ 第二版的 `leave`（只留下一节认的那几种）。
+fn record_of(r: &OldRecord) -> Value {
     let k = match &r.why {
         Value::String(s) => s.clone(),
         Value::Object(m) => m.keys().next().cloned().unwrap_or_default(),
         _ => String::new(),
     };
-    let arg = |f: &str| r.why.get(&k).and_then(|o| o.get(f)).cloned();
-    let unusable = |why: Value| Leave::Unusable { why };
-    let order_pick = || {
-        order(&r.to).map(|n| Pick {
-            strategy: "1".into(),
-            why: json!({"k": "w_order", "n": n}),
-        })
+    let leave = match k.as_str() {
+        "full" | "threshold" | "off" | "skipped" => "unusable",
+        "manualHot" => "manual",
+        "manualRestart" => "manualRestart",
+        "held" | "toOverage" => "held",
+        "overage" => "overage",
+        _ => "top",
     };
-    let (leave, pick) = match k.as_str() {
-        "full" => (unusable(json!({"k": "@refused"})), None),
-        "threshold" => (
-            unusable(match (arg("w"), arg("n")) {
-                (Some(w), Some(n)) => json!({"k": "@line", "w": w, "n": n}),
-                (None, Some(n)) => json!({"k": "@line", "w": "5h", "n": n}),
-                _ => json!({"k": "@full"}),
-            }),
-            None,
-        ),
-        "off" => (unusable(json!({"k": "@off"})), None),
-        "manualHot" => (Leave::Manual, None),
-        "manualRestart" => (Leave::ManualRestart, None),
-        "held" | "toOverage" => (Leave::Held, None),
-        "overage" => (Leave::Overage, None),
-        "skipped" => (unusable(json!({"k": "@login"})), None),
-        "stint" => (
-            Leave::Outranked,
-            Some(Pick {
-                strategy: "1".into(),
-                why: {
-                    let n = arg("n").unwrap_or(json!(0));
-                    json!({"k": "w_stint", "n": n, "m": n})
-                },
-            }),
-        ),
-        "wait" => (
-            Leave::Outranked,
-            Some(Pick {
-                strategy: "1".into(),
-                why: json!({"k": "w_wait", "acct": arg("account").unwrap_or(Value::Null), "at": r.from_resets_at}),
-            }),
-        ),
-        _ => (Leave::Outranked, order_pick()),
-    };
-    SwitchRecord {
-        at: r.at,
-        at_text: None,
-        from: r.from.clone(),
-        to: r.to.clone(),
-        leave,
-        pick,
-        from_resets_at: r.from_resets_at,
-        from_resets_at_text: None,
-        text: None,
-    }
+    json!({
+        "at": r.at,
+        "from": r.from,
+        "to": r.to,
+        "leave": {"k": leave},
+        "fromResetsAt": r.from_resets_at,
+    })
 }
 
 /// 跟随父会话最多追几层。
 const PARENT_DEPTH: usize = 8;
 
-/// ★ 第一版 ⇒ 第二版（整份，只在内存里；写回由调用方在锁里做）。读不懂 ⇒ `Err`（照读不懂办，不覆盖）。
-pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Book, String> {
+/// ★ 第一版 ⇒ 第二版的 JSON（整份，只在内存里）。读不懂 ⇒ `Err`（照读不懂办，不覆盖）。
+pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Value, String> {
     let old: OldBook = serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
     let mut rules = old.rules;
     let mut default_rule = old.default_rule;
@@ -391,8 +375,6 @@ pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Book, String>
             Rule {
                 name: old_seed_name(),
                 rotation: old.default.clone().unwrap_or_default(),
-                rev: 1,
-                updated_at: 0,
             },
         );
         default_rule = OLD_SEED_ID.into();
@@ -402,53 +384,13 @@ pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Book, String>
             default_rule = id.clone();
         }
     }
-    let seed_name = copy_core::copy_text("beRotation.config.seedName", &[("n", "1")]);
-    let mut configs: BTreeMap<String, Config> = rules
+    let configs: BTreeMap<String, Value> = rules
         .iter()
-        .map(|(id, r)| {
-            let name = if id == OLD_SEED_ID && r.name == old_seed_name() {
-                seed_name.clone()
-            } else {
-                r.name.clone()
-            };
-            (
-                id.clone(),
-                Config {
-                    body: body_of(&r.rotation, &name, local_tz),
-                    rev: r.rev.max(1),
-                    updated_at: r.updated_at,
-                    saved_by: SAVED_BY_SETTINGS.into(),
-                },
-            )
-        })
+        .map(|(id, r)| (id.clone(), body_of(&r.rotation, &r.name, local_tz)))
         .collect();
-    // 补建「默认配置 2」「默认配置 3」（同名已有 ⇒ 跳过）。
-    for n in 1..SEEDS.len() {
-        if let Some((id, c)) = super::seed_config(n, 0) {
-            let taken = configs
-                .values()
-                .any(|x| super::name_key(&x.body.name) == super::name_key(&c.body.name));
-            if !taken && !configs.contains_key(&id) {
-                configs.insert(id, c);
-            }
-        }
-    }
-    // 每份照内置策略 1 的声明补齐每一格。
-    if let Some(one) = crate::accounts::quota::strategy::fallback() {
-        for c in configs.values_mut() {
-            if c.body.strategy == "1" {
-                c.body = super::doc::filled(&c.body, &one);
-            }
-        }
-    }
-    let open_of = |id: &str| OpenConfig {
-        id: id.to_string(),
-        rev: configs.get(id).map_or(1, |c| c.rev),
-        copy: None,
-    };
-    let default_open = open_of(&default_rule);
-    // 每个会话：先定它自己那一层（parent 先记下要追的那一个）。
-    let own: BTreeMap<String, Result<OpenConfig, String>> = old
+    // 每个会话：先定它自己那一层（parent 先记下要追的那一个）：（打开哪份, 副本）。
+    type Open = (String, Option<Value>);
+    let own: BTreeMap<String, Result<Open, String>> = old
         .sessions
         .iter()
         .map(|(sid, s)| {
@@ -457,86 +399,76 @@ pub(crate) fn from_v1(v: &Value, local_tz: Option<&str>) -> Result<Book, String>
                 _ => Source::Follow,
             });
             let o = match source {
-                Source::Follow => Ok(default_open.clone()),
-                Source::Rule(id) if configs.contains_key(&id) => Ok(open_of(&id)),
-                Source::Rule(_) => Ok(default_open.clone()),
+                Source::Follow => Ok((default_rule.clone(), None)),
+                Source::Rule(id) if configs.contains_key(&id) => Ok((id, None)),
+                Source::Rule(_) => Ok((default_rule.clone(), None)),
                 Source::Custom => match &s.custom {
                     Some(c) => {
                         let base = configs.get(&default_rule);
-                        let mut body =
-                            body_of(c, base.map_or("", |b| b.body.name.as_str()), local_tz);
-                        body.tz = base.and_then(|b| b.body.tz.clone()).or(body.tz);
-                        body.tz_unknown = body.tz.is_none();
-                        if let Some(one) = crate::accounts::quota::strategy::fallback() {
-                            body = super::doc::filled(&body, &one);
+                        let name = base
+                            .and_then(|b| b.get("name"))
+                            .and_then(Value::as_str)
+                            .unwrap_or("");
+                        let mut body = body_of(c, name, local_tz);
+                        if let Some(tz) = base.and_then(|b| b.get("tz")).filter(|t| !t.is_null()) {
+                            body["tz"] = tz.clone();
+                            body["tzUnknown"] = Value::Bool(false);
                         }
-                        let same = base.is_some_and(|b| b.body == body);
-                        Ok(OpenConfig {
-                            copy: (!same).then_some(body),
-                            ..default_open.clone()
-                        })
+                        let same = base == Some(&body);
+                        Ok((default_rule.clone(), (!same).then_some(body)))
                     }
-                    None => Ok(default_open.clone()),
+                    None => Ok((default_rule.clone(), None)),
                 },
                 Source::Parent(p) => Err(p),
             };
             (sid.clone(), o)
         })
         .collect();
-    let chase = |sid: &str| -> OpenConfig {
+    let chase = |sid: &str| -> Open {
         let mut cur = sid.to_string();
         for _ in 0..=PARENT_DEPTH {
             match own.get(&cur) {
-                Some(Ok(o)) => {
-                    return OpenConfig {
-                        copy: None,
-                        ..o.clone()
-                    }
-                }
+                Some(Ok(o)) => return (o.0.clone(), None),
                 Some(Err(p)) => cur = p.clone(),
                 None => break,
             }
         }
-        default_open.clone()
+        (default_rule.clone(), None)
     };
-    let sessions = old
+    let sessions: serde_json::Map<String, Value> = old
         .sessions
         .iter()
         .map(|(sid, s)| {
-            let config = match &own[sid] {
+            let (id, copy) = match &own[sid] {
                 Ok(o) => o.clone(),
                 Err(p) => chase(p),
             };
-            let body = configs.get(&config.id).map(|c| &c.body);
-            let order = |a: &str| {
-                body.and_then(|b| {
-                    b.accounts
-                        .iter()
-                        .position(|r| {
-                            r.who == Who::Id(a.to_string()) || (a == s.start && r.who == Who::Start)
-                        })
-                        .map(|i| i + 1)
-                })
-            };
-            let entry = SessionEntry {
-                agent: s.agent.clone(),
-                start: s.start.clone(),
-                current: s.current.clone(),
-                since: s.since,
-                seen: s.seen,
-                config,
-                manual: super::Manual::default(),
-                memo: None,
-                baseline: s.baseline.clone(),
-                history: s.history.iter().map(|r| record_of(r, &order)).collect(),
-            };
-            (sid.clone(), entry)
+            let mut config = json!({"id": id, "rev": 1});
+            if let Some(c) = copy {
+                config["copy"] = c;
+            }
+            (
+                sid.clone(),
+                json!({
+                    "agent": s.agent,
+                    "start": s.start,
+                    "current": s.current,
+                    "since": s.since,
+                    "seen": s.seen,
+                    "config": config,
+                    "history": s.history.iter().map(record_of).collect::<Vec<_>>(),
+                }),
+            )
         })
         .collect();
-    Ok(Book {
-        default_config: default_rule,
-        configs,
-        sessions,
-        from_v1: None,
-    })
+    Ok(json!({
+        "version": 2,
+        "defaultConfig": default_rule,
+        "configs": configs,
+        "sessions": sessions,
+    }))
 }
+
+#[cfg(test)]
+#[path = "../../../../../tests/backend/accounts/quota/rotation/migrate_tests.rs"]
+mod tests;

@@ -34,7 +34,7 @@
 //!    本族判据一格都没量。模块头注里登记的兜底（`O_EXCL` 挡住最后那一段）
 //!    这里只验了「同名第二次会失败」，**没有**验「父目录在窗里被换掉」那一形。
 //! 4. 🔴 **「这个模块该不该有写盘能力」不是这里判的**。那是政策，住
-//!    写句柄只递给命令表文件管理那一族（`Run::BlockingFace`，`readonly_guard` 钉着）。
+//!    写句柄只递给命令表文件管理那一族（typed 的 `Facing` 那一档，`readonly_guard` 钉着）。
 //!    本族只判「围栏在不在、拦不拦得住」。
 
 use super::*;
@@ -47,8 +47,55 @@ const PORT: SessionPort = SessionPort {
     is_record: crate::agents::is_session_record,
     file_name: crate::agents::session_file_name_of,
 };
+/// 判据这一侧的回答：成功交 JSON，失败交 [`WriteFail`]。
+pub(crate) type Answer = Result<serde_json::Value, WriteFail>;
+
+/// 一份 JSON 入参经 `typed::take` 解成 `R`（形状不对 ⇒ `bad_args`，解码器那一句进 `said`），交 `body`，回包序列化成 JSON。
+pub(crate) fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
+    args: &serde_json::Value,
+    body: impl FnOnce(R) -> Result<T, WriteFail>,
+) -> Answer {
+    let req = crate::stream::inbound::typed::take::<R>(args).map_err(|f| WriteFail {
+        code: "bad_args",
+        said: f.into_said(),
+        raw: None,
+    })?;
+    body(req).map(|r| serde_json::to_value(r).expect("回包总能序列化"))
+}
+
+/// 照登记那一行的问法问一条（名字 ＋ JSON）：入参经 `typed::take` 解成那条命令的入参类型（形状不对 ⇒ `bad_args`），
+/// 再交本体；回包照线上那一形序列化。写面 · 上传提交 · 解压三张表的 15 条都在这里。
+pub(crate) fn ask(wire_name: &str, args: &serde_json::Value) -> Answer {
+    fn one<R: Act + serde::de::DeserializeOwned>(args: &serde_json::Value) -> Answer
+    where
+        R::Reply: serde::Serialize,
+    {
+        via(args, |r: R| answer(r, &Face::issue()))
+    }
+    use cmd_wire::files as w;
+    match wire_name {
+        "files-create" => one::<w::FilesCreateReq>(args),
+        "files-mkdir" => one::<w::FilesMkdirReq>(args),
+        "files-rename" => one::<w::FilesRenameReq>(args),
+        "files-delete" => one::<w::FilesDeleteReq>(args),
+        "files-chmod" => one::<w::FilesChmodReq>(args),
+        "files-copy" => one::<w::FilesCopyReq>(args),
+        "files-write-text" => one::<w::FilesWriteTextReq>(args),
+        "files-peek" => one::<w::FilesPeekReq>(args),
+        "files-put" => one::<w::FilesPutReq>(args),
+        "files-delete-session" => via(args, |r: w::FilesDeleteSessionReq| {
+            delete_session_of(&Face::issue(), r, &PORT)
+        }),
+        "files-extract" => one::<w::FilesExtractReq>(args),
+        "files-link" => one::<w::FilesLinkReq>(args),
+        "files-stage-chunk" => one::<w::FilesStageChunkReq>(args),
+        "files-commit-text" => one::<w::FilesCommitTextReq>(args),
+        "files-commit-upload" => one::<w::FilesCommitUploadReq>(args),
+        other => panic!("`{other}` 不是文件管理写的那几条"),
+    }
+}
 fn answer_wire(wire_name: &str, args: &serde_json::Value) -> Answer {
-    super::answer_wire(&Face::issue(), wire_name, args, &PORT)
+    ask(wire_name, args)
 }
 fn delete_session_with(
     sid: &str,
@@ -697,7 +744,8 @@ fn the_command_face_says_which_argument_is_wrong() {
     let root = temp_root("cmdargs");
     let r = root.to_str().expect("utf8");
     for (args, want) in [
-        (serde_json::json!({"rel": "a.md"}), "bad_path"),
+        // 缺目标根是入参形状不对（`bad_args`）；给了而是空的才是 `bad_path`。
+        (serde_json::json!({"rel": "a.md"}), "bad_args"),
         (serde_json::json!({"root": "", "rel": "a.md"}), "bad_path"),
         (serde_json::json!({"root": r}), "bad_args"),
         (serde_json::json!({"root": r, "rel": 7}), "bad_args"),
@@ -715,10 +763,15 @@ fn the_command_face_says_which_argument_is_wrong() {
         };
         assert_eq!(code, want, "`{args}` 的码不对（{msg}）");
     }
-    // 不认的命令名要被拒（否则上面每一条都对着一个「什么都收」的入口在断言）。
-    assert!(
-        answer_wire("files-ls", &serde_json::json!({})).is_err(),
-        "写面的入口收下了一个不属于它的命令名"
+    // 多一个键也拒（否则上面每一条都对着一个「什么都收」的入口在断言）。
+    assert_eq!(
+        answer_wire(
+            "files-create",
+            &serde_json::json!({"root": r, "rel": "a.md", "path": "/x"})
+        )
+        .map_err(|e| e.code),
+        Err("bad_args"),
+        "写面的入口收下了一个不认得的键"
     );
     std::fs::remove_dir_all(&root).ok();
 }
@@ -1308,24 +1361,9 @@ fn copy_refuses_its_shapes_and_is_reachable_on_the_command_face() {
         &serde_json::json!({"root": r, "from": "a.md", "to": "c.md"}),
     )
     .expect("命令面上一趟干净的复制被拒了");
-    let got: std::collections::BTreeSet<&str> = v
-        .as_object()
-        .expect("对象")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let declared: std::collections::BTreeSet<&str> = MANAGE_COMMANDS
-        .iter()
-        .find(|c| c.name == "files-copy")
-        .expect("在表里")
-        .fields
-        .iter()
-        .copied()
-        .collect();
-    assert_eq!(
-        got, declared,
-        "`files-copy` 真回出去的键与声明的 `fields` 对不上"
-    );
+    // 回包就是那一份线上类型（多一格 · 少一格都解不回来）。
+    serde_json::from_value::<cmd_wire::files::FilesTreeReply>(v)
+        .expect("`files-copy` 回包照类型解得回来");
     assert_eq!(std::fs::read(root.join("c.md")).expect("c"), b"A");
     std::fs::remove_dir_all(&base).ok();
 }
@@ -1994,29 +2032,18 @@ fn the_read_modify_write_commands_answer_with_their_declared_fields() {
         Err(WriteFail { code: c, .. }) => assert_eq!(c, "bad_args"),
         Ok(v) => panic!("🔴 `backup: 1` 竟然被当成了布尔：{v}"),
     }
-    let keys = |v: &serde_json::Value| -> std::collections::BTreeSet<String> {
-        v.as_object().expect("对象").keys().cloned().collect()
-    };
-    let declared = |name: &str| -> std::collections::BTreeSet<String> {
-        MANAGE_COMMANDS
-            .iter()
-            .find(|c| c.name == name)
-            .expect("在表里")
-            .fields
-            .iter()
-            .map(|s| s.to_string())
-            .collect()
-    };
     let peek0 = answer_wire("files-peek", &serde_json::json!({"root": r, "rel": "a"}))
         .expect("peek 不在的文件");
     assert_eq!(peek0["exists"], false);
-    assert_eq!(keys(&peek0), declared("files-peek"));
+    serde_json::from_value::<cmd_wire::files::FilesPeekReply>(peek0.clone())
+        .expect("peek 回包照类型解");
     let put = answer_wire(
         "files-put",
         &serde_json::json!({"root": r, "rel": "a", "content": "x", "expect": null}),
     )
     .expect("put");
-    assert_eq!(keys(&put), declared("files-put"));
+    serde_json::from_value::<cmd_wire::files::FilesPutReply>(put.clone())
+        .expect("put 回包照类型解");
     assert_eq!(put["created"], true);
     let peek1 =
         answer_wire("files-peek", &serde_json::json!({"root": r, "rel": "a"})).expect("peek");
@@ -2567,21 +2594,8 @@ fn the_command_face_copies_a_directory_only_when_asked() {
         &serde_json::json!({"root": r, "from": "t", "to": "u", "recursive": true}),
     )
     .expect("带 recursive 的复制目录被拒");
-    let got: std::collections::BTreeSet<&str> = v
-        .as_object()
-        .expect("对象")
-        .keys()
-        .map(String::as_str)
-        .collect();
-    let declared: std::collections::BTreeSet<&str> = MANAGE_COMMANDS
-        .iter()
-        .find(|c| c.name == "files-copy")
-        .expect("在表里")
-        .fields
-        .iter()
-        .copied()
-        .collect();
-    assert_eq!(got, declared);
+    serde_json::from_value::<cmd_wire::files::FilesTreeReply>(v.clone())
+        .expect("回包照类型解得回来");
     assert_eq!(
         (v["files"].as_u64(), v["dirs"].as_u64()),
         (Some(3), Some(4))
@@ -2628,7 +2642,7 @@ fn read_then_save_then_save_again_chains_on_the_digests_the_backend_hands_out() 
     let root = temp_root("cas-chain");
     std::fs::write(root.join("a.md"), b"one\n").expect("铺");
     let path = root.join("a.md");
-    let read = crate::files::answer_wire(
+    let read = crate::files::tests::answer_wire(
         "files-read-text",
         &serde_json::json!({"path": path.to_str().unwrap(), "max_bytes": 1024}),
         &Default::default(),
@@ -2765,8 +2779,8 @@ fn the_empty_dir_form_deletes_only_an_empty_real_directory() {
     }
 }
 
-/// 形状只收恰好 `{"empty_dir": true}`：`false` ⇒ `bad_args`（逐字节形取不出）；多带一个 `b16` ⇒ 不是空目录形，
-/// 按逐字节形取（`{"b16": …}`）⇒ 目标是目录 ⇒ `refused`；与 `recursive` 同给 ⇒ `bad_args`。每一形都一个字节不动。
+/// 形状只收恰好 `{"empty_dir": true}`：`false` ⇒ `bad_args`；多带一个 `b16` ⇒ 两形都不是 ⇒ `bad_args`；
+/// 与 `recursive` 同给 ⇒ `bad_args`。每一形都一个字节不动。
 #[test]
 fn the_empty_dir_form_takes_exactly_one_shape() {
     let root = temp_root("fw1-emptydir-shape");
@@ -2776,7 +2790,7 @@ fn the_empty_dir_form_takes_exactly_one_shape() {
         (serde_json::json!({"empty_dir": false}), "bad_args"),
         (
             serde_json::json!({"empty_dir": true, "b16": "00"}),
-            "refused",
+            "bad_args",
         ),
     ] {
         let e = answer_wire(
@@ -2935,9 +2949,9 @@ fn a_recursive_delete_in_slices_stops_between_entries_and_says_how_many_are_left
     );
     // 帧面那一条：带 `limit` ⇒ 回 `remaining`；接着删到 0。
     let args = |n: u64| serde_json::json!({ "root": root.to_string_lossy(), "rel": "t", "recursive": true, "limit": n });
-    let v = answer_delete(&Face::issue(), &args(2)).expect("第二趟");
+    let v = answer_wire("files-delete", &args(2)).expect("第二趟");
     assert_eq!(v["remaining"], serde_json::json!(total - 3));
-    let v = answer_delete(&Face::issue(), &args(1_000)).expect("第三趟");
+    let v = answer_wire("files-delete", &args(1_000)).expect("第三趟");
     assert_eq!(v["remaining"], serde_json::json!(0));
     assert!(still_there(&root, &planted).is_empty(), "说删完了，树还在");
     std::fs::remove_dir_all(&base).ok();

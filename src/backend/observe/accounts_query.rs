@@ -336,6 +336,8 @@ fn scan_accounts(
                 let ready = auth_ready(auth_kind, credentials_present);
                 lines.push(serde_json::json!({
                         "name": a.name,
+                        // 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）：唯一一处 `name_words::account_text`，界面 · 手机照抄。
+                        "label": crate::accounts::quota::name_words::account_text(&a.name),
                         "email": a.email.clone().unwrap_or_default(),
                         "configDir": cfg_out,
                         "isDefault": a.is_default,
@@ -908,6 +910,15 @@ pub(crate) fn live_needs(
         super::facts_query::needs_first(&a.needs, &b.needs).then_with(|| a.sid.cmp(&b.sid))
     });
     rows
+}
+
+/// 这条会话此刻在不在等人：那台说在等（同 [`live_needs`] 那一判）或有挂着的待答请求（`asked`，只算此刻活着的）。
+pub(crate) fn waiting_now(agent_home: &Path, sid: &str, asked: &[String]) -> bool {
+    match live_activity(agent_home).get(sid) {
+        Some(Some(crate::agents::SessionActivity::NeedsYou)) => true,
+        Some(_) => asked.iter().any(|a| a == sid),
+        None => false,
+    }
 }
 
 /// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个，序见 [`live_doing`]）。

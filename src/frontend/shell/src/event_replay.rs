@@ -66,13 +66,13 @@ pub trait ItemSink: Send + Sync {
 /// 本文件认的流标签：一台机器的全部会话 / （带 `/<sid>`）只一个会话。
 pub const SESSION_LINES_KIND: &str = "session-lines";
 
-/// 本文件认的第二种流：一台机器上中转抄出来的 SSE 事件（体是 [`crate::ui_contract::SessionTapPayload`]）。
+/// 本文件认的第二种流：一台机器上的活卡（体是 [`crate::ui_contract::SessionLiveCardPayload`]，后端拼好的成品）。
 ///
 /// 与 `session-lines` 同一张订阅表、同一套 credit 与 `Gap`（一条帧路 ＋ `subscribe`），差别只有三处：
-/// ① **没有留存**：tap 不进留存，订阅当场就是实时的（没有就绪点、没有重放）；
-/// ② 只有整台机器那一形（前端按 `stream` 自己对 tab）；
-/// ③ 实时那一份照「有 credit 当场交、没 credit 丢、位置照占、原位 `Gap`」（级 2）—— tap 本来就可丢（SSE 只保快）。
-pub const SESSION_TAP_KIND: &str = "session-tap";
+/// ① **没有留存**：活卡不进留存，订阅当场就是实时的（没有就绪点、没有重放）；
+/// ② 只有整台机器那一形（帧体带 `sid`，前端按它对 tab）；
+/// ③ 实时那一份照「有 credit 当场交、没 credit 丢、位置照占、原位 `Gap`」（级 2）—— 活卡本来就可丢（SSE 只保快）。
+pub const SESSION_LIVE_CARD_KIND: &str = "session-live-card";
 
 /// 又一种流：那台机器上「某样东西变了」（`changed/<主题>`，格体是后端 `changed` 帧去掉 `kind` / `topic` 的那一份 `{key?, rev?, body?}`，没有留存）。
 /// 主题不在这里认：后端主题表（`stream/topic.rs`）是唯一一处，这里原样按主题扇出。TS 那一侧的同一个串住 `src/frontend/ui/changed-stream.ts::CHANGED_KIND`。
@@ -129,6 +129,10 @@ struct Inner {
     screen_dropped: Option<ScreenDropped>,
     /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。`None` ＝ 还没报过 ⇒ 不替任何一台报名单（那台全看）。
     main_watch: Option<BTreeSet<TailKey>>,
+    /// 旁路快照在途的电平：最近一次交出去的那个数（[`EventReplay::on_snapshot_inflight`] 在本锁里记）。
+    /// 重放补电平读它、不回头读 `stream_source` 那把计数锁 —— 交电平的那一边是「持计数锁 → 要本锁」，
+    /// 这边再「持本锁 → 要计数锁」就是两条线程互等（截图台架偶发整条流停住，抓栈就是这一对）。
+    snapshot_level: u32,
 }
 
 /// 终端画面流撤掉了：`(哪台, 票)`。
@@ -157,13 +161,13 @@ struct Sub {
     told_seen: bool,
 }
 
-/// 一条订阅订的是哪一种流 —— 两路各加了一个布尔（`tap` / `lines`），合并时收成这一个枚举。
+/// 一条订阅订的是哪一种流 —— 两路各加了一个布尔（活卡 / `lines`），合并时收成这一个枚举。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SubKind {
     /// `session-lines` 一族：收会话行、有留存（就绪点重放）。
     Lines,
-    /// `session-tap`：中转抄出来的 SSE 事件，没有留存。
-    Tap,
+    /// `session-live-card`：活卡，没有留存。
+    LiveCard,
     /// `changed/<主题>`（`only` = 那个主题）：只收看得见 / 看不见与「那台这一样东西变了」那几格，没有留存。
     Changed,
     /// `probe-progress/<票>`：一趟测试连接的进度格（`only` = 那张票），没有留存。
@@ -373,6 +377,7 @@ fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
 /// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行（[`held_for`]）。
 fn lifecycle_replay(
     book: &parking_lot::RwLock<crate::session_book::Book>,
+    level: u32,
     origin: &str,
     only: Option<&str>,
     history: &[JsonlLinePayload],
@@ -395,7 +400,6 @@ fn lifecycle_replay(
     };
     // 旁路快照在途的电平：只在有在途时补一格（前端初值就是 0）。
     let mut before = Vec::new();
-    let level = crate::stream_source::snapshot_inflight_level();
     if level > 0 && only.is_none() {
         before.push(body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count: level },
@@ -438,8 +442,8 @@ fn refused(code: &str, message: String) -> Item {
 enum Stream {
     /// `session-lines`：`None` = 整台机器 / `Some(sid)` = 一个会话。
     Lines(Option<String>),
-    /// `session-tap`。
-    Tap,
+    /// `session-live-card`。
+    LiveCard,
     /// `changed/<主题>`。
     Changed(String),
     /// `probe-progress/<票>`。
@@ -448,13 +452,13 @@ enum Stream {
     Screen(String),
 }
 
-/// `kind` ⇒ 哪一种流（`session-tap` ⇒ [`Stream::Tap`]；`changed/quota` ⇒ [`Stream::Changed`]）。认不出 ⇒ `Err`。
+/// `kind` ⇒ 哪一种流（`session-live-card` ⇒ [`Stream::Live`]；`changed/quota` ⇒ [`Stream::Changed`]）。认不出 ⇒ `Err`。
 fn parse_kind(kind: &str) -> Result<Stream, ()> {
     if kind == SESSION_LINES_KIND {
         return Ok(Stream::Lines(None));
     }
-    if kind == SESSION_TAP_KIND {
-        return Ok(Stream::Tap);
+    if kind == SESSION_LIVE_CARD_KIND {
+        return Ok(Stream::LiveCard);
     }
     if let Some(topic) = kind
         .strip_prefix(CHANGED_KIND)
@@ -503,6 +507,7 @@ impl EventReplay {
                 sink: None,
                 screen_dropped: None,
                 main_watch: None,
+                snapshot_level: 0,
             }),
             credit_changed: tokio::sync::Notify::new(),
             watch_tick: tokio::sync::watch::channel(0).0,
@@ -708,6 +713,7 @@ impl EventReplay {
                 tails,
                 subs,
                 ready_labels,
+                snapshot_level,
                 ..
             } = &mut *inner;
             let mut jobs: Vec<ReplayJob> = Vec::new();
@@ -715,9 +721,15 @@ impl EventReplay {
                 sub.live = true;
                 ready_labels.insert(sub.label.clone());
                 let mine = held_for(tails, sub);
-                // 会话行那一族才有起停（tap / 账号那两种没有）。
+                // 会话行那一族才有起停（活卡 / 账号那两种没有）。
                 let (before, after) = if sub.kind == SubKind::Lines {
-                    lifecycle_replay(self.book, &sub.origin, sub.only.as_deref(), &mine)
+                    lifecycle_replay(
+                        self.book,
+                        *snapshot_level,
+                        &sub.origin,
+                        sub.only.as_deref(),
+                        &mine,
+                    )
                 } else {
                     (Vec::new(), Vec::new())
                 };
@@ -862,7 +874,7 @@ impl EventReplay {
         }
         let (only, kind) = match parse_kind(kind) {
             Ok(Stream::Lines(o)) => (o, SubKind::Lines),
-            Ok(Stream::Tap) => (None, SubKind::Tap),
+            Ok(Stream::LiveCard) => (None, SubKind::LiveCard),
             Ok(Stream::Changed(topic)) => (Some(topic), SubKind::Changed),
             Ok(Stream::Probe(ticket)) => (Some(ticket), SubKind::Probe),
             Ok(Stream::Screen(ticket)) => (Some(ticket), SubKind::Screen),
@@ -904,8 +916,13 @@ impl EventReplay {
             };
             let job = (immediate && kind == SubKind::Lines).then(|| {
                 let mine = held_for(&inner.tails, &sub);
-                let (before, after) =
-                    lifecycle_replay(self.book, origin, sub.only.as_deref(), &mine);
+                let (before, after) = lifecycle_replay(
+                    self.book,
+                    inner.snapshot_level,
+                    origin,
+                    sub.only.as_deref(),
+                    &mine,
+                );
                 ReplayJob {
                     label: label.to_string(),
                     id,
@@ -984,13 +1001,14 @@ impl EventReplay {
         }
     }
 
-    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢）。
+    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢），并记下这个数（重放补电平读它）。
     pub fn on_snapshot_inflight(&self, count: u32) {
         let body = body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count },
         ));
         let (sink, plans) = {
             let mut inner = self.inner.lock();
+            inner.snapshot_level = count;
             let Some(sink) = inner.sink.clone() else {
                 return;
             };
@@ -1013,10 +1031,10 @@ impl EventReplay {
         }
     }
 
-    /// 中转抄出来的一个 SSE 事件（`session_tap::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
-    /// 交给订了那台机器 `session-tap` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
-    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：tap 可丢，攒着只会让活卡更晚。
-    pub fn on_tap(&self, payload: crate::ui_contract::SessionTapPayload) {
+    /// 活卡的一帧（`live_card::deliver` 经 `lib.rs` 装的出口调）：**不进留存**，
+    /// 交给订了那台机器 `session-live-card` 的每一条订阅 —— 有 credit 当场交；没有 ⇒ 丢、位置照占、下一次交之前原位 `Gap`
+    /// （与会话行实时那一份同一个 [`plan_live`]）。**不等 credit、不攒**：活卡可丢，攒着只会让它更晚。
+    pub fn on_live_card(&self, payload: crate::ui_contract::SessionLiveCardPayload) {
         let origin = payload.origin.as_wire_str().to_string();
         let (sink, plans) = {
             let mut inner = self.inner.lock();
@@ -1028,7 +1046,7 @@ impl EventReplay {
             for sub in inner
                 .subs
                 .iter_mut()
-                .filter(|s| s.kind == SubKind::Tap && s.live && s.origin == origin)
+                .filter(|s| s.kind == SubKind::LiveCard && s.live && s.origin == origin)
             {
                 let items = plan_live(sub, vec![body.clone()]);
                 if !items.is_empty() {

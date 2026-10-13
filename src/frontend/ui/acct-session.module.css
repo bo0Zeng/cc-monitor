@@ -1,4 +1,4 @@
-/* 会话里：换号条（消息流里一行居中）· 提示条（会话头下、消息流上）。 */
+/* 会话里：换号条（消息流里一行居中）· 停发提示（会话头下、消息流上）。 */
 @layer components {
   .acctSessStrip {
     display: flex;
@@ -22,7 +22,6 @@
     gap: var(--space-3);
   }
 
-  .acctSessStripAt,
   .acctSessStripSep,
   .acctSessStripMove,
   .acctSessStripWhy {

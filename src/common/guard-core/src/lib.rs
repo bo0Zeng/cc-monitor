@@ -2472,6 +2472,11 @@ mod private_shape_guard;
 #[cfg(test)]
 #[path = "../../../../tests/common/guard-core/wall_ceiling_tests.rs"]
 mod wall_ceiling;
+
+/// 读进程起始时刻先剥掉进程名：shell 脚本里按列号取 `/proc/<pid>/stat` 的每一行都先剥到最后一个 `) `。
+#[cfg(test)]
+#[path = "../../../../tests/common/guard-core/proc_start_tests.rs"]
+mod proc_start;
 // 测试档的家一开始就是沙箱（`src/common/test-home`）：这一行让链接器把它的启动段带进本 crate 的测试二进制。
 #[cfg(test)]
 #[used]

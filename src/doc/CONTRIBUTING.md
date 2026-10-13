@@ -113,7 +113,7 @@
 
 ### 2.9 加跨进程文件
 
-做法见 [IPC-PROTOCOL.md § 加一条协议](IPC-PROTOCOL.md#加一条协议)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，在 `data_paths.rs` 登记并写清（INVARIANTS §2.1）。后端自己的状态文件只经写句柄 `platform::fs::Own` 写（启动时造一次、顺着入口递下去；`readonly_guard.rs` 的构造判据钉「只许启动入口造」）。
+做法见 [IPC-PROTOCOL.md § 加一条协议](IPC-PROTOCOL.md#加一条协议)。要点：放在 `~/.cc-monitor/` 下 · UTF-8 无 BOM · 原子写（临时件 ＋ 改名） · 反序列化容错（`#[serde(default)]`） · 先答它是「真相」还是「缓存」，登记并写清（后端家里的进 `relay_route_core::OWN_HOME_ENTRIES`，界面这一侧的进 `data_paths.rs`；INVARIANTS §2.1）。后端自己的状态文件只经写句柄 `platform::fs::Own` 写（启动时造一次、顺着入口递下去；`readonly_guard.rs` 的构造判据钉「只许启动入口造」）。
 
 ---
 

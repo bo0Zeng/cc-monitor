@@ -9,7 +9,7 @@ use super::layout::{identity, is_excluded, is_identity, share_items};
 use super::model::Manifest;
 use super::scan::{join, Snapshot};
 use crate::platform::acct_view::Item;
-use acct_core::wire::{CheckLevel, VerifyCheck, VerifyReport};
+use cmd_wire::accounts::{CheckLevel, VerifyCheck, VerifyReport};
 use copy_core::copy_text;
 
 struct Out {

@@ -68,6 +68,8 @@ pub(crate) mod asks;
 pub mod claudecode;
 // 上游协议的流面（按协议分，不按 agent 分）。
 pub(crate) mod codex;
+// 漂移账的通用形（各家的账本交出来的都是它）。
+pub(crate) mod drift;
 pub(crate) mod mainline;
 pub(crate) mod record;
 pub(crate) mod sse_anthropic;
@@ -101,6 +103,10 @@ pub(crate) struct Adapter {
     /// 而那个数是 `G1` 成功标准②的头条数字、**只许降**。
     /// ⇒ 把它收进注册表：**加一个 agent 本来就该改的那一行**，正是这一格该在的地方。
     pub(crate) account_env: Option<&'static str>,
+    /// monitor 那份 `config.json` 里**旧的**那一格「这一家的数据目录」的键名（`None` ＝ 这一家从来没有那一格）。
+    /// ⚠ 只给换形那一段（`control/prefs_migration.rs`）用：新的那一格是 `prefs.json` 的 `agentHomes`（按 kind）。
+    /// 下一版随 `prefs_migration.rs` 一起删。键名是那一家的知识，所以住适配层、经 [`old_home_pref_of`] 一处读。
+    pub(crate) old_home_pref: Option<&'static str>,
     /// 这个 agent 在本机的 home 目录候选。`None` = 连候选都说不出（⇒ 一定看不见）。
     ///
     /// ⚠ 它**只答"该在哪"**。"在不在"由 [`home_is_visible`] 统一判 ——
@@ -332,10 +338,39 @@ pub(crate) struct LaunchFace {
     pub(crate) needs_bus_id: bool,
     /// 这一家的会话有身份面（`@ccm_sid` 回填）。
     pub(crate) has_identity: bool,
-    /// 这一家认得的模型名（账号页「默认模型」下拉的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
-    // 后端里的读者只有生成器（`agents_tests.rs::render_agent_profile_table`，测试档）：它写进 `generated/agent-profile-table.ts`，界面读那一份。
-    #[cfg_attr(not(test), allow(dead_code))]
-    pub(crate) models: Option<&'static [&'static str]>,
+    /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
+    pub(crate) models: Option<&'static [Choice]>,
+    /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
+    pub(crate) model_switch: Option<ModelSwitch>,
+}
+
+/// 会话开着时换模型的说法（[`LaunchFace::model_switch`]）：往会话里送一行，再从记录里此后长出的那一条读回换成了什么。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModelSwitch {
+    /// 送进会话的那一行（交的是 [`LaunchFace::models`] 里的原值）。
+    pub(crate) command: fn(&str) -> String,
+    /// 从记录里的一条认出读回的那一句；不是 ⇒ `None`。
+    pub(crate) read: fn(&serde_json::Value) -> Option<ModelSaid>,
+}
+
+/// 换模型读回的那一句（[`ModelSwitch::read`]）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ModelSaid {
+    /// 那一家写的显示名（原样）。
+    pub(crate) name: String,
+    /// 那一家说「没变」（本来就是它）。
+    pub(crate) kept: bool,
+    /// 那一家顺带说的思考档（有才有，原样）。
+    pub(crate) effort: Option<String>,
+}
+
+/// 一个可选值：交给那一家的原值 ＋ 写给人看的那一句（模型 · 权限档）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Choice {
+    /// 原值（交给那一家的就是它，也是界面交回的那一格）。
+    pub(crate) value: &'static str,
+    /// 写给人看的那一句（经文案表取，键在适配层那一处写成字面量）。
+    pub(crate) text: fn() -> String,
 }
 
 /// 一家起会话时选权限档的说法（[`LaunchFace::permission`]）。
@@ -343,8 +378,21 @@ pub(crate) struct LaunchFace {
 pub(crate) struct PermissionFace {
     /// 交给那一家的旗标（`claude --permission-mode <档>`）。
     pub(crate) flag: &'static str,
-    /// 可选的档（原值，交给那一家的就是它）。
-    pub(crate) modes: &'static [&'static str],
+    /// 可选的档（原值 ＋ 字）。
+    pub(crate) modes: &'static [Choice],
+    /// 会话开着时怎么切档；这一家切不了 ⇒ `None`。
+    pub(crate) switch: Option<ModeSwitch>,
+}
+
+/// 会话开着时切权限档的说法（[`PermissionFace::switch`]）：那一家只有「按一下换到下一档」的循环，没有直接切到某档的命令。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModeSwitch {
+    /// 换到下一档按哪个键（`terminal-input` 键表里的名字）。
+    pub(crate) key: &'static str,
+    /// 循环里最多几档（按满这么多下还没到 ⇒ 不在循环里）。
+    pub(crate) cycle_max: usize,
+    /// 从此刻那一屏（纯文本行）认出此刻的档（原值）；认不出 ⇒ `None`。
+    pub(crate) read: fn(&[String]) -> Option<&'static str>,
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。
@@ -558,8 +606,8 @@ pub(crate) struct RecordFace {
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
     /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
     pub(crate) branch: Option<BranchFn>,
-    /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 成品；`None` ＝ 这一家不记。
-    pub(crate) drift: Option<fn() -> serde_json::Value>,
+    /// 这一家的漂移账（看不懂的记录类型记在哪）⇒ 各面的快照（通用形 [`drift::DriftFaceReport`]）；`None` ＝ 这一家不记。
+    pub(crate) drift: Option<fn() -> Vec<drift::DriftFaceReport>>,
     /// 这一家的记录文本面（正文 / 工具内容怎么抽 · CLI 注入怎么剥）；`None` ＝ 这一家不进搜索 / 摘录那几条通用路。
     pub(crate) text: Option<TextFace>,
     /// 删历史会话那一条的两问（按 sid 找那一份 · 它是不是一份会话记录）；`None` ＝ 这一家不删。
@@ -1787,12 +1835,15 @@ pub(crate) fn synth_excerpt_among(registry: &[Adapter], p: &Path) -> Option<fn(&
     adapter_among(registry, kind)?.history.map(|h| h.excerpt)
 }
 
-/// 注册表里每一家的漂移账（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
-pub(crate) fn drift_reports() -> Vec<serde_json::Value> {
-    REGISTRY
-        .iter()
-        .filter_map(|a| a.records.and_then(|r| r.drift).map(|f| f()))
-        .collect()
+/// 注册表里每一家的漂移账并成一份（注册序；不记的跳过）—— 帧命令 `drift-report` 的读法入口。
+pub(crate) fn drift_report() -> drift::DriftReport {
+    drift::DriftReport {
+        faces: REGISTRY
+            .iter()
+            .filter_map(|a| a.records.and_then(|r| r.drift))
+            .flat_map(|f| f())
+            .collect(),
+    }
 }
 
 /// 见 [`Adapter::footprint`]。
@@ -1839,6 +1890,8 @@ pub(crate) struct AccountsFace {
     pub(crate) email_in: fn(&Path) -> Option<String>,
     /// 各号的订阅号登录那份文件的格式（各号之间同步 MCP 登录读写它）；没有 ⇒ `None`。
     pub(crate) login: Option<LoginFace>,
+    /// 在 app 里登录一个号那一形（起那一家的登录子命令、认链接、判粘回来的东西）；不在 app 里登 ⇒ `None`。
+    pub(crate) sign_in: Option<SignInFace>,
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
@@ -1904,6 +1957,10 @@ pub(crate) struct McpFace {
     pub(crate) read: fn(Option<&Path>, &McpLook) -> McpRead,
     /// 在那一家的会话里登录 MCP 服务器要敲的那条命令（扩展页「去登录」· 待办那一件复制它）。
     pub(crate) login_command: &'static str,
+    /// 在 app 里登录一个 MCP 服务器那一形（子命令最后再接服务器名）；`None` ＝ 只能在会话里登。
+    pub(crate) sign_in: Option<SignInFace>,
+    /// 各号家目录里记「要登录」的那份文件（盯它：翻过来 ⇒ 会话外的需手动清单可能变了）。
+    pub(crate) needs_login_file: Option<&'static str>,
 }
 
 /// 判状态要看的：这台各号的家目录（账号库里的名字 · 那个号的家；没设账号的那一份名字是 `None`）＋ 此刻（epoch ms）。
@@ -1985,6 +2042,19 @@ pub(crate) fn mcp_login_command(kind: &str) -> Option<&'static str> {
     adapter_among(REGISTRY, kind)
         .and_then(|a| a.mcp)
         .map(|f| f.login_command)
+}
+
+/// `kind` 那一家的 MCP 面（[`McpFace`]）。那一家不认得 MCP ⇒ `None`。
+pub(crate) fn mcp_face(kind: &str) -> Option<McpFace> {
+    adapter_among(REGISTRY, kind).and_then(|a| a.mcp)
+}
+
+/// 这台注册表里各家记「MCP 要登录」的那份文件名（watcher 认它）。
+pub(crate) fn mcp_needs_login_files() -> Vec<&'static str> {
+    REGISTRY
+        .iter()
+        .filter_map(|a| a.mcp.and_then(|m| m.needs_login_file))
+        .collect()
 }
 
 /// `kind` 那一家没设账号时的家目录（注册表 `home` 那一格）。认不出 / 说不出 ⇒ `None`。
@@ -2129,6 +2199,37 @@ pub(crate) enum Fallback {
         present: &'static str,
         absent: &'static str,
     },
+}
+
+/// 一家在 app 里登录一个号那一形（本体 `accounts/sign_in.rs`：起它、转链接、递码；令牌那一家自己写）。
+#[derive(Clone, Copy)]
+pub(crate) struct SignInFace {
+    /// 登录子命令（程序照这台的 `PATH` 找）。
+    pub(crate) program: &'static str,
+    pub(crate) args: &'static [&'static str],
+    /// 号的配置目录交给这一格；账号 0（默认配置目录）⇒ 摘掉它。
+    pub(crate) dir_env: &'static str,
+    /// 起它时摘掉的（会盖掉那个号自己的登录的那几格）。
+    pub(crate) env_remove: &'static [&'static str],
+    /// 输出的一行里那条登录链接（只认那一家的登录页）；没有 ⇒ `None`。
+    pub(crate) link_in: fn(&str) -> Option<String>,
+    /// 粘回来的东西对不对得上这一趟的链接（格式 ＋ 这一趟的 state）。
+    pub(crate) paste_fits: fn(pasted: &str, link: &str) -> bool,
+    /// 输出的一行说「粘的码不对」（子命令接着等）。
+    pub(crate) said_bad_paste: fn(&str) -> bool,
+    /// 它要终端才肯问（起在伪终端里：`platform::child::Child::converse_in_terminal`）。
+    pub(crate) terminal: bool,
+    /// 粘回来的是什么（界面据此说「粘登录页上给的码」还是「粘浏览器地址栏里那一整条」）。
+    pub(crate) paste: PasteShape,
+}
+
+/// 粘回来的那一段是什么（中立值；线上名由帧面那一份给）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PasteShape {
+    /// 登录页上给的那一段码。
+    Code,
+    /// 浏览器回跳到本机那一整条地址（回不来时地址栏里那一条）。
+    RedirectUrl,
 }
 
 /// 一家的订阅号登录的格式知识（读写与续期在账号域 `accounts/oauth/`，这里只有这一家的名字与地址）。
@@ -2514,6 +2615,43 @@ pub(crate) struct AssetFace {
     pub(crate) servers_key: &'static str,
     /// 一个配置根底下装着的插件：插件根 ＋ 它清单里的名字（用户级 skill 目录里放进来的 · 插件缓存里每个版本一个）。
     pub(crate) plugins: fn(config_root: &Path) -> Vec<(PathBuf, String)>,
+    /// 一条会话能用的命令与 skill：那条会话的项目目录（说不出 ⇒ `None`）＋ 它用的那个号的配置根，现扫。
+    pub(crate) session_scan: fn(project: Option<&Path>, config_root: &Path) -> SessionAssets,
+    /// 这一家内置的斜杠命令（不住文件里的那几条）。
+    pub(crate) builtin_commands: &'static [BuiltinCommand],
+}
+
+/// 一条内置的斜杠命令（[`AssetFace::builtin_commands`]）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BuiltinCommand {
+    /// 命令名（不带 `/`）。
+    pub(crate) name: &'static str,
+    /// 写给人看的简介（经文案表取，键在适配层写成字面量）。
+    pub(crate) text: fn() -> String,
+    /// 要跟参数（填进输入框后停住等补）。
+    pub(crate) needs_args: bool,
+    /// 发之前先确认（会丢掉东西的那几条）。
+    pub(crate) confirm: bool,
+}
+
+/// 一条会话能用的命令与 skill（[`AssetFace::session_scan`] 的原始事实，字由通用层写）。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct SessionAssets {
+    /// 本项目的在前、号的在后，各按名字排。
+    pub(crate) commands: Vec<CommandSeen>,
+    pub(crate) skills: Vec<SkillSeen>,
+    /// 读不出来的那几份（一句一份）。
+    pub(crate) problems: Vec<String>,
+}
+
+/// 看到的一条住在文件里的斜杠命令。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CommandSeen {
+    pub(crate) name: String,
+    /// 住在本项目里（否则住在号的配置根里）。
+    pub(crate) project: bool,
+    pub(crate) description: Option<String>,
+    pub(crate) needs_args: bool,
 }
 
 /// 看到的一个 skill：`project` = `None` 是用户级，`Some(项目目录)` 是那个项目里的。
@@ -2608,9 +2746,9 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 /// ⚠ **一家一行**（不是每字段一行）：判据⑦把本文件直呼适配层的**行数**钉成 `REGISTRY.len()`。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), old_home_pref: Some(claudecode::OLD_HOME_PREF), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE, asks: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE, asks: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
@@ -2622,6 +2760,20 @@ pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
         .iter()
         .find(|a| a.kind == kind)
         .and_then(|a| a.account_env)
+}
+
+/// 注册表里每一家的 `(kind, config.json 里旧的数据目录键名)`（没有那一格的不列）。
+/// ⚠ 只给换形那一段用（[`Adapter::old_home_pref`]），下一版随 `control/prefs_migration.rs` 一起删；**通用层读这一格只经这里**。
+pub(crate) fn old_home_pref_of(kind: &str) -> Option<&'static str> {
+    REGISTRY
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.old_home_pref)
+}
+
+/// 注册表里的每一家（注册表序）。
+pub(crate) fn registered_kinds() -> impl Iterator<Item = &'static str> {
+    REGISTRY.iter().map(|a| a.kind)
 }
 
 /// 某一家找上游读的那个环境变量（注入格是 [`Inject::Env`] 的那个变量）。认不出这家 / 没登记上游 / 地址只能拼进参数 ⇒ `None`

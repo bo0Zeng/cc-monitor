@@ -76,9 +76,7 @@ const BEHAVIOR = {
   autoFollowUserActive: false,
   bringMonitorToFrontOnUserActive: true,
   showBgSessions: false,
-  resumeCommand: "claude --resume",
   resumeCommandPresets: [],
-  resumeInTmux: true,
   notifyTurnEnd: true,
   notifyNeeds: true,
   // `forceLaunchPayloadRenderer` 退役，行为配置里没有这一格了。
@@ -86,29 +84,13 @@ const BEHAVIOR = {
 const KEYS = { "open-settings": "Ctrl+,", "kill-session": null };
 
 /** 手写期望：全部写者一起发之后，盘上**恰好**是这一份。 */
-/** 设置窗写机器表那一路插的一台（与盘上读回的形状逐格相同）。 */
-const LU_HOST = {
-  label: "lu",
-  host: "198.51.100.9",
-  port: 22,
-  user: "u",
-  keyPath: "",
-  hostKeyFingerprint: "",
-  addresses: [] as string[],
-  jump: "",
-  resumeCommand: "",
-  connect: true,
-};
-
 const EXPECTED: Record<string, unknown> = {
   tabCollections: COLS,
   tabBar: { order: ["sid-b", "sid-a"], pinned: [PIN], groupOf: { "sid-a": "c1", "sid-b": "c1" } },
   ...BEHAVIOR,
   theme: { bg: "#010203" },
-  claudeDir: "/tmp/cfg1-claude",
   keybindings: KEYS,
-  accounts: { byMachine: { devbox: { modelByAccount: { a1: "opus" } } } },
-  remote: { hosts: [LU_HOST] }, // 只插一台，不整段写 remote
+  // 机器表 · Claude 数据目录不在这份文件里了（住本机后端 `machines.json` / `prefs.json`，写口是 `machines-set` / `prefs-set`），不在本条的写者里。
 };
 
 /** 一个 realm 的全部写者（一份模块实例）。 */
@@ -121,10 +103,7 @@ async function realm(): Promise<{
   const bar = await import("../../../src/frontend/ui/tab-bar-state");
   const beh = await import("../../../src/frontend/ui/behavior");
   const theme = await import("../../../src/frontend/ui/theme");
-  const paths = await import("../../../src/frontend/ui/paths");
   const kb = await import("../../../src/frontend/ui/keybindings/store");
-  const acc = await import("../../../src/frontend/ui/account-prefs");
-  const remote = await import("../../../src/frontend/ui/remote-config");
   return {
     // 主窗：tab 栏那几条（E1 的原形：拖放同拍发分组 ＋ 顺序）。
     // 分组那一条的形状照 `TabBarPrefs.foundGroup`：组表 ＋ 两个 tab 的组 id 键装进**一次**补丁。
@@ -141,10 +120,7 @@ async function realm(): Promise<{
     settings: () => [
       beh.setBehavior(BEHAVIOR),
       theme.saveTheme({ bg: "#010203" }),
-      paths.setClaudeDirOverride("/tmp/cfg1-claude"),
       kb.setKeybindings(KEYS),
-      acc.setModelForAccount("devbox", "a1", "opus"),
-      remote.patchRemoteConfig({ upsert: [{ key: null, value: LU_HOST }] }),
     ],
   };
 }
@@ -176,10 +152,7 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
         "set tabBar.pinned",
         ...Object.keys(BEHAVIOR).map((k) => `set ${k}`),
         "set theme",
-        "set claudeDir",
         "set keybindings",
-        "set accounts.byMachine.devbox.modelByAccount.a1",
-        "insertin remote.hosts",
       ].sort(),
     );
   });

@@ -3,8 +3,7 @@
  *
  * | 性质 | 判据 |
  * |---|---|
- * | TS 解码器读得懂**后端真出的**转发清单 —— 同一份金样，后端 `dial_forwards_tests::a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link` 写它（异源：Rust 造、TS 解） | 「金样」 |
- * | 形状不对 ⇒ 抛，不替后端补值 | 「严格收」 |
+ * | 后端真出的转发清单照原样交到调用方 —— 同一份金样，后端 `dial_forwards_tests::a_failed_ack_never_enters_the_ledger_and_stop_drops_the_link` 写它（回包形状由握手时的形状指纹管，这里不逐格判） | 「金样」 |
  * | 三问都问 `<local>`、对的帧命令、对的请求体；本机后端不在 ⇒ 抛（不当成「没有转发」） | 「请求」 |
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -14,7 +13,7 @@ import { resolve } from "node:path";
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { decodeForwards, listForwards, startForward, stopForward } from "../../../src/frontend/ui/port-forward-reads";
+import { listForwards, startForward, stopForward } from "../../../src/frontend/ui/port-forward-reads";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/backend-policy";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { chanArgsJson, chanReply, NO_CHANNEL, type ChanCallArgs } from "../../test-support/chan-fake";
@@ -28,23 +27,12 @@ beforeEach(() => {
   invokeMock.mockReset();
 });
 
-describe("金样：后端出的转发清单，TS 这一侧读得懂", () => {
-  it("照收", () => {
-    expect(decodeForwards(golden)).toEqual([
+describe("金样：后端出的转发清单，原样交到调用方", () => {
+  it("照收", async () => {
+    invokeMock.mockResolvedValue(chanReply(golden));
+    expect(await listForwards()).toEqual([
       { id: "fwd-1", origin: "dev", localPort: 15432, remoteHost: "localhost", remotePort: 5432, state: "running", connCount: 2 },
     ]);
-  });
-});
-
-describe("严格收", () => {
-  const row = golden.forwards[0]!;
-  it.each([
-    ["多一格", { ...row, error: null }],
-    ["缺一格", { ...row, connCount: undefined }],
-    ["状态不认得", { ...row, state: "paused" }],
-    ["端口不是整数", { ...row, localPort: "15432" }],
-  ])("%s ⇒ 抛", (_n, v) => {
-    expect(() => decodeForwards({ forwards: [JSON.parse(JSON.stringify(v))] })).toThrow();
   });
 });
 

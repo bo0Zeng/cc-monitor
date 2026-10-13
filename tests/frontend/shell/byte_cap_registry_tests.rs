@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "LIVE_TEXT_KEEP",
+        "**字数**（Unicode 字符数）不是字节：`backend/stream/live.rs` 一张活卡的正文只留尾巴这么多字，截过头的卡带 `clipped`、整张重发；定稿归记录，什么都不丢。",
+    ),
+    (
+        "LIVE_TEXT_SLACK",
+        "**字数**不是字节：`backend/stream/live.rs` 活卡正文超过留尾多少字才截一次（截一次就整张重发一次，这个数定的是重发的疏密）。",
+    ),
+    (
         "EVENT_QUEUE",
         "**条数**不是体量：`stream_source/run.rs` 重连循环交给收事那一头的那条队列至多排几件事；排满了循环就等（背压回到那台），不丢不截。",
     ),
@@ -62,6 +70,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "MIN_LEN",
         "**门槛**不是上限：`backend/observe/skeleton.rs` 多长的记录才落骨架（比它短的整份读一遍比读骨架还快，不落；什么都不截）",
+    ),
+    (
+        "DAY_MIN",
+        "**分钟数**不是体量：`accounts/quota/rules/form.rs` 一天里的分钟数（24 小时条分段的上界；升级那一处照它切分段）。",
     ),
     (
         "HOOK_TIMEOUT_SECS",
@@ -142,6 +154,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "BINARY_SNIFF_LEN",
         "**看多远**不是上界：按内容搜判二进制时看每份开头多少字节（里面有 NUL ⇒ 当二进制跳过、记数进 `skipped_binary`）；什么都不因它被截掉。",
+    ),
+    (
+        "READBACK_MS",
+        "毫秒：换模型送出那一行之后等记录里读回的期限（`faces/session_model_face.rs`），不是体量",
     ),
     (
         "STOP_GRACE_MS",
@@ -339,6 +355,11 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "CREATE_NO_WINDOW",
         "同上：Win32 进程创建标志位。",
     ),
+    (
+        "KILL_ON_JOB_CLOSE",
+        "**Win32 Job 限制标志位**（`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，`0x2000`：最后一个 Job 句柄关掉就终止 Job 里的进程）。\
+             是位掩码不是尺寸（同 `CREATE_NO_WINDOW` 那一族）。",
+    ),
     // ── HTTP 中转带进来的。**刻意不并进上面那组「七个」**：
     // 那一组是 08-06 那次普查的读数，往里塞新的会让「七个全都不是字节上限」变成假话。
     // ⚠ 上面的 `CHUNK` 一条**盖不住它** —— `every_size_typed_constant_…` 里的
@@ -521,13 +542,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     (
         "src/comms/resident-client/attach.rs",
         "HANDSHAKE_LINE_CAP",
-        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测一两 KB",
+        "接常驻流读的那两行（hello / attach 应答）—— hello 帧实测 8.6 KB（随 typed 命令变多）",
         "拒收+回错",
     ),
     (
         "src/frontend/shell/src/local_backend_host.rs",
         "LISTEN_HANDSHAKE_LINE_CAP",
-        "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 ~1.1 KB",
+        "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 8.6 KB（随 typed 命令变多）",
         "拒收+回错",
     ),
     // 历史页的平铺清单（`history_list.rs`）：一台一次最多回多少行；多出的不回、`truncated` ⇒ 列表底「更早的用搜索找」。
@@ -831,6 +852,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`history-read` 一页（一帧应答）的正文字节数",
         "索引截断（不丢数据）",
     ),
+    // 分页那四条一条应答（与 `session_branch` 一帧）的字节数：超了不截，切成下一页 / 下一帧（续点 `next` · `at`），一项不少。
+    (
+        "src/backend/faces/read_face.rs",
+        "REPLY_PAGE_BYTES",
+        "`history-index` · `-user-inputs` · `-turns` · `-branch` 一条应答、`session_branch` 一帧的字节数",
+        "分块（不丢数据）",
+    ),
     // 分页读记录时往回多看那一段：只拿来配排队消息的打字时刻；配不上（打字在这一段之前）⇒ 那条照用它自己的时刻（协议文档写明），记录一条不少。
     (
         "src/backend/observe/record_page.rs",
@@ -967,6 +995,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "src/backend/agents/claudecode/assets.rs",
+        "COMMAND_DOC_MAX_BYTES",
+        "一条会话能用的命令：读一份斜杠命令文件（只为取简介与要不要参数）—— 读不出来那一份记进 `problems`、不列这一条",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
         "PLUGIN_MANIFEST_MAX_BYTES",
         "找插件时读一个插件根的 `.claude-plugin/plugin.json`（只为取 `name`）—— 读不出来那个目录就不算插件",
         "跳过+说清",
@@ -997,7 +1031,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/quota/strategy/mod.rs",
+        "src/backend/accounts/quota/rules/shelf.rs",
         "MAX_SOURCE_BYTES",
         "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai`（超了不加载，列表里照实写读不懂）",
         "拒收+回错",
@@ -1018,6 +1052,24 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "src/backend/control/exit_policy.rs",
         "MAX_BYTES",
         "后端自有的退出行为 `~/.cc-monitor/backend.json`（一格布尔；读不出来 ⇒ `unreadable` 带原因回出去，按缺省办）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/machine_prefs.rs",
+        "MAX_BYTES",
+        "后端自有的这台偏好 `~/.cc-monitor/prefs.json`（几张小表；读不出来 ⇒ `unreadable` 带原因回出去、按缺省办，写口拒、不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/machines.rs",
+        "MAX_BYTES",
+        "后端自有的机器表 `~/.cc-monitor/machines.json`（至多 256 台；读不出来 ⇒ `unreadable` 带原因回出去、照空表办，写口拒、不覆盖）",
+        "拒收+回错",
+    ),
+    (
+        "src/backend/control/prefs_migration.rs",
+        "MAX_BYTES",
+        "第 7 批换形（下一版删）读 monitor 的 `config.json` 与「待交」`~/.cc-monitor/prefs-handoff.json`（读不出来 ⇒ 不搬、不写；待交读不懂 ⇒ 当没有、不写回）",
         "拒收+回错",
     ),
     (

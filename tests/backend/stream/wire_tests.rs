@@ -242,12 +242,12 @@ const SESSION_STREAM_GOLDEN: &str = "tests/__fixtures__/session-stream.golden.js
 
 /// 每种帧两行：`[全格, 最少格]` —— 全格 ＝ 可选格（`skip_serializing_if` 的）都在；最少格 ＝ 都缺。
 /// 没有可选格的帧两行相同。
-/// `tap` 的 `ev` 与 `end` 恰有一个：最少格留 `end`（两格都缺不是一帧合法的 `tap`）。
+/// `live` 一种 `op` 一形：全格取整卡（带 `run`），最少格取「说完了」那一形（不带 `run`）。
 fn golden_pairs() -> Vec<[Frame; 2]> {
-    use crate::agents::{RunDid, StreamEv};
+    use crate::agents::{BlockKind, RunDid};
     use crate::stream::wire::{
-        AgentHome, LostFrame, RereadWhy, RunEnded, RunInfo, RunState, RunWhy, SessionContainer,
-        SessionFate, TapEnd, TerminalHost, TransferEnd, Unavailable,
+        AgentHome, LiveBlock, LiveCard, LiveOp, LivePhase, LostFrame, RereadWhy, RunEnded, RunInfo,
+        RunState, RunWhy, SessionContainer, SessionFate, TerminalHost, TransferEnd, Unavailable,
     };
     let s = |v: &str| v.to_string();
     let both = |f: Frame| [f.clone(), f];
@@ -495,22 +495,36 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             cell: serde_json::json!({"reached": "ssh"}),
         }),
         [
-            Frame::Tap {
-                stream: s("s1"),
+            Frame::LiveCard(LiveCard {
+                sid: s("s1"),
                 run: Some(s("a1")),
-                resp: 0,
-                n: 1,
-                ev: Some(StreamEv::Text { i: 0, s: s("hi") }),
-                end: Some(TapEnd::Done),
-            },
-            Frame::Tap {
-                stream: s("s1"),
+                card: 0,
+                n: 0,
+                op: LiveOp::Open {
+                    rid: s("r1"),
+                    phase: LivePhase::Awaiting,
+                    clipped: true,
+                    blocks: vec![
+                        LiveBlock {
+                            kind: BlockKind::Text,
+                            text: Some(s("hi")),
+                            tool: None,
+                        },
+                        LiveBlock {
+                            kind: BlockKind::Tool,
+                            text: None,
+                            tool: Some(s("Bash")),
+                        },
+                    ],
+                },
+            }),
+            Frame::LiveCard(LiveCard {
+                sid: s("s1"),
                 run: None,
-                resp: 0,
+                card: 0,
                 n: 1,
-                ev: None,
-                end: Some(TapEnd::Done),
-            },
+                op: LiveOp::Awaiting,
+            }),
         ],
         [
             Frame::SessionRuns {
@@ -552,11 +566,13 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
+                at: 0,
                 off: vec![s("u2"), s("a2")],
             },
             Frame::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
+                at: 2,
                 off: vec![],
             },
         ],
@@ -718,8 +734,8 @@ fn link_frames_have_exactly_these_bytes() {
             "{\"kind\":\"changed\",\"topic\":\"accounts\"}\n",
         ),
         (
-            Frame::changed(Topic::RotationConfigs, None, None, None),
-            "{\"kind\":\"changed\",\"topic\":\"rotation_configs\"}\n",
+            Frame::changed(Topic::RotationStrategies, None, None, None),
+            "{\"kind\":\"changed\",\"topic\":\"rotation_strategies\"}\n",
         ),
         (
             Frame::changed(Topic::Tasks, Some("s1".into()), None, None),
@@ -795,58 +811,69 @@ fn transfer_frames_have_exactly_these_bytes() {
     }
 }
 
-/// `tap` 的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
-/// `ev` 是归一事件（后端按上游协议折好的，界面不认任何一家的事件名）；`ev` 与 `end` 恰有一个；`run` 缺 ＝ 主运行。可丢（SSE 只保快）。
+/// `live` 的逐字节线上形状（期望是手写字面量；monitor 侧 `parse_frame` 拿同样的串核自己）。
+/// 一张卡五种 `op`：整卡 · 加块 · 加字 · 说完了 · 撤卡；`run` 缺 ＝ 主运行。可丢（SSE 只保快，写者最低优先）。
 #[test]
-fn tap_frames_have_exactly_these_bytes() {
-    use crate::agents::{BlockKind, StreamEv};
-    let tap = |run: Option<&str>,
-               n: u64,
-               ev: Option<StreamEv>,
-               end: Option<crate::stream::wire::TapEnd>| Frame::Tap {
-        stream: "0b6c1f7e-sid".into(),
-        run: run.map(str::to_string),
-        resp: 12,
-        n,
-        ev,
-        end,
+fn live_frames_have_exactly_these_bytes() {
+    use crate::agents::BlockKind;
+    use crate::stream::wire::{LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy};
+    let live = |run: Option<&str>, n: u64, op: LiveOp| {
+        Frame::LiveCard(LiveCard {
+            sid: "0b6c1f7e-sid".into(),
+            run: run.map(str::to_string),
+            card: 12,
+            n,
+            op,
+        })
     };
     let cases = [
         (
-            tap(None, 0, Some(StreamEv::Start { rid: "r-1".into() }), None),
-            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":0,\"ev\":{\"t\":\"start\",\"rid\":\"r-1\"}}\n",
-        ),
-        (
-            tap(
-                Some("a1"),
-                1,
-                Some(StreamEv::Block { i: 0, kind: BlockKind::Tool, tool: Some("Bash".into()) }),
+            live(
                 None,
+                0,
+                LiveOp::Open {
+                    rid: "r-1".into(),
+                    phase: LivePhase::Streaming,
+                    clipped: false,
+                    blocks: vec![
+                        LiveBlock { kind: BlockKind::Thinking, text: None, tool: None },
+                        LiveBlock { kind: BlockKind::Text, text: Some("你好".into()), tool: None },
+                    ],
+                },
             ),
-            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"resp\":12,\"n\":1,\"ev\":{\"t\":\"block\",\"i\":0,\"kind\":\"tool\",\"tool\":\"Bash\"}}\n",
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":0,\"op\":\"open\",\"rid\":\"r-1\",\"phase\":\"streaming\",\"clipped\":false,\"blocks\":[{\"kind\":\"thinking\"},{\"kind\":\"text\",\"text\":\"你好\"}]}\n",
         ),
         (
-            tap(None, 2, Some(StreamEv::Text { i: 0, s: "hi".into() }), None),
-            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":2,\"ev\":{\"t\":\"text\",\"i\":0,\"s\":\"hi\"}}\n",
+            live(Some("a1"), 1, LiveOp::Block { i: 2, block: BlockKind::Tool, tool: Some("Bash".into()) }),
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"run\":\"a1\",\"card\":12,\"n\":1,\"op\":\"block\",\"i\":2,\"block\":\"tool\",\"tool\":\"Bash\"}\n",
         ),
         (
-            tap(None, 3, Some(StreamEv::Stop { ok: false }), None),
-            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":3,\"ev\":{\"t\":\"stop\",\"ok\":false}}\n",
+            live(None, 2, LiveOp::Text { i: 1, s: "hi".into() }),
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":2,\"op\":\"text\",\"i\":1,\"s\":\"hi\"}\n",
         ),
         (
-            tap(None, 9, None, Some(crate::stream::wire::TapEnd::Done)),
-            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"done\"}\n",
+            live(None, 3, LiveOp::Awaiting),
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":3,\"op\":\"awaiting\"}\n",
         ),
         (
-            tap(None, 9, None, Some(crate::stream::wire::TapEnd::Broken)),
-            "{\"kind\":\"tap\",\"stream\":\"0b6c1f7e-sid\",\"resp\":12,\"n\":9,\"end\":\"broken\"}\n",
+            live(None, 4, LiveOp::Close { why: LiveWhy::Record }),
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":4,\"op\":\"close\",\"why\":\"record\"}\n",
+        ),
+        (
+            live(None, 4, LiveOp::Close { why: LiveWhy::Unwatched }),
+            "{\"kind\":\"live_card\",\"sid\":\"0b6c1f7e-sid\",\"card\":12,\"n\":4,\"op\":\"close\",\"why\":\"unwatched\"}\n",
         ),
     ];
     for (frame, want) in cases {
         assert_eq!(to_line(&frame).unwrap(), want);
         assert!(
             frame.loss_is_recoverable(),
-            "tap 帧可丢（jsonl 保对），却被判成不可恢复"
+            "活卡帧可丢（jsonl 保对），却被判成不可恢复"
+        );
+        assert_eq!(
+            frame.content_of(),
+            Some("0b6c1f7e-sid"),
+            "活卡帧不按名单走（`stream-watch`）"
         );
     }
 }
@@ -1207,8 +1234,8 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
     #[rustfmt::skip]
     let synth: &[crate::agents::Adapter] = &[
-        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
-        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
     ];
     let discovered = crate::agents::visible_among(synth);
     assert_eq!(
@@ -1724,7 +1751,7 @@ fn net2_uncancellable_is_additive_and_last() {
 //
 // 两个前端吃同一个后端：桌面端（monitor）与第二个前端（手机端）。后者按下表逐字段读帧，缺一格就把整帧当坏帧丢
 // （症状是「会话列表有、点进去永远空白」，零报错）。⇒ 表里登记的每一格不许改名、删、换类型；加新字段照旧（additive）。
-// 会话三帧（`session_added` · `session_status` · `session_removed`）在格目录里，冻结的格登在那边（`cells_catalog::Frozen::Cells`），不在这张表。
+// 会话三帧（`session_added` · `session_status` · `session_removed`）在格目录里，冻结的格登在那边（`cells_catalog::tests::FROZEN`），不在这张表。
 
 /// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
 pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
@@ -1738,7 +1765,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
     // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
-    // （`faces/cells_catalog.rs` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
+    // （格目录冻结表 `cells_catalog::tests::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
     ("overflow", "dropped", "number"),
     ("overflow", "lost", "array"),
@@ -1747,14 +1774,17 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("turn_end", "uuid", "string"),
     ("turn_end", "title", "string"),
     ("turn_end", "body", "string"),
-    // 〔第二个前端 2026-10-08〕**逐字流**（聊天屏的打字机）。`tap_frames_have_exactly_these_bytes` 钉的是字节，
-    // 本表钉的是**有人在读它** —— 少了这几行，整条 `tap` 被清理掉时没有任何判据说得出「有个前端靠它」。
-    // ⚠ `ev` 与 `end` 恰有一个 ⇒ 一份样本只带得动 `ev`（打字机读的那一支）；`end` 两个取值的字节由那条逐字节判据钉。
-    ("tap", "stream", "string"),
-    ("tap", "run", "string"),
-    ("tap", "resp", "number"),
-    ("tap", "n", "number"),
-    ("tap", "ev", "object"),
+    // 〔第二个前端 live1 10-13〕**活卡**（聊天屏的逐字长出，核心拼好的成品）。`live_frames_have_exactly_these_bytes` 钉的是字节，
+    // 本表钉的是**有人在读它**。⚠ 一份样本只带得动一种 `op`：取整卡（`open`）那一支；增量与撤卡那几种的字节由逐字节判据钉。
+    ("live_card", "sid", "string"),
+    ("live_card", "run", "string"),
+    ("live_card", "card", "number"),
+    ("live_card", "n", "number"),
+    ("live_card", "op", "string"),
+    ("live_card", "rid", "string"),
+    ("live_card", "phase", "string"),
+    ("live_card", "clipped", "bool"),
+    ("live_card", "blocks", "array"),
     // 〔第二个前端 2026-10-08〕**一切帧命令的应答与撤销**。失败那三格（`code` / `message` / `detail`）是
     // 失败卡与「复制详情」的全部原料：`detail` 跟着帧回，而最常见的那条错正好是「联系不上」—— 那时再去取就取不到。
     ("reply", "id", "string"),
@@ -1797,14 +1827,22 @@ fn every_frame_the_second_frontend_reads() -> Vec<Value> {
             "u".into(),
             &crate::stream::wire::NameFace::of(&Default::default()),
         ),
-        Frame::Tap {
-            stream: "s".into(),
+        Frame::LiveCard(crate::stream::wire::LiveCard {
+            sid: "s".into(),
             run: s.clone(),
-            resp: 1,
+            card: 1,
             n: 0,
-            ev: Some(crate::agents::StreamEv::Start { rid: "r-1".into() }),
-            end: None,
-        },
+            op: crate::stream::wire::LiveOp::Open {
+                rid: "r-1".into(),
+                phase: crate::stream::wire::LivePhase::Streaming,
+                clipped: false,
+                blocks: vec![crate::stream::wire::LiveBlock {
+                    kind: crate::agents::BlockKind::Text,
+                    text: Some("hi".into()),
+                    tool: None,
+                }],
+            },
+        }),
         Frame::Reply {
             id: "1".into(),
             ok: false,
@@ -2057,4 +2095,34 @@ fn changed_loss_follows_the_topic_table() {
         (id.kind, id.subject.as_deref()),
         ("changed", Some("tasks/s1"))
     );
+}
+
+/// 8a b：整份主线外清单切成几帧 `session_branch`：每帧一行 ≤ `REPLY_PAGE_BYTES`；`at` 依次接上；拼起来 ＝ 原清单；
+/// 只发变了的那一截时从 `at` 起；后面什么都没有也发一帧空的（说「到此为止」）。
+#[test]
+fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
+    let off: Vec<String> = (0..40_000)
+        .map(|i| format!("{i:08}-0000-4000-8000-000000000000"))
+        .collect();
+    let frames = Frame::branch_pages("s", "/p/s.jsonl", &off, 0);
+    assert!(frames.len() > 1, "要分好几帧：{}", frames.len());
+    let mut all = Vec::new();
+    for f in &frames {
+        let line = to_line(f).unwrap();
+        assert!(
+            line.len() <= crate::REPLY_PAGE_BYTES,
+            "一帧 {} 字节",
+            line.len()
+        );
+        let Frame::SessionBranch { at, off, .. } = f else {
+            panic!()
+        };
+        assert_eq!(*at as usize, all.len());
+        all.extend(off.iter().cloned());
+    }
+    assert_eq!(all, off);
+    let tail = Frame::branch_pages("s", "/p/s.jsonl", &off[..10], 8);
+    assert!(matches!(&tail[..], [Frame::SessionBranch { at: 8, off, .. }] if off.len() == 2));
+    let none = Frame::branch_pages("s", "/p/s.jsonl", &off[..3], 3);
+    assert!(matches!(&none[..], [Frame::SessionBranch { at: 3, off, .. }] if off.is_empty()));
 }

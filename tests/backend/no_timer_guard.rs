@@ -541,6 +541,22 @@ mod tests {
     /// 这张表就是把人群收窄回性质上的那一刀，**它是收紧，不是豁免**。
     pub(super) const REGISTERED_DURATION_USES: &[(&str, &str, &str, &str, &str)] = &[
         (
+        "accounts/sign_in.rs",
+        "Duration::from_millis(30_000)",
+        "在 app 里登录一个号：起那一家的登录子命令之后等它打印登录链接的**一次有界等待**的期限（`START_WITHIN`，\
+         交给登记过的 `link_rx.recv_timeout(START_WITHIN)`）。链接一出来就当场醒；不循环、不复用。不是定时器。",
+        "收窄人群",
+        "登录子命令改成一起来就交回链接（不用等）的那天。",
+    ),
+        (
+        "accounts/sign_in.rs",
+        "Duration::from_millis(60_000)",
+        "在 app 里登录一个号：码写进登录子命令之后等它换完的**一次有界等待**的期限（`FINISH_WITHIN`，\
+         交给登记过的 `rx.recv_timeout(FINISH_WITHIN)`）。它一答（成 · 不成 · 码不对）就当场醒；不循环、不复用。不是定时器。",
+        "收窄人群",
+        "换码结果改成只靠推送交回（不在请求里等）的那天。",
+    ),
+        (
         "watcher.rs",
         "Duration::from_millis(DEBOUNCE_MS)",
         "notify-debouncer 的**事件合并窗口**：它不产生唤醒，只决定「同一批文件事件攒多久\
@@ -678,6 +694,22 @@ mod tests {
         "写回不再等那一家放锁（或那一家不再有整份写锁）的那天。",
     ),
     (
+        "control/terminal_follow.rs",
+        "Duration::from_millis(2_000)",
+        "切权限档按一下键之后等重画那一次有界等待的期限（`REDRAW_WAIT`，交给登记过的 `self.rx.recv_timeout(REDRAW_WAIT)`）：\
+         重画由控制模式客户端的 `%output` 当场叫醒，到期照实回「结果未知」。次数由调用方定死。不循环、不复用。不是定时器。",
+        "收窄人群",
+        "切档不再靠「按键 → 等重画 → 读屏」（那一家给了直接切档的接口）的那天。",
+    ),
+    (
+        "accounts/quota/rules/script.rs",
+        "Duration::from_millis(500)",
+        "一趟推演里给策略的总耗时（`rules::script::SIMULATE_BUDGET`）：每调一次策略前后读一次钟、把耗时加起来跟它比，\
+         到了就不再调、推演停在那里。只是累计耗时的一把尺子，不等、不睡、不让任何线程醒来。不是定时器。",
+        "收窄人群",
+        "推演里不再在沙箱里跑策略（或策略的耗时改由别处兜住）的那天。",
+    ),
+    (
         "common/time.rs",
         "Duration::from_millis(ms)",
         "截图台架的拨钟（`common::time::shots_clock`，只在特性 `shots` 下编）：台架交来的起点毫秒换成一个时刻，\
@@ -697,6 +729,20 @@ mod tests {
     /// 上面两条扫描**只**对登记的这几个片段让位（剥掉片段之后照常扫同一份文件）；表外出现任何自醒构件仍红。
     /// **加一行就是一次放宽**：提交说明里写明放宽了什么。
     pub(super) const REGISTERED_DEADLINE_WAKES: &[(&str, &str, &str, &str)] = &[
+        (
+            "accounts/sign_in.rs",
+            "link_rx.recv_timeout(START_WITHIN)",
+            "`login-start` 等登录子命令打印链接的**一次有界等待**：它要先问一次服务端拿登录参数，网络卡住时没有它这条命令就一直挂着。\
+             到点收作业（杀组）、照实回「链接没有出现」；不循环、不复用。登录作业本身不装定时器（替掉 · 取消 · 连接断才收）。",
+            "`START_WITHIN`（30 秒）；链接先出来、或它先退了就立刻醒。",
+        ),
+        (
+            "accounts/sign_in.rs",
+            "rx.recv_timeout(FINISH_WITHIN)",
+            "`login-finish` 等那一家换码的**一次有界等待**：码写进去之后，它去令牌端点换一次、再拉一次资料；卡住时没有它这条命令就一直挂着。\
+             到点回「还没答复」、作业留着（之后登完照样推 `changed {login}`）；不循环、不复用。",
+            "`FINISH_WITHIN`（60 秒）；它一答（成 · 不成 · 码不对）就立刻醒。",
+        ),
         (
             "stream/inbound/drain.rs",
             "tokio::time::sleep(deadline)",
@@ -741,6 +787,14 @@ mod tests {
              写锁目录被删 / 凭据文件被换的文件事件当场叫醒写回；一直没放开就要有个头，到期再试一次、照实报写回失败（那个号可能要重新登录）。\
              一个号一条线程、等一次、不循环。",
             "`LoginFace::write_wait_ms`（Claude 20 秒，长于它写锁的过期门限 15 秒）；锁先放开就立刻醒。",
+        ),
+        (
+            "control/terminal_follow.rs",
+            "self.rx.recv_timeout(REDRAW_WAIT)",
+            "切权限档（`session-permission`）按一下键之后等那个终端重画的**一次有界等待**（`terminal_follow::Watch::changed`）：\
+             变化由 tmux 控制模式客户端的 `%output` 当场叫醒；那一家没重画（卡住 · 那一键没起作用）时要有个头，到期照实回「结果未知」。\
+             一次一等、不循环；一次切档最多按一圈、每按一下最多等 `REDRAWS_PER_PRESS` 次，次数由调用方定死。",
+            "`REDRAW_WAIT`（2 秒）；重画先到就立刻醒。",
         ),
         (
             "observe/one_wait.rs",
@@ -1552,9 +1606,15 @@ mod g6_reach {
         // 12 → **13**：多的那一条是 `common/time.rs` 的截图台架拨钟（只在特性 `shots` 下编，台架交的起点毫秒换成时刻、比一次系统钟）。
         // 13 → **14**：多的那一条是 `accounts/oauth/writeback.rs` 的等写锁期限（续成了、写回等那一家放整份写锁，
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
+        // 14 → **16**：多的两条是 `accounts/sign_in.rs` 的 `START_WITHIN` · `FINISH_WITHIN`（在 app 里登录一个号：等登录子命令打印链接 ·
+        //   等它换码，各一次有界等待；调用那两处另住 `REGISTERED_DEADLINE_WAKES`）。
+        // 16 → **17**：多的那一条是 `control/terminal_follow.rs` 的 `REDRAW_WAIT`（切权限档按一下键之后等重画的期限，
+        //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`）。
+        // 17 → **18**：多的那一条是 `accounts/quota/rules/script.rs` 的 `SIMULATE_BUDGET`（一趟推演里给策略的总耗时，
+        //   累计耗时比一次，不等不睡）。
         assert_eq!(
-            registered, 14,
-            "登记表从 14 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 18,
+            "登记表从 18 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

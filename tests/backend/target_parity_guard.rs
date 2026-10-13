@@ -99,9 +99,15 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--launch"),
     ("wire-commands", "terminal-preview"),
     ("wire-commands", "terminal-input"),
+    ("wire-commands", "session-say"),
+    ("wire-commands", "session-permission"),
+    ("wire-commands", "session-model"),
     ("wire-commands", "terminal-follow"),
     ("cli-subcommands", "--terminal-preview"),
     ("cli-subcommands", "--terminal-input"),
+    ("cli-subcommands", "--session-say"),
+    ("cli-subcommands", "--session-permission"),
+    ("cli-subcommands", "--session-model"),
     // 计划退回送字走的就是 `terminal-input` 的本体 ⇒ 同那两行一起等。
     ("wire-commands", "plan-return"),
     ("cli-subcommands", "--plan-return"),
@@ -800,6 +806,8 @@ fn typed_handler_files_of(
         "typed::owning::<",
         "typed::asynchronous::<",
         "typed::async_with_files::<",
+        "typed::async_owning::<",
+        "typed::facing::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];
@@ -904,10 +912,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
         "换号重启：没 tmux ⇒ 这条会话不在任何终端里，答 `not_in_terminal`（与「名单里没有它」同一个码）",
     ),
     (
-        "rotation-switch",
-        "现在就换：不重启换用不着 tmux（Windows 照做）；重启换那一半逐个交给 `session-restart`，没 tmux ⇒ 那个会话 `failed{not_in_terminal}`、命令照答",
-    ),
-    (
         "sessions-stop",
         "批量停：没 tmux ⇒ 逐个答「这台没 tmux」跳过、命令照答（停的对象本来就只在 tmux 里）",
     ),
@@ -934,6 +938,18 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     (
         "powershell-policy-set",
         "与别名那一族同住 `assets/aliases/mod.rs`（引用图按文件算，因此连带）；设执行策略本身只起 PowerShell，不碰 tmux",
+    ),
+    (
+        "login-finish",
+        "在 app 里登录那一族与需手动清单（`faces/login_face.rs` · `accounts/sign_in.rs`）只读账号清单成品（`observe/accounts_query.rs`）与 MCP 读面（`faces/feature_face.rs::mcp_look`），起的是那一家的登录子命令 —— 按文件画的引用图经那两份文件连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "login-cancel",
+        "在 app 里登录那一族与需手动清单（`faces/login_face.rs` · `accounts/sign_in.rs`）只读账号清单成品（`observe/accounts_query.rs`）与 MCP 读面（`faces/feature_face.rs::mcp_look`），起的是那一家的登录子命令 —— 按文件画的引用图经那两份文件连到了 tmux；本族不问 tmux、不起 tmux",
+    ),
+    (
+        "manual-list",
+        "在 app 里登录那一族与需手动清单（`faces/login_face.rs` · `accounts/sign_in.rs`）只读账号清单成品（`observe/accounts_query.rs`）与 MCP 读面（`faces/feature_face.rs::mcp_look`），起的是那一家的登录子命令 —— 按文件画的引用图经那两份文件连到了 tmux；本族不问 tmux、不起 tmux",
     ),
     (
         "accounts-mcp-pick",
@@ -1038,6 +1054,10 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
 
 /// `run:` 里没有 `crate::…` 路径的命令（`Run::Builtin` 与就地应答）—— 不在射程，逐条登记。
 const NO_HANDLER_PATH: &[(&str, &str)] = &[
+    (
+        "login-start",
+        "`Run::Builtin`：`inbound::dispatch` 的硬臂带着本连接的号调 `faces::login_face::answer_start`（起那一家的登录子命令、等它打印链接），不起 tmux",
+    ),
     (
         "needs-ask",
         "`Run::Builtin`：`inbound::dispatch` 的硬臂带着本连接的号调 `control::asks::ask`（挂进登记表、等一个通道），不起 tmux",

@@ -151,11 +151,15 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
             runs: runs.clone(),
             ended: ended.clone(),
         }),
-        LocalItem::Frame(InboundFrame::SessionBranch { sid, off, .. }) => Some(BookIn::Branch {
-            origin: crate::origin::Origin(label.to_string()),
-            sid: sid.clone(),
-            off: off.clone(),
-        }),
+        LocalItem::Frame(InboundFrame::SessionBranch { sid, path, at, off }) => {
+            Some(BookIn::Branch {
+                origin: crate::origin::Origin(label.to_string()),
+                sid: sid.clone(),
+                path: path.clone(),
+                at: *at,
+                off: off.clone(),
+            })
+        }
         LocalItem::Frame(_) => None,
     }
 }
@@ -331,6 +335,10 @@ pub(crate) async fn consume_local(
                 }
                 LocalStep::Notice { sid, path, change } => intake.notice(&sid, &path, change).await,
                 LocalStep::Changed { topic, cell } => {
+                    // 本机的机器表变了 ⇒ 本壳自己也重问一次、对齐远端流（界面的订阅照常收这一格）。
+                    if topic == "machines" {
+                        crate::machine_table::refresh();
+                    }
                     replay.changed(&crate::origin::Origin(label.clone()), &topic, cell)
                 }
                 LocalStep::TurnEnd(turn) => {

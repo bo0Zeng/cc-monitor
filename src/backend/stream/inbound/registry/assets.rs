@@ -34,83 +34,16 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 首次运行「开始用 · 剩 N 步」那份数（`footprint/readiness.rs`）：三步各自由这台的事实打勾；机器表台数由问的那一方带上。只读，阻塞档。
-    CommandSpec {
-        name: "first-run",
-        summary: "首次运行「开始用」三步各自打没打勾",
-        codes: &["bad_args"],
-        fields: &[out("left", "必做而还没打勾的几步（主窗口状态栏那一枚只数它）"), arg("remotes", "机器表里有几台远端（机器表住 monitor 那一侧，问的那一方带上）"), out("skipped", "「开始用」那一块点过「跳过」（`chores-mark` 的 `skipStart` 写）"), out("steps", "三步 `{id, done, required}`（`required` = 必做；今天只有 `terminal`），`id` 闭集 `terminal`（让终端认得 ccm 和别名：某份启动文件里有别名块）· `named`（给现在登录的号起名字：启用了多账号）· `remote`（加一台远端：`remotes` > 0）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::footprint::readiness::answer(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::faces::first_run_face::FirstRunCmd>("首次运行「开始用」三步各自打没打勾", &LocalFiles),
     // 离线那台的上次值（`footprint/last_seen.rs`）：本机后端替界面记下每台最近一次读成的账号清单 · 「文件与数据」那一份，
     //   断开时界面照它画「上次的」，跨重启还在。写后端自己的 `~/.cc-monitor/last-seen.json`（锁里读—改—写、原子写）。阻塞档。
-    CommandSpec {
-        name: "last-seen-read",
-        summary: "读离线那台的上次值",
-        codes: &["bad_args", "io_failed"],
-        fields: &[arg("origin", "哪台（机器名）"), out("accounts", "上次读成的 `accounts-list` 应答 `{atMs, value}`；没记过 ⇒ `null`"), out("data", "上次读成的 `data-report` 应答 `{atMs, value}`；没记过 ⇒ `null`")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::footprint::last_seen::answer_read(&r.args)
-                .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "last-seen-write",
-        summary: "记下一台这一次读成的那一份（或清掉那台）",
-        codes: &["bad_args", "io_failed", "too_large"],
-        fields: &[out("atMs", "记下的时刻（毫秒）"), arg("forget", "`true` ⇒ 清掉这台的上次值（删机器时；不带 `kind` / `value`）"), arg("kind", "闭集 `accounts` · `data`"), arg("origin", "哪台（机器名）"), arg("value", "那一份应答（对象，序列化后 ≤ 256 KiB）；最多记 64 台，超了先丢最久没更新的那台")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::footprint::last_seen::answer_write(&r.args, own)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::footprint_face::LastSeenReadCmd>("读离线那台的上次值"),
+    crate::stream::inbound::typed::owning::<crate::faces::footprint_face::LastSeenWriteCmd>("记下一台这一次读成的那一份（或清掉那台）"),
     // 「待办」里界面记下的两样选择（不用了 / 还是要做 · 我自己贴 / 改回让 cc-monitor 接上）：写后端自己的 `~/.cc-monitor/chores.json`
     //   （`footprint/chores/marks.rs`，读—改—写在跨进程锁里、原子写）。一个用户文件都不写。阻塞档（同步文件 I/O）。
-    CommandSpec {
-        name: "chores-mark",
-        summary: "记下「待办」里的一个选择",
-        codes: &["bad_args", "io_failed", "marks_unreadable"],
-        fields: &[arg("id", "`decline` / `undecline` 那一件的 `id`（同 `data-report` 的 `todo[].id`）"), arg("op", "`decline`（不用了）· `undecline`（还是要做）· `selfPaste`（我自己贴）· `unselfPaste`（改回让 cc-monitor 接上）· `skipStart` / `unskipStart`（首次运行「开始用」那一块跳过 / 撤回）"), arg("rc", "`selfPaste` 那一份启动文件（绝对路径）"), out("declined", "改完记着的「不用了」那几件"), out("selfPaste", "改完记着的「我自己贴」那份启动文件；没选 ⇒ `null`"), out("startSkipped", "改完记着的「开始用」跳过没有")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::footprint::chores::marks::answer_mark(&r.args, own)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::owning::<crate::faces::footprint_face::ChoresMarkCmd>("记下「待办」里的一个选择"),
     // 设置里换 agent 家目录存之前那一问：在不在 · 是不是目录 · 有没有那一家的记录树，回一个码（`footprint/agent_home_check.rs`）。只读，阻塞档（stat）。
-    CommandSpec {
-        name: "agent-home-check",
-        summary: "那个目录能不能当 agent 家目录",
-        codes: &["bad_args"],
-        fields: &[arg("path", "要查的目录：绝对路径，或 `~/` 开头（按这台家目录展开）"), out("state", "`ok`（在、是目录、里面有那一家的记录树）· `missing`（不在）· `not_dir`（不是目录）· `no_records`（里面没有记录树）")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::footprint::agent_home_check::answer_check(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    // **MCP 资产同步的判定**（B）：两份原文进、
-    //   差异四态 ＋ 可疑项（带这台机器的事实）＋「写哪几条」出。由**要被写的那一台**跑（事实是那台的）。
-    //   只读：原文由 monitor 经 `files-peek` 读来，写经 `files-put`（CAS）—— 本条一个字节都不落盘。阻塞档（`stat`）。
-    CommandSpec {
-        name: "mcp-sync-plan",
-        summary: "MCP 资产同步的判定",
-        codes: &["bad_args", "bad_file", "needs_consent"],
-        fields: &[arg("overwrite", "可缺席"), out("rows", "每个条目名一行 `{name, state, suspects}`"), arg("source", "拷出来的那一份原文（字符串，必给）"), arg("take", "可缺席"), arg("target", "要写进去的那一份原文；那份文件不存在 ⇒ `null`（**必给**：缺席不当成不存在）"), out("write", "没给 `take` ⇒ `null`；给了 ⇒ 真要写的条目名（排序）：`same` 不写、`new` 写、`differs` 在 `overwrite` 里才写")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::mcp_sync::answer(&r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::footprint_face::AgentHomeCheckCmd>("那个目录能不能当 agent 家目录"),
     // **资产目录**：这台现扫一次 skill 与项目级 MCP、记进后端自有的
     //   `~/.cc-monitor/assets-catalog.json`（自家状态，经 `Own`，变了才写）、回整份目录 ＋「这台缺什么」的判定。
     //   `-merge` 那条再把另一台后端的整份并进来（同一台取 `gen` 大的整份）。一个用户文件都不写。阻塞档（扫盘）。
@@ -165,34 +98,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **skill「装到这台」**：`skill-read` 在来源那台读出这个 skill 的全部文件（原文 ＋ 执行位）；
     //   `skill-install-plan` 在要被写的那一台判 —— 差异四态与「不同的要显式说盖」那道闸原样用 AS1 的 `mcp_sync::{diff, plan}`，
     //   可疑项（可执行 · 二进制 · 绝对路径 · `#!` 要的命令）带那台的事实。两条都只读；写经 `files-put`（CAS）。阻塞档（扫盘）。
-    CommandSpec {
-        name: "skill-read",
-        summary: "读来源那台上的一个 skill",
-        codes: &["bad_args", "io_failed", "not_found", "too_large"],
-        fields: &[out("dir", "这个 skill 的目录（绝对路径）"), out("files", "每个普通文件一条 `{path, text, bytes, exec, why}`：`path` 是 skill 里的相对路径（`/` 分段）"), arg("name", "skill 的目录名（一段：不许分隔符 / `..` / 点开头）"), arg("project", "可缺席：给了 ⇒ 那个项目里的 skill（项目目录是这台上的绝对路径）；缺 ⇒ 用户级"), out("root", "这台 skill 的根"), out("skipped", "没读的那几处（指向目录的链接 / 特殊文件）")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::skill_install::answer_read(&r.args)
-                .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "skill-install-plan",
-        summary: "在要被写的那一台判 skill 装不装得过来",
-        codes: &[
-            "bad_args",
-            "bad_file",
-            "io_failed",
-            "needs_consent",
-            "too_large",
-        ],
-        fields: &[out("base", "写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`"), out("dir", "要写进去的目录"), arg("name", "skill 的目录名"), arg("overwrite", "可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名）"), out("prefix", "写的时候 `files-put` 用的 `root` 与相对前缀：`rel` = `<prefix>/<path>`"), arg("project", "同 `skill-read`（装到哪一级）"), out("root", "这台 skill 的根"), out("rows", "每个路径一行 `{path, state, suspects, blocked}`：`state` 闭集同 `mcp-sync-plan`"), arg("source", "`skill-read` 读到的 `[{path, text, exec}]`（`text` 可为 `null` = 装不过去的那一个）"), arg("take", "可缺席，语义同 `mcp-sync-plan`（给了 `take` 才答 `write`；`differs` 的要在 `overwrite` 里点名）"), out("target", "这一趟拷的那几个路径在这台上现有的原文 `[{path, text}]` —— 写的时候当 CAS 期望"), out("write", "没给 `take` ⇒ `null`；给了 ⇒ 真要写的路径（排序）"), out("ledger", "没给 `take` ⇒ `null`")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::skill_install::answer_plan(&r.args)
-                .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::hub_inner_face::SkillReadCmd>("读来源那台上的一个 skill"),
+    crate::stream::inbound::typed::blocking::<crate::faces::hub_inner_face::SkillPlanCmd>("在要被写的那一台判 skill 装不装得过来"),
     // 装记录：`skill-install-record` 是 `~/.cc-monitor/skill-installs.json` 的写口（自家状态，经 `Own`；
     //   skill 装完记 `add` · 卸掉的摘 `drop`；MCP 那一条 `mcp-add` / `mcp-drop`）。卸在 `ext-uninstall-*`（判 · 删 · 摘同一台）。阻塞档。
     CommandSpec {
@@ -225,111 +132,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 〔D 组〕项目 `.mcp.json` 增改 / 删：计算（`assets/mcp_edit.rs`）与写（本进程文件管理面 [`LocalFiles`]）在同一台。
-    CommandSpec {
-        name: "mcp-server-put",
-        summary: "增 / 改这台一个项目 `.mcp.json` 里的一条",
-        codes: &["bad_args", "bad_path", "refused"],
-        fields: &[out("changed", "真写了吗（算出来与盘上逐字节相同 ⇒ `false`，一个字节不动）"), arg("name", "server 名（空 ⇒ 拒）"), out("path", "写到了哪（解过链接的那一份）"), arg("projectDir", "这台机器上的绝对路径（不含 `..`）；落点恒是 `<它>/.mcp.json`（写面只此一个，agent 自己的配置一个字节不碰）"), arg("server", "那一条的配置，原样写进 `mcpServers[name]`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::mcp_edit::answer_put(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
-    CommandSpec {
-        name: "mcp-server-remove",
-        summary: "删这台一个项目 `.mcp.json` 里的一条",
-        codes: &["bad_args", "bad_path", "refused"],
-        fields: &[out("changed", "文件不在 / 那一条不在 ⇒ `false`（一个字节不写、不建文件）"), arg("name", "要删的那一条"), out("path", "那份文件"), arg("projectDir", "同 `mcp-server-put`")],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::assets::mcp_edit::answer_remove(&LocalFiles, &r.args)
-                .map(Some)
-                .map_err(|(c, m)| (c.to_string(), m))
-        }),
-    },
     // cc-bus 装到这台（扩展页经枢纽问被写那台）：`assets/cc_bus_install.rs`；写经 [`LocalFiles`]，装记录写口由本门递进去（`Own` 由分派那一层递）。
-    CommandSpec {
-        name: "cc-bus-install-state",
-        summary: "装 cc-bus 到这台之前看一眼",
-        codes: &["refused"],
-        fields: &[out("dest", "落点（`<skills 根>/cc-bus`）"), out("existing", "落点上已经有东西（要写时先整个改名留作备份）"), out("version", "内嵌那一份的摘要（只答「相同 / 不同」；枢纽拿它当卡上的记号）"), out("writes", "与这台二进制带着的那一份逐文件比，内容会变的那几个（缺的 ＋ 不一样的；清单外的文件不算）；空 ⇒ 已是这一版")],
-        takes_input: false,
-        run: Run::BlockingData(|_r| {
-            crate::assets::cc_bus_install::answer_state()
-                .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "cc-bus-install",
-        summary: "把这台二进制带着的 cc-bus 装到这台",
-        codes: &["bad_file", "refused"],
-        fields: &[out("backup", "覆盖前整个目录改名成的那一份（`cc-bus.bak-<秒>`，`null` = 之前没装过）"), out("dest", "落点（`<skills 根>/cc-bus`，过独立 realpath 围栏）"), out("recordFailed", "装好了但没记进 skill 装记录时那一句（这一趟装的卸不掉）；装卸账复用 `skill-install-record` 那一份"), out("written", "写了的那几个相对路径（全一致 ⇒ 空：一个字节不写、不备份、不记）")],
-        takes_input: false,
-        run: Run::BlockingOwn(|_r, own| {
-            crate::assets::cc_bus_install::answer_install(
-                &LocalFiles,
-                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
-            )
-            .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::blocking::<crate::faces::hub_inner_face::CcBusStateCmd>("装 cc-bus 到这台之前看一眼"),
+    crate::stream::inbound::typed::with_own::<crate::faces::hub_inner_face::CcBusInstallCmd>("把这台二进制带着的 cc-bus 装到这台", &LocalFiles),
     // 两台之间「装」那一件的枢纽（skill 与 MCP 同一对）：界面只问本机一次，本机后端向来源那台取、交被写那台判与写（`assets/hub.rs`）。
     //   依赖本进程的可达表 ⇒ 只在流面上（`cli_control::STREAM_ONLY`）。
-    CommandSpec {
-        name: "ext-hub-preview",
-        summary: "装到几台之前那一张卡：本机后端当枢纽，向各台问完并好",
-        codes: &[
-            "bad_args",
-            "missing",
-            "catalog_unreadable",
-            "io_failed",
-        ],
-        fields: &[arg("kind", "`skill` / `mcp`"), out("machines", "勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = 那台说的那一句"), arg("name", "名字"), arg("place", "可缺：用户在卡上选的那一处 `{level:\"user\"}` / `{level:\"project\", dir}`；对勾上的每台都能装才照它"), out("place", "共用的那一处（没有每台都能装的 ⇒ `null`）"), out("places", "各台能装的各处并起来 `{at, ok, note}`：勾上的每台都能装才 `ok`，否则 `note` 说第一台为什么不行"), out("slots", "几张卡的要填格并成一份 `{field, key, kept}`：每格一次，`kept` = 那一格已经有值的几台（名字）"), arg("to", "勾上的几台：可达表的键的列表，**`null` = 这台自己**；来源与那台原来那一处照扩展页那张表")],
-        takes_input: true,
-        run: Run::AsyncOwn(|r, own| {
-            Box::pin(async move {
-                let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
-                crate::assets::hub::ext_preview_many(
-                    &hub_here(&r.tz, &own),
-                    &r.args,
-                    &crate::dial::remote_ask::REACH,
-                    &crate::dial::remote_ask::DialRemote,
-                    &current,
-                )
-                .await
-                .map(Some)
-            })
-        }),
-    },
-    CommandSpec {
-        name: "ext-hub-apply",
-        summary: "装到几台，本机后端当枢纽；各台各自结局",
-        codes: &[
-            "bad_args",
-            "missing",
-            "catalog_unreadable",
-            "io_failed",
-        ],
-        fields: &[arg("fill", "用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里"), arg("kind", "同 `ext-hub-preview`"), out("machines", "每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = 那台说的那一句（看过之后变了的，那台一个字节不写），一台没成不挡别台"), arg("name", "同 `ext-hub-preview`"), arg("place", "卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale`"), arg("to", "同 `ext-hub-preview`"), arg("tokens", "每台那张卡上的记号 `{机器键（本机 = 空串）: {source, target}}`：枢纽两头都再看一次，任一头对不上 ⇒ 那台 `stale`、**一个字节不写**")],
-        takes_input: true,
-        run: Run::AsyncOwn(|r, own| {
-            Box::pin(async move {
-                let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
-                crate::assets::hub::ext_apply_many(
-                    &hub_here(&r.tz, &own),
-                    &r.args,
-                    &crate::dial::remote_ask::REACH,
-                    &crate::dial::remote_ask::DialRemote,
-                    &current,
-                )
-                .await
-                .map(Some)
-            })
-        }),
-    },
+    crate::stream::inbound::typed::async_owning::<crate::faces::ext_hub_face::ExtHubPreview>("装到几台之前那一张卡：本机后端当枢纽，向各台问完并好", hub_here),
+    crate::stream::inbound::typed::async_owning::<crate::faces::ext_hub_face::ExtHubApply>("装到几台，本机后端当枢纽；各台各自结局", hub_here),
     // 扩展页那张表：这台现扫一次、记下（资产目录的写口从这扇门递进去），各台目录合成「条目 × 机器」。
     //   读可达表认出每台的名字 ⇒ 只在流面上。
     CommandSpec {
@@ -436,90 +245,12 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
     // 〔D 组〕MCP 推 / 拉：每一问只在一台上（`assets/mcp_sync_flow.rs`）；判定原样是 `mcp_sync::answer_with`，写经 [`LocalFiles`]。
-    CommandSpec {
-        name: "mcp-sync-source",
-        summary: "装到别的机器时来源那一条",
-        codes: &[
-            "bad_args",
-            "bad_file",
-            "bad_path",
-            "io_failed",
-            "missing",
-            "refused",
-        ],
-        fields: &[arg("at", "在这台上哪一级：`{level:\"project\", dir}`（`<dir>/.mcp.json`）或 `{level:\"user\"}`（agent 自己那份用户级配置，只读）"), out("def", "那一条；**`env` / `headers` 的值在这台就换成 `null`**（值不出来源机，只交键名）"), out("field", "空位在哪一格：`env` · `headers`"), out("key", "空位的键名"), arg("name", "server 名"), out("path", "读的是哪一份"), out("slots", "换成空位的那几格 `[{field, key}]`"), out("token", "按原样那一条（含密钥值）算的记号：它变了（连只改了一个密钥值也算）⇒ 应用时判 `stale`")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::mcp_sync_flow::answer_source(
-                &LocalFiles,
-                crate::assets::ext::Env::here().user_mcp.as_deref(),
-                &r.args,
-            )
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "mcp-sync-preview",
-        summary: "在要被写的那一台看装上之后那一条",
-        codes: &["bad_args", "bad_file", "bad_path", "refused"],
-        fields: &[arg("at", "同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`）"), arg("def", "来源那台交回的那一条，原样；`env` / `headers` 里夹着值 ⇒ `bad_args`"), out("field", "空位 / 可疑项在哪一格"), out("key", "空位的键名"), out("kept", "这台那一条原来就有这个键的值（不填就沿用）"), out("kind", "可疑项的种类（闭集同 `mcp-sync-plan`）"), arg("name", "同 `mcp-sync-source`；`at` 只收项目那一级（用户级只读 ⇒ `refused`）"), out("path", "这台那份的路径"), out("slots", "每个空位 `{field, key, kept}`：`kept` = 这台那一条原来就有这个键的值（不填就沿用）"), out("state", "`new`（这台没有这一条）· `same`（除空位外一样）· `differs`"), out("suspects", "可疑项，每条 `{kind, field, value, there}`，闭集同 `mcp-sync-plan`"), out("target", "这台那份的记号（不存在 ⇒ `null`）—— 写的时候原样交回"), out("there", "它在这台指向的东西在不在"), out("value", "可疑的那个值")],
-        takes_input: true,
-        run: Run::BlockingData(|r| {
-            crate::assets::mcp_sync_flow::answer_preview(
-                &LocalFiles,
-                &crate::assets::mcp_sync::Live::from_env(),
-                &r.args,
-            )
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "mcp-sync-apply",
-        summary: "在要被写的那一台把那一条写进去",
-        codes: &[
-            "bad_args",
-            "bad_file",
-            "bad_path",
-            "needs_input",
-            "refused",
-            "stale",
-        ],
-        fields: &[arg("at", "同 `mcp-sync-preview`"), arg("def", "同 `mcp-sync-preview`"), arg("fill", "用户在确认卡上填的值 `{env: {键: 值}, headers: {…}}`；没填的键沿用这台原有的值，两样都没有 ⇒ `needs_input`、一个字节不写"), arg("name", "同 `mcp-sync-preview`"), out("path", "写到了哪"), out("recordFailed", "装记录没记下来时那一句（`null` = 记下了）"), arg("target", "看卡时这台那份的记号：这台在那之后变了 ⇒ `stale`，**一个字节不写、不重读重算**"), out("written", "真写了吗（与原有那一条逐字相同 ⇒ `false`）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::mcp_sync_flow::answer_apply(
-                &LocalFiles,
-                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
-                &r.args,
-            )
-            .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::with_files::<crate::faces::hub_inner_face::McpSourceCmd>("装到别的机器时来源那一条", &LocalFiles),
+    crate::stream::inbound::typed::with_files::<crate::faces::hub_inner_face::McpPreviewCmd>("在要被写的那一台看装上之后那一条", &LocalFiles),
+    crate::stream::inbound::typed::with_own::<crate::faces::hub_inner_face::McpApplyCmd>("在要被写的那一台把那一条写进去", &LocalFiles),
     // 〔D 组〕skill 装 / 卸的写那一半（`assets/skill_flow.rs`）：判（`skill_install`）· 写（[`LocalFiles`]）·
     //   记（`skill_ledger::answer_record`，写口只从这扇门递进去）同一台。
-    CommandSpec {
-        name: "skill-install-apply",
-        summary: "在要被写的那一台把勾的那几个 skill 文件写进去",
-        codes: &[
-            "bad_args",
-            "bad_file",
-            "io_failed",
-            "needs_consent",
-            "stale",
-        ],
-        fields: &[out("chmodFailed", "写成了但执行位没置上的那几个"), out("dir", "装到了哪"), arg("name", "同 `skill-read`"), arg("overwrite", "同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`）"), arg("project", "同 `skill-read`"), out("recordFailed", "装记录没记下来时那一句（`null` = 记下了）—— 记不下来 ⇒ 这一趟装的卸不掉"), arg("source", "来源那台 `skill-read` 的 `files`，原样（`path` · `text` · `exec`；`text` 为 `null` 的装不过去）"), arg("take", "同 `skill-install-plan`（`differs` 的必须在 `overwrite` 里点名，否则整趟拒 `needs_consent`）"), arg("target", "看差异时这台 `skill-install-plan` 回的 `target`（这台那几份原文），原样 —— 写时的 CAS 期望"), out("written", "真写成了的那几个（按写的顺序）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::assets::skill_flow::answer_install(
-                &LocalFiles,
-                &crate::assets::mcp_sync::Live::from_env(),
-                None,
-                &|a: &serde_json::Value| crate::assets::skill_ledger::answer_record(a, own),
-                &r.args,
-            )
-            .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::with_own::<crate::faces::hub_inner_face::SkillApplyCmd>("在要被写的那一台把勾的那几个 skill 文件写进去", &LocalFiles),
     // cc-bus 钩子诊断：这台自己的 `settings.json` ＋ stat ⇒ 诊断 ＋ 两种待贴片段（`observe/cc_bus_hooks.rs`）。阻塞档（同步文件 I/O）。
     CommandSpec {
         name: "hooks-diag",

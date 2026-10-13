@@ -452,3 +452,49 @@ fn a_restart_reads_only_what_the_skeleton_has_not_seen() {
     assert_eq!(bytes, now.len() as u64, "改写过还照骨架读了");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// 8a b 后续：**实时增量回写骨架** —— 读完之后实时读进来的过了门槛（上一次落盘时长度的四分之一，夹具门槛 0）⇒ 照账上此刻的游标 ·
+/// 行号 · 链索引回写一份；之后重启只读回写之后长出来的那一截 ＋ 见证（数字节），行数接得上。
+#[test]
+fn live_reads_past_the_threshold_write_the_skeleton_back() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let mut rig = Rig::new("skel-live");
+    let rec = rig.session("p-skel-live");
+    let body = chained(0..40);
+    std::fs::write(&rec, &body).unwrap();
+    let (d, own) = crate::observe::skeleton::tests::sandbox("prime-skel-live");
+    let home = crate::observe::skeleton::Skeletons::at(own, 0);
+    let append = |s: &str| {
+        use std::io::Write;
+        let mut f = std::fs::OpenOptions::new().append(true).open(&rec).unwrap();
+        f.write_all(s.as_bytes()).unwrap();
+    };
+    {
+        let mut state = rig.state();
+        state.skeletons = Some(home.clone());
+        let (tx, _rx) = tokio::sync::mpsc::channel::<Frame>(4096);
+        let mut sink = FrameSink::new(tx);
+        initial_session_scan(&rig.sessions, &mut state, &mut sink);
+        let more = lines(40..80);
+        assert!(more.len() >= body.len() / 4, "要过门槛");
+        append(&more);
+        process_jsonl(&rec, &mut state, &mut sink);
+        let h = state
+            .skel_live
+            .get_mut(&path_key(&rec))
+            .and_then(|s| s.writing.take())
+            .expect("实时读过了门槛却没回写骨架");
+        h.join().unwrap();
+    }
+    let tail = lines(80..81);
+    append(&tail);
+    let (bytes, got, off) = prime_once(&rig, &home, &rec);
+    assert_eq!(
+        bytes,
+        tail.len() as u64 + TAIL_PROBE,
+        "回写之后重启应只读回写之后的那一截 ＋ 见证"
+    );
+    assert_eq!(got, vec!["primed p-skel-live Some(86)".to_string()]);
+    assert_eq!(off, ["u2", "a2"], "回写的链索引丢了");
+    let _ = std::fs::remove_dir_all(&d);
+}

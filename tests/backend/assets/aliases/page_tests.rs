@@ -5,6 +5,39 @@ use super::*;
 use crate::assets::aliases::tests::HomeDoor;
 use std::path::PathBuf;
 
+// 五口经帧面那一跳：入参按类型收（同 `typed::take`），回包成 `Value`（同 `spec::wire`）——下面的判据照线上那一形读。
+// 本地这几个同名函数盖住 `super::*` 里那几个。
+type Wired = Result<Value, (&'static str, String)>;
+
+fn taken<R: serde::de::DeserializeOwned>(args: &Value) -> Result<R, (&'static str, String)> {
+    crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))
+}
+
+fn wired<T: serde::Serialize>(got: Result<T, (&'static str, String)>) -> Wired {
+    got.map(|v| serde_json::to_value(v).unwrap())
+}
+
+fn read_with(d: &HomeDoor, args: &Value, tmux: Option<bool>, tz: &crate::Tz) -> Wired {
+    let crate::stream::inbound::typed::NoArgs {} = taken(args)?;
+    wired(super::read_with(d, tmux, tz))
+}
+
+fn answer_resolve(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_resolve(d, &taken(args)?))
+}
+
+fn answer_impact(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_impact(d, &taken(args)?))
+}
+
+fn answer_bases(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_bases(d, &taken(args)?))
+}
+
+fn answer_write(d: &HomeDoor, args: &Value) -> Wired {
+    wired(super::answer_write(d, &taken(args)?))
+}
+
 struct Tmp(PathBuf);
 impl Drop for Tmp {
     fn drop(&mut self) {
@@ -641,5 +674,121 @@ fn resolve_writes_a_short_form_beside_the_whole_script() {
     assert!(
         team["line"].is_null() && team["lineShort"].is_null(),
         "{team}"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 线上字节：界面读的那几形（金样那五份之外），换成 typed 之前用旧代码跑出来钉的字面量
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 帧面那一跳的写法：先成 `Value`、再成串（键按字典序，同 `spec::wire`），家目录换成占位。
+fn wire_in(v: &Value, t: &Tmp) -> String {
+    serde_json::to_string(v)
+        .unwrap()
+        .replace(&t.0.display().to_string(), "<HOME>")
+}
+
+/// 「写成链接还是终端函数」跟这台 PATH 上有没有同名程序走（金样那一份用不撞名的名字钉）：这几格换成占位。
+fn without_path_facts(mut v: Value) -> Value {
+    for list in ["profiles", "seed"] {
+        for p in v[list].as_array_mut().unwrap() {
+            for k in ["kind", "functionWhy", "functionLine"] {
+                p[k] = json!("<PATH-FACT>");
+            }
+        }
+    }
+    v
+}
+
+/// 金样那五份之外界面读的几形：没有配置文件（只有首建预览）· TOML 写坏 ＋ 迁移说明 · 合不下来 · 按未存表单合 ·
+/// 改动让别的段合不下来 · 「基于」下拉里的新名字 · 只「知道了」· 盘上被别处改过（`stale`，界面按码认）。
+#[test]
+fn the_profiles_replies_the_ui_reads_keep_their_wire_bytes() {
+    let t = tmp("pin-seed", None);
+    assert_eq!(
+        wire_in(&without_path_facts(read(&t)), &t),
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":false,"fileProblem":null,"fingerprint":null,"home":"<HOME>","migrated":null,"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"seed":[{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busNote":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":null,"launcher":null,"name":"cc","tmux":null,"tmuxSize":null},"from":null,"functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cc","own":[],"problem":null,"said":"当前终端","usable":true},{"accountShape":null,"agent":[],"form":{"account":null,"agent":null,"args":null,"busNote":null,"busRegister":false,"cwd":null,"cwdIf":null,"detach":false,"from":"cc","launcher":null,"name":"cct","tmux":{"mode":"auto","name":""},"tmuxSize":null},"from":"cc","functionLine":"<PATH-FACT>","functionWhy":"<PATH-FACT>","kind":"<PATH-FACT>","name":"cct","own":[{"key":"ccm-tmux","line":5,"slot":"tmux","vals":[]}],"problem":null,"said":"+ tmux · 自动取名","usable":true}],"tmux":true}"#
+    );
+
+    let t = tmp(
+        "pin-syntax",
+        Some("[cc]\ncwd = \"/x\"\n[cct\nfrom = \"cc\"\n"),
+    );
+    std::fs::write(
+        t.0.join(relay_route_core::PROFILES_MIGRATED_REL),
+        r#"{"count":2,"path":"/a/b","skipped":["cca() { x; }"]}"#,
+    )
+    .unwrap();
+    let mut r = read(&t);
+    assert!(r["fileProblem"]["detail"]
+        .as_str()
+        .unwrap()
+        .contains("profiles-read"));
+    r["fileProblem"]["detail"] = json!("<DETAIL>");
+    assert_eq!(
+        wire_in(&r, &t),
+        r#"{"accounts":[],"binDir":"<HOME>/.cc-monitor/bin","editedAt":null,"exists":true,"fileProblem":{"detail":"<DETAIL>","line":3,"message":"配置文件格式错误"},"fingerprint":"33-2c4c3ef6bd89afa9","home":"<HOME>","migrated":{"count":2,"path":"/a/b","skipped":["cca() { x; }"]},"path":"<HOME>/.cc-monitor/profiles.toml","profiles":[],"seed":[],"tmux":true}"#
+    );
+
+    let lost = BOOK.to_string() + "\n[orphan]\nfrom = \"nope\"\n";
+    let t = tmp("pin-lost", Some(&lost));
+    assert_eq!(
+        wire_in(
+            &answer_resolve(&t.door(), &json!({"name": "orphan"})).unwrap(),
+            &t
+        ),
+        r#"{"chain":[],"line":null,"lineError":null,"lineShort":null,"problem":"行 22 · orphan 基于的 nope 不存在","rows":[]}"#
+    );
+
+    let t = tmp("pin", Some(BOOK));
+    let home = t.0.display().to_string();
+    let edit = json!({"name": "cct2", "from": "cc", "tmux": {"mode": "base", "name": "w"}, "detach": true});
+    let r = answer_resolve(
+        &t.door(),
+        &json!({"name": "cct", "at": "/tmp", "edit": edit}),
+    )
+    .unwrap();
+    assert_eq!(
+        wire_in(&normalized(&r, &home), &t),
+        r#"{"chain":["cc","cct2"],"line":"<LINE>","lineError":null,"lineShort":"<LINE_SHORT>","problem":null,"rows":[{"from":"cc","key":"cwd-if","label":"按目录","overriddenBy":null,"said":"在 ~ 敲进 ~/projects/notes","slot":"cwdIf","vals":["~","~/projects/notes"]},{"from":"cct2","key":"tmux-base","label":"在哪起","overriddenBy":null,"said":"tmux · 以 w 为底取名","slot":"tmux","vals":["w"]},{"from":"cct2","key":"detach","label":"起完不接进去","overriddenBy":null,"said":"开","slot":"detach","vals":[]}]}"#
+    );
+
+    let r = answer_impact(
+        &t.door(),
+        &json!({"changes": [{"op": "set", "was": "cc", "form": {"name": "cc", "tmuxSize": "bad size"}}]}),
+    )
+    .unwrap();
+    let broke = "cc 写错 · 当前不可用 · 行 3 · tmux-size · --tmux-size 的值 bad size 无效（<宽>x<高> · 正整数 · 例 220x50）";
+    assert_eq!(
+        wire_in(&r, &t),
+        format!(
+            r#"{{"affected":[{{"changes":[],"name":"cct","problem":"{broke}"}},{{"changes":[],"name":"teamcct","problem":"{broke}"}},{{"changes":[],"name":"workcct","problem":"{broke}"}}]}}"#
+        )
+    );
+
+    assert_eq!(
+        wire_in(
+            &answer_bases(&t.door(), &json!({"name": "fresh"})).unwrap(),
+            &t
+        ),
+        r#"{"bases":[{"from":null,"name":"cc","said":"当前终端 · 在 ~ 敲进 ~/projects/notes","selectable":true},{"from":"cc","name":"cct","said":"+ tmux · 自动取名","selectable":true},{"from":"cct","name":"teamcct","said":"账号 team","selectable":true},{"from":"cct","name":"workcct","said":"账号 work","selectable":true},{"from":null,"name":"pcc","said":"当前终端 · 不用账号 · 进 /srv/p","selectable":true},{"from":null,"name":"fresh","said":"","selectable":false}]}"#
+    );
+
+    assert_eq!(
+        wire_in(&write(&t, json!([{"op": "ackMigrated"}])).unwrap(), &t),
+        r#"{"fingerprint":"221-66c4ac7d0a5265d6","reload":null,"wrote":false}"#
+    );
+
+    let (code, said) = answer_write(
+        &t.door(),
+        &json!({"changes": [{"op": "remove", "name": "pcc"}], "fingerprint": "0-0"}),
+    )
+    .unwrap_err();
+    assert_eq!(
+        (code, said.replace(&home, "<HOME>")),
+        (
+            "stale",
+            "<HOME>/.cc-monitor/profiles.toml 在本页读取后被别处改过 · 本次未写入".to_string()
+        )
     );
 }
