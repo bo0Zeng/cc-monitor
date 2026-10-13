@@ -27,8 +27,8 @@ pub(crate) struct Upgraded {
     pub(crate) old_scripts: Vec<String>,
 }
 
-/// 一天里的分钟数。
-const DAY_MIN: usize = 1440;
+/// 一天里的分钟数（[`super::form::DAY_MIN`]）。
+const DAY_MIN: usize = super::form::DAY_MIN as usize;
 
 /// 升级材料：第二版文件里的编号 `"1"` · `"2"` · `"3"` 依次对的代码（头里的设置是空号列表，名字由配置名填）。
 const MATERIALS: [&str; 3] = [

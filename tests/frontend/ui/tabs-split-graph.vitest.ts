@@ -185,8 +185,7 @@ const DEPS: Record<string, readonly string[]> = {
     "src/frontend/ui/account-color.ts",
     "src/frontend/ui/duration-format.ts", // 机器掉线那一行「多久前」没有起点时的 0（那一个读口写，单位不写死）
     "src/frontend/ui/accounts.ts",
-    "src/frontend/ui/acct-view.ts", // 被卡住的会话标题后 `✕ 5h`：排版模型（判定是后端给的 `blocked`）
-    "src/frontend/ui/app-store.ts", // 同上：会话的轮换格从 store 读
+    "src/frontend/ui/app-store.ts", // 账号格照会话那台 `rotation-view` 的在用号：从 store 读
     "src/frontend/ui/copy-table.ts", // 按钮上的图标 · 悬停提示 · 集合名提示进了文案表
     "src/frontend/ui/ipc/origin.ts", // 远端 tab 才挂 `.remote` / 走远端那条 ↗
     "src/frontend/ui/keybindings/registry.ts", // 组头就地改名：改名时 Esc 走 overlay 栈；悬停提示里现拼键位

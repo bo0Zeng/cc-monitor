@@ -1656,10 +1656,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     );
 }
 
-// `typed_enum_replies_sample_every_variant` 摘了：顶层是枚举的那几条应答（`rotation-config-save` · `rotation-session-save`）
-// 随轮换第五版删了，手写字段表的那一族里再没有顶层是枚举的应答，那条判据数到 0 就是空转。第五版的命令都是 typed，
-// 形状从类型生成（`stream::typed` 的形状指纹），不经这张表。
-
 /// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::AsyncOwn(` …）只许在
 /// `stream/inbound/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面
 /// 各写一份 `match`，枢纽那一份漏了两档，问本机那一跳的 8 条一律 `unknown_command`。

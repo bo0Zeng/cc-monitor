@@ -165,9 +165,8 @@ fn no_strategy_ships_and_new_sessions_do_not_rotate() {
     let home = Home::new("none");
     let m = migrate_at(&home.own(), &env(&|_| false)).expect("升级");
     assert_eq!(m, Migrated::default());
-    assert_eq!(
-        std::fs::read_dir(home.sdir()).expect("目录").count(),
-        0,
+    assert!(
+        shelf::all(Some(&home.sdir())).is_empty(),
         "策略目录里多了文件"
     );
     assert!(!home.file().exists(), "没有旧版也写了 rotation.json");

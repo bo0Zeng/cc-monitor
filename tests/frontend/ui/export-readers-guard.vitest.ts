@@ -31,6 +31,9 @@ const EXEMPT: Readonly<Record<string, string>> = {
   "src/frontend/ui/cards/index.ts::resetResultTextLedger": "内存秤（秤 6）的结果字账复位口；量具，不是产品功能",
   "src/frontend/ui/height-estimate.ts::__resetUnknownCardWarnings": "测试复位口（认不出的卡只警告一次，测试之间要清）；名字早于 `…ForTests` 约定",
   "src/frontend/ui/height-estimate.ts::SKEL_OUTER": "秤 2 骨架外框的对拍口：产品用的是四个 `SKEL_*` 常量，这里把它们收成一处给真浏览器量的金样比",
+  "src/frontend/ui/kit/interrupts.ts::confirmInterrupts": "账号面板「重启切换」那一路随第三版界面摘了；留不留由第 4 刀照稿定（稿里「现在用」是热换）",
+  "src/frontend/ui/interrupt-reads.ts::askSessionInterrupts": "同上，重启切换前问会打断什么",
+  "src/frontend/ui/kit/dialog.ts::choiceDialog": "账号面板「换配置前先问」随第三版界面摘了；第 4 刀的「丢不丢草稿」照稿定用不用它",
   "src/frontend/ui/account-reads.ts::checkTrust": "界面里唯一一处问 `accounts-trust` 的口（帧命令两向登记要它）；那条帧命令留不留归「记录帧契约 / 手机端对账」那一刀",
 };
 

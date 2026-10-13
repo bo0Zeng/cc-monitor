@@ -18,7 +18,7 @@ fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
 
 fn source() -> String {
     std::fs::read_to_string(
-        crate::guard_support::repo_root().join("tests/__fixtures__/rotation/by-list.rhai"),
+        crate::guard_support::repo_root().join("tests/__fixtures__/rotation-by-list.rhai"),
     )
     .expect("判据夹具")
 }

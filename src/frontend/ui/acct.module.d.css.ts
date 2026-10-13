@@ -1,9 +1,5 @@
 // 由 `tests/frontend/ui/css-modules.vitest.ts` 对拍：本文件 == 从 `acct.module.css` 渲染出的规范文本（逐字）。
 declare const classes: {
-  readonly acctBlock: string;
-  readonly acctBlockBody: string;
-  readonly acctBlockHead: string;
-  readonly acctBlockTitle: string;
   readonly acctChip: string;
   readonly acctChipName: string;
   readonly acctChipPrefix: string;
@@ -14,7 +10,6 @@ declare const classes: {
   readonly acctChipWindow: string;
   readonly acctFoot: string;
   readonly acctFootLabel: string;
-  readonly acctHint: string;
   readonly acctHomeAvatar: string;
   readonly acctHover: string;
   readonly acctHoverCell: string;
@@ -23,17 +18,9 @@ declare const classes: {
   readonly acctHoverKey: string;
   readonly acctHoverName: string;
   readonly acctHoverTag: string;
-  readonly acctMeterRel: string;
-  readonly acctMeterRow: string;
-  readonly acctModes: string;
   readonly acctPanel: string;
   readonly acctPick: string;
   readonly acctPickName: string;
-  readonly acctPickUsage: string;
-  readonly acctRadio: string;
-  readonly acctReason: string;
   readonly acctSpacer: string;
-  readonly acctStub: string;
-  readonly acctSwitchRow: string;
 };
 export default classes;

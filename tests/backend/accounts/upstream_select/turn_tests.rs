@@ -71,7 +71,10 @@ impl Home {
     }
 
     fn ledger(&self) -> Arc<Ledger> {
-        Arc::new(Ledger::at(Some(self.root.join(ledger::FILE_NAME))).with_nodes(self.tx.clone()))
+        Arc::new(Ledger::with_nodes(
+            Some(self.root.join(ledger::FILE_NAME)),
+            self.tx.clone(),
+        ))
     }
 
     fn hop(&self) -> Hop {
@@ -106,7 +109,7 @@ impl Home {
             None => serde_json::json!({}),
         };
         let src = std::fs::read_to_string(
-            crate::guard_support::repo_root().join("tests/__fixtures__/rotation/by-list.rhai"),
+            crate::guard_support::repo_root().join("tests/__fixtures__/rotation-by-list.rhai"),
         )
         .expect("判据夹具");
         let mut head = script::parse(&src).expect("读得懂").head;
@@ -183,6 +186,11 @@ fn steer(hop: &Hop, own: &crate::platform::fs::Own, at: u64) -> Go {
     )
 }
 
+/// 这个进程里重跑过几次判。
+fn runs(hop: &Hop) -> u64 {
+    hop.cache.lock().unwrap_or_else(|e| e.into_inner()).runs
+}
+
 fn which(g: &Go) -> &str {
     match g {
         Go::Start => "a",
@@ -202,7 +210,7 @@ fn without_a_strategy_a_session_keeps_its_start_account() {
     for i in 0..5 {
         assert_eq!(which(&steer(&hop, &own, t + i)), "a");
     }
-    assert_eq!(hop.runs(), 0, "没选策略也叫了策略");
+    assert_eq!(runs(&hop), 0, "没选策略也叫了策略");
     assert_eq!(home.session().strategy.id, "", "会话该记下、不带策略");
 }
 
@@ -218,7 +226,7 @@ fn a_hundred_sends_between_two_nodes_run_the_strategy_once() {
     for i in 0..100 {
         assert_eq!(which(&steer(&hop, &own, t + i)), "a");
     }
-    assert_eq!(hop.runs(), 1, "节点之间重跑了");
+    assert_eq!(runs(&hop), 1, "节点之间重跑了");
     let stamp = || {
         std::fs::metadata(home.root.join(rotation::FILE_NAME))
             .and_then(|m| m.modified())
@@ -230,7 +238,7 @@ fn a_hundred_sends_between_two_nodes_run_the_strategy_once() {
     }
     assert_eq!(stamp(), before, "结论没变也写了盘");
     steer(&hop, &own, t + 3_601);
-    assert_eq!(hop.runs(), 2, "过了 a 的重置（下一个已知节点）没重跑");
+    assert_eq!(runs(&hop), 2, "过了 a 的重置（下一个已知节点）没重跑");
 }
 
 /// ★ 节点作废缓存：事实那几种（`quota.json` 被写）⇒ 重跑；会话那一条在别处改了（快照不同）⇒ 重跑。
@@ -243,16 +251,16 @@ fn fact_nodes_and_a_changed_session_rerun() {
     let t = now();
     steer(&hop, &own, t);
     steer(&hop, &own, t + 1);
-    assert_eq!(hop.runs(), 1);
+    assert_eq!(runs(&hop), 1);
     hop.quota.notify(Source::QuotaFile, None);
     steer(&hop, &own, t + 2);
-    assert_eq!(hop.runs(), 2, "quota.json 那一件没作废缓存");
+    assert_eq!(runs(&hop), 2, "quota.json 那一件没作废缓存");
     rotation::face_change(&hop.store, &own, |b| {
         b.sessions.get_mut(SID).expect("有").temp = vec!["b".into()];
     })
     .expect("w");
     steer(&hop, &own, t + 3);
-    assert_eq!(hop.runs(), 3, "会话那一条变了没重跑");
+    assert_eq!(runs(&hop), 3, "会话那一条变了没重跑");
 }
 
 /// ★ 读数节点：这个会话自己的读数没越过它记着的 `wake.when`（上限 80）⇒ 不重跑；越过 ⇒ 重跑、换到 b；
@@ -268,13 +276,13 @@ fn an_own_reading_reruns_only_past_its_wake_reading() {
     assert_eq!(which(&steer(&hop, &own, t)), "a");
     home.seen(&hop.quota, Some(SID), "a", 0.7, t + 1);
     assert_eq!(which(&steer(&hop, &own, t + 2)), "a");
-    assert_eq!(hop.runs(), 1, "自己的读数没越过 80 也重跑了");
+    assert_eq!(runs(&hop), 1, "自己的读数没越过 80 也重跑了");
     home.seen(&hop.quota, Some("s-other"), "b", 0.1, t + 3);
     steer(&hop, &own, t + 4);
-    assert_eq!(hop.runs(), 2, "别的会话的读数没作废缓存");
+    assert_eq!(runs(&hop), 2, "别的会话的读数没作废缓存");
     home.seen(&hop.quota, Some(SID), "a", 0.85, t + 5);
     assert_eq!(which(&steer(&hop, &own, t + 6)), "b", "越过 80 没换");
-    assert_eq!(hop.runs(), 3);
+    assert_eq!(runs(&hop), 3);
     let s = home.session();
     assert_eq!(
         (s.current.as_str(), s.log.last().map(|l| &l.cause)),
@@ -367,7 +375,7 @@ fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quot
 
 fn fixture_by_list() -> script::File {
     let src = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("tests/__fixtures__/rotation/by-list.rhai"),
+        crate::guard_support::repo_root().join("tests/__fixtures__/rotation-by-list.rhai"),
     )
     .expect("判据夹具");
     script::parse(&src).expect("读得懂")

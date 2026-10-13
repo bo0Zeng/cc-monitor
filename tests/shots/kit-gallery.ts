@@ -21,7 +21,6 @@ import { emptyState } from "../../src/frontend/ui/kit/empty";
 import { countBadge, tag, kbd } from "../../src/frontend/ui/kit/badge";
 import { copyText } from "../../src/frontend/ui/copy-table";
 import { spinner } from "../../src/frontend/ui/kit/progress";
-import { meter } from "../../src/frontend/ui/kit/meter";
 import { statusDot, type DotState } from "../../src/frontend/ui/kit/status-dot";
 import { icon } from "../../src/frontend/ui/kit/icon";
 import { confirmDialog, askText } from "../../src/frontend/ui/kit/dialog";
@@ -175,20 +174,10 @@ function overview(): void {
   const dotList = h("div");
   for (const [st, label] of dots) dotList.appendChild(row(statusDot(st, label), h("span", "g-fake", label)));
   document.body.append(
-    section("状态点 · 图标 · 转圈 · 计量条", "V10 · V9 · C14 · C22", "g-cols4", [
+    section("状态点 · 图标 · 转圈", "V10 · V9 · C14", "g-cols4", [
       ["状态点八态", dotList],
       ["图标（常规 16 · 紧凑 14 · 空态 32）", row(icon("settings"), icon("history"), icon("grid"), icon("folder"), icon("command", "compact"), icon("search", "compact"), icon("empty", "empty"))],
       ["转圈", stage(row(spinner(), h("span", "g-fake", "连接 devbox…")))],
-      [
-        "计量条：常态 · 到阈值 · 被拒 · 数旧 · 无采样",
-        stage(
-          meter({ label: "5h", ratio: 0.42, state: "normal", value: "42%", reset: "↻18:30" }),
-          meter({ label: "7d", ratio: 0.86, state: "near", value: "86%", reset: "↻周一" }),
-          meter({ label: "5h", ratio: 1, state: "refused", value: "104%", reset: "↻18:30" }),
-          meter({ label: "7d", ratio: 0.5, state: "stale", value: "50%", reset: "↻周一" }),
-          meter({ label: "5h", ratio: 0, state: "none", value: "—" }),
-        ),
-      ],
     ]),
   );
 

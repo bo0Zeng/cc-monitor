@@ -774,7 +774,6 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
   "src/frontend/ui/kit/fold.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/menu.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/select.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
-  "src/frontend/ui/kit/meter.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/popover.module.css": { stacked: false, why: "通用组件：只挂自己的哈希类" },
   "src/frontend/ui/kit/split-button.module.css": { stacked: false, why: "通用组件（拆分按钮，暂定）：只挂自己的哈希类" },
   "src/frontend/ui/views/session-viewer.module.css": { stacked: false, why: "只读查看器的外框（头 · 工具行 · 底一行）：只挂自己的哈希类；判据找元素用 `data-role`" },
@@ -794,7 +793,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(
-  // banner · drawer · fold · meter · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需手动」计数）用上；
+  // banner · drawer · fold · tabs 已由主窗口的「账号」面板用上；badge · status-dot 由标签页栏（状态点 · 机器徽标 · 「需手动」计数）用上；
   // progress 由消息流过程里那一步的「在跑」转圈用上（主窗口第 2 批）；empty · skeleton · switch 由历史页（空态 · 骨架 · 筛选里的勾与单选）用上；chip 由状态栏（任务 · agent · 上下文）用上；
   // field 由设置窗「添加机器」框用上；block · card · list-row 一直没有面，删了。
   [],

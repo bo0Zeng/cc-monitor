@@ -248,8 +248,13 @@ pub(crate) struct Ledger {
 }
 
 impl Ledger {
-    /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。
+    /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。节点发到进程里那一条。
     pub(crate) fn at(path: Option<PathBuf>) -> Self {
+        Self::with_nodes(path, super::nodes::bus().clone())
+    }
+
+    /// 同 [`Self::at`]，节点发到给的那一条（判据各用自己的一条，不跟并行的判据串）。
+    pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::nodes::Nodes) -> Self {
         let mut mem = BTreeMap::new();
         if let Some(Read::Present(book)) = path.as_deref().map(read_at) {
             for e in book.accounts {
@@ -265,7 +270,7 @@ impl Ledger {
                 on_disk,
                 stamp,
             }),
-            nodes: super::nodes::bus().clone(),
+            nodes,
         }
     }
 
@@ -292,13 +297,6 @@ impl Ledger {
                 }
             }
         }
-    }
-
-    /// 换一条节点通道（判据各用自己的一条，不跟并行的判据串）。
-    #[cfg(test)]
-    pub(crate) fn with_nodes(mut self, tx: super::nodes::Nodes) -> Self {
-        self.nodes = tx;
-        self
     }
 
     /// 发节点的那一条（判的缓存订它）。

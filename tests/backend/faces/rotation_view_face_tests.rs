@@ -65,14 +65,13 @@ impl Home {
             root,
             live: Arc::default(),
         };
-        let fx = crate::guard_support::repo_root().join("tests/__fixtures__/rotation");
-        let read = |n: &str| std::fs::read_to_string(fx.join(n)).expect("判据夹具");
-        let third = read("by-list.rhai").replace("\"name\": \"照号牌\"", "\"name\": \"第三份\"");
-        for (id, text) in [
-            ("by-list", read("by-list.rhai")),
-            ("by-reset", read("by-reset.rhai")),
-            ("third", third),
-        ] {
+        let read = |p: &str| {
+            std::fs::read_to_string(crate::guard_support::repo_root().join(p)).expect("判据夹具")
+        };
+        let list = read("tests/__fixtures__/rotation-by-list.rhai");
+        let third = list.replace("\"name\": \"照号牌\"", "\"name\": \"第三份\"");
+        let reset = read("tests/__fixtures__/rotation-by-reset.rhai");
+        for (id, text) in [("by-list", list), ("by-reset", reset), ("third", third)] {
             rotation::strategy_file_write(&h.own(), id, &text).expect("写策略");
         }
         rotation::face_change(

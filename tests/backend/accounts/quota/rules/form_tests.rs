@@ -6,7 +6,7 @@ use serde_json::json;
 /// 判据夹具那一份声明（排 · 用量上限 · 上限类型 · 启用延迟）。
 fn fixture_form() -> Vec<Cell> {
     let src = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("tests/__fixtures__/rotation/by-reset.rhai"),
+        crate::guard_support::repo_root().join("tests/__fixtures__/rotation-by-reset.rhai"),
     )
     .expect("判据夹具");
     super::super::script::parse(&src).expect("读得懂").head.form

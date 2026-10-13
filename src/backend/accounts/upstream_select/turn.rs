@@ -620,12 +620,6 @@ impl Hop {
         apply(&mut n, &d, &facts, a.now, None);
         Some(self.go_for(own, a, &lib, &n, &loaded, d.pick, tried))
     }
-
-    /// 这个进程里重跑过几次判（判据用）。
-    #[cfg(test)]
-    pub(crate) fn runs(&self) -> u64 {
-        self.cache.lock().unwrap_or_else(|e| e.into_inner()).runs
-    }
 }
 
 #[cfg(test)]

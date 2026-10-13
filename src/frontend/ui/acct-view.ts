@@ -34,11 +34,6 @@ export interface ChipModel {
   stale: boolean;
 }
 
-/** `quota-read` 里那个号那一条。 */
-export function ledgerOf(quota: QuotaRead | null, agent: string, account: string): QuotaReadAccount | undefined {
-  return quota?.accounts.find((a) => a.agent === agent && a.account === account);
-}
-
 /** 这台额度账里这个号那一条（这个会话那一家的、或只认号名的头一条）。 */
 function ledgerOfAny(quota: QuotaRead | null, account: string): QuotaReadAccount | undefined {
   return quota?.accounts.find((a) => a.account === account);
@@ -100,44 +95,4 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
   const rows = (seen ?? unseen)?.rows.map((r) => r.map((c) => c.text)) ?? [[accountLabel(cur)]];
   if (seen && entry) rows[rows.length - 1].push(machineLabel(entry.origin));
   return rows;
-}
-
-/** 「热切换」不成立 / 切换没成的原因码 ⇒ 原因词。 */
-export function reasonLabel(code: string, ctx: { agent: string; target: string }): string {
-  switch (code) {
-    case "noRelay":
-      return copyText("acct.reason.noRelay");
-    case "ended":
-      return copyText("acct.reason.ended", { ended: copyText("sessionState.ended.name") });
-    case "machineNotMulti":
-      return copyText("acct.reason.notMulti");
-    case "agentHasNoAccounts":
-      return copyText("acct.reason.noAccounts", { agent: ctx.agent });
-    case "targetNeedsLogin":
-      return copyText("acct.reason.needsLogin", { name: accountLabel(ctx.target) });
-    case "targetNeedsKey":
-      return copyText("acct.reason.needsKey", { name: accountLabel(ctx.target) });
-    case "ioFailed":
-      return copyText("acct.reason.ioFailed");
-    case "account_unavailable":
-      return copyText("acct.reason.accountUnavailable", { name: accountLabel(ctx.target) });
-    case "ambiguous":
-      return copyText("acct.reason.ambiguous");
-    case "not_in_terminal":
-      return copyText("acct.reason.notInTerminal");
-    case "stop_failed":
-      return copyText("acct.reason.stopFailed");
-    case "session_already_live":
-      return copyText("acct.reason.alreadyLive");
-    case "start_failed":
-      return copyText("acct.reason.startFailed");
-    case "notArrived":
-      return copyText("acct.reason.notArrived");
-    case "shutting_down":
-      return copyText("acct.reason.shuttingDown");
-    case "dirty":
-      return copyText("rot.batch.dirty");
-    default:
-      return copyText("acct.reason.unknown");
-  }
 }

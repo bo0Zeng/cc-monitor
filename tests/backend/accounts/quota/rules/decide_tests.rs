@@ -1,4 +1,4 @@
-//! 后端的一判与推演（`轮换-v5-算法.md` §7）。「策」＝ 拿判据夹具里的策略（`tests/__fixtures__/rotation/`）＋ 积木库跑后端的 `turn`；
+//! 后端的一判与推演（`轮换-v5-算法.md` §7）。「策」＝ 拿判据夹具里的策略（`tests/__fixtures__/rotation-by-list.rhai` · `rotation-by-reset.rhai`）＋ 积木库跑后端的 `turn`；
 //! 「后」＝ 只测后端积木，策略是判据里的假策略。
 
 use super::*;
@@ -18,25 +18,24 @@ fn clock(t: u64) -> u16 {
     ((t % 86_400) / 60) as u16
 }
 
-fn fixture(name: &str) -> String {
-    std::fs::read_to_string(
-        crate::guard_support::repo_root()
-            .join("tests/__fixtures__/rotation")
-            .join(name),
-    )
-    .expect("判据夹具")
+fn fixture(path: &str) -> String {
+    std::fs::read_to_string(crate::guard_support::repo_root().join(path)).expect("判据夹具")
 }
 
 /// 同一排里照号牌左右。
 fn by_list() -> &'static File {
     static F: OnceLock<File> = OnceLock::new();
-    F.get_or_init(|| script::parse(&fixture("by-list.rhai")).expect("读得懂"))
+    F.get_or_init(|| {
+        script::parse(&fixture("tests/__fixtures__/rotation-by-list.rhai")).expect("读得懂")
+    })
 }
 
 /// 同一排里先用快要重置的。
 fn by_reset() -> &'static File {
     static F: OnceLock<File> = OnceLock::new();
-    F.get_or_init(|| script::parse(&fixture("by-reset.rhai")).expect("读得懂"))
+    F.get_or_init(|| {
+        script::parse(&fixture("tests/__fixtures__/rotation-by-reset.rhai")).expect("读得懂")
+    })
 }
 
 fn acct(id: &str, used5h: f64) -> Acct {

@@ -5,26 +5,19 @@ use crate::accounts::quota::rules::decide::{turn, Ctx, CtxAcct, Pick, Sigma, Str
 use crate::accounts::quota::rules::Acct;
 use crate::accounts::quota::strategy::FailKind;
 
-fn fixtures_dir() -> std::path::PathBuf {
-    crate::guard_support::repo_root().join("tests/__fixtures__/rotation")
-}
-
 /// 判据夹具里的几份策略：（文件 id, 原文）。
 fn fixtures() -> Vec<(String, String)> {
-    let mut v: Vec<(String, String)> = guard_core::scan_tree!(&fixtures_dir(), &["rhai"])
-        .into_iter()
-        .map(|(p, t)| {
-            (
-                p.file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("")
-                    .to_string(),
-                t,
-            )
-        })
-        .collect();
-    v.sort();
-    v
+    [
+        ("by-list", "tests/__fixtures__/rotation-by-list.rhai"),
+        ("by-reset", "tests/__fixtures__/rotation-by-reset.rhai"),
+    ]
+    .iter()
+    .map(|(id, p)| {
+        let t =
+            std::fs::read_to_string(crate::guard_support::repo_root().join(p)).expect("判据夹具");
+        ((*id).to_string(), t)
+    })
+    .collect()
 }
 
 fn with_code(code: &str) -> String {

@@ -89,6 +89,7 @@ pub struct Cell {
     pub scope: Scope,
     /// 只对 `scope: each`：号没另设就跟总体（总体那一份在 `settings[key]`）。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(test, ts(optional, as = "Option<bool>"))]
     pub inherit: bool,
     pub label: Text,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -96,6 +97,7 @@ pub struct Cell {
     pub help: Option<Text>,
     /// 只对 `daySegments`：哪几个窗口（`5h` · `7d`）。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<String>>"))]
     pub windows: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -110,6 +112,7 @@ pub struct Cell {
     #[cfg_attr(test, ts(type = "unknown"))]
     pub default: Value,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(test, ts(optional, as = "Option<Vec<FormChoice>>"))]
     pub choices: Vec<FormChoice>,
     /// 能是空（`null`）：空的那一项怎么叫（例如「不回切」）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -346,19 +349,36 @@ pub(crate) fn check(form: &[Cell], settings: &Value) -> Vec<Bad> {
     out
 }
 
-/// 讲内部结构、或用第二人称的字（文案规矩）：策略写的标签与说明里有这些 ⇒ 界面上提示「这份策略的说明写法不合规」，设置照样能用。
-const WORDS_BAD_ZH: [&str; 5] = ["你", "您", "参数", "声明", "配置"];
-const WORDS_BAD_EN: [&str; 4] = ["you", "your", "parameter", "config"];
+/// 讲内部结构、或用第二人称的字（文案规矩，`src/shared/rotation/form-words.json`）：策略写的标签与说明里有这些 ⇒
+/// 界面上提示「这份策略的说明写法不合规」，设置照样能用。
+#[derive(Deserialize)]
+struct BadWords {
+    zh: Vec<String>,
+    en: Vec<String>,
+}
+
+fn bad_words() -> &'static BadWords {
+    static W: std::sync::OnceLock<BadWords> = std::sync::OnceLock::new();
+    W.get_or_init(|| {
+        serde_json::from_str(include_str!("../../../../shared/rotation/form-words.json")).unwrap_or(
+            BadWords {
+                zh: Vec::new(),
+                en: Vec::new(),
+            },
+        )
+    })
+}
 
 fn text_bad(t: &Text) -> bool {
     let (zh, en) = match t {
         Text::One(s) => (s.as_str(), s.as_str()),
         Text::Langs { zh, en } => (zh.as_str(), en.as_deref().unwrap_or("")),
     };
-    WORDS_BAD_ZH.iter().any(|w| zh.contains(w))
+    let w = bad_words();
+    w.zh.iter().any(|x| zh.contains(x.as_str()))
         || en
             .split(|c: char| !c.is_ascii_alphabetic())
-            .any(|w| WORDS_BAD_EN.contains(&w.to_ascii_lowercase().as_str()))
+            .any(|x| w.en.iter().any(|b| b.eq_ignore_ascii_case(x)))
 }
 
 /// 这份声明的字合不合文案规矩（标签 · 说明 · 空的那一项 · 选项）。
