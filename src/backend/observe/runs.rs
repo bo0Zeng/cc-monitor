@@ -10,7 +10,7 @@ use crate::platform::fs::Ro;
 use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};
@@ -807,23 +807,20 @@ impl RunTrack {
         if f.seek(SeekFrom::Start(cur.consumed)).is_err() {
             return changed;
         }
-        let mut buf = Vec::new();
-        if f.read_to_end(&mut buf).is_err() {
-            return changed;
-        }
-        let Some(last_nl) = buf.iter().rposition(|&b| b == b'\n') else {
-            return changed;
-        };
-        cur.consumed += last_nl as u64 + 1;
+        // 按块读到尾（第一次认领时是整份；不一次读进内存）：每块整行逐行记进簿里、游标跟着块走；末尾没写完的那截等下次。
         let sid = cur.sid.clone();
-        for line in buf[..last_nl].split(|&b| b == b'\n') {
-            let text = String::from_utf8_lossy(line);
-            let t = text.trim_start_matches('\u{feff}').trim();
-            if t.is_empty() {
-                continue;
-            }
-            if let Ok(v) = serde_json::from_str::<Value>(t) {
-                changed |= self.book.record(&self.faces, &sid, &v, Some(written));
+        let mut blocks = crate::observe::fs::Blocks::new(f, crate::observe::fs::READ_BLOCK);
+        while let Ok(Some(whole)) = blocks.next() {
+            cur.consumed += whole.len() as u64;
+            for line in whole[..whole.len() - 1].split(|&b| b == b'\n') {
+                let text = String::from_utf8_lossy(line);
+                let t = text.trim_start_matches('\u{feff}').trim();
+                if t.is_empty() {
+                    continue;
+                }
+                if let Ok(v) = serde_json::from_str::<Value>(t) {
+                    changed |= self.book.record(&self.faces, &sid, &v, Some(written));
+                }
             }
         }
         changed

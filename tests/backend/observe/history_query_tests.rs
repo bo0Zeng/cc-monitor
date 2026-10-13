@@ -598,3 +598,55 @@ impl crate::guard_support::Shaped for RecordProbe {
         }]
     }
 }
+
+/// d：清单缓存的追加读按块 —— 两问之间长了 8 MiB，读的时候本线程手里最多两块多一点（今天整截读进一个 `Vec`）；
+/// 那一行与整份重扫的一样。
+#[test]
+fn listing_append_holds_about_a_block_not_the_growth() {
+    use crate::observe::fs::test_support::{big_record, BIG, HELD_BOUND};
+    use std::io::Write as _;
+    let tmp = std::env::temp_dir().join(format!("ccm-hq-held-{}", std::process::id()));
+    std::fs::create_dir_all(&tmp).unwrap();
+    let p = tmp.join("grow.jsonl");
+    std::fs::write(
+        &p,
+        "{\"type\":\"user\",\"uuid\":\"u-a\",\"timestamp\":\"2026-04-01T00:00:00Z\",\"message\":{\"role\":\"user\",\"content\":\"first\"}}\n",
+    )
+    .unwrap();
+    let mtime = |secs: u64| {
+        std::fs::File::options()
+            .write(true)
+            .open(&p)
+            .unwrap()
+            .set_modified(
+                std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_900_000_000 + secs),
+            )
+            .unwrap();
+    };
+    mtime(0);
+    let _ = analyze_session_cached(&p);
+    let more = tmp.join("more.jsonl");
+    big_record(&more, BIG, false);
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&p)
+        .unwrap()
+        .write_all(&std::fs::read(&more).unwrap())
+        .unwrap();
+    mtime(1);
+    let base = crate::alloc_probe::reset_peak();
+    let row = analyze_session_cached(&p);
+    let held = crate::alloc_probe::peak_since(base);
+    let read = SESSION_META.lock().unwrap().get(&p).map(|e| e.last_bytes);
+    let whole = analyze_session(&p);
+    let _ = std::fs::remove_dir_all(&tmp);
+    assert_eq!(row, whole, "追加读那一行与整份重扫不一样");
+    assert!(
+        read.is_some_and(|b| b < BIG as u64 + 4096),
+        "该只读追加的那一截（读了 {read:?}）"
+    );
+    assert!(
+        held <= HELD_BOUND,
+        "追加读 {BIG} 字节，本线程手里最多 {held} 字节，上界 {HELD_BOUND}"
+    );
+}

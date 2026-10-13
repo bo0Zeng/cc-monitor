@@ -21,7 +21,7 @@
 //! 只读铁律（cc-monitor 不写远端）成立——本模块只 read_dir / read。
 
 use crate::observe::fence::Fence;
-use crate::observe::fs::{split_whole_lines, Step, Tailed};
+use crate::observe::fs::{Blocks, Step, Tailed};
 use crate::observe::search_rules::{self, SnippetBudget, SnippetVerdict, MAIN_CAP, TOOL_CAP};
 use crate::platform::fs::Ro;
 use serde_json::Value;
@@ -502,6 +502,7 @@ impl Facts {
 
     /// 把**后面**那一段并进来：按段序合并与整份顺扫相等。
     fn extend(&mut self, later: Facts) {
+        self.bg |= later.bg;
         if self.cwd.is_none() {
             self.cwd = later.cwd;
         }
@@ -528,34 +529,39 @@ impl FileEntry {
         }
     }
 
-    /// 从 `consumed` 起新读到的字节并进来：最后一个 `\n` 之前的完整行进 `done`，之后的残尾整个换掉 `tail`。
-    /// 切点紧跟 `\n`（ASCII）⇒ 每段是不是合法 UTF-8 与整份是不是同一个答案。
-    fn take(&mut self, mtime: Option<std::time::SystemTime>, new: &[u8]) {
-        let end = self.read.consumed() + new.len() as u64;
-        let (whole, rest) = split_whole_lines(new);
+    /// 从 `consumed` 起按块读到尾、并进来：每块整行进 `done`，读到尾时没写完的那截整个换掉 `tail`。
+    /// 块切在 `\n`（ASCII）之后 ⇒ 每块是不是合法 UTF-8 与整段同一个答案；某块不是 ⇒ 整格清空、记「坏在完整行里」，
+    /// 后面的块只读不吸（读到尾，长度照记）。读出错 ⇒ `Err(原因)`（这一格调用方丢掉）。
+    fn take<R: std::io::Read>(
+        &mut self,
+        mtime: Option<std::time::SystemTime>,
+        blocks: &mut Blocks<R>,
+    ) -> Result<(), String> {
+        let base = self.read.consumed();
         self.bad = None;
         self.tail = Facts::default();
-        let mut took = false;
-        if !whole.is_empty() {
-            match std::str::from_utf8(whole) {
-                Ok(s) => {
-                    let mut seg = Facts::default();
-                    seg.absorb(s, self.tools);
-                    self.done.extend(seg);
-                    took = true;
-                }
-                Err(e) => {
-                    *self = Self::empty(self.tools);
-                    self.bad = Some((BadAt::Done, e.to_string()));
+        let mut at = 0usize;
+        while let Some(whole) = blocks.next().map_err(|e| e.to_string())? {
+            if self.bad.is_none() {
+                match std::str::from_utf8(&whole) {
+                    Ok(s) => {
+                        let mut seg = Facts::default();
+                        seg.absorb(s, self.tools);
+                        self.done.extend(seg);
+                        self.read.took(&whole);
+                    }
+                    Err(e) => {
+                        *self = Self::empty(self.tools);
+                        self.bad = Some((BadAt::Done, utf8_why(&e, at)));
+                    }
                 }
             }
+            at += whole.len();
         }
-        if took {
-            self.read.took(whole);
-        }
-        self.read.saw((mtime, end));
+        let rest = blocks.rest();
+        self.read.saw((mtime, base + blocks.read()));
         if self.bad.is_none() {
-            match std::str::from_utf8(rest) {
+            match std::str::from_utf8(&rest) {
                 Ok(s) => self.tail.absorb(s, self.tools),
                 Err(e) => self.bad = Some((BadAt::Tail, e.to_string())),
             }
@@ -563,6 +569,7 @@ impl FileEntry {
         let ((dp, da), (tp, ta)) = (self.done.weights(), self.tail.weights());
         self.weight = self.read.witness_len() + da + ta;
         self.plain_weight = self.read.witness_len() + dp + tp;
+        Ok(())
     }
 
     /// 放掉工具层（〔perfC2〕常驻装不下时先放它）：之后这一格与不抽工具文本整份读出来的一样，
@@ -774,21 +781,32 @@ fn bring_up(
             last.reused += 1;
             Ok(e)
         }
-        (Step::Appended(new), Some(mut e)) => {
+        (Step::Appended(mut new), Some(mut e)) => {
             last.appended += 1;
-            e.take(seen.0, &new);
-            Ok(e)
+            let got = e.take(seen.0, &mut new);
+            last.bytes += new.read();
+            got.map(|()| e)
         }
         (Step::Appended(_), None) | (Step::Whole, _) => {
-            let buf = Tailed::read_whole(path, &mut last.bytes)?;
+            let mut blocks = Blocks::open(path)?;
             last.full += 1;
             let mut e = FileEntry::empty(tools);
-            e.take(seen.0, &buf);
-            Ok(e)
+            let got = e.take(seen.0, &mut blocks);
+            last.bytes += blocks.read();
+            got.map(|()| e)
         }
         (Step::Same, None) => Err(crate::common::contract::malformed(
             "Tailed::step answered Same without a previous entry",
         )),
+    }
+}
+
+/// 一段里某块不是合法 UTF-8 的那一句：位置按这一趟读到的整段算（块从段里第 `at` 字节起），与整段一次判的同一句。
+fn utf8_why(e: &std::str::Utf8Error, at: usize) -> String {
+    let from = at + e.valid_up_to();
+    match e.error_len() {
+        Some(n) => format!("invalid utf-8 sequence of {n} bytes from index {from}"),
+        None => format!("incomplete utf-8 byte sequence from index {from}"),
     }
 }
 

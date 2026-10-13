@@ -7,7 +7,7 @@
 //! 只读铁律（cc-monitor 不写远端）在此同样成立：本模块只 read_dir / read。
 
 use crate::observe::fence::Fence;
-use crate::observe::fs::{split_whole_lines, Step, Tailed};
+use crate::observe::fs::{Blocks, Step, Tailed};
 use crate::observe::listing_scan::SessionScan;
 use crate::platform::fs::{Ro, RoFile};
 use copy_core::copy_text;
@@ -367,19 +367,32 @@ impl ListingEntry {
         e
     }
 
-    /// 尾巴上新读到的那一段并进来（`new` 从上次的完整行之后起，可能以半行结尾）。
-    fn extend(&mut self, p: &Path, mtime: Option<std::time::SystemTime>, new: &[u8]) {
-        let end = self.read.consumed() + new.len() as u64;
-        let (whole, rest) = split_whole_lines(new);
-        for line in whole.split_inclusive(|&b| b == b'\n') {
-            self.done.absorb_bytes(line);
+    /// 尾巴上新长的那一截按块读进来（`new` 停在上次的完整行之后，读到尾；末尾可能是半行）。读出错 ⇒ `false`（这一份调用方整份重扫）。
+    fn extend<R: std::io::Read>(
+        &mut self,
+        p: &Path,
+        mtime: Option<std::time::SystemTime>,
+        new: &mut Blocks<R>,
+    ) -> bool {
+        let base = self.read.consumed();
+        loop {
+            match new.next() {
+                Ok(Some(whole)) => {
+                    for line in whole.split_inclusive(|&b| b == b'\n') {
+                        self.done.absorb_bytes(line);
+                    }
+                    self.read.took(&whole);
+                }
+                Ok(None) => break,
+                Err(_) => return false,
+            }
         }
-        self.read.took(whole);
-        self.read.saw((mtime, end));
+        self.read.saw((mtime, base + new.read()));
         self.tail = SessionScan::default();
-        self.tail.absorb_bytes(rest);
-        self.last_bytes = new.len() as u64;
+        self.tail.absorb_bytes(&new.rest());
+        self.last_bytes = new.read();
         self.row = self.done.joined(&self.tail).row(p);
+        true
     }
 }
 
@@ -443,9 +456,12 @@ fn analyze_session_cached(p: &Path) -> serde_json::Value {
             e.last_bytes = 0;
             e
         }
-        (Step::Appended(new), Some(mut e)) => {
-            e.extend(p, seen.0, &new);
-            e.last_bytes = bytes;
+        (Step::Appended(mut new), Some(mut e)) => {
+            // 读到一半读不动 ⇒ 与见证那一下读不动同一形：这一次现扫、不留。
+            if !e.extend(p, seen.0, &mut new) {
+                return analyze_session(p);
+            }
+            e.last_bytes = bytes + new.read();
             e
         }
         _ => ListingEntry::scan(p, seen.0),
