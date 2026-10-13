@@ -25,7 +25,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("rotation-try", "251fe90a"),
     ("rotation-use", "671580e6"),
     ("rotation-use-now", "c3bb1f44"),
-    ("rotation-view", "9b9eb3da"),
+    ("rotation-view", "cfd5c25f"),
     ("session-interrupts", "6b0c632f"),
     ("session-new", "7fbad542"),
     ("session-new-dir", "2c86c180"),

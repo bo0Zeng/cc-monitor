@@ -233,15 +233,16 @@ impl Blocking for RotationTry {
             .iter()
             .map(Acct::of_fact)
             .collect();
-        try_with(&req, &facts, now)
+        try_with(&req, &facts, now, &cx.tz)
     }
 }
 
-/// 本体（测试给假的事实与钟）。
+/// 本体（测试给假的事实与钟）。`tz` ＝ 看的那一台的时区（时刻的字照它写）。
 pub(crate) fn try_with(
     req: &RotationTryReq,
     facts: &[Acct],
     now: u64,
+    tz: &crate::Tz,
 ) -> Result<RotationTryReply, RotationTryErr> {
     let file = script::parse(&req.source).map_err(|f| {
         let at = f.line.map(|l| format!("line {l}: ")).unwrap_or_default();
@@ -250,8 +251,9 @@ pub(crate) fn try_with(
             f.msg
         )))
     })?;
-    let tz = crate::accounts::quota::rules::tz_of(Some(&file.head));
-    let clock_of = |t: u64| crate::accounts::quota::rules::clock_at(&tz, t);
+    // 分时段照策略头里的时区算；时刻的字照看的那一台（`tz`）写。
+    let rule_tz = crate::accounts::quota::rules::tz_of(Some(&file.head));
+    let clock_of = |t: u64| crate::accounts::quota::rules::clock_at(&rule_tz, t);
     let settings = req
         .settings
         .clone()
@@ -303,7 +305,7 @@ pub(crate) fn try_with(
         source,
         use_now_refused,
         decision: decision_of(&d),
-        timeline: timeline_of(&tl, now, now, now + hours * 3600, &crate::Tz::default()),
+        timeline: timeline_of(&tl, now, now, now + hours * 3600, tz),
     })
 }
 

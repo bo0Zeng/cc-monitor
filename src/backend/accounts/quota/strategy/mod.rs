@@ -25,6 +25,8 @@ thread_local! {
 fn bare() -> Engine {
     let mut e = Engine::new_raw();
     e.register_global_module(StandardPackage::new().as_shared_module());
+    // 运算符照普通函数调：快路不给错填位置（`1 / 0` 报不出第几行），慢路填。
+    e.set_fast_operators(false);
     e.set_max_operations(MAX_OPERATIONS)
         .set_max_call_levels(16)
         .set_max_expr_depths(64, 32)
@@ -99,6 +101,27 @@ pub enum FailKind {
     Gone,
 }
 
+/// 出错是哪一种常见的（提示照它挑说法；原话另进复制详情）。从 Rhai 的错归过来，归不进的 ⇒ `Other`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailWhy {
+    /// 除以 0 · 对 0 取余。
+    DivZero,
+    /// 调了没有的函数。
+    NoFn,
+    /// 类型对不上（含运算符两边的类型没有这种算法）。
+    Type,
+    /// 撞上沙箱的上限（操作数 · 调用深度 · 大小）。
+    Limit,
+    /// 墙钟到了 · 推演的累计耗时用完。
+    Timeout,
+    /// 下标越界。
+    Index,
+    /// 文件没了 · 太大，读不到。
+    Gone,
+    /// 其余（编不过 · 回的形状不对 · `throw` …）。
+    Other,
+}
+
 /// 一次调用没成：哪一种 · 第几行（说得出才有）· 原话（英文诊断，不进文案表）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -120,6 +143,10 @@ pub struct Fail {
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub col: Option<usize>,
     pub msg: String,
+    /// 是哪一种常见的错（只在后端拼提示用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    pub why: FailWhy,
 }
 
 impl Fail {
@@ -129,19 +156,25 @@ impl Fail {
             line: None,
             col: None,
             msg: msg.into(),
+            why: FailWhy::Other,
         }
     }
 
     /// 跑出来的错：超操作数 / 墙钟 ⇒ 超时（带出处）；其余 ⇒ 出错（带行）。
+    /// 行与哪一种都照最里头那一层：Rhai 把函数里出的错一层层包成「调用某函数时出错」，外层的位置是调用处（`decide` 那一层是空的）。
     pub(crate) fn of_eval(e: &EvalAltResult) -> Self {
-        let pos = e.position();
-        let timeout = match e {
-            EvalAltResult::ErrorTooManyOperations(_) => true,
-            EvalAltResult::ErrorTerminated(v, _) => {
-                v.clone().into_string().ok().as_deref() == Some(WALL_TAG)
-            }
-            _ => false,
+        let mut inner = e;
+        while let EvalAltResult::ErrorInFunctionCall(_, _, x, _) = inner {
+            inner = x;
+        }
+        let pos = if inner.position().is_none() {
+            e.position()
+        } else {
+            inner.position()
         };
+        let wall = matches!(inner, EvalAltResult::ErrorTerminated(v, _)
+            if v.clone().into_string().ok().as_deref() == Some(WALL_TAG));
+        let timeout = wall || matches!(inner, EvalAltResult::ErrorTooManyOperations(_));
         Self {
             kind: if timeout {
                 FailKind::Timeout
@@ -150,11 +183,43 @@ impl Fail {
             },
             line: pos.line(),
             col: pos.position(),
-            msg: if matches!(e, EvalAltResult::ErrorTerminated(..)) && timeout {
+            msg: if wall {
                 format!("wall clock over {WALL_MS} ms (the machine was too busy or the script too slow)")
             } else {
                 e.to_string()
             },
+            why: if wall {
+                FailWhy::Timeout
+            } else {
+                why_of(inner)
+            },
         }
+    }
+}
+
+/// Rhai 的错 ⇒ 常见的哪一种。运算符两边的类型没有这种算法，Rhai 报成「找不到函数 `-`(…)」⇒ 算类型不对。
+fn why_of(e: &EvalAltResult) -> FailWhy {
+    use EvalAltResult as E;
+    match e {
+        E::ErrorArithmetic(m, _) if m.contains("by zero") => FailWhy::DivZero,
+        E::ErrorFunctionNotFound(sig, _) => {
+            let name = sig.split([' ', '(']).next().unwrap_or_default();
+            if !name.is_empty() && !name.chars().any(|c| c.is_alphanumeric() || c == '_') {
+                FailWhy::Type
+            } else {
+                FailWhy::NoFn
+            }
+        }
+        E::ErrorMismatchDataType(..)
+        | E::ErrorMismatchOutputType(..)
+        | E::ErrorIndexingType(..)
+        | E::ErrorFor(..) => FailWhy::Type,
+        E::ErrorArrayBounds(..) | E::ErrorStringBounds(..) | E::ErrorBitFieldBounds(..) => {
+            FailWhy::Index
+        }
+        E::ErrorTooManyOperations(_) | E::ErrorStackOverflow(_) | E::ErrorDataTooLarge(..) => {
+            FailWhy::Limit
+        }
+        _ => FailWhy::Other,
     }
 }

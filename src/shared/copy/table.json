@@ -31320,16 +31320,64 @@
     "beRotation.hint.error": {
       "kind": "error",
       "role": "报错",
-      "zh": "策略「{name}」出错：{msg} · 改按默认优先级",
-      "args": ["name", "msg"],
+      "zh": "策略「{name}」出错：{why} · 改按默认优先级",
+      "args": ["name", "why"],
       "waive": {"C-W10": "用户定的句子（轮换-v5.md「提示」表）"}
     },
     "beRotation.hint.errorLine": {
       "kind": "error",
       "role": "报错",
-      "zh": "策略「{name}」出错：第 {line} 行，{msg} · 改按默认优先级",
-      "args": ["name", "line", "msg"],
+      "zh": "策略「{name}」出错：第 {line} 行，{why} · 改按默认优先级",
+      "args": ["name", "line", "why"],
       "waive": {"C-W10": "用户定的句子（轮换-v5.md「提示」表）", "C-W11": "用户定的句子（轮换-v5.md「提示」表）"}
+    },
+    "beRotation.why.divZero": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "除数为 0",
+      "args": []
+    },
+    "beRotation.why.noFn": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "找不到函数",
+      "args": []
+    },
+    "beRotation.why.type": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "类型不对",
+      "args": []
+    },
+    "beRotation.why.limit": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "超出运算上限",
+      "args": []
+    },
+    "beRotation.why.timeout": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "超时",
+      "args": []
+    },
+    "beRotation.why.index": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "下标越界",
+      "args": []
+    },
+    "beRotation.why.gone": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "读不到这份文件",
+      "args": []
+    },
+    "beRotation.why.other": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "代码出错",
+      "args": []
     },
     "beRotation.hint.tz": {
       "kind": "body",

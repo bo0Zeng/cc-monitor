@@ -4,4 +4,8 @@ import type { RotHint } from "./RotHint";
 /**
  * 一条提示：哪一种（界面照它挑颜色）· 写好的那一句（停发那一句里 `{dur}` 是「还有多久」，界面在画的那一刻照 `now` · `until` 填）。
  */
-export type RotNote = { hint: RotHint, text: string, };
+export type RotNote = { hint: RotHint, text: string, 
+/**
+ * 复制详情（出错那一条带原话；别的没有）。
+ */
+detail?: string, };

@@ -1423,7 +1423,11 @@ type RotHint = { "k": "hold", until?: number, account?: string,
 untilText?: string, } | { "k": "strategyError", error: RotStrategyError, path?: string, } | { "k": "tzUnknown", zone?: string, } | { "k": "oldScripts", n: number, files: Array<RotOldFile>, } | { "k": "newer" } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLogCause = { "k": "order" } | { "k": "unusable" } | { "k": "temp" } | { "k": "useNow" } | { "k": "hold", until?: number, } | { "k": "error" };
 type RotLogRow = { because: string, at: number, from: string, to: string, cause: RotLogCause, why?: string, };
-type RotNote = { hint: RotHint, text: string, };
+type RotNote = { hint: RotHint, text: string, 
+/**
+ * 复制详情（出错那一条带原话；别的没有）。
+ */
+detail?: string, };
 type RotOldFile = { name: string, path: string, };
 type RotPast = { from: number, uses: Array<RotPastUse>, lanes: Array<RotPastLane>, };
 type RotPastLane = { account: string, segs: Array<RotPastSeg>, };

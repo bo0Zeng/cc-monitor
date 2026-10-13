@@ -275,7 +275,7 @@ function hintButton(label: string, onClick: () => void, opt: { ghost?: boolean; 
   return b;
 }
 
-/** 提示：一条一句（后端写好的），按钮写动作，要的东西（文件在哪 · 设成哪个时区 · 哪几份）都是后端给的。 */
+/** 提示：一条一句（后端写好的），按钮写动作，要的东西（文件在哪 · 设成哪个时区 · 哪几份 · 复制详情）都是后端给的。 */
 function hints(spec: BoardSpec): HTMLElement[] {
   const v = spec.view;
   if (!v) return [];
@@ -306,7 +306,7 @@ function hints(spec: BoardSpec): HTMLElement[] {
         hintButton(copyText("rot.hint.keepMine"), () => acts.keepMine(), { ghost: true, act: "keepMine" }),
       );
     }
-    const b = banner(t.tone, t.text, btns);
+    const b = banner(t.tone, t.text, btns, n.detail ?? "");
     b.dataset.rotHint = h.k;
     return below ? [b, below] : [b];
   });

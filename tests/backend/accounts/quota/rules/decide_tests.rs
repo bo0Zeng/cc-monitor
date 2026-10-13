@@ -111,6 +111,7 @@ impl Strategy for Fixed {
                 line: Some(3),
                 col: None,
                 msg: "boom".into(),
+                why: crate::accounts::quota::strategy::FailWhy::Other,
             });
         }
         Ok(Verdict {

@@ -40,7 +40,7 @@ fn it_decides_and_simulates_from_the_given_facts() {
         a("team", 10.0, None),
         a("lab", 95.0, None),
     ];
-    let got = try_with(&req, &facts, NOW).expect("ok");
+    let got = try_with(&req, &facts, NOW, &crate::Tz::default()).expect("ok");
     assert_eq!(got.decision.pick.as_deref(), Some("work"));
     assert_eq!(
         got.decision.order,
@@ -103,18 +103,46 @@ fn use_now_switches_or_says_when() {
         use_now: Some(who.into()),
         ..Default::default()
     };
-    let got = try_with(&req("team"), &facts, NOW).expect("ok");
+    let got = try_with(&req("team"), &facts, NOW, &crate::Tz::default()).expect("ok");
     assert_eq!(
         (got.decision.pick.as_deref(), got.decision.temp.clone()),
         (Some("team"), vec!["team".to_string()])
     );
-    let got = try_with(&req("lab"), &facts, NOW).expect("ok");
+    let got = try_with(&req("lab"), &facts, NOW, &crate::Tz::default()).expect("ok");
     assert_eq!(
         got.decision.pick.as_deref(),
         Some("work"),
         "lab 用到 100 ⇒ 发不出去，不换"
     );
     assert_eq!(got.use_now_refused, Some(Some(NOW + 4 * 3600)));
+}
+
+/// ★ 时刻的字（刻度 · 换号时刻 · 每段起点）照看的那一台的时区写，不按 UTC。
+#[test]
+fn the_clock_words_follow_the_viewing_machine() {
+    let req = RotationTryReq {
+        source: source(),
+        settings: Some(settings()),
+        ..Default::default()
+    };
+    let facts = [a("work", 89.0, Some(0.5)), a("team", 10.0, None)];
+    let tz = crate::Tz::iana("Asia/Shanghai").expect("tz");
+    let face = |t: u64| crate::common::time::hm(tz.local(i64::try_from(t).expect("i64")));
+    let utc = |t: u64| {
+        crate::common::time::hm(crate::Tz::default().local(i64::try_from(t).expect("i64")))
+    };
+    let got = try_with(&req, &facts, NOW, &tz).expect("ok");
+    let sw = got.timeline.switches.first().expect("换号");
+    assert_eq!(sw.at_text, face(sw.at));
+    assert_ne!(sw.at_text, utc(sw.at), "八个钟头差得出来");
+    for t in &got.timeline.ticks {
+        assert_eq!(t.text, face(t.at), "{:?}", got.timeline.ticks);
+    }
+    for l in &got.timeline.lanes {
+        for g in &l.segs {
+            assert_eq!(g.from_text, face(g.from));
+        }
+    }
 }
 
 /// ★ 读不懂的原文 ⇒ `bad_strategy`，带第几行。
@@ -124,7 +152,7 @@ fn an_unreadable_source_is_refused_with_its_line() {
         source: "/*--- rotation\n{".into(),
         ..Default::default()
     };
-    match try_with(&req, &[], NOW) {
+    match try_with(&req, &[], NOW, &crate::Tz::default()) {
         Err(RotationTryErr::BadStrategy(s)) => assert!(s.contains("line"), "{s}"),
         other => panic!("{other:?}"),
     }

@@ -129,6 +129,7 @@ impl Loaded {
                 line: None,
                 col: None,
                 msg: format!("strategy file `{}` is not there", self.id),
+                why: crate::accounts::quota::strategy::FailWhy::Gone,
             }),
             Some(s) => s.file.as_ref().err().cloned(),
         }

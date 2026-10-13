@@ -6,6 +6,7 @@ use crate::accounts::quota::facts::Fact;
 use crate::accounts::quota::rules::book::{self, Uses};
 use crate::accounts::quota::rules::decide::Pick;
 use crate::accounts::quota::rules::{form, past, script, shelf, simulate};
+use crate::accounts::quota::strategy::FailWhy;
 use crate::accounts::upstream_select::turn::{self, Loaded};
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of, RotTryDecision, RotTryTimeline};
@@ -23,6 +24,10 @@ pub(crate) struct RotStrategyError {
     #[cfg_attr(test, ts(optional, type = "number"))]
     pub(crate) line: Option<usize>,
     pub(crate) msg: String,
+    /// 哪一种常见的错（拼提示那一句用，不上线）。
+    #[serde(skip)]
+    #[cfg_attr(test, ts(skip))]
+    pub(crate) why: FailWhy,
 }
 
 impl RotStrategyError {
@@ -30,6 +35,21 @@ impl RotStrategyError {
         Self {
             line: f.line,
             msg: f.msg.clone(),
+            why: f.why,
+        }
+    }
+
+    /// 出错的那种说法（文案表里的）。
+    fn why_text(&self) -> String {
+        match self.why {
+            FailWhy::DivZero => copy_core::copy_text("beRotation.why.divZero", &[]),
+            FailWhy::NoFn => copy_core::copy_text("beRotation.why.noFn", &[]),
+            FailWhy::Type => copy_core::copy_text("beRotation.why.type", &[]),
+            FailWhy::Limit => copy_core::copy_text("beRotation.why.limit", &[]),
+            FailWhy::Timeout => copy_core::copy_text("beRotation.why.timeout", &[]),
+            FailWhy::Index => copy_core::copy_text("beRotation.why.index", &[]),
+            FailWhy::Gone => copy_core::copy_text("beRotation.why.gone", &[]),
+            FailWhy::Other => copy_core::copy_text("beRotation.why.other", &[]),
         }
     }
 }
@@ -288,6 +308,10 @@ pub(crate) struct RotPast {
 pub(crate) struct RotNote {
     pub(crate) hint: RotHint,
     pub(crate) text: String,
+    /// 复制详情（出错那一条带原话；别的没有）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) detail: Option<String>,
 }
 
 /// 一条换号记录 ＋ 为什么那一句（策略写的；没写 ⇒ 后端看得见的原因）。
@@ -301,7 +325,7 @@ pub(crate) struct RotLogRow {
     pub(crate) because: String,
 }
 
-/// 提示写成一句（字照文案表）。`name` ＝ 那份策略的标题。
+/// 提示写成一句（字照文案表）。`name` ＝ 那份策略的标题。出错那一句写第几行 · 哪一种（说法），原话进复制详情。
 fn note_of(hint: RotHint, name: &str) -> RotNote {
     let text = match &hint {
         RotHint::Hold {
@@ -323,12 +347,12 @@ fn note_of(hint: RotHint, name: &str) -> RotNote {
                 &[
                     ("name", name),
                     ("line", &l.to_string()),
-                    ("msg", &error.msg),
+                    ("why", &error.why_text()),
                 ],
             ),
             None => copy_core::copy_text(
                 "beRotation.hint.error",
-                &[("name", name), ("msg", &error.msg)],
+                &[("name", name), ("why", &error.why_text())],
             ),
         },
         RotHint::TzUnknown { .. } => copy_core::copy_text("beRotation.hint.tz", &[]),
@@ -339,7 +363,11 @@ fn note_of(hint: RotHint, name: &str) -> RotNote {
         RotHint::WordsBad => copy_core::copy_text("beRotation.hint.words", &[]),
         RotHint::BookUnreadable { text } => text.clone(),
     };
-    RotNote { hint, text }
+    let detail = match &hint {
+        RotHint::StrategyError { error, .. } => Some(error.msg.clone()),
+        _ => None,
+    };
+    RotNote { hint, text, detail }
 }
 
 /// 换号记录配上为什么那一句。

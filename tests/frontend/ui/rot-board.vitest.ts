@@ -158,7 +158,7 @@ describe("提示里的按钮", () => {
     const root = draw(
       view({
         hints: [
-          { hint: { k: "strategyError", error: { line: 12, msg: "除数为 0" }, path: "/夹具/strategies/夜里省着用.rhai" }, text: "出错那一句" },
+          { hint: { k: "strategyError", error: { line: 12, msg: "Division by zero: 1 / 0" }, path: "/夹具/strategies/夜里省着用.rhai" }, text: "出错那一句" },
           { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, text: "时区那一句" },
         ],
       }),
@@ -174,6 +174,24 @@ describe("提示里的按钮", () => {
     const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, text: "夹具·出错那一句" }, { hint: { k: "tzUnknown" }, text: "时区" }] }), state(), acts());
     expect(button(bare, copyText("rot.hint.code"))).toBeUndefined();
     expect(button(bare, copyText("rot.hint.setTz"))).toBeUndefined();
+  });
+
+  it("★ 出错那一条带复制详情（原话，后端给的）；别的提示没有", () => {
+    const root = draw(
+      view({
+        hints: [
+          { hint: { k: "strategyError", error: { line: 12, msg: "Division by zero: 1 / 0" } }, text: "夹具·出错那一句", detail: "Division by zero: 1 / 0" },
+          { hint: { k: "tzUnknown" }, text: "时区那一句" },
+        ],
+      }),
+      state(),
+      acts(),
+    );
+    const err = root.querySelector<HTMLElement>('[data-rot-hint="strategyError"]')!;
+    expect(err.querySelector('[data-part="copy-detail"]')).not.toBeNull();
+    expect(err.textContent).not.toContain("Division");
+    const tz = root.querySelector<HTMLElement>('[data-rot-hint="tzUnknown"]')!;
+    expect(tz.querySelector('[data-part="copy-detail"]')).toBeNull();
   });
 
   it("★ 旧格式 ⇒ 看是哪几份：展开后列出后端给的文件名，点名字开那一份", () => {

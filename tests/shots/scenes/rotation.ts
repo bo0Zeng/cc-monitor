@@ -105,6 +105,17 @@ const order = (): string[] => [...document.querySelectorAll<HTMLElement>(`${PANE
 
 let dragFrom: string[] = [];
 
+
+/** 出错那份策略的代码：头之后第 7 行起，第 12 行除以 0（照稿上那一句的行号）。 */
+const NIGHT_BROKEN = `fn decide(ctx) {
+  let night = ctx.clock >= 22 * 60 || ctx.clock < 7 * 60;
+  let order = if night { ["lab", "team"] } else { ["team", "lab"] };
+  let spare = ctx.accounts.len();
+  let share = 100;
+  let x = share / (spare - spare);
+  #{ order: order }
+}
+`;
 export const ROTATION_SCENES: Scene[] = [
   panelScene("rot-panel", "面板 · 平时", "按权重轮换（照「我们的轮换」写法的策略）：第一行下拉 ＋ 说明 · 号牌（在用 team 带绿点，work 到上限变淡）· 总体设置照策略声明的 scope: all 那几格 · 模拟照真推演", openPanel),
   panelScene("rot-open", "面板 · 点开一个号", "点号牌 lab：头一行此刻用量 · 重置 · 立即用 · 移出；下面是声明里 scope: each 的格（用量上限另设了 5h 分段，7d 跟总体画虚线 · 耗尽后启用 · 启用延迟 · 单次用量上限）", async () => {
@@ -141,10 +152,10 @@ export const ROTATION_SCENES: Scene[] = [
   panelScene(
     "rot-error",
     "面板 · 策略出错",
-    "夜里省着用（第 3 行除数为 0）：红条照后端那一句（第几行 · 原话 · 改按默认优先级），这一判照号牌先后",
+    "夜里省着用（第 12 行除数为 0）：红条照后端那一句（第几行 · 哪一种错 · 改按默认优先级，Rhai 原话进［复制详情］），这一判照号牌先后",
     openPanel,
     rotWorld((rw) => {
-      rw.strategies["夜里省着用"] = `// 夜里只用 lab 和 team（示意：decide 里有一处写错了）\n\n/*--- rotation\n{ "format": 5, "tz": "UTC", "settings": { "accounts": [{ "id": "team" }, { "id": "lab" }] }, "form": [] }\n---*/\n\nfn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: ["lab"] }\n}\n`;
+      rw.strategies["夜里省着用"] = `// 夜里只用 lab 和 team（示意：decide 里有一处写错了）\n\n/*--- rotation\n{ "format": 5, "tz": "UTC", "settings": { "accounts": [{ "id": "team" }, { "id": "lab" }] }, "form": [] }\n---*/\n\n${NIGHT_BROKEN}`;
       rw.sessions[0] = { start: "work", current: "team", strategy: "夜里省着用" };
     }),
   ),
@@ -173,7 +184,7 @@ export const ROTATION_SCENES: Scene[] = [
     ...panelScene(
       "rot-hints",
       "面板 · 提示带按钮",
-      "策略出错 ⇒［看代码］（照「在文件窗口打开」那一路开那份文件）· 时区不明 ⇒［设时区］（悬停写设成哪一个）· 旧格式没加载 ⇒［看是哪几份］，点开列出 strategies/v3/ 里的文件名",
+      "策略出错（第 12 行，除数为 0；原话进［复制详情］）⇒［看代码］（照「在文件窗口打开」那一路开那份文件）· 时区不明 ⇒［设时区］（悬停写设成哪一个）· 旧格式没加载 ⇒［看是哪几份］，点开列出 strategies/v3/ 里的文件名",
       async () => {
         await openPanel();
         const which = await byText(`${PANEL} button`, /看是哪几份/);
@@ -181,7 +192,7 @@ export const ROTATION_SCENES: Scene[] = [
         await sleep(600);
       },
       rotWorld((rw) => {
-        rw.strategies["夜里省着用"] = `// 夜里只用 lab 和 team（示意：decide 里有一处写错了，头里也没写时区）\n\n/*--- rotation\n{ "format": 5, "settings": { "accounts": [{ "id": "team" }, { "id": "lab" }] }, "form": [] }\n---*/\n\nfn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: ["lab"] }\n}\n`;
+        rw.strategies["夜里省着用"] = `// 夜里只用 lab 和 team（示意：decide 里有一处写错了，头里也没写时区）\n\n/*--- rotation\n{ "format": 5, "settings": { "accounts": [{ "id": "team" }, { "id": "lab" }] }, "form": [] }\n---*/\n\n${NIGHT_BROKEN}`;
         rw.sessions[0] = { start: "work", current: "team", strategy: "夜里省着用" };
         rw.old = { "旧的按顺序.rhai": "fn score(ctx) { 0 }\n", "旧的夜里.rhai": "fn score(ctx) { 1 }\n" };
       }),
