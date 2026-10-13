@@ -379,6 +379,57 @@ fn a_preset_session_keeps_its_strategy_when_the_relay_first_sees_it() {
     assert!(!ctx.hop.store.now().sessions.contains_key(S1));
 }
 
+/// ★ 新会话框选「不轮换」：起之前写成不轮换的会话（策略 id 空），不去策略目录里找。
+#[test]
+fn a_preset_session_can_be_written_as_not_rotating() {
+    let home = Home::new("preset-none");
+    let ctx = home.ctx();
+    preset_with(&ctx, &home.own(), S1, "claude", "", now()).expect("ok");
+    home.saw(&ctx, S1);
+    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "");
+    let v = session_view(&ctx, &home, S1);
+    assert!(v.strategy.is_none(), "不轮换");
+}
+
+/// ★ 时刻的字由后端写（界面不换算时刻）：此刻 · 刻度 · 换号时刻 · 每号行每段的起点 · 停发到几点；每段还带剩多少（事实）。
+#[test]
+fn a_session_view_writes_every_time_it_carries() {
+    let home = Home::new("view-texts");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    seen(&ctx, "a", 0.4, None);
+    let v = session_view(&ctx, &home, S1);
+    let hm = |t: &str| t.len() == 5 && t.as_bytes()[2] == b':';
+    assert!(hm(&v.now_text), "{}", v.now_text);
+    let tl = v.timeline.as_ref().expect("推演");
+    assert!(tl.ticks.len() >= 5, "12 小时每 2 小时一格：{:?}", tl.ticks);
+    for t in &tl.ticks {
+        assert!(
+            hm(&t.text) && t.text.ends_with(":00") && t.at > v.now,
+            "{t:?}"
+        );
+    }
+    for w in tl.switches.iter() {
+        assert!(hm(&w.at_text), "{w:?}");
+    }
+    let seg = &tl.lanes[0].segs[0];
+    assert!(hm(&seg.from_text), "{seg:?}");
+    assert!(
+        (seg.left - 60.0).abs() < 1e-6,
+        "剩 ＝ 100 − 两窗里用得多的：{seg:?}"
+    );
+
+    // 停发：到几点那一刻也写好。
+    seen(&ctx, "a", 1.0, Some(now() + 3600));
+    let v = session_view(&ctx, &home, S1);
+    let held = v.hints.iter().find_map(|h| match h {
+        RotHint::Hold { until_text, .. } => Some(until_text.clone()),
+        _ => None,
+    });
+    let text = held.expect("停发").expect("到几点说得出");
+    assert!(hm(&text), "{text}");
+}
+
 // ── quota-read ────────────────────────────────────────────────────────────────
 
 /// ★ `quota-read`：每条加显示态（「快满」按固定的 80%：线是策略的设置，后端说不出「到线」）；没出过数的号另列；

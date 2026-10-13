@@ -5,6 +5,6 @@
  */
 export type RotationPick = { 
 /**
- * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）。
+ * 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
  */
-strategy: string, };
+strategy: string | null, };

@@ -4,4 +4,8 @@ import type { RotStrategyError } from "./RotStrategyError";
 /**
  * 提示（第一行下面那几条）：停发 · 策略出错 · 时区不明 · 旧格式没加载 · 说明写法不合规。字由第 4 刀照文案表写。
  */
-export type RotHint = { "k": "hold", until?: number, account?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+export type RotHint = { "k": "hold", until?: number, account?: string, 
+/**
+ * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
+ */
+until_text?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };

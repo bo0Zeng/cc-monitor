@@ -12,6 +12,10 @@ import type { RotTryTimeline } from "./RotTryTimeline";
  */
 export type RotationViewReply = { now: number, 
 /**
+ * `now` 的钟面（`HH:MM`，看的那一台的时区）。
+ */
+nowText: string, 
+/**
  * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
  */
 strategy: RotStrategyItem | null, 

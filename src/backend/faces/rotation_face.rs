@@ -208,7 +208,8 @@ pub(crate) fn preset_with(
         return Err(("io_failed", copy_text("beRotation.read.noHome", &[])));
     }
     let all = shelf::all(ctx.hop.store.strategy_dir().as_deref());
-    if shelf::find(&all, strategy).is_none() {
+    // 空 ⇒ 起成不轮换的会话（新会话框选了「不轮换」），不去目录里找。
+    if !strategy.is_empty() && shelf::find(&all, strategy).is_none() {
         return Err((
             "no_strategy",
             copy_text("beRotation.strategy.gone", &[("name", strategy)]),

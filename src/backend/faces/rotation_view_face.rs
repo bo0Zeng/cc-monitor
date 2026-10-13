@@ -190,6 +190,10 @@ pub(crate) enum RotHint {
         #[serde(skip_serializing_if = "Option::is_none")]
         #[cfg_attr(test, ts(optional))]
         account: Option<String>,
+        /// `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(test, ts(optional))]
+        until_text: Option<String>,
     },
     /// 策略出错（这一判走了兜底：此刻的号发得出去就照用，否则照号列表的先后）。
     StrategyError { error: RotStrategyError },
@@ -211,6 +215,8 @@ pub(crate) enum RotHint {
 pub(crate) struct RotationViewReply {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) now: u64,
+    /// `now` 的钟面（`HH:MM`，看的那一台的时区）。
+    pub(crate) now_text: String,
     /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
     pub(crate) strategy: Option<RotStrategyItem>,
     /// 设置怎么画（策略的声明）。
@@ -304,6 +310,11 @@ impl Blocking for RotationView {
     }
 }
 
+/// 此刻的钟面（看的那一台的时区）。
+fn now_face(now: u64) -> String {
+    crate::common::time::hm(crate::Tz::default().local(i64::try_from(now).unwrap_or(i64::MAX)))
+}
+
 /// 本体（测试给假的账本 · 额度账 · 钟 · 判活）。
 pub(crate) fn view_with(
     ctx: &Ctx,
@@ -359,6 +370,7 @@ pub(crate) fn view_with(
         }
         return Ok(RotationViewReply {
             now,
+            now_text: now_face(now),
             strategy: None,
             form: Vec::new(),
             settings: Value::Object(Default::default()),
@@ -408,6 +420,13 @@ pub(crate) fn view_with(
         hints.push(RotHint::Hold {
             until: *until,
             account: account.clone(),
+            until_text: until.map(|t| {
+                crate::common::time::fmt_at(
+                    i64::try_from(t).unwrap_or(i64::MAX),
+                    i64::try_from(now).unwrap_or(i64::MAX),
+                    &crate::Tz::default(),
+                )
+            }),
         });
     }
     if let Some(e) = &d.strategy_error {
@@ -458,6 +477,7 @@ pub(crate) fn view_with(
     };
     Ok(RotationViewReply {
         now,
+        now_text: now_face(now),
         strategy: Some(item),
         form: head.map(|h| h.form.clone()).unwrap_or_default(),
         settings: loaded.settings.clone(),
@@ -467,7 +487,12 @@ pub(crate) fn view_with(
         accounts,
         listed,
         decision: Some(decision_of(&d)),
-        timeline: Some(timeline_of(&tl)),
+        timeline: Some(timeline_of(
+            &tl,
+            now,
+            now + hours * 3600,
+            &crate::Tz::default(),
+        )),
         log: match &req.target {
             RotTarget::Session { .. } => session.log.clone(),
             RotTarget::Strategy { .. } => Vec::new(),

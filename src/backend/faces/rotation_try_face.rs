@@ -123,6 +123,10 @@ pub(crate) struct RotTryLaneSeg {
     /// 这一段开头两窗的用量（5 小时 · 7 天）。
     pub(crate) used: [f64; 2],
     pub(crate) reset: bool,
+    /// 这一段起点的钟面（`HH:MM`，看的那一台的时区；重置那段写成 `↻18:30`，字由界面照文案表配）。
+    pub(crate) from_text: String,
+    /// 这一段开头剩多少（事实：100 − 两窗里用得多的那个，不低于 0）。
+    pub(crate) left: f64,
 }
 
 /// 一个号那一行。
@@ -143,7 +147,20 @@ pub(crate) struct RotTryLane {
 pub(crate) struct RotTrySwitch {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) at: u64,
+    /// `at` 的钟面（`HH:MM`）。
+    pub(crate) at_text: String,
     pub(crate) account: String,
+}
+
+/// 时间轴上的一格刻度：整点 · 钟面。
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RotTryTick {
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) at: u64,
+    pub(crate) text: String,
 }
 
 /// 推演。
@@ -157,6 +174,8 @@ pub(crate) struct RotTryTimeline {
     pub(crate) uses: Vec<RotTryUse>,
     pub(crate) lanes: Vec<RotTryLane>,
     pub(crate) truncated: bool,
+    /// 此刻之后的整点刻度（推 12 小时以内每 2 小时、更长每 4 小时，看的那一台的钟）。
+    pub(crate) ticks: Vec<RotTryTick>,
 }
 
 /// `rotation-try` 的应答。
@@ -284,7 +303,7 @@ pub(crate) fn try_with(
         source,
         use_now_refused,
         decision: decision_of(&d),
-        timeline: timeline_of(&tl),
+        timeline: timeline_of(&tl, now, now + hours * 3600, &crate::Tz::default()),
     })
 }
 
@@ -316,12 +335,23 @@ pub(crate) fn decision_of(d: &decide::Decision) -> RotTryDecision {
 }
 
 /// 推演写成线上的形（`rotation-try` · `rotation-view` 同用）。
-pub(crate) fn timeline_of(tl: &simulate::Timeline) -> RotTryTimeline {
+/// `[now, end)` 是推演的那一截；`tz` 是看的那一台的时区（钟面都按它写）。
+pub(crate) fn timeline_of(
+    tl: &simulate::Timeline,
+    now: u64,
+    end: u64,
+    tz: &crate::Tz,
+) -> RotTryTimeline {
+    let face = |t: u64| crate::common::time::hm(tz.local(i64::try_from(t).unwrap_or(i64::MAX)));
     RotTryTimeline {
         switches: tl
             .switches()
             .into_iter()
-            .map(|(at, account)| RotTrySwitch { at, account })
+            .map(|(at, account)| RotTrySwitch {
+                at,
+                at_text: face(at),
+                account,
+            })
             .collect(),
         uses: tl
             .uses
@@ -351,12 +381,43 @@ pub(crate) fn timeline_of(tl: &simulate::Timeline) -> RotTryTimeline {
                         sendable: s.sendable,
                         used: s.used,
                         reset: s.reset,
+                        from_text: face(s.from),
+                        left: (100.0 - s.used[0].max(s.used[1])).max(0.0),
                     })
                     .collect(),
             })
             .collect(),
         truncated: tl.truncated,
+        ticks: ticks_of(now, end, tz)
+            .into_iter()
+            .map(|at| RotTryTick { at, text: face(at) })
+            .collect(),
     }
+}
+
+/// 刻度落在哪几刻：此刻之后、`end` 以内，看的那一台的整点；推 12 小时以内每 2 小时，更长每 4 小时。
+fn ticks_of(now: u64, end: u64, tz: &crate::Tz) -> Vec<u64> {
+    let step: i64 = if end.saturating_sub(now) <= 12 * 3600 {
+        2
+    } else {
+        4
+    };
+    let mut out = Vec::new();
+    let Ok(mut t) = i64::try_from(now) else {
+        return out;
+    };
+    let end = i64::try_from(end).unwrap_or(i64::MAX);
+    // 往后找第一个本地整点、且本地钟点是 step 的倍数的那一刻；之后每 step 小时一格（跨夏令时照那一刻的本地钟重对齐）。
+    t = t - tz.local(t).rem_euclid(3600) + 3600;
+    while t <= end {
+        if (tz.local(t).rem_euclid(86_400) / 3600) % step == 0 {
+            out.push(u64::try_from(t).unwrap_or(0));
+            t += step * 3600;
+        } else {
+            t += 3600;
+        }
+    }
+    out
 }
 
 #[cfg(test)]
