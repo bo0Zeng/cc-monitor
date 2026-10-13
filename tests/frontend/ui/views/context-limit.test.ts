@@ -1,12 +1,9 @@
 /**
- * context-limit.ts 纯函数断言：normalizeModel / readContextLimits（上限、百分比、字都由后端定）。
+ * context-limit.ts 纯函数断言：normalizeModel（上限、百分比、字都由后端定；上限表住各台后端）。
  * 跑法：`node tests/frontend/ui/views/context-limit.test.ts` 或 `npm run test:context-limit`。
  */
 
-import {
-  normalizeModel,
-  readContextLimits,
-} from "../../../../src/frontend/ui/views/context-limit.ts";
+import { normalizeModel } from "../../../../src/frontend/ui/views/context-limit.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
@@ -30,12 +27,6 @@ test("normalizeModel: 剥 [1m]/-fast/日期后缀", () => {
   eq(normalizeModel("claude-3-5-sonnet-20241022"), "claude-3-5-sonnet");
   eq(normalizeModel(null), "unknown");
   eq(normalizeModel(""), "unknown");
-});
-
-test("readContextLimits: 只收正整数的那几行", () => {
-  eq(readContextLimits({ haiku: 200000, bad: -1, x: "2", "": 5, y: 1.5 }), { haiku: 200000 });
-  eq(readContextLimits([1]), {});
-  eq(readContextLimits(null), {});
 });
 
 if (failed > 0) {

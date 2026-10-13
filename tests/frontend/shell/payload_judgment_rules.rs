@@ -7,7 +7,7 @@
 //! - `INVARIANTS §47` ①「字符集白名单（闭集，默认拒）＋ 不许 `-` 开头（选项注入）＋ 有长度上界的就钉上界」。
 //!
 //! 同一份生成物又多两样：账号名（J18，`shell_quote_core::account_name_ok` 那组常量）·
-//! 账号种类取值集（J16，`acct_core::AUTH_KINDS`）。
+//! 账号种类取值集（J16，`acct_core::AUTH_KINDS`）。模型名（J17）不再生成：界面不判，只在那台后端写口（`prefs-set`）与起会话时判。
 //!
 //! 两件事：
 //! 1. [`export_bindings_judgment_rules`]：`npm run gen:types`（= `cargo test --lib export_bindings`）重写生成物；
@@ -21,7 +21,7 @@
 //! 买不到：生成出来的正则与 Rust 那几行 `chars().all(...)` 是**两种写法**（一个是式子、一个是循环）——
 //! 两者一致只由金样里的那些样本证明，样本之外的串（例如非 ASCII 的奇怪码位）靠两侧都「只认 ASCII」这个共同的写法兜着。
 
-use shell_quote_core::{ACCOUNT_NAME_EXTRA, ACCOUNT_NAME_MAX, MODEL_NAME_EXTRA, MODEL_NAME_MAX};
+use shell_quote_core::{ACCOUNT_NAME_EXTRA, ACCOUNT_NAME_MAX};
 
 /// 生成物的头。`generated-boundary-guard.vitest.ts` 认两样东西：「谁生成的」那一行 ＋「不许手改」那句话。
 const HEADER: &str = "\
@@ -48,11 +48,6 @@ fn identifier_pattern(extra: &str, max: usize) -> String {
     format!("^[A-Za-z0-9][A-Za-z0-9{extra}]{{0,{}}}$", max - 1)
 }
 
-/// 模型名的式子：首字符字母数字 ＋ 其余字母数字或 [`MODEL_NAME_EXTRA`] ＋ 总长 ≤ [`MODEL_NAME_MAX`]。
-fn model_name_pattern() -> String {
-    identifier_pattern(MODEL_NAME_EXTRA, MODEL_NAME_MAX)
-}
-
 /// 账号名的式子：首字符字母数字 ＋ 其余字母数字或 [`ACCOUNT_NAME_EXTRA`] ＋ 总长 ≤ [`ACCOUNT_NAME_MAX`]
 /// （= `shell_quote_core::account_name_ok`，与建账号的工具逐字同）。
 fn account_name_pattern() -> String {
@@ -60,22 +55,9 @@ fn account_name_pattern() -> String {
 }
 
 fn render_judgment_rules() -> String {
-    let pat = serde_json::to_string(&model_name_pattern()).expect("字符串序列化不会失败");
     let acct_pat = serde_json::to_string(&account_name_pattern()).expect("字符串序列化不会失败");
     let kinds = serde_json::to_string(&acct_core::AUTH_KINDS).expect("字符串序列化不会失败");
     let mut s = String::from(HEADER);
-    s.push_str(
-        "\n/** 模型名（`ANTHROPIC_MODEL` · `--model`）能不能交出去 —— 规则住 `shell_quote_core::model_name_ok`。 */\n",
-    );
-    s.push_str(&format!("export const MODEL_NAME_PATTERN = {pat};\n"));
-    s.push_str(&format!(
-        "export const MODEL_NAME_MAX = {MODEL_NAME_MAX};\n\n"
-    ));
-    s.push_str("const MODEL_NAME_RE = new RegExp(MODEL_NAME_PATTERN);\n\n");
-    s.push_str("/** 见 [`MODEL_NAME_PATTERN`]。 */\n");
-    s.push_str(
-        "export function modelNameOk(s: string): boolean {\n  return MODEL_NAME_RE.test(s);\n}\n",
-    );
     // 账号名（新建账号表单在写入点先说一句；Rust 那一份在 `ccm …` 的 `--account` 与后端 ccm argv 判）。
     s.push_str(
         "\n/** 账号名（`--account <名>`）能不能用 —— 规则住 `shell_quote_core::account_name_ok`（与建账号的工具逐字同）。 */\n",

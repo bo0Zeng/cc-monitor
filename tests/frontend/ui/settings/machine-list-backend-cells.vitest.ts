@@ -71,7 +71,6 @@ function mkH(label: string, host: string): RemoteHostConfig {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    resumeCommand: "",
     connect: true,
   };
 }

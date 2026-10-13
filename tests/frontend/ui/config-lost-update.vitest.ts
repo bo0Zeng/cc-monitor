@@ -76,9 +76,7 @@ const BEHAVIOR = {
   autoFollowUserActive: false,
   bringMonitorToFrontOnUserActive: true,
   showBgSessions: false,
-  resumeCommand: "claude --resume",
   resumeCommandPresets: [],
-  resumeInTmux: true,
   notifyTurnEnd: true,
   notifyNeeds: true,
   // `forceLaunchPayloadRenderer` 退役，行为配置里没有这一格了。
@@ -96,7 +94,6 @@ const LU_HOST = {
   hostKeyFingerprint: "",
   addresses: [] as string[],
   jump: "",
-  resumeCommand: "",
   connect: true,
 };
 

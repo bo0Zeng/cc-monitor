@@ -7872,21 +7872,6 @@
       "zh": "仅主窗口不在前台时",
       "args": []
     },
-    "settingsPanel.behavior.resume": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "启动程序",
-      "args": []
-    },
-    "settingsPanel.behavior.resumeHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "各机器可单独设 · 机器 ⋯ → 该机的 cc-monitor",
-      "args": [],
-      "waive": {
-        "C-W1": "⋯ 指认机器行上同形的那个菜单按钮"
-      }
-    },
     "settingsPanel.terminal.label": {
       "kind": "control",
       "role": "标签",
@@ -7921,12 +7906,6 @@
       "kind": "control",
       "role": "标签",
       "zh": "命令前缀",
-      "args": []
-    },
-    "resumeSelect.option.inherit": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "通用设置",
       "args": []
     },
     "resumeSelect.option.defaultBare": {
@@ -14337,10 +14316,10 @@
       "zh": "行 {n} 写法不对 · 未保存\n每行格式 模型名片段 = 正整数 · 改好离开此格即存",
       "args": ["n"]
     },
-    "contextLimits.editor.loadFailed": {
+    "machinePrefs.read.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取设置失败",
+      "zh": "读不到该机的偏好",
       "args": []
     },
     "contextLimits.editor.saveFailed": {
@@ -25116,7 +25095,7 @@
     "machineCard.field.resumeCmdScope": {
       "kind": "body",
       "role": "说明",
-      "zh": "仅 {machine} · 留空 = 通用设置",
+      "zh": "仅 {machine}",
       "args": ["machine"]
     },
     "machineCard.test.fpChanged": {

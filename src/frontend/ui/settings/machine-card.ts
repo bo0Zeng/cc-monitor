@@ -6,8 +6,6 @@
  * 2. `parts()` —— 交出「连接 / 组件」两块（详情页据此分栏），外加「终端」栏那一块（别名）；
  * 3. `setPageMode()` —— 进入独占一页的形态（去折叠箭头与删除按钮）。
  */
-import { ResumeSelect } from "./resume-select";
-import { getBehavior } from "../behavior";
 import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
@@ -29,7 +27,6 @@ import { copyText } from "../copy-table";
 import { fold, setFoldSummary } from "../kit/fold";
 import { button, setButtonLabel } from "../kit/button";
 import { icon } from "../kit/icon";
-import { ccRow } from "./cc-row";
 import { toggleSwitch } from "../kit/switch";
 import { unavailableReason } from "../control-said";
 import { detailOf, failSaid, sayWithDetail } from "../kit/detail";
@@ -217,10 +214,6 @@ export class MachineCard {
   private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
-  /** 这台机器的 resume 启动命令（空 = 用全局默认）。 */
-  private resumeCmdInput!: ResumeSelect;
-  /** 恢复命令那一行的说明（`仅 {machine} · 留空 = 通用设置`，跟着名字换）。 */
-  private resumeHelp!: HTMLElement;
   /** 指纹记下的那一天（盘上 `hostKeyPinnedAt`；空 ＝ 不知道）。 */
   private pinnedAt = "";
   /** 名字 / 地址 / 端口最后一次被接受的值：输入框里不合法的那一格不存，交出去的是这一份。 */
@@ -312,7 +305,6 @@ export class MachineCard {
       hostKeyPinnedAt: this.fingerprintInput.value.trim() ? this.pinnedAt : "",
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
-      resumeCommand: this.resumeCmdInput.value,
       connect: this.connect,
     };
   }
@@ -554,15 +546,6 @@ export class MachineCard {
     // ↓↓ 从这里起归「组件」栏 ↓↓
     body = this.componentsPart;
 
-    // 这台的恢复命令（空 = 用通用设置里那一条）：「这台上的 cc-monitor」里一行，框在行右。
-    this.resumeCmdInput = new ResumeSelect({ inherit: true, onChange });
-    void getBehavior().then(
-      (b) => this.resumeCmdInput.set(this.resumeCmdInput.value, b.resumeCommandPresets),
-      () => undefined,
-    );
-    this.resumeHelp = document.createElement("span");
-    body.appendChild(ccRow(copyText("machineCard.field.resumeCmd"), this.resumeHelp, [this.resumeCmdInput.element]));
-
     // 从这台卸载（红字，摆在那一折底行右侧）；结果落在这一折里。
     this.backendUninstallButton = button({
       label: copyText("machineCard.uninstall.open", { machine: this.displayName() }),
@@ -665,7 +648,6 @@ export class MachineCard {
     this.pinnedAt = cfg.hostKeyPinnedAt ?? "";
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
-    this.resumeCmdInput.set(cfg.resumeCommand);
     this.connect = cfg.connect;
     this.connectSwitch.set(cfg.connect);
     this.acceptInputs();
@@ -712,7 +694,6 @@ export class MachineCard {
   private updateLegend(): void {
     const name = this.displayName();
     this.nameSpan.textContent = name;
-    this.resumeHelp.textContent = copyText("machineCard.field.resumeCmdScope", { machine: name });
     setButtonLabel(this.backendUninstallButton, copyText("machineCard.uninstall.open", { machine: name }));
     this.renderStatusStrip();
   }

@@ -21,7 +21,6 @@ import { srcDirOf } from "../../test-support/repo-root";
 import {
   hostKey,
   patchRemoteConfig,
-  pickResumeCommand,
   readRemoteConfig,
   REMOTE_CONFIG_UNRECOGNIZED,
   type RemoteConfig,
@@ -38,7 +37,6 @@ function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    resumeCommand: "",
     connect: true,
     ...over,
   };
@@ -109,35 +107,6 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
     await patchRemoteConfig({ upsert: [{ key: "alpha", was: A, value: A }] });
     await patchRemoteConfig({});
     expect(fakeCfg.patches).not.toHaveBeenCalled();
-  });
-});
-
-describe("S4b-3 pickResumeCommand —— per-machine 优先，全局兜底", () => {
-  it("这台机器填了就用它的", () => {
-    expect(pickResumeCommand(mk({ resumeCommand: "ccm resume", connect: true }), "claude -r")).toBe(
-      "ccm resume",
-    );
-  });
-
-  it("★ 没填 / 只填了空白 / 这台机器压根查不到 → 一律回退全局默认", () => {
-    // 这是「不做数据迁移」的落点：没填过的机器行为**一字不变**。
-    expect(pickResumeCommand(mk({ resumeCommand: "", connect: true }), "claude -r")).toBe("claude -r");
-    expect(pickResumeCommand(mk({ resumeCommand: "   ", connect: true }), "claude -r")).toBe("claude -r");
-    expect(pickResumeCommand(null, "claude -r")).toBe("claude -r");
-  });
-
-  it("per-machine 值两端空白会被 trim（用户手滑不该产出带空格的命令）", () => {
-    expect(pickResumeCommand(mk({ resumeCommand: "  ccm resume  ", connect: true }), "x")).toBe(
-      "ccm resume",
-    );
-  });
-
-  it("★ 两台机器各用各的（这正是全局单值表达不出来的那件事）", () => {
-    // A 机装了 ccm、B 机没装 —— 全局单值时这两台只能共用一条命令。
-    const a = mk({ label: "devbox", resumeCommand: "ccm resume", connect: true });
-    const b = mk({ label: "nano", resumeCommand: "", connect: true });
-    expect(pickResumeCommand(a, "claude -r")).toBe("ccm resume");
-    expect(pickResumeCommand(b, "claude -r")).toBe("claude -r");
   });
 });
 

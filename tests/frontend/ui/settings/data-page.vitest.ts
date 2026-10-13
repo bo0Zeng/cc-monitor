@@ -45,6 +45,10 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
     },
   },
 }));
+// 各台「恢复到 tmux 里」那一格住那台后端（`prefs-read`）：桩成都开着。
+vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
+  readPrefs: async () => ({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: true, models: {}, contextLimits: {} } }),
+}));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: opened, openPath: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/file-window", () => ({ openFileWindow: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));
@@ -52,7 +56,7 @@ vi.mock("../../../../src/frontend/ui/file-window", () => ({ openFileWindow: (hos
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { decodeDataReport } from "../../../../src/frontend/ui/settings/data-reads";
 import { defaultPick } from "../../../../src/frontend/ui/resume-menu";
-import { setResumeInTmux } from "../../../../src/frontend/ui/resume-defaults";
+import { forgetResumeDefaults, resumeInTmuxAt } from "../../../../src/frontend/ui/resume-defaults";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { __resetLastSeenForTests } from "../../../../src/frontend/ui/last-seen";
@@ -125,7 +129,7 @@ beforeEach(() => {
   marks.length = 0;
   clipFake = fakeClipboard();
   disk.cfg = { remote: { hosts: [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }] } };
-  setResumeInTmux(true);
+  forgetResumeDefaults();
 });
 
 describe("data-report 的应答严格收", () => {
@@ -234,6 +238,8 @@ describe("待办", () => {
     const { page } = mount();
     page.loadNow();
     await settle();
+    await resumeInTmuxAt("devbox");
+    await resumeInTmuxAt(LOCAL_ORIGIN);
     expect(defaultPick("devbox").tmux).toBe(false);
     expect(defaultPick(LOCAL_ORIGIN).tmux).toBe(true);
   });

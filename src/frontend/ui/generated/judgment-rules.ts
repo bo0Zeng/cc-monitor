@@ -5,17 +5,6 @@
 // 规则**数据**从那里现生成到这里（不手抄）。两侧由共用金样逐条对：标识符 `tests/__fixtures__/identifier-rules.golden.json` ·
 // 账号种类 `tests/__fixtures__/accounts.golden.json`。
 
-/** 模型名（`ANTHROPIC_MODEL` · `--model`）能不能交出去 —— 规则住 `shell_quote_core::model_name_ok`。 */
-export const MODEL_NAME_PATTERN = "^[A-Za-z0-9][A-Za-z0-9._\\-:@\\/\\[\\]]{0,255}$";
-export const MODEL_NAME_MAX = 256;
-
-const MODEL_NAME_RE = new RegExp(MODEL_NAME_PATTERN);
-
-/** 见 [`MODEL_NAME_PATTERN`]。 */
-export function modelNameOk(s: string): boolean {
-  return MODEL_NAME_RE.test(s);
-}
-
 /** 账号名（`--account <名>`）能不能用 —— 规则住 `shell_quote_core::account_name_ok`（与建账号的工具逐字同）。 */
 export const ACCOUNT_NAME_PATTERN = "^[A-Za-z0-9][A-Za-z0-9_\\-]{0,31}$";
 export const ACCOUNT_NAME_MAX = 32;

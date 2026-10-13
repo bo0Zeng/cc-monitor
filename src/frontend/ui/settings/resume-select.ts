@@ -1,7 +1,7 @@
 /**
- * 恢复命令那一格（通用页默认 · 每台覆盖共用）：下拉。候选 ＝ 适配层画像里默认那一家的启动器（`defaultLauncher`，生成物来自后端注册表）
- * ＋ 你用过的自定义命令（通用页那份预设）＋「自定义…」（展开一格输入）。界面不写死任何一家的命令名。
- * 每台那一格多一个「通用设置」（留空 ＝ 跟通用页那一格）。选了 / 自定义那格失焦 ⇒ 回调存。
+ * 每台「恢复会话的启动程序」那一格：下拉。候选 ＝ 适配层画像里默认那一家的启动器（`defaultLauncher`，生成物来自后端注册表；
+ * 空值那一项 ＝ 它，那台后端照那一家的默认起）＋ 用过的自定义命令（界面那份预设）＋「自定义…」（展开一格输入）。
+ * 界面不写死任何一家的命令名。选了 / 自定义那格失焦 ⇒ 回调存。
  */
 import { copyText } from "../copy-table";
 import { DEFAULT_AGENT, listAgents, lookupAgentProfile } from "../agent-profile";
@@ -22,8 +22,6 @@ export function launcherCandidates(): string[] {
 }
 
 export interface ResumeSelectOpts {
-  /** 每台那一格：空值那一项叫「通用设置」；通用页那一格：`false`（空值 ＝ 默认那一家的启动器）。 */
-  inherit: boolean;
   onChange: (value: string) => void;
 }
 
@@ -98,9 +96,8 @@ export class ResumeSelect {
   private paint(): void {
     const launchers = launcherCandidates();
     const items: SelectOption[] = [];
-    if (this.opts.inherit) items.push({ value: "", label: copyText("resumeSelect.option.inherit") });
-    else items.push({ value: "", label: launchers[0] ?? copyText("resumeSelect.option.defaultBare"), note: launchers[0] ? copyText("resumeSelect.option.defaultBare") : undefined });
-    for (const c of [...launchers.slice(this.opts.inherit ? 0 : 1), ...this.presets, this.current]) {
+    items.push({ value: "", label: launchers[0] ?? copyText("resumeSelect.option.defaultBare"), note: launchers[0] ? copyText("resumeSelect.option.defaultBare") : undefined });
+    for (const c of [...launchers.slice(1), ...this.presets, this.current]) {
       if (c !== "" && !items.some((i) => i.value === c)) items.push({ value: c, label: c });
     }
     items.push({ value: CUSTOM, label: copyText("resumeSelect.option.custom") });

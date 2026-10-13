@@ -58,7 +58,7 @@ vi.mock("../../../src/frontend/ui/remote-config", async (orig) => ({
   readRemoteConfig: () =>
     Promise.resolve({
       enabled: true,
-      hosts: ["pi", "gpu"].map((label) => ({ label, host: label, port: 22, user: "u", keyPath: "", hostKeyFingerprint: "", addresses: [], jump: "", resumeCommand: "" })),
+      hosts: ["pi", "gpu"].map((label) => ({ label, host: label, port: 22, user: "u", keyPath: "", hostKeyFingerprint: "", addresses: [], jump: "" })),
     }),
 }));
 vi.mock("../../../src/frontend/ui/file-window", () => ({

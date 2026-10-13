@@ -4,9 +4,6 @@ import { loadConfig, patchConfig, type ConfigEdit } from "./config";
 import { commands } from "./ipc/commands";
 import type { MachineFault } from "./generated/MachineFault";
 import { copyText } from "./copy-table";
-import { getBehavior } from "./behavior";
-import { getLocalResumeCommand } from "./local-machine-prefs";
-import { isLocalOrigin } from "./ipc/origin";
 
 /**
  * 单台远端机器配置（config.json `remote.hosts[]` 的元素）。**key 必须与 Rust reader 一致**。
@@ -32,11 +29,6 @@ export interface RemoteHostConfig {
    * （数据源侧 russh direct-tcpip；拉起侧 ssh `-J`）。fail-closed：跳板缺失/断开即报错不直连。
    */
   jump: string;
-  /**
-   * 这台机器的 resume 启动命令；空 = 用全局默认（`behavior.resumeCommand`，通用页那一格）。
-   * 按机器存：A 机装了 ccm、B 机没装时各要各的；全局值留作回退（没填过 = 沿用全局）。
-   */
-  resumeCommand: string;
   /** 连接这台：关 ⇒ 不连（盘上 `"connect": false`），开 ⇒ 去连；改了当场生效（`remote_reconcile`）。 */
   connect: boolean;
 }
@@ -82,7 +74,6 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   hostKeyPinnedAt: "",
   addresses: [],
   jump: "",
-  resumeCommand: "",
   connect: true,
 };
 
@@ -115,7 +106,6 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     hostKeyPinnedAt: str("hostKeyPinnedAt", ""),
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
-    resumeCommand: str("resumeCommand", HOST_DEFAULTS.resumeCommand),
     connect: obj.connect !== false,
   };
 }
@@ -180,7 +170,6 @@ const REMOTE_HOST_FIELDS = [
   "hostKeyFingerprint",
   "addresses",
   "jump",
-  "resumeCommand",
   "connect",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
@@ -203,24 +192,6 @@ function serializeHost(h: RemoteHostConfig): Record<string, unknown> {
 }
 
 /** 一台机器在盘上的定位键 = 它的 origin（与 [`findHostByOrigin`] 同口径）。 */
-/** 某台机器该用哪条恢复命令（纯函数）：那台自己那一格优先，空 ⇒ 通用页那一格默认。 */
-export function pickResumeCommand(
-  host: RemoteHostConfig | null,
-  globalDefault: string,
-): string {
-  return (host?.resumeCommand ?? "").trim() || globalDefault;
-}
-
-/**
- * 某台恢复会话用哪条命令：那台自己那一格（远端：机器表里那台的 `resumeCommand`；本机：`local-machine-prefs.ts`）优先，
- * 空 ⇒ 通用页那一格默认（`resumeCommand`）。各处起会话只问这一处。
- */
-export async function resumeCommandFor(origin: string): Promise<string> {
-  const b = await getBehavior();
-  if (isLocalOrigin(origin)) return (await getLocalResumeCommand()).trim() || b.resumeCommand;
-  return pickResumeCommand(await resolveRemoteConfigByOrigin(origin), b.resumeCommand);
-}
-
 export function hostKey(h: RemoteHostConfig): string {
   return h.label.trim() || h.host;
 }

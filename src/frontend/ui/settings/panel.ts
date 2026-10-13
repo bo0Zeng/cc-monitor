@@ -28,7 +28,6 @@ import { icon, type IconName } from "../kit/icon";
 // 「重启才生效」的改动给常驻条供货（`markRestartNeeded`）。
 import { createRestartBar, markRestartNeeded } from "./restart-notice";
 import { restartNowButton } from "./restart-now";
-import { ResumeSelect } from "./resume-select";
 import { FirstRun } from "./first-run";
 import { claudeDirProblem } from "./claude-dir-check";
 import { createUnknownKeysBar, rerenderUnknownKeys } from "./unknown-keys-notice"; // 🔴 P12：未知键要出声
@@ -45,20 +44,18 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { DataPage } from "./data-page";
-import { ContextLimitsSection } from "./context-limits-section"; // `contextLimits` 的入口
+import { ContextLimitsSection } from "./context-limits-section"; // 那台的上下文上限表
 import { RemoteSection } from "./remote-section";
 import type { MachineCardParts } from "./machine-card";
 import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
 import {
   behaviorIn,
   setBehavior,
-  withResumePreset,
   type BehaviorConfig,
 } from "../behavior";
-import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { buildUnknownOsAliasBlock, localShell, rereadAliases } from "./machine-aliases"; // 机器页 ②「别名」（两个平台一份，含 PowerShell 的终端集成）
 import { buildConfigPage } from "./config-page";
-import { localResumeRow } from "./local-resume-row"; // 机器页「别名与配置文件」那一栏
+import { machineLaunchRows } from "./machine-launch-rows"; // 每台「这台上的 cc-monitor」里怎么起会话那两格
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // 跨 OS 窗口回调够不到 ⇒ 保存后广播 `settings-applied`，主窗口 listen 后重读（事件名在中立模块 events.ts）。
@@ -265,15 +262,10 @@ export class SettingsPanel {
   private showBgSw!: SwitchHandle;
   private notifyTurnEndSw!: SwitchHandle;
   private notifyNeedsSw!: SwitchHandle;
-  private resumeInTmuxSw!: SwitchHandle;
   /** 打开时读回的那一份行为（开关拨动按它改一格再存）。 */
   private behaviorNow: BehaviorConfig | null = null;
-  /** 恢复命令那一格（各台的默认）与它的预设条 · 存失败时的那一句。 */
-  private resumeSelect!: ResumeSelect;
-  private resumeError!: HTMLElement;
-  /** 「终端」那一行的位置（恢复组里，恢复命令下面；只在要挑终端的平台上画）。 */
+  /** 「终端」那一行的位置（通用页「恢复会话」那一组；只在要挑终端的平台上画）。 */
   private readonly terminalSlot = document.createElement("div");
-  private remoteLauncherWarning!: HTMLElement; // F08：越层启动器诊断提示（只诊断，不代改）
   private onBehaviorChange?: (cfg: BehaviorConfig) => void;
   /** 见 `SettingsPanelOptions.windowMode`。 */
   private readonly windowMode: boolean;
@@ -368,7 +360,6 @@ export class SettingsPanel {
       this.claudeDirInput,
     ];
     for (const c of controls) c.disabled = pending;
-    this.resumeSelect.disabled = pending;
     for (const sw of this.behaviorSwitches()) sw.input.setAttribute("aria-disabled", String(pending));
     if (!pending) this.updateBringFrontEnabled();
   }
@@ -390,9 +381,6 @@ export class SettingsPanel {
     this.showBgOriginal = behavior.showBgSessions;
     this.notifyTurnEndSw.set(behavior.notifyTurnEnd);
     this.notifyNeedsSw.set(behavior.notifyNeeds);
-    this.resumeInTmuxSw.set(behavior.resumeInTmux);
-    this.resumeSelect.set(behavior.resumeCommand, behavior.resumeCommandPresets);
-    this.updateRemoteLauncherWarning();
     this.syncInputs();
   }
 
@@ -404,25 +392,7 @@ export class SettingsPanel {
 
   /** 行为那几个开关（读配置时整组禁用）。 */
   private behaviorSwitches(): SwitchHandle[] {
-    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw, this.resumeInTmuxSw];
-  }
-
-  /** 越层启动器诊断：只读提示 ＋ 引导，不自动降级、不改恢复命令那一格。 */
-  private updateRemoteLauncherWarning(): void {
-    const msg = diagnoseRemoteLauncher(this.resumeSelect.value);
-    this.remoteLauncherWarning.textContent = msg ?? "";
-    this.remoteLauncherWarning.style.display = msg ? "block" : "none";
-  }
-
-  /** 恢复命令那一格选了 / 自定义那格失焦：存，并记进用过的那几条（空 ＝ 用默认那一家的启动器，不记）。 */
-  private async saveResumeCommand(cmd: string): Promise<void> {
-    const b = this.behaviorNow;
-    if (!b) return;
-    this.updateRemoteLauncherWarning();
-    if (!(await this.saveBehavior({ ...b, resumeCommand: cmd, resumeCommandPresets: withResumePreset(b.resumeCommandPresets, cmd) }))) {
-      this.resumeSelect.set(b.resumeCommand, b.resumeCommandPresets);
-      this.updateRemoteLauncherWarning();
-    }
+    return [this.autoFollowSw, this.bringFrontSw, this.showBgSw, this.notifyTurnEndSw, this.notifyNeedsSw];
   }
 
   /** 拨一个开关：按读回的那份改这一格再存；没读回 / 存失败 ⇒ `false`（拇指退回）。 */
@@ -433,10 +403,10 @@ export class SettingsPanel {
   }
 
   /**
-   * 存一份行为（开关 · 恢复命令 · 删预设都走这里）。存成了才换内存里那份、重画预设、通知主窗口；
+   * 存一份行为（开关都走这里）。存成了才换内存里那份、重画预设、通知主窗口；
    * 存失败 ⇒ 回 `false`、行下那一句说为什么，盘上与界面都还是原来那份。
    */
-  private async saveBehavior(next: BehaviorConfig, errorAt: HTMLElement = this.resumeError): Promise<boolean> {
+  private async saveBehavior(next: BehaviorConfig, errorAt: HTMLElement): Promise<boolean> {
     errorAt.hidden = true;
     try {
       await setBehavior(next);
@@ -447,7 +417,6 @@ export class SettingsPanel {
       return false;
     }
     this.behaviorNow = next;
-    this.resumeSelect.set(next.resumeCommand, next.resumeCommandPresets);
     this.updateBringFrontEnabled();
     // `showBgSessions` 重启才生效（后端启动时读一次）⇒ 真改了才供货「重启后生效」。
     if (next.showBgSessions !== this.showBgOriginal) {
@@ -825,7 +794,17 @@ export class SettingsPanel {
     const cc: HTMLElement[] = [];
     if (origin && this.backendSection) {
       try {
-        const rows = parts ? [parts.components] : local ? [localResumeRow()] : [];
+        // 那台的偏好那几格（启动程序 · 恢复到 tmux 里 · 上下文上限）：这一页第一次可见才问那台。
+        const launch = machineLaunchRows(origin, title);
+        const limits = new ContextLimitsSection(origin);
+        limits.element.addEventListener(REVEAL_EVENT, () => limits.reveal());
+        const load = (): void => {
+          launch.load();
+          void limits.load();
+        };
+        if (this.pagesLoaded.has(pageId)) load();
+        else this.loadOnFirstVisit(pageId, load);
+        const rows = [...launch.rows, limits.element, ...(parts ? [parts.components] : [])];
         cc.push(this.backendSection.cellsFor(origin, { rows, trailing: parts?.uninstall }));
       } catch (e) {
         // 那几格没建起来不许把这一页带走（那台退到后端清单的尾巴里）。
@@ -881,19 +860,6 @@ export class SettingsPanel {
     const generalPage = document.createElement("div");
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.behavior"), () => this.buildBehaviorGroup()));
     generalPage.appendChild(this.safeBlock(copyText("settingsPanel.group.resume"), () => this.buildResumeGroup()));
-    let limits: ContextLimitsSection | null = null;
-    const limitsBlock = this.safeBlock(
-      copyText("contextLimits.editor.title"),
-      () => {
-        limits = new ContextLimitsSection();
-        return limits.element;
-      },
-      { untitled: true },
-    );
-    limitsBlock.addEventListener(REVEAL_EVENT, () => limits?.reveal());
-    // 主窗口［设上限］开 `{page: "general", anchor: "context-limits"}`：落到这一节（展开）并高亮。
-    limitsBlock.dataset.anchor = "context-limits";
-    generalPage.appendChild(limitsBlock);
 
     const logsPage = document.createElement("div");
     logsPage.appendChild(
@@ -1281,41 +1247,14 @@ export class SettingsPanel {
   }
 
   /**
-   * 通用页「恢复」：恢复命令（各台的默认；每台可在「这台上的 cc-monitor」里单独设一格盖过它）＋ 用过的几条 ·
-   * 恢复到 tmux 里（历史页［恢复 ▾］与标签页「恢复 ▸」默认的「运行于」）。
+   * 通用页「恢复会话」：只剩「终端」那一行（这台桌面开哪个终端程序）。启动程序 · 恢复到 tmux 里住各台后端，
+   * 在每台机器页「这台上的 cc-monitor」里改（`machine-launch-rows.ts`）。
    */
   private buildResumeGroup(): HTMLElement {
     const group = document.createElement("div");
     group.className = "settings-group settings-headless";
-    const row = document.createElement("label");
-    row.className = "settings-row";
-    const text = document.createElement("span");
-    text.className = "settings-label";
-    text.textContent = copyText("settingsPanel.behavior.resume");
-    const help = document.createElement("span");
-    help.className = "settings-hint";
-    help.textContent = copyText("settingsPanel.behavior.resumeHelp");
-    const textCol = document.createElement("span");
-    textCol.className = "settings-label-col";
-    textCol.append(text, help);
-    row.appendChild(textCol);
-    this.resumeSelect = new ResumeSelect({ inherit: false, onChange: (v) => void this.saveResumeCommand(v) });
-    row.appendChild(this.resumeSelect.element);
-    group.appendChild(row);
-    // 越层启动器诊断：只诊断 ＋ 引导，不自动改这一格。
-    this.remoteLauncherWarning = document.createElement("div");
-    this.remoteLauncherWarning.className = "settings-launcher-warning";
-    this.remoteLauncherWarning.style.display = "none";
-    group.appendChild(this.remoteLauncherWarning);
-    this.resumeError = document.createElement("div");
-    this.resumeError.className = "settings-row-error";
-    this.resumeError.hidden = true;
-    group.appendChild(this.resumeError);
     // 「终端」那一行（判定在壳的平台层）：通用页第一次可见时问、问回来才画。
     group.appendChild(this.terminalSlot);
-    this.resumeInTmuxSw = this.behaviorSwitch(group, copyText("settingsPanel.behavior.resumeInTmux"), copyText("settingsPanel.behavior.resumeInTmuxHelp"), (on) => ({
-      resumeInTmux: on,
-    }));
     return group;
   }
 

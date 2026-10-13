@@ -187,7 +187,6 @@ describe("F54 findHostByOrigin", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    resumeCommand: "",
     connect: true,
       });
   const hosts = [mkHost("devbox", "192.0.2.2"), mkHost("", "pi.local")];
@@ -228,7 +227,6 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump,
-    resumeCommand: "",
     connect: true,
       });
 
@@ -261,55 +259,16 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
   });
 });
 
-describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字段不丢）", () => {
-  // `jump` 与那个已退役的 `daemonless` 都曾因为「加了字段但序列化清单没跟上」被静默丢掉。
-  // S1 的编译期穷尽检查挡住了「漏写清单」，但挡不住「读盘那侧忘了解析」——
-  // 这条往返把另一半也钉住。
-  const host = (resumeCommand: string): RemoteHostConfig => ({
-    label: "devbox",
-    host: "192.0.2.2",
-    port: 22,
-    user: "u",
-    keyPath: "",
-    hostKeyFingerprint: "",
-    addresses: [],
-    jump: "",
-    resumeCommand,
-    connect: true,
-  });
-
-  it("填了 per-machine resume 命令，写进 config 再读回来不丢", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({});
-    let saved: Record<string, unknown> = {};
-    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
-      saved = c as Record<string, unknown>;
-    });
-    await patchRemoteConfig({
-      upsert: [{ key: null, value: host("ccm resume --tmux") }],
-    });
-    vi.mocked(loadConfig).mockResolvedValue(saved);
-    const back = await readRemoteConfig();
-    expect(back.hosts[0]!.resumeCommand).toBe("ccm resume --tmux");
-  });
-
-  it("没填的机器读回来是空串（= 沿用全局默认），不是 undefined", async () => {
-    // undefined 会让 `pickResumeCommand` 里的 `?? ""` 兜底，行为上等价；
-    // 但盘上/内存里形状不一致会让后续比较（如 sameRemote 判「变没变」）出意外。
+describe("机器表不再带恢复命令（住各台后端 `prefs.json`；盘上旧的那一格只由迁移那一段读、壳删）", () => {
+  it("★ 盘上还有旧的 resumeCommand ⇒ 读进来的那一台没有这一格", async () => {
     vi.mocked(loadConfig).mockResolvedValue({
-      remote: { enabled: true, hosts: [{ label: "devbox", host: "1.1.1.1" }] },
+      remote: { enabled: true, hosts: [{ label: "devbox", host: "1.1.1.1", resumeCommand: "ccm resume --tmux" }] },
     });
     const back = await readRemoteConfig();
-    expect(back.hosts[0]!.resumeCommand).toBe("");
+    expect(Object.keys(back.hosts[0]!)).not.toContain("resumeCommand");
+    expect(back.hosts[0]!.label, "空真自检：那一台读进来了").toBe("devbox");
   });
 });
-
-// 🔴 **`KR59D3` 那一组两条整组退役了。**
-//    ① 「旧 config 里的 `daemonless: true` ⇒ `legacyNoBackend` 点得出那台机器」——
-//       `legacyNoBackend` 这个字段删了，断言没有对象；
-//    ② 「保存一次就把盘上那个旧键写没（迁移本体）」—— 它那条
-//       `expect(Object.keys(written)).not.toContain("daemonless")` 是**负向断言**：
-//       那个词从全仓消失之后它**永远满足** ⇒ 留着就是一条恒绿的。
-//    ⚠ 用例数 −2。
 
 describe("F83 sftpEligibleHosts", () => {
   const mk = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
@@ -321,7 +280,6 @@ describe("F83 sftpEligibleHosts", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    resumeCommand: "",
     connect: true,
     ...over,
   });
@@ -369,7 +327,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    resumeCommand: "",
     connect: true,
       });
 
@@ -700,9 +657,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     for (const r of rows) expect(r.querySelector("input")).toBeNull();
   });
 
-  it("★ 卡片交出「连接 / 组件」两块，且 resume 命令归组件（§5-1 要它挨着装 ccm）", async () => {
-    // S4b-3a 那轮我把 resume 命令插在那个已退役的降级开关之后，commit 却说它「紧邻装/卸 ccm」——
-    // 实际隔着约 120 行。这条把它钉在**组件**那一半里，不让它漂回字段区。
+  it("★ 卡片交出「连接 / 组件」两块；恢复命令不在机器卡上（住那台后端，机器页「这台上的 cc-monitor」里那一格问那台）", async () => {
     const p = fakePages();
     await mount([mkH("a", "1.1.1.1")], p.host);
     // 直接拿 host 收到的 parts 断言（比翻 DOM 稳）；[0] 是本机页
@@ -711,9 +666,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const inConn = got!.connection.textContent ?? "";
     const inComp = got!.components.textContent ?? "";
     expect(inConn).toContain(copyText("machineCard.field.host"));
-    expect(inComp).toContain(copyText("machineCard.field.resumeCmd"));
-    // 反向：恢复命令**不该**留在连接那半
-    expect(inConn).not.toContain(copyText("machineCard.field.resumeCmd"));
+    expect(inConn + inComp).not.toContain(copyText("machineCard.field.resumeCmd"));
   });
 
   /**
@@ -912,19 +865,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     input.dispatchEvent(new Event("change"));
     for (let i = 0; i < 6; i++) await tick();
   };
-
-  it("每台的续跑命令重开后照样回填；改别台时不被抹成空", async () => {
-    const p = fakePages();
-    await mount([{ ...mkH("a", "1.1.1.1"), resumeCommand: "ccm resume --tmux", connect: true }, mkH("b", "2.2.2.2")], p.host);
-    const sel = pageOf(p, "machine:a").querySelector<HTMLButtonElement>("[data-role=resume-select]")!;
-    expect(sel.dataset.value, "存着的那条不在候选里也列上、选中").toBe("ccm resume --tmux");
-    await change(field(pageOf(p, "machine:b"), copyText("machineCard.field.userHint")), "root");
-    expect((await diskHosts()).map((h) => [h.label, h.user, h.resumeCommand])).toEqual([
-      ["a", "u", "ccm resume --tmux"],
-      ["b", "root", ""],
-    ]);
-  });
-
 
   it("把一台改名成另一台的名字：就地拦住、不存；之后两台照常改得动", async () => {
     const p = fakePages();

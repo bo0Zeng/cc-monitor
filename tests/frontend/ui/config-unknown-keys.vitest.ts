@@ -80,13 +80,15 @@ const CENSUS: readonly string[] = [
   "theme", // src/frontend/ui/theme.ts
   "claudeDir", // src/frontend/ui/paths.ts
   "keybindings", // src/frontend/ui/keybindings/store.ts
-  "accounts", // src/frontend/ui/accounts.ts
+  // 第 7 批搬到各台后端的那几格（`accounts` · `contextLimits` · `resumeCommand` · `localResumeCommand` · `resumeInTmux`）：
+  //   只剩迁移那一段读、迁完由壳删（`src/frontend/shell/src/prefs_migration.rs`）；下一版删迁移时这几行一起删。
+  "accounts",
   // `backendPolicy` 退役（值搬到后端那台机器上）⇒ 这一行删掉，两份普查恒等地各少一键。
   "remote", // src/frontend/ui/remote-config.ts
   "tabBar", // src/frontend/ui/tab-bar-state.ts
   "tabCollections", // src/frontend/ui/tab-collections.ts
   "sessionHead", // src/frontend/ui/session-head.ts（会话头按钮）
-  "contextLimits", // src/frontend/ui/usage-hud.ts（只读）
+  "contextLimits",
   "autoFollowUserActive", // ── src/frontend/ui/behavior.ts 那一族 ──
   "bringMonitorToFrontOnUserActive",
   "showBgSessions",
@@ -214,7 +216,9 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     // 10 → 11：补上 `src/frontend/ui/local-machine-prefs.ts`（本机那一格恢复命令覆盖 `localResumeCommand` 的主人）。
     // 11 → 12：`terminal` 那一键（设置 → 通用 → 恢复 → 终端，`src/frontend/ui/settings/terminal-row.ts`）。
     // 12 → 13：`sessionHead` 那一键（会话头按钮，`src/frontend/ui/session-head.ts`）。
-    expect(owners.size, `主人 ${owners.size} 个（现打 13）`).toBe(13);
+    // 13 → 11：第 7 批这台的偏好搬到各台后端 ⇒ `accounts.ts` · `main.ts` · `local-machine-prefs.ts` 不再是主人，
+    //   那几个键改登记给迁移那一段 `src/frontend/shell/src/prefs_migration.rs`（多它一个）。
+    expect(owners.size, `主人 ${owners.size} 个（现打 11）`).toBe(11);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

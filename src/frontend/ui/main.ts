@@ -27,7 +27,7 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
-import { setResumeInTmux } from "./resume-defaults";
+import { forgetResumeDefaults } from "./resume-defaults";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
@@ -318,7 +318,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   );
   // 「需手动」的入口跳过来 ⇒ 焦点进答题块（块自己出现时不抢焦点）。
   tabs.onAnswerJump = (sid) => answerBlock.focusFor(sid);
-  usageHud.host = { openSettings: () => void openSettingsWindow(undefined, dest.CONTEXT_LIMITS), retry: () => tabs.retryActiveFacts() };
+  usageHud.host = {
+    openSettings: () => {
+      const sid = tabs.activeSessionId();
+      void openSettingsWindow(undefined, dest.contextLimitsOf((sid === null ? null : tabs.originOf(sid)) ?? LOCAL_ORIGIN));
+    },
+    retry: () => tabs.retryActiveFacts(),
+  };
   // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(livePainter);
   // 启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
@@ -492,10 +498,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。
-  void getBehavior().then((b) => {
-    tabs.applyBehavior(b);
-    setResumeInTmux(b.resumeInTmux);
-  });
+  void getBehavior().then((b) => tabs.applyBehavior(b));
 
   // 设置在独立窗口里：那边保存 / 改行为后广播 SETTINGS_APPLIED_EVENT → 这里重读并应用主题 ＋ 行为（跨窗口回调够不到）。
   // 状态栏命令 chip 的键位刷新钩子：改键热应用后刷新 chip 上的键位（chip 创建时把重建函数赋进来）。
@@ -523,10 +526,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
-    void getBehavior().then((b) => {
-      tabs.applyBehavior(b); // 行为
-      setResumeInTmux(b.resumeInTmux); // 恢复默认的「运行于」
-    });
+    void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
+    forgetResumeDefaults(); // 恢复默认的「运行于」：各台那一格可能改了，下次重问
     void getKeybindings().then((kb) => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）

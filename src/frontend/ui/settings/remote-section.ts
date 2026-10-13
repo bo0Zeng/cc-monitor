@@ -927,10 +927,8 @@ export class RemoteSection {
       for (const p of patched.pinned) saving.find((c) => c.persistedKey === p.origin)?.pinnedOn(p.day);
 
       const changed = !sameRemote(next, this.original);
-      // 续跑命令起会话时现读，改了不用重启；但要说一声存上了。
-      const resumeChanged = next.hosts.some((h, i) => h.resumeCommand !== this.original.hosts[i]?.resumeCommand);
       this.original = next;
-      if ((changed || resumeChanged) && incompleteCount === 0 && !fingerprintLooksOff) {
+      if (changed && incompleteCount === 0 && !fingerprintLooksOff) {
         this.showBanner(copyText("remote.save.done"));
       }
       // 机器表改了 ⇒ 当场对齐那几条流（加的去连、删的 · 停用的断开、改了连接参数的重连），不要重启。
