@@ -19,4 +19,8 @@ models: { [key in string]: string },
 /**
  * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
  */
-contextLimits: { [key in string]: number }, };
+contextLimits: { [key in string]: number }, 
+/**
+ * 这台的 Claude 数据目录（绝对路径；缺 ＝ 照 `CLAUDE_CONFIG_DIR` → `~/.claude`）。后端起来时读一次，改了要重启后端才生效。
+ */
+claudeDir?: string, };

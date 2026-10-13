@@ -4,133 +4,243 @@
     {
       "name": "段内一个子键：兄弟键不动",
       "before": "{\"tabBar\":{\"order\":[\"a\"],\"pinned\":[1]},\"tabCollections\":[]}",
-      "edits": [{ "op": "set", "path": ["tabBar", "order"], "value": ["b", "a"] }],
-      "after": { "tabBar": { "order": ["b", "a"], "pinned": [1] }, "tabCollections": [] }
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "tabBar",
+            "order"
+          ],
+          "value": [
+            "b",
+            "a"
+          ]
+        }
+      ],
+      "after": {
+        "tabBar": {
+          "order": [
+            "b",
+            "a"
+          ],
+          "pinned": [
+            1
+          ]
+        },
+        "tabCollections": []
+      }
     },
     {
       "name": "中间段不是对象 ⇒ 换成对象；缺失 ⇒ 建出来",
       "before": "{\"accounts\":\"坏的\"}",
       "edits": [
-        { "op": "set", "path": ["accounts", "modelByAccount", "a1"], "value": "opus" },
-        { "op": "set", "path": ["tabBar", "pinned"], "value": [] }
+        {
+          "op": "set",
+          "path": [
+            "accounts",
+            "modelByAccount",
+            "a1"
+          ],
+          "value": "opus"
+        },
+        {
+          "op": "set",
+          "path": [
+            "tabBar",
+            "pinned"
+          ],
+          "value": []
+        }
       ],
-      "after": { "accounts": { "modelByAccount": { "a1": "opus" } }, "tabBar": { "pinned": [] } }
+      "after": {
+        "accounts": {
+          "modelByAccount": {
+            "a1": "opus"
+          }
+        },
+        "tabBar": {
+          "pinned": []
+        }
+      }
     },
     {
       "name": "整键替换：旧子键不留；值里的 null 原样存",
       "before": "{\"keybindings\":{\"old\":\"Ctrl+O\"},\"theme\":{\"bg\":\"#111\",\"text\":\"#eee\"}}",
       "edits": [
-        { "op": "set", "path": ["keybindings"], "value": { "x": null, "y": "Ctrl+Y" } },
-        { "op": "set", "path": ["theme"], "value": { "bg": "#000" } }
+        {
+          "op": "set",
+          "path": [
+            "keybindings"
+          ],
+          "value": {
+            "x": null,
+            "y": "Ctrl+Y"
+          }
+        },
+        {
+          "op": "set",
+          "path": [
+            "theme"
+          ],
+          "value": {
+            "bg": "#000"
+          }
+        }
       ],
-      "after": { "keybindings": { "x": null, "y": "Ctrl+Y" }, "theme": { "bg": "#000" } }
+      "after": {
+        "keybindings": {
+          "x": null,
+          "y": "Ctrl+Y"
+        },
+        "theme": {
+          "bg": "#000"
+        }
+      }
     },
     {
       "name": "删：在的删掉；不在的不建空段",
       "before": "{\"claudeDir\":\"/x\",\"accounts\":{\"defaultName\":\"a1\",\"modelByAccount\":{\"a1\":\"opus\",\"a2\":\"haiku\"}}}",
       "edits": [
-        { "op": "remove", "path": ["claudeDir"] },
-        { "op": "remove", "path": ["accounts", "modelByAccount", "a1"] },
-        { "op": "remove", "path": ["nope", "deeper"] },
-        { "op": "remove", "path": ["accounts", "defaultName", "notAnObject"] }
+        {
+          "op": "remove",
+          "path": [
+            "claudeDir"
+          ]
+        },
+        {
+          "op": "remove",
+          "path": [
+            "accounts",
+            "modelByAccount",
+            "a1"
+          ]
+        },
+        {
+          "op": "remove",
+          "path": [
+            "nope",
+            "deeper"
+          ]
+        },
+        {
+          "op": "remove",
+          "path": [
+            "accounts",
+            "defaultName",
+            "notAnObject"
+          ]
+        }
       ],
-      "after": { "accounts": { "defaultName": "a1", "modelByAccount": { "a2": "haiku" } } }
+      "after": {
+        "accounts": {
+          "defaultName": "a1",
+          "modelByAccount": {
+            "a2": "haiku"
+          }
+        }
+      }
     },
     {
       "name": "删：路上断了 ⇒ 停在断处的那一层也不许删同名的键",
       "before": "{\"accounts\":{\"defaultName\":\"a1\"},\"defaultName\":\"顶层那个\"}",
       "edits": [
-        { "op": "remove", "path": ["accounts", "nope", "defaultName"] },
-        { "op": "remove", "path": ["nope", "defaultName"] }
+        {
+          "op": "remove",
+          "path": [
+            "accounts",
+            "nope",
+            "defaultName"
+          ]
+        },
+        {
+          "op": "remove",
+          "path": [
+            "nope",
+            "defaultName"
+          ]
+        }
       ],
-      "after": { "accounts": { "defaultName": "a1" }, "defaultName": "顶层那个" }
+      "after": {
+        "accounts": {
+          "defaultName": "a1"
+        },
+        "defaultName": "顶层那个"
+      }
     },
     {
       "name": "同一批里后一条盖前一条",
       "before": "{}",
       "edits": [
-        { "op": "set", "path": ["theme"], "value": { "bg": "#1" } },
-        { "op": "set", "path": ["theme", "bg"], "value": "#2" }
+        {
+          "op": "set",
+          "path": [
+            "theme"
+          ],
+          "value": {
+            "bg": "#1"
+          }
+        },
+        {
+          "op": "set",
+          "path": [
+            "theme",
+            "bg"
+          ],
+          "value": "#2"
+        }
       ],
-      "after": { "theme": { "bg": "#2" } }
+      "after": {
+        "theme": {
+          "bg": "#2"
+        }
+      }
     },
     {
       "name": "空路径 = 整份替换换了个名字 ⇒ 整批拒",
       "before": "{\"keep\":1}",
       "edits": [
-        { "op": "set", "path": ["a"], "value": 1 },
-        { "op": "set", "path": [], "value": {} }
+        {
+          "op": "set",
+          "path": [
+            "a"
+          ],
+          "value": 1
+        },
+        {
+          "op": "set",
+          "path": [],
+          "value": {}
+        }
       ],
       "refused": "bad_edit"
     },
     {
       "name": "读不懂 ⇒ 不写",
       "before": "{\"a\":1 \"b\":2}",
-      "edits": [{ "op": "set", "path": ["a"], "value": 9 }],
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "a"
+          ],
+          "value": 9
+        }
+      ],
       "refused": "unreadable"
     },
     {
       "name": "最外层不是对象 ⇒ 不写",
       "before": "[1,2]",
-      "edits": [{ "op": "set", "path": ["a"], "value": 9 }],
+      "edits": [
+        {
+          "op": "set",
+          "path": [
+            "a"
+          ],
+          "value": 9
+        }
+      ],
       "refused": "unreadable"
-    },
-    {
-      "name": "setin：认出恰好一台、只改它那一格，别的机器与别的键不动",
-      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
-      "edits": [
-        { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "a.lan" }], "field": "user", "value": "v", "ifEmpty": false },
-        { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "beta" }], "field": "user", "value": "w", "ifEmpty": false }
-      ],
-      "after": {"remote": {"enabled": true, "hosts": [{"label": "", "host": "a.lan", "user": "v"}, {"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned", "user": "w"}]}, "theme": {"x": 1}}
-    },
-    {
-      "name": "setin 带 ifEmpty：那一格已有值 ⇒ 不动（CAS）",
-      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
-      "edits": [{ "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "beta" }], "field": "hostKeyFingerprint", "value": "SHA256:new", "ifEmpty": true }],
-      "after": {"remote": {"enabled": true, "hosts": [{"label": "", "host": "a.lan", "user": "u"}, {"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned"}]}, "theme": {"x": 1}}
-    },
-    {
-      "name": "setin 认不出那一台 ⇒ 整批拒，同批别的补丁也不落",
-      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]},\"theme\":{\"x\":1}}",
-      "edits": [
-        { "op": "set", "path": ["theme", "x"], "value": 2 },
-        { "op": "setin", "path": ["remote", "hosts"], "where": [{ "fields": ["label", "host"], "equals": "gone" }], "field": "user", "value": "z", "ifEmpty": false }
-      ],
-      "refused": "element_gone"
-    },
-    {
-      "name": "insertin 追加一台；路上缺的段补出来，别的键不动",
-      "before": "{\"theme\":{\"x\":1}}",
-      "edits": [
-        {"op": "insertin", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "gamma"}], "value": {"label": "gamma", "host": "c.lan", "user": "g"}}
-      ],
-      "after": {"theme": {"x": 1}, "remote": {"hosts": [{"label": "gamma", "host": "c.lan", "user": "g"}]}}
-    },
-    {
-      "name": "insertin 那个键已有 ⇒ 整批拒，同批别的补丁也不落",
-      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
-      "edits": [
-        {"op": "set", "path": ["remote", "enabled"], "value": false},
-        {"op": "insertin", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "beta"}], "value": {"label": "beta", "host": "x.lan"}}
-      ],
-      "refused": "element_exists"
-    },
-    {
-      "name": "removein 删恰好那一台；另一台刚固化的指纹原样留着",
-      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
-      "edits": [
-        {"op": "removein", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "a.lan"}]}
-      ],
-      "after": {"remote": {"enabled": true, "hosts": [{"label": "beta", "host": "b.lan", "hostKeyFingerprint": "SHA256:pinned"}]}}
-    },
-    {
-      "name": "removein 认不出那一台 ⇒ 整批拒",
-      "before": "{\"remote\":{\"enabled\":true,\"hosts\":[{\"label\":\"\",\"host\":\"a.lan\",\"user\":\"u\"},{\"label\":\"beta\",\"host\":\"b.lan\",\"hostKeyFingerprint\":\"SHA256:pinned\"}]}}",
-      "edits": [
-        {"op": "removein", "path": ["remote", "hosts"], "where": [{"fields": ["label", "host"], "equals": "gone"}]}
-      ],
-      "refused": "element_gone"
     }
   ]
 }

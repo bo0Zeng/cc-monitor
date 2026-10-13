@@ -5663,12 +5663,6 @@
       "zh": "贴到 · {target}",
       "args": ["target"]
     },
-    "remoteConfig.remoteConfigUnrecognized.unrecognized": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "读取 config.json 里的远端配置失败 · 内容无法解析 · 一台都不显示\n在此重新添加机器即可",
-      "args": []
-    },
     "remoteHealth.bindRemoteHealthToast.noMessage": {
       "kind": "error",
       "role": "报错",
@@ -12746,6 +12740,12 @@
       "kind": "body",
       "role": "说明",
       "zh": "待交给远端的机器偏好 · 从旧设置搬来 · 连上后交过去",
+      "args": []
+    },
+    "rsDataPaths.backend.machines": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "机器表 · 连各台用的地址 · 用户 · 钥匙 · 指纹 · 跳板",
       "args": []
     },
     "rsDataPaths.backend.aliasesPosix": {

@@ -256,6 +256,9 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
     ("prefs-read", "帧命令：那台的偏好（启动命令 · 每号模型 · 上限表住那台的 prefs.json），账号页 · 起会话框只读它"),
     ("prefs-set", "帧命令：改那台的偏好（值域在那台写口判），账号页的模型下拉经它存"),
+    ("machines-read", "帧命令：这一端的机器表住本机后端（machines.json），壳照它起停远端流、设置页只读它"),
+    ("machines-try", "帧命令：机器表那一道过不过（判准只在本机后端），添加机器框 · 机器卡边打边问"),
+    ("machines-set", "帧命令：改机器表（按键认那一台、指纹记于哪天由写口盖），设置页存 · 拨号固化指纹经它"),
     ("rotation-configs-read", "帧命令：那台的轮换配置表（本机默认 · 每份谁开着 · 描述由后端写），配置下拉与设置里配置列表只排版"),
     ("rotation-config-save", "帧命令：存一份配置（参数照策略声明逐格校验 · 版本冲突由后端判），配置编辑器只排版"),
     ("rotation-config-rename", "帧命令：配置改名（重名 · 空 · 超长由后端判）"),
@@ -1345,6 +1348,18 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "after_local_ready",
         1,
         "第 7 批换形（下一版删）：本机通道登记上那一刻问一次本机的偏好写成没有（一问，10 秒）",
+    ),
+    (
+        "machine_table.rs",
+        "refresh",
+        1,
+        "本机通道登记上那一刻 · 本机流每来一帧 `changed {machines}`：问一次本机的机器表（一问，10 秒）",
+    ),
+    (
+        "dial_host.rs",
+        "pin_host_key",
+        1,
+        "拨号成了、要固化指纹：交本机后端一条 `machines-set`（一问，10 秒）",
     ),
     // LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // acct-iso 两问那两个发起点摘了：界面经通道直问（`src/frontend/ui/acct-iso-reads.ts`），期限在那边造。

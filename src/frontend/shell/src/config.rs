@@ -39,7 +39,7 @@
 
 use crate::copy_table::copy_text;
 use crate::detail::Said;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -92,78 +92,18 @@ pub enum ConfigEdit {
     Remove {
         path: Vec<String>,
     },
-    /// 〔第一问〕**按键认数组元素**：`path` 指到一个数组，在里面认出满足 `where` 每一条的**恰好一个**对象，
-    /// 只改它的 `field` 那一格（锁内现读现判 ⇒ 别的元素、别的格与并发写者的改动都不会被一份锁外算好的整列盖掉）。
-    /// `ifEmpty` = CAS：那一格已有值（非空串 / 非 null）就不动。认不出 / 认出多个 ⇒ 不动（结局见 [`Applied`]）。
-    #[serde(rename = "setin", rename_all = "camelCase")]
-    SetIn {
-        path: Vec<String>,
-        r#where: Vec<ElemKey>,
-        field: String,
-        #[cfg_attr(test, ts(type = "unknown"))]
-        value: Value,
-        #[serde(default)]
-        if_empty: bool,
-    },
-    /// **按键插一个元素**（设置页新增一台机器）：`path` 指到的数组里已有满足 `where` 的元素 ⇒ 不动、整批拒
-    /// （[`ConfigWriteError::ElementExists`]）；否则追加到末尾。路上缺的段与数组本身照 `set` 的口径补出来（第一台机器）。
-    #[serde(rename = "insertin", rename_all = "camelCase")]
-    InsertIn {
-        path: Vec<String>,
-        r#where: Vec<ElemKey>,
-        #[cfg_attr(test, ts(type = "unknown"))]
-        value: Value,
-    },
-    /// **按键删一个元素**（设置页删一台机器）：认出恰好一个才删；认不出 / 认出多个 ⇒ 整批拒（同 `setin`）。
-    #[serde(rename = "removein", rename_all = "camelCase")]
-    RemoveIn {
-        path: Vec<String>,
-        r#where: Vec<ElemKey>,
-    },
-}
-
-/// [`ConfigEdit::SetIn`] 认元素的一条：元素里 `fields` 按序取**第一个非空字符串**，它 == `equals`
-/// （`remote.hosts` 的 origin 就是 `["label", "host"]`：`label` 非空取它、否则 `host`）。
-#[derive(Debug, Clone, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct ElemKey {
-    pub fields: Vec<String>,
-    pub equals: String,
 }
 
 /// 一条补丁落下去的结局（与交进来的补丁逐条对应）。`Set` / `Remove` 恒 `Done`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Applied {
     Done,
-    /// `SetIn`：一个都认不出（路径不在 / 不是数组 / 没有满足的元素）⇒ 整批拒（[`ConfigWriteError::NoSuchElement`]）。
-    NoMatch,
-    /// `SetIn`：认出不止一个 ⇒ 不猜是哪个（同上，整批拒）。
-    Ambiguous,
-    /// `SetIn` 带 `ifEmpty`：那一格已有值。
-    Kept,
-    /// `InsertIn`：已有满足 `where` 的元素 ⇒ 整批拒（[`ConfigWriteError::ElementExists`]）。
-    Exists,
 }
 
 impl ConfigEdit {
     fn path(&self) -> &[String] {
         match self {
-            ConfigEdit::Set { path, .. }
-            | ConfigEdit::Remove { path }
-            | ConfigEdit::SetIn { path, .. }
-            | ConfigEdit::InsertIn { path, .. }
-            | ConfigEdit::RemoveIn { path, .. } => path,
-        }
-    }
-
-    /// 按键认元素的那几种的 `where`（`None` = 不认元素）。空 `where` 会认中每个对象 ⇒ 在 ① 就拒。
-    fn elem_where(&self) -> Option<&[ElemKey]> {
-        match self {
-            ConfigEdit::SetIn { r#where, .. }
-            | ConfigEdit::InsertIn { r#where, .. }
-            | ConfigEdit::RemoveIn { r#where, .. } => Some(r#where),
-            ConfigEdit::Set { .. } | ConfigEdit::Remove { .. } => None,
+            ConfigEdit::Set { path, .. } | ConfigEdit::Remove { path } => path,
         }
     }
 }
@@ -175,14 +115,6 @@ pub(crate) enum ConfigWriteError {
     Unreadable { path: PathBuf, detail: String },
     /// 补丁本身不成形（空路径 —— 那就是「整份替换」换了个名字）⇒ 整批拒，盘上一个字节不动。
     BadEdit(String),
-    /// `setin` 认不出那一个元素（`ambiguous` = 认出了不止一个）⇒ **整批拒**，盘上一个字节不动
-    /// （设置页按格改一台，而那台在盘上已被改名 / 删掉：不许一半落盘、一半静默丢掉）。
-    NoSuchElement { ambiguous: bool },
-    /// `insertin` 要插的那个键盘上已经有了 ⇒ **整批拒**，盘上一个字节不动（不静默变成改那一台）。
-    ElementExists,
-    /// 改完的机器表不成立（同名 · 端口越界 · 地址 / 用户空）⇒ **整批拒**，盘上一个字节不动。
-    /// 单台改、添加一台、批量添加都走这一口（同一份校验，[`check_machine_table`]）。
-    BadMachine(MachineFault),
     /// 盘上那一步没成：那一句 ＋ 复制详情（原话在详情里）。
     Io(Said),
 }
@@ -208,13 +140,6 @@ impl std::fmt::Display for ConfigWriteError {
                 "rsConfig.write.unreadable",
                 &[("path", &path.display().to_string())],
             )),
-            ConfigWriteError::NoSuchElement { .. } => {
-                f.write_str(&copy_text("rsConfig.write.elementGone", &[]))
-            }
-            ConfigWriteError::ElementExists => {
-                f.write_str(&copy_text("rsConfig.write.elementExists", &[]))
-            }
-            ConfigWriteError::BadMachine(m) => f.write_str(&m.refused_said()),
             ConfigWriteError::BadEdit(m) => f.write_str(m),
             ConfigWriteError::Io(s) => f.write_str(&s.said),
         }
@@ -226,62 +151,28 @@ static WRITE_LOCK: Mutex<()> = Mutex::new(());
 
 /// 前端写配置的唯一口：交一串 [`ConfigEdit`]，这里合并进盘上那份。
 #[tauri::command]
-pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<ConfigPatched, Said> {
-    let r: Result<ConfigPatched, Said> = (move || -> Result<ConfigPatched, Said> {
+pub fn patch_config(edits: Vec<ConfigEdit>) -> Result<(), Said> {
+    let r: Result<(), Said> = (move || -> Result<(), Said> {
         let path = resolve_config_path().ok_or_else(|| copy_text("rsConfig.write.noHome", &[]))?;
-        let (_, pinned) =
-            patch_config_stamping(&path, &edits).map_err(ConfigWriteError::into_said)?;
-        Ok(ConfigPatched { pinned })
+        patch_config_at(&path, &edits).map_err(ConfigWriteError::into_said)?;
+        Ok(())
     })();
     r.map_err(|s| s.named("patch_config"))
 }
 
-/// `patch_config` 的回话：这一趟壳替界面盖上的那几格（今天只有「指纹记于哪一天」，[`stamp_pinned_day`]）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct ConfigPatched {
-    pub pinned: Vec<PinnedDay>,
-}
-
-/// 一台机器的「指纹记于哪一天」盖成了什么（`day` 空 ＝ 指纹清了、日子一起清）。`origin` ＝ 补丁认那台用的键。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct PinnedDay {
-    pub origin: crate::origin::Origin,
-    pub day: String,
-}
-
-/// 🔴 **`config.json` 唯一的写函数**（[`patch_config_stamping`]）；只要逐条结局的调用方用它。
+/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局；一条都没有 ⇒ 不写。
 pub(crate) fn patch_config_at(
     path: &Path,
     edits: &[ConfigEdit],
 ) -> Result<Vec<Applied>, ConfigWriteError> {
-    patch_config_stamping(path, edits).map(|(applied, _)| applied)
-}
-
-/// 🔴 **`config.json` 唯一的写函数。** 锁内现读 → 逐条应用 → 带 pid 的临时件 → 原子替换。回逐条结局 ＋ 这一趟盖上的日子；一条都没改动 ⇒ 不写。
-pub(crate) fn patch_config_stamping(
-    path: &Path,
-    edits: &[ConfigEdit],
-) -> Result<(Vec<Applied>, Vec<PinnedDay>), ConfigWriteError> {
     // ① 先验全部：一条不成形 ⇒ 整批拒，连锁都不拿。
     if let Some(bad) = edits.iter().find(|e| e.path().is_empty()) {
         return Err(ConfigWriteError::BadEdit(format!(
             "config patch refused: empty path ({bad:?})"
         )));
     }
-    if let Some(bad) = edits
-        .iter()
-        .find(|e| e.elem_where().is_some_and(<[ElemKey]>::is_empty))
-    {
-        return Err(ConfigWriteError::BadEdit(format!(
-            "config patch refused: empty `where` ({bad:?})"
-        )));
-    }
     if edits.is_empty() {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok(Vec::new());
     }
     // ② 串行化。锁中毒（别的写者 panic 了）不妨碍这一次：锁只护「读-改-写」这一段，没有要恢复的内存状态。
     let _guard = WRITE_LOCK.lock().unwrap_or_else(|p| p.into_inner());
@@ -333,12 +224,8 @@ pub(crate) fn patch_config_stamping(
         Map::new()
     };
 
-    // ④ 逐条应用 ＋ 机器表那一道。
-    let mut pinned = Vec::new();
-    let applied = apply_and_check(&mut root, edits, &mut pinned)?;
-    if !applied.contains(&Applied::Done) {
-        return Ok((applied, pinned));
-    }
+    // ④ 逐条应用。
+    let applied: Vec<Applied> = edits.iter().map(|e| apply_edit(&mut root, e)).collect();
 
     // ⑤ 临时件带 pid：两个 monitor 进程不互删对方的临时件。
     let pretty = serde_json::to_string_pretty(&Value::Object(root)).map_err(|e| {
@@ -378,381 +265,13 @@ pub(crate) fn patch_config_stamping(
             &e,
         ))
     })?;
-    Ok((applied, pinned))
-}
-
-/// 把一串补丁逐条应用到 `root` 上，再过机器表那一道（动了认人的格才过）。写口与试算口同一份。
-fn apply_and_check(
-    root: &mut Map<String, Value>,
-    edits: &[ConfigEdit],
-    pinned: &mut Vec<PinnedDay>,
-) -> Result<Vec<Applied>, ConfigWriteError> {
-    let day = pinned_day(std::time::SystemTime::now());
-    let applied: Vec<Applied> = edits
-        .iter()
-        .map(|e| {
-            let a = apply_edit(root, e);
-            if a == Applied::Done {
-                pinned.extend(stamp_pinned_day(root, e, &day));
-            }
-            a
-        })
-        .collect();
-    if let Some(miss) = applied
-        .iter()
-        .find(|a| matches!(a, Applied::NoMatch | Applied::Ambiguous))
-    {
-        return Err(ConfigWriteError::NoSuchElement {
-            ambiguous: *miss == Applied::Ambiguous,
-        });
-    }
-    if applied.contains(&Applied::Exists) {
-        return Err(ConfigWriteError::ElementExists);
-    }
-    if !applied.contains(&Applied::Done) {
-        return Ok(applied);
-    }
-    // ④b 动了机器表里认人的那几格（增一台 · 改名称 / 地址 / 端口 / 用户 · 整段写）⇒ 改完的整张表要成立。
-    //   固化指纹、改恢复命令这类格不查：别的格写不进去不该挡住它们。
-    let identity = |e: &ConfigEdit| match e {
-        ConfigEdit::InsertIn { path, .. } => path.first().map(String::as_str) == Some("remote"),
-        ConfigEdit::SetIn { path, field, .. } => {
-            path.first().map(String::as_str) == Some("remote")
-                && ["label", "host", "port", "user"].contains(&field.as_str())
-        }
-        ConfigEdit::Set { path, .. } => path.first().map(String::as_str) == Some("remote"),
-        ConfigEdit::Remove { .. } | ConfigEdit::RemoveIn { .. } => false,
-    };
-    if edits.iter().any(identity) {
-        if let Some(fault) = check_machine_table(root) {
-            return Err(ConfigWriteError::BadMachine(fault));
-        }
-    }
     Ok(applied)
-}
-
-/// 写的那一天（UTC 的 `YYYY-MM-DD`）：机器的「指纹记于 …」那一格（[`stamp_pinned_day`]）。
-pub(crate) fn pinned_day(t: std::time::SystemTime) -> String {
-    let days = t
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs() / 86_400)
-        .unwrap_or(0) as i64;
-    let (y, m, d) = copy_core::civil_from_days(days);
-    format!("{y:04}-{m:02}-{d:02}")
-}
-
-/// 一条写进了机器指纹的补丁（改那一格 · 新增一台）⇒ 同一台的 `hostKeyPinnedAt` 跟着盖上写的那一天；指纹写成空 ⇒ 日子清空。
-/// 只此一处：设置页记下指纹 · 拨号时自动固化都经补丁口，日子不由界面取、也不认补丁里带来的那一份。
-fn stamp_pinned_day(root: &mut Map<String, Value>, e: &ConfigEdit, day: &str) -> Option<PinnedDay> {
-    let hosts = |p: &[String]| p.len() == 2 && p[0] == "remote" && p[1] == "hosts";
-    let (path, r#where, fp) = match e {
-        ConfigEdit::SetIn {
-            path,
-            r#where,
-            field,
-            value,
-            ..
-        } if hosts(path) && field == "hostKeyFingerprint" => (path, r#where, value),
-        ConfigEdit::InsertIn {
-            path,
-            r#where,
-            value,
-        } if hosts(path) => (
-            path,
-            r#where,
-            value.get("hostKeyFingerprint").unwrap_or(&Value::Null),
-        ),
-        _ => return None,
-    };
-    let given = fp.as_str().is_some_and(|s| !s.trim().is_empty());
-    // 新增一台没带指纹 ⇒ 没什么可记的，不添这一格。
-    if !given && matches!(e, ConfigEdit::InsertIn { .. }) {
-        return None;
-    }
-    let day = if given {
-        day.to_string()
-    } else {
-        String::new()
-    };
-    let done = apply_edit(
-        root,
-        &ConfigEdit::SetIn {
-            path: path.clone(),
-            r#where: r#where.clone(),
-            field: "hostKeyPinnedAt".into(),
-            value: Value::String(day.clone()),
-            if_empty: false,
-        },
-    );
-    (done == Applied::Done).then(|| PinnedDay {
-        origin: crate::origin::Origin(
-            r#where
-                .first()
-                .map(|k| k.equals.clone())
-                .unwrap_or_default(),
-        ),
-        day,
-    })
-}
-
-/// 机器表那一道没过的那一处（闭集码 ＋ 那台的名字 ＋ 那一格下面的那一句）；界面照 `code` 挑落在哪一格、照抄 `said`。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub struct MachineFault {
-    /// `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
-    pub code: MachineFaultCode,
-    /// 出问题的那台的名字（`label` 非空取它、否则 `host`）。
-    pub name: String,
-    /// 那一格下面的那一句（添加机器框 · 机器卡同读）。
-    pub said: String,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum MachineFaultCode {
-    NoHost,
-    NoUser,
-    Port,
-    NameTaken,
-}
-
-impl MachineFault {
-    /// 一处错（那一格下面的那一句照码写）。
-    pub fn new(code: MachineFaultCode, name: String) -> Self {
-        let said = match code {
-            MachineFaultCode::NoHost => copy_text("addMachine.err.host", &[]),
-            MachineFaultCode::NoUser => copy_text("addMachine.err.user", &[]),
-            MachineFaultCode::Port => copy_text("addMachine.err.port", &[]),
-            MachineFaultCode::NameTaken => copy_text("addMachine.err.taken", &[("name", &name)]),
-        };
-        Self { code, name, said }
-    }
-
-    /// 写口拒绝时的那一句（带那台的名字与「未保存」）。
-    pub fn refused_said(&self) -> String {
-        match self.code {
-            MachineFaultCode::NoHost => {
-                copy_text("rsConfig.machine.noHost", &[("name", &self.name)])
-            }
-            MachineFaultCode::NoUser => {
-                copy_text("rsConfig.machine.noUser", &[("name", &self.name)])
-            }
-            MachineFaultCode::Port => copy_text("rsConfig.machine.port", &[("name", &self.name)]),
-            MachineFaultCode::NameTaken => {
-                copy_text("rsConfig.machine.nameTaken", &[("name", &self.name)])
-            }
-        }
-    }
-}
-
-/// **试算口**：这串补丁若现在落盘，机器表那一道过不过（盘上一个字节不动）。界面边打边问它，与写口同一份规则。
-/// 读盘那一下不落在 IPC 派发线程上（`spawn_blocking`）。
-#[tauri::command]
-pub async fn machine_table_try(edits: Vec<ConfigEdit>) -> Result<Option<MachineFault>, Said> {
-    let r: Result<Option<MachineFault>, Said> = async move {
-        Ok(tauri::async_runtime::spawn_blocking(move || {
-            let path =
-                resolve_config_path().ok_or_else(|| copy_text("rsConfig.write.noHome", &[]))?;
-            machine_table_try_at(&path, &edits)
-        })
-        .await
-        .map_err(Said::crashed)??)
-    }
-    .await;
-    r.map_err(|s| s.named("machine_table_try"))
-}
-
-/// [`machine_table_try`] 的本体（判据喂临时路径）。认不出元素 / 补丁不成形 ⇒ 当作「这一道没话说」，留给写口去拒。
-pub(crate) fn machine_table_try_at(
-    path: &Path,
-    edits: &[ConfigEdit],
-) -> Result<Option<MachineFault>, Said> {
-    let mut root: Map<String, Value> = match std::fs::read_to_string(path) {
-        Ok(raw) => match serde_json::from_str::<Value>(&raw) {
-            Ok(Value::Object(m)) => m,
-            _ => return Ok(None),
-        },
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Map::new(),
-        Err(e) => {
-            return Err(Said::with_raw(
-                copy_text(
-                    "rsConfig.write.readFailed",
-                    &[
-                        ("path", &path.display().to_string()),
-                        ("why", &copy_core::io_reason(e.kind())),
-                    ],
-                ),
-                &e,
-            ))
-        }
-    };
-    if edits.iter().any(|e| e.path().is_empty()) {
-        return Ok(None);
-    }
-    match apply_and_check(&mut root, edits, &mut Vec::new()) {
-        Err(ConfigWriteError::BadMachine(f)) => Ok(Some(f)),
-        // 往机器表里加一台、而同名的已经在了（写口回「已存在」）⇒ 这一道说成同名。
-        Err(ConfigWriteError::ElementExists) => Ok(edits.iter().find_map(|e| match e {
-            ConfigEdit::InsertIn { path, r#where, .. }
-                if path.first().map(String::as_str) == Some("remote") =>
-            {
-                Some(MachineFault::new(
-                    MachineFaultCode::NameTaken,
-                    r#where
-                        .first()
-                        .map(|k| k.equals.clone())
-                        .unwrap_or_default(),
-                ))
-            }
-            _ => None,
-        })),
-        _ => Ok(None),
-    }
-}
-
-/// 机器表（`remote.hosts`）成不成立：名字（`label` 非空取它、否则 `host`，去首尾空白、大小写敏感）不重 ·
-/// 端口 1–65535（缺 ＝ 22）· 地址与用户非空。不成立 ⇒ 第一处（码 ＋ 名字）；成立 / 没有机器表 ⇒ `None`。**纯函数**。
-pub(crate) fn check_machine_table(root: &Map<String, Value>) -> Option<MachineFault> {
-    let hosts = root.get("remote")?.get("hosts")?.as_array()?;
-    let mut seen = std::collections::HashSet::new();
-    for h in hosts.iter().filter_map(Value::as_object) {
-        let text = |k: &str| {
-            h.get(k)
-                .and_then(Value::as_str)
-                .map(str::trim)
-                .unwrap_or("")
-        };
-        let name = if text("label").is_empty() {
-            text("host")
-        } else {
-            text("label")
-        };
-        let fault = |code| Some(MachineFault::new(code, name.to_string()));
-        if text("host").is_empty() {
-            return fault(MachineFaultCode::NoHost);
-        }
-        if text("user").is_empty() {
-            return fault(MachineFaultCode::NoUser);
-        }
-        let port_ok = match h.get("port") {
-            None | Some(Value::Null) => true,
-            Some(p) => p.as_u64().is_some_and(|p| (1..=65535).contains(&p)),
-        };
-        if !port_ok {
-            return fault(MachineFaultCode::Port);
-        }
-        if !seen.insert(name.to_string()) {
-            return fault(MachineFaultCode::NameTaken);
-        }
-    }
-    None
-}
-
-/// 元素里 `fields` 按序第一个非空字符串（[`ElemKey`]）。
-fn elem_key<'a>(elem: &'a Map<String, Value>, fields: &[String]) -> Option<&'a str> {
-    fields.iter().find_map(|f| {
-        elem.get(f)
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-    })
-}
-
-/// `where` 每一条都对得上。
-fn elem_matches(o: &Map<String, Value>, r#where: &[ElemKey]) -> bool {
-    r#where
-        .iter()
-        .all(|k| elem_key(o, &k.fields) == Some(k.equals.as_str()))
 }
 
 fn apply_edit(root: &mut Map<String, Value>, edit: &ConfigEdit) -> Applied {
     let (last, parents) = edit.path().split_last().expect("空路径在 ① 已拒");
     let mut cur = root;
     match edit {
-        ConfigEdit::InsertIn { r#where, value, .. } => {
-            for seg in parents {
-                let slot = cur.entry(seg.clone()).or_insert(Value::Null);
-                if !slot.is_object() {
-                    *slot = Value::Object(Map::new());
-                }
-                cur = slot.as_object_mut().expect("上一行保证是对象");
-            }
-            let slot = cur.entry(last.clone()).or_insert(Value::Array(Vec::new()));
-            let Some(arr) = slot.as_array_mut() else {
-                return Applied::NoMatch;
-            };
-            if arr
-                .iter()
-                .filter_map(Value::as_object)
-                .any(|o| elem_matches(o, r#where))
-            {
-                return Applied::Exists;
-            }
-            arr.push(value.clone());
-            Applied::Done
-        }
-        ConfigEdit::RemoveIn { r#where, .. } => {
-            for seg in parents {
-                match cur.get_mut(seg).and_then(Value::as_object_mut) {
-                    Some(next) => cur = next,
-                    None => return Applied::NoMatch,
-                }
-            }
-            let Some(arr) = cur.get_mut(last).and_then(Value::as_array_mut) else {
-                return Applied::NoMatch;
-            };
-            let hits: Vec<usize> = arr
-                .iter()
-                .enumerate()
-                .filter(|(_, v)| v.as_object().is_some_and(|o| elem_matches(o, r#where)))
-                .map(|(i, _)| i)
-                .collect();
-            match hits.as_slice() {
-                [i] => {
-                    arr.remove(*i);
-                    Applied::Done
-                }
-                [] => Applied::NoMatch,
-                _ => Applied::Ambiguous,
-            }
-        }
-        ConfigEdit::SetIn {
-            r#where,
-            field,
-            value,
-            if_empty,
-            ..
-        } => {
-            for seg in parents {
-                match cur.get_mut(seg).and_then(Value::as_object_mut) {
-                    Some(next) => cur = next,
-                    None => return Applied::NoMatch,
-                }
-            }
-            let Some(arr) = cur.get_mut(last).and_then(Value::as_array_mut) else {
-                return Applied::NoMatch;
-            };
-            let mut hits = arr
-                .iter_mut()
-                .filter_map(Value::as_object_mut)
-                .filter(|o| elem_matches(o, r#where));
-            let elem = match (hits.next(), hits.next()) {
-                (Some(e), None) => e,
-                (None, _) => return Applied::NoMatch,
-                (Some(_), Some(_)) => return Applied::Ambiguous,
-            };
-            let taken = elem
-                .get(field)
-                .is_some_and(|v| !v.is_null() && v.as_str().is_none_or(|s| !s.trim().is_empty()));
-            if *if_empty && taken {
-                return Applied::Kept;
-            }
-            elem.insert(field.clone(), value.clone());
-            Applied::Done
-        }
         ConfigEdit::Set { value, .. } => {
             for seg in parents {
                 let slot = cur.entry(seg.clone()).or_insert(Value::Null);

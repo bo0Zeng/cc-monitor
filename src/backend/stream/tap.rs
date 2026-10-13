@@ -136,6 +136,8 @@ pub struct TapRx {
     needs: Option<tokio::sync::broadcast::Receiver<String>>,
     /// 会话外的需手动清单可能变了的铃（推一帧 `changed {manual}`）；`None` ＝ 不订。
     manual: Option<tokio::sync::broadcast::Receiver<()>>,
+    /// 这一端的机器表变了的铃（推一帧 `changed {machines}`）；`None` ＝ 不订。
+    machines: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 帧里的小成品怎么现算（生产 ＝ [`crate::stream::topic_hook::body`]；判据自己接的那一形不现算）。
     bodies: crate::stream::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
@@ -220,6 +222,14 @@ impl TapSource for TapRx {
                     }
                     None => self.manual = None,
                 },
+                moved = rules_moved(&mut self.machines) => match moved {
+                    // 落后丢了几件也照推一帧（客户端反正整份重问）。
+                    Some(()) => {
+                        let f = self.changed(Topic::Machines, None);
+                        self.out.push_back(f);
+                    }
+                    None => self.machines = None,
+                },
                 moved = rotation_moved(&mut self.needs) => match moved {
                     Some(Some(sid)) => {
                         let f = self.changed(Topic::Needs, Some(sid));
@@ -244,6 +254,7 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.needs = Some(crate::control::asks::changes().subscribe());
     rx.manual = Some(crate::accounts::sign_in::manual_changes().subscribe());
+    rx.machines = Some(crate::control::machines::changes().subscribe());
     rx.bodies = crate::stream::topic_hook::body;
     rx.tz = tz;
     rx
@@ -315,6 +326,7 @@ pub(crate) fn attach_rx(
         plan: None,
         needs: None,
         manual: None,
+        machines: None,
         bodies: no_bodies,
         tz: crate::Tz::default(),
     }

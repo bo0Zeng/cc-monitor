@@ -354,6 +354,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了；重问 `manual-list`）
+- `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 
 #### `Unavailable`
 
@@ -8502,7 +8503,11 @@ models: { [key in string]: string },
 /**
  * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
  */
-contextLimits: { [key in string]: number }, };
+contextLimits: { [key in string]: number }, 
+/**
+ * 这台的 Claude 数据目录（绝对路径；缺 ＝ 照 `CLAUDE_CONFIG_DIR` → `~/.claude`）。后端起来时读一次，改了要重启后端才生效。
+ */
+claudeDir?: string, };
 type PrefsReply = { 
 /**
  * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
@@ -8553,7 +8558,11 @@ models: { [key in string]: string },
 /**
  * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
  */
-contextLimits: { [key in string]: number }, };
+contextLimits: { [key in string]: number }, 
+/**
+ * 这台的 Claude 数据目录（绝对路径；缺 ＝ 照 `CLAUDE_CONFIG_DIR` → `~/.claude`）。后端起来时读一次，改了要重启后端才生效。
+ */
+claudeDir?: string, };
 type PrefsReply = { 
 /**
  * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
@@ -8587,10 +8596,197 @@ models?: { [key in string]: string | null },
 /**
  * 整张上限表（整张换掉）。
  */
-contextLimits?: { [key in string]: number }, };
+contextLimits?: { [key in string]: number }, 
+/**
+ * 这台的 Claude 数据目录：空串 ⇒ 删掉（回到 `CLAUDE_CONFIG_DIR` → `~/.claude`）。改了要重启后端才生效。
+ */
+claudeDir?: string, };
 ```
 
 码：`bad_args` · `unreadable` · `io_failed`
+
+#### `machines-read`
+
+读这一端的机器表。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machines-read`
+
+入参 `NoArgs` · 回包 `MachinesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 端口（缺 ＝ 22）。
+ */
+port: number, user: string, 
+/**
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
+ */
+keyPath: string, 
+/**
+ * 固化的主机指纹（空 ＝ 没固化）。
+ */
+hostKeyFingerprint: string, 
+/**
+ * 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
+ */
+hostKeyPinnedAt: string, 
+/**
+ * 备用地址（竞发）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板：另一台的名字（空 ＝ 直连）。
+ */
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type MachinesReply = { 
+/**
+ * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一张。
+ */
+hosts: Array<Host>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
+
+#### `machines-try`
+
+这串补丁若现在落盘，机器表那一道过不过（盘上不动）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machines-try`
+
+入参 `MachinesEdits` · 回包 `MachinesTried`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ElemKey = { fields: Array<string>, equals: string, };
+type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachineFault = { 
+/**
+ * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+ */
+code: MachineFaultCode, 
+/**
+ * 出问题的那台的名字（`label` 非空取它、否则 `host`）。
+ */
+name: string, 
+/**
+ * 那一格下面的那一句（添加机器框 · 机器卡同读）。
+ */
+said: string, };
+type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken";
+type MachinesEdits = { edits: Array<MachineEdit>, };
+type MachinesTried = { 
+/**
+ * 这串补丁若现在落盘，机器表那一道没过的那一处；过 ⇒ `null`（补丁本身认不出那一台 · 不成形 ⇒ 也是 `null`，留给写口去拒）。
+ */
+fault: MachineFault | null, };
+```
+
+码：`bad_args`
+
+#### `machines-set`
+
+改机器表（按键认那一台），写完读回、推 `changed {machines}`。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machines-set`
+
+入参 `MachinesEdits` · 回包 `MachinesSet`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ElemKey = { fields: Array<string>, equals: string, };
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 端口（缺 ＝ 22）。
+ */
+port: number, user: string, 
+/**
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
+ */
+keyPath: string, 
+/**
+ * 固化的主机指纹（空 ＝ 没固化）。
+ */
+hostKeyFingerprint: string, 
+/**
+ * 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
+ */
+hostKeyPinnedAt: string, 
+/**
+ * 备用地址（竞发）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板：另一台的名字（空 ＝ 直连）。
+ */
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachinesEdits = { edits: Array<MachineEdit>, };
+type MachinesReply = { 
+/**
+ * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一张。
+ */
+hosts: Array<Host>, };
+type MachinesSet = { machines: MachinesReply, pinned: Array<PinnedDay>, kept: number, };
+type PinnedDay = { origin: string, day: string, };
+```
+
+码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
 
 #### `relay-optin`
 
@@ -9222,6 +9418,9 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
+| `--machines-read` | ＝ 帧命令 `machines-read`：读这一端的机器表 |
+| `--machines-set` | ＝ 帧命令 `machines-set`：改机器表（按键认那一台），写完读回、推 `changed {machines}` |
+| `--machines-try` | ＝ 帧命令 `machines-try`：这串补丁若现在落盘，机器表那一道过不过（盘上不动） |
 | `--manual-list` | ＝ 帧命令 `manual-list`：会话外的需手动清单：需登录的号 · 需登录的 MCP |
 | `--mcp-read` | ＝ 帧命令 `mcp-read`：这台机器的 MCP 列表成品 |
 | `--mcp-server-put` | ＝ 帧命令 `mcp-server-put`：增 / 改这台一个项目 `.mcp.json` 里的一条 |

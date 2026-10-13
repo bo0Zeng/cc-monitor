@@ -9,7 +9,6 @@
 // 钉在唯一的读盘口上：每一次 `loadConfig()` 都拿盘上的顶层键去对 [`KNOWN_CONFIG_KEYS`]，对不上的记下来，
 // 由 `settings/unknown-keys-notice.ts` 画成一条**常驻**提示条（`INVARIANTS §12`：
 // 状态性警告不许只活在 hover / 日志里）。
-import type { ConfigPatched } from "./generated/ConfigPatched";
 import { commands } from "./ipc/commands";
 import type { ConfigEdit } from "./generated/ConfigEdit";
 
@@ -42,8 +41,8 @@ export const CONFIG_KEY_OWNERS = {
   // ── 第 7 批搬走的那几格（这台的偏好住各台后端 `prefs.json`）：只剩迁移那一段读、迁完由壳删（原文留 `config.json.pre-7`）──
   // `accounts.byMachine.<origin>.modelByAccount`（每号模型）。
   accounts: PREFS_MIGRATION,
-  // src/frontend/ui/remote-config.ts（Rust 侧 `lib.rs::load_remote_configs` 也读它，只读）
-  remote: "src/frontend/ui/remote-config.ts",
+  // 机器表（搬进本机后端 `machines.json`：后端换形那一段只读它，本机 `machines-read` 说 `ok` 之后由壳删）。
+  remote: PREFS_MIGRATION,
   // src/frontend/ui/tab-bar-state.ts
   tabBar: "src/frontend/ui/tab-bar-state.ts",
   // src/frontend/ui/tab-collections.ts
@@ -148,8 +147,8 @@ function enqueue<T>(job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** 🔴 **写 config.json 的唯一口。** 只交改哪几条路径；回话里是壳这一趟替界面盖上的那几格（指纹记于哪一天）。 */
-export function patchConfig(edits: readonly ConfigEdit[]): Promise<ConfigPatched> {
+/** 🔴 **写 config.json 的唯一口。** 只交改哪几条路径。 */
+export function patchConfig(edits: readonly ConfigEdit[]): Promise<void> {
   const copy = [...edits];
   return enqueue(() => commands.patch_config({ edits: copy }));
 }

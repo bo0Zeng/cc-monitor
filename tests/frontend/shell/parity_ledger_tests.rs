@@ -78,9 +78,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("backend_start", "backend.lifecycle", Side::Both),
     ("backend_stop", "backend.lifecycle", Side::Both),
     // 机器表热加载：对的是整张机器表（本机那一行恒在、不归表增删，对它是空操作），归已有能力 `backend.lifecycle`。
-    ("remote_reconcile", "backend.lifecycle", Side::Both),
     ("load_config", "app.config", Side::Both),
-    ("machine_table_try", "app.config", Side::Both), // 机器表那一道的试算口（与写口同一份规则，不写盘）
     ("patch_config", "app.config", Side::Both),      // 按键补丁
     ("get_data_paths", "app.data-paths", Side::Both),
     ("forget_session", "session.forget", Side::Both),
@@ -638,7 +636,8 @@ fn local_or_both_commands_take_no_remote_only_parameter() {
     // - **+1**（`find_in_session`，`Both`，归已有能力 `history.read-session`）。
     // - **+1**（`probe_session_record`，`Both`，归已有能力 `history.read-session`）。
     // - **−2**（`read_apikey_credentials_status` / `apikey_routing_for`，都 `Both`：界面经通道问那台后端）。
-    const EXPECTED_LOCAL_OR_BOTH: usize = 42;
+    // - **−2**（`remote_reconcile` / `machine_table_try`，都 `Both`：机器表搬进本机后端，壳照 `changed {machines}` 自己对齐、试算改问 `machines-try`）。
+    const EXPECTED_LOCAL_OR_BOTH: usize = 40;
     assert_eq!(
         checked, EXPECTED_LOCAL_OR_BOTH,
         "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\

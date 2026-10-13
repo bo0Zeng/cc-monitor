@@ -84,7 +84,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("load_config", Own::Config, "本机 monitor 配置"),
     ("patch_config", Own::Config, "本机 monitor 配置"),
-    ("machine_table_try", Own::Config, "本机 monitor 配置（机器表试算，不写盘）"),
     (
         "cc_get_auto_launch",
         Own::Config,
@@ -97,11 +96,6 @@ const MONITOR_OWN: &[(&str, Own, &str)] = &[
     ),
     ("open_session_in_new_window", Own::Window, "开窗"),
     ("open_settings_window", Own::Window, "开窗"),
-    (
-        "remote_reconcile",
-        Own::Lifecycle,
-        "机器表热加载：照 monitor 自己的机器表起 / 断 / 重起那几条远端流（流是 monitor 进程里的任务）",
-    ),
     (
         "open_file_window",
         Own::Channel,

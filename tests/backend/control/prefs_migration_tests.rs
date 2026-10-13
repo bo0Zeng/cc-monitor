@@ -257,3 +257,66 @@ fn an_unreachable_machine_keeps_its_share_pending() {
     assert!(read_pending(&own).contains_key("gpu"));
     let _ = std::fs::remove_dir_all(&home);
 }
+
+/// 机器表：旧形状每台带过去（宽读、`resumeCommand` 那几格不带），`config.json` 一个字节不动；已有 ⇒ 不再搬。
+#[test]
+fn the_machine_table_moves_once_without_the_old_resume_cells() {
+    let home = scratch("machines-old");
+    let own = Own::issue_at(&home);
+    let mut cfg = old_shape();
+    cfg["remote"]["hosts"][0]["addresses"] = json!("a.lan\n\n b.lan ");
+    cfg["remote"]["hosts"][0]["connect"] = json!(false);
+    cfg["remote"]["hosts"][1]["port"] = json!("2222");
+    cfg["remote"]["hosts"][1]["daemonless"] = json!(true);
+    let text = serde_json::to_string_pretty(&cfg).unwrap();
+    write_config(&home, &text);
+    assert_eq!(migrate_machines_in(&own), MachinesMoved::Done(3));
+    let at = home.join(relay_route_core::MACHINES_REL);
+    let raw = std::fs::read_to_string(&at).unwrap();
+    assert!(!raw.contains("resumeCommand") && !raw.contains("daemonless"), "{raw}");
+    let crate::control::machines::Loaded::Present(hosts) = crate::control::machines::read_at(&at) else {
+        panic!("没写成")
+    };
+    assert_eq!(hosts.iter().map(|h| h.name()).collect::<Vec<_>>(), ["gpu", "pi.lan", "evil"]);
+    assert_eq!(hosts[0].addresses, ["a.lan", "b.lan"]);
+    assert!(!hosts[0].connect && hosts[1].connect);
+    assert_eq!(hosts[1].port, 22, "类型不对的格当缺");
+    assert_eq!(std::fs::read_to_string(home.join(".cc-monitor").join(CONFIG_NAME)).unwrap(), text);
+    write_config(&home, "{\"remote\": {\"hosts\": []}}");
+    assert_eq!(migrate_machines_in(&own), MachinesMoved::AlreadyThere);
+    assert_eq!(std::fs::read_to_string(&at).unwrap(), raw);
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 新形状（没有 `remote`）⇒ 写出空表；`remote` 认不出 · 读不懂 · 不在 ⇒ 一个字节不写。
+#[test]
+fn a_new_or_unrecognized_machine_table() {
+    let home = scratch("machines-new");
+    let own = Own::issue_at(&home);
+    let at = home.join(relay_route_core::MACHINES_REL);
+    assert_eq!(migrate_machines_in(&own), MachinesMoved::NoConfig);
+    write_config(&home, "{ not json");
+    assert!(matches!(migrate_machines_in(&own), MachinesMoved::Unreadable(_)));
+    write_config(&home, "{\"remote\": {\"host\": \"old-single.lan\"}}");
+    assert!(matches!(migrate_machines_in(&own), MachinesMoved::Unreadable(_)));
+    assert!(!at.exists());
+    write_config(&home, "{\"theme\": {}}");
+    assert_eq!(migrate_machines_in(&own), MachinesMoved::Done(0));
+    assert_eq!(
+        crate::control::machines::read_at(&at),
+        crate::control::machines::Loaded::Present(Vec::new())
+    );
+    let _ = std::fs::remove_dir_all(&home);
+}
+
+/// `claudeDir` 并进本机那一份（只认绝对路径）；远端那几份不带。
+#[test]
+fn the_claude_dir_moves_into_the_local_prefs_only() {
+    let mut cfg = old_shape();
+    cfg["claudeDir"] = json!("/srv/claude");
+    let p = plan(&cfg);
+    assert_eq!(p.local.claude_dir.as_deref(), Some("/srv/claude"));
+    assert!(p.remote.values().all(|r| r.claude_dir.is_none()));
+    cfg["claudeDir"] = json!("relative/dir");
+    assert_eq!(plan(&cfg).local.claude_dir, None);
+}

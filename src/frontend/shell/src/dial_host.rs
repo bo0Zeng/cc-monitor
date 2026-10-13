@@ -481,45 +481,49 @@ pub(crate) fn pin_verdict(
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PinWrite {
     Written,
-    /// 盘上那一台已有指纹（别人刚设过）⇒ 不写。
+    /// 盘上那一台已有指纹（别人刚设过）⇒ 没写。
     AlreadySet,
-    NotFound,
-    /// 同一个 origin ＋ host 有不止一台 ⇒ 不知道写哪台，不写。
-    Ambiguous,
 }
 
-/// 往 `config.json` 的 `remote.hosts` 里那一台写指纹：经补丁口（`config::patch_config_at`）交一条**按键认数组元素**的
-/// `SetIn`（锁内现读现判：认 origin（`label` 非空取它、否则 `host`，同 `lib.rs::parse_host_obj`）与 `host`
-/// 都相等的恰好一台，只改它的 `hostKeyFingerprint`，已有值不动 —— CAS）。别的机器、别的格与设置页同时写的改动都不会被盖掉。
-pub(crate) fn pin_host_key_at(
-    path: &std::path::Path,
-    origin: &str,
-    host: &str,
-    fp: &str,
-) -> Result<PinWrite, String> {
-    use crate::config::{Applied, ConfigEdit, ConfigWriteError, ElemKey};
-    let key = |fields: &[&str], equals: &str| ElemKey {
-        fields: fields.iter().map(|f| f.to_string()).collect(),
-        equals: equals.to_string(),
-    };
-    let edit = ConfigEdit::SetIn {
-        path: vec!["remote".into(), "hosts".into()],
-        r#where: vec![key(&["label", "host"], origin), key(&["host"], host)],
-        field: "hostKeyFingerprint".into(),
-        value: serde_json::Value::String(fp.to_string()),
-        if_empty: true,
-    };
-    match crate::config::patch_config_at(path, &[edit]) {
-        Ok(applied) => Ok(match applied.first() {
-            // 记下是哪一天记的由补丁口一并盖上（`config::stamp_pinned_day`）。
-            Some(Applied::Done) => PinWrite::Written,
-            Some(Applied::Kept) => PinWrite::AlreadySet,
-            _ => PinWrite::NotFound,
-        }),
-        Err(ConfigWriteError::NoSuchElement { ambiguous: true }) => Ok(PinWrite::Ambiguous),
-        Err(ConfigWriteError::NoSuchElement { ambiguous: false }) => Ok(PinWrite::NotFound),
-        Err(e) => Err(e.to_string()),
-    }
+/// 往机器表里那一台写指纹的那一问（本机后端 `machines-set` 的入参）：一条**按键认那一台**的 `setin`（认 origin（`label` 非空取它、
+/// 否则 `host`）与 `host` 都相等的恰好一台，只改它的 `hostKeyFingerprint`，已有值不动 —— `ifEmpty`）。锁内现读现判在后端那一处，
+/// 别的机器、别的格与设置页同时写的改动都不会被盖掉；「记于哪一天」由那个写口一并盖上。**纯函数**。
+pub(crate) fn pin_request(origin: &str, host: &str, fp: &str) -> serde_json::Value {
+    serde_json::json!({ "edits": [{
+        "op": "setin",
+        "where": [
+            { "fields": ["label", "host"], "equals": origin },
+            { "fields": ["host"], "equals": host },
+        ],
+        "field": "hostKeyFingerprint",
+        "value": fp,
+        "ifEmpty": true,
+    }] })
+}
+
+/// `machines-set` 那一答 ⇒ 结局（`kept` ＞ 0 ＝ 那一格已有值）。认不出 / 认出多台 / 问不到 ⇒ `Err`（那一句）。**纯函数**。
+pub(crate) fn pin_outcome(reply: Result<serde_json::Value, String>) -> Result<PinWrite, String> {
+    let r = reply?;
+    Ok(if r.get("kept").and_then(serde_json::Value::as_u64).unwrap_or(0) > 0 {
+        PinWrite::AlreadySet
+    } else {
+        PinWrite::Written
+    })
+}
+
+/// 问本机后端写那一台的指纹。
+async fn pin_host_key(origin: &str, host: &str, fp: &str) -> Result<PinWrite, String> {
+    let deadline = crate::frame_query::Deadline::within(std::time::Duration::from_secs(10));
+    pin_outcome(
+        crate::frame_query::call(
+            &crate::origin::Origin::local(),
+            "machines-set",
+            pin_request(origin, host, fp),
+            None,
+            deadline,
+        )
+        .await,
+    )
 }
 
 // 「这一趟交给后端的指纹」（`cfg` 里有就用，没有 ⇒ 盘上同一台的）那条继承规则搬进后端 `ssh-dial/machine.rs::request`
@@ -567,14 +571,11 @@ fn notice(origin: String, kind: &'static str, message: String) {
 }
 
 /// 成功拨号之后：判 → 固化 / 说出来。目标那一台一格；经跳板时跳板那一台另一格（〔第二问〕它是另一台机器，
-/// 按它自己在 `remote.hosts` 里那一条固化 —— 只当跳板用、从不直连的那台也不再一直 TOFU）。两格同一个判定（[`pin_verdict`]）。
+/// 按它自己在机器表里那一条固化 —— 只当跳板用、从不直连的那台也不再一直 TOFU）。两格同一个判定（[`pin_verdict`]）。
 pub(crate) fn settle_host_key(cfg: &RemoteConfig, req: &serde_json::Value, ack: &Ack) {
     let probe = req.get("probe").and_then(serde_json::Value::as_bool) == Some(true);
-    let Some(path) = crate::config::resolve_config_path() else {
-        return;
-    };
     for (origin, host, strict, reported) in pin_targets(cfg, req, ack) {
-        settle_one(&path, &origin, &host, pin_verdict(probe, strict, reported));
+        settle_one(&origin, &host, pin_verdict(probe, strict, reported));
     }
 }
 
@@ -611,21 +612,26 @@ pub(crate) fn pin_targets<'a>(
     out
 }
 
-fn settle_one(path: &std::path::Path, origin: &str, host: &str, verdict: PinVerdict) {
+fn settle_one(origin: &str, host: &str, verdict: PinVerdict) {
     let origin = origin.to_string();
     match verdict {
-        PinVerdict::Pin(fp) => match pin_host_key_at(path, &origin, host, &fp) {
-            Ok(PinWrite::Written) => notice(
-                origin.clone(),
-                HOST_KEY_PINNED,
-                copy_text(
-                    "rsDialHost.hostKey.pinned",
-                    &[("origin", &origin), ("fingerprint", &fp)],
-                ),
-            ),
-            Ok(other) => tracing::info!("[{origin}] 没有自动固化 host key：{other:?}"),
-            Err(e) => tracing::warn!("[{origin}] 自动固化 host key 没写成：{e}"),
-        },
+        PinVerdict::Pin(fp) => {
+            let host = host.to_string();
+            tauri::async_runtime::spawn(async move {
+                match pin_host_key(&origin, &host, &fp).await {
+                    Ok(PinWrite::Written) => notice(
+                        origin.clone(),
+                        HOST_KEY_PINNED,
+                        copy_text(
+                            "rsDialHost.hostKey.pinned",
+                            &[("origin", &origin), ("fingerprint", &fp)],
+                        ),
+                    ),
+                    Ok(other) => tracing::info!("[{origin}] 没有自动固化 host key：{other:?}"),
+                    Err(e) => tracing::warn!("[{origin}] 自动固化 host key 没写成：{e}"),
+                }
+            });
+        }
         PinVerdict::Differs(all) => {
             let list = all
                 .iter()

@@ -15,4 +15,8 @@ models?: { [key in string]: string | null },
 /**
  * 整张上限表（整张换掉）。
  */
-contextLimits?: { [key in string]: number }, };
+contextLimits?: { [key in string]: number }, 
+/**
+ * 这台的 Claude 数据目录：空串 ⇒ 删掉（回到 `CLAUDE_CONFIG_DIR` → `~/.claude`）。改了要重启后端才生效。
+ */
+claudeDir?: string, };

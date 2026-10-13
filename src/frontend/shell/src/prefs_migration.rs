@@ -3,6 +3,8 @@
 //! 所以删旧键是这里的事：本机后端 `prefs-read` 说 `ok`（本机那一份写成了）以后，从 `config.json` 删掉搬走的那几个顶层键，
 //! 删前原文另存 `config.json.pre-7`（只存一次，不拿删过的盖掉原文）。本机那一份没写成 ⇒ 不删，数据不丢。
 //!
+//! 机器表（`remote`）搬进本机 `machines.json`：本机 `machines-read` 说 `ok` 才删（[`after_machines_read`]）。
+//!
 //! 搬走的那几个键：`resumeCommand`（通用页那一格）· `localResumeCommand`（本机那一格）· `resumeInTmux` · `contextLimits` ·
 //! `accounts`（只剩 `byMachine.<origin>.modelByAccount`，每号模型）。机器表每台的 `resumeCommand` 那一格界面不再读写，
 //! 那一台下次存的时候自然没了（机器表那一格不拒多出来的键）。
@@ -12,7 +14,7 @@ use crate::detail::Said;
 use serde_json::{json, Value};
 use std::path::Path;
 
-/// 搬走的那几个顶层键（`src/frontend/ui/config.ts` 把它们登记给本文件）。
+/// 搬进本机 `prefs.json` 的那几个顶层键（`src/frontend/ui/config.ts` 把它们登记给本文件）：本机 `prefs-read` 说 `ok` 才删。
 pub(crate) const MOVED_KEYS: [&str; 5] = [
     "resumeCommand",
     "localResumeCommand",
@@ -20,6 +22,9 @@ pub(crate) const MOVED_KEYS: [&str; 5] = [
     "contextLimits",
     "accounts",
 ];
+
+/// 搬进本机 `machines.json` 的那一个（机器表）：本机 `machines-read` 说 `ok` 才删（[`after_machines_read`]）。
+pub(crate) const MOVED_MACHINES: [&str; 1] = ["remote"];
 
 /// 原文那一份的名字（与 `config.json` 同一个目录）。
 pub(crate) const BACKUP_NAME: &str = "config.json.pre-7";
@@ -33,13 +38,13 @@ pub(crate) enum Finished {
     Removed(usize),
 }
 
-/// 本机后端那一答说本机那一份写成了没有（只认 `ok`）。
+/// 本机后端那一答说本机那一份写成了没有（只认 `ok`；`prefs-read` · `machines-read` 同一形）。
 pub(crate) fn local_prefs_ready(reply: &Value) -> bool {
     reply.get("state").and_then(Value::as_str) == Some("ok")
 }
 
-/// 删 `path` 那份 `config.json` 里搬走的那几个键（路径是参数）。读不懂 ⇒ 一个字节不写、照实报。
-pub(crate) fn finish_at(path: &Path) -> Result<Finished, Said> {
+/// 删 `path` 那份 `config.json` 里搬走的那几个键（路径 · 键是参数）。读不懂 ⇒ 一个字节不写、照实报。
+pub(crate) fn finish_at(path: &Path, keys: &[&str]) -> Result<Finished, Said> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Finished::NothingLeft),
@@ -65,8 +70,9 @@ pub(crate) fn finish_at(path: &Path) -> Result<Finished, Said> {
             )))
         }
     };
-    let present: Vec<&str> = MOVED_KEYS
-        .into_iter()
+    let present: Vec<&str> = keys
+        .iter()
+        .copied()
         .filter(|k| root.contains_key(*k))
         .collect();
     if present.is_empty() {
@@ -125,18 +131,30 @@ pub(crate) fn after_local_ready() {
                 return;
             }
         }
-        let Some(path) = crate::config::resolve_config_path() else {
-            return;
-        };
-        match tauri::async_runtime::spawn_blocking(move || finish_at(&path)).await {
-            Ok(Ok(Finished::Removed(n))) => tracing::info!(
-                "config.json 里搬到 prefs.json 的 {n} 个键删了（原文留 {BACKUP_NAME}）"
-            ),
-            Ok(Ok(Finished::NothingLeft)) => {}
-            Ok(Err(e)) => tracing::warn!("config.json 里搬走的那几个键没删成：{}", e.said),
-            Err(e) => tracing::warn!("config.json 里搬走的那几个键没删成：{e}"),
-        }
+        finish_now(&MOVED_KEYS).await;
     });
+}
+
+/// 本壳问到本机 `machines-read` 那一答之后调（[`crate::machine_table::refresh`]）：说 `ok` ⇒ 删 `config.json` 的 `remote`。
+pub(crate) fn after_machines_read(reply: &Value) {
+    if !local_prefs_ready(reply) {
+        return;
+    }
+    tauri::async_runtime::spawn(finish_now(&MOVED_MACHINES));
+}
+
+async fn finish_now(keys: &'static [&'static str]) {
+    let Some(path) = crate::config::resolve_config_path() else {
+        return;
+    };
+    match tauri::async_runtime::spawn_blocking(move || finish_at(&path, keys)).await {
+        Ok(Ok(Finished::Removed(n))) => tracing::info!(
+            "config.json 里搬到本机后端的 {n} 个键删了（原文留 {BACKUP_NAME}）"
+        ),
+        Ok(Ok(Finished::NothingLeft)) => {}
+        Ok(Err(e)) => tracing::warn!("config.json 里搬走的那几个键没删成：{}", e.said),
+        Err(e) => tracing::warn!("config.json 里搬走的那几个键没删成：{e}"),
+    }
 }
 
 #[cfg(test)]

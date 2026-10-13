@@ -113,6 +113,10 @@ pub const PREFS_REL: &str = ".cc-monitor/prefs.json";
 /// （只有本机常驻后端写，`control/prefs_migration.rs`；下一版删迁移时一起删）。
 pub const PREFS_HANDOFF_REL: &str = ".cc-monitor/prefs-handoff.json";
 
+/// 〔同上〕这一端连各台用的机器表：每台的名字 · 地址 · 端口 · 用户 · 钥匙路径 · 指纹 · 备用地址 · 跳板 · 连不连
+/// （只有本机后端写，`control/machines.rs`；桌面的 monitor 只经 `machines-read` 读）。
+pub const MACHINES_REL: &str = ".cc-monitor/machines.json";
+
 /// 〔同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
 pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
 
@@ -420,6 +424,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("policy", BACKEND_POLICY_REL, false, true),
     ("prefs", PREFS_REL, false, true),
     ("prefsHandoff", PREFS_HANDOFF_REL, false, true),
+    ("machines", MACHINES_REL, false, true),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
     ("profilesWritten", PROFILES_WRITTEN_REL, false, false),

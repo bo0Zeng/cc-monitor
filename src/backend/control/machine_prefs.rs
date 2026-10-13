@@ -40,6 +40,10 @@ pub(crate) struct Prefs {
     /// 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
     #[cfg_attr(test, ts(as = "BTreeMap<String, u32>"))]
     pub(crate) context_limits: BTreeMap<String, u64>,
+    /// 这台的 Claude 数据目录（绝对路径；缺 ＝ 照 `CLAUDE_CONFIG_DIR` → `~/.claude`）。后端起来时读一次，改了要重启后端才生效。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) claude_dir: Option<String>,
 }
 
 /// 盘上整份（多一格版本）。
@@ -166,7 +170,40 @@ fn check(p: &Prefs) -> Result<(), String> {
             return Err(format!("`contextLimits.{k}` must be a positive number"));
         }
     }
+    if let Some(d) = &p.claude_dir {
+        if !claude_dir_ok(d) {
+            return Err(format!("`claudeDir` is not an absolute path: {d:?}"));
+        }
+    }
     Ok(())
+}
+
+/// Claude 数据目录那一格的值域：非空、绝对路径。
+pub(crate) fn claude_dir_ok(d: &str) -> bool {
+    !d.trim().is_empty() && Path::new(d.trim()).is_absolute()
+}
+
+/// 这台设了的 Claude 数据目录（读不懂 / 没设 ⇒ `None`）。
+pub(crate) fn claude_dir_in(l: &Loaded) -> Option<PathBuf> {
+    match l {
+        Loaded::Present(p) => p.claude_dir.as_deref().map(|d| PathBuf::from(d.trim())),
+        Loaded::Absent | Loaded::Unreadable(_) => None,
+    }
+}
+
+/// 流模式起来时调一次（`main.rs`，在解析 agent 家目录、起任何线程之前）：这台设了 Claude 数据目录 ⇒ 交成本进程的
+/// `CLAUDE_CONFIG_DIR`（解析只在 `agents::home_at` 一处，起的会话照旧继承）；没设 ⇒ 不动。改了要重启后端才生效。
+/// `own` 只用来认出换形之前那一次（[`super::prefs_migration::claude_dir_before_move`]，下一版删）。
+pub fn apply_claude_dir(own: &Own) {
+    let l = read_now();
+    let dir = match l {
+        Loaded::Absent => super::prefs_migration::claude_dir_before_move(own),
+        _ => claude_dir_in(&l),
+    };
+    if let Some(d) = dir {
+        tracing::info!("这台设了 Claude 数据目录：{}", d.display());
+        std::env::set_var(crate::agents::claudecode::paths::CONFIG_DIR_ENV, d);
+    }
 }
 
 /// 整份写（经 `Own` 原子写、拿 `~/.cc-monitor` 那把目录锁）。
@@ -259,6 +296,10 @@ pub(crate) struct PrefsSet {
     #[serde(default)]
     #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, u32>>"))]
     pub(crate) context_limits: Option<BTreeMap<String, u64>>,
+    /// 这台的 Claude 数据目录：空串 ⇒ 删掉（回到 `CLAUDE_CONFIG_DIR` → `~/.claude`）。改了要重启后端才生效。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) claude_dir: Option<String>,
 }
 
 /// 补丁打到 `p` 上（纯）。
@@ -280,6 +321,9 @@ pub(crate) fn patched(mut p: Prefs, s: &PrefsSet) -> Prefs {
     }
     if let Some(l) = &s.context_limits {
         p.context_limits = l.clone();
+    }
+    if let Some(d) = &s.claude_dir {
+        p.claude_dir = Some(d.trim().to_string()).filter(|d| !d.is_empty());
     }
     p
 }

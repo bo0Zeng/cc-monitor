@@ -11,11 +11,16 @@
 //! 3. **远端那几份**：monitor 每台远端流握手时交 `remote-reach`，常驻那一位顺手 [`hand_over`]：那台 `prefs-read` 说 `absent`
 //!    ⇒ 交一次 `prefs-set`（那一台整份），交成了删掉那一条；那台已经有（读得懂 · 读不懂都算）⇒ 不盖、也删掉；问不到 ⇒ 留着，下次连上再交，不出声。
 //!
+//! 4. **机器表**（`config.json` 的 `remote` ⇒ 本机 `machines.json`，[`super::machines`]）：同一位、同一把锁里只读，`machines.json` 不在才换；
+//!    每台残留的 `resumeCommand` 等旧格不带过去；`remote` 在而认不出（没有 `hosts` 数组）⇒ 不写、留原样。monitor 读到本机 `machines-read`
+//!    说 `ok` 才删 `remote`。`claudeDir`（这台的 Claude 数据目录）并进本机那一份 `prefs.json`。
+//!
 //! 旧形状（今天各写者的那几格）：通用页 `resumeCommand` · 本机 `localResumeCommand` · 机器表每台 `remote.hosts[].resumeCommand`
 //! （空 ⇒ 通用页那一格）· `resumeInTmux`（各台同一格）· `contextLimits`（各台同一张）· `accounts.byMachine.<origin>.modelByAccount`
 //! （本机是 `<local>`）。启动命令只记给默认那一家（今天界面就只对它用这一格）。坏值那一条丢掉、不拖垮整份（写口那几条规矩同 `prefs-set`）。
 
 use super::machine_prefs::{self, write as write_prefs, Prefs, PREFS_ROWS_MAX};
+use super::machines;
 use crate::dial::remote_ask::Said;
 use crate::platform::Own;
 use serde_json::{json, Value};
@@ -89,12 +94,15 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
             resume_in_tmux: tmux,
             models: models(at),
             context_limits: limits.clone(),
+            claude_dir: None,
         }
     };
-    let local = one(
+    let mut local = one(
         &cmd_wire::Machine(LOCAL_ORIGIN.to_string()),
         text(cfg, "localResumeCommand"),
     );
+    // Claude 数据目录只说本机（设置页那一格从来只管这一台）。
+    local.claude_dir = Some(text(cfg, "claudeDir").to_string()).filter(|d| machine_prefs::claude_dir_ok(d));
     let mut remote = BTreeMap::new();
     let hosts = cfg.pointer("/remote/hosts").and_then(Value::as_array);
     for h in hosts.into_iter().flatten() {
@@ -223,6 +231,106 @@ pub(crate) fn migrate_in(own: &Own) -> Migrated {
     }
 }
 
+/// 机器表那一次的结局（判据按它说；生产只记一行日志）。
+#[derive(Debug, PartialEq)]
+pub(crate) enum MachinesMoved {
+    /// `machines.json` 已经在：什么都不做。
+    AlreadyThere,
+    /// 没有 `config.json`：什么都不做。
+    NoConfig,
+    /// `config.json` 读不懂，或 `remote` 在而认不出（没有 `hosts` 数组）：一个字节不写（那一句）。
+    Unreadable(String),
+    /// 写成了（几台）。
+    Done(usize),
+    /// 写没成（那一句）：下次起来再试。
+    WriteFailed(String),
+}
+
+/// 旧形状的一台 ⇒ 新表那一形（宽读：类型不对的格当缺，`addresses` 认数组或多行文本；`resumeCommand` 那几格不带过去）。**纯函数**。
+pub(crate) fn host_of(v: &Value) -> Option<machines::Host> {
+    let o = v.as_object()?;
+    let s = |k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let addresses = match o.get("addresses") {
+        Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect(),
+        Some(Value::String(t)) => t.lines().map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
+    Some(machines::Host {
+        label: s("label"),
+        host: s("host"),
+        port: o.get("port").and_then(Value::as_u64).unwrap_or(22),
+        user: s("user"),
+        key_path: s("keyPath"),
+        host_key_fingerprint: s("hostKeyFingerprint"),
+        host_key_pinned_at: s("hostKeyPinnedAt"),
+        addresses,
+        jump: s("jump"),
+        connect: o.get("connect").and_then(Value::as_bool) != Some(false),
+    })
+}
+
+/// 旧 `config.json` 的 `remote` ⇒ 新表（没有 `remote` ⇒ 空表；`remote` 在而没有 `hosts` 数组 ⇒ 认不出）。**纯函数**。
+pub(crate) fn machines_of(cfg: &Value) -> Result<Vec<machines::Host>, String> {
+    let Some(remote) = cfg.get("remote").filter(|r| !r.is_null()) else {
+        return Ok(Vec::new());
+    };
+    let Some(hosts) = remote.get("hosts").and_then(Value::as_array) else {
+        return Err("`remote` has no `hosts` array".into());
+    };
+    Ok(hosts.iter().filter_map(host_of).take(machines::HOSTS_MAX).collect())
+}
+
+/// 机器表那一次的本体：`machines.json` 不在 ⇒ 锁里只读 `config.json`，`remote` 写成 `machines.json`（`config.json` 不动）。
+pub(crate) fn migrate_machines_in(own: &Own) -> MachinesMoved {
+    use crate::common::own_state::{read_json, Read};
+    let Some(at) = own.at_home(relay_route_core::MACHINES_REL).ok() else {
+        return MachinesMoved::NoConfig;
+    };
+    if machines::read_at(at.as_path()) != machines::Loaded::Absent {
+        return MachinesMoved::AlreadyThere;
+    }
+    let Some(dir) = own.root().filter(|d| d.as_path().is_dir()) else {
+        return MachinesMoved::NoConfig;
+    };
+    let Ok(cfg_at) = dir.join(CONFIG_NAME) else {
+        return MachinesMoved::NoConfig;
+    };
+    let read = {
+        let _held = match own.lock(&dir) {
+            Ok(h) => h,
+            Err(e) => return MachinesMoved::WriteFailed(crate::common::said::Said::from(e).said),
+        };
+        read_json::<Value>(cfg_at.as_path(), MAX_BYTES)
+    };
+    let cfg = match read {
+        Read::Absent => return MachinesMoved::NoConfig,
+        Read::Unreadable(why) => return MachinesMoved::Unreadable(why.said),
+        Read::Present(v) if v.is_object() => v,
+        Read::Present(_) => return MachinesMoved::Unreadable(format!("{CONFIG_NAME} is not an object")),
+    };
+    let hosts = match machines_of(&cfg) {
+        Ok(h) => h,
+        Err(why) => return MachinesMoved::Unreadable(why),
+    };
+    match machines::write(own, &hosts) {
+        Ok(()) => MachinesMoved::Done(hosts.len()),
+        Err(e) => MachinesMoved::WriteFailed(e.said),
+    }
+}
+
+/// 换形之前那一次（`prefs.json` 还不在）：Claude 数据目录还在 `config.json` 的 `claudeDir` 里 ⇒ 照它（只读）。
+/// 起来时 [`super::machine_prefs::apply_claude_dir`] 在换形之前就要用到它，下一版随本文件删。
+pub(crate) fn claude_dir_before_move(own: &Own) -> Option<std::path::PathBuf> {
+    use crate::common::own_state::{read_json, Read};
+    let at = own.root()?.join(CONFIG_NAME).ok()?;
+    match read_json::<Value>(at.as_path(), MAX_BYTES) {
+        Read::Present(v) => Some(text(&v, "claudeDir").to_string())
+            .filter(|d| machine_prefs::claude_dir_ok(d))
+            .map(std::path::PathBuf::from),
+        _ => None,
+    }
+}
+
 /// 常驻那一位的写句柄（[`migrate_here`] 填）：填了 ＝ 这个进程是常驻那一位，`remote-reach` 之后才交。
 static RESIDENT_OWN: OnceLock<Own> = OnceLock::new();
 
@@ -239,6 +347,12 @@ pub fn migrate_here(own: &Own) {
         }
         Migrated::Unreadable(why) => tracing::warn!("config.json 读不懂，这台的偏好没搬：{why}"),
         Migrated::WriteFailed(why) => tracing::warn!("这台的偏好没搬成，下次起来再试：{why}"),
+    }
+    match migrate_machines_in(own) {
+        MachinesMoved::AlreadyThere | MachinesMoved::NoConfig => {}
+        MachinesMoved::Done(n) => tracing::info!("机器表从 config.json 搬进了 machines.json（{n} 台）"),
+        MachinesMoved::Unreadable(why) => tracing::warn!("config.json 的机器表认不出，没搬：{why}"),
+        MachinesMoved::WriteFailed(why) => tracing::warn!("机器表没搬成，下次起来再试：{why}"),
     }
 }
 

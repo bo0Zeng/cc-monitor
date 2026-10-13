@@ -1,9 +1,12 @@
 /**
- * 前端测试用的**假 config.json**：`load_config` / `patch_config` 两条命令的内存替身。
+ * 前端测试用的**假 config.json**：`load_config` / `patch_config` 两条命令的内存替身（`set` / `remove`）。
  *
  * 补丁语义与 Rust 写口（`src/frontend/shell/src/config.rs::patch_config_at`）同一份金样
  * `tests/__fixtures__/config-patch.golden.json` 对拍（`tests/frontend/ui/config-patch-fake.vitest.ts` 跑这边，
  * `tests/frontend/shell/config_tests.rs::the_golden_cases_hold` 跑那边）⇒ 用它的测试看到的「盘上终态」就是 Rust 会落的那份。
+ *
+ * 机器表住本机后端（`machines.json`）：[`mockedChanCaller`] 是 `machines-read` / `-try` / `-set` 的替身，表摆在同一块假盘的
+ * `remote.hosts` 里（旧测试照旧用 `loadConfig` 摆机器）；按键认那一台的语义同后端 `control/machines.rs`（判据 `machines_tests.rs`）。
  */
 import { vi } from "vitest";
 import { copyText } from "../../../src/frontend/ui/copy-table";
@@ -177,7 +180,13 @@ export async function mockedConfigModule(
   importOriginal: <T>() => Promise<T>,
 ): Promise<Record<string, unknown>> {
   const actual = await importOriginal<Record<string, unknown>>();
-  const patchConfig = async (edits: readonly Edit[]): Promise<{ pinned: { origin: string; day: string }[] }> => {
+  const patchConfig = fakePatch;
+  return { ...actual, loadConfig: fakeCfg.load, patchConfig };
+}
+
+/** 假盘的写口（`patchConfig` 的替身本体；机器表那一条也落在这块盘上）。 */
+async function fakePatch(edits: readonly Edit[]): Promise<{ pinned: { origin: string; day: string }[] }> {
+  {
     fakeCfg.patches([...edits]);
     const base = ((await fakeCfg.load()) ?? {}) as Record<string, unknown>;
     const [all, reply] = withPinnedDays(edits);
@@ -187,16 +196,61 @@ export async function mockedConfigModule(
     fakeCfg.load.mockResolvedValue(JSON.parse(JSON.stringify(doc)));
     fakeCfg.saved(doc);
     return reply;
+  }
+}
+
+/** 后端 `MachineEdit` 那一形（没有 `path`）⇒ 替身的补丁（落在假盘的 `remote.hosts`）。 */
+type MachineEditLike =
+  | { op: "setin"; where: { fields: string[]; equals: string }[]; field: string; value: unknown; ifEmpty?: boolean }
+  | { op: "insertin"; where: { fields: string[]; equals: string }[]; value: unknown }
+  | { op: "removein"; where: { fields: string[]; equals: string }[] };
+
+function onTable(edits: readonly MachineEditLike[]): Edit[] {
+  const path = ["remote", "hosts"];
+  return edits.map((e) => (e.op === "setin" ? { ...e, path, ifEmpty: e.ifEmpty ?? false } : { ...e, path })) as Edit[];
+}
+
+/** 本机后端机器表那三条命令的替身本体：回那一答（拒 ⇒ 抛）；不是这三条 ⇒ `undefined`。 */
+export async function fakeMachinesCall(cmd: unknown, req: unknown): Promise<unknown> {
+  const edits = ((req as { edits?: MachineEditLike[] } | null)?.edits ?? []) as MachineEditLike[];
+  const read = async () => {
+    const cfg = ((await fakeCfg.load()) ?? {}) as { remote?: { hosts?: unknown } };
+    const hosts = cfg.remote?.hosts;
+    if (cfg.remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [] };
+    return Array.isArray(hosts)
+      ? { state: "ok", reason: null, detail: null, path: null, hosts }
+      : { state: "unreadable", reason: "读不懂", detail: null, path: null, hosts: [] };
   };
-  return { ...actual, loadConfig: fakeCfg.load, patchConfig };
+  if (cmd === "machines-read") return read();
+  if (cmd === "machines-try") return { fault: await fakeMachineTableTry(onTable(edits)) };
+  if (cmd === "machines-set") {
+    const all = onTable(edits);
+    const identity = edits.some((e) => e.op === "insertin" || (e.op === "setin" && ["label", "host", "port", "user"].includes(e.field)));
+    const fault = identity ? await fakeMachineTableTry(all) : null;
+    if (fault) throw new Error(fault.said);
+    const r = await fakePatch(all);
+    return { machines: await read(), pinned: r.pinned, kept: 0 };
+  }
+  return undefined;
+}
+
+/** 「`vi.mock(".../ipc/chan-caller")`」用：本机后端机器表那三条命令走假盘，别的命令照真的。 */
+export async function mockedChanCaller(
+  importOriginal: <T>() => Promise<T>,
+): Promise<Record<string, unknown>> {
+  const actual = await importOriginal<Record<string, unknown>>();
+  const real = actual.callTyped as (...a: unknown[]) => Promise<unknown>;
+  const callTyped = async (origin: unknown, cmd: unknown, req: unknown, ...rest: unknown[]): Promise<unknown> =>
+    String(cmd).startsWith("machines-") ? fakeMachinesCall(cmd, req) : real(origin, cmd, req, ...rest);
+  return { ...actual, callTyped };
 }
 
 /**
- * 机器表那一道的替身（壳 `config.rs::check_machine_table` 的合成版，给「界面按回来的码说那一句」那一族用）：
+ * 机器表那一道的替身（后端 `control/machines.rs::check_table` 的合成版，给「界面按回来的码说那一句」那一族用）：
  * 把补丁应用到 `fakeCfg.load()` 那一份上，按名字不重 · 端口 1–65535 · 地址 / 用户非空判第一处。
- * 规则本身的判据在 Rust 那一侧（`tests/frontend/shell/config_tests.rs`）。
+ * 规则本身的判据在后端那一侧（`tests/backend/control/machines_tests.rs`）。
  */
-/** 壳那一侧写好的那一句（`config.rs::MachineFault::new`，键同；这里只为替身回包带上那一格）。 */
+/** 后端写好的那一句（`control/machines.rs::MachineFault::new`，键同；这里只为替身回包带上那一格）。 */
 const faultOf = (code: string, name: string): { code: string; name: string; said: string } => ({
   code,
   name,

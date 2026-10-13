@@ -187,6 +187,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("backend.json", h.join(rr::BACKEND_POLICY_REL), "file"),
         row("prefs.json", h.join(rr::PREFS_REL), "file"),
         row("prefs-handoff.json", h.join(rr::PREFS_HANDOFF_REL), "file"),
+        row("machines.json", h.join(rr::MACHINES_REL), "file"),
         row("profiles.toml", h.join(rr::PROFILES_REL), "file"),
         row(
             "profiles-migrated.json",

@@ -847,6 +847,7 @@ fn attach_stream(sock: own_chan::BlockingStream, hello_line: &str) -> Result<(),
         crate::inbound_client::LOCAL_ORIGIN
     );
     crate::prefs_migration::after_local_ready();
+    crate::machine_table::refresh();
     tauri::async_runtime::spawn(async move {
         use crate::stream_source::{CappedLine, BACKEND_FRAME_LINE_CAP};
         let mut reader = tokio::io::BufReader::new(rd);

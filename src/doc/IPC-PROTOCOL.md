@@ -132,12 +132,13 @@
 | `needs` | 是 | 带 | — | — | `sessions-needs` |
 | `login` | 否 | 带 | — | 带（≤ 8192 B） | `manual-list` |
 | `manual` | 是 | — | — | — | `manual-list` |
+| `machines` | 是 | — | — | — | `machines-read` |
 <!-- topic-table:end -->
 
 `key`：`rotation` · `tasks` · `needs` 是会话 id，`plan` 是工作区根。`needs`：那个会话挂着的待答请求变了（答题 hook 挂上 · 撤掉 · 有人答掉），重读它的 `needs`（`sessions-needs` 或那个会话的 `history-facts`）。`rev`：`plan` 是新的输出摘要（同 `plan-read` 的 `rev`），与手上那一份相同 ⇒ 不用问。
 `body`：`plan` 是 `{needs}`（这个工作区此刻要你看的数：没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）；其余带 `body` 的就是「重问」那条命令的应答（`rotation` 问 `{sids: [key]}`、`tasks` 问 `{sid: key}`、另两样不带参数），由同一个处理器在发帧时现算，超了上限或答不成就不带。
 账号清单不带（`accounts-list` 要客户端说是哪一家）；配置文件不带（整份大）。
-`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了），重问 `manual-list`。
+`login`：一份登录作业自己收了（本机浏览器回调登完 · 登录子命令先退了），`key` 是作业号，`body` 是 `{state: "done"}` 或 `{state: "failed", said, detail}`；只推给发起它（`login-start`）的那条连接。`manual`：会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了），重问 `manual-list`。`machines`：这一端的机器表被改写（`machines-set` · 换形那一次），重问 `machines-read`；monitor 照它对齐远端流。
 可丢的走 tap 那条（丢了下一次变化或重问就补上），不可丢的走 watcher 的出方向（丢了进 `overflow.lost`）；`login` 走发起它的那条连接的应答通道（不丢）。带了 `body` 不改可丢性。
 
 历史不重放 ⇒ 客户端先取快照（尾部优先：`history-tail`）。宣告不等记录：`session_added` 一认出来就发，记录在后台预读，读完发 `session_primed {sid, path?, lines?}` —— `session_primed.lines` 是那一刻那份记录的完整行数，这条会话的 `line` 从这一行起来（之前一帧都不发，`turn_end` · `session_runs` · `session_branch` 同），客户端在这一帧排快照、拿它核快照拉全了没有。半路接上来的连接先收一份此刻的样子：每个活会话一帧 `session_added`（现值）、读完了的再一帧 `session_primed`（行数是此刻已计完的）、运行表 · 主线外清单 · 可重连的 `session_state` · 清单已报完就一帧 `sessions_replayed`。
@@ -252,7 +253,8 @@
 | `history-metadata.json` | 本机常驻后端（`history-annotate` / `history-forget`；读不懂就拒写、只改那一条） | 本机常驻后端（`history-list` 并进成品） | `{<sid>: {starred, custom_title, hidden}}` |
 | `logs/monitor/` · `logs/backend/` | monitor · 常驻后端 | 人 · `backend-log` | 诊断日志（按天滚 · 有上限） |
 | `backend.json` | `exit-policy-set` | `exit-policy-read` · monitor 退出时 | 「退出行为」：monitor 退出时结束不结束本机常驻后端 |
-| `prefs.json` | `prefs-set` | `prefs-read` · 起会话那几条 · `history-facts` | 这台的偏好：每一家的启动命令 · 恢复进不进 tmux · 每个号的模型 · 上下文上限表 |
+| `prefs.json` | `prefs-set` | `prefs-read` · 起会话那几条 · `history-facts` | 这台的偏好：每一家的启动命令 · 恢复进不进 tmux · 每个号的模型 · 上下文上限表 · Claude 数据目录 |
+| `machines.json` | `machines-set`（按键认那一台；指纹记于哪天由它盖） | `machines-read` · monitor（照它起停远端流） | 这一端连各台用的机器表：名字 · 地址 · 端口 · 用户 · 钥匙路径 · 指纹 · 备用地址 · 跳板 · 连不连 |
 | `prefs-handoff.json` | 本机常驻后端起来时那一次换形 · `remote-reach` 之后交出去那一下 | `remote-reach`（那台连上时） | 升级时从 `config.json` 搬来的远端每台的偏好，那台还没有偏好时交过去（`prefs-set`），交完删那一条；下一版删 |
 
 设置窗机器列表那一格的成品（`state` · `reason` · `fixes` …）判定只在 `machine_state.rs`，形状以金样 `tests/__fixtures__/machine-state.golden.json` 为准。

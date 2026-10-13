@@ -115,6 +115,7 @@ fn own_what(id: &str) -> String {
         "listenDir" => copy_text("rsDataPaths.backend.listenDir", &[]),
         "policy" => copy_text("rsDataPaths.backend.policy", &[]),
         "prefs" => copy_text("rsDataPaths.backend.prefs", &[]),
+        "machines" => copy_text("rsDataPaths.backend.machines", &[]),
         "prefsHandoff" => copy_text("rsDataPaths.backend.prefsHandoff", &[]),
         "profiles" => copy_text("rsDataPaths.backend.profiles", &[]),
         "profilesMigrated" => copy_text("rsDataPaths.backend.profilesMigrated", &[]),

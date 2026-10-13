@@ -53,9 +53,14 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
           const u = new TextEncoder().encode(JSON.stringify({ name: minted }));
           return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
         }
-        // 机器表试算口：照假盘那一份现算（规则的合成版在 `config-patch-fake.ts`）。
-        if (name === "machine_table_try") {
-          return fakeMachineTableTry((args[0] as { edits: never[] }).edits);
+        // 机器表那三条（本机后端）：照假盘那一份现算（替身在 `config-patch-fake.ts`）。
+        if (op.startsWith("machines-")) {
+          const a0 = args[0] as { payload?: number[] };
+          const req: unknown = a0.payload ? JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) : null;
+          return fakeMachinesCall(op, req).then((r) => {
+            const u = new TextEncoder().encode(JSON.stringify(r));
+            return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
+          });
         }
         const reply = ipcReplies.get(name);
         // 回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
@@ -88,7 +93,7 @@ vi.mock("../../../../src/frontend/ui/ssh-config-reads", () => {
   };
 });
 import { loadConfig } from "../../../../src/frontend/ui/config";
-import { fakeCfg, fakeMachineTableTry } from "../config-patch-fake";
+import { fakeCfg, fakeMachinesCall } from "../config-patch-fake";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { dispatcher } from "../../../../src/frontend/ui/keybindings/registry";
 const saveConfig = fakeCfg.saved;
@@ -106,7 +111,6 @@ import {
   sftpEligibleHosts,
 } from "../../../../src/frontend/ui/remote-config";
 import type { RemoteHostConfig, RemoteConfig } from "../../../../src/frontend/ui/remote-config";
-import * as remoteConfigModule from "../../../../src/frontend/ui/remote-config";
 import { __setHostFactsForTests } from "../../../../src/frontend/ui/settings/host-os";
 // `KR59D3`：那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
 // 判据与 DOM 上那个 `data-code` 断的是同一个串，不在这里另抄一份字面量。
@@ -987,7 +991,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   describe("连接这台（每台一个开关，当场生效）", () => {
     const tick = () => new Promise((r) => setTimeout(r, 0));
-    it("★ 关掉 ⇒ 盘上那台记 connect:false、当场对齐那几条流；那一行空心点 ＋「已停用」＋［连接］；点［连接］⇒ 记回 true、再对齐", async () => {
+    it("★ 关掉 ⇒ 本机后端那张表那台记 connect:false（对齐那几条流是壳照 `changed {machines}` 做的，界面不另叫）；那一行空心点 ＋「已停用」＋［连接］；点［连接］⇒ 记回 true", async () => {
       ipcCalls.length = 0;
       const p = fakePages();
       const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
@@ -997,14 +1001,14 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       sw.click();
       for (let i = 0; i < 6; i++) await tick();
       expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", false], ["b", true]]);
-      expect(ipcCalls.filter((c) => c === "remote_reconcile"), "改了没当场对齐").toHaveLength(1);
+      expect(chanOps.filter((o) => o === "machines-set"), "改了没交给本机后端").toHaveLength(1);
       const row = sec.element.querySelector<HTMLElement>('.remote-machine-row[data-page-id="machine:a"]')!;
       expect(row.querySelector(".remote-machine-word")!.textContent).toBe(copyText("machinePage.state.disabled"));
       expect(row.querySelector<HTMLElement>("[data-state]")!.dataset.state).toBe("exited");
       [...row.querySelectorAll<HTMLButtonElement>(".machine-problem button")].find((b) => b.textContent === copyText("machinePage.problem.connect"))!.click();
       for (let i = 0; i < 6; i++) await tick();
       expect(writtenHosts().map((h) => [h.label, h.connect])).toEqual([["a", true], ["b", true]]);
-      expect(ipcCalls.filter((c) => c === "remote_reconcile")).toHaveLength(2);
+      expect(chanOps.filter((o) => o === "machines-set")).toHaveLength(2);
       expect(row.querySelector(".remote-machine-word")!.textContent).toBe("");
     });
   });
@@ -1106,7 +1110,7 @@ describe("remote 段认不出 ⇒ 机器列表顶上说一句、一台都不显�
     await new Promise((r) => setTimeout(r, 0));
     let note = sec.element.querySelector<HTMLElement>(".remote-config-unrecognized");
     expect(note, "找不到那一句的元素 —— 下面全是空真").toBeTruthy();
-    expect(note!.textContent).toBe(remoteConfigModule.REMOTE_CONFIG_UNRECOGNIZED);
+    expect(note!.textContent).toBe("读不懂"); // 本机后端写好的那一句（替身 `fakeMachinesCall` 回的）
     expect(note!.classList.contains("settings-banner-show"), "那一句没显示出来").toBe(true);
     expect(
       sec.element.querySelectorAll(".remote-machine:not(.remote-machine-local)").length,
