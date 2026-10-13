@@ -118,7 +118,6 @@ src/frontend/shell/src/frame_tally.rs:60	[{}] 一行含非 UTF-8 字节（这条
 src/frontend/shell/src/frame_tally.rs:72	[{}] 这条流结束：跳过了 {} 帧认不出的，{} 行含非 UTF-8 字节	保留	[不对外] 同上（流结束那一行总账）
 src/frontend/shell/src/local_backend_host.rs:986	本机常驻后端（脱离载体）	保留	[不对外] FrameTally 的流名，只出现在丢帧账那几行日志里
 src/frontend/filewin/src/fonts.rs:318	双另右己底标栏自页	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（标签页 ＋ 双栏那几个字；−1 字 `恰`）〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
-src/backend/control/files_write.rs:552	`expect` 只收 `{{"sha256": "<{SHA256_HEX_LEN} 位小写十六进制>"}}`（给的是 {v}）	保留	[不对外] files-write-text / files-commit-text 的 bad_args：调用方（文件窗口）交错了 CAS 摘要的形状，是两段程序之间的契约错，用户按任何键都走不到；说的是线上字段本身
 src/frontend/filewin/src/fonts.rs:324	仍然盘	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（＋4 字，编辑器存盘 CAS 那几句）
 src/backend/main.rs:245	常驻后端收到停机信号	保留	[不对外] exit_after_drain 的 why，只进后端 tracing 日志
 src/backend/main.rs:361	hello 写不出去	保留	[不对外] 同上，只进后端日志

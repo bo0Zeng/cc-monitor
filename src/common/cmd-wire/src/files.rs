@@ -841,21 +841,6 @@ pub struct IndexStatusReq {}
 
 // ── 写的那几条（写面 · 上传提交 · 解压）─────────────
 
-/// 一份写面的线上类型：入参恒拒未知键（同读的那几条）。
-macro_rules! wire {
-    ($(#[$m:meta])* pub struct $n:ident { $($body:tt)* }) => {
-        $(#[$m])*
-        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-        #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
-        #[cfg_attr(
-            any(test, feature = "ts"),
-            ts(export, export_to = "../../../frontend/ui/generated/")
-        )]
-        #[serde(deny_unknown_fields)]
-        pub struct $n { $($body)* }
-    };
-}
-
 /// 可缺的一格：不给 ⇒ `None`；给了就必须是那一型（`null` 也拒 —— 写面这几格从来不收 `null`）。
 fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
     T::deserialize(d).map(Some)
@@ -876,7 +861,7 @@ fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Opti
 pub struct Sha256Hex(pub String);
 
 /// 摘要的长度（十六进制位数）。
-pub const SHA256_HEX_LEN: usize = 64;
+const SHA256_HEX_LEN: usize = 64;
 
 impl<'de> Deserialize<'de> for Sha256Hex {
     fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
@@ -894,11 +879,16 @@ impl<'de> Deserialize<'de> for Sha256Hex {
     }
 }
 
-wire! {
-    /// 摘要形的 CAS：恰好 `{"sha256": "<64 位小写十六进制>"}`（多一个键、少一个键都拒）。
-    pub struct Sha256Expect {
-        pub sha256: Sha256Hex,
-    }
+/// 摘要形的 CAS：恰好 `{"sha256": "<64 位小写十六进制>"}`（多一个键、少一个键都拒）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct Sha256Expect {
+    pub sha256: Sha256Hex,
 }
 
 /// `files-delete` 的 `expect`：`{"empty_dir": true}` ⇒ 只删一个空目录；字符串 / `{"b16"}` ⇒ 盘上逐字节等于它才删。
@@ -968,271 +958,426 @@ impl<'de> Deserialize<'de> for DeleteExpect {
     }
 }
 
-wire! {
-    /// `files-create`：在目标根底下新建一份此前不存在的文件（不给 `content` ⇒ 空文件）。
-    pub struct FilesCreateReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub content: Option<WirePath>,
-        /// `true` ⇒ `rel` 只许是一段名字（界面就地新建 / 改名敲的那一格）。
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub single: Option<bool>,
-    }
+/// `files-create`：在目标根底下新建一份此前不存在的文件（不给 `content` ⇒ 空文件）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesCreateReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub content: Option<WirePath>,
+    /// `true` ⇒ `rel` 只许是一段名字（界面就地新建 / 改名敲的那一格）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub single: Option<bool>,
 }
 
-wire! {
-    /// 落点 ＋ 字节数（新建 · 上传提交）。
-    pub struct FilesPathBytesReply {
-        pub path: WirePath,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub bytes: u64,
-    }
+/// 落点 ＋ 字节数（新建 · 上传提交）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesPathBytesReply {
+    pub path: WirePath,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
 }
 
-wire! {
-    /// `files-mkdir`：新建一个目录（只建最后那一段）。
-    pub struct FilesMkdirReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub single: Option<bool>,
-    }
+/// `files-mkdir`：新建一个目录（只建最后那一段）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesMkdirReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub single: Option<bool>,
 }
 
-wire! {
-    /// `files-rename`：改名 / 同根内移动（两段各过一遍路径解析）。
-    pub struct FilesRenameReq {
-        pub root: WirePath,
-        pub from: WirePath,
-        pub to: WirePath,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub single: Option<bool>,
-    }
+/// `files-rename`：改名 / 同根内移动（两段各过一遍路径解析）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesRenameReq {
+    pub root: WirePath,
+    pub from: WirePath,
+    pub to: WirePath,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub single: Option<bool>,
 }
 
-wire! {
-    /// `files-delete`：删一个文件或一个空目录；`recursive` 显式才删整棵树（可带 `limit` 分趟）；`expect` 给了 ⇒ CAS。
-    pub struct FilesDeleteReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub recursive: Option<bool>,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub expect: Option<DeleteExpect>,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-        pub limit: Option<u64>,
-    }
+/// `files-delete`：删一个文件或一个空目录；`recursive` 显式才删整棵树（可带 `limit` 分趟）；`expect` 给了 ⇒ CAS。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesDeleteReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub recursive: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub expect: Option<DeleteExpect>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub limit: Option<u64>,
 }
 
-wire! {
-    /// `files-delete` 的回包：这一趟删了几条、还剩几条（不是 0 ⇒ 再发一趟同样的请求接着删）。
-    pub struct FilesDeleteReply {
-        pub path: WirePath,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub removed: u64,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub remaining: u64,
-    }
+/// `files-delete` 的回包：这一趟删了几条、还剩几条（不是 0 ⇒ 再发一趟同样的请求接着删）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesDeleteReply {
+    pub path: WirePath,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub removed: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub remaining: u64,
 }
 
-wire! {
-    /// `files-chmod`：改 unix 权限位（十进制、低 12 位）。
-    pub struct FilesChmodReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        pub mode: u32,
-    }
+/// `files-chmod`：改 unix 权限位（十进制、低 12 位）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesChmodReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    pub mode: u32,
 }
 
-wire! {
-    /// `files-chmod` 的回包：`before` ＝ 改之前的低 12 位（读不到就缺席，不编一个数）。
-    pub struct FilesChmodReply {
-        pub path: WirePath,
-        pub mode: u32,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub before: Option<u32>,
-    }
+/// `files-chmod` 的回包：`before` ＝ 改之前的低 12 位（读不到就缺席，不编一个数）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesChmodReply {
+    pub path: WirePath,
+    pub mode: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub before: Option<u32>,
 }
 
-wire! {
-    /// `files-copy`：同根内复制；`overwrite` · `recursive` 显式。
-    pub struct FilesCopyReq {
-        pub root: WirePath,
-        pub from: WirePath,
-        pub to: WirePath,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub overwrite: Option<bool>,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub recursive: Option<bool>,
-    }
+/// `files-copy`：同根内复制；`overwrite` · `recursive` 显式。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesCopyReq {
+    pub root: WirePath,
+    pub from: WirePath,
+    pub to: WirePath,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub overwrite: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub recursive: Option<bool>,
 }
 
-wire! {
-    /// 落了一棵（复制 · 解压）：落点 ＋ 几份文件 · 几个目录 · 几条链接 · 字节之和。
-    pub struct FilesTreeReply {
-        pub path: WirePath,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub bytes: u64,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub files: u64,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub dirs: u64,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub links: u64,
-    }
+/// 落了一棵（复制 · 解压）：落点 ＋ 几份文件 · 几个目录 · 几条链接 · 字节之和。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesTreeReply {
+    pub path: WirePath,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub files: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub dirs: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub links: u64,
 }
 
-wire! {
-    /// `files-extract`：解压到一个新目录（`fresh` ⇒ 撞名往后编号）。
-    pub struct FilesExtractReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub fresh: Option<bool>,
-    }
+/// `files-extract`：解压到一个新目录（`fresh` ⇒ 撞名往后编号）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesExtractReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub fresh: Option<bool>,
 }
 
-wire! {
-    /// `files-link`：建一条符号链接（`target` 原样写进去）。
-    pub struct FilesLinkReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        pub target: WirePath,
-    }
+/// `files-link`：建一条符号链接（`target` 原样写进去）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesLinkReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    pub target: WirePath,
 }
 
-wire! {
-    /// `files-write-text`：覆盖写一份已经在的普通文件（摘要形 CAS 必给）。
-    pub struct FilesWriteTextReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        pub content: WirePath,
-        pub expect: Sha256Expect,
-    }
+/// `files-write-text`：覆盖写一份已经在的普通文件（摘要形 CAS 必给）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesWriteTextReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    pub content: WirePath,
+    pub expect: Sha256Expect,
 }
 
-wire! {
-    /// 覆盖写成了（`files-write-text` · `files-commit-text`）：新摘要是下一次存的 `expect`。
-    pub struct FilesWrittenReply {
-        pub path: WirePath,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub bytes: u64,
-        pub sha256: Sha256Hex,
-    }
+/// 覆盖写成了（`files-write-text` · `files-commit-text`）：新摘要是下一次存的 `expect`。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesWrittenReply {
+    pub path: WirePath,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
+    pub sha256: Sha256Hex,
 }
 
-wire! {
-    /// `files-peek`：读改写的读那一半。
-    pub struct FilesPeekReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-    }
+/// `files-peek`：读改写的读那一半。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesPeekReq {
+    pub root: WirePath,
+    pub rel: WirePath,
 }
 
-wire! {
-    /// `files-peek` 的回包：`exists: false` ⇒ 确定不在（`text` 为 `null`）。
-    pub struct FilesPeekReply {
-        pub path: WirePath,
-        pub exists: bool,
-        pub text: Option<String>,
-    }
+/// `files-peek` 的回包：`exists: false` ⇒ 确定不在（`text` 为 `null`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesPeekReply {
+    pub path: WirePath,
+    pub exists: bool,
+    pub text: Option<String>,
 }
 
-wire! {
-    /// `files-put`：整份替换一份文本文件（`expect` 必给：`null` ＝ 读的时候它不在）。
-    pub struct FilesPutReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        pub content: WirePath,
-        #[serde(deserialize_with = "nullable")]
-        pub expect: Option<WirePath>,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub backup: Option<bool>,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
-        pub parents: Option<bool>,
-    }
+/// `files-put`：整份替换一份文本文件（`expect` 必给：`null` ＝ 读的时候它不在）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesPutReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    pub content: WirePath,
+    #[serde(deserialize_with = "nullable")]
+    pub expect: Option<WirePath>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub backup: Option<bool>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub parents: Option<bool>,
 }
 
-wire! {
-    /// `files-put` 的回包。
-    pub struct FilesPutReply {
-        pub path: WirePath,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub bytes: u64,
-        pub changed: bool,
-        pub created: bool,
-        pub backup: Option<WirePath>,
-    }
+/// `files-put` 的回包。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesPutReply {
+    pub path: WirePath,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
+    pub changed: bool,
+    pub created: bool,
+    pub backup: Option<WirePath>,
 }
 
-wire! {
-    /// `files-delete-session`：删一份历史会话 —— 只收 sid。
-    pub struct FilesDeleteSessionReq {
-        pub sid: String,
-    }
+/// `files-delete-session`：删一份历史会话 —— 只收 sid。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesDeleteSessionReq {
+    pub sid: String,
 }
 
-wire! {
-    /// `files-stage-chunk`：存盘的一块进暂存区（至少 1 字节）。
-    pub struct FilesStageChunkReq {
-        pub key: String,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub seq: u64,
-        pub content: ChunkBytes,
-    }
+/// `files-stage-chunk`：存盘的一块进暂存区（至少 1 字节）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesStageChunkReq {
+    pub key: String,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub seq: u64,
+    pub content: ChunkBytes,
 }
 
-wire! {
-    /// `files-stage-chunk` 的回包：这一块写进去几个字节。
-    pub struct FilesStageChunkReply {
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub bytes: u64,
-    }
+/// `files-stage-chunk` 的回包：这一块写进去几个字节。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesStageChunkReply {
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
 }
 
-wire! {
-    /// `files-commit-text`：按块读回、拼起来、覆盖写（语义同 `files-write-text`）。
-    pub struct FilesCommitTextReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        pub key: String,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub chunks: u64,
-        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
-        pub bytes: u64,
-        pub expect: Sha256Expect,
-    }
+/// `files-commit-text`：按块读回、拼起来、覆盖写（语义同 `files-write-text`）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesCommitTextReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    pub key: String,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub chunks: u64,
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+    pub bytes: u64,
+    pub expect: Sha256Expect,
 }
 
-wire! {
-    /// `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（`chunks` · `bytes` 给了 ⇒ 先按块拼）。
-    pub struct FilesCommitUploadReq {
-        pub root: WirePath,
-        pub rel: WirePath,
-        pub key: String,
-        pub overwrite: bool,
-        pub expect: Sha256Expect,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-        pub chunks: Option<u64>,
-        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
-        pub bytes: Option<u64>,
-    }
+/// `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（`chunks` · `bytes` 给了 ⇒ 先按块拼）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
+#[serde(deny_unknown_fields)]
+pub struct FilesCommitUploadReq {
+    pub root: WirePath,
+    pub rel: WirePath,
+    pub key: String,
+    pub overwrite: bool,
+    pub expect: Sha256Expect,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub chunks: Option<u64>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+    pub bytes: Option<u64>,
 }
 
 // ── 命令名 · 入参 · 回包连成一张表 ───────────────────

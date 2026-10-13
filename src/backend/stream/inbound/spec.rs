@@ -175,7 +175,7 @@ impl Run {
     /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
     pub(crate) fn writes(self) -> bool {
         matches!(self, Run::BlockingOwn(_) | Run::AsyncOwn(_))
-            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_) | super::typed::TypedRun::BlockingFace(_)))
+            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_)) || t.hands_the_face())
     }
 }
 

@@ -35,11 +35,11 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
         "x".repeat(70_000),
     ] {
         for (cmd, args) in [
-            (CMD_WRITE_TEXT, save_args(SAVE_PATH, &content, SHA0)),
-            (CMD_STAGE_CHUNK, stage_args(key, u64::MAX, &content)),
+            (CMD_WRITE_TEXT, json(save_args(SAVE_PATH, &content, SHA0))),
+            (CMD_STAGE_CHUNK, json(stage_args(key, u64::MAX, &content))),
             (
                 CMD_COMMIT_TEXT,
-                commit_args(SAVE_PATH, key, 17, content.len(), SHA0),
+                json(commit_args(SAVE_PATH, key, 17, content.len(), SHA0)),
             ),
         ] {
             let sent = crate::inbound_client::encode_request(
@@ -67,6 +67,11 @@ fn the_measured_save_line_is_byte_for_byte_the_line_that_is_sent() {
     );
 }
 
+/// 入参类型 ⇒ 发出去之前那一份 JSON（`encode_request` 收的那一形）。
+fn json(req: impl serde::Serialize) -> serde_json::Value {
+    serde_json::to_value(req).expect("入参总能序列化")
+}
+
 /// 🔴 **切块三条性质一起钉，合起来恰好刻画「贪心取满」那一种切法**（不是切成一字一块的空真）：
 /// ① 拼回来逐字节 == 原文；② 每块真编出来的请求行（`encode_request`，最长 id、块号按最大）≤ 一行上限；
 /// ③ 除最后一块，每块再添下一块的第一个字，那一行就越线。语料覆盖每一种转义长度（1 · 2 · 3 · 4 · 6 字节）。
@@ -77,7 +82,7 @@ fn chunks_reassemble_exactly_each_fits_one_line_and_each_is_filled() {
         crate::inbound_client::encode_request(
             &"0".repeat(REQUEST_ID_ROOM),
             CMD_STAGE_CHUNK,
-            &stage_args(key, u64::MAX, chunk),
+            &json(stage_args(key, u64::MAX, chunk)),
             Some(LONGEST_WITHIN),
             Some(&"Z".repeat(host_core::TZ_ROOM)),
             None,

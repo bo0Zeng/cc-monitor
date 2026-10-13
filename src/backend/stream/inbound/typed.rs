@@ -201,7 +201,6 @@ pub(crate) struct Typed {
 
 impl Typed {
     /// 这一份拿不拿得到文件管理写句柄（[`Facing`] 那一档）。
-    #[cfg(test)]
     pub(crate) fn hands_the_face(&self) -> bool {
         matches!(self.run, TypedRun::BlockingFace(_))
     }
