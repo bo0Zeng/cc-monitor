@@ -472,3 +472,7 @@ pub(crate) fn dispatch_go(
         }),
     }
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/upstream_select/rotate_tests.rs"]
+mod tests;
