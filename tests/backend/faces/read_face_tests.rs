@@ -662,10 +662,25 @@ fn facts_say_what_the_session_is_waiting_for() {
     .unwrap();
     let pids = crate::observe::watcher::pidfile_dir(&home);
     std::fs::create_dir_all(&pids).unwrap();
+    // 「没挂答题口」那一句照持着它的进程的环境与命令行现判：环境不从本进程继承那两格（本进程的环境是全局的），
+    // 并且等 sleep 真 exec 完再问 —— exec 窗口里 /proc/<pid>/environ 读回 0 字节，判成「取不到」、那一句就没了
+    // （机器忙时整套里偶发红的就是这一形：manualText 成了「只能在终端里答」）。
     let mut c = std::process::Command::new("sleep")
         .arg("30")
+        .env_remove(crate::agents::asks::ANSWER_HOOK_OFF_ENV)
+        .env_remove(crate::agents::claudecode::asks::PLUGIN_ENV)
         .spawn()
         .unwrap();
+    let cmdline = std::path::PathBuf::from(format!("/proc/{}/cmdline", c.id()));
+    let environ = std::path::PathBuf::from(format!("/proc/{}/environ", c.id()));
+    for () in guard_core::wall::rounds() {
+        let execd = std::fs::read(&cmdline).is_ok_and(|b| b.starts_with(b"sleep\0"))
+            && std::fs::read(&environ).is_ok_and(|b| !b.is_empty());
+        if execd {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
     let ticks = crate::platform::proc::proc_starttime(c.id()).expect("读得到起始时刻");
     let pidfile = |status: &str| {
         let body = format!(
