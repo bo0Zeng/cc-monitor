@@ -41,3 +41,8 @@ pub mod asset_sync; // 资产目录的自动同步：帧面 `assets-sync`（本�
 pub mod mcp_sync; // MCP 资产同步的判定：（差异 · 可疑项 · 写哪几条；只读，写经文件管理那一面）
 pub mod skill_install; // skill「装到这台」：帧面 `skill-read`（来源那台）/ `skill-install-plan`（要被写的那一台；复用 AS1 的差异与闸）。只读
 pub mod skill_ledger; // skill 装记录（后端自有状态 `~/.cc-monitor/skill-installs.json`，经 `Own`）：帧面 `skill-install-record`（装完记 / 卸掉摘）。一个用户文件都不写
+
+// 资产目录那一族四条的线上字节（换形前钉、换形后比）。
+#[cfg(test)]
+#[path = "../../../tests/backend/assets/catalog_wire_tests.rs"]
+mod catalog_wire_tests;
