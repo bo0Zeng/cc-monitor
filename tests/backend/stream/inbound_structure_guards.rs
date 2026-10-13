@@ -728,14 +728,7 @@ fn every_registered_command_declares_its_run_kind() {
 #[test]
 fn declaring_zero_fields_needs_a_reason() {
     /// `(命令名, 为什么它可以声明零载荷字段)`。
-    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[
-        (
-            "resolve",
-            "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体：协议参考的出入参那一节从结构体本身生成，\
-             在这里再列一份字段名就是第二个源头。",
-        ),
-        ("ping", "零载荷：问活，回 `ok`。"),
-    ];
+    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[("ping", "零载荷：问活，回 `ok`。")];
     let mut unexplained: Vec<&str> = Vec::new();
     let mut zero = 0usize;
     for spec in super::REGISTRY {
@@ -1105,62 +1098,14 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
-        "sessions-needs",
-        sampled::<crate::faces::read_face::NeedsList>,
-        &["needs", "sid"],
-        &[],
-    ),
-    (
         "needs-ask",
         sampled::<crate::control::asks::AskReply>,
         &[],
         &[],
     ),
     (
-        "needs-answer",
-        sampled::<crate::control::asks::Answered>,
-        &[],
-        &[],
-    ),
-    (
         "plan-command",
         sampled::<crate::plan::wire::PlanCmdReply>,
-        &[],
-        &[],
-    ),
-    (
-        "history-annotate",
-        sampled::<crate::history::history_annotations::Annotated>,
-        &["customTitle", "hidden", "starred", "updatedAt"],
-        &[],
-    ),
-    (
-        "history-branch",
-        sampled::<crate::faces::read_face::Branch>,
-        &[],
-        &[],
-    ),
-    (
-        "history-forget",
-        sampled::<crate::history::history_annotations::Forgotten>,
-        &[],
-        &[],
-    ),
-    (
-        "history-last-accounts",
-        sampled::<crate::control::launch_account::LastAccounts>,
-        &[],
-        &[],
-    ),
-    (
-        "history-record",
-        sampled::<crate::observe::history_query::RecordProbe>,
-        &[],
-        &[],
-    ),
-    (
-        "history-tail",
-        sampled::<crate::observe::history_query::TailPlan>,
         &[],
         &[],
     ),
@@ -1245,19 +1190,13 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const DEPLOY_PLAN: &str = include_str!("../../__fixtures__/deploy-plan.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const FORWARD_LIST: &str = include_str!("../../__fixtures__/forward-list.golden.json");
-    const HISTORY_LIST: &str = include_str!("../../__fixtures__/history-list.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
     const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
     const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
-    const RECORD_READS: &str = include_str!("../../__fixtures__/record-reads.golden.json");
     const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
-    const RESYNC: &str = include_str!("../../__fixtures__/resync.golden.json");
-    const SESSION_FORK: &str = include_str!("../../__fixtures__/session-fork.golden.json");
-    const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
-    const TASKS_LIST: &str = include_str!("../../__fixtures__/tasks-list.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
@@ -1305,21 +1244,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             CC_BUS_READ,
             "/inbox/reply",
             &["class", "from", "text", "ts"],
-            &[],
-        ),
-        ("history-lines", RECORD_READS, "/history-lines", &[], &[]),
-        ("history-page", RECORD_READS, "/history-page", &[], &[]),
-        ("history-read", RECORD_READS, "/history-read", &[], &[]),
-        ("history-run", RECORD_READS, "/history-run", &[], &[]),
-        ("history-facts", SESSION_READS, "/history-facts", &[], &[]),
-        ("history-find", SESSION_READS, "/history-find", &[], &[]),
-        ("history-index", SESSION_READS, "/history-index", &[], &[]),
-        ("history-turns", SESSION_READS, "/history-turns", &[], &[]),
-        (
-            "history-user-inputs",
-            SESSION_READS,
-            "/history-user-inputs",
-            &[],
             &[],
         ),
         (
@@ -1388,8 +1312,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("profiles-write", PROFILES, "/writeReply", &[], &[]),
         ("aliases-read", ALIASES, "/readReply", &[], &[]),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
-        ("resync", RESYNC, "/reply", &[], &[]),
-        ("history-list", HISTORY_LIST, "", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
         (
             "forward-list",
@@ -1415,51 +1337,32 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &[],
         ),
         ("relay-optin", RELAY_OPTIN, "", &[], &[]),
-        (
-            "tasks-list",
-            TASKS_LIST,
-            "/product",
-            &[
-                "activeForm",
-                "blockedBy",
-                "blocks",
-                "description",
-                "id",
-                "status",
-                "subject",
-            ],
-            &[],
-        ),
         ("pubkey-push", PUBKEY_PUSH, "/product", &[], &[]),
         ("deploy-plan", DEPLOY_PLAN, "/product", &[], &[]),
         ("ccm-probe", CCM_PROBE, "/product", &[], &[]),
         ("footprint-report", FOOTPRINT_REPORT, "", &[], &[]),
         ("rotation-switch", ROTATION_SWITCH_RESTART, "", &[], &[]),
-        (
-            "session-fork",
-            SESSION_FORK,
-            "/product",
-            &[
-                "account", "cwd", "from", "host", "kind", "terminal", "value",
-            ],
-            &[(
-                "why",
-                "`launch.kind` 是 `unknown` 那一支才有；金样走的是 `known` 那一支",
-            )],
-        ),
     ];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
-        ("aliases-block-install", "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`"),
+        (
+            "aliases-block-install",
+            "应答是空对象：成败只看 ok / code，界面随后重读 `aliases-read`",
+        ),
         ("aliases-block-remove", "同 `aliases-block-install`"),
         ("cancel", "撤单的结果是 `cancelled` 帧，应答只回 ok"),
         ("link-close", "只回 ok；链路的收尾走 `link_end` 帧"),
         ("link-credit", "只回 ok（还信用）"),
         ("link-data", "只回 ok；字节走 `link_data` 帧"),
-        ("link-open", "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧"),
+        (
+            "link-open",
+            "只回 ok；之后的字节与收尾走 `link_data` / `link_end` 帧",
+        ),
         ("ping", "问活，回 ok"),
-        ("resolve", "载荷是 `ResumeSpec` / `CommandPlan` 两个结构体，协议参考从结构体本身生成（冻结金样 `resolve-contract`）"),
-        ("terminal-follow-ack", "只回 ok；下一帧画面走 `terminal_screen`"),
+        (
+            "terminal-follow-ack",
+            "只回 ok；下一帧画面走 `terminal_screen`",
+        ),
         ("terminal-unfollow", "只回 ok（幂等）"),
         ("transfer-download", "只回 ok；进度与终局走 `transfer` 帧"),
         ("transfer-start", "只回 ok；进度与终局走 `transfer` 帧"),

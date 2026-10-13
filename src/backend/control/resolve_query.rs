@@ -4,7 +4,7 @@
 //! - 出：`CommandPlan{command, mode:"PtyInject"|"ExecOnce",
 //!   capabilities{supportsSendKeys,supportsCapture,supportsMultiClient,supportsMultiWindow},
 //!   sessionName?, launchLabel?, substitutedFrom?}`。
-//! - 错：命令级码 `bad_args` · `invalid_session_id` · `unsafe_launch_candidate` · `serialize_failed`（登记在 `inbound::REGISTRY` 的 `resolve`）。
+//! - 错：命令级码 `bad_args` · `invalid_session_id` · `unsafe_launch_candidate`（typed：码表即 [`ResolveErr`]）。
 //!
 //! 只返命令串：backend 零 handle、绝不执行。sessionId 会进 command 串 ⇒ 后端自己产出的 plan 也过一遍本地 `is_valid_session_id`。
 //! command = 首个可用 `launchCandidate` + `--resume <sid>`（无候选 ⇒ 默认 `claude`）；caps 是 tmux/pty 的典型档，不是探测值。
@@ -12,23 +12,31 @@
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 
-/// 入参（camelCase 对齐手机端 `ResumeSpec`）。
+/// 入参（camelCase 对齐手机端 `ResumeSpec`）。**别的格不认、不报错**（冻结样例里带着 `claudeDir` · `fallbackCwd` · `alreadyInTmux`）：
+/// 这一条故意不加 `deny_unknown_fields`（typed 命令里唯一一处）。
 #[derive(Debug, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-struct ResumeSpec {
-    session_id: String,
+pub(crate) struct ResumeSpec {
+    pub(crate) session_id: String,
+    /// 可缺：候选启动命令，取第一个非空的；都没有 ⇒ 这一家的默认启动器。
     #[serde(default)]
-    launch_candidates: Vec<Option<String>>,
+    #[cfg_attr(test, ts(as = "Option<Vec<Option<String>>>", optional))]
+    pub(crate) launch_candidates: Vec<Option<String>>,
     /// 会话属哪个 agent kind ⇒ 据此构 `codex resume <uuid>` 或 `claude --resume`（additive，线上 `agentKind`）。
     /// 注册表里的一家 = 那一家；缺 / `""` = 默认那一家；别的名字 ⇒ `bad_args`。
     #[serde(default)]
-    agent_kind: String,
+    #[cfg_attr(test, ts(as = "Option<String>", optional))]
+    pub(crate) agent_kind: String,
 }
 
 /// 出参 caps（4 名**逐字复用手机端 `SessionCapabilities`**，camelCase 免映射）。
 #[derive(Debug, Serialize, PartialEq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-struct Capabilities {
+pub(crate) struct Capabilities {
     supports_send_keys: bool,
     supports_capture: bool,
     supports_multi_client: bool,
@@ -45,65 +53,65 @@ struct Capabilities {
 /// | `session_name` | 派生：纯从 sid 拼（`cc-<sid8>`），没读过 pidfile、没查过 tmux |
 /// | `capabilities` | 典型档：硬编码的常见组合，不是这台机器此刻的实测能力 |
 #[derive(Debug, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
-struct CommandPlan {
+pub(crate) struct CommandPlan {
     /// **唯一可信的一项**。
-    command: String,
+    pub(crate) command: String,
     /// "PtyInject"（resume 走 pty send-keys 注入 §5④）| "ExecOnce"（未来）。MVP 恒 PtyInject。
-    mode: String,
+    pub(crate) mode: String,
     /// **典型档，不是探测结果**（见结构体头注）。
-    capabilities: Capabilities,
+    pub(crate) capabilities: Capabilities,
     /// **纯从 sid 派生，不是探测结果**（见结构体头注）——
     /// 拿它去 attach 一个「并不存在」的 tmux 会话是现实风险。要判断会话是否真的存在，
     /// 问 `terminals-list`（那是真 `tmux list-panes`）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    session_name: Option<String>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) session_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    launch_label: Option<String>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) launch_label: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    substituted_from: Option<String>,
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) substituted_from: Option<String>,
 }
 
-/// `resolve` 命令的入口（帧面与派生的 CLI 面同一个）。
-pub fn resolve_json_for_inbound(input: &str) -> Result<serde_json::Value, (&'static str, String)> {
-    resolve_json_among(crate::agents::REGISTRY, input)
+crate::stream::inbound::typed::codes! {
+    /// `resolve` 的码（`bad_args` 另含：`agentKind` 不是注册表里的一家）。
+    pub(crate) enum ResolveErr {
+        /// `sessionId` 不是 `[0-9A-Za-z_-]{1,128}`（它会进命令串）。
+        InvalidSessionId = "invalid_session_id",
+        /// 候选启动命令带 shell 元字符（它会进命令串）。
+        UnsafeLaunchCandidate = "unsafe_launch_candidate",
+    }
 }
 
-/// [`resolve_json_for_inbound`] 的内核：按哪一家 resume 只问 `registry`（生产走 `agents::REGISTRY`，判据喂含夹具家的合成注册表）。
-pub(crate) fn resolve_json_among(
-    registry: &[crate::agents::Adapter],
-    input: &str,
-) -> Result<serde_json::Value, (&'static str, String)> {
-    let json = resolve_from_json(registry, input)?;
-    serde_json::from_str(&json).map_err(|e| {
-        (
-            "serialize_failed",
-            crate::common::contract::malformed(&format!(
-                "reading back the CommandPlan failed: {e}"
-            )),
+/// `resolve`：按 `ResumeSpec` 推出恢复命令 `CommandPlan`（帧面与派生的 CLI 面同一个）。纯计算 ⇒ 异步档。
+pub(crate) struct ResolveCmd;
+
+impl crate::stream::inbound::typed::Command for ResolveCmd {
+    const NAME: &'static str = "resolve";
+    type Req = ResumeSpec;
+    type Reply = CommandPlan;
+    type Err = ResolveErr;
+}
+
+impl crate::stream::inbound::typed::Async for ResolveCmd {
+    fn run(
+        req: ResumeSpec,
+        _cx: crate::stream::inbound::typed::Cx,
+    ) -> impl std::future::Future<Output = Result<CommandPlan, ResolveErr>> + Send + 'static {
+        std::future::ready(
+            resolve(crate::agents::REGISTRY, &req)
+                .map_err(crate::stream::inbound::typed::of_pair(ResolveErr::BadArgs)),
         )
-    })
+    }
 }
 
-/// 纯：ResumeSpec JSON 串 → CommandPlan JSON 串（或 `(code,message)`）。入口与单测共用。
-fn resolve_from_json(
-    registry: &[crate::agents::Adapter],
-    input: &str,
-) -> Result<String, (&'static str, String)> {
-    let spec: ResumeSpec = serde_json::from_str(input.trim())
-        .map_err(|e| ("bad_args", format!("ResumeSpec JSON parse failed: {e}")))?;
-    let plan = resolve(registry, &spec)?;
-    serde_json::to_string(&plan).map_err(|e| {
-        (
-            "serialize_failed",
-            format!("CommandPlan serialize failed: {e}"),
-        )
-    })
-}
-
-/// 纯：ResumeSpec → CommandPlan（或 (code,message) 错误）。供单测（不碰 stdin/stdout）。
-/// 按哪一家 resume（默认命令 · 命令形 · 会话名前缀）只问 `registry` 里那一家的起会话事实，不认名字。
-fn resolve(
+/// 纯：ResumeSpec → CommandPlan（或 (code,message) 错误）。
+/// 按哪一家 resume（默认命令 · 命令形 · 会话名前缀）只问 `registry` 里那一家的起会话事实，不认名字（生产走 `agents::REGISTRY`，判据喂含夹具家的合成注册表）。
+pub(crate) fn resolve(
     registry: &[crate::agents::Adapter],
     spec: &ResumeSpec,
 ) -> Result<CommandPlan, (&'static str, String)> {

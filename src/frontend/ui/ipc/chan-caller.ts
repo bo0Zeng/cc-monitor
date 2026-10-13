@@ -25,9 +25,10 @@ export async function callTyped<K extends keyof TypedCommands>(
   cmd: K,
   req: TypedCommands[K]["req"],
   budget: Budget,
+  view: object | null = null,
 ): Promise<TypedCommands[K]["reply"]> {
   const body = jsonBody(req as Record<string, unknown>);
-  const reply = await chan.call(origin, cmd, body, budget);
+  const reply = await chan.call(origin, cmd, body, budget, view);
   return readJson(reply) as TypedCommands[K]["reply"];
 }
 

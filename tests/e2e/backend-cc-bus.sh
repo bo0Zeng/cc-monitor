@@ -645,7 +645,8 @@ chk "★ bus-list 成功：退出 0 · stderr 0 字节" "$_rc|$(wc -c < "$SANDBO
 one --history-read </dev/null >/dev/null; _rc=$?
 chk "★ history-read 缺 path：非 0 · stderr 正好一行 · 那一行是带 code 的信封" \
   "$([ "$_rc" -ne 0 ] && echo 非0)|$(wc -l < "$SANDBOX/err.txt")|$(jq -r 'select(type=="object") | .code' < "$SANDBOX/err.txt" 2>/dev/null)" "非0|1|bad_args"
-chk "  契约错的诊断进了日志文件（不在 stderr）" "$(grep -c 'contract: malformed request: missing `path`' "$LOGF" 2>/dev/null)|$(grep -c 'malformed request' "$SANDBOX/err.txt")" "1|0"
+# history-read 是 typed 命令：缺入参那一句是 serde 的原话（`missing field `path``，第 8 批第 3 刀起）。
+chk "  契约错的诊断进了日志文件（不在 stderr）" "$(grep -c 'contract: malformed request: missing field `path`' "$LOGF" 2>/dev/null)|$(grep -c 'malformed request' "$SANDBOX/err.txt")" "1|0"
 printf '{"to":"a/b","text":"x"}' | one --bus-send >/dev/null; _rc=$?
 chk "★ bus-send 拒：非 0 · stderr 正好一行信封" \
   "$([ "$_rc" -ne 0 ] && echo 非0)|$(wc -l < "$SANDBOX/err.txt")|$(jq -r 'select(type=="object") | (.code)' < "$SANDBOX/err.txt" 2>/dev/null)" "非0|1|bad_id"

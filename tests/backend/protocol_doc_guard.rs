@@ -581,7 +581,7 @@ mod tests {
     /// 而且后两个**搬进 `wire/`（流协议的家）是错误归类**：
     ///
     /// - `resolve_query.rs` 的几个：命令 `resolve` 的入参与成品（当时与手机端冻结，10-11 解冻）；
-    /// - `fork_write.rs::ForkResult`：分叉的出参（当时是一次性子命令 `--fork-session` 的出参），不是流协议；
+    /// - `fork_write.rs` 的几个：分叉的出参（当时是一次性子命令 `--fork-session` 的出参，今天是 typed 帧命令 `session-fork`），不是流协议；
     /// - `accounts_query.rs::RawAccount`：**根本不是 wire** —— 它在解析账号库的清单
     ///   **文件**（文件 schema）。
     ///
@@ -619,9 +619,20 @@ mod tests {
             ("control/resolve_query.rs", "CommandPlan", "同上，出参"),
             (
                 "control/fork_write.rs",
-                "ForkResult",
-                "分叉的**出参**（`session-fork` 应答 `data` 的那几格），不是流协议帧 —— 搬进 wire 是错误归类",
+                "ForkReq",
+                "typed 帧命令 `session-fork` 的入参（形状从类型生成进协议参考与 TS），命令应答不是流协议帧",
             ),
+            ("control/fork_write.rs", "Forked", "同上，出参"),
+            (
+                "control/fork_launch.rs",
+                "Launch",
+                "`session-fork` 回包与 `session-new-facts` 的 `fork.launch`：分叉之后起要的三格（生成类型从它来）",
+            ),
+            ("control/fork_launch.rs", "Slot", "同上，三格里的每一格"),
+            ("control/fork_launch.rs", "Whence", "同上，`known` 那一格从哪知道"),
+            ("control/fork_launch.rs", "Why", "同上，`unknown` 那一格为什么"),
+            ("control/fork_launch.rs", "AccountFact", "同上，号那一格的值（`null` ＝ 账号 0）"),
+            ("control/fork_launch.rs", "TerminalFact", "同上，终端那一格的值"),
             (
                 "observe/accounts_query.rs",
                 "NeedsRow",
@@ -695,6 +706,16 @@ mod tests {
                 "同上，`SessionHits.status`（全文搜索只扫记录树 ⇒ 只有在跑 · 已结束两态）",
             ),
             (
+                "observe/tasks_query.rs",
+                "Task",
+                "typed 帧命令 `tasks-list` 回包 `tasks[]` 的一格（`faces/feature_face.rs`；生成类型从它来）",
+            ),
+            (
+                "observe/search_query.rs",
+                "FindHit",
+                "typed 帧命令 `history-find` 回包 `hits[]` 的一条（`faces/history_face.rs`；生成类型从它来）",
+            ),
+            (
                 "observe/history_query.rs",
                 "CanResume",
                 "`Can.resume` 的三个词（`history-list` 每行与全文搜索每行的「能做什么」）",
@@ -733,6 +754,10 @@ mod tests {
                 include_str!("../../src/backend/control/fork_write.rs"),
             ),
             (
+                "control/fork_launch.rs",
+                include_str!("../../src/backend/control/fork_launch.rs"),
+            ),
+            (
                 "control/tmux_hook.rs",
                 include_str!("../../src/backend/control/tmux_hook.rs"),
             ),
@@ -767,6 +792,10 @@ mod tests {
             (
                 "observe/listing_scan.rs",
                 include_str!("../../src/backend/observe/listing_scan.rs"),
+            ),
+            (
+                "observe/tasks_query.rs",
+                include_str!("../../src/backend/observe/tasks_query.rs"),
             ),
         ];
 

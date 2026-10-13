@@ -1,6 +1,19 @@
 use super::*;
 use serde_json::Value;
 
+/// 线上那一份入参（JSON 正文）照分派那一层解（`typed::take`）再交本体，成品照旧序列化成串（结构体字段序，冻结样例的字节就是这一形）。
+/// 正文不是 JSON（CLI 面 stdin 读来的那一份）⇒ 同解不出入参，`bad_args`。
+fn resolve_from_json(
+    registry: &[crate::agents::Adapter],
+    input: &str,
+) -> Result<String, (&'static str, String)> {
+    let v: Value = serde_json::from_str(input.trim()).map_err(|e| ("bad_args", e.to_string()))?;
+    let spec: ResumeSpec =
+        crate::stream::inbound::typed::take(&v).map_err(|f| ("bad_args", f.message))?;
+    let plan = resolve(registry, &spec)?;
+    Ok(serde_json::to_string(&plan).expect("成品总能序列化"))
+}
+
 fn spec(sid: &str, candidates: Vec<Option<&str>>) -> ResumeSpec {
     ResumeSpec {
         session_id: sid.to_string(),
@@ -339,6 +352,11 @@ fn frozen_wire_fields(src: &str, decl: &str) -> Vec<String> {
                 return None;
             }
             let (name, _) = t.split_once(':')?;
+            // 可见性前缀不是字段名的一部分（typed 那一份的格是 `pub(crate)`）。
+            let name = name
+                .trim()
+                .trim_start_matches("pub(crate) ")
+                .trim_start_matches("pub ");
             let mut out = String::new();
             let mut up = false;
             for ch in name.trim().chars() {
@@ -382,7 +400,7 @@ fn frozen_the_wire_field_names_are_the_frozen_ones() {
 }
 
 /// R3 错误码全集：生产段交给错误出口的码字面量集合 == 金样 `error_codes` == 登记表 `resolve` 的 `codes`（两向）；
-/// 帧面那一格仍经 `resolve_json_for_inbound`、转回串时也只回命令级的码。
+/// 帧面那一格是 typed 那一行（`ResolveCmd`）。
 #[test]
 fn frozen_the_error_codes_are_the_registered_ones() {
     let g = frozen_golden();
@@ -424,19 +442,15 @@ fn frozen_the_error_codes_are_the_registered_ones() {
         .into_iter()
         .map(|(_, prod)| guard_core::strip_comment_lines(&prod))
         .collect();
-    let (family, at) = inbound
-        .iter()
-        .find_map(|f| f.find("name: \"resolve\",").map(|at| (f, at)))
-        .expect("命令表各族里找不到 `resolve` 那一格");
-    let tail = &family[at..];
-    let cell = &tail[..tail.find("\n    },").expect("那一格没收尾")];
+    // 帧面那一格是 typed 那一行（码表从 `ResolveErr` 来，不借协议级的 `bad_request`）。
     assert!(
-        cell.contains("resolve_query::resolve_json_for_inbound("),
-        "`resolve` 不再经 `resolve_json_for_inbound`"
+        inbound.iter().any(|f| f
+            .contains("typed::asynchronous::<crate::control::resolve_query::ResolveCmd>")),
+        "`resolve` 那一格不再是 typed 那一行"
     );
     assert!(
-        !cell.contains("\"bad_request\""),
-        "`resolve` 那一格又借了协议级的 `bad_request`"
+        !src.contains("\"bad_request\""),
+        "`resolve` 的本体又借了协议级的 `bad_request`"
     );
 }
 

@@ -224,6 +224,8 @@ impl Body {
 
 /// 通用记录的类（记录上 `t` 那一格的六个词；骨架行 `t` 也是它，`unread` 除外：骨架不出认不出的行）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub enum RecordClass {
     Said,

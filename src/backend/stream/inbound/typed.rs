@@ -31,6 +31,18 @@ pub(crate) trait Command: 'static {
     type Err: Codes;
 }
 
+/// 不收入参的那几条命令的入参：缺 · `null` · `{}` 都认，多一个键 ⇒ `bad_args`。
+#[derive(Debug, Clone, Copy, Default, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct NoArgs {}
+
+/// 下层那一份失败（码 ＋ 那一句，`(&'static str, String)` 那一形）⇒ 这一条的错误枚举（同 [`of_fail`]）。
+pub(crate) fn of_pair<E: Codes>(fallback: fn(String) -> E) -> impl Fn((&'static str, String)) -> E {
+    move |(code, said)| of_fail(Fail::new(code, said), fallback)
+}
+
 /// 一条命令自己可能回的那几个码（[`codes!`] 声明）。
 pub(crate) trait Codes: Sized {
     /// 全部码，声明次序。
@@ -75,6 +87,12 @@ pub(crate) trait WithOwn: Command {
         files: Files,
         own: &crate::platform::Own,
     ) -> Result<Self::Reply, Self::Err>;
+}
+
+/// 同 [`Blocking`]，只多递一份**写自家状态的句柄**（`~/.cc-monitor` 底下），不带文件管理面。
+/// 分派那一层手里没有写句柄的入口交不出来（同 [`WithOwn`]）。
+pub(crate) trait Owning: Command {
+    fn run(req: Self::Req, cx: &Cx, own: &crate::platform::Own) -> Result<Self::Reply, Self::Err>;
 }
 
 /// 真异步的那一种：交给独立 task，`cancel` 能在 await 点打断。
@@ -178,13 +196,15 @@ pub(super) enum TypedRun {
     BlockingFiles(fn(Request, Files) -> Outcome, Files),
     /// 阻塞、要文件管理面 ＋ 写句柄（[`WithOwn`]）：写句柄由分派那一层递。
     BlockingOwn(fn(Request, Files, &crate::platform::Own) -> Outcome, Files),
+    /// 阻塞、只要写句柄（[`Owning`]）：写句柄由分派那一层递。
+    BlockingOwning(fn(Request, &crate::platform::Own) -> Outcome),
     Async(fn(Request) -> DataFut),
     /// 异步、要文件管理面（[`AsyncFiles`]）。
     AsyncFiles(fn(Request, Files) -> DataFut, Files),
 }
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`（解码器那一句进原话）。
-fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Fail> {
+pub(crate) fn take<R: serde::de::DeserializeOwned>(args: &serde_json::Value) -> Result<R, Fail> {
     let v = if args.is_null() {
         serde_json::Value::Object(Default::default())
     } else {
@@ -230,6 +250,15 @@ fn run_with_own<C: WithOwn>(r: Request, files: Files, own: &crate::platform::Own
     settle::<C>(C::run(req, &cx, files, own))
 }
 
+fn run_owning<C: Owning>(r: Request, own: &crate::platform::Own) -> Outcome {
+    let req = take::<C::Req>(&r.args)?;
+    let cx = Cx {
+        tz: r.tz,
+        until: r.until,
+    };
+    settle::<C>(C::run(req, &cx, own))
+}
+
 fn run_async<C: Async>(r: Request) -> DataFut {
     Box::pin(async move {
         let req = take::<C::Req>(&r.args)?;
@@ -265,6 +294,11 @@ pub(crate) const fn with_files<C: WithFiles>(summary: &'static str, files: Files
 /// 阻塞、要文件管理面 ＋ 写句柄的一行登记。
 pub(crate) const fn with_own<C: WithOwn>(summary: &'static str, files: Files) -> CommandSpec {
     spec::<C>(summary, TypedRun::BlockingOwn(run_with_own::<C>, files))
+}
+
+/// 阻塞、只要写句柄的一行登记。
+pub(crate) const fn owning<C: Owning>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, TypedRun::BlockingOwning(run_owning::<C>))
 }
 
 /// 异步、要文件管理面的一行登记。

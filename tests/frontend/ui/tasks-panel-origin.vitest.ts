@@ -43,13 +43,10 @@ beforeEach(() => {
 });
 
 describe("LOC1a：任务快照经通道问 `tasks-list`", () => {
-  it("发的是 `tasks-list`，不是别的操作名；成品形状不对 ⇒ 当成失败（空表），不猜", async () => {
+  it("发的是 `tasks-list`，不是别的操作名；回包按类型用（形状由握手指纹管，这里不逐格验）", async () => {
     getSessionTasks.mockResolvedValue([task("1")]);
     expect(await fetchSessionTasks("s1", "devbox")).toEqual([task("1")]);
     expect(chanOps).toEqual(["tasks-list"]);
-    // 后端回了多一格的对象 ⇒ 解码器拒 ⇒ fetch 收成空表（面板自然隐藏）。
-    getSessionTasks.mockResolvedValue([{ ...task("2"), extra: 1 }]);
-    expect(await fetchSessionTasks("s2", "devbox")).toEqual([]);
   });
 });
 

@@ -50,7 +50,7 @@
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
 | `config.json` | **真相** | `config.rs` | 主题 · 字体 · `claudeDir` · 快捷键 · 机器表 · 诊断开关 —— 全是用户手填 |
-| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::answer_annotate` | 按 sid 的星标 · 改名 · 隐藏 |
+| `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` | 按 sid 的星标 · 改名 · 隐藏 |
 | `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件窗口进程，旁件 `.lock` 上独占锁读改写） | 每台机器一份收藏目录 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
 | `auto-launch.json` | **混（良性）** | `auto_launch.rs` | `enabled` 是真相；`monitor_exe_path` 每次启动自愈改写 |

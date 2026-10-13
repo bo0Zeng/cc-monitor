@@ -18,7 +18,7 @@ const LEDGER: &[(&str, usize, &str)] = &[
     ("assets/ext.rs", 3, "自己的应答序列化不出（实际到不了）"),
     ("control/session_batch.rs", 2, "批量起：第二格是那一项的「原话」格（进 detail，那一句另由 said 出），另一处是找不到自身可执行文件"),
     ("faces/accounts_face.rs", 1, "自己的应答序列化不出（实际到不了）"),
-    ("faces/read_face.rs", 4, "读面开文件 / 序列化：待收进带原话的读法"),
+    ("faces/read_face.rs", 3, "读面开文件 / 序列化：待收进带原话的读法"),
     ("faces/rotation_face.rs", 1, "自己的应答序列化不出（实际到不了）"),
     ("faces/rotation_switch_face.rs", 3, "轮换切号：待收进带原话的写法"),
 ];

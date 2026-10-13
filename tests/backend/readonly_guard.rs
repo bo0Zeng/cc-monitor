@@ -745,13 +745,10 @@ mod tests {
             "Face::issue",
             &["stream/inbound/mod.rs", "stream/inbound/spec.rs"],
         ),
-        // 分叉那只只会新建的手：只有分叉那两条命令造 —— `session-fork` 在命令表里，`session-new`（typed）在它自己那份实现里。
+        // 分叉那只只会新建的手：只有分叉那两条命令造 —— 都是 typed，各在它自己那份实现里。
         (
             "NewFile::issue",
-            &[
-                "faces/session_new_face.rs",
-                "stream/inbound/registry/history.rs",
-            ],
+            &["faces/fork_face.rs", "faces/session_new_face.rs"],
         ),
         // 「已过路径解析」只有路径解析本身担保得了：根底下那两道（`common/root_path.rs`，文件管理写面与传输台共用）＋ 写面自己那几道。
         (

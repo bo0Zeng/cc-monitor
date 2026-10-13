@@ -221,7 +221,6 @@ import type { TabSessionActions } from "../../../src/frontend/ui/tab-session-act
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { appStore } from "../../../src/frontend/ui/app-store";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { recordFileWiring } from "../../../src/frontend/ui/record-file-notice";
 
 /** 会话事实里的一格 usage（上限由后端定：这里按「判不出 ⇒ 1M」那一形造）。 */
@@ -2551,7 +2550,7 @@ describe("过程里还没结果的那几步照会话事实画（后端 pending[]
       tab.needs = needs;
       (home(tm).view as unknown as { paintStepWaits(t: Tab): void }).paintStepWaits(tab); // 流里补画住流视图（8a ④）
     };
-    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need", rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), ask: null, manualText: null, receivedAt: Date.now() });
+    const approve = (c: string) => ({ kind: "approve" as const, tool: "Bash", call: c, what: c, sinceMs: Date.now() - 125_000, text: copyText("beSession.needs.approve"), head: "h", headCode: c, tone: "need" as const, rank: 1, waitedMs: 125_000, waitedText: fmtDur(125), ask: null, manualText: null, receivedAt: Date.now() });
     paint([call("b1", "awaiting"), call("b2", "running")], approve("b1"));
     expect([b1.dataset.state, b2.dataset.state]).toEqual(["awaiting", "running"]);
     expect(b1.querySelector(".step-right")?.textContent, "右侧已等多久").toBe(fmtDur(125));
@@ -4549,7 +4548,8 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   });
 
   // 「照起但说一句『查不到记录还在不在』；形状不对报两端契约对不上（出声不静默）」。
-  it("★ 〔FIX2〕问不到 ⇒ 照起，但说一句查不到；形状不对 ⇒ 那一句说回的认不出（不猜版本）", async () => {
+  // 回包形状不对那一形不在界面判了：`history-record` 是 typed 命令，两端形状由握手指纹管（对不上 monitor 事前就拒、说「后端版本不同」）。
+  it("★ 〔FIX2〕问不到 ⇒ 照起，但说一句查不到", async () => {
     remoteRunnerAsksPreflight();
     tm.ensureTab("g4", "/home/pi/proj", "/p/g4.jsonl", "devbox");
     tm.archiveTab("g4");
@@ -4558,11 +4558,6 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
     await home(tm).actions.resumeTab("g4");
     expect(openedRemote).toEqual(["g4"]);
     expect(vi.mocked(showActionFailureToast).mock.calls.map((c) => c[0])).toEqual([title]);
-    vi.mocked(showActionFailureToast).mockClear();
-    probe = { present: true } as unknown as { present: boolean; root: string }; // 少一格 ⇒ 形状不对
-    await home(tm).actions.resumeTab("g4");
-    expect(openedRemote).toEqual(["g4", "g4"]);
-    expect(showActionFailureToast).toHaveBeenCalledWith(title, peerVersionSaid("reply_unreadable", "devbox"));
   });
 
   it("★ G1：可重连的会话记录没了也不落「记录已不在」（终端还在，接得回去）", () => {

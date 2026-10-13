@@ -128,7 +128,7 @@ describe("一个会话读成什么（session-face）", () => {
 
   it("后台任务运行中：点单独一档 · 状态一句照抄核心、时长那一截按此刻走 · 拿不到 ⇒ 核心写的那个字 · peek 照空闲（它最后一句）", () => {
     const from = NOW - 64 * 60_000;
-    const bw = { text: "写好的一句", clock: { text: "L · {dur}", from }, what: "make", count: 1, tone: "busy" };
+    const bw = { text: "写好的一句", clock: { text: "L · {dur}", from }, what: "make", count: 1, tone: "busy" as const };
     const t = tab("a", { activity: bgAct, backgroundWork: bw, lastSay: { text: "最后一句", at: null, atMs: null } });
     expect(dotOf(t)).toBe("background");
     expect(stateWord(t)).toBe(bgAct.text);

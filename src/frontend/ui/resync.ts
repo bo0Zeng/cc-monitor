@@ -7,11 +7,9 @@
  * tab 栏「重新读取」（有打开 tab 的每台各一次整机，`resyncMachines`）。
  */
 import { copyText } from "./copy-table";
-import { settle, unreadable, type Refusals } from "./control-said";
-import { exactKeys, isObj } from "./ipc/decode";
+import { settleTyped, type Refusals } from "./control-said";
 import { toast, failToast } from "./kit/toast";
-import { chan } from "../../comms/inward/chan";
-import { budgetWithin, jsonBody } from "./ipc/chan-caller";
+import { budgetWithin, callTyped } from "./ipc/chan-caller";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
 
 /** 期限：后端要等每份 watcher 对完表、打完标（起几次 tmux）。 */
@@ -27,29 +25,6 @@ export interface Resynced {
   watchers: number;
 }
 
-const COUNTS = ["added", "removed", "retagged", "caught_up", "watchers"] as const;
-/** 那台当下的能力事实：monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面只核形状、不读。 */
-const FACTS = ["unavailable", "uncancellable"] as const;
-
-/** 成品恰好是五个非负整数 ＋ 两格数组 ⇒ 收；否则抛（两边版本对不上）。 */
-export function decodeResynced(origin: Origin, v: unknown): Resynced {
-  if (
-    !isObj(v) ||
-    !exactKeys(v, [...COUNTS, ...FACTS]) ||
-    !COUNTS.every((k) => Number.isInteger(v[k]) && (v[k] as number) >= 0) ||
-    !FACTS.every((k) => Array.isArray(v[k]))
-  ) {
-    throw unreadable(origin, "resync", "is not exactly {added, removed, retagged, caught_up, watchers, unavailable, uncancellable}");
-  }
-  return {
-    added: v.added as number,
-    removed: v.removed as number,
-    retagged: v.retagged as number,
-    caughtUp: v.caught_up as number,
-    watchers: v.watchers as number,
-  };
-}
-
 const refusals: Refusals = {
   byCode: (_code, said) => copyText("resync.call.refused", { said }),
   noReason: () => copyText("resync.call.noReason"),
@@ -57,10 +32,16 @@ const refusals: Refusals = {
 
 /** 让 `origin` 那台对齐一次；给了 `sid` 就只对那一个会话。失败 ⇒ 抛 [`ControlError`]。 */
 export async function resync(origin: Origin, sid?: string): Promise<Resynced> {
-  const payload = jsonBody(sid === undefined ? {} : { sid });
   const budget = budgetWithin(RESYNC_BUDGET_MS);
-  const v = await settle(origin, "resync", chan.call(origin, "resync", payload, budget), refusals);
-  return decodeResynced(origin, v);
+  const req = sid === undefined ? {} : { sid };
+  // 回包里那两格能力事实 monitor 在通道那一跳已经收进 `Offer`（唯一住处），界面不读。
+  const { added, removed, retagged, caught_up: caughtUp, watchers } = await settleTyped(
+    origin,
+    "resync",
+    callTyped(origin, "resync", req, budget),
+    refusals,
+  );
+  return { added, removed, retagged, caughtUp, watchers };
 }
 
 /** 对齐的结果 ⇒ 一句话：对齐差异 ＋补读了几条（0 ⇒「没有漏的」）。 */

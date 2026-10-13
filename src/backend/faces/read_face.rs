@@ -30,7 +30,6 @@
 //! 不拨号、不起进程、不写盘 —— 全是既有读函数的换壳。`readonly_guard` 那条写盘禁令照旧管它。
 
 use crate::platform::fs::Ro;
-use crate::stream::inbound::spec::wire;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 
@@ -100,43 +99,12 @@ pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
 /// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
 /// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的钟面 · 命中时刻 · 行尾时刻都按它写。
 pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    use crate::observe::{accounts_query, history_query, search_query};
+    use crate::observe::accounts_query;
     match cmd {
         // 这台后端自己的 stderr 诊断文件（尾部）—— 机器页「日志」经这台后端的只读面取回来看。
         "backend-log" => {
             let max = u64_arg(args, "maxBytes")?.map_or(LOG_TAIL_BYTES, |n| n.min(LOG_TAIL_BYTES));
             log_tail(BACKEND_LOG.get().map(|p| p.as_path()), max)
-        }
-        // 一个子运行的记录（按运行读，不认任何一家的目录 / 字段）：父记录 ＋（子运行 ‖ 派出它的那次工具调用）⇒ 那份记录从 `from` 起的一页成品。
-        //   `end` ＝ 读到哪了（下次从这里续）；`more` ＝ 这一页没读完。
-        "history-run" => {
-            let parent = str_arg(args, "parent")?;
-            let run = opt_str_arg(args, "run")?;
-            let tool = opt_str_arg(args, "tool")?;
-            let from = u64_arg(args, "from")?.unwrap_or(0);
-            let (source, run) = history_query::run_source(home, parent, run, tool)?;
-            let source_str = source.to_string_lossy().into_owned();
-            let (target, face) = record_face(home, &source_str)?;
-            let page = history_query::read_page(
-                home,
-                &source_str,
-                from,
-                None,
-                READ_PAGE_BYTES,
-                LINE_CAP_BYTES,
-            )?;
-            let rows = crate::observe::record_page::run_rows(
-                &mut reader(&face, &target, from, tz),
-                from,
-                &page.bytes,
-            );
-            capped(json!({
-                "run": run,
-                "path": source_str,
-                "rows": rows,
-                "end": page.next,
-                "more": !page.eof,
-            }))
         }
         // 这台后端的漂移账（看不懂的记录类型）出成品：`{faces: [...]}`（各家的面并在一起，注册序）。
         "drift-report" => {
@@ -203,366 +171,6 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
             };
             accounts_query::trust_product(config_dir, cwd).map_err(|(c, m)| (trust_code(&c), m))
         }
-        // 按字节分页读，出**行摘要**（monitor 旁路快照那一页）：`{rows: [{end, hash, record?, cwd?}], next, eof}`，
-        //   每个可计行一条（`observe/record_page.rs::rows_of`）。原先回 `text`、由 monitor 切行解析。
-        "history-read" => {
-            let path = str_arg(args, "path")?;
-            let offset = u64_arg(args, "offset")?.unwrap_or(0);
-            let until = u64_arg(args, "until")?;
-            let (target, face) = record_face(home, path)?;
-            let page = history_query::read_page(
-                home,
-                path,
-                offset,
-                until,
-                READ_PAGE_BYTES,
-                LINE_CAP_BYTES,
-            )?;
-            Ok(json!({
-                "rows": crate::observe::record_page::rows_of(
-                    &mut reader(&face, &target, offset, tz),
-                    offset,
-                    &page.bytes,
-                ),
-                "next": page.next,
-                "eof": page.eof,
-            }))
-        }
-        // 按字节分页读，出**记录行**（界面直接问：查看器整份读 · 骨架按偏移取一段）：
-        //   `{lines, next, nextSeq, eof}`；`seq` ＝ `offset` 那一行的行号（缺 ＝ 0）、`nextSeq` 原样交回下一问。
-        "history-page" => {
-            let path = str_arg(args, "path")?;
-            let offset = u64_arg(args, "offset")?.unwrap_or(0);
-            let until = u64_arg(args, "until")?;
-            let seq = u64_arg(args, "seq")?.unwrap_or(0);
-            let (target, face) = record_face(home, path)?;
-            let page = history_query::read_page(
-                home,
-                path,
-                offset,
-                until,
-                READ_PAGE_BYTES,
-                LINE_CAP_BYTES,
-            )?;
-            let (lines, next_seq) = crate::observe::record_page::record_lines_of_page(
-                &mut reader(&face, &target, offset, tz),
-                &target,
-                seq,
-                offset,
-                &page.bytes,
-            );
-            Ok(json!({
-                "lines": lines,
-                "next": page.next,
-                "nextSeq": next_seq,
-                "eof": page.eof,
-            }))
-        }
-        // 按**行号**取回（不依赖骨架索引的那条取回路，`history_query::read_lines` 头注）。
-        // 出**记录行**（原先回可计行原文、由 monitor 解析）：`{from, next, eof, lines}`。
-        "history-lines" => {
-            let path = str_arg(args, "path")?;
-            let from = u64_arg(args, "from")?.unwrap_or(0);
-            let until = u64_arg(args, "until")?;
-            let (target, face) = record_face(home, path)?;
-            let page = history_query::read_lines(
-                home,
-                path,
-                from,
-                until,
-                READ_PAGE_BYTES,
-                LINE_CAP_BYTES,
-            )?;
-            let first = page.starts.first().copied().unwrap_or(0);
-            let (lines, _) = crate::observe::record_page::record_lines(
-                &mut reader(&face, &target, first, tz),
-                &target,
-                page.from,
-                page.lines
-                    .iter()
-                    .map(|l| l.as_bytes())
-                    .zip(page.starts.iter().copied()),
-            );
-            Ok(json!({
-                "from": page.from,
-                "next": page.next,
-                "eof": page.eof,
-                "lines": lines,
-            }))
-        }
-        // `frame_query::STILL_DIALED` 缩到只剩真该拨号的那两条：骨架索引与大纲清单
-        // 是**每开一个大会话就要一次**的查询，不是「点一次才发一次」。与 CLI 那一臂同一个扫描。
-        // 这三条**出成品**（不再是按行 `{"lines":[头, …, 尾]}`）：monitor 那一份「核头尾、剥行」
-        //   删了，界面经通道直接问、按形状收。头尾三段只属于 CLI 那一臂（stdout 要分帧才认得出截断）；
-        //   一帧应答是原子的 —— 装不下就是 `too_large` 明拒，没有「有头没尾」这一形。
-        "history-index" => {
-            let path = str_arg(args, "path")?;
-            let offset = u64_arg(args, "offset")?.unwrap_or(0);
-            let until = u64_arg(args, "until")?;
-            let mut rows = CappedRows::default();
-            let end = if offset == 0 && until.is_none() {
-                let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
-                let pushed = rows.push_all(&map.index);
-                rows.finish(pushed)?;
-                map.end
-            } else {
-                let r = history_query::open_session_at(home, path, offset)
-                    .map_err(|e| ("failed", e))?;
-                let (target, _) = record_face(home, path)?;
-                let kind = crate::agents::record_kind_of(&target).unwrap_or_default();
-                let scanned =
-                    history_query::scan_session_index(kind, r, offset, until, |row| rows.push(row));
-                rows.finish(scanned)?.1
-            };
-            Ok(pack_index(offset, end, &rows.rows))
-        }
-        "history-user-inputs" => {
-            let path = str_arg(args, "path")?;
-            let from = u64_arg(args, "from")?.unwrap_or(0);
-            let mut rows = CappedRows::default();
-            let end = if from == 0 {
-                let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
-                let pushed = rows.push_all(&map.inputs);
-                rows.finish(pushed)?;
-                map.end
-            } else {
-                let r = history_query::open_user_inputs_at(home, path, from)
-                    .map_err(|e| ("failed", e))?;
-                let scanned =
-                    crate::observe::user_inputs::scan_user_inputs(r, from, |row| rows.push(row));
-                rows.finish(scanned)?.1
-            };
-            Ok(json!({ "from": from, "end": end, "entries": rows.rows }))
-        }
-        // 一轮的摘要（B4）：`from` 是某一轮的 `at`（或 0）；还在跑的最后一轮下次从它的 `at` 再取。
-        "history-turns" => {
-            let path = str_arg(args, "path")?;
-            let from = u64_arg(args, "from")?.unwrap_or(0);
-            let (mut turns, end) = if from == 0 {
-                let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
-                (map.turns.clone(), map.end)
-            } else {
-                let r = history_query::open_user_inputs_at(home, path, from)
-                    .map_err(|e| ("failed", e))?;
-                let mut out = Vec::new();
-                let (_, end) = crate::observe::turns::scan_turns(r, from, |row| {
-                    out.push(row.clone());
-                    Ok(())
-                })
-                .map_err(|e| ("failed", format!("stream failed: {e}")))?;
-                (out, end)
-            };
-            // 钟面按看的那一台的时区写（先于下面那一步：还在跑的那一轮的右端按钟面改写）。
-            turns.iter_mut().for_each(|t| t.stamp(tz));
-            // 还没收尾的最后一轮：「现在在做哪一步 / 在等你什么」按这台此刻的会话事实拼进过程行（判定同 `history-facts`）。
-            if let Some(last) = turns.last_mut().filter(|t| !t.done) {
-                let sid = std::path::Path::new(path)
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("");
-                let holders = history_query::facts_holders(home, path).unwrap_or_default();
-                let off =
-                    answer_off_of(&holders, history_query::facts_agent(home, path).as_deref());
-                let needs = dress_ask(
-                    crate::observe::facts_query::needs_of(
-                        &last.pending,
-                        accounts_query::session_wait(home, sid).as_ref(),
-                    ),
-                    sid,
-                    off.as_ref(),
-                );
-                let live = !holders.is_empty();
-                crate::observe::turns::dress_live(last, needs.as_ref(), live);
-            }
-            let mut rows = CappedRows::default();
-            let pushed = rows.push_all(&turns);
-            rows.finish(pushed)?;
-            Ok(json!({ "from": from, "end": end, "turns": rows.rows }))
-        }
-        // 会话内查找（Ctrl+F）。
-        // `limit` 超封顶按封顶算、缺席取缺省；`skip` ＝ 跳过前几条（续下一页）。
-        // `scope`（可缺）＝ 只留谁说的，同 `history-search` 同名同义、判定同一个 `search_query::in_scope`；
-        //   `user` 时工具内容不搜（人说的话没有工具输出）。
-        "history-find" => {
-            use crate::observe::search_query::{FindPage, FIND_DEFAULT_LIMIT, FIND_MAX_LIMIT};
-            let path = str_arg(args, "path")?;
-            let query = str_arg(args, "query")?;
-            let scope = match args.get("scope") {
-                None | Some(Value::Null) => None,
-                Some(Value::String(s)) if matches!(s.as_str(), "user" | "assistant" | "report") => {
-                    Some(s.as_str())
-                }
-                Some(_) => {
-                    return Err((
-                        "bad_args",
-                        crate::common::contract::malformed(
-                            "`scope` must be user / assistant / report",
-                        ),
-                    ))
-                }
-            };
-            let include_tools = args
-                .get("include_tools")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let limit = u64_arg(args, "limit")?
-                .map_or(FIND_DEFAULT_LIMIT, |n| (n as usize).min(FIND_MAX_LIMIT));
-            let skip = u64_arg(args, "skip")?.unwrap_or(0) as usize;
-            let page = FindPage { skip, limit };
-            let target = history_query::session_path_at(home, path).map_err(|e| ("failed", e))?;
-            let mut hits = CappedRows::default();
-            // 先走 SX1 常驻索引（不再每次从头扫）；不归它管 ⇒ 现扫。
-            let scanned = match search_query::find_indexed(
-                home,
-                &target,
-                query,
-                include_tools,
-                scope,
-                page,
-                |h| hits.push(&search_query::with_hit_text(h, tz)),
-            ) {
-                Some(r) => r,
-                None => {
-                    let r =
-                        history_query::open_session_at(home, path, 0).map_err(|e| ("failed", e))?;
-                    search_query::scan_session_find(r, query, include_tools, scope, page, |h| {
-                        hits.push(&search_query::with_hit_text(h, tz))
-                    })
-                }
-            };
-            let (_, total) = hits.finish(scanned)?;
-            Ok(json!({ "total": total, "hits": hits.rows }))
-        }
-        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需手动）。
-        //   `limits` = 设置里的上限表（模型名子串 → 上限），可缺；上限每次按它重判。
-        //   `prior` = 调用方上一次拿到的应答**原样**（续传令牌，后端零状态）：缺席 / `null` ⇒ 从字节 0 扫；
-        //   给了 ⇒ 形状必须恰好是本命令出的那一形（`facts_query::prior_from`），从它的 `end` 接着扫、累加在它上面。
-        //   续点越过文件尾 / 不在行边界 ⇒ `failed`（调用方从 0 重要一份，同大纲清单）。
-        "history-facts" => {
-            use crate::observe::facts_query;
-            let path = str_arg(args, "path")?;
-            let prior = match args.get("prior") {
-                None | Some(Value::Null) => None,
-                Some(v) => Some(
-                    facts_query::prior_from(v)
-                        .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?,
-                ),
-            };
-            let limits = facts_query::limits_from(args.get("limits"))
-                .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?;
-            // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
-            let sid = std::path::Path::new(path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            let relay = crate::agents::context_marks()
-                .into_iter()
-                .find_map(|m| crate::observe::relay_marks::seen(sid, m));
-            let mut facts = match prior {
-                // 冷开（没有续点）⇒ 共用那张扫描图；有续点 ⇒ 从它的 `end` 接着扫、累加在它上面。
-                None => history_query::cold_scan(home, path)
-                    .map_err(|e| ("failed", e))?
-                    .facts(&limits, relay),
-                Some(prior) => {
-                    let r = history_query::open_facts_at(home, path, prior.end)
-                        .map_err(|e| ("failed", e))?;
-                    facts_query::scan_facts(r, prior, &limits, relay)
-                        .map_err(|e| ("failed", format!("stream failed: {e}")))?
-                }
-            };
-            if facts.project_dir.is_none() {
-                facts.project_dir = history_query::facts_project_dir(home, path);
-            }
-            if facts.agent.is_none() {
-                facts.agent = history_query::facts_agent(home, path);
-            }
-            // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
-            let holders = history_query::facts_holders(home, path);
-            facts.writers = holders.clone().unwrap_or_default();
-            // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
-            // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
-            // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
-            facts.answer_off = answer_off_of(&facts.writers, facts.agent.as_deref());
-            facts.needs = dress_ask(
-                facts_query::needs_of(
-                    &facts.pending,
-                    accounts_query::session_wait(home, sid).as_ref(),
-                ),
-                sid,
-                facts.answer_off.as_ref(),
-            );
-            // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
-            facts.background = accounts_query::session_background(home, sid).map(|born| {
-                let now = crate::common::time::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-                facts_query::background_of(&facts.bg_tasks, born, now)
-            });
-            // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
-            facts_query::settle_pending(&mut facts, holders.is_some());
-            let v = serde_json::to_value(&facts).map_err(|e| ("failed", e.to_string()))?;
-            let size = v.to_string().len();
-            if size > LINES_CAP_BYTES {
-                return Err(too_large(size));
-            }
-            Ok(v)
-        }
-        // 这台上需手动的会话清单（一次问一台）：活着、那台说在等人的每一个，带它在等什么（同 `history-facts.needs`，不另判）。
-        "sessions-needs" => crate::stream::inbound::spec::wire(&NeedsList {
-            waiting: accounts_query::live_needs(home, &crate::control::asks::sids(), &|n, sid| {
-                let path = history_query::session_record(home, sid)
-                    .ok()
-                    .map(|p| p.to_string_lossy().into_owned());
-                let off = path.as_deref().and_then(|path| {
-                    answer_off_of(
-                        &history_query::facts_holders(home, path).unwrap_or_default(),
-                        history_query::facts_agent(home, path).as_deref(),
-                    )
-                });
-                dress_ask(n, sid, off.as_ref())
-            }),
-        }),
-        // 主线外清单（回退掉的那几条）：冷读一次（实时那一路是帧 `session_branch`）。
-        "history-branch" => {
-            let path = str_arg(args, "path")?;
-            let map = history_query::cold_scan(home, path).map_err(|e| ("failed", e))?;
-            capped(wire(&Branch {
-                off: map.off.clone(),
-                end: map.end,
-            })?)
-        }
-        "history-tail" => {
-            let path = str_arg(args, "path")?;
-            let n = u64_arg(args, "n")?.ok_or_else(|| {
-                (
-                    "bad_args",
-                    crate::common::contract::malformed("missing `n`"),
-                )
-            })?;
-            let plan =
-                history_query::tail_now(home, path, n as usize).map_err(|e| ("failed", e))?;
-            wire(&plan)
-        }
-        // 这条会话的记录还在不在（resume 之前问；本体住 `history_query::record_in`）。
-        // 可选 `configDir`：这次 resume 要用的那个账号根（缺席 / `null` ⇒ 这台的家目录）。
-        "history-record" => {
-            let sid = str_arg(args, "sid")?;
-            let config_dir = match args.get("configDir") {
-                None | Some(Value::Null) => None,
-                Some(Value::String(s)) => Some(s.as_str()),
-                Some(_) => {
-                    return Err((
-                        "bad_args",
-                        crate::common::contract::malformed(
-                            "`configDir` must be a string or null (null = this machine's home)",
-                        ),
-                    ))
-                }
-            };
-            let probe =
-                history_query::record_for(home, config_dir, sid).map_err(|e| ("bad_args", e))?;
-            wire(&probe)
-        }
         other => Err((
             "bad_args",
             crate::common::contract::malformed(&format!("this face has no command `{other}`")),
@@ -571,7 +179,7 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
 }
 
 /// 过围栏 ⇒ 这份记录是哪一家的（注册表按它落在谁的根下认），解释交那一家。
-fn record_face(
+pub(crate) fn record_face(
     home: &std::path::Path,
     path: &str,
 ) -> Result<(std::path::PathBuf, crate::agents::RecordFace), (&'static str, String)> {
@@ -587,7 +195,7 @@ fn record_face(
 }
 
 /// 从 `offset` 起读那一份记录的读法：起点之前那一段一起喂进去配排队消息的打字时刻（`record_page::lead_of`）。
-fn reader<'a>(
+pub(crate) fn reader<'a>(
     face: &'a crate::agents::RecordFace,
     target: &std::path::Path,
     offset: u64,
@@ -595,30 +203,6 @@ fn reader<'a>(
 ) -> crate::observe::record_page::Reader<'a> {
     let (lead_at, lead) = crate::observe::record_page::lead_of(target, offset);
     crate::observe::record_page::Reader::new(face, lead_at, &lead, tz.clone())
-}
-
-/// 整份成品过 [`LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
-fn capped(v: Value) -> Answer {
-    let size = v.to_string().len();
-    if size > LINES_CAP_BYTES {
-        return Err(too_large(size));
-    }
-    Ok(v)
-}
-
-/// `sessions-needs` 的应答：这台上需手动的会话，先答的在前。
-#[derive(Debug, serde::Serialize)]
-pub(crate) struct NeedsList {
-    pub(crate) waiting: Vec<crate::observe::accounts_query::NeedsRow>,
-}
-
-/// `history-branch` 的应答。
-#[derive(Debug, serde::Serialize)]
-pub(crate) struct Branch {
-    /// 回退掉的那几条记录的 `id`（文件序）。
-    pub(crate) off: Vec<String>,
-    /// 最后一个完整行的末字节。
-    pub(crate) end: u64,
 }
 
 /// `accounts-trust` 的拒绝码（CLI 那一臂给的是 `String`）→ 帧面的 `&'static str`。**闭集，与 `stream/inbound/registry/accounts.rs`
@@ -648,134 +232,6 @@ pub(crate) fn too_large_at(size: usize, cap: usize) -> (&'static str, String) {
             &[("size", &size.to_string()), ("cap", &cap.to_string())],
         ),
     )
-}
-
-/// 出成品那三条的收集器：逐条收成 JSON 值，整份（按序列化字节计）过 [`LINES_CAP_BYTES`]
-/// ⇒ 当场停下扫描、回 `too_large`（不截断：截断的清单会被当成完整的用）—— 同全文搜索那一份上限（`faces/search_face.rs::search_at`）。
-#[derive(Default)]
-struct CappedRows {
-    rows: Vec<Value>,
-    seen: usize,
-    over: bool,
-}
-
-impl CappedRows {
-    fn push<T: serde::Serialize>(&mut self, row: &T) -> std::io::Result<()> {
-        let v = serde_json::to_value(row).map_err(std::io::Error::other)?;
-        self.seen += v.to_string().len() + 1;
-        if self.seen > LINES_CAP_BYTES {
-            self.over = true;
-            return Err(std::io::Error::other("reply cap reached"));
-        }
-        self.rows.push(v);
-        Ok(())
-    }
-
-    /// 一整张表逐条推（冷开那几问从扫描图出）；超了上限就停。
-    fn push_all<T: serde::Serialize>(&mut self, rows: &[T]) -> std::io::Result<()> {
-        rows.iter().try_for_each(|r| self.push(r))
-    }
-
-    /// 扫描的结局 ⇒ 帧面的结局。超了上限的那一次停下，原因是「超了」，不是扫描函数报的那句 I/O 错。
-    fn finish<T>(&self, res: std::io::Result<T>) -> Result<T, (&'static str, String)> {
-        if self.over {
-            return Err(too_large(self.seen));
-        }
-        res.map_err(|e| ("failed", format!("stream failed: {e}")))
-    }
-}
-
-/// **骨架索引在帧面上按列排**（17 MB 的会话一份索引六千多行，逐行对象里键名占一大半）：
-///
-/// - 每行都有的几格各一列：`o`（与上一行末尾的字节差，第一行与 `from` 比；连着的行 ＝ 0）· `n` · `t`（本份 `classes` 里的号，
-///   从 1 起，0 ＝ 不进界面）· `fd`（0 ＝ 没有）· `u`（没有 ⇒ `null`）。
-/// - 稀疏的几格各一张小表，`at` 是与上一项的行号差（第一项与 −1 比；连着 ＝ 0）：`body`（正文那五个数 `ch` `cj` `pl` `cb` `cl`，
-///   五个全是 0 的行不进表）· `sp`（来源，`v`）· `inputs`（用户输入的摘要 `x` 与时刻 `ts`，没有时刻 ⇒ 空串）。
-/// - `sc` 不上帧面：占位不用它（CLI 那一臂照旧逐行出 [`crate::observe::history_query::IndexRow`]）。
-///
-/// 界面读法只在 `session-reads.ts::decodeIndex` 一处（装回逐行，下游照旧），跨语言金样钉两侧。
-pub(crate) fn pack_index(from: u64, end: u64, rows: &[Value]) -> Value {
-    let num = |r: &Value, k: &str| r.get(k).and_then(Value::as_u64).unwrap_or(0);
-    let mut classes: Vec<Value> = Vec::new();
-    let (mut o, mut n, mut t, mut fd, mut u): (
-        Vec<Value>,
-        Vec<Value>,
-        Vec<Value>,
-        Vec<Value>,
-        Vec<Value>,
-    ) = (vec![], vec![], vec![], vec![], vec![]);
-    #[derive(Default)]
-    struct Sparse {
-        last: i64,
-        at: Vec<Value>,
-        cols: Vec<(&'static str, Vec<Value>)>,
-    }
-    impl Sparse {
-        fn of(keys: &[&'static str]) -> Sparse {
-            Sparse {
-                last: -1,
-                at: vec![],
-                cols: keys.iter().map(|k| (*k, vec![])).collect(),
-            }
-        }
-        fn push(&mut self, i: usize, vals: Vec<Value>) {
-            let i = i as i64;
-            self.at.push((i - self.last - 1).into());
-            self.last = i;
-            for ((_, col), v) in self.cols.iter_mut().zip(vals) {
-                col.push(v);
-            }
-        }
-        fn into_value(self) -> Value {
-            let mut m = serde_json::Map::new();
-            m.insert("at".into(), Value::Array(self.at));
-            for (k, col) in self.cols {
-                m.insert(k.into(), Value::Array(col));
-            }
-            Value::Object(m)
-        }
-    }
-    const BODY: [&str; 5] = ["ch", "cj", "pl", "cb", "cl"];
-    let (mut body, mut sp, mut inputs) = (
-        Sparse::of(&BODY),
-        Sparse::of(&["v"]),
-        Sparse::of(&["x", "ts"]),
-    );
-    let mut prev_end = from;
-    for (i, r) in rows.iter().enumerate() {
-        let (at, len) = (num(r, "o"), num(r, "n"));
-        o.push(at.saturating_sub(prev_end).into());
-        n.push(len.into());
-        prev_end = at + len;
-        t.push(match r.get("t") {
-            Some(c) => {
-                let k = classes.iter().position(|x| x == c).unwrap_or_else(|| {
-                    classes.push(c.clone());
-                    classes.len() - 1
-                });
-                (k + 1).into()
-            }
-            None => 0.into(),
-        });
-        fd.push(num(r, "fd").into());
-        u.push(r.get("u").cloned().unwrap_or(Value::Null));
-        if BODY.iter().any(|k| num(r, k) != 0) {
-            body.push(i, BODY.iter().map(|k| num(r, k).into()).collect());
-        }
-        if let Some(v) = r.get("sp") {
-            sp.push(i, vec![v.clone()]);
-        }
-        if let Some(x) = r.get("x") {
-            let ts = r.get("ts").cloned().unwrap_or_else(|| json!(""));
-            inputs.push(i, vec![x.clone(), ts]);
-        }
-    }
-    json!({
-        "from": from, "end": end, "count": rows.len(),
-        "classes": classes,
-        "o": o, "n": n, "t": t, "fd": fd, "u": u,
-        "body": body.into_value(), "sp": sp.into_value(), "inputs": inputs.into_value(),
-    })
 }
 
 fn str_arg<'a>(args: &'a Value, key: &str) -> Result<&'a str, (&'static str, String)> {
@@ -820,7 +276,7 @@ mod tests;
 /// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `facts_query::dress_ask_with`）；
 /// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。
 /// 会话事实 · 过程那一轮 · 需手动清单三处都经这里（同一条会话三处说的是同一句）。
-fn dress_ask(
+pub(crate) fn dress_ask(
     needs: Option<crate::observe::facts_query::Needs>,
     sid: &str,
     off: Option<&crate::common::cells::Words>,
@@ -844,7 +300,7 @@ fn dress_ask(
 /// 答题口没接上 ⇒ 写好的那一句（会话事实 `answerOff`）；接上了 / 判不了 ⇒ `None`。按持着它的进程现查（`writers` 是它们的 pid）：
 /// ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量（值说原因）；换了启动器那一支（ccm 的便条说插件是经环境交下去的）、
 /// 持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去；身上看不出 ccm 挂过 ⇒ 别处起的（`agent` 那一家有答题口才这么说）。
-fn answer_off_of(writers: &[u32], agent: Option<&str>) -> Option<crate::common::cells::Words> {
+pub(crate) fn answer_off_of(writers: &[u32], agent: Option<&str>) -> Option<crate::common::cells::Words> {
     use crate::agents::asks::HookOff;
     use crate::platform::proc::EnvRead;
     writers.iter().find_map(|pid| {

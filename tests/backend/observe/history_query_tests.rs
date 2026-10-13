@@ -579,26 +579,6 @@ fn background_warmers_run_at_low_priority() {
     }
 }
 
-impl crate::guard_support::Shaped for TailPlan {
-    fn samples() -> Vec<Self> {
-        vec![TailPlan {
-            total: 10,
-            tail_from: 7,
-            split_at: 300,
-            end: 420,
-        }]
-    }
-}
-
-impl crate::guard_support::Shaped for RecordProbe {
-    fn samples() -> Vec<Self> {
-        vec![RecordProbe {
-            present: true,
-            root: "/home/u/.claude".into(),
-        }]
-    }
-}
-
 /// d：清单缓存的追加读按块 —— 两问之间长了 8 MiB，读的时候本线程手里最多两块多一点（今天整截读进一个 `Vec`）；
 /// 那一行与整份重扫的一样。
 #[test]

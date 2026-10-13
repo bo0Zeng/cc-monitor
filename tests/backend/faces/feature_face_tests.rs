@@ -13,7 +13,16 @@ use super::*;
 /// `feature_face::answer`」，两边必须相等。
 // ＋ `mcp-read`（MCP 列表成品，读法住适配层）。
 // ＋ `hooks-diag`（cc-bus 钩子诊断成品，本体 `observe/cc_bus_hooks.rs`）。
-const FAMILY: &[&str] = &["hooks-diag", "mcp-read", "tasks-list"];
+const FAMILY: &[&str] = &["hooks-diag", "mcp-read"];
+// `tasks-list` 换成 typed（本文件里的 `TasksListCmd`），同上。
+
+/// `tasks-list` 照分派那一层解入参（`typed::take`）再交本体；回包投成线上那一份，失败只留码。
+fn tasks(home: &std::path::Path, args: &Value) -> Result<Value, String> {
+    use crate::stream::inbound::typed::Codes as _;
+    let req = crate::stream::inbound::typed::take::<TasksListReq>(args).map_err(|f| f.code)?;
+    let got = tasks_at(home, req).map_err(|e| e.into_fail().code)?;
+    Ok(serde_json::to_value(got).expect("回包总能序列化"))
+}
 // `session-interrupts` · `session-terminals` 换成 typed（本文件里的 `SessionInterrupts` · `SessionTerminals`，命令表那一行点类型名），
 //   不再经 `answer` 按名分派，不在这张表里。
 
@@ -63,27 +72,17 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
         r#"{"id":"1","subject":"占位","status":"pending"}"#,
     )
     .unwrap();
-    let v = answer_at(&h, "tasks-list", &json!({"sid": "s"}), &Default::default()).unwrap();
+    let v = tasks(&h, &json!({"sid": "s"})).unwrap();
     // 应答是成品 `{tasks}`，不再是原样对象的 `lines`。
     let rows = v["tasks"].as_array().expect("tasks");
     assert_eq!(rows.len(), 1);
     assert!(v.get("lines").is_none(), "还在回原始行：{v}");
     // 反向：缺 sid ⇒ bad_args；sid 走出任务根 ⇒ bad_args（围栏在本体里，这里只证它透得上来）。
+    assert_eq!(tasks(&h, &json!({})).unwrap_err(), "bad_args");
+    assert_eq!(tasks(&h, &json!({"sid": "../s"})).unwrap_err(), "bad_args");
+    // 多一格 ⇒ bad_args（入参是类型：`deny_unknown_fields`）。
     assert_eq!(
-        answer_at(&h, "tasks-list", &json!({}), &Default::default())
-            .unwrap_err()
-            .0,
-        "bad_args"
-    );
-    assert_eq!(
-        answer_at(
-            &h,
-            "tasks-list",
-            &json!({"sid": "../s"}),
-            &Default::default()
-        )
-        .unwrap_err()
-        .0,
+        tasks(&h, &json!({"sid": "s", "x": 1})).unwrap_err(),
         "bad_args"
     );
     assert_eq!(
@@ -99,6 +98,7 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
 /// 要求：「正路是把解释挪进后端、直接出成品……线上形状由一份跨语言金样钉住（后端测试产出 == 金样 ·
 /// TS 解码器读同一份）」。异源：金样里的 `files` 由**生产**路径（`answer_at` → `session_tasks` → `task_entry`）现算，
 /// 与手写的 `product` 逐格相等；界面那一侧（`tests/frontend/ui/tasks-decode.vitest.ts`）读同一份。
+/// 生产路径现在是 `tasks_at` → `session_tasks` → `task_entry`（typed）。
 /// 金样的 `files` 覆盖了旧口径（serde `TaskEntry`）的每一档：多余键不带 · BOM · `null` 可选格不出现 · id 不是串 / blocks 是 null /
 /// 缺必填 / 半截 JSON / 不是数字名 ⇒ 都不算任务。
 #[test]
@@ -116,8 +116,13 @@ fn the_tasks_product_matches_the_cross_language_golden() {
         )
         .unwrap();
     }
-    let got = answer_at(&h, "tasks-list", &g["request"], &Default::default()).unwrap();
+    let got = tasks(&h, &g["request"]).unwrap();
     assert_eq!(got, g["product"], "成品与金样对不上");
+    // 线上字节：帧里的回包先过 `to_value`（键排好序）再写出 ⇒ 与金样那一份重新序列化后逐字节相等。
+    assert_eq!(
+        serde_json::to_string(&got).unwrap(),
+        serde_json::to_string(&g["product"]).unwrap()
+    );
 }
 
 /// ★ `mcp-read` 每条写好的字（扩展页小标与抽屉那一行照抄）：需登录那一句（号名 · 几点记下）· 断开那一句（这台活会话里最近说它的那一条：

@@ -56,7 +56,7 @@ fn find(data: &[u8], q: &str, tools: bool, limit: usize) -> Vec<Value> {
     let mut v = vec![serde_json::json!({})];
     let page = FindPage { skip: 0, limit };
     let (count, total) = scan_session_find(data, q, tools, None, page, |hit| {
-        v.push(with_hit_text(hit, &Default::default()));
+        v.push(serde_json::to_value(with_hit_text(hit, &Default::default())).unwrap());
         Ok(())
     })
     .expect("find ok");
@@ -273,7 +273,7 @@ fn gap1_history_find_rides_the_resident_index_and_equals_the_plain_scan() {
         serde_json::json!({ "total": total, "hits": hits })
     };
     let ask = |tools: bool| {
-        crate::faces::read_face::answer_at(
+        find_wire(
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": "zqx", "include_tools": tools, "limit": 500}),
@@ -351,7 +351,7 @@ fn find_hits_carry_turn_and_time_and_page_by_skip_on_both_arms() {
         serde_json::json!({ "total": total, "hits": hits })
     };
     let ask = |skip: usize, limit: usize| {
-        crate::faces::read_face::answer_at(
+        find_wire(
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": "zqx", "skip": skip, "limit": limit}),
@@ -466,8 +466,8 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
                 limit: 500,
             },
             |h| {
-                got.push(h["uuid"].as_str().unwrap().to_string());
-                assert_eq!(h["kind"], "user", "用户范围里每条都是 user 命中");
+                got.push(h.uuid.clone());
+                assert_eq!(h.kind, "user", "用户范围里每条都是 user 命中");
                 Ok(())
             },
         )
@@ -490,7 +490,7 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
     std::fs::write(&path, &data).unwrap();
     let p = path.display().to_string();
     let ask = |scope: &str, tools: bool| {
-        crate::faces::read_face::answer_at(
+        find_wire(
             &home,
             "history-find",
             &serde_json::json!({"path": p, "query": q, "include_tools": tools, "scope": scope, "limit": 500}),
@@ -510,4 +510,21 @@ fn user_scope_hits_are_what_the_stream_draws_as_said_by_the_person() {
     }
     assert_eq!(ask("bogus", false).unwrap_err().0, "bad_args");
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 照登记表那一层问一次 `history-find`（入参经 typed 那一处解，回包过一遍真序列化器）。
+fn find_wire(
+    home: &std::path::Path,
+    cmd: &str,
+    args: &serde_json::Value,
+    tz: &crate::Tz,
+) -> Result<serde_json::Value, (String, String)> {
+    assert_eq!(cmd, "history-find");
+    let req = crate::stream::inbound::typed::take(args).map_err(|e| (e.code, e.message))?;
+    crate::faces::history_face::find_at(home, req, tz)
+        .map(|r| serde_json::to_value(r).unwrap())
+        .map_err(|e| {
+            let f = crate::stream::inbound::typed::Codes::into_fail(e);
+            (f.code, f.message)
+        })
 }

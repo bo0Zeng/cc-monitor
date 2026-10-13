@@ -110,7 +110,12 @@ impl crate::guard_support::Shaped for NewFacts {
             agents: vec!["claude"],
             fork: Some(ForkFacts {
                 agent: "claude",
-                launch: serde_json::json!({ "cwd": { "kind": "unknown", "why": "gone" } }),
+                launch: crate::control::fork_launch::infer(&crate::control::fork_launch::Source {
+                    live: true,
+                    cwd: Some("/home/u/proj".into()),
+                    account: Some(crate::control::fork_launch::AccountFact::Base),
+                    terminal: Some("tmux-3-7".into()),
+                }),
                 turn: Some(3),
                 start_text: Some("09:30".into()),
             }),

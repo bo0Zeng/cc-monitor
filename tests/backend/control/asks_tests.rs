@@ -5,6 +5,14 @@ use super::*;
 use crate::agents::{AskKind, AskOption, AskQuestion, AskSuggestion};
 use serde_json::json;
 
+/// 线上那一份入参照分派那一层解（`typed::take`，`deny_unknown_fields`）再交本体；回包投成线上那一份。
+/// 入参形状不对 ⇒ `bad_args`（与本体回的码同一形，判据只比码）。
+fn answer(args: &Value) -> Result<Value, (&'static str, String)> {
+    let req: AnswerReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::answer(req).map(|a| serde_json::to_value(a).expect("回包总能序列化"))
+}
+
 const AGENT: &str = "claude";
 
 fn approve(sid: &str) -> AskIn {

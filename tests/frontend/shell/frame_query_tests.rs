@@ -48,6 +48,7 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             "typed::blocking::<",
             "typed::with_files::<",
             "typed::with_own::<",
+            "typed::owning::<",
             "typed::asynchronous::<",
             "typed::async_with_files::<",
         ] {
@@ -88,10 +89,12 @@ fn backend_command_blocks() -> Vec<(String, String)> {
 fn backend_read_face_commands() -> Vec<String> {
     let got: Vec<String> = backend_command_blocks()
         .into_iter()
-        // 全文搜索那两条成了 typed 命令，只读宿主是 `faces/search_face.rs`（第 8 批从 `read_face` 分出去）。
+        // 全文搜索那两条、读一份会话记录的那几条成了 typed 命令，只读宿主是 `faces/search_face.rs` · `faces/history_face.rs`（第 8 批从 `read_face` 分出去）。
         .filter(|(_, blk)| {
             blk.contains("read_face::answer")
-                || (blk.starts_with("typed::") && blk.contains("faces::search_face::"))
+                || (blk.starts_with("typed::")
+                    && (blk.contains("faces::search_face::")
+                        || blk.contains("faces::history_face::")))
         })
         .map(|(name, _)| name)
         .collect();
@@ -474,7 +477,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "resync",
         "新帧命令（手动对齐）：后端出成品 `{added, removed, retagged, watchers}`（`resync_face.rs` → `observe/watcher.rs::resync`）；\
-         前端 `src/frontend/ui/resync.ts::resync` 问、`decodeResynced` 按恰好的键集合收，monitor 这一侧零发送点",
+         前端 `src/frontend/ui/resync.ts::resync` 问、按类型收（`callTyped`），monitor 这一侧零发送点",
     ),
     (
         "machine-interrupts",
@@ -492,7 +495,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-facts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{end, forkedFrom, touchedFiles, agents, usage}`（`observe/facts_query.rs`），\
-         续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 问、`decodeFacts` 按恰好的键集合收，\
+         续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 按类型问（`callTyped`），\
          monitor 这一侧零发送点（它替掉的是前端 `onLine` 上四个旁路记账员，不是一条 monitor 命令）",
     ),
     (
@@ -569,7 +572,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     //   （`update_history_metadata` / `list_last_accounts`）与删会话时那一句清注解删了，界面经 `src/frontend/ui/history-reads.ts` 问 `<local>`。
     (
         "history-annotate",
-        "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::decodeEntry` 按形状收）",
+        "改一条注解：后端严格读 → 只改那一条 → 原子写，回那一条（`history-reads.ts::annotate` 按类型收）",
     ),
     (
         "history-branch",
@@ -1181,7 +1184,11 @@ fn client_for_test(
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
-        shapes: vec![],
+        // typed 那几条照这一版的形状指纹交（对不上 monitor 事前就拒，判据要的是请求发出去）。
+        shapes: commands
+            .iter()
+            .filter_map(|c| cmd_wire::shapes::shape_of(c).map(|h| (c.to_string(), h.to_string())))
+            .collect(),
     })
     .expect("是 Hello 帧");
     let client = park(mine).into_client(hello);

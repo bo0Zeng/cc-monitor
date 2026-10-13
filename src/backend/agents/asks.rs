@@ -136,6 +136,15 @@ use serde_json::Value;
 /// 一条待答请求的成品（`needs.ask`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsAsk"
+    )
+)]
 pub(crate) struct Ask {
     /// 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
     pub(crate) id: String,
@@ -154,12 +163,22 @@ pub(crate) struct Ask {
     /// 提问那一种的题目；别的种类为空。
     pub(crate) questions: Vec<Question>,
     /// 何时挂上的（epoch ms，这台的钟）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) since_ms: u64,
 }
 
 /// 发请求的那一趟子运行。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsAskRun"
+    )
+)]
 pub(crate) struct AskRun {
     pub(crate) id: String,
     /// 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
@@ -169,6 +188,15 @@ pub(crate) struct AskRun {
 /// 一个选项。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsChoice"
+    )
+)]
 pub(crate) struct Choice {
     /// 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
     pub(crate) id: String,
@@ -181,6 +209,15 @@ pub(crate) struct Choice {
 /// 选项要不要附一句话。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsNote"
+    )
+)]
 pub(crate) enum NoteNeed {
     None,
     Optional,
@@ -190,6 +227,15 @@ pub(crate) enum NoteNeed {
 /// 一道题（提问那一种）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsQuestion"
+    )
+)]
 pub(crate) struct Question {
     /// `q0` · `q1` …（答的时候 `picks` 按它键）。
     pub(crate) id: String,
@@ -204,6 +250,15 @@ pub(crate) struct Question {
 /// 一道题的一个选项。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "NeedsQuestionOption"
+    )
+)]
 pub(crate) struct QuestionOption {
     /// `q0o0` …
     pub(crate) id: String,
