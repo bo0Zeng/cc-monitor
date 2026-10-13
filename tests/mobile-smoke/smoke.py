@@ -229,20 +229,27 @@ def switch_model(name):
     hide_keyboard()
     tap(t("mobDefaultButtons.label.command"))
     time.sleep(1.5)
+    row = ui.find(pick["text"])
+    if row is None:
+        raise Step.Fail(f"命令面板里没有「{pick['text']}」")
+    said = t("beSessionModel.set.saved", model=pick["value"])
+    # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点 · 只读台架，不 dump 屏。
     events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     try:
-        tap(pick["text"])
+        time.sleep(1)
+        adb("shell", "input", "tap", *map(str, ui.center(row)))
         end = time.time() + 20
         while time.time() < end and f"> /model {pick['value']}" not in rig("tmux", "capture-pane", "-p", "-t", name).stdout:
             time.sleep(1)
-        if time.time() >= end:
-            raise Step.Fail(f"点了「{pick['text']}」，那个会话里没收到 /model {pick['value']}")
-        said = t("beSessionModel.set.saved", model=pick["value"])
-        if wait(t("mobTerm.model.sendFailed"), 8):
-            raise Step.Fail("换模型那一问上屏的是「发送失败」（回包没解开或没换成）")
+        got = time.time() < end
+        time.sleep(4)
     finally:
         events.terminate()
     seen = events.communicate(timeout=5)[0]
+    if not got:
+        raise Step.Fail(f"点了「{pick['text']}」，那个会话里没收到 /model {pick['value']}")
+    if t("mobTerm.model.sendFailed") in seen:
+        raise Step.Fail("换模型那一问上屏的是「发送失败」（回包没解开或没换成）")
     if said not in seen:
         raise Step.Fail(f"没看到那台写好的那一句「{said}」")
 

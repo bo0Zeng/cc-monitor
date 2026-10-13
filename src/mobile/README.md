@@ -30,7 +30,7 @@ termlib `0.1.2` 已放进仓内 maven 仓 `libs/m2/`（预编好的，编它不�
 
 要 JDK 21、Android SDK（`platforms;android-36`、`build-tools;36.0.0`）与 NDK（版本住 `gradle.properties` 的 `ccm.ndkVersion`，今天 `27.3.13750724`），
 再加 Rust 与两个 android target（`rustup target add aarch64-linux-android x86_64-linux-android`）：`:core-rs` 由 Gradle 调 cargo 编那份 .so，NDK 只给它 clang 与链接器。
-每个构建类型只出一个 ABI（`gradle.properties` 的 `ccm.abi.*`）：release（发出去的包，真机也用它）只有 arm64-v8a，debug（模拟器 · androidTest · 冒烟）只有 x86_64；32 位机不装。
+每个构建类型只出一个 ABI（`gradle.properties` 的 `ccm.abi.*`）：release（发出去的包，真机也用它）只有 arm64-v8a，debug（模拟器 · androidTest · 冒烟）只有 x86_64；minified（混淆过的包、调试签名，只给冒烟装进模拟器）也只有 x86_64；32 位机不装。
 打完包 `:app:verify<变体>Abis` 读 APK 核「恰好那一个 ABI、Rust 核心在里面」。`scripts/env.sh` 在当前 shell 里激活一套隔离的工具链（默认 `$HOME/android-dev`，Gradle 缓存也放那里；Windows 用 `scripts/env.ps1`，装一套用 `scripts/bootstrap-android-env.ps1`，见 [`scripts/README.md`](scripts/README.md)）。
 
 ```sh
@@ -38,6 +38,7 @@ cd src/mobile
 . ./scripts/env.sh
 ./gradlew :app:assembleDebug      # debug 包
 ./gradlew :app:assembleRelease    # release（R8）；签名读 gitignored 的 keystore.properties，没有就产出未签名的包
+./gradlew :app:assembleMinified   # 混淆照 release、调试签名（不读 keystore）：冒烟的第二趟装它
 ```
 
 构建输出不落在 `src/mobile` 里：各模块的 `build/` 在仓根 `.build/mobile/<模块>/`，Gradle 的项目缓存在 `.build/mobile/.gradle/`（仓里另有几族判据走磁盘扫 `src/`，产物落在源码树里会把它们的人群淹掉）。
