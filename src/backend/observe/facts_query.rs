@@ -894,24 +894,8 @@ pub(crate) enum LimitFrom {
 pub(crate) const CONTEXT_STANDARD: u64 = 200_000;
 pub(crate) const CONTEXT_EXTENDED: u64 = 1_000_000;
 
-/// 设置里的上限表：模型名子串（小写）→ 上限。调用方随请求交来（`history-facts` 的 `limits`）。
+/// 设置里的上限表：模型名子串（小写）→ 上限。住这台的偏好（`control/machine_prefs.rs` 的 `contextLimits`），`history-facts` 现读。
 pub(crate) type ContextLimits = Vec<(String, u64)>;
-
-/// `limits` 入参 ⇒ [`ContextLimits`]。缺席 / `null` ⇒ 空表；不是「串 → 正整数」的对象 ⇒ 拒。
-pub(crate) fn limits_from(v: Option<&Value>) -> Result<ContextLimits, String> {
-    let Some(v) = v.filter(|v| !v.is_null()) else {
-        return Ok(Vec::new());
-    };
-    let obj = v
-        .as_object()
-        .ok_or_else(|| "`limits` must be an object".to_string())?;
-    obj.iter()
-        .map(|(k, n)| match n.as_u64() {
-            Some(n) if n > 0 && !k.trim().is_empty() => Ok((k.trim().to_lowercase(), n)),
-            _ => Err(format!("`limits.{k}` must be a positive integer")),
-        })
-        .collect()
-}
 
 /// **上下文上限的唯一判定**：中转看见过这个会话的请求（`relay`）⇒ 带过扩展上下文那一项是 1M、没带过是默认 200k；
 /// 中转没看见过 ⇒ 设置里的上限表（最长匹配的子串胜）> 模型名带 `[1m]` > 见过超过 200k 的一轮 > 判不出（占位 1M，`Assumed`）。

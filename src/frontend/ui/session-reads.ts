@@ -297,12 +297,10 @@ export async function readSessionFacts(
   origin: Origin,
   jsonlPath: string,
   prior: SessionFacts | null,
-  limits: Readonly<Record<string, number>> = {},
 ): Promise<FactsResult> {
   try {
     const args: HistoryFactsReq = { path: jsonlPath };
     if (prior) args.prior = { end: prior.end, rev: prior.rev };
-    if (Object.keys(limits).length > 0) args.limits = { ...limits }; // 设置里的上限表：上限在那台后端定
     const budget = budgetWithin(READ_BUDGET_MS);
     return { available: true, facts: factsOf(await callTyped(origin, "history-facts", args, budget)) };
   } catch (e) {

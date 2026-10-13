@@ -185,6 +185,7 @@ fn backend_rows_point_where_the_backend_itself_writes() {
         row("relay-key", h.join(rr::KEY_FILE_REL), "file"),
         row("run/", h.join(rr::LISTEN_DIR_REL), "dir"),
         row("backend.json", h.join(rr::BACKEND_POLICY_REL), "file"),
+        row("prefs.json", h.join(rr::PREFS_REL), "file"),
         row("profiles.toml", h.join(rr::PROFILES_REL), "file"),
         row(
             "profiles-migrated.json",

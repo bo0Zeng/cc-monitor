@@ -4507,10 +4507,6 @@ type HistoryFactsReq = {
  */
 path: string, 
 /**
- * 可缺：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args`。
- */
-limits?: { [key in string]: number }, 
-/**
  * 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
  * 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
  *
@@ -6433,21 +6429,13 @@ agent: string, action: LocalAction,
  */
 cwd?: string | null, 
 /**
- * 自定义启动命令（空 / 纯空白 = 没设）。
- */
-launcher?: string | null, 
-/**
  * 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
  */
 account?: AccountAsk | null, 
 /**
  * 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
  */
-tmuxName?: string | null, 
-/**
- * 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
- */
-defaultLauncher: string, };
+tmuxName?: string | null, };
 type Rendered = { 
 /**
  * 那一行 `ccm …`。
@@ -6479,11 +6467,7 @@ agent: string, action: WireAction, container: WireContainer, cwd: string | null,
 /**
  * 显式指定的模型（压过下面那张表）。
  */
-model: string | null, 
-/**
- * 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
- */
-models?: { [key in string]: string }, launcher: string, defaultLauncher: string, };
+model: string | null, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -7659,21 +7643,9 @@ mode: StartMode,
  */
 local: boolean, 
 /**
- * 整批一家（线上的 kind）。
+ * 整批一家（线上的 kind）。启动命令 · 模型表这台自己读（`prefs.json`），不随请求交。
  */
 agent: string, 
-/**
- * 整批一份：用户设置的 resume 命令原值。
- */
-launcher: string, 
-/**
- * 整批一份：那一家的默认启动器。
- */
-defaultLauncher: string, 
-/**
- * 这台的模型偏好表（原值）。
- */
-models?: { [key in string]: string }, 
 /**
  * 要起的会话（1–64 项，sid 不重复）。
  */
@@ -7767,17 +7739,13 @@ place: Place,
  */
 tmuxName?: string, 
 /**
- * 启动命令（空 / 缺席 ⇒ 那一家的默认启动器）。
+ * 这一趟手填的启动命令（空 / 缺席 ⇒ 这台偏好里那一家的启动命令，没设过 ⇒ 那一家的默认启动器）。
  */
 command?: string, 
 /**
  * 分叉自哪一条（只在这一步写分支记录）。
  */
 forkFrom?: ForkFrom, 
-/**
- * 这台的模型偏好表（号 → 模型，用户设置的原值）。
- */
-models?: { [key in string]: string }, 
 /**
  * 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
  */
@@ -8050,21 +8018,9 @@ arrive_within_ms: number,
  */
 local: boolean, 
 /**
- * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。
+ * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
  */
 agent: string, 
-/**
- * 用户设置的 resume 命令原值（同 `sessions-start`）。
- */
-launcher: string, 
-/**
- * 那一家的默认启动器（同 `sessions-start`）。
- */
-defaultLauncher: string, 
-/**
- * 可缺：这台的模型偏好表原值。
- */
-models?: { [key in string]: string }, 
 /**
  * 自报的前端，同 `kill`。
  */
@@ -8511,6 +8467,122 @@ type ExitPolicySet = { killOnExit: boolean, };
 ```
 
 码：`bad_args` · `io_failed`
+
+#### `prefs-read`
+
+读这台的偏好。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --prefs-read`
+
+入参 `NoArgs` · 回包 `PrefsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type NoArgs = Record<symbol, never>;
+type Prefs = { 
+/**
+ * 每一家（线上的 kind）用哪条启动命令（原值）；没有那一家 ⇒ 那一家自己的默认启动器。
+ */
+launchers: { [key in string]: string }, 
+/**
+ * 恢复会话默认进这台的 tmux。
+ */
+resumeInTmux: boolean, 
+/**
+ * 这台每个号默认用哪个模型（号 → 模型，原值）。
+ */
+models: { [key in string]: string }, 
+/**
+ * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
+ */
+contextLimits: { [key in string]: number }, };
+type PrefsReply = { 
+/**
+ * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一份。
+ */
+prefs: Prefs, };
+```
+
+码：`bad_args`
+
+#### `prefs-set`
+
+改这台的偏好，写完读回。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --prefs-set`
+
+入参 `PrefsSet` · 回包 `PrefsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Prefs = { 
+/**
+ * 每一家（线上的 kind）用哪条启动命令（原值）；没有那一家 ⇒ 那一家自己的默认启动器。
+ */
+launchers: { [key in string]: string }, 
+/**
+ * 恢复会话默认进这台的 tmux。
+ */
+resumeInTmux: boolean, 
+/**
+ * 这台每个号默认用哪个模型（号 → 模型，原值）。
+ */
+models: { [key in string]: string }, 
+/**
+ * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
+ */
+contextLimits: { [key in string]: number }, };
+type PrefsReply = { 
+/**
+ * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一份。
+ */
+prefs: Prefs, };
+type PrefsSet = { 
+/**
+ * 某一家的启动命令：`{kind: 命令}`，空串 ⇒ 删掉那一家（回到它的默认）。只动点到的那几家。
+ */
+launchers?: { [key in string]: string }, resumeInTmux?: boolean, 
+/**
+ * 某几个号的模型：`{号: 模型 | null}`，`null` ⇒ 删掉那一条。只动点到的那几个号。
+ */
+models?: { [key in string]: string | null }, 
+/**
+ * 整张上限表（整张换掉）。
+ */
+contextLimits?: { [key in string]: number }, };
+```
+
+码：`bad_args` · `unreadable` · `io_failed`
 
 #### `relay-optin`
 
@@ -9161,6 +9233,8 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |
 | `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
+| `--prefs-read` | ＝ 帧命令 `prefs-read`：读这台的偏好 |
+| `--prefs-set` | ＝ 帧命令 `prefs-set`：改这台的偏好，写完读回 |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
 | `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |

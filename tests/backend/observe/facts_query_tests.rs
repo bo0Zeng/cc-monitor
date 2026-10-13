@@ -336,26 +336,6 @@ fn the_peak_survives_a_compaction_and_a_resume_and_the_setting_applies_each_time
     assert_eq!((u.limit, u.limit_from), (200_000, LimitFrom::Setting));
 }
 
-/// `limits` 入参：缺席 / null ⇒ 空表；不是「串 → 正整数」⇒ 拒。
-#[test]
-fn the_limits_argument_is_strict() {
-    assert_eq!(limits_from(None).unwrap(), Vec::new());
-    assert_eq!(limits_from(Some(&Value::Null)).unwrap(), Vec::new());
-    assert_eq!(
-        limits_from(Some(&json!({" Haiku ": 200000}))).unwrap(),
-        vec![("haiku".to_string(), 200_000)]
-    );
-    for bad in [
-        json!([1]),
-        json!({"x": 0}),
-        json!({"x": "1"}),
-        json!({"x": -5}),
-        json!({" ": 5}),
-    ] {
-        assert!(limits_from(Some(&bad)).is_err(), "{bad} 被收下了");
-    }
-}
-
 /// ★ 真来源是中转：看见过这个会话的请求 ⇒ 带过扩展上下文那一项是 1M、没带过是默认 200k（压过设置表与模型名）；
 /// 没看见过 ⇒ 照设置表 > `[1m]` > 见过超过 200k > 判不出。上限仍不低于见过的最大一轮。
 #[test]

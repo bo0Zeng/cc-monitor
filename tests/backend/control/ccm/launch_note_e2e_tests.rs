@@ -140,17 +140,17 @@ fn launch_note_child_entry_point() {
     let Ok(account) = std::env::var(CHILD_MARK) else {
         return;
     };
-    let req: crate::control::launch_render::local::LocalLaunchRequest =
-        serde_json::from_value(serde_json::json!({
-            "agent": "claude",
-            "action": { "kind": "resume", "sid": SID },
-            "cwd": null,
-            "launcher": null,
-            "account": serde_json::from_str::<serde_json::Value>(&account).unwrap(),
-            "tmuxName": null,
-            "defaultLauncher": "claude",
-        }))
-        .expect("入参照线上形状收得下");
+    let req: crate::control::launch_render::local::LocalLaunchRequest = serde_json::from_value::<
+        crate::control::launch_render::local::LocalLaunchRequest,
+    >(serde_json::json!({
+        "agent": "claude",
+        "action": { "kind": "resume", "sid": SID },
+        "cwd": null,
+        "account": serde_json::from_str::<serde_json::Value>(&account).unwrap(),
+        "tmuxName": null,
+    }))
+    .expect("入参照线上形状收得下")
+    .with_prefs(&Default::default());
     let facts = crate::control::launch_render::local::Facts {
         windows: false,
         is_dir: |_| true,

@@ -15,21 +15,9 @@ mode: StartMode,
  */
 local: boolean, 
 /**
- * 整批一家（线上的 kind）。
+ * 整批一家（线上的 kind）。启动命令 · 模型表这台自己读（`prefs.json`），不随请求交。
  */
 agent: string, 
-/**
- * 整批一份：用户设置的 resume 命令原值。
- */
-launcher: string, 
-/**
- * 整批一份：那一家的默认启动器。
- */
-defaultLauncher: string, 
-/**
- * 这台的模型偏好表（原值）。
- */
-models?: { [key in string]: string }, 
 /**
  * 要起的会话（1–64 项，sid 不重复）。
  */

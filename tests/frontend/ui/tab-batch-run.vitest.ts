@@ -6,12 +6,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn() }));
-vi.mock("../../../src/frontend/ui/remote-config", () => ({
-  resumeCommandFor: vi.fn(),
-}));
-vi.mock("../../../src/frontend/ui/account-prefs", () => ({
-  machineModels: vi.fn(),
-}));
 vi.mock("../../../src/frontend/ui/terminal-open", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/terminal-open")>()),
   openTerminal: vi.fn(),
@@ -25,8 +19,6 @@ import {
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { getBehavior } from "../../../src/frontend/ui/behavior";
-import { resumeCommandFor } from "../../../src/frontend/ui/remote-config";
-import { machineModels } from "../../../src/frontend/ui/account-prefs";
 import { openTerminal } from "../../../src/frontend/ui/terminal-open";
 import type { Tab } from "../../../src/frontend/ui/tab-model";
 import {
@@ -101,8 +93,6 @@ beforeEach(() => {
   invokeMock.mockReset();
   calls = [];
   vi.mocked(getBehavior).mockResolvedValue({ resumeCommand: "" } as never);
-  vi.mocked(resumeCommandFor).mockResolvedValue("");
-  vi.mocked(machineModels).mockResolvedValue({ work: "opus" });
 });
 
 describe("批量停：每台一次、逐个答", () => {
@@ -196,9 +186,6 @@ describe("批量起：每项只交 sid 与目录，整批带用户设置的原�
           mode: "tmux",
           local: false,
           agent: "claude",
-          launcher: "claude",
-          defaultLauncher: "claude",
-          models: { work: "opus" },
           items: [
             { sid: "c", cwd: "/w/c" },
             { sid: "e", cwd: "/w/e" },
@@ -264,7 +251,6 @@ describe("批量起：每项只交 sid 与目录，整批带用户设置的原�
 //   设置里配的 resume 命令只给默认那一家（别的那一家用它自己的默认启动器）。
 describe("单个在 tmux 里恢复（不依赖标签页对象）", () => {
   it("交那台一个 sid 的一批、带那一行的那一家；配的 resume 命令不套到别的那一家上；起好了接进那台答的那个会话", async () => {
-    vi.mocked(resumeCommandFor).mockResolvedValue("cct");
     backend((_o, op, args) =>
       op === "sessions-start"
         ? {
@@ -294,8 +280,7 @@ describe("单个在 tmux 里恢复（不依赖标签页对象）", () => {
       agent: "codex",
       items: [{ sid: "cx", cwd: "/w/cx", account: { kind: "follow" } }],
     });
-    expect(body.launcher, "配的 cct 是给默认那一家的").not.toBe("cct");
-    expect(body.launcher).toBe(body.defaultLauncher);
+    expect(Object.keys(body).filter((k) => ["launcher", "defaultLauncher", "models"].includes(k)), "启动命令 · 模型表那台自己读").toEqual([]);
     expect(onRecord).toHaveBeenCalledWith(true);
     expect(attach).toHaveBeenCalledWith("r1", "codex", "cx-1");
   });

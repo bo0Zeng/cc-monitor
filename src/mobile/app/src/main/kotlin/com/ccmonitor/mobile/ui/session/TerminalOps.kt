@@ -74,8 +74,7 @@ class TerminalOps(
     suspend fun attachLine(
         name: String,
         agent: String,
-        defaultLauncher: String,
-    ): Result<String> = ask(AttachLine.COMMAND, AttachLine.args(agent, defaultLauncher, name), AttachLine::of)
+    ): Result<String> = ask(AttachLine.COMMAND, AttachLine.args(agent, name), AttachLine::of)
 
     private suspend fun <T> ask(
         command: String,

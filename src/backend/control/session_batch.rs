@@ -68,6 +68,8 @@ pub(crate) struct Deps<'a> {
     pub(crate) writers: &'a dyn Fn(&str) -> Vec<u32>,
     /// `(号目录, 工作目录)` ⇒ 起之前把工作目录标成那个号信任过（那一家没有「信任」这件事 ⇒ 什么都不做；写不成只出声、照常起）。
     pub(crate) pretrust: &'a dyn Fn(&str, &str),
+    /// 这台的偏好（启动命令 · 模型表；一趟读一次 `prefs.json`）。
+    pub(crate) prefs: &'a crate::control::machine_prefs::Prefs,
 }
 
 /// 起之前那一下：用的是账号库里的号 ⇒ 工作目录标成那个号信任过（[`Deps::pretrust`]）。账号 0 / 不表态 ⇒ 不写
@@ -438,7 +440,7 @@ pub(crate) struct Item {
     pub(crate) fork_of: Option<String>,
 }
 
-/// 整批共用的几样：哪一家 · 启动器（用户设置的 resume 命令原值）· 这台的模型偏好表（原值）。
+/// 整批共用的几样：哪一家 · 启动器 · 这台的模型偏好表（后两样都读这台的偏好 `prefs.json`，界面不交）。
 pub(crate) struct Batch {
     pub(crate) agent: String,
     launcher: String,
@@ -494,18 +496,16 @@ fn item_of(v: &StartItemReq) -> Result<Item, CmdErr> {
 }
 
 impl Batch {
-    /// 整批一份的那几样（入参已按类型解好）。
-    pub(crate) fn of(
-        agent: &str,
-        launcher: &str,
-        default_launcher: &str,
-        models: std::collections::BTreeMap<String, String>,
-    ) -> Batch {
+    /// 整批一份的那几样：那一家的默认启动器问适配层，启动命令与模型表照这台的偏好（[`crate::control::machine_prefs`]）。
+    pub(crate) fn of(agent: &str, prefs: &crate::control::machine_prefs::Prefs) -> Batch {
+        let default_launcher = crate::agents::launch_face_among(crate::agents::REGISTRY, agent)
+            .map_or("", |f| f.default_launcher)
+            .to_string();
         Batch {
             agent: agent.to_string(),
-            launcher: launcher.to_string(),
-            default_launcher: default_launcher.to_string(),
-            models,
+            launcher: prefs.launcher_for(agent, &default_launcher),
+            default_launcher,
+            models: prefs.models.clone(),
         }
     }
 }
@@ -573,17 +573,8 @@ pub(crate) struct SessionsStartReq {
     pub(crate) mode: StartMode,
     /// 这台是不是界面所在那台（开终端那一形按它选本机 / 远端那一行）。
     pub(crate) local: bool,
-    /// 整批一家（线上的 kind）。
+    /// 整批一家（线上的 kind）。启动命令 · 模型表这台自己读（`prefs.json`），不随请求交。
     pub(crate) agent: String,
-    /// 整批一份：用户设置的 resume 命令原值。
-    pub(crate) launcher: String,
-    /// 整批一份：那一家的默认启动器。
-    #[serde(rename = "defaultLauncher")]
-    pub(crate) default_launcher: String,
-    /// 这台的模型偏好表（原值）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) models: Option<std::collections::BTreeMap<String, String>>,
     /// 要起的会话（1–64 项，sid 不重复）。
     pub(crate) items: Vec<StartItemReq>,
     /// 自报的前端，同 `kill`。
@@ -604,12 +595,7 @@ pub(crate) fn start(req: &SessionsStartReq, deps: &Deps) -> Result<Batched, CmdE
         .iter()
         .map(item_of)
         .collect::<Result<Vec<_>, _>>()?;
-    let batch = Batch::of(
-        &req.agent,
-        &req.launcher,
-        &req.default_launcher,
-        req.models.clone().unwrap_or_default(),
-    );
+    let batch = Batch::of(&req.agent, deps.prefs);
     for (i, it) in items.iter().enumerate() {
         if items[..i].iter().any(|x| x.sid == it.sid) {
             return Err(bad(&format!("duplicate session id: {:?}", it.sid)));

@@ -47,8 +47,6 @@ import { PlanNeedsBook } from "./plan-needs";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
-import { readContextLimits } from "./views/context-limit";
-import { loadConfig } from "./config";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { toast, undoLatest } from "./kit/toast";
@@ -452,15 +450,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     startup?.onManualSwitch();
   };
   // 当前 tab 那一格变了 → 刷新 HUD context% chip（会话事实到了 / 切会话 / 要不到 ⇒ chip 说原因）。订阅 store。
-  // 设置里的上下文上限表：随会话事实交给各台后端（上限在那里定，状态栏与监控板读同一个数）。读不到 ⇒ 空表。
-  const loadContextLimits = async (): Promise<void> => {
-    try {
-      tabs.setContextLimits(readContextLimits((await loadConfig())["contextLimits"]));
-    } catch {
-      /* 读不到设置 ⇒ 后端只按它自己看得到的定 */
-    }
-  };
-  void loadContextLimits();
   activeTab = () => tabs.activeTab();
   // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
   function paintTerminalActs(): void {
@@ -543,7 +532,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
     });
     void accountChip.refresh(true); // 远端配置 / 默认账号可能变了，刷新账号 chip
-    void loadContextLimits(); // 上下文上限表可能在设置页改过
   });
   // 竖直 tab 栏右缘拖拽调宽（`tab-bar-width.ts`，宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆）。
   mountTabBarResizer();

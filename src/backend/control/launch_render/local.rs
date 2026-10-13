@@ -24,9 +24,8 @@ pub(crate) struct LocalLaunchRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) cwd: Option<String>,
-    /// 自定义启动命令（空 / 纯空白 = 没设）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
+    /// 不上线：自定义启动命令（[`Self::with_prefs`] 从这台的偏好填；没设 / 等于默认 ⇒ `None`）。
+    #[serde(skip)]
     pub(crate) launcher: Option<String>,
     /// 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
     #[serde(default)]
@@ -36,7 +35,8 @@ pub(crate) struct LocalLaunchRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional = nullable))]
     pub(crate) tmux_name: Option<String>,
-    /// 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
+    /// 不上线：这一家 agent 的默认启动器（适配层那一份；等于它就不吐 `--launcher`）。
+    #[serde(skip)]
     pub(crate) default_launcher: String,
     /// 不上线（后端自己起会话时填）：垫在交给那一家的那一串里的参数（起新会话先定 sid：`--session-id <uuid>`）。
     #[serde(skip)]
@@ -44,6 +44,19 @@ pub(crate) struct LocalLaunchRequest {
     /// 不上线（后端自己起会话时填）：这一趟用的模型（交给那一家的 `--model`）；`None` ＝ 跟随。
     #[serde(skip)]
     pub(crate) model: Option<String>,
+}
+
+impl LocalLaunchRequest {
+    /// 填上不上线的那两格：启动命令照这台的偏好，默认启动器问适配层。
+    pub(crate) fn with_prefs(mut self, prefs: &crate::control::machine_prefs::Prefs) -> Self {
+        self.default_launcher =
+            crate::agents::launch_face_among(crate::agents::REGISTRY, &self.agent)
+                .map_or("", |f| f.default_launcher)
+                .to_string();
+        let l = prefs.launcher_for(&self.agent, &self.default_launcher);
+        self.launcher = Some(l).filter(|l| l != &self.default_launcher);
+        self
+    }
 }
 
 #[derive(Debug, Deserialize)]

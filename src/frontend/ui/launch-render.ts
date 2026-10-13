@@ -11,7 +11,6 @@ import { machineName, settleTyped, type Refusals } from "./control-said";
 import type { Origin } from "./ipc/origin";
 import { LOCAL_ORIGIN } from "./backend-policy";
 import { openLocalTerminal } from "./terminal-open";
-import { defaultLauncherOf } from "./agent-profile";
 import type { CliRenderRequest, CliRendered } from "./launch-cli-wire";
 import type { AccountAsk } from "./generated/AccountAsk";
 import type { Rendered } from "./generated/Rendered";
@@ -43,8 +42,6 @@ export interface LocalLaunchRequest {
   agent: string;
   action: LocalLaunchAction;
   cwd: string | null;
-  /** 自定义启动命令（空 / `null` = 没设）。 */
-  launcher: string | null;
   /** 缺席 = 不表态（继承；接回那一形）；跟随 / 账号 0 / 用户点名由本机后端判。 */
   account?: AccountAsk;
   tmuxName: string | null;
@@ -59,10 +56,8 @@ export async function planLocalLaunch(req: LocalLaunchRequest): Promise<LocalLau
     agent: req.agent,
     action: req.action,
     cwd: req.cwd,
-    launcher: req.launcher,
     ...(req.account === undefined ? {} : { account: req.account }),
     tmuxName: req.tmuxName,
-    defaultLauncher: defaultLauncherOf(req.agent),
   };
   const budget = budgetWithin(RENDER_BUDGET_MS);
   return settleTyped(LOCAL_ORIGIN, "launch-local", callTyped(LOCAL_ORIGIN, "launch-local", args, budget), refusals(LOCAL_ORIGIN));

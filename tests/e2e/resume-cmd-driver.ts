@@ -23,18 +23,19 @@ import { DEFAULT_AGENT } from "../../src/frontend/ui/agent-profile.ts";
 import type { LaunchContext, LaunchModifiers } from "../../src/frontend/ui/launch-types.ts";
 
 /** 在 tmux 会话 `name` 里 resume `sid`（后端换号重启 / 分叉起的就是这一形）。 */
-function resumeInTmux(sid: string, name: string, cwd: string, launcher: string, mods: LaunchModifiers, ccmSid: string | undefined): LaunchContext {
+function resumeInTmux(sid: string, name: string, cwd: string, mods: LaunchModifiers, ccmSid: string | undefined): LaunchContext {
   return {
     agent: DEFAULT_AGENT,
     action: { kind: "resume", sid },
     container: { kind: "tmux", name, mode: "create" },
     cwd: cwd.trim() || null,
     account: mods.account ?? { kind: "follow" },
-    models: mods.models ?? {},
-    launcherOverride: launcher,
     ccmSid,
   };
 }
+
+/** 启动命令住那台的偏好：驱动把命令行给的那一条当那台偏好交给渲染那一跳。 */
+const launcherPrefs = (launcher: string) => ({ launchers: { [DEFAULT_AGENT]: launcher } });
 
 function opt(v: string | undefined): string | undefined {
   return v === undefined || v === "-" || v === "" ? undefined : v;
@@ -50,21 +51,24 @@ try {
     case "into-existing":
       process.stdout.write(
         renderCmdViaProduction(
-          resumeInTmux(a[0], a[1], "", a[2], acct(opt(a[3])), undefined),
+          resumeInTmux(a[0], a[1], "", acct(opt(a[3])), undefined),
           true,
+          launcherPrefs(a[2]),
         ) + "\n",
       );
       break;
     case "tmux-new":
       process.stdout.write(
         renderCmdViaProduction(
-          resumeInTmux(a[0], a[3], a[1], a[2], acct(opt(a[4])), a[0]),
+          resumeInTmux(a[0], a[3], a[1], acct(opt(a[4])), a[0]),
+          false,
+          launcherPrefs(a[2]),
         ) + "\n",
       );
       break;
     case "direct":
       process.stdout.write(
-        renderCmdViaProduction(planResumeDirect(DEFAULT_AGENT, a[0], a[1], a[2], acct(opt(a[3])))) +
+        renderCmdViaProduction(planResumeDirect(DEFAULT_AGENT, a[0], a[1], acct(opt(a[3]))), false, launcherPrefs(a[2])) +
           "\n",
       );
       break;

@@ -32,10 +32,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm -- new --ccm-agent claude --base"
@@ -71,10 +68,7 @@
           "name": "z"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm -- new --ccm-agent claude --account z"
@@ -113,10 +107,7 @@
           "name": "z"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --ccm-agent claude --account z"
@@ -153,12 +144,12 @@
           "name": "z"
         },
         "ccmSid": null,
-        "model": null,
+        "model": null
+      },
+      "prefs": {
         "models": {
           "z": "opus"
-        },
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        }
       },
       "ok": true,
       "out": "ccm --resume s1 --model opus -- --ccm-agent claude --account z --cwd /w"
@@ -196,10 +187,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "tmux -u send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; case x${TMUX:-} in x) tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac"
@@ -234,10 +222,7 @@
           "kind": "base"
         },
         "ccmSid": "sid-1",
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base"
@@ -272,10 +257,12 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "mycc",
-        "defaultLauncher": "claude"
+        "model": null
+      },
+      "prefs": {
+        "launchers": {
+          "claude": "mycc"
+        }
       },
       "ok": true,
       "out": "ccm -- new --ccm-agent claude --base --launcher mycc"
@@ -310,10 +297,12 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
+      },
+      "prefs": {
+        "launchers": {
+          "claude": "claude"
+        }
       },
       "ok": true,
       "out": "ccm -- new --ccm-agent claude --base"
@@ -351,10 +340,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm -- --attach cc-foo"
@@ -389,10 +375,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm -- new --ccm-agent claude --base --cwd '/home/用户/带 空格'"
@@ -426,10 +409,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": false,
       "out": "此机 ccm 做不到这样启动会话 · 缺 cwd"
@@ -465,10 +445,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": false,
       "out": "此机 ccm 做不到这样启动会话 · 缺 tmux"
@@ -503,12 +480,12 @@
           "name": "z"
         },
         "ccmSid": null,
-        "model": null,
+        "model": null
+      },
+      "prefs": {
         "models": {
           "z": "opus"
-        },
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        }
       },
       "ok": false,
       "out": "此机 ccm 不认设置项 model · 缺 model"
@@ -542,10 +519,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": false,
       "out": "此机 ccm 不认设置项 account · 缺 account"
@@ -581,10 +555,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": false,
       "out": "会话 ID \"-x\" 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头"
@@ -620,10 +591,7 @@
           "kind": "follow"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "codex",
-        "defaultLauncher": "codex"
+        "model": null
       },
       "ok": true,
       "out": "ccm resume s1 -- --ccm-agent codex --base --cwd /p"
@@ -660,10 +628,7 @@
           "name": "z"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "codex",
-        "defaultLauncher": "codex"
+        "model": null
       },
       "ok": false,
       "out": "Codex 会话不可选账号"
@@ -700,10 +665,7 @@
           "name": "z"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm --resume s1 -- --ccm-agent claude --account z --cwd /p"
@@ -741,10 +703,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm -- --attach cc-s1"
@@ -782,10 +741,12 @@
           "kind": "base"
         },
         "ccmSid": "p1",
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
+      },
+      "prefs": {
+        "launchers": {
+          "claude": "claude"
+        }
       },
       "ok": true,
       "out": "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp"
@@ -822,10 +783,12 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "CCMPROBE",
-        "defaultLauncher": "claude"
+        "model": null
+      },
+      "prefs": {
+        "launchers": {
+          "claude": "CCMPROBE"
+        }
       },
       "ok": true,
       "out": "ccm -- new --ccm-tmux=cc-proj --ccm-agent claude --base --cwd '/home/pi/my proj' --launcher CCMPROBE"
@@ -863,10 +826,7 @@
           "kind": "base"
         },
         "ccmSid": null,
-        "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": null
       },
       "ok": true,
       "out": "ccm -- --attach cc-p1"
@@ -904,10 +864,12 @@
           "kind": "base"
         },
         "ccmSid": "p1",
-        "model": "opus",
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude"
+        "model": "opus"
+      },
+      "prefs": {
+        "launchers": {
+          "claude": "claude"
+        }
       },
       "ok": true,
       "out": "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp"

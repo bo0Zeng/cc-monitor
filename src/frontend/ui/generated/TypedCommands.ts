@@ -105,6 +105,8 @@ import type { PlaceReq } from "./PlaceReq";
 import type { Planned } from "./Planned";
 import type { PolicySet } from "./PolicySet";
 import type { PolicySetReq } from "./PolicySetReq";
+import type { PrefsReply } from "./PrefsReply";
+import type { PrefsSet } from "./PrefsSet";
 import type { Preview } from "./Preview";
 import type { Processes } from "./Processes";
 import type { PubkeyPushReq } from "./PubkeyPushReq";
@@ -214,6 +216,8 @@ export interface TypedCommands {
   "needs-answer": { req: AnswerReq; reply: Answered; code: "bad_args" | "not_found" | "already_answered" | "closed_elsewhere" | "bad_choice" | "note_required" };
   "place-verdict": { req: PlaceReq; reply: PlaceAnswer; code: "bad_args" | "refused" | "undecidable" };
   "powershell-policy-set": { req: PolicySetReq; reply: PolicySet; code: "bad_args" | "refused" };
+  "prefs-read": { req: NoArgs; reply: PrefsReply; code: "bad_args" };
+  "prefs-set": { req: PrefsSet; reply: PrefsReply; code: "bad_args" | "unreadable" | "io_failed" };
   "pubkey-push": { req: PubkeyPushReq; reply: PubkeyPushed; code: "bad_args" | "bad_jump" | "refused" | "failed" };
   "relay-optin": { req: OptinReq; reply: Optin; code: "bad_args" | "failed" };
   "remote-reach": { req: ReachReq; reply: Reached; code: "bad_args" };

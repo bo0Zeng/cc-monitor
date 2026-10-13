@@ -40,7 +40,7 @@ fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
 
 /// 一批起的入参：整批那几格 ＋ 每项 `{sid, cwd, account}`。
 fn batch(mode: &str, local: bool, items: Vec<Value>) -> Value {
-    json!({ "mode": mode, "local": local, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": items })
+    json!({ "mode": mode, "local": local, "agent": "claude", "items": items })
 }
 
 const A: &str = "aaaaaaaa-1111-2222-3333-444444444444";
@@ -195,6 +195,7 @@ impl Rig {
                 accounts,
                 writers: &writers,
                 pretrust: &pretrust,
+                prefs: &crate::control::machine_prefs::Prefs::default(),
             })
         })
     }
@@ -292,10 +293,10 @@ fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
         "account": account,
         "ccmSid": null,
         "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude",
     });
-    let req = serde_json::from_value(req).unwrap();
+    let req: super::super::launch_render::wire::CliRenderRequest =
+        serde_json::from_value(req).unwrap();
+    let req = req.with_prefs(&Default::default());
     with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
         .cmd
@@ -311,10 +312,10 @@ fn single_tmux_line(sid: &str, name: &str, account: Value) -> String {
         "account": account,
         "ccmSid": sid,
         "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude",
     });
-    let req = serde_json::from_value(req).unwrap();
+    let req: super::super::launch_render::wire::CliRenderRequest =
+        serde_json::from_value(req).unwrap();
+    let req = req.with_prefs(&Default::default());
     with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
         .cmd
@@ -509,16 +510,17 @@ fn a_window_start_renders_what_the_single_item_renders() {
     let out = rig.run(|d| start(&args, d)).unwrap();
     let single = with_accounts(|f| {
         super::super::launch_render::answer_local(
-            &serde_json::from_value(json!({
-                "agent": "claude",
-                "action": { "kind": "resume", "sid": A },
-                "cwd": "/w/proj",
-                "launcher": null,
-                "account": { "kind": "base" },
-                "tmuxName": "proj-cc-2",
-                "defaultLauncher": "claude",
-            }))
-            .unwrap(),
+            &serde_json::from_value::<super::super::launch_render::local::LocalLaunchRequest>(
+                json!({
+                    "agent": "claude",
+                    "action": { "kind": "resume", "sid": A },
+                    "cwd": "/w/proj",
+                    "account": { "kind": "base" },
+                    "tmuxName": "proj-cc-2",
+                }),
+            )
+            .unwrap()
+            .with_prefs(&Default::default()),
             f,
         )
     })
@@ -604,6 +606,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         },
         writers: &|_| Vec::new(),
         pretrust: &|_, _| {},
+        prefs: &crate::control::machine_prefs::Prefs::default(),
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
     let t0 = std::time::Instant::now();

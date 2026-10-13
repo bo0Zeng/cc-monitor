@@ -68,7 +68,8 @@ pub(crate) struct Req {
     compact_within_ms: u64,
     arrive_within_ms: u64,
     local: bool,
-    batch: Batch,
+    /// 哪一家（整批那几样由它 ＋ 这台的偏好现拼：[`Batch::of`]）。
+    agent: String,
     /// 发起方的截止时刻（分派那一层给；CLI 面没有）。
     until: Option<Until>,
 }
@@ -108,17 +109,8 @@ pub(crate) struct RestartReq {
     pub(crate) arrive_within_ms: u64,
     /// 这台是不是界面所在那台（同 `sessions-start`）。
     pub(crate) local: bool,
-    /// 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。
+    /// 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
     pub(crate) agent: String,
-    /// 用户设置的 resume 命令原值（同 `sessions-start`）。
-    pub(crate) launcher: String,
-    /// 那一家的默认启动器（同 `sessions-start`）。
-    #[serde(rename = "defaultLauncher")]
-    pub(crate) default_launcher: String,
-    /// 可缺：这台的模型偏好表原值。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) models: Option<std::collections::BTreeMap<String, String>>,
     /// 自报的前端，同 `kill`。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -147,12 +139,7 @@ pub(crate) fn parse(r: &RestartReq) -> Result<Req, Failed> {
         compact_within_ms: ms_of("compact_within_ms", r.compact_within_ms)?,
         arrive_within_ms: ms_of("arrive_within_ms", r.arrive_within_ms)?,
         local: r.local,
-        batch: Batch::of(
-            &r.agent,
-            &r.launcher,
-            &r.default_launcher,
-            r.models.clone().unwrap_or_default(),
-        ),
+        agent: r.agent.clone(),
         until: None,
     })
 }
@@ -200,7 +187,7 @@ fn prepare(req: &Req, deps: &Deps) -> Result<(Settled, String, Vec<u32>), Failed
     let _total = Budget::capped(SESSIONS_WHERE_CAP, req.until);
     // 模型偏好只用在远端那一行上（本机那一行不带模型，同批量起）。
     let none = Default::default();
-    let models = if req.local { &none } else { &req.batch.models };
+    let models = if req.local { &none } else { &deps.prefs.models };
     let account = la::settle(
         &req.item.account,
         Some(&req.item.sid),
@@ -275,7 +262,7 @@ fn swap(req: &Req, account: &Settled, name: &str, mine: &[u32], deps: &Deps) -> 
     }
     let a = batch::start_named(
         &req.item,
-        &req.batch,
+        &Batch::of(&req.agent, deps.prefs),
         account,
         name.to_string(),
         req.local,
@@ -338,7 +325,7 @@ async fn compact<H: Host>(req: &Req, name: &str, host: &H) -> Compact {
     if !req.compact_first {
         return Compact::Skipped;
     }
-    let Some(line) = host.compact_request(&req.batch.agent).map(str::to_string) else {
+    let Some(line) = host.compact_request(&req.agent).map(str::to_string) else {
         return Compact::Unsupported;
     };
     // 先装耳朵再送那一句：摘要来得比装耳朵快也漏不掉。

@@ -1038,6 +1038,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
+        "src/backend/control/machine_prefs.rs",
+        "MAX_BYTES",
+        "后端自有的这台偏好 `~/.cc-monitor/prefs.json`（几张小表；读不出来 ⇒ `unreadable` 带原因回出去、按缺省办，写口拒、不覆盖）",
+        "拒收+回错",
+    ),
+    (
         "src/backend/control/launch_account.rs",
         "MAX_BYTES",
         "后端自有的「会话用的号」记录 `~/.cc-monitor/launch-accounts.json`（读不出来就不覆盖、`unreadable`）",

@@ -591,6 +591,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 「退出行为」那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor` 下那一份）。
         "exit-policy-read",
         "exit-policy-set",
+        // 这台的偏好那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor/prefs.json`）。
+        "prefs-read",
+        "prefs-set",
         "quota-read",
         "quota-probe",
         // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
@@ -814,6 +817,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
+        "prefs-read",
+        "prefs-set",
         "quota-read",
         "quota-probe",
         "rotation-configs-read",
@@ -1688,9 +1693,6 @@ fn the_replies_the_phone_reads_keep_their_wire_bytes() {
         "account": { "kind": "base" },
         "ccmSid": null,
         "model": null,
-        "models": {},
-        "launcher": "claude",
-        "defaultLauncher": "claude",
     });
     let got = run_registered("launch-render-cli", attach).expect("launch-render-cli 渲得出");
     assert_eq!(
@@ -1940,11 +1942,11 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ("sessions-stop", serde_json::json!({ "sids": "s-1" })),
         (
             "sessions-start",
-            serde_json::json!({ "mode": "tmux", "local": true, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": [{ "sid": "s-1", "cwd": "/w", "extra": 1 }] }),
+            serde_json::json!({ "mode": "tmux", "local": true, "agent": "claude", "items": [{ "sid": "s-1", "cwd": "/w", "extra": 1 }] }),
         ),
         (
             "sessions-start",
-            serde_json::json!({ "mode": "screen", "local": true, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": [] }),
+            serde_json::json!({ "mode": "screen", "local": true, "agent": "claude", "items": [] }),
         ),
         ("session-interrupts", serde_json::json!({ "sid": 1 })),
         (
@@ -1957,7 +1959,7 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ),
         (
             "launch-local",
-            serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "defaultLauncher": "claude", "x": 1 }),
+            serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "x": 1 }),
         ),
         (
             "session-say",
@@ -2012,11 +2014,11 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
         ),
         (
             "session-restart",
-            serde_json::json!({ "sid": "s-1", "cwd": "/w", "compact_first": false, "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),
+            serde_json::json!({ "sid": "s-1", "cwd": "/w", "compact_first": false, "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", }),
         ),
         (
             "session-restart",
-            serde_json::json!({ "sid": "s-1", "cwd": "/w", "account": "work", "compact_first": "no", "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude" }),
+            serde_json::json!({ "sid": "s-1", "cwd": "/w", "account": "work", "compact_first": "no", "compact_within_ms": 0, "arrive_within_ms": 0, "local": false, "agent": "claude", }),
         ),
     ] {
         let got = run_any(cmd, args.clone());

@@ -114,6 +114,7 @@ fn own_what(id: &str) -> String {
         "relayKey" => copy_text("rsDataPaths.backend.relayKey", &[]),
         "listenDir" => copy_text("rsDataPaths.backend.listenDir", &[]),
         "policy" => copy_text("rsDataPaths.backend.policy", &[]),
+        "prefs" => copy_text("rsDataPaths.backend.prefs", &[]),
         "profiles" => copy_text("rsDataPaths.backend.profiles", &[]),
         "profilesMigrated" => copy_text("rsDataPaths.backend.profilesMigrated", &[]),
         "profilesWritten" => copy_text("rsDataPaths.backend.profilesWritten", &[]),

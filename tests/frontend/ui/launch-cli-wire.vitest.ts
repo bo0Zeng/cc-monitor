@@ -92,8 +92,7 @@ describe("ccm 调用行的 wire 形状（U8c-2c-2）", () => {
   // 会让所有夹具/单测照常全绿 —— 那正是这一轮唯一实质的改动，也是最容易被悄悄回退的一处。
   test("生产渲染路径调的是后端，不是 TS 的 tryRenderCli", () => {
     // 渲染问那台后端（`launch-render.ts::renderCli` → 通道 `launch-render-cli`），探测结果不再由前端转交。
-    expect(RUN).toContain("const req = buildCliRenderRequest(ctx);");
-    expect(RUN).toContain("r = await renderCli(origin, req);");
+    expect(RUN).toContain("r = await renderCli(origin, buildCliRenderRequest(ctx));");
     // TS 的 `tryRenderCli` 已删；这一格留着挡「在本文件里再手写一个」。
     // 全仓那一格见下面那组。
     expect(/[^a-zA-Z]tryRenderCli\s*\(/.test(RUN)).toBe(false);

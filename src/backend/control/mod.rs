@@ -30,6 +30,7 @@ pub mod cli_control;
 pub mod deploy_plan;
 pub mod exit_policy;
 pub mod files_commit;
+pub(crate) mod machine_prefs;
 // 解压（`files-extract`）＋ 「建链接」那一个动词的调用方（复制链接本身 · 解压包里的链接）。
 pub mod files_extract;
 // 上传的块形：把送进暂存区的块拼成暂存件（SFTP 起始目录不是后端 home 时走这条）。

@@ -265,6 +265,11 @@ fn backend_entries(home: &Path, monitor_data_dir: &Path) -> Vec<DataPathInfo> {
             DataClass::Truth,
         ),
         file(
+            rr::PREFS_REL,
+            copy_text("rsDataPaths.backend.prefs", &[]),
+            DataClass::Truth,
+        ),
+        file(
             rr::PROFILES_REL,
             copy_text("rsDataPaths.backend.profiles", &[]),
             DataClass::Truth,

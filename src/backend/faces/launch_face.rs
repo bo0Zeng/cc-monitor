@@ -73,6 +73,7 @@ impl WithFiles for LaunchLocal {
         _cx: &typed::Cx,
         files: Files,
     ) -> Result<Rendered, LaunchRenderErr> {
+        let req = req.with_prefs(&crate::control::machine_prefs::read_now().prefs());
         let v = with_facts(&req.agent, |facts| lr::answer_local(&req, facts))?;
         pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
         Ok(v)
@@ -95,6 +96,7 @@ impl WithFiles for LaunchRenderCli {
         _cx: &typed::Cx,
         files: Files,
     ) -> Result<Rendered, LaunchRenderErr> {
+        let req = req.with_prefs(&crate::control::machine_prefs::read_now().prefs());
         let v = with_facts(&req.agent, |facts| lr::answer_cli(&req, facts))?;
         pretrust_rendered(files, &req.agent, req.cwd.as_deref(), &v);
         Ok(v)

@@ -14,8 +14,4 @@ agent: string, action: WireAction, container: WireContainer, cwd: string | null,
 /**
  * 显式指定的模型（压过下面那张表）。
  */
-model: string | null, 
-/**
- * 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
- */
-models?: { [key in string]: string }, launcher: string, defaultLauncher: string, };
+model: string | null, };

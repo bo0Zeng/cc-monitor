@@ -12757,6 +12757,12 @@
       "zh": "退出行为 · cc-monitor 退出时后端留不留",
       "args": []
     },
+    "rsDataPaths.backend.prefs": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "机器偏好 · 启动命令 · 每个号的模型 · 上下文上限",
+      "args": []
+    },
     "rsDataPaths.backend.aliasesPosix": {
       "kind": "body",
       "role": "说明",
@@ -14492,12 +14498,6 @@
       "role": "报错",
       "zh": "{who}未在 {dur} 内答完 · 已停下",
       "args": ["who", "dur"]
-    },
-    "accounts.setModel.invalid": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "模型名无效 · {model} · 未保存",
-      "args": ["model"]
     },
     "accounts.sessionBadge.noneHint": {
       "kind": "body",

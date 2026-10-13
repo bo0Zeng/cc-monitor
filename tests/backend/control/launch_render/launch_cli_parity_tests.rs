@@ -1,7 +1,18 @@
 use super::*;
 
+/// 夹具 ＋ 每条的 `req` 照那条的 `prefs` 填好不上线的那几格（生产上那台读自己的 `prefs.json`，同一个 `with_prefs`）。
 fn fixture() -> Fixture {
-    serde_json::from_str(FIXTURE).expect("夹具不是合法 JSON —— 重跑 npm run gen:cli-golden")
+    let mut f: Fixture =
+        serde_json::from_str(FIXTURE).expect("夹具不是合法 JSON —— 重跑 npm run gen:cli-golden");
+    f.cases = f
+        .cases
+        .into_iter()
+        .map(|mut c| {
+            c.req = c.req.with_prefs(&c.prefs);
+            c
+        })
+        .collect();
+    f
 }
 
 /// ★★ 🔴 `K-R95`：**夹具的 `defaultLauncher` 那一格此前刻意声明却不读**（头注逐字
@@ -234,6 +245,12 @@ fn emit_launch_render_for_e2e() {
         .expect("缺 CCM_E2E_RENDER_REQ —— 本出口只给 tests/e2e/launch-render-driver.ts 用");
     let req: super::super::wire::CliRenderRequest =
         serde_json::from_str(&raw).unwrap_or_else(|e| panic!("请求解析不了（{e}）：{raw}"));
+    // 那台的偏好（启动命令 · 每号模型）：不上线，驱动另交一份（没交 ⇒ 缺省）。
+    let prefs: crate::control::machine_prefs::Prefs = std::env::var("CCM_E2E_RENDER_PREFS")
+        .ok()
+        .map(|p| serde_json::from_str(&p).unwrap_or_else(|e| panic!("偏好解析不了（{e}）：{p}")))
+        .unwrap_or_default();
+    let req = req.with_prefs(&prefs);
     match super::super::wire::render_ccm_launch(&req, &as_asked(&req)) {
         Ok(cmd) => {
             assert!(

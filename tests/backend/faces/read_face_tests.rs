@@ -41,7 +41,15 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-user-inputs" => via::<h::UserInputsCmd>(args, |r| h::user_inputs_at(home, r)),
         "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
         "history-find" => via::<h::HistoryFindCmd>(args, |r| h::find_at(home, r, tz)),
-        "history-facts" => via::<h::HistoryFactsCmd>(args, |r| h::facts_at(home, r)),
+        "history-facts" => via::<h::HistoryFactsCmd>(args, |r| {
+            // 上限表住这台的偏好：夹具家目录里那份 `prefs.json`（没有 ⇒ 空表）。
+            let limits = crate::control::machine_prefs::read_at(
+                &crate::control::machine_prefs::path_in(home),
+            )
+            .prefs()
+            .limits();
+            h::facts_at(home, r, &limits)
+        }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
             <super::BackendLog as crate::stream::inbound::typed::Blocking>::run(
                 r,
@@ -726,20 +734,33 @@ fn facts_say_what_the_session_is_waiting_for() {
     assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需手动");
 }
 
-/// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。
+/// `history-facts` 的上限表住这台的偏好（`prefs.json` 的 `contextLimits`）：上限在这里定；请求里再交一张 ⇒ `bad_args`（那一格删了）。
 #[test]
-fn history_facts_applies_the_limits_it_is_given() {
+fn history_facts_applies_the_limits_this_machine_keeps() {
     let home = scratch("facts-limits");
     let path = golden_facts_session(&home);
     let ask =
         |args: serde_json::Value| answer_at(&home, "history-facts", &args, &Default::default());
-    let v = ask(serde_json::json!({ "path": path, "limits": {"M-G": 100} })).unwrap();
+    let v = ask(serde_json::json!({ "path": path })).unwrap();
+    assert_ne!(
+        v["usage"]["limitFrom"],
+        serde_json::json!("setting"),
+        "没设就用上了设置"
+    );
+    let own = crate::platform::fs::Own::issue_at(&home);
+    crate::control::machine_prefs::answer_set_in(
+        Some(&home),
+        &own,
+        &serde_json::from_value(serde_json::json!({"contextLimits": {"M-G": 100}})).unwrap(),
+    )
+    .unwrap();
+    let v = ask(serde_json::json!({ "path": path })).unwrap();
     assert_eq!(
         (v["usage"]["limit"].clone(), v["usage"]["limitFrom"].clone()),
         (serde_json::json!(100), serde_json::json!("setting"))
     );
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "limits": {"m": "x"} }))
+        ask(serde_json::json!({ "path": path, "limits": {"m": 1} }))
             .unwrap_err()
             .0,
         "bad_args"

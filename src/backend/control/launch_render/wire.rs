@@ -24,15 +24,31 @@ pub struct CliRenderRequest {
     pub ccm_sid: Option<String>,
     /// 显式指定的模型（压过下面那张表）。
     pub model: Option<String>,
-    /// 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<_>"))]
+    /// 不上线：这台的模型偏好表（号 → 模型，[`Self::with_prefs`] 从这台的偏好填）：判出来的号在表里 ⇒ 用那一条。
+    #[serde(skip)]
     pub models: BTreeMap<String, String>,
+    /// 不上线：启动命令（[`Self::with_prefs`] 从这台的偏好填，没设过 ⇒ 那一家的默认）。
+    #[serde(skip)]
     pub launcher: String,
+    /// 不上线：那一家的默认启动器（适配层那一份）。
+    #[serde(skip)]
     pub default_launcher: String,
     /// 不上线（后端自己起会话时填）：垫在交给那一家的那一串里的参数（起新会话先定 sid：`--session-id <uuid>`）。
     #[serde(skip)]
     pub preset_args: Vec<String>,
+}
+
+impl CliRenderRequest {
+    /// 填上不上线的那三格：启动命令 · 模型表照这台的偏好，默认启动器问适配层（认不出那一家 ⇒ 空，渲的时候照拒）。
+    pub(crate) fn with_prefs(mut self, prefs: &crate::control::machine_prefs::Prefs) -> Self {
+        self.default_launcher =
+            crate::agents::launch_face_among(crate::agents::REGISTRY, &self.agent)
+                .map_or("", |f| f.default_launcher)
+                .to_string();
+        self.launcher = prefs.launcher_for(&self.agent, &self.default_launcher);
+        self.models = prefs.models.clone();
+        self
+    }
 }
 
 #[derive(Debug, Deserialize)]

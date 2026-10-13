@@ -107,7 +107,6 @@ const EXPECTED: Record<string, unknown> = {
   theme: { bg: "#010203" },
   claudeDir: "/tmp/cfg1-claude",
   keybindings: KEYS,
-  accounts: { byMachine: { devbox: { modelByAccount: { a1: "opus" } } } },
   remote: { hosts: [LU_HOST] }, // 只插一台，不整段写 remote
 };
 
@@ -123,7 +122,6 @@ async function realm(): Promise<{
   const theme = await import("../../../src/frontend/ui/theme");
   const paths = await import("../../../src/frontend/ui/paths");
   const kb = await import("../../../src/frontend/ui/keybindings/store");
-  const acc = await import("../../../src/frontend/ui/account-prefs");
   const remote = await import("../../../src/frontend/ui/remote-config");
   return {
     // 主窗：tab 栏那几条（E1 的原形：拖放同拍发分组 ＋ 顺序）。
@@ -143,7 +141,6 @@ async function realm(): Promise<{
       theme.saveTheme({ bg: "#010203" }),
       paths.setClaudeDirOverride("/tmp/cfg1-claude"),
       kb.setKeybindings(KEYS),
-      acc.setModelForAccount("devbox", "a1", "opus"),
       remote.patchRemoteConfig({ upsert: [{ key: null, value: LU_HOST }] }),
     ],
   };
@@ -178,7 +175,6 @@ describe("CFG1 J1 · 两个 realm × 全部写者同时写，谁写的键谁的�
         "set theme",
         "set claudeDir",
         "set keybindings",
-        "set accounts.byMachine.devbox.modelByAccount.a1",
         "insertin remote.hosts",
       ].sort(),
     );

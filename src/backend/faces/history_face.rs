@@ -1486,13 +1486,6 @@ pub(crate) fn find_at(
 pub(crate) struct HistoryFactsReq {
     /// jsonl 路径（围栏同 `history-read`）。
     pub(crate) path: String,
-    /// 可缺：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args`。
-    #[serde(default)]
-    #[cfg_attr(
-        test,
-        ts(optional, as = "Option<std::collections::BTreeMap<String, u32>>")
-    )]
-    pub(crate) limits: Option<serde_json::Value>,
     /// 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
     /// 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
     ///
@@ -1529,7 +1522,9 @@ impl Blocking for HistoryFactsCmd {
         req: HistoryFactsReq,
         _cx: &Cx,
     ) -> Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr> {
-        facts_at(&home(), req)
+        // 上下文上限表住这台的偏好（`prefs.json`），要用的那一刻现读。
+        let limits = crate::control::machine_prefs::read_now().prefs().limits();
+        facts_at(&home(), req, &limits)
     }
 }
 
@@ -1537,10 +1532,10 @@ impl Blocking for HistoryFactsCmd {
 pub(crate) fn facts_at(
     home: &Path,
     req: HistoryFactsReq,
+    limits: &crate::observe::facts_query::ContextLimits,
 ) -> Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr> {
     use crate::observe::{accounts_query, facts_cache, facts_query};
     let path = req.path.as_str();
-    let malformed = |e: String| HistoryFactsErr::BadArgs(crate::common::contract::malformed(&e));
     let prior = match req.prior {
         None => None,
         Some(token) => Some(facts_cache::find(path, token).ok_or_else(|| {
@@ -1550,7 +1545,6 @@ pub(crate) fn facts_at(
             ))
         })?),
     };
-    let limits = facts_query::limits_from(req.limits.as_ref()).map_err(malformed)?;
     // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
     let sid = Path::new(path)
         .file_stem()
@@ -1563,11 +1557,11 @@ pub(crate) fn facts_at(
         // 冷开（没有续点）⇒ 共用那张扫描图；有续点 ⇒ 从它的 `end` 接着扫、累加在它上面。
         None => history_query::cold_scan(home, path)
             .map_err(HistoryFactsErr::Failed)?
-            .facts(&limits, relay),
+            .facts(limits, relay),
         Some(prior) => {
             let r = history_query::open_facts_at(home, path, prior.end)
                 .map_err(HistoryFactsErr::Failed)?;
-            facts_query::scan_facts(r, prior, &limits, relay)
+            facts_query::scan_facts(r, prior, limits, relay)
                 .map_err(|e| HistoryFactsErr::Failed(format!("stream failed: {e}")))?
         }
     };

@@ -289,6 +289,9 @@ fn every_registered_command_declares_its_run_kind() {
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
+                // 这台的偏好那两条：同上（读一份小文件 / 原子写一份）。
+                | "prefs-read"
+                | "prefs-set"
                 // 额度账：读一份小文件（同步文件 I/O）。
                 | "quota-read"
                 // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
@@ -574,6 +577,8 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
+        "prefs-read",
+        "prefs-set",
         "quota-read",
         "quota-probe",
         "rotation-configs-read",

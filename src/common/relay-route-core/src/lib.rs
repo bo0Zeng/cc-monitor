@@ -106,6 +106,9 @@ pub const STAGING_DIR_REL: &str = ".cc-monitor/staging";
 /// 〔「家里的都进唯一枚举」〕这台机器上后端的**退出行为设置**（只有后端写，`control/exit_policy.rs`）。
 pub const BACKEND_POLICY_REL: &str = ".cc-monitor/backend.json";
 
+/// 〔同上〕这台的偏好：每一家的启动命令 · 恢复进不进 tmux · 每个号的模型 · 上下文上限表（只有后端写，`control/machine_prefs.rs`）。
+pub const PREFS_REL: &str = ".cc-monitor/prefs.json";
+
 /// 〔同上〕别名块文件：POSIX shell 读的那一份（后端 `platform/shell/dialect.rs` 写，rc 里那一行 source 它）。
 pub const POSIX_ALIASES_REL: &str = ".cc-monitor/aliases.sh";
 
@@ -411,6 +414,7 @@ pub const OWN_HOME_ENTRIES: &[(&str, &str, bool, bool)] = &[
     ("relayKey", KEY_FILE_REL, false, true),
     ("listenDir", LISTEN_DIR_REL, true, true),
     ("policy", BACKEND_POLICY_REL, false, true),
+    ("prefs", PREFS_REL, false, true),
     ("profiles", PROFILES_REL, false, true),
     ("profilesMigrated", PROFILES_MIGRATED_REL, false, true),
     ("profilesWritten", PROFILES_WRITTEN_REL, false, false),

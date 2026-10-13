@@ -954,7 +954,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(pageA.textContent).not.toContain(copyText("addMachine.err.port"));
   });
 
-  it("改名之后这一页讲的是新名字；改名时那台的默认账号 / 默认模型跟着搬", async () => {
+  it("改名之后这一页讲的是新名字；那台的偏好住那台、改名不搬", async () => {
     const p = fakePages();
     vi.mocked(loadConfig).mockResolvedValue({
       remote: { enabled: true, hosts: [mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")] },
@@ -966,8 +966,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     await change(pageOf(p, "machine:b").querySelectorAll<HTMLInputElement>('input[type="text"]')[0]!, "c");
     for (let i = 0; i < 4; i++) await tick();
     expect(sec.originOfPage("machine:b"), "页 id 不变，讲的是改名之后那台").toBe("c");
+    // 那台的偏好（每号模型）住那台后端，跟名字无关 ⇒ 改名不搬、config.json 那一段不动。
     const cfg = (await vi.mocked(loadConfig)()) as unknown as { accounts: { byMachine: Record<string, unknown> } };
-    expect(cfg.accounts.byMachine).toEqual({ c: { defaultName: "w", modelByAccount: { w: "opus" } } });
+    expect(cfg.accounts.byMachine).toEqual({ b: { defaultName: "w", modelByAccount: { w: "opus" } } });
   });
 
   describe("添加机器（两栏对话框）", () => {

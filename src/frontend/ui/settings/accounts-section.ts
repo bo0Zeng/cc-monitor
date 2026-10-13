@@ -16,7 +16,7 @@ import { openLoginWindow, loginInTmux } from "./account-login";
 import { machineHasTmux } from "../resume-defaults";
 import { accountRowKind, deriveUi, defaultAccount, type Account, type AccountsState } from "../accounts";
 import { accountsAgentProfile, fetchAccounts, invalidateAccountsCache, launchAgentId } from "../account-reads";
-import { setModelForAccount, getModelForAccount } from "../account-prefs";
+import { readPrefs, setPrefs } from "../machine-prefs";
 import { accountAvatarEl } from "../account-color";
 import { readQuota } from "../quota-reads";
 import { slotLabel, slotText, type QuotaRead, accountLabel } from "../acct-words";
@@ -585,13 +585,17 @@ export class AccountsSection {
       model.value = saved ?? "";
     };
     fill(undefined);
-    void getModelForAccount(origin, a.name).then((m) => {
-      if (document.activeElement !== model) fill(m);
-    });
+    // 这个号的默认模型住那台的偏好（`prefs-read`）；问不到 ⇒ 照「默认」那一项。
+    void readPrefs(origin).then(
+      (p) => {
+        if (document.activeElement !== model) fill(p.prefs.models[a.name]);
+      },
+      () => {},
+    );
     const modelErr = document.createElement("span");
     modelErr.className = "acct-detail-err";
     model.addEventListener("change", () => {
-      void setModelForAccount(origin, a.name, model.value || null).then(
+      void setPrefs(origin, { models: { [a.name]: model.value || null } }).then(
         () => (modelErr.textContent = ""),
         (e: unknown) => (modelErr.textContent = saidOfControl(e)),
       );
@@ -711,7 +715,7 @@ export class AccountsSection {
     if (!yes) return;
     try {
       await accountsRemove(origin, { name: a.name, force: a.isDefault });
-      await setModelForAccount(origin, a.name, null).catch(() => {});
+      await setPrefs(origin, { models: { [a.name]: null } }).catch(() => {});
       this.open.delete(this.key(a.name, origin));
       toast(copyText("acctPage.remove.done", { name: a.name, machine }), "");
       if (a.isDefault) void emit(SETTINGS_APPLIED_EVENT);

@@ -12,14 +12,9 @@ import { isLocalOrigin, type Origin } from "./ipc/origin";
 import { copyText } from "./copy-table";
 import { killRefusals } from "./tmux-control";
 import type { Tab } from "./tab-model";
-import { machineModels } from "./account-prefs";
 import type { AccountAsk } from "./launch-account";
 import type { Outcome } from "./generated/Outcome";
-import type { SessionsStartReq } from "./generated/SessionsStartReq";
-import { resumeCommandFor } from "./remote-config";
-import { defaultLauncherOf } from "./agent-profile";
 import { openLocalTerminal, openTerminal } from "./terminal-open";
-import { configuredLauncherFor } from "./launch-requests";
 import { failSaid } from "./kit/detail";
 
 /** 一个 tab 的结局（`why` 是给人看的那一句；做成了 ⇒ 空串）。 */
@@ -112,7 +107,8 @@ export async function callStop(origin: Origin, sids: readonly string[]): Promise
 export async function callStart(origin: Origin, mode: "tmux" | "window", items: readonly StartItem[], agent: string): Promise<Reply[]> {
   const sids = items.map((i) => i.sid);
   const budget = budgetWithin(BATCH_BASE_MS + BATCH_EACH_MS * sids.length);
-  const req = { mode, local: isLocalOrigin(origin), ...(await startSettings(origin, agent)), items: [...items] };
+  // 启动命令 · 模型偏好表那台自己读（`prefs.json`），整批只交哪一家。
+  const req = { mode, local: isLocalOrigin(origin), agent, items: [...items] };
   const v = await settleTyped(origin, "sessions-start", callTyped(origin, "sessions-start", req, budget), batchRefusals(origin));
   return v.results;
 }
@@ -142,18 +138,6 @@ export interface StartItem {
   sid: string;
   cwd: string;
   account?: AccountAsk;
-}
-
-/** 整批一份的那几样（`sessions-start` 入参里除了起法与逐项的那几格）。 */
-export type StartSettings = Pick<SessionsStartReq, "agent" | "launcher" | "defaultLauncher" | "models">;
-
-/** 起会话带的那几样（用户设置的原值）：哪一家 · resume 命令 · 那台的模型偏好表。标签页里的会话都是流跟的那一家。批量起与换号重启共用。 */
-export async function startSettings(origin: Origin, agent: string): Promise<StartSettings> {
-  const defaultLauncher = defaultLauncherOf(agent);
-  // 设置里配的 resume 命令只给默认那一家（别的那一家用它自己的默认启动器）。
-  const configured = await resumeCommandFor(origin);
-  const launcher = configuredLauncherFor(agent, configured).trim() || defaultLauncher;
-  return { agent, launcher, defaultLauncher, models: await machineModels(origin) };
 }
 
 /** 开终端那一形：后端渲好的那一行，monitor 开窗（本机同 `launch-local` 那条的开法，远端同 `openTerminal`）。开不了 ⇒ 那一句。 */

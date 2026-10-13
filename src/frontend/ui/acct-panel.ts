@@ -31,7 +31,6 @@ import { switchHot, switchRestart } from "./quota-reads";
 import { runRemoteAttach } from "./remote-launch-run";
 import { detailView, newRotState, paramsView, rotationList, type Present, type RotCtx, type RotState } from "./rot-session";
 import { standingOf } from "./sessions-where";
-import { startSettings } from "./tab-batch-run";
 import type { QuotaShow } from "./generated/QuotaShow";
 import s from "./acct.module.css";
 
@@ -595,7 +594,7 @@ async function restartSwitch(
     compact_within_ms: 0,
     arrive_within_ms: ARRIVAL_BUDGET_MS,
     local: isLocalOrigin(o.origin),
-    ...(await startSettings(o.origin, kind)),
+    agent: kind,
   };
   const got = (
     await switchRestart(

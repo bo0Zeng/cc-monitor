@@ -49,9 +49,18 @@ vi.mock("../../../../src/frontend/ui/settings/account-login", () => ({
   loginInTmux: (...a: unknown[]) => loginInTmux(...a),
 }));
 const getModelForAccount = vi.fn();
-vi.mock("../../../../src/frontend/ui/account-prefs", () => ({
-  getModelForAccount: (...a: unknown[]) => getModelForAccount(...a),
-  setModelForAccount: (...a: unknown[]) => setModelForAccount(...a),
+// 每号模型住那台的偏好（`prefs-read` / `prefs-set`）：桩成「读那一号的那一格 · 写那一号的那一格」两件，判据照旧按号说。
+vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
+  readPrefs: async (origin: string) => {
+    // 判据按号给（`getModelForAccount` 的答法与号名无关）⇒ 每个号读到的都是那一个值。
+    const v = (await getModelForAccount(origin)) as string | undefined;
+    const models = new Proxy({}, { get: () => v });
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models } };
+  },
+  setPrefs: async (origin: string, patch: { models?: Record<string, string | null> }) => {
+    for (const [name, m] of Object.entries(patch.models ?? {})) await setModelForAccount(origin, name, m);
+    return { state: "ok", prefs: { launchers: {}, resumeInTmux: false, contextLimits: {}, models: {} } };
+  },
 }));
 vi.mock("../../../../src/frontend/ui/account-ops", async (orig) => ({
   ...(await orig<object>()),

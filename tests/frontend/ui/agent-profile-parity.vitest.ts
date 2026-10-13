@@ -422,7 +422,7 @@ describe("界面上的 agent 名单只从后端注册表来", () => {
 
 describe("起会话按会话的那一家取画像", () => {
   it(
-    "★ 界面生产段里零处 `AGENT_PROFILE` / `ACTIVE_AGENT`（没有「当前那一家」：会话是哪一家由后端说）；拼起法意图（`launcherOverride:`）只在 launch-requests.ts",
+    "★ 界面生产段里零处 `AGENT_PROFILE` / `ACTIVE_AGENT`（没有「当前那一家」：会话是哪一家由后端说）；起法意图里不带启动命令（`launcherOverride:` 零处：那台照自己的偏好定）",
     () => {
       const profile = /\bAGENT_PROFILE\b(?!_)|\bACTIVE_AGENT\b/;
       const ctx = /\blauncherOverride\s*:/;
@@ -441,10 +441,7 @@ describe("起会话按会话的那一家取画像", () => {
         if (ctx.test(code)) ctxAt.push(file);
       }
       expect(profileAt, "又按「当前那一家」取了 —— 按会话的 agent 取（标签页 `tab.agent` · 历史行 `agent`，都是后端给的）").toEqual([]);
-      expect(ctxAt.sort(), "起法意图只许在 launch-requests.ts 拼（类型声明在 launch-types.ts）").toEqual([
-        "src/frontend/ui/launch-requests.ts",
-        "src/frontend/ui/launch-types.ts",
-      ]);
+      expect(ctxAt.sort(), "启动命令又随起法意图交了 —— 它住那台的偏好（`prefs.json`），那台自己读").toEqual([]);
     },
   );
 });

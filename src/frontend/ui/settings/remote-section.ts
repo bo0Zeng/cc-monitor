@@ -49,7 +49,6 @@ import { fetchAccounts, fetchLocalAccounts } from "../account-reads";
 import { machineFace, paintProblem, type MachineFace, type MachineFix, type MachineState } from "./machine-state";
 import { isLocalOrigin } from "../ipc/origin";
 import type { AccountsState } from "../accounts";
-import { moveMachinePrefs } from "../account-prefs";
 // 本机后端那条把手的 origin（后端注册表里的键 `inbound_client::LOCAL_ORIGIN`），与本机那一页的路由键不是同一个串。
 import { LOCAL_ORIGIN } from "../backend-policy";
 // 调用点（含测试）从本模块 import 它，原样再导出。
@@ -919,11 +918,8 @@ export class RemoteSection {
           .map(([k]) => k),
       });
       // 落盘成功后卡片身份跟到新 origin 上（用户这次可能就是在改名）。
-      const renames: [string, string][] = [];
       for (const c of saving) {
-        const next = hostKey(c.collect());
-        if (c.persistedKey && c.persistedKey !== next) renames.push([c.persistedKey, next]);
-        c.persistedKey = next;
+        c.persistedKey = hostKey(c.collect());
         c.renderStatusStrip();
       }
       this.loadedKeys = saving.map((c) => c.persistedKey!);
@@ -934,8 +930,6 @@ export class RemoteSection {
       // 续跑命令起会话时现读，改了不用重启；但要说一声存上了。
       const resumeChanged = next.hosts.some((h, i) => h.resumeCommand !== this.original.hosts[i]?.resumeCommand);
       this.original = next;
-      // 那台的默认账号 / 默认模型跟着改名走。
-      for (const [from, to] of renames) await moveMachinePrefs(from, to);
       if ((changed || resumeChanged) && incompleteCount === 0 && !fingerprintLooksOff) {
         this.showBanner(copyText("remote.save.done"));
       }

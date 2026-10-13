@@ -23,7 +23,13 @@ export type ProductionRender = { ok: true; cmd: string } | { ok: false; refusal:
  * 把一份意图交给**生产**渲染链，回它真吐出来的那一行。`sendInto` ⇒ 容器那一格置 `send_into: true`
  * （键进已有 pane 那一形：那台后端的渲染口收它、后端换号重启自己用；界面不发，这里照那台后端的口直接置）。
  */
-export function renderViaProduction(ctx: LaunchContext, sendInto = false): ProductionRender {
+/** 那台的偏好里起会话要用的那两样（不上线：那台自己读 `prefs.json`；驱动经 `CCM_E2E_RENDER_PREFS` 另交给 Rust 那一跳）。 */
+export interface RenderPrefs {
+  launchers?: Record<string, string>;
+  models?: Record<string, string>;
+}
+
+export function renderViaProduction(ctx: LaunchContext, sendInto = false, prefs: RenderPrefs = {}): ProductionRender {
   const built = buildCliRenderRequest(ctx);
   const req = JSON.stringify(
     sendInto && built.container.kind === "tmux" ? { ...built, container: { ...built.container, send_into: true } } : built,
@@ -31,7 +37,7 @@ export function renderViaProduction(ctx: LaunchContext, sendInto = false): Produ
   // Rust 那一跳住 `launch-render-emit.sh`（它跑 `#[ignore]` 数据出口 `emit_launch_render_for_e2e`）——
   // 触发过滤串写在 shell 里，`shared_crate_registry` 那条「每个 `#[ignore]` 都得有 e2e 脚本点名」才看得见它。
   const r = spawnSync("bash", [resolve(REPO, "tests/e2e/launch-render-emit.sh")], {
-    env: { ...process.env, CCM_E2E_RENDER_REQ: req },
+    env: { ...process.env, CCM_E2E_RENDER_REQ: req, CCM_E2E_RENDER_PREFS: JSON.stringify(prefs) },
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   });
@@ -48,8 +54,8 @@ export function renderViaProduction(ctx: LaunchContext, sendInto = false): Produ
 }
 
 /** 渲得出就回命令；拒了就抛（调用方把它当作「这一格不该被拒」）。 */
-export function renderCmdViaProduction(ctx: LaunchContext, sendInto = false): string {
-  const r = renderViaProduction(ctx, sendInto);
+export function renderCmdViaProduction(ctx: LaunchContext, sendInto = false, prefs: RenderPrefs = {}): string {
+  const r = renderViaProduction(ctx, sendInto, prefs);
   if (!r.ok) throw new Error(r.refusal);
   return r.cmd;
 }
