@@ -57,6 +57,8 @@ export interface TabBarPrefsHost {
   ): void;
   /** 复活出来的固定 tab 空态里那颗「Resume 这个会话」（与右键菜单的 Resume 同一个动作）。 */
   resumeTab(sessionId: string): Promise<void>;
+  /** 这个会话的流容器（那颗提示挂在里面；流容器是流视图那一半的，没有这个 tab ⇒ `null`）。 */
+  streamElOf(sessionId: string): HTMLElement | null;
 }
 
 /** 撤销用的那一刻：顺序 · 组表 · 每个 tab 的组。 */
@@ -399,7 +401,7 @@ export class TabBarPrefs {
       btn.addEventListener("click", () => void this.host.resumeTab(sid));
       box.appendChild(btn);
     }
-    tab.streamEl.appendChild(box);
+    this.host.streamElOf(sid)?.appendChild(box);
     this.pinHintEls.set(sid, box);
   }
 

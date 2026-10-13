@@ -51,7 +51,7 @@ const PAST: Record<string, Past[]> = {
 
 /** 本机那条 Codex 会话：开了没说话（rollout 只有开头那一条 `session_meta`）。 */
 export const CODEX_SID = "019a0000-0000-7000-8000-00000000c0de";
-const CODEX_CWD = "/home/user/work/ranker";
+export const CODEX_CWD = "/home/user/work/ranker";
 const CODEX_AGO_MIN = 180;
 
 function convoOf(p: Past, now: number): Convo {

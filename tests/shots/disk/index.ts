@@ -37,6 +37,16 @@ export interface MachineDisk {
   live: LiveSession[];
   /** quota-warm 在跑（`real/pool.mjs` 配一个替身进程、写 `.cc-monitor/quota-warm.json` 带它的 pid）：号 → 下一次开窗的时刻。 */
   warm?: { account: string; at: number }[];
+  /**
+   * 「开着即活」那一家（没有 pidfile，在世期间写记录的进程一直开着那份记录）的活会话：每份配一个替身进程开着它写（相对家目录）。
+   * 后端照真的那一套认写者、宣告。
+   */
+  writers?: string[];
+  /**
+   * 预读演成一直没读完的那几个会话（sid）：后端标准输出往壳那一跳，这几个会话宣告之后的格（读完了 · 状态 · 行 · 子运行 · 主线外 · 一轮结束）不交 ——
+   * 与后端预读没完成时压着的那几种恰好一样，壳与界面照真的那一套收宣告那一帧。
+   */
+  primeHeld?: string[];
 }
 
 export const blankDisk = (): MachineDisk => ({ files: {}, live: [] });
