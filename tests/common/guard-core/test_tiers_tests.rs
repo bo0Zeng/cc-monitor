@@ -250,6 +250,11 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/backend/relay/host_tests.rs", needle: "relay::listen::host_tests::hosted_relay_child_entry_point" },
     ),
     (
+        "tests/backend/accounts/quota/rules/decide_tests.rs",
+        "consistency_500_groups",
+        Trigger::Filter { by: "tests/scripts/gate.sh", needle: "accounts::quota::rules::decide::tests::consistency_500_groups" },
+    ),
+    (
         "tests/backend/stream/tap_tests.rs",
         "tap_capacity_reading_with_a_dozen_concurrent_streams",
         Trigger::Manual("读数不是判据：十几路并发时 tap 通道的峰值占用与丢件（写者是模型）；跑法住它自己的头注"),

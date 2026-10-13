@@ -699,6 +699,28 @@ fn crowded(tl: &Timeline, at: u64) -> bool {
     tl.nodes.iter().any(|n| *n != at && n.abs_diff(at) <= TOL)
 }
 
+/// 比一致性时给策略的那一层：墙钟掐断（测试档的 Rhai 慢，几路一起跑时机器一忙，单判就可能过墙钟）⇒ 同样的输入再调一次。
+/// 判是纯的，重调结论不变；不重调的话，掐断那一判走兜底，只落在推演或逐发的一边，比出来的「差几秒」是机器忙，不是两边不一致。
+/// 操作数超了照原样交出（同样的输入停在同一处，两边一样）。重调几次还是掐断 ⇒ 直说是机器太忙。
+struct Patient<'a>(&'a dyn Strategy);
+
+impl Strategy for Patient<'_> {
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
+        for _ in 0..5 {
+            match self.0.decide(ctx) {
+                Err(e) if e.kind == FailKind::Timeout && e.msg.starts_with("wall clock") => {
+                    continue
+                }
+                r => return r,
+            }
+        }
+        panic!("策略连着 5 次被墙钟掐断（机器太忙），这一组比不了")
+    }
+    fn time_varying(&self) -> bool {
+        self.0.time_varying()
+    }
+}
+
 /// 逐发（每分钟一发）判；每过一个节点、每次真换号都重推一次（同真用）：推演说的下一次换号与真的那一次号相同、时刻差 ≤ 一个间隔
 /// （换到的号有启用延迟 ⇒ 两个）。挤在一起分不出先后的单数出来。回（比过几次，挤的几次）。
 fn consistent(
@@ -708,6 +730,7 @@ fn consistent(
     p: &dyn Strategy,
     label: &str,
 ) -> (usize, usize) {
+    let p = &Patient(p);
     let delay = |a: &str| {
         s["accounts"]
             .as_array()
@@ -719,11 +742,34 @@ fn consistent(
     let mut using = Some(sigma.current.clone());
     let fresh =
         |sigma: &Sigma, f: &[Acct], t: u64| simulate(sigma, f, s, p, &clock, t, t + 12 * 3600);
+    // 推演说的换号时刻 pt 落在上一发与这一发之间（逐发每分钟才判一次，一个间隔里先后发生的两件事分不出）：
+    // 把上一发的事实照估计推到 pt、在 pt 真判一次 —— 判出来就是推演说的那个号 ⇒ 两边一致，只是逐发看不见那一刻。
+    let between = |last: &Option<(Vec<Acct>, u64, Option<String>)>,
+                   sigma_in: &Sigma,
+                   pt: u64,
+                   t: u64,
+                   pa: &str| {
+        last.as_ref().is_some_and(|(fp, tp, up)| {
+            *tp < pt && pt <= t && {
+                let mut g = fp.clone();
+                step(&mut g, up.as_deref(), *tp, pt - tp);
+                matches!(&turn(sigma_in, &g, s, p, clock(pt), pt, &[]).pick, Pick::Use(x) if x == pa)
+            }
+        })
+    };
     let mut tl = fresh(&sigma, &f, t);
     let mut next_node = turn(&sigma, &f, s, p, clock(t), t, &[]).tn;
     let (mut checked, mut crowd) = (0, 0);
+    // 上一发那一刻的状态（事实 · 时刻 · 在用的号）与这一判之前的会话状态：推演说的换号落在两发之间时，照那一刻真判一次。
+    let mut last: Option<(Vec<Acct>, u64, Option<String>)> = None;
     while t < T + 4 * 3600 && checked + crowd < 4 {
+        let sigma_in = sigma.clone();
         let d = turn(&sigma, &f, s, p, clock(t), t, &[]);
+        assert!(
+            d.strategy_error.is_none(),
+            "{label}：{t} 策略出错 {:?}，走了兜底 —— 比的不是同一份策略",
+            d.strategy_error
+        );
         sigma = d.sigma.clone();
         let now_using = match &d.pick {
             Pick::Use(a) => Some(a.clone()),
@@ -740,12 +786,19 @@ fn consistent(
                 let tol = if delay(a) { 2 * TOL } else { TOL };
                 if pa == *a && t.abs_diff(pt) <= tol {
                     checked += 1;
-                } else if crowded(&tl, pt) {
+                } else if crowded(&tl, pt) || between(&last, &sigma_in, pt, t, &pa) {
                     crowd += 1;
                 } else {
+                    let near: Vec<String> = tl
+                        .uses
+                        .iter()
+                        .filter(|u| u.to + 600 >= pt && u.from <= t + 600)
+                        .map(|u| format!("{}–{} {:?}", u.from, u.to, u.pick))
+                        .collect();
                     panic!(
-                        "{label}：真 {t} 换到 {a} · 推演 {pt} 换到 {pa}，差 {} 秒",
-                        t.abs_diff(pt)
+                        "{label}：真 {t} 换到 {a} · 推演 {pt} 换到 {pa}，差 {} 秒；推演那几段：{near:?}；起点 {:?}",
+                        t.abs_diff(pt),
+                        tl.uses.first().map(|u| u.from)
                     );
                 }
                 refresh = true;
@@ -756,33 +809,37 @@ fn consistent(
             tl = fresh(&sigma, &f, t);
             next_node = d.tn;
         }
+        last = Some((f.clone(), t, now_using.clone()));
         step(&mut f, now_using.as_deref(), t, 60);
         t += 60;
     }
     (checked, crowd)
 }
 
-#[test]
-fn s22_simulation_agrees_with_per_request_decisions() {
-    // 策略跑在沙箱里（测试档的 Rhai 每判几毫秒），组数取 20、每组至多比 4 次：比法本身另有 500 组的那一版留给性能台架。
+/// #22 跑 `n` 组（照列表先后）：回（比过几次，挤的几次）。
+fn s22_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
-    for seed in 1..=20u64 {
+    for seed in 1..=n {
         let (s, f, sigma) = group(seed);
         let (c, k) = consistent(&s, &f, &sigma, list_order(), &format!("第 {seed} 组"));
         total += c;
         crowd += k;
     }
-    assert!(total > 20, "20 组里只比到 {total} 次换号 —— 本条在空转");
+    assert!(
+        total > n as usize,
+        "{n} 组里只比到 {total} 次换号 —— 本条在空转"
+    );
     assert!(
         crowd * 20 <= total,
         "挤在一起分不出先后的有 {crowd} 次（比过 {total} 次），超过 5%"
     );
+    (total, crowd)
 }
 
-#[test]
-fn s26_waking_on_readings_keeps_most_left_exact() {
+/// #26 跑 `n` 组（先用剩得多的，延迟都设 0）。
+fn s26_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
-    for seed in 1..=5u64 {
+    for seed in 1..=n {
         let (mut s, f, sigma) = group(seed);
         for r in s["accounts"].as_array_mut().expect("accounts") {
             r["delay"] = json!(0);
@@ -797,6 +854,28 @@ fn s26_waking_on_readings_keeps_most_left_exact() {
         total += c;
         crowd += k;
     }
-    assert!(total > 4, "比到的换号太少：{total}");
+    assert!(total > n as usize - 1, "比到的换号太少：{total}");
     assert!(crowd * 20 <= total.max(20), "挤在一起的有 {crowd} 次");
+    (total, crowd)
+}
+
+#[test]
+fn s22_simulation_agrees_with_per_request_decisions() {
+    // 策略跑在沙箱里（测试档的 Rhai 每判几毫秒），常规门禁里跑 20 组、每组至多比 4 次；500 组那一版见下面那条（发布档、发版前的全量里跑）。
+    s22_groups(20);
+}
+
+#[test]
+fn s26_waking_on_readings_keeps_most_left_exact() {
+    s26_groups(5);
+}
+
+/// #22 · #26 的大样本（各 500 组）。测试档的 Rhai 太慢（100 组二十多分钟），所以不进常规那一趟：
+/// 门禁的 `rotation-500` 格用 `perf` 档（发布档的优化、不做 LTO）单编单跑，只在全量里跑（`gate-affected` 改到轮换那几处时也跑）。
+#[test]
+#[ignore = "大样本：由门禁 rotation-500 格用 perf 档起"]
+fn consistency_500_groups() {
+    let (t22, k22) = s22_groups(500);
+    let (t26, k26) = s26_groups(500);
+    eprintln!("#22：比过 {t22} 次、挤的 {k22} 次 · #26：比过 {t26} 次、挤的 {k26} 次");
 }

@@ -368,6 +368,14 @@ default-members = ["."]
 # ── 手机那份 `.so` 的两份 profile（Gradle 的 `:core-rs` 按构建类型挑一份；后端自己的 `release` 一格不动）──
 # release 那一份：体积优先（opt-level z · 胖 LTO · 一个编译单元 · 去符号）；`panic = "unwind"` 是承重的 ——
 #   嵌在 App 进程里，panic 要在 JNI 边界上接住（`catch_unwind`），abort 会带走整个 App。
+# 大样本判据那一档（门禁 `rotation-500` 格：轮换一致性 500 组，沙箱里的 Rhai 在测试档慢几十倍）：发布档的优化，
+# 不做 LTO、多开几路代码生成 —— 只为跑得快，不发货；编一趟比 `--release`（LTO ＋ 单路）快得多。
+[profile.perf]
+inherits = "release"
+lto = false
+codegen-units = 16
+strip = false
+
 [profile.mobile]
 inherits = "release"
 opt-level = "z"

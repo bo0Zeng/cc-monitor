@@ -19,20 +19,22 @@
 fn decide(ctx) {
   let s = ctx.settings;
   let margin = if s.margin != () { s.margin.to_float() } else { 10.0 };
+  let ids = lib::list(s, ctx);
   let scores = #{};
-  let cur = ();
-  for id in lib::list(s, ctx) {
+  let h_of = #{};
+  for id in ids {
     let h = lib::left(s, ctx, id, false);
+    h_of[id] = h;
     scores[id] = if id == ctx.current { h + margin } else { h };
-    if id == ctx.current { cur = h; }
   }
   let out = lib::decide_with(ctx, scores);
+  let cur = h_of[ctx.current];
   if cur != () {
     // 下一个要越过它的号：余量不比它多的那些里最多的一个。
     let next = ();
-    for id in lib::list(s, ctx) {
+    for id in ids {
       if id == ctx.current || !lib::usable(s, ctx, id, false) { continue; }
-      let h = lib::left(s, ctx, id, false);
+      let h = h_of[id];
       if h <= cur + margin && (next == () || h > next) { next = h; }
     }
     if next != () {

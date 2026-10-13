@@ -55,41 +55,47 @@ fn acct(ctx, id) {
   ()
 }
 
-// 这个号某窗的分段（号另设 → 默认）。
-fn segs(s, ctx, id, w) {
-  let r = row(s, ctx, id);
+// 这个号某窗的分段（号另设 → 默认）。r ＝ 它在号列表里那一行（没有 ⇒ ()）。
+fn segs_of(s, r, w) {
   if r != () && r.caps != () && r.caps[w] != () { return r.caps[w]; }
   if s.caps != () { return s.caps[w]; }
   ()
 }
 
-fn kind(s, ctx, id) {
-  let r = row(s, ctx, id);
+fn kind_of(s, r) {
   if r != () && r.capKind != () { return r.capKind; }
   if s.capKind != () { s.capKind } else { "soft" }
 }
 
-// 此刻的上限；放开软上限（lift）且是软上限 ⇒ 100。
-fn cap(s, ctx, id, w, lift) {
-  if lift && kind(s, ctx, id) == "soft" { return 100.0; }
-  cap_at(segs(s, ctx, id, w), ctx.clock)
+fn cap_of(s, r, w, lift, clock) {
+  if lift && kind_of(s, r) == "soft" { return 100.0; }
+  cap_at(segs_of(s, r, w), clock)
 }
 
-// 余量：两窗上限减用量取小。
-fn left(s, ctx, id, lift) {
-  let a = acct(ctx, id);
-  let l5 = cap(s, ctx, id, "5h", lift) - a.used.w5h;
-  let l7 = cap(s, ctx, id, "7d", lift) - a.used.w7d;
+fn left_of(s, r, a, lift, clock) {
+  let l5 = cap_of(s, r, "5h", lift, clock) - a.used.w5h;
+  let l7 = cap_of(s, r, "7d", lift, clock) - a.used.w7d;
   if l5 < l7 { l5 } else { l7 }
 }
 
-// 照这份设置此刻能不能用：事实上发得出去，且（订阅号）还没到上限。
-fn usable(s, ctx, id, lift) {
-  let a = acct(ctx, id);
+fn usable_of(s, r, a, lift, clock) {
   if a == () || !a.sendable { return false; }
   if a.kind == "api" { return true; }
-  left(s, ctx, id, lift) > 0.0
+  left_of(s, r, a, lift, clock) > 0.0
 }
+
+fn segs(s, ctx, id, w) { segs_of(s, row(s, ctx, id), w) }
+
+fn kind(s, ctx, id) { kind_of(s, row(s, ctx, id)) }
+
+// 此刻的上限；放开软上限（lift）且是软上限 ⇒ 100。
+fn cap(s, ctx, id, w, lift) { cap_of(s, row(s, ctx, id), w, lift, ctx.clock) }
+
+// 余量：两窗上限减用量取小。
+fn left(s, ctx, id, lift) { left_of(s, row(s, ctx, id), acct(ctx, id), lift, ctx.clock) }
+
+// 照这份设置此刻能不能用：事实上发得出去，且（订阅号）还没到上限。
+fn usable(s, ctx, id, lift) { usable_of(s, row(s, ctx, id), acct(ctx, id), lift, ctx.clock) }
 
 // 按分降序、同分照列表先后。scores：#{号: 数}，没给 ⇒ 0。
 fn rank(ids, scores) {
@@ -110,11 +116,32 @@ fn rank(ids, scores) {
 // 回 #{order, why, hold_until?, wake: #{at?, when}, memo}。
 fn decide_with(ctx, scores) {
   let s = ctx.settings;
-  let ids = list(s, ctx);
   let now = ctx.now;
-  // 一个号都用不了 ⇒ 放开软上限再看。
+  let clock = ctx.clock;
+  // 每个号先算一次：事实那一份 · 号列表那一行 · 照上限能不能用（不放开 / 放开软上限）。
+  // 一次走完 ctx 建好索引，往下不再把整份 ctx 传进小函数（Rhai 传参照值拷，ctx 大，拷多了单判就慢到几十毫秒）。
+  let a_of = #{};
+  for a in ctx.accounts { a_of[a.id] = a; }
+  let ids = [];
+  let r_of = #{};
+  for r in s.accounts {
+    let id = if r.start == true { ctx.start } else { r.id };
+    if id == () || ids.contains(id) || a_of[id] == () { continue; }
+    ids.push(id);
+    r_of[id] = r;
+  }
+  let ok0 = #{};
+  let ok1 = #{};
   let lift = true;
-  for id in ids { if usable(s, ctx, id, false) { lift = false; break; } }
+  for id in ids {
+    let a = a_of[id];
+    let r = r_of[id];
+    ok0[id] = usable_of(s, r, a, false, clock);
+    ok1[id] = usable_of(s, r, a, true, clock);
+    if ok0[id] { lift = false; }
+  }
+  // 一个号都用不了 ⇒ 放开软上限再看。
+  let ok = if lift { ok1 } else { ok0 };
   let k = rank(ids, scores);
   // 启用延迟：排在它前面的号全都用不了满 D 分钟才放它（排第一的前面没有号 ⇒ 恒放）。起点记在 memo。
   let old = if ctx.memo != () && ctx.memo.since != () { ctx.memo.since } else { #{} };
@@ -123,7 +150,7 @@ fn decide_with(ctx, scores) {
   let all_bad = true;
   let i = 0;
   for id in k {
-    let r = row(s, ctx, id);
+    let r = r_of[id];
     let d = if r != () && r.delay != () { r.delay * 60 } else { 0 };
     if i == 0 || d == 0 {
       allowed[id] = true;
@@ -134,34 +161,34 @@ fn decide_with(ctx, scores) {
     } else {
       allowed[id] = false;
     }
-    if usable(s, ctx, id, lift) { all_bad = false; }
+    if ok[id] { all_bad = false; }
     i += 1;
   }
   let c = ctx.current;
   let order = [];
   let why = #{};
-  if ids.contains(c) && usable(s, ctx, c, lift) {
+  if ids.contains(c) && ok[c] {
     // 回切：排在在用号前面、余量回到阈值以上的那个（只在没放开软上限时）。
     let back = ();
     if !lift {
       for id in k {
         if id == c { break; }
-        let r = row(s, ctx, id);
-        if r != () && r.back != () && (usable(s, ctx, id, lift) && allowed[id]) && left(s, ctx, id, false) >= r.back.to_float() { back = id; break; }
+        let r = r_of[id];
+        if r != () && r.back != () && ok[id] && allowed[id] && left_of(s, r, a_of[id], false, clock) >= r.back.to_float() { back = id; break; }
       }
     }
-    if back != () { order.push(back); why[back] = "余量回到 " + row(s, ctx, back).back + "% 以上，切回"; }
+    if back != () { order.push(back); why[back] = "余量回到 " + r_of[back].back + "% 以上，切回"; }
     order.push(c);
     if back == () { why[c] = "在用，还能用就不换"; }
   }
   for id in k {
-    if !order.contains(id) && (usable(s, ctx, id, lift) && allowed[id]) { order.push(id); }
+    if !order.contains(id) && ok[id] && allowed[id] { order.push(id); }
   }
   for id in ids {
     if why[id] != () { continue; }
-    let a = acct(ctx, id);
+    let a = a_of[id];
     why[id] = if a == () || !a.sendable { "此刻发不出去" }
-      else if !usable(s, ctx, id, lift) { "到了用量上限" }
+      else if !ok[id] { "到了用量上限" }
       else if !allowed[id] { "还在启用延迟里" }
       else { "可用" };
   }
@@ -169,18 +196,18 @@ fn decide_with(ctx, scores) {
   let at = ();
   let when = [];
   for id in ids {
+    let r = r_of[id];
     for w in ["5h", "7d"] {
-      let e = next_edge(segs(s, ctx, id, w), ctx.clock);
+      let e = next_edge(segs_of(s, r, w), clock);
       if e != () {
         let t = now - now % 60 + e * 60;
         if at == () || t < at { at = t; }
       }
-      if usable(s, ctx, id, lift) && acct(ctx, id).kind != "api" {
-        when.push(#{ acct: id, w: w, used_at_least: cap(s, ctx, id, w, lift) });
+      if ok[id] && a_of[id].kind != "api" {
+        when.push(#{ acct: id, w: w, used_at_least: cap_of(s, r, w, lift, clock) });
       }
     }
     if since[id] != () {
-      let r = row(s, ctx, id);
       let t = since[id] + r.delay * 60;
       if t > now && (at == () || t < at) { at = t; }
     }
@@ -190,9 +217,9 @@ fn decide_with(ctx, scores) {
   if order.len() == 0 {
     let best = ();
     for id in ids {
-      let a = acct(ctx, id);
+      let a = a_of[id];
       let cands = [a.refusedUntil, a.resets.w5h, a.resets.w7d];
-      if since[id] != () { cands.push(since[id] + row(s, ctx, id).delay * 60); }
+      if since[id] != () { cands.push(since[id] + r_of[id].delay * 60); }
       for t in cands { if t != () && t > now && (best == () || t < best) { best = t; } }
     }
     if at != () && (best == () || at < best) { best = at; }
