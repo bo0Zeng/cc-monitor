@@ -57,10 +57,18 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
         if (op.startsWith("machines-")) {
           const a0 = args[0] as { payload?: number[] };
           const req: unknown = a0.payload ? JSON.parse(new TextDecoder().decode(new Uint8Array(a0.payload))) : null;
+          // 写口拒 ⇒ 同后端那一形：对端说不行（`Refused` ＋ 码 ＋ 那一句），不是通道坏了。
+          //   认不出 / 已有同名 ⇒ 后端写好的那一句（`control/machines.rs` 同键）。
+          const refused = (e: unknown) => {
+            const code = e instanceof Error && "kind" in e ? String((e as { kind: unknown }).kind) : "bad_machine";
+            const said: Record<string, string> = { element_gone: copyText("rsConfig.write.elementGone"), element_exists: copyText("rsConfig.write.elementExists") };
+            const body = new TextEncoder().encode(JSON.stringify({ code, message: said[code] ?? (e instanceof Error ? e.message : String(e)) }));
+            return Promise.reject({ err: "Refused", body: [...body] });
+          };
           return fakeMachinesCall(op, req).then((r) => {
             const u = new TextEncoder().encode(JSON.stringify(r));
             return u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength);
-          });
+          }, refused);
         }
         const reply = ipcReplies.get(name);
         // 回一个 `Error` ⇒ 这条命令 reject（「没问到」那一形；线上是后端回 `Err`）。
@@ -551,7 +559,8 @@ describe("S1 RemoteSection：保存走局部合并", () => {
 
   it("★ 两台机器名相同时删掉一台：不静默无效 —— 按键认不出是哪台 ⇒ 整批拒、说出来，盘上不动", async () => {
     // 删除基准若按**集合**算，这里会得出 remove=[]（另一张卡还占着同一个 key）⇒ 删除静默失效，必须挡住。
-    // 增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说保存失败。
+    // 增删也按键认元素：同一个 origin 两台 ⇒ `removein` 认出不止一台 ⇒ 整批拒（不猜是哪台），banner 说后端写好的那一句
+    //   （不是通道那一层的开发者字样）。
     const sec = await mount([mkH("dup", "1.1.1.1"), mkH("dup", "2.2.2.2")]);
     vi.mocked(saveConfig).mockClear();
     await removeAt(sec, 0);
@@ -559,9 +568,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const sent = vi.mocked(fakeCfg.patches).mock.calls.at(-1)![0] as { op: string }[];
     expect(sent.map((e) => e.op)).toContain("removein");
     expect(saveConfig).not.toHaveBeenCalled();
-    expect(sec.element.querySelector(".settings-banner-show")?.textContent ?? "").toContain(
-      copyText("remote.save.failed"),
-    );
+    const banner = sec.element.querySelector(".settings-banner-show")?.textContent ?? "";
+    expect(banner).toContain(copyText("rsConfig.write.elementGone"));
+    expect(banner).not.toContain("通道");
   });
 
   it("config.json 里的无关顶层键不受影响", async () => {
@@ -578,11 +587,17 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ 渲染机器列表：一个后端请求都不发（1 台 3 台一样；状态灯绝不引入轮询）", async () => {
     // 红线。「打开设置时顺便把 N 台机器都探一遍」听起来不像轮询，
     // 但它是同一件事的另一种说法：一次 UI 动作扇出 N 次 ssh 往返，用户没要求过。
+    // 机器表本身住本机后端：每次挂上恰好读它一次（`machines-read`），别的一问都没有。
+    const sends = () => ipcCalls.filter((n) => n !== "chan_call").concat(chanOps.filter((o) => o !== "machines-read"));
     ipcCalls.length = 0;
+    chanOps.length = 0;
     await mount([mkH("a", "1.1.1.1")]);
-    expect([...ipcCalls]).toEqual([]);
+    expect(sends()).toEqual([]);
+    expect(chanOps).toEqual(["machines-read"]);
+    chanOps.length = 0;
     const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2"), mkH("c", "3.3.3.3")]);
-    expect([...ipcCalls]).toEqual([]);
+    expect(sends()).toEqual([]);
+    expect(chanOps, "台数多了不许多读").toEqual(["machines-read"]);
     // 正控：记账的替身真的记得到（点一次「测试连接」就有一问）——不是因为一次都没记到才「空」。
     [...sec.element.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent?.includes(copyText("machineCard.build.test")))!.click();
     for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
@@ -993,6 +1008,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     const tick = () => new Promise((r) => setTimeout(r, 0));
     it("★ 关掉 ⇒ 本机后端那张表那台记 connect:false（对齐那几条流是壳照 `changed {machines}` 做的，界面不另叫）；那一行空心点 ＋「已停用」＋［连接］；点［连接］⇒ 记回 true", async () => {
       ipcCalls.length = 0;
+      chanOps.length = 0;
       const p = fakePages();
       const sec = await mount([mkH("a", "1.1.1.1"), mkH("b", "2.2.2.2")], p.host);
       const page = pageOf(p, "machine:a");

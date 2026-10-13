@@ -79,7 +79,7 @@ const LEDGER: &[(&str, &str, Side)] = &[
     ("backend_stop", "backend.lifecycle", Side::Both),
     // 机器表热加载：对的是整张机器表（本机那一行恒在、不归表增删，对它是空操作），归已有能力 `backend.lifecycle`。
     ("load_config", "app.config", Side::Both),
-    ("patch_config", "app.config", Side::Both),      // 按键补丁
+    ("patch_config", "app.config", Side::Both), // 按键补丁
     ("get_data_paths", "app.data-paths", Side::Both),
     ("forget_session", "session.forget", Side::Both),
     // 同一件事的另一半：`forget_session` 把一个会话的重放缓冲全丢，这一条丢到只剩尾巴

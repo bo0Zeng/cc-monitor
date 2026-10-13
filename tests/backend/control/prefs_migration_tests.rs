@@ -273,15 +273,29 @@ fn the_machine_table_moves_once_without_the_old_resume_cells() {
     assert_eq!(migrate_machines_in(&own), MachinesMoved::Done(3));
     let at = home.join(relay_route_core::MACHINES_REL);
     let raw = std::fs::read_to_string(&at).unwrap();
-    assert!(!raw.contains("resumeCommand") && !raw.contains("daemonless"), "{raw}");
-    let crate::control::machines::Loaded::Present(hosts) = crate::control::machines::read_at(&at) else {
+    let disk: serde_json::Value = serde_json::from_str(&raw).unwrap();
+    for h in disk["hosts"].as_array().unwrap() {
+        let keys = h.as_object().unwrap();
+        assert!(
+            !keys.contains_key("resumeCommand") && !keys.contains_key("daemonless"),
+            "旧格带过去了：{h}"
+        );
+    }
+    let crate::control::machines::Loaded::Present(hosts) = crate::control::machines::read_at(&at)
+    else {
         panic!("没写成")
     };
-    assert_eq!(hosts.iter().map(|h| h.name()).collect::<Vec<_>>(), ["gpu", "pi.lan", "evil"]);
+    assert_eq!(
+        hosts.iter().map(|h| h.name()).collect::<Vec<_>>(),
+        ["gpu", "pi.lan", "evil"]
+    );
     assert_eq!(hosts[0].addresses, ["a.lan", "b.lan"]);
     assert!(!hosts[0].connect && hosts[1].connect);
     assert_eq!(hosts[1].port, 22, "类型不对的格当缺");
-    assert_eq!(std::fs::read_to_string(home.join(".cc-monitor").join(CONFIG_NAME)).unwrap(), text);
+    assert_eq!(
+        std::fs::read_to_string(home.join(".cc-monitor").join(CONFIG_NAME)).unwrap(),
+        text
+    );
     write_config(&home, "{\"remote\": {\"hosts\": []}}");
     assert_eq!(migrate_machines_in(&own), MachinesMoved::AlreadyThere);
     assert_eq!(std::fs::read_to_string(&at).unwrap(), raw);
@@ -296,9 +310,15 @@ fn a_new_or_unrecognized_machine_table() {
     let at = home.join(relay_route_core::MACHINES_REL);
     assert_eq!(migrate_machines_in(&own), MachinesMoved::NoConfig);
     write_config(&home, "{ not json");
-    assert!(matches!(migrate_machines_in(&own), MachinesMoved::Unreadable(_)));
+    assert!(matches!(
+        migrate_machines_in(&own),
+        MachinesMoved::Unreadable(_)
+    ));
     write_config(&home, "{\"remote\": {\"host\": \"old-single.lan\"}}");
-    assert!(matches!(migrate_machines_in(&own), MachinesMoved::Unreadable(_)));
+    assert!(matches!(
+        migrate_machines_in(&own),
+        MachinesMoved::Unreadable(_)
+    ));
     assert!(!at.exists());
     write_config(&home, "{\"theme\": {}}");
     assert_eq!(migrate_machines_in(&own), MachinesMoved::Done(0));
@@ -311,12 +331,18 @@ fn a_new_or_unrecognized_machine_table() {
 
 /// `claudeDir` 并进本机那一份（只认绝对路径）；远端那几份不带。
 #[test]
-fn the_claude_dir_moves_into_the_local_prefs_only() {
+fn the_agent_home_moves_into_the_local_prefs_only() {
     let mut cfg = old_shape();
     cfg["claudeDir"] = json!("/srv/claude");
     let p = plan(&cfg);
-    assert_eq!(p.local.claude_dir.as_deref(), Some("/srv/claude"));
-    assert!(p.remote.values().all(|r| r.claude_dir.is_none()));
+    assert_eq!(
+        p.local
+            .agent_homes
+            .get(crate::agents::default_kind())
+            .map(String::as_str),
+        Some("/srv/claude")
+    );
+    assert!(p.remote.values().all(|r| r.agent_homes.is_empty()));
     cfg["claudeDir"] = json!("relative/dir");
-    assert_eq!(plan(&cfg).local.claude_dir, None);
+    assert_eq!(plan(&cfg).local.agent_homes.len(), 0);
 }

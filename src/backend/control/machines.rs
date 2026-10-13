@@ -175,7 +175,8 @@ fn mkdir_said(dir: &Path, e: std::io::Error) -> Said {
 /// 整份写（自己拿 `~/.cc-monitor` 那把目录锁）：换形那一次用。写完响一下。
 pub(crate) fn write(own: &Own, hosts: &[Host]) -> Result<(), Said> {
     let dir = own.home_dir()?;
-    own.ensure_dir(&dir).map_err(|e| mkdir_said(dir.as_path(), e))?;
+    own.ensure_dir(&dir)
+        .map_err(|e| mkdir_said(dir.as_path(), e))?;
     let held = own.lock(&dir)?;
     let path = dir.join(FILE_NAME)?;
     own.write(&path, &held, &body_of(path.as_path(), hosts)?)?;
@@ -225,13 +226,15 @@ impl MachineFault {
 
     /// 写口拒绝时的那一句（带那台的名字与「未保存」）。
     pub(crate) fn refused_said(&self) -> String {
-        let key = match self.code {
-            MachineFaultCode::NoHost => "rsConfig.machine.noHost",
-            MachineFaultCode::NoUser => "rsConfig.machine.noUser",
-            MachineFaultCode::Port => "rsConfig.machine.port",
-            MachineFaultCode::NameTaken => "rsConfig.machine.nameTaken",
-        };
-        copy_text(key, &[("name", &self.name)])
+        let name = self.name.as_str();
+        match self.code {
+            MachineFaultCode::NoHost => copy_text("rsConfig.machine.noHost", &[("name", name)]),
+            MachineFaultCode::NoUser => copy_text("rsConfig.machine.noUser", &[("name", name)]),
+            MachineFaultCode::Port => copy_text("rsConfig.machine.port", &[("name", name)]),
+            MachineFaultCode::NameTaken => {
+                copy_text("rsConfig.machine.nameTaken", &[("name", name)])
+            }
+        }
     }
 }
 
@@ -337,7 +340,8 @@ enum Applied {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct PinnedDay {
-    pub(crate) origin: String,
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
     pub(crate) day: String,
 }
 
@@ -431,7 +435,11 @@ fn apply(rows: &mut Vec<Map<String, Value>>, e: &MachineEdit) -> Applied {
 }
 
 /// 写进了指纹的那一条（改那一格 · 新增一台带着指纹）⇒ 同一台的 `hostKeyPinnedAt` 盖上写的那一天；指纹写成空 ⇒ 日子清空。
-fn stamp_pinned_day(rows: &mut [Map<String, Value>], e: &MachineEdit, day: &str) -> Option<PinnedDay> {
+fn stamp_pinned_day(
+    rows: &mut [Map<String, Value>],
+    e: &MachineEdit,
+    day: &str,
+) -> Option<PinnedDay> {
     let (r#where, fp) = match e {
         MachineEdit::SetIn {
             r#where,
@@ -441,7 +449,10 @@ fn stamp_pinned_day(rows: &mut [Map<String, Value>], e: &MachineEdit, day: &str)
         } if field == "hostKeyFingerprint" => (r#where, value.clone()),
         MachineEdit::InsertIn { r#where, value } => (
             r#where,
-            value.get("hostKeyFingerprint").cloned().unwrap_or(Value::Null),
+            value
+                .get("hostKeyFingerprint")
+                .cloned()
+                .unwrap_or(Value::Null),
         ),
         _ => return None,
     };
@@ -449,13 +460,22 @@ fn stamp_pinned_day(rows: &mut [Map<String, Value>], e: &MachineEdit, day: &str)
     if !given && matches!(e, MachineEdit::InsertIn { .. }) {
         return None;
     }
-    let day = if given { day.to_string() } else { String::new() };
+    let day = if given {
+        day.to_string()
+    } else {
+        String::new()
+    };
     let [i] = hits(rows, r#where)[..] else {
         return None;
     };
     rows[i].insert("hostKeyPinnedAt".into(), Value::String(day.clone()));
     Some(PinnedDay {
-        origin: r#where.first().map(|k| k.equals.clone()).unwrap_or_default(),
+        origin: cmd_wire::Machine(
+            r#where
+                .first()
+                .map(|k| k.equals.clone())
+                .unwrap_or_default(),
+        ),
         day,
     })
 }
@@ -482,7 +502,11 @@ pub(crate) struct Patched {
 }
 
 /// 把一串补丁逐条打到 `base` 上，再过机器表那一道（动了认人的格才过）。写口与试算口同一份。**纯函数**（日子是参数）。
-pub(crate) fn patched(base: &[Host], edits: &[MachineEdit], day: &str) -> Result<Patched, MachinesSetErr> {
+pub(crate) fn patched(
+    base: &[Host],
+    edits: &[MachineEdit],
+    day: &str,
+) -> Result<Patched, MachinesSetErr> {
     let bad = |m: String| MachinesSetErr::BadArgs(crate::common::contract::malformed(&m));
     if edits.iter().any(|e| e.r#where().is_empty()) {
         return Err(bad("empty `where`".into()));
@@ -511,9 +535,24 @@ pub(crate) fn patched(base: &[Host], edits: &[MachineEdit], day: &str) -> Result
                 pinned.extend(stamp_pinned_day(&mut rows, e, day));
             }
             Applied::Kept => kept += 1,
-            Applied::NoMatch => return Err(MachinesSetErr::ElementGone(copy_text("rsConfig.write.elementGone", &[]), Gone { ambiguous: false })),
-            Applied::Ambiguous => return Err(MachinesSetErr::ElementGone(copy_text("rsConfig.write.elementGone", &[]), Gone { ambiguous: true })),
-            Applied::Exists => return Err(MachinesSetErr::ElementExists(copy_text("rsConfig.write.elementExists", &[]))),
+            Applied::NoMatch => {
+                return Err(MachinesSetErr::ElementGone(
+                    copy_text("rsConfig.write.elementGone", &[]),
+                    Gone { ambiguous: false },
+                ))
+            }
+            Applied::Ambiguous => {
+                return Err(MachinesSetErr::ElementGone(
+                    copy_text("rsConfig.write.elementGone", &[]),
+                    Gone { ambiguous: true },
+                ))
+            }
+            Applied::Exists => {
+                return Err(MachinesSetErr::ElementExists(copy_text(
+                    "rsConfig.write.elementExists",
+                    &[],
+                )))
+            }
         }
     }
     if rows.len() > HOSTS_MAX {
@@ -522,7 +561,10 @@ pub(crate) fn patched(base: &[Host], edits: &[MachineEdit], day: &str) -> Result
     let hosts = rows
         .into_iter()
         .enumerate()
-        .map(|(i, m)| serde_json::from_value::<Host>(Value::Object(m)).map_err(|e| bad(format!("hosts[{i}]: {e}"))))
+        .map(|(i, m)| {
+            serde_json::from_value::<Host>(Value::Object(m))
+                .map_err(|e| bad(format!("hosts[{i}]: {e}")))
+        })
         .collect::<Result<Vec<Host>, _>>()?;
     if changed && edits.iter().any(MachineEdit::moves_identity) {
         if let Some(f) = check_table(&hosts) {
@@ -613,15 +655,21 @@ pub(crate) struct MachinesTried {
 
 /// `machines-try` 的本体：盘上一个字节不动。
 pub(crate) fn answer_try_in(home: Option<&Path>, req: &MachinesEdits) -> MachinesTried {
-    let base = home.map(path_in).map_or(Loaded::Absent, |p| read_at(&p)).hosts();
-    let day = pinned_day(std::time::SystemTime::now());
+    let base = home
+        .map(path_in)
+        .map_or(Loaded::Absent, |p| read_at(&p))
+        .hosts();
+    let day = pinned_day(crate::common::time::now());
     let fault = match patched(&base, &req.edits, &day) {
         Err(MachinesSetErr::BadMachine(_, f)) => Some(f),
         // 往表里加一台、而同名的已经在了 ⇒ 这一道说成同名。
         Err(MachinesSetErr::ElementExists(_)) => req.edits.iter().find_map(|e| match e {
             MachineEdit::InsertIn { r#where, .. } => Some(MachineFault::new(
                 MachineFaultCode::NameTaken,
-                r#where.first().map(|k| k.equals.clone()).unwrap_or_default(),
+                r#where
+                    .first()
+                    .map(|k| k.equals.clone())
+                    .unwrap_or_default(),
             )),
             _ => None,
         }),
@@ -649,7 +697,8 @@ pub(crate) fn answer_set_in(
     day: &str,
 ) -> Result<MachinesSet, MachinesSetErr> {
     let io = |e: Said| MachinesSetErr::IoFailed(crate::common::contract::joined(e.said, e.raw));
-    let home = home.ok_or_else(|| MachinesSetErr::IoFailed(copy_text("beExitPolicy.answerSet.noHome", &[])))?;
+    let home = home
+        .ok_or_else(|| MachinesSetErr::IoFailed(copy_text("beExitPolicy.answerSet.noHome", &[])))?;
     let path = path_in(home);
     let dir = own.home_dir().map_err(io)?;
     own.ensure_dir(&dir)
@@ -657,7 +706,9 @@ pub(crate) fn answer_set_in(
     let held = own.lock(&dir).map_err(|e| io(e.into()))?;
     let base = match read_at(&path) {
         Loaded::Unreadable(why) => {
-            return Err(MachinesSetErr::Unreadable(crate::common::contract::joined(why.said, why.raw)))
+            return Err(MachinesSetErr::Unreadable(crate::common::contract::joined(
+                why.said, why.raw,
+            )))
         }
         l => l.hosts(),
     };
@@ -704,7 +755,9 @@ impl crate::stream::inbound::typed::Blocking for MachinesRead {
         _req: crate::stream::inbound::typed::NoArgs,
         _cx: &crate::stream::inbound::typed::Cx,
     ) -> Result<MachinesReply, MachinesReadErr> {
-        Ok(answer_read_in(crate::platform::paths::home_dir().as_deref()))
+        Ok(answer_read_in(
+            crate::platform::paths::home_dir().as_deref(),
+        ))
     }
 }
 
@@ -723,7 +776,10 @@ impl crate::stream::inbound::typed::Blocking for MachinesTry {
         req: MachinesEdits,
         _cx: &crate::stream::inbound::typed::Cx,
     ) -> Result<MachinesTried, MachinesTryErr> {
-        Ok(answer_try_in(crate::platform::paths::home_dir().as_deref(), &req))
+        Ok(answer_try_in(
+            crate::platform::paths::home_dir().as_deref(),
+            &req,
+        ))
     }
 }
 
@@ -747,7 +803,7 @@ impl crate::stream::inbound::typed::Owning for MachinesSetCmd {
             crate::platform::paths::home_dir().as_deref(),
             own,
             &req,
-            &pinned_day(std::time::SystemTime::now()),
+            &pinned_day(crate::common::time::now()),
         )
     }
 }

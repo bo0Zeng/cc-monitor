@@ -292,6 +292,10 @@ fn every_registered_command_declares_its_run_kind() {
                 // 这台的偏好那两条：同上（读一份小文件 / 原子写一份）。
                 | "prefs-read"
                 | "prefs-set"
+                // 机器表那三条：同上（读 / 判 / 锁里原子写 `~/.cc-monitor/machines.json`）。
+                | "machines-read"
+                | "machines-try"
+                | "machines-set"
                 // 额度账：读一份小文件（同步文件 I/O）。
                 | "quota-read"
                 // 用某个号查一次额度：起官方客户端并等它退出（期限 30 秒）＋ 锁里写额度账。
@@ -579,6 +583,9 @@ fn every_registered_command_declares_its_run_kind() {
         "exit-policy-set",
         "prefs-read",
         "prefs-set",
+        "machines-read",
+        "machines-try",
+        "machines-set",
         "quota-read",
         "quota-probe",
         "rotation-configs-read",

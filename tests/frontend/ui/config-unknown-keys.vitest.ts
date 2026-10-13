@@ -218,7 +218,8 @@ describe("P12 ③ 登记表自己得是真的（否则上面每一条都在拿�
     // 12 → 13：`sessionHead` 那一键（会话头按钮，`src/frontend/ui/session-head.ts`）。
     // 13 → 11：第 7 批这台的偏好搬到各台后端 ⇒ `accounts.ts` · `main.ts` · `local-machine-prefs.ts` 不再是主人，
     //   那几个键改登记给迁移那一段 `src/frontend/shell/src/prefs_migration.rs`（多它一个）。
-    expect(owners.size, `主人 ${owners.size} 个（现打 11）`).toBe(11);
+    // 11 → 10：机器表搬进本机后端 `machines.json` ⇒ `remote-config.ts` 不再是 `remote` 的主人，那一键也改登记给迁移那一段。
+    expect(owners.size, `主人 ${owners.size} 个（现打 10）`).toBe(10);
   });
 
   it("★ 每个登记的主人文件真的在盘上，而且那个键名逐字出现在它里面", () => {

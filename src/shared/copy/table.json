@@ -24962,13 +24962,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "machineList.reconcile.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "连接未更新",
-      "args": [],
-      "limited": ["连接"]
-    },
     "machineCard.conn.connect": {
       "kind": "control",
       "role": "标签",

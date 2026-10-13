@@ -70,6 +70,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/quota/rotation.rs", "let _ = changes().send(sid.clone());", Why::NotAnError, "进程内「某会话变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/plan/watch.rs", "let _ = changes().send((target.to_string_lossy().to_string(), now.0, now.1));", Why::NotAnError, "进程内「某工作区的计划变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，计划在盘上，客户端重问就有"),
     ("src/backend/faces/plan_review_face.rs", "let _ = crate::plan::watch::changes().send((ws.to_string(), rev, n));", Why::NotAnError, "认可改了之后推一帧新的数：此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有"),
+    ("src/backend/control/machines.rs", "let _ = changes().send(());", Why::NotAnError, "进程内「机器表变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/accounts/quota/rotation.rs", "let _ = configs_changes().send(());", Why::NotAnError, "进程内「配置表 / 本机默认 / 策略变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/control/asks/hook.rs", "let _ = stdout.flush().await;", Why::DeadLink, "hook 的 stdout 是那一家读决定的管子：写不进去 ＝ 那一家已经不读了（框已关 / 进程走了），没有第二个地方可以说"),
     ("src/backend/control/asks/hook.rs", "let _ = stdout.write_all(out.to_string().as_bytes()).await;", Why::DeadLink, "同上：决定写不进那一家读的管子 ＝ 它已经不要了（晚到的答案那一家本来也丢）"),

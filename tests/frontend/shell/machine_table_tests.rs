@@ -13,5 +13,8 @@ fn the_reply_says_which_hosts_to_use() {
         &json!({"state": "unreadable", "reason": "读不懂", "path": "/x/machines.json", "hosts": [{"host": "ignored"}]}),
     );
     assert!(hosts.is_empty());
-    assert_eq!(bad, Some(("/x/machines.json".to_string(), "读不懂".to_string())));
+    assert_eq!(
+        bad,
+        Some(("/x/machines.json".to_string(), "读不懂".to_string()))
+    );
 }

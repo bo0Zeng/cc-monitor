@@ -377,7 +377,6 @@ fn hx2_the_monitor_and_backend_dir_locks_are_the_same_kind_of_lock() {
     );
 }
 
-
 /// 盘上那一步没成（这里：数据目录的位置被一个普通文件占着）⇒ 句子是「写入失败 · 那个目录 · 原因词」，系统原话进复制详情、不上句子。
 #[test]
 fn a_disk_failure_says_the_reason_word_and_keeps_the_os_text_in_the_detail() {

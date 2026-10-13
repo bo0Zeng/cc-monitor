@@ -17,6 +17,6 @@ models?: { [key in string]: string | null },
  */
 contextLimits?: { [key in string]: number }, 
 /**
- * 这台的 Claude 数据目录：空串 ⇒ 删掉（回到 `CLAUDE_CONFIG_DIR` → `~/.claude`）。改了要重启后端才生效。
+ * 某一家的数据目录：`{kind: 路径}`，空串 ⇒ 删掉那一家（回到它自己的解析）。只动点到的那几家；改了要重启后端才生效。
  */
-claudeDir?: string, };
+agentHomes?: { [key in string]: string }, };

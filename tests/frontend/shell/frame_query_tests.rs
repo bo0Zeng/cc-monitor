@@ -754,6 +754,18 @@ const ASKED_BY_MONITOR_ITSELF: &[(&str, usize, &str)] = &[
         "第 7 批换形的壳那一半（`prefs_migration.rs::after_local_ready`，下一版删）：本机通道登记上那一刻问一次本机那一份写成没有，\
          说 `ok` 才删 `config.json` 里搬走的那几个键 —— 它的答案不给界面",
     ),
+    (
+        "machines-read",
+        1,
+        "机器表的最近一答（`machine_table.rs::refresh`）：本机通道登记上那一刻 ＋ 本机流每帧 `changed {machines}` 各问一次，\
+         照它起停远端流、读不懂上屏 —— 壳自己的起流对齐，答案不给界面（界面那一问经通道直问本机后端）",
+    ),
+    (
+        "machines-set",
+        1,
+        "拨号固化指纹（`dial_host.rs::pin_host_key`）：握手见到那台头一回报来的指纹 ⇒ 交本机后端写进机器表那一台（`ifEmpty`）—— \
+         壳拨号自己的事，答案只看「写了没有」，不给界面",
+    ),
     // `skill-uninstall-plan` 那一行退役：卸那一趟的删与摘记录进了被卸那台后端（`skill-uninstall-apply`），monitor 零处问它。
     // `tasks-list` 那一行退役：本机任务 notify 删了（监视进后端，`changed {tasks}` 帧 ⇒ 通道 `changed/tasks`），
     //   monitor 零处再问它。

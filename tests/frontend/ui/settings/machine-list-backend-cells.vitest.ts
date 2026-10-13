@@ -24,6 +24,8 @@ const { ipc } = vi.hoisted(() => ({
   ipc: {
     calls: [] as { name: string; args: unknown }[],
     registered: ["<local>", "甲机"] as string[],
+    /** 本机后端那张机器表（`machines-read` 照它答）。 */
+    hosts: [] as unknown[],
   },
 }));
 vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
@@ -39,7 +41,12 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
             return Promise.resolve({ channel: true, pid: 7 });
           // 「退出行为」那一问改走通道：一发 `chan_call`（op = `exit-policy-read`），回后端那份字节。
           case "chan_call": {
-            const body = { state: "absent", killOnExit: false, said: "退出时后台照常跑" };
+            // 机器表住本机后端（`machines-read`）：照 `mount` 摆的那几台答。
+            const op = (args as { op?: unknown } | undefined)?.op;
+            const body =
+              op === "machines-read"
+                ? { state: "ok", reason: null, detail: null, path: null, hosts: ipc.hosts }
+                : { state: "absent", killOnExit: false, said: "退出时后台照常跑" };
             const u = new TextEncoder().encode(JSON.stringify(body));
             return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
           }
@@ -52,7 +59,6 @@ vi.mock("../../../../src/frontend/ui/ipc/commands", () => ({
 }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: () => {} }));
 
-import { loadConfig } from "../../../../src/frontend/ui/config";
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";
 import { BACKEND_UNREGISTERED_WHY, BackendSection } from "../../../../src/frontend/ui/settings/backend-section";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/backend-policy";
@@ -98,9 +104,7 @@ async function mount(
   hosts: RemoteHostConfig[],
   opts: { cellsThrow?: boolean } = {},
 ): Promise<{ sec: RemoteSection; backend: BackendSection }> {
-  vi.mocked(loadConfig).mockResolvedValue({
-    remote: { enabled: true, hosts },
-  } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+  ipc.hosts = hosts;
   const backend = new BackendSection({ headless: true, hosted: true });
   cur.backend = backend;
   cur.cellsThrow = opts.cellsThrow;
@@ -116,7 +120,7 @@ beforeEach(() => {
   ipc.calls = [];
   ipc.registered = ["<local>", "甲机"];
   document.body.replaceChildren();
-  vi.mocked(loadConfig).mockReset();
+  ipc.hosts = [];
 });
 
 describe("后端那几格住机器页", () => {

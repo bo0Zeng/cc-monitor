@@ -211,16 +211,21 @@ function onTable(edits: readonly MachineEditLike[]): Edit[] {
 }
 
 /** 本机后端机器表那三条命令的替身本体：回那一答（拒 ⇒ 抛）；不是这三条 ⇒ `undefined`。 */
+/**
+ * `machines-read` 那一答（纯函数）：机器表摆在一份假 `config.json` 的 `remote.hosts` 里。没有 `remote` ⇒ `absent`；
+ * 不是数组 ⇒ `unreadable`。自己桩 `chan.call` 的测试照它答 `machines-read`（表照旧摆在它们那块盘上）。
+ */
+export function machinesReadOf(cfg: unknown): { state: string; reason: string | null; detail: null; path: null; hosts: unknown[] } {
+  const remote = (cfg as { remote?: { hosts?: unknown } } | null)?.remote;
+  if (remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [] };
+  return Array.isArray(remote.hosts)
+    ? { state: "ok", reason: null, detail: null, path: null, hosts: remote.hosts as unknown[] }
+    : { state: "unreadable", reason: "读不懂", detail: null, path: null, hosts: [] };
+}
+
 export async function fakeMachinesCall(cmd: unknown, req: unknown): Promise<unknown> {
   const edits = ((req as { edits?: MachineEditLike[] } | null)?.edits ?? []) as MachineEditLike[];
-  const read = async () => {
-    const cfg = ((await fakeCfg.load()) ?? {}) as { remote?: { hosts?: unknown } };
-    const hosts = cfg.remote?.hosts;
-    if (cfg.remote === undefined) return { state: "absent", reason: null, detail: null, path: null, hosts: [] };
-    return Array.isArray(hosts)
-      ? { state: "ok", reason: null, detail: null, path: null, hosts }
-      : { state: "unreadable", reason: "读不懂", detail: null, path: null, hosts: [] };
-  };
+  const read = async () => machinesReadOf((await fakeCfg.load()) ?? {});
   if (cmd === "machines-read") return read();
   if (cmd === "machines-try") return { fault: await fakeMachineTableTry(onTable(edits)) };
   if (cmd === "machines-set") {

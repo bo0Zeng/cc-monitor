@@ -22,12 +22,12 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
     assert_eq!((r.state, r.prefs.clone()), ("absent", Prefs::default()));
     set(
         &home,
-        serde_json::json!({"launchers": {"claude": "cc"}, "models": {"a": "opus", "b": "sonnet"}, "contextLimits": {"opus": 1000000}}),
+        serde_json::json!({"launchers": {"claude": "cc"}, "models": {"a": "opus", "b": "sonnet"}, "contextLimits": {"opus": 1000000}, "agentHomes": {"claude": "/srv/c"}}),
     )
     .unwrap();
     let r = set(
         &home,
-        serde_json::json!({"models": {"a": null}, "resumeInTmux": true, "launchers": {"codex": "cx"}}),
+        serde_json::json!({"models": {"a": null}, "resumeInTmux": true, "launchers": {"codex": "cx"}, "agentHomes": {"codex": "/srv/x"}}),
     )
     .unwrap();
     assert_eq!(r.state, "ok");
@@ -38,6 +38,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
             "resumeInTmux": true,
             "models": {"b": "sonnet"},
             "contextLimits": {"opus": 1000000},
+            "agentHomes": {"claude": "/srv/c", "codex": "/srv/x"},
         })
     );
     assert_eq!(
@@ -52,7 +53,7 @@ fn prefs_start_absent_and_a_patch_touches_only_what_it_names() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// 值域在写口拒（`bad_args`，一个字节不落）：启动命令带壳元字符 · 模型名不像模型 · 上限为 0。
+/// 值域在写口拒（`bad_args`，一个字节不落）：启动命令带壳元字符 · 模型名不像模型 · 上限为 0 · 数据目录不是绝对路径。
 #[test]
 fn prefs_set_refuses_values_a_launch_could_not_use() {
     let home = scratch("check");
@@ -60,6 +61,7 @@ fn prefs_set_refuses_values_a_launch_could_not_use() {
         serde_json::json!({"launchers": {"claude": "cc; rm -rf /"}}),
         serde_json::json!({"models": {"a": "op us"}}),
         serde_json::json!({"contextLimits": {"opus": 0}}),
+        serde_json::json!({"agentHomes": {"claude": "relative/dir"}}),
     ] {
         let e = set(&home, bad.clone()).unwrap_err();
         assert!(matches!(e, PrefsSetErr::BadArgs(_)), "{bad} ⇒ {e:?}");

@@ -14,6 +14,11 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
   chan: {
     call: (origin: string, op: string, body: Uint8Array) => {
       const args = JSON.parse(new TextDecoder().decode(body)) as Record<string, unknown>;
+      // 机器表住本机后端（`machines-read`）：照这块盘上摆的 `remote.hosts` 答，不记进问过的那几发。
+      if (op === "machines-read") {
+        const hosts = (disk.cfg.remote as { hosts?: unknown[] } | undefined)?.hosts ?? [];
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ state: "ok", reason: null, detail: null, path: null, hosts })));
+      }
       calls.push({ origin, op, args });
       const v = op === "chores-mark" ? { declined: [], selfPaste: null, startSkipped: true } : answer.value;
       return Promise.resolve(new TextEncoder().encode(JSON.stringify(v)));

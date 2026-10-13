@@ -594,6 +594,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         // 这台的偏好那两条：同步文件 I/O（读 / 原子写 `~/.cc-monitor/prefs.json`）。
         "prefs-read",
         "prefs-set",
+        "machines-read",
+        "machines-try",
+        "machines-set",
         "quota-read",
         "quota-probe",
         // 轮换：读 / 锁里原子写 `rotation.json`（同步文件 I/O）。
@@ -819,6 +822,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "exit-policy-set",
         "prefs-read",
         "prefs-set",
+        "machines-read",
+        "machines-try",
+        "machines-set",
         "quota-read",
         "quota-probe",
         "rotation-configs-read",

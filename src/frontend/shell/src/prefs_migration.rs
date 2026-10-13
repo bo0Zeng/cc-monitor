@@ -148,9 +148,9 @@ async fn finish_now(keys: &'static [&'static str]) {
         return;
     };
     match tauri::async_runtime::spawn_blocking(move || finish_at(&path, keys)).await {
-        Ok(Ok(Finished::Removed(n))) => tracing::info!(
-            "config.json 里搬到本机后端的 {n} 个键删了（原文留 {BACKUP_NAME}）"
-        ),
+        Ok(Ok(Finished::Removed(n))) => {
+            tracing::info!("config.json 里搬到本机后端的 {n} 个键删了（原文留 {BACKUP_NAME}）")
+        }
         Ok(Ok(Finished::NothingLeft)) => {}
         Ok(Err(e)) => tracing::warn!("config.json 里搬走的那几个键没删成：{}", e.said),
         Err(e) => tracing::warn!("config.json 里搬走的那几个键没删成：{e}"),

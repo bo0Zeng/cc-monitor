@@ -1,6 +1,6 @@
 // 机器表数据层（纯数据，无 DOM）：表住本机后端（`~/.cc-monitor/machines.json`，后端 `control/machines.rs`），
 // 这里只经 `machines-read` / `machines-try` / `machines-set` 读写 ＋ 反查 / 筛选纯函数。
-import { budgetWithin, callTyped } from "./ipc/chan-caller";
+import { budgetWithin, callTyped, saidFrom } from "./ipc/chan-caller";
 import { LOCAL_ORIGIN } from "./ipc/origin";
 import type { MachineEdit } from "./generated/MachineEdit";
 import type { MachineFault } from "./generated/MachineFault";
@@ -206,8 +206,28 @@ export interface RemotePatched {
 export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<RemotePatched> {
   const edits = remoteHostsEdits(patch);
   if (edits.length === 0) return { pinned: [] };
-  const r = await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS));
-  return { pinned: r.pinned };
+  try {
+    const r = await callTyped(LOCAL_ORIGIN, "machines-set", { edits }, budgetWithin(MACHINES_BUDGET_MS));
+    return { pinned: r.pinned };
+  } catch (e) {
+    throw saidOf(e);
+  }
+}
+
+/** 机器表那一问没成：`message` 是给人看的那一句（后端拒了就是它写好的那一句，别的按层说），`detail` 是复制详情。 */
+export class MachinesFailed extends Error {
+  constructor(
+    said: string,
+    readonly detail: string,
+  ) {
+    super(said);
+    this.name = "MachinesFailed";
+  }
+}
+
+function saidOf(e: unknown): MachinesFailed {
+  const detail = typeof (e as { detail?: unknown } | null)?.detail === "string" ? (e as { detail: string }).detail : "";
+  return new MachinesFailed(saidFrom(e, LOCAL_ORIGIN), detail);
 }
 
 /**
@@ -216,7 +236,11 @@ export async function patchRemoteConfig(patch: RemoteHostsPatch): Promise<Remote
 export async function tryRemoteConfig(patch: RemoteHostsPatch): Promise<MachineFault | null> {
   const edits = remoteHostsEdits(patch);
   if (edits.length === 0) return null;
-  return (await callTyped(LOCAL_ORIGIN, "machines-try", { edits }, budgetWithin(MACHINES_BUDGET_MS))).fault;
+  try {
+    return (await callTyped(LOCAL_ORIGIN, "machines-try", { edits }, budgetWithin(MACHINES_BUDGET_MS))).fault;
+  } catch (e) {
+    throw saidOf(e);
+  }
 }
 
 /**

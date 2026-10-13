@@ -24,7 +24,13 @@ pub(crate) fn hosts_of(reply: &Value) -> (Vec<Value>, Option<(String, String)>) 
         .and_then(Value::as_array)
         .cloned()
         .unwrap_or_default();
-    let text = |k: &str| reply.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let text = |k: &str| {
+        reply
+            .get(k)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
     match reply.get("state").and_then(Value::as_str) {
         Some("unreadable") => (Vec::new(), Some((text("path"), text("reason")))),
         _ => (hosts, None),
@@ -59,7 +65,11 @@ pub(crate) fn refresh() {
         let done = tauri::async_runtime::spawn_blocking(crate::reconcile_remote_streams).await;
         match done {
             Ok(d) if !d.started.is_empty() || !d.stopped.is_empty() => {
-                tracing::info!("照机器表对齐了远端流：起 {:?} 停 {:?}", d.started, d.stopped)
+                tracing::info!(
+                    "照机器表对齐了远端流：起 {:?} 停 {:?}",
+                    d.started,
+                    d.stopped
+                )
             }
             Ok(_) => {}
             Err(e) => tracing::warn!("照机器表对齐远端流没跑完：{e}"),

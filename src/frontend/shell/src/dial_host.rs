@@ -485,14 +485,14 @@ pub(crate) enum PinWrite {
     AlreadySet,
 }
 
-/// 往机器表里那一台写指纹的那一问（本机后端 `machines-set` 的入参）：一条**按键认那一台**的 `setin`（认 origin（`label` 非空取它、
+/// 往机器表里那一台写指纹的那一问（本机后端 `machines-set` 的入参）：一条**按键认那一台**的 `setin`（认名字 `name`（`label` 非空取它、
 /// 否则 `host`）与 `host` 都相等的恰好一台，只改它的 `hostKeyFingerprint`，已有值不动 —— `ifEmpty`）。锁内现读现判在后端那一处，
 /// 别的机器、别的格与设置页同时写的改动都不会被盖掉；「记于哪一天」由那个写口一并盖上。**纯函数**。
-pub(crate) fn pin_request(origin: &str, host: &str, fp: &str) -> serde_json::Value {
+pub(crate) fn pin_request(name: &str, host: &str, fp: &str) -> serde_json::Value {
     serde_json::json!({ "edits": [{
         "op": "setin",
         "where": [
-            { "fields": ["label", "host"], "equals": origin },
+            { "fields": ["label", "host"], "equals": name },
             { "fields": ["host"], "equals": host },
         ],
         "field": "hostKeyFingerprint",
@@ -504,11 +504,17 @@ pub(crate) fn pin_request(origin: &str, host: &str, fp: &str) -> serde_json::Val
 /// `machines-set` 那一答 ⇒ 结局（`kept` ＞ 0 ＝ 那一格已有值）。认不出 / 认出多台 / 问不到 ⇒ `Err`（那一句）。**纯函数**。
 pub(crate) fn pin_outcome(reply: Result<serde_json::Value, String>) -> Result<PinWrite, String> {
     let r = reply?;
-    Ok(if r.get("kept").and_then(serde_json::Value::as_u64).unwrap_or(0) > 0 {
-        PinWrite::AlreadySet
-    } else {
-        PinWrite::Written
-    })
+    Ok(
+        if r.get("kept")
+            .and_then(serde_json::Value::as_u64)
+            .unwrap_or(0)
+            > 0
+        {
+            PinWrite::AlreadySet
+        } else {
+            PinWrite::Written
+        },
+    )
 }
 
 /// 问本机后端写那一台的指纹。

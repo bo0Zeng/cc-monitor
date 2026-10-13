@@ -38,6 +38,12 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
         const out = op === "last-seen-read" ? { accounts: mine.accounts ?? null, data: mine.data ?? null } : { atMs: 1 };
         return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
       }
+      // 机器表住本机后端（`machines-read`）：照这块盘上摆的 `remote.hosts` 答。
+      if (op === "machines-read") {
+        if (origin !== "<local>") return Promise.reject(new Error("机器表只问本机后端"));
+        const hosts = (disk.cfg.remote as { hosts?: unknown[] } | undefined)?.hosts ?? [];
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ state: "ok", reason: null, detail: null, path: null, hosts })));
+      }
       if (op !== "data-report") return Promise.reject(new Error(`没料到 ${op}`));
       const a = answers.get(origin);
       if (a === undefined) return Promise.reject(new Error(`${origin} 断开`));

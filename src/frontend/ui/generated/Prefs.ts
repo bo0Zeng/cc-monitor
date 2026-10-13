@@ -21,6 +21,7 @@ models: { [key in string]: string },
  */
 contextLimits: { [key in string]: number }, 
 /**
- * 这台的 Claude 数据目录（绝对路径；缺 ＝ 照 `CLAUDE_CONFIG_DIR` → `~/.claude`）。后端起来时读一次，改了要重启后端才生效。
+ * 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
+ * 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
  */
-claudeDir?: string, };
+agentHomes: { [key in string]: string }, };

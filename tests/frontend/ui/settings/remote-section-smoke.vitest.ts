@@ -22,6 +22,15 @@ vi.mock("@tauri-apps/api/event", () => ({
   },
 }));
 
+/** 机器表住本机后端：`chan_call` 问 `machines-read` 时那一答（字节，同 monitor 交回来的那一形）。 */
+const DEVBOX = [{ label: "devbox", host: "h", user: "u", hostKeyFingerprint: "SHA256:disk" }];
+const isMachinesRead = (cmd: string, args: unknown): boolean =>
+  cmd === "chan_call" && (args as { op?: unknown } | undefined)?.op === "machines-read";
+const machinesReply = (hosts: unknown[]): Promise<ArrayBuffer> => {
+  const u = new TextEncoder().encode(JSON.stringify({ state: "ok", reason: null, detail: null, path: null, hosts }));
+  return Promise.resolve(u.buffer.slice(u.byteOffset, u.byteOffset + u.byteLength));
+};
+
 import { RemoteSection } from "../../../../src/frontend/ui/settings/remote-section";
 import { MachineCard } from "../../../../src/frontend/ui/settings/machine-card";
 import { HOST_DEFAULTS } from "../../../../src/frontend/ui/remote-config";
@@ -48,15 +57,8 @@ describe("RemoteSection 真构造一次（此前 0 次执行）", () => {
 
 describe("VIS2 机器页收 host key 告知", () => {
   it("★ 固化了 ⇒ 指纹栏从盘上同步、说一行；别台的不理；各地址不一 ⇒ 说出来、指纹栏不动", async () => {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "load_config"
-        ? Promise.resolve({
-            remote: {
-              enabled: true,
-              hosts: [{ label: "devbox", host: "h", user: "u", hostKeyFingerprint: "SHA256:disk" }],
-            },
-          })
-        : Promise.resolve([]),
+    invokeMock.mockImplementation((cmd: string, args: unknown) =>
+      isMachinesRead(cmd, args) ? machinesReply(DEVBOX) : Promise.resolve([]),
     );
     const card = new MachineCard(
       { ...HOST_DEFAULTS, label: "devbox", host: "h", user: "u" },
@@ -96,11 +98,10 @@ describe("机器卡折叠指示：代码画的箭头，不是字符", () => {
 describe("重读机器表之后，上一批机器卡不再收告知（不留在全窗那张名单上）", () => {
   it("★ 刷新三次（＝ 设置窗关了再开三次）⇒ 一条「指纹已记下」只让当前那张卡去盘上读一次", async () => {
     let reads = 0;
-    invokeMock.mockImplementation((cmd: string) => {
-      if (cmd === "load_config") reads++;
-      return cmd === "load_config"
-        ? Promise.resolve({ remote: { enabled: true, hosts: [{ label: "devbox", host: "h", user: "u", hostKeyFingerprint: "SHA256:disk" }] } })
-        : Promise.resolve([]);
+    invokeMock.mockImplementation((cmd: string, args: unknown) => {
+      if (!isMachinesRead(cmd, args)) return Promise.resolve([]);
+      reads++;
+      return machinesReply(DEVBOX);
     });
     const s = new RemoteSection({ headless: true });
     document.body.appendChild(s.element);

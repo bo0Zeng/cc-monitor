@@ -595,8 +595,14 @@ fn vis2_pinning_asks_the_backend_machine_table_for_one_if_empty_cell() {
             "ifEmpty": true,
         }] })
     );
-    assert_eq!(pin_outcome(Ok(serde_json::json!({"kept": 0, "pinned": []}))), Ok(PinWrite::Written));
-    assert_eq!(pin_outcome(Ok(serde_json::json!({"kept": 1, "pinned": []}))), Ok(PinWrite::AlreadySet));
+    assert_eq!(
+        pin_outcome(Ok(serde_json::json!({"kept": 0, "pinned": []}))),
+        Ok(PinWrite::Written)
+    );
+    assert_eq!(
+        pin_outcome(Ok(serde_json::json!({"kept": 1, "pinned": []}))),
+        Ok(PinWrite::AlreadySet)
+    );
     assert_eq!(pin_outcome(Err("认不出".into())), Err("认不出".to_string()));
 }
 

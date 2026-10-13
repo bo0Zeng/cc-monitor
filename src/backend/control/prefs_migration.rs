@@ -13,7 +13,7 @@
 //!
 //! 4. **机器表**（`config.json` 的 `remote` ⇒ 本机 `machines.json`，[`super::machines`]）：同一位、同一把锁里只读，`machines.json` 不在才换；
 //!    每台残留的 `resumeCommand` 等旧格不带过去；`remote` 在而认不出（没有 `hosts` 数组）⇒ 不写、留原样。monitor 读到本机 `machines-read`
-//!    说 `ok` 才删 `remote`。`claudeDir`（这台的 Claude 数据目录）并进本机那一份 `prefs.json`。
+//!    说 `ok` 才删 `remote`。`claudeDir`（默认那一家的数据目录）并进本机那一份 `prefs.json` 的 `agentHomes`。
 //!
 //! 旧形状（今天各写者的那几格）：通用页 `resumeCommand` · 本机 `localResumeCommand` · 机器表每台 `remote.hosts[].resumeCommand`
 //! （空 ⇒ 通用页那一格）· `resumeInTmux`（各台同一格）· `contextLimits`（各台同一张）· `accounts.byMachine.<origin>.modelByAccount`
@@ -33,6 +33,12 @@ pub(crate) const CONFIG_NAME: &str = "config.json";
 
 /// 本机在 `accounts.byMachine` 里的键（界面的 `LOCAL_ORIGIN`）。
 const LOCAL_ORIGIN: &str = "<local>";
+
+/// `config.json` 里旧的那一格「默认那一家的数据目录」的键名：monitor 当年按 `<kind>Dir` 起的名（只默认那一家有这一格）。
+/// 只在换形这一段读，下一版随本文件删；新的那一格是 `prefs.json` 的 `agentHomes`（按 kind）。
+fn old_home_key() -> String {
+    format!("{}Dir", crate::agents::default_kind())
+}
 
 /// 「待交」那一版。
 const HANDOFF_VERSION: u32 = 1;
@@ -94,15 +100,15 @@ pub(crate) fn plan(cfg: &Value) -> Plan {
             resume_in_tmux: tmux,
             models: models(at),
             context_limits: limits.clone(),
-            claude_dir: None,
+            agent_homes: BTreeMap::new(),
         }
     };
     let mut local = one(
         &cmd_wire::Machine(LOCAL_ORIGIN.to_string()),
         text(cfg, "localResumeCommand"),
     );
-    // Claude 数据目录只说本机（设置页那一格从来只管这一台）。
-    local.claude_dir = Some(text(cfg, "claudeDir").to_string()).filter(|d| machine_prefs::claude_dir_ok(d));
+    // 数据目录只说本机（设置页那一格从来只管这一台），记给默认那一家。
+    local.agent_homes = old_home(cfg).into_iter().collect();
     let mut remote = BTreeMap::new();
     let hosts = cfg.pointer("/remote/hosts").and_then(Value::as_array);
     for h in hosts.into_iter().flatten() {
@@ -251,8 +257,19 @@ pub(crate) fn host_of(v: &Value) -> Option<machines::Host> {
     let o = v.as_object()?;
     let s = |k: &str| o.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let addresses = match o.get("addresses") {
-        Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect(),
-        Some(Value::String(t)) => t.lines().map(str::trim).filter(|x| !x.is_empty()).map(str::to_string).collect(),
+        Some(Value::Array(a)) => a
+            .iter()
+            .filter_map(Value::as_str)
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .map(str::to_string)
+            .collect(),
+        Some(Value::String(t)) => t
+            .lines()
+            .map(str::trim)
+            .filter(|x| !x.is_empty())
+            .map(str::to_string)
+            .collect(),
         _ => Vec::new(),
     };
     Some(machines::Host {
@@ -277,7 +294,11 @@ pub(crate) fn machines_of(cfg: &Value) -> Result<Vec<machines::Host>, String> {
     let Some(hosts) = remote.get("hosts").and_then(Value::as_array) else {
         return Err("`remote` has no `hosts` array".into());
     };
-    Ok(hosts.iter().filter_map(host_of).take(machines::HOSTS_MAX).collect())
+    Ok(hosts
+        .iter()
+        .filter_map(host_of)
+        .take(machines::HOSTS_MAX)
+        .collect())
 }
 
 /// 机器表那一次的本体：`machines.json` 不在 ⇒ 锁里只读 `config.json`，`remote` 写成 `machines.json`（`config.json` 不动）。
@@ -306,7 +327,9 @@ pub(crate) fn migrate_machines_in(own: &Own) -> MachinesMoved {
         Read::Absent => return MachinesMoved::NoConfig,
         Read::Unreadable(why) => return MachinesMoved::Unreadable(why.said),
         Read::Present(v) if v.is_object() => v,
-        Read::Present(_) => return MachinesMoved::Unreadable(format!("{CONFIG_NAME} is not an object")),
+        Read::Present(_) => {
+            return MachinesMoved::Unreadable(format!("{CONFIG_NAME} is not an object"))
+        }
     };
     let hosts = match machines_of(&cfg) {
         Ok(h) => h,
@@ -318,16 +341,26 @@ pub(crate) fn migrate_machines_in(own: &Own) -> MachinesMoved {
     }
 }
 
-/// 换形之前那一次（`prefs.json` 还不在）：Claude 数据目录还在 `config.json` 的 `claudeDir` 里 ⇒ 照它（只读）。
-/// 起来时 [`super::machine_prefs::apply_claude_dir`] 在换形之前就要用到它，下一版随本文件删。
-pub(crate) fn claude_dir_before_move(own: &Own) -> Option<std::path::PathBuf> {
+/// `config.json` 那一格旧的数据目录 ⇒ `(默认那一家, 路径)`；空 / 不是绝对路径 ⇒ 没有。
+fn old_home(cfg: &Value) -> Option<(String, String)> {
+    Some(text(cfg, &old_home_key()).trim().to_string())
+        .filter(|d| machine_prefs::agent_home_ok(d))
+        .map(|d| (crate::agents::default_kind().to_string(), d))
+}
+
+/// 换形之前那一次（`prefs.json` 还不在）：数据目录还在 `config.json` 那一格旧键里 ⇒ 照它（只读）。
+/// 起来时 [`super::machine_prefs::apply_agent_homes`] 在换形之前就要用到它，下一版随本文件删。
+pub(crate) fn agent_homes_before_move(own: &Own) -> BTreeMap<String, std::path::PathBuf> {
     use crate::common::own_state::{read_json, Read};
-    let at = own.root()?.join(CONFIG_NAME).ok()?;
+    let Some(at) = own.root().and_then(|r| r.join(CONFIG_NAME).ok()) else {
+        return BTreeMap::new();
+    };
     match read_json::<Value>(at.as_path(), MAX_BYTES) {
-        Read::Present(v) => Some(text(&v, "claudeDir").to_string())
-            .filter(|d| machine_prefs::claude_dir_ok(d))
-            .map(std::path::PathBuf::from),
-        _ => None,
+        Read::Present(v) => old_home(&v)
+            .map(|(k, d)| (k, std::path::PathBuf::from(d)))
+            .into_iter()
+            .collect(),
+        _ => BTreeMap::new(),
     }
 }
 
@@ -350,7 +383,9 @@ pub fn migrate_here(own: &Own) {
     }
     match migrate_machines_in(own) {
         MachinesMoved::AlreadyThere | MachinesMoved::NoConfig => {}
-        MachinesMoved::Done(n) => tracing::info!("机器表从 config.json 搬进了 machines.json（{n} 台）"),
+        MachinesMoved::Done(n) => {
+            tracing::info!("机器表从 config.json 搬进了 machines.json（{n} 台）")
+        }
         MachinesMoved::Unreadable(why) => tracing::warn!("config.json 的机器表认不出，没搬：{why}"),
         MachinesMoved::WriteFailed(why) => tracing::warn!("机器表没搬成，下次起来再试：{why}"),
     }

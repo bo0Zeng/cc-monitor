@@ -42,7 +42,10 @@ fn machines_start_absent_and_a_cell_edit_touches_only_that_cell() {
     set(&home, json!([insert("gpu", "g.lan"), insert("", "pi.lan")])).unwrap();
     let r = answer_read_in(Some(&home));
     assert_eq!(r.state, "ok");
-    assert_eq!(r.hosts.iter().map(Host::name).collect::<Vec<_>>(), ["gpu", "pi.lan"]);
+    assert_eq!(
+        r.hosts.iter().map(Host::name).collect::<Vec<_>>(),
+        ["gpu", "pi.lan"]
+    );
     assert!(r.hosts.iter().all(|h| h.connect), "缺 ⇒ 连");
     let done = set(
         &home,
@@ -62,11 +65,23 @@ fn the_writer_stamps_the_pinned_day_and_if_empty_keeps_a_set_fingerprint() {
     add["value"]["hostKeyFingerprint"] = json!("SHA256:a");
     add["value"]["hostKeyPinnedAt"] = json!("1999-01-01");
     let done = set(&home, json!([add])).unwrap();
-    assert_eq!(done.pinned, [PinnedDay { origin: "gpu".into(), day: "2026-10-13".into() }]);
+    assert_eq!(
+        done.pinned,
+        [PinnedDay {
+            origin: cmd_wire::Machine("gpu".into()),
+            day: "2026-10-13".into()
+        }]
+    );
     assert_eq!(done.machines.hosts[0].host_key_pinned_at, "2026-10-13");
     let pin = |fp: &str| json!([{ "op": "setin", "where": by_name("gpu"), "field": "hostKeyFingerprint", "value": fp, "ifEmpty": true }]);
     let kept = set(&home, pin("SHA256:b")).unwrap();
-    assert_eq!((kept.kept, kept.machines.hosts[0].host_key_fingerprint.as_str()), (1, "SHA256:a"));
+    assert_eq!(
+        (
+            kept.kept,
+            kept.machines.hosts[0].host_key_fingerprint.as_str()
+        ),
+        (1, "SHA256:a")
+    );
     let cleared = set(
         &home,
         json!([{ "op": "setin", "where": by_name("gpu"), "field": "hostKeyFingerprint", "value": "" }]),
@@ -85,11 +100,18 @@ fn the_writer_stamps_the_pinned_day_and_if_empty_keeps_a_set_fingerprint() {
 #[test]
 fn a_bad_batch_is_refused_whole_and_writes_nothing() {
     let home = scratch("refuse");
-    set(&home, json!([insert("gpu", "g.lan"), insert("pi", "p.lan")])).unwrap();
+    set(
+        &home,
+        json!([insert("gpu", "g.lan"), insert("pi", "p.lan")]),
+    )
+    .unwrap();
     let file = path_in(&home);
     let before = std::fs::read(&file).unwrap();
     let cases = [
-        (json!([{ "op": "removein", "where": by_name("nope") }]), "element_gone"),
+        (
+            json!([{ "op": "removein", "where": by_name("nope") }]),
+            "element_gone",
+        ),
         (json!([insert("gpu", "x.lan")]), "element_exists"),
         (
             json!([{ "op": "setin", "where": by_name("pi"), "field": "label", "value": "gpu" }]),
@@ -128,10 +150,16 @@ fn trying_says_the_same_fault_and_never_writes() {
     set(&home, json!([insert("gpu", "g.lan")])).unwrap();
     let before = std::fs::read(path_in(&home)).unwrap();
     let t = |v: Value| answer_try_in(Some(&home), &edits(v)).fault.map(|f| f.code);
-    assert_eq!(t(json!([insert("gpu", "o.lan")])), Some(MachineFaultCode::NameTaken));
+    assert_eq!(
+        t(json!([insert("gpu", "o.lan")])),
+        Some(MachineFaultCode::NameTaken)
+    );
     assert_eq!(t(json!([insert("", "")])), Some(MachineFaultCode::NoHost));
     assert_eq!(t(json!([insert("pi", "p.lan")])), None);
-    assert_eq!(t(json!([{ "op": "removein", "where": by_name("nope") }])), None);
+    assert_eq!(
+        t(json!([{ "op": "removein", "where": by_name("nope") }])),
+        None
+    );
     assert_eq!(std::fs::read(path_in(&home)).unwrap(), before);
     let _ = std::fs::remove_dir_all(&home);
 }
@@ -149,7 +177,10 @@ fn an_unreadable_table_is_reported_and_never_overwritten() {
         let r = answer_read_in(Some(&home));
         assert_eq!((r.state, r.hosts.len()), ("unreadable", 0), "{text}");
         assert!(r.reason.is_some());
-        assert_eq!(code(set(&home, json!([insert("gpu", "g.lan")])).unwrap_err()), "unreadable");
+        assert_eq!(
+            code(set(&home, json!([insert("gpu", "g.lan")])).unwrap_err()),
+            "unreadable"
+        );
         assert_eq!(std::fs::read_to_string(path_in(&home)).unwrap(), text);
     }
     let _ = std::fs::remove_dir_all(&home);
@@ -161,7 +192,11 @@ fn a_write_rings_the_bell_and_a_no_op_does_not() {
     let home = scratch("bell");
     set(&home, json!([insert("gpu", "g.lan")])).unwrap();
     let mut rx = changes().subscribe();
-    set(&home, json!([{ "op": "setin", "where": by_name("gpu"), "field": "connect", "value": false }])).unwrap();
+    set(
+        &home,
+        json!([{ "op": "setin", "where": by_name("gpu"), "field": "connect", "value": false }]),
+    )
+    .unwrap();
     assert!(rx.try_recv().is_ok(), "写了没响");
     set(&home, json!([{ "op": "setin", "where": by_name("gpu"), "field": "user", "value": "x", "ifEmpty": true }])).unwrap();
     // 别的判据并行写也会响：只钉「没动的那一趟没写盘」。

@@ -31,7 +31,7 @@ pub mod deploy_plan;
 pub mod exit_policy;
 pub mod files_commit;
 pub(crate) mod machine_prefs;
-pub use machine_prefs::apply_claude_dir;
+pub use machine_prefs::apply_agent_homes;
 pub(crate) mod machines;
 // 第 7 批那一次换形（`config.json` 那几格 ⇒ 各台 `prefs.json`；下一版删）。
 pub mod prefs_migration;
