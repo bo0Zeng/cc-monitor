@@ -22,6 +22,15 @@ fn ask<A: crate::control::files_write::Act, E: Codes>(
     })
 }
 
+/// 资产域那扇门（`doors::LocalFiles`）问写的那几样：同一个本体，写句柄经分派那一层（`spec::with_face`）领一份、只活这一问；
+/// 失败只交码与那一句（不过这一条的码表：门不是帧面）。
+pub(crate) fn in_process<A: crate::control::files_write::Act>(
+    req: A,
+) -> Result<A::Reply, crate::assets::door::Said> {
+    crate::stream::inbound::spec::with_face(|face| crate::control::files_write::answer(req, face))
+        .map_err(|f| crate::assets::door::said_of(f.code, &f.said))
+}
+
 codes! {
     /// `files-create` 的码。
     pub(crate) enum FilesCreateErr {

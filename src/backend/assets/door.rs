@@ -1,9 +1,10 @@
-//! 资产域够用户文件的那一扇门：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门就是本进程里那几条 `files-*` 帧命令本身
-//! （实现住 `stream/inbound/doors.rs::LocalFiles`：文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
+//! 资产域够用户文件的那一扇门：这台后端自己的文件管理面。算的与写的是同一台后端 ⇒ 门直接问文件管理那一族的本体，
+//! 每一问一个方法、收发那几条 `files-*` 帧命令同一份线上类型（实现住 `stream/inbound/doors.rs::LocalFiles`：
+//! 文件管理面的写句柄 `Face` 只有分派那一层造，这扇门就是进程内的那一次分派）。
 //! 写的规则（CAS · 相同不写 · 备份 · 暂存旁名换名上位 · 回读比对 · 回滚）只有 `files_write::put_text` 那一份。
 
+use cmd_wire::files as wire;
 use copy_core::copy_text;
-use serde_json::{json, Value};
 
 /// 一次 `files-peek` 读回来的。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,12 +39,35 @@ impl Refused {
     }
 }
 
-/// 这台后端的文件管理面：一条 `files-*` 帧命令 → 它的应答。生产 = `stream/inbound/doors.rs::LocalFiles`；判据用临时目录上的同一份。
+/// 一问没成：码 ＋ 那一句（原话在命令自己的应答里才进复制详情，门这一侧不带）。
+pub(crate) type Said = (String, String);
+
+/// 这台后端的文件管理面：每一问一个方法，入参 · 回包是文件管理那一族的线上类型（`cmd_wire::files`，同那几条帧命令）。
+/// 生产 = `stream/inbound/doors.rs::LocalFiles`（读的直接问 `files::answer`，写的问 `files_write::answer`，写句柄由分派那一层递）；
+/// 判据用临时目录上的同一份。
 pub(crate) trait Door {
-    fn ask(&self, cmd: &str, args: Value) -> Result<Value, (String, String)>;
+    fn home(&self, req: wire::HomeReq) -> Result<wire::FilesPathReply, Said>;
+    fn stat(&self, req: wire::StatReq) -> Result<wire::StatReply, Said>;
+    fn ls(&self, req: wire::LsReq) -> Result<wire::LsReply, Said>;
+    fn peek(&self, req: wire::FilesPeekReq) -> Result<wire::FilesPeekReply, Said>;
+    fn put(&self, req: wire::FilesPutReq) -> Result<wire::FilesPutReply, Said>;
+    fn delete(&self, req: wire::FilesDeleteReq) -> Result<wire::FilesDeleteReply, Said>;
+    fn copy(&self, req: wire::FilesCopyReq) -> Result<wire::FilesTreeReply, Said>;
+    fn mkdir(&self, req: wire::FilesMkdirReq) -> Result<wire::FilesPathReply, Said>;
+    fn link(&self, req: wire::FilesLinkReq) -> Result<wire::FilesPathReply, Said>;
+    fn rename_to(&self, req: wire::FilesRenameReq) -> Result<wire::FilesPathReply, Said>;
+    fn chmod(&self, req: wire::FilesChmodReq) -> Result<wire::FilesChmodReply, Said>;
 }
 
-fn refused((code, said): (String, String)) -> Refused {
+/// 门那一侧的失败 → [`Said`]：契约诊断那一截不带（原话在命令自己的应答里才进复制详情）。
+pub(crate) fn said_of(code: &str, said: &str) -> Said {
+    (
+        code.to_string(),
+        crate::common::contract::parts(said, None).0,
+    )
+}
+
+fn refused((code, said): Said) -> Refused {
     if code == "stale" {
         Refused::Stale(said)
     } else {
@@ -51,33 +75,18 @@ fn refused((code, said): (String, String)) -> Refused {
     }
 }
 
-/// 应答里的路径（字符串或 `{"b16": …}`）→ 给人看的一行。
-fn path_text(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        other => other
-            .get("b16")
-            .and_then(Value::as_str)
-            .and_then(|h| {
-                (0..h.len())
-                    .step_by(2)
-                    .map(|i| u8::from_str_radix(h.get(i..i + 2)?, 16).ok())
-                    .collect::<Option<Vec<u8>>>()
-            })
-            .map(|b| String::from_utf8_lossy(&b).into_owned())
-            .unwrap_or_default(),
-    }
+/// 回包里的路径 → 给人看的一行（不是 UTF-8 的那几个字节按替换符写）。
+pub(crate) fn text_of(p: &wire::WirePath) -> String {
+    String::from_utf8_lossy(p.bytes()).into_owned()
 }
 
-fn path_of(v: &Value) -> String {
-    path_text(v.get("path").unwrap_or(&Value::Null))
+fn wp(s: &str) -> wire::WirePath {
+    wire::WirePath::from(s)
 }
 
 pub(crate) fn home(d: &dyn Door) -> Result<String, String> {
-    let v = d
-        .ask("files-home", json!({}))
-        .map_err(|e| refused(e).said())?;
-    let p = path_of(&v);
+    let v = d.home(wire::HomeReq {}).map_err(|e| refused(e).said())?;
+    let p = text_of(&v.path);
     if p.is_empty() {
         return Err(copy_text("beAssets.door.homeUnknown", &[]));
     }
@@ -86,11 +95,14 @@ pub(crate) fn home(d: &dyn Door) -> Result<String, String> {
 
 pub(crate) fn peek(d: &dyn Door, root: &str, rel: &str) -> Result<Peeked, String> {
     let v = d
-        .ask("files-peek", json!({ "root": root, "rel": rel }))
+        .peek(wire::FilesPeekReq {
+            root: wp(root),
+            rel: wp(rel),
+        })
         .map_err(|e| refused(e).said())?;
     Ok(Peeked {
-        path: path_of(&v),
-        text: v.get("text").and_then(Value::as_str).map(str::to_string),
+        path: text_of(&v.path),
+        text: v.text,
     })
 }
 
@@ -104,46 +116,59 @@ pub(crate) fn put(
     parents: bool,
 ) -> Result<Landed, Refused> {
     let v = d
-        .ask(
-            "files-put",
-            json!({ "root": root, "rel": rel, "content": content, "expect": expect, "backup": backup, "parents": parents }),
-        )
+        .put(wire::FilesPutReq {
+            root: wp(root),
+            rel: wp(rel),
+            content: wp(content),
+            expect: expect.map(wp),
+            backup: Some(backup),
+            parents: Some(parents),
+        })
         .map_err(refused)?;
-    let flag = |k: &str| v.get(k).and_then(Value::as_bool).unwrap_or(false);
     Ok(Landed {
-        path: path_of(&v),
-        changed: flag("changed"),
-        created: flag("created"),
-        backup: v.get("backup").filter(|b| !b.is_null()).map(path_text),
+        path: text_of(&v.path),
+        changed: v.changed,
+        created: v.created,
+        backup: v.backup.as_ref().map(text_of),
     })
+}
+
+fn delete_req(root: &str, rel: &str) -> wire::FilesDeleteReq {
+    wire::FilesDeleteReq {
+        root: wp(root),
+        rel: wp(rel),
+        recursive: None,
+        expect: None,
+        limit: None,
+    }
 }
 
 /// 删一个文件，带 CAS（`expect` = 读到的那一份）；不等 / 已经不在 ⇒ `Stale`。
 pub(crate) fn delete(d: &dyn Door, root: &str, rel: &str, expect: &str) -> Result<(), Refused> {
-    d.ask(
-        "files-delete",
-        json!({ "root": root, "rel": rel, "expect": expect }),
-    )
+    d.delete(wire::FilesDeleteReq {
+        expect: Some(wire::DeleteExpect::Bytes(wp(expect))),
+        ..delete_req(root, rel)
+    })
     .map(|_| ())
     .map_err(refused)
 }
 
 /// 只删一个空目录（`expect: {"empty_dir": true}`）；不空 / 已经不在 ⇒ `Stale`。
 pub(crate) fn delete_empty_dir(d: &dyn Door, root: &str, rel: &str) -> Result<(), Refused> {
-    d.ask(
-        "files-delete",
-        json!({ "root": root, "rel": rel, "expect": { "empty_dir": true } }),
-    )
+    d.delete(wire::FilesDeleteReq {
+        expect: Some(wire::DeleteExpect::EmptyDir),
+        ..delete_req(root, rel)
+    })
     .map(|_| ())
     .map_err(refused)
 }
 
 /// 删一项（链接删链接本身；`recursive` ⇒ 整棵目录，逐条目过路径解析）。
 pub(crate) fn remove(d: &dyn Door, root: &str, rel: &str, recursive: bool) -> Result<(), String> {
-    d.ask(
-        "files-delete",
-        json!({ "root": root, "rel": rel, "recursive": recursive }),
-    )
+    d.delete(wire::FilesDeleteReq {
+        recursive: Some(recursive),
+        ..delete_req(root, rel)
+    })
     .map(|_| ())
     .map_err(|e| refused(e).said())
 }
@@ -156,62 +181,81 @@ pub(crate) fn copy(
     to: &str,
     recursive: bool,
 ) -> Result<(), String> {
-    d.ask(
-        "files-copy",
-        json!({ "root": root, "from": from, "to": to, "recursive": recursive }),
-    )
+    d.copy(wire::FilesCopyReq {
+        root: wp(root),
+        from: wp(from),
+        to: wp(to),
+        overwrite: None,
+        recursive: Some(recursive),
+    })
     .map(|_| ())
     .map_err(|e| refused(e).said())
 }
 
 /// 建一层目录（`files-mkdir`，父目录要在）。
 pub(crate) fn mkdir(d: &dyn Door, root: &str, rel: &str) -> Result<(), String> {
-    d.ask("files-mkdir", json!({ "root": root, "rel": rel }))
-        .map(|_| ())
-        .map_err(|e| refused(e).said())
+    d.mkdir(wire::FilesMkdirReq {
+        root: wp(root),
+        rel: wp(rel),
+        single: None,
+    })
+    .map(|_| ())
+    .map_err(|e| refused(e).said())
 }
 
 /// 建一条链接（`files-link`：目标文本原样，链接那条路径过根底下的解析；已在 ⇒ 拒）。
 pub(crate) fn link(d: &dyn Door, root: &str, rel: &str, target: &str) -> Result<(), String> {
-    d.ask(
-        "files-link",
-        json!({ "root": root, "rel": rel, "target": target }),
-    )
+    d.link(wire::FilesLinkReq {
+        root: wp(root),
+        rel: wp(rel),
+        target: wp(target),
+    })
     .map(|_| ())
     .map_err(|e| refused(e).said())
 }
 
 /// 改名（同一个根底下，`files-rename`）。
 pub(crate) fn rename(d: &dyn Door, root: &str, from: &str, to: &str) -> Result<(), String> {
-    d.ask(
-        "files-rename",
-        json!({ "root": root, "from": from, "to": to }),
-    )
+    d.rename_to(wire::FilesRenameReq {
+        root: wp(root),
+        from: wp(from),
+        to: wp(to),
+        single: None,
+    })
     .map(|_| ())
     .map_err(|e| refused(e).said())
 }
 
 pub(crate) fn chmod(d: &dyn Door, root: &str, rel: &str, mode: u32) -> Result<(), String> {
-    d.ask(
-        "files-chmod",
-        json!({ "root": root, "rel": rel, "mode": mode }),
-    )
+    d.chmod(wire::FilesChmodReq {
+        root: wp(root),
+        rel: wp(rel),
+        mode,
+    })
     .map(|_| ())
     .map_err(|e| refused(e).said())
 }
 
-/// 一个路径在不在：在 ⇒ `Some(kind)`；答「读不到」⇒ `None`（权限不够也是 `None`，只给「在不在场」那种展示用）。
-pub(crate) fn stat_kind(d: &dyn Door, path: &str) -> Result<Option<String>, String> {
-    match d.ask("files-stat", json!({ "path": path })) {
-        Ok(v) => Ok(Some(
-            v.get("kind")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string(),
-        )),
+/// 问一个路径（`files-stat`）：在 ⇒ `Some(那一份)`；答「读不到」⇒ `None`（权限不够也是 `None`，只给「在不在场」那种展示用）。
+pub(crate) fn stat(d: &dyn Door, path: &str) -> Result<Option<wire::StatReply>, String> {
+    match d.stat(wire::StatReq { path: wp(path) }) {
+        Ok(v) => Ok(Some(v)),
         Err((code, _)) if code == "unreadable" => Ok(None),
         Err(e) => Err(refused(e).said()),
     }
+}
+
+/// 一个路径在不在：在 ⇒ `Some(kind)`（`dir` · `file` · `symlink` · `other`）；其余同 [`stat`]。
+pub(crate) fn stat_kind(d: &dyn Door, path: &str) -> Result<Option<String>, String> {
+    Ok(stat(d, path)?.map(|v| {
+        match v.kind {
+            wire::FileKind::Dir => "dir",
+            wire::FileKind::File => "file",
+            wire::FileKind::Symlink => "symlink",
+            wire::FileKind::Other => "other",
+        }
+        .to_string()
+    }))
 }
 
 /// 读改写一次最多重来几趟（`stale` 才重来：读与写之间盘上那份被别人改了）。

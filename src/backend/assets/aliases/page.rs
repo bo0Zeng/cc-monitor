@@ -644,9 +644,10 @@ fn refused(said: String) -> (&'static str, String) {
 
 /// 盘上那份配置文件此刻的修改时间（秒）；不在 / 问不到 ⇒ `None`。
 fn modified_of(d: &dyn Door, path: &str) -> Option<u64> {
-    d.ask("files-stat", json!({ "path": path }))
+    door::stat(d, path)
         .ok()
-        .and_then(|v| v.get("mtime_secs").and_then(Value::as_u64))
+        .flatten()
+        .and_then(|v| v.mtime_secs)
 }
 
 /// 上次 cc-monitor 写过之后有人改过 ⇒ 那份的修改时刻（按看的那一台的时区写好，界面照排）；没改过 ⇒ `None`。

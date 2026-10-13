@@ -4,9 +4,8 @@
 //! 经这台的文件管理面（`files-ls` · `files-stat` · `files-link` · `files-delete`），不自己碰盘。
 //! 认「是我们放的」只凭一条：那个目录里、指向 `ccm`（链接文本逐字）的链接。别的文件一个都不动。
 
-use serde_json::{json, Value};
-
 use crate::assets::door::{self, Door};
+use cmd_wire::files as wire;
 
 /// 链接住的目录（ccm 自己住的那个，`~/.cc-monitor/bin`）。
 pub(crate) fn bin_rel() -> &'static str {
@@ -26,32 +25,28 @@ pub(crate) fn target() -> &'static str {
 /// 那个目录里此刻是我们放的那几条链接的名字（目录不在 ⇒ 空）。
 pub(crate) fn ours(d: &dyn Door, home: &str) -> Result<Vec<String>, String> {
     let dir = door::join_under(home, bin_rel());
-    let listed = match d.ask("files-ls", json!({ "path": dir })) {
+    let listed = match d.ls(wire::LsReq {
+        path: dir.as_str().into(),
+        limit: None,
+        dirs_only: None,
+    }) {
         Ok(v) => v,
         Err((code, _)) if code == "not_found" => return Ok(Vec::new()),
         Err((_, said)) => return Err(said),
     };
     let mut out = Vec::new();
-    for e in listed
-        .get("entries")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        if e.get("kind").and_then(Value::as_str) != Some("symlink") {
+    for e in &listed.entries {
+        if e.kind != wire::FileKind::Symlink {
             continue;
         }
-        let Some(path) = e.get("path").and_then(Value::as_str) else {
+        let Ok(path) = std::str::from_utf8(e.path.bytes()) else {
             continue;
         };
-        let to = d
-            .ask("files-stat", json!({ "path": path }))
+        let to = door::stat(d, path)
             .ok()
-            .and_then(|v| {
-                v.get("link_target")
-                    .and_then(Value::as_str)
-                    .map(str::to_string)
-            });
+            .flatten()
+            .and_then(|v| v.link_target)
+            .and_then(|t| String::from_utf8(t.0).ok());
         if to.as_deref() == Some(target()) {
             if let Some(name) = path.rsplit(['/', '\\']).next() {
                 out.push(name.to_string());
