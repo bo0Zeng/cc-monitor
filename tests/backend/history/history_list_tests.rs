@@ -782,3 +782,69 @@ fn a_remote_sessions_annotation_lives_on_that_machine() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+/// ★ 手机读的这一条，线上字节钉住：换成类型之前用旧代码跑出的字节存在 `tests/__fixtures__/history-list.wire-bytes.txt`（每行 `名字<TAB>字节`），
+/// 之后逐字节比（经 `serde_json::Value` 那一跳，同帧面）。没有重写开关：字节变了就是线上形状变了，先问手机那一侧。
+/// A 手机那一问（不带 `origin`）· B 注解读不到 ＋ 搜索词 · C 按开始排 ＋ 截 ＋ 隐藏的也出 · R1 R2 `raw` 那一形（带注解 / 带读不到的那一句）·
+/// D 经帧面那一臂交进远端那份（行组带 `origin`）。
+#[test]
+fn the_wire_bytes_the_phone_reads_stay_the_same() {
+    use crate::history::history_annotations::Loaded;
+    let pinned: BTreeMap<String, String> =
+        std::fs::read_to_string(fixtures().join("history-list.wire-bytes.txt"))
+            .expect("钉住的字节")
+            .lines()
+            .map(|l| {
+                let (n, b) = l.split_once('\t').expect("名字<TAB>字节");
+                (n.to_string(), b.to_string())
+            })
+            .collect();
+    let wire = |v: Value| serde_json::to_string(&v).unwrap();
+    let tz = crate::Tz::default();
+    let a = answer_from(&listing(), None, Ok(&ann()), &ask(json!({})), 1_000, &tz);
+    let b = answer_from(
+        &listing(),
+        None,
+        annotations(&Loaded::NoPath),
+        &ask(json!({"query": "回调"})),
+        1_000,
+        &tz,
+    );
+    let c = answer_from(
+        &listing(),
+        None,
+        Ok(&ann()),
+        &ask(json!({"limit": 2, "sort": "created", "hidden": true})),
+        1_000,
+        &tz,
+    );
+    let mut r1 = listing();
+    with_own_annotations(&mut r1, &Loaded::Read(ann()));
+    let mut r2 = listing();
+    with_own_annotations(&mut r2, &Loaded::NoPath);
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let d = rt
+        .block_on(crate::history::history_list::answer(
+            json!({"origin": "pin-wire", "listing": r1.clone(), "within_days": 1}),
+            Default::default(),
+        ))
+        .unwrap();
+    let got: BTreeMap<String, String> = [
+        ("A", a),
+        ("B", b),
+        ("C", c),
+        ("R1", r1),
+        ("R2", r2),
+        ("D", d),
+    ]
+    .into_iter()
+    .map(|(n, v)| (n.to_string(), wire(v)))
+    .collect();
+    assert_eq!(got.len(), pinned.len(), "钉住的条数对不上");
+    for (n, want) in &pinned {
+        assert_eq!(got.get(n), Some(want), "`{n}` 那一份的线上字节变了");
+    }
+}
