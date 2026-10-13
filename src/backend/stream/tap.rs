@@ -71,7 +71,7 @@ pub(crate) fn hub() -> Arc<TapHub> {
 }
 
 /// 中转（`relay::host`）要的那个 tap 口：就是进程级那一个 hub。
-pub(crate) fn port() -> Arc<dyn TapPort> {
+pub fn port() -> Arc<dyn TapPort> {
     hub()
 }
 
