@@ -227,6 +227,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "terminals-list"
                 | "terminal-preview"
                 | "terminal-input"
+                // 往会话说一句：读 pidfile 判在不在等 ＋ 送字那一条（起 tmux）。
+                | "session-say"
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
@@ -696,6 +698,8 @@ fn every_registered_command_declares_its_run_kind() {
         "terminals-list",
         "terminal-preview",
         "terminal-input",
+        // 往会话说一句：阻塞（读 pidfile ＋ 起 tmux）。
+        "session-say",
         // 传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

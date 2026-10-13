@@ -48,23 +48,23 @@ pub(crate) const SESSION_NAME_PREFIX: &str = "cc";
 pub(crate) const MODEL_ALIASES: &[Choice] = &[
     Choice {
         value: "sonnet",
-        text: "beSessionNew.model.sonnet",
+        text: || copy_core::copy_text("beSessionNew.model.sonnet", &[]),
     },
     Choice {
         value: "opus",
-        text: "beSessionNew.model.opus",
+        text: || copy_core::copy_text("beSessionNew.model.opus", &[]),
     },
     Choice {
         value: "haiku",
-        text: "beSessionNew.model.haiku",
+        text: || copy_core::copy_text("beSessionNew.model.haiku", &[]),
     },
     Choice {
         value: "sonnet[1m]",
-        text: "beSessionNew.model.sonnetLong",
+        text: || copy_core::copy_text("beSessionNew.model.sonnetLong", &[]),
     },
     Choice {
         value: "opusplan",
-        text: "beSessionNew.model.opusPlan",
+        text: || copy_core::copy_text("beSessionNew.model.opusPlan", &[]),
     },
 ];
 
@@ -72,15 +72,15 @@ pub(crate) const MODEL_ALIASES: &[Choice] = &[
 pub(crate) const PERMISSION_MODES: &[Choice] = &[
     Choice {
         value: "default",
-        text: "beAsk.choice.planManual",
+        text: || copy_core::copy_text("beAsk.choice.planManual", &[]),
     },
     Choice {
         value: "acceptEdits",
-        text: "beAsk.choice.planEdits",
+        text: || copy_core::copy_text("beAsk.choice.planEdits", &[]),
     },
     Choice {
         value: "plan",
-        text: "beSessionNew.mode.plan",
+        text: || copy_core::copy_text("beSessionNew.mode.plan", &[]),
     },
 ];
 

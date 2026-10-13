@@ -1340,6 +1340,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-new",
     "--session-new-dir",
     "--session-new-facts",
+    // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--session-say",
     "--sessions-start",
     "--sessions-stop",
     "--sessions-where",
@@ -1828,6 +1830,20 @@ pub const TARGET_GAPS: &[TargetGap] = &[
         target: Target::Windows,
         kind: GapKind::Owed,
         rationale: "与帧面 `plan-return` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "wire-commands",
+        capability: "session-say",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "往会话说一句：送字那一半就是 `terminal-input` 那一条（`send-keys`，声明了 `no_tmux`）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
+    },
+    TargetGap {
+        family: "cli-subcommands",
+        capability: "--session-say",
+        target: Target::Windows,
+        kind: GapKind::Owed,
+        rationale: "与帧面 `session-say` 那一行是同一条实现（CLI 面派生）⇒ 同一个理由（Windows 后台机制未定），同拍还，**暂时不做**。",
     },
     TargetGap {
         family: "cli-subcommands",

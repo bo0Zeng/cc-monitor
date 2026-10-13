@@ -89,6 +89,7 @@ fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
         vec![
             "terminal-preview",
             "terminal-input",
+            "session-say",
             "terminal-follow",
             "kill",
             "launch",
@@ -232,6 +233,7 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
         vec![
             "terminal-preview".to_string(),
             "terminal-input".to_string(),
+            "session-say".to_string(),
             "terminal-follow".to_string(),
             "kill".to_string(),
             "launch".to_string(),

@@ -189,7 +189,7 @@ pub(crate) fn agent_facts(kind: &'static str) -> AgentFacts {
         cs.iter()
             .map(|c| Pick {
                 value: c.value,
-                text: crate::common::cells::Words(copy_core::copy_text(c.text, &[])),
+                text: crate::common::cells::Words((c.text)()),
             })
             .collect()
     };

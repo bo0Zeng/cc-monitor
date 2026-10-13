@@ -620,6 +620,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
+        "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
         // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
         // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
@@ -838,6 +839,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
+        "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
         "ssh-config-aliases", // 读一份文件
         "ssh-config-import",  // 逐个起 `ssh -G`
         "ssh-config-resolve", // 起一次 `ssh -G`

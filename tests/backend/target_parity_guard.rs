@@ -99,9 +99,11 @@ const WAITING_ROWS: &[(&str, &str)] = &[
     ("cli-subcommands", "--launch"),
     ("wire-commands", "terminal-preview"),
     ("wire-commands", "terminal-input"),
+    ("wire-commands", "session-say"),
     ("wire-commands", "terminal-follow"),
     ("cli-subcommands", "--terminal-preview"),
     ("cli-subcommands", "--terminal-input"),
+    ("cli-subcommands", "--session-say"),
     // 计划退回送字走的就是 `terminal-input` 的本体 ⇒ 同那两行一起等。
     ("wire-commands", "plan-return"),
     ("cli-subcommands", "--plan-return"),

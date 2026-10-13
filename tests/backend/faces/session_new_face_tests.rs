@@ -110,32 +110,34 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     let claude = agent_facts("claude");
     assert_eq!(claude.kind, "claude");
     assert_eq!(claude.text.0, "Claude Code");
-    let models: Vec<(&str, &str)> = claude
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    let models: Vec<(&str, String)> = claude
         .models
         .iter()
-        .map(|c| (c.value, c.text.0.as_str()))
+        .map(|c| (c.value, c.text.0.clone()))
         .collect();
     assert_eq!(
         models,
         vec![
-            ("sonnet", "Sonnet"),
-            ("opus", "Opus"),
-            ("haiku", "Haiku"),
-            ("sonnet[1m]", "Sonnet · 1M 上下文"),
-            ("opusplan", "Opus 规划 · Sonnet 执行"),
+            ("sonnet", t("beSessionNew.model.sonnet")),
+            ("opus", t("beSessionNew.model.opus")),
+            ("haiku", t("beSessionNew.model.haiku")),
+            ("sonnet[1m]", t("beSessionNew.model.sonnetLong")),
+            ("opusplan", t("beSessionNew.model.opusPlan")),
         ]
     );
-    let modes: Vec<(&str, &str)> = claude
+    // 权限档的字与答批计划那一组同字（同一件事一个说法），「规划模式」是新字。
+    let modes: Vec<(&str, String)> = claude
         .permission_modes
         .iter()
-        .map(|c| (c.value, c.text.0.as_str()))
+        .map(|c| (c.value, c.text.0.clone()))
         .collect();
     assert_eq!(
         modes,
         vec![
-            ("default", "逐个确认"),
-            ("acceptEdits", "自动接受编辑"),
-            ("plan", "规划模式"),
+            ("default", t("beAsk.choice.planManual")),
+            ("acceptEdits", t("beAsk.choice.planEdits")),
+            ("plan", t("beSessionNew.mode.plan")),
         ]
     );
     // 每一个值都是 `session-new` 收的那一格：模型过全仓模型名判，权限档是那一家起会话认的档。
@@ -155,7 +157,7 @@ fn the_new_session_facts_wire_names_its_cells() {
     assert_eq!(keys, vec!["kind", "models", "permissionModes", "text"]);
     assert_eq!(
         v["models"][0],
-        serde_json::json!({"value": "sonnet", "text": "Sonnet"})
+        serde_json::json!({"value": "sonnet", "text": copy_core::copy_text("beSessionNew.model.sonnet", &[])})
     );
     let clock = crate::common::time::TextClock::new(60, &crate::Tz::default());
     let r = serde_json::to_value(&recent_dirs(&[("/a".into(), 1)], &|_| false, &clock)[0]).unwrap();

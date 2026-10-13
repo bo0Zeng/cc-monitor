@@ -334,13 +334,13 @@ pub(crate) struct LaunchFace {
     pub(crate) models: Option<&'static [Choice]>,
 }
 
-/// 一个可选值：交给那一家的原值 ＋ 写给人看的那一句的文案键（模型 · 权限档）。
+/// 一个可选值：交给那一家的原值 ＋ 写给人看的那一句（模型 · 权限档）。
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Choice {
     /// 原值（交给那一家的就是它，也是界面交回的那一格）。
     pub(crate) value: &'static str,
-    /// 写给人看的那一句（文案表的键）。
-    pub(crate) text: &'static str,
+    /// 写给人看的那一句（经文案表取，键在适配层那一处写成字面量）。
+    pub(crate) text: fn() -> String,
 }
 
 /// 一家起会话时选权限档的说法（[`LaunchFace::permission`]）。
