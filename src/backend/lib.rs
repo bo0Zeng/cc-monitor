@@ -1005,7 +1005,10 @@ pub const PROTO_VERSION: u32 = 1;
 /// 偏好（启动命令 · 每号模型 · 上限表）住那台的 prefs.json、机器表住本机后端的 machines.json，推送主题多 machines。
 /// 足迹那一族 5 条（agent-home-check · first-run · chores-mark · last-seen-read / -write）换成 typed，「装到几台」每台多 detail；
 /// login-* 多 MCP 那一种（kind: mcp，经伪终端驱动 claude mcp login --no-browser），形状指纹表跟着变、子命令集不变。
-pub const BUILD_ID: &str = "p10l-typed-hub";
+///
+/// p10m-typed-assets：子命令集不变；footprint-report · data-report · assets-sync 换成 typed（资产那张表全 typed：
+/// 入参多键 ⇒ bad_args，assets-sync 只给 origin 就查可达表），hello 带的形状指纹表跟着变。
+pub const BUILD_ID: &str = "p10m-typed-assets";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
 
