@@ -62,6 +62,8 @@ function view(over: Partial<RotationViewReply> = {}): RotationViewReply {
       truncated: false,
       ticks: [{ at: NOW + 1800, text: "15:00" }, { at: NOW + 9000, text: "17:00" }],
     },
+    past: null,
+    baseRev: "h:1",
     log: [],
     hints: [],
     ...over,
@@ -93,6 +95,11 @@ function acts() {
     temp: vi.fn(),
     hours: vi.fn(),
     open: vi.fn(),
+    showFile: vi.fn(),
+    setTz: vi.fn(),
+    loadNew: vi.fn(),
+    keepMine: vi.fn(),
+    toggleOld: vi.fn(),
   };
 }
 
@@ -142,6 +149,53 @@ describe("第一行与说明", () => {
     expect(said[0]).toContain("18:30 team");
     expect(said[0]).not.toContain("{dur}");
     expect(said[1]).toContain("说明写法不合规那一句");
+  });
+});
+
+describe("提示里的按钮", () => {
+  it("★ 出错 ⇒ 看代码（开后端给的那份文件）；时区不明 ⇒ 设时区（设成后端给的那个，悬停写设成哪个）；没给 ⇒ 不出按钮", () => {
+    const a = acts();
+    const root = draw(
+      view({
+        hints: [
+          { hint: { k: "strategyError", error: { line: 12, msg: "除数为 0" }, path: "/夹具/strategies/夜里省着用.rhai" }, text: "出错那一句" },
+          { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, text: "时区那一句" },
+        ],
+      }),
+      state(),
+      a,
+    );
+    button(root, copyText("rot.hint.code"))!.click();
+    expect(a.showFile).toHaveBeenCalledWith("/夹具/strategies/夜里省着用.rhai");
+    const tz = button(root, copyText("rot.hint.setTz"))!;
+    expect(tz.title).toBe(copyText("rot.hint.setTzTip", { zone: "Asia/Shanghai" }));
+    tz.click();
+    expect(a.setTz).toHaveBeenCalledWith("Asia/Shanghai");
+    const bare = draw(view({ hints: [{ hint: { k: "strategyError", error: { msg: "文件没了" } }, text: "出错" }, { hint: { k: "tzUnknown" }, text: "时区" }] }), state(), acts());
+    expect(button(bare, copyText("rot.hint.code"))).toBeUndefined();
+    expect(button(bare, copyText("rot.hint.setTz"))).toBeUndefined();
+  });
+
+  it("★ 旧格式 ⇒ 看是哪几份：展开后列出后端给的文件名，点名字开那一份", () => {
+    const a = acts();
+    const old = { hint: { k: "oldScripts" as const, n: 2, files: [{ name: "旧的一份.rhai", path: "/夹具/v3/旧的一份.rhai" }, { name: "旧的两份.rhai", path: "/夹具/v3/旧的两份.rhai" }] }, text: "2 份旧格式" };
+    const shut = draw(view({ hints: [old] }), state(), a);
+    expect(button(shut, "旧的一份.rhai")).toBeUndefined();
+    button(shut, copyText("rot.hint.which"))!.click();
+    expect(a.toggleOld).toHaveBeenCalledOnce();
+    const open = draw(view({ hints: [old] }), state({ oldOpen: true }), a);
+    button(open, "旧的两份.rhai")!.click();
+    expect(a.showFile).toHaveBeenCalledWith("/夹具/v3/旧的两份.rhai");
+  });
+
+  it("★ 别处改了 ⇒ 载入新的 · 留着这边的", () => {
+    const a = acts();
+    const root = draw(view({ dirty: true, hints: [{ hint: { k: "newer" }, text: "这份策略在别处被改了" }] }), state(), a);
+    expect(root.querySelector("[data-rot-hint=\"newer\"]")?.textContent).toContain("这份策略在别处被改了");
+    button(root, copyText("rot.hint.loadNew"))!.click();
+    button(root, copyText("rot.hint.keepMine"))!.click();
+    expect(a.loadNew).toHaveBeenCalledOnce();
+    expect(a.keepMine).toHaveBeenCalledOnce();
   });
 });
 
@@ -227,6 +281,45 @@ describe("模拟", () => {
     expect(root.textContent).toContain(copyText("rot.sim.switch", { at: "16:00", account: "lab" }));
     const segs = texts(root, '[data-state]');
     expect(segs).toEqual([copyText("rot.sim.left", { n: 42 }), copyText("rot.sim.reset", { at: "15:30" }), ""]);
+  });
+
+  it("★ 过去那一截：左端是它的开头，过去的段实心（不带虚边）、只有重置那段写 ↻；推演的段全是虚边；此刻一条竖线；换号标签只标将来的", () => {
+    const past = {
+      from: NOW - 7200,
+      uses: [
+        { from: NOW - 7200, to: NOW - 3600, account: "work" },
+        { from: NOW - 3600, to: NOW - 1800 },
+        { from: NOW - 1800, to: NOW, account: "team" },
+      ],
+      lanes: [
+        { account: "team", segs: [{ from: NOW - 5400, to: NOW, sendable: true, reset: true, fromText: "13:00" }] },
+        { account: "work", segs: [{ from: NOW - 7200, to: NOW - 3600, sendable: true, reset: false, fromText: "12:30" }, { from: NOW - 3600, to: NOW, sendable: false, reset: false, fromText: "13:30" }] },
+      ],
+    };
+    const v = view({ past });
+    v.timeline!.switches.unshift({ at: NOW - 3600, atText: "13:30", account: "team" });
+    v.timeline!.ticks.unshift({ at: NOW - 5400, text: "13:00" });
+    const root = draw(v, state(), acts());
+    const pastTop = [...root.querySelectorAll<HTMLElement>('[data-past="true"]')].filter((e) => !e.dataset.state);
+    expect(pastTop.map((e) => e.textContent)).toEqual(["work", copyText("rot.sim.hold"), "team"]);
+    expect(pastTop.every((e) => e.dataset.future === undefined)).toBe(true);
+    // 12 小时往后 ＋ 2 小时往前：此刻在 1/7 处。
+    expect(Number(pastTop[0].style.getPropertyValue("--rot-x"))).toBe(0);
+    const nowTick = root.querySelector<HTMLElement>('[data-now="true"]')!;
+    expect(Number(nowTick.style.getPropertyValue("--rot-x"))).toBeCloseTo(1 / 7, 5);
+    expect(nowTick.dataset.edge).toBeUndefined();
+    const pastLanes = [...root.querySelectorAll<HTMLElement>('[data-past="true"][data-state]')];
+    expect(pastLanes.map((e) => [e.dataset.state, e.textContent])).toEqual([
+      ["ok", copyText("rot.sim.reset", { at: "13:00" })],
+      ["ok", ""],
+      ["out", ""],
+    ]);
+    const future = [...root.querySelectorAll<HTMLElement>("[data-state]")].filter((e) => !e.dataset.past);
+    expect(future.every((e) => e.dataset.future === "true")).toBe(true);
+    expect(root.textContent).toContain("13:00");
+    expect(root.textContent, "过去的换号不标").not.toContain(copyText("rot.sim.switch", { at: "13:30", account: "team" }));
+    // 此刻竖线：最上那条 ＋ 每号一行各一条。
+    expect(root.querySelectorAll('[data-rot-now="true"]').length).toBe(3);
   });
 
   it("★ 拖出来的那段白描边（data-temp）· 轮到时用不了的写「跳过」· 停发那段写「停下」；标题右边 手动 N 段 · 清掉手动顺序", () => {

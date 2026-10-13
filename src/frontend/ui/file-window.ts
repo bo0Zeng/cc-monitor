@@ -22,8 +22,10 @@
  */
 import { commands } from "./ipc/commands";
 import { failToast } from "./kit/toast";
-import type { RemoteHostConfig } from "./remote-config";
+import { findHostByOrigin, readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { copyText } from "./copy-table";
+import { isLocalOrigin, type Origin } from "./ipc/origin";
+import { revealInFolder } from "./reveal-in-folder";
 
 /**
  * 文件窗口要的那几格设计令牌：开窗那一刻 `:root` 上的计算值（含用户在设置里改过的）原样交给 Rust 侧，
@@ -104,4 +106,17 @@ export async function openFileWindow(cfg: RemoteHostConfig, at?: FileWindowTarge
     failToast(copyText("fileWindow.openFileWindow.failed"), e, { fact: cfg.label.trim() || cfg.host });
     return false;
   }
+}
+
+/**
+ * 「在文件窗口打开」那一路（会话来源 ⇒ 落点）：本机 ⇒ 系统文件管理器里显示它；远端 ⇒ 文件窗口开到它。
+ * 远端那台在主机表里找不到（被删 / 改名）⇒ 什么都不做。读主机表失败照原样抛给调用方（它自己出声）。
+ */
+export async function openOnMachine(origin: Origin, at: FileWindowTarget): Promise<void> {
+  if (isLocalOrigin(origin)) {
+    await revealInFolder("dir" in at ? at.dir : at.revealFile);
+    return;
+  }
+  const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
+  if (host) await openFileWindow(host, at);
 }

@@ -22,6 +22,8 @@ const read = (over: Partial<RotationViewReply> = {}): RotationViewReply => ({
   listed: 0,
   decision: null,
   timeline: null,
+  past: null,
+  baseRev: "",
   log: [],
   hints: [],
   ...over,

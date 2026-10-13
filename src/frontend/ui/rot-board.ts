@@ -37,11 +37,12 @@ import s from "./rot-board.module.css";
 
 type Obj = Record<string, unknown>;
 
-/** 画的时候界面手上的那几样（不进后端）：推几小时 · 点开了哪个号 · 「现在用」被拦下的那一句。 */
+/** 画的时候界面手上的那几样（不进后端）：推几小时 · 点开了哪个号 · 「现在用」被拦下的那一句 · 旧格式那几份展开没有。 */
 export interface BoardState {
   hours: 12 | 24;
   open: string | null;
   refused: { account: string; text: string } | null;
+  oldOpen?: boolean;
 }
 
 /** 手势 ⇒ 命令（调用方发、发完重读重画）。会话才有的几样（现在用 · 时间轴拖动 · 还原）在设置页缺。 */
@@ -68,6 +69,15 @@ export interface BoardActs {
   temp?: (op: RotTempOp) => void;
   hours(h: 12 | 24): void;
   open(account: string | null): void;
+  /** 提示里的按钮：照「在文件窗口打开」那一路开一份文件（看代码 · 旧格式那几份）。 */
+  showFile(path: string): void;
+  /** 设时区（设成提示里后端给的那个）。 */
+  setTz(zone: string): void;
+  /** 别处改了：载入新的 · 留着这边的。 */
+  loadNew(): void;
+  keepMine(): void;
+  /** 旧格式那几份展开 / 收起。 */
+  toggleOld(): void;
 }
 
 export interface BoardSpec {
@@ -258,14 +268,47 @@ function description(spec: BoardSpec): HTMLElement {
 
 // ─────────────────────────────── 提示
 
+/** 提示里的一颗按钮。 */
+function hintButton(label: string, onClick: () => void, opt: { ghost?: boolean; hint?: string; act: string }): HTMLElement {
+  const b = button({ label, kind: opt.ghost ? "ghost" : "secondary", size: "compact", hint: opt.hint, onClick });
+  b.dataset.rotAct = opt.act;
+  return b;
+}
+
+/** 提示：一条一句（后端写好的），按钮写动作，要的东西（文件在哪 · 设成哪个时区 · 哪几份）都是后端给的。 */
 function hints(spec: BoardSpec): HTMLElement[] {
   const v = spec.view;
   if (!v) return [];
-  return v.hints.map((h) => {
-    const t = hintText(h, v);
-    const b = banner(t.tone, t.text);
-    b.dataset.rotHint = h.hint.k;
-    return b;
+  const { acts } = spec;
+  return v.hints.flatMap((n) => {
+    const t = hintText(n, v);
+    const h = n.hint;
+    const btns: HTMLElement[] = [];
+    let below: HTMLElement | null = null;
+    if (h.k === "strategyError" && h.path !== undefined) {
+      const path = h.path;
+      btns.push(hintButton(copyText("rot.hint.code"), () => acts.showFile(path), { act: "code" }));
+    } else if (h.k === "tzUnknown" && h.zone !== undefined) {
+      const zone = h.zone;
+      btns.push(hintButton(copyText("rot.hint.setTz"), () => acts.setTz(zone), { act: "tz", hint: copyText("rot.hint.setTzTip", { zone }) }));
+    } else if (h.k === "oldScripts") {
+      btns.push(hintButton(copyText("rot.hint.which"), () => acts.toggleOld(), { act: "which" }));
+      if (spec.state.oldOpen) {
+        below = el("div", (e) => (e.className = s.rotOldList));
+        for (const f of h.files) {
+          const b = hintButton(f.name, () => acts.showFile(f.path), { ghost: true, act: "old", hint: f.path });
+          below.appendChild(b);
+        }
+      }
+    } else if (h.k === "newer") {
+      btns.push(
+        hintButton(copyText("rot.hint.loadNew"), () => acts.loadNew(), { act: "loadNew" }),
+        hintButton(copyText("rot.hint.keepMine"), () => acts.keepMine(), { ghost: true, act: "keepMine" }),
+      );
+    }
+    const b = banner(t.tone, t.text, btns);
+    b.dataset.rotHint = h.k;
+    return below ? [b, below] : [b];
   });
 }
 
@@ -821,9 +864,19 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   const tl = view.timeline;
   const box = el("div", (e) => (e.className = s.rotSim));
   if (!tl) return box;
-  const a = view.now;
+  // 左端：过去那一截的开头（会话才有；没有 ⇒ 此刻）。过去的段实心，推演的段浅色虚边，此刻一条竖线。
+  const past = view.past;
+  const a = past?.from ?? view.now;
   const b = view.now + spec.state.hours * 3600;
   const X = (t: number): number => (Math.max(a, Math.min(b, t)) - a) / (b - a);
+  const nowX = X(view.now);
+  const nowLine = (track: HTMLElement): void => {
+    if (!past) return;
+    const l = el("span", (e) => (e.className = s.rotSimNow));
+    l.dataset.rotNow = "true";
+    at(l, nowX);
+    track.appendChild(l);
+  };
   const place = (e: HTMLElement, from: number, to: number): void => {
     at(e, X(from), Math.max(0, X(to) - X(from)));
   };
@@ -840,11 +893,13 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   const axis = el("div", (e) => (e.className = s.rotSimAxis));
   const now = el("span", (e) => (e.className = s.rotSimTick), view.nowText);
   now.dataset.now = "true";
-  at(now, 0);
+  if (nowX === 0) now.dataset.edge = "true";
+  at(now, nowX);
   axis.appendChild(now);
   for (const t of tl.ticks) {
-    // 挨着「此刻」那一格的刻度让开（字会叠在一起）。
-    if (t.at >= b || X(t.at) < 0.14) continue;
+    // 挨着「此刻」那一格的刻度让开（字会叠在一起）；贴着左端的也让开（半个字会出界）。
+    const x = X(t.at);
+    if (t.at >= b || t.at <= a || Math.abs(x - nowX) < (nowX === 0 ? 0.14 : 0.08) || x < 0.04) continue;
     const k = el("span", (e) => (e.className = s.rotSimTick), t.text);
     at(k, X(t.at));
     axis.appendChild(k);
@@ -855,7 +910,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   // 两排轮着放：同一排里前后两个至少隔 18%，放不下就放另一排；两排都放不下就省掉（时刻在最上那条的段里看得出）。
   const lanes = [-1, -1];
   for (const w of tl.switches) {
-    if (w.at <= a || w.at >= b) continue;
+    if (w.at <= view.now || w.at >= b) continue;
     const x = X(w.at);
     const lane = x - lanes[0] >= 0.18 ? 0 : x - lanes[1] >= 0.18 ? 1 : -1;
     if (lane < 0) continue;
@@ -875,6 +930,19 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
   box.appendChild(grid(null, sw));
   // 最上面那条：照推演每段用哪个号（停发 ⇒ 停下）；拖出来的那几段白描边加圆点；轮到时用不了的画「跳过」。
   const top = el("div", (e) => (e.className = s.rotSimTop));
+  const useColor = (seg: HTMLElement, account: string | undefined | null): void => {
+    if (account) {
+      const slot = accountColorOf(account, spec.origin);
+      if (slot !== null) seg.dataset.c = String(slot);
+    } else seg.dataset.hold = "true";
+  };
+  for (const u of past?.uses ?? []) {
+    const seg = el("span", (e) => (e.className = s.rotSimUse), u.account ? accountLabel(u.account) : copyText("rot.sim.hold"));
+    place(seg, u.from, u.to);
+    useColor(seg, u.account);
+    seg.dataset.past = "true";
+    top.appendChild(seg);
+  }
   for (const u of tl.uses) {
     if (u.to <= a || u.from >= b) continue;
     const seg = el(
@@ -883,10 +951,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       u.account ? accountLabel(u.account) : copyText("rot.sim.hold"),
     );
     place(seg, u.from, u.to);
-    if (u.account) {
-      const slot = accountColorOf(u.account, spec.origin);
-      if (slot !== null) seg.dataset.c = String(slot);
-    } else seg.dataset.hold = "true";
+    useColor(seg, u.account);
     if (u.fromTemp) seg.dataset.temp = "true";
     if (u.from > a) seg.dataset.future = "true";
     top.appendChild(seg);
@@ -905,9 +970,10 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
     const r = top.getBoundingClientRect();
     if (!spec.acts.temp || y < r.top - 8 || y > r.bottom + 8 || x < r.left || x > r.right) return;
     const t = a + ((x - r.left) / Math.max(1, r.width)) * (b - a);
-    const at = tl.uses.filter((u) => u.from > a && u.from < t).length + 1;
+    const at = tl.uses.filter((u) => u.from > view.now && u.from < t).length + 1;
     spec.acts.temp({ place: { account, at } });
   };
+  nowLine(top);
   box.appendChild(grid(null, top, true));
   // 每个号一行：只画这个号自己的额度；字只有两种（此刻那段 剩 N% · 重置后那段 ↻HH:MM），发不出去的段靠斜纹认。
   for (const lane of tl.lanes) {
@@ -930,6 +996,14 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       });
     }
     const track = el("div", (e) => (e.className = s.rotSimTrack));
+    // 过去那一截：只有说得出的几段（说不出的空着）；字只有重置那段的 ↻HH:MM。
+    for (const g of past?.lanes.find((l) => l.account === lane.account)?.segs ?? []) {
+      const seg = el("span", (e) => (e.className = s.rotSimSeg), g.sendable && g.reset ? copyText("rot.sim.reset", { at: g.fromText }) : "");
+      place(seg, g.from, g.to);
+      seg.dataset.state = g.sendable ? "ok" : "out";
+      seg.dataset.past = "true";
+      track.appendChild(seg);
+    }
     lane.segs.forEach((g, k) => {
       if (g.to <= a || g.from >= b) return;
       const text = !g.sendable
@@ -945,6 +1019,7 @@ function simulation(spec: BoardSpec, view: RotationViewReply): HTMLElement {
       if (g.from > a) seg.dataset.future = "true";
       track.appendChild(seg);
     });
+    nowLine(track);
     box.appendChild(grid(head, track));
   }
   return box;

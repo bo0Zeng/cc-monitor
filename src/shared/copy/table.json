@@ -31429,13 +31429,6 @@
       "zh": "重试",
       "args": []
     },
-    "rot.hint.newer": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "这份策略在别处被改了",
-      "args": [],
-      "waive": {"C-W17": "用户定的句子（轮换-v5.md「提示」表）"}
-    },
     "rot.hint.loadNew": {
       "kind": "action",
       "role": "按钮",
@@ -31446,6 +31439,42 @@
       "kind": "action",
       "role": "按钮",
       "zh": "留着这边的",
+      "args": []
+    },
+    "rot.hint.code": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看代码",
+      "args": []
+    },
+    "rot.hint.setTz": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "设时区",
+      "args": []
+    },
+    "rot.hint.setTzTip": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "设成 {zone}",
+      "args": ["zone"]
+    },
+    "rot.hint.which": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "看是哪几份",
+      "args": []
+    },
+    "rot.fail.open": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "没打开这份文件",
+      "args": []
+    },
+    "rot.fail.tz": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "设时区没成",
       "args": []
     },
     "rot.fail.use": {

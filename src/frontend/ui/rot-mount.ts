@@ -9,6 +9,7 @@ import { copyText } from "./copy-table";
 import { callTyped, saidFrom } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { banner } from "./kit/banner";
+import { openOnMachine } from "./file-window";
 import { button } from "./kit/button";
 import { askText, confirmDialog, type ConfirmFn } from "./kit/dialog";
 import { failToast } from "./kit/toast";
@@ -62,8 +63,9 @@ export function mountRotation(spec: RotMountSpec): RotMount {
   let view: RotationViewReply | null = null;
   let list: RotationStrategiesReply | null = null;
   let draft: unknown = undefined;
+  /** 设置页的草稿照哪个版本改出来的（随读交给后端，跟文件此刻的不同 ⇒ 后端提示「别处被改了」）。 */
+  let draftRev: string | undefined = undefined;
   let readErr: string | null = null;
-  let conflict = false;
   let seq = 0;
   const confirmFn = spec.confirm ?? confirmDialog;
   const ask =
@@ -87,24 +89,6 @@ export function mountRotation(spec: RotMountSpec): RotMount {
             kind: "ghost",
             size: "compact",
             onClick: () => void refresh(),
-          }),
-        ]),
-      );
-    }
-    if (conflict) {
-      top.push(
-        banner("info", copyText("rot.hint.newer"), [
-          button({
-            label: copyText("rot.hint.loadNew"),
-            kind: "secondary",
-            size: "compact",
-            onClick: () => void reloadNew(),
-          }),
-          button({
-            label: copyText("rot.hint.keepMine"),
-            kind: "ghost",
-            size: "compact",
-            onClick: () => ((conflict = false), paint()),
           }),
         ]),
       );
@@ -133,7 +117,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
           origin,
           draft === undefined
             ? { strategy: l.forNew }
-            : { strategy: l.forNew, settings: draft },
+            : { strategy: l.forNew, settings: draft, rev: draftRev },
           state.hours,
         );
       if (my !== seq) return;
@@ -147,7 +131,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     paint();
   };
 
-  /** 发一条写；不成 ⇒ 一条失败 toast（字是后端那一句）。成了 ⇒ 重读。 */
+  /** 发一条写；不成 ⇒ 一条失败 toast（字是后端那一句）；撞上 `conflict`（别处改过）⇒ 不 toast、重读（提示由后端出）。成了 ⇒ 重读。 */
   const write = async (
     what: string,
     run: () => Promise<unknown>,
@@ -155,10 +139,8 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     try {
       await run();
     } catch (e) {
-      const r = refusedCode(e);
-      if (r?.code === "conflict") {
-        conflict = true;
-        paint();
+      if (refusedCode(e)?.code === "conflict") {
+        await refresh();
         return false;
       }
       failToast(what, e);
@@ -168,17 +150,8 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     return true;
   };
 
-  const reloadNew = async (): Promise<void> => {
-    conflict = false;
-    draft = undefined;
-    if (sid !== null)
-      await write(copyText("rot.fail.revert"), () =>
-        callTyped(origin, "rotation-revert", { sid }, rotBudget()),
-      );
-    else await refresh();
-  };
-
-  const rev = (): string => view?.strategy?.rev ?? "";
+  /** 写的时候当 `ifRev` 的：显示的这份设置照哪个版本（后端给）。 */
+  const rev = (): string => view?.baseRev ?? "";
 
   const acts: BoardActs = {
     pick: (id) =>
@@ -266,6 +239,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
       })(),
     settings: (next) => {
       if (sid === null) {
+        if (draft === undefined) draftRev = view?.strategy?.rev;
         draft = next;
         void refresh();
         return;
@@ -295,6 +269,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
           );
           if (ok) {
             draft = undefined;
+            draftRev = undefined;
             await refresh();
           }
         }
@@ -306,6 +281,7 @@ export function mountRotation(spec: RotMountSpec): RotMount {
         );
       else {
         draft = undefined;
+        draftRev = undefined;
         void refresh();
       }
     },
@@ -331,6 +307,51 @@ export function mountRotation(spec: RotMountSpec): RotMount {
     open: (a) => {
       state.open = a;
       state.refused = null;
+      paint();
+    },
+    showFile: (path) =>
+      void openOnMachine(origin, { revealFile: path }).catch((e: unknown) =>
+        failToast(copyText("rot.fail.open"), e),
+      ),
+    setTz: (zone) => {
+      const id = view?.strategy?.id;
+      const ifRev = view?.strategy?.rev;
+      if (id === undefined || ifRev === undefined) return;
+      void write(copyText("rot.fail.tz"), () =>
+        callTyped(origin, "rotation-strategy-tz", { id, tz: zone, ifRev }, rotBudget()),
+      );
+    },
+    // 别处改了 · 载入新的：丢掉这边的草稿，照文件此刻的。
+    loadNew: () => {
+      if (sid !== null)
+        void write(copyText("rot.fail.revert"), () =>
+          callTyped(origin, "rotation-revert", { sid }, rotBudget()),
+        );
+      else {
+        draft = undefined;
+        draftRev = undefined;
+        void refresh();
+      }
+    },
+    // 别处改了 · 留着这边的：草稿照旧，基于的版本跟上文件此刻的（提示随之消失）。
+    keepMine: () => {
+      const now = view?.strategy?.rev;
+      if (now === undefined) return;
+      if (sid !== null)
+        void write(copyText("rot.fail.settings"), () =>
+          callTyped(origin, "rotation-settings", {
+            target: { sid },
+            settings: view?.settings,
+            ifRev: now,
+          }, rotBudget()),
+        );
+      else {
+        draftRev = now;
+        void refresh();
+      }
+    },
+    toggleOld: () => {
+      state.oldOpen = !state.oldOpen;
       paint();
     },
   };

@@ -5,13 +5,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const calls: { name: string; req: unknown }[] = [];
+const opened: { origin: string; at: unknown }[] = [];
+vi.mock("../../../src/frontend/ui/file-window", () => ({
+  openOnMachine: vi.fn(async (origin: string, at: unknown) => {
+    opened.push({ origin, at });
+  }),
+}));
 const refuse = new Map<string, string>();
 vi.mock("../../../src/frontend/ui/rot-reads", async (orig) => ({
   ...(await orig<typeof import("../../../src/frontend/ui/rot-reads")>()),
   readStrategies: vi.fn(async () => LIST),
   readView: vi.fn(async (_o: string, target: unknown) => {
     calls.push({ name: "rotation-view", req: target });
-    return VIEW;
+    return shown.view;
   }),
   refusedCode: (e: unknown) => ((e as { code?: string }).code ? { code: (e as { code: string }).code } : null),
 }));
@@ -47,9 +53,12 @@ const VIEW: RotationViewReply = {
   listed: 1,
   decision: null,
   timeline: null,
+  past: null,
+  baseRev: "h:1",
   log: [],
   hints: [],
 };
+const shown = { view: VIEW };
 
 const settle = async (): Promise<void> => {
   for (let i = 0; i < 6; i++) await Promise.resolve();
@@ -63,7 +72,9 @@ const editClose = (root: HTMLElement, v: string): void => {
 
 beforeEach(() => {
   calls.length = 0;
+  opened.length = 0;
   refuse.clear();
+  shown.view = VIEW;
 });
 
 describe("会话面板（目标 {sid}）", () => {
@@ -121,9 +132,79 @@ describe("设置窗（目标 {strategy, settings}）", () => {
     editClose(m.root, "40");
     await settle();
     expect(calls.some((c) => c.name === "rotation-settings")).toBe(false);
-    expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "按权重轮换", settings: { accounts: [{ id: "work" }], close: 40 } } });
+    expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "按权重轮换", settings: { accounts: [{ id: "work" }], close: 40 }, rev: "h:1" } });
     btn(m.root, copyText("rot.top.save")).click();
     await settle();
     expect(calls.find((c) => c.name === "rotation-save")?.req).toEqual({ target: { strategy: "按权重轮换" }, settings: { accounts: [{ id: "work" }], close: 40 }, ifRev: "h:1" });
+  });
+});
+
+describe("提示里的按钮", () => {
+  const withHints = (over: Partial<RotationViewReply> = {}): RotationViewReply => ({
+    ...VIEW,
+    strategy: { ...LIST.strategies[0], rev: "h:2" },
+    baseRev: "h:1",
+    hints: [
+      { hint: { k: "newer" }, text: "这份策略在别处被改了" },
+      { hint: { k: "tzUnknown", zone: "Asia/Shanghai" }, text: "时区不明" },
+      { hint: { k: "strategyError", error: { msg: "坏了" }, path: "/夹具/strategies/按权重轮换.rhai" }, text: "出错" },
+    ],
+    ...over,
+  });
+
+  it("★ 会话：写的时候 ifRev 照 baseRev（草稿基于的）；留着这边的 ⇒ rotation-settings 草稿照旧、ifRev 跟上文件此刻的；载入新的 ⇒ rotation-revert", async () => {
+    shown.view = withHints();
+    const m = mountRotation({ origin: "<local>", sid: "s1" });
+    await m.refresh();
+    editClose(m.root, "30");
+    await settle();
+    expect((calls.find((c) => c.name === "rotation-settings")?.req as { ifRev: string }).ifRev).toBe("h:1");
+    calls.length = 0;
+    btn(m.root, copyText("rot.hint.keepMine")).click();
+    await settle();
+    expect(calls.find((c) => c.name === "rotation-settings")?.req).toEqual({ target: { sid: "s1" }, settings: VIEW.settings, ifRev: "h:2" });
+    btn(m.root, copyText("rot.hint.loadNew")).click();
+    await settle();
+    expect(calls.find((c) => c.name === "rotation-revert")?.req).toEqual({ sid: "s1" });
+  });
+
+  it("★ 设时区 ⇒ rotation-strategy-tz（设成后端给的那个、带文件此刻的版本）；看代码 ⇒ 照「在文件窗口打开」那一路开那份文件", async () => {
+    shown.view = withHints();
+    const m = mountRotation({ origin: "<local>", sid: "s1" });
+    await m.refresh();
+    btn(m.root, copyText("rot.hint.setTz")).click();
+    await settle();
+    expect(calls.find((c) => c.name === "rotation-strategy-tz")?.req).toEqual({ id: "按权重轮换", tz: "Asia/Shanghai", ifRev: "h:2" });
+    btn(m.root, copyText("rot.hint.code")).click();
+    await settle();
+    expect(opened).toEqual([{ origin: "<local>", at: { revealFile: "/夹具/strategies/按权重轮换.rhai" } }]);
+  });
+
+  it("★ 写撞上 conflict ⇒ 不自己造提示，重读（提示由后端出）", async () => {
+    const m = mountRotation({ origin: "<local>", sid: "s1" });
+    await m.refresh();
+    calls.length = 0;
+    refuse.set("rotation-settings", "conflict");
+    editClose(m.root, "30");
+    await settle();
+    expect(calls.map((c) => c.name)).toEqual(["rotation-settings", "rotation-view"]);
+    expect(m.root.querySelector('[data-rot-hint="newer"]')).toBeNull();
+  });
+
+  it("★ 设置页：留着这边的 ⇒ 草稿照旧、随读交的版本换成文件此刻的；载入新的 ⇒ 丢草稿", async () => {
+    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
+    await m.refresh();
+    editClose(m.root, "40");
+    await settle();
+    expect(calls.at(-1)?.req, "草稿照读到的那个版本改出来").toMatchObject({ rev: "h:1" });
+    // 文件在别处被改了（推送来了 ⇒ 重读）：后端说别处改了。
+    shown.view = withHints();
+    await m.refresh();
+    btn(m.root, copyText("rot.hint.keepMine")).click();
+    await settle();
+    expect(calls.at(-1)?.req).toMatchObject({ settings: { close: 40 }, rev: "h:2" });
+    btn(m.root, copyText("rot.hint.loadNew")).click();
+    await settle();
+    expect(calls.at(-1)?.req).toEqual({ strategy: "按权重轮换" });
   });
 });

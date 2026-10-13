@@ -85,13 +85,13 @@ describe("F7b 开口：三种落点 → open_file_window 的实参", () => {
   });
 });
 
-/** 生产树里（剥掉注释）每一处 `openFileWindow(…)` 的 (文件, 落点)。 */
+/** 生产树里（剥掉注释）每一处 `openFileWindow(…)` · `openOnMachine(…)`（本机 / 远端各走各的那一路）的 (文件, 落点)。 */
 function entryCensus(): string[] {
   const out: string[] = [];
   for (const { file, text } of productionTsFiles("src")) {
     if (file === "src/frontend/ui/file-window.ts") continue; // 开口自己（声明处）不是入口
     const code = stripComments(text, "ts");
-    for (const m of code.matchAll(/\bopenFileWindow\(([^)]*)\)/g)) {
+    for (const m of code.matchAll(/\b(?:openFileWindow|openOnMachine)\(([^)]*)\)/g)) {
       const arg = m[1];
       const kind = /\brevealFile\b/.test(arg) ? "定位文件" : /\bdir\b/.test(arg) ? copyText("gridMonitor.fact.dir") : "home";
       out.push(`${file} · ${kind}`);
@@ -109,6 +109,7 @@ const ENTRIES: readonly string[] = [
   "src/frontend/ui/settings/data-page.ts · 定位文件", // 「待办」点开一件：远端那台上要改的那份文件「打开这份文件」
   `src/frontend/ui/settings/accounts-section.ts · ${copyText("gridMonitor.fact.dir")}`, // 账号页：远端那台一个号的账号目录「在文件窗口里打开」
   "src/frontend/ui/settings/machine-card.ts · home", // 机器页「文件」按钮
+  "src/frontend/ui/rot-mount.ts · 定位文件", // 轮换提示「看代码」· 旧格式那几份：那份策略文件（openOnMachine：本机在文件夹中显示、远端文件窗口）
   // 顶栏远端文件那两处随选主机小单从 `src/frontend/ui/main.ts` 搬进 `src/frontend/ui/sftp-host-picker.ts`。
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：只有一台远端时直开
   "src/frontend/ui/sftp-host-picker.ts · home", // 顶栏 / 命令面板：多台时选单里点一台

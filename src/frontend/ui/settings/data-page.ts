@@ -17,7 +17,7 @@ import { homeShort } from "../kit/path";
 import { copyText } from "../copy-table";
 import { writeClipboard } from "../clipboard";
 import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
-import { findHostByOrigin, hostKey, readRemoteConfig } from "../remote-config";
+import { hostKey, readRemoteConfig } from "../remote-config";
 import { noteMachineTmux } from "../resume-defaults";
 import { markChore, readDataReport, recallDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
 import { remoteOwnBlock } from "./remote-own";
@@ -26,8 +26,7 @@ import { choreRow } from "./chore-row";
 import { countTags } from "./chore-tags";
 import { fold } from "../kit/fold";
 import { failToast } from "../kit/toast";
-import { revealInFolder } from "../reveal-in-folder";
-import { openFileWindow } from "../file-window";
+import { openOnMachine } from "../file-window";
 import type { SettingsTarget } from "./open-settings";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
@@ -382,12 +381,7 @@ export class DataPage {
 
   private async openFile(origin: Origin, path: string): Promise<void> {
     try {
-      if (isLocalOrigin(origin)) {
-        await revealInFolder(path);
-        return;
-      }
-      const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
-      if (host) await openFileWindow(host, { revealFile: path });
+      await openOnMachine(origin, { revealFile: path });
     } catch (e) {
       failToast(copyText("dataPage.chore.openFailed"), e, { level: "error" });
     }

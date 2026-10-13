@@ -203,6 +203,13 @@
     white-space: nowrap;
   }
 
+  .rotOldList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: 0 var(--space-3);
+  }
+
   .rotRefused {
     padding: var(--space-3) var(--space-5);
     border-left: 3px solid var(--warn);
@@ -428,9 +435,12 @@
   }
 
   .rotSimTick[data-now="true"] {
-    transform: none;
-    color: var(--text);
+    color: var(--accent);
     font-weight: var(--font-weight-strong);
+  }
+
+  .rotSimTick[data-edge="true"] {
+    transform: none;
   }
 
   .rotSimSwitch {
@@ -548,6 +558,18 @@
     background: var(--rot-ink);
     vertical-align: 1px;
     content: "";
+  }
+
+  .rotSimNow {
+    position: absolute;
+    left: calc(var(--rot-x, 0) * 100%);
+    top: -2px;
+    bottom: -2px;
+    z-index: 1;
+    width: 2px;
+    margin-left: -1px;
+    background: var(--accent);
+    pointer-events: none;
   }
 
   .rotSimSkip {

@@ -16,6 +16,7 @@ const TONE: Record<RotNote["hint"]["k"], NoteTone> = {
   oldScripts: "warn",
   wordsBad: "info",
   bookUnreadable: "error",
+  newer: "info",
 };
 
 /** 一条提示 ⇒ 颜色 ＋ 此刻的那一句。 */
