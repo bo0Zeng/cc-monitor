@@ -1197,7 +1197,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const PROFILES: &str = include_str!("../../__fixtures__/profiles.golden.json");
     const PUBKEY_PUSH: &str = include_str!("../../__fixtures__/pubkey-push.golden.json");
     const RELAY_OPTIN: &str = include_str!("../../__fixtures__/relay-optin.golden.json");
-    const SESSION_READS: &str = include_str!("../../__fixtures__/session-reads.golden.json");
     const SSH_CONFIG: &str = include_str!("../../__fixtures__/ssh-config.golden.json");
     // 由后端真序列化器写（`plan/owners.rs` 的成品过一遍线上类型 `PlanFiles`，== 金样由 `owners_tests` 钉）。
     const PLAN_FILES: &str = include_str!("../../__fixtures__/plan-files.golden.json");
@@ -1248,7 +1247,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
             &["class", "from", "text", "ts"],
             &[],
         ),
-        ("history-facts", SESSION_READS, "/history-facts", &[], &[]),
         (
             "ssh-config-aliases",
             SSH_CONFIG,

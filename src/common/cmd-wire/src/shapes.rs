@@ -5,6 +5,7 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("history-annotate", "e40c5678"),
     ("history-branch", "cd82bf99"),
+    ("history-facts", "3a3fc2ee"),
     ("history-find", "1f44cd85"),
     ("history-forget", "bf6099c2"),
     ("history-index", "9b5fb2cb"),

@@ -139,8 +139,11 @@ pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
 /// 一份会话的事实（**帧面成品的形状，键名一字不差**；跨语言金样 `tests/__fixtures__/session-reads.golden.json`）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SessionFacts {
     /// 最后一个完整行的末字节 ＝ 下一次的续点。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) end: u64,
     /// 源会话 sid；不是分叉来的 ⇒ `null`。
     pub(crate) forked_from: Option<String>,
@@ -186,6 +189,8 @@ pub(crate) struct SessionFacts {
 /// 一条还没收场的后台命令。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct BgTask {
     /// 起它的那次工具调用 id。
     pub(crate) call: String,
@@ -201,6 +206,15 @@ pub(crate) struct BgTask {
 /// 命令那一格（监控板徽标用）· 几条 · 语气。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "FactsBackground"
+    )
+)]
 pub(crate) struct Background {
     /// 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
     pub(crate) text: Words,
@@ -218,8 +232,18 @@ pub(crate) struct Background {
 /// 会走的一句：字里的 `{dur}` 填 现在 − `from`（epoch ms）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "FactsClock"
+    )
+)]
 pub(crate) struct Clock {
     pub(crate) text: Words,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) from: u64,
 }
 
@@ -323,6 +347,8 @@ fn note_background(f: &mut SessionFacts, v: &Value, at: Option<&String>) {
 /// 会话里一个有毛病的 MCP 服务器。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct McpTrouble {
     pub(crate) name: String,
     /// `needsLogin` · `failed` · `pending`（[`crate::agents::McpStatus`] 的这三种）。
@@ -337,15 +363,23 @@ pub(crate) struct McpTrouble {
 /// `text` 是写好的成品串（随数一起更新）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct TokenUse {
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) input: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) output: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) cache_read: u64,
     #[serde(rename = "cacheWrite5m")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) cache_write5m: u64,
     #[serde(rename = "cacheWrite1h")]
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) cache_write1h: u64,
     /// 算进来的请求数。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) requests: u64,
     /// 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
     pub(crate) text: Words,
@@ -356,15 +390,35 @@ pub(crate) struct TokenUse {
 /// [`TokenUse::last`]。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "FactsLastRequest"
+    )
+)]
 pub(crate) struct LastRequest {
     pub(crate) id: String,
+    #[cfg_attr(test, ts(type = "Array<number>"))]
     pub(crate) tokens: [u64; 5],
 }
 
 /// 全会话花费：记录里那一家自己记的数（微美元）· 它说有没有定不了价的型号 · 写好的串（币种、精度、「约」都在里面）。
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "FactsCost"
+    )
+)]
 pub(crate) struct Cost {
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) micros: u64,
     pub(crate) partial: bool,
     pub(crate) text: Words,
@@ -373,6 +427,8 @@ pub(crate) struct Cost {
 /// 一串相邻的 API 重试。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RetryRun {
     /// 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
     pub(crate) id: String,
@@ -382,6 +438,8 @@ pub(crate) struct RetryRun {
 /// 一串重试的结局：还没下文 · 后面来了正常回复（接上了）· 来了报错那条（重试耗尽 / 不可重试）· 人发了一句或打断。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum RetryOutcome {
     Retrying,
     Recovered,
@@ -392,6 +450,8 @@ pub(crate) enum RetryOutcome {
 /// 一个还没有结果的工具调用。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct PendingCall {
     /// 工具调用 id（等它的 `tool_result` 来摘）。
     pub(crate) id: String,
@@ -402,6 +462,7 @@ pub(crate) struct PendingCall {
     /// 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
     pub(crate) at: Option<String>,
     /// `at` 的毫秒（自 1970）：出口算「已经跑了多久」只用这一格（交那一个读口走字），不自己解析 `at`；解不出 ⇒ `null`。
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) at_ms: Option<i64>,
     /// 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
     pub(crate) state: StepWait,
@@ -416,6 +477,8 @@ pub(crate) struct PendingCall {
 /// 一步状态不明的原因：没有活进程持着这条会话 · 判不了活（这一家没声明怎么判，或这台认不出写者）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum UnclearWhy {
     NoWriter,
     Untracked,
@@ -425,6 +488,8 @@ pub(crate) enum UnclearWhy {
 /// 或判不了活）。有了结果之后是完成 / 失败（那条结果的成品 `toolResults` 说），不在这里。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum StepWait {
     Running,
     Awaiting,
@@ -461,11 +526,14 @@ pub(crate) fn settle_pending(f: &mut SessionFacts, tracked: bool) {
 /// 最后一段正文。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct LastSay {
     pub(crate) text: String,
     /// 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
     pub(crate) at: Option<String>,
     /// `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
+    #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) at_ms: Option<i64>,
 }
 
@@ -709,13 +777,18 @@ pub(crate) fn needs_first(a: &Needs, b: &Needs) -> std::cmp::Ordering {
 /// 最新 usage ＋ 这份会话的上下文上限 ＋ 写好的字（状态栏 · 监控板 · 手机读同一份；出口不算百分比、不排数）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct UsageFact {
     /// `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) prompt_tokens: u64,
     pub(crate) model: Option<String>,
     /// 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) peak_prompt_tokens: u64,
     /// 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) limit: u64,
     pub(crate) limit_from: LimitFrom,
     /// 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
@@ -796,6 +869,8 @@ impl UsageFact {
 /// 上限从哪来。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) enum LimitFrom {
     /// 中转看见了这个会话的请求：带了扩展上下文那一项 ⇒ 1M，没带过 ⇒ 这个模型的默认（`observe::relay_marks`）。
     Relay,

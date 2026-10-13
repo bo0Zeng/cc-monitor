@@ -495,7 +495,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     (
         "history-facts",
         "`BORN_ON_FRAME` 那一条：后端出成品 `{end, forkedFrom, touchedFiles, agents, usage}`（`observe/facts_query.rs`），\
-         续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 问、`decodeFacts` 按恰好的键集合收，\
+         续传令牌就是上一份成品原样；前端 `src/frontend/ui/session-reads.ts::readSessionFacts` 按类型问（`callTyped`），\
          monitor 这一侧零发送点（它替掉的是前端 `onLine` 上四个旁路记账员，不是一条 monitor 命令）",
     ),
     (

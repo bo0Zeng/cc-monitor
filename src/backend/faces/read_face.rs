@@ -99,7 +99,7 @@ pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
 /// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
 /// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的钟面 · 命中时刻 · 行尾时刻都按它写。
 pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    use crate::observe::{accounts_query, history_query};
+    use crate::observe::accounts_query;
     match cmd {
         // 这台后端自己的 stderr 诊断文件（尾部）—— 机器页「日志」经这台后端的只读面取回来看。
         "backend-log" => {
@@ -170,101 +170,6 @@ pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &cr
                 }
             };
             accounts_query::trust_product(config_dir, cwd).map_err(|(c, m)| (trust_code(&c), m))
-        }
-        // 会话事实出成品（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需手动）。
-        //   `limits` = 设置里的上限表（模型名子串 → 上限），可缺；上限每次按它重判。
-        //   `prior` = 调用方上一次拿到的应答**原样**（续传令牌，后端零状态）：缺席 / `null` ⇒ 从字节 0 扫；
-        //   给了 ⇒ 形状必须恰好是本命令出的那一形（`facts_query::prior_from`），从它的 `end` 接着扫、累加在它上面。
-        //   续点越过文件尾 / 不在行边界 ⇒ `failed`（调用方从 0 重要一份，同大纲清单）。
-        "history-facts" => {
-            use crate::observe::facts_query;
-            let path = str_arg(args, "path")?;
-            let prior = match args.get("prior") {
-                None | Some(Value::Null) => None,
-                Some(v) => Some(
-                    facts_query::prior_from(v)
-                        .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?,
-                ),
-            };
-            let limits = facts_query::limits_from(args.get("limits"))
-                .map_err(|e| ("bad_args", crate::common::contract::malformed(&e)))?;
-            // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
-            let sid = std::path::Path::new(path)
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("");
-            let relay = crate::agents::context_marks()
-                .into_iter()
-                .find_map(|m| crate::observe::relay_marks::seen(sid, m));
-            let mut facts = match prior {
-                // 冷开（没有续点）⇒ 共用那张扫描图；有续点 ⇒ 从它的 `end` 接着扫、累加在它上面。
-                None => history_query::cold_scan(home, path)
-                    .map_err(|e| ("failed", e))?
-                    .facts(&limits, relay),
-                Some(prior) => {
-                    let r = history_query::open_facts_at(home, path, prior.end)
-                        .map_err(|e| ("failed", e))?;
-                    facts_query::scan_facts(r, prior, &limits, relay)
-                        .map_err(|e| ("failed", format!("stream failed: {e}")))?
-                }
-            };
-            if facts.project_dir.is_none() {
-                facts.project_dir = history_query::facts_project_dir(home, path);
-            }
-            if facts.agent.is_none() {
-                facts.agent = history_query::facts_agent(home, path);
-            }
-            // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
-            let holders = history_query::facts_holders(home, path);
-            facts.writers = holders.clone().unwrap_or_default();
-            // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
-            // 答题口没接上（ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量）：每次按持着它的进程现查。
-            //   换了启动器那一支（ccm 的便条说插件是经环境交下去的）：持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去。
-            facts.answer_off = facts.writers.iter().find_map(|pid| {
-                match crate::platform::proc::proc_env_var(
-                    *pid,
-                    crate::agents::asks::ANSWER_HOOK_OFF_ENV,
-                ) {
-                    crate::platform::proc::EnvRead::Value(v) => {
-                        Some(crate::agents::asks::hook_off_words(&v))
-                    }
-                    crate::platform::proc::EnvRead::Unset => plugin_lost(*pid).then(|| {
-                        crate::agents::asks::hook_off_words(
-                            crate::agents::asks::HookOff::EnvLost.env_value(),
-                        )
-                    }),
-                    crate::platform::proc::EnvRead::Unreadable => None,
-                }
-            });
-            // 配上挂着的待答请求（`needs.ask`：可以怎么答；挡着终端的那种 pidfile 不说在等，照它补出一份）。
-            facts.needs = dress_ask(
-                facts_query::needs_of(
-                    &facts.pending,
-                    accounts_query::session_wait(home, sid).as_ref(),
-                ),
-                sid,
-            );
-            // 没接上的那条会话：「只能在终端里答」那一句换成它为什么（同 `answerOff`）。
-            if let (Some(n), Some(off)) = (facts.needs.as_mut(), facts.answer_off.as_ref()) {
-                if n.ask.is_none() {
-                    n.manual_text = Some(off.clone());
-                }
-            }
-            // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
-            facts.background = accounts_query::session_background(home, sid).map(|born| {
-                let now = crate::common::time::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
-                facts_query::background_of(&facts.bg_tasks, born, now)
-            });
-            // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
-            facts_query::settle_pending(&mut facts, holders.is_some());
-            let v = serde_json::to_value(&facts).map_err(|e| ("failed", e.to_string()))?;
-            let size = v.to_string().len();
-            if size > LINES_CAP_BYTES {
-                return Err(too_large(size));
-            }
-            Ok(v)
         }
         other => Err((
             "bad_args",
@@ -384,7 +289,7 @@ pub(crate) fn dress_ask(
 }
 
 /// ccm 给这个进程留的便条说答题插件经环境交下去了，它的环境里却没有我们那个目录（启动器把环境清掉了）。
-fn plugin_lost(pid: u32) -> bool {
+pub(crate) fn plugin_lost(pid: u32) -> bool {
     let (Some(data), Some(home)) = (
         crate::platform::paths::data_home(),
         crate::platform::paths::home_dir(),

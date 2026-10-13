@@ -41,6 +41,7 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-user-inputs" => via::<h::UserInputsCmd>(args, |r| h::user_inputs_at(home, r)),
         "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
         "history-find" => via::<h::HistoryFindCmd>(args, |r| h::find_at(home, r, tz)),
+        "history-facts" => via::<h::HistoryFactsCmd>(args, |r| h::facts_at(home, r)),
         _ => super::answer_at(home, cmd, args, tz),
     }
 }
@@ -2016,4 +2017,24 @@ fn a_session_whose_launcher_dropped_the_environment_says_so() {
         serde_json::Value::Null,
         "带着我们的目录 ⇒ 接上了"
     );
+}
+
+/// `history-facts` 的入参是类型：多一格 · 一格类型不对 ⇒ `bad_args`（不碰盘）。
+#[test]
+fn history_facts_refuses_what_its_request_type_does_not_have() {
+    let home = scratch("facts-args");
+    for args in [
+        serde_json::json!({ "path": "/x.jsonl", "extra": 1 }),
+        serde_json::json!({ "path": 1 }),
+        serde_json::json!({ "path": "/x.jsonl", "prior": 1 }),
+        serde_json::json!({}),
+    ] {
+        let got = answer_at(&home, "history-facts", &args, &Default::default());
+        assert_eq!(
+            got.as_ref().err().map(|e| e.0),
+            Some("bad_args"),
+            "{args} ⇒ {got:?}"
+        );
+    }
+    let _ = std::fs::remove_dir_all(&home);
 }

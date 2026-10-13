@@ -1,6 +1,6 @@
 //! 读一份会话记录的那几条帧命令（typed，`stream/inbound/typed.rs`）：按字节分页（`history-read` · `history-page`）·
 //! 按行号（`history-lines`）· 一个子运行（`history-run`）· 尾段在哪（`history-tail`）· 主线外（`history-branch`）·
-//! 记录还在不在（`history-record`）· 这台上需手动的会话（`sessions-needs`）。
+//! 记录还在不在（`history-record`）· 这台上需手动的会话（`sessions-needs`）· 会话事实（`history-facts`）· 骨架索引等几条扫描。
 //!
 //! 查询本体住 `observe/`（`history_query` · `record_page`），这里只有线上那三个类型和接线；家目录是参数（判据拿夹具喂 `*_at`）。
 //! 入方向不许出现 `observe::` 的那条线照旧：本文件住 `faces/`，与 `read_face` 同一层。
@@ -1196,4 +1196,154 @@ pub(crate) fn find_at(
         total,
         hits: hits.rows,
     })
+}
+
+// ───────────────────────── history-facts ─────────────────────────
+
+/// `history-facts` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HistoryFactsReq {
+    /// jsonl 路径（围栏同 `history-read`）。
+    pub(crate) path: String,
+    /// 可缺：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args`。
+    #[serde(default)]
+    #[cfg_attr(
+        test,
+        ts(optional, as = "Option<std::collections::BTreeMap<String, u32>>")
+    )]
+    pub(crate) limits: Option<serde_json::Value>,
+    /// 可缺：**上一次应答原样**（续传令牌）。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 每一层键集合必须恰好是本命令出的那一形
+    /// （`facts_query::prior_from` 判，不对 ⇒ `bad_args`），从它的 `end` 接着扫、累加在它上面。
+    /// 带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答。
+    #[serde(default)]
+    #[cfg_attr(
+        test,
+        ts(optional, as = "Option<crate::observe::facts_query::SessionFacts>")
+    )]
+    pub(crate) prior: Option<serde_json::Value>,
+}
+
+codes! {
+    /// `history-facts` 的码。
+    pub(crate) enum HistoryFactsErr {
+        /// 读不动（围栏外 · 打不开 · 续点越过文件尾 / 不在行边界：调用方从 0 重要一份）。
+        Failed = "failed",
+        /// 整份回包过上限（不截断）。
+        TooLarge = "too_large",
+    }
+}
+
+/// `history-facts`：会话事实（分叉血缘 · 改动文件集 · 最新 usage 与上下文上限 · 项目目录 · 此刻在写它的进程 · 没结果的调用 · 最后一句 · 需手动）。
+pub(crate) struct HistoryFactsCmd;
+
+impl Command for HistoryFactsCmd {
+    const NAME: &'static str = "history-facts";
+    type Req = HistoryFactsReq;
+    type Reply = crate::observe::facts_query::SessionFacts;
+    type Err = HistoryFactsErr;
+}
+
+impl Blocking for HistoryFactsCmd {
+    fn run(
+        req: HistoryFactsReq,
+        _cx: &Cx,
+    ) -> Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr> {
+        facts_at(&home(), req)
+    }
+}
+
+/// [`HistoryFactsCmd`] 的本体，家目录是参数。
+pub(crate) fn facts_at(
+    home: &Path,
+    req: HistoryFactsReq,
+) -> Result<crate::observe::facts_query::SessionFacts, HistoryFactsErr> {
+    use crate::observe::{accounts_query, facts_query};
+    let path = req.path.as_str();
+    let malformed = |e: String| HistoryFactsErr::BadArgs(crate::common::contract::malformed(&e));
+    let prior = match req.prior.as_ref().filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => Some(facts_query::prior_from(v).map_err(malformed)?),
+    };
+    let limits = facts_query::limits_from(req.limits.as_ref()).map_err(malformed)?;
+    // 中转看见过这个会话的请求 ⇒ 它带没带扩展上下文那一项（会话 id ＝ 记录文件名，中转的流标签就是它）。
+    let sid = Path::new(path)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("");
+    let relay = crate::agents::context_marks()
+        .into_iter()
+        .find_map(|m| crate::observe::relay_marks::seen(sid, m));
+    let mut facts = match prior {
+        // 冷开（没有续点）⇒ 共用那张扫描图；有续点 ⇒ 从它的 `end` 接着扫、累加在它上面。
+        None => history_query::cold_scan(home, path)
+            .map_err(HistoryFactsErr::Failed)?
+            .facts(&limits, relay),
+        Some(prior) => {
+            let r = history_query::open_facts_at(home, path, prior.end)
+                .map_err(HistoryFactsErr::Failed)?;
+            facts_query::scan_facts(r, prior, &limits, relay)
+                .map_err(|e| HistoryFactsErr::Failed(format!("stream failed: {e}")))?
+        }
+    };
+    if facts.project_dir.is_none() {
+        facts.project_dir = history_query::facts_project_dir(home, path);
+    }
+    if facts.agent.is_none() {
+        facts.agent = history_query::facts_agent(home, path);
+    }
+    // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
+    let holders = history_query::facts_holders(home, path);
+    facts.writers = holders.clone().unwrap_or_default();
+    // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
+    // 答题口没接上（ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量）：每次按持着它的进程现查。
+    //   换了启动器那一支（ccm 的便条说插件是经环境交下去的）：持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去。
+    facts.answer_off =
+        facts.writers.iter().find_map(|pid| {
+            match crate::platform::proc::proc_env_var(
+                *pid,
+                crate::agents::asks::ANSWER_HOOK_OFF_ENV,
+            ) {
+                crate::platform::proc::EnvRead::Value(v) => {
+                    Some(crate::agents::asks::hook_off_words(&v))
+                }
+                crate::platform::proc::EnvRead::Unset => {
+                    super::read_face::plugin_lost(*pid).then(|| {
+                        crate::agents::asks::hook_off_words(
+                            crate::agents::asks::HookOff::EnvLost.env_value(),
+                        )
+                    })
+                }
+                crate::platform::proc::EnvRead::Unreadable => None,
+            }
+        });
+    // 配上挂着的待答请求（`needs.ask`：可以怎么答；挡着终端的那种 pidfile 不说在等，照它补出一份）。
+    facts.needs = dress_ask(
+        facts_query::needs_of(
+            &facts.pending,
+            accounts_query::session_wait(home, sid).as_ref(),
+        ),
+        sid,
+    );
+    // 没接上的那条会话：「只能在终端里答」那一句换成它为什么（同 `answerOff`）。
+    if let (Some(n), Some(off)) = (facts.needs.as_mut(), facts.answer_off.as_ref()) {
+        if n.ask.is_none() {
+            n.manual_text = Some(off.clone());
+        }
+    }
+    // 后台任务运行中：那台 pidfile 此刻说是这一态 ⇒ 配上记录里还没收场的后台命令写那一句（不累加，`prior` 里那一份不用）。
+    facts.background = accounts_query::session_background(home, sid).map(|born| {
+        let now = crate::common::time::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX));
+        facts_query::background_of(&facts.bg_tasks, born, now)
+    });
+    // 每一步还没结果时的样子：在等你 · 在跑 · 状态不明（界面只读这一格）。判不了活 ⇒ 状态不明说的是判不了。
+    facts_query::settle_pending(&mut facts, holders.is_some());
+    match over_cap(&facts) {
+        Some(said) => Err(HistoryFactsErr::TooLarge(said)),
+        None => Ok(facts),
+    }
 }

@@ -527,6 +527,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     mcp: [],
     bgTasks: [],
     background: null,
+    answerOff: null,
     usage: {
       promptTokens: 350_000,
       model: "claude-opus-5-5",

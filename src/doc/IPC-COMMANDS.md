@@ -3817,30 +3817,390 @@ text?: string | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 收 `view`（整份是 `facts`） · CLI：`ccm -- --history-facts`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | ← | 这份记录是哪一家的（线上的 kind，适配层按记录认）；认不出 ⇒ `null` |
-| `answerOff` | ← | 答题口没接上 ⇒ 写好的那一句（ccm 起它时用户自己给的会话级设置读不出 / 形状不认，答题 hook 挂不上：这条会话只能在终端里答批准；那时 `needs.manualText` 也是这一句）；接上了 / 判不了 ⇒ `null`（每次按持着它的进程现查） |
-| `background` | ← | 那台说一轮停了、后台命令还在跑 ⇒ `{text, clock, what, count, tone}`：`text` 写好的一句（「后台任务运行中 · make test-all · 12m」，发出那一刻的钟；命令拿不到 ⇒ 只那个字）· `clock` 同一句时长留 `{dur}` 的 `{text, from}`（填 现在 − `from` 毫秒）· `what` 命令那一格（「{cmd} 等 {n} 条」）· `count` 这一次进程起来之后起、还没收场的几条 · `tone` 恒 busy；不是这一态 ⇒ `null`（每次现查） |
-| `bgTasks` | ← | 还没收场的后台命令 `{call, task, cmd, at}`（起它的调用 id · 任务号 · 命令原样 · 起它的那条记录的时刻），文件序，至多 16 条（续传令牌的一部分） |
-| `cost` | ← | 全会话花费（记录里那一家自己记的那一条，最后一条为准）`{micros, partial, text}`（`text` 写好）；记录里没有 ⇒ `null`（不按定价自己算） |
-| `end` | ← | 最后一个完整行的末字节 |
-| `forkedFrom` | ← | 源会话 sid：首条带 `forkedFrom`（`sessionId` 与 `messageUuid` 都是串）的 user / assistant 记录；不是分叉来的 ⇒ `null` |
-| `handedBack` | ← | 交回了的子运行 id（按「谁说的」认），去重、文件序 |
-| `lastSay` | ← | 最后一段正文的头一行 `{text, at}`；没有 ⇒ `null` |
-| `limits` | → | 可选：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args` |
-| `mcp` | ← | 这个会话里那一家说有毛病的 MCP 服务器 `{name, status, detail, at}`，按名字排：`status` 闭集 `needsLogin` · `failed` · `pending`（每种以记录里最后一次说它的那一条为准）；`detail` ＝ 断开时那一家写的原话、别的 `null`；`at` ＝ 说它的那条记录的时刻原样；没列的不等于连上了 |
-| `needs` | ← | 那台说在等人 ⇒ `{kind, tool, call, what, sinceMs, text, head, headCode, tone, rank, waitedMs, waitedText}`（`kind`：approve 批准 · answer 回答 · plan 批准计划 · network 放行联网 · worker 批准协作请求 · goal 确认会话目标 · choose 在对话框里选 · unknown 判不出；`text` 写好的字、`tone` 恒 need；`head` 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」）· `headCode` 钉条里等宽那一段（批准 · 回答 · 放行带主参数，别的 `null`）；`rank` 先答哪个，0 最先；`waitedMs` 到答出那一刻已等多久，在这台的钟上算（起点与读 pidfile 那一刻同一台），`waitedText` 是它写好的字，没有起点 ⇒ 两格都 `null`；会走的钟按节拍重问）；不在等 ⇒ `null`；`ask` 这一条可以怎么答 `{id, kind, tool, run {id, kind}, what, detail, sinceMs, choices[] {id, text, tone, note}, questions[] {id, text, header, multi, other, options[] {id, text, detail}}}`（挂着的待答请求：`id` 答的时候交回 `needs-answer`；`run` 子运行（子 agent）发的才有：它的 id 与种类；`choices` 选项写好字与语气、`note` 要不要附话 none · optional · required；`questions` 提问那一种的题，`other` 恒真 ＝ 许写自由文本）；没有挂着的 ⇒ `null`，`manualText` 写好「只能在终端里答」那一句（有 `ask` ⇒ `null`）；挡着终端的子 agent 请求 pidfile 不说在等，照它补出一份 |
-| `path` | → | jsonl 路径（围栏同 `history-read`） |
-| `pending` | ← | 还没结果的工具调用 `{id, name, what, at, state, why}`：`state` 在跑 running · 在等你 awaiting · 状态不明 unclear（每次现判）；`why` 只在 unclear 时给：noWriter（没有活进程持着这条会话）· untracked（判不了活：这一家没声明怎么判，或这台认不出写者） |
-| `permissionMode` | ← | 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null` |
-| `prior` | → | 可选：**上一次应答的 `data` 原样**（续传令牌）。带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答 |
-| `projectDir` | ← | 会话起在哪个目录（记录开头）；还没读到 ⇒ `null` |
-| `retries` | ← | 一串相邻的 API 重试按首条的 `uuid` 记一件 `{id, outcome}`：retrying（还没下文）· recovered（后面来了正常回复）· failed（来了报错那条）· interrupted（人发了一句 / 打断）；文件序，至多 200 件 |
-| `tokens` | ← | 全会话用量（按请求去重）`{input, output, cacheRead, cacheWrite5m, cacheWrite1h, requests, text, last}`（写缓存分 5 分钟 / 1 小时两档；`text` 写好）；一条带用量的回复都没有 ⇒ `null` |
-| `touchedFiles` | ← | 写类工具（Edit / Write / MultiEdit → `file_path`，NotebookEdit → `notebook_path`）碰过的文件，原样、去重、近因序（最近碰的在末尾），至多 1000 条（超 ⇒ 丢最久没碰的） |
-| `usage` | ← | 文件序最后一条 `input_tokens + cache_creation_input_tokens + cache_read_input_tokens > 0` 的 assistant 记录 ⇒ `{promptTokens, model, peakPromptTokens, limit, limitFrom}`（`model` 缺 ⇒ `null`）；一条都没有 ⇒ `null` |
-| `writers` | ← | 此刻持着这条会话的活进程 pid，照那一家声明的判活方式查（认 pidfile 的 ⇒ 这台的 pidfile；认开着写的 ⇒ 此刻开着记录写的进程），升序；判不了 ⇒ 空 |
+入参 `HistoryFactsReq` · 回包 `SessionFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AskKind = "approve" | "answer" | "plan";
+type BgTask = { 
+/**
+ * 起它的那次工具调用 id。
+ */
+call: string, 
+/**
+ * 它当场拿到的任务号；还没回 ⇒ `null`。
+ */
+task: string | null, 
+/**
+ * 那条命令原样（适配层给的）；没有 ⇒ `null`。
+ */
+cmd: string | null, 
+/**
+ * 起它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+ */
+at: string | null, };
+type FactsBackground = { 
+/**
+ * 「后台任务运行中 · make test-all · 12m」；命令拿不到 ⇒ 「后台任务运行中」。手机与 CLI 照抄、按节拍重问。
+ */
+text: Words, 
+/**
+ * 同一句、时长那一截留 `{dur}`：`{text, from}`，桌面填 现在 − `from`（`duration-format.ts::fmtDur`，与 `copy_core::short_duration` 对同一份金样）。
+ * 命令或起始时刻拿不到 ⇒ `null`。
+ */
+clock: FactsClock | null, 
+/**
+ * 命令那一格（「make test-all」·「python train.py 等 2 条」）；拿不到 ⇒ `null`。
+ */
+what: Words | null, 
+/**
+ * 还在跑的后台命令几条（这一次进程起来之后起的；记录里一条都对不上 ⇒ 0）。
+ */
+count: number, 
+/**
+ * 语气（恒 `busy`）。
+ */
+tone: Tone, };
+type FactsClock = { text: Words, from: number, };
+type FactsCost = { micros: number, partial: boolean, text: Words, };
+type FactsLastRequest = { id: string, tokens: Array<number>, };
+type HistoryFactsReq = { 
+/**
+ * jsonl 路径（围栏同 `history-read`）。
+ */
+path: string, 
+/**
+ * 可缺：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args`。
+ */
+limits?: { [key in string]: number }, 
+/**
+ * 可缺：**上一次应答原样**（续传令牌）。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 每一层键集合必须恰好是本命令出的那一形
+ * （`facts_query::prior_from` 判，不对 ⇒ `bad_args`），从它的 `end` 接着扫、累加在它上面。
+ * 带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答。
+ */
+prior?: SessionFacts, };
+type LastSay = { text: string, 
+/**
+ * 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+ */
+at: string | null, 
+/**
+ * `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
+ */
+atMs: number | null, };
+type LimitFrom = "relay" | "setting" | "model" | "observed" | "assumed";
+type McpStatus = "needsLogin" | "failed" | "pending" | "disabled" | "unknown";
+type McpTrouble = { name: string, 
+/**
+ * `needsLogin` · `failed` · `pending`（[`crate::agents::McpStatus`] 的这三种）。
+ */
+status: McpStatus, 
+/**
+ * 断开时那一家写的原话（复制详情用，不当句子显示）；别的 ⇒ `null`。
+ */
+detail: string | null, 
+/**
+ * 说它的那条记录的 `timestamp` 原样；没有 ⇒ `null`。
+ */
+at: string | null, };
+type Needs = { kind: NeedsKind, 
+/**
+ * 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
+ */
+tool: string | null, 
+/**
+ * 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
+ */
+call: string | null, 
+/**
+ * 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
+ */
+sinceMs: number | null, 
+/**
+ * 写好的字（等批准 · 等回答 · 需手动），出口照抄。
+ */
+text: Words, 
+/**
+ * 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
+ */
+head: Words, 
+/**
+ * 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
+ */
+headCode: string | null, 
+/**
+ * 语气（恒 `need`）。
+ */
+tone: Tone, 
+/**
+ * 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
+ */
+rank: number, 
+/**
+ * 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
+ * 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
+ */
+waitedMs: number | null, 
+/**
+ * `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
+ */
+waitedText: Words | null, 
+/**
+ * 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
+ */
+ask: NeedsAsk | null, 
+/**
+ * `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
+ */
+manualText: Words | null, };
+type NeedsAsk = { 
+/**
+ * 这一次请求的 id（后端发的，不是那一家的）：答的时候原样交回。
+ */
+id: string, 
+/**
+ * 种类（同 `needs.kind` 那一套里的三种：approve · answer · plan）。
+ */
+kind: AskKind, 
+/**
+ * 工具名原样。
+ */
+tool: string, 
+/**
+ * 子运行（子 agent）发的 ⇒ 是哪一趟 `{id, kind}`（那一家原样）；主会话 ⇒ `null`。
+ */
+run: NeedsAskRun | null, 
+/**
+ * 一行摘要（命令头一行 · 路径 · 第一道题）；说不出 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 要批的东西的全文（命令全文 · 写哪个文件写成什么 · 计划原文），不截。
+ */
+detail: string, 
+/**
+ * 能选的几项，排好序（「以后不再问」那几项不放第一位）。
+ */
+choices: Array<NeedsChoice>, 
+/**
+ * 提问那一种的题目；别的种类为空。
+ */
+questions: Array<NeedsQuestion>, 
+/**
+ * 何时挂上的（epoch ms，这台的钟）。
+ */
+sinceMs: number, };
+type NeedsAskRun = { id: string, 
+/**
+ * 它是哪一种（那一家原样，如 `general-purpose`）；没说 ⇒ `null`。
+ */
+kind: string | null, };
+type NeedsChoice = { 
+/**
+ * 答的时候交回的那个词（闭集见 `control::asks::verdict_of`）。
+ */
+id: string, text: Words, tone: Tone, 
+/**
+ * 要不要附一句话：none · optional · required。
+ */
+note: NeedsNote, };
+type NeedsKind = "approve" | "answer" | "plan" | "network" | "worker" | "goal" | "choose" | "unknown";
+type NeedsNote = "none" | "optional" | "required";
+type NeedsQuestion = { 
+/**
+ * `q0` · `q1` …（答的时候 `picks` 按它键）。
+ */
+id: string, text: string, header: string | null, multi: boolean, options: Array<NeedsQuestionOption>, 
+/**
+ * 恒 `true`：每题都许写自由文本（那一家框里的「Type something」）。
+ */
+other: boolean, };
+type NeedsQuestionOption = { 
+/**
+ * `q0o0` …
+ */
+id: string, text: string, detail: string | null, };
+type PendingCall = { 
+/**
+ * 工具调用 id（等它的 `tool_result` 来摘）。
+ */
+id: string, 
+/**
+ * 工具名原样。
+ */
+name: string, 
+/**
+ * 主参数一行（[`WHAT_KEYS`]；提问取第一问）；没登记 / 入参里没有 ⇒ `null`。
+ */
+what: string | null, 
+/**
+ * 那条记录的 `timestamp` 原样（从何时起在跑）；没有 ⇒ `null`。
+ */
+at: string | null, 
+/**
+ * `at` 的毫秒（自 1970）：出口算「已经跑了多久」只用这一格（交那一个读口走字），不自己解析 `at`；解不出 ⇒ `null`。
+ */
+atMs: number | null, 
+/**
+ * 这一步此刻的样子（[`settle_pending`] 每次现判，不累加；`prior` 里那一份不用）。
+ */
+state: StepWait, 
+/**
+ * `state` 是 `unclear` 时为什么判不了；别的 ⇒ `null`。
+ */
+why: UnclearWhy | null, 
+/**
+ * 过程那一行右侧那一句（状态不明 ⇒「状态不明」；在跑 · 在等你 ⇒ `null`，在等你那一格出口写已等多久）。
+ */
+text: Words | null, 
+/**
+ * 状态不明时那一行悬停说的为什么（照 `why` 写好）；别的 ⇒ `null`。
+ */
+whyText: Words | null, };
+type RetryOutcome = "retrying" | "recovered" | "failed" | "interrupted";
+type RetryRun = { 
+/**
+ * 这一串首条重试记录的 `uuid`（界面那条细条就挂在它上面）。
+ */
+id: string, outcome: RetryOutcome, };
+type SessionFacts = { 
+/**
+ * 最后一个完整行的末字节 ＝ 下一次的续点。
+ */
+end: number, 
+/**
+ * 源会话 sid；不是分叉来的 ⇒ `null`。
+ */
+forkedFrom: string | null, 
+/**
+ * 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
+ */
+touchedFiles: Array<string>, 
+/**
+ * 最后一条带有效 usage 的 assistant 记录；一条都没有 ⇒ `null`。
+ */
+usage: UsageFact | null, 
+/**
+ * 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
+ * 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
+ */
+projectDir: string | null, 
+/**
+ * 这份记录是哪一家的（线上的 kind，适配层按记录认：`agents::record_kind_of`）；认不出 ⇒ `null`（界面要分家的那几项灰着，不落哪一家）。
+ */
+agent: string | null, 
+/**
+ * 此刻持着这条会话的活进程 pid（`accounts_query::session_holders`：照那一家声明的判活方式查），升序；不累加，每次现查（`prior` 里那一份不用）。
+ * 不止一个 ⇒ 同一条会话有几个进程在同时写。判不了 ⇒ 空。
+ */
+writers: Array<number>, 
+/**
+ * 还没有结果的工具调用（文件序，正在跑 / 在等批准的那几步）。
+ */
+pending: Array<PendingCall>, 
+/**
+ * 最后一段正文的头一行（悬停卡「它最后一句」）。
+ */
+lastSay: LastSay | null, 
+/**
+ * **需手动**：那台说在等、等的是什么（不累加，每次现查；`prior` 里那一份不用）。不在等 ⇒ `null`。
+ */
+needs: Needs | null, 
+/**
+ * 交回了的子运行（子 agent 的 id，文件序、去重）：同一个子运行的收场通知以交回为准，只报一次。
+ */
+handedBack: Array<string>, 
+/**
+ * 一串一串的 API 重试与结局（按首条的 `uuid`，文件序）；最后一串可能还没有下文（`retrying`）。
+ */
+retries: Array<RetryRun>, 
+/**
+ * 此刻的许可档（最后一条许可档记录写的那一档，原样）；没有 ⇒ `null`。
+ */
+permissionMode: string | null, 
+/**
+ * 全会话用量（按请求去重）；一条带用量的回复都没有 ⇒ `null`。
+ */
+tokens: TokenUse | null, 
+/**
+ * 全会话花费（记录里那一家自己记的花费那一条，最后一条为准）；记录里没有 ⇒ `null`（不按定价自己算）。
+ */
+cost: FactsCost | null, 
+/**
+ * 还没收场的后台命令（文件序）：累加的那一份账，续传时原样带回来。
+ */
+bgTasks: Array<BgTask>, 
+/**
+ * **后台任务运行中**：那台说一轮停了、后台命令还在跑 ⇒ 状态一句（不累加，每次现查；`prior` 里那一份不用）。不是这一态 ⇒ `null`。
+ */
+background: FactsBackground | null, 
+/**
+ * **答题口没接上**：ccm 起这条会话时挂不上答题 hook（用户自己给的会话级设置读不出 / 形状不认）⇒ 写好的那一句
+ * （「这条会话只能在终端里答批准」；不累加，每次按持着它的进程现查）。接上了 / 判不了 ⇒ `null`。
+ */
+answerOff: Words | null, 
+/**
+ * 这个会话里那一家说有毛病的 MCP 服务器（要登录 · 断开 · 还在连），按名字排；没列的不等于连上了。
+ */
+mcp: Array<McpTrouble>, };
+type StepWait = "running" | "awaiting" | "unclear";
+type TokenUse = { input: number, output: number, cacheRead: number, cacheWrite5m: number, cacheWrite1h: number, 
+/**
+ * 算进来的请求数。
+ */
+requests: number, 
+/**
+ * 写好的串（输入 · 输出 · 读缓存 · 写缓存）。
+ */
+text: Words, 
+/**
+ * 上一次请求（续传时同一次请求的后一条要替掉它）：键 · 那一次的五个数。
+ */
+last: FactsLastRequest | null, };
+type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
+type UnclearWhy = "noWriter" | "untracked";
+type UsageFact = { 
+/**
+ * `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`。
+ */
+promptTokens: number, model: string | null, 
+/**
+ * 全会话最大的一轮（见过超过标准上限的 ⇒ 上限不可能是标准那一档）。
+ */
+peakPromptTokens: number, 
+/**
+ * 上下文上限（tokens），恒 ≥ `peak_prompt_tokens` ⇒ 百分比不会超过 100。
+ */
+limit: number, limitFrom: LimitFrom, 
+/**
+ * 最新一轮占上限的百分比（四舍五入，0–100）；上限判不出（`assumed`）⇒ `null`。
+ */
+percent: number | null, 
+/**
+ * 上下文那一格的字：上限判得出写百分比（`35%`），判不出只写用了多少（`350k`）。
+ */
+contextText: Words, 
+/**
+ * 那一格的语气：到了 [`CONTEXT_WARN_AT`] ⇒ `warn`，否则 `plain`（判不出上限 ⇒ 恒 `plain`）。
+ */
+contextTone: Tone, 
+/**
+ * 最新一轮用了多少（`350k`）。
+ */
+promptTokensText: Words, 
+/**
+ * 上限（`1M`）。
+ */
+limitText: Words, 
+/**
+ * 上限从哪来的字（中转请求 · 设置 · 模型名 · 用量超过 200k）；判不出 ⇒ `null`。
+ */
+limitFromText: Words | null, };
+type Words = string;
+```
 
 码：`bad_args` · `failed` · `too_large`
 
