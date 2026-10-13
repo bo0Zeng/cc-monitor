@@ -27,14 +27,13 @@ fn line(seq: u64) -> Frame {
 }
 
 fn tapf(n: u64) -> Frame {
-    Frame::Tap {
-        stream: "sid-w".into(),
+    Frame::LiveCard(cc_monitor_backend::stream::wire::LiveCard {
+        sid: "sid-w".into(),
         run: None,
-        resp: 0,
+        card: 0,
         n,
-        ev: Some(cc_monitor_backend::agents::StreamEv::Stop { ok: true }),
-        end: None,
-    }
+        op: cc_monitor_backend::stream::wire::LiveOp::Awaiting,
+    })
 }
 
 /// 出方向 200 条 `line`、tap 400 条同时排着；写者写完之后：写出去的 `line` 帧 **==** 灌进去的（逐条、同序），
@@ -84,7 +83,7 @@ async fn a_flooded_tap_never_costs_or_reorders_a_content_frame() {
         .map(|(_, s)| *s)
         .collect();
     assert_eq!(lines, (0..200).collect::<Vec<_>>(), "内容帧少了或乱了");
-    let first_tap = kinds.iter().position(|(k, _)| k == "tap");
+    let first_tap = kinds.iter().position(|(k, _)| k == "live");
     let last_line = kinds.iter().rposition(|(k, _)| k == "line");
     assert!(
         matches!((first_tap, last_line), (Some(t), Some(l)) if t > l) || first_tap.is_none(),

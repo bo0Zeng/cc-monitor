@@ -275,22 +275,27 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
   const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
   const target = where === "active" ? active : be.world.sessions[1];
   let n = 0;
-  const ev = (e: unknown): unknown => ({ origin: target.origin, stream: target.sid, resp: 1, n: n++, ev: e });
+  let no = 0;
+  const f = (op: Record<string, unknown>): unknown => ({ origin: target.origin, card: { sid: target.sid, card: no, n: n++, ...op } });
   return measure(`stream-${where}`, async (steps) => {
     for (let round = 0; round < 3; round++) {
-      await step(steps, "start", () => be.pushTap(target.origin, [ev({ t: "start", rid: `req_perf${round}` }), ev({ t: "block", i: 0, kind: "text" })]));
+      no = round + 1;
+      n = 0;
+      await step(steps, "start", () => be.pushLiveCard(target.origin, [f({ op: "open", rid: `req_perf${round}`, phase: "streaming", clipped: false, blocks: [{ kind: "text", text: "" }] })]));
       for (let k = 0; k < 40; k++) {
         const t = performance.now();
-        await step(steps, "delta", () => be.pushTap(target.origin, [ev({ t: "text", i: 0, s: `第 ${k} 段：把分页改成游标之后，调用点要跟着改，测试也要补。` })]));
+        await step(steps, "delta", () => be.pushLiveCard(target.origin, [f({ op: "text", i: 0, s: `第 ${k} 段：把分页改成游标之后，调用点要跟着改，测试也要补。` })]));
         await sleep(Math.max(0, 50 - (performance.now() - t)));
       }
-      await step(steps, "tool", () => be.pushTap(target.origin, [ev({ t: "block", i: 1, kind: "tool", tool: "Bash" })]));
+      await step(steps, "tool", () => be.pushLiveCard(target.origin, [f({ op: "block", i: 1, block: "tool", tool: "Bash" })]));
       await sleep(200);
       // 这一轮落成记录：记录文件接着写了几行 ⇒ 真后端的 watcher 读到、交一批 line 格
       const c = target.convo!;
       const from = c.lines.length;
       turn(c, target.cwd, 1000 + round, false);
       await step(steps, "lines", () => be.appendLines(target.origin, c, from));
+      // 记录到了 ⇒ 后端撤卡（真后端在读到那一轮的记录时发）。
+      be.pushLiveCard(target.origin, [f({ op: "close", why: "record" })]);
       await sleep(500);
     }
   });

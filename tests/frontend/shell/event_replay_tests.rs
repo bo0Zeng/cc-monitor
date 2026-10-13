@@ -859,21 +859,17 @@ async fn the_changed_accounts_stream_carries_only_reachability_and_account_notic
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 会话流 `session-tap`：同一张订阅表、同一套 credit 与 `Gap`（级 2），
+// 会话流 `session-live-card`：同一张订阅表、同一套 credit 与 `Gap`（级 2），
 // 不进留存（`history`）、不混进会话行那条流。设计住仓外。期望手写。
 // ═══════════════════════════════════════════════════════════════════════
 
-fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionTapPayload {
-    crate::ui_contract::SessionTapPayload {
+fn tap(origin: &str, n: u64) -> crate::ui_contract::SessionLiveCardPayload {
+    crate::ui_contract::SessionLiveCardPayload {
         origin: crate::origin::Origin(origin.to_string()),
-        stream: "sid-t".into(),
-        run: None,
-        resp: 0,
-        n,
-        ev: crate::ui_contract::RecordBody::from_json(format!(
-            "{{\"t\":\"text\",\"i\":{n},\"s\":\"x\"}}"
-        )),
-        end: None,
+        card: crate::ui_contract::RecordBody::from_json(format!(
+            "{{\"sid\":\"sid-t\",\"card\":0,\"n\":{n},\"op\":\"text\",\"i\":0,\"s\":\"x\"}}"
+        ))
+        .unwrap(),
     }
 }
 
@@ -881,8 +877,8 @@ fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
     match i {
         WItem::Frame { seq, body } => {
             let v: serde_json::Value = serde_json::from_slice(&body.0).unwrap();
-            match v.get("stream") {
-                Some(_) => ("tap", *seq, v["n"].as_u64().unwrap()),
+            match v.get("card") {
+                Some(l) => ("tap", *seq, l["n"].as_u64().unwrap()),
                 None => what(i),
             }
         }
@@ -890,18 +886,18 @@ fn tap_what(i: &WItem) -> (&'static str, u64, u64) {
     }
 }
 
-/// T5b：订了 `session-tap` ⇒ 当场就是实时的（没有就绪点、没有重放）；有 credit 交、没 credit 丢且位置照占、`want` 回来原位 `Gap`；
+/// T5b：订了 `session-live-card` ⇒ 当场就是实时的（没有就绪点、没有重放）；有 credit 交、没 credit 丢且位置照占、`want` 回来原位 `Gap`；
 /// 别的机器的 tap 不交；tap **不进留存**（`stats().history_len` 不变）。
 #[tokio::test]
 async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_gaps() {
     let (r, rec) = hub();
     r.origin_seen(&local(), true);
-    r.subscribe("w", 7, &local(), "session-tap", None, 2);
+    r.subscribe("w", 7, &local(), "session-live-card", None, 2);
     rec.clear();
     for n in 0..3 {
-        r.on_tap(tap("<local>", n));
+        r.on_live_card(tap("<local>", n));
     }
-    r.on_tap(tap("pi", 9)); // 别的机器
+    r.on_live_card(tap("pi", 9)); // 别的机器
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
         vec![("tap", 0, 0), ("tap", 1, 1)]
@@ -913,7 +909,7 @@ async fn tap_frames_ride_the_same_subscription_table_with_credit_and_in_place_ga
         vec![("gap", 2, 3)]
     );
     rec.clear();
-    r.on_tap(tap("<local>", 3));
+    r.on_live_card(tap("<local>", 3));
     assert_eq!(
         rec.all().iter().map(tap_what).collect::<Vec<_>>(),
         vec![("tap", 3, 3)]
@@ -927,11 +923,11 @@ async fn tap_and_lines_never_cross_into_each_others_subscriptions() {
     let (r, rec) = hub();
     r.origin_seen(&local(), true);
     r.subscribe("w", 1, &local(), "session-lines", None, 100);
-    r.subscribe("w", 2, &local(), "session-tap", None, 100);
+    r.subscribe("w", 2, &local(), "session-live-card", None, 100);
     r.ready_point(None).await;
     rec.clear();
     r.on_line_batch_awaited(lines("s", 0..2)).await;
-    r.on_tap(tap("<local>", 0));
+    r.on_live_card(tap("<local>", 0));
     let got = rec.0.lock().unwrap().clone();
     let to = |sub: u64| -> Vec<(&'static str, u64, u64)> {
         got.iter()

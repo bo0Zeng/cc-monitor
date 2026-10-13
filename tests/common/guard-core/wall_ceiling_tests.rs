@@ -157,12 +157,6 @@ const EXEMPT: &[(&str, &str, &str, &str)] = &[
         "让过 rAF 自链那几拍（jsdom 里 rAF 也是定时器，约 16ms）：按定时器到期先后排队，机器忙只是整体往后推、先后不变，不按墙钟",
     ),
     (
-        "tests/backend/stream/tap_tests.rs",
-        "rs-wait",
-        "while t0.elapsed() < run_for",
-        "`#[ignore]` 的读数（十几路并发时 tap 通道的占用），不是判据：灌数据的那段时长，门禁不跑",
-    ),
-    (
         "tests/frontend/filewin/xvfb_rig.rs",
         "rs-poll",
         "let gone = (0..20).any(|_| {",

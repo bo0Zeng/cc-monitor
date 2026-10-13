@@ -269,7 +269,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 记录解释（一行 → 通用记录） | `agents/<家>/`，Claude 的链与主线在 `agents/claudecode/` · `agents/mainline.rs` |
 | 划段（一轮里哪几条收进「过程」） | `observe/turns.rs` |
 | 子运行（子 agent）表 | `observe/runs.rs`，帧 `session_runs` |
-| 帧定义与发帧 | `stream/wire.rs` · `stream/tap.rs` · 主题表 `stream/topic.rs` |
+| 帧定义与发帧 | `stream/wire.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `stream/topic.rs` |
 | 收口 · 重放 · 就绪点 | 壳 `stream_source/` · `event_replay.rs` · `session_book.rs` · `stream_watch.rs` |
 | 排版 | 界面 `events.ts` → `tabs.ts` → `render-stream-record.ts` → `cards/` |
 | 手机 | `core-claude` 的 `link/`（常驻流客户端 · 帧解码）→ `app` 的聊天屏 |
@@ -476,7 +476,7 @@ UI Automation 在那个窗口的标签页里找名字带记号的那个、选中
 - **按系统前台窗口切 tab**：Windows Terminal 一个进程多个窗口、多个 tab，前台窗口只拿得到 WT 主进程的把手，分不出是哪个 tab。改为看 jsonl：用户在 claude 里敲回车，claude 写一行 `type=user`，monitor 切到那个 tab（INVARIANTS §20）。
 - **子运行的记录走主会话的行**：子运行（子 agent）的记录数量大，全量推会把重放缓冲撑大数倍、还会混进主时间线。那台后端照样盯着它们
   （与主记录同一条文件事件管线），只出成品：运行表帧 `session_runs`（列在 agent 面板里，不进主 tab 的消息流）；点面板那一行 / 派出它的那张卡的卡头
-  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位（`tap` 帧带 `run`），子运行的流不上主 tab 的活卡。
+  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位、拼成活卡（`live` 帧带 `run`，`stream/live.rs`），子运行的卡不上主 tab。
 - **从 agent 的祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，agent 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。本机改为点 ↗ 那一刻沿 agent 进程往上，每一级问它的控制台显示在哪个窗口（Windows）。远端会话从此刻连着它的终端出发：那台读出那个终端的 `SSH_CONNECTION`（在 tmux 里就问 tmux 此刻哪些客户端连着），本机后端按这四元组在连接表里找到这台电脑上开着那条连接的进程，往上数父进程到 `explorer.exe` 为止，monitor 沿链每一级先问它的控制台显示在哪个窗口，再取第一个有可见窗口的进程。链从连接的拥有者起、不从 agent 起；找不到就照实说原因（在 tmux 后台没人连着 · 不在这台电脑上 · 经跳板或端口转换对不上 · 没有窗口或不止一个）。
 - **换掉 webview**：这个 app 的核心是渲染会话记录（Markdown · 代码高亮 · LaTeX · 可折叠工具卡 · 流式追加 · 上万条记录的虚拟化），正是 HTML 最擅长、原生 GUI 工具箱最不擅长的那一类。文件窗口不渲染会话记录，所以它是原生（egui）的。
 

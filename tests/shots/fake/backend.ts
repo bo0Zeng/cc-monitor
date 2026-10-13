@@ -44,7 +44,7 @@ export const REAL_OPS = new Set([
 /**
  * 交给无头壳的订阅（壳的 `event_replay` 交格，那几台后端推）：会话流（`session-lines` 与独立窗口的 `session-lines/<sid>`：
  * 后端读盘上的原始记录 ＋ pidfile ＋ 私有 tmux 出宣告 · 行 · 红绿灯 · 容器 · 子运行 · 已结束 / 可重连，壳的会话账攒批、重放）· 那四种 `changed/<topic>`（含待答请求 `needs`）。
- * 其余几种还是这里合成：`session-tap`（中转抄出来的事件，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
+ * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
  * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
 export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs"]);
@@ -355,7 +355,7 @@ export class FakeBackend {
       setTimeout(() => this.send(sub, [{ t: "frame", seq: 0, body: JSON.stringify({ seq: 1, view }) }]), 200);
       if (mode === "lost") setTimeout(() => this.send(sub, [{ t: "frame", seq: 1, body: JSON.stringify({ end: "lost" }) }]), 500);
       if (mode === "offline") setTimeout(() => this.send(sub, [{ t: "unseen", idx: 1, tag: "read", why: "Dropped" }]), 500);
-    } else if (sub.kind === "session-tap" || sub.kind.startsWith("changed/")) {
+    } else if (sub.kind === "session-live-card" || sub.kind.startsWith("changed/")) {
       this.send(sub, [{ t: "seen", from: null }]);
     } else {
       this.miss(`订阅 ${sub.kind}`);
@@ -381,9 +381,9 @@ export class FakeBackend {
     }
   }
 
-  pushTap(origin: string, payloads: unknown[]): void {
+  pushLiveCard(origin: string, payloads: unknown[]): void {
     for (const sub of this.subs.values()) {
-      if (sub.origin === origin && sub.kind === "session-tap") {
+      if (sub.origin === origin && sub.kind === "session-live-card") {
         this.send(
           sub,
           payloads.map((p, seq) => ({ t: "frame", seq, body: JSON.stringify(p) })),

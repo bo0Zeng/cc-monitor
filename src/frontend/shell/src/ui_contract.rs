@@ -377,30 +377,14 @@ pub struct SessionContainerPayload {
     pub container: crate::session_book::SessionContainer,
 }
 
-/// 会话流 `session-tap`（通道 `subscribe`）里一格的体：后端 `tap` 帧的字段原样 ＋ 哪台机器。
-///
-/// `stream` = 请求自带的会话标识（== 它的 sid；前端拿它对 tab 的 sid，对不上 / 空 ⇒ 匿名流、不显示）；`run` = 归哪个子运行（缺 ＝ 主运行）；
-/// `resp` · `n` 见后端 `wire::Frame::Tap`；`ev`（归一事件，后端按上游协议折好的）与 `end`（`"done"` / `"broken"`）恰有一个。
+/// 会话流 `session-live-card`（通道 `subscribe`）里一格的体：后端 `live` 帧的帧体原样（核心拼好的活卡，见后端 `wire::LiveCard`）＋ 哪台机器。
 #[derive(Debug, Serialize, Clone, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../ui/generated/"))]
-pub struct SessionTapPayload {
+pub struct SessionLiveCardPayload {
     pub origin: crate::origin::Origin,
-    pub stream: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub run: Option<String>,
-    // C03 大整数策略：本进程第几个响应 / 响应里第几个事件，远在 2^53 之内；线上是 JSON 文本，`bigint` 是错的。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub resp: u64,
-    #[cfg_attr(test, ts(type = "number"))]
-    pub n: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, type = "import(\"./StreamEv\").StreamEv"))]
-    pub ev: Option<RecordBody>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub end: Option<String>,
+    #[cfg_attr(test, ts(type = "import(\"./LiveCard\").LiveCard"))]
+    pub card: RecordBody,
 }
 
 /// `listed` 格 的 payload：哪台机器的清单报完了。

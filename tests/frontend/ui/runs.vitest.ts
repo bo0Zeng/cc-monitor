@@ -29,11 +29,11 @@ vi.mock("../../../src/frontend/ui/behavior", () => ({
 }));
 vi.mock("../../../src/frontend/ui/fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
-import { LiveCards, type TapPayload } from "../../../src/frontend/ui/live-card";
+import { LiveCards } from "../../../src/frontend/ui/live-card";
+import type { LiveCard } from "../../../src/frontend/ui/generated/LiveCard";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import type { RunInfo } from "../../../src/frontend/ui/generated/RunInfo";
 import type { RunState } from "../../../src/frontend/ui/generated/RunState";
-import type { StreamEv } from "../../../src/frontend/ui/generated/StreamEv";
 import { TabManager } from "../../../src/frontend/ui/tabs";
 import { AgentsPanel } from "../../../src/frontend/ui/agents-panel";
 import { livePainter } from "../../../src/frontend/ui/live-card-view";
@@ -43,8 +43,9 @@ import { installViewerRig, line, userLine } from "../../test-support/session-vie
 const O = "<local>";
 const SID = "s1";
 
-function taps(resp: number, evs: StreamEv[], run?: string): TapPayload[] {
-  return evs.map((ev, n) => ({ origin: O, stream: SID, resp, n, ev, ...(run ? { run } : {}) }));
+/** 一张卡的整卡（后端拼好的成品）。 */
+function opened(no: number, rid: string, blocks: Extract<LiveCard, { op: "open" }>["blocks"], run?: string): { origin: string; card: LiveCard } {
+  return { origin: O, card: { sid: SID, card: no, n: 0, op: "open", rid, phase: "streaming", clipped: false, blocks, ...(run ? { run } : {}) } };
 }
 
 const run = (id: string, state: RunState, label = id, tool?: string): RunInfo => ({ run: id, label, state, ...(tool ? { tool } : {}) });
@@ -70,26 +71,25 @@ describe("runStateMark：五态各画什么", () => {
   });
 });
 
-describe("运行表 × 归一流", () => {
-  it("两段子运行流各归各的运行；主 tab 的活卡只有主运行那段；子运行收场 ⇒ 它在攒的那几段撤掉、交出它", () => {
+describe("运行表 × 活卡", () => {
+  it("子运行的卡各归各的运行；主 tab 的活卡只有主运行那张；运行表变了交出收场的那几个（卡由后端撤）", () => {
     const live = new LiveCards(
-      (o, s) => (o === O && s === SID ? s : null),
+      (o, s) => o === O && s === SID,
       () => null,
     );
     live.onRuns(SID, [run("w1", "running", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]);
-    for (const t of taps(1, [{ t: "start", rid: "r1" }, { t: "block", i: 0, kind: "tool", tool: "Bash" }], "w1")) live.onTap(t);
-    for (const t of taps(2, [{ t: "start", rid: "r2" }, { t: "block", i: 0, kind: "thinking" }], "w2")) live.onTap(t);
-    for (const t of taps(0, [{ t: "start", rid: "r0" }, { t: "block", i: 0, kind: "text" }, { t: "text", i: 0, s: "主" }])) live.onTap(t);
+    live.onCard(opened(1, "r1", [{ kind: "tool", tool: "Bash" }], "w1"));
+    live.onCard(opened(2, "r2", [{ kind: "thinking" }], "w2"));
+    live.onCard(opened(0, "r0", [{ kind: "text", text: "主" }]));
 
-    const main = live.core.cardsOf(SID);
+    const main = live.cards.cardsOf(SID);
     expect(main.map((c) => c.messageId)).toEqual(["r0"]);
     expect(main.flatMap((c) => c.blocks.map((b) => b.tool ?? b.kind))).toEqual(["text"]);
-    expect(live.core.cardsOf(SID, "w1").map((c) => c.messageId)).toEqual(["r1"]);
-    expect(live.core.liveBlockOf(SID, "w2")?.kind).toBe("thinking");
+    expect(live.cards.cardsOf(SID, "w1").map((c) => c.messageId)).toEqual(["r1"]);
+    expect(live.cards.liveBlockOf(SID, "w2")?.kind).toBe("thinking");
 
     const finished = live.onRuns(SID, [run("w1", "stopped", "扫目录", "t1"), run("w2", "running", "写报告", "t2")]);
     expect(finished.map((r) => r.run)).toEqual(["w1"]);
-    expect(live.core.cardsOf(SID, "w1"), "收场的子运行，它在攒的那几段一起撤").toEqual([]);
   });
 });
 

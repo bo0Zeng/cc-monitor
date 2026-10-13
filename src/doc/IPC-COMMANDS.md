@@ -219,18 +219,11 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `ticket` | string | 测试连接那一趟的票（`remote-probe` 交来的） |
 | `cell` | JSON | 一格进度，恰好一个键：`stage` · `reached` · `end` |
 
-### `tap`
+### `live_card`
 
-**中转抄出来的一个 SSE 事件**（或一个响应的收尾）。
+**活卡**（`crate::stream::live` 出的成品）：某个会话某个运行里正在说的那一次上游应答，一张一张地开、长、撤。
 
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `stream` | string | 请求自带的会话标识头的值 |
-| `run` | string? | 这段流归哪个子运行（主运行 ⇒ 不上线） |
-| `resp` | number | 本进程第几段 |
-| `n` | number | 这一段里第几件，从 0 连续 |
-| `ev` | StreamEv? | 归一事件（上游原始事件已在后端按协议面折过；界面不认任何一家的事件名） |
-| `end` | TapEnd? | 这一段的收尾（与 `ev` 恰有一个） |
+（无字段）
 
 ### `session_runs`
 
@@ -382,6 +375,56 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `tool` | string |  |
 | `state` | RunState |  |
 
+#### `LiveCard`
+
+`Frame::Live` 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string | 会话 id |
+| `run` | string? | 归哪个子运行；缺 ＝ 主运行（主 tab 只画主运行的） |
+| `card` | number | 卡号（本进程的段号，整台唯一） |
+| `n` | number | 这条连接上这张卡的第几帧：`open` 从 0 起，之后连续 |
+| `op` | LiveOp | 这一帧做什么 |
+
+#### `LiveOp`
+
+活卡的一帧做什么（`op` 是标签）。
+
+- `op: "open"`，带 `rid` string · `phase` LivePhase · `clipped` bool · `blocks` [LiveBlock] —— 整张卡（新开 · 这条连接刚开始看这个会话 · 发件箱满过 · 正文截过一次头）：照它整张换
+- `op: "block"`，带 `i` number · `block` BlockKind · `tool` string? —— 第 `i` 块开始了（种类叫 `block`：`kind` 已是帧的标签）
+- `op: "text"`，带 `i` number · `s` string —— 第 `i` 块（文字块）接着一段字
+- `op: "awaiting"` —— 上游说完了，等写入记录
+- `op: "close"`，带 `why` LiveWhy —— 撤卡（为什么见 `LiveWhy`；客户端对哪种都一样：撤）
+
+#### `LivePhase`
+
+活卡此刻在哪一相。
+
+- `streaming` —— 上游还在说
+- `awaiting` —— 上游说完了，那一轮的记录还没到
+
+#### `LiveBlock`
+
+活卡里的一块。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `kind` | BlockKind |  |
+| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
+| `tool` | string? | 工具块的工具名 |
+
+#### `LiveWhy`
+
+为什么撤卡。
+
+- `record` —— 那一轮的记录到了（整轮覆盖）
+- `broken` —— 上游断在半路（Esc 打断 · 上游断 · 抄流那一跳缺了号）
+- `error` —— 上游报错收尾
+- `evicted` —— 满了被挤掉（同一运行 2 张 · 整台 16 张）
+- `gone` —— 会话走了 / 子运行收场了
+- `unwatched` —— 出了这条连接的名单
+
 #### `RunInfo`
 
 一个子运行此刻的样子（`Frame::SessionRuns` 的一项）。
@@ -423,13 +466,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `own` —— 它自己的记录写出了终局
 - `quiet` —— 没有收场信号、它的记录久未再写（状态不明）
 - `orphaned` —— 派出它的会话退了，再也等不到收场信号（状态不明）
-
-#### `TapEnd`
-
-一个响应怎么收场的（`Frame::Tap` 的 `end`）。
-
-- `done` —— 上游把响应说完了（转发正常收尾）
-- `broken` —— 转发以错误收尾：下游走了（claude 被 Esc 打断）· 上游断了 · 写不动
 
 #### `RereadWhy`
 
@@ -510,7 +546,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `stream-watch`
 
-这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单不上这条流，宣告 · 状态 · 轮次边沿照发；回刚进名单的那几个从第几行起上流。
+这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单 · 活卡不上这条流（刚进名单的会话此刻每张活卡补一张整卡，出名单的撤卡），宣告 · 状态 · 轮次边沿照发；回刚进名单的那几个从第几行起上流。
 
 收 `args` · 连接内就地做完 · 只在流上
 

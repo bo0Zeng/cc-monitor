@@ -13,7 +13,7 @@ import type { SessionStreamFrame } from "./generated/SessionStreamFrame";
 import type { SessionEndedPayload } from "./generated/SessionEndedPayload";
 import type { SessionIdlePayload } from "./generated/SessionIdlePayload";
 import type { SessionActivityPayload } from "./generated/SessionActivityPayload";
-import type { SessionTapPayload } from "./generated/SessionTapPayload";
+import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
 import type { SessionRunsPayload } from "./generated/SessionRunsPayload";
 import { decodeRunsPayload } from "./runs";
 import type { SessionBranchPayload } from "./generated/SessionBranchPayload";
@@ -92,15 +92,14 @@ export interface EventHandlers {
    */
   onOriginSessionsListed?: (origin: string, all: boolean) => void;
   /**
-   * 中转抄出来的一个 SSE 事件：会话流 `session-tap`（通道 `subscribe`）里的一格。
-   * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（jsonl 那一轮到了整轮覆盖、墓碑挡迟到的 tap）；
-   * 进 queue 反倒会让 token 级的洪峰排在行前面。credit 在本格处理完当场还。
+   * 活卡的一帧（后端拼好的成品）：会话流 `session-live-card`（通道 `subscribe`）里的一格。
+   * **不进 queue**：活卡是临时态，与行 / 起停事件之间不需要顺序（记录那一轮到了，后端发撤卡）。
    */
-  onSessionTap?: (e: SessionTapPayload) => void;
+  onLiveCard?: (e: SessionLiveCardPayload) => void;
   /**
-   * 那台机器的 tap 流看不见了（订阅里的 `Unseen`：本机后端那条流断了）⇒ 那台上还开着的响应不会再有下文，活卡全撤。
+   * 那台机器的活卡流看不见了（订阅里的 `Unseen`：那条流断了）⇒ 那台上还开着的卡不会再有下文，全撤。
    */
-  onSessionTapLost?: (origin: Origin) => void;
+  onLiveCardsLost?: (origin: Origin) => void;
   /**
    * 活会话的记录文件不见了（`change` = `"gone"`）/ 被改过已从头重读（`"truncated"` / `"rewritten"`）。
    * 会话流里的一格（`{"file_notice": …}`），与行同序：重读出来的行排在它后面。
@@ -178,11 +177,11 @@ export const CREDIT_EXEMPT_FRAMES = [
 ] as const;
 
 /**
- * `session-tap` 订阅的 credit 窗口（格）：webview 这一跳在途的 tap 最多这么多格，超了 monitor 那一侧丢、
+ * `session-live-card` 订阅的 credit 窗口（格）：webview 这一跳在途的活卡帧最多这么多格，超了 monitor 那一侧丢、
  * 位置照占、原位 `Gap`（级 2）。每格处理完当场还 ⇒ 正常节奏下窗口永远不会见底；只有 webview 卡住（最小化、
- * 长任务）时才丢 —— 丢了由活卡的位置号 `n` 看出缺口、撤卡，jsonl 定稿。值与后端 tap 通道同一个量级（256）。
+ * 长任务）时才丢 —— 丢了那张卡的 `n` 接不上、先不画，等后端下一张整卡或撤卡。值与后端发件箱同一个量级（256）。
  */
-export const TAP_WINDOW = 256;
+export const LIVE_CARD_WINDOW = 256;
 
 /** 一条会话流订阅在本文件里的账：还没还的 credit。`sub` 在登记那一跳回来之前是 `null`。 */
 interface StreamHold {
@@ -350,13 +349,13 @@ export interface BindEventsOptions {
    */
   streams?: ReadonlyArray<{ origin: Origin; kind: string }>;
   /**
-   * 要订 `session-tap` 的机器（每台的中转住那台的常驻后端 ⇒ 每台都订）。
-   * 与会话行同一条帧路、同一套 credit；窗口是 {@link TAP_WINDOW}。
+   * 要订 `session-live-card` 的机器（每台的活卡住那台的常驻后端 ⇒ 每台都订）。
+   * 与会话行同一条帧路、同一套 credit；窗口是 {@link LIVE_CARD_WINDOW}。
    */
-  taps?: ReadonlyArray<Origin>;
+  liveCards?: ReadonlyArray<Origin>;
   /**
    * 要订的「那台某样东西变了」：每项一条 `changed/<topic>`（⇒ {@link EventHandlers.onChanged}）。
-   * 与会话行 · tap 同一处 `chan.subscribe`；窗口是 `CHANGED_WINDOW`。
+   * 与会话行 · 活卡同一处 `chan.subscribe`；窗口是 `CHANGED_WINDOW`。
    */
   changed?: ReadonlyArray<{ origin: Origin; topic: Topic }>;
 }
@@ -733,31 +732,31 @@ export async function bindEvents(
 
 
 
-  // `session-tap`：一格 = 一个 tap 事件（`SessionTapPayload`），当场交活卡、当场还 credit；
-  //   `Gap` 不补（位置号 `n` 在活卡那一侧看得出缺口）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的响应不会再有下文）。
-  const onTapItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
+  // `session-live-card`：一格 = 活卡的一帧（`SessionLiveCardPayload`），当场交活卡、当场还 credit；
+  //   `Gap` 不补（那张卡的 `n` 接不上，先不画）；`Unseen` / `Closed` ⇒ 那台的活卡全撤（开着的卡不会再有下文）。
+  const onLiveCardItems = (origin: Origin, hold: StreamHold, items: Item[]): void => {
     let used = 0;
     for (const it of items) {
       if (it.t === "frame") {
         used += 1;
-        let p: SessionTapPayload | null = null;
+        let p: SessionLiveCardPayload | null = null;
         try {
-          p = JSON.parse(it.body) as SessionTapPayload;
+          p = JSON.parse(it.body) as SessionLiveCardPayload;
         } catch {
           p = null;
         }
-        if (p !== null && typeof p === "object" && typeof p.stream === "string") {
-          handlers.onSessionTap?.(p);
+        if (p !== null && typeof p === "object" && typeof p.card?.sid === "string") {
+          handlers.onLiveCard?.(p);
         } else {
-          console.warn("[events] tap 流里一格读不懂，跳过：", it.body.slice(0, 200));
+          console.warn("[events] 活卡流里一格读不懂，跳过：", it.body.slice(0, 200));
         }
       } else if (it.t === "gap") {
-        console.info(`[events] tap 流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 活卡按位置号自己撤`);
+        console.info(`[events] 活卡流 [${origin}] 丢了第 ${it.fromSeq}..${it.toSeq} 格（前端落后了）—— 接不上的卡先不画`);
       } else if (it.t === "unseen") {
-        handlers.onSessionTapLost?.(origin);
+        handlers.onLiveCardsLost?.(origin);
       } else if (it.t === "closed") {
-        console.warn(`[events] tap 流 [${origin}] 关了：`, it.by);
-        handlers.onSessionTapLost?.(origin);
+        console.warn(`[events] 活卡流 [${origin}] 关了：`, it.by);
+        handlers.onLiveCardsLost?.(origin);
       }
     }
     if (used > 0) hold.sub?.want(used);
@@ -780,11 +779,11 @@ export async function bindEvents(
 
   // 会话流：起停那几个事件的监听都在了之后再订（订阅一登记，句柄就可能开始交格）。
   //   返回时 monitor 那一侧已经登记好 ⇒ 主界面接着发 `frontend-ready`（就绪点）不会落空。
-  // `session-tap` 与会话行走同一处 `chan.subscribe`（前端对通信层入口的调用点各恰好一处）：
+  // `session-live-card` 与会话行走同一处 `chan.subscribe`（前端对通信层入口的调用点各恰好一处）：
   //   两种流只差窗口与这一格怎么交。
   const plan: { origin: Origin; kind: string; window: number; feed: typeof onStreamItems }[] = [
     ...(opts.streams ?? []).map(({ origin, kind }) => ({ origin, kind, window: STREAM_WINDOW, feed: onStreamItems })),
-    ...(opts.taps ?? []).map((origin) => ({ origin, kind: "session-tap", window: TAP_WINDOW, feed: onTapItems })),
+    ...(opts.liveCards ?? []).map((origin) => ({ origin, kind: "session-live-card", window: LIVE_CARD_WINDOW, feed: onLiveCardItems })),
     ...(opts.changed ?? []).map(({ origin, topic }) => ({
       origin,
       kind: changedStream(topic),

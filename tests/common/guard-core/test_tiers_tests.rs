@@ -261,9 +261,9 @@ const REAL_MACHINE: &[(&str, &str, Trigger)] = &[
         Trigger::Filter { by: "tests/scripts/gate.sh", needle: "accounts::quota::rules::decide::tests::consistency_500_groups" },
     ),
     (
-        "tests/backend/stream/tap_tests.rs",
-        "tap_capacity_reading_with_a_dozen_concurrent_streams",
-        Trigger::Manual("读数不是判据：十几路并发时 tap 通道的峰值占用与丢件（写者是模型）；跑法住它自己的头注"),
+        "tests/backend/stream/live_tests.rs",
+        "live_bytes_reading",
+        Trigger::Manual("读数不是判据：两条会话同时在说、名单只报一条时这条连接收到的活卡字节；跑法住它自己的头注"),
     ),
     (
         "tests/backend/control/launch_render/history_resume_e2e_tests.rs",

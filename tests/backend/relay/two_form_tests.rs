@@ -267,7 +267,8 @@ fn a_codex_shaped_round_gets_426_then_picks_its_upstream_by_login_form_and_route
         Default::default();
     for e in events {
         for f in router.on_tap(e) {
-            if let Frame::Tap { run, resp, ev, .. } = f {
+            {
+                let crate::stream::run_route::Routed { run, resp, ev, .. } = f;
                 let slot = by_resp.entry(resp).or_insert((run.clone(), Vec::new()));
                 assert_eq!(slot.0, run, "同一段流归了两个运行");
                 slot.1.extend(ev);

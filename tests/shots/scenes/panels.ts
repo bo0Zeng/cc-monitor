@@ -160,15 +160,13 @@ function closedWorld(): World {
 async function streamLiveReply(ctx: Parameters<Scene["act"]>[0]): Promise<void> {
   const sid = ctx.backend.world.sessions[0].sid;
   let n = 0;
-  const ev = (e: unknown): unknown => ({ origin: "<local>", stream: sid, resp: 1, n: n++, ev: e });
-  ctx.backend.pushTap("<local>", [
-    ev({ t: "start", rid: "req_live0001" }),
-    ev({ t: "block", i: 0, kind: "thinking" }),
-    ev({ t: "text", i: 0, s: "文档里的配置表要和 settings 里的默认值对得上，先读一下 settings.py 再写。" }),
-    ev({ t: "block", i: 1, kind: "text" }),
-    ev({ t: "text", i: 1, s: "好，我来更新 `docs/config.md`：把三个新配置项加进表里，并写一段" }),
-    ev({ t: "text", i: 1, s: "「什么时候该调大重试次数」的说明。" }),
-    ev({ t: "block", i: 2, kind: "tool", tool: "Read" }),
+  const f = (op: Record<string, unknown>): unknown => ({ origin: "<local>", card: { sid, card: 1, n: n++, ...op } });
+  ctx.backend.pushLiveCard("<local>", [
+    f({ op: "open", rid: "req_live0001", phase: "streaming", clipped: false, blocks: [{ kind: "thinking" }] }),
+    f({ op: "block", i: 1, block: "text" }),
+    f({ op: "text", i: 1, s: "好，我来更新 `docs/config.md`：把三个新配置项加进表里，并写一段" }),
+    f({ op: "text", i: 1, s: "「什么时候该调大重试次数」的说明。" }),
+    f({ op: "block", i: 2, block: "tool", tool: "Read" }),
   ]);
   await sleep(900);
 }

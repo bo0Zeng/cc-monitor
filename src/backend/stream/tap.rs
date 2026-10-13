@@ -1,67 +1,45 @@
-//! **tee 的消费侧（后端这一半）**：常驻后端进程内那一份中转抄出来的 SSE 事件，
-//! 经这里交给**当前那条流连接**的写者，变成 `tap` 帧（`wire::Frame::Tap`）。
-//!
-//! # 形状（设计住仓外；要求：「走常驻后端现有的那条 wire，不另开通道」）
+//! **tee 的消费侧（后端这一半）**：常驻后端进程内那一份中转抄出来的 SSE 事件交给整台一份的活卡（[`super::live`]），
+//! 活卡按每条流连接的名单把 `live` 帧排进它的发件箱；这条连接的写者最低优先取。
 //!
 //! ```text
-//! 中转转发线程 ── TeeSink(tap 口) ── TapHub::offer ── try_send ──▶ 有界通道（每条流连接一条）
-//!                                                                    │
-//!          TapRx：流归位（折成归一事件 · 定归哪个运行）──▶ main.rs::writer_task：出方向 ＞ 应答 ＞ tap（最低优先）──▶ wire
+//! 中转转发线程 ── TeeSink(tap 口) ── TapHub::offer ──▶ Live（锁里折、记账、分发件箱）──Notify──▶ TapRx ──▶ main.rs::writer_task（出方向 ＞ 应答 ＞ 这一路）──▶ wire
 //! ```
 //!
-//! - **一个进程一个 hub**（[`hub`]），装着「此刻那条流连接」的发送端。流连接接上 ⇒ [`TapHub::attach`] 新建一条通道、
-//!   发送端换进来、接收端交那条连接的 `writer_task`；那条连接走了 ⇒ 接收端没了，`try_send` 失败 ⇒ 当场丢。
-//!   没人连着时照丢 —— 没有人可说，而位置号 `n` 照占，下一个接上的人看得见「这个响应缺了前面几件」。
-//! - **不许阻塞转发**（抄流跟不上绝不回推主路）：只有 `try_send`。
-//! - **不许挤掉内容帧**：tap 走**自己的**通道，不进出方向那条 10 000 容量的大通道（那条满了会丢 `line` 帧）；
-//!   `writer_task` 只在出方向与应答都空时才取它。
-//!
-//! # 上界（级 3 禁止）
-//!
-//! [`TAP_CAPACITY`] 件 × 每件原文 ≤ `relay::TAP_DATA_CAP` ⇒ 这一跳最坏 4 MiB。满了落级 2（丢，位置号原位说）。
+//! - **一个进程一个 hub**（[`hub`]）。没人连着时照收：卡照样长，后来接上的连接先拿到每张卡的整张。
+//! - **不许阻塞转发**：`offer` 只在锁里做内存里的折与记账，不等 IO、不等任何连接。
+//! - **不许挤掉内容帧**：这一路不进出方向那条大通道；`writer_task` 只在出方向与应答都空时才取它。
+//! - 上界：每条连接的发件箱 ≤ `live::LIVE_OUTBOX_CAP` 件，满了合成整卡（见 `live.rs` 头注）。
 
 use crate::relay::{TapEvent, TapPort};
+use crate::stream::live::Live;
 use crate::stream::wire::{Frame, Topic};
+use std::sync::{Arc, Mutex};
 
-/// tap 通道能排多少**件**（每条流连接一条）。
-///
-/// ⚠ **是条数不是体量**（体量由 `relay::TAP_DATA_CAP` 封）。值：token 级的 SSE 一秒几十到上百件，
-/// 256 件够吸收写者被内容帧占住的一小段；再多攒着只是让活卡更晚，不如丢了让 jsonl 定稿。
-/// 登记住址 `tests/frontend/shell/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP`。
-pub(crate) const TAP_CAPACITY: usize = 256;
-
-/// 进程级 hub：此刻每条流连接的 tap 发送端。
-/// 多客户：每条连接一条，扇出；那条连接走了（接收端没了）下一次交的时候摘掉。
-/// 丢了的件按原因数（没人连着 · 某条连接的通道满了），每种第 1、2、4、8… 次说一行。
-#[derive(Default)]
+/// 进程级 hub：整台一份的活卡。
 pub(crate) struct TapHub {
-    current: std::sync::Mutex<Vec<tokio::sync::mpsc::Sender<TapEvent>>>,
-    /// 没人连着时丢的件数。
-    unheard: std::sync::atomic::AtomicU64,
-    /// 某条连接的通道满了丢的件数（每条连接各算一件）。
-    full: std::sync::atomic::AtomicU64,
+    live: Mutex<Live>,
+}
+
+impl Default for TapHub {
+    fn default() -> Self {
+        Self::new(crate::agents::stream_families())
+    }
 }
 
 impl TapHub {
-    /// 一条流连接接上了：新建一条有界通道，发送端加进来，接收端交给它的写者。
-    pub(crate) fn attach(&self) -> tokio::sync::mpsc::Receiver<TapEvent> {
-        self.attach_bounded(TAP_CAPACITY)
+    /// 一份 hub：流按这几家的协议面折（生产 ＝ 注册表里的各家；判据给假适配层那一形）。运行簿先是空的一本，起 watcher 时 [`adopt`]。
+    pub(crate) fn new(families: Vec<crate::agents::StreamFamily>) -> Self {
+        Self {
+            live: Mutex::new(Live::new(
+                Arc::new(crate::observe::runs::RunBook::default()),
+                families,
+            )),
+        }
     }
 
-    /// 同 [`Self::attach`]，容量由调用方给（生产只经 `attach` 走 [`TAP_CAPACITY`]；判据拿小容量造「跟不上」）。
-    pub(crate) fn attach_bounded(&self, cap: usize) -> tokio::sync::mpsc::Receiver<TapEvent> {
-        let (tx, rx) = tokio::sync::mpsc::channel::<TapEvent>(cap);
-        self.current
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(tx);
-        rx
+    pub(crate) fn live(&self) -> std::sync::MutexGuard<'_, Live> {
+        self.live.lock().unwrap_or_else(|e| e.into_inner())
     }
-}
-
-/// 数一件，回这一种累计到几（第 1、2、4、8… 次时调用方说一行）。
-fn bump(c: &std::sync::atomic::AtomicU64) -> u64 {
-    c.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1
 }
 
 impl TapPort for TapHub {
@@ -70,60 +48,54 @@ impl TapPort for TapHub {
         crate::observe::relay_marks::note(stream, marks);
     }
 
-    /// 立刻答收没收（`try_send`）：每条连接各交一份，至少一条收下 ⇒ `true`。没人连着 / 都满 ⇒ `false`
-    /// （号已由 tee 占掉，缺口在各自接收侧可算）。已走的连接当场摘掉。
+    /// 交给活卡（锁里只做内存里的事）。恒收：号已由 tee 占掉，卡上的缺口由活卡判。
     fn offer(&self, ev: TapEvent) -> bool {
-        let mut g = self.current.lock().unwrap_or_else(|e| e.into_inner());
-        g.retain(|tx| !tx.is_closed());
-        if g.is_empty() {
-            let n = bump(&self.unheard);
-            if n.is_power_of_two() {
-                tracing::info!("[tap] 没有流连接，抄出来的事件丢了（累计 {n} 件）");
-            }
-            return false;
-        }
-        let mut took = false;
-        for tx in g.iter() {
-            match tx.try_send(ev.clone()) {
-                Ok(()) => took = true,
-                Err(tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                    let n = bump(&self.full);
-                    if n.is_power_of_two() {
-                        tracing::warn!(
-                            "[tap] 一条流连接的 tap 通道满了（容量 {} 件），事件丢了（累计 {n} 件）；那一段在界面上会断",
-                            tx.max_capacity()
-                        );
-                    }
-                }
-                Err(tokio::sync::mpsc::error::TrySendError::Closed(_)) => {}
-            }
-        }
-        took
+        self.live().tap(ev);
+        true
     }
 }
 
-/// 进程级那一个 hub。中转（`relay::host`）拿它当 tap 口，两条载体的写者从它 `attach`。
-pub(crate) fn hub() -> std::sync::Arc<TapHub> {
-    static HUB: std::sync::OnceLock<std::sync::Arc<TapHub>> = std::sync::OnceLock::new();
-    std::sync::Arc::clone(HUB.get_or_init(Default::default))
+impl crate::observe::runs::BookWatch for TapHub {
+    fn rid(&self, sid: &str, rid: &str, owner: Option<Option<String>>) {
+        self.live().record(sid, rid, owner);
+    }
+    fn gone(&self, sid: &str) {
+        self.live().gone(sid);
+    }
+}
+
+/// 进程级那一个 hub。中转（`relay::host`）拿它当 tap 口，两条载体的写者从它接。
+pub(crate) fn hub() -> Arc<TapHub> {
+    static HUB: std::sync::OnceLock<Arc<TapHub>> = std::sync::OnceLock::new();
+    Arc::clone(HUB.get_or_init(Default::default))
 }
 
 /// 中转（`relay::host`）要的那个 tap 口：就是进程级那一个 hub。
-pub(crate) fn port() -> std::sync::Arc<dyn TapPort> {
+pub fn port() -> Arc<dyn TapPort> {
     hub()
 }
 
-/// 写者那一侧要的东西：「下一个 `tap` 帧」。写者（`main.rs::writer_task`）只认这个口，不认帧从哪来 ——
-/// 生产里是 [`TapRx`]（hub 那条通道）；判据拿一条手喂的帧通道当它，量「tap 灌满时内容帧一条不少」。
+/// 起这台 watcher 之后一次：活卡改用它写的那一本运行簿（流归位按它定归哪个运行），运行簿记录到了 / 会话走了告诉活卡。
+pub fn adopt(book: &Arc<crate::observe::runs::RunBook>) {
+    let h = hub();
+    h.live()
+        .adopt(book.clone(), crate::agents::stream_families());
+    book.watch_with(h);
+}
+
+/// 写者那一侧要的东西：「最低优先那一路的下一帧」。写者（`main.rs::writer_task`）只认这个口，不认帧从哪来 ——
+/// 生产里是 [`TapRx`]（活卡的发件箱）；判据拿一条手喂的帧通道当它，量「这一路灌满时内容帧一条不少」。
 pub trait TapSource {
-    /// 下一个 `tap` 帧；`None` = 这条来源不会再有东西了（发送端已被换掉）。
+    /// 下一帧；`None` = 这条来源不会再有东西了（发送端已被换掉）。
     fn next(&mut self) -> impl std::future::Future<Output = Option<Frame>> + Send;
 }
 
-/// 一条流连接的 tap 接收端（写者那一侧拿它）：hub 那条通道 ＋ 这条连接的流归位（折成归一事件、定归哪个运行）。
-/// 只交出**帧** —— tee 的事件类型不出本 crate。
+/// 一条流连接最低优先的那一路（写者那一侧拿它）：活卡的发件箱 ＋ 几种 `changed` 推送。只交出**帧**。
 pub struct TapRx {
-    rx: tokio::sync::mpsc::Receiver<TapEvent>,
+    /// 活卡那一头（哪个 hub · 这条连接的号 · 叫醒口）。
+    hub: Arc<TapHub>,
+    id: u64,
+    wake: Arc<tokio::sync::Notify>,
     /// 轮换的节点通道（[`crate::accounts::quota::nodes`]）：事实变了推 `changed {quota}`；某个会话那一条变了推
     /// `changed {rotation, key: sid}`；策略目录 · 新会话用哪份变了推 `changed {rotation_strategies}`。`None` ＝ 不订（判据自己接的那一形）。
     nodes: Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
@@ -137,9 +109,41 @@ pub struct TapRx {
     bodies: crate::stream::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
     tz: crate::Tz,
-    book: std::sync::Arc<crate::observe::runs::RunBook>,
-    router: super::run_route::RunRouter,
     out: std::collections::VecDeque<Frame>,
+}
+
+impl TapRx {
+    /// 这条连接的号（`stream-watch` 那一处同拍把名单交给活卡时用）。
+    pub fn id(&self) -> u64 {
+        self.id
+    }
+
+    /// 这条连接此刻在看哪几个会话（整份换；与 watcher 那份名单同拍交）。
+    pub fn watch_handle(&self) -> LiveWatch {
+        LiveWatch {
+            hub: self.hub.clone(),
+            id: self.id,
+        }
+    }
+}
+
+/// 一条连接把名单交给活卡的口（可以有好几份）。
+#[derive(Clone)]
+pub struct LiveWatch {
+    hub: Arc<TapHub>,
+    id: u64,
+}
+
+impl LiveWatch {
+    pub fn watch(&self, sids: &[String]) {
+        self.hub.live().watch(self.id, sids);
+    }
+}
+
+impl Drop for TapRx {
+    fn drop(&mut self) {
+        self.hub.live().leave(self.id);
+    }
 }
 
 impl TapRx {
@@ -162,18 +166,11 @@ impl TapSource for TapRx {
             if let Some(f) = self.out.pop_front() {
                 return Some(f);
             }
+            if let Some(f) = self.hub.live().pull(self.id) {
+                return Some(f);
+            }
             tokio::select! {
-                ev = self.rx.recv() => match ev {
-                    Some(ev) => {
-                        let fs = self.router.on_tap(ev);
-                        self.out.extend(fs);
-                    }
-                    None => return None,
-                },
-                () = self.book.learned() => {
-                    let fs = self.router.on_learned();
-                    self.out.extend(fs);
-                }
+                () = self.wake.notified() => {}
                 moved = node_moved(&mut self.nodes) => match moved {
                     Some(fs) => {
                         for (t, sid) in fs {
@@ -216,10 +213,10 @@ impl TapSource for TapRx {
     }
 }
 
-/// 一条流连接接上了 ⇒ 从进程级 hub 拿一条新的 tap 接收端（两条载体各在「流开始」那一处调一次）。
-/// `book` 是这条连接的 watcher 写的那一本运行簿（流归位按它定归哪个运行）；`tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）。
-pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz) -> TapRx {
-    let mut rx = attach_rx(hub().attach(), book);
+/// 一条流连接接上了 ⇒ 在进程级 hub 的活卡上登记一条连接（两条载体各在「流开始」那一处调一次）。
+/// `tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）。
+pub fn attach(tz: crate::Tz) -> TapRx {
+    let mut rx = attach_rx(hub());
     rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.needs = Some(crate::control::asks::changes().subscribe());
@@ -227,18 +224,6 @@ pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz
     rx.bodies = crate::stream::topic_hook::body;
     rx.tz = tz;
     rx
-}
-
-/// 会话外的需手动清单变了 ⇒ `Some(())`（落后丢了几件也算变了）；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
-async fn manual_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Option<()> {
-    use tokio::sync::broadcast::error::RecvError;
-    match r {
-        Some(r) => match r.recv().await {
-            Ok(()) | Err(RecvError::Lagged(_)) => Some(()),
-            Err(RecvError::Closed) => None,
-        },
-        None => std::future::pending().await,
-    }
 }
 
 /// 某个工作区的计划变了 ⇒ `Some(Some((工作区, 摘要, 要你看的数)))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
@@ -250,6 +235,18 @@ async fn plan_moved(
         Some(r) => match r.recv().await {
             Ok(x) => Some(Some(x)),
             Err(RecvError::Lagged(_)) => Some(None),
+            Err(RecvError::Closed) => None,
+        },
+        None => std::future::pending().await,
+    }
+}
+
+/// 会话外的需手动清单变了 ⇒ `Some(())`（落后丢了几件也算变了）；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
+async fn manual_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Option<()> {
+    use tokio::sync::broadcast::error::RecvError;
+    match r {
+        Some(r) => match r.recv().await {
+            Ok(()) | Err(RecvError::Lagged(_)) => Some(()),
             Err(RecvError::Closed) => None,
         },
         None => std::future::pending().await,
@@ -303,15 +300,13 @@ async fn rotation_moved(
     }
 }
 
-/// [`attach`] 的可喂那一半：接收端由调用方给（判据拿小容量通道）。
-pub(crate) fn attach_rx(
-    rx: tokio::sync::mpsc::Receiver<TapEvent>,
-    book: std::sync::Arc<crate::observe::runs::RunBook>,
-) -> TapRx {
+/// [`attach`] 的可喂那一半：活卡由调用方给（判据各造一个 hub）。
+pub(crate) fn attach_rx(hub: Arc<TapHub>) -> TapRx {
+    let (id, wake) = hub.live().join();
     TapRx {
-        rx,
-        router: super::run_route::RunRouter::new(book.clone(), crate::agents::stream_families()),
-        book,
+        hub,
+        id,
+        wake,
         out: std::collections::VecDeque::new(),
         nodes: None,
         plan: None,

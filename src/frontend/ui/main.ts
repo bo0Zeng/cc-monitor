@@ -847,11 +847,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       tabs.markAllListed();
       startup?.onAllListed();
     },
-    // 中转抄出来的 SSE 事件（会话流 `session-tap`）→ 活卡（jsonl 到了整轮覆盖）；那台看不见了 ⇒ 活卡全撤。
-    onSessionTap: (e) => tabs.onSessionTap(e),
+    // 活卡（会话流 `session-live-card`，后端拼好的成品）照画；那台看不见了 ⇒ 活卡全撤。
+    onLiveCard: (e) => tabs.onLiveCard(e),
     onSessionRuns: (p) => tabs.onSessionRuns(p),
     onSessionBranch: (p) => tabs.onSessionBranch(p),
-    onSessionTapLost: (origin) => tabs.dropLiveCards(origin),
+    onLiveCardsLost: (origin) => tabs.dropLiveCards(origin),
     // 记录文件不见了 / 被改过已从头重读 ⇒ 那个 tab 顶上说一句。
     onSessionFileNotice: (sessionId, change) => {
       tabs.onRecordFileReread(sessionId, change); // 从头重读 ⇒ tab 整份重来（先重来、再在新的流容器上说那一句）
@@ -949,8 +949,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     onTurnEnd: (origin, turn) => tabs.onTurnEnd(origin, turn),
   }, {
     streams: machines.map((origin) => ({ origin, kind: "session-lines" })),
-    // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
-    taps: machines,
+    // 每台的活卡都住那台的常驻后端 ⇒ 每台都订（与会话行同一份机器清单）。
+    liveCards: machines,
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
     //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>

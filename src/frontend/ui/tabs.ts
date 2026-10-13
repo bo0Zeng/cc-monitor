@@ -46,7 +46,8 @@ import { openBatchMenu, type TabBatchHost } from "./tab-batch-menu";
 import { TabStore, type ActiveView } from "./tab-store";
 import { appStore, type Slice } from "./app-store";
 import { TabStreamView } from "./tab-stream-view";
-import { LiveCards, type LivePainter, type TapPayload } from "./live-card";
+import { LiveCards, type LivePainter } from "./live-card";
+import type { SessionLiveCardPayload } from "./generated/SessionLiveCardPayload";
 import { TabBarPrefs } from "./tab-bar-prefs";
 import { TabBarDrag } from "./tab-bar-drag";
 import { TabBarView } from "./tab-bar-view";
@@ -104,7 +105,7 @@ export class TabManager {
       agentsPanel.host = {
         open: (sid, run) => void this.openRunWindow(sid, { run }),
         isOpen: (sid, run) => this.runWindows.has(`${sid}\u0000${run}`),
-        liveOf: (sid, run) => this.live.core.liveBlockOf(sid, run),
+        liveOf: (sid, run) => this.live.cards.liveBlockOf(sid, run),
       };
     }
     if (onTabsChanged) this.store.subscribe(onTabsChanged);
@@ -175,13 +176,12 @@ export class TabManager {
   }
 
   /**
-   * 活卡：中转抄出来的 SSE 先上屏，jsonl 那一轮到了整轮覆盖（`live-card.ts`）。
-   * 路由只认「`stream` 就是这个 tab 的 sid、机器也对得上」；对不上 ⇒ 匿名流，不显示。
+   * 活卡：后端拼好的成品照画（`live-card.ts`）。只留「这台上有这个 tab」的卡（没有就没处画）。
    */
   private readonly live = new LiveCards(
-    (origin, stream) => {
-      const t = this.store.tabs.get(stream);
-      return t && t.origin === origin ? t.sessionId : null;
+    (origin, sid) => {
+      const t = this.store.tabs.get(sid);
+      return t !== undefined && t.origin === origin;
     },
     (sid) => this.view.trailerOf(sid),
   );
@@ -492,9 +492,6 @@ export class TabManager {
     // 文件从头重读先出声、tab 整份重来（`onRecordFileReread`），不会换新 seq 重投同一条。
     // monitor 连着见过、都不可显示的那一段一起记（去重集合成区间，段数有上界）。去重集合是流视图那一半的（`admit`）。
     if (!this.view.admit(tab, payload)) return;
-
-    // jsonl 那一轮到了 ⇒ 同一次应答（`rid`）的活卡整轮撤掉；挂在去重之后，重复记录不会重复触发。
-    this.live.onRecord(tab.sessionId, payload.rid);
 
     // 大纲：只记一笔「这份会话又长了」（清单问后端要，这里不判、不攒）。
     this.view.noteGrew(tab);
@@ -912,9 +909,9 @@ export class TabManager {
     this.emitTabStateProbe(tab);
   }
 
-  /** `session-tap`：中转抄出来的一件归一事件（`events.ts` 直派）。 */
-  onSessionTap(p: TapPayload): void {
-    this.live.onTap(p);
+  /** `session-live-card`：活卡的一帧（`events.ts` 直派）。 */
+  onLiveCard(p: SessionLiveCardPayload): void {
+    this.live.onCard(p);
   }
 
   /** 开着窗口的那几个子运行（`sid\0run`；agent 窗口开 / 关时自己报，`window-events.ts`）。 */
@@ -989,7 +986,7 @@ export class TabManager {
     this.live.setPainter(p);
   }
 
-  /** 那台机器的 tap 流看不见了 ⇒ 那台的活卡全撤。 */
+  /** 那台机器的活卡流看不见了 ⇒ 那台的活卡全撤。 */
   dropLiveCards(origin: string): void {
     this.live.dropOrigin(origin);
   }
