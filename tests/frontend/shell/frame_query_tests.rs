@@ -1333,6 +1333,12 @@ const DEADLINE_MAKERS: &[(&str, &str, usize, &str)] = &[
         "快照是两件事：先问图（一问，`PAGE_BUDGET`）· 读正文（分页，问图之后按要读的字节数给 `read_budget`）；\
 续传时多一件：读正文之前先读回续点那一行核见证（一问，`PAGE_BUDGET`）—— 2 → 3，多的就是这一处",
     ),
+    (
+        "stream_source/snapshot.rs",
+        "last_line_witness",
+        2,
+        "read8c：重连缺得多、断线那一截不读（交界面自己取）时，见证换成文件此刻的最后一行：问一行的尾段图 · 读回那一行，各一问、各 `PAGE_BUDGET`",
+    ),
     // LOC1a / LOC1b 新长的四个发起点（各自带着自己的值，DL1 只把形状换成 `Deadline`）：
     // acct-iso 两问那两个发起点摘了：界面经通道直问（`src/frontend/ui/acct-iso-reads.ts`），期限在那边造。
     // 在那台分叉一条会话那一行摘了：monitor 不再发（界面经通道直说 `session-fork`，期限在界面那一手造）。

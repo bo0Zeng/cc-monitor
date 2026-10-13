@@ -321,8 +321,10 @@ async fn fetch_snapshot(
     }
     // 续传之前先核锚那一行还是不是那一行（`snapshot_resume` 头注「截断 / 改写检测」）：
     //   断线期间被整份改写而且变长的文件，上面那道「文件没变短」拦不住。对不上 ⇒ 续点作废、从尾段重读、交那个会话一格「被改过」。
-    if let (crate::snapshot_resume::Read::Resume { .. }, Some(w)) =
-        (&how, cursor.as_ref().and_then(|c| c.witness.clone()))
+    if let (
+        crate::snapshot_resume::Read::Resume { .. } | crate::snapshot_resume::Read::Handoff { .. },
+        Some(w),
+    ) = (&how, cursor.as_ref().and_then(|c| c.witness.clone()))
     {
         let page = frame_query::read_page(
             &origin,
@@ -363,6 +365,24 @@ async fn fetch_snapshot(
             "snapshot [{host_label}] {sid}: 续传 —— 从字节 {from_byte}（第 {first_seq} 行）读到 {upto}，\
              第 {skip_below} 行之前的已发过、不再发"
         );
+    }
+    // 续得上、缺得比留存还多 ⇒ 断线那一截不读：交会话流一格「从第 `seq` 行起接着来」（界面那一路自己取最后那一截），
+    //   见证换成文件此刻的最后一行（新锚那一行）。
+    let mut handed: Option<Option<crate::snapshot_resume::Witness>> = None;
+    if let crate::snapshot_resume::Read::Handoff { seq } = how {
+        tracing::info!(
+            "snapshot [{host_label}] {sid}: 断线期间缺 {} 行、比留存多 —— 不读那一截，从第 {seq} 行起接着来（界面自己取最后那一截）",
+            seq - cursor.as_ref().map_or(seq, |c| c.next)
+        );
+        replay.on_watch_from(
+            &origin,
+            vec![crate::ui_contract::SessionWatchPayload {
+                session_id: sid.to_string(),
+                path: path.to_string(),
+                seq,
+            }],
+        );
+        handed = Some(last_line_witness(&origin, path, &plan).await?);
     }
     let mut walk = crate::snapshot_resume::Walk::new(&how, &plan);
     // 走读时顺手挑下一次续传要核的那一行（文件最后一个可计行）。
@@ -462,8 +482,42 @@ async fn fetch_snapshot(
     }
     // `[tail_from, total)` 全到了（尾段：刚发完；续传：锚之前的早有、之后的刚发完）⇒ 立锚。尾段之下的前端按需取回。
     crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);
-    crate::snapshot_resume::note_witness(&origin, sid, pick.done());
+    crate::snapshot_resume::note_witness(&origin, sid, handed.or_else(|| pick.done()));
     Ok(FetchOutcome::Done(arrived))
+}
+
+/// 文件此刻最后一个可计行（＝ 锚 `(plan.total, plan.end)` 那一行）的见证：问一行的尾段图、读回那一行。
+/// 这一问看到的文件已经又长了（不再是锚那一行）⇒ `None`（这一次不记，下一次续传不核）。
+async fn last_line_witness(
+    origin: &crate::origin::Origin,
+    path: &str,
+    plan: &crate::frame_query::TailPlan,
+) -> Result<Option<crate::snapshot_resume::Witness>, String> {
+    use crate::frame_query;
+    let one = frame_query::tail(
+        origin,
+        path,
+        1,
+        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+    )
+    .await?;
+    if one.total != plan.total || one.end != plan.end {
+        return Ok(None);
+    }
+    let page = frame_query::read_page(
+        origin,
+        path,
+        one.split_at,
+        Some(one.end),
+        frame_query::Deadline::within(frame_query::PAGE_BUDGET),
+    )
+    .await?;
+    let spans = crate::snapshot_resume::row_spans(one.split_at, &page.rows);
+    let mut pick = crate::snapshot_resume::WitnessPick::default();
+    for (row, span) in page.rows.iter().zip(spans) {
+        pick.see(one.end, plan.end, row.hash, span);
+    }
+    Ok(pick.done().flatten())
 }
 
 /// 这个会话的第 `seq` 行是不是补历史：宣告那一刻那台说的行数 `announced`（`session_added.lines`）以前的是；

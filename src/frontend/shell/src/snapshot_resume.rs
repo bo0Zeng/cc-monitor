@@ -138,7 +138,14 @@ pub(crate) enum Read {
         first_seq: u64,
         skip_below: u64,
     },
+    /// 续点对得上，但断线期间缺的比壳留存的还多（`total − next` > [`HANDOFF_OVER`]）：断线那一截一行都不读，
+    /// 交会话流一格「这份记录从第 `seq` 行起接着来」（`watch`，与进名单回的 `from[]` 同一形、同一条界面路：界面缺得多只重来正文那一半、
+    /// 自己取最后那一截），壳留存照它修成从 `seq` 起。读回来的那几千行壳与界面本来也只留最后 600 行。
+    Handoff { seq: u64 },
 }
+
+/// 续传缺的超过这么多行 ⇒ [`Read::Handoff`]：就是壳留存每会话留的那么多（＝ 快照尾段 · 界面进名单缺得多时自己取的那么多，一处口径）。
+pub(crate) const HANDOFF_OVER: u64 = crate::event_replay::REPLAY_TAIL_KEEP as u64;
 
 /// 同一份文件的续点比这一次的图还长（行数 / 字节 / 已有到哪 任一越过）⇒ 文件在断线期间变短了。
 pub(crate) fn shrank(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> bool {
@@ -151,12 +158,16 @@ pub(crate) fn shrank(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> bo
 /// **纯函数**：续点 × 这一次的尾段图 ⇒ 怎么读。
 ///
 /// 续点缺席 / 路径不同 / 文件比锚短（被截断重写过）/ `next` 超过这次的总行数 ⇒ [`Read::Tail`]（只读尾段）。
+/// 续得上、但缺的比 [`HANDOFF_OVER`] 多 ⇒ [`Read::Handoff`]（见证那一行照样先核：核不上改走尾段，`fetch_snapshot`）。
 pub(crate) fn plan_read(cursor: Option<&Cursor>, path: &str, plan: &TailPlan) -> Read {
     let Some(c) = cursor.filter(|c| c.path == path) else {
         return Read::Tail;
     };
     if shrank(Some(c), path, plan) {
         return Read::Tail;
+    }
+    if plan.total - c.next > HANDOFF_OVER {
+        return Read::Handoff { seq: plan.total };
     }
     // 确知第 `next` 行的起点 ⇒ 就从那里读：锚到续点之间那一截不再过线。
     if let Some(b) = c.next_byte.filter(|b| *b <= plan.end) {
@@ -210,6 +221,8 @@ impl Walk {
                 first_seq,
                 skip_below,
             } => (vec![(from_byte, upto)], first_seq, skip_below),
+            // 一行都不读：数到的 ＝ 要的 ＝ 0。
+            Read::Handoff { seq } => (Vec::new(), seq, seq),
         };
         Walk {
             segments,
