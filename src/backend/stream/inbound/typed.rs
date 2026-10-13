@@ -95,6 +95,16 @@ pub(crate) trait Owning: Command {
     fn run(req: Self::Req, cx: &Cx, own: &crate::platform::Own) -> Result<Self::Reply, Self::Err>;
 }
 
+/// 同 [`Blocking`]，多递一份**文件管理写句柄**（[`crate::platform::fs::Face`]：改用户的文件）。只有文件管理写面那几条用这一档
+/// （`readonly_guard::only_the_file_manager_commands_are_handed_the_face`）；句柄由分派那一层造了递进来（[`super::spec::prepare`]）。
+pub(crate) trait Facing: Command {
+    fn run(
+        req: Self::Req,
+        cx: &Cx,
+        face: &crate::platform::fs::Face,
+    ) -> Result<Self::Reply, Self::Err>;
+}
+
 /// 真异步的那一种：交给独立 task，`cancel` 能在 await 点打断。
 pub(crate) trait Async: Command {
     fn run(
@@ -189,6 +199,14 @@ pub(crate) struct Typed {
     pub(crate) shape: fn() -> tests::Shape,
 }
 
+impl Typed {
+    /// 这一份拿不拿得到文件管理写句柄（[`Facing`] 那一档）。
+    #[cfg(test)]
+    pub(crate) fn hands_the_face(&self) -> bool {
+        matches!(self.run, TypedRun::BlockingFace(_))
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(super) enum TypedRun {
     Blocking(fn(Request) -> Outcome),
@@ -198,6 +216,8 @@ pub(super) enum TypedRun {
     BlockingOwn(fn(Request, Files, &crate::platform::Own) -> Outcome, Files),
     /// 阻塞、只要写句柄（[`Owning`]）：写句柄由分派那一层递。
     BlockingOwning(fn(Request, &crate::platform::Own) -> Outcome),
+    /// 阻塞、要文件管理写句柄（[`Facing`]）：句柄由分派那一层造了递。
+    BlockingFace(fn(Request, &crate::platform::fs::Face) -> Outcome),
     Async(fn(Request) -> DataFut),
     /// 异步、要文件管理面（[`AsyncFiles`]）。
     AsyncFiles(fn(Request, Files) -> DataFut, Files),
@@ -259,6 +279,15 @@ fn run_owning<C: Owning>(r: Request, own: &crate::platform::Own) -> Outcome {
     settle::<C>(C::run(req, &cx, own))
 }
 
+fn run_facing<C: Facing>(r: Request, face: &crate::platform::fs::Face) -> Outcome {
+    let req = take::<C::Req>(&r.args)?;
+    let cx = Cx {
+        tz: r.tz,
+        until: r.until,
+    };
+    settle::<C>(C::run(req, &cx, face))
+}
+
 fn run_async<C: Async>(r: Request) -> DataFut {
     Box::pin(async move {
         let req = take::<C::Req>(&r.args)?;
@@ -299,6 +328,11 @@ pub(crate) const fn with_own<C: WithOwn>(summary: &'static str, files: Files) ->
 /// 阻塞、只要写句柄的一行登记。
 pub(crate) const fn owning<C: Owning>(summary: &'static str) -> CommandSpec {
     spec::<C>(summary, TypedRun::BlockingOwning(run_owning::<C>))
+}
+
+/// 阻塞、要文件管理写句柄的一行登记（只有文件管理写面那一族用）。
+pub(crate) const fn facing<C: Facing>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, TypedRun::BlockingFace(run_facing::<C>))
 }
 
 /// 异步、要文件管理面的一行登记。

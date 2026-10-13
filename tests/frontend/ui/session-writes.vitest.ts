@@ -3,7 +3,7 @@
  * `§14.3` C 组（读会话正文 · 子 agent · 删会话 · 分叉「本机远端同一条路问那台后端」）。
  *
  * 界面经通道直说那台后端：删 `files-delete-session`（`src/frontend/ui/session-writes.ts`）。
- * 删会话只交 sid。夹具只造结构，不含真会话。（分叉源会话那三格是生成类型，形状由握手指纹核。）
+ * 删会话只交 sid。夹具只造结构，不含真会话。（入参 · 回包都是生成类型，形状由握手指纹核。）
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
@@ -26,11 +26,9 @@ beforeEach(() => {
 });
 
 describe("MIG-3b 删会话经通道直说那台后端", () => {
-  it("只交 sid；成品恰好一格 `path`，别的形状 ⇒ 抛", async () => {
+  it("只交 sid", async () => {
     reply = { path: "/p/s1.jsonl" };
     await deleteSession("<local>", "s1");
     expect(sent).toEqual([{ origin: "<local>", op: "files-delete-session", body: { sid: "s1" }, until: sent[0].until }]);
-    reply = { path: "/p", extra: 1 };
-    await expect(deleteSession("devbox", "s1")).rejects.toThrow(/shape mismatch/);
   });
 });

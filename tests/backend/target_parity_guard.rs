@@ -800,6 +800,7 @@ fn typed_handler_files_of(
         "typed::owning::<",
         "typed::asynchronous::<",
         "typed::async_with_files::<",
+        "typed::facing::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];

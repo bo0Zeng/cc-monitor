@@ -282,28 +282,32 @@ mod tests {
         );
         assert_eq!(
             port_users.into_iter().collect::<Vec<_>>(),
-            vec!["stream/inbound/registry/file_manager.rs".to_string()],
+            vec!["stream/inbound/files_session_face.rs".to_string()],
             "删会话落点的窄口只许门引用（它递给写面）—— 别的面拿到它就等于拿到了删会话的落点"
         );
-        let spec = crate::control::files_write::MANAGE_COMMANDS
-            .iter()
-            .find(|c| c.name == "files-delete-session")
-            .expect("写面登记里没有 `files-delete-session` —— 删历史会话那条路断了");
+        assert!(
+            crate::control::files_write::MANAGE_COMMANDS
+                .iter()
+                .any(|c| c.name == "files-delete-session"),
+            "写面登记里没有 `files-delete-session` —— 删历史会话那条路断了"
+        );
+        let keys: Vec<String> = serde_json::to_value(cmd_wire::files::FilesDeleteSessionReq {
+            sid: "abc".to_string(),
+        })
+        .expect("入参总能序列化")
+        .as_object()
+        .expect("对象")
+        .keys()
+        .cloned()
+        .collect();
         assert_eq!(
-            spec.args,
-            &["sid"],
+            keys,
+            vec!["sid".to_string()],
             "删历史会话那条命令**只收 sid** —— 多一个入参就多一种表达「另一份文件」的办法"
         );
-        let port = crate::control::files_write::SessionPort {
-            locate: crate::agents::locate_session_for_delete,
-            is_record: crate::agents::is_session_record,
-            file_name: crate::agents::session_file_name_of,
-        };
-        match crate::control::files_write::answer_wire(
-            &crate::platform::fs::Face::issue(),
+        match crate::control::files_write::tests::ask(
             "files-delete-session",
             &serde_json::json!({"sid": "abc", "path": "/tmp/x.jsonl"}),
-            &port,
         ) {
             Err(crate::control::files_write::WriteFail { code, .. }) => {
                 assert_eq!(code, "bad_args", "多给一个 `path` 该回 bad_args")
@@ -740,7 +744,7 @@ mod tests {
         ("Own::issue", &["main.rs"]),
         ("DiagLog::issue", &["main.rs"]),
         // 文件管理面的写句柄：只有分派那一层造 —— 按档装处理器的那一处（`spec.rs::prepare`，帧面 · CLI 面 · 资产域经门的进程内分派都经它），
-        //   按命令表那一族（`Run::BlockingFace`）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
+        //   按命令表那一族（typed 的 `Facing` 那一档）递下去；传输台那四条硬臂的票表在帧面那一处造的时候领一份。
         (
             "Face::issue",
             &["stream/inbound/mod.rs", "stream/inbound/spec.rs"],
@@ -788,7 +792,7 @@ mod tests {
         );
     }
 
-    /// 递 [`crate::platform::fs::Face`] 的那一档（`Run::BlockingFace`）只有文件管理那一族用；用它的命令恰好是
+    /// 递 [`crate::platform::fs::Face`] 的那一档（typed 的 `Facing`，登记那一行写 `typed::facing`）只有文件管理那一族用；用它的命令恰好是
     /// 文件管理写面登记的那几张命令表的并（写面 · 上传提交 · 解压）—— 两侧异源：一侧是命令表里的档位（现打），一侧是写面自己的表。
     /// 命令表按族分住的那个目录。
     const REGISTRY_DIR: &str = "stream/inbound/registry/";
@@ -798,7 +802,7 @@ mod tests {
         use crate::stream::inbound::{Run, REGISTRY};
         let got: std::collections::BTreeSet<&str> = REGISTRY
             .iter()
-            .filter(|s| matches!(s.run, Run::BlockingFace(_)))
+            .filter(|s| matches!(s.run, Run::Typed(t) if t.hands_the_face()))
             .map(|s| s.name)
             .collect();
         let want: std::collections::BTreeSet<&str> = crate::control::files_write::MANAGE_COMMANDS
@@ -814,7 +818,7 @@ mod tests {
         );
         assert_eq!(
             got, want,
-            "拿得到文件管理写句柄的命令与写面登记的命令对不上（左 = 命令表里 `Run::BlockingFace` 那一档）"
+            "拿得到文件管理写句柄的命令与写面登记的命令对不上（左 = 命令表里 typed 的 `Facing` 那一档）"
         );
         // 档位的名字只许住文件管理那一族的命令表（别族一写就红，不等到上面那条相等）。
         let root = crate::guard_support::src_root();
@@ -826,7 +830,7 @@ mod tests {
                 .to_string_lossy()
                 .replace('\\', "/");
             if rel.starts_with(REGISTRY_DIR)
-                && guard_core::contains_word(&guard_core::production_code(&src), "BlockingFace")
+                && guard_core::production_code(&src).contains("typed::facing::<")
             {
                 users.push(rel);
             }

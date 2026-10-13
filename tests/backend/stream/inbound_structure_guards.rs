@@ -875,61 +875,24 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
          上线了而没登记 ⇒ 🔴 **写能力长出了一个没签字的命令** ——\n\
          而 `readonly_guard` 那条「拿得到 `Face` 的命令 == 写面登记的命令」判的正是这张表。"
     );
-    // ★ 写那一面的每条命令，`codes` / `fields` 与它自己的登记逐字对上（同读族那一半）。
-    type WriteAnswer = fn(&str, &serde_json::Value) -> crate::control::files_write::Answer;
-    let tables: [(&[crate::control::files_write::ManageCommand], WriteAnswer); 2] = [
-        (crate::control::files_write::MANAGE_COMMANDS, |c, a| {
-            crate::control::files_write::answer_wire(
-                &crate::platform::fs::Face::issue(),
-                c,
-                a,
-                &super::registry::file_manager::SESSION_PORT,
-            )
-        }),
-        (crate::control::files_commit::COMMIT_COMMANDS, |c, a| {
-            crate::control::files_commit::answer_wire(&crate::platform::fs::Face::issue(), c, a)
-        }),
-    ];
-    for (cap, answer) in tables
-        .iter()
-        .flat_map(|(t, a)| t.iter().map(move |c| (c, *a)))
-    {
+    // ★ 写那一面的每条命令是 typed 的（码表从错误枚举来、字段从类型来，不另写镜子；同读族那一半）。
+    for name in &write_face {
         let spec = super::REGISTRY
             .iter()
-            .find(|s| s.name == cap.name)
-            .unwrap_or_else(|| panic!("`{}` 不在 REGISTRY 上 —— 上面那条应该先红", cap.name));
-        let mut want_codes: Vec<&str> = cap.codes.to_vec();
-        want_codes.sort_unstable();
-        let mut got_codes: Vec<&str> = spec.codes.to_vec();
-        got_codes.sort_unstable();
-        assert_eq!(
-            got_codes, want_codes,
-            "`{}` 登记的 code 与写面声明的对不上",
-            cap.name
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("`{name}` 不在 REGISTRY 上 —— 上面那条应该先红"));
+        assert!(
+            matches!(spec.run, super::spec::Run::Typed(_)),
+            "`{name}` 不是 typed 的那一档 —— 写的这一族入参 · 回包 · 码都从类型来"
         );
-        let mut want_fields: Vec<&str> =
-            cap.args.iter().chain(cap.fields.iter()).copied().collect();
-        want_fields.sort_unstable();
-        want_fields.dedup();
-        let mut got_fields: Vec<&str> = spec.field_names().collect();
-        got_fields.sort_unstable();
-        got_fields.dedup();
-        assert_eq!(
-            got_fields, want_fields,
-            "`{}` 的 `fields` 与写面声明的 `args` ∪ `fields` 对不上 —— \
-             那份镜子是拿去钉 `IPC-PROTOCOL.md §10` 的，它自己先漂了钉出来的文档就是假的",
-            cap.name
-        );
-        // 真的调一次：分派必须够得到它（`unknown_command` / 不认的名字都算断线）。
-        let out = answer(cap.name, &serde_json::json!({}));
+        // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上。
         if let Err(crate::control::files_write::WriteFail {
             code, said: msg, ..
-        }) = out
+        }) = crate::control::files_write::tests::ask(name, &serde_json::json!({}))
         {
             assert!(
-                cap.codes.contains(&code),
-                "`{}` 回了一个它没登记的 code `{code}`（{msg}）",
-                cap.name
+                spec.codes.contains(&code),
+                "`{name}` 回了一个它没登记的 code `{code}`（{msg}）"
             );
         }
     }
@@ -1348,7 +1311,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 75;
+    const UNSHAPED_CEILING: usize = 60;
     const UNSHAPED: &[&str] = &[
         "accounts-add",
         "accounts-init",
@@ -1385,21 +1348,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "ext-note-set",
         "ext-uninstall-apply",
         "ext-uninstall-preview",
-        "files-chmod",
-        "files-commit-text",
-        "files-commit-upload",
-        "files-copy",
-        "files-create",
-        "files-delete",
-        "files-delete-session",
-        "files-extract",
-        "files-link",
-        "files-mkdir",
-        "files-peek",
-        "files-put",
-        "files-rename",
-        "files-stage-chunk",
-        "files-write-text",
         "first-run",
         "forward-start",
         "forward-stop",

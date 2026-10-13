@@ -793,6 +793,402 @@ pub struct HomeReq {}
 #[serde(deny_unknown_fields)]
 pub struct IndexStatusReq {}
 
+// ── 写的那几条（写面 · 上传提交 · 解压）─────────────
+
+/// 一份写面的线上类型：入参恒拒未知键（同读的那几条）。
+macro_rules! wire {
+    ($(#[$m:meta])* pub struct $n:ident { $($body:tt)* }) => {
+        $(#[$m])*
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+        #[cfg_attr(
+            any(test, feature = "ts"),
+            ts(export, export_to = "../../../frontend/ui/generated/")
+        )]
+        #[serde(deny_unknown_fields)]
+        pub struct $n { $($body)* }
+    };
+}
+
+/// 可缺的一格：不给 ⇒ `None`；给了就必须是那一型（`null` 也拒 —— 写面这几格从来不收 `null`）。
+fn present<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
+    T::deserialize(d).map(Some)
+}
+
+/// 必给、可为 `null` 的一格（`files-put` 的 `expect`：`null` ＝「我读的时候它不在」）。缺席 ⇒ 拒。
+fn nullable<'de, D: Deserializer<'de>, T: Deserialize<'de>>(d: D) -> Result<Option<T>, D::Error> {
+    Option::<T>::deserialize(d)
+}
+
+/// 64 位小写十六进制的内容摘要（读的那一趟交出去的那个，调用方当不透明令牌原样交回）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, type = "string", export_to = "../../../frontend/ui/generated/")
+)]
+pub struct Sha256Hex(pub String);
+
+/// 摘要的长度（十六进制位数）。
+pub const SHA256_HEX_LEN: usize = 64;
+
+impl<'de> Deserialize<'de> for Sha256Hex {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(d)?;
+        if s.len() != SHA256_HEX_LEN
+            || !s
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        {
+            return Err(D::Error::custom(format!(
+                "`sha256` must be {SHA256_HEX_LEN} lowercase hex digits"
+            )));
+        }
+        Ok(Sha256Hex(s))
+    }
+}
+
+wire! {
+    /// 摘要形的 CAS：恰好 `{"sha256": "<64 位小写十六进制>"}`（多一个键、少一个键都拒）。
+    pub struct Sha256Expect {
+        pub sha256: Sha256Hex,
+    }
+}
+
+/// `files-delete` 的 `expect`：`{"empty_dir": true}` ⇒ 只删一个空目录；字符串 / `{"b16"}` ⇒ 盘上逐字节等于它才删。
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        type = "{ empty_dir: true } | string | { b16: string }",
+        export_to = "../../../frontend/ui/generated/"
+    )
+)]
+pub enum DeleteExpect {
+    EmptyDir,
+    Bytes(WirePath),
+}
+
+impl Serialize for DeleteExpect {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            DeleteExpect::EmptyDir => {
+                let mut m = s.serialize_map(Some(1))?;
+                m.serialize_entry("empty_dir", &true)?;
+                m.end()
+            }
+            DeleteExpect::Bytes(b) => b.serialize(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for DeleteExpect {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V;
+        impl<'de> Visitor<'de> for V {
+            type Value = DeleteExpect;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                write!(
+                    f,
+                    "{{\"empty_dir\": true}}, a string or {{\"b16\": \"<hex>\"}}"
+                )
+            }
+            fn visit_str<E: DeError>(self, s: &str) -> Result<DeleteExpect, E> {
+                Ok(DeleteExpect::Bytes(WirePath(s.as_bytes().to_vec())))
+            }
+            fn visit_map<A: MapAccess<'de>>(self, mut m: A) -> Result<DeleteExpect, A::Error> {
+                let got = match m.next_key::<String>()?.as_deref() {
+                    Some("empty_dir") if m.next_value::<bool>()? => DeleteExpect::EmptyDir,
+                    Some(HEX_KEY) => {
+                        let h: String = m.next_value()?;
+                        DeleteExpect::Bytes(WirePath(
+                            from_hex(&h)
+                                .ok_or_else(|| A::Error::custom("`b16` is not lowercase hex"))?,
+                        ))
+                    }
+                    _ => return Err(A::Error::custom(
+                        "`expect` must be {\"empty_dir\": true}, a string or {\"b16\": \"<hex>\"}",
+                    )),
+                };
+                if let Some(k) = m.next_key::<String>()? {
+                    return Err(A::Error::custom(format!("unexpected key `{k}`")));
+                }
+                Ok(got)
+            }
+        }
+        d.deserialize_any(V)
+    }
+}
+
+wire! {
+    /// `files-create`：在目标根底下新建一份此前不存在的文件（不给 `content` ⇒ 空文件）。
+    pub struct FilesCreateReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub content: Option<WirePath>,
+        /// `true` ⇒ `rel` 只许是一段名字（界面就地新建 / 改名敲的那一格）。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub single: Option<bool>,
+    }
+}
+
+wire! {
+    /// 落点 ＋ 字节数（新建 · 上传提交）。
+    pub struct FilesPathBytesReply {
+        pub path: WirePath,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub bytes: u64,
+    }
+}
+
+wire! {
+    /// `files-mkdir`：新建一个目录（只建最后那一段）。
+    pub struct FilesMkdirReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub single: Option<bool>,
+    }
+}
+
+wire! {
+    /// `files-rename`：改名 / 同根内移动（两段各过一遍路径解析）。
+    pub struct FilesRenameReq {
+        pub root: WirePath,
+        pub from: WirePath,
+        pub to: WirePath,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub single: Option<bool>,
+    }
+}
+
+wire! {
+    /// `files-delete`：删一个文件或一个空目录；`recursive` 显式才删整棵树（可带 `limit` 分趟）；`expect` 给了 ⇒ CAS。
+    pub struct FilesDeleteReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub recursive: Option<bool>,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub expect: Option<DeleteExpect>,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+        pub limit: Option<u64>,
+    }
+}
+
+wire! {
+    /// `files-delete` 的回包：这一趟删了几条、还剩几条（不是 0 ⇒ 再发一趟同样的请求接着删）。
+    pub struct FilesDeleteReply {
+        pub path: WirePath,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub removed: u64,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub remaining: u64,
+    }
+}
+
+wire! {
+    /// `files-chmod`：改 unix 权限位（十进制、低 12 位）。
+    pub struct FilesChmodReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        pub mode: u32,
+    }
+}
+
+wire! {
+    /// `files-chmod` 的回包：`before` ＝ 改之前的低 12 位（读不到就缺席，不编一个数）。
+    pub struct FilesChmodReply {
+        pub path: WirePath,
+        pub mode: u32,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub before: Option<u32>,
+    }
+}
+
+wire! {
+    /// `files-copy`：同根内复制；`overwrite` · `recursive` 显式。
+    pub struct FilesCopyReq {
+        pub root: WirePath,
+        pub from: WirePath,
+        pub to: WirePath,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub overwrite: Option<bool>,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub recursive: Option<bool>,
+    }
+}
+
+wire! {
+    /// 落了一棵（复制 · 解压）：落点 ＋ 几份文件 · 几个目录 · 几条链接 · 字节之和。
+    pub struct FilesTreeReply {
+        pub path: WirePath,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub bytes: u64,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub files: u64,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub dirs: u64,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub links: u64,
+    }
+}
+
+wire! {
+    /// `files-extract`：解压到一个新目录（`fresh` ⇒ 撞名往后编号）。
+    pub struct FilesExtractReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub fresh: Option<bool>,
+    }
+}
+
+wire! {
+    /// `files-link`：建一条符号链接（`target` 原样写进去）。
+    pub struct FilesLinkReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        pub target: WirePath,
+    }
+}
+
+wire! {
+    /// `files-write-text`：覆盖写一份已经在的普通文件（摘要形 CAS 必给）。
+    pub struct FilesWriteTextReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        pub content: WirePath,
+        pub expect: Sha256Expect,
+    }
+}
+
+wire! {
+    /// 覆盖写成了（`files-write-text` · `files-commit-text`）：新摘要是下一次存的 `expect`。
+    pub struct FilesWrittenReply {
+        pub path: WirePath,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub bytes: u64,
+        pub sha256: Sha256Hex,
+    }
+}
+
+wire! {
+    /// `files-peek`：读改写的读那一半。
+    pub struct FilesPeekReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+    }
+}
+
+wire! {
+    /// `files-peek` 的回包：`exists: false` ⇒ 确定不在（`text` 为 `null`）。
+    pub struct FilesPeekReply {
+        pub path: WirePath,
+        pub exists: bool,
+        pub text: Option<String>,
+    }
+}
+
+wire! {
+    /// `files-put`：整份替换一份文本文件（`expect` 必给：`null` ＝ 读的时候它不在）。
+    pub struct FilesPutReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        pub content: WirePath,
+        #[serde(deserialize_with = "nullable")]
+        pub expect: Option<WirePath>,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub backup: Option<bool>,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+        pub parents: Option<bool>,
+    }
+}
+
+wire! {
+    /// `files-put` 的回包。
+    pub struct FilesPutReply {
+        pub path: WirePath,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub bytes: u64,
+        pub changed: bool,
+        pub created: bool,
+        pub backup: Option<WirePath>,
+    }
+}
+
+wire! {
+    /// `files-delete-session`：删一份历史会话 —— 只收 sid。
+    pub struct FilesDeleteSessionReq {
+        pub sid: String,
+    }
+}
+
+wire! {
+    /// `files-stage-chunk`：存盘的一块进暂存区（至少 1 字节）。
+    pub struct FilesStageChunkReq {
+        pub key: String,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub seq: u64,
+        pub content: WirePath,
+    }
+}
+
+wire! {
+    /// `files-stage-chunk` 的回包：这一块写进去几个字节。
+    pub struct FilesStageChunkReply {
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub bytes: u64,
+    }
+}
+
+wire! {
+    /// `files-commit-text`：按块读回、拼起来、覆盖写（语义同 `files-write-text`）。
+    pub struct FilesCommitTextReq {
+        pub root: WirePath,
+        pub rel: String,
+        pub key: String,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub chunks: u64,
+        #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
+        pub bytes: u64,
+        pub expect: Sha256Expect,
+    }
+}
+
+wire! {
+    /// `files-commit-upload`：把暂存区里一份传完的上传件挪进目标（`chunks` · `bytes` 给了 ⇒ 先按块拼）。
+    pub struct FilesCommitUploadReq {
+        pub root: WirePath,
+        pub rel: WirePath,
+        pub key: String,
+        pub overwrite: bool,
+        pub expect: Sha256Expect,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+        pub chunks: Option<u64>,
+        #[serde(default, deserialize_with = "present", skip_serializing_if = "Option::is_none")]
+        #[cfg_attr(any(test, feature = "ts"), ts(optional, type = "number"))]
+        pub bytes: Option<u64>,
+    }
+}
+
 // ── 命令名 · 入参 · 回包连成一张表 ───────────────────
 
 /// 一条命令的入参类型就选中了那条命令：名字与回包类型都挂在它上面（后端登记那一行照它取名，文件窗口照它发、照它解）。
@@ -823,6 +1219,21 @@ calls! {
     IndexStatusReq => "files-index-status", IndexStatusReply;
     RebuildReq => "files-index-rebuild", RebuildReply;
     BrowseReq => "files-browse", BrowseReply;
+    FilesCreateReq => "files-create", FilesPathBytesReply;
+    FilesMkdirReq => "files-mkdir", FilesPathReply;
+    FilesRenameReq => "files-rename", FilesPathReply;
+    FilesDeleteReq => "files-delete", FilesDeleteReply;
+    FilesChmodReq => "files-chmod", FilesChmodReply;
+    FilesCopyReq => "files-copy", FilesTreeReply;
+    FilesExtractReq => "files-extract", FilesTreeReply;
+    FilesLinkReq => "files-link", FilesPathReply;
+    FilesWriteTextReq => "files-write-text", FilesWrittenReply;
+    FilesPeekReq => "files-peek", FilesPeekReply;
+    FilesPutReq => "files-put", FilesPutReply;
+    FilesDeleteSessionReq => "files-delete-session", FilesPathReply;
+    FilesStageChunkReq => "files-stage-chunk", FilesStageChunkReply;
+    FilesCommitTextReq => "files-commit-text", FilesWrittenReply;
+    FilesCommitUploadReq => "files-commit-upload", FilesPathBytesReply;
 }
 
 #[cfg(test)]

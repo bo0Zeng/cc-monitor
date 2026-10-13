@@ -49,3 +49,78 @@ fn a_chunk_always_goes_out_as_b16_even_when_it_is_utf8() {
     assert_eq!(back.0, b"hi");
     assert!(serde_json::from_str::<HexBytes>("\"hi\"").is_err());
 }
+
+// ── 写的那几条 ─────────────────────────────────────
+
+#[test]
+fn a_delete_expect_is_an_empty_dir_mark_or_bytes_and_nothing_else() {
+    let e: DeleteExpect = serde_json::from_str(r#"{"empty_dir":true}"#).unwrap();
+    assert_eq!(e, DeleteExpect::EmptyDir);
+    assert_eq!(serde_json::to_string(&e).unwrap(), r#"{"empty_dir":true}"#);
+    let b: DeleteExpect = serde_json::from_str(r#"{"b16":"ff00"}"#).unwrap();
+    assert_eq!(b, DeleteExpect::Bytes(WirePath(vec![0xff, 0])));
+    assert_eq!(serde_json::to_string(&b).unwrap(), r#"{"b16":"ff00"}"#);
+    let s: DeleteExpect = serde_json::from_str(r#""abc""#).unwrap();
+    assert_eq!(s, DeleteExpect::Bytes(WirePath::from("abc")));
+    for bad in [
+        "null",
+        "1",
+        r#"{"empty_dir":false}"#,
+        r#"{"empty_dir":true,"b16":"00"}"#,
+        r#"{"b16":"00","x":1}"#,
+        "{}",
+    ] {
+        assert!(
+            serde_json::from_str::<DeleteExpect>(bad).is_err(),
+            "`{bad}` 不该当成删的 `expect`"
+        );
+    }
+}
+
+#[test]
+fn optional_write_flags_refuse_null_but_may_be_left_out() {
+    let base = r#""root":"/r","rel":"a""#;
+    let ok: FilesDeleteReq = serde_json::from_str(&format!("{{{base}}}")).unwrap();
+    assert_eq!((ok.recursive, ok.expect, ok.limit), (None, None, None));
+    for k in ["recursive", "expect", "limit"] {
+        let s = format!("{{{base},\"{k}\":null}}");
+        assert!(
+            serde_json::from_str::<FilesDeleteReq>(&s).is_err(),
+            "`{k}: null` 该拒（今天就拒）"
+        );
+    }
+    // `single` 历来收 `null`（当没给）。
+    let m: FilesMkdirReq = serde_json::from_str(&format!("{{{base},\"single\":null}}")).unwrap();
+    assert_eq!(m.single, None);
+}
+
+#[test]
+fn a_put_must_say_what_it_read_and_null_means_absent() {
+    let base = r#""root":"/r","rel":"a","content":"x""#;
+    assert!(serde_json::from_str::<FilesPutReq>(&format!("{{{base}}}")).is_err());
+    let p: FilesPutReq = serde_json::from_str(&format!("{{{base},\"expect\":null}}")).unwrap();
+    assert_eq!(p.expect, None);
+    assert_eq!(
+        serde_json::to_string(&p).unwrap(),
+        r#"{"root":"/r","rel":"a","content":"x","expect":null}"#
+    );
+}
+
+#[test]
+fn a_sha256_expect_is_exactly_one_lowercase_digest() {
+    let d = "a".repeat(SHA256_HEX_LEN);
+    let ok: Sha256Expect = serde_json::from_str(&format!(r#"{{"sha256":"{d}"}}"#)).unwrap();
+    assert_eq!(ok.sha256.0, d);
+    for bad in [
+        format!(r#"{{"sha256":"{}"}}"#, "A".repeat(SHA256_HEX_LEN)),
+        format!(r#"{{"sha256":"{}"}}"#, "a".repeat(SHA256_HEX_LEN - 1)),
+        format!(r#"{{"sha256":"{d}","x":1}}"#),
+        "{}".to_string(),
+        format!(r#""{d}""#),
+    ] {
+        assert!(
+            serde_json::from_str::<Sha256Expect>(&bad).is_err(),
+            "`{bad}` 不是摘要形"
+        );
+    }
+}
