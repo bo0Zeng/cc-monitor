@@ -202,8 +202,8 @@ pub(crate) struct HistoryRow {
     pub(crate) span_text: Words,
     /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) origin: Option<String>,
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+    pub(crate) origin: Option<cmd_wire::Machine>,
 }
 
 /// 按项目看时的一组。
@@ -231,8 +231,8 @@ pub(crate) struct HistoryGroup {
     pub(crate) failed: Option<String>,
     /// 问的是哪一台（与入参 `origin` 同一个机器名；这台 ⇒ 缺）。
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) origin: Option<String>,
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+    pub(crate) origin: Option<cmd_wire::Machine>,
 }
 
 /// 注解这一维：读到了 ⇒ 那张表；读不到 ⇒ 为什么（给 `notice`）。
@@ -468,8 +468,8 @@ pub(crate) struct HistoryListReq {
     pub(crate) raw: Option<bool>,
     /// 那台的名字（`listing` 是它的；行与组都标上它）。缺 ⇒ 这台。
     #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) origin: Option<String>,
+    #[cfg_attr(test, ts(optional, as = "Option<String>"))]
+    pub(crate) origin: Option<cmd_wire::Machine>,
     /// 那一台（`origin`）自己答的 `raw` 清单原样（界面经长连接问那台常驻拿回来）；本进程记着、换掉旧的。
     /// 缺 ⇒ 用记着的那份，没记着 ⇒ `no_listing`；不带 `origin` ⇒ `bad_args`。
     #[serde(default)]
@@ -762,10 +762,11 @@ pub(crate) fn answer_from(
     let mut groups = groups_of(&rows, listing);
     // 问的是哪一台：每行每组都带上（界面把几台并成一列时认得出是哪台的）。
     if let Some(o) = origin {
-        rows.iter_mut().for_each(|r| r.origin = Some(o.to_string()));
+        rows.iter_mut()
+            .for_each(|r| r.origin = Some(cmd_wire::Machine(o.to_string())));
         groups
             .iter_mut()
-            .for_each(|g| g.origin = Some(o.to_string()));
+            .for_each(|g| g.origin = Some(cmd_wire::Machine(o.to_string())));
     }
     HistoryList {
         rows,
@@ -884,7 +885,7 @@ pub(crate) fn specimen() -> HistoryList {
             at_text: w("t"),
             section_text: w("s"),
             span_text: w("p"),
-            origin: Some(s("m")),
+            origin: Some(cmd_wire::Machine(s("m"))),
         }],
         groups: vec![HistoryGroup {
             key: s("agent:/w"),
@@ -898,7 +899,7 @@ pub(crate) fn specimen() -> HistoryList {
             last_activity: 2,
             order: 2,
             failed: Some(s("x")),
-            origin: Some(s("m")),
+            origin: Some(cmd_wire::Machine(s("m"))),
         }],
         total: 1,
         truncated: false,
@@ -941,7 +942,7 @@ pub(crate) async fn answer(
     let ask = parse_ask(&req)?;
     let origin = match req.origin {
         None => None,
-        Some(s) if !s.is_empty() => Some(s),
+        Some(cmd_wire::Machine(s)) if !s.is_empty() => Some(s),
         Some(_) => return Err(bad("`origin` must be a non-empty string")),
     };
     let listing = match (&origin, req.listing) {
