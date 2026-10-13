@@ -1319,7 +1319,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         sa,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"codex\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n"
     );
 
     let ss = to_line(&Frame::SessionStatus {
@@ -1332,7 +1332,7 @@ fn dg3_codex_fields_serialize_when_present() {
     .unwrap();
     assert_eq!(
         ss,
-        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n"
+        "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n"
     );
 }
 
@@ -1380,7 +1380,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n",
+        sa, "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n",
         "agent_kind 每条都带"
     );
 
@@ -1393,7 +1393,7 @@ fn dg3_codex_fields_skipped_when_absent_claude_byte_equivalent() {
     })
     .unwrap();
     assert_eq!(
-        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n",
+        ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\"}\n",
         "缺的格不上线"
     );
 }
@@ -1527,18 +1527,18 @@ fn session_added_container_is_an_object_with_host_and_terminal() {
         host: TerminalHost::Tmux,
         terminal: t.map(str::to_string),
     };
-    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n");
+    assert_eq!(frame(None), "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":0}\n");
     assert_eq!(
         frame(Some(hosted(Some("tmux-3-7")))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\",\"terminal\":\"tmux-3-7\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(hosted(None))),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"tmux\"},\"pid\":0}\n"
     );
     assert_eq!(
         frame(Some(SessionContainer::None)),
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"container\":{\"host\":\"none\"},\"pid\":0}\n"
     );
 }
 
@@ -1603,7 +1603,7 @@ fn loc1b_session_added_carries_the_pid() {
     .unwrap();
     assert_eq!(
         line,
-        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"说不清\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
+        "{\"kind\":\"session_added\",\"sid\":\"s\",\"agent_kind\":\"claude\",\"activity_text\":\"状态不明\",\"activity_tone\":\"plain\",\"activity_order\":3,\"label\":\"没有说过话的会话\",\"pid\":4242}\n"
     );
 }
 
