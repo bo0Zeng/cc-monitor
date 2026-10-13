@@ -408,14 +408,15 @@ gate_write_receipt() {
 # 同一个退出码装着几件事（cargo 的 101：测试红 · 编译错 · 被 OOM 杀 · 环境不满足），只有输出分得开。印三段：
 #   ① 关键行：匹配 `GATE_DIAG_PAT` 的行（`-A1` 带一行下文），封顶 `GATE_DIAG_KEY` 行。模式按形状选：cargo 的 `error…`
 #      （被信号杀也走它）· panic 落点 · `failures:` · `test result: FAILED` · 正在跑的测试二进制（被杀时说明死在哪个包）·
-#      npm 两代前缀 · `::error::` · bash e2e 的失败行 · `cargo fmt --check` 的 `Diff in`。
+#      npm 两代前缀 · `::error::` · bash e2e 的失败行 · `cargo fmt --check` 的 `Diff in` · Gradle 的 `* What went wrong` 与 `Caused by:`
+#      （Gradle 要带 `--stacktrace` 才印 `Caused by:`；只有一句「A failure occurred while executing …」时原因全在它里面）。
 #   ② 原文尾部 `GATE_DIAG_TAIL` 行，恒印：模式表天生会漏，这一段保证任何形状都不会印出零个字。
 #   ③ 输出不到 `GATE_DIAG_WHOLE` 行 ⇒ 全印。
 # 每行加 `  | ` 前缀：被测输出里自己打的 `GATE: OK` / `  ok   ` 混不进本脚本的裁决面。
 GATE_DIAG_KEY="${GATE_DIAG_KEY:-40}"
 GATE_DIAG_TAIL="${GATE_DIAG_TAIL:-30}"
 GATE_DIAG_WHOLE="${GATE_DIAG_WHOLE:-60}"
-GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test result: FAILED|::error::|Diff in )|^[[:space:]]*(FAIL|BROKEN|Running|×|✗)'
+GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test result: FAILED|::error::|Diff in |\* What went wrong|Caused by: )|^[[:space:]]*(FAIL|BROKEN|Running|×|✗)'
 
 # ①段匹配之前先去色：vitest 在非 TTY 下照样上色，行首是 `ESC[41m`，`^[[:space:]]*FAIL` 匹配不上。
 # 只去 CSI（`ESC [ … 字母`），只喂给 grep；②③段仍原样印 `$out`。
@@ -635,6 +636,18 @@ vitest 在非 TTY 下照样上色，ESC 不是 [[:space:]]，\
   # 探针⑩ · 采集面认得带颜色的 cargo 输出（CI 上就是这一形）。
   [ "$(printf '\033[1m\033[92m     Running\033[0m unittests src/lib.rs (/x/deps/a-0a1b)\n' | gate_ran_libs)" = a ] ||
     fails+=("gate 自检⑩（带颜色的 cargo 输出里认不出跑到的包 ⇒ CI 上 cargo 格必红）")
+  # 探针⑪ · Gradle 那一形：原因只在 `--stacktrace` 印出的 `Caused by:` 里，前后都是无关行，
+  # 垫的条数现算，保证②尾部 / ③全印都够不着它（同探针④）。
+  probe="$(run_gate 自检⑪ - bash -c '
+      printf "* What went wrong:\nExecution failed for task :app:packageDebug.\n"
+      printf "Caused by: java.io.IOException: GATE-PROBE-K\n"
+      n=$(( $1 + $2 + 10 )); i=1
+      while [ "$i" -le "$n" ]; do printf "无关行 %s\n" "$i"; i=$((i + 1)); done
+      exit 1' _ "$GATE_DIAG_TAIL" "$GATE_DIAG_WHOLE" 2>&1)"
+  case "$probe" in
+    *GATE-PROBE-K*) ;;
+    *) fails+=("gate 自检⑪（Gradle 的 \`Caused by:\` 不在「关键行」里 —— 打包那几步红时只剩一句 A failure occurred，看不到原因）") ;;
+  esac
 }
 gate_selftest
 
@@ -1332,8 +1345,13 @@ gate_mobile() {
       . ./scripts/env.sh >/dev/null || { printf 'mobile: 找不到 Android 工具链（JDK ＋ SDK）—— 判不了\n'; exit 1; }
     fi
     rm -rf "$out"/*/test-results
-    ./gradlew --no-daemon --console=plain ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
-      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease :app:assembleDebug || exit $?
+    ./gradlew --no-daemon --console=plain --stacktrace ktlintCheck detektDebug :app:lintDebug testDebugUnitTest \
+      :core-claude:test :core-claude:detektMain :core-remote:test :core-remote:detektMain :core-copy:test :core-copy:detektMain :app:assembleRelease :app:assembleDebug || {
+      rc=$?
+      # 打包那几步红而只有一句「A failure occurred …」时，盘满是头一个嫌疑：顺手印一行剩多少
+      df -h . | tail -1 | sed 's/^/mobile: 盘 /'
+      exit "$rc"
+    }
   ) || return $?
   n="$(cat "$out"/*/test-results/*/*.xml 2>/dev/null | grep -oE '<testsuite [^>]*tests="[0-9]+"' | grep -oE 'tests="[0-9]+"' | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null)"
   printf 'mobile: %s passed（Gradle 各模块 JVM 单测合计，读这一趟的 test-results；ktlint · detekt · Android Lint · release 构建也都绿）\n' "${n:-0}"
