@@ -2327,7 +2327,11 @@ fn watch_sessions(
     // 出名单的会话：这条连接手上那份主线外清单停在此刻（之后变了也不上流）⇒ 记下它手上有几条，回来时只补缺的那一截。
     // 没报过 ＝ 全看 ⇒ 名单外的都算刚出去。
     let leaving: Vec<String> = {
-        let known: HashSet<String> = state.offsets.keys().filter_map(|k| state.sid_of(k)).collect();
+        let known: HashSet<String> = state
+            .offsets
+            .keys()
+            .filter_map(|k| state.sid_of(k))
+            .collect();
         match &me.watching {
             None => known.difference(&next).cloned().collect(),
             Some(old) => old.difference(&next).cloned().collect(),
@@ -2347,8 +2351,15 @@ fn watch_sessions(
     };
     me.watching = Some(next);
     for sid in &leaving {
-        for p in state.offsets.keys().filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str())) {
-            let off = state.branches.get(&path_key(p)).map_or(&[][..], |c| c.off());
+        for p in state
+            .offsets
+            .keys()
+            .filter(|k| state.sid_of(k).as_deref() == Some(sid.as_str()))
+        {
+            let off = state
+                .branches
+                .get(&path_key(p))
+                .map_or(&[][..], |c| c.off());
             sink.hold_branch(sub, &p.to_string_lossy(), off);
         }
     }
@@ -4581,7 +4592,13 @@ impl FrameSink {
     fn branch_to(&mut self, id: u64, sid: &str, path: &str, off: &[String]) {
         if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
             let at = match s.branch_held.remove(path) {
-                Some((n, h)) if !s.branch_stale.contains(path) && n <= off.len() && prefix_hash(&off[..n]) == h => n,
+                Some((n, h))
+                    if !s.branch_stale.contains(path)
+                        && n <= off.len()
+                        && prefix_hash(&off[..n]) == h =>
+                {
+                    n
+                }
                 _ => 0,
             };
             s.branch_stale.remove(path);
@@ -4595,15 +4612,9 @@ impl FrameSink {
     fn hold_branch(&mut self, id: u64, path: &str, off: &[String]) {
         if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
             if !s.branch_stale.contains(path) {
-                s.branch_held.insert(path.to_string(), (off.len(), prefix_hash(off)));
+                s.branch_held
+                    .insert(path.to_string(), (off.len(), prefix_hash(off)));
             }
-        }
-    }
-
-    #[cfg(test)]
-    pub(crate) fn mark_branch_stale_for_tests(&mut self, id: u64, path: &str) {
-        if let Some(s) = self.subs.iter_mut().find(|s| s.id == id) {
-            s.branch_stale.insert(path.to_string());
         }
     }
 

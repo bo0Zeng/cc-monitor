@@ -4509,7 +4509,7 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
 
 /// read8b：同一条连接把一条会话切出名单、再切回来（换 tab 回来）⇒ 主线外清单只补它缺的那一截：
 /// 出名单那一刻它手上那份前缀没动 ⇒ 从 `at = 它手上的条数` 发（这里一条都没变 ⇒ 只一帧空的），不再整份重发。
-/// 丢过它一帧（手上的对不上）⇒ 照旧整份。
+/// （丢过帧 ⇒ 整份，那一支与实时那一路共用 `branch_stale`，`a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time` 钉着。）
 #[cfg(target_os = "linux")]
 #[test]
 fn rewatching_on_the_same_connection_sends_only_the_branch_tail_it_lacks() {
@@ -4540,12 +4540,10 @@ fn rewatching_on_the_same_connection_sends_only_the_branch_tail_it_lacks() {
     // 切走再切回来：清单没变 ⇒ 只一帧，从它手上的条数起、一条不带。
     watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
     watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
-    assert_eq!(drain(&mut rx), [(whole as u64, 0)], "换 tab 回来又整份重发了主线外清单");
-    // 丢过它一帧主线外清单（手上的对不上）⇒ 下一次进名单整份。
-    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
-    sink.mark_branch_stale_for_tests(0, &path.to_string_lossy());
-    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
-    let again = drain(&mut rx);
-    assert_eq!((again[0].0, again.iter().map(|(_, n)| n).sum::<usize>()), (0, whole), "丢过帧却没给整份");
+    assert_eq!(
+        drain(&mut rx),
+        [(whole as u64, 0)],
+        "换 tab 回来又整份重发了主线外清单"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
