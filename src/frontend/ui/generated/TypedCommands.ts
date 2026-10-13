@@ -22,6 +22,8 @@ import type { Rendered } from "./Rendered";
 import type { RestartReq } from "./RestartReq";
 import type { Restarted } from "./Restarted";
 import type { Sent } from "./Sent";
+import type { SessionCommands } from "./SessionCommands";
+import type { SessionCommandsReq } from "./SessionCommandsReq";
 import type { SessionInterrupts } from "./SessionInterrupts";
 import type { SessionInterruptsReq } from "./SessionInterruptsReq";
 import type { SessionNew } from "./SessionNew";
@@ -48,6 +50,7 @@ export interface TypedCommands {
   "launch": { req: LaunchReq; reply: Launched; code: "bad_args" | "no_tmux" | "no_such_session" | "wrong_owner" | "create_failed" | "typed_unconfirmed" | "child_timed_out" };
   "launch-local": { req: LocalLaunchRequest; reply: Rendered; code: "bad_args" | "refused" | "account_unavailable" };
   "launch-render-cli": { req: CliRenderRequest; reply: Rendered; code: "bad_args" | "refused" | "account_unavailable" };
+  "session-commands": { req: SessionCommandsReq; reply: SessionCommands; code: "bad_args" | "no_such_session" };
   "session-interrupts": { req: SessionInterruptsReq; reply: SessionInterrupts; code: "bad_args" };
   "session-new": { req: NewRequest; reply: SessionNew; code: "bad_args" | "unknown_agent" | "bad_command" | "no_dir" | "account_unavailable" | "place_unavailable" | "bad_tmux_name" | "tmux_taken" | "unobservable" | "fork_failed" | "refused" | "start_failed" | "child_timed_out" | "launch_pending" | "no_such_config" };
   "session-new-dir": { req: SessionNewDirReq; reply: DirChecked; code: "bad_args" };

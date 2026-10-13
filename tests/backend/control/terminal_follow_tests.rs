@@ -757,7 +757,13 @@ fn a_one_shot_watch_wakes_on_output_and_gives_up_on_silence() {
     w.forget();
     let t0 = Instant::now();
     assert!(!w.changed(), "没有输出却报了变化");
-    assert!(t0.elapsed() < REDRAW_WAIT + Duration::from_secs(2), "没输出时没按期限回");
+    assert!(
+        t0.elapsed() < REDRAW_WAIT + Duration::from_secs(2),
+        "没输出时没按期限回"
+    );
     drop(w);
-    assert!(eventually(|| iso.control_clients() == 0), "放手之后控制模式客户端还连着");
+    assert!(
+        eventually(|| iso.control_clients() == 0),
+        "放手之后控制模式客户端还连着"
+    );
 }

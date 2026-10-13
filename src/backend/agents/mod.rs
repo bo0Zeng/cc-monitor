@@ -2530,6 +2530,43 @@ pub(crate) struct AssetFace {
     pub(crate) servers_key: &'static str,
     /// 一个配置根底下装着的插件：插件根 ＋ 它清单里的名字（用户级 skill 目录里放进来的 · 插件缓存里每个版本一个）。
     pub(crate) plugins: fn(config_root: &Path) -> Vec<(PathBuf, String)>,
+    /// 一条会话能用的命令与 skill：那条会话的项目目录（说不出 ⇒ `None`）＋ 它用的那个号的配置根，现扫。
+    pub(crate) session_scan: fn(project: Option<&Path>, config_root: &Path) -> SessionAssets,
+    /// 这一家内置的斜杠命令（不住文件里的那几条）。
+    pub(crate) builtin_commands: &'static [BuiltinCommand],
+}
+
+/// 一条内置的斜杠命令（[`AssetFace::builtin_commands`]）。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BuiltinCommand {
+    /// 命令名（不带 `/`）。
+    pub(crate) name: &'static str,
+    /// 写给人看的简介（经文案表取，键在适配层写成字面量）。
+    pub(crate) text: fn() -> String,
+    /// 要跟参数（填进输入框后停住等补）。
+    pub(crate) needs_args: bool,
+    /// 发之前先确认（会丢掉东西的那几条）。
+    pub(crate) confirm: bool,
+}
+
+/// 一条会话能用的命令与 skill（[`AssetFace::session_scan`] 的原始事实，字由通用层写）。
+#[derive(Debug, Clone, Default, PartialEq)]
+pub(crate) struct SessionAssets {
+    /// 本项目的在前、号的在后，各按名字排。
+    pub(crate) commands: Vec<CommandSeen>,
+    pub(crate) skills: Vec<SkillSeen>,
+    /// 读不出来的那几份（一句一份）。
+    pub(crate) problems: Vec<String>,
+}
+
+/// 看到的一条住在文件里的斜杠命令。
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct CommandSeen {
+    pub(crate) name: String,
+    /// 住在本项目里（否则住在号的配置根里）。
+    pub(crate) project: bool,
+    pub(crate) description: Option<String>,
+    pub(crate) needs_args: bool,
 }
 
 /// 看到的一个 skill：`project` = `None` 是用户级，`Some(项目目录)` 是那个项目里的。

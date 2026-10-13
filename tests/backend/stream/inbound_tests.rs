@@ -622,6 +622,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
         "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
         "session-permission", // 读 pidfile ＋ 起 tmux（抓屏 · 送键 · 等重画）
+        "session-commands",   // 读记录开头 ＋ 扫命令 · skill 目录
         // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
         // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
@@ -842,6 +843,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
         "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
         "session-permission", // 读 pidfile ＋ 起 tmux（抓屏 · 送键 · 等重画）
+        "session-commands",   // 读记录开头 ＋ 扫命令 · skill 目录
         "ssh-config-aliases", // 读一份文件
         "ssh-config-import",  // 逐个起 `ssh -G`
         "ssh-config-resolve", // 起一次 `ssh -G`
@@ -1956,6 +1958,11 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "sid": "s-1", "mode": "plan", "key": "shift-tab" }),
         ),
         ("session-permission", serde_json::json!({ "sid": "s-1" })),
+        (
+            "session-commands",
+            serde_json::json!({ "sid": "s-1", "cwd": "/w" }),
+        ),
+        ("session-commands", serde_json::json!({})),
         ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
         ("kill", serde_json::json!({ "name": 1 })),
         (

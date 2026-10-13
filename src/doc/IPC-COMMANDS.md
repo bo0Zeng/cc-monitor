@@ -3822,6 +3822,76 @@ client?: string, };
 
 码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
 
+#### `session-commands`
+
+一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-commands`
+
+入参 `SessionCommandsReq` · 回包 `SessionCommands`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CommandScope = "builtin" | "project" | "user";
+type SessionCommand = { 
+/**
+ * 命令名（不带 `/`；界面填进输入框的是 `/name `）。
+ */
+name: string, 
+/**
+ * 简介；文件里没写 ⇒ `null`。
+ */
+text: string | null, 
+/**
+ * 住哪。
+ */
+scope: CommandScope, 
+/**
+ * 同一格写给人看的字。
+ */
+scopeText: string, 
+/**
+ * 要跟参数（填进去停住等补）。
+ */
+needsArgs: boolean, 
+/**
+ * 发之前先确认。
+ */
+confirm: boolean, };
+type SessionCommands = { 
+/**
+ * 内置的在前，再本项目、用户级（各按名字排）。
+ */
+commands: Array<SessionCommand>, 
+/**
+ * 本项目的在前，再用户级。
+ */
+skills: Array<SessionSkill>, 
+/**
+ * 读不出来的那几份（一句一份；不整条失败）。
+ */
+problems: Array<string>, };
+type SessionCommandsReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, };
+type SessionSkill = { 
+/**
+ * 名字。
+ */
+name: string, 
+/**
+ * 简介；没写 ⇒ `null`。
+ */
+text: string | null, 
+/**
+ * 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
+ */
+say: string, };
+```
+
+码：`bad_args` · `no_such_session`
+
 #### `session-permission`
 
 会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）。
@@ -5460,6 +5530,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删本机的一份轮换策略 |
 | `--rotation-strategy-try` | ＝ 帧命令 `rotation-strategy-try`：按此刻的事实试跑一份策略（不写盘不换号） |
 | `--rotation-switch` | ＝ 帧命令 `rotation-switch`：现在就换 |
+| `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |

@@ -231,6 +231,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "session-say"
                 // 切权限档：读 pidfile ＋ 起 tmux 几发 ＋ 等重画。
                 | "session-permission"
+                // 一条会话能用的命令：读记录开头 ＋ 扫几个目录（同步文件 I/O）。
+                | "session-commands"
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
@@ -703,6 +705,7 @@ fn every_registered_command_declares_its_run_kind() {
         // 往会话说一句：阻塞（读 pidfile ＋ 起 tmux）。
         "session-say",
         "session-permission",
+        "session-commands",
         // 传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

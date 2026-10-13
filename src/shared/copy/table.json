@@ -1778,6 +1778,60 @@
       "zh": "此会话不支持中途切换权限档",
       "args": []
     },
+    "beSessionCommands.builtin.clear": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "清空会话 · 原对话留在会话列表",
+      "args": []
+    },
+    "beSessionCommands.builtin.compact": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "压缩上下文",
+      "args": []
+    },
+    "beSessionCommands.builtin.init": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "生成项目说明文件",
+      "args": []
+    },
+    "beSessionCommands.builtin.model": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "换模型",
+      "args": []
+    },
+    "beSessionCommands.scope.builtin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "内置",
+      "args": []
+    },
+    "beSessionCommands.scope.project": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本项目",
+      "args": []
+    },
+    "beSessionCommands.scope.user": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用户级",
+      "args": []
+    },
+    "beSessionCommands.skill.say": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "用 {name} 这个 Skill",
+      "args": ["name"]
+    },
+    "beSessionCommands.session.noRecord": {
+      "kind": "报错",
+      "role": "片段",
+      "zh": "找不到这条会话的记录",
+      "args": ["e", "r", "r", "o", "r"]
+    },
     "beResident.claim.pathTooLong": {
       "kind": "error",
       "role": "报错",

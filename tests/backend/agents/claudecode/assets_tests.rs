@@ -226,3 +226,81 @@ fn plugins_come_from_skills_and_the_plugin_cache_named_by_their_manifest() {
     assert!(got.iter().any(|(d, n)| d == &cached && n == "beta-plugin"));
     assert!(!got.iter().any(|(d, _)| d.ends_with("plain-skill")));
 }
+
+/// 沙箱里造一个文件（连同上层目录）。
+fn put(root: &std::path::Path, rel: &str, body: &str) {
+    let p = root.join(rel);
+    std::fs::create_dir_all(p.parent().unwrap()).unwrap();
+    std::fs::write(p, body).unwrap();
+}
+
+/// ★ 一条会话能用的命令：本项目 `.claude/commands` ＋ 号的配置目录 `commands`（各下一层子目录也算），名字 ＝ 文件名去 `.md`；
+/// 简介先取 front matter 的 `description`，没有 ⇒ 正文第一行（去掉标题井号）；要参数 ＝ front matter 有 `argument-hint`
+/// 或正文有 `$ARGUMENTS` / `$1`。Skill 同扫两处。不是 `.md` 的不算。
+#[test]
+fn a_session_sees_its_project_and_account_commands_and_skills() {
+    let d = std::env::temp_dir().join(format!("ccm-session-assets-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    let proj = d.join("proj");
+    let cfg = d.join("acct");
+    put(
+        &proj,
+        ".claude/commands/ship.md",
+        "---\ndescription: 发版前核一遍\nargument-hint: <版本>\n---\n照做\n",
+    );
+    put(
+        &proj,
+        ".claude/commands/ops/tidy.md",
+        "# 收拾工作树\n\n删掉 $1 之外的\n",
+    );
+    put(&proj, ".claude/commands/notes.txt", "不是命令");
+    put(&cfg, "commands/standup.md", "\n\n总结昨天的提交\n");
+    put(&cfg, "commands/ask.md", "回答：$ARGUMENTS\n");
+    put(
+        &proj,
+        ".claude/skills/lint/SKILL.md",
+        "---\ndescription: 查风格\n---\n",
+    );
+    put(
+        &cfg,
+        "skills/plot/SKILL.md",
+        "---\ndescription: 画图\n---\n",
+    );
+    let got = super::session_scan(Some(&proj), &cfg);
+    let cmds: Vec<(&str, bool, Option<&str>, bool)> = got
+        .commands
+        .iter()
+        .map(|c| {
+            (
+                c.name.as_str(),
+                c.project,
+                c.description.as_deref(),
+                c.needs_args,
+            )
+        })
+        .collect();
+    assert_eq!(
+        cmds,
+        vec![
+            ("ship", true, Some("发版前核一遍"), true),
+            ("tidy", true, Some("收拾工作树"), true),
+            ("ask", false, Some("回答：$ARGUMENTS"), true),
+            ("standup", false, Some("总结昨天的提交"), false),
+        ]
+    );
+    let skills: Vec<(&str, Option<&str>)> = got
+        .skills
+        .iter()
+        .map(|s| (s.name.as_str(), s.description.as_deref()))
+        .collect();
+    assert_eq!(
+        skills,
+        vec![("lint", Some("查风格")), ("plot", Some("画图"))]
+    );
+    assert!(got.problems.is_empty(), "{:?}", got.problems);
+    // 目录都不在 ⇒ 空，不是问题；没有项目目录 ⇒ 只扫号的那一处。
+    let none = super::session_scan(Some(&d.join("nope")), &d.join("nope2"));
+    assert!(none.commands.is_empty() && none.skills.is_empty() && none.problems.is_empty());
+    assert_eq!(super::session_scan(None, &cfg).commands.len(), 2);
+    let _ = std::fs::remove_dir_all(&d);
+}

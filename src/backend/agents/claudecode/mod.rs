@@ -274,4 +274,6 @@ pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     project_mcp_file: assets::PROJECT_MCP_FILE,
     servers_key: assets::SERVERS_KEY,
     plugins: assets::plugins,
+    session_scan: assets::session_scan,
+    builtin_commands: assets::BUILTIN_COMMANDS,
 };

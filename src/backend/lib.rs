@@ -1341,6 +1341,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--session-new-dir",
     "--session-new-facts",
     // 往会话说一句（`session-say`）派生的 CLI 面（stdin 一段 JSON 当 `args`）。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--session-commands",
     "--session-permission",
     "--session-say",
     "--sessions-start",

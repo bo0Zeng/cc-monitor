@@ -50,6 +50,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalInputCmd>(
         "往一个终端送字或送键（过身份门）",
     ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_commands_face::SessionCommandsCmd>(
+        "一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）",
+    ),
     crate::stream::inbound::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
         "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
     ),

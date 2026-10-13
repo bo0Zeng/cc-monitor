@@ -18,6 +18,7 @@ pub mod rotation_face; // 换号那一族的帧面宿主：账号库读成上游
 pub mod rotation_switch_face; // 「现在就换」：不重启换交给 rotation_face、重启换交给 session-restart（只有这一条够得着 tmux）
 pub(crate) mod search_face; // 全文搜索那两条（typed）：`history-search` · `history-search-merge`；本体在 observe/search_query.rs
 pub mod session_batch_face;
+pub(crate) mod session_commands_face; // 帧面 `session-commands`（typed）：一条会话能用的斜杠命令与 Skill
 pub(crate) mod session_mode_face; // 帧面 `session-permission`（typed）：会话开着时切权限档（按循环键、等重画、读回到了为止）
 pub mod session_new_face; // 帧面 `session-new` · `session-new-facts` · `session-new-dir`：起新会话框要的这台事实 ＋ 起
 pub mod session_restart_face;

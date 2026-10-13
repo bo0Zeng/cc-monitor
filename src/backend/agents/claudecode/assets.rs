@@ -310,3 +310,181 @@ fn servers_into(v: &serde_json::Value, file: &Path, project: Option<&str>, out: 
 #[cfg(test)]
 #[path = "../../../../tests/backend/agents/claudecode/assets_tests.rs"]
 mod tests;
+
+/// 斜杠命令住的目录名（`<项目>/.claude/commands` · `<配置根>/commands`）。
+const COMMANDS_DIR: &str = "commands";
+
+/// 一份命令文件最多读多少（只取 front matter 与第一行）。
+const COMMAND_DOC_MAX_BYTES: u64 = 256 * 1024;
+
+/// Claude Code 内置、手机 ［+］ 面板会用到的几条（`/clear` 丢掉对话 ⇒ 先确认；`/model` 不带名字会弹选择框 ⇒ 要参数）。
+pub(crate) const BUILTIN_COMMANDS: &[crate::agents::BuiltinCommand] = &[
+    crate::agents::BuiltinCommand {
+        name: "clear",
+        text: || copy_text("beSessionCommands.builtin.clear", &[]),
+        needs_args: false,
+        confirm: true,
+    },
+    crate::agents::BuiltinCommand {
+        name: "compact",
+        text: || copy_text("beSessionCommands.builtin.compact", &[]),
+        needs_args: false,
+        confirm: false,
+    },
+    crate::agents::BuiltinCommand {
+        name: "init",
+        text: || copy_text("beSessionCommands.builtin.init", &[]),
+        needs_args: false,
+        confirm: false,
+    },
+    crate::agents::BuiltinCommand {
+        name: "model",
+        text: || copy_text("beSessionCommands.builtin.model", &[]),
+        needs_args: true,
+        confirm: false,
+    },
+];
+
+/// 一条会话能用的命令与 skill：本项目 `.claude/commands` · `.claude/skills` ＋ 号的配置根 `commands` · `skills`。
+pub(crate) fn session_scan(
+    project: Option<&Path>,
+    config_root: &Path,
+) -> crate::agents::SessionAssets {
+    let mut out = crate::agents::SessionAssets::default();
+    let mut seen = Sightings::default();
+    if let Some(p) = project {
+        scan_commands_at(
+            &p.join(PROJECT_CONFIG_DIR).join(COMMANDS_DIR),
+            true,
+            &mut out,
+        );
+        scan_skills_at(
+            &project_skills_root(p),
+            Some(&p.display().to_string()),
+            &mut seen,
+        );
+    }
+    scan_commands_at(&config_root.join(COMMANDS_DIR), false, &mut out);
+    scan_skills_at(&config_root.join(SKILLS_DIR), None, &mut seen);
+    out.skills = seen.skills;
+    out.problems.extend(seen.problems);
+    out
+}
+
+/// 一处命令目录：顶层的 `*.md` ＋ 下一层子目录里的 `*.md`；同一处按名字排。目录不在 ⇒ 什么都不加。
+fn scan_commands_at(root: &Path, project: bool, out: &mut crate::agents::SessionAssets) {
+    let mut found = Vec::new();
+    let mut files = Vec::new();
+    list_md(root, 0, &mut files, out);
+    for path in files {
+        let Some(name) = path
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .map(str::to_string)
+        else {
+            continue;
+        };
+        match Ro::read_regular_capped(&path, COMMAND_DOC_MAX_BYTES) {
+            Ok(bytes) => {
+                let (description, needs_args) = command_doc(&String::from_utf8_lossy(&bytes));
+                found.push(crate::agents::CommandSeen {
+                    name,
+                    project,
+                    description,
+                    needs_args,
+                });
+            }
+            Err(e) => out.problems.push(
+                e.wrap(|why| {
+                    copy_text(
+                        "beClaudeAssets.scan.listFailed",
+                        &[("path", &path.display().to_string()), ("why", why)],
+                    )
+                })
+                .into_note(),
+            ),
+        }
+    }
+    found.sort_by(|a, b| a.name.cmp(&b.name));
+    out.commands.extend(found);
+}
+
+/// 列一个目录里的 `*.md`（`depth` 0 时再下一层子目录）。不在 ⇒ 不说；读不出 ⇒ 说出来。
+fn list_md(
+    dir: &Path,
+    depth: u8,
+    files: &mut Vec<PathBuf>,
+    out: &mut crate::agents::SessionAssets,
+) {
+    let rd = match Ro::read_dir(dir) {
+        Ok(rd) => rd,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => {
+            out.problems.push(
+                crate::common::said::Said::with_raw(
+                    copy_text(
+                        "beClaudeAssets.scan.listFailed",
+                        &[
+                            ("path", &dir.display().to_string()),
+                            ("why", &copy_core::io_reason(e.kind())),
+                        ],
+                    ),
+                    &e,
+                )
+                .into_note(),
+            );
+            return;
+        }
+    };
+    for ent in rd.flatten() {
+        let path = ent.path();
+        let hidden = ent.file_name().to_str().is_none_or(|n| n.starts_with('.'));
+        if hidden {
+            continue;
+        }
+        let meta = Ro::metadata(&path);
+        if meta.as_ref().is_ok_and(|m| m.is_dir()) {
+            if depth == 0 {
+                list_md(&path, 1, files, out);
+            }
+        } else if path.extension().and_then(|x| x.to_str()) == Some("md") {
+            files.push(path);
+        }
+    }
+}
+
+/// 一份命令文件 ⇒（简介, 要不要参数）。简介：front matter 的 `description`，没有 ⇒ 正文第一行非空（去掉标题井号）。
+/// 要参数：front matter 有 `argument-hint`，或正文里有 `$ARGUMENTS` / `$1`。
+pub(crate) fn command_doc(text: &str) -> (Option<String>, bool) {
+    let fence = "-".repeat(3);
+    let mut lines = text.lines().peekable();
+    let mut description = None;
+    let mut hint = false;
+    if lines.peek().map(|l| l.trim()) == Some(fence.as_str()) {
+        lines.next();
+        for line in lines.by_ref() {
+            if line.trim() == fence {
+                break;
+            }
+            if let Some(v) = line.strip_prefix("description:") {
+                let v = v.trim().trim_matches(|c| c == '"' || c == '\'').trim();
+                description = (!v.is_empty()).then(|| v.to_string());
+            }
+            if line.starts_with("argument-hint:") {
+                hint = true;
+            }
+        }
+    }
+    let body: Vec<&str> = lines.collect();
+    let description = description.or_else(|| {
+        body.iter()
+            .map(|l| l.trim().trim_start_matches('#').trim())
+            .find(|l| !l.is_empty())
+            .map(str::to_string)
+    });
+    let args = hint
+        || body
+            .iter()
+            .any(|l| l.contains("$ARGUMENTS") || l.contains("$1"));
+    (description, args)
+}
