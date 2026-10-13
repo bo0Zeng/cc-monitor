@@ -215,7 +215,8 @@ pub(crate) mod skel {
     }
 }
 
-/// 一批事实 ⇒ 主线外清单（冷读那一路；与 [`Chain`] 逐条记、逐条算的结果相同）。
+/// 一批事实 ⇒ 主线外清单（判据的对照：与 [`Chain`] 逐条记、逐条算的结果相同；冷读那一路改成扫描图里的 [`Chain`] 接着记）。
+#[cfg(test)]
 pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
     let mut c = Chain::new();
     for f in facts {

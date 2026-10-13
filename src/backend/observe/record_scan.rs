@@ -246,6 +246,8 @@ impl Scan {
 
 impl ScanMap {
     /// 从字节 0 读 `r`，至多读 `len` 字节；`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
+    /// 判据用（产品那一路经 [`RecordScans::get`]，同一个 [`Scan`]）。
+    #[cfg(test)]
     pub(crate) fn scan_with<R: std::io::BufRead>(
         r: R,
         len: u64,
@@ -375,11 +377,13 @@ struct Inner {
 
 /// 骨架的家从哪来。
 enum Home {
-    /// 不落盘。
+    /// 不落盘（判据）。
+    #[cfg(test)]
     None,
     /// 启动时装的那一份（全进程那一张图）。
     Installed,
     /// 判据给的那一份。
+    #[cfg(test)]
     Given(Skeletons),
 }
 
@@ -416,6 +420,7 @@ fn witness_holds(file: &mut RoFile, end: u64, witness: &[u8]) -> std::io::Result
 }
 
 impl RecordScans {
+    #[cfg(test)]
     pub(crate) const fn new(max_entries: usize, max_bytes: usize) -> Self {
         Self::with_home(max_entries, max_bytes, Home::None)
     }
@@ -436,20 +441,24 @@ impl RecordScans {
     }
 
     /// 判据用：骨架落在给的那个家里。
+    #[cfg(test)]
     pub(crate) fn with_skeletons(mut self, s: Skeletons) -> Self {
         self.home = Home::Given(s);
         self
     }
 
-    /// 到此刻为扫描图读了多少字节。
+    /// 到此刻为扫描图读了多少字节（判据读它）。
+    #[cfg(test)]
     pub(crate) fn bytes_read(&self) -> u64 {
         self.read.load(Ordering::Relaxed)
     }
 
     fn skeletons(&self) -> Option<&Skeletons> {
         match &self.home {
+            #[cfg(test)]
             Home::None => None,
             Home::Installed => super::skeleton::installed(),
+            #[cfg(test)]
             Home::Given(s) => Some(s),
         }
     }
@@ -607,6 +616,7 @@ impl RecordScans {
     }
 
     /// 等旁线程上的骨架都落完（判据「重启后」那一步之前用；进程里别处不等它）。
+    #[cfg(test)]
     pub(crate) fn flush(&self) {
         let pending = std::mem::take(&mut *self.writes.lock().unwrap_or_else(|e| e.into_inner()));
         for (p, h) in pending {
