@@ -6,6 +6,7 @@ pub mod feature_face; // 功能侧只读查询的帧面宿主（tasks-list …�
 pub mod fork_face;
 pub(crate) mod history_face; // 读一份会话记录的那几条（typed）：history-read · -page · -lines · -run · -tail · -branch · -record · sessions-needs
 pub mod launch_face; // 帧面 `launch-local` / `launch-render-cli` 的宿主壳：交起会话挑号要的事实（账号库 · 上次的号） // 帧面 `session-fork` 的宿主壳：找家目录、交 `control/fork_write`（本体与 CLI `--fork-session` 同一份）
+pub mod login_face; // 在 app 里登录一个号（`login-*`）· 会话外的需手动清单（`manual-list`）
 pub mod plan_face; // 帧面 `plan-list` · `plan-read` · `plan-cell-view`：计划读面要的这台事实（pb 装在哪 · 会话在哪些目录 · id 是哪个会话）
 pub mod plan_return_face; // 帧面 `plan-return`：计划退回（拼那一行 · 判能不能送 · 走 `terminal-input` 的本体 · 记已退回）
 pub mod plan_review_face; // 帧面 `plan-ack` · `plan-unack`：计划认可（记在后端自己的 `plan-review.json`）

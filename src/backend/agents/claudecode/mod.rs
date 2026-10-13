@@ -58,6 +58,7 @@ pub(crate) mod usage;
 // 子运行（子 agent）的形状：对账键 · 归属 · 派出链接 · 记录住址 · 请求自报身份的头。
 pub(crate) mod runs;
 pub(crate) mod schema;
+pub(crate) mod sign_in;
 pub(crate) mod steps;
 // 记录文本：正文 / 工具内容怎么抽 · CLI 注入怎么剥（原共享 crate `search-core` 的 Claude 那一半）。
 pub(crate) mod text;

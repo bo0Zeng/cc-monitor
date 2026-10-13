@@ -156,6 +156,52 @@ fn call_door(
     answer(&HomeDoor(t.0.clone()), cmd, &args, &keys)
 }
 
+/// 这一族的应答：成品或失败（码 ＋ 那一句 ＋ 原话）。
+pub(crate) type Answer = Result<Value, Fail>;
+
+/// 按名字跑一条（别族的判据也借它搭夹具）：入参经 typed 那一处收（同生产），再交给本体。门 · key 表那几口由判据给。
+pub(crate) fn answer(
+    d: &dyn crate::assets::door::Door,
+    cmd: &str,
+    args: &Value,
+    keys: &KeyDoor,
+) -> Answer {
+    use crate::stream::inbound::typed::take;
+    fn out<T: serde::Serialize>(v: Result<T, Fail>) -> Answer {
+        v.map(|v| serde_json::to_value(v).expect("成品序列化得出"))
+    }
+    match cmd {
+        "accounts-init" => out(change(d, wire::Request::Init(take(args)?), keys)),
+        "accounts-add" => out(change(d, wire::Request::Add(take(args)?), keys)),
+        "accounts-remove" => out(change(d, wire::Request::Remove(take(args)?), keys)),
+        "accounts-set-default" => out(change(d, wire::Request::SetDefault(take(args)?), keys)),
+        "accounts-repair" => out(change(d, wire::Request::Repair(take(args)?), keys)),
+        "accounts-rollback" => out(change(d, wire::Request::Rollback(take(args)?), keys)),
+        "accounts-verify" => {
+            take::<NoArgs>(args)?;
+            out(wire::run_verify(d))
+        }
+        "accounts-login-cmd" => out(wire::run_login_cmd(d, &take(args)?)),
+        "accounts-mcp-read" => {
+            take::<NoArgs>(args)?;
+            out(mcp_share_exec::read(d))
+        }
+        "accounts-mcp-remove" => {
+            let a: AccountMcpNameArgs = take(args)?;
+            out(mcp_share_exec::remove(d, &a.name))
+        }
+        "accounts-mcp-pick" => {
+            let a: AccountMcpPickArgs = take(args)?;
+            out(mcp_share_exec::pick(d, &a.name, a.from.as_deref()))
+        }
+        "accounts-mcp-sync" => {
+            let a: AccountMcpSyncArgs = take(args)?;
+            out(mcp_share_exec::set_sync(d, a.on))
+        }
+        other => panic!("判据里没登这条：{other}"),
+    }
+}
+
 /// 写 key 那一口先记下入参，再真写进临时目录那份表。
 fn call_with(t: &Tmp, keys: &KeyLog, cmd: &str, args: Value) -> Answer {
     let table = key_table(t);
@@ -424,7 +470,7 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
         got["account"],
         json!({ "name": "x", "configDir": t.s(".cc-monitor/accounts/x") })
     );
-    assert!(got["loginCmd"].is_null());
+    assert!(got.get("loginCmd").is_none());
     assert_eq!(
         t.read(".cc-monitor/accounts/x/.credentials.json"),
         "{\"fake\":\"cred-x\"}"
@@ -486,9 +532,10 @@ fn add_imports_credentials_links_shared_items_and_updates_manifest_and_aliases()
     assert!(t.p(".claude/skills/from-x.md").is_file() && !t.is_link(".claude/skills/from-x.md"));
 }
 
-/// 没导入凭据的订阅号：回登录那一行（claude 自己的登录界面），名字与 ccm 都过了 quote。
+/// 没导入凭据的订阅号：建好就完，成品里不再带登录那一行（登录走 `login-start`；「⋯」里的逃生口另问 `accounts-login-cmd`）。
+/// 那一行：名字与 ccm 都过了 quote。
 #[test]
-fn add_without_credentials_hands_back_the_login_line() {
+fn add_without_credentials_leaves_login_to_its_own_command() {
     let t = machine("add-login");
     ok(&t, "accounts-init", json!({ "name": "lab" }));
     let got = ok(
@@ -496,17 +543,14 @@ fn add_without_credentials_hands_back_the_login_line() {
         "accounts-add",
         json!({ "name": "b-2", "kind": "subscription", "isDefault": true }),
     );
-    assert_eq!(
-        got["loginCmd"],
-        format!("'{}' -- --account 'b-2'", t.s(".cc-monitor/bin/ccm"))
-    );
+    assert!(got.get("loginCmd").is_none(), "{got}");
     assert_eq!(got["aliasNames"], json!(["b2cc", "b2cct"]));
     let m = t.manifest();
     assert_eq!(m["accounts"][0]["isDefault"], false);
     assert_eq!(m["accounts"][1]["isDefault"], true);
     assert_eq!(
-        ok(&t, "accounts-login-cmd", json!({ "name": "lab" }))["cmd"],
-        format!("'{}' -- --account 'lab'", t.s(".cc-monitor/bin/ccm"))
+        ok(&t, "accounts-login-cmd", json!({ "name": "b-2" }))["cmd"],
+        format!("'{}' -- --account 'b-2'", t.s(".cc-monitor/bin/ccm"))
     );
     assert_eq!(
         code(&t, "accounts-login-cmd", json!({ "name": "nope" })),
@@ -608,7 +652,7 @@ fn api_key_account_lands_its_key_in_the_apikey_table_not_in_the_manifest() {
     );
     assert!(got["keyProblem"].is_null());
     assert_eq!(key_ids(&t), vec!["k".to_string()]);
-    assert!(got["loginCmd"].is_null());
+    assert!(got.get("loginCmd").is_none());
     assert_eq!(
         *keys.lock().unwrap(),
         vec![

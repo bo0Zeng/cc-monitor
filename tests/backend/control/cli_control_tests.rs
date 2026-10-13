@@ -46,6 +46,12 @@ use crate::control::cli_args::{
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
 const NOT_ON_CLI: &[(&str, &str)] = &[
+    // 在 app 里登录一个号：作业跟着**发起它的那条流连接**走（连接断了 ⇒ 杀登录子命令），作业收了推一帧给那条连接。
+    (
+        "login-start",
+        "作业进的是常驻进程里那一份作业表，跟着发起它的那条流连接活（连接断 ⇒ 杀登录子命令）；\
+         一次性进程「1 请求 1 响应 1 退出」退出那一刻作业就跟着没了，粘码那一步永远找不到它 ⇒ 结构上答不了。",
+    ),
     // 答题 hook 挂一条待答请求：挂的那条跟着**发起它的那条流连接**走（连接断了 ⇒ 撤，那正是「终端那边先答了」的信号）。
     (
         "needs-ask",
@@ -128,6 +134,14 @@ const NOT_ON_CLI: &[(&str, &str)] = &[
 
 /// [`STREAM_ONLY`] 每一条的理由（一次性进程里结构上答不了）。与生产那张表两向相等（`the_withheld_tables_…`）。
 const STREAM_ONLY_WHY: &[(&str, &str)] = &[
+    (
+        "login-finish",
+        "它找的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「没有这份作业」—— 那是假话。",
+    ),
+    (
+        "login-cancel",
+        "它收的登录作业住常驻进程那一份作业表里；一次性进程里那张表是空的，只能答「本来就没有」—— 那是假话。",
+    ),
     (
         "resync",
         "它对齐的是本进程里在跑的 watcher；一次性进程里一份都没有，只能答 `watchers: 0` —— 那是假话。",
@@ -392,6 +406,8 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "ssh-config-aliases",
         // 这台的 cc-bus 钩子诊断：无入参（问的就是「这台」）。
         "hooks-diag",
+        // 会话外的需手动清单：无入参（问的就是「这台」）。
+        "manual-list",
         // `relay-optin` 出列：入参带 `agent`（那一家的那一份）。
     ];
     let declared: Vec<&str> = REGISTRY

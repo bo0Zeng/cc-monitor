@@ -1,8 +1,9 @@
 //! 后端起子进程的**唯一原语**：生产段的 `Command::new` 只住这里。
 //!
-//! 四种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach`]（脱离起、不等）·
+//! 五种用法：[`Child::run`]（起它、等它，**期限必填**）· [`Child::detach`]（脱离起、不等）·
 //! [`Child::exec_replace`]（ccm 最终那一跳：POSIX 就地 exec，Windows 起它、等它、透传退出码）·
-//! [`Child::stream`]（长寿、读它的输出流，拿着的那一方放手 ⇒ 杀整组、收尸：终端实时预览的 tmux 控制模式客户端）。
+//! [`Child::stream`]（长寿、读它的输出流，拿着的那一方放手 ⇒ 杀整组、收尸：终端实时预览的 tmux 控制模式客户端）·
+//! [`Child::converse`]（一问一答：stdin 写一行、两条输出逐行收，放手 ⇒ 杀整组：在 app 里登录一个号的官方登录子命令）。
 //!
 //! # 环境
 //!
@@ -708,3 +709,112 @@ mod os {
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/child_tests.rs"]
 mod tests;
+
+/// [`Child::converse`] 起的那个子进程说了什么（逐行；两条输出并成一条通道，各行带是哪一条）· 它退了。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Heard {
+    /// stdout 的一行（去掉行尾）。
+    Out(String),
+    /// stderr 的一行（去掉行尾）。
+    Err(String),
+    /// 它退了：退出码（被信号杀的 ⇒ `None`）。两条输出都读到头之后才报，所以它是最后一件。
+    Exited(Option<i32>),
+}
+
+/// 一问一答的子进程（官方登录那一类：打印一段、等 stdin 一行、再打印结局）：stdin 能写一行；两条输出逐行进 [`Conversation::heard`]。
+/// **放手即收**：`Drop` ⇒ 它还没退就杀整组（Windows：终止 Job）。收尸在等待线程里，与杀组互斥（同 [`Child::run`]）。没有期限 —— 活多久由拿着它的那一方定。
+pub(crate) struct Conversation {
+    stdin: Option<std::process::ChildStdin>,
+    group: os::Group,
+    reaped: Arc<Mutex<bool>>,
+    heard: Option<mpsc::Receiver<Heard>>,
+}
+
+// 同 [`Streaming`]：Windows 的 `Group` 里是内核句柄（裸指针 ⇒ 不是 Send），内核句柄不认线程，挪到别的线程上用、在那边 Drop 是安全的。
+unsafe impl Send for Conversation {}
+
+impl Conversation {
+    /// 往它的 stdin 写一行（自带换行）。它已经关了 stdin / 退了 ⇒ 那一句系统报错。
+    pub(crate) fn say(&mut self, line: &str) -> std::io::Result<()> {
+        use std::io::Write;
+        let w = self
+            .stdin
+            .as_mut()
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::BrokenPipe))?;
+        w.write_all(line.as_bytes())?;
+        w.write_all(b"\n")?;
+        w.flush()
+    }
+
+    /// 它说的话（只给一次：交给读它的那一方）。
+    pub(crate) fn take_heard(&mut self) -> Option<mpsc::Receiver<Heard>> {
+        self.heard.take()
+    }
+}
+
+impl Drop for Conversation {
+    fn drop(&mut self) {
+        self.stdin = None;
+        let r = self.reaped.lock().unwrap_or_else(|p| p.into_inner());
+        // 已收尸 ⇒ 组号可能已不归它，不杀。
+        if !*r {
+            self.group.kill();
+        }
+    }
+}
+
+fn read_lines(r: impl Read, tx: mpsc::Sender<Heard>, wrap: fn(String) -> Heard) {
+    use std::io::BufRead;
+    for line in std::io::BufReader::new(r).lines() {
+        let Ok(line) = line else { return };
+        if tx.send(wrap(line)).is_err() {
+            return;
+        }
+    }
+}
+
+impl Child {
+    /// 起一个一问一答的子进程（自成进程组；stdin · stdout · stderr 三条都接上）。见 [`Conversation`]。
+    pub(crate) fn converse(self) -> Result<Conversation, ChildFail> {
+        let mut cmd = self.command();
+        cmd.stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        os::own_group(&mut cmd);
+        let mut child = cmd.spawn().map_err(ChildFail::of_spawn)?;
+        let group = os::Group::adopt(&child);
+        let stdin = child.stdin.take();
+        let (tx, rx) = mpsc::channel::<Heard>();
+        let mut readers = Vec::new();
+        if let Some(out) = child.stdout.take() {
+            let tx = tx.clone();
+            readers.push(std::thread::spawn(move || read_lines(out, tx, Heard::Out)));
+        }
+        if let Some(err) = child.stderr.take() {
+            let tx = tx.clone();
+            readers.push(std::thread::spawn(move || read_lines(err, tx, Heard::Err)));
+        }
+        let reaped = Arc::new(Mutex::new(false));
+        let reaped_w = Arc::clone(&reaped);
+        std::thread::spawn(move || {
+            os::exited_unreaped(&mut child);
+            let status = {
+                let mut r = reaped_w.lock().unwrap_or_else(|p| p.into_inner());
+                *r = true;
+                child.wait()
+            };
+            // 两条输出读完再报「退了」：它最后说的那几行（`Login failed: …` 那一类）先进通道。
+            //   输出管道被逃出组的进程攥着 ⇒ 读不到头、不报 —— 拿着它的那一方照旧能放手收掉（不靠这一件）。
+            for r in readers {
+                let _ = r.join();
+            }
+            let _ = tx.send(Heard::Exited(status.ok().and_then(|s| s.code())));
+        });
+        Ok(Conversation {
+            stdin,
+            group,
+            reaped,
+            heard: Some(rx),
+        })
+    }
+}

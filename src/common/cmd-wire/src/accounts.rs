@@ -1,13 +1,16 @@
 //! 账号库那几条帧命令（`accounts-init` · `accounts-add` · `accounts-remove` · `accounts-set-default` · `accounts-repair` ·
-//! `accounts-rollback` · `accounts-verify` · `accounts-login-cmd`）的**线上形状** —— 两侧同一份：
+//! `accounts-rollback` · `accounts-verify` · `accounts-login-cmd` · `accounts-mcp-*`）的**线上形状** —— 两侧同一份：
 //! 后端按这里的入参严格收（多一个键 ⇒ 拒）、按这里的成品回；界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 
 use serde::{Deserialize, Serialize};
 
-/// 一个号靠什么鉴权。字面量与清单里 `authKind` 那一格同一套（[`crate::AUTH_KIND_SUBSCRIPTION`] · [`crate::AUTH_KIND_API_KEY`]）。
+/// 一个号靠什么鉴权。字面量与清单里 `authKind` 那一格同一套（`acct_core::AUTH_KIND_SUBSCRIPTION` · `acct_core::AUTH_KIND_API_KEY`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub enum AccountKind {
     #[serde(rename = "subscription")]
     Subscription,
@@ -18,91 +21,112 @@ pub enum AccountKind {
 /// `accounts-init`：建账号库，把这台机器现在登录的那个身份收成名叫 `name` 的默认号。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountInitArgs {
     pub name: String,
     /// 真 ⇒ 只算不做（回将要做的那几步）。
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dry_run: Option<bool>,
 }
 
 /// `accounts-add`：新建一个号。订阅号可以从一份已有的凭据文件导入；API 号带端点与 key（key 只进那台的 apikey 表，不回显）。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountAddArgs {
     pub name: String,
     pub kind: AccountKind,
-    /// 订阅号：导入哪一份凭据文件（家目录底下；`~/` 开头也认）。缺席 ⇒ 建好之后在终端里登录。
-    #[cfg_attr(test, ts(optional))]
+    /// 订阅号：导入哪一份凭据文件（家目录底下；`~/` 开头也认）。缺席 ⇒ 建好之后另行登录（`login-start`）。
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub cred_file: Option<String>,
     /// API 号：上游地址（缺席 / 空 = 这个 agent 的默认上游）。
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub base_url: Option<String>,
     /// API 号：key 明文。只在入方向出现一次。
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub key: Option<String>,
     /// 真 ⇒ 建好后它是默认号（`ccm` 不带 `--account` 时用它）。
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub is_default: Option<bool>,
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dry_run: Option<bool>,
 }
 
 /// `accounts-remove`：删一个号（只删它自己的目录，共享库不动；改动前留备份）。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountRemoveArgs {
     pub name: String,
     /// 删的是默认号时必须给真。
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub force: Option<bool>,
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dry_run: Option<bool>,
 }
 
 /// `accounts-set-default` · `accounts-login-cmd`：只带一个账号名。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountNameArgs {
     pub name: String,
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dry_run: Option<bool>,
 }
 
 /// `accounts-repair`：补齐共享链接 · 修权限 · 刷新邮箱 · 补账号别名（幂等）。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountRepairArgs {
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dry_run: Option<bool>,
 }
 
 /// `accounts-rollback`：按一份备份把改动还原。`backup` 缺席 ⇒ 最近一份还没还原过的。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountRollbackArgs {
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub backup: Option<String>,
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub dry_run: Option<bool>,
 }
 
 /// 刚建好的那个号。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountRef {
     pub name: String,
     pub config_dir: String,
@@ -111,8 +135,11 @@ pub struct AccountRef {
 /// 建号 / 删号那一刻，一份别名文件（`~/.cc-monitor/aliases.sh` · Windows 上另有 `aliases.ps1`）这一趟怎么样了。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AliasChange {
     pub path: String,
     /// 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
@@ -130,8 +157,11 @@ pub struct AliasChange {
 /// 改账号库那几条命令的成品（`dryRun` 为真时 `applied` 恒假、`steps` 是将要做的那几步）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountChange {
     pub applied: bool,
     /// 做了（或将要做）的每一步，一句一行。
@@ -142,8 +172,6 @@ pub struct AccountChange {
     pub backup: Option<String>,
     /// `accounts-add`：建出来的那个号。
     pub account: Option<AccountRef>,
-    /// `accounts-add` 的订阅号没导入凭据：在终端里跑这一行登录（claude 自己的登录界面）。
-    pub login_cmd: Option<String>,
     /// `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
     pub alias_names: Vec<String>,
     /// `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
@@ -157,8 +185,11 @@ pub struct AccountChange {
 /// 核对里一条的档。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub enum CheckLevel {
     Ok,
     Warn,
@@ -169,8 +200,11 @@ pub enum CheckLevel {
 /// 核对里的一条。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct VerifyCheck {
     pub level: CheckLevel,
     /// 说的是哪个号；全局的那几条 ⇒ `None`。
@@ -181,8 +215,11 @@ pub struct VerifyCheck {
 /// `accounts-verify` 的成品：链接 · 权限 · 邮箱逐项核一遍（只读）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct VerifyReport {
     /// 没有一条 `fail`。
     pub pass: bool,
@@ -194,8 +231,11 @@ pub struct VerifyReport {
 /// `accounts-login-cmd` 的成品：在终端里起 claude 登录这个号的那一行（已 quote）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountLoginCmd {
     pub cmd: String,
 }
@@ -203,8 +243,11 @@ pub struct AccountLoginCmd {
 /// `accounts-mcp-remove`：从这台各号共用的用户级 MCP 里删一条（所有号一起撤）。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountMcpNameArgs {
     pub name: String,
 }
@@ -212,19 +255,25 @@ pub struct AccountMcpNameArgs {
 /// `accounts-mcp-pick`：两边都改了的那一条，用哪一版。`from` = 那个号里的那一版；缺席 / `null` = 共享的那一版。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountMcpPickArgs {
     pub name: String,
-    #[cfg_attr(test, ts(optional))]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub from: Option<String>,
 }
 
 /// `accounts-mcp-sync`：停 / 开各号之间同步用户级 MCP（停了已同步的不删）。
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountMcpSyncArgs {
     pub on: bool,
 }
@@ -232,8 +281,11 @@ pub struct AccountMcpSyncArgs {
 /// 冲突里的一版（只带号名，不带定义 —— 定义里可能有密钥）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountMcpChoice {
     /// 挑这一版时交回去的 `from`（`None` = 共享的那一版）。
     pub from: Option<String>,
@@ -246,8 +298,11 @@ pub struct AccountMcpChoice {
 /// 两边都改了、等用户挑的一条。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountMcpConflict {
     pub name: String,
     pub choices: Vec<AccountMcpChoice>,
@@ -256,8 +311,11 @@ pub struct AccountMcpConflict {
 /// `accounts-mcp-read` · `accounts-mcp-remove` · `accounts-mcp-pick` · `accounts-mcp-sync` 的成品：这台各号共用的用户级 MCP 此刻的样子。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
 #[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../../frontend/ui/generated/"))]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = "../../../frontend/ui/generated/")
+)]
 pub struct AccountMcpView {
     /// 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
     pub enabled: bool,

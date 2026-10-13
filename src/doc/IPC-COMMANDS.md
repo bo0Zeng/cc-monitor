@@ -351,6 +351,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `plan` —— 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问； `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）
 - `tasks` —— 这台某个会话的任务清单（`key` ＝ sid）
 - `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
+- `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
+- `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了；重问 `manual-list`）
 
 #### `Unavailable`
 
@@ -1541,16 +1543,70 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-init`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliasNames` | ← | 这个号会拿到的别名名字（`accounts-init` / `accounts-add`，预演时也给；别的命令 ⇒ `[]`） |
-| `aliases` | ← | 改配置文件（`profiles.toml`）的结局，恰一条 `{path, changed, added, removed, skipped, note}`：加了（基于 `cc` / `cct`、只写自己的号）/ 删了（合下来用这个号的全部段）/ 名字被占跳过的那几段；配置文件有写错的地方 ⇒ 不动、`note` 说一句 |
-| `applied` | ← | 这一趟真改了盘没有 |
-| `backup` | ← | 这一趟留的备份（`~/.cc-monitor/accounts/.backup-<这一段>`，回滚用它）；没改动 ⇒ `null` |
-| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
-| `name` | → | 默认号的名字：过 `shell_quote_core::account_name_ok`（与 `ccm … --account` 同一条），`0` 是保留名 |
-| `notes` | ← | 提示（不挡这一趟），比如共享库里还没有可共享的项 |
-| `steps` | ← | 做了（预演时：将要做）的每一步，一句一行 |
+入参 `AccountInitArgs` · 回包 `AccountChange`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountChange = { applied: boolean, 
+/**
+ * 做了（或将要做）的每一步，一句一行。
+ */
+steps: Array<string>, 
+/**
+ * 提示（不挡这一趟）。
+ */
+notes: Array<string>, 
+/**
+ * 这一趟留的备份（回滚用的名字）；没改动 ⇒ `None`。
+ */
+backup: string | null, 
+/**
+ * `accounts-add`：建出来的那个号。
+ */
+account: AccountRef | null, 
+/**
+ * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
+ */
+aliasNames: Array<string>, 
+/**
+ * `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
+ */
+keyMasked: string | null, 
+/**
+ * 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
+ */
+keyProblem: string | null, 
+/**
+ * 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+ */
+aliases: Array<AliasChange>, };
+type AccountInitArgs = { name: string, 
+/**
+ * 真 ⇒ 只算不做（回将要做的那几步）。
+ */
+dryRun?: boolean, };
+type AccountRef = { name: string, configDir: string, };
+type AliasChange = { path: string, 
+/**
+ * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ */
+changed: boolean, 
+/**
+ * 建号：加进去的别名（如 `workcc` `workcct`）。
+ */
+added: Array<string>, 
+/**
+ * 删号：删掉的别名（参数指向这个号的全部）。
+ */
+removed: Array<string>, 
+/**
+ * 建号：名字被别的别名占着、没加的那几个。
+ */
+skipped: Array<string>, 
+/**
+ * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ */
+note: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
 
@@ -1560,26 +1616,83 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-add`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | ← | 建出来的那个号：`{name, configDir}` |
-| `aliasNames` | ← | 同 `accounts-init` |
-| `aliases` | ← | 同 `accounts-init` |
-| `applied` | ← | 同 `accounts-init` |
-| `backup` | ← | 同 `accounts-init` |
-| `baseUrl` | → | 只 API 号：上游地址（缺席 = 默认上游）与 key 明文 |
-| `configDir` | ← | 那个号的配置目录（`account` 里） |
-| `credFile` | → | 只订阅号：导入哪一份凭据（家目录底下的绝对路径或 `~/…`；是链接 / 空文件 / 不在 ⇒ `refused`） |
-| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
-| `isDefault` | → | 可缺席的布尔：真 ⇒ 建好后它是默认号（`ccm` 不带 `--account` 时用它） |
-| `key` | → | 只 API 号：上游地址（缺席 = 默认上游）与 key 明文 |
-| `keyMasked` | ← | API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填） |
-| `keyProblem` | ← | API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填） |
-| `kind` | → | `"subscription"`（订阅号）或 `"api-key"`（API 号，清单里写 `authKind: "api-key"`） |
-| `loginCmd` | ← | 订阅号没导入凭据时：在终端里跑这一行登录（`'<家>/.cc-monitor/bin/ccm' -- --account '<名>'`，agent 自己的登录界面）；否则 `null` |
-| `name` | → | 同 `accounts-init`；已有同名号 / 同名目录 ⇒ `refused` |
-| `notes` | ← | 同 `accounts-init` |
-| `steps` | ← | 同 `accounts-init` |
+入参 `AccountAddArgs` · 回包 `AccountChange`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountAddArgs = { name: string, kind: AccountKind, 
+/**
+ * 订阅号：导入哪一份凭据文件（家目录底下；`~/` 开头也认）。缺席 ⇒ 建好之后另行登录（`login-start`）。
+ */
+credFile?: string, 
+/**
+ * API 号：上游地址（缺席 / 空 = 这个 agent 的默认上游）。
+ */
+baseUrl?: string, 
+/**
+ * API 号：key 明文。只在入方向出现一次。
+ */
+key?: string, 
+/**
+ * 真 ⇒ 建好后它是默认号（`ccm` 不带 `--account` 时用它）。
+ */
+isDefault?: boolean, dryRun?: boolean, };
+type AccountChange = { applied: boolean, 
+/**
+ * 做了（或将要做）的每一步，一句一行。
+ */
+steps: Array<string>, 
+/**
+ * 提示（不挡这一趟）。
+ */
+notes: Array<string>, 
+/**
+ * 这一趟留的备份（回滚用的名字）；没改动 ⇒ `None`。
+ */
+backup: string | null, 
+/**
+ * `accounts-add`：建出来的那个号。
+ */
+account: AccountRef | null, 
+/**
+ * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
+ */
+aliasNames: Array<string>, 
+/**
+ * `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
+ */
+keyMasked: string | null, 
+/**
+ * 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
+ */
+keyProblem: string | null, 
+/**
+ * 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+ */
+aliases: Array<AliasChange>, };
+type AccountKind = "subscription" | "api-key";
+type AccountRef = { name: string, configDir: string, };
+type AliasChange = { path: string, 
+/**
+ * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ */
+changed: boolean, 
+/**
+ * 建号：加进去的别名（如 `workcc` `workcct`）。
+ */
+added: Array<string>, 
+/**
+ * 删号：删掉的别名（参数指向这个号的全部）。
+ */
+removed: Array<string>, 
+/**
+ * 建号：名字被别的别名占着、没加的那几个。
+ */
+skipped: Array<string>, 
+/**
+ * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ */
+note: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
 
@@ -1589,16 +1702,70 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-remove`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | ← | 同 `accounts-init`；参数指向它的别名随之删掉（`removed`） |
-| `applied` | ← | 同 `accounts-init`；参数指向它的别名随之删掉（`removed`） |
-| `backup` | ← | 同 `accounts-init`；参数指向它的别名随之删掉（`removed`） |
-| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
-| `force` | → | 可缺席的布尔：删的是默认号时必须给真（剩下的第一个号接着当默认） |
-| `name` | → | 要删的号；`0` · 不认识的号 ⇒ `refused` |
-| `notes` | ← | 同 `accounts-init`；参数指向它的别名随之删掉（`removed`） |
-| `steps` | ← | 同 `accounts-init`；参数指向它的别名随之删掉（`removed`） |
+入参 `AccountRemoveArgs` · 回包 `AccountChange`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountChange = { applied: boolean, 
+/**
+ * 做了（或将要做）的每一步，一句一行。
+ */
+steps: Array<string>, 
+/**
+ * 提示（不挡这一趟）。
+ */
+notes: Array<string>, 
+/**
+ * 这一趟留的备份（回滚用的名字）；没改动 ⇒ `None`。
+ */
+backup: string | null, 
+/**
+ * `accounts-add`：建出来的那个号。
+ */
+account: AccountRef | null, 
+/**
+ * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
+ */
+aliasNames: Array<string>, 
+/**
+ * `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
+ */
+keyMasked: string | null, 
+/**
+ * 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
+ */
+keyProblem: string | null, 
+/**
+ * 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+ */
+aliases: Array<AliasChange>, };
+type AccountRef = { name: string, configDir: string, };
+type AccountRemoveArgs = { name: string, 
+/**
+ * 删的是默认号时必须给真。
+ */
+force?: boolean, dryRun?: boolean, };
+type AliasChange = { path: string, 
+/**
+ * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ */
+changed: boolean, 
+/**
+ * 建号：加进去的别名（如 `workcc` `workcct`）。
+ */
+added: Array<string>, 
+/**
+ * 删号：删掉的别名（参数指向这个号的全部）。
+ */
+removed: Array<string>, 
+/**
+ * 建号：名字被别的别名占着、没加的那几个。
+ */
+skipped: Array<string>, 
+/**
+ * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ */
+note: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
 
@@ -1608,15 +1775,66 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-set-default`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | ← | 同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写 |
-| `applied` | ← | 同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写 |
-| `backup` | ← | 同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写 |
-| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
-| `name` | → | 要当默认的号（不认识 ⇒ `refused`） |
-| `notes` | ← | 同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写 |
-| `steps` | ← | 同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写 |
+入参 `AccountNameArgs` · 回包 `AccountChange`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountChange = { applied: boolean, 
+/**
+ * 做了（或将要做）的每一步，一句一行。
+ */
+steps: Array<string>, 
+/**
+ * 提示（不挡这一趟）。
+ */
+notes: Array<string>, 
+/**
+ * 这一趟留的备份（回滚用的名字）；没改动 ⇒ `None`。
+ */
+backup: string | null, 
+/**
+ * `accounts-add`：建出来的那个号。
+ */
+account: AccountRef | null, 
+/**
+ * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
+ */
+aliasNames: Array<string>, 
+/**
+ * `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
+ */
+keyMasked: string | null, 
+/**
+ * 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
+ */
+keyProblem: string | null, 
+/**
+ * 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+ */
+aliases: Array<AliasChange>, };
+type AccountNameArgs = { name: string, dryRun?: boolean, };
+type AccountRef = { name: string, configDir: string, };
+type AliasChange = { path: string, 
+/**
+ * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ */
+changed: boolean, 
+/**
+ * 建号：加进去的别名（如 `workcc` `workcct`）。
+ */
+added: Array<string>, 
+/**
+ * 删号：删掉的别名（参数指向这个号的全部）。
+ */
+removed: Array<string>, 
+/**
+ * 建号：名字被别的别名占着、没加的那几个。
+ */
+skipped: Array<string>, 
+/**
+ * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ */
+note: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
 
@@ -1626,14 +1844,66 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-repair`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | ← | 同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null` |
-| `applied` | ← | 同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null` |
-| `backup` | ← | 同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null` |
-| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
-| `notes` | ← | 同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null` |
-| `steps` | ← | 同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null` |
+入参 `AccountRepairArgs` · 回包 `AccountChange`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountChange = { applied: boolean, 
+/**
+ * 做了（或将要做）的每一步，一句一行。
+ */
+steps: Array<string>, 
+/**
+ * 提示（不挡这一趟）。
+ */
+notes: Array<string>, 
+/**
+ * 这一趟留的备份（回滚用的名字）；没改动 ⇒ `None`。
+ */
+backup: string | null, 
+/**
+ * `accounts-add`：建出来的那个号。
+ */
+account: AccountRef | null, 
+/**
+ * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
+ */
+aliasNames: Array<string>, 
+/**
+ * `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
+ */
+keyMasked: string | null, 
+/**
+ * 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
+ */
+keyProblem: string | null, 
+/**
+ * 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+ */
+aliases: Array<AliasChange>, };
+type AccountRef = { name: string, configDir: string, };
+type AccountRepairArgs = { dryRun?: boolean, };
+type AliasChange = { path: string, 
+/**
+ * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ */
+changed: boolean, 
+/**
+ * 建号：加进去的别名（如 `workcc` `workcct`）。
+ */
+added: Array<string>, 
+/**
+ * 删号：删掉的别名（参数指向这个号的全部）。
+ */
+removed: Array<string>, 
+/**
+ * 建号：名字被别的别名占着、没加的那几个。
+ */
+skipped: Array<string>, 
+/**
+ * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ */
+note: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
 
@@ -1643,14 +1913,66 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-rollback`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `aliases` | ← | 同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名 |
-| `applied` | ← | 同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名 |
-| `backup` | → ← | 入：用哪一份（`.backup-` 后面那一段，只许 `[0-9A-Za-z._-]`、不含 `..`）；缺席 ⇒ 最近一份还没还原过的 |
-| `dryRun` | → | 可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步 |
-| `notes` | ← | 同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名 |
-| `steps` | ← | 同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名 |
+入参 `AccountRollbackArgs` · 回包 `AccountChange`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountChange = { applied: boolean, 
+/**
+ * 做了（或将要做）的每一步，一句一行。
+ */
+steps: Array<string>, 
+/**
+ * 提示（不挡这一趟）。
+ */
+notes: Array<string>, 
+/**
+ * 这一趟留的备份（回滚用的名字）；没改动 ⇒ `None`。
+ */
+backup: string | null, 
+/**
+ * `accounts-add`：建出来的那个号。
+ */
+account: AccountRef | null, 
+/**
+ * `accounts-init` / `accounts-add`：这个号会自动拿到的别名名字（预演时也给）。
+ */
+aliasNames: Array<string>, 
+/**
+ * `accounts-add` 的 API 号：key 写进 apikey 表之后的掩码。
+ */
+keyMasked: string | null, 
+/**
+ * 号建好了、key 却没写进去时那一句（界面据此让人在那一行上重填）。
+ */
+keyProblem: string | null, 
+/**
+ * 建号 / 删号那一刻改了的别名文件，一份一条；别的命令 ⇒ 空。
+ */
+aliases: Array<AliasChange>, };
+type AccountRef = { name: string, configDir: string, };
+type AccountRollbackArgs = { backup?: string, dryRun?: boolean, };
+type AliasChange = { path: string, 
+/**
+ * 这一趟真写了没有（内容没变 ⇒ 一个字节不写）。
+ */
+changed: boolean, 
+/**
+ * 建号：加进去的别名（如 `workcc` `workcct`）。
+ */
+added: Array<string>, 
+/**
+ * 删号：删掉的别名（参数指向这个号的全部）。
+ */
+removed: Array<string>, 
+/**
+ * 建号：名字被别的别名占着、没加的那几个。
+ */
+skipped: Array<string>, 
+/**
+ * 没能自动改它时的那句话（比如文件里有认不出的行）；`None` = 一切照常。
+ */
+note: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `not_enabled` · `refused` · `unsupported`
 
@@ -1660,15 +1982,22 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-verify`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | ← | 说的是哪个号；全局那几条 ⇒ `null` |
-| `checks` | ← | 每条 `{level, account, text}` |
-| `fails` | ← | `fail` |
-| `level` | ← | `ok` · `warn` · `fail` · `skip` |
-| `pass` | ← | 没有一条 `fail` |
-| `text` | ← | 给人看的那一句 |
-| `warns` | ← | `warn` 各几条 |
+入参 `NoArgs` · 回包 `VerifyReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CheckLevel = "ok" | "warn" | "fail" | "skip";
+type NoArgs = Record<symbol, never>;
+type VerifyCheck = { level: CheckLevel, 
+/**
+ * 说的是哪个号；全局的那几条 ⇒ `None`。
+ */
+account: string | null, text: string, };
+type VerifyReport = { 
+/**
+ * 没有一条 `fail`。
+ */
+pass: boolean, fails: number, warns: number, checks: Array<VerifyCheck>, };
+```
 
 码：`bad_args` · `io_failed` · `unsupported`
 
@@ -1678,10 +2007,12 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-login-cmd`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `cmd` | ← | 那一行：这台的 `ccm` 带 `--account` 起 agent（它自己的登录界面）；值一律经唯一的 quote（`shell_quote_core::posix_quote`） |
-| `name` | → | 清单里的一个号（不认识 ⇒ `refused`） |
+入参 `AccountNameArgs` · 回包 `AccountLoginCmd`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountLoginCmd = { cmd: string, };
+type AccountNameArgs = { name: string, dryRun?: boolean, };
+```
 
 码：`bad_args` · `io_failed` · `refused` · `unsupported`
 
@@ -1691,19 +2022,46 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-mcp-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 这一趟改写了哪几个号（这一条恒空） |
-| `choices` | ← | 每一版 `{from, holders, gone}` |
-| `conflicts` | ← | 两边都改了、等用户挑的那几条：每条 `{name, choices}` |
-| `enabled` | ← | 这台有没有账号库（没有 ⇒ 不做同步，其余几格为空） |
-| `from` | ← | 挑这一版时交回 `accounts-mcp-pick` 的 `from`：`null` = 共享的那一版；号名 = 那个号里的那一版 |
-| `gone` | ← | 这一版是「没有这一条」（在 cc-monitor 里删过） |
-| `holders` | ← | 此刻是这一版的那几个号 |
-| `name` | ← | 那一条的名字 |
-| `notes` | ← | 提示：某个号的配置读不出来（这一趟不同步它）· 没写进去 |
-| `servers` | ← | 共享集合里的名字（排好序） |
-| `sync` | ← | 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的、`conflicts` 恒空；见 `accounts-mcp-sync`） |
+入参 `NoArgs` · 回包 `AccountMcpView`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountMcpChoice = { 
+/**
+ * 挑这一版时交回去的 `from`（`None` = 共享的那一版）。
+ */
+from: string | null, 
+/**
+ * 此刻是这一版的那几个号。
+ */
+holders: Array<string>, 
+/**
+ * 这一版是「没有这一条」（在 cc-monitor 里删过）。
+ */
+gone: boolean, };
+type AccountMcpConflict = { name: string, choices: Array<AccountMcpChoice>, };
+type AccountMcpView = { 
+/**
+ * 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
+ */
+enabled: boolean, 
+/**
+ * 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的，`conflicts` 恒空）。
+ */
+sync: boolean, 
+/**
+ * 共享集合里的名字（排好序）。
+ */
+servers: Array<string>, conflicts: Array<AccountMcpConflict>, 
+/**
+ * 这一趟改写了哪几个号（只读那一条恒空）。
+ */
+changed: Array<string>, 
+/**
+ * 提示（某个号读不出来 · 这一趟没写进去）。
+ */
+notes: Array<string>, };
+type NoArgs = Record<symbol, never>;
+```
 
 码：`bad_args` · `io_failed` · `refused`
 
@@ -1713,19 +2071,46 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-mcp-remove`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
-| `choices` | ← | 同 `accounts-mcp-read` |
-| `conflicts` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
-| `enabled` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
-| `from` | ← | 同 `accounts-mcp-read` |
-| `gone` | ← | 同 `accounts-mcp-read` |
-| `holders` | ← | 同 `accounts-mcp-read` |
-| `name` | → | 要删的那一条（共享集合里与哪个号里都没有 ⇒ `not_found`） |
-| `notes` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
-| `servers` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
-| `sync` | ← | 同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号 |
+入参 `AccountMcpNameArgs` · 回包 `AccountMcpView`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountMcpChoice = { 
+/**
+ * 挑这一版时交回去的 `from`（`None` = 共享的那一版）。
+ */
+from: string | null, 
+/**
+ * 此刻是这一版的那几个号。
+ */
+holders: Array<string>, 
+/**
+ * 这一版是「没有这一条」（在 cc-monitor 里删过）。
+ */
+gone: boolean, };
+type AccountMcpConflict = { name: string, choices: Array<AccountMcpChoice>, };
+type AccountMcpNameArgs = { name: string, };
+type AccountMcpView = { 
+/**
+ * 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
+ */
+enabled: boolean, 
+/**
+ * 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的，`conflicts` 恒空）。
+ */
+sync: boolean, 
+/**
+ * 共享集合里的名字（排好序）。
+ */
+servers: Array<string>, conflicts: Array<AccountMcpConflict>, 
+/**
+ * 这一趟改写了哪几个号（只读那一条恒空）。
+ */
+changed: Array<string>, 
+/**
+ * 提示（某个号读不出来 · 这一趟没写进去）。
+ */
+notes: Array<string>, };
+```
 
 码：`bad_args` · `io_failed` · `not_found` · `refused`
 
@@ -1735,19 +2120,46 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-mcp-pick`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `choices` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `conflicts` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `enabled` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `from` | → | → 那个号里此刻的那一版；缺席 / `null` = 共享的那一版（共享集合里已经删了 ⇒ 删） |
-| `gone` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `holders` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `name` | → | 那一条 |
-| `notes` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `servers` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
-| `sync` | ← | 同 `accounts-mcp-read`；停着同步时拒（`refused`） |
+入参 `AccountMcpPickArgs` · 回包 `AccountMcpView`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountMcpChoice = { 
+/**
+ * 挑这一版时交回去的 `from`（`None` = 共享的那一版）。
+ */
+from: string | null, 
+/**
+ * 此刻是这一版的那几个号。
+ */
+holders: Array<string>, 
+/**
+ * 这一版是「没有这一条」（在 cc-monitor 里删过）。
+ */
+gone: boolean, };
+type AccountMcpConflict = { name: string, choices: Array<AccountMcpChoice>, };
+type AccountMcpPickArgs = { name: string, from?: string, };
+type AccountMcpView = { 
+/**
+ * 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
+ */
+enabled: boolean, 
+/**
+ * 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的，`conflicts` 恒空）。
+ */
+sync: boolean, 
+/**
+ * 共享集合里的名字（排好序）。
+ */
+servers: Array<string>, conflicts: Array<AccountMcpConflict>, 
+/**
+ * 这一趟改写了哪几个号（只读那一条恒空）。
+ */
+changed: Array<string>, 
+/**
+ * 提示（某个号读不出来 · 这一趟没写进去）。
+ */
+notes: Array<string>, };
+```
 
 码：`bad_args` · `io_failed` · `not_found` · `refused`
 
@@ -1757,22 +2169,121 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --accounts-mcp-sync`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号 |
-| `choices` | ← | 同 `accounts-mcp-read` |
-| `conflicts` | ← | 同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号 |
-| `enabled` | ← | 同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号 |
-| `from` | ← | 同 `accounts-mcp-read` |
-| `gone` | ← | 同 `accounts-mcp-read` |
-| `holders` | ← | 同 `accounts-mcp-read` |
-| `name` | ← | 同 `accounts-mcp-read` |
-| `notes` | ← | 同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号 |
-| `on` | → | `false` = 停；`true` = 开回来 |
-| `servers` | ← | 同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号 |
-| `sync` | ← | 同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号 |
+入参 `AccountMcpSyncArgs` · 回包 `AccountMcpView`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AccountMcpChoice = { 
+/**
+ * 挑这一版时交回去的 `from`（`None` = 共享的那一版）。
+ */
+from: string | null, 
+/**
+ * 此刻是这一版的那几个号。
+ */
+holders: Array<string>, 
+/**
+ * 这一版是「没有这一条」（在 cc-monitor 里删过）。
+ */
+gone: boolean, };
+type AccountMcpConflict = { name: string, choices: Array<AccountMcpChoice>, };
+type AccountMcpSyncArgs = { on: boolean, };
+type AccountMcpView = { 
+/**
+ * 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。
+ */
+enabled: boolean, 
+/**
+ * 各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的，`conflicts` 恒空）。
+ */
+sync: boolean, 
+/**
+ * 共享集合里的名字（排好序）。
+ */
+servers: Array<string>, conflicts: Array<AccountMcpConflict>, 
+/**
+ * 这一趟改写了哪几个号（只读那一条恒空）。
+ */
+changed: Array<string>, 
+/**
+ * 提示（某个号读不出来 · 这一趟没写进去）。
+ */
+notes: Array<string>, };
+```
 
 码：`bad_args` · `io_failed` · `refused`
+
+#### `login-start`
+
+在 app 里登录一个号：起那一家的登录子命令，交回登录链接（本连接断了 ⇒ 作业收）。
+
+收 `args` · 连接内就地做完 · 只在流上
+
+| 字段 | 向 | 说明 |
+|---|---|---|
+| `account` | → | 账号库里的号（账号 0 是 `0`） |
+| `agent` | → | 哪一家（同 `accounts-list` 的 `agent`） |
+| `auto` | ← | 会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推 `changed {login}`，粘码只是后备） |
+| `job` | ← | 作业号（`login-finish` · `login-cancel` 交它） |
+| `paste` | ← | 粘回来的是什么：`code`（登录页上给的那一段） |
+| `url` | ← | 登录链接（在浏览器里打开，不用内嵌网页） |
+
+码：`bad_args` · `not_found` · `unsupported` · `failed`
+
+#### `login-finish`
+
+把登录页上给的码交给那份登录作业，等那一家换完。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `LoginFinishReq` · 回包 `LoginDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LoginDone = { account: string, };
+type LoginFinishReq = { job: string, 
+/**
+ * 登录页上给的那一段（原样；不进日志、不回显）。
+ */
+pasted: string, };
+```
+
+码：`bad_args` · `bad_paste` · `refused` · `no_job` · `child_timed_out`
+
+#### `login-cancel`
+
+收一份登录作业。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
+
+入参 `LoginCancelReq` · 回包 `LoginCancelled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LoginCancelReq = { job: string, };
+type LoginCancelled = { was: boolean, };
+```
+
+码：`bad_args`
+
+#### `manual-list`
+
+会话外的需手动清单：需登录的号 · 需登录的 MCP。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --manual-list`
+
+入参 `NoArgs` · 回包 `ManualList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LoginStartReq = { agent: string, account: string, };
+type ManualFix = { command: string, args: LoginStartReq, };
+type ManualItem = { "kind": "accountLogin", agent: string, account: string, said: string, fix: ManualFix, } | { "kind": "mcpLogin", 
+/**
+ * 在哪个号里；没设账号的那一份 ⇒ `null`。
+ */
+account: string | null, server: string, scope: string, said: string, };
+type ManualList = { items: Array<ManualItem>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
 
 ### 4.4 历史会话与它的读面
 
@@ -7641,6 +8152,7 @@ type Mode = "create-or-attach" | "send-into";
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
+| `--manual-list` | ＝ 帧命令 `manual-list`：会话外的需手动清单：需登录的号 · 需登录的 MCP |
 | `--mcp-read` | ＝ 帧命令 `mcp-read`：这台机器的 MCP 列表成品 |
 | `--mcp-server-put` | ＝ 帧命令 `mcp-server-put`：增 / 改这台一个项目 `.mcp.json` 里的一条 |
 | `--mcp-server-remove` | ＝ 帧命令 `mcp-server-remove`：删这台一个项目 `.mcp.json` 里的一条 |

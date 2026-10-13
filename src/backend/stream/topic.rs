@@ -4,7 +4,8 @@
 //! 壳不认主题：按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按 [`Topic`]（生成的类型）订、读。
 //! 加一个主题 ＝ 这里加一行 ＋ 发端发它 ＋ 界面订它，别处不动。
 //!
-//! 可丢性跟着发的那条路走：可丢的走 tap 那条（丢了下一次变化或重问就补上）；不可丢的走 watcher 的出方向（丢了按 `overflow.lost` 报身份）。
+//! 可丢性跟着发的那条路走：可丢的走 tap 那条（丢了下一次变化或重问就补上）；不可丢的走 watcher 的出方向（丢了按 `overflow.lost` 报身份）；
+//! 只推给发起它的那条连接的（`login`）走那条连接的应答通道（不丢）。
 //! 带了 `body` 也不改可丢性。`body` 只带小成品（序列化后 ≤ 那一格的上限，超了就不带、客户端照旧重问）。
 
 use serde::Serialize;
@@ -32,6 +33,10 @@ pub enum Topic {
     Tasks,
     /// 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）。
     Needs,
+    /// 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done | failed, said?, detail?}`）。只推给发起它的那条连接。
+    Login,
+    /// 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了；重问 `manual-list`）。
+    Manual,
 }
 
 /// 主题表的一行。
@@ -70,7 +75,7 @@ pub enum Ask {
 
 impl Topic {
     /// 全部主题（表的行序）。
-    pub const ALL: [Topic; 8] = [
+    pub const ALL: [Topic; 10] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -79,6 +84,8 @@ impl Topic {
         Topic::Plan,
         Topic::Tasks,
         Topic::Needs,
+        Topic::Login,
+        Topic::Manual,
     ];
 
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
@@ -162,6 +169,28 @@ impl Topic {
                 body: false,
                 body_cap: 0,
                 reask: "sessions-needs",
+                ask: Ask::None,
+            },
+            // 走发起它的那条连接的应答通道（不丢）；万一没收到，重问需手动清单就知道那个号登没登上。
+            Topic::Login => TopicSpec {
+                name: "login",
+                lossy: false,
+                key: true,
+                rev: false,
+                body: true,
+                body_cap: 8192,
+                reask: "manual-list",
+                ask: Ask::None,
+            },
+            // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。
+            Topic::Manual => TopicSpec {
+                name: "manual",
+                lossy: true,
+                key: false,
+                rev: false,
+                body: false,
+                body_cap: 0,
+                reask: "manual-list",
                 ask: Ask::None,
             },
         }

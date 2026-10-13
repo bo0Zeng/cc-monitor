@@ -1839,6 +1839,8 @@ pub(crate) struct AccountsFace {
     pub(crate) email_in: fn(&Path) -> Option<String>,
     /// 各号的订阅号登录那份文件的格式（各号之间同步 MCP 登录读写它）；没有 ⇒ `None`。
     pub(crate) login: Option<LoginFace>,
+    /// 在 app 里登录一个号那一形（起那一家的登录子命令、认链接、判粘回来的东西）；不在 app 里登 ⇒ `None`。
+    pub(crate) sign_in: Option<SignInFace>,
     /// 账号归属读会话进程环境时读哪几个键（账号 · 上游地址）。
     pub(crate) session_env: SessionEnvKeys,
     /// 一个配置根下、对某个 cwd 的信任状态 ⇒ 一行 JSON（`{trusted, known, error}`）；读不了 ⇒ `(码, 原话)`。
@@ -2129,6 +2131,24 @@ pub(crate) enum Fallback {
         present: &'static str,
         absent: &'static str,
     },
+}
+
+/// 一家在 app 里登录一个号那一形（本体 `accounts/sign_in.rs`：起它、转链接、递码；令牌那一家自己写）。
+#[derive(Clone, Copy)]
+pub(crate) struct SignInFace {
+    /// 登录子命令（程序照这台的 `PATH` 找）。
+    pub(crate) program: &'static str,
+    pub(crate) args: &'static [&'static str],
+    /// 号的配置目录交给这一格；账号 0（默认配置目录）⇒ 摘掉它。
+    pub(crate) dir_env: &'static str,
+    /// 起它时摘掉的（会盖掉那个号自己的登录的那几格）。
+    pub(crate) env_remove: &'static [&'static str],
+    /// 输出的一行里那条登录链接（只认那一家的登录页）；没有 ⇒ `None`。
+    pub(crate) link_in: fn(&str) -> Option<String>,
+    /// 粘回来的东西对不对得上这一趟的链接（格式 ＋ 这一趟的 state）。
+    pub(crate) paste_fits: fn(pasted: &str, link: &str) -> bool,
+    /// 输出的一行说「粘的码不对」（子命令接着等）。
+    pub(crate) said_bad_paste: fn(&str) -> bool,
 }
 
 /// 一家的订阅号登录的格式知识（读写与续期在账号域 `accounts/oauth/`，这里只有这一家的名字与地址）。

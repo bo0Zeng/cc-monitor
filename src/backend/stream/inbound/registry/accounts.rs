@@ -1,25 +1,7 @@
-//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*`。
+//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*` · `login-*` · `manual-list`。
 
 use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
-
-/// 改账号库那几条（`accounts-*`）递给执行器的 key 表几口：写 key · 删号清那一行 · 回滚放回去 · 表在哪。
-/// 那份表（上游选择自己的状态）的写口只从这里递出去，写经分派那一层递进来的写句柄。
-fn with_account_keys<R>(
-    own: &crate::platform::Own,
-    f: impl FnOnce(&crate::faces::accounts_face::KeyDoor<'_>) -> R,
-) -> R {
-    use crate::accounts::upstream_select::file_face;
-    let set = |a: &serde_json::Value| file_face::answer_set(a, own);
-    let drop = |a: &serde_json::Value| file_face::answer_drop(a, own);
-    let restore = |a: &serde_json::Value| file_face::answer_restore(a, own);
-    f(&crate::faces::accounts_face::KeyDoor {
-        set: &set,
-        drop: &drop,
-        restore: &restore,
-        path: &file_face::machine_path,
-    })
-}
 
 pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
@@ -293,201 +275,80 @@ pub(super) const SPECS: &[CommandSpec] = &[
                 .map_err(|(c, m)| (c.to_string(), m))
         }),
     },
-    // 改账号库的那几条：本体 `accounts/manage/`，帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了改配置文件、重生成别名）。
-    //   写经这台的文件管理面（[`LocalFiles`]）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` / `accounts-login-cmd` 只读。
-    CommandSpec {
-        name: "accounts-init",
-        summary: "建账号库",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "not_enabled",
-            "refused",
-            "unsupported",
-        ],
-        fields: &[out("aliasNames", "这个号会拿到的别名名字（`accounts-init` / `accounts-add`，预演时也给；别的命令 ⇒ `[]`）"), out("aliases", "改配置文件（`profiles.toml`）的结局，恰一条 `{path, changed, added, removed, skipped, note}`：加了（基于 `cc` / `cct`、只写自己的号）/ 删了（合下来用这个号的全部段）/ 名字被占跳过的那几段；配置文件有写错的地方 ⇒ 不动、`note` 说一句"), out("applied", "这一趟真改了盘没有"), out("backup", "这一趟留的备份（`~/.cc-monitor/accounts/.backup-<这一段>`，回滚用它）；没改动 ⇒ `null`"), arg("dryRun", "可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步"), arg("name", "默认号的名字：过 `shell_quote_core::account_name_ok`（与 `ccm … --account` 同一条），`0` 是保留名"), out("notes", "提示（不挡这一趟），比如共享库里还没有可共享的项"), out("steps", "做了（预演时：将要做）的每一步，一句一行")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-add",
-        summary: "新建一个号",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "not_enabled",
-            "refused",
-            "unsupported",
-        ],
-        fields: &[out("account", "建出来的那个号：`{name, configDir}`"), out("aliasNames", "同 `accounts-init`"), out("aliases", "同 `accounts-init`"), out("applied", "同 `accounts-init`"), out("backup", "同 `accounts-init`"), arg("baseUrl", "只 API 号：上游地址（缺席 = 默认上游）与 key 明文"), out("configDir", "那个号的配置目录（`account` 里）"), arg("credFile", "只订阅号：导入哪一份凭据（家目录底下的绝对路径或 `~/…`；是链接 / 空文件 / 不在 ⇒ `refused`）"), arg("dryRun", "可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步"), arg("isDefault", "可缺席的布尔：真 ⇒ 建好后它是默认号（`ccm` 不带 `--account` 时用它）"), arg("key", "只 API 号：上游地址（缺席 = 默认上游）与 key 明文"), out("keyMasked", "API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填）"), out("keyProblem", "API 号：写进 apikey 表之后的掩码；号建好了 key 却没写进去时那一句（界面据此让人在那一行重填）"), arg("kind", "`\"subscription\"`（订阅号）或 `\"api-key\"`（API 号，清单里写 `authKind: \"api-key\"`）"), out("loginCmd", "订阅号没导入凭据时：在终端里跑这一行登录（`'<家>/.cc-monitor/bin/ccm' -- --account '<名>'`，agent 自己的登录界面）；否则 `null`"), arg("name", "同 `accounts-init`；已有同名号 / 同名目录 ⇒ `refused`"), out("notes", "同 `accounts-init`"), out("steps", "同 `accounts-init`")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-remove",
-        summary: "删一个号",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "not_enabled",
-            "refused",
-            "unsupported",
-        ],
-        fields: &[out("aliases", "同 `accounts-init`；参数指向它的别名随之删掉（`removed`）"), out("applied", "同 `accounts-init`；参数指向它的别名随之删掉（`removed`）"), out("backup", "同 `accounts-init`；参数指向它的别名随之删掉（`removed`）"), arg("dryRun", "可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步"), arg("force", "可缺席的布尔：删的是默认号时必须给真（剩下的第一个号接着当默认）"), arg("name", "要删的号；`0` · 不认识的号 ⇒ `refused`"), out("notes", "同 `accounts-init`；参数指向它的别名随之删掉（`removed`）"), out("steps", "同 `accounts-init`；参数指向它的别名随之删掉（`removed`）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-set-default",
-        summary: "设默认号",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "not_enabled",
-            "refused",
-            "unsupported",
-        ],
-        fields: &[out("aliases", "同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写"), out("applied", "同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写"), out("backup", "同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写"), arg("dryRun", "可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步"), arg("name", "要当默认的号（不认识 ⇒ `refused`）"), out("notes", "同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写"), out("steps", "同 `accounts-init`；已经是默认 ⇒ `applied: false`、一个字节不写")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-repair",
-        summary: "修复账号库（幂等）",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "not_enabled",
-            "refused",
-            "unsupported",
-        ],
-        fields: &[out("aliases", "同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null`"), out("applied", "同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null`"), out("backup", "同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null`"), arg("dryRun", "可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步"), out("notes", "同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null`"), out("steps", "同 `accounts-init`；再跑一次 ⇒ `applied: false`、`backup: null`")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-rollback",
-        summary: "按一份备份还原",
-        codes: &[
-            "bad_args",
-            "io_failed",
-            "not_enabled",
-            "refused",
-            "unsupported",
-        ],
-        fields: &[out("aliases", "同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名"), out("applied", "同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名"), both("backup", "入：用哪一份（`.backup-` 后面那一段，只许 `[0-9A-Za-z._-]`、不含 `..`）；缺席 ⇒ 最近一份还没还原过的"), arg("dryRun", "可缺席的布尔：真 ⇒ 只算不做，`steps` 是将要做的那几步"), out("notes", "同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名"), out("steps", "同 `accounts-init`；`notes` 里是撤销清单里认不出、跳过了的行；回滚前后账号表里消失 / 重新出现的号照删号 / 建号改别名")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-verify",
-        summary: "核对账号库",
-        codes: &["bad_args", "io_failed", "unsupported"],
-        fields: &[out("account", "说的是哪个号；全局那几条 ⇒ `null`"), out("checks", "每条 `{level, account, text}`"), out("fails", "`fail`"), out("level", "`ok` · `warn` · `fail` · `skip`"), out("pass", "没有一条 `fail`"), out("text", "给人看的那一句"), out("warns", "`warn` 各几条")],
-        takes_input: false,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-login-cmd",
-        summary: "在终端里登录一个号的那一行",
-        codes: &["bad_args", "io_failed", "refused", "unsupported"],
-        fields: &[out("cmd", "那一行：这台的 `ccm` 带 `--account` 起 agent（它自己的登录界面）；值一律经唯一的 quote（`shell_quote_core::posix_quote`）"), arg("name", "清单里的一个号（不认识 ⇒ `refused`）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
+    // 改账号库的那几条（typed：入参 · 成品 · 码表都从 `cmd_wire::accounts` 与 `faces::accounts_face` 的类型来）：本体 `accounts/manage/`，
+    //   帧面宿主 `faces/accounts_face.rs`（建 API 号写 key · 账号表变了改配置文件、重生成别名）。
+    //   写经这台的文件管理面（[`LocalFiles`]）与分派那一层递的写句柄（key 表）；同步文件 I/O ⇒ 阻塞档。`accounts-verify` / `accounts-login-cmd` 只读。
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsInit>(
+        "建账号库",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsAdd>(
+        "新建一个号",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsRemove>(
+        "删一个号",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsSetDefault>(
+        "设默认号",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsRepair>(
+        "修复账号库（幂等）",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsRollback>(
+        "按一份备份还原",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsVerify>(
+        "核对账号库",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsLoginCmd>(
+        "在终端里登录一个号的那一行",
+        &LocalFiles,
+    ),
     // 各号共用的用户级 MCP（本体 `accounts/manage/mcp_share_exec.rs`）：读各号的配置文件、只改那一个键、写回共享集合 ⇒ 阻塞档。
     //   成品只有名字与号名，不带定义里的任何值。
-    CommandSpec {
-        name: "accounts-mcp-read",
-        summary: "这台各账号共用的用户级 MCP 此刻的样子",
-        codes: &["bad_args", "io_failed", "refused"],
-        fields: &[out("changed", "这一趟改写了哪几个号（这一条恒空）"), out("choices", "每一版 `{from, holders, gone}`"), out("conflicts", "两边都改了、等用户挑的那几条：每条 `{name, choices}`"), out("enabled", "这台有没有账号库（没有 ⇒ 不做同步，其余几格为空）"), out("from", "挑这一版时交回 `accounts-mcp-pick` 的 `from`：`null` = 共享的那一版；号名 = 那个号里的那一版"), out("gone", "这一版是「没有这一条」（在 cc-monitor 里删过）"), out("holders", "此刻是这一版的那几个号"), out("name", "那一条的名字"), out("notes", "提示：某个号的配置读不出来（这一趟不同步它）· 没写进去"), out("servers", "共享集合里的名字（排好序）"), out("sync", "各号之间在不在同步（用户停了 ⇒ `false`：各号各管各的、`conflicts` 恒空；见 `accounts-mcp-sync`）")],
-        takes_input: false,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-mcp-remove",
-        summary: "从各账号共用的用户级 MCP 里删一条",
-        codes: &["bad_args", "io_failed", "not_found", "refused"],
-        fields: &[out("changed", "同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号"), out("choices", "同 `accounts-mcp-read`"), out("conflicts", "同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号"), out("enabled", "同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号"), out("from", "同 `accounts-mcp-read`"), out("gone", "同 `accounts-mcp-read`"), out("holders", "同 `accounts-mcp-read`"), arg("name", "要删的那一条（共享集合里与哪个号里都没有 ⇒ `not_found`）"), out("notes", "同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号"), out("servers", "同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号"), out("sync", "同 `accounts-mcp-read`；`changed` = 这一趟撤掉它的那几个号")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "accounts-mcp-pick",
-        summary: "两边都改了的那一条用哪一版",
-        codes: &["bad_args", "io_failed", "not_found", "refused"],
-        fields: &[out("changed", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), out("choices", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), out("conflicts", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), out("enabled", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), arg("from", "→ 那个号里此刻的那一版；缺席 / `null` = 共享的那一版（共享集合里已经删了 ⇒ 删）"), out("gone", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), out("holders", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), arg("name", "那一条"), out("notes", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), out("servers", "同 `accounts-mcp-read`；停着同步时拒（`refused`）"), out("sync", "同 `accounts-mcp-read`；停着同步时拒（`refused`）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
-    },
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsMcpRead>(
+        "这台各账号共用的用户级 MCP 此刻的样子",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsMcpRemove>(
+        "从各账号共用的用户级 MCP 里删一条",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsMcpPick>(
+        "两边都改了的那一条用哪一版",
+        &LocalFiles,
+    ),
     // 停 / 开各号之间的同步（只改共享集合那份文件里那一格；开回来那一刻同步一趟）。
+    crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsMcpSync>(
+        "停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）",
+        &LocalFiles,
+    ),
+    // 在 app 里登录一个号（本体 `accounts/sign_in.rs`，帧面宿主 `faces/login_face.rs`）：核心起那一家的登录子命令、转链接、递码，
+    //   令牌那一家自己写。`login-start` 要跟着发起它的那条连接走（连接断了作业就收）⇒ 硬臂（`dispatch` 带本连接的号调它）；
+    //   作业自己收了（本机浏览器回调登完 · 那一家先退了）推一帧 `changed {login, key: 作业号}` 给那条连接。
     CommandSpec {
-        name: "accounts-mcp-sync",
-        summary: "停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）",
-        codes: &["bad_args", "io_failed", "refused"],
-        fields: &[out("changed", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("choices", "同 `accounts-mcp-read`"), out("conflicts", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("enabled", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("from", "同 `accounts-mcp-read`"), out("gone", "同 `accounts-mcp-read`"), out("holders", "同 `accounts-mcp-read`"), out("name", "同 `accounts-mcp-read`"), out("notes", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), arg("on", "`false` = 停；`true` = 开回来"), out("servers", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号"), out("sync", "同 `accounts-mcp-read`；开回来那一趟 `changed` = 同步改写了的那几个号")],
+        name: "login-start",
+        summary: "在 app 里登录一个号：起那一家的登录子命令，交回登录链接（本连接断了 ⇒ 作业收）",
+        codes: crate::faces::login_face::LOGIN_START_CODES,
+        fields: &[arg("account", "账号库里的号（账号 0 是 `0`）"), arg("agent", "哪一家（同 `accounts-list` 的 `agent`）"), out("auto", "会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推 `changed {login}`，粘码只是后备）"), out("job", "作业号（`login-finish` · `login-cancel` 交它）"), out("paste", "粘回来的是什么：`code`（登录页上给的那一段）"), out("url", "登录链接（在浏览器里打开，不用内嵌网页）")],
         takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            with_account_keys(own, |keys| {
-                crate::faces::accounts_face::answer(&LocalFiles, &r.cmd, &r.args, keys)
-            })
-            .map(Some)
-        }),
+        // 本体 `faces::login_face::answer_start`（`dispatch` 的硬臂带着本连接的号调它）。
+        run: Run::Builtin,
     },
+    crate::stream::inbound::typed::blocking::<crate::faces::login_face::LoginFinish>(
+        "把登录页上给的码交给那份登录作业，等那一家换完",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::faces::login_face::LoginCancel>(
+        "收一份登录作业",
+    ),
+    // 会话外的需手动清单（需登录的号 · 需登录的 MCP）：每一项带写好的那一句和怎么解。读账号清单 ＋ MCP 缓存 ⇒ 阻塞档。
+    crate::stream::inbound::typed::blocking::<crate::faces::login_face::ManualListCmd>(
+        "会话外的需手动清单：需登录的号 · 需登录的 MCP",
+    ),
 ];

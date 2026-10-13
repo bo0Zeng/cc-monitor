@@ -437,6 +437,7 @@ fn accounts_face(account_env: &'static str) -> crate::agents::AccountsFace {
         shared_root: |h| h.join("shared"),
         email_in: |_| None,
         login: None,
+        sign_in: None,
         session_env: crate::agents::SessionEnvKeys {
             config_dir: account_env,
             base_url: "CCM_FAKE_UPSTREAM",

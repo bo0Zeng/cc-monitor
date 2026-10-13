@@ -45,7 +45,6 @@ export function defaultOps(): Record<string, OpHandler> {
             notes: [],
             backup: null,
             account: null,
-            loginCmd: null,
             aliasNames: name ? [`${name}cc`, `${name}cct`] : [],
             keyMasked: null,
             keyProblem: null,

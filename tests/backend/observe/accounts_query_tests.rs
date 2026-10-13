@@ -2479,3 +2479,44 @@ fn the_listing_hands_over_each_accounts_color() {
     );
     let _ = fs::remove_dir_all(&root);
 }
+
+/// 每个号带一格 `label`：号在人眼里叫什么（后端写好，界面 · 手机照抄）—— 账号 0 叫「~/.claude」那一句，其余照原名。
+/// 行的格就是原来那几格加这一格（别的不动）。
+#[test]
+fn each_row_carries_the_label_people_see() {
+    let root = tmpdir("label");
+    let accts = root.join("accts");
+    write_manifest(
+        &accts,
+        &format!(
+            r#"{{"version":1,"sharedStore":"/s","accounts":[
+                    {{"name":"z","configDir":{z:?}}},
+                    {{"name":"0","isDefault":false,"mode":"bare"}}]}}"#,
+            z = accts.join("z").to_string_lossy()
+        ),
+    );
+    let lines = list_accounts(&accts);
+    let z: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
+    let zero: serde_json::Value = serde_json::from_str(&lines[2]).unwrap();
+    assert_eq!(z["label"], "z");
+    assert_eq!(zero["label"], copy_core::copy_text("acct.home.name", &[]));
+    let keys: Vec<&str> = z.as_object().unwrap().keys().map(String::as_str).collect();
+    assert_eq!(
+        keys,
+        [
+            "authKind",
+            "authReady",
+            "color",
+            "configDir",
+            "email",
+            "exists",
+            "isDefault",
+            "label",
+            "loggedIn",
+            "mode",
+            "name",
+            "selectable"
+        ]
+    );
+    let _ = fs::remove_dir_all(&root);
+}

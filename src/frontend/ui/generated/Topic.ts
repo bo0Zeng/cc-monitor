@@ -3,4 +3,4 @@
 /**
  * 推送主题（线上 `changed.topic`）。
  */
-export type Topic = "accounts" | "profiles" | "quota" | "rotation" | "rotation_configs" | "plan" | "tasks" | "needs";
+export type Topic = "accounts" | "profiles" | "quota" | "rotation" | "rotation_configs" | "plan" | "tasks" | "needs" | "login" | "manual";

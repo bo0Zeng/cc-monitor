@@ -21429,6 +21429,84 @@
       "zh": "启动 {program} 失败 · {why}",
       "args": ["program", "why"]
     },
+    "beLogin.start.failed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "启动 {program} 登录失败 · {why}",
+      "args": ["program", "why"]
+    },
+    "beLogin.start.noLink": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "登录页链接没有出现 · 原因不明",
+      "args": []
+    },
+    "beLogin.start.exited": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "登录程序未给出登录链接即退出",
+      "args": []
+    },
+    "beLogin.finish.refused": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "登录没成 · 需重新开始",
+      "args": []
+    },
+    "beLogin.finish.badPaste": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "粘贴的内容不是本次登录页上的码 · 可重新粘贴",
+      "args": []
+    },
+    "beLogin.finish.noJob": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "本次登录不存在 · 需重新开始",
+      "args": []
+    },
+    "beLogin.finish.slow": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "登录程序暂无答复 · 可稍后重新粘贴",
+      "args": []
+    },
+    "beLogin.account.notFound": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "账号库里没有 {account}",
+      "args": ["account"]
+    },
+    "beLogin.account.apiKey": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{account} 是 API 号 · 不用登录",
+      "args": ["account"]
+    },
+    "beLogin.agent.unsupported": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "{agent} · 不支持在 app 里登录",
+      "args": ["agent"]
+    },
+    "beManual.list.accountLogin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{account} 需登录",
+      "args": ["account"]
+    },
+    "beManual.list.mcpLogin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "MCP {server} 需登录（{account}）",
+      "args": ["server", "account"]
+    },
+    "beManual.list.mcpLoginBare": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "MCP {server} 需登录",
+      "args": ["server"]
+    },
     "beQuotaProbe.run.exit": {
       "kind": "error",
       "role": "报错",

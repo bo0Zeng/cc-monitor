@@ -1,4 +1,4 @@
-//! **命令那一层**：入参按 `acct_core::wire` 严格收 → 读快照 → 算计划 → 预演就交出那几步、否则交执行器落盘。
+//! **命令那一层**：入参（`cmd_wire::accounts`，typed 那一处已严格收好）→ 读快照 → 算计划 → 预演就交出那几步、否则交执行器落盘。
 //! 帧面宿主（`faces/accounts_face.rs`）在这之上接 apikey 表与别名文件那两步。
 
 pub(crate) use super::exec::KeyTable;
@@ -10,15 +10,13 @@ use crate::stream::inbound::spec::Fail;
 type Refusal = Fail;
 use super::scan::{self, is_under, join, KeyRows, Snapshot};
 use crate::assets::door::{self, Door};
-use acct_core::wire::{
-    AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd,
-    AccountMcpNameArgs, AccountMcpPickArgs, AccountMcpSyncArgs, AccountMcpView, AccountNameArgs,
+use cmd_wire::accounts::{
+    AccountAddArgs, AccountChange, AccountInitArgs, AccountKind, AccountLoginCmd, AccountNameArgs,
     AccountRef, AccountRemoveArgs, AccountRepairArgs, AccountRollbackArgs, VerifyReport,
 };
 use copy_core::copy_text;
-use serde_json::Value;
 
-/// 一条请求（入参已按线上形状收好）。
+/// 一条改动请求（入参已由 typed 那一处按线上形状收好）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Request {
     Init(AccountInitArgs),
@@ -27,77 +25,10 @@ pub(crate) enum Request {
     SetDefault(AccountNameArgs),
     Repair(AccountRepairArgs),
     Rollback(AccountRollbackArgs),
-    Verify,
-    LoginCmd(AccountNameArgs),
 }
 
 fn bad(detail: &str) -> Refusal {
     Fail::new("bad_args", crate::common::contract::malformed(detail))
-}
-
-fn take<T: serde::de::DeserializeOwned>(args: &Value) -> Result<T, Refusal> {
-    let v = if args.is_null() {
-        Value::Object(Default::default())
-    } else {
-        args.clone()
-    };
-    serde_json::from_value(v).map_err(|e| bad(&e.to_string()))
-}
-
-/// 入参 ⇒ [`Request`]。形状不对（多键 · 缺键 · 类型不对）⇒ `bad_args`。
-pub(crate) fn parse(cmd: &str, args: &Value) -> Result<Request, Refusal> {
-    Ok(match cmd {
-        "accounts-init" => Request::Init(take(args)?),
-        "accounts-add" => Request::Add(take(args)?),
-        "accounts-remove" => Request::Remove(take(args)?),
-        "accounts-set-default" => Request::SetDefault(take(args)?),
-        "accounts-repair" => Request::Repair(take(args)?),
-        "accounts-rollback" => Request::Rollback(take(args)?),
-        "accounts-login-cmd" => Request::LoginCmd(take(args)?),
-        "accounts-verify" => {
-            if !(args.is_null() || args.as_object().is_some_and(serde_json::Map::is_empty)) {
-                return Err(bad("accounts-verify takes no arguments"));
-            }
-            Request::Verify
-        }
-        other => return Err(bad(&format!("unknown command {other:?}"))),
-    })
-}
-
-/// 各号共用的用户级 MCP 那几条（本体 [`super::mcp_share_exec`]）。
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum McpRequest {
-    Read,
-    Remove(AccountMcpNameArgs),
-    Pick(AccountMcpPickArgs),
-    Sync(AccountMcpSyncArgs),
-}
-
-/// 是这几条之一 ⇒ `Some(收好的入参)`；别的命令 ⇒ `None`。
-pub(crate) fn parse_mcp(cmd: &str, args: &Value) -> Option<Result<McpRequest, Refusal>> {
-    Some(match cmd {
-        "accounts-mcp-read" => {
-            if args.is_null() || args.as_object().is_some_and(serde_json::Map::is_empty) {
-                Ok(McpRequest::Read)
-            } else {
-                Err(bad("accounts-mcp-read takes no arguments"))
-            }
-        }
-        "accounts-mcp-remove" => take(args).map(McpRequest::Remove),
-        "accounts-mcp-pick" => take(args).map(McpRequest::Pick),
-        "accounts-mcp-sync" => take(args).map(McpRequest::Sync),
-        _ => return None,
-    })
-}
-
-/// 跑一条（成品是此刻的样子）。
-pub(crate) fn run_mcp(d: &dyn Door, req: &McpRequest) -> Result<AccountMcpView, Refusal> {
-    match req {
-        McpRequest::Read => super::mcp_share_exec::read(d),
-        McpRequest::Remove(a) => super::mcp_share_exec::remove(d, &a.name),
-        McpRequest::Pick(a) => super::mcp_share_exec::pick(d, &a.name, a.from.as_deref()),
-        McpRequest::Sync(a) => super::mcp_share_exec::set_sync(d, a.on),
-    }
 }
 
 /// 这台做不做得了多账号（不做 ⇒ `unsupported`）。
@@ -218,7 +149,7 @@ fn alias_names_for(account: &str) -> Vec<String> {
         .collect()
 }
 
-/// 跑一条改动命令（`Verify` / `LoginCmd` 不走这里）。`keys` = 这台 key 表那两口（删号清它那一行、回滚放回去；门递进来）。
+/// 跑一条改动命令。`keys` = 这台 key 表那两口（删号清它那一行、回滚放回去；门递进来）。
 pub(crate) fn run_change(
     d: &dyn Door,
     req: &Request,
@@ -260,10 +191,8 @@ pub(crate) fn run_change(
         path: k.path.clone(),
         ids: k.ids.clone(),
     });
-    if let Request::Rollback(a) = req {
-        return rollback(d, &snap, a, keys);
-    }
     let (plan, dry, extra): (Plan, bool, AccountChange) = match req {
+        Request::Rollback(a) => return rollback(d, &snap, a, keys),
         Request::Init(a) => (
             layout::plan_init(&snap, &a.name)?,
             a.dry_run == Some(true),
@@ -285,8 +214,6 @@ pub(crate) fn run_change(
                     name: a.name.clone(),
                     config_dir: join(&snap.roots().accts, &a.name),
                 }),
-                login_cmd: (a.kind == AccountKind::Subscription && want.cred_file.is_none())
-                    .then(|| login_line(&home, &a.name)),
                 alias_names: alias_names_for(&a.name),
                 ..AccountChange::default()
             };
@@ -307,9 +234,6 @@ pub(crate) fn run_change(
             a.dry_run == Some(true),
             AccountChange::default(),
         ),
-        Request::Rollback(_) | Request::Verify | Request::LoginCmd(_) => {
-            return Err(bad("not a change command"))
-        }
     };
     let r = snap.roots().clone();
     let steps = plan

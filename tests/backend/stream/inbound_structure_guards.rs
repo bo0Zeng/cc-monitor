@@ -432,6 +432,10 @@ fn every_registered_command_declares_its_run_kind() {
                 | "plan-return"
                 // 文件窗口反查：读认可那份小文件（同步文件 I/O；不起 pb）。
                 | "plan-files"
+                // 在 app 里登录：粘码之后等那一家换完（有界等待）· 收一份作业（杀组、收尸）· 需手动清单（读账号清单 ＋ MCP 缓存）。
+                | "login-finish"
+                | "login-cancel"
+                | "manual-list"
         );
         let is_blocking = spec.run.blocking();
         assert_eq!(
@@ -464,6 +468,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "stream-watch"
                 // 答题 hook 挂一条待答请求：挂的那条跟着本连接走（hook 那一头走了就撤，`control/asks`）。
                 | "needs-ask"
+                // 在 app 里登录一个号：作业跟着本连接走（连接断了就杀），作业收了的那一帧走本连接的应答通道（`accounts/sign_in.rs`）。
+                | "login-start"
         );
         assert_eq!(
             is_builtin, expected_builtin,
@@ -711,6 +717,11 @@ fn every_registered_command_declares_its_run_kind() {
         "needs-ask",
         // 答一条挂着的待答请求：异步档（锁登记表、交通道，不碰盘）。
         "needs-answer",
+        // 在 app 里登录：起登录子命令是内建（硬臂；带本连接的号，作业跟着本连接走）；粘码 · 收作业 · 需手动清单阻塞。
+        "login-start",
+        "login-finish",
+        "login-cancel",
+        "manual-list",
     ];
     let missing: Vec<&str> = super::REGISTRY
         .iter()
@@ -1104,6 +1115,12 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
     ),
     (
+        "login-start",
+        sampled::<crate::faces::login_face::LoginStarted>,
+        &[],
+        &[],
+    ),
+    (
         "plan-command",
         sampled::<crate::plan::wire::PlanCmdReply>,
         &[],
@@ -1371,21 +1388,9 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 85;
+    const UNSHAPED_CEILING: usize = 73;
     const UNSHAPED: &[&str] = &[
-        "accounts-add",
-        "accounts-init",
-        "accounts-login-cmd",
-        "accounts-mcp-pick",
-        "accounts-mcp-read",
-        "accounts-mcp-remove",
-        "accounts-mcp-sync",
-        "accounts-remove",
-        "accounts-repair",
-        "accounts-rollback",
         "accounts-sessions",
-        "accounts-set-default",
-        "accounts-verify",
         "agent-home-check",
         "aliases-block-render",
         "apikey-key-set",

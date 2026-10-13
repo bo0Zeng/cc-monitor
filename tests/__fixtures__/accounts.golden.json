@@ -17,6 +17,7 @@
         "keyMasked": null,
         "loggedIn": false,
         "mode": "isolated",
+        "label": "zero",
         "name": "zero",
         "selectable": false,
         "color": 3
@@ -37,6 +38,7 @@
         "keyMasked": null,
         "loggedIn": true,
         "mode": "isolated",
+        "label": "a",
         "name": "a",
         "selectable": true,
         "color": 0
@@ -57,6 +59,7 @@
         "keyMasked": "••••••••a1b2",
         "loggedIn": false,
         "mode": "isolated",
+        "label": "b",
         "name": "b",
         "selectable": true,
         "color": 1

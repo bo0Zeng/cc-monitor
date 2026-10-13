@@ -1,18 +1,16 @@
-//! 账号库契约的**唯一定义**（清单常量 · 账号库命令的线上形状 [`wire`]），外加平台无关的名字安全判据。
+//! 账号库清单契约的**唯一定义**（清单常量），外加平台无关的名字安全判据。账号库那几条帧命令的线上形状住 `cmd-wire::accounts`。
 //!
 //! 今天的消费者：
 //! - 后端：`accounts/manage/`（写账号库）· `observe/accounts_query.rs`（读清单）· `accounts/upstream_select/file_face.rs` ·
 //!   `accounts/upstream_select/endpoint.rs` · `control/ccm/plan.rs` · `control/launch_render/payload.rs`；
 //! - 界面只经**生成物**用它：`tests/frontend/shell/payload_judgment_rules.rs` 从 [`AUTH_KINDS`] 现生成
-//!   `src/frontend/ui/generated/judgment-rules.ts`；[`wire`] 里的类型由本 crate 的测试档导出到 `src/frontend/ui/generated/`。
+//!   `src/frontend/ui/generated/judgment-rules.ts`。
 //!
 //! # 为什么 `is_safe_config_dir` 两种形没有合成一个
 //!
 //! 判据按它防的东西拆开：① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，一套（[`config_dir_char_unsafe`]）；
 //! ② 「是绝对路径」= **平台相关的形式**，POSIX 形（[`config_dir_posix_ok`]，拼 POSIX 命令之前）与任一平台形（[`config_dir_ok`]，
 //! 读清单时认 Windows 盘符）各一条。`\` 不在拒绝集里：它是 Windows 的分隔符，由 POSIX 形那一条自己拒。
-
-pub mod wire;
 
 // 账号库与清单住哪（相对家目录）是后端的家那一族，住 `relay_route_core::ACCOUNTS_DIR_REL` / `ACCOUNTS_MANIFEST_NAME`。
 /// 凭据文件名（每个账号的 config dir 下）；只 stat 存在性，**绝不读内容**。

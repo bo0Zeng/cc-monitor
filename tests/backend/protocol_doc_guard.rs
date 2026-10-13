@@ -84,6 +84,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
         "agents/claudecode/resume.rs",
         include_str!("../../src/backend/agents/claudecode/resume.rs"),
     ),
+    // claude 那一家在 app 里登录一个号（`sign_in::FACE.args = ["auth", "login", "--claudeai"]`）：发给 claude 这个子进程的旗标，同上。
+    (
+        "agents/claudecode/sign_in.rs",
+        include_str!("../../src/backend/agents/claudecode/sign_in.rs"),
+    ),
     // codex 那一家的起会话事实（`LAUNCH_ARGS = ["--no-daemon"]`）：发给 codex 这个子进程的旗标，同上。
     (
         "agents/codex/resume.rs",
@@ -180,6 +185,13 @@ pub(crate) const CHILD_PROCESS_FLAGS: &[(&str, &str, &[&str], &str)] = &[
         "`claude` 那一家 resume 的 flag 形字面量（`agents/claudecode/resume.rs::RESUME_TOKEN`）、起新会话先定 sid 的旗标\
          （`SESSION_ID_FLAG`，新起都带）、起会话选权限档的旗标（`PERMISSION_MODE_FLAG`）与挂会话级答题 hook 的旗标（`SETTINGS_FLAG`，ccm 起的都带）：都是 claude 这个子进程的命令面，后端 argv 从不认它们，\
          线上契约里也没有它们的位置。",
+    ),
+    (
+        "agents/claudecode/sign_in.rs",
+        "tests/__fixtures__/fake-claude-auth-login.sh",
+        &["--claudeai"],
+        "`claude auth login` 选订阅号那一支的旗标（`agents/claudecode/sign_in.rs::FACE`）：claude 这个子进程的命令面，后端 argv 从不认它，\
+         线上契约里也没有它的位置。仓外的真 claude 读不到 ⇒ ② 那一侧读判据用的假登录子命令（它照实只认这一个）。",
     ),
     (
         "agents/codex/resume.rs",

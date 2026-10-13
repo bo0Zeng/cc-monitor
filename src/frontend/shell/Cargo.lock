@@ -135,10 +135,7 @@ dependencies = [
 name = "acct-core"
 version = "0.1.0"
 dependencies = [
- "serde",
- "serde_json",
  "test-home",
- "ts-rs",
 ]
 
 [[package]]

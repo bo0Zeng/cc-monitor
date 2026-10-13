@@ -854,7 +854,7 @@ async fn the_hub_refuses_a_target_the_table_greys_out() {
 #[cfg(unix)]
 fn make_library(m: &mut M) {
     use crate::accounts::upstream_select::file_face;
-    use crate::faces::accounts_face::{answer, KeyDoor};
+    use crate::faces::accounts_face::{tests::answer, KeyDoor};
     let home = m.env.home.clone().unwrap();
     let w = |rel: &str, body: &str| {
         let p = home.join(rel);

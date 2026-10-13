@@ -12,13 +12,12 @@ import { startNewSession } from "../new-session";
 /** 开登录窗口的结局：开了 · 这台电脑开不了终端窗口（换在 tmux 里登录）。其余失败抛（已说成一句）。 */
 export type LoginWindow = "opened" | "noWindow";
 
-/** 问那台要登录那一行（`cmd` 已有就不问），开终端窗口跑它。 */
+/** 问那台要登录那一行，开终端窗口跑它。 */
 export async function openLoginWindow(
   origin: Origin,
   name: string,
-  cmd?: string,
 ): Promise<LoginWindow> {
-  const line = cmd ?? (await accountsLoginCmd(origin, name));
+  const line = await accountsLoginCmd(origin, name);
   try {
     await openTerminal(origin, line);
     return "opened";
