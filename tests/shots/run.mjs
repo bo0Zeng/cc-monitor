@@ -11,9 +11,11 @@
  *   不起 claude、不碰用户的 tmux、不连任何机器。
  *
  * 浏览器：环境变量 `CCM_SHOTS_CHROME` 指定，不给就找 Playwright 缓存里的 Chrome for Testing。
+ * 一张网页图没截成：✗ 那一行当场印原因；那一页的世界里台架 ⇄ 无头壳的来往（带毫秒）与各台后端的诊断日志落进 `.build/shots-sandbox/trace/<场景>.*`，
+ * 问题表里点名。查偶发没截成先看来往里「哪一刻起没声了」、后端日志里有没有 `stale sessions json ignored` 之类的拒绝。
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync, statSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -47,6 +49,7 @@ process.on("exit", cleanup);
 process.on("SIGINT", () => process.exit(130));
 process.on("SIGTERM", () => process.exit(143));
 
+holdSandbox();
 rmSync(sandbox, { recursive: true, force: true });
 mkdirSync(path.join(sandbox, "home"), { recursive: true });
 mkdirSync(out, { recursive: true });
@@ -165,9 +168,9 @@ async function shootWeb() {
   // 先热一次：vite 第一次按需编译整张模块图要几秒，别算进第一张图的时限。
   const warm = await Page.open(cdp, 1280, 800, 1, { boot: pinDateSource() + NO_CARET, reducedMotion: true });
   await warm.goto(`${base}/index.html?scene=`);
-  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS).catch(() => {});
+  await pageFinished(warm).catch(() => {});
   await warm.goto(`${base}/settings.html?scene=`);
-  await warm.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS).catch(() => {});
+  await pageFinished(warm).catch(() => {});
   await warm.close();
 
   for (const s of scenes) {
@@ -178,7 +181,7 @@ async function shootWeb() {
     let note = "";
     try {
       await page.goto(`${base}/${s.page}.html?scene=${encodeURIComponent(s.id)}${s.query ? `&${s.query}` : ""}`);
-      await page.waitFor("window.__shots && window.__shots.state !== 'booting'", WALL_CEILING_MS);
+      await pageFinished(page);
       const h = await page.eval("({ state: window.__shots.state, error: window.__shots.error, unhandled: window.__shots.unhandled, layout: window.__shots.layout ?? [] })");
       const drag = await page.eval("window.__shots.drag ?? null");
       if (drag) {
@@ -218,15 +221,74 @@ async function shootWeb() {
       ok = false;
       note = e instanceof Error ? e.message : String(e);
     }
+    if (!ok && !note.startsWith("排版：")) {
+      // 台架与无头壳之间的来往（谁问了什么、壳交了什么、哪一刻起没声了）：查偶发没截成时第一份要看的。
+      const t = await fetch(`${base}/__ccm/trace`, { method: "POST", body: JSON.stringify({ scene: s.id }) })
+        .then((r) => r.json())
+        .catch(() => null);
+      if (t?.files?.length) note = `${note.split("\n")[0]}（来往：${t.files.join("、")}）`;
+    }
     const errs = page.consoleLines.filter((l) => l.startsWith("[error]") || l.startsWith("[exception]"));
     if (errs.length > 0) problems.push(`${s.id}：页里报错 ${errs.slice(0, 3).join(" | ").slice(0, 400)}`);
     if (!ok) problems.push(`${s.id}：${note.startsWith("排版：") ? note : `没截成 —— ${note.split("\n")[0]}`}`);
     writeFileSync(path.join(sandbox, `${s.id}.console.txt`), page.consoleLines.join("\n"));
     await page.close();
     results.push({ ...s, file: path.relative(out, file), ok });
-    console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}`);
+    console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}${ok ? "" : ` —— ${note.split("\n")[0].slice(0, 300)}`}`);
   }
   cdp.close();
+}
+
+/**
+ * 等这一页的场景落定（`window.__shots.finished`：做完 / 没做成，按事件等）。场景里每一处等都有兜底上限、到了就说在等什么（`state: failed` ＋ 原话），
+ * 所以这里不另起一个同样长的钟：从前两边都是 300 秒，这边先到就只剩一句「还在 booting」，真正卡在哪一步的那句被盖掉。
+ * 只兜「页里连那一步都没走到」（假适配层没装上 · 场景里有一处不带上限的等）：两倍上限还没落定 ⇒ 抛。
+ */
+async function pageFinished(page) {
+  let timer;
+  const cap = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`等了 ${(2 * WALL_CEILING_MS) / 1000} 秒，场景既没做完也没报错（页里有一处不带上限的等？）`)), 2 * WALL_CEILING_MS);
+  });
+  try {
+    await Promise.race([page.eval("window.__shots ? window.__shots.finished : Promise.reject(new Error('页里没有 window.__shots：假适配层没装上'))"), cap]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 同一棵树里同时只许跑一趟：沙箱（`.build/shots-sandbox`）是这棵树固定的一处，后起的那趟一开头就把它整个删掉重建，
+ * 先起的那趟的各台后端、来往、浏览器档一起没了（10-12 撞过：同一棵树起了两趟，先起的那趟的图全乱）。
+ * 占位文件 `<沙箱>.pid` 记着占着的那趟的 pid（`wx` 建，建不了就看它还在不在）；它还在 ⇒ 说清楚、退出码 2；不在了（上一趟崩了）⇒ 接过来。
+ */
+function holdSandbox() {
+  const lock = `${sandbox}.pid`;
+  mkdirSync(path.dirname(lock), { recursive: true });
+  for (;;) {
+    try {
+      const fd = openSync(lock, "wx");
+      writeSync(fd, String(process.pid));
+      closeSync(fd);
+      process.on("exit", () => {
+        if (readFileSync(lock, "utf8").trim() === String(process.pid)) rmSync(lock, { force: true });
+      });
+      return;
+    } catch (e) {
+      if (e?.code !== "EEXIST") throw e;
+    }
+    const other = Number(readFileSync(lock, "utf8").trim());
+    let alive = false;
+    try {
+      alive = Number.isInteger(other) && other > 0 && readFileSync(`/proc/${other}/cmdline`, "utf8").includes("tests/shots/run.mjs");
+    } catch {
+      // 那个进程不在了
+    }
+    if (alive) {
+      console.error(`这棵树里已经有一趟截图在跑（pid ${other}，沙箱 ${sandbox}）：等它跑完再起，或换一棵树`);
+      process.exit(2);
+    }
+    rmSync(lock, { force: true });
+  }
 }
 
 function findChrome() {

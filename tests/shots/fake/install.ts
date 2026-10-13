@@ -47,8 +47,10 @@ try {
   // 读不了存储就当它是空的
 }
 
+let finish: () => void = () => undefined;
 const handle: ShotsHandle = {
   state: "booting",
+  finished: new Promise<void>((r) => (finish = r)),
   error: null,
   unhandled: backend.unhandled,
   layout: [],
@@ -83,5 +85,6 @@ window.addEventListener("DOMContentLoaded", () => {
       handle.error = e instanceof Error ? `${e.message}\n${e.stack ?? ""}` : String(e);
       handle.state = "failed";
     }
+    finish();
   })();
 });

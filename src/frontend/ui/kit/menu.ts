@@ -75,6 +75,8 @@ interface Open {
   peekT: ReturnType<typeof setTimeout> | null;
   /** 开着期间压住悬停提示的那只手（关时松开）。 */
   tips: () => void;
+  /** 看着触发物所在的那个框（对话框）：它变了（晚到的几格画出来、居中长高）触发物就挪了 ⇒ 重排，菜单仍贴着触发物（关时停）。 */
+  follow: ResizeObserver | null;
 }
 
 const OPEN_SUB_MS = 150;
@@ -500,6 +502,7 @@ export function openMenu(
     peekT: null,
     // 菜单开着期间压住悬停提示 / 悬停卡（已出的收掉，等着出的也不出）：不许压在菜单上；菜单里那几项的说明照常。
     tips: holdTooltips(root),
+    follow: null,
   };
   current = o;
   const filter = opts.filter ? filterBox(root, opts.filter) : null;
@@ -514,6 +517,17 @@ export function openMenu(
   }
   document.body.appendChild(root);
   place(o);
+  // 触发物在一个框里（对话框）：框变了就重排（判据 `tests/frontend/ui/kit/menu-follow.vitest.ts`）。
+  const frame =
+    "el" in anchor
+      ? anchor.el.closest<HTMLElement>('[role="dialog"], [aria-modal="true"]')
+      : null;
+  if (frame && typeof ResizeObserver !== "undefined") {
+    o.follow = new ResizeObserver(() => {
+      if (current === o) place(o);
+    });
+    o.follow.observe(frame);
+  }
   generation++;
   dispatcher.pushOverlay(layer);
   if ("el" in anchor) {
@@ -543,6 +557,7 @@ export function closeMenu(): void {
   for (const t of o.timers) clearTimeout(t);
   hidePeek(o);
   o.tips();
+  o.follow?.disconnect();
   o.root.remove();
   generation++;
   dispatcher.popOverlay(o.layer);

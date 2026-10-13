@@ -93,6 +93,8 @@ export interface World {
 
 export interface ShotsHandle {
   state: "booting" | "done" | "failed";
+  /** `state` 离开 `booting` 的那一刻兑现（截图工具按它等，不按钟点问）。场景里每一处等都有兜底上限、到了就把在等什么写进 `error`。 */
+  finished: Promise<void>;
   error: string | null;
   unhandled: string[];
   /** 截之前量 DOM 外接框发现的排版问题（`scenes/layout-check.ts`）。 */

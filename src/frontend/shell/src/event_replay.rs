@@ -129,6 +129,10 @@ struct Inner {
     screen_dropped: Option<ScreenDropped>,
     /// 主窗口报的「此刻在看的会话」（`(origin 线上串, sid)`，整份换）。`None` ＝ 还没报过 ⇒ 不替任何一台报名单（那台全看）。
     main_watch: Option<BTreeSet<TailKey>>,
+    /// 旁路快照在途的电平：最近一次交出去的那个数（[`EventReplay::on_snapshot_inflight`] 在本锁里记）。
+    /// 重放补电平读它、不回头读 `stream_source` 那把计数锁 —— 交电平的那一边是「持计数锁 → 要本锁」，
+    /// 这边再「持本锁 → 要计数锁」就是两条线程互等（截图台架偶发整条流停住，抓栈就是这一对）。
+    snapshot_level: u32,
 }
 
 /// 终端画面流撤掉了：`(哪台, 票)`。
@@ -373,6 +377,7 @@ fn plan_lifecycle(sub: &mut Sub, frames: &[Body]) -> Vec<Item> {
 /// 这里只按订阅的那台 / 那一个会话挑、换成格。`history` = 留存里这条订阅要的那些行（[`held_for`]）。
 fn lifecycle_replay(
     book: &parking_lot::RwLock<crate::session_book::Book>,
+    level: u32,
     origin: &str,
     only: Option<&str>,
     history: &[JsonlLinePayload],
@@ -395,7 +400,6 @@ fn lifecycle_replay(
     };
     // 旁路快照在途的电平：只在有在途时补一格（前端初值就是 0）。
     let mut before = Vec::new();
-    let level = crate::stream_source::snapshot_inflight_level();
     if level > 0 && only.is_none() {
         before.push(body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count: level },
@@ -503,6 +507,7 @@ impl EventReplay {
                 sink: None,
                 screen_dropped: None,
                 main_watch: None,
+                snapshot_level: 0,
             }),
             credit_changed: tokio::sync::Notify::new(),
             watch_tick: tokio::sync::watch::channel(0).0,
@@ -708,6 +713,7 @@ impl EventReplay {
                 tails,
                 subs,
                 ready_labels,
+                snapshot_level,
                 ..
             } = &mut *inner;
             let mut jobs: Vec<ReplayJob> = Vec::new();
@@ -717,7 +723,13 @@ impl EventReplay {
                 let mine = held_for(tails, sub);
                 // 会话行那一族才有起停（tap / 账号那两种没有）。
                 let (before, after) = if sub.kind == SubKind::Lines {
-                    lifecycle_replay(self.book, &sub.origin, sub.only.as_deref(), &mine)
+                    lifecycle_replay(
+                        self.book,
+                        *snapshot_level,
+                        &sub.origin,
+                        sub.only.as_deref(),
+                        &mine,
+                    )
                 } else {
                     (Vec::new(), Vec::new())
                 };
@@ -904,8 +916,13 @@ impl EventReplay {
             };
             let job = (immediate && kind == SubKind::Lines).then(|| {
                 let mine = held_for(&inner.tails, &sub);
-                let (before, after) =
-                    lifecycle_replay(self.book, origin, sub.only.as_deref(), &mine);
+                let (before, after) = lifecycle_replay(
+                    self.book,
+                    inner.snapshot_level,
+                    origin,
+                    sub.only.as_deref(),
+                    &mine,
+                );
                 ReplayJob {
                     label: label.to_string(),
                     id,
@@ -984,13 +1001,14 @@ impl EventReplay {
         }
     }
 
-    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢）。
+    /// 旁路快照在途份数变了（全局电平）：交给每条实时的整台会话流订阅（不吃 credit、不丢），并记下这个数（重放补电平读它）。
     pub fn on_snapshot_inflight(&self, count: u32) {
         let body = body_of(&SessionStreamFrame::SnapshotInflight(
             crate::ui_contract::SnapshotInflightPayload { count },
         ));
         let (sink, plans) = {
             let mut inner = self.inner.lock();
+            inner.snapshot_level = count;
             let Some(sink) = inner.sink.clone() else {
                 return;
             };
