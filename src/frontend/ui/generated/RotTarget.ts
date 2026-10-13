@@ -3,4 +3,8 @@
 /**
  * 看哪一份：一个会话（会话面板）· 一份策略（设置页；`settings` ＝ 界面手上的草稿，缺 ⇒ 文件里的）。
  */
-export type RotTarget = { sid: string, } | { strategy: string, settings?: unknown, };
+export type RotTarget = { sid: string, } | { strategy: string, settings?: unknown, 
+/**
+ * `settings` 是照哪个版本改出来的（缺 ⇒ 不比）：跟文件此刻的不同 ⇒ 提示「别处被改了」。
+ */
+rev?: string, };

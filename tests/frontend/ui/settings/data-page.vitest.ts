@@ -47,7 +47,7 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: opened, openPath: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
-vi.mock("../../../../src/frontend/ui/file-window", () => ({ openFileWindow: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));
+vi.mock("../../../../src/frontend/ui/file-window", () => ({ openOnMachine: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));
 
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { decodeDataReport } from "../../../../src/frontend/ui/settings/data-reads";

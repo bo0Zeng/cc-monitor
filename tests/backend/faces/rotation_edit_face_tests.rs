@@ -482,3 +482,61 @@ fn day_paint_is_plain_arithmetic() {
     )
     .is_err());
 }
+
+/// ★ 设时区：只把设置块里的 `tz` 换掉（说明 · 代码逐字节不变、设置照旧）；之后不再提示「时区不明」；
+/// 版本对不上 ⇒ `conflict`；不是 IANA 名 ⇒ `bad_args`。
+#[test]
+fn setting_the_zone_rewrites_only_tz() {
+    let home = Home::new("edit-tz");
+    let ctx = home.ctx();
+    let before = file(&home, "by-list");
+    let head_before = script::parse(&before).expect("读得懂").head;
+    let req = |tz: &str, if_rev: String| RotationStrategyTzReq {
+        id: "by-list".into(),
+        tz: tz.into(),
+        if_rev,
+    };
+    assert!(matches!(
+        tz_with(
+            &ctx,
+            &home.own(),
+            &req("Asia/Shanghai", "h:000000000000".into())
+        ),
+        Err(RotationStrategyTzErr::Conflict(..))
+    ));
+    assert!(matches!(
+        tz_with(
+            &ctx,
+            &home.own(),
+            &req("Mars/Olympus", rev(&home, "by-list"))
+        ),
+        Err(RotationStrategyTzErr::BadArgs(_))
+    ));
+    assert_eq!(file(&home, "by-list"), before, "拒了还动了文件");
+    let got = tz_with(
+        &ctx,
+        &home.own(),
+        &req("Asia/Shanghai", rev(&home, "by-list")),
+    )
+    .expect("设上");
+    let after = file(&home, "by-list");
+    assert_eq!(got.rev, shelf::rev_of(&after));
+    assert_eq!(code_of(&after), code_of(&before), "代码动了");
+    assert_eq!(
+        after.split_once("/*--- rotation").map(|x| x.0),
+        before.split_once("/*--- rotation").map(|x| x.0),
+        "说明动了"
+    );
+    let head = script::parse(&after).expect("读得懂").head;
+    assert_eq!(head.tz.as_deref(), Some("Asia/Shanghai"));
+    assert!(!head.tz_unknown);
+    assert_eq!(head.settings, head_before.settings);
+    assert_eq!(head.form, head_before.form);
+    let item =
+        crate::faces::rotation_view_face::strategies_with(&ctx, &Default::default(), &home.alive())
+            .strategies
+            .into_iter()
+            .find(|s| s.id == "by-list")
+            .expect("那一份");
+    assert!(!item.tz_unknown, "设了还说时区不明");
+}

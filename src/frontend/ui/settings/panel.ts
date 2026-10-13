@@ -69,6 +69,7 @@ import { copyText } from "../copy-table";
 import { parseSettingsTarget, type SettingsTarget } from "./open-settings";
 import { detailOf, failSaid, sayFailure, sayWithDetail, writtenSaid } from "../kit/detail";
 import { ControlError } from "../control-said";
+import { RotationSection } from "./rot-section";
 
 /**
  * 字段控件类型：
@@ -1029,7 +1030,12 @@ export class SettingsPanel {
         tab: "acct",
         ...this.loadableBlock(copyText("settingsPanel.group.accounts"), () => new AccountsSection()),
       },
-      // 「轮换」栏（那台的策略目录 · 新会话用哪份）第 4 刀照 `轮换-v5` 的稿施工，此刻空着。
+      {
+        // 「轮换」栏：那台的策略目录 · 新会话用哪份 · 那一份的设置与模拟（策略文件按机器存：两页都有）。渲染归 `rot-section.vitest.ts`。
+        appliesTo: "both",
+        tab: "rot",
+        ...this.loadableBlock(copyText("machinePage.tab.rot"), () => new RotationSection()),
+      },
       // 本机那一格「别名」（Windows 上是 PowerShell 那一侧的别名块）；远端那一格在 `MachineCard` 的「组件」栏里。
       // 构造零 I/O：它是个 `<details>`，第一次展开才读盘。
       {

@@ -311,6 +311,7 @@ fn every_registered_command_declares_its_run_kind() {
                 | "rotation-strategy-copy"
                 | "rotation-strategy-rename"
                 | "rotation-strategy-delete"
+                | "rotation-strategy-tz"
                 | "rotation-day-paint"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
@@ -587,6 +588,7 @@ fn every_registered_command_declares_its_run_kind() {
         "rotation-strategy-copy",
         "rotation-strategy-rename",
         "rotation-strategy-delete",
+        "rotation-strategy-tz",
         "rotation-day-paint",
         "tasks-list",
         "session-interrupts",

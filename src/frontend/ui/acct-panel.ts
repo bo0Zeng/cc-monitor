@@ -1,7 +1,7 @@
 /**
  * 「账号」面板（右侧抽屉）：状态栏账号按钮 · 右键「账号…」· 会话头 ⋯ 三处开的同一个。
  * 头下一句（中转没见过这个会话 · 额度账读不出时的那一条）＋ 底栏 `新会话默认 [work ▾] … 管理账号…`。
- * 轮换那一块（策略下拉 · 号牌 · 总体设置 · 模拟 · `现在用`）第 4 刀照 `轮换-v5` 的稿施工，此刻空着。
+ * 中间是轮换那四块（策略下拉 · 号牌 · 总体设置 · 模拟 · `现在用`，`rot-mount.ts` 接线、`rot-board.ts` 画，同设置窗「轮换」栏一处实现）。
  *
  * - 数据只经 `quota-read` · `rotation-view` 与推送（`acct-center.ts` 收进 `appStore`）。界面不判「能不能换 / 该不该换」。
  */
@@ -16,6 +16,7 @@ import { button } from "./kit/button";
 import { openDrawer, type DrawerHandle } from "./kit/drawer";
 import { icon } from "./kit/icon";
 import { closeMenu } from "./kit/menu";
+import { mountRotation, type RotMount } from "./rot-mount";
 import { accountLabel, type QuotaRead } from "./acct-words";
 import s from "./acct.module.css";
 
@@ -36,6 +37,7 @@ interface Open {
   origin: Origin;
   drawer: DrawerHandle;
   body: HTMLElement;
+  rot: RotMount;
   unsub: (() => void)[];
 }
 
@@ -70,7 +72,7 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
     title: copyText("acct.panel.title"),
     sub: copyText("acct.panel.sub", { session: host.sessionTitle(sid), machine: machineLabel(origin) }),
     body,
-    width: 440,
+    width: 540,
     bottom: statusBar ? Math.round(statusBar.getBoundingClientRect().height) : undefined,
     onClose: () => {
       if (open?.drawer !== drawer) return;
@@ -78,13 +80,23 @@ export function openAccountPanel(sid: string, origin: Origin, host: AcctPanelHos
       open = null;
     },
   });
-  const o: Open = { sid, origin, drawer, body, unsub: [] };
+  const o: Open = { sid, origin, drawer, body, rot: mountRotation({ origin, sid }), unsub: [] };
   open = o;
   const repaint = (): void => {
     if (open === o) render(o, host);
   };
-  o.unsub.push(appStore.quota.subscribe(repaint), appStore.sessionRotation.subscribe(repaint), appStore.accounts.subscribe(repaint));
+  // 这个会话的轮换变了（推送 ⇒ `acct-center` 换了它那一格）⇒ 四块重读（面板推得更长，不借 store 里那份）。
+  let lastEntry = appStore.sessionRotation.get().get(sid);
+  const onRotation = (): void => {
+    const e = appStore.sessionRotation.get().get(sid);
+    if (e === lastEntry) return;
+    lastEntry = e;
+    repaint();
+    if (open === o) void o.rot.refresh();
+  };
+  o.unsub.push(appStore.quota.subscribe(repaint), appStore.sessionRotation.subscribe(onRotation), appStore.accounts.subscribe(repaint));
   render(o, host);
+  void o.rot.refresh();
   // 打开那一刻再问一次这个会话（推送丢过也能补上）；额度账同理。
   void refreshSessions(origin, [sid]);
   void refreshQuota(origin);
@@ -100,7 +112,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: s
 function render(o: Open, host: AcctPanelHost): void {
   const entry = appStore.sessionRotation.get().get(o.sid);
   const quota = appStore.quota.get().get(o.origin) ?? null;
-  o.body.replaceChildren(...stub(o, entry, quota, host), footer(o, host));
+  const head = stub(o, entry, quota, host);
+  // 中转没见过这个会话 ⇒ 轮换那几块没得画（头下那一条说清楚了）。
+  o.body.replaceChildren(...head, ...(entry !== undefined && entry.read === null ? [] : [o.rot.root]), footer(o, host));
 }
 
 /** 头下那一条：中转没见过这个会话 · 额度账读不出。 */

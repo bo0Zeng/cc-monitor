@@ -3,4 +3,4 @@
 /**
  * 一段：一天里的分钟 `[from, to)` · 值。
  */
-export type RotSeg = { from: bigint, to: bigint, v: number, };
+export type RotSeg = { from: number, to: number, v: number, };

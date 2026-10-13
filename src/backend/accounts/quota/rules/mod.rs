@@ -2,12 +2,14 @@
 //!
 //! - [`standing`]：事实上发不发得出去；
 //! - [`decide`]：一判 —— 叫策略、照它交的先后做动作（纯函数：不读钟、不写盘）；
+//! - [`past`]：已经发生的那一截（照换号记录与此刻的读数，说不出的空着）；
 //! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::turn`]；
 //! - [`script`]：策略文件（JSON 头 ＋ Rhai 代码）与沙箱里的 `decide(ctx)`（挂着积木库 `lib`）。
 
 pub(crate) mod book;
 pub(crate) mod decide;
 pub(crate) mod form;
+pub(crate) mod past;
 pub(crate) mod script;
 pub(crate) mod shelf;
 pub(crate) mod simulate;

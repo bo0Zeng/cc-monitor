@@ -47,8 +47,9 @@ pub(crate) struct ForkFrom {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RotationPick {
-    /// 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）。
-    pub(crate) strategy: String,
+    /// 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）；`null` ⇒ 这个会话不轮换（新会话用的那份不管它）。
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub(crate) strategy: Option<String>,
 }
 
 /// `session-new` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
@@ -227,18 +228,20 @@ pub struct SessionNew {
     pub prompt: Option<FirstSay>,
 }
 
-/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了策略时起之前把那个会话写成用那一份（策略不在 ⇒ `no_strategy`）· 起不成撤掉。
+/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了策略（或「不轮换」，id 空）时起之前把那个会话写成用那一份（策略不在 ⇒ `no_strategy`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {
     pub(crate) sid: &'a dyn Fn() -> String,
     pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), (&'static str, String)>,
     pub(crate) forget: &'a dyn Fn(&str),
 }
 
-/// `rotation` 那一格：缺 ⇒ `None`（新会话用的那份）；`{strategy: id}` ⇒ 那一份；id 空 ⇒ `bad_args`（别的形状在解入参那一步就回了）。
+/// `rotation` 那一格：缺 ⇒ `None`（新会话用的那份）；`{strategy: id}` ⇒ 那一份；`{strategy: null}` ⇒ `Some("")`（不轮换）；
+/// id 空 ⇒ `bad_args`（别的形状在解入参那一步就回了）。
 fn strategy_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
-    match v {
+    match v.map(|p| p.strategy.as_deref()) {
         None => Ok(None),
-        Some(p) if !p.strategy.is_empty() => Ok(Some(p.strategy.clone())),
+        Some(None) => Ok(Some(String::new())),
+        Some(Some(id)) if !id.is_empty() => Ok(Some(id.to_string())),
         Some(_) => Err((
             "bad_args",
             crate::common::contract::malformed("`rotation` must be {\"strategy\": id}"),

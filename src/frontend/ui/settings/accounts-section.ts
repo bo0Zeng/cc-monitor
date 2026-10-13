@@ -23,8 +23,7 @@ import { slotLabel, slotText, type QuotaRead, accountLabel } from "../acct-words
 import type { QuotaShow } from "../generated/QuotaShow";
 import { readProfiles } from "../profiles-reads";
 import { writeApikeyKey } from "../apikey-reads";
-import { revealInFolder } from "../reveal-in-folder";
-import { openFileWindow } from "../file-window";
+import { openOnMachine } from "../file-window";
 import { findHostByOrigin, readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { bindEvents } from "../events";
 import { accountsAdd, accountsInit, accountsRemove, accountsRepair, accountsRollback, accountsSetDefault, accountsVerify, validateAcctName, type VerifyReport } from "../account-ops";
@@ -751,12 +750,7 @@ export class AccountsSection {
 
   private async reveal(origin: Origin, dir: string): Promise<void> {
     try {
-      if (isLocalOrigin(origin)) {
-        await revealInFolder(dir);
-        return;
-      }
-      const host = findHostByOrigin((await readRemoteConfig()).hosts, origin);
-      if (host) await openFileWindow(host, { dir });
+      await openOnMachine(origin, { dir });
     } catch (e) {
       failToast(copyText("acctPage.reveal.failed"), e, { level: "error" });
     }

@@ -578,6 +578,22 @@ fn no_config_at_launch_writes_nothing_and_a_window_launch_carries_the_sid_too() 
     );
 }
 
+/// ★ 选「不轮换」起（`rotation: {strategy: null}`）：起之前照样先定好 sid，把会话写成不轮换（策略 id 空），
+/// 新会话用的那份不碰它。
+#[test]
+fn not_rotating_at_launch_is_written_before_starting() {
+    let rig = Rig::new(Some(vec![]));
+    let got = rig
+        .call(req(json!({"rotation": {"strategy": null}})))
+        .expect("ok");
+    assert_eq!(got["sid"], PRESET, "{got}");
+    assert_eq!(
+        *rig.rot.borrow(),
+        vec![format!("{PRESET} claude  @0")],
+        "起之前写成不轮换"
+    );
+}
+
 /// 策略不在 ⇒ `no_strategy`，什么都不起；起不成（ccm 非 0）⇒ 撤掉起之前写的那一条；形状不对 ⇒ `bad_args`。
 #[test]
 fn a_config_at_launch_that_fails_leaves_nothing_behind() {

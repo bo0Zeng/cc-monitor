@@ -186,14 +186,16 @@ async function shootWeb() {
       const drag = await page.eval("window.__shots.drag ?? null");
       if (drag) {
         // 真鼠标拖（页里派的指针事件不算）：按下 · 分几步移过去 · 松开；松开之后问场景对不对。
-        const at = (y, extra) => page.send("Input.dispatchMouseEvent", { x: drag.x0, y, ...extra });
-        await at(drag.y0, { type: "mouseMoved" });
-        await at(drag.y0, { type: "mousePressed", button: "left", buttons: 1, clickCount: 1 });
+        // 横着也走（号牌那一排）：松在 `to` 横向的正中、顶边往里 3px；竖着的列表两者同一列，横坐标不动。
+        const x1 = drag.x1 ?? drag.x0;
+        const at = (k, extra) => page.send("Input.dispatchMouseEvent", { x: drag.x0 + ((x1 - drag.x0) * k) / 8, y: drag.y0 + ((drag.y1 - drag.y0) * k) / 8, ...extra });
+        await at(0, { type: "mouseMoved" });
+        await at(0, { type: "mousePressed", button: "left", buttons: 1, clickCount: 1 });
         for (let k = 1; k <= 8; k++) {
           await sleep(30);
-          await at(drag.y0 + ((drag.y1 - drag.y0) * k) / 8, { type: "mouseMoved", button: "left", buttons: 1 });
+          await at(k, { type: "mouseMoved", button: "left", buttons: 1 });
         }
-        await at(drag.y1, { type: "mouseReleased", button: "left", buttons: 0, clickCount: 1 });
+        await at(8, { type: "mouseReleased", button: "left", buttons: 0, clickCount: 1 });
         const why = await page.eval("window.__shots.afterDrag()");
         if (why) problems.push(`${s.id}：拖了一下 —— ${why}`);
       }

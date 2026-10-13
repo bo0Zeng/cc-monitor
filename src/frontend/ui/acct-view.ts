@@ -70,7 +70,7 @@ export function sessionChip(entry: SessionRotationEntry | undefined, fallback: s
 }
 
 /**
- * ★ 本会话悬停卡的行：那个号在 `quota-read` 里那一段（与金样同一个行模型）。首行尾「从哪个号换过来」随第 4 刀的换号记录一起画。
+ * ★ 本会话悬停卡的行：那个号在 `quota-read` 里那一段（与金样同一个行模型）；轮换换过号 ⇒ 末尾一行「从哪个号换过来」（开会话的号）。
  * 中转没见过这个会话 ⇒ `用量 — 未实时显示` · `切换 仅重启切换`。
  */
 export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallback: string | null, quota: QuotaRead | null): string[][] | null {
@@ -94,5 +94,6 @@ export function sessionHoverRows(entry: SessionRotationEntry | undefined, fallba
   // 号那一段照核心写好的几行；采样那一格后面接上是哪台采的（问的是哪台、那台叫什么是这一侧的事）。
   const rows = (seen ?? unseen)?.rows.map((r) => r.map((c) => c.text)) ?? [[accountLabel(cur)]];
   if (seen && entry) rows[rows.length - 1].push(machineLabel(entry.origin));
+  if (read.start !== cur) rows.push([copyText("rot.hover.from", { account: accountLabel(read.start) })]);
   return rows;
 }

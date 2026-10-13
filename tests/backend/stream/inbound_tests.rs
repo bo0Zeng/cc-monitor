@@ -609,6 +609,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-strategy-copy",
         "rotation-strategy-rename",
         "rotation-strategy-delete",
+        "rotation-strategy-tz",
         "rotation-day-paint",
         // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
         "tasks-list",
@@ -825,6 +826,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "rotation-strategy-copy",
         "rotation-strategy-rename",
         "rotation-strategy-delete",
+        "rotation-strategy-tz",
         "rotation-day-paint",
         "tasks-list",
         "session-interrupts",

@@ -1160,6 +1160,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--rotation-strategy-copy",
     "--rotation-strategy-rename",
     "--rotation-strategy-delete",
+    "--rotation-strategy-tz",
     "--rotation-day-paint",
     "--exit-policy-set",
     // 上游选择那份凭据文件在这台机器上的写口（`inbound::REGISTRY` 的 `apikey-key-set`）自动派生的 CLI 面。

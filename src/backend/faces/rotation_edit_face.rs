@@ -948,6 +948,90 @@ pub(crate) fn rename_with(
     Ok(RotStrategyId { id })
 }
 
+/// `rotation-strategy-tz` 的入参：那一份 · 设成哪个时区（IANA 名）· 改之前读到的版本。
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RotationStrategyTzReq {
+    pub(crate) id: String,
+    pub(crate) tz: String,
+    pub(crate) if_rev: String,
+}
+
+/// `rotation-strategy-tz` 的应答：写成以后的版本。
+#[derive(Debug, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct RotStrategyRev {
+    pub(crate) rev: String,
+}
+
+crate::stream::inbound::typed::codes! {
+    /// `rotation-strategy-tz` 自己的码。
+    pub(crate) enum RotationStrategyTzErr {
+        NoStrategy = "no_strategy",
+        Conflict = "conflict" => RotConflict,
+        IoFailed = "io_failed",
+    }
+}
+
+/// `rotation-strategy-tz`：只把设置块里的 `tz` 换掉（「时区不明」那一条也清掉），说明与代码一字不动。
+pub(crate) struct RotationStrategyTz;
+
+impl Command for RotationStrategyTz {
+    const NAME: &'static str = "rotation-strategy-tz";
+    type Req = RotationStrategyTzReq;
+    type Reply = RotStrategyRev;
+    type Err = RotationStrategyTzErr;
+}
+
+impl WithOwn for RotationStrategyTz {
+    fn run(
+        req: RotationStrategyTzReq,
+        _cx: &Cx,
+        _files: Files,
+        own: &crate::platform::Own,
+    ) -> Result<RotStrategyRev, RotationStrategyTzErr> {
+        tz_with(&Ctx::here(), own, &req)
+    }
+}
+
+pub(crate) fn tz_with(
+    ctx: &Ctx,
+    own: &crate::platform::Own,
+    req: &RotationStrategyTzReq,
+) -> Result<RotStrategyRev, RotationStrategyTzErr> {
+    let sh = find(ctx, &req.id).ok_or_else(|| RotationStrategyTzErr::NoStrategy(gone(&req.id)))?;
+    let Some(head) = head_of(&sh) else {
+        return Err(RotationStrategyTzErr::NoStrategy(gone(&req.id)));
+    };
+    if crate::Tz::iana(&req.tz).is_none() {
+        return Err(RotationStrategyTzErr::BadArgs(copy_text(
+            "beRotation.edit.badTz",
+            &[("tz", &req.tz)],
+        )));
+    }
+    if req.if_rev != sh.rev {
+        return Err(RotationStrategyTzErr::Conflict(
+            copy_text("beRotation.edit.conflict", &[]),
+            RotConflict {
+                rev: sh.rev.clone(),
+            },
+        ));
+    }
+    let mut h = head.clone();
+    h.tz = Some(req.tz.clone());
+    h.tz_unknown = false;
+    let text =
+        script::with_head(&sh.source, &h).map_err(|f| RotationStrategyTzErr::IoFailed(f.msg))?;
+    rotation::strategy_file_write(own, &req.id, &text)
+        .map_err(|e| RotationStrategyTzErr::IoFailed(note(e)))?;
+    Ok(RotStrategyRev {
+        rev: shelf::rev_of(&text),
+    })
+}
+
 /// `rotation-strategy-delete` 的入参。
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -1041,7 +1125,9 @@ pub(crate) fn delete_with(
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotSeg {
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) to: u64,
     pub(crate) v: f64,
 }
@@ -1054,7 +1140,9 @@ pub(crate) struct RotSeg {
 pub(crate) struct RotationDayPaintReq {
     pub(crate) segs: Vec<RotSeg>,
     /// 刷哪一截（一天里的分钟；`to ≤ from` ⇒ 跨午夜，相等 ⇒ 一整天）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) to: u64,
     /// 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
     #[cfg_attr(test, ts(type = "number | null"))]

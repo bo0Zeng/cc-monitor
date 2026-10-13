@@ -3,4 +3,8 @@
 /**
  * 一次换号。
  */
-export type RotTrySwitch = { at: number, account: string, };
+export type RotTrySwitch = { at: number, 
+/**
+ * `at` 的钟面（`HH:MM`）。
+ */
+atText: string, account: string, };

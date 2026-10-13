@@ -160,6 +160,13 @@ export interface RotationSessionSpec {
   seen?: number;
   /** 用哪份策略（策略目录里的文件 id）；不给 ⇒ 不轮换。 */
   strategy?: string;
+  /** 拖出来的「接下来先用谁」。 */
+  temp?: string[];
+  /** 换号记录。 */
+  log?: { at: number; from: string; to: string; cause: { k: string; until?: number }; why?: string }[];
+  /** 会话里没存的改动（整份设置）· 它照哪个版本改出来的（跟文件此刻的不同 ⇒「这份策略在别处被改了」）。 */
+  draft?: unknown;
+  rev?: string;
 }
 
 export function putRotation(d: MachineDisk, book: { forNew?: string; sessions?: Record<string, RotationSessionSpec> }): void {
@@ -175,11 +182,24 @@ export function putRotation(d: MachineDisk, book: { forNew?: string; sessions?: 
           current: s.current,
           since: Math.round(s.since),
           seen: Math.round(s.seen ?? s.since),
-          strategy: { id: s.strategy ?? "" },
+          strategy: { id: s.strategy ?? "", ...(s.rev ? { rev: s.rev } : {}), ...(s.draft !== undefined ? { draft: s.draft } : {}) },
+          ...(s.temp ? { temp: s.temp } : {}),
+          ...(s.log ? { log: s.log.map((l) => ({ ...l, at: Math.round(l.at) })) } : {}),
         },
       ]),
     ),
   });
+}
+
+// ── 策略文件（`<家>/.cc-monitor/strategies/<文件名>.rhai`：标题 ＝ 文件名）──
+
+export function putStrategy(d: MachineDisk, name: string, source: string): void {
+  d.files[`.cc-monitor/strategies/${name}.rhai`] = source;
+}
+
+/** 升级时挪进 `strategies/v3/` 的第三版脚本（不加载，界面提示「N 份旧格式的策略没有加载」）。 */
+export function putOldScript(d: MachineDisk, file: string, source: string): void {
+  d.files[`.cc-monitor/strategies/v3/${file}`] = source;
 }
 
 // ── 会话血缘（`<家>/.cc-monitor/lineage.json`）──

@@ -287,6 +287,8 @@ const HIDDEN_UNRESOLVED: Readonly<Record<string, string>> = {
     "「账号」那一行 `accountRow.root`（`s.nsRow`）—— 建时收起",
   "src/frontend/ui/new-session.ts::agentRow.root":
     "「agent」那一行 `agentRow.root`（`s.nsRow`）—— 建时收起（那台能起的多于一家才出）",
+  "src/frontend/ui/new-session.ts::rotRow.root":
+    "「轮换」那一行 `rotRow.root`（`s.nsRow`）—— 建时收起（读得到那台的策略目录才出）",
   "src/frontend/ui/new-session.ts::note":
     "一格下那一行说明 / 错误 `note`（`s.nsNote`）—— 建时收起",
   "src/frontend/ui/new-session.ts::tmuxRadio.label":
@@ -492,6 +494,11 @@ const STATE_CLASS_UNRESOLVED: Readonly<Record<string, string>> = {
     "折叠号：svg 元素只能走 classList；`s.foldCaret` 是 CSS Modules 哈希名，开合靠所在元素的 `aria-expanded`，不是状态名",
   "src/frontend/ui/kit/icon.ts · classList.add(s.icon)":
     "图标件：svg 元素的 `className` 不是串、只能走 classList；`s.icon` 是 CSS Modules 哈希名，与 `data-*` 撞不了名",
+  "src/frontend/ui/rot-board.ts · classList.add(s.rotCardAdd)":
+    "CSS Modules：给 kit 按钮挂号牌那一排里［加号］的版位类；哈希过的类名，不是状态名",
+  "src/frontend/ui/rot-board.ts · classList.add(s.rotNull)": "同上（可空格子的空值说法那一颗）",
+  "src/frontend/ui/rot-board.ts · classList.add(s.rotPick)": "同上（第一行的策略下拉）",
+  "src/frontend/ui/rot-board.ts · classList.add(s.rotSwitch)": "同上（开关格）",
   "src/frontend/ui/tab-bar-drag.ts · classList.add(s.ghostStack)":
     "CSS Modules（`tab-group.module.css`）：几个一起拖时影子叠一层；哈希过的类名，只活在一次拖拽的影子上，不是状态名",
   "src/frontend/ui/tab-bar-drag.ts · classList.add(s.hot)":

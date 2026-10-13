@@ -23,7 +23,7 @@ function quota(p: Partial<QuotaShow> = {}): QuotaShow {
 
 /** 一个会话的 `rotation-view`：这几处只看 `start` · `current`。 */
 function entry(start: string, current: string): SessionRotationEntry {
-  const read = { now: NOW, strategy: null, form: [], settings: {}, dirty: false, start, current, accounts: [], listed: 0, decision: null, timeline: null, log: [], hints: [] } satisfies RotationViewReply;
+  const read = { now: NOW, nowText: "14:30", strategy: null, form: [], settings: {}, dirty: false, start, current, accounts: [], listed: 0, decision: null, timeline: null, past: null, baseRev: "", log: [], hints: [] } satisfies RotationViewReply;
   return { origin: "<local>", read };
 }
 
@@ -70,8 +70,14 @@ describe("悬停卡：会话补上的那一样", () => {
   it("★ 在用的号那一段照 `quota-read`；采样那一格后面接上是哪台采的", () => {
     const rows = sessionHoverRows(entry("work", "personal"), null, LEDGER)!;
     expect(rows[0]).toEqual(["personal", copyText("acct.kind.sub")]);
-    expect(rows.map((r) => r[0])).toEqual(["personal", "5h", "7d", copyText("acct.row.over"), copyText("acct.row.seen")]);
+    expect(rows.map((r) => r[0])).toEqual(["personal", "5h", "7d", copyText("acct.row.over"), copyText("acct.row.seen"), copyText("rot.hover.from", { account: "work" })]);
     expect(rows[4]).toEqual([copyText("acct.row.seen"), "11:58", copyText("acct.machine.here")]);
+  });
+  it("★ 轮换换过号 ⇒ 末尾一行「从哪个号换过来」（开会话的号）；没换过 ⇒ 没有这一行", () => {
+    const swapped = sessionHoverRows(entry("work", "personal"), null, LEDGER)!;
+    expect(swapped[swapped.length - 1]).toEqual([copyText("rot.hover.from", { account: "work" })]);
+    const same = sessionHoverRows(entry("personal", "personal"), null, LEDGER)!;
+    expect(same.flat()).not.toContain(copyText("rot.hover.from", { account: "personal" }));
   });
   it("中转没见过 ⇒ `用量 — 未实时显示` · `切换 仅重启切换`", () => {
     const absent: SessionRotationEntry = { origin: "<local>", read: null };
