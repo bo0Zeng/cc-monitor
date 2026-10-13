@@ -22,6 +22,7 @@ name = "cc-monitor-filewin"
 path = "src/main.rs"
 
 [dependencies]
+cmd-wire = { path = "../../common/cmd-wire" }
 comms-inward = { path = "../../comms/inward" }
 copy-core = { path = "../../common/copy-core" }
 creds-core = { path = "../../common/creds-core" }

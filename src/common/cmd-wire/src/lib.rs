@@ -1,5 +1,6 @@
 //! 帧命令两端必须对上的那几样（契约类：只放形状，不放判定）。
 //!
+//! - [`files`]：文件管理那一族（`files-*`）的入参与回包，路径走原始字节（[`files::WirePath`]）；
 //! - [`machine`]：「这一趟问的是哪台机器」的唯一类型 [`Machine`]（线上就是一个字符串，本机逐字 `"<local>"`）；
 //! - [`accounts`]：账号库那几条命令（`accounts-*`）的入参与成品；
 //! - [`shapes`]：每条 typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹。
@@ -7,6 +8,7 @@
 //!   表由后端的判据从类型现算、写进 `src/shapes.rs`（过期即红），这里只是那份表本身。
 
 pub mod accounts;
+pub mod files;
 pub mod machine;
 pub mod shapes;
 

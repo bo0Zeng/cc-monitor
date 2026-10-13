@@ -340,28 +340,16 @@ pub enum SortKey {
 }
 
 impl SortKey {
-    /// 线上那个词的闭集（判据按它对拍协议文档）。
-    pub const WIRE: &'static [&'static str] = &["relevance", "name", "location", "mtime", "size"];
-
-    pub fn wire(self) -> &'static str {
-        match self {
-            Self::Relevance => "relevance",
-            Self::Name => "name",
-            Self::Location => "location",
-            Self::Mtime => "mtime",
-            Self::Size => "size",
+    /// 线上那个词（`cmd_wire::files::FindSort`）⇒ 这一列。
+    pub fn of_wire(w: cmd_wire::files::FindSort) -> Self {
+        use cmd_wire::files::FindSort as W;
+        match w {
+            W::Relevance => Self::Relevance,
+            W::Name => Self::Name,
+            W::Location => Self::Location,
+            W::Mtime => Self::Mtime,
+            W::Size => Self::Size,
         }
-    }
-
-    pub fn from_wire(s: &str) -> Option<Self> {
-        Some(match s {
-            "relevance" => Self::Relevance,
-            "name" => Self::Name,
-            "location" => Self::Location,
-            "mtime" => Self::Mtime,
-            "size" => Self::Size,
-            _ => return None,
-        })
     }
 
     /// 这一列要逐条读盘（索引里只有路径与类型）。

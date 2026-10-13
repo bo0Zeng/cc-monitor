@@ -623,12 +623,10 @@ pub const CMD_HOME: &str = "files-home";
 /// 两道：① `path` 解成字节 —— **不是合法 UTF-8 就拒**（窗口的路径是字符串，有损解码之后
 /// 寻址不到那个目录，开出来的是别处）；② 能不能当起点，交 [`start_dir_from_home`]。
 pub fn home_from_reply(d: &serde_json::Value) -> Result<String, String> {
-    let raw = d
-        .get("path")
-        .ok_or_else(|| copy_text("rsFilewinSource.home.noPath", &[]))?;
-    let bytes = super::find::decode_path(raw)
-        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
-    let s = String::from_utf8(bytes).map_err(|_| copy_text("rsFilewinSource.home.notUtf8", &[]))?;
+    let r = reply_of::<cmd_wire::files::HomeReq>(d.clone())
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
+    let s =
+        String::from_utf8(r.path.0).map_err(|_| copy_text("rsFilewinSource.home.notUtf8", &[]))?;
     start_dir_from_home(&s)
 }
 
@@ -706,56 +704,40 @@ pub const CMD_LS: &str = "files-ls";
 /// 左栏的人群**现读** `src/backend/files/mod.rs` 里 `files.ls` 那条能力声明的 `fields`
 /// （两侧不同源），与表里声明的那一摞**逐格相等**；右栏那句「怎么来的」
 /// 每一行各挂一条**行为**断言。加一格 / 丢一格 / 说法漂了，三种都红。
-pub fn row_from_ls_entry(v: &serde_json::Value) -> Result<Listed, String> {
-    let raw = v
-        .get("path")
-        .ok_or_else(|| copy_text("rsFilewinSource.ls.noPath", &[]))?;
-    let bytes = super::find::decode_path(raw)
-        .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]))?;
+pub fn row_from_ls_entry(v: &cmd_wire::files::LsEntry) -> Listed {
+    use cmd_wire::files::{FileKind, LinkTo};
+    let bytes = &v.path.0;
     // 🔴 有损与否看**字节**，不看转出来的那个串里有没有 U+FFFD。
     //    后者是一个猜：真叫 `\u{FFFD}` 的文件会被误判成有损。
     // 只看**名字那一段**（最后一个 `/` 之后；远端路径恒用 `/`）：目录有损而名字干净的那一行
     //   名字照样能用（整条路径的字节由窗口按当前目录的字节拼，`FileWindow::row_path`）。
     let cut = bytes.iter().rposition(|b| *b == b'/').map_or(0, |k| k + 1);
     let lossy_name = std::str::from_utf8(&bytes[cut..]).is_err();
-    let path = String::from_utf8_lossy(&bytes).to_string();
+    let path = String::from_utf8_lossy(bytes).to_string();
     let name = remote_basename(&path).to_string();
     // 有损名留住名字那一段的原始字节。
     let raw_name = lossy_name.then(|| bytes[cut..].to_vec());
     // 🔴 `kind` 落**两格**，不是一格：压成一个布尔就是「看不出哪个是符号链接」。
-    let kind = v.get("kind").and_then(|k| k.as_str());
-    let is_dir = kind == Some("dir");
-    let link = kind == Some("symlink");
-    let link_dir = link && v.get("link_dir").and_then(serde_json::Value::as_bool) == Some(true);
-    let size = v
-        .get("size")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    Ok(Listed {
+    let is_dir = v.kind == FileKind::Dir;
+    let link = v.kind == FileKind::Symlink;
+    Listed {
         row: Row {
             name,
             path,
             is_dir,
-            size,
+            size: v.size.unwrap_or(0),
             lossy_name,
         },
         link,
-        link_dir,
+        link_dir: link && v.link_dir == Some(true),
         // 🔴 原样带上来。缺了就是 `None`（＝**后端没送**）—— 不许兜底成 0，
         //    那是 1970-01-01，一个看起来很像真读数的假时间。
-        mtime_secs: v.get("mtime_secs").and_then(serde_json::Value::as_u64),
-        mtime_text: v
-            .get("mtime_text")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string),
-        mtime_full: v
-            .get("mtime_full")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string),
+        mtime_secs: v.mtime_secs,
+        mtime_text: v.mtime_text.clone(),
+        mtime_full: v.mtime_full.clone(),
         raw_name,
-        link_broken: link
-            && v.get("link_to").and_then(serde_json::Value::as_str) == Some("missing"),
-    })
+        link_broken: link && v.link_to == Some(LinkTo::Missing),
+    }
 }
 
 /// 一屏之外的那两格：被截断了吗 · 有几项读不出来（后端照数、没列出）。
@@ -848,40 +830,19 @@ pub fn rows_from_ls_data(
     d: &serde_json::Value,
     by: impl Into<Sort>,
 ) -> Result<(Vec<Listed>, Cut), String> {
-    let arr = d
-        .get("entries")
-        .and_then(|v| v.as_array())
-        .ok_or_else(|| copy_text("rsFilewinSource.ls.notArray", &[]))?;
-    let mut out = Vec::with_capacity(arr.len());
-    for (i, one) in arr.iter().enumerate() {
-        out.push(row_from_ls_entry(one).map_err(|e| {
-            copy_text(
-                "rsFilewinSource.ls.badEntry",
-                &[("i", &i.to_string()), ("why", &e)],
-            )
-        })?);
-    }
+    // 解不出一行 ⇒ 整趟失败（悄悄跳过 ⇒ 目录里少一个文件，屏幕上没有任何提示）。
+    let d = reply_of::<cmd_wire::files::LsReq>(d.clone())
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
+    let mut out: Vec<Listed> = d.entries.iter().map(row_from_ls_entry).collect();
     // 🔴 **排序在这一侧，而且它只有一份** —— 后端不排（它答的是目录项，不是一屏）。
     //    「按什么排」由调用方给（用户在工具栏上选的那一档），算法只有 `sort_rows` 这一个家。
     sort_rows(&mut out, by);
-    let truncated = d
-        .get("truncated")
-        .and_then(serde_json::Value::as_bool)
-        .unwrap_or(false);
-    let unreadable = d
-        .get("unreadable")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
-    let total = d
-        .get("total")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0);
     Ok((
         out,
         Cut {
-            truncated,
-            unreadable,
-            total,
+            truncated: d.truncated,
+            unreadable: d.unreadable,
+            total: d.total,
         },
     ))
 }
@@ -1102,6 +1063,38 @@ pub async fn ask_coded(
         comms_inward::chan::wire::CancelToken::new(),
     )
     .await
+}
+
+/// 照类型问一条：名字 · 入参 · 回包都挂在入参类型上（`cmd_wire::files::Call`，后端登记那一行用的是同一份）。
+/// 入参按类型发，回包按类型解；解不出 ⇒ 这一侧的那一句（解码器原话进复制详情）。两端形状对不对得上，由握手时的形状指纹先管。
+pub async fn ask_typed<C: cmd_wire::files::Call>(
+    line: &Line,
+    origin: &Origin,
+    req: &C,
+    t: std::time::Duration,
+) -> Result<C::Reply, Failed> {
+    let args = serde_json::to_value(req).map_err(|e| {
+        Failed::here(
+            copy_text("rsFilewinSource.ask.badArgs", &[]),
+            origin,
+            C::NAME,
+            Some(&e.to_string()),
+        )
+    })?;
+    let d = ask_coded(line, origin, C::NAME, &args, t).await?;
+    reply_of::<C>(d).map_err(|e| {
+        Failed::here(
+            copy_text("rsFilewinSource.said.badReply", &[]),
+            origin,
+            C::NAME,
+            Some(&e),
+        )
+    })
+}
+
+/// 一份回包按那条命令的回包类型解（解不出 ⇒ 解码器那一句）。
+pub fn reply_of<C: cmd_wire::files::Call>(d: serde_json::Value) -> Result<C::Reply, String> {
+    serde_json::from_value(d).map_err(|e| e.to_string())
 }
 
 /// 〔「可撤」〕同 [`ask_coded`]，撤单手柄由调用方握着（按内容搜那颗「停」拨它）：

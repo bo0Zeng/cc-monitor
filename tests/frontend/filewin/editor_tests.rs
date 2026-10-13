@@ -156,7 +156,7 @@ fn the_reply_maps_to_text_not_text_or_failure_by_the_peers_code() {
     };
     assert_eq!(
         text_from_reply(Ok(
-            serde_json::json!({ "text": "hi\n", "path": "/a", "bytes": 3 })
+            serde_json::json!({ "text": "hi\n", "path": "/a", "bytes": 3, "sha256": crate::find::testing::fake_sha256("hi\n") })
         )),
         Ok(Some("hi\n".to_string()))
     );
@@ -651,24 +651,31 @@ fn a_read_without_a_digest_does_not_open_an_editor_that_could_never_save() {
     assert_eq!(
         opened_from_reply(
             &o,
-            Ok(serde_json::json!({ "text": "hi\n", "sha256": sha.clone() }))
+            Ok(
+                serde_json::json!({ "path": "/a", "bytes": 3, "text": "hi\n", "sha256": sha.clone() })
+            )
         ),
         Ok(Some(Opened {
             text: "hi\n".into(),
             sha256: sha
         }))
     );
-    let e = opened_from_reply(&o, Ok(serde_json::json!({ "text": "hi\n" })))
-        .expect_err("没摘要竟然打开了");
+    // 没摘要 ⇒ 回包认不出（形状由两端共用的类型定；版本错开由握手指纹先拦）。
+    opened_from_reply(
+        &o,
+        Ok(serde_json::json!({ "path": "/a", "bytes": 3, "text": "hi\n" })),
+    )
+    .expect_err("没摘要竟然打开了");
+    // 摘要那一格不像样 ⇒ 后端太旧。
+    let e = opened_from_reply(
+        &o,
+        Ok(serde_json::json!({ "path": "/a", "bytes": 3, "text": "hi\n", "sha256": "abc" })),
+    )
+    .expect_err("摘要不像样竟然打开了");
     assert!(
         e.said.contains(&copy_core::backend_old("devbox")),
         "那句话没说是后端太旧：{e}"
     );
-    assert!(opened_from_reply(
-        &o,
-        Ok(serde_json::json!({ "text": "hi\n", "sha256": "abc" }))
-    )
-    .is_err());
 }
 
 /// 存成之后基准是**发出去的那一份**：存在路上时又敲的字仍算没存（`dirty`）；摘要换成应答交的那一个。

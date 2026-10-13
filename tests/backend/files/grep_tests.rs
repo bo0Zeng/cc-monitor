@@ -188,22 +188,12 @@ fn the_command_face_answers_exactly_the_declared_fields() {
     let base = temp_root("face");
     let t = plant(&base);
     let p = t.to_str().unwrap();
-    let v = crate::files::answer(
+    let v = crate::files::tests::answer(
         "files.grep",
         &serde_json::json!({ "path": p, "needle": "needle" }),
         &Default::default(),
     )
     .unwrap();
-    let got: std::collections::BTreeSet<String> = v.as_object().unwrap().keys().cloned().collect();
-    let declared: std::collections::BTreeSet<String> = crate::files::CAPABILITIES
-        .iter()
-        .find(|c| c.name == "files.grep")
-        .unwrap()
-        .fields
-        .iter()
-        .map(|f| f.to_string())
-        .collect();
-    assert_eq!(got, declared);
     let hit: std::collections::BTreeSet<&str> = v["hits"][0]
         .as_object()
         .unwrap()
@@ -221,7 +211,7 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         (serde_json::json!(false), serde_json::Value::Null)
     );
     let code = |a: serde_json::Value| {
-        crate::files::answer("files.grep", &a, &Default::default())
+        crate::files::tests::answer("files.grep", &a, &Default::default())
             .unwrap_err()
             .code
     };
@@ -234,7 +224,11 @@ fn the_command_face_answers_exactly_the_declared_fields() {
         "bad_args"
     );
     assert_eq!(code(serde_json::json!({ "path": p })), "bad_args");
-    assert_eq!(code(serde_json::json!({ "needle": "n" })), "bad_path");
+    assert_eq!(code(serde_json::json!({ "needle": "n" })), "bad_args");
+    assert_eq!(
+        code(serde_json::json!({ "path": "", "needle": "n" })),
+        "bad_path"
+    );
     assert_eq!(
         code(serde_json::json!({ "path": base.join("gone").to_str().unwrap(), "needle": "n" })),
         "unreadable"
@@ -249,7 +243,7 @@ fn the_product_matches_the_cross_half_golden() {
     let base = temp_root("golden");
     let t = plant(&base);
     let root = t.to_str().unwrap().to_string();
-    let v = crate::files::answer(
+    let v = crate::files::tests::answer(
         "files.grep",
         &serde_json::json!({ "path": root, "needle": "needle", "ignore_ascii_case": true }),
         &Default::default(),

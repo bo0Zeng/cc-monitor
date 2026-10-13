@@ -302,7 +302,7 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
     let fx = make_tree("livewatch", 2, 1, 0);
     let dir = fx.root.join("d0000");
     let p = |x: &std::path::Path| serde_json::Value::String(x.to_string_lossy().to_string());
-    let v = crate::files::answer_wire(
+    let v = crate::files::tests::answer_wire(
         "files-browse",
         &serde_json::json!({ "dirs": [p(&dir)] }),
         &Default::default(),
@@ -331,7 +331,7 @@ fn files_browse_keeps_a_live_watcher_that_follows_the_list() {
         found,
         "登记之后新建的文件到兜底上限还没进 overlay —— 没有人在后端进程里持有那个监听器"
     );
-    let v = crate::files::answer_wire(
+    let v = crate::files::tests::answer_wire(
         "files-browse",
         &serde_json::json!({ "dirs": [] }),
         &Default::default(),

@@ -953,7 +953,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         }
     }
 
-    // ② ③ 逐条：错误码逐字相等 · 载荷字段 == `args` ∪ `fields`。
+    // ② ③ 逐条：读的那几条是 typed 的（码表从错误枚举来、字段从类型来，不另写镜子）。
     let mut checked = 0usize;
     for cap in crate::files::CAPABILITIES {
         let online = cap.name.replace('.', "-");
@@ -961,46 +961,25 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             .iter()
             .find(|s| s.name == online)
             .unwrap_or_else(|| panic!("`{online}` 不在 REGISTRY 上 —— 上面那条应该先红"));
-        let mut want_codes: Vec<&str> = cap.codes.to_vec();
-        want_codes.sort_unstable();
-        let mut got_codes: Vec<&str> = spec.codes.to_vec();
-        got_codes.sort_unstable();
-        assert_eq!(
-            got_codes, want_codes,
-            "`{online}` 登记的 code 与能力 `{}` 声明的对不上",
-            cap.name
-        );
-
-        let mut want_fields: Vec<&str> =
-            cap.args.iter().chain(cap.fields.iter()).copied().collect();
-        want_fields.sort_unstable();
-        want_fields.dedup();
-        let mut got_fields: Vec<&str> = spec.field_names().collect();
-        got_fields.sort_unstable();
-        got_fields.dedup();
-        assert_eq!(
-            got_fields, want_fields,
-            "\n`{online}` 的 `fields` 与能力 `{}` 的 `args` ∪ `fields` 对不上。\n\
-             `CommandSpec::fields` 是拿去钉 `IPC-PROTOCOL.md §10` 那一小节的镜子 ——\n\
-             它自己先漂了，钉出来的文档就是假的（那段头注逐字）。",
-            cap.name
+        assert!(
+            matches!(spec.run, super::spec::Run::Typed(_)),
+            "`{online}` 不是 typed 的那一档 —— 读的这一族入参 · 回包 · 码都从类型来"
         );
         checked += 1;
 
-        // ④ 真的调一次：`run` 必须**够得到**那条能力。
-        //    喂空 `args` ⇒ 要么成功，要么落在这条能力自己声明的 code 上；
-        //    落到 `unknown_capability` 就说明翻译或名字接错了。
-        let out = crate::files::answer_wire(&online, &serde_json::json!({}), &Default::default());
+        // ④ 真的调一次：喂空 `args` ⇒ 要么成功，要么落在这条命令登记的码上；落到 `unknown_capability` 就说明能力接错了。
+        let out =
+            crate::files::tests::answer_wire(&online, &serde_json::json!({}), &Default::default());
         if let Err(crate::files::Refused {
             code, said: msg, ..
         }) = out
         {
             assert_ne!(
                 code, "unknown_capability",
-                "`{online}` 经 `answer_wire` 够不到任何能力（{msg}）—— 线上那一跳是断的"
+                "`{online}` 够不到任何能力（{msg}）"
             );
             assert!(
-                cap.codes.contains(&code),
+                spec.codes.contains(&code),
                 "`{online}` 回了一个它没登记的 code `{code}`（{msg}）"
             );
         }
@@ -1203,7 +1182,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
     const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
     const CELLS_CATALOG: &str = include_str!("../../__fixtures__/cells-catalog.golden.json");
-    const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
     const MCP_EDIT: &str = include_str!("../../__fixtures__/mcp-edit.golden.json");
     const MCP_READ: &str = include_str!("../../__fixtures__/mcp-read.golden.json");
@@ -1249,7 +1227,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("profiles-write", PROFILES, "/writeReply", &[], &[]),
         ("assets-sync", ASSETS_SYNC, "/reply", &[], &[]),
         ("plan-files", PLAN_FILES, "", &[], &[]),
-        ("files-grep", FILES_GREP, "", &[], &[]),
         (
             "hooks-diag",
             HOOKS_DIAG,
@@ -1283,7 +1260,7 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 62;
+    const UNSHAPED_CEILING: usize = 52;
     const UNSHAPED: &[&str] = &[
         "accounts-sessions",
         "agent-home-check",
@@ -1302,7 +1279,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "ext-note-set",
         "ext-uninstall-apply",
         "ext-uninstall-preview",
-        "files-browse",
         "files-chmod",
         "files-commit-text",
         "files-commit-upload",
@@ -1311,21 +1287,12 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         "files-delete",
         "files-delete-session",
         "files-extract",
-        "files-find",
-        "files-home",
-        "files-index-rebuild",
-        "files-index-status",
         "files-link",
-        "files-ls",
         "files-mkdir",
         "files-peek",
         "files-put",
-        "files-read-chunk",
-        "files-read-text",
         "files-rename",
-        "files-size",
         "files-stage-chunk",
-        "files-stat",
         "files-write-text",
         "first-run",
         "last-seen-read",

@@ -2794,6 +2794,12 @@ mod g6_dependency_signoff {
             "同上一行那个仓内 crate，测试构建多开 `ts` feature（多出来的只是类型的 TS 派生），0 处写面",
         ),
         (
+            "cmd-wire",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "同一个 crate 在测试档多开 `ts`（typed 命令线上类型的 TS 派生 · 形状指纹），只多一个 codegen 派生；现打 0 处写面",
+        ),
+        (
             "comms-outward",
             DEPS,
             MEASURED_CLEAN,

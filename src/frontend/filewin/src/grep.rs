@@ -118,98 +118,63 @@ pub struct GrepOutcome {
     pub stopped: Option<String>,
 }
 
-fn bad() -> String {
-    copy_text("rsFilewinSource.said.badReply", &[])
-}
-
-fn u(d: &Value, k: &str) -> Result<u64, String> {
-    d.get(k).and_then(Value::as_u64).ok_or_else(bad)
-}
-
-/// `files-grep` 的 `data` ⇒ [`GrepOutcome`]。严格收：缺一格 / 类型不对 ⇒ 整份读不懂（不替后端补值）。
+/// `files-grep` 的 `data` ⇒ [`GrepOutcome`]。按回包类型收：缺一格 / 类型不对 ⇒ 整份读不懂（不替后端补值）。
 pub fn decode_grep(d: &Value) -> Result<GrepOutcome, String> {
-    let arr = d.get("hits").and_then(Value::as_array).ok_or_else(bad)?;
-    let mut hits = Vec::with_capacity(arr.len());
-    for h in arr {
-        let line = u(h, "line")?;
-        let text = h
-            .get("text")
-            .and_then(super::find::decode_path)
-            .ok_or_else(bad)?;
-        let mut lines = Vec::new();
-        match h.get("lines") {
-            None => lines.push(GrepLine {
-                line,
-                text: text.clone(),
-                marks: Vec::new(),
-            }),
-            Some(Value::Array(ls)) => {
-                for l in ls {
-                    lines.push(GrepLine {
-                        line: u(l, "line")?,
-                        text: l
-                            .get("text")
-                            .and_then(super::find::decode_path)
-                            .ok_or_else(bad)?,
-                        marks: l
-                            .get("marks")
-                            .and_then(Value::as_array)
-                            .map(|a| {
-                                a.iter()
-                                    .filter_map(|m| {
-                                        Some((
-                                            m.get(0)?.as_u64()? as usize,
-                                            m.get(1)?.as_u64()? as usize,
-                                        ))
-                                    })
-                                    .collect()
-                            })
-                            .unwrap_or_default(),
-                    });
-                }
-            }
-            Some(_) => return Err(bad()),
-        }
-        hits.push(GrepHit {
-            path: h
-                .get("path")
-                .and_then(super::find::decode_path)
-                .ok_or_else(bad)?,
-            rel: h
-                .get("rel")
-                .and_then(super::find::decode_path)
-                .unwrap_or_default(),
-            line,
-            text,
-            matches: u(h, "matches")?,
-            lines,
-        });
-    }
-    let stopped = match d.get("stopped") {
-        Some(Value::Null) => None,
-        Some(Value::String(s)) if s == "hits" || s == "bytes" => Some(s.clone()),
-        _ => return Err(bad()),
-    };
+    use cmd_wire::files::GrepStopped;
+    let d = super::source::reply_of::<cmd_wire::files::GrepReq>(d.clone())
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
     Ok(GrepOutcome {
-        hits,
-        files: u(d, "files")?,
-        bytes: u(d, "bytes")?,
-        links: u(d, "links")?,
-        skipped_binary: u(d, "skipped_binary")?,
-        skipped_large: u(d, "skipped_large")?,
-        skipped_mounts: u(d, "skipped_mounts")?,
-        unreadable: u(d, "unreadable")?,
-        truncated: d
-            .get("truncated")
-            .and_then(Value::as_bool)
-            .ok_or_else(bad)?,
-        stopped,
+        hits: d
+            .hits
+            .into_iter()
+            .map(|h| GrepHit {
+                path: h.path.0,
+                rel: h.rel.0,
+                line: h.line,
+                text: h.text.0,
+                matches: h.matches,
+                lines: h
+                    .lines
+                    .into_iter()
+                    .map(|l| GrepLine {
+                        line: l.line,
+                        text: l.text.0,
+                        marks: l
+                            .marks
+                            .iter()
+                            .map(|[a, b]| (*a as usize, *b as usize))
+                            .collect(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        files: d.files,
+        bytes: d.bytes,
+        links: d.links,
+        skipped_binary: d.skipped_binary,
+        skipped_large: d.skipped_large,
+        skipped_mounts: d.skipped_mounts,
+        unreadable: d.unreadable,
+        truncated: d.truncated,
+        stopped: d.stopped.map(|s| {
+            match s {
+                GrepStopped::Hits => "hits",
+                GrepStopped::Bytes => "bytes",
+            }
+            .to_string()
+        }),
     })
 }
 
-/// 那一问的入参：根 ＋ 要找的那一串（原样，不改大小写）。
+/// 那一问的入参：根 ＋ 要找的那一串（原样，不改大小写），照线上类型拼。
 pub fn grep_args(root: &super::source::RemotePath, needle: &str) -> Value {
-    serde_json::json!({ "path": root.wire(), "needle": needle })
+    serde_json::to_value(cmd_wire::files::GrepReq {
+        path: cmd_wire::files::WirePath(root.bytes()),
+        needle: cmd_wire::files::WirePath::from(needle),
+        ignore_ascii_case: None,
+        limit: None,
+    })
+    .unwrap_or(Value::Null)
 }
 
 /// 结果顶上那一行：「41 处 · 18 个文件」。
