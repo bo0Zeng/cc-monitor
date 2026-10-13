@@ -208,34 +208,43 @@ fn decide(ctx) {
         if !has[id] || mins[id] == () { continue; }
         if weight(a_of[id], left[id], mins[id]).to_float() != weight(a_of[id], left[id], mins[id] + 1.0).to_float() { timed = true; }
       }
-      // 按时刻：照各号的用速往前走、离重置的分钟也照走，找 nxt 第一次不排第一的那一刻（每 5 分钟看一眼，找到了二分到 0.1 分钟）。
-      // 上界是有额度的号里最早重置的那一刻（重置本身是节点）。照的是量出来的用速：真用起来快慢不同，下面按读数那几条兜着，
+      // 按时刻：照各号的用速往前走、离重置的分钟也照走，找 nxt 第一次不排第一的那一刻（每 10 分钟看一眼，找到了二分到 0.1 分钟）。
+      // 看到哪：有额度的号里最早重置的那一刻（重置本身是节点）· nxt 照用速用到上限的那一刻（那也是叫醒）· 至多两小时
+      // （再往后的到两小时那一刻再来看，一判的运算量有上限）。照的是量出来的用速：真用起来快慢不同，下面按读数那一条兜着，
       // 别的号的读数在中转那边本来就是节点。
       let top = 300.0;
       for id in ids { if has[id] && mins[id] != () && mins[id] < top { top = mins[id]; } }
-      let x = 0.0;
-      let hit = ();
-      while x < top {
-        let nx = if x + 5.0 < top { x + 5.0 } else { top };
-        if a_of.moved(g, nxt, nx, g.left_after(nx)) { hit = [x, nx]; break; }
-        x = nx;
-      }
-      if hit != () {
-        let lo = hit[0];
-        let hi = hit[1];
-        while hi - lo > 0.1 {
-          let m = (lo + hi) / 2.0;
-          if a_of.moved(g, nxt, m, g.left_after(m)) { hi = m; } else { lo = m; }
+      let cn = lin[nxt];
+      if cn.r5 > 0.0 && cn.c5 / cn.r5 < top { top = cn.c5 / cn.r5; }
+      if cn.r7 > 0.0 && cn.c7 / cn.r7 < top { top = cn.c7 / cn.r7; }
+      let far = top > 120.0;
+      if far { top = 120.0; }
+      if timed || moving || cn.r5 > 0.0 || cn.r7 > 0.0 {
+        let x = 0.0;
+        let hit = ();
+        while x < top {
+          let nx = if x + 10.0 < top { x + 10.0 } else { top };
+          if a_of.moved(g, nxt, nx, g.left_after(nx)) { hit = [x, nx]; break; }
+          x = nx;
         }
-        ats.push(now + (hi * 60.0).to_int() + 1);
+        if hit != () {
+          let lo = hit[0];
+          let hi = hit[1];
+          while hi - lo > 0.1 {
+            let m = (lo + hi) / 2.0;
+            if a_of.moved(g, nxt, m, g.left_after(m)) { hi = m; } else { lo = m; }
+          }
+          ats.push(now + (hi * 60.0).to_int() + 1);
+        } else if far {
+          ats.push(now + 120 * 60);
+        }
       }
       // 按读数：时刻不走、别的号不动，nxt 这一窗再用掉多少就不排第一（两窗各自算：余量是两窗取小，各窗单独算才准）。
       // 只有它自己在变 ⇒ 直接约到那一读数；别的也在变（离重置的分钟进权重 · 别的号在被用）⇒ 约到一半，到了再算，
       // 最后一截不到 0.1% 时约到那一读数（逐步逼近，不每分钟轮询）。
-      let c = lin[nxt];
       for w in ["5h", "7d"] {
-        let room = if w == "5h" { c.c5 } else { c.c7 };
-        let keep = if w == "5h" { c.c7 } else { c.c5 };
+        let room = if w == "5h" { cn.c5 } else { cn.c7 };
+        let keep = if w == "5h" { cn.c7 } else { cn.c5 };
         let hi = room - 0.01;
         if hi <= 0.0 { continue; }
         let lm = left;

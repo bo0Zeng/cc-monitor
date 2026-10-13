@@ -1078,22 +1078,7 @@ fn s22_groups(n: u64) -> (usize, usize) {
 fn s26_groups(n: u64) -> (usize, usize, usize) {
     let (mut total, mut crowd, mut forced) = (0, 0, 0);
     for seed in 1..=n {
-        let (mut s, f, sigma) = group(seed);
-        for r in s["accounts"].as_array_mut().expect("accounts") {
-            let r = r.as_object_mut().expect("一行");
-            for k in ["fallback", "delay", "stint"] {
-                r.remove(k);
-            }
-        }
-        s["force"] = json!(25);
-        s["close"] = json!(10);
-        let (c, k, x) = consistent(
-            &s,
-            &f,
-            &sigma,
-            by_left(),
-            &format!("第 {seed} 组（余量 · 强制切换）"),
-        );
+        let (c, k, x) = s26_one(seed);
         total += c;
         crowd += k;
         forced += x;
@@ -1105,6 +1090,25 @@ fn s26_groups(n: u64) -> (usize, usize, usize) {
         "比过的 {total} 次换号里强制切换只有 {forced} 次 —— 本条比的不是强制切换"
     );
     (total, crowd, forced)
+}
+
+fn s26_one(seed: u64) -> (usize, usize, usize) {
+    let (mut s, f, sigma) = group(seed);
+    for r in s["accounts"].as_array_mut().expect("accounts") {
+        let r = r.as_object_mut().expect("一行");
+        for k in ["fallback", "delay", "stint"] {
+            r.remove(k);
+        }
+    }
+    s["force"] = json!(25);
+    s["close"] = json!(10);
+    consistent(
+        &s,
+        &f,
+        &sigma,
+        by_left(),
+        &format!("第 {seed} 组（余量 · 强制切换）"),
+    )
 }
 
 /// #36 跑 `n` 组：耗尽后启用的号照余量排（权重容差 10%），在用的那个用着用着被别的耗尽后启用的号超过 ⇒ 换。
@@ -1148,6 +1152,13 @@ fn s22_simulation_agrees_with_per_request_decisions() {
 #[test]
 fn s26_forced_switches_agree_with_per_request_decisions() {
     s26_groups(5);
+}
+
+/// ★ #26 第 357 组原样：七个号都在被用、各有用速，约交叉那一段往前看的那几步要在一判的运算量以内（超了 ⇒ 策略出错走兜底）。
+#[test]
+fn s26_many_moving_accounts_stay_within_the_operation_budget() {
+    let (c, _, _) = s26_one(357);
+    assert!(c >= 1, "本条在空转：只比到 {c} 次换号");
 }
 
 /// ★ #36 耗尽后启用的号照余量排（权重容差 10%）：在用的那个用着用着被超过就换，推演说的那一刻 ＝ 逐发那一刻。500 组里挑出来的两组原样：
