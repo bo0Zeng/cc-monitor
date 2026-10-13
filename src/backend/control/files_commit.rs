@@ -35,7 +35,7 @@
 //! 清理：提交不论成败都删掉这一次的块（窗口手上还有全文，重存换新键）；中途断掉留下的块由 [`sweep_stale`] 收。
 
 use crate::control::files_write::{
-    content_sha256, overwrite_text_expecting, resolve_in_root, root_of, wire_of, Act,
+    content_sha256, overwrite_text_expecting, rel_of, resolve_in_root, root_of, wire_of, Act,
     ManageCommand, WriteFail, WriteRefusal,
 };
 use crate::platform::fs::{Face, Resolved, Ro};
@@ -543,7 +543,7 @@ pub fn commit_text(
     chunks: u64,
     bytes: u64,
     root: &Path,
-    rel: &str,
+    rel: &Path,
     expect_sha256: &str,
 ) -> Result<(PathBuf, u64, String), WriteRefusal> {
     // 与 `files-write-text` 同一道 CAS（`overwrite_text_expecting`）：两支存盘同一种结果，含「盘上被改过 ⇒ stale」。
@@ -708,13 +708,13 @@ pub fn stage_chunk_at(
     home: &Path,
     req: wire::FilesStageChunkReq,
 ) -> Result<wire::FilesStageChunkReply, Fail> {
-    if req.content.0.is_empty() {
+    if req.content.bytes().is_empty() {
         return Err(plain((
             "bad_args",
             crate::common::contract::malformed("empty chunk (each chunk is at least 1 byte)"),
         )));
     }
-    let n = stage_chunk(face, home, &req.key, req.seq, &req.content.0).map_err(refused)?;
+    let n = stage_chunk(face, home, &req.key, req.seq, req.content.bytes()).map_err(refused)?;
     Ok(wire::FilesStageChunkReply { bytes: n })
 }
 
@@ -759,7 +759,7 @@ pub fn commit_text_at(
         chunks,
         bytes,
         &root,
-        &req.rel,
+        &rel_of(&req.rel),
         &req.expect.sha256.0,
     )
     .map_err(refused)?;

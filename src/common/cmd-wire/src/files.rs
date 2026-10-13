@@ -146,6 +146,52 @@ impl<'de> Deserialize<'de> for HexBytes {
     }
 }
 
+/// 存盘的一块：发的那一方定哪一形，收的那一方两形都认（同 [`WirePath`]）。
+/// 编辑器存文本按字切块、按 JSON 转义之后的长度装满一行 ⇒ 发字符串；上传按字节切 ⇒ 恒发 `{"b16": …}`
+/// （任意字节是 UTF-8 也不发字符串：控制字符转义成 `\u0000` 一个字节要占六个，一块装不装得进一行就算不准了）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        type = "string | { b16: string }",
+        export_to = "../../../frontend/ui/generated/"
+    )
+)]
+pub enum ChunkBytes {
+    Text(String),
+    Hex(Vec<u8>),
+}
+
+impl ChunkBytes {
+    pub fn bytes(&self) -> &[u8] {
+        match self {
+            ChunkBytes::Text(t) => t.as_bytes(),
+            ChunkBytes::Hex(b) => b,
+        }
+    }
+}
+
+impl Serialize for ChunkBytes {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            ChunkBytes::Text(t) => s.serialize_str(t),
+            ChunkBytes::Hex(b) => HexBytes(b.clone()).serialize(s),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for ChunkBytes {
+    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        let w = WirePath::deserialize(d)?;
+        Ok(match String::from_utf8(w.0) {
+            Ok(t) => ChunkBytes::Text(t),
+            Err(e) => ChunkBytes::Hex(e.into_bytes()),
+        })
+    }
+}
+
 /// 一个条目是什么。闭集四个词。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
@@ -1146,7 +1192,7 @@ wire! {
         pub key: String,
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         pub seq: u64,
-        pub content: WirePath,
+        pub content: ChunkBytes,
     }
 }
 
@@ -1162,7 +1208,7 @@ wire! {
     /// `files-commit-text`：按块读回、拼起来、覆盖写（语义同 `files-write-text`）。
     pub struct FilesCommitTextReq {
         pub root: WirePath,
-        pub rel: String,
+        pub rel: WirePath,
         pub key: String,
         #[cfg_attr(any(test, feature = "ts"), ts(type = "number"))]
         pub chunks: u64,

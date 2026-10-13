@@ -57,7 +57,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //
     // ⚠ **CLI 面是自动来的，不是选的**：`cli_control::cli_exposed` = 非 `Run::Builtin`
     //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
-    //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 `Run::BlockingFace`，分派那一层才递 `Face`，
+    //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 typed 的 `Facing` 那一档，分派那一层才递 `Face`，
     //   别族拿不到它。理由整段在 `control/files_write` 头注「写怎么被挡住」那一节。
     typed::facing::<crate::stream::inbound::files_write_face::FilesCreate>(
         "在文件管理目标根底下新建一份此前不存在的文件",
@@ -65,7 +65,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // ── 改动既有数据的那五条 ──────────
     //
     // 🔴 **这五条才花掉用户那句话**：「现在只允许后端的文件管理部分写文件」。
-    //   处理器同住 `control/files_write.rs`，写都经分派递进来的 `Face`（`Run::BlockingFace` 只许本族用）。
+    //   处理器同住 `control/files_write.rs`，写都经分派递进来的 `Face`（`Facing` 那一档只许本族用）。
     //   ⚠ 本段五条与上面 `files-create` 的 `run` 逐字同形（名字从 `r.cmd` 来）。
     // ⚠ 全在阻塞档：同步文件系统 I/O（外加围栏那几次 `canonicalize`），开跑之后打不断
     //   ⇒ `cancel` 命中时回 `not_cancellable`，不撒谎。

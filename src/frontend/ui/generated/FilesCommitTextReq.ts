@@ -5,4 +5,4 @@ import type { WirePath } from "./WirePath";
 /**
  * `files-commit-text`：按块读回、拼起来、覆盖写（语义同 `files-write-text`）。
  */
-export type FilesCommitTextReq = { root: WirePath, rel: string, key: string, chunks: number, bytes: number, expect: Sha256Expect, };
+export type FilesCommitTextReq = { root: WirePath, rel: WirePath, key: string, chunks: number, bytes: number, expect: Sha256Expect, };

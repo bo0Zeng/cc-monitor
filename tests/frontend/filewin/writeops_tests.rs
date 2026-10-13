@@ -979,18 +979,19 @@ fn gp1_the_chmod_box_says_the_current_mode_and_prefills_only_what_it_really_read
     }
 }
 
-/// P2′：应答里的 `mode` 怎么读 —— 缺席 / 类型不对 / 超出低 12 位 ⇒ 当读不到（不猜一个值）。
+/// P2′：回包里的 `mode` 怎么读 —— 缺席 / 超出低 12 位 ⇒ 当读不到（不猜一个值；类型不对在解回包那一步就认不出了）。
 #[test]
 fn gp1_the_mode_is_read_from_the_stat_reply_or_not_at_all() {
-    assert_eq!(mode_of(&serde_json::json!({"mode": 420})), Some(0o644));
-    assert_eq!(
-        mode_of(&serde_json::json!({"size": 1})),
-        None,
-        "非 unix 那台不送 ⇒ 读不到"
-    );
-    assert_eq!(mode_of(&serde_json::json!({"mode": "644"})), None);
-    assert_eq!(mode_of(&serde_json::json!({"mode": -1})), None);
-    assert_eq!(mode_of(&serde_json::json!({"mode": 0o10000})), None);
+    let st = |mode: Option<u32>| {
+        let mut v = serde_json::json!({"path": "/a", "kind": "file", "size": 1, "readonly": false});
+        if let Some(m) = mode {
+            v["mode"] = serde_json::json!(m);
+        }
+        serde_json::from_value::<cmd_wire::files::StatReply>(v).expect("回包形状")
+    };
+    assert_eq!(mode_of(&st(Some(420))), Some(0o644));
+    assert_eq!(mode_of(&st(None)), None, "非 unix 那台不送 ⇒ 读不到");
+    assert_eq!(mode_of(&st(Some(0o10000))), None);
 }
 
 /// P2″：预填至多一次；用户已经动过那一栏 ⇒ 不盖；清空之后不再被塞回去。
@@ -1287,20 +1288,27 @@ fn receipts_say_what_was_done_and_carry_an_undo_only_when_it_is_whole() {
 /// 改权限的撤销据后端回的 `before`：回了 ⇒ 改回那个数；没回（老后端）⇒ 不给撤销（不猜）。
 #[test]
 fn a_chmod_undo_comes_from_the_backends_before_or_not_at_all() {
+    let chmod_reply = |before: Option<u32>| {
+        crate::writeops::Applied::Chmod(cmd_wire::files::FilesChmodReply {
+            path: cmd_wire::files::WirePath::from("/s/run.sh"),
+            mode: 0o755,
+            before,
+        })
+    };
     let op = WriteOp::Chmod {
         path: "/s/run.sh".into(),
         mode: 0o755,
         raw: None,
     };
     assert_eq!(
-        chmod_undo(&op, &serde_json::json!({ "mode": 493, "before": 420 })),
+        chmod_undo(&op, &chmod_reply(Some(420))),
         Some(WriteOp::Chmod {
             path: "/s/run.sh".into(),
             mode: 0o644,
             raw: None
         })
     );
-    assert_eq!(chmod_undo(&op, &serde_json::json!({ "mode": 493 })), None);
+    assert_eq!(chmod_undo(&op, &chmod_reply(None)), None);
 }
 
 /// 就地新建 / 改名：用户敲的名字原样作 `rel` / `to` 交出去（名字里的 `/` 不当分隔符），根是当前目录。

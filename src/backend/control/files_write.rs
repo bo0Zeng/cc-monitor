@@ -20,7 +20,7 @@
 //!
 //! - 写只经 [`crate::platform::fs::Face`]：它的写方法只收 [`Resolved`]（已过路径解析的路径），而 `Resolved` 只由本模块的路径解析担保
 //!   （[`resolve_parent_in_root`] · [`resolve_existing_in_root`]，外加删会话那一道 [`fenced_session_file`]）⇒ 没过路径解析的路径递不进去；
-//! - `Face` 只有分派那一层造，按命令表文件管理那一族（`Run::BlockingFace`）递进来 ⇒ 别的命令拿不到它，也就写不出来；
+//! - `Face` 只有分派那一层造，按命令表文件管理那一族（typed 的 `Facing` 那一档）递进来 ⇒ 别的命令拿不到它，也就写不出来；
 //! - 动词闭集就是 `Face` 的方法表：`O_EXCL` 新建 · 覆盖写 · 建目录 · 改名（含不覆盖改名）· 删文件 · 删空目录 · 改权限 · 建链接；开文件一律不跟链接，做在方法里。
 //!   一步递归删 · 一步复制那类库函数 `Face` 上没有：递归删由删文件 ＋ 删空目录逐条拼（[`delete_tree`]），复制由新建 ＋ 改名拼（[`copy_entry`]）。
 //!
@@ -124,7 +124,7 @@ pub const BAD_NAME: &str = "bad_name";
 pub const NO_UNIX_MODE: &str = "no_unix_mode";
 
 impl WriteRefusal {
-    /// 线上错误码。**闭集四个**，与 [`MANAGE_COMMANDS`] 那一栏逐字对得上
+    /// 线上错误码。**闭集四个**，与各条错误枚举（`stream/inbound/files_write_face.rs`）的码对得上
     /// （第三个只有 `files-chmod` 会回，也只有它声明；第四个 `stale` 只有 `files-put` 会回
     /// ——`files-delete` 带 `expect` 那一形也回它，也声明了）。
     pub fn code(&self) -> &'static str {
@@ -2607,7 +2607,7 @@ fn fenced_session_file(
 //  （现打：加完之后 `every_cli_exposed_command_is_in_the_query_mode_gate` 当场红，
 //   逐字点名 `["--files-create"]`）。⇒ 两个宿主共用同一个 `run`，
 //   那正是说的「一份代码两种宿主」。
-//   ⇒ **窄在别的地方**：写要 `Face`，而 `Face` 只递给命令表文件管理那一族（`Run::BlockingFace`），
+//   ⇒ **窄在别的地方**：写要 `Face`，而 `Face` 只递给命令表文件管理那一族（typed 的 `Facing` 那一档），
 //   不是「谁发得出命令」。别把两者混起来读。
 //
 // ⚠ 本节**买不到**什么：接上的是「命令面够得到这份原语」这一跳。

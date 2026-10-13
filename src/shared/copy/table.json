@@ -10809,12 +10809,6 @@
       "zh": " · {name} 复制失败 · {why}",
       "args": ["name", "why"]
     },
-    "rsFilewinCopy.remote.noCount": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "复制的回复缺 {field} 字段",
-      "args": ["field"]
-    },
     "rsFilewinWorkspace.copyToOther.unaddressable": {
       "kind": "error",
       "role": "报错",
@@ -16937,23 +16931,11 @@
       "zh": "未解压 · 名字 (2) 到 ({n}) 均已存在",
       "args": ["n"]
     },
-    "beFilesExtract.args.fresh": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "程序出错",
-      "args": []
-    },
     "rsFilewinExtract.label.extract": {
       "kind": "action",
       "role": "按钮",
       "zh": "解压到此处",
       "args": []
-    },
-    "rsFilewinExtract.reply.missingField": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "解压的回复缺「{field}」",
-      "args": ["field"]
     },
     "rsFilewinExtract.outcome.done": {
       "kind": "body",
@@ -16990,12 +16972,6 @@
       "role": "按钮",
       "zh": "不解压",
       "args": []
-    },
-    "beFilesExtract.args.unknownCmd": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "请求格式不对 · 「{cmd}」不是解压命令",
-      "args": ["cmd"]
     },
     "beFilesExtract.undo.at": {
       "kind": "body",

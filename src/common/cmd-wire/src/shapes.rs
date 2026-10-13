@@ -5,7 +5,7 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("files-browse", "d8806be2"),
     ("files-chmod", "3fc6bbb3"),
-    ("files-commit-text", "7db970e4"),
+    ("files-commit-text", "8e2eb5e7"),
     ("files-commit-upload", "20f80e7e"),
     ("files-copy", "fb121395"),
     ("files-create", "f54e26aa"),
@@ -26,7 +26,7 @@ pub const SHAPES: &[(&str, &str)] = &[
     ("files-read-text", "b579e3d3"),
     ("files-rename", "4eb9517f"),
     ("files-size", "1a9d4b7c"),
-    ("files-stage-chunk", "8baa66de"),
+    ("files-stage-chunk", "20742c06"),
     ("files-stat", "eab952a3"),
     ("files-write-text", "4017667d"),
     ("history-annotate", "e40c5678"),

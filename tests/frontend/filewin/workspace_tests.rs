@@ -709,7 +709,7 @@ fn across_args_cuts_paths_at_the_common_directory() {
         ("/x", "/y/x", ("/", "x", "y/x")),
     ];
     for (from, to, (root, f, t)) in cases {
-        let v = across_args(&job(from, to), true).unwrap();
+        let v = serde_json::to_value(across_args(&job(from, to), true).unwrap()).unwrap();
         assert_eq!(
             v,
             serde_json::json!({ "root": root, "from": f, "to": t, "overwrite": true }),
@@ -870,7 +870,7 @@ fn across_args_cut_lossy_paths_by_their_bytes() {
         to_raw: None,
     };
     assert_eq!(
-        across_args(&job, false).unwrap(),
+        serde_json::to_value(across_args(&job, false).unwrap()).unwrap(),
         serde_json::json!({ "root": "/srv", "from": { "b16": "61ff2f78" }, "to": "b/x", "overwrite": false })
     );
 }

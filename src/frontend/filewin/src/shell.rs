@@ -1866,11 +1866,11 @@ impl FileWindow {
             .unwrap()
             .get(i)
             .filter(|r| !r.opens_as_dir())
-            .map(|r| (super::source::wire_bytes(&name_bytes(r)), r.name.clone()))
+            .map(|r| (cmd_wire::files::WirePath(name_bytes(r)), r.name.clone()))
         else {
             return false;
         };
-        let root = self.cwd_path().wire();
+        let root = self.cwd_path().path();
         let origin = self.source.origin();
         // 一趟一块新看板（「进度」表里独立的一行）。
         let board = super::extract::ExtractBoard::default();

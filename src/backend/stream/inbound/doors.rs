@@ -6,7 +6,7 @@ use crate::stream::wire::Request;
 
 /// 资产域（`assets/`）够用户文件的那一扇门：**本进程里那几条 `files-*` 帧命令本身**（阻塞档，原样调它们的 `run`）。
 /// 住入方向是因为文件管理面的写句柄（`Face`）只有分派这一层造：这扇门就是进程内的那一次分派，
-/// 照命令表那一族的档位（`Run::BlockingFace`）递一份进去；资产模块只拿这个门，拿不到句柄，也不直呼 `files_write`。
+/// 照命令表那一族的档位（typed 的 `Facing` 那一档）递一份进去；资产模块只拿这个门，拿不到句柄，也不直呼 `files_write`。
 #[derive(Clone, Copy)]
 pub(crate) struct LocalFiles;
 
@@ -30,7 +30,7 @@ impl crate::assets::door::Door for LocalFiles {
             until: None,
         };
         // 门这一侧只交码与那一句（原话在命令自己的应答里才进复制详情）。文件管理那一族不写自家状态 ⇒ 不递 `Own`；
-        //   文件管理写句柄由 `prepare` 照档位（`Run::BlockingFace`）造了递进去。
+        //   文件管理写句柄由 `prepare` 照档位（typed 的 `Facing` 那一档）造了递进去。
         let Some(Prepared::Blocking(run)) = prepare(spec.run, None) else {
             return Err(("unknown_command".to_string(), cmd.to_string()));
         };

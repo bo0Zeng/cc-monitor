@@ -124,3 +124,15 @@ fn a_sha256_expect_is_exactly_one_lowercase_digest() {
         );
     }
 }
+
+#[test]
+fn a_staged_chunk_goes_out_in_the_shape_the_sender_chose() {
+    let hex = ChunkBytes::Hex(b"a\0".to_vec());
+    assert_eq!(serde_json::to_string(&hex).unwrap(), r#"{"b16":"6100"}"#);
+    let text = ChunkBytes::Text("a\u{0}".to_string());
+    assert_eq!(serde_json::to_string(&text).unwrap(), r#""a\u0000""#);
+    for s in [r#"{"b16":"6100"}"#, r#""a\u0000""#] {
+        let back: ChunkBytes = serde_json::from_str(s).unwrap();
+        assert_eq!(back.bytes(), b"a\0", "{s}");
+    }
+}

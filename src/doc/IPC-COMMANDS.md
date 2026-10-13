@@ -843,9 +843,9 @@ type WirePath = string | { b16: string };
 入参 `FilesStageChunkReq` · 回包 `FilesStageChunkReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type ChunkBytes = string | { b16: string };
 type FilesStageChunkReply = { bytes: number, };
-type FilesStageChunkReq = { key: string, seq: number, content: WirePath, };
-type WirePath = string | { b16: string };
+type FilesStageChunkReq = { key: string, seq: number, content: ChunkBytes, };
 ```
 
 码：`bad_args` · `io_failed` · `refused`
@@ -859,7 +859,7 @@ type WirePath = string | { b16: string };
 入参 `FilesCommitTextReq` · 回包 `FilesWrittenReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type FilesCommitTextReq = { root: WirePath, rel: string, key: string, chunks: number, bytes: number, expect: Sha256Expect, };
+type FilesCommitTextReq = { root: WirePath, rel: WirePath, key: string, chunks: number, bytes: number, expect: Sha256Expect, };
 type FilesWrittenReply = { path: WirePath, bytes: number, sha256: Sha256Hex, };
 type Sha256Expect = { sha256: Sha256Hex, };
 type Sha256Hex = string;
