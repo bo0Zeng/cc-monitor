@@ -401,6 +401,10 @@ impl Live {
 
     /// 运行簿说已收场的子运行：它的卡撤。
     fn reap_runs(&mut self, sid: &str) {
+        // 每条记录都会走到这里（预读大记录时一秒上万条）：这个会话没有子运行的卡就不去问运行簿。
+        if !self.cards.values().any(|c| c.sid == sid && c.run.is_some()) {
+            return;
+        }
         let runs = self.book.runs(sid);
         let hit: Vec<u64> = self
             .cards
