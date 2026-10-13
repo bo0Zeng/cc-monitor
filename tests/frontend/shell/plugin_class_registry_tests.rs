@@ -162,14 +162,15 @@ fn backend_command_names() -> Vec<String> {
         crate::guard_support::repo_root().join("src/frontend/ui/generated/TypedCommands.ts"),
     )
     .expect("生成的命令表");
-    for l in map.lines() {
-        let l = l.trim_start();
-        if let Some(rest) = l.strip_prefix('"') {
-            if let Some((name, tail)) = rest.split_once('"') {
-                if tail.starts_with(": { req:") {
-                    out.push(name.to_string());
-                }
-            }
+    // 逐字认：行首（去空白）一个带引号的名字、紧跟 `: { req:`。
+    for row in map.lines() {
+        let mut cs = row.trim_start().chars();
+        if cs.next() != Some('"') {
+            continue;
+        }
+        let name: String = cs.by_ref().take_while(|c| *c != '"').collect();
+        if cs.take(8).eq(": { req:".chars()) {
+            out.push(name);
         }
     }
     out
