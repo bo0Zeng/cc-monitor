@@ -323,6 +323,7 @@ fn s09_activation_delay_holds_then_lets_it_in() {
     );
 }
 
+/// ★ 两个耗尽后启用的号启用延迟一起到点：到点前一直停发（它们此刻都有额度，只是在延迟里），到点取号列表前面那个。
 #[test]
 fn s10_two_delays_ending_together_take_the_front_one() {
     let mut s = base();
@@ -332,6 +333,12 @@ fn s10_two_delays_ending_together_take_the_front_one() {
     }
     let f = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
     let d = run(&s, &sig("A", &[]), &f, T);
+    assert!(
+        matches!(d.pick, Pick::Hold { until: Some(u), .. } if u == T + 30 * MIN),
+        "B · C 都在启用延迟里：停到一起到点的那一刻，不当场用：{d:?}"
+    );
+    let d = run(&s, &d.sigma, &f, T + 29 * MIN);
+    assert!(matches!(d.pick, Pick::Hold { .. }), "还差一分钟：{d:?}");
     assert_eq!(used(&run(&s, &d.sigma, &f, T + 30 * MIN)), "B");
 }
 
@@ -525,29 +532,53 @@ fn s29_leaving_a_fallback_happens_only_at_a_known_node() {
     assert_eq!(used(&run(&s, &sig("B", &[]), &f, T + 30 * MIN)), "A");
 }
 
-/// ★ #32 不来回换：余量多的权重高、强制切换阈值 25%，三个号用速一样；推演 24 小时，换号次数有上限、不挨着换。
+/// ★ #32 不来回换：余量多的权重高，强制切换阈值只有 5%（阈值本身几乎没有回差）。
+/// 别的会话一直在用 B：它的窗口常开着、用了一截，跟 A 重置的时刻挨着。这个会话用哪个号，哪个号就多涨这个会话的那一份。
+/// 换到 B（先重置、余量多）以后，A 的余量很快就又超过 B —— 只靠「重置得晚的号权重超不过在用的号」才不换回去。
+/// 逐发每分钟判一次，走 12 小时：换号次数有上限、两次换号不挨着。
 #[test]
 fn s32_never_flip_flops() {
     let s = json!({
-        "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]}, "capKind": "hard", "force": 25,
-        "accounts": [{"id": "A"}, {"id": "B"}, {"id": "C"}]
+        "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]}, "capKind": "hard", "force": 5,
+        "accounts": [{"id": "A"}, {"id": "B"}]
     });
-    // 用速是号自己的（别的会话也在用）：涨得快慢不一，余量的先后一直在变。
-    let a = |id: &str, u: f64, r: u64, rate: f64| Acct {
-        rate: [Some(rate), Some(0.0)],
-        resets: [Some(T + r * 60), None],
-        ..acct(id, u)
-    };
-    let f = [
-        a("A", 40.0, 300, 0.6),
-        a("B", 42.0, 180, 0.2),
-        a("C", 20.0, 100, 0.4),
-    ];
-    let tl = simulate(&sig("A", &[]), &f, &s, by_left(), &clock, T, T + 24 * 3600);
-    let sw = tl.switches();
-    assert!(!tl.truncated, "推演跑满了 200 个事件：换了 {} 次", sw.len());
-    assert!(sw.len() >= 2, "本条在空转：{sw:?}");
-    assert!(sw.len() <= 12, "24 小时换了 {} 次：{sw:?}", sw.len());
+    let ours = 0.5;
+    let other = |id: &str| if id == "B" { 0.3 } else { 0.0 };
+    let mut f = vec![with_reset("A", 40.0, 120), with_reset("B", 30.0, 100)];
+    let (mut sigma, mut using, mut sw) = (sig("A", &[]), Some("A".to_string()), Vec::new());
+    let mut t = T;
+    while t < T + 12 * 3600 {
+        let d = turn(&sigma, &f, &s, by_left(), clock(t), t, &[]);
+        sigma = d.sigma.clone();
+        let now = match &d.pick {
+            Pick::Use(a) => Some(a.clone()),
+            Pick::Hold { .. } => None,
+        };
+        if now.is_some() && now != using {
+            sw.push((t, now.clone().unwrap_or_default()));
+        }
+        if now.is_some() {
+            using = now.clone();
+        }
+        // 走一分钟：在用的号多涨这个会话的那一份；有人在用的号窗口开着，到点重置、接着计。
+        for x in f.iter_mut() {
+            let mine = now.as_deref() == Some(x.id.as_str());
+            let r = other(&x.id) + if mine { ours } else { 0.0 };
+            if x.resets[0].is_some_and(|z| z <= t + MIN) {
+                x.used[0] = 0.0;
+                x.resets[0] = None;
+            }
+            if r > 0.0 && x.resets[0].is_none() {
+                x.resets[0] = Some(t + MIN + WINDOW_SECS[0]);
+            }
+            if x.resets[0].is_some() {
+                x.used[0] = (x.used[0] + r).min(100.0);
+            }
+        }
+        t += MIN;
+    }
+    assert!(sw.len() >= 3, "本条在空转：{sw:?}");
+    assert!(sw.len() <= 8, "12 小时换了 {} 次：{sw:?}", sw.len());
     assert!(
         sw.windows(2).all(|w| w[1].0 - w[0].0 >= 30 * MIN),
         "两次换号挨得太近：{sw:?}"
@@ -860,14 +891,14 @@ impl Strategy for Patient<'_> {
 }
 
 /// 逐发（每分钟一发）判；每过一个节点、每次真换号都重推一次（同真用）：推演说的下一次换号与真的那一次号相同、时刻差 ≤ 一个间隔
-/// （换到的号有启用延迟 ⇒ 两个）。挤在一起分不出先后的单数出来。回（比过几次，挤的几次）。
+/// （换到的号有启用延迟 ⇒ 两个）。挤在一起分不出先后的单数出来。回（比过几次，挤的几次，比过的里强制切换的几次）。
 fn consistent(
     s: &Value,
     f0: &[Acct],
     sigma0: &Sigma,
     p: &dyn Strategy,
     label: &str,
-) -> (usize, usize) {
+) -> (usize, usize, usize) {
     let p = &Patient(p);
     let delay = |a: &str| {
         s["accounts"]
@@ -897,7 +928,7 @@ fn consistent(
     };
     let mut tl = fresh(&sigma, &f, t);
     let mut next_node = turn(&sigma, &f, s, p, clock(t), t, &[]).tn;
-    let (mut checked, mut crowd) = (0, 0);
+    let (mut checked, mut crowd, mut forced) = (0, 0, 0);
     // 上一发那一刻的状态（事实 · 时刻 · 在用的号）与这一判之前的会话状态：推演说的换号落在两发之间时，照那一刻真判一次。
     let mut last: Option<(Vec<Acct>, u64, Option<String>)> = None;
     while t < T + 4 * 3600 && checked + crowd < 4 {
@@ -924,6 +955,7 @@ fn consistent(
                 let tol = if delay(a) { 2 * TOL } else { TOL };
                 if pa == *a && t.abs_diff(pt) <= tol {
                     checked += 1;
+                    forced += usize::from(d.why.iter().any(|(id, w)| id == a && w == "强制切换"));
                 } else if crowded(&tl, pt) || between(&last, &sigma_in, pt, t, &pa) {
                     crowd += 1;
                 } else {
@@ -951,7 +983,7 @@ fn consistent(
         step(&mut f, now_using.as_deref(), t, 60);
         t += 60;
     }
-    (checked, crowd)
+    (checked, crowd, forced)
 }
 
 /// #22 跑 `n` 组（照列表先后）：回（比过几次，挤的几次）。
@@ -959,7 +991,7 @@ fn s22_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
     for seed in 1..=n {
         let (s, f, sigma) = group(seed);
-        let (c, k) = consistent(&s, &f, &sigma, by_list(), &format!("第 {seed} 组"));
+        let (c, k, _) = consistent(&s, &f, &sigma, by_list(), &format!("第 {seed} 组"));
         total += c;
         crowd += k;
     }
@@ -974,8 +1006,44 @@ fn s22_groups(n: u64) -> (usize, usize) {
     (total, crowd)
 }
 
-/// #26 跑 `n` 组（余量多的权重高 ＋ 强制切换阈值 25% ＋ 权重容差 10%：权重交叉靠按时刻 · 按读数叫醒；延迟都设 0）。
-fn s26_groups(n: u64) -> (usize, usize) {
+/// #26 跑 `n` 组：强制切换（余量多的权重高 ＋ 强制切换阈值 25% ＋ 权重容差 10%）。耗尽后启用的号不起强制切换，这里都去掉，
+/// 换号就只有两种：用满了照先后换 · 权重交叉、强制切换（靠策略约的按时刻 · 按读数叫醒，推演才知道那一刻）。
+/// 回（比过几次，挤的几次，其中强制切换几次）。
+fn s26_groups(n: u64) -> (usize, usize, usize) {
+    let (mut total, mut crowd, mut forced) = (0, 0, 0);
+    for seed in 1..=n {
+        let (mut s, f, sigma) = group(seed);
+        for r in s["accounts"].as_array_mut().expect("accounts") {
+            let r = r.as_object_mut().expect("一行");
+            for k in ["fallback", "delay", "stint"] {
+                r.remove(k);
+            }
+        }
+        s["force"] = json!(25);
+        s["close"] = json!(10);
+        let (c, k, x) = consistent(
+            &s,
+            &f,
+            &sigma,
+            by_left(),
+            &format!("第 {seed} 组（余量 · 强制切换）"),
+        );
+        total += c;
+        crowd += k;
+        forced += x;
+    }
+    assert!(total > n as usize - 1, "比到的换号太少：{total}");
+    assert!(crowd * 20 <= total.max(20), "挤在一起的有 {crowd} 次");
+    assert!(
+        forced * 5 >= total,
+        "比过的 {total} 次换号里强制切换只有 {forced} 次 —— 本条比的不是强制切换"
+    );
+    (total, crowd, forced)
+}
+
+/// #36 跑 `n` 组：耗尽后启用的号照余量排（权重容差 10%），在用的那个用着用着被别的耗尽后启用的号超过 ⇒ 换。
+/// 这一种换号也靠策略约的叫醒（500 组里第 19 组：没约时推演晚了 969 秒）。
+fn s36_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
     for seed in 1..=n {
         let (mut s, f, sigma) = group(seed);
@@ -986,17 +1054,16 @@ fn s26_groups(n: u64) -> (usize, usize) {
         }
         s["force"] = json!(25);
         s["close"] = json!(10);
-        let (c, k) = consistent(
+        let (c, k, _) = consistent(
             &s,
             &f,
             &sigma,
             by_left(),
-            &format!("第 {seed} 组（余量 · 强制切换）"),
+            &format!("第 {seed} 组（余量 · 耗尽后启用）"),
         );
         total += c;
         crowd += k;
     }
-    assert!(total > n as usize - 1, "比到的换号太少：{total}");
     assert!(crowd * 20 <= total.max(20), "挤在一起的有 {crowd} 次");
     (total, crowd)
 }
@@ -1012,12 +1079,36 @@ fn s26_forced_switches_agree_with_per_request_decisions() {
     s26_groups(5);
 }
 
-/// #22 · #26 的大样本（各 500 组）。测试档的 Rhai 太慢（100 组二十多分钟），所以不进常规那一趟：
+/// ★ #36 全是耗尽后启用的号、照余量排：a0 被用着、余量往下掉，a2 超出它 10% 的那一刻换（第 19 组原样）。
+#[test]
+fn s36_fallbacks_ranked_by_weight_switch_where_the_simulation_says() {
+    let (c, _) = s36_groups_from(19);
+    assert!(c >= 2, "本条在空转：只比到 {c} 次换号");
+}
+
+fn s36_groups_from(seed: u64) -> (usize, usize) {
+    let (mut s, f, sigma) = group(seed);
+    s["force"] = json!(25);
+    s["close"] = json!(10);
+    for r in s["accounts"].as_array_mut().expect("accounts") {
+        assert_eq!(
+            r["fallback"],
+            json!(true),
+            "第 {seed} 组该全是耗尽后启用的号"
+        );
+        r["delay"] = json!(0);
+    }
+    let (c, k, _) = consistent(&s, &f, &sigma, by_left(), &format!("第 {seed} 组"));
+    (c, k)
+}
+
+/// #22 · #26 · #36 的大样本（各 500 组）。测试档的 Rhai 太慢（100 组二十多分钟），所以不进常规那一趟：
 /// 门禁的 `rotation-500` 格用 `perf` 档（发布档的优化、不做 LTO）单编单跑，只在全量里跑（`gate-affected` 改到轮换那几处时也跑）。
 #[test]
 #[ignore = "大样本：由门禁 rotation-500 格用 perf 档起"]
 fn consistency_500_groups() {
     let (t22, k22) = s22_groups(500);
-    let (t26, k26) = s26_groups(500);
-    eprintln!("#22：比过 {t22} 次、挤的 {k22} 次 · #26：比过 {t26} 次、挤的 {k26} 次");
+    let (t26, k26, x26) = s26_groups(500);
+    let (t36, k36) = s36_groups(500);
+    eprintln!("#22：比过 {t22} 次、挤的 {k22} 次 · #26：比过 {t26} 次、挤的 {k26} 次、强制切换 {x26} 次 · #36：比过 {t36} 次、挤的 {k36} 次");
 }

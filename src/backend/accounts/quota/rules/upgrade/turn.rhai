@@ -10,18 +10,47 @@ fn mins_of(a, now) {
   if m < 1.0 { 1.0 } else { m }
 }
 
-// 两个号的权重几时交叉：f(x) 从 lo 到 hi 由假变真（单调），回第一次为真的 x（精到 step）；hi 处也不真 ⇒ ()。
-// 只对这几份权重（离重置的分钟 · 余量的单调函数）成立，所以写在策略里，不在积木库。
-fn cross_at(lo, hi, step, f) {
-  if lo >= hi || !f.call(hi) { return (); }
-  if f.call(lo) { return lo; }
-  let a = lo;
-  let b = hi;
-  while b - a > step {
-    let m = (a + b) / 2.0;
-    if f.call(m) { b = m; } else { a = m; }
+// x 分钟以后（离重置的分钟都照走）、号 u 的余量换成 lu 时，照规则排出来的先后：
+//   权重高的在前（权重容差以内同权、照号列表）；耗尽后启用的号排最后；
+//   在用的号有额度且不是耗尽后启用的 ⇒ 留着，除非开了强制切换、有号重置比它早且权重超出它这一比例（只看先重置的，免得来回换）。
+// 这一判就是 x ＝ 0、不换余量；约下次再来问时拿同一个函数问「再过多久 · 再用掉多少就换」。
+// 照方法调：this 是各号的事实（#{号: 事实}，几份里最大的那份，按引用传，二分里调几十次也不拷）；
+// g ＝ #{ids, fb, has, left, mins, close, force}（fb · has · left · mins 都是 #{号: …}）。
+fn order_of(g, cur, x, u, lu) {
+  let pri = #{};
+  let main = [];
+  let fb = [];
+  for id in g.ids {
+    if !g.has[id] { continue; }
+    let l = if id == u { lu } else { g.left[id] };
+    let m = g.mins[id];
+    if m != () && x > 0.0 { m -= x; if m < 1.0 { m = 1.0; } }
+    pri[id] = weight(this[id], l, m).to_float();
+    if g.fb[id] { fb.push(id); } else { main.push(id); }
   }
-  b
+  let next = lib::rank(main, pri, g.close);
+  for id in lib::rank(fb, pri, g.close) { next.push(id); }
+  if !g.ids.contains(cur) || !g.has[cur] || g.fb[cur] { return #{ order: next, take: () }; }
+  let k = if g.force != () { 1.0 + g.force.to_float() / 100.0 } else { () };
+  let take = ();
+  let mc = g.mins[cur];
+  if k != () && mc != () {
+    for id in next {
+      if id == cur || g.fb[id] || g.mins[id] == () { continue; }
+      if g.mins[id] < mc && pri[id] > pri[cur] * k { take = id; break; }
+    }
+  }
+  let order = [];
+  if take != () { order.push(take); }
+  order.push(cur);
+  for id in next { if !order.contains(id) { order.push(id); } }
+  #{ order: order, take: take }
+}
+
+// 号 u 在用：x 分钟以后、它的余量换成 lu 时还排不排第一（不排 ⇒ 那时会换）。照方法调，this 同 order_of。
+fn moved(g, u, x, lu) {
+  let o = this.order_of(g, u, x, u, lu).order;
+  o.len() == 0 || o[0] != u
 }
 
 fn decide(ctx) {
@@ -80,40 +109,22 @@ fn decide(ctx) {
     if e.rose >= r.stint.to_float() { has[id] = false; spent[id] = true; }
   }
 
-  // 权重与先后：耗尽后启用的号排最后。
+  // 权重与先后（见 order_of）。
   let left = #{};
   let mins = #{};
-  let pri = #{};
-  let main = [];
-  let fb = [];
   for id in ids {
     left[id] = lib::left_of(s, r_of[id], a_of[id], lift, clock);
     mins[id] = mins_of(a_of[id], now);
-    if !has[id] { continue; }
-    pri[id] = weight(a_of[id], left[id], mins[id]).to_float();
-    if is_fb(r_of[id]) { fb.push(id); } else { main.push(id); }
   }
-  let next = lib::rank(main, pri, s.close);
-  for id in lib::rank(fb, pri, s.close) { next.push(id); }
-
-  // 强制切换阈值：在用的号有额度时，重置比它早、权重超出它这一比例的号直接换过去（只看先重置的，免得来回换）。
-  let k = if s.force != () { 1.0 + s.force.to_float() / 100.0 } else { () };
+  let fbs = #{};
+  for id in ids { fbs[id] = is_fb(r_of[id]); }
+  let g = #{ ids: ids, fb: fbs, has: has, left: left, mins: mins, close: s.close, force: s.force };
+  let o = a_of.order_of(g, cur, 0.0, (), ());
+  let order = o.order;
   let why = #{};
-  for id in next { why[id] = if is_fb(r_of[id]) { "其余账号无可用额度" } else { "权重最高" }; }
-  let order = [];
-  if !ids.contains(cur) || !has[cur] || is_fb(r_of[cur]) {
-    order = next;
-  } else {
-    let take = ();
-    if k != () && mins[cur] != () {
-      for id in next {
-        if id == cur || is_fb(r_of[id]) || mins[id] == () { continue; }
-        if mins[id] < mins[cur] && pri[id] > pri[cur] * k { take = id; break; }
-      }
-    }
-    if take != () { order.push(take); why[take] = "强制切换"; } else { why[cur] = "未达用量上限"; }
-    order.push(cur);
-    for id in next { if !order.contains(id) { order.push(id); } }
+  for id in order { why[id] = if is_fb(r_of[id]) { "其余账号无可用额度" } else { "权重最高" }; }
+  if ids.contains(cur) && has[cur] && !is_fb(r_of[cur]) {
+    if o.take != () { why[o.take] = "强制切换"; } else { why[cur] = "未达用量上限"; }
   }
   for id in ids {
     if why[id] != () { continue; }
@@ -129,7 +140,7 @@ fn decide(ctx) {
   }
   memo.stint = if stint.len() > 0 { stint } else { () };
 
-  // 叫醒：分段边界 · 启用延迟到点 · 要用的号读数到上限 · 单次用量上限那一读数 · 强制切换开着时两号权重交叉。
+  // 叫醒：分段边界 · 启用延迟到点 · 要用的号读数到上限 · 单次用量上限那一读数 · 权重交叉、要用的号不再排第一的那一刻（时刻 · 读数各一）。
   let at = ();
   let when = [];
   let ats = [];
@@ -149,31 +160,59 @@ fn decide(ctx) {
       if a_of[nxt].resets.w5h != () { ats.push(a_of[nxt].resets.w5h - 60); }
     }
   }
-  if nxt != () && k != () && !is_fb(r_of[nxt]) && a_of[nxt].kind != "api" {
+  // 权重会交叉的那一刻：下一判在用的是 nxt，问 order_of「再过多久 · 再用掉多少它就不排第一」。
+  // 只在可能换时算：nxt 是耗尽后启用的（照权重和别的耗尽后启用的号排），或开了强制切换；且还有别的有额度的号。
+  if nxt != () && order.len() > 1 && a_of[nxt].kind != "api" && (is_fb(r_of[nxt]) || s.force != ()) {
     let an = a_of[nxt];
-    let ln = left[nxt];
-    let mn = mins[nxt];
-    let watch = false;
-    let step = if mn == () { 0.01 } else { 1.0 };   // 要用的号窗口还没开：一用就开，开了再算
-    for id in ids {
-      if id == nxt || !has[id] || is_fb(r_of[id]) || mins[id] == () || (mn != () && mins[id] >= mn) { continue; }
-      watch = true;
-      if mn == () { continue; }
-      let ai = a_of[id];
-      let li = left[id];
-      let mi = mins[id];
-      // 时刻：两边余量照此刻，离重置的分钟都照走；x 分钟后它的权重超出要用的号这一比例
-      let x = cross_at(0.0, mi - 1.0, 1.0, |x| weight(ai, li, mi - x).to_float() > weight(an, ln, mn - x).to_float() * k);
-      if x != () && x > 0.0 { ats.push(now + (x * 60.0).to_int() + 1); }
-      // 读数：时刻不走，要用的号再用掉多少就被它超出
-      let pi = weight(ai, li, mi).to_float();
-      let u = cross_at(0.0, ln, 0.05, |d| pi > weight(an, ln - d, mn).to_float() * k);
-      if u != () {
-        let half = u / 2.0;
-        if half < step { step = if half > 0.05 { half } else { 0.05 }; }
+    if mins[nxt] == () {
+      // 要用的号窗口还没开：一用就开，开了再算
+      when.push(#{ acct: nxt, w: "5h", used_at_least: an.used.w5h + 0.01 });
+    } else if a_of.moved(g, nxt, 0.0, left[nxt]) {
+      // 换过去下一判就又不排第一（权重容差比强制切换阈值大时会有）：下一秒就来问
+      ats.push(now + 1);
+    } else {
+      // 权重随不随时间变（离重置的分钟进不进权重）
+      let timed = false;
+      for id in ids {
+        if !has[id] || mins[id] == () { continue; }
+        if weight(a_of[id], left[id], mins[id]).to_float() != weight(a_of[id], left[id], mins[id] + 1.0).to_float() { timed = true; }
+      }
+      // 按时刻：余量照此刻，离重置的分钟都照走；上界是有额度的号里最早重置的那一刻（重置本身是节点）
+      if timed {
+        let hi = ();
+        for id in ids { if has[id] && mins[id] != () && (hi == () || mins[id] < hi) { hi = mins[id]; } }
+        if a_of.moved(g, nxt, hi, left[nxt]) {
+          let lo = 0.0;
+          while hi - lo > 0.1 {
+            let m = (lo + hi) / 2.0;
+            if a_of.moved(g, nxt, m, left[nxt]) { hi = m; } else { lo = m; }
+          }
+          ats.push(now + (hi * 60.0).to_int() + 1);
+        }
+      }
+      // 按读数：时刻不走，两窗各自算 nxt 这一窗再用掉多少就换（余量是两窗取小，各窗单独算才准）。
+      // 权重不随时间变 ⇒ 直接约到那一读数；也随时间变 ⇒ 约到一半，到了再算，最后一截不到 0.1% 时约到那一读数。
+      let r = r_of[nxt];
+      let l5 = lib::cap_of(s, r, "5h", lift, clock) - an.used.w5h;
+      let l7 = lib::cap_of(s, r, "7d", lift, clock) - an.used.w7d;
+      for w in ["5h", "7d"] {
+        let room = if w == "5h" { l5 } else { l7 };
+        let keep = if w == "5h" { l7 } else { l5 };
+        let hi = room - 0.01;
+        if hi <= 0.0 { continue; }
+        let lu = if room - hi < keep { room - hi } else { keep };
+        if !a_of.moved(g, nxt, 0.0, lu) { continue; }
+        let lo = 0.0;
+        while hi - lo > 0.05 {
+          let m = (lo + hi) / 2.0;
+          let lu = if room - m < keep { room - m } else { keep };
+          if a_of.moved(g, nxt, 0.0, lu) { hi = m; } else { lo = m; }
+        }
+        let h = if timed && hi > 0.1 { hi / 2.0 } else { hi };
+        let u = if w == "5h" { an.used.w5h } else { an.used.w7d };
+        when.push(#{ acct: nxt, w: w, used_at_least: u + h });
       }
     }
-    if watch { when.push(#{ acct: nxt, w: "5h", used_at_least: an.used.w5h + step }); }
   }
   for t in ats { if t != () && t > now && (at == () || t < at) { at = t; } }
 
