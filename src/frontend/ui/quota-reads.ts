@@ -1,16 +1,13 @@
 /**
- * 额度与换号那几条命令的界面口：`quota-read` · `rotation-switch`（会话所在那台；本机远端同一条 `chan.call(origin, …)`）。
- * 轮换配置 / 策略 / 会话副本那一组在 `rot-reads.ts`。判定全在后端：这里只按形状收、交给画的那几处。
+ * 额度账的界面口：`quota-read`（会话所在那台；本机远端同一条 `chan.call(origin, …)`）。
+ * 轮换那一组在 `rotation-view-reads.ts`。判定全在后端：这里只按形状收、交给画的那几处。
  */
 import { chan } from "../../comms/inward/chan";
 import { budgetWithin, jsonBody, readJson } from "./ipc/chan-caller";
 import type { Origin } from "./ipc/origin";
 import { takeNames, type QuotaRead } from "./acct-words";
-import type { RestartOutcome } from "./generated/RestartOutcome";
-import type { SwitchOutcome } from "./generated/SwitchOutcome";
-import { exactKeys } from "./ipc/decode";
 
-/** 读一份额度账 / 轮换（读盘 ＋ 回程）。 */
+/** 读一份额度账（读盘 ＋ 回程）。 */
 const READ_BUDGET_MS = 15_000;
 
 function bad(what: string): never {
@@ -59,36 +56,6 @@ export function decodeQuotaRead(v: unknown): QuotaRead {
   return o as unknown as QuotaRead;
 }
 
-/** `rotation-switch` 的应答：每个 sid 一个结局。 */
-export function decodeOutcomes(v: unknown): Record<string, SwitchOutcome> {
-  const ss = obj(obj(v, "reply").sessions, "sessions");
-  for (const [sid, s] of Object.entries(ss)) {
-    const x = obj(s, `sessions.${sid}`);
-    if (x.state !== "done" && typeof x.code !== "string")
-      bad(`sessions.${sid}.code`);
-  }
-  return ss as Record<string, SwitchOutcome>;
-}
-
-/** 重启换那一支的应答：每个 sid `{state:"done", terminal}` 或 `{state:"failed", code, old}`，多一格 / 缺一格 / 类型不对 ⇒ 抛。 */
-export function decodeRestartOutcomes(
-  v: unknown,
-): Record<string, RestartOutcome> {
-  const ss = obj(obj(v, "reply").sessions, "sessions");
-  for (const [sid, s] of Object.entries(ss)) {
-    const x = obj(s, `sessions.${sid}`);
-    const ok =
-      x.state === "done"
-        ? exactKeys(x, ["state", "terminal"]) && typeof x.terminal === "string"
-        : x.state === "failed" &&
-          exactKeys(x, ["state", "code", "old"]) &&
-          typeof x.code === "string" &&
-          (x.old === "kept" || x.old === "ended");
-    if (!ok) bad(`sessions.${sid}`);
-  }
-  return ss as Record<string, RestartOutcome>;
-}
-
 // 每一问各写一处 `chan.call`，操作名是字面量（通信层判据按字面量认是哪条帧命令）。
 
 export async function readQuota(origin: Origin): Promise<QuotaRead> {
@@ -96,39 +63,5 @@ export async function readQuota(origin: Origin): Promise<QuotaRead> {
   const budget = budgetWithin(READ_BUDGET_MS);
   return decodeQuotaRead(
     readJson(await chan.call(origin, "quota-read", body, budget)),
-  );
-}
-
-/** 现在就换：热切换 `sessions` 是会话 id；重启切换每项是 `session-restart` 的入参（不带 `account`），`ms` 是这一趟的总期限（要等压缩 · 等报出）。 */
-async function switchNow(
-  origin: Origin,
-  sessions: unknown[],
-  target: string,
-  mode: "hot" | "restart",
-  ms: number,
-): Promise<unknown> {
-  const body = jsonBody({ sessions, target, mode });
-  const budget = budgetWithin(ms);
-  return readJson(await chan.call(origin, "rotation-switch", body, budget));
-}
-
-export async function switchHot(
-  origin: Origin,
-  sids: string[],
-  target: string,
-): Promise<Record<string, SwitchOutcome>> {
-  return decodeOutcomes(
-    await switchNow(origin, sids, target, "hot", READ_BUDGET_MS),
-  );
-}
-
-export async function switchRestart(
-  origin: Origin,
-  sessions: Record<string, unknown>[],
-  target: string,
-  ms: number,
-): Promise<Record<string, RestartOutcome>> {
-  return decodeRestartOutcomes(
-    await switchNow(origin, sessions, target, "restart", ms),
   );
 }

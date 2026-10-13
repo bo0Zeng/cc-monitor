@@ -30,174 +30,70 @@ pub(super) const SPECS: &[CommandSpec] = &[
             crate::faces::quota_probe_face::answer_probe(&r.args, own).map(Some)
         }),
     },
-    // 换号那一族（帧面宿主 `faces/rotation_face.rs`，`轮换-积木.md` §5）：配置表读 / 存 / 改名 / 删 / 设为本机默认 · 策略读 / 装 / 删 / 试跑 ·
-    //   会话读 / 打开配置 / 改副本 / 存 / 还原 / 手动调整 · 推演 · 现在就换。
-    //   同步文件 I/O（含沙箱里跑策略，一判至多 50 ms）⇒ 阻塞档；「现在就换」里重启换那一半要等 `session-restart` ⇒ 异步、失败可带码。
-    CommandSpec {
-        name: "rotation-configs-read",
-        summary: "这台的轮换配置表",
-        codes: &[],
-        fields: &[out("configs", "每份一项（本机默认在最前、其余按名字）：`{id, name, strategy, accounts, params, acctInit, parked, tz?, rev, updatedAt, savedBy, text, strategyName, inUse, isDefault}`；`text` 是后端写好的描述（策略的 `describe` 片段写成字），`inUse` ＝ 开着它的会话"), out("defaultConfig", "本机默认那份的 id"), arg("lang", "可缺：策略自己的字写哪种语言（`zh` 缺省 · `en`）"), out("detail", "只在 `unreadable` 时有：复制详情"), out("path", "那份文件的绝对路径（家推不出 ⇒ `null`）"), out("reason", "只在 `unreadable` 时有"), out("state", "`\"present\"` · `\"absent\"`（没动过：内置三份）· `\"unreadable\"`")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_configs_read(&r.args, &r.tz).map(Some)),
-    },
-    CommandSpec {
-        name: "rotation-config-save",
-        summary: "存一份轮换配置（新建或覆盖）",
-        codes: &["bad_args", "io_failed", "no_such_config"],
-        fields: &[arg("config", "整份内容 `{name, strategy, accounts: [{start: true} | {rest: true} | {id}, params], params, acctInit, parked?}`；参数照那份策略的声明逐格校验，缺的格补齐"), out("errors", "只在 `refused` 时有：`[{cell, code, said}]`（`name` · `strategy` · `accounts[i]` · `params.<k>` · `accounts[i].<k>` · `acctInit.<k>`，时段细到 `[j].at` / `[j].line`）"), arg("force", "可缺：`true` ⇒ `ifRev` 对不上也覆盖"), both("id", "入参：改哪份；缺 ＝ 新建。应答：写成的那份"), arg("ifRev", "可缺：改之前读到的 `rev`；对不上 ⇒ `conflict`"), both("rev", "写成的版本 · `conflict` 时此刻的版本"), out("savedAtText", "只在 `saved` 时有：写成那一刻的钟面 `HH:MM`"), out("state", "`\"saved\"` · `\"refused\"` · `\"conflict\"`"), out("theirs", "只在 `conflict` 时有：别处那一版跟这一份差哪几格 `[{acct?, k, from, to, text}]`")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_config_save(&r.args, &r.tz, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-config-rename",
-        summary: "给一份轮换配置改名",
-        codes: &["bad_args", "io_failed", "no_such_config"],
-        fields: &[out("errors", "同 `rotation-config-save`"), both("id", "哪份"), arg("ifRev", "同 `rotation-config-save`"), arg("name", "新名字（1–24 字，本机不重名）"), out("rev", "同 `rotation-config-save`"), out("savedAtText", "同 `rotation-config-save`"), out("state", "同 `rotation-config-save`"), out("theirs", "同 `rotation-config-save`（改名撞版本时为空）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_config_rename(&r.args, &r.tz, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-config-delete",
-        summary: "删一份轮换配置",
-        codes: &["bad_args", "io_failed", "no_such_config"],
-        fields: &[arg("id", "哪份"), out("inUse", "只在 `refused` 时有：开着它的会话"), out("isDefault", "只在 `refused` 时有：是本机默认"), out("said", "只在 `refused` 时有：那一句"), out("state", "`\"done\"` · `\"refused\"`（有会话开着 · 是本机默认）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_config_delete(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-default-set",
-        summary: "设这台的本机默认配置",
-        codes: &["bad_args", "io_failed", "no_such_config"],
-        fields: &[arg("id", "设为本机默认的那份（已开着的会话不跟着换）"), out("state", "`\"done\"`")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_default_set(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-strategies-read",
-        summary: "这台加载的轮换策略",
-        codes: &[],
-        fields: &[arg("lang", "可缺：参数名 · 选项 · 灰字写哪种语言（`zh` 缺省 · `en`）"), out("lib", "共用小函数库 `{source}`（随引擎走，只读）"), out("strategies", "每份一项（内置在前、本机按文件名）：`{id, name, builtin, path?, ordered, text, params: [Decl＋字], acctParams: [Decl＋字], source, error?: {kind, line?, col?, msg, text}, usedBy}`；`Decl＋字` ＝ `{k, type, init, of?, min?, max?, label, hint?, options?: [{v, label, hint?}]}`，界面只照它画格")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_strategies_read(&r.args, &r.tz).map(Some)),
-    },
-    CommandSpec {
-        name: "rotation-strategy-add",
-        summary: "装一份轮换策略进本机策略目录",
-        codes: &["bad_args", "io_failed"],
-        fields: &[out("error", "只在 `refused` 时有：读不懂那一处 `{kind, line?, col?, msg, text}`"), both("id", "文件名去 `.rhai`（路由段闸那一套字符，至多 32 字，不以 `@` 开头；与内置同 id ⇒ 不收）"), out("said", "只在 `refused` 时有：那一句"), arg("source", "策略文件的全文（至多 64 KiB）"), out("state", "`\"done\"` · `\"refused\"`"), out("usedBy", "删不了时：用它的配置")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_strategy_add(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-strategy-delete",
-        summary: "删本机的一份轮换策略",
-        codes: &["bad_args", "io_failed", "no_such_strategy"],
-        fields: &[out("error", "同 `rotation-strategy-add`"), both("id", "哪份（内置的删不了）"), out("said", "同 `rotation-strategy-add`"), out("state", "`\"done\"` · `\"refused\"`（内置的 · 有配置在用）"), out("usedBy", "只在有配置在用时有：那几份的 id")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_strategy_delete(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-strategy-try",
-        summary: "按此刻的事实试跑一份策略（不写盘不换号）",
-        codes: &["bad_args", "no_such_config", "no_such_session"],
-        fields: &[arg("config", "跑哪份配置（与 `draft` · `sid` 三选一）"), arg("draft", "草稿：一份完整配置内容"), arg("id", "可缺：用哪份已加载的策略（缺 ⇒ 配置写的那份）"), arg("lang", "可缺：字写哪种语言"), out("maxOps", "一判的操作数上限"), out("memo", "这一判回的 `@memo`（没写 ⇒ 缺）"), out("ops", "这一判用了几次操作"), out("pick", "会挑谁（停发 ⇒ 缺）"), out("rows", "有效优先级的先后 `[{account, p, why, back?, backText?}]`：`p` 为 `null` ＝ 此刻不挑"), arg("sid", "这个会话此刻那一份（从它此刻的号起，手动调整 · 备忘照叠）"), arg("source", "可缺：现编的一份策略全文（不装，只跑）"), out("strategyError", "出错 / 超时 / 形状不对时：为什么（这一判照内置策略 1 排）")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_strategy_try(&r.args, &r.tz).map(Some)),
-    },
-    CommandSpec {
-        name: "rotation-plan",
-        summary: "推演：一份配置接下来会怎么换（都不写）",
-        codes: &["bad_args", "no_such_config", "no_such_session"],
-        fields: &[arg("config", "跑哪份配置（与 `draft` · `sid` 三选一；没有会话 ⇒ 从起会话的号起）"), arg("draft", "草稿：一份完整配置内容（带 `sid` 时 ＝ 这个会话的草稿）"), out("names", "号名与语义位名的字"), out("from", "视窗起（此刻之前那一截的起点）"), out("grid", "刻度 `[{at, atText, label?}]`，按看的那一台的时区对齐"), arg("lang", "可缺：字写哪种语言"), out("now", "这台此刻的 unix 秒"), out("nowText", "`now` 写好的字"), out("plan", "`[{from, fromText, to, toText, account, why?, est?}]`：`account` 为 `null` ＝ 停发；`why` ＝ 那一段开头为什么换过来；此刻之后的都是估的（`est`）"), out("rows", "合图每个号一行 `{account, bars: [{from, to, k, est?}], resets: [{w, at, atText}]}`：`k` ＝ `use` · `line`（策略声明了 `line` 且到线才出）· `off` · `refused` · `full` · `overage` · `login` · `skip`"), arg("sid", "一个会话：此刻那一份，从它此刻的号起；此刻之前那一截照换号记录"), arg("source", "可缺：现编的一份策略全文（不装，只跑）"), out("strategyError", "此刻这一判出错时：为什么"), out("until", "视窗止"), both("view", "`12h`（缺省：前 3h · 后 9h）· `24h`（前 6h · 后 18h）")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_plan(&r.args, &r.tz).map(Some)),
-    },
-    CommandSpec {
-        name: "rotation-session-read",
-        summary: "一批会话的轮换",
-        codes: &["bad_args", "failed"],
-        fields: &[out("detail", "同 `rotation-configs-read`"), arg("lang", "可缺：字写哪种语言"), out("names", "号名与语义位名的字：`{accounts: {码: 字}, slots: {码: 字}}`"), out("now", "这台此刻的 unix 秒；回包里每个时刻旁有 `…Text`"), out("reason", "同 `rotation-configs-read`"), out("sessions", "每个 sid 一份：`{state: \"present\", agent, start, current, since, history: [{at, from, to, leave, pick?, text}], inPlace, config: {id, name, rev, dirty, newer?: {rev, at, by, text}, diff?}, text, strategy: {id, name, ordered}, values: {params, accounts: [{who, params}], acctInit}, rows: [{account, why, skip?, back?, backText?, alsoUsed, facts, fromRest?}], hot?, blocked?: {earliest?, text}, strategyError?, quota}` · 中转没见过 ⇒ `{state: \"absent\", inPlace}`；`rows` 是有效优先级的先后，第一行在用"), arg("sids", "会话 id 的数组"), out("state", "那份文件的三态（同 `rotation-configs-read`）")],
-        takes_input: true,
-        run: Run::BlockingData(|r| crate::faces::rotation_face::answer_session_read(&r.args, &r.tz).map(Some)),
-    },
-    CommandSpec {
-        name: "rotation-session-open",
-        summary: "会话打开一份配置",
-        codes: &["bad_args", "io_failed", "no_such_config"],
-        fields: &[arg("config", "打开哪份"), out("diff", "只在 `dirty` 时有：本会话副本改了哪几格"), arg("discard", "可缺：`true` ⇒ 丢掉本会话没存的改动再打开"), arg("sid", "哪个会话"), out("state", "`\"opened\"`（手动调整与备忘清掉）· `\"dirty\"`（副本有没存的改动，先问）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_session_open(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-session-edit",
-        summary: "改会话打开的那份配置的副本",
-        codes: &["bad_args", "io_failed", "no_such_session"],
-        fields: &[arg("add", "可缺：加进来的号（新的一行抄 `acctInit`）"), out("diff", "副本跟原样差哪几格 `[{acct?, k, from, to, text}]`"), out("dirty", "副本改没改过（改回原样 ⇒ `false`，副本丢掉）"), arg("drop", "可缺：不参与的号（删那一行）"), out("errors", "收不下的格 `[{cell, code, said}]`（那几格不改）"), arg("lang", "可缺：字写哪种语言"), arg("set", "`[{acct?, k, v}]`：`acct` 缺 ＝ 整份参数 · `@start` · `@rest` · `@init`（新加的号缺省）· 号 id（`rest` 底下的号 ⇒ 给它单写一行）"), arg("sid", "哪个会话"), arg("strategy", "可缺：换一份策略（旧参数收进 `parked`，同名同类型的照搬）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_session_edit(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-session-save",
-        summary: "存会话的副本（写回或另存为）",
-        codes: &["bad_args", "io_failed"],
-        fields: &[arg("as", "可缺：`{name?}` ⇒ 另存为（新 id，本会话改开它；不起名 ⇒ `配置 N`）"), out("errors", "只在 `refused` 时有"), arg("force", "可缺：`true` ⇒ 撞版本也覆盖"), out("id", "只在 `saved` 时有：写成的那份"), arg("ifRev", "打开时的 `rev`；对不上且没 `force` ⇒ `conflict`"), out("mine", "只在 `conflict` 时有：本会话的改动"), out("rev", "写成的版本 · `conflict` 时此刻的版本"), arg("sid", "哪个会话"), out("state", "`\"saved\"` · `\"conflict\"` · `\"refused\"`"), out("theirs", "只在 `conflict` 时有：别处那一版跟本会话的差")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_session_save(&r.args, &r.tz, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-session-revert",
-        summary: "丢掉会话副本的改动",
-        codes: &["bad_args", "io_failed", "no_such_session"],
-        fields: &[arg("sid", "哪个会话"), out("state", "`\"done\"`"), arg("toLatest", "可缺：载入新版本（同一件事：副本丢掉、版本跟上）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_session_revert(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-session-set",
-        summary: "会话的手动调整（拖一行 · 刷新策略）",
-        codes: &["bad_args", "io_failed", "no_such_session"],
-        fields: &[arg("place", "`{account, at}`：把那个号放到第 `at` 位（0 起；`0` ＝ 现在就换过去，同 `rotation-switch` 热换，不出任何提示）"), arg("refresh", "`true` ⇒ 清掉全部手动调整与备忘，照策略重算"), arg("sid", "哪个会话"), out("state", "`\"done\"` · `\"skipped\"` · `\"failed\"`"), out("why", "没换成时的码（同 `rotation-switch` 的 `hot` 那一格）")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::rotation_face::answer_session_set(&r.args, own).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "rotation-switch",
-        summary: "现在就换",
-        codes: &["bad_args", "failed"],
-        fields: &[arg("mode", "`hot`（不重启，下一发起就走它）· `restart`（换号重启）"), both("sessions", "`hot`：会话 id；`restart`：每项是 `session-restart` 的入参（不带 `account`）；应答里是逐个结果"), arg("target", "换到哪个号")],
-        takes_input: true,
-        run: Run::AsyncOwn(|r, own| {
-            Box::pin(async move {
-                crate::faces::rotation_switch_face::answer_switch(r.args, r.until, &LocalFiles, own)
-                    .await
-                    .map(Some)
-                    .map_err(|(c, m)| (c.to_string(), m))
-            })
-        }),
-    },
+    // 轮换第五版：每个号此刻的事实（typed，`轮换-v5-分层.md` §1.1）。只读。
+    crate::stream::inbound::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
+        "每个号此刻的事实",
+    ),
+    // 轮换第五版：拿一份策略原文照此刻的事实判一次、往后推演，不写盘不换号（skill 试跑 · 测试台）。
+    crate::stream::inbound::typed::blocking::<crate::faces::rotation_try_face::RotationTry>(
+        "试跑一份策略",
+    ),
+    // 轮换第五版（`轮换-v5-分层.md` §6.6 第 10 条）：读 —— 策略目录 · 界面四块要的全部。
+    crate::stream::inbound::typed::blocking::<crate::faces::rotation_view_face::RotationStrategies>(
+        "策略目录",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::faces::rotation_view_face::RotationView>(
+        "一个会话或一份策略此刻的轮换",
+    ),
+    // 写 —— 设置 · 存 · 还原 · 换一份 · 新会话用哪份 · 拖出来的顺序 · 现在用 · 策略文件加 / 复制 / 改名 / 删。
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationSettings>(
+        "改一份设置",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationSave>(
+        "存设置",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationRevert>(
+        "丢掉会话里没存的设置",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationUse>(
+        "会话换一份策略",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationForNew>(
+        "新会话用哪份策略",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationTemp>(
+        "排接下来先用谁",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationUseNow>(
+        "现在用这个号",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyAdd>(
+        "加一份策略",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyCopy>(
+        "复制一份策略",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyRename>(
+        "给策略改名",
+        &LocalFiles,
+    ),
+    crate::stream::inbound::typed::with_own::<crate::faces::rotation_edit_face::RotationStrategyDelete>(
+        "删一份策略",
+        &LocalFiles,
+    ),
+    // 算术 —— 24 小时条上拖出一段（分段的算术，不是换号的想法）。
+    crate::stream::inbound::typed::blocking::<crate::faces::rotation_edit_face::RotationDayPaint>(
+        "在 24 小时条上刷一段",
+    ),
     // **上游选择**那份凭据文件在**这台机器上**的读写口 —— 上游选择自己的状态，
     //   不是用户文件（判清全文）⇒ 写经 `Own`（启动时造、经分派递进来），
     //   **只从这里一扇门进来**。远端账号页配的 key 从此落在会话跑的那台机器上。

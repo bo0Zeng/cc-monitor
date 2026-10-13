@@ -3,7 +3,7 @@
  * 子运行的活卡画在它自己时间线的尾巴上（agent 面板里点开的那一条）。整块按此刻的状态重画。
  *
  * 为什么单独一个文件：`live-card.ts` 被主窗口与独立查看器两个入口共用（进共享块），而 `.module.css` 进共享块会让它的规则
- * 排在主窗口全局样式之前（`tests/frontend/ui/entry-graphs.vitest.ts` 的次序判据）。只有主窗口订 `session-tap`、要画活卡 ⇒ 画法与样式
+ * 排在主窗口全局样式之前（`tests/frontend/ui/entry-graphs.vitest.ts` 的次序判据）。只有主窗口订 `session-live-card`、要画活卡 ⇒ 画法与样式
  * 住只有主窗口入口够得着的这一块，由 `main.ts` 装进 `TabManager`（`setLivePainter`）。
  */
 import { renderCardText, type LiveCardState, type LivePainter } from "./live-card";

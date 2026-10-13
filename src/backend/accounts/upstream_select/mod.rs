@@ -57,7 +57,8 @@ pub(crate) mod file_face;
 pub(crate) mod endpoint;
 mod policy; // 热重载（`accounts/policy.rs`；今天住 `accounts/upstream_select/policy.rs`）
 pub mod rotate;
-pub(crate) mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值** // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）
+pub(crate) mod table;
+pub(crate) mod turn; // 第五版那一判：叫策略、缓存到下一个节点 // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值** // 换号：这个会话这一发走哪个号（问轮换 · 备令牌与身份 · 钉号）
 
 pub(crate) use policy::Reload;
 
@@ -199,21 +200,39 @@ impl Upstreams {
 /// 交没交端口、起没起来由中转答（`relay::Hosted`）；本函数一行逻辑都没有，只做接线 ——
 /// 取值器是**真环境**。回一句给宿主日志看的话。
 /// 先前还有一条 `--relay`（独立中转进程）的装配口，随那一形删了；中转只剩这一个宿主。
-/// tee 的落点是进程级那一个 tap 口（`crate::stream::tap::port`）—— 本函数只递，上游选择不碰它交出去的任何一件事
+/// `tap`：tee 的落点（生产 ＝ 进程级那一个 tap 口 `crate::stream::tap::port`，宿主交进来）—— 本函数只递，上游选择不碰它交出去的任何一件事
 /// （② 不碰响应体）。
 ///
 /// `library`：这台的账号库怎么读（宿主交进来 —— 上游选择不认识账号库管理）；换号要它找各号的配置目录。
 /// `own`：写自家状态的句柄（启动时造的那一份）；额度账 · 轮换 · 血缘 · 中转钥匙的写都经它。
-pub fn host_relay(library: rotate::LibraryRead, own: crate::platform::fs::Own) -> String {
+pub fn host_relay(
+    library: rotate::LibraryRead,
+    tap: std::sync::Arc<dyn crate::relay::TapPort>,
+    own: crate::platform::fs::Own,
+) -> String {
     let hosted = crate::relay::host(
         &|k| std::env::var(k).ok(),
-        &Rotating(library, own.clone()),
-        crate::stream::tap::port(),
+        &Rotating(library.clone(), own.clone()),
+        tap,
         &own,
     );
-    // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是第一版，这一下换形写回（全机只这一处写回）。
+    // 接上了中转 ⇒ 旧版的中转已经让出了口：盘上的轮换若还是旧版，这一下升级写回、播种（全机只这一处写回）。
     if hosted.listening() {
-        crate::accounts::quota::rotation::migrate_here(&own);
+        let lib = crate::platform::paths::home_dir()
+            .map(|h| library(&h))
+            .unwrap_or_default();
+        let rest = rotate::rest_members(lib.accounts.iter().map(|a| a.id.as_str()), &[], |x| {
+            lib.accounts.iter().any(|a| a.id == x && !a.api)
+        });
+        let live = crate::observe::accounts_query::live_here();
+        crate::accounts::quota::rotation::migrate_here(
+            &own,
+            &crate::accounts::quota::rotation::UpgradeEnv {
+                live: &|sid| live.contains(sid),
+                rest,
+                title: &|_| None,
+            },
+        );
     }
     hosted.to_string()
 }
@@ -267,14 +286,11 @@ impl Ready for Booted {
         // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
         // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
         // 推不出那份文件在哪 ⇒ 空表、无重载源（那句话装表时已经说了）。
-        let quota = std::sync::Arc::new(
-            Ledger::at(
-                own.path(ledger::FILE_NAME)
-                    .ok()
-                    .map(|p| p.as_path().to_path_buf()),
-            )
-            .ringing(ledger::bell()),
-        );
+        let quota = std::sync::Arc::new(Ledger::at(
+            own.path(ledger::FILE_NAME)
+                .ok()
+                .map(|p| p.as_path().to_path_buf()),
+        ));
         let mut accounts = Accounts::new(table, upstreams, own.clone())
             .recording_to(std::sync::Arc::clone(&quota));
         let store = crate::accounts::quota::rotation::RotationStore::at(
@@ -586,7 +602,7 @@ impl Destinations for Accounts {
         rotate::dispatch_go(&table, &self.upstreams, mode, key, ask.names, go, act);
     }
 
-    fn observe(&self, _mode: Mode, key: &RouteKey, _ask: &Ask<'_>, seen: &Heard<'_>) {
+    fn observe(&self, _mode: Mode, key: &RouteKey, ask: &Ask<'_>, seen: &Heard<'_>) {
         let agent = key.seg1.as_str();
         if let Some(line) = auth_refusal_line(seen.tag, seen.status) {
             tracing::warn!("{line}");
@@ -607,7 +623,8 @@ impl Destinations for Accounts {
                     refusal_line(seen.tag, seen.status, &reading, retry_after)
                 );
             }
-            ledger::record_seen(&self.quota, &self.own, agent, seen.tag, reading, now);
+            let sid = (!ask.label.is_empty()).then_some(ask.label);
+            ledger::record_seen(&self.quota, &self.own, sid, agent, seen.tag, reading, now);
         }
     }
 }

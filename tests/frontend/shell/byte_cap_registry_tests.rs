@@ -52,6 +52,14 @@ const ALLOWED_SEMANTICS: &[&str] = &[
 /// 否则它就是一条永远不匹配的死规则，而死规则会在下次有人往这个名字上写真上限时悄悄放行。
 const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
+        "LIVE_TEXT_KEEP",
+        "**字数**（Unicode 字符数）不是字节：`backend/stream/live.rs` 一张活卡的正文只留尾巴这么多字，截过头的卡带 `clipped`、整张重发；定稿归记录，什么都不丢。",
+    ),
+    (
+        "LIVE_TEXT_SLACK",
+        "**字数**不是字节：`backend/stream/live.rs` 活卡正文超过留尾多少字才截一次（截一次就整张重发一次，这个数定的是重发的疏密）。",
+    ),
+    (
         "EVENT_QUEUE",
         "**条数**不是体量：`stream_source/run.rs` 重连循环交给收事那一头的那条队列至多排几件事；排满了循环就等（背压回到那台），不丢不截。",
     ),
@@ -62,6 +70,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
     (
         "MIN_LEN",
         "**门槛**不是上限：`backend/observe/skeleton.rs` 多长的记录才落骨架（比它短的整份读一遍比读骨架还快，不落；什么都不截）",
+    ),
+    (
+        "DAY_MIN",
+        "**分钟数**不是体量：`accounts/quota/rules/form.rs` 一天里的分钟数（24 小时条分段的上界；升级那一处照它切分段）。",
     ),
     (
         "HOOK_TIMEOUT_SECS",
@@ -1014,7 +1026,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/quota/strategy/mod.rs",
+        "src/backend/accounts/quota/rules/shelf.rs",
         "MAX_SOURCE_BYTES",
         "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai`（超了不加载，列表里照实写读不懂）",
         "拒收+回错",

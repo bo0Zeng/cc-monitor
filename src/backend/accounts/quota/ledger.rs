@@ -16,7 +16,7 @@ use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 
 pub(crate) const FILE_NAME: &str =
     relay_route_core::file_name_of(relay_route_core::QUOTA_LEDGER_REL);
@@ -243,12 +243,18 @@ struct State {
 pub(crate) struct Ledger {
     path: Option<PathBuf>,
     state: Mutex<State>,
-    bell: Option<Arc<tokio::sync::watch::Sender<u64>>>,
+    /// 显示变了往哪发节点（生产是进程里那一条；判据各给自己的一条）。
+    nodes: super::nodes::Nodes,
 }
 
 impl Ledger {
-    /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。
+    /// 在这个落点开账：盘上已有的读进内存（重启后被拒的号仍记得几点重置）。节点发到进程里那一条。
     pub(crate) fn at(path: Option<PathBuf>) -> Self {
+        Self::with_nodes(path, super::nodes::bus().clone())
+    }
+
+    /// 同 [`Self::at`]，节点发到给的那一条（判据各用自己的一条，不跟并行的判据串）。
+    pub(crate) fn with_nodes(path: Option<PathBuf>, nodes: super::nodes::Nodes) -> Self {
         let mut mem = BTreeMap::new();
         if let Some(Read::Present(book)) = path.as_deref().map(read_at) {
             for e in book.accounts {
@@ -264,7 +270,7 @@ impl Ledger {
                 on_disk,
                 stamp,
             }),
-            bell: None,
+            nodes,
         }
     }
 
@@ -293,10 +299,14 @@ impl Ledger {
         }
     }
 
-    /// 显示变了就在这个通道上加一（订阅者据此推帧）。
-    pub(crate) fn ringing(mut self, bell: Arc<tokio::sync::watch::Sender<u64>>) -> Self {
-        self.bell = Some(bell);
-        self
+    /// 发节点的那一条（判的缓存订它）。
+    pub(crate) fn nodes(&self) -> &super::nodes::Nodes {
+        &self.nodes
+    }
+
+    /// 发一件事实的节点（被拒 · 续期失败由换号那一路调；显示变了由记账这里自己调）。
+    pub(crate) fn notify(&self, source: super::nodes::Source, sid: Option<&str>) {
+        super::nodes::emit(&self.nodes, source, sid);
     }
 
     /// 那个号的最近一条（盘上别人写过 ⇒ 先并进来）。
@@ -308,10 +318,9 @@ impl Ledger {
             .cloned()
     }
 
-    fn ring(&self) {
-        if let Some(t) = &self.bell {
-            t.send_modify(|n| *n = n.wrapping_add(1));
-        }
+    /// 显示变了：哪个会话的回包带来的（官方客户端报的 ⇒ 空，算外来的）。
+    fn ring(&self, sid: Option<&str>) {
+        self.notify(super::nodes::Source::Reading, sid);
     }
 
     /// 落了盘之后：戳跟上；内存那一条换成盘上合并好的那份（内存里那条没更新过才换）。
@@ -332,13 +341,6 @@ impl Ledger {
     }
 }
 
-/// 进程里那条「额度账显示变了」的通道（流连接订它推 `changed {quota}`）。
-pub(crate) fn bell() -> Arc<tokio::sync::watch::Sender<u64>> {
-    static BELL: std::sync::OnceLock<Arc<tokio::sync::watch::Sender<u64>>> =
-        std::sync::OnceLock::new();
-    Arc::clone(BELL.get_or_init(|| Arc::new(tokio::sync::watch::channel::<u64>(0).0)))
-}
-
 /// 这台的落点：`<家>/quota.json`（家与 API key 凭据同一个出处）。推不出 ⇒ `None`。
 pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     let home = crate::platform::paths::home_dir_from(&|k| get(k).map(Into::into));
@@ -346,11 +348,13 @@ pub(crate) fn path_from(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf>
         .map(|d| d.join(FILE_NAME))
 }
 
-/// 记一条观测（中转那一路的写口，来源 `headers`）。显示变了 ⇒ 推一下、立刻落盘；没变 ⇒ 盘上的时刻落后够久才落。
+/// 记一条观测（中转那一路的写口，来源 `headers`）。显示变了 ⇒ 发一件读数节点（带这一发的会话）、立刻落盘；没变 ⇒ 盘上的时刻落后够久才落。
 /// 落盘失败只出声，不影响这一发（额度账不是请求的前提）。
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn record_seen(
     ledger: &Ledger,
     own: &Own,
+    sid: Option<&str>,
     agent: &str,
     account: &str,
     reading: QuotaReading,
@@ -400,7 +404,7 @@ pub(crate) fn record_seen(
         }
     }
     if changed {
-        ledger.ring();
+        ledger.ring(sid);
     }
 }
 
@@ -449,7 +453,7 @@ pub(crate) fn record_probe(
     let changed = before.is_none_or(|b| shown(&b.reading) != shown(&written.reading));
     ledger.landed(written.clone(), at);
     if changed {
-        ledger.ring();
+        ledger.ring(None);
     }
     Ok(written)
 }

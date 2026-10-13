@@ -269,7 +269,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 记录解释（一行 → 通用记录） | `agents/<家>/`，Claude 的链与主线在 `agents/claudecode/` · `agents/mainline.rs` |
 | 划段（一轮里哪几条收进「过程」） | `observe/turns.rs` |
 | 子运行（子 agent）表 | `observe/runs.rs`，帧 `session_runs` |
-| 帧定义与发帧 | `stream/wire.rs` · `stream/tap.rs` · 主题表 `stream/topic.rs` |
+| 帧定义与发帧 | `stream/wire.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `stream/topic.rs` |
 | 收口 · 重放 · 就绪点 | 壳 `stream_source/` · `event_replay.rs` · `session_book.rs` · `stream_watch.rs` |
 | 排版 | 界面 `events.ts` → `tabs.ts` → `render-stream-record.ts` → `cards/` |
 | 手机 | `core-claude` 的 `link/`（常驻流客户端 · 帧解码）→ `app` 的聊天屏 |
@@ -295,11 +295,11 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 块 | 住址 | 做什么 |
 |---|---|---|
 | 额度账 | `accounts/quota/ledger.rs`（`~/.cc-monitor/quota.json`） | 每号每窗口的用量、重置时刻、被拒 · 超额。两个来源：中转经手的回包头（读法在适配层 `agents::quota_read_of`）· `quota-probe` 起官方客户端报的用量（`agents::usage_of`） |
-| 轮换存储 | `accounts/quota/rotation.rs`（`~/.cc-monitor/rotation.json`） | 每台一张规则表：一条规则 ＝ 一份有名字的轮换（顺序 · 勾了哪几个 · 换号时机 · 封顶与时段 · 换法 · 最多等几分钟）；本机默认指向其中一条。每个会话按会话 id 存：此刻按哪份走、钉在哪个号、换号记录 |
-| 判 | `accounts/quota/decide.rs` | 「换不换、换谁」唯一一处 |
-| 换 | `accounts/upstream_select/rotate.rs` | 在中转那一发里问轮换、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、钉号、记一条。不重启进程；要重启换就走 `session-restart` |
+| 轮换存储 | `accounts/quota/rotation.rs`（`~/.cc-monitor/rotation.json` 第三版）· `accounts/quota/rules/shelf.rs`（`~/.cc-monitor/strategies/`） | 每个会话按会话 id 存：用哪份策略（空 ⇒ 不轮换）· 改过的设置 · 拖出来的顺序 · 策略约的叫醒 · 换号记录；新会话用哪份（`forNew`，默认空）。策略文件都是用户自己的，没有随包策略 |
+| 判 | `accounts/quota/rules/decide.rs`（`turn`）· 策略文件里的 `decide(ctx)` · 积木库 `src/shared/rotation/lib.rhai` | 「换不换、换谁」全在策略里；后端只照策略交的先后取第一个事实上发得出去的号、停发、兜底 |
+| 换 | `accounts/upstream_select/turn.rs` · `rotate.rs` | 中转那一发里只在节点上判（结论缓存到下一个节点）、备料（订阅号：鉴权头换成那个号的令牌，请求体里的身份格一起换；按量号：照它在 key 表里那一行）、记一条。不重启进程；要重启换就走 `session-restart` |
 | 血缘 | `src/backend/lineage.rs`（`~/.cc-monitor/lineage.json`） | 谁起的谁，只在中转那一路认 |
-| 帧面 | `faces/rotation_face.rs` · `faces/rotation_switch_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（规则读写 · 推演 `rotation-plan` · 会话读写 · 现在就换）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
+| 帧面 | `faces/rotation_face.rs` · `faces/rotation_view_face.rs` · `faces/rotation_edit_face.rs` · `faces/rotation_try_face.rs` · `faces/quota_rows.rs` | `quota-read` · `rotation-*`（策略目录 · 一个会话或一份策略的四块 `rotation-view` · 设置 · 拖出来的顺序 · 现在用 · 试跑）；quota-warm 读的「该不该发一句」也在 `quota_rows.rs` 判 |
 
 谁调谁：agent → 中转 → 上游选择（问轮换、拿令牌）→ 上游；回包头 → 额度账；界面 / 手机 / skill 经 `quota-read` · `rotation-*` 读写，不自己判。
 
@@ -476,7 +476,7 @@ UI Automation 在那个窗口的标签页里找名字带记号的那个、选中
 - **按系统前台窗口切 tab**：Windows Terminal 一个进程多个窗口、多个 tab，前台窗口只拿得到 WT 主进程的把手，分不出是哪个 tab。改为看 jsonl：用户在 claude 里敲回车，claude 写一行 `type=user`，monitor 切到那个 tab（INVARIANTS §20）。
 - **子运行的记录走主会话的行**：子运行（子 agent）的记录数量大，全量推会把重放缓冲撑大数倍、还会混进主时间线。那台后端照样盯着它们
   （与主记录同一条文件事件管线），只出成品：运行表帧 `session_runs`（列在 agent 面板里，不进主 tab 的消息流）；点面板那一行 / 派出它的那张卡的卡头
-  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位（`tap` 帧带 `run`），子运行的流不上主 tab 的活卡。
+  开它自己的窗口（agent 窗口，查看窗那个入口带 `run=`），窗口里才按运行读它的记录（帧命令 `history-run`），运行表一变就续读。流那一侧由后端归位、拼成活卡（`live` 帧带 `run`，`stream/live.rs`），子运行的卡不上主 tab。
 - **从 agent 的祖先链猜终端窗口**：explorer 起 PowerShell ＋ WT 接管控制台的常见架构下，agent 的祖先链与 WT 窗口完全脱节，启发式在主流环境下都不可靠。本机改为点 ↗ 那一刻沿 agent 进程往上，每一级问它的控制台显示在哪个窗口（Windows）。远端会话从此刻连着它的终端出发：那台读出那个终端的 `SSH_CONNECTION`（在 tmux 里就问 tmux 此刻哪些客户端连着），本机后端按这四元组在连接表里找到这台电脑上开着那条连接的进程，往上数父进程到 `explorer.exe` 为止，monitor 沿链每一级先问它的控制台显示在哪个窗口，再取第一个有可见窗口的进程。链从连接的拥有者起、不从 agent 起；找不到就照实说原因（在 tmux 后台没人连着 · 不在这台电脑上 · 经跳板或端口转换对不上 · 没有窗口或不止一个）。
 - **换掉 webview**：这个 app 的核心是渲染会话记录（Markdown · 代码高亮 · LaTeX · 可折叠工具卡 · 流式追加 · 上万条记录的虚拟化），正是 HTML 最擅长、原生 GUI 工具箱最不擅长的那一类。文件窗口不渲染会话记录，所以它是原生（egui）的。
 

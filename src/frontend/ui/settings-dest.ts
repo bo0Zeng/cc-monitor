@@ -24,12 +24,6 @@ export function accountsOf(origin: Origin): SettingsTarget {
   return { machine: origin, tab: "acct" };
 }
 
-/** 那台的「轮换」栏：配置页（给了哪份 ⇒ 打开那一份 `config:<id>`）· 策略页（给了哪份 ⇒ 打开那一份 `strategy:<id>`）。 */
-export function rotationOf(origin: Origin, at?: { config: string } | { strategy: string }): SettingsTarget {
-  const anchor = at === undefined ? undefined : "config" in at ? `config:${at.config}` : `strategy:${at.strategy}`;
-  return { machine: origin, tab: "rot", ...(anchor ? { anchor } : {}) };
-}
-
 /** 那台 ›「别名与配置文件」› 接上终端。 */
 export function connectTerminalOf(origin: Origin): SettingsTarget {
   return { machine: origin, tab: "config", anchor: "connect-terminal" };

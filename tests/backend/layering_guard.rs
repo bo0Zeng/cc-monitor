@@ -723,7 +723,7 @@ mod tests {
         ("server::refuse_busy", "在途满了（上界在后端）回 503 并排掉已到的字节 —— 拒绝要出声"),
         ("server::apply_downstream_deadline", "接下连接先装下游期限（值由后端给），拒绝那一支也不会被一个不读的对端钉住"),
         ("tee::TapPort", "tee 的第二个落点的口：宿主（`stream::tap`）实现它，经 `TeeSink::to_port` 交进中转"),
-        ("tee::TapEvent", "tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主转成 `tap` 帧"),
+        ("tee::TapEvent", "tee 交给 tap 口的一件事（`stream` · `resp` · `n` · 事件原文 / 收尾），宿主拼成活卡（`live_card` 帧）"),
         ("tee::TapBody", "`TapEvent` 的三形：一个 SSE 事件原文 · 超上限那一件的开头（标截断）· 这个响应收尾了（`broken`）"),
         ("tee::TeeSink", "中转手里那个 tee 落点：后端起中转时用 `TeeSink::to_port` 把 tap 口包进来"),
         ("route::segment_is_safe", "上游选择装表判账号 id 与中转切键是**同一个谓词**（`route.rs` 头注）"),

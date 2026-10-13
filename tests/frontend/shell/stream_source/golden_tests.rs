@@ -36,7 +36,7 @@ fn kind_of(f: &InboundFrame) -> &'static str {
         InboundFrame::LinkData { .. } => "link_data",
         InboundFrame::LinkEnd { .. } => "link_end",
         InboundFrame::Transfer { .. } => "transfer",
-        InboundFrame::Tap(_) => "tap",
+        InboundFrame::LiveCard(_) => "live_card",
         InboundFrame::Probe { .. } => "probe",
         InboundFrame::TerminalScreen { .. } => "terminal_screen",
         InboundFrame::TerminalFollowEnd { .. } => "terminal_follow_end",

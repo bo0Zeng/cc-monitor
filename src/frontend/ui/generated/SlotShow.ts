@@ -17,10 +17,6 @@ resetsAtRelText?: string,
  */
 full?: boolean, 
 /**
- * 到线：这一窗用到这号这一窗此刻的线、还没重置（没线 ⇒ 不出）。
- */
-atLine?: boolean, 
-/**
  * 这一格的字（唯一写法 [`slot_words`]：超额在兜 `超额` · 上一窗已过 / 没数 `—` · 用满 `✕` · 被拒没用满 `58% · 被拒` · 否则 `58%`）。
  */
 text: string, 

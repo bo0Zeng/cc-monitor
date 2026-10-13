@@ -14,7 +14,6 @@ import { emptyState } from "../../../../src/frontend/ui/kit/empty";
 import { countBadge, tag, kbd } from "../../../../src/frontend/ui/kit/badge";
 import { skeletonRows } from "../../../../src/frontend/ui/kit/skeleton";
 import { spinner } from "../../../../src/frontend/ui/kit/progress";
-import { meter } from "../../../../src/frontend/ui/kit/meter";
 import { statusDot, setDot } from "../../../../src/frontend/ui/kit/status-dot";
 import { icon } from "../../../../src/frontend/ui/kit/icon";
 
@@ -180,18 +179,9 @@ describe("折叠块", () => {
   });
 });
 
-describe("转圈 · 计量条 · 徽标 · 键帽 · 骨架 · 状态点", () => {
+describe("转圈 · 徽标 · 键帽 · 骨架 · 状态点", () => {
   it("转圈：纯装饰，读屏器不念", () => {
     expect(spinner().getAttribute("aria-hidden")).toBe("true");
-  });
-
-  it("计量条五态落在 data-state；无采样不画填充", () => {
-    for (const st of ["normal", "near", "refused", "stale", "none"] as const) {
-      const m = meter({ label: "5h", ratio: 0.63, state: st, value: "63%", reset: "↻18:30" });
-      expect(m.dataset.state).toBe(st);
-      const fill = m.querySelector<HTMLElement>("span > span")!;
-      expect(fill.style.transform === "", st).toBe(st === "none");
-    }
   });
 
   it("计数 0 不画、99 以上写 99+；需手动的计数琥珀；标记与键帽", () => {

@@ -140,7 +140,7 @@ export class AccountChip {
     const a = this.active;
     if (!a) return null;
     const entry = appStore.sessionRotation.get().get(a.sid);
-    return sessionChip(entry, this.fallbackAccount(a.sid));
+    return sessionChip(entry, this.fallbackAccount(a.sid), appStore.quota.get().get(a.origin) ?? null);
   }
 
   private hoverCard(): HTMLElement | null {

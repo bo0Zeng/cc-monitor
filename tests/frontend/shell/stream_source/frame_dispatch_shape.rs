@@ -120,23 +120,26 @@ fn the_shared_stripper_keeps_the_dispatch_this_guard_must_scan() {
     );
 }
 
-/// 〔「流沿已有的后端链路回到 monitor」〕远端那条流的 `Tap` 臂把帧交 `session_tap`（origin = 那台），
-/// 与本机那条流同一个口；monitor 生产段里交 tap 的地方恰好两处：远端这一臂 ＋ 本机吸收点。
+/// 〔「流沿已有的后端链路回到 monitor」〕远端那条流的 `Live` 臂把帧交 `session_live`（origin = 那台），
+/// 与本机那条流同一个口；monitor 生产段里交活卡的地方恰好两处：远端这一臂 ＋ 本机吸收点。
 #[test]
-fn the_remote_stream_hands_tap_frames_to_the_session_tap_with_its_own_origin() {
+fn the_remote_stream_hands_live_frames_to_the_session_live_with_its_own_origin() {
     let prod = crate::guard_support::stream_source_production();
     let arm = prod
         .lines()
-        .find(|l| l.trim_start().starts_with("Some(InboundFrame::Tap(t)) =>"))
-        .expect("dispatch 里找不到 Tap 那一臂");
+        .find(|l| {
+            l.trim_start()
+                .starts_with("Some(InboundFrame::LiveCard(l)) =>")
+        })
+        .expect("dispatch 里找不到 Live 那一臂");
     assert!(
-        arm.contains("crate::session_tap::deliver(&host_label, t)"),
-        "远端流的 tap 帧没交 session_tap（或 origin 不是这台）：{arm}"
+        arm.contains("crate::live_card::deliver(&host_label, l)"),
+        "远端流的活卡帧没交 session_live（或 origin 不是这台）：{arm}"
     );
     let local = guard_core::production_code(include_str!(
         "../../../../src/frontend/shell/src/local_backend.rs"
     ));
-    let n = prod.matches("session_tap::deliver(").count()
-        + local.matches("session_tap::deliver(").count();
-    assert_eq!(n, 2, "交 tap 的地方不是恰好「远端一臂 ＋ 本机吸收点」");
+    let n =
+        prod.matches("live_card::deliver(").count() + local.matches("live_card::deliver(").count();
+    assert_eq!(n, 2, "交活卡的地方不是恰好「远端一臂 ＋ 本机吸收点」");
 }

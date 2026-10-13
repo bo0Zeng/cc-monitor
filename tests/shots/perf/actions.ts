@@ -275,22 +275,27 @@ async function stream(where: "active" | "background" = "active"): Promise<Record
   const active = be.world.sessions.reduce((a, b) => ((b.convo?.lines.length ?? 0) > (a.convo?.lines.length ?? 0) ? b : a));
   const target = where === "active" ? active : be.world.sessions[1];
   let n = 0;
-  const ev = (e: unknown): unknown => ({ origin: target.origin, stream: target.sid, resp: 1, n: n++, ev: e });
+  let no = 0;
+  const f = (op: Record<string, unknown>): unknown => ({ origin: target.origin, card: { sid: target.sid, card: no, n: n++, ...op } });
   return measure(`stream-${where}`, async (steps) => {
     for (let round = 0; round < 3; round++) {
-      await step(steps, "start", () => be.pushTap(target.origin, [ev({ t: "start", rid: `req_perf${round}` }), ev({ t: "block", i: 0, kind: "text" })]));
+      no = round + 1;
+      n = 0;
+      await step(steps, "start", () => be.pushLiveCard(target.origin, [f({ op: "open", rid: `req_perf${round}`, phase: "streaming", clipped: false, blocks: [{ kind: "text", text: "" }] })]));
       for (let k = 0; k < 40; k++) {
         const t = performance.now();
-        await step(steps, "delta", () => be.pushTap(target.origin, [ev({ t: "text", i: 0, s: `第 ${k} 段：把分页改成游标之后，调用点要跟着改，测试也要补。` })]));
+        await step(steps, "delta", () => be.pushLiveCard(target.origin, [f({ op: "text", i: 0, s: `第 ${k} 段：把分页改成游标之后，调用点要跟着改，测试也要补。` })]));
         await sleep(Math.max(0, 50 - (performance.now() - t)));
       }
-      await step(steps, "tool", () => be.pushTap(target.origin, [ev({ t: "block", i: 1, kind: "tool", tool: "Bash" })]));
+      await step(steps, "tool", () => be.pushLiveCard(target.origin, [f({ op: "block", i: 1, block: "tool", tool: "Bash" })]));
       await sleep(200);
       // 这一轮落成记录：记录文件接着写了几行 ⇒ 真后端的 watcher 读到、交一批 line 格
       const c = target.convo!;
       const from = c.lines.length;
       turn(c, target.cwd, 1000 + round, false);
       await step(steps, "lines", () => be.appendLines(target.origin, c, from));
+      // 记录到了 ⇒ 后端撤卡（真后端在读到那一轮的记录时发）。
+      be.pushLiveCard(target.origin, [f({ op: "close", why: "record" })]);
       await sleep(500);
     }
   });
@@ -372,11 +377,11 @@ async function needs(): Promise<Record<string, unknown>> {
   });
 }
 
-/** 命令面板：Ctrl+K 开、逐字打「新建」「轮换」「设置」、Esc；三次。 */
+/** 命令面板：Ctrl+K 开、逐字打「新建」「账号」「设置」、Esc；三次。 */
 async function palette(): Promise<Record<string, unknown>> {
   return measure("palette", async (steps) => {
     // 打的词取文案表里的字（命令面板里那几条就叫这个）
-    for (const word of [copyText("newSession.title.plain"), copyText("rot.panel.title"), "打开设置"]) {
+    for (const word of [copyText("newSession.title.plain"), copyText("acct.panel.title"), "打开设置"]) {
       await step(steps, "ctrl-k", () => key("k", { ctrl: true }));
       const input = await waitSel<HTMLInputElement>("[data-role=command-input]");
       for (let i = 1; i <= word.length; i++) {
@@ -639,7 +644,7 @@ async function slowDom(): Promise<Record<string, unknown>> {
     await sleep(400);
     await timed("命令面板：Ctrl+K 开", () => key("k", { ctrl: true }));
     const inp = await waitSel<HTMLInputElement>("[data-role=command-input]");
-    await timed("命令面板：打字", () => typeInto(inp, copyText("rot.panel.title")));
+    await timed("命令面板：打字", () => typeInto(inp, copyText("acct.panel.title")));
     await sleep(200);
     await timed("命令面板：Esc 关", () => keyOn(inp, "Escape", { code: "Escape" }));
     await sleep(300);

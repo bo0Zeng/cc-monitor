@@ -52,12 +52,7 @@ const ONLINE_CALLS: ReadonlyArray<readonly [string, OnLineClass, string | null, 
   ["originFromWire", "入口", null, "线上 origin 的唯一一处表示法换算"],
   // 去重集合是 tab 渲染那一半的格，只经流视图（8a ④ 一个口子）：has · add · 连着跳过的那一段 addRange 收进 `admit`。
   ["this.view.admit", "入口", null, "按 (sid, seq) 去重（快照与实时的重叠区，`INVARIANTS §25a`；连同 monitor 连着见过、都不可显示的 `skipped_from` 那一段）"],
-  [
-    "this.live.onRecord",
-    "活卡定稿",
-    null,
-    "jsonl 那一轮到了 ⇒ 同 `message.id` 的活卡整轮撤掉（「jsonl 到了就整轮覆盖」）；不攒任何全会话事实",
-  ],
+  // 活卡定稿（记录到了 ⇒ 整轮覆盖）挪进了后端（`src/backend/stream/live.rs`，后端发撤卡）：`onLine` 上一行都不许再有。
   ["this.view.ingest", "渲染管线", null, "渲染管线本体（按 seq 门控建卡 / 收纳）"],
 ];
 
@@ -157,7 +152,7 @@ describe("〔STC〕L1 · onLine 上只剩真事件", () => {
     );
   });
 
-  it("★ 真事件恰好是那两个；渲染管线 / 活卡定稿各只有登记那一行", () => {
+  it("★ 真事件恰好是那两个；渲染管线只有登记那一行；活卡定稿一行都没有（在后端）", () => {
     const events = [...new Set(ONLINE_CALLS.filter(([, k]) => k === "真事件").map(([, , e]) => e))].sort();
     expect(events).toEqual([...DESIGN_TRUE_EVENTS].sort());
     for (const [c, k, e, why] of ONLINE_CALLS) {
@@ -165,7 +160,7 @@ describe("〔STC〕L1 · onLine 上只剩真事件", () => {
       expect(k === "真事件", `${c}：只有真事件那一类带事件名`).toBe(e !== null);
     }
     expect(ONLINE_CALLS.filter(([, k]) => k === "渲染管线").map(([c]) => c)).toEqual(["this.view.ingest"]);
-    expect(ONLINE_CALLS.filter(([, k]) => k === "活卡定稿").map(([c]) => c)).toEqual(["this.live.onRecord"]);
+    expect(ONLINE_CALLS.filter(([, k]) => k === "活卡定稿").map(([c]) => c)).toEqual([]);
   });
 });
 

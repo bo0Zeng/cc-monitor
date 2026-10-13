@@ -77,7 +77,6 @@ impl Home {
                 None,
             ),
             rows: Box::new(|_, a| (a == "api").then_some(true)),
-            tz: Default::default(),
         }
     }
 

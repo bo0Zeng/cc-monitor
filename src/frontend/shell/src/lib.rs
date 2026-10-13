@@ -115,14 +115,14 @@ mod machine_state; // 每台机器的状态成品（连着 · 没连上与原因
 mod platform; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod profile_installer;
 // 分叉的 monitor 这一侧（整个模块）删了：界面经通道直说那台后端 `session-fork`（`src/frontend/ui/session-writes.ts`）。
+mod live_card;
 mod probe_relay; // 本机后端的 `probe` 帧（测试连接的进度格）原样转给界面订的 `probe-progress/<票>`
 mod remote_resident; // 远端常驻后端：起 · 找（`--resident-ensure`）→ 隧道 → 握手；停（`--resident-stop`）
 #[cfg(test)]
 #[path = "../../../../tests/frontend/shell/remote_write_registry.rs"]
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod session_book;
-mod session_tap;
-mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 本机后端的 `tap` 帧（中转抄出来的 SSE 事件）原样转给前端 `session-tap`
+mod terminal_screen_relay; // 本机 / 远端后端的终端实时预览帧原样转给界面订的 `terminal-screen/<票>` // 后端的 `live_card` 帧（活卡成品）原样转给前端 `session-live-card`
                            // 起子进程的**唯一出口**（三个策略都没有 Default）。
                            // 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
                            // `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
@@ -1028,11 +1028,11 @@ pub(crate) fn wire_replay_outlets(replay: &Arc<event_replay::EventReplay>) {
     // 原来这里起 monitor 自己的 jsonl watcher（`watcher.rs`，已删：第二套游标与 seq）、
     // 还有那条「会话后到 ⇒ 强制重扫」的兜底通道 —— 后端宣告会话时先 prime、历史走旁路快照，那个竞态不在了。
 
-    // `session_tap` 的出口：本机后端的 `tap` 帧交给会话流的句柄（`EventReplay::on_tap`），
-    //   订了 `session-tap` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
+    // `live_card` 的出口：后端的 `live_card` 帧（活卡成品）交给会话流的句柄（`EventReplay::on_live_card`），
+    //   订了 `session-live-card` 的那几条订阅按 credit 收（一条帧路 ＋ `subscribe`，不开裸事件）。
     {
         let replay = replay.clone();
-        crate::session_tap::install_sink(move |payload| replay.on_tap(payload));
+        crate::live_card::install_sink(move |payload| replay.on_live_card(payload));
     }
     {
         let replay = replay.clone();

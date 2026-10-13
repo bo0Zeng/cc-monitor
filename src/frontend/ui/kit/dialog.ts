@@ -163,7 +163,6 @@ function run<T>(
   onOk: () => T | undefined | Promise<T | undefined>,
   first: HTMLElement,
   dirty: () => boolean,
-  extras: readonly [HTMLButtonElement, T][] = [],
 ): Promise<T> {
   pendingCancel?.();
   const before = document.activeElement;
@@ -191,7 +190,6 @@ function run<T>(
       if (ev.target === b.backdrop && !dirty()) finish(cancelled);
     });
     b.cancel.addEventListener("click", () => finish(cancelled));
-    for (const [x, v] of extras) x.addEventListener("click", () => finish(v));
     b.ok.addEventListener("click", () => {
       if (b.ok.getAttribute("aria-disabled") === "true" || b.ok.dataset.busy === "true") return;
       const v = onOk();
@@ -231,36 +229,6 @@ export function confirmDialog(spec: ConfirmSpec): Promise<boolean> {
   // 危险的、或逐项列出会断 / 会改什么的框：默认焦点在［取消］。
   const listsEffects = (spec.rows ?? []).some((r) => r.items.length > 0);
   return run(b, false, () => true, spec.danger || listsEffects ? b.cancel : b.ok, () => false);
-}
-
-/** 三选一的那种框（换配置前有没存的改动：保存 · 丢掉 · 取消）：每颗按钮一个结果；取消一类 ⇒ `null`。 */
-export interface ChoiceSpec<K extends string> {
-  title: string;
-  /** 主按钮（右边那颗）· 它左边的几颗（从左到右）。 */
-  action: { key: K; label: string };
-  others: { key: K; label: string }[];
-  /** 正文：一句 ＋ 一段清单（逐行）；可有两段（别处存的那一版 · 本会话的改动）。 */
-  blocks: { lead: string; lines: string[] }[];
-}
-
-export function choiceDialog<K extends string>(spec: ChoiceSpec<K>): Promise<K | null> {
-  const b = build(spec.title, spec.action.label, false);
-  for (const blk of spec.blocks) {
-    const p = document.createElement("p");
-    p.className = s.dialogText;
-    p.textContent = blk.lead;
-    const box = document.createElement("div");
-    box.className = s.dialogList;
-    for (const t of blk.lines) {
-      const d = document.createElement("div");
-      d.textContent = t;
-      box.appendChild(d);
-    }
-    b.body.append(p, box);
-  }
-  const extras = spec.others.map((o): [HTMLButtonElement, K | null] => [button({ label: o.label }), o.key]);
-  b.ok.before(...extras.map(([x]) => x));
-  return run<K | null>(b, null, () => spec.action.key, b.ok, () => false, extras);
 }
 
 /** 填一个值。确认（或单行框里 Enter）⇒ 框里的值（原样，不 trim）；取消一类 ⇒ `null`。校验不过 ⇒ 错误写在框里、不关。 */

@@ -1,4 +1,4 @@
-// `events.ts` 的 `session-tap` 订阅：tap 走通道 `subscribe`（与会话行同一条帧路），
+// `events.ts` 的 `session-live-card` 订阅：活卡走通道 `subscribe`（与会话行同一条帧路），
 // 不开裸 Tauri 事件（前端只有 `call` / `subscribe`）。
 //
 // 守的要求（住址）：「经通道 `subscribe`」· `§3.3.4`「credit 的单位是格，前端每处理完一批就批量还」·
@@ -26,30 +26,30 @@ vi.mock("@tauri-apps/api/webviewWindow", () => ({
 vi.mock("../../../src/frontend/ui/ipc/commands", () => ({ commands: new Proxy({}, { get: () => vi.fn() }) }));
 vi.mock("../../../src/comms/inward/chan", async () => (await import("../../test-support/chan-stream-fake.ts")).chanStreamModule);
 
-import { bindEvents, TAP_WINDOW } from "../../../src/frontend/ui/events";
+import { bindEvents, LIVE_CARD_WINDOW } from "../../../src/frontend/ui/events";
 import { CHANGED_KIND, CHANGED_WINDOW, type Changed, type Topic } from "../../../src/frontend/ui/changed-stream";
 import { chanStreamModule, streamFake } from "../../test-support/chan-stream-fake.ts";
 
-const tap = (n: number): unknown => ({ origin: "<local>", stream: "sid", resp: 0, n, data: "{}" });
+const tap = (n: number): unknown => ({ origin: "<local>", card: { sid: "sid", card: 0, n, op: "awaiting" } });
 
-describe("〔TAP〕session-tap 走 subscribe（不是裸事件）", () => {
+describe("〔TAP〕session-live-card 走 subscribe（不是裸事件）", () => {
   beforeEach(() => {
     subs.clear();
     streamFake.reset();
     chanStreamModule.chan.subscribe.mockClear();
   });
 
-  it("订的是 (本机, session-tap)、窗口 TAP_WINDOW；一格一个 tap 交处理器、当场还 credit；Gap 不交；Unseen ⇒ 那台活卡全撤", async () => {
+  it("订的是 (本机, session-live-card)、窗口 LIVE_CARD_WINDOW；一格一帧活卡交处理器、当场还 credit；Gap 不交；Unseen ⇒ 那台活卡全撤", async () => {
     const got: unknown[] = [];
     const lost: string[] = [];
     await bindEvents(
-      { onLine: () => {}, onSessionEnded: () => {}, onSessionTap: (p) => got.push(p), onSessionTapLost: (o) => lost.push(o) },
-      { taps: ["<local>"] },
+      { onLine: () => {}, onSessionEnded: () => {}, onLiveCard: (p) => got.push(p), onLiveCardsLost: (o) => lost.push(o) },
+      { liveCards: ["<local>"] },
     );
-    expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["<local>", "session-tap"]]);
-    expect(chanStreamModule.chan.subscribe.mock.calls[0]?.[3]).toBe(TAP_WINDOW);
-    // 没有叫 session-tap 的裸事件监听（零命中，正控：task-update 那一个在；session-ended 并进了会话流）。
-    expect(subs.has("session-tap")).toBe(false);
+    expect(streamFake.subscriptions.map((s) => [s.origin, s.kind])).toEqual([["<local>", "session-live-card"]]);
+    expect(chanStreamModule.chan.subscribe.mock.calls[0]?.[3]).toBe(LIVE_CARD_WINDOW);
+    // 没有叫 session-live-card 的裸事件监听（零命中，正控：task-update 那一个在；session-ended 并进了会话流）。
+    expect(subs.has("session-live-card")).toBe(false);
     // `bindEvents` 里最后几条裸 Tauri 监听两边各自退役（`task-update` · 会话起停），正控已无可指 ⇒ 改判「一条裸监听都没有」（`listen` 仍被替身截着，谁长回来谁红）。
     expect(subs.size).toBe(0);
 

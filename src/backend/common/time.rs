@@ -231,11 +231,6 @@ pub(crate) fn with_texts(v: &mut serde_json::Value, now: i64, tz: &Tz) {
     }
 }
 
-/// [`with_texts`] 按此刻（帧面答 `quota-read` · `rotation-session-read` 那一下）。
-pub(crate) fn with_texts_now(v: &mut serde_json::Value, now: u64, tz: &Tz) {
-    with_texts(v, i64::try_from(now).unwrap_or(i64::MAX), tz);
-}
-
 /// 成品写时刻字的那一把钟：此刻 ＋ 看的那一台的时区（[`Tz`]：应答按请求信封的 `tz`，推送帧按连接的 `tz`，缺了按 UTC）。
 /// 有类型的成品逐格按它写 `…Text` / `…RelText`（同 [`with_texts`] 一个写法）。
 #[derive(Debug, Clone, PartialEq)]
