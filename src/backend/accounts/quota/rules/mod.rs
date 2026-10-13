@@ -5,10 +5,12 @@
 //! - [`simulate`]：离散事件推演，节点 ＝ 判的那一串，用的是同一个 [`decide::turn`]；
 //! - [`script`]：策略文件（JSON 头 ＋ Rhai 代码）与沙箱里的 `decide(ctx)`（挂着积木库 `lib`）。
 
+pub(crate) mod book;
 pub(crate) mod decide;
 pub(crate) mod script;
 pub(crate) mod simulate;
 pub(crate) mod standing;
+pub(crate) mod upgrade;
 
 /// 窗口长度（秒）：下标 0 ＝ 5 小时 · 1 ＝ 7 天。
 pub(crate) const WINDOW_SECS: [u64; 2] = [5 * 3600, 7 * 86_400];
