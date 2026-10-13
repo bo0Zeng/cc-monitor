@@ -145,18 +145,25 @@ fn a_computed_body_is_a_declared_body() {
     }
 }
 
-/// 帧里的小成品就是重问那条命令的应答（同一个处理器跑出来的，实现只一处）：规则表 · 一个会话的任务清单 · 额度账；
+/// 帧里的小成品就是重问那条命令的应答（同一个处理器跑出来的，实现只一处）：策略目录 · 一个会话的任务清单 · 额度账；
 /// 不现算的主题（账号清单要带 agent · 配置文件大 · 计划由发端给）⇒ 不带。沙箱家目录里那几份都是空的 / 不在。
 #[test]
 fn a_computed_body_is_the_reask_reply() {
     assert_eq!(
-        crate::stream::topic_body::body_now(Topic::RotationConfigs, None, &crate::Tz::default()),
-        crate::faces::rotation_face::answer_configs_read(
-            &serde_json::json!({}),
-            &crate::Tz::default()
-        )
-        .ok(),
-        "配置表的小成品不是 rotation-configs-read 的应答"
+        crate::stream::topic_body::body_now(Topic::RotationStrategies, None, &crate::Tz::default()),
+        {
+            use crate::stream::inbound::typed::Blocking;
+            crate::faces::rotation_view_face::RotationStrategies::run(
+                Default::default(),
+                &crate::stream::inbound::typed::Cx {
+                    tz: crate::Tz::default(),
+                    until: None,
+                },
+            )
+            .ok()
+            .and_then(|r| serde_json::to_value(r).ok())
+        },
+        "策略目录的小成品不是 rotation-strategies 的应答"
     );
     assert_eq!(
         crate::stream::topic_body::body_now(

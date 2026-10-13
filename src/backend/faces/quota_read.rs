@@ -5,7 +5,7 @@
 //! 是透传的一团，旁边的时刻字由同一把钟按 `common::time::with_texts` 那个写法添。
 //! 每号几行与开窗那一判照「不含这几格的那一截」的线上样子算（`faces/quota_rows.rs`，唯一的行模型）。
 
-use crate::accounts::quota::decide::Kind;
+use crate::accounts::quota::facts::Kind;
 use crate::accounts::quota::name_words::{is_candidate, names, Names};
 use crate::accounts::quota::show::{LoginState, QuotaShow};
 use crate::common::cells::Words;
@@ -299,7 +299,6 @@ pub(crate) fn specimen() -> QuotaRead {
             resets_at_text: None,
             resets_at_rel_text: None,
             full: true,
-            at_line: true,
             text: Words("1%".into()),
             tone: Tone::Plain,
         }],

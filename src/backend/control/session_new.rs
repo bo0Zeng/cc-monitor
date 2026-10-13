@@ -41,14 +41,14 @@ pub(crate) struct ForkFrom {
     pub(crate) uuid: String,
 }
 
-/// 轮换：打开哪一份配置。
+/// 轮换：用哪一份策略。
 #[derive(Debug, Clone, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct RotationPick {
-    /// 配置的 id（非空）。
-    pub(crate) config: String,
+    /// 策略的 id（策略目录里的文件名去掉 `.rhai`，非空）。
+    pub(crate) strategy: String,
 }
 
 /// `session-new` 的入参（`deny_unknown_fields`：多送一格 ⇒ 拒）。
@@ -89,7 +89,7 @@ pub(crate) struct NewRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) ticket: Option<String>,
-    /// 轮换：缺 ＝ 打开本机默认那份配置（新会话本来就这样，不写）· `{config: id}` ＝ 起之前按定好的 sid 写成打开那一份。
+    /// 轮换：缺 ＝ 用「新会话用」的那份策略（新会话本来就这样，不写）· `{strategy: id}` ＝ 起之前按定好的 sid 写成用那一份。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) rotation: Option<RotationPick>,
@@ -128,7 +128,7 @@ pub(crate) const SESSION_NEW_CODES: &[&str] = &[
     "start_failed",
     "child_timed_out",
     "launch_pending",
-    "no_such_config",
+    "no_strategy",
 ];
 
 impl crate::stream::inbound::typed::Codes for SessionNewErr {
@@ -227,21 +227,21 @@ pub struct SessionNew {
     pub prompt: Option<FirstSay>,
 }
 
-/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了配置时起之前把那个会话写成打开那一份（配置不在 ⇒ `no_such_config`）· 起不成撤掉。
+/// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了策略时起之前把那个会话写成用那一份（策略不在 ⇒ `no_strategy`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {
     pub(crate) sid: &'a dyn Fn() -> String,
     pub(crate) write: &'a dyn Fn(&str, &str, &str) -> Result<(), (&'static str, String)>,
     pub(crate) forget: &'a dyn Fn(&str),
 }
 
-/// `rotation` 那一格：缺 ⇒ `None`（本机默认）；`{config: id}` ⇒ 那一份；id 空 ⇒ `bad_args`（别的形状在解入参那一步就回了）。
-fn config_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
+/// `rotation` 那一格：缺 ⇒ `None`（新会话用的那份）；`{strategy: id}` ⇒ 那一份；id 空 ⇒ `bad_args`（别的形状在解入参那一步就回了）。
+fn strategy_of(v: Option<&RotationPick>) -> Result<Option<String>, Failed> {
     match v {
         None => Ok(None),
-        Some(p) if !p.config.is_empty() => Ok(Some(p.config.clone())),
+        Some(p) if !p.strategy.is_empty() => Ok(Some(p.strategy.clone())),
         Some(_) => Err((
             "bad_args",
-            crate::common::contract::malformed("`rotation` must be {\"config\": id}"),
+            crate::common::contract::malformed("`rotation` must be {\"strategy\": id}"),
             None,
             None,
         )),
@@ -322,13 +322,13 @@ fn start(
     }
     let (kind, face) = crate::agents::pick_kind(Some(&req.agent))
         .map_err(|m| fail("unknown_agent", m, Some(SessionNewField::Agent)))?;
-    let rule = config_of(req.rotation.as_ref())?;
+    let rule = strategy_of(req.rotation.as_ref())?;
     // 新起的要先定 sid 才能起之前写好打开哪一份：那一家不认 ⇒ 不收（分叉的 sid 由分支记录定，不用它）。
     if rule.is_some() && req.fork_from.is_none() && face.preset_sid.is_none() {
         return Err((
             "bad_args",
             crate::common::contract::malformed(
-                "this agent cannot take a rotation config at launch",
+                "this agent cannot take a rotation strategy at launch",
             ),
             None,
             None,

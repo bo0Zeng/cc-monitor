@@ -1,9 +1,7 @@
-//! 额度显示态：每一态一条（假额度账 ＋ 假时钟）；「快满」按窗跟着这号这一窗的线走、没线落 80%；数旧 30 分钟边界两侧各一条；订阅标识不含原值。
+//! 额度显示态：每一态一条（假额度账 ＋ 假时钟）；「快满」落 80%（线是策略的设置，后端说不出「到线」）；数旧 30 分钟边界两侧各一条；订阅标识不含原值。
 
 use super::*;
-use crate::accounts::quota::rotation::Params;
 use crate::agents::{QuotaOverage, QuotaReading, QuotaStatus, QuotaWindow};
-use serde_json::json;
 
 const NOW: u64 = 1_800_000_000;
 const LATER: u64 = NOW + 3_600;
@@ -46,34 +44,23 @@ fn facts(kind: Kind) -> Facts {
     }
 }
 
-/// 没有线（满了才换）：「快满」落 80%。
-fn no_line(_: &str) -> Option<u8> {
-    None
-}
-
-fn state_of(r: &QuotaReading, kind: Kind, line: &dyn Fn(&str) -> Option<u8>) -> QuotaState {
-    show(Some((r, NOW)), facts(kind), line, NOW, &slot).state
+fn state_of(r: &QuotaReading, kind: Kind) -> QuotaState {
+    show(Some((r, NOW)), facts(kind), NOW, &slot).state
 }
 
 /// ★ 每一态各一条。
 #[test]
 fn every_state_comes_out_of_its_own_facts() {
     assert_eq!(
-        show(None, facts(Kind::Sub), &no_line, NOW, &slot).state,
+        show(None, facts(Kind::Sub), NOW, &slot).state,
         QuotaState::Unseen
     );
-    assert_eq!(
-        state_of(&sub(0.63, LATER), Kind::Sub, &no_line),
-        QuotaState::Ok
-    );
-    assert_eq!(
-        state_of(&sub(0.86, LATER), Kind::Sub, &no_line),
-        QuotaState::Near
-    );
+    assert_eq!(state_of(&sub(0.63, LATER), Kind::Sub), QuotaState::Ok);
+    assert_eq!(state_of(&sub(0.86, LATER), Kind::Sub), QuotaState::Near);
     let mut refused = sub(1.0, LATER);
     refused.refused = true;
     refused.status = Some(QuotaStatus::Rejected);
-    assert_eq!(state_of(&refused, Kind::Sub, &no_line), QuotaState::Refused);
+    assert_eq!(state_of(&refused, Kind::Sub), QuotaState::Refused);
     let mut overage = sub(1.0, LATER);
     overage.status = Some(QuotaStatus::Rejected);
     overage.overage = Some(QuotaOverage {
@@ -82,18 +69,15 @@ fn every_state_comes_out_of_its_own_facts() {
         disabled: None,
         in_use: true,
     });
+    assert_eq!(state_of(&overage, Kind::Sub), QuotaState::OverageInUse);
     assert_eq!(
-        state_of(&overage, Kind::Sub, &no_line),
-        QuotaState::OverageInUse
-    );
-    assert_eq!(
-        state_of(&sub(0.63, EARLIER), Kind::Sub, &no_line),
+        state_of(&sub(0.63, EARLIER), Kind::Sub),
         QuotaState::ResetSinceSeen,
         "按钮那个窗口看到之后已重置"
     );
     refused.resets_at = Some(EARLIER);
     assert_eq!(
-        state_of(&refused, Kind::Sub, &no_line),
+        state_of(&refused, Kind::Sub),
         QuotaState::Near,
         "被拒到的那一刻已过、窗口还没重置 ⇒ 不再画被拒，照窗口的数判"
     );
@@ -101,7 +85,7 @@ fn every_state_comes_out_of_its_own_facts() {
     over.refused = true;
     over.resets_at = Some(EARLIER);
     assert_eq!(
-        state_of(&over, Kind::Sub, &no_line),
+        state_of(&over, Kind::Sub),
         QuotaState::ResetSinceSeen,
         "被拒到的那一刻与卡着的窗口都已过"
     );
@@ -114,71 +98,21 @@ fn every_state_comes_out_of_its_own_facts() {
         windows: Vec::new(),
         overage: None,
     };
-    let s = show(
-        Some((&api_refused, NOW)),
-        facts(Kind::Api),
-        &no_line,
-        NOW,
-        &slot,
-    );
+    let s = show(Some((&api_refused, NOW)), facts(Kind::Api), NOW, &slot);
     assert_eq!(
         (s.state, s.limiting, s.slots.len()),
         (QuotaState::Refused, None, 0)
     );
     // 说不出回来时刻的旧账（适配层今天不再出这一形）⇒ 不算被拒，与轮换同一个判法。
     api_refused.resets_at = None;
-    assert_eq!(state_of(&api_refused, Kind::Api, &no_line), QuotaState::Ok);
-}
-
-/// ★ 「快满」按窗判：那一窗用到这号这一窗此刻的线（与轮换同一处取线）；那一窗没线 ⇒ 80%。回包说越过了预警线也算。
-/// 到了线的那一窗另带 `atLine`（悬停卡写「到线」）；没线的窗不出。
-#[test]
-fn near_is_judged_per_window_against_its_own_line() {
-    let r = sub(0.86, LATER);
-    assert_eq!(
-        state_of(&r, Kind::Sub, &no_line),
-        QuotaState::Near,
-        "没线 ⇒ 80"
-    );
-    // 这号那一行只写 7d 95：5h 那一窗没线 ⇒ 落 80 ⇒ 86% 仍快满。
-    let p: Params = [("line".to_string(), json!({"7d": 95}))]
-        .into_iter()
-        .collect();
-    assert_eq!(
-        state_of(&r, Kind::Sub, &lines_of(Some(&p), 0, &slot)),
-        QuotaState::Near
-    );
-    // 两窗都 90：86% 不到线、也不落 80 ⇒ ok。
-    let p: Params = [("line".to_string(), json!(90))].into_iter().collect();
-    assert_eq!(
-        state_of(&r, Kind::Sub, &lines_of(Some(&p), 0, &slot)),
-        QuotaState::Ok
-    );
-    // 时段内取时段的线：00:00–01:00 到 40% ⇒ 两窗都 40，7d 41% 到线 ⇒ 快满，7d 那一格 atLine，5h（86%）也到。
-    // 只要 7d 一窗的情形：5h 90 · 7d 40。
-    let p: Params = [("line".to_string(), json!({"5h": 90, "7d": 40}))]
-        .into_iter()
-        .collect();
-    let lines = lines_of(Some(&p), 0, &slot);
-    let s = show(Some((&r, NOW)), facts(Kind::Sub), &lines, NOW, &slot);
-    assert_eq!(s.state, QuotaState::Near);
-    assert_eq!(
-        s.slots
-            .iter()
-            .map(|x| (x.slot.as_str(), x.at_line))
-            .collect::<Vec<_>>(),
-        vec![("5h", false), ("7d", true)]
-    );
-    let mut warned = sub(0.5, LATER);
-    warned.status = Some(QuotaStatus::Warning);
-    assert_eq!(state_of(&warned, Kind::Sub, &no_line), QuotaState::Near);
+    assert_eq!(state_of(&api_refused, Kind::Api), QuotaState::Ok);
 }
 
 /// ★ 数旧：看到距今恰好 30 分钟不旧，多一秒就旧；与态叠着出。
 #[test]
 fn stale_flips_one_second_past_thirty_minutes() {
     let r = sub(0.63, NOW + 7_200);
-    let at = |dt: u64| show(Some((&r, NOW)), facts(Kind::Sub), &no_line, NOW + dt, &slot);
+    let at = |dt: u64| show(Some((&r, NOW)), facts(Kind::Sub), NOW + dt, &slot);
     assert!(!at(STALE_AFTER).stale);
     let s = at(STALE_AFTER + 1);
     assert!(s.stale);
@@ -191,7 +125,6 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
     let s = show(
         Some((&sub(0.625, LATER), NOW)),
         facts(Kind::Sub),
-        &no_line,
         NOW,
         &slot,
     );
@@ -206,7 +139,6 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 pct: Some(63),
                 resets_at: Some(LATER),
                 full: false,
-                at_line: false,
                 text: copy_core::copy_text("acct.val.pct", &[("pct", "63")]).into(),
                 tone: crate::common::cells::Tone::Plain,
             },
@@ -217,7 +149,6 @@ fn slots_are_rounded_and_named_by_their_semantic_position() {
                 pct: Some(41),
                 resets_at: Some(NOW + 5 * 86_400),
                 full: false,
-                at_line: false,
                 text: copy_core::copy_text("acct.val.pct", &[("pct", "41")]).into(),
                 tone: crate::common::cells::Tone::Plain,
             },
@@ -232,7 +163,7 @@ fn full_is_a_window_at_a_hundred_not_a_refusal() {
         let mut r = sub(used, resets);
         r.refused = refused;
         r.resets_at = Some(LATER);
-        show(Some((&r, NOW)), facts(Kind::Sub), &no_line, NOW, &slot).slots[0].clone()
+        show(Some((&r, NOW)), facts(Kind::Sub), NOW, &slot).slots[0].clone()
     };
     let s = full_of(1.0, LATER, true);
     assert_eq!((s.full, full_of(1.0, LATER, true).pct), (true, Some(100)));
@@ -319,7 +250,7 @@ fn the_usage_cell_is_written_by_the_core() {
     let t = |k: &str| copy_core::copy_text(k, &[]);
     let clock = crate::common::time::TextClock::new(NOW, &crate::Tz::default());
     let shown = |r: Option<&QuotaReading>, kind: Kind| {
-        let mut q = show(r.map(|r| (r, NOW)), facts(kind), &no_line, NOW, &slot);
+        let mut q = show(r.map(|r| (r, NOW)), facts(kind), NOW, &slot);
         q.stamp(&clock);
         q.usage
     };
@@ -396,35 +327,5 @@ fn the_usage_cell_is_written_by_the_core() {
     assert_eq!(
         u.text.0,
         copy_core::copy_text("acct.usage.wv", &[("w", &u.value.0), ("v", &reset)])
-    );
-}
-
-/// 线取那一行的约定参数：时段内取时段的（跨零点照算，`0` ＝ 这段不用）；没声明 ⇒ 没线。
-#[test]
-fn the_line_comes_from_the_row_params_and_its_time_slots() {
-    let p: Params = [
-        ("line".to_string(), json!(99)),
-        (
-            "slots".to_string(),
-            json!([{"at": "17:00-02:00", "line": 80}, {"at": "03:00-04:00", "line": 0}]),
-        ),
-    ]
-    .into_iter()
-    .collect();
-    let at = |clock: u32, w: &str| lines_of(Some(&p), clock, &slot)(w);
-    let five = "five_hour";
-    assert_eq!(at(12 * 60, five), Some(99));
-    assert_eq!(at(17 * 60, five), Some(80));
-    assert_eq!(at(60, five), Some(80), "跨零点");
-    assert_eq!(at(2 * 60, five), Some(99), "含起不含止");
-    assert_eq!(at(3 * 60 + 30, five), Some(0));
-    assert_eq!(lines_of(None, 0, &slot)(five), None);
-    let full: Params = [("line".to_string(), serde_json::Value::Null)]
-        .into_iter()
-        .collect();
-    assert_eq!(
-        lines_of(Some(&full), 0, &slot)(five),
-        None,
-        "用满才换 ⇒ 没线"
     );
 }

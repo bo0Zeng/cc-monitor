@@ -18,7 +18,6 @@ import {
 import { claudeDirIn, setClaudeDirOverride } from "../paths";
 import { loadConfig } from "../config";
 import { AccountsSection } from "./accounts-section";
-import { openRotationAt, RotationSection } from "./rot-section";
 import { ExtSection } from "./ext-section"; // 顶层「扩展」：跨机器的 skill / MCP，一张表 ＋ 一个抽屉
 import { DiagnosticsSection } from "./diagnostics-section";
 import { makeSkeleton } from "./skeleton";
@@ -607,8 +606,6 @@ export class SettingsPanel {
       this.dataPage?.focus(t.anchor);
       return;
     }
-    // 面板「管理配置…」带 `config:<id>` ·「看说明与源码 ›」带 `strategy:<id>`：「轮换」栏开那一份（那一栏读到那台的表时开）。
-    if (t.machine && t.anchor && /^(config|strategy):/.test(t.anchor)) openRotationAt(isLocalOrigin(t.machine) ? LOCAL_ORIGIN : t.machine, t.anchor);
     const tabs = this.machinePages.get(pageId)?.tabs;
     const tabId = t.tab ? MACHINE_TAB_OF_TARGET[t.tab] : undefined;
     if (tabs && tabId) tabs.navigate(`${pageId}#${tabId}`);
@@ -1032,12 +1029,7 @@ export class SettingsPanel {
         tab: "acct",
         ...this.loadableBlock(copyText("settingsPanel.group.accounts"), () => new AccountsSection()),
       },
-      {
-        // 轮换的配置与策略按机器存（那台的 rotation.json · strategies/）：两页都有。渲染归 `rot-section.vitest.ts`。
-        appliesTo: "both",
-        tab: "rot",
-        ...this.loadableBlock(copyText("machinePage.tab.rot"), () => new RotationSection()),
-      },
+      // 「轮换」栏（那台的策略目录 · 新会话用哪份）第 4 刀照 `轮换-v5` 的稿施工，此刻空着。
       // 本机那一格「别名」（Windows 上是 PowerShell 那一侧的别名块）；远端那一格在 `MachineCard` 的「组件」栏里。
       // 构造零 I/O：它是个 `<details>`，第一次展开才读盘。
       {

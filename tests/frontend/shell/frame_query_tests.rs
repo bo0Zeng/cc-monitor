@@ -255,23 +255,7 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
     ("mcp-read", "帧命令：一台的 MCP 列表 ＋ 每条写好的字（需登录那一句 · 最近连接失败那一条 · 小标画哪一种），判定只在后端 `mcp-read` 一处；扩展页按台问、只排版"),
     ("plan-command", "新帧命令：以人的身份代敲 pb 的 continue · pause · view（退出码与 pb 那一句在后端认）；计划页开关与［整张图］只排版"),
     ("quota-read", "新帧命令：那台的额度账 ＋ 显示态（判在后端）；界面状态栏按钮 · 悬停卡 · 账号面板只排版"),
-    ("rotation-configs-read", "帧命令：那台的轮换配置表（本机默认 · 每份谁开着 · 描述由后端写），配置下拉与设置里配置列表只排版"),
-    ("rotation-config-save", "帧命令：存一份配置（参数照策略声明逐格校验 · 版本冲突由后端判），配置编辑器只排版"),
-    ("rotation-config-rename", "帧命令：配置改名（重名 · 空 · 超长由后端判）"),
-    ("rotation-config-delete", "帧命令：删配置（开着的 · 本机默认的由后端拒）"),
-    ("rotation-default-set", "帧命令：设这台的本机默认配置"),
-    ("rotation-strategies-read", "帧命令：那台加载的策略（声明 ＋ 写好的字 · 读不懂的第几行），表单照声明画格"),
-    ("rotation-strategy-add", "帧命令：装一份本机策略（读不懂的由后端拒）"),
-    ("rotation-strategy-delete", "帧命令：删一份本机策略"),
-    ("rotation-strategy-try", "帧命令：按此刻的事实试跑一份策略（不写盘不换号）"),
-    ("rotation-plan", "帧命令：推演 ＋ 合图每行（都由后端跑策略）"),
-    ("rotation-session-read", "帧命令：一批会话的轮换（有效优先级 · 每行为什么 · 卡住 · 策略出错都由后端给）"),
-    ("rotation-session-open", "帧命令：会话打开一份配置（副本有没存的改动由后端判）"),
-    ("rotation-session-edit", "帧命令：改会话的副本（逐格校验 · 改回原样丢副本由后端判）"),
-    ("rotation-session-save", "帧命令：存会话的副本（写回 · 另存为 · 版本冲突由后端判）"),
-    ("rotation-session-revert", "帧命令：丢会话副本的改动"),
-    ("rotation-session-set", "帧命令：手动调整（拖一行 · 刷新策略），不碰副本"),
-    ("rotation-switch", "新帧命令：现在就换（热切换钉号 · 重启切换逐个交 `session-restart`）"),
+    ("rotation-view", "typed 帧命令：一个会话此刻的轮换（开会话的号 · 在用的号 · 这一判 · 推演，都由后端跑策略）；标签页与状态栏的账号格只排版"),
     // tab 栏多选的批量停 / 起（`src/frontend/ui/tab-batch-run.ts`）：一台一次、那台逐个判逐个答，monitor 从没有过这条命令。
     (
         "sessions-start",
@@ -635,11 +619,6 @@ const CHANNELED_ELSEWHERE: &[(&str, &str)] = &[
         "后端出成品 `{tasks}`（字段语义挪进后端 `tasks_query.rs::task_entry`），界面 `tasks-panel.ts::decodeTasks` 按形状收；\
          monitor 那条命令（`get_session_tasks`）与行解释（`parse_task_lines`）删了。\
 推送那一路也不经 monitor 问了：后端 `changed {tasks}` 帧 ⇒ 通道 `changed/tasks`，界面收到自己重问",
-    ),
-    (
-        "session-interrupts",
-        "新帧命令（只读）：动一个会话之前会打断什么，后端按族出成品（`observe/interrupts_query.rs`），\
-         界面 `interrupt-reads.ts::decodeInterrupts` 按形状收；monitor 这一侧从来没有过这条命令",
     ),
     // 驾驶舱读面两条：后端转调 cc-bus 新加的机器可读读命令、出成品，界面 `cc-bus-control.ts` 按形状收；
     //   monitor 那两条 Tauri 命令与整套 shell 读（本机 `bash -lc` ＋ 远端拨号链路）删了。

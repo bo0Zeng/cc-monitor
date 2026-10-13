@@ -10,6 +10,7 @@
  * 读的状态：`TabStore`（tab 集合 · 顺序 · 当前 tab · 账号快照）与 `TabBarPrefs`（集合）。
  */
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
+import { appStore } from "./app-store";
 import { accountAvatarEl, accountColorOf } from "./account-color";
 import type { TabCollection } from "./tab-collections";
 import { barRows, type BarRow, type RowRect } from "./tab-drop";
@@ -22,9 +23,6 @@ import type { TabStore } from "./tab-store";
 import type { TabBarPrefs } from "./tab-bar-prefs";
 import { dispatcher, KeybindingDispatcher, type OverlayHandle } from "./keybindings/registry";
 import rs from "./tab-group-rename.module.css";
-import qs from "./tab-quota.module.css";
-import { appStore } from "./app-store";
-import { tabBlockedOf } from "./acct-view";
 import { copyText } from "./copy-table";
 import { icon } from "./kit/icon";
 import { statusDot } from "./kit/status-dot";
@@ -54,7 +52,6 @@ export interface TabButtonRefs {
   needs: HTMLSpanElement;
   badge: HTMLSpanElement;
   /** 额度：被卡住的会话标题后那一格红字 `✕ 5h`（能发时藏着）。 */
-  quotaBadge: HTMLSpanElement;
   /** 账号徽章（该会话属于哪个账号；本机会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
@@ -1019,9 +1016,11 @@ export class TabBarView {
     refs.acctBadge.style.display = "";
   }
 
-  /** 这个会话用的号（`ghost` ＝ 上次用的、不是此刻探到的）；不知道 ⇒ `null`。 */
+  /** 这个会话用的号（`ghost` ＝ 上次用的、不是此刻探到的）；不知道 ⇒ `null`。走中转的会话照那台 `rotation-view` 的在用号（轮换换过号也对）。 */
   private accountOf(sid: string, tab: Tab): { name: string; ghost: boolean } | null {
     if (!shouldShowAccountBadge(tab.origin, this.store.accountReadyOrigins)) return null;
+    const cur = appStore.sessionRotation.get().get(sid)?.read?.current;
+    if (cur) return { name: cur, ghost: false };
     const b = sessionBadge(sid, tab.origin, this.store.sessionAccountsByS, this.store.accountEmailByName, this.store.accountLastByS);
     if (!b || !b.account) return null;
     return { name: b.account, ghost: b.source === "last" };
@@ -1057,9 +1056,6 @@ export class TabBarView {
     const trail = span("tab-trail");
     const needs = span("tab-needs-word");
     // 额度：被卡住的会话标题后红字 `✕ 5h`（与「等批准」同位）。默认藏着，updateTabButton 按会话的轮换格填。
-    const quotaBadge = document.createElement("span");
-    quotaBadge.className = qs.tabQuotaBlocked;
-    quotaBadge.style.display = "none";
     const badge = span("tab-badge");
     const acctBadge = span("tab-acct-badge");
     acctBadge.style.display = "none";
@@ -1067,7 +1063,7 @@ export class TabBarView {
     const pinBadge = span("tab-pin");
     pinBadge.appendChild(icon("pin", "compact"));
     pinBadge.title = copyText("tabBarView.tab.pinHint");
-    trail.append(needs, quotaBadge, badge, acctBadge, pinBadge);
+    trail.append(needs, badge, acctBadge, pinBadge);
 
     // 行尾动作：悬停 / 焦点时盖在行尾（带同色底与渐隐），标题不挪位。
     const acts = span("tab-acts");
@@ -1088,7 +1084,7 @@ export class TabBarView {
 
     root.append(dot, abbr, machine, titleEl, trail, acts);
 
-    return { root, dot, abbr, machine, proj, bg, label, needs, badge, quotaBadge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
+    return { root, dot, abbr, machine, proj, bg, label, needs, badge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
   }
 
   /**
@@ -1125,8 +1121,6 @@ export class TabBarView {
     if (acct) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.account", { name: acct.name })));
     if (tab.forkedFromSessionId) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.forked", { id: tab.forkedFromSessionId.slice(0, 8) })));
     if (isLive(tab.state) && tab.writers.length > 1) card.appendChild(line("tab-hover-row", copyText("tabBarView.tab.writers", { n: tab.writers.length })));
-    const blocked = tabBlockedOf(appStore.sessionRotation.get().get(sid));
-    if (blocked) card.appendChild(line("tab-hover-row tab-hover-blocked", blocked.hover));
     const pos = this.visibleOrder().indexOf(sid);
     if (pos >= 0 && pos < 9) card.appendChild(line("tab-hover-foot", copyText("tabBar.hover.key", { key: String(pos + 1) })));
     return card;
@@ -1155,14 +1149,13 @@ export class TabBarView {
     const unreadText = unread && !n ? (tab.unread > 99 ? "99+" : String(tab.unread)) : "";
     // 空闲、跑完你还没看 ⇒ 标题 600 字重（点开即恢复）。
     const unseenDone = unread && dot === "idle";
-    const blocked = tabBlockedOf(appStore.sessionRotation.get().get(sid));
     const titleText = `${parts.forked ? "↳ " : ""}${parts.title}`;
     const abbr = abbrOf(tab);
 
     const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, reconnectable, unreadText !== "", unseenDone, n !== null, parts.bg]
       .map((b) => (b ? "1" : "0"))
       .join("");
-    const drawn = [flags, lightClass, dot, titleText, parts.proj ?? "", unreadText, needsText, blocked?.text ?? "", abbr, remote ? tab.origin : ""].join("\u0000");
+    const drawn = [flags, lightClass, dot, titleText, parts.proj ?? "", unreadText, needsText, abbr, remote ? tab.origin : ""].join("\u0000");
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
@@ -1195,8 +1188,6 @@ export class TabBarView {
       setText(refs.needs, needsText);
       setShown(refs.needs, n !== null);
       setText(refs.badge, unreadText);
-      setShown(refs.quotaBadge, blocked !== null);
-      setText(refs.quotaBadge, blocked?.text ?? "");
     }
     this.updateAccountBadge(refs, sid, tab); // 账号头像随 tab 更新一并刷新
   }

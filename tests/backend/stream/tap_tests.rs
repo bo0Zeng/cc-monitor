@@ -289,10 +289,11 @@ fn a_plan_change_becomes_one_changed_frame() {
     });
 }
 
-/// ★ 订阅额度：额度账那条通道响一下 ⇒ 这条流连接推一帧 `changed {quota}`（客户端去重拉 `quota-read`）；
-/// 没订那条通道的连接永远不推。
+/// ★ 订阅节点：事实那几种 ⇒ 推一帧 `changed {quota}`；带会话的 ⇒ 再推一帧 `changed {rotation, key: sid}`；
+/// 策略那一种 ⇒ `changed {rotation_strategies}`。没订那条通道的连接永远不推。
 #[test]
-fn a_ring_on_the_quota_bell_becomes_one_changed_frame() {
+fn each_kind_of_node_becomes_the_changed_frames_it_stands_for() {
+    use crate::accounts::quota::nodes::{emit, Source};
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -303,25 +304,41 @@ fn a_ring_on_the_quota_bell_becomes_one_changed_frame() {
             ev_rx,
             std::sync::Arc::new(crate::observe::runs::RunBook::default()),
         );
-        let bell = tokio::sync::watch::channel::<u64>(0).0;
-        t.quota = Some(bell.subscribe());
-        bell.send_modify(|n| *n += 1);
-        let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
-            .await
-            .expect("该推一帧");
-        assert!(
-            matches!(
-                f,
-                Some(Frame::Changed {
-                    topic: Topic::Quota,
-                    key: None,
-                    rev: None,
-                    body: None
-                })
-            ),
-            "{f:?}"
+        let tx = tokio::sync::broadcast::channel(16).0;
+        t.nodes = Some(tx.subscribe());
+        let mut got = Vec::new();
+        for (source, sid, n) in [
+            (Source::Reading, None, 1),
+            (Source::QuotaFile, None, 1),
+            (Source::Logins, None, 1),
+            (Source::Login, None, 1),
+            (Source::Refused, Some("s9"), 2),
+            (Source::Book, Some("s1"), 1),
+            (Source::Strategies, None, 1),
+        ] {
+            emit(&tx, source, sid);
+            for _ in 0..n {
+                match tokio::time::timeout(guard_core::wall::CEILING, t.next()).await {
+                    Ok(Some(Frame::Changed { topic, key, .. })) => got.push((source, topic, key)),
+                    other => panic!("{source:?} 该推一帧：{other:?}"),
+                }
+            }
+        }
+        let q = |s| (s, Topic::Quota, None);
+        assert_eq!(
+            got,
+            vec![
+                q(Source::Reading),
+                q(Source::QuotaFile),
+                q(Source::Logins),
+                q(Source::Login),
+                q(Source::Refused),
+                (Source::Refused, Topic::Rotation, Some("s9".to_string())),
+                (Source::Book, Topic::Rotation, Some("s1".to_string())),
+                (Source::Strategies, Topic::RotationStrategies, None),
+            ]
         );
-        // 没再响 ⇒ 不再推。
+        // 没再来 ⇒ 不再推。
         assert!(
             tokio::time::timeout(std::time::Duration::from_millis(50), t.next())
                 .await
@@ -330,7 +347,8 @@ fn a_ring_on_the_quota_bell_becomes_one_changed_frame() {
     });
 }
 
-/// 帧里的小成品经这条连接的 `bodies` 现算（生产 ＝ 重问那条命令的处理器；这里喂假的）：轮换那一帧带上那个会话的那一份。
+/// 帧里带不带小成品照主题表：轮换那一帧（`rotation`）不带（客户端照 `{target: {sid}}` 重问 `rotation-view`），
+/// 即便这条连接的 `bodies` 现算得出东西也不带。
 #[test]
 fn a_rotation_change_carries_the_body_the_table_asks_for() {
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -349,9 +367,13 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
         }
         t.bodies = fake;
         t.tz = crate::Tz::named("Asia/Shanghai").unwrap();
-        let tx = tokio::sync::broadcast::channel::<String>(4).0;
-        t.rotation = Some(tx.subscribe());
-        tx.send("s1".to_string()).unwrap();
+        let tx = tokio::sync::broadcast::channel(4).0;
+        t.nodes = Some(tx.subscribe());
+        crate::accounts::quota::nodes::emit(
+            &tx,
+            crate::accounts::quota::nodes::Source::Book,
+            Some("s1"),
+        );
         let f = tokio::time::timeout(guard_core::wall::CEILING, t.next())
             .await
             .expect("该推一帧");
@@ -361,15 +383,7 @@ fn a_rotation_change_carries_the_body_the_table_asks_for() {
                 key,
                 body,
                 ..
-            }) => assert_eq!(
-                (key.as_deref(), body),
-                (
-                    Some("s1"),
-                    Some(
-                        serde_json::json!({"topic": "rotation", "key": "s1", "tz": "Asia/Shanghai"})
-                    )
-                )
-            ),
+            }) => assert_eq!((key.as_deref(), body), (Some("s1"), None)),
             other => panic!("{other:?}"),
         }
     });

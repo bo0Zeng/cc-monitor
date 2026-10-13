@@ -124,12 +124,9 @@ pub trait TapSource {
 /// 只交出**帧** —— tee 的事件类型不出本 crate。
 pub struct TapRx {
     rx: tokio::sync::mpsc::Receiver<TapEvent>,
-    /// 额度账显示变了的通道（变了推一帧 `changed {quota}`）；`None` ＝ 不订（判据自己接的那一形）。
-    quota: Option<tokio::sync::watch::Receiver<u64>>,
-    /// 某个会话的轮换 / 「账号」格变了的通道（变了推一帧 `changed {rotation, key: sid}`）；`None` ＝ 不订。
-    rotation: Option<tokio::sync::broadcast::Receiver<String>>,
-    /// 这台的配置表 / 本机默认 / 策略变了的通道（变了推一帧 `changed {rotation_configs}`）；`None` ＝ 不订。
-    rules: Option<tokio::sync::broadcast::Receiver<()>>,
+    /// 轮换的节点通道（[`crate::accounts::quota::nodes`]）：事实变了推 `changed {quota}`；某个会话那一条变了推
+    /// `changed {rotation, key: sid}`；策略目录 · 新会话用哪份变了推 `changed {rotation_strategies}`。`None` ＝ 不订（判据自己接的那一形）。
+    nodes: Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
     /// 某个 pb 工作区的计划变了的通道（变了推一帧 `changed {plan, key: 工作区, rev, body: {needs}}`）；`None` ＝ 不订。
     plan: Option<tokio::sync::broadcast::Receiver<crate::plan::watch::Change>>,
     /// 某个会话挂着的待答请求变了的通道（挂上 · 撤掉 · 答掉，推一帧 `changed {needs, key: sid}`）；`None` ＝ 不订。
@@ -177,29 +174,14 @@ impl TapSource for TapRx {
                     let fs = self.router.on_learned();
                     self.out.extend(fs);
                 }
-                alive = quota_moved(&mut self.quota) => {
-                    if alive {
-                        self.out.push_back(self.changed(Topic::Quota, None));
-                    } else {
-                        self.quota = None;
+                moved = node_moved(&mut self.nodes) => match moved {
+                    Some(fs) => {
+                        for (t, sid) in fs {
+                            let f = self.changed(t, sid);
+                            self.out.push_back(f);
+                        }
                     }
-                }
-                moved = rotation_moved(&mut self.rotation) => match moved {
-                    Some(Some(sid)) => {
-                        let f = self.changed(Topic::Rotation, Some(sid));
-                        self.out.push_back(f);
-                    }
-                    // 落后丢了几件：可丢的通道，客户端下一次变化或重问就补上。
-                    Some(None) => {}
-                    None => self.rotation = None,
-                },
-                moved = rules_moved(&mut self.rules) => match moved {
-                    // 落后丢了几件也照推一帧（客户端反正整份重问）。
-                    Some(()) => {
-                        let f = self.changed(Topic::RotationConfigs, None);
-                        self.out.push_back(f);
-                    }
-                    None => self.rules = None,
+                    None => self.nodes = None,
                 },
                 moved = plan_moved(&mut self.plan) => match moved {
                     Some(Some((workspace, rev, needs))) => self.out.push_back(Frame::changed(
@@ -212,7 +194,7 @@ impl TapSource for TapRx {
                     Some(None) => {}
                     None => self.plan = None,
                 },
-                moved = rules_moved(&mut self.manual) => match moved {
+                moved = manual_moved(&mut self.manual) => match moved {
                     // 落后丢了几件也照推一帧（客户端反正整份重问）。
                     Some(()) => {
                         let f = self.changed(Topic::Manual, None);
@@ -238,15 +220,25 @@ impl TapSource for TapRx {
 /// `book` 是这条连接的 watcher 写的那一本运行簿（流归位按它定归哪个运行）；`tz` ＝ 这条连接看的那一台的时区（帧里小成品的时刻字按它写）。
 pub fn attach(book: std::sync::Arc<crate::observe::runs::RunBook>, tz: crate::Tz) -> TapRx {
     let mut rx = attach_rx(hub().attach(), book);
-    rx.quota = Some(crate::accounts::quota::ledger::bell().subscribe());
-    rx.rotation = Some(crate::accounts::quota::rotation::changes().subscribe());
-    rx.rules = Some(crate::accounts::quota::rotation::configs_changes().subscribe());
+    rx.nodes = Some(crate::accounts::quota::nodes::bus().subscribe());
     rx.plan = Some(crate::plan::watch::changes().subscribe());
     rx.needs = Some(crate::control::asks::changes().subscribe());
     rx.manual = Some(crate::accounts::sign_in::manual_changes().subscribe());
     rx.bodies = crate::stream::topic_hook::body;
     rx.tz = tz;
     rx
+}
+
+/// 会话外的需手动清单变了 ⇒ `Some(())`（落后丢了几件也算变了）；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
+async fn manual_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Option<()> {
+    use tokio::sync::broadcast::error::RecvError;
+    match r {
+        Some(r) => match r.recv().await {
+            Ok(()) | Err(RecvError::Lagged(_)) => Some(()),
+            Err(RecvError::Closed) => None,
+        },
+        None => std::future::pending().await,
+    }
 }
 
 /// 某个工作区的计划变了 ⇒ `Some(Some((工作区, 摘要, 要你看的数)))`；落后丢了几件 ⇒ `Some(None)`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
@@ -264,23 +256,35 @@ async fn plan_moved(
     }
 }
 
-/// 规则表变了（含落后丢了几件）⇒ `Some(())`；通道没了 ⇒ `None`；没订 ⇒ 永远不醒。
-async fn rules_moved(r: &mut Option<tokio::sync::broadcast::Receiver<()>>) -> Option<()> {
+/// 一件节点 ⇒ 该推的那几帧（topic · key）；落后丢了几件 ⇒ 不知道哪个会话，推不带会话的两帧（客户端整份重问）；
+/// 通道没了 ⇒ `None`（调用方把它摘掉）；没订 ⇒ 永远不醒。
+async fn node_moved(
+    r: &mut Option<tokio::sync::broadcast::Receiver<crate::accounts::quota::nodes::Node>>,
+) -> Option<Vec<(Topic, Option<String>)>> {
+    use crate::accounts::quota::nodes::Source;
     use tokio::sync::broadcast::error::RecvError;
-    match r {
-        Some(r) => match r.recv().await {
-            Ok(()) | Err(RecvError::Lagged(_)) => Some(()),
-            Err(RecvError::Closed) => None,
-        },
-        None => std::future::pending().await,
-    }
-}
-
-/// 额度账显示变了 ⇒ `true`；通道没了 ⇒ `false`（调用方把它摘掉）；没订 ⇒ 永远不醒。
-async fn quota_moved(q: &mut Option<tokio::sync::watch::Receiver<u64>>) -> bool {
-    match q {
-        Some(r) => r.changed().await.is_ok(),
-        None => std::future::pending().await,
+    let Some(r) = r else {
+        return std::future::pending().await;
+    };
+    match r.recv().await {
+        Ok(n) => {
+            let mut out = Vec::new();
+            if n.source.is_fact() {
+                out.push((Topic::Quota, None));
+            }
+            if n.source == Source::Strategies {
+                out.push((Topic::RotationStrategies, None));
+            }
+            if let Some(sid) = n.sid {
+                out.push((Topic::Rotation, Some(sid)));
+            }
+            Some(out)
+        }
+        Err(RecvError::Lagged(_)) => Some(vec![
+            (Topic::Quota, None),
+            (Topic::RotationStrategies, None),
+        ]),
+        Err(RecvError::Closed) => None,
     }
 }
 
@@ -309,9 +313,7 @@ pub(crate) fn attach_rx(
         router: super::run_route::RunRouter::new(book.clone(), crate::agents::stream_families()),
         book,
         out: std::collections::VecDeque::new(),
-        quota: None,
-        rotation: None,
-        rules: None,
+        nodes: None,
         plan: None,
         needs: None,
         manual: None,

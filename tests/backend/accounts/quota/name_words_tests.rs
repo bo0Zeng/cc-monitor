@@ -3,7 +3,7 @@ use super::*;
 
 #[test]
 fn the_names_cell_writes_home_and_both_slots() {
-    let n = names_cell();
+    let n = serde_json::to_value(names()).unwrap();
     // 账号 0 ＝ 不设配置目录的那一份登录（~/.claude）；`_` ＝ 起会话时没说是哪个号（落在哪一份登录说不准，
     //   建了账号库的机器上可能是 shell rc 导出的那个配置根）⇒ 两个名字，`_` 与额度行那一格「未指定账号」同一条键。
     assert_eq!(n["accounts"]["0"], copy_text("acct.home.name", &[]));
@@ -53,7 +53,7 @@ fn no_other_backend_module_maps_slots_or_home_to_words() {
 fn the_names_golden_is_what_the_core_writes() {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/__fixtures__/names.golden.json");
-    let got = format!("{}\n", serde_json::to_string_pretty(&names_cell()).unwrap());
+    let got = format!("{}\n", serde_json::to_string_pretty(&names()).unwrap());
     if std::env::var_os("CCM_REGEN_NAMES_GOLDEN").is_some() {
         std::fs::write(&path, &got).unwrap();
     }

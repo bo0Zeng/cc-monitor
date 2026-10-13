@@ -22,10 +22,10 @@ pub enum Topic {
     Profiles,
     /// 这台的额度账显示得出来的那几格。
     Quota,
-    /// 这台某个会话的轮换或「账号」格（`key` ＝ sid）。
+    /// 这台某个会话的轮换（`key` ＝ sid）：那一条 · 它用的那份策略 · 事实变了。
     Rotation,
-    /// 这台的轮换配置表 · 本机默认 · 策略。
-    RotationConfigs,
+    /// 这台的策略目录 · 新会话用哪份 · 哪个会话用哪份。
+    RotationStrategies,
     /// 这台某个 pb 工作区的计划（`key` ＝ 工作区根，`rev` ＝ 新的输出摘要，与手上那一份相同 ⇒ 不用问；
     /// `body` ＝ `{needs}`：这个工作区此刻要你看的数，没认可的、不含 agent 问人那一种，同 `plan-read` 的 `needCount`）。
     Plan,
@@ -80,7 +80,7 @@ impl Topic {
         Topic::Profiles,
         Topic::Quota,
         Topic::Rotation,
-        Topic::RotationConfigs,
+        Topic::RotationStrategies,
         Topic::Plan,
         Topic::Tasks,
         Topic::Needs,
@@ -126,19 +126,19 @@ impl Topic {
                 lossy: true,
                 key: true,
                 rev: false,
-                body: true,
-                body_cap: 4096,
-                reask: "rotation-session-read",
-                ask: Ask::Sids,
+                body: false,
+                body_cap: 0,
+                reask: "rotation-view",
+                ask: Ask::None,
             },
-            Topic::RotationConfigs => TopicSpec {
-                name: "rotation_configs",
+            Topic::RotationStrategies => TopicSpec {
+                name: "rotation_strategies",
                 lossy: true,
                 key: false,
                 rev: false,
                 body: true,
                 body_cap: 8192,
-                reask: "rotation-configs-read",
+                reask: "rotation-strategies",
                 ask: Ask::NoArgs,
             },
             Topic::Plan => TopicSpec {

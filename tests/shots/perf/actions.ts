@@ -372,11 +372,11 @@ async function needs(): Promise<Record<string, unknown>> {
   });
 }
 
-/** 命令面板：Ctrl+K 开、逐字打「新建」「轮换」「设置」、Esc；三次。 */
+/** 命令面板：Ctrl+K 开、逐字打「新建」「账号」「设置」、Esc；三次。 */
 async function palette(): Promise<Record<string, unknown>> {
   return measure("palette", async (steps) => {
     // 打的词取文案表里的字（命令面板里那几条就叫这个）
-    for (const word of [copyText("newSession.title.plain"), copyText("rot.panel.title"), "打开设置"]) {
+    for (const word of [copyText("newSession.title.plain"), copyText("acct.panel.title"), "打开设置"]) {
       await step(steps, "ctrl-k", () => key("k", { ctrl: true }));
       const input = await waitSel<HTMLInputElement>("[data-role=command-input]");
       for (let i = 1; i <= word.length; i++) {
@@ -639,7 +639,7 @@ async function slowDom(): Promise<Record<string, unknown>> {
     await sleep(400);
     await timed("命令面板：Ctrl+K 开", () => key("k", { ctrl: true }));
     const inp = await waitSel<HTMLInputElement>("[data-role=command-input]");
-    await timed("命令面板：打字", () => typeInto(inp, copyText("rot.panel.title")));
+    await timed("命令面板：打字", () => typeInto(inp, copyText("acct.panel.title")));
     await sleep(200);
     await timed("命令面板：Esc 关", () => keyOn(inp, "Escape", { code: "Escape" }));
     await sleep(300);

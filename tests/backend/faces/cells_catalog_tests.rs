@@ -148,7 +148,6 @@ pub(crate) const FROZEN: &[(&str, Frozen)] = &[
             "truncated",
         ]),
     ),
-    ("cell_error", Frozen::No),
 ];
 
 /// 那件成品的冻结格（[`FROZEN`] 里没登 ⇒ 不冻结；登没登全由判据管）。
@@ -288,20 +287,6 @@ fn dressed_needs(base: Option<crate::observe::facts_query::Needs>) -> Vec<Value>
 
 fn corpus(name: &str) -> Vec<Value> {
     match name {
-        // 一格错：每一种码各一份，都带写好的那一句。
-        "cell_error" => [
-            "overlap", "range", "time", "of", "type", "empty", "dup", "tooLong", "strategy",
-            "account",
-        ]
-        .iter()
-        .map(|c| {
-            serde_json::to_value(crate::accounts::quota::rotation::cell_err(
-                "accounts[1].slots[1].at".into(),
-                c,
-            ))
-            .unwrap()
-        })
-        .collect(),
         // 两家各一份：Claude 那份按类造 · Codex 那份是一整份造的 rollout 走读页那一遍（同一件成品、同一份格目录）。
         "record" => ["record.golden.jsonl", "record-codex.golden.jsonl"]
             .iter()
@@ -471,16 +456,14 @@ fn real_quota_read() -> crate::faces::quota_read::QuotaRead {
     };
     let mut sh = show::show(
         Some((&o.reading, o.seen_at)),
-        facts(crate::accounts::quota::decide::Kind::Sub),
-        &|_| Some(50),
+        facts(crate::accounts::quota::facts::Kind::Sub),
         now,
         &slot,
     );
     sh.windows = show::windows_of(&o, &key, now);
     let u = show::show(
         None,
-        facts(crate::accounts::quota::decide::Kind::Sub),
-        &|_| None,
+        facts(crate::accounts::quota::facts::Kind::Sub),
         now,
         &slot,
     );

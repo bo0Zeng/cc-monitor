@@ -345,6 +345,7 @@ fn a_resend_that_cannot_connect_hands_down_the_answer_in_hand() {
 // ── 换号：真中转 ＋ 生产段的上游选择（装上换号）＋ 按鉴权头作答的假上游；假凭据、临时家目录 ─────────────────
 
 use crate::accounts::quota::rotation::{self, RotationStore};
+use crate::accounts::quota::rules::book::{self, Cause};
 use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
 
 const UUID_A: &str = "aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa";
@@ -439,42 +440,43 @@ impl Home {
         self.root.join(rotation::FILE_NAME)
     }
 
-    /// `line` ＝ 触发那一行两窗各设的线（`None` ＝ 满了才换）。
+    /// `line` ＝ 两窗各设的上限（`None` ＝ 用满为止）。
     fn set_default(&self, enabled: &[&str], line: Option<u8>) {
         self.set_default_at(enabled, line, "continue");
     }
 
-    /// 本机默认那份（默认配置 1，内置策略 1）写成：起会话的号 ＋ `enabled` 里的号（照 a · b 的先后），每号 `line`（`None` ＝ 用满才换）；
-    /// `at_limit` ＝ 都到上限后：`continue` ⇒ 接着用（`go`）· `stop` ⇒ 停下。
+    /// 新会话（和已经有的会话）用的那份策略写成「照列表先后」那份代码 ＋ 这样的设置：起会话的号 ＋ `enabled` 里的号（照 a · b 的先后），
+    /// 两窗上限 `line`（`None` ＝ 用满为止）；`at_limit` ＝ 都到上限后：`continue` ⇒ 软上限（接着用）· `stop` ⇒ 硬上限（停下）。
     fn set_default_at(&self, enabled: &[&str], line: Option<u8>, at_limit: &str) {
-        let line = line.map_or(serde_json::Value::Null, serde_json::Value::from);
-        let row = |who: serde_json::Value| {
-            let mut r = who;
-            r["params"] =
-                serde_json::json!({"line": line, "slots": [], "mode": "normal", "stint": null});
-            r
+        use crate::accounts::quota::rules::script;
+        let caps = match line {
+            Some(n) => {
+                serde_json::json!({"5h": [{"from": 0, "to": 1440, "v": n}], "7d": [{"from": 0, "to": 1440, "v": n}]})
+            }
+            None => serde_json::json!({}),
         };
-        let mut accounts = vec![row(serde_json::json!({"start": true}))];
+        let mut accounts = vec![serde_json::json!({"start": true})];
         accounts.extend(
             ["a", "b"]
                 .iter()
                 .filter(|a| enabled.contains(a))
-                .map(|a| row(serde_json::json!({"id": a}))),
+                .map(|a| serde_json::json!({"id": a})),
         );
-        let all_out = if at_limit == "stop" { "stop" } else { "go" };
-        let body: rotation::ConfigBody = serde_json::from_value(serde_json::json!({
-            "name": "a 与 b", "strategy": "1", "accounts": accounts,
-            "params": {"back": false, "delay": 0, "standby_wait": 40, "all_out": all_out},
-            "acctInit": {"line": line, "slots": [], "mode": "normal", "stint": null}
-        }))
-        .expect("config");
+        let kind = if at_limit == "stop" { "hard" } else { "soft" };
+        let src = crate::accounts::quota::rules::upgrade::material(0);
+        let mut head = script::parse(src).expect("读得懂").head;
+        head.settings = serde_json::json!({"caps": caps, "capKind": kind, "accounts": accounts});
+        head.tz = Some("UTC".into());
+        let text = script::with_head(src, &head).expect("头");
+        rotation::strategy_file_write(&self.own(), "t-default", &text).expect("写策略");
         rotation::face_change(
             &RotationStore::at(Some(self.rotation_path())),
             &self.own(),
             |b| {
-                let id = b.default_config.clone();
-                if let Some(c) = b.configs.get_mut(&id) {
-                    c.body = body.clone();
+                b.for_new = "t-default".into();
+                // 已经有的会话也改用它（同在下拉里换一份）。
+                for x in b.sessions.values_mut() {
+                    x.strategy.id = "t-default".into();
                 }
             },
         )
@@ -576,7 +578,7 @@ impl Home {
         crate::lineage::LineageStore::at(Some(self.lineage_path())).now()
     }
 
-    fn session(&self, sid: &str) -> rotation::SessionEntry {
+    fn session(&self, sid: &str) -> crate::accounts::quota::rules::book::Session {
         RotationStore::at(Some(self.rotation_path())).now().sessions[sid].clone()
     }
 }
@@ -626,23 +628,35 @@ fn a_refused_account_is_swapped_for_the_next_one_without_the_agent_noticing() {
     }
     let s = home.session("s-1");
     assert_eq!((s.start.as_str(), s.current.as_str()), ("a", "b"));
-    assert_eq!(s.history.len(), 1);
-    let h = &s.history[0];
+    assert_eq!(s.log.len(), 1);
+    let h = &s.log[0];
     assert_eq!(
-        (h.at, h.from.as_str(), h.to.as_str(), h.from_resets_at),
-        (s.since, "a", "b", Some(4_000_000_000))
+        (h.at, h.from.as_str(), h.to.as_str(), &h.cause),
+        (s.since, "a", "b", &Cause::Unusable)
     );
-    assert!(
-        matches!(&h.leave, rotation::Leave::Unusable { why } if why["k"] == "@refused"),
-        "{:?}",
-        h.leave
-    );
-    assert_eq!(h.pick.as_ref().map(|p| p.strategy.as_str()), Some("1"));
     let resp = send_as_a(relay);
     assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
     let got = got.lock().expect("lock");
     assert_eq!(got.len(), 3, "下一发直接走 B，不先撞一次 A");
     assert_eq!(got[2].auth, Some(format!("Bearer {B_TOKEN}")));
+}
+
+/// ★ 回 429 ⇒ 节点通道上来一件 `Refused`，带这个会话（判的缓存与推送据此当场重跑 / 重推）。
+#[test]
+fn a_refused_answer_sends_a_refused_node_for_that_session() {
+    use crate::accounts::quota::nodes::{bus, Source};
+    let home = Home::new("node429");
+    home.set_default(&["b"], None);
+    let (up, _got) = spawn_judging_upstream(a_refused_b_serves);
+    let relay = home.relay(up);
+    let mut rx = bus().subscribe();
+    let resp = send_on(relay, "/t/claude-code/a/v1/messages", "s-node-429", "");
+    assert!(resp.starts_with("HTTP/1.1 200"), "{resp}");
+    let mut seen = false;
+    while let Ok(n) = rx.try_recv() {
+        seen |= n.source == Source::Refused && n.sid.as_deref() == Some("s-node-429");
+    }
+    assert!(seen, "429 那一发该发一件带会话的 Refused");
 }
 
 /// ★ 后端重启 / 会话 resume 之后，同一会话第一发就走钉着的号（钉号在盘上）。
@@ -707,7 +721,7 @@ fn a_refused_account_is_not_swapped_onto_one_refused_without_a_reset() {
     let now = crate::accounts::quota::now_unix();
     let side = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     let r = crate::agents::claudecode::quota::read(429, &[], now).expect("被拒");
-    ledger::record_seen(&side, &home.own(), "claude-code", "b", r, now);
+    ledger::record_seen(&side, &home.own(), None, "claude-code", "b", r, now);
     let (up, got) = spawn_judging_upstream(a_refused_b_serves);
     let resp = send_as_a(home.relay(up));
     assert_eq!(resp, refused_with_quota());
@@ -738,11 +752,8 @@ fn threshold_mode_moves_the_next_request() {
     assert!(send_as_a(relay).contains("x-from: b"));
     assert_eq!(got.lock().expect("lock").len(), 2);
     let s = home.session("s-1");
-    assert!(
-        matches!(&s.history[0].leave, rotation::Leave::Unusable { why } if why["k"] == "@line" && why["w"] == "5h" && why["n"] == 90),
-        "{:?}",
-        s.history[0].leave
-    );
+    // a 到了策略的上限（事实上还发得出去）：是策略交的先后换了第一个。
+    assert_eq!(s.log[0].cause, Cause::Order, "{:?}", s.log);
 }
 
 /// b 那个窗口几点重置（比 a 的早 ⇒ 池里最早回到阈值以下的是 b）。
@@ -806,14 +817,15 @@ fn a_hard_limit_answers_the_agent_with_its_own_limit_reply_instead_of_sending() 
     assert!(is_held_reply(&resp, B_BACK), "{resp}");
     assert_eq!(got.lock().expect("lock").len(), 2, "第三发不该到上游");
     let s = home.session("s-1");
-    let last = s.history.last().expect("记了一条");
+    let last = s.log.last().expect("记了一条");
     assert_eq!(
+        (last.cause.clone(), last.from == last.to),
         (
-            last.leave.clone(),
-            last.from_resets_at,
-            last.from == last.to
-        ),
-        (rotation::Leave::Held, Some(B_BACK), true)
+            Cause::Hold {
+                until: Some(B_BACK)
+            },
+            true
+        )
     );
     let quota = Ledger::at(Some(home.root.join(ledger::FILE_NAME)));
     assert!(
@@ -964,7 +976,7 @@ fn the_relay_refreshes_when_it_last_saw_a_session_once_a_day() {
     assert_eq!((first.since, first.last_seen()), (t0, t0));
     let bytes = std::fs::read_to_string(home.rotation_path()).expect("read");
 
-    clock.store(t0 + rotation::SEEN_REFRESH - 60, Ordering::SeqCst);
+    clock.store(t0 + book::SEEN_REFRESH - 60, Ordering::SeqCst);
     assert!(send_as_a(relay).starts_with("HTTP/1.1 200"));
     assert_eq!(
         std::fs::read_to_string(home.rotation_path()).expect("read"),
@@ -972,13 +984,13 @@ fn the_relay_refreshes_when_it_last_saw_a_session_once_a_day() {
         "同一天的第二发写了盘"
     );
 
-    let day2 = t0 + rotation::SEEN_REFRESH + 5;
+    let day2 = t0 + book::SEEN_REFRESH + 5;
     clock.store(day2, Ordering::SeqCst);
     assert!(send_as_a(relay).starts_with("HTTP/1.1 200"));
     let later = home.session("s-1");
     assert_eq!(later.last_seen(), day2, "隔一天的头一发没刷新「看见」");
     assert_eq!(
-        rotation::SessionEntry {
+        book::Session {
             seen: first.seen,
             ..later.clone()
         },
@@ -1051,7 +1063,7 @@ fn the_relay_records_who_started_whom_from_the_origin_tail() {
     );
 }
 
-/// 在别的会话里起的会话照新会话办：打开本机默认那份（「跟随父会话」不在第二版）。
+/// 在别的会话里起的会话照新会话办：用「新会话用」的那份（不跟随父会话）。
 #[test]
 fn a_session_started_inside_another_opens_the_default_config() {
     let home = Home::new("lineage-default");
@@ -1063,13 +1075,13 @@ fn a_session_started_inside_another_opens_the_default_config() {
         &RotationStore::at(Some(home.rotation_path())),
         &home.own(),
         |b| {
-            b.sessions.get_mut("s-owner").expect("owner").config.id = "c_00000003".into();
+            b.sessions.get_mut("s-owner").expect("owner").strategy.id = "other".into();
         },
     )
     .expect("write");
     assert!(send_on(relay, path, "s-kid", "").starts_with("HTTP/1.1 200"));
     let book = RotationStore::at(Some(home.rotation_path())).now();
-    assert_eq!(book.sessions["s-kid"].config.id, book.default_config);
+    assert_eq!(book.sessions["s-kid"].strategy.id, book.for_new);
 }
 
 // ── 起会话时没说是哪个号（`_`）：请求体里的账号身份恰好对上账号库里一个号 ⇒ 按那个号记 ─────────────────
@@ -1200,7 +1212,7 @@ fn an_undeclared_session_stays_undeclared_unless_exactly_one_account_matches() {
     }
 }
 
-/// 会话中途 `/login` 换成 b（请求体里的身份变了）⇒ 照「换了起它的号」走：起始号与在用号都改成 b、手动调整清掉。
+/// 会话中途 `/login` 换成 b（请求体里的身份变了）⇒ 照「换了起它的号」走：起始号与在用号都改成 b、拖出来的顺序清掉。
 #[test]
 fn an_undeclared_session_that_logs_in_elsewhere_follows_its_new_account() {
     let home = Home::new("undeclared-login");
@@ -1212,22 +1224,19 @@ fn an_undeclared_session_that_logs_in_elsewhere_follows_its_new_account() {
         &RotationStore::at(Some(home.rotation_path())),
         &home.own(),
         |b| {
-            b.sessions.get_mut("s-1").expect("s-1").manual.place = vec![rotation::Place {
-                account: "b".into(),
-                at: 1,
-            }];
+            b.sessions.get_mut("s-1").expect("s-1").temp = vec!["b".into()];
         },
     )
     .expect("write");
-    assert!(!home.session("s-1").manual.is_empty());
+    assert!(!home.session("s-1").temp.is_empty());
     assert!(send_undeclared(relay, "s-1", &request_body(UUID_B)).starts_with("HTTP/1.1 200"));
     let s = home.session("s-1");
     assert_eq!((s.start.as_str(), s.current.as_str()), ("b", "b"));
-    assert!(s.manual.is_empty(), "手动调整没清：{:?}", s.manual);
+    assert!(s.temp.is_empty(), "拖出来的顺序没清：{:?}", s.temp);
     assert_eq!(home.ledger_accounts(), ["a", "b"]);
 }
 
-/// `_` 不是哪一份登录：当不了「现在就换」的目标（不拿默认配置目录那份登录顶），显示态也不带订阅标识。
+/// `_` 不是哪一份登录：显示态不带订阅标识（不拿默认配置目录那份登录顶）。
 #[test]
 fn the_undeclared_account_is_not_taken_for_the_default_login() {
     let home = Home::new("undeclared-hop");
@@ -1248,13 +1257,6 @@ fn the_undeclared_account_is_not_taken_for_the_default_login() {
         Some(dead_token_endpoint()),
     );
     let none = |_: &str| None;
-    let now = crate::accounts::quota::now_unix();
-    assert!(hop
-        .check_target(&home.own(), "claude-code", "a", "0", &none, now)
-        .is_ok());
-    assert!(hop
-        .check_target(&home.own(), "claude-code", "a", "_", &none, now)
-        .is_err());
     let lib = hop.library();
     assert!(hop
         .show_facts("claude-code", &lib, "0", &none)

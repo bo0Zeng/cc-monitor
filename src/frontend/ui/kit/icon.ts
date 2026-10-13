@@ -15,7 +15,6 @@ import folder from "@phosphor-icons/core/assets/regular/folder.svg?raw";
 import x from "@phosphor-icons/core/assets/regular/x.svg?raw";
 import check from "@phosphor-icons/core/assets/regular/check.svg?raw";
 import caretRight from "@phosphor-icons/core/assets/regular/caret-right.svg?raw";
-import caretLeft from "@phosphor-icons/core/assets/regular/caret-left.svg?raw";
 import info from "@phosphor-icons/core/assets/regular/info.svg?raw";
 import warning from "@phosphor-icons/core/assets/regular/warning.svg?raw";
 import warningCircle from "@phosphor-icons/core/assets/regular/warning-circle.svg?raw";
@@ -86,7 +85,6 @@ const SVG = {
   close: x,
   check: check,
   caretRight: caretRight,
-  caretLeft: caretLeft,
   info: info,
   warning: warning,
   error: warningCircle,

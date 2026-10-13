@@ -11,9 +11,7 @@
 import type { AccountsState, SessionAccount } from "./accounts";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import type { QuotaRead } from "./acct-words";
-import type { ConfigsShown } from "./rot-reads";
-import type { StrategiesRead } from "./generated/StrategiesRead";
-import type { SessionRotationState } from "./generated/SessionRotationState";
+import type { RotationViewReply } from "./generated/RotationViewReply";
 
 /** 一格状态：取值 · 置值（同值不通知）· 订阅（回退订函数；订阅那一刻不回放当前值）。 */
 export class Slice<T> {
@@ -64,11 +62,10 @@ export interface SessionAccountsSnapshot {
   currentByOrigin: Map<string, string>;
 }
 
-/** 一个会话在它那台的轮换与「账号」格（`rotation-session-read` 那一份 ＋ 那台答时的钟）。 */
+/** 一个会话在它那台的轮换（`rotation-view` 那一份；中转没见过这个会话 ⇒ `read: null`）。 */
 export interface SessionRotationEntry {
   origin: Origin;
-  now: number;
-  read: SessionRotationState;
+  read: RotationViewReply | null;
 }
 
 /** 窗口级的几格（每个窗口一份 —— 各窗口本来就是各自的 JS 环境）。 */
@@ -81,12 +78,8 @@ export const appStore = {
   sessionAccounts: new Slice<SessionAccountsSnapshot | null>(null),
   /** 每台的额度账（`quota-read` 那一份；`null` = 那一问没结果）。 */
   quota: new Slice<ReadonlyMap<Origin, QuotaRead | null>>(new Map()),
-  /** 每个会话的轮换与「账号」格（按 sid）。 */
+  /** 每个会话的轮换（按 sid；标签页上的账号格照它画）。 */
   sessionRotation: new Slice<ReadonlyMap<string, SessionRotationEntry>>(new Map()),
-  /** 每台的配置表（`rotation-configs-read` 那一份；`null` = 那一问没结果）。 */
-  rotationConfigs: new Slice<ReadonlyMap<Origin, ConfigsShown | null>>(new Map()),
-  /** 每台加载的策略（`rotation-strategies-read` 那一份：表单照它的声明画；`null` = 那一问没结果）。 */
-  rotationStrategies: new Slice<ReadonlyMap<Origin, StrategiesRead | null>>(new Map()),
 };
 
 /** 往一张按键的表里换一格（整张换一份新的，订阅者按自己那一格取）。 */

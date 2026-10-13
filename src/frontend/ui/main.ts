@@ -84,12 +84,10 @@ import { dispatcher, KeybindingDispatcher } from "./keybindings/registry";
 import { getKeybindings } from "./keybindings/store";
 import { installGlobalClickDelegation } from "./entry-render-common";
 import { AccountChip } from "./account-chip";
-import { onQuotaChanged, refreshConfigs, syncSessions } from "./acct-center";
+import { onQuotaChanged, syncSessions } from "./acct-center";
 import { planMoves, pushedProducts } from "./changed-stream";
-import { followActive, openConfigPicker, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
-import { acctSessionWiring } from "./acct-session";
+import { followActive, toggleAccountPanel, type AcctPanelHost } from "./acct-panel";
 import { buildAccountCommands } from "./account-commands";
-import { machineName } from "./control-said";
 import { sessionCommands } from "./session-commands";
 import type { FrontendReadyPayload } from "./generated/FrontendReadyPayload";
 import { currentAccountForBadge } from "./accounts";
@@ -340,31 +338,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
   const panelHost: AcctPanelHost = {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
-    cwdOf: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.cwd ?? "",
-    agentOf: (sid) => tabs.agentOf(sid),
-    openSession: (sid) => tabs.switchTo(sid),
-    canOpenSession: (sid) => tabs.snapshotSessions().some((x) => x.sessionId === sid),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
-    openRotation: (origin, at) => void openSettingsWindow(undefined, dest.rotationOf(origin, at)),
     openDefaultMenu: (anchor, origin) => void accountChip.openDefaultMenu(anchor, origin),
     defaultOf: (origin) => accountChip.defaultOf(origin),
-    // 恢复菜单挂在状态栏上（抽屉的底边）：toast 的按钮点了就收起，没有自己的锚。
-    openResume: (sid) => {
-      const anchor = document.getElementById("status-bar");
-      if (anchor) tabs.openResumeFor(anchor, sid);
-    },
   };
   const openAcctPanel = (sid: string, origin: string): void => toggleAccountPanel(sid, origin, panelHost);
   tabs.onOpenAccountPanel = openAcctPanel;
-  // 多选右键「轮换配置 ▸」：那台的配置表（还没读过 ⇒ 去读，这一回先转圈）· 管理 ⇒ 设置窗那台的「轮换」栏。
-  tabs.onRotationConfigs = {
-    configsOf: (origin) => {
-      const got = appStore.rotationConfigs.get().get(origin);
-      if (got === undefined) void refreshConfigs(origin);
-      return got ?? null;
-    },
-    openConfigs: (origin) => void openSettingsWindow(undefined, dest.rotationOf(origin)),
-  };
   // ↗ 浮层的［接上终端］直达设置那一节（［更新］就地做，住 `tabs.ts`）。
   tabs.onConnectTerminal = () => void openSettingsWindow(undefined, dest.connectTerminalOf(LOCAL_ORIGIN));
   tabs.onOpenHere = (sid) => {
@@ -492,13 +471,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);
     followActive(cur, panelHost);
-    if (a.sid !== null) acctSession.repaintBanner(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
-  // 会话里的换号条 · 提示条；tab 栏被卡住的会话 `✕ 5h`。
-  const acctSession = acctSessionWiring({
-    streamContentOf: (sid) => tabs.streamContentOf(sid),
-    openPanel: openAcctPanel,
-  });
+
+  // 标签页上的账号格照会话那台 `rotation-view` 的在用号：换了号原地重画。
   appStore.sessionRotation.subscribe(() => tabs.repaintTabBar());
 
   // 拉一次 behavior toggle 初值喂给 TabManager。
@@ -700,14 +675,6 @@ window.addEventListener("DOMContentLoaded", async () => {
         chordHint: (id) => chordHint(id as Parameters<typeof chordHint>[0]),
         setCurrent: (name) => void accountChip.applyDefaultByName(name),
         openSettings: () => void openSettingsWindow(undefined, dest.accountsOf(curOrigin ?? LOCAL_ORIGIN)),
-        rotation:
-          cur !== null && curOrigin !== null
-            ? {
-                machine: machineName(curOrigin),
-                apply: () => openConfigPicker(cur, curOrigin, panelHost),
-                openConfigs: () => void openSettingsWindow(undefined, dest.rotationOf(curOrigin)),
-              }
-            : null,
       }).map((c) => ({ ...c, group: "account" as const, icon: "account" as const })),
       {
         id: "acct-default-menu",
@@ -933,7 +900,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         }
         case "quota":
         case "rotation":
-        case "rotation_configs":
+        case "rotation_strategies":
           onQuotaChanged(origin, topic, change);
           break;
         case "plan": {
@@ -985,9 +952,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     // 每台的中转都住那台的常驻后端 ⇒ 每台都订 tap（与会话行同一份机器清单）。
     taps: machines,
     // 每台每个主题一条 `changed/<topic>`：账号清单（替掉裸事件 `remote-backend-ready`）· 任务清单（替掉本机那个裸事件 `task-update`）·
-    //   额度 · 会话轮换 · 配置表 · 计划 · 待答请求。配置文件那一种只设置窗订。
+    //   额度 · 会话轮换 · 策略目录 · 计划 · 待答请求。配置文件那一种只设置窗订。
     changed: machines.flatMap((origin) =>
-      (["accounts", "tasks", "quota", "rotation", "rotation_configs", "plan", "needs"] as const).map((topic) => ({ origin, topic })),
+      (["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs"] as const).map((topic) => ({ origin, topic })),
     ),
   });
   // 账号那一格经通道订（每台一条 `changed/accounts`，上面 `bindEvents` 的 `changed`）。

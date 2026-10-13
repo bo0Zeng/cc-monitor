@@ -64,6 +64,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**门槛**不是上限：`backend/observe/skeleton.rs` 多长的记录才落骨架（比它短的整份读一遍比读骨架还快，不落；什么都不截）",
     ),
     (
+        "DAY_MIN",
+        "**分钟数**不是体量：`accounts/quota/rules/form.rs` 一天里的分钟数（24 小时条分段的上界；升级那一处照它切分段）。",
+    ),
+    (
         "HOOK_TIMEOUT_SECS",
         "**时长**不是体量：`agents/claudecode/asks.rs` 写进会话级答题 hook 设置的期限（秒），到点那一家杀 hook、不给决定 ⇒ 框照常在终端里问。",
     ),
@@ -1014,7 +1018,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/accounts/quota/strategy/mod.rs",
+        "src/backend/accounts/quota/rules/shelf.rs",
         "MAX_SOURCE_BYTES",
         "一份轮换策略文件 `~/.cc-monitor/strategies/<id>.rhai`（超了不加载，列表里照实写读不懂）",
         "拒收+回错",

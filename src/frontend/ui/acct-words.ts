@@ -97,7 +97,7 @@ export interface Names {
   slots: Record<string, string>;
 }
 
-/** 最近一份成品带来的那张（出号名的四件成品 `quota-read` · `rotation-configs-read` · `rotation-session-read` · `rotation-plan` 解码时交进来）。 */
+/** 最近一份成品带来的那张（`quota-read` 解码时交进来）。 */
 let names: Names = { accounts: {}, slots: {} };
 
 /** 解码器交进来成品上的 `names`（形状不对 ⇒ 不收、留着上一份）。 */

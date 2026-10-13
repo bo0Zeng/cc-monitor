@@ -19,7 +19,7 @@
       "lang": "kt"
     }
   ],
-  "ceiling": 212,
+  "ceiling": 183,
   "entries": [
     {
       "file": "src/frontend/ui/account-chip.ts",
@@ -34,20 +34,6 @@
       "n": 3,
       "kind": "第 1 批",
       "why": "同上：chipLabel 按状态码 switch 取字"
-    },
-    {
-      "file": "src/frontend/ui/acct-panel.ts",
-      "rule": "codeWord",
-      "n": 1,
-      "kind": "留",
-      "why": "`mode === \"restart\"` 是界面自己的切换方式（骨架词）：`切换…` 浮层里热切换 / 重启切换两态"
-    },
-    {
-      "file": "src/frontend/ui/acct-view.ts",
-      "rule": "caseWord",
-      "n": 16,
-      "kind": "第 1 批",
-      "why": "热切换不成立 / 切换没成 / 批量打开配置没成的原因码 ⇒ 原因词（reasonLabel）：核心给失败带写好的字（换号记录的字 10-11 起核心写好 `text`，whyOf 照抄）"
     },
     {
       "file": "src/frontend/ui/agent-window-text.ts",
@@ -141,13 +127,6 @@
       "why": "［复制详情］按钮自己的状态（已复制 · 复制失败），骨架词"
     },
     {
-      "file": "src/frontend/ui/kit/interrupts.ts",
-      "rule": "caseWord",
-      "n": 5,
-      "kind": "第 1 批",
-      "why": "会话里在跑的那几族（turn · agent · task · transfer · edit）⇒ 族名：session-interrupts 成品带写好的族名"
-    },
-    {
       "file": "src/frontend/ui/launch-slot.ts",
       "rule": "codeWord",
       "n": 2,
@@ -195,27 +174,6 @@
       "n": 7,
       "kind": "第 7 批",
       "why": "远端健康事件 kind ⇒ 标题（版本三类 · overflow · deploy …）：壳判好的种类再由界面取字；壳那一侧的事件带写好的标题（与机器状态一起收）"
-    },
-    {
-      "file": "src/frontend/ui/rot-chart.ts",
-      "rule": "pct",
-      "n": 2,
-      "kind": "留",
-      "why": "排版几何（合图上 CSS 位置 / 宽度的百分比），不是描述数据的字"
-    },
-    {
-      "file": "src/frontend/ui/rot-chart.ts",
-      "rule": "toFixed",
-      "n": 2,
-      "kind": "留",
-      "why": "排版几何（合图上 CSS 位置 / 宽度的百分比取三位小数），不是描述数据的字"
-    },
-    {
-      "file": "src/frontend/ui/rot-form.ts",
-      "rule": "pct",
-      "n": 3,
-      "kind": "留",
-      "why": "排版几何（时段 24h 色带上 CSS 位置 / 宽度的百分比 · 刻度位置），不是描述数据的字"
     },
     {
       "file": "src/frontend/ui/runs.ts",
