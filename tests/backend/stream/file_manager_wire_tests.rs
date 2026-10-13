@@ -225,3 +225,33 @@ fn the_replies_the_file_window_reads_keep_their_wire_bytes() {
         "文件管理那几条的线上字节变了（文件窗口读的那一形）。这一版写出来的是：\n{dump}"
     );
 }
+
+/// 登记那一行的名字与回包类型，跟文件窗口照着发的那张表（`cmd_wire::files::Call`）是同一份：名字抄错一处就红。
+#[test]
+fn the_registered_names_are_the_ones_the_file_window_calls() {
+    use crate::stream::inbound::typed::Command;
+    use cmd_wire::files::Call;
+    fn same<C: Command>()
+    where
+        C::Req: Call<Reply = C::Reply>,
+    {
+        assert_eq!(C::NAME, <C::Req as Call>::NAME);
+        assert!(
+            crate::stream::inbound::lookup(C::NAME).is_some(),
+            "`{}` 不在登记表里",
+            C::NAME
+        );
+    }
+    use crate::stream::inbound::files_face::*;
+    same::<FilesLs>();
+    same::<FilesStat>();
+    same::<FilesFind>();
+    same::<FilesIndexStatus>();
+    same::<FilesIndexRebuild>();
+    same::<FilesBrowse>();
+    same::<FilesReadText>();
+    same::<FilesReadChunk>();
+    same::<FilesSize>();
+    same::<FilesHome>();
+    same::<FilesGrep>();
+}

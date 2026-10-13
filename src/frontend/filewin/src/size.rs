@@ -46,19 +46,16 @@ pub type SizeResult = Result<Sized, (String, String)>;
 
 /// `files-size` 的 `data` → [`Sized`]。**缺字段 ⇒ 失败**（不悄悄当 0：「0 字节」是一个真读数）。
 pub fn sized_from_reply(name: &str, d: &serde_json::Value) -> Result<Sized, String> {
-    let n = |k: &str| -> Result<u64, String> {
-        d.get(k)
-            .and_then(serde_json::Value::as_u64)
-            .ok_or_else(|| copy_text("rsFilewinSize.reply.missingField", &[("field", k)]))
-    };
+    let d = super::source::reply_of::<cmd_wire::files::SizeReq>(d.clone())
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
     Ok(Sized {
         name: name.to_string(),
-        bytes: n("bytes")?,
-        files: n("files")?,
-        dirs: n("dirs")?,
-        links: n("links")?,
-        skipped_mounts: n("skipped_mounts")?,
-        unreadable_dirs: n("unreadable_dirs")?,
+        bytes: d.bytes,
+        files: d.files,
+        dirs: d.dirs,
+        links: d.links,
+        skipped_mounts: d.skipped_mounts,
+        unreadable_dirs: d.unreadable_dirs,
     })
 }
 

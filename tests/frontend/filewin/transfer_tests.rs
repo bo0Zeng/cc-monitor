@@ -698,6 +698,7 @@ impl comms_inward::chan::router::Backends for XferHost {
         let answer = match op.0.as_str() {
             "transfer-upload" => serde_json::json!({ "id": "x-up", "key": "k".repeat(32) }),
             "transfer-download" => serde_json::json!({ "id": "x-down" }),
+            "files-home" => serde_json::json!({ "path": "/srv/a.bin" }),
             _ => serde_json::json!({ "path": "/srv/a.bin", "bytes": 3 }),
         };
         Box::pin(async move {

@@ -166,6 +166,8 @@ impl comms_inward::chan::router::Backends for ScreenHost {
                             { "path": format!("{dir}/乙.txt"), "kind": "file", "size": 3 },
                         ],
                         "truncated": false,
+                        "total": 2,
+                        "unreadable": 0,
                     }))
                 }
                 _ => Err(comms_inward::chan::wire::CallError::Peer {

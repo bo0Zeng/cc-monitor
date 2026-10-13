@@ -816,7 +816,11 @@ pub async fn read_text_at(
     origin: &super::source::Origin,
     at: &super::source::RemotePath,
 ) -> Result<Option<Opened>, super::source::Failed> {
-    let args = serde_json::json!({ "path": at.wire(), "max_bytes": MAX_EDIT_BYTES });
+    let args = serde_json::to_value(cmd_wire::files::ReadTextReq {
+        path: cmd_wire::files::WirePath(at.bytes()),
+        max_bytes: MAX_EDIT_BYTES as u64,
+    })
+    .unwrap_or(serde_json::Value::Null);
     opened_from_reply(
         origin,
         super::source::ask_coded(line, origin, CMD_READ_TEXT, &args, READ_BUDGET).await,
@@ -838,24 +842,34 @@ pub fn opened_from_reply(
     origin: &super::source::Origin,
     r: Result<serde_json::Value, super::source::Failed>,
 ) -> Result<Option<Opened>, super::source::Failed> {
-    let sha = r
-        .as_ref()
-        .ok()
-        .and_then(|d| d.get("sha256"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string);
-    let Some(text) = text_from_reply(r)? else {
+    let Some(got) = reply_from(r)? else {
         return Ok(None);
     };
-    let sha256 = sha.filter(|s| is_sha256_hex(s)).ok_or_else(|| {
-        super::source::Failed::here(
+    if !is_sha256_hex(&got.sha256) {
+        return Err(super::source::Failed::here(
             copy_core::backend_old(&origin.0),
             origin,
             CMD_READ_TEXT,
             None,
-        )
-    })?;
-    Ok(Some(Opened { text, sha256 }))
+        ));
+    }
+    Ok(Some(Opened {
+        text: got.text,
+        sha256: got.sha256,
+    }))
+}
+
+/// 后端那一趟的结局按回包类型解：拒的那两种（不是一份能编辑的文本）⇒ `None`；解不出 ⇒ 契约不符。
+fn reply_from(
+    r: Result<serde_json::Value, super::source::Failed>,
+) -> Result<Option<cmd_wire::files::ReadTextReply>, super::source::Failed> {
+    match r {
+        Ok(d) => super::source::reply_of::<cmd_wire::files::ReadTextReq>(d)
+            .map(Some)
+            .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]).into()),
+        Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
+        Err(f) => Err(f),
+    }
 }
 
 /// 后端那一趟的结局 → 编辑器那三形。**纯函数**（判得动）。
@@ -868,15 +882,7 @@ pub fn opened_from_reply(
 pub fn text_from_reply(
     r: Result<serde_json::Value, super::source::Failed>,
 ) -> Result<Option<String>, super::source::Failed> {
-    match r {
-        Ok(d) => d
-            .get("text")
-            .and_then(serde_json::Value::as_str)
-            .map(|t| Some(t.to_string()))
-            .ok_or_else(|| copy_text("rsFilewinSource.said.badReply", &[]).into()),
-        Err(f) if matches!(f.code.as_deref(), Some("too_large" | "not_text")) => Ok(None),
-        Err(f) => Err(f),
-    }
+    Ok(reply_from(r)?.map(|got| got.text))
 }
 
 /// 存回去 —— 经通道说后端；装不进一行的分块走暂存区。

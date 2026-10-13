@@ -358,7 +358,7 @@ fn a_backend_entry_becomes_a_row() {
         "size": 4096u64,
         "mtime_secs": 1_700_000_000u64,
     });
-    let r = row_from_ls_entry(&v).expect("这条 entry 应当解得出来");
+    let r = entry(&v).expect("这条 entry 应当解得出来");
     assert_eq!(r.path, "/srv/data/报表.csv");
     assert_eq!(r.name, "报表.csv", "名字是从路径尾段取的");
     assert!(!r.is_dir);
@@ -379,12 +379,12 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
         ("other", false),
     ] {
         let v = serde_json::json!({ "path": format!("/a/{kind}"), "kind": kind });
-        let r = row_from_ls_entry(&v).unwrap();
+        let r = entry(&v).unwrap();
         assert_eq!(r.is_dir, want_dir, "`kind={kind}` 判错了");
     }
     // `size` 缺了不整条失败（同本机那条：读不到 stat 也照样给一行）。
     let v = serde_json::json!({ "path": "/a/x", "kind": "file" });
-    assert_eq!(row_from_ls_entry(&v).unwrap().size, 0);
+    assert_eq!(entry(&v).unwrap().size, 0);
 }
 
 /// 🔴 **`lossy_name` 这一格当场变准了 —— 而旧那份是一个猜。**
@@ -400,7 +400,7 @@ fn only_dir_counts_as_a_directory_and_the_rest_are_flattened() {
 fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
     // ① 真叫 U+FFFD 的文件：**合法 UTF-8**，不该判成有损。
     let v = serde_json::json!({ "path": "/a/\u{FFFD}怪名", "kind": "file" });
-    let r = row_from_ls_entry(&v).unwrap();
+    let r = entry(&v).unwrap();
     assert!(
         !r.lossy_name,
         "一个**真叫**替换字符的文件被判成了有损 —— 那正是旧那份 `contains('\\u{{FFFD}}')` 的错法。\n\
@@ -416,7 +416,7 @@ fn lossiness_is_a_fact_about_the_bytes_not_a_guess_about_the_string() {
     //    `/a/` ＋ 一个孤立的 0xFF（任何 UTF-8 序列里都不合法）。
     let hex = "2f612fff";
     let v2 = serde_json::json!({ "path": { "b16": hex }, "kind": "file" });
-    let r2 = row_from_ls_entry(&v2).unwrap();
+    let r2 = entry(&v2).unwrap();
     assert!(r2.lossy_name, "非 UTF-8 字节没被判成有损");
     assert!(
         r2.name.contains('\u{FFFD}'),
@@ -436,11 +436,11 @@ fn an_entry_we_cannot_read_is_an_error_not_a_skipped_row() {
         serde_json::json!({ "path": 42, "kind": "file" }),
         serde_json::json!({ "path": { "b16": "zz" }, "kind": "file" }),
     ] {
-        let e = row_from_ls_entry(&bad).expect_err(&format!("`{bad}` 竟然解出来了"));
+        let e = entry(&bad).expect_err(&format!("`{bad}` 竟然解出来了"));
         assert!(!e.trim().is_empty(), "报错是空串");
     }
     // 阴性对照：正常那条解得出来（否则上面可以靠「什么都报错」全绿）。
-    assert!(row_from_ls_entry(&serde_json::json!({ "path": "/a", "kind": "dir" })).is_ok());
+    assert!(entry(&serde_json::json!({ "path": "/a", "kind": "dir" })).is_ok());
 }
 
 /// 🔴 **一屏回来就是排好序的** —— 而这是**行为**判据，不是源码代理。
@@ -457,6 +457,8 @@ fn a_screenful_comes_back_already_sorted() {
             { "path": "/a/yak",       "kind": "dir"  },
         ],
         "truncated": false,
+        "total": 4,
+        "unreadable": 0,
     });
     let (rows, truncated) = rows_from_ls_data(&d, SortBy::default()).expect("这一份该解得出来");
     let names: Vec<&str> = rows.iter().map(|r| r.name.as_str()).collect();
@@ -490,25 +492,26 @@ fn one_unreadable_entry_fails_the_whole_screen_instead_of_vanishing() {
             { "kind": "file" },                       // 没有 path
             { "path": "/a/also-good", "kind": "dir" },
         ],
+        "truncated": false, "total": 3, "unreadable": 0,
     });
     let e = rows_from_ls_data(&d, SortBy::default())
         .expect_err("有一条解不出来，整趟却成功了 —— 那一行被悄悄吞了");
     assert!(
-        copy_core::copy_matches("rsFilewinSource.ls.noPath", &e),
-        "报错没说是哪一条：{e}"
+        copy_core::copy_matches("rsFilewinSource.said.badReply", &e),
+        "报错不是「回包认不出」那一句：{e}"
     );
     // 阴性对照：三条都好的时候它成得了（否则上面可以靠「什么都失败」全绿）。
-    let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ] });
+    let ok = serde_json::json!({ "entries": [ { "path": "/a/x", "kind": "file" } ], "truncated": false, "total": 1, "unreadable": 0 });
     assert_eq!(
         rows_from_ls_data(&ok, SortBy::default()).unwrap().0.len(),
         1
     );
 }
 
-/// `truncated` 带得回来（缺了就当没截断）。
+/// `truncated` 带得回来；缺了这一格 ⇒ 回包认不出（不再悄悄当没截断：形状由两端共用的类型定）。
 #[test]
 fn truncation_is_carried_back_not_dropped() {
-    let d = serde_json::json!({ "entries": [], "truncated": true });
+    let d = serde_json::json!({ "entries": [], "truncated": true, "total": 9, "unreadable": 0 });
     assert!(
         rows_from_ls_data(&d, SortBy::default())
             .unwrap()
@@ -518,11 +521,8 @@ fn truncation_is_carried_back_not_dropped() {
     );
     let d2 = serde_json::json!({ "entries": [] });
     assert!(
-        !rows_from_ls_data(&d2, SortBy::default())
-            .unwrap()
-            .1
-            .truncated,
-        "缺了就该当没截断"
+        rows_from_ls_data(&d2, SortBy::default()).is_err(),
+        "缺了截断那一格却解出来了"
     );
 }
 
@@ -561,7 +561,13 @@ async fn listing_has_no_second_road_when_the_backend_refuses() {
         "经通道回来的那一屏与后端那一侧看见的不等"
     );
     assert!(!rows.is_empty(), "合成树是空的 —— 上面那条相等在空集上成立");
-    assert_eq!(cut, crate::source::Cut::default());
+    assert_eq!(
+        cut,
+        crate::source::Cut {
+            total: want.len() as u64,
+            ..Default::default()
+        }
+    );
     // ② 后端拒 ⇒ 失败，带那台的原话（码不上屏）。
     let e = list_dir(&wired.line, &src, "/definitely/not/here", SortBy::default())
         .await
@@ -588,7 +594,7 @@ fn a_windows_temp_dir_is_split_by_the_window_only_after_the_fixture_makes_it_pos
     let root = r"C:\Users\RUNNER~1\AppData\Local\Temp\ccm-filewin-1";
     let child = format!(r"{root}\alpha");
     let name_of = |p: &str| {
-        row_from_ls_entry(&serde_json::json!({ "path": p, "kind": "dir" }))
+        entry(&serde_json::json!({ "path": p, "kind": "dir" }))
             .expect("解得出来")
             .name
             .clone()
@@ -853,41 +859,42 @@ fn a_modification_time_is_printed_in_local_time_short_this_year() {
     assert_eq!(mtime_text_at(951_782_400, 0, (2000, 3, 1)).short, "02-29");
 }
 
-/// `files-ls` 那份声明里的字段名 —— **现读后端源码**（`files.ls` 那条 `Capability` 的 `fields`）。
+/// `files-ls` 回包里的字段名 —— 从两端共用的那份线上类型（`cmd_wire::files::LsReply` · `LsEntry`）现取：
+/// 每一格都填上的一份序列化出来，顶层与那一行的键并在一起。
 fn backend_ls_fields() -> std::collections::BTreeSet<String> {
-    const CAP_LINE: &str = "name: \"files.ls\",";
-    const FIELDS_HEAD: &str = "fields: &[";
-    // ⚠ **运行期读**，不是 `include_str!`：后者是一条 monitor → backend 的**编译期**边，
-    //   要进 `cross_half_edge_registry` 那张表（不在这里）；这一条只要今天那份声明的文本。
-    let raw =
-        std::fs::read_to_string(crate::guard_support::repo_root().join("src/backend/files/mod.rs"))
-            .expect("读不到后端那份 `files/mod.rs`");
-    let prod = guard_core::production_code(&raw);
-    let at = guard_core::pin_line(&prod, CAP_LINE).expect("后端那条 `files.ls` 能力声明不见了");
-    // `fields: &[` 起、到收口的 `]` 止（rustfmt 把长的一摞折成一行一个）。
-    let mut lines = prod.lines().skip(at).take(30).map(str::trim);
-    let head = lines
-        .find_map(|l| l.strip_prefix(FIELDS_HEAD))
-        .expect("`files.ls` 那条声明后面 30 行里没有 `fields`");
-    let mut line = head.to_string();
-    if !head.contains(']') {
-        for l in lines.by_ref() {
-            line.push_str(l);
-            if l.contains(']') {
-                break;
-            }
-        }
-    }
-    line.split('"')
-        .skip(1)
-        .step_by(2)
-        .map(str::to_string)
-        .collect()
+    use cmd_wire::files::{FileKind, LinkTo, LsEntry, LsReply, WirePath};
+    let full = LsReply {
+        entries: vec![LsEntry {
+            path: WirePath::from("/a"),
+            kind: FileKind::Symlink,
+            size: Some(1),
+            mtime_secs: Some(1),
+            mtime_text: Some(String::new()),
+            mtime_full: Some(String::new()),
+            link_dir: Some(true),
+            link_to: Some(LinkTo::Dir),
+        }],
+        truncated: false,
+        total: 1,
+        unreadable: 0,
+    };
+    let v = serde_json::to_value(&full).unwrap();
+    let mut out: std::collections::BTreeSet<String> =
+        v.as_object().unwrap().keys().cloned().collect();
+    out.extend(v["entries"][0].as_object().unwrap().keys().cloned());
+    out
+}
+
+/// 一条 entry 的 JSON ⇒ 窗口那一行（先按线上类型解：形状不对 ⇒ 解不出）。
+fn entry(v: &serde_json::Value) -> Result<Listed, String> {
+    serde_json::from_value::<cmd_wire::files::LsEntry>(v.clone())
+        .map(|e| row_from_ls_entry(&e))
+        .map_err(|e| e.to_string())
 }
 
 /// 🔴 **后端送的每一格 ↔ 窗口这一行的哪一格** —— `row_from_ls_entry` 头注那张表的可判形态。
 ///
-/// 左栏的人群**现读后端声明**（[`backend_ls_fields`]），与下面这张表**两向相等**
+/// 左栏的人群**现取两端共用的回包类型**（[`backend_ls_fields`]），与下面这张表**两向相等**
 /// ⇒ 后端多送一格而窗口没说它去哪 / 表里写着一格而后端早不送了，两种都红。
 /// 右栏每一格各挂一条**行为**断言（不判源码）。
 #[test]
@@ -897,7 +904,7 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("kind", "is_dir ＋ link"),
         ("link_dir", "link_dir（缺 ＝ 否）"),
         ("link_to", "link_broken（`missing` ⇒ 断了；缺 ＝ 否）"),
-        ("total", "Cut::total（缺 ＝ 0）"),
+        ("total", "Cut::total"),
         ("mtime_secs", "mtime_secs（缺 ＝ None）"),
         (
             "mtime_text",
@@ -910,18 +917,18 @@ fn the_field_by_field_table_between_backend_and_window_is_a_judge() {
         ("path", "path · name · lossy_name"),
         ("size", "size（缺 ＝ 0）"),
         ("truncated", "界面上那句「只拿到了前 N 条」"),
-        ("unreadable", "界面上那句「有 n 项读不出来」（缺 ＝ 0）"),
+        ("unreadable", "界面上那句「有 n 项读不出来」"),
     ];
     let declared: std::collections::BTreeSet<String> =
         TABLE.iter().map(|(k, _)| (*k).to_string()).collect();
     assert_eq!(
         backend_ls_fields(),
         declared,
-        "后端 `files.ls` 声明的字段与窗口这张逐格表对不上"
+        "`files-ls` 回包类型里的字段与窗口这张逐格表对不上"
     );
 
     // ── 右栏：逐格行为 ──
-    let one = |v: serde_json::Value| row_from_ls_entry(&v).expect("这一条该解得出来");
+    let one = |v: serde_json::Value| entry(&v).expect("这一条该解得出来");
     // kind：两格，不是一格。
     let link = one(serde_json::json!({ "path": "/a/l", "kind": "symlink" }));
     assert!(link.link && !link.is_dir, "symlink 没落成 link");

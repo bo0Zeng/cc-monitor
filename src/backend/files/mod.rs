@@ -32,6 +32,7 @@
 //! 跨 target 的对等断言（各面能力集横着对、逐条登记豁免）没做；它与「在这台机器上做不到」（[`crate::stream::wire::Unavailable`]，运行期逐机器）是两个轴。
 
 use crate::platform::fs::Ro;
+use cmd_wire::files::{self as wire, FileKind, WirePath};
 
 pub mod browse_watch;
 pub mod grep;
@@ -63,7 +64,7 @@ pub enum Effect {
 /// 编译 target 轴：住 [`crate::Target`]（汇总那一层，声明 target 的面不止一个），本族再导出它。
 pub use crate::{Target, TARGETS};
 
-/// 一条能力的登记。
+/// 一条能力的登记。入参 · 回包 · 码表不在这里写：入参与回包是 `cmd_wire::files` 的类型（[`Ask`] 把它们挂到能力上），码表在命令表那一行的错误枚举里。
 ///
 /// ⚠ 后四栏（`impl_files` / `args` / `fields` / `codes`）**只被判据读** ——
 /// 那正是它们存在的理由：把「这条能力的契约面」写成**数据**，好让机检对着它比
@@ -79,12 +80,6 @@ pub struct Capability {
     pub impl_files: &'static [&'static str],
     /// 它在哪些 target 上有实现。边界②：这一栏必须是 [`TARGETS`] 全体。
     pub targets: &'static [Target],
-    /// 入方向参数名。
-    pub args: &'static [&'static str],
-    /// 出方向字段名。
-    pub fields: &'static [&'static str],
-    /// 本能力自己可能回的 code。
-    pub codes: &'static [&'static str],
 }
 
 /// 🔴 **这一族的能力声明 —— 唯一住址。**
@@ -98,22 +93,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["limit", "path"],
-        fields: &[
-            "entries",
-            "kind",
-            "link_dir",
-            "link_to",
-            "mtime_full",
-            "mtime_secs",
-            "mtime_text",
-            "path",
-            "size",
-            "total",
-            "truncated",
-            "unreadable",
-        ],
-        codes: &["bad_path", "denied", "not_dir", "not_found", "unreadable"],
     },
     Capability {
         name: "files.stat",
@@ -121,22 +100,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["path"],
-        // +`mode`（unix 权限位低 12 位；非 unix 缺席）—— 文件窗口改权限那个框要显示现值。
-        // +`owner` · `link_target`：文件窗口「属性」要列属主与链接指向（取不到 / 不是链接 ⇒ `null`）。
-        fields: &[
-            "kind",
-            "link_target",
-            "mode",
-            "mtime_full",
-            "mtime_secs",
-            "mtime_text",
-            "owner",
-            "path",
-            "readonly",
-            "size",
-        ],
-        codes: &["bad_path", "unreadable"],
     },
     Capability {
         name: "files.find",
@@ -144,25 +107,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["browse_watch.rs", "index.rs", "mod.rs", "query.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["desc", "limit", "offset", "query", "scope", "seq", "sort", "stream", "under"],
-        fields: &[
-            "cover_root",
-            "desc",
-            "hits",
-            "index_age_secs",
-            "index_missing",
-            "index_root",
-            "offset",
-            "out_of_index",
-            "scanned",
-            "seq",
-            "sort",
-            "stale",
-            "start",
-            "total_hits",
-            "truncated",
-        ],
-        codes: &["bad_args", "bad_path", "bad_query", "superseded"],
     },
     Capability {
         name: "files.index.status",
@@ -170,25 +114,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["browse_watch.rs", "index.rs", "mod.rs"],
         targets: TARGETS,
-        args: &[],
-        fields: &[
-            "age_secs",
-            "browse_watch_cap",
-            "browse_watches",
-            "cold_first_build_secs",
-            "entries",
-            "index_missing",
-            "resident_bytes",
-            "rewalk_interval_secs",
-            // 没走进去的挂载点个数。
-            "skipped_mounts",
-            "stale",
-            "truncated",
-            "unreadable_dirs",
-            // 读不进去的那几个目录（前 20 个，线上形）。
-            "unreadable_paths",
-        ],
-        codes: &[],
     },
     // ── 建索引 · 保鲜 ────────────────
     // 机制的线上面，不是节拍（节拍归调用方）。两条都在边界① 之内：`rebuild_once` 是遍历 ＋ 换掉内存里那一份，
@@ -199,22 +124,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["index.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["path"],
-        fields: &[
-            "entries",
-            "path",
-            "resident_bytes",
-            // 没走进去的挂载点个数。
-            "skipped_mounts",
-            "truncated",
-            "unreadable_dirs",
-            // 读不进去的那几个目录（前 20 个，线上形）。
-            "unreadable_paths",
-        ],
-        // 🔴 `already_rebuilding`：非阻塞互斥抢不到那个位。
-        //    它**刻意是一个码而不是回参里的一个布尔** —— 理由住 `answer_index_rebuild`。
-        // `no_home`：没给 `path`（＝ 家目录）而这台机器说不出家目录。
-        codes: &["already_rebuilding", "bad_path", "no_home", "unreadable"],
     },
     Capability {
         name: "files.browse",
@@ -222,18 +131,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["browse_watch.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["dirs"],
-        // +`watching` · `watch_failed` · `watch_error`：监听器真挂上了几个、没挂上的出声。
-        fields: &[
-            "added",
-            "browse_watch_cap",
-            "rejected",
-            "removed",
-            "watch_error",
-            "watch_failed",
-            "watching",
-        ],
-        codes: &["bad_args", "bad_path"],
     },
     // ── 窗口的两问：读一份文本 · 那台机器的 home 在哪 ────────────
     // 两条都纯读 ⇒ 进这一族。
@@ -243,9 +140,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["max_bytes", "path"],
-        fields: &["bytes", "path", "sha256", "text"],
-        codes: &["bad_args", "bad_path", "not_text", "too_large", "unreadable"],
     },
     // ── 「算目录大小」：读族第九条 ────────────────
     //   在那台机器上走一遍、只回几个数（＋「零流量」）。纯读，整族照旧一个字节不写。
@@ -255,18 +149,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs", "size.rs"],
         targets: TARGETS,
-        args: &["path"],
-        fields: &[
-            "bytes",
-            "dirs",
-            "files",
-            "links",
-            "other",
-            "path",
-            "skipped_mounts",
-            "unreadable_dirs",
-        ],
-        codes: &["bad_path", "unreadable"],
     },
     // ── 按字节寻址分块读回 ─────────────────────────
     // 非 UTF-8 名的下载（SFTP 库的路径是 `String`，寻址不到）经后端链路一块一块读回；与 `files-stage-chunk`（分块写进暂存区）对称。纯读。
@@ -276,9 +158,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["len", "offset", "path"],
-        fields: &["content", "eof", "offset", "path", "size"],
-        codes: &["bad_args", "bad_path", "not_text", "unreadable"],
     },
     // ── 读族第十一条：按内容搜 ─────────────────────────────
     //   在那台机器上走一遍一个目录、只回命中的那几份（有字节与条数上界、可撤、不跟链接）。纯读，整族照旧一个字节不写。
@@ -288,22 +167,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["grep.rs", "mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &["ignore_ascii_case", "limit", "needle", "path"],
-        fields: &[
-            "bytes",
-            "files",
-            "hits",
-            "limit",
-            "links",
-            "path",
-            "skipped_binary",
-            "skipped_large",
-            "skipped_mounts",
-            "stopped",
-            "truncated",
-            "unreadable",
-        ],
-        codes: &["bad_args", "bad_path", "unreadable"],
     },
     Capability {
         name: "files.home",
@@ -311,9 +174,6 @@ pub const CAPABILITIES: &[Capability] = &[
         effect: Effect::ReadsOnly,
         impl_files: &["mod.rs", "raw.rs"],
         targets: TARGETS,
-        args: &[],
-        fields: &["path"],
-        codes: &["no_home"],
     },
 ];
 
@@ -390,7 +250,7 @@ pub const FRESHNESS: &[Freshness] = &[
 // ══════════════════════ 命令面（形状照 `inbound::CommandSpec` 的处理器）══════════════════════
 
 /// 一条能力的答案：成功交 JSON，失败交 [`Refused`]（码 ＋ 那一句 ＋ 下层原话）。
-pub type Answer = Result<serde_json::Value, Refused>;
+pub type Answer<T> = Result<T, Refused>;
 
 /// 一条能力的失败：码 ＋ 给人看的那一句 ＋ 下层原话（可缺：系统报错原文不进句子，由命令表交进复制详情）。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -427,82 +287,39 @@ impl Refused {
 /// 理由是「一次往返」：一次查询可以命中五万多条，一次全推过去就不再是零流量搜索。截断时 `truncated` 与 `total_hits` 会说出来。
 pub const DEFAULT_LIMIT: usize = 1000;
 
-fn limit_of(args: &serde_json::Value) -> usize {
-    match args.get("limit").and_then(serde_json::Value::as_u64) {
+fn limit_of(limit: Option<u64>) -> usize {
+    match limit {
         Some(n) if n > 0 => n as usize,
         _ => DEFAULT_LIMIT,
     }
 }
 
-fn path_arg(args: &serde_json::Value) -> Result<std::path::PathBuf, (&'static str, String)> {
-    let v = args.get("path").ok_or_else(|| {
-        (
-            "bad_path",
-            crate::common::contract::malformed("missing `path` (a string or {\"b16\": \"<hex>\"})"),
-        )
-    })?;
-    let bytes = raw::from_json(v).ok_or_else(|| {
-        (
-            "bad_path",
-            crate::common::contract::malformed("`path` must be a string or {\"b16\": \"<hex>\"}"),
-        )
-    })?;
-    if bytes.is_empty() {
+/// 入参里的一个路径 ⇒ `PathBuf`。形状在解入参那一步就判过了（字符串或 `{"b16": …}`）；这里只拒空的。
+fn path_of(p: &WirePath, which: &str) -> Result<std::path::PathBuf, (&'static str, String)> {
+    if p.0.is_empty() {
         return Err((
             "bad_path",
-            crate::common::contract::malformed("`path` is empty"),
+            crate::common::contract::malformed(&format!("`{which}` is empty")),
         ));
     }
-    Ok(raw::to_path_buf(&bytes))
+    Ok(raw::to_path_buf(&p.0))
 }
 
-/// `files.browse` 的 `dirs` —— 一个数组，每项与 [`path_arg`] 同那两种形。
-///
-/// # 🔴 两个码刻意分得开
-///
-/// `dirs` **自己**的形状不对（少了它 / 不是数组）是 `bad_args`；数组里**某一项**
-/// 不是一个路径是 `bad_path`（与 `files.ls` / `files.stat` 同一个码、同一条
-/// 「刻意不尽力而为地猜」的理由）。压成一句会让调用方分不清该改哪一头。
+/// `files.browse` 的 `dirs`：每项同 [`path_of`]。
 ///
 /// ⚠ **空数组是合法的**，语义是「用户现在什么都没在看」⇒ 名单清空。
-/// 「少了 `dirs`」与「`dirs` 是空的」**是两件事**：前者是调用方漏了参数，
+/// 「少了 `dirs`」（解入参那一步回 `bad_args`）与「`dirs` 是空的」**是两件事**：前者是调用方漏了参数，
 /// 后者是它真的要卸掉全部 —— 静默地把前者当后者办，就是悄悄把 watch 全拆了。
-fn dirs_arg(args: &serde_json::Value) -> Result<Vec<std::path::PathBuf>, (&'static str, String)> {
-    let v = args.get("dirs").ok_or_else(|| {
-        (
-        "bad_args",
-        crate::common::contract::malformed(
-            "missing `dirs` (an array of strings or {\"b16\": \"<hex>\"}; empty array is valid)",
-        ),
-    )
-    })?;
-    let arr = v.as_array().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(
-                "`dirs` must be an array (the whole current list, not a delta)",
-            ),
-        )
-    })?;
-    let mut out: Vec<std::path::PathBuf> = Vec::new();
-    for (i, item) in arr.iter().enumerate() {
-        let bytes = raw::from_json(item).ok_or_else(|| {
-            (
-                "bad_path",
-                crate::common::contract::malformed(&format!(
-                    "`dirs[{i}]` must be a string or {{\"b16\": \"<hex>\"}}"
-                )),
-            )
-        })?;
-        if bytes.is_empty() {
-            return Err((
-                "bad_path",
-                crate::common::contract::malformed(&format!("`dirs[{i}]` is empty")),
-            ));
-        }
-        out.push(raw::to_path_buf(&bytes));
-    }
-    Ok(out)
+fn dirs_of(dirs: &[WirePath]) -> Result<Vec<std::path::PathBuf>, (&'static str, String)> {
+    dirs.iter()
+        .enumerate()
+        .map(|(i, d)| path_of(d, &format!("dirs[{i}]")))
+        .collect()
+}
+
+/// 本族的回包里一个路径（原始字节）。
+fn wire_path(b: &[u8]) -> WirePath {
+    WirePath(b.to_vec())
 }
 
 /// 一个时刻换成 Unix 纪元秒。
@@ -517,31 +334,34 @@ fn epoch_secs(t: std::io::Result<std::time::SystemTime>) -> Option<u64> {
         .map(|d| d.as_secs())
 }
 
-/// 一个条目的类型名。**闭集四个词**，判据按它对拍。
+/// 一个条目的类型（闭集四个，住 [`FileKind`]）。
 ///
 /// ⚠ 参数是三个 `bool` 而不是那个类型，理由同 [`epoch_secs`]。
-fn kind_name(is_dir: bool, is_file: bool, is_symlink: bool) -> &'static str {
+fn kind_of(is_dir: bool, is_file: bool, is_symlink: bool) -> FileKind {
     if is_dir {
-        "dir"
+        FileKind::Dir
     } else if is_file {
-        "file"
+        FileKind::File
     } else if is_symlink {
-        "symlink"
+        FileKind::Symlink
     } else {
-        "other"
+        FileKind::Other
     }
 }
 
-/// 这一族认得的类型名 —— **闭集，唯一住址**。判据按它对拍 [`kind_name`] 的出口。
-pub const KINDS: &[&str] = &["dir", "file", "other", "symlink"];
-
 /// 索引里的类型字节（`query::KIND_*`）→ 线上那个词。
-const KINDS_BY_CODE: [&str; 4] = ["file", "dir", "symlink", "other"];
+const KINDS_BY_CODE: [FileKind; 4] = [
+    FileKind::File,
+    FileKind::Dir,
+    FileKind::Symlink,
+    FileKind::Other,
+];
 
-/// `files.ls` —— 列一个目录的直接子项。
-fn answer_ls(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
-    let dir = path_arg(args)?;
-    let limit = limit_of(args);
+/// `files.ls` —— 列一个目录的直接子项。`dirs_only` ⇒ 只列文件夹（含指向目录的链接），截断与计数都只数文件夹。
+fn ls(req: wire::LsReq, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
+    let dir = path_of(&req.path, "path")?;
+    let limit = limit_of(req.limit);
+    let dirs_only = req.dirs_only.unwrap_or(false);
     // 打不开的原因分几种码（界面按码说「路径不存在 / 无权限 / 不是目录」，系统原话进详情）。
     let rd = Ro::read_dir(&dir).map_err(|e| {
         let code = match e.kind() {
@@ -559,55 +379,68 @@ fn answer_ls(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
             &e,
         )
     })?;
-    let mut entries: Vec<serde_json::Value> = Vec::new();
-    let mut seen = 0usize;
+    let mut entries: Vec<wire::LsEntry> = Vec::new();
+    let mut seen = 0u64;
     // 读不出的项照数（不静默少一项）：窗口按 `unreadable` 说一句。
     let mut unreadable = 0usize;
     for e in readable(rd, &mut unreadable) {
-        seen += 1;
-        if entries.len() >= limit {
-            continue;
-        }
-        let mut row = serde_json::Map::new();
-        row.insert("path".to_string(), raw::to_json(raw::path_bytes(&e.path())));
         // 🔴 类型走 `DirEntry::file_type()`：它**不跟 symlink**
         //（Linux 上直接来自目录项里的 d_type），所以指向别处的链接不会被当成它的目标。
         let kind = e
             .file_type()
-            .map(|t| kind_name(t.is_dir(), t.is_file(), t.is_symlink()))
-            .unwrap_or("other");
-        row.insert(
-            "kind".to_string(),
-            serde_json::Value::String(kind.to_string()),
-        );
-        if let Ok(md) = Ro::metadata(e.path()) {
-            row.insert("size".to_string(), serde_json::json!(md.len()));
+            .map(|t| kind_of(t.is_dir(), t.is_file(), t.is_symlink()))
+            .unwrap_or(FileKind::Other);
+        // 只列文件夹时，链接要跟一次才知道指向的是不是目录；别的行等进了这一屏再读元数据（截掉的不读）。
+        let link_md = (dirs_only && kind == FileKind::Symlink)
+            .then(|| Ro::metadata(e.path()).ok())
+            .flatten();
+        if dirs_only && kind != FileKind::Dir && !link_md.as_ref().is_some_and(|m| m.is_dir()) {
+            continue;
+        }
+        seen += 1;
+        if entries.len() >= limit {
+            continue;
+        }
+        let md = link_md.or_else(|| Ro::metadata(e.path()).ok());
+        let mut row = wire::LsEntry {
+            path: wire_path(raw::path_bytes(&e.path())),
+            kind,
+            size: None,
+            mtime_secs: None,
+            mtime_text: None,
+            mtime_full: None,
+            link_dir: None,
+            link_to: None,
+        };
+        if let Some(md) = md {
+            row.size = Some(md.len());
             if let Some(t) = epoch_secs(md.modified()) {
-                row.insert("mtime_secs".to_string(), serde_json::json!(t));
                 let (short, full) = crate::common::time::mtime_texts_now(t, tz);
-                row.insert("mtime_text".to_string(), serde_json::json!(short));
-                row.insert("mtime_full".to_string(), serde_json::json!(full));
+                row.mtime_secs = Some(t);
+                row.mtime_text = Some(short);
+                row.mtime_full = Some(full);
             }
             // 链接指向的是不是目录（跟链接那一次 `metadata` 顺带的）：窗口据此给「打开」。断链不出这一格。
-            if kind == "symlink" {
-                row.insert("link_dir".to_string(), serde_json::json!(md.is_dir()));
-                row.insert(
-                    "link_to".to_string(),
-                    serde_json::json!(if md.is_dir() { "dir" } else { "file" }),
-                );
+            if kind == FileKind::Symlink {
+                row.link_dir = Some(md.is_dir());
+                row.link_to = Some(if md.is_dir() {
+                    wire::LinkTo::Dir
+                } else {
+                    wire::LinkTo::File
+                });
             }
-        } else if kind == "symlink" {
+        } else if kind == FileKind::Symlink {
             // 跟不过去 ⇒ 断了的链接（指向的东西不在 / 读不到）。
-            row.insert("link_to".to_string(), serde_json::json!("missing"));
+            row.link_to = Some(wire::LinkTo::Missing);
         }
-        entries.push(serde_json::Value::Object(row));
+        entries.push(row);
     }
-    Ok(serde_json::json!({
-        "entries": entries,
-        "truncated": seen > entries.len(),
-        "total": seen,
-        "unreadable": unreadable,
-    }))
+    Ok(wire::LsReply {
+        truncated: seen > entries.len() as u64,
+        entries,
+        total: seen,
+        unreadable: unreadable as u64,
+    })
 }
 
 /// 目录项里读得出的那几条；读不出的数进 `unreadable`（不静默跳过）。
@@ -627,8 +460,8 @@ where
 
 /// `files.stat` —— 一个路径的元数据。它跟 symlink（拿链接指向的那个东西的元数据）：不跟的读法是另一个动词（`Ro::symlink_metadata`），
 /// 这一条不用它。需要区分链接本身时，先用 `files.ls` 看它父目录那一行的 `kind`。
-fn answer_stat(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
-    let path = path_arg(args)?;
+fn stat(req: wire::StatReq, tz: &crate::common::time::Tz) -> Answer<wire::StatReply> {
+    let path = path_of(&req.path, "path")?;
     let md = Ro::metadata(&path).map_err(|e| {
         Refused::with_raw(
             "unreadable",
@@ -639,138 +472,61 @@ fn answer_stat(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer
             &e,
         )
     })?;
-    let mut out = serde_json::Map::new();
-    out.insert("path".to_string(), raw::to_json(raw::path_bytes(&path)));
     let t = md.file_type();
-    out.insert(
-        "kind".to_string(),
-        serde_json::Value::String(kind_name(t.is_dir(), t.is_file(), t.is_symlink()).to_string()),
-    );
-    out.insert("size".to_string(), serde_json::json!(md.len()));
-    out.insert(
-        "readonly".to_string(),
-        serde_json::json!(md.permissions().readonly()),
-    );
-    // unix 权限位（低 12 位：rwx×3 ＋ setuid / setgid / sticky）—— 同一次 `metadata`、同样跟链接，
-    //   与本条其余几格同源。非 unix 平台**缺席**（不是 0：0 是一个真能设的权限值，报 0 等于说假话）；
-    //   那边改权限本来就回 `no_unix_mode`（`control/files_write.rs::change_mode`）。
-    if let Some(mode) = crate::platform::fs::Ro::mode(&md) {
-        out.insert("mode".to_string(), serde_json::json!(mode & 0o7777));
-    }
-    if let Some(ms) = epoch_secs(md.modified()) {
-        out.insert("mtime_secs".to_string(), serde_json::json!(ms));
-        let (short, full) = crate::common::time::mtime_texts_now(ms, tz);
-        out.insert("mtime_text".to_string(), serde_json::json!(short));
-        out.insert("mtime_full".to_string(), serde_json::json!(full));
-    }
-    // 属主（跟链接，同上几格）：用户名，查不到名字给 uid 数字串；非 unix 给 `null`。
-    out.insert(
-        "owner".to_string(),
-        serde_json::json!(crate::platform::paths::owner_of(&path)),
-    );
-    // 路径**本身**是不是链接（`readlink` 读得出 ⇒ 是）：是 ⇒ 目标原文（原始字节形）；否 ⇒ `null`。
-    out.insert(
-        "link_target".to_string(),
-        crate::platform::paths::link_target_of(&path).map_or(serde_json::Value::Null, |t| {
-            raw::to_json(raw::path_bytes(&t))
-        }),
-    );
-    Ok(serde_json::Value::Object(out))
+    let mtime = epoch_secs(md.modified());
+    let texts = mtime.map(|ms| crate::common::time::mtime_texts_now(ms, tz));
+    Ok(wire::StatReply {
+        path: wire_path(raw::path_bytes(&path)),
+        kind: kind_of(t.is_dir(), t.is_file(), t.is_symlink()),
+        size: md.len(),
+        readonly: md.permissions().readonly(),
+        // unix 权限位（低 12 位：rwx×3 ＋ setuid / setgid / sticky）—— 同一次 `metadata`、同样跟链接，
+        //   与本条其余几格同源。非 unix 平台**缺席**（不是 0：0 是一个真能设的权限值，报 0 等于说假话）；
+        //   那边改权限本来就回 `no_unix_mode`（`control/files_write.rs::change_mode`）。
+        mode: crate::platform::fs::Ro::mode(&md).map(|m| m & 0o7777),
+        mtime_secs: mtime,
+        mtime_text: texts.as_ref().map(|t| t.0.clone()),
+        mtime_full: texts.map(|t| t.1),
+        // 属主（跟链接，同上几格）：用户名，查不到名字给 uid 数字串；非 unix 给 `null`。
+        owner: crate::platform::paths::owner_of(&path),
+        // 路径**本身**是不是链接（`readlink` 读得出 ⇒ 是）：是 ⇒ 目标原文（原始字节形）；否 ⇒ `null`。
+        link_target: crate::platform::paths::link_target_of(&path)
+            .map(|t| wire_path(raw::path_bytes(&t))),
+    })
 }
-
 /// `files.find` —— 在常驻索引里查。**只回送命中。**
 ///
 /// `query` 是窗口原样发来的搜索词（解析只在 [`query::parse`]）；`seq` ＋ `stream` 让同一个搜索框的旧那一趟收手；
 /// `under` 给了 ⇒ 只搜那个目录底下，不给 ⇒ 家目录；`offset` / `limit` 只回这一屏。
-fn answer_find(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
-    let q = args
-        .get("query")
-        .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("missing `query` (a string)"),
-            )
-        })?;
-    let matcher = query::parse(q).map_err(|e| ("bad_query", e.said()))?;
-    let under = match args.get("under") {
-        None | Some(serde_json::Value::Null) => None,
-        Some(v) => Some(raw::from_json(v).filter(|b| !b.is_empty()).ok_or_else(|| {
-            (
-                "bad_path",
-                crate::common::contract::malformed(
-                    "`under` must be a non-empty string or {\"b16\": \"<hex>\"}",
-                ),
-            )
-        })?),
+fn find(req: wire::FindReq, tz: &crate::common::time::Tz) -> Answer<wire::FindReply> {
+    let matcher = query::parse(&req.query).map_err(|e| ("bad_query", e.said()))?;
+    let under = match &req.under {
+        None => None,
+        Some(p) => {
+            path_of(p, "under")?;
+            Some(p.0.clone())
+        }
     };
-    let seq = match args.get("seq") {
-        None | Some(serde_json::Value::Null) => None,
-        Some(v) => Some(v.as_u64().ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed("`seq` must be a non-negative integer"),
-            )
-        })?),
-    };
-    let stream = args
-        .get("stream")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("");
-    let offset = args
-        .get("offset")
-        .and_then(serde_json::Value::as_u64)
-        .unwrap_or(0) as usize;
+    let offset = req.offset.unwrap_or(0) as usize;
     let superseded = || {
         (
             "superseded",
             copy_core::copy_text("beFilesRead.find.superseded", &[]),
         )
     };
-    let ticket = match seq {
-        Some(n) => Some(index::ticket(stream, n).map_err(|_| superseded())?),
+    let ticket = match req.seq {
+        Some(n) => {
+            Some(index::ticket(req.stream.as_deref().unwrap_or(""), n).map_err(|_| superseded())?)
+        }
         None => None,
     };
+    let sort_key = req.sort.unwrap_or(wire::FindSort::Relevance);
     let sort = index::Sort {
-        key: match args.get("sort") {
-            None | Some(serde_json::Value::Null) => index::SortKey::default(),
-            Some(v) => v
-                .as_str()
-                .and_then(index::SortKey::from_wire)
-                .ok_or_else(|| {
-                    (
-                        "bad_args",
-                        crate::common::contract::malformed(&format!(
-                            "`sort` must be one of {}",
-                            index::SortKey::WIRE.join(" / ")
-                        )),
-                    )
-                })?,
-        },
-        desc: match args.get("desc") {
-            None | Some(serde_json::Value::Null) => false,
-            Some(v) => v.as_bool().ok_or_else(|| {
-                (
-                    "bad_args",
-                    crate::common::contract::malformed("`desc` must be a boolean"),
-                )
-            })?,
-        },
+        key: index::SortKey::of_wire(sort_key),
+        desc: req.desc.unwrap_or(false),
     };
     // 「整台机器」：范围由这台自己定（文件系统的根），界面不猜平台。
-    let machine = match args.get("scope") {
-        None | Some(serde_json::Value::Null) => false,
-        Some(v) => match v.as_str() {
-            Some("under") => false,
-            Some("machine") => true,
-            _ => {
-                return Err(Refused::from((
-                    "bad_args",
-                    crate::common::contract::malformed("`scope` must be \"under\" or \"machine\""),
-                )));
-            }
-        },
-    };
+    let machine = req.scope == Some(wire::FindScope::Machine);
     let home = home_var().map(std::path::PathBuf::from);
     let root = machine.then(|| machine_root(home.as_deref()));
     let under = root.or(under);
@@ -779,45 +535,51 @@ fn answer_find(args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer
         under: under.as_deref(),
         home: home.as_deref().map(raw::path_bytes),
         offset,
-        limit: limit_of(args),
+        limit: limit_of(req.limit),
         ticket: ticket.as_ref(),
         sort,
     })
     .map_err(|_| superseded())?;
-    let path_or_null = |p: &Option<Vec<u8>>| match p {
-        Some(b) => raw::to_json(b),
-        None => serde_json::Value::Null,
-    };
     let start = under
         .clone()
         .or_else(|| home.as_deref().map(|h| raw::path_bytes(h).to_vec()));
-    Ok(serde_json::json!({
-        "hits": r.hits.iter().map(|h| serde_json::json!({
-            "path": raw::to_json(&h.path),
-            "kind": KINDS_BY_CODE.get(h.kind as usize).copied().unwrap_or("other"),
-            "location": raw::to_json(index::location_of(&h.path, start.as_deref())),
-            "size": h.meta.size,
-            "mtime_secs": h.meta.mtime_secs,
-            "mtime_text": h.meta.mtime_secs.map(|t| crate::common::time::mtime_texts_now(t, tz).0),
-            "marks": matcher.marks(&h.path).iter().map(|(a, b)| [a, b]).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
-        "start": path_or_null(&start),
-        "sort": sort.key.wire(),
-        "desc": sort.desc,
-        "total_hits": r.total_hits,
-        "truncated": r.truncated,
-        "scanned": r.scanned,
-        "index_age_secs": r.index_age_secs,
-        "index_missing": r.index_missing,
-        "stale": r.stale,
-        "index_root": path_or_null(&r.index_root),
-        "out_of_index": r.out_of_index,
-        "cover_root": path_or_null(&r.cover_root),
-        "seq": seq,
-        "offset": offset,
-    }))
+    let pairs = |v: &[(usize, usize)]| v.iter().map(|(a, b)| [*a as u64, *b as u64]).collect();
+    Ok(wire::FindReply {
+        hits: r
+            .hits
+            .iter()
+            .map(|h| wire::FilesFindHit {
+                path: wire_path(&h.path),
+                kind: KINDS_BY_CODE
+                    .get(h.kind as usize)
+                    .copied()
+                    .unwrap_or(FileKind::Other),
+                location: wire_path(index::location_of(&h.path, start.as_deref())),
+                size: h.meta.size,
+                mtime_secs: h.meta.mtime_secs,
+                mtime_text: h
+                    .meta
+                    .mtime_secs
+                    .map(|t| crate::common::time::mtime_texts_now(t, tz).0),
+                marks: pairs(&matcher.marks(&h.path)),
+            })
+            .collect(),
+        start: start.as_deref().map(wire_path),
+        sort: sort_key,
+        desc: sort.desc,
+        total_hits: r.total_hits as u64,
+        truncated: r.truncated,
+        scanned: r.scanned as u64,
+        index_age_secs: r.index_age_secs,
+        index_missing: r.index_missing,
+        stale: r.stale,
+        index_root: r.index_root.as_deref().map(wire_path),
+        out_of_index: r.out_of_index,
+        cover_root: r.cover_root.as_deref().map(wire_path),
+        seq: req.seq,
+        offset: offset as u64,
+    })
 }
-
 /// `path` 相对 `root` 那一段（不在它底下 ⇒ 原样；就是它 ⇒ 最后一段名字）。
 fn rel_to<'p>(path: &'p [u8], root: &[u8]) -> &'p [u8] {
     let sep = |b: u8| b == b'/' || (cfg!(windows) && b == b'\\');
@@ -859,23 +621,23 @@ fn machine_root(home: Option<&std::path::Path>) -> Vec<u8> {
 }
 
 /// `files.index.status` —— 新鲜度 ／ 条目数 ／ 常驻字节 ／ **声明的重走周期**。
-fn answer_status() -> Answer {
+fn index_status() -> wire::IndexStatusReply {
     let s = index::status();
-    Ok(serde_json::json!({
-        "index_missing": s.index_missing,
-        "entries": s.entries,
-        "resident_bytes": s.resident_bytes,
-        "unreadable_dirs": s.unreadable_dirs,
-        "unreadable_paths": unreadable_paths_json(),
-        "truncated": s.truncated,
-        "skipped_mounts": s.skipped_mounts,
-        "age_secs": s.age_secs,
-        "rewalk_interval_secs": s.rewalk_interval_secs,
-        "stale": s.stale,
-        "browse_watches": s.browse_watches,
-        "browse_watch_cap": s.browse_watch_cap,
-        "cold_first_build_secs": s.cold_first_build_secs,
-    }))
+    wire::IndexStatusReply {
+        index_missing: s.index_missing,
+        entries: s.entries as u64,
+        resident_bytes: s.resident_bytes as u64,
+        unreadable_dirs: s.unreadable_dirs as u64,
+        unreadable_paths: unreadable_paths(),
+        truncated: s.truncated,
+        skipped_mounts: s.skipped_mounts as u64,
+        age_secs: s.age_secs,
+        rewalk_interval_secs: s.rewalk_interval_secs,
+        stale: s.stale,
+        browse_watches: s.browse_watches as u64,
+        browse_watch_cap: s.browse_watch_cap as u64,
+        cold_first_build_secs: s.cold_first_build_secs,
+    }
 }
 
 /// `files.index.rebuild` —— 走一遍，就一遍，做完返回。
@@ -884,19 +646,17 @@ fn answer_status() -> Answer {
 /// 而 [`index::rebuild_once`] 会把常驻那一份整份换掉 ⇒ 路径打错一个字母，好索引就被空的顶掉、回参还像一次成功的重走。
 /// 所以换之前先探一次根，打不开回 `unreadable`（判据：换之前的条目数 == 被拒之后的条目数）。
 /// 根底下读不进去的子目录照旧落在 `unreadable_dirs` 里（不是 0 就说明这份索引有洞）。
-fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
-    // 不给 `path` ⇒ 这台机器的家目录（默认的根）。
-    let root = match args.get("path") {
-        None | Some(serde_json::Value::Null) => home_var()
+fn index_rebuild(req: wire::RebuildReq) -> Answer<wire::RebuildReply> {
+    let root = match &req.path {
+        None => home_var()
             .map(std::path::PathBuf::from)
             .filter(|p| p.is_absolute())
             .ok_or((
                 "no_home",
                 copy_core::copy_text("beFilesRead.rebuild.noHome", &[]),
             ))?,
-        Some(_) => path_arg(args)?,
+        Some(p) => path_of(p, "path")?,
     };
-    // 只要「打不打得开」这一个答案 —— 句柄拿到就丢，一条目录项都不读。
     Ro::read_dir(&root).map_err(|e| {
         Refused::with_raw(
             "unreadable",
@@ -907,8 +667,6 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
             &e,
         )
     })?;
-    // 「有一趟已经在跑」（`rebuild_once` 非阻塞互斥、抢不到回 `None`）走错误码 `already_rebuilding`，不走带 `skipped` 的成功回参：
-    // 那样「没走」与「走完了但树是空的」在结构上就分不开。
     let stats = index::rebuild_once(&root).ok_or_else(|| {
         (
             "already_rebuilding",
@@ -918,22 +676,22 @@ fn answer_index_rebuild(args: &serde_json::Value) -> Answer {
             ),
         )
     })?;
-    Ok(serde_json::json!({
-        "path": raw::to_json(raw::path_bytes(&root)),
-        "entries": stats.entries,
-        "resident_bytes": stats.resident_bytes,
-        "unreadable_dirs": stats.unreadable_dirs,
-        "unreadable_paths": unreadable_paths_json(),
-        "truncated": stats.truncated,
-        "skipped_mounts": stats.skipped_mounts,
-    }))
+    Ok(wire::RebuildReply {
+        path: wire_path(raw::path_bytes(&root)),
+        entries: stats.entries as u64,
+        resident_bytes: stats.resident_bytes as u64,
+        unreadable_dirs: stats.unreadable_dirs as u64,
+        unreadable_paths: unreadable_paths(),
+        truncated: stats.truncated,
+        skipped_mounts: stats.skipped_mounts as u64,
+    })
 }
 
-/// 常驻那一份里读不进去的那几个目录，线上形（合法 UTF-8 ⇒ 字符串，否则 `{"b16": …}`）。
-fn unreadable_paths_json() -> Vec<serde_json::Value> {
+/// 常驻索引里读不进去的那几个目录（前 20 个）。
+fn unreadable_paths() -> Vec<WirePath> {
     index::unreadable_paths()
-        .iter()
-        .map(|b| raw::to_json(b))
+        .into_iter()
+        .map(WirePath)
         .collect()
 }
 
@@ -943,22 +701,20 @@ fn unreadable_paths_json() -> Vec<serde_json::Value> {
 /// [`browse_watch::keep_watching`] 让进程里那一个监听器跟上名单 ⇒ 浏览的目录此后一有动静 overlay 就跟着重列。
 /// 买不到：watch 绑 inode 不绑路径 · 内核队列溢出 · 窗口关了没人发空名单（最后那份名单的 watch 留到下一次）。
 /// `rejected` 必须跟着回去，并同拍带上 `browse_watch_cap`：只回一个数、不说上限，调用方没法判该少送几个。
-fn answer_browse(args: &serde_json::Value) -> Answer {
-    let dirs = dirs_arg(args)?;
+fn browse(req: wire::BrowseReq) -> Answer<wire::BrowseReply> {
+    let dirs = dirs_of(&req.dirs)?;
     let applied = browse_watch::set_browsing(&dirs);
-    // 名单登记了之后让进程里那一个监听器跟上。
     let w = browse_watch::keep_watching();
-    Ok(serde_json::json!({
-        "added": applied.added,
-        "removed": applied.removed,
-        "rejected": applied.rejected,
-        "browse_watch_cap": browse_watch::MAX_BROWSE_WATCHES,
-        "watching": w.watching,
-        "watch_failed": w.failed,
-        "watch_error": w.error,
-    }))
+    Ok(wire::BrowseReply {
+        added: applied.added as u64,
+        removed: applied.removed as u64,
+        rejected: applied.rejected as u64,
+        browse_watch_cap: browse_watch::MAX_BROWSE_WATCHES as u64,
+        watching: w.watching as u64,
+        watch_failed: w.failed as u64,
+        watch_error: w.error,
+    })
 }
-
 /// `files.read.text` 一趟**最多**肯交多少字节 —— 后端自己的天花板，**不是**编辑上限。
 ///
 /// # 🔴 两个数，两个住址，两件事（别把它读成「编辑上限的第二份」）
@@ -982,7 +738,7 @@ pub use crate::common::digest::{ContentDigest, SHA256_HEX_LEN};
 
 /// 一份字节的 SHA-256，64 位小写十六进制 —— CAS 摘要形 `expect: {"sha256": …}` 整份那一形（算法本身住 `common/digest.rs`）。
 ///
-/// 读的那一趟（[`answer_read_text`]）对交出去的字节算它；写面（`control/files_write.rs::overwrite_text_expecting`）
+/// 读的那一趟（[`read_text`]）对交出去的字节算它；写面（`control/files_write.rs::overwrite_text_expecting`）
 /// 拿它比「盘上此刻那一份」、写成之后对新内容再算一次交回去。住读族这一侧，是因为读族不许伸手进写面
 /// （写面只有 `stream/inbound/` 一扇门），反过来写面借读族一个纯函数不开新门。
 pub fn content_sha256(bytes: &[u8]) -> String {
@@ -1008,21 +764,10 @@ pub fn file_sha256(path: &std::path::Path) -> std::io::Result<String> {
 
 /// `files.read.chunk`：`{path, offset, len}` → `{path, offset, size, eof, content: {b16}}`。
 /// 只读普通文件（不是 ⇒ `not_text`，与读族同一个码）；`offset` 越过末尾 ⇒ 空块、`eof: true`。
-fn answer_read_chunk(args: &serde_json::Value) -> Answer {
+fn read_chunk(req: wire::ReadChunkReq) -> Answer<wire::ReadChunkReply> {
     use std::io::{Read as _, Seek as _};
-    let path = path_arg(args)?;
-    let num = |v: Option<&serde_json::Value>, k: &str| {
-        v.and_then(serde_json::Value::as_u64).ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(&format!(
-                    "missing `{k}` (non-negative integer)"
-                )),
-            )
-        })
-    };
-    let offset = num(args.get("offset"), "offset")?;
-    let len = num(args.get("len"), "len")?;
+    let path = path_of(&req.path, "path")?;
+    let (offset, len) = (req.offset, req.len);
     if len == 0 || len > READ_CHUNK_MAX_BYTES {
         return Err(Refused::from((
             "bad_args",
@@ -1071,13 +816,13 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
     let mut buf: Vec<u8> = Vec::new();
     f.take(len).read_to_end(&mut buf).map_err(broke)?;
     let size = md.len();
-    Ok(serde_json::json!({
-        "path": raw::to_json(raw::path_bytes(&path)),
-        "offset": offset,
-        "size": size,
-        "eof": offset + buf.len() as u64 >= size,
-        "content": { "b16": buf.iter().map(|b| format!("{b:02x}")).collect::<String>() },
-    }))
+    Ok(wire::ReadChunkReply {
+        path: wire_path(raw::path_bytes(&path)),
+        offset,
+        size,
+        eof: offset + buf.len() as u64 >= size,
+        content: wire::HexBytes(buf),
+    })
 }
 
 /// `files.read.text` —— 读一份文本。超上限整趟拒，不截断（截断过的文本存回去会写坏文件）。
@@ -1089,19 +834,9 @@ fn answer_read_chunk(args: &serde_json::Value) -> Answer {
 /// | `unreadable` | 读不到（不存在 / 没权限）|
 ///
 /// 大小判两次：`stat` 与真读之间文件可以被换大，第二道用 `take(max + 1)` 读 —— 最多多读一个字节就知道「超了」。
-fn answer_read_text(args: &serde_json::Value) -> Answer {
-    let path = path_arg(args)?;
-    let max = args
-        .get("max_bytes")
-        .and_then(serde_json::Value::as_u64)
-        .ok_or_else(|| {
-            (
-                "bad_args",
-                crate::common::contract::malformed(
-                    "missing `max_bytes` (non-negative integer, required every call)",
-                ),
-            )
-        })?;
+fn read_text(req: wire::ReadTextReq) -> Answer<wire::ReadTextReply> {
+    let path = path_of(&req.path, "path")?;
+    let max = req.max_bytes;
     if max == 0 || max > READ_TEXT_MAX_BYTES as u64 {
         return Err(Refused::from((
             "bad_args",
@@ -1184,17 +919,17 @@ fn answer_read_text(args: &serde_json::Value) -> Answer {
             ),
         )
     })?;
-    Ok(serde_json::json!({
-        "path": raw::to_json(raw::path_bytes(&path)),
-        "text": text,
-        "bytes": n,
-        "sha256": sha256,
-    }))
+    Ok(wire::ReadTextReply {
+        path: wire_path(raw::path_bytes(&path)),
+        text,
+        bytes: n as u64,
+        sha256,
+    })
 }
 
 /// `files.size` —— 走法与诚实边界住 [`size`] 头注。
-fn answer_size(args: &serde_json::Value) -> Answer {
-    let path = path_arg(args)?;
+fn size_of(req: wire::SizeReq) -> Answer<wire::SizeReply> {
+    let path = path_of(&req.path, "path")?;
     let m = size::measure(&path).map_err(|e| {
         Refused::with_raw(
             "unreadable",
@@ -1205,16 +940,16 @@ fn answer_size(args: &serde_json::Value) -> Answer {
             &e,
         )
     })?;
-    Ok(serde_json::json!({
-        "path": raw::to_json(raw::path_bytes(&path)),
-        "bytes": m.bytes,
-        "files": m.files,
-        "dirs": m.dirs,
-        "links": m.links,
-        "other": m.other,
-        "skipped_mounts": m.skipped_mounts,
-        "unreadable_dirs": m.unreadable_dirs,
-    }))
+    Ok(wire::SizeReply {
+        path: wire_path(raw::path_bytes(&path)),
+        bytes: m.bytes,
+        files: m.files,
+        dirs: m.dirs,
+        links: m.links,
+        other: m.other,
+        skipped_mounts: m.skipped_mounts,
+        unreadable_dirs: m.unreadable_dirs,
+    })
 }
 
 /// 后端这个进程的用户 home（环境里那一格，原样）。空串算没有。与 SFTP 那一问（`realpath(".")`）是同一个答案的两个出处
@@ -1223,20 +958,13 @@ fn home_var() -> Option<std::ffi::OsString> {
     crate::platform::paths::home_dir().map(std::path::PathBuf::into_os_string)
 }
 
-/// `files.grep` 的入参：`{path, needle, ignore_ascii_case?, limit?}`。`needle` 与 `path` 同两种形（字符串 / `{"b16"}`），
+/// `files.grep` 的入参：`needle` 与 `path` 同两种形（字符串 / `{"b16"}`），
 /// 非空、至多 [`grep::NEEDLE_MAX_BYTES`] 字节；`limit` 缺省 [`grep::DEFAULT_LIMIT`]、至多 [`grep::MAX_LIMIT`]。
 fn grep_args(
-    args: &serde_json::Value,
+    req: &wire::GrepReq,
 ) -> Result<(std::path::PathBuf, grep::GrepArgs), (&'static str, String)> {
-    let path = path_arg(args)?;
-    let needle = args.get("needle").and_then(raw::from_json).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed(
-                "missing `needle` (a string or {\"b16\": \"<hex>\"})",
-            ),
-        )
-    })?;
+    let path = path_of(&req.path, "path")?;
+    let needle = req.needle.0.clone();
     if needle.is_empty() || needle.len() > grep::NEEDLE_MAX_BYTES {
         return Err((
             "bad_args",
@@ -1246,7 +974,7 @@ fn grep_args(
             )),
         ));
     }
-    let limit = match args.get("limit").and_then(serde_json::Value::as_u64) {
+    let limit = match req.limit {
         Some(n) if n > 0 => (n as usize).min(grep::MAX_LIMIT),
         _ => grep::DEFAULT_LIMIT,
     };
@@ -1254,47 +982,52 @@ fn grep_args(
         path,
         grep::GrepArgs {
             needle,
-            ignore_ascii_case: args
-                .get("ignore_ascii_case")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(false),
+            ignore_ascii_case: req.ignore_ascii_case.unwrap_or(false),
             limit,
         },
     ))
 }
 
 /// `files.grep` 的成品（见 [`grep`] 头注）。
-fn grep_reply(top: &std::path::Path, limit: usize, g: &grep::Grepped) -> serde_json::Value {
-    let stopped = match g.stopped {
-        grep::Stopped::Hits => serde_json::json!("hits"),
-        grep::Stopped::Bytes => serde_json::json!("bytes"),
-        grep::Stopped::Done | grep::Stopped::Cancelled => serde_json::Value::Null,
-    };
-    serde_json::json!({
-        "path": raw::to_json(raw::path_bytes(top)),
-        "hits": g.hits.iter().map(|h| serde_json::json!({
-            "path": raw::to_json(&h.path),
-            "rel": raw::to_json(rel_to(&h.path, raw::path_bytes(top))),
-            "line": h.line,
-            "text": raw::to_json(&h.text),
-            "matches": h.matches,
-            "lines": h.lines.iter().map(|l| serde_json::json!({
-                "line": l.line,
-                "text": raw::to_json(&l.text),
-                "marks": l.mark.iter().map(|(a, b)| [a, b]).collect::<Vec<_>>(),
-            })).collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
-        "files": g.files,
-        "bytes": g.bytes,
-        "links": g.links,
-        "skipped_binary": g.skipped_binary,
-        "skipped_large": g.skipped_large,
-        "skipped_mounts": g.skipped_mounts,
-        "unreadable": g.unreadable,
-        "limit": limit,
-        "truncated": matches!(g.stopped, grep::Stopped::Hits | grep::Stopped::Bytes),
-        "stopped": stopped,
-    })
+fn grep_reply(top: &std::path::Path, limit: usize, g: &grep::Grepped) -> wire::GrepReply {
+    let top_bytes = raw::path_bytes(top);
+    wire::GrepReply {
+        path: wire_path(top_bytes),
+        hits: g
+            .hits
+            .iter()
+            .map(|h| wire::GrepHit {
+                path: wire_path(&h.path),
+                rel: wire_path(rel_to(&h.path, top_bytes)),
+                line: h.line,
+                text: wire_path(&h.text),
+                matches: h.matches,
+                lines: h
+                    .lines
+                    .iter()
+                    .map(|l| wire::GrepLine {
+                        line: l.line,
+                        text: wire_path(&l.text),
+                        marks: l.mark.iter().map(|(a, b)| [*a as u64, *b as u64]).collect(),
+                    })
+                    .collect(),
+            })
+            .collect(),
+        files: g.files,
+        bytes: g.bytes,
+        links: g.links,
+        skipped_binary: g.skipped_binary,
+        skipped_large: g.skipped_large,
+        skipped_mounts: g.skipped_mounts,
+        unreadable: g.unreadable,
+        limit: limit as u64,
+        truncated: matches!(g.stopped, grep::Stopped::Hits | grep::Stopped::Bytes),
+        stopped: match g.stopped {
+            grep::Stopped::Hits => Some(wire::GrepStopped::Hits),
+            grep::Stopped::Bytes => Some(wire::GrepStopped::Bytes),
+            grep::Stopped::Done | grep::Stopped::Cancelled => None,
+        },
+    }
 }
 
 fn grep_unreadable(e: &std::io::Error) -> Refused {
@@ -1308,16 +1041,18 @@ fn grep_unreadable(e: &std::io::Error) -> Refused {
     )
 }
 
-/// `files.grep` —— 同步那一臂（唯一入口 [`answer`] 走它；取消位由调用方给）。
-fn answer_grep(args: &serde_json::Value, cancel: &std::sync::atomic::AtomicBool) -> Answer {
-    let (top, a) = grep_args(args)?;
+/// `files.grep` —— 同步那一臂（取消位由调用方给）。
+fn grep_with(
+    req: &wire::GrepReq,
+    cancel: &std::sync::atomic::AtomicBool,
+) -> Answer<wire::GrepReply> {
+    let (top, a) = grep_args(req)?;
     let g = grep::search(&top, &a, cancel).map_err(|e| grep_unreadable(&e))?;
     Ok(grep_reply(&top, a.limit, &g))
 }
 
-/// `files-grep` 帧面那一臂：**可撤**。走一趟放进阻塞线程池；这个 future 被丢掉（`cancel` 帧）⇒ 守卫把取消位置上，
-/// 阻塞线程上那一趟看见它就收手（每进一项看一次）。
-pub async fn answer_grep_cancellable(args: serde_json::Value) -> Answer {
+/// `files.grep` 的命令面那一臂：在阻塞池里搜，这一份 future 被丢（`cancel` 命中）⇒ 拉起取消位，搜的那一头在下一份文件前收手。
+pub async fn answer_grep_cancellable(req: wire::GrepReq) -> Answer<wire::GrepReply> {
     struct RaiseOnDrop(std::sync::Arc<std::sync::atomic::AtomicBool>);
     impl Drop for RaiseOnDrop {
         fn drop(&mut self) {
@@ -1326,10 +1061,9 @@ pub async fn answer_grep_cancellable(args: serde_json::Value) -> Answer {
     }
     let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let _raise = RaiseOnDrop(flag.clone());
-    tokio::task::spawn_blocking(move || answer_grep(&args, &flag))
+    tokio::task::spawn_blocking(move || grep_with(&req, &flag))
         .await
         .unwrap_or_else(|e| {
-            // 那一趟的线程没回来（崩了 / 被撤）：说不清是哪种 IO 错 ⇒ 原因不明，线程报的那句进详情。
             Err(Refused::with_raw(
                 "unreadable",
                 copy_core::copy_text(
@@ -1342,19 +1076,12 @@ pub async fn answer_grep_cancellable(args: serde_json::Value) -> Answer {
 }
 
 /// `files.home` —— 这台机器上「开在 home」那个起点。
-///
-/// 🔴 **说不出就拒，不猜**：没有这一格 / 是空的 / 不是绝对路径 ⇒ `no_home`。
-/// 拿当前目录或根目录兜底，就是「窗口开出来了、却开在一个用户没要的地方」。
-fn answer_home() -> Answer {
+fn home() -> Answer<wire::FilesPathReply> {
     home_from(home_var())
 }
 
-/// [`answer_home`] 里**有逻辑的那一段**：环境给的那一格 → 起点或拒。
-///
-/// 抽成吃参数的纯函数，是为了让「没有 / 空 / 相对」三形**喂得进去**：
-/// 判据若去改测试进程自己的环境，就是在一个多线程进程里改全局状态；
-/// 若拿同一个环境变量去对答案，两侧同源、恒真。
-fn home_from(h: Option<std::ffi::OsString>) -> Answer {
+/// 那个起点必须是一个绝对路径（空 / 相对 ⇒ `no_home`，不开一个空窗口）。
+fn home_from(h: Option<std::ffi::OsString>) -> Answer<wire::FilesPathReply> {
     let h = h.filter(|v| !v.is_empty()).ok_or((
         "no_home",
         copy_core::copy_text("beFilesRead.home.missing", &[]),
@@ -1366,71 +1093,120 @@ fn home_from(h: Option<std::ffi::OsString>) -> Answer {
             copy_core::copy_text("beFilesRead.home.relative", &[]),
         )));
     }
-    Ok(serde_json::json!({ "path": raw::to_json(raw::path_bytes(&p)) }))
+    Ok(wire::FilesPathReply {
+        path: wire_path(raw::path_bytes(&p)),
+    })
 }
 
-/// 这一族的**唯一入口**。
-///
-/// 🔴 「一条命令、一个往返」（第三段）就是这个函数的形状：
-/// 一次调用进来、一个 JSON 出去，中间**不与调用方再对话**。
-///
-/// ⚠ 分派写成一个对 [`CAPABILITIES`] 的 `match`，而「这个 `match` 与那张表的名字
-/// 两向对得上」由 `capability_guard` 钉住 —— 不许出现「表里有、分派没有」
-/// 那种静默的不可用（本仓 `p1t-removal-cause` 那次真 bug 就是这一形）。
-/// `tz` ＝ 看的那一台的时区：修改时刻的字（`mtime_text` · `mtime_full`）按它写。
-pub fn answer(name: &str, args: &serde_json::Value, tz: &crate::common::time::Tz) -> Answer {
-    match name {
-        "files.ls" => answer_ls(args, tz),
-        "files.stat" => answer_stat(args, tz),
-        "files.find" => answer_find(args, tz),
-        "files.index.status" => answer_status(),
-        "files.index.rebuild" => answer_index_rebuild(args),
-        "files.browse" => answer_browse(args),
-        "files.read.text" => answer_read_text(args),
-        "files.home" => answer_home(),
-        "files.size" => answer_size(args),
-        "files.read.chunk" => answer_read_chunk(args),
-        "files.grep" => answer_grep(args, &std::sync::atomic::AtomicBool::new(false)),
-        other => Err(Refused::from((
-            "unknown_capability",
-            crate::common::contract::malformed(&format!("unknown capability `{other}`")),
-        ))),
+/// 本族一条读命令的入参 ⇒ 它的回包与本体。命令表那一扇门只认 [`answer`]：入参的类型就选中了那条能力，抄错能力名这件事不可表示。
+pub trait Ask {
+    /// [`CAPABILITIES`] 里那一行的名字。
+    const CAPABILITY: &'static str;
+    type Reply;
+    fn answer(self, tz: &crate::common::time::Tz) -> Answer<Self::Reply>;
+}
+
+impl Ask for wire::LsReq {
+    const CAPABILITY: &'static str = "files.ls";
+    type Reply = wire::LsReply;
+    fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::LsReply> {
+        ls(self, tz)
     }
 }
 
-/// 本族声明的能力名。
+impl Ask for wire::StatReq {
+    const CAPABILITY: &'static str = "files.stat";
+    type Reply = wire::StatReply;
+    fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::StatReply> {
+        stat(self, tz)
+    }
+}
+
+impl Ask for wire::FindReq {
+    const CAPABILITY: &'static str = "files.find";
+    type Reply = wire::FindReply;
+    fn answer(self, tz: &crate::common::time::Tz) -> Answer<wire::FindReply> {
+        find(self, tz)
+    }
+}
+
+impl Ask for wire::IndexStatusReq {
+    const CAPABILITY: &'static str = "files.index.status";
+    type Reply = wire::IndexStatusReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::IndexStatusReply> {
+        Ok(index_status())
+    }
+}
+
+impl Ask for wire::RebuildReq {
+    const CAPABILITY: &'static str = "files.index.rebuild";
+    type Reply = wire::RebuildReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::RebuildReply> {
+        index_rebuild(self)
+    }
+}
+
+impl Ask for wire::BrowseReq {
+    const CAPABILITY: &'static str = "files.browse";
+    type Reply = wire::BrowseReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::BrowseReply> {
+        browse(self)
+    }
+}
+
+impl Ask for wire::ReadTextReq {
+    const CAPABILITY: &'static str = "files.read.text";
+    type Reply = wire::ReadTextReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::ReadTextReply> {
+        read_text(self)
+    }
+}
+
+impl Ask for wire::HomeReq {
+    const CAPABILITY: &'static str = "files.home";
+    type Reply = wire::FilesPathReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::FilesPathReply> {
+        home()
+    }
+}
+
+impl Ask for wire::SizeReq {
+    const CAPABILITY: &'static str = "files.size";
+    type Reply = wire::SizeReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::SizeReply> {
+        size_of(self)
+    }
+}
+
+impl Ask for wire::ReadChunkReq {
+    const CAPABILITY: &'static str = "files.read.chunk";
+    type Reply = wire::ReadChunkReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::ReadChunkReply> {
+        read_chunk(self)
+    }
+}
+
+/// `files.grep` 的同步那一臂（取消不掉；命令面走 [`answer_grep_cancellable`]）。
+impl Ask for wire::GrepReq {
+    const CAPABILITY: &'static str = "files.grep";
+    type Reply = wire::GrepReply;
+    fn answer(self, _: &crate::common::time::Tz) -> Answer<wire::GrepReply> {
+        grep_with(&self, &std::sync::atomic::AtomicBool::new(false))
+    }
+}
+
+/// 🔴 **这一族的唯一入口**（命令表文件管理那一族经它调读的那几条）。
+pub fn answer<A: Ask>(req: A, tz: &crate::common::time::Tz) -> Answer<A::Reply> {
+    req.answer(tz)
+}
+
+/// 能力名单（汇总那一层读）。
 pub fn capability_names() -> Vec<&'static str> {
     CAPABILITIES.iter().map(|c| c.name).collect()
 }
-
-/// **线上命令名 → 能力名**（`files-index-status` → `files.index.status`）。
-/// 这一族上线之后，两个命名空间之间的翻译**只有这一处**。
-///
-/// # 🔴 为什么线上那一面不能直接叫 `files.ls`（不是排版偏好，是两条判据的射程）
-///
-/// 能力名带 `.`，而命令面那一侧的取词器**不认这个字符**，现打：
-///
-/// - `protocol_doc_guard::dispatched_subcommands` 与
-///   `main_argv_table_guard::dispatched` 收 token 的字符集同样是那一套
-///   ⇒ `"--files.ls"` 这个字面量会被**静默丢弃**：不是「查过觉得没问题」，是**没看见**。
-///
-/// ⇒ 用 `.` 的代价是把四条命令从两条判据底下同时抽走，而两条都照常报绿 ——
-/// 那正是本仓反复治的那一形。⇒ 线上一律 `-`，能力名一个字不动
-/// （那张表逐字钉着它），两者之间只留这一个函数。
-///
-/// ⚠ 反向替换之所以够用：本族**没有一条能力名里带 `-`**，
-/// 由 `inbound_structure_guards` 那条两向集合相等钉住。
-pub fn answer_wire(
-    wire_name: &str,
-    args: &serde_json::Value,
-    tz: &crate::common::time::Tz,
-) -> Answer {
-    answer(&wire_name.replace('-', "."), args, tz)
-}
-
 #[cfg(test)]
 #[path = "../../../tests/backend/files/capability_guard.rs"]
-mod tests;
+pub(crate) mod tests;
 
 // **文件管理后端模块**与原生后端那条边界的判据
 // （用户逐字「后端要模块化, 即原生后端＋文件管理后端. 现在先解耦清楚」）。

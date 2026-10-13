@@ -10086,34 +10086,10 @@
       "zh": "程序出错",
       "args": []
     },
-    "rsFilewinSource.ls.badEntry": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "条目 {i} · {why}",
-      "args": ["i", "why"]
-    },
-    "rsFilewinSource.ls.notArray": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "文件列表的 entries 不是一个数组",
-      "args": []
-    },
-    "rsFilewinSource.ls.noPath": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "文件列表里有一条没有 path 字段",
-      "args": []
-    },
     "rsFilewinSource.home.notUtf8": {
       "kind": "error",
       "role": "报错",
       "zh": "该机器的主目录名不是合法 UTF-8 · 无法打开",
-      "args": []
-    },
-    "rsFilewinSource.home.noPath": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "问 home 目录的回答里没有 path 字段",
       "args": []
     },
     "rsFilewinSource.home.relative": {
@@ -10314,41 +10290,11 @@
       "zh": "首建文件清单 · {machine} · 约 {secs}s",
       "args": ["machine", "secs"]
     },
-    "rsFilewinFind.reply.badPath": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{k} 字段的路径格式不对",
-      "args": ["k"]
-    },
     "rsFilewinFind.refusal.badQuery": {
       "kind": "error",
       "role": "原因格",
       "zh": "搜索词写法不对",
       "args": []
-    },
-    "rsFilewinFind.hits.notArray": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "hits 不是一个数组",
-      "args": []
-    },
-    "rsFilewinFind.reply.notBool": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{k} 不是一个布尔值",
-      "args": ["k"]
-    },
-    "rsFilewinFind.reply.notU64": {
-      "kind": "error",
-      "role": "原因格",
-      "zh": "{k} 不是一个非负整数",
-      "args": ["k"]
-    },
-    "rsFilewinFind.reply.missingField": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端的回复缺 {k} 字段",
-      "args": ["k"]
     },
     "rsFilewinWorkspace.acrossArgs.notUnder": {
       "kind": "error",
@@ -10712,12 +10658,6 @@
       "role": "按钮",
       "zh": "算大小",
       "args": []
-    },
-    "rsFilewinSize.reply.missingField": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "算大小的回复缺 {field} 字段",
-      "args": ["field"]
     },
     "rsFilewinSize.outcome.line": {
       "kind": "body",
@@ -11165,12 +11105,6 @@
       "role": "悬停",
       "zh": " · ",
       "args": []
-    },
-    "rsFilewinFind.decodeFind.badHit": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "命中 {i} 格式不对 · 只认字符串或 b16 编码的对象",
-      "args": ["i"]
     },
     "rsCcBus.machine.local": {
       "kind": "body",

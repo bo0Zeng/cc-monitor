@@ -43,6 +43,7 @@ mod caps;
 mod cli_only;
 mod doors;
 mod drain;
+pub(crate) mod files_face;
 mod sniff;
 pub(crate) mod spec;
 pub(crate) mod typed;

@@ -79,26 +79,26 @@ pub async fn pull_by_bytes(
         split_local(&local).ok_or_else(|| copy_text("rsFilewinLossyPull.local.badDest", &[]))?;
     let here = comms_inward::chan::wire::Origin(super::cross_copy::LOCAL_ORIGIN.to_string());
     let key = uuid::Uuid::new_v4().simple().to_string();
-    let path = super::source::wire_bytes(remote);
     let mut sha = sha2::Sha256::new();
     let (mut off, mut seq) = (0u64, 0u64);
     loop {
         if board.cancels().is_cancelled() {
             return Err(super::transfer::CANCELLED.to_string());
         }
-        let d = ask(
+        let d = super::source::ask_typed(
             line,
             origin,
-            "files-read-chunk",
-            &serde_json::json!({ "path": path, "offset": off, "len": PULL_CHUNK }),
+            &cmd_wire::files::ReadChunkReq {
+                path: cmd_wire::files::WirePath(remote.to_vec()),
+                offset: off,
+                len: PULL_CHUNK,
+            },
             super::chunk_upload::CHUNK_BUDGET,
         )
-        .await?;
-        let body = d["content"]["b16"]
-            .as_str()
-            .and_then(unhex)
-            .ok_or_else(|| copy_text("rsFilewinLossyPull.reply.badChunk", &[]))?;
-        let size = d["size"].as_u64().unwrap_or(0);
+        .await
+        .map_err(|f| f.said)?;
+        let body = d.content.0;
+        let size = d.size;
         if !body.is_empty() {
             sha.update(&body);
             ask(
@@ -113,7 +113,7 @@ pub async fn pull_by_bytes(
             off += body.len() as u64;
         }
         board.progress(off, size);
-        if d["eof"].as_bool() != Some(false) || body.is_empty() {
+        if d.eof || body.is_empty() {
             break;
         }
     }

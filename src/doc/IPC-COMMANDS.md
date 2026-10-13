@@ -900,16 +900,25 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-browse`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `added` | ← | 这一趟新挂上几个 |
-| `browse_watch_cap` | ← | 上限（今天 64） |
-| `dirs` | → | **此刻的整份名单**（数组，每项是字符串或 `{"b16":…}`） |
-| `rejected` | ← | 超过上限被**拒掉**几个 |
-| `removed` | ← | 这一趟卸掉几个（用户不再看它们了） |
-| `watch_error` | ← | 这一趟没挂上的条数 ＋ 第一条原因（`null` ＝ 都挂上了） |
-| `watch_failed` | ← | 这一趟没挂上的条数 ＋ 第一条原因（`null` ＝ 都挂上了） |
-| `watching` | ← | 此刻**真挂着** watch 的目录数（进程里那一个监听器，跟着名单挂 / 卸） |
+入参 `BrowseReq` · 回包 `BrowseReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BrowseReply = { added: number, removed: number, 
+/**
+ * 超过名单上限没收的。
+ */
+rejected: number, browse_watch_cap: number, 
+/**
+ * 监听器真挂上了几个。
+ */
+watching: number, watch_failed: number, 
+/**
+ * 没挂上的那一句原话。
+ */
+watch_error: string | null, };
+type BrowseReq = { dirs: Array<WirePath>, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path`
 
@@ -919,17 +928,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-index-rebuild`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `entries` | ← | 这一趟走出来多少条（目录 ＋ 文件 ＋ 符号链接，根自己不算） |
-| `path` | → ← | 要走的那个**根** |
-| `resident_bytes` | ← | 新那份索引在后端内存里占多少字节（路径总长 ＋ 5×条数：每条 4 字节界桩 ＋ 1 字节类型，**算得出的量**） |
-| `skipped_mounts` | ← | 根底下挂着的**别的文件系统**没走进去的个数（设备号比对；那个目录本身照样在索引里，它底下的不在） |
-| `truncated` | ← | 撞到条目上限、没走完 ⇒ 这份索引是**不完整**的 |
-| `unreadable_dirs` | ← | 这一趟有几个子目录读不进去（权限等） |
-| `unreadable_paths` | ← | 那几个子目录（前 20 个，同 `files-index-status` 那一格） |
+入参 `RebuildReq` · 回包 `RebuildReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`already_rebuilding` · `bad_path` · `no_home` · `unreadable`
+```ts
+type RebuildReply = { path: WirePath, entries: number, resident_bytes: number, unreadable_dirs: number, unreadable_paths: Array<WirePath>, truncated: boolean, skipped_mounts: number, };
+type RebuildReq = { path?: WirePath, };
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args` · `already_rebuilding` · `bad_path` · `no_home` · `unreadable`
 
 #### `files-grep`
 
@@ -937,22 +944,44 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 可撤 · CLI：`ccm -- --files-grep`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 这一趟读了几份、多少字节 |
-| `files` | ← | 这一趟读了几份、多少字节 |
-| `hits` | ← | 每份命中的文件一项：`path` |
-| `ignore_ascii_case` | → | 只对 ASCII 段大小写不敏感 |
-| `limit` | → ← | 最多回几份命中的文件 |
-| `links` | ← | 碰到几条链接 —— **不跟**（它不一定在这棵树里，跟进去就是出界）；根本身是链接 ⇒ 不进去 |
-| `needle` | → | 要找的**字节**子串（字符串或 `{"b16":…}`），1 至 256 字节 |
-| `path` | → ← | 从哪个目录往下搜（字符串或 `{"b16":…}`；也可以是一份文件）；回送原样那一格 |
-| `skipped_binary` | ← | 看着像二进制（前 8 KiB 有 NUL） |
-| `skipped_large` | ← | 超过 8 MiB |
-| `skipped_mounts` | ← | 挂在底下的别的文件系统 |
-| `stopped` | ← | `null` |
-| `truncated` | ← | 上界到了没走完：`"hits"`（命中份数到 `limit`）/ `"bytes"`（一趟累计读到 256 MiB）；走完 ⇒ `false` |
-| `unreadable` | ← | 读不了的，各跳过几项 |
+入参 `GrepReq` · 回包 `GrepReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type GrepHit = { path: WirePath, 
+/**
+ * 相对搜索起点的那一段。
+ */
+rel: WirePath, line: number, text: WirePath, 
+/**
+ * 这份文件里一共命中几处。
+ */
+matches: number, lines: Array<GrepLine>, };
+type GrepLine = { line: number, text: WirePath, 
+/**
+ * 命中那一段的字节区间（至多一段）。
+ */
+marks: Array<[number, number]>, };
+type GrepReply = { path: WirePath, hits: Array<GrepHit>, files: number, bytes: number, links: number, skipped_binary: number, skipped_large: number, skipped_mounts: number, unreadable: number, 
+/**
+ * 这一趟用的命中上限。
+ */
+limit: number, truncated: boolean, 
+/**
+ * 没搜完就停了的原因；搜完了（或被撤）⇒ `null`。
+ */
+stopped: GrepStopped | null, };
+type GrepReq = { path: WirePath, 
+/**
+ * 要找的那一串（1..=256 字节）。
+ */
+needle: WirePath, ignore_ascii_case?: boolean, 
+/**
+ * 至多几条命中（缺 · 0 ⇒ 后端默认；超上限按上限）。
+ */
+limit?: number, };
+type GrepStopped = "hits" | "bytes";
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `unreadable`
 
@@ -962,28 +991,45 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-find`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `cover_root` | ← | 要搜全这一趟，重走该走哪个根：手上那份盖得住 ⇒ 它的根；否则范围在家目录里 ⇒ 家目录；否则 ⇒ 范围本身（都说不出 ⇒ `null`） |
-| `desc` | → ← | `true` ⇒ 倒过来（默认 `false`） |
-| `hits` | ← | 这一屏的命中，每条一个对象：`path` · `kind` · `location` · `size` · `mtime_secs` · `mtime_text`（修改时间的短写法，按看的那一台的时区（请求的 `tz`）写好）· `marks` |
-| `index_age_secs` | ← | 答这一趟用的那份索引，是多久以前建的 |
-| `index_missing` | ← | 索引还没建过 ⇒ 几个计数全是 0，而那不是「没搜到」；客户端要自己发 `files-index-rebuild` |
-| `index_root` | ← | 手上那份索引的根（没建过 ⇒ `null`） |
-| `limit` | → | 这一屏最多回几条 |
-| `offset` | → ← | 从第几条命中起回（前面的只数不回） |
-| `out_of_index` | ← | 这一趟的范围（`under` 或家目录）不在手上那份索引里 ⇒ 结果只是索引里碰巧有的那一部分 |
-| `query` | → | 原样的搜索词（字符串） |
-| `scanned` | ← | 这一趟扫了几条（= 索引条目数） |
-| `scope` | → | `"under"`（默认，照 `under`）/ `"machine"`（整台机器：范围由这台自己定 —— unix `/`，Windows 家目录那块盘的根；`under` 不看） |
-| `seq` | → ← | 这一趟的号（非负整数，可不给） |
-| `sort` | → ← | 按哪一列排：`relevance`（默认）· `name` · `location` · `mtime` · `size` |
-| `stale` | ← | 该重走了（`index_age_secs > rewalk_interval_secs`） |
-| `start` | ← | 这一趟的搜索起点（`location` 相对它算；说不出 ⇒ `null`） |
-| `stream` | → | 这个号属于哪一个搜索框（字符串，不给 ⇒ 空串） |
-| `total_hits` | ← | 一共命中几条，**不受分页影响** |
-| `truncated` | ← | 这一屏之后还有（往下翻：同号、`offset` 加上这一屏的条数） |
-| `under` | → | 只搜这个目录**底下**（不含它自己；字符串或 `{"b16":…}`） |
+入参 `FindReq` · 回包 `FindReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type FileKind = "dir" | "file" | "symlink" | "other";
+type FilesFindHit = { path: WirePath, kind: FileKind, 
+/**
+ * 相对搜索起点的那一段（所在目录）。
+ */
+location: WirePath, size: number | null, mtime_secs: number | null, mtime_text: string | null, 
+/**
+ * 命中段的字节区间。
+ */
+marks: Array<[number, number]>, };
+type FindReply = { hits: Array<FilesFindHit>, 
+/**
+ * 这一趟从哪儿搜起（缺 `under` ⇒ 家目录；都说不出 ⇒ `null`）。
+ */
+start: WirePath | null, sort: FindSort, desc: boolean, total_hits: number, truncated: boolean, scanned: number, index_age_secs: number, index_missing: boolean, stale: boolean, index_root: WirePath | null, 
+/**
+ * 搜的那一处在索引覆盖之外。
+ */
+out_of_index: boolean, cover_root: WirePath | null, seq: number | null, offset: number, };
+type FindReq = { 
+/**
+ * 窗口原样发来的搜索词。
+ */
+query: string, under?: WirePath, scope?: FindScope, 
+/**
+ * 同一个搜索框的第几趟（新号到了，旧号收手）。
+ */
+seq?: number, 
+/**
+ * 哪一个搜索框。
+ */
+stream?: string, offset?: number, limit?: number, sort?: FindSort, desc?: boolean, };
+type FindScope = "under" | "machine";
+type FindSort = "relevance" | "name" | "location" | "mtime" | "size";
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `bad_query` · `superseded`
 
@@ -993,21 +1039,23 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-index-status`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `age_secs` | ← | 这份索引建好到现在多少秒 |
-| `browse_watch_cap` | ← | 最多挂几个 |
-| `browse_watches` | ← | 此刻给「用户正在浏览的那几个目录」挂着几个 watch |
-| `cold_first_build_secs` | ← | 后端**声明**的冷启动首建大约要几秒（今天 10，出处见 `index.rs::COLD_FIRST_BUILD_SECS`：一台 NVMe 上 `find` 的冷缓存读数取上整，**代理指标、不是实测**） |
-| `entries` | ← | 索引里有几条 |
-| `index_missing` | ← | 还没建过 |
-| `resident_bytes` | ← | 它在后端内存里占多少字节（索引**只在内存里，重启重建**） |
-| `rewalk_interval_secs` | ← | 🔴 **后端声明的重走周期**（今天 300） |
-| `skipped_mounts` | ← | 根底下挂着的**别的文件系统**没走进去的个数（设备号比对；那个目录本身照样在索引里，它底下的不在） |
-| `stale` | ← | `age_secs > rewalk_interval_secs` |
-| `truncated` | ← | 上一趟遍历撞到了条目数上限，没走完 |
-| `unreadable_dirs` | ← | 上一趟遍历里有几个目录读不进去（权限等） |
-| `unreadable_paths` | ← | 那几个读不进去的目录（前 20 个，按遍历先后；字符串或 `{"b16":…}`；根自己不在里面 —— 根读不进去是 `files-index-rebuild` 的 `unreadable`） |
+入参 `IndexStatusReq` · 回包 `IndexStatusReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type IndexStatusReply = { index_missing: boolean, entries: number, resident_bytes: number, unreadable_dirs: number, 
+/**
+ * 读不进去的那几个目录（前 20 个）。
+ */
+unreadable_paths: Array<WirePath>, truncated: boolean, 
+/**
+ * 没走进去的挂载点个数。
+ */
+skipped_mounts: number, age_secs: number, rewalk_interval_secs: number, stale: boolean, browse_watches: number, browse_watch_cap: number, cold_first_build_secs: number, };
+type IndexStatusReq = Record<symbol, never>;
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args`
 
 #### `files-ls`
 
@@ -1015,23 +1063,54 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-ls`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `entries` | ← | 每项一个对象：`path`（原始字节形）· `kind` · `size` · `mtime_secs`（后两个拿不到就**不出这个键**，不填 0）· `mtime_text` · `mtime_full`（跟着 `mtime_secs` 出） |
-| `kind` | ← | **闭集四个词**：`dir` / `file` / `symlink` / `other` |
-| `limit` | → | 这一趟最多回几条 |
-| `link_dir` | ← | 只在 `kind` 是 `symlink` 时出：它指向的是不是目录（跟链接问一次） |
-| `link_to` | ← | 只在 `kind` 是 `symlink` 时出：它指向什么 —— `dir` · `file` · `missing`（断了：指向的东西不在 / 读不到） |
-| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（按看的那一台的时区（请求的 `tz`）写好，窗口照抄） |
-| `mtime_secs` | ← | Unix 纪元秒 |
-| `mtime_text` | ← | 修改时间列里那一格：今天 `HH:MM` · 今年 `MM-DD` · 往年 `YYYY-MM-DD`（按看的那一台的时区（请求的 `tz`）写好，窗口照抄） |
-| `path` | → | 要列的那个目录 |
-| `size` | ← | 字节数 |
-| `total` | ← | 目录里一共读到几项（含没回送的；截断时界面写「前 n / total 项」） |
-| `truncated` | ← | 目录里的项数多于回送的条数（被 `limit` 截了） |
-| `unreadable` | ← | 目录打开了、其中几项读不出来（没有回送、不算进 `truncated`） |
+入参 `LsReq` · 回包 `LsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_path` · `denied` · `not_dir` · `not_found` · `unreadable`
+```ts
+type FileKind = "dir" | "file" | "symlink" | "other";
+type LinkTo = "dir" | "file" | "missing";
+type LsEntry = { path: WirePath, kind: FileKind, size?: number, mtime_secs?: number, 
+/**
+ * 那台按本地钟写好的短写法。
+ */
+mtime_text?: string, 
+/**
+ * 那台按本地钟写好的完整写法。
+ */
+mtime_full?: string, 
+/**
+ * 链接指向的是不是目录（只在跟得过去的链接上）。
+ */
+link_dir?: boolean, 
+/**
+ * 链接指向哪一种（只在链接上）。
+ */
+link_to?: LinkTo, };
+type LsReply = { entries: Array<LsEntry>, 
+/**
+ * 回送的比读到的少（被 `limit` 截了）。
+ */
+truncated: boolean, 
+/**
+ * 一共读到几项（含没回送的）。
+ */
+total: number, 
+/**
+ * 有几项读不出来（照数，不静默少一项）。
+ */
+unreadable: number, };
+type LsReq = { path: WirePath, 
+/**
+ * 至多回几条（缺 · 0 ⇒ 后端默认 1000）。
+ */
+limit?: number, 
+/**
+ * `true` ⇒ 只列文件夹（含指向目录的链接）；截断与计数都只数文件夹。
+ */
+dirs_only?: boolean, };
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args` · `bad_path` · `denied` · `not_dir` · `not_found` · `unreadable`
 
 #### `files-stat`
 
@@ -1039,20 +1118,28 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-stat`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `kind` | ← | `dir` · `file` · `symlink` · `other` |
-| `link_target` | ← | 路径**本身**是符号链接 ⇒ 它的目标原文（`readlink`，不解不跟；原始字节形：字符串或 `{"b16":…}`）；不是链接 ⇒ `null` |
-| `mode` | ← | unix 权限位的低 12 位（十进制数；`420` = `0o644`） |
-| `mtime_full` | ← | 修改时间的完整写法 `YYYY-MM-DD HH:MM:SS`（按看的那一台的时区（请求的 `tz`）写好；跟着 `mtime_secs` 出） |
-| `mtime_secs` | ← | Unix 纪元秒（`mtime_secs` 拿不到就不出这个键） |
-| `mtime_text` | ← | 修改时间的短写法（今天 `HH:MM` · 今年 `MM-DD` · 往年带年；跟着 `mtime_secs` 出） |
-| `owner` | ← | 属主（跟链接）：用户名；查不到名字 ⇒ uid 的数字串；非 unix ⇒ `null` |
-| `path` | → ← | 入方向是要问的那个路径；出方向原样回送（原始字节形） |
-| `readonly` | ← | 这个路径此刻是不是只读 |
-| `size` | ← | 字节数 |
+入参 `StatReq` · 回包 `StatReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_path` · `unreadable`
+```ts
+type FileKind = "dir" | "file" | "symlink" | "other";
+type StatReply = { path: WirePath, kind: FileKind, size: number, readonly: boolean, 
+/**
+ * unix 权限位低 12 位；非 unix 缺席。
+ */
+mode?: number, mtime_secs?: number, mtime_text?: string, mtime_full?: string, 
+/**
+ * 属主名（查不到名字给 uid 数字串）；非 unix ⇒ `null`。
+ */
+owner: string | null, 
+/**
+ * 路径本身是链接 ⇒ 目标原文；否 ⇒ `null`。
+ */
+link_target: WirePath | null, };
+type StatReq = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args` · `bad_path` · `unreadable`
 
 #### `files-read-text`
 
@@ -1060,13 +1147,21 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-read-text`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 字节数 |
-| `max_bytes` | → | 🔴 **必须给**：编辑上限是**调用方**的（它答的是「这个文本控件打字卡不卡」） |
-| `path` | → ← | 要读的那份文件 |
-| `sha256` | ← | 交出去的那份字节的 SHA-256（64 位小写十六进制） |
-| `text` | ← | 整份内容（合法 UTF-8） |
+入参 `ReadTextReq` · 回包 `ReadTextReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ReadTextReply = { path: WirePath, text: string, bytes: number, 
+/**
+ * 读到的那一份字节的 SHA-256（小写十六进制）：存回时交回去当 `expect`。
+ */
+sha256: string, };
+type ReadTextReq = { path: WirePath, 
+/**
+ * 这一趟许读的上限（每次都要给，1..=8 MiB）。
+ */
+max_bytes: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `not_text` · `too_large` · `unreadable`
 
@@ -1076,14 +1171,18 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-read-chunk`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `content` | ← | 这一块的原始字节，恒为 `{"b16": …}` |
-| `eof` | ← | 这一块读到了末尾（`offset` 越过末尾 ⇒ 空块、`eof: true`） |
-| `len` | → | 从哪读、读多少；`len` 只收 `1..=READ_CHUNK_MAX_BYTES`（256 KiB），越界 `bad_args`、不夹小 |
-| `offset` | → | 从哪读、读多少；`len` 只收 `1..=READ_CHUNK_MAX_BYTES`（256 KiB），越界 `bad_args`、不夹小 |
-| `path` | → ← | 一份普通文件（字符串或 `{"b16": …}`；非 UTF-8 名的下载就走这一形，SFTP 库的路径是 `String` 寻址不到） |
-| `size` | ← | 此刻整份多大（调用方据此报进度、判读完） |
+入参 `ReadChunkReq` · 回包 `ReadChunkReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type HexBytes = { b16: string };
+type ReadChunkReply = { path: WirePath, offset: number, 
+/**
+ * 整份文件多大。
+ */
+size: number, eof: boolean, content: HexBytes, };
+type ReadChunkReq = { path: WirePath, offset: number, len: number, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `bad_path` · `not_text` · `unreadable`
 
@@ -1093,18 +1192,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-size`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `bytes` | ← | 普通文件的**表观大小**之和（与 `files-ls` 的 `size` 同口径，不是占盘块数） |
-| `dirs` | ← | 目录数（含顶上那个目录自己） |
-| `files` | ← | 普通文件数 |
-| `links` | ← | 符号链接数 —— **不跟、不算字节**（它指向的东西不一定在这棵树里） |
-| `other` | ← | 设备 / 管道 / 套接字之类 |
-| `path` | → ← | 要算的那个路径（字符串或 `{"b16":…}`）；出方向原样回送（原始字节形） |
-| `skipped_mounts` | ← | 底下挂着的**别的文件系统**，没走进去的个数（设备号比对） |
-| `unreadable_dirs` | ← | 读不进去、跳过的目录数（不中断） |
+入参 `SizeReq` · 回包 `SizeReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_path` · `unreadable`
+```ts
+type SizeReply = { path: WirePath, bytes: number, files: number, dirs: number, links: number, other: number, skipped_mounts: number, unreadable_dirs: number, };
+type SizeReq = { path: WirePath, };
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args` · `bad_path` · `unreadable`
 
 #### `files-home`
 
@@ -1112,11 +1208,15 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --files-home`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `path` | ← | 后端这个进程环境里的 home（原始字节形） |
+入参 `HomeReq` · 回包 `FilesPathReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`no_home`
+```ts
+type FilesPathReply = { path: WirePath, };
+type HomeReq = Record<symbol, never>;
+type WirePath = string | { b16: string };
+```
+
+码：`bad_args` · `no_home`
 
 ### 4.3 账号
 

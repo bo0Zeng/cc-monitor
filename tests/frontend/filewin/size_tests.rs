@@ -32,8 +32,7 @@ fn a_reply_missing_any_field_is_a_loud_failure() {
     ] {
         let mut m = full();
         m.as_object_mut().unwrap().remove(k);
-        let e = sized_from_reply("a", &m).expect_err("少了一格竟然解析成功");
-        assert!(e.contains(k), "报错没点名 `{k}`：{e}");
+        sized_from_reply("a", &m).expect_err(&format!("少了 `{k}` 竟然解析成功"));
     }
 }
 

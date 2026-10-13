@@ -729,6 +729,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 形状指纹表与查表：只有拿着 hello 的 Rust 那一侧（monitor 的 `Offer`）比，界面不比。
     SHAPES: NONE,
     shape_of: NONE,
+    // 文件管理那一族的线上类型：路径字节的那一形（`{"b16"}` 的键 · 取字节）。界面只发 `files-delete-session`，不解路径字节。
+    HEX_KEY: NONE,
+    bytes: NONE,
   },
   "copy-core": {
     backend_old: "J22",

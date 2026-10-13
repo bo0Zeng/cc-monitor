@@ -3,6 +3,17 @@
 
 /// `(命令, 形状指纹)`，按命令名排。
 pub const SHAPES: &[(&str, &str)] = &[
+    ("files-browse", "d8806be2"),
+    ("files-find", "06e389d4"),
+    ("files-grep", "017d28da"),
+    ("files-home", "1aa56229"),
+    ("files-index-rebuild", "e5202e5f"),
+    ("files-index-status", "bbc1b95f"),
+    ("files-ls", "c14fa070"),
+    ("files-read-chunk", "583031aa"),
+    ("files-read-text", "b579e3d3"),
+    ("files-size", "1a9d4b7c"),
+    ("files-stat", "eab952a3"),
     ("history-annotate", "e40c5678"),
     ("history-branch", "cd82bf99"),
     ("history-facts", "e1b462af"),
