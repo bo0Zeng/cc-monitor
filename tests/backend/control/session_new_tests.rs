@@ -721,7 +721,7 @@ impl crate::guard_support::Shaped for SessionNew {
             session: Some("proj-cc".into()),
             sid: Some("s-1".into()),
             cmd: Some("ccm --new".into()),
-            account: Some(LaunchedAccount {
+            account: Some(crate::control::launch_account::LaunchedAccount {
                 name: "work".into(),
                 config_dir: "/home/u/.claude-work".into(),
                 model: Some("opus".into()),

@@ -881,33 +881,10 @@ pub(crate) struct BusCleanup {
     pub(crate) unread: Option<String>,
 }
 
-/// 注销结局的线上形（`kill` 回包的 `bus` · 批量停每一项的那一格）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct BusNote {
-    /// 注销掉了的 id。
-    pub(crate) removed: Vec<String>,
-    /// 没注销成的那几个（`why` 是原话）。
-    pub(crate) failed: Vec<BusFailed>,
-    /// 名册读不到（原话）⇒ 登记在上面的一个都没注销；读得到 ⇒ `null`。
-    pub(crate) unread: Option<String>,
-    /// 给人看的那几行（没有 ⇒ `null`）。
-    pub(crate) said: Option<String>,
-    /// 复制详情（没有 ⇒ 空串）。
-    pub(crate) detail: String,
-}
 
-/// 没注销成的一个。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct BusFailed {
-    /// 那个 id。
-    pub(crate) id: String,
-    /// 原话。
-    pub(crate) why: String,
-}
+
+/// 注销结局的线上形：住 `cmd-wire::session`。
+pub(crate) use cmd_wire::session::{BusFailed, BusNote};
 
 impl BusCleanup {
     /// 线上那一形。

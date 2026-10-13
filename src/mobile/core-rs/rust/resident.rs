@@ -261,7 +261,7 @@ pub fn call(h: i64, cmd: String, args: &str, within_ms: u64, on_event: OnEvent) 
             Some(c) => c.call_until(&cmd, args, deadline).await,
             None => Err(CallError::Disconnected),
         };
-        on_event(h, "reply", reply_json(id, &machine, &got));
+        on_event(h, "reply", reply_json(id, &machine, &cmd, got));
     });
     id
 }
@@ -291,16 +291,29 @@ pub fn close(h: i64) {
 }
 
 /// 一问一答的结局 ⇒ 交 Kotlin 的那一行：`{call, ok:true, data}` · `{call, ok:false, code, message, detail, data?}` ·
-/// `{call, timeout:true}` · `{call, cancelled:true}` · `{call, down:true}`。事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）
+/// `{call, timeout:true}` · `{call, cancelled:true}` · `{call, down:true}` · `{call, unreadable:true, detail}`。
+/// 成了的回包按两端同一份线上类型解（`cmd_wire::session::decode_reply`）：解得开 ⇒ `data` 是按类型重写的那一份；
+/// 形状对不上 ⇒ `unreadable`（serde 那一句进详情）；回包类型还不住那里的命令 ⇒ 原样。事前就拒的那几种（不认 · 形状不同 · 这台做不到 · 在等的太多）
 /// 经通信层那一份分流器说成一句（`route_call_error`），照失败交。
 pub fn reply_json(
     id: i64,
     machine: &str,
-    got: &Result<Option<serde_json::Value>, CallError>,
+    cmd: &str,
+    got: Result<Option<serde_json::Value>, CallError>,
 ) -> String {
     use comms_inward::backend_route::{route_call_error, Routed};
-    let v = match got {
-        Ok(data) => serde_json::json!({ "call": id, "ok": true, "data": data }),
+    let v = match &got {
+        Ok(data) => {
+            let data = data.clone().unwrap_or(serde_json::Value::Null);
+            match cmd_wire::session::decode_reply(cmd, data.clone()) {
+                None => serde_json::json!({ "call": id, "ok": true, "data": data }),
+                Some(Ok(typed)) => serde_json::json!({ "call": id, "ok": true, "data": typed }),
+                Some(Err(why)) => serde_json::json!({
+                    "call": id, "unreadable": true,
+                    "detail": format!("{cmd}: {why}"),
+                }),
+            }
+        }
         Err(CallError::Remote {
             code,
             message,
@@ -336,7 +349,7 @@ mod tests {
     #[test]
     fn every_outcome_lands_as_the_line_kotlin_reads() {
         let j = |r: Result<Option<serde_json::Value>, CallError>| -> serde_json::Value {
-            serde_json::from_str(&reply_json(7, "box", &r)).expect("JSON")
+            serde_json::from_str(&reply_json(7, "box", "history-list", r)).expect("JSON")
         };
         assert_eq!(
             j(Ok(Some(serde_json::json!({"a": 1})))),
@@ -365,6 +378,25 @@ mod tests {
         }));
         assert_eq!(old["code"], "unsupported");
         assert_eq!(old["message"], copy_core::backend_old("box"));
+    }
+
+    /// 回包类型住 `cmd-wire` 的那几条：按类型解；缺一格 ⇒ 交 `unreadable`（不交 `ok`，Kotlin 不会拿去当成功用）；别的命令原样。
+    #[test]
+    fn typed_replies_are_decoded_here_once_and_a_short_one_is_unreadable() {
+        let j = |cmd: &str, data: serde_json::Value| -> serde_json::Value {
+            serde_json::from_str(&reply_json(9, "box", cmd, Ok(Some(data)))).expect("JSON")
+        };
+        let sent = serde_json::json!({"result": "delivered"});
+        assert_eq!(
+            j("terminal-input", sent.clone()),
+            serde_json::json!({"call": 9, "ok": true, "data": sent})
+        );
+        let short = j("history-tail", serde_json::json!({"total": 1}));
+        assert_eq!(short["unreadable"], true);
+        assert!(short.get("ok").is_none());
+        assert!(short["detail"].as_str().unwrap().starts_with("history-tail: "));
+        let raw = serde_json::json!({"anything": [1, 2]});
+        assert_eq!(j("history-list", raw.clone())["data"], raw);
     }
 
     /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样 · 断了只是一个记号。

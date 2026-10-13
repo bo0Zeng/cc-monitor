@@ -9,54 +9,14 @@
 use super::session_batch::{carriers, Standing, TmuxEntry};
 use serde_json::Value;
 
-/// 「知道」那一格从哪知道：会话记录 · 源会话的进程 · 终端名单。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ForkWhence"
-    )
-)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum Whence {
-    Record,
-    Process,
-    TerminalList,
-}
+/// 起分叉会话要的三格的线上形：住 `cmd-wire::session`（号那一格在线上是「名字 · 账号 0 ⇒ `null`」）。
+pub(crate) use cmd_wire::session::{
+    ForkLaunch as Launch, ForkSlot as Slot, ForkTerminal as TerminalFact, ForkWhence as Whence,
+    ForkWhy as Why,
+};
 
-/// 「不知道」那一格为什么：源会话已退出 · 记录里没有工作目录 · 活着但说不出号。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(export, export_to = "../../frontend/ui/generated/", rename = "ForkWhy")
-)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum Why {
-    Exited,
-    NoCwd,
-    LiveNoAccount,
-}
 
-/// 一格：知道（值 ＋ 从哪知道）或不知道（为什么）。线上 `{kind:"known", value, from}` · `{kind:"unknown", why}`。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ForkSlot"
-    )
-)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub(crate) enum Slot<T> {
-    Known { value: T, from: Whence },
-    Unknown { why: Why },
-}
+
 
 /// 号：账号 0（不设配置目录）或账号库里的一个号的名字。线上 `null` ＝ 账号 0、串 ＝ 号名。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -75,44 +35,7 @@ impl From<AccountFact> for Option<String> {
     }
 }
 
-/// 源会话在哪个终端：某个终端（句柄）· 不在任何终端里。线上同会话容器那一格：`{host:"tmux", terminal}` · `{host:"none"}`
-/// （两个 `host` 词与 `stream::wire::TerminalHost::as_wire` · `HOST_NONE` 同字，判据钉着）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ForkTerminal"
-    )
-)]
-#[serde(tag = "host")]
-pub(crate) enum TerminalFact {
-    #[serde(rename = "tmux")]
-    Hosted { terminal: String },
-    #[serde(rename = "none")]
-    None,
-}
 
-/// 三格推断的结果（线上 `session-fork` 回复的 `launch`，`session-new-facts` 的 `fork.launch` 同一形）。
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ForkLaunch"
-    )
-)]
-pub(crate) struct Launch {
-    pub(crate) cwd: Slot<String>,
-    /// 值 `null` ＝ 账号 0，串 ＝ 号名。
-    #[cfg_attr(test, ts(as = "Slot<Option<String>>"))]
-    pub(crate) account: Slot<AccountFact>,
-    pub(crate) terminal: Slot<TerminalFact>,
-}
 
 /// 源会话的事实（收齐之后）。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -143,7 +66,7 @@ pub(crate) fn infer(s: &Source) -> Launch {
             why: Why::LiveNoAccount,
         },
         (true, Some(a)) => Slot::Known {
-            value: a.clone(),
+            value: a.clone().into(),
             from: Whence::Process,
         },
     };

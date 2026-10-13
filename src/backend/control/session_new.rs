@@ -9,11 +9,14 @@
 //!
 //! 要动 tmux / 起 ccm / 写分支记录的几样由入口经 [`Deps`] 交进来（control 不引用 observe），判据交替身。
 
-use super::launch_account::{self as la, AccountAsk, LaunchedAccount, Settled};
+use super::launch_account::{self as la, AccountAsk, Settled};
 use super::launch_render::{local, wire};
 use super::session_batch::{carriers, Deps, NameBase, Standing};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+
+/// 回包的线上形住 `cmd-wire::session`（手机嵌的 Rust 核心按同一份类型解）。
+pub use cmd_wire::session::{FirstSay, SessionNew, SessionNewOutcome};
 use std::collections::BTreeMap;
 
 /// 失败：码 ＋ 那一句 ＋ `data`（[`Refusal`]）＋ 下层原话（不进那一句，进应答的复制详情；没有 ⇒ `None`）。
@@ -155,18 +158,6 @@ impl crate::stream::inbound::typed::Codes for SessionNewErr {
     }
 }
 
-/// 第一句交进会话的结局（同 `terminal-input` 的应答那几格）。第一句作为启动参数交给那一家 ⇒ 起好了就是 `delivered`（起不成整条失败、走不到这里）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct FirstSay {
-    /// `delivered` · `unsure`（不知道送没送到，别重发）· `refused`。
-    pub result: String,
-    /// `refused` 的原因（同 `terminal-input`）；别的 ⇒ `null`。
-    pub why: Option<String>,
-    /// `refused` 时给人看的那一句（写好）；别的 ⇒ `null`。
-    pub said: Option<String>,
-}
 
 /// 哪一格不行（`data.field`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -193,39 +184,7 @@ pub struct SessionNewRefusal {
     pub unavailable: Option<la::AccountUnavailable>,
 }
 
-/// 结局。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub enum SessionNewOutcome {
-    /// 在这台 tmux 里后台起好了（`session` 是会话名）。
-    Started,
-    /// 要开一个终端窗口跑 `cmd`（窗口由 monitor 开）。
-    Open,
-}
 
-/// `session-new` 的成品。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct SessionNew {
-    pub outcome: SessionNewOutcome,
-    /// tmux 会话名（`started` 那一形；开窗那一形 ⇒ `null`）。
-    pub session: Option<String>,
-    /// 分叉出来的新会话 sid · 新起时这台先定好的 sid（那一家认先定 sid）；那一家不认 ⇒ `null`（报到之前说不出）。
-    pub sid: Option<String>,
-    /// 开窗那一形要跑的那一行（`started` ⇒ `null`）。
-    pub cmd: Option<String>,
-    /// 实际用的号（账号 0 / 不指定 ⇒ `null`）。
-    pub account: Option<LaunchedAccount>,
-    /// 起的是哪一家。
-    pub agent: String,
-    /// 起在哪个目录（`~` 已按这台的家目录展开：认报到的会话按它）。
-    pub cwd: String,
-    /// 第一句交进去的结局；没给第一句 ⇒ `null`。
-    pub prompt: Option<FirstSay>,
-}
 
 /// 起之前定 sid 那几下（宿主给）：铸一个 sid（那一家认先定 sid 的新起都铸）· 选了策略时起之前把那个会话写成用那一份（策略不在 ⇒ `no_strategy`）· 起不成撤掉。
 pub(crate) struct PreRotation<'a> {

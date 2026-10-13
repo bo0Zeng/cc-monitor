@@ -339,6 +339,7 @@ version = "0.1.0"
 dependencies = [
  "copy-core",
  "serde",
+ "serde_json",
  "ts-rs",
 ]
 
@@ -1463,6 +1464,7 @@ dependencies = [
 name = "mobcore"
 version = "0.0.0"
 dependencies = [
+ "cmd-wire",
  "comms-inward",
  "copy-core",
  "jni",

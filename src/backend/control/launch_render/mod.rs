@@ -30,16 +30,9 @@ pub(crate) fn unavailable(u: la::AccountUnavailable) -> LaunchRenderErr {
     LaunchRenderErr::AccountUnavailable(said, u)
 }
 
-/// `launch-render-cli` · `launch-local` 的应答：那一行 `ccm …` ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。
-#[derive(Debug, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Rendered {
-    /// 那一行 `ccm …`。
-    pub(crate) cmd: String,
-    /// 实际用的号（账号库里的那一形；别的 ⇒ `null`）。
-    pub(crate) account: Option<la::LaunchedAccount>,
-}
+
+/// `launch-render-cli` · `launch-local` 的应答：线上形住 `cmd-wire::session`。
+pub(crate) use cmd_wire::session::Rendered;
 
 /// 应答里的 `account`：实际用的号（账号库里的那一形；别的 ⇒ `None`）。
 pub(crate) fn launched(account: &Settled) -> Option<la::LaunchedAccount> {

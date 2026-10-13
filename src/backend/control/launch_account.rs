@@ -178,17 +178,8 @@ pub(crate) struct Facts<'a> {
     pub(crate) last: &'a dyn Fn(&str) -> Option<String>,
 }
 
-/// 这一趟实际用的号（应答里的 `account`；账号 0 / 不指定 ⇒ `null`）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct LaunchedAccount {
-    pub name: String,
-    pub config_dir: String,
-    /// 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
-    pub model: Option<String>,
-}
+/// 这一趟实际用的号（应答里的 `account`）：线上形住 `cmd-wire::session`。
+pub use cmd_wire::session::LaunchedAccount;
 
 /// 判完之后交给渲染那一步的号。
 #[derive(Debug, Clone, PartialEq, Eq)]

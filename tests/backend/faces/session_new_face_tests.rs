@@ -20,12 +20,12 @@ fn recent_dirs_are_newest_first_once_each_and_skip_the_hidden_one() {
             RecentDir {
                 cwd: "/a".into(),
                 last_ms: 40,
-                last_text: crate::common::cells::Words("00:00".into()),
+                last_text: "00:00".into(),
             },
             RecentDir {
                 cwd: "/b".into(),
                 last_ms: 30,
-                last_text: crate::common::cells::Words("00:00".into()),
+                last_text: "00:00".into(),
             }
         ]
     );
@@ -109,12 +109,12 @@ fn a_windows_launcher_counts_the_powershell_forms() {
 fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     let claude = agent_facts("claude");
     assert_eq!(claude.kind, "claude");
-    assert_eq!(claude.text.0, "Claude Code");
+    assert_eq!(claude.text, "Claude Code");
     let t = |k: &str| copy_core::copy_text(k, &[]);
     let models: Vec<(&str, String)> = claude
         .models
         .iter()
-        .map(|c| (c.value, c.text.0.clone()))
+        .map(|c| (c.value.as_str(), c.text.clone()))
         .collect();
     assert_eq!(
         models,
@@ -130,7 +130,7 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     let modes: Vec<(&str, String)> = claude
         .permission_modes
         .iter()
-        .map(|c| (c.value, c.text.0.clone()))
+        .map(|c| (c.value.as_str(), c.text.clone()))
         .collect();
     assert_eq!(
         modes,
@@ -142,10 +142,10 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     );
     // 每一个值都是 `session-new` 收的那一格：模型过全仓模型名判，权限档是那一家起会话认的档。
     for c in &claude.models {
-        assert!(shell_quote_core::model_name_ok(c.value), "{}", c.value);
+        assert!(shell_quote_core::model_name_ok(&c.value), "{}", c.value);
     }
     let codex = agent_facts("codex");
-    assert_eq!(codex.text.0, "Codex");
+    assert_eq!(codex.text, "Codex");
     assert!(codex.models.is_empty() && codex.permission_modes.is_empty());
 }
 
@@ -173,12 +173,12 @@ impl crate::guard_support::Shaped for NewFacts {
             recent: vec![RecentDir {
                 cwd: "/home/u/proj".into(),
                 last_ms: 1,
-                last_text: crate::common::cells::Words("00:00".into()),
+                last_text: "00:00".into(),
             }],
             tmux: true,
             agents: vec![agent_facts("claude")],
             fork: Some(ForkFacts {
-                agent: "claude",
+                agent: "claude".into(),
                 launch: crate::control::fork_launch::infer(&crate::control::fork_launch::Source {
                     live: true,
                     cwd: Some("/home/u/proj".into()),
