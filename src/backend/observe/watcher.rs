@@ -2478,11 +2478,11 @@ fn branch_to(state: &ReaderState, sink: &mut FrameSink, id: u64, sid: &str, path
 }
 
 /// 一行记进这份记录的链索引（这一家有链才记）；不算 —— 这一趟读的行都记完了由 [`settle_chain`] 算一次。
-fn feed_chain(state: &mut ReaderState, path: &Path, raw: &str) {
+fn feed_chain(state: &mut ReaderState, path: &Path, line: &crate::agents::Line<'_>) {
     let Some(fact) = state
         .root_of(path)
         .and_then(|i| state.roots[i].face.chain)
-        .and_then(|c| c(raw))
+        .and_then(|c| c(line))
     else {
         return;
     };
@@ -2529,22 +2529,26 @@ fn send_line(
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) -> bool {
-    feed_chain(state, Path::new(path_str), &line.raw);
+    // 一行只从文本解一次（瓶颈 #8）：成品 · 链事实 · 运行簿 · 轮次结束 · 此刻在干什么都吃这一份；
+    //   这一路几问都要整行 ⇒ 先解好（只要几格的那几问从这一份里取，不再各自解文本）。
+    let parsed = crate::agents::Line::new(&line.raw, line.start);
+    let _ = parsed.value();
+    feed_chain(state, Path::new(path_str), &parsed);
     let root = state.root_of(Path::new(path_str));
     let face = root.map(|i| state.roots[i].face);
-    let translated = face.and_then(|f| (f.parse)(&line.raw, line.start).ok().flatten());
+    let translated = face.and_then(|f| (f.parse)(&parsed).ok().flatten());
     // §2.1 不变量并存：Line 逐行照发**每一条**；turn-end 是额外的边沿信号，不替代、不过滤 Line。
     let rec = root
-        .map(|i| state.roots[i].runs.main_record(session_id, &line.raw))
+        .map(|i| state.roots[i].runs.main_record(session_id, &parsed))
         .unwrap_or_default();
     // 子运行的记录（适配层 `run_of` 答得出）一轮收尾 ≠ 主运行一轮结束 ⇒ 不报轮次边沿。
     let turn_uuid = face
         .and_then(|f| f.turn_end)
-        .and_then(|t| t(&line.raw))
+        .and_then(|t| t(&parsed))
         .filter(|_| !rec.in_run);
     let activity = face
         .and_then(|f| f.activity)
-        .and_then(|f| f(&line.raw))
+        .and_then(|f| f(&parsed))
         .filter(|_| !rec.in_run);
     let skel_key = path_key(Path::new(path_str));
     if state.skel_live.contains_key(&skel_key) {
@@ -3859,7 +3863,10 @@ fn prime_file_cursor(
         // 链事实补进链索引（读完之后那一帧主线外清单带出去）。
         if let Some(chain) = chain {
             for line in block.split(|&b| b == b'\n') {
-                if let Some(f) = std::str::from_utf8(line).ok().and_then(chain) {
+                if let Some(f) = std::str::from_utf8(line)
+                    .ok()
+                    .and_then(|t| chain(&crate::agents::Line::new(t, 0)))
+                {
                     c.load(f);
                 }
             }
@@ -3867,19 +3874,15 @@ fn prime_file_cursor(
         if let Some(said) = said_activity {
             // 子运行的记录不说主运行此刻在干什么（与续读那一路同一条：`send_line`）。
             let run_of = face.and_then(|f| f.run_of);
-            let main = |line: &str| {
-                run_of.is_none_or(|f| {
-                    serde_json::from_str::<serde_json::Value>(line)
-                        .ok()
-                        .and_then(|v| f(&v))
-                        .is_none()
-                })
+            let main = |line: &crate::agents::Line<'_>| {
+                run_of.is_none_or(|f| line.value().and_then(f).is_none())
             };
             for line in block
                 .split(|&b| b == b'\n')
                 .filter_map(|l| std::str::from_utf8(l).ok())
             {
-                if let Some(a) = said(line).filter(|_| main(line)) {
+                let line = crate::agents::Line::new(line, 0);
+                if let Some(a) = said(&line).filter(|_| main(&line)) {
                     activity = Some(a);
                 }
             }

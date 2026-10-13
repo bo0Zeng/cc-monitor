@@ -427,7 +427,7 @@ fn run_the_scenario(shape: &Shape) {
     );
     let main_line = |track: &RunTrack, line: String| {
         append(&parent, std::slice::from_ref(&line));
-        track.main_record(SID, &line);
+        track.main_record(SID, &crate::agents::Line::new(&line, 0));
     };
 
     // 主运行派出两个子运行（后台派出：结果当场说出是哪个）。
@@ -604,7 +604,7 @@ fn claude_codes_real_shape_runs_the_same_general_criteria() {
 fn an_adapter_that_declares_no_runs_keeps_everything_on_the_main_run() {
     let book = Arc::new(RunBook::default());
     let track = RunTrack::new(RunFaces::NONE, book.clone());
-    let rec = track.main_record(SID, r#"{"lane":"w1","resp":"r1"}"#);
+    let rec = track.main_record(SID, &crate::agents::Line::new(r#"{"lane":"w1","resp":"r1"}"#, 0));
     assert!(!rec.in_run && rec.rid.is_none() && !rec.changed);
     assert!(book.runs(SID).is_empty());
     let mut router = RunRouter::new(
@@ -661,7 +661,7 @@ fn completion_scenario(shape: &Shape, via_prime: bool) -> Vec<(String, RunState)
         track.prime(SID, &std::fs::read(&parent).unwrap());
     } else {
         for l in &lines {
-            track.main_record(SID, l);
+            track.main_record(SID, &crate::agents::Line::new(l, 0));
         }
     }
     // 收场的那几个：最后一条写在派出那一方说它收场之前（之后才写的新应答 ＝ 被续跑，另一族判据）。
@@ -760,7 +760,7 @@ fn foreground_scenario(shape: &Shape, cold: bool) {
     let spawn = [(shape.spawn)("t1", "L1"), (shape.spawn)("t2", "L2")];
     append(&parent, &spawn);
     for l in &spawn {
-        track.main_record(SID, l);
+        track.main_record(SID, &crate::agents::Line::new(l, 0));
     }
     let c1 = (shape.child_of)(&parent, "f1");
     let c2 = (shape.child_of)(&parent, "f2");
@@ -814,7 +814,7 @@ fn foreground_scenario(shape: &Shape, cold: bool) {
     );
     let done = (shape.fg_done)("t1", "f1");
     append(&parent, std::slice::from_ref(&done));
-    track.main_record(SID, &done);
+    track.main_record(SID, &crate::agents::Line::new(&done, 0));
     assert_eq!(
         card(&book, "f1").2,
         RunState::Done,
@@ -1016,7 +1016,7 @@ fn resume_scenario(shape: &Shape) {
     }
     append(&parent, &lines);
     for l in &lines {
-        track.main_record(SID, l);
+        track.main_record(SID, &crate::agents::Line::new(l, 0));
     }
     // w5：冷接时读到的就是「收场 ⇒ 续跑」整段。
     child_file(
@@ -1087,7 +1087,7 @@ fn resume_scenario(shape: &Shape) {
     for run in ["w2", "w3"] {
         let l = (shape.notice)(run, RunEnd::Done);
         append(&parent, std::slice::from_ref(&l));
-        track.main_record(SID, &l);
+        track.main_record(SID, &crate::agents::Line::new(&l, 0));
     }
     let w2 = (shape.child_of)(&parent, "w2");
     append(&w2, &[(shape.child_tool)("w2", "r-w2b", "Bash")]);
@@ -1353,7 +1353,7 @@ fn extra_cells_scenario(shape: &Shape) {
     ];
     append(&parent, &main);
     for l in &main {
-        track.main_record(SID, l);
+        track.main_record(SID, &crate::agents::Line::new(l, 0));
     }
     let g1 = (shape.child_of)(&parent, "g1");
     append(&g1, &[st((shape.child_tool)("g1", "r1", "Bash"), 110)]);
@@ -1493,7 +1493,7 @@ fn extra_cells_scenario(shape: &Shape) {
         st((shape.spawn)("t6", "L6"), 135),
         st((shape.spawned)("t6", "g6"), 136),
     ] {
-        track.main_record(SID, &l);
+        track.main_record(SID, &crate::agents::Line::new(&l, 0));
     }
     assert_eq!(
         info_of(&book, "g6").started_ms,
@@ -1561,7 +1561,7 @@ fn a_first_child_read_holds_about_a_block_not_the_file() {
     let book = Arc::new(RunBook::default());
     let mut track = RunTrack::new(shape.faces, book.clone());
     for l in [(shape.spawn)("t1", "L1"), (shape.spawned)("t1", "w1")] {
-        track.main_record(SID, &l);
+        track.main_record(SID, &crate::agents::Line::new(&l, 0));
     }
     let child = (shape.child_of)(&parent, "w1");
     std::fs::create_dir_all(child.parent().unwrap()).unwrap();

@@ -113,7 +113,7 @@ fn unknown_type_is_salvaged_never_leaves_as_unknown() {
     }
     // 没有链身份 ⇒ 不出链事实（它不进链，断不了链；「不静默」归 drift_ledger）；带身份的那一形见下一条。
     assert!(
-        super::super::chain::chain_fact(r#"{"type":"some-future-record-type","foo":42}"#).is_none(),
+        super::super::chain::chain_fact(&crate::agents::Line::new(r#"{"type":"some-future-record-type","foo":42}"#, 0)).is_none(),
         "无链身份的看不懂记录不进链"
     );
 }
@@ -142,9 +142,7 @@ fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
         other => panic!("期望 Unrecognized，得到 {other:?}"),
     }
     assert!(
-        super::super::chain::chain_fact(
-            r#"{"type":"brand-new-2027","uuid":"u9","parentUuid":"u8","timestamp":"t9","payload":{"a":1}}"#
-        )
+        super::super::chain::chain_fact(&crate::agents::Line::new(r#"{"type":"brand-new-2027","uuid":"u9","parentUuid":"u8","timestamp":"t9","payload":{"a":1}}"#, 0))
         .is_some(),
         "带链身份的必须进链 —— 否则它的 children 成孤儿 root"
     );
@@ -232,7 +230,7 @@ fn zero_information_loss_over_mixed_fixture() {
                     // 抢救出来的：带链身份 ⇔ 进链（无身份的元数据不进链）
                     let ident = matches!(&r, JsonlRecord::Unrecognized { uuid, parent_uuid, .. } if uuid.is_some() || parent_uuid.is_some());
                     assert_eq!(
-                        super::super::chain::chain_fact(line).is_some(),
+                        super::super::chain::chain_fact(&crate::agents::Line::new(line, 0)).is_some(),
                         ident,
                         "抢救出来的：带链身份 ⇔ 进链：{line}"
                     );
@@ -359,7 +357,7 @@ fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
     for l in &lines {
         let m = serde_json::to_value(parse_line(l).unwrap().unwrap()).unwrap();
         assert!(m.get("timeText").is_none(), "解析那一层不写钟面：{l}");
-        let mut r = super::translated(l, 0)
+        let mut r = super::translated(&crate::agents::Line::new(l, 0))
             .unwrap()
             .unwrap()
             .record
@@ -378,10 +376,7 @@ fn every_timed_record_gets_its_clock_face_at_the_exit_not_in_the_parse() {
             "{l}"
         );
     }
-    let mut bad = super::translated(
-        r#"{"type":"user","uuid":"t2","timestamp":"soon","message":{"role":"user","content":"x"}}"#,
-        0,
-    )
+    let mut bad = super::translated(&crate::agents::Line::new(r#"{"type":"user","uuid":"t2","timestamp":"soon","message":{"role":"user","content":"x"}}"#, 0))
     .unwrap()
     .unwrap()
     .record

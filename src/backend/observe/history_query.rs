@@ -955,7 +955,7 @@ fn translated_of(
     v: &serde_json::Value,
 ) -> (Option<serde_json::Value>, Option<&'static str>) {
     use crate::agents::record::Body;
-    let Some(rec) = (face.parse)(&v.to_string(), 0)
+    let Some(rec) = (face.parse)(&crate::agents::Line::new(&v.to_string(), 0))
         .ok()
         .flatten()
         .and_then(|t| t.record)

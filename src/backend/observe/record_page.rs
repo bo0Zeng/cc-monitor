@@ -105,7 +105,7 @@ impl<'a> Reader<'a> {
 
     /// 一行交适配层解释：解析不出（连 JSON 都不是）与不进界面同一个结局 —— 照占号、不出成品。
     fn interpret(&mut self, body: &[u8], start: u64) -> Option<(Value, Option<String>)> {
-        match (self.face.parse)(&String::from_utf8_lossy(body), start) {
+        match (self.face.parse)(&crate::agents::Line::new(&String::from_utf8_lossy(body), start)) {
             Ok(Some(mut t)) => {
                 self.typed.pass(&mut t);
                 let mut rec = t.record?;

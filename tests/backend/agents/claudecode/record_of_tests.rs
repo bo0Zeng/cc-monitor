@@ -286,7 +286,7 @@ fn ends_turn_agrees_with_the_turn_end_frame() {
         {
             assert_eq!(
                 ends_turn,
-                super::super::turn::turn_end_uuid_of(raw).is_some(),
+                super::super::turn::turn_end_uuid_of(&crate::agents::Line::new(raw, 0)).is_some(),
                 "{name}"
             );
         }

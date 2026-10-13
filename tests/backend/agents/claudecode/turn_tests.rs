@@ -76,25 +76,23 @@ fn missing_error_and_sidechain_default_to_not_excluded() {
 fn the_substring_gate_hides_no_turn_end_and_odd_shapes_count_as_missing() {
     let spaced =
         r#"{ "type" : "assistant", "uuid" : "u-2", "message" : { "stop_reason" : "end_turn" } }"#;
-    assert_eq!(turn_end_uuid_of(spaced).as_deref(), Some("u-2"));
+    assert_eq!(turn_end_uuid_of(&crate::agents::Line::new(spaced, 0)).as_deref(), Some("u-2"));
     let odd = r#"{"type":"assistant","uuid":"u-3","isSidechain":"no","isApiErrorMessage":1,"message":{"stop_reason":"end_turn","content":[{"type":"text","text":"x"}]}}"#;
     assert_eq!(
-        turn_end_uuid_of(odd).as_deref(),
+        turn_end_uuid_of(&crate::agents::Line::new(odd, 0)).as_deref(),
         Some("u-3"),
         "非 bool 的 error/sidechain 当缺（不排除），与 `as_bool().unwrap_or(false)` 同口径"
     );
     let not_str =
         r#"{"type":"assistant","uuid":"u-4","message":{"stop_reason":7},"note":"end_turn"}"#;
     assert_eq!(
-        turn_end_uuid_of(not_str),
+        turn_end_uuid_of(&crate::agents::Line::new(not_str, 0)),
         None,
         "stop_reason 非字符串 ⇒ 非 turn-end"
     );
     assert_eq!(
-        turn_end_uuid_of(
-            r#"{"type":"assistant","uuid":"u-5","message":{"stop_reason":"tool_use"}}"#
-        ),
+        turn_end_uuid_of(&crate::agents::Line::new(r#"{"type":"assistant","uuid":"u-5","message":{"stop_reason":"tool_use"}}"#, 0)),
         None
     );
-    assert_eq!(turn_end_uuid_of("{torn \"end_turn\""), None, "畸形 ⇒ None");
+    assert_eq!(turn_end_uuid_of(&crate::agents::Line::new("{torn \"end_turn\"", 0)), None, "畸形 ⇒ None");
 }

@@ -1893,10 +1893,7 @@ fn the_envelope_carries_the_viewer_zone_and_pushed_lines_are_stamped_by_it() {
     ] {
         assert_eq!(tz_of(line), crate::Tz::default(), "{line}");
     }
-    let rec = crate::agents::claudecode::parse::translated(
-        r#"{"type":"user","uuid":"u","timestamp":"2026-10-07T20:30:00.000Z","message":{"role":"user","content":"hi"}}"#,
-        0,
-    )
+    let rec = crate::agents::claudecode::parse::translated(&crate::agents::Line::new(r#"{"type":"user","uuid":"u","timestamp":"2026-10-07T20:30:00.000Z","message":{"role":"user","content":"hi"}}"#, 0))
     .unwrap()
     .unwrap()
     .record;

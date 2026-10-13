@@ -15,15 +15,23 @@ use super::schema::JsonlRecord;
 ///
 /// 看不懂的东西记在这台后端自己的漂移账上（[`drift_ledger`]）：账本天然按机器分。
 pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
-    let trimmed = raw.trim_start_matches('\u{feff}').trim();
-    if trimmed.is_empty() {
+    record_at(&crate::agents::Line::new(raw, 0))
+}
+
+/// [`parse_line`] 的本体，吃通用层那一份 [`crate::agents::Line`]：整行别人解过就从那一份里反序列化（不再解文本），没解过才解文本；
+/// 抢救那两支要整行 ⇒ 用同一份（解过就不再解）。
+fn record_at(line: &crate::agents::Line<'_>) -> Result<Option<JsonlRecord>, serde_json::Error> {
+    if line.is_blank() {
         return Ok(None);
     }
-    match serde_json::from_str::<JsonlRecord>(trimmed) {
+    let trimmed = line.text();
+    match line.read::<JsonlRecord>() {
         // 未知 `type`：serde 落到 Unknown（`#[serde(other)]` 编译期强制 unit variant，
-        // 加不了字段）→ 在这里抢救。from_str::<JsonlRecord> 已成功 ⇒ 必是合法 JSON。
+        // 加不了字段）→ 在这里抢救。读成了 ⇒ 必是合法 JSON。
         Ok(JsonlRecord::Unknown) => {
-            let v: serde_json::Value = serde_json::from_str(trimmed)?;
+            let Some(v) = line.value() else {
+                return Ok(None);
+            };
             // 记一笔，不 warn：未知 type 会刷屏，但「刻意不 warn」不等于「刻意不可观测」—— 见 `drift_ledger` 头注。
             drift_ledger::record(
                 DriftFace::UnknownRecordType,
@@ -32,14 +40,14 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
                     .unwrap_or(""),
                 Some(trimmed),
             );
-            Ok(Some(salvage(&v, trimmed, "unknown-type".to_string())))
+            Ok(Some(salvage(v, trimmed, "unknown-type".to_string())))
         }
         // user 记录带上注入噪声规则的成品；assistant 记录带上每个 tool_use 的卡型。
         Ok(record) => Ok(Some(record.with_user_text().with_tool_cards().with_steps())),
-        Err(e) => match serde_json::from_str::<serde_json::Value>(trimmed) {
+        Err(e) => match line.value() {
             // 合法 JSON，但 schema 认不出（已知 type 缺必填字段 / 字段形状变了）→ 照样抢救身份，不丢链。这一类值得警惕（多半是 Claude 改了已知类型的格式），
             // 故 warn 一条（罕见，不刷屏）；unknown-type 那一支不 warn（预期内，会刷屏）。
-            Ok(v) => {
+            Some(v) => {
                 tracing::warn!("已知类型解析失败，抢救为 Unrecognized（不丢链）: {e}");
                 // 键按 `type` 分组：诊断面能直接告诉你「是哪个类型变了」。
                 drift_ledger::record(
@@ -49,10 +57,10 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
                         .unwrap_or(""),
                     Some(trimmed),
                 );
-                Ok(Some(salvage(&v, trimmed, format!("parse-failed: {e}"))))
+                Ok(Some(salvage(v, trimmed, format!("parse-failed: {e}"))))
             }
             // 连 JSON 都不是 → 真畸形，没东西可救，保持既有 Err 契约。
-            Err(_) => Err(e),
+            None => Err(e),
         },
     }
 }
@@ -61,11 +69,11 @@ pub fn parse_line(raw: &str) -> Result<Option<JsonlRecord>, serde_json::Error> {
 /// ＋ 排队那一对（`enqueue` ＝ 打字那一刻 · 出了 `queued` 记录的那条 `remove` ＝ 插进去的那一句；按原句配）。
 /// 没有自己身份的记录（标题 · 排队）`id` 按起点偏移合成（[`crate::agents::line_id`]）。
 pub(crate) fn translated(
-    raw: &str,
-    start: u64,
+    line: &crate::agents::Line<'_>,
 ) -> Result<Option<crate::agents::Translated>, String> {
     use crate::agents::QueueMark;
-    let Some(rec) = parse_line(raw).map_err(|e| e.to_string())? else {
+    let start = line.start();
+    let Some(rec) = record_at(line).map_err(|e| e.to_string())? else {
         return Ok(None);
     };
     let cwd = rec.cwd().map(str::to_string);

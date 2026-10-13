@@ -385,8 +385,8 @@ fn two_adapters_with_different_chain_fields_get_the_same_list() {
                     .to_string()
             })
             .collect();
-        let a = off_of(c_lines.iter().filter_map(|l| claude(l)));
-        let b = off_of(f_lines.iter().filter_map(|l| fake(l)));
+        let a = off_of(c_lines.iter().filter_map(|l| claude(&crate::agents::Line::new(l, 0))));
+        let b = off_of(f_lines.iter().filter_map(|l| fake(&crate::agents::Line::new(l, 0))));
         assert!(!a.is_empty());
         assert_eq!(a, b);
     }

@@ -155,7 +155,7 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
     let face =
         crate::agents::record_face_among(&reg, std::path::Path::new("/codex-root/2026/x.jsonl"))
             .expect("Codex 根下的文件没人认");
-    let p = (face.parse)(codex_msg, 0).unwrap().unwrap();
+    let p = (face.parse)(&crate::agents::Line::new(codex_msg, 0)).unwrap().unwrap();
     let r = p.record.expect("Codex 那一家没出记录");
     assert_eq!((r.agent.as_str(), &r.body), ("codex", &r.body));
     assert!(matches!(r.body, crate::agents::record::Body::Reply { .. }));
@@ -164,20 +164,20 @@ fn the_record_face_follows_the_root_the_file_lives_under() {
         std::path::Path::new("/home/u/.claude/projects/a/s.jsonl"),
     )
     .expect("记录树下的文件没人认");
-    let p = (face.parse)(USER, 0).unwrap().unwrap();
+    let p = (face.parse)(&crate::agents::Line::new(USER, 0)).unwrap().unwrap();
     assert_eq!(p.cwd.as_deref(), Some("/w"));
     assert_eq!(p.record.unwrap().agent, "claude");
     // Codex 的事件行 ⇒ 不出记录（不上线）；空行两家都 `Ok(None)`。
     let evt =
         r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
-    let p = (crate::agents::codex::RECORDS.parse)(evt, 0)
+    let p = (crate::agents::codex::RECORDS.parse)(&crate::agents::Line::new(evt, 0))
         .unwrap()
         .unwrap();
     assert!(p.record.is_none());
-    assert!((crate::agents::codex::RECORDS.parse)("  ", 0)
+    assert!((crate::agents::codex::RECORDS.parse)(&crate::agents::Line::new("  ", 0))
         .unwrap()
         .is_none());
-    assert!((claude().parse)("", 0).unwrap().is_none());
+    assert!((claude().parse)(&crate::agents::Line::new("", 0)).unwrap().is_none());
 }
 
 /// 夹具里只住**正文**那几格的标记（照那份声明投影 ⇒ 一个都不许剩）。
