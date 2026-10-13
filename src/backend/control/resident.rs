@@ -34,9 +34,8 @@ pub(crate) const KILL_WAIT_MS: u32 = 5_000;
 /// `--grace` 的上限（秒）：再大就没有意义（monitor 那头一次性那一趟的期限先到）。
 const GRACE_MAX_SECS: u32 = 3_600;
 
-/// 远端常驻后端自己的 stderr 诊断文件（本机那一份由宿主交数据目录下的路径）；env 名由 `main.rs` 交（诊断文件的门在那里）。
-/// 与本机同一层级 `logs/backend/stderr.log`（滚出来的旧那份在同目录 `stderr.old.log`）。
-pub const STDERR_LOG_REL: &str = ".cc-monitor/logs/backend/stderr.log";
+// 远端常驻后端自己的 stderr 诊断文件（家目录相对）：常量住诊断文件那一层（`stderr_log`），这里往下引。
+use crate::stderr_log::STDERR_LOG_REL;
 
 fn home() -> Option<PathBuf> {
     crate::platform::paths::home_dir()

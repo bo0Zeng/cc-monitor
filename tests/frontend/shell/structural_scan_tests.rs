@@ -2013,12 +2013,9 @@ fn dead_name_corpus() -> Vec<(String, String)> {
             //
             // ⚠ 教训：**「靠位置生效的边界」在搬树时会静默失效** —— 它不会报错，
             //    只会让射程悄悄变大或变小。换成明写的排除。
-            // vendored `cc-acct-iso` 挪去了 `src/shared/cc-acct-iso/`（字节随后端二进制走、两棵树都不属于）⇒
-            //   它不再落在 `/vendor/` 底下，同一个教训：**明写**把它排出去（`path_shell_safe` 那条假账当场复现过）。
-            if rel.starts_with("tests/evidence/")
-                || rel.contains("/vendor/")
-                || rel.starts_with("src/shared/cc-acct-iso/")
-            {
+            // 〔vendored 的 `cc-acct-iso` 后来挪去 `src/shared/cc-acct-iso/`、曾在这里另写一条排除；
+            //   今天那份脚本已删出仓（账号库由后端自己建），那条排除随之撤了。〕
+            if rel.starts_with("tests/evidence/") || rel.contains("/vendor/") {
                 continue;
             }
             out.push((rel, src));

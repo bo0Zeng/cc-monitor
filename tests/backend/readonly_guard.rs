@@ -753,8 +753,11 @@ mod tests {
                 "stream/inbound/registry/history.rs",
             ],
         ),
-        // 「已过路径解析」只有路径解析本身担保得了。
-        ("Resolved::vouch", &["control/files_write.rs"]),
+        // 「已过路径解析」只有路径解析本身担保得了：根底下那两道（`common/root_path.rs`，文件管理写面与传输台共用）＋ 写面自己那几道。
+        (
+            "Resolved::vouch",
+            &["common/root_path.rs", "control/files_write.rs"],
+        ),
     ];
 
     #[test]

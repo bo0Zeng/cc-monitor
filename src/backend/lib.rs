@@ -151,7 +151,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// - p1p-tmux-frame = B2：watch_loop 周期本机 `tmux ls` 发 `TmuxSessions` 帧（+EMITS "tmux_sessions"），
 ///   替 monitor 每 8s 新建 SSH 跑 tmux ls 的对账刷屏。additive、**不 bump PROTO_VERSION**。
 /// - p1q-accounts = A2：多账号只读三命令 `--list-accounts` / `--session-accounts` /
-///   `--account-trust`（cc-acct-iso manifest 的消费侧；账号=一个 CLAUDE_CONFIG_DIR）。
+///   `--account-trust`（读账号库清单那一侧；账号=一个 CLAUDE_CONFIG_DIR。当时清单由外部工具 cc-acct-iso 写，今天账号库由后端 `accounts/manage/` 自己读写）。
 ///   纯一次性查询、零写入、不 shell out；**不动** PROTO_VERSION / CAPABILITIES / EMITS。
 ///   bump BUILD_ID 只为给"含账号命令"的后端独立身份，旧版遇到新命令会
 ///   `unknown argument` exit 2，monitor 侧按"功能不可用"优雅降级。
@@ -545,7 +545,7 @@ pub const PROTO_VERSION: u32 = 1;
 /// 代号 3 → 4（`p3z` 之后按 `(代号, 字母)` 序是 `p4a`，只升不降那条路据此判新旧）。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4b-single-home-judgments**（2026-09-26）：行为 —— `ccm` 拒不合规的 sid（`resume` / `--resume` / `--ccm-sid`，
-/// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与 cc-acct-iso 同）；配置目录走 `acct-core` 全表
+/// `shell-quote-core::session_id_ok`）· `--model`（`model_name_ok`）· `--account`（`account_name_ok`，与账号库建号那一侧同一条规矩）；配置目录走 `acct-core` 全表
 /// （`config_dir_posix_ok` / `config_dir_ok`）。`resolve_query::is_valid_session_id` 冻结给手机端、没收。子命令没变，照 p1v 先例不加历史行。
 ///
 /// ★★★ **p4c-history-facts**（2026-09-26）：子命令 ＋1 `--history-facts`、帧命令 ＋1 `history-facts`（`90` 阶段 C：

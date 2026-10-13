@@ -47,11 +47,8 @@ use std::path::{Path, PathBuf};
 /// `dial_sftp_tests::the_declared_write_roots_are_exactly_staging_and_bin` 直接比。
 pub const STAGING_DIR: &str = relay_route_core::STAGING_DIR_REL;
 
-/// 暂存件的键长（十六进制位数）。造键的那一侧（`control/transfer.rs::staging_key`）同一个数（直接引用）。
-pub const KEY_LEN: usize = 32;
-
-/// 暂存件的后缀。
-pub const PART_SUFFIX: &str = ".part";
+// 暂存件的键长与后缀住 `common/staging.rs`：造键的一侧（传输台，原生那一块）与提交的一侧（这里）各引各的。
+pub use crate::common::staging::{KEY_LEN, PART_SUFFIX};
 
 /// 存盘块的后缀（`<key>.<seq>.chunk`）。与 [`PART_SUFFIX`] 刻意不同名：两种件的消耗方式不同
 /// （上传件改名上位、块读回后删），混一个名字，提交与孤儿扫就得去猜它是哪一种。

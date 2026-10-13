@@ -175,13 +175,15 @@ fn cred_path(home: &str, raw: &str) -> Result<String, Refusal> {
         Some(rest) => join(home, rest),
         None => t.to_string(),
     };
+    // 尾部 `/` 先去掉再判：`~/` · `<家>/` 就是家目录本身，不许当成「家目录底下」放过去。
+    let abs = abs.trim_end_matches('/');
     let ok = abs.starts_with('/')
         && !abs.split('/').any(|s| s == "..")
         && !abs.chars().any(char::is_control)
         && is_under(&abs, home)
         && abs != home;
     if ok {
-        Ok(abs.trim_end_matches('/').to_string())
+        Ok(abs.to_string())
     } else {
         Err(Refusal::from((
             "refused",
@@ -473,3 +475,7 @@ pub(crate) fn run_login_cmd(d: &dyn Door, a: &AccountNameArgs) -> Result<Account
         cmd: login_line(&home, &a.name),
     })
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/backend/accounts/manage/wire_tests.rs"]
+mod tests;

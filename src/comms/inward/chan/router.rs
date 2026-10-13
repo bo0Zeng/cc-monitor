@@ -346,3 +346,7 @@ async fn pump(
     }
     lock(&inflight).remove(&id);
 }
+
+#[cfg(test)]
+#[path = "../../../../tests/comms/inward/chan/router_tests.rs"]
+mod tests;

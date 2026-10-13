@@ -178,7 +178,7 @@ ck "账号不存在 → 中止（rc≠0，且不得吐出 exec）" \
    "$(acct -- --cwd /p --account nope --ccm-print)"
 ck "账号不存在 → rc=2" "2" \
    "$(acct -- --cwd /p --account nope --ccm-print >/dev/null 2>&1; echo $?)"
-# B2：cc-acct-iso 搬走凭据后基座常已无 .credentials.json —— 不落默认号则 cc/cct 掉进未登录目录
+# B2：账号库把凭据搬进各号目录后基座常已无 .credentials.json —— 不落默认号则 cc/cct 掉进未登录目录
 ck "不传 --account → 落 manifest 的 isDefault（复刻旧 _cc_acct_last 粘滞）" \
    "export CLAUDE_CONFIG_DIR='$AL/z'; $UNSET; cd '/p' && exec claude$(hk "$ACCTMP")" \
    "$(acct -- --cwd /p --ccm-print)"

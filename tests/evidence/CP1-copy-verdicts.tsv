@@ -55,7 +55,6 @@ src/frontend/filewin/src/fonts.rs:293	变收	保留	[不对外] 字体子集化�
 src/frontend/filewin/src/fonts.rs:277	×书加找移签	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（书签栏那几个字）
 src/frontend/filewin/src/fonts.rs:326	处	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搬家那一跳两句的字；那两句随书签旧键退役删了，只剩别处还用的 `处`）
 src/frontend/filewin/src/fonts.rs:291	显示预	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（预览那几个字）
-src/frontend/filewin/src/scale.rs:134	行 {:>7} | 首屏 {:>7.2} ms | 帧时中位 {:>6.3} ms | p99 {:>6.3} ms | 物化 {:>3} 行 | RSS {:>7} KiB	保留	[不对外] 性能秤 F1 的 Display（cargo test 判据输出），不上界面
 src/frontend/shell/src/lib.rs:1578	认不出：没有 hosts 数组（旧的单台写法不再认），远端一台都不连；在设置里重新添加这台机器	保留	[不对外] REMOTE_HOSTS_UNRECOGNIZED 只进 monitor 日志（load_remote_configs 的 error! 那一行，前面带配置文件路径）；界面那一侧读同一份 config 的是 TS remote-config.ts，不经这句
 src/backend/footprint/registry.rs:1225	**它在 cc-monitor 里零实现，是一个扩展**（一个 skill ＋ 一个 MCP server）—— 它确实「装到别处」，\n         但装它走扩展页已有的资产机制（skill 照 skill 装、MCP 那一项只往目标机写一个 server 条目，\n         程序本身由用户放到那台机器上），是**用法**不是新工具；monitor 与后端都不带它的任何字节。\n\n         ⚠ `K-R65` 当初补的那句道理**仍然成立**：一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。	保留	[不对外] NOT_MANAGED：只被判据读的「刻意不收」登记表理由（生产代码无读者） 〔改写 —— 代码全景整条摘掉，code-picture 只作为扩展（skill ＋ MCP）；裁词不变〕
 src/backend/footprint/registry.rs:1324	**不由 cc-monitor 安装** —— 它是用户自己装在 `<agent 家>/skills/planned-build/` 的 \n         skill，cc-monitor 只**读它的产物**（计划文件）。\n\n         ⇒ 它**不在**本表里（受管工具）。	保留	[不对外] NOT_MANAGED 登记表理由

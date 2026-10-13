@@ -69,3 +69,12 @@ pub fn from_json(v: &serde_json::Value) -> Option<Vec<u8>> {
         _ => None,
     }
 }
+
+/// 把一串路径字节还原成能交给标准库的 `PathBuf`。后端这一族唯一一处 `unsafe`：`from_encoded_bytes_unchecked` 要求字节来自同一平台的
+/// `as_encoded_bytes`；本族满足它 —— 字节要么由 `files::raw::path_bytes` 在这台机器上取出，要么由 [`from_json`] 从我们自己发出去的那两种形里读回来。
+/// 拿外来字节喂它是未定义行为 ⇒ 入方向的路径参数只许从本机发出去的那一份回流；这一条只能靠协议纪律，机器钉不住。
+pub fn to_path_buf(bytes: &[u8]) -> std::path::PathBuf {
+    // SAFETY: 见上面那段 —— 字节来自同一平台的 `as_encoded_bytes`。
+    let os: &std::ffi::OsStr = unsafe { std::ffi::OsStr::from_encoded_bytes_unchecked(bytes) };
+    std::path::PathBuf::from(os)
+}

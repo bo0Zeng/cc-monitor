@@ -13,7 +13,7 @@ android {
 }
 
 dependencies {
-    // 文案取文口住 core-copy（纯 JVM，各模块都依赖它）；core-ui 自己的默认文案（如「撤销」）也从那里取。
+    // 文案取文口住 core-copy（纯 JVM，上屏有字的模块依赖它）；core-ui 自己的默认文案（如「撤销」）也从那里取。
     api(project(":core-copy"))
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)

@@ -25,6 +25,11 @@ use std::sync::Mutex;
 /// 宿主交的那一格：当前那份文件的**完整路径**。缺席 / 空白 ⇒ 不接。
 pub const ENV: &str = crate::platform::child_env::STDERR_LOG;
 
+/// 这台后端自己的诊断文件（家目录相对）：远端常驻后端的 stderr 落这里（本机那一份由宿主交数据目录下的路径），
+/// 一次性模式没拿到 [`ENV`] 时也落这里。与本机同一层级 `logs/backend/stderr.log`（滚出来的旧那份在同目录 `stderr.old.log`）。
+/// 住这一层：控制面（`control::resident` 起常驻那一跳）往下引它，本模块不往上引。
+pub const STDERR_LOG_REL: &str = ".cc-monitor/logs/backend/stderr.log";
+
 /// 每份的字节上限（当前那份 ＋ 旧的那份 ⇒ 盘上 ≈ 两倍；按 `tracing` 行检查，见模块头注）。
 pub const CAP_BYTES: u64 = 4 << 20;
 
@@ -176,12 +181,12 @@ pub fn stderr_writer() -> std::io::Stderr {
 }
 
 /// 一次性模式（CLI 子命令）那几行诊断落哪：宿主交了 [`ENV`] ⇒ 那一份；否则这台后端自己的诊断文件
-/// （`~/` ＋ [`crate::control::resident::STDERR_LOG_REL`]，常驻后端的 stderr 落的就是它）。家推不出来 ⇒ `None`（不写）。
+/// （`~/` ＋ [`STDERR_LOG_REL`]，常驻后端的 stderr 落的就是它）。家推不出来 ⇒ `None`（不写）。
 pub(crate) fn oneshot_log_path(get: &dyn Fn(&str) -> Option<String>) -> Option<PathBuf> {
     if let Some(p) = get(ENV).filter(|v| !v.trim().is_empty()) {
         return Some(PathBuf::from(p));
     }
-    crate::platform::paths::home_dir().map(|h| h.join(crate::control::resident::STDERR_LOG_REL))
+    crate::platform::paths::home_dir().map(|h| h.join(STDERR_LOG_REL))
 }
 
 /// 一次性模式里本进程那几行诊断的落点（[`keep_oneshot`] 装一次；没装 ⇒ 不写）。
