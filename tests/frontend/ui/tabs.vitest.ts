@@ -6424,6 +6424,9 @@ describe("〔stream-watch〕在看哪个会话 · 补上没上流的那段 · �
     expect(turnsAfter, "重来之后轮次又从 0 整份要").not.toContain(0);
     expect(inputsAfter, "重来之后大纲又从 0 整份要").not.toContain(0);
     expect(t.turnFold.all.map((x) => x.at), "轮次没接过来").toEqual([100]);
+    // 切回别的 tab、等排着的那几脚（停留判定 · 下一帧补批）看到它不在眼前自己退掉 —— 不然负载高时它们落进下一条判据的调用记录里
+    tm.switchTo("front");
+    await new Promise((r) => setTimeout(r, 250));
   });
 
   it("连着的不取；别的那份记录（路径对不上）· 别的机器上的同名会话不归这个 tab", async () => {
