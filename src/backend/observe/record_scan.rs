@@ -245,20 +245,6 @@ impl Scan {
 }
 
 impl ScanMap {
-    /// 从字节 0 读 `r`，至多读 `len` 字节；`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
-    /// 判据用（产品那一路经 [`RecordScans::get`]，同一个 [`Scan`]）。
-    #[cfg(test)]
-    pub(crate) fn scan_with<R: std::io::BufRead>(
-        r: R,
-        len: u64,
-        kind: &str,
-        chain: ChainOf,
-    ) -> std::io::Result<ScanMap> {
-        let mut s = Scan::default();
-        s.feed(r, len, kind, chain)?;
-        Ok(s.done(len))
-    }
-
     /// 接着扫：这一张的样子抄一份，从 `end` 往后读。
     fn resume(&self) -> Scan {
         Scan {
@@ -375,24 +361,13 @@ struct Inner {
     tick: u64,
 }
 
-/// 骨架的家从哪来。
-enum Home {
-    /// 不落盘（判据）。
-    #[cfg(test)]
-    None,
-    /// 启动时装的那一份（全进程那一张图）。
-    Installed,
-    /// 判据给的那一份。
-    #[cfg(test)]
-    Given(Skeletons),
-}
-
 /// 扫描图的缓存。
 pub(crate) struct RecordScans {
     max_entries: usize,
     max_bytes: usize,
     inner: Mutex<Inner>,
-    home: Home,
+    /// 骨架的家（全进程那一张图用启动时装的那一份；`None` ⇒ 不读不落）。
+    home: Option<Skeletons>,
     /// 到此刻为扫描图从记录里读了多少字节（判据数它，不按墙钟）。
     read: AtomicU64,
     /// 旁线程上正在落的骨架（哪一份 · 那条线程）。
@@ -405,8 +380,14 @@ const MAX_BYTES: usize = 64 << 20;
 
 /// 全进程那一份。
 pub(crate) fn global() -> &'static RecordScans {
-    static G: RecordScans = RecordScans::with_home(MAX_ENTRIES, MAX_BYTES, Home::Installed);
-    &G
+    static G: std::sync::OnceLock<RecordScans> = std::sync::OnceLock::new();
+    G.get_or_init(|| {
+        let scans = RecordScans::new(MAX_ENTRIES, MAX_BYTES);
+        match super::skeleton::installed() {
+            Some(home) => scans.with_skeletons(home.clone()),
+            None => scans,
+        }
+    })
 }
 
 /// 读游标前那几个字节、跟见证比（`file` 读完停在 `end`）。回：对得上没有 · 读了几个字节。
@@ -420,12 +401,7 @@ fn witness_holds(file: &mut RoFile, end: u64, witness: &[u8]) -> std::io::Result
 }
 
 impl RecordScans {
-    #[cfg(test)]
-    pub(crate) const fn new(max_entries: usize, max_bytes: usize) -> Self {
-        Self::with_home(max_entries, max_bytes, Home::None)
-    }
-
-    const fn with_home(max_entries: usize, max_bytes: usize, home: Home) -> Self {
+    pub(crate) fn new(max_entries: usize, max_bytes: usize) -> Self {
         RecordScans {
             max_entries,
             max_bytes,
@@ -434,33 +410,20 @@ impl RecordScans {
                 flights: Vec::new(),
                 tick: 0,
             }),
-            home,
+            home: None,
             read: AtomicU64::new(0),
             writes: Mutex::new(Vec::new()),
         }
     }
 
-    /// 判据用：骨架落在给的那个家里。
-    #[cfg(test)]
+    /// 骨架落在这个家里（大记录扫完落一份；进程里没有那一张时照它起步）。
     pub(crate) fn with_skeletons(mut self, s: Skeletons) -> Self {
-        self.home = Home::Given(s);
+        self.home = Some(s);
         self
     }
 
-    /// 到此刻为扫描图读了多少字节（判据读它）。
-    #[cfg(test)]
-    pub(crate) fn bytes_read(&self) -> u64 {
-        self.read.load(Ordering::Relaxed)
-    }
-
     fn skeletons(&self) -> Option<&Skeletons> {
-        match &self.home {
-            #[cfg(test)]
-            Home::None => None,
-            Home::Installed => super::skeleton::installed(),
-            #[cfg(test)]
-            Home::Given(s) => Some(s),
-        }
+        self.home.as_ref()
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
@@ -613,17 +576,6 @@ impl RecordScans {
             );
         });
         w.push((path.to_path_buf(), h));
-    }
-
-    /// 等旁线程上的骨架都落完（判据「重启后」那一步之前用；进程里别处不等它）。
-    #[cfg(test)]
-    pub(crate) fn flush(&self) {
-        let pending = std::mem::take(&mut *self.writes.lock().unwrap_or_else(|e| e.into_inner()));
-        for (p, h) in pending {
-            if h.join().is_err() {
-                tracing::debug!("skeleton write for {} panicked", p.display());
-            }
-        }
     }
 
     /// 条数或字节超了 ⇒ 从最久没用的开始扔。

@@ -215,17 +215,6 @@ pub(crate) mod skel {
     }
 }
 
-/// 一批事实 ⇒ 主线外清单（判据的对照：与 [`Chain`] 逐条记、逐条算的结果相同；冷读那一路改成扫描图里的 [`Chain`] 接着记）。
-#[cfg(test)]
-pub(crate) fn off_of(facts: impl IntoIterator<Item = ChainFact>) -> Vec<String> {
-    let mut c = Chain::new();
-    for f in facts {
-        c.load(f);
-    }
-    c.settle();
-    c.off
-}
-
 struct Main {
     on: Vec<bool>,
     root_of: Vec<usize>,
@@ -364,4 +353,4 @@ fn exempt_queued(nodes: &[Link], on: &[bool], queued: &HashSet<String>) -> Vec<b
 
 #[cfg(test)]
 #[path = "../../../tests/backend/agents/mainline_tests.rs"]
-mod tests;
+pub(crate) mod tests;

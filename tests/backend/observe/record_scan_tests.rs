@@ -10,7 +10,40 @@
 use super::*;
 use std::io::Write as _;
 use std::path::PathBuf;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
+
+impl ScanMap {
+    /// 从字节 0 读 `r`，至多读 `len` 字节；`chain` 是这份记录那一家的链事实面（注册表 `RecordFace.chain`）：给了就顺手算主线外清单。
+    /// 判据用（产品那一路经 [`RecordScans::get`]，同一个 [`Scan`]）。
+    pub(crate) fn scan_with<R: std::io::BufRead>(
+        r: R,
+        len: u64,
+        kind: &str,
+        chain: ChainOf,
+    ) -> std::io::Result<ScanMap> {
+        let mut s = Scan::default();
+        s.feed(r, len, kind, chain)?;
+        Ok(s.done(len))
+    }
+}
+
+impl RecordScans {
+    /// 到此刻为扫描图读了多少字节（判据读它）。
+    pub(crate) fn bytes_read(&self) -> u64 {
+        self.read.load(Ordering::Relaxed)
+    }
+
+    /// 等旁线程上的骨架都落完（判据「重启后」那一步之前用；进程里别处不等它）。
+    pub(crate) fn flush(&self) {
+        let pending = std::mem::take(&mut *self.writes.lock().unwrap_or_else(|e| e.into_inner()));
+        for (p, h) in pending {
+            if h.join().is_err() {
+                tracing::debug!("skeleton write for {} panicked", p.display());
+            }
+        }
+    }
+}
 
 fn sandbox(tag: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(
