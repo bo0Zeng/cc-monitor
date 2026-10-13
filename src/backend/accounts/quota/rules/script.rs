@@ -72,6 +72,11 @@ impl std::fmt::Debug for File {
 
 fn fail(kind: FailKind, line: Option<usize>, msg: impl Into<String>) -> Fail {
     Fail {
+        why: if kind == FailKind::Timeout {
+            crate::accounts::quota::strategy::FailWhy::Timeout
+        } else {
+            crate::accounts::quota::strategy::FailWhy::Other
+        },
         kind,
         line,
         col: None,

@@ -97,6 +97,7 @@ fn read_one(path: &Path) -> Result<String, Fail> {
         line: None,
         col: None,
         msg: m,
+        why: crate::accounts::quota::strategy::FailWhy::Gone,
     };
     match crate::platform::fs::Ro::metadata(path) {
         Ok(m) if m.len() > MAX_SOURCE_BYTES as u64 => {

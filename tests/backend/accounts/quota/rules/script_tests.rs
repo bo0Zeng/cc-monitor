@@ -101,6 +101,75 @@ fn the_sandbox_stops_loops_and_offers_no_files_clock_or_randomness() {
     assert!(f.decide(&ctx_of(1)).is_ok());
 }
 
+/// ★ 跑出错 ⇒ 是哪一种（照 Rhai 的错归成几种常见的，提示照它写）· 第几行（文件里的行；出在自己写的函数里 ⇒ 报那一行，不报调用处；
+/// 操作数超了说不出在哪一行）。
+#[test]
+fn run_errors_say_which_kind_and_on_which_line() {
+    use crate::accounts::quota::strategy::FailWhy;
+    // 头占 1–3 行，代码从第 4 行起。
+    for (code, why, line) in [
+        (
+            "fn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: [] }\n}",
+            FailWhy::DivZero,
+            Some(5),
+        ),
+        (
+            "fn decide(ctx) {\n  let x = 1 % 0;\n  #{ order: [] }\n}",
+            FailWhy::DivZero,
+            Some(5),
+        ),
+        (
+            "fn half(x) {\n  x / 0\n}\nfn decide(ctx) {\n  half(1);\n  #{ order: [] }\n}",
+            FailWhy::DivZero,
+            Some(5),
+        ),
+        (
+            "fn decide(ctx) {\n\n  nope(1);\n  #{ order: [] }\n}",
+            FailWhy::NoFn,
+            Some(6),
+        ),
+        (
+            "fn decide(ctx) {\n  let a = ctx.accounts;\n  let x = a * 2;\n  #{ order: [] }\n}",
+            FailWhy::Type,
+            Some(6),
+        ),
+        (
+            "fn decide(ctx) {\n  let x = \"a\" - 1;\n  #{ order: [] }\n}",
+            FailWhy::Type,
+            Some(5),
+        ),
+        (
+            "fn decide(ctx) {\n  let a = [1];\n  let x = a[5];\n  #{ order: [] }\n}",
+            FailWhy::Index,
+            Some(6),
+        ),
+        ("fn decide(ctx) {\n  loop { }\n}", FailWhy::Limit, None),
+        (
+            "fn decide(ctx) {\n  throw \"boom\";\n}",
+            FailWhy::Other,
+            Some(5),
+        ),
+    ] {
+        let e = parse(&with_code(code))
+            .expect("编得过")
+            .decide(&ctx_of(1))
+            .expect_err(code);
+        assert_eq!((e.why, e.line), (why, line), "{code}：{e:?}");
+    }
+    let e = parse(&with_code("\nfn decide(ctx) { let = ; }")).expect_err("编不过");
+    assert_eq!(e.why, FailWhy::Other, "编不过 ⇒ 代码出错");
+    // 推演里累计耗时用完 ⇒ 超时（不是超出运算上限）。
+    let slow = parse(&with_code("fn decide(ctx) {\n  loop { }\n}")).expect("编得过");
+    let b = Budgeted::new(&slow);
+    while !b.exhausted() {
+        let _ = b.decide(&ctx_of(1));
+    }
+    assert_eq!(
+        b.decide(&ctx_of(1)).expect_err("用完了").why,
+        FailWhy::Timeout
+    );
+}
+
 /// ★ 回值形状：没有 order · order 不是号 · why 太长 · 叫醒的窗口不认得 ⇒ 形状不对；同一份 ctx 跑两次一样。
 #[test]
 fn returns_are_shape_checked_and_deterministic() {

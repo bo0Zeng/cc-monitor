@@ -647,6 +647,71 @@ fn the_hints_carry_what_their_buttons_need() {
     );
 }
 
+/// ★ 策略出错那一句照文案表：第几行（文件里的）· 哪一种（说法，不是 Rhai 的原话）· 改按默认优先级；原话进复制详情。
+/// 文件不在 ⇒ 说读不到这份文件（没有行）。
+#[test]
+fn a_strategy_error_is_said_in_words_with_its_line_and_the_raw_text_as_detail() {
+    let home = Home::new("view-error-words");
+    let ctx = home.ctx();
+    home.saw(&ctx, S1);
+    rotation::strategy_file_write(
+        &home.own(),
+        "div",
+        "// 说明\n/*--- rotation\n{\"format\": 5, \"settings\": {\"accounts\": [{\"start\": true}]}}\n---*/\nfn decide(ctx) {\n  let x = 1 / 0;\n  #{ order: [] }\n}\n",
+    )
+    .expect("写策略");
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").strategy.id = "div".into();
+    })
+    .expect("w");
+    let v = session_view(&ctx, &home, S1);
+    let n = v
+        .hints
+        .iter()
+        .find(|h| matches!(h.hint, RotHint::StrategyError { .. }))
+        .unwrap_or_else(|| panic!("出错那一条：{:?}", v.hints));
+    let why = copy_core::copy_text("beRotation.why.divZero", &[]);
+    assert_eq!(
+        n.text,
+        copy_core::copy_text(
+            "beRotation.hint.errorLine",
+            &[("name", "div"), ("line", "6"), ("why", &why)]
+        ),
+        "第 6 行（说明 1 行 ＋ 头 3 行 ＋ fn 那 1 行）"
+    );
+    assert!(!n.text.contains("Division"), "上屏不带原话：{}", n.text);
+    let detail = n.detail.as_deref().expect("带复制详情");
+    assert!(detail.contains("Division by zero"), "{detail}");
+
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").strategy.id = "gone".into();
+    })
+    .expect("w");
+    let v = session_view(&ctx, &home, S1);
+    let n = v
+        .hints
+        .iter()
+        .find(|h| matches!(h.hint, RotHint::StrategyError { .. }))
+        .expect("出错那一条");
+    assert_eq!(
+        n.text,
+        copy_core::copy_text(
+            "beRotation.hint.error",
+            &[
+                ("name", "gone"),
+                ("why", &copy_core::copy_text("beRotation.why.gone", &[]))
+            ]
+        )
+    );
+    assert!(n.detail.is_some(), "原话照样进复制详情");
+    // 别的提示没有复制详情。
+    assert!(v
+        .hints
+        .iter()
+        .filter(|h| !matches!(h.hint, RotHint::StrategyError { .. }))
+        .all(|h| h.detail.is_none()));
+}
+
 /// ★ 别处改了：会话有草稿、草稿基于的版本跟文件此刻的不同 ⇒ 提示；没草稿 ⇒ 不提示（照新的走）。
 /// 设置页同理（草稿基于的版本随 `target.rev` 交来）。`baseRev` ＝ 写的时候拿去当 `ifRev` 的那个。
 #[test]
