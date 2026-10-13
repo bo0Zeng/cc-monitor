@@ -532,12 +532,17 @@ fn s32_never_flip_flops() {
         "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]}, "capKind": "hard", "force": 25,
         "accounts": [{"id": "A"}, {"id": "B"}, {"id": "C"}]
     });
-    let a = |id: &str, u: f64, r: u64| Acct {
-        rate: [Some(0.5), Some(0.0)],
+    // 用速是号自己的（别的会话也在用）：涨得快慢不一，余量的先后一直在变。
+    let a = |id: &str, u: f64, r: u64, rate: f64| Acct {
+        rate: [Some(rate), Some(0.0)],
         resets: [Some(T + r * 60), None],
         ..acct(id, u)
     };
-    let f = [a("A", 40.0, 300), a("B", 42.0, 180), a("C", 20.0, 100)];
+    let f = [
+        a("A", 40.0, 300, 0.6),
+        a("B", 42.0, 180, 0.2),
+        a("C", 20.0, 100, 0.4),
+    ];
     let tl = simulate(&sig("A", &[]), &f, &s, by_left(), &clock, T, T + 24 * 3600);
     let sw = tl.switches();
     assert!(!tl.truncated, "推演跑满了 200 个事件：换了 {} 次", sw.len());
