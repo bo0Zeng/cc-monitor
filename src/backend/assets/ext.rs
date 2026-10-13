@@ -28,8 +28,6 @@ use super::asset_catalog::{self, Asset, Catalog, KIND_MCP, KIND_SKILL};
 use super::door::{self, Door, Refused};
 use super::skill_ledger::{Record, RecordReq};
 
-type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
-
 // ───────────────────────── 线上形状（界面那一份由这里生成） ─────────────────────────
 
 /// 一个扩展住哪一级。
