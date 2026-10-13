@@ -1001,6 +1001,8 @@ pub const PROTO_VERSION: u32 = 1;
 /// 资产域那扇门按类型收发（Door 每一问一个方法，收发文件管理那一族的线上类型）。
 /// 轮换第五版界面跟上：子命令集多 --rotation-strategy-tz（子命令与通道各一，指纹行换成现打的：这一版还没发过）；
 /// rotation-view 多过去那一截 · 提示带文件路径与时区名 · baseRev，rotation-try / -day-paint · session-new 形状跟着变。
+/// 第 7 批：子命令集多 --prefs-read / --prefs-set · --machines-read / --machines-try / --machines-set（子命令与通道各一）；
+/// 偏好（启动命令 · 每号模型 · 上限表）住那台的 prefs.json、机器表住本机后端的 machines.json，推送主题多 machines。
 pub const BUILD_ID: &str = "p10l-typed-hub";
 
 // 身份戳的两个界标住契约 crate（`deploy_contract::STAMP_OPEN` / `STAMP_CLOSE`）：monitor 扫字节用的是同一份。
