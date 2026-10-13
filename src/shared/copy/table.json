@@ -1793,7 +1793,7 @@
     "beSessionModel.unsure.noReadback": {
       "kind": "error",
       "role": "原因格",
-      "zh": "换模型结果未知\n未读到换成了哪个模型",
+      "zh": "换模型结果未知\n未读到新的模型",
       "args": []
     },
     "beSessionModel.switch.unsupported": {

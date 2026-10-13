@@ -107,6 +107,11 @@ pub(crate) fn mode_on_screen(lines: &[String]) -> Option<&'static str> {
     })
 }
 
+/// resume 命令：**flag 形**，与 Codex 的子命令形不同。
+pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
+    format!("{base} {RESUME_TOKEN} {session_id}")
+}
+
 /// 会话开着时换模型送的那一行：`/model <值>`（它也把这个模型存成这个号以后新会话的默认，那一家自己说的）。
 pub(crate) fn model_command(value: &str) -> String {
     format!("/model {value}")
@@ -148,11 +153,6 @@ pub(crate) fn model_said(v: &serde_json::Value) -> Option<crate::agents::ModelSa
         .and_then(|(_, e)| e.split_once("` effort"))
         .map(|(e, _)| e.to_string());
     Some(crate::agents::ModelSaid { name, kept, effort })
-}
-
-/// resume 命令：**flag 形**，与 Codex 的子命令形不同。
-pub(crate) fn resume_command(base: &str, session_id: &str) -> String {
-    format!("{base} {RESUME_TOKEN} {session_id}")
 }
 
 #[cfg(test)]
