@@ -478,3 +478,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
         }),
     },
 ];
+
+// 文件窗口读的那几条回包的线上字节钉在夹具里（换形前后逐字节比）。
+#[cfg(test)]
+#[path = "../../../../../tests/backend/stream/file_manager_wire_tests.rs"]
+mod wire_tests;
