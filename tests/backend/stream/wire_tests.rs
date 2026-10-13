@@ -1234,8 +1234,8 @@ fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     }
     #[rustfmt::skip]
     let synth: &[crate::agents::Adapter] = &[
-        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
-        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+        crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
+        crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None, old_home_pref: None, assets: None, history: None, upstream: None, mcp: None, footprint: None, accounts: None, records: None, processes: None, launch: None, compact_request: None, local: None, live: crate::agents::LiveBy::Unknown, asks: None },
     ];
     let discovered = crate::agents::visible_among(synth);
     assert_eq!(

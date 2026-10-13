@@ -5,7 +5,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fakeClipboard } from "../../../test-support/clipboard-fake";
 
-const { disk, answers, opened, marks, seen, fileWin } = vi.hoisted(() => ({
+const { disk, answers, opened, marks, seen, fileWin, localOpened, localRevealed } = vi.hoisted(() => ({
+  localOpened: [] as string[],
+  localRevealed: [] as string[],
   seen: new Map<string, Record<string, { atMs: number; value: unknown }>>(),
   fileWin: [] as Array<{ host: unknown; at: unknown }>,
   disk: { cfg: {} as Record<string, unknown> },
@@ -38,6 +40,12 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
         const out = op === "last-seen-read" ? { accounts: mine.accounts ?? null, data: mine.data ?? null } : { atMs: 1 };
         return Promise.resolve(new TextEncoder().encode(JSON.stringify(out)));
       }
+      // 机器表住本机后端（`machines-read`）：照这块盘上摆的 `remote.hosts` 答。
+      if (op === "machines-read") {
+        if (origin !== "<local>") return Promise.reject(new Error("机器表只问本机后端"));
+        const hosts = (disk.cfg.remote as { hosts?: unknown[] } | undefined)?.hosts ?? [];
+        return Promise.resolve(new TextEncoder().encode(JSON.stringify({ state: "ok", reason: null, detail: null, path: null, hosts })));
+      }
       if (op !== "data-report") return Promise.reject(new Error(`没料到 ${op}`));
       const a = answers.get(origin);
       if (a === undefined) return Promise.reject(new Error(`${origin} 断开`));
@@ -45,14 +53,22 @@ vi.mock("../../../../src/comms/inward/chan", () => ({
     },
   },
 }));
-vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: opened, openPath: vi.fn() }));
+// 各台「恢复到 tmux 里」那一格住那台后端（`prefs-read`）：桩成都开着。
+vi.mock("../../../../src/frontend/ui/machine-prefs", () => ({
+  readPrefs: async () => ({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: true, models: {}, contextLimits: {} } }),
+}));
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openUrl: opened,
+  openPath: (p: string) => (localOpened.push(p), Promise.resolve()),
+  revealItemInDir: (p: string) => (localRevealed.push(p), Promise.resolve()),
+}));
 vi.mock("../../../../src/frontend/ui/kit/toast", () => ({ toast: vi.fn() }));
 vi.mock("../../../../src/frontend/ui/file-window", () => ({ openOnMachine: (host: unknown, at: unknown) => (fileWin.push({ host, at }), Promise.resolve()) }));
 
 import { DataPage } from "../../../../src/frontend/ui/settings/data-page";
 import { decodeDataReport } from "../../../../src/frontend/ui/settings/data-reads";
 import { defaultPick } from "../../../../src/frontend/ui/resume-menu";
-import { setResumeInTmux } from "../../../../src/frontend/ui/resume-defaults";
+import { forgetResumeDefaults, resumeInTmuxAt } from "../../../../src/frontend/ui/resume-defaults";
 import { copyText } from "../../../../src/frontend/ui/copy-table";
 import { LOCAL_ORIGIN } from "../../../../src/frontend/ui/ipc/origin";
 import { __resetLastSeenForTests } from "../../../../src/frontend/ui/last-seen";
@@ -120,12 +136,14 @@ beforeEach(() => {
   answers.clear();
   seen.clear();
   fileWin.length = 0;
+  localOpened.length = 0;
+  localRevealed.length = 0;
   __resetLastSeenForTests();
   opened.mockClear();
   marks.length = 0;
   clipFake = fakeClipboard();
   disk.cfg = { remote: { hosts: [{ label: "devbox", host: "d.lan", user: "u", port: 22 }, { label: "gpu", host: "g.lan", user: "u", port: 22 }] } };
-  setResumeInTmux(true);
+  forgetResumeDefaults();
 });
 
 describe("data-report 的应答严格收", () => {
@@ -234,6 +252,8 @@ describe("待办", () => {
     const { page } = mount();
     page.loadNow();
     await settle();
+    await resumeInTmuxAt("devbox");
+    await resumeInTmuxAt(LOCAL_ORIGIN);
     expect(defaultPick("devbox").tmux).toBe(false);
     expect(defaultPick(LOCAL_ORIGIN).tmux).toBe(true);
   });
@@ -280,8 +300,7 @@ describe("cc-monitor 放了什么", () => {
     page.loadNow();
     await settle();
     const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
-    const remote = pane.querySelector<HTMLElement>(".data-remote-only")!;
-    expect(remote.hidden, "本机 chip 上不出远端那一块").toBe(true);
+    const remote = pane.querySelector<HTMLElement>(".data-own-files")!;
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "devbox")!.click();
     expect(remote.hidden).toBe(false);
     const rows = [...remote.querySelectorAll<HTMLElement>("[data-own]")];
@@ -296,6 +315,36 @@ describe("cc-monitor 放了什么", () => {
     rows[0].querySelector("button")!.click();
     await settle();
     expect(fileWin.map((f) => f.at)).toEqual([{ revealFile: "/home/u/.cc-monitor/profiles.toml" }]);
+  });
+
+  it("★ 本机那一块「cc-monitor 的文件」也照本机后端 data-report 的 own 排（与远端同一套行）；打开 ＝ 本机打开 · 在文件夹中显示；不在的两颗都不给", async () => {
+    answers.set(LOCAL_ORIGIN, report({ home: "/l", own: [...report().own, { id: "fresh", what: "编的一句：本机也照抄", path: "~/.cc-monitor/fresh.json", dir: false, class: "cache", exists: true, size: 7 }] }));
+    const own = document.createElement("div");
+    own.dataset.host = "monitor-own";
+    const page = new DataPage({ claudeDir: document.createElement("div"), ownFiles: own, goTo: () => {}, setBadge: () => {} });
+    document.body.appendChild(page.element);
+    page.openTab("placed");
+    page.loadNow();
+    await settle();
+    const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
+    const box = pane.querySelector<HTMLElement>(".data-own-files")!;
+    expect(box.hidden, "本机 chip 上也出这一块").toBe(false);
+    const rows = [...box.querySelectorAll<HTMLElement>("[data-own]")];
+    expect(rows.map((r) => r.dataset.own)).toEqual(["profiles", "accounts", "bin", "fresh"]);
+    expect(rows[3].textContent, "本机那一句也照抄后端").toContain("编的一句：本机也照抄");
+    expect(rows[0].textContent).toContain(copyText("data.class.keep"));
+    expect(rows[2].querySelectorAll("button:not([disabled])").length, "不在的那一样没有可打开的").toBe(0);
+    const btn = (r: HTMLElement, text: string) => [...r.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === text)!;
+    btn(rows[0], copyText("data.item.open")).click();
+    btn(rows[0], copyText("data.item.reveal")).click();
+    await settle();
+    expect(localOpened).toEqual(["/l/.cc-monitor/profiles.toml"]);
+    expect(localRevealed).toEqual(["/l/.cc-monitor/profiles.toml"]);
+    expect(fileWin, "本机不开文件窗口").toEqual([]);
+    // 宿主交进来的 monitor 那一块照旧挂在后面（界面自己那几份：数据目录 · 网页引擎 · 本地存储）。
+    const host = pane.querySelector<HTMLElement>('[data-host="monitor-own"]')!;
+    expect(host.closest<HTMLElement>(".data-local-only")!.hidden).toBe(false);
+    expect(box.compareDocumentPosition(host) & Node.DOCUMENT_POSITION_FOLLOWING, "后端那几样在前、界面那几份在后").toBeTruthy();
   });
 
   it("★ 连不上的那台：本机后端记着上次读成的那一份 ⇒ 照上次的画 ＋ 警告条说多旧（跨重启：上次值不住界面）", async () => {
@@ -318,8 +367,8 @@ describe("cc-monitor 放了什么", () => {
     const pane = page.element.querySelector<HTMLElement>('[data-pane="placed"]')!;
     expect(pane.textContent).toContain("~/.zshrc");
     expect(pane.textContent).toContain(copyText("dataPage.placed.stale", { machine: "devbox", ago: copyText("durationFormat.short.under") }));
-    expect(pane.querySelectorAll(".data-remote-only [data-own]").length).toBe(3);
-    expect([...pane.querySelectorAll<HTMLButtonElement>(".data-remote-only [data-own] button")].every((b) => b.disabled), "断开的那台打不开文件窗口 ⇒ 置灰").toBe(true);
+    expect(pane.querySelectorAll(".data-own-files [data-own]").length).toBe(3);
+    expect([...pane.querySelectorAll<HTMLButtonElement>(".data-own-files [data-own] button")].every((b) => b.disabled), "断开的那台打不开文件窗口 ⇒ 置灰").toBe(true);
     // 从没读成过的那台照旧说读不到。
     [...page.element.querySelectorAll<HTMLButtonElement>(".data-chip")].find((b) => b.textContent === "gpu")!.click();
     expect(pane.textContent).toContain(copyText("dataPage.placed.offline", { machine: "gpu" }));

@@ -9,11 +9,12 @@
  * 纯函数、不碰文件系统，故不需要 mock `config.ts`。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { copyText } from "../../../src/frontend/ui/copy-table";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 // config 写只交补丁；替身把补丁应用到 `loadConfig` 摆的那份上，写完的整份交 `fakeCfg.saved`。
 vi.mock("../../../src/frontend/ui/config", async (orig) => (await import("./config-patch-fake")).mockedConfigModule(orig));
+// 机器表住本机后端：`machines-read` / `-try` / `-set` 的替身把表摆在同一块假盘的 `remote.hosts` 里。
+vi.mock("../../../src/frontend/ui/ipc/chan-caller", async (orig) => (await import("./config-patch-fake")).mockedChanCaller(orig));
 import { loadConfig } from "../../../src/frontend/ui/config";
 import { fakeCfg } from "./config-patch-fake";
 const saveConfig = fakeCfg.saved;
@@ -21,9 +22,7 @@ import { srcDirOf } from "../../test-support/repo-root";
 import {
   hostKey,
   patchRemoteConfig,
-  pickResumeCommand,
-  readRemoteConfig,
-  REMOTE_CONFIG_UNRECOGNIZED,
+  remoteConfigOf,
   type RemoteConfig,
   type RemoteHostConfig,
 } from "../../../src/frontend/ui/remote-config";
@@ -38,7 +37,6 @@ function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    resumeCommand: "",
     connect: true,
     ...over,
   };
@@ -112,35 +110,6 @@ describe("〔FIX2 续 · ㊶〕增 / 删一台 ⇒ insertin / removein，不整�
   });
 });
 
-describe("S4b-3 pickResumeCommand —— per-machine 优先，全局兜底", () => {
-  it("这台机器填了就用它的", () => {
-    expect(pickResumeCommand(mk({ resumeCommand: "ccm resume", connect: true }), "claude -r")).toBe(
-      "ccm resume",
-    );
-  });
-
-  it("★ 没填 / 只填了空白 / 这台机器压根查不到 → 一律回退全局默认", () => {
-    // 这是「不做数据迁移」的落点：没填过的机器行为**一字不变**。
-    expect(pickResumeCommand(mk({ resumeCommand: "", connect: true }), "claude -r")).toBe("claude -r");
-    expect(pickResumeCommand(mk({ resumeCommand: "   ", connect: true }), "claude -r")).toBe("claude -r");
-    expect(pickResumeCommand(null, "claude -r")).toBe("claude -r");
-  });
-
-  it("per-machine 值两端空白会被 trim（用户手滑不该产出带空格的命令）", () => {
-    expect(pickResumeCommand(mk({ resumeCommand: "  ccm resume  ", connect: true }), "x")).toBe(
-      "ccm resume",
-    );
-  });
-
-  it("★ 两台机器各用各的（这正是全局单值表达不出来的那件事）", () => {
-    // A 机装了 ccm、B 机没装 —— 全局单值时这两台只能共用一条命令。
-    const a = mk({ label: "devbox", resumeCommand: "ccm resume", connect: true });
-    const b = mk({ label: "nano", resumeCommand: "", connect: true });
-    expect(pickResumeCommand(a, "claude -r")).toBe("ccm resume");
-    expect(pickResumeCommand(b, "claude -r")).toBe("claude -r");
-  });
-});
-
 describe("S1：整表覆盖那条路必须**不可达**", () => {
   it("〔FIX2 续 · ㊶〕整段写 `remote` 的补丁在 remote-config.ts 里零处（增删改全按键认元素）", () => {
     const whole = /setAt\(\s*\[\s*"remote"\s*\]\s*,|patchConfigFrom\(/;
@@ -164,39 +133,15 @@ describe("S1：整表覆盖那条路必须**不可达**", () => {
 });
 
 /**
- * 要求：「不为旧配置留兼容」· D4（不许把认不出静默当成空）。
- *
- * `remote` 段没有 `hosts` 列表（旧的单台写法 / `hosts` 写成别的类型 / 只有 `enabled`）⇒ **认不出**：
- * 一台都不给（不猜那是哪台）、并带上那一句。对照：`hosts: []` 是合法的零台、没有 `remote` 段是「没配」，两者都不带那一句。
- * Rust 那一侧同一个判准：`tests/frontend/shell/lib_remote_config_tests.rs::a_remote_section_without_a_hosts_array_is_refused_not_emptied`。
+ * D4（不许把认不出静默当成空）：本机后端那份机器表读不懂 ⇒ 一台都不给（不猜那是哪台）、带上后端写好的那一句；
+ * 没有那份 / 零台 ⇒ 都不带那一句。读不懂的判准在后端（`machines_tests::an_unreadable_table_is_reported_and_never_overwritten`）。
  */
-describe("remote 段认不出", () => {
-  beforeEach(() => vi.resetAllMocks());
-
-  it("★ 没有 hosts 列表 ⇒ 一台都不给，并说认不出", async () => {
-    for (const remote of [
-      { enabled: true, host: "pi.local", user: "pi", backendPath: "/x" },
-      { enabled: true, hosts: { host: "pi.local" } },
-      { enabled: true },
-    ]) {
-      vi.mocked(loadConfig).mockResolvedValue({ remote } as unknown as Awaited<
-        ReturnType<typeof loadConfig>
-      >);
-      const got = await readRemoteConfig();
-      expect(got.hosts, JSON.stringify(remote)).toEqual([]);
-      expect(got.unrecognized, JSON.stringify(remote)).toBe(REMOTE_CONFIG_UNRECOGNIZED);
-    }
-    expect(REMOTE_CONFIG_UNRECOGNIZED).toBe(copyText("remoteConfig.remoteConfigUnrecognized.unrecognized"));
-  });
-
-  it("对照：hosts: [] 与没有 remote 段都不带那一句", async () => {
-    for (const cfg of [{ remote: { enabled: true, hosts: [] } }, {}]) {
-      vi.mocked(loadConfig).mockResolvedValue(
-        cfg as unknown as Awaited<ReturnType<typeof loadConfig>>,
-      );
-      const got = await readRemoteConfig();
-      expect(got.hosts).toEqual([]);
-      expect(got.unrecognized, JSON.stringify(cfg)).toBeUndefined();
+describe("机器表读不懂", () => {
+  it("★ unreadable ⇒ 一台都不给，并照抄后端那一句；absent / ok 零台 ⇒ 不带", () => {
+    const got = remoteConfigOf({ state: "unreadable", reason: "读不懂那一句", detail: null, path: null, hosts: [] });
+    expect(got).toEqual({ hosts: [], unrecognized: "读不懂那一句" });
+    for (const state of ["absent", "ok"] as const) {
+      expect(remoteConfigOf({ state, reason: null, detail: null, path: null, hosts: [] })).toEqual({ hosts: [] });
     }
   });
 });

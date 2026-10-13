@@ -252,7 +252,9 @@ fn every_rendered_remote_command(cwds: &[&str]) -> Vec<(String, String)> {
         for cwd in std::iter::once(c["req"]["cwd"].clone()).chain(cwds.iter().map(|d| json!(d))) {
             let mut req = c["req"].clone();
             req["cwd"] = cwd.clone();
-            let r: wire::CliRenderRequest = serde_json::from_value(req).unwrap();
+            let r: wire::CliRenderRequest = serde_json::from_value::<wire::CliRenderRequest>(req)
+                .unwrap()
+                .with_prefs(&serde_json::from_value(c["prefs"].clone()).unwrap_or_default());
             let account = crate::control::launch_account::settled_as_asked(&r.account, &r.models);
             if let Ok(cmd) = wire::render_ccm_launch_with(&r, &account, &caps, "ccm") {
                 out.push((format!("cli {} · cwd {cwd}", c["name"]), cmd));

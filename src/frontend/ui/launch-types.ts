@@ -21,12 +21,10 @@ export type { AccountAsk as LaunchAccount } from "./generated/AccountAsk";
 import type { AccountAsk } from "./generated/AccountAsk";
 
 /**
- * 正交修饰（调用方手上的原值）：要哪个号 · 那台的模型偏好表（用户设置的原值，`{号: 模型}`）。
- * 号缺席 ＝ 跟随（同那台后端的缺省）。
+ * 正交修饰：要哪个号（缺席 ＝ 跟随，同那台后端的缺省）。启动命令 · 模型偏好表住那台后端（`prefs.json`），不随请求交。
  */
 export interface LaunchModifiers {
   account?: AccountAsk;
-  models?: Record<string, string>;
   /** 开终端之前问一句（收那台判出来的号的目录；账号 0 / 不指定 ⇒ `undefined`）；回 `false` ⇒ 不起（它自己已经说过了）。 */
   preflight?: (configDir: string | undefined) => Promise<boolean>;
 }
@@ -39,9 +37,6 @@ export interface LaunchContext {
   container: LaunchContainer;
   cwd: string | null;
   account: AccountAsk;
-  /** 那台的模型偏好表（原值）。 */
-  models: Record<string, string>;
-  launcherOverride: string | undefined;
   /** 身份标记：建出来的 tmux 会话打上这个 sid（只有 tmux 建会话 resume 那一形设）。 */
   ccmSid: string | undefined;
 }

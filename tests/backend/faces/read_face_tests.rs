@@ -41,7 +41,15 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
         "history-user-inputs" => via::<h::UserInputsCmd>(args, |r| h::user_inputs_at(home, r)),
         "history-turns" => via::<h::HistoryTurnsCmd>(args, |r| h::turns_at(home, r, tz)),
         "history-find" => via::<h::HistoryFindCmd>(args, |r| h::find_at(home, r, tz)),
-        "history-facts" => via::<h::HistoryFactsCmd>(args, |r| h::facts_at(home, r)),
+        "history-facts" => via::<h::HistoryFactsCmd>(args, |r| {
+            // 上限表住这台的偏好：夹具家目录里那份 `prefs.json`（没有 ⇒ 空表）。
+            let limits = crate::control::machine_prefs::read_at(
+                &crate::control::machine_prefs::path_in(home),
+            )
+            .prefs()
+            .limits();
+            h::facts_at(home, r, &limits)
+        }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
             <super::BackendLog as crate::stream::inbound::typed::Blocking>::run(
                 r,
@@ -559,11 +567,21 @@ fn golden_turns_session(home: &Path) -> String {
 fn the_three_products_match_the_cross_language_golden() {
     let home = scratch("c4b-golden");
     let path = golden_session(&home);
+    // `history-facts` 的 `rev` 是续算表现铸的号（从进程起来那一刻的钟往上数）：比较前换成金样里的 1，只核它在、是数。
+    let mut facts = answer_at(
+        &home,
+        "history-facts",
+        &serde_json::json!({"path": golden_facts_session(&home)}),
+        &Default::default(),
+    )
+    .unwrap();
+    assert!(facts["rev"].as_u64().is_some_and(|r| r > 1), "{facts}");
+    facts["rev"] = serde_json::json!(1);
     let got = serde_json::json!({
         "history-index": answer_at(&home, "history-index", &serde_json::json!({"path": path, "offset": 0}), &Default::default()).unwrap(),
         "history-user-inputs": answer_at(&home, "history-user-inputs", &serde_json::json!({"path": path, "from": 0}), &Default::default()).unwrap(),
         "history-find": answer_at(&home, "history-find", &serde_json::json!({"path": path, "query": "zqx", "include_tools": false, "limit": 500}), &Default::default()).unwrap(),
-        "history-facts": answer_at(&home, "history-facts", &serde_json::json!({"path": golden_facts_session(&home)}), &Default::default()).unwrap(),
+        "history-facts": facts,
         "history-turns": answer_at(&home, "history-turns", &serde_json::json!({"path": golden_turns_session(&home), "from": 0}), &Default::default()).unwrap(),
     });
     let want: serde_json::Value =
@@ -715,20 +733,33 @@ fn facts_say_what_the_session_is_waiting_for() {
     assert_eq!(dead, serde_json::Value::Null, "在等的进程死了还算需手动");
 }
 
-/// `history-facts` 的 `limits`：设置里的上限表随请求交来、上限在这里定；形状不对 ⇒ `bad_args`。
+/// `history-facts` 的上限表住这台的偏好（`prefs.json` 的 `contextLimits`）：上限在这里定；请求里再交一张 ⇒ `bad_args`（那一格删了）。
 #[test]
-fn history_facts_applies_the_limits_it_is_given() {
+fn history_facts_applies_the_limits_this_machine_keeps() {
     let home = scratch("facts-limits");
     let path = golden_facts_session(&home);
     let ask =
         |args: serde_json::Value| answer_at(&home, "history-facts", &args, &Default::default());
-    let v = ask(serde_json::json!({ "path": path, "limits": {"M-G": 100} })).unwrap();
+    let v = ask(serde_json::json!({ "path": path })).unwrap();
+    assert_ne!(
+        v["usage"]["limitFrom"],
+        serde_json::json!("setting"),
+        "没设就用上了设置"
+    );
+    let own = crate::platform::fs::Own::issue_at(&home);
+    crate::control::machine_prefs::answer_set_in(
+        Some(&home),
+        &own,
+        &serde_json::from_value(serde_json::json!({"contextLimits": {"M-G": 100}})).unwrap(),
+    )
+    .unwrap();
+    let v = ask(serde_json::json!({ "path": path })).unwrap();
     assert_eq!(
         (v["usage"]["limit"].clone(), v["usage"]["limitFrom"].clone()),
         (serde_json::json!(100), serde_json::json!("setting"))
     );
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "limits": {"m": "x"} }))
+        ask(serde_json::json!({ "path": path, "limits": {"m": 1} }))
             .unwrap_err()
             .0,
         "bad_args"
@@ -780,18 +811,33 @@ fn history_facts_takes_the_context_window_from_what_the_relay_saw() {
     );
 }
 
-/// ★`history-facts` 经帧面续传：把上一次的应答**原样**当 `prior` 交回（与线上同形：过一遍 JSON 文本），
-/// 文件长了一截之后接着问 == 对长了之后的整份从 0 问（两向：整个值相等）。续点的两道校验：
-/// 截断（续点越过文件尾）⇒ `failed`；改写到续点不在行边界上 ⇒ `failed`；`prior` 形状不对 / 缺 `path` ⇒ `bad_args`。
+/// ★`history-facts` 经帧面续传：令牌只是应答里的 `{end, rev}` 两格（与线上同形：过一遍 JSON 文本），
+/// 文件长了一截之后接着问 == 对长了之后的整份从 0 问（除了新铸的 `rev`）。令牌对不上表里那一份（`rev` 认不得 ·
+/// `end` 不是那一份的 · 已经续过一次被换掉了）⇒ `stale_prior`；续点的两道校验：截断 ⇒ `failed`；改写到续点不在行边界上 ⇒ `failed`；
+/// 令牌形状不对（缺 `rev` · 多一格 · 旧的整份成品）/ 缺 `path` ⇒ `bad_args`。
 #[test]
-fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() {
+fn history_facts_resumes_from_its_end_rev_token_and_refuses_a_stale_one() {
     let home = scratch("facts");
     let path = golden_facts_session(&home);
     let ask =
         |args: serde_json::Value| answer_at(&home, "history-facts", &args, &Default::default());
+    let token = |v: &serde_json::Value| serde_json::json!({ "end": v["end"], "rev": v["rev"] });
+    let no_rev = |v: &serde_json::Value| {
+        let mut v = v.clone();
+        v.as_object_mut().unwrap().remove("rev");
+        v
+    };
     let first = ask(serde_json::json!({ "path": path })).unwrap();
     let wire: serde_json::Value =
         serde_json::from_str(&first.to_string()).expect("应答过一遍 JSON 文本");
+    assert!(wire["rev"].as_u64().is_some(), "成品里没有 rev：{wire}");
+    // 旧的整份成品当令牌 ⇒ 认不得（不留旧兼容）。
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "prior": wire }))
+            .unwrap_err()
+            .0,
+        "bad_args"
+    );
     let more = r#"{"type":"assistant","uuid":"f-5","message":{"content":[{"type":"tool_use","id":"tu-4","name":"Write","input":{"file_path":"/w/b.ts"}}]}}"#;
     let mut f = std::fs::OpenOptions::new()
         .append(true)
@@ -799,22 +845,49 @@ fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() 
         .unwrap();
     std::io::Write::write_all(&mut f, format!("{more}\n").as_bytes()).unwrap();
     drop(f);
-    let resumed = ask(serde_json::json!({ "path": path, "prior": wire })).unwrap();
+    // `end` 不是那一份的 · `rev` 认不得 ⇒ stale_prior（调用方从 0 重要）。
+    let mut off = token(&wire);
+    off["end"] = serde_json::json!(wire["end"].as_u64().unwrap() - 1);
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "prior": off }))
+            .unwrap_err()
+            .0,
+        "stale_prior"
+    );
+    let mut unknown = token(&wire);
+    unknown["rev"] = serde_json::json!(wire["rev"].as_u64().unwrap() + 1_000_000);
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "prior": unknown }))
+            .unwrap_err()
+            .0,
+        "stale_prior"
+    );
+    let resumed = ask(serde_json::json!({ "path": path, "prior": token(&wire) })).unwrap();
     let whole = ask(serde_json::json!({ "path": path })).unwrap();
-    assert_eq!(resumed, whole, "接着问与从 0 问不相等");
+    assert_eq!(no_rev(&resumed), no_rev(&whole), "接着问与从 0 问不相等");
+    assert_ne!(resumed["rev"], wire["rev"], "续上之后该铸新的 rev");
     assert_ne!(
-        resumed, first,
+        no_rev(&resumed),
+        no_rev(&first),
         "长了的那一截没进成品（夹具那条写类调用没进改动文件）"
     );
     assert_eq!(
         whole["touchedFiles"],
         serde_json::json!(["/w/a.ts", "/w/b.ts"])
     );
+    // 续过一次的旧令牌被换掉了 ⇒ stale_prior。
+    assert_eq!(
+        ask(serde_json::json!({ "path": path, "prior": token(&wire) }))
+            .unwrap_err()
+            .0,
+        "stale_prior"
+    );
 
     // 截断：续点越过文件尾。
+    let wire = whole;
     std::fs::write(&path, "{}\n").unwrap();
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": wire }))
+        ask(serde_json::json!({ "path": path, "prior": token(&wire) }))
             .unwrap_err()
             .0,
         "failed"
@@ -822,22 +895,27 @@ fn history_facts_resumes_from_its_own_answer_and_refuses_a_stale_resume_point() 
     // 改写：长度够，但续点前一个字节不是换行。
     let end = wire["end"].as_u64().unwrap() as usize;
     std::fs::write(&path, "x".repeat(end + 10)).unwrap();
-    let e = ask(serde_json::json!({ "path": path, "prior": wire })).unwrap_err();
+    let e = ask(serde_json::json!({ "path": path, "prior": token(&wire) })).unwrap_err();
     assert!(e.0 == "failed" && e.1.contains("line boundary"), "{e:?}");
-    // 正控：同一个长度、续点恰在行边界上 ⇒ 接着读（证明上一条红的是「不在行边界」而不是别的）。
+    // 正控：同一个长度、续点恰在行边界上 ⇒ 接着读（证明上一条红的是「不在行边界」而不是别的；读不成那两次表里那一份留着）。
     std::fs::write(&path, format!("{}\n{}\n", "x".repeat(end - 1), "{}")).unwrap();
-    assert!(ask(serde_json::json!({ "path": path, "prior": wire })).is_ok());
+    assert!(ask(serde_json::json!({ "path": path, "prior": token(&wire) })).is_ok());
     // 形状不对 / 缺 path。
-    let mut bad = wire.clone();
-    bad.as_object_mut().unwrap().remove("usage");
+    for bad in [
+        serde_json::json!({ "end": wire["end"] }),
+        serde_json::json!({ "end": wire["end"], "rev": wire["rev"], "usage": null }),
+    ] {
+        assert_eq!(
+            ask(serde_json::json!({ "path": path, "prior": bad }))
+                .unwrap_err()
+                .0,
+            "bad_args"
+        );
+    }
     assert_eq!(
-        ask(serde_json::json!({ "path": path, "prior": bad }))
+        ask(serde_json::json!({ "prior": token(&wire) }))
             .unwrap_err()
             .0,
-        "bad_args"
-    );
-    assert_eq!(
-        ask(serde_json::json!({ "prior": wire })).unwrap_err().0,
         "bad_args"
     );
     // 围栏同族：`projects` 之外的文件不读。
@@ -1538,8 +1616,8 @@ fn split_waited(n: &serde_json::Value) -> (Option<u64>, serde_json::Value) {
     (ms, rest)
 }
 
-/// ★ **续算令牌不被投影弄残**：带声明去掉 `touchedFiles` 之后，下一问交回的是应答里那一格 `prior`（投影之前的整份），
-/// 续算出来的与不带声明那一路**逐字相同**（投影只是这一次不发）。拿去过格的应答本身当令牌 ⇒ 缺那一格 ⇒ 这里红。
+/// ★ **续算令牌不被投影弄残**：带声明去掉 `touchedFiles`（连同点名去掉 `end` · `rev`）之后，令牌那两格照样在
+/// （`views::TOKENS`：投影不去它们），应答里不再另塞一整份；拿它续算出来的与不带声明那一路**逐字相同**（除了各自的 `rev`）。
 #[test]
 fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
     let home = scratch("facts-token");
@@ -1553,7 +1631,7 @@ fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
     };
     std::fs::write(&p, edit("a1", "/w/one.txt")).unwrap();
     let path = p.to_string_lossy().to_string();
-    let view = serde_json::json!({"omit": {"facts": ["touchedFiles"]}});
+    let view = serde_json::json!({"omit": {"facts": ["touchedFiles", "end", "rev"]}});
     let plan = crate::stream::inbound::views::plan_for("history-facts", &view).unwrap();
     let ask = |prior: Option<&serde_json::Value>| {
         let mut args = serde_json::json!({ "path": path });
@@ -1563,10 +1641,20 @@ fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
         answer_at(&home, "history-facts", &args, &Default::default()).unwrap()
     };
 
+    let token = |v: &serde_json::Value| serde_json::json!({ "end": v["end"], "rev": v["rev"] });
     let whole1 = ask(None);
-    let seen1 = plan.apply(Some(whole1.clone())).unwrap();
+    let seen1 = plan.apply(Some(ask(None))).unwrap();
     assert!(seen1.get("touchedFiles").is_none(), "{seen1}");
-    assert_eq!(seen1["prior"], whole1, "令牌那一格该是投影之前的整份");
+    assert!(
+        seen1.get("prior").is_none(),
+        "应答里不该再塞一整份：{seen1}"
+    );
+    assert_eq!(
+        seen1["end"], whole1["end"],
+        "令牌那两格被投影去掉了：{seen1}"
+    );
+    assert!(seen1["rev"].as_u64().is_some(), "{seen1}");
+    assert_ne!(seen1["rev"], whole1["rev"], "两问各铸各的 rev");
     assert_eq!(
         whole1["touchedFiles"],
         serde_json::json!(["/w/one.txt"]),
@@ -1581,16 +1669,13 @@ fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
         .unwrap()
         .write_all(edit("a2", "/w/two.txt").as_bytes())
         .unwrap();
-    let whole2 = ask(Some(&whole1));
-    let seen2 = plan.apply(Some(ask(Some(&seen1["prior"])))).unwrap();
-    assert_eq!(
-        seen2["prior"], whole2,
-        "带声明那一路续算出来的整份与不带的不一样"
-    );
+    let mut whole2 = ask(Some(&token(&whole1)));
+    let mut seen2 = plan.apply(Some(ask(Some(&token(&seen1))))).unwrap();
+    whole2.as_object_mut().unwrap().remove("rev");
+    seen2.as_object_mut().unwrap().remove("rev");
     let mut want = whole2.clone();
     want.as_object_mut().unwrap().remove("touchedFiles");
-    want["prior"] = whole2.clone();
-    assert_eq!(seen2, want);
+    assert_eq!(seen2, want, "带声明那一路续算出来的与不带的不一样");
     assert_eq!(
         whole2["touchedFiles"],
         serde_json::json!(["/w/one.txt", "/w/two.txt"])

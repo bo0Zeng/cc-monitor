@@ -114,13 +114,10 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       item("history-metadata.json", "/h/.cc-monitor/history-metadata.json"),
     ];
     const webview = item("EBWebView", "/h/AppData/EBWebView");
-    // 本机后端住在同一个家里的那几样：同样只给路径
-    const backend = [item("relay-key", "/h/.cc-monitor/relay-key"), item("staging/", "/h/.cc-monitor/staging")];
+    // 本机后端家里那几样不在这一块（「文件与数据」页照本机后端 `data-report` 的 `own` 画，`data-page.vitest.ts`）。
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
       entries,
-      backendHome: "/h/.cc-monitor",
-      backendEntries: backend,
       webviewUserDataDir: webview,
     };
     const sec = new DataSection({ headless: true });
@@ -131,7 +128,7 @@ describe("数据位置：给路径，不给删 / 清空", () => {
       (e) => e.textContent,
     );
     // 「PowerShell profile 备份」那张卡片搬去了本机「足迹」栏 ⇒ 这里不再有它。
-    expect(shown).toEqual([...entries, ...backend, webview].map((e) => e.path));
+    expect(shown).toEqual([...entries, webview].map((e) => e.path));
     // `get_data_paths` 不再带备份那一格（界面经通道问本机后端）⇒ 「备份目录不在数据位置里」结构上成立。
     const buttons = [...sec.element.querySelectorAll("button")].map((b) => b.textContent ?? "");
     expect(buttons.length, "一颗按钮都没有 —— 下面的「没有删」是空真").toBeGreaterThan(0);
@@ -163,7 +160,7 @@ describe("数据位置「真相 / 缓存」那一格", () => {
       mk("last-seen.json", "cache"),
       mk("logs/", "cache"),
     ];
-    paths.value = { monitorDataDir: "/h", entries, backendHome: "/h", backendEntries: [], webviewUserDataDir: null };
+    paths.value = { monitorDataDir: "/h", entries, webviewUserDataDir: null };
     const sec = new DataSection({ headless: true });
     document.body.appendChild(sec.element);
     sec.loadNow();
@@ -212,10 +209,8 @@ describe("〔ST2 · 步 15〕logs/ 那一行指向「日志」、不再自带 [�
     });
     paths.value = {
       monitorDataDir: "/h",
-      entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL)],
-      // 后端那一份错误输出在 `logs/backend/`：同样指向「日志」页
-      backendHome: "/h",
-      backendEntries: [mk(`${LOGS_DIR_LABEL}backend/`)],
+      // 后端那一份错误输出在 `logs/backend/`（住数据目录、同一份枚举里）：同样指向「日志」页
+      entries: [mk("ps-registry/"), mk(LOGS_DIR_LABEL), mk(`${LOGS_DIR_LABEL}backend/`)],
       webviewUserDataDir: null,
     };
     const sec = new DataSection({ headless: true });
@@ -257,9 +252,7 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
     });
     paths.value = {
       monitorDataDir: "/h/.cc-monitor",
-      entries: [mk("config.json", true), mk("history-metadata.json", false), mk(LOGS_DIR_LABEL, true, "dir")],
-      backendHome: "/h/.cc-monitor",
-      backendEntries: [mk("backend.json", true), mk("staging/", true, "dir")],
+      entries: [mk("config.json", true), mk("history-metadata.json", false), mk(LOGS_DIR_LABEL, true, "dir"), mk("apikey-credentials.json", true)],
       webviewUserDataDir: mk("EBWebView", true, "dir"),
     };
     const sec = new DataSection({ headless: true });
@@ -269,7 +262,7 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
     const rows = [...sec.element.querySelectorAll<HTMLElement>(".settings-data-item[data-class]")];
     const label = (r: HTMLElement) => r.querySelector(".settings-data-item-label")!.textContent;
     const withReveal = rows.filter((r) => r.querySelector("button[data-reveal]")).map(label);
-    expect(withReveal).toEqual(["config.json", "backend.json", "staging/", "EBWebView"]);
+    expect(withReveal).toEqual(["config.json", "apikey-credentials.json", "EBWebView"]);
     for (const r of rows) {
       const b = r.querySelector<HTMLButtonElement>("button[data-reveal]");
       if (!b) continue;
@@ -277,6 +270,6 @@ describe("「在文件夹中显示」：每一条在盘上的路径都有，点�
       b.click();
     }
     await new Promise((r) => setTimeout(r, 0));
-    expect(revealed).toEqual(["config.json", "backend.json", "staging/", "EBWebView"].map((l) => `/h/.cc-monitor/${l}`));
+    expect(revealed).toEqual(["config.json", "apikey-credentials.json", "EBWebView"].map((l) => `/h/.cc-monitor/${l}`));
   });
 });

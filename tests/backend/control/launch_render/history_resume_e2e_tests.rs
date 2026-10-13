@@ -138,15 +138,15 @@ fn history_resume_child_entry_point() {
     let agent = row["agent"].as_str().expect("历史那一行说不出是哪一家");
     let face = crate::agents::pick_kind(Some(agent)).expect("认得这一家").1;
     // 界面那一问（`launch-local`）：哪一家取那一行的，启动器缺省是那一家的；没有上次的号 ⇒ 账号缺席；没有 tmux ⇒ 直路。
-    let req: super::local::LocalLaunchRequest = serde_json::from_value(serde_json::json!({
-        "agent": agent,
-        "action": { "kind": "resume", "sid": sid },
-        "cwd": row["projectPath"],
-        "launcher": null,
-        "tmuxName": null,
-        "defaultLauncher": face.default_launcher,
-    }))
-    .expect("入参照线上形状收得下");
+    let req: super::local::LocalLaunchRequest =
+        serde_json::from_value::<super::local::LocalLaunchRequest>(serde_json::json!({
+            "agent": agent,
+            "action": { "kind": "resume", "sid": sid },
+            "cwd": row["projectPath"],
+            "tmuxName": null,
+        }))
+        .expect("入参照线上形状收得下")
+        .with_prefs(&Default::default());
     let facts = super::local::Facts {
         windows: false,
         is_dir: |_| true,

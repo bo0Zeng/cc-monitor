@@ -9,11 +9,12 @@
 //! 所以由本文件读一遍文件算出来，经帧命令 `history-facts`（宿主 `read_face.rs`）出成品，
 //! 界面经通道直接问、按形状收（`src/frontend/ui/session-reads.ts`），**本机与远端同一条路**。
 //!
-//! # 续传令牌就是上一份成品（后端零状态）
+//! # 续传令牌 `{end, rev}`（后端有界缓存）
 //!
-//! 事实要跟着会话长，而大会话（本机实测 120 MB）每批整份重扫是撞墙的。选的形状：调用方把**上一次的应答原样**
-//! 交回来（`prior`），本文件从 `prior.end` 接着扫、把新的一截累加在它上面 —— 判定与累加都只在这里，
-//! 前端不读、不改、不合并那一份成品；后端不留任何状态（对 `history-lines` 的同一条取舍）。
+//! 事实要跟着会话长，而大会话（本机实测 120 MB）每批整份重扫是撞墙的。选的形状：常驻后端记下最近出过的几份累加器
+//! （[`super::facts_cache`]，有界），调用方只交回上一份应答里的 `{end, rev}`（`prior`），本文件从那一份的 `end` 接着扫、
+//! 把新的一截累加在它上面 —— 判定与累加都只在这里。表里没有了（挤掉了 · 后端重启过 · 一次性 CLI 进程）⇒ `stale_prior`，
+//! 调用方不带令牌从 0 要一份：丢了只是多一次冷扫，不会算错。从前令牌是整份成品（改过上千个文件的会话一问上下各 60–85 KB）。
 //! 续点的两道校验（截断 · 不在行边界）在 `history_query::open_facts_at`。
 //!
 //! # 口径（逐格，三样各一个住址）
@@ -142,9 +143,13 @@ pub(crate) const TOUCHED_FILES_KEEP: usize = 1000;
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct SessionFacts {
-    /// 最后一个完整行的末字节 ＝ 下一次的续点。
+    /// 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) end: u64,
+    /// 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`super::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
+    /// 扫描本身不读它；只在出成品那一刻由续算表铸。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) rev: u64,
     /// 源会话 sid；不是分叉来的 ⇒ `null`。
     pub(crate) forked_from: Option<String>,
     /// 写类工具碰过的文件（原样，可能相对 / Windows 路径），近因序：最近碰的在末尾。
@@ -889,24 +894,8 @@ pub(crate) enum LimitFrom {
 pub(crate) const CONTEXT_STANDARD: u64 = 200_000;
 pub(crate) const CONTEXT_EXTENDED: u64 = 1_000_000;
 
-/// 设置里的上限表：模型名子串（小写）→ 上限。调用方随请求交来（`history-facts` 的 `limits`）。
+/// 设置里的上限表：模型名子串（小写）→ 上限。住这台的偏好（`control/machine_prefs.rs` 的 `contextLimits`），`history-facts` 现读。
 pub(crate) type ContextLimits = Vec<(String, u64)>;
-
-/// `limits` 入参 ⇒ [`ContextLimits`]。缺席 / `null` ⇒ 空表；不是「串 → 正整数」的对象 ⇒ 拒。
-pub(crate) fn limits_from(v: Option<&Value>) -> Result<ContextLimits, String> {
-    let Some(v) = v.filter(|v| !v.is_null()) else {
-        return Ok(Vec::new());
-    };
-    let obj = v
-        .as_object()
-        .ok_or_else(|| "`limits` must be an object".to_string())?;
-    obj.iter()
-        .map(|(k, n)| match n.as_u64() {
-            Some(n) if n > 0 && !k.trim().is_empty() => Ok((k.trim().to_lowercase(), n)),
-            _ => Err(format!("`limits.{k}` must be a positive integer")),
-        })
-        .collect()
-}
 
 /// **上下文上限的唯一判定**：中转看见过这个会话的请求（`relay`）⇒ 带过扩展上下文那一项是 1M、没带过是默认 200k；
 /// 中转没看见过 ⇒ 设置里的上限表（最长匹配的子串胜）> 模型名带 `[1m]` > 见过超过 200k 的一轮 > 判不出（占位 1M，`Assumed`）。
@@ -943,141 +932,6 @@ pub(crate) fn context_limit(
     } else {
         chosen
     }
-}
-
-/// 调用方交回来的 `prior` ⇒ [`SessionFacts`]。**形状必须恰好是本文件出的那一形**：缺格 / 多格 / 类型不对 ⇒ 拒
-/// （serde 对 `Option` 缺格默认读成 `None`，所以键集合先逐层核一遍 —— 不猜）。
-pub(crate) fn prior_from(v: &Value) -> Result<SessionFacts, String> {
-    const TOP: &[&str] = &[
-        "agent",
-        "answerOff",
-        "background",
-        "bgTasks",
-        "cost",
-        "end",
-        "forkedFrom",
-        "handedBack",
-        "lastSay",
-        "mcp",
-        "needs",
-        "pending",
-        "permissionMode",
-        "projectDir",
-        "retries",
-        "tokens",
-        "touchedFiles",
-        "usage",
-        "writers",
-    ];
-    const USAGE: &[&str] = &[
-        "contextText",
-        "contextTone",
-        "limit",
-        "limitFrom",
-        "limitFromText",
-        "limitText",
-        "model",
-        "peakPromptTokens",
-        "percent",
-        "promptTokens",
-        "promptTokensText",
-    ];
-    exact_keys(v, TOP, "prior")?;
-    if !v["tokens"].is_null() {
-        exact_keys(
-            &v["tokens"],
-            &[
-                "cacheRead",
-                "cacheWrite1h",
-                "cacheWrite5m",
-                "input",
-                "last",
-                "output",
-                "requests",
-                "text",
-            ],
-            "prior.tokens",
-        )?;
-        if !v["tokens"]["last"].is_null() {
-            exact_keys(&v["tokens"]["last"], &["id", "tokens"], "prior.tokens.last")?;
-        }
-    }
-    if !v["cost"].is_null() {
-        exact_keys(&v["cost"], &["micros", "partial", "text"], "prior.cost")?;
-    }
-    if !v["usage"].is_null() {
-        exact_keys(&v["usage"], USAGE, "prior.usage")?;
-    }
-    if !v["lastSay"].is_null() {
-        exact_keys(&v["lastSay"], &["at", "atMs", "text"], "prior.lastSay")?;
-    }
-    if !v["needs"].is_null() {
-        exact_keys(
-            &v["needs"],
-            &[
-                "ask",
-                "call",
-                "head",
-                "headCode",
-                "kind",
-                "manualText",
-                "rank",
-                "sinceMs",
-                "text",
-                "tone",
-                "tool",
-                "waitedMs",
-                "waitedText",
-                "what",
-            ],
-            "prior.needs",
-        )?;
-    }
-    for p in v["pending"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
-        exact_keys(
-            p,
-            &[
-                "at", "atMs", "id", "name", "state", "text", "what", "why", "whyText",
-            ],
-            "prior.pending[]",
-        )?;
-    }
-    for r in v["retries"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
-        exact_keys(r, &["id", "outcome"], "prior.retries[]")?;
-    }
-    for t in v["bgTasks"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
-        exact_keys(t, &["at", "call", "cmd", "task"], "prior.bgTasks[]")?;
-    }
-    if !v["background"].is_null() {
-        exact_keys(
-            &v["background"],
-            &["clock", "count", "text", "tone", "what"],
-            "prior.background",
-        )?;
-        if !v["background"]["clock"].is_null() {
-            exact_keys(
-                &v["background"]["clock"],
-                &["from", "text"],
-                "prior.background.clock",
-            )?;
-        }
-    }
-    for m in v["mcp"].as_array().map(Vec::as_slice).unwrap_or(&[]) {
-        exact_keys(m, &["at", "detail", "name", "status"], "prior.mcp[]")?;
-    }
-    serde_json::from_value(v.clone()).map_err(|e| format!("`prior` is not a facts product: {e}"))
-}
-
-fn exact_keys(v: &Value, want: &[&str], what: &str) -> Result<(), String> {
-    let obj = v
-        .as_object()
-        .ok_or_else(|| format!("`{what}` must be an object"))?;
-    let mut got: Vec<&str> = obj.keys().map(String::as_str).collect();
-    got.sort_unstable();
-    if got != want {
-        return Err(format!("`{what}` keys {got:?} != {want:?}"));
-    }
-    Ok(())
 }
 
 /// 读 `r`（已定位在 `facts.end`）逐行累加到 `facts` 上，回累加后的那一份（`end` 推进到最后一个完整行的末字节）。

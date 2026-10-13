@@ -101,7 +101,7 @@ const LOCAL_PAGE_IPC = [
 
 /**
  * 已经放过一次之后切到 devbox：只有**跟着机器走、切换即重读**的那几块（足迹 · 未识别的数据 · 账号）重读。
- * 账号那块读不到机器表（录音机下 `load_config` 失败）就不核「认不认得这台」，跟着去问 devbox；
+ * 账号那块读不到机器表（录音机下 `machines-read` 失败）就不核「认不认得这台」，跟着去问 devbox；
  * 足迹在远端页上**也去问**（按 devbox 那台，回声不对就说答不了）——
  *   它并进了 per-machine 那一批单例，切机器由它自己的订阅重读，恰好一发。
  */
@@ -117,11 +117,11 @@ const SWITCH_TO_AYA_IPC: readonly string[] = [
  * 「插件」那块不再是本机专属：它问的是**当前那台**（这里就是 devbox），同样恰好一次。
  */
 const FIRST_VISIT_AYA_IPC: readonly string[] = [
-  "load_config", // 账号：读远端清单
+  "chan_call", // 账号：读机器表（本机后端 `machines-read`）
   "chan_call", // 账号：devbox 那一台（经通道说 `accounts-list`）
   "chan_call", // 那台这里问不到 ⇒ 问本机后端它记着的上次那一份（`last-seen-read`）
   "chan_call", // 轮换：devbox 那一台的策略目录（`rotation-strategies`）
-  "load_config", // 轮换：读远端清单（订那几台的策略目录推送）
+  "chan_call", // 轮换：读机器表（本机后端 `machines-read`，订那几台的策略目录推送）
 ];
 
 const tick = () => new Promise((r) => setTimeout(r, 0));

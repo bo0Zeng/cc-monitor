@@ -354,25 +354,12 @@ const JUDGMENTS: Record<JudgmentId, Judgment> = {
   },
   J17: {
     what: "模型名能不能交出去（`ANTHROPIC_MODEL` · `--model`）",
-    // 两侧同一份、住共享 crate，真实模型名都放行：唯一住址 `shell-quote-core::model_name_ok`；
-    //   monitor 载荷 `ExportModel` · `ccm …` 的 `--model` · 后端 ccm argv 调它。TS 手写那份删：设置里写入点那一句读
-    //   **生成物** `src/frontend/ui/generated/judgment-rules.ts`（生成物目录不在本判据的扫描面里 —— 它是规则的投影，不是孪生），
-    //   两侧由共用金样 `identifier-rules.golden.json` 逐条对。
+    // 唯一住址 `shell-quote-core::model_name_ok`；monitor 载荷 `ExportModel` · `ccm …` 的 `--model` · 后端 ccm argv ·
+    //   那台的偏好写口（`prefs-set` 的每号模型）调它。界面不判（每号模型改问那台以后写入点那一句也没了），生成物里那一段删。
     homes: ["shell-quote-core::model_name_ok"],
-    // 这一行本来就是「生成物」那一形（DUP1 当时只有 zero / open 两态可记）⇒ 记成 `generated`，读者两向钉住。
-    status: "generated",
-    defs: [],
-    gone: ["isValidModelName"],
+    status: "zero",
+    defs: ["isValidModelName", "modelNameOk"],
     needles: [{ text: "[A-Za-z0-9._-]{1,128}", count: 0 }],
-    gen: {
-      file: "src/frontend/ui/generated/judgment-rules.ts",
-      exports: ["modelNameOk", "MODEL_NAME_PATTERN", "MODEL_NAME_MAX"],
-      importers: ["src/frontend/ui/account-prefs.ts"],
-    },
-    parity: {
-      via: "tests/__fixtures__/identifier-rules.golden.json",
-      tests: ["tests/frontend/shell/payload_judgment_rules.rs", "tests/frontend/ui/identifier-rules-parity.vitest.ts"],
-    },
   },
   J18: {
     what: "账号名（`--account <名>`）",
@@ -940,6 +927,9 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     ACCOUNTS_DIR_REL: NONE,
     ACCOUNTS_MANIFEST_NAME: NONE,
     BACKEND_POLICY_REL: NONE,
+    PREFS_REL: NONE,
+    PREFS_HANDOFF_REL: NONE,
+    MACHINES_REL: NONE,
     file_name_of: NONE,
     // 常驻后端的门牌（`<家>/run/` 目录 · 套接字 · 进程记录；宿主与后端同一个函数）；TS 侧没有孪生。
     LISTEN_DIR_REL: NONE,

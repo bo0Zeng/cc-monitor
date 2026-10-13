@@ -150,6 +150,13 @@ impl Rig {
             accounts: &facts,
             writers: &writers,
             pretrust: &pretrust,
+            // 这台的偏好：号 work 默认用 opus（远端那一行带上它）。
+            prefs: &crate::control::machine_prefs::Prefs {
+                models: [("work".to_string(), "opus".to_string())]
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            },
         })
     }
 }
@@ -208,8 +215,7 @@ fn args(compact_first: bool, compact_ms: u64) -> Value {
     json!({
         "sid": SID, "cwd": "/p", "account": "work",
         "compact_first": compact_first, "compact_within_ms": compact_ms, "arrive_within_ms": 1000,
-        "local": false, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude",
-        "models": { "work": "opus" },
+        "local": false, "agent": "claude",
     })
 }
 

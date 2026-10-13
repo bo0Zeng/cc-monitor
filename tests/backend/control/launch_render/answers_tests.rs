@@ -22,13 +22,16 @@ fn facts_of<T>(f: impl FnOnce(&Facts) -> T) -> T {
     })
 }
 /// 线上那一份入参 ⇒ 本体 ⇒ 线上那一份回包 / 失败的码与那一句（解入参同 typed 分派那一步：形状不对 ⇒ `bad_args`）。
+/// 线上那一份解成请求、照这台缺省的偏好填好不上线的那几格（同生产那一层的 `with_prefs`）、跑本体。
 fn wired<R: serde::de::DeserializeOwned>(
     v: &Value,
+    fill: impl FnOnce(R) -> R,
     f: impl FnOnce(&R, &Facts) -> Result<Rendered, LaunchRenderErr>,
 ) -> Result<Value, (String, String)> {
     use crate::stream::inbound::typed::Codes;
     let req: R =
         serde_json::from_value(v.clone()).map_err(|e| ("bad_args".to_string(), e.to_string()))?;
+    let req = fill(req);
     facts_of(|facts| f(&req, facts))
         .map(|r| serde_json::to_value(r).unwrap())
         .map_err(|e| {
@@ -37,10 +40,18 @@ fn wired<R: serde::de::DeserializeOwned>(
         })
 }
 fn answer_cli(v: &Value) -> Result<Value, (String, String)> {
-    wired(v, super::answer_cli)
+    wired(
+        v,
+        |r: super::wire::CliRenderRequest| r.with_prefs(&Default::default()),
+        super::answer_cli,
+    )
 }
 fn answer_local(v: &Value) -> Result<Value, (String, String)> {
-    wired(v, super::answer_local)
+    wired(
+        v,
+        |r: super::local::LocalLaunchRequest| r.with_prefs(&Default::default()),
+        super::answer_local,
+    )
 }
 
 fn attach_req() -> Value {
@@ -49,7 +60,6 @@ fn attach_req() -> Value {
         "action": {"kind": "attach", "name": "cc-foo"},
         "container": {"kind": "tmux", "name": "cc-foo", "send_into": false},
         "cwd": null, "account": {"kind": "base"}, "ccmSid": null, "model": null,
-        "launcher": "claude", "defaultLauncher": "claude",
     })
 }
 
@@ -95,15 +105,15 @@ fn the_cli_product_is_one_cmd_and_a_refusal_is_the_refused_code() {
 fn the_local_request_and_product_have_their_registered_shapes() {
     for bad in [
         serde_json::json!({"action": {"kind": "new"}}),
-        serde_json::json!({"agent": "claude", "action": {"kind": "new"}, "defaultLauncher": "claude", "x": 1}),
+        serde_json::json!({"agent": "claude", "action": {"kind": "new"}, "x": 1}),
         // 不说是哪一家。
-        serde_json::json!({"action": {"kind": "resume", "sid": "s-1"}, "defaultLauncher": "claude"}),
-        serde_json::json!({"action": {"kind": "new"}, "agent": {"id": "claude-code", "defaultLauncher": "claude"}, "allSessions": true}),
+        serde_json::json!({"action": {"kind": "resume", "sid": "s-1"},}),
+        serde_json::json!({"action": {"kind": "new"}, "agent": {"id": "claude-code",}, "allSessions": true}),
     ] {
         assert_eq!(answer_local(&bad).unwrap_err().0, "bad_args", "{bad}");
     }
     let v = answer_local(&serde_json::json!({
-        "agent": "claude", "action": {"kind": "resume", "sid": "s-1"}, "defaultLauncher": "claude",
+        "agent": "claude", "action": {"kind": "resume", "sid": "s-1"},
     }))
     .unwrap();
     let mut keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
@@ -123,7 +133,7 @@ fn the_local_request_and_product_have_their_registered_shapes() {
 fn the_account_used_is_in_the_product_and_an_unusable_one_is_refused_with_data() {
     let resume = |account: Value| {
         serde_json::json!({
-            "agent": "claude", "action": {"kind": "resume", "sid": "s-1"}, "defaultLauncher": "claude",
+            "agent": "claude", "action": {"kind": "resume", "sid": "s-1"},
             "account": account,
         })
     };
@@ -135,9 +145,10 @@ fn the_account_used_is_in_the_product_and_an_unusable_one_is_refused_with_data()
     assert!(v["cmd"].as_str().unwrap().contains("--account z"), "{v}");
     let fail = {
         use crate::stream::inbound::typed::Codes;
-        let req =
+        let req: super::local::LocalLaunchRequest =
             serde_json::from_value(resume(serde_json::json!({"kind": "named", "name": "gone"})))
                 .unwrap();
+        let req = req.with_prefs(&Default::default());
         facts_of(|f| super::answer_local(&req, f))
             .unwrap_err()
             .into_fail()

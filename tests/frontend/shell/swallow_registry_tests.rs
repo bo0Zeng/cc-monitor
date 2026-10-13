@@ -70,6 +70,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/accounts/quota/nodes.rs", "let _ = tx.send(Node { source, sid: sid.map(str::to_string), });", Why::NotAnError, "进程内的节点广播：此刻没有流连接、没有判的缓存订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/plan/watch.rs", "let _ = changes().send((target.to_string_lossy().to_string(), now.0, now.1));", Why::NotAnError, "进程内「某工作区的计划变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，计划在盘上，客户端重问就有"),
     ("src/backend/faces/plan_review_face.rs", "let _ = crate::plan::watch::changes().send((ws.to_string(), rev, n));", Why::NotAnError, "认可改了之后推一帧新的数：此刻没有流连接订它 ⇒ 发不出是正常的，客户端重问 `plan-read` 就有"),
+    ("src/backend/control/machines.rs", "let _ = changes().send(());", Why::NotAnError, "进程内「机器表变了」的广播：此刻没有流连接订它 ⇒ 发不出是正常的，盘上那份照旧在，客户端重问就有"),
     ("src/backend/control/asks/hook.rs", "let _ = stdout.flush().await;", Why::DeadLink, "hook 的 stdout 是那一家读决定的管子：写不进去 ＝ 那一家已经不读了（框已关 / 进程走了），没有第二个地方可以说"),
     ("src/backend/control/asks/hook.rs", "let _ = stdout.write_all(out.to_string().as_bytes()).await;", Why::DeadLink, "同上：决定写不进那一家读的管子 ＝ 它已经不要了（晚到的答案那一家本来也丢）"),
     ("src/backend/accounts/oauth/writeback.rs", "let _ = tx.send(());", Why::PeerGone, "等写锁放开那一声：等的线程已经到期走了（照实报了写回失败）⇒ 没人收"),

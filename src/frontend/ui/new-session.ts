@@ -30,9 +30,7 @@ import { accountAvatarEl } from "./account-color";
 import { appStore } from "./app-store";
 import { refreshQuota } from "./acct-center";
 import { fiveHourCell, accountLabel } from "./acct-words";
-import { machineModels } from "./account-prefs";
-import { resumeCommandFor } from "./remote-config";
-import { configuredLauncherFor } from "./launch-requests";
+import { readPrefs } from "./machine-prefs";
 import { chosenAccount, type AccountAsk } from "./launch-account";
 import { openWindow } from "./tab-batch-run";
 import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
@@ -593,7 +591,6 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
       cwd: cwdInput.value.trim(),
       place: place(),
       local: isLocalOrigin(origin),
-      models: await machineModels(origin).catch(() => ({})),
       ticket,
     };
     if (account) req.account = account;
@@ -759,11 +756,10 @@ function safeLauncher(agent: string): string {
   }
 }
 
-/** 设置里配的启动命令（只给默认那一家；和默认启动器一样 ⇒ 空，表示用默认）。 */
+/** 那台偏好里那一家的启动命令（`prefs-read`；和默认启动器一样 / 没设 / 问不到 ⇒ 空，表示用默认）。 */
 async function configuredCommand(origin: Origin, agent: string): Promise<string> {
   try {
-    const configured = await resumeCommandFor(origin);
-    const c = configuredLauncherFor(agent, configured).trim();
+    const c = ((await readPrefs(origin)).prefs.launchers[agent] ?? "").trim();
     return c === safeLauncher(agent) ? "" : c;
   } catch {
     return "";

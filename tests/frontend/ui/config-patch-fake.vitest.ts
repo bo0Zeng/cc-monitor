@@ -21,7 +21,7 @@ const GOLDEN = JSON.parse(readFileSync("tests/__fixtures__/config-patch.golden.j
 
 describe("CFG1 · 假盘补丁语义 == 金样", () => {
   it("金样不是空的（空集上的相等恒真）", () => {
-    expect(GOLDEN.cases.length).toBe(16); // 12 → 16：insertin / removein 各两条
+    expect(GOLDEN.cases.length).toBe(9); // 按键认元素那几条随机器表搬进本机后端（`control/machines.rs`，判据 `machines_tests.rs`）
   });
   for (const c of GOLDEN.cases) {
     it(c.name, () => {

@@ -54,9 +54,8 @@ vi.mock("../../../src/frontend/ui/account-reads", () => ({
   })),
 }));
 vi.mock("../../../src/frontend/ui/acct-center", () => ({ refreshQuota: vi.fn(async () => {}) }));
-vi.mock("../../../src/frontend/ui/account-prefs", () => ({ machineModels: vi.fn(async () => ({})) }));
 vi.mock("../../../src/frontend/ui/behavior", () => ({ getBehavior: vi.fn(async () => ({ resumeCommand: "" })) }));
-vi.mock("../../../src/frontend/ui/remote-config", () => ({ resumeCommandFor: vi.fn(async () => "") }));
+vi.mock("../../../src/frontend/ui/machine-prefs", () => ({ readPrefs: vi.fn(async () => ({ state: "absent", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {} } })) }));
 const arrival = vi.hoisted(() => ({ awaitArrival: vi.fn(async () => "new-sid"), liveSince: vi.fn(() => new Set<string>(["seen-0"])) }));
 vi.mock("../../../src/frontend/ui/launch-arrival", () => arrival);
 const win = vi.hoisted(() => ({ openWindow: vi.fn(async () => null) }));
@@ -161,7 +160,7 @@ describe("点［新建］：交那台的那一份", () => {
     await flush();
     await done;
     expect(newRequests()).toEqual([
-      { agent: "claude", cwd: "/home/u/srv/orders", place: "tmux", local: false, models: {}, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
+      { agent: "claude", cwd: "/home/u/srv/orders", place: "tmux", local: false, account: { kind: "named", name: "work" }, ticket: expect.any(String) },
     ]);
     expect(document.querySelector('[role="dialog"]'), "起了框就关").toBeNull();
     await flush();

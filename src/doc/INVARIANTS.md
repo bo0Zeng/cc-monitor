@@ -37,11 +37,11 @@
 
 ## 2. monitor 自己的 data dir 永远是 `~/.cc-monitor/`
 
-不跟随界面上改的 `claudeDir` 漂移。一台机器一个家：与后端同一个目录，只给本人（0700）。
+不跟随界面上改的 Claude 数据目录漂移（那一格住本机后端 `prefs.json` 的 `agentHomes`）。一台机器一个家：与后端同一个目录，只给本人（0700）。
 
 **唯一的明文例外 `CCM_DATA_DIR`**（`config.rs::DATA_DIR_ENV`）：只为把整个进程挪到别处跑（自动化测试、一次性复算）。只认绝对路径；空串 == 没设；给了但不合法 ⇒ `None`，**不退回用户真家目录**；它挪的是整个 data dir；默认住址只在 `creds_core::store::monitor_data_dir` 拼，monitor 全树只经 `config.rs::resolve_monitor_data_dir` 派生。常驻后端的套接字也按家算（`relay_route_core::listen_socket_for`），隔离跑的 monitor 有它自己的常驻后端；一个家只有一个常驻后端攥得住 `run/` 的锁。
 
-**为什么不能松动**：读配置不能先解析 `claudeDir`（填错就再也打不开设置）；换 Claude 目录后偏好不丢；跨进程文件位置稳定。
+**为什么不能松动**：读配置不能先解析 Claude 数据目录（填错就再也打不开设置）；换 Claude 目录后偏好不丢；跨进程文件位置稳定。
 
 **谁在守**：`paths_tests.rs` 一族（`with_nothing_set_it_is_the_documented_default` · `a_relative_override_refuses_instead_of_quietly_using_the_real_profile` · `nothing_else_in_the_monitor_tree_builds_that_path_itself` · `the_data_dir_is_spelled_in_one_place` …）。
 
@@ -49,7 +49,7 @@
 
 | 文件 | 类 | 写它的 | 说明 |
 |---|---|---|---|
-| `config.json` | **真相** | `config.rs` | 主题 · 字体 · `claudeDir` · 快捷键 · 机器表 · 诊断开关 —— 全是用户手填 |
+| `config.json` | **真相** | `config.rs` | 主题 · 字体 · 快捷键 · 诊断开关 —— 全是用户手填 |
 | `history-metadata.json` | **真相** | 本机常驻后端 `history_annotations.rs::annotate_at` | 按 sid 的星标 · 改名 · 隐藏 |
 | `filewin-bookmarks.json` | **真相** | `filewin/src/bookmarks.rs`（文件窗口进程，旁件 `.lock` 上独占锁读改写） | 每台机器一份收藏目录 |
 | `filewin-view.json` | **真相** | `filewin/src/workspace.rs`（整份原子换，后写者赢） | 文件窗口的整窗缩放 |
@@ -57,10 +57,10 @@
 | `ps-registry/` `ps-await/` | **缓存/IPC** | `bind.rs` | Linux bash / zsh 接入块留的终端记录与认出来的窗口，启动重扫 |
 | `logs/` | **缓存/派生** | `logging.rs` · 本机常驻后端 | `monitor/` 按天滚动、留 3 天（§15）；`backend/` 是脱离运行的本机后端 stderr |
 | `bin/` `staging/` `logs/backend/` `assets-catalog.json` `last-seen.json` `launch-pending/` `answer-plugin/` `known_hosts` `profiles-written.json` `cache/skeleton/` | **缓存** | 本机后端 | 能重建的：程序 · 上传暂存区 · 错误输出 · 资产目录 · 离线那台的上次值 · 起会话便条 · 答题插件 · 主机钥匙 · 上次写出的配置指纹 · 大记录的骨架（照记录重扫） |
-| `relay-key` `run/` `backend.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号。名字取契约常量（`relay_route_core` · `creds_core::store`），`data_paths.rs::backend_entries` 列它们 |
+| `relay-key` `run/` `backend.json` `prefs.json` `prefs-handoff.json` `machines.json` `profiles.toml` `profiles-migrated.json` `aliases.sh` `aliases.ps1` `skill-installs.json` `chores.json` `plan-review.json` `backups/` `accounts/` `accounts-mcp.json` `apikey-credentials.json` `quota.json` `rotation.json` `lineage.json` `launch-accounts.json` | **真相** | 本机后端 | 删了会丢的：中转根钥匙 · 常驻后端的套接字与进程记录 · 退出行为 · 这台的偏好（启动命令 · 每号模型 · 上下文上限 · 各家数据目录）· 机器表 · 升级时搬来、还没交给远端那几台的偏好 · 别名配置 · 装记录 · 「待办」里的选择 · 计划需手动的认可 · 卸外来资产前的备份 · 账号库 · API key · 各号最近的用量与轮换设置 · 会话血缘 · 每条会话上次用的号。名字取契约常量（`relay_route_core` · `creds_core::store`）：家里那几样由本机后端 `data-report` 的 `own` 列（`relay_route_core::OWN_HOME_ENTRIES`）；住数据目录的 `logs/backend/` · `apikey-credentials.json` 由 `data_paths.rs::monitor_entries` 列 |
 
 - **真相** = 用户手写 / 意图，删了丢东西、要备份、要迁移友好；**缓存/派生** = 能从别处重建，随便删。
-- **新增任何 data dir 文件，必须在 `data_paths.rs` 的枚举里声明它是哪类**：`DataPathInfo.class: DataClass` 非可选，设置页「数据位置」每行据它显示「删了会丢 / 可随手删」。每一项的类与上表两向相等（`data_paths_tests.rs`，异源判据）。
+- **新增任何 data dir 文件，必须声明它是哪类**：界面这一侧的（monitor 数据目录）在 `data_paths.rs` 的枚举里（`DataPathInfo.class: DataClass` 非可选）；本机后端家里的（`~/.cc-monitor/`）在 `relay_route_core::OWN_HOME_ENTRIES` 里（后端 `data-report` 的 `own` 照它出、界面照抄）。设置页每行据它显示「删了会丢 / 可随手删」。两边拼起来与上表两向相等（`data_paths_tests.rs`，异源判据）；后端自家那几样另与上表逐样对（`footprint/data_tests.rs`）。
 
 ---
 

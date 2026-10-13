@@ -19,7 +19,6 @@ import { openFileWindow } from "./file-window";
 import {
   readRemoteConfig,
   findHostByOrigin,
-  resumeCommandFor,
 } from "./remote-config";
 import { callStop, sayReply, type Reply, type StartItem } from "./tab-batch-run";
 import { startInTmuxThenAttach } from "./tmux-resume";
@@ -186,7 +185,6 @@ export class TabSessionActions {
         agent,
         sid,
         tab.projectDir ?? "",
-        await resumeCommandFor(origin),
         { account, preflight },
       );
       return;
@@ -197,7 +195,6 @@ export class TabSessionActions {
       sid,
       cwd: tab.projectDir ?? "",
       account,
-      launcher: await resumeCommandFor(tab.origin),
       preflight,
     });
   }

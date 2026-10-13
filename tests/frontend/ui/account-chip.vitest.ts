@@ -52,7 +52,6 @@ function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    resumeCommand: "",
     connect: true,
     ...p,
   };

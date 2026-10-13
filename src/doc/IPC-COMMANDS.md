@@ -347,6 +347,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 - `needs` —— 这台某个会话挂着的待答请求（`key` ＝ sid：挂上 · 撤掉 · 答掉；重问 `sessions-needs` 或那个会话的 `history-facts`）
 - `login` —— 一份登录作业自己收了（`key` ＝ 作业号；`body` ＝ `{state: done \| failed, said?, detail?}`）
 - `manual` —— 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了；重问 `manual-list`）
+- `machines` —— 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）
 
 #### `Unavailable`
 
@@ -4997,21 +4998,19 @@ tone: Tone, };
 type FactsClock = { text: Words, from: number, };
 type FactsCost = { micros: number, partial: boolean, text: Words, };
 type FactsLastRequest = { id: string, tokens: Array<number>, };
+type FactsToken = { end: number, rev: number, };
 type HistoryFactsReq = { 
 /**
  * jsonl 路径（围栏同 `history-read`）。
  */
 path: string, 
 /**
- * 可缺：设置里的上下文上限表 `{<模型名子串>: 正整数}`（最长匹配的子串胜）；缺 / `null` ⇒ 空表；形状不对 ⇒ `bad_args`。
+ * 可缺：续传令牌 ＝ 上一次应答里的 `{end, rev}`。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 从那台续算表里那一份（[`facts_cache`]）
+ * 接着扫、累加在它上面；表里没有 ⇒ `stale_prior`（调用方不带令牌从 0 要）。带不带 `view` 都是这两格（投影不去它们）。
+ *
+ * [`facts_cache`]: crate::observe::facts_cache
  */
-limits?: { [key in string]: number }, 
-/**
- * 可缺：**上一次应答原样**（续传令牌）。缺 / `null` ⇒ 从字节 0 扫；给了 ⇒ 每一层键集合必须恰好是本命令出的那一形
- * （`facts_query::prior_from` 判，不对 ⇒ `bad_args`），从它的 `end` 接着扫、累加在它上面。
- * 带了 `view` 的那一问，应答里另有一格 `prior`：投影之前的整份（不受 `view` 管）—— 下一问交回它，不交去过格的应答。
- */
-prior?: SessionFacts, };
+prior?: FactsToken, };
 type LastSay = { text: string, 
 /**
  * 那条记录的 `timestamp` 原样；没有 ⇒ `null`。
@@ -5202,9 +5201,14 @@ type RetryRun = {
 id: string, outcome: RetryOutcome, };
 type SessionFacts = { 
 /**
- * 最后一个完整行的末字节 ＝ 下一次的续点。
+ * 最后一个完整行的末字节 ＝ 下一次的续点（续传令牌 `{end, rev}` 的一半）。
  */
 end: number, 
+/**
+ * 这一份在那台常驻后端续算表里的号（续传令牌的另一半，[`super::facts_cache`]）：下一问交回 `{end, rev}` 就从这一份接着扫。
+ * 扫描本身不读它；只在出成品那一刻由续算表铸。
+ */
+rev: number, 
 /**
  * 源会话 sid；不是分叉来的 ⇒ `null`。
  */
@@ -5336,7 +5340,7 @@ limitFromText: Words | null, };
 type Words = string;
 ```
 
-码：`bad_args` · `failed` · `too_large`
+码：`bad_args` · `failed` · `too_large` · `stale_prior`
 
 #### `history-branch`
 
@@ -7171,21 +7175,13 @@ agent: string, action: LocalAction,
  */
 cwd?: string | null, 
 /**
- * 自定义启动命令（空 / 纯空白 = 没设）。
- */
-launcher?: string | null, 
-/**
  * 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
  */
 account?: AccountAsk | null, 
 /**
  * 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
  */
-tmuxName?: string | null, 
-/**
- * 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
- */
-defaultLauncher: string, };
+tmuxName?: string | null, };
 type Rendered = { 
 /**
  * 那一行 `ccm …`。
@@ -7217,11 +7213,7 @@ agent: string, action: WireAction, container: WireContainer, cwd: string | null,
 /**
  * 显式指定的模型（压过下面那张表）。
  */
-model: string | null, 
-/**
- * 这台的模型偏好表（号 → 模型，用户设置的原值）：判出来的号在表里 ⇒ 用那一条。
- */
-models?: { [key in string]: string }, launcher: string, defaultLauncher: string, };
+model: string | null, };
 type LaunchedAccount = { name: string, configDir: string, 
 /**
  * 这台模型偏好表里这个号的那一条（没有 ⇒ `null`）。
@@ -7708,7 +7700,7 @@ scrollback?: number, };
 入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
 type Sent = { 
 /**
  * 结局。
@@ -7725,7 +7717,11 @@ said?: string,
 /**
  * `screen_changed` 时带的新指纹。
  */
-screen?: string, };
+screen?: string, 
+/**
+ * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
+ */
+resumed?: boolean, };
 type SentResult = "delivered" | "unsure" | "refused";
 type TerminalInputReq = { 
 /**
@@ -7861,7 +7857,7 @@ why?: Refused,
  * 给人看的那一句（换成了 · 没变 · 结果未知 · 被拒）。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
 type SessionModelReq = { 
 /**
  * 会话 id。
@@ -7910,7 +7906,7 @@ why?: Refused,
  * `unsure` · `refused` 时给人看的那一句。
  */
 said?: string, };
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
 type SessionPermissionReq = { 
 /**
  * 会话 id。
@@ -7930,14 +7926,14 @@ client?: string, };
 
 #### `session-say`
 
-往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车）。
+往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-say` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
 入参 `SessionSayReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting" | "elsewhere" | "not_resumed";
 type Sent = { 
 /**
  * 结局。
@@ -7954,7 +7950,11 @@ said?: string,
 /**
  * `screen_changed` 时带的新指纹。
  */
-screen?: string, };
+screen?: string, 
+/**
+ * `session-say` 那一下终端已经没了、按记下的号恢复了这条会话、那一句当第一句交了出去 ⇒ `true`（只在这一支出现）。
+ */
+resumed?: boolean, };
 type SentResult = "delivered" | "unsure" | "refused";
 type SessionSayReq = { 
 /**
@@ -8397,21 +8397,9 @@ mode: StartMode,
  */
 local: boolean, 
 /**
- * 整批一家（线上的 kind）。
+ * 整批一家（线上的 kind）。启动命令 · 模型表这台自己读（`prefs.json`），不随请求交。
  */
 agent: string, 
-/**
- * 整批一份：用户设置的 resume 命令原值。
- */
-launcher: string, 
-/**
- * 整批一份：那一家的默认启动器。
- */
-defaultLauncher: string, 
-/**
- * 这台的模型偏好表（原值）。
- */
-models?: { [key in string]: string }, 
 /**
  * 要起的会话（1–64 项，sid 不重复）。
  */
@@ -8505,17 +8493,13 @@ place: Place,
  */
 tmuxName?: string, 
 /**
- * 启动命令（空 / 缺席 ⇒ 那一家的默认启动器）。
+ * 这一趟手填的启动命令（空 / 缺席 ⇒ 这台偏好里那一家的启动命令，没设过 ⇒ 那一家的默认启动器）。
  */
 command?: string, 
 /**
  * 分叉自哪一条（只在这一步写分支记录）。
  */
 forkFrom?: ForkFrom, 
-/**
- * 这台的模型偏好表（号 → 模型，用户设置的原值）。
- */
-models?: { [key in string]: string }, 
 /**
  * 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
  */
@@ -8788,21 +8772,9 @@ arrive_within_ms: number,
  */
 local: boolean, 
 /**
- * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。
+ * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
  */
 agent: string, 
-/**
- * 用户设置的 resume 命令原值（同 `sessions-start`）。
- */
-launcher: string, 
-/**
- * 那一家的默认启动器（同 `sessions-start`）。
- */
-defaultLauncher: string, 
-/**
- * 可缺：这台的模型偏好表原值。
- */
-models?: { [key in string]: string }, 
 /**
  * 自报的前端，同 `kill`。
  */
@@ -9249,6 +9221,319 @@ type ExitPolicySet = { killOnExit: boolean, };
 ```
 
 码：`bad_args` · `io_failed`
+
+#### `prefs-read`
+
+读这台的偏好。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --prefs-read`
+
+入参 `NoArgs` · 回包 `PrefsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type NoArgs = Record<symbol, never>;
+type Prefs = { 
+/**
+ * 每一家（线上的 kind）用哪条启动命令（原值）；没有那一家 ⇒ 那一家自己的默认启动器。
+ */
+launchers: { [key in string]: string }, 
+/**
+ * 恢复会话默认进这台的 tmux。
+ */
+resumeInTmux: boolean, 
+/**
+ * 这台每个号默认用哪个模型（号 → 模型，原值）。
+ */
+models: { [key in string]: string }, 
+/**
+ * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
+ */
+contextLimits: { [key in string]: number }, 
+/**
+ * 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
+ * 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
+ */
+agentHomes: { [key in string]: string }, };
+type PrefsReply = { 
+/**
+ * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一份。
+ */
+prefs: Prefs, };
+```
+
+码：`bad_args`
+
+#### `prefs-set`
+
+改这台的偏好，写完读回。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --prefs-set`
+
+入参 `PrefsSet` · 回包 `PrefsReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Prefs = { 
+/**
+ * 每一家（线上的 kind）用哪条启动命令（原值）；没有那一家 ⇒ 那一家自己的默认启动器。
+ */
+launchers: { [key in string]: string }, 
+/**
+ * 恢复会话默认进这台的 tmux。
+ */
+resumeInTmux: boolean, 
+/**
+ * 这台每个号默认用哪个模型（号 → 模型，原值）。
+ */
+models: { [key in string]: string }, 
+/**
+ * 上下文上限表：模型名子串（大小写不敏感，最长匹配胜）→ 上限 tokens。
+ */
+contextLimits: { [key in string]: number }, 
+/**
+ * 每一家（线上的 kind）的数据目录（绝对路径）；没有那一家 ⇒ 照那一家自己的解析（环境变量 → 默认目录）。
+ * 后端起来时读一次（[`apply_agent_homes`]），改了要重启后端才生效。
+ */
+agentHomes: { [key in string]: string }, };
+type PrefsReply = { 
+/**
+ * `absent`（没设过）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一份。
+ */
+prefs: Prefs, };
+type PrefsSet = { 
+/**
+ * 某一家的启动命令：`{kind: 命令}`，空串 ⇒ 删掉那一家（回到它的默认）。只动点到的那几家。
+ */
+launchers?: { [key in string]: string }, resumeInTmux?: boolean, 
+/**
+ * 某几个号的模型：`{号: 模型 | null}`，`null` ⇒ 删掉那一条。只动点到的那几个号。
+ */
+models?: { [key in string]: string | null }, 
+/**
+ * 整张上限表（整张换掉）。
+ */
+contextLimits?: { [key in string]: number }, 
+/**
+ * 某一家的数据目录：`{kind: 路径}`，空串 ⇒ 删掉那一家（回到它自己的解析）。只动点到的那几家；改了要重启后端才生效。
+ */
+agentHomes?: { [key in string]: string }, };
+```
+
+码：`bad_args` · `unreadable` · `io_failed`
+
+#### `machines-read`
+
+读这一端的机器表。
+
+不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machines-read`
+
+入参 `NoArgs` · 回包 `MachinesReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 端口（缺 ＝ 22）。
+ */
+port: number, user: string, 
+/**
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
+ */
+keyPath: string, 
+/**
+ * 固化的主机指纹（空 ＝ 没固化）。
+ */
+hostKeyFingerprint: string, 
+/**
+ * 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
+ */
+hostKeyPinnedAt: string, 
+/**
+ * 备用地址（竞发）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板：另一台的名字（空 ＝ 直连）。
+ */
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type MachinesReply = { 
+/**
+ * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一张。
+ */
+hosts: Array<Host>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args`
+
+#### `machines-try`
+
+这串补丁若现在落盘，机器表那一道过不过（盘上不动）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machines-try`
+
+入参 `MachinesEdits` · 回包 `MachinesTried`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ElemKey = { fields: Array<string>, equals: string, };
+type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachineFault = { 
+/**
+ * `no_host` 地址空 · `no_user` 用户空 · `port` 端口不在 1–65535 · `name_taken` 与另一台同名。
+ */
+code: MachineFaultCode, 
+/**
+ * 出问题的那台的名字（`label` 非空取它、否则 `host`）。
+ */
+name: string, 
+/**
+ * 那一格下面的那一句（添加机器框 · 机器卡同读）。
+ */
+said: string, };
+type MachineFaultCode = "no_host" | "no_user" | "port" | "name_taken";
+type MachinesEdits = { edits: Array<MachineEdit>, };
+type MachinesTried = { 
+/**
+ * 这串补丁若现在落盘，机器表那一道没过的那一处；过 ⇒ `null`（补丁本身认不出那一台 · 不成形 ⇒ 也是 `null`，留给写口去拒）。
+ */
+fault: MachineFault | null, };
+```
+
+码：`bad_args`
+
+#### `machines-set`
+
+改机器表（按键认那一台），写完读回、推 `changed {machines}`。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --machines-set`
+
+入参 `MachinesEdits` · 回包 `MachinesSet`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ElemKey = { fields: Array<string>, equals: string, };
+type Host = { 
+/**
+ * 这台的名字（origin）；空 ⇒ 用 `host`。
+ */
+label: string, 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 端口（缺 ＝ 22）。
+ */
+port: number, user: string, 
+/**
+ * 钥匙文件路径（这台上的；空 ＝ 照 ssh 的缺省找）。
+ */
+keyPath: string, 
+/**
+ * 固化的主机指纹（空 ＝ 没固化）。
+ */
+hostKeyFingerprint: string, 
+/**
+ * 指纹记下的那一天（`YYYY-MM-DD`，写口盖；空 ＝ 没记过）。
+ */
+hostKeyPinnedAt: string, 
+/**
+ * 备用地址（竞发）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板：另一台的名字（空 ＝ 直连）。
+ */
+jump: string, 
+/**
+ * 连不连这台。
+ */
+connect: boolean, };
+type MachineEdit = { "op": "setin", where: Array<ElemKey>, field: string, value: unknown, ifEmpty?: boolean, } | { "op": "insertin", where: Array<ElemKey>, value: unknown, } | { "op": "removein", where: Array<ElemKey>, };
+type MachinesEdits = { edits: Array<MachineEdit>, };
+type MachinesReply = { 
+/**
+ * `absent`（没有这份）· `ok` · `unreadable`（读不懂：也照答，不是失败）。
+ */
+state: "absent" | "ok" | "unreadable", 
+/**
+ * `unreadable` 时的原因（那一句不带原话）。
+ */
+reason: string | null, 
+/**
+ * `unreadable` 时的复制详情。
+ */
+detail: string | null, 
+/**
+ * 那份文件的路径（家目录说不出 ⇒ `null`）。
+ */
+path: string | null, 
+/**
+ * 照用的那一张。
+ */
+hosts: Array<Host>, };
+type MachinesSet = { machines: MachinesReply, pinned: Array<PinnedDay>, kept: number, };
+type PinnedDay = { origin: string, day: string, };
+```
+
+码：`bad_args` · `unreadable` · `element_gone` · `element_exists` · `bad_machine` · `io_failed`
 
 #### `relay-optin`
 
@@ -9912,6 +10197,9 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--launch` | ＝ 帧命令 `launch`：建 tmux 会话并键入载荷，或键入一个已在的会话（远端执行面） |
 | `--launch-render-cli` | ＝ 帧命令 `launch-render-cli`：远端起会话那一行 `ccm …` |
 | `--machine-interrupts` | ＝ 帧命令 `machine-interrupts`：停 / 重启 / 更新 / 卸载这台的 cc-monitor 之前，会打断什么 |
+| `--machines-read` | ＝ 帧命令 `machines-read`：读这一端的机器表 |
+| `--machines-set` | ＝ 帧命令 `machines-set`：改机器表（按键认那一台），写完读回、推 `changed {machines}` |
+| `--machines-try` | ＝ 帧命令 `machines-try`：这串补丁若现在落盘，机器表那一道过不过（盘上不动） |
 | `--manual-list` | ＝ 帧命令 `manual-list`：会话外的需手动清单：需登录的号 · 需登录的 MCP |
 | `--mcp-read` | ＝ 帧命令 `mcp-read`：这台机器的 MCP 列表成品 |
 | `--mcp-sync-apply` | ＝ 帧命令 `mcp-sync-apply`：在要被写的那一台把那一条写进去 |
@@ -9928,6 +10216,8 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--plan-return` | ＝ 帧命令 `plan-return`：把人的话送给负责那一格的会话：后端拼「人 · {编号} {标题}：{原话}」，在等你 ⇒ 拒，已结束 / 认不出 ⇒ 只给复制，能送走 `terminal-input`；送到了记一条已退回 |
 | `--plan-unack` | ＝ 帧命令 `plan-unack`：撤掉一条认可（没有也不算错）；推一帧 `changed {plan}` 带新的数 |
 | `--powershell-policy-set` | ＝ 帧命令 `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned` |
+| `--prefs-read` | ＝ 帧命令 `prefs-read`：读这台的偏好 |
+| `--prefs-set` | ＝ 帧命令 `prefs-set`：改这台的偏好，写完读回 |
 | `--profiles-bases` | ＝ 帧命令 `profiles-bases`：「基于」下拉能选的几段（选了不成圈） |
 | `--profiles-impact` | ＝ 帧命令 `profiles-impact`：这几处改动会让哪几段合下来变（改前改后） |
 | `--profiles-read` | ＝ 帧命令 `profiles-read`：读回配置文件整份：每段自己写的几项 · 能不能用 · 链接还是终端函数 · 表单回填 |
@@ -9967,7 +10257,7 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
 | `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
-| `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车） |
+| `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |

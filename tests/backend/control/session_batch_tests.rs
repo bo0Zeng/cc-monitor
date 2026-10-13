@@ -40,7 +40,7 @@ fn with_accounts<T>(f: impl FnOnce(&la::Facts) -> T) -> T {
 
 /// 一批起的入参：整批那几格 ＋ 每项 `{sid, cwd, account}`。
 fn batch(mode: &str, local: bool, items: Vec<Value>) -> Value {
-    json!({ "mode": mode, "local": local, "agent": "claude", "launcher": "claude", "defaultLauncher": "claude", "items": items })
+    json!({ "mode": mode, "local": local, "agent": "claude", "items": items })
 }
 
 const A: &str = "aaaaaaaa-1111-2222-3333-444444444444";
@@ -195,6 +195,7 @@ impl Rig {
                 accounts,
                 writers: &writers,
                 pretrust: &pretrust,
+                prefs: &crate::control::machine_prefs::Prefs::default(),
             })
         })
     }
@@ -292,10 +293,10 @@ fn single_line(sid: &str, cwd: Option<&str>, account: Value) -> String {
         "account": account,
         "ccmSid": null,
         "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude",
     });
-    let req = serde_json::from_value(req).unwrap();
+    let req: super::super::launch_render::wire::CliRenderRequest =
+        serde_json::from_value(req).unwrap();
+    let req = req.with_prefs(&Default::default());
     with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
         .cmd
@@ -311,10 +312,10 @@ fn single_tmux_line(sid: &str, name: &str, account: Value) -> String {
         "account": account,
         "ccmSid": sid,
         "model": null,
-        "launcher": "claude",
-        "defaultLauncher": "claude",
     });
-    let req = serde_json::from_value(req).unwrap();
+    let req: super::super::launch_render::wire::CliRenderRequest =
+        serde_json::from_value(req).unwrap();
+    let req = req.with_prefs(&Default::default());
     with_accounts(|f| super::super::launch_render::answer_cli(&req, f))
         .unwrap()
         .cmd
@@ -509,16 +510,17 @@ fn a_window_start_renders_what_the_single_item_renders() {
     let out = rig.run(|d| start(&args, d)).unwrap();
     let single = with_accounts(|f| {
         super::super::launch_render::answer_local(
-            &serde_json::from_value(json!({
-                "agent": "claude",
-                "action": { "kind": "resume", "sid": A },
-                "cwd": "/w/proj",
-                "launcher": null,
-                "account": { "kind": "base" },
-                "tmuxName": "proj-cc-2",
-                "defaultLauncher": "claude",
-            }))
-            .unwrap(),
+            &serde_json::from_value::<super::super::launch_render::local::LocalLaunchRequest>(
+                json!({
+                    "agent": "claude",
+                    "action": { "kind": "resume", "sid": A },
+                    "cwd": "/w/proj",
+                    "account": { "kind": "base" },
+                    "tmuxName": "proj-cc-2",
+                }),
+            )
+            .unwrap()
+            .with_prefs(&Default::default()),
             f,
         )
     })
@@ -604,6 +606,7 @@ fn the_first_stuck_item_spends_the_batch_total_and_the_rest_time_out_on_their_ow
         },
         writers: &|_| Vec::new(),
         pretrust: &|_, _| {},
+        prefs: &crate::control::machine_prefs::Prefs::default(),
     };
     let sids: Vec<String> = [A, B, C].map(str::to_string).to_vec();
     let t0 = std::time::Instant::now();
@@ -930,4 +933,124 @@ fn a_listing_that_ran_out_of_time_answers_child_timed_out_not_unobservable() {
             "start {err}"
         );
     }
+}
+
+// ── 恢复再送（`session-say` 终端没了）────────────────────────────────
+
+/// 恢复再送那一项：带那一句 · 记录里最后那个模型 · 权限档。
+fn saying(sid: &str, model: Option<&str>, mode: Option<&str>) -> Item {
+    Item {
+        sid: sid.into(),
+        cwd: "/w/proj".into(),
+        account: AccountAsk::Follow,
+        fresh: false,
+        fork_of: None,
+        say: Some("-接着做\n第二行".into()),
+        model: model.map(str::to_string),
+        permission_mode: mode.map(str::to_string),
+    }
+}
+
+fn has_pair(argv: &[String], a: &str, b: &str) -> bool {
+    argv.windows(2).any(|w| w[0] == a && w[1] == b)
+}
+
+/// ★ 起的那一项带上那一句（交给那一家的那一半末尾、`--` 之后）· `--model`（记录里那一个）· 权限档 ——
+/// 本机那一形（`launch-local` 那条起法）与远端那一形（`launch-render-cli` 那条）两条都带。
+#[test]
+fn a_resumed_item_carries_the_line_the_model_and_the_mode_on_both_launch_forms() {
+    for here in [true, false] {
+        let rig = Rig::new(Some(vec![]));
+        let a = rig.run(|d| {
+            start_named(
+                &saying(A, Some("opus"), Some("acceptEdits")),
+                &Batch::of("claude", d.prefs),
+                &Settled::Unsaid,
+                "proj-cc-2".into(),
+                here,
+                d,
+            )
+        });
+        assert_eq!(a.outcome, "done", "here={here}: {a:?}");
+        let argv = rig.ccm.borrow()[0].clone();
+        assert!(
+            has_pair(&argv, "--", "-接着做\n第二行"),
+            "here={here}: {argv:?}"
+        );
+        assert!(has_pair(&argv, "--model", "opus"), "here={here}: {argv:?}");
+        assert!(
+            has_pair(&argv, "--permission-mode", "acceptEdits"),
+            "here={here}: {argv:?}"
+        );
+    }
+}
+
+/// ★ 越过批准的档（`bypassPermissions`）· 那一家不认的档不给（跟随）；不是模型名的不给（跟随偏好表）。那一句照带。
+#[test]
+fn a_bypass_mode_or_a_bad_model_from_the_record_is_dropped_not_passed() {
+    for here in [true, false] {
+        for (model, mode) in [
+            (Some("bad model;"), Some("bypassPermissions")),
+            (None, Some("auto")),
+        ] {
+            let rig = Rig::new(Some(vec![]));
+            rig.run(|d| {
+                start_named(
+                    &saying(A, model, mode),
+                    &Batch::of("claude", d.prefs),
+                    &Settled::Unsaid,
+                    "proj-cc-2".into(),
+                    here,
+                    d,
+                )
+            });
+            let argv = rig.ccm.borrow()[0].clone();
+            assert!(
+                !argv
+                    .iter()
+                    .any(|a| a == "--permission-mode" || a == "--model"),
+                "here={here} {model:?} {mode:?}: {argv:?}"
+            );
+            assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
+        }
+    }
+}
+
+/// ★ 恢复再送那一项照批量起的 tmux 那一形走：号跟随、问记录、铸名起（`--detach`），那一句在行里；
+/// 已有活进程在写 ⇒ 不起；没 tmux ⇒ 不起；那一家不收第一句 ⇒ 不起。
+#[test]
+fn resuming_to_say_goes_the_tmux_start_way_and_stops_where_it_would() {
+    let rig = Rig::new(Some(vec![]));
+    let a = rig.run(|d| resume_saying(&saying(A, None, None), "claude", d));
+    assert_eq!(a.outcome, "done", "{a:?}");
+    assert_eq!(a.session.as_deref(), Some("proj-cc-2"));
+    let argv = rig.ccm.borrow()[0].clone();
+    assert!(argv.iter().any(|t| t == "--detach"), "{argv:?}");
+    assert!(has_pair(&argv, "--", "-接着做\n第二行"), "{argv:?}");
+    assert!(rig
+        .calls
+        .borrow()
+        .iter()
+        .any(|c| c.starts_with(&format!("record {A}"))));
+
+    let mut live = Rig::new(Some(vec![]));
+    live.live = vec![(A, 42)];
+    let a = live.run(|d| resume_saying(&saying(A, None, None), "claude", d));
+    assert_eq!(
+        (a.outcome, a.why.as_deref()),
+        ("skipped", Some(ALREADY_LIVE))
+    );
+    assert!(live.ccm.borrow().is_empty());
+
+    let none = Rig::new(None);
+    let a = none.run(|d| resume_saying(&saying(A, None, None), "claude", d));
+    assert_eq!((a.outcome, a.why.as_deref()), ("skipped", Some("no_tmux")));
+
+    let rig = Rig::new(Some(vec![]));
+    let a = rig.run(|d| resume_saying(&saying(A, None, None), "no-such-agent", d));
+    assert_eq!(
+        (a.outcome, a.why.as_deref()),
+        ("skipped", Some("no_first_prompt"))
+    );
+    assert!(rig.ccm.borrow().is_empty());
 }

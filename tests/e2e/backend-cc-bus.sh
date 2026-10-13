@@ -578,7 +578,9 @@ for _cmd in history-read history-facts; do
   _b="$(printf '%s' "$_j" | base64 -w0)"
   d "--$_cmd" --args-b64 "$_b" < <(sleep 30) >"$SANDBOX/c2-av.txt"; _rc_av=$?
   chk "★ $_cmd：stdin 那一形答出来了（退出 0）" "$_rc_in" "0"
-  chk "★ $_cmd：argv 载荷口与 stdin 逐字一样（stdout）" "$(cmp -s "$SANDBOX/c2-in.txt" "$SANDBOX/c2-av.txt" && echo 同 || echo 不同)" "同"
+  # 续传令牌的 `rev`（会话事实那一份）每个进程按钟各取各的种 ⇒ 两个一次性进程各铸一个，比之前摘掉；别的逐字比。
+  _norev='walk(if type == "object" then del(.rev) else . end)'
+  chk "★ $_cmd：argv 载荷口与 stdin 逐字一样（stdout，摘掉 rev）" "$(cmp -s <(jq -cS "$_norev" "$SANDBOX/c2-in.txt") <(jq -cS "$_norev" "$SANDBOX/c2-av.txt") && echo 同 || echo 不同)" "同"
   chk "  $_cmd：退出码 · stderr 也一样" "$_rc_av|$(cat "$SANDBOX/err.txt")" "$_rc_in|$(cat "$SANDBOX/c2-in.err")"
   cp "$SANDBOX/c2-in.txt" "$SANDBOX/c2-$_cmd.txt"
 done

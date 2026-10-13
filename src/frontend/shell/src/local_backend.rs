@@ -1626,6 +1626,8 @@ pub(crate) fn local_stdio_consumer(
             .into_client(witness);
         crate::inbound_client::register(route.origin.as_wire_str(), client.clone());
         registered = Some(client);
+        crate::prefs_migration::after_local_ready();
+        crate::machine_table::refresh();
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
             route.origin.as_wire_str()

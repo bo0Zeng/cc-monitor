@@ -16,8 +16,8 @@
  *
  * # 第五问：会话事实（`history-facts`）
  *
- * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`）。续传令牌就是**上一份成品原样**
- * （[`readSessionFacts`] 的 `prior`）—— 本文件与调用方都不读它、不改它、不合并它，只原样交回去。
+ * 分叉血缘 · 改动文件集 · agent 列表 · 最新 usage 四样由后端读一遍文件出成品（`observe/facts_query.rs`）。续传令牌是上一份成品里的
+ * `{end, rev}` 两格（[`readSessionFacts`] 的 `prior`；那台常驻后端记着那一份累加器，`observe/facts_cache.rs`）—— 本文件与调用方不读、不合并成品。
  */
 import { ChanError, type CallError } from "../../comms/inward/chan";
 import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller";
@@ -118,7 +118,6 @@ export type Needs = WireNeeds & {
 
 /**
  * 一份会话的事实（后端 `facts_query::SessionFacts`，类型从后端生成），`needs` 多一格本机收到的时刻。
- * 下一问当续传令牌交回去时去掉那一格（[`wireOf`]）：后端按恰好的键集合收（`prior_from`）。
  */
 export type SessionFacts = Omit<WireFacts, "needs"> & { needs: Needs | null };
 
@@ -176,13 +175,6 @@ export function unpackIndex(v: HistoryIndex): SkeletonFacts[] {
 /** 收到的那一份 ⇒ [`SessionFacts`]（`needs` 记上本机收到的时刻）。 */
 export function factsOf(v: WireFacts, receivedAt: number = Date.now()): SessionFacts {
   return { ...v, needs: v.needs === null ? null : { ...v.needs, receivedAt } };
-}
-
-/** [`SessionFacts`] ⇒ 线上那一形（续传令牌原样交回：去掉本机那一格）。 */
-export function wireOf(f: SessionFacts): WireFacts {
-  if (f.needs === null) return { ...f, needs: null };
-  const { receivedAt: _, ...needs } = f.needs;
-  return { ...f, needs };
 }
 
 // ─── 失败怎么说（唯一住址）───
@@ -297,19 +289,18 @@ export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOf
 }
 
 /**
- * **会话事实**：`prior` = 上一次拿到的那份成品**原样**（续传令牌；`null` ⇒ 从字节 0 扫）。
+ * **会话事实**：`prior` = 上一次拿到的那份成品（只交它的 `{end, rev}` 当续传令牌；`null` ⇒ 从字节 0 扫）。
+ * 那台续算表里没有了 ⇒ `stale_prior`，与别的失败一样落进 `available:false`，调用方不带令牌重要（`facts-source.ts`）。
  * 要不到 ⇒ `available:false` ＋ 种类（分档同大纲：`oldBackend` 结构性 / 其余瞬时）＋ 一句人话。
  */
 export async function readSessionFacts(
   origin: Origin,
   jsonlPath: string,
   prior: SessionFacts | null,
-  limits: Readonly<Record<string, number>> = {},
 ): Promise<FactsResult> {
   try {
     const args: HistoryFactsReq = { path: jsonlPath };
-    if (prior) args.prior = wireOf(prior);
-    if (Object.keys(limits).length > 0) args.limits = { ...limits }; // 设置里的上限表：上限在那台后端定
+    if (prior) args.prior = { end: prior.end, rev: prior.rev };
     const budget = budgetWithin(READ_BUDGET_MS);
     return { available: true, facts: factsOf(await callTyped(origin, "history-facts", args, budget)) };
   } catch (e) {

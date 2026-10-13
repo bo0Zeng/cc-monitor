@@ -27,7 +27,7 @@ import { mountTabBarResizer } from "./tab-bar-width";
 import { terminalFrontCommand } from "./terminal-front-command";
 import { loadTheme } from "./theme";
 import { SETTINGS_APPLIED_EVENT } from "./settings";
-import { setResumeInTmux } from "./resume-defaults";
+import { forgetResumeDefaults } from "./resume-defaults";
 import { RESYNC_DONE_EVENT } from "./settings/events";
 import {
   AGENT_WINDOW_EVENT,
@@ -47,8 +47,6 @@ import { PlanNeedsBook } from "./plan-needs";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
-import { readContextLimits } from "./views/context-limit";
-import { loadConfig } from "./config";
 import { UsageHud } from "./usage-hud";
 import { recordFileWiring } from "./record-file-notice";
 import { toast, undoLatest } from "./kit/toast";
@@ -319,7 +317,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   );
   // 「需手动」的入口跳过来 ⇒ 焦点进答题块（块自己出现时不抢焦点）。
   tabs.onAnswerJump = (sid) => answerBlock.focusFor(sid);
-  usageHud.host = { openSettings: () => void openSettingsWindow(undefined, dest.CONTEXT_LIMITS), retry: () => tabs.retryActiveFacts() };
+  usageHud.host = {
+    openSettings: () => {
+      const sid = tabs.activeSessionId();
+      void openSettingsWindow(undefined, dest.contextLimitsOf((sid === null ? null : tabs.originOf(sid)) ?? LOCAL_ORIGIN));
+    },
+    retry: () => tabs.retryActiveFacts(),
+  };
   // 活卡的画法（带 `.module.css`）只由主窗口入口装进来 —— 理由见 `live-card-view.ts` 头注。
   tabs.setLivePainter(livePainter);
   // 启动时拉一次标签页集合（住 `config.json`，不是 localStorage —— 见
@@ -434,15 +438,6 @@ window.addEventListener("DOMContentLoaded", async () => {
     startup?.onManualSwitch();
   };
   // 当前 tab 那一格变了 → 刷新 HUD context% chip（会话事实到了 / 切会话 / 要不到 ⇒ chip 说原因）。订阅 store。
-  // 设置里的上下文上限表：随会话事实交给各台后端（上限在那里定，状态栏与监控板读同一个数）。读不到 ⇒ 空表。
-  const loadContextLimits = async (): Promise<void> => {
-    try {
-      tabs.setContextLimits(readContextLimits((await loadConfig())["contextLimits"]));
-    } catch {
-      /* 读不到设置 ⇒ 后端只按它自己看得到的定 */
-    }
-  };
-  void loadContextLimits();
   activeTab = () => tabs.activeTab();
   // 报错卡上去它的终端那两颗：当前会话的消息流根上标「能不能」（与会话头同一道），点了交 `tabs`。
   function paintTerminalActs(): void {
@@ -488,10 +483,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // 拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。
-  void getBehavior().then((b) => {
-    tabs.applyBehavior(b);
-    setResumeInTmux(b.resumeInTmux);
-  });
+  void getBehavior().then((b) => tabs.applyBehavior(b));
 
   // 设置在独立窗口里：那边保存 / 改行为后广播 SETTINGS_APPLIED_EVENT → 这里重读并应用主题 ＋ 行为（跨窗口回调够不到）。
   // 状态栏命令 chip 的键位刷新钩子：改键热应用后刷新 chip 上的键位（chip 创建时把重建函数赋进来）。
@@ -519,16 +511,13 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
-    void getBehavior().then((b) => {
-      tabs.applyBehavior(b); // 行为
-      setResumeInTmux(b.resumeInTmux); // 恢复默认的「运行于」
-    });
+    void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
+    forgetResumeDefaults(); // 恢复默认的「运行于」：各台那一格可能改了，下次重问
     void getKeybindings().then((kb) => {
       dispatcher.applyOverrides(kb); // 键位：热应用主窗口 dispatcher
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
     });
     void accountChip.refresh(true); // 远端配置 / 默认账号可能变了，刷新账号 chip
-    void loadContextLimits(); // 上下文上限表可能在设置页改过
   });
   // 竖直 tab 栏右缘拖拽调宽（`tab-bar-width.ts`，宽度经 `LS_KEYS` ＋ `safeGet/safeSet` 记忆）。
   mountTabBarResizer();

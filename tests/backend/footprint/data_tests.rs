@@ -282,3 +282,61 @@ fn 自己家里的每一样带写好的那一句_界面照抄() {
         ))
     );
 }
+
+/// 〔`INVARIANTS §2.1`，异源〕自家每一样「删了会丢 / 能重建」== 那张散文表里它那一行的类（名字 ＝ 去掉家那一段、目录带尾 `/`，同界面上那一格）。
+/// 那张表还列着 monitor 数据目录里界面自己那几份（壳 `data_paths.rs` 对拍那一半）⇒ 这里只比自家这几样，一样都不许缺、类不许错。
+#[test]
+fn 自己家里每一样的类与_invariants_那张表一致() {
+    let md = include_str!("../../../src/doc/INVARIANTS.md");
+    let start = md
+        .find("### 2.1 真相 vs 缓存")
+        .expect("INVARIANTS.md 里找不到 §2.1 —— 标题改了就来改这条");
+    let sec = &md[start..];
+    let end = sec[4..].find("\n## ").map_or(sec.len(), |i| i + 4);
+    let mut table: std::collections::BTreeMap<String, &str> = Default::default();
+    for line in sec[..end].lines() {
+        let cols: Vec<&str> = line.split('|').map(str::trim).collect();
+        if cols.len() < 4 || !cols[1].starts_with('`') {
+            continue;
+        }
+        let class = if cols[2].contains("真相") || cols[2].contains("混") {
+            "truth"
+        } else if cols[2].contains("缓存") {
+            "cache"
+        } else {
+            panic!("§2.1 那一行的类认不出来：{line}")
+        };
+        for name in cols[1].split('`').skip(1).step_by(2) {
+            table.insert(name.to_string(), class);
+        }
+    }
+    let h = Home::new("invariants");
+    let rows = own_rows(&h.0);
+    assert!(
+        rows.len() >= 10,
+        "自家那几样只有 {} 样 —— 下面的逐样比是空真",
+        rows.len()
+    );
+    let mut off = Vec::new();
+    for r in &rows {
+        let tail = r["path"]
+            .as_str()
+            .unwrap()
+            .trim_start_matches("~/.cc-monitor/");
+        let name = if r["dir"] == json!(true) {
+            format!("{tail}/")
+        } else {
+            tail.to_string()
+        };
+        let got = r["class"].as_str().unwrap();
+        match table.get(&name) {
+            Some(&want) if want == got => {}
+            want => off.push(format!("{name}：成品说 {got}，§2.1 说 {want:?}")),
+        }
+    }
+    assert_eq!(
+        off,
+        Vec::<String>::new(),
+        "自家那几样与 §2.1 那张表对不上 ⇒ 新加一样要同拍 `OWN_HOME_ENTRIES` 与 §2.1 那张表"
+    );
+}

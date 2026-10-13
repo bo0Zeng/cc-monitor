@@ -5585,12 +5585,6 @@
       "zh": "贴到 · {target}",
       "args": ["target"]
     },
-    "remoteConfig.remoteConfigUnrecognized.unrecognized": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "读取 config.json 里的远端配置失败 · 内容无法解析 · 一台都不显示\n在此重新添加机器即可",
-      "args": []
-    },
     "remoteHealth.bindRemoteHealthToast.noMessage": {
       "kind": "error",
       "role": "报错",
@@ -7794,21 +7788,6 @@
       "zh": "仅主窗口不在前台时",
       "args": []
     },
-    "settingsPanel.behavior.resume": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "启动程序",
-      "args": []
-    },
-    "settingsPanel.behavior.resumeHelp": {
-      "kind": "body",
-      "role": "说明",
-      "zh": "各机器可单独设 · 机器 ⋯ → 该机的 cc-monitor",
-      "args": [],
-      "waive": {
-        "C-W1": "⋯ 指认机器行上同形的那个菜单按钮"
-      }
-    },
     "settingsPanel.terminal.label": {
       "kind": "control",
       "role": "标签",
@@ -7843,12 +7822,6 @@
       "kind": "control",
       "role": "标签",
       "zh": "命令前缀",
-      "args": []
-    },
-    "resumeSelect.option.inherit": {
-      "kind": "control",
-      "role": "标签",
-      "zh": "通用设置",
       "args": []
     },
     "resumeSelect.option.defaultBare": {
@@ -12607,6 +12580,24 @@
       "zh": "退出行为 · cc-monitor 退出时后端留不留",
       "args": []
     },
+    "rsDataPaths.backend.prefs": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "机器偏好 · 启动命令 · 每个号的模型 · 上下文上限",
+      "args": []
+    },
+    "rsDataPaths.backend.prefsHandoff": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "待交给远端的机器偏好 · 从旧设置搬来 · 连上后交过去",
+      "args": []
+    },
+    "rsDataPaths.backend.machines": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "机器表 · 连各台用的地址 · 用户 · 钥匙 · 指纹 · 跳板",
+      "args": []
+    },
     "rsDataPaths.backend.aliasesPosix": {
       "kind": "body",
       "role": "说明",
@@ -12632,13 +12623,13 @@
       "zh": "各机器 skill 与 MCP 清单 · 删后会重新扫出",
       "args": []
     },
-    "rsDataPaths.backend.apikey": {
+    "rsDataPaths.monitor.apikey": {
       "kind": "body",
       "role": "片段",
       "zh": "填入的 API key",
       "args": []
     },
-    "rsDataPaths.backend.logs": {
+    "rsDataPaths.monitor.backendLogs": {
       "kind": "body",
       "role": "说明",
       "zh": "本机后端错误输出 · 每份 ≤4 MB · 留 2 份",
@@ -12858,6 +12849,18 @@
       "kind": "body",
       "role": "片段",
       "zh": "会话在等批准或回答",
+      "args": []
+    },
+    "beTerminal.no.elsewhere": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "会话在别的终端里开着",
+      "args": []
+    },
+    "beTerminal.no.notResumed": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "终端已关，恢复会话没成",
       "args": []
     },
     "beTerminal.refuse.empty": {
@@ -14169,10 +14172,10 @@
       "zh": "行 {n} 写法不对 · 未保存\n每行格式 模型名片段 = 正整数 · 改好离开此格即存",
       "args": ["n"]
     },
-    "contextLimits.editor.loadFailed": {
+    "machinePrefs.read.failed": {
       "kind": "error",
       "role": "报错",
-      "zh": "读取设置失败",
+      "zh": "读不到该机的偏好",
       "args": []
     },
     "contextLimits.editor.saveFailed": {
@@ -14330,12 +14333,6 @@
       "role": "报错",
       "zh": "{who}未在 {dur} 内答完 · 已停下",
       "args": ["who", "dur"]
-    },
-    "accounts.setModel.invalid": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "模型名无效 · {model} · 未保存",
-      "args": ["model"]
     },
     "accounts.sessionBadge.noneHint": {
       "kind": "body",
@@ -16682,6 +16679,12 @@
       "zh": "{machine} 的会话说不清是否在跑 · 自动重试中\n连上后自动接上 · 连接状态见设置",
       "args": ["machine"],
       "limited": ["连接"]
+    },
+    "settingsPanel.claudeDir.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读不到本机设的 Claude 数据目录",
+      "args": []
     },
     "settingsPanel.claudeDir.pickFailed": {
       "kind": "error",
@@ -24513,13 +24516,6 @@
       "args": [],
       "limited": ["连接"]
     },
-    "machineList.reconcile.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "连接未更新",
-      "args": [],
-      "limited": ["连接"]
-    },
     "machineCard.conn.connect": {
       "kind": "control",
       "role": "标签",
@@ -24664,7 +24660,7 @@
     "machineCard.field.resumeCmdScope": {
       "kind": "body",
       "role": "说明",
-      "zh": "仅 {machine} · 留空 = 通用设置",
+      "zh": "仅 {machine}",
       "args": ["machine"]
     },
     "machineCard.test.fpChanged": {

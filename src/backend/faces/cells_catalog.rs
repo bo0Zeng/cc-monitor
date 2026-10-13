@@ -937,6 +937,7 @@ mod specimens {
             .map(|kind| {
                 let f = SessionFacts {
                     end: 1,
+                    rev: 1,
                     forked_from: some("src"),
                     touched_files: vec![s("/f")],
                     usage: Some(UsageFact::new(

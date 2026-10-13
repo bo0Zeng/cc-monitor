@@ -5,10 +5,10 @@
  *
  * # 形状（形照大纲的 `OutlineSource`）
  *
- * 一个 tab 一份。它只记：上一份成品（**原样**当续传令牌交回去 —— 不读、不改、不合并）· 在途与否 · 失败了几次。
+ * 一个 tab 一份。它只记：上一份成品（交回它的 `{end, rev}` 当续传令牌 —— 成品不读、不改、不合并）· 在途与否 · 失败了几次。
  *
- * - `refresh()`：把上一份成品当 `prior` 交回去，要回累加了新写那一截的整份成品。在途时再叫 ⇒ 这一趟回来后**只补一趟**。
- * - 带着 `prior` 要不到（后端说续点越过文件尾 / 不在行边界 = 文件被截断或重写，或者别的原因）⇒ **不带 `prior` 从 0 重要一趟**。
+ * - `refresh()`：把上一份成品的令牌当 `prior` 交回去，要回累加了新写那一截的整份成品。在途时再叫 ⇒ 这一趟回来后**只补一趟**。
+ * - 带着 `prior` 要不到（那台续算表里没有了 `stale_prior` · 续点越过文件尾 / 不在行边界 = 文件被截断或重写，或者别的原因）⇒ **不带 `prior` 从 0 重要一趟**。
  * - 要不到：结构性（`oldBackend`：对面不认这条命令）⇒ 不再要；瞬时 ⇒ 下一次触发再要，连续 [`MAX_TRANSIENT_FAILURES`] 次按结构性。
  *   手上已经有成品时瞬时失败**不动它**；放弃了、或一份都还没要到 ⇒ `unavailableReason` 非空（宿主据此出声）。
  *
@@ -22,8 +22,8 @@ import { readSessionFacts, type FactsResult, type SessionFacts } from "../sessio
 import type { OutlineFailure } from "../session-reads";
 import { MAX_TRANSIENT_FAILURES } from "./outline-source";
 
-/** 这份事实问的是哪台机器上的哪份会话（连同设置里的上限表）。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
-export type FactsWhere = () => { origin: Origin; jsonlPath: string; limits?: Readonly<Record<string, number>> } | null;
+/** 这份事实问的是哪台机器上的哪份会话（上限表住那台的偏好，不随请求交）。拿不到（tab 还没收到路径）⇒ `null`，这一趟不要。 */
+export type FactsWhere = () => { origin: Origin; jsonlPath: string } | null;
 
 /** 事实到了 / 可不可用变了 —— 宿主据此落到 tab 上、刷界面。 */
 export interface FactsSink {
@@ -104,10 +104,10 @@ export class FactsSource {
     if (!where) return;
     const gen = this.gen;
     this.stale = false;
-    let res: FactsResult = await readSessionFacts(where.origin, where.jsonlPath, this.last, where.limits);
+    let res: FactsResult = await readSessionFacts(where.origin, where.jsonlPath, this.last);
     if (gen !== this.gen) return;
     if (!res.available && this.last) {
-      res = await readSessionFacts(where.origin, where.jsonlPath, null, where.limits);
+      res = await readSessionFacts(where.origin, where.jsonlPath, null);
       if (gen !== this.gen) return;
     }
     this.fetched = true;

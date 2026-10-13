@@ -716,8 +716,8 @@ function localLaunchOldArgs(b: Record<string, unknown>): [string, Record<string,
   const action = b.action as { kind: string; sid?: string };
   const account = "account" in b ? { account: b.account } : {};
   if (action.kind === "attach") return ["render_local_attach", { tmuxName: b.tmuxName }];
-  if (action.kind === "new") return ["new_local_session", { cwd: b.cwd, launcher: b.launcher, ...account }];
-  return ["resume_history_session", { agent: b.agent, sessionId: action.sid, cwd: b.cwd, launcher: b.launcher, tmuxName: b.tmuxName, ...account }];
+  if (action.kind === "new") return ["new_local_session", { cwd: b.cwd, ...account }];
+  return ["resume_history_session", { agent: b.agent, sessionId: action.sid, cwd: b.cwd, tmuxName: b.tmuxName, ...account }];
 }
 
 /** 判据手里那个 `invoke` 替身收到的全部调用里，本机起会话那几发（译回旧名字 ＋ 旧形参）。 */

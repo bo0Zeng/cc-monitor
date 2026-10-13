@@ -6,16 +6,10 @@
  */
 import type { CliRenderRequest } from "./generated/CliRenderRequest";
 import type { LaunchContext } from "./launch-types.ts";
-import { defaultLauncherOf } from "./agent-profile.ts";
 
 export type { CliRenderRequest };
 /** `launch-render-cli` 的成品：那一行 ＋ 实际用的号（账号 0 / 不指定 ⇒ `null`）。 */
 export type { Rendered as CliRendered } from "./generated/Rendered";
-
-/** 空白 ⇒ 那一家的默认启动器（没配就是没配，不是一个判定）。字符集只在后端判。 */
-function launcherOrDefault(agent: string, launcher: string): string {
-  return launcher.trim() || defaultLauncherOf(agent);
-}
 
 /**
  * 把意图摊成 `launch-render-cli` 的上线形状 —— 「起什么」交给那台后端的唯一住址。
@@ -38,8 +32,5 @@ export function buildCliRenderRequest(ctx: LaunchContext): CliRenderRequest {
     account: ctx.account,
     ccmSid: ctx.ccmSid ?? null,
     model: null,
-    models: ctx.models,
-    launcher: launcherOrDefault(ctx.agent, ctx.launcherOverride ?? ""),
-    defaultLauncher: defaultLauncherOf(ctx.agent),
   };
 }

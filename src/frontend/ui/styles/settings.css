@@ -2848,7 +2848,7 @@ body.settings-window-mode .settings-panel {
   min-width: 180px;
 }
 .data-local-only,
-.data-remote-only {
+.data-own-files {
   margin-bottom: 4px;
 }
 

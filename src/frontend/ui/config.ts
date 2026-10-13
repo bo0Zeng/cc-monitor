@@ -9,7 +9,6 @@
 // 钉在唯一的读盘口上：每一次 `loadConfig()` 都拿盘上的顶层键去对 [`KNOWN_CONFIG_KEYS`]，对不上的记下来，
 // 由 `settings/unknown-keys-notice.ts` 画成一条**常驻**提示条（`INVARIANTS §12`：
 // 状态性警告不许只活在 hover / 日志里）。
-import type { ConfigPatched } from "./generated/ConfigPatched";
 import { commands } from "./ipc/commands";
 import type { ConfigEdit } from "./generated/ConfigEdit";
 
@@ -29,38 +28,42 @@ export type Config = Record<string, unknown>;
  * ⚠ 射程：只管**顶层**。子对象里的键（`remote.hosts[].keyPath`、`theme.bg` …）
  * 由各自的主人自己解释，本表一个都不认、也不该认。
  */
+/** 第 7 批搬走的那几格的主人：迁移那一段（壳读到本机 `prefs-read` 以后删这几个键，原文另存 `config.json.pre-7`）。下一版删迁移时这几行一起删。 */
+const PREFS_MIGRATION = "src/frontend/shell/src/prefs_migration.rs";
+
 export const CONFIG_KEY_OWNERS = {
   // src/frontend/ui/theme.ts
   theme: "src/frontend/ui/theme.ts",
-  // src/frontend/ui/paths.ts
-  claudeDir: "src/frontend/ui/paths.ts",
   // src/frontend/ui/keybindings/store.ts
   keybindings: "src/frontend/ui/keybindings/store.ts",
-  // src/frontend/ui/accounts.ts
-  accounts: "src/frontend/ui/accounts.ts",
-  // src/frontend/ui/remote-config.ts（Rust 侧 `lib.rs::load_remote_configs` 也读它，只读）
-  remote: "src/frontend/ui/remote-config.ts",
+  // ── 第 7 批搬走的那几格（这台的偏好住各台后端 `prefs.json`）：只剩迁移那一段读、迁完由壳删（原文留 `config.json.pre-7`）──
+  // `accounts.byMachine.<origin>.modelByAccount`（每号模型）。
+  accounts: PREFS_MIGRATION,
+  // Claude 数据目录（搬进本机后端 `prefs.json` 的 `agentHomes`）。
+  claudeDir: PREFS_MIGRATION,
+  // 机器表（搬进本机后端 `machines.json`：后端换形那一段只读它，本机 `machines-read` 说 `ok` 之后由壳删）。
+  remote: PREFS_MIGRATION,
   // src/frontend/ui/tab-bar-state.ts
   tabBar: "src/frontend/ui/tab-bar-state.ts",
   // src/frontend/ui/tab-collections.ts
   tabCollections: "src/frontend/ui/tab-collections.ts",
   // src/frontend/ui/session-head.ts：会话头上放哪几颗按钮（`sessionHead.buttons`，这扇界面自己的偏好；没有 ＝ 默认）。
   sessionHead: "src/frontend/ui/session-head.ts",
-  // src/frontend/ui/main.ts 读（经 `views/context-limit.ts::readContextLimits`）、随会话事实交给各台后端；设置页「外观 → 高级」写
-  //   （`settings/context-limits-section.ts`）。
-  contextLimits: "src/frontend/ui/main.ts",
+  // 上下文上限表。
+  contextLimits: PREFS_MIGRATION,
   // ── src/frontend/ui/behavior.ts 那一族 ─────────────────────────────────────────────
   autoFollowUserActive: "src/frontend/ui/behavior.ts",
   bringMonitorToFrontOnUserActive: "src/frontend/ui/behavior.ts",
   showBgSessions: "src/frontend/ui/behavior.ts",
-  // 恢复命令：通用页一格默认 · 用过的几条 · 默认在不在 tmux 里（本机那一格覆盖见下）。
-  resumeCommand: "src/frontend/ui/behavior.ts",
+  // 用过的恢复命令（只是这扇界面的输入历史；生效值住各台后端）。
   resumeCommandPresets: "src/frontend/ui/behavior.ts",
-  resumeInTmux: "src/frontend/ui/behavior.ts",
+  // 通用页那一格恢复命令 · 恢复默认进不进 tmux（搬走的那一族）。
+  resumeCommand: PREFS_MIGRATION,
+  resumeInTmux: PREFS_MIGRATION,
   notifyTurnEnd: "src/frontend/ui/behavior.ts",
   notifyNeeds: "src/frontend/ui/behavior.ts",
-  // src/frontend/ui/local-machine-prefs.ts：本机那一格恢复命令覆盖（本机不在机器表里）
-  localResumeCommand: "src/frontend/ui/local-machine-prefs.ts",
+  // 本机那一格恢复命令（搬走的那一族）。
+  localResumeCommand: PREFS_MIGRATION,
   // src/frontend/ui/settings/terminal-row.ts 写（设置 → 通用 → 终端）；壳的平台层 `platform/terminal.rs` 开终端时读（只读）。
   terminal: "src/frontend/ui/settings/terminal-row.ts",
   // src/frontend/shell/src/logging.rs —— **Rust 写的**顶层键（设置页「诊断」经 `set_diagnostics_config`）。
@@ -144,8 +147,8 @@ function enqueue<T>(job: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** 🔴 **写 config.json 的唯一口。** 只交改哪几条路径；回话里是壳这一趟替界面盖上的那几格（指纹记于哪一天）。 */
-export function patchConfig(edits: readonly ConfigEdit[]): Promise<ConfigPatched> {
+/** 🔴 **写 config.json 的唯一口。** 只交改哪几条路径。 */
+export function patchConfig(edits: readonly ConfigEdit[]): Promise<void> {
   const copy = [...edits];
   return enqueue(() => commands.patch_config({ edits: copy }));
 }

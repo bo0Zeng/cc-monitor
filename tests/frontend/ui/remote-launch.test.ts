@@ -6,7 +6,6 @@
  * ＋ `ccm_invocation_tests.rs`。本文件只钉「意图落进请求的哪一格」，前端不判 sid / 名字 / 目录 / 启动器字符集。
  */
 
-import { defaultLauncherOf } from "../../../src/frontend/ui/agent-profile.ts";
 import {
   planResumeDirect,
   planAttach,
@@ -37,7 +36,7 @@ const req = buildCliRenderRequest;
 const ACCT = { account: { kind: "named", name: "w" } } as const;
 
 test("直连 resume：没有容器、cwd 原样、点名的号原样上线（那台判）", () => {
-  eq(req(planResumeDirect("claude", "abc-123", "/home/pi/a'b", "claude", ACCT)), {
+  eq(req(planResumeDirect("claude", "abc-123", "/home/pi/a'b", ACCT)), {
     agent: "claude",
     action: { kind: "resume", sid: "abc-123" },
     container: { kind: "none" },
@@ -45,11 +44,8 @@ test("直连 resume：没有容器、cwd 原样、点名的号原样上线（那
     account: { kind: "named", name: "w" },
     ccmSid: null,
     model: null,
-    models: {},
-    launcher: "claude",
-    defaultLauncher: defaultLauncherOf("claude"),
   });
-  eq(req(planResumeDirect("claude", "abc-123", "   ", "claude")).cwd, null, "cwd 空白 ⇒ 不带");
+  eq(req(planResumeDirect("claude", "abc-123", "   ")).cwd, null, "cwd 空白 ⇒ 不带");
 });
 
 test("接回：不起 agent ⇒ 不带账号修饰", () => {
@@ -58,20 +54,17 @@ test("接回：不起 agent ⇒ 不带账号修饰", () => {
   eq(r.account, { kind: "base" });
 });
 
-test("launcher：空白 ⇒ 默认启动器；带注入字符的原样上线（字符集只在后端判）", () => {
-  eq(req(planResumeDirect("claude", "s1", "", "")).launcher, defaultLauncherOf("claude"));
-  eq(req(planResumeDirect("claude", "s1", "", "   ")).launcher, defaultLauncherOf("claude"));
-  eq(req(planResumeDirect("claude", "s1", "", "cc; rm -rf /")).launcher, "cc; rm -rf /", "不许悄悄换成默认那个");
+test("启动命令 · 模型偏好表不上线（那台自己读 prefs.json）", () => {
+  const r = req(planResumeDirect("claude", "s1", "", ACCT)) as Record<string, unknown>;
+  eq(["launcher", "defaultLauncher", "models"].filter((k) => k in r), [], "这几格不该再随请求交");
 });
 
 test("sid 前端不判：怪值原样上线（后端那一跳拒）", () => {
-  eq(req(planResumeDirect("claude", "a; rm -rf /", "/p", "claude")).action, { kind: "resume", sid: "a; rm -rf /" });
+  eq(req(planResumeDirect("claude", "a; rm -rf /", "/p")).action, { kind: "resume", sid: "a; rm -rf /" });
 });
 
-test("模型偏好表原样进 models 那一格（那台判出号再取那一条）；model 那一格不由界面填", () => {
-  const r = req(planResumeDirect("claude", "s1", "", "claude", { models: { w: "opus" } }));
-  eq(r.models, { w: "opus" });
-  eq(r.model, null);
+test("model 那一格不由界面填", () => {
+  eq(req(planResumeDirect("claude", "s1", "")).model, null);
 });
 
 if (failed > 0) {

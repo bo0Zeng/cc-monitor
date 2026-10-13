@@ -5,7 +5,8 @@
  *   每件一行：状态点 · 名字 · 类的小标签 · 下一行 文件位置小标签 ＋ 一句现状 · 主按钮。断开的那台：「{machine} 离线 · 未检查」。
  *   今天的件来自那台后端的 `data-report`（要装 / 要装 · 可选）；单件里每一格都照那份成品画，界面不判。
  * - cc-monitor 放了什么：机器 chip 切换；本机先「Claude 目录」（宿主交进来那一块），再「改过你的文件」（每处 改了什么 · 撤回在哪 ［前往］），
- *   再「cc-monitor 的文件」（本机：宿主交进来那一块）。
+ *   再「cc-monitor 的文件」：那台后端家里那几样照那台 `data-report` 的 `own` 排（本机远端同一套行，`own-block.ts`）；
+ *   本机后面再接宿主交进来的界面自己那几份（monitor 数据目录 · 网页引擎 · 本地存储）。
  * - 左栏角标 ＝ 各台 `chores` 相加（问不到的那台不算）；主窗口状态栏读同一个数（`data-reads.ts::choresOf`）。
  * 构造零 I/O：宿主在这一页第一次可见时调 [`loadNow`]；之后［全部重查］显式补一刀（切页不重读，不轮询）。
  */
@@ -20,7 +21,8 @@ import { isLocalOrigin, LOCAL_ORIGIN, type Origin } from "../ipc/origin";
 import { hostKey, readRemoteConfig } from "../remote-config";
 import { noteMachineTmux } from "../resume-defaults";
 import { markChore, readDataReport, recallDataReport, type Chore, type ChoreState, type DataReport } from "./data-reads";
-import { remoteOwnBlock } from "./remote-own";
+import { ownBlock, remoteOpen } from "./own-block";
+import { localOpenButtons } from "./data-section";
 import { spanNow } from "../duration-format";
 import { choreRow } from "./chore-row";
 import { countTags } from "./chore-tags";
@@ -38,7 +40,7 @@ const FOCUS_HIGHLIGHT_MS = 1500;
 export interface DataPageHost {
   /** 本机「Claude 目录」那一块（宿主建、宿主存）。 */
   claudeDir: HTMLElement;
-  /** 本机「cc-monitor 的文件」那一块（宿主建）。 */
+  /** 本机「cc-monitor 的文件」里界面自己那几份（宿主建；接在本机后端家里那一块后面）。 */
   ownFiles: HTMLElement;
   /** 跳到设置窗里那一页那一栏那一节。 */
   goTo: (t: SettingsTarget) => void;
@@ -64,12 +66,12 @@ export class DataPage {
   private readonly chips: HTMLElement;
   private readonly changedBox: HTMLElement;
   private readonly offlineBar: HTMLElement;
-  /** 只在本机 chip 上出现的两块（Claude 目录 · cc-monitor 的文件，各带段头）。 */
+  /** 只在本机 chip 上出现的两块（Claude 目录带段头 · 界面自己那几份）。 */
   private readonly localClaude: HTMLElement;
   private readonly localOwn: HTMLElement;
-  /** 远端那台的「cc-monitor 的文件」（照那台 `data-report` 的 `own` 排）。 */
-  private readonly remoteOwn: HTMLElement;
-  private readonly remoteOwnBody: HTMLElement;
+  /** 「cc-monitor 的文件」段头 ＋ 那台后端家里那一块（照那台 `data-report` 的 `own` 排，本机远端都是）。 */
+  private readonly ownFiles: HTMLElement;
+  private readonly ownBody: HTMLElement;
   private machines: Machine[] = [{ origin: LOCAL_ORIGIN, name: copyText("remote.cards.local") }];
   private readings = new Map<Origin, Reading>();
   private picked: Origin = LOCAL_ORIGIN;
@@ -120,14 +122,14 @@ export class DataPage {
     this.localClaude = document.createElement("div");
     this.localClaude.className = "data-local-only";
     this.localClaude.append(claudeHead, host.claudeDir);
+    this.ownFiles = document.createElement("div");
+    this.ownFiles.className = "data-own-files";
+    this.ownBody = document.createElement("div");
+    this.ownFiles.append(ownHead, this.ownBody);
     this.localOwn = document.createElement("div");
     this.localOwn.className = "data-local-only";
-    this.localOwn.append(ownHead, host.ownFiles);
-    this.remoteOwn = document.createElement("div");
-    this.remoteOwn.className = "data-remote-only";
-    this.remoteOwnBody = document.createElement("div");
-    this.remoteOwn.append(section(copyText("dataPage.own.title"), copyText("dataPage.own.sub")), this.remoteOwnBody);
-    this.placedPane.append(this.chips, this.offlineBar, this.localClaude, changedHead, this.changedBox, pasted, this.localOwn, this.remoteOwn);
+    this.localOwn.append(host.ownFiles);
+    this.placedPane.append(this.chips, this.offlineBar, this.localClaude, changedHead, this.changedBox, pasted, this.ownFiles, this.localOwn);
     root.appendChild(this.placedPane);
 
     this.paintTabs(0);
@@ -417,7 +419,9 @@ export class DataPage {
     const local = isLocalOrigin(this.picked);
     this.localClaude.hidden = !local;
     this.localOwn.hidden = !local;
-    this.remoteOwn.hidden = true;
+    // 段头本机总在（界面自己那几份挂在它下面）；远端那台读回之前不出。
+    this.ownFiles.hidden = !local;
+    this.ownBody.replaceChildren();
     const r = this.readings.get(this.picked);
     const name = this.machines.find((m) => m.origin === this.picked)?.name ?? this.picked;
     this.offlineBar.hidden = !(r && !r.ok);
@@ -438,11 +442,10 @@ export class DataPage {
       this.changedBox.appendChild(note(copyText("dataPage.placed.unknown")));
       return;
     }
-    if (!local) {
-      this.remoteOwn.hidden = false;
-      const origin = this.picked;
-      this.remoteOwnBody.replaceChildren(remoteOwnBlock(report.own, report.home, r.ok ? (abs) => void this.openFile(origin, abs) : null));
-    }
+    this.ownFiles.hidden = false;
+    const origin = this.picked;
+    const actions = local ? (o: { exists: boolean }, abs: string) => localOpenButtons(abs, o.exists) : remoteOpen(r.ok ? (abs) => void this.openFile(origin, abs) : null);
+    this.ownBody.replaceChildren(ownBlock(report.own, report.home, actions, local ? copyText("data.card.backend") : undefined));
     if (report.changedFiles.length === 0) {
       this.changedBox.appendChild(note(copyText("dataPage.changed.none")));
       return;

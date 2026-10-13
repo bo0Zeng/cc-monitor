@@ -37,6 +37,8 @@ pub enum Topic {
     Login,
     /// 这台会话外的需手动清单可能变了（账号清单动了 · 一份登录作业收了；重问 `manual-list`）。
     Manual,
+    /// 这一端的机器表（`machines.json` 被改写；重问 `machines-read`）。
+    Machines,
 }
 
 /// 主题表的一行。
@@ -75,7 +77,7 @@ pub enum Ask {
 
 impl Topic {
     /// 全部主题（表的行序）。
-    pub const ALL: [Topic; 10] = [
+    pub const ALL: [Topic; 11] = [
         Topic::Accounts,
         Topic::Profiles,
         Topic::Quota,
@@ -86,6 +88,7 @@ impl Topic {
         Topic::Needs,
         Topic::Login,
         Topic::Manual,
+        Topic::Machines,
     ];
 
     /// 这个主题那一行。穷尽 `match`：加主题时编译期就被逼着填完这一行。
@@ -191,6 +194,17 @@ impl Topic {
                 body: false,
                 body_cap: 0,
                 reask: "manual-list",
+                ask: Ask::None,
+            },
+            // 走 tap 那条（可丢：丢了下一次变化或重问就补上）。
+            Topic::Machines => TopicSpec {
+                name: "machines",
+                lossy: true,
+                key: false,
+                rev: false,
+                body: false,
+                body_cap: 0,
+                reask: "machines-read",
                 ask: Ask::None,
             },
         }

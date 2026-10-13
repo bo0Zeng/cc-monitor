@@ -55,6 +55,13 @@ pub(super) const SPECS: &[CommandSpec] = &[
         "读「退出行为」那个值（值住后端所在那台）",
     ),
     crate::stream::inbound::typed::owning::<crate::control::exit_policy::ExitPolicySetCmd>("写「退出行为」那个值，写完读回"),
+    // 这台的偏好（`~/.cc-monitor/prefs.json`：启动命令 · 恢复进不进 tmux · 每号模型 · 上下文上限表）：住这台，前端只经这两条读写。
+    crate::stream::inbound::typed::blocking::<crate::control::machine_prefs::PrefsRead>("读这台的偏好"),
+    crate::stream::inbound::typed::owning::<crate::control::machine_prefs::PrefsSetCmd>("改这台的偏好，写完读回"),
+    // 这一端的机器表（`~/.cc-monitor/machines.json`：连各台用的名字 · 地址 · 钥匙 · 指纹 · 跳板 · 连不连）：住拨号那一端，monitor 只经这三条读写。
+    crate::stream::inbound::typed::blocking::<crate::control::machines::MachinesRead>("读这一端的机器表"),
+    crate::stream::inbound::typed::blocking::<crate::control::machines::MachinesTry>("这串补丁若现在落盘，机器表那一道过不过（盘上不动）"),
+    crate::stream::inbound::typed::owning::<crate::control::machines::MachinesSetCmd>("改机器表（按键认那一台），写完读回、推 `changed {machines}`"),
     // 直接敲的那一家也走中转（可选、用户自己贴）：读这台那份用户级设置文件（同步文件 I/O ⇒ 阻塞档），出状态 ＋ 要贴的那一段。
     crate::stream::inbound::typed::blocking::<crate::faces::relay_optin_face::RelayOptin>(
         "直接敲的 agent 也走中转",

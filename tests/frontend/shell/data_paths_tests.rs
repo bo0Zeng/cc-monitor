@@ -99,7 +99,9 @@ fn invariants_classes(md: &str) -> Vec<(String, DataClass)> {
     out
 }
 
-/// ★★ 枚举里每一项的类 == `INVARIANTS §2.1` 那张表（两向集合相等，异源）。
+/// ★★ 枚举里每一项的类 ＋ 本机后端家里那几样（契约 `relay_route_core::OWN_HOME_ENTRIES`，后端 `data-report` 照它列）的类
+/// == `INVARIANTS §2.1` 那张表（两向集合相等，异源）。后端那几样的名字 ＝ 去掉家那一段、目录带尾 `/`（同界面上那一格）；
+/// 后端那边另有一条只比它自家那几样（`footprint/data_tests.rs`），这一条管两边拼起来一样不多一样不少。
 ///
 /// 反空真：表至少抽出 3 条真相、3 条缓存（少于这个数说明抽取器坏了，下面的相等在小人群上成立）。
 #[test]
@@ -114,17 +116,34 @@ fn every_entry_carries_the_class_the_invariants_table_gives_it() {
         "从 §2.1 只抽出 {truths} 条真相 / {caches} 条缓存 —— 抽取器坏了"
     );
     let d = TestDir::new("classes");
-    // 后端住在同一个家里的那几样也在这张表里（家目录与数据目录在测试里是同一个临时目录，只比名字与类）。
+    let backend = relay_route_core::OWN_HOME_ENTRIES
+        .iter()
+        .map(|&(_, rel, dir, truth)| {
+            let tail = rel.trim_start_matches(".cc-monitor/");
+            let name = if dir {
+                format!("{tail}/")
+            } else {
+                tail.to_string()
+            };
+            (
+                name,
+                if truth {
+                    DataClass::Truth
+                } else {
+                    DataClass::Cache
+                },
+            )
+        });
     let mut got: Vec<(String, DataClass)> = monitor_entries(d.path())
         .into_iter()
-        .chain(backend_entries(d.path(), d.path()))
         .map(|e| (e.label, e.class))
+        .chain(backend)
         .collect();
     got.sort_by(|a, b| a.0.cmp(&b.0));
     assert_eq!(
         got, want,
-        "data dir 枚举里的类与 `INVARIANTS §2.1` 那张表对不上。\n\
-         ⇒ 新加的文件要**同拍**两处：`data_paths.rs::monitor_entries` / `backend_entries` 选类，§2.1 那张表加一行。"
+        "数据位置的类与 `INVARIANTS §2.1` 那张表对不上。\n\
+         ⇒ 新加的文件要**同拍**两处：`data_paths.rs::monitor_entries`（界面这一侧）或 `relay_route_core::OWN_HOME_ENTRIES`（本机后端家里）选类，§2.1 那张表加一行。"
     );
 }
 
@@ -165,125 +184,34 @@ fn no_entry_description_speaks_our_internal_words() {
     assert_eq!(bad, Vec::<String>::new(), "条目说明里又出现了 sid / HWND");
 }
 
-/// ★ 〔「一台机器一个家」〕后端那几样的**路径**就是后端落盘用的那一份：
-/// 每一行 == 家目录 ＋ 契约常量（`relay_route_core`，后端各写者引的就是它）/ 数据目录 ＋ 凭据文件名（`creds_core::store`）/
-/// 宿主交给后端的错误输出所在的目录。期望逐条手写常量名，不从被测函数派生。
+/// ★ 本机后端家里那几样不归这里列（界面照本机后端 `data-report` 的 `own` 画）；数据目录里与后端相关、却只住界面这一侧的两份
+/// （API key 表 · 宿主交给后端的错误输出所在的目录）在这一份枚举里，路径就是写它的那一处用的：凭据文件名取 `creds_core::store`，
+/// 错误输出取 `logging::backend_stderr_log_path`。期望逐条手写，不从被测函数派生。
 #[test]
-fn backend_rows_point_where_the_backend_itself_writes() {
-    use relay_route_core as rr;
-    let home = TestDir::new("backend-home");
-    let data = TestDir::new("backend-data");
-    let got: Vec<(String, PathBuf, String)> = backend_entries(home.path(), data.path())
+fn the_backend_rows_on_this_side_point_where_they_are_written() {
+    let data = TestDir::new("backend-side");
+    let got: Vec<(String, PathBuf, String)> = monitor_entries(data.path())
         .into_iter()
         .map(|e| (e.label, PathBuf::from(e.path), e.kind))
+        .filter(|(l, _, _)| l == "apikey-credentials.json" || l == "logs/backend/")
         .collect();
-    let h = home.path();
     let row = |l: &str, p: PathBuf, k: &str| (l.to_string(), p, k.to_string());
-    let want = vec![
-        row("bin/", h.join(".cc-monitor/bin"), "dir"),
-        row("staging/", h.join(rr::STAGING_DIR_REL), "dir"),
-        row("relay-key", h.join(rr::KEY_FILE_REL), "file"),
-        row("run/", h.join(rr::LISTEN_DIR_REL), "dir"),
-        row("backend.json", h.join(rr::BACKEND_POLICY_REL), "file"),
-        row("profiles.toml", h.join(rr::PROFILES_REL), "file"),
-        row(
-            "profiles-migrated.json",
-            h.join(rr::PROFILES_MIGRATED_REL),
-            "file",
-        ),
-        row(
-            "profiles-written.json",
-            h.join(rr::PROFILES_WRITTEN_REL),
-            "file",
-        ),
-        row("aliases.sh", h.join(rr::POSIX_ALIASES_REL), "file"),
-        row("aliases.ps1", h.join(rr::PS_ALIASES_REL), "file"),
-        row("skill-installs.json", h.join(rr::SKILL_LEDGER_REL), "file"),
-        row("chores.json", h.join(rr::CHORES_REL), "file"),
-        row("plan-review.json", h.join(rr::PLAN_REVIEW_REL), "file"),
-        row("last-seen.json", h.join(rr::LAST_SEEN_REL), "file"),
-        row("assets-catalog.json", h.join(rr::ASSET_CATALOG_REL), "file"),
-        row("quota.json", h.join(rr::QUOTA_LEDGER_REL), "file"),
-        row("rotation.json", h.join(rr::ROTATION_REL), "file"),
-        row("lineage.json", h.join(rr::LINEAGE_REL), "file"),
-        row(
-            "launch-accounts.json",
-            h.join(rr::LAUNCH_ACCOUNTS_REL),
-            "file",
-        ),
-        row("launch-pending/", h.join(rr::LAUNCH_NOTES_DIR_REL), "dir"),
-        row("answer-plugin/", h.join(rr::ANSWER_PLUGIN_DIR_REL), "dir"),
-        row("known_hosts", h.join(rr::KNOWN_HOSTS_REL), "file"),
-        row("accounts/", h.join(rr::ACCOUNTS_DIR_REL), "dir"),
-        row("accounts-mcp.json", h.join(rr::ACCOUNTS_MCP_REL), "file"),
-        row(
-            "apikey-credentials.json",
-            creds_core::store::credentials_path(data.path()),
-            "file",
-        ),
-        row(
-            "logs/backend/",
-            crate::logging::backend_stderr_log_path(data.path())
-                .parent()
-                .unwrap()
-                .to_path_buf(),
-            "dir",
-        ),
-        row("cache/skeleton/", h.join(rr::SKELETON_DIR_REL), "dir"),
-        row("backups/", h.join(rr::EXT_BACKUPS_DIR_REL), "dir"),
-    ];
-    assert_eq!(got, want);
-}
-
-/// ★★ 〔「家里的都进唯一枚举，判据两向」〕契约 crate 里 `~/.cc-monitor/` 下的每一个相对路径常量
-/// == 数据位置页后端那几行覆盖的路径（后端落点由它所在的 `bin/` 那一行覆盖）。**异源**：一侧是 `relay-route-core`
-/// 源码里现抽的常量值，一侧是被测枚举。契约里新长一个家里的路径却没进这一页 ⇒ 红；这一页列了契约里没有的 ⇒ 红。
-#[test]
-fn every_home_path_in_the_contract_has_a_row() {
-    let src = guard_core::production_code(include_str!(
-        "../../../src/common/relay-route-core/src/lib.rs"
-    ));
-    // 账号库那一段的字面量住一个宏里（足迹表要 `concat!` 它）⇒ `X!()` 形的常量按宏体里那个字面量算。
-    let macro_lit = |name: &str| -> Option<String> {
-        let body = &src[src.find(&format!("macro_rules! {name} {{"))?..];
-        let q = body.find('"')? + 1;
-        Some(body[q..q + body[q..].find('"')?].to_string())
-    };
-    let mut declared: std::collections::BTreeSet<String> = Default::default();
-    for line in src.lines() {
-        let l = line.trim();
-        if let Some(rest) = l.strip_prefix("pub const ") {
-            if let Some((_, v)) = rest.split_once("&str = ") {
-                let v = v.trim_end_matches(';');
-                let lit = match v.strip_prefix('"') {
-                    Some(q) => Some(q.trim_end_matches('"').to_string()),
-                    None => v.strip_suffix("!()").and_then(macro_lit),
-                };
-                if let Some(v) = lit.filter(|v| v.starts_with(".cc-monitor/")) {
-                    declared.insert(v);
-                }
-            }
-        }
-    }
-    assert!(
-        declared.len() >= 10,
-        "只抽到 {} 个常量 —— 抽取器坏了：{declared:?}",
-        declared.len()
+    assert_eq!(
+        got,
+        vec![
+            row(
+                "logs/backend/",
+                crate::logging::backend_stderr_log_path(data.path())
+                    .parent()
+                    .unwrap()
+                    .to_path_buf(),
+                "dir",
+            ),
+            row(
+                "apikey-credentials.json",
+                creds_core::store::credentials_path(data.path()),
+                "file",
+            ),
+        ]
     );
-    let home = TestDir::new("contract-home");
-    let data = TestDir::new("contract-data");
-    let covered: std::collections::BTreeSet<String> = backend_entries(home.path(), data.path())
-        .into_iter()
-        .filter_map(|e| {
-            Path::new(&e.path)
-                .strip_prefix(home.path())
-                .ok()
-                .map(|p| p.to_string_lossy().replace('\\', "/"))
-        })
-        .collect();
-    let mut want = declared.clone();
-    // 后端落点（`bin/ccm`）由它所在目录那一行覆盖
-    want.remove(relay_route_core::BACKEND_LANDING_REL);
-    want.insert(".cc-monitor/bin".to_string());
-    assert_eq!(covered, want);
 }

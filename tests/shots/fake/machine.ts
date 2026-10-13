@@ -252,6 +252,19 @@ export function machineOps(): Record<string, OpHandler> {
             }
           : null,
     }),
+    // 机器表住本机后端（`machines.json`）：照场景那份 `config.remote.hosts` 答（盘上那一形没有 `resumeCommand`）。
+    "machines-read": (o, _r, w) => {
+      if (o !== "<local>") throw new Error("机器表只问本机后端");
+      const hosts = ((w.config.remote ?? {}) as { hosts?: Record<string, unknown>[] }).hosts ?? [];
+      return { state: "ok", reason: null, detail: null, path: `${HOME}/.cc-monitor/machines.json`, hosts: hosts.map(({ resumeCommand: _drop, ...h }) => h) };
+    },
+    // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
+    "machines-try": (o, r, w) => {
+      if (o !== "<local>") throw new Error("机器表只问本机后端");
+      return { fault: tryMachineTable(r.edits as Record<string, unknown>[], w) };
+    },
+    // 这台的偏好（`prefs.json`）：场景都没设过 ⇒ 照「没有这份」答，各格用缺省。
+    "prefs-read": () => ({ state: "absent", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: true, models: {}, contextLimits: {}, agentHomes: {} } }),
     "data-report": (o, _r, w) => {
       if (w.unseenMachines.includes(o)) throw new Error(`${o} unreachable`);
       const todo = o === "devbox" ? DEVBOX_CHORES : o === "<local>" ? LOCAL_CHORES : [];
@@ -312,8 +325,6 @@ function machineOf(origin: string, w: World): Record<string, unknown> {
 
 export function machineCommands(): Record<string, CommandHandler> {
   return {
-    // 机器表试算口：同名 · 端口 · 地址 / 用户空（与真写口同一张规则的合成版，按盘上那张表 ＋ 这一批新增的算）。
-    machine_table_try: (a, w) => tryMachineTable(a.edits as Record<string, unknown>[], w),
     list_remote_mcp_origins: (_a, w) => w.machines.slice(1).filter((m) => !w.unseenMachines.includes(m)),
     backend_status: (a, w) => ({
       channel: !w.unseenMachines.includes(String(a.origin)),
@@ -340,10 +351,6 @@ export function machineCommands(): Record<string, CommandHandler> {
       entries: [
         { label: "配置", class: "truth", path: `${HOME}/.cc-monitor/config.json`, kind: "file", description: "界面的偏好与机器列表", exists: true, sizeBytes: 4120 },
         { label: "日志", class: "cache", path: `${HOME}/.cc-monitor/logs`, kind: "dir", description: "运行日志（按天滚动）", exists: true, sizeBytes: 3_400_000 },
-      ],
-      backendHome: `${HOME}/.cc-monitor`,
-      backendEntries: [
-        { label: "账号", class: "truth", path: `${HOME}/.cc-monitor/accounts`, kind: "dir", description: "各账号的登录与配置", exists: true, sizeBytes: 820_000 },
       ],
       webviewUserDataDir: null,
     }),

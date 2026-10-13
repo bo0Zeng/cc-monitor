@@ -1,8 +1,8 @@
 /**
  * **config.json 顶层字段的读写契约**〔audit-0805 §5 2c〕。
  *
- * `paths.ts`（`claudeDir`）与 `keybindings/store.ts`（`keybindings`）是同一个形状：
- * 都往同一份 `config.json` 的**顶层**读写一个字段。两者今天都是 **0% 覆盖**。
+ * `paths.ts`（Claude 数据目录）与 `keybindings/store.ts`（`keybindings`）：后者往 `config.json` 的**顶层**读写一个字段；
+ * 前者第 7 批搬进了本机后端的偏好（`prefs.json` 的 `agentHomes`），钉的是它交给后端的那一形。
  *
  * # 为什么挑这两个，而不是按 0% 清单从大到小补
  *
@@ -17,7 +17,7 @@
  *
  * | 模块 | 静默失败长什么样 |
  * |---|---|
- * | `paths.ts` | 读配置抛异常 ⇒ 悄悄回退默认目录 ⇒ 用户看到的是「我的会话都不见了」 |
+ * | `paths.ts` | 清除时交了别的形状 ⇒ 那一格删不掉 / 被当成相对路径拒 ⇒ 用户以为回到了默认 |
  * | `keybindings/store.ts` | 写覆盖时把 config 顶层别的字段冲掉 ⇒ 主题/数据目录一起没了 |
  *
  * ⚠ 本组**不追覆盖率数字**（同 2v 那轮的判准）：钉的是「错了会不会静默」那一类。
@@ -39,11 +39,21 @@ vi.mock("../../../src/frontend/ui/config", async (orig) => {
     }),
   };
 });
+const prefs = vi.hoisted(() => ({ homes: {} as Record<string, string>, sets: [] as unknown[][] }));
+vi.mock("../../../src/frontend/ui/machine-prefs", () => ({
+  readPrefs: vi.fn(async () => ({ state: "ok", reason: null, detail: null, path: null, prefs: { agentHomes: prefs.homes } })),
+  setPrefs: vi.fn(async (...a: unknown[]) => {
+    prefs.sets.push(a);
+    return { state: "ok", reason: null, detail: null, path: null, prefs: { agentHomes: {} } };
+  }),
+}));
 vi.mock("../../../src/frontend/ui/keybindings/actions", () => ({
   findAction: (id: string) => (["tab.next", "tab.close-archived"].includes(id) ? { id } : undefined),
 }));
 
-import { setClaudeDirOverride } from "../../../src/frontend/ui/paths";
+import { readClaudeDir, setClaudeDirOverride } from "../../../src/frontend/ui/paths";
+import { DEFAULT_AGENT } from "../../../src/frontend/ui/agent-profile";
+import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { getKeybindings, setKeybindings } from "../../../src/frontend/ui/keybindings/store";
 import { loadConfig } from "../../../src/frontend/ui/config";
 
@@ -57,15 +67,19 @@ describe("config.json 顶层字段的读写契约（§5 2c：挑「错了会静�
   });
 
   // ── paths.ts ──────────────────────────────────────────────────────────
-  it("★ 清除覆盖要**删字段**，不是写空串", async () => {
-    store.cfg = { claudeDir: "/a", theme: { bg: "#000" } };
+  it("★ 数据目录交本机后端的偏好：只点默认那一家；清除 ＝ 空串（后端那一形里空串删那一家），填的去掉两侧空白；不碰 config.json", async () => {
+    prefs.sets = [];
     await setClaudeDirOverride(null);
-    expect(
-      Object.prototype.hasOwnProperty.call(store.cfg, "claudeDir"),
-      "清除时写了空串而不是删字段 —— " +
-        "**后端**读 config 时拿到的是一个空字符串字段，与「没设」不是一回事。",
-    ).toBe(false);
-    expect(store.cfg.theme, "删字段时把别的顶层字段一起弄丢了").toEqual({ bg: "#000" });
+    await setClaudeDirOverride("  /b  ");
+    expect(prefs.sets).toEqual([
+      [LOCAL_ORIGIN, { agentHomes: { [DEFAULT_AGENT]: "" } }],
+      [LOCAL_ORIGIN, { agentHomes: { [DEFAULT_AGENT]: "/b" } }],
+    ]);
+    expect(store.saved, "数据目录还写进了 config.json").toEqual([]);
+    prefs.homes = {};
+    expect(await readClaudeDir()).toBeNull();
+    prefs.homes = { [DEFAULT_AGENT]: "/srv/c" };
+    expect(await readClaudeDir()).toBe("/srv/c");
   });
 
   // ── keybindings/store.ts ─────────────────────────────────────────────
@@ -88,19 +102,13 @@ describe("config.json 顶层字段的读写契约（§5 2c：挑「错了会静�
     expect(got, "脏数据把整批合法覆盖一起带走了").toEqual({ "tab.next": "Ctrl+Tab" });
   });
 
-  // ── 两者共用的那条契约 ────────────────────────────────────────────────
-  it("★★ 写自己的字段不许动别人的（两个模块共用的契约）", async () => {
-    store.cfg = { theme: { bg: "#000" }, claudeDir: "/a", other: 1 };
+  it("★★ 写自己的字段不许动别人的", async () => {
+    store.cfg = { theme: { bg: "#000" }, other: 1 };
     await setKeybindings({ "tab.next": "Ctrl+Tab" });
     expect(
       store.cfg,
       "写 keybindings 时把 config 顶层别的字段冲掉了 —— 主题与数据目录会一起没，" +
         "而且**是静默的**：用户下次启动才发现设置回到了默认。",
-    ).toEqual({ theme: { bg: "#000" }, claudeDir: "/a", other: 1, keybindings: { "tab.next": "Ctrl+Tab" } });
-
-    await setClaudeDirOverride("/b");
-    expect(store.cfg.keybindings, "写 claudeDir 时把 keybindings 冲掉了").toEqual({
-      "tab.next": "Ctrl+Tab",
-    });
+    ).toEqual({ theme: { bg: "#000" }, other: 1, keybindings: { "tab.next": "Ctrl+Tab" } });
   });
 });

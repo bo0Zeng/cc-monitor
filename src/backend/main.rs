@@ -178,6 +178,8 @@ async fn main() {
     // 一次性查询已 exit；到此必是流模式。agent_home 日志放此（审计 correctness-重要①：
     // 一次性查询模式 stderr 只承载结构化错误/查询结果，不掺 info——兑现协议 v1 §3
     // 「错误 exit2 + stderr 纯 JSON 失败信封」，客户端可整段 JSON-parse stderr）。
+    // 这台设了的各家数据目录（本机 `prefs.json` 的 `agentHomes`）交成那一家的目录环境变量：排在解析家目录、起任何会话之前。
+    control::apply_agent_homes(&own);
     let agent_home = resolve_agent_home();
     tracing::info!("agent_home = {}", agent_home.display());
 
@@ -247,6 +249,10 @@ async fn main() {
     observe::history_query::warm_listing_in_background(agent_home.clone());
     // 别名清单换了存法（配置文件 `profiles.toml`）：这台的配置文件还不在、旧形状的别名文件在 ⇒ 起来时一次性转过去（迁完就不再看旧文件）。
     assets::aliases::migrate_here();
+    // 这台的偏好换了住处（`config.json` 那几格 ⇒ 各台 `prefs.json`）：只由常驻那一位换一次、远端那几份记成待交（下一版删）。
+    if resident {
+        control::prefs_migration::migrate_here(&own);
+    }
 
     // ★★ `K-P1`：**同一个流模式，两种载体**。
     //

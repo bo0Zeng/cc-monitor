@@ -388,7 +388,9 @@ fn the_no_input_commands_are_registered_and_declared_consistently() {
         "files-home",
         "drift-report", // 这台后端的漂移账（纯读、不收输入）
         "exit-policy-read",
-        "quota-read", // 这台的额度账（纯读、不收输入）
+        "prefs-read",    // 这台的偏好（纯读、不收输入）
+        "machines-read", // 本机的机器表（纯读、不收输入）
+        "quota-read",    // 这台的额度账（纯读、不收输入）
         // `ccm-probe`：无入参（CLI 面没有，但「收不收输入」按帧面声明判）。
         "ccm-probe",
         "files-index-status",

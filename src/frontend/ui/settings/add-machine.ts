@@ -35,7 +35,6 @@ const blank = (): RemoteHostConfig => ({
   hostKeyPinnedAt: "",
   addresses: [],
   jump: "",
-  resumeCommand: "",
   connect: true,
 });
 

@@ -103,6 +103,10 @@ pub(crate) struct Adapter {
     /// 而那个数是 `G1` 成功标准②的头条数字、**只许降**。
     /// ⇒ 把它收进注册表：**加一个 agent 本来就该改的那一行**，正是这一格该在的地方。
     pub(crate) account_env: Option<&'static str>,
+    /// monitor 那份 `config.json` 里**旧的**那一格「这一家的数据目录」的键名（`None` ＝ 这一家从来没有那一格）。
+    /// ⚠ 只给换形那一段（`control/prefs_migration.rs`）用：新的那一格是 `prefs.json` 的 `agentHomes`（按 kind）。
+    /// 下一版随 `prefs_migration.rs` 一起删。键名是那一家的知识，所以住适配层、经 [`old_home_pref_of`] 一处读。
+    pub(crate) old_home_pref: Option<&'static str>,
     /// 这个 agent 在本机的 home 目录候选。`None` = 连候选都说不出（⇒ 一定看不见）。
     ///
     /// ⚠ 它**只答"该在哪"**。"在不在"由 [`home_is_visible`] 统一判 ——
@@ -2712,9 +2716,9 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 /// ⚠ **一家一行**（不是每字段一行）：判据⑦把本文件直呼适配层的**行数**钉成 `REGISTRY.len()`。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), old_home_pref: Some(claudecode::OLD_HOME_PREF), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE, asks: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE, asks: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
@@ -2726,6 +2730,20 @@ pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
         .iter()
         .find(|a| a.kind == kind)
         .and_then(|a| a.account_env)
+}
+
+/// 注册表里每一家的 `(kind, config.json 里旧的数据目录键名)`（没有那一格的不列）。
+/// ⚠ 只给换形那一段用（[`Adapter::old_home_pref`]），下一版随 `control/prefs_migration.rs` 一起删；**通用层读这一格只经这里**。
+pub(crate) fn old_home_pref_of(kind: &str) -> Option<&'static str> {
+    REGISTRY
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.old_home_pref)
+}
+
+/// 注册表里的每一家（注册表序）。
+pub(crate) fn registered_kinds() -> impl Iterator<Item = &'static str> {
+    REGISTRY.iter().map(|a| a.kind)
 }
 
 /// 某一家找上游读的那个环境变量（注入格是 [`Inject::Env`] 的那个变量）。认不出这家 / 没登记上游 / 地址只能拼进参数 ⇒ `None`

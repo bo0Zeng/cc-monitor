@@ -48,6 +48,7 @@ impl ModeIo for Fake {
                 .then_some(crate::control::terminals::Refused::NotYours),
             said: None,
             screen: None,
+            resumed: false,
         })
     }
     fn redrawn(&mut self) -> bool {

@@ -18,7 +18,6 @@ import {
   accountUnavailableOf,
   refuseUnavailableAccount,
 } from "./launch-account";
-import { machineModels } from "./account-prefs";
 import { buildCliRenderRequest } from "./launch-cli-wire.ts";
 import { renderCli } from "./launch-render";
 import { toast, failToast } from "./kit/toast";
@@ -52,10 +51,7 @@ async function renderOrRefuse(
 ): Promise<string | null> {
   let r;
   try {
-    const req = buildCliRenderRequest(ctx);
-    if (mods.models === undefined && ctx.action.kind !== "attach")
-      req.models = await machineModels(origin);
-    r = await renderCli(origin, req);
+    r = await renderCli(origin, buildCliRenderRequest(ctx));
   } catch (err) {
     const u = accountUnavailableOf(err);
     if (u)
@@ -153,11 +149,10 @@ export async function runRemoteResume(
   agent: string,
   sid: string,
   cwd: string,
-  launcher: string,
-  mods: LaunchModifiers = {}, // 正交修饰（要哪个号 · 那台的模型偏好表），见 launch-types.ts
+  mods: LaunchModifiers = {}, // 正交修饰（要哪个号），见 launch-types.ts
   // 回「真发出去了吗」（失败那一路自己出声）：别把「走到了最后一步」当成「已 resume」。
 ): Promise<boolean> {
-  return sent(await resumeDirectCore(origin, agent, sid, cwd, launcher, mods));
+  return sent(await resumeDirectCore(origin, agent, sid, cwd, mods));
 }
 
 async function resumeDirectCore(
@@ -165,17 +160,16 @@ async function resumeDirectCore(
   agent: string,
   sid: string,
   cwd: string,
-  launcher: string,
   mods: LaunchModifiers,
 ): Promise<Opened> {
-  const ctx = planResumeDirect(agent, sid, cwd, launcher, mods);
+  const ctx = planResumeDirect(agent, sid, cwd, mods);
   const cmd = await renderOrRefuse(
     origin,
     ctx,
     copyText("remoteLaunchRun.resume.buildFailed"),
     mods,
     (account) =>
-      resumeDirectCore(origin, agent, sid, cwd, launcher, { ...mods, account }),
+      resumeDirectCore(origin, agent, sid, cwd, { ...mods, account }),
   );
   if (cmd === null) return "unsent";
   return invokeLaunchOrCopyFallback(

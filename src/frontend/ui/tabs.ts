@@ -26,7 +26,6 @@ import { fullTitle, needsOf } from "./session-face";
 import type { AgentsPanel } from "./agents-panel";
 import { turnEndNotifier } from "./turn-notify";
 import type { GridSessionSnapshot, SessionPeek } from "./session-status";
-import { type ContextLimitOverrides } from "./views/context-limit";
 import {
   terminalFrontAvailable,
   TERMINAL_FRONT_UNAVAILABLE_TITLE,
@@ -762,7 +761,7 @@ export class TabManager {
         () => {
           // 问的是**当前**那一份 tab 的路径与机器（`parentPath` 由首条行回填；没有 ⇒ 这一趟不要）。
           const t = this.store.tabs.get(sessionId);
-          return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath, limits: this.contextLimits } : null;
+          return t && t.parentPath ? { origin: t.origin, jsonlPath: t.parentPath } : null;
         },
         {
           facts: (f) => this.onSessionFacts(sessionId, f),
@@ -1112,19 +1111,6 @@ export class TabManager {
     const t = this.store.activeId === null ? undefined : this.store.tabs.get(this.store.activeId);
     if (!t) return;
     this.view.wantFacts(t);
-  }
-
-  /** 设置里的上下文上限表（随会话事实交给那台后端，上限在那里定）。 */
-  private contextLimits: ContextLimitOverrides = {};
-
-  /** 设置里的上限表换了 ⇒ 每个 tab 带着上一份成品再问一次（只有上限会变，文件不重扫）。 */
-  setContextLimits(limits: ContextLimitOverrides): void {
-    if (JSON.stringify(limits) === JSON.stringify(this.contextLimits)) return;
-    this.contextLimits = limits;
-    for (const t of this.store.tabs.values()) {
-      if (!t.facts.everArrived) continue;
-      this.view.wantFacts(t);
-    }
   }
 
   /** 壳说过「各台都报完了」（`listed` 格带 `all`）。 */

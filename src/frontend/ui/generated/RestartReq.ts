@@ -33,21 +33,9 @@ arrive_within_ms: number,
  */
 local: boolean, 
 /**
- * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。
+ * 哪一家（线上的 kind；同 `sessions-start` 的整批那一格）。启动命令 · 模型表这台自己读。
  */
 agent: string, 
-/**
- * 用户设置的 resume 命令原值（同 `sessions-start`）。
- */
-launcher: string, 
-/**
- * 那一家的默认启动器（同 `sessions-start`）。
- */
-defaultLauncher: string, 
-/**
- * 可缺：这台的模型偏好表原值。
- */
-models?: { [key in string]: string }, 
 /**
  * 自报的前端，同 `kill`。
  */

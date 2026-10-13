@@ -72,7 +72,7 @@ pub(crate) struct NewRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) tmux_name: Option<String>,
-    /// 启动命令（空 / 缺席 ⇒ 那一家的默认启动器）。
+    /// 这一趟手填的启动命令（空 / 缺席 ⇒ 这台偏好里那一家的启动命令，没设过 ⇒ 那一家的默认启动器）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) command: Option<String>,
@@ -80,10 +80,6 @@ pub(crate) struct NewRequest {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) fork_from: Option<ForkFrom>,
-    /// 这台的模型偏好表（号 → 模型，用户设置的原值）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional, as = "Option<BTreeMap<String, String>>"))]
-    pub(crate) models: BTreeMap<String, String>,
     /// 发请求的界面就在这台上（开窗那一形本机与远端渲法不同）。
     pub(crate) local: bool,
     /// 这一趟的票（界面每次点［新建］一张；期限到了再问一次带同一张 ⇒ 认出同一趟，不起第二个：[`super::session_new_ticket`]）。缺 ⇒ 不认。
@@ -395,7 +391,10 @@ fn start(
             Some(SessionNewField::Command),
         ));
     }
-    let launcher = command.unwrap_or(face.default_launcher).to_string();
+    let launcher = command.map_or_else(
+        || deps.prefs.launcher_for(kind, face.default_launcher),
+        str::to_string,
+    );
     let cwd = expand_home(req.cwd.trim(), home);
     if cwd.is_empty() || !(deps.local_facts.is_dir)(&cwd) {
         return Err(fail(
@@ -429,7 +428,7 @@ fn start(
     // 号：跟随时分叉跟源会话上次那个号。
     let asked = req.account.clone().unwrap_or(AccountAsk::Follow);
     let source = req.fork_from.as_ref().map(|f| f.sid.as_str());
-    let account = la::settle(&asked, source, &req.models, deps.accounts).map_err(|u| {
+    let account = la::settle(&asked, source, &deps.prefs.models, deps.accounts).map_err(|u| {
         let said = la::unavailable_said(&u);
         let data = SessionNewRefusal {
             field: Some(SessionNewField::Account),
@@ -514,7 +513,7 @@ fn start(
                             &cwd,
                             &asked,
                             req.model.as_deref(),
-                            &req.models,
+                            &deps.prefs.models,
                         ),
                         &account,
                         deps.caps,
@@ -578,7 +577,7 @@ fn start(
                             &cwd,
                             &asked,
                             req.model.as_deref(),
-                            &req.models,
+                            &deps.prefs.models,
                         ),
                         &account,
                         deps.caps,

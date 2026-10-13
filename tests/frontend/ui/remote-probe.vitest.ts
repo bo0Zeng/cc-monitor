@@ -50,7 +50,6 @@ const host = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",
-  resumeCommand: "",
   connect: true,
   ...over,
 });

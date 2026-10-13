@@ -289,6 +289,13 @@ fn every_registered_command_declares_its_run_kind() {
                 // 不许占 tokio worker。开跑之后打不断 ⇒ `cancel` 命中回 `not_cancellable`。
                 | "exit-policy-read"
                 | "exit-policy-set"
+                // 这台的偏好那两条：同上（读一份小文件 / 原子写一份）。
+                | "prefs-read"
+                | "prefs-set"
+                // 机器表那三条：同上（读 / 判 / 锁里原子写 `~/.cc-monitor/machines.json`）。
+                | "machines-read"
+                | "machines-try"
+                | "machines-set"
                 // 额度账：读一份小文件（同步文件 I/O）。
                 | "quota-read"
                 // 轮换的事实：读额度账 ＋ 账号库 ＋ 各号登录文件（同步文件 I/O）。
@@ -571,6 +578,11 @@ fn every_registered_command_declares_its_run_kind() {
         "accounts-trust", //
         "exit-policy-read",
         "exit-policy-set",
+        "prefs-read",
+        "prefs-set",
+        "machines-read",
+        "machines-try",
+        "machines-set",
         "quota-read",
         "quota-probe",
         "rotation-facts",

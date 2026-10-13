@@ -28,6 +28,8 @@ export interface CliGoldenCase {
   model?: string;
   /** 容器那一格置 `send_into: true`：那台后端的渲染口还收它（键进已有 pane 那一形，后端自己换号重启时用），界面不发。 */
   sendInto?: true;
+  /** 那台的偏好（启动命令按家 · 每号模型）：不上线，那台自己读 `prefs.json`；落进夹具给 Rust 侧填请求（`with_prefs`）。 */
+  prefs?: { launchers?: Record<string, string>; models?: Record<string, string> };
   /** 期望：渲得出（`true`，`out` 是命令）还是拒（`false`，`out` 是理由）。 */
   ok: boolean;
   /** **手写**的期望串（见文件头注）。 */
@@ -40,8 +42,6 @@ const base = (over: Partial<LaunchContext> = {}): LaunchContext => ({
   container: { kind: "none" },
   cwd: null,
   account: { kind: "base" },
-  models: {},
-  launcherOverride: undefined,
   ccmSid: undefined,
   ...over,
 });
@@ -58,17 +58,17 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
       account: { kind: "named", name: "z" },
     }), ok: true, out: "ccm --resume abc-123 -- --ccm-tmux=cc-abc123 --ccm-agent claude --account z" },
   { name: "resume + cwd + model", caps: ALL_CAPS, ctx: base({
-      action: { kind: "resume", sid: "s1" }, cwd: "/w", account: { kind: "named", name: "z" }, models: { z: "opus" },
-    }), ok: true, out: "ccm --resume s1 --model opus -- --ccm-agent claude --account z --cwd /w" },
+      action: { kind: "resume", sid: "s1" }, cwd: "/w", account: { kind: "named", name: "z" },
+    }), prefs: { models: { z: "opus" } }, ok: true, out: "ccm --resume s1 --model opus -- --ccm-agent claude --account z --cwd /w" },
   { name: "就地 resume：外层只包那一行直路", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "s1" },
       container: { kind: "tmux", name: "cc-x", mode: "create" },
     }), sendInto: true, ok: true, out: "tmux -u send-keys -t '=cc-x:' 'ccm --resume s1 -- --ccm-agent claude --base' Enter; case x${TMUX:-} in x) tmux -u attach -t '=cc-x:';; *) tmux -u switch-client -t '=cc-x:';; esac" },
   { name: "identity（--ccm-sid）", caps: ALL_CAPS, ctx: base({ ccmSid: "sid-1" }),
     ok: true, out: "ccm -- new --ccm-sid=sid-1 --ccm-agent claude --base" },
-  { name: "自定义 launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: "mycc" }),
+  { name: "自定义 launcher", caps: ALL_CAPS, ctx: base(), prefs: { launchers: { claude: "mycc" } },
     ok: true, out: "ccm -- new --ccm-agent claude --base --launcher mycc" },
-  { name: "launcher 等于默认 ⇒ 不吐 --launcher", caps: ALL_CAPS, ctx: base({ launcherOverride: defaultLauncherOf(DEFAULT_AGENT) }),
+  { name: "launcher 等于默认 ⇒ 不吐 --launcher", caps: ALL_CAPS, ctx: base(), prefs: { launchers: { [DEFAULT_AGENT]: defaultLauncherOf(DEFAULT_AGENT) } },
     ok: true, out: "ccm -- new --ccm-agent claude --base" },
   { name: "attach（不起 agent，不收修饰）", caps: ALL_CAPS, ctx: base({
       action: { kind: "attach", name: "cc-foo" },
@@ -82,34 +82,34 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "建 tmux 会话而这台没有 tmux", caps: ALL_CAPS.filter((c) => c !== "tmux"), ctx: base({
       container: { kind: "tmux", name: "cc-x", mode: "create" },
     }), ok: false, out: "此机 ccm 做不到这样启动会话 · 缺 tmux" },
-  { name: "已触发的 model 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "model"), ctx: base({ account: { kind: "named", name: "z" }, models: { z: "opus" } }),
+  { name: "已触发的 model 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "model"), ctx: base({ account: { kind: "named", name: "z" } }), prefs: { models: { z: "opus" } },
     ok: false, out: "此机 ccm 不认设置项 model · 缺 model" },
   { name: "已触发的 account 维度要的能力缺失", caps: ALL_CAPS.filter((c) => c !== "account"), ctx: base(),
     ok: false, out: "此机 ccm 不认设置项 account · 缺 account" },
   { name: "坏 sid", caps: ALL_CAPS, ctx: base({ action: { kind: "resume", sid: "-x" } }),
     ok: false, out: "会话 ID \"-x\" 不合法 · 1–64 位 · 只许 A-Z a-z 0-9 与 - · 不以 - 开头" },
   // ---- 按会话的那一家起：Codex 的 resume 是子命令形；没有账号这一维 ⇒ 选号明说不行（认不出的那一家界面那一侧就拒了，后端那一侧的拒在 Rust 单测）。----
-  { name: "Codex 会话 resume（直连）", caps: ALL_CAPS, ctx: planResumeDirect("codex", "s1", "/p", undefined, {}),
+  { name: "Codex 会话 resume（直连）", caps: ALL_CAPS, ctx: planResumeDirect("codex", "s1", "/p", {}),
     ok: true, out: "ccm resume s1 -- --ccm-agent codex --base --cwd /p" },
   { name: "Codex 会话选了具名账号", caps: ALL_CAPS,
-    ctx: planResumeDirect("codex", "s1", "/p", undefined, { account: { kind: "named", name: "z" } }),
+    ctx: planResumeDirect("codex", "s1", "/p", { account: { kind: "named", name: "z" } }),
     ok: false, out: "Codex 会话不可选账号" },
   // ---- `path:` 那几条：monitor 每一条远端起会话路径真发出去的那一形（意图由生产 `plan*` 现造，与执行器同一个），
   //      Rust 侧逐条断言它们都只交一行 `ccm …`（`cli_parity` 的 `every_monitor_launch_path_hands_over_one_ccm_line`）。----
   { name: "path:远端直连 resume", caps: ALL_CAPS,
-    ctx: planResumeDirect(DEFAULT_AGENT, "s1", "/p", "claude", { account: { kind: "named", name: "z" } }),
+    ctx: planResumeDirect(DEFAULT_AGENT, "s1", "/p", { account: { kind: "named", name: "z" } }),
     ok: true, out: `ccm --resume s1 -- --ccm-agent claude --account z --cwd /p` },
   { name: "path:远端接回", caps: ALL_CAPS, ctx: planAttach(DEFAULT_AGENT, "cc-s1"), ok: true, out: "ccm -- --attach cc-s1" },
   // ---- `ccm-print-parity` 的四个场景（那套 e2e 按名取 `out`） ----
   { name: "print-parity:resumeTmuxWithIdentity", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "p1" },
       container: { kind: "tmux", name: "cc-p1", mode: "create" },
-      cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1",
-    }), ok: true, out: "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp" },
+      cwd: "/tmp", ccmSid: "p1",
+    }), prefs: { launchers: { claude: "claude" } }, ok: true, out: "ccm --resume p1 -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp" },
   { name: "print-parity:newTmuxCustomLauncher", caps: ALL_CAPS, ctx: base({
       container: { kind: "tmux", name: "cc-proj", mode: "create" },
-      cwd: "/home/pi/my proj", launcherOverride: "CCMPROBE",
-    }), ok: true, out: "ccm -- new --ccm-tmux=cc-proj --ccm-agent claude --base --cwd '/home/pi/my proj' --launcher CCMPROBE" },
+      cwd: "/home/pi/my proj",
+    }), prefs: { launchers: { claude: "CCMPROBE" } }, ok: true, out: "ccm -- new --ccm-tmux=cc-proj --ccm-agent claude --base --cwd '/home/pi/my proj' --launcher CCMPROBE" },
   { name: "print-parity:attach", caps: ALL_CAPS, ctx: base({
       action: { kind: "attach", name: "cc-p1" },
       container: { kind: "tmux", name: "cc-p1", mode: "attach-only" },
@@ -118,8 +118,8 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
   { name: "print-parity:resumeTmuxWithModel", caps: ALL_CAPS, ctx: base({
       action: { kind: "resume", sid: "p1" },
       container: { kind: "tmux", name: "cc-p1", mode: "create" },
-      cwd: "/tmp", launcherOverride: "claude", ccmSid: "p1",
-    }), model: "opus", ok: true, out: "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp" },
+      cwd: "/tmp", ccmSid: "p1",
+    }), prefs: { launchers: { claude: "claude" } }, model: "opus", ok: true, out: "ccm --resume p1 --model opus -- --ccm-tmux=cc-p1 --ccm-sid=p1 --ccm-agent claude --base --cwd /tmp" },
 ];
 
 /** `sendInto` 那几行：请求的容器那一格置 `send_into: true`（其余照生产构造）。 */
@@ -137,6 +137,7 @@ export function renderCliGoldenFixture(): string {
         // `req` 由生产代码构造（`buildCliRenderRequest`）：字段名 · `deny_unknown_fields` · 映射臂 · 请求构造漏没漏字段一次覆盖。
         caps: c.caps,
         req: sendIntoIf(c, { ...buildCliRenderRequest(c.ctx), ...(c.model ? { model: c.model } : {}) }),
+        ...(c.prefs ? { prefs: c.prefs } : {}),
         ok: c.ok,
         out: c.out,
       })),

@@ -307,6 +307,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
         kind: AGENT_KIND,
         home,
         account_env: None,
+        old_home_pref: None,
         assets: None,
         history: None,
         upstream: None,
@@ -327,6 +328,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
 pub(crate) fn full_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter {
     crate::agents::Adapter {
         account_env: Some(ACCOUNT_DIR_ENV),
+        old_home_pref: None,
         mcp: Some(MCP),
         records: Some(records_face(
             records_root,

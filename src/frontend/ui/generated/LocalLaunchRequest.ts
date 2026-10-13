@@ -15,18 +15,10 @@ agent: string, action: LocalAction,
  */
 cwd?: string | null, 
 /**
- * 自定义启动命令（空 / 纯空白 = 没设）。
- */
-launcher?: string | null, 
-/**
  * 缺席 = 不表态（继承环境；接回那一形）· 跟随 · 账号 0 · 用户点名（[`AccountAsk`]）。
  */
 account?: AccountAsk | null, 
 /**
  * 要建进 tmux 时的会话名（界面铸名口铸的；这里不铸 —— 撞名避让只有一个家）。
  */
-tmuxName?: string | null, 
-/**
- * 这一家 agent 的默认启动器（等于它就不吐 `--launcher`）。
- */
-defaultLauncher: string, };
+tmuxName?: string | null, };

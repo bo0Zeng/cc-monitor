@@ -73,6 +73,8 @@ pub(crate) fn with_deps_as<T>(
         .into_iter()
         .map(str::to_string)
         .collect();
+    // 这台的偏好（启动命令 · 模型表）：这一趟现读一次。
+    let prefs = crate::control::machine_prefs::read_now().prefs();
     crate::faces::launch_face::with_facts(agent, |accounts| {
         f(&Deps {
             list: &list,
@@ -86,6 +88,7 @@ pub(crate) fn with_deps_as<T>(
             accounts,
             writers: &writers,
             pretrust: &pretrust,
+            prefs: &prefs,
         })
     })
 }

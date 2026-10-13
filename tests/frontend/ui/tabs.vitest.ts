@@ -1252,12 +1252,12 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     tm = makeTM();
   });
 
-  it("远端归档 tab → runRemoteResume(origin, sid, cwd, launcher)", async () => {
+  it("远端归档 tab → runRemoteResume(origin, agent, sid, cwd, mods)", async () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "devbox");
     tm.archiveTab("r1");
     await home(tm).actions.resumeTab("r1");
     // 默认 resume（没点号）⇒ 跟随，交给那台判。
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", { account: { kind: "follow" }, preflight: expect.any(Function) });
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", { account: { kind: "follow" }, preflight: expect.any(Function) });
     expect(resumed()).toEqual([]);
   });
 
@@ -1285,7 +1285,7 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", "devbox");
     tm.archiveTab("r1");
     await home(tm).actions.resumeTab("r1", "z");
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", {
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", {
       account: { kind: "named", name: "z" },
       preflight: expect.any(Function),
     });
@@ -1302,7 +1302,6 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       agent: "claude",
       sessionId: "l1",
       cwd: "/home/u/p",
-      launcher: "cct", // 通用页那一格是各台的默认（本机没单独设 ⇒ 也用它）
       // P3t-Y2b：读不到本机 tmux 名单（这里 `invoke` 的缺省 mock 回 undefined）⇒ **不铸名**。
       // `null` 在这里是「不知道」，不是「没有名字被占」—— 硬铸就是不避让（issue #76）。
       tmuxName: null,
@@ -1328,7 +1327,6 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       agent: "claude",
       sessionId: "l1abcdef",
       cwd: "/home/u/p",
-      launcher: "cct",
       // 让到 `-2` 而不是撞上 `p-cc` —— 撞上去就是「静默接进第一个会话，
       // 而用户以为开了新的」（issue #76 那一族，F13 记着同一个坑）。
       // `K-R96`：名字里**没有 sid**（`l1abcdef` 一个字都不出现）—— 它骑在 `@ccm_sid` 上。
@@ -1353,7 +1351,7 @@ describe("跟随 / 用账号 0：界面不读 pin，交的就是那一格", () =
     await home(tm).actions.resumeTab("r1");
     await home(tm).actions.resumeTab("r1", undefined, true);
     expect(historyCalls(vi.mocked(invoke).mock.calls, "list_last_accounts")).toHaveLength(0);
-    expect(vi.mocked(runRemoteResume).mock.calls.map((c) => (c[5] as { account: unknown }).account)).toEqual([
+    expect(vi.mocked(runRemoteResume).mock.calls.map((c) => (c[4] as { account: unknown }).account)).toEqual([
       { kind: "follow" },
       { kind: "base" },
     ]);
@@ -1849,7 +1847,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item(DIRECT)!.click();
     item(RESUME)!.click();
     await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", { account: { kind: "follow" }, preflight: expect.any(Function) });
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", { account: { kind: "follow" }, preflight: expect.any(Function) });
   });
 
   it("本机：同一个组件（不再是单独一项）；在 tmux 里 ⇒ 本机那一条（交本机后端在 tmux 里起再接进去）", async () => {
@@ -1874,7 +1872,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     expect(runRemoteResume).not.toHaveBeenCalled();
     item(RESUME)!.click();
     await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", { account: { kind: "base" }, preflight: expect.any(Function) });
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", { account: { kind: "base" }, preflight: expect.any(Function) });
     invalidateAccountsCache();
   });
 
@@ -1885,7 +1883,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item("b")!.click();
     item(RESUME)!.click();
     await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", expect.objectContaining({ account: { kind: "named", name: "b" } }));
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", expect.objectContaining({ account: { kind: "named", name: "b" } }));
     rightClick("r1");
     await settle();
     item("z")!.click();
@@ -1904,7 +1902,7 @@ describe("已结束的 tab 右键「恢复 ▸」：与历史页「恢复 ▾」
     item("__base__")!.click();
     item(RESUME)!.click();
     await settle();
-    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", "cct", expect.objectContaining({ account: { kind: "named", name: "__base__" } }));
+    expect(runRemoteResume).toHaveBeenCalledWith("devbox", "claude", "r1", "/home/pi/proj", expect.objectContaining({ account: { kind: "named", name: "__base__" } }));
     invalidateAccountsCache();
   });
 
@@ -4526,7 +4524,7 @@ describe("〔U4b〕容器 · 说不清 · 记录没了 —— TabManager 真走"
   const openedRemote: string[] = [];
   const remoteRunnerAsksPreflight = (): void => {
     openedRemote.length = 0;
-    vi.mocked(runRemoteResume).mockImplementation(async (_o, _a, sid, _c, _l, mods) => {
+    vi.mocked(runRemoteResume).mockImplementation(async (_o, _a, sid, _c, mods) => {
       const m = mods as { preflight?: (d: string | undefined) => Promise<boolean> } | undefined;
       if (m?.preflight && !(await m.preflight(undefined))) return false;
       openedRemote.push(sid);
@@ -4685,7 +4683,7 @@ describe("〔GP1〕记录那一问带上这次 resume 的账号根（那台判�
 
   it("★ 远端直连：问的是那台判出来的号的目录（执行器开窗之前交回来的那一个）", async () => {
     vi.mocked(invoke).mockImplementation(withHistoryReads(withSessionReads(() => Promise.resolve(undefined))));
-    vi.mocked(runRemoteResume).mockImplementation(async (_o, _a, _s, _c, _l, mods) => {
+    vi.mocked(runRemoteResume).mockImplementation(async (_o, _a, _s, _c, mods) => {
       const m = mods as { preflight?: (d: string | undefined) => Promise<boolean> } | undefined;
       return (await m?.preflight?.("/h/.claude-alt/z")) ?? true;
     });
@@ -5128,6 +5126,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
   const facts = (p: Partial<SessionFacts> = {}): SessionFacts => ({
     agent: "claude",
     end: 100,
+    rev: 7,
     forkedFrom: null,
     touchedFiles: [],
     usage: null,
@@ -5279,7 +5278,7 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     expect(home(tm).store.tabs.get("fr")!.title.startsWith("↳ [pi] ")).toBe(true);
   });
 
-  it("续传：第二问把上一份成品**原样**当 prior 交回去；成品整份替换（后端说什么就是什么）", async () => {
+  it("续传：第二问把上一份成品的 {end, rev} 当 prior 交回去；成品整份替换（后端说什么就是什么）", async () => {
     let n = 0;
     const first = facts({ end: 10, forkedFrom: "p1", touchedFiles: ["/a"] });
     const second = facts({ end: 20, forkedFrom: "p1", touchedFiles: ["/b", "/a"] });
@@ -5288,16 +5287,16 @@ describe("〔STC〕会话事实：后端给了什么 ⇒ tab 上是什么", () =
     await settle();
     tm.onLine(line("s", 1));
     await settle();
-    expect(asked.map((a) => a.prior)).toEqual([null, first]);
+    expect(asked.map((a) => a.prior)).toEqual([null, { end: first.end, rev: first.rev }]);
     const tab = home(tm).store.tabs.get("s")!;
     expect([...tab.touchedFiles]).toEqual(["/b", "/a"]);
   });
 
-  it("带着 prior 要不到（续点越过文件尾 = 截断 / 重写）⇒ 不带 prior 从 0 重要一趟", async () => {
+  it("带着 prior 要不到（那台续算表里没有了 stale_prior · 续点越过文件尾 = 截断 / 重写）⇒ 不带 prior 从 0 重要一趟", async () => {
     let n = 0;
     answerFacts((_p, prior) => {
       n++;
-      if (n === 2 && prior !== null) throw { err: "Refused", body: [...new TextEncoder().encode('{"code":"failed","message":"past EOF"}')] };
+      if (n === 2 && prior !== null) throw { err: "Refused", body: [...new TextEncoder().encode('{"code":"stale_prior","message":"not in table"}')] };
       return facts({ end: n * 10, touchedFiles: [`/f${n}`] });
     });
     tm.onLine(line("t", 0));
@@ -6646,6 +6645,7 @@ describe("〔8a ④〕冷起只先问当前 tab：后台的冷读排在当前 ta
   const facts = (): SessionFacts => ({
     agent: "claude",
     end: 100,
+    rev: 7,
     forkedFrom: null,
     touchedFiles: [],
     usage: null,

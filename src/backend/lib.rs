@@ -1207,6 +1207,13 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--profiles-impact",
     "--profiles-bases",
     "--profiles-write",
+    // 这台的偏好（`prefs-read` / `prefs-set`，第 7 批第一题）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--prefs-read",
+    "--prefs-set",
+    // 这一端的机器表（`machines-read` / `-try` / `-set`，第 7 批第 4 件）派生的 CLI 面。⚠ 新子命令 ⇒ BUILD_ID 打版本号时统一 bump。
+    "--machines-read",
+    "--machines-try",
+    "--machines-set",
     // 帧面 `powershell-policy-set` 派生的 CLI 面。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
     "--powershell-policy-set",
     // 资产目录那两条（`inbound::REGISTRY` 的 `assets-catalog` / `assets-catalog-merge`）派生的 CLI 面。
