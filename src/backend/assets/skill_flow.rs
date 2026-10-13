@@ -39,13 +39,6 @@ fn texts_by_path(
     Ok(out)
 }
 
-fn str_of(v: &Value, k: &str) -> String {
-    v.get(k)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
-}
-
 fn names(v: &Value, k: &str) -> Vec<String> {
     v.get(k)
         .and_then(Value::as_array)
