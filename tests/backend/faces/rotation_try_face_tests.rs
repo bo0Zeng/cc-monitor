@@ -18,9 +18,9 @@ fn a(id: &str, used: f64, rate: Option<f64>) -> Acct {
 
 fn source() -> String {
     std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/shared/rotation/strategies/list-order.rhai"),
+        crate::guard_support::repo_root().join("tests/__fixtures__/rotation/by-list.rhai"),
     )
-    .expect("随包那份")
+    .expect("判据夹具")
 }
 
 fn settings() -> serde_json::Value {
@@ -78,7 +78,7 @@ fn it_decides_and_simulates_from_the_given_facts() {
     );
     assert_eq!(
         (got.name.as_str(), got.use_now_refused),
-        ("照列表先后", None)
+        ("照号牌", None)
     );
     let src = got.source.expect("给了设置 ⇒ 回换了头的原文");
     assert_eq!(

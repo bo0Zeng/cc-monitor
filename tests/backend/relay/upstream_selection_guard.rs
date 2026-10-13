@@ -102,7 +102,7 @@ pub(super) mod tests {
         "quota/ledger.rs",
         "quota/mod.rs",
         "quota/nodes.rs",
-        // 轮换第五版的积木（纯）：rotation.json 第三版的形 · 一判 · 设置的声明 · 推演 · 策略文件与沙箱 · 策略目录 · 随包文件清单 ·
+        // 轮换第五版的积木（纯）：rotation.json 第三版的形 · 一判 · 设置的声明 · 推演 · 策略文件与沙箱 · 策略目录 ·
         // 第二版 → 第三版的换形 · 事实上发不发得出去。不认识上游选择与账号库管理。
         "quota/rules/book.rs",
         "quota/rules/decide.rs",
@@ -110,7 +110,6 @@ pub(super) mod tests {
         "quota/rules/mod.rs",
         "quota/rules/script.rs",
         "quota/rules/shelf.rs",
-        "quota/rules/shipped.rs",
         "quota/rules/simulate.rs",
         "quota/rules/standing.rs",
         "quota/rules/upgrade.rs",

@@ -1,8 +1,8 @@
 /*--- rotation
 {
   "format": 5,
-  "name": "照列表先后",
-  "line": "照号列表的先后，前一个用不了才换下一个",
+  "name": "",
+  "line": "同一排里照号牌左右",
   "settings": {
     "caps": {},
     "capKind": "soft",
@@ -14,6 +14,19 @@
   },
   "form": [
     {
+      "key": "row",
+      "kind": "row",
+      "scope": "each",
+      "label": {
+        "zh": "排",
+        "en": "Row"
+      },
+      "help": {
+        "zh": "同一排里用满一个才换下一个；上面一排的号一有额度就换上去；下面一排只在上面所有排都没额度时才用",
+        "en": "Within a row the next account is used only once the one in use runs out; an account in a higher row takes over as soon as it has quota; a lower row is used only when every row above is out"
+      }
+    },
+    {
       "key": "caps",
       "kind": "daySegments",
       "scope": "each",
@@ -23,8 +36,8 @@
         "en": "Usage limit"
       },
       "help": {
-        "zh": "一天里各时段用到多少就换下一个号；没另设的时段用满为止",
-        "en": "How far to use each window in each part of the day before moving on"
+        "zh": "一天里各时段，用到多少就算这个号没额度了；没另设的号跟总体",
+        "en": "How far each window may be used in each part of the day; accounts without their own follow the overall one"
       },
       "windows": [
         "5h",
@@ -48,8 +61,8 @@
         {
           "v": "soft",
           "label": {
-            "zh": "软上限：所有号都到上限以后还能接着用",
-            "en": "Soft: may go past it once every account is at its limit"
+            "zh": "软上限：所有号都到上限以后，还能接着用到用满",
+            "en": "Soft: once every account is at its limit, may go on until it is used up"
           }
         },
         {
@@ -71,40 +84,19 @@
         "en": "Start delay"
       },
       "help": {
-        "zh": "排在前面的号全部用不了满这么多分钟后，才换到这个号",
-        "en": "Minutes every account ahead must stay unusable before this one is used"
+        "zh": "上面的排全都没额度满这么多分钟，才换到这个号",
+        "en": "Minutes every row above must stay out of quota before this account is used"
       },
       "min": 0,
       "max": 1440,
       "unit": "minutes",
       "default": 0
-    },
-    {
-      "key": "back",
-      "kind": "percent",
-      "scope": "each",
-      "nullable": {
-        "zh": "不回切",
-        "en": "Never switch back"
-      },
-      "label": {
-        "zh": "回切阈值",
-        "en": "Switch-back level"
-      },
-      "help": {
-        "zh": "这个号余量回到这个数以上时，从排在后面的号切回来",
-        "en": "Switch back to this account once its headroom is back above this"
-      },
-      "min": 0,
-      "max": 100,
-      "unit": "percent",
-      "default": null
     }
   ]
 }
 ---*/
 
-// 所有号同分：照号列表的先后。上限 · 软硬 · 启用延迟 · 回切照设置（积木库里那一判）。
+// 同一排里照号牌左右。
 fn decide(ctx) {
-  lib::decide_with(ctx, #{})
+  lib::by_rows(ctx, #{})
 }

@@ -1,13 +1,12 @@
 //! 第二版 `rotation.json` → 第三版。纯函数：读第二版的原文（JSON），出第三版 ＋ 要写的策略文件 ＋ 要挪开的旧脚本。
-//! 写盘 · 挪文件 · 留 `.v2` 由调用方在锁里做。
+//! 写盘 · 挪文件 · 留 `.v2` 由调用方在锁里做。第二版的每份配置、每个活会话的副本都写成用户自己的策略文件（`轮换-v5-分层.md` §6.7）：
+//! 代码照第二版文件里的编号取下面三份升级材料之一，设置照搬。材料只在这里，不进策略目录、不进任何默认。
 
 use super::book::{self, Book};
 use serde_json::Value;
 
 /// 换形要的外部事实。
 pub(crate) struct Env<'a> {
-    /// 随包的几份：（文件 id, 原文），照第三版的编号 `"1" "2" "3"` 的先后（`defaults.json` 的 `fromV3`）。
-    pub(crate) shipped: &'a [(String, String)],
     /// 「其余的订阅号」那一行展开成的号（照账号库的先后）。
     pub(crate) rest: &'a [String],
     /// 会话此刻还活着（问 pidfile）。
@@ -30,6 +29,13 @@ pub(crate) struct Upgraded {
 
 /// 一天里的分钟数。
 const DAY_MIN: usize = 1440;
+
+/// 升级材料：第二版文件里的编号 `"1"` · `"2"` · `"3"` 依次对的代码（头里的设置是空号列表，名字由配置名填）。
+const MATERIALS: [&str; 3] = [
+    include_str!("upgrade/v2-1.rhai"),
+    include_str!("upgrade/v2-2.rhai"),
+    include_str!("upgrade/v2-3.rhai"),
+];
 
 /// 第二版一行参数里某窗的线：数 ⇒ 两窗都是它；`{5h, 7d}` ⇒ 各自（`null` ＝ 用满为止）；`null` ⇒ 用满为止。
 fn line_of(line: Option<&Value>, w: &str) -> u64 {
@@ -99,13 +105,18 @@ fn caps_default(p: &Value) -> Value {
     Value::Object(m)
 }
 
-/// 一份配置（或会话的副本）换成随包那几份共用的设置形状；回（设置, 用第几份随包代码, 是不是用户自己的第三版脚本）。
+/// 一份配置（或会话的副本）换成升级材料认的设置形状（§6.7 第 4 条），照搬每一格：`line` · `slots` ⇒ `caps`；`all_out` ⇒ `capKind`；
+/// `mode` 的 `first` · `normal` · `standby` ⇒ 上 · 中 · 下三排（只留用到的、从 0 编号，只有一排不写）；编号 1 的 `standby_wait` ⇒ 备用号的 `delay`；
+/// 整份 `delay` ⇒ 不在最上一排、又没另设的号的 `delay`。`back` · `stint` 不搬（§6.7 第 6 条）。
 fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
     let params = c.get("params").cloned().unwrap_or(Value::Null);
     let init = c.get("acctInit").cloned().unwrap_or(Value::Null);
     let first_strategy = c.get("strategy").and_then(Value::as_str) == Some("1");
     let default_full = caps_full(&init);
-    let back = params.get("back") == Some(&Value::Bool(true));
+    let all_delay = params
+        .get("delay")
+        .and_then(Value::as_u64)
+        .filter(|d| *d > 0);
     let named: Vec<&str> = c
         .get("accounts")
         .and_then(Value::as_array)
@@ -113,8 +124,8 @@ fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
         .flatten()
         .filter_map(|r| r.get("id").and_then(Value::as_str))
         .collect();
-    // （位次：先 ⇒ 0 · 平常 ⇒ 1 · 备用 ⇒ 2, 那一行）
-    let mut rows: Vec<(u8, Value)> = Vec::new();
+    // （位次：上 ⇒ 0 · 中 ⇒ 1 · 下 ⇒ 2, 那一行）
+    let mut rows: Vec<(u8, serde_json::Map<String, Value>)> = Vec::new();
     for r in c
         .get("accounts")
         .and_then(Value::as_array)
@@ -141,29 +152,39 @@ fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
                 extra.insert("delay".into(), Value::from(d));
             }
         }
-        if back {
-            extra.insert("back".into(), Value::from(1));
-        }
-        let with = |mut head: serde_json::Map<String, Value>| {
-            head.extend(extra.clone());
-            Value::Object(head)
-        };
-        let one = |k: &str, v: Value| {
+        let with = |k: &str, v: Value| {
             let mut m = serde_json::Map::new();
             m.insert(k.into(), v);
+            m.extend(extra.clone());
             m
         };
         if r.get("start") == Some(&Value::Bool(true)) {
-            rows.push((rank, with(one("start", Value::Bool(true)))));
+            rows.push((rank, with("start", Value::Bool(true))));
         } else if r.get("rest") == Some(&Value::Bool(true)) {
             for a in env.rest.iter().filter(|a| !named.contains(&a.as_str())) {
-                rows.push((rank, with(one("id", Value::from(a.as_str())))));
+                rows.push((rank, with("id", Value::from(a.as_str()))));
             }
         } else if let Some(id) = r.get("id").and_then(Value::as_str) {
-            rows.push((rank, with(one("id", Value::from(id)))));
+            rows.push((rank, with("id", Value::from(id))));
         }
     }
     rows.sort_by_key(|r| r.0);
+    let mut used: Vec<u8> = rows.iter().map(|r| r.0).collect();
+    used.dedup();
+    let top = used.first().copied();
+    let accounts: Vec<Value> = rows
+        .into_iter()
+        .map(|(rank, mut m)| {
+            let k = used.iter().position(|x| *x == rank).unwrap_or(0);
+            if used.len() > 1 && k > 0 {
+                m.insert("row".into(), Value::from(k));
+            }
+            if let Some(d) = all_delay.filter(|_| Some(rank) != top) {
+                m.entry("delay").or_insert(Value::from(d));
+            }
+            Value::Object(m)
+        })
+        .collect();
     let mut s = base.clone();
     if let Some(m) = s.as_object_mut() {
         m.insert("caps".into(), caps_default(&init));
@@ -177,52 +198,27 @@ fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
                 },
             ),
         );
-        m.insert(
-            "accounts".into(),
-            Value::Array(rows.into_iter().map(|r| r.1).collect()),
-        );
+        m.insert("accounts".into(), Value::Array(accounts));
     }
     s
 }
 
-/// 随包那几份读进来：（id, 原文, 头）。
-fn shipped_heads(env: &Env<'_>) -> Result<Vec<(String, String, super::script::Head)>, String> {
-    env.shipped
-        .iter()
-        .map(|(id, src)| {
-            super::script::parse(src)
-                .map(|f| (id.clone(), src.clone(), f.head))
-                .map_err(|e| format!("shipped strategy {id}: {}", e.msg))
-        })
-        .collect()
-}
-
-/// 一份配置（或副本）落成哪一份策略：和随包那份逐字相同 ⇒ 指过去；否则写一份 `id` 的新文件（名字 `name`）。回文件 id。
-fn place(
-    c: &Value,
-    id: &str,
-    name: &str,
-    env: &Env<'_>,
-    heads: &[(String, String, super::script::Head)],
-    out: &mut Upgraded,
-) -> Result<String, String> {
+/// 一份配置（或副本）写成 `id` 的策略文件（名字 `name`）：代码照它的编号取升级材料（用户自己的第三版脚本 ⇒ 记下要挪开，代码用编号 1 那份）。
+fn place(c: &Value, id: &str, name: &str, env: &Env<'_>, out: &mut Upgraded) -> Result<(), String> {
     let n = c.get("strategy").and_then(Value::as_str).unwrap_or("");
     let idx = match n {
-        "1" => Some(0),
-        "2" => Some(1),
-        "3" => Some(2),
-        _ => None,
+        "2" => 1,
+        "3" => 2,
+        _ => 0,
     };
-    if idx.is_none() && !n.is_empty() && !out.old_scripts.iter().any(|x| x == n) {
+    if !matches!(n, "1" | "2" | "3" | "") && !out.old_scripts.iter().any(|x| x == n) {
         out.old_scripts.push(n.to_string());
     }
-    let (sid, src, head) = heads
-        .get(idx.unwrap_or(0))
-        .ok_or("no shipped strategy to upgrade onto")?;
+    let src = MATERIALS[idx];
+    let head = super::script::parse(src)
+        .map_err(|e| format!("upgrade material {}: {}", idx + 1, e.msg))?
+        .head;
     let settings = settings_of(c, env, &head.settings);
-    if idx.is_some() && settings == head.settings {
-        return Ok(sid.clone());
-    }
     let tz = c
         .get("tz")
         .and_then(Value::as_str)
@@ -234,11 +230,11 @@ fn place(
         tz: if unknown { None } else { tz },
         tz_unknown: unknown,
         settings,
-        ..head.clone()
+        ..head
     };
     let text = super::script::with_head(src, &h).map_err(|e| e.msg)?;
     out.files.push((id.to_string(), text));
-    Ok(id.to_string())
+    Ok(())
 }
 
 /// 第二版的换号记录 ⇒ 第三版（后端看得见的那几种；`refresh` · `overage` · 重启换丢）。
@@ -266,7 +262,6 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
     if v.get("version").and_then(Value::as_u64) != Some(2) {
         return Err("not a version 2 rotation.json".into());
     }
-    let heads = shipped_heads(env)?;
     let mut out = Upgraded {
         book: Book {
             version: book::BOOK_VERSION,
@@ -283,15 +278,10 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
         .flatten()
     {
         let name = c.get("name").and_then(Value::as_str).unwrap_or(cid);
-        let id = place(c, cid, name, env, &heads, &mut out)?;
-        ids.insert(cid.clone(), id);
+        place(c, cid, name, env, &mut out)?;
+        ids.insert(cid.clone(), cid.clone());
     }
-    let default = v.get("defaultConfig").and_then(Value::as_str).unwrap_or("");
-    out.book.for_new = ids
-        .get(default)
-        .cloned()
-        .or_else(|| heads.first().map(|h| h.0.clone()))
-        .unwrap_or_default();
+    // 新会话照旧不轮换（§2.4：升级出来的不进任何默认）；已有会话照旧用它原来那份。
     for (sid, s) in v
         .get("sessions")
         .and_then(Value::as_object)
@@ -303,10 +293,7 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
             .pointer("/config/id")
             .and_then(Value::as_str)
             .unwrap_or("");
-        let mut strategy = ids
-            .get(cfg)
-            .cloned()
-            .unwrap_or_else(|| out.book.for_new.clone());
+        let mut strategy = ids.get(cfg).cloned().unwrap_or_default();
         if let Some(copy) = s.pointer("/config/copy").filter(|_| (env.live)(sid)) {
             let title = (env.title)(sid).unwrap_or_else(|| sid.chars().take(8).collect());
             let name = format!(
@@ -314,7 +301,8 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
                 copy.get("name").and_then(Value::as_str).unwrap_or(cfg)
             );
             let fid: String = format!("s_{}", sid.chars().take(8).collect::<String>());
-            strategy = place(copy, &fid, &name, env, &heads, &mut out)?;
+            place(copy, &fid, &name, env, &mut out)?;
+            strategy = fid;
         }
         let temp = s
             .pointer("/manual/hot/account")

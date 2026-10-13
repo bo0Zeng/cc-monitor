@@ -220,7 +220,8 @@ pub(crate) enum RotHint {
 pub(crate) struct RotationViewReply {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) now: u64,
-    pub(crate) strategy: RotStrategyItem,
+    /// 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
+    pub(crate) strategy: Option<RotStrategyItem>,
     /// 设置怎么画（策略的声明）。
     pub(crate) form: Vec<form::Cell>,
     /// 生效的设置（会话有草稿 ⇒ 草稿）。
@@ -235,8 +236,8 @@ pub(crate) struct RotationViewReply {
     pub(crate) accounts: Vec<Fact>,
     /// 号列表里有几个（`accounts` 前这么多个是列表里的）。
     pub(crate) listed: usize,
-    pub(crate) decision: RotTryDecision,
-    pub(crate) timeline: RotTryTimeline,
+    pub(crate) decision: Option<RotTryDecision>,
+    pub(crate) timeline: Option<RotTryTimeline>,
     /// 换号记录（会话才有）。
     pub(crate) log: Vec<book::Log>,
     pub(crate) hints: Vec<RotHint>,
@@ -263,7 +264,7 @@ pub(crate) struct RotRefused {
     pub(crate) cells: Vec<RotBadCell>,
 }
 
-/// 一格收不下：哪一格 · 短码（`type` · `range` · `of` · `unknown` · `dup` · `account` · `overlap`）。
+/// 一格收不下：哪一格 · 短码（`type` · `range` · `of` · `unknown` · `dup` · `account` · `overlap` · `order`）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -361,6 +362,27 @@ pub(crate) fn view_with(
             (s, crate::faces::rotation_face::LIBRARY_AGENT.to_string())
         }
     };
+    if session.strategy.id.is_empty() {
+        let mut hints = Vec::new();
+        if let Some(e) = ctx.hop.store.unreadable() {
+            hints.push(RotHint::BookUnreadable { text: e.said });
+        }
+        return Ok(RotationViewReply {
+            now,
+            strategy: None,
+            form: Vec::new(),
+            settings: Value::Object(Default::default()),
+            dirty: false,
+            start: session.start.clone(),
+            current: session.current.clone(),
+            accounts: Vec::new(),
+            listed: 0,
+            decision: None,
+            timeline: None,
+            log: session.log.clone(),
+            hints,
+        });
+    }
     let loaded: Loaded = turn::load_in(dir.as_deref(), &session.strategy);
     let row = ctx.row(&agent);
     let facts = ctx.hop.accts(&session, &loaded.settings, &row, now);
@@ -447,7 +469,7 @@ pub(crate) fn view_with(
     };
     Ok(RotationViewReply {
         now,
-        strategy: item,
+        strategy: Some(item),
         form: head.map(|h| h.form.clone()).unwrap_or_default(),
         settings: loaded.settings.clone(),
         dirty,
@@ -455,8 +477,8 @@ pub(crate) fn view_with(
         current: session.current.clone(),
         accounts,
         listed,
-        decision: decision_of(&d),
-        timeline: timeline_of(&tl),
+        decision: Some(decision_of(&d)),
+        timeline: Some(timeline_of(&tl)),
         log: match &req.target {
             RotTarget::Session { .. } => session.log.clone(),
             RotTarget::Strategy { .. } => Vec::new(),

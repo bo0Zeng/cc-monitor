@@ -418,18 +418,7 @@ impl Home {
             )
             .expect("identity");
         }
-        let h = Self { root };
-        // 播种（生产里接了中转的那个进程起来时做一次）：随包三份进策略目录。
-        rotation::migrate_at(
-            &h.own(),
-            &rotation::UpgradeEnv {
-                live: &|_| false,
-                rest: Vec::new(),
-                title: &|_| None,
-            },
-        )
-        .expect("播种");
-        h
+        Self { root }
     }
 
     fn library(&self) -> crate::accounts::upstream_select::rotate::LibraryRead {
@@ -476,9 +465,9 @@ impl Home {
         let kind = if at_limit == "stop" { "hard" } else { "soft" };
         let src = std::fs::read_to_string(
             crate::guard_support::repo_root()
-                .join("src/shared/rotation/strategies/list-order.rhai"),
+                .join("tests/__fixtures__/rotation/by-list.rhai"),
         )
-        .expect("随包那份");
+        .expect("判据夹具");
         let mut head = script::parse(&src).expect("读得懂").head;
         head.settings = serde_json::json!({"caps": caps, "capKind": kind, "accounts": accounts});
         head.tz = Some("UTC".into());
@@ -1090,7 +1079,7 @@ fn a_session_started_inside_another_opens_the_default_config() {
         &RotationStore::at(Some(home.rotation_path())),
         &home.own(),
         |b| {
-            b.sessions.get_mut("s-owner").expect("owner").strategy.id = "most-left".into();
+            b.sessions.get_mut("s-owner").expect("owner").strategy.id = "other".into();
         },
     )
     .expect("write");

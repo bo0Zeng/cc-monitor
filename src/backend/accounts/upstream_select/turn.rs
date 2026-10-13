@@ -532,6 +532,10 @@ impl Hop {
         let Some(s) = self.entry(own, a) else {
             return Go::Start;
         };
+        // 这个会话不轮换（没选策略）⇒ 只用开会话的号，不叫策略。
+        if s.strategy.id.is_empty() {
+            return Go::Start;
+        }
         let loaded = self.load(&s.strategy);
         let (pick, s) = match self.cached(a, &s, &loaded) {
             Some(p) => (p, s),
@@ -565,6 +569,9 @@ impl Hop {
             return None;
         }
         let s = self.entry(own, a)?;
+        if s.strategy.id.is_empty() {
+            return None;
+        }
         if s.current != heard_from && !tried.contains(&s.current) {
             if let Ok(go) = self.prepare(own, a, &lib, &s.current) {
                 return Some(go);

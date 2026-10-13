@@ -28,7 +28,8 @@ fn dead_token_endpoint() -> crate::accounts::oauth::TokenEndpoint {
     }
 }
 
-/// 一个家：账号库 a（开会话的号）· b（有登录）· c（没登录）· api（按量号，key 表里有）；随包三份播进策略目录。
+/// 一个家：账号库 a（开会话的号）· b（有登录）· c（没登录）· api（按量号，key 表里有）；策略目录里放三份判据夹具
+/// （`by-list` · `by-reset` · `third`，用户自己的），新会话用 `by-list`。
 pub(crate) struct Home {
     pub(crate) root: std::path::PathBuf,
     pub(crate) live: Arc<std::sync::Mutex<std::collections::BTreeSet<String>>>,
@@ -64,15 +65,18 @@ impl Home {
             root,
             live: Arc::default(),
         };
-        rotation::migrate_at(
+        let fx = crate::guard_support::repo_root().join("tests/__fixtures__/rotation");
+        let read = |n: &str| std::fs::read_to_string(fx.join(n)).expect("判据夹具");
+        let third = read("by-list.rhai").replace("\"name\": \"照号牌\"", "\"name\": \"第三份\"");
+        for (id, text) in [("by-list", read("by-list.rhai")), ("by-reset", read("by-reset.rhai")), ("third", third)] {
+            rotation::strategy_file_write(&h.own(), id, &text).expect("写策略");
+        }
+        rotation::face_change(
+            &rotation::RotationStore::at(Some(h.root.join(rotation::FILE_NAME))),
             &h.own(),
-            &rotation::UpgradeEnv {
-                live: &|_| false,
-                rest: Vec::new(),
-                title: &|_| None,
-            },
+            |b| b.for_new = "by-list".into(),
         )
-        .expect("播种");
+        .expect("新会话用哪份");
         h
     }
 
@@ -226,7 +230,7 @@ fn the_registry_has_the_v5_commands_and_none_of_the_old_ones() {
 
 // ── rotation-strategies ─────────────────────────────────────────────────────────
 
-/// ★ 策略目录：随包三份播进来以后跟用户加的一样列着；新会话用的那份带标；在用只数活会话；读不懂的照列、带第几行。
+/// ★ 策略目录：用户的每一份都列着；新会话用的那份带标；在用只数活会话；读不懂的照列、带第几行。
 #[test]
 fn the_strategy_list_shows_every_file_with_who_uses_it() {
     let home = Home::new("list");
@@ -241,12 +245,12 @@ fn the_strategy_list_shows_every_file_with_who_uses_it() {
     .expect("w");
     let got = strategies_with(&ctx, &RotationStrategiesReq::default(), &home.alive());
     let ids: Vec<&str> = got.strategies.iter().map(|s| s.id.as_str()).collect();
-    assert_eq!(ids, ["broken", "list-order", "most-left", "reset-first"]);
+    assert_eq!(ids, ["broken", "by-list", "by-reset", "third"]);
     let lo = &got.strategies[1];
     assert!(lo.for_new && lo.error.is_none() && !lo.words_bad);
     assert_eq!(lo.in_use, [S1], "走了的会话也数进去了");
     assert!(got.strategies[0].error.is_some(), "读不懂的没带原因");
-    assert_eq!(got.for_new, "list-order");
+    assert_eq!(got.for_new, "by-list");
 }
 
 // ── rotation-view ──────────────────────────────────────────────────────────────
@@ -260,12 +264,13 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     home.saw(&ctx, S1);
     seen(&ctx, "a", 0.4, None);
     let v = session_view(&ctx, &home, S1);
-    assert_eq!(v.strategy.id, "list-order");
-    assert_eq!(v.form.len(), 4, "随包那份的声明");
+    let st = v.strategy.as_ref().expect("在轮换");
+    assert_eq!(st.id, "by-list");
+    assert_eq!(v.form.len(), 4, "夹具那份的声明");
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
     assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
     assert_eq!(v.listed, 1);
-    assert_eq!(v.decision.pick.as_deref(), Some("a"));
+    assert_eq!(v.decision.as_ref().and_then(|d| d.pick.as_deref()), Some("a"));
     assert!(!v.dirty, "没改过");
     assert!(
         v.hints.iter().all(|h| matches!(h, RotHint::TzUnknown)),
@@ -286,10 +291,19 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
         v.hints
     );
     assert_eq!(
-        v.decision.pick.as_deref(),
+        v.decision.as_ref().and_then(|d| d.pick.as_deref()),
         Some("a"),
         "兜底：此刻的号发得出去就照用"
     );
+
+    // 不轮换的会话：没有策略、不判不推演，只说开会话的号 · 在用的号。
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").strategy.id = String::new();
+    })
+    .expect("w");
+    let v = session_view(&ctx, &home, S1);
+    assert!(v.strategy.is_none() && v.decision.is_none() && v.timeline.is_none());
+    assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
 }
 
 /// ★ 设置页那一形：照交来的草稿判、推演（不写盘）；草稿不合声明 ⇒ `refused` 带那几格；没有那一份 ⇒ `no_strategy`。
@@ -308,7 +322,7 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
     let draft = json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
     let v = view_with(
         &ctx,
-        &req(Some(draft.clone()), "list-order"),
+        &req(Some(draft.clone()), "by-list"),
         now(),
         &home.alive(),
     )
@@ -318,11 +332,11 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
     assert!(home.root.join(rotation::FILE_NAME).exists());
     match view_with(
         &ctx,
-        &req(Some(json!({"margin": 99})), "list-order"),
+        &req(Some(json!({"nope": 99})), "by-list"),
         now(),
         &home.alive(),
     ) {
-        Err(RotationViewErr::Refused(_, r)) => assert_eq!(r.cells[0].cell, "margin"),
+        Err(RotationViewErr::Refused(_, r)) => assert_eq!(r.cells[0].cell, "nope"),
         other => panic!("该拒：{other:?}"),
     }
     assert!(matches!(
@@ -351,9 +365,9 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
 fn a_preset_session_keeps_its_strategy_when_the_relay_first_sees_it() {
     let home = Home::new("preset");
     let ctx = home.ctx();
-    preset_with(&ctx, &home.own(), S1, "claude", "most-left", now()).expect("ok");
+    preset_with(&ctx, &home.own(), S1, "claude", "third", now()).expect("ok");
     home.saw(&ctx, S1);
-    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "most-left");
+    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "third");
     assert_eq!(
         preset_with(&ctx, &home.own(), S2, "claude", "nope", now()).map_err(|e| e.0),
         Err("no_strategy")

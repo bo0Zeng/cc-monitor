@@ -4,20 +4,13 @@ use super::*;
 use crate::accounts::quota::rules::script;
 use serde_json::{json, Value};
 
-fn shipped(name: &str) -> String {
-    std::fs::read_to_string(
-        crate::guard_support::repo_root()
-            .join("src/shared/rotation/strategies")
-            .join(format!("{name}.rhai")),
-    )
-    .expect("随包那份")
+/// 升级材料（第二版的编号 1 · 2 · 3）。
+fn material(n: usize) -> &'static str {
+    MATERIALS[n - 1]
 }
 
-fn ship() -> Vec<(String, String)> {
-    ["list-order", "reset-first", "most-left"]
-        .iter()
-        .map(|n| (n.to_string(), shipped(n)))
-        .collect()
+fn code(s: &str) -> String {
+    s[s.find("---*/").expect("头尾")..].to_string()
 }
 
 fn row(who: Value, params: Value) -> Value {
@@ -77,12 +70,10 @@ fn v2() -> Value {
 }
 
 fn run(local: Option<&str>) -> Upgraded {
-    let ship = ship();
     let rest = vec!["r1".to_string(), "r2".to_string(), "f".to_string()];
     from_v2(
         &v2(),
         &Env {
-            shipped: &ship,
             rest: &rest,
             live: &|sid| sid == "live1",
             title: &|sid| (sid == "live1").then(|| "修登录".to_string()),
@@ -109,21 +100,22 @@ fn head(src: &str) -> script::Head {
     script::parse(src).expect("新文件读得懂").head
 }
 
+/// ★ 每份配置都写成用户自己的策略文件（不跟谁比、不指过去）；新会话照旧不轮换。
 #[test]
-fn u1_a_config_equal_to_a_shipped_one_points_to_it() {
+fn u1_every_config_becomes_a_users_own_file_and_new_sessions_do_not_rotate() {
     let u = run(Some("Asia/Shanghai"));
-    assert!(
-        u.files.iter().all(|f| f.0 != "list-order"),
-        "随包那份不另写"
-    );
-    assert_eq!(u.book.sessions["plain"].strategy.id, "list-order");
+    for id in ["c_00000001", "c_00000002", "c_000000aa"] {
+        file(&u, id);
+    }
+    assert_eq!(u.book.sessions["plain"].strategy.id, "c_00000001");
+    assert_eq!(u.book.for_new, "", "升级出来的不进任何默认");
 }
 
+/// ★ 设置一格不丢：线 · 时段 ⇒ 分段上限；都到上限就停 ⇒ 硬上限；优先 · 平常 · 备用 ⇒ 上 · 中 · 下三排；回切不搬（上排抢下排就是回切）。
 #[test]
-fn u2_settings_come_out_in_the_shipped_shape() {
+fn u2_settings_come_out_in_rows() {
     let u = run(Some("Asia/Shanghai"));
-    let id = &u.book.for_new;
-    let h = head(file(&u, id));
+    let h = head(file(&u, "c_00000002"));
     assert_eq!(h.name, script::Text::One("夜里省着用".into()));
     assert_eq!(h.tz.as_deref(), Some("Asia/Shanghai"));
     let all = |v: u64| json!([{"from": 0, "to": 1440, "v": v}]);
@@ -133,31 +125,31 @@ fn u2_settings_come_out_in_the_shipped_shape() {
           "caps": {"5h": all(90), "7d": all(90)},
           "capKind": "hard",
           "accounts": [
-            {"id": "f", "back": 1,
+            {"id": "f",
              "caps": {"5h": [{"from": 0, "to": 1200, "v": 80}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 80}],
                       "7d": [{"from": 0, "to": 1200, "v": 100}, {"from": 1200, "to": 1380, "v": 0}, {"from": 1380, "to": 1440, "v": 100}]}},
-            {"start": true, "back": 1},
-            {"id": "r1", "back": 1},
-            {"id": "r2", "back": 1},
-            {"id": "s", "back": 1}
+            {"start": true, "row": 1},
+            {"id": "r1", "row": 1},
+            {"id": "r2", "row": 1},
+            {"id": "s", "row": 2}
           ]
         })
     );
-    // 代码照第三版的编号 2 那份（随包第二份）：代码一个字不动。
-    let src = file(&u, id);
-    let code = |s: &str| s[s.find("---*/").expect("头尾")..].to_string();
-    assert_eq!(code(src), code(&shipped("reset-first")));
+    // 编号 2 ⇒ 第二份材料的代码，一个字不动；照声明校验收得下。
+    let src = file(&u, "c_00000002");
+    assert_eq!(code(src), code(material(2)));
+    assert_eq!(super::super::form::check(&h.form, &h.settings), []);
 }
 
+/// 编号 1 的「用备用号前先等」⇒ 备用那几号的启用延迟；整份的延迟 ⇒ 不在最上一排、又没另设的号。
 #[test]
-fn u3_standby_wait_becomes_the_standby_rows_delay_only_for_the_first_strategy() {
+fn u3_waits_become_start_delays() {
     let mut v = v2();
     v["configs"]["c_00000002"]["strategy"] = json!("1");
-    let ship = ship();
+    v["configs"]["c_00000002"]["params"]["delay"] = json!(5);
     let u = from_v2(
         &v,
         &Env {
-            shipped: &ship,
             rest: &[],
             live: &|_| false,
             title: &|_| None,
@@ -165,33 +157,38 @@ fn u3_standby_wait_becomes_the_standby_rows_delay_only_for_the_first_strategy() 
         },
     )
     .expect("读得懂");
-    let h = head(file(&u, &u.book.for_new));
+    let h = head(file(&u, "c_00000002"));
     let rows = h.settings["accounts"].as_array().expect("号列表").clone();
-    let s = rows.iter().find(|r| r["id"] == "s").expect("备用号");
-    assert_eq!(s["delay"], json!(30));
-    assert!(rows
-        .iter()
-        .filter(|r| r["id"] != "s")
-        .all(|r| r.get("delay").is_none()));
+    let delay = |id: &str| {
+        rows.iter()
+            .find(|r| r["id"] == id || (id == "start" && r["start"] == true))
+            .expect("那一号")
+            .get("delay")
+            .cloned()
+    };
+    assert_eq!(delay("s"), Some(json!(30)), "备用号照「先等」");
+    assert_eq!(delay("start"), Some(json!(5)), "中间一排照整份的延迟");
+    assert_eq!(delay("f"), None, "最上一排不等");
+    assert_eq!(code(file(&u, "c_00000002")), code(material(1)));
 }
 
 #[test]
 fn u4_live_copies_become_named_files_and_ended_ones_are_dropped() {
     let u = run(Some("Asia/Shanghai"));
     let live = &u.book.sessions["live1"].strategy.id;
-    assert_ne!(live, &u.book.for_new);
+    assert!(live.starts_with("s_"));
     assert_eq!(
         head(file(&u, live)).name,
         script::Text::One("夜里省着用 · 修登录".into())
     );
     assert_eq!(
-        u.book.sessions["dead1"].strategy.id, u.book.for_new,
+        u.book.sessions["dead1"].strategy.id, "c_00000002",
         "结束了的会话的副本丢掉，改指它那份配置"
     );
 }
 
 #[test]
-fn u5_a_users_v3_script_is_set_aside_and_its_config_keeps_the_list_order_code() {
+fn u5_a_users_v3_script_is_set_aside_and_its_config_takes_the_first_material() {
     let u = run(Some("Asia/Shanghai"));
     assert_eq!(u.old_scripts, vec!["c_mine".to_string()]);
     let f = u
@@ -199,8 +196,7 @@ fn u5_a_users_v3_script_is_set_aside_and_its_config_keeps_the_list_order_code() 
         .iter()
         .find(|f| head(&f.1).name == script::Text::One("自己写的".into()))
         .expect("那份配置写成了文件");
-    let code = |s: &str| s[s.find("---*/").expect("头尾")..].to_string();
-    assert_eq!(code(&f.1), code(&shipped("list-order")));
+    assert_eq!(code(&f.1), code(material(1)));
 }
 
 #[test]
@@ -210,9 +206,7 @@ fn u6_a_missing_tz_takes_the_local_one_or_is_marked_unknown() {
         .as_object_mut()
         .expect("配置")
         .remove("tz");
-    let ship = ship();
     let env = |tz| Env {
-        shipped: &ship,
         rest: &[],
         live: &|_| false,
         title: &|_| None,
@@ -220,11 +214,11 @@ fn u6_a_missing_tz_takes_the_local_one_or_is_marked_unknown() {
     };
     let u = from_v2(&v, &env(Some("Europe/Berlin"))).expect("读得懂");
     assert_eq!(
-        head(file(&u, &u.book.for_new)).tz.as_deref(),
+        head(file(&u, "c_00000002")).tz.as_deref(),
         Some("Europe/Berlin")
     );
     let u = from_v2(&v, &env(None)).expect("读得懂");
-    let h = head(file(&u, &u.book.for_new));
+    let h = head(file(&u, "c_00000002"));
     assert!(h.tz.is_none() && h.tz_unknown);
 }
 
@@ -275,23 +269,103 @@ fn u7_session_state_maps_over() {
 }
 
 #[test]
-fn u8_the_result_round_trips_and_names_no_shipped_strategy_in_code() {
+fn u8_the_result_round_trips() {
     let u = run(Some("Asia/Shanghai"));
     let text = serde_json::to_string(&u.book).expect("写得出");
     let back: book::Book = serde_json::from_str(&text).expect("读得回");
     assert_eq!(back, u.book);
-    let src = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/backend/accounts/quota/rules/upgrade.rs"),
+}
+
+/// 用户那三个会话的样子（号名是合成的）：七个号同一排、先用快要重置的，总体 90%，一个号单独 99%，一个号 17:00–02:00 到 80%、
+/// 其余时候 99%，都到上限就停。两个会话带着副本、一个照配置。
+fn ours() -> Value {
+    let p = |line: u64| json!({"line": line, "slots": [], "mode": "normal"});
+    let mut rows: Vec<Value> = (1..=5).map(|i| row(json!({"id": format!("p{i}")}), p(90))).collect();
+    rows.push(row(
+        json!({"id": "p6"}),
+        json!({"line": 99, "slots": [{"at": "17:00-02:00", "line": 80}], "mode": "normal"}),
+    ));
+    rows.push(row(json!({"id": "p7"}), p(99)));
+    let cfg = config("七个号", "2", Value::Array(rows), json!({"back": false, "all_out": "stop"}), p(90));
+    json!({
+      "version": 2,
+      "defaultConfig": "c_7",
+      "configs": {"c_7": cfg.clone()},
+      "sessions": {"o1": session("c_7", Some(cfg.clone())), "o2": session("c_7", Some(cfg)), "o3": session("c_7", None)}
+    })
+}
+
+/// ★ 用户那三个会话升级后设置照搬：同一排（不写排）· 总体 90% · 单独 99% · 分时段 80% / 99% · 硬上限；代码是「先用快要重置的」那份。
+/// 照它判：在用的号到上限 ⇒ 换到同一排里最快重置的；同一排里别的号快重置也不抢在用的号；全到上限 ⇒ 停发。
+#[test]
+fn u9_our_three_sessions_keep_every_setting() {
+    let u = from_v2(
+        &ours(),
+        &Env {
+            rest: &[],
+            live: &|_| true,
+            title: &|sid| Some(format!("会话 {sid}")),
+            local_tz: None,
+        },
     )
-    .expect("源码");
-    for n in [
-        "list-order",
-        "reset-first",
-        "most-left",
-        "照列表先后",
-        "先用快重置的",
-        "先用剩得多的",
-    ] {
-        assert!(!src.contains(n), "升级的代码里点了随包策略的名字 {n}");
+    .expect("读得懂");
+    let all = |v: u64| json!([{"from": 0, "to": 1440, "v": v}]);
+    let night = json!([{"from": 0, "to": 120, "v": 80}, {"from": 120, "to": 1020, "v": 99}, {"from": 1020, "to": 1440, "v": 80}]);
+    let want = json!({
+      "caps": {"5h": all(90), "7d": all(90)},
+      "capKind": "hard",
+      "accounts": [
+        {"id": "p1"}, {"id": "p2"}, {"id": "p3"}, {"id": "p4"}, {"id": "p5"},
+        {"id": "p6", "caps": {"5h": night, "7d": night}},
+        {"id": "p7", "caps": {"5h": all(99), "7d": all(99)}}
+      ]
+    });
+    let mut ids = Vec::new();
+    for sid in ["o1", "o2", "o3"] {
+        let id = u.book.sessions[sid].strategy.id.clone();
+        let src = file(&u, &id);
+        let h = head(src);
+        assert_eq!(h.settings, want, "{sid} 的设置没照搬");
+        assert_eq!(code(src), code(material(2)), "{sid} 的代码不是先用快要重置的那份");
+        ids.push(id);
     }
+    assert_eq!(ids[2], "c_7");
+    assert!(ids[0] != ids[1] && ids[0].starts_with("s_"), "两个副本该各写一份：{ids:?}");
+
+    use super::super::decide::{turn, Pick, Sigma};
+    use super::super::Acct;
+    let f = script::parse(file(&u, &ids[0])).expect("读得懂");
+    let t: u64 = 1_800_000_000 / 86_400 * 86_400 + 12 * 3600;
+    let a = |id: &str, used: f64, resets_in: Option<u64>| Acct {
+        id: id.into(),
+        api: false,
+        used: [used, 0.0],
+        resets: [resets_in.map(|m| t + m * 60), None],
+        refused_until: None,
+        barred: None,
+        rate: [None, None],
+    };
+    let sig = |c: &str| Sigma {
+        start: "p1".into(),
+        current: c.into(),
+        ..Sigma::default()
+    };
+    let pick = |facts: &[Acct], c: &str| turn(&sig(c), facts, &h_settings(&f), &f, 720, t, &[]).pick;
+    fn h_settings(f: &script::File) -> Value {
+        f.head.settings.clone()
+    }
+    let mut facts: Vec<Acct> = (1..=7).map(|i| a(&format!("p{i}"), 10.0, Some(200 + i * 10))).collect();
+    facts[3].resets[0] = Some(t + 30 * 60);
+    assert_eq!(pick(&facts, "p1"), Pick::Use("p1".into()), "同一排里别的号快重置也不抢在用的号");
+    facts[0].used[0] = 90.0;
+    assert_eq!(pick(&facts, "p1"), Pick::Use("p4".into()), "到 90% ⇒ 换到同一排里最快重置的");
+    facts[6].used[0] = 95.0;
+    for (i, x) in facts.iter_mut().enumerate() {
+        if i != 6 {
+            x.used[0] = 99.0;
+        }
+    }
+    assert_eq!(pick(&facts, "p1"), Pick::Use("p7".into()), "单独 99% 的号 95% 还有额度");
+    facts[6].used[0] = 99.0;
+    assert!(matches!(pick(&facts, "p7"), Pick::Hold { .. }), "硬上限全到 ⇒ 停发");
 }

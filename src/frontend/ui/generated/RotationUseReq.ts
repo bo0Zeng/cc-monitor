@@ -3,7 +3,11 @@
 /**
  * `rotation-use` 的入参。
  */
-export type RotationUseReq = { sid: string, strategy: string, 
+export type RotationUseReq = { sid: string, 
+/**
+ * `null` ⇒ 这个会话不再轮换（只用开会话的号）。
+ */
+strategy: string | null, 
 /**
  * 有没存的设置也换（丢掉它）。
  */

@@ -1,6 +1,6 @@
 //! 策略设置的声明（`轮换-v5-分层.md` §6.4.1）：策略头里的 `form`。界面照它画，后端照它校验值的**形状与范围**，不认格的意思。
-//! 格的种类只有五种（[`Kind`]）；号列表（`settings.accounts`）不进 `form`，固定在那里：每项是 `{start: true}` 或 `{id}`，
-//! 再带 `scope: each` 的那几格。
+//! 格的种类只有六种（[`Kind`]）；号列表（`settings.accounts`）不进 `form`，固定在那里：每项是 `{start: true}` 或 `{id}`，
+//! 再带 `scope: each` 的那几格。号牌分排是 `row` 那一种格（§6.7）：有它界面才画分排。
 
 use super::script::Text;
 use serde::{Deserialize, Serialize};
@@ -30,6 +30,9 @@ pub enum Kind {
     OneOf,
     /// 24 小时条上的分段：每个窗口一组 `[{from, to, v}]`（一天里的分钟）。
     DaySegments,
+    /// 号牌分排：第几排（不小于 0 的整数，0 最上），只在 `scope: each`；沿号列表不减（线上 `row`）。
+    #[serde(rename = "row")]
+    CardRow,
 }
 
 /// 作用范围。
@@ -124,7 +127,7 @@ pub(crate) const DAY_MIN: u64 = 1440;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Bad {
     pub(crate) cell: String,
-    /// `type` · `range` · `of` · `unknown` · `dup` · `account` · `overlap`。
+    /// `type` · `range` · `of` · `unknown` · `dup` · `account` · `overlap` · `order`（分排没照号列表的先后）。
     pub(crate) code: &'static str,
 }
 
@@ -144,6 +147,9 @@ pub(crate) fn check_form(form: &[Cell]) -> Result<(), String> {
         }
         if c.inherit && c.scope != Scope::Each {
             return Err(format!("form: `{}` inherits but is not per account", c.key));
+        }
+        if c.kind == Kind::CardRow && (c.scope != Scope::Each || c.inherit) {
+            return Err(format!("form: `{}` is a row but not per account", c.key));
         }
     }
     Ok(())
@@ -185,6 +191,7 @@ fn value(c: &Cell, v: &Value, at: &str, out: &mut Vec<Bad>) {
             day_segments(c, v, at, out);
             Ok(())
         }
+        Kind::CardRow => num_in(v, 0.0, f64::MAX, true),
     };
     if let Err(code) = r {
         out.push(bad(code));
@@ -318,6 +325,22 @@ pub(crate) fn check(form: &[Cell], settings: &Value) -> Vec<Bad> {
                     code: "unknown",
                 }),
             }
+        }
+    }
+    // 分排：沿号列表不减（没写 ⇒ 0）。
+    for c in form.iter().filter(|c| c.kind == Kind::CardRow) {
+        let mut last = 0;
+        for (i, row) in list.iter().enumerate() {
+            let Some(k) = row.get(&c.key).map_or(Some(0), Value::as_u64) else {
+                continue;
+            };
+            if k < last {
+                out.push(Bad {
+                    cell: format!("{ACCOUNTS}[{i}].{}", c.key),
+                    code: "order",
+                });
+            }
+            last = last.max(k);
         }
     }
     out

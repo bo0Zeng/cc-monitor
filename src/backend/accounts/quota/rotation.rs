@@ -2,14 +2,14 @@
 //! `strategies/`（[`super::rules::shelf`]）。
 //!
 //! - 第一版（没有 `version`）· 第二版：读的一侧在内存里照升级链换一遍来用；写一律拒，等接了中转的那个进程起来时在锁里一次写回
-//!   （[`migrate_at`]：v1 → v2 → v3、播种、写升级出来的策略文件、旧脚本挪进 `strategies/v3/`、原文留 `.v1` / `.v2`）。
+//!   （[`migrate_at`]：v1 → v2 → v3、写升级出来的策略文件、旧脚本挪进 `strategies/v3/`、原文留 `.v1` / `.v2`）。
 //! - 读不懂的那一份不覆盖：照上一份读懂的接着用。
 //! - 写只经两扇门：中转那一路（[`relay_change`]）与帧面那一路（[`face_change`]）；改到的会话、策略那一侧各发一件节点。
 
 pub(crate) mod migrate;
 
 use super::rules::book::{self, Book};
-use super::rules::{shelf, shipped, upgrade};
+use super::rules::{shelf, upgrade};
 use crate::common::said::Said;
 use crate::platform::fs::{Own, Ro, Stamp};
 use copy_core::copy_text;
@@ -112,10 +112,8 @@ pub(crate) fn read_at(path: &Path) -> Disk {
 /// 读的一侧把还没写回的旧版在内存里换成第三版：活会话的副本还没写成文件，先照它打开的那份（`live` 一律答否）；
 /// 「其余的订阅号」展开不了（账号库在宿主手里）⇒ 不展开。写回由 [`migrate_at`] 照真的判活与账号库再做一遍。
 fn in_memory(v2: &Value) -> Book {
-    let shipped = shipped::for_upgrade();
     let local = crate::platform::local_tz::iana_name();
     let env = upgrade::Env {
-        shipped: &shipped,
         rest: &[],
         live: &|_| false,
         title: &|_| None,
@@ -348,8 +346,6 @@ pub(crate) struct UpgradeEnv<'a> {
 pub(crate) struct Migrated {
     /// 从第几版升上来的（`None` ＝ 本来就是第三版 / 没有）。
     pub(crate) from: Option<u8>,
-    /// 播种了哪几份（之前没播过的）。
-    pub(crate) seeded: Vec<String>,
     /// 升级写出来的策略文件。
     pub(crate) wrote: Vec<String>,
     /// 挪进 `strategies/v3/` 的旧脚本。
@@ -369,9 +365,9 @@ fn io_said(path: &Path, e: &std::io::Error) -> Said {
     )
 }
 
-/// ★ 升级写回 ＋ 播种（一次；接了中转的那个进程起来时调，[`migrate_here`]）。在 `rotation.json` 那一层的锁里做：
-/// 旧版 ⇒ v1 → v2 → v3 一次换完、写出升级来的策略文件（同名已有不覆盖）、第三版格式的脚本挪进 `strategies/v3/`、原文留 `.v1` / `.v2`（已有不覆盖）；
-/// 然后播种：随包那几份里没播过的、目录里又没有的写进去，播过的记下（删了的不再回来、包里出了新版也不覆盖）。读不懂的那一份不动。
+/// ★ 升级写回（一次；接了中转的那个进程起来时调，[`migrate_here`]）。在 `rotation.json` 那一层的锁里做：
+/// 旧版 ⇒ v1 → v2 → v3 一次换完、写出升级来的策略文件（同名已有不覆盖）、第三版格式的脚本挪进 `strategies/v3/`、原文留 `.v1` / `.v2`（已有不覆盖）。
+/// 第三版 · 没有文件 ⇒ 什么都不写。读不懂的那一份不动。
 pub(crate) fn migrate_at(own: &Own, env: &UpgradeEnv<'_>) -> Result<Migrated, Said> {
     let file = own.path(FILE_NAME)?;
     let root = own
@@ -395,12 +391,10 @@ pub(crate) fn migrate_at(own: &Own, env: &UpgradeEnv<'_>) -> Result<Migrated, Sa
     let sheld = own.lock(&sdir)?;
     if let Some((v1, v2)) = &old {
         out.from = Some(if v1.is_some() { 1 } else { 2 });
-        let shipped = shipped::for_upgrade();
         let local = crate::platform::local_tz::iana_name();
         let u = upgrade::from_v2(
             v2,
             &upgrade::Env {
-                shipped: &shipped,
                 rest: &env.rest,
                 live: env.live,
                 title: env.title,
@@ -455,46 +449,19 @@ pub(crate) fn migrate_at(own: &Own, env: &UpgradeEnv<'_>) -> Result<Migrated, Sa
         }
         book = u.book;
     }
-    for (id, text) in shipped::files() {
-        if book.seeded.iter().any(|x| *x == id) {
-            continue;
-        }
-        let to = sdir.join(&format!("{id}.rhai"))?;
-        if !to.as_path().exists() {
-            own.write(&to, &sheld, stamped(&text).as_bytes())?;
-        }
-        book.seeded.push(id.clone());
-        out.seeded.push(id);
-    }
     drop(sheld);
     if book != before || old.is_some() {
         let body = crate::common::own_state::json_body(path, &book)?;
         own.write(&file, &held, &body)?;
     }
     drop(held);
-    if old.is_some() || !out.seeded.is_empty() {
+    if old.is_some() {
         super::nodes::emit(super::nodes::bus(), super::nodes::Source::Strategies, None);
     }
     Ok(out)
 }
 
-/// 播种那一份：头里没写时区 ⇒ 写上这台的本地时区（取不到 ⇒ 标 `tzUnknown`，界面提示「时区不明」，同 4.1.9）；只重写头，代码一个字不动。
-fn stamped(text: &str) -> String {
-    let Ok(f) = super::rules::script::parse(text) else {
-        return text.to_string();
-    };
-    if f.head.tz.is_some() || f.head.tz_unknown {
-        return text.to_string();
-    }
-    let mut h = f.head.clone();
-    match crate::platform::local_tz::iana_name() {
-        Some(tz) => h.tz = Some(tz),
-        None => h.tz_unknown = true,
-    }
-    super::rules::script::with_head(text, &h).unwrap_or_else(|_| text.to_string())
-}
-
-/// 这台的 `rotation.json` 升级写回 ＋ 播种（[`migrate_at`]）；写不成只出声。
+/// 这台的 `rotation.json` 升级写回（[`migrate_at`]）；写不成只出声。
 pub(crate) fn migrate_here(own: &Own, env: &UpgradeEnv<'_>) {
     match migrate_at(own, env) {
         Ok(m) => {

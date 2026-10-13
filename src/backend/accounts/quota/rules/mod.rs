@@ -10,7 +10,6 @@ pub(crate) mod decide;
 pub(crate) mod form;
 pub(crate) mod script;
 pub(crate) mod shelf;
-pub(crate) mod shipped;
 pub(crate) mod simulate;
 pub(crate) mod standing;
 pub(crate) mod upgrade;

@@ -1405,7 +1405,7 @@ windows?: Array<string>, min?: number, max?: number, unit?: string, default: unk
  */
 nullable?: StrategyText, };
 type RotFormChoice = { v: string, label: StrategyText, };
-type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments";
+type RotFormKind = "percent" | "minutes" | "toggle" | "choice" | "daySegments" | "row";
 type RotFormScope = "all" | "each";
 type RotHint = { "k": "hold", until?: number, account?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
 type RotLog = { at: number, from: string, to: string, cause: RotLogCause, why?: string, };
@@ -1476,7 +1476,11 @@ type RotTryUse = { from: number, to: number, account?: string, fromTemp: boolean
  * 在用的号用到上限的时刻还不知道（额度账里量不到它的用速）：这一段只排确定的事件。
  */
 capUnknown: boolean, skipped: Array<string>, };
-type RotationViewReply = { now: number, strategy: RotStrategyItem, 
+type RotationViewReply = { now: number, 
+/**
+ * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
+ */
+strategy: RotStrategyItem | null, 
 /**
  * 设置怎么画（策略的声明）。
  */
@@ -1500,7 +1504,7 @@ accounts: Array<Fact>,
 /**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
-listed: number, decision: RotTryDecision, timeline: RotTryTimeline, 
+listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null, 
 /**
  * 换号记录（会话才有）。
  */
@@ -1602,7 +1606,11 @@ type RotationRevertReq = { sid: string, };
 
 ```ts
 type RotDone = Record<symbol, never>;
-type RotationUseReq = { sid: string, strategy: string, 
+type RotationUseReq = { sid: string, 
+/**
+ * `null` ⇒ 这个会话不再轮换（只用开会话的号）。
+ */
+strategy: string | null, 
 /**
  * 有没存的设置也换（丢掉它）。
  */
@@ -1621,7 +1629,11 @@ discard: boolean, };
 
 ```ts
 type RotDone = Record<symbol, never>;
-type RotationForNewReq = { strategy: string, };
+type RotationForNewReq = { 
+/**
+ * `null` ⇒ 新会话不轮换（只用开会话的号）。
+ */
+strategy: string | null, };
 ```
 
 码：`bad_args` · `no_strategy` · `io_failed`

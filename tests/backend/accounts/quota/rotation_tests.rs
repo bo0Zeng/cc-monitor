@@ -1,4 +1,4 @@
-//! `rotation.json` 第三版的存取：升级链（v1 → v2 → v3，一次写回、原文留 `.v1` / `.v2`）· 播种（删了不再回来、同名已有不覆盖）·
+//! `rotation.json` 第三版的存取：升级链（v1 → v2 → v3，一次写回、原文留 `.v1` / `.v2`）· 没有随包策略（不写任何文件、新会话不轮换）·
 //! 读不懂不覆盖 · 新会话 · 清旧会话。临时家目录，不碰真文件。
 
 use super::*;
@@ -48,7 +48,7 @@ fn plain() -> Value {
     json!({"line": null, "slots": [], "mode": "normal", "stint": null})
 }
 
-/// 一份第二版：c_1 照列表先后（跟随包那份一样）· c_2 上限 90 · c_3 用户自己的第三版脚本 `mine`；
+/// 一份第二版：c_1 照列表先后 · c_2 上限 90 · c_3 用户自己的第三版脚本 `mine`；
 /// 两个会话：活的那个带副本、走了的那个也带副本。
 fn v2() -> Value {
     let row = |who: Value, p: Value| {
@@ -77,8 +77,8 @@ fn v2() -> Value {
     })
 }
 
-/// ★ 第二版：读的一侧在内存里换好来用、写一律拒；升级写回一次：`.v2` 留着、跟随包一样的指过去、不一样的写成文件、
-/// 活会话的副本写成文件（走了的丢）、第三版脚本挪进 `v3/`、随包的播进来；再升一次什么都不变。
+/// ★ 第二版：读的一侧在内存里换好来用、写一律拒；升级写回一次：`.v2` 留着、每份配置都写成用户自己的文件、
+/// 活会话的副本写成文件（走了的丢）、第三版脚本挪进 `v3/`、新会话照旧不轮换；再升一次什么都不变。
 #[test]
 fn a_v2_book_is_upgraded_once_with_its_files() {
     let home = Home::new("v2");
@@ -88,7 +88,7 @@ fn a_v2_book_is_upgraded_once_with_its_files() {
     let mem = store.now();
     assert_eq!(mem.version, book::BOOK_VERSION);
     assert_eq!(
-        mem.sessions["s-live"].strategy.id, "list-order",
+        mem.sessions["s-live"].strategy.id, "c_1",
         "内存里的会话照它打开的那份"
     );
     assert!(
@@ -109,29 +109,28 @@ fn a_v2_book_is_upgraded_once_with_its_files() {
         Disk::Now(b) => b,
         other => panic!("没写成第三版：{other:?}"),
     };
-    assert_eq!(b.for_new, "c_2");
+    assert_eq!(b.for_new, "", "升级出来的不进任何默认");
     assert_eq!(b.sessions.len(), 2);
     assert!(
         b.sessions["s-live"].strategy.id.starts_with("s_"),
         "活会话的副本没写成文件"
     );
     assert_eq!(
-        b.sessions["s-gone"].strategy.id, "list-order",
+        b.sessions["s-gone"].strategy.id, "c_1",
         "走了的会话的副本该丢"
     );
     let all = shelf::all(Some(&home.sdir()));
     let ids: Vec<&str> = all.iter().map(|s| s.id.as_str()).collect();
-    for want in ["c_2", "c_3", "list-order", "most-left", "reset-first"] {
+    for want in ["c_1", "c_2", "c_3"] {
         assert!(ids.contains(&want), "缺 {want}：{ids:?}");
     }
-    assert!(!ids.contains(&"c_1"), "跟随包那份一样的不该另写");
+    assert_eq!(ids.len(), 4, "只该有三份配置 ＋ 一份活会话的副本：{ids:?}");
     let c2 = all.iter().find(|s| s.id == "c_2").expect("c_2");
     let head = &c2.file.as_ref().expect("读得懂").head;
     assert_eq!(
         head.settings["caps"]["5h"],
         json!([{"from": 0, "to": 1440, "v": 90}])
     );
-    assert_eq!(b.seeded, ["list-order", "reset-first", "most-left"]);
 
     let again = migrate_at(&home.own(), &env(&live)).expect("再升一次");
     assert_eq!(again, Migrated::default());
@@ -160,24 +159,22 @@ fn a_v1_book_goes_through_v2_to_v3_and_keeps_its_threshold() {
     assert_eq!(s["accounts"], json!([{"start": true}, {"id": "b"}]));
 }
 
-/// ★ 播种：没有 `rotation.json` 也播；删了的不再回来；同名已有（用户改过）不覆盖、照样记成播过。
+/// ★ 没有随包策略：没有 `rotation.json` 时升级那一下一个文件都不写、`rotation.json` 也不写；新会话不轮换。
 #[test]
-fn seeding_never_brings_back_a_deleted_file_nor_overwrites_one() {
-    let home = Home::new("seed");
-    std::fs::write(home.sdir().join("most-left.rhai"), "我的版本").expect("w");
-    let m = migrate_at(&home.own(), &env(&|_| false)).expect("播");
-    assert_eq!(m.seeded, ["list-order", "reset-first", "most-left"]);
+fn no_strategy_ships_and_new_sessions_do_not_rotate() {
+    let home = Home::new("none");
+    let m = migrate_at(&home.own(), &env(&|_| false)).expect("升级");
+    assert_eq!(m, Migrated::default());
     assert_eq!(
-        std::fs::read_to_string(home.sdir().join("most-left.rhai")).expect("r"),
-        "我的版本"
+        std::fs::read_dir(home.sdir()).expect("目录").count(),
+        0,
+        "策略目录里多了文件"
     );
-    std::fs::remove_file(home.sdir().join("list-order.rhai")).expect("删");
-    let again = migrate_at(&home.own(), &env(&|_| false)).expect("再来");
-    assert!(again.seeded.is_empty());
-    assert!(
-        !home.sdir().join("list-order.rhai").exists(),
-        "删了的又播回来了"
-    );
+    assert!(!home.file().exists(), "没有旧版也写了 rotation.json");
+    let mut b = home.store().now();
+    assert_eq!(b.for_new, "");
+    assert!(b.saw("s1", "claude-code", "a", 100));
+    assert_eq!(b.sessions["s1"].strategy.id, "", "新会话该不轮换");
 }
 
 /// ★ 读不懂的那一份：升级不动它、写也不覆盖；读的一侧照上一份读懂的（没有过 ⇒ 新的那一份）接着用、说得出为什么。
@@ -192,9 +189,9 @@ fn an_unreadable_book_is_never_overwritten() {
         std::fs::read_to_string(home.file()).expect("r"),
         "{not json"
     );
-    assert_eq!(store.now().for_new, shipped::defaults().for_new);
+    assert_eq!(store.now().for_new, "");
     assert!(store.unreadable().is_some());
-    let mut v = json!({"version": 3, "forNew": "list-order", "extra": 1});
+    let mut v = json!({"version": 3, "forNew": "mine", "extra": 1});
     std::fs::write(home.file(), v.to_string()).expect("w");
     assert!(
         matches!(read_at(&home.file()), Disk::Unreadable(_)),
@@ -209,9 +206,9 @@ fn an_unreadable_book_is_never_overwritten() {
 #[test]
 fn new_sessions_follow_for_new_and_stale_ones_are_dropped() {
     let mut b = Book::fresh();
-    b.for_new = "most-left".into();
+    b.for_new = "mine".into();
     assert!(b.saw("s1", "claude-code", "a", 100));
-    assert_eq!(b.sessions["s1"].strategy.id, "most-left");
+    assert_eq!(b.sessions["s1"].strategy.id, "mine");
     b.sessions.get_mut("s1").expect("s1").temp = vec!["b".into()];
     b.sessions.get_mut("s1").expect("s1").current = "b".into();
     assert!(b.saw("s1", "claude-code", "c", 200));

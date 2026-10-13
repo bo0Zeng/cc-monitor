@@ -1,4 +1,5 @@
-//! 后端的一判与推演（`轮换-v5-算法.md` §7）。「策」＝ 拿随包策略 ＋ 积木库跑后端的 `turn`；「后」＝ 只测后端积木，策略是判据里的假策略。
+//! 后端的一判与推演（`轮换-v5-算法.md` §7）。「策」＝ 拿判据夹具里的策略（`tests/__fixtures__/rotation/`）＋ 积木库跑后端的 `turn`；
+//! 「后」＝ 只测后端积木，策略是判据里的假策略。
 
 use super::*;
 use crate::accounts::quota::rules::script::{self, File};
@@ -17,23 +18,25 @@ fn clock(t: u64) -> u16 {
     ((t % 86_400) / 60) as u16
 }
 
-fn shipped(name: &str) -> String {
+fn fixture(name: &str) -> String {
     std::fs::read_to_string(
         crate::guard_support::repo_root()
-            .join("src/shared/rotation/strategies")
+            .join("tests/__fixtures__/rotation")
             .join(name),
     )
-    .expect("随包那份")
+    .expect("判据夹具")
 }
 
-fn list_order() -> &'static File {
+/// 同一排里照号牌左右。
+fn by_list() -> &'static File {
     static F: OnceLock<File> = OnceLock::new();
-    F.get_or_init(|| script::parse(&shipped("list-order.rhai")).expect("读得懂"))
+    F.get_or_init(|| script::parse(&fixture("by-list.rhai")).expect("读得懂"))
 }
 
-fn most_left() -> &'static File {
+/// 同一排里先用快要重置的。
+fn by_reset() -> &'static File {
     static F: OnceLock<File> = OnceLock::new();
-    F.get_or_init(|| script::parse(&shipped("most-left.rhai")).expect("读得懂"))
+    F.get_or_init(|| script::parse(&fixture("by-reset.rhai")).expect("读得懂"))
 }
 
 fn acct(id: &str, used5h: f64) -> Acct {
@@ -53,7 +56,7 @@ fn refused(mut a: Acct, until: u64) -> Acct {
     a
 }
 
-/// A > B > C，都是软上限 90%，D = 0，回切空。
+/// A > B > C 同一排，都是软上限 90%，D = 0。
 fn base() -> Value {
     json!({
         "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}], "7d": [{"from": 0, "to": 1440, "v": 90}]},
@@ -87,7 +90,7 @@ fn used(d: &Decision) -> &str {
 }
 
 fn run(s: &Value, sigma: &Sigma, f: &[Acct], t: u64) -> Decision {
-    turn(sigma, f, s, list_order(), clock(t), t, &[])
+    turn(sigma, f, s, by_list(), clock(t), t, &[])
 }
 
 /// 判据用的假策略：固定的先后 · 约的叫醒。
@@ -118,7 +121,7 @@ impl Strategy for Fixed {
     }
 }
 
-// ── 策：照列表先后 ＋ 积木库 ─────────────────────────────────────────────────────
+// ── 策：判据夹具 ＋ 积木库 ─────────────────────────────────────────────────────
 
 #[test]
 fn s01_never_switches_to_an_account_that_cannot_be_used() {
@@ -136,51 +139,88 @@ fn s02_the_list_order_when_nothing_else_matters() {
     assert_eq!(used(&run(&base(), &sig("A", &[]), &f, T)), "B");
 }
 
-#[test]
-fn s03_scores_override_the_list() {
-    let f = [acct("A", 95.0), acct("B", 50.0), acct("C", 10.0)];
-    let d = turn(&sig("A", &[]), &f, &base(), most_left(), clock(T), T, &[]);
-    assert_eq!(used(&d), "C", "余量大的在前");
+fn with_reset(id: &str, used5h: f64, in_min: u64) -> Acct {
+    Acct {
+        resets: [Some(T + in_min * MIN), None],
+        ..acct(id, used5h)
+    }
 }
 
 #[test]
-fn s04_equal_scores_fall_back_to_the_list() {
-    let f = [acct("A", 95.0), acct("B", 30.0), acct("C", 30.0)];
-    let d = turn(&sig("A", &[]), &f, &base(), most_left(), clock(T), T, &[]);
+fn s03_the_strategys_order_within_a_row_overrides_the_cards() {
+    let f = [acct("A", 95.0), with_reset("B", 50.0, 200), with_reset("C", 10.0, 30)];
+    let d = turn(&sig("A", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
+    assert_eq!(used(&d), "C", "同一排里快重置的先");
+}
+
+#[test]
+fn s04_ties_within_a_row_follow_the_cards() {
+    let f = [acct("A", 95.0), with_reset("B", 30.0, 60), with_reset("C", 30.0, 60)];
+    let d = turn(&sig("A", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
     assert_eq!(used(&d), "B");
 }
 
-fn back_case(a_used: f64, r: Option<u8>) -> Decision {
+/// 分排：`rows` 里依次是各号的第几排。
+fn rows(r: [u64; 3]) -> Value {
     let mut s = base();
-    if let Some(r) = r {
-        set_row(&mut s, "A", "back", json!(r));
+    for (id, k) in ["A", "B", "C"].iter().zip(r) {
+        if k > 0 {
+            set_row(&mut s, id, "row", json!(k));
+        }
     }
-    run(
-        &s,
-        &sig("B", &[]),
-        &[acct("A", a_used), acct("B", 10.0), acct("C", 10.0)],
-        T,
-    )
+    s
 }
 
+/// ★ 同一排里不抢：在用的号没满，同一排里排在它前面的号恢复了也不换（快重置的也不换）。
 #[test]
-fn s06_switches_back_once_headroom_reaches_the_threshold() {
-    assert_eq!(used(&back_case(65.0, Some(20))), "A");
+fn s06_within_a_row_a_recovered_account_does_not_take_over() {
+    let f = [acct("A", 10.0), acct("B", 50.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&base(), &sig("B", &[]), &f, T)), "B");
+    let f = [with_reset("A", 10.0, 5), with_reset("B", 50.0, 200), acct("C", 10.0)];
+    let d = turn(&sig("B", &[]), &f, &base(), by_reset(), clock(T), T, &[]);
+    assert_eq!(used(&d), "B", "快重置的在同一排里也不抢");
 }
 
+/// ★ 上排的号一有额度就换上去（在用的下排号没满也换）。
 #[test]
-fn s07_stays_when_headroom_is_below_the_threshold() {
-    assert_eq!(used(&back_case(75.0, Some(20))), "B");
+fn s07_a_higher_row_with_quota_takes_over_at_once() {
+    let s = rows([0, 1, 1]);
+    let f = [acct("A", 10.0), acct("B", 50.0), acct("C", 10.0)];
+    let d = run(&s, &sig("B", &[]), &f, T);
+    assert_eq!(used(&d), "A");
+    assert_eq!(d.order.first().map(String::as_str), Some("A"));
 }
 
+/// ★ 用着下排的号时，上排任何一个号恢复，就换回上排（上排里照它的先后取第一个有额度的）。
 #[test]
-fn s08_no_threshold_never_switches_back() {
-    assert_eq!(used(&back_case(10.0, None)), "B");
+fn s08_using_a_lower_row_any_upper_account_recovering_brings_it_back_up() {
+    let s = rows([0, 0, 1]);
+    let out = [acct("A", 95.0), acct("B", 95.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &sig("A", &[]), &out, T)), "C", "上排都没额度才落到下排");
+    let b_back = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &sig("C", &[]), &b_back, T)), "B");
+    let both = [acct("A", 10.0), acct("B", 10.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &sig("C", &[]), &both, T)), "A");
+}
+
+/// ★ 被抢上来的号用到满才换：同一排里排在它前面的号恢复了也不换；它满了 ⇒ 先换同一排的，同一排都没额度才落到下排。
+#[test]
+fn s25_an_account_that_took_over_is_used_until_it_is_out() {
+    let s = rows([0, 0, 1]);
+    let f = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
+    let d = run(&s, &sig("C", &[]), &f, T);
+    assert_eq!(used(&d), "B", "B 抢上来");
+    let f = [acct("A", 10.0), acct("B", 60.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &d.sigma, &f, T + 10 * MIN)), "B", "A 恢复了，B 还没满，不换");
+    let f = [acct("A", 10.0), acct("B", 90.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &d.sigma, &f, T + 20 * MIN)), "A", "B 满了先换同一排的 A");
+    let f = [acct("A", 95.0), acct("B", 90.0), acct("C", 10.0)];
+    assert_eq!(used(&run(&s, &d.sigma, &f, T + 30 * MIN)), "C", "同一排都没额度才落到下排");
 }
 
 #[test]
 fn s09_activation_delay_holds_then_lets_it_in() {
-    let mut s = base();
+    let mut s = rows([0, 0, 1]);
     set_row(&mut s, "C", "delay", json!(30));
     let f = [acct("A", 95.0), acct("B", 95.0), acct("C", 10.0)];
     let d = run(&s, &sig("A", &[]), &f, T);
@@ -198,7 +238,7 @@ fn s09_activation_delay_holds_then_lets_it_in() {
 
 #[test]
 fn s10_two_delays_ending_together_take_the_front_one() {
-    let mut s = base();
+    let mut s = rows([0, 1, 1]);
     set_row(&mut s, "B", "delay", json!(30));
     set_row(&mut s, "C", "delay", json!(30));
     let f = [acct("A", 95.0), acct("B", 10.0), acct("C", 10.0)];
@@ -208,7 +248,7 @@ fn s10_two_delays_ending_together_take_the_front_one() {
 
 #[test]
 fn s11_a_break_in_the_outage_restarts_the_delay() {
-    let mut s = base();
+    let mut s = rows([0, 0, 1]);
     set_row(&mut s, "C", "delay", json!(30));
     let bad = [acct("A", 95.0), acct("B", 95.0), acct("C", 10.0)];
     let good = [acct("A", 10.0), acct("B", 95.0), acct("C", 10.0)];
@@ -228,15 +268,14 @@ fn s11_a_break_in_the_outage_restarts_the_delay() {
 }
 
 #[test]
-fn s14_a_dragged_order_does_not_stop_the_strategy_from_switching_back() {
-    let mut s = base();
-    set_row(&mut s, "A", "back", json!(20));
+fn s14_a_dragged_order_does_not_stop_a_higher_row_from_taking_over() {
+    let s = rows([0, 1, 1]);
     let f = [acct("A", 10.0), acct("B", 10.0), acct("C", 10.0)];
     let d = run(&s, &sig("B", &["B"]), &f, T);
     assert_eq!(
         used(&d),
         "A",
-        "拖出来的顺序只在该换时生效；策略把 A 排到前面就照换"
+        "拖出来的顺序只在该换时生效；上排有额度就照换"
     );
 }
 
@@ -329,52 +368,8 @@ fn s20_a_zero_percent_segment_skips_the_account_until_it_ends() {
 }
 
 #[test]
-fn s25_a_rising_score_alone_does_not_switch_back() {
-    let src = shipped("list-order.rhai").replace(
-        "lib::decide_with(ctx, #{})",
-        "lib::decide_with(ctx, #{ A: (ctx.now - 1800023400) / 60, B: 20 })",
-    );
-    let p = script::parse(&src).expect("读得懂");
-    let mut s = base();
-    set_row(&mut s, "A", "back", json!(30));
-    set_row(
-        &mut s,
-        "A",
-        "caps",
-        json!({"5h": [{"from": 0, "to": 1440, "v": 35}]}),
-    );
-    let a = Acct {
-        resets: [Some(T + 40 * MIN), None],
-        ..acct("A", 10.0)
-    };
-    let f = [a, acct("B", 10.0), acct("C", 10.0)];
-    assert_eq!(T, 1_800_023_400);
-    let d = turn(
-        &sig("B", &[]),
-        &f,
-        &s,
-        &p,
-        clock(T + 21 * MIN),
-        T + 21 * MIN,
-        &[],
-    );
-    assert_eq!(used(&d), "B", "A 排到前面了，但余量 25 < 30");
-    let d = turn(
-        &sig("B", &[]),
-        &f,
-        &s,
-        &p,
-        clock(T + 40 * MIN),
-        T + 40 * MIN,
-        &[],
-    );
-    assert_eq!(used(&d), "A", "重置后余量 35 ≥ 30 ⇒ 切回");
-}
-
-#[test]
-fn s29_switching_back_happens_only_at_a_known_node() {
-    let mut s = base();
-    set_row(&mut s, "A", "back", json!(20));
+fn s29_taking_over_happens_only_at_a_known_node() {
+    let s = rows([0, 1, 1]);
     let f = [
         refused(acct("A", 50.0), T + 30 * MIN),
         acct("B", 10.0),
@@ -386,12 +381,13 @@ fn s29_switching_back_happens_only_at_a_known_node() {
     assert_eq!(used(&run(&s, &sig("B", &[]), &f, T + 30 * MIN)), "A");
 }
 
-/// ★ #32 不来回换：先用剩得多的，两个号余量相近、都设回切；推演 24 小时，换号次数有限（每次要多出 10 个点才换）。
+/// ★ #32 同一排不来回换：先用快要重置的，两个号同一排、用速一样；推演 24 小时，每次换号都落在「在用的号到上限」那一刻
+/// （用量涨的过程中先后不变，重置只让那个号排到后面去）。
 #[test]
-fn s32_most_left_does_not_flip_flop() {
+fn s32_a_row_never_flip_flops() {
     let s = json!({
-        "caps": {}, "capKind": "soft", "margin": 10,
-        "accounts": [{"id": "A", "back": 1}, {"id": "B", "back": 1}]
+        "caps": {"5h": [{"from": 0, "to": 1440, "v": 90}]}, "capKind": "hard",
+        "accounts": [{"id": "A"}, {"id": "B"}]
     });
     let f = [
         Acct {
@@ -405,18 +401,14 @@ fn s32_most_left_does_not_flip_flop() {
             ..acct("B", 42.0)
         },
     ];
-    let tl = simulate(
-        &sig("A", &[]),
-        &f,
-        &s,
-        most_left(),
-        &clock,
-        T,
-        T + 24 * 3600,
+    let tl = simulate(&sig("A", &[]), &f, &s, by_reset(), &clock, T, T + 24 * 3600);
+    let sw = tl.switches();
+    assert!(!tl.truncated, "推演跑满了 200 个事件：换了 {} 次", sw.len());
+    assert!(sw.len() <= 12, "24 小时换了 {} 次：{sw:?}", sw.len());
+    assert!(
+        sw.windows(2).all(|w| w[1].0 - w[0].0 >= 30 * MIN),
+        "两次换号挨得太近：{sw:?}"
     );
-    let n = tl.switches().len();
-    assert!(!tl.truncated, "推演跑满了 200 个事件：来回换了 {n} 次");
-    assert!(n <= 24, "24 小时换了 {n} 次");
 }
 
 // ── 后：只测后端积木 ────────────────────────────────────────────────────────────
@@ -617,6 +609,7 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
             json!([{"from": 0, "to": 1440, "v": 70 + g.upto(30)}])
         }
     };
+    let mut row = 0;
     let rows: Vec<Value> = ids
         .iter()
         .map(|a| {
@@ -625,8 +618,11 @@ fn group(seed: u64) -> (Value, Vec<Acct>, Sigma) {
             if g.upto(3) == 0 {
                 r["caps"] = json!({"5h": seg(&mut g)});
             }
-            if let Some(b) = [None, None, Some(10), Some(40)][g.upto(4) as usize] {
-                r["back"] = json!(b);
+            if g.upto(3) == 0 {
+                row += 1;
+            }
+            if row > 0 {
+                r["row"] = json!(row);
             }
             r
         })
@@ -821,7 +817,7 @@ fn s22_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
     for seed in 1..=n {
         let (s, f, sigma) = group(seed);
-        let (c, k) = consistent(&s, &f, &sigma, list_order(), &format!("第 {seed} 组"));
+        let (c, k) = consistent(&s, &f, &sigma, by_list(), &format!("第 {seed} 组"));
         total += c;
         crowd += k;
     }
@@ -836,7 +832,7 @@ fn s22_groups(n: u64) -> (usize, usize) {
     (total, crowd)
 }
 
-/// #26 跑 `n` 组（先用剩得多的，延迟都设 0）。
+/// #26 跑 `n` 组（先用快要重置的，延迟都设 0）。
 fn s26_groups(n: u64) -> (usize, usize) {
     let (mut total, mut crowd) = (0, 0);
     for seed in 1..=n {
@@ -848,8 +844,8 @@ fn s26_groups(n: u64) -> (usize, usize) {
             &s,
             &f,
             &sigma,
-            most_left(),
-            &format!("第 {seed} 组（先用剩得多的）"),
+            by_reset(),
+            &format!("第 {seed} 组（先用快要重置的）"),
         );
         total += c;
         crowd += k;
@@ -866,7 +862,7 @@ fn s22_simulation_agrees_with_per_request_decisions() {
 }
 
 #[test]
-fn s26_waking_on_readings_keeps_most_left_exact() {
+fn s26_waking_on_readings_keeps_reset_first_exact() {
     s26_groups(5);
 }
 

@@ -16,11 +16,9 @@ pub(crate) const LOG_KEPT: usize = 32;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Book {
     pub(crate) version: u64,
-    /// 新会话用哪份（策略目录里的文件名去掉 `.rhai`）。
-    pub(crate) for_new: String,
-    /// 播种过的随包文件（内容哈希）：删了的不再播，包里出了新版也不覆盖。
+    /// 新会话用哪份（策略目录里的文件名去掉 `.rhai`）；空 ⇒ 新会话不轮换，只用开会话的号。
     #[serde(default)]
-    pub(crate) seeded: Vec<String>,
+    pub(crate) for_new: String,
     #[serde(default)]
     pub(crate) sessions: BTreeMap<String, Session>,
 }
@@ -49,7 +47,7 @@ pub(crate) struct Session {
     pub(crate) log: Vec<Log>,
 }
 
-/// 会话用的那份策略：文件 id · 打开（或跟上）那一刻的内容版本 · 改过的设置（整份，只在改过时有）。
+/// 会话用的那份策略：文件 id（空 ⇒ 这个会话不轮换）· 打开（或跟上）那一刻的内容版本 · 改过的设置（整份，只在改过时有）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Uses {
@@ -178,11 +176,10 @@ impl Session {
 }
 
 impl Book {
-    /// 没有文件时那一份：新会话用 `defaults.json` 指的那份。
+    /// 没有文件时那一份：新会话不轮换。
     pub(crate) fn fresh() -> Self {
         Self {
             version: BOOK_VERSION,
-            for_new: super::shipped::defaults().for_new,
             ..Self::default()
         }
     }

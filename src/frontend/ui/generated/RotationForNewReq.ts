@@ -3,4 +3,8 @@
 /**
  * `rotation-for-new` 的入参。
  */
-export type RotationForNewReq = { strategy: string, };
+export type RotationForNewReq = { 
+/**
+ * `null` ⇒ 新会话不轮换（只用开会话的号）。
+ */
+strategy: string | null, };

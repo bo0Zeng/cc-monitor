@@ -107,9 +107,9 @@ impl Home {
         };
         let src = std::fs::read_to_string(
             crate::guard_support::repo_root()
-                .join("src/shared/rotation/strategies/list-order.rhai"),
+                .join("tests/__fixtures__/rotation/by-list.rhai"),
         )
-        .expect("随包那份");
+        .expect("判据夹具");
         let mut head = script::parse(&src).expect("读得懂").head;
         head.settings = serde_json::json!({
             "caps": caps,
@@ -190,6 +190,21 @@ fn which(g: &Go) -> &str {
         Go::Sub { account, .. } | Go::Api { account, .. } => account,
         Go::Hold { .. } => "hold",
     }
+}
+
+/// ★ 新会话默认不轮换：没选策略 ⇒ 只用开会话的号（它用满了也不换），一次都不叫策略；会话照样记下（界面能给它选一份）。
+#[test]
+fn without_a_strategy_a_session_keeps_its_start_account() {
+    let home = Home::new("none", [None, None]);
+    let hop = home.hop();
+    let own = home.own();
+    let t = now();
+    home.seen(&hop.quota, None, "a", 1.0, t);
+    for i in 0..5 {
+        assert_eq!(which(&steer(&hop, &own, t + i)), "a");
+    }
+    assert_eq!(hop.runs(), 0, "没选策略也叫了策略");
+    assert_eq!(home.session().strategy.id, "", "会话该记下、不带策略");
 }
 
 /// ★ #28：两个节点之间 100 发，策略一次都不重跑（第一发判一次，之后照缓存），结论没变不写盘；过了下一个已知节点（a 的重置）⇒ 重跑。
@@ -351,11 +366,11 @@ fn acct(id: &str, used: f64, rate: Option<f64>, t: u64) -> crate::accounts::quot
     }
 }
 
-fn shipped_list_order() -> script::File {
+fn fixture_by_list() -> script::File {
     let src = std::fs::read_to_string(
-        crate::guard_support::repo_root().join("src/shared/rotation/strategies/list-order.rhai"),
+        crate::guard_support::repo_root().join("tests/__fixtures__/rotation/by-list.rhai"),
     )
-    .expect("随包那份");
+    .expect("判据夹具");
     script::parse(&src).expect("读得懂")
 }
 
@@ -365,7 +380,7 @@ fn shipped_list_order() -> script::File {
 fn the_simulation_never_makes_up_a_rate() {
     use crate::accounts::quota::rules::{decide::Sigma, simulate};
     let t = now() - now() % 60;
-    let file = shipped_list_order();
+    let file = fixture_by_list();
     let settings = serde_json::json!({
         "caps": {"5h": [{"from": 0, "to": 1440, "v": 80}]},
         "capKind": "soft",
@@ -426,7 +441,7 @@ fn an_account_used_by_another_session_grows_at_its_own_rate() {
         &sigma,
         &[acct("a", 10.0, None, t), acct("b", 70.0, Some(0.5), t)],
         &settings,
-        &shipped_list_order(),
+        &fixture_by_list(),
         &|_| 0,
         t,
         t + 4 * 3600,

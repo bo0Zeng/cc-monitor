@@ -10,7 +10,11 @@ import type { RotTryTimeline } from "./RotTryTimeline";
 /**
  * `rotation-view` 的应答。
  */
-export type RotationViewReply = { now: number, strategy: RotStrategyItem, 
+export type RotationViewReply = { now: number, 
+/**
+ * 用的那份策略；会话不轮换（没选策略）⇒ `null`，这时 `decision` · `timeline` 也是 `null`、只用开会话的号。
+ */
+strategy: RotStrategyItem | null, 
 /**
  * 设置怎么画（策略的声明）。
  */
@@ -34,7 +38,7 @@ accounts: Array<Fact>,
 /**
  * 号列表里有几个（`accounts` 前这么多个是列表里的）。
  */
-listed: number, decision: RotTryDecision, timeline: RotTryTimeline, 
+listed: number, decision: RotTryDecision | null, timeline: RotTryTimeline | null, 
 /**
  * 换号记录（会话才有）。
  */

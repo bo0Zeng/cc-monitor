@@ -58,9 +58,9 @@ fn session_settings_become_a_draft_and_are_checked() {
     );
     let head = shelf::all(ctx.hop.store.strategy_dir().as_deref())
         .iter()
-        .find(|s| s.id == "list-order")
+        .find(|s| s.id == "by-list")
         .and_then(|s| s.file.as_ref().ok().map(|f| f.head.settings.clone()))
-        .expect("随包那份");
+        .expect("夹具那份");
     assert!(!set(head).expect("ok").dirty);
     assert_eq!(
         ctx.hop.store.now().sessions[S1].strategy.draft,
@@ -75,7 +75,7 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
     let home = Home::new("save");
     let ctx = home.ctx();
     home.saw(&ctx, S1);
-    let before = file(&home, "list-order");
+    let before = file(&home, "by-list");
     settings_with(
         &ctx,
         &home.own(),
@@ -99,7 +99,7 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
         Err(RotationSaveErr::Conflict(_, c)) => c.rev,
         other => panic!("该冲突：{other:?}"),
     };
-    assert_eq!(stale, rev(&home, "list-order"));
+    assert_eq!(stale, rev(&home, "by-list"));
     let got = save_with(
         &ctx,
         &home.own(),
@@ -111,7 +111,7 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
         },
     )
     .expect("存");
-    let after = file(&home, "list-order");
+    let after = file(&home, "by-list");
     assert_eq!(code_of(&after), code_of(&before), "代码动了");
     assert_eq!(got.rev, shelf::rev_of(&after));
     assert_eq!(script::parse(&after).expect("读得懂").head.settings, mine());
@@ -130,7 +130,7 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
         },
     )
     .expect("另存");
-    assert_ne!(as_new.id, "list-order");
+    assert_ne!(as_new.id, "by-list");
     assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, as_new.id);
     let h = script::parse(&file(&home, &as_new.id))
         .expect("读得懂")
@@ -138,7 +138,7 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
     assert_eq!(h.name.pick(false), "夜里省着用");
 }
 
-/// 还原 · 下拉换一份（有草稿要 `discard`）· 新会话用哪份（那一份要在）。
+/// 还原 · 下拉换一份（有草稿要 `discard`）· 不再轮换（`null`）· 新会话用哪份（那一份要在；`null` ⇒ 新会话不轮换）。
 #[test]
 fn revert_use_and_for_new() {
     let home = Home::new("use");
@@ -150,7 +150,7 @@ fn revert_use_and_for_new() {
     .expect("w");
     let to = |discard: bool| RotationUseReq {
         sid: S1.into(),
-        strategy: "most-left".into(),
+        strategy: Some("third".into()),
         discard,
     };
     assert!(matches!(
@@ -161,8 +161,19 @@ fn revert_use_and_for_new() {
     let s = ctx.hop.store.now().sessions[S1].clone();
     assert_eq!(
         (s.strategy.id.as_str(), s.strategy.draft.is_none()),
-        ("most-left", true)
+        ("third", true)
     );
+    use_with(
+        &ctx,
+        &home.own(),
+        &RotationUseReq {
+            sid: S1.into(),
+            strategy: None,
+            discard: false,
+        },
+    )
+    .expect("不轮换");
+    assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "");
     revert_with(&ctx, &home.own(), &RotationRevertReq { sid: S1.into() }).expect("还原");
     assert!(matches!(
         revert_with(&ctx, &home.own(), &RotationRevertReq { sid: S2.into() }),
@@ -172,17 +183,19 @@ fn revert_use_and_for_new() {
         &ctx,
         &home.own(),
         &RotationForNewReq {
-            strategy: "reset-first".into(),
+            strategy: Some("by-reset".into()),
         },
     )
     .expect("设");
-    assert_eq!(ctx.hop.store.now().for_new, "reset-first");
+    assert_eq!(ctx.hop.store.now().for_new, "by-reset");
+    for_new_with(&ctx, &home.own(), &RotationForNewReq { strategy: None }).expect("设回不轮换");
+    assert_eq!(ctx.hop.store.now().for_new, "");
     assert!(matches!(
         for_new_with(
             &ctx,
             &home.own(),
             &RotationForNewReq {
-                strategy: "nope".into()
+                strategy: Some("nope".into())
             }
         ),
         Err(RotationForNewErr::NoStrategy(_))
@@ -266,7 +279,7 @@ fn use_now_is_stopped_only_by_facts() {
 fn strategy_files_are_added_copied_renamed_and_deleted() {
     let home = Home::new("files");
     let ctx = home.ctx();
-    let src = file(&home, "reset-first");
+    let src = file(&home, "by-reset");
     match add_with(
         &ctx,
         &home.own(),
@@ -346,7 +359,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         other => panic!("该拒：{other:?}"),
     }
     assert!(
-        matches!(del("list-order"), Err(RotationStrategyDeleteErr::InUse(..))),
+        matches!(del("by-list"), Err(RotationStrategyDeleteErr::InUse(..))),
         "新会话用的那份"
     );
     del(&added.id).expect("删");

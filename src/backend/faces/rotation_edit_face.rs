@@ -394,7 +394,9 @@ pub(crate) fn revert_with(
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotationUseReq {
     pub(crate) sid: String,
-    pub(crate) strategy: String,
+    /// `null` ⇒ 这个会话不再轮换（只用开会话的号）。
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub(crate) strategy: Option<String>,
     /// 有没存的设置也换（丢掉它）。
     #[serde(default)]
     pub(crate) discard: bool,
@@ -439,20 +441,25 @@ pub(crate) fn use_with(
 ) -> Result<RotDone, RotationUseErr> {
     let s = session_of(&ctx.hop.store.now(), &req.sid)
         .ok_or_else(|| RotationUseErr::NoSession(no_session()))?;
-    let sh =
-        find(ctx, &req.strategy).ok_or_else(|| RotationUseErr::NoStrategy(gone(&req.strategy)))?;
-    if s.strategy.draft.is_some() && !req.discard && s.strategy.id != req.strategy {
+    let want = req.strategy.clone().unwrap_or_default();
+    let rev = match &req.strategy {
+        Some(id) => find(ctx, id)
+            .ok_or_else(|| RotationUseErr::NoStrategy(gone(id)))?
+            .rev
+            .clone(),
+        None => String::new(),
+    };
+    if s.strategy.draft.is_some() && !req.discard && s.strategy.id != want {
         return Err(RotationUseErr::Dirty(copy_text(
             "beRotation.edit.dirty",
             &[],
         )));
     }
-    let rev = sh.rev.clone();
     rotation::face_change(&ctx.hop.store, own, |b| {
         if let Some(s) = b.sessions.get_mut(&req.sid) {
-            if s.strategy.id != req.strategy || req.discard {
+            if s.strategy.id != want || req.discard {
                 s.strategy = Uses {
-                    id: req.strategy.clone(),
+                    id: want.clone(),
                     rev,
                     draft: None,
                 };
@@ -473,7 +480,9 @@ pub(crate) fn use_with(
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotationForNewReq {
-    pub(crate) strategy: String,
+    /// `null` ⇒ 新会话不轮换（只用开会话的号）。
+    #[cfg_attr(test, ts(type = "string | null"))]
+    pub(crate) strategy: Option<String>,
 }
 
 crate::stream::inbound::typed::codes! {
@@ -510,8 +519,11 @@ pub(crate) fn for_new_with(
     own: &crate::platform::Own,
     req: &RotationForNewReq,
 ) -> Result<RotDone, RotationForNewErr> {
-    find(ctx, &req.strategy).ok_or_else(|| RotationForNewErr::NoStrategy(gone(&req.strategy)))?;
-    rotation::face_change(&ctx.hop.store, own, |b| b.for_new = req.strategy.clone())
+    if let Some(id) = &req.strategy {
+        find(ctx, id).ok_or_else(|| RotationForNewErr::NoStrategy(gone(id)))?;
+    }
+    let want = req.strategy.clone().unwrap_or_default();
+    rotation::face_change(&ctx.hop.store, own, |b| b.for_new = want)
         .map_err(|e| RotationForNewErr::IoFailed(note(e)))?;
     Ok(RotDone {})
 }
