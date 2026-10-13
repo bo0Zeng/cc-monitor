@@ -218,13 +218,20 @@ async function shootWeb() {
       ok = false;
       note = e instanceof Error ? e.message : String(e);
     }
+    if (!ok && !note.startsWith("排版：")) {
+      // 台架与无头壳之间的来往（谁问了什么、壳交了什么、哪一刻起没声了）：查偶发没截成时第一份要看的。
+      const t = await fetch(`${base}/__ccm/trace`, { method: "POST", body: JSON.stringify({ scene: s.id }) })
+        .then((r) => r.json())
+        .catch(() => null);
+      if (t?.files?.length) note = `${note.split("\n")[0]}（来往：${t.files.join("、")}）`;
+    }
     const errs = page.consoleLines.filter((l) => l.startsWith("[error]") || l.startsWith("[exception]"));
     if (errs.length > 0) problems.push(`${s.id}：页里报错 ${errs.slice(0, 3).join(" | ").slice(0, 400)}`);
     if (!ok) problems.push(`${s.id}：${note.startsWith("排版：") ? note : `没截成 —— ${note.split("\n")[0]}`}`);
     writeFileSync(path.join(sandbox, `${s.id}.console.txt`), page.consoleLines.join("\n"));
     await page.close();
     results.push({ ...s, file: path.relative(out, file), ok });
-    console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}`);
+    console.log(`${ok ? "✓" : "✗"} ${s.dir}/${s.id}${ok ? "" : ` —— ${note.split("\n")[0].slice(0, 300)}`}`);
   }
   cdp.close();
 }

@@ -12,6 +12,8 @@
  *   POST /__ccm/end    {key, origin}                         ⇒ 那台已结束 / 可重连的那几个这时收场（页里收到那台的清单之后发），见到裁出来的那一格才答
  *   POST /__ccm/kill   {key, origin}                         ⇒ 那台后端当场杀掉（演「断了」）
  *   GET  /__ccm/items?key=…                                  ⇒ 事件流（SSE）：一格一条 `{sub, items}`，同壳交给页的 `chan-items` 事件体
+ *   POST /__ccm/trace  {scene}                               ⇒ 那个场景的世界里台架与无头壳之间的来往（最近 [`TRACE_KEEP`] 条，带毫秒）落进
+ *                                                              `<沙箱>/trace/<场景>.log`，答那几份的路径（一张图没截成时 `run.mjs` 来要，问题表里点名它）
  *
  *   世界里的 `warm`（quota-warm 在跑）：同样配一个替身进程，写 `.cc-monitor/quota-warm.json` 带它的 pid。
  *   世界里的 `live`（活会话）：每个配一个 `sleep` 进程当 claude 的替身（缺省住在那台私有 tmux 的一个窗格里），写 `.claude/sessions/<pid>.json`
@@ -32,6 +34,9 @@ import { createInterface } from "node:readline";
 export const WALL_CEILING_MS = 300_000;
 
 const KEEP = 4;
+
+/** 每个世界在内存里留最近几条来往（台架 ⇄ 无头壳：收发的每一行、页里交来的每一问），没截成时落盘。 */
+const TRACE_KEEP = 4000;
 
 /**
  * 截图里每一台的时区（IANA 名）：各台后端 · 无头壳 · 浏览器（`run.mjs` 起它时同样给）一律按它，不随跑截图那台机器的设置走。
@@ -205,6 +210,9 @@ export function backendPool({ repo, sandbox }) {
       env: { PATH: "/usr/bin:/bin", HOME: path.join(dir, "shell-home"), LANG: "C.UTF-8", TZ: SHOTS_TZ },
       stdio: ["pipe", "pipe", process.env.CCM_SHOTS_DEBUG ? "inherit" : "ignore"],
     });
+    // 世界被收掉（`kill`）之后还有晚到的一格要回一句（如收场那一订的 `stop`）⇒ 往已经没了的壳写会 EPIPE：
+    // 壳没了由下面 `exit` 那一支照实说（在等的问一律答「无头壳退了」），这里不让它变成整个 vite 进程的未处理异常。
+    child.stdin.on("error", (e) => w.trace(`无头壳的标准输入写不进去：${e.message}`));
     const replies = new Map();
     let n = 0;
     let gone = null;
@@ -222,6 +230,8 @@ export function backendPool({ repo, sandbox }) {
         } catch {
           return;
         }
+        if (f.t === "items") w.trace(`< sub=${f.sub} ${f.items.map((it) => (it.t === "frame" ? String(it.body ?? "").slice(0, 60) : it.t)).join(" | ").slice(0, 600)}`);
+        else if (f.t !== "offer") w.trace(`< ${line.slice(0, 240)}`);
         if ((f.t === "reply" || f.t === "offer") && replies.has(f.n)) {
           const r = replies.get(f.n);
           replies.delete(f.n);
@@ -235,7 +245,10 @@ export function backendPool({ repo, sandbox }) {
         }
       });
     });
-    const send = (cmd) => child.stdin.write(JSON.stringify(cmd) + "\n");
+    const send = (cmd) => {
+      if (cmd.t !== "offer") w.trace(`> ${JSON.stringify(cmd).slice(0, 240)}`);
+      child.stdin.write(JSON.stringify(cmd) + "\n");
+    };
     const ask = (cmd) =>
       new Promise((resolve) => {
         const id = ++n;
@@ -310,7 +323,13 @@ export function backendPool({ repo, sandbox }) {
     rmSync(dir, { recursive: true, force: true });
     mkdirSync(path.join(dir, "shell-home"), { recursive: true });
     // 这屋子的钟比台架这一侧快多少（开页之后改的文件，修改时刻照这屋子的钟落）。
-    const w = { dir, homes: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, shift: now - Date.now() };
+    const t0 = Date.now();
+    const lines = [];
+    const trace = (t) => {
+      lines.push(`${String(Date.now() - t0).padStart(7)} ${t}`);
+      if (lines.length > TRACE_KEEP) lines.splice(0, lines.length - TRACE_KEEP);
+    };
+    const w = { dir, homes: new Map(), doomed: [], inner: new Map(), listeners: [], backlog: [], shell: null, shift: now - Date.now(), scene: String(body.scene ?? ""), lines, trace };
     worlds.set(key, w);
     const list = Object.entries(machines).map(([origin, m], i) => {
       w.homes.set(origin, path.join(dir, `m${i}`, "home"));
@@ -326,6 +345,18 @@ export function backendPool({ repo, sandbox }) {
     while (worlds.size > KEEP) kill(worlds.keys().next().value);
   }
 
+  /** 那个场景还留着的世界：各自的来往落盘（同一场景几个世界 ⇒ 几份，按起的先后编号）。 */
+  function dumpTrace(scene) {
+    const mine = [...worlds.values()].filter((w) => w.scene === scene);
+    const dir = path.join(sandbox, "trace");
+    mkdirSync(dir, { recursive: true });
+    return mine.map((w, i) => {
+      const file = path.join(dir, `${scene.replace(/[^A-Za-z0-9_.-]/g, "_")}${mine.length > 1 ? `.${i}` : ""}.log`);
+      writeFileSync(file, w.lines.join("\n") + "\n");
+      return file;
+    });
+  }
+
   async function call(body) {
     const w = worlds.get(body.key);
     if (!w) return { ok: false, fail: { err: { Ours: "Misuse" }, body: [], detail: `没有这个世界：${body.key}` } };
@@ -336,6 +367,7 @@ export function backendPool({ repo, sandbox }) {
   function tell(url, body) {
     const w = worlds.get(body.key);
     if (!w) return;
+    w.trace(`http ${url}`);
     if (url === "/__ccm/sub") w.sh.send({ t: "sub", id: body.id, origin: body.origin, kind: body.kind, want: body.want });
     else if (url === "/__ccm/want") w.sh.send({ t: "want", id: body.id, more: body.more });
     else if (url === "/__ccm/stop") w.sh.send({ t: "stop", id: body.id });
@@ -393,13 +425,17 @@ export function backendPool({ repo, sandbox }) {
       req.on("close", () => (w.listeners = w.listeners.filter((x) => x !== res)));
       return;
     }
-    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/end" || TELL.has(req.url))) return next();
+    if (req.method !== "POST" || !(req.url === "/__ccm/world" || req.url === "/__ccm/call" || req.url === "/__ccm/end" || req.url === "/__ccm/trace" || TELL.has(req.url))) return next();
     try {
       const body = JSON.parse(await readBody(req));
       let out = { ok: true };
       if (req.url === "/__ccm/world") await makeWorld(body);
       else if (req.url === "/__ccm/call") out = await call(body);
-      else if (req.url === "/__ccm/end") await endAll(body);
+      else if (req.url === "/__ccm/end") {
+        worlds.get(body.key)?.trace(`http /__ccm/end ${body.origin}`);
+        await endAll(body);
+        worlds.get(body.key)?.trace(`http /__ccm/end ${body.origin} 收完了`);
+      } else if (req.url === "/__ccm/trace") out = { files: dumpTrace(String(body.scene ?? "")) };
       else tell(req.url, body);
       res.setHeader("content-type", "application/json");
       res.end(JSON.stringify(out));
