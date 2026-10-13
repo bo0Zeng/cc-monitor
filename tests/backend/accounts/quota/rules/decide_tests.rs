@@ -18,25 +18,50 @@ fn clock(t: u64) -> u16 {
     ((t % 86_400) / 60) as u16
 }
 
-fn material(n: usize) -> File {
-    script::parse(crate::accounts::quota::rules::upgrade::material(n)).expect("读得懂")
+fn material(n: usize) -> Material {
+    Material(script::parse(crate::accounts::quota::rules::upgrade::material(n)).expect("读得懂"))
+}
+
+/// 一份升级材料，判在判据这一层的沙箱里（[`test_engine`]）。
+struct Material(File);
+
+impl Strategy for Material {
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
+        self.0.decide_in(test_engine(), ctx)
+    }
+    fn time_varying(&self) -> bool {
+        self.0.time_varying()
+    }
+}
+
+/// 判据这一层的沙箱：跟进程里那一份同一个造法（[`fresh_engine`](crate::accounts::quota::strategy::fresh_engine) ＋ 积木库），
+/// 操作数 · 调用深度 · 大小的上限都照旧（同样的输入停在同一处，超了照样报超时）；只是不按墙钟掐。
+/// 墙钟兜底在生产是秒级；测试档的 Rhai 慢，几路一起跑、机器一忙，一判就可能过了它 ⇒ 那一判走兜底，比的就不是同一份策略。
+/// 这里测的是运算量，墙钟只是安全网：挂住的由测试程序统一的上限兜。
+fn test_engine() -> &'static rhai::Engine {
+    static E: OnceLock<rhai::Engine> = OnceLock::new();
+    E.get_or_init(|| {
+        let mut e = crate::accounts::quota::strategy::fresh_engine();
+        e.on_progress(|_| None);
+        script::with_lib(e).expect("积木库编得过")
+    })
 }
 
 /// 权重恒 0：照号列表先后（升级材料 1）。
-fn by_list() -> &'static File {
-    static F: OnceLock<File> = OnceLock::new();
+fn by_list() -> &'static Material {
+    static F: OnceLock<Material> = OnceLock::new();
     F.get_or_init(|| material(0))
 }
 
 /// 离 5 小时重置越近权重越高（升级材料 2）。
-fn by_reset() -> &'static File {
-    static F: OnceLock<File> = OnceLock::new();
+fn by_reset() -> &'static Material {
+    static F: OnceLock<Material> = OnceLock::new();
     F.get_or_init(|| material(1))
 }
 
 /// 余量多的权重高（升级材料 3）。
-fn by_left() -> &'static File {
-    static F: OnceLock<File> = OnceLock::new();
+fn by_left() -> &'static Material {
+    static F: OnceLock<Material> = OnceLock::new();
     F.get_or_init(|| material(2))
 }
 
@@ -934,28 +959,6 @@ fn crowded(tl: &Timeline, at: u64) -> bool {
     tl.nodes.iter().any(|n| *n != at && n.abs_diff(at) <= TOL)
 }
 
-/// 比一致性时给策略的那一层：墙钟掐断（测试档的 Rhai 慢，几路一起跑时机器一忙，单判就可能过墙钟）⇒ 同样的输入再调一次。
-/// 判是纯的，重调结论不变；不重调的话，掐断那一判走兜底，只落在推演或逐发的一边，比出来的「差几秒」是机器忙，不是两边不一致。
-/// 操作数超了照原样交出（同样的输入停在同一处，两边一样）。重调几次还是掐断 ⇒ 直说是机器太忙。
-struct Patient<'a>(&'a dyn Strategy);
-
-impl Strategy for Patient<'_> {
-    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
-        for _ in 0..5 {
-            match self.0.decide(ctx) {
-                Err(e) if e.kind == FailKind::Timeout && e.msg.starts_with("wall clock") => {
-                    continue
-                }
-                r => return r,
-            }
-        }
-        panic!("策略连着 5 次被墙钟掐断（机器太忙），这一组比不了")
-    }
-    fn time_varying(&self) -> bool {
-        self.0.time_varying()
-    }
-}
-
 /// 逐发（每分钟一发）判；每过一个节点、每次真换号都重推一次（同真用）：推演说的下一次换号与真的那一次号相同、时刻差 ≤ 一个间隔
 /// （换到的号有启用延迟 ⇒ 两个）。挤在一起分不出先后的单数出来。回（比过几次，挤的几次，比过的里强制切换的几次）。
 fn consistent(
@@ -965,7 +968,6 @@ fn consistent(
     p: &dyn Strategy,
     label: &str,
 ) -> (usize, usize, usize) {
-    let p = &Patient(p);
     let delay = |a: &str| {
         s["accounts"]
             .as_array()
