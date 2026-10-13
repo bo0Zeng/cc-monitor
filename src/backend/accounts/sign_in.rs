@@ -256,11 +256,12 @@ fn listen(
             &tail,
         ))
     };
-    if let Some(w) = j.waiter {
-        let _ = w.send(Waited::SignInEnd(ended.clone()));
-    }
     drop(j.conv);
+    // 先报「结束了」，再答还在等的 `finish`：`finish` 一返回，这份作业的结局就已经报出去了（不让两条线程比快慢）。
     on_end(job, &ended);
+    if let Some(w) = j.waiter {
+        let _ = w.send(Waited::SignInEnd(ended));
+    }
 }
 
 /// 把粘回来的东西交给那份作业，等那一家的结局（至多 [`FINISH_WITHIN`]）。格式对不上这一趟的链接 ⇒ 不写、`BadPaste`。
