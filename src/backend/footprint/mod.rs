@@ -212,3 +212,7 @@ fn client_arg(v: Option<&Value>) -> Result<Option<Client>, (&'static str, String
 #[cfg(test)]
 #[path = "../../../tests/backend/footprint/face_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/footprint/small_wire_tests.rs"]
+mod small_wire_tests;
