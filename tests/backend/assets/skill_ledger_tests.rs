@@ -10,6 +10,17 @@
 //! 本族那一条用两个线程各开一次描述量（与两个进程同一种 `flock` 互斥），没有真起第二个进程 · 真 Windows 上 `rename` 覆盖既有文件。
 
 use super::*;
+use serde_json::json;
+
+/// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
+fn record_at(
+    own: &Own,
+    root: Option<&Path>,
+    a: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::record_at(own, root, &req).map(|r| serde_json::to_value(r).unwrap())
+}
 
 /// 写句柄：家目录 ＝ 那份装记录上两级（`<家>/.cc-monitor/skill-installs.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
@@ -93,10 +104,19 @@ fn the_directory_is_computed_here_and_never_taken_from_the_caller() {
     let d = temp_dir("dir");
     let file = d.join(relay_route_core::SKILL_LEDGER_REL);
     let root = d.join("skills");
-    let v = record_at(
+    // 调用方给的 `dir` 不收：`add` 里没有这一格 ⇒ `bad_args`、一个字节不写。
+    let e = record_at(
         &own_at(&file),
         Some(&root),
         &json!({"op": "add", "name": "demo", "dir": "/etc", "files": {"a.md": rec(D1, true)}}),
+    )
+    .expect_err("收了调用方给的 dir");
+    assert_eq!(e.code, "bad_args");
+    assert!(!file.exists(), "拒了还写了");
+    let v = record_at(
+        &own_at(&file),
+        Some(&root),
+        &json!({"op": "add", "name": "demo", "files": {"a.md": rec(D1, true)}}),
     )
     .expect("记");
     let want = root.join("demo").display().to_string();

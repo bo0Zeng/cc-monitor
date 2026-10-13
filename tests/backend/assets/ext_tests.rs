@@ -2,6 +2,26 @@
 //! 装 / 卸跨两台走同一对枢纽命令，装到哪由用户选（skill：全局 / 项目；MCP：只项目，全局由后端拒），看过之后源变了 ⇒ `stale`、目标零写；
 //! 卸：cc-monitor 装的按装记录撤，不是的先备份再删；备注随目录同步到别的后端；cc-bus 是自带的一行，装它用被写那台二进制里那一份。
 use super::*;
+
+/// 卸那一对的入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
+fn answer_uninstall_preview(
+    d: &dyn Door,
+    env: &Env,
+    a: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::answer_uninstall_preview(d, env, &req).map(|r| serde_json::to_value(r).unwrap())
+}
+
+fn answer_uninstall_apply(
+    d: &dyn Door,
+    env: &Env,
+    record: Record,
+    a: &Value,
+) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    let req = crate::stream::inbound::typed::take(a)?;
+    super::answer_uninstall_apply(d, env, record, &req).map(|r| serde_json::to_value(r).unwrap())
+}
 use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::tests::{ap, pv};
@@ -406,7 +426,7 @@ impl M {
             .unwrap(),
             None => skills.clone(),
         };
-        let record = |a: &Value| {
+        let record = |a: &crate::assets::skill_ledger::RecordReq| {
             super::super::skill_ledger::record_at(
                 &crate::platform::fs::Own::issue_at(
                     ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -529,7 +549,11 @@ fn two_with(tag: &str, prep: impl FnOnce(&mut M)) -> (PathBuf, Two) {
     let reach: Table = Mutex::new(BTreeMap::new());
     register(
         &reach,
-        &json!({ "origin": "laptop", "dial": {"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}} }),
+        &cmd_wire::Machine("laptop".into()),
+        &serde_json::from_value(
+            json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}),
+        )
+        .unwrap(),
     )
     .unwrap();
     let here: Arc<dyn Here> = Arc::new(HereM(a.clone()));
@@ -651,7 +675,7 @@ async fn a_skill_goes_to_the_other_machine_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -734,7 +758,7 @@ async fn an_mcp_entry_goes_over_without_its_secret_and_comes_back_off() {
     ua["token"] = card["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -996,7 +1020,7 @@ async fn an_mcp_entry_goes_global_into_the_shared_set_and_comes_back_off() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),
@@ -1196,7 +1220,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let dir = m.env.skills.clone().unwrap().join("mine");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("SKILL.md"), "mine\n").unwrap();
-    let record = |_: &Value| Ok(json!({}));
+    let record = |_: &crate::assets::skill_ledger::RecordReq| Ok(Default::default());
     let u = json!({ "kind": "skill", "name": "mine", "at": { "level": "user" } });
     let card = answer_uninstall_preview(&m.door(), &m.env, &u).unwrap();
     assert_eq!(card["recorded"], false);
@@ -1317,7 +1341,7 @@ async fn the_wire_matches_the_cross_language_golden() {
     ua["token"] = ucard["token"].clone();
     let ledger = t.b.env.ledger.clone().unwrap();
     let skills = t.b.env.skills.clone().unwrap();
-    let record = |a: &Value| {
+    let record = |a: &crate::assets::skill_ledger::RecordReq| {
         super::super::skill_ledger::record_at(
             &crate::platform::fs::Own::issue_at(
                 ledger.parent().and_then(std::path::Path::parent).unwrap(),

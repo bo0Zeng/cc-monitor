@@ -5835,13 +5835,38 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --footprint-report`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent_home` | ← | 解析基准：这台那一家的家目录（展示用） |
-| `client` | → | 可选 |
-| `home` | ← | 这台的家目录 |
-| `rows` | ← | 每个足迹一行（落在哪 · 是谁写的 · 怎么收） |
-| `settings_scopes` | ← | 各层设置文件（用户 · 项目 · 本地）的读法与先后 |
+入参 `FootprintReq` · 回包 `ConfigSurfaceReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ConfigSurfaceReport = { rows: Array<SurfaceRow>, settings_scopes: Array<SettingsScope>, 
+/**
+ * 解析基准，展示用（让用户知道 `~/.claude` 被解释成了哪里）。
+ */
+agent_home: string, home: string, };
+type EnvTier = "AppInstalls" | "AppShipsNoInstallerYet" | "UserInstallsWePrompt" | "AppOnlyChecks";
+type FootprintClient = { home: string, path?: string | null, };
+type FootprintReq = { client?: FootprintClient | null, };
+type SettingsScope = { scope: string, path: string, state: SurfaceState, 
+/**
+ * 文件里有没有 cc-bus 那两个钩子程序的字样。读不到 → `None`（**不猜**）。
+ */
+has_cc_bus_hooks: boolean | null, precedence_note: string, };
+type SurfaceRow = { tool_id: string, tool_name: string, 
+/**
+ * 🔴 **档进线上形状了。**
+ *
+ * 上一版 `config-surface-section.ts` 的 `describeUndo` 逐字写着
+ * 「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格」——
+ * 于是「不该由我们装」与「该我们装而还没写」在前端只能靠一句和稀泥的措辞盖过去。
+ * 今天档在行上，前端按**值**分档，不按措辞猜。
+ */
+tier: EnvTier, source_label: string, path_declared: string, 
+/**
+ * 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
+ */
+path_resolved: string | null, note: string | null, host_label: string, effect_label: string, state: SurfaceState, installable: boolean, uninstallable: boolean, };
+type SurfaceState = { "kind": "present", detail: string, } | { "kind": "absent" } | { "kind": "undetermined", why: string, };
+```
 
 码：`bad_args` · `failed`
 
@@ -5851,15 +5876,67 @@ agentKind?: string, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --data-report`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `client` | → | 同 `footprint-report`（本机那一栏才带） |
-| `changedFiles` | ← | cc-monitor 写进你的文件的那几处 `{path, what, undo}`（`undo` ＝ 撤回在哪：设置窗的页 · 栏 · 锚点） |
-| `chores` | ← | 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的 |
-| `home` | ← | 这台家目录（显示时 `~` 缩写按它） |
-| `own` | ← | cc-monitor 在这台自己家里放的每一样 `{id, what, path, dir, class, exists, size}`：`id` 闭集同 `~/.cc-monitor/` 下的契约常量；`what` ＝ 写好的那一句「是什么」（界面照抄）；`class` ＝ `truth`（删了会丢）· `cache`（能重建）；目录 `size` 为 `null` |
-| `tmux` | ← | 这台有没有 tmux（查不动 ⇒ `null`） |
-| `todo` | ← | 「待办」各件 `{id, kind, state, name, loc, said, why, steps, diff, copy, whole, wholeCovers, file, go, howUrl, mask, action}`：`kind` 闭集 `must` · `install` · `decide` · `installOptional` · `optional`；`state` 闭集 `todo` · `done` · `expired` · `blocked` · `declined`；`action` 闭集 `copyCommand` · `copySnippet` · `decide` · `locate` · `how` · `installFirst`；`diff` 每行 `{n, op, text}`（`op` ＝ `same` · `del` · `add`，加的那几行 `n` 为 `null`）；`mask` ＝ 显示时要遮住的那把钥匙 |
+入参 `FootprintReq` · 回包 `DataReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ChangedFile = { path: string, what: string, 
+/**
+ * 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
+ */
+undo: UndoAt | null, };
+type Chore = { id: string, kind: ChoreKind, state: ChoreState, name: string, loc: string, said: string, why: string, steps: Array<string>, diff: Array<DiffRow>, copy: string | null, whole: string | null, 
+/**
+ * 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
+ */
+wholeCovers: Array<string>, file: string | null, 
+/**
+ * 去哪一处做（设置窗的页 · 栏 · 锚点）。
+ */
+go: UndoAt | null, howUrl: string | null, 
+/**
+ * 显示时要遮住的那把钥匙。
+ */
+mask: string | null, action: ChoreAction, };
+type ChoreAction = "copyCommand" | "copySnippet" | "decide" | "locate" | "how" | "installFirst";
+type ChoreKind = "must" | "decide" | "install" | "installOptional" | "optional";
+type ChoreState = "todo" | "done" | "expired" | "blocked" | "declined";
+type DataReport = { 
+/**
+ * 这台家目录（显示时 `~` 缩写按它）。
+ */
+home: string, changedFiles: Array<ChangedFile>, todo: Array<Chore>, 
+/**
+ * 这台有没有 tmux（查不动 ⇒ `null`）。
+ */
+tmux: boolean | null, 
+/**
+ * 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
+ */
+chores: number, own: Array<OwnItem>, };
+type DiffOp = "same" | "del" | "add";
+type DiffRow = { n: number | null, op: DiffOp, text: string, };
+type FootprintClient = { home: string, path?: string | null, };
+type FootprintReq = { client?: FootprintClient | null, };
+type OwnClass = "truth" | "cache";
+type OwnItem = { 
+/**
+ * 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
+ */
+id: string, 
+/**
+ * 是什么（写好的那一句，界面照抄）。
+ */
+what: string, 
+/**
+ * `~/.cc-monitor/…` 写法。
+ */
+path: string, dir: boolean, class: OwnClass, exists: boolean, 
+/**
+ * 文件的字节数；目录 / 不在 ⇒ `null`。
+ */
+size: number | null, };
+type UndoAt = { page: string, tab?: string, anchor?: string, };
+```
 
 码：`bad_args` · `failed`
 
@@ -6001,20 +6078,59 @@ type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
 
 #### `assets-catalog`
 
-资产目录。
+这台现扫一次、记下，回整份资产目录 ＋「这台缺什么」。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --assets-catalog`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `changed` | ← | 这一趟目录有没有变（变了才写盘） |
-| `machines` | ← | 各台一份快照 `{id, label, gen, seenAt, assets}`：`gen` 是那台**自己**的代数（它自己那份变了才 +1）；`seenAt` 是那一代的时刻（那台的钟，只给人看、不参与合并） |
-| `path` | ← | 目录文件在这台上的路径 |
-| `problems` | ← | 这一趟扫描读不出来的那几份（一句话一份）—— 「这台没有」与「这台那份读不出来」分开说 |
-| `rows` | ← | 别的机器有的每个（`kind`, `name`）一行 `{kind, name, state, from}`：`state` 闭集 `missing`（这台一条同名的都没有）· `differs`（有同名的，摘要都不同）· `same`（有一条摘要相同）；`from` 是别处那几条 `{machine, project, digest, summary}` |
-| `self` | ← | 这台机器的 id（第一次记目录时生成，之后不变） |
+入参 `NoArgs` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`catalog_unreadable` · `io_failed`
+```ts
+type CatalogAsset = { kind: string, name: string, 
+/**
+ * 那台上的项目目录（项目级）；`None` = 用户级。
+ */
+project?: string, 
+/**
+ * 它在那台上住哪（skill：那个目录；MCP：那份配置文件）。只给人看、给「在文件窗口里打开」用，不参与判定。
+ */
+dir?: string, digest: string, 
+/**
+ * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+ */
+summary: unknown, };
+type CatalogFrom = { 
+/**
+ * 那台目录的 id。
+ */
+machine: string, 
+/**
+ * 那台上的项目目录；用户级 ⇒ `null`。
+ */
+project: string | null, digest: string, summary: unknown, };
+type CatalogMachine = { id: string, label: string, gen: number, seenAt: number, assets: Array<CatalogAsset>, projectDirs: Array<string>, notes: { [key in string]: CatalogNote }, sharedMcp: boolean, };
+type CatalogNote = { text: string, rev: number, };
+type CatalogReply = { 
+/**
+ * 这台机器的 id。
+ */
+self: string, machines: Array<CatalogMachine>, rows: Array<CatalogRow>, 
+/**
+ * 这一趟扫描读不出来的那几份（一句话一份）。
+ */
+problems: Array<string>, 
+/**
+ * 这一趟目录有没有变（变了才写盘）。
+ */
+changed: boolean, 
+/**
+ * 目录文件在这台上的路径。
+ */
+path: string | null, };
+type CatalogRow = { kind: string, name: string, state: string, from: Array<CatalogFrom>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `catalog_unreadable` · `io_failed`
 
 #### `assets-catalog-merge`
 
@@ -6022,15 +6138,54 @@ type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --assets-catalog-merge`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `catalog` | → | 另一台后端的整份目录，形状就是 `assets-catalog` 的应答（只读它的 `machines`） |
-| `changed` | ← | 这一次有没有改动 |
-| `machines` | → ← | 各台的快照（同一台取 `gen` 大的那一份整份） |
-| `path` | ← | 目录文件的路径 |
-| `problems` | ← | 读不出的那几处各一句 |
-| `rows` | ← | 并完之后的资产行 |
-| `self` | → ← | 这台的机器 id |
+入参 `CatalogMergeReq` · 回包 `CatalogReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CatalogAsset = { kind: string, name: string, 
+/**
+ * 那台上的项目目录（项目级）；`None` = 用户级。
+ */
+project?: string, 
+/**
+ * 它在那台上住哪（skill：那个目录；MCP：那份配置文件）。只给人看、给「在文件窗口里打开」用，不参与判定。
+ */
+dir?: string, digest: string, 
+/**
+ * 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+ */
+summary: unknown, };
+type CatalogFrom = { 
+/**
+ * 那台目录的 id。
+ */
+machine: string, 
+/**
+ * 那台上的项目目录；用户级 ⇒ `null`。
+ */
+project: string | null, digest: string, summary: unknown, };
+type CatalogIn = { machines: Array<CatalogMachine>, };
+type CatalogMachine = { id: string, label: string, gen: number, seenAt: number, assets: Array<CatalogAsset>, projectDirs: Array<string>, notes: { [key in string]: CatalogNote }, sharedMcp: boolean, };
+type CatalogMergeReq = { catalog: CatalogIn, };
+type CatalogNote = { text: string, rev: number, };
+type CatalogReply = { 
+/**
+ * 这台机器的 id。
+ */
+self: string, machines: Array<CatalogMachine>, rows: Array<CatalogRow>, 
+/**
+ * 这一趟扫描读不出来的那几份（一句话一份）。
+ */
+problems: Array<string>, 
+/**
+ * 这一趟目录有没有变（变了才写盘）。
+ */
+changed: boolean, 
+/**
+ * 目录文件在这台上的路径。
+ */
+path: string | null, };
+type CatalogRow = { kind: string, name: string, state: string, from: Array<CatalogFrom>, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -6040,13 +6195,101 @@ type AgentHomeState = "ok" | "missing" | "not_dir" | "no_records";
 
 收 `args` · 可撤 · CLI：`ccm -- --assets-sync`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 可缺席 |
-| `origin` | → | 可缺席 |
-| `reach` | ← | 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）—— 界面据它把目录里的机器 id 对回 origin |
-| `self` | ← | 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>` |
-| `synced` | ← | 每一趟一行 `{origin, peer, changed, pushed, error}`：`peer` 是那台目录的 `self` |
+入参 `AssetsSyncReq` · 回包 `AssetsSynced`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AssetsSyncReq = { 
+/**
+ * 那台的名字（monitor 的 origin 名）。
+ */
+origin?: string, 
+/**
+ * 那台的拨号（只有路径，没有私钥本体）。
+ */
+dial?: MachineDial, };
+type AssetsSyncRow = { 
+/**
+ * 可达表的键（monitor 交来的 origin 串）。
+ */
+origin: string, 
+/**
+ * 那台目录的 `self`（没拉成 ⇒ `null`）。
+ */
+peer: string | null, 
+/**
+ * 本机目录因这一趟变了没有。
+ */
+changed: boolean, 
+/**
+ * 推过去几台快照。
+ */
+pushed: number, 
+/**
+ * 那一趟哪里没办成（`null` ＝ 全办成了）。
+ */
+error: string | null, };
+type AssetsSynced = { 
+/**
+ * 本机目录的 id（开头那一次现扫拿到的）—— 界面据它把目录里本机那一格对回 `<local>`。
+ */
+self: string, synced: Array<AssetsSyncRow>, 
+/**
+ * 可达表 `[{origin, machine}]`：`machine` 是那台目录的 id（还没拉成过 ⇒ `null`）。
+ */
+reach: Array<ReachRow>, };
+type MachineConfig = { 
+/**
+ * 首选地址。
+ */
+host: string, 
+/**
+ * 登录用户。
+ */
+user: string, 
+/**
+ * 这台的名字（空 ⇒ 用 `host`）。
+ */
+label?: string, 
+/**
+ * 口（缺 ⇒ 22）。
+ */
+port?: number, 
+/**
+ * 私钥路径（缺 / 空 ⇒ 走 ssh-agent）。
+ */
+keyPath?: string, 
+/**
+ * 记下的主机指纹（`SHA256:…`）。
+ */
+hostKeyFingerprint?: string, 
+/**
+ * 其余地址（`host` / `host:port` / `[v6]:port` / 裸 v6）。
+ */
+addresses: Array<string>, 
+/**
+ * 跳板那一台的名字（空 ⇒ 直连）。
+ */
+jump?: string, };
+type MachineDial = { machine: MachineConfig, saved?: MachineConfig | null, jump?: MachineConfig | null, prefer?: Prefer | null, 
+/**
+ * 用法（存着不读：问那台的每一趟按自己的用法改，`capture` · `forward`）。
+ */
+use?: string | null, 
+/**
+ * ssh-agent 套接字的路径（界面进程此刻的 `SSH_AUTH_SOCK`；缺 ⇒ 用本进程自己的）。
+ */
+agent_sock?: string | null, };
+type Prefer = { host: string, port: number, };
+type ReachRow = { 
+/**
+ * 那台的名字。
+ */
+origin: string, 
+/**
+ * 对面的资产目录 id。
+ */
+machine: string | null, };
+```
 
 码：`bad_args` · `io_failed` · `unreachable`
 
@@ -6140,19 +6383,38 @@ skill 装记录的写口。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --skill-install-record`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | `add` 可缺席：缺 ⇒ 目录按 skill 根算；`"home"` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）；其余值 ⇒ `bad_args` |
-| `changed` | ← | 记录变没变（没变不写） |
-| `digest` | → | 装进去的那一条的摘要（`mcp-add`；卸时对得上就不用问） |
-| `dir` | → ← | `drop` 的入参：记录里那个 skill 目录；应答里是这一条记录的目录 |
-| `file` | → | `mcp-add` / `mcp-drop`：配置文件的绝对路径（键） |
-| `files` | → | `add`：`{<相对路径>: {digest, created}}` —— `skill-install-plan` 答的 `ledger` 里真写成了的那几个 |
-| `name` | → | `add`：skill 的目录名 |
-| `op` | → | `add`（装完记）或 `drop`（卸掉 / 已经不在的摘掉）；MCP 那一条：`mcp-add` · `mcp-drop` |
-| `paths` | → | `drop`：要摘的相对路径（不在记录里 ⇒ `bad_args`，一个字节不动）；摘到零个 ⇒ 整条记录摘掉 |
-| `project` | → | `add` 可缺席：给了 ⇒ 目录按那个项目里的 skill 根算 |
-| `remaining` | ← | 这一条还剩几个文件（MCP：那份配置里还记着几条） |
+入参 `RecordReq` · 回包 `RecordReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LedgerFile = { digest: string, created: boolean, };
+type RecordAt = "home";
+type RecordReply = { 
+/**
+ * 这一条记录的目录（MCP：那份配置文件）。
+ */
+dir: string, name: string, 
+/**
+ * 记录变没变（没变不写）。
+ */
+changed: boolean, 
+/**
+ * 这一条还剩几个文件（MCP：那份配置里还记着几条）。
+ */
+remaining: number, };
+type RecordReq = { "op": "add", 
+/**
+ * skill 的目录名。
+ */
+name: string, files: { [key in string]: LedgerFile }, 
+/**
+ * 给了 ⇒ 目录按那个项目里的 skill 根算。
+ */
+project?: string, 
+/**
+ * 缺 ⇒ 目录按 skill 根算；`home` ⇒ 目录 = 记录所在那个家目录（装在家目录底下、不在 skill 根下的东西用）。
+ */
+at?: RecordAt, } | { "op": "drop", dir: string, paths: Array<string>, } | { "op": "mcp-add", file: string, name: string, digest: string, } | { "op": "mcp-drop", file: string, name: string, };
+```
 
 码：`bad_args` · `io_failed` · `ledger_unreadable` · `not_found` · `too_large`
 
@@ -6162,22 +6424,56 @@ skill 装记录的写口。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --mcp-read`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dirs` | ← | agent 用户级配置里那张项目表的键（排序）：用过的项目目录 |
-| `entries` | ← | `{scope, name, server, sourcePath, status, loginIn, seenAt, mark, login, failed}`：`scope` 闭集 `user` · `local` · `project`；`server` 原样（未知字段不丢） |
-| `failed` | ← | 这台此刻活着的会话里那一家说它断开 ⇒ 最近说它的那一条写好的字 `{said, tip, detail}`（`said` 抽屉那一句：会话名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`detail` 那一家的原话，没写 ⇒ `null`）；没有活会话说 · 停用了 ⇒ `null` |
-| `login` | ← | `status` 是 `needsLogin` 时写好的字 `{said, tip, copy}`（`said` 抽屉那一句：号名 · 看的那一台钟上的时刻；`tip` 悬停那一截；`copy` 在那一家会话里登录要敲的那条命令）；别的 ⇒ `null` |
-| `loginIn` | ← | `status` 是 `needsLogin` 时：在哪几个号里要登录（账号库里的名字，排序；没设账号的那一份不出名字）；别的状态恒空 |
-| `mark` | ← | 小标画哪一种：`failed`（有 `failed`，压过需登录）· `needsLogin`（有 `login`）· `null`（都没有：只说装了，不说连上了） |
-| `name` | ← | server 名 |
-| `problems` | ← | 在而读不出 / 不是 JSON 的那几份各一句（「这台没有」与「那份坏了」不合成一句）；不在的静默 |
-| `projectDir` | → | 可缺席 / `null` |
-| `scope` | ← | `user` · `local` · `project` |
-| `seenAt` | ← | `status` 是 `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null` |
-| `server` | ← | 那一条配置原样（未知字段不丢） |
-| `sourcePath` | ← | 读自哪一份文件 |
-| `status` | ← | 闭集：`needsLogin`（agent 最近一次连它时要登录、还在有效期内）· `disabled`（这个项目里停用了）· `unknown`（配置层判不出：不说连上了） |
+入参 `McpReadReq` · 回包 `McpReadReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type McpFailedMark = { said: string, tip: string, detail: string | null, };
+type McpLoginMark = { said: string, tip: string, copy: string, };
+type McpMark = "needsLogin" | "failed";
+type McpReadEntry = { 
+/**
+ * 闭集 `user` · `local` · `project`（适配层那一格写的）。
+ */
+scope: "user" | "local" | "project", name: string, 
+/**
+ * 那一条配置原样（未知字段不丢）。
+ */
+server: unknown, 
+/**
+ * 读自哪一份文件。
+ */
+sourcePath: string, 
+/**
+ * 配置层只说三种：`needsLogin` · `disabled` · `unknown`（不说连上了）。
+ */
+status: "needsLogin" | "disabled" | "unknown", 
+/**
+ * `needsLogin` 时：在哪几个号里要登录；别的状态恒空。
+ */
+loginIn: Array<string>, 
+/**
+ * `needsLogin` 时：最近一次看到是何时（epoch ms）；别的状态 `null`。
+ */
+seenAt: number | null, 
+/**
+ * 小标画哪一种：断开压过需登录；都没有 ⇒ `null`（只说装了，不说连上了）。
+ */
+mark: McpMark | null, login: McpLoginMark | null, failed: McpFailedMark | null, };
+type McpReadReply = { entries: Array<McpReadEntry>, 
+/**
+ * agent 用户级配置里那张项目表的键（排序）：用过的项目目录。
+ */
+dirs: Array<string>, 
+/**
+ * 在而读不出 / 不是 JSON 的那几份各一句；不在的静默。
+ */
+problems: Array<string>, };
+type McpReadReq = { 
+/**
+ * 项目目录（绝对路径；缺 · `null` ⇒ 不看项目那一段）。
+ */
+projectDir?: string, };
+```
 
 码：`bad_args` · `too_large`
 
@@ -6336,12 +6632,84 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `machines` | ← | 每台一列 `{key, here, reachable, name, projects}`：`key` = 枢纽认它的键（本机后端自己 = `null` |
-| `problems` | ← | 这台扫的时候读不出来的那几份 |
-| `rows` | ← | 每个条目一行 `{kind, name, about, detail, new, builtin, note, cells}`，`cells` 与 `machines` 同序 |
-| `visit` | → | 可缺席：`true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算 |
+入参 `ExtListReq` · 回包 `ExtList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtBring = { from: string | null, 
+/**
+ * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
+ */
+fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
+type ExtBuiltin = { note: string, 
+/**
+ * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
+ */
+hooks: boolean, };
+type ExtCell = { 
+/**
+ * 表上那个点。
+ */
+state: ExtState, 
+/**
+ * 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
+ */
+places: Array<ExtPlace>, bring: ExtBring | null, 
+/**
+ * 没有「装到…」时为什么（现状 ＋ 能做什么）。
+ */
+note: string | null, };
+type ExtDetail = { label: string, value: string, };
+type ExtKind = "skill" | "mcp";
+type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, };
+type ExtListReq = { 
+/**
+ * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
+ */
+visit?: boolean, };
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtMachine = { 
+/**
+ * 枢纽认它的键：本机后端自己 = `null`；别的台 = 可达表里的名字；没连上 = `null` 且 `reachable = false`。
+ */
+key: string | null, 
+/**
+ * 就是本机后端这一台。
+ */
+here: boolean, reachable: boolean, 
+/**
+ * 给人看的名字（可达表里的名字；没有就是那台自报的称呼）。
+ */
+name: string, 
+/**
+ * 那台上开过会话的项目目录（装到项目时给人选）。
+ */
+projects: Array<string>, };
+type ExtPlace = { at: ExtLoc, 
+/**
+ * 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
+ */
+state: ExtState, 
+/**
+ * skill：那一处的目录（「在文件窗口里打开」用）。
+ */
+dir: string | null, 
+/**
+ * 这一处有「卸载」。
+ */
+uninstall: boolean, 
+/**
+ * 有它、却没有「卸载」时为什么。
+ */
+note: string | null, };
+type ExtRow = { kind: ExtKind, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+/**
+ * 用户写的备注（随目录在后端之间同步）。
+ */
+note: string | null, cells: Array<ExtCell>, };
+type ExtScope = { from: ExtLoc, to: ExtLoc, };
+type ExtState = "same" | "differs" | "missing" | "project";
+type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -6351,12 +6719,84 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-list-here`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `machines` | ← | 恒一列（这台自己）`{key: null, here: true, reachable: true, name, projects}`：裁掉了别的台，于是没有一格要问可达表 |
-| `problems` | ← | 同 `ext-list`：这台扫的时候读不出来的那几份 |
-| `rows` | ← | 同 `ext-list` 每个条目一行，`cells` 与 `machines` 同序 ⇒ 恒一格 |
-| `visit` | → | 同 `ext-list`：`true` = 这一问算「来看了一次」 |
+入参 `ExtListReq` · 回包 `ExtList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtBring = { from: string | null, 
+/**
+ * 来源给人看的名字（本机 · 别的台 · cc-monitor 自带）。
+ */
+fromName: string, scope: ExtScope, targets: Array<ExtTarget>, };
+type ExtBuiltin = { note: string, 
+/**
+ * 装上之后要在那台的 agent 配置里加钩子：抽屉里每台一行钩子状态（问那台的 `hooks-diag`）。
+ */
+hooks: boolean, };
+type ExtCell = { 
+/**
+ * 表上那个点。
+ */
+state: ExtState, 
+/**
+ * 那台上的各处：全局一行在前（没有也列），再是每个装着它的项目。
+ */
+places: Array<ExtPlace>, bring: ExtBring | null, 
+/**
+ * 没有「装到…」时为什么（现状 ＋ 能做什么）。
+ */
+note: string | null, };
+type ExtDetail = { label: string, value: string, };
+type ExtKind = "skill" | "mcp";
+type ExtList = { machines: Array<ExtMachine>, rows: Array<ExtRow>, problems: Array<string>, };
+type ExtListReq = { 
+/**
+ * `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
+ */
+visit?: boolean, };
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtMachine = { 
+/**
+ * 枢纽认它的键：本机后端自己 = `null`；别的台 = 可达表里的名字；没连上 = `null` 且 `reachable = false`。
+ */
+key: string | null, 
+/**
+ * 就是本机后端这一台。
+ */
+here: boolean, reachable: boolean, 
+/**
+ * 给人看的名字（可达表里的名字；没有就是那台自报的称呼）。
+ */
+name: string, 
+/**
+ * 那台上开过会话的项目目录（装到项目时给人选）。
+ */
+projects: Array<string>, };
+type ExtPlace = { at: ExtLoc, 
+/**
+ * 全局那一行：`same` · `differs` · `missing`；项目那几行：`same` · `differs`（与「这一版」比）。
+ */
+state: ExtState, 
+/**
+ * skill：那一处的目录（「在文件窗口里打开」用）。
+ */
+dir: string | null, 
+/**
+ * 这一处有「卸载」。
+ */
+uninstall: boolean, 
+/**
+ * 有它、却没有「卸载」时为什么。
+ */
+note: string | null, };
+type ExtRow = { kind: ExtKind, name: string, about: string | null, detail: Array<ExtDetail>, new: boolean, builtin: ExtBuiltin | null, 
+/**
+ * 用户写的备注（随目录在后端之间同步）。
+ */
+note: string | null, cells: Array<ExtCell>, };
+type ExtScope = { from: ExtLoc, to: ExtLoc, };
+type ExtState = "same" | "differs" | "missing" | "project";
+type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -6366,12 +6806,17 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-note-set`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `kind` | → | `skill` / `mcp` |
-| `name` | → | 名字 |
-| `note` | ← | 现在生效的那一份（清掉了 ⇒ `null`） |
-| `text` | → | 备注正文（首尾空白去掉；空串 = 清掉；最长 2000 字，超了拒、不截断） |
+入参 `ExtNoteReq` · 回包 `ExtNote`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtKind = "skill" | "mcp";
+type ExtNote = { note: string | null, };
+type ExtNoteReq = { kind: ExtKind, name: string, 
+/**
+ * 备注正文（首尾空白去掉；空串 = 清掉；最长 [`NOTE_MAX_CHARS`] 字，超了拒、不截断）。
+ */
+text: string, };
+```
 
 码：`bad_args` · `catalog_unreadable` · `io_failed`
 
@@ -6381,17 +6826,34 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-uninstall-preview`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | 在这台哪一级（用户级 MCP：这台有账号库 ⇒ 从各账号共用的那一份里删、所有号一起撤；没有 ⇒ 只读、`refused`） |
-| `backup` | ← | 不是 cc-monitor 装的：删之前先放到哪（`~/.cc-monitor/backups/`）；否则 `null` |
-| `files` | ← | 要删的那几个（skill：相对路径；MCP：那一条） |
-| `kind` | → | 种类 |
-| `name` | → | 名字 |
-| `path` | ← | skill 目录 / MCP 配置文件 |
-| `recorded` | ← | 装记录里有（cc-monitor 装的）⇒ 只撤装时写进去的；没有 ⇒ 不是 cc-monitor 装的 |
-| `said` | ← | 这一趟会做什么（说人话：改过没有 · 删了回不回得去） |
-| `token` | ← | 看到的那一份的记号 —— 卸的时候原样交回 |
+入参 `ExtUninstallReq` · 回包 `ExtUninstallCard`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtKind = "skill" | "mcp";
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtUninstallCard = { kind: ExtKind, name: string, path: string, 
+/**
+ * cc-monitor 装的（装记录里有）。
+ */
+recorded: boolean, 
+/**
+ * 要删的那几个（skill：相对路径；MCP：那份配置文件里的那一条）。
+ */
+files: Array<string>, 
+/**
+ * 删之前先放到哪（不是 cc-monitor 装的才有）。
+ */
+backup: string | null, 
+/**
+ * 这一趟会做什么（说人话：装的 / 不是装的 · 改过没有 · 删了回不回得去）。
+ */
+said: string, token: string, };
+type ExtUninstallReq = { kind: ExtKind, name: string, 
+/**
+ * 在这台哪一级（项目目录须是这台上的绝对路径）。
+ */
+at: ExtLoc, };
+```
 
 码：`bad_args` · `bad_file` · `bad_path` · `io_failed` · `ledger_unreadable` · `not_found` · `refused`
 
@@ -6401,15 +6863,22 @@ type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, e
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --ext-uninstall-apply`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `at` | → | 同 `ext-uninstall-preview` |
-| `changed` | ← | 删了的那几个 |
-| `kind` | → | 同 `ext-uninstall-preview` |
-| `name` | → | 同 `ext-uninstall-preview` |
-| `note` | ← | 要知道的一件（挪 / 抄到了哪 · 没从装记录里摘掉 · 空目录没收掉） |
-| `path` | ← | 卸的是哪 |
-| `token` | → | 卡上那一份：现在对不上 ⇒ `stale`、一个字节不动 |
+入参 `ExtUninstallApplyReq` · 回包 `ExtDone`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtDone = { path: string, 
+/**
+ * 写了 / 删了的那几个。
+ */
+changed: Array<string>, 
+/**
+ * 做成了，但有一件要知道的（执行位没改成 · 没记下来 · 空目录没收掉 …）。
+ */
+note: string | null, };
+type ExtKind = "skill" | "mcp";
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtUninstallApplyReq = { kind: ExtKind, name: string, at: ExtLoc, token: string, };
+```
 
 码：`bad_args` · `bad_file` · `bad_path` · `io_failed` · `ledger_unreadable` · `needs_consent` · `not_found` · `refused` · `stale`
 
@@ -6543,20 +7012,28 @@ cc-bus 钩子诊断。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --hooks-diag`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `command` | ← | 钩子原文（去首尾空白） |
-| `diagnosis` | ← | `session_start`（→ `cc-register`）· `stop`（→ `cc-bus-stop-hook`）各一态 ＋ `note`（读不到 / 坏 JSON / 顶层不是对象时说原因，否则空串） |
-| `kind` | ← | 一态：`not-installed` · `installed-via-path` · `installed-at-path` · `path-missing` · `unknown` |
-| `note` | ← | 读不到 / 坏 JSON / 顶层不是对象时说原因，否则空串 |
-| `path` | ← | 钩子点名的路径（原样，环境变量不展开） |
-| `session_start` | ← | `SessionStart` 钩子（→ `cc-register`）那一态 |
-| `snippet` | ← | 要合并进那份文件的内容：两条钩子直接指向这台 cc-bus 的两个脚本（家目录底下写成相对家目录的形，否则绝对路径），不依赖 `PATH` |
-| `source` | ← | 读的是哪份文件：这台后端的 agent 配置根下的设置文件 |
-| `stop` | ← | `Stop` 钩子（→ `cc-bus-stop-hook`）那一态 |
-| `supported` | ← | 这台跑得了 cc-bus（它要 tmux；这份后端编到的平台没有原生 tmux ⇒ `false`，`snippet` 恒 `null`，界面只说这台不支持自动收信） |
+入参 `NoArgs` · 回包 `HooksReport`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`failed` · `too_large`
+```ts
+type HookState = { "kind": "not-installed" } | { "kind": "installed-via-path", command: string, } | { "kind": "installed-at-path", command: string, path: string, } | { "kind": "path-missing", command: string, path: string, } | { "kind": "unknown", command: string, };
+type HooksDiagnosis = { session_start: HookState, stop: HookState, note: string, };
+type HooksReport = { 
+/**
+ * 这台跑得了 cc-bus（它要 tmux）；跑不了 ⇒ 不给要加的内容，界面只说这台不支持自动收信。
+ */
+supported: boolean, diagnosis: HooksDiagnosis, 
+/**
+ * 要合并进那份 `settings.json` 的内容；这台的 cc-bus 没装（那两个脚本不在）⇒ `None`。
+ */
+snippet: string | null, 
+/**
+ * 读的是哪份文件（这台后端看到的路径）。
+ */
+source: string, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `too_large`
 
 ### 4.6 别名
 
@@ -10188,7 +10665,7 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--aliases-read` | ＝ 帧命令 `aliases-read`：启动文件候选（接入那一格） |
 | `--answer-hook` `<agent>` | 会话级答题 hook 的客户端（那一家的 hook 设置里直接叫它，不经 shell）：读 hook 的 stdin，经本机常驻后端 `needs-ask` 挂上、等人答；拿到答案 ⇒ stdout 打那一家要的那一整份；常驻不在 · 断开 · 不是要人答的那一种 · 终端那边先答了 ⇒ 一个字节不打。恒退出 0 |
 | `--apikey-key-set` | ＝ 帧命令 `apikey-key-set`：给一个账号写 key，写完读回 |
-| `--assets-catalog` | ＝ 帧命令 `assets-catalog`：资产目录 |
+| `--assets-catalog` | ＝ 帧命令 `assets-catalog`：这台现扫一次、记下，回整份资产目录 ＋「这台缺什么」 |
 | `--assets-catalog-merge` | ＝ 帧命令 `assets-catalog-merge`：把另一台后端的整份目录并进来 |
 | `--assets-sync` | ＝ 帧命令 `assets-sync`：本机常驻后端沿池里那条 SSH 同步资产目录 |
 | `--authorized-keys-add` | ＝ 帧命令 `authorized-keys-add`：把一行公钥并进这台的 `authorized_keys` |

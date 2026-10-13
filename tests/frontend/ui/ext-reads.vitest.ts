@@ -3,27 +3,27 @@
  * 线上形状由跨语言金样钉住（后端测试产出 == `ext-flow.golden.json`，这里读同一份）；「装」只问本机后端（它当枢纽），「卸」问被卸的那一台。
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { peerVersionSaid } from "../../../src/frontend/ui/ipc/chan-caller";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { decodeAssetsSynced, syncAssets } from "../../../src/frontend/ui/assets-sync-reads";
+import { syncAssets } from "../../../src/frontend/ui/assets-sync-reads";
+import type { AssetsSynced } from "../../../src/frontend/ui/generated/AssetsSynced";
 import {
-  decodeExtDone,
-  decodeExtList,
-  decodeExtUninstallCard,
   extHubApply,
   extHubPreview,
   extList,
   extNoteSet,
   extUninstallApply,
   extUninstallPreview,
-  decodeMcpRead,
   mcpRead,
 } from "../../../src/frontend/ui/ext-reads";
+import type { ExtDone } from "../../../src/frontend/ui/generated/ExtDone";
+import type { ExtList } from "../../../src/frontend/ui/generated/ExtList";
+import type { McpReadReply } from "../../../src/frontend/ui/generated/McpReadReply";
+import type { ExtUninstallCard } from "../../../src/frontend/ui/generated/ExtUninstallCard";
 import { REPO_ROOT } from "../../test-support/repo-root";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 import { chanArgsJson, chanReply, type ChanCallArgs } from "../../test-support/chan-fake";
@@ -33,7 +33,6 @@ const golden = (n: string) =>
   JSON.parse(readFileSync(resolve(REPO_ROOT, `tests/__fixtures__/${n}.golden.json`), "utf8")) as Record<string, unknown>;
 const SYNC = golden("assets-sync");
 const EXT = golden("ext-flow");
-const BAD = peerVersionSaid("reply_unreadable", "<local>");
 
 beforeEach(() => {
   invokeMock.mockReset();
@@ -41,8 +40,8 @@ beforeEach(() => {
 
 describe("金样：后端出的成品，TS 读得懂", () => {
   it("assets-sync · ext-list · ext-hub-preview / -apply · ext-uninstall-preview / -apply", () => {
-    expect(decodeAssetsSynced(SYNC.reply).reach).toEqual([{ origin: "o", machine: null }]);
-    const list = decodeExtList(EXT.list);
+    expect((SYNC.reply as AssetsSynced).reach).toEqual([{ origin: "o", machine: null }]);
+    const list = EXT.list as ExtList;
     expect(list.machines.map((m) => [m.key, m.here])).toEqual([
       [null, true],
       ["laptop", false],
@@ -58,24 +57,9 @@ describe("金样：后端出的成品，TS 读得懂", () => {
       ["project", true],
     ]);
     expect(list.rows[1].cells[0].places.map((p) => [p.at.level, p.state, p.uninstall])).toEqual([["user", "same", true]]);
-    expect(decodeExtDone(EXT.done).changed).toEqual(["SKILL.md"]);
-    expect(decodeExtUninstallCard(EXT.uninstallCard).recorded).toBe(true);
-    expect(decodeExtDone(EXT.uninstallDone).changed).toEqual(["SKILL.md"]);
-  });
-});
-
-describe("严格收：形状不对 ⇒ 抛「两端版本对不上」", () => {
-  const list = EXT.list as { machines: object[]; rows: Array<{ cells: object[] }> };
-  it.each([
-    ["表多一格", () => decodeExtList({ ...list, x: 1 })],
-    ["一行的格数与机器数对不上", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: list.rows[0].cells.slice(1) }] })],
-    ["格态不在闭集里", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: [{ ...list.rows[0].cells[0], state: "maybe" }, list.rows[0].cells[1]] }] })],
-    ["一格带了摘要", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], cells: [{ ...list.rows[0].cells[0], digest: "d" }, list.rows[0].cells[1]] }] })],
-    ["一行缺备注那一格", () => decodeExtList({ ...list, rows: [(({ note: _n, ...r }) => r)(list.rows[0] as Record<string, unknown>)] })],
-    ["备注不是串", () => decodeExtList({ ...list, rows: [{ ...list.rows[0], note: 1 }] })],
-    ["装完类型不对", () => decodeExtDone({ ...(EXT.done as object), changed: "SKILL.md" })],
-  ] as const)("%s", (_n, f) => {
-    expect(f).toThrow(BAD);
+    expect((EXT.done as ExtDone).changed).toEqual(["SKILL.md"]);
+    expect((EXT.uninstallCard as ExtUninstallCard).recorded).toBe(true);
+    expect((EXT.uninstallDone as ExtDone).changed).toEqual(["SKILL.md"]);
   });
 });
 
@@ -137,27 +121,19 @@ describe("请求：问对那台、说对那条", () => {
   });
 });
 
-// 要求：MCP 状态稿甲 1 / 甲 2 —— 小标与抽屉那一行的字都是那台后端 `mcp-read` 写好的，界面按形状收、照抄。
+// 要求：MCP 状态稿甲 1 / 甲 2 —— 小标与抽屉那一行的字都是那台后端 `mcp-read` 写好的，界面照抄（回包形状由握手指纹核过）。
 describe("mcp-read：每台问它自己的后端，写好的字照收", () => {
   const MCP = golden("mcp-read");
   it("金样两份（不带字的 · 带需登录 / 连不上那几格的）都读得懂；字原样带出", () => {
-    expect(decodeMcpRead(MCP.reply).entries.map((e) => [e.name, e.mark])).toEqual([
+    expect((MCP.reply as McpReadReply).entries.map((e) => [e.name, e.mark])).toEqual([
       ["u1", null],
       ["l1", null],
       ["p1", null],
     ]);
-    const m = decodeMcpRead(MCP.marked).entries;
+    const m = (MCP.marked as McpReadReply).entries;
     expect(m.map((e) => e.mark)).toEqual(["needsLogin", "failed", "failed", null, null]);
     expect(m[0].login).toEqual({ said: copyText("beMcp.mark.login", { accounts: "acct-a、acct-b", time: "10:42" }), tip: copyText("beMcp.mark.loginTip", { accounts: "acct-a、acct-b" }), copy: "/mcp" });
     expect(m[1].failed).toEqual({ said: copyText("beMcp.mark.failed", { title: "会话-甲", time: "10:31" }), tip: copyText("beMcp.mark.failedTip"), detail: "err-1" });
-  });
-  it("严格收：多一格 / 小标不是认得的那两种 ⇒ 收不下", () => {
-    const one = (MCP.marked as { entries: Record<string, unknown>[] }).entries[1];
-    const wrap = (e: unknown) => ({ entries: [e], dirs: [], problems: [] });
-    expect(decodeMcpRead(wrap(one)).entries).toHaveLength(1);
-    expect(() => decodeMcpRead(wrap({ ...one, extra: 1 }))).toThrow();
-    expect(() => decodeMcpRead(wrap({ ...one, mark: "connected" }))).toThrow();
-    expect(() => decodeMcpRead(wrap({ ...one, failed: { said: "x", tip: "y" } }))).toThrow();
   });
   it("问的是那一台、不带项目目录", async () => {
     invokeMock.mockResolvedValueOnce(chanReply(MCP.marked));

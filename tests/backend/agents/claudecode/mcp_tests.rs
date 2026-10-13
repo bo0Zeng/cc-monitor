@@ -22,10 +22,11 @@ fn the_mcp_product_matches_the_cross_language_golden() {
     let d = dir.display().to_string();
     std::fs::write(&cj, g["claudeJson"].as_str().unwrap().replace("<DIR>", &d)).unwrap();
     std::fs::write(dir.join(".mcp.json"), g["mcpJson"].as_str().unwrap()).unwrap();
-    let got = crate::faces::feature_face::mcp_reply(
+    let got = serde_json::to_value(crate::faces::feature_face::mcp_reply(
         &read_at(Some(&cj), Some(&dir), &crate::agents::McpLook::default()),
         &Default::default(),
-    );
+    ))
+    .unwrap();
     let want: serde_json::Value = serde_json::from_str(
         &g["reply"]
             .to_string()

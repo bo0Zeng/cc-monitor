@@ -143,6 +143,16 @@ pub(crate) trait AsyncOwning: Command {
     ) -> impl std::future::Future<Output = Result<Self::Reply, Self::Err>> + Send + 'static;
 }
 
+/// 同 [`Async`]，只多递一份**写自家状态的句柄**（按值：交出去的 future 要 `'static`），不带枢纽那一跳。
+/// 分派那一层手里没有写句柄的入口交不出来（同 [`Owning`]）。
+pub(crate) trait AsyncOwn: Command {
+    fn run(
+        req: Self::Req,
+        cx: Cx,
+        own: crate::platform::Own,
+    ) -> impl std::future::Future<Output = Result<Self::Reply, Self::Err>> + Send + 'static;
+}
+
 /// 信封里除了 `args` 那几样：看的那一台的时区 · 分派那一层换算好的截止时刻。
 pub(crate) struct Cx {
     pub(crate) tz: crate::common::time::Tz,
@@ -243,6 +253,8 @@ pub(super) enum TypedRun {
     AsyncFiles(fn(Request, Files) -> DataFut, Files),
     /// 异步、要写句柄 ＋ 枢纽那一跳（[`AsyncOwning`]）：写句柄由分派那一层递，枢纽那一跳是命令表那一行递的。
     AsyncOwning(fn(Request, crate::platform::Own, Hub) -> DataFut, Hub),
+    /// 异步、只要写句柄（[`AsyncOwn`]）：写句柄由分派那一层递。
+    AsyncOwn(fn(Request, crate::platform::Own) -> DataFut),
 }
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`（解码器那一句进原话）。
@@ -343,6 +355,17 @@ fn run_async_owning<C: AsyncOwning>(r: Request, own: crate::platform::Own, hub: 
     })
 }
 
+fn run_async_own<C: AsyncOwn>(r: Request, own: crate::platform::Own) -> DataFut {
+    Box::pin(async move {
+        let req = take::<C::Req>(&r.args)?;
+        let cx = Cx {
+            tz: r.tz,
+            until: r.until,
+        };
+        settle::<C>(C::run(req, cx, own).await)
+    })
+}
+
 /// 阻塞档的一行登记。`summary` ＝ 一句话：这条命令做什么（住命令表，同别的命令）。
 pub(crate) const fn blocking<C: Blocking>(summary: &'static str) -> CommandSpec {
     spec::<C>(summary, TypedRun::Blocking(run_blocking::<C>))
@@ -379,6 +402,11 @@ pub(crate) const fn async_with_files<C: AsyncFiles>(
 /// 异步、要写句柄 ＋ 枢纽那一跳的一行登记（`hub` ＝ 命令表递的那一份）。
 pub(crate) const fn async_owning<C: AsyncOwning>(summary: &'static str, hub: Hub) -> CommandSpec {
     spec::<C>(summary, TypedRun::AsyncOwning(run_async_owning::<C>, hub))
+}
+
+/// 异步、只要写句柄的一行登记。
+pub(crate) const fn async_own<C: AsyncOwn>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, TypedRun::AsyncOwn(run_async_own::<C>))
 }
 
 /// 异步档的一行登记。

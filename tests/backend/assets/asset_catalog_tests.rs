@@ -19,6 +19,15 @@
 
 use super::*;
 
+/// 线上 `catalog`（JSON）→ 各台快照：同 `assets-catalog-merge` 那一跳（解码器管形状，`machines_of` 判 id 与种类）。
+fn machines_from_wire(
+    v: &serde_json::Value,
+) -> Result<std::collections::BTreeMap<String, crate::assets::asset_catalog::Snapshot>, String> {
+    let cat: crate::assets::asset_catalog::CatalogIn =
+        serde_json::from_value(v.clone()).map_err(|e| e.to_string())?;
+    crate::assets::asset_catalog::machines_of(cat.machines)
+}
+
 /// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_at(
@@ -197,13 +206,7 @@ fn rows_judge_missing_differs_same_per_kind_and_name() {
     let c = cat_with("me", &[("me", me), ("r", there)]);
     let got: Vec<(String, String, String)> = rows(&c)
         .iter()
-        .map(|r| {
-            (
-                r["kind"].as_str().unwrap().to_string(),
-                r["name"].as_str().unwrap().to_string(),
-                r["state"].as_str().unwrap().to_string(),
-            )
-        })
+        .map(|r| (r.kind.clone(), r.name.clone(), r.state.to_string()))
         .collect();
     let want: Vec<(String, String, String)> = [
         (KIND_MCP, "fs", HERE_SAME),
@@ -336,7 +339,9 @@ fn scan_of(names: &[&str]) -> Scanned {
 fn update_writes_only_when_changed_and_keeps_its_id() {
     let d = temp_dir("update");
     let f = d.join(".cc-monitor").join(FILE_NAME);
-    let first = update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).expect("第一次");
+    let first =
+        serde_json::to_value(update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).expect("第一次"))
+            .unwrap();
     assert_eq!(first["changed"], json!(true));
     let id = first["self"].as_str().unwrap().to_string();
     assert_eq!(id.len(), 16);
@@ -346,7 +351,8 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
         use std::os::unix::fs::MetadataExt as _;
         std::fs::metadata(&f).unwrap().ino()
     };
-    let again = update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).unwrap();
+    let again = serde_json::to_value(update_at(&own_at(&f), scan_of(&["a"]), "u@h", None).unwrap())
+        .unwrap();
     assert_eq!(again["changed"], json!(false));
     assert_eq!(again["self"], json!(id), "id 生一次就不变");
     assert_eq!(std::fs::read(&f).unwrap(), bytes1, "没变不许写");
@@ -361,7 +367,9 @@ fn update_writes_only_when_changed_and_keeps_its_id() {
         );
     }
     let inc: BTreeMap<String, Snapshot> = [("r".to_string(), snap(1, &["z"]))].into();
-    let merged = update_at(&own_at(&f), scan_of(&["a"]), "u@h", Some(inc)).unwrap();
+    let merged =
+        serde_json::to_value(update_at(&own_at(&f), scan_of(&["a"]), "u@h", Some(inc)).unwrap())
+            .unwrap();
     assert_eq!(merged["changed"], json!(true));
     assert_eq!(merged["rows"][0]["name"], json!("z"));
     assert_eq!(merged["rows"][0]["state"], json!(HERE_MISSING));
@@ -401,13 +409,19 @@ fn the_wire_shape_feeds_straight_back_into_merge() {
         "me",
         &[("me", snap(2, &["a"])), ("r", snap(5, &["b", "c"]))],
     );
-    let w = wire(&c, &[], false, None);
+    let w = serde_json::to_value(wire(&c, &[], false, None)).unwrap();
     assert_eq!(machines_from_wire(&w).expect("线上形状读回"), c.machines);
 }
 
 #[test]
 fn a_malformed_incoming_catalog_is_refused_not_guessed() {
-    let good = wire(&cat_with("me", &[("r", snap(1, &["a"]))]), &[], false, None);
+    let good = serde_json::to_value(wire(
+        &cat_with("me", &[("r", snap(1, &["a"]))]),
+        &[],
+        false,
+        None,
+    ))
+    .unwrap();
     assert!(machines_from_wire(&good).is_ok());
     for (path, bad) in [
         ("machines", json!("nope")),
@@ -499,7 +513,7 @@ fn hx2_the_first_catalog_is_born_once_even_when_two_writers_race() {
         .expect("放了锁，另一个写者还是没做完");
     racer.join().unwrap();
     assert_eq!(
-        v["self"], "first",
+        v.self_id, "first",
         "第二个写者生了自己的 id —— 幽灵机器那一形"
     );
     let _ = std::fs::remove_dir_all(&dir);

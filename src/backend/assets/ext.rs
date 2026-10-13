@@ -26,9 +26,7 @@ use std::path::{Path, PathBuf};
 
 use super::asset_catalog::{self, Asset, Catalog, KIND_MCP, KIND_SKILL};
 use super::door::{self, Door, Refused};
-use super::skill_flow::Record;
-
-type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
+use super::skill_ledger::{Record, RecordReq};
 
 // ───────────────────────── 线上形状（界面那一份由这里生成） ─────────────────────────
 
@@ -268,14 +266,6 @@ pub struct ExtDone {
 }
 
 impl ExtLoc {
-    /// 线上 `{level, dir?}` → 位置；项目目录须是**这台**上的绝对路径（路径所属的那台自己的内层命令用）。
-    pub(crate) fn from_arg(
-        v: Option<&Value>,
-        key: &str,
-    ) -> Result<ExtLoc, crate::stream::inbound::spec::Fail> {
-        Self::judged(v, key, Some(super::mcp_edit::PathForm::HERE))
-    }
-
     /// 已解出来的位置按**这台**的路径写法再判一次（项目目录须是这台上的绝对路径）：内层命令收到 typed 入参之后用。
     pub(crate) fn here(&self) -> Result<ExtLoc, crate::stream::inbound::spec::Fail> {
         match self {
@@ -867,27 +857,28 @@ fn pick_source<'c, 'a>(
 pub(crate) type Current<'a> =
     &'a dyn Fn(bool) -> Result<(Catalog, Vec<String>), crate::stream::inbound::spec::Fail>;
 
-/// `ext-list {visit}`：这台现扫一次、记下（`current` = 目录的写口，由 `stream/inbound/` 递进来），出表。
+/// `ext-list` / `ext-list-here` 的入参。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExtListReq {
+    /// `true` = 这一问算「来看了一次」（扩展页每次变可见时的第一问）—— 「新见到」按上一次来看算。缺 · `null` ⇒ 不算。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional))]
+    pub visit: Option<bool>,
+}
+
+/// `ext-list`：这台现扫一次、记下（`current` = 目录的写口，由 `stream/inbound/` 递进来），出表。
 pub(crate) fn answer_list(
-    args: &Value,
+    req: &ExtListReq,
     current: Current,
     reach: &[(String, Option<String>)],
-) -> Answer {
-    let visit = match args.get("visit") {
-        None | Some(Value::Null) => false,
-        Some(Value::Bool(b)) => *b,
-        Some(_) => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "bad_args",
-                crate::common::contract::malformed("`visit` must be a boolean"),
-            )))
-        }
-    };
-    let (cat, problems) = current(visit)?;
+) -> Result<ExtList, crate::stream::inbound::spec::Fail> {
+    let (cat, problems) = current(req.visit.unwrap_or(false))?;
     let mut list = table(&cat, reach);
     list.problems = problems;
-    serde_json::to_value(list)
-        .map_err(|e| crate::stream::inbound::spec::Fail::new("io_failed", e.to_string()))
+    Ok(list)
 }
 
 /// 备注最长多少个字（超了拒，不截断）。
@@ -897,19 +888,38 @@ pub const NOTE_MAX_CHARS: usize = 2000;
 pub(crate) type NoteWrite<'a> =
     &'a dyn Fn(&str, &str) -> Result<Catalog, crate::stream::inbound::spec::Fail>;
 
-/// `ext-note-set {kind, name, text}`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
-/// 回 `{note}`（现在生效的那一份，清掉了 ⇒ `null`）。
-pub(crate) fn answer_note(args: &Value, write: NoteWrite) -> Answer {
-    let kind = ExtKind::from_arg(args)?;
-    let name = str_arg(args, "name")?;
-    if name.trim().is_empty() {
+/// `ext-note-set` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExtNoteReq {
+    pub kind: ExtKind,
+    pub name: String,
+    /// 备注正文（首尾空白去掉；空串 = 清掉；最长 [`NOTE_MAX_CHARS`] 字，超了拒、不截断）。
+    pub text: String,
+}
+
+/// `ext-note-set` 的回包：现在生效的那一份（清掉了 ⇒ `null`）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ExtNote {
+    pub note: Option<String>,
+}
+
+/// `ext-note-set`：用户写 / 改 / 清（空串）一个条目的备注。记在本机目录自己那一格，随目录同步到别的后端。
+pub(crate) fn answer_note(
+    req: &ExtNoteReq,
+    write: NoteWrite,
+) -> Result<ExtNote, crate::stream::inbound::spec::Fail> {
+    if req.name.trim().is_empty() {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`name` is empty"),
         )));
     }
-    let text = str_arg(args, "text")?;
-    if text.chars().count() > NOTE_MAX_CHARS {
+    if req.text.chars().count() > NOTE_MAX_CHARS {
         return Err(crate::stream::inbound::spec::Fail::from((
             "bad_args",
             copy_text(
@@ -918,9 +928,11 @@ pub(crate) fn answer_note(args: &Value, write: NoteWrite) -> Answer {
             ),
         )));
     }
-    let key = asset_catalog::entry_key(kind.wire(), name);
-    let cat = write(&key, text)?;
-    Ok(json!({ "note": asset_catalog::note_of(&cat, &key) }))
+    let key = asset_catalog::entry_key(req.kind.wire(), &req.name);
+    let cat = write(&key, &req.text)?;
+    Ok(ExtNote {
+        note: asset_catalog::note_of(&cat, &key),
+    })
 }
 
 /// 可达表的一份快照：`(origin, 那台目录的 id)`。
@@ -971,15 +983,6 @@ fn need<T>(v: Option<T>) -> Result<T, crate::stream::inbound::spec::Fail> {
         crate::stream::inbound::spec::Fail::from((
             "io_failed",
             copy_text("beExt.uninstall.noHome", &[]),
-        ))
-    })
-}
-
-fn str_arg<'a>(args: &'a Value, k: &str) -> Result<&'a str, crate::stream::inbound::spec::Fail> {
-    args.get(k).and_then(Value::as_str).ok_or_else(|| {
-        crate::stream::inbound::spec::Fail::from((
-            "bad_args",
-            crate::common::contract::malformed(&format!("missing `{k}` (a string)")),
         ))
     })
 }
@@ -1141,10 +1144,37 @@ fn mcp_here(
 }
 
 /// `ext-uninstall-preview {kind, name, at}`：卸之前那张卡（只读）。
-pub(crate) fn answer_uninstall_preview(d: &dyn Door, env: &Env, args: &Value) -> Answer {
-    let kind = ExtKind::from_arg(args)?;
-    let name = str_arg(args, "name")?;
-    let at = ExtLoc::from_arg(args.get("at"), "at")?;
+/// `ext-uninstall-preview` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExtUninstallReq {
+    pub kind: ExtKind,
+    pub name: String,
+    /// 在这台哪一级（项目目录须是这台上的绝对路径）。
+    pub at: ExtLoc,
+}
+
+/// `ext-uninstall-apply` 的入参：卡上那一份记号原样交回（现在对不上 ⇒ `stale`、一个字节不动）。
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ExtUninstallApplyReq {
+    pub kind: ExtKind,
+    pub name: String,
+    pub at: ExtLoc,
+    pub token: String,
+}
+
+pub(crate) fn answer_uninstall_preview(
+    d: &dyn Door,
+    env: &Env,
+    req: &ExtUninstallReq,
+) -> Result<ExtUninstallCard, crate::stream::inbound::spec::Fail> {
+    let (kind, name) = (req.kind, req.name.as_str());
+    let at = req.at.here()?;
     let home = need(env.home.clone())?;
     let card = match kind {
         ExtKind::Skill => {
@@ -1238,8 +1268,7 @@ pub(crate) fn answer_uninstall_preview(d: &dyn Door, env: &Env, args: &Value) ->
             }
         }
     };
-    serde_json::to_value(card)
-        .map_err(|e| crate::stream::inbound::spec::Fail::new("io_failed", e.to_string()))
+    Ok(card)
 }
 
 fn stale() -> crate::stream::inbound::spec::Fail {
@@ -1252,12 +1281,10 @@ pub(crate) fn answer_uninstall_apply(
     d: &dyn Door,
     env: &Env,
     record: Record,
-    args: &Value,
-) -> Answer {
-    let kind = ExtKind::from_arg(args)?;
-    let name = str_arg(args, "name")?;
-    let at = ExtLoc::from_arg(args.get("at"), "at")?;
-    let token = str_arg(args, "token")?;
+    req: &ExtUninstallApplyReq,
+) -> Result<ExtDone, crate::stream::inbound::spec::Fail> {
+    let (kind, name, token) = (req.kind, req.name.as_str(), req.token.as_str());
+    let at = req.at.here()?;
     let home = need(env.home.clone())?;
     let done = match kind {
         ExtKind::Skill => {
@@ -1393,7 +1420,10 @@ pub(crate) fn answer_uninstall_apply(
                 }
             }
             if m.recorded.is_some() {
-                if let Err(f) = record(&json!({ "op": "mcp-drop", "file": m.path, "name": name })) {
+                if let Err(f) = record(&RecordReq::McpDrop {
+                    file: m.path.clone(),
+                    name: name.to_string(),
+                }) {
                     note = Some(copy_text(
                         "beExt.uninstall.dropFailed",
                         &[("why", &f.into_note())],
@@ -1407,8 +1437,7 @@ pub(crate) fn answer_uninstall_apply(
             }
         }
     };
-    serde_json::to_value(done)
-        .map_err(|e| crate::stream::inbound::spec::Fail::new("io_failed", e.to_string()))
+    Ok(done)
 }
 
 /// `~/.cc-monitor/backups` 不在就建（它的上一层是后端自己的家，一定在）。

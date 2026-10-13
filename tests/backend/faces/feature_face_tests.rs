@@ -7,14 +7,7 @@
 //! 功能侧帧面宿主的判据。夹具只造结构，不采任何真会话正文。
 
 use super::*;
-
-/// 本族的帧命令 —— **要求点名的**那几样（任务列表 · 插件市场），写成帧面名。
-/// 它是判据的**异源**那一侧：下面那条从 `stream/inbound/` 源码里数「谁把活交给了
-/// `feature_face::answer`」，两边必须相等。
-// ＋ `mcp-read`（MCP 列表成品，读法住适配层）。
-// ＋ `hooks-diag`（cc-bus 钩子诊断成品，本体 `observe/cc_bus_hooks.rs`）。
-const FAMILY: &[&str] = &["hooks-diag", "mcp-read"];
-// `tasks-list` 换成 typed（本文件里的 `TasksListCmd`），同上。
+use serde_json::json;
 
 /// `tasks-list` 照分派那一层解入参（`typed::take`）再交本体；回包投成线上那一份，失败只留码。
 fn tasks(home: &std::path::Path, args: &Value) -> Result<Value, String> {
@@ -23,43 +16,12 @@ fn tasks(home: &std::path::Path, args: &Value) -> Result<Value, String> {
     let got = tasks_at(home, req).map_err(|e| e.into_fail().code)?;
     Ok(serde_json::to_value(got).expect("回包总能序列化"))
 }
-// `session-interrupts` · `session-terminals` 换成 typed（本文件里的 `SessionInterrupts` · `SessionTerminals`，命令表那一行点类型名），
-//   不再经 `answer` 按名分派，不在这张表里。
 
 fn scratch(tag: &str) -> std::path::PathBuf {
     let d = std::env::temp_dir().join(format!("rm1b-face-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
-}
-
-/// ★ 两向相等：命令表各族生产段里把活交给本宿主的帧命令 == [`FAMILY`]。
-#[test]
-fn the_registry_hands_exactly_this_family_to_this_host() {
-    let families = crate::guard_support::registry_sources();
-    let mut got: Vec<String> = families
-        .iter()
-        .flat_map(|(_, prod)| prod.split("CommandSpec {").skip(1))
-        .filter(|blk| blk.contains("feature_face::answer"))
-        .filter_map(|blk| {
-            let at = blk.find("name: \"")? + "name: \"".len();
-            Some(blk[at..].split('"').next()?.to_string())
-        })
-        .collect();
-    got.sort();
-    let mut want: Vec<String> = FAMILY.iter().map(|s| s.to_string()).collect();
-    want.sort();
-    assert_eq!(
-        got, want,
-        "交给 `feature_face::answer` 的帧命令与本族清单不相等"
-    );
-    // 反空真：本族每一条都真在 `hello.commands` 里（`command_names`，不只是在某段注释里出现过）。
-    for c in FAMILY {
-        assert!(
-            crate::stream::inbound::command_names().contains(c),
-            "`{c}` 不在 hello.commands 里"
-        );
-    }
 }
 
 #[test]
@@ -83,12 +45,6 @@ fn tasks_list_answers_the_product_and_refuses_a_missing_sid() {
     // 多一格 ⇒ bad_args（入参是类型：`deny_unknown_fields`）。
     assert_eq!(
         tasks(&h, &json!({"sid": "s", "x": 1})).unwrap_err(),
-        "bad_args"
-    );
-    assert_eq!(
-        answer_at(&h, "no-such", &json!({}), &Default::default())
-            .unwrap_err()
-            .0,
         "bad_args"
     );
 }
@@ -202,5 +158,8 @@ fn the_mcp_marks_are_written_once_on_the_backend() {
         tz: Default::default(),
         login_command: "/mcp",
     };
-    assert_eq!(mcp_reply(&read, &say), g["marked"]);
+    assert_eq!(
+        serde_json::to_value(mcp_reply(&read, &say)).unwrap(),
+        g["marked"]
+    );
 }

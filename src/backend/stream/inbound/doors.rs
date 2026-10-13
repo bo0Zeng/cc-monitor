@@ -54,7 +54,7 @@ impl Door for LocalFiles {
 pub(crate) struct LocalFrames {
     /// 引起这一趟的请求信封里的时区（内层命令照它写「几点」，问别台时转过去）。
     tz: crate::Tz,
-    /// 写自家状态的句柄：内层那几条里写装记录的（`BlockingOwn`）要它。由引起这一趟的那条命令（它自己就是 `AsyncOwn`）递进来。
+    /// 写自家状态的句柄：内层那几条里写装记录的（`BlockingOwn`）要它。由引起这一趟的那条命令（它自己就是 `AsyncOwning`）递进来。
     own: crate::platform::Own,
 }
 

@@ -11,7 +11,7 @@
 use super::door::{self, Door, Refused};
 use super::ext::{ExtLoc, ExtSlot};
 use super::mcp_edit::{mcp_json, plan_project_mcp, upsert_mcp_server_value};
-use super::skill_flow::Record;
+use super::skill_ledger::{Record, RecordReq};
 use crate::assets::asset_catalog::MCP_KEYS_ONLY_FIELDS;
 use crate::assets::hub_wire::{
     McpApplied, McpApplyReq, McpPreview, McpPreviewReq, McpSource, McpSourceReq, McpSourceSlot,
@@ -283,12 +283,11 @@ pub(crate) fn answer_apply(
             )))
         }
     };
-    let record_failed = record(&json!({
-        "op": "mcp-add",
-        "file": landed.path,
-        "name": name,
-        "digest": crate::assets::skill_ledger::mcp_digest(&full),
-    }))
+    let record_failed = record(&RecordReq::McpAdd {
+        file: landed.path.clone(),
+        name: name.to_string(),
+        digest: crate::assets::skill_ledger::mcp_digest(&full),
+    })
     .err()
     .map(|f| copy_text("beExt.apply.recordFailed", &[("why", &f.into_note())]));
     Ok(McpApplied {

@@ -1,6 +1,6 @@
 {
   "说明": [
-    "`assets-sync` 的跨语言金样：后端（替身对面）现算 == reply 的形状；界面 `src/frontend/ui/assets-sync-reads.ts::decodeAssetsSynced` 读同一份。",
+    "`assets-sync` 的跨语言金样：后端（替身对面）现算 == reply 的形状；界面读的生成类型 `AssetsSynced` 与它同形（typed，握手指纹核）。",
     "只采结构（占位 id）。"
   ],
   "reply": {

@@ -24,6 +24,8 @@ const SETTINGS_CAP_BYTES: u64 = 1 << 20;
 
 /// 一个钩子的诊断结论。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(crate) enum HookState {
     /// 没有任何一条 command 调到这个程序。
@@ -50,6 +52,8 @@ impl HookState {
 
 /// 整份诊断。`note` 装「为什么没读到」（文件缺失 / 坏 JSON），不为空即应展示。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct HooksDiagnosis {
     pub(crate) session_start: HookState,
     pub(crate) stop: HookState,
@@ -58,6 +62,8 @@ pub(crate) struct HooksDiagnosis {
 
 /// 成品（形状与界面 `HooksReport` 逐字同；跨语言金样 `tests/__fixtures__/hooks-diag.golden.json`）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct HooksReport {
     /// 这台跑得了 cc-bus（它要 tmux）；跑不了 ⇒ 不给要加的内容，界面只说这台不支持自动收信。
     pub(crate) supported: bool,

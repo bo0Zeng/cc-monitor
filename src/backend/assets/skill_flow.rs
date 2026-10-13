@@ -11,8 +11,8 @@ use serde_json::{json, Map, Value};
 
 type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
 
-/// 装记录的写口（生产 = `skill_ledger::answer_record`，由 `stream/inbound/` 递进来）。
-pub(crate) type Record<'a> = &'a dyn Fn(&Value) -> Answer;
+pub(crate) use super::skill_ledger::Record;
+use super::skill_ledger::{RecordReq, Recorded};
 
 fn texts_by_path(
     v: Option<&Value>,
@@ -139,20 +139,25 @@ pub(crate) fn answer_install(
     let record_failed = if written.is_empty() {
         None
     } else {
-        let files: Map<String, Value> = written
+        let files = written
             .iter()
             .filter_map(|p| {
                 let f = ledger.get(p)?;
                 Some((
                     p.clone(),
-                    json!({ "digest": f.digest, "created": f.created }),
+                    Recorded {
+                        digest: f.digest.clone(),
+                        created: f.created,
+                    },
                 ))
             })
             .collect();
-        let mut rec = json!({ "op": "add", "name": req.name, "files": files });
-        if let Some(p) = &req.project {
-            rec["project"] = json!(p);
-        }
+        let rec = RecordReq::Add {
+            name: req.name.clone(),
+            files,
+            project: req.project.clone(),
+            at: None,
+        };
         record(&rec).err().map(|f| {
             copy_text(
                 "beSkillFlow.install.recordFailed",
@@ -222,14 +227,17 @@ pub(crate) fn answer_uninstall(
     let record_failed = if drop.is_empty() {
         None
     } else {
-        record(&json!({ "op": "drop", "dir": dir, "paths": drop }))
-            .err()
-            .map(|f| {
-                copy_text(
-                    "beSkillFlow.uninstall.dropFailed",
-                    &[("why", &f.into_note())],
-                )
-            })
+        record(&RecordReq::Drop {
+            dir: dir.to_string(),
+            paths: drop,
+        })
+        .err()
+        .map(|f| {
+            copy_text(
+                "beSkillFlow.uninstall.dropFailed",
+                &[("why", &f.into_note())],
+            )
+        })
     };
     if let Some(why) = stopped {
         let why = match record_failed {

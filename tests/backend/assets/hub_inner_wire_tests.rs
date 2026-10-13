@@ -52,8 +52,14 @@ fn put(root: &Path, rel: &str, body: &str) {
     std::fs::write(p, body).unwrap();
 }
 
-fn ok_record(_: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    Ok(json!({ "changed": true, "remaining": 1 }))
+fn ok_record(
+    _: &crate::assets::skill_ledger::RecordReq,
+) -> Result<crate::assets::skill_ledger::RecordReply, crate::stream::inbound::spec::Fail> {
+    Ok(crate::assets::skill_ledger::RecordReply {
+        changed: true,
+        remaining: 1,
+        ..Default::default()
+    })
 }
 
 /// skill 三条：来源读 · 被写那台判 · 写。

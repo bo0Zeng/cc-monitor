@@ -1,7 +1,20 @@
 //! 「待办」那几件：按事实判类 · 态 · 要贴什么；进角标的只数 要做 ＋ 要装 ＋ 待定。
 
 use super::*;
-use serde_json::json;
+use serde_json::{json, Value};
+
+/// 各件写成线上那一份（下面几条按格读）。
+fn chores(f: &Facts) -> Vec<Value> {
+    super::chores(f)
+        .iter()
+        .map(|c| serde_json::to_value(c).unwrap())
+        .collect()
+}
+
+/// 角标数（按那几件本身数，同成品那一格）。
+fn badge_of(f: &Facts) -> usize {
+    super::badge(&super::chores(f))
+}
 
 fn base() -> Facts {
     Facts {
@@ -70,7 +83,7 @@ fn ids(v: &[Value]) -> Vec<String> {
 #[test]
 fn 什么事都没有_零件() {
     assert!(chores(&base()).is_empty());
-    assert_eq!(badge(&chores(&base())), 0);
+    assert_eq!(badge_of(&base()), 0);
 }
 
 #[test]
@@ -86,7 +99,7 @@ fn 旧_ccm_要做_复制一行命令() {
     assert_eq!(c[0]["state"], json!("todo"));
     assert_eq!(c[0]["action"], json!("copyCommand"));
     assert_eq!(c[0]["copy"], json!("sudo rm '/usr/local/bin/ccm'"));
-    assert_eq!(badge(&c), 1);
+    assert_eq!(badge_of(&f), 1);
 }
 
 #[test]
@@ -106,7 +119,7 @@ fn 我自己贴_没贴好前要做_贴好了已做() {
     f.self_paste.as_mut().unwrap().present = true;
     let c = chores(&f);
     assert_eq!(c[0]["state"], json!("done"));
-    assert_eq!(badge(&c), 0);
+    assert_eq!(badge_of(&f), 0);
 }
 
 #[test]
@@ -126,7 +139,7 @@ fn 同名_待定_去定跳到别名页那一项() {
         c[0]["go"],
         json!({"page": "machine", "tab": "config", "anchor": "clash"})
     );
-    assert_eq!(badge(&c), 1);
+    assert_eq!(badge_of(&f), 1);
 }
 
 #[test]
@@ -140,7 +153,7 @@ fn 失效行_可选_不进角标_看在哪给位置() {
     assert_eq!(c[0]["kind"], json!("optional"));
     assert_eq!(c[0]["action"], json!("locate"));
     assert_eq!(c[0]["copy"], json!("/h/.bashrc:118"));
-    assert_eq!(badge(&c), 0);
+    assert_eq!(badge_of(&f), 0);
 }
 
 #[test]
@@ -173,7 +186,7 @@ fn 实时显示_没贴可选_贴过过期升成要做_贴好已做_钥匙遮住(
         (c[0]["kind"].clone(), c[0]["state"].clone()),
         (json!("must"), json!("expired"))
     );
-    assert_eq!(badge(&c), 1);
+    assert_eq!(badge_of(&f), 1);
     f.relay[0].state = "installed".into();
     assert_eq!(chores(&f)[0]["state"], json!("done"));
 }
@@ -252,15 +265,27 @@ fn 不做_记过的可选收进不做_要做的不许不做() {
 fn 要装并进来_缺了起不了会话的进角标() {
     let mut f = base();
     f.needs_install = vec![
-        json!({"id": "claude-cli", "name": "Claude Code", "what": "claude", "required": true, "howUrl": "https://x"}),
-        json!({"id": "git", "name": "git", "what": "git", "required": false, "howUrl": null}),
+        Missing {
+            id: "claude-cli",
+            name: "Claude Code".into(),
+            what: "claude",
+            required: true,
+            how_url: Some("https://x"),
+        },
+        Missing {
+            id: "git",
+            name: "git".into(),
+            what: "git",
+            required: false,
+            how_url: None,
+        },
     ];
     let c = chores(&f);
     assert_eq!(ids(&c), vec!["install:claude-cli", "install:git"]);
     assert_eq!(c[0]["kind"], json!("install"));
     assert_eq!(c[1]["kind"], json!("installOptional"));
     assert_eq!(c[0]["action"], json!("how"));
-    assert_eq!(badge(&c), 1);
+    assert_eq!(badge_of(&f), 1);
 }
 
 #[test]
@@ -388,7 +413,7 @@ fn 自己配的_mcp_要登录_可选一件_不进角标() {
         json!(copy_text("beChore.mcpLogin.name", &[("name", "m-a")]))
     );
     assert_eq!(c[0]["loc"], json!("p、w"));
-    assert_eq!(badge(&c), 0);
+    assert_eq!(badge_of(&f), 0);
     f.declined = vec!["mcp-login:m-b".into()];
     assert_eq!(chores(&f)[1]["state"], json!("declined"));
 }

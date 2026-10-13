@@ -64,17 +64,29 @@ pub const MCP_KEYS_ONLY_FIELDS: &[&str] = &["env", "headers"];
 
 /// 目录里的一条。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "CatalogAsset"
+    )
+)]
 pub struct Asset {
     pub kind: String,
     pub name: String,
     /// 那台上的项目目录（项目级）；`None` = 用户级。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub project: Option<String>,
     /// 它在那台上住哪（skill：那个目录；MCP：那份配置文件）。只给人看、给「在文件窗口里打开」用，不参与判定。
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
     pub dir: Option<String>,
     pub digest: String,
     /// 给人看的摘要（skill：description / 文件数 / 字节数；MCP：去掉密钥值之后的定义）。
+    #[cfg_attr(test, ts(type = "unknown"))]
     pub summary: Value,
 }
 
@@ -106,8 +118,18 @@ fn is_false(b: &bool) -> bool {
 
 /// 一条备注。`rev` 是写它那一刻这台目录里同一条目各台备注的最大 `rev` ＋ 1（不比墙钟）；`text` 空 = 清掉了。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "CatalogNote"
+    )
+)]
 pub struct Note {
     pub text: String,
+    #[cfg_attr(test, ts(type = "number"))]
     pub rev: u64,
 }
 
@@ -563,14 +585,39 @@ pub fn merge(cat: &mut Catalog, incoming: BTreeMap<String, Snapshot>) -> bool {
     changed
 }
 
+/// 别处那一条（[`CatalogRow::from`]）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct CatalogFrom {
+    /// 那台目录的 id。
+    pub machine: String,
+    /// 那台上的项目目录；用户级 ⇒ `null`。
+    pub project: Option<String>,
+    pub digest: String,
+    #[cfg_attr(test, ts(type = "unknown"))]
+    pub summary: Value,
+}
+
+/// 「别的机器有的，这台怎样」那一行：`state` 闭集 `missing` · `differs` · `same`（[`HERE_STATES`]）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct CatalogRow {
+    pub kind: String,
+    pub name: String,
+    pub state: &'static str,
+    pub from: Vec<CatalogFrom>,
+}
+
 /// 「别的机器有的，这台怎样」—— 每个（种类, 名字）一行，只列别处有的。判定只在这里。
-pub fn rows(cat: &Catalog) -> Vec<Value> {
+pub fn rows(cat: &Catalog) -> Vec<CatalogRow> {
     let mine: Vec<&Asset> = cat
         .machines
         .get(&cat.self_id)
         .map(|s| s.assets.iter().collect())
         .unwrap_or_default();
-    let mut by_key: BTreeMap<(String, String), Vec<Value>> = BTreeMap::new();
+    let mut by_key: BTreeMap<(String, String), Vec<CatalogFrom>> = BTreeMap::new();
     for (id, snap) in &cat.machines {
         if *id == cat.self_id {
             continue;
@@ -579,12 +626,12 @@ pub fn rows(cat: &Catalog) -> Vec<Value> {
             by_key
                 .entry((a.kind.clone(), a.name.clone()))
                 .or_default()
-                .push(json!({
-                    "machine": id,
-                    "project": a.project,
-                    "digest": a.digest,
-                    "summary": a.summary,
-                }));
+                .push(CatalogFrom {
+                    machine: id.clone(),
+                    project: a.project.clone(),
+                    digest: a.digest.clone(),
+                    summary: a.summary.clone(),
+                });
         }
     }
     by_key
@@ -596,126 +643,149 @@ pub fn rows(cat: &Catalog) -> Vec<Value> {
                 .collect();
             let state = if here.is_empty() {
                 HERE_MISSING
-            } else if here.iter().any(|a| {
-                from.iter()
-                    .any(|f| f.get("digest").and_then(Value::as_str) == Some(a.digest.as_str()))
-            }) {
+            } else if here
+                .iter()
+                .any(|a| from.iter().any(|f| f.digest == a.digest))
+            {
                 HERE_SAME
             } else {
                 HERE_DIFFERS
             };
-            json!({ "kind": kind, "name": name, "state": state, "from": from })
+            CatalogRow {
+                kind,
+                name,
+                state,
+                from,
+            }
         })
         .collect()
 }
 
 // ───────────────────────── 线上形状 ─────────────────────────
 
-/// 一份目录的线上形状（两条命令共用；`assets-catalog-merge` 收的 `catalog` 也是这个形状）。
-pub fn wire(cat: &Catalog, problems: &[String], changed: bool, path: Option<&Path>) -> Value {
-    let machines: Vec<Value> = cat
-        .machines
-        .iter()
-        .map(|(id, s)| {
-            json!({
-                "id": id,
-                "label": s.label,
-                "gen": s.gen,
-                "seenAt": s.seen_at,
-                "assets": s.assets,
-                "projectDirs": s.project_dirs,
-                "notes": s.notes,
-                "sharedMcp": s.shared_mcp,
-            })
-        })
-        .collect();
-    json!({
-        "self": cat.self_id,
-        "machines": machines,
-        "rows": rows(cat),
-        "problems": problems,
-        "changed": changed,
-        "path": path.map(|p| p.display().to_string()),
-    })
+/// 缺 · `null` ⇒ 空（另一台的整份应答：旧版没有这一格）。
+fn null_is_empty<'de, D, T>(d: D) -> Result<T, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Default + Deserialize<'de>,
+{
+    Ok(Option::<T>::deserialize(d)?.unwrap_or_default())
 }
 
-/// 线上 `catalog` → 各台快照（入参校验：缺格 / 类型不对 / 种类不在闭集 ⇒ `bad_args`，不猜）。
-pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, String> {
-    let arr = v.get("machines").and_then(Value::as_array).ok_or_else(|| {
-        crate::common::contract::malformed("`catalog.machines` missing or not an array")
-    })?;
+/// 目录线上形里的一台（两条命令共用；`assets-catalog-merge` 收的 `catalog.machines` 也是这个形状）。
+/// 收的那一份是另一台后端的应答：多出来的键照收（对面可能更新）；`projectDirs` · `notes` · `sharedMcp` 缺或 `null` ⇒ 空。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogMachine {
+    pub id: String,
+    pub label: String,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub gen: u64,
+    #[cfg_attr(test, ts(type = "number"))]
+    pub seen_at: u64,
+    pub assets: Vec<Asset>,
+    #[serde(default, deserialize_with = "null_is_empty")]
+    pub project_dirs: Vec<String>,
+    #[serde(default, deserialize_with = "null_is_empty")]
+    pub notes: BTreeMap<String, Note>,
+    #[serde(default, deserialize_with = "null_is_empty")]
+    pub shared_mcp: bool,
+}
+
+/// `assets-catalog` / `assets-catalog-merge` 的回包：整份目录 ＋「这台缺什么」。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct CatalogReply {
+    /// 这台机器的 id。
+    #[serde(rename = "self")]
+    #[cfg_attr(test, ts(rename = "self"))]
+    pub self_id: String,
+    pub machines: Vec<CatalogMachine>,
+    pub rows: Vec<CatalogRow>,
+    /// 这一趟扫描读不出来的那几份（一句话一份）。
+    pub problems: Vec<String>,
+    /// 这一趟目录有没有变（变了才写盘）。
+    pub changed: bool,
+    /// 目录文件在这台上的路径。
+    pub path: Option<String>,
+}
+
+/// 另一台的整份目录（`assets-catalog-merge` 的 `catalog`）：只读 `machines`，别的键照收。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub struct CatalogIn {
+    pub machines: Vec<CatalogMachine>,
+}
+
+/// `assets-catalog-merge` 的入参。
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub struct CatalogMergeReq {
+    pub catalog: CatalogIn,
+}
+
+/// 一份目录的线上形状（两条命令共用）。
+pub fn wire(
+    cat: &Catalog,
+    problems: &[String],
+    changed: bool,
+    path: Option<&Path>,
+) -> CatalogReply {
+    let machines = cat
+        .machines
+        .iter()
+        .map(|(id, s)| CatalogMachine {
+            id: id.clone(),
+            label: s.label.clone(),
+            gen: s.gen,
+            seen_at: s.seen_at,
+            assets: s.assets.clone(),
+            project_dirs: s.project_dirs.clone(),
+            notes: s.notes.clone(),
+            shared_mcp: s.shared_mcp,
+        })
+        .collect();
+    CatalogReply {
+        self_id: cat.self_id.clone(),
+        machines,
+        rows: rows(cat),
+        problems: problems.to_vec(),
+        changed,
+        path: path.map(|p| p.display().to_string()),
+    }
+}
+
+/// 收进来的各台 ⇒ 快照（解码器管形状；这里只判解码器判不了的两样：id 空 / 太长 · 种类不在闭集 ⇒ `bad_args`，不猜）。
+pub fn machines_of(incoming: Vec<CatalogMachine>) -> Result<BTreeMap<String, Snapshot>, String> {
     let mut out = BTreeMap::new();
-    for m in arr {
-        let id = m
-            .get("id")
-            .and_then(Value::as_str)
-            .filter(|s| !s.is_empty() && s.len() <= MAX_ID_BYTES)
-            .ok_or_else(|| {
-                crate::common::contract::malformed("a machine `id` is missing, empty or too long")
-            })?;
-        let label = m.get("label").and_then(Value::as_str).ok_or_else(|| {
-            crate::common::contract::malformed("a machine `label` is missing or not a string")
-        })?;
-        let gen = m.get("gen").and_then(Value::as_u64).ok_or_else(|| {
-            crate::common::contract::malformed(
-                "a machine `gen` is missing or not a non-negative integer",
-            )
-        })?;
-        let seen_at = m.get("seenAt").and_then(Value::as_u64).ok_or_else(|| {
-            crate::common::contract::malformed(
-                "a machine `seenAt` is missing or not a non-negative integer",
-            )
-        })?;
-        let assets: Vec<Asset> =
-            serde_json::from_value(m.get("assets").cloned().ok_or_else(|| {
-                crate::common::contract::malformed("a machine `assets` is missing")
-            })?)
-            .map_err(|e| {
-                crate::common::contract::malformed(&format!(
-                    "a machine `assets` has the wrong shape: {e}"
-                ))
-            })?;
-        let project_dirs: Vec<String> = match m.get("projectDirs") {
-            None | Some(Value::Null) => Vec::new(),
-            Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
-                crate::common::contract::malformed(&format!(
-                    "a machine `projectDirs` must be an array of strings: {e}"
-                ))
-            })?,
-        };
-        let notes: BTreeMap<String, Note> = match m.get("notes") {
-            None | Some(Value::Null) => BTreeMap::new(),
-            Some(v) => serde_json::from_value(v.clone()).map_err(|e| {
-                crate::common::contract::malformed(&format!(
-                    "a machine `notes` must map entries to {{text, rev}}: {e}"
-                ))
-            })?,
-        };
-        let shared_mcp = match m.get("sharedMcp") {
-            None | Some(Value::Null) => false,
-            Some(Value::Bool(b)) => *b,
-            Some(_) => {
-                return Err(crate::common::contract::malformed(
-                    "a machine `sharedMcp` must be a boolean",
-                ))
-            }
-        };
-        if let Some(a) = assets.iter().find(|a| !KINDS.contains(&a.kind.as_str())) {
+    for m in incoming {
+        if m.id.is_empty() || m.id.len() > MAX_ID_BYTES {
+            return Err(crate::common::contract::malformed(
+                "a machine `id` is missing, empty or too long",
+            ));
+        }
+        if let Some(a) = m.assets.iter().find(|a| !KINDS.contains(&a.kind.as_str())) {
             return Err(crate::common::contract::malformed(&format!(
                 "asset kind `{}` is not one of {KINDS:?}",
                 a.kind
             )));
         }
         out.insert(
-            id.to_string(),
+            m.id,
             Snapshot {
-                label: label.to_string(),
-                gen,
-                seen_at,
-                assets,
-                project_dirs,
-                notes,
-                shared_mcp,
+                label: m.label,
+                gen: m.gen,
+                seen_at: m.seen_at,
+                assets: m.assets,
+                project_dirs: m.project_dirs,
+                notes: m.notes,
+                shared_mcp: m.shared_mcp,
             },
         );
     }
@@ -813,7 +883,7 @@ pub fn update_at(
     scanned: Scanned,
     label: &str,
     incoming: Option<BTreeMap<String, Snapshot>>,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
     let (cat, problems, changed) = update_with(own, scanned, label, incoming, false, now_secs())?;
     let path = own.at_home(relay_route_core::ASSET_CATALOG_REL).ok();
     Ok(wire(
@@ -928,7 +998,7 @@ fn update_core(
 fn update_now(
     own: &Own,
     incoming: Option<BTreeMap<String, Snapshot>>,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
     update_at(own, scan_here(), &machine_label(), incoming)
 }
 
@@ -952,22 +1022,16 @@ pub(crate) fn answer_note(
 }
 
 /// `assets-catalog`：这台现扫一次、记下（变了才写），回整份目录 ＋「这台缺什么」。
-pub fn answer_catalog(
-    _args: &Value,
-    own: &Own,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+pub fn answer_catalog(own: &Own) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
     update_now(own, None)
 }
 
-/// `assets-catalog-merge`：同上，再把 `args.catalog`（别的后端的整份）并进来。
-pub fn answer_merge(args: &Value, own: &Own) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let cat = args.get("catalog").ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `catalog`"),
-        )
-    })?;
-    let incoming = machines_from_wire(cat).map_err(|e| ("bad_args", e))?;
+/// `assets-catalog-merge`：同上，再把 `catalog`（别的后端的整份）并进来。
+pub fn answer_merge(
+    req: CatalogMergeReq,
+    own: &Own,
+) -> Result<CatalogReply, crate::stream::inbound::spec::Fail> {
+    let incoming = machines_of(req.catalog.machines).map_err(|e| ("bad_args", e))?;
     update_now(own, Some(incoming))
 }
 

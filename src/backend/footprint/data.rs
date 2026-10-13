@@ -16,20 +16,121 @@
 use super::registry::EnvTier;
 use super::rows::{ConfigSurfaceReport, SurfaceRow, SurfaceState};
 use crate::platform::fs::Ro;
-use serde_json::{json, Value};
 
 /// cc-monitor 自己的家（相对家目录）：这下面的不是「你的文件」。
 const OWN_HOME: &str = "~/.cc-monitor";
 
-/// 撤回在哪：设置窗的页 · 栏 · 锚点（与设置窗「带目的地打开」同一种形状）。
-fn undo_of(tool_id: &str) -> Option<Value> {
+/// 设置窗的一处：页 · 栏 · 锚点（与设置窗「带目的地打开」同一种形状；没有的那一格不出）。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct UndoAt {
+    pub(crate) page: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) tab: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, ts(optional))]
+    pub(crate) anchor: Option<&'static str>,
+}
+
+impl UndoAt {
+    /// 只到页。
+    pub(crate) const fn page(page: &'static str) -> UndoAt {
+        UndoAt {
+            page,
+            tab: None,
+            anchor: None,
+        }
+    }
+
+    /// 页 · 栏 · 锚点。
+    pub(crate) const fn at(page: &'static str, tab: &'static str, anchor: &'static str) -> UndoAt {
+        UndoAt {
+            page,
+            tab: Some(tab),
+            anchor: Some(anchor),
+        }
+    }
+}
+
+/// 撤回在哪：设置窗的页 · 栏 · 锚点。
+fn undo_of(tool_id: &str) -> Option<UndoAt> {
     match tool_id {
         // 接上终端那几行：别名与配置文件那一栏里「接上终端」那一行（卸载在那里）。
-        "ccm" => Some(json!({"page": "machine", "tab": "config", "anchor": "connect-terminal"})),
+        "ccm" => Some(UndoAt::at("machine", "config", "connect-terminal")),
         // 扩展装进 `~/.claude/skills/` 的：扩展页卸载。
-        "cc-bus" | "skill-install" => Some(json!({"page": "ext"})),
+        "cc-bus" | "skill-install" => Some(UndoAt::page("ext")),
         _ => None,
     }
+}
+
+/// cc-monitor 写进用户文件的一处。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct ChangedFile {
+    pub(crate) path: &'static str,
+    pub(crate) what: String,
+    /// 撤回在哪（设置窗的页 · 栏 · 锚点）；没有 ⇒ `null`。
+    pub(crate) undo: Option<UndoAt>,
+}
+
+/// 足迹里这台确实缺的一样（「待办」里「要装」那一类的事实；不上线）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Missing {
+    pub(crate) id: &'static str,
+    pub(crate) name: String,
+    pub(crate) what: &'static str,
+    /// 缺了起不了会话。
+    pub(crate) required: bool,
+    pub(crate) how_url: Option<&'static str>,
+}
+
+/// 删了会丢（`truth`）还是能重建（`cache`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum OwnClass {
+    Truth,
+    Cache,
+}
+
+/// cc-monitor 在这台自己家里放的一样。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct OwnItem {
+    /// 闭集同 `relay_route_core::OWN_HOME_ENTRIES`。
+    pub(crate) id: &'static str,
+    /// 是什么（写好的那一句，界面照抄）。
+    pub(crate) what: String,
+    /// `~/.cc-monitor/…` 写法。
+    pub(crate) path: String,
+    pub(crate) dir: bool,
+    pub(crate) class: OwnClass,
+    pub(crate) exists: bool,
+    /// 文件的字节数；目录 / 不在 ⇒ `null`。
+    #[cfg_attr(test, ts(type = "number | null"))]
+    pub(crate) size: Option<u64>,
+}
+
+/// `data-report` 的回包。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DataReport {
+    /// 这台家目录（显示时 `~` 缩写按它）。
+    pub(crate) home: String,
+    pub(crate) changed_files: Vec<ChangedFile>,
+    pub(crate) todo: Vec<super::chores::Chore>,
+    /// 这台有没有 tmux（查不动 ⇒ `null`）。
+    pub(crate) tmux: Option<bool>,
+    /// 「待办」里进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的。
+    pub(crate) chores: usize,
+    pub(crate) own: Vec<OwnItem>,
 }
 
 /// 缺了起不了会话的那几样（其余缺了只少一个功能）。
@@ -46,7 +147,7 @@ fn how_url(tool_id: &str) -> Option<&'static str> {
     }
 }
 
-fn changed(r: &SurfaceRow) -> Option<Value> {
+fn changed(r: &SurfaceRow) -> Option<ChangedFile> {
     if r.tier != EnvTier::AppInstalls || !matches!(r.state, SurfaceState::Present { .. }) {
         return None;
     }
@@ -54,14 +155,14 @@ fn changed(r: &SurfaceRow) -> Option<Value> {
     if !p.starts_with("~/") || p == OWN_HOME || p.starts_with(&format!("{OWN_HOME}/")) {
         return None;
     }
-    Some(json!({
-        "path": p,
-        "what": r.tool_name,
-        "undo": undo_of(r.tool_id),
-    }))
+    Some(ChangedFile {
+        path: p,
+        what: r.tool_name.clone(),
+        undo: undo_of(r.tool_id),
+    })
 }
 
-fn missing(r: &SurfaceRow) -> Option<Value> {
+fn missing(r: &SurfaceRow) -> Option<Missing> {
     if r.tier != EnvTier::UserInstallsWePrompt || r.state != SurfaceState::Absent {
         return None;
     }
@@ -69,22 +170,22 @@ fn missing(r: &SurfaceRow) -> Option<Value> {
     if r.tool_id == "tmux" {
         return None;
     }
-    Some(json!({
-        "id": r.tool_id,
-        "name": r.tool_name,
-        "what": r.path_declared,
-        "required": required(r.tool_id),
-        "howUrl": how_url(r.tool_id),
-    }))
+    Some(Missing {
+        id: r.tool_id,
+        name: r.tool_name.clone(),
+        what: r.path_declared,
+        required: required(r.tool_id),
+        how_url: how_url(r.tool_id),
+    })
 }
 
 /// 足迹里这台确实缺的那几样（「待办」里「要装」那一类的事实）。
-pub(crate) fn needs_install(report: &ConfigSurfaceReport) -> Vec<Value> {
+pub(crate) fn needs_install(report: &ConfigSurfaceReport) -> Vec<Missing> {
     report.rows.iter().filter_map(missing).collect()
 }
 
 /// 这台家里那几样（契约里那一份 `relay_route_core::OWN_HOME_ENTRIES`）各一行 `{id, path, dir, class, exists, size}`：`path` 写成 `~/…`；目录不算大小（不递归，免得大目录卡住）。
-pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
+pub(crate) fn own_rows(home: &std::path::Path) -> Vec<OwnItem> {
     relay_route_core::OWN_HOME_ENTRIES
         .iter()
         .map(|&(id, rel, dir, truth)| {
@@ -92,15 +193,19 @@ pub(crate) fn own_rows(home: &std::path::Path) -> Vec<Value> {
             let meta = Ro::metadata(&p).ok();
             let exists = meta.as_ref().is_some_and(|m| m.is_dir() == dir);
             let size = meta.filter(|m| exists && m.is_file()).map(|m| m.len());
-            json!({
-                "id": id,
-                "what": own_what(id),
-                "path": format!("~/{rel}"),
-                "dir": dir,
-                "class": if truth { "truth" } else { "cache" },
-                "exists": exists,
-                "size": size,
-            })
+            OwnItem {
+                id,
+                what: own_what(id),
+                path: format!("~/{rel}"),
+                dir,
+                class: if truth {
+                    OwnClass::Truth
+                } else {
+                    OwnClass::Cache
+                },
+                exists,
+                size,
+            }
         })
         .collect()
 }
@@ -145,20 +250,18 @@ fn own_what(id: &str) -> String {
 /// 整份足迹 ＋「待办」各件 ＋ 有没有 tmux ＋ 自己家里那几样 ⇒ 这一页的成品。
 pub(crate) fn shape(
     report: &ConfigSurfaceReport,
-    todo: Vec<Value>,
+    todo: Vec<super::chores::Chore>,
     tmux: Option<bool>,
-    own: Vec<Value>,
-) -> Value {
-    let changed_files: Vec<Value> = report.rows.iter().filter_map(changed).collect();
-    let chores = super::chores::badge(&todo);
-    json!({
-        "home": report.home,
-        "changedFiles": changed_files,
-        "todo": todo,
-        "tmux": tmux,
-        "chores": chores,
-        "own": own,
-    })
+    own: Vec<OwnItem>,
+) -> DataReport {
+    DataReport {
+        home: report.home.clone(),
+        changed_files: report.rows.iter().filter_map(changed).collect(),
+        chores: super::chores::badge(&todo),
+        todo,
+        tmux,
+        own,
+    }
 }
 
 #[cfg(test)]

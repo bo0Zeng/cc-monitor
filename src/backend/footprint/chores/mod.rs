@@ -10,9 +10,10 @@ pub(crate) mod gather;
 pub(crate) mod marks;
 pub(crate) mod patch;
 
+use crate::footprint::data::{Missing, UndoAt};
 use copy_core::copy_text;
 use patch::{DiffLine, Plan};
-use serde_json::{json, Value};
+use serde_json::Value;
 
 /// PATH 上先找到的那个 `ccm` 不是 cc-monitor 放的。
 pub(crate) struct StaleCcm {
@@ -96,8 +97,8 @@ pub(crate) struct Hooks {
 /// 收齐的事实。
 pub(crate) struct Facts {
     pub windows: bool,
-    /// 足迹里这台确实缺的那几样（`data.rs::missing` 的形状）。
-    pub needs_install: Vec<Value>,
+    /// 足迹里这台确实缺的那几样（`data.rs::missing`）。
+    pub needs_install: Vec<Missing>,
     pub stale_ccm: Option<StaleCcm>,
     pub self_paste: Option<SelfPaste>,
     pub clashes: Vec<Clash>,
@@ -118,33 +119,115 @@ pub(crate) struct McpLogin {
     pub command: &'static str,
 }
 
-/// 一件的成品（线上形状由判据按键集钉住）。
-struct Chore {
-    id: String,
-    kind: &'static str,
-    state: &'static str,
-    name: String,
-    loc: String,
-    said: String,
-    why: String,
-    steps: Vec<String>,
-    diff: Vec<DiffLine>,
-    copy: Option<String>,
-    whole: Option<String>,
-    whole_covers: Vec<String>,
-    file: Option<String>,
-    go: Option<Value>,
-    how_url: Option<String>,
-    mask: Option<String>,
-    action: &'static str,
+/// 一件的类（急的在前：声明次序就是排序次序）。角标只数前三类（要做 · 要装 · 待定）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ChoreKind {
+    Must,
+    Decide,
+    Install,
+    InstallOptional,
+    Optional,
+}
+
+/// 那台判出的态（「已复制」只住界面）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ChoreState {
+    Todo,
+    Done,
+    /// 贴过的失效了，升成要做。
+    Expired,
+    /// 先决没满足。
+    Blocked,
+    /// 可选的点过「不用了」。
+    Declined,
+}
+
+/// 收着时那颗主按钮。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum ChoreAction {
+    CopyCommand,
+    CopySnippet,
+    Decide,
+    Locate,
+    How,
+    InstallFirst,
+}
+
+/// diff 一行的种类。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum DiffOp {
+    Same,
+    Del,
+    Add,
+}
+
+/// diff 的一行（线上形）：加的那几行 `n` 为 `null`。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct DiffRow {
+    pub(crate) n: Option<usize>,
+    pub(crate) op: DiffOp,
+    pub(crate) text: String,
+}
+
+impl From<DiffLine> for DiffRow {
+    fn from(l: DiffLine) -> DiffRow {
+        let (n, op, text) = match l {
+            DiffLine::Same(n, t) => (Some(n), DiffOp::Same, t),
+            DiffLine::Del(n, t) => (Some(n), DiffOp::Del, t),
+            DiffLine::Add(t) => (None, DiffOp::Add, t),
+        };
+        DiffRow { n, op, text }
+    }
+}
+
+/// 「待办」的一件（`data-report` 的 `todo[]`）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Chore {
+    pub(crate) id: String,
+    pub(crate) kind: ChoreKind,
+    pub(crate) state: ChoreState,
+    pub(crate) name: String,
+    pub(crate) loc: String,
+    pub(crate) said: String,
+    pub(crate) why: String,
+    pub(crate) steps: Vec<String>,
+    pub(crate) diff: Vec<DiffRow>,
+    pub(crate) copy: Option<String>,
+    pub(crate) whole: Option<String>,
+    /// 「整份」盖了哪几件（同一份文件里两件都没做 ⇒ 两件的 id）。
+    pub(crate) whole_covers: Vec<String>,
+    pub(crate) file: Option<String>,
+    /// 去哪一处做（设置窗的页 · 栏 · 锚点）。
+    pub(crate) go: Option<UndoAt>,
+    pub(crate) how_url: Option<String>,
+    /// 显示时要遮住的那把钥匙。
+    pub(crate) mask: Option<String>,
+    pub(crate) action: ChoreAction,
 }
 
 impl Chore {
-    fn new(id: impl Into<String>, kind: &'static str, action: &'static str) -> Chore {
+    pub(crate) fn new(id: impl Into<String>, kind: ChoreKind, action: ChoreAction) -> Chore {
         Chore {
             id: id.into(),
             kind,
-            state: "todo",
+            state: ChoreState::Todo,
             name: String::new(),
             loc: String::new(),
             said: String::new(),
@@ -161,40 +244,27 @@ impl Chore {
             action,
         }
     }
-
-    fn wire(self) -> Value {
-        let diff: Vec<Value> = self
-            .diff
-            .into_iter()
-            .map(|l| match l {
-                DiffLine::Same(n, t) => json!({"n": n, "op": "same", "text": t}),
-                DiffLine::Del(n, t) => json!({"n": n, "op": "del", "text": t}),
-                DiffLine::Add(t) => json!({"n": null, "op": "add", "text": t}),
-            })
-            .collect();
-        json!({
-            "id": self.id, "kind": self.kind, "state": self.state, "name": self.name, "loc": self.loc,
-            "said": self.said, "why": self.why, "steps": self.steps, "diff": diff, "copy": self.copy,
-            "whole": self.whole, "wholeCovers": self.whole_covers, "file": self.file, "go": self.go,
-            "howUrl": self.how_url, "mask": self.mask, "action": self.action,
-        })
-    }
 }
 
 /// 进角标的件数：要做 ＋ 要装 ＋ 待定，还没做完的（没做 · 过期）。
-pub(crate) fn badge(chores: &[Value]) -> usize {
+pub(crate) fn badge(chores: &[Chore]) -> usize {
     chores
         .iter()
-        .filter(|c| matches!(c["kind"].as_str(), Some("must" | "install" | "decide")))
-        .filter(|c| matches!(c["state"].as_str(), Some("todo" | "expired")))
+        .filter(|c| {
+            matches!(
+                c.kind,
+                ChoreKind::Must | ChoreKind::Install | ChoreKind::Decide
+            )
+        })
+        .filter(|c| matches!(c.state, ChoreState::Todo | ChoreState::Expired))
         .count()
 }
 
 /// 事实 ⇒ 各件（急的在前：要做 · 待定 · 要装 · 要装 · 可选 · 可选）。
-pub(crate) fn chores(f: &Facts) -> Vec<Value> {
+pub(crate) fn chores(f: &Facts) -> Vec<Chore> {
     let mut out: Vec<Chore> = Vec::new();
     if let Some(s) = &f.stale_ccm {
-        let mut c = Chore::new("stale-ccm", "must", "copyCommand");
+        let mut c = Chore::new("stale-ccm", ChoreKind::Must, ChoreAction::CopyCommand);
         c.name = copy_text("beChore.staleCcm.name", &[]);
         c.loc = s.path.clone();
         c.said = copy_text("beChore.staleCcm.said", &[]);
@@ -209,7 +279,7 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         out.push(c);
     }
     if let Some(p) = &f.self_paste {
-        let mut c = Chore::new("self-paste", "must", "copySnippet");
+        let mut c = Chore::new("self-paste", ChoreKind::Must, ChoreAction::CopySnippet);
         let n = p.lines.len().to_string();
         let line = p.after_line.to_string();
         c.name = copy_text("beChore.selfPaste.name", &[]);
@@ -224,16 +294,24 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
             copy_text("beChore.selfPaste.step", &[("line", &line), ("n", &n)]),
             copy_text("beChore.selfPaste.stepSave", &[]),
         ];
-        c.diff = p.lines.iter().map(|l| DiffLine::Add(l.clone())).collect();
+        c.diff = p
+            .lines
+            .iter()
+            .map(|l| DiffLine::Add(l.clone()).into())
+            .collect();
         c.copy = Some(p.lines.join("\n"));
         c.file = Some(p.rc.clone());
         if p.present {
-            c.state = "done";
+            c.state = ChoreState::Done;
         }
         out.push(c);
     }
     for k in &f.clashes {
-        let mut c = Chore::new(format!("clash:{}", k.name), "decide", "decide");
+        let mut c = Chore::new(
+            format!("clash:{}", k.name),
+            ChoreKind::Decide,
+            ChoreAction::Decide,
+        );
         let line = k.line.to_string();
         c.name = copy_text("beChore.clash.name", &[("name", &k.name)]);
         c.loc = copy_text("beChore.clash.loc", &[("path", &k.path), ("line", &line)]);
@@ -245,34 +323,37 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         c.why = copy_text("beChore.clash.why", &[("name", &k.name)]);
         c.copy = Some(format!("{}:{}", k.path, k.line));
         c.file = Some(k.path.clone());
-        c.go = Some(json!({"page": "machine", "tab": "config", "anchor": "clash"}));
+        c.go = Some(UndoAt::at("machine", "config", "clash"));
         out.push(c);
     }
     for n in &f.needs_install {
-        let required = n["required"] == json!(true);
-        let id = n["id"].as_str().unwrap_or_default();
+        let required = n.required;
         let mut c = Chore::new(
-            format!("install:{id}"),
+            format!("install:{}", n.id),
             if required {
-                "install"
+                ChoreKind::Install
             } else {
-                "installOptional"
+                ChoreKind::InstallOptional
             },
-            "how",
+            ChoreAction::How,
         );
-        c.name = n["name"].as_str().unwrap_or_default().to_string();
-        c.loc = n["what"].as_str().unwrap_or_default().to_string();
+        c.name = n.name.clone();
+        c.loc = n.what.to_string();
         c.said = if required {
             copy_text("beChore.install.saidRequired", &[])
         } else {
             copy_text("beChore.install.saidOptional", &[])
         };
         c.why = c.said.clone();
-        c.how_url = n["howUrl"].as_str().map(str::to_string);
+        c.how_url = n.how_url.map(str::to_string);
         out.push(c);
     }
     for d in &f.dead {
-        let mut c = Chore::new(format!("dead:{}", d.path), "optional", "locate");
+        let mut c = Chore::new(
+            format!("dead:{}", d.path),
+            ChoreKind::Optional,
+            ChoreAction::Locate,
+        );
         let file = d
             .path
             .rsplit(['/', '\\'])
@@ -306,7 +387,11 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
     }
     let mut same_file: Vec<(usize, Plan)> = Vec::new();
     for r in &f.relay {
-        let mut c = Chore::new(&format!("relay:{}", r.agent), "optional", "copySnippet");
+        let mut c = Chore::new(
+            format!("relay:{}", r.agent),
+            ChoreKind::Optional,
+            ChoreAction::CopySnippet,
+        );
         c.name = copy_text("beChore.relay.name", &[("agent", &r.name)]);
         c.loc = copy_text("beChore.relay.loc", &[("path", &r.path), ("slot", r.slot)]);
         c.why = copy_text("beChore.relay.why", &[]);
@@ -314,17 +399,17 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         c.mask = r.secret.clone();
         match (r.state.as_str(), &r.url) {
             ("installed", _) => {
-                c.state = "done";
+                c.state = ChoreState::Done;
                 c.said = copy_text("beChore.relay.saidDone", &[]);
             }
             (_, None) => {
-                c.state = "blocked";
+                c.state = ChoreState::Blocked;
                 c.said = copy_text("beChore.relay.saidBlocked", &[]);
             }
             (state, Some(url)) => {
                 if state == "stale" {
-                    c.kind = "must";
-                    c.state = "expired";
+                    c.kind = ChoreKind::Must;
+                    c.state = ChoreState::Expired;
                     c.said = copy_text("beChore.relay.saidExpired", &[]);
                 } else {
                     c.said = copy_text("beChore.relay.saidTodo", &[]);
@@ -338,18 +423,22 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         out.push(c);
     }
     if let Some(h) = f.hooks.as_ref().filter(|_| !f.windows) {
-        let mut c = Chore::new("cc-bus-hooks", "optional", "copySnippet");
+        let mut c = Chore::new(
+            "cc-bus-hooks",
+            ChoreKind::Optional,
+            ChoreAction::CopySnippet,
+        );
         c.name = copy_text("beChore.hooks.name", &[]);
         c.loc = copy_text("beChore.hooks.loc", &[("path", &h.path)]);
         c.why = copy_text("beChore.hooks.why", &[]);
         c.file = Some(h.path.clone());
         if !h.ccbus {
-            c.state = "blocked";
-            c.action = "installFirst";
+            c.state = ChoreState::Blocked;
+            c.action = ChoreAction::InstallFirst;
             c.said = copy_text("beChore.hooks.saidBlocked", &[]);
-            c.go = Some(json!({"page": "ext"}));
+            c.go = Some(UndoAt::page("ext"));
         } else if h.installed {
-            c.state = "done";
+            c.state = ChoreState::Done;
             c.said = copy_text("beChore.hooks.said", &[]);
         } else {
             c.said = copy_text("beChore.hooks.said", &[]);
@@ -380,7 +469,11 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         out.push(c);
     }
     for m in &f.mcp_login {
-        let mut c = Chore::new(format!("mcp-login:{}", m.name), "optional", "copyCommand");
+        let mut c = Chore::new(
+            format!("mcp-login:{}", m.name),
+            ChoreKind::Optional,
+            ChoreAction::CopyCommand,
+        );
         c.name = copy_text("beChore.mcpLogin.name", &[("name", &m.name)]);
         c.loc = m.who.join(&copy_text("beChore.mcpLogin.whoSep", &[]));
         c.said = copy_text("beChore.mcpLogin.said", &[]);
@@ -409,18 +502,16 @@ pub(crate) fn chores(f: &Facts) -> Vec<Value> {
         }
     }
     for c in out.iter_mut() {
-        if c.state == "todo" && c.kind == "optional" && f.declined.contains(&c.id) {
-            c.state = "declined";
+        if c.state == ChoreState::Todo
+            && c.kind == ChoreKind::Optional
+            && f.declined.contains(&c.id)
+        {
+            c.state = ChoreState::Declined;
         }
     }
-    let rank = |k: &str| {
-        ["must", "decide", "install", "installOptional", "optional"]
-            .iter()
-            .position(|x| *x == k)
-            .unwrap_or(9)
-    };
-    out.sort_by_key(|c| rank(c.kind));
-    out.into_iter().map(Chore::wire).collect()
+    // 急的在前（[`ChoreKind`] 的声明次序）；同类里照收的次序（稳定排序）。
+    out.sort_by_key(|c| c.kind);
+    out
 }
 
 /// 实时显示与收信落在同一份文件：先合实时显示、再在合好的那份上加两条钩子。
@@ -466,7 +557,7 @@ fn fill_plan(c: &mut Chore, path: &str, p: &Plan) {
         },
         copy_text("beChore.step.save", &[]),
     ];
-    c.diff = p.diff.clone();
+    c.diff = p.diff.iter().cloned().map(DiffRow::from).collect();
     c.copy = Some(added.join("\n"));
     c.whole = Some(p.whole.clone());
     c.whole_covers = vec![c.id.clone()];

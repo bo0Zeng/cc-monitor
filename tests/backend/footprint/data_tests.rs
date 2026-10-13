@@ -1,7 +1,17 @@
 //! 「文件与数据」那一份成品：同一份足迹按三样重排。
 
 use super::*;
+use crate::footprint::chores::{Chore, ChoreAction, ChoreKind, ChoreState};
 use crate::footprint::rows::SettingsScope;
+use serde_json::{json, Value};
+
+/// 自己家里那几样写成线上那一份（下面几条按格读）。
+fn own_rows(home: &std::path::Path) -> Vec<Value> {
+    super::own_rows(home)
+        .iter()
+        .map(|r| serde_json::to_value(r).unwrap())
+        .collect()
+}
 
 fn row(
     tool_id: &'static str,
@@ -114,24 +124,29 @@ fn 要装只报确实缺的_查不动的不算缺_缺了起不了会话的才进
             present(),
         ),
     ]));
-    let ids: Vec<&str> = got.iter().map(|n| n["id"].as_str().unwrap()).collect();
+    let ids: Vec<&str> = got.iter().map(|n| n.id).collect();
     assert_eq!(
         ids,
         vec!["claude-cli"],
         "查不动的说成缺 ＝ 对能用的环境报假警报；tmux 一律可选，缺了不进「要装」，只走 tmux 那一格"
     );
-    assert_eq!(got[0]["required"], json!(true));
+    assert!(got[0].required);
 }
 
 #[test]
 fn 成品五格_tmux_原样带_角标数照各件算() {
+    let chore = |kind, state| {
+        let mut c = Chore::new("x", kind, ChoreAction::How);
+        c.state = state;
+        c
+    };
     let todo = vec![
-        json!({"kind": "must", "state": "todo"}),
-        json!({"kind": "optional", "state": "todo"}),
-        json!({"kind": "decide", "state": "done"}),
+        chore(ChoreKind::Must, ChoreState::Todo),
+        chore(ChoreKind::Optional, ChoreState::Todo),
+        chore(ChoreKind::Decide, ChoreState::Done),
     ];
     for tmux in [Some(true), Some(false), None] {
-        let got = shape(&report(vec![]), todo.clone(), tmux, vec![]);
+        let got = serde_json::to_value(shape(&report(vec![]), todo.clone(), tmux, vec![])).unwrap();
         let mut keys: Vec<&str> = got
             .as_object()
             .unwrap()
@@ -149,8 +164,8 @@ fn 成品五格_tmux_原样带_角标数照各件算() {
 }
 
 /// 改过你的文件那一格（旧测试只看它）。
-fn shape_rows(r: &ConfigSurfaceReport, todo: Vec<Value>, tmux: Option<bool>) -> Value {
-    shape(r, todo, tmux, vec![])
+fn shape_rows(r: &ConfigSurfaceReport, todo: Vec<Chore>, tmux: Option<bool>) -> Value {
+    serde_json::to_value(shape(r, todo, tmux, vec![])).unwrap()
 }
 
 /// 临时家目录（测完删）。

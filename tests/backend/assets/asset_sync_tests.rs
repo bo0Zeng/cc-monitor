@@ -18,6 +18,20 @@
 
 use super::*;
 
+// 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份（下面几条按格读）。
+async fn answer_with(
+    args: &Value,
+    fold: Fold,
+    remote: &dyn Remote,
+    table: &Table,
+) -> Result<Value, (&'static str, String)> {
+    let req: AssetsSyncReq =
+        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    super::answer_with(&req, fold, remote, table)
+        .await
+        .map(|r| serde_json::to_value(r).unwrap())
+}
+
 /// 写句柄：家目录 ＝ 那份目录文件上两级（`<家>/.cc-monitor/assets-catalog.json`）。
 fn own_at(file: &std::path::Path) -> crate::platform::fs::Own {
     crate::platform::fs::Own::issue_at(
@@ -79,12 +93,19 @@ impl Machine {
         &self,
         incoming: Option<&Value>,
     ) -> Result<Value, crate::stream::inbound::spec::Fail> {
-        let inc = incoming.map(|c| cat::machines_from_wire(c).expect("载荷形状"));
+        let inc = incoming.map(|c| {
+            let c: cat::CatalogIn = serde_json::from_value(c.clone()).expect("载荷形状");
+            cat::machines_of(c.machines).expect("载荷形状")
+        });
         cat::update_at(&own_at(&self.path), skills(&self.scan), self.label, inc)
+            .map(|r| serde_json::to_value(r).unwrap())
     }
     fn fold(&self) -> Fold {
         let me = self.clone();
-        Arc::new(move |args: &Value| me.update(Some(&args["catalog"])))
+        Arc::new(move |req: cat::CatalogMergeReq| {
+            let inc = cat::machines_of(req.catalog.machines).expect("载荷形状");
+            cat::update_at(&own_at(&me.path), skills(&me.scan), me.label, Some(inc))
+        })
     }
     fn gens(&self) -> BTreeMap<String, u64> {
         let v = self.update(None).unwrap();
@@ -334,7 +355,8 @@ async fn half_given_arguments_are_refused() {
     assert_eq!(e.0, "unreachable");
     assert!(fakes.seen.lock().unwrap().is_empty());
     // 正控：握手那一刻登记过（`remote-reach`）⇒ 只给 `origin` 就对那一台做一趟。
-    crate::dial::remote_ask::register(&table, &json!({"origin": "o", "dial": dial("x")})).unwrap();
+    let d_x: crate::dial::pick::MachineDial = serde_json::from_value(dial("x")).unwrap();
+    crate::dial::remote_ask::register(&table, &cmd_wire::Machine("o".into()), &d_x).unwrap();
     let ok = answer_with(&json!({"origin": "o"}), local.fold(), &fakes, &table)
         .await
         .expect("登记过的也拒了");
@@ -352,17 +374,36 @@ async fn half_given_arguments_are_refused() {
 
 #[test]
 fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
-    let m = |id: &str, gen: u64, pad: usize| json!({"id": id, "label": "x".repeat(pad), "gen": gen, "seenAt": 0, "assets": []});
+    let m = |id: &str, gen: u64, pad: usize| -> cat::CatalogMachine {
+        serde_json::from_value(
+            json!({"id": id, "label": "x".repeat(pad), "gen": gen, "seenAt": 0, "assets": []}),
+        )
+        .unwrap()
+    };
     let third = PUSH_MAX_BYTES / 3;
-    let mine = json!({"self": "me", "machines": [
-        m("me", 2, third), m("a", 1, third), m("b", 1, third), m("c", 4, 10),
-        m("big", 1, PUSH_MAX_BYTES + 1), m("them", 9, 10), m("old", 1, 10),
-    ]});
-    let theirs = json!({"self": "them", "machines": [ m("c", 4, 10), m("old", 3, 10) ]});
-    let (chunks, too_big) = push_plan(&mine, &theirs);
+    let mine = cat::CatalogReply {
+        self_id: "me".into(),
+        machines: vec![
+            m("me", 2, third),
+            m("a", 1, third),
+            m("b", 1, third),
+            m("c", 4, 10),
+            m("big", 1, PUSH_MAX_BYTES + 1),
+            m("them", 9, 10),
+            m("old", 1, 10),
+        ],
+        rows: vec![],
+        problems: vec![],
+        changed: false,
+        path: None,
+    };
+    let theirs = cat::CatalogIn {
+        machines: vec![m("c", 4, 10), m("old", 3, 10)],
+    };
+    let (chunks, too_big) = push_plan(&mine, &theirs, Some("them"));
     let ids: Vec<Vec<&str>> = chunks
         .iter()
-        .map(|c| c.iter().map(|x| x["id"].as_str().unwrap()).collect())
+        .map(|c| c.iter().map(|x| x.id.as_str()).collect())
         .collect();
     assert_eq!(
         ids,
@@ -370,7 +411,7 @@ fn push_plan_chunks_under_the_cap_and_refuses_a_single_oversized_machine() {
         "对面自己 / 对面不旧的不推，按上限切块"
     );
     for c in &chunks {
-        let len: usize = c.iter().map(|x| x.to_string().len() + 1).sum();
+        let len: usize = c.iter().map(|x| json!(x).to_string().len() + 1).sum();
         assert!(len <= PUSH_MAX_BYTES + 1, "一块超了上限：{len}");
     }
     assert_eq!(too_big.len(), 1);
@@ -464,4 +505,113 @@ fn the_remote_flags_are_real_subcommands_of_the_catalog_commands() {
             "{cmd} 收不收 stdin 与推 / 拉那一形对不上"
         );
     }
+}
+
+/// `assets-sync` 换形之前用旧代码钉的字节：回包（界面 · 壳读）与推过去的那一行载荷（远端那台的 CLI 面读，可能是旧版）。
+/// 目录 id 换成 `<L>` / `<R>`，`seenAt`（现扫那一刻）换成 `<T>`。
+#[tokio::test]
+async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
+    let d = temp_dir("pin");
+    let local = Machine::new(&d, "local", vec!["a"]);
+    let remote = Machine::new(&d, "remote", vec!["b"]);
+    let lid = local.update(None).unwrap()["self"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let rid = remote.update(None).unwrap()["self"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let fakes = FakeRemotes {
+        by_host: [("r".to_string(), remote.clone())].into(),
+        seen: Mutex::new(vec![]),
+        stdins: Mutex::new(vec![]),
+    };
+    let table = Table::default();
+    let out = answer_with(&sync_args("r"), local.fold(), &fakes, &table)
+        .await
+        .expect("一趟");
+    let norm = |s: &str| {
+        let s = s.replace(&lid, "<L>").replace(&rid, "<R>");
+        let mut o = String::new();
+        let mut rest = s.as_str();
+        while let Some(i) = rest.find("\"seenAt\":") {
+            o.push_str(&rest[..i + 9]);
+            rest = &rest[i + 9..];
+            let n = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            o.push_str("<T>");
+            rest = &rest[n..];
+        }
+        o.push_str(rest);
+        o
+    };
+    let wire = |v: &Value| serde_json::to_string(v).unwrap();
+    assert_eq!(
+        norm(&wire(&serde_json::to_value(&out).unwrap())),
+        r#"{"reach":[{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":true,"error":null,"origin":"o-r","peer":"<R>","pushed":1}]}"#
+    );
+    let stdins = fakes.stdins.lock().unwrap().clone();
+    assert_eq!(stdins.len(), 2, "一拉一推");
+    assert_eq!(
+        norm(stdins[1].as_deref().unwrap()),
+        "{\"catalog\":{\"machines\":[{\"assets\":[{\"digest\":\"d-a\",\"kind\":\"skill\",\"name\":\"a\",\"summary\":{}}],\"gen\":1,\"id\":\"<L>\",\"label\":\"local\",\"notes\":{},\"projectDirs\":[],\"seenAt\":<T>,\"sharedMcp\":false}]}}\n"
+    );
+    // 只给 `origin`、可达表里有 ⇒ 同一形；什么都没给 ⇒ 每台各一行。
+    let all = answer_with(&json!({}), local.fold(), &fakes, &table)
+        .await
+        .unwrap();
+    assert_eq!(
+        norm(&wire(&serde_json::to_value(&all).unwrap())),
+        r#"{"reach":[{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":false,"error":null,"origin":"o-r","peer":"<R>","pushed":0}]}"#
+    );
+    // 那一趟没办成 ⇒ `error` 是那一句、`peer` 为 `null`。
+    let gone = answer_with(&sync_args("gone"), local.fold(), &fakes, &table)
+        .await
+        .unwrap();
+    assert_eq!(
+        norm(&wire(&serde_json::to_value(&gone).unwrap())),
+        r#"{"reach":[{"machine":null,"origin":"o-gone"},{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":false,"error":"没这台","origin":"o-gone","peer":null,"pushed":0}]}"#
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 帧面那一跳（按名找命令、照档跑）：入参多一个键 ⇒ `bad_args`，一次都不拨、可达表不动。
+#[tokio::test]
+async fn an_extra_key_is_bad_args_on_the_frame_path() {
+    use crate::stream::inbound::spec::{prepare, Prepared};
+    let d = temp_dir("extra");
+    let own = crate::platform::fs::Own::issue_at(&d);
+    let spec = crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|s| s.name == "assets-sync")
+        .unwrap();
+    let before = crate::dial::remote_ask::reach_rows(&REACH).len();
+    for args in [
+        json!({ "bogus": 1 }),
+        json!({ "origin": "o-extra", "dial": dial("x"), "bogus": 1 }),
+    ] {
+        let Some(Prepared::Async(run)) = prepare(spec.run, Some(&own)) else {
+            panic!("assets-sync 不在异步档");
+        };
+        let req = crate::stream::wire::Request {
+            id: "t".to_string(),
+            cmd: "assets-sync".to_string(),
+            args: args.clone(),
+            within_ms: None,
+            view: Value::Null,
+            tz: Default::default(),
+            until: None,
+        };
+        let got = run(req).await.map(|_| ()).map_err(|f| f.code);
+        assert_eq!(got, Err("bad_args".to_string()), "{args}");
+    }
+    assert_eq!(
+        crate::dial::remote_ask::reach_rows(&REACH).len(),
+        before,
+        "多一个键的那一问动了可达表"
+    );
+    assert!(!d.join(".cc-monitor").exists(), "多一个键的那一问写了盘");
+    let _ = std::fs::remove_dir_all(&d);
 }

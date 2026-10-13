@@ -36,7 +36,7 @@ fn tmpdir(tag: &str) -> TmpDir {
 }
 /// 装到 `<p>/skills/cc-bus`（装记录的写口是个不记事的替身）。
 fn install(p: &Path) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    install_at(&LocalFiles, &p.join("skills"), &|_| Ok(json!({})))
+    install_at(&LocalFiles, &p.join("skills"), &|_| Ok(Default::default()))
 }
 
 /// ★ 装卸账**复用 skill 装记录那一份**：装完交给记录写口的是 `{op:"add", name:"cc-bus", files:{路径:{digest, created}}}`
@@ -45,9 +45,9 @@ fn install(p: &Path) -> Result<Value, crate::stream::inbound::spec::Fail> {
 fn an_install_is_recorded_in_the_skill_install_ledger() {
     let t = tmpdir("ledger");
     let seen = std::sync::Mutex::new(Vec::<Value>::new());
-    let rec = |v: &Value| {
-        seen.lock().unwrap().push(v.clone());
-        Ok(json!({}))
+    let rec = |v: &crate::assets::skill_ledger::RecordReq| {
+        seen.lock().unwrap().push(serde_json::to_value(v).unwrap());
+        Ok(Default::default())
     };
     install_at(&LocalFiles, &t.0.join("skills"), &rec).expect("装");
     let got = seen.lock().unwrap().clone();
