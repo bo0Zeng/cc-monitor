@@ -69,6 +69,15 @@ export function pinDateSource(now = SHOTS_NOW_MS) {
 })();`;
 }
 
+/**
+ * 沙箱开场那段 shell 里取「进程起始时刻」（`/proc/<pid>/stat` 第 22 格，pidfile 的 `procStart`，后端判活照它认是不是同一个进程）的那一句。
+ * `stat` 是那份文件的路径（shell 表达式）。按最后一个 `) ` 切掉进程名再数（第 22 格 ＝ 切剩的第 20 格）：替身是 tmux 窗格里的进程，
+ * 台架读它那一刻它可能还没 exec、进程名还是 `tmux: server`（带空格）⇒ 按空格从头数会数错一格，后端判它不是写 pidfile 的那个、不宣告（判据 `tests/shots/proc-start.vitest.ts`）。
+ */
+export function procStartSh(stat) {
+  return `sed 's/.*) //' ${stat} | awk '{print $20}'`;
+}
+
 /** 台架那一份后端的构建目录（带特性 `shots`）。 */
 const BACKEND_TARGET = (repo) => path.join(repo, ".build/backend-shots");
 
@@ -161,7 +170,7 @@ export function backendPool({ repo, sandbox }) {
       if (l.fate === "ended") doomed.push({ sid: l.sid, fate: "ended", act: ["kill-session", "-t", `s${k}`] });
       const body = { pid: "__PID__", sessionId: l.sid, cwd: l.cwd, startedAt: l.startedAt ?? now, kind: l.kind ?? "interactive", procStart: "__PS__", ...(l.name ? { name: l.name } : {}), ...(l.status ? { status: l.status } : {}), ...(l.waitingFor ? { waitingFor: l.waitingFor } : {}), ...(l.statusUpdatedAt ? { statusUpdatedAt: l.statusUpdatedAt } : {}) };
       writeFileSync(path.join(setup, `${k}.json`), JSON.stringify(body).replace('"__PID__"', "__PID__"));
-      sh.push(`ps=$(awk '{print $22}' /proc/$pid/stat)`, `sed "s/__PID__/$pid/; s/__PS__/$ps/" ${H}/.shots-setup/${k}.json > ${H}/.claude/sessions/$pid.json`);
+      sh.push(`ps=$(${procStartSh("/proc/$pid/stat")})`, `sed "s/__PID__/$pid/; s/__PS__/$ps/" ${H}/.shots-setup/${k}.json > ${H}/.claude/sessions/$pid.json`);
     });
     if (m.warm) {
       mkdirSync(path.join(home, ".cc-monitor"), { recursive: true });
@@ -177,7 +186,8 @@ export function backendPool({ repo, sandbox }) {
       LANG: "C.UTF-8",
       TMUX_TMPDIR: `${H}/.shots-tmux`,
       XDG_RUNTIME_DIR: `${H}/.shots-run`,
-      CCM_BACKEND_STDERR_LOG: process.env.CCM_SHOTS_DEBUG ? `${H}/.shots-stderr.log` : "/tmp/stderr.log",
+      // 各台后端的诊断日志落在这台沙箱目录里、家目录外（`run/`，沙箱里挂成 `$XDG_RUNTIME_DIR`）：没截成时连同来往一起落盘（[`dumpTrace`]）。
+      CCM_BACKEND_STDERR_LOG: `${H}/.shots-run/stderr.log`,
       TZ: SHOTS_TZ,
       CCM_SHOTS_NOW_MS: String(Math.round(now)),
     };
@@ -351,10 +361,18 @@ export function backendPool({ repo, sandbox }) {
     const mine = [...worlds.values()].filter((w) => w.scene === scene);
     const dir = path.join(sandbox, "trace");
     mkdirSync(dir, { recursive: true });
-    return mine.map((w, i) => {
-      const file = path.join(dir, `${scene.replace(/[^A-Za-z0-9_.-]/g, "_")}${mine.length > 1 ? `.${i}` : ""}.log`);
-      writeFileSync(file, w.lines.join("\n") + "\n");
-      return file;
+    return mine.flatMap((w, i) => {
+      const stem = path.join(dir, `${scene.replace(/[^A-Za-z0-9_.-]/g, "_")}${mine.length > 1 ? `.${i}` : ""}`);
+      writeFileSync(`${stem}.log`, w.lines.join("\n") + "\n");
+      // 各台后端自己的诊断日志（一台一份，按台名）。
+      const backends = [...w.homes.keys()].flatMap((origin, m) => {
+        const log = path.join(w.dir, `m${m}`, "run", "stderr.log");
+        if (!existsSync(log)) return [];
+        const to = `${stem}.${origin.replace(/[^A-Za-z0-9_.-]/g, "_")}.stderr.log`;
+        writeFileSync(to, readFileSync(log));
+        return [to];
+      });
+      return [`${stem}.log`, ...backends];
     });
   }
 
