@@ -337,8 +337,8 @@ pub(crate) fn install_at(
         project: None,
         at: None,
     })
-        .err()
-        .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
+    .err()
+    .map(|f| copy_text("beCcBusInstall.record.failed", &[("why", &f.into_note())]));
     Ok(CcBusInstalled {
         dest: dest_s,
         written: FILES.iter().map(|(rel, _)| (*rel).to_string()).collect(),

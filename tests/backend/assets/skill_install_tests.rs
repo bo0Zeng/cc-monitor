@@ -360,7 +360,8 @@ fn ledger_with(d: &Path, name: &str, files: Value) -> (PathBuf, String) {
     crate::assets::skill_ledger::record_at(
         &own_at(&file),
         Some(&root),
-        &crate::stream::inbound::typed::take(&json!({"op": "add", "name": name, "files": files})).unwrap(),
+        &crate::stream::inbound::typed::take(&json!({"op": "add", "name": name, "files": files}))
+            .unwrap(),
     )
     .expect("记");
     (file, root.join(name).display().to_string())
@@ -597,7 +598,10 @@ fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() 
     crate::assets::skill_ledger::record_at(
         &own_at(&file),
         Some(&root),
-        &crate::stream::inbound::typed::take(&json!({"op": "add", "name": "demo", "files": plan["ledger"]})).unwrap(),
+        &crate::stream::inbound::typed::take(
+            &json!({"op": "add", "name": "demo", "files": plan["ledger"]}),
+        )
+        .unwrap(),
     )
     .unwrap();
     let v = answer_uninstall_plan_at(&file, &json!({"dir": plan["dir"]})).unwrap();

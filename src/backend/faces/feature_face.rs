@@ -161,7 +161,8 @@ fn mcp_read_here(req: &McpReadReq, tz: &crate::Tz) -> Result<McpReadReply, McpRe
     };
     // 读 MCP 的那一家：唯一声明了 MCP 读面的那一家（今天只有 Claude）；Codex 的 MCP 来了由请求说是哪一家。
     let Some(kind) = crate::agents::sole_kind(|a| a.mcp.is_some()) else {
-        return capped(mcp_reply(&Default::default(), &McpSay::default())).map_err(McpReadErr::TooLarge);
+        return capped(mcp_reply(&Default::default(), &McpSay::default()))
+            .map_err(McpReadErr::TooLarge);
     };
     let look = mcp_look(kind);
     let read = crate::agents::mcp_read(kind, dir.as_deref(), &look).unwrap_or_default();
@@ -317,9 +318,14 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadRepl
         .map(|e| {
             let login = (e.status == McpStatus::NeedsLogin).then(|| {
                 let who = e.login_in.join(&copy_text("beMcp.mark.sep", &[]));
-                let at = e.seen_ms.map_or(String::new(), |t| time(i64::try_from(t).unwrap_or(i64::MAX)));
+                let at = e.seen_ms.map_or(String::new(), |t| {
+                    time(i64::try_from(t).unwrap_or(i64::MAX))
+                });
                 let (said, tip) = if who.is_empty() {
-                    (copy_text("beMcp.mark.loginBare", &[("time", &at)]), copy_text("beMcp.mark.loginTipBare", &[]))
+                    (
+                        copy_text("beMcp.mark.loginBare", &[("time", &at)]),
+                        copy_text("beMcp.mark.loginTipBare", &[]),
+                    )
                 } else {
                     (
                         copy_text("beMcp.mark.login", &[("accounts", &who), ("time", &at)]),
@@ -337,7 +343,10 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadRepl
                 .flatten()
                 .map(|f| {
                     let said = match f.at_ms {
-                        Some(t) => copy_text("beMcp.mark.failed", &[("title", &f.title), ("time", &time(t))]),
+                        Some(t) => copy_text(
+                            "beMcp.mark.failed",
+                            &[("title", &f.title), ("time", &time(t))],
+                        ),
                         None => copy_text("beMcp.mark.failedUntimed", &[("title", &f.title)]),
                     };
                     McpFailedMark {

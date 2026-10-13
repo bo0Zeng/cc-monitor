@@ -108,7 +108,11 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
         declared, used,
         "本侧发 / 读的字段与后端声明的不相等（两向）"
     );
-    // 远端要认的那条在后端命令表里
+    // 远端要认的那条在后端命令表里：手写那一形（`name: "…"`）或 typed 那一形（帧面文件里 `impl Command` 的 `const NAME`，命令表那一行点它的类型）
+    let faces: Vec<String> = std::fs::read_dir(crate::guard_support::backend_src_root().join("faces"))
+        .expect("读后端帧面目录")
+        .filter_map(|e| std::fs::read_to_string(e.ok()?.path()).ok())
+        .collect();
     let registered: std::collections::BTreeSet<&str> = families
         .iter()
         .flat_map(|(_, prod)| {
@@ -116,6 +120,11 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
                 .skip(1)
                 .filter_map(|t| t.split('"').next())
         })
+        .chain(faces.iter().flat_map(|src| {
+            src.split("const NAME: &'static str = \"")
+                .skip(1)
+                .filter_map(|t| t.split('"').next())
+        }))
         .collect();
     assert!(
         registered.contains(REMOTE_NEEDS),

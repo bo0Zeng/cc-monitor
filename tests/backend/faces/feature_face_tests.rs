@@ -158,5 +158,8 @@ fn the_mcp_marks_are_written_once_on_the_backend() {
         tz: Default::default(),
         login_command: "/mcp",
     };
-    assert_eq!(serde_json::to_value(mcp_reply(&read, &say)).unwrap(), g["marked"]);
+    assert_eq!(
+        serde_json::to_value(mcp_reply(&read, &say)).unwrap(),
+        g["marked"]
+    );
 }

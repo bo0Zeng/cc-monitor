@@ -136,15 +136,21 @@ fn skill_install_record_keeps_its_wire_bytes() {
     };
     let digest = "0123456789abcdef";
     assert_eq!(
-        rec(json!({"op": "add", "name": "s", "files": {"a.md": {"digest": digest, "created": true}, "b.md": {"digest": digest, "created": false}}})),
+        rec(
+            json!({"op": "add", "name": "s", "files": {"a.md": {"digest": digest, "created": true}, "b.md": {"digest": digest, "created": false}}})
+        ),
         r#"{"changed":true,"dir":"<D>/skills/s","name":"s","remaining":2}"#
     );
     assert_eq!(
-        rec(json!({"op": "add", "name": "s", "files": {"a.md": {"digest": digest, "created": true}}})),
+        rec(
+            json!({"op": "add", "name": "s", "files": {"a.md": {"digest": digest, "created": true}}})
+        ),
         r#"{"changed":false,"dir":"<D>/skills/s","name":"s","remaining":2}"#
     );
     assert_eq!(
-        rec(json!({"op": "add", "name": "h", "at": "home", "files": {"x/h.md": {"digest": digest, "created": true}}})),
+        rec(
+            json!({"op": "add", "name": "h", "at": "home", "files": {"x/h.md": {"digest": digest, "created": true}}})
+        ),
         r#"{"changed":true,"dir":"<D>","name":"h","remaining":1}"#
     );
     assert_eq!(

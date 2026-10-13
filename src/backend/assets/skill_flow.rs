@@ -231,13 +231,13 @@ pub(crate) fn answer_uninstall(
             dir: dir.to_string(),
             paths: drop,
         })
-            .err()
-            .map(|f| {
-                copy_text(
-                    "beSkillFlow.uninstall.dropFailed",
-                    &[("why", &f.into_note())],
-                )
-            })
+        .err()
+        .map(|f| {
+            copy_text(
+                "beSkillFlow.uninstall.dropFailed",
+                &[("why", &f.into_note())],
+            )
+        })
     };
     if let Some(why) = stopped {
         let why = match record_failed {

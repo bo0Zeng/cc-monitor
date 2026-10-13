@@ -65,7 +65,14 @@ pub const MCP_KEYS_ONLY_FIELDS: &[&str] = &["env", "headers"];
 /// 目录里的一条。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/", rename = "CatalogAsset"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "CatalogAsset"
+    )
+)]
 pub struct Asset {
     pub kind: String,
     pub name: String,
@@ -112,7 +119,14 @@ fn is_false(b: &bool) -> bool {
 /// 一条备注。`rev` 是写它那一刻这台目录里同一条目各台备注的最大 `rev` ＋ 1（不比墙钟）；`text` 空 = 清掉了。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/", rename = "CatalogNote"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "CatalogNote"
+    )
+)]
 pub struct Note {
     pub text: String,
     #[cfg_attr(test, ts(type = "number"))]
@@ -717,7 +731,12 @@ pub struct CatalogMergeReq {
 }
 
 /// 一份目录的线上形状（两条命令共用）。
-pub fn wire(cat: &Catalog, problems: &[String], changed: bool, path: Option<&Path>) -> CatalogReply {
+pub fn wire(
+    cat: &Catalog,
+    problems: &[String],
+    changed: bool,
+    path: Option<&Path>,
+) -> CatalogReply {
     let machines = cat
         .machines
         .iter()
@@ -773,7 +792,8 @@ pub fn machines_of(incoming: Vec<CatalogMachine>) -> Result<BTreeMap<String, Sna
     Ok(out)
 }
 
-/// 线上 `catalog`（JSON）→ 各台快照（判据与资产同步那一跳用：形状不对 ⇒ 解码器那一句）。
+/// 线上 `catalog`（JSON）→ 各台快照（判据用：形状不对 ⇒ 解码器那一句）。
+#[cfg(test)]
 pub fn machines_from_wire(v: &Value) -> Result<BTreeMap<String, Snapshot>, String> {
     let cat: CatalogIn = serde_json::from_value(v.clone())
         .map_err(|e| crate::common::contract::malformed(&e.to_string()))?;

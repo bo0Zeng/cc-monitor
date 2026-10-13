@@ -51,7 +51,14 @@ use crate::assets::asset_catalog::SKILL_MAX_FILES as MAX_FILES;
 /// 一个装时写进去的文件。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/", rename = "LedgerFile"))]
+#[cfg_attr(
+    test,
+    ts(
+        export,
+        export_to = "../../frontend/ui/generated/",
+        rename = "LedgerFile"
+    )
+)]
 #[serde(deny_unknown_fields)]
 pub struct Recorded {
     pub digest: String,
