@@ -91,7 +91,7 @@ fn table_with(origin: &str) -> Table {
     let t: Table = Mutex::new(BTreeMap::new());
     register(
         &t,
-        origin,
+        &cmd_wire::Machine(origin.into()),
         &serde_json::from_value(
             json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}),
         )

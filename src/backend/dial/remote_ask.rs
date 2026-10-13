@@ -129,10 +129,10 @@ pub(crate) fn insert(
 /// 登记一台：那台的名字 ＋ 怎么够到它（`remote-reach` 与 `assets-sync` 那一份入参，按同一个类型收）⇒ [`insert`]。
 pub(crate) fn register(
     table: &Table,
-    origin: &str,
+    origin: &cmd_wire::Machine,
     dial: &super::pick::MachineDial,
 ) -> Result<String, (&'static str, String)> {
-    insert(table, origin, dial.stored()?)
+    insert(table, origin.as_wire_str(), dial.stored()?)
 }
 
 /// 可达表的一行（线上形）：`machine` = 对面的资产目录 id，没拉过 ⇒ `null`。
@@ -186,7 +186,7 @@ pub(crate) fn answer_reach_with(
     req: &ReachReq,
     table: &Table,
 ) -> Result<Reached, (&'static str, String)> {
-    let o = register(table, req.origin.as_wire_str(), &req.dial)?;
+    let o = register(table, &req.origin, &req.dial)?;
     Ok(Reached {
         origin: cmd_wire::Machine(o),
         reach: reach_rows(table),

@@ -549,7 +549,7 @@ fn two_with(tag: &str, prep: impl FnOnce(&mut M)) -> (PathBuf, Two) {
     let reach: Table = Mutex::new(BTreeMap::new());
     register(
         &reach,
-        "laptop",
+        &cmd_wire::Machine("laptop".into()),
         &serde_json::from_value(
             json!({"machine": {"host": "h", "port": 22, "user": "u", "keyPath": "/k"}}),
         )

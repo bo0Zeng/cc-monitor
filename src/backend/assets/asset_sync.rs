@@ -311,7 +311,7 @@ pub(crate) async fn answer_with(
             ));
         }
         first = Some(o.to_string());
-    } else if let Some(o) = origin {
+    } else if let Some(o) = &req.origin {
         // 登记走 `remote_ask::register`（可达表唯一的写口；`remote-reach` 也经它）。
         let dial = req.dial.as_ref().ok_or_else(|| {
             (

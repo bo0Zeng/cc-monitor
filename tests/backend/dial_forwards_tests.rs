@@ -42,7 +42,7 @@ fn table_with(origin: &str) -> remote_ask::Table {
     let t: remote_ask::Table = Mutex::new(BTreeMap::new());
     remote_ask::register(
         &t,
-        origin,
+        &cmd_wire::Machine(origin.into()),
         &serde_json::from_value(json!({"machine": {"host": "192.0.2.2", "port": 22, "user": "u", "keyPath": "/k"}, "use": "capture"})).unwrap(),
     )
     .unwrap();

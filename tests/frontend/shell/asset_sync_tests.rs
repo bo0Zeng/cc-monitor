@@ -82,9 +82,9 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
     assert!(
         gen("src/frontend/ui/generated/TypedCommands.ts")
             .lines()
-            .any(|l| l
-                .trim()
-                .starts_with(&format!("\"{CMD}\": {{ req: AssetsSyncReq; reply: AssetsSynced;"))),
+            .any(|l| l.trim().starts_with(&format!(
+                "\"{CMD}\": {{ req: AssetsSyncReq; reply: AssetsSynced;"
+            ))),
         "后端命令表里没有 `{CMD}`（或它的入参 · 回包类型换了名）"
     );
     let req = decl_keys(&gen("src/frontend/ui/generated/AssetsSyncReq.ts"));
@@ -96,13 +96,19 @@ fn what_monitor_sends_and_reads_is_what_the_backend_registers() {
         .keys()
         .cloned()
         .collect();
-    assert_eq!(sent, req, "本侧发的格与后端 `{CMD}` 入参类型的格不相等（两向）");
+    assert_eq!(
+        sent, req,
+        "本侧发的格与后端 `{CMD}` 入参类型的格不相等（两向）"
+    );
     let read: std::collections::BTreeSet<String> = ["self", "synced", "reach"]
         .iter()
         .map(|s| s.to_string())
         .collect();
     assert_eq!(reply, read, "后端 `{CMD}` 回包的格与本侧认的不相等（两向）");
-    assert!(cmd_wire::shapes::shape_of(CMD).is_some(), "形状指纹表里没有 `{CMD}`");
+    assert!(
+        cmd_wire::shapes::shape_of(CMD).is_some(),
+        "形状指纹表里没有 `{CMD}`"
+    );
     assert!(
         cmd_wire::shapes::shape_of(REMOTE_NEEDS).is_some(),
         "后端命令表里没有 `{REMOTE_NEEDS}`"

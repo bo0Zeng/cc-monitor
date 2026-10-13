@@ -39,7 +39,7 @@ fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String
     let (Some(o), Some(d)) = (&req.origin, &req.dial) else {
         panic!("夹具两格都给");
     };
-    super::register(table, o.as_wire_str(), d)
+    super::register(table, o, d)
 }
 
 /// 生产段（剥测试模块 ＋ 整行注释 ＋ 行尾注释）—— 指纹只认代码，不认说起它的散文。
