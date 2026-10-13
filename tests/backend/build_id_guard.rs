@@ -189,7 +189,7 @@ mod tests {
 
     /// 冻结格的摘要一行：`frozen <FNV-1a 64>`，摘的是排好序的 `成品.路径 类别 类型` 与 `帧.字段 类型`。
     fn frozen_fingerprint() -> String {
-        let cat = crate::faces::cells_catalog::catalog();
+        let cat = crate::faces::cells_catalog::tests::catalog();
         let mut lines: Vec<String> = Vec::new();
         for p in cat["products"].as_array().into_iter().flatten() {
             for c in p["cells"].as_array().into_iter().flatten() {

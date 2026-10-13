@@ -591,18 +591,7 @@ pub(crate) struct Product {
     pub(crate) tags: &'static [(&'static str, &'static str)],
     /// 样本：每个可缺的格都填上、每个列表都不空、每种变体各一个。
     pub(crate) specimens: fn() -> Vec<Specimen>,
-    /// **冻结**：两个前端（桌面界面 · 手机）都照它读的那几格 —— 删 / 改名 / 换类型 ⇒ 判据红
-    /// （对的是落盘的格目录金样：金样里标了冻结的格、目录里没了或换了样，重写金样也不放行）。只在测试档（判据与指纹读它）。
-    #[cfg(test)]
-    pub(crate) frozen: Frozen,
 }
-
-// 测试档那一半（整份目录 · 冻结格 · 缺格表）：判据 · 金样 · build_id 指纹读它。
-#[cfg(test)]
-#[path = "../../../tests/backend/faces/cells_catalog_tier.rs"]
-mod tier;
-#[cfg(test)]
-pub(crate) use tier::{catalog, Frozen, PENDING};
 
 /// 一件成品的格（按路径排）＋ 样本里的洞。
 pub(crate) fn cells_of(p: &Product) -> (Vec<Cell>, Vec<String>) {
@@ -629,36 +618,26 @@ pub(crate) const PRODUCTS: &[Product] = &[
             ("answer", "kind"),
         ],
         specimens: specimens::record,
-        #[cfg(test)]
-        frozen: Frozen::All,
     },
     Product {
         name: "facts",
         tags: &[],
         specimens: specimens::facts,
-        #[cfg(test)]
-        frozen: Frozen::No,
     },
     Product {
         name: "needs_row",
         tags: &[],
         specimens: specimens::needs_row,
-        #[cfg(test)]
-        frozen: Frozen::No,
     },
     Product {
         name: "index_row",
         tags: &[],
         specimens: specimens::index_row,
-        #[cfg(test)]
-        frozen: Frozen::No,
     },
     Product {
         name: "read_row",
         tags: &[],
         specimens: specimens::read_row,
-        #[cfg(test)]
-        frozen: Frozen::All,
     },
     // 会话三帧：第二个前端（手机）照下面点名的格逐格读，缺一格整帧当坏帧丢（会话列表有、点进去空白）——
     // 这几格就是它的冻结表（从前住 `wire_tests::SECOND_FRONTEND_READS`，10-10 挪来，一处登记）。`container` · `pid` 不在内。
@@ -667,105 +646,38 @@ pub(crate) const PRODUCTS: &[Product] = &[
         name: "session_added",
         tags: &[],
         specimens: specimens::session_added,
-        #[cfg(test)]
-        frozen: Frozen::Cells(&[
-            "sid",
-            "path",
-            "cwd",
-            "name",
-            "waiting_for",
-            "agent_kind",
-            "attachable",
-            "activity",
-            "activity_text",
-            "activity_tone",
-            "background",
-        ]),
     },
     Product {
         name: "session_status",
         tags: &[],
         specimens: specimens::session_status,
-        #[cfg(test)]
-        frozen: Frozen::Cells(&[
-            "sid",
-            "waiting_for",
-            "activity",
-            "activity_text",
-            "activity_tone",
-        ]),
     },
     Product {
         name: "session_state",
         tags: &[],
         specimens: specimens::session_state,
-        #[cfg(test)]
-        frozen: Frozen::No,
     },
     Product {
         name: "session_removed",
         tags: &[],
         specimens: specimens::session_removed,
-        #[cfg(test)]
-        frozen: Frozen::Cells(&["sid", "cause"]),
     },
     // 额度账（`quota-read`）：手机照每号写好的几行 · 5h 那一格 · 开窗那一句与号名表读。
     Product {
         name: "quota_read",
         tags: &[],
         specimens: specimens::quota_read,
-        #[cfg(test)]
-        frozen: Frozen::Cells(&[
-            "state",
-            "text",
-            "detail",
-            "usableNow[]",
-            "names.accounts.*",
-            "names.slots.*",
-            "accounts[].account",
-            "accounts[].rows[][].text",
-            "accounts[].rows[][].tone",
-            "accounts[].fiveHour",
-            "accounts[].warm.act",
-            "accounts[].warm.at",
-            "accounts[].warm.text",
-            "unseen[].account",
-            "unseen[].rows[][].text",
-            "unseen[].rows[][].tone",
-            "unseen[].fiveHour",
-            "unseen[].warm.act",
-            "unseen[].warm.at",
-            "unseen[].warm.text",
-        ]),
     },
     // 历史清单（`history-list`）：手机照每行写好的标题 · 时刻 · 段头与注解三格读。
     Product {
         name: "history_list",
         tags: &[],
         specimens: specimens::history_list,
-        #[cfg(test)]
-        frozen: Frozen::Cells(&[
-            "rows[].sessionId",
-            "rows[].label",
-            "rows[].atText",
-            "rows[].sectionText",
-            "rows[].projectPath",
-            "rows[].jsonlPath",
-            "rows[].agent",
-            "rows[].agentTag",
-            "rows[].starred",
-            "rows[].customTitle",
-            "rows[].hidden",
-            "notice",
-            "truncated",
-        ]),
     },
     Product {
         name: "cell_error",
         tags: &[],
         specimens: specimens::cell_error,
-        #[cfg(test)]
-        frozen: Frozen::No,
     },
 ];
 
@@ -1272,4 +1184,4 @@ mod specimens {
 
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/cells_catalog_tests.rs"]
-mod tests;
+pub(crate) mod tests; // `pub(crate)`：`build_id_guard` 的冻结格指纹读整份目录 `tests::catalog`

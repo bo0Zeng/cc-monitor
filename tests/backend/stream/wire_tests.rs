@@ -1724,7 +1724,7 @@ fn net2_uncancellable_is_additive_and_last() {
 //
 // 两个前端吃同一个后端：桌面端（monitor）与第二个前端（手机端）。后者按下表逐字段读帧，缺一格就把整帧当坏帧丢
 // （症状是「会话列表有、点进去永远空白」，零报错）。⇒ 表里登记的每一格不许改名、删、换类型；加新字段照旧（additive）。
-// 会话三帧（`session_added` · `session_status` · `session_removed`）在格目录里，冻结的格登在那边（`cells_catalog::Frozen::Cells`），不在这张表。
+// 会话三帧（`session_added` · `session_status` · `session_removed`）在格目录里，冻结的格登在那边（`cells_catalog::tests::FROZEN`），不在这张表。
 
 /// （帧 kind 或 `request`, 字段, JSON 类型）。`request` 是入方向请求信封。
 pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
@@ -1738,7 +1738,7 @@ pub(crate) const SECOND_FRONTEND_READS: &[(&str, &str, &str)] = &[
     ("line", "seq", "number"),
     ("line", "byte_offset", "number"),
     // 〔第二个前端 2026-10-10〕通用记录那一团。里面的格（`said.results` 的 `patch` · `patchTruncated` · `file` …）整件冻结在格目录
-    // （`faces/cells_catalog.rs` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
+    // （格目录冻结表 `cells_catalog::tests::FROZEN` 的 `record`，`Frozen::All`）；这里只钉「line 帧上有这一格」。
     ("line", "record", "object"),
     ("overflow", "dropped", "number"),
     ("overflow", "lost", "array"),
