@@ -38,7 +38,8 @@ use super::ext::{
     ExtList, ExtLoc, ExtTarget, ExtTokens,
 };
 use super::hub_wire::{
-    CcBusInstallCmd, CcBusState, CcBusStateCmd, Inner, McpApplyCmd, McpApplyReq, McpPreview,
+    CcBusInstallCmd, CcBusState, CcBusStateCmd, Fill, HubApplied, HubApplyReq, HubMachineCard,
+    HubMachineDone, HubPreview, HubReq, HubSlot, Inner, McpApplyCmd, McpApplyReq, McpPreview,
     McpPreviewCmd, McpPreviewReq, McpSource, McpSourceCmd, McpSourceReq, NoReq, SkillApplyCmd,
     SkillApplyReq, SkillPlan, SkillPlanCmd, SkillPlanReq, SkillRead, SkillReadCmd, SkillReadReq,
     SkillSourceFile,
@@ -404,7 +405,6 @@ pub(crate) async fn ext_preview(
 }
 
 /// 用户在卡上填的值（`{field: {key: 值}}`）；缺 / `null` ⇒ 没填。
-type Fill = std::collections::BTreeMap<String, std::collections::BTreeMap<String, String>>;
 
 fn fill_of(args: &Value) -> Result<Option<Fill>, (String, String)> {
     match args.get("fill") {
@@ -656,30 +656,30 @@ pub(crate) fn plan_many(
 }
 
 /// 几张卡的要填格并成一份：每格一次，`kept` ＝ 哪几台那一格已经有值（不填就沿用）。**纯函数**。
-pub(crate) fn merge_slots(cards: &[(String, &ExtCard)]) -> Value {
-    let mut out: Vec<(String, String, Vec<String>)> = Vec::new();
+pub(crate) fn merge_slots(cards: &[(String, &ExtCard)]) -> Vec<HubSlot> {
+    let mut out: Vec<HubSlot> = Vec::new();
     for (name, c) in cards {
         for s in &c.slots {
             let i = match out
                 .iter()
-                .position(|(f, k, _)| *f == s.field && *k == s.key)
+                .position(|o| o.field == s.field && o.key == s.key)
             {
                 Some(i) => i,
                 None => {
-                    out.push((s.field.clone(), s.key.clone(), Vec::new()));
+                    out.push(HubSlot {
+                        field: s.field.clone(),
+                        key: s.key.clone(),
+                        kept: Vec::new(),
+                    });
                     out.len() - 1
                 }
             };
             if s.kept {
-                out[i].2.push(name.clone());
+                out[i].kept.push(name.clone());
             }
         }
     }
-    Value::Array(
-        out.into_iter()
-            .map(|(field, key, kept)| json!({"field": field, "key": key, "kept": kept}))
-            .collect(),
-    )
+    out
 }
 
 /// 会写的文件那一行（给人看）：MCP ＝ 那份配置文件 ＋ 那一个键；skill ＝ 那个目录 ＋ 目录里要写的几个。**纯函数**。
@@ -701,30 +701,17 @@ fn ask_for(kind: ExtKind, name: &str, p: &Pick, b: &ExtBring, place: &ExtLoc) ->
     })
 }
 
-fn many_args(
-    args: &Value,
-) -> Result<(ExtKind, &str, Vec<Option<String>>, Option<ExtLoc>), (String, String)> {
-    let kind = ExtKind::from_arg(args).map_err(|e| (e.code, e.message))?;
-    let name = str_arg(args, "name")?;
-    let to = args
-        .get("to")
-        .and_then(Value::as_array)
-        .ok_or_else(|| bad("`to` must be a list of machine keys (null = this backend)"))?
-        .iter()
-        .map(|v| match v {
-            Value::Null => Ok(None),
-            Value::String(s) if !s.is_empty() => Ok(Some(s.clone())),
-            _ => Err(bad("`to` entries must be a machine key or null")),
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let place = match args.get("place") {
-        None | Some(Value::Null) => None,
-        Some(v) => Some(
-            serde_json::from_value(v.clone())
-                .map_err(|e| bad(&format!("`place` has the wrong shape: {e}")))?,
-        ),
-    };
-    Ok((kind, name, to, place))
+/// 勾上的几台：空的不行、键不许是空串（`null` = 这台自己）。
+fn picked(to: &[Option<String>]) -> Result<(), (String, String)> {
+    if to.iter().any(|t| t.as_deref() == Some("")) {
+        return Err(bad("`to` entries must be a machine key or null"));
+    }
+    Ok(())
+}
+
+/// 那一台说的那一句（给人看；契约错的诊断那一截不上卡）。
+fn said_of(m: String) -> String {
+    crate::common::contract::parts(&m, None).0
 }
 
 /// 目录那一份的读口（生产 = `asset_catalog::answer_current` 带上那份写句柄，由命令表那扇门递进来）；`Sync` ⇒ 跨 await 送得出去。
@@ -741,16 +728,23 @@ fn current_list(table: &Table, current: CurrentFn<'_>) -> Result<ExtList, (Strin
     Ok(super::ext::table(&cat, &super::ext::reach_of(table)))
 }
 
-/// `ext-hub-preview {kind, name, to: [机器…], place?}` → `{places, place, slots, machines: [{to, name, card, files, error}]}`。只读。
+/// `ext-hub-preview {kind, name, to: [机器…], place?}` → [`HubPreview`]。只读。
 pub(crate) async fn ext_preview_many(
     here: &Arc<dyn Here>,
-    args: &Value,
+    req: &HubReq,
     table: &Table,
     remote: &dyn Remote,
     current: CurrentFn<'_>,
-) -> Answer {
-    let (kind, name, to, want) = many_args(args)?;
-    let plan = plan_many(&current_list(table, current)?, kind, name, &to, want)?;
+) -> Result<HubPreview, (String, String)> {
+    let (kind, name) = (req.kind, req.name.as_str());
+    picked(&req.to)?;
+    let plan = plan_many(
+        &current_list(table, current)?,
+        kind,
+        name,
+        &req.to,
+        req.place.clone(),
+    )?;
     let mut machines = Vec::new();
     let mut cards: Vec<(String, ExtCard)> = Vec::new();
     for p in &plan.picks {
@@ -771,41 +765,69 @@ pub(crate) async fn ext_preview_many(
         };
         match got {
             Ok(card) => {
-                machines.push(json!({"to": p.to, "name": p.name, "card": card, "files": files_of(&card), "error": null}));
+                machines.push(HubMachineCard {
+                    to: p.to.clone(),
+                    name: p.name.clone(),
+                    files: files_of(&card),
+                    card: Some(card.clone()),
+                    error: None,
+                });
                 cards.push((p.name.clone(), card));
             }
-            Err((_, m)) => machines
-                .push(json!({"to": p.to, "name": p.name, "card": null, "files": [], "error": m})),
+            Err((_, m)) => machines.push(HubMachineCard {
+                to: p.to.clone(),
+                name: p.name.clone(),
+                card: None,
+                files: Vec::new(),
+                error: Some(said_of(m)),
+            }),
         }
     }
     let refs: Vec<(String, &ExtCard)> = cards.iter().map(|(n, c)| (n.clone(), c)).collect();
-    Ok(json!({
-        "places": plan.places,
-        "place": plan.place,
-        "slots": merge_slots(&refs),
-        "machines": machines,
-    }))
+    Ok(HubPreview {
+        places: plan.places,
+        place: plan.place,
+        slots: merge_slots(&refs),
+        machines,
+    })
 }
 
-/// `ext-hub-apply {kind, name, to: [机器…], place, tokens: {机器: 记号}, fill}` → `{machines: [{to, name, done, error}]}`。
+/// 那一台那张卡要的几格：取共用那一份里填了的（空的不交 ⇒ 沿用那台已有的）。
+fn fill_for(card: &ExtCard, fill: &Fill) -> Fill {
+    let mut mine = Fill::new();
+    for s in &card.slots {
+        if let Some(v) = fill
+            .get(&s.field)
+            .and_then(|f| f.get(&s.key))
+            .filter(|v| !v.is_empty())
+        {
+            mine.entry(s.field.clone())
+                .or_default()
+                .entry(s.key.clone())
+                .or_insert_with(|| v.clone());
+        }
+    }
+    mine
+}
+
+/// `ext-hub-apply {kind, name, to: [机器…], place, tokens: {机器: 记号}, fill}` → [`HubApplied`]。
 /// 各台照它那张卡装（值取共用那一份里那张卡要的几格；没填的不交 ⇒ 沿用那台已有的）；一台没成不挡别台。
 pub(crate) async fn ext_apply_many(
     here: &Arc<dyn Here>,
-    args: &Value,
+    req: &HubApplyReq,
     table: &Table,
     remote: &dyn Remote,
     current: CurrentFn<'_>,
-) -> Answer {
-    let (kind, name, to, want) = many_args(args)?;
+) -> Result<HubApplied, (String, String)> {
+    let (kind, name, want) = (req.kind, req.name.as_str(), req.place.clone());
+    picked(&req.to)?;
     let plan = plan_many(
         &current_list(table, current)?,
         kind,
         name,
-        &to,
+        &req.to,
         want.clone(),
     )?;
-    let fill = args.get("fill").cloned().unwrap_or_else(|| json!({}));
-    let tokens = args.get("tokens").cloned().unwrap_or_else(|| json!({}));
     let mut machines = Vec::new();
     for p in &plan.picks {
         let key = p.to.clone().unwrap_or_default();
@@ -816,22 +838,15 @@ pub(crate) async fn ext_apply_many(
                     let card: ExtCard =
                         serde_json::from_value(ext_preview(here, &ask, table, remote).await?)
                             .map_err(|e| ("io_failed".to_string(), e.to_string()))?;
-                    let mut mine = serde_json::Map::new();
-                    for s in &card.slots {
-                        if let Some(v) = fill
-                            .get(&s.field)
-                            .and_then(|f| f.get(&s.key))
-                            .and_then(Value::as_str)
-                            .filter(|v| !v.is_empty())
-                        {
-                            mine.entry(s.field.clone()).or_insert_with(|| json!({}))[&s.key] =
-                                json!(v);
-                        }
-                    }
+                    let tokens = req
+                        .tokens
+                        .get(&key)
+                        .ok_or_else(|| bad("`tokens` has no entry for this machine"))?;
                     let mut a = ask.clone();
-                    a["tokens"] = tokens.get(&key).cloned().unwrap_or(Value::Null);
-                    a["fill"] = Value::Object(mine);
-                    ext_apply(here, &a, table, remote).await
+                    a["tokens"] = json!(tokens);
+                    a["fill"] = json!(fill_for(&card, &req.fill));
+                    serde_json::from_value::<ExtDone>(ext_apply(here, &a, table, remote).await?)
+                        .map_err(|e| ("io_failed".to_string(), e.to_string()))
                 }
                 .await
             }
@@ -842,11 +857,21 @@ pub(crate) async fn ext_apply_many(
             _ => Err(changed_since()),
         };
         machines.push(match done {
-            Ok(d) => json!({"to": p.to, "name": p.name, "done": d, "error": null}),
-            Err((_, m)) => json!({"to": p.to, "name": p.name, "done": null, "error": m}),
+            Ok(d) => HubMachineDone {
+                to: p.to.clone(),
+                name: p.name.clone(),
+                done: Some(d),
+                error: None,
+            },
+            Err((_, m)) => HubMachineDone {
+                to: p.to.clone(),
+                name: p.name.clone(),
+                done: None,
+                error: Some(said_of(m)),
+            },
         });
     }
-    Ok(json!({ "machines": machines }))
+    Ok(HubApplied { machines })
 }
 
 #[cfg(test)]

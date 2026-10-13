@@ -51,6 +51,7 @@ fn backend_command_blocks() -> Vec<(String, String)> {
             "typed::owning::<",
             "typed::asynchronous::<",
             "typed::async_with_files::<",
+            "typed::async_owning::<",
             "typed::facing::<",
         ] {
             for (at, _) in prod.match_indices(ctor) {

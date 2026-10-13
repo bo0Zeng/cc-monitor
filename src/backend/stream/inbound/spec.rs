@@ -167,13 +167,13 @@ impl Run {
         matches!(
             self,
             Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..)))
+        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..)))
     }
 
     /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
     pub(crate) fn writes(self) -> bool {
         matches!(self, Run::BlockingOwn(_) | Run::AsyncOwn(_))
-            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_)) || t.hands_the_face())
+            || matches!(self, Run::Typed(t) if matches!(t.run, super::typed::TypedRun::BlockingOwn(..) | super::typed::TypedRun::BlockingOwning(_) | super::typed::TypedRun::AsyncOwning(..)) || t.hands_the_face())
     }
 }
 
@@ -216,6 +216,10 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
             super::typed::TypedRun::Async(f) => Prepared::Async(Box::new(f)),
             super::typed::TypedRun::AsyncFiles(f, files) => {
                 Prepared::Async(Box::new(move |r| f(r, files)))
+            }
+            super::typed::TypedRun::AsyncOwning(f, hub) => {
+                let own = own?.clone();
+                Prepared::Async(Box::new(move |r| f(r, own, hub)))
             }
         },
         Run::Builtin => return None,

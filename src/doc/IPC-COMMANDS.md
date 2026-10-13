@@ -6057,16 +6057,64 @@ type NoReq = Record<symbol, never>;
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `kind` | → | `skill` / `mcp` |
-| `machines` | ← | 勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = 那台说的那一句 |
-| `name` | → | 名字 |
-| `place` | → | 可缺：用户在卡上选的那一处 `{level:"user"}` / `{level:"project", dir}`；对勾上的每台都能装才照它 |
-| `place` | ← | 共用的那一处（没有每台都能装的 ⇒ `null`） |
-| `places` | ← | 各台能装的各处并起来 `{at, ok, note}`：勾上的每台都能装才 `ok`，否则 `note` 说第一台为什么不行 |
-| `slots` | ← | 几张卡的要填格并成一份 `{field, key, kept}`：每格一次，`kept` = 那一格已经有值的几台（名字） |
-| `to` | → | 勾上的几台：可达表的键的列表，**`null` = 这台自己**；来源与那台原来那一处照扩展页那张表 |
+入参 `HubReq` · 回包 `HubPreview`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtCard = { kind: ExtKind, name: string, 
+/**
+ * 被写那台上的落点（skill 目录 / MCP 配置文件）。
+ */
+path: string, 
+/**
+ * 要写的那几个（skill：目录里的相对路径；MCP：那份配置文件）。
+ */
+writes: Array<string>, 
+/**
+ * 装上之后和现在一样（没什么可写）。
+ */
+unchanged: boolean, 
+/**
+ * 要留意的几件（说人话）。
+ */
+suspects: Array<string>, 
+/**
+ * 装不了的原因（有它就不给确认）。
+ */
+stop: string | null, 
+/**
+ * MCP：装上之后那一条（待填的值是 `null`）。
+ */
+config: string | null, slots: Array<ExtSlot>, tokens: ExtTokens, };
+type ExtKind = "skill" | "mcp";
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtSlot = { 
+/**
+ * `env` 或 `headers`。
+ */
+field: string, key: string, 
+/**
+ * 目标机那一条里已有这个键的值（可以沿用；不填就沿用）。
+ */
+kept: boolean, };
+type ExtTarget = { at: ExtLoc, ok: boolean, note: string | null, };
+type ExtTokens = { source: string, target: string | null, };
+type HubMachineCard = { to: string | null, name: string, card: ExtCard | null, 
+/**
+ * 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）。
+ */
+files: Array<string>, error: string | null, };
+type HubPreview = { 
+/**
+ * 各台能装的各处并起来：勾上的每台都能装才 `ok`。
+ */
+places: Array<ExtTarget>, 
+/**
+ * 共用的那一处（没有每台都能装的 ⇒ `null`）。
+ */
+place: ExtLoc | null, slots: Array<HubSlot>, machines: Array<HubMachineCard>, };
+type HubReq = { kind: ExtKind, name: string, to: Array<string | null>, place: ExtLoc | null, };
+type HubSlot = { field: string, key: string, kept: Array<string>, };
+```
 
 码：`bad_args` · `missing` · `catalog_unreadable` · `io_failed`
 
@@ -6076,15 +6124,25 @@ type NoReq = Record<symbol, never>;
 
 收 `args` · 可撤 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `fill` | → | 用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里 |
-| `kind` | → | 同 `ext-hub-preview` |
-| `machines` | ← | 每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = 那台说的那一句（看过之后变了的，那台一个字节不写），一台没成不挡别台 |
-| `name` | → | 同 `ext-hub-preview` |
-| `place` | → | 卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale` |
-| `to` | → | 同 `ext-hub-preview` |
-| `tokens` | → | 每台那张卡上的记号 `{机器键（本机 = 空串）: {source, target}}`：枢纽两头都再看一次，任一头对不上 ⇒ 那台 `stale`、**一个字节不写** |
+入参 `HubApplyReq` · 回包 `HubApplied`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ExtDone = { path: string, 
+/**
+ * 写了 / 删了的那几个。
+ */
+changed: Array<string>, 
+/**
+ * 做成了，但有一件要知道的（执行位没改成 · 没记下来 · 空目录没收掉 …）。
+ */
+note: string | null, };
+type ExtKind = "skill" | "mcp";
+type ExtLoc = { "level": "user" } | { "level": "project", dir: string, };
+type ExtTokens = { source: string, target: string | null, };
+type HubApplied = { machines: Array<HubMachineDone>, };
+type HubApplyReq = { kind: ExtKind, name: string, to: Array<string | null>, place: ExtLoc | null, tokens: { [key in string]: ExtTokens }, fill: { [key in string]: { [key in string]: string } }, };
+type HubMachineDone = { to: string | null, name: string, done: ExtDone | null, error: string | null, };
+```
 
 码：`bad_args` · `missing` · `catalog_unreadable` · `io_failed`
 

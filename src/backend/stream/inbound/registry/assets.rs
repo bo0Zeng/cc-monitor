@@ -189,58 +189,8 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::with_own::<crate::faces::hub_inner_face::CcBusInstallCmd>("把这台二进制带着的 cc-bus 装到这台", &LocalFiles),
     // 两台之间「装」那一件的枢纽（skill 与 MCP 同一对）：界面只问本机一次，本机后端向来源那台取、交被写那台判与写（`assets/hub.rs`）。
     //   依赖本进程的可达表 ⇒ 只在流面上（`cli_control::STREAM_ONLY`）。
-    CommandSpec {
-        name: "ext-hub-preview",
-        summary: "装到几台之前那一张卡：本机后端当枢纽，向各台问完并好",
-        codes: &[
-            "bad_args",
-            "missing",
-            "catalog_unreadable",
-            "io_failed",
-        ],
-        fields: &[arg("kind", "`skill` / `mcp`"), out("machines", "勾上的每台一项 `{to, name, card, files, error}`：`card` 同单台那张确认卡（`{kind, name, path, writes, unchanged, suspects, stop, config, slots, tokens}`）；`files` = 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）；那台没拼成 ⇒ `card` 为 `null`、`error` = 那台说的那一句"), arg("name", "名字"), arg("place", "可缺：用户在卡上选的那一处 `{level:\"user\"}` / `{level:\"project\", dir}`；对勾上的每台都能装才照它"), out("place", "共用的那一处（没有每台都能装的 ⇒ `null`）"), out("places", "各台能装的各处并起来 `{at, ok, note}`：勾上的每台都能装才 `ok`，否则 `note` 说第一台为什么不行"), out("slots", "几张卡的要填格并成一份 `{field, key, kept}`：每格一次，`kept` = 那一格已经有值的几台（名字）"), arg("to", "勾上的几台：可达表的键的列表，**`null` = 这台自己**；来源与那台原来那一处照扩展页那张表")],
-        takes_input: true,
-        run: Run::AsyncOwn(|r, own| {
-            Box::pin(async move {
-                let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
-                crate::assets::hub::ext_preview_many(
-                    &hub_here(&r.tz, &own),
-                    &r.args,
-                    &crate::dial::remote_ask::REACH,
-                    &crate::dial::remote_ask::DialRemote,
-                    &current,
-                )
-                .await
-                .map(Some)
-            })
-        }),
-    },
-    CommandSpec {
-        name: "ext-hub-apply",
-        summary: "装到几台，本机后端当枢纽；各台各自结局",
-        codes: &[
-            "bad_args",
-            "missing",
-            "catalog_unreadable",
-            "io_failed",
-        ],
-        fields: &[arg("fill", "用户在卡上填的值 `{field: {key: 值}}`（只填一次；每台只交它那张卡要的几格，空的不交 ⇒ 沿用那台已有的）；来源机上的值从不经过这里"), arg("kind", "同 `ext-hub-preview`"), out("machines", "每台一项 `{to, name, done, error}`：`done` = `{path, changed, note}`；没成 ⇒ `error` = 那台说的那一句（看过之后变了的，那台一个字节不写），一台没成不挡别台"), arg("name", "同 `ext-hub-preview`"), arg("place", "卡上那一处（`ext-hub-preview` 回的 `place`）；那一组现算的那一处不是它 ⇒ 各台都 `stale`"), arg("to", "同 `ext-hub-preview`"), arg("tokens", "每台那张卡上的记号 `{机器键（本机 = 空串）: {source, target}}`：枢纽两头都再看一次，任一头对不上 ⇒ 那台 `stale`、**一个字节不写**")],
-        takes_input: true,
-        run: Run::AsyncOwn(|r, own| {
-            Box::pin(async move {
-                let current = |visit| crate::assets::asset_catalog::answer_current(visit, &own);
-                crate::assets::hub::ext_apply_many(
-                    &hub_here(&r.tz, &own),
-                    &r.args,
-                    &crate::dial::remote_ask::REACH,
-                    &crate::dial::remote_ask::DialRemote,
-                    &current,
-                )
-                .await
-                .map(Some)
-            })
-        }),
-    },
+    crate::stream::inbound::typed::async_owning::<crate::faces::ext_hub_face::ExtHubPreview>("装到几台之前那一张卡：本机后端当枢纽，向各台问完并好", hub_here),
+    crate::stream::inbound::typed::async_owning::<crate::faces::ext_hub_face::ExtHubApply>("装到几台，本机后端当枢纽；各台各自结局", hub_here),
     // 扩展页那张表：这台现扫一次、记下（资产目录的写口从这扇门递进去），各台目录合成「条目 × 机器」。
     //   读可达表认出每台的名字 ⇒ 只在流面上。
     CommandSpec {

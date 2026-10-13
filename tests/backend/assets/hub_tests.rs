@@ -523,7 +523,10 @@ fn slots_merge_into_one_list_and_say_which_machines_already_have_each() {
     };
     let (a, b) = (card(false), card(true));
     assert_eq!(
-        merge_slots(&[("laptop".to_string(), &a), ("nano".to_string(), &b)]),
+        json!(merge_slots(&[
+            ("laptop".to_string(), &a),
+            ("nano".to_string(), &b)
+        ])),
         json!([{"field": "env", "key": "API_KEY", "kept": ["nano"]}])
     );
     assert_eq!(

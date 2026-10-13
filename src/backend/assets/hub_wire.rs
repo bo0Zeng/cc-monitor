@@ -342,3 +342,93 @@ pub(crate) struct CcBusInstalled {
     pub backup: Option<String>,
     pub record_failed: Option<String>,
 }
+
+// ───────────────────────── 枢纽自己那一对（界面读：`ext-hub-preview` / `-apply`） ─────────────────────────
+
+/// 用户在卡上填的值 `{field: {key: 值}}`。
+pub(crate) type Fill = BTreeMap<String, BTreeMap<String, String>>;
+
+/// `ext-hub-preview`：装到勾上的几台之前那一张卡。`to` 里 `null` = 这台自己；`place` = 用户在卡上选的那一处。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HubReq {
+    pub kind: super::ext::ExtKind,
+    pub name: String,
+    pub to: Vec<Option<String>>,
+    #[serde(default)]
+    pub place: Option<ExtLoc>,
+}
+
+/// `ext-hub-apply`：同 [`HubReq`]，再带每台那张卡上的记号（键 = 机器键，本机 = 空串）与填的值。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct HubApplyReq {
+    pub kind: super::ext::ExtKind,
+    pub name: String,
+    pub to: Vec<Option<String>>,
+    #[serde(default)]
+    pub place: Option<ExtLoc>,
+    #[serde(default)]
+    pub tokens: BTreeMap<String, super::ext::ExtTokens>,
+    #[serde(default)]
+    pub fill: Fill,
+}
+
+/// 几张卡的要填格并成一份：每格一次，`kept` = 那一格已经有值的几台（名字）。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HubSlot {
+    pub field: String,
+    pub key: String,
+    pub kept: Vec<String>,
+}
+
+/// 勾上的一台那张卡：拼不成 ⇒ `card` 为 `null`、`error` = 那台说的那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HubMachineCard {
+    pub to: Option<String>,
+    pub name: String,
+    pub card: Option<super::ext::ExtCard>,
+    /// 会写的文件那一行（MCP：那份配置文件 ＋ 键；skill：目录 ＋ 要写的几个）。
+    pub files: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// `ext-hub-preview` 的回包。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HubPreview {
+    /// 各台能装的各处并起来：勾上的每台都能装才 `ok`。
+    pub places: Vec<super::ext::ExtTarget>,
+    /// 共用的那一处（没有每台都能装的 ⇒ `null`）。
+    pub place: Option<ExtLoc>,
+    pub slots: Vec<HubSlot>,
+    pub machines: Vec<HubMachineCard>,
+}
+
+/// 一台的结局：没成 ⇒ `done` 为 `null`、`error` = 那台说的那一句。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HubMachineDone {
+    pub to: Option<String>,
+    pub name: String,
+    pub done: Option<super::ext::ExtDone>,
+    pub error: Option<String>,
+}
+
+/// `ext-hub-apply` 的回包：每台各自结局，一台没成不挡别台。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct HubApplied {
+    pub machines: Vec<HubMachineDone>,
+}

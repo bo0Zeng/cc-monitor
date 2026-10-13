@@ -1387,11 +1387,13 @@ async fn the_many_hub_pair_keeps_its_wire_bytes() {
         .unwrap()
         .peer = Some(cb.self_id.clone());
     let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
-    let wire = |v: &Value| {
-        v.to_string()
-            .replace(&*base.display().to_string(), "<BASE>")
-    };
-    let ask = |to: Value| json!({ "kind": "skill", "name": "demo", "to": to });
+    let b = base.display().to_string();
+    let wire = |v: Value| v.to_string().replace(&*b, "<BASE>");
+    // 入参照旧用 JSON 写、经 `typed::take` 解成入参类型（同帧面那一跳）。
+    use crate::assets::hub_wire::{HubApplyReq, HubReq};
+    use crate::stream::inbound::typed::take;
+    let ask =
+        |to: Value| take::<HubReq>(&json!({ "kind": "skill", "name": "demo", "to": to })).unwrap();
     let pre = crate::assets::hub::ext_preview_many(
         &t.here,
         &ask(json!(["laptop"])),
@@ -1401,13 +1403,17 @@ async fn the_many_hub_pair_keeps_its_wire_bytes() {
     )
     .await
     .unwrap();
-    assert_eq!(wire(&pre), MANY_PREVIEW);
-    let apply = json!({ "kind": "skill", "name": "demo", "to": ["laptop"], "place": pre["place"],
-                        "tokens": { "laptop": pre["machines"][0]["card"]["tokens"] }, "fill": {} });
+    assert_eq!(wire(json!(pre)), MANY_PREVIEW);
+    let card = pre.machines[0].card.clone().unwrap();
+    let apply = take::<HubApplyReq>(
+        &json!({ "kind": "skill", "name": "demo", "to": ["laptop"], "place": pre.place,
+                              "tokens": { "laptop": card.tokens }, "fill": {} }),
+    )
+    .unwrap();
     let done = crate::assets::hub::ext_apply_many(&t.here, &apply, &t.reach, &t.remote, &current)
         .await
         .unwrap();
-    assert_eq!(wire(&done), MANY_APPLY);
+    assert_eq!(wire(json!(done)), MANY_APPLY);
     // 两台没有共同的那一处 ⇒ 各台各说一句、`place` 为 `null`。
     let none = crate::assets::hub::ext_preview_many(
         &t.here,
@@ -1418,7 +1424,7 @@ async fn the_many_hub_pair_keeps_its_wire_bytes() {
     )
     .await
     .unwrap();
-    assert_eq!(wire(&none), MANY_NO_PLACE);
+    assert_eq!(wire(json!(none)), MANY_NO_PLACE);
     let _ = std::fs::remove_dir_all(&base);
 }
 

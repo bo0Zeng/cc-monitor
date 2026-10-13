@@ -806,6 +806,7 @@ fn typed_handler_files_of(
         "typed::owning::<",
         "typed::asynchronous::<",
         "typed::async_with_files::<",
+        "typed::async_owning::<",
         "typed::facing::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
