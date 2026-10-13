@@ -17,6 +17,7 @@ import { PERF_SCENES } from "../perf/scene";
 import { TABGROUP_SCENES } from "./tabgroup";
 import { BGWORK_SCENES } from "./bgwork";
 import { ANSWER_SCENES } from "./answer";
+import { ROTATION_SCENES } from "./rotation";
 
 export interface Scene {
   id: string;
@@ -54,7 +55,7 @@ export const DEFAULT_STORAGE: Record<string, string> = {
   "cc-monitor.cmdk-hint.seen": "1",
 };
 
-export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES, ...FOLDALL_SCENES, ...TABGROUP_SCENES, ...PLAN_SCENES, ...BGWORK_SCENES, ...ANSWER_SCENES];
+export const SCENES: Scene[] = [...MAIN_SCENES, ...PANEL_SCENES, ...FRONT_SCENES, ...DPI_SCENES, ...HISTORY_SCENES, ...SETTINGS_SCENES, ...KIT_SCENES, ...ACCT_SCENES, ...DRAWER_SCENES, ...AGENT_SCENES, ...FOLDALL_SCENES, ...TABGROUP_SCENES, ...PLAN_SCENES, ...BGWORK_SCENES, ...ANSWER_SCENES, ...ROTATION_SCENES];
 
 export function sceneById(id: string): Scene {
   return (

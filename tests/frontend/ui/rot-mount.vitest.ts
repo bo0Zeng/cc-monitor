@@ -112,7 +112,7 @@ describe("会话面板（目标 {sid}）", () => {
 
 describe("设置窗（目标 {strategy, settings}）", () => {
   it("★ 改一格只改手上的草稿、照它重推（rotation-view 带 settings），不写盘；存 ⇒ rotation-save 带草稿", async () => {
-    const m = mountRotation({ origin: "<local>", sid: null, machine: "本机" });
+    const m = mountRotation({ origin: "<local>", sid: null, machine: "夹具机" });
     await m.refresh();
     expect(calls.at(-1)).toEqual({ name: "rotation-view", req: { strategy: "按权重轮换" } });
     editClose(m.root, "40");

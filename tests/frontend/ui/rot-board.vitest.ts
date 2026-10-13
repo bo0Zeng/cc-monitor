@@ -99,7 +99,7 @@ function acts() {
 const state = (over: Partial<BoardState> = {}): BoardState => ({ hours: 12, open: null, refused: null, ...over });
 
 function draw(v: RotationViewReply | null, s: BoardState, a: BoardActs, where: "session" | "settings" = "session"): HTMLElement {
-  const root = board({ view: v, list: LIST, state: s, acts: a, origin: "<local>", where, machine: "本机" });
+  const root = board({ view: v, list: LIST, state: s, acts: a, origin: "<local>", where, machine: "夹具机" });
   document.body.replaceChildren(root);
   return root;
 }

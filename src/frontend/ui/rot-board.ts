@@ -679,6 +679,7 @@ function dayBar(
 ): HTMLElement {
   const wrap = el("div", (e) => (e.className = s.rotDay));
   const bar = el("div", (e) => (e.className = s.rotDayBar));
+  bar.dataset.dayBar = "";
   if (inherited) bar.dataset.inherited = "true";
   for (const g of segs) {
     const from = Number(g.from);
