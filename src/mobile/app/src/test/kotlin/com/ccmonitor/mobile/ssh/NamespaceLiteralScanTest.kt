@@ -68,7 +68,7 @@ class NamespaceLiteralScanTest {
     }
 
     /**
-     * 扫描器自检（同 `AgentProfileSingleAddressTest.theScannerCountsRealDispatchAndNothingElse`）。
+     * 扫描器自检。
      *
      * 上面三条全靠 [codeOnly] + [countLiteral] 认得准。认错了（把注释算进来、
      * 或者把包名 `com.ccmonitor.mobile` 也算成命中），判据要么恒绿要么开始误红，两种都比没有更坏。

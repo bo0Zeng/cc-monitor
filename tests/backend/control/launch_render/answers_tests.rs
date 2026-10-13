@@ -100,6 +100,27 @@ fn the_cli_product_is_one_cmd_and_a_refusal_is_the_refused_code() {
     );
 }
 
+/// ★ 进终端那一句只交意图（手机就这么交）：不交启动命令 ⇒ 照那一家的默认渲，同一行；起新会话没交启动命令也照默认、不吐 `--launcher`。
+#[test]
+fn an_attach_without_launchers_renders_the_same_line() {
+    let mut bare = attach_req();
+    for k in ["launcher", "defaultLauncher", "cwd", "ccmSid", "model"] {
+        bare.as_object_mut().unwrap().remove(k);
+    }
+    assert_eq!(
+        answer_cli(&bare).unwrap(),
+        answer_cli(&attach_req()).unwrap()
+    );
+    let fresh = serde_json::json!({
+        "agent": "claude", "action": {"kind": "new"}, "container": {"kind": "none"}, "account": {"kind": "base"},
+    });
+    let cmd = answer_cli(&fresh).unwrap()["cmd"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert!(!cmd.contains("--launcher"), "{cmd}");
+}
+
 /// `launch-local` 的入参按形状收（缺必填 / 多一格 / 旧形状 ⇒ `bad_args`），成品 `{cmd, account}`。
 #[test]
 fn the_local_request_and_product_have_their_registered_shapes() {

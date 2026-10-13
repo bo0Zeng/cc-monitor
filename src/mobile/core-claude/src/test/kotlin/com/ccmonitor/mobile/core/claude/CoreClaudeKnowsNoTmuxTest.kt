@@ -17,7 +17,7 @@ import java.io.File
  */
 class CoreClaudeKnowsNoTmuxTest {
     private companion object {
-        val WIRE_WORDS = listOf("\"place\" to \"tmux\"", "\"tmuxName\" to ", "\"kind\" to \"tmux\"", "str(\"tmux_name\")")
+        val WIRE_WORDS = listOf("\"place\" to \"tmux\"", "\"tmuxName\" to ", "\"kind\" to \"tmux\"", "@Json(name = \"tmux_name\")")
     }
 
     /** 本模块的 main 源集。测试的工作目录可能是仓根或模块目录，两种都试。 */

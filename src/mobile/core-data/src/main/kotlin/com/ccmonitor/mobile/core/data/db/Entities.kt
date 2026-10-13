@@ -31,8 +31,8 @@ data class Host(
     val passwordEnc: String? = null,
     // 远端 OS：null/"posix" = POSIX（bash/sh+tmux，默认）；"windows" = Windows（PowerShell，无 tmux）。命令按 os 走方言。
     val os: String? = null,
-    // agent 种类：null/"ClaudeCode" = Claude Code（默认）；"Codex" = Codex CLI。
-    // core-data 不依赖 core-claude，所以存 enum.name 字符串，在 :app 边界映射为 AgentKind。
+    // 这台起会话用哪一家。旧值（`ClaudeCode` / `Codex`）不迁：那台认不出 ⇒ 当没选。
+    // 存那台 `session-new-facts` 给的线上 kind 原值（主机设置里选的那一家）；没选 ⇒ null。
     val agentKind: String? = null,
 )
 

@@ -94,6 +94,7 @@ class CommandPaletteTest {
             terminalPaletteActions(
                 supportsTmux = false, // 只保留自定义动作，隔离
                 customButtons = listOf(btn),
+                models = emptyList(),
                 onModel = {},
                 onCapture = {},
                 onShowTmux = {},

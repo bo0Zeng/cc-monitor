@@ -195,7 +195,17 @@ def tap_in_row(label, button):
     raise Step.Fail(f"「{label}」那一行上没有「{button}」")
 
 
-def add_host(name, codex=False):
+def open_import():
+    """钥匙页点「+」开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
+    for _ in range(3):
+        tap("+")
+        if wait(t("mobIdentity.add.import"), 4):
+            break
+    tap(t("mobIdentity.add.import"))
+    time.sleep(1)
+
+
+def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
     tap("+")
@@ -208,13 +218,50 @@ def add_host(name, codex=False):
     typed(PORT)
     tap(t("mobHostEdit.field.user")); typed(USER)
     hide_keyboard()
-    if codex:
-        tap("Codex")
     adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
     time.sleep(1)
     tap("smoke")
     tap(t("mobHostEdit.page.save"))
     time.sleep(2)
+
+
+def switch_model(name):
+    """终端屏的命令面板里换模型：列的是那台给的那一家的模型（session-new-facts），点一个 ⇒ session-model。
+    替身读到 `/model <值>` 就落那一家的读回 ⇒ 结局「换成了」，那台写好的那一句上屏（Toast，经无障碍事件看）；
+    回包解不开 · 没换成 ⇒ 提示条「发送失败」。"""
+    facts = json.loads(subprocess.run([sys.executable, os.path.join(here, "frames.py"), "session-new-facts", "{}"],
+                                      capture_output=True, text=True).stdout or "{}")
+    agents = (facts.get("data") or {}).get("agents") or []
+    models = next((a["models"] for a in agents if a.get("kind") == "claude"), [])
+    if not models:
+        raise Step.Fail(f"那台没给 claude 的模型：{facts!r}"[:200])
+    pick = models[-1]
+    hide_keyboard()
+    tap(t("mobDefaultButtons.label.command"))
+    time.sleep(1.5)
+    row = ui.find(pick["text"])
+    if row is None:
+        raise Step.Fail(f"命令面板里没有「{pick['text']}」")
+    said = t("beSessionModel.set.saved", model=pick["value"])
+    # 无障碍事件流和 `uiautomator dump` 抢同一个口：看事件的这几秒里只点 · 只读台架，不 dump 屏。
+    events = subprocess.Popen(["adb", "shell", "uiautomator", "events"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+    try:
+        time.sleep(1)
+        adb("shell", "input", "tap", *map(str, ui.center(row)))
+        end = time.time() + 20
+        while time.time() < end and f"> /model {pick['value']}" not in rig("tmux", "capture-pane", "-p", "-t", name).stdout:
+            time.sleep(1)
+        got = time.time() < end
+        time.sleep(4)
+    finally:
+        events.terminate()
+    seen = events.communicate(timeout=5)[0]
+    if not got:
+        raise Step.Fail(f"点了「{pick['text']}」，那个会话里没收到 /model {pick['value']}")
+    if t("mobTerm.model.sendFailed") in seen:
+        raise Step.Fail("换模型那一问上屏的是「发送失败」（回包没解开或没换成）")
+    if said not in seen:
+        raise Step.Fail(f"没看到那台写好的那一句「{said}」")
 
 
 def main():
@@ -225,8 +272,7 @@ def main():
     with Step("1-加机器连上"):
         launch(fresh=True)
         tap(t("mobIdentity.page.title")); time.sleep(1)
-        tap("+"); time.sleep(1)
-        tap(t("mobIdentity.add.import")); time.sleep(1)
+        open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         typed(key[0])  # 只贴一行：要当场拒
@@ -238,8 +284,7 @@ def main():
             raise Step.Fail("拒了却没出那条提示")
         if fab_under_notice("+", t("detail.act.copy")):
             raise Step.Fail("提示盖住了「+」（按钮没让开）")
-        tap("+"); time.sleep(1)
-        tap(t("mobIdentity.add.import")); time.sleep(1)
+        open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         for line in key:
@@ -384,11 +429,26 @@ def main():
         pane = rig("tmux", "capture-pane", "-p", "-t", name).stdout
         if f"> {T} from phone terminal" not in pane or f"> {T} from desk" not in pane:
             raise Step.Fail("两侧打的字没都进那个会话")
+        switch_model(name)
         adb("shell", "input", "keyevent", "4")
 
     with Step("10-Codex"):
         launch()
-        add_host("smokecodex", codex=True)
+        add_host("smokecodex")
+        # 哪几家是那台给的（session-new-facts）：存好、连上以后进编辑页才列得出，手机自己不认识 Codex。
+        drawer(t("mobDrawer.server.named", name=""))
+        time.sleep(1.5)
+        tap_in_row("smokecodex", t("mobHosts.row.edit"))
+        if not wait("Codex", 40):
+            raise Step.Fail("主机设置里列不出那台能起的几家")
+        tap("Codex")
+        adb("shell", "input", "swipe", "540", "1600", "540", "400", "400")
+        time.sleep(1)
+        tap(t("mobHostEdit.page.save"))
+        time.sleep(2)
+        tap("smokecodex")
+        time.sleep(2)
+        to_chat()
         hide_keyboard()
         tap(t("mobChat.input.placeholder")); typed(f"{T} codex")
         hide_keyboard()

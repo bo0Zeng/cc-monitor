@@ -22,7 +22,7 @@ root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 mode=all
 case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
-mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/backend/ssh-dial/ src/backend/Cargo.toml src/backend/Cargo.lock)
+mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/backend/ssh-dial/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
 # 改到的第一条（空 = 没改到；`?` = 找不到 main，照跑）
 mobile_touch() {
   local base

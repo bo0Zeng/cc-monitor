@@ -47,6 +47,10 @@ subprojects {
         baseline.set(rootProject.file("config/detekt/baseline-${project.name}.xml"))
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
     }
+    // 同 ktlint：不检 build 产物（KSP 生成的 Moshi 解码器等，带类型解析的变体任务把生成目录也算进源）。
+    tasks.withType<dev.detekt.gradle.Detekt>().configureEach {
+        exclude { it.file.path.contains("${layout.buildDirectory.get().asFile.path}") }
+    }
 
     // compileSdk / minSdk / Java 版本 / jvmTarget 只在这里写一份；模块只留自己的
     // namespace、buildFeatures、testInstrumentationRunner、consumerProguard 与 app 的 targetSdk。

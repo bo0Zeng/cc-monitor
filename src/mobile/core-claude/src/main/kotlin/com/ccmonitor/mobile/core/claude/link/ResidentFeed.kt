@@ -222,6 +222,8 @@ class ResidentFeed(
                 m.bool("timeout") == true -> Reply.TimedOut
                 m.bool("cancelled") == true -> Reply.Cancelled
                 m.bool("down") == true -> Reply.LinkDown
+                // 核心按 `cmd-wire` 那一份类型解回包没解开（形状对不上）：原样带回，详情里是 serde 那一句。
+                m.bool("unreadable") == true -> Reply.Unreadable(body)
                 else -> Reply.Unreadable(body)
             }
         replies.computeIfAbsent(id) { CompletableDeferred() }.complete(reply)

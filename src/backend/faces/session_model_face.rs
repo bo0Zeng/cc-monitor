@@ -10,7 +10,7 @@ use crate::faces::session_mode_face::SwitchResult;
 use crate::stream::inbound::spec::Fail;
 use crate::stream::inbound::typed::{self, Async, Command, Cx};
 use copy_core::copy_text;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 /// 送出那一行之后最多等多久读回（毫秒）：那一家处理本地命令是当场的，这是兜底的期限。
 const READBACK_MS: u64 = 15_000;
@@ -31,28 +31,8 @@ pub(crate) struct SessionModelReq {
     pub(crate) client: Option<String>,
 }
 
-/// `session-model` 的回包。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ModelSwitched {
-    /// 结局（同切权限档那一组）。
-    pub(crate) result: SwitchResult,
-    /// 读回的显示名（那一家写的原样，例如 `Opus 5.5 (1M context)`）；没读到 ⇒ `null`。
-    pub(crate) model: Option<String>,
-    /// 读回时那一家顺带说的思考档（原样）；没说 ⇒ 不出。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) effort: Option<String>,
-    /// `refused` 的原因（同 `terminal-input`）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) why: Option<Refused>,
-    /// 给人看的那一句（换成了 · 没变 · 结果未知 · 被拒）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) said: Option<String>,
-}
+/// `session-model` 的回包：线上形住 `cmd-wire::session`。
+pub(crate) use cmd_wire::session::ModelSwitched;
 
 typed::codes! {
     /// `session-model` 的码：认会话 · 装读回的耳朵 · 列名单 · 过门 · 送（同 `terminal-input`）。在等人 · 认不出 · 不归我们不是错（`result`）。

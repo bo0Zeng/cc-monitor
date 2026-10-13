@@ -1002,26 +1002,8 @@ fn count_prose(s: &str, row: &mut IndexRow) {
     }
 }
 
-/// 尾段那一趟扫描的结果：可计行总数 · 尾段起点行号 · 两段的字节边界。
-///
-/// 帧面那条（`history-tail`）只要**这张图**，正文按字节区间另走 `history-read` 分页拉 —— 一帧应答装不下几十 MB 的会话。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct TailPlan {
-    /// 可计行总数（`line_counts` 口径）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub total: u64,
-    /// 尾段第一行的行号。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub tail_from: u64,
-    /// 尾段第一行的字节起点（＝ 头段的字节终点）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub split_at: u64,
-    /// 最后一个完整行（`\n` 收尾）之后的字节位置；torn 残尾不在任何一段里。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub end: u64,
-}
+/// 尾段那一趟扫描的结果：线上形住 `cmd-wire::session`（`history-tail` 的回包）。
+pub(crate) use cmd_wire::session::TailPlan;
 
 /// 扫一遍，出 [`TailPlan`] 与已打开的那份文件（调用方按区间去读）。
 pub(crate) fn tail_plan(

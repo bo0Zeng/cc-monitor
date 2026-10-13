@@ -77,6 +77,18 @@ android {
             // 正式签名：keystore.properties 存在则用，否则不签。
             if (keystorePropsFile.exists()) signingConfig = signingConfigs.getByName("release")
         }
+        // 混淆过的包、调试签名：收缩 · 混淆照正式包那一套（同几份规则），只换签名，装得进模拟器、不碰正式 keystore。
+        // 冒烟多跑一趟它（`tests/mobile-smoke/smoke.sh`）：门禁只编正式包不跑，靠反射认名字的地方在混淆后坏了，这一趟露出来。
+        // ABI 照模拟器（`ccm.abi.minified`）；别的模块没有这个构建类型 ⇒ 用它们的 release。
+        create("minified") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            ndk {
+                abiFilters.clear()
+                abiFilters += providers.gradleProperty("ccm.abi.minified").get()
+            }
+        }
     }
 
     buildFeatures {

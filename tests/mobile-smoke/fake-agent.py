@@ -8,6 +8,7 @@
 #           第一句进来才建记录文件（与真的一样）。每句：user → thinking → tool_use → tool_result → text(end_turn)，
 #           逐条隔一小会儿落盘（像真的那样一条一条出），句里带 long ⇒ 答一大段（看往上翻），
 #           带 ask ⇒ 停在批准框上（pidfile waiting · permission prompt，看需手动），终端里再敲一行才往下走。
+#           敲进来 `/model <值>` ⇒ 不答，只落一条本地命令输出 ``Set model to `<值>` ``（那一家换模型的读回）。
 #   codex： <CODEX_HOME 或 $HOME/.codex>/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl，在世期间一直开着写
 #           （那一家「开着即活」）；第一句进来才建文件；每句 task_started … task_complete。
 # 终端那一侧：读终端里敲进来的行（规范模式，送字 ＋ 回车就到），每句回显一行，桌面 / 手机两侧打字都进同一处。
@@ -110,6 +111,11 @@ class Claude:
                   "model": "smoke-model", "content": [block], "stop_reason": stop,
                   "usage": {"input_tokens": 10, "output_tokens": 5}}})
 
+    def local_model(self, value):
+        """`/model <值>`：那一家当场换、只落一条本地命令输出（不是一轮）。"""
+        self.put({"type": "system", "subtype": "local_command", "level": "info",
+                  "content": f"<local-command-stdout>Set model to `{value}`</local-command-stdout>"})
+
     def turn(self, said, ask):
         self.status("busy")
         self.put({"type": "user", "message": {"role": "user", "content": said}})
@@ -196,6 +202,9 @@ def main():
         if not said:
             continue
         print(f"> {said}", flush=True)
+        if said.startswith("/model ") and hasattr(agent, "local_model"):
+            agent.local_model(said[len("/model "):].strip())
+            continue
         agent.turn(said, sys.stdin.readline)
         print("[替身] 答完。", flush=True)
 

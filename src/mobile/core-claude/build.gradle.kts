@@ -2,6 +2,7 @@
 // 任务名因此不同：测试是 `test`，静态分析是 `detektMain`（带类型解析；plain `detekt` 不做类型解析，会漏规则）。
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.ksp) // 线上类（`link/wire/`）的 Moshi 解码器在编译期生成
 }
 
 java {
@@ -55,12 +56,15 @@ kotlin {
 // 判据读仓根夹具目录里的跨语言金样（通用记录那几份等）：整个目录登记成测试任务的输入，金样一变就重跑，不吃缓存的绿。
 tasks.named<Test>("test") {
     inputs.dir(rootProject.file("../../tests/__fixtures__")).withPathSensitivity(PathSensitivity.RELATIVE)
+    // 线上类的判据对着 `cmd-wire` 导出的 TS 核：生成物一变就重跑。
+    inputs.dir(rootProject.file("../frontend/ui/generated")).withPathSensitivity(PathSensitivity.RELATIVE)
 }
 
 dependencies {
     // 用 api：RemoteExecutor 出现在公开构造参数里（OneShot），消费方的 compile classpath 上要见到它。
     api(project(":core-remote"))
     implementation(libs.moshi)
+    ksp(libs.moshi.kotlin.codegen)
     // 传输用 Flow<ByteArray>。用 -core（纯 JVM artifact），不引 Android 耦合。
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(libs.junit)

@@ -51,26 +51,8 @@ pub(crate) struct ModeSwitched {
     pub(crate) said: Option<String>,
 }
 
-/// 切档的结局。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(
-    test,
-    ts(
-        export,
-        export_to = "../../frontend/ui/generated/",
-        rename = "ModeSwitchResult"
-    )
-)]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum SwitchResult {
-    /// 读回来就是那一档。
-    Done,
-    /// 不知道切没切到（认不出 · 不在循环里 · 按了没变 · 按键结果未知）。
-    Unsure,
-    /// 没按（`why` 说为什么）。
-    Refused,
-}
+/// 切模型 · 切档的结局：线上形住 `cmd-wire::session`。
+pub(crate) use cmd_wire::session::SwitchResult;
 
 typed::codes! {
     /// `session-permission` 的码：认会话 · 列名单 · 起看屏的客户端 · 抓屏 · 送键。在等人 · 认不出 · 不归我们不是错（`result`）。

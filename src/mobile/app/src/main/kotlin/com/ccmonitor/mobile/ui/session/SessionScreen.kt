@@ -45,7 +45,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
-import com.ccmonitor.mobile.core.claude.command.ClaudeInvocation
+import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
@@ -408,12 +408,17 @@ private fun ConnectedTerminal(
     val dialect = s.dialect
     // 本 tab 当前所在的 tmux 会话名（切模型 · 抓屏按它找那台名单里的终端）。动作 lambda 在点击时经 getter 读最新值。
     val currentTmux by vm.tmuxSession.collectAsState()
-    val onSwitchModel = rememberModelSwitchAction(s.session, vm.terminals) { currentTmux }
+    val onSwitchModel = rememberModelSwitchAction(vm.terminals) { currentTmux }
+    // 面板「模型」组：那个终端里跑着的那一家能换的模型（那台给的）；没跑会话 ⇒ 空、这一组不出。
+    val models by androidx.compose.runtime.produceState(emptyList<NewSessionPick>(), currentTmux) {
+        value = currentTmux?.let { vm.terminals.modelsIn(it) }.orEmpty()
+    }
     val onCapture = rememberCaptureAction(vm.terminals, { currentTmux }, onCaptured)
     TerminalTab(
         session = s.session,
         hostId = hostId,
         onShowTmux = onShowTmux,
+        models = models,
         onModel = onSwitchModel,
         onCapture = onCapture,
         onPushKey = onPushKey,
@@ -423,12 +428,11 @@ private fun ConnectedTerminal(
 }
 
 /**
- * 一键切模型。有 tmux 会话就请那台往那个终端里送 `/model <名>`（不依赖本 tab 的前台）；没有就直接发给终端前台。
- * Toast 只说「已发送」：切没切成取决于 Claude 是否在提示态。
+ * 一键切模型：请那台给当前 tmux 会话里跑着的那条会话换模型（`session-model`：那台送命令、读回来认，在等人不送）。
+ * 成败都照那台写好的那一句说；当前不在 tmux 会话里 ⇒ 面板里没有这一组，走不到这里。
  */
 @Composable
 private fun rememberModelSwitchAction(
-    session: TerminalSession,
     terminals: TerminalOps,
     currentTmux: () -> String?,
 ): (String) -> Unit {
@@ -436,21 +440,13 @@ private fun rememberModelSwitchAction(
     val snackbar = LocalAppSnackbar.current
     val scope = rememberCoroutineScope()
     return { model ->
-        val ts = currentTmux()
-        val line = ClaudeInvocation.modelCommand(model)
-        if (ts != null) {
-            // 送字是那台的一问一答，成败都给反馈，掉线时不假报「已发送」。
+        currentTmux()?.let { ts ->
             scope.launch {
-                val problem = terminals.typeInto(ts, line)
-                if (problem == null) {
-                    Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show()
-                } else {
-                    snackbar.show(Notice(copyText("mobTerm.model.sendFailed"), problem))
-                }
+                terminals
+                    .switchModel(ts, model)
+                    .onSuccess { said -> Toast.makeText(context, said, Toast.LENGTH_SHORT).show() }
+                    .onFailure { snackbar.show(Notice(copyText("mobTerm.model.sendFailed"), it.message.orEmpty())) }
             }
-        } else {
-            session.send("$line\n".toByteArray()) // 没有 tmux：直接发给终端前台
-            Toast.makeText(context, copyText("mobTerm.model.sent", "model" to model), Toast.LENGTH_SHORT).show()
         }
     }
 }
@@ -627,6 +623,7 @@ private fun TerminalTab(
     session: TerminalSession,
     hostId: String,
     onShowTmux: () -> Unit,
+    models: List<NewSessionPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
@@ -669,6 +666,7 @@ private fun TerminalTab(
             showKeyboard = showKeyboard,
             onShowTabs = onShowTabs,
             onShowTmux = onShowTmux,
+            models = models,
             onModel = onModel,
             onCapture = onCapture,
             onPushKey = onPushKey,
@@ -685,6 +683,7 @@ private fun TerminalBottomControls(
     showKeyboard: () -> Unit,
     onShowTabs: () -> Unit,
     onShowTmux: () -> Unit,
+    models: List<NewSessionPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onPushKey: () -> Unit,
@@ -740,7 +739,7 @@ private fun TerminalBottomControls(
     // 命令面板：把模型、抓屏、自定义命令、tmux 会话整合成可搜索的动作。
     if (showPalette) {
         val actions =
-            terminalPaletteActions(supportsTmux, paletteButtons, onModel, onCapture, onShowTmux, onPushKey, dispatch)
+            terminalPaletteActions(supportsTmux, paletteButtons, models, onModel, onCapture, onShowTmux, onPushKey, dispatch)
         CommandPalette(actions = actions, onDismiss = { showPalette = false })
     }
     // 按钮设置全屏 Dialog（hostId=null 即全局按钮），关掉即回终端。
@@ -793,6 +792,7 @@ private fun terminalButtonBuiltins(
 internal fun terminalPaletteActions(
     supportsTmux: Boolean,
     customButtons: List<CustomButton>,
+    models: List<NewSessionPick>,
     onModel: (String) -> Unit,
     onCapture: () -> Unit,
     onShowTmux: () -> Unit,
@@ -801,7 +801,8 @@ internal fun terminalPaletteActions(
 ): List<PaletteAction> =
     buildList {
         if (supportsTmux) {
-            MODEL_PRESETS.forEach { m -> add(PaletteAction(copyText("mobPalette.group.model"), m, "/model $m") { onModel(m) }) }
+            // 那台给的可选模型（名字照那台写好的字，副标题是原值）。
+            models.forEach { m -> add(PaletteAction(copyText("mobPalette.group.model"), m.text, m.value) { onModel(m.value) }) }
             add(PaletteAction(copyText("mobPalette.group.capture"), copyText("mobPalette.item.capture")) { onCapture() })
         }
         // 副标题显示组合键（如 Ctrl+C）而不是裸键；动作带整个按钮，由调用方按修饰键编码。
@@ -826,6 +827,3 @@ internal fun customButtonSubtitle(b: CustomButton): String =
             append(b.command)
         }
     }
-
-/** 常用模型预设，经命令面板「模型」组发 `/model <preset>`。 */
-private val MODEL_PRESETS = listOf("opus", "sonnet", "haiku", "default")

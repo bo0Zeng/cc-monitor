@@ -48,19 +48,8 @@ pub(crate) struct KillReq {
     pub(crate) sid: Option<String>,
 }
 
-/// `kill` 的回包：杀成了才有（没杀成走失败信封）。
-#[derive(Debug, Clone, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Killed {
-    /// 杀掉的 tmux 会话名。
-    pub(crate) session: String,
-    /// 杀成了（恒 `true`；界面照它确认，不当成功之外的任何东西）。
-    #[cfg_attr(test, ts(type = "true"))]
-    pub(crate) killed: bool,
-    /// 顺手从 cc-bus 注销的结局。
-    pub(crate) bus: super::cc_bus::BusNote,
-}
+/// `kill` 的回包：线上形住 `cmd-wire::session`。
+pub(crate) use cmd_wire::session::Killed;
 
 crate::stream::inbound::typed::codes! {
     /// `kill` 的码：三道门 · 杀那一发 tmux。

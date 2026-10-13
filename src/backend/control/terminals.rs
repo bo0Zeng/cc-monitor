@@ -282,34 +282,8 @@ pub(crate) fn parse_clients(text: &str) -> Vec<(String, u64, u64)> {
         .collect()
 }
 
-/// 送不了 / 结束不了的原因（`terminal-input` 被拒的 `why` · 名单 `can.*` 里 `{no, said}` 的 `no`）。
-/// 线上照码那一形（小写下划线，与同族命令级码同一写法；手机端也吃这两格）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS, serde::Deserialize))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub(crate) enum Refused {
-    /// 别的前端的会话。
-    NotYours,
-    /// 不归我们管（不是我们起的）。
-    NotManaged,
-    /// 那个 tmux 会话里还有别的窗口（结束会连带关掉）。
-    OtherWindows,
-    /// 名单里此刻没有它。
-    NotKnown,
-    /// 不止一个终端挂着这个 sid。
-    Ambiguous,
-    /// 送的那一刻它已经没了。
-    Ended,
-    /// 画面变了（带新指纹）。
-    ScreenChanged,
-    /// 那台说这条会话在等人（批准 · 回答）：此刻打的字会落进那个框里（`session-say` 才回它）。
-    Waiting,
-    /// 这台 tmux 里没有它的终端、可另有活进程在写它（开在 tmux 之外的终端里）：不另起一个（`session-say` 才回它）。
-    Elsewhere,
-    /// 终端已经没了，按记下的号恢复这条会话没成（`session-say` 才回它；原话记日志）。
-    NotResumed,
-}
+/// 送不了 / 结束不了的原因：线上形住 `cmd-wire::session`（手机端也吃这两格）。
+pub(crate) use cmd_wire::session::Refused;
 
 /// 原因 ⇒ 给人看的那一句。
 pub(crate) fn no_said(why: Refused) -> String {
@@ -335,14 +309,14 @@ pub(crate) fn terminal_json(
     let who = gate::identity(&row.name, &row.probed(), requester);
     let input = match who {
         Who::Pass => Ability::Yes,
-        Who::OtherClient => Ability::No(Refused::NotYours),
-        Who::NotOurs => Ability::No(Refused::NotManaged),
+        Who::OtherClient => super::terminals_wire::refused(Refused::NotYours),
+        Who::NotOurs => super::terminals_wire::refused(Refused::NotManaged),
     };
     let end = match who {
         Who::Pass if row.shared || row.windows == 1 => Ability::Yes,
-        Who::Pass => Ability::No(Refused::OtherWindows),
-        Who::OtherClient => Ability::No(Refused::NotYours),
-        Who::NotOurs => Ability::No(Refused::NotManaged),
+        Who::Pass => super::terminals_wire::refused(Refused::OtherWindows),
+        Who::OtherClient => super::terminals_wire::refused(Refused::NotYours),
+        Who::NotOurs => super::terminals_wire::refused(Refused::NotManaged),
     };
     let shell = SHELLS.contains(&row.program.as_str());
     let state = match (row.sid.is_empty(), shell) {
@@ -358,7 +332,9 @@ pub(crate) fn terminal_json(
     let nonempty = |s: &str| (!s.is_empty()).then(|| s.to_string());
     TerminalItem {
         terminal: row.handle(),
-        host: crate::stream::wire::TerminalHost::Tmux.as_wire(),
+        host: crate::stream::wire::TerminalHost::Tmux
+            .as_wire()
+            .to_string(),
         tmux_name: row.name.clone(),
         title,
         program: row.program.clone(),
@@ -375,12 +351,12 @@ pub(crate) fn terminal_json(
             .iter()
             .filter(|(id, _, _)| *id == row.id)
             .map(|(_, since, last)| Attached {
-                kind: "terminal-window",
+                kind: "terminal-window".to_string(),
                 since: *since,
                 last_activity: *last,
             })
             .collect(),
-        input: "shared",
+        input: "shared".to_string(),
         state,
         last_activity: row.activity,
         // 抓屏不过身份门、恒可用 ⇒ 不在这里占一格（`can` 只放会随调用方 / 此刻变的能力）。

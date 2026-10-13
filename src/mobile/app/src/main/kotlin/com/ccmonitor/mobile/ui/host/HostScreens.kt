@@ -44,7 +44,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import com.ccmonitor.mobile.core.claude.agent.AgentProfile
+import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
+import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
@@ -53,10 +55,12 @@ import com.ccmonitor.mobile.core.data.db.parseAddressLine
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
+import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.dialectFor
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import org.koin.compose.koinInject
 import java.util.UUID
 
 /**
@@ -355,8 +359,8 @@ fun HostEditorScreen(
     var useTmux by remember { mutableStateOf(false) }
     var autoReconnect by remember { mutableStateOf(true) }
     var group by remember { mutableStateOf("") }
-    // agent 种类存档案本身；选项行遍历 `AgentProfile.ALL`，加一种 agent 这一页不用改。
-    var agentProfile by remember { mutableStateOf(AgentProfile.DEFAULT) }
+    // 这台起会话用哪一家：存线上 kind 原值（那台 `session-new-facts` 给的）；没选 ⇒ null。
+    var agentKind by remember { mutableStateOf<String?>(null) }
     var proxyJumpHostId by remember { mutableStateOf<String?>(null) } // 经跳板机（另一台 Host 的 id）
     // 新建直接 Loaded；编辑先 Loading，载入后转 Loaded 或 NotFound（防首帧空表，也防查无时静默新建）。
     var load by remember { mutableStateOf(if (hostId == null) HostEditLoad.Loaded else HostEditLoad.Loading) }
@@ -382,8 +386,7 @@ fun HostEditorScreen(
                 useTmux = h.sessionManager == "tmux"
                 autoReconnect = h.autoReconnect
                 group = h.groupId ?: ""
-                // 存量值转档案，大小写不敏感（见 `ofStoredNameIgnoringCase` 的头注）。
-                agentProfile = AgentProfile.ofStoredNameIgnoringCase(h.agentKind)
+                agentKind = h.agentKind
                 proxyJumpHostId = h.proxyJumpHostId
                 load = HostEditLoad.Loaded
             }
@@ -452,12 +455,13 @@ fun HostEditorScreen(
             modifier = Modifier.fillMaxWidth(),
         )
         OutlinedTextField(group, { group = it }, label = { Text(copyText("mobHostEdit.field.group")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-        // agent 种类：Claude Code（默认）或 Codex CLI，决定落点、resume 的载荷与定位走哪套。
-        Text(copyText("mobHostEdit.agent.title"), style = MaterialTheme.typography.labelMedium)
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-            // 遍历档案，产品名取档案的 `displayName`，不硬写；加一种 agent 这里自然多一项。
-            AgentProfile.ALL.forEach { p ->
-                ChoiceRow(p.displayName, agentProfile.kind == p.kind) { agentProfile = p }
+        // 起会话用哪一家：列那台能起的几家（`session-new-facts`，名字是那台写好的）；那台没连上 ⇒ 列不出，这一行不画。
+        val agents = rememberAgentsOf(hostId)
+        if (agents.isNotEmpty()) {
+            Text(copyText("mobHostEdit.agent.title"), style = MaterialTheme.typography.labelMedium)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                val picked = SessionNewFacts.pick(agents, agentKind)?.kind
+                agents.forEach { a -> ChoiceRow(a.text, a.kind == picked) { agentKind = a.kind } }
             }
         }
         // 开关即 useTmux；文案不说「连接」「tmux」。
@@ -534,8 +538,7 @@ fun HostEditorScreen(
                             groupId = group.trim().ifBlank { null },
                             proxyJumpHostId = proxyJumpHostId,
                             os = if (isWindows) "windows" else null,
-                            // 存 `AgentKind.name`；缺省档存 null。
-                            agentKind = agentProfile.kind.name.takeIf { agentProfile != AgentProfile.DEFAULT },
+                            agentKind = agentKind,
                         )
                     // 密码模式加密进 passwordEnc；钥匙模式清空 passwordEnc（encryptPassword(_, null) 统一处理）。
                     val saving = vm.saveHost(vm.encryptPassword(chosen, if (authIsPassword) password else null))
@@ -595,3 +598,18 @@ private fun SwitchRow(
         Switch(checked = checked, onCheckedChange = onChange)
     }
 }
+
+/** 那台能起的几家（`session-new-facts`）；还没存的新主机 · 那台没连上 · 问不到 ⇒ 空。 */
+@Composable
+private fun rememberAgentsOf(hostId: String?): List<AgentFacts> {
+    val backends = koinInject<HostBackends>()
+    val got by androidx.compose.runtime.produceState(emptyList<AgentFacts>(), hostId) {
+        if (hostId == null) return@produceState
+        val r = backends.of(hostId).call(SessionNewFacts.COMMAND, emptyMap(), AGENTS_MS)
+        value = (r as? Reply.Ok)?.let { SessionNewFacts.of(it.data) }.orEmpty()
+    }
+    return got
+}
+
+/** 主机设置里问那台有哪几家，最多等这么久（问不到就不列）。 */
+private const val AGENTS_MS = 8_000L

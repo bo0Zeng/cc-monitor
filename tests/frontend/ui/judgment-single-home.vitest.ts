@@ -719,6 +719,11 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     // 文件管理那一族的线上类型：路径字节的那一形（`{"b16"}` 的键 · 取字节）。界面只发 `files-delete-session`，不解路径字节。
     HEX_KEY: NONE,
     bytes: NONE,
+    // 会话族手机问的那几条：回包类型住这里的那几条命令 · 按类型解回包 · 判据对后端 `impl Command` 用的名字。
+    //   只有手机嵌的 Rust 核心解（界面按生成的 TS 类型收，不另解），TS 侧没有孪生。
+    COMMANDS: NONE,
+    decode_reply: NONE,
+    reply_names: NONE,
   },
   "copy-core": {
     backend_old: "J22",

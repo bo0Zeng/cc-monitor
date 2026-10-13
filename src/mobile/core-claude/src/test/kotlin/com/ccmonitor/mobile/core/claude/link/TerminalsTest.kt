@@ -18,7 +18,7 @@ class TerminalsTest {
         val rows = TerminalsList.of(terminals.obj("terminals-list")!!.obj("reply"))!!
         assertEquals(listOf("demo-cc", "other", "pipe-x"), rows.map { it.name })
         val demo = rows.first { it.name == "demo-cc" }
-        assertEquals(TerminalsList.Row(terminal = "tmux-1-1", name = "demo-cc", title = "demo title", attached = true, agent = "claude"), demo)
+        assertEquals(TerminalsList.Row(terminal = "tmux-1-1", name = "demo-cc", title = "demo title", attached = true, agent = "claude", sid = "sid-a"), demo)
         val other = rows.first { it.name == "other" }
         assertEquals("没人连着 ⇒ 不算附着", false, other.attached)
         assertNull("里面没跑会话 ⇒ 不知道是哪一家", other.agent)
@@ -58,10 +58,7 @@ class TerminalsTest {
                 "agent" to "claude",
                 "action" to mapOf("kind" to "attach", "name" to "demo-cc"),
                 "container" to mapOf("kind" to "tmux", "name" to "demo-cc", "send_into" to false),
-                "cwd" to null,
                 "account" to mapOf("kind" to "base"),
-                "ccmSid" to null,
-                "model" to null,
             ),
             AttachLine.args(agent = "claude", name = "demo-cc"),
         )
