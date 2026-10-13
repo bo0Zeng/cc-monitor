@@ -193,19 +193,29 @@ impl Skeletons {
         Ok(())
     }
 
+    /// 拿着目录锁时收拾：写到一半就没了的旁名（进程在原子写当中被杀留下的，`.tmp` 结尾 —— 锁在手里 ⇒ 没有别人正在写）一律删；
     /// 份数超了 ⇒ 删最久没写的那些（只删本目录里的骨架文件）。
     fn prune(&self, dir: &OwnPath) {
         let Ok(rd) = Ro::read_dir(dir.as_path()) else {
             return;
         };
-        let mut v: Vec<(std::time::SystemTime, String)> = rd
-            .filter_map(Result::ok)
-            .filter_map(|e| {
-                let name = e.file_name().to_string_lossy().into_owned();
-                let t = e.metadata().ok()?.modified().ok()?;
-                name.ends_with(".json").then_some((t, name))
-            })
-            .collect();
+        let mut v: Vec<(std::time::SystemTime, String)> = Vec::new();
+        for e in rd.filter_map(Result::ok) {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.ends_with(".tmp") {
+                if let Ok(p) = dir.join(&name) {
+                    if let Err(e) = self.own.delete_file(&p) {
+                        tracing::debug!("stale skeleton temp {name} not removed: {e}");
+                    }
+                }
+                continue;
+            }
+            if let Some(t) = e.metadata().ok().and_then(|m| m.modified().ok()) {
+                if name.ends_with(".json") {
+                    v.push((t, name));
+                }
+            }
+        }
         if v.len() <= MAX_FILES {
             return;
         }

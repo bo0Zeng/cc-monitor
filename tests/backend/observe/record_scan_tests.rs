@@ -372,6 +372,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     let first = RecordScans::new(4, 64 << 20).with_skeletons(home());
     let a = first.get(&p).unwrap();
     assert_eq!(first.bytes_read(), text.len() as u64, "头一次读整份");
+    first.flush();
 
     let restarted = RecordScans::new(4, 64 << 20).with_skeletons(home());
     let b = restarted.get(&p).unwrap();
@@ -384,6 +385,7 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     let grown = RecordScans::new(4, 64 << 20).with_skeletons(home());
     let c = grown.get(&p).unwrap();
     assert_eq!(grown.bytes_read(), k + probe, "追加 k 字节应只读 k ＋ 见证");
+    grown.flush();
     let all = std::fs::read(&p).unwrap();
     let fresh = ScanMap::scan_with(
         &all[..],
@@ -413,10 +415,9 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     assert!(e.inputs.iter().any(|r| r.uuid == "later"));
 
     // 改写（同长、内容变了）⇒ 整份。先让骨架跟上此刻这一份。
-    RecordScans::new(4, 64 << 20)
-        .with_skeletons(home())
-        .get(&p)
-        .unwrap();
+    let caught_up = RecordScans::new(4, 64 << 20).with_skeletons(home());
+    caught_up.get(&p).unwrap();
+    caught_up.flush();
     let now = std::fs::read(&p).unwrap();
     let flipped = String::from_utf8(now.clone())
         .unwrap()

@@ -89,10 +89,15 @@ fn small_records_are_not_kept_and_the_dir_is_capped() {
     assert!(!Skeletons::new(own.clone()).wants(MIN_LEN - 1));
     assert!(Skeletons::new(own.clone()).wants(MIN_LEN));
     let s = Skeletons::at(own, 0);
+    // 上一个进程原子写到一半被杀留下的旁名：下一次落的时候删掉。
+    let dir = d.join("data").join("cache").join("skeleton");
+    s.store(&d.join("first.jsonl"), "t", &0);
+    let stale = dir.join("x.t.json.123.ThreadId(1).0.tmp");
+    std::fs::write(&stale, b"half").unwrap();
     for i in 0..MAX_FILES + 3 {
         s.store(&d.join(format!("r{i}.jsonl")), "t", &i);
     }
-    let dir = d.join("data").join("cache").join("skeleton");
+    assert!(!stale.exists(), "写到一半的旁名留着没删");
     let at = |i: usize| dir.join(format!("{}.t.json", digest(&d.join(format!("r{i}.jsonl")))));
     let kept = (0..MAX_FILES + 3).filter(|&i| at(i).is_file()).count();
     assert_eq!(kept, MAX_FILES, "份数没封顶");

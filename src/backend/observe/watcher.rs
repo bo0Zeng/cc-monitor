@@ -3002,8 +3002,9 @@ fn start_prime(
             dispatch_primes(state, sink);
         }
         None => {
-            let done = run_prime(job);
+            let (done, later) = run_prime(job);
             primed(done, state, sink);
+            store_skeletons(later);
         }
     }
 }
@@ -3508,8 +3509,22 @@ pub(crate) struct PrimeDone {
     facts: Option<super::search_rules::LabelFacts>,
 }
 
+/// 读完要落的骨架（交回之后再落：几十 MB 的写不挡「读完了」那一帧）。
+struct SkelLater {
+    home: crate::observe::skeleton::Skeletons,
+    path: PathBuf,
+    body: PrimeSkel,
+}
+
+fn store_skeletons(later: Vec<SkelLater>) {
+    for l in later {
+        l.home.store(&l.path, PRIME_SKEL, &l.body);
+    }
+}
+
 /// 线程池里跑的那一趟（夹具没有池时就地跑同一个函数）：几份记录照顺序预读，再取名字。只读盘、不碰 watcher 的账。
-fn run_prime(job: PrimeJob) -> PrimeDone {
+/// 另回读完要落的骨架（调用方先交回、再落）。
+fn run_prime(job: PrimeJob) -> (PrimeDone, Vec<SkelLater>) {
     let PrimeJob {
         sid,
         gen,
@@ -3518,20 +3533,23 @@ fn run_prime(job: PrimeJob) -> PrimeDone {
     } = job;
     let mut activity = None;
     let mut out = Vec::with_capacity(files.len());
+    let mut later = Vec::new();
     for (i, f) in files.into_iter().enumerate() {
-        let (done, said) = prime_file_cursor(&sid, f);
+        let (done, said, skel) = prime_file_cursor(&sid, f);
         if i == 0 {
             activity = said;
         }
         out.push(done);
+        later.extend(skel);
     }
-    PrimeDone {
+    let done = PrimeDone {
         sid,
         gen,
         files: out,
         activity,
         facts: label.map(|p| super::history_query::label_facts_of(&p)),
-    }
+    };
+    (done, later)
 }
 
 /// Batch8-F25：宣告之后的预读——把 cursor 与 seq 计数器推进到当前
@@ -3542,7 +3560,11 @@ fn run_prime(job: PrimeJob) -> PrimeDone {
 fn prime_file_cursor(
     session_id: &str,
     job: FilePrime,
-) -> (FileDone, Option<crate::agents::SessionActivity>) {
+) -> (
+    FileDone,
+    Option<crate::agents::SessionActivity>,
+    Option<SkelLater>,
+) {
     let FilePrime {
         path,
         key,
@@ -3574,8 +3596,10 @@ fn prime_file_cursor(
     {
         let meta = match Ro::metadata(&path) {
             Ok(m) => m,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return (none(key, true), None),
-            Err(_) => return (none(key, false), None),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return (none(key, true), None, None)
+            }
+            Err(_) => return (none(key, false), None, None),
         };
         match k
             .mark
@@ -3601,7 +3625,7 @@ fn prime_file_cursor(
                     gone: false,
                     bytes: 0,
                 };
-                return (done, k.activity);
+                return (done, k.activity, None);
             }
             crate::observe::skeleton::Look::Grown => {
                 prev = ReadCursor {
@@ -3618,8 +3642,8 @@ fn prime_file_cursor(
     // 「不在 ⇒ 丢游标 · 变短 / 改写 ⇒ 从 0 重数」与续读同一套；这里不出声：那句话由之后的 `process_jsonl` 说。
     let mut reader = match PrimeReader::open(&path, prev, probe.as_deref()) {
         Ok(r) => r,
-        Err(Look::Gone) => return (none(key, true), None),
-        Err(_) => return (none(key, false), None),
+        Err(Look::Gone) => return (none(key, true), None, None),
+        Err(_) => return (none(key, false), None, None),
     };
     let from_zero = reader.from == 0;
     // 骨架的见证对不上 ⇒ 当没有骨架（整份）；对得上 ⇒ 行号 · 链 · 子运行那几行 · 活动接着骨架的。
@@ -3656,7 +3680,7 @@ fn prime_file_cursor(
     while let Some(block) = reader.next_block() {
         let Ok(block) = block else {
             // 读到一半出错：游标不装（至少一次语义，下一趟再来）；这一趟记的链一起扔掉。
-            return (none(key, false), None);
+            return (none(key, false), None, None);
         };
         // 每块恰好止于一个 `\n` ⇒ 当它是「读到这里为止」交给续读同一个扫描（数行），不会有残行。
         let (n, next) = count_new_lines_at(
@@ -3725,26 +3749,29 @@ fn prime_file_cursor(
     );
     let bytes = reader.probed + (reader.len - reader.from);
     let seq = start + n_lines as u64;
+    let mut later = None;
     if let Some(h) = home.as_ref().filter(|h| h.wants(reader.len)) {
         // 修改时刻只在读完时长度没再变才记（读的过程中又写进来 ⇒ 不记，下一次就不算「没变」）。
         let mtime = Ro::metadata(&path)
             .ok()
             .filter(|m| m.len() == reader.len)
             .and_then(|m| crate::observe::skeleton::mtime_of(&m));
-        let k = PrimeSkel {
-            mark: crate::observe::skeleton::Mark {
-                len: reader.len,
-                mtime,
-                cursor: cursor.consumed,
-                witness: tail.clone(),
+        later = Some(SkelLater {
+            home: h.clone(),
+            path: path.clone(),
+            body: PrimeSkel {
+                mark: crate::observe::skeleton::Mark {
+                    len: reader.len,
+                    mtime,
+                    cursor: cursor.consumed,
+                    witness: tail.clone(),
+                },
+                seq,
+                chain: c.clone(),
+                runs: said_runs,
+                activity,
             },
-            seq,
-            chain: c,
-            runs: said_runs,
-            activity,
-        };
-        h.store(&path, PRIME_SKEL, &k);
-        c = k.chain;
+        });
     }
     (
         FileDone {
@@ -3760,6 +3787,7 @@ fn prime_file_cursor(
             bytes,
         },
         activity,
+        later,
     )
 }
 
@@ -3910,7 +3938,9 @@ impl PrimePool {
     fn start(events: std::sync::mpsc::Sender<WatchEvent>) -> Self {
         PrimePool {
             pool: crate::observe::par::Pool::new("record-prime", move |job| {
-                let _ = events.send(WatchEvent::Primed(run_prime(job)));
+                let (done, later) = run_prime(job);
+                let _ = events.send(WatchEvent::Primed(done));
+                store_skeletons(later);
             }),
             queue: std::collections::VecDeque::new(),
             in_flight: 0,

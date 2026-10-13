@@ -391,6 +391,8 @@ pub(crate) struct RecordScans {
     home: Home,
     /// 到此刻为扫描图从记录里读了多少字节（判据数它，不按墙钟）。
     read: AtomicU64,
+    /// 旁线程上正在落的骨架（哪一份 · 那条线程）。
+    writes: Mutex<Vec<(PathBuf, std::thread::JoinHandle<()>)>>,
 }
 
 /// 全进程那一份的上限：条数（同时开着的大会话）与估算字节。
@@ -429,6 +431,7 @@ impl RecordScans {
             }),
             home,
             read: AtomicU64::new(0),
+            writes: Mutex::new(Vec::new()),
         }
     }
 
@@ -502,7 +505,13 @@ impl RecordScans {
             g.flights.push((path.to_path_buf(), f.clone()));
             (f, base)
         };
-        let scanned = self.build(path, file, &meta, base).map(Arc::new);
+        let scanned = self.build(path, file, &meta, base).map(|(map, mark)| {
+            let map = Arc::new(map);
+            if let Some(mark) = mark {
+                self.store_later(path, mark, map.clone());
+            }
+            map
+        });
         {
             let mut g = self.lock();
             g.flights.retain(|(p, _)| p != path);
@@ -526,15 +535,15 @@ impl RecordScans {
         scanned
     }
 
-    /// 造这一张：起点按先后挑 —— 进程里留着的那张（文件变长了）· 盘上的骨架（没变 ⇒ 不读；变长了 ⇒ 接着读）· 从 0。
-    /// 接着读之前先核游标前那几个字节，对不上 ⇒ 从 0。扫完（大记录）落一份骨架。
+    /// 造这一张（大记录另回一份要落的「读到哪了」）：起点按先后挑 —— 进程里留着的那张（文件变长了）· 盘上的骨架（没变 ⇒ 不读；变长了 ⇒ 接着读）· 从 0。
+    /// 接着读之前先核游标前那几个字节，对不上 ⇒ 从 0。照骨架原样出的（没变）不再落。
     fn build(
         &self,
         path: &Path,
         mut file: RoFile,
         meta: &crate::platform::fs::Metadata,
         base: Option<Arc<ScanMap>>,
-    ) -> std::io::Result<ScanMap> {
+    ) -> std::io::Result<(ScanMap, Option<Mark>)> {
         use std::io::{Seek, SeekFrom};
         let len = meta.len();
         let mtime = super::skeleton::mtime_of(meta);
@@ -543,7 +552,7 @@ impl RecordScans {
         if from.is_none() {
             if let Some(k) = home.and_then(|h| h.load::<Skel>(path, SKEL_WHAT)) {
                 match k.mark.look(len, mtime) {
-                    Look::Same => return Ok(k.scan.done(len)),
+                    Look::Same => return Ok((k.scan.done(len), None)),
                     Look::Grown => from = Some(k.scan),
                     Look::Changed => {}
                 }
@@ -564,23 +573,47 @@ impl RecordScans {
         let kind = crate::agents::record_kind_of(path).unwrap_or_default();
         scan.feed(std::io::BufReader::new(file), len, kind, chain)?;
         let map = scan.done(len);
-        if let Some(h) = home {
-            let mark = Mark {
-                len,
-                mtime,
-                cursor: map.end,
-                witness: map.rest.witness.clone(),
-            };
-            h.store(
-                path,
+        let mark = home.map(|_| Mark {
+            len,
+            mtime,
+            cursor: map.end,
+            witness: map.rest.witness.clone(),
+        });
+        Ok((map, mark))
+    }
+
+    /// 落骨架放到一条旁线程上（几十 MB 的写不挡这一问的应答）。同一份上一次还没落完 ⇒ 这一次不落：缓存，晚一步只是下一次多读一截。
+    fn store_later(&self, path: &Path, mark: Mark, map: Arc<ScanMap>) {
+        let Some(home) = self.skeletons().cloned() else {
+            return;
+        };
+        let mut w = self.writes.lock().unwrap_or_else(|e| e.into_inner());
+        w.retain(|(_, h)| !h.is_finished());
+        if w.iter().any(|(p, _)| p == path) {
+            return;
+        }
+        let p = path.to_path_buf();
+        let h = std::thread::spawn(move || {
+            home.store(
+                &p,
                 SKEL_WHAT,
                 &SkelView {
                     mark,
                     scan: map.view(),
                 },
             );
+        });
+        w.push((path.to_path_buf(), h));
+    }
+
+    /// 等旁线程上的骨架都落完（判据「重启后」那一步之前用；进程里别处不等它）。
+    pub(crate) fn flush(&self) {
+        let pending = std::mem::take(&mut *self.writes.lock().unwrap_or_else(|e| e.into_inner()));
+        for (p, h) in pending {
+            if h.join().is_err() {
+                tracing::debug!("skeleton write for {} panicked", p.display());
+            }
         }
-        Ok(map)
     }
 
     /// 条数或字节超了 ⇒ 从最久没用的开始扔。
