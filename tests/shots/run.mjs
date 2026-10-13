@@ -11,9 +11,11 @@
  *   不起 claude、不碰用户的 tmux、不连任何机器。
  *
  * 浏览器：环境变量 `CCM_SHOTS_CHROME` 指定，不给就找 Playwright 缓存里的 Chrome for Testing。
+ * 一张网页图没截成：✗ 那一行当场印原因；那一页的世界里台架 ⇄ 无头壳的来往（带毫秒）与各台后端的诊断日志落进 `.build/shots-sandbox/trace/<场景>.*`，
+ * 问题表里点名。查偶发没截成先看来往里「哪一刻起没声了」、后端日志里有没有 `stale sessions json ignored` 之类的拒绝。
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync, statSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, rmSync, writeFileSync, writeSync, statSync } from "node:fs";
 import net from "node:net";
 import os from "node:os";
 import path from "node:path";
@@ -47,6 +49,7 @@ process.on("exit", cleanup);
 process.on("SIGINT", () => process.exit(130));
 process.on("SIGTERM", () => process.exit(143));
 
+holdSandbox();
 rmSync(sandbox, { recursive: true, force: true });
 mkdirSync(path.join(sandbox, "home"), { recursive: true });
 mkdirSync(out, { recursive: true });
@@ -250,6 +253,41 @@ async function pageFinished(page) {
     await Promise.race([page.eval("window.__shots ? window.__shots.finished : Promise.reject(new Error('页里没有 window.__shots：假适配层没装上'))"), cap]);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/**
+ * 同一棵树里同时只许跑一趟：沙箱（`.build/shots-sandbox`）是这棵树固定的一处，后起的那趟一开头就把它整个删掉重建，
+ * 先起的那趟的各台后端、来往、浏览器档一起没了（10-12 撞过：同一棵树起了两趟，先起的那趟的图全乱）。
+ * 占位文件 `<沙箱>.pid` 记着占着的那趟的 pid（`wx` 建，建不了就看它还在不在）；它还在 ⇒ 说清楚、退出码 2；不在了（上一趟崩了）⇒ 接过来。
+ */
+function holdSandbox() {
+  const lock = `${sandbox}.pid`;
+  mkdirSync(path.dirname(lock), { recursive: true });
+  for (;;) {
+    try {
+      const fd = openSync(lock, "wx");
+      writeSync(fd, String(process.pid));
+      closeSync(fd);
+      process.on("exit", () => {
+        if (readFileSync(lock, "utf8").trim() === String(process.pid)) rmSync(lock, { force: true });
+      });
+      return;
+    } catch (e) {
+      if (e?.code !== "EEXIST") throw e;
+    }
+    const other = Number(readFileSync(lock, "utf8").trim());
+    let alive = false;
+    try {
+      alive = Number.isInteger(other) && other > 0 && readFileSync(`/proc/${other}/cmdline`, "utf8").includes("tests/shots/run.mjs");
+    } catch {
+      // 那个进程不在了
+    }
+    if (alive) {
+      console.error(`这棵树里已经有一趟截图在跑（pid ${other}，沙箱 ${sandbox}）：等它跑完再起，或换一棵树`);
+      process.exit(2);
+    }
+    rmSync(lock, { force: true });
   }
 }
 
