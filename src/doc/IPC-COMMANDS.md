@@ -5482,16 +5482,35 @@ cc-bus 钩子诊断。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 13 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-list`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agents` | ← | 在线成员，每项 `{id, target, unread, live, ccm_sid}` |
-| `ccm_sid` | ← | 那个会话绑的会话 id，没绑 ⇒ `null` |
-| `id` | → ← | 总线身份 |
-| `live` | ← | 这个地址**今天还在不在** |
-| `target` | ← | tmux 地址 |
-| `unread` | ← | 待读条数 |
+入参 `NoArgs` · 回包 `BusList`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`not_installed` · `child_timed_out` · `failed`
+```ts
+type BusAgent = { 
+/**
+ * 总线身份。
+ */
+id: string, 
+/**
+ * tmux 地址。
+ */
+target: string, 
+/**
+ * 待读条数。
+ */
+unread: number, 
+/**
+ * 这个地址今天还在不在：`true` / `false` / `null`（问不到身份空间，**不是**「不在」）。
+ */
+live: boolean | null, 
+/**
+ * 那个会话绑的会话 id，没绑 ⇒ `null`。
+ */
+ccm_sid: string | null, };
+type BusList = { agents: Array<BusAgent>, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
 
 #### `bus-broadcast`
 
@@ -5499,17 +5518,33 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-broadcast`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `detail` | ← | 失败那一项的原话 |
-| `error` | ← | 失败那一项的码（`bus-send` 那一套） |
-| `failed` | ← | 逐个列， `{id, error, detail}`，`error` 是 `bus-send` 那一套码；键刻意不叫 `code` / `message` —— 那一对是整条失败的错误信封 |
-| `from` | → | **可选**，同 `bus-send`：以谁的身份发，也用来「不发给自己」 |
-| `id` | → ← | 失败那一项的收件人 |
-| `liveness_unknown` | ← | 问不到身份空间（全是 `null`），退回发给所有登记的 |
-| `sent` | ← | 投出去几条 |
-| `skipped_offline` | ← | 因不在线跳过几个 |
-| `text` | → | 正文（非空） |
+入参 `BusBroadcastReq` · 回包 `BusBroadcast`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusBroadcast = { sent: number, skipped_offline: number, 
+/**
+ * 问不到身份空间（全是 `null`），退回发给所有登记的。
+ */
+liveness_unknown: boolean, failed: Array<BusUndelivered>, };
+type BusBroadcastReq = { 
+/**
+ * 正文（非空）。
+ */
+text: string, 
+/**
+ * 以谁的身份发，也用来「不发给自己」（可缺）。
+ */
+from?: string | null, };
+type BusUndelivered = { id: string, 
+/**
+ * `bus-send` 那一套码。
+ */
+error: string, 
+/**
+ * 原话。
+ */
+detail: string, };
+```
 
 码：`bad_args` · `not_installed` · `child_timed_out` · `failed` · `bad_id`
 
@@ -5519,11 +5554,24 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-kill`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → ← | 总线身份 |
-| `killed` | ← | 会话真的被杀了 |
-| `stale_only` | ← | 身份对不上：只摘掉那条陈旧登记，会话与收件箱都没动 |
+入参 `BusKillReq` · 回包 `BusKilled`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusKillReq = { 
+/**
+ * 总线身份。
+ */
+id: string, };
+type BusKilled = { id: string, 
+/**
+ * 会话真的被杀了。
+ */
+killed: boolean, 
+/**
+ * 身份对不上：只摘掉那条陈旧登记，会话与收件箱都没动。
+ */
+stale_only: boolean, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
@@ -5533,13 +5581,36 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-send`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `from` | → ← | **可选**：自报的发件人；应答里回显实际用的那个 |
-| `live` | ← | 那个会话今天活着吗，与 `bus-list` 同一套三态 |
-| `registered` | ← | 在总线名单里吗 |
-| `sent` | ← | 投出去了 |
-| `to` | → ← | 收件人身份 |
+入参 `BusSendReq` · 回包 `BusSent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusSendReq = { 
+/**
+ * 收件人身份。
+ */
+to: string, text: string, 
+/**
+ * 以谁的身份发（可缺；空白当没给）。
+ */
+from?: string | null, };
+type BusSent = { to: string, 
+/**
+ * 投出去了（恒 `true`）。
+ */
+sent: boolean, 
+/**
+ * 在总线名单里吗。
+ */
+registered: boolean, 
+/**
+ * 那个会话今天活着吗，与 `bus-list` 同一套三态。
+ */
+live: boolean | null, 
+/**
+ * 实际以谁的身份发的（没给 ⇒ `null`）。
+ */
+from: string | null, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `rejected` · `child_timed_out` · `too_long` · `failed`
 
@@ -5549,11 +5620,44 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-spawn`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `id` | → ← | 新会话的总线身份；从 `cc-spawn` 的回显里认，**认不出就是 `null`** —— 那是「起了，但名字没认出来」，**不是**「没起来」 |
-| `said` | ← | `cc-spawn` 的原始回显，给人看 |
-| `spawned` | ← | 恒 `true` |
+入参 `BusSpawnReq` · 回包 `BusSpawnedNow`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusSpawnReq = { 
+/**
+ * 哪一家（缺 / 空 ⇒ 默认那一家）。
+ */
+tool?: string | null, 
+/**
+ * 工作目录（非空）。
+ */
+dir: string, 
+/**
+ * 交给新会话的任务（可缺）。
+ */
+task?: string | null, 
+/**
+ * 用哪个号起。
+ */
+account?: string | null, 
+/**
+ * 显式不注入账号。
+ */
+base?: boolean | null, };
+type BusSpawnedNow = { 
+/**
+ * 恒 `true`。
+ */
+spawned: boolean, 
+/**
+ * 新会话的总线身份；从回显里认不出 ⇒ `null`（起了，只是名字没认出来，**不是**没起来）。
+ */
+id: string | null, 
+/**
+ * `cc-spawn` 的原始回显，给人看。
+ */
+said: string, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 
@@ -5563,22 +5667,48 @@ cc-bus 钩子诊断。
 
 不收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 28 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --bus-state`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agents` | ← | 名册，每项 `{id, target, registered_at, unread, live, ccm_sid}` |
-| `ccm_sid` | ← | 后两格与 `bus-list` 同一套：对身份空间对账，「登记 ≠ 在线」 |
-| `dir` | ← | 派生时的目录 |
-| `id` | → ← | 总线身份 |
-| `live` | ← | 三态：`true` / `false` / `null` = 核不了，**不是**「不在」 |
-| `registered_at` | ← | 登记时间，cc-bus 原样 |
-| `skipped` | ← | 两张表里读不懂的行数 |
-| `spawned` | ← | `cc-spawn` 派生过的会话，每项 `{id, dir, spawned_at, task, live}` |
-| `spawned_at` | ← | 派生时间 |
-| `target` | ← | 登记的 pane 地址 |
-| `task` | ← | 余下全部，含 TAB |
-| `unread` | ← | 待读条数 |
+入参 `NoArgs` · 回包 `BusState`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`not_installed` · `child_timed_out` · `failed`
+```ts
+type BusRosterRow = { id: string, 
+/**
+ * 登记的 pane 地址。
+ */
+target: string, 
+/**
+ * 登记时间，cc-bus 原样。
+ */
+registered_at: string, unread: number, 
+/**
+ * 三态，同 [`BusAgent::live`]。
+ */
+live: boolean | null, ccm_sid: string | null, };
+type BusSpawned = { id: string, 
+/**
+ * 派生时的目录。
+ */
+dir: string, 
+/**
+ * 派生时间。
+ */
+spawned_at: string, 
+/**
+ * 余下全部，含 TAB。
+ */
+task: string, 
+/**
+ * 三态：`true` / `false` / `null` = 核不了。
+ */
+live: boolean | null, };
+type BusState = { agents: Array<BusRosterRow>, spawned: Array<BusSpawned>, 
+/**
+ * 两张表里读不懂的行数。
+ */
+skipped: number, };
+type NoArgs = Record<symbol, never>;
+```
+
+码：`bad_args` · `not_installed` · `child_timed_out` · `failed`
 
 #### `bus-inbox`
 
@@ -5586,17 +5716,45 @@ cc-bus 钩子诊断。
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --bus-inbox`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `class` | ← | 消息类别（cc-bus 原样） |
-| `from` | ← | 发件人 |
-| `id` | → | 必给；交给 `cc-log` 之前先过 `bus_id_ok`，不过 ⇒ `bad_id`、一个进程都不起 |
-| `lines` | → | 可缺席，1..=2000，缺省 200 |
-| `messages` | ← | 逐行解析，只取 `from` · `ts` · `text` · `class`；`from` 与 `text` 都空的行不算消息 |
-| `skipped` | ← | 读不懂的行数 |
-| `text` | ← | 正文 |
-| `truncated` | ← | 回显超过 4 MiB ⇒ 保尾，`true` |
-| `ts` | ← | 时间 |
+入参 `BusInboxReq` · 回包 `BusInbox`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type BusInbox = { messages: Array<BusMessage>, 
+/**
+ * 读不懂的行数。
+ */
+skipped: number, 
+/**
+ * 回显超过 4 MiB ⇒ 保尾，`true`。
+ */
+truncated: boolean, };
+type BusInboxReq = { 
+/**
+ * 交给 `cc-log` 之前先过形状判定，不过 ⇒ `bad_id`、一个进程都不起。
+ */
+id: string, 
+/**
+ * 1..=2000，缺 ⇒ 200。
+ */
+lines?: number, };
+type BusMessage = { 
+/**
+ * 发件人。
+ */
+from: string, 
+/**
+ * 时间。
+ */
+ts: string, 
+/**
+ * 正文。
+ */
+text: string, 
+/**
+ * 消息类别（cc-bus 原样）。
+ */
+class: string, };
+```
 
 码：`bad_args` · `bad_id` · `not_installed` · `child_timed_out` · `failed`
 

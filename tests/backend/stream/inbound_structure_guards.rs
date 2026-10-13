@@ -1173,8 +1173,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
     const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
     const ASSETS_SYNC: &str = include_str!("../../__fixtures__/assets-sync.golden.json");
-    const CC_BUS_CONTROL: &str = include_str!("../../__fixtures__/cc-bus-control.golden.json");
-    const CC_BUS_READ: &str = include_str!("../../__fixtures__/cc-bus-read.golden.json");
     const CELLS_CATALOG: &str = include_str!("../../__fixtures__/cells-catalog.golden.json");
     const FILES_GREP: &str = include_str!("../../__fixtures__/files-grep.golden.json");
     const HOOKS_DIAG: &str = include_str!("../../__fixtures__/hooks-diag.golden.json");
@@ -1189,47 +1187,6 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
         ("accounts-list", ACCOUNTS, "/accounts-list", &[], &[]),
         ("accounts-trust", ACCOUNTS, "/accounts-trust", &[], &[]),
         ("cells-catalog", CELLS_CATALOG, "", &[], &[]),
-        (
-            "bus-list",
-            CC_BUS_CONTROL,
-            "/bus-list/reply",
-            &["ccm_sid", "id", "live", "target", "unread"],
-            &[],
-        ),
-        ("bus-send", CC_BUS_CONTROL, "/bus-send/reply", &[], &[]),
-        ("bus-kill", CC_BUS_CONTROL, "/bus-kill/reply", &[], &[]),
-        ("bus-spawn", CC_BUS_CONTROL, "/bus-spawn/reply", &[], &[]),
-        (
-            "bus-broadcast",
-            CC_BUS_CONTROL,
-            "/bus-broadcast/reply",
-            &["detail", "error", "id"],
-            &[],
-        ),
-        (
-            "bus-state",
-            CC_BUS_READ,
-            "/state/reply",
-            &[
-                "ccm_sid",
-                "dir",
-                "id",
-                "live",
-                "registered_at",
-                "spawned_at",
-                "target",
-                "task",
-                "unread",
-            ],
-            &[],
-        ),
-        (
-            "bus-inbox",
-            CC_BUS_READ,
-            "/inbox/reply",
-            &["class", "from", "text", "ts"],
-            &[],
-        ),
         (
             "mcp-read",
             MCP_READ,

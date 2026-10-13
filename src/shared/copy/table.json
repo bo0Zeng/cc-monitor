@@ -2500,12 +2500,6 @@
       "zh": "结束 {id} 失败 · 原因不明",
       "args": ["id"]
     },
-    "ccBus.kill.unsure": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "{machine} 回复无法解析 · 结束 {id} 结果未知\n先刷新名单再决定 · 勿直接重来",
-      "args": ["machine", "id"]
-    },
     "ccBus.kill.killed": {
       "kind": "body",
       "role": "说明",
@@ -2552,12 +2546,6 @@
       "kind": "error",
       "role": "报错",
       "zh": "派生失败 · 原因不明",
-      "args": []
-    },
-    "ccBus.spawn.unsure": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "新开结果未知\n先看 cc-bus 名单再重试",
       "args": []
     },
     "ccBus.spawn.done": {

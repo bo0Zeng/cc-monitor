@@ -74,6 +74,12 @@ use crate::plugin::invoke::Done;
 use crate::plugin::invoke::NotRun;
 use crate::plugin::invoke::TIMED_OUT_CODE;
 
+use super::cc_bus_wire::{
+    BusAgent, BusBroadcast, BusBroadcastReq, BusInbox, BusInboxReq, BusKillReq, BusKilled, BusList,
+    BusMessage, BusRosterRow, BusSendReq, BusSent, BusSpawnReq, BusSpawned, BusSpawnedNow,
+    BusState, BusUndelivered,
+};
+
 /// `bus-list` 整条命令总期限的上限（`cc-list` ＋ 列 tmux 会话）。
 pub(crate) const BUS_LIST_CAP: Deadline = Deadline::secs(13);
 /// `bus-state` 整条命令总期限的上限（`cc-list` ＋ `cc-agents` ＋ 列 tmux 会话）。
@@ -326,24 +332,26 @@ pub(crate) fn parse_roster_tsv(text: &str) -> Result<(Vec<RosterRow>, usize), (S
 }
 
 /// `cc-agents --tsv` → `(台账, 坏行数)` —— 纯函数。状态机器词 → `bus-list` 同一套三态（`null` = 核不了，不是不在）。
-pub(crate) fn parse_spawned_tsv(
-    text: &str,
-) -> Result<(Vec<serde_json::Value>, usize), (String, String)> {
+pub(crate) fn parse_spawned_tsv(text: &str) -> Result<(Vec<BusSpawned>, usize), (String, String)> {
     let (rows, mut skipped) = framed("cc-agents --tsv", text, SPAWNED_TSV_HEAD)?;
     let mut out = Vec::new();
     for l in rows {
         let f: Vec<&str> = l.splitn(5, '\t').collect();
         let live = match f.get(1) {
-            Some(&"live") => Some(serde_json::Value::Bool(true)),
-            Some(&"exited") => Some(serde_json::Value::Bool(false)),
-            Some(&"unknown") => Some(serde_json::Value::Null),
+            Some(&"live") => Some(Some(true)),
+            Some(&"exited") => Some(Some(false)),
+            Some(&"unknown") => Some(None),
             _ => None,
         };
         match live {
             Some(live) if f.len() == 5 && shell_quote_core::bus_id_ok(f[0]) => {
-                out.push(serde_json::json!({
-                    "id": f[0], "dir": f[2], "spawned_at": f[3], "task": f[4], "live": live
-                }))
+                out.push(BusSpawned {
+                    id: f[0].to_string(),
+                    dir: f[2].to_string(),
+                    spawned_at: f[3].to_string(),
+                    task: f[4].to_string(),
+                    live,
+                })
             }
             _ => skipped += 1,
         }
@@ -421,53 +429,29 @@ fn refuse_bad_bus_id(v: &str, said: impl FnOnce(&str) -> String) -> Result<(), C
 ///
 /// ⚠ 与 `kill::parse_name` 同一条纪律：argv 直传不过 shell。`to` 的**形状**在这里判（[`refuse_bad_bus_id`]，§47 ①）；
 /// 收件人**是否存在**（成员资格）仍归 cc-bus —— 见 [`classify_send`]。
-fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
-    let obj = args.as_object().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("args must be an object"),
-        )
-    })?;
-    let to = obj.get("to").and_then(|v| v.as_str()).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `to`"),
-        )
-    })?;
-    let text = obj.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `text`"),
-        )
-    })?;
-    if to.trim().is_empty() {
+pub(crate) fn parse_send(req: &BusSendReq) -> Result<(String, String, Option<String>), CmdErr> {
+    if req.to.trim().is_empty() {
         return Err((
             "bad_args",
             crate::common::contract::malformed("`to` is empty"),
         ));
     }
-    refuse_bad_bus_id(to, |v| {
+    refuse_bad_bus_id(&req.to, |v| {
         copy_core::copy_text("beCcBus.parse.badRecipient", &[("id", v)])
     })?;
     // ★ `from` 可选：**不给就是今天的行为**（cc-whoami 在后端的处境里解不出身份 ⇒ `unknown`）。
     //   给了就以那个身份发 —— 收信人才知道是谁，回复才有地方去。
     //   ⚠ 合法性仍归 cc-bus（`cc-whoami` 自己会消毒成 `[A-Za-z0-9_-]`），这里只判形状。
-    let from = given_sender(obj)?;
-    Ok((to.to_string(), text.to_string(), from))
+    let from = given_sender(req.from.as_deref())?;
+    Ok((req.to.clone(), req.text.clone(), from))
 }
 
 /// `from`（以谁的身份发）：可选；给了就在交给 `cc-send`（作 `CC_BUS_ID`）**之前**先过同一个形状判定（[`refuse_bad_bus_id`]）。
 ///
 /// 〔`INVARIANTS §47`「交给对端之前本侧先判」〕先前 `from` 原样交给 `cc-send`、一格都不判 ——
 /// 它与收件人是同一种值（agent id），同样是交给对端去寻址的。`bus-send` 与 `bus-broadcast` 共用这一处。
-fn given_sender(
-    obj: &serde_json::Map<String, serde_json::Value>,
-) -> Result<Option<String>, CmdErr> {
-    let from = obj
-        .get("from")
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty());
+fn given_sender(from: Option<&str>) -> Result<Option<String>, CmdErr> {
+    let from = from.map(str::trim).filter(|s| !s.is_empty());
     if let Some(f) = from {
         refuse_bad_bus_id(f, |v| {
             copy_core::copy_text("beCcBus.parse.badSender", &[("id", v)])
@@ -497,61 +481,51 @@ pub(crate) fn session_name_of(target: &str) -> &str {
 ///
 /// ⚠ 拿不到身份空间（没装 tmux / 起不来）⇒ `live` 回 `null` 而不是 `false`：
 /// **「不知道」和「不在」是两件事**，混起来会让调用方把一屋子活人当成死人。
-pub(crate) fn join_identity(
-    agents: Vec<serde_json::Value>,
+pub(crate) fn liveness(
+    target: &str,
     sessions: Option<&[(String, String)]>,
-) -> Vec<serde_json::Value> {
-    agents
-        .into_iter()
-        .map(|mut a| {
-            let target = a
-                .get("target")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let name = session_name_of(&target).to_string();
-            let (live, sid) = match sessions {
-                None => (serde_json::Value::Null, serde_json::Value::Null),
-                // `K-R96`：`gate::list_sessions` 今天回的是**二元组**（会话名 ＋ `@ccm_sid`）——
-                // 中间那列 `#{session_id}` 本函数从来没问过，快照那边也不再取它。
-                Some(list) => match list.iter().find(|(n, _)| *n == name) {
-                    None => (serde_json::Value::Bool(false), serde_json::Value::Null),
-                    Some((_, ccm_sid)) => (
-                        serde_json::Value::Bool(true),
-                        if ccm_sid.is_empty() {
-                            serde_json::Value::Null
-                        } else {
-                            serde_json::Value::String(ccm_sid.clone())
-                        },
-                    ),
-                },
-            };
-            if let Some(o) = a.as_object_mut() {
-                o.insert("live".to_string(), live);
-                o.insert("ccm_sid".to_string(), sid);
-            }
-            a
-        })
-        .collect()
+) -> (Option<bool>, Option<String>) {
+    let name = session_name_of(target);
+    match sessions {
+        None => (None, None),
+        // `K-R96`：`gate::list_sessions` 今天回的是**二元组**（会话名 ＋ `@ccm_sid`）——
+        // 中间那列 `#{session_id}` 本函数从来没问过，快照那边也不再取它。
+        Some(list) => match list.iter().find(|(n, _)| n == name) {
+            None => (Some(false), None),
+            Some((_, ccm_sid)) => (Some(true), (!ccm_sid.is_empty()).then(|| ccm_sid.clone())),
+        },
+    }
 }
 
 /// 总线名单 —— `bus-list` 与 `bus-broadcast` 读它。与 `bus-state` 同读机器可读形（[`roster`]，
 /// `cc-list --tsv`）：名册只有一个解析器。没重部署 cc-bus 的机器上老脚本不认 `--tsv` ⇒ 明说「cc-bus 比后端旧」（[`too_old`]），
 /// 不退回去按人读表猜（命令是接口，接口认不出就说）。
-fn agents_via_cc_list() -> Result<Vec<serde_json::Value>, (String, String)> {
+fn agents_via_cc_list() -> Result<Vec<BusAgent>, (String, String)> {
     let (rows, skipped) = roster()?;
     if skipped > 0 {
         tracing::warn!("cc-bus 名册里有 {skipped} 行读不懂，这一趟没算进去");
     }
     // ★ 去问**身份空间**谁还活着。问不到就回 `null`，不假装知道。
     let sessions = super::gate::list_sessions().ok();
-    Ok(join_identity(roster_agents(&rows), sessions.as_deref()))
+    Ok(roster_agents(&rows, sessions.as_deref()))
 }
 
-/// 名册行 → `bus-list` 那一格的 `{id, target, unread}`（纯函数；`live` / `ccm_sid` 由 [`join_identity`] 补）。
-pub(crate) fn roster_agents(rows: &[RosterRow]) -> Vec<serde_json::Value> {
+/// 名册行 → `bus-list` 那一格（纯函数；`live` / `ccm_sid` 挂到身份空间上，见 [`liveness`]）。
+pub(crate) fn roster_agents(
+    rows: &[RosterRow],
+    sessions: Option<&[(String, String)]>,
+) -> Vec<BusAgent> {
     rows.iter()
-        .map(|r| serde_json::json!({ "id": r.id, "target": r.target, "unread": r.unread }))
+        .map(|r| {
+            let (live, ccm_sid) = liveness(&r.target, sessions);
+            BusAgent {
+                id: r.id.clone(),
+                target: r.target.clone(),
+                unread: r.unread,
+                live,
+                ccm_sid,
+            }
+        })
         .collect()
 }
 
@@ -590,19 +564,19 @@ pub(crate) fn roster() -> Result<(Vec<RosterRow>, usize), (String, String)> {
 }
 
 /// spawn 台账那一半 —— 转调 `cc-agents --tsv`。
-fn spawned_via_cc_agents() -> Result<(Vec<serde_json::Value>, usize), (String, String)> {
+fn spawned_via_cc_agents() -> Result<(Vec<BusSpawned>, usize), (String, String)> {
     parse_spawned_tsv(&read_via("cc-agents", &["--tsv"])?)
 }
 
-pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {
+pub(crate) fn list_for_inbound() -> Result<BusList, (String, String)> {
     Ok(list_reply(agents_via_cc_list()?))
 }
 
 /// `bus-list` 的成品 `{agents}` —— 从 [`list_for_inbound`] 里原样抽出来（逻辑不动），
 /// 只为让跨语言金样 `tests/__fixtures__/cc-bus-control.golden.json` 拿**同一个**构造器对拍：
 /// 界面（`src/frontend/ui/cc-bus-control.ts`）从此直接收这份成品，monitor 那一跳只搬字节。
-pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
-    serde_json::json!({ "agents": agents })
+pub(crate) fn list_reply(agents: Vec<BusAgent>) -> BusList {
+    BusList { agents }
 }
 
 /// `bus-state`：**一次回全** —— 总线名单 ＋ spawn 台账。
@@ -626,7 +600,7 @@ pub(crate) fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
 ///
 /// 登记时间 · 派生时间 · 坏行数由 cc-bus 新加的机器可读形（`cc-list --tsv` / `cc-agents --tsv`）答，
 /// 仍不读那两份 `.tsv`（`cc_bus_boundary_guard`）；驾驶舱经通道直接问本条（monitor 那条 shell 读退役）。
-pub(crate) fn state_for_inbound() -> Result<serde_json::Value, (String, String)> {
+pub(crate) fn state_for_inbound() -> Result<BusState, (String, String)> {
     let (agents, sk_agents) = roster()?;
     let (spawned, sk_spawned) = spawned_via_cc_agents()?;
     let sessions = super::gate::list_sessions().ok();
@@ -642,23 +616,29 @@ pub(crate) fn state_for_inbound() -> Result<serde_json::Value, (String, String)>
 /// 名册那一半照旧挂到身份空间上（`live` / `ccm_sid`，「登记 ≠ 在线」）；pane pid 不上线（界面用不着）。
 pub(crate) fn state_reply(
     agents: Vec<RosterRow>,
-    spawned: Vec<serde_json::Value>,
+    spawned: Vec<BusSpawned>,
     skipped: usize,
     sessions: Option<&[(String, String)]>,
-) -> serde_json::Value {
-    let rows = agents
+) -> BusState {
+    let agents = agents
         .into_iter()
         .map(|r| {
-            serde_json::json!({
-                "id": r.id, "target": r.target, "registered_at": r.registered_at, "unread": r.unread
-            })
+            let (live, ccm_sid) = liveness(&r.target, sessions);
+            BusRosterRow {
+                id: r.id,
+                target: r.target,
+                registered_at: r.registered_at,
+                unread: r.unread,
+                live,
+                ccm_sid,
+            }
         })
         .collect();
-    serde_json::json!({
-        "agents": join_identity(rows, sessions),
-        "spawned": spawned,
-        "skipped": skipped,
-    })
+    BusState {
+        agents,
+        spawned,
+        skipped,
+    }
 }
 
 /// `bus-inbox` 缺省看几行 / 最多看几行 / 回显最多带多少字节（超了保尾、说 `truncated`）。
@@ -667,42 +647,33 @@ const INBOX_LINES_MAX: u64 = 2000;
 const INBOX_CAP: usize = 4 * 1024 * 1024;
 
 /// `bus-inbox` 的入参 —— 纯函数。id 先过形状判定（`§47`：交给 `cc-log` 之前本侧先判，拒码 `bad_id`、一个进程都不起）。
-pub(crate) fn parse_inbox(args: &serde_json::Value) -> Result<(String, u64), (String, String)> {
-    let obj = args.as_object();
-    let id = obj
-        .and_then(|o| o.get("id"))
-        .and_then(|v| v.as_str())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            (
-                "bad_args".to_string(),
-                crate::common::contract::malformed("missing `id`"),
-            )
-        })?;
-    refuse_bad_bus_id(id, |v| copy_text("beCcBus.inbox.badId", &[("id", v)]))
+pub(crate) fn parse_inbox(req: &BusInboxReq) -> Result<(String, u64), (String, String)> {
+    if req.id.is_empty() {
+        return Err((
+            "bad_args".to_string(),
+            crate::common::contract::malformed("missing `id`"),
+        ));
+    }
+    refuse_bad_bus_id(&req.id, |v| copy_text("beCcBus.inbox.badId", &[("id", v)]))
         .map_err(|(c, m)| (c.to_string(), m))?;
-    let lines = match obj.and_then(|o| o.get("lines")) {
-        None | Some(serde_json::Value::Null) => INBOX_LINES_DEFAULT,
-        Some(v) => v
-            .as_u64()
-            .filter(|n| (1..=INBOX_LINES_MAX).contains(n))
-            .ok_or_else(|| {
-                (
-                    "bad_args".to_string(),
-                    crate::common::contract::malformed(&format!(
-                        "`lines` must be an integer in 1..={INBOX_LINES_MAX}"
-                    )),
-                )
-            })?,
+    let lines = match req.lines {
+        None => INBOX_LINES_DEFAULT,
+        Some(n) if (1..=INBOX_LINES_MAX).contains(&n) => n,
+        Some(_) => {
+            return Err((
+                "bad_args".to_string(),
+                crate::common::contract::malformed(&format!(
+                    "`lines` must be an integer in 1..={INBOX_LINES_MAX}"
+                )),
+            ))
+        }
     };
-    Ok((id.to_string(), lines))
+    Ok((req.id.clone(), lines))
 }
 
 /// `bus-inbox`：只读看一个 agent 收件箱的尾巴（转调 `cc-log`，不推已读位置 —— 不是 `bus-recv`）。
-pub(crate) fn inbox_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let (id, lines) = parse_inbox(args)?;
+pub(crate) fn inbox_for_inbound(req: &BusInboxReq) -> Result<BusInbox, (String, String)> {
+    let (id, lines) = parse_inbox(req)?;
     let text = read_via("cc-log", &[&id, "-n", &lines.to_string()]).map_err(|(c, m)| {
         if c == "not_installed" {
             (
@@ -721,7 +692,7 @@ pub(crate) fn inbox_for_inbound(
 
 /// `cc-log` 的输出 → `bus-inbox` 成品 —— 纯函数。逐行解析（坏行跳过计数、不抛、不因坏行丢好行）；
 /// 超上限保尾（这是回显，不是清单）并说 `truncated`。
-pub(crate) fn inbox_reply(text: &str) -> Result<serde_json::Value, (String, String)> {
+pub(crate) fn inbox_reply(text: &str) -> Result<BusInbox, (String, String)> {
     let body = match text.split_once('\n') {
         Some((head, rest)) if head.trim_end_matches('\r') == LOG_HEAD => rest,
         None if text.trim_end_matches('\r') == LOG_HEAD => "",
@@ -754,38 +725,35 @@ pub(crate) fn inbox_reply(text: &str) -> Result<serde_json::Value, (String, Stri
             skipped += 1;
             continue;
         }
-        messages.push(serde_json::json!({
-            "from": from, "ts": get("ts"), "text": text, "class": get("class")
-        }));
+        messages.push(BusMessage {
+            from,
+            ts: get("ts"),
+            text,
+            class: get("class"),
+        });
     }
-    Ok(serde_json::json!({ "messages": messages, "skipped": skipped, "truncated": truncated }))
+    Ok(BusInbox {
+        messages,
+        skipped,
+        truncated,
+    })
 }
 
 /// 收件人**有没有人会读** —— `(在名单里吗, 会话活着吗)`。
 ///
 /// `live` 与 `bus-list` 同一套三态：`true` / `false` / `null`（问不到身份空间，或不在名单里）。
 /// ⚠ 任何一步失败都**不影响投递**：这是投完之后的"顺带说一句"，不是前置条件。
-fn recipient_status(to: &str) -> (bool, serde_json::Value) {
+fn recipient_status(to: &str) -> (bool, Option<bool>) {
     let Ok((roster, _)) = roster() else {
-        return (false, serde_json::Value::Null);
+        return (false, None);
     };
-    let rows = roster_agents(&roster);
-    let Some(row) = rows
-        .iter()
-        .find(|r| r.get("id").and_then(|v| v.as_str()) == Some(to))
-    else {
-        return (false, serde_json::Value::Null);
-    };
-    let joined = join_identity(
-        vec![row.clone()],
-        super::gate::list_sessions().ok().as_deref(),
-    );
-    let live = joined
-        .first()
-        .and_then(|r| r.get("live"))
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
-    (true, live)
+    match roster.iter().find(|r| r.id == to) {
+        None => (false, None),
+        Some(row) => (
+            true,
+            liveness(&row.target, super::gate::list_sessions().ok().as_deref()).0,
+        ),
+    }
 }
 
 /// `bus-kill`：收掉一个总线成员（转调 `cc-kill`）。
@@ -803,16 +771,14 @@ fn recipient_status(to: &str) -> (bool, serde_json::Value) {
 /// ⇒ 门住在懂那套语义的那一侧，不在这里重写一遍。
 ///
 /// ⚠ 「多窗口要不要拦」是产品判断（`U18` 待裁）；今天照收，但 `cc-kill` 会把窗口数打出来。
-pub(crate) fn kill_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let id = parse_kill(args)?;
+pub(crate) fn kill_for_inbound(req: &BusKillReq) -> Result<BusKilled, (String, String)> {
+    let id = parse_kill(req)?;
     kill_id(&id)
 }
 
 /// 转调 `cc-kill <id>` 并读出它到底动了什么 —— `bus-kill` 与杀会话顺手注销（D-g）共用这一处。
 /// ⚠ 调用方先过 `bus_id_ok`（`INVARIANTS §47`：交给 `cc-kill` 之前本侧先判）。
-fn kill_id(id: &str) -> Result<serde_json::Value, (String, String)> {
+fn kill_id(id: &str) -> Result<BusKilled, (String, String)> {
     let id = id.to_string();
     // ⚠ **不加 `--`**〔08-13 真跑撞出来的〕：`cc-send` 会解析旗标（所以那边要显式结束），
     //   而 `cc-kill` **不解析** —— 它直接取 `$1`。传了 `--` 的后果是它去杀一个名叫 `--`
@@ -887,7 +853,9 @@ pub(crate) fn unregister_panes(session: &str, pane_pids: &[u32]) -> BusCleanup {
     for id in ids_on_panes(&rows, pane_pids) {
         match kill_id(&id) {
             Ok(v) => {
-                tracing::info!("杀了会话 {session:?}，顺手从 cc-bus 收掉登记在它上面的 {id}：{v}");
+                tracing::info!(
+                    "杀了会话 {session:?}，顺手从 cc-bus 收掉登记在它上面的 {id}：{v:?}"
+                );
                 out.removed.push(id);
             }
             Err((code, msg)) => {
@@ -990,19 +958,14 @@ impl BusCleanup {
 
 /// `bus-kill` 的入参 —— 纯函数〔C4e：从 [`kill_for_inbound`] 里原样抽出（逻辑不动），跨语言金样拿它核请求样例〕。
 /// 交给 `cc-kill` 之前先过形状判定（[`refuse_bad_bus_id`]）—— 这是破坏性的那一条，更不能靠对端。
-pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, String)> {
-    let id = args
-        .as_object()
-        .and_then(|o| o.get("id"))
-        .and_then(|v| v.as_str())
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .ok_or_else(|| {
-            (
-                "bad_args".to_string(),
-                crate::common::contract::malformed("missing `id`"),
-            )
-        })?;
+pub(crate) fn parse_kill(req: &BusKillReq) -> Result<String, (String, String)> {
+    let id = req.id.trim();
+    if id.is_empty() {
+        return Err((
+            "bad_args".to_string(),
+            crate::common::contract::malformed("missing `id`"),
+        ));
+    }
     refuse_bad_bus_id(id, |v| {
         copy_core::copy_text("beCcBus.parse.badKillId", &[("id", v)])
     })
@@ -1012,19 +975,17 @@ pub(crate) fn parse_kill(args: &serde_json::Value) -> Result<String, (String, St
 
 /// `bus-kill` 的成品 `{id, killed, stale_only}` —— 从 [`kill_for_inbound`] 里原样抽出来（逻辑不动），
 /// 理由同 [`list_reply`]。
-pub(crate) fn kill_reply(id: &str, killed: bool, stale_only: bool) -> serde_json::Value {
-    serde_json::json!({
-        "id": id,
-        "killed": killed,
+pub(crate) fn kill_reply(id: &str, killed: bool, stale_only: bool) -> BusKilled {
+    BusKilled {
+        id: id.to_string(),
+        killed,
         // 身份对不上 ⇒ 只摘了陈旧登记，**会话与收件箱都没动**
-        "stale_only": stale_only,
-    })
+        stale_only,
+    }
 }
 
-pub(crate) fn send_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let (to, text, from) = parse_send(args).map_err(|(c, m)| (c.to_string(), m))?;
+pub(crate) fn send_for_inbound(req: &BusSendReq) -> Result<BusSent, (String, String)> {
+    let (to, text, from) = parse_send(req).map_err(|(c, m)| (c.to_string(), m))?;
     deliver(&to, &text, from.as_deref())?;
     // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
     //
@@ -1063,16 +1024,19 @@ fn deliver(to: &str, text: &str, from: Option<&str>) -> Result<(), (String, Stri
 pub(crate) fn send_reply(
     to: &str,
     registered: bool,
-    live: serde_json::Value,
+    live: Option<bool>,
     from: Option<&str>,
-) -> serde_json::Value {
-    serde_json::json!({
-        "to": to, "sent": true, "registered": registered, "live": live,
+) -> BusSent {
+    BusSent {
+        to: to.to_string(),
+        sent: true,
+        registered,
+        live,
         // 回显**以谁的身份发的**：不给 `from` 时是 `null`，那时收信人看到的是
         // cc-whoami 在后端处境里解出来的东西（实测：`unknown`）——
         // 回显出来，调用方才看得见这件事，而不是等收信人来问「谁发的」。
-        "from": from
-    })
+        from: from.map(str::to_string),
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1095,28 +1059,16 @@ pub(crate) fn send_reply(
 // 只有「一条都还没发」的失败（列名单那一步）才整条回错。
 
 /// `bus-broadcast` 的入参 —— 纯函数。`text` 必须非空（空广播不是缺省）；`from` 可选（同 [`parse_send`]）。
-fn parse_broadcast(args: &serde_json::Value) -> Result<(String, Option<String>), CmdErr> {
-    let obj = args.as_object().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("args must be an object"),
-        )
-    })?;
-    let text = obj.get("text").and_then(|v| v.as_str()).ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("missing `text`"),
-        )
-    })?;
-    if text.trim().is_empty() {
+pub(crate) fn parse_broadcast(req: &BusBroadcastReq) -> Result<(String, Option<String>), CmdErr> {
+    if req.text.trim().is_empty() {
         return Err((
             "bad_args",
             crate::common::contract::malformed("`text` is empty"),
         ));
     }
     // `from` 给了就先判（同 `bus-send` 那一处）：判不过 ⇒ 整条 `bad_id`，一个人都没发。
-    let from = given_sender(obj)?;
-    Ok((text.to_string(), from))
+    let from = given_sender(req.from.as_deref())?;
+    Ok((req.text.clone(), from))
 }
 
 /// 广播挑出来的人。
@@ -1128,25 +1080,19 @@ pub(crate) struct BroadcastPlan {
 }
 
 /// 广播要发给谁 —— **纯函数**（`agents` 是 `bus-list` 那一份，已挂过身份空间）。挑人规则见本节头注。
-pub(crate) fn pick_broadcast_targets(agents: &[serde_json::Value], me: &str) -> BroadcastPlan {
-    let known: bool = agents
-        .iter()
-        .any(|a| a.get("live").map(|v| !v.is_null()).unwrap_or(false));
+pub(crate) fn pick_broadcast_targets(agents: &[BusAgent], me: &str) -> BroadcastPlan {
+    let known = agents.iter().any(|a| a.live.is_some());
     let mut targets = Vec::new();
     let mut skipped_offline = 0usize;
     for a in agents {
-        let Some(id) = a.get("id").and_then(|v| v.as_str()) else {
-            continue;
-        };
-        if id == me {
+        if a.id == me {
             continue; // 不发给自己（同 cc-broadcast）
         }
-        let live = a.get("live").and_then(|v| v.as_bool());
-        if known && live != Some(true) {
+        if known && a.live != Some(true) {
             skipped_offline += 1;
             continue;
         }
-        targets.push(id.to_string());
+        targets.push(a.id.clone());
     }
     BroadcastPlan {
         targets,
@@ -1160,33 +1106,37 @@ pub(crate) fn pick_broadcast_targets(agents: &[serde_json::Value], me: &str) -> 
 /// 〔`INVARIANTS §47`〕名单是 `cc-list` 的输出 —— **对端来的**值（「这是我们自己的数据」不是理由：
 /// 盘上真出现过 `--help.jsonl`）。先前原样交给 `cc-send`；今天与 `bus-send` 的收件人同一个判定（[`refuse_bad_bus_id`]）。
 /// 不整条回错：到这一步时可能已经投出去几个了（本节头注「部分失败不回错」那一条），判不过的这一个照实列进 `failed`。
-pub(crate) fn recipient_refused(id: &str) -> Option<serde_json::Value> {
+pub(crate) fn recipient_refused(id: &str) -> Option<BusUndelivered> {
     refuse_bad_bus_id(id, |v| {
         copy_core::copy_text("beCcBus.parse.badRecipient", &[("id", v)])
     })
     .err()
-    .map(|(error, detail)| serde_json::json!({ "id": id, "error": error, "detail": detail }))
+    .map(|(error, detail)| BusUndelivered {
+        id: id.to_string(),
+        error: error.to_string(),
+        detail,
+    })
 }
 
 /// `bus-broadcast` 的成品 —— 纯函数：三个数分开（发到几个 · 因不在线跳过几个 · 失败几个，失败逐个列）。
 pub(crate) fn broadcast_reply(
     plan: &BroadcastPlan,
     sent: usize,
-    failed: Vec<serde_json::Value>,
-) -> serde_json::Value {
-    serde_json::json!({
-        "sent": sent,
-        "skipped_offline": plan.skipped_offline,
-        "liveness_unknown": plan.liveness_unknown,
-        "failed": failed,
-    })
+    failed: Vec<BusUndelivered>,
+) -> BusBroadcast {
+    BusBroadcast {
+        sent,
+        skipped_offline: plan.skipped_offline,
+        liveness_unknown: plan.liveness_unknown,
+        failed,
+    }
 }
 
 /// `bus-broadcast`：列名单（同 `bus-list` 那一个函数）→ 挑人 → 逐个投递（同 `bus-send` 那一处起进程）。
 pub(crate) fn broadcast_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let (text, from) = parse_broadcast(args).map_err(|(c, m)| (c.to_string(), m))?;
+    req: &BusBroadcastReq,
+) -> Result<BusBroadcast, (String, String)> {
+    let (text, from) = parse_broadcast(req).map_err(|(c, m)| (c.to_string(), m))?;
     let agents = agents_via_cc_list()?;
     let plan = pick_broadcast_targets(&agents, from.as_deref().unwrap_or(""));
     let mut sent = 0usize;
@@ -1201,9 +1151,11 @@ pub(crate) fn broadcast_for_inbound(
             Ok(()) => sent += 1,
             // ⚠ 键刻意不叫 `code` / `message`：那一对是**整条失败**的错误信封（`readonly_guard` 的信封普查按键认它）；
             //   这里是一份**成功**成品里逐个列出的投递失败 —— 形状不同的两件事，不借同一对键。
-            Err((error, detail)) => failed.push(serde_json::json!({
-                "id": id, "error": error, "detail": detail
-            })),
+            Err((error, detail)) => failed.push(BusUndelivered {
+                id: id.clone(),
+                error,
+                detail,
+            }),
         }
     }
     Ok(broadcast_reply(&plan, sent, failed))
@@ -1252,25 +1204,21 @@ pub(crate) struct SpawnArgs {
 /// `tool` 是注册表里由我们起的一家（缺 / 空 ⇒ 默认那一家；认法住 `agents::pick_kind`）· `dir` 非空 ·
 /// `account` 与 `base:true` **恰好给一个**（都不给 ⇒ 拒：那是替用户选了默认号）·
 /// 给了 `account` 就先过形状判定（[`refuse_bad_bus_id`]，`§47` ①）。
-pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
-    let obj = args.as_object().ok_or_else(|| {
-        (
-            "bad_args",
-            crate::common::contract::malformed("args must be an object"),
-        )
-    })?;
-    let s = |k: &str| obj.get(k).and_then(|v| v.as_str()).unwrap_or("").trim();
+pub(crate) fn parse_spawn(req: &BusSpawnReq) -> Result<SpawnArgs, CmdErr> {
+    let s = |v: &Option<String>| v.as_deref().unwrap_or("").trim().to_string();
     // 哪一家问注册表（不写名字白名单）：认不出 ⇒ `bad_args`，那句话列出认得的几家；交给 cc-spawn 的是解析好的 kind。
-    let (tool, _) = crate::agents::pick_kind(Some(s("tool"))).map_err(|say| ("bad_args", say))?;
-    let dir = s("dir");
+    let (tool, _) =
+        crate::agents::pick_kind(Some(&s(&req.tool))).map_err(|say| ("bad_args", say))?;
+    let dir = req.dir.trim();
     if dir.is_empty() {
         return Err((
             "bad_args",
             crate::common::contract::malformed("missing `dir` (working directory)"),
         ));
     }
-    let base = obj.get("base").and_then(|v| v.as_bool()).unwrap_or(false);
-    let account = s("account");
+    let base = req.base.unwrap_or(false);
+    let account = s(&req.account);
+    let account = account.as_str();
     // 账号名交给 `cc-spawn --account` 之前先过同一条形状判定（C4e 那一道原来住界面 `checkSpawnShape`）。
     if !account.is_empty() {
         refuse_bad_bus_id(account, |v| {
@@ -1297,7 +1245,7 @@ pub(crate) fn parse_spawn(args: &serde_json::Value) -> Result<SpawnArgs, CmdErr>
     Ok(SpawnArgs {
         tool: tool.to_string(),
         dir: dir.to_string(),
-        task: s("task").to_string(),
+        task: s(&req.task),
         account,
     })
 }
@@ -1354,10 +1302,8 @@ pub(crate) fn spawned_id_of(said: &str) -> Option<String> {
 /// | 其它 / 信号 | `failed` | 原样带上它的诊断 |
 ///
 /// ⚠ 期限仍住在子进程里（`timeout` 前缀，默认 10 秒，`CC_BUS_TIMEOUT_SECS` 可调），零定时器铁律不动。
-pub(crate) fn spawn_for_inbound(
-    args: &serde_json::Value,
-) -> Result<serde_json::Value, (String, String)> {
-    let a = parse_spawn(args).map_err(|(c, m)| (c.to_string(), m))?;
+pub(crate) fn spawn_for_inbound(req: &BusSpawnReq) -> Result<BusSpawnedNow, (String, String)> {
+    let a = parse_spawn(req).map_err(|(c, m)| (c.to_string(), m))?;
     let argv = spawn_argv(&a);
     let refs: Vec<&str> = argv.iter().map(String::as_str).collect();
     let out = run_as("cc-spawn", &refs, None).map_err(|(c, m)| (c.to_string(), m))?;
@@ -1368,12 +1314,12 @@ pub(crate) fn spawn_for_inbound(
 
 /// `bus-spawn` 的成品 `{spawned, id, said}` —— 从 [`spawn_for_inbound`] 里原样抽出来（逻辑不动），
 /// 理由同 [`list_reply`]。
-pub(crate) fn spawn_reply(said: &str) -> serde_json::Value {
-    serde_json::json!({
-        "spawned": true,
-        "id": spawned_id_of(said),
-        "said": said,
-    })
+pub(crate) fn spawn_reply(said: &str) -> BusSpawnedNow {
+    BusSpawnedNow {
+        spawned: true,
+        id: spawned_id_of(said),
+        said: said.to_string(),
+    }
 }
 
 /// `cc-spawn` 的退出码 → 语义码 —— 纯函数（表在 [`spawn_for_inbound`] 头注）。

@@ -5,6 +5,13 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("authorized-keys-add", "ce9dcc7d"),
     ("backend-log", "395a1d30"),
+    ("bus-broadcast", "71a905b4"),
+    ("bus-inbox", "bf04407d"),
+    ("bus-kill", "ff14121d"),
+    ("bus-list", "99c2c1c4"),
+    ("bus-send", "d3dd6407"),
+    ("bus-spawn", "a1a733df"),
+    ("bus-state", "c0b4ba82"),
     ("ccm-print", "03add13c"),
     ("ccm-probe", "16a75bb0"),
     ("deploy-plan", "6c6a4813"),

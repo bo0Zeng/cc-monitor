@@ -137,6 +137,18 @@ fn the_machine_family_refuses_what_its_request_types_do_not_have() {
             "ssh-config-import",
             json!({ "known": [{ "host": "h", "user": "u", "port": 22, "label": "x" }] }),
         ),
+        ("bus-list", json!({ "extra": 1 })),
+        ("bus-state", json!({ "extra": 1 })),
+        ("bus-send", json!({ "to": "a_cc", "text": "x", "extra": 1 })),
+        ("bus-send", json!({ "to": "a_cc", "text": 3 })),
+        ("bus-broadcast", json!({ "text": "x", "extra": 1 })),
+        ("bus-kill", json!({ "id": "a_cc", "extra": 1 })),
+        ("bus-inbox", json!({ "id": "a_cc", "lines": "200" })),
+        (
+            "bus-spawn",
+            json!({ "dir": "/w", "base": true, "extra": 1 }),
+        ),
+        ("bus-spawn", json!({ "dir": "/w", "base": "yes" })),
     ] {
         let got = run_any(cmd, args.clone());
         assert_eq!(

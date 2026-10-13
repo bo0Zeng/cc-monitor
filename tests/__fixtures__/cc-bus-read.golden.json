@@ -43,6 +43,7 @@
       "skipped": 5
     },
     "codes": [
+      "bad_args",
       "not_installed",
       "child_timed_out",
       "failed"

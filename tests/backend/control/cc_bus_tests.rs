@@ -1,6 +1,93 @@
 use super::*;
 use serde_json::json;
 
+// 判据照线上那一份比：入参经 typed 那一处收（同分派）再交本体，回包写成线上那一份（盖住 `super::*` 里的同名口）。
+fn take<R: serde::de::DeserializeOwned>(
+    v: &serde_json::Value,
+) -> Result<R, (&'static str, String)> {
+    crate::stream::inbound::typed::take(v).map_err(|f| ("bad_args", f.message))
+}
+fn owned<T>(r: Result<T, (&'static str, String)>) -> Result<T, (String, String)> {
+    r.map_err(|(c, m)| (c.to_string(), m))
+}
+fn val<T: serde::Serialize>(v: T) -> serde_json::Value {
+    serde_json::to_value(v).unwrap()
+}
+fn parse_send(v: &serde_json::Value) -> Result<(String, String, Option<String>), CmdErr> {
+    super::parse_send(&take(v)?)
+}
+fn parse_broadcast(v: &serde_json::Value) -> Result<(String, Option<String>), CmdErr> {
+    super::parse_broadcast(&take(v)?)
+}
+fn parse_kill(v: &serde_json::Value) -> Result<String, (String, String)> {
+    super::parse_kill(&owned(take(v))?)
+}
+fn parse_inbox(v: &serde_json::Value) -> Result<(String, u64), (String, String)> {
+    super::parse_inbox(&owned(take(v))?)
+}
+fn parse_spawn(v: &serde_json::Value) -> Result<SpawnArgs, CmdErr> {
+    super::parse_spawn(&take(v)?)
+}
+fn agent(v: &serde_json::Value) -> BusAgent {
+    BusAgent {
+        id: v["id"].as_str().unwrap_or_default().to_string(),
+        target: v["target"].as_str().unwrap_or_default().to_string(),
+        unread: v["unread"].as_i64().unwrap_or_default(),
+        live: v["live"].as_bool(),
+        ccm_sid: v["ccm_sid"].as_str().map(str::to_string),
+    }
+}
+fn pick_broadcast_targets(agents: &[serde_json::Value], me: &str) -> BroadcastPlan {
+    let agents: Vec<BusAgent> = agents.iter().map(agent).collect();
+    super::pick_broadcast_targets(&agents, me)
+}
+fn recipient_refused(id: &str) -> Option<serde_json::Value> {
+    super::recipient_refused(id).map(val)
+}
+fn state_reply(
+    agents: Vec<RosterRow>,
+    spawned: Vec<crate::control::cc_bus_wire::BusSpawned>,
+    skipped: usize,
+    sessions: Option<&[(String, String)]>,
+) -> serde_json::Value {
+    val(super::state_reply(agents, spawned, skipped, sessions))
+}
+fn inbox_reply(text: &str) -> Result<serde_json::Value, (String, String)> {
+    super::inbox_reply(text).map(val)
+}
+fn list_reply(agents: Vec<serde_json::Value>) -> serde_json::Value {
+    val(super::list_reply(agents.iter().map(agent).collect()))
+}
+fn send_reply(
+    to: &str,
+    registered: bool,
+    live: serde_json::Value,
+    from: Option<&str>,
+) -> serde_json::Value {
+    val(super::send_reply(to, registered, live.as_bool(), from))
+}
+fn kill_reply(id: &str, killed: bool, stale_only: bool) -> serde_json::Value {
+    val(super::kill_reply(id, killed, stale_only))
+}
+fn spawn_reply(said: &str) -> serde_json::Value {
+    val(super::spawn_reply(said))
+}
+fn broadcast_reply(
+    plan: &BroadcastPlan,
+    sent: usize,
+    failed: Vec<serde_json::Value>,
+) -> serde_json::Value {
+    let failed = failed
+        .iter()
+        .map(|f| crate::control::cc_bus_wire::BusUndelivered {
+            id: f["id"].as_str().unwrap_or_default().to_string(),
+            error: f["error"].as_str().unwrap_or_default().to_string(),
+            detail: f["detail"].as_str().unwrap_or_default().to_string(),
+        })
+        .collect();
+    val(super::broadcast_reply(plan, sent, failed))
+}
+
 /// **本模块每一条「转调 shell 脚本」的裁定，逐条写成数据。**
 ///
 /// `(被调命令, 写面, 这一趟为什么不收进后端, 解锁条件)`
@@ -603,7 +690,7 @@ fn a_broadcast_without_text_is_refused_before_anyone_is_asked() {
 /// （`src/frontend/ui/cc-bus-control.ts`），monitor 那一跳只搬字节。
 ///
 /// 各格异源：请求样例过**生产**解析器（`parse_send` / `parse_kill` / `parse_spawn` / `parse_broadcast`）·
-/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `join_identity` 现算 —— 与 `bus-state` 同一个解析器；
+/// 成品 == **生产**构造器（`bus-list` 由金样里那份 `cc-list --tsv` 输出样例经生产的 `parse_roster_tsv` ＋ `roster_agents`（挂身份空间）现算 —— 与 `bus-state` 同一个解析器；
 /// 广播由同一份名单经生产的 `pick_broadcast_targets` 挑人再经 `broadcast_reply` 装）· 码集合 == `inbound::REGISTRY` 那一块。
 #[test]
 fn the_bus_products_match_the_cross_language_golden() {
@@ -659,18 +746,19 @@ fn the_bus_products_match_the_cross_language_golden() {
             )
         })
         .collect();
-    let agents = join_identity(
-        roster_agents(
-            &parse_roster_tsv(
-                g["input"]["ccListTsv"]
-                    .as_str()
-                    .expect("输入样例缺 `ccListTsv`"),
-            )
-            .expect("名册样例读得动")
-            .0,
-        ),
+    let agents: Vec<Value> = roster_agents(
+        &parse_roster_tsv(
+            g["input"]["ccListTsv"]
+                .as_str()
+                .expect("输入样例缺 `ccListTsv`"),
+        )
+        .expect("名册样例读得动")
+        .0,
         Some(&sessions),
-    );
+    )
+    .into_iter()
+    .map(val)
+    .collect();
     assert_eq!(
         list_reply(agents.clone()),
         g["bus-list"]["reply"],
