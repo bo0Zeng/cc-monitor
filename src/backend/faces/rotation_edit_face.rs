@@ -1041,7 +1041,9 @@ pub(crate) fn delete_with(
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotSeg {
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) to: u64,
     pub(crate) v: f64,
 }
@@ -1054,7 +1056,9 @@ pub(crate) struct RotSeg {
 pub(crate) struct RotationDayPaintReq {
     pub(crate) segs: Vec<RotSeg>,
     /// 刷哪一截（一天里的分钟；`to ≤ from` ⇒ 跨午夜，相等 ⇒ 一整天）。
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) from: u64,
+    #[cfg_attr(test, ts(type = "number"))]
     pub(crate) to: u64,
     /// 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
     #[cfg_attr(test, ts(type = "number | null"))]

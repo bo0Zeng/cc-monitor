@@ -388,7 +388,7 @@ fn a_preset_session_can_be_written_as_not_rotating() {
     home.saw(&ctx, S1);
     assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, "");
     let v = session_view(&ctx, &home, S1);
-    assert!(v.strategy.is_none(), "不轮换");
+    assert!(v.strategy.is_none(), "起成了不轮换的会话");
 }
 
 /// ★ 时刻的字由后端写（界面不换算时刻）：此刻 · 刻度 · 换号时刻 · 每号行每段的起点 · 停发到几点；每段还带剩多少（事实）。

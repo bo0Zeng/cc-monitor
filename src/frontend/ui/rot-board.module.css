@@ -1,0 +1,536 @@
+/* 轮换（第五版）四块：第一行 · 说明 · 提示 · 号牌 · 点开一个号 · 总体设置 · 模拟。会话面板与设置窗「轮换」栏共用（`rot-board.ts`）。 */
+@layer components {
+  .rotBoard {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-width: 0;
+    font-size: var(--font-size-small);
+  }
+
+  .rotTop {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .rotPick {
+    min-width: 160px;
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotSpacer {
+    flex: 1;
+  }
+
+  .rotDirty {
+    color: var(--warn);
+  }
+
+  .rotWhere {
+    color: var(--text-2);
+  }
+
+  .rotAbout {
+    color: var(--text-2);
+    line-height: var(--line-height-base);
+  }
+
+  .rotAboutPara {
+    margin: 0;
+    white-space: pre-line;
+  }
+
+  .rotHdr {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    margin-top: var(--space-4);
+    color: var(--text-2);
+  }
+
+  .rotHdrText {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotHdrNote {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  /* —— 号牌 —— */
+  .rotCards {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .rotCard {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    height: 34px;
+    padding: 0 var(--space-4) 0 var(--space-3);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-m);
+    background: var(--bg-2);
+    color: var(--text);
+    font: inherit;
+    cursor: grab;
+  }
+
+  .rotCard > svg {
+    color: var(--text-faint);
+  }
+
+  .rotCard[data-open="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .rotCard[data-blocked="true"] {
+    opacity: var(--state-disabled-opacity);
+  }
+
+  .rotCard[data-in-use="true"]::after {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border: 2px solid var(--card);
+    border-radius: 50%;
+    background: var(--success);
+    content: "";
+  }
+
+  .rotCardIx {
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rotCardName {
+    max-width: 14ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rotCardAdd {
+    height: 34px;
+    border-style: dashed;
+  }
+
+  .rotMeters {
+    display: inline-flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .rotMeterRow {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .rotMeterWin {
+    width: 12px;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    font-style: normal;
+    line-height: 1;
+  }
+
+  .rotMeter {
+    position: relative;
+    display: block;
+    width: 26px;
+    height: 3px;
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    background: var(--border-strong);
+  }
+
+  .rotMeterFill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    background: var(--text-2);
+  }
+
+  .rotMeterFill[data-full="true"] {
+    background: var(--error);
+  }
+
+  /* —— 点开一个号 —— */
+  .rotPane {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    padding: var(--space-5);
+    border-radius: var(--radius-l);
+    background: var(--bg-2);
+  }
+
+  .rotPaneTop {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    min-width: 0;
+  }
+
+  .rotPaneName {
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotPaneLine {
+    color: var(--text-2);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .rotRefused {
+    padding: var(--space-3) var(--space-5);
+    border-left: 3px solid var(--warn);
+    border-radius: 0 var(--radius-m) var(--radius-m) 0;
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    color: var(--text);
+  }
+
+  /* —— 格 —— */
+  .rotCells {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+    gap: var(--space-4) var(--space-5);
+    align-items: center;
+  }
+
+  .rotCellKey {
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .rotCellKey[data-inherited="true"] {
+    color: var(--text-2);
+  }
+
+  .rotCtl {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-4);
+  }
+
+  .rotNull[aria-pressed="true"] {
+    box-shadow: inset 0 -2px 0 var(--accent);
+  }
+
+  .rotSwitch {
+    justify-self: start;
+  }
+
+  .rotNum {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    height: var(--control-h-compact);
+    padding: 0 var(--space-3);
+    border: 1px solid var(--field-border);
+    border-radius: var(--radius-s);
+    background: var(--field-bg);
+    justify-self: start;
+  }
+
+  .rotNum[data-inherited="true"] {
+    border-style: dashed;
+    color: var(--text-2);
+  }
+
+  .rotNumInput {
+    width: 4ch;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+
+  .rotNumUnit {
+    color: var(--text-2);
+  }
+
+  /* —— 24 小时条 —— */
+  .rotDay {
+    min-width: 0;
+  }
+
+  .rotDayBar {
+    position: relative;
+    height: 22px;
+    border-radius: var(--radius-s);
+    background: color-mix(in srgb, var(--text-2) 18%, transparent);
+    cursor: crosshair;
+    touch-action: none;
+  }
+
+  .rotDayBar[data-inherited="true"] {
+    border: 1px dashed var(--border-medium);
+    background: transparent;
+  }
+
+  .rotDaySeg {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    padding: 0 var(--space-2);
+    overflow: hidden;
+    border: 1px solid color-mix(in srgb, var(--color-link) 40%, transparent);
+    border-radius: var(--radius-s);
+    background: color-mix(in srgb, var(--color-link) 10%, transparent);
+    color: var(--text);
+    font-size: var(--font-size-xs);
+    line-height: 20px;
+    white-space: nowrap;
+  }
+
+  .rotDayBar[data-inherited="true"] .rotDaySeg {
+    border-style: dashed;
+    border-color: var(--text-faint);
+    background: transparent;
+    color: var(--text-2);
+  }
+
+  .rotDaySeg[data-zero="true"] {
+    border-color: var(--text-faint);
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--text-2) 40%, transparent) 0 1.5px, transparent 1.5px 5px);
+    color: var(--text-2);
+  }
+
+  .rotDayGhost {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    outline: 2px solid var(--accent);
+    border-radius: var(--radius-s);
+    pointer-events: none;
+  }
+
+  .rotDayAxis {
+    position: relative;
+    height: 14px;
+    margin-top: var(--space-1);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotDayTick {
+    position: absolute;
+    transform: translateX(-50%);
+  }
+
+  .rotDayPop {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    white-space: nowrap;
+  }
+
+  .rotDayPopText {
+    color: var(--text);
+  }
+
+  /* —— 模拟 —— */
+  .rotSim {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4) var(--space-4);
+    border-radius: var(--radius-l);
+    background: var(--bg-2);
+  }
+
+  .rotSimRow,
+  .rotSimTopRow {
+    display: grid;
+    grid-template-columns: 90px minmax(0, 1fr);
+    column-gap: var(--space-3);
+    align-items: center;
+  }
+
+  .rotSimHead {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    white-space: nowrap;
+  }
+
+  .rotSimHead[draggable="true"] {
+    cursor: grab;
+  }
+
+  .rotSimName {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .rotSimAxis,
+  .rotSimSwitches {
+    position: relative;
+    height: 16px;
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+  }
+
+  .rotSimTick,
+  .rotSimSwitch {
+    position: absolute;
+    transform: translateX(-50%);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  .rotSimTick[data-now="true"] {
+    transform: none;
+    color: var(--text);
+    font-weight: var(--font-weight-strong);
+  }
+
+  .rotSimSwitch {
+    color: var(--text);
+  }
+
+  .rotSimTop,
+  .rotSimTrack {
+    position: relative;
+    height: 18px;
+  }
+
+  .rotSimTop {
+    height: 22px;
+  }
+
+  .rotSimUse,
+  .rotSimSeg {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    padding: 0 var(--space-2);
+    overflow: hidden;
+    border-radius: var(--radius-s);
+    font-size: var(--font-size-xs);
+    line-height: 16px;
+    white-space: nowrap;
+  }
+
+  .rotSimUse {
+    --rot-c: var(--text-2);
+    --rot-ink: var(--bg);
+
+    background: var(--rot-c);
+    color: var(--rot-ink);
+    font-weight: var(--font-weight-strong);
+    line-height: 20px;
+  }
+
+  .rotSimUse[data-c="0"] {
+    --rot-c: var(--acct-c0);
+    --rot-ink: var(--acct-ink0);
+  }
+
+  .rotSimUse[data-c="1"] {
+    --rot-c: var(--acct-c1);
+    --rot-ink: var(--acct-ink1);
+  }
+
+  .rotSimUse[data-c="2"] {
+    --rot-c: var(--acct-c2);
+    --rot-ink: var(--acct-ink2);
+  }
+
+  .rotSimUse[data-c="3"] {
+    --rot-c: var(--acct-c3);
+    --rot-ink: var(--acct-ink3);
+  }
+
+  .rotSimUse[data-c="4"] {
+    --rot-c: var(--acct-c4);
+    --rot-ink: var(--acct-ink4);
+  }
+
+  .rotSimUse[data-c="5"] {
+    --rot-c: var(--acct-c5);
+    --rot-ink: var(--acct-ink5);
+  }
+
+  .rotSimUse[data-c="6"] {
+    --rot-c: var(--acct-c6);
+    --rot-ink: var(--acct-ink6);
+  }
+
+  .rotSimUse[data-c="7"] {
+    --rot-c: var(--acct-c7);
+    --rot-ink: var(--acct-ink7);
+  }
+
+  .rotSimUse[data-future="true"] {
+    opacity: 0.55;
+    outline: 1px dashed var(--rot-c);
+    outline-offset: -1px;
+  }
+
+  .rotSimUse[data-hold="true"] {
+    border: 1px dashed var(--warn);
+    background: color-mix(in srgb, var(--warn) 12%, transparent);
+    color: var(--warn);
+  }
+
+  .rotSimUse[data-temp="true"] {
+    opacity: 1;
+    outline: 2px solid var(--text);
+    outline-offset: -2px;
+  }
+
+  .rotSimUse[data-temp="true"]::before {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: var(--space-2);
+    border-radius: 50%;
+    background: var(--rot-ink);
+    vertical-align: 1px;
+    content: "";
+  }
+
+  .rotSimSkip {
+    position: absolute;
+    top: -14px;
+    padding: 0 var(--space-2);
+    border: 1px dashed var(--text-faint);
+    border-radius: var(--radius-s);
+    background: var(--state-active);
+    color: var(--text-2);
+    font-size: var(--font-size-xs);
+    text-decoration: line-through;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+
+  .rotSimSeg[data-state="ok"] {
+    background: color-mix(in srgb, var(--text-2) 18%, transparent);
+    color: var(--text);
+  }
+
+  .rotSimSeg[data-state="out"] {
+    background: repeating-linear-gradient(135deg, color-mix(in srgb, var(--error) 60%, transparent) 0 1.5px, color-mix(in srgb, var(--error) 12%, transparent) 1.5px 6px);
+  }
+
+  .rotSimSeg[data-future="true"] {
+    outline: 1px dashed var(--text-faint);
+    outline-offset: -1px;
+  }
+}

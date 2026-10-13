@@ -191,7 +191,7 @@ pub(crate) enum RotHint {
         #[cfg_attr(test, ts(optional))]
         account: Option<String>,
         /// `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
-        #[serde(skip_serializing_if = "Option::is_none")]
+        #[serde(rename = "untilText", skip_serializing_if = "Option::is_none")]
         #[cfg_attr(test, ts(optional))]
         until_text: Option<String>,
     },

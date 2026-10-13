@@ -13,6 +13,7 @@
  */
 // `LOCAL_ORIGIN`：本机那个 origin 的**唯一住址**（Rust 侧是
 // `origin::LOCAL`，三处由 `origin_tests.rs::the_sentinel_agrees_with_the_two_existing_homes` 钉着）。
+import { acctSessionWiring } from "./acct-session";
 import { LOCAL_ORIGIN, type Origin } from "./ipc/origin";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
@@ -336,6 +337,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   // 构造在 `refreshSessionAccounts`（下方 `const`）之前：`onDefaultChanged` 回调间接调它，只在用户切号时才执行，
   //   那时它早已初始化 —— 别在这中间插一个会触发回调的 await（会踩 TDZ）。
   // 「账号」面板（右侧抽屉）：状态栏按钮 · 右键「账号…」· 会话头 ⋯ 开同一个。
+  // 会话里停发提示的重画（接线在下面 `acctSessionWiring`）。
+  let noticeRepaint = (_sid: string): void => {};
   const panelHost: AcctPanelHost = {
     sessionTitle: (sid) => tabs.snapshotSessions().find((x) => x.sessionId === sid)?.title ?? sid.slice(0, 8),
     openSettings: (origin) => void openSettingsWindow(undefined, dest.accountsOf(origin)),
@@ -471,10 +474,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (cur !== null) statusDivider.before(accountChip.element);
     else statusDivider.after(accountChip.element);
     followActive(cur, panelHost);
+    if (a.sid !== null) noticeRepaint(a.sid); // 「还有多久」只在画的那一刻算：切到这个 tab 那一刻重算
   });
 
-  // 标签页上的账号格照会话那台 `rotation-view` 的在用号：换了号原地重画。
+  // 标签页上的账号格照会话那台 `rotation-view` 的在用号 · 停发标：换了号原地重画。
   appStore.sessionRotation.subscribe(() => tabs.repaintTabBar());
+  // 会话里的换号条 · 停发提示。
+  const acctSession = acctSessionWiring({
+    streamContentOf: (sid) => tabs.streamContentOf(sid),
+    openPanel: openAcctPanel,
+  });
+  noticeRepaint = acctSession.repaintNotice;
 
   // 拉一次 behavior toggle 初值喂给 TabManager。
   // 设置面板改了之后会再调 applyBehavior 同步。

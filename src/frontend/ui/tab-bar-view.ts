@@ -1,7 +1,7 @@
 /**
  * 标签页栏视图：栏顶一排（全局入口 · 刷新）· 「需手动 N」· 机器离线条 · 列表（分组 ＋ 每个会话一行）。
  *
- * 一行：状态点 · 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 额度 `✕` ·
+ * 一行：状态点 · 窄窗两字母 · 机器徽标（远端）· 项目名 ＋ 标题（后台多一个齿轮）· 行尾（等批准 / 未读数 · 停发 ·
  * 与默认不同的账号头像 · 图钉）· 悬停时盖在行尾的动作（目录 · ↗ · 更多 / 关闭）。悬停卡（kit 悬停提示的卡式）锚在行右侧。
  * 一句话怎么写全从 `session-face.ts` 取（状态点 · 状态句 · peek · 需手动）；这里只排。
  *
@@ -9,6 +9,9 @@
  * `TabBarViewHost` 交给宿主（路由 / 拖拽 / 菜单 / 会话动作），本文件不 import 它们。
  * 读的状态：`TabStore`（tab 集合 · 顺序 · 当前 tab · 账号快照）与 `TabBarPrefs`（集合）。
  */
+import { holdOf } from "./acct-session";
+import { accountLabel } from "./acct-words";
+import qs from "./tab-quota.module.css";
 import { sessionBadge, shouldShowAccountBadge, detectAccountMismatch } from "./accounts";
 import { appStore } from "./app-store";
 import { accountAvatarEl, accountColorOf } from "./account-color";
@@ -54,6 +57,8 @@ export interface TabButtonRefs {
   /** 额度：被卡住的会话标题后那一格红字 `✕ 5h`（能发时藏着）。 */
   /** 账号徽章（该会话属于哪个账号；本机会话不显示，未知显 —）。 */
   acctBadge: HTMLSpanElement;
+  /** 停发的会话标题后琥珀字 `停发`（与「等批准」同位）。 */
+  holdBadge: HTMLSpanElement;
   cwdBtn: HTMLSpanElement;
   /**
    * 📌 角标。**纯展示，不可点** —— 与 `.tab-badge`（未读数）同族。
@@ -1063,7 +1068,11 @@ export class TabBarView {
     const pinBadge = span("tab-pin");
     pinBadge.appendChild(icon("pin", "compact"));
     pinBadge.title = copyText("tabBarView.tab.pinHint");
-    trail.append(needs, badge, acctBadge, pinBadge);
+    const holdBadge = document.createElement("span");
+    holdBadge.className = qs.tabHold;
+    holdBadge.style.display = "none";
+    holdBadge.textContent = copyText("rot.tab.hold");
+    trail.append(needs, holdBadge, badge, acctBadge, pinBadge);
 
     // 行尾动作：悬停 / 焦点时盖在行尾（带同色底与渐隐），标题不挪位。
     const acts = span("tab-acts");
@@ -1084,7 +1093,7 @@ export class TabBarView {
 
     root.append(dot, abbr, machine, titleEl, trail, acts);
 
-    return { root, dot, abbr, machine, proj, bg, label, needs, badge, acctBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
+    return { root, dot, abbr, machine, proj, bg, label, needs, badge, acctBadge, holdBadge, cwdBtn, pinBadge, drawn: null, acctDrawn: "" };
   }
 
   /**
@@ -1119,6 +1128,11 @@ export class TabBarView {
     if (peek) card.appendChild(line("tab-hover-peek", peek));
     const acct = this.accountOf(sid, tab);
     if (acct) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.account", { name: acct.name })));
+    // 轮换换过号：从哪个号换过来（开会话的号）· 停发那一句。
+    const rot = appStore.sessionRotation.get().get(sid)?.read;
+    if (rot && rot.current !== rot.start) card.appendChild(line("tab-hover-row", copyText("rot.hover.from", { account: accountLabel(rot.start) })));
+    const held = holdOf(rot);
+    if (held !== null) card.appendChild(line("tab-hover-row", held));
     if (tab.forkedFromSessionId) card.appendChild(line("tab-hover-row", copyText("tabBar.hover.forked", { id: tab.forkedFromSessionId.slice(0, 8) })));
     if (isLive(tab.state) && tab.writers.length > 1) card.appendChild(line("tab-hover-row", copyText("tabBarView.tab.writers", { n: tab.writers.length })));
     const pos = this.visibleOrder().indexOf(sid);
@@ -1155,7 +1169,8 @@ export class TabBarView {
     const flags = [active, selected, ended, unseen, pinned, hasCwd, remote, reconnectable, unreadText !== "", unseenDone, n !== null, parts.bg]
       .map((b) => (b ? "1" : "0"))
       .join("");
-    const drawn = [flags, lightClass, dot, titleText, parts.proj ?? "", unreadText, needsText, abbr, remote ? tab.origin : ""].join("\u0000");
+    const held = holdOf(appStore.sessionRotation.get().get(sid)?.read) !== null;
+    const drawn = [flags, lightClass, dot, titleText, parts.proj ?? "", unreadText, needsText, held ? "1" : "", abbr, remote ? tab.origin : ""].join("\u0000");
     if (refs.drawn !== drawn) {
       refs.drawn = drawn;
       refs.root.classList.toggle("active", active);
@@ -1187,6 +1202,7 @@ export class TabBarView {
       if (remote) setText(refs.machine, tab.origin);
       setText(refs.needs, needsText);
       setShown(refs.needs, n !== null);
+      setShown(refs.holdBadge, held);
       setText(refs.badge, unreadText);
     }
     this.updateAccountBadge(refs, sid, tab); // 账号头像随 tab 更新一并刷新

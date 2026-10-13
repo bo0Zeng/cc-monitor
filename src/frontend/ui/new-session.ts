@@ -39,6 +39,8 @@ import { awaitArrival, liveSince, type ArrivalMatch } from "./launch-arrival";
 import type { SlotSpec } from "./launch-slot";
 import { accountsOf } from "./settings-dest";
 import { askDir, askFacts, askNew, type NewFacts, type NewRequest, type NewResult } from "./new-session-reads";
+import { firstLine, readStrategies } from "./rot-reads";
+import type { RotationStrategiesReply } from "./generated/RotationStrategiesReply";
 import s from "./new-session.module.css";
 
 /** 设置窗 → 主窗口：切到那个会话（载荷 `{origin, sid}`）。 */
@@ -406,6 +408,34 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
   accountRow.root.hidden = true;
   form.appendChild(accountRow.root);
 
+  // 轮换：用哪份策略（缺省新会话用的那份）· 不轮换 · 那台的各份策略（标题 ＝ 文件名，灰字 ＝ 说明第一行）。读不出那台的策略目录 ⇒ 不出这一行。
+  const rotSel = select({ label: copyText("rot.new.label"), options: [], menuWidth: 340 });
+  const rotRow = row(copyText("rot.new.label"), rotSel.el, false);
+  rotRow.root.hidden = true;
+  form.appendChild(rotRow.root);
+  let rotSeq = 0;
+  let forNew = "";
+  const paintRotation = async (): Promise<void> => {
+    const my = ++rotSeq;
+    let list: RotationStrategiesReply | null = null;
+    try {
+      list = accounts === null ? null : await readStrategies(origin);
+    } catch {
+      list = null;
+    }
+    if (my !== rotSeq) return;
+    rotRow.root.hidden = list === null;
+    if (list === null) return;
+    forNew = list.forNew;
+    rotSel.setOptions(
+      [
+        { value: "", label: copyText("rot.none.label"), detail: copyText("rot.none.desc"), note: list.forNew === "" ? copyText("rot.tag.forNew") : undefined },
+        ...list.strategies.map((st) => ({ value: st.id, label: st.id, note: st.forNew ? copyText("rot.tag.forNew") : undefined, detail: firstLine(st.description) })),
+      ],
+      list.forNew,
+    );
+  };
+
   // 运行于
   const places = el("div");
   places.className = s.nsPlaces;
@@ -488,6 +518,7 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     opts.push(...accounts.map(accountOption));
     accountSel.setOptions(opts, accountPick(fork !== null, forkAccount, accounts[0].name));
     paintAccountNote();
+    void paintRotation();
   };
 
   const checkDir = async (): Promise<void> => {
@@ -567,6 +598,9 @@ export async function openNewSession(spec: NewSessionSpec = {}): Promise<void> {
     if (!fork && place() === "tmux" && tmuxInput.value.trim() !== "") req.tmuxName = tmuxInput.value.trim();
     if (cmdInput.value.trim() !== "") req.command = cmdInput.value.trim();
     if (fork) req.forkFrom = { sid: fork.sid, uuid: fork.uuid };
+    // 新会话用的那份不写（新会话本来就用它）；挑了别的（含「不轮换」）⇒ 起之前写成那一份。
+    const rot = rotRow.root.hidden ? forNew : rotSel.value();
+    if (rot !== forNew) req.rotation = { strategy: rot === "" ? null : rot };
     return req;
   };
 

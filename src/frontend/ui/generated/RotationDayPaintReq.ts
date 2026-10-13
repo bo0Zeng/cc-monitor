@@ -8,7 +8,7 @@ export type RotationDayPaintReq = { segs: Array<RotSeg>,
 /**
  * 刷哪一截（一天里的分钟；`to ≤ from` ⇒ 跨午夜，相等 ⇒ 一整天）。
  */
-from: bigint, to: bigint, 
+from: number, to: number, 
 /**
  * 刷成多少；`null` ⇒ 删掉那一截（回到跟总体）。
  */

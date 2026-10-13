@@ -8,4 +8,4 @@ export type RotHint = { "k": "hold", until?: number, account?: string,
 /**
  * `until` 的钟面（`HH:MM`，看的那一台的时区；不在今天带日期）。
  */
-until_text?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
+untilText?: string, } | { "k": "strategyError", error: RotStrategyError, } | { "k": "tzUnknown" } | { "k": "oldScripts", n: number, } | { "k": "wordsBad" } | { "k": "bookUnreadable", text: string, };
