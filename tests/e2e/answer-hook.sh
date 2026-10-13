@@ -80,7 +80,7 @@ rtmux="$(PATH="$(grep -z '^PATH=' "/proc/$RPID/environ" 2>/dev/null | tr -d '\0'
 
 # 一条活会话：一个睡着的进程 ＋ 它的 pidfile 说在等批准（sessions-needs 只列活着的会话）。
 sleep 60 & SLEEPER=$!
-ticks="$(awk '{print $22}' "/proc/$SLEEPER/stat")"
+ticks="$(proc_start "$SLEEPER")"
 printf '{"pid":%s,"sessionId":"%s","kind":"interactive","procStart":"%s","status":"waiting","waitingFor":"permission prompt","statusUpdatedAt":%s000}\n' \
   "$SLEEPER" "$SID" "$ticks" "$(date +%s)" > "$CLAUDE_CONFIG_DIR/sessions/$SLEEPER.json"
 
