@@ -29,7 +29,11 @@ fn emitters(topic: &str) -> Vec<String> {
     let root = crate::guard_support::src_root();
     let needle = format!("Topic::{topic},");
     let mut out = Vec::new();
-    for rel in ["stream/tap.rs", "observe/watcher.rs"] {
+    for rel in [
+        "stream/tap.rs",
+        "observe/watcher.rs",
+        "stream/inbound/mod.rs",
+    ] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读源码");
         if crate::guard_support::production_code(&src).contains(&needle) {
             out.push(rel.to_string());
@@ -44,7 +48,10 @@ fn emitters(topic: &str) -> Vec<String> {
 fn lossy_topics_go_out_on_the_tap_and_the_rest_on_the_watcher() {
     for t in Topic::ALL {
         let variant = format!("{t:?}");
-        let want = if t.spec().lossy {
+        // 只推给发起它的那条连接的那一种（登录作业收了）走那条连接的应答通道（不丢）：发端在分派那一层。
+        let want = if t == Topic::Login {
+            "stream/inbound/mod.rs"
+        } else if t.spec().lossy {
             "stream/tap.rs"
         } else {
             "observe/watcher.rs"
@@ -192,6 +199,7 @@ fn main_installs_the_body_and_emitters_go_through_the_hook() {
         1,
         "main.rs 不是恰好一处装上现算"
     );
+    // `login` 的小成品由发端自己给（作业怎么收的），不现算 ⇒ 分派那一层不在这里。
     for rel in ["stream/tap.rs", "observe/watcher.rs"] {
         let src = std::fs::read_to_string(root.join(rel)).expect("读发端");
         let code = crate::guard_support::production_code(&src);

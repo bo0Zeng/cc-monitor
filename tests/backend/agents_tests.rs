@@ -715,6 +715,7 @@ const fn accounts(config_file: &'static str) -> AccountsFace {
         shared_root,
         email_in: no_email,
         login: None,
+        sign_in: None,
         session_env: crate::agents::SessionEnvKeys {
             config_dir: "",
             base_url: "",

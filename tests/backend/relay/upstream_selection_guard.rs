@@ -69,6 +69,8 @@ pub(super) mod tests {
     /// 账号域根 = 上游选择根的上一级（现推）。域根自己那份 `mod.rs` 只声明两块、不放代码，
     /// 不算任何一块（由 [`the_two_halves_of_the_account_domain_do_not_reference_each_other`] 钉着）。
     const ACCOUNT_DOMAIN_OTHER_FILES: &[&str] = &[
+        // 在 app 里登录一个号（起官方登录子命令、转链接、递码）：账号域，与上游选择零引用。
+        "sign_in.rs",
         "manage/aliases.rs",
         "manage/exec.rs",
         // 各号共用的用户级 MCP：只换一个键 · 三方对照（纯）· 读改写 · 文件事件触发。账号库管理的一部分，与上游选择零引用。

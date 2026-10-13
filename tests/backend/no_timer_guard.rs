@@ -541,6 +541,22 @@ mod tests {
     /// 这张表就是把人群收窄回性质上的那一刀，**它是收紧，不是豁免**。
     pub(super) const REGISTERED_DURATION_USES: &[(&str, &str, &str, &str, &str)] = &[
         (
+        "accounts/sign_in.rs",
+        "Duration::from_millis(30_000)",
+        "在 app 里登录一个号：起那一家的登录子命令之后等它打印登录链接的**一次有界等待**的期限（`START_WITHIN`，\
+         交给登记过的 `link_rx.recv_timeout(START_WITHIN)`）。链接一出来就当场醒；不循环、不复用。不是定时器。",
+        "收窄人群",
+        "登录子命令改成一起来就交回链接（不用等）的那天。",
+    ),
+        (
+        "accounts/sign_in.rs",
+        "Duration::from_millis(60_000)",
+        "在 app 里登录一个号：码写进登录子命令之后等它换完的**一次有界等待**的期限（`FINISH_WITHIN`，\
+         交给登记过的 `rx.recv_timeout(FINISH_WITHIN)`）。它一答（成 · 不成 · 码不对）就当场醒；不循环、不复用。不是定时器。",
+        "收窄人群",
+        "换码结果改成只靠推送交回（不在请求里等）的那天。",
+    ),
+        (
         "watcher.rs",
         "Duration::from_millis(DEBOUNCE_MS)",
         "notify-debouncer 的**事件合并窗口**：它不产生唤醒，只决定「同一批文件事件攒多久\
@@ -697,6 +713,20 @@ mod tests {
     /// 上面两条扫描**只**对登记的这几个片段让位（剥掉片段之后照常扫同一份文件）；表外出现任何自醒构件仍红。
     /// **加一行就是一次放宽**：提交说明里写明放宽了什么。
     pub(super) const REGISTERED_DEADLINE_WAKES: &[(&str, &str, &str, &str)] = &[
+        (
+            "accounts/sign_in.rs",
+            "link_rx.recv_timeout(START_WITHIN)",
+            "`login-start` 等登录子命令打印链接的**一次有界等待**：它要先问一次服务端拿登录参数，网络卡住时没有它这条命令就一直挂着。\
+             到点收作业（杀组）、照实回「链接没有出现」；不循环、不复用。登录作业本身不装定时器（替掉 · 取消 · 连接断才收）。",
+            "`START_WITHIN`（30 秒）；链接先出来、或它先退了就立刻醒。",
+        ),
+        (
+            "accounts/sign_in.rs",
+            "rx.recv_timeout(FINISH_WITHIN)",
+            "`login-finish` 等那一家换码的**一次有界等待**：码写进去之后，它去令牌端点换一次、再拉一次资料；卡住时没有它这条命令就一直挂着。\
+             到点回「还没答复」、作业留着（之后登完照样推 `changed {login}`）；不循环、不复用。",
+            "`FINISH_WITHIN`（60 秒）；它一答（成 · 不成 · 码不对）就立刻醒。",
+        ),
         (
             "stream/inbound/drain.rs",
             "tokio::time::sleep(deadline)",
@@ -1552,9 +1582,11 @@ mod g6_reach {
         // 12 → **13**：多的那一条是 `common/time.rs` 的截图台架拨钟（只在特性 `shots` 下编，台架交的起点毫秒换成时刻、比一次系统钟）。
         // 13 → **14**：多的那一条是 `accounts/oauth/writeback.rs` 的等写锁期限（续成了、写回等那一家放整份写锁，
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
+        // 14 → **16**：多的两条是 `accounts/sign_in.rs` 的 `START_WITHIN` · `FINISH_WITHIN`（在 app 里登录一个号：等登录子命令打印链接 ·
+        //   等它换码，各一次有界等待；调用那两处另住 `REGISTERED_DEADLINE_WAKES`）。
         assert_eq!(
-            registered, 14,
-            "登记表从 14 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 16,
+            "登记表从 16 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

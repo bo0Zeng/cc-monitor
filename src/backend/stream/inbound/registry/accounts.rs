@@ -1,4 +1,4 @@
-//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*`。
+//! 命令表 · 账号：`accounts-*` · `apikey-*` · `quota-read` · `quota-probe` · `rotation-*` · `login-*` · `manual-list`。
 
 use crate::stream::inbound::spec::{arg, both, out, CommandSpec, Run};
 use crate::stream::inbound::LocalFiles;
@@ -328,5 +328,27 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::with_own::<crate::faces::accounts_face::AccountsMcpSync>(
         "停 / 开各账号之间同步用户级 MCP（定义与登录同一个开关）",
         &LocalFiles,
+    ),
+    // 在 app 里登录一个号（本体 `accounts/sign_in.rs`，帧面宿主 `faces/login_face.rs`）：核心起那一家的登录子命令、转链接、递码，
+    //   令牌那一家自己写。`login-start` 要跟着发起它的那条连接走（连接断了作业就收）⇒ 硬臂（`dispatch` 带本连接的号调它）；
+    //   作业自己收了（本机浏览器回调登完 · 那一家先退了）推一帧 `changed {login, key: 作业号}` 给那条连接。
+    CommandSpec {
+        name: "login-start",
+        summary: "在 app 里登录一个号：起那一家的登录子命令，交回登录链接（本连接断了 ⇒ 作业收）",
+        codes: crate::faces::login_face::LOGIN_START_CODES,
+        fields: &[arg("account", "账号库里的号（账号 0 是 `0`）"), arg("agent", "哪一家（同 `accounts-list` 的 `agent`）"), out("auto", "会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推 `changed {login}`，粘码只是后备）"), out("job", "作业号（`login-finish` · `login-cancel` 交它）"), out("paste", "粘回来的是什么：`code`（登录页上给的那一段）"), out("url", "登录链接（在浏览器里打开，不用内嵌网页）")],
+        takes_input: true,
+        // 本体 `faces::login_face::answer_start`（`dispatch` 的硬臂带着本连接的号调它）。
+        run: Run::Builtin,
+    },
+    crate::stream::inbound::typed::blocking::<crate::faces::login_face::LoginFinish>(
+        "把登录页上给的码交给那份登录作业，等那一家换完",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::faces::login_face::LoginCancel>(
+        "收一份登录作业",
+    ),
+    // 会话外的需手动清单（需登录的号 · 需登录的 MCP）：每一项带写好的那一句和怎么解。读账号清单 ＋ MCP 缓存 ⇒ 阻塞档。
+    crate::stream::inbound::typed::blocking::<crate::faces::login_face::ManualListCmd>(
+        "会话外的需手动清单：需登录的号 · 需登录的 MCP",
     ),
 ];

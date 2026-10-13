@@ -52,7 +52,7 @@ describe("changed 流", () => {
     const gen = readFileSync(resolve(REPO_ROOT, "src/frontend/ui/generated/Topic.ts"), "utf8");
     const rs = readFileSync(resolve(REPO_ROOT, "src/backend/stream/topic.rs"), "utf8");
     const names = [...rs.matchAll(/name: "([a-z_]+)",/g)].map((m) => m[1]);
-    expect(names.length).toBe(8);
+    expect(names.length).toBe(10);
     for (const n of names) expect(gen, n).toContain(`"${n}"`);
   });
 });

@@ -196,6 +196,9 @@ where
         // 本连接挂的待答请求：同上，随本读循环一起死 ⇒ hook 那一头走了（终端先答了 · 被打断），它挂的那条一律撤
         // （`control::asks::Desk` 的 `Drop`）。
         let asks = crate::control::asks::Desk::new();
+        // 本连接发起的登录作业：同上，随本读循环一起死 ⇒ monitor 走了，它开的登录子命令一律杀（`accounts::sign_in::Desk` 的 `Drop`）。
+        //   与待答请求同一个连接号。
+        let _logins = crate::accounts::sign_in::Desk::of(asks.conn());
         let mut rd = BufReader::new(stdin);
         let mut buf: Vec<u8> = Vec::new();
         // 本行是否已经超限。超限之后**只丢字节、不再往 buf 里塞**（O(1) 内存）。
@@ -402,6 +405,30 @@ fn dispatch(
     match req.cmd.as_str() {
         // 答题 hook 挂一条待答请求、阻塞等人答：挂的那条要跟着**本连接**走（hook 那一头走了就撤）⇒ 硬臂带上本连接的号；
         //   本体是真异步（等的是一个通道），`cancel` 能在那儿把它打断（打断 ＝ 不给决定，同连接断）。
+        // 在 app 里登录一个号：作业跟着**本连接**走（连接断了就杀），作业自己收了推一帧 `changed {login}` 给本连接、敲需手动的铃。
+        //   起子命令 ＋ 等它打印链接（有界）⇒ 阻塞档。
+        "login-start" => {
+            let push = replies.clone();
+            Disposition::SpawnBlocking(
+                req,
+                Box::new(move |r: Request| {
+                    let on_end: crate::accounts::sign_in::OnEnd = Box::new(move |job, ended| {
+                        let body =
+                            serde_json::to_value(crate::faces::login_face::SignInState::of(ended))
+                                .ok();
+                        use crate::stream::topic::Topic;
+                        let _ = push.blocking_send(Frame::changed(
+                            Topic::Login,
+                            Some(job.to_string()),
+                            None,
+                            body,
+                        ));
+                        crate::accounts::sign_in::ring_manual();
+                    });
+                    crate::faces::login_face::answer_start(&r.args, asks, on_end)
+                }),
+            )
+        }
         "needs-ask" => Disposition::SpawnData(
             req,
             Box::new(move |r: Request| -> DataFut {
@@ -579,10 +606,14 @@ pub fn uncancellable() -> Vec<String> {
         .iter()
         .filter(|s| s.run.blocking())
         .map(|s| s.name.to_string())
+        .chain(BUILTIN_BLOCKING.iter().map(|n| n.to_string()))
         .collect();
     names.sort();
     names
 }
+
+/// 硬臂里走阻塞档的那几条（登记是 `Run::Builtin`，`dispatch` 交 `SpawnBlocking`）：同样开跑之后打不断。
+const BUILTIN_BLOCKING: &[&str] = &["login-start"];
 
 /// 命令表按族分住 `registry/` 下各一份（每份一张 `SPECS`），在编译期拼回一张 [`REGISTRY`]。
 pub(crate) mod registry {

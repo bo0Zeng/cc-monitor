@@ -1192,6 +1192,8 @@ fn watch_loop(
                 ) || dir_moved
                 {
                     sink.send(Frame::changed(Topic::Accounts, None, None, None));
+                    // 账号清单动了 ⇒ 需登录的那几个号可能变了。
+                    crate::accounts::sign_in::ring_manual();
                 }
                 // 配置文件动了 ⇒ 一帧 `changed {profiles}`（批内合并）。
                 if let Some(ear) = profiles_ear.as_mut() {
@@ -1444,6 +1446,8 @@ fn watch_loop(
                     }
                     state.reload_annotations(annotations_table(), &mut sink);
                     sink.send(Frame::changed(Topic::Accounts, None, None, None));
+                    // 账号清单动了 ⇒ 需登录的那几个号可能变了。
+                    crate::accounts::sign_in::ring_manual();
                 }
                 let got = resync_sessions(&sessions, &mut state, &mut sink, only.as_deref());
                 start_tmux_probe(&mut tmux_inflight, &events_tx, &mut sink);

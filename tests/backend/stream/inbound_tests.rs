@@ -944,6 +944,11 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "needs-ask",
         // 答一条挂着的待答请求：锁一下登记表、交通道，不碰盘不起进程 ⇒ 异步档、不阻塞。
         "needs-answer",
+        // 在 app 里登录：起登录子命令、等它打印链接（有界）⇒ 硬臂里的阻塞档；粘码 · 等它换完（有界）· 读账号清单 ⇒ 阻塞档；收作业只锁一下表，也放阻塞档（同族一档）。
+        "login-start",
+        "login-finish",
+        "login-cancel",
+        "manual-list",
         // 计划七条：起 pb / 读改写小文件 / 起 tmux，阻塞档（上面逐条断）。
         "plan-list",
         "plan-read",
@@ -2016,6 +2021,13 @@ fn the_account_library_refuses_what_its_request_types_do_not_have() {
             serde_json::json!({ "name": "s", "from": 1 }),
         ),
         ("accounts-mcp-sync", serde_json::json!({ "on": "yes" })),
+        ("login-finish", serde_json::json!({ "job": "j" })),
+        (
+            "login-finish",
+            serde_json::json!({ "job": "j", "pasted": "x", "extra": 1 }),
+        ),
+        ("login-cancel", serde_json::json!({})),
+        ("manual-list", serde_json::json!({ "x": 1 })),
     ] {
         let got = run_registered(cmd, args.clone()).expect_err(&format!("{cmd} {args} 本该被拒"));
         assert_eq!(got.code, "bad_args", "{cmd} {args}：{got:?}");

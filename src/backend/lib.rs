@@ -1052,6 +1052,8 @@ pub const SUBCOMMANDS: &[&str] = &[
     "--accounts-rollback",
     "--accounts-set-default",
     "--accounts-verify",
+    // 会话外的需手动清单（`manual-list`，typed）派生的 CLI 面：无入参。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
+    "--manual-list",
     // 只读查询面那八条帧命令**自动派生**出来的 CLI 面
     //（`cli_control::cli_exposed`）。登记在这里的理由与下面那几族逐字相同 ——
     // `is_query_mode` 那道闸门读的就是本表；不在表里 ⇒ 当未知 flag ⇒ 静默进流模式。
