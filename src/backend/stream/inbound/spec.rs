@@ -140,8 +140,6 @@ pub(super) type DataHandler = Box<dyn FnOnce(Request) -> DataFut + Send>;
 #[derive(Clone, Copy)]
 pub(crate) enum Run {
     Async(fn(Request) -> BoxFut),
-    /// 同 [`Run::Async`]，只是失败可以带按码定形的 `data`（换号重启：起失败时带终端名）。
-    AsyncData(fn(Request) -> DataFut),
     Blocking(fn(Request) -> CmdResult),
     /// 同 [`Run::Blocking`]，只是失败可以带按码定形的 `data`（起会话那几条：选不了号时带上要的号与替代）。
     BlockingData(fn(Request) -> Outcome),
@@ -191,7 +189,6 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
         Run::Async(f) => Prepared::Async(Box::new(move |r| {
             Box::pin(async move { f(r).await.map_err(Fail::from) })
         })),
-        Run::AsyncData(f) => Prepared::Async(Box::new(f)),
         Run::AsyncOwn(f) => {
             let own = own?.clone();
             Prepared::Async(Box::new(move |r| {

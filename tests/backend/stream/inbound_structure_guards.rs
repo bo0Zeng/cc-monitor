@@ -1577,7 +1577,6 @@ fn only_one_place_matches_on_how_a_command_runs() {
         "Run::BlockingData(",
         "Run::BlockingOwn(",
         "Run::Async(",
-        "Run::AsyncData(",
         "Run::AsyncOwn(",
     ];
     let root = crate::guard_support::src_root();
