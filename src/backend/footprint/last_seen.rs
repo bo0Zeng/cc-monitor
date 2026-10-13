@@ -37,7 +37,8 @@ impl SeenKind {
 #[serde(deny_unknown_fields)]
 pub(crate) struct LastSeenReadReq {
     /// 哪台（机器名）。
-    pub(crate) origin: String,
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
 }
 
 /// `last-seen-write` 的入参：记一份 `{origin, kind, value}`，或清掉那台 `{origin, forget: true}`（不带 `kind` / `value`）。
@@ -46,7 +47,8 @@ pub(crate) struct LastSeenReadReq {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LastSeenWriteReq {
-    pub(crate) origin: String,
+    #[cfg_attr(test, ts(as = "String"))]
+    pub(crate) origin: cmd_wire::Machine,
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) kind: Option<SeenKind>,
@@ -116,8 +118,8 @@ pub(crate) fn store_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(relay_route_core::LAST_SEEN_REL))
 }
 
-fn origin_arg(origin: &str) -> Result<&str, crate::stream::inbound::spec::Fail> {
-    Some(origin)
+fn origin_arg(m: &cmd_wire::Machine) -> Result<&str, crate::stream::inbound::spec::Fail> {
+    Some(m.0.as_str())
         .filter(|s| !s.trim().is_empty() && s.len() <= MAX_ORIGIN_BYTES)
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
 }
