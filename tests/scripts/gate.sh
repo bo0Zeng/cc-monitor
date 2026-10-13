@@ -1059,10 +1059,10 @@ fi
 gate_backend_libs() { gate_workspace_libs src/backend; }
 run_gate_sum backend gate_backend_libs \
          gate_cargo_test_nonet src/backend --workspace
-# ── `rotation-500`：轮换一致性的大样本（#22 · #26 各 500 组；常规那一趟里只跑 20 · 5 组）──
+# ── `rotation-500`：轮换一致性的大样本（#22 · #26 · #36 各 500 组；常规那一趟里只跑 20 · 5 · 2 组）──
 # 测试档的 Rhai 慢几十倍（100 组二十多分钟）⇒ 用 `perf` 档（发布档的优化、不做 LTO，后端 Cargo.toml 里那一节）单编一趟、只跑这一条。
 # gate-affected 里只在改到轮换那几处时点到（map 的 @rotation500），全量里恒跑。
-run_gate rotation-500 '判过的条数 = 1（一条测试里 #22 · #26 各 500 组随机设置 ＋ 事实，逐发判与推演两边比）；perf 档编、无网沙箱里跑' \
+run_gate rotation-500 '判过的条数 = 1（一条测试里 #22 · #26 · #36 各 500 组随机设置 ＋ 事实，逐发判与推演两边比）；perf 档编、无网沙箱里跑' \
          gate_cargo_test_nonet src/backend --profile perf --lib -- --ignored --exact accounts::quota::rules::decide::tests::consistency_500_groups
 run_gate deadcode-backend '不是数出来的数：`src/backend` 的 `cargo check`（非 test，lib ＋ bin）的 `dead_code` 诊断零条才绿，有就逐条列出来' \
          gate_deadcode deadcode-backend src/backend cc_monitor_backend
