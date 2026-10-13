@@ -967,6 +967,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "src/backend/agents/claudecode/assets.rs",
+        "COMMAND_DOC_MAX_BYTES",
+        "一条会话能用的命令：读一份斜杠命令文件（只为取简介与要不要参数）—— 读不出来那一份记进 `problems`、不列这一条",
+        "跳过+说清",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
         "PLUGIN_MANIFEST_MAX_BYTES",
         "找插件时读一个插件根的 `.claude-plugin/plugin.json`（只为取 `name`）—— 读不出来那个目录就不算插件",
         "跳过+说清",

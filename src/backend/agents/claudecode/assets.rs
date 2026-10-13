@@ -457,13 +457,15 @@ fn list_md(
 /// 要参数：front matter 有 `argument-hint`，或正文里有 `$ARGUMENTS` / `$1`。
 pub(crate) fn command_doc(text: &str) -> (Option<String>, bool) {
     let fence = "-".repeat(3);
-    let mut lines = text.lines().peekable();
+    let all: Vec<&str> = text.lines().collect();
     let mut description = None;
     let mut hint = false;
-    if lines.peek().map(|l| l.trim()) == Some(fence.as_str()) {
-        lines.next();
-        for line in lines.by_ref() {
+    let mut start = 0;
+    if all.first().map(|l| l.trim()) == Some(fence.as_str()) {
+        start = all.len();
+        for (i, line) in all.iter().enumerate().skip(1) {
             if line.trim() == fence {
+                start = i + 1;
                 break;
             }
             if let Some(v) = line.strip_prefix("description:") {
@@ -475,7 +477,7 @@ pub(crate) fn command_doc(text: &str) -> (Option<String>, bool) {
             }
         }
     }
-    let body: Vec<&str> = lines.collect();
+    let body = &all[start..];
     let description = description.or_else(|| {
         body.iter()
             .map(|l| l.trim().trim_start_matches('#').trim())

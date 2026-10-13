@@ -1757,19 +1757,19 @@
     "beSessionMode.unsure.unread": {
       "kind": "error",
       "role": "原因格",
-      "zh": "权限档切换结果未知 · 认不出此刻的档",
+      "zh": "权限档切换结果未知\n认不出此刻的档",
       "args": []
     },
     "beSessionMode.unsure.notInCycle": {
       "kind": "error",
       "role": "原因格",
-      "zh": "未切换权限档 · 此会话的循环里没有这一档",
+      "zh": "未切换权限档 · 此会话的循环里无此档",
       "args": []
     },
     "beSessionMode.unsure.noRedraw": {
       "kind": "error",
       "role": "原因格",
-      "zh": "权限档切换结果未知 · 按键后屏幕未变",
+      "zh": "权限档切换结果未知\n按键后屏幕未变",
       "args": []
     },
     "beSessionMode.switch.unsupported": {
@@ -1823,14 +1823,14 @@
     "beSessionCommands.skill.say": {
       "kind": "body",
       "role": "命令行",
-      "zh": "用 {name} 这个 Skill",
+      "zh": "使用 Skill {name}",
       "args": ["name"]
     },
     "beSessionCommands.session.noRecord": {
-      "kind": "报错",
-      "role": "片段",
-      "zh": "找不到这条会话的记录",
-      "args": ["e", "r", "r", "o", "r"]
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到此会话的记录",
+      "args": []
     },
     "beResident.claim.pathTooLong": {
       "kind": "error",
