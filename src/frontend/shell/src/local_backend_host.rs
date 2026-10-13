@@ -124,12 +124,13 @@ impl StartOutcome {
 
 /// 握手那一行（hello / attach 应答）的字节上限。
 ///
-/// hello 帧本机实测 ~1.1 KB（能力集 + emits + commands 三张表）。8 KiB 给了 7 倍余量，
+/// hello 帧带能力集 + emits + commands 三张表 ＋ 每条 typed 命令的形状指纹（第 8 批），本机实测 ~8.5 KB（10-13，typed 57 条），
+/// 全部换成 typed 时约 13 KB ⇒ 64 KiB（同 `resident-client` 的 `HANDSHAKE_LINE_CAP`）；
 /// 同时把「对端一直发字节不发换行」这条路堵死 —— 这条连接的对端是**同机任何进程**，
 /// 不是我们自己的子进程，不能假设它讲道理。
 /// 超限语义：**拒收 + 出声**（不静默截断成一行「看起来对」的 JSON）。
 /// **登记住址** `tests/frontend/shell/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
-pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
+pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 64 * 1024;
 
 /// backend 那侧收「你是常驻的那一个」的 env 名（值 `1`）。听哪个套接字不交：按家算（`relay_route_core::listen_socket_for`），
 /// 两边同一个函数。
