@@ -178,7 +178,7 @@ fn the_deploy_replies_the_shell_reads_keep_their_wire_bytes() {
     // 本机那一份放不放：落点不在 ⇒ 放。
     let got = run_any(
         "place-verdict",
-        json!({ "dest": "/nonexistent-ccm-dest/ccm", "machine": "本机" }),
+        json!({ "dest": "/nonexistent-ccm-dest/ccm", "machine": copy_core::local_machine() }),
     )
     .unwrap();
     assert_eq!(wire_of(&got), r#"{"action":"place","why":"该机无后端"}"#);

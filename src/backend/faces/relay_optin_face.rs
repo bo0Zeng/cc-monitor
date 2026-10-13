@@ -16,7 +16,8 @@ pub(crate) fn answer_optin(req: &OptinReq) -> Result<endpoint::Optin, (&'static 
     let face = crate::agents::settings_env_face(agent)
         .ok_or(("failed", copy_text("beUpstreamEndpoint.optin.noAgent", &[])))?;
     let registered =
-        crate::accounts::upstream_select::Upstreams::from_env(&|k| std::env::var(k).ok()).is_some_and(|u| u.has(agent));
+        crate::accounts::upstream_select::Upstreams::from_env(&|k| std::env::var(k).ok())
+            .is_some_and(|u| u.has(agent));
     Ok(endpoint::optin_at(
         &home,
         agent,
@@ -54,8 +55,10 @@ impl crate::stream::inbound::typed::Command for RelayOptin {
 }
 
 impl crate::stream::inbound::typed::Blocking for RelayOptin {
-    fn run(req: OptinReq, _cx: &crate::stream::inbound::typed::Cx) -> Result<endpoint::Optin, OptinErr> {
+    fn run(
+        req: OptinReq,
+        _cx: &crate::stream::inbound::typed::Cx,
+    ) -> Result<endpoint::Optin, OptinErr> {
         answer_optin(&req).map_err(crate::stream::inbound::typed::of_pair(OptinErr::Failed))
     }
 }
-

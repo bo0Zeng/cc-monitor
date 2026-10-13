@@ -101,7 +101,10 @@ fn hello() -> String {
 
 async fn serve(s: tokio::io::DuplexStream, remote: Arc<Remote>) {
     let mut r = tokio::io::BufReader::new(s);
-    let _ = r.get_mut().write_all(format!("{}\n", hello()).as_bytes()).await;
+    let _ = r
+        .get_mut()
+        .write_all(format!("{}\n", hello()).as_bytes())
+        .await;
     let mut line = String::new();
     if r.read_line(&mut line).await.unwrap_or(0) == 0 {
         return;
