@@ -15,8 +15,9 @@ pub const RELAY_ABSENT: &str = "absent";
 pub const RELAY_TRIES: u32 = 30;
 pub const RELAY_WAIT: Duration = Duration::from_millis(200);
 
-/// 握手那两行（hello · attach 回话）的上限：hello 实测一两 KB，8 KiB 给足余量，又堵死「一直发字节不发换行」。
-pub const HANDSHAKE_LINE_CAP: usize = 8 * 1024;
+/// 握手那两行（hello · attach 回话）的上限：hello 实测 8.6 KB（10-13：命令名 · 撤不动名单 · 每条 typed 命令的形状指纹三张表，
+/// typed 命令越多越长），64 KiB 给足余量，又堵死「一直发字节不发换行」。
+pub const HANDSHAKE_LINE_CAP: usize = 64 * 1024;
 
 /// 小中继断开时第一行就是它（`{"attach":"refused","reason":…}`）⇒ 那个原因；不是 ⇒ `None`。
 pub fn relay_refusal(first: &str) -> Option<String> {
