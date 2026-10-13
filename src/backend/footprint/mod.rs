@@ -216,3 +216,7 @@ mod tests;
 #[cfg(test)]
 #[path = "../../../tests/backend/footprint/small_wire_tests.rs"]
 mod small_wire_tests;
+
+#[cfg(test)]
+#[path = "../../../tests/backend/footprint/report_wire_tests.rs"]
+mod report_wire_tests;

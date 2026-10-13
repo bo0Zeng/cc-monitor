@@ -469,3 +469,73 @@ fn the_remote_flags_are_real_subcommands_of_the_catalog_commands() {
         );
     }
 }
+
+/// `assets-sync` 换形之前用旧代码钉的字节：回包（界面 · 壳读）与推过去的那一行载荷（远端那台的 CLI 面读，可能是旧版）。
+/// 目录 id 换成 `<L>` / `<R>`，`seenAt`（现扫那一刻）换成 `<T>`。
+#[tokio::test]
+async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
+    let d = temp_dir("pin");
+    let local = Machine::new(&d, "local", vec!["a"]);
+    let remote = Machine::new(&d, "remote", vec!["b"]);
+    let lid = local.update(None).unwrap()["self"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let rid = remote.update(None).unwrap()["self"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let fakes = FakeRemotes {
+        by_host: [("r".to_string(), remote.clone())].into(),
+        seen: Mutex::new(vec![]),
+        stdins: Mutex::new(vec![]),
+    };
+    let table = Table::default();
+    let out = answer_with(&sync_args("r"), local.fold(), &fakes, &table)
+        .await
+        .expect("一趟");
+    let norm = |s: &str| {
+        let s = s.replace(&lid, "<L>").replace(&rid, "<R>");
+        let mut o = String::new();
+        let mut rest = s.as_str();
+        while let Some(i) = rest.find("\"seenAt\":") {
+            o.push_str(&rest[..i + 9]);
+            rest = &rest[i + 9..];
+            let n = rest
+                .find(|c: char| !c.is_ascii_digit())
+                .unwrap_or(rest.len());
+            o.push_str("<T>");
+            rest = &rest[n..];
+        }
+        o.push_str(rest);
+        o
+    };
+    let wire = |v: &Value| serde_json::to_string(v).unwrap();
+    assert_eq!(
+        norm(&wire(&serde_json::to_value(&out).unwrap())),
+        r#"{"reach":[{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":true,"error":null,"origin":"o-r","peer":"<R>","pushed":1}]}"#
+    );
+    let stdins = fakes.stdins.lock().unwrap().clone();
+    assert_eq!(stdins.len(), 2, "一拉一推");
+    assert_eq!(
+        norm(stdins[1].as_deref().unwrap()),
+        "{\"catalog\":{\"machines\":[{\"assets\":[{\"digest\":\"d-a\",\"kind\":\"skill\",\"name\":\"a\",\"summary\":{}}],\"gen\":1,\"id\":\"<L>\",\"label\":\"local\",\"notes\":{},\"projectDirs\":[],\"seenAt\":<T>,\"sharedMcp\":false}]}}\n"
+    );
+    // 只给 `origin`、可达表里有 ⇒ 同一形；什么都没给 ⇒ 每台各一行。
+    let all = answer_with(&json!({}), local.fold(), &fakes, &table)
+        .await
+        .unwrap();
+    assert_eq!(
+        norm(&wire(&serde_json::to_value(&all).unwrap())),
+        r#"{"reach":[{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":false,"error":null,"origin":"o-r","peer":"<R>","pushed":0}]}"#
+    );
+    // 那一趟没办成 ⇒ `error` 是那一句、`peer` 为 `null`。
+    let gone = answer_with(&sync_args("gone"), local.fold(), &fakes, &table)
+        .await
+        .unwrap();
+    assert_eq!(
+        norm(&wire(&serde_json::to_value(&gone).unwrap())),
+        r#"{"reach":[{"machine":null,"origin":"o-gone"},{"machine":"<R>","origin":"o-r"}],"self":"<L>","synced":[{"changed":false,"error":"没这台","origin":"o-gone","peer":null,"pushed":0}]}"#
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
