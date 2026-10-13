@@ -28,6 +28,10 @@ pub(crate) const EXCERPT_MAX: usize = 80;
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct UserInputRow {
+    /// 这一句那一行在记录里的字节起点（分页的续点按它给；逐条认的那一处不知道位置时是 0，由扫的那一处填）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) at: u64,
     pub(crate) uuid: String,
     /// 记录的 `timestamp`；没有 ⇒ 空串。
     pub(crate) timestamp: String,
@@ -70,6 +74,7 @@ pub(crate) fn user_input_given(
     let body = said?.speech()?;
     let body = body.as_str();
     Some(UserInputRow {
+        at: 0,
         uuid: uuid.to_string(),
         timestamp: v
             .get("timestamp")
@@ -135,8 +140,10 @@ pub(crate) fn scan_user_inputs<R: std::io::BufRead>(
         if read == 0 || buf.last() != Some(&b'\n') {
             break;
         }
+        let at = end;
         end += read as u64;
-        if let Some(row) = user_input_row(&buf[..buf.len() - 1]) {
+        if let Some(mut row) = user_input_row(&buf[..buf.len() - 1]) {
+            row.at = at;
             on_row(&row)?;
             count += 1;
         }

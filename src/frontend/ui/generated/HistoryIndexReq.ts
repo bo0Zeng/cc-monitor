@@ -17,6 +17,6 @@ offset?: number | null,
  */
 until?: number | null, 
 /**
- * 可选：一页最多几行。这一版还不分段：给了也整份出，`next` 恒 `null`。
+ * 可选：一页最多几行（一页另有字节上限 `REPLY_PAGE_BYTES`，先到哪个算哪个）。
  */
 limit?: number | null, };

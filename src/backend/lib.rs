@@ -2230,6 +2230,8 @@ pub const TZ_FLAG: &str = "--tz";
 
 /// 看的那一台的时区（[`TZ_FLAG`] · 请求信封 `tz` 读出来的那一格）。
 pub use common::time::Tz;
+/// 一条分页应答 / 一帧 `session_branch` 至多多少字节（写出方向写完这么多应答就先让实时帧走：`main.rs::writer_task`）。
+pub use faces::read_face::REPLY_PAGE_BYTES;
 
 /// 一行线上字里复制详情那一行时刻的空位，按看的那一台的时区填好（流的写者对每一行调它；本体 `common::time::fill_at`）。
 pub fn stamp_detail_slots<'a>(line: &'a str, tz: &Tz) -> std::borrow::Cow<'a, str> {

@@ -215,10 +215,18 @@ export async function loadRunPage(origin: Origin, parentJsonlPath: string, which
   return await asked(origin, callTyped(origin, "history-run", { parent: parentJsonlPath, ...which, from }, budget));
 }
 
-/** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）。 */
+/** **一份记录的主线外清单**（冷读一次；之后的变化由实时帧 `branch` 说）：那台按页给，照 `next` 接着问、拼成一份。 */
 export async function readBranch(origin: Origin, jsonlPath: string): Promise<BranchOff> {
-  const budget = budgetWithin(PIECE_BUDGET_MS);
-  return await asked(origin, callTyped(origin, "history-branch", { path: jsonlPath }, budget));
+  const off: string[] = [];
+  let at: number | null = 0;
+  let end = 0;
+  while (at !== null) {
+    const page: Branch = await asked(origin, callTyped(origin, "history-branch", { path: jsonlPath, from: at }, budgetWithin(PIECE_BUDGET_MS)));
+    off.push(...page.off);
+    end = page.end;
+    at = page.next ?? null;
+  }
+  return { off, end, next: null };
 }
 
 /** **那台后端的漂移账**（看不懂的记录类型）。 */

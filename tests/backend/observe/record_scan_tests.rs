@@ -447,7 +447,8 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
     );
     assert!(e.inputs.iter().any(|r| r.uuid == "later"));
 
-    // 改写（同长、内容变了）⇒ 整份。先让骨架跟上此刻这一份。
+    // 改写（同长、内容变了）⇒ 整份。先让骨架跟上此刻这一份（接着扫的那一截没过回写门槛不会重落 ⇒ 删掉旧的、整份落一份）。
+    std::fs::remove_dir_all(d.join("data").join("cache").join("skeleton")).unwrap();
     let caught_up = RecordScans::new(4, 64 << 20).with_skeletons(home());
     caught_up.get(&p).unwrap();
     caught_up.flush();
@@ -468,5 +469,49 @@ fn r7_cold_scan_reads_nothing_unchanged_and_only_the_appended_bytes() {
         now.len() as u64,
         "改写过还照骨架读了"
     );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 8a b 后续：接着扫完不是每次都重落骨架 —— 接着扫的那一截过了门槛（上一次落盘长度的四分之一，至少 `MIN_LEN`）才落；
+/// 没过门槛 ⇒ 盘上那份不动（下一次重启多读这一截 ＋ 见证）。
+#[test]
+fn r8_the_scan_skeleton_is_rewritten_only_past_the_threshold() {
+    let (d, own) = crate::observe::skeleton::tests::sandbox("scan-r8");
+    let p = d.join("s.jsonl");
+    let text = branched(40);
+    std::fs::write(&p, &text).unwrap();
+    let home = || Skeletons::at(own.clone(), 0);
+    // 盘上那一份照到哪了（读它的 `mark.cursor`）。
+    let skel = || {
+        home()
+            .load::<serde_json::Value>(&p, "scan")
+            .expect("落过骨架")["mark"]["cursor"]
+            .as_u64()
+            .unwrap()
+    };
+    let scans = RecordScans::new(4, 64 << 20).with_skeletons(home());
+    scans.get(&p).unwrap();
+    scans.flush();
+    let first = skel();
+    let line = |u: &str, parent: &str| {
+        format!("{{\"type\":\"user\",\"uuid\":\"{u}\",\"parentUuid\":\"{parent}\",\"timestamp\":\"2026-10-01T03:00:00.000Z\",\"message\":{{\"role\":\"user\",\"content\":\"x\"}}}}\n")
+    };
+    append(&p, &line("n1", "b3"));
+    scans.get(&p).unwrap();
+    scans.flush();
+    assert!(skel() == first, "追加一行（没过门槛）就整份重落了骨架");
+    // 一口气追加过门槛（上一次落盘长度的四分之一以上）⇒ 落一份新的。
+    let mut big = String::new();
+    let mut prev = "n1".to_string();
+    for i in 0..text.len() / 100 {
+        let u = format!("m{i}");
+        big.push_str(&line(&u, &prev));
+        prev = u;
+    }
+    assert!(big.len() as u64 >= text.len() as u64 / 4);
+    append(&p, &big);
+    scans.get(&p).unwrap();
+    scans.flush();
+    assert!(skel() != first, "过了门槛还没重落");
     let _ = std::fs::remove_dir_all(&d);
 }

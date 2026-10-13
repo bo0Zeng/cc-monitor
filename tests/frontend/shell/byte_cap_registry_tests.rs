@@ -831,6 +831,13 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "`history-read` 一页（一帧应答）的正文字节数",
         "索引截断（不丢数据）",
     ),
+    // 分页那四条一条应答（与 `session_branch` 一帧）的字节数：超了不截，切成下一页 / 下一帧（续点 `next` · `at`），一项不少。
+    (
+        "src/backend/faces/read_face.rs",
+        "REPLY_PAGE_BYTES",
+        "`history-index` · `-user-inputs` · `-turns` · `-branch` 一条应答、`session_branch` 一帧的字节数",
+        "分块（不丢数据）",
+    ),
     // 分页读记录时往回多看那一段：只拿来配排队消息的打字时刻；配不上（打字在这一段之前）⇒ 那条照用它自己的时刻（协议文档写明），记录一条不少。
     (
         "src/backend/observe/record_page.rs",

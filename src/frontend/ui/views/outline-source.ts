@@ -67,7 +67,7 @@ export function outlineSeedFromIndex(res: {
   const entries: UserInputEntry[] = [];
   for (const r of res.rows) {
     if (r.x === undefined || !r.u) continue;
-    entries.push({ uuid: r.u, excerpt: r.x, timestamp: r.ts ?? "" });
+    entries.push({ at: r.o, uuid: r.u, excerpt: r.x, timestamp: r.ts ?? "" });
   }
   return entries.length > 0 ? { entries, end: res.end } : null;
 }

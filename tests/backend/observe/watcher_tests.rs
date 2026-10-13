@@ -4220,7 +4220,7 @@ fn the_profiles_file_is_heard_written_or_renamed_into_place_and_nothing_else_cou
 /// 接在主线末梢上的新行 ⇒ 清单没变、不发。
 #[cfg(target_os = "linux")]
 #[test]
-fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
+fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     let _iso = crate::control::identity_tag::door::isolate();
     let dir = std::env::temp_dir().join(format!("ccm-branch-{}", std::process::id()));
     let proj = dir.join("projects").join("proj-b");
@@ -4255,13 +4255,13 @@ fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut branches = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { sid, path, off } = f {
+        if let Frame::SessionBranch { sid, path, at, off } = f {
             assert_eq!(sid, "br-sid");
             assert_eq!(path, jsonl.to_string_lossy());
-            branches.push(off);
+            branches.push((at, off));
         }
     }
-    assert_eq!(branches, [vec!["u2".to_string()]]);
+    assert_eq!(branches, [(0, vec!["u2".to_string()])]);
     // 接在主线末梢上 ⇒ 不发。
     body += &line("a3", "u3", "t5", "assistant");
     std::fs::write(&jsonl, &body).unwrap();
@@ -4273,19 +4273,17 @@ fn the_off_main_list_goes_out_whole_and_only_when_it_changes() {
         }
     }
     assert!(got.is_empty(), "清单没变不该发：{got:?}");
-    // 在 a1 之后再回退重发 ⇒ 整份再发一次。
+    // 在 a1 之后再回退重发 ⇒ 只发变了的那一截（8a b）：前 1 条（u2）照旧，其后是 u3 · a3。
     body += &line("u4", "a1", "t6", "user");
     std::fs::write(&jsonl, &body).unwrap();
     process_jsonl(&jsonl, &mut state, &mut sink);
+    let mut got = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { off, .. } = f {
-            got.push(off);
+        if let Frame::SessionBranch { at, off, .. } = f {
+            got.push((at, off));
         }
     }
-    assert_eq!(
-        got,
-        [vec!["u2".to_string(), "u3".to_string(), "a3".to_string()]]
-    );
+    assert_eq!(got, [(1, vec!["u3".to_string(), "a3".to_string()])]);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -4473,4 +4471,38 @@ fn queued_lines_without_forks_do_not_walk_the_chain() {
         "{n} 条、{} 行排队、没有分叉，链索引整条走了 {walked} 格 —— 排队那一问在逐格数主线",
         n / 2
     );
+}
+
+/// 8a b：`session_branch` 只发变了的那一截 ⇒ 一条连接丢过它一帧，手上的清单就对不上；下一次变的时候它拿整份（`at = 0`）。
+#[test]
+fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(4);
+    let mut sink = FrameSink::new(tx);
+    let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    let branches = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
+        let mut v = Vec::new();
+        while let Ok(f) = rx.try_recv() {
+            if let Frame::SessionBranch { at, off, .. } = f {
+                v.push((at, off));
+            }
+        }
+        v
+    };
+    sink.branch("s", "/p/s.jsonl", &ids(&["a"]), 0);
+    assert_eq!(branches(&mut rx), [(0, ids(&["a"]))]);
+    // 通道挤满 ⇒ 这一截（前 1 条照旧，其后 b）丢了。
+    for _ in 0..4 {
+        sink.branch("other", "/p/o.jsonl", &[], 0);
+    }
+    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b"]), 1);
+    assert!(
+        branches(&mut rx).iter().all(|(_, o)| o.is_empty()),
+        "丢的那一截不该到"
+    );
+    // 再变一次：这条连接拿整份，不是「前 2 条照旧」。
+    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b", "c"]), 2);
+    assert_eq!(branches(&mut rx), [(0, ids(&["a", "b", "c"]))]);
+    // 之后照旧只拿那一截。
+    sink.branch("s", "/p/s.jsonl", &ids(&["a", "b", "c", "d"]), 3);
+    assert_eq!(branches(&mut rx), [(3, ids(&["d"]))]);
 }

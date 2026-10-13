@@ -195,7 +195,7 @@ const FRAMES: &[(&str, &str)] = &[
     // 一个会话的主线外清单 —— 会话成品，同上。
     (
         "session_branch",
-        r#"{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","off":["u2"]}"#,
+        r#"{"kind":"session_branch","sid":"s1","path":"/p/s1.jsonl","at":0,"off":["u2"]}"#,
     ),
 ];
 

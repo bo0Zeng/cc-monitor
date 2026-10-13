@@ -5,6 +5,7 @@ import type { AnswerReq } from "./AnswerReq";
 import type { Answered } from "./Answered";
 import type { Batched } from "./Batched";
 import type { Branch } from "./Branch";
+import type { BranchReq } from "./BranchReq";
 import type { CliRenderRequest } from "./CliRenderRequest";
 import type { CommandPlan } from "./CommandPlan";
 import type { DirChecked } from "./DirChecked";
@@ -12,7 +13,6 @@ import type { ForgetReq } from "./ForgetReq";
 import type { Forgotten } from "./Forgotten";
 import type { ForkReq } from "./ForkReq";
 import type { Forked } from "./Forked";
-import type { FromReq } from "./FromReq";
 import type { HistoryFactsReq } from "./HistoryFactsReq";
 import type { HistoryFind } from "./HistoryFind";
 import type { HistoryFindReq } from "./HistoryFindReq";
@@ -48,7 +48,6 @@ import type { NewFacts } from "./NewFacts";
 import type { NewFactsReq } from "./NewFactsReq";
 import type { NewRequest } from "./NewRequest";
 import type { NoArgs } from "./NoArgs";
-import type { PathReq } from "./PathReq";
 import type { Preview } from "./Preview";
 import type { Processes } from "./Processes";
 import type { RecordProbe } from "./RecordProbe";
@@ -78,12 +77,13 @@ import type { TerminalProcessesReq } from "./TerminalProcessesReq";
 import type { TerminalsList } from "./TerminalsList";
 import type { TerminalsListReq } from "./TerminalsListReq";
 import type { UserInputs } from "./UserInputs";
+import type { UserInputsReq } from "./UserInputsReq";
 import type { Whereabouts } from "./Whereabouts";
 
 /** typed 帧命令：命令名 ⇒ 入参 · 回包 · 它自己会回的码（`bad_args` 恒在：入参解不出来）。 */
 export interface TypedCommands {
   "history-annotate": { req: AnnotateReq; reply: Annotated; code: "bad_args" | "annotations_unreadable" | "io_failed" | "no_annotations" };
-  "history-branch": { req: PathReq; reply: Branch; code: "bad_args" | "failed" | "too_large" };
+  "history-branch": { req: BranchReq; reply: Branch; code: "bad_args" | "failed" };
   "history-facts": { req: HistoryFactsReq; reply: SessionFacts; code: "bad_args" | "failed" | "too_large" };
   "history-find": { req: HistoryFindReq; reply: HistoryFind; code: "bad_args" | "failed" | "too_large" };
   "history-forget": { req: ForgetReq; reply: Forgotten; code: "bad_args" | "annotations_unreadable" | "io_failed" | "no_annotations" };
@@ -99,7 +99,7 @@ export interface TypedCommands {
   "history-search-merge": { req: HistorySearchMergeReq; reply: Merged; code: "bad_args" };
   "history-tail": { req: HistoryTailReq; reply: TailPlan; code: "bad_args" | "failed" };
   "history-turns": { req: HistoryTurnsReq; reply: HistoryTurns; code: "bad_args" | "failed" | "too_large" };
-  "history-user-inputs": { req: FromReq; reply: UserInputs; code: "bad_args" | "failed" | "too_large" };
+  "history-user-inputs": { req: UserInputsReq; reply: UserInputs; code: "bad_args" | "failed" | "too_large" };
   "kill": { req: KillReq; reply: Killed; code: "bad_args" | "no_tmux" | "no_such_session" | "wrong_owner" | "too_many_windows" | "kill_failed" | "child_timed_out" };
   "launch": { req: LaunchReq; reply: Launched; code: "bad_args" | "no_tmux" | "no_such_session" | "wrong_owner" | "create_failed" | "typed_unconfirmed" | "child_timed_out" };
   "launch-local": { req: LocalLaunchRequest; reply: Rendered; code: "bad_args" | "refused" | "account_unavailable" };

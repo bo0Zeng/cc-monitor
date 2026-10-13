@@ -121,3 +121,59 @@ async fn pushed_frames_get_their_clock_faces_in_the_stream_zone() {
         "推出去的那一帧没按流的时区写钟面：{text}"
     );
 }
+
+/// 一页分页应答（`data` 里垫到一页那么大）。
+fn page(id: &str) -> Frame {
+    let pad = "p".repeat(cc_monitor_backend::REPLY_PAGE_BYTES);
+    Frame::Reply {
+        id: id.into(),
+        ok: true,
+        code: None,
+        message: None,
+        detail: None,
+        data: Some(serde_json::json!({ "pad": pad })),
+    }
+}
+
+/// 8a b：**大应答分页取到一半，同一台别的会话来了一行 ⇒ 它在下一页之前写出去**（按先后判，不按墙钟）。
+/// 应答通道里第 1、2、3 页都排着，出方向排着一帧 `line`：写出去的次序是 第 1 页 · `line` · 第 2 页 · 第 3 页 ——
+/// 应答优先只到一页为止（按条数让位要等 8 页之后）。
+#[tokio::test]
+async fn a_live_line_goes_out_before_the_next_page_of_a_paged_reply() {
+    let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(10);
+    let (reply_tx, reply_rx) = tokio::sync::mpsc::channel::<Frame>(10);
+    let (_tap_tx, tap_rx) = tokio::sync::mpsc::channel::<Frame>(1);
+    for i in 1..=3 {
+        reply_tx.try_send(page(&format!("p{i}"))).expect("页灌");
+    }
+    tx.try_send(line(7)).expect("line 灌");
+    drop(tx);
+    let mut out: Vec<u8> = Vec::new();
+    // 出方向关了 ⇒ 写者在出方向排空之后寿终；剩下的页在关之前写完与否不论，判的是写出去的那几帧的先后。
+    writer_task(
+        &mut out,
+        rx,
+        reply_rx,
+        Fed(tap_rx),
+        Default::default(),
+        None,
+    )
+    .await;
+    drop(reply_tx);
+    let seen: Vec<String> = String::from_utf8(out)
+        .unwrap()
+        .lines()
+        .map(|l| {
+            let v: serde_json::Value = serde_json::from_str(l).unwrap();
+            match v["kind"].as_str() {
+                Some("line") => "line".to_string(),
+                _ => v["id"].as_str().unwrap_or("?").to_string(),
+            }
+        })
+        .collect();
+    assert_eq!(
+        &seen[..2],
+        ["p1", "line"],
+        "实时行排在了第 2 页之后：{seen:?}"
+    );
+}

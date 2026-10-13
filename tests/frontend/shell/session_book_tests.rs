@@ -256,28 +256,48 @@ fn all_listed_holds_only_when_every_machine_in_the_table_has_listed() {
     );
 }
 
-/// 主线外清单：原样转出去；F5 重放跟在那个活会话的宣告后面再说一次（最新那一份）；会话离开 ⇒ 不再重放。
+/// 主线外清单：照「前 `at` 条照旧，其后换成这些」拼成整份转出去（8a b：那台只发变了的那一截）；换了一份记录 ⇒ 从空的起拼；
+/// F5 重放跟在那个活会话的宣告后面再说一次（拼好的最新那一份）；会话离开 ⇒ 不再重放。
 #[test]
 fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
     let off = |ids: &str| crate::ui_contract::RecordBody::from_json(ids.to_string()).unwrap();
-    let branch = |s: &str, ids: &str| In::Branch {
+    let branch = |s: &str, path: &str, at: u64, ids: &[&str]| In::Branch {
         origin: crate::origin::Origin("pi".into()),
         sid: s.into(),
-        off: off(ids),
+        path: path.into(),
+        at,
+        off: ids.iter().map(|i| i.to_string()).collect(),
     };
     let mut b = Book::default();
     b.step(live("pi", "a"));
     b.step(live("pi", "b"));
     assert_eq!(
-        b.step(branch("a", r#"["u1"]"#)),
+        b.step(branch("a", "/a.jsonl", 0, &["u1"])),
         vec![Out::Branch {
             origin: crate::origin::Origin("pi".into()),
             sid: "a".into(),
             off: off(r#"["u1"]"#)
         }]
     );
-    b.step(branch("a", r#"["u1","u2"]"#));
-    b.step(branch("b", r#"["x"]"#));
+    // 只来变了的那一截 ⇒ 交出去的是拼好的整份。
+    assert_eq!(
+        b.step(branch("a", "/a.jsonl", 1, &["u2", "u3"])),
+        vec![Out::Branch {
+            origin: crate::origin::Origin("pi".into()),
+            sid: "a".into(),
+            off: off(r#"["u1","u2","u3"]"#)
+        }]
+    );
+    // 前 2 条照旧、其后没有了 ⇒ 截短。
+    b.step(branch("a", "/a.jsonl", 2, &[]));
+    // 另一份记录 ⇒ 从空的起拼（不接在上一份后面）。
+    let got = b.step(branch("b", "/b1.jsonl", 0, &["x"]));
+    assert!(matches!(&got[..], [Out::Branch { off: o, .. }] if o.0.get() == r#"["x"]"#));
+    let got = b.step(branch("b", "/b2.jsonl", 1, &["y"]));
+    assert!(
+        matches!(&got[..], [Out::Branch { off: o, .. }] if o.0.get() == r#"["y"]"#),
+        "{got:?}"
+    );
     b.step(left("pi", "b", Fate::Ended));
     // 同一个 sid 又活了（续接）：它离开前那份清单不算数，等那台再说。
     b.step(live("pi", "b"));

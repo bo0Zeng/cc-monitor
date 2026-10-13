@@ -58,6 +58,12 @@ impl Fence {
     }
 }
 
+/// 一条路径规范化之后的样子（symlink 解开）；解不开 ⇒ `None`。**不是放行**（不比根）：缓存拿它当键，
+/// 同一份文件经符号链接走出来的写法与围栏放行之后的写法落到同一个键上（`observe/skeleton.rs`）。
+pub(crate) fn real_path(p: &Path) -> Option<PathBuf> {
+    p.canonicalize().ok()
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/observe/fence_tests.rs"]
 mod tests;

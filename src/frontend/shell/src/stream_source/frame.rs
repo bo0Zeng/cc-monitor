@@ -165,12 +165,13 @@ pub enum InboundFrame {
         runs: crate::ui_contract::RecordBody,
         ended: crate::ui_contract::RecordBody,
     },
-    /// 一个会话的主线外清单（`session_branch`，整份、变了才发；`off` 是 JSON 数组原文，记录 `id` 串，不解释）。
+    /// 一个会话的主线外清单（`session_branch`）：「前 `at` 条照旧，其后换成 `off`」（记录 `id` 串，不解释；会话账照它拼成整份）。
     SessionBranch {
         sid: String,
-        /// 那份会话记录（必填格，形状校验用；会话账按 `sid` 记，不往下传）。
+        /// 那份会话记录（会话账按它认「还是不是同一份清单」，不往下传）。
         path: String,
-        off: crate::ui_contract::RecordBody,
+        at: u64,
+        off: Vec<String>,
     },
     /// 远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）；monitor 收到后经 remote-health 通道提示用户。
     /// `lost` / `lost_truncated`（additive）：那批丢帧里不可恢复的那些的身份 —— 决定了要对用户说哪句话：丢内容帧「重开会话可看完整历史」是真的，
@@ -364,6 +365,14 @@ fn req_array_text(
         .ok_or_else(|| bad(kind, format!("`{key}` is not an array")))
 }
 
+/// 必填的串数组（每一项都得是串）。
+fn req_strings(o: &Obj, kind: &str, key: &str) -> Result<Vec<String>, Unread> {
+    req(o, kind, key)?
+        .as_array()
+        .and_then(|a| a.iter().map(|v| v.as_str().map(str::to_string)).collect())
+        .ok_or_else(|| bad(kind, format!("`{key}` is not an array of strings")))
+}
+
 /// 认得的取值：认不出 ⇒ `BadShape`（不猜成哪一种）。
 fn req_word<T>(o: &Obj, kind: &str, key: &str, read: fn(&str) -> Option<T>) -> Result<T, Unread> {
     let w = req_str(o, kind, key)?;
@@ -552,7 +561,8 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
         "session_branch" => InboundFrame::SessionBranch {
             sid: req_str(obj, k, "sid")?,
             path: req_str(obj, k, "path")?,
-            off: req_array_text(obj, k, "off")?,
+            at: req_u64(obj, k, "at")?,
+            off: req_strings(obj, k, "off")?,
         },
         "session_removed" => InboundFrame::SessionRemoved {
             sid: req_str(obj, k, "sid")?,

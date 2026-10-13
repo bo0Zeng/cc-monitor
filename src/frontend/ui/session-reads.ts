@@ -24,6 +24,9 @@ import { budgetWithin, callTyped, refusalOf, saidFrom } from "./ipc/chan-caller"
 import type { RecordProbe } from "./generated/RecordProbe";
 import type { FindHit } from "./generated/FindHit";
 import type { HistoryIndex } from "./generated/HistoryIndex";
+import type { HistoryIndexReq } from "./generated/HistoryIndexReq";
+import type { HistoryTurns } from "./generated/HistoryTurns";
+import type { UserInputs } from "./generated/UserInputs";
 import type { UserInputRow } from "./generated/UserInputRow";
 import type { Origin } from "./ipc/origin";
 import type { SkeletonFacts } from "./height-estimate";
@@ -226,12 +229,19 @@ export async function findInSession(
   }
 }
 
-/** **「你说过的话」清单**：从字节 `fromOffset` 起（冷启动 0 / 增量传上次的 `end`）。 */
+/** **「你说过的话」清单**：从字节 `fromOffset` 起（冷启动 0 / 增量传上次的 `end`）；那台按页给（一页有字节上限），照 `next` 一页一页接着问、拼成一份。 */
 export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffset: number): Promise<UserInputsResult> {
   try {
-    const budget = budgetWithin(READ_BUDGET_MS);
-    const { from, end, entries } = await callTyped(origin, "history-user-inputs", { path: jsonlPath, from: fromOffset }, budget);
-    return { available: true, from, end, entries };
+    const entries: UserInputEntry[] = [];
+    let at: number | null = fromOffset;
+    let end = fromOffset;
+    while (at !== null) {
+      const page: UserInputs = await callTyped(origin, "history-user-inputs", { path: jsonlPath, from: at }, budgetWithin(READ_BUDGET_MS));
+      entries.push(...page.entries);
+      end = page.end;
+      at = page.next ?? null;
+    }
+    return { available: true, from: fromOffset, end, entries };
   } catch (e) {
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";
     const reason = reasonOf(e, origin);
@@ -242,25 +252,43 @@ export async function listUserInputs(origin: Origin, jsonlPath: string, fromOffs
 /** 每轮的摘要的回包：要不到 ⇒ `available:false`（过程行与刻度不出，正文照常）。 */
 export type TurnsResult = { available: true; from: number; end: number; turns: TurnRow[] } | { available: false; reason: string };
 
-/** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）。 */
+/** **每轮的摘要**：从字节 `fromOffset` 起（冷启动 0 / 续取传还在跑的那一轮的 `at`）；照 `next` 一页一页接着问、拼成一份。 */
 export async function readTurns(origin: Origin, jsonlPath: string, fromOffset: number): Promise<TurnsResult> {
   try {
-    const budget = budgetWithin(READ_BUDGET_MS);
-    const { from, end, turns } = await callTyped(origin, "history-turns", { path: jsonlPath, from: fromOffset }, budget);
-    return { available: true, from, end, turns };
+    const turns: TurnRow[] = [];
+    let at: number | null = fromOffset;
+    let end = fromOffset;
+    while (at !== null) {
+      const page: HistoryTurns = await callTyped(origin, "history-turns", { path: jsonlPath, from: at }, budgetWithin(READ_BUDGET_MS));
+      turns.push(...page.turns);
+      end = page.end;
+      at = page.next ?? null;
+    }
+    return { available: true, from: fromOffset, end, turns };
   } catch (e) {
     return { available: false, reason: reasonOf(e, origin) };
   }
 }
 
-/** **骨架索引**：从字节 `fromOffset` 起（冷启动 0 / 续传传上次的 `end`）。要不到 ⇒ `available:false`（退回尾部窗口）。 */
-export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOffset: number): Promise<SessionIndexResult> {
+/**
+ * **骨架索引**：从字节 `fromOffset` 起（冷启动 0 / 续传传上次的 `end`）；照 `next` 一页一页接着问、拼成一份。
+ * `want` ＝ 只要前这么多行（正在看的 tab 只要尾段之上那一截：每页 `limit` ＝ 还差几行，够了就停；`end` 是最后一行的末字节，续传从那里接）。
+ * 要不到 ⇒ `available:false`（退回尾部窗口）。
+ */
+export async function readSessionIndex(origin: Origin, jsonlPath: string, fromOffset: number, want?: number): Promise<SessionIndexResult> {
   try {
-    const budget = budgetWithin(READ_BUDGET_MS);
-    const index = await callTyped(origin, "history-index", { path: jsonlPath, offset: fromOffset }, budget);
-    const { from, end } = index;
-    const rows = unpackIndex(index);
-    return { available: true, from, end, rows };
+    const rows: SkeletonFacts[] = [];
+    let at: number | null = fromOffset;
+    let end = fromOffset;
+    while (at !== null && (want === undefined || rows.length < want)) {
+      const args: HistoryIndexReq = { path: jsonlPath, offset: at };
+      if (want !== undefined) args.limit = want - rows.length;
+      const page = await callTyped(origin, "history-index", args, budgetWithin(READ_BUDGET_MS));
+      rows.push(...unpackIndex(page));
+      end = page.end;
+      at = page.next ?? null;
+    }
+    return { available: true, from: fromOffset, end, rows };
   } catch (e) {
     const reason = reasonOf(e, origin);
     const failure: OutlineFailure = e instanceof ChanError ? failureOf(e.error) : "transport";

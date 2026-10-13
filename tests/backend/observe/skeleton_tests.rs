@@ -3,6 +3,7 @@
 //! 家在沙箱的数据目录里（`CCM_DATA_DIR` 指过去），不碰真家目录。
 
 use super::*;
+use crate::observe::fs::READ_BLOCK;
 use std::path::PathBuf;
 
 /// 一个沙箱数据目录 ＋ 指着它的写句柄。
@@ -102,5 +103,68 @@ fn small_records_are_not_kept_and_the_dir_is_capped() {
     let kept = (0..MAX_FILES + 3).filter(|&i| at(i).is_file()).count();
     assert_eq!(kept, MAX_FILES, "份数没封顶");
     assert!(at(MAX_FILES + 2).is_file(), "刚写的那一份被删了");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 8a b 后续：骨架**按块读写** —— 落的时候边序列化边写，文件是一行行不长于约一块的（`Blocks` 读得动）；
+/// 读回来的时候手里不再有整份原文：读那一下多出来的（线程级分配量具数峰值）≤ 解出来的那份 ＋ 三块，改前是 ＋ 整份原文。
+#[test]
+fn a_skeleton_is_written_in_lines_and_read_back_block_by_block() {
+    let (d, own) = sandbox("blocks");
+    let s = Skeletons::at(own, 0);
+    let rec = d.join("big.jsonl");
+    let body: Vec<String> = (0..6_000)
+        .map(|i| format!("{i:06}{}", "y".repeat(1_000)))
+        .collect();
+    s.store(&rec, "t", &body);
+    let f = d
+        .join("data")
+        .join("cache")
+        .join("skeleton")
+        .join(format!("{}.t.json", digest(&rec)));
+    let raw = std::fs::read(&f).unwrap();
+    let longest = raw.split(|&b| b == b'\n').map(<[u8]>::len).max().unwrap();
+    assert!(raw.len() > 4 * READ_BLOCK, "夹具要比几块大：{}", raw.len());
+    assert!(
+        longest <= READ_BLOCK + 4096,
+        "最长一行 {longest} 字节，没按块断行"
+    );
+    drop(raw);
+    let base = crate::alloc_probe::reset_peak();
+    let got = s.load::<Vec<String>>(&rec, "t").expect("读回来");
+    let grew = crate::alloc_probe::peak_since(base);
+    let parsed: usize = got.iter().map(|x| x.capacity() + 24).sum::<usize>() + got.capacity() * 24;
+    assert_eq!(got, body);
+    assert!(
+        grew <= parsed + 3 * READ_BLOCK,
+        "读的时候多出来 {grew} 字节（解出来的 {parsed}）：还有整份原文的缓冲"
+    );
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// 两样骨架同一种键：经符号链接走出来的路径与规范路径落 / 读的是同一份。
+#[cfg(unix)]
+#[test]
+fn a_symlinked_path_and_the_real_path_share_one_skeleton() {
+    let (d, own) = sandbox("key");
+    let s = Skeletons::at(own, 0);
+    let real = d.join("real");
+    std::fs::create_dir_all(&real).unwrap();
+    let rec = real.join("r.jsonl");
+    std::fs::write(&rec, b"{}\n").unwrap();
+    std::os::unix::fs::symlink(&real, d.join("via")).unwrap();
+    let via = d.join("via").join("r.jsonl");
+    s.store(&via, "prime", &1u32);
+    assert_eq!(
+        s.load::<u32>(&rec.canonicalize().unwrap(), "prime"),
+        Some(1),
+        "规范路径读不到经链接落的那一份"
+    );
+    s.store(&rec.canonicalize().unwrap(), "scan", &2u32);
+    assert_eq!(
+        s.load::<u32>(&via, "scan"),
+        Some(2),
+        "经链接的路径读不到规范路径落的那一份"
+    );
     let _ = std::fs::remove_dir_all(&d);
 }

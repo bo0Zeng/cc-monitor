@@ -530,10 +530,12 @@ async fn dispatch(
                 ended,
             });
         }
-        Some(InboundFrame::SessionBranch { sid, off, .. }) => {
+        Some(InboundFrame::SessionBranch { sid, path, at, off }) => {
             crate::session_book::feed(BookIn::Branch {
                 origin: crate::origin::Origin(host_label.clone()),
                 sid,
+                path,
+                at,
                 off,
             });
         }

@@ -645,6 +645,15 @@ pub(crate) fn cold_scan(
         .map_err(|e| format!("open failed: {e}"))
 }
 
+/// 只看不扫（同一道围栏）：扫描图留着、且那份记录此刻没变 ⇒ 那一张；否则 `None`（分页的后几页从它切，切不了就从文件那一处扫）。
+pub(crate) fn peek_scan(
+    agent_home: &Path,
+    jsonl_path: &str,
+) -> Result<Option<std::sync::Arc<super::record_scan::ScanMap>>, String> {
+    let target = validate_session_path(agent_home, jsonl_path)?;
+    Ok(super::record_scan::global().peek(&target))
+}
+
 /// 尾段那张图：扫描图留着且没变 ⇒ 从它切；否则现数一遍行（只数行、不解析，比等整遍扫描快得多 —— 冷开时界面最先要它）。
 pub(crate) fn tail_now(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<TailPlan, String> {
     let target = validate_session_path(agent_home, jsonl_path)?;

@@ -39,6 +39,13 @@ use serde_json::{json, Value};
 /// 页越大，实时行被挡住的时间越长；页越小，往返越多。1 MiB 在 1 Mbps 的弱网上约 8 秒一页。
 pub(crate) const READ_PAGE_BYTES: usize = 1 << 20;
 
+/// 分页的那几条帧命令（`history-index` · `-user-inputs` · `-turns` · `-branch`）一条应答至多多少字节，`session_branch` 一帧同此。
+///
+/// 一条应答就是那台流上的一整行，写它的时候那台别的会话的实时帧都在后面等（写出方向写完一页就先让实时帧走，`main.rs::writer_task`）
+/// ⇒ 页越大，实时行被挡得越久；页越小，往返越多。取 1 MiB：同 `history-read` 一页、同远端链路的窗口；
+/// 一份 394 MB 的合成记录冷开一趟分页那四条共 19 页（256 KiB 要 71 页，远端每页一个往返）。
+pub const REPLY_PAGE_BYTES: usize = 1 << 20;
+
 /// 单行比一页还长时，最多续读到多长（超过 ⇒ `oversized_line`）。
 ///
 /// monitor 那头单帧上限 64 MiB（`stream_source::BACKEND_FRAME_LINE_CAP`），而字节进 JSON 串
@@ -271,7 +278,7 @@ fn u64_arg(args: &Value, key: &str) -> Result<Option<u64>, (&'static str, String
 
 #[cfg(test)]
 #[path = "../../../tests/backend/faces/read_face_tests.rs"]
-mod tests;
+pub(crate) mod tests;
 
 /// 会话的 `needs` 配上常驻进程里挂着的待答请求（`control::asks` 那一份登记表；配法住 `facts_query::dress_ask_with`）；
 /// 没有挂着的、而答题口没接上（`off`，[`answer_off_of`]）⇒「只能在终端里答」那一句换成它为什么。
@@ -300,7 +307,10 @@ pub(crate) fn dress_ask(
 /// 答题口没接上 ⇒ 写好的那一句（会话事实 `answerOff`）；接上了 / 判不了 ⇒ `None`。按持着它的进程现查（`writers` 是它们的 pid）：
 /// ccm 起它时挂不上答题 hook ⇒ 起的那个进程环境里带着那个变量（值说原因）；换了启动器那一支（ccm 的便条说插件是经环境交下去的）、
 /// 持着它的进程环境里没有我们那个插件目录 ⇒ 启动器没把环境传下去；身上看不出 ccm 挂过 ⇒ 别处起的（`agent` 那一家有答题口才这么说）。
-pub(crate) fn answer_off_of(writers: &[u32], agent: Option<&str>) -> Option<crate::common::cells::Words> {
+pub(crate) fn answer_off_of(
+    writers: &[u32],
+    agent: Option<&str>,
+) -> Option<crate::common::cells::Words> {
     use crate::agents::asks::HookOff;
     use crate::platform::proc::EnvRead;
     writers.iter().find_map(|pid| {

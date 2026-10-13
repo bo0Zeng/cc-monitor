@@ -145,6 +145,16 @@ impl Own {
 
     /// 整份原子写 `body`。`held` 必须是 `path` 所在那个目录的锁，不是 ⇒ 拒、一个字节不落。
     pub(crate) fn write(&self, path: &OwnPath, held: &OwnLock, body: &[u8]) -> Result<(), Said> {
+        self.write_streamed(path, held, |f| f.write_all(body))
+    }
+
+    /// 同 [`Self::write`]，正文由 `fill` 流式往里写（大的缓存文件不先攒成整份；骨架落盘 `observe/skeleton.rs`）。
+    pub(crate) fn write_streamed(
+        &self,
+        path: &OwnPath,
+        held: &OwnLock,
+        fill: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()>,
+    ) -> Result<(), Said> {
         if path.0.parent() != Some(held.dir.as_path()) {
             return Err(copy_text(
                 "beOwnState.write.lockMismatch",
@@ -152,7 +162,7 @@ impl Own {
             )
             .into());
         }
-        atomic_write(&path.0, body)
+        atomic_write_with(&path.0, fill)
     }
 
     /// 删一份文件（不删目录）。方法名刻意不叫 `remove_file` / `rename`：那两个方法形是远端写那一层动词网的锚点
@@ -406,8 +416,17 @@ fn hold(dir: &Path) -> Result<crate::platform::lock::DirLock, crate::platform::l
 /// 进程内序号：同一线程连写两次也换一个旁名。
 static SEQ: AtomicU64 = AtomicU64::new(0);
 
-/// 原子写本体（全后端一份）。那一句只有路径与原因词，系统原话进 `raw`；都不带内容。
+/// 整份原子写（[`atomic_write_with`] 的正文是一段现成字节）。
 fn atomic_write(path: &Path, body: &[u8]) -> Result<(), Said> {
+    atomic_write_with(path, |f| f.write_all(body))
+}
+
+/// 原子写本体（全后端一份）：旁名 → 正文由 `fill` 往里写（流式写的那一形不用先攒整份）→ sync → 改名。
+/// 那一句只有路径与原因词，系统原话进 `raw`；都不带内容。
+fn atomic_write_with(
+    path: &Path,
+    fill: impl FnOnce(&mut dyn std::io::Write) -> std::io::Result<()>,
+) -> Result<(), Said> {
     let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
         return Err(copy_text(
             "beOwnState.write.noParent",
@@ -436,8 +455,7 @@ fn atomic_write(path: &Path, body: &[u8]) -> Result<(), Said> {
             &e,
         )
     })?;
-    let result = f
-        .write_all(body)
+    let result = fill(&mut f)
         .and_then(|()| f.sync_all())
         .map_err(|e| {
             let w = why(&e);

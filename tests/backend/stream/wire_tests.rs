@@ -552,11 +552,13 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
+                at: 0,
                 off: vec![s("u2"), s("a2")],
             },
             Frame::SessionBranch {
                 sid: s("s1"),
                 path: s("/p/s1.jsonl"),
+                at: 2,
                 off: vec![],
             },
         ],
@@ -2057,4 +2059,34 @@ fn changed_loss_follows_the_topic_table() {
         (id.kind, id.subject.as_deref()),
         ("changed", Some("tasks/s1"))
     );
+}
+
+/// 8a b：整份主线外清单切成几帧 `session_branch`：每帧一行 ≤ `REPLY_PAGE_BYTES`；`at` 依次接上；拼起来 ＝ 原清单；
+/// 只发变了的那一截时从 `at` 起；后面什么都没有也发一帧空的（说「到此为止」）。
+#[test]
+fn a_long_branch_list_goes_out_in_page_sized_frames_that_add_up() {
+    let off: Vec<String> = (0..40_000)
+        .map(|i| format!("{i:08}-0000-4000-8000-000000000000"))
+        .collect();
+    let frames = Frame::branch_pages("s", "/p/s.jsonl", &off, 0);
+    assert!(frames.len() > 1, "要分好几帧：{}", frames.len());
+    let mut all = Vec::new();
+    for f in &frames {
+        let line = to_line(f).unwrap();
+        assert!(
+            line.len() <= crate::REPLY_PAGE_BYTES,
+            "一帧 {} 字节",
+            line.len()
+        );
+        let Frame::SessionBranch { at, off, .. } = f else {
+            panic!()
+        };
+        assert_eq!(*at as usize, all.len());
+        all.extend(off.iter().cloned());
+    }
+    assert_eq!(all, off);
+    let tail = Frame::branch_pages("s", "/p/s.jsonl", &off[..10], 8);
+    assert!(matches!(&tail[..], [Frame::SessionBranch { at: 8, off, .. }] if off.len() == 2));
+    let none = Frame::branch_pages("s", "/p/s.jsonl", &off[..3], 3);
+    assert!(matches!(&none[..], [Frame::SessionBranch { at: 3, off, .. }] if off.is_empty()));
 }

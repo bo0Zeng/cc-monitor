@@ -366,7 +366,7 @@ fn index_and_user_input_answers_carry_the_rows_the_fixture_predicts() {
     .unwrap();
     assert_eq!(
         keys(&v),
-        ["end", "entries", "from"],
+        ["end", "entries", "from", "next"],
         "大纲清单的成品形状变了"
     );
     let uuids: Vec<&str> = v["entries"]
@@ -1593,7 +1593,7 @@ fn a_projected_facts_reply_still_continues_exactly_like_the_whole_one() {
 
 /// 帧面骨架索引按列装回的逐行（判据用：与夹具逐行比）。
 /// 读法同界面 `session-reads.ts::decodeIndex`（那一侧的读者由跨语言金样钉）；`sc` 不上帧面（占位不用它）。
-fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
+pub(crate) fn rows_of_index(v: &serde_json::Value) -> Vec<serde_json::Value> {
     let col = |k: &str| v[k].as_array().cloned().unwrap_or_default();
     let (o, n, t, fd, u) = (col("o"), col("n"), col("t"), col("fd"), col("u"));
     let classes = col("classes");
