@@ -694,6 +694,14 @@ mod tests {
         "写回不再等那一家放锁（或那一家不再有整份写锁）的那天。",
     ),
     (
+        "control/terminal_follow.rs",
+        "Duration::from_millis(2_000)",
+        "切权限档按一下键之后等重画那一次有界等待的期限（`REDRAW_WAIT`，交给登记过的 `self.rx.recv_timeout(REDRAW_WAIT)`）：\
+         重画由控制模式客户端的 `%output` 当场叫醒，到期照实回「结果未知」。次数由调用方定死。不循环、不复用。不是定时器。",
+        "收窄人群",
+        "切档不再靠「按键 → 等重画 → 读屏」（那一家给了直接切档的接口）的那天。",
+    ),
+    (
         "common/time.rs",
         "Duration::from_millis(ms)",
         "截图台架的拨钟（`common::time::shots_clock`，只在特性 `shots` 下编）：台架交来的起点毫秒换成一个时刻，\
@@ -771,6 +779,14 @@ mod tests {
              写锁目录被删 / 凭据文件被换的文件事件当场叫醒写回；一直没放开就要有个头，到期再试一次、照实报写回失败（那个号可能要重新登录）。\
              一个号一条线程、等一次、不循环。",
             "`LoginFace::write_wait_ms`（Claude 20 秒，长于它写锁的过期门限 15 秒）；锁先放开就立刻醒。",
+        ),
+        (
+            "control/terminal_follow.rs",
+            "self.rx.recv_timeout(REDRAW_WAIT)",
+            "切权限档（`session-permission`）按一下键之后等那个终端重画的**一次有界等待**（`terminal_follow::Watch::changed`）：\
+             变化由 tmux 控制模式客户端的 `%output` 当场叫醒；那一家没重画（卡住 · 那一键没起作用）时要有个头，到期照实回「结果未知」。\
+             一次一等、不循环；一次切档最多按一圈、每按一下最多等 `REDRAWS_PER_PRESS` 次，次数由调用方定死。",
+            "`REDRAW_WAIT`（2 秒）；重画先到就立刻醒。",
         ),
         (
             "observe/one_wait.rs",
@@ -1584,9 +1600,11 @@ mod g6_reach {
         //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`，cell `缩性质`）。
         // 14 → **16**：多的两条是 `accounts/sign_in.rs` 的 `START_WITHIN` · `FINISH_WITHIN`（在 app 里登录一个号：等登录子命令打印链接 ·
         //   等它换码，各一次有界等待；调用那两处另住 `REGISTERED_DEADLINE_WAKES`）。
+        // 16 → **17**：多的那一条是 `control/terminal_follow.rs` 的 `REDRAW_WAIT`（切权限档按一下键之后等重画的期限，
+        //   调用那一处另住 `REGISTERED_DEADLINE_WAKES`）。
         assert_eq!(
-            registered, 16,
-            "登记表从 16 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 17,
+            "登记表从 17 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }

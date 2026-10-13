@@ -215,7 +215,7 @@ fn the_launch_faces_agree_with_the_golden_table() {
                 .permission
                 .map(|p| {
                     std::iter::once(p.flag)
-                        .chain(p.modes.iter().copied())
+                        .chain(p.modes.iter().map(|c| c.value))
                         .collect::<Vec<_>>()
                         .join(" ")
                 })
@@ -513,7 +513,10 @@ fn render_row(kind: &str, f: &LaunchFace, has_accounts: bool) -> String {
                 |m| {
                     format!(
                         "[{}]",
-                        m.iter().map(|s| ts_str(s)).collect::<Vec<_>>().join(", ")
+                        m.iter()
+                            .map(|c| ts_str(c.value))
+                            .collect::<Vec<_>>()
+                            .join(", ")
                     )
                 },
             ),
@@ -763,6 +766,8 @@ fn two_families() -> Vec<Adapter> {
                 project_mcp_file: ".alpha-mcp.json",
                 servers_key: "servers",
                 plugins: |_| Vec::new(),
+                session_scan: |_, _| crate::agents::SessionAssets::default(),
+                builtin_commands: &[],
             },
             alpha_mcp,
             accounts("alpha.json"),
@@ -778,6 +783,8 @@ fn two_families() -> Vec<Adapter> {
                 project_mcp_file: ".beta-mcp.json",
                 servers_key: "servers",
                 plugins: |_| Vec::new(),
+                session_scan: |_, _| crate::agents::SessionAssets::default(),
+                builtin_commands: &[],
             },
             beta_mcp,
             accounts("beta.json"),

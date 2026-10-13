@@ -1718,6 +1718,144 @@
         "C-Y4": "「?」是 tmux 会话名里被禁的字符本身"
       }
     },
+    "beSessionNew.model.sonnet": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Sonnet",
+      "args": []
+    },
+    "beSessionNew.model.opus": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Opus",
+      "args": []
+    },
+    "beSessionNew.model.haiku": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Haiku",
+      "args": []
+    },
+    "beSessionNew.model.sonnetLong": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Sonnet · 1M 上下文",
+      "args": []
+    },
+    "beSessionNew.model.opusPlan": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "Opus 规划 · Sonnet 执行",
+      "args": []
+    },
+    "beSessionNew.mode.plan": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "规划模式",
+      "args": []
+    },
+    "beSessionMode.unsure.unread": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "权限档切换结果未知\n认不出此刻的档",
+      "args": []
+    },
+    "beSessionMode.unsure.notInCycle": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "未切换权限档 · 此会话的循环里无此档",
+      "args": []
+    },
+    "beSessionMode.unsure.noRedraw": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "权限档切换结果未知\n按键后屏幕未变",
+      "args": []
+    },
+    "beSessionMode.switch.unsupported": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "此会话不支持中途切换权限档",
+      "args": []
+    },
+    "beSessionModel.set.saved": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "已换成 {model} · 同时存为此号新会话的默认",
+      "args": ["model"]
+    },
+    "beSessionModel.set.kept": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "模型未变 · {model}",
+      "args": ["model"]
+    },
+    "beSessionModel.unsure.noReadback": {
+      "kind": "error",
+      "role": "原因格",
+      "zh": "换模型结果未知\n未读到新的模型",
+      "args": []
+    },
+    "beSessionModel.switch.unsupported": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "此会话不支持中途换模型",
+      "args": []
+    },
+    "beSessionCommands.builtin.clear": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "清空会话 · 原对话留在会话列表",
+      "args": []
+    },
+    "beSessionCommands.builtin.compact": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "压缩上下文",
+      "args": []
+    },
+    "beSessionCommands.builtin.init": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "生成项目说明文件",
+      "args": []
+    },
+    "beSessionCommands.builtin.model": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "换模型",
+      "args": []
+    },
+    "beSessionCommands.scope.builtin": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "内置",
+      "args": []
+    },
+    "beSessionCommands.scope.project": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "本项目",
+      "args": []
+    },
+    "beSessionCommands.scope.user": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "用户级",
+      "args": []
+    },
+    "beSessionCommands.skill.say": {
+      "kind": "body",
+      "role": "命令行",
+      "zh": "使用 Skill {name}",
+      "args": ["name"]
+    },
+    "beSessionCommands.session.noRecord": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "找不到此会话的记录",
+      "args": []
+    },
     "beResident.claim.pathTooLong": {
       "kind": "error",
       "role": "报错",
@@ -12876,6 +13014,12 @@
       "kind": "body",
       "role": "片段",
       "zh": "画面已变",
+      "args": []
+    },
+    "beTerminal.no.waiting": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "会话在等批准或回答",
       "args": []
     },
     "beTerminal.refuse.empty": {

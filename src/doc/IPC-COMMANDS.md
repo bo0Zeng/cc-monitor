@@ -6649,7 +6649,7 @@ scrollback?: number, };
 入参 `TerminalInputReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
-type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed";
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
 type Sent = { 
 /**
  * 结局。
@@ -6700,6 +6700,219 @@ client?: string, };
 ```
 
 码：`bad_args` · `bad_target` · `no_tmux` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+
+#### `session-commands`
+
+一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-commands`
+
+入参 `SessionCommandsReq` · 回包 `SessionCommands`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type CommandScope = "builtin" | "project" | "user";
+type SessionCommand = { 
+/**
+ * 命令名（不带 `/`；界面填进输入框的是 `/name `）。
+ */
+name: string, 
+/**
+ * 简介；文件里没写 ⇒ `null`。
+ */
+text: string | null, 
+/**
+ * 住哪。
+ */
+scope: CommandScope, 
+/**
+ * 同一格写给人看的字。
+ */
+scopeText: string, 
+/**
+ * 要跟参数（填进去停住等补）。
+ */
+needsArgs: boolean, 
+/**
+ * 发之前先确认。
+ */
+confirm: boolean, };
+type SessionCommands = { 
+/**
+ * 内置的在前，再本项目、用户级（各按名字排）。
+ */
+commands: Array<SessionCommand>, 
+/**
+ * 本项目的在前，再用户级。
+ */
+skills: Array<SessionSkill>, 
+/**
+ * 读不出来的那几份（一句一份；不整条失败）。
+ */
+problems: Array<string>, };
+type SessionCommandsReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, };
+type SessionSkill = { 
+/**
+ * 名字。
+ */
+name: string, 
+/**
+ * 简介；没写 ⇒ `null`。
+ */
+text: string | null, 
+/**
+ * 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
+ */
+say: string, };
+```
+
+码：`bad_args` · `no_such_session`
+
+#### `session-model`
+
+会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送）。
+
+收 `args` · 可撤 · CLI：`ccm -- --session-model` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionModelReq` · 回包 `ModelSwitched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ModeSwitchResult = "done" | "unsure" | "refused";
+type ModelSwitched = { 
+/**
+ * 结局（同切权限档那一组）。
+ */
+result: ModeSwitchResult, 
+/**
+ * 读回的显示名（那一家写的原样，例如 `Opus 5.5 (1M context)`）；没读到 ⇒ `null`。
+ */
+model: string | null, 
+/**
+ * 读回时那一家顺带说的思考档（原样）；没说 ⇒ 不出。
+ */
+effort?: string, 
+/**
+ * `refused` 的原因（同 `terminal-input`）。
+ */
+why?: Refused, 
+/**
+ * 给人看的那一句（换成了 · 没变 · 结果未知 · 被拒）。
+ */
+said?: string, };
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type SessionModelReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 要换成的模型（原值；必须是 `session-new-facts` 那一家 `models` 里的一个）。
+ */
+model: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `unsupported` · `no_such_session` · `no_tmux` · `unobservable` · `child_timed_out`
+
+#### `session-permission`
+
+会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-permission` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionPermissionReq` · 回包 `ModeSwitched`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ModeSwitchResult = "done" | "unsure" | "refused";
+type ModeSwitched = { 
+/**
+ * 结局。
+ */
+result: ModeSwitchResult, 
+/**
+ * 最后读到的档（原值）；没读 · 认不出 ⇒ `null`。
+ */
+mode: string | null, 
+/**
+ * 同一档写给人看的字；那一家起会话不给这一档 · 没读到 ⇒ `null`。
+ */
+modeText: string | null, 
+/**
+ * `refused` 的原因（同 `terminal-input`）。
+ */
+why?: Refused, 
+/**
+ * `unsure` · `refused` 时给人看的那一句。
+ */
+said?: string, };
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type SessionPermissionReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 要切到的档（原值；必须是 `session-new-facts` 那一家 `permissionModes` 里的一个）。
+ */
+mode: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `unsupported` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `no_server` · `no_such_session` · `capture_failed` · `unobservable` · `child_timed_out`
+
+#### `session-say`
+
+往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车）。
+
+收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-say` · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
+
+入参 `SessionSayReq` · 回包 `Sent`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type Refused = "not_yours" | "not_managed" | "other_windows" | "not_known" | "ambiguous" | "ended" | "screen_changed" | "waiting";
+type Sent = { 
+/**
+ * 结局。
+ */
+result: SentResult, 
+/**
+ * `refused` 的原因。
+ */
+why?: Refused, 
+/**
+ * `refused` 时给人看的那一句（后端写好）。
+ */
+said?: string, 
+/**
+ * `screen_changed` 时带的新指纹。
+ */
+screen?: string, };
+type SentResult = "delivered" | "unsure" | "refused";
+type SessionSayReq = { 
+/**
+ * 会话 id。
+ */
+sid: string, 
+/**
+ * 那一句（字面字，原样送；多行按粘贴送；后端补回车）。
+ */
+text: string, 
+/**
+ * 自报的前端（过「哪个前端的会话」那一维，同 `terminal-input`）。
+ */
+client?: string, };
+```
+
+码：`bad_args` · `no_tmux` · `no_such_session` · `unobservable` · `child_timed_out`
 
 #### `terminal-follow`
 
@@ -7317,6 +7530,23 @@ type SessionNewOutcome = "started" | "open";
 入参 `NewFactsReq` · 回包 `NewFacts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
+type AgentFacts = { 
+/**
+ * 线上的 kind（交回 `session-new.agent` 的那一格）。
+ */
+kind: string, 
+/**
+ * 这一家写给人看的名字。
+ */
+text: string, 
+/**
+ * 起会话可选的模型（不选 ＝ 跟着那一家自己的默认）；这一家没声明 ⇒ 空。
+ */
+models: Array<NewSessionPick>, 
+/**
+ * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
+ */
+permissionModes: Array<NewSessionPick>, };
 type ForkFacts = { 
 /**
  * 源会话是哪一家（说不出 ⇒ 空串）。
@@ -7355,9 +7585,9 @@ recent: Array<RecentDir>,
  */
 tmux: boolean, 
 /**
- * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序）。
+ * 这台能起的几家（注册表里由我们起的、默认启动器在这台 `PATH` 上找得到的；注册表序），各带名字与可选的模型 · 权限档。
  */
-agents: Array<string>, 
+agents: Array<AgentFacts>, 
 /**
  * 没给 `forkOf` ⇒ `null`。
  */
@@ -7371,6 +7601,15 @@ forkOf?: string,
  * 可缺（随 `forkOf`）：从哪条消息处分叉（框顶说第几轮、几点）。
  */
 at?: string, };
+type NewSessionPick = { 
+/**
+ * 原值（`session-new` 的 `model` / `permissionMode` 收的就是它）。
+ */
+value: string, 
+/**
+ * 写给人看的字。
+ */
+text: string, };
 type RecentDir = { 
 /**
  * 工作目录。
@@ -7379,7 +7618,11 @@ cwd: string,
 /**
  * 那个目录最近一次会话的修改时刻（毫秒）。
  */
-lastMs: number, };
+lastMs: number, 
+/**
+ * 同一刻按请求的 `tz` 写给人看的字（当天 `HH:MM` · 当年 `MM-DD HH:MM` · 别的年带年）。
+ */
+lastText: string, };
 ```
 
 码：`bad_args` · `fork_failed`
@@ -8227,11 +8470,15 @@ type Mode = "create-or-attach" | "send-into";
 | `--rotation-strategy-delete` | ＝ 帧命令 `rotation-strategy-delete`：删本机的一份轮换策略 |
 | `--rotation-strategy-try` | ＝ 帧命令 `rotation-strategy-try`：按此刻的事实试跑一份策略（不写盘不换号） |
 | `--rotation-switch` | ＝ 帧命令 `rotation-switch`：现在就换 |
+| `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
 | `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
+| `--session-model` | ＝ 帧命令 `session-model`：会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送） |
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |
 | `--session-new-facts` | ＝ 帧命令 `session-new-facts`：起新会话那个框要的事实：最近目录 · 有没有 tmux · 有哪几家 agent · 分叉时原会话的起法 |
+| `--session-permission` | ＝ 帧命令 `session-permission`：会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按） |
+| `--session-say` | ＝ 帧命令 `session-say`：往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车） |
 | `--sessions-needs` | ＝ 帧命令 `sessions-needs`：这台上需手动的会话清单 |
 | `--sessions-start` | ＝ 帧命令 `sessions-start`：起 / 接回一批会话（逐个答） |
 | `--sessions-stop` | ＝ 帧命令 `sessions-stop`：停一批会话（逐个答，一个不成不挡下一个） |

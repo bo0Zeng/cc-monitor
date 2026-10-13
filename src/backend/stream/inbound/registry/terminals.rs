@@ -50,6 +50,18 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::stream::inbound::typed::blocking::<crate::control::terminals_wire::TerminalInputCmd>(
         "往一个终端送字或送键（过身份门）",
     ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_commands_face::SessionCommandsCmd>(
+        "一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录）",
+    ),
+    crate::stream::inbound::typed::asynchronous::<crate::faces::session_model_face::SessionModel>(
+        "会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送）",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_mode_face::SessionPermission>(
+        "会话开着时切权限档（按那一家的循环键、等重画、读回到了为止，最多一圈；在等人不按）",
+    ),
+    crate::stream::inbound::typed::blocking::<crate::faces::session_say_face::SessionSay>(
+        "往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车）",
+    ),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     CommandSpec {

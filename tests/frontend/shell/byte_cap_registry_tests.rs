@@ -144,6 +144,10 @@ const NOT_A_SIZE_CAP: &[(&str, &str)] = &[
         "**看多远**不是上界：按内容搜判二进制时看每份开头多少字节（里面有 NUL ⇒ 当二进制跳过、记数进 `skipped_binary`）；什么都不因它被截掉。",
     ),
     (
+        "READBACK_MS",
+        "毫秒：换模型送出那一行之后等记录里读回的期限（`faces/session_model_face.rs`），不是体量",
+    ),
+    (
         "STOP_GRACE_MS",
         "**时间**不是体量：一次性子命令 `--resident-stop` 请常驻后端收尾之后等它退的宽限期（毫秒）；比后端自己的排空上限长（`resident_tests` 钉）。",
     ),
@@ -971,6 +975,12 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "SKILL_DOC_MAX_BYTES",
         "资产目录扫描时读一个 skill 的 `SKILL.md`（只为取 `description:`）—— 读它的函数把错交给调用方，调用方记进 `problems`",
         "硬报错",
+    ),
+    (
+        "src/backend/agents/claudecode/assets.rs",
+        "COMMAND_DOC_MAX_BYTES",
+        "一条会话能用的命令：读一份斜杠命令文件（只为取简介与要不要参数）—— 读不出来那一份记进 `problems`、不列这一条",
+        "跳过+说清",
     ),
     (
         "src/backend/agents/claudecode/assets.rs",

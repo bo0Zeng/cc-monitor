@@ -173,7 +173,12 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     first_prompt_arg: true,
     permission: Some(super::PermissionFace {
         flag: resume::PERMISSION_MODE_FLAG,
-        modes: &["default", "acceptEdits", "plan"],
+        modes: resume::PERMISSION_MODES,
+        switch: Some(super::ModeSwitch {
+            key: "shift-tab",
+            cycle_max: resume::MODE_CYCLE_MAX,
+            read: resume::mode_on_screen,
+        }),
     }),
     self_sid_env: Some(resume::SELF_SID_ENV),
     launch_args: &[],
@@ -185,6 +190,10 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     needs_bus_id: false,
     has_identity: true,
     models: Some(resume::MODEL_ALIASES),
+    model_switch: Some(super::ModelSwitch {
+        command: resume::model_command,
+        read: resume::model_said,
+    }),
 };
 
 /// 本 agent 在这台机器上的 home 目录 —— **只答"它该在哪"，不答"在不在"**。
@@ -270,4 +279,6 @@ pub(crate) const ASSETS: super::AssetFace = super::AssetFace {
     project_mcp_file: assets::PROJECT_MCP_FILE,
     servers_key: assets::SERVERS_KEY,
     plugins: assets::plugins,
+    session_scan: assets::session_scan,
+    builtin_commands: assets::BUILTIN_COMMANDS,
 };

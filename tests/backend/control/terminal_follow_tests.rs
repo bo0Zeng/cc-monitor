@@ -737,3 +737,28 @@ impl crate::guard_support::Shaped for Refused {
         ]
     }
 }
+
+/// ★ 一次性看屏（切权限档用）：起了之后此刻之前的变化忘掉；那个窗格有输出 ⇒ 等到「变了」；
+/// 没输出 ⇒ 到期回「没变」（有界、不挂）；放手 ⇒ 那个控制模式客户端退掉（只关输入、不杀）。
+#[test]
+fn a_one_shot_watch_wakes_on_output_and_gives_up_on_silence() {
+    let iso = Iso::new("watch");
+    iso.session("w-cc");
+    let on = crate::control::terminals::On {
+        socket: iso.sock.to_str(),
+    };
+    let h = iso.handle_of("w-cc");
+    let t = crate::control::terminals::follow_target_on(on, &json!({ "terminal": h })).unwrap();
+    let mut w = Watch::open(iso.sock.to_str(), &t).expect("起看屏客户端");
+    assert_eq!(iso.control_clients(), 1);
+    w.forget();
+    iso.type_in("w-cc", "zq-watch");
+    assert!(w.changed(), "那个窗格有了输出却没等到变化");
+    w.forget();
+    assert!(!w.changed(), "没有输出却报了变化");
+    drop(w);
+    assert!(
+        eventually(|| iso.control_clients() == 0),
+        "放手之后控制模式客户端还连着"
+    );
+}

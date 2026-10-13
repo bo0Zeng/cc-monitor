@@ -227,6 +227,12 @@ fn every_registered_command_declares_its_run_kind() {
                 | "terminals-list"
                 | "terminal-preview"
                 | "terminal-input"
+                // 往会话说一句：读 pidfile 判在不在等 ＋ 送字那一条（起 tmux）。
+                | "session-say"
+                // 切权限档：读 pidfile ＋ 起 tmux 几发 ＋ 等重画。
+                | "session-permission"
+                // 一条会话能用的命令：读记录开头 ＋ 扫几个目录（同步文件 I/O）。
+                | "session-commands"
                 | "files-browse"
                 | "files-create"
                 | "files-commit-upload"
@@ -696,12 +702,18 @@ fn every_registered_command_declares_its_run_kind() {
         "plan-files",
         // 换号重启：可撤档（步与步之间 await，起 tmux 的几步自己挪到阻塞线程池）。
         "session-restart",
+        // 换模型：异步（送那一行挪到阻塞线程池；等读回是一次有界等待）。
+        "session-model",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
         "rotation-switch",
         // 终端管理 L1 三条：阻塞（起 tmux）。
         "terminals-list",
         "terminal-preview",
         "terminal-input",
+        // 往会话说一句：阻塞（读 pidfile ＋ 起 tmux）。
+        "session-say",
+        "session-permission",
+        "session-commands",
         // 传输四条：内建（硬臂）。
         "transfer-upload",
         "transfer-download",

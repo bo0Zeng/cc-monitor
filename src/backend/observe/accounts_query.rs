@@ -912,6 +912,15 @@ pub(crate) fn live_needs(
     rows
 }
 
+/// 这条会话此刻在不在等人：那台说在等（同 [`live_needs`] 那一判）或有挂着的待答请求（`asked`，只算此刻活着的）。
+pub(crate) fn waiting_now(agent_home: &Path, sid: &str, asked: &[String]) -> bool {
+    match live_activity(agent_home).get(sid) {
+        Some(Some(crate::agents::SessionActivity::NeedsYou)) => true,
+        Some(_) => asked.iter().any(|a| a == sid),
+        None => false,
+    }
+}
+
 /// 这台此刻活着的每个会话的活动态（同一会话几个进程持着 ⇒ 取最要紧的那一个，序见 [`live_doing`]）。
 fn live_activity(
     agent_home: &Path,

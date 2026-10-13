@@ -94,7 +94,8 @@ const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*
 const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.action.create"))!;
 const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-new").map((s) => s.body);
 
-const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2 }, { cwd: "/home/u/srv/billing", lastMs: 1 }], tmux: true, agents: ["claude"], fork: null };
+const agentOf = (kind: string) => ({ kind, text: kind === "claude" ? "Claude Code" : "Codex", models: [], permissionModes: [] });
+const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, agents: [agentOf("claude")], fork: null };
 const OK = { outcome: "started", session: "orders-cc", sid: null, cmd: null, account: { name: "work", configDir: "/h/.cc/work", model: null }, agent: "claude", cwd: "/home/u/srv/orders", prompt: null };
 
 beforeEach(() => {
@@ -129,7 +130,7 @@ describe("起新会话框：预填与几行出不出（都照那台说的）", (
   });
 
   it("那台能起两家 ⇒ 出 agent 那一行；那台没 tmux ⇒ 只剩终端窗口那一张、灰字说为什么", async () => {
-    replies.set("session-new-facts", { ...FACTS, tmux: false, agents: ["claude", "codex"] });
+    replies.set("session-new-facts", { ...FACTS, tmux: false, agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
     expect(rowOf(sel(copyText("newSession.label.agent"))).hidden).toBe(false);
@@ -358,12 +359,12 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   const top = (): string => dialog().querySelector<HTMLElement>("[class*=nsTop]")!.textContent ?? "";
 
   it("换一台 ⇒ 目录清空、照新那台重问、重新预填", async () => {
-    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/a", lastMs: 1 }] });
+    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/a", lastMs: 1, lastText: "00:00" }] });
     void openNewSession({ origin: "<local>" });
     await flush();
     const cwd = input(copyText("newSession.label.cwd"));
     cwd.value = "/typed";
-    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1 }] });
+    replies.set("session-new-facts", { ...FACTS, recent: [{ cwd: "/srv/b", lastMs: 1, lastText: "00:00" }] });
     const asked = sent.filter((x) => x.op === "session-new-facts").length;
     choose(sel(copyText("newSession.label.machine")), "devbox");
     await flush();
@@ -402,12 +403,13 @@ describe("换机器 · 换一家 · 那台问不到", () => {
   });
 
   it("换一家 ⇒ 启动命令的占位跟着那一家、号那一行照那一家重列", async () => {
-    replies.set("session-new-facts", { ...FACTS, agents: ["claude", "codex"] });
+    replies.set("session-new-facts", { ...FACTS, agents: [agentOf("claude"), agentOf("codex")] });
     void openNewSession({ origin: "devbox" });
     await flush();
     const cmd = input(copyText("newSession.label.command"));
     const before = cmd.placeholder;
-    choose(sel(copyText("newSession.label.agent")), "codex");
+    // 菜单里写那台写好的名字（不是线上的 kind），选中交回的是 kind。
+    choose(sel(copyText("newSession.label.agent")), "Codex");
     await flush();
     expect(sel(copyText("newSession.label.agent")).dataset.value).toBe("codex");
     expect(cmd.placeholder).not.toBe(before);
@@ -526,7 +528,7 @@ describe("分叉：那台说得出源会话的号与终端", () => {
   it("号说得出 ⇒ 预选那个号、没有「跟随」；源会话在终端窗口里 ⇒ 预选终端窗口；那一家照源会话", async () => {
     replies.set("session-new-facts", {
       ...FACTS,
-      agents: ["codex", "claude"],
+      agents: [agentOf("codex"), agentOf("claude")],
       fork: {
         agent: "claude",
         launch: { cwd: { kind: "unknown", why: "exited" }, account: { kind: "known", value: "personal", from: "record" }, terminal: { kind: "known", value: { host: "none" }, from: "record" } },

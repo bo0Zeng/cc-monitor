@@ -620,6 +620,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
+        "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
+        "session-permission", // 读 pidfile ＋ 起 tmux（抓屏 · 送键 · 等重画）
+        "session-commands",   // 读记录开头 ＋ 扫命令 · skill 目录
         // 钩子诊断：读一份 settings ＋ 几次 stat（同步文件 I/O），阻塞档。
         "hooks-diag",
         // 手动对齐：等每份 watcher 做完（对表 ＋ 打标起 tmux），阻塞档。
@@ -838,6 +841,9 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "terminals-list",     // 终端管理 L1：起 tmux（列会话 ＋ 列客户端）
         "terminal-preview",   // 起 tmux（抓屏 ＋ 问尺寸）
         "terminal-input",     // 起 tmux（探身份 ＋ 送字送键）
+        "session-say",        // 读 pidfile（在不在等）＋ 起 tmux（送字那一条）
+        "session-permission", // 读 pidfile ＋ 起 tmux（抓屏 · 送键 · 等重画）
+        "session-commands",   // 读记录开头 ＋ 扫命令 · skill 目录
         "ssh-config-aliases", // 读一份文件
         "ssh-config-import",  // 逐个起 `ssh -G`
         "ssh-config-resolve", // 起一次 `ssh -G`
@@ -927,6 +933,8 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "session-new-dir",
         // 换号重启：可撤档（步与步之间 await；起 tmux 那几步自己挪到阻塞线程池）。
         "session-restart",
+        // 换模型：异步（送那一行挪到阻塞线程池；等读回是一次有界等待）。
+        "session-model",
         // 现在就换：异步（重启换那一半等 `session-restart`；不重启换那一半自己挪到阻塞线程池）。
         "rotation-switch",
         // 传输四条：硬臂，就地记账（起跑那一下只 `spawn`、不 await）⇒ 不阻塞。
@@ -1953,6 +1961,26 @@ fn the_session_family_refuses_what_its_request_types_do_not_have() {
             "launch-local",
             serde_json::json!({ "agent": "claude", "action": { "kind": "new" }, "defaultLauncher": "claude", "x": 1 }),
         ),
+        (
+            "session-say",
+            serde_json::json!({ "sid": "s-1", "text": "hi", "enter": false }),
+        ),
+        ("session-say", serde_json::json!({ "sid": "s-1" })),
+        (
+            "session-permission",
+            serde_json::json!({ "sid": "s-1", "mode": "plan", "key": "shift-tab" }),
+        ),
+        ("session-permission", serde_json::json!({ "sid": "s-1" })),
+        (
+            "session-commands",
+            serde_json::json!({ "sid": "s-1", "cwd": "/w" }),
+        ),
+        ("session-commands", serde_json::json!({})),
+        (
+            "session-model",
+            serde_json::json!({ "sid": "s-1", "model": "opus", "effort": "high" }),
+        ),
+        ("session-model", serde_json::json!({ "sid": "s-1" })),
         ("kill", serde_json::json!({ "name": "demo-cc", "extra": 1 })),
         ("kill", serde_json::json!({ "name": 1 })),
         (
