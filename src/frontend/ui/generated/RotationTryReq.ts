@@ -33,10 +33,6 @@ hours?: number,
  */
 useNow?: string, 
 /**
- * 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
- */
-lang?: string, 
-/**
  * 哪一家（缺 ⇒ 有账号库的那一家）。
  */
 agent?: string, };

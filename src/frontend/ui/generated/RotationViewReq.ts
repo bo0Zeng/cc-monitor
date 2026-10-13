@@ -8,4 +8,4 @@ export type RotationViewReq = { target: RotTarget,
 /**
  * 往后推几小时（1–48，缺 ⇒ 12）。
  */
-hours?: number, lang?: string, };
+hours?: number, };

@@ -41,9 +41,9 @@ impl RotStrategyError {
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotStrategyItem {
     pub(crate) id: String,
-    /// 名字 · 下拉里那一行灰字（读不懂 ⇒ 名字是 id、灰字空）。
+    /// 标题 ＝ 文件名（＝ `id`，§2.1）· 说明（文件开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段；读不懂 ⇒ 空）。
     pub(crate) name: String,
-    pub(crate) line: String,
+    pub(crate) about: String,
     pub(crate) rev: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -62,12 +62,7 @@ pub(crate) struct RotStrategyItem {
 #[serde(deny_unknown_fields)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotationStrategiesReq {
-    /// 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) lang: Option<String>,
-}
+pub(crate) struct RotationStrategiesReq {}
 
 /// `rotation-strategies` 的应答。
 #[derive(Debug, PartialEq, Serialize)]
@@ -113,13 +108,15 @@ pub(crate) fn item_of(
     s: &shelf::Shelved,
     book: &book::Book,
     live: &dyn Fn(&str) -> bool,
-    en: bool,
 ) -> RotStrategyItem {
     let head = s.file.as_ref().ok().map(|f| &f.head);
     RotStrategyItem {
         id: s.id.clone(),
-        name: head.map_or_else(|| s.id.clone(), |h| h.name.pick(en).to_string()),
-        line: head.map_or_else(String::new, |h| h.line.pick(en).to_string()),
+        name: s.id.clone(),
+        about: s
+            .file
+            .as_ref()
+            .map_or_else(|_| String::new(), |f| f.about.clone()),
         rev: s.rev.clone(),
         error: s.file.as_ref().err().map(RotStrategyError::of),
         in_use: book
@@ -139,13 +136,12 @@ pub(crate) fn strategies_with(
     req: &RotationStrategiesReq,
     live: &dyn Fn(&str) -> bool,
 ) -> RotationStrategiesReply {
-    let en = req.lang.as_deref() == Some("en");
     let book = ctx.hop.store.now();
     let dir = ctx.hop.store.strategy_dir();
     RotationStrategiesReply {
         strategies: shelf::all(dir.as_deref())
             .iter()
-            .map(|s| item_of(s, &book, live, en))
+            .map(|s| item_of(s, &book, live))
             .collect(),
         for_new: book.for_new.clone(),
         old_scripts: shelf::old_count(dir.as_deref()),
@@ -180,9 +176,6 @@ pub(crate) struct RotationViewReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) hours: Option<u8>,
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) lang: Option<String>,
 }
 
 /// 提示（第一行下面那几条）：停发 · 策略出错 · 时区不明 · 旧格式没加载 · 说明写法不合规。字由第 4 刀照文案表写。
@@ -320,7 +313,6 @@ pub(crate) fn view_with(
     now: u64,
     live: &dyn Fn(&str) -> bool,
 ) -> Result<RotationViewReply, RotationViewErr> {
-    let en = req.lang.as_deref() == Some("en");
     let book = ctx.hop.store.now();
     let dir = ctx.hop.store.strategy_dir();
     let (session, agent) = match &req.target {
@@ -400,11 +392,11 @@ pub(crate) fn view_with(
         now + hours * 3600,
     );
     let item = match &loaded.shelved {
-        Some(s) => item_of(s, &book, live, en),
+        Some(s) => item_of(s, &book, live),
         None => RotStrategyItem {
             id: loaded.id.clone(),
             name: loaded.id.clone(),
-            line: String::new(),
+            about: String::new(),
             rev: String::new(),
             error: loaded.broken().as_ref().map(RotStrategyError::of),
             in_use: Vec::new(),

@@ -23,7 +23,13 @@ fn codes(form: &[Cell], v: serde_json::Value) -> Vec<(String, &'static str)> {
 fn each_kind_of_cell_is_checked_by_its_shape_only() {
     let f = full_form();
     let kinds: Vec<Kind> = f.iter().map(|c| c.kind).collect();
-    for k in [Kind::Percent, Kind::Minutes, Kind::Toggle, Kind::OneOf, Kind::DaySegments] {
+    for k in [
+        Kind::Percent,
+        Kind::Minutes,
+        Kind::Toggle,
+        Kind::OneOf,
+        Kind::DaySegments,
+    ] {
         assert!(kinds.contains(&k), "{k:?}");
     }
     let ok = json!({
@@ -96,9 +102,8 @@ fn each_kind_of_cell_is_checked_by_its_shape_only() {
 /// ★ 格的种类只有五种：`row` 那种读不进来（声明里写了 ⇒ 这份策略读不懂）。
 #[test]
 fn a_row_cell_is_not_a_kind_any_more() {
-    let r: Result<Cell, _> = serde_json::from_value(
-        json!({"key": "row", "kind": "row", "scope": "each", "label": "x"}),
-    );
+    let r: Result<Cell, _> =
+        serde_json::from_value(json!({"key": "row", "kind": "row", "scope": "each", "label": "x"}));
     assert!(r.is_err());
 }
 
@@ -129,7 +134,10 @@ fn a_bad_form_is_refused_when_the_file_is_read() {
 #[test]
 fn second_person_or_structure_words_in_labels_are_flagged() {
     for n in 0..3 {
-        let f = super::super::script::parse(super::super::upgrade::material(n)).expect("读").head.form;
+        let f = super::super::script::parse(super::super::upgrade::material(n))
+            .expect("读")
+            .head
+            .form;
         assert!(!words_bad(&f), "材料 {n}");
     }
     for bad in ["你的上限", "参数", "Your limit"] {

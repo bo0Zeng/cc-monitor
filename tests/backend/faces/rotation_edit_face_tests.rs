@@ -130,12 +130,29 @@ fn saving_rewrites_only_the_head_and_detects_conflicts() {
         },
     )
     .expect("另存");
-    assert_ne!(as_new.id, "by-list");
+    assert_eq!(as_new.id, "夜里省着用", "标题就是文件名");
     assert_eq!(ctx.hop.store.now().sessions[S1].strategy.id, as_new.id);
-    let h = script::parse(&file(&home, &as_new.id))
-        .expect("读得懂")
-        .head;
-    assert_eq!(h.name.pick(false), "夜里省着用");
+    assert_eq!(code_of(&file(&home, &as_new.id)), code_of(&before));
+    assert!(
+        matches!(
+            save_with(
+                &ctx,
+                &home.own(),
+                &RotationSaveReq {
+                    target: RotWhere::Strategy {
+                        strategy: "by-list".into()
+                    },
+                    settings: None,
+                    if_rev: String::new(),
+                    save_as: Some(RotSaveAs {
+                        name: "夜里省着用".into()
+                    }),
+                },
+            ),
+            Err(RotationSaveErr::BadArgs(_))
+        ),
+        "同名的已有"
+    );
 }
 
 /// 还原 · 下拉换一份（有草稿要 `discard`）· 不再轮换（`null`）· 新会话用哪份（那一份要在；`null` ⇒ 新会话不轮换）。
@@ -273,7 +290,8 @@ fn use_now_is_stopped_only_by_facts() {
     go("a").expect("策略的上限不拦");
 }
 
-/// ★ 策略文件：加（读不懂 ⇒ `bad_strategy` 带行）· 复制 · 改名（只重写头里的名字、版本对不上 ⇒ `conflict`）·
+/// ★ 策略文件：加（读不懂 ⇒ `bad_strategy` 带行；文件名就是给的名字）· 复制（另起一个文件名，内容一字不改）·
+/// 改名（换文件名，指它的会话与「新会话用」跟着改；版本对不上 ⇒ `conflict`；名字占了或写法不对 ⇒ `bad_args`）·
 /// 删（活会话在用 · 新会话用的 ⇒ `in_use`）。
 #[test]
 fn strategy_files_are_added_copied_renamed_and_deleted() {
@@ -285,7 +303,7 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         &home.own(),
         &RotationStrategyAddReq {
             source: "fn decide(ctx) {}".into(),
-            name: None,
+            name: "坏的".into(),
         },
     ) {
         Err(RotationStrategyAddErr::BadStrategy(_, b)) => assert_eq!(b.line, Some(1)),
@@ -296,11 +314,28 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         &home.own(),
         &RotationStrategyAddReq {
             source: src.clone(),
-            name: Some("我的".into()),
+            name: " 我的 ".into(),
         },
     )
     .expect("加");
-    assert_eq!(code_of(&file(&home, &added.id)), code_of(&src));
+    assert_eq!(added.id, "我的");
+    assert_eq!(file(&home, &added.id), src);
+    for bad in ["我的", "a/b", "..", "", "CON"] {
+        assert!(
+            matches!(
+                add_with(
+                    &ctx,
+                    &home.own(),
+                    &RotationStrategyAddReq {
+                        source: src.clone(),
+                        name: bad.into()
+                    }
+                ),
+                Err(RotationStrategyAddErr::BadArgs(_))
+            ),
+            "{bad:?}"
+        );
+    }
     let copied = copy_with(
         &ctx,
         &home.own(),
@@ -310,7 +345,10 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         },
     )
     .expect("复制");
-    assert_ne!(copied.id, added.id);
+    assert_eq!(
+        (copied.id.as_str(), file(&home, &copied.id)),
+        ("我的 2", src.clone())
+    );
     assert!(matches!(
         rename_with(
             &ctx,
@@ -323,7 +361,28 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         ),
         Err(RotationStrategyRenameErr::Conflict(..))
     ));
-    rename_with(
+    home.saw(&ctx, S1);
+    rotation::face_change(&ctx.hop.store, &home.own(), |b| {
+        b.sessions.get_mut(S1).expect("s1").strategy.id = copied.id.clone();
+        b.for_new = copied.id.clone();
+    })
+    .expect("w");
+    assert!(
+        matches!(
+            rename_with(
+                &ctx,
+                &home.own(),
+                &RotationStrategyRenameReq {
+                    id: copied.id.clone(),
+                    name: "我的".into(),
+                    if_rev: rev(&home, &copied.id),
+                }
+            ),
+            Err(RotationStrategyRenameErr::BadArgs(_))
+        ),
+        "名字占了"
+    );
+    let renamed = rename_with(
         &ctx,
         &home.own(),
         &RotationStrategyRenameReq {
@@ -333,19 +392,26 @@ fn strategy_files_are_added_copied_renamed_and_deleted() {
         },
     )
     .expect("改名");
-    assert_eq!(
-        script::parse(&file(&home, &copied.id))
-            .expect("读得懂")
-            .head
-            .name
-            .pick(false),
-        "改了"
+    assert_eq!(renamed.id, "改了");
+    assert_eq!(file(&home, "改了"), src, "内容一字不改");
+    assert!(
+        !home
+            .root
+            .join(format!("strategies/{}.rhai", copied.id))
+            .exists(),
+        "旧文件名没了"
     );
-    home.saw(&ctx, S1);
+    let b = ctx.hop.store.now();
+    assert_eq!(
+        (b.sessions[S1].strategy.id.as_str(), b.for_new.as_str()),
+        ("改了", "改了"),
+        "指它的跟着改"
+    );
     rotation::face_change(&ctx.hop.store, &home.own(), |b| {
-        b.sessions.get_mut(S1).expect("s1").strategy.id = copied.id.clone();
+        b.for_new = "by-list".into()
     })
     .expect("w");
+    let copied = renamed;
     let del = |id: &str| {
         delete_with(
             &ctx,

@@ -212,7 +212,15 @@ fn s07_a_forced_switch_needs_an_earlier_reset_and_the_threshold() {
         with_reset("B", 50.0, 200),
         acct("C", 10.0),
     ];
-    let d = turn(&sig("B", &[]), &f, &forced(25), by_reset(), clock(T), T, &[]);
+    let d = turn(
+        &sig("B", &[]),
+        &f,
+        &forced(25),
+        by_reset(),
+        clock(T),
+        T,
+        &[],
+    );
     assert_eq!(used(&d), "A", "A 先重置、权重高出远超 25%");
     assert_eq!(d.order.first().map(String::as_str), Some("A"));
     // 余量：B 剩得多但后重置 ⇒ 不换；C 先重置、剩得多 ⇒ 换。
@@ -250,11 +258,19 @@ fn s08_a_fallback_is_used_only_while_the_others_are_out() {
     let mut s = base();
     fallback(&mut s, "A");
     let f = [acct("A", 10.0), acct("B", 50.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &sig("A", &[]), &f, T)), "B", "列表最前也排最后");
+    assert_eq!(
+        used(&run(&s, &sig("A", &[]), &f, T)),
+        "B",
+        "列表最前也排最后"
+    );
     let out = [acct("A", 10.0), acct("B", 95.0), acct("C", 95.0)];
     assert_eq!(used(&run(&s, &sig("B", &[]), &out, T)), "A");
     let back = [acct("A", 20.0), acct("B", 95.0), acct("C", 10.0)];
-    assert_eq!(used(&run(&s, &sig("A", &[]), &back, T)), "C", "C 一有额度就换走");
+    assert_eq!(
+        used(&run(&s, &sig("A", &[]), &back, T)),
+        "C",
+        "C 一有额度就换走"
+    );
 }
 
 /// ★ 强制切换之后，被换下来的号重置得晚，不会再换回去（不来回换）。
@@ -265,10 +281,26 @@ fn s25_after_a_forced_switch_the_later_one_does_not_come_back() {
     let d = turn(&sig("A", &[]), &f, &s, by_left(), clock(T), T, &[]);
     assert_eq!(used(&d), "B");
     let f = [with_reset("A", 80.0, 60), with_reset("B", 85.0, 20)];
-    let d = turn(&d.sigma, &f, &s, by_left(), clock(T + 10 * MIN), T + 10 * MIN, &[]);
+    let d = turn(
+        &d.sigma,
+        &f,
+        &s,
+        by_left(),
+        clock(T + 10 * MIN),
+        T + 10 * MIN,
+        &[],
+    );
     assert_eq!(used(&d), "B", "A 剩得多了，但重置得晚，B 没满不换");
     let f = [with_reset("A", 80.0, 60), with_reset("B", 90.0, 20)];
-    let d = turn(&d.sigma, &f, &s, by_left(), clock(T + 15 * MIN), T + 15 * MIN, &[]);
+    let d = turn(
+        &d.sigma,
+        &f,
+        &s,
+        by_left(),
+        clock(T + 15 * MIN),
+        T + 15 * MIN,
+        &[],
+    );
     assert_eq!(used(&d), "A", "B 满了才换：{d:?}");
 }
 
@@ -335,7 +367,10 @@ fn s34_a_per_use_limit_stops_a_fallback_until_the_others_recover() {
     let d = run(&s, &sig("A", &[]), &at(10.0), T);
     assert_eq!(used(&d), "C");
     assert!(
-        d.sigma.wake_when.iter().any(|w| w.acct == "C" && (w.used_at_least - 30.0).abs() < 1e-9),
+        d.sigma
+            .wake_when
+            .iter()
+            .any(|w| w.acct == "C" && (w.used_at_least - 30.0).abs() < 1e-9),
         "涨够的那一读数约来问：{:?}",
         d.sigma.wake_when
     );
@@ -350,6 +385,23 @@ fn s34_a_per_use_limit_stops_a_fallback_until_the_others_recover() {
     assert_eq!(used(&d), "C", "其余的号恢复过一次，账清了，从头记");
 }
 
+/// ★ 单次用量上限：中途窗口重置了 ⇒ 新窗口从 0 接着记（重置前涨的照算）。
+#[test]
+fn s35_a_per_use_limit_keeps_counting_across_a_reset() {
+    let mut s = base();
+    fallback(&mut s, "C");
+    set_row(&mut s, "C", "stint", json!(20));
+    let c = |u: f64, r: u64| [acct("A", 95.0), acct("B", 95.0), with_reset("C", u, r)];
+    let d = run(&s, &sig("A", &[]), &c(70.0, 30), T);
+    assert_eq!(used(&d), "C");
+    let d = run(&s, &d.sigma, &c(80.0, 30), T + 10 * MIN);
+    assert_eq!(used(&d), "C", "涨了 10");
+    let d = run(&s, &d.sigma, &c(5.0, 330), T + 40 * MIN);
+    assert_eq!(used(&d), "C", "重置后 5：一共 15");
+    let d = run(&s, &d.sigma, &c(10.0, 330), T + 50 * MIN);
+    assert!(matches!(d.pick, Pick::Hold { .. }), "一共 20：{d:?}");
+}
+
 #[test]
 fn s14_a_dragged_order_does_not_stop_a_forced_switch() {
     let f = [
@@ -357,12 +409,16 @@ fn s14_a_dragged_order_does_not_stop_a_forced_switch() {
         with_reset("B", 10.0, 200),
         acct("C", 10.0),
     ];
-    let d = turn(&sig("B", &["B"]), &f, &forced(25), by_reset(), clock(T), T, &[]);
-    assert_eq!(
-        used(&d),
-        "A",
-        "拖出来的顺序只在在用的号该换时生效"
+    let d = turn(
+        &sig("B", &["B"]),
+        &f,
+        &forced(25),
+        by_reset(),
+        clock(T),
+        T,
+        &[],
     );
+    assert_eq!(used(&d), "A", "拖出来的顺序只在在用的号该换时生效");
 }
 
 #[test]

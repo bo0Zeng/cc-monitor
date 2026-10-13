@@ -5,10 +5,10 @@
  */
 export type RotationStrategyAddReq = { 
 /**
- * 一份策略文件的原文（头 ＋ 代码）。
+ * 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
  */
 source: string, 
 /**
- * 换掉头里的名字。
+ * 存成的文件名（＝ 标题）。
  */
-name?: string, };
+name: string, };

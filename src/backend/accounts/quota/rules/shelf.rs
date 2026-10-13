@@ -1,4 +1,4 @@
-//! 策略目录（`<家>/strategies/`）：一份策略 ＝ 一个 `.rhai` 文件，文件名去 `.rhai` 就是 id，全是用户自己的（没有随包策略）。
+//! 策略目录（`<家>/strategies/`）：一份策略 ＝ 一个 `.rhai` 文件，文件名去 `.rhai` 就是 id，也就是标题（§2.1）；全是用户自己的（没有随包策略）。
 //! 目录的戳变了才重读；读不懂的那一份也列着、带原因。
 //! 第三版的脚本升级时挪进 `v3/`，不加载（[`old_count`] 只数一下，界面提示「N 份旧格式的策略没有加载」）。
 
@@ -37,13 +37,39 @@ impl std::fmt::Debug for Shelved {
     }
 }
 
-/// id 能不能用：过路由段闸那一套字符、不以 `@` · `.` 开头、至多 32 字。
+/// 文件名里除字母数字（含中文）以外收的几个字。
+const NAME_PUNCT: &[char] = &[' ', '-', '_', '·', '(', ')', '（', '）', '+'];
+
+/// Windows 上不能当文件名的几个（不分大小写）。
+const RESERVED: &[&str] = &[
+    "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+    "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+];
+
+fn name_char(c: char) -> bool {
+    c.is_alphanumeric() || NAME_PUNCT.contains(&c)
+}
+
+/// id（＝ 文件名 ＝ 标题）能不能用：1–32 字，字母数字（含中文）与 ` -_·()（）+`、至少一个字母数字，首尾不是空白，不是 Windows 的保留名。
+/// `.` `/` `\` 都不在里面 ⇒ 拼不出 `..`，也出不了策略目录。
 pub(crate) fn id_ok(id: &str) -> bool {
     !id.is_empty()
-        && !id.starts_with('@')
-        && !id.starts_with('.')
         && id.chars().count() <= MAX_ID_CHARS
-        && crate::relay::segment_is_safe(id)
+        && id.chars().all(name_char)
+        && id.chars().any(char::is_alphanumeric)
+        && id.trim() == id
+        && !RESERVED.contains(&id.to_lowercase().as_str())
+}
+
+/// 一个名字照 [`id_ok`] 的写法改一遍：收不下的字换 `-`、截到 32 字、去首尾空白；改完还不成 ⇒ `None`。
+pub(crate) fn id_from(name: &str) -> Option<String> {
+    let s: String = name
+        .chars()
+        .map(|c| if name_char(c) { c } else { '-' })
+        .take(MAX_ID_CHARS)
+        .collect();
+    let s = s.trim().to_string();
+    id_ok(&s).then_some(s)
 }
 
 /// 一段字节的摘要（十六进制的 SHA-256）。

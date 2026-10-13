@@ -1,11 +1,10 @@
+// 换号时按账号列表顺序。
+// 在用账号未达用量上限时不换。
+// 耗尽后启用的账号：其余账号均无可用额度、满启用延迟才启用，每次用到单次用量上限即停用。
+
 /*--- rotation
 {
   "format": 5,
-  "name": "",
-  "line": {
-    "zh": "照账号列表顺序",
-    "en": "Follows the account list order"
-  },
   "settings": {
     "caps": {},
     "capKind": "soft",

@@ -30988,10 +30988,16 @@
       "zh": "新会话用的就是这份 · 先换一份再删",
       "args": []
     },
+    "beRotation.edit.nameTaken": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "已有同名的策略",
+      "args": []
+    },
     "beRotation.edit.noName": {
       "kind": "error",
       "role": "报错",
-      "zh": "名字要 1–24 个字",
+      "zh": "名字要 1–32 个字，只用字母、数字、空格和 -_·()+",
       "args": []
     },
     "beRotation.edit.notListed": {

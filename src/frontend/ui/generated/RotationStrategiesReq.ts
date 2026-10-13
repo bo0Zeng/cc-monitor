@@ -3,8 +3,4 @@
 /**
  * `rotation-strategies` 的入参。
  */
-export type RotationStrategiesReq = { 
-/**
- * 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
- */
-lang?: string, };
+export type RotationStrategiesReq = Record<symbol, never>;

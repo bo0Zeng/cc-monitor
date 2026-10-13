@@ -88,8 +88,8 @@ fn a_v2_book_is_upgraded_once_with_its_files() {
     let mem = store.now();
     assert_eq!(mem.version, book::BOOK_VERSION);
     assert_eq!(
-        mem.sessions["s-live"].strategy.id, "c_1",
-        "内存里的会话照它打开的那份"
+        mem.sessions["s-live"].strategy.id, "默认配置 1",
+        "内存里的会话照它打开的那份（文件名照配置名）"
     );
     assert!(
         face_change(&store, &home.own(), |b| b.for_new = "x".into()).is_err(),
@@ -111,21 +111,24 @@ fn a_v2_book_is_upgraded_once_with_its_files() {
     };
     assert_eq!(b.for_new, "", "升级出来的不进任何默认");
     assert_eq!(b.sessions.len(), 2);
-    assert!(
-        b.sessions["s-live"].strategy.id.starts_with("s_"),
+    assert_eq!(
+        b.sessions["s-live"].strategy.id, "副本 · s-live",
         "活会话的副本没写成文件"
     );
     assert_eq!(
-        b.sessions["s-gone"].strategy.id, "c_1",
+        b.sessions["s-gone"].strategy.id, "默认配置 1",
         "走了的会话的副本该丢"
     );
     let all = shelf::all(Some(&home.sdir()));
     let ids: Vec<&str> = all.iter().map(|s| s.id.as_str()).collect();
-    for want in ["c_1", "c_2", "c_3"] {
+    for want in ["默认配置 1", "到 90 就换", "我的"] {
         assert!(ids.contains(&want), "缺 {want}：{ids:?}");
     }
     assert_eq!(ids.len(), 4, "只该有三份配置 ＋ 一份活会话的副本：{ids:?}");
-    let c2 = all.iter().find(|s| s.id == "c_2").expect("c_2");
+    let c2 = all
+        .iter()
+        .find(|s| s.id == "到 90 就换")
+        .expect("到 90 就换");
     let head = &c2.file.as_ref().expect("读得懂").head;
     assert_eq!(
         head.settings["caps"]["5h"],
@@ -152,7 +155,7 @@ fn a_v1_book_goes_through_v2_to_v3_and_keeps_its_threshold() {
     assert!(home.0.join(format!("{FILE_NAME}.v1")).exists());
     assert!(!home.0.join(format!("{FILE_NAME}.v2")).exists());
     let all = shelf::all(Some(&home.sdir()));
-    let r1 = all.iter().find(|s| s.id == "r_1").expect("写成了文件");
+    let r1 = all.iter().find(|s| s.id == "到 80 换").expect("写成了文件");
     let s = &r1.file.as_ref().expect("读得懂").head.settings;
     assert_eq!(s["caps"]["5h"], json!([{"from": 0, "to": 1440, "v": 80}]));
     assert_eq!(s["caps"]["7d"], json!([{"from": 0, "to": 1440, "v": 80}]));

@@ -65,12 +65,8 @@ impl Home {
             root,
             live: Arc::default(),
         };
-        let named = |n: usize, name: &str| {
-            crate::accounts::quota::rules::upgrade::material(n).replacen("\"name\": \"\"", &format!("\"name\": \"{name}\""), 1)
-        };
-        let list = named(0, "照号牌");
-        let third = named(0, "第三份");
-        let reset = named(1, "先用快重置的");
+        let m = crate::accounts::quota::rules::upgrade::material;
+        let (list, third, reset) = (m(0).to_string(), m(0).to_string(), m(1).to_string());
         for (id, text) in [("by-list", list), ("by-reset", reset), ("third", third)] {
             rotation::strategy_file_write(&h.own(), id, &text).expect("写策略");
         }
@@ -172,7 +168,6 @@ fn session_view(ctx: &Ctx, home: &Home, sid: &str) -> RotationViewReply {
         &RotationViewReq {
             target: RotTarget::Session { sid: sid.into() },
             hours: None,
-            lang: None,
         },
         now(),
         &home.alive(),
@@ -269,7 +264,11 @@ fn a_session_view_carries_everything_the_four_blocks_draw() {
     let v = session_view(&ctx, &home, S1);
     let st = v.strategy.as_ref().expect("在轮换");
     assert_eq!(st.id, "by-list");
-    assert_eq!(v.form.len(), 5, "照号列表那份的声明（用量上限 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）");
+    assert_eq!(
+        v.form.len(),
+        5,
+        "照号列表那份的声明（用量上限 · 上限类型 · 耗尽后启用 · 启用延迟 · 单次用量上限）"
+    );
     assert_eq!((v.start.as_str(), v.current.as_str()), ("a", "a"));
     assert_eq!(v.accounts[0].account, "a", "号列表里的在前");
     assert_eq!(v.listed, 1);
@@ -323,7 +322,6 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
             settings,
         },
         hours: Some(24),
-        lang: None,
     };
     let draft = json!({"caps": {}, "capKind": "hard", "accounts": [{"start": true}, {"id": "b"}]});
     let v = view_with(
@@ -355,7 +353,6 @@ fn a_strategy_view_takes_a_draft_and_checks_it() {
             &RotationViewReq {
                 target: RotTarget::Session { sid: S2.into() },
                 hours: None,
-                lang: None
             },
             now(),
             &home.alive()

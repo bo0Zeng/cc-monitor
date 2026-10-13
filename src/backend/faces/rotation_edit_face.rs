@@ -68,23 +68,24 @@ fn session_of(book: &Book, sid: &str) -> Option<Session> {
     book.sessions.get(sid).cloned()
 }
 
-/// 一份新文件的 id：`s_` ＋ 摘要前 8 位，策略目录里不撞。
-fn new_id(ctx: &Ctx, seed: &str) -> String {
-    let all = shelf::all(ctx.hop.store.strategy_dir().as_deref());
-    for n in 0u32.. {
-        let h = shelf::digest(format!("{seed}\u{0}{n}").as_bytes());
-        let id = format!("s_{}", &h[..8]);
-        if shelf::find(&all, &id).is_none() {
-            return id;
-        }
+/// 名字（＝ 文件名 ＝ id ＝ 标题，§2.1）的写法过不了 ⇒ 那一句话。
+fn name_ok(name: &str) -> Result<String, String> {
+    let n = name.trim();
+    if shelf::id_ok(n) {
+        Ok(n.to_string())
+    } else {
+        Err(copy_text("beRotation.edit.noName", &[]))
     }
-    unreachable!("ids run out")
 }
 
-/// 名字的写法（去首尾空白，1–24 字）。
-fn name_ok(name: &str) -> Option<String> {
-    let n = name.trim();
-    (!n.is_empty() && n.chars().count() <= 24).then(|| n.to_string())
+/// 一份新文件的名字：照写法，策略目录里不撞（不分大小写，有的盘不分）。
+fn fresh_name(ctx: &Ctx, name: &str) -> Result<String, String> {
+    let n = name_ok(name)?;
+    let all = shelf::all(ctx.hop.store.strategy_dir().as_deref());
+    if all.iter().any(|s| s.id.to_lowercase() == n.to_lowercase()) {
+        return Err(copy_text("beRotation.edit.nameTaken", &[]));
+    }
+    Ok(n)
 }
 
 // ── rotation-settings ─────────────────────────────────────────────────────────────────────
@@ -287,13 +288,7 @@ pub(crate) fn save_with(
     let mut h = head.clone();
     h.settings = settings;
     let target = match &req.save_as {
-        Some(a) => {
-            let name = name_ok(&a.name).ok_or_else(|| {
-                RotationSaveErr::BadArgs(copy_text("beRotation.edit.noName", &[]))
-            })?;
-            h.name = script::Text::One(name.clone());
-            new_id(ctx, &format!("{id}\u{0}{name}"))
-        }
+        Some(a) => fresh_name(ctx, &a.name).map_err(RotationSaveErr::BadArgs)?,
         None => {
             if req.if_rev != sh.rev {
                 return Err(RotationSaveErr::Conflict(
@@ -768,12 +763,10 @@ pub(crate) struct RotBadStrategy {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct RotationStrategyAddReq {
-    /// 一份策略文件的原文（头 ＋ 代码）。
+    /// 一份策略文件的原文（说明 ＋ 头 ＋ 代码）。
     pub(crate) source: String,
-    /// 换掉头里的名字。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) name: Option<String>,
+    /// 存成的文件名（＝ 标题）。
+    pub(crate) name: String,
 }
 
 crate::stream::inbound::typed::codes! {
@@ -817,17 +810,9 @@ pub(crate) fn add_with(
             RotBadStrategy { line: f.line },
         )
     };
-    let file = script::parse(&req.source).map_err(bad)?;
-    let text = match req.name.as_deref().and_then(name_ok) {
-        Some(n) => {
-            let mut h = file.head.clone();
-            h.name = script::Text::One(n);
-            script::with_head(&req.source, &h).map_err(bad)?
-        }
-        None => req.source.clone(),
-    };
-    let id = new_id(ctx, &text);
-    rotation::strategy_file_write(own, &id, &text)
+    script::parse(&req.source).map_err(bad)?;
+    let id = fresh_name(ctx, &req.name).map_err(RotationStrategyAddErr::BadArgs)?;
+    rotation::strategy_file_write(own, &id, &req.source)
         .map_err(|e| RotationStrategyAddErr::IoFailed(note(e)))?;
     Ok(RotStrategyId { id })
 }
@@ -878,17 +863,8 @@ pub(crate) fn copy_with(
 ) -> Result<RotStrategyId, RotationStrategyCopyErr> {
     let sh =
         find(ctx, &req.id).ok_or_else(|| RotationStrategyCopyErr::NoStrategy(gone(&req.id)))?;
-    let name = name_ok(&req.name).ok_or_else(|| {
-        RotationStrategyCopyErr::BadArgs(copy_text("beRotation.edit.noName", &[]))
-    })?;
-    let mut h = head_of(&sh)
-        .cloned()
-        .ok_or_else(|| RotationStrategyCopyErr::NoStrategy(gone(&req.id)))?;
-    h.name = script::Text::One(name.clone());
-    let text =
-        script::with_head(&sh.source, &h).map_err(|f| RotationStrategyCopyErr::IoFailed(f.msg))?;
-    let id = new_id(ctx, &format!("{}\u{0}{name}", req.id));
-    rotation::strategy_file_write(own, &id, &text)
+    let id = fresh_name(ctx, &req.name).map_err(RotationStrategyCopyErr::BadArgs)?;
+    rotation::strategy_file_write(own, &id, &sh.source)
         .map_err(|e| RotationStrategyCopyErr::IoFailed(note(e)))?;
     Ok(RotStrategyId { id })
 }
@@ -904,14 +880,6 @@ pub(crate) struct RotationStrategyRenameReq {
     pub(crate) if_rev: String,
 }
 
-/// 改名以后的版本。
-#[derive(Debug, PartialEq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RotRev {
-    pub(crate) rev: String,
-}
-
 crate::stream::inbound::typed::codes! {
     /// `rotation-strategy-rename` 自己的码。
     pub(crate) enum RotationStrategyRenameErr {
@@ -921,13 +889,13 @@ crate::stream::inbound::typed::codes! {
     }
 }
 
-/// `rotation-strategy-rename`：改名（只重写头里的名字）。
+/// `rotation-strategy-rename`：改名 ＝ 换文件名（内容一个字不动）；指着它的会话与「新会话用」一起改过去。
 pub(crate) struct RotationStrategyRename;
 
 impl Command for RotationStrategyRename {
     const NAME: &'static str = "rotation-strategy-rename";
     type Req = RotationStrategyRenameReq;
-    type Reply = RotRev;
+    type Reply = RotStrategyId;
     type Err = RotationStrategyRenameErr;
 }
 
@@ -937,7 +905,7 @@ impl WithOwn for RotationStrategyRename {
         _cx: &Cx,
         _files: Files,
         own: &crate::platform::Own,
-    ) -> Result<RotRev, RotationStrategyRenameErr> {
+    ) -> Result<RotStrategyId, RotationStrategyRenameErr> {
         rename_with(&Ctx::here(), own, &req)
     }
 }
@@ -946,12 +914,9 @@ pub(crate) fn rename_with(
     ctx: &Ctx,
     own: &crate::platform::Own,
     req: &RotationStrategyRenameReq,
-) -> Result<RotRev, RotationStrategyRenameErr> {
+) -> Result<RotStrategyId, RotationStrategyRenameErr> {
     let sh =
         find(ctx, &req.id).ok_or_else(|| RotationStrategyRenameErr::NoStrategy(gone(&req.id)))?;
-    let name = name_ok(&req.name).ok_or_else(|| {
-        RotationStrategyRenameErr::BadArgs(copy_text("beRotation.edit.noName", &[]))
-    })?;
     if req.if_rev != sh.rev {
         return Err(RotationStrategyRenameErr::Conflict(
             copy_text("beRotation.edit.conflict", &[]),
@@ -960,17 +925,27 @@ pub(crate) fn rename_with(
             },
         ));
     }
-    let mut h = head_of(&sh)
-        .cloned()
-        .ok_or_else(|| RotationStrategyRenameErr::NoStrategy(gone(&req.id)))?;
-    h.name = script::Text::One(name);
-    let text = script::with_head(&sh.source, &h)
-        .map_err(|f| RotationStrategyRenameErr::IoFailed(f.msg))?;
-    rotation::strategy_file_write(own, &req.id, &text)
+    if name_ok(&req.name).map_err(RotationStrategyRenameErr::BadArgs)? == req.id {
+        return Ok(RotStrategyId { id: req.id.clone() });
+    }
+    let id = fresh_name(ctx, &req.name).map_err(RotationStrategyRenameErr::BadArgs)?;
+    rotation::strategy_file_write(own, &id, &sh.source)
         .map_err(|e| RotationStrategyRenameErr::IoFailed(note(e)))?;
-    Ok(RotRev {
-        rev: shelf::rev_of(&text),
+    let (from, to) = (req.id.clone(), id.clone());
+    rotation::face_change(&ctx.hop.store, own, |b| {
+        if b.for_new == from {
+            b.for_new = to.clone();
+        }
+        for s in b.sessions.values_mut() {
+            if s.strategy.id == from {
+                s.strategy.id = to.clone();
+            }
+        }
     })
+    .map_err(|e| RotationStrategyRenameErr::IoFailed(note(e)))?;
+    rotation::strategy_file_remove(own, &req.id)
+        .map_err(|e| RotationStrategyRenameErr::IoFailed(note(e)))?;
+    Ok(RotStrategyId { id })
 }
 
 /// `rotation-strategy-delete` 的入参。

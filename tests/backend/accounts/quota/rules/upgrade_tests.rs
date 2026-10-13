@@ -104,10 +104,13 @@ fn head(src: &str) -> script::Head {
 #[test]
 fn u1_every_config_becomes_a_users_own_file_and_new_sessions_do_not_rotate() {
     let u = run(Some("Asia/Shanghai"));
-    for id in ["c_00000001", "c_00000002", "c_000000aa"] {
+    for id in ["默认配置 1", "夜里省着用", "自己写的"] {
         file(&u, id);
     }
-    assert_eq!(u.book.sessions["plain"].strategy.id, "c_00000001");
+    assert_eq!(
+        u.book.sessions["plain"].strategy.id, "默认配置 1",
+        "文件名照配置名（＝ 标题）"
+    );
     assert_eq!(u.book.for_new, "", "升级出来的不进任何默认");
 }
 
@@ -116,8 +119,7 @@ fn u1_every_config_becomes_a_users_own_file_and_new_sessions_do_not_rotate() {
 #[test]
 fn u2_settings_come_out_without_rows() {
     let u = run(Some("Asia/Shanghai"));
-    let h = head(file(&u, "c_00000002"));
-    assert_eq!(h.name, script::Text::One("夜里省着用".into()));
+    let h = head(file(&u, "夜里省着用"));
     assert_eq!(h.tz.as_deref(), Some("Asia/Shanghai"));
     let all = |v: u64| json!([{"from": 0, "to": 1440, "v": v}]);
     assert_eq!(
@@ -139,8 +141,13 @@ fn u2_settings_come_out_without_rows() {
         })
     );
     // 编号 2 ⇒ 第二份材料的代码，一个字不动；照声明校验收得下。
-    let src = file(&u, "c_00000002");
+    let src = file(&u, "夜里省着用");
     assert_eq!(code(src), code(material(2)));
+    let about = script::parse(src).expect("读").about;
+    assert!(
+        about.contains("权重") && !about.contains("90"),
+        "说明是材料开头的注释、不写值：{about}"
+    );
     assert_eq!(super::super::form::check(&h.form, &h.settings), []);
 }
 
@@ -161,8 +168,11 @@ fn u3_waits_become_start_delays_of_fallbacks() {
             },
         )
         .expect("读得懂");
-        let src = file(&u, "c_00000002").to_string();
-        let rows = head(&src).settings["accounts"].as_array().expect("号列表").clone();
+        let src = file(&u, "夜里省着用").to_string();
+        let rows = head(&src).settings["accounts"]
+            .as_array()
+            .expect("号列表")
+            .clone();
         let delay = |id: &str| {
             rows.iter()
                 .find(|r| r["id"] == id || (id == "start" && r["start"] == true))
@@ -185,13 +195,9 @@ fn u3_waits_become_start_delays_of_fallbacks() {
 fn u4_live_copies_become_named_files_and_ended_ones_are_dropped() {
     let u = run(Some("Asia/Shanghai"));
     let live = &u.book.sessions["live1"].strategy.id;
-    assert!(live.starts_with("s_"));
+    assert_eq!(live.as_str(), "夜里省着用 · 修登录");
     assert_eq!(
-        head(file(&u, live)).name,
-        script::Text::One("夜里省着用 · 修登录".into())
-    );
-    assert_eq!(
-        u.book.sessions["dead1"].strategy.id, "c_00000002",
+        u.book.sessions["dead1"].strategy.id, "夜里省着用",
         "结束了的会话的副本丢掉，改指它那份配置"
     );
 }
@@ -203,7 +209,7 @@ fn u5_a_users_v3_script_is_set_aside_and_its_config_takes_the_first_material() {
     let f = u
         .files
         .iter()
-        .find(|f| head(&f.1).name == script::Text::One("自己写的".into()))
+        .find(|f| f.0 == "自己写的")
         .expect("那份配置写成了文件");
     assert_eq!(code(&f.1), code(material(1)));
 }
@@ -223,11 +229,11 @@ fn u6_a_missing_tz_takes_the_local_one_or_is_marked_unknown() {
     };
     let u = from_v2(&v, &env(Some("Europe/Berlin"))).expect("读得懂");
     assert_eq!(
-        head(file(&u, "c_00000002")).tz.as_deref(),
+        head(file(&u, "夜里省着用")).tz.as_deref(),
         Some("Europe/Berlin")
     );
     let u = from_v2(&v, &env(None)).expect("读得懂");
-    let h = head(file(&u, "c_00000002"));
+    let h = head(file(&u, "夜里省着用"));
     assert!(h.tz.is_none() && h.tz_unknown);
 }
 
@@ -352,10 +358,10 @@ fn u9_our_three_sessions_keep_every_setting() {
         );
         ids.push(id);
     }
-    assert_eq!(ids[2], "c_7");
-    assert!(
-        ids[0] != ids[1] && ids[0].starts_with("s_"),
-        "两个副本该各写一份：{ids:?}"
+    assert_eq!(
+        ids,
+        ["七个号 · 会话 o1", "七个号 · 会话 o2", "七个号"],
+        "两个副本各写一份，文件名照「配置名 · 会话标题」"
     );
 
     use super::super::decide::{turn, Pick, Sigma};
@@ -412,4 +418,32 @@ fn u9_our_three_sessions_keep_every_setting() {
         matches!(pick(&facts, "p7"), Pick::Hold { .. }),
         "硬上限全到 ⇒ 停发"
     );
+}
+
+/// ★ 文件名照配置名：收不下的字换 `-`；同一次升级里重名补「 2」；全是收不下的字 ⇒ 用配置的编号。
+#[test]
+fn u10_file_names_come_from_config_names() {
+    let plain = json!({"line": null, "slots": [], "mode": "normal"});
+    let c = |name: &str| {
+        config(
+            name,
+            "1",
+            json!([row(json!({"start": true}), plain.clone())]),
+            json!({}),
+            plain.clone(),
+        )
+    };
+    let v = json!({"version": 2, "configs": {"c_1": c("夜里/省着用"), "c_2": c("夜里-省着用"), "c_3": c("///")}, "sessions": {}});
+    let u = from_v2(
+        &v,
+        &Env {
+            rest: &[],
+            live: &|_| false,
+            title: &|_| None,
+            local_tz: None,
+        },
+    )
+    .expect("读得懂");
+    let ids: Vec<&str> = u.files.iter().map(|f| f.0.as_str()).collect();
+    assert_eq!(ids, ["夜里-省着用", "夜里-省着用 2", "c_3"]);
 }

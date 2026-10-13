@@ -39,10 +39,6 @@ pub(crate) struct RotationTryReq {
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
     pub(crate) use_now: Option<String>,
-    /// 名字 · 灰字写哪种语言（`en` ⇒ 英文，其余 ⇒ 中文）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) lang: Option<String>,
     /// 哪一家（缺 ⇒ 有账号库的那一家）。
     #[serde(default)]
     #[cfg_attr(test, ts(optional))]
@@ -171,9 +167,8 @@ pub(crate) struct RotTryTimeline {
 pub(crate) struct RotationTryReply {
     #[cfg_attr(test, ts(type = "number"))]
     pub(crate) now: u64,
-    /// 这份策略的名字 · 下拉里那一行灰字（照 `lang`）。
-    pub(crate) name: String,
-    pub(crate) line: String,
+    /// 这份策略的说明（原文开头那段 `//` 注释，一行一行 `\n` 接起来、空行分段）。
+    pub(crate) about: String,
     /// 给了 `settings` ⇒ 换上这份设置以后的整份原文（头重写、代码原样），存成文件就是它；没给 ⇒ 缺。
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(test, ts(optional))]
@@ -283,11 +278,9 @@ pub(crate) fn try_with(
         }
         None => None,
     };
-    let en = req.lang.as_deref() == Some("en");
     Ok(RotationTryReply {
         now,
-        name: file.head.name.pick(en).to_string(),
-        line: file.head.line.pick(en).to_string(),
+        about: file.about.clone(),
         source,
         use_now_refused,
         decision: decision_of(&d),

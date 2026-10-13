@@ -1,5 +1,5 @@
-//! 策略文件（`轮换-v5-分层.md` §2.1）：开头一段块注释是 JSON 头（名字 · 一行灰字 · `timeVarying` · 时区 · 设置），后面是 Rhai 代码。
-//! 文件仍是合法的 Rhai；存设置只重写头那一段，代码一个字不动。代码里一个函数 `decide(ctx)`，跑在沙箱里（同第三版的上限），挂着只读的积木库 `lib`（`src/shared/rotation/lib.rhai`）。
+//! 策略文件（`轮换-v5-分层.md` §2.1）：标题 ＝ 文件名；文件最开头连着的 `//` 行是说明；接着一段块注释是 JSON 头（格式 · `timeVarying` · 时区 · 设置 · 声明），
+//! 后面是 Rhai 代码。文件仍是合法的 Rhai；存设置只重写头那一块，说明和代码一个字不动。代码里一个函数 `decide(ctx)`，跑在沙箱里（同第三版的上限），挂着只读的积木库 `lib`（`src/shared/rotation/lib.rhai`）。
 
 use super::decide::{Ctx, Strategy, Verdict, WakeWhen};
 use crate::accounts::quota::strategy::{Fail, FailKind};
@@ -50,8 +50,6 @@ impl Text {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Head {
     pub(crate) format: u32,
-    pub(crate) name: Text,
-    pub(crate) line: Text,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub(crate) time_varying: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -68,8 +66,10 @@ pub(crate) struct Head {
 /// 这一版的格式号。
 pub(crate) const FORMAT: u32 = 5;
 
-/// 一份读懂了的策略文件：头 ＋ 编好的代码。
+/// 一份读懂了的策略文件：说明 ＋ 头 ＋ 编好的代码。
 pub(crate) struct File {
+    /// 文件开头那段 `//` 注释：去掉行首的 `// `，一行一行用 `\n` 接起来，空行是分段。界面只显示它。
+    pub(crate) about: String,
     pub(crate) head: Head,
     ast: AST,
 }
@@ -77,6 +77,7 @@ pub(crate) struct File {
 impl std::fmt::Debug for File {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("File")
+            .field("about", &self.about)
             .field("head", &self.head)
             .finish_non_exhaustive()
     }
@@ -91,35 +92,68 @@ fn fail(kind: FailKind, line: Option<usize>, msg: impl Into<String>) -> Fail {
     }
 }
 
-/// 拆成 头 JSON 原文 · 代码。
-fn split(source: &str) -> Result<(&str, &str), Fail> {
-    let rest = source.strip_prefix(HEAD_OPEN).ok_or_else(|| {
+/// 拆成 说明那一段原文（含它后面的空行）· 头 JSON 原文 · 代码。说明只能是连着的 `//` 行，跟头之间只许空行。
+fn split(source: &str) -> Result<(&str, &str, &str), Fail> {
+    let mut at = 0;
+    let mut line_no = 1;
+    for l in source.split_inclusive('\n') {
+        let s = l.trim_end_matches(['\n', '\r']);
+        if s.starts_with("//") || s.trim().is_empty() {
+            at += l.len();
+            line_no += 1;
+            continue;
+        }
+        break;
+    }
+    let rest = source[at..].strip_prefix(HEAD_OPEN).ok_or_else(|| {
         fail(
             FailKind::BadShape,
-            Some(1),
-            "the file must start with the `/*--- rotation` head",
+            Some(line_no),
+            "after the leading `//` lines the file must go on with the `/*--- rotation` head",
         )
     })?;
     let end = rest.find(HEAD_CLOSE).ok_or_else(|| {
         fail(
             FailKind::BadShape,
-            Some(1),
+            Some(line_no),
             "the head is not closed with `---*/`",
         )
     })?;
-    Ok((&rest[..end], &rest[end + HEAD_CLOSE.len()..]))
+    Ok((&source[..at], &rest[..end], &rest[end + HEAD_CLOSE.len()..]))
 }
 
-/// 这一份是不是第五版的策略文件（开头是那一段头）：不是的（第三版脚本）升级时挪开。
+/// 说明那一段原文 ⇒ 显示用的字：去行首 `// `（或 `//`），首尾的空行去掉，连着几个空行算一个。
+fn about_of(lead: &str) -> String {
+    let mut out: Vec<&str> = Vec::new();
+    for l in lead.lines() {
+        let Some(c) = l.trim_end().strip_prefix("//") else {
+            continue;
+        };
+        let c = c.strip_prefix(' ').unwrap_or(c);
+        if c.trim().is_empty() && out.last().is_none_or(|x| x.is_empty()) {
+            continue;
+        }
+        out.push(if c.trim().is_empty() { "" } else { c });
+    }
+    while out.last().is_some_and(|x| x.is_empty()) {
+        out.pop();
+    }
+    out.join("\n")
+}
+
+/// 这一份是不是第五版的策略文件（说明之后是那一段头）：不是的（第三版脚本）升级时挪开。
 pub(crate) fn has_head(source: &str) -> bool {
-    source.starts_with(HEAD_OPEN)
+    split(source).is_ok()
 }
 
 /// ★ 读一份策略文件：头照形状解、代码编一次、要有 `decide`。
 pub(crate) fn parse(source: &str) -> Result<File, Fail> {
-    let (head, code) = split(source)?;
-    let head: Head = serde_json::from_str(head)
-        .map_err(|e| fail(FailKind::BadShape, Some(e.line() + 1), e.to_string()))?;
+    let (lead, head, code) = split(source)?;
+    let about = about_of(lead);
+    let head: Head = serde_json::from_str(head).map_err(|e| {
+        let base = lead.matches('\n').count() + 1;
+        fail(FailKind::BadShape, Some(base + e.line()), e.to_string())
+    })?;
     if head.format != FORMAT {
         return Err(fail(
             FailKind::BadShape,
@@ -158,15 +192,15 @@ pub(crate) fn parse(source: &str) -> Result<File, Fail> {
             "the code has no `fn decide(ctx)`",
         ));
     }
-    Ok(File { head, ast })
+    Ok(File { about, head, ast })
 }
 
-/// ★ 换掉头那一段、代码原样接回去（存设置那一下）。
+/// ★ 换掉头那一块；说明和代码原样接回去，一个字节不动（存设置那一下）。
 pub(crate) fn with_head(source: &str, head: &Head) -> Result<String, Fail> {
-    let (_, code) = split(source)?;
+    let (lead, _, code) = split(source)?;
     let json = serde_json::to_string_pretty(head)
         .map_err(|e| fail(FailKind::BadShape, None, e.to_string()))?;
-    Ok(format!("{HEAD_OPEN}{json}{HEAD_CLOSE}{code}"))
+    Ok(format!("{lead}{HEAD_OPEN}{json}{HEAD_CLOSE}{code}"))
 }
 
 /// 积木库的源码（随包、只读）。

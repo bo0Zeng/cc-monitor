@@ -33,9 +33,18 @@ const DAY_MIN: usize = super::form::DAY_MIN as usize;
 /// 升级材料：第二版文件里的编号 `"1"` · `"2"` · `"3"` 依次对的那份。每份 ＝ 头（设置是空号列表，名字由配置名填）＋ 它自己的权重 `weight`
 /// ＋ 三份共用的那一段换号的写法（`upgrade/turn.rhai`，§2.5）。拼出来是一份自足的策略文件，写给用户。
 const MATERIALS: [&str; 3] = [
-    concat!(include_str!("upgrade/v2-1.rhai"), include_str!("upgrade/turn.rhai")),
-    concat!(include_str!("upgrade/v2-2.rhai"), include_str!("upgrade/turn.rhai")),
-    concat!(include_str!("upgrade/v2-3.rhai"), include_str!("upgrade/turn.rhai")),
+    concat!(
+        include_str!("upgrade/v2-1.rhai"),
+        include_str!("upgrade/turn.rhai")
+    ),
+    concat!(
+        include_str!("upgrade/v2-2.rhai"),
+        include_str!("upgrade/turn.rhai")
+    ),
+    concat!(
+        include_str!("upgrade/v2-3.rhai"),
+        include_str!("upgrade/turn.rhai")
+    ),
 ];
 
 /// 第 `n` 份升级材料的原文（`n` ＝ 0 · 1 · 2，对第二版的编号 1 · 2 · 3）。判据拿它当策略跑。
@@ -199,8 +208,37 @@ fn settings_of(c: &Value, env: &Env<'_>, base: &Value) -> Value {
     s
 }
 
-/// 一份配置（或副本）写成 `id` 的策略文件（名字 `name`）：代码照它的编号取升级材料（用户自己的第三版脚本 ⇒ 记下要挪开，代码用编号 1 那份）。
-fn place(c: &Value, id: &str, name: &str, env: &Env<'_>, out: &mut Upgraded) -> Result<(), String> {
+/// 写成的文件名（＝ 标题，§2.1）：照名字改成合写法的样子（改不成 ⇒ `fallback`），这一次升级里重名补「 2」「 3」。
+fn file_id(name: &str, fallback: &str, out: &Upgraded) -> String {
+    let base = super::shelf::id_from(name).unwrap_or_else(|| fallback.to_string());
+    let taken = |id: &str| {
+        out.files
+            .iter()
+            .any(|f| f.0.to_lowercase() == id.to_lowercase())
+    };
+    if !taken(&base) {
+        return base;
+    }
+    (2u32..)
+        .map(|n| {
+            let tail = format!(" {n}");
+            let keep = super::shelf::MAX_ID_CHARS - tail.chars().count();
+            let head: String = base.chars().take(keep).collect();
+            format!("{}{tail}", head.trim_end())
+        })
+        .find(|id| !taken(id))
+        .unwrap_or(base)
+}
+
+/// 一份配置（或副本）写成一份策略文件，文件名照 `name`：代码照它的编号取升级材料（用户自己的第三版脚本 ⇒ 记下要挪开，代码用编号 1 那份）。
+/// 说明是材料开头那段注释（只讲怎么排怎么换，不写值）。回写成的文件名。
+fn place(
+    c: &Value,
+    name: &str,
+    fallback: &str,
+    env: &Env<'_>,
+    out: &mut Upgraded,
+) -> Result<String, String> {
     let n = c.get("strategy").and_then(Value::as_str).unwrap_or("");
     let idx = match n {
         "2" => 1,
@@ -222,15 +260,15 @@ fn place(c: &Value, id: &str, name: &str, env: &Env<'_>, out: &mut Upgraded) -> 
         .or_else(|| env.local_tz.map(str::to_string));
     let unknown = c.get("tzUnknown") == Some(&Value::Bool(true)) || tz.is_none();
     let h = super::script::Head {
-        name: super::script::Text::One(name.to_string()),
         tz: if unknown { None } else { tz },
         tz_unknown: unknown,
         settings,
         ..head
     };
     let text = super::script::with_head(src, &h).map_err(|e| e.msg)?;
-    out.files.push((id.to_string(), text));
-    Ok(())
+    let id = file_id(name, fallback, out);
+    out.files.push((id.clone(), text));
+    Ok(id)
 }
 
 /// 第二版的换号记录 ⇒ 第三版（后端看得见的那几种；`refresh` · `overage` · 重启换丢）。
@@ -274,8 +312,8 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
         .flatten()
     {
         let name = c.get("name").and_then(Value::as_str).unwrap_or(cid);
-        place(c, cid, name, env, &mut out)?;
-        ids.insert(cid.clone(), cid.clone());
+        let id = place(c, name, cid, env, &mut out)?;
+        ids.insert(cid.clone(), id);
     }
     // 新会话照旧不轮换（§2.4：升级出来的不进任何默认）；已有会话照旧用它原来那份。
     for (sid, s) in v
@@ -296,9 +334,8 @@ pub(crate) fn from_v2(v: &Value, env: &Env<'_>) -> Result<Upgraded, String> {
                 "{} · {title}",
                 copy.get("name").and_then(Value::as_str).unwrap_or(cfg)
             );
-            let fid: String = format!("s_{}", sid.chars().take(8).collect::<String>());
-            place(copy, &fid, &name, env, &mut out)?;
-            strategy = fid;
+            let fallback: String = format!("s_{}", sid.chars().take(8).collect::<String>());
+            strategy = place(copy, &name, &fallback, env, &mut out)?;
         }
         let temp = s
             .pointer("/manual/hot/account")
