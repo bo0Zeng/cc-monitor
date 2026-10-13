@@ -161,3 +161,43 @@ fn every_face_states_its_consequence() {
         faces.len()
     );
 }
+
+/// 界面（`record-reads.ts`）与壳（`diagnostics_report::records_in`）读的漂移账回包：线上字节照旧
+/// （换成 typed 之前用旧代码钉的字面量；经 `Value` 那一跳，同帧面）。两个面 · 一个溢出 · 同数按键名排 · 没有样例的那一条。
+#[test]
+fn the_drift_reply_the_ui_reads_keeps_its_wire_bytes() {
+    let mut led = fresh();
+    record_into(
+        &mut led,
+        DriftFace::UnknownSessionKind,
+        "bg",
+        Some("{\"kind\":\"bg\"}"),
+    );
+    record_into(&mut led, DriftFace::UnknownSessionKind, "bg", None);
+    record_into(&mut led, DriftFace::UnknownSessionKind, "aa", None);
+    for i in 0..=MAX_KEYS {
+        record_into(
+            &mut led,
+            DriftFace::UnknownRecordType,
+            &format!("t{i:02}"),
+            None,
+        );
+    }
+    let reply = serde_json::json!({ "faces": snapshot_of(&led) });
+    let wire = serde_json::to_string(&serde_json::to_value(&reply).unwrap()).unwrap();
+    let first =
+        r#"{"consequence":"__C0__","entries":[{"count":1,"first_sample":null,"key":"<overflow>"},"#;
+    let first = first.replace("__C0__", &DriftFace::UnknownRecordType.consequence());
+    assert!(
+        wire.starts_with(&format!(r#"{{"faces":[{first}"#)),
+        "{wire}"
+    );
+    let tail = r#"{"count":1,"first_sample":null,"key":"t63"}],"face":"unknown_record_type","overflowed":true},{"consequence":"__C1__","entries":[{"count":2,"first_sample":"{\"kind\":\"bg\"}","key":"bg"},{"count":1,"first_sample":null,"key":"aa"}],"face":"unknown_session_kind","overflowed":false}]}"#;
+    let tail = tail.replace("__C1__", &DriftFace::UnknownSessionKind.consequence());
+    assert!(wire.ends_with(&tail), "{wire}");
+    assert_eq!(
+        wire.matches(r#""count":1,"first_sample":null,"key":"t"#)
+            .count(),
+        MAX_KEYS
+    );
+}
