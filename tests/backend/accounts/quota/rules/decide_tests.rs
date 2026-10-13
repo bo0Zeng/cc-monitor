@@ -641,6 +641,72 @@ fn s13_a_dragged_entry_stays_until_the_strategy_drops_it() {
     assert!(d.sigma.temp.is_empty());
 }
 
+/// 判据用的假策略：先后照此刻在用的是谁（`by_current[在用的号]`，没写 ⇒ `rest`）。
+struct ByCurrent {
+    by_current: Vec<(&'static str, Vec<&'static str>)>,
+    rest: Vec<&'static str>,
+    calls: std::cell::Cell<usize>,
+}
+
+impl Strategy for ByCurrent {
+    fn decide(&self, ctx: &Ctx<'_>) -> Result<Verdict, Fail> {
+        self.calls.set(self.calls.get() + 1);
+        let o = self
+            .by_current
+            .iter()
+            .find(|(c, _)| *c == ctx.current)
+            .map_or(&self.rest, |(_, o)| o);
+        Ok(Verdict {
+            order: o.iter().map(|s| s.to_string()).collect(),
+            ..Verdict::default()
+        })
+    }
+}
+
+/// ★ #37 换了号、照新的在用号再问策略，它此刻就又要换（例：拖出来的顺序选中的号，策略照强制切换要换走）⇒ 同一刻接着换，
+/// 不留到下一发（不然推演从这一刻起说的是「此刻换走」，逐发那边却等到下一发、事实变了换到别的号）。
+#[test]
+fn s37_a_switch_the_strategy_would_undo_at_once_is_followed_at_once() {
+    let p = ByCurrent {
+        by_current: vec![("B", vec!["C", "B"])],
+        rest: vec!["C", "B"],
+        calls: Default::default(),
+    };
+    let f = [
+        refused(acct("A", 10.0), T + 3600),
+        acct("B", 10.0),
+        acct("C", 10.0),
+    ];
+    let d = turn(&sig("A", &["B"]), &f, &base(), &p, 0, T, &[]);
+    assert_eq!(
+        used(&d),
+        "C",
+        "拖出来的顺序先选中 B，策略对着 B 当场要 C：{d:?}"
+    );
+    assert_eq!(d.sigma.current, "C");
+    assert!(!d.from_temp, "最后用的号不是拖出来的那个");
+    assert_eq!(
+        d.sigma.temp,
+        vec!["B".to_string()],
+        "B 还能用，留在拖出来的顺序里"
+    );
+    let again = turn(&d.sigma, &f, &base(), &p, 0, T, &[]);
+    assert_eq!(used(&again), "C", "同一刻再判一次不再换");
+    // 策略对着谁都要换到另一个（来回）⇒ 同一刻里一个号只换到一次，不打转。
+    let flip = ByCurrent {
+        by_current: vec![("B", vec!["C", "B"]), ("C", vec!["B", "C"])],
+        rest: vec!["B", "C"],
+        calls: Default::default(),
+    };
+    let d = turn(&sig("A", &[]), &f, &base(), &flip, 0, T, &[]);
+    assert!(matches!(d.pick, Pick::Use(_)), "{d:?}");
+    assert!(
+        flip.calls.get() <= f.len() + 1,
+        "问了策略 {} 次",
+        flip.calls.get()
+    );
+}
+
 #[test]
 fn s21_use_now_only_refuses_what_cannot_be_sent() {
     let f = [

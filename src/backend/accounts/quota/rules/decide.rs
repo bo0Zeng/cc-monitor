@@ -154,6 +154,76 @@ pub(crate) fn ctx_of<'a>(
     }
 }
 
+/// 照策略交的先后定这一判用谁（算法 §3 第 2–5 步）：结论 · 新的会话状态（叫醒与 memo 取这一份 Verdict 的）· 跳过的拖出来的条目 · 是不是拖出来的那个。
+struct Chosen {
+    pick: Pick,
+    sigma: Sigma,
+    skipped: Vec<String>,
+    from_temp: bool,
+}
+
+fn choose(
+    sigma: &Sigma,
+    v: &Verdict,
+    facts: &[Acct],
+    t: u64,
+    send: &dyn Fn(&str) -> bool,
+) -> Chosen {
+    // 2：候选 ＝ order 里事实上发得出去的。
+    let cands: Vec<&String> = v.order.iter().filter(|a| send(a)).collect();
+    let c = sigma.current.as_str();
+    let mut next = Sigma {
+        start: sigma.start.clone(),
+        current: sigma.current.clone(),
+        temp: sigma.temp.clone(),
+        wake_when: v.wake_when.clone(),
+        memo: v.memo.clone(),
+    };
+    let mut skipped = Vec::new();
+    // 3：该换了（当前号不在候选里）⇒ 先照用户拖出来的顺序：第一个在候选里的被选中，排在它前面的丢掉。
+    let mut chosen: Option<String> = None;
+    if !cands.iter().any(|a| *a == c) {
+        next.temp.retain(|a| a != c);
+        if let Some(i) = next.temp.iter().position(|a| cands.iter().any(|x| *x == a)) {
+            skipped = next.temp[..i].to_vec();
+            next.temp.drain(..i);
+            chosen = Some(next.temp[0].clone());
+        }
+    }
+    let from_temp = chosen.is_some();
+    // 4：否则取候选第一个（当前号排第一 ⇒ 不换）。
+    let pick = match chosen.or_else(|| cands.first().map(|a| (*a).clone())) {
+        Some(a) => Pick::Use(a),
+        None => {
+            // 5：候选空 ⇒ 停发。
+            let mut best: Option<(u64, &str)> = None;
+            for x in facts {
+                if let Some(at) = standing::sendable_again(x, t) {
+                    if best.is_none_or(|(b, _)| at < b) {
+                        best = Some((at, &x.id));
+                    }
+                }
+            }
+            Pick::Hold {
+                until: v.hold_until.or(best.map(|b| b.0)),
+                account: best.map(|b| b.1.to_string()),
+            }
+        }
+    };
+    // 留着拖出来的那个号（它排在拖出来的顺序最前）也算来自拖出来的顺序。
+    let from_temp = from_temp
+        || (pick == Pick::Use(c.to_string()) && next.temp.first().map(String::as_str) == Some(c));
+    if let Pick::Use(a) = &pick {
+        next.current = a.clone();
+    }
+    Chosen {
+        pick,
+        sigma: next,
+        skipped,
+        from_temp,
+    }
+}
+
 /// ★ 一判。`tried` ＝ 这一发已经试过的号（429 同一发重判时排除），平时空。`clock` ＝ 策略时区里 t 是一天的第几分钟。
 pub(crate) fn turn(
     sigma: &Sigma,
@@ -189,62 +259,42 @@ pub(crate) fn turn(
             )
         }
     };
-    // 2：候选 ＝ order 里事实上发得出去的。
-    let cands: Vec<&String> = v.order.iter().filter(|a| send(a)).collect();
-    let c = sigma.current.as_str();
-    let mut next = Sigma {
-        start: sigma.start.clone(),
-        current: sigma.current.clone(),
-        temp: sigma.temp.clone(),
-        wake_when: v.wake_when.clone(),
-        memo: v.memo.clone(),
-    };
-    let mut skipped = Vec::new();
-    let mut from_temp = false;
-    // 3：该换了（当前号不在候选里）⇒ 先照用户拖出来的顺序：第一个在候选里的被选中，排在它前面的丢掉。
-    let mut chosen: Option<String> = None;
-    if !cands.iter().any(|a| *a == c) {
-        next.temp.retain(|a| a != c);
-        if let Some(i) = next.temp.iter().position(|a| cands.iter().any(|x| *x == a)) {
-            skipped = next.temp[..i].to_vec();
-            next.temp.drain(..i);
-            chosen = Some(next.temp[0].clone());
-            from_temp = true;
-        }
-    } else if next.temp.first().map(String::as_str) == Some(c) {
-        from_temp = true;
-    }
-    // 4：否则取候选第一个（当前号排第一 ⇒ 不换）。
-    let pick = match chosen.or_else(|| cands.first().map(|a| (*a).clone())) {
-        Some(a) => Pick::Use(a),
-        None => {
-            // 5：候选空 ⇒ 停发。
-            let mut best: Option<(u64, &str)> = None;
-            for x in facts {
-                if let Some(at) = standing::sendable_again(x, t) {
-                    if best.is_none_or(|(b, _)| at < b) {
-                        best = Some((at, &x.id));
-                    }
+    let mut r = choose(sigma, &v, facts, t, &send);
+    let (mut order, mut why, mut wake_at) = (v.order, v.why, v.wake_at);
+    // 换了号 ⇒ 在用的号变了，这是一件事实：照新的在用号再问策略一次（它约的叫醒跟着新在用号走，不然要等到别的节点才知道几点再判）。
+    // 它此刻就又要换（例：拖出来的顺序选中的号，策略照强制切换要换走）⇒ 同一刻接着换（第 4 步照新的在用号再走一遍），
+    // 直到它留下；同一刻里一个号只换到一次（策略来回要 ⇒ 停在这一个），至多号数那么多次。
+    if strategy_error.is_none() {
+        let mut seen = vec![sigma.current.clone()];
+        while let Pick::Use(a) = &r.pick {
+            if seen.contains(a) || seen.len() > facts.len() {
+                break;
+            }
+            seen.push(a.clone());
+            let Ok(v2) = p.decide(&ctx_of(&r.sigma, facts, settings, clock, t)) else {
+                break;
+            };
+            let r2 = choose(&r.sigma, &v2, facts, t, &send);
+            wake_at = v2.wake_at;
+            r.sigma.wake_when = v2.wake_when;
+            r.sigma.memo = v2.memo;
+            match &r2.pick {
+                Pick::Use(b) if b != a && !seen.contains(b) => {
+                    let mut skipped = std::mem::take(&mut r.skipped);
+                    skipped.extend(r2.skipped.iter().cloned());
+                    r = Chosen { skipped, ..r2 };
+                    (order, why) = (v2.order, v2.why);
                 }
-            }
-            Pick::Hold {
-                until: v.hold_until.or(best.map(|b| b.0)),
-                account: best.map(|b| b.1.to_string()),
-            }
-        }
-    };
-    let mut wake_at = v.wake_at;
-    if let Pick::Use(a) = &pick {
-        next.current = a.clone();
-        // 换了号 ⇒ 在用的号变了，这是一件事实：照新的在用号再问策略一次它约的叫醒（不然要等到别的节点才知道新在用号该几点再判）。
-        if a != c && strategy_error.is_none() {
-            if let Ok(v2) = p.decide(&ctx_of(&next, facts, settings, clock, t)) {
-                next.wake_when = v2.wake_when;
-                next.memo = v2.memo;
-                wake_at = v2.wake_at;
+                _ => break,
             }
         }
     }
+    let Chosen {
+        pick,
+        sigma: next,
+        skipped,
+        from_temp,
+    } = r;
     // 6：下一个已知节点。
     let mut tn: Vec<u64> = Vec::new();
     for x in facts {
@@ -264,8 +314,8 @@ pub(crate) fn turn(
         pick,
         sigma: next,
         skipped,
-        order: v.order,
-        why: v.why,
+        order,
+        why,
         from_temp,
         tn: tn.into_iter().filter(|x| *x > t).min(),
         wake_at,
