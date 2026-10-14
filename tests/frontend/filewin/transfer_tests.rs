@@ -644,6 +644,8 @@ pub(crate) struct XferHost {
     log: std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
     /// 提交来过几趟。
     commits: std::sync::atomic::AtomicUsize,
+    /// 每条 `call` 的名字与载荷原样（逐字节钉开单那两条用）。
+    raw: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 /// 合成对端 done 帧交的整份摘要（判据核它原样进了提交的 `expect`）。
@@ -676,6 +678,10 @@ impl comms_inward::chan::router::Backends for XferHost {
         Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
     > {
         let args: serde_json::Value = serde_json::from_slice(&payload.0).unwrap_or_default();
+        self.raw
+            .lock()
+            .unwrap()
+            .push(format!("{} {}", op.0, String::from_utf8_lossy(&payload.0)));
         self.log.lock().unwrap().push((op.0.clone(), args));
         if op.0 == "files-commit-upload" {
             let n = self
@@ -782,12 +788,27 @@ pub(crate) async fn xfer_rig(
     super::super::source::Origin,
     std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
 ) {
+    let (line, origin, log, _) = xfer_rig_raw(ends).await;
+    (line, origin, log)
+}
+
+/// 同 [`xfer_rig`]，多交一份每条 `call` 的原样字节。
+pub(crate) async fn xfer_rig_raw(
+    ends: Ends,
+) -> (
+    super::super::source::Line,
+    super::super::source::Origin,
+    std::sync::Arc<std::sync::Mutex<Vec<(String, serde_json::Value)>>>,
+    std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+) {
     let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let raw = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let line = crate::find::testing::wire(
         std::sync::Arc::new(XferHost {
             ends,
             log: log.clone(),
             commits: Default::default(),
+            raw: raw.clone(),
         }),
         1 << 20,
     );
@@ -795,7 +816,36 @@ pub(crate) async fn xfer_rig(
         line,
         comms_inward::chan::wire::Origin("判据机器·窗口传输".into()),
         log,
+        raw,
     )
+}
+
+/// 开单两条窗口发出去的**字节**（换形之前用旧代码跑出来钉的）：上传带 `home`（问得到那台的 `$HOME`）· 下载远端路径 ＋ 本机落点。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_openers_the_window_sends_keep_their_wire_bytes() {
+    let (line, origin, _log, raw) = xfer_rig_raw(Ends::Done).await;
+    upload_remote(&line, &origin, &p("a.bin"), &DropBoard::default())
+        .await
+        .expect("上传该走通");
+    let board = crate::download::DownloadBoard::default();
+    crate::download::pull_one(&line, &origin, "/srv/a b", "/tmp/a b", &board)
+        .await
+        .expect("下载该走通");
+    let got: Vec<String> = raw
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|l| l.starts_with("transfer-"))
+        .cloned()
+        .collect();
+    assert_eq!(
+        got,
+        [
+            r#"transfer-upload {"home":"/srv/a.bin","local_path":"/home/u/a.bin"}"#,
+            r#"transfer-download {"local_path":"/tmp/a b","remote_path":"/srv/a b"}"#,
+        ],
+        "开单发出去的字节变了"
+    );
 }
 
 pub(crate) fn steps(log: &std::sync::Mutex<Vec<(String, serde_json::Value)>>) -> Vec<String> {

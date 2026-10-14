@@ -20,6 +20,8 @@ use tokio::sync::mpsc;
 pub(crate) struct Rig {
     pub(crate) client: Arc<InboundClient>,
     seen: mpsc::UnboundedReceiver<Value>,
+    /// 假后端收到的每一行原样（逐字节钉转过去的那一份用）。
+    raw: mpsc::UnboundedReceiver<String>,
     to_monitor: mpsc::UnboundedSender<String>,
 }
 
@@ -29,7 +31,7 @@ impl Drop for Rig {
     }
 }
 
-/// `commands` = 假后端在 hello 里声明认的命令。开单那一条回 `{id, key}`，其余回 `ok`。
+/// `commands` = 假后端在 hello 里声明认的命令。开单两条照后端回（上传 `{id, key}` · 下载 `{id}`），其余回 `ok`。
 pub(crate) fn rig(commands: &[&str]) -> Rig {
     let (mon_w, be_r) = tokio::io::duplex(1 << 20);
     let (be_w, mon_r) = tokio::io::duplex(1 << 20);
@@ -70,18 +72,26 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
         }
     });
     let (seen_tx, seen) = mpsc::unbounded_channel::<Value>();
+    let (raw_tx, raw) = mpsc::unbounded_channel::<String>();
     let reply = to_monitor.clone();
     tokio::spawn(async move {
         let mut n = 0u32;
         let mut lines = tokio::io::BufReader::new(be_r).lines();
         while let Ok(Some(l)) = lines.next_line().await {
             let v: Value = serde_json::from_str(&l).expect("请求不是 JSON");
+            let _ = raw_tx.send(l.clone());
             let id = v["id"].as_str().unwrap_or_default().to_string();
             let line = match v["cmd"].as_str() {
-                Some("transfer-upload") | Some("transfer-download") => {
+                Some("transfer-upload") => {
                     n += 1;
                     format!(
                         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"id":"xfer-{n}","key":"00112233445566778899aabbccddeeff"}}}}"#
+                    )
+                }
+                Some("transfer-download") => {
+                    n += 1;
+                    format!(
+                        r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"id":"xfer-{n}"}}}}"#
                     )
                 }
                 _ => format!(r#"{{"kind":"reply","id":{id:?},"ok":true}}"#),
@@ -93,6 +103,7 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
     Rig {
         client,
         seen,
+        raw,
         to_monitor,
     }
 }
@@ -454,4 +465,75 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
     )
     .is_err());
     assert!(parse_frame(r#"{"kind":"transfer","id":"x","got":"1","total":1}"#).is_err());
+}
+
+/// 开单两条在中继这一层的字节（换形之前用旧代码跑出来钉的）：窗口那一份 ⇒ 补上 `dial` 转给本机后端的那一行
+/// （`dial` 换成占位：它带这台此刻的 ssh-agent 套接字）· 交回窗口的那一份 · 中继自己拒的那几种。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_openers_are_relayed_with_the_same_bytes() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let mut rig = rig(&ALL);
+    let cases = [
+        (
+            TRANSFER_UPLOAD,
+            serde_json::json!({ "local_path": "/tmp/x.bin" }),
+        ),
+        (
+            TRANSFER_UPLOAD,
+            serde_json::json!({ "local_path": "/tmp/x.bin", "home": "/home/u" }),
+        ),
+        (
+            TRANSFER_DOWNLOAD,
+            serde_json::json!({ "remote_path": "/srv/a b", "local_path": "/tmp/a b" }),
+        ),
+        (
+            TRANSFER_DOWNLOAD,
+            serde_json::json!({ "remote_path": "/srv/a", "local_path": { "b16": "2f746d702fff" } }),
+        ),
+    ];
+    let mut got = Vec::new();
+    for (op, payload) in &cases {
+        let back = transfer_call(cfg("中继·字节"), op, payload)
+            .await
+            .expect("开单");
+        let line = tokio::time::timeout(guard_core::wall::CEILING, rig.raw.recv())
+            .await
+            .expect("假后端没收到")
+            .expect("口关了");
+        let v: Value = serde_json::from_str(&line).unwrap();
+        let dial = serde_json::to_string(&v["args"]["dial"]).unwrap();
+        // 只钉 `args` 那一段（信封的 id · 余下期限 · 时区每趟不同）。
+        let from = line.find(r#""args":"#).expect("没有 args") + r#""args":"#.len();
+        let to = line.find(r#","within_ms""#).expect("没有 within_ms");
+        got.push(format!(
+            "{op} {} => {}",
+            line[from..to].replace(&dial, "<dial>"),
+            serde_json::to_string(&back).unwrap()
+        ));
+    }
+    for (op, payload) in [
+        (TRANSFER_UPLOAD, serde_json::json!({})),
+        (TRANSFER_UPLOAD, serde_json::json!({ "local_path": 7 })),
+        (
+            TRANSFER_DOWNLOAD,
+            serde_json::json!({ "local_path": "/tmp/a" }),
+        ),
+        ("transfer-start", serde_json::json!({ "id": "xfer-1" })),
+    ] {
+        let (code, said) = transfer_call(cfg("中继·字节"), op, &payload)
+            .await
+            .expect_err("该拒");
+        got.push(format!("{op} {payload} => {code} {said}"));
+    }
+    let want = [
+        r#"transfer-upload {"dial":<dial>,"local_path":"/tmp/x.bin"} => {"id":"xfer-1","key":"00112233445566778899aabbccddeeff"}"#,
+        r#"transfer-upload {"dial":<dial>,"home":"/home/u","local_path":"/tmp/x.bin"} => {"id":"xfer-2","key":"00112233445566778899aabbccddeeff"}"#,
+        r#"transfer-download {"dial":<dial>,"local_path":"/tmp/a b","remote_path":"/srv/a b"} => {"id":"xfer-3"}"#,
+        r#"transfer-download {"dial":<dial>,"local_path":{"b16":"2f746d702fff"},"remote_path":"/srv/a"} => {"id":"xfer-4"}"#,
+        r#"transfer-upload {} => bad_args 请求格式不对 · 缺 local_path 或它不是字符串 · transfer-upload"#,
+        r#"transfer-upload {"local_path":7} => bad_args 请求格式不对 · 缺 local_path 或它不是字符串 · transfer-upload"#,
+        r#"transfer-download {"local_path":"/tmp/a"} => bad_args 请求格式不对 · 缺 remote_path 或它不是字符串 · transfer-download"#,
+        r#"transfer-start {"id":"xfer-1"} => bad_args 请求格式不对 · transfer-start 不是传输命令"#,
+    ];
+    assert_eq!(got, want, "中继开单的字节变了");
 }
