@@ -46,41 +46,15 @@ pub(super) const SPECS: &[CommandSpec] = &[
     crate::wire::typed::blocking::<crate::faces::session_say_face::SessionSay>("往一条会话说一句（在等人 ⇒ 不送；不在等 ⇒ 照送字那一条送、补回车；终端没了 ⇒ 按记下的号恢复、那一句当第一句交）"),
     // 终端实时预览三条（`control/terminal_follow.rs`）：订阅名单里一个终端的画面，有变化就推一整屏（`terminal_screen` 帧），
     //   一帧在途、客户端回执之后才推下一帧；停了推 `terminal_follow_end`。都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
-    CommandSpec {
-        name: "terminal-follow",
-        summary: "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
-        codes: &[
-            "bad_target",
-            "bad_args",
-            "not_known",
-            "ambiguous",
-            "no_tmux",
-            "tmux_too_old",
-            "too_many_follows",
-            "unobservable",
-            "child_timed_out",
-        ],
-        fields: &[out("live", "失败时：实时那一格落在哪 —— `snapshot_only`（这台只能快照：没装 tmux · tmux 低于 3.2）· `stopped`（别的）"), arg("sid", "目标：会话 id（与 `terminal` 恰给一个）"), arg("terminal", "目标：名单里的句柄（与 `sid` 恰给一个）"), arg("ticket", "订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它")],
-        takes_input: true,
-        // 本体 `control/terminal_follow.rs::Desk::follow`（`dispatch` 的硬臂带着本连接的票表调它；起 tmux ⇒ 登记在 `target_parity_guard::BUILTIN_HANDLER_FILE`）。
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "terminal-follow-ack",
-        summary: "订阅的第 `seq` 帧画完了（画面有变化就推下一帧）",
-        codes: &["bad_args", "not_known"],
-        fields: &[arg("seq", "画完的那一帧的序号"), arg("ticket", "订阅票")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "terminal-unfollow",
-        summary: "退订一个终端的画面（幂等，不发收尾帧）",
-        codes: &["bad_args"],
-        fields: &[arg("ticket", "订阅票；退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起）")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
+    crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollow>(
+        "订阅一个终端的画面（有变化推一整屏，一帧在途等回执；订着时那台 tmux 里多一个只读客户端，用户自己配的 client-attached / client-detached 钩子会被它触发）",
+    ),
+    crate::wire::typed::frame::<crate::control::terminal_follow::TerminalFollowAck>(
+        "订阅的第 `seq` 帧画完了（画面有变化就推下一帧）",
+    ),
+    crate::wire::typed::frame::<crate::control::terminal_follow::TerminalUnfollow>(
+        "退订一个终端的画面（幂等，不发收尾帧）",
+    ),
     // **起会话要一个终端名 —— 问这台**：`{cwd}`（`<项目名>-cc`）或 `{forkOf}`（`<…>-fork-cc`）⇒ `{name}`（按这台那张会话快照避让）。
     //   本体 `control/ccm/mod.rs::TerminalNameMint`（这一版宿主只有 tmux）；阻塞档（快照问一次就起一次 `tmux`）。
     crate::wire::typed::blocking::<crate::control::ccm::TerminalNameMint>(

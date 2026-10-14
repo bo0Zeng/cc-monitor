@@ -489,19 +489,14 @@ fn dispatch(
             let desk = follows.clone();
             Disposition::SpawnData(
                 req,
-                Box::new(move |r: Request| -> DataFut {
-                    Box::pin(async move {
-                        desk.follow_off_worker(r.args, r.tz)
-                            .await
-                            .map(|()| None)
-                            .map_err(|mut f| {
-                                f.data = serde_json::to_value(
-                                    crate::control::terminal_follow::live_after_refusal(&f.code),
-                                )
-                                .ok();
-                                f
-                            })
-                    })
+                crate::wire::typed::answer_async::<
+                    crate::control::terminal_follow::TerminalFollow,
+                    _,
+                    _,
+                >(move |r, cx| async move {
+                    desk.follow_off_worker(r, cx.tz)
+                        .await
+                        .map_err(crate::control::terminal_follow::FollowErr::of)
                 }),
             )
         }

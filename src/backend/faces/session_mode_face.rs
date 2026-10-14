@@ -184,8 +184,7 @@ struct Live<'a> {
 
 impl ModeIo for Live<'_> {
     fn open(&mut self) -> Result<(), CmdErr> {
-        let t =
-            terminals::follow_target_on(On::default(), &serde_json::json!({ "sid": self.sid }))?;
+        let t = terminals::follow_target_on(On::default(), None, Some(&self.sid))?;
         self.watch = Some(crate::control::terminal_follow::Watch::open(None, &t)?);
         Ok(())
     }

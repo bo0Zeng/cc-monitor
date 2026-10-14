@@ -9261,14 +9261,29 @@ client?: string, };
 
 收 `args` · 连接内就地做完 · 只在流上 · 没有 tmux 的机器上做不到（hello `unavailable` 会列它）
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `live` | ← | 失败时：实时那一格落在哪 —— `snapshot_only`（这台只能快照：没装 tmux · tmux 低于 3.2）· `stopped`（别的） |
-| `sid` | → | 目标：会话 id（与 `terminal` 恰给一个） |
-| `terminal` | → | 目标：名单里的句柄（与 `sid` 恰给一个） |
-| `ticket` | → | 订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它 |
+入参 `FollowReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
-码：`bad_target` · `bad_args` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `too_many_follows` · `unobservable` · `child_timed_out`
+```ts
+type FollowLive = "snapshot_only" | "stopped";
+type FollowRefused = { live: FollowLive, };
+type FollowReq = { 
+/**
+ * 订阅票（客户端铸的不透明串，至多 128 字节，只用一次）；之后的 `terminal_screen` / `terminal_follow_end` 帧带它。
+ */
+ticket: string, 
+/**
+ * 目标：名单里的句柄（与 `sid` 恰给一个）。
+ */
+terminal?: string | null, 
+/**
+ * 目标：会话 id（与 `terminal` 恰给一个）。
+ */
+sid?: string | null, };
+```
+
+码：`bad_args` · `bad_target` · `not_known` · `ambiguous` · `no_tmux` · `tmux_too_old` · `too_many_follows` · `unobservable` · `child_timed_out`
+
+失败带 `data` 的码：`bad_target` ⇒ `FollowRefused` · `not_known` ⇒ `FollowRefused` · `ambiguous` ⇒ `FollowRefused` · `no_tmux` ⇒ `FollowRefused` · `tmux_too_old` ⇒ `FollowRefused` · `too_many_follows` ⇒ `FollowRefused` · `unobservable` ⇒ `FollowRefused` · `child_timed_out` ⇒ `FollowRefused`
 
 #### `terminal-follow-ack`
 
@@ -9276,10 +9291,15 @@ client?: string, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `seq` | → | 画完的那一帧的序号 |
-| `ticket` | → | 订阅票 |
+入参 `AckReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AckReq = { ticket: string, 
+/**
+ * 画完的那一帧的序号。
+ */
+seq: number, };
+```
 
 码：`bad_args` · `not_known`
 
@@ -9289,9 +9309,15 @@ client?: string, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `ticket` | → | 订阅票；退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起） |
+入参 `UnfollowReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type UnfollowReq = { 
+/**
+ * 退不在册的也回 `ok`（记下它：订阅那一问若还在路上，到了也不起）。
+ */
+ticket: string, };
+```
 
 码：`bad_args`
 

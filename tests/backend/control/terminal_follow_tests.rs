@@ -576,7 +576,10 @@ fn an_unfollow_while_starting_reaps_what_was_started() {
     let h = iso.handle_of("m-cc");
     let (d, mut rx) = desk(&iso);
     let args = json!({ "terminal": h, "ticket": "t1" });
-    let seat = d.reserve(&args).expect("占位").expect("没退过的票该占得上");
+    let seat = d
+        .reserve(args["ticket"].as_str().unwrap())
+        .expect("占位")
+        .expect("没退过的票该占得上");
     // 起 tmux 那几下当中退订到了（就地做完、不等）。
     assert!(reply_ok(&d.answer_wire(
         UNFOLLOW,
@@ -585,7 +588,12 @@ fn an_unfollow_while_starting_reaps_what_was_started() {
         &Default::default()
     )));
     assert!(
-        d.take_seat(&seat, &args, &Default::default()).is_ok(),
+        d.take_seat(
+            &seat,
+            &serde_json::from_value(args.clone()).unwrap(),
+            &Default::default()
+        )
+        .is_ok(),
         "起好了才发现退过：回 ok"
     );
     assert!(
@@ -606,11 +614,7 @@ fn a_seat_being_started_counts() {
     let h = iso.handle_of("p-cc");
     let (d, _rx) = desk(&iso);
     let seats: Vec<_> = (0..MAX_FOLLOWS_PER_CONNECTION)
-        .map(|i| {
-            d.reserve(&json!({ "terminal": h, "ticket": format!("s{i}") }))
-                .expect("占位")
-                .expect("没退过")
-        })
+        .map(|i| d.reserve(&format!("s{i}")).expect("占位").expect("没退过"))
         .collect();
     assert_eq!(
         reply_code(&d.answer_wire(
@@ -624,24 +628,27 @@ fn a_seat_being_started_counts() {
         "正在起的也占名额"
     );
     assert_eq!(
-        d.reserve(&json!({ "terminal": h, "ticket": "s0" }))
-            .err()
-            .map(|e| e.code),
+        d.reserve("s0").err().map(|e| e.code),
         Some("bad_args".to_string()),
         "正在起的票再订一次 ⇒ 重复"
     );
     // 起不成的那一张让出名额。
     let bad = json!({ "terminal": "tmux-999", "ticket": "s0" });
-    assert!(d.reserve(&bad).is_err());
+    assert!(d.reserve(bad["ticket"].as_str().unwrap()).is_err());
     assert_eq!(
-        d.follow(&bad, &Default::default()).err().map(|e| e.code),
+        d.follow(
+            &serde_json::from_value(bad.clone()).unwrap(),
+            &Default::default()
+        )
+        .err()
+        .map(|e| e.code),
         Some("bad_args".to_string()),
         "s0 还占着（重复）"
     );
     d.release(&seats[0]);
     assert_eq!(
         d.follow(
-            &json!({ "terminal": "tmux-999", "ticket": "x" }),
+            &serde_json::from_value(json!({ "terminal": "tmux-999", "ticket": "x" })).unwrap(),
             &Default::default()
         )
         .err()
@@ -650,9 +657,7 @@ fn a_seat_being_started_counts() {
         "让出名额之后、目标不在名单 ⇒ not_known"
     );
     assert!(
-        d.reserve(&json!({ "terminal": h, "ticket": "y" }))
-            .expect("占位")
-            .is_some(),
+        d.reserve("y").expect("占位").is_some(),
         "起不成的那一张没让出名额"
     );
 }
@@ -748,7 +753,7 @@ fn a_one_shot_watch_wakes_on_output_and_gives_up_on_silence() {
         socket: iso.sock.to_str(),
     };
     let h = iso.handle_of("w-cc");
-    let t = crate::control::terminals::follow_target_on(on, &json!({ "terminal": h })).unwrap();
+    let t = crate::control::terminals::follow_target_on(on, Some(&h), None).unwrap();
     let mut w = Watch::open(iso.sock.to_str(), &t).expect("起看屏客户端");
     assert_eq!(iso.control_clients(), 1);
     w.forget();
