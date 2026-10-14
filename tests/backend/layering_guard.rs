@@ -12,11 +12,10 @@
 //!
 //! # 为什么正向要**钉条数**而不是「随便跨」
 //!
-//! 允许跨层的边今天是下面那张表里那几个符号，都由 `watcher` 发起、都有具体说得清的理由（表头注逐条写着），例如：
-//! `control::tmux_hook::install_hooks`（tmux hook 活在 server 内存里、每次 server 重起要重装，
-//! 而「server 起来了」只有 observe 知道）与 `control::identity_tag::tag`（`U-NP④`：
-//! `(pid, sid)` 只在 pidfile 事件那一刻同时在手，让 control 自己去发现只能靠轮询，
-//! 而消灭轮询正是那件事的全部目的）。
+//! 允许跨层的边今天是下面那张表里的符号，由 `watcher` 发起、有具体说得清的理由（表头注写着）：
+//! `control::identity_tag::tag`（`U-NP④`：`(pid, sid)` 只在 pidfile 事件那一刻同时在手，让 control 自己去发现只能靠轮询，
+//! 而消灭轮询正是那件事的全部目的；它的回值 watcher 要用）。
+//! 只是时机在观测侧、回值不用的（装 tmux hook · 认起会话便条）不走这条边：watcher 只报一声，由 `main.rs` 接上控制面（`observe::watcher::Reactions`）。
 //! **「有正当例外」与「这条线随便穿」是两回事**，中间隔着的就是这个计数。
 //! 多一个就红，逼下一个人把他的理由也写出来。
 //!
@@ -31,23 +30,14 @@ mod tests {
     /// 允许的 `observe → control` 跨层引用，逐条列举。
     ///
     /// **加一条之前先回答**：为什么这件事非得由观测侧发起？能不能反过来由 control 主动做？
-    /// （`install_hooks` 的答案：不能 —— 触发时机是「tmux server 起来了」，
-    /// 那是 socket 目录 inotify 观测到的事实，control 侧没有这个信号，
-    /// 硬要它自己发现只能靠轮询，与 §41 零定时器铁律正面冲突。）
+    /// 只是**时机**在观测侧（「tmux server 起来了」「这个 pidfile 出现了」）的，不进这张表：
+    /// watcher 只报一声，做的那一半由起 watcher 的 `main.rs` 接上控制面的函数（`observe::watcher::Reactions`）——
+    /// 装 tmux hook（`tmux_hook::install_for_this_process`）与认起会话便条（`launch_account::adopt_seen`）10-13 就是这么挪出去的。
     ///
-    /// `identity_tag::tag`（`U-NP④`，08-14）的答案**同型**：触发时机是「某个 pidfile 出现/
-    /// 原地换了 sid」，那是 `sessions/` inotify 观测到的事实（`(pid, sid)` 也只有那一刻同时在手）；
-    /// control 侧没有这个信号，硬要它自己发现只能靠轮询 —— 而这里的**全部目的**就是
-    /// 把 `shared/ccm` 那条每秒轮询消掉（「不要轮询」「ccm 做到必须走后端」）。
-    /// 反过来做只是把轮询从 ccm 搬到后端。
-    ///
-    /// `launch_account::adopt`（起会话用的号）的答案**同型**：「这个 pid 跑的是哪条会话」只在 pidfile 出现 / 改写那一刻
-    /// 与 pid 同时在手；`ccm` 起会话时只知道 pid、不知道 sid（agent 自己铸），反过来做只能轮询。
-    const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &[
-        "crate::control::identity_tag::tag",
-        "crate::control::launch_account::adopt",
-        "crate::control::tmux_hook::install_hooks",
-    ];
+    /// `identity_tag::tag`（`U-NP④`，08-14）还在表里：触发时机是「某个 pidfile 出现/原地换了 sid」，而它的**回值**
+    /// （这条会话住在什么容器里）随 `session_added` 报出去 —— watcher 要那个答案，不只是报一声。
+    /// 目的是把 `shared/ccm` 那条每秒轮询消掉；反过来做只是把轮询从 ccm 搬到后端。
+    const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &["crate::control::identity_tag::tag"];
 
     /// ★★ `KY5`：**谁能碰新立的 `plugin/` 层，逐条登记**（`(哪一层, 符号, 为什么)`）。
     ///
@@ -471,7 +461,7 @@ mod tests {
             found, want,
             "observe → control 的接口面与登记表对不上。\n\
              **多出来的**：加进 `ALLOWED_OBSERVE_TO_CONTROL` 之前先回答「为什么这件事非得由观测侧发起、\
-             control 能不能自己做」——那张表的头注写着 `install_hooks` 的答案长什么样。\n\
+             control 能不能自己做」——那张表的头注写着只是时机在观测侧的该怎么接（`observe::watcher::Reactions`）。\n\
              **少了的**：说明那条跨层调用没了，清理登记（别留着，登记表腐烂比没有登记更糟）。"
         );
     }

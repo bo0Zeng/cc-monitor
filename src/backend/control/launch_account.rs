@@ -354,6 +354,17 @@ fn places(own: &Own) -> Result<(OwnPath, OwnPath), crate::common::said::Said> {
     Ok((home, dir))
 }
 
+/// 观测侧看见 `pid` 的会话 `sid` 那一刻（`observe::watcher::Reactions::session_seen`，由 `main.rs` 接上）：照这个进程与别的进程此刻在不在 [`adopt`]；写不成只出声。
+pub fn adopt_seen(own: &Own, pid: u32, sid: &str) {
+    let started_at = |p: u32| {
+        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
+    };
+    let alive = |p: u32| crate::platform::proc::pid_alive(p).then(|| started_at(p));
+    if let Err(e) = adopt(own, pid, sid, started_at(pid), &alive) {
+        tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{}", e.logged());
+    }
+}
+
 /// 观测侧看见 `pid` 的会话 `sid`：有它的便条、且便条不早于这个进程 ⇒ 记 `sid → 号`；顺手清掉进程已不在的便条。
 /// `started` ＝ 这个进程的起始时刻（unix 秒；说不出 ⇒ `None`）。`alive(p)` ＝ 别的 pid：不在 ⇒ `None`，在 ⇒ 它的起始时刻（说不出 ⇒ `Some(None)`）。
 pub(crate) fn adopt(

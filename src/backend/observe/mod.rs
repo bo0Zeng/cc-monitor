@@ -4,8 +4,9 @@
 //!
 //! # 与 [`crate::control`] 的关系：一条窄接口，方向固定
 //!
-//! 允许 `observe → control`，反向不许。`watcher` 调 `control::tmux_hook::install_hooks`：tmux hook 活在 server 进程的内存里、
-//! server 每次重起都要重装，而「server 起来了」只有 observe 知道（socket 目录 inotify）—— 反过来只能靠轮询。
+//! 允许 `observe → control`，反向不许。`watcher` 调 `control::identity_tag::tag`：`(pid, sid)` 只在 pidfile 事件那一刻同时在手，
+//! 打标的回值（容器）随 `session_added` 报出去 —— 反过来只能靠轮询。只是时机在这边、回值不用的两件（装 tmux hook · 认起会话便条）
+//! watcher 只报一声，做的那一半由 `main.rs` 起 watcher 时接上控制面（`watcher::Reactions`）。
 //! 跨层边的条数由 `crate::layering_guard` 钉住 —— 多一个就红，逼人回答「这条也该跨层吗」。
 
 pub mod accounts_query;

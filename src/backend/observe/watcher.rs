@@ -210,19 +210,14 @@ fn spawn_pid_watcher(
     });
 }
 
-/// P4b：给当前 tmux server 装通知 hook。**尽力而为**：拿不到自己的 exe 路径 /
-/// starttime 就跳过（那说明 `/proc` 不可用，整条 pidfd 路本来也不成立）。
-///
-/// 装的是**我们自己进程**的 pid + starttime —— hook 子进程据此校验身份再发 SIGUSR1，
-/// 挡的是「backend 退出后 pid 被复用，hook 误伤无关进程」。
-fn install_tmux_hooks_best_effort() {
-    let me = std::process::id();
-    let (Ok(exe), Some(start)) = (std::env::current_exe(), proc_starttime(me)) else {
-        tracing::warn!("拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）");
-        return;
-    };
-    let n = crate::control::tmux_hook::install_hooks(&exe, me, start);
-    tracing::info!("tmux hook 已装 {n}/3（会话生/死/改名 → SIGUSR1 → 立刻重探）");
+/// watcher 看见、控制面去做的那两件事 —— 改世界的不在观测侧，watcher 只在那一刻报一声（起 watcher 时由 `main.rs` 接上控制面那两个函数）。
+/// 两件的时机都只有观测侧有：「tmux server 起来了」是 socket 目录 inotify 看到的；`(pid, sid)` 只在 pidfile 出现 / 改写那一刻同时在手。
+#[derive(Clone, Copy)]
+pub struct Reactions {
+    /// tmux server（重新）起来了 ⇒ 给它装通知 hook（hook 活在 server 内存里，server 每次起来都要重装；`control::tmux_hook::install_for_this_process`）。
+    pub tmux_server_up: fn(),
+    /// pidfile 出现 / 改写：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt_seen`；写句柄是起 watcher 时交进来的那一份）。
+    pub session_seen: fn(&crate::platform::fs::Own, u32, &str),
 }
 
 /// 这一批文件事件落在哪几个会话的任务目录里（`<tasks>/<sid>/…` 的第一段；`<tasks>` 自己不算）。
@@ -902,6 +897,7 @@ impl WatchHandle {
 pub fn spawn(
     agent_home: PathBuf,
     own: crate::platform::fs::Own,
+    reactions: Reactions,
 ) -> (WatcherPoke, std::sync::Arc<crate::observe::runs::RunBook>) {
     let book = crate::observe::runs::RunBook::shared();
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
@@ -915,7 +911,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("jsonl-watcher".into())
         .spawn(move || {
-            watch_loop(agent_home, b, events_tx, events_rx, own);
+            watch_loop(agent_home, b, events_tx, events_rx, own, reactions);
             live_leave(me);
         })
         .expect("spawn jsonl-watcher thread");
@@ -1024,6 +1020,7 @@ fn watch_loop(
     events_tx: std::sync::mpsc::Sender<WatchEvent>,
     events_rx: std::sync::mpsc::Receiver<WatchEvent>,
     own: crate::platform::fs::Own,
+    reactions: Reactions,
 ) {
     // 记录树的根与 pidfile 目录问注册表里后端盯着的那一家（`RecordFace.tree` · `LocalFace`）；没有那一家 ⇒ 不盯。
     let (Some(projects), Some(local)) = (
@@ -1050,7 +1047,7 @@ fn watch_loop(
         .map(|r| r.root.clone())
         .collect();
     state.skeletons = Some(crate::observe::skeleton::Skeletons::new(own.clone()));
-    state.launch = Some(own);
+    state.launch = Some((reactions, own));
     // 这台的会话注解（改过的名）：起步读一次，那份文件动了再读（耳朵见下面 `notes_ear`）。读不了 ⇒ 当没有改过名。
     let notes_path = crate::history::history_annotations::path();
     state.annotations = annotations_table();
@@ -1388,8 +1385,8 @@ fn watch_loop(
                         tracing::info!("已给 tmux server pid {pid} 挂 pidfd 看守（零轮询判死）");
                         // P4b：**这里就是「该（重）装 hook」的时机** —— hook 活在 server
                         // 内存里，server 每次起来都要重装，而 P3 把「server 起来了」变成了事件。
-                        // 装不上不致命（退回定时探测），但会 warn ⇒ 不静默降级。
-                        install_tmux_hooks_best_effort();
+                        // 装不上不致命（退回定时探测），但会 warn ⇒ 不静默降级。装的那一半在控制面（[`Reactions::tmux_server_up`]）。
+                        (reactions.tmux_server_up)();
                     }
                     None if matches!(obs, TmuxObservation::NoServer) => {
                         server = ServerState::Gone;
@@ -1545,9 +1542,9 @@ struct ReaderState {
     /// 每份活会话记录的排队打字时刻表（`queued` 那条的 `at` 换成打字时刻；键同 `offsets`）。上界固定（`TypedTimes::CAP`）。
     /// 冷接那一趟不喂它（要逐行全解析）：打字在冷接之前、插进去在之后的那一句照用它自己的时刻。
     typed: HashMap<PathBuf, crate::agents::record::TypedTimes>,
-    /// 认起会话便条、记账号的写句柄（便条与记录住它的数据目录那一根；`None` ⇒ 不认便条）。
+    /// 认起会话便条、记账号：控制面那一手 ＋ 写句柄（便条与记录住它的数据目录那一根；`None` ⇒ 不认便条）。
     /// 默认 `None`、不进 `new` 的签名（夹具不碰真家目录）；生产由 [`watch_loop`] 注入启动时造的那一份。
-    launch: Option<crate::platform::fs::Own>,
+    launch: Option<(Reactions, crate::platform::fs::Own)>,
     /// 这台的会话注解（在 monitor 里改的名住这里；叫会话什么的第一档）。默认空、不进 `new` 的签名；生产由 [`watch_loop`] 读、那份文件动了重读。
     annotations: crate::history::history_annotations::Table,
     /// 大记录的骨架落在哪（生产由 [`watch_loop`] 照启动时的写句柄装上；`None`（夹具）⇒ 不读也不落）。
@@ -3297,18 +3294,11 @@ fn announce_writer(
     )
 }
 
-/// 「这条会话用哪个号起的」：`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`（`control::launch_account::adopt`）。
-/// 触发时机与打标同一个：pidfile 出现 / 改写那一刻，`(pid, sid)` 只在这时同时在手。写不成只出声。
+/// 「这条会话用哪个号起的」：报给控制面（[`Reactions::session_seen`]，`ccm` 给这个 pid 留过便条 ⇒ 记下 `sid → 号`）。
+/// 触发时机与打标同一个：pidfile 出现 / 改写那一刻，`(pid, sid)` 只在这时同时在手。
 fn adopt_launch_note(state: &ReaderState, pid: u32, sid: &str) {
-    let Some(own) = state.launch.as_ref() else {
-        return;
-    };
-    let started_at = |p: u32| {
-        crate::platform::proc::start_epoch_from_ticks(crate::platform::proc::proc_starttime(p))
-    };
-    let alive = |p: u32| crate::platform::proc::pid_alive(p).then(|| started_at(p));
-    if let Err(e) = crate::control::launch_account::adopt(own, pid, sid, started_at(pid), &alive) {
-        tracing::warn!("起会话账号没记上（pid {pid} · sid {sid}）：{}", e.logged());
+    if let Some((reactions, own)) = state.launch.as_ref() {
+        (reactions.session_seen)(own, pid, sid);
     }
 }
 
