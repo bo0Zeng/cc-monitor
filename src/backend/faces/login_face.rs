@@ -76,8 +76,15 @@ typed::codes! {
     }
 }
 
-/// `login-start` 的码表（登记表那一行用它，码不另写）。
-pub(crate) const LOGIN_START_CODES: &[&str] = <LoginStartErr as Codes>::ALL;
+/// `login-start`（帧面硬臂：作业跟着发起它的那条连接走；起子命令 ＋ 等它打印链接 ⇒ 阻塞档，`dispatch` 带本连接的号调 [`start`]）。
+pub(crate) struct LoginStart;
+
+impl Command for LoginStart {
+    const NAME: &'static str = "login-start";
+    type Req = LoginStartReq;
+    type Reply = LoginStarted;
+    type Err = LoginStartErr;
+}
 
 /// 号在这台账号库里的样子（与 `accounts-list` 同一份成品）：配置目录（账号 0 ⇒ `None`）· 是不是 API 号。
 fn account_of(agent: &str, account: &str) -> Option<(Option<String>, bool)> {
@@ -190,17 +197,6 @@ fn mcp_listed(agent: &str, project: Option<&std::path::Path>, server: &str) -> b
     let look = crate::accounts::manage::mcp_share_exec::mcp_look(agent);
     crate::agents::mcp_read(agent, project, &look)
         .is_some_and(|r| r.entries.iter().any(|e| e.name == server))
-}
-
-/// 硬臂那一发：入参按类型收（同 typed 那一处）→ 本体 → 线上那一份。
-pub(crate) fn answer_start(
-    args: &Value,
-    conn: u64,
-    on_end: sign_in::OnEnd,
-) -> crate::wire::spec::Outcome {
-    let req: LoginStartReq = typed::take(args)?;
-    let got = start(&req, conn, None, on_end).map_err(Codes::into_fail)?;
-    crate::wire::spec::wire::<_, Fail>(&got).map(Some)
 }
 
 /// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`）。

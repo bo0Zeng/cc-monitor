@@ -3355,17 +3355,13 @@ notes: Array<string>, };
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → | 账号库里的号（账号 0 是 `0`；`mcp` 那一种可为 `null`：那一家的默认配置目录） |
-| `agent` | → | 哪一家（同 `accounts-list` 的 `agent`） |
-| `kind` | → | 登录什么：`account`（一个号）· `mcp`（一个号里的一个 MCP 服务器） |
-| `projectDir` | → | `mcp` 那一种：那一条配置所属的项目目录（用户级 ⇒ `null`） |
-| `server` | → | `mcp` 那一种：服务器名（`mcp-read` 里那一条） |
-| `auto` | ← | 会不会自己登完（本机浏览器回调到那一家自己开的本机端口；登完推 `changed {login}`，粘码只是后备） |
-| `job` | ← | 作业号（`login-finish` · `login-cancel` 交它） |
-| `paste` | ← | 粘回来的是什么：`code`（登录页上给的那一段）· `redirectUrl`（浏览器回跳到本机的那一整条地址） |
-| `url` | ← | 登录链接（在浏览器里打开，不用内嵌网页） |
+入参 `LoginStartReq` · 回包 `LoginStarted`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type LoginStartReq = { "kind": "account", agent: string, account: string, } | { "kind": "mcp", agent: string, account: string | null, server: string, projectDir: string | null, };
+type LoginStarted = { job: string, url: string, paste: PasteKind, auto: boolean, };
+type PasteKind = "code" | "redirectUrl";
+```
 
 码：`bad_args` · `not_found` · `unsupported` · `failed`
 
@@ -5532,11 +5528,12 @@ type Words = string;
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `agent` | → | 哪一家（线上的 kind） |
-| `hook` | → | 那一家的 hook 交来的那一份原样 |
-| `decision` | ← | 人的答案写成那一家要的那一整份，hook 原样打到 stdout；`null` ＝ 不给决定（不是要人答的那一种 · 改到终端里答 · 别处关了），hook 空手退 |
+入参 `AskReq` · 回包 `AskReply`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type AskReply = { decision: unknown, };
+type AskReq = { agent: string, hook: unknown, };
+```
 
 码：`bad_args`
 
@@ -11076,21 +11073,27 @@ type Origin = string;
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `backendHello` | ← | 那台后端的一句（往返毫秒 · 版本 · 做不到几项） |
-| `backendOk` | ← | 那台后端答没答（hello ＋ `ping` 往返） |
-| `end` | ← | 结局，**最后一格** |
-| `endpoint` | ← | 实际连上的地址 |
-| `fingerprint` | ← | 那台的主机指纹（`sshOk:false` 时不给） |
-| `jump` | → | 跳板那一台的配置（可缺） |
-| `machine` | → | 那台的配置（可能还没保存）：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` … |
-| `message` | ← | 结局那一句 |
-| `reached` | ← | `ssh` 握手过了 · `hello` 那台后端回了 hello · `control` ping 往返了 |
-| `saved` | → | 已保存的那一份（可缺） |
-| `sshOk` | ← | SSH 握手 ＋ 鉴权过没过（结局 `end` 里） |
-| `stage` | ← | 拨号阶段行，与界面 `ConnectStage` 同形 |
-| `ticket` | → ← | 界面交来的票（1..=64 个 `[A-Za-z0-9-]`），进度帧 `probe` 原样回填 |
+入参 `ProbeReq` · 回包 `null`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ProbeReq = { 
+/**
+ * 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
+ */
+ticket: string, 
+/**
+ * 那台的配置：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …
+ */
+machine: Record<string, unknown>, 
+/**
+ * 已保存的那一份（可缺）。
+ */
+saved?: Record<string, unknown>, 
+/**
+ * 跳板那一台的配置（可缺）。
+ */
+jump?: Record<string, unknown>, };
+```
 
 码：`bad_args` · `bad_jump` · `failed`
 

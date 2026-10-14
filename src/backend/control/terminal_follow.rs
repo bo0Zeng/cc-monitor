@@ -53,11 +53,11 @@ use super::terminals::{self, On};
 use crate::wire::{FollowEnd, Frame};
 
 /// 订上。
-pub const FOLLOW: &str = "terminal-follow";
+pub const FOLLOW: &str = <TerminalFollow as crate::wire::typed::Command>::NAME;
 /// 第 `seq` 帧画完了。
-pub const FOLLOW_ACK: &str = "terminal-follow-ack";
+pub const FOLLOW_ACK: &str = <TerminalFollowAck as crate::wire::typed::Command>::NAME;
 /// 退订。
-pub const UNFOLLOW: &str = "terminal-unfollow";
+pub const UNFOLLOW: &str = <TerminalUnfollow as crate::wire::typed::Command>::NAME;
 
 /// 一条流连接上同时在册的订阅数上限（有界资源：每张票一个 tmux 客户端 ＋ 两条线程）。
 pub const MAX_FOLLOWS_PER_CONNECTION: usize = 8;
@@ -263,7 +263,7 @@ crate::wire::typed::codes! {
 pub(crate) struct TerminalFollow;
 
 impl crate::wire::typed::Command for TerminalFollow {
-    const NAME: &'static str = FOLLOW;
+    const NAME: &'static str = "terminal-follow";
     type Req = FollowReq;
     type Reply = ();
     type Err = FollowErr;
@@ -273,7 +273,7 @@ impl crate::wire::typed::Command for TerminalFollow {
 pub(crate) struct TerminalFollowAck;
 
 impl crate::wire::typed::Command for TerminalFollowAck {
-    const NAME: &'static str = FOLLOW_ACK;
+    const NAME: &'static str = "terminal-follow-ack";
     type Req = AckReq;
     type Reply = ();
     type Err = AckErr;
@@ -283,7 +283,7 @@ impl crate::wire::typed::Command for TerminalFollowAck {
 pub(crate) struct TerminalUnfollow;
 
 impl crate::wire::typed::Command for TerminalUnfollow {
-    const NAME: &'static str = UNFOLLOW;
+    const NAME: &'static str = "terminal-unfollow";
     type Req = UnfollowReq;
     type Reply = ();
     type Err = UnfollowErr;

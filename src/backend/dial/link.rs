@@ -193,22 +193,45 @@ crate::wire::typed::codes! {
     pub(crate) enum LinkCloseErr {}
 }
 
-macro_rules! link_cmd {
-    ($ty:ident, $name:literal, $req:ty, $err:ty) => {
-        #[doc = concat!("`", $name, "`（帧面硬臂：要碰本连接的链路表，本体是 [`Table`] 那一口）。")]
-        pub(crate) struct $ty;
-        impl crate::wire::typed::Command for $ty {
-            const NAME: &'static str = $name;
-            type Req = $req;
-            type Reply = ();
-            type Err = $err;
-        }
-    };
+/// `link-open`（帧面硬臂：要碰本连接的链路表，本体是 [`Table`] 那一口）。
+pub(crate) struct LinkOpen;
+
+impl crate::wire::typed::Command for LinkOpen {
+    const NAME: &'static str = "link-open";
+    type Req = LinkOpenReq;
+    type Reply = ();
+    type Err = LinkOpenErr;
 }
-link_cmd!(LinkOpen, "link-open", LinkOpenReq, LinkOpenErr);
-link_cmd!(LinkData, "link-data", LinkDataReq, LinkDataErr);
-link_cmd!(LinkCredit, "link-credit", LinkCreditReq, LinkCreditErr);
-link_cmd!(LinkClose, "link-close", LinkCloseReq, LinkCloseErr);
+
+/// `link-data`（帧面硬臂：要碰本连接的链路表，本体是 [`Table`] 那一口）。
+pub(crate) struct LinkData;
+
+impl crate::wire::typed::Command for LinkData {
+    const NAME: &'static str = "link-data";
+    type Req = LinkDataReq;
+    type Reply = ();
+    type Err = LinkDataErr;
+}
+
+/// `link-credit`（帧面硬臂：要碰本连接的链路表，本体是 [`Table`] 那一口）。
+pub(crate) struct LinkCredit;
+
+impl crate::wire::typed::Command for LinkCredit {
+    const NAME: &'static str = "link-credit";
+    type Req = LinkCreditReq;
+    type Reply = ();
+    type Err = LinkCreditErr;
+}
+
+/// `link-close`（帧面硬臂：要碰本连接的链路表，本体是 [`Table`] 那一口）。
+pub(crate) struct LinkClose;
+
+impl crate::wire::typed::Command for LinkClose {
+    const NAME: &'static str = "link-close";
+    type Req = LinkCloseReq;
+    type Reply = ();
+    type Err = LinkCloseErr;
+}
 
 impl Table {
     pub fn new(replies: mpsc::Sender<Frame>) -> Self {

@@ -443,6 +443,8 @@ fn every_registered_command_declares_its_run_kind() {
                 | "login-finish"
                 | "login-cancel"
                 | "manual-list"
+                // 在 app 里登录：起登录子命令 ＋ 等它打印链接（硬臂，交进阻塞池）。
+                | "login-start"
         );
         let is_blocking = spec.run.blocking();
         assert_eq!(

@@ -836,6 +836,7 @@ fn typed_handler_files_of(
         "typed::blocking::<",
         "typed::asynchronous::<",
         "typed::frame::<",
+        "typed::frame_blocking::<",
     ] {
         for (at, _) in table.match_indices(ctor) {
             let rest = &table[at + ctor.len()..];
@@ -892,6 +893,18 @@ fn handler_files_of(
 
 /// 够得着 tmux、却**不**声明 `no_tmux` 的命令 —— 逐条写理由（tmux 在它那里是可选的：问不到就降级，命令本身照做）。
 const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
+    (
+        "terminal-follow-ack",
+        "终端实时预览：与 `terminal-follow` 同住 `control/terminal_follow.rs`（引用图按文件取），它自己只往订阅线程送一个回执、不起 tmux",
+    ),
+    (
+        "terminal-unfollow",
+        "同上，只摘票（订阅线程自己收那个只读客户端）、不起 tmux",
+    ),
+    (
+        "apikey-key-set",
+        "命令宿主住 `faces/accounts_face.rs`（与改账号库那几条同一份，引用图按文件取：建号那一下会重生成别名）；它自己只写 key 表那一份文件、不起 tmux",
+    ),
     (
         "data-report",
         "文件与数据：`tmux` 那一格问这台有没有 tmux（与起新会话框同一个判法），没 tmux ⇒ `tmux: false`、别的几格照答",
@@ -1064,52 +1077,6 @@ const REACHES_TMUX_WITHOUT_NO_TMUX: &[(&str, &str)] = &[
     ),
 ];
 
-/// `run:` 里没有 `crate::…` 路径的命令（`Run::Builtin` 与就地应答）—— 不在射程，逐条登记。
-const NO_HANDLER_PATH: &[(&str, &str)] = &[
-    (
-        "login-start",
-        "`Run::Builtin`：`inbound::dispatch` 的硬臂带着本连接的号调 `faces::login_face::answer_start`（起那一家的登录子命令、等它打印链接），不起 tmux",
-    ),
-    (
-        "needs-ask",
-        "`Run::Builtin`：`inbound::dispatch` 的硬臂带着本连接的号调 `control::asks::ask`（挂进登记表、等一个通道），不起 tmux",
-    ),
-    (
-        "cancel",
-        "`Run::Builtin`：`inbound::dispatch` 的硬臂，只动在飞表",
-    ),
-    (
-        "link-close",
-        "`Run::Builtin`：链路四条住 `inbound::dispatch` 的硬臂",
-    ),
-    ("link-credit", "同上"),
-    ("link-data", "同上"),
-    ("link-open", "同上"),
-    ("ping", "就地应答"),
-    (
-        "transfer-start",
-        "传输台起跑 · 撤住 `inbound::dispatch` 的硬臂（开单两条是 typed，本体经 `typed::frame` 那一行点得出）",
-    ),
-    ("transfer-stop", "同上"),
-    (
-        "terminal-follow-ack",
-        "`Run::Builtin`：终端实时预览的回执住 `inbound::dispatch` 的硬臂，就地记账（往那张票的订阅线程递一句），不起 tmux",
-    ),
-    ("terminal-unfollow", "同上（退订：摘票、递「停」），不起 tmux"),
-    (
-        "stream-watch",
-        "`Run::Builtin`：名单交给本连接那份 watcher 线程（`observe/watcher.rs::watch_sessions` 只改名单、补两帧、读游标），不起 tmux",
-    ),
-    (
-        "remote-probe",
-        "`inbound::dispatch` 的硬臂（进度格要拿本连接的应答通道）；本体 `dial::probe` 只拨 SSH、读 hello、发一次 ping，不起 tmux",
-    ),
-];
-
-/// `run:` 里没有 `crate::…` 路径、本体却住在一个模块里的硬臂命令（`Run::Builtin`，`inbound::dispatch` 带着本连接的状态调它）：
-/// 逐条登记本体住哪份文件 —— 引用图照这份文件算它够不够得着 tmux（不登记就看不见，`no_tmux` 声明没人对得上）。
-const BUILTIN_HANDLER_FILE: &[(&str, &str)] = &[("terminal-follow", "control/terminal_follow.rs")];
-
 /// 🔴 帧面：够得着 tmux 的命令 == 声明 `no_tmux` 的 ∪ 登记的「tmux 可选」。
 #[test]
 fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
@@ -1127,30 +1094,7 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
         spawners.len() >= 5,
         "真起 tmux 的文件只找到 {spawners:?} —— 取法坏了"
     );
-    let mut handlers = handler_files(&tree);
-    // 硬臂命令的本体：登记的那几条换成它住的那份文件（登记的必须真是硬臂、`run:` 里真没有路径、那份文件真在树里）。
-    for (name, file) in BUILTIN_HANDLER_FILE {
-        let spec = crate::stream::inbound::REGISTRY
-            .iter()
-            .find(|s| s.name == *name)
-            .unwrap_or_else(|| {
-                panic!("`BUILTIN_HANDLER_FILE` 登记的 `{name}` 不在命令表里 —— 删那一行")
-            });
-        assert!(
-            matches!(spec.run, crate::wire::spec::Run::Builtin),
-            "`BUILTIN_HANDLER_FILE` 登记的 `{name}` 不是硬臂 —— 它的 `run:` 自己点得出本体，删那一行"
-        );
-        assert!(
-            tree.contains_key(*file),
-            "`BUILTIN_HANDLER_FILE` 登记的 `{file}` 不在后端树里"
-        );
-        let h = handlers.get_mut(*name).expect("命令表里有它，抽块里却没有");
-        assert!(
-            h.is_empty(),
-            "`{name}` 的 `run:` 里已经点得出本体 {h:?} —— 删 `BUILTIN_HANDLER_FILE` 那一行"
-        );
-        h.insert(file.to_string());
-    }
+    let handlers = handler_files(&tree);
     let names: BTreeSet<&str> = crate::stream::inbound::REGISTRY
         .iter()
         .map(|s| s.name)
@@ -1165,11 +1109,9 @@ fn every_frame_command_that_can_reach_tmux_declares_no_tmux() {
         .filter(|(_, f)| f.is_empty())
         .map(|(n, _)| n.as_str())
         .collect();
-    assert_eq!(
-        unresolved,
-        NO_HANDLER_PATH.iter().map(|(n, _)| *n).collect::<BTreeSet<_>>(),
-        "`run:` 里没有 `crate::…` 路径的命令变了 —— 新来的那条它的处理器住哪、够不够得着 tmux，本条看不见：\
-         登记进 `NO_HANDLER_PATH` 并写清为什么不起 tmux，或者把处理器挪进一个模块"
+    assert!(
+        unresolved.is_empty(),
+        "这几条命令的本体住哪抽不出来（登记行里点不出类型）—— 它够不够得着 tmux，本条看不见：{unresolved:?}"
     );
     let reach: BTreeSet<&str> = handlers
         .iter()

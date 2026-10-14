@@ -401,34 +401,33 @@ fn dispatch(
             let push = replies.clone();
             Disposition::SpawnBlocking(
                 req,
-                Box::new(move |r: Request| {
-                    let on_end: crate::accounts::sign_in::OnEnd = Box::new(move |job, ended| {
-                        let body =
-                            serde_json::to_value(crate::faces::login_face::SignInState::of(ended))
+                crate::wire::typed::answer_blocking::<crate::faces::login_face::LoginStart, _>(
+                    move |r, _cx| {
+                        let on_end: crate::accounts::sign_in::OnEnd =
+                            Box::new(move |job, ended| {
+                                let body = serde_json::to_value(
+                                    crate::faces::login_face::SignInState::of(ended),
+                                )
                                 .ok();
-                        use crate::wire::topic::Topic;
-                        let _ = push.blocking_send(Frame::changed(
-                            Topic::Login,
-                            Some(job.to_string()),
-                            None,
-                            body,
-                        ));
-                        crate::accounts::sign_in::ring_manual();
-                    });
-                    crate::faces::login_face::answer_start(&r.args, asks, on_end)
-                }),
+                                use crate::wire::topic::Topic;
+                                let _ = push.blocking_send(Frame::changed(
+                                    Topic::Login,
+                                    Some(job.to_string()),
+                                    None,
+                                    body,
+                                ));
+                                crate::accounts::sign_in::ring_manual();
+                            });
+                        crate::faces::login_face::start(&r, asks, None, on_end)
+                    },
+                ),
             )
         }
         "needs-ask" => Disposition::SpawnData(
             req,
-            Box::new(move |r: Request| -> DataFut {
-                Box::pin(async move {
-                    crate::control::asks::ask(asks, &r.args)
-                        .await
-                        .map(Some)
-                        .map_err(Fail::from)
-                })
-            }),
+            crate::wire::typed::answer_async::<crate::control::asks::NeedsAsk, _, _>(
+                move |r, _cx| async move { Ok(crate::control::asks::ask(asks, r).await) },
+            ),
         ),
         // 换名单要在读循环里当场生效（同一条流后面的帧照新名单走）⇒ 入参就地收、就地交给 watcher，只把等它答那一半交出去。
         "stream-watch" => match crate::wire::typed::take::<crate::wire::WatchAsk>(&req.args) {
@@ -464,16 +463,15 @@ fn dispatch(
         //   本体照旧是真异步、`cancel` 能在 await 点打断（交给通用的 spawn 那一路登记）。
         "remote-probe" => {
             let tx = replies.clone();
-            Disposition::Spawn(
+            Disposition::SpawnData(
                 req,
-                Box::new(move |r: Request| -> BoxFut {
-                    Box::pin(async move {
-                        crate::dial::probe::answer_probe(&r.args, &tx)
-                            .await
-                            .map(|()| None)
-                            .map_err(|(c, m)| (c.to_string(), m))
-                    })
-                }),
+                crate::wire::typed::answer_async::<crate::dial::probe::RemoteProbe, _, _>(
+                    move |r, _cx| async move {
+                        crate::dial::probe::answer_probe(&r, &tx).await.map_err(
+                            crate::wire::typed::of_pair(crate::dial::probe::ProbeErr::Failed),
+                        )
+                    },
+                ),
             )
         }
         "transfer-upload" | "transfer-download" | "transfer-start" | "transfer-stop" => {
@@ -586,14 +584,10 @@ pub fn uncancellable() -> Vec<String> {
         .iter()
         .filter(|s| s.run.blocking() && !matches!(s.run, Run::Typed(_)))
         .map(|s| s.name.to_string())
-        .chain(BUILTIN_BLOCKING.iter().map(|n| n.to_string()))
         .collect();
     names.sort();
     names
 }
-
-/// 硬臂里走阻塞档的那几条（登记是 `Run::Builtin`，`dispatch` 交 `SpawnBlocking`）：同样开跑之后打不断。
-const BUILTIN_BLOCKING: &[&str] = &["login-start"];
 
 /// 分派那一层手里的能力（[`spec::Hands`]）：写句柄由调用方递（没有 ⇒ `None`）；文件管理面 · 枢纽问这台自己那一跳是这台的单例，只在这里装。
 pub(crate) fn hands(own: Option<&crate::platform::Own>) -> spec::Hands<'_> {

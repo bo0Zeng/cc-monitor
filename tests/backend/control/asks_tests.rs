@@ -305,12 +305,16 @@ fn needs_without_a_pending_request_say_only_in_the_terminal() {
 
 #[tokio::test]
 async fn an_agent_without_an_answer_door_gets_no_decision_at_once() {
-    let v = ask(9007, &json!({"agent": "nobody", "hook": {}}))
-        .await
-        .unwrap();
-    assert_eq!(v, json!({"decision": null}));
+    let v = ask(
+        9007,
+        crate::wire::typed::take(&json!({"agent": "nobody", "hook": {}})).unwrap(),
+    )
+    .await;
+    assert_eq!(serde_json::to_value(v).unwrap(), json!({"decision": null}));
     assert_eq!(
-        ask(9007, &json!({"hook": {}})).await.unwrap_err().0,
+        crate::wire::typed::take::<AskReq>(&json!({"hook": {}}))
+            .unwrap_err()
+            .code,
         "bad_args"
     );
 }

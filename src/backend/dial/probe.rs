@@ -125,12 +125,49 @@ impl Cells<'_> {
     }
 }
 
-/// 读票（`ticket`）：非空、有界、只许字母数字与 `-`。
-fn ticket_of(args: &Value) -> Result<String, (&'static str, String)> {
-    let t = args
-        .get("ticket")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+/// `remote-probe` 的入参：界面交来的票 ＋ 那台的配置（可能还没保存）· 已保存的那一份 · 跳板那一台（形状由拨号那一层解）。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProbeReq {
+    /// 1..=64 个 `[A-Za-z0-9-]`；进度帧 `probe` 原样回填。
+    pub(crate) ticket: String,
+    /// 那台的配置：`host` · `port` · `user` · `keyPath` · `addresses` · `jump` …
+    #[cfg_attr(test, ts(type = "Record<string, unknown>"))]
+    pub(crate) machine: Value,
+    /// 已保存的那一份（可缺）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable, type = "Record<string, unknown>"))]
+    pub(crate) saved: Option<Value>,
+    /// 跳板那一台的配置（可缺）。
+    #[serde(default)]
+    #[cfg_attr(test, ts(optional = nullable, type = "Record<string, unknown>"))]
+    pub(crate) jump: Option<Value>,
+}
+
+crate::wire::typed::codes! {
+    /// `remote-probe` 的码。
+    pub(crate) enum ProbeErr {
+        /// 跳板那一台的配置不对。
+        BadJump = "bad_jump",
+        /// 进度帧发不出去（本连接没了）· 读链路那一侧出错。
+        Failed = "failed",
+    }
+}
+
+/// `remote-probe`（帧面硬臂：进度格走本连接的应答通道；本体真异步，`cancel` 能在 await 点打断）。结局推成最后一格，应答本身不带体。
+pub(crate) struct RemoteProbe;
+
+impl crate::wire::typed::Command for RemoteProbe {
+    const NAME: &'static str = "remote-probe";
+    type Req = ProbeReq;
+    type Reply = ();
+    type Err = ProbeErr;
+}
+
+/// 票：非空、有界、只许字母数字与 `-`。
+fn ticket_ok(t: &str) -> Result<String, (&'static str, String)> {
     if t.is_empty()
         || t.len() > TICKET_MAX
         || !t.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
@@ -146,7 +183,7 @@ fn ticket_of(args: &Value) -> Result<String, (&'static str, String)> {
 /// `remote-probe` 的本体：`serve` 是链路那一侧（生产 = `dial::uses::run`；判据用替身，拿改好的请求 · 上行读端 · 下行写端）；
 /// `out` 是进度格的出口（生产 = 本连接的应答通道）。结局推成最后一格（`end`），应答本身不带体。
 pub(crate) async fn probe_with<F, Fut>(
-    args: &Value,
+    req: &ProbeReq,
     serve: F,
     out: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)>
@@ -155,10 +192,12 @@ where
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
     let cells = Cells {
-        ticket: ticket_of(args)?,
+        ticket: ticket_ok(&req.ticket)?,
         out,
     };
-    let end = run(args, serve, &cells).await?;
+    // 那三台的配置照拨号那一层的形状交过去（它自己解）。
+    let args = json!({ "machine": req.machine, "saved": req.saved, "jump": req.jump });
+    let end = run(&args, serve, &cells).await?;
     cells.push(json!({ "end": end })).await
 }
 
@@ -381,12 +420,12 @@ where
 }
 
 /// 生产的 `remote-probe`：真拨号；进度格进本连接的应答通道。
-pub async fn answer_probe(
-    args: &Value,
+pub(crate) async fn answer_probe(
+    req: &ProbeReq,
     replies: &tokio::sync::mpsc::Sender<Frame>,
 ) -> Result<(), (&'static str, String)> {
     probe_with(
-        args,
+        req,
         |req, up_r, mut down_w| async move {
             let stages = crate::dial::StageSink::new(true);
             crate::dial::uses::run(&req, &stages, up_r, &mut down_w).await;

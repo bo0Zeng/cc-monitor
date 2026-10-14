@@ -63,9 +63,9 @@ pub const TRANSFER_UPLOAD: &str = "transfer-upload";
 /// 开单：下载。
 pub const TRANSFER_DOWNLOAD: &str = "transfer-download";
 /// 起跑。
-pub const TRANSFER_START: &str = "transfer-start";
+pub const TRANSFER_START: &str = <TransferStart as typed::Command>::NAME;
 /// 撤。
-pub const TRANSFER_STOP: &str = "transfer-stop";
+pub const TRANSFER_STOP: &str = <TransferStop as typed::Command>::NAME;
 /// 开单（上传）那一条（typed，帧面硬臂那一档：要碰本连接的票表）。
 pub(crate) struct TransferUpload;
 
@@ -117,7 +117,7 @@ codes! {
 pub(crate) struct TransferStart;
 
 impl typed::Command for TransferStart {
-    const NAME: &'static str = TRANSFER_START;
+    const NAME: &'static str = "transfer-start";
     type Req = TransferIdReq;
     type Reply = ();
     type Err = StartErr;
@@ -127,7 +127,7 @@ impl typed::Command for TransferStart {
 pub(crate) struct TransferStop;
 
 impl typed::Command for TransferStop {
-    const NAME: &'static str = TRANSFER_STOP;
+    const NAME: &'static str = "transfer-stop";
     type Req = TransferIdReq;
     type Reply = ();
     type Err = StopErr;

@@ -15,7 +15,9 @@ where
     Fut: std::future::Future<Output = ()> + Send + 'static,
 {
     let (tx, mut rx) = tokio::sync::mpsc::channel(64);
-    probe_with(args, serve, &tx).await.unwrap();
+    probe_with(&crate::wire::typed::take(args).unwrap(), serve, &tx)
+        .await
+        .unwrap();
     drop(tx);
     let mut cells = Vec::new();
     while let Some(f) = rx.recv().await {
@@ -186,13 +188,18 @@ async fn a_probe_without_a_valid_ticket_is_refused_before_dialling() {
     for bad in [json!(null), json!(""), json!("a b"), json!("x".repeat(65))] {
         let mut a = args();
         a["ticket"] = bad.clone();
-        let r = probe_with(
-            &a,
-            |_req, _up, _down| async move { panic!("票不对就不该拨") },
-            &tx,
-        )
-        .await;
-        assert_eq!(r.map_err(|(c, _)| c), Err("bad_args"), "票 {bad} 该拒");
+        // 不是串的那一形在收入参那一步就拒（同生产：typed 那一处）。
+        let r = match crate::wire::typed::take::<ProbeReq>(&a) {
+            Err(f) => Err(f.code),
+            Ok(req) => probe_with(
+                &req,
+                |_req, _up, _down| async move { panic!("票不对就不该拨") },
+                &tx,
+            )
+            .await
+            .map_err(|(c, _)| c.to_string()),
+        };
+        assert_eq!(r, Err("bad_args".to_string()), "票 {bad} 该拒");
     }
     drop(tx);
     assert!(rx.recv().await.is_none(), "拒了就一格都不推");
