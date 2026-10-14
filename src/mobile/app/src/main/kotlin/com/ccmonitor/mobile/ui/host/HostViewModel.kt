@@ -2,14 +2,18 @@ package com.ccmonitor.mobile.ui.host
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.data.repo.LauncherRepository
+import com.ccmonitor.mobile.core.ssh.SessionState
+import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConfigHost
 import com.ccmonitor.mobile.core.ssh.SshConfigParser
+import com.ccmonitor.mobile.ssh.HostConnector
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +26,12 @@ class HostViewModel(
     private val hostRepo: HostRepository,
     identityRepo: IdentityRepository,
     launcherRepo: LauncherRepository,
+    connector: HostConnector,
 ) : ViewModel() {
+    /** 每台此刻的 SSH 连接 ⇒ 行首那颗点（手机自己那条连接的事实）。 */
+    val linkDots: StateFlow<Map<String, SessionDot>> =
+        connector.states().map(::hostLinkDots).stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     val hosts: StateFlow<List<Host>> =
         hostRepo.observeAll().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -101,3 +110,15 @@ fun hostsFromSshConfig(
             authRef = matched?.id,
         )
     }
+
+/** 一台的连接 ⇒ 点：有一条已连接 ⇒ 在线；都没连接、有一条报错 ⇒ 连接失败；其余（未连接 · 连接中）⇒ 不画。 */
+internal fun hostLinkDots(sessions: Map<String, SessionState>): Map<String, SessionDot> =
+    sessions.values
+        .groupBy { it.hostId }
+        .mapNotNull { (host, ss) ->
+            when {
+                ss.any { it.status == SessionStatus.CONNECTED } -> host to SessionDot.UP
+                ss.any { it.status == SessionStatus.ERROR } -> host to SessionDot.FAILED
+                else -> null
+            }
+        }.toMap()

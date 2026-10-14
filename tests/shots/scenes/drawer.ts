@@ -114,6 +114,15 @@ export const DRAWER_SCENES: Scene[] = [
     await waitFor("#bottom-drawer pre");
     await sleep(800);
   }),
+  scene("drawer-terminal-keys-hint", "底部抽屉 · 终端 · 输入框悬停", "输入框占位只写「发消息…」；悬停出快捷键那一句（回车送出 · Shift+回车换行 · Ctrl+回车仅送字）", async () => {
+    await mainReady(ALL_TABS);
+    await click("#session-head button[aria-label='看它的终端']");
+    await waitFor("#bottom-drawer pre");
+    const box = await waitFor<HTMLTextAreaElement>("#bottom-drawer textarea");
+    box.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await waitFor('[role="tooltip"]');
+    await sleep(400);
+  }),
   scene(
     "drawer-terminal-failed",
     "底部抽屉 · 终端 · 画面读不出",

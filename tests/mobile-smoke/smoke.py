@@ -442,7 +442,10 @@ def main():
         # 哪几家是那台给的（session-new-facts）：存好、连上以后进编辑页才列得出，手机自己不认识 Codex。
         drawer(t("mobDrawer.server.named", name=""))
         time.sleep(1.5)
-        tap_in_row("smokecodex", t("mobHosts.row.edit"))
+        # 行尾「编辑 · 文件」收在 ⋯ 里（按无障碍名找那一台的 ⋯），从底部拉起再点「编辑」。
+        tap(t("mobHosts.row.more", label="smokecodex"))
+        time.sleep(1.5)
+        tap(t("mobHosts.row.edit"))
         if not wait("Codex", 40):
             raise Step.Fail("主机设置里列不出那台能起的几家")
         tap("Codex")

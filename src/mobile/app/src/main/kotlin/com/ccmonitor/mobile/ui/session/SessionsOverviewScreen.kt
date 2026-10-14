@@ -14,7 +14,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.IconTextButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
@@ -60,7 +60,7 @@ fun SessionsOverviewScreen(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 // 关闭全部：多 tab 保活时的显式收口，断开所有连接，停掉前台服务耗电。
                 if (sessions.isNotEmpty()) {
-                    TextButton(onClick = { sessions.forEach { tabManager.close(it.key) } }) { Text(copyText("mobTabs.overview.closeAll")) }
+                    SecondaryButton(onClick = { sessions.forEach { tabManager.close(it.key) } }) { Text(copyText("mobTabs.overview.closeAll")) }
                 }
                 IconTextButton(Ph.Plus, copyText("mobTabs.overview.new"), onClick = onNewSession)
             }

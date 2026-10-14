@@ -71,7 +71,7 @@ val appModule =
         }
         viewModel { IdentityViewModel(get()) }
         viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao
-        viewModel { HostViewModel(get(), get(), get()) }
+        viewModel { HostViewModel(get(), get(), get(), get()) }
         // 终端连接编排 VM。位置参数与 `parametersOf(hostId, cd, launcherId, tmuxSession)`
         // 一一对应，空串是 null 的哨兵；按位取值是因为多参解构超过 detekt 上限。
         viewModel { params ->

@@ -9,7 +9,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,6 +24,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.Dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.R
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
@@ -90,7 +90,7 @@ fun BackButton(
     PhIconButton(Ph.ArrowLeft, copyText("mobKit.act.back"), onClick = onBack, modifier = modifier, tint = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-/** 次按钮：行内 16 dp 图标 ＋ 字（「＋ 新建目录」这种，字照文案表、不带字符图标）。 */
+/** 次按钮：行内 16 dp 图标 ＋ 字（「＋ 新建目录」这种，字照文案表、不带字符图标）；[danger] ⇒ `--error-text`。 */
 @Composable
 fun IconTextButton(
     icon: Ph,
@@ -98,8 +98,9 @@ fun IconTextButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    danger: Boolean = false,
 ) {
-    TextButton(onClick = onClick, modifier = modifier, enabled = enabled) {
+    SecondaryButton(onClick = onClick, modifier = modifier, enabled = enabled, danger = danger) {
         PhIcon(icon, contentDescription = null, size = Touch.iconInline)
         Spacer(Modifier.width(LocalAppTokens.current.spacing.xs))
         Text(text)

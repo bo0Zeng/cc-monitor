@@ -40,12 +40,85 @@ data class LiveSession(
     val running: Boolean = false,
 )
 
+/** `session_state` 帧：一条会话离开「活」之后的去向（那台后端自己裁）＋ 写好的短名。 */
+data class SessionFate(
+    val state: State,
+    /** 「Claude 已退出」「已结束」（`state_text`，照抄）。 */
+    val text: String,
+) {
+    /** 线上两个词（`reconnectable` · `ended`）；认不出 ⇒ `null`（不猜）。 */
+    enum class State {
+        RECONNECTABLE,
+        ENDED,
+        ;
+
+        companion object {
+            fun of(s: String?): State? = entries.firstOrNull { it.name.equals(s, ignoreCase = true) }
+        }
+    }
+}
+
+/**
+ * 状态点九种（V10，与桌面 `kit/status-dot` 的 `DotState` 同一套）：颜色 ＝ 在干什么，形状 ＝ 进程还在不在。
+ * 只照核心的格选（[of]），不看字；记录已不在这一种会话列表里没有对应的格，留给有格的地方用。
+ * 另加机器那一颗的 [UP]（已连接：实心成功色、不呼吸，同桌面 `MachineDotState.up`）；机器连接失败 ＝ [FAILED]。
+ */
+enum class SessionDot {
+    RUNNING,
+    NEEDS_YOU,
+    BACKGROUND,
+    IDLE,
+    EXITED,
+    ENDED,
+    UNKNOWN,
+    GONE,
+    FAILED,
+    UP,
+    ;
+
+    companion object {
+        /** 活着：照语气（同桌面 `activityFace`：还没收到 · `now` ⇒ 在跑，`need` ⇒ 需手动，`busy` ⇒ 后台任务，其余 ⇒ 空闲）。 */
+        fun live(tone: Tone?): SessionDot =
+            when (tone) {
+                null, Tone.NOW -> RUNNING
+                Tone.NEED -> NEEDS_YOU
+                Tone.BUSY -> BACKGROUND
+                Tone.PLAIN, Tone.FAIL, Tone.WARN -> IDLE
+            }
+
+        /**
+         * 一条会话的点：流上活着 ⇒ 照语气；离开活了 ⇒ 照 `session_state` 的去向（可重连 ⇒ 已退出，只能恢复 ⇒ 已结束）；
+         * 流上没有它 ⇒ 照 `history-list` 那一行的 `status`（`ended` · `unknown` 说不清 · `live` 还没报到 ⇒ 同还没收到语气）。认不出 ⇒ `null`（不画）。
+         */
+        fun of(
+            live: LiveSession?,
+            fate: SessionFate?,
+            listed: String?,
+        ): SessionDot? {
+            if (live != null) return live(live.activity.tone)
+            when (fate?.state) {
+                SessionFate.State.RECONNECTABLE -> return EXITED
+                SessionFate.State.ENDED -> return ENDED
+                null -> Unit
+            }
+            return when (listed) {
+                "live" -> RUNNING
+                "ended" -> ENDED
+                "unknown" -> UNKNOWN
+                else -> null
+            }
+        }
+    }
+}
+
 /**
  * 会话表：把流上的会话帧折成「此刻有哪些会话、各自怎么样」。纯函数，一帧一步。
  * `overflow` 里丢了会话帧 ⇒ [needsResync]（这张表不可信了，重接一次让后端整份重报）。
  */
 data class SessionTable(
     val sessions: Map<String, LiveSession> = emptyMap(),
+    /** 离开「活」的那几条去向（`session_state`）：可重连 · 已结束；又宣告了 ⇒ 抹掉。 */
+    val fates: Map<String, SessionFate> = emptyMap(),
     /** 后端说「清单报完了」（`sessions_replayed`）。 */
     val replayed: Boolean = false,
     val needsResync: Boolean = false,
@@ -54,17 +127,24 @@ data class SessionTable(
     fun step(
         frame: Map<String, Any?>,
         onBreak: (String) -> Unit,
-    ): SessionTable =
-        when (frame.str("kind")) {
-            "session_added" -> added(frame) ?: also { onBreak("session_added 缺 sid / activity_text") }
-            "session_status" -> status(frame) ?: also { onBreak("session_status 缺 sid / activity_text") }
-            "session_removed" -> removed(frame) ?: also { onBreak("session_removed 缺 sid") }
+    ): SessionTable {
+        val kind = frame.str("kind")
+        FOLDS[kind]?.let { (fold, missing) -> return fold(this, frame) ?: also { onBreak(missing) } }
+        return when (kind) {
             "sessions_replayed" -> copy(replayed = true)
             "overflow" -> if (lostSessionFrames(frame)) copy(needsResync = true) else this
             else -> this
         }
+    }
 
-    private fun added(frame: Map<String, Any?>): SessionTable? = live(frame)?.let { copy(sessions = sessions + (it.sid to it)) }
+    private fun added(frame: Map<String, Any?>): SessionTable? = live(frame)?.let { copy(sessions = sessions + (it.sid to it), fates = fates - it.sid) }
+
+    private fun fate(frame: Map<String, Any?>): SessionTable? {
+        val sid = frame.str("sid") ?: return null
+        val state = SessionFate.State.of(frame.str("state")) ?: return null
+        val text = frame.str("state_text") ?: return null
+        return copy(fates = fates + (sid to SessionFate(state, text)))
+    }
 
     private fun removed(frame: Map<String, Any?>): SessionTable? = frame.str("sid")?.let { copy(sessions = sessions - it) }
 
@@ -87,6 +167,15 @@ data class SessionTable(
 
     companion object {
         private val SESSION_KINDS = setOf("session_added", "session_status", "session_removed", "session_state")
+
+        /** 会话帧 ⇒ 怎么折 ＋ 缺格时报的那一句（折不进 ⇒ `null`）。 */
+        private val FOLDS: Map<String, Pair<SessionTable.(Map<String, Any?>) -> SessionTable?, String>> =
+            mapOf(
+                "session_added" to (SessionTable::added to "session_added 缺 sid / activity_text"),
+                "session_status" to (SessionTable::status to "session_status 缺 sid / activity_text"),
+                "session_removed" to (SessionTable::removed to "session_removed 缺 sid"),
+                "session_state" to (SessionTable::fate to "session_state 缺 sid / state / state_text，或 state 认不出"),
+            )
 
         private fun live(m: Map<String, Any?>): LiveSession? {
             val sid = m.str("sid") ?: return null
@@ -178,6 +267,8 @@ object HistoryList {
         val agent: String?,
         /** 行上那一家的小牌（对用户的叫法）；`null` ＝ 不画。 */
         val agentTag: String?,
+        /** 活不活（`live` · `ended` · `unknown`，照抄；状态点读它）。 */
+        val status: String? = null,
     )
 
     data class Answer(
@@ -201,6 +292,7 @@ object HistoryList {
                         jsonlPath = r.str("jsonlPath"),
                         agent = r.str("agent"),
                         agentTag = r.str("agentTag"),
+                        status = r.str("status"),
                     )
                 }
             Answer(rows, m.str("notice"), m.bool("truncated") == true)

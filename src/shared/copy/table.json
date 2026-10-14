@@ -23908,6 +23908,15 @@
       "zh": "另有终端窗口 ×{n} · 输入会混在一起",
       "args": ["n"]
     },
+    "terminal.input.keysHint": {
+      "kind": "body",
+      "role": "悬停",
+      "zh": "回车送出 · Shift+回车换行 · Ctrl+回车仅送字",
+      "args": [],
+      "waive": {
+        "C-W12": "终端输入框的固定键（不可改绑）"
+      }
+    },
     "terminal.input.readOnly": {
       "kind": "control",
       "role": "标签",
@@ -30568,6 +30577,12 @@
       "role": "按钮",
       "zh": "编辑",
       "args": []
+    },
+    "mobHosts.row.more": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "{label} · 更多",
+      "args": ["label"]
     },
     "mobHosts.row.files": {
       "kind": "action",

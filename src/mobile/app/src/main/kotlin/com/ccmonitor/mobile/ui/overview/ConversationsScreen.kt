@@ -6,15 +6,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -24,14 +25,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import com.ccmonitor.mobile.ui.common.StatusDot
 import kotlinx.coroutines.delay
 
 /** 屏上几处的测试标签。 */
@@ -81,12 +86,15 @@ private fun LazyListScope.needsSection(
     onOpen: (String) -> Unit,
 ) {
     if (needs.isEmpty()) return
-    item { SectionHeader(copyText("commandBar.group.needs")) }
+    // 需手动一节置顶、段头琥珀（同桌面侧栏顶上那颗琥珀条）。
+    item { SectionHeader(copyText("commandBar.group.needs"), color = LocalAppTokens.current.warn) }
     items(needs, key = { "needs-${it.sessionId}" }) { n ->
-        Column(Modifier.fillMaxWidth().clickable { onOpen(n.sessionId) }.padding(horizontal = 16.dp, vertical = 8.dp)) {
-            n.label?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            Text(n.text, color = toneColor(Tone.NEED), style = MaterialTheme.typography.bodyMedium)
-            WaitedLine(n)
+        DotRow(n.dot, n.text, onClick = { onOpen(n.sessionId) }) {
+            Column(Modifier.weight(1f)) {
+                n.label?.let { Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle()) }
+                Text(n.text, color = toneColor(Tone.NEED), style = MaterialTheme.typography.bodySmall)
+                WaitedLine(n)
+            }
         }
     }
 }
@@ -97,29 +105,57 @@ private fun LazyListScope.historySection(
 ) {
     s.title?.let { t -> item { SectionHeader(t) } }
     items(s.rows, key = { it.sessionId }) { r ->
-        Row(
-            Modifier.fillMaxWidth().clickable { onOpen(r.sessionId) }.padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        DotRow(r.dot, r.status?.text, onClick = { onOpen(r.sessionId) }) {
             Column(Modifier.weight(1f)) {
-                Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(r.label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = rowTitle())
                 r.status?.let { StatusText(it) }
             }
-            r.agentTag?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+            r.agentTag?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             r.atText?.let { Text(it, style = monoSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(text: String) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
+private fun SectionHeader(
+    text: String,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
+    Text(text, style = MaterialTheme.typography.labelMedium, color = color, modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = 4.dp))
 }
 
 @Composable
 private fun StatusText(s: Toned) {
-    Text(s.text, color = toneColor(s.tone), style = monoSmall)
+    Text(s.text, color = toneColor(s.tone), style = MaterialTheme.typography.bodySmall)
+}
+
+/** 行标题：正文字号 600（稿 `外观对齐` 第 2 节）。 */
+@Composable
+private fun rowTitle() = MaterialTheme.typography.titleSmall
+
+/**
+ * 一行：行首一颗状态点（固定一列宽）＋ 内容。双行（标题 ＋ 状态字），行高照适配层 [Touch.rowDouble]。
+ * [label] 是点的读屏名（那一行的状态字）；没有 ⇒ 点不念。
+ */
+@Composable
+private fun DotRow(
+    dot: SessionDot?,
+    label: String?,
+    onClick: () -> Unit,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.rowDouble)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        StatusDot(dot, label)
+        content()
+    }
 }
 
 /**
@@ -144,7 +180,7 @@ private fun ProblemBar(
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(OverviewTags.PROBLEM)) {
         ErrorLine(p.text)
         Row {
-            TextButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
+            SecondaryButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
             CopyDetailButton(p.text, p.detail)
         }
     }

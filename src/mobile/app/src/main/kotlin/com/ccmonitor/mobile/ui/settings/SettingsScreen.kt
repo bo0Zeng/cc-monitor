@@ -1,24 +1,30 @@
 package com.ccmonitor.mobile.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.ui.icon.BackButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 
 /**
@@ -61,8 +67,18 @@ fun SettingsScreen(
 private fun EntrySections(onNavigate: (String) -> Unit) {
     settingsEntries().groupBy { it.section }.forEach { (section, entries) ->
         Text(section, style = MaterialTheme.typography.titleMedium)
+        // 一项一行（56 dp），行尾 caret（稿 `外观对齐` 第 7 节）。
         entries.forEach { entry ->
-            TextButton(onClick = { onNavigate(entry.route) }) { Text(entry.title) }
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = Touch.rowSetting)
+                    .clickable(role = Role.Button) { onNavigate(entry.route) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(entry.title, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                PhIcon(Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
         }
     }
 }

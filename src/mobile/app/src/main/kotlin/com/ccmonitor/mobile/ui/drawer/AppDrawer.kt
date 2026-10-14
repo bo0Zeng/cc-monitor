@@ -34,6 +34,7 @@ import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.overview.rememberRecent
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -109,7 +110,7 @@ private fun EntryRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .height(ENTRY_ROW_DP.dp)
+            .height(Touch.rowDrawer)
             .clickable(onClick = onClick)
             .padding(horizontal = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -133,8 +134,8 @@ private fun RecentSection(
             with(density) {
                 recentFitCount(
                     availablePx = maxHeight.roundToPx(),
-                    headerPx = RECENT_HEADER_DP.dp.roundToPx(),
-                    rowPx = RECENT_ROW_DP.dp.roundToPx(),
+                    headerPx = RECENT_HEAD_HEIGHT.roundToPx(),
+                    rowPx = Touch.rowDrawer.roundToPx(),
                     total = recents.size,
                 )
             }
@@ -144,13 +145,13 @@ private fun RecentSection(
                 RECENT_HEADER,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.height(RECENT_HEADER_DP.dp).padding(start = 28.dp, top = 8.dp),
+                modifier = Modifier.height(RECENT_HEAD_HEIGHT).padding(start = 28.dp, top = 8.dp),
             )
             recents.take(fit).forEach { r ->
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(RECENT_ROW_DP.dp)
+                        .height(Touch.rowDrawer)
                         .clickable { onAction(DrawerAction.OpenRecent(r.sessionId)) }
                         .padding(horizontal = 28.dp),
                     contentAlignment = Alignment.CenterStart,
@@ -171,7 +172,7 @@ private fun ServerRow(
     val hosts = koinInject<HostRepository>()
     val name by produceState<String?>(null, hostId) { value = hosts.get(hostId)?.label }
     Row(
-        Modifier.fillMaxWidth().height(64.dp).padding(end = 8.dp),
+        Modifier.fillMaxWidth().height(Touch.rowDrawer).padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -196,8 +197,5 @@ private const val DRAWER_WIDTH_FRACTION = 0.85f
 /** 只有外侧那两角圆（`--radius-xl`）。 */
 private val DrawerShape = RoundedCornerShape(topEnd = ThemeTokens.RadiusXl, bottomEnd = ThemeTokens.RadiusXl)
 
-private const val ENTRY_ROW_DP = 56
-
-private const val RECENT_HEADER_DP = 36
-
-private const val RECENT_ROW_DP = 48
+/** 「最近」那一行段头的高（不是可点的一行）。 */
+private val RECENT_HEAD_HEIGHT = 36.dp

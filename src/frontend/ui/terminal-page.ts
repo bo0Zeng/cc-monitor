@@ -226,7 +226,7 @@ export class TerminalPage {
     this.box = el("textarea");
     this.box.className = s.termBox;
     this.box.rows = 1;
-    // 读屏名 ＝ 头上「送往 …」那一行；提示句只当占位（否则同一句既当名字又当说明，念两遍）。
+    // 读屏名 ＝ 头上「送往 …」那一行；占位与悬停只当说明（否则同一句既当名字又当说明，念两遍）。
     this.to.id = `term-to-${++pageSeq}`;
     this.box.setAttribute("aria-labelledby", this.to.id);
     this.box.addEventListener("keydown", (ev) => this.onBoxKey(ev));
@@ -617,6 +617,8 @@ export class TerminalPage {
     const no = row.inputNo ?? (this.live.at === "stopped" && this.live.offline ? this.live.said : null);
     this.box.disabled = no !== null || this.sending;
     this.box.placeholder = no !== null ? copyText("terminal.input.readOnly", { why: no }) : copyText("chat.input.placeholder");
+    // 占位只写短的那句；快捷键说明挂悬停（送不了时键不起作用，不挂）。
+    this.box.title = no !== null ? "" : copyText("terminal.input.keysHint");
     setDisabled(this.sendBtn, no);
     setBusy(this.sendBtn, this.sending ? copyText("terminal.input.send") : null);
     for (const b of this.keyBtns) setDisabled(b, no);

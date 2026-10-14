@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -17,7 +18,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,13 +32,14 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.icon.PrimaryIconButton
-import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import com.ccmonitor.mobile.ui.session.BUILTIN_ACTIONS
 import com.ccmonitor.mobile.ui.session.BUTTON_GROUPS
@@ -123,7 +124,7 @@ private fun ColumnScope.GroupListView(
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         PrimaryIconButton(Ph.Plus, copyText("mobButtonSettings.groups.new"), onClick = { newGroupOpen = true })
         if (hostId == null) {
-            TextButton(onClick = {
+            SecondaryButton(onClick = {
                 vm.restoreDefaults()
                 snackbar.show(copyText("mobButtonSettings.restore.done"))
             }) { Text(copyText("mobButtonSettings.restore.action")) }
@@ -232,16 +233,19 @@ private fun GroupRow(
     onOpen: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val tokens = LocalAppTokens.current
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onOpen).padding(vertical = 8.dp),
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = Touch.rowSetting)
+            .clickable(onClick = onOpen)
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
             Text(groupLabel(group), style = MaterialTheme.typography.bodyLarge)
             Text(copyText("mobButtonSettings.row.summary", "n" to count, "where" to groupWhere(group)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        TextButton(onClick = onDelete) { Text(copyText("mobButtonSettings.row.deleteGroup"), color = tokens.errorText) }
+        SecondaryButton(danger = true, onClick = onDelete) { Text(copyText("mobButtonSettings.row.deleteGroup")) }
         PhIcon(Ph.CaretRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -259,8 +263,8 @@ private fun NewGroupDialog(
         text = {
             OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(copyText("mobButtonSettings.newGroup.name")) }, singleLine = true)
         },
-        confirmButton = { TextButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim()) }) { Text(copyText("mobButtonSettings.newGroup.create")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(enabled = name.isNotBlank(), onClick = { onConfirm(name.trim()) }) { Text(copyText("mobButtonSettings.newGroup.create")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -275,8 +279,8 @@ private fun DeleteButtonDialog(
         onDismissRequest = onDismiss,
         title = { Text(copyText("mobButtons.delete.title")) },
         text = { Text(copyText("mobButtons.delete.body", "label" to target.label)) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(copyText("mobButtons.delete.ok")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = onConfirm) { Text(copyText("mobButtons.delete.ok")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -291,15 +295,15 @@ private fun ButtonRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Row(Modifier.fillMaxWidth().heightIn(min = Touch.rowSetting), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("${button.label}  · ${buttonTypeLabel(button.type)}", style = MaterialTheme.typography.bodyMedium)
             Text(buttonPayloadPreview(button), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         PhIconButton(Ph.ArrowUp, copyText("mobButtonSettings.row.up"), onClick = onUp, enabled = canUp, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         PhIconButton(Ph.ArrowDown, copyText("mobButtonSettings.row.down"), onClick = onDown, enabled = canDown, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        TextButton(onClick = onEdit) { Text(copyText("mobButtonSettings.row.edit")) }
-        TextButton(onClick = onDelete) { Text(copyText("mobButtonSettings.row.delete")) }
+        SecondaryButton(onClick = onEdit) { Text(copyText("mobButtonSettings.row.edit")) }
+        SecondaryButton(onClick = onDelete) { Text(copyText("mobButtonSettings.row.delete")) }
     }
 }
 
@@ -324,8 +328,8 @@ private fun CustomGroupDeleteDialog(
                 copyText("mobButtonSettings.groupDelete.body", "n" to count),
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(group) }) { Text(copyText("mobButtons.delete.ok")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = { onConfirm(group) }) { Text(copyText("mobButtons.delete.ok")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 

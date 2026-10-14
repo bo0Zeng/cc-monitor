@@ -13,7 +13,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,8 +26,10 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.TerminalsList
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.remote.RemoteCommandChannel
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.SessionBackend
 import com.ccmonitor.mobile.ssh.TmuxBackend
@@ -102,8 +103,8 @@ fun TmuxManagerDialog(
                 scope = scope,
             )
         },
-        confirmButton = { TextButton(onClick = { refresh() }) { Text(copyText("mobTmux.dialog.refresh")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = { refresh() }) { Text(copyText("mobTmux.dialog.refresh")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 
     KillConfirmDialog(
@@ -187,8 +188,8 @@ private fun KillConfirmDialog(
                     ?: copyText("mobTmux.kill.body"),
             )
         },
-        confirmButton = { TextButton(onClick = { onConfirm(target) }) { Text(copyText("mobTmux.kill.ok")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = { onConfirm(target) }) { Text(copyText("mobTmux.kill.ok")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -226,7 +227,7 @@ private fun TmuxSessionRow(
 ) {
     val tokens = LocalAppTokens.current
     Row(
-        Modifier.fillMaxWidth().padding(vertical = tokens.spacing.xs),
+        Modifier.fillMaxWidth().heightIn(min = Touch.rowDouble).padding(vertical = tokens.spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -243,8 +244,8 @@ private fun TmuxSessionRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        TextButton(onClick = onAttach) { Text(copyText("mobTmux.row.attach")) }
-        TextButton(onClick = onKill) { Text(copyText("mobTmux.row.kill"), color = LocalAppTokens.current.errorText) }
+        SecondaryButton(onClick = onAttach) { Text(copyText("mobTmux.row.attach")) }
+        SecondaryButton(danger = true, onClick = onKill) { Text(copyText("mobTmux.row.kill")) }
     }
     HorizontalDivider(color = androidx.compose.material3.MaterialTheme.colorScheme.outlineVariant)
 }
@@ -267,9 +268,9 @@ private fun TmuxNewSessionRow(
             singleLine = true,
             modifier = Modifier.weight(1f),
         )
-        TextButton(enabled = newName.isNotBlank(), onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
+        SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetached(newName.trim()) }) { Text(copyText("mobTmux.new.detached")) }
         // 后台起一个跑着 claude 的 detached 会话，不进入，之后可附着回来。
-        TextButton(enabled = newName.isNotBlank(), onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }
-        TextButton(enabled = newName.isNotBlank(), onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTmux.new.attach")) }
+        SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewDetachedCc(newName.trim()) }) { Text(copyText("mobTmux.new.detachedCc")) }
+        SecondaryButton(enabled = newName.isNotBlank(), onClick = { onNewAttach(newName.trim()) }) { Text(copyText("mobTmux.new.attach")) }
     }
 }

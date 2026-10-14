@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -42,6 +41,7 @@ import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
 import com.ccmonitor.mobile.core.claude.model.extractCodeBlocks
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -315,7 +315,7 @@ private fun UserTextCard(
                 DeliveryState.FAILED ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
-                        TextButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("terminal.input.retry"), style = monoSmall) }
+                        SecondaryButton(onClick = { onRetrySend(unit.key) }) { Text(copyText("terminal.input.retry"), style = monoSmall) }
                     }
                 DeliveryState.FAILED_PERMANENT ->
                     line?.let { Text(it, style = monoSmall, color = tokens.errorText) }
@@ -336,7 +336,7 @@ private fun AssistantMarkdownCard(
         MarkdownText(unit.markdown, modifier = Modifier.fillMaxWidth())
         if (codeBlocks.isNotEmpty()) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                TextButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {
+                SecondaryButton(onClick = { onCopyCode(codeBlocks.joinToString("\n\n")) }) {
                     Text(if (codeBlocks.size == 1) copyText("mobReading.code.copy") else copyText("mobReading.code.copyN", "n" to codeBlocks.size), style = monoSmall)
                 }
             }
