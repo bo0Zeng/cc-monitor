@@ -220,7 +220,7 @@ describe("取消 · 推来的结局", () => {
     const push = (key: string, body: unknown) => feed!.onChanged(LOCAL_ORIGIN, "login", { cells: [{ key, rev: null, body }], all: false });
     push("job-other", { state: "done" });
     expect(drawer()).not.toBeNull();
-    push("job-1", { state: "failed", said: "核心·登录程序退了", detail: "原话" });
+    push("job-1", { state: "failed", said: "核心·登录程序退了", detail: "登录程序退出时的输出" });
     expect(drawer()!.querySelector('[data-again="restart"]')!.textContent).toContain("核心·登录程序退了");
     await open();
     push("job-1", { state: "done" });

@@ -27,7 +27,7 @@ import type { PasteKind } from "./generated/PasteKind";
 import { LoginFailed, loginCancel, loginFinish, loginStart, type LoginAgainHow, type LoginStartReq, type LoginStarted, type SignInState } from "./login-reads";
 import s from "./login-drawer.module.css";
 
-/** 两种目标只差两处：标题 · 粘贴那一格的名字与定义（稿 §2）。 */
+/** 两种目标只差两处：标题 · 粘贴那一格的名字与定义。 */
 const TITLE: Record<LoginStartReq["kind"], () => string> = {
   account: () => copyText("login.sheet.account"),
   mcp: () => copyText("login.sheet.mcp"),
