@@ -1,6 +1,8 @@
 package com.ccmonitor.mobile.core.claude.model
 
 import com.ccmonitor.mobile.core.claude.link.Json
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -11,11 +13,11 @@ import java.io.File
  * 样本是后端真序列化器写的 `tests/__fixtures__/record.golden.jsonl`。
  */
 class RecordUnitsTest {
-    private val cases: Map<String, Map<String, Any?>> =
+    private val cases: Map<String, LineRecord> =
         File(repoRoot(), "tests/__fixtures__/record.golden.jsonl")
             .readLines()
             .mapNotNull(Json::obj)
-            .associate { (it["case"] as String) to (it["record"] as Map<String, Any?>) }
+            .associate { (it["case"] as String) to requireNotNull(Wire.bind<LineRecord>(it["record"])) { "金样装不进线上类：$it" } }
 
     private fun units(vararg names: String) = RecordUnits.of(names.map { cases.getValue(it) })
 
@@ -50,7 +52,7 @@ class RecordUnitsTest {
     @Test
     fun `工具结果：正文 · 出错 · 核心给的 patch 原样带上`() {
         val reply = mapOf("agent" to "claude", "id" to "a", "t" to "reply", "autoReply" to false, "endsTurn" to false, "blocks" to listOf(mapOf("type" to "tool_use", "id" to "call-1", "name" to "Edit", "input" to mapOf("file_path" to "/w/a.txt"))))
-        val call = RecordUnits.of(listOf(reply, cases.getValue("said-full"))).first() as RenderUnit.ToolCall
+        val call = RecordUnits.of(listOf(requireNotNull(Wire.bind<LineRecord>(reply)), cases.getValue("said-full"))).first() as RenderUnit.ToolCall
         assertEquals("line a\nline b", call.resultText)
         assertEquals(false, call.pending)
         assertEquals(false, call.isError)

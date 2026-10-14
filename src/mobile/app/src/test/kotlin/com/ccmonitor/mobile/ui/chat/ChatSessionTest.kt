@@ -1,7 +1,9 @@
 package com.ccmonitor.mobile.ui.chat
 
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
 import com.ccmonitor.mobile.core.claude.model.RenderUnit
@@ -294,7 +296,7 @@ class ChatSessionTest {
             add(1) // 接上以后先来的一行比已有的新、中间缺着
             link.line("s1", file.records.lastIndex.toLong(), file.records.last())
             runCurrent()
-            assertEquals(RecordUnits.of(file.records), s.state.value.units)
+            assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
             assertTrue("补段走的是按行号取", link.calls("history-lines").isNotEmpty())
             assertNull(s.state.value.failedWhy)
         }
@@ -312,7 +314,7 @@ class ChatSessionTest {
             up = true
             link.epoch.value += 1
             runCurrent()
-            assertEquals(RecordUnits.of(file.records), s.state.value.units)
+            assertEquals(RecordUnits.of(file.records.mapNotNull { Wire.bind<LineRecord>(it) }), s.state.value.units)
             assertNull("接上以后那一句撤掉", s.state.value.failedWhy)
         }
 

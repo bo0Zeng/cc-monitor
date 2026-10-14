@@ -77,6 +77,28 @@ class WireTypesTest {
                     @Json(name = "done") DONE,
                     UNSURE,
                 }
+
+                @WireOf("Speaker")
+                @JsonClass(generateAdapter = true)
+                data class Speaker(
+                    val kind: SpeakerKind,
+                    val command: String,
+                    val stdout: String?,
+                )
+
+                @JsonClass(generateAdapter = false)
+                enum class SpeakerKind {
+                    @Json(name = "human") HUMAN,
+                    @Json(name = "bashOutput") BASH_OUTPUT,
+                }
+
+                @WireOf("LineRecord")
+                @JsonClass(generateAdapter = true)
+                data class LineRecord(
+                    val id: String,
+                    val results: Map<String, Long>?,
+                    val excerpt: String?,
+                )
                 """.trimIndent(),
             )
         val got = (bad.problems + bad.classes.flatMap { check(bad, it) }).joinToString("\n")
@@ -86,7 +108,10 @@ class WireTypesTest {
         assertTrue("少了 @JsonClass 的类认得出：$got", got.contains("Killed"))
         assertTrue("没写线上字的枚举常量认得出：$got", got.contains("ModeSwitchResult.UNSURE"))
         assertTrue("别名那一型（Words ＝ string）照它指的核：$got", got.contains("Needs.text"))
-        assertEquals("可空那一格 TS 那边必有 ⇒ 不算错；别名对得上的那一格不算错", 6, got.lines().size)
+        assertTrue("联合：只在一支里有的格这里不可空 ⇒ 认得出：$got", got.contains("Speaker.command"))
+        assertTrue("联合：标签那一格的字照各支的并集两向核：$got", got.contains("SpeakerKind"))
+        assertTrue("表（`{ [key in string]: X }`）里那一型照 X 核：$got", got.contains("LineRecord.results"))
+        assertEquals("可空那一格 TS 那边必有 ⇒ 不算错；别名对得上的那一格 · 只在一支里有、这里可空的那一格不算错", 9, got.lines().size)
     }
 
     /** 装（Moshi 生成的解码器）：嵌套 · 列表 · 枚举 · 线上键；多出来的键照收；不可空那一格缺了或来了 null ⇒ 装不进（null），不补默认值。 */
@@ -147,8 +172,13 @@ class WireTypesTest {
             val el = Regex("^Array<(.+)>$").find(ts) ?: return "List 对的是 `$ts`"
             return fits(decl, list.groupValues[1], el.groupValues[1])
         }
+        val map = Regex("^Map<String, (.+)>$").find(kt)
+        if (map != null) {
+            val el = Regex("^\\{ \\[key in string\\]\\??: (.+) \\}$").find(ts) ?: return "Map 对的是 `$ts`"
+            return fits(decl, map.groupValues[1], el.groupValues[1])
+        }
         decl.enums[kt]?.let { words ->
-            val lits = Ts.load(ts)?.literals ?: return "枚举 $kt 对的 `$ts` 不是一列字面量"
+            val lits = Ts.wordsOf(ts) ?: Ts.load(ts)?.literals ?: return "枚举 $kt 对的 `$ts` 不是一列字面量"
             return if (lits.toSet() == words.toSet()) null else "枚举 $kt 的线上字是 $words，$ts 是 $lits"
         }
         decl.classes.firstOrNull { it.name == kt }?.let { return if (it.wire == ts) null else "$kt 声明的是 ${it.wire}，这里是 `$ts`" }
@@ -189,7 +219,7 @@ class WireTypesTest {
             private val CLASS =
                 Regex("""@WireOf\("(\w+)"\)\s*@JsonClass\(generateAdapter = true\)\s*data class (\w+)\(\n(.*?)\n\)""", RegexOption.DOT_MATCHES_ALL)
             private val ANY_CLASS = Regex("""data class (\w+)\(""")
-            private val CELL = Regex("""^(?:@Json\(name = "(\w+)"\)\s*)?val (\w+): ([\w<>]+)(\?)?,?$""")
+            private val CELL = Regex("""^(?:@Json\(name = "(\w+)"\)\s*)?val (\w+): ([\w<>]+(?:, [\w<>]+)?)(\?)?,?$""")
             private val ENUM = Regex("""@JsonClass\(generateAdapter = false\)\s*enum class (\w+) \{([^}]*)\}""")
             private val ANY_ENUM = Regex("""enum class (\w+)""")
             private val CONSTANT = Regex("""^@Json\(name = "([^"]*)"\)\s*(\w+)$""")
@@ -257,12 +287,64 @@ class WireTypesTest {
                         ?.groupValues
                         ?.get(1)
                         ?.trim() ?: return null
-                if (Regex("^\"[^\"]*\"( \\| \"[^\"]*\")*$").matches(rhs)) {
-                    return Ts(null, Regex("\"([^\"]*)\"").findAll(rhs).map { it.groupValues[1] }.toList())
-                }
+                wordsOf(rhs)?.let { return Ts(null, it) }
                 if (rhs in setOf("string", "number", "boolean")) return Ts(null, null, rhs)
-                if (!rhs.startsWith("{") || !rhs.endsWith("}")) return Ts(null, null)
-                return Ts(fields(rhs.substring(1, rhs.length - 1)), null)
+                return Ts(objectOf(rhs), null)
+            }
+
+            /** 一列字符串字面量（`"a" | "b"`）⇒ 那几个字；不是 ⇒ `null`。 */
+            fun wordsOf(ts: String): List<String>? =
+                if (Regex("^\"[^\"]*\"( \\| \"[^\"]*\")*$").matches(ts)) Regex("\"([^\"]*)\"").findAll(ts).map { it.groupValues[1] }.toList() else null
+
+            /**
+             * 对象类型的各格：`{ … }` · 交（`A & B`，各格相并）· 标签联合（`{ "t": "a", … } | { "t": "b", … }`，ts-rs 出的平铺联合）。
+             * 联合按各支并集：每支都有、都不可缺的格才不可缺；型是各支的型并起来（标签那一格 ⇒ 各支的字并成一列）。
+             */
+            private fun objectOf(ts: String): Map<String, Field>? {
+                val t = ts.trim()
+                split(t, '&').takeIf { it.size > 1 }?.let { parts ->
+                    val all = parts.map { objectOf(it) ?: return null }
+                    return all.fold(emptyMap()) { acc, m -> acc + m }
+                }
+                if (t.startsWith("(") && t.endsWith(")")) return objectOf(t.substring(1, t.length - 1))
+                split(t, '|').takeIf { it.size > 1 }?.let { parts ->
+                    val branches = parts.map { objectOf(it) ?: return null }
+                    val keys = branches.flatMap { it.keys }.distinct()
+                    return keys.associateWith { k ->
+                        val got = branches.mapNotNull { it[k] }
+                        Field(got.map { it.type }.distinct().joinToString(" | "), got.size < branches.size || got.any { it.optional })
+                    }
+                }
+                if (!t.startsWith("{") || !t.endsWith("}")) return null
+                return fields(t.substring(1, t.length - 1))
+            }
+
+            /** 顶层（`{}` `<>` `()` 之外、字符串之外）按 [sep] 切。 */
+            private fun split(
+                s: String,
+                sep: Char,
+            ): List<String> {
+                val parts = mutableListOf<String>()
+                var depth = 0
+                var quoted = false
+                val cur = StringBuilder()
+                for (ch in s) {
+                    if (ch == '"') quoted = !quoted
+                    if (!quoted) {
+                        when (ch) {
+                            '{', '<', '(' -> depth++
+                            '}', '>', ')' -> depth--
+                        }
+                    }
+                    if (ch == sep && depth == 0 && !quoted) {
+                        parts += cur.toString()
+                        cur.clear()
+                    } else {
+                        cur.append(ch)
+                    }
+                }
+                parts += cur.toString()
+                return parts.map(String::trim)
             }
 
             /** 顶层逗号切格（`{}` `<>` `()` 里的不切）。 */
