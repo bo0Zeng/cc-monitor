@@ -1,6 +1,7 @@
 //! 帧面 `session-say` 的宿主壳：往一条会话说一句（聊天屏 ➤ · 压缩上下文 · 清空会话 · 点 Skill 都走它）。
 //! 那台说这条会话在等人（批准 · 回答）⇒ 不送（框开着时打的字会落进框里）；不在等 ⇒ 照 `terminal-input` 那一条送、补回车。
-//! 送的时候这台已经没有它的终端（名单里没有 · 送的那一刻没了）⇒ 按记下的号恢复这条会话，那一句当第一句交出去
+//! 挂着它的那个窗格前台只剩 shell（agent 退了）⇒ 不送进去，当作终端没了（`terminals::say_on`）。
+//! 送的时候这台已经没有它的终端（名单里没有 · 送的那一刻没了 · 只剩 shell）⇒ 按记下的号恢复这条会话，那一句当第一句交出去
 //! （模型 · 权限档取会话记录里最后那一条，同 `history-facts` 那一处扫描；起法同批量起的 tmux 那一形，`session_batch::resume_saying`）。
 
 use crate::common::contract::malformed;
@@ -60,7 +61,7 @@ impl WithFiles for SessionSay {
         say_with(
             &req,
             &waiting,
-            &crate::control::terminals_wire::input,
+            &crate::control::terminals_wire::say,
             &resume,
         )
         .map_err(|f| typed::of_fail(f, SessionSayErr::Unobservable))

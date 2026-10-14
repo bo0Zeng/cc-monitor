@@ -211,3 +211,8 @@ impl Blocking for TerminalInputCmd {
 pub(crate) fn input(req: &TerminalInputReq) -> Result<Sent, CmdErr> {
     t::input_on(On::default(), req)
 }
+
+/// 往一条会话说一句（生产：默认 socket）：同 [`input`]，窗格前台只剩 shell ⇒ 不送、回 `ended`（[`t::say_on`]）。`session-say` 经它送。
+pub(crate) fn say(req: &TerminalInputReq) -> Result<Sent, CmdErr> {
+    t::say_on(On::default(), req)
+}
