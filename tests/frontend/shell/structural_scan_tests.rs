@@ -1432,7 +1432,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
 /// ⚠ **只跳一级**（`src/frontend/shell` 的上级就是仓根，这是 cargo 给的事实，不是猜的）。
 /// 跳两级那种写法是 `K-R13` 刚治过的病：主树上算出来的东西恰好存在、工作树上
 /// 算错了却被人补了一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
-/// 形状与 `frame_cadence_guard.rs` 里那条同源（本仓已有先例）。
+/// 形状与从前那条帧节奏说法判据（今天并进 `retired-names.tsv`）同源（本仓已有先例）。
 fn addr_repo_root() -> std::path::PathBuf {
     crate::guard_support::repo_root().to_path_buf()
 }

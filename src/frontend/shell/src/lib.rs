@@ -179,9 +179,6 @@ mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与�
 #[path = "../../../../tests/frontend/shell/fixture_guard.rs"]
 mod fixture_guard; //：`tests/__fixtures__/` 里的夹具不许掉光引用变成孤儿（α3 刀 D 那个没红的读数；整体 cfg(test)）
 #[cfg(test)]
-#[path = "../../../../tests/frontend/shell/frame_cadence_guard.rs"]
-mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后后端零定时器；被禁措辞见模块头注）
-#[cfg(test)]
 #[path = "../../../../tests/frontend/shell/gate_singleton_guard.rs"]
 mod gate_singleton_guard;
 #[cfg(test)]

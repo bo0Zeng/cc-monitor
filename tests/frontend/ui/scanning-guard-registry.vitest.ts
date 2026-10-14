@@ -91,7 +91,6 @@ const WALKERS: Record<string, string> = {
   "tests/frontend/ui/paste-block-guard.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
   "tests/frontend/ui/scale3-one-screen-gate.vitest.ts": "遍历的是 `src/frontend/ui/cards/`（从卡片源码派生 `card-*` 类名），自己住 `tests/`",
   "tests/frontend/ui/proc-hidden-cascade.vitest.ts": "遍历的是 `src/frontend/ui/cards/`（从卡片源码派生每种卡的根类），自己住 `tests/`",
-  "tests/frontend/ui/settings/base-wording-guard.vitest.ts": "扫的是 `src/` 里的产品 TS，自己住 `tests/`",
   "tests/shots/fake-no-core.vitest.ts": "扫的是 `tests/shots/fake/` 下的 `.ts` 与 `src/` 下核心的 Rust，自己住 `tests/shots/`、还摘掉 `.vitest.ts`",
   "tests/shots/page-env.vitest.ts": "只扫 `tests/shots/` 下的 `.mjs` 脚本（起浏览器的那几份），自己是 `.vitest.ts`",
   "tests/frontend/ui/reduced-motion.vitest.ts": "只扫 `src/frontend/ui/` 下的 `.css`，自己是 `.vitest.ts`、住 `tests/`",
