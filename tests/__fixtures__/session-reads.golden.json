@@ -16,7 +16,7 @@
       "partial": false,
       "text": "$0.42"
     },
-    "end": 3081,
+    "end": 3131,
     "forkedFrom": "src-0",
     "handedBack": [
       "ag-7"
@@ -67,6 +67,13 @@
     ],
     "permissionMode": "acceptEdits",
     "projectDir": "/g/proj",
+    "quietUnread": {
+      "count": 1,
+      "kinds": [
+        "golden-future-ledger"
+      ],
+      "text": "无法识别 1 行（类型：golden-future-ledger）"
+    },
     "retries": [
       {
         "id": "rt-1",

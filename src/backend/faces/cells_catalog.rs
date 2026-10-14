@@ -1033,6 +1033,11 @@ mod specimens {
                             at: some("t"),
                         })
                         .collect(),
+                    quiet_unread: Some(crate::observe::facts_query::QuietUnread {
+                        text: Words(s("q")),
+                        count: 1,
+                        kinds: vec![s("k")],
+                    }),
                 };
                 node_of(&f)
             })

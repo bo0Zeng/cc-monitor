@@ -298,6 +298,12 @@ export class Convo {
     return this;
   }
 
+  /** 那一家的簿记行、这一版不认识（没有链上身份）：核心不出卡，只在会话事实里记数。 */
+  bookkeeping(kind = "shots-bookkeeping-kind"): this {
+    this.lines.push({ type: kind, sessionId: this.sid, n: 1 });
+    return this;
+  }
+
   /** 读不懂的一行（写到一半断掉的 JSON）。 */
   broken(): this {
     this.at(5);
