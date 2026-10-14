@@ -1,4 +1,4 @@
-/* 一格的详情（设计稿 planned-build 02）：右栏从上到下一列。 */
+/* 一格的详情：右栏从上到下一列。 */
 @layer components {
   .cd {
     display: flex;

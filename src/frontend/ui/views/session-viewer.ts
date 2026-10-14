@@ -927,7 +927,7 @@ export class SessionViewer {
       },
       jumpTo: (uuid, tool) => this.scrollToMessage(uuid, tool),
       unjumpableHint: copyText("sessionViewer.build.unjumpable"),
-    }, { meta: (h, scope) => hitMeta(h, scope) }); // 命中头一行同主窗口面板（ui3 稿 05：同一个控件）
+    }, { meta: (h, scope) => hitMeta(h, scope) }); // 命中头一行同主窗口面板（同一个控件）
     tools.append(this.saidBtn, this.find.box);
     view.appendChild(tools);
     // 命中清单：工具行正下方就地展开。

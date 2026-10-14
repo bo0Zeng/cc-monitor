@@ -327,7 +327,7 @@ fn a_clean_exit_is_not_a_death() {
 /// （`local_backend_host.rs` 那一族逐字的纪律：「两份措辞迟早对不上」）。
 #[test]
 fn the_start_failure_reason_is_passed_through_verbatim() {
-    // 中性夹具串：**不取自任何路径或夹具名**（`brief` 第 12 条那一族 ——
+    // 中性夹具串：**不取自任何路径或夹具名**（
     // 断言用的子串取自夹具名字时，判据会靠名字恒真）。
     let reason = "拿不到 attach token（那个文件是空的）⇒ 拒绝起一个不设防的口";
     let ev = DeathEvidence {
@@ -521,7 +521,7 @@ fn the_reading_defaults_to_unknown_not_to_clean() {
 /// ★ **反空真**：生产落点真的造得出来、真的接一行。
 ///
 /// 少了这一条，下面那条源码判据在一棵**根本没有 `MonitorLog`** 的树上照样能红得对、
-/// 却证不了那个类型今天还在（`brief` 第 9 条那一族：报「有牙」要说清射程）。
+/// 却证不了那个类型今天还在（报「有牙」要说清射程）。
 #[test]
 fn the_production_sink_takes_a_line_without_complaining() {
     let origin = "kp3-生产落点-甲";

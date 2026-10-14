@@ -660,7 +660,7 @@ describe("一步一行：后端的 steps / results 排成一行", () => {
   });
 });
 
-// 人粘贴的块（「谁说的」稿 A）：边界 / 正文那一截 / 行数是后端的 `who.pasted`；超过 12 行折起，不超过的只露正文。
+// 人粘贴的块：边界 / 正文那一截 / 行数是后端的 `who.pasted`；超过 12 行折起，不超过的只露正文。
 describe("粘贴块", () => {
   const said = (text: string, pasted: object[]): LineRecord =>
     ({ agent: "claude", t: "said", id: "p", at: "2026-01-01T14:02:00.000Z", blocks: [{ type: "text", text }], who: { speaker: { kind: "human" }, text, pasted } }) as never;
@@ -685,7 +685,7 @@ describe("粘贴块", () => {
   });
 });
 
-// 不是人说的（「谁说的」稿 A · 事件条）：来源只看后端给的 speaker，正文是后端补的 `speaker.body`。
+// 不是人说的（事件条）：来源只看后端给的 speaker，正文是后端补的 `speaker.body`。
 describe("事件条：agent 交回 / 来话 · 另一会话 · 后台通知并条 · 中断标记", () => {
   const userRec = (speaker: object, ts = "2026-01-01T14:02:00.000Z"): LineRecord =>
     ({ agent: "claude", t: "said", id: "s", at: ts, blocks: [{ type: "text", text: "x" }], who: { speaker, text: "" } }) as never;

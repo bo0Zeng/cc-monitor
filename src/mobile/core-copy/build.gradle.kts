@@ -8,7 +8,7 @@ java {
     targetCompatibility = JavaVersion.VERSION_11
 }
 
-// 文案：和桌面同一张表 `src/shared/copy/table.json`，Kotlin 侧不另写表（`架构.md` §7）。
+// 文案：和桌面同一张表 `src/shared/copy/table.json`，Kotlin 侧不另写表。
 // 取文口住这个纯 JVM 模块，各模块（app · core-ui · core-ssh · core-data · core-claude · core-remote）都依赖它：
 // 下层模块自己写的上屏句子也从表里取（同桌面 Rust 那边把 copy_core 单做一个 crate）。
 // 构建时扫手机全部模块生产源码里的 `copyText("<键>"` 调用点，只把用到的那几条抄进生成的 `CopyEntries`；

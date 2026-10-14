@@ -356,7 +356,7 @@ fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
 /// 本条此前只 `include_str!` **一份** `src/doc/IPC-PROTOCOL.md` ——
 /// 而同一句话当时在盘上还有**另外三份副本**，它们**结构上够不着**：
 /// `src/doc/CONTRIBUTING.md`（正文 ＋ 同节表格两处）· `src/doc/ARCHITECTURE.md` ·
-/// `doc/账号用量-usage抓取方案.md`。`K-R72` 那次「响得对」只响到了它看得见的那一份，
+/// 一份已经不在仓里的抓用量的方案文档。`K-R72` 那次「响得对」只响到了它看得见的那一份，
 /// 于是它逼人改的也只有那一份 —— **一条判据挡住的，只有它人群里的那些**。
 ///
 /// ⇒ 发现机制从**一个 `include_str!`** 换成**遍历 `doc/`**（同本文件

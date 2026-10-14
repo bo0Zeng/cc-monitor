@@ -30,7 +30,7 @@
   margin-left: var(--space-2);
 }
 
-/* 机器页顶上「开始用」（稿 03）：左侧强调色竖线 · 三步一行一行。 */
+/* 机器页顶上「开始用」：左侧强调色竖线 · 三步一行一行。 */
 .first-run {
   margin-bottom: var(--space-5);
   padding: var(--space-4) var(--space-5);

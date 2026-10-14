@@ -794,7 +794,7 @@ const MODULE_STACKING: Record<string, { stacked: boolean; why: string }> = {
 };
 
 /**
- * 通用组件里还没有任何一面用上的那几件（地基先立、各面照稿施工时接上）。登记了却已经进了某个窗口 ⇒ 红（摘掉登记）；
+ * 通用组件里还没有任何一面用上的那几件（地基先立、各面用上时接上）。登记了却已经进了某个窗口 ⇒ 红（摘掉登记）；
  * 没登记又不在任何窗口里 ⇒ 照旧红。只许缩。
  */
 const KIT_AWAITING_FACES: ReadonlySet<string> = new Set(

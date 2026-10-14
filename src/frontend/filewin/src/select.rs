@@ -568,7 +568,7 @@ pub enum Picked {
     Archive,
     /// 别的文件（PDF · 解不开的图 · 二进制）：不编辑、不查看。
     File,
-    /// 断了的链接：只能改名、看属性、删除（稿 ③）。
+    /// 断了的链接：只能改名、看属性、删除。
     BrokenLink,
     /// 名字读不出（有损、没带原始字节）的目录：只能进去。
     NamelessDir,
@@ -582,7 +582,7 @@ pub enum Picked {
 
 use Action as A;
 
-/// 🔴 **右键菜单那张表**（稿 02 · 29 的分组）：一种选中 ⇒ 几组项，组与组之间一道线，危险的那一组在最后。
+/// 🔴 **右键菜单那张表**：一种选中 ⇒ 几组项，组与组之间一道线，危险的那一组在最后。
 ///
 /// 菜单、命令栏的「⋯」、键盘准不准做都从这张表来（[`menu_groups`] · [`actions_for`]），不在各处另写 `if`。
 /// 算大小只给目录与多选 · 解压只给压缩包 · 查看给图片 · 编辑给文本（10-11 用户裁）。
@@ -702,7 +702,7 @@ pub const MENU_TABLE: &[(Picked, &[&[Item]])] = &[
     (Picked::ManyNameless, &[]),
 ];
 
-/// 单选的那一份归某一格 ⇒ 多这一组，插在危险那一组之前（稿 06 第 3 张）。
+/// 单选的那一份归某一格 ⇒ 多这一组，插在危险那一组之前。
 pub const PLAN_GROUP: &[Item] = &[Item::InPlan];
 
 /// 这几项是哪一种。
@@ -808,7 +808,7 @@ impl Item {
     }
 
     /// 菜单上那一项的字。`n` = 选中了几项；`plan` =「在计划里看」那一项的字（[`super::plan::menu_label`]）。
-    /// 要先问一句才做的那几件（改权限 · 删除）字后带「…」（稿 02 · 29）。
+    /// 要先问一句才做的那几件（改权限 · 删除）字后带「…」。
     pub fn label(self, n: usize, plan: Option<&str>) -> String {
         match self {
             Item::Act(Action::Delete) if n > 1 => {

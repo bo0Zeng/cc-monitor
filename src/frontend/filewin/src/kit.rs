@@ -236,7 +236,7 @@ pub fn ghost(ui: &mut Ui, icon: &str, label: &str, enabled: bool, why: &str) -> 
 // 菜单（规范 `C12`）：窗口里每一个弹出的菜单都只经这一处画项
 // ═══════════════════════════════════════════════════════════════════════
 
-/// 菜单上的一行（稿 `.mi`）：图标 ＋ 字 ＋ 右端淡色快捷键；悬停一层淡底，不画框。
+/// 菜单上的一行：图标 ＋ 字 ＋ 右端淡色快捷键；悬停一层淡底，不画框。
 ///
 /// 🔴 窗口里**菜单项只许这样写**（判据 `kit_tests::menu_items_are_only_drawn_by_the_kit` 扫整个包）：
 /// 菜单的内容是一串 [`Entry`]（数据），不是一个往里塞按钮的闭包 —— 塞不进按钮，也就画不成「一项一颗带框的按钮」。
@@ -310,7 +310,7 @@ pub fn grouped(groups: Vec<Vec<MenuRow>>) -> (Vec<Entry>, Vec<(usize, usize)>) {
     (out, at)
 }
 
-/// 菜单一行的高 · 左右内边距 · 图标格宽 · 图标与字的间距 · 字与快捷键至少隔多宽 · 菜单最窄（稿 `.menu` `.mi`）。
+/// 菜单一行的高 · 左右内边距 · 图标格宽 · 图标与字的间距 · 字与快捷键至少隔多宽 · 菜单最窄。
 pub const MENU_ROW_H: f32 = 28.0;
 const MENU_PAD: f32 = 10.0;
 const MENU_ICON_W: f32 = 16.0;
@@ -894,7 +894,7 @@ pub fn table_head(ui: &mut Ui, title: &str, action: &str, acted: &mut bool, coll
     );
 }
 
-/// 「进度」表一行底下那几行小字：失败的那一行摊开（每个没成的一行，稿 11「每个一句」）；别的态一行。
+/// 「进度」表一行底下那几行小字：失败的那一行摊开（每个没成的一行、每个一句）；别的态一行。
 pub fn task_lines(v: &super::progress::View) -> Vec<String> {
     if v.detail.is_empty() {
         return Vec::new();
@@ -911,7 +911,7 @@ pub fn task_row_height(v: &super::progress::View) -> f32 {
     36.0 + 16.0 * (task_lines(v).len().max(1) - 1) as f32
 }
 
-/// 「进度」表的一行（稿 11：图标 22 ｜ 标题 ＋ 一行小字 ｜ 进度条 240 ｜ 读数 150 右对齐等宽 ｜ 按钮）。回这一帧按下的动作。
+/// 「进度」表的一行（图标 22 ｜ 标题 ＋ 一行小字 ｜ 进度条 240 ｜ 读数 150 右对齐等宽 ｜ 按钮）。回这一帧按下的动作。
 pub fn task_row(ui: &mut Ui, id: u64, v: &super::progress::View) -> Option<super::progress::Act> {
     use super::progress::State;
     let p = palette(ui.ctx());
@@ -1209,7 +1209,7 @@ pub fn dialog(
     hit
 }
 
-/// 对话框里那一块清单的一行（稿 09：图标 ＋ 名字 ｜ 右端一格次级字）。
+/// 对话框里那一块清单的一行（图标 ＋ 名字 ｜ 右端一格次级字）。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ListRow {
     pub icon: &'static str,
@@ -1264,7 +1264,7 @@ pub fn list_box(ui: &mut Ui, rows: &[ListRow], more: Option<&str>) {
         });
 }
 
-/// 同名覆盖那张表的一行（稿 12：☐ 名字 · 本机（大小 · 时间）· 那台（大小 · 时间））。
+/// 同名覆盖那张表的一行（☐ 名字 · 本机（大小 · 时间）· 那台（大小 · 时间））。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ClashRow {
     pub name: String,
@@ -1345,7 +1345,7 @@ pub fn clash_table(ui: &mut Ui, heads: [&str; 3], rows: &[ClashRow], ticks: &mut
     changed
 }
 
-/// 从桌面拖进来时列表区那一层（稿 20）：淡强调色底 ＋ 一圈强调色虚线 ＋ 正中一句「松开上传 → 目录（n 个文件）」。画在最上层，不挤动列表。
+/// 从桌面拖进来时列表区那一层：淡强调色底 ＋ 一圈强调色虚线 ＋ 正中一句「松开上传 → 目录（n 个文件）」。画在最上层，不挤动列表。
 pub fn drop_zone(ctx: &egui::Context, rect: egui::Rect, text: &str) {
     let p = palette(ctx);
     let painter = ctx.layer_painter(egui::LayerId::new(
@@ -1398,7 +1398,7 @@ pub fn focus_ring(ctx: &egui::Context, keyboard: bool) {
     );
 }
 
-/// 就地输入那一格下面挂的出错句（稿 07：浮层底 ＋ 错误图标 ＋ 一句；画在最上层，不挤动列表）。
+/// 就地输入那一格下面挂的出错句（浮层底 ＋ 错误图标 ＋ 一句；画在最上层，不挤动列表）。
 /// 回值 ＝ 那块占的地方（就地那一格据它认「点在红字块里」⇒ 不算点别处）。
 pub fn inline_error(
     ctx: &egui::Context,

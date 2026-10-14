@@ -92,7 +92,7 @@ async function mount(lines: RigPayload[], outline?: string[], shape: Constructor
 const rowsOf = (v: SessionViewer): HTMLButtonElement[] => [
   ...v.element.querySelectorAll<HTMLButtonElement>(".user-input-row"),
 ];
-/** 工具行「你说过的话 · N ▾」那颗按钮（设计稿「文件与历史」乙4-④：大纲只这一处入口）。 */
+/** 工具行「你说过的话 · N ▾」那颗按钮（大纲只这一处入口）。 */
 const toggleOf = (v: SessionViewer): HTMLButtonElement =>
   v.element.querySelector<HTMLButtonElement>('[data-role="said"]')!;
 /** 按钮上写的那一句（宽档那一形；中档、窄档另有一份只写数字的，靠 CSS 换）。 */
@@ -391,7 +391,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
     input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await settleOutline();
     const hits = [...v.element.querySelectorAll<HTMLElement>('[data-role="find-hit"]')];
-    // 片段那一行（头一行「谁 · 第几轮 · 时刻」同主窗口面板，ui3 稿 05）。
+    // 片段那一行（头一行「谁 · 第几轮 · 时刻」同主窗口面板）。
     expect(hits.map((h) => h.querySelector("mark")!.parentElement!.textContent)).toEqual(["统一做重试 ＋ 退避 ＋ 整体超时；", "重试"]);
     expect(hits.map((h) => h.firstElementChild!.textContent)).toEqual(["Claude", "Claude"]);
     expect(hits.map((h) => h.querySelector("mark")!.textContent)).toEqual(["重试", "重试"]);
@@ -415,7 +415,7 @@ describe("㊱③ 查看器的 Ctrl+F：工具行查找框 ＋ 问后端 `history
   });
 });
 
-// 设计稿「文件与历史」乙4-④：头两行 · 底一行只说条数 · 显示不了的那一条在卡位上说 · 读不出 ⇒ 错误条 ＋［重试］· 按轮折叠与主窗口同一个。
+// 头两行 · 底一行只说条数 · 显示不了的那一条在卡位上说 · 读不出 ⇒ 错误条 ＋［重试］· 按轮折叠与主窗口同一个。
 describe("乙4-④ 查看器的头 · 底一行 · 各态", () => {
   const status = (v: SessionViewer): string => v.element.querySelector('[data-role="status"]')!.textContent ?? "";
 

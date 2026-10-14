@@ -665,7 +665,7 @@ fn resolve_writes_a_short_form_beside_the_whole_script() {
     assert_eq!(
         short,
         "tmux -u new-session -d -s tmp-cc … ccm -- …",
-        "tmux 那一形：ccm 自己的那几个参数（--cwd · --ccm-agent · --account · --launcher …）照稿省成「…」"
+        "tmux 那一形：ccm 自己的那几个参数（--cwd · --ccm-agent · --account · --launcher …）省成「…」"
     );
     assert!(
         cct["line"].as_str().unwrap().contains("send-keys"),

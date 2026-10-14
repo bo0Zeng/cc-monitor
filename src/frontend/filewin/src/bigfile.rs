@@ -1193,7 +1193,7 @@ pub fn show(ui: &mut Ui, pane: Option<&mut Pane>, view_h: f32) {
     match g.as_mut() {
         Some(doc) => doc.ui(ui, &mut p.text, view_h),
         None => {
-            // 横竖两条滚动条都在编辑面里（稿 ⑤）：长行不折（行号槽与正文一行对一行），宽了横着滚。
+            // 横竖两条滚动条都在编辑面里：长行不折（行号槽与正文一行对一行），宽了横着滚。
             let mut area = ScrollArea::both()
                 .id_salt(("filewin-editor-scroll", &p.path))
                 .auto_shrink([false, false])

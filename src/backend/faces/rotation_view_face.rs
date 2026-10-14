@@ -1,4 +1,4 @@
-//! 帧面 `rotation-strategies` · `rotation-view`（typed，`轮换-v5-分层.md` §6.6 第 10 条）：轮换的两条读。
+//! 帧面 `rotation-strategies` · `rotation-view`（typed）：轮换的两条读。
 //! 都只回成品：策略目录里每一份（名字 · 灰字 · 版本 · 读不懂的原因 · 哪几个会话在用）；一个会话（或设置页上的一份策略）此刻的
 //! 设置 · 声明 · 每个号的事实 · 这一判 · 推演 · 提示。界面照画，不判、不排、不算时刻。
 
@@ -509,7 +509,7 @@ fn face(t: u64, tz: &crate::Tz) -> String {
     crate::common::time::hm(tz.local(i64::try_from(t).unwrap_or(i64::MAX)))
 }
 
-/// 过去那一截往前推演时长的几分之一（12 小时 ⇒ 往前 2 小时，同稿的比例）。
+/// 过去那一截往前推演时长的几分之一（12 小时 ⇒ 往前 2 小时）。
 const PAST_SHARE: u64 = 6;
 
 /// 时间轴过去那一截：最上那条照这个会话的换号记录；每号一行照此刻的读数与记录，说不出的空着（[`past`]）。

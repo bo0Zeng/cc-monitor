@@ -236,7 +236,7 @@ mod f09_external_beat {
     /// 那一处所在的整行（在**生产文本**里，逐字 —— 它同时是住址与校验位）。
     ///
     /// ⚠ 刻意不报行号：生产文本是剥过测试段的，行号与文件对不上
-    /// （`brief` 13c：指进本树的行号要么带校验位、要么不写）。
+    /// （指进本树的行号要么带校验位、要么不写）。
     fn line_at(prod: &str, at: usize) -> String {
         let s = prod[..at].rfind('\n').map(|i| i + 1).unwrap_or(0);
         let e = prod[at..].find('\n').map(|i| at + i).unwrap_or(prod.len());

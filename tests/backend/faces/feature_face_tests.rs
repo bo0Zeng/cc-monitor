@@ -83,7 +83,7 @@ fn the_tasks_product_matches_the_cross_language_golden() {
 
 /// ★ `mcp-read` 每条写好的字（扩展页小标与抽屉那一行照抄）：需登录那一句（号名 · 几点记下）· 断开那一句（这台活会话里最近说它的那一条：
 /// 会话名 · 几点 · 原话）· 小标取哪一种（断开压过需登录；停用的不连 ⇒ 什么都不标）。成品 == 金样 `marked`（界面读同一份）。
-/// 要求：MCP 状态稿甲 1 / 甲 2；「判定还是 mcp-read 一处，每条再加两格写好的字」。
+/// 要求：MCP 状态那一块「判定还是 mcp-read 一处，每条再加两格写好的字」。
 #[test]
 fn the_mcp_marks_are_written_once_on_the_backend() {
     use crate::agents::{McpEntry, McpRead, McpStatus};

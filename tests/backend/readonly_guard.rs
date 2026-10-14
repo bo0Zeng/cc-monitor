@@ -1535,7 +1535,7 @@ mod spawn_registry {
 ///   ⚠ 文本级是**黑名单**，列不全（同 `platform/cfgless_guard` 的信号表）——
 ///   所以它是第二道，不是第一道；每一条针都带「为什么它算改状态」。
 /// - **反向自检**：逐条针各喂一个合成样本，同一把尺子必须逮到。
-///   没有它，上面那条「零命中」是空真（`brief` 第 9 条）。
+///   没有它，上面那条「零命中」是空真。
 #[cfg(test)]
 mod capture_is_read_only {
     use crate::guard_support::production_code;
@@ -1674,7 +1674,7 @@ mod capture_is_read_only {
 
     /// ★ 反向自检：**那把尺子真的会咬人**。
     ///
-    /// 没有它，上面那条「零命中」与「针全拼错了」长得一模一样（`brief` 第 9 条：
+    /// 没有它，上面那条「零命中」与「针全拼错了」长得一模一样（
     /// 零违例要先证够得到）。逐条喂，不是喂一条了事 —— 一条针拼错也要报出来。
     #[test]
     fn the_verb_scan_actually_bites_on_every_needle() {
@@ -1770,7 +1770,7 @@ mod capture_is_read_only {
 ///
 /// # 它落在这里、而不是注释里，是刻意的
 ///
-/// 派工单原写「落进护栏头注」，`Bx` 顶回来了：`brief` 纪律 15 逐字「写在**源码注释**里的
+/// 派工单原写「落进护栏头注」，`Bx` 顶回来了：「写在**源码注释**里的
 /// 自证等于埋掉了」，而 `ratchet_guard.rs` 头注另有一条 ——
 /// 判据不许在自己的文本里找到自己。⇒ 四情形表必须是**可被判据读的结构**，
 /// 形状照 `agent_locality_guard::AGENT_NAMED_WIRE_FIELDS`（四元组 + 长度地板）。
@@ -2478,7 +2478,7 @@ mod error_envelope_registry {
     /// 全树一趟：每一处信封的 `(文件相对路径, 那一行逐字, 该行起三行的窗口)`。
     ///
     /// ⚠ 刻意不报行号：生产文本剥过测试段，行号与文件对不上；
-    /// 报**逐字那一行**既是住址也是校验位（`brief` 13c）。
+    /// 报**逐字那一行**既是住址也是校验位。
     fn envelope_sites() -> Vec<(String, String, String)> {
         let root = src_root();
         let mut out = Vec::new();

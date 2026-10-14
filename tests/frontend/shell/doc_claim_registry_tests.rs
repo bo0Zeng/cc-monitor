@@ -705,7 +705,7 @@ const BREAKING_MARK: &str = "会改变已有行为";
 /// # 为什么只跟**一处**比，而不是把七处都读一遍
 ///
 /// 「七处」今天已经各有各的家，本条只接最后那一段，**不再复述一份锚点表**
-/// （`brief` 13b：闭集只许有一个住址）：
+/// （闭集只许有一个住址）：
 ///
 /// | 谁 ↔ 谁 | 由谁守 |
 /// |---|---|
@@ -745,7 +745,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
     const SUB_MARK: &str = "### ";
 
     // 🔴 **要发的那个版本号从 `src/frontend/shell/Cargo.toml` 编译期注入**，本条不自己再抠一遍锚点
-    //    —— 同一个值不许长出第二个住址（`brief` 13b）。
+    //    —— 同一个值不许长出第二个住址。
     let shipping = env!("CARGO_PKG_VERSION");
     let changelog = read_repo_file("CHANGELOG.md");
 
@@ -863,7 +863,7 @@ fn the_changelog_top_section_is_the_version_we_ship() {
 ///
 /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 同一条路：
 /// `env!("CARGO_PKG_VERSION")`（＝ `src/frontend/shell/Cargo.toml` 的 `version`，编译期注入）——
-/// **不抠第二份权威源锚点**（`brief` 13b）。它与另外五处的一致由
+/// **不抠第二份权威源锚点**。它与另外五处的一致由
 /// [`the_release_version_is_the_same_in_all_six_places`] 守，与 `Cargo.lock` 的一致由
 /// 门禁 `winchk` 那一格的 `cargo check --locked` 守。
 ///
@@ -961,7 +961,7 @@ fn the_docs_self_reported_release_is_the_version_we_ship() {
 /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 和
 /// [`the_docs_self_reported_release_is_the_version_we_ship`] 同一条路：
 /// `env!("CARGO_PKG_VERSION")`（＝ `src/frontend/shell/Cargo.toml` 的 `version`，编译期注入），
-/// **不抠第二份权威源锚点**（`brief` 13b）。它与 `package.json` 那个权威源的一致由
+/// **不抠第二份权威源锚点**。它与 `package.json` 那个权威源的一致由
 /// [`the_release_version_is_the_same_in_all_six_places`] 守。
 /// ⇒ **三段接起来**才等于「lockfile == `package.json`」；少任何一段都不等于。
 ///

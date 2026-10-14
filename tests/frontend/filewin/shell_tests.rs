@@ -2153,7 +2153,7 @@ fn prompts_take_enter_to_confirm_and_escape_to_cancel() {
     );
 }
 
-/// 🔴 **Esc 从不关编辑页**（稿 甲5 键盘表）：Esc 只收查找条；关这一页走 × / Ctrl+W（[`FileWindow::close_edit`]）——
+/// 🔴 **Esc 从不关编辑页**：Esc 只收查找条；关这一页走 × / Ctrl+W（[`FileWindow::close_edit`]）——
 /// 没改过 ⇒ 关掉；改了没存 ⇒ 先问「关闭 x · 未保存」，在那一问上按 Esc ＝「取消」（字一个不少）。
 #[test]
 fn escape_never_closes_the_editor_and_closing_a_dirty_one_asks_first() {
@@ -3028,7 +3028,7 @@ fn zoom_keys_and_wheel_change_the_zoom_and_it_survives_a_reopen() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
-/// 🔴 **预览开关记住上次的**（稿「看一份文件」那一行）：没记过 ⇒ 关着；Alt+P 开了 ⇒ 记进视图文件，
+/// 🔴 **预览开关记住上次的**：没记过 ⇒ 关着；Alt+P 开了 ⇒ 记进视图文件，
 /// 重开窗（照那份文件摆）预览开着；再关、再重开 ⇒ 关着。缩放与它同住一份文件，改一样不冲掉另一样。
 #[test]
 fn the_preview_switch_survives_a_reopen_and_keeps_the_zoom() {
@@ -3235,7 +3235,7 @@ fn of_two_listings_of_the_same_directory_only_the_last_one_sent_lands() {
     assert!(!l.is_loading());
 }
 
-/// 就地改名填错：原因挂在**那一格下面**（稿 07），那一格留着；不画到列表上方那一行。
+/// 就地改名填错：原因挂在**那一格下面**，那一格留着；不画到列表上方那一行。
 #[test]
 fn a_bad_name_is_explained_under_the_cell() {
     let ctx = egui::Context::default();
@@ -3432,7 +3432,7 @@ async fn settle_inline_of(w: &mut FileWindow) {
     panic!("到兜底上限就地那一趟还没回来");
 }
 
-/// 就地改名（稿 07 / 08）：名字被占了（后端 `exists`）⇒ 那一格留着、下面说「x 已存在」；
+/// 就地改名：名字被占了（后端 `exists`）⇒ 那一格留着、下面说「x 已存在」；
 /// 改成了 ⇒ 那一格收掉、选中新名字、回执「已改名为 x」带［撤销］，撤销那一件 ＝ 改回原名；点撤销 ⇒ 那一件真上线、不再出回执。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_inline_rename_says_exists_under_the_cell_or_lands_with_an_undo() {

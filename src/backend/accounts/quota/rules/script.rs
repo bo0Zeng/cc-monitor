@@ -1,4 +1,4 @@
-//! 策略文件（`轮换-v5-分层.md` §2.1）：标题 ＝ 文件名；文件最开头连着的 `//` 行是说明；接着一段块注释是 JSON 头（格式 · `timeVarying` · 时区 · 设置 · 声明），
+//! 策略文件：标题 ＝ 文件名；文件最开头连着的 `//` 行是说明；接着一段块注释是 JSON 头（格式 · `timeVarying` · 时区 · 设置 · 声明），
 //! 后面是 Rhai 代码。文件仍是合法的 Rhai；存设置只重写头那一块，说明和代码一个字不动。代码里一个函数 `decide(ctx)`，跑在沙箱里（同第三版的上限），挂着只读的积木库 `lib`（`src/shared/rotation/lib.rhai`）。
 
 use super::decide::{Ctx, Strategy, Verdict, WakeWhen};
@@ -45,7 +45,7 @@ pub(crate) struct Head {
     pub(crate) tz_unknown: bool,
     /// 这份策略自己的设置（形状它自己定，后端原样交给它）。
     pub(crate) settings: serde_json::Value,
-    /// 设置怎么画、怎么校验（`轮换-v5-分层.md` §6.4.1）：界面照它画，后端照它校验形状，不认意思。
+    /// 设置怎么画、怎么校验：界面照它画，后端照它校验形状，不认意思。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) form: Vec<super::form::Cell>,
 }

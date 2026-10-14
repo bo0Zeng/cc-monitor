@@ -1,4 +1,4 @@
-//! 帧面：轮换的写（typed，`轮换-v5-分层.md` §6.4 · §6.6 第 10 条）。设置整份交回、照策略的声明校验形状（后端不认格的意思）；
+//! 帧面：轮换的写（typed）。设置整份交回、照策略的声明校验形状（后端不认格的意思）；
 //! 会话那一侧的写进 `rotation.json`，策略文件的写只重写头、代码一个字不动。外加一条无状态的算术：24 小时条上刷一段。
 
 use crate::accounts::quota::facts::FactWhy;
@@ -563,7 +563,7 @@ crate::wire::typed::codes! {
     }
 }
 
-/// `rotation-temp`：用户在时间轴上拖出来的顺序（到策略说该换的那一刻先用它，`轮换-v5-分层.md` §1.2）。
+/// `rotation-temp`：用户在时间轴上拖出来的顺序（到策略说该换的那一刻先用它）。
 pub(crate) struct RotationTemp;
 
 impl Command for RotationTemp {

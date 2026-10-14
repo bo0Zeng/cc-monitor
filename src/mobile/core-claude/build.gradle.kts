@@ -13,7 +13,7 @@ java {
 // Kotlin jvmTarget 在根 subprojects{} 里统一配置。
 
 // 与 `:app` 接同一个共享测试源目录 `testing/src/test/kotlin`（源码词法扫描器）；目录里的自检在本模块也跑一遍。
-// 手机要和那台后端是同一个 `BUILD_ID` 才接（`后端.md` §1「版本」）。身份只有一处：本仓后端 `src/backend/lib.rs` 的
+// 手机要和那台后端是同一个 `BUILD_ID` 才接。身份只有一处：本仓后端 `src/backend/lib.rs` 的
 // `pub const BUILD_ID`；构建时抄进生成的 `EmbeddedBuild.ID`，不在手机里另写一份。认不出那一行 ⇒ 构建失败，不猜。
 val backendLib = rootProject.file("../backend/lib.rs")
 val embeddedBuildDir = layout.buildDirectory.dir("generated/embeddedBuild")

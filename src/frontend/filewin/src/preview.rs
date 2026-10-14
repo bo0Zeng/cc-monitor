@@ -129,7 +129,7 @@ pub struct Head {
     /// 「查看」（窗口解得开的图：开一个查看页，顶替「编辑」）。
     pub view: bool,
     pub download: bool,
-    /// 计划反查（稿 06）：这一份归的那一格（`(片名, 那一格)`）；目录不在任何一片里 · 没人声明 ⇒ `None`。
+    /// 计划反查：这一份归的那一格（`(片名, 那一格)`）；目录不在任何一片里 · 没人声明 ⇒ `None`。
     pub owner: Option<(String, super::plan::Owner)>,
 }
 
@@ -171,7 +171,7 @@ impl Default for Preview {
     }
 }
 
-/// 预览头「归属」那一块（稿 06 第 1 张）：左边一道状态色（做完绿 · 其余灰）；状态图标 ＋ 标题 ·［在计划里看］；
+/// 预览头「归属」那一块：左边一道状态色（做完绿 · 其余灰）；状态图标 ＋ 标题 ·［在计划里看］；
 /// 一行「{片} · 块「…」· 签 …」；被两格声明 ⇒ 一行红字；对账「坏」⇒ 一行 pb 给的原因。回值 ＝ 点了［在计划里看］。
 fn owner_block(ui: &mut egui::Ui, slice: &str, o: &super::plan::Owner) -> bool {
     let p = super::theme::palette(ui.ctx());

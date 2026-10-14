@@ -1,5 +1,5 @@
 /**
- * 配置文件那一页的盘上原文（`~/.cc-monitor/profiles.toml` 与它旁边那两份记录）：照设计稿那台的清单（cc · cct 两条根，各号基于它们），
+ * 配置文件那一页的盘上原文（`~/.cc-monitor/profiles.toml` 与它旁边那两份记录）：一台典型机器的清单（cc · cct 两条根，各号基于它们），
  * 按样子换（写错一段 · TOML 写坏 · 没有配置文件 · 刚迁移过 · 手改过）。读法与成品全在真后端（`assets/aliases/`），这里只写原文。
  */
 import { HOME, putAccounts, type MachineDisk } from "./index";
@@ -60,7 +60,7 @@ const BOOK = (broken: boolean): string =>
 /** 配置文件在家目录里的位置。 */
 export const PROFILES_FILE = ".cc-monitor/profiles.toml";
 
-/** 照设计稿那台的那一份原文（「保存时被别处改过」那一张在它后面补一行）。 */
+/** 那台的那一份原文（「保存时被别处改过」那一张在它后面补一行）。 */
 export const staleBook = (): string => BOOK(false);
 
 /** 那一台的账号库换成表单里那几个号（配置文件那几张图：表单的账号格照它排）。 */

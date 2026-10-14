@@ -108,7 +108,7 @@ mod tests {
         (
             "legal",
             "`auth_style` 认得的那几个值，由 `creds_core::store::AuthStyle::ALL` **现算**\
-             （`brief` 13b：闭集只许有一个住址，不许在日志里再抄一份字面量）。\
+             （闭集只许有一个住址，不许在日志里再抄一份字面量）。\
              全是编译期 `&'static str`，与任何一把 key 无关",
         ),
     ];

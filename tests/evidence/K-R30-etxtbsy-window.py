@@ -96,7 +96,7 @@ def die(msg: str) -> None:
 
 
 def read_budget(src_path: str) -> tuple[int, str]:
-    """把预算**现打**自 Rust 源码，不在本量具里复述那个数（`brief` 13b：闭集只许一个住址）。"""
+    """把预算**现打**自 Rust 源码，不在本量具里复述那个数（闭集只许一个住址）。"""
     with open(src_path, "r", encoding="utf-8") as fh:
         src = fh.read()
     hits = re.findall(r"pub const SPAWN_ETXTBSY_TRIES: u32 = (\d+);", src)
@@ -381,7 +381,7 @@ def main() -> int:
         die(f"{SPACER} 不在 —— 台架跑不了")
 
     workdir = tempfile.mkdtemp(prefix="kr30-")
-    # ⚠ 目录名与文件名一律取**中性名**（`brief` 12·6g：断言里不许混进夹具的名字）。
+    # ⚠ 目录名与文件名一律取**中性名**（断言里不许混进夹具的名字）。
     target = make_target(workdir, "probe-bin")
     nproc = os.cpu_count() or 1
 

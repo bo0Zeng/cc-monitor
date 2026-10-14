@@ -386,7 +386,7 @@ fn same_size_new_text_with_more_lines_does_not_reuse_the_old_wrap() {
     );
 }
 
-/// 🔴 **图片超上限照实说为什么不显示**（稿：太大 ⇒ 一句话 ＋［下载］）：超 [`IMAGE_MAX_BYTES`] 的图不读（线上零条 `files-read-chunk`），
+/// 🔴 **图片超上限照实说为什么不显示**（太大 ⇒ 一句话 ＋［下载］）：超 [`IMAGE_MAX_BYTES`] 的图不读（线上零条 `files-read-chunk`），
 /// 面板上那一句点名文件、它多大、上限多少、不预览；头上照样给「下载」。正控：恰好在上限上的那张照读。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn an_image_over_the_cap_says_why_it_is_not_shown() {

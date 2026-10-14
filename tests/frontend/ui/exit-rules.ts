@@ -106,7 +106,7 @@ export const RS_RULES: ExitRule[] = [
 
 /**
  * 手机端（Kotlin，`src/mobile`）那几条：同一件事的 Kotlin 写法（`when` 分支 · 字符串模板 · `java.time` / `SimpleDateFormat`）。
- * 手机还有一大批硬写的中文（`待定.md` 缺口 7），按码直接取汉字的 `when` 分支同按码取字一类，也在这里抓。
+ * 手机还有一大批硬写的中文，按码直接取汉字的 `when` 分支同按码取字一类，也在这里抓。
  */
 export const KT_RULES: ExitRule[] = [
   {

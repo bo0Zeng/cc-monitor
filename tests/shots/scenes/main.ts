@@ -477,7 +477,7 @@ export const MAIN_SCENES: Scene[] = [
     await click(await waitFor<HTMLElement>("#session-head button:has([data-icon='more'])"));
     await sleep(400);
   }),
-  // ui3 · 10-11 稿「会话头按钮」方案②：用户自己排（默认 ＝ 方案①那一排）。
+  // 会话头按钮用户自己排（默认 ＝ 打开工作目录起那一排）。
   main("main-head-ctx", "主窗口 · 会话头按钮排右键", "会话头按钮那一排上右键「看它的终端」：调整会话头按钮… · 从会话头移走「看它的终端」", async () => {
     await mainReady(ALL_TABS);
     await rightClick(await waitFor<HTMLElement>("#session-head [data-head='terminal']"));

@@ -534,7 +534,7 @@ fn offenders_under(root: &std::path::Path, slots: &[String]) -> Vec<String> {
 ///
 /// ⚠ **绝不碰仓里被守的那 6 格** —— 往那 6 格里写东西 = 把判据自己弄红。
 /// 夹具落 `std::env::temp_dir()`（本仓测试的既有写法，21 个文件在用），跑完就删。
-/// ⚠ 目录名与那一格的相对路径都取**中性名**（`brief` `6g`：夹具的名字不许成为断言的
+/// ⚠ 目录名与那一格的相对路径都取**中性名**（夹具的名字不许成为断言的
 /// 承重词）——下面每一条断言认的都是**判据自己报文里的词**，不是这里的路径。
 fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
     let dir = std::env::temp_dir().join(format!("ccm-capreg-slot-{tag}-{}", std::process::id()));
@@ -620,7 +620,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// 全扫一遍 `cargo <子命令>`，**逐处读它的 cwd**。出现过的 cwd 只有下面 3 个：
 ///
 /// 🔴 **这张表一律用「内容锚点」指路，不写行号**〔`K-R5` 09-02 订正，全表 8 处〕。
-/// **行号是快照** —— `brief` 12 逐字：「带具体读数的与描述盘上现状的话都是那一刻的快照，
+/// **行号是快照** ——「带具体读数的与描述盘上现状的话都是那一刻的快照，
 /// 引用前重打，别当常量」；`K-R9` `§3` 记的是同一个病：「**谁再在上方加注释就会把它推馊**」。
 /// **它真的馊过一次**：`K-G3` 09-01 往 `tests/scripts/gate.sh` 加了门六、往
 /// `tests/e2e/local-backend-supervise.sh` 加了头注，行号整体往下推

@@ -71,7 +71,7 @@ class RecordUnitsTest {
     }
 
     @Test
-    fun `没出稿的那几类（事件条 · 系统 · 重试 · 标题）不上屏`() {
+    fun `没定画法的那几类（事件条 · 系统 · 重试 · 标题）不上屏`() {
         val silent =
             listOf("said-system", "said-task-notification", "said-agent-message", "said-peer-session", "said-coordinator", "said-command-output", "said-agent-task", "retry-full", "title-agent", "said-read")
         assertEquals(emptyList<RenderUnit>(), units(*silent.toTypedArray()))

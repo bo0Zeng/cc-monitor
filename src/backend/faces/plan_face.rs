@@ -238,7 +238,7 @@ fn command(args: &Value) -> Answer {
         .and_then(wired::<wire::PlanCmdReply>)
 }
 
-/// `plan-files {dir}`：文件窗口反查（稿 06）。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
+/// `plan-files {dir}`：文件窗口反查。只看读好过的工作区（主窗口与需手动的账起来就问过 `plan-list`）——
 /// 不为文件窗口走到的每个目录起一次 pb；目录在最深的那个工作区里才算。不在任何一片的仓库里 ⇒ `slice: null`（文件窗口什么都不多）。
 fn files(args: &Value, tz: &crate::Tz) -> Answer {
     let dir = args

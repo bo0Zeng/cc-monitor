@@ -9,8 +9,8 @@ import com.ccmonitor.mobile.core.claude.link.wire.SpeakerKind
 
 /**
  * 核心的通用记录（`IPC-PROTOCOL.md`「通用记录」，线上类 [LineRecord]）⇒ 渲染单元。只按 `t` · `speaker.kind` · 块的 `type` 排，
- * 不认任何一家的盘上格式；字照记录里写好的抄。哪一类画成什么照 `界面.md`「一条东西画成什么」，
- * 那张表里画成事件条的几类（交回 · 后台任务 · 来话 …）还没出稿，先不上屏。
+ * 不认任何一家的盘上格式；字照记录里写好的抄。哪一类画成什么有一张表，
+ * 那张表里画成事件条的几类（交回 · 后台任务 · 来话 …）还没定画法，先不上屏。
  */
 object RecordUnits {
     fun of(records: List<LineRecord>): List<RenderUnit> {

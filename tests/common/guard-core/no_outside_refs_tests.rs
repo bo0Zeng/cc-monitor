@@ -1,6 +1,7 @@
 //! 守的要求（用户原话）：「产物（cc-monitor 仓）不能引用任何仓外的东西；产物文档只描述现状，不能引用任何开发文档。」
 //!
-//! 网眼包括仓外的开发记录目录、工作树目录与草稿目录；家目录绝对路径归 `private_shape_guard`（只许中性名字）。
+//! 网眼包括仓外的开发记录目录、工作树目录与草稿目录，以及词表 `OUTSIDE_WORDS` 那几类词（设计 · 调查记录 · 派活单 · 草稿目录 · 本机路径 · 施工说法）；
+//! 家目录绝对路径归 `private_shape_guard`（只许中性名字）。
 //!
 //! 人群：`git ls-files` 的全部文本文件。跳过两类：含 NUL 的二进制（与 git 判二进制同一口径）；
 //! 锁文件（`Cargo.lock` · `package-lock.json`：工具写的依赖清单，里面没有人写的文字）。
@@ -46,16 +47,44 @@ pub(super) fn repo() -> PathBuf {
         .expect("guard-core 的上三级 = 仓根")
 }
 
+/// 词表：点名仓外东西的那几类词 `(类, 前半, 后半)`，并进 [`net`]。每个词拆两段、运行期拼；词边界一律写成 ASCII 字符类（`\b` 认 Unicode，整张网会掉出快路径、慢四十倍）；那个单字用 `\x{7A3F}` 写，说明里也不写出它。
+/// - 设计：那个单字（`\x{7A3F}`：设计的名字 · 节号 · 照着它做 · 它上面画的）。放过不指设计的合成词：草～ · 定～ · 初～ · 旁～ · 底～ · 手～ · 原～ · 文～ · 投～ · 弃～ · ～纸；
+/// - 设计文件名：汉字打头的 `.md`（`hdoc` 组）。名字是仓里一份 `.md` 的放过（与 `doc` 组同一口径），产品自己的盘上文件名与夹具里用户的文件名（[`NOT_A_POINTER_HAN_MD`]）放过；
+/// - 调查记录 · 派活单（「任务」＋「书」· 带反引号的那个英文词 · 带连字符的文件名）· 草稿目录 · 本机路径（开发记录住的那个目录）；
+/// - 施工说法：「主会话」＋「批」· 「题」＋「面」（「主会话」＋「定」归第五张网）。
+///
+/// 删除条件：词表空了；或者换成结构挡法（注释与文档只许点仓里在的路径、别的一律红）的那个提交里整张删掉。
+const OUTSIDE_WORDS: &[(&str, &str, &str)] = &[
+    ("设计", "(^|[^草定初旁底手原文投弃])", r"\x{7A3F}([^纸]|$)"),
+    (
+        "设计文件名",
+        r"(?P<hdoc>\p{Han}[\p{Han}A-Za-z0-9_-]*)\.",
+        "md",
+    ),
+    ("调查记录", "调", "研"),
+    ("派活单", "任务", "书"),
+    ("派活单", "`bri", "ef`"),
+    ("派活单", "[A-Za-z0-9]-bri", "ef([^A-Za-z0-9_]|$)"),
+    ("派活单", "(^|[^A-Za-z0-9_])bri", r"ef\.md"),
+    ("草稿目录", "(^|[^0-9A-Za-z])_scr", "atch"),
+    ("本机路径", "~/文", "档"),
+    ("本机路径", "claudecode-", "frontend"),
+    ("施工说法", "主会话", "批"),
+    ("施工说法", "题", "面"),
+];
+
+/// 形状像设计文件名、却不是指路的汉字 `.md`：计划功能在工作区里读写的那几份（图 · 排期 · 签收）·
+/// 夹具里用户自己的文件（笔记 · 任务）。
+const NOT_A_POINTER_HAN_MD: &[&str] = &["图", "排期", "签收", "笔记", "任务"];
+
 /// 检测网。每个网眼拆两段、运行期拼 ⇒ 本文件里没有一处完整的网眼。
 /// `doc` 组是「大写打头、带连字符的名字 ＋ §」那一眼：名字是仓里一份 `.md` 的就放过。
 /// 「两位数 ＋ §」那一眼不认斜杠后的两位数：带目录的写法各有自己的网眼，
 /// 而合成语料（`tests/__fixtures__/scale2-height-records.jsonl`）逐字打码后留下的 `四五六/78 §1` 不是指路。
 fn net() -> Regex {
     let eyes = [
-        ("调", "研/"),
         ("第四", "波记录"),
         ("_施", "工/"),
-        ("_scr", "atch/"),
         ("(^|[^0-9A-Za-z_-])cc-", "wt([^0-9A-Za-z_-]|$)"),
         ("真相", "源"),
         ("设计", "篇"),
@@ -67,9 +96,13 @@ fn net() -> Regex {
         ("(^|[^0-9A-Za-z.§/])[0-9]{2} ?", "§"),
         ("(?P<doc>[A-Z][A-Za-z0-9]*-[A-Za-z0-9]+) ", "§"),
         ("记录", " §"),
-        ("稿 ?", "§"),
     ];
-    let alts: Vec<String> = eyes.iter().map(|(a, b)| format!("{a}{b}")).collect();
+    let alts: Vec<String> = eyes
+        .iter()
+        .copied()
+        .chain(OUTSIDE_WORDS.iter().map(|&(_, a, b)| (a, b)))
+        .map(|(a, b)| format!("{a}{b}"))
+        .collect();
     Regex::new(&alts.join("|")).expect("检测网拼不成正则")
 }
 
@@ -245,7 +278,10 @@ fn first_outside_pointer(
     net.captures_iter(line).find_map(|c| {
         let spared = c
             .name("doc")
-            .is_some_and(|d| in_repo_docs.contains(d.as_str()));
+            .is_some_and(|d| in_repo_docs.contains(d.as_str()))
+            || c.name("hdoc").is_some_and(|d| {
+                in_repo_docs.contains(d.as_str()) || NOT_A_POINTER_HAN_MD.contains(&d.as_str())
+            });
         (!spared).then(|| c.get(0).expect("整段匹配").start())
     })
 }
@@ -343,11 +379,14 @@ fn no_tracked_text_points_at_the_outside_dev_docs() {
     );
 }
 
-/// 合成夹具：越界的两行必须抓到，仓内引用的两行必须放过（行号集相等）。
+/// 合成夹具：越界的必须抓到，仓内引用与不指仓外的合成词、产品词必须放过（行号集相等）。
 #[test]
 fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
     let net = net();
-    let docs: BTreeSet<String> = ["INVARIANTS", "IPC-PROTOCOL"].map(String::from).into();
+    let docs: BTreeSet<String> = ["INVARIANTS", "IPC-PROTOCOL", "说明"]
+        .map(String::from)
+        .into();
+    let g = '\u{7a3f}'; // 设计那个单字：本文件里不写出它
     let lines = [
         format!("// 出处〔`{}9 §2.2 ⑫`〕", "9"),   // 1 ✔ 两位数 ＋ §
         "// 见 `INVARIANTS §48.1`".to_string(),    // 2 ✘ 仓内文档
@@ -355,13 +394,31 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         format!("// 守的要求：B-decouple {}2.1", "§"), // 4 ✔ 带连字符，名字不是仓里的文档
         format!("// 见 `{}/78 {}1`", "设计", "§"), // 5 ✔ 带目录的写法归目录那一眼
         format!("正文 `四五六/78 {}1`。", "§"),    // 6 ✘ 合成语料打码后的形状
-        format!("/* 会话头（主窗口稿 {}5.13）：40 高 */", "§"), // 7 ✔ 设计稿的节号
-        format!("// 按钮上的字就是结果（额度稿{}5.2）", "§"), // 8 ✔ 稿与 § 之间不空格
-        "// 存成草稿再发".to_string(),             // 9 ✘ 不带 §
+        format!("/* 会话头（主窗口{g} {}5.13）：40 高 */", "§"), // 7 ✔ 设计的节号
+        format!("// 按钮上的字就是结果（额度{g}{}5.2）", "§"), // 8 ✔ 单字与 § 之间不空格
+        "// 存成草稿再发".to_string(),             // 9 ✘ 草～
         format!("# 跑 `bash ~/cc-{}/_scr{}/heavy.sh`", "wt", "atch"), // 10 ✔ 仓外的工作树与草稿目录
         format!("/// 见 `../cc-{}`", "wt"),        // 11 ✔ 仓外的工作树目录
         "fn an_untracked_scratch_file_never_enters() {}".to_string(), // 12 ✘ 标识符里的 scratch
         "// 包名 `acc-wtf`".to_string(),           // 13 ✘ 粘在别的词里
+        format!("// 档位照{g}：80 · 90 · 100"),    // 14 ✔ 设计：照着它
+        format!("// 「格」那一列（{g} 06：120）"), // 15 ✔ 设计：编号
+        format!("// 过程行 28 高（{g}上的值）"),   // 16 ✔ 设计：上面画的
+        format!("// 见 `轮换-v5-分层.{}` §6.4", "md"), // 17 ✔ 汉字打头的 .md，仓里没有
+        format!("// 见 `说明.{}`", "md"),          // 18 ✘ 汉字打头的 .md，仓里有
+        format!("\"图.{} 第 3 行：元行缺 id\"", "md"), // 19 ✘ 计划功能的盘上文件名
+        format!("// 实测（调{}报告「答批准」）", "研"), // 20 ✔ 调查记录
+        format!("//! # 它证明什么（逐条对任务{}那五件）", "书"), // 21 ✔ 派活单
+        format!("// 闭集只许一个住址（`bri{}` 13b）", "ef"), // 22 ✔ 派活单：带反引号的那个词
+        format!("// 见 norefs-bri{}", "ef"),       // 23 ✔ 派活单：带连字符的文件名
+        "pub fn last_brief(d: &Death) -> String { copy(\"death.brief\") }".to_string(), // 24 ✘ 产品里的 brief
+        format!("# 草稿放在 `_scr{}` 下", "atch"), // 25 ✔ 草稿目录（不带斜杠）
+        format!("// 记录住 `~/文{}` 下", "档"),    // 26 ✔ 本机路径
+        format!("// 主仓在 claudecode-{} 底下", "frontend"), // 27 ✔ 本机路径
+        format!("// 主会话{}过的那一版", "批"),    // 28 ✔ 施工说法
+        format!("// 照题{}做", "面"),              // 29 ✔ 施工说法
+        format!("// 活卡定{g} · 回退弃{g} · 初{g} · 草{g}基 · {g}纸"), // 30 ✘ 不指设计的合成词
+        "// 主会话派的活 · 题目 · 任务清单".to_string(), // 31 ✘ 产品词
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -371,8 +428,9 @@ fn the_net_catches_outside_pointers_and_spares_in_repo_references() {
         .collect();
     assert_eq!(
         got,
-        BTreeSet::from([1, 4, 5, 7, 8, 10, 11]),
-        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8、10、11；该放过 2、3、6、9、12、13）—— 网坏了，全仓那条零命中不作数"
+        BTreeSet::from([1, 4, 5, 7, 8, 10, 11, 14, 15, 16, 17, 20, 21, 22, 23, 25, 26, 27, 28, 29]),
+        "检测网在合成夹具上抓到的行 ≠ 标定（该抓 1、4、5、7、8、10、11、14–17、20–23、25–29；\
+         该放过 2、3、6、9、12、13、18、19、24、30、31）—— 网坏了，全仓那条零命中不作数"
     );
 }
 
@@ -493,36 +551,36 @@ fn no_tracked_text_uses_the_build_process_names() {
 fn the_process_names_net_catches_build_names_and_spares_product_words() {
     let net = process_names_net();
     let lines = [
-        format!("// 稿里没画（主会{} 10-06 定）", "话"), // 1 ✔
-        format!("/// 起因（mg{} CI 现红）", "41"),       // 2 ✔
-        format!("// 要求：用{} 10-09 定「带上 status」", "户"), // 3 ✔
-        format!("// 用{} 2026-09-17「要引入一层文案表」", "户"), // 4 ✔
-        format!("# 合并{}推上去 CI 才红", "树"),         // 5 ✔
-        format!("/// 删了而退役（w{}/proj10 删 hello）", "8"), // 6 ✔
-        format!("// 〔m{}37 合并 token{} 10-09〕", "g", "fix"), // 7 ✔
+        format!("// {}里没画（主会{} 10-06 定）", '\u{7a3f}', "话"), // 1 ✔
+        format!("/// 起因（mg{} CI 现红）", "41"),                   // 2 ✔
+        format!("// 要求：用{} 10-09 定「带上 status」", "户"),      // 3 ✔
+        format!("// 用{} 2026-09-17「要引入一层文案表」", "户"),     // 4 ✔
+        format!("# 合并{}推上去 CI 才红", "树"),                     // 5 ✔
+        format!("/// 删了而退役（w{}/proj10 删 hello）", "8"),       // 6 ✔
+        format!("// 〔m{}37 合并 token{} 10-09〕", "g", "fix"),      // 7 ✔
         "// 主会话派的 ⇒ 主窗口；子 agent 派的 ⇒ 其窗口".to_string(), // 8 ✘ 产品词
         "fn net2_uncancellable_is_additive_and_last() {".to_string(), // 9 ✘ 测试函数名
-        "pub(crate) fn gate2(name: &str) -> Gate2 {".to_string(), // 10 ✘ 代码名
-        "// 上传那一路与复制这一路问的是同一件事".to_string(), // 11 ✘ 不是施工那一路
-        "// 用户原话：「本地要和远端一样」".to_string(), // 12 ✘ 不带日期
-        format!("// 不在这一路的写{}", "区"),            // 13 ✔
-        format!("// ⚠ 逼出 `BUILD_ID` bump，本{}不 bump。", "路"), // 14 ✔
-        "// 本路径不存在 ⇒ 报错；本路由表只读".to_string(), // 15 ✘ 本路径 · 本路由
+        "pub(crate) fn gate2(name: &str) -> Gate2 {".to_string(),    // 10 ✘ 代码名
+        "// 上传那一路与复制这一路问的是同一件事".to_string(),       // 11 ✘ 不是施工那一路
+        "// 用户原话：「本地要和远端一样」".to_string(),             // 12 ✘ 不带日期
+        format!("// 不在这一路的写{}", "区"),                        // 13 ✔
+        format!("// ⚠ 逼出 `BUILD_ID` bump，本{}不 bump。", "路"),   // 14 ✔
+        "// 本路径不存在 ⇒ 报错；本路由表只读".to_string(),          // 15 ✘ 本路径 · 本路由
         format!("// 🔴 〔搬{} 2026-09-18 · 纪律 3〕两棵树一起喂", "树"), // 16 ✔
         format!("// 〔步{} 7c 剖分 2026-09-19〕散文随测试段搬家", ""), // 17 ✔
-        format!("//! # 🔴〔波{} 5 ㈡〕本模块搬到了第三层", ""), // 18 ✔
-        format!("// 〔条{} 66〕「退出行为」那个值的两条命令", ""), // 19 ✔
-        "// 〔已知〕· 第 3 步 · 条目 66 · 〔步进〕".to_string(), // 20 ✘ 不带数字 / 不是那几形
-        format!("//! # 判准（条{} 33）", ""),            // 21 ✔
+        format!("//! # 🔴〔波{} 5 ㈡〕本模块搬到了第三层", ""),      // 18 ✔
+        format!("// 〔条{} 66〕「退出行为」那个值的两条命令", ""),   // 19 ✔
+        "// 〔已知〕· 第 3 步 · 条目 66 · 〔步进〕".to_string(),     // 20 ✘ 不带数字 / 不是那几形
+        format!("//! # 判准（条{} 33）", ""),                        // 21 ✔
         format!("/// ★★★ **条{} 49 的正主**：同一个账号挂两家", ""), // 22 ✔
-        format!("// ⚠ 条{} 80 把那条迁移裁掉了", ""),    // 23 ✔
+        format!("// ⚠ 条{} 80 把那条迁移裁掉了", ""),                // 23 ✔
         "// 一条 8 秒「撤销」· 进度条 240 · 第 3 条 · 那条影响条 5 秒后撤".to_string(), // 24 ✘ 量词
-        "/// 喂了 2 条 1xx，够不到上限".to_string(),     // 25 ✘ 量词
+        "/// 喂了 2 条 1xx，够不到上限".to_string(),                 // 25 ✘ 量词
         format!("// 〔步{} `24f` 第二刀 09-20〕`files-read` 这一族", ""), // 26 ✔
         format!("// 〔搬测{} 2026-09-17〕人群是全体后端代码", "试"), // 27 ✔
-        format!("// 🔴〔波{}〕窗口进程只说 `call`", "二"), // 28 ✔
-        format!("/// 〔步{} H2 09-21〕从那条判据拆出来", ""), // 29 ✔
-        "/// 〔搬自 `ccm-cli`「零修饰」〕〔步骤〕".to_string(), // 30 ✘ 出处 · 不是步 N
+        format!("// 🔴〔波{}〕窗口进程只说 `call`", "二"),           // 28 ✔
+        format!("/// 〔步{} H2 09-21〕从那条判据拆出来", ""),        // 29 ✔
+        "/// 〔搬自 `ccm-cli`「零修饰」〕〔步骤〕".to_string(),      // 30 ✘ 出处 · 不是步 N
     ];
     let got: BTreeSet<usize> = lines
         .iter()
@@ -823,7 +881,7 @@ fn the_evidence_net_catches_missing_files_and_spares_present_ones() {
         (true, format!("见 `{}-COMMANDS.md`", "IPC")),   // 7 ✘ 仓里别处有
         (false, format!("口径同 `{}-ruler.py`", "K-R9")), // 8 ✘ 量具目录外不扫短名
         (true, format!("口径同 `evidence/{}-ruler.py`", "K-R9")), // 9 ✔ 带半截目录的短名
-        (true, format!("读数在 `{}-发版读数.md § 1`", "K-R9")), // 10 ✔ 名字里带汉字
+        (true, format!("读数在 `{}-发版读数.{} § 1`", "K-R9", "md")), // 10 ✔ 名字里带汉字
     ];
     let got: BTreeSet<usize> = cases
         .iter()

@@ -309,7 +309,7 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
 #
 # 🔴 **判 `==` 不判 `<=`**（`§0c` 逐字）：`<=` 只防涨、不防「悄悄记错」，
 #    而本区最贵的病正是「数与名单不同句」。⇒ 这里**只钉名单**，份数一律 `len()` 现算，
-#    表里一个基数字面量都不许有（`brief` 13b）。
+#    表里一个基数字面量都不许有。
 #
 # 🔴 **它挡路的时候，合法出路只有一条**（`references/testing.md` 判据硬规则 11/12）：
 #    S1–S5 哪一件把自己那一组的落点收掉了，**同一拍**把那一件那一行的名单改小 ——
@@ -474,7 +474,7 @@ FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
 # ⚠ **钉的是命令名，不是文件的字节**（件文件 `§0b`/`KR128D3` 逐字）：那三份里还住着
 #   别的东西，按字节钉会把无关改动也判红，那种闸三天内就会被人绕过去。
 #
-# 三份各自怎么判、以及**哪一份判不了**，逐份写死（`brief` 17：判不了就写判不了）：
+# 三份各自怎么判、以及**哪一份判不了**，逐份写死（判不了就写判不了）：
 #
 #   · `src/frontend/ui/ipc/commands.ts`（包装层）—— **判**。22 条逐条要有包装层入口，
 #     而且**两侧都要在**：TS 键 与 `invoke("…")` 的线上串。这一格是**跨语言对拍**
@@ -952,7 +952,7 @@ def section_frontend_ratchet(texts, cmds_now, wrapper: str):
               f"{', '.join(now) if now else '（零）'}")
         print(f"        钉于：{when}")
         print(f"        该降的时候谁来改：{whoi}")
-        # 🔴 目标**逐字印名单**，份数 `len()` 现算 —— 表里一个基数字面量都没有（`brief` 13b）。
+        # 🔴 目标**逐字印名单**，份数 `len()` 现算 —— 表里一个基数字面量都没有。
         print(f"        目标（`FRONTEND_GOAL_PER_ITEM['{g}']`，唯一住址）："
               f"{', '.join(sorted(goal))}")
         print(f"        为什么：{goal_why}")

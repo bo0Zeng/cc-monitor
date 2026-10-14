@@ -113,7 +113,7 @@ pub struct Workspace {
     pub pictures: super::picture::Pictures,
     /// 上一次照着「又连上了」重列过的次数（与 `link.ups()` 比）。
     link_ups: u64,
-    /// 关窗那一问摆着（稿 17）。
+    /// 关窗那一问摆着。
     closing_ask: bool,
     /// 那一问答了「全部保存后关闭」：每一页存成了就关。
     close_after_save: bool,
@@ -130,7 +130,7 @@ pub struct Workspace {
 /// 缩放的上下限与一步多少（Ctrl + = / -）。
 pub const ZOOM_MIN: f32 = 0.8;
 pub const ZOOM_MAX: f32 = 2.0;
-/// 缩放的档位（规范 `I8` 与稿 ⑫）。
+/// 缩放的档位（规范 `I8`）。
 pub const ZOOM_STOPS: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
 /// 视图文件（monitor 交来的那一份，`{"zoom": 1.2, "preview": true}`）：记**整窗缩放**与**预览开没开**，下次开窗照它摆。
@@ -866,7 +866,7 @@ impl Workspace {
     }
 
     /// 🔴 **点了关窗**（这一帧的输入里有关窗请求）：什么都不会丢 ⇒ 直接关；有没保存的编辑页 / 还在跑的那几趟 ⇒
-    /// 拦下（`CancelClose`）、摆「关闭文件窗口 · devbox」那一问（稿 17，[`Self::close_ask_ui`]）。
+    /// 拦下（`CancelClose`）、摆「关闭文件窗口 · devbox」那一问（[`Self::close_ask_ui`]）。
     /// 那一问摆着时又点了一次 × ⇒ 照关（修缺陷那一路交的，认）。答了「全部保存后关闭」⇒ 每一页存成了就关；有一页没存成 ⇒ 作罢（那一页上的条说为什么）。
     pub fn guard_close(&mut self, ctx: &egui::Context) {
         if !ctx.input(|i| i.viewport().close_requested()) {
@@ -1032,7 +1032,7 @@ impl Workspace {
     pub fn apply_zoom(&mut self, ctx: &egui::Context) -> f32 {
         use egui::{Key, KeyboardShortcut as K, Modifiers as M};
         let mut z = ctx.zoom_factor();
-        // 档位照稿：80 · 90 · 100 · 110 · 125 · 150 · 175 · 200%（键盘一档一档走；滚轮照滚的量，落在两档之间也行）。
+        // 档位：80 · 90 · 100 · 110 · 125 · 150 · 175 · 200%（键盘一档一档走；滚轮照滚的量，落在两档之间也行）。
         let step = |z: f32, d: f32| {
             if d > 0.0 {
                 ZOOM_STOPS
@@ -1307,7 +1307,7 @@ impl Workspace {
         self.pictures.keep_only(&keep);
     }
 
-    /// 「看一眼」浮层（稿 24）：窗口正中一块（浮层底、圆角、最宽 720 · 最高 560，不超过窗口减 48），里面是焦点那一栏光标那一项的预览；
+    /// 「看一眼」浮层：窗口正中一块（浮层底、圆角、最宽 720 · 最高 560，不超过窗口减 48），里面是焦点那一栏光标那一项的预览；
     /// Esc · 空格 · 点别处收。
     fn peek_ui(&mut self, ctx: &egui::Context) {
         if self.peek.is_none() {

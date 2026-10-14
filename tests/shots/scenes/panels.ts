@@ -350,7 +350,7 @@ export const PANEL_SCENES: Scene[] = [
     await key("Enter");
     await sleep(500);
   }),
-  // ui3 · 10-11 稿「查找-只搜用户」：框下一行范围「全部 | 用户」＋ 含工具输出与思考。
+  // 查找：框下一行范围「全部 | 用户」＋ 含工具输出与思考。
   panel("panel-find-user", "会话内查找 · 只搜用户", "同一个词换到范围「用户」：词不变、马上重找（核心按流里画成「人说的」那几条判）；命中头一行只写「第几轮 · 时刻」；含工具输出与思考那个勾禁用", async () => {
     await mainReady(ALL_TABS);
     await key("f", { ctrl: true });

@@ -1,4 +1,4 @@
-// 机器页「别名与配置文件」栏的「账号与扩展」那一组（`设计稿/机器配置-v2.md` §5）。守的要求：
+// 机器页「别名与配置文件」栏的「账号与扩展」那一组。守的要求：
 // 构造零 I/O、露出来才问 · 共用 MCP 只画那台后端答的名字与各版、只交意图（删哪一条 · 用哪一版 · 停 / 开同步）·
 // 删一条先问 · 停着同步时不给删、改说「已停止同步」· 扩展那一行只数那台那一列（不判）·「去扩展页」带目的地冒泡。
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -104,7 +104,7 @@ describe("别名与配置文件 · 账号与扩展", () => {
     const head = el.querySelector<HTMLElement>('[data-role="chores-pointer"]')!;
     expect(head.hidden).toBe(false);
     expect(head.textContent).toContain(copyText("cfgPage.pointer.chores", { machine: "devbox", n: 2, m: 1 }));
-    // 稿 12：那几枚分类数小标签，与「文件与数据」同一套（已做的不出）。
+    // 那几枚分类数小标签，与「文件与数据」同一套（已做的不出）。
     expect([...head.querySelectorAll<HTMLElement>(".cfg-pointer-tags [data-kind]")].map((t) => [t.dataset.kind, t.textContent])).toEqual([
       ["must", copyText("dataPage.chores.countMust", { n: 1 })],
       ["decide", copyText("dataPage.chores.countDecide", { n: 1 })],

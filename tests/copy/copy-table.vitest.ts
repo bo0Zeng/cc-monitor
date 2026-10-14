@@ -42,7 +42,7 @@ import { RS_DEFINITIONS, RS_HOME, rustRefsIn, rustRefsOfTree } from "./rust-refs
 // 第六档 aria：只进 aria-label 的无障碍名。
 const KINDS = new Set(["title", "control", "action", "body", "error", "aria"]);
 /**
- * 界面角色（文案新写法 `规范.md` §2 按角色分节）：闭集 ＋ 每个角色许配的 kind。
+ * 界面角色（文案按角色分节）：闭集 ＋ 每个角色许配的 kind。
  * 两向相等：表里出现的（role · kind）== 这张搭配表里的格（多一格 ⇒ 搭错了；少一格 ⇒ 这张表写了没人用的格，删掉）。
  */
 export const ROLE_KINDS: Readonly<Record<string, readonly string[]>> = {

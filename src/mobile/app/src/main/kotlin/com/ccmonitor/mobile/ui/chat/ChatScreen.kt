@@ -48,7 +48,7 @@ fun ChatScreen(
 
 /**
  * 一条会话的正文：渲染直接用 [ClaudeReadingPane]，单元来自 [ChatSession]（核心的通用记录 ⇒ `RecordUnits`）。
- * 手机上看正文只有这一处（终端屏不带阅读子页，`界面.md`「终端」）。
+ * 手机上看正文只有这一处（终端屏不带阅读子页）。
  */
 @Suppress("DEPRECATION") // LocalClipboard 是新 API 但只有 suspend 接口
 @Composable

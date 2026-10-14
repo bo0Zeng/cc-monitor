@@ -299,7 +299,7 @@ fn the_child_environment_allowlist_has_exactly_one_home() {
     );
 
     // ── ④ 阴性对照：普查的核**真的会咬人** ────────────────────────────
-    //    夹具的文件名取中性名，断言只认调用形（来自内容），不认路径〔`brief` `6g`〕。
+    //    夹具的文件名取中性名，断言只认调用形（来自内容），不认路径。
     for shape in ENV_CALL_SHAPES {
         let planted = vec![("a/b.rs".to_string(), format!("    cmd{shape}x);\n"))];
         assert!(

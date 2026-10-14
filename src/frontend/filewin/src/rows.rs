@@ -406,7 +406,7 @@ pub struct Columns {
     pub mtime: f32,
     pub kind: f32,
     pub size: f32,
-    /// 「格」那一列（计划反查，稿 06）多宽：目录落在某一片的仓库里 ⇒ [`CELL_COL`]，别处 ⇒ 0（这一列不在）。窗口每帧按反查结果设。
+    /// 「格」那一列（计划反查）多宽：目录落在某一片的仓库里 ⇒ [`CELL_COL`]，别处 ⇒ 0（这一列不在）。窗口每帧按反查结果设。
     pub cell: f32,
 }
 
@@ -421,7 +421,7 @@ impl Default for Columns {
     }
 }
 
-/// 「格」那一列的宽（稿 06：120）。
+/// 「格」那一列的宽（120）。
 pub const CELL_COL: f32 = 120.0;
 
 /// 一列最窄多少（拖窄到这里就停）。
@@ -630,7 +630,7 @@ pub fn show_file_rows(
     );
 }
 
-/// 就地输入那一格（就地改名 · 就地新建，稿 07 / 08）：第 `row` 行的名字那一格换成一个输入框。
+/// 就地输入那一格（就地改名 · 就地新建）：第 `row` 行的名字那一格换成一个输入框。
 ///
 /// 填进来的：正在编辑的字 · 出错那一句（红边 ＋ 格子下面挂一句）· 这一帧要不要把焦点给它、选中前几个字（主名）。
 /// 交回去的：`outcome` ＝ `Some(true)` 回车 / 点别处（＝改）· `Some(false)` Esc（＝不改）。
@@ -790,7 +790,7 @@ fn paint_one_row(
         egui::Sense::CLICK | egui::Sense::DRAG,
     );
     let band = rect.shrink2(egui::vec2(2.0, 1.0));
-    // 就地输入那一行画成选中（稿 08：冒出来的那一行带选中底）。
+    // 就地输入那一行画成选中（冒出来的那一行带选中底）。
     if revealed || mark.picked || inline.is_some() {
         ui.painter().rect_filled(band, m.radius_m, p.picked);
     } else if row.hovered() {

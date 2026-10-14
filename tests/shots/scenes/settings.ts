@@ -51,7 +51,7 @@ function acctWorld(verifyFail = false): () => World {
   };
 }
 
-/** 配置文件那一页（devbox）照一种样子放好原文、账号库换成表单那几个号（`disk/profiles.ts`；读法与成品全在真后端）。默认世界那台放的是照设计稿的那一份。 */
+/** 配置文件那一页（devbox）照一种样子放好原文、账号库换成表单那几个号（`disk/profiles.ts`；读法与成品全在真后端）。默认世界那台放的是典型的那一份。 */
 const profilesWorld = (look: ProfilesLook) => (): World => {
   const w = defaultWorld();
   putProfileAccounts(w.disk.devbox);

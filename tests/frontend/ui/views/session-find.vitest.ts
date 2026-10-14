@@ -436,7 +436,7 @@ describe("SE2 · 实时 tab 上的查找面板", () => {
   });
 });
 
-// ── ui3（10-11 稿「查找-只搜用户」）：范围「全部 | 用户」 ─────────────────────────────
+// ── 范围「全部 | 用户」 ─────────────────────────────
 
 describe("ui3 · 查找范围「全部 | 用户」", () => {
   const scopeSeg = (root: ParentNode): HTMLElement => root.querySelector<HTMLElement>(`[role=radiogroup][aria-label="${copyText("sessionFind.scope.label")}"]`)!;

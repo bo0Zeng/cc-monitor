@@ -57,7 +57,10 @@
       { "text": "刷新", "use": "非文案" }
     ],
     "tests/common/guard-core/no_outside_refs_tests.rs": [
-      { "text": "记录", "use": "非文案" }
+      { "text": "记录", "use": "非文案" },
+      { "text": "任务", "use": "非文案" },
+      { "text": "主会话", "use": "非文案" },
+      { "text": "签收", "use": "非文案" }
     ],
     "tests/common/shell-quote-core/lib_tests.rs": [
       { "text": "会话", "use": "输入" },

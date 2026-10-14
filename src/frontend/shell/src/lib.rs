@@ -1797,7 +1797,7 @@ fn open_with_os(path_or_dir: &str) -> Result<(), String> {
     let (bin, args) = crate::platform::proc::os_opener(path_or_dir);
     // 三条策略：
     // · `Hidden` —— 这一跳只是转交给系统默认 opener，**先前那个 `CREATE_NO_WINDOW`
-    //   就是这一条**（设计稿逐字点名它是「仓里有、却用在最不需要的那处」的那一份）；
+    //   就是这一条**（它是「仓里有、却用在最不需要的那处」的那一份）；
     // · `Detached` —— fire-and-forget：我们不等它，也不该在自己退出时把用户刚打开的
     //   文件管理器一起收掉 ⇒ **绝不能是 `JobKillOnClose`**（那会在本函数返回、
     //   句柄一丢的瞬间把它杀掉）；

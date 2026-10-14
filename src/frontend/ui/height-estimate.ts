@@ -295,7 +295,7 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
   //   card-slash      19 ← 同一套紧凑系 token
   // 报错卡（§5.2.5）：抬头 · 下一步 · 「原文」三行。
   if (el.classList.contains("card-api-error")) return 60;
-  // 事件条（「谁说的」稿 A）：抬头一行 28；展开着（交回 · 另一会话）加正文的一段粗估。中断标记 · 后台通知一行细线。
+  // 事件条：抬头一行 28；展开着（交回 · 另一会话）加正文的一段粗估。中断标记 · 后台通知一行细线。
   if (el.classList.contains("card-speaker")) return (el as HTMLDetailsElement).open ? 28 + 60 : 28;
   if (el.classList.contains("card-event-line") || el.classList.contains("card-notice")) return 19;
   if (el.classList.contains("card-slash")) return 19;

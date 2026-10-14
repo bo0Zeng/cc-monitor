@@ -7,7 +7,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.claude.link.wire.Wire
 
 /*
- * 核心成品的解码：只认格、不判、不写字（`架构.md` D3 · D10）。每一格的意思以 `IPC-COMMANDS.md` 为准；
+ * 核心成品的解码：只认格、不判、不写字。每一格的意思以 `IPC-COMMANDS.md` 为准；
  * 形状对不上（缺必填格）⇒ `null`，由调用方报「两端契约对不上」，不补默认值。
  */
 

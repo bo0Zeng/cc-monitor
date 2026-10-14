@@ -35,7 +35,7 @@ export const LS_KEYS = {
   tabBarWidth: "cc-monitor.tab-bar-w",
   /** 「过程默认展开」（会话头「⋯」· Ctrl+O）。每扇窗一份；`"1"` 展开，其余收起。 */
   processExpanded: "cc-monitor.stream.process-expanded",
-  /** 「谁说的」稿 A：「显示系统注入」（会话头「⋯」）。每扇窗一份；`"1"` 显示，其余不露。 */
+  /** 「显示系统注入」（会话头「⋯」）。每扇窗一份；`"1"` 显示，其余不露。 */
   showInjected: "cc-monitor.stream.show-injected",
   /** 主窗口缩放（`Ctrl+=` / `Ctrl+-` / `Ctrl+0`）：倍数串，如 `"1.25"`。丢了回到 1。 */
   mainZoom: "cc-monitor.main.zoom",

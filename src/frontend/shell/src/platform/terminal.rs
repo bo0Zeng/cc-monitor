@@ -498,8 +498,8 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     }
     // ★★ 第一格与 Plan A 不同，也是照着盘面写的：先前那句 `creation_flags(CREATE_NEW_CONSOLE)`
     // 逐字就是 `ConsolePolicy::NewVisible`。**全仓唯一一处 `NewVisible`，而且是刻意的** ——
-    // 设计稿逐字：「别把 `launch.rs` 的 `CREATE_NEW_CONSOLE` 一起改掉……这正说明为什么要
-    // 唯一出口 + 显式声明，而不是全局加一个 flag」。后两格与 Plan A 相同。
+    // 别把 `launch.rs` 的 `CREATE_NEW_CONSOLE` 一起改掉：这正说明为什么要
+    // 唯一出口 + 显式声明，而不是全局加一个 flag。后两格与 Plan A 相同。
     spawn_managed_cmd(
         &mut builder,
         ConsolePolicy::NewVisible,

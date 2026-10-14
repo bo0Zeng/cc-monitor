@@ -284,7 +284,7 @@ pub mod picker;
 pub mod picture;
 // 本包的平台层（平台 cfg 只许住这里）。
 pub mod platform;
-// **计划反查**（稿 06）：目录落在某一片的仓库里 ⇒「格」一列 · 预览头「归属」· 右键「在计划里看」（后端 `plan-files` 判，这里只排版）。
+// **计划反查**：目录落在某一片的仓库里 ⇒「格」一列 · 预览头「归属」· 右键「在计划里看」（后端 `plan-files` 判，这里只排版）。
 pub mod plan;
 // 渲染器挑哪块显卡：真显卡在前、软件渲染垫底（规则只住这一处；Windows 上接 wgpu 的那几行住 `platform.rs`）。
 pub mod render;

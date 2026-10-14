@@ -1,7 +1,7 @@
 /**
  * 后端台架的合成家目录：按 Claude Code **盘上原始格式**落 `.claude/projects/<目录>/<sid>.jsonl`（type user / assistant ·
  * message.content 块 · tool_use / tool_result · toolUseResult），真后端从头解析、出成品 —— 量的是它真读盘的那一份活。
- * 正文全是模板占位，不取任何真会话（口径同网络层调研 10-10 的 `netprobe/gen.py`）。
+ * 正文全是模板占位，不取任何真会话（只造结构）。
  *
  * 一份 24 个会话，大小照原先那屋子会话（几份 5–8 MB 的长会话 ＋ 一长串几十到几百 KB 的）；按 `--scale` 复制成几十上百个（不同目录、不同 sid）。
  * 用法：tsx make-home.ts <HOME> [--scale N] [--seed N]
