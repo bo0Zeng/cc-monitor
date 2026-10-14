@@ -472,8 +472,9 @@ fn the_lead_is_the_bounded_stretch_just_before_the_page() {
 /// 换了类型 ⇒ 另起一条。行摘要里被并掉的那一行照占号、不带记录；记录行与子运行那一页只出并好的那一条。
 #[test]
 fn adjacent_unread_lines_fold_into_one() {
-    const NEW: &str = r#"{"type":"brand-new","sessionId":"s"}"#;
-    const OTHER: &str = r#"{"type":"other-new","sessionId":"s"}"#;
+    // 带链上身份（没身份的未知类型是簿记行、不成卡，`record_of_tests::a_bookkeeping_line_without_identity_is_no_card`）。
+    const NEW: &str = r#"{"type":"brand-new","uuid":"n","sessionId":"s"}"#;
+    const OTHER: &str = r#"{"type":"other-new","uuid":"o","sessionId":"s"}"#;
     let page = format!("{NEW}\n{MODE}\n{NEW}\n{NEW}\n{OTHER}\n{USER}\n{NEW}\n");
     let face = claude();
     let rows = rows_v(&mut rd(&face), 0, page.as_bytes());

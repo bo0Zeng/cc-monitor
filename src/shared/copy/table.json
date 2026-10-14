@@ -3489,6 +3489,12 @@
       "zh": "无法识别 {n} 行（类型：{types}）",
       "args": ["n", "types"]
     },
+    "record.unread.quietSep": {
+      "kind": "body",
+      "role": "片段",
+      "zh": " · ",
+      "args": []
+    },
     "record.unread.parseFailed": {
       "kind": "body",
       "role": "说明",
