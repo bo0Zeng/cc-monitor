@@ -594,8 +594,15 @@ def masked_source(path: Path, lang: str) -> str:
     key = (str(path), lang, st.st_mtime_ns, st.st_size)
     got = _MASKED.get(key)
     if got is None:
-        got = _MASKED[key] = mask_comments(path.read_text(encoding="utf-8"), lang)
+        got = mask_comments(path.read_text(encoding="utf-8"), lang)
+        if lang == "rs":
+            got = LINT_REASON_RE.sub(lambda m: m.group(1) + " " * len(m.group(2)) + m.group(3), got)
+        _MASKED[key] = got
     return got
+
+
+# 放行 lint 时写的理由（`#[allow(…, reason = "…")]`）是给读代码的人的，不是对外文案 ⇒ 与注释同样遮掉（行号与长度不变）。
+LINT_REASON_RE = re.compile(r'(#!?\[(?:allow|expect|warn|deny)\([^"\]]*?reason\s*=\s*")([^"\n]*)("\s*,?\s*\)\])')
 
 
 CFG_TEST_RE = re.compile(r"#\[cfg\((?:test|all\([^)]*test[^)]*\))\)\]")

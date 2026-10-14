@@ -14,7 +14,7 @@ use std::sync::Mutex;
 // `Run::Async` 那一档随时可能被 `cancel` 打断，每个 await 点上都得是安全的 ⇒ 不另立「哪条算写」的分类表。
 //
 // 有上限（`INVARIANTS §48.2`「脱离后不留僵尸」）：后端自己兜一个退出排空期限 [`DRAIN_DEADLINE`]（30 秒），到点仍没排空 ⇒
-// 记一行说哪几条没做完，然后退。这是后端零定时器让位的地方之一（登记在 `REGISTERED_DEADLINE_WAKES`）：远端后端在 SSH 断开那一刻没人叫它退、
+// 记一行说哪几条没做完，然后退。这是后端零定时器让位的地方之一：远端后端在 SSH 断开那一刻没人叫它退、
 // 也没人给上限，阻塞在挂死文件系统上的那一条会把进程无限期留下。第二次停机信号 = 立刻退；机器页「停」等得比它久一点
 // （`--resident-stop` 的宽限期 `control/resident.rs::STOP_GRACE_MS`，35 秒），好让后端先把「哪几条没做完」说出来。
 
@@ -23,6 +23,10 @@ use std::sync::Mutex;
 /// 取值 30 秒：在飞的阻塞写（存盘 ≤ 8 MiB · 递归删 ≤ 10 万条 · 一次 tmux）在正常盘上都是秒内；30 秒是它们的一个量级以上，
 /// 超过它多半是卡在挂死的文件系统 / 一个不回话的子进程上，再等也等不来。大文件同机复制（`files-copy`，不可取消）
 /// 可能超过它 —— 那一条会被列进「没做完」里说出来。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "流模式收场的退出排空期限（`wire::drain::DRAIN_DEADLINE`）：只在收场时装一次，到点说出哪几条没做完再退"
+)]
 pub(crate) const DRAIN_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
 
 /// 退出闸：在飞的阻塞命令（带名字）＋ 关没关。进程里只有一个（[`DRAIN`]）；判据另造实例。
@@ -175,7 +179,11 @@ where
         }
         std::future::pending::<()>().await
     };
-    // 后端零定时器让位的一处（`no_timer_guard::REGISTERED_DEADLINE_WAKES`）：只在收场时装这一次。
+    // 后端零定时器让位的一处（`clippy.toml` 的 `disallowed-methods`，就地放行）：只在收场时装这一次。
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "流模式收场（`inbound::exit_after_drain_within`）等在飞的阻塞命令做完的上限：到点仍没排空 ⇒ 说出哪几条没做完、退出"
+    )]
     let expired = tokio::time::sleep(deadline);
     tokio::select! {
         _ = DRAIN.drained() => {

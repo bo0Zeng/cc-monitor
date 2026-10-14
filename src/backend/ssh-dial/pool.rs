@@ -82,6 +82,10 @@ impl Conn for Linked {
 /// 只用来比「这条连接多久没收到对端字节了」，不驱动任何等待、不让谁醒来。
 pub fn mono_ms() -> u64 {
     static ORIGIN: OnceLock<tokio::time::Instant> = OnceLock::new();
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "SSH 连接「最后一次收到对端字节」的时刻（`pool::mono_ms` / `pool::Heard`）：TCP 那一层读到字节时记一笔，复用一条连接开通道之前比一次「多久没收包了」—— 久了就与新建一条同时起跑（`…"
+    )]
     let now = tokio::time::Instant::now();
     let origin = *ORIGIN.get_or_init(|| now);
     u64::try_from(now.saturating_duration_since(origin).as_millis()).unwrap_or(u64::MAX - 1) + 1

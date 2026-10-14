@@ -25,6 +25,8 @@
 //!   所有地址同时起拨，首个握手成功者胜、其余立即丢弃；给的顺序（last-good 排首）只决定同时完成时谁先被看到。
 //! - 平台 cfg：android 不算 linux，凡是点名 linux 的 cfg 都要把 android 明写出来（`android_cfg_guard`）。
 
+// 测试段可以用会自己醒来的构件（夹具的期限）；生产段的放行逐处写在调用点（`../clippy.toml`）。
+#![cfg_attr(test, allow(clippy::disallowed_methods))]
 use std::sync::{Arc, Mutex};
 
 use serde::{Deserialize, Serialize};

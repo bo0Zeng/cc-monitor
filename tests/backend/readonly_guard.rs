@@ -1730,7 +1730,7 @@ mod capture_is_read_only {
 //   `K-R76` 当时刻意不自批，`§0d` 写死「只改那段过期的话」）。
 //   今天盘上：`g6_doctrine` 直接写成 `pub(crate) mod`，跨模块的取名走
 //   `crate::readonly_guard::g6_doctrine::{cell_names, is_cell}`（唯一的跨模块消费者是
-//   `no_timer_guard::registered_uses_all_have_reasons`），**顶层那一行再导出没有了**。
+//   `no_timer_guard`），**顶层那一行再导出没有了**。
 //   ⚠ **别再写回来**：这一族今天有闸了 —— monitor 侧
 //   `structural_scan_tests.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
 //   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
@@ -2238,8 +2238,8 @@ mod g6_staged_zero {
 ///
 /// `ratchet_guard.rs` 头注逐字给过理由：判据**不许与被扫的文本同住一个文件**
 /// （它会在自己的注释里找到自己 ⇒ 恒绿）。
-/// ⇒ 本模块钉 `no_timer_guard.rs` 与 `platform/fallback_guard.rs`；
-/// 本文件自己那两行由 `platform/fallback_guard.rs::g6_scope_pins` 钉 —— **三道两两互钉**。
+/// ⇒ 本模块钉 `platform/fallback_guard.rs`；本文件自己那两行由 `platform/fallback_guard.rs::g6_scope_pins` 钉 —— 两道互钉
+/// （零定时器那一道换成了 clippy，没有性质行可钉了）。
 ///
 /// # 它挡的是哪一种事故
 ///
@@ -2261,22 +2261,14 @@ mod g6_scope_pins {
 
     /// `(住址, 语料, 收窄前那句假话的承重词——今天必须零命中, why_empty)`
     fn pinned() -> Vec<(&'static str, &'static str, Vec<String>, &'static str)> {
-        vec![
-            (
-                "no_timer_guard.rs",
-                include_str!("no_timer_guard.rs"),
-                vec![format!("不许再有任何{}", "周期性唤醒")],
-                "",
-            ),
-            (
-                "platform/fallback_guard.rs",
-                include_str!("platform/fallback_guard.rs"),
-                Vec::new(),
-                "这一道的性质行今天**只有一句**、也没有收窄史 —— 它自曝的是射程\
+        vec![(
+            "platform/fallback_guard.rs",
+            include_str!("platform/fallback_guard.rs"),
+            Vec::new(),
+            "这一道的性质行今天**只有一句**、也没有收窄史 —— 它自曝的是射程\
                  （只看 `platform/`、等价改写绕得过），那是诚实登记，不是过期的绝对话。\
                  ⇒ 没有承重词要钉，如实写在这里而不是留一个空表。",
-            ),
-        ]
+        )]
     }
 
     /// ★ 正题：每份文件里，性质行与人群行**各自恰好一行**，且各自有内容。
@@ -2306,35 +2298,6 @@ mod g6_scope_pins {
                 );
             }
         }
-    }
-
-    /// ★ 反向棘轮：收窄前那句绝对话的**承重词**，今天起在那份文件里零命中。
-    #[test]
-    fn the_pre_narrowing_absolutes_do_not_come_back() {
-        let mut with_words = 0usize;
-        for (rel, src, forbidden, why_empty) in pinned() {
-            if forbidden.is_empty() {
-                assert!(
-                    why_empty.trim().chars().count() >= 20,
-                    "`{rel}` 的禁词表是空的，却没写清为什么空 —— 空表要么是事实，\
-                     要么是没人填，两者在断言上一模一样"
-                );
-                continue;
-            }
-            with_words += 1;
-            for word in forbidden {
-                assert!(
-                    !src.contains(word.as_str()),
-                    "`{rel}` 里又出现了 `{word}` —— 那是**收窄前**的说法，判据从来没兑现过它。\n\
-                     ⇒ 要么把判据的人群补齐到那句话上，要么就别写那句话。\n\
-                     （`§0a` 四情形表：这一格叫 `补齐人群`，不叫「先把话说满」。）"
-                );
-            }
-        }
-        assert!(
-            with_words >= 1,
-            "禁词表全空 —— 本条此刻是空转的（每一条都走了 `why_empty` 那一支）"
-        );
     }
 }
 

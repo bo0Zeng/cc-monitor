@@ -20,8 +20,16 @@ use std::sync::{mpsc, Mutex};
 use std::time::Duration;
 
 /// 起登录子命令之后等它打印链接，至多这么久（它要先问一次服务端拿登录参数）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "在 app 里登录一个号：起那一家的登录子命令之后等它打印登录链接的一次有界等待的期限（`START_WITHIN`，交给 `link_rx.recv_timeout(START_WITHIN)`）"
+)]
 pub(crate) const START_WITHIN: Duration = Duration::from_millis(30_000);
 /// 码写进去之后等它换完（成 · 不成 · 说码不对），至多这么久（它要去令牌端点换一次、再拉一次资料）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "在 app 里登录一个号：码写进登录子命令之后等它换完的一次有界等待的期限（`FINISH_WITHIN`，交给 `rx.recv_timeout(FINISH_WITHIN)`）"
+)]
 pub(crate) const FINISH_WITHIN: Duration = Duration::from_millis(60_000);
 /// 失败时原话里带它最后说的几行。
 const TAIL_LINES: usize = 12;
@@ -170,6 +178,10 @@ pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
         let job = job.clone();
         std::thread::spawn(move || listen(&job, f, &heard, link_tx, on_end));
     }
+    #[allow(
+        clippy::disallowed_methods,
+        reason = "`login-start` 等登录子命令打印链接的一次有界等待：它要先问一次服务端拿登录参数，网络卡住时没有它这条命令就一直挂着"
+    )]
     let got = match link_rx.recv_timeout(START_WITHIN) {
         Ok(Ok(url)) => Ok(url),
         Ok(Err(tail)) => Err(Said::with_raw(
@@ -261,6 +273,10 @@ fn listen(
 
 /// 把粘回来的东西交给那份作业，等那一家的结局（至多 [`FINISH_WITHIN`]）。格式对不上这一趟的链接 ⇒ 不写、`BadPaste`。
 /// 成 ⇒ 那份作业的目标键（起它时交的那一个）。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "`login-finish` 等那一家换码的一次有界等待：码写进去之后，它去令牌端点换一次、再拉一次资料；卡住时没有它这条命令就一直挂着"
+)]
 pub(crate) fn finish(job: &str, pasted: &str) -> Result<String, FinishFail> {
     let (tx, rx) = mpsc::channel::<Waited>();
     let account = {

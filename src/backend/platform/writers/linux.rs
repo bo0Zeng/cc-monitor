@@ -142,6 +142,10 @@ pub(crate) fn watch_opens(
                     },
                 ];
                 // SAFETY：两个栈上的合法 pollfd，nfds 与之匹配；timeout=-1 = 无限等；两个 fd 的所有权都在本闭包里。
+                #[allow(
+                    clippy::disallowed_methods,
+                    reason = "无期限地等两个 fd 之一可读（-1）：事件来了内核叫醒，不会自己醒"
+                )]
                 let n = unsafe { libc::poll(pfd.as_mut_ptr(), 2, -1) };
                 if n < 0 {
                     let err = std::io::Error::last_os_error();

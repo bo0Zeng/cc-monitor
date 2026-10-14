@@ -57,6 +57,10 @@ where
         loop {
             // SAFETY：pfd 是栈上的一个合法 pollfd，nfds=1 与之匹配；timeout=-1 = 无限等。
             // `fd` 的所有权在本闭包里，poll 期间不会被 close。
+            #[allow(
+                clippy::disallowed_methods,
+                reason = "在 pidfd 上无期限地等进程退出（-1）：进程一退内核就叫醒，不会自己醒"
+            )]
             let n = unsafe { libc::poll(&mut pfd as *mut libc::pollfd, 1, -1) };
             if n >= 0 {
                 on_dead();

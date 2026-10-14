@@ -454,7 +454,7 @@ PID 死亡判定用 `pidfd` 绑进程实例本身 ⇒ PID 复用在机制上无�
 
 ### 41.4 红线：绝不为了让守卫变绿而删掉唯一信号源
 
-`no_timer_guard.rs` 扫后端全 crate 生产段：判据落在「会让线程自己醒来的构件」，不落在「出现过 `Duration`」；非定时器的 `Duration` 用途逐条登记、处数恰好等于条数；会醒来的构件只许住 `REGISTERED_DEADLINE_WAKES`（每行写住址 · 理由 · 醒在什么期限上，今天都是一次性期限，不是节拍）。
+后端与拨号核心的生产段由 clippy 挡（`src/backend/clippy.toml` 的 `disallowed-methods`，deny）：sleep · 带期限的等待 · interval · 掐表 · 造 `Duration` · 带期限的 `poll`，每用一处在那一处就地放行并写理由（今天都是一次性期限，不是节拍）。clippy 看不见的两格（交给 shell 的自带循环的串 · 只在 Windows 编的那一臂）留在 `no_timer_guard.rs`。
 
 三条派生纪律：① 后端源码的散文里不逐字引守卫的禁用模式（守卫连注释一起扫，改措辞，不改守卫）；② 删一个周期性信号时，要连依赖那个节拍的 e2e 一起跑；③ 源码扫描型守卫「剥测试段」的剥法必须同时防欠剥与过剥 —— 剥法只有共享 crate `src/common/guard-core` 一份，剥完断言残留 `#[test]` 为 0（`guard_support::assert_no_test_code`），扫描面用字节总量下限 ＋ 文件数与独立遍历相等双判据钉住。验证一条守卫只有一种算数：把违规代码分别放进「应被扫到」与「应被剥掉」的位置，看红绿是否相反。
 

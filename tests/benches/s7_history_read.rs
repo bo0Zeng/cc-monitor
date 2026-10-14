@@ -48,6 +48,10 @@
 //! - **stdout 丢进 `/dev/null`**，不过 SSH。生产里应答要过网络，那一段不在读数里。
 //! - **不是真机语料**。是按仓内那份**合成**语料的结构放大出来的（见 `S7-make-corpus.sh`）。
 
+#![allow(
+    clippy::disallowed_methods,
+    reason = "量具：掐表量读历史的耗时，不进后端产品"
+)]
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::Instant;

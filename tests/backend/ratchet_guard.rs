@@ -61,47 +61,16 @@
 #[cfg(test)]
 mod tests {
     /// `(文件, 那一行, 恰好几处, 它在守什么 · 与它什么关系)`
-    const PINS: &[(&str, &str, usize, &str)] = &[
-        (
-            "readonly_guard.rs",
-            "unregistered.is_empty(),",
-            1,
-            "起进程的**默认拒绝**：不在 `ALLOWED` 里就红。这里没往它加行，这一行也不许动。",
-        ),
-        (
-            "no_timer_guard.rs",
-            "REGISTERED_DURATION_USES.len(),",
-            1,
-            "零定时器护栏的**恰好相等**断言那一行（`assert_eq!` 的第二个实参）。\
-             ⚠ 那个名字在同一条断言的报错文案实参里还出现一次，但**那一行没有尾逗号** ——\
-             整行相等的量法把两者分得开，这里钉的是**断言**那一处。\
-             `K-P1` **一个 `Duration::from_*` 都没加**：`accept` 阻塞在内核事件上、\
-             读一行也阻塞在内核事件上，没有任何会「自己醒过来」的构件。\
-             ⇒ 这张表的条数与断言都必须原封不动。",
-        ),
-        (
-            "no_timer_guard.rs",
-            "const MIN_SCANNED_CODE_BYTES: usize = 80_000;",
-            1,
-            "零定时器护栏的**反空真地板**。后端加了两个文件（`listen.rs` / 两条守卫），\
-             扫描面只增不减 ⇒ 这个地板没有任何理由被下调。**下调它就是让护栏在更小的面上绿着。**\
-             ⚠ 同上：这一行**只挡「把 80_000 调小」**；「不动这个数、把断言原地调松」由下面那条实参针挡。",
-        ),
-        (
-            "no_timer_guard.rs",
-            "bytes >= MIN_SCANNED_CODE_BYTES,",
-            1,
-            "★〔`D1` `阻-2` 同族，收工前自查补的〕那条反空真地板的**断言实参行**。\
-             `阻-2` 那一刀的形状是「**不碰被钉的常量，只把用它的那句断言调松**」——\
-             这张表里凡是钉常量声明行的都有这个洞，本条补的是第二处。\
-             把它写成 `bytes >= MIN_SCANNED_CODE_BYTES / 2,` 或 `bytes >= 1,` 时这一行会不见 ⇒ 红。",
-        ),
-    ];
+    const PINS: &[(&str, &str, usize, &str)] = &[(
+        "readonly_guard.rs",
+        "unregistered.is_empty(),",
+        1,
+        "起进程的**默认拒绝**：不在 `ALLOWED` 里就红。这里没往它加行，这一行也不许动。",
+    )];
 
     fn source_of(rel: &str) -> &'static str {
         match rel {
             "readonly_guard.rs" => include_str!("readonly_guard.rs"),
-            "no_timer_guard.rs" => include_str!("no_timer_guard.rs"),
             other => panic!("本表里出现了没接语料的文件：{other}"),
         }
     }

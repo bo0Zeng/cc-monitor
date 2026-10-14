@@ -384,6 +384,10 @@ impl Strategy for File {
 
 /// 一趟推演里给策略的总耗时：一趟至多调 200 次，单次的墙钟兜底是秒级，不另限就可能拖到几十秒。用完 ⇒ 推演停在那里。
 /// 只是累计耗时的一把尺子（每调一次策略前后读一次钟、加起来比），不等、不睡、不让谁醒来。登记在零定时器的期限表里。
+#[allow(
+    clippy::disallowed_methods,
+    reason = "一趟推演里给策略的总耗时（`rules::script::SIMULATE_BUDGET`）：每调一次策略前后读一次钟、把耗时加起来跟它比，到了就不再调、推演停在那里"
+)]
 pub(crate) const SIMULATE_BUDGET: std::time::Duration = std::time::Duration::from_millis(500);
 
 /// 给一趟推演用的策略：累计耗时到了 [`SIMULATE_BUDGET`] 就不再调、报超时。

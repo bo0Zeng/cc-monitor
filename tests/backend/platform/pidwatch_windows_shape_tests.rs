@@ -127,7 +127,7 @@ fn the_windows_wait_never_times_out() {
         panic!("{e}\n⇒ 等待那一行不再只用 `WAIT_FOREVER` —— 带了超时，或者多了一处等待")
     });
     // 第三处是一次性子命令 `--resident-stop` 那一个带期限的等（`wait_within`）—— 它不在看守路上，
-    //   登记在 `no_timer_guard::REGISTERED_ONE_SHOT_CLI_WAITS`（那边两向相等地钉着「带期限的等只有登记的这几处」）。
+    //   `no_timer_guard::windows_arm` 钉着「Windows 那一臂带期限的等只有这一处」。
     assert_eq!(
         p.matches("WaitForSingleObject(").count(),
         3,

@@ -98,7 +98,7 @@
 //!   **装它们的那两手仍在中转**（`server::apply_downstream_deadline` / `upstream::connect`，
 //!   都改成收入参）⇒ 「值归后端 · 执行归通信层」。
 //!   写法上没有走 `Duration::from_secs`（它在零定时器护栏的**禁用清单**里），
-//!   走的是 `Duration::from_millis` + **往 `no_timer_guard.rs::REGISTERED_DURATION_USES` 加两行**
+//!   走的是 `Duration::from_millis`，在声明处就地放行 `clippy::disallowed_methods`（后端 `clippy.toml`）
 //!   并逐条写明「socket 期限是一次阻塞的上限，不是周期性唤醒」。
 //!   ⚠ 往一张「**恰好相等**」的表里加行是**收紧**（逼你说清那个 `Duration` 干什么用），
 //!   与放宽那条断言方向相反 —— 断言本身**一个字节都没动**。
