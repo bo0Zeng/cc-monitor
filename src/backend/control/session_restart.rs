@@ -423,17 +423,17 @@ const SHUTTING_DOWN: &str = "shutting_down";
 #[derive(Debug)]
 pub(crate) struct RestartErr(pub(crate) Fault);
 
-impl crate::stream::inbound::typed::Codes for RestartErr {
+impl crate::wire::typed::Codes for RestartErr {
     const ALL: &'static [&'static str] = RESTART_CODES;
-    fn into_fail(self) -> crate::stream::inbound::spec::Fail {
+    fn into_fail(self) -> crate::wire::spec::Fail {
         let (code, message, data) = self.0;
         debug_assert!(
             RESTART_CODES.contains(&code.as_str()) || code == SHUTTING_DOWN,
             "session-restart 回了码表里没有的码 `{code}`"
         );
-        crate::stream::inbound::spec::Fail {
+        crate::wire::spec::Fail {
             data,
-            ..crate::stream::inbound::spec::Fail::new(&code, message)
+            ..crate::wire::spec::Fail::new(&code, message)
         }
     }
     fn of_code(code: &str, said: String) -> Result<Self, String> {

@@ -2,7 +2,7 @@
 //! 只读；拼装只在 [`crate::accounts::upstream_select::rotate::Hop::facts`] 一处。`轮换-v5-分层.md` §1.1 · §1.9。
 
 use crate::accounts::quota::facts::Fact;
-use crate::stream::inbound::typed::{Blocking, Command, Cx};
+use crate::wire::typed::{Blocking, Command, Cx};
 
 /// `rotation-facts` 的入参。
 #[derive(Debug, Default, serde::Deserialize)]
@@ -29,7 +29,7 @@ pub(crate) struct RotationFactsReply {
     pub(crate) accounts: Vec<Fact>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-facts` 自己的码（只有入参不对那一种）。
     pub(crate) enum RotationFactsErr {}
 }

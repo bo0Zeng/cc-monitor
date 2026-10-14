@@ -75,7 +75,7 @@ pub const SESSION_LINES_KIND: &str = "session-lines";
 pub const SESSION_LIVE_CARD_KIND: &str = "session-live-card";
 
 /// 又一种流：那台机器上「某样东西变了」（`changed/<主题>`，格体是后端 `changed` 帧去掉 `kind` / `topic` 的那一份 `{key?, rev?, body?}`，没有留存）。
-/// 主题不在这里认：后端主题表（`stream/topic.rs`）是唯一一处，这里原样按主题扇出。TS 那一侧的同一个串住 `src/frontend/ui/changed-stream.ts::CHANGED_KIND`。
+/// 主题不在这里认：后端主题表（`wire/topic.rs`）是唯一一处，这里原样按主题扇出。TS 那一侧的同一个串住 `src/frontend/ui/changed-stream.ts::CHANGED_KIND`。
 pub const CHANGED_KIND: &str = "changed";
 
 /// 〔「测试连接的进度不许倒退」〕又一种流：本机后端里那一趟测试连接的进度（`probe-progress/<票>`，

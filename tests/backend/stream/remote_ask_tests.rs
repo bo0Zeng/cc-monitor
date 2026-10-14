@@ -27,15 +27,14 @@ use std::sync::Mutex as StdMutex;
 
 // 线上那一份入参经 typed 那一处收（同分派），再交本体；回包写成线上那一份。
 fn answer_reach_with(args: &Value, table: &Table) -> Result<Value, (&'static str, String)> {
-    let req: ReachReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: ReachReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_reach_with(&req, table).map(|r| serde_json::to_value(r).unwrap())
 }
 
 // `assets-sync` 那一扇门的登记：入参经 typed 那一处收（`AssetsSyncReq`），两格都在 ⇒ 交唯一的写口（同 `asset_sync::answer_with`）。
 fn register(table: &Table, args: &Value) -> Result<String, (&'static str, String)> {
     let req: crate::assets::asset_sync::AssetsSyncReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     let (Some(o), Some(d)) = (&req.origin, &req.dial) else {
         panic!("夹具两格都给");
     };

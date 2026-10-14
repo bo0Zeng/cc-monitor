@@ -12,13 +12,13 @@ use crate::accounts::upstream_select::rotate::account_ok;
 use crate::faces::rotation_face::Ctx;
 use crate::platform::child::{Child, Deadline};
 use crate::platform::fs::Own;
-use crate::stream::inbound::spec::wire;
+use crate::wire::spec::wire;
 use copy_core::copy_text;
 use serde_json::Value;
 use std::ffi::OsStr;
 
 /// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
-type Answer = Result<Value, crate::stream::inbound::spec::Fail>;
+type Answer = Result<Value, crate::wire::spec::Fail>;
 
 /// 起官方客户端报一次用量的期限（它要起进程、读登录、问一次上游）。
 const PROBE_WITHIN: Deadline = Deadline::secs(30);
@@ -29,8 +29,8 @@ pub(crate) const PROBE_CAP: Deadline = Deadline::secs(32);
 /// 报错原话里带官方客户端的输出至多这么多个字。
 const SAID_CHARS: usize = 200;
 
-fn bad(detail: &str) -> crate::stream::inbound::spec::Fail {
-    crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(detail))
+fn bad(detail: &str) -> crate::wire::spec::Fail {
+    crate::wire::spec::Fail::new("bad_args", crate::common::contract::malformed(detail))
 }
 
 /// `quota-probe`：`{agent, account}` ⇒ 读到的窗口（并已记进额度账）或「读不懂」。
@@ -102,7 +102,7 @@ pub(crate) fn answer_probe_with(
         .path(crate::common::own_dir::HIDDEN_WORK_DIR)
         .map_err(|_| no_home())?;
     own.ensure_dir(&cwd).map_err(|e| {
-        crate::stream::inbound::spec::Fail::new(
+        crate::wire::spec::Fail::new(
             "io_failed",
             copy_text(
                 "beQuotaProbe.workDir.failed",
@@ -128,7 +128,7 @@ pub(crate) fn answer_probe_with(
         child = child.env("PATH", p);
     }
     let out = child.run(PROBE_WITHIN).map_err(|e| {
-        crate::stream::inbound::spec::Fail::from(e.into_cmd_said("failed", |why| {
+        crate::wire::spec::Fail::from(e.into_cmd_said("failed", |why| {
             copy_text(
                 "beQuotaProbe.run.failed",
                 &[("program", face.program), ("why", why)],
@@ -151,7 +151,7 @@ pub(crate) fn answer_probe_with(
             .code()
             .map_or_else(|| "-".to_string(), |c| c.to_string());
         // 退出码与它说的那一行是原话：进复制详情，不上句子。
-        return Err(crate::stream::inbound::spec::Fail::new(
+        return Err(crate::wire::spec::Fail::new(
             "failed",
             copy_text("beQuotaProbe.run.exit", &[("program", face.program)]),
         )

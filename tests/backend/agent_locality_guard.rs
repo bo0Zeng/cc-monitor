@@ -228,7 +228,7 @@ mod tests {
     /// 两条纪律同 `FROZEN_COMPAT`：① 每条必须有非空解锁条件；② 条数有天花板且只许降。
     const AGENT_NAMED_WIRE_FIELDS: &[(&str, &str, &str, &str)] = &[
         (
-            "stream/wire.rs",
+            "wire/mod.rs",
             "claude_dir",
             "`Hello` 帧里今天**真在线上**的目录字段。`S4` 走 additive 迁移（新字段 `homes` \
              承载 agent 维度），这个字段原地冻结 ⇒ 线上字节零变化。",

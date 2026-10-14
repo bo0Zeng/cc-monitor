@@ -4,7 +4,7 @@
 //! 语料是结构性的假行（`{"n":…}`），不含任何真会话正文。
 
 use super::*;
-use crate::stream::wire::WatchFrom;
+use crate::wire::WatchFrom;
 
 const A: &str = "s-wa";
 const B: &str = "s-wb";
@@ -61,8 +61,8 @@ fn lines(rx: &mut tokio::sync::mpsc::Receiver<Frame>) -> Vec<(String, u64)> {
     out
 }
 
-fn ids(v: &[&str]) -> crate::stream::wire::WatchAsk {
-    crate::stream::wire::WatchAsk {
+fn ids(v: &[&str]) -> crate::wire::WatchAsk {
+    crate::wire::WatchAsk {
         sids: v.iter().map(|s| s.to_string()).collect(),
         branch: Vec::new(),
     }
@@ -109,7 +109,7 @@ fn an_unwatched_session_puts_no_line_on_the_stream_and_keeps_counting() {
     sink.send(Frame::turn_end(
         B.into(),
         "u".into(),
-        &crate::stream::wire::NameFace::of(&Default::default()),
+        &crate::history::search_rules::name_face(&Default::default()),
     ));
     sink.send(Frame::SessionFileGone {
         session_id: B.into(),
@@ -204,9 +204,9 @@ fn coming_into_view_resends_the_run_table_and_the_branch_list() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-impl crate::guard_support::Shaped for crate::stream::wire::WatchReply {
+impl crate::guard_support::Shaped for crate::wire::WatchReply {
     fn samples() -> Vec<Self> {
-        vec![crate::stream::wire::WatchReply {
+        vec![crate::wire::WatchReply {
             from: vec![WatchFrom {
                 sid: "s".into(),
                 path: "/p/s.jsonl".into(),

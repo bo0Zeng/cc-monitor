@@ -493,7 +493,7 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     done.push(STAGES[0]);
 
     // ── ② 宣告：**真的走通用层**（塞进 `Hello.homes` 并序列化成一行）。
-    let line = crate::stream::wire::to_line(&crate::stream::wire::Frame::Hello {
+    let line = crate::wire::to_line(&crate::wire::Frame::Hello {
         v: 1,
         build_id: "s6".into(),
         host_arch: "x86_64".into(),

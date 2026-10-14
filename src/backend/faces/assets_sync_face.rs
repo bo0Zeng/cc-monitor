@@ -3,7 +3,7 @@
 
 use crate::assets::asset_catalog;
 use crate::assets::asset_sync::{self, AssetsSyncReq, AssetsSynced, Fold};
-use crate::stream::inbound::typed::{self, codes, AsyncOwn, Command, Cx};
+use crate::wire::typed::{self, codes, AsyncOwn, Command, Cx};
 
 codes! {
     /// `assets-sync` 的码。

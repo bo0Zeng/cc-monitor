@@ -8,8 +8,7 @@ fn answer_check_with(
     a: &serde_json::Value,
     home: Option<std::path::PathBuf>,
 ) -> Result<serde_json::Value, (String, String)> {
-    let req: AgentHomeCheckReq =
-        crate::stream::inbound::typed::take(a).map_err(|f| (f.code, f.message))?;
+    let req: AgentHomeCheckReq = crate::wire::typed::take(a).map_err(|f| (f.code, f.message))?;
     super::answer_check_with(&req, home)
         .map(|x| serde_json::to_value(x).unwrap())
         .map_err(|(c, m)| (c.to_string(), m))

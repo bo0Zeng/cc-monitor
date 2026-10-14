@@ -607,7 +607,7 @@ fn every_command_that_passes_the_gate_lists_the_gates_codes() {
     // typed 那几行（`typed::<档>::<crate::control::<模块>::<类型>>(…)`）：命令名从那份文件里 `impl Command for <类型>` 的 `const NAME` 读。
     let mut typed_cells: Vec<(String, String)> = Vec::new();
     for (_, prod) in &families {
-        for (at, _) in prod.match_indices("crate::stream::inbound::typed::") {
+        for (at, _) in prod.match_indices("crate::wire::typed::") {
             let rest = &prod[at..];
             let Some(lt) = rest.find("::<") else { continue };
             let after = &rest[lt + 3..];

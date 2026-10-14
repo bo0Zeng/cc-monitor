@@ -338,7 +338,7 @@ fn the_watched_session_is_primed_first() {
     // 这条连接说它在看 B。
     let _ = watch_sessions(
         0,
-        crate::stream::wire::WatchAsk {
+        crate::wire::WatchAsk {
             sids: vec!["p-w-b".to_string()],
             branch: vec![],
         },

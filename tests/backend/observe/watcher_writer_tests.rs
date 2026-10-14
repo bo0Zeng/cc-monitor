@@ -223,7 +223,7 @@ fn an_unwatched_session_still_says_its_turn_end() {
     let mut r = rig("unwatched");
     let _ = watch_sessions(
         0,
-        crate::stream::wire::WatchAsk {
+        crate::wire::WatchAsk {
             sids: vec!["someone-else".to_string()],
             branch: vec![],
         },
@@ -357,7 +357,7 @@ fn the_codex_sample_walks_into_the_golden_frames() {
     let produced: String = drain(&mut r.rx)
         .iter()
         .map(|f| {
-            crate::stream::wire::to_line(f)
+            crate::wire::to_line(f)
                 .unwrap()
                 .replace(&root, "/r")
                 .replace(&pid, "\"pid\":0")
@@ -386,7 +386,7 @@ fn activities(frames: &[Frame]) -> Vec<Option<String>> {
         .filter(|f| matches!(f, Frame::SessionAdded { .. } | Frame::SessionStatus { .. }))
         .map(|f| {
             let v: serde_json::Value =
-                serde_json::from_str(crate::stream::wire::to_line(f).unwrap().trim()).unwrap();
+                serde_json::from_str(crate::wire::to_line(f).unwrap().trim()).unwrap();
             v.get("activity")
                 .and_then(|a| a.as_str())
                 .map(str::to_string)
@@ -413,7 +413,7 @@ fn a_codex_round_ending_turns_the_session_idle_and_the_next_round_turns_it_worki
     };
     assert_eq!(
         face,
-        &crate::stream::wire::ActivityFace::reading(),
+        &crate::wire::ActivityFace::reading(),
         "宣告那一帧说的不是「读记录中」"
     );
     let append = |r: &Rig, s: &str| {

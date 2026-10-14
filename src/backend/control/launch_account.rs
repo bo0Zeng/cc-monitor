@@ -7,7 +7,7 @@
 //!   便条留到那个 pid 不在了才清（`/clear` 原地换 sid 也记得到）。
 
 use crate::platform::fs::{Own, OwnPath};
-use crate::stream::inbound::typed::codes;
+use crate::wire::typed::codes;
 use copy_core::copy_text;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -467,18 +467,18 @@ codes! {
 /// `history-last-accounts`：这台记着的「每条会话上次用哪个号起的」。
 pub(crate) struct HistoryLastAccountsCmd;
 
-impl crate::stream::inbound::typed::Command for HistoryLastAccountsCmd {
+impl crate::wire::typed::Command for HistoryLastAccountsCmd {
     const NAME: &'static str = "history-last-accounts";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = LastAccounts;
     type Err = LastAccountsErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for HistoryLastAccountsCmd {
+impl crate::wire::typed::Blocking for HistoryLastAccountsCmd {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _req: crate::wire::typed::NoArgs,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<LastAccounts, LastAccountsErr> {
         last_accounts_at(crate::platform::paths::data_home().as_deref())
     }
@@ -488,8 +488,8 @@ impl crate::stream::inbound::typed::Blocking for HistoryLastAccountsCmd {
 pub(crate) fn last_accounts_at(home: Option<&Path>) -> Result<LastAccounts, LastAccountsErr> {
     let book = match home {
         Some(h) => read_book(h).map_err(|e| {
-            crate::stream::inbound::typed::of_fail(
-                crate::stream::inbound::spec::Fail::from(("unreadable", e)),
+            crate::wire::typed::of_fail(
+                crate::wire::spec::Fail::from(("unreadable", e)),
                 LastAccountsErr::Unreadable,
             )
         })?,

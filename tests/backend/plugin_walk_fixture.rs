@@ -271,12 +271,12 @@ mod tests {
     fn unavailable_from_plugin(
         installed: Option<bool>,
         code: &str,
-    ) -> Vec<crate::stream::wire::Unavailable> {
+    ) -> Vec<crate::wire::Unavailable> {
         let mut out = Vec::new();
         if installed == Some(false) {
             for spec in crate::stream::inbound::REGISTRY {
                 if spec.codes.contains(&code) {
-                    out.push(crate::stream::wire::Unavailable {
+                    out.push(crate::wire::Unavailable {
                         command: spec.name.to_string(),
                         code: code.to_string(),
                     });
@@ -485,7 +485,7 @@ mod tests {
     #[derive(Debug)]
     struct Walk {
         done: Vec<&'static str>,
-        declared: Vec<crate::stream::wire::Unavailable>,
+        declared: Vec<crate::wire::Unavailable>,
         bin: PathBuf,
         answered_caps: Vec<String>,
         extras: Vec<(String, String)>,
@@ -1682,10 +1682,10 @@ mod tests {
         );
         // 那两个会随环境一起漂过去的变量名，点住住址（不复述它们的值）。
         assert!(
-            !crate::stream::listen::ENV_RESIDENT.is_empty() && !crate::stderr_log::ENV.is_empty(),
+            !crate::wire::listen::ENV_RESIDENT.is_empty() && !crate::stderr_log::ENV.is_empty(),
             "常驻口那两个变量名空了 —— 本格头注 ② 段指的就是它们"
         );
-        assert_ne!(crate::stream::listen::ENV_RESIDENT, crate::stderr_log::ENV);
+        assert_ne!(crate::wire::listen::ENV_RESIDENT, crate::stderr_log::ENV);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -1749,7 +1749,7 @@ mod tests {
             ])
             .env(INHERIT_MARK, "1")
             // ★ 键名现取，值是夹具的。
-            .env(crate::stream::listen::ENV_RESIDENT, FAKE_PORT_VALUE)
+            .env(crate::wire::listen::ENV_RESIDENT, FAKE_PORT_VALUE)
             .env(crate::stderr_log::ENV, FAKE_TOKEN_VALUE)
             .stdin(std::process::Stdio::null())
             .output()
@@ -1788,7 +1788,7 @@ mod tests {
             // 这里**不做断言也不打读数行** —— 「它到底跑没跑」由外层那条数读数行的断言看着。
             return;
         }
-        let port_key = crate::stream::listen::ENV_RESIDENT;
+        let port_key = crate::wire::listen::ENV_RESIDENT;
         let token_key = crate::stderr_log::ENV;
 
         // ── 分母①：本进程（扮演后端）的环境键 ────────────────────────────
@@ -1945,7 +1945,7 @@ mod tests {
             crate::stream::inbound::REGISTRY.len(),
             "命令表两侧的条数对不上 —— 落点 1 那道机检此刻自己就是红的"
         );
-        let owners: Vec<&crate::stream::inbound::CommandSpec> = crate::stream::inbound::REGISTRY
+        let owners: Vec<&crate::wire::spec::CommandSpec> = crate::stream::inbound::REGISTRY
             .iter()
             .filter(|s| s.codes.contains(&REGISTRY_OWNED_CODE))
             .collect();

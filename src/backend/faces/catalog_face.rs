@@ -5,7 +5,7 @@
 use crate::assets::asset_catalog;
 use crate::assets::ext;
 use crate::assets::skill_ledger;
-use crate::stream::inbound::typed::{self, codes, Command, Cx, NoArgs, Owning};
+use crate::wire::typed::{self, codes, Command, Cx, NoArgs, Owning};
 
 codes! {
     /// 资产目录那三条的码（`assets-catalog` · `-merge` · `ext-note-set`）。

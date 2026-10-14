@@ -278,7 +278,7 @@ fn reply(l: &Loaded, path: Option<&Path>) -> PrefsReply {
         Loaded::Unreadable(w) => Some(w),
         _ => None,
     };
-    let (reason, detail) = crate::stream::detail::unreadable("prefs-read", why);
+    let (reason, detail) = crate::wire::detail::unreadable("prefs-read", why);
     let text = |v: serde_json::Value| v.as_str().map(str::to_string);
     PrefsReply {
         state: l.state(),
@@ -357,7 +357,7 @@ fn joined(s: Said) -> String {
     crate::common::contract::joined(s.said, s.raw)
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `prefs-set` 的码：值不对 · 盘上那份读不懂（不拿空的盖掉它）· 写没成。
     pub(crate) enum PrefsSetErr {
         Unreadable = "unreadable",
@@ -384,7 +384,7 @@ pub(crate) fn answer_set_in(
     Ok(reply(&read_at(&path), Some(&path)))
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `prefs-read` 没有别的码：读不懂是一个状态（`state: "unreadable"`），不是一次失败。
     pub(crate) enum PrefsReadErr {}
 }
@@ -392,18 +392,18 @@ crate::stream::inbound::typed::codes! {
 /// `prefs-read`：这台的偏好（同步文件 I/O ⇒ 阻塞档）。
 pub(crate) struct PrefsRead;
 
-impl crate::stream::inbound::typed::Command for PrefsRead {
+impl crate::wire::typed::Command for PrefsRead {
     const NAME: &'static str = "prefs-read";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = PrefsReply;
     type Err = PrefsReadErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for PrefsRead {
+impl crate::wire::typed::Blocking for PrefsRead {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _req: crate::wire::typed::NoArgs,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<PrefsReply, PrefsReadErr> {
         Ok(answer_read_in(
             crate::platform::paths::home_dir().as_deref(),
@@ -414,17 +414,17 @@ impl crate::stream::inbound::typed::Blocking for PrefsRead {
 /// `prefs-set`：改这台的偏好，写完读回（写自家状态 ⇒ 只递写句柄）。
 pub(crate) struct PrefsSetCmd;
 
-impl crate::stream::inbound::typed::Command for PrefsSetCmd {
+impl crate::wire::typed::Command for PrefsSetCmd {
     const NAME: &'static str = "prefs-set";
     type Req = PrefsSet;
     type Reply = PrefsReply;
     type Err = PrefsSetErr;
 }
 
-impl crate::stream::inbound::typed::Owning for PrefsSetCmd {
+impl crate::wire::typed::Owning for PrefsSetCmd {
     fn run(
         req: PrefsSet,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
         own: &Own,
     ) -> Result<PrefsReply, PrefsSetErr> {
         answer_set_in(crate::platform::paths::home_dir().as_deref(), own, &req)

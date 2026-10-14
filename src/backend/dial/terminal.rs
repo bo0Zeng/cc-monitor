@@ -264,7 +264,7 @@ pub(crate) struct TerminalSshReq {
     pub(crate) cwd: Option<Value>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `terminal-ssh` 的码：跳板查无 / 成环 · 哪一格过不了白名单 · 这台没装 ssh 客户端 · 查的时候出了错（判不了）。
     pub(crate) enum TerminalSshErr {
         BadJump = "bad_jump",
@@ -277,26 +277,24 @@ crate::stream::inbound::typed::codes! {
 /// `terminal-ssh`：给一台远端开终端要跑的那一串。查几个文件找 ssh 客户端 ⇒ 阻塞档；不拨号、不起进程。
 pub(crate) struct TerminalSsh;
 
-impl crate::stream::inbound::typed::Command for TerminalSsh {
+impl crate::wire::typed::Command for TerminalSsh {
     const NAME: &'static str = "terminal-ssh";
     type Req = TerminalSshReq;
     type Reply = SshCommand;
     type Err = TerminalSshErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for TerminalSsh {
+impl crate::wire::typed::Blocking for TerminalSsh {
     fn run(
         req: TerminalSshReq,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<SshCommand, TerminalSshErr> {
         answer_in(
             &req,
             crate::platform::shell::LOCAL_TERMINAL_IS_POWERSHELL,
             &crate::platform::ssh_client::locate(),
         )
-        .map_err(crate::stream::inbound::typed::of_pair(
-            TerminalSshErr::Refused,
-        ))
+        .map_err(crate::wire::typed::of_pair(TerminalSshErr::Refused))
     }
 }
 

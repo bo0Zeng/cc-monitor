@@ -92,7 +92,7 @@ pub(crate) struct TerminalProcessesReq {
     pub(crate) terminals: Vec<crate::common::seen_terminal::Terminal>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `terminal-processes` 自己没有别的码（没查成也照答：`why: "query-failed"`）。
     pub(crate) enum TerminalProcessesErr {}
 }
@@ -100,17 +100,17 @@ crate::stream::inbound::typed::codes! {
 /// `terminal-processes`：那台报来的终端连接是这台电脑上哪个进程开的。阻塞档：读连接表 ＋ 进程表四格。
 pub(crate) struct TerminalProcesses;
 
-impl crate::stream::inbound::typed::Command for TerminalProcesses {
+impl crate::wire::typed::Command for TerminalProcesses {
     const NAME: &'static str = "terminal-processes";
     type Req = TerminalProcessesReq;
     type Reply = Processes;
     type Err = TerminalProcessesErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for TerminalProcesses {
+impl crate::wire::typed::Blocking for TerminalProcesses {
     fn run(
         req: TerminalProcessesReq,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<Processes, TerminalProcessesErr> {
         answer_with(&req, crate::platform::connection_and_process_tables)
             .map_err(|(_, said)| TerminalProcessesErr::BadArgs(said))

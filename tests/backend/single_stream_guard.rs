@@ -27,7 +27,7 @@
 //!    本模块**不重复钉它**，只在这里指住它的住址。
 //! 2. **观测帧每条连接一个消费者** —— `observe::watcher::WatcherPoke::attach` 里那条通道**只有这一个诞生点**（每接一条连接走一次）。
 //!    N 个连接的 fan-out 在 watcher 里（10-12 read8a 落地），`Overflow.lost` 的丢帧账因此**按连接**记
-//!    （`stream/wire.rs` 的 `LostFrame` 头注逐字：状态增量帧「是一次差分的结果，**别处不存在**」——
+//!    （`wire/mod.rs` 的 `LostFrame` 头注逐字：状态增量帧「是一次差分的结果，**别处不存在**」——
 //!    一条连接丢了，别的连接收到了也不算它收到）。★ **那是语义变更，不是搬运**：账重定义成「这条连接那一条通道」。
 //!    ⚠ 这一格的针 08-28 挪过位置（`K-G5`）——怎么挪的、买到什么、买不到什么，见下一节。
 //! 3. **`writer_task` 的让位预算是「两条通道对一个 writer」** —— `REPLY_BURST = 8`，
@@ -158,7 +158,7 @@ mod tests {
     /// # ⚠⚠ 为什么多了「全 crate」这一列〔`K-P1-D1` `重-5`，08-27 回修〕
     ///
     /// 回修前本表只有「那个文件里几处」这一个数，而好几条的**说法**写的是「全 crate 只此一处」——
-    /// 审计员点名 `Admit::Stream` 那条：语料是 `source_of("stream/listen.rs")`，**只扫 `listen.rs`**，
+    /// 审计员点名 `Admit::Stream` 那条：语料是 `source_of("wire/listen.rs")`，**只扫 `listen.rs`**，
     /// 于是「有人在 `main.rs` 里直接构造一个 `listen::Admit::Stream` 绕过 `admit()`」这条针看不见。
     /// ⇒ **守卫范围 ≠ 性质范围**，那是这里自己命名的那一族的**第五形**。
     ///
@@ -219,7 +219,7 @@ mod tests {
              **改本行之前先读那一条。**",
         ),
         (
-            "stream/listen.rs",
+            "wire/listen.rs",
             "Admit::Stream",
             1,
             2,
@@ -684,8 +684,8 @@ mod tests {
     fn the_hello_witness_pin_still_lives_where_this_module_says_it_does() {
         // 🔴 指的是**判据住的那份文件**。
         // `fn the_hello_witness_has_exactly_one_way_to_exist` 这一轮从
-        // `src/backend/stream/wire.rs` 的测试段搬进了 `tests/backend/stream/wire_tests.rs`。
-        let wire = include_str!("stream/wire_tests.rs");
+        // `src/backend/wire/mod.rs` 的测试段搬进了 `tests/backend/wire/wire_tests.rs`。
+        let wire = include_str!("wire/wire_tests.rs");
         assert!(
             wire.contains("fn the_hello_witness_has_exactly_one_way_to_exist"),
             "本模块头注指着 `wire.rs` 的那条见证判据，而它已经不在了 ——\n\

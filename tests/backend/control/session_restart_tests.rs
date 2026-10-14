@@ -82,21 +82,15 @@ impl Rig {
         };
         let kill = |name: &str,
                     sid: &str|
-         -> Result<
-            crate::control::cc_bus::BusNote,
-            crate::stream::inbound::spec::Fail,
-        > {
+         -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
             note(format!("kill {name} {sid}"));
             match self.kill_err {
-                Some(c) => Err(crate::stream::inbound::spec::Fail::new(
-                    c,
-                    "said".to_string(),
-                )),
+                Some(c) => Err(crate::wire::spec::Fail::new(c, "said".to_string())),
                 None => Ok(crate::control::cc_bus::BusCleanup::default().note()),
             }
         };
         let send_into =
-            |name: &str, sid: &str, line: &str| -> Result<(), crate::stream::inbound::spec::Fail> {
+            |name: &str, sid: &str, line: &str| -> Result<(), crate::wire::spec::Fail> {
                 note(format!("send {name} {sid} {line}"));
                 if self.summarize {
                     let mut f = std::fs::OpenOptions::new()

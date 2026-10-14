@@ -490,14 +490,13 @@ pub(crate) fn migrate(d: &dyn Door, home: &str) -> Result<bool, String> {
     Ok(true)
 }
 
-/// 后端起来时那一次（经本进程自己的文件管理面）：配置文件还不在、旧形状的别名文件在 ⇒ [`migrate`]。没做成只记日志，不挡起来。
-pub fn migrate_here() {
-    let d = crate::stream::inbound::LocalFiles;
-    match door::home(&d).and_then(|home| {
+/// 后端起来时那一次（经本进程自己的文件管理面，门由 `stream::inbound::migrate_aliases` 递）：配置文件还不在、旧形状的别名文件在 ⇒ [`migrate`]。没做成只记日志，不挡起来。
+pub(crate) fn migrate_here(d: &dyn Door) {
+    match door::home(d).and_then(|home| {
         let path = profile::path_in(&home);
-        match read_profiles(&d, &home, &path)? {
+        match read_profiles(d, &home, &path)? {
             Some(_) => Ok(false),
-            None => migrate(&d, &home),
+            None => migrate(d, &home),
         }
     }) {
         Ok(true) => tracing::info!(
@@ -1019,7 +1018,7 @@ pub(crate) fn answer_policy_set(req: &PolicySetReq) -> Result<PolicySet, (&'stat
     Ok(PolicySet { policy, set_error })
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// 别名那几条的码：这台的方言不认 · 过不了围栏 · 读写没成（那一句说清哪一样）。
     pub(crate) enum AliasErr {
         Refused = "refused",
@@ -1029,102 +1028,96 @@ crate::stream::inbound::typed::codes! {
 /// `aliases-read`：启动文件候选（接入那一格）（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
 pub(crate) struct AliasesRead;
 
-impl crate::stream::inbound::typed::Command for AliasesRead {
+impl crate::wire::typed::Command for AliasesRead {
     const NAME: &'static str = "aliases-read";
     type Req = AliasesReadReq;
     type Reply = AliasListing;
     type Err = AliasErr;
 }
 
-impl crate::stream::inbound::typed::WithFiles for AliasesRead {
+impl crate::wire::typed::WithFiles for AliasesRead {
     fn run(
         req: AliasesReadReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-        files: crate::stream::inbound::typed::Files,
+        _cx: &crate::wire::typed::Cx,
+        files: crate::wire::typed::Files,
     ) -> Result<AliasListing, AliasErr> {
-        answer_read(files, &req).map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+        answer_read(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
     }
 }
 
 /// `aliases-block-render`：别名块预览（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
 pub(crate) struct AliasesBlockRender;
 
-impl crate::stream::inbound::typed::Command for AliasesBlockRender {
+impl crate::wire::typed::Command for AliasesBlockRender {
     const NAME: &'static str = "aliases-block-render";
     type Req = BlockReq;
     type Reply = BlockText;
     type Err = AliasErr;
 }
 
-impl crate::stream::inbound::typed::WithFiles for AliasesBlockRender {
+impl crate::wire::typed::WithFiles for AliasesBlockRender {
     fn run(
         req: BlockReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-        files: crate::stream::inbound::typed::Files,
+        _cx: &crate::wire::typed::Cx,
+        files: crate::wire::typed::Files,
     ) -> Result<BlockText, AliasErr> {
-        answer_block_render(files, &req)
-            .map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+        answer_block_render(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
     }
 }
 
 /// `aliases-block-install`：别名块装进人选的那份启动文件（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
 pub(crate) struct AliasesBlockInstall;
 
-impl crate::stream::inbound::typed::Command for AliasesBlockInstall {
+impl crate::wire::typed::Command for AliasesBlockInstall {
     const NAME: &'static str = "aliases-block-install";
     type Req = BlockReq;
     type Reply = BlockDone;
     type Err = AliasErr;
 }
 
-impl crate::stream::inbound::typed::WithFiles for AliasesBlockInstall {
+impl crate::wire::typed::WithFiles for AliasesBlockInstall {
     fn run(
         req: BlockReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-        files: crate::stream::inbound::typed::Files,
+        _cx: &crate::wire::typed::Cx,
+        files: crate::wire::typed::Files,
     ) -> Result<BlockDone, AliasErr> {
-        answer_block_install(files, &req)
-            .map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+        answer_block_install(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
     }
 }
 
 /// `aliases-block-remove`：别名块卸掉（经这台的文件管理面读写 ⇒ 阻塞档，带文件面）。
 pub(crate) struct AliasesBlockRemove;
 
-impl crate::stream::inbound::typed::Command for AliasesBlockRemove {
+impl crate::wire::typed::Command for AliasesBlockRemove {
     const NAME: &'static str = "aliases-block-remove";
     type Req = BlockReq;
     type Reply = BlockDone;
     type Err = AliasErr;
 }
 
-impl crate::stream::inbound::typed::WithFiles for AliasesBlockRemove {
+impl crate::wire::typed::WithFiles for AliasesBlockRemove {
     fn run(
         req: BlockReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-        files: crate::stream::inbound::typed::Files,
+        _cx: &crate::wire::typed::Cx,
+        files: crate::wire::typed::Files,
     ) -> Result<BlockDone, AliasErr> {
-        answer_block_remove(files, &req)
-            .map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+        answer_block_remove(files, &req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
     }
 }
 
 /// `powershell-policy-set`：那一代 PowerShell 的执行策略设成当前用户 `RemoteSigned`（起一次那一代 PowerShell ⇒ 阻塞档）。
 pub(crate) struct PowershellPolicySet;
 
-impl crate::stream::inbound::typed::Command for PowershellPolicySet {
+impl crate::wire::typed::Command for PowershellPolicySet {
     const NAME: &'static str = "powershell-policy-set";
     type Req = PolicySetReq;
     type Reply = PolicySet;
     type Err = AliasErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for PowershellPolicySet {
-    fn run(
-        req: PolicySetReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-    ) -> Result<PolicySet, AliasErr> {
-        answer_policy_set(&req).map_err(crate::stream::inbound::typed::of_pair(AliasErr::Refused))
+impl crate::wire::typed::Blocking for PowershellPolicySet {
+    fn run(req: PolicySetReq, _cx: &crate::wire::typed::Cx) -> Result<PolicySet, AliasErr> {
+        answer_policy_set(&req).map_err(crate::wire::typed::of_pair(AliasErr::Refused))
     }
 }
 

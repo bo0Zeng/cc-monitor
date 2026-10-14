@@ -103,7 +103,7 @@ pub enum InboundFrame {
         sid: String,
         /// 后台会话（后端判好的；缺 ＝ 交互）。
         background: bool,
-        /// attach 进去对人有没有意义（additive）。缺席 = true。语义与来源见 `src/backend/stream/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
+        /// attach 进去对人有没有意义（additive）。缺席 = true。语义与来源见 `src/backend/wire/mod.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
         attachable: Option<bool>,
         /// pidfile 记的起会话目录（认「我刚起的那条」用）。
         cwd: Option<String>,
@@ -224,7 +224,7 @@ pub enum InboundFrame {
     /// 一条终端订阅停了（后端 `wire::Frame::TerminalFollowEnd`）。`cell` ＝ `{"why": 停因, "said": 那一句}`（同名原样，两格都得是串）。
     TerminalFollowEnd { ticket: String, cell: String },
     /// 一轮对话收尾（`turn_end`；在不在看都发）⇒ 交那台的会话流一格（系统通知认它，不认行：没在看的会话行不上流）。
-    /// 通知的标题与正文是后端写好的（`wire.rs::Frame::turn_end`），原样带进界面。
+    /// 通知的标题与正文是后端写好的（后端 `wire::Frame::turn_end`），原样带进界面。
     TurnEnd(crate::ui_contract::SessionTurnEndPayload),
 }
 

@@ -42,18 +42,18 @@ pub(crate) fn redact(def: &Value) -> (Value, Vec<(String, String)>) {
 fn file_of(
     at: &ExtLoc,
     user_mcp: Option<&std::path::Path>,
-) -> Result<(String, String), crate::stream::inbound::spec::Fail> {
+) -> Result<(String, String), crate::wire::spec::Fail> {
     match at {
         ExtLoc::Project { dir } => Ok((dir.clone(), mcp_json().to_string())),
         ExtLoc::User => {
             let f = user_mcp.ok_or_else(|| {
-                crate::stream::inbound::spec::Fail::from((
+                crate::wire::spec::Fail::from((
                     "io_failed",
                     copy_text("beExt.uninstall.noHome", &[]),
                 ))
             })?;
             let (Some(dir), Some(name)) = (f.parent(), f.file_name()) else {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "io_failed",
                     copy_text("beExt.uninstall.noHome", &[]),
                 )));
@@ -72,13 +72,13 @@ pub(crate) fn answer_source(
     d: &dyn Door,
     user_mcp: Option<&std::path::Path>,
     req: &McpSourceReq,
-) -> Result<McpSource, crate::stream::inbound::spec::Fail> {
+) -> Result<McpSource, crate::wire::spec::Fail> {
     let name = req.name.as_str();
     let at = req.at.here()?;
     let (root, rel) = file_of(&at, user_mcp)?;
     let got = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
     let text = got.text.ok_or_else(|| {
-        crate::stream::inbound::spec::Fail::from((
+        crate::wire::spec::Fail::from((
             "missing",
             copy_text("beMcpSyncFlow.source.missing", &[("path", &got.path)]),
         ))
@@ -88,7 +88,7 @@ pub(crate) fn answer_source(
         &copy_text("beMcpSync.answerWith.sourceSide", &[]),
     )?;
     let def = servers.get(name).ok_or_else(|| {
-        crate::stream::inbound::spec::Fail::from((
+        crate::wire::spec::Fail::from((
             "missing",
             copy_text(
                 "beExt.uninstall.noEntry",
@@ -109,15 +109,15 @@ pub(crate) fn answer_source(
 }
 
 /// 被写那台：`args.def` 必须是一条对象、且装密钥的那几格一个值都没有（来源交出来就该是空位）。
-fn def_arg(def: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
+fn def_arg(def: &Value) -> Result<Value, crate::wire::spec::Fail> {
     let def = Some(def.clone()).filter(Value::is_object).ok_or_else(|| {
-        crate::stream::inbound::spec::Fail::from((
+        crate::wire::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("missing `def` (an object)"),
         ))
     })?;
     if redact(&def).0 != def {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`def` carries values in env / headers"),
         )));
@@ -127,7 +127,7 @@ fn def_arg(def: &Value) -> Result<Value, crate::stream::inbound::spec::Fail> {
 
 type Target = (String, door::Peeked, Map<String, Value>);
 
-fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, crate::stream::inbound::spec::Fail> {
+fn target_of(d: &dyn Door, at: &ExtLoc) -> Result<Target, crate::wire::spec::Fail> {
     let (root, rel) = crate::assets::ext::mcp_file(d, at)?;
     let tgt = door::peek(d, &root, &rel).map_err(|m| ("refused", m))?;
     let servers = servers_of(
@@ -146,7 +146,7 @@ pub(crate) fn answer_preview(
     d: &dyn Door,
     facts: &dyn Facts,
     req: &McpPreviewReq,
-) -> Result<McpPreview, crate::stream::inbound::spec::Fail> {
+) -> Result<McpPreview, crate::wire::spec::Fail> {
     let name = req.name.as_str();
     let at = req.at.here()?;
     let def = def_arg(&req.def)?;
@@ -191,7 +191,7 @@ pub(crate) fn answer_apply(
     d: &dyn Door,
     record: Record,
     req: &McpApplyReq,
-) -> Result<McpApplied, crate::stream::inbound::spec::Fail> {
+) -> Result<McpApplied, crate::wire::spec::Fail> {
     let name = req.name.as_str();
     let at = req.at.here()?;
     let def = def_arg(&req.def)?;
@@ -199,7 +199,7 @@ pub(crate) fn answer_apply(
     let seen = req.target.as_deref();
     let now = tgt.text.as_deref().map(crate::common::digest::fnv_digest);
     if now.as_deref() != seen {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "stale",
             copy_text("beMcpSyncFlow.apply.stale", &[]),
         )));
@@ -217,7 +217,7 @@ pub(crate) fn answer_apply(
         let value = typed
             .or_else(|| has_value(existing, &field, &key))
             .ok_or_else(|| {
-                crate::stream::inbound::spec::Fail::from((
+                crate::wire::spec::Fail::from((
                     "needs_input",
                     copy_text(
                         "beExt.apply.needsValue",
@@ -265,17 +265,12 @@ pub(crate) fn answer_apply(
     ) {
         Ok(l) => l,
         Err(Refused::Stale(_)) => {
-            return Err(crate::stream::inbound::spec::Fail::from((
+            return Err(crate::wire::spec::Fail::from((
                 "stale",
                 copy_text("beMcpSyncFlow.apply.stale", &[]),
             )))
         }
-        Err(e) => {
-            return Err(crate::stream::inbound::spec::Fail::from((
-                "refused",
-                e.said(),
-            )))
-        }
+        Err(e) => return Err(crate::wire::spec::Fail::from(("refused", e.said()))),
     };
     let record_failed = record(&RecordReq::McpAdd {
         file: landed.path.clone(),

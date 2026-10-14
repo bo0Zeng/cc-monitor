@@ -1,6 +1,6 @@
 /**
  * 「那台某样东西变了」那一种流在界面这一侧的全部知识（叶子模块：只 import 通道的格类型与生成的主题类型）。
- * 那台后端发 `changed {topic, key?, rev?, body?}`（主题表只住后端 `stream/topic.rs`）；monitor 按主题交进 `subscribe(origin, "changed/<topic>")`，
+ * 那台后端发 `changed {topic, key?, rev?, body?}`（主题表只住后端 `wire/topic.rs`）；monitor 按主题交进 `subscribe(origin, "changed/<topic>")`，
  * 格体是帧去掉 `kind` / `topic` 的那一份；界面读格、按主题重问（带了 `body` 的可以不问）。
  */
 import type { Item } from "../../comms/inward/chan";

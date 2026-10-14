@@ -25,8 +25,7 @@ async fn answer_with(
     remote: &dyn Remote,
     table: &Table,
 ) -> Result<Value, (&'static str, String)> {
-    let req: AssetsSyncReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: AssetsSyncReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_with(&req, fold, remote, table)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
@@ -89,10 +88,7 @@ impl Machine {
             label: name,
         }
     }
-    fn update(
-        &self,
-        incoming: Option<&Value>,
-    ) -> Result<Value, crate::stream::inbound::spec::Fail> {
+    fn update(&self, incoming: Option<&Value>) -> Result<Value, crate::wire::spec::Fail> {
         let inc = incoming.map(|c| {
             let c: cat::CatalogIn = serde_json::from_value(c.clone()).expect("载荷形状");
             cat::machines_of(c.machines).expect("载荷形状")
@@ -580,7 +576,7 @@ async fn the_sync_reply_and_the_pushed_line_keep_their_bytes() {
 /// 帧面那一跳（按名找命令、照档跑）：入参多一个键 ⇒ `bad_args`，一次都不拨、可达表不动。
 #[tokio::test]
 async fn an_extra_key_is_bad_args_on_the_frame_path() {
-    use crate::stream::inbound::spec::{prepare, Prepared};
+    use crate::wire::spec::{prepare, Prepared};
     let d = temp_dir("extra");
     let own = crate::platform::fs::Own::issue_at(&d);
     let spec = crate::stream::inbound::REGISTRY
@@ -595,7 +591,7 @@ async fn an_extra_key_is_bad_args_on_the_frame_path() {
         let Some(Prepared::Async(run)) = prepare(spec.run, Some(&own)) else {
             panic!("assets-sync 不在异步档");
         };
-        let req = crate::stream::wire::Request {
+        let req = crate::wire::Request {
             id: "t".to_string(),
             cmd: "assets-sync".to_string(),
             args: args.clone(),

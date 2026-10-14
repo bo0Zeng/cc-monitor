@@ -305,6 +305,17 @@ pub(crate) fn project_name(dir: &str) -> Option<&str> {
     dir.split(['/', '\\']).rfind(|s| !s.is_empty())
 }
 
+/// **这条会话叫什么那两格的唯一构造口**（帧上的 [`crate::wire::NameFace`]）：`label` ＝ [`session_label`]，`label_project` ＝ 项目目录最后一截（[`project_name`]）。
+pub(crate) fn name_face(facts: &LabelFacts) -> crate::wire::NameFace {
+    let (label, _) = session_label(facts);
+    let label_project = facts
+        .project_dir
+        .as_deref()
+        .and_then(project_name)
+        .map(str::to_string);
+    crate::wire::NameFace::of_parts(label, label_project)
+}
+
 #[cfg(test)]
 #[path = "../../../tests/backend/history/search_rules_tests.rs"]
 mod tests;

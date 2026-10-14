@@ -128,6 +128,7 @@ fn the_backend_runtime_keeps_more_than_one_worker() {
     );
 }
 use super::*;
+use crate::wire::spec::{prepare, Prepared};
 
 /// 分派要的那两样：`stream-watch` 那一口 ＋ 一份指到临时目录的写句柄。
 fn given_for_tests(watch: WatchDesk) -> Given {
@@ -147,10 +148,10 @@ async fn one_line(input: &str) -> Vec<String> {
         std::io::Cursor::new(input.as_bytes().to_vec()),
         tx,
         crate::stream::inbound::WatchDesk::new(|_| {
-            tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
         }),
         crate::platform::fs::Own::for_tests(),
-        crate::stream::wire::HelloFlushed::for_tests(),
+        crate::wire::HelloFlushed::for_tests(),
     );
     h.await.expect("reader task");
     let mut out = Vec::new();
@@ -161,7 +162,7 @@ async fn one_line(input: &str) -> Vec<String> {
     // （那种测试**可能因为错误的原因通过**）。
     while let Some(f) = rx.recv().await {
         out.push(
-            crate::stream::wire::to_line(&f)
+            crate::wire::to_line(&f)
                 .expect("serialize")
                 .trim_end()
                 .to_string(),
@@ -351,7 +352,7 @@ async fn an_oversized_line_does_not_grow_memory() {
     const FLOOD: usize = 256 * 1024 * 1024; // 256 MiB，是上限的 256 倍
 
     // 跑一次洪流。
-    async fn flood_once() -> tokio::sync::mpsc::Receiver<crate::stream::wire::Frame> {
+    async fn flood_once() -> tokio::sync::mpsc::Receiver<crate::wire::Frame> {
         let (tx, rx) = chan();
         let h = spawn(
             Flood {
@@ -360,10 +361,10 @@ async fn an_oversized_line_does_not_grow_memory() {
             },
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
-            crate::stream::wire::HelloFlushed::for_tests(),
+            crate::wire::HelloFlushed::for_tests(),
         );
         h.await.expect("reader task");
         rx
@@ -395,7 +396,7 @@ async fn an_oversized_line_does_not_grow_memory() {
     // 顺带确认它确实**报了**超限，而不是悄悄吞掉。
     let mut saw = false;
     while let Ok(f) = rx.try_recv() {
-        if crate::stream::wire::to_line(&f)
+        if crate::wire::to_line(&f)
             .unwrap_or_default()
             .contains("line_too_long")
         {
@@ -443,7 +444,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
             &xfers,
             &follows,
             &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             })),
             0,
         )
@@ -1009,7 +1010,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
         .map(|spec| spec.name)
         .filter(|name| {
             matches!(
-                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)), 0),
+                dispatch(req("x", name), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
                 Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
                     if c == "unknown_command"
             )
@@ -1026,7 +1027,7 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
     assert!(
         matches!(
-            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1)), 0),
+            dispatch(req("x", "no-such-command-kr104"), &tx, &running, &links, &xfers, &follows, &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1)), 0),
             Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
         ),
         "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
@@ -1055,7 +1056,7 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
                     &xfers,
                     &follows,
                     &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
-                        tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+                        tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
                     })),
                     0,
                 ),
@@ -1126,7 +1127,7 @@ async fn cancelling_a_blocking_command_says_not_cancellable_instead_of_lying() {
         &xfers,
         &follows,
         &given_for_tests(crate::stream::inbound::WatchDesk::new(|_| {
-            tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
         })),
         0,
     )
@@ -1236,7 +1237,7 @@ async fn a_duplicate_id_is_rejected_instead_of_silently_overwriting() {
     let first = rx
         .try_recv()
         .expect("通道里没有应答 —— 重复 id 被静默吞了？");
-    let line = crate::stream::wire::to_line(&first).expect("serialize");
+    let line = crate::wire::to_line(&first).expect("serialize");
     assert!(
         line.contains("duplicate_id"),
         "重复 id 没被拒绝，被静默覆盖了：{line}"
@@ -1268,7 +1269,7 @@ async fn a_panicking_handler_still_answers_the_client() {
     drop(tx);
     let mut lines = Vec::new();
     while let Some(f) = rx.recv().await {
-        lines.push(crate::stream::wire::to_line(&f).expect("serialize"));
+        lines.push(crate::wire::to_line(&f).expect("serialize"));
     }
     assert!(
         lines.iter().any(|l| l.contains("handler_panicked")),
@@ -1424,7 +1425,7 @@ fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
         "kill_failed".to_string(),
         "tmux: can't find window: demo-cc:2".to_string(),
     ));
-    let crate::stream::wire::Frame::Reply {
+    let crate::wire::Frame::Reply {
         message, detail, ..
     } = f.into_reply(
         "i".into(),
@@ -1454,13 +1455,13 @@ fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
 /// `sids` 不是串数组 · `branch` 形状不对 ⇒ `bad_args`、不交。`branch` 可缺（＝ 一份都不要）。
 #[tokio::test]
 async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its_answer() {
-    use crate::stream::wire::{BranchHeld, WatchAsk};
+    use crate::wire::{BranchHeld, WatchAsk};
     let asked: Arc<Mutex<Vec<WatchAsk>>> = Arc::default();
     let seen = asked.clone();
     let desk = WatchDesk::new(move |ask| {
         seen.lock().unwrap().push(ask);
         let (tx, rx) = tokio::sync::oneshot::channel();
-        let _ = tx.send(vec![crate::stream::wire::WatchFrom {
+        let _ = tx.send(vec![crate::wire::WatchFrom {
             sid: "a".into(),
             path: "/p/a.jsonl".into(),
             seq: 7,
@@ -1485,13 +1486,13 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
         tx,
         desk,
         crate::platform::fs::Own::for_tests(),
-        crate::stream::wire::HelloFlushed::for_tests(),
+        crate::wire::HelloFlushed::for_tests(),
     );
     h.await.expect("reader task");
     let mut got = std::collections::BTreeMap::new();
     while let Some(f) = rx.recv().await {
         let v: serde_json::Value =
-            serde_json::from_str(crate::stream::wire::to_line(&f).unwrap().trim()).unwrap();
+            serde_json::from_str(crate::wire::to_line(&f).unwrap().trim()).unwrap();
         got.insert(v["id"].as_str().unwrap().to_string(), v);
     }
     assert_eq!(
@@ -1535,7 +1536,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     use tokio::io::AsyncWriteExt;
     let watch = || {
         crate::stream::inbound::WatchDesk::new(|_| {
-            tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+            tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
         })
     };
     let hook = |sid: &str| {
@@ -1564,7 +1565,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         tx,
         watch(),
         crate::platform::fs::Own::for_tests(),
-        crate::stream::wire::HelloFlushed::for_tests(),
+        crate::wire::HelloFlushed::for_tests(),
     );
     client
         .write_all(hook("t-inbound-1").as_bytes())
@@ -1572,15 +1573,14 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         .unwrap();
     let a = until_pending("t-inbound-1").await;
     crate::control::asks::answer(
-        crate::stream::inbound::typed::take(
+        crate::wire::typed::take(
             &serde_json::json!({"sid": "t-inbound-1", "ask": a.id, "choice": "allow"}),
         )
         .unwrap(),
     )
     .unwrap();
     let f = rx.recv().await.expect("应答");
-    let line: serde_json::Value =
-        serde_json::from_str(&crate::stream::wire::to_line(&f).unwrap()).unwrap();
+    let line: serde_json::Value = serde_json::from_str(&crate::wire::to_line(&f).unwrap()).unwrap();
     assert_eq!(line["id"], "h");
     assert_eq!(
         line["data"]["decision"]["hookSpecificOutput"]["decision"]["behavior"],
@@ -1597,7 +1597,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
         tx,
         watch(),
         crate::platform::fs::Own::for_tests(),
-        crate::stream::wire::HelloFlushed::for_tests(),
+        crate::wire::HelloFlushed::for_tests(),
     );
     client
         .write_all(hook("t-inbound-2").as_bytes())
@@ -1609,7 +1609,7 @@ async fn needs_ask_blocks_until_answered_and_is_withdrawn_when_the_hook_side_lea
     assert!(crate::control::asks::pending("t-inbound-2").is_empty());
     assert_eq!(
         crate::control::asks::answer(
-            crate::stream::inbound::typed::take(
+            crate::wire::typed::take(
                 &serde_json::json!({"sid": "t-inbound-2", "ask": a.id, "choice": "allow"})
             )
             .unwrap()

@@ -310,19 +310,16 @@ fn the_golden_launch_is_what_the_inference_emits() {
     assert_eq!(golden["launchExited"], infer(&exited).wire());
 }
 
-/// 终端那一格的两个 `host` 词与会话容器那一格同字（`stream::wire` 那一份是唯一的字面量出处）。
+/// 终端那一格的两个 `host` 词与会话容器那一格同字（`wire` 那一份是唯一的字面量出处）。
 #[test]
 fn the_terminal_host_words_are_the_container_words() {
     let hosted = serde_json::to_value(TerminalFact::Hosted {
         terminal: "t".into(),
     })
     .unwrap();
-    assert_eq!(
-        hosted["host"],
-        crate::stream::wire::TerminalHost::Tmux.as_wire()
-    );
+    assert_eq!(hosted["host"], crate::wire::TerminalHost::Tmux.as_wire());
     assert_eq!(
         serde_json::to_value(TerminalFact::None).unwrap()["host"],
-        crate::stream::wire::HOST_NONE
+        crate::wire::HOST_NONE
     );
 }

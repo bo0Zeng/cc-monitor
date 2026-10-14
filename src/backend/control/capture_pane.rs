@@ -41,7 +41,7 @@ use copy_core::copy_text;
 const CAPTURE_WITHIN: Deadline = Deadline::secs(5);
 
 /// 命令级错误：码 ＋ 那一句（只带原因词）＋ tmux 的原话（stderr · 退出码，进复制详情）。
-pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
+pub(crate) type CmdErr = crate::wire::spec::Fail;
 
 /// tmux 的「把这一屏打到 stdout」子命令。
 pub(crate) const CAPTURE_SUBCOMMAND: &str = "capture-pane";

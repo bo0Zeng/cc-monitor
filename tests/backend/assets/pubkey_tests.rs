@@ -10,16 +10,14 @@ async fn answer_push(
     reach: &dyn Reach,
     read_pub: &(dyn Fn(&str) -> Result<String, (&'static str, String)> + Send + Sync),
 ) -> Result<Value, (&'static str, String)> {
-    let req: PubkeyPushReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: PubkeyPushReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_push(&req, reach, read_pub)
         .await
         .map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn answer_add(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
-    let req: KeyAddReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: KeyAddReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_add(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 

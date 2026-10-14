@@ -13,6 +13,7 @@
 //! | D3 | 接线：取票恰好一处、在 `SpawnBlocking` 那一支、在 `spawn_blocking(` 之前；`main.rs` 生产段 `exit(` 零处（流模式的 exit 只住 `exit_after_drain`），`exit_after_drain(` 调用点 == 登记的五处 | 文本，两向 ＋ 正控 |
 
 use super::*;
+use crate::wire::drain::{shutdown_listener, DRAIN_DEADLINE, SHUTTING_DOWN};
 
 // ── D1 ────────────────────────────────────────────────────────────────────
 
@@ -107,10 +108,10 @@ fn d2_child_harness() {
             tokio::io::stdin(),
             tx,
             crate::stream::inbound::WatchDesk::new(|_| {
-                tokio::sync::oneshot::channel::<Vec<crate::stream::wire::WatchFrom>>().1
+                tokio::sync::oneshot::channel::<Vec<crate::wire::WatchFrom>>().1
             }),
             crate::platform::fs::Own::for_tests(),
-            crate::stream::wire::HelloFlushed::for_tests(),
+            crate::wire::HelloFlushed::for_tests(),
         );
         let stop = shutdown_listener();
         let mut out = tokio::io::stdout();
@@ -120,7 +121,7 @@ fn d2_child_harness() {
         out.flush().await.expect("flush");
         let writer = async move {
             while let Some(f) = rx.recv().await {
-                let line = crate::stream::wire::to_line(&f).expect("serialize");
+                let line = crate::wire::to_line(&f).expect("serialize");
                 if out.write_all(line.as_bytes()).await.is_err() || out.flush().await.is_err() {
                     return;
                 }
@@ -501,9 +502,8 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
     );
 
     // 生产入口交给本体的期限恰是 `DRAIN_DEADLINE`（判据用短期限走的是同一个本体）。收场那几样住 `drain.rs`。
-    let drain = crate::guard_support::production_code(include_str!(
-        "../../../src/backend/stream/inbound/drain.rs"
-    ));
+    let drain =
+        crate::guard_support::production_code(include_str!("../../../src/backend/wire/drain.rs"));
     let within: Vec<usize> = call_sites(&drain, "exit_after_drain_within");
     assert_eq!(within.len(), 1, "本体只该被生产入口调一处：{within:?}");
     assert_eq!(enclosing_fn(&drain, within[0]), "exit_after_drain");
@@ -521,7 +521,7 @@ fn d3_the_ticket_is_taken_once_before_the_blocking_spawn_and_every_stream_exit_d
 ///
 /// 期望（异源：取自 ⑮ 那句裁决与 `main.rs` 的分派形状，不从被扫的源码现推）：
 /// `main.rs::main` 三处（ccm 那一趟 · 一次性查询 · 监听口配置不成立或绑不上口，`claim_then_log` 交回的码）——
-/// 都发生在**一条命令都还没收**之前、没有可排空的；`stream/inbound/drain.rs::exit_after_drain_within` 一处
+/// 都发生在**一条命令都还没收**之前、没有可排空的；`wire/drain.rs::exit_after_drain_within` 一处
 /// （`exit_after_drain` 的本体：生产入口只经它，期限由 d3 钉）。别处一处都不许有 —— 模块里想退就把退出码交回调用方。
 #[test]
 fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
@@ -549,7 +549,7 @@ fn x15_the_process_exits_only_in_main_and_exit_after_drain() {
         ("main.rs", "main"),
         ("main.rs", "main"),
         ("main.rs", "main"),
-        ("stream/inbound/drain.rs", "exit_after_drain_within"),
+        ("wire/drain.rs", "exit_after_drain_within"),
     ]
     .iter()
     .map(|(a, b)| (a.to_string(), b.to_string()))

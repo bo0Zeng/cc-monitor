@@ -25,7 +25,7 @@ fn the_child_env_is_the_switch_plus_the_hosted_slots() {
         env,
         vec![
             (
-                crate::stream::listen::ENV_RESIDENT.to_string(),
+                crate::wire::listen::ENV_RESIDENT.to_string(),
                 "1".to_string()
             ),
             ("CCM_RELAY_PORT".to_string(), "8788".to_string()),
@@ -107,16 +107,16 @@ fn the_relay_says_absent_only_when_nobody_listens() {
     use std::io::ErrorKind as K;
     assert_eq!(
         relay_refusal(K::NotFound),
-        crate::stream::listen::REFUSE_ABSENT
+        crate::wire::listen::REFUSE_ABSENT
     );
     assert_eq!(
         relay_refusal(K::ConnectionRefused),
-        crate::stream::listen::REFUSE_ABSENT
+        crate::wire::listen::REFUSE_ABSENT
     );
     for k in [K::PermissionDenied, K::InvalidInput, K::Other] {
         assert_eq!(
             relay_refusal(k),
-            crate::stream::listen::REFUSE_UNREACHABLE,
+            crate::wire::listen::REFUSE_UNREACHABLE,
             "{k:?}"
         );
     }
@@ -162,17 +162,17 @@ fn the_resident_log_lives_under_logs_backend_and_its_dirs_are_made() {
     let _ = std::fs::remove_dir_all(&home);
 }
 
-/// T1 **宽限期 > 退出排空上限**：默认值与 `--grace` 的下限两格都比 `inbound::DRAIN_DEADLINE` 长。
+/// T1 **宽限期 > 退出排空上限**：默认值与 `--grace` 的下限两格都比 `wire::drain::DRAIN_DEADLINE` 长。
 /// 要求：「常驻后端自己收 SIGTERM 排空在飞写的上限（HX1）必须 < 宽限期（判据钉两者关系）」。
 /// 等得比排空短 ⇒ 后端那句「哪几条没做完」永远被 SIGKILL 截断，而且不会报错。
 #[test]
 fn the_grace_period_outlasts_the_backend_drain_cap() {
-    let drain_ms = crate::stream::inbound::DRAIN_DEADLINE.as_millis();
+    let drain_ms = crate::wire::drain::DRAIN_DEADLINE.as_millis();
     assert!(
         u128::from(STOP_GRACE_MS) > drain_ms,
         "默认宽限期 {STOP_GRACE_MS}ms 不比排空上限 {drain_ms}ms 长"
     );
-    let drain_secs = crate::stream::inbound::DRAIN_DEADLINE.as_secs();
+    let drain_secs = crate::wire::drain::DRAIN_DEADLINE.as_secs();
     let args = |v: &str| vec!["--grace".to_string(), v.to_string()];
     assert_eq!(parse_grace(&[]), Ok(STOP_GRACE_MS));
     assert!(

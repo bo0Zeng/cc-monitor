@@ -42,7 +42,7 @@ pub(crate) mod flag {
 }
 
 /// 这个词是不是 ccm 自己认的（壳层选项 ＋ `--ccm-*` 诊断口）—— 问的就是真解析器（放在 `--` 右边喂它）。
-/// 后端 CLI 面不许派生出这样的名字（`cli_control::cli_exposed`）。
+/// 后端 CLI 面不许派生出这样的名字（`stream::cli::cli_exposed`）。
 pub(crate) fn is_ccm_word(word: &str) -> bool {
     // 放在 `--` 右边问：只要不是「认不得这个词」那两句，就是 ccm 的词（缺值 / 组合不对也算认得）。
     let unknown = [

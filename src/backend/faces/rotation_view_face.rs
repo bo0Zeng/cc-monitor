@@ -10,7 +10,7 @@ use crate::accounts::quota::strategy::FailWhy;
 use crate::accounts::upstream_select::turn::{self, Loaded};
 use crate::faces::rotation_face::Ctx;
 use crate::faces::rotation_try_face::{decision_of, timeline_of, RotTryDecision, RotTryTimeline};
-use crate::stream::inbound::typed::{Blocking, Command, Cx};
+use crate::wire::typed::{Blocking, Command, Cx};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -96,7 +96,7 @@ pub(crate) struct RotationStrategiesReply {
     pub(crate) old_scripts: usize,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-strategies` 自己的码（只有入参不对那一种）。
     pub(crate) enum RotationStrategiesErr {}
 }
@@ -430,7 +430,7 @@ pub(crate) struct RotationViewReply {
     pub(crate) hints: Vec<RotNote>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `rotation-view` 自己的码。
     pub(crate) enum RotationViewErr {
         /// 中转没见过这个会话。

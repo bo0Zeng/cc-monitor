@@ -12,7 +12,7 @@
 
 use crate::control::fork_launch;
 use crate::control::fork_write::{ForkErr, ForkReq, Forked};
-use crate::stream::inbound::typed::{Blocking, Command, Cx};
+use crate::wire::typed::{Blocking, Command, Cx};
 use std::path::Path;
 
 /// `session-fork`：从某条消息处分叉出一个新会话。读整份 jsonl ⇒ 阻塞档。

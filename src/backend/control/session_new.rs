@@ -131,16 +131,16 @@ pub(crate) const SESSION_NEW_CODES: &[&str] = &[
     "no_strategy",
 ];
 
-impl crate::stream::inbound::typed::Codes for SessionNewErr {
+impl crate::wire::typed::Codes for SessionNewErr {
     const ALL: &'static [&'static str] = SESSION_NEW_CODES;
-    fn into_fail(self) -> crate::stream::inbound::spec::Fail {
+    fn into_fail(self) -> crate::wire::spec::Fail {
         let (code, message, data, raw) = self.0;
         debug_assert!(
             SESSION_NEW_CODES.contains(&code),
             "session-new 回了码表里没有的码 `{code}`"
         );
         // 那一句与原话本来就分开（`Failed` 第四格），照原样投（不经 `Fail::new` 再拆一次）。
-        crate::stream::inbound::spec::Fail {
+        crate::wire::spec::Fail {
             code: code.to_string(),
             message,
             data,
@@ -695,7 +695,7 @@ pub(crate) struct DirChecked {
     pub(crate) tmux_name: Option<String>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `session-new-dir` 自己没有别的码（`forkOf` 不是会话 id ⇒ `bad_args`）。
     pub(crate) enum SessionNewDirErr {}
 }

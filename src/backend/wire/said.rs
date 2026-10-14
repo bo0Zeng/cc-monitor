@@ -112,5 +112,5 @@ fn bus_send(id: &str, code: &str) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/stream/said_tests.rs"]
+#[path = "../../../tests/backend/wire/said_tests.rs"]
 mod tests;

@@ -19,7 +19,7 @@ use copy_core::copy_text;
 use serde_json::Value;
 use std::path::Path;
 
-type Refusal = crate::stream::inbound::spec::Fail;
+type Refusal = crate::wire::spec::Fail;
 
 /// 清单 · 共享集合两份小文件的读取上限。
 const MAX_SMALL_BYTES: u64 = 8 * 1024 * 1024;

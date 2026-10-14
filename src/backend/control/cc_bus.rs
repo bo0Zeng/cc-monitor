@@ -925,7 +925,7 @@ impl BusCleanup {
         let detail = if raws.is_empty() {
             String::new()
         } else {
-            crate::stream::detail::of(Some("kill"), "", Some(&raws.join("\n")))
+            crate::wire::detail::of(Some("kill"), "", Some(&raws.join("\n")))
         };
         ((!lines.is_empty()).then(|| lines.join("\n")), detail)
     }

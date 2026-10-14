@@ -52,8 +52,8 @@ use crate::common::said::Said;
 use crate::common::staging::{KEY_LEN, PART_SUFFIX};
 use crate::dial::sftp::{self, Dial, Session};
 use crate::platform::fs::{Face, FaceFile, Ro};
-use crate::stream::inbound::typed::{self, codes};
-use crate::stream::wire::{Frame, TransferEnd};
+use crate::wire::typed::{self, codes};
+use crate::wire::{Frame, TransferEnd};
 use cmd_wire::transfer::{
     TransferDownloadReq, TransferOpened, TransferUploadReq, TransferUploaded,
 };

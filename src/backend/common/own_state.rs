@@ -8,7 +8,7 @@ use copy_core::copy_text;
 use std::path::Path;
 
 /// 读一次的结果。三态，不许合并：「不在」与「读不出来」对调用方是两件事（后者不覆盖）。
-/// 读不出来那一形带那一句（路径 ＋ 原因词）与下层原话（[`Said`]）：读答里放 `reason` ＋ `detail` 两格（`stream::detail::unreadable`）。
+/// 读不出来那一形带那一句（路径 ＋ 原因词）与下层原话（[`Said`]）：读答里放 `reason` ＋ `detail` 两格（`wire::detail::unreadable`）。
 #[derive(Debug)]
 pub enum Read<T> {
     Absent,

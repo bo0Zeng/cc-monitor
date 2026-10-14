@@ -3,8 +3,8 @@
 //! 住入方向而不住 `faces/`：文件管理后端只许命令那一层够到（`files/module_boundary_guard.rs` 的门表）。
 //! 也不住命令表那一份族文件：那一份还递删会话的窄口（够得到原生那一侧），本体所在的文件要只够得到文件管理那一块。
 
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, codes, Async, Blocking, Codes, Command, Cx};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, codes, Async, Blocking, Codes, Command, Cx};
 use cmd_wire::files as wire;
 
 /// 读的那几条共用：问本体，失败收进这一条的码表（原话跟着那一句走）。

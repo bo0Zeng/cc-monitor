@@ -511,7 +511,7 @@ pub(crate) enum HistoryListReply {
     List(HistoryList),
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `history-list` 的码。
     pub(crate) enum HistoryListErr {
         /// 读不了这台的记录树 · 读的那一趟没做完。
@@ -524,25 +524,23 @@ crate::stream::inbound::typed::codes! {
 /// `history-list`：历史页的平铺会话清单。扫记录树在阻塞池里做，并 · 筛 · 排是纯计算 ⇒ 异步档。
 pub(crate) struct HistoryListCmd;
 
-impl crate::stream::inbound::typed::Command for HistoryListCmd {
+impl crate::wire::typed::Command for HistoryListCmd {
     const NAME: &'static str = "history-list";
     type Req = HistoryListReq;
     type Reply = HistoryListReply;
     type Err = HistoryListErr;
 }
 
-impl crate::stream::inbound::typed::Async for HistoryListCmd {
+impl crate::wire::typed::Async for HistoryListCmd {
     fn run(
         req: HistoryListReq,
-        cx: crate::stream::inbound::typed::Cx,
+        cx: crate::wire::typed::Cx,
     ) -> impl std::future::Future<Output = Result<HistoryListReply, HistoryListErr>> + Send + 'static
     {
         async move {
             answer(req, cx.tz)
                 .await
-                .map_err(crate::stream::inbound::typed::of_pair(
-                    HistoryListErr::Failed,
-                ))
+                .map_err(crate::wire::typed::of_pair(HistoryListErr::Failed))
         }
     }
 }

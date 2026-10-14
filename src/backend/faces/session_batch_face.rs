@@ -8,7 +8,7 @@
 use crate::control::session_batch::{self as batch, Deps, TmuxEntry};
 use crate::faces::launch_face::{pretrust_with, Files};
 
-use crate::stream::inbound::typed::{self, Blocking, Command, WithFiles};
+use crate::wire::typed::{self, Blocking, Command, WithFiles};
 
 /// `client` ＝ 请求自报的前端（「哪个前端的会话」那一维）：杀与就地键入都带它过门。`agent` ＝ 批量起那一家（整批一格；停 / 问样子用不着挑号）。
 fn with_deps<T>(

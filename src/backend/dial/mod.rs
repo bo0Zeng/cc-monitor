@@ -120,14 +120,14 @@ pub fn host() {
     });
 }
 
-/// 复制详情那几行：本后端的时刻与机器（`stream/detail.rs`）· 本后端的钟（`common/time.rs`）。
+/// 复制详情那几行：本后端的时刻与机器（`wire/detail.rs`）· 本后端的钟（`common/time.rs`）。
 struct BackendFacts;
 
 impl ssh_dial::env::Facts for BackendFacts {
     fn detail(&self, cmd: &str, code: Option<&str>, raw: Option<&str>) -> String {
         match code {
-            Some(code) => crate::stream::detail::of(Some(cmd), code, raw),
-            None => crate::stream::detail::of_run(cmd, raw),
+            Some(code) => crate::wire::detail::of(Some(cmd), code, raw),
+            None => crate::wire::detail::of_run(cmd, raw),
         }
     }
 

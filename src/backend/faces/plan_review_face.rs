@@ -5,7 +5,7 @@
 //! - `plan-unack {workspace, slice, key}`：撤掉（8 秒撤销那一下）；同上推一帧。
 
 use crate::plan::needs;
-use crate::stream::inbound::spec::Fail;
+use crate::wire::spec::Fail;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 

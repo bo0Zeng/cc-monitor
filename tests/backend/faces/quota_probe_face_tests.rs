@@ -184,7 +184,7 @@ fn unreadable_output_is_said_and_not_booked_and_a_failed_run_is_failed() {
         ctx.hop.quota.entry("claude-code", "bad").is_none(),
         "不写账"
     );
-    let crate::stream::inbound::spec::Fail {
+    let crate::wire::spec::Fail {
         code,
         message: msg,
         raw,

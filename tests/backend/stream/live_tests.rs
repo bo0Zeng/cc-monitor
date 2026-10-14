@@ -4,7 +4,7 @@
 use super::*;
 use crate::agents::StreamFamily;
 use crate::relay::{TapBody, TapEvent};
-use crate::stream::wire::LiveCard;
+use crate::wire::LiveCard;
 
 fn live() -> Live {
     Live::new(
@@ -451,10 +451,7 @@ fn live_bytes_reading() {
         for k in 0..200 {
             s.say(&mut l, &format!("word{k} "));
             for f in drain(&mut l, id) {
-                bytes += crate::stream::wire::to_line(&Frame::LiveCard(f))
-                    .unwrap()
-                    .len()
-                    + 1;
+                bytes += crate::wire::to_line(&Frame::LiveCard(f)).unwrap().len() + 1;
                 frames += 1;
             }
         }
@@ -462,10 +459,7 @@ fn live_bytes_reading() {
         s.end(&mut l, false);
     }
     for f in drain(&mut l, id) {
-        bytes += crate::stream::wire::to_line(&Frame::LiveCard(f))
-            .unwrap()
-            .len()
-            + 1;
+        bytes += crate::wire::to_line(&Frame::LiveCard(f)).unwrap().len() + 1;
         frames += 1;
     }
     println!("READING after: frames={frames} bytes={bytes}");

@@ -3,7 +3,7 @@
 use super::spec::{prepare, Prepared};
 use super::REGISTRY;
 use crate::common::door::{Door, Said};
-use crate::stream::wire::Request;
+use crate::wire::Request;
 use cmd_wire::files as wire;
 
 /// 资产域（`assets/`）够用户文件的那一扇门：这台文件管理那一族的本体，每一问按入参类型直接问它那一条
@@ -70,7 +70,7 @@ pub(crate) const HUB_INNER: &[&str] = &[
     "skill-install-apply",
 ];
 
-impl crate::assets::hub::Here for LocalFrames {
+impl crate::wire::typed::Here for LocalFrames {
     fn ask(
         &self,
         cmd: &str,
@@ -107,7 +107,7 @@ impl crate::assets::hub::Here for LocalFrames {
 pub(super) fn hub_here(
     tz: &crate::Tz,
     own: &crate::platform::Own,
-) -> std::sync::Arc<dyn crate::assets::hub::Here> {
+) -> std::sync::Arc<dyn crate::wire::typed::Here> {
     std::sync::Arc::new(LocalFrames {
         tz: tz.clone(),
         own: own.clone(),
@@ -130,4 +130,9 @@ pub fn watch_account_mcp(own: &crate::platform::fs::Own) {
 /// （`main.rs` 接中转那一刻，与 `rotation.json` 换形写回同一处、同一个写的人）。
 pub fn fill_account_colors() {
     crate::accounts::manage::wire::colors_here(&LocalFiles);
+}
+
+/// 后端起来时那一次别名清单迁移（经本进程自己的文件管理面，写经 [`LocalFiles`]，与帧命令同一扇门）：只由 `main.rs` 调。
+pub fn migrate_aliases() {
+    crate::assets::aliases::migrate_here(&LocalFiles);
 }

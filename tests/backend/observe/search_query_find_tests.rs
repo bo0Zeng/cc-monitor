@@ -521,11 +521,11 @@ fn find_wire(
     tz: &crate::Tz,
 ) -> Result<serde_json::Value, (String, String)> {
     assert_eq!(cmd, "history-find");
-    let req = crate::stream::inbound::typed::take(args).map_err(|e| (e.code, e.message))?;
+    let req = crate::wire::typed::take(args).map_err(|e| (e.code, e.message))?;
     crate::faces::history_face::find_at(home, req, tz)
         .map(|r| serde_json::to_value(r).unwrap())
         .map_err(|e| {
-            let f = crate::stream::inbound::typed::Codes::into_fail(e);
+            let f = crate::wire::typed::Codes::into_fail(e);
             (f.code, f.message)
         })
 }

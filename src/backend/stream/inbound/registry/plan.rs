@@ -2,7 +2,7 @@
 //! 反查 `plan-files`（文件窗口：目录里每份文件归哪一格）；代敲 `plan-command`（以人的身份跑 pb 的 `continue` · `pause` · `view`；写盘的是 pb）；
 //! 审面 `plan-ack` · `plan-unack` · `plan-return`（认可与退回记在后端自己的 `~/.cc-monitor/plan-review.json`，计划仓一个字节不写）。
 
-use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
+use crate::wire::spec::{arg, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // 三条都在阻塞档：起一次 pb（研究盘 252 格 1.1 秒），开跑之后打不断 ⇒ `cancel` 命中时回 `not_cancellable`。

@@ -19,12 +19,12 @@ fn carried_of(args: &Value) -> Result<Vec<(Key, String)>, Fail> {
     struct Only {
         carried: Vec<Carried>,
     }
-    let only: Only = crate::stream::inbound::typed::take(args)?;
+    let only: Only = crate::wire::typed::take(args)?;
     super::carried_of(&only.carried)
 }
 
 fn answer_place(args: &Value) -> Result<Value, Fail> {
-    let req: PlaceReq = crate::stream::inbound::typed::take(args)?;
+    let req: PlaceReq = crate::wire::typed::take(args)?;
     super::answer_place(&req).map(|r| serde_json::to_value(r).unwrap())
 }
 

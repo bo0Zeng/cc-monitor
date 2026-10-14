@@ -4,6 +4,18 @@
 //! with no bare `\n`/`\r` inside the object. `serde_json` compact output
 //! escapes any inner newline as `\n` (two chars), so the only literal newline
 //! on the wire is the trailing terminator appended by [`to_line`].
+//!
+//! 这一份是**帧面的协议零件**那一层的根（最底下，只引 `platform` · `common` · `agents` · `relay`；`layering_guard` 钉着）：
+//! 帧本身住这里，其余零件各一份子模块。命令表与接线（分派 · 门 · 期限 · 出口声明 · tap）住上面的 `crate::stream`。
+
+pub(crate) mod detail; // 失败应答的「复制详情」那一格（时刻 · 机器 · 命令 · 码 · 原话）· 失败投到 CLI 面
+pub mod drain; // 流模式收场：退出之前先排空开跑之后停不下来的那一档（闸 · 票 · 期限）
+pub mod listen; // K-P1：常驻监听口的纯判定（判 attach · 拒绝那一行 · 分档 · 模式 · 常量；接受循环住 main.rs）
+pub(crate) mod said; // 那几条命令被拒时给人看的那一句（界面那五张「码 → 句」表搬来）
+pub(crate) mod spec; // 一条入方向命令的登记形状（各族命令表只 use 这一份）· 按档装处理器 `prepare`
+pub mod topic; // 「X 变了 ⇒ 重读」那一种推送（`changed`）的主题表（只此一处：名字 · 可丢性 · 小成品上限）
+pub mod topic_hook; // 帧里的小成品怎么现算：进程里装的那一个函数（发端经它调；`main` 装 `stream::topic_body`）
+pub(crate) mod typed; // typed 命令：入参 · 回包 · 错误码各是一个 Rust 类型
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -180,9 +192,9 @@ impl ActivityFace {
     }
 }
 
-/// **这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
-/// `label` ＝ [`crate::history::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截
-/// （界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
+/// **这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
+/// 从会话的那几样事实造它只有一处 —— [`crate::history::search_rules::name_face`]（`label` ＝ 同一个 `session_label`，与历史清单 · 全文搜索同一个函数；
+/// `label_project` ＝ 项目目录最后一截，界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。这里只是线上那两格的形状。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NameFace {
     label: Words,
@@ -191,17 +203,11 @@ pub(crate) struct NameFace {
 }
 
 impl NameFace {
-    /// 那几样 ⇒ 这两格。
-    pub(crate) fn of(facts: &crate::history::search_rules::LabelFacts) -> Self {
-        let (label, _) = crate::history::search_rules::session_label(facts);
-        let label_project = facts
-            .project_dir
-            .as_deref()
-            .and_then(crate::history::search_rules::project_name)
-            .map(Words::from);
+    /// 已经算好的那两格（只由 `history::search_rules::name_face` 调）。
+    pub(crate) fn of_parts(label: String, label_project: Option<String>) -> Self {
         NameFace {
             label: Words(label),
-            label_project,
+            label_project: label_project.map(Words::from),
         }
     }
 
@@ -234,7 +240,14 @@ fn is_false(b: &bool) -> bool {
 pub use crate::agents::AgentHome;
 pub use crate::agents::SessionActivity;
 use crate::common::cells::{Tone, Words};
-pub use crate::stream::topic::Topic;
+pub use crate::wire::topic::Topic;
+
+/// 分页的那几条帧命令（`history-index` · `-user-inputs` · `-turns` · `-branch`）一条应答至多多少字节，`session_branch` 一帧同此。
+///
+/// 一条应答就是那台流上的一整行，写它的时候那台别的会话的实时帧都在后面等（写出方向写完一页就先让实时帧走，`main.rs::writer_task`）
+/// ⇒ 页越大，实时行被挡得越久；页越小，往返越多。取 1 MiB：同 `history-read` 一页、同远端链路的窗口；
+/// 一份 394 MB 的合成记录冷开一趟分页那四条共 19 页（256 KiB 要 71 页，远端每页一个往返）。
+pub const REPLY_PAGE_BYTES: usize = 1 << 20;
 
 /// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
 ///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。
@@ -1119,7 +1132,7 @@ impl TransferEnd {
         TransferEnd::Failed {
             why,
             code,
-            detail: Some(crate::stream::detail::of_run(cmd, raw)),
+            detail: Some(crate::wire::detail::of_run(cmd, raw)),
         }
     }
 }
@@ -1179,8 +1192,8 @@ impl Frame {
         }
     }
 
-    /// 失败应答：那一份失败（[`crate::stream::detail::Failed`]，CLI 面的信封出自同一份）装进 `reply`。
-    pub(crate) fn failed(id: String, f: crate::stream::detail::Failed) -> Frame {
+    /// 失败应答：那一份失败（[`crate::wire::detail::Failed`]，CLI 面的信封出自同一份）装进 `reply`。
+    pub(crate) fn failed(id: String, f: crate::wire::detail::Failed) -> Frame {
         Frame::Reply {
             id,
             ok: false,
@@ -1193,14 +1206,13 @@ impl Frame {
 
     /// 硬臂那几条命令（`Run::Builtin`：链路 · 传输 · 终端订阅）就地被拒：详情里带命令名（同处理器回的失败）。
     pub(crate) fn refused(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
-        let f =
-            crate::stream::detail::Failed::new(Some(cmd), code, message.to_string(), None, None);
+        let f = crate::wire::detail::Failed::new(Some(cmd), code, message.to_string(), None, None);
         Frame::failed(id.to_string(), f)
     }
 
     /// 协议级失败（还没落到哪条命令上：认不出 · 读不懂 · 收场中）：详情里没有命令那一项。
     pub(crate) fn err(id: &str, code: &str, message: &str) -> Frame {
-        let f = crate::stream::detail::Failed::new(None, code, message.to_string(), None, None);
+        let f = crate::wire::detail::Failed::new(None, code, message.to_string(), None, None);
         Frame::failed(id.to_string(), f)
     }
 
@@ -1553,21 +1565,6 @@ pub fn to_line(frame: &Frame) -> serde_json::Result<String> {
     Ok(s)
 }
 
-/// [`to_line`] 照这条流的出口声明裁过（`crate::StreamView`；`None` ＝ 全量，字节与 [`to_line`] 同）。流的写者对每一帧调它。
-pub fn to_line_viewed(
-    frame: &Frame,
-    view: Option<&crate::StreamView>,
-) -> serde_json::Result<String> {
-    let Some(view) = view else {
-        return to_line(frame);
-    };
-    let mut v = serde_json::to_value(frame)?;
-    view.apply(&mut v);
-    let mut s = serde_json::to_string(&v)?;
-    s.push('\n');
-    Ok(s)
-}
-
 /// U6b-3：**Hello 已经写出并 flush 的见证。**
 ///
 /// # 为什么要一个类型
@@ -1701,5 +1698,5 @@ pub(crate) fn hello_summary(h: &serde_json::Value) -> String {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/backend/stream/wire_tests.rs"]
+#[path = "../../../tests/backend/wire/wire_tests.rs"]
 pub(crate) mod tests;

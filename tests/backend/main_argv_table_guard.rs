@@ -201,8 +201,8 @@ const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[];
 /// - **臂侧** = 两处**块内**取法，每一处的扫描面都**不含那张表**：
 ///   ① `main.rs` 一次性查询 `match` 块（[`dispatch_block`]）里的 `Some("--x")` 字面量臂；
 ///   ② 那条**派生臂** —— 它**在不在**由块内文本判，它**认哪几条**由
-///      [`crate::control::cli_control::spec_for`] 在**运行期**从 `inbound::REGISTRY` 派生。
-///   `_` 兜底臂不是落点：它回「不认识」（`cli_control::refuse_unknown`）。从前它交给 `observe::history_query::run`
+///      [`crate::stream::cli::spec_for`] 在**运行期**从 `inbound::REGISTRY` 派生。
+///   `_` 兜底臂不是落点：它回「不认识」（`stream::cli::refuse_unknown`）。从前它交给 `observe::history_query::run`
 ///   （第三处落点），那一族手写子命令第 7 批第二题删了。
 ///
 /// 分表这一形抄 `src/frontend/shell/src/backend_kill.rs` 的
@@ -235,11 +235,10 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
         "分派块的扫描面里出现了那张表 —— 表与臂又回到同一次扫描里，本条此刻是个瞎子"
     );
     let literal = arm_tokens(block);
-    let derived_arm = block.contains("cli_control::handles(");
-    let catch_all = block.lines().any(|l| {
-        l.trim_start()
-            .starts_with("_ => cli_control::refuse_unknown(")
-    });
+    let derived_arm = block.contains("cli::handles(");
+    let catch_all = block
+        .lines()
+        .any(|l| l.trim_start().starts_with("_ => cli::refuse_unknown("));
 
     // ── 反空真地板（只问「抽取塌没塌」，不问「某一条在不在」）──────────────
     assert!(
@@ -249,7 +248,7 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     );
     assert!(
         derived_arm,
-        "分派块里没有那条派生臂（`cli_control::handles`）—— 走 CLI 面的子命令一条都调不到了"
+        "分派块里没有那条派生臂（`stream::cli::handles`）—— 走 CLI 面的子命令一条都调不到了"
     );
     assert!(
         catch_all,
@@ -276,8 +275,8 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
                 return false;
             }
             !(derived_arm
-                && (crate::control::cli_control::spec_for(tok).is_some()
-                    || *tok == crate::control::cli_control::PROBE_FLAG))
+                && (crate::stream::cli::spec_for(tok).is_some()
+                    || *tok == crate::stream::cli::PROBE_FLAG))
         })
         .collect();
     assert!(
@@ -308,7 +307,7 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     );
     let mut unexplained: Vec<&str> = Vec::new();
     for tok in SUBCOMMANDS.iter().copied() {
-        let on_derived = derived_arm && crate::control::cli_control::spec_for(tok).is_some();
+        let on_derived = derived_arm && crate::stream::cli::spec_for(tok).is_some();
         if on_derived && literal.contains(&tok) && !DUAL_ROUTE_ARMS.iter().any(|(t, _)| *t == tok) {
             unexplained.push(tok);
         }
@@ -429,10 +428,7 @@ fn retired_oneshot_subcommands_are_not_subcommands_anymore() {
             !docs.contains(&f.to_string()),
             "`{f}` 还在 CLI_ONLY_DOCS 里"
         );
-        assert!(
-            !crate::control::cli_control::handles(f),
-            "`{f}` 派生臂还认它"
-        );
+        assert!(!crate::stream::cli::handles(f), "`{f}` 派生臂还认它");
         assert!(
             !super::is_query_mode(&[f.to_string()]),
             "`{f}` 单敲还进查询模式"
@@ -447,8 +443,7 @@ fn a_retired_oneshot_with_arguments_answers_unknown_command() {
         let args = vec![f.to_string(), "/x.jsonl".to_string()];
         assert!(super::is_query_mode(&args));
         let mut err: Vec<u8> = Vec::new();
-        let rc =
-            crate::control::cli_control::refuse_unknown_to(&args, &mut err, &crate::Tz::default());
+        let rc = crate::stream::cli::refuse_unknown_to(&args, &mut err, &crate::Tz::default());
         let line = String::from_utf8(err).unwrap();
         let v: serde_json::Value = serde_json::from_str(line.trim())
             .unwrap_or_else(|e| panic!("`{f}` 的失败不是一行 JSON（{e}）：{line}"));
@@ -483,7 +478,7 @@ fn kept_oneshot_subcommands_are_still_dispatched() {
     ] {
         assert!(SUBCOMMANDS.contains(&f), "`{f}` 不在 SUBCOMMANDS 里了");
         assert!(
-            literal.contains(&f) || crate::control::cli_control::handles(f),
+            literal.contains(&f) || crate::stream::cli::handles(f),
             "`{f}` 没有落点"
         );
     }
@@ -495,5 +490,5 @@ fn resolve_rides_the_derived_arm_only() {
     let src = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
     let literal = arm_tokens(dispatch_block(&src));
     assert!(!literal.contains(&"--resolve"), "`--resolve` 的手写臂还在");
-    assert!(crate::control::cli_control::spec_for("--resolve").is_some());
+    assert!(crate::stream::cli::spec_for("--resolve").is_some());
 }

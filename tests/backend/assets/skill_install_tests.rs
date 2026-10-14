@@ -13,16 +13,13 @@ use crate::assets::mcp_sync::There;
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
+) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
 
-fn answer_read_at(
-    root: Option<&Path>,
-    args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+fn answer_read_at(root: Option<&Path>, args: &Value) -> Result<Value, crate::wire::spec::Fail> {
     via(args, |r| super::answer_read_at(root, r))
 }
 
@@ -30,7 +27,7 @@ fn answer_plan_with(
     facts: &dyn Facts,
     root: Option<&Path>,
     args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<Value, crate::wire::spec::Fail> {
     via(args, |r| super::answer_plan_with(facts, root, r))
 }
 
@@ -360,8 +357,7 @@ fn ledger_with(d: &Path, name: &str, files: Value) -> (PathBuf, String) {
     crate::assets::skill_ledger::record_at(
         &own_at(&file),
         Some(&root),
-        &crate::stream::inbound::typed::take(&json!({"op": "add", "name": name, "files": files}))
-            .unwrap(),
+        &crate::wire::typed::take(&json!({"op": "add", "name": name, "files": files})).unwrap(),
     )
     .expect("记");
     (file, root.join(name).display().to_string())
@@ -598,10 +594,8 @@ fn what_the_install_plan_says_to_record_is_what_the_uninstall_plan_recognizes() 
     crate::assets::skill_ledger::record_at(
         &own_at(&file),
         Some(&root),
-        &crate::stream::inbound::typed::take(
-            &json!({"op": "add", "name": "demo", "files": plan["ledger"]}),
-        )
-        .unwrap(),
+        &crate::wire::typed::take(&json!({"op": "add", "name": "demo", "files": plan["ledger"]}))
+            .unwrap(),
     )
     .unwrap();
     let v = answer_uninstall_plan_at(&file, &json!({"dir": plan["dir"]})).unwrap();

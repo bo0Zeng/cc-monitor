@@ -40,7 +40,7 @@
 //! ⚠ 现有文件**解析不了 ⇒ 拒绝、不覆盖**（`bad_file`）：人手编打错一个逗号时，覆盖等于把他写的东西抹掉。
 
 use crate::platform::fs::{Own, OwnPath};
-use crate::stream::inbound::spec::Fail;
+use crate::wire::spec::Fail;
 use copy_core::copy_text;
 use creds_core::store;
 use creds_core::SecretKey;

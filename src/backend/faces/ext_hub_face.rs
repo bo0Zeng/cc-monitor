@@ -3,8 +3,8 @@
 //! 不与内层那 8 条同住：引用图按文件取，这一对够得着的（可达表 · 拨号）不该算到内层头上。
 
 use crate::assets::hub_wire as wire;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, codes, AsyncOwning, Command, Cx};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, codes, AsyncOwning, Command, Cx};
 
 codes! {
     /// `ext-hub-preview` / `ext-hub-apply` 的码（各台的失败不在这里：进那一台的 `error`）。

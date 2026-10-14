@@ -137,10 +137,10 @@ const MAX_FILE_BYTES: u64 = 32 * 1024 * 1024;
 /// 机器名最长多少字节。
 const MAX_ORIGIN_BYTES: usize = 256;
 
-type Answer<T> = Result<T, crate::stream::inbound::spec::Fail>;
+type Answer<T> = Result<T, crate::wire::spec::Fail>;
 
-fn bad(d: &str) -> crate::stream::inbound::spec::Fail {
-    crate::stream::inbound::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
+fn bad(d: &str) -> crate::wire::spec::Fail {
+    crate::wire::spec::Fail::new("bad_args", crate::common::contract::malformed(d))
 }
 
 /// 这台机器上那份文件的路径；家目录解析不出来 ⇒ `None`。
@@ -148,7 +148,7 @@ pub(crate) fn store_path() -> Option<PathBuf> {
     Some(crate::platform::paths::home_dir()?.join(relay_route_core::LAST_SEEN_REL))
 }
 
-fn origin_arg(m: &cmd_wire::Machine) -> Result<&str, crate::stream::inbound::spec::Fail> {
+fn origin_arg(m: &cmd_wire::Machine) -> Result<&str, crate::wire::spec::Fail> {
     Some(m.0.as_str())
         .filter(|s| !s.trim().is_empty() && s.len() <= MAX_ORIGIN_BYTES)
         .ok_or_else(|| bad("`origin` missing or not a short non-empty string"))
@@ -217,7 +217,7 @@ pub(crate) fn write_at(own: &Own, req: &LastSeenWriteReq, now_ms: u64) -> Answer
     );
     let size = value.to_string().len();
     if size > MAX_VALUE_BYTES {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "too_large",
             copy_text(
                 "beLastSeen.value.tooLarge",
@@ -267,8 +267,8 @@ fn locked_edit(
     dir: &OwnPath,
     file: &OwnPath,
     edit: impl FnOnce(&mut Map<String, Value>) -> bool,
-) -> Result<(), crate::stream::inbound::spec::Fail> {
-    let io = |e| crate::stream::inbound::spec::Fail::from(("io_failed", e));
+) -> Result<(), crate::wire::spec::Fail> {
+    let io = |e| crate::wire::spec::Fail::from(("io_failed", e));
     let held = own
         .lock(dir)
         .map_err(|e| io(crate::common::said::Said::from(e)))?;
@@ -281,13 +281,9 @@ fn locked_edit(
 }
 
 /// 那份文件所在的那一层（`~/.cc-monitor`）与它本身。没有家目录 ⇒ `io_failed`。
-fn place(own: &Own) -> Result<(OwnPath, OwnPath), crate::stream::inbound::spec::Fail> {
-    let no_home = |_| {
-        crate::stream::inbound::spec::Fail::from((
-            "io_failed",
-            copy_text("beLastSeen.store.noHome", &[]),
-        ))
-    };
+fn place(own: &Own) -> Result<(OwnPath, OwnPath), crate::wire::spec::Fail> {
+    let no_home =
+        |_| crate::wire::spec::Fail::from(("io_failed", copy_text("beLastSeen.store.noHome", &[])));
     Ok((
         own.home_dir().map_err(no_home)?,
         own.at_home(relay_route_core::LAST_SEEN_REL)

@@ -148,7 +148,7 @@ pub(crate) async fn ask(conn: u64, args: &Value) -> Result<Value, (&'static str,
             crate::common::contract::malformed("needs-ask: `hook` is required"),
         )
     })?;
-    let reply = |decision| crate::stream::inbound::spec::wire(&AskReply { decision });
+    let reply = |decision| crate::wire::spec::wire(&AskReply { decision });
     let Some(asked) = crate::agents::ask_face(agent).and_then(|f| (f.read)(hook)) else {
         return reply(None);
     };
@@ -366,7 +366,7 @@ pub(crate) struct Pick {
     pub(crate) text: Option<String>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `needs-answer` 的码。
     pub(crate) enum AnswerErr {
         /// 没这一条（或不是这个会话的）。
@@ -385,21 +385,19 @@ crate::stream::inbound::typed::codes! {
 /// `needs-answer`：答一条挂着的待答请求，第一个答案落下。锁一下登记表、交给 hook 那一头的通道：不碰盘、不起进程、不等 ⇒ 异步档。
 pub(crate) struct NeedsAnswerCmd;
 
-impl crate::stream::inbound::typed::Command for NeedsAnswerCmd {
+impl crate::wire::typed::Command for NeedsAnswerCmd {
     const NAME: &'static str = "needs-answer";
     type Req = AnswerReq;
     type Reply = Answered;
     type Err = AnswerErr;
 }
 
-impl crate::stream::inbound::typed::Async for NeedsAnswerCmd {
+impl crate::wire::typed::Async for NeedsAnswerCmd {
     fn run(
         req: AnswerReq,
-        _cx: crate::stream::inbound::typed::Cx,
+        _cx: crate::wire::typed::Cx,
     ) -> impl std::future::Future<Output = Result<Answered, AnswerErr>> + Send + 'static {
-        std::future::ready(
-            answer(req).map_err(crate::stream::inbound::typed::of_pair(AnswerErr::NotFound)),
-        )
+        std::future::ready(answer(req).map_err(crate::wire::typed::of_pair(AnswerErr::NotFound)))
     }
 }
 

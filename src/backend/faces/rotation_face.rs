@@ -46,7 +46,7 @@ use crate::accounts::quota::rules::{book, shelf};
 use crate::accounts::quota::show;
 use crate::accounts::upstream_select::rotate::Hop;
 use crate::common::time::TextClock;
-use crate::stream::inbound::spec::{wire, Fail};
+use crate::wire::spec::{wire, Fail};
 use copy_core::copy_text;
 use serde_json::Value;
 use std::sync::Arc;

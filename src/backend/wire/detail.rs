@@ -114,3 +114,19 @@ fn machine() -> String {
         copy_text("detail.value.backend", &[("build", crate::BUILD_ID)])
     )
 }
+
+/// 一次性 CLI 面的失败出口（CLI 面分派 `stream::cli` 与 `control/resident.rs` 那两条子命令都走这一份，不另立第 N 份信封，`readonly_guard::error_envelope_registry`）。
+/// `cmd` 进复制详情的「命令」那一项；`message` 可带下层原话（`Said.raw`），原话进复制详情、不上句子。
+pub fn emit_err(cmd: &str, code: &str, message: impl Into<copy_core::said::Said>) -> i32 {
+    // 这几条（常驻起停那两问）不收 `--tz` ⇒ 详情那一行时刻按 UTC 填（同「没带按 UTC」）。
+    failed_of(cmd, code, message.into()).emit_to(
+        &mut std::io::stderr(),
+        false,
+        &crate::Tz::default(),
+    )
+}
+
+/// [`emit_err`] 交出去的那一份：那一句进 `message`，下层原话进复制详情（[`Failed::new`] 的 `raw`）。
+pub(crate) fn failed_of(cmd: &str, code: &str, s: copy_core::said::Said) -> Failed {
+    Failed::new(Some(cmd), code, s.said, s.raw.as_deref(), None)
+}

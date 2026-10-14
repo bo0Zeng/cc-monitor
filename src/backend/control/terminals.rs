@@ -33,7 +33,7 @@ pub(crate) const TERMINALS_LIST_CAP: Deadline = Deadline::secs(13);
 pub(crate) const TERMINAL_PREVIEW_CAP: Deadline = Deadline::secs(18);
 
 /// 命令级错误：码 ＋ 那一句 ＋ 下层原话（抓屏那一处的 tmux stderr 进复制详情）。
-pub(crate) type CmdErr = crate::stream::inbound::spec::Fail;
+pub(crate) type CmdErr = crate::wire::spec::Fail;
 
 /// 句柄前缀（不透明：前端不拼、不解析；后端只按名单对）。
 const HANDLE_PREFIX: &str = "tmux-";
@@ -341,9 +341,7 @@ pub(crate) fn terminal_json(
     let nonempty = |s: &str| (!s.is_empty()).then(|| s.to_string());
     TerminalItem {
         terminal: row.handle(),
-        host: crate::stream::wire::TerminalHost::Tmux
-            .as_wire()
-            .to_string(),
+        host: crate::wire::TerminalHost::Tmux.as_wire().to_string(),
         tmux_name: row.name.clone(),
         title,
         program: row.program.clone(),

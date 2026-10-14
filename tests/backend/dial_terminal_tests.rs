@@ -16,7 +16,7 @@ fn answer(args: &Value) -> Result<Value, CmdErr> {
 /// 线上那一份入参经 typed 那一处收（同分派），再按给定方言渲；回包写成线上那一份。
 fn answer_at(args: &Value, powershell: bool, ssh: &SshClient) -> Result<Value, CmdErr> {
     let req: TerminalSshReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     answer_in(&req, powershell, ssh).map(|r| serde_json::to_value(r).unwrap())
 }
 

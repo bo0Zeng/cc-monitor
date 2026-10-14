@@ -165,10 +165,7 @@ fn it_is_registered_typed() {
         .iter()
         .find(|s| s.name == "rotation-try")
         .expect("登记了");
-    assert!(matches!(
-        spec.run,
-        crate::stream::inbound::spec::Run::Typed(_)
-    ));
+    assert!(matches!(spec.run, crate::wire::spec::Run::Typed(_)));
     assert_eq!(spec.codes, ["bad_args", "bad_strategy"]);
     assert!(serde_json::from_value::<RotationTryReq>(
         serde_json::json!({"source": "", "sid": "x"})

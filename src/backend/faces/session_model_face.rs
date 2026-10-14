@@ -7,8 +7,8 @@ use crate::common::contract::malformed;
 use crate::control::terminals::{no_said, Refused};
 use crate::control::terminals_wire::{Sent, SentResult, TerminalInputReq};
 use crate::faces::session_mode_face::SwitchResult;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, Async, Command, Cx};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Async, Command, Cx};
 use copy_core::copy_text;
 use serde::Deserialize;
 

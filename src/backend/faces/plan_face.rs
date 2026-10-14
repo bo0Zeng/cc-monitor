@@ -12,7 +12,7 @@
 //! 读过的工作区就开始盯（[`crate::plan::watch`]），变了推 `changed {plan}`。
 
 use crate::plan::{book, locate, watch, wire, Live, Whose};
-use crate::stream::inbound::spec::Fail;
+use crate::wire::spec::Fail;
 use copy_core::copy_text;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;

@@ -50,7 +50,7 @@ impl Host for Prod {
         &self,
         f: impl FnOnce(&Deps<'_>) -> T + Send + 'static,
     ) -> impl Future<Output = Option<T>> + Send {
-        let ticket = crate::stream::inbound::DRAIN.enter("session-restart".to_string());
+        let ticket = crate::wire::drain::DRAIN.enter("session-restart".to_string());
         let (client, agent, files) = (self.client.clone(), self.agent.clone(), self.files);
         async move {
             let ticket = ticket?;
@@ -92,18 +92,18 @@ impl Host for Prod {
 /// `session-restart`：换号重启。可撤档（步与步之间撤单生效；停旧 ＋ 起新不可分，开跑之后撤也做完）。
 pub(crate) struct SessionRestart;
 
-impl crate::stream::inbound::typed::Command for SessionRestart {
+impl crate::wire::typed::Command for SessionRestart {
     const NAME: &'static str = "session-restart";
     type Req = restart::RestartReq;
     type Reply = restart::Restarted;
     type Err = restart::RestartErr;
 }
 
-impl crate::stream::inbound::typed::AsyncFiles for SessionRestart {
+impl crate::wire::typed::AsyncFiles for SessionRestart {
     async fn run(
         req: restart::RestartReq,
-        cx: crate::stream::inbound::typed::Cx,
-        files: crate::stream::inbound::typed::Files,
+        cx: crate::wire::typed::Cx,
+        files: crate::wire::typed::Files,
     ) -> Result<restart::Restarted, restart::RestartErr> {
         answer(req, cx.until, files)
             .await

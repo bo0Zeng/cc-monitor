@@ -7,13 +7,12 @@ use std::path::PathBuf;
 // 判据照线上那一份比：入参经 typed 那一处收（同分派）再交本体，回包写成线上那一份（盖住 `super::*` 里的同名口）。
 fn answer_read(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
     let req: AliasesReadReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_read(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
 fn answer_block_render(d: &dyn Door, args: &Value) -> Result<Value, (&'static str, String)> {
-    let req: BlockReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: BlockReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_block_render(d, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 

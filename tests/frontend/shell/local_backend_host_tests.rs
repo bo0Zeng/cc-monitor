@@ -4384,7 +4384,7 @@ fn hx2_the_handed_names_are_exactly_what_the_backend_echoes() {
         let after_decl = &text[at + decl.len()..];
         after_decl[..after_decl.find('"').expect("常量没收尾")].to_string()
     };
-    let wire = read("backend/stream/wire.rs");
+    let wire = read("backend/wire/mod.rs");
     let decl = "pub const HOST_ECHO_ENVS: [&str; 2] = [";
     let at = guard_core::find_pinned(&wire, decl).expect("后端回显名单不在了");
     // 名单写在一行里（两格，`cargo fmt` 不拆）：取那一行到收尾。

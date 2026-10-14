@@ -63,14 +63,12 @@ impl Rig {
         };
         let kill = |_: &str,
                     _: &str|
-         -> Result<
-            crate::control::cc_bus::BusNote,
-            crate::stream::inbound::spec::Fail,
-        > { unreachable!("起新会话不杀") };
-        let send_into =
-            |_: &str, _: &str, _: &str| -> Result<(), crate::stream::inbound::spec::Fail> {
-                unreachable!("起新会话不往已有的终端里键入")
-            };
+         -> Result<crate::control::cc_bus::BusNote, crate::wire::spec::Fail> {
+            unreachable!("起新会话不杀")
+        };
+        let send_into = |_: &str, _: &str, _: &str| -> Result<(), crate::wire::spec::Fail> {
+            unreachable!("起新会话不往已有的终端里键入")
+        };
         let run_ccm = |argv: &[String]| -> Result<(i32, String, String), crate::control::session_batch::CmdErr> {
             self.ccm.borrow_mut().push(argv.to_vec());
             Ok((self.ccm_rc, String::new(), "boom".into()))

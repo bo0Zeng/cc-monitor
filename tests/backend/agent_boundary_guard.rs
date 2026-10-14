@@ -48,7 +48,7 @@ mod tests {
         "platform/pidwatch/mod.rs",
         // `platform/fallback_guard.rs` 出表：它是判据，整份搬去了 `tests/backend/platform/`（不是通用层的生产文件）。
         "common/mod.rs",
-        "stream/wire.rs",
+        "wire/mod.rs",
         "stream/inbound/mod.rs",
         // ── 以下由 `S3` 加入 ──────────────────────────────────────────
         // `platform/` 整层：`S3` 把 `proc_claude_config_dir` 参数化成 `proc_env_var(pid, name)`
@@ -106,9 +106,9 @@ mod tests {
         "common/tmux_utf8.rs",
         // 入方向从一份文件拆成目录（10-03）：拆出来的每一份（含命令表各族）照旧在表里（原来那一份在表里，拆开不缩覆盖面）。
         "stream/inbound/doors.rs",
-        "stream/inbound/drain.rs",
+        "wire/drain.rs",
         "stream/inbound/sniff.rs",
-        "stream/inbound/spec.rs",
+        "wire/spec.rs",
         "stream/inbound/registry/accounts.rs",
         "stream/inbound/registry/aliases.rs",
         "stream/inbound/registry/assets.rs",
@@ -163,7 +163,7 @@ mod tests {
     /// 线上字段名），而**本表看不见它** —— 那个文件不在 `CORE_FILES` 里。
     /// ⇒ 两个不同的问题各问了一次同一个事实，删掉任一张都会漏掉另一张管的那一半。
     const FROZEN_COMPAT: &[(&str, &str, &str, &str)] = &[(
-        "stream/wire.rs",
+        "wire/mod.rs",
         "claude_dir",
         "hello 帧里**今天真的在线上**的那个目录字段，而且**有手机端这个消费方**：手机端的契约 \
          2026-07-18 冻结，我们改不动它。⇒ 改名是破坏性变更，不是本区能单方面做的事。 \
@@ -300,7 +300,7 @@ mod tests {
             "platform/mod.rs",
             "platform/pidwatch/mod.rs",
             "common/mod.rs",
-            "stream/wire.rs",
+            "wire/mod.rs",
             "stream/inbound/mod.rs",
             // S3 加入
             "platform/proc.rs",
@@ -318,9 +318,9 @@ mod tests {
             "common/tmux_utf8.rs",
             // 入方向拆成目录（10-03）：拆出来的那几份与命令表各族
             "stream/inbound/doors.rs",
-            "stream/inbound/drain.rs",
+            "wire/drain.rs",
             "stream/inbound/sniff.rs",
-            "stream/inbound/spec.rs",
+            "wire/spec.rs",
             "stream/inbound/registry/accounts.rs",
             "stream/inbound/registry/aliases.rs",
             "stream/inbound/registry/assets.rs",

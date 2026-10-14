@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 ///   （入参经 typed 那一处解、回包过一遍真序列化器、失败落成码 ＋ 那一句），盖住 `super::*` 里的同名口；别的命令照旧交只读宿主。
 fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -> Answer {
     use crate::faces::history_face as h;
-    use crate::stream::inbound::typed::{take, Codes, Command};
+    use crate::wire::typed::{take, Codes, Command};
     fn via<C: Command>(
         args: &serde_json::Value,
         f: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
@@ -51,9 +51,9 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
             h::facts_at(home, r, &limits)
         }),
         "backend-log" => via::<super::BackendLog>(args, |r| {
-            <super::BackendLog as crate::stream::inbound::typed::Blocking>::run(
+            <super::BackendLog as crate::wire::typed::Blocking>::run(
                 r,
-                &crate::stream::inbound::typed::Cx {
+                &crate::wire::typed::Cx {
                     tz: tz.clone(),
                     until: None,
                 },

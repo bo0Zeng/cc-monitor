@@ -11,8 +11,8 @@ use serde_json::json;
 
 /// `tasks-list` 照分派那一层解入参（`typed::take`）再交本体；回包投成线上那一份，失败只留码。
 fn tasks(home: &std::path::Path, args: &Value) -> Result<Value, String> {
-    use crate::stream::inbound::typed::Codes as _;
-    let req = crate::stream::inbound::typed::take::<TasksListReq>(args).map_err(|f| f.code)?;
+    use crate::wire::typed::Codes as _;
+    let req = crate::wire::typed::take::<TasksListReq>(args).map_err(|f| f.code)?;
     let got = tasks_at(home, req).map_err(|e| e.into_fail().code)?;
     Ok(serde_json::to_value(got).expect("回包总能序列化"))
 }

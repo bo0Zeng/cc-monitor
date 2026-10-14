@@ -550,7 +550,7 @@ pub(crate) fn answer_of(path: Option<&Path>, now: u64) -> LedgerRead {
         Some(Read::Present(b)) => ("present", None, b.accounts),
         Some(Read::Unreadable(e)) => ("unreadable", Some(e), vec![]),
     };
-    let (reason, detail) = crate::stream::detail::unreadable("quota-read", why.as_ref());
+    let (reason, detail) = crate::wire::detail::unreadable("quota-read", why.as_ref());
     LedgerRead {
         state,
         reason,

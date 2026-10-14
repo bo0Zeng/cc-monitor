@@ -13,12 +13,8 @@ use super::*;
 use serde_json::json;
 
 /// 入参仍用 JSON 写：经 `typed::take` 解成入参类型（同帧面那一跳；形状不对 ⇒ `bad_args`），回包写成 JSON 比。
-fn record_at(
-    own: &Own,
-    root: Option<&Path>,
-    a: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take(a)?;
+fn record_at(own: &Own, root: Option<&Path>, a: &Value) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take(a)?;
     super::record_at(own, root, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
@@ -244,7 +240,7 @@ fn an_unreadable_or_other_version_ledger_is_never_overwritten() {
         .expect_err("读不懂的被当成空的覆盖了");
         assert_eq!(e.code, "ledger_unreadable");
         assert_eq!(std::fs::read(&file).unwrap(), body, "读不懂的那份被动了");
-        assert!(matches!(load_at(&file), Err(crate::stream::inbound::spec::Fail { code, .. }) if code == "ledger_unreadable"));
+        assert!(matches!(load_at(&file), Err(crate::wire::spec::Fail { code, .. }) if code == "ledger_unreadable"));
     }
     std::fs::remove_file(&file).unwrap();
     assert_eq!(load_at(&file).unwrap(), Ledger::default(), "没有 ⇒ 空的");
@@ -440,7 +436,7 @@ fn an_install_under_home_is_keyed_by_the_home_the_ledger_lives_in() {
         .installs
         .contains_key(&h.display().to_string()));
     let before = std::fs::read(&path).unwrap();
-    let crate::stream::inbound::spec::Fail { code, .. } = record_at(
+    let crate::wire::spec::Fail { code, .. } = record_at(
         &own_at(&path),
         None,
         &json!({ "op": "add", "name": "x", "at": "/etc", "files": {} }),

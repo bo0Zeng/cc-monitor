@@ -1,4 +1,4 @@
-//! 读一份会话记录的那几条帧命令（typed，`stream/inbound/typed.rs`）：按字节分页（`history-read` · `history-page`）·
+//! 读一份会话记录的那几条帧命令（typed，`wire/typed.rs`）：按字节分页（`history-read` · `history-page`）·
 //! 按行号（`history-lines`）· 一个子运行（`history-run`）· 尾段在哪（`history-tail`）· 主线外（`history-branch`）·
 //! 记录还在不在（`history-record`）· 这台上需手动的会话（`sessions-needs`）· 会话事实（`history-facts`）· 骨架索引等几条扫描。
 //!
@@ -7,13 +7,14 @@
 
 use crate::observe::history_query::{self, RecordProbe, TailPlan};
 use crate::observe::record_page::{ReadRow, RecordLine, RunRow};
-use crate::stream::inbound::typed::{codes, of_pair, Blocking, Command, Cx, NoArgs};
+use crate::wire::typed::{codes, of_pair, Blocking, Command, Cx, NoArgs};
 use std::path::Path;
 
 use super::read_face::{
     answer_off_of, dress_ask, reader, record_face, too_large, LINES_CAP_BYTES, LINE_CAP_BYTES,
-    READ_PAGE_BYTES, REPLY_PAGE_BYTES,
+    READ_PAGE_BYTES,
 };
+use crate::wire::REPLY_PAGE_BYTES;
 
 /// 整份回包过 [`LINES_CAP_BYTES`] ⇒ `too_large` 那一句（不截断：截断的清单会被当成完整的用）。
 fn over_cap<T: serde::Serialize>(reply: &T) -> Option<String> {

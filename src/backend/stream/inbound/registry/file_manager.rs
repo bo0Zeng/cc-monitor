@@ -1,7 +1,7 @@
 //! 命令表 · 文件管理：`files-*`（读 · 写 · 上传的提交 · 解压 · 删历史会话）。
 
-use crate::stream::inbound::spec::CommandSpec;
-use crate::stream::inbound::typed;
+use crate::wire::spec::CommandSpec;
+use crate::wire::typed;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // ── `files-read` 这一族上线 ────────────────────────────
@@ -16,7 +16,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //
     // 🔴 **四条的 `run` 长得一模一样，那是刻意的**：命令名从 `r.cmd` 来，
     //   而 `r.cmd` 正是 `lookup()` 用来选中这条 spec 的那个串
-    //   （CLI 面同理，`cli_control` 拿 `spec.name` 填它）⇒ 「登记的名字」与
+    //   （CLI 面同理，`stream::cli` 拿 `spec.name` 填它）⇒ 「登记的名字」与
     //   「真正被调的能力」**在类型上是同一个值**，抄错一条能力名这件事不可表示。
     //   翻译（`-` → `.`）只有 `files::answer_wire` 一处，理由整段在那个函数的头注。
     //
@@ -55,7 +55,7 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //   ⇒ 两面分家：`files-*` 这个线上前缀底下从此有两族，
     //   由 `inbound_structure_guards` 那两条**互不相交**的相等断言各钉一族。
     //
-    // ⚠ **CLI 面是自动来的，不是选的**：`cli_control::cli_exposed` = 非 `Run::Builtin`
+    // ⚠ **CLI 面是自动来的，不是选的**：`stream::cli::cli_exposed` = 非 `Run::Builtin`
     //   ⇒ 这一条同拍上了 `lib.rs::SUBCOMMANDS`（不加就当未知 flag、静默进流模式）。
     //   ⇒ 「入口窄」这件事不靠命令面，靠写句柄：本族用 typed 的 `Facing` 那一档，分派那一层才递 `Face`，
     //   别族拿不到它。理由整段在 `control/files_write` 头注「写怎么被挡住」那一节。

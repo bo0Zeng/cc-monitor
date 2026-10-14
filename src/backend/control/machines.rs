@@ -344,7 +344,7 @@ pub(crate) struct PinnedDay {
     pub(crate) day: String,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `machines-set` 的码：盘上那份读不懂（不拿空的盖掉它）· 认不出那一台（`ambiguous` ＝ 认出了不止一台）·
     /// 要加的那一台已在 · 改完的表不成立（那一处）· 写没成。
     pub(crate) enum MachinesSetErr {
@@ -616,7 +616,7 @@ fn reply(l: &Loaded, path: Option<&Path>) -> MachinesReply {
         Loaded::Unreadable(w) => Some(w),
         _ => None,
     };
-    let (reason, detail) = crate::stream::detail::unreadable("machines-read", why);
+    let (reason, detail) = crate::wire::detail::unreadable("machines-read", why);
     let text = |v: Value| v.as_str().map(str::to_string);
     MachinesReply {
         state: l.state(),
@@ -728,12 +728,12 @@ pub(crate) fn answer_set_in(
     })
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `machines-read` 没有别的码：读不懂是一个状态，不是一次失败。
     pub(crate) enum MachinesReadErr {}
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `machines-try` 没有别的码：说不出的一律当「这一道没话说」。
     pub(crate) enum MachinesTryErr {}
 }
@@ -741,18 +741,18 @@ crate::stream::inbound::typed::codes! {
 /// `machines-read`：这一端的机器表（同步文件 I/O ⇒ 阻塞档）。
 pub(crate) struct MachinesRead;
 
-impl crate::stream::inbound::typed::Command for MachinesRead {
+impl crate::wire::typed::Command for MachinesRead {
     const NAME: &'static str = "machines-read";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = MachinesReply;
     type Err = MachinesReadErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for MachinesRead {
+impl crate::wire::typed::Blocking for MachinesRead {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _req: crate::wire::typed::NoArgs,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<MachinesReply, MachinesReadErr> {
         Ok(answer_read_in(
             crate::platform::paths::home_dir().as_deref(),
@@ -763,17 +763,17 @@ impl crate::stream::inbound::typed::Blocking for MachinesRead {
 /// `machines-try`：这串补丁若现在落盘，机器表那一道过不过（盘上不动）。
 pub(crate) struct MachinesTry;
 
-impl crate::stream::inbound::typed::Command for MachinesTry {
+impl crate::wire::typed::Command for MachinesTry {
     const NAME: &'static str = "machines-try";
     type Req = MachinesEdits;
     type Reply = MachinesTried;
     type Err = MachinesTryErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for MachinesTry {
+impl crate::wire::typed::Blocking for MachinesTry {
     fn run(
         req: MachinesEdits,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<MachinesTried, MachinesTryErr> {
         Ok(answer_try_in(
             crate::platform::paths::home_dir().as_deref(),
@@ -785,17 +785,17 @@ impl crate::stream::inbound::typed::Blocking for MachinesTry {
 /// `machines-set`：改机器表，写完读回（写自家状态 ⇒ 只递写句柄）。
 pub(crate) struct MachinesSetCmd;
 
-impl crate::stream::inbound::typed::Command for MachinesSetCmd {
+impl crate::wire::typed::Command for MachinesSetCmd {
     const NAME: &'static str = "machines-set";
     type Req = MachinesEdits;
     type Reply = MachinesSet;
     type Err = MachinesSetErr;
 }
 
-impl crate::stream::inbound::typed::Owning for MachinesSetCmd {
+impl crate::wire::typed::Owning for MachinesSetCmd {
     fn run(
         req: MachinesEdits,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
         own: &Own,
     ) -> Result<MachinesSet, MachinesSetErr> {
         answer_set_in(

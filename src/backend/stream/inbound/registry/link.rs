@@ -1,6 +1,6 @@
 //! 命令表 · 连接本身：`cancel` · `ping` · 链路四条 · 传输四条（帧面硬臂那几条的本体是 `dispatch` 的硬臂）。
 
-use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
+use crate::wire::spec::{arg, out, CommandSpec, Run};
 
 pub(super) const SPECS: &[CommandSpec] = &[
     CommandSpec {
@@ -64,10 +64,10 @@ pub(super) const SPECS: &[CommandSpec] = &[
     // **传输四条** —— 用户「SFTP 进本机常驻后端，只写暂存区」：传输台从 monitor 搬进
     // 本机常驻后端。四条都是帧面硬臂：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
     // 开单两条是 typed（入参 · 回包 · 码从类型来），帧面硬臂那一档：分派照旧在 `dispatch` 那条硬臂。
-    crate::stream::inbound::typed::frame::<crate::control::transfer::TransferUpload>(
+    crate::wire::typed::frame::<crate::control::transfer::TransferUpload>(
         "开一张上传单",
     ),
-    crate::stream::inbound::typed::frame::<crate::control::transfer::TransferDownload>(
+    crate::wire::typed::frame::<crate::control::transfer::TransferDownload>(
         "开一张下载单",
     ),
     CommandSpec {

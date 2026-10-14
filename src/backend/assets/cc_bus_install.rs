@@ -228,11 +228,11 @@ pub(crate) fn state_at(skills: &Path) -> CcBusState {
     }
 }
 
-fn skills_root() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
+fn skills_root() -> Result<PathBuf, crate::wire::spec::Fail> {
     crate::agents::asset_kind()
         .and_then(crate::agents::skills_root)
         .ok_or_else(|| {
-            crate::stream::inbound::spec::Fail::from((
+            crate::wire::spec::Fail::from((
                 "refused",
                 copy_text("beCcBusInstall.root.unknown", &[]),
             ))
@@ -240,7 +240,7 @@ fn skills_root() -> Result<PathBuf, crate::stream::inbound::spec::Fail> {
 }
 
 /// `cc-bus-install-state {}` → [`state_at`]。
-pub(crate) fn answer_state() -> Result<CcBusState, crate::stream::inbound::spec::Fail> {
+pub(crate) fn answer_state() -> Result<CcBusState, crate::wire::spec::Fail> {
     Ok(state_at(&skills_root()?))
 }
 
@@ -248,7 +248,7 @@ pub(crate) fn answer_state() -> Result<CcBusState, crate::stream::inbound::spec:
 pub(crate) fn answer_install(
     d: &dyn Door,
     record: Record,
-) -> Result<CcBusInstalled, crate::stream::inbound::spec::Fail> {
+) -> Result<CcBusInstalled, crate::wire::spec::Fail> {
     install_at(d, &skills_root()?, record)
 }
 
@@ -257,9 +257,9 @@ pub(crate) fn install_at(
     d: &dyn Door,
     skills: &Path,
     record: Record,
-) -> Result<CcBusInstalled, crate::stream::inbound::spec::Fail> {
-    let (top, dest) = fenced_root(skills)
-        .map_err(|e| crate::stream::inbound::spec::Fail::from(("refused", e)))?;
+) -> Result<CcBusInstalled, crate::wire::spec::Fail> {
+    let (top, dest) =
+        fenced_root(skills).map_err(|e| crate::wire::spec::Fail::from(("refused", e)))?;
     let root = top.display().to_string();
     let dest_s = dest.display().to_string();
     // 先算幂等：全都一致就什么都不做（不备份、不写、不记）。

@@ -3,8 +3,8 @@
 //! 单住一份：引用图按文件算，这一份够得到适配层，写面其余几条那一份不该被它带上（族文件也不再放这份窄口：它点着别族的名字，会把整族判成够得到 tmux）。
 
 use crate::platform::fs::Face;
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, codes, Command, Cx, Facing};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, codes, Command, Cx, Facing};
 use cmd_wire::files as wire;
 
 /// 删历史会话那一条要问的两件事，从原生那一侧（适配层注册表）的窄口取来，

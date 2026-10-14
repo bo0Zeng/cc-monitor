@@ -55,7 +55,7 @@ pub(crate) fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &serde_json::Value,
     body: impl FnOnce(R) -> Result<T, WriteFail>,
 ) -> Answer {
-    let req = crate::stream::inbound::typed::take::<R>(args).map_err(|f| WriteFail {
+    let req = crate::wire::typed::take::<R>(args).map_err(|f| WriteFail {
         code: "bad_args",
         said: f.into_said(),
         raw: None,

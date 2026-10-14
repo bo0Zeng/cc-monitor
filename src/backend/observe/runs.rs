@@ -7,7 +7,7 @@
 
 use crate::agents::{ChildLink, RunEnd, RunFaces, RunMark};
 use crate::platform::fs::Ro;
-use crate::stream::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
+use crate::wire::{Frame, RunEnded, RunInfo, RunState, RunWhy};
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 use std::io::{Seek, SeekFrom};

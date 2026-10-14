@@ -276,6 +276,17 @@ pub(super) mod tests {
     }
 
     /// `word` 在 `text` 里作为**完整标识符**出现几次。
+    /// 后端顶层模块名（`lib.rs` 里的 `pub mod <名>;`）。
+    fn top_level_modules() -> BTreeSet<String> {
+        let lib = std::fs::read_to_string(crate::guard_support::src_root().join("lib.rs"))
+            .expect("读 lib.rs");
+        lib.lines()
+            .filter_map(|l| l.trim().strip_prefix("pub mod "))
+            .filter_map(|r| r.split(';').next())
+            .map(|n| n.trim().to_string())
+            .collect()
+    }
+
     fn count_word(text: &str, word: &str) -> usize {
         let mut n = 0usize;
         let mut rest = text;
@@ -743,9 +754,14 @@ pub(super) mod tests {
         iso_vocab.remove("accounts");
         let iso_mods: Vec<Vec<String>> =
             others.iter().map(|(rel, _)| module_of_file(rel)).collect();
+        // 与后端顶层模块同名的文件名（`manage/wire.rs` 对 `crate::wire`）不进词表：那个词处处是顶层那一个；
+        // 真引到账号库管理的那一份要写出路径（`manage::wire` / `use super::super::manage::wire`），由上面的路径那一检认。
+        let tops = top_level_modules();
         for (rel, _) in &others {
             if let Some(stem) = module_of_file(rel).last() {
-                iso_vocab.insert(stem.clone());
+                if !tops.contains(stem) {
+                    iso_vocab.insert(stem.clone());
+                }
             }
         }
         assert!(

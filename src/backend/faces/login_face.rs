@@ -3,8 +3,8 @@
 //! `login-start` 要跟着发起它的那条连接走（连接断了作业就收）⇒ 在分派的硬臂里（内建档），入参 · 回包 · 码表照样从这里的类型来。
 
 use crate::accounts::sign_in::{self, FinishFail, SignInEnd};
-use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::typed::{self, Blocking, Codes, Command, NoArgs};
+use crate::wire::spec::Fail;
+use crate::wire::typed::{self, Blocking, Codes, Command, NoArgs};
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -294,10 +294,10 @@ pub(crate) fn answer_start(
     args: &Value,
     conn: u64,
     on_end: sign_in::OnEnd,
-) -> crate::stream::inbound::spec::Outcome {
+) -> crate::wire::spec::Outcome {
     let req = LoginStartArgs::take(args)?;
     let got = start(&req, conn, None, on_end).map_err(Codes::into_fail)?;
-    crate::stream::inbound::spec::wire::<_, Fail>(&got).map(Some)
+    crate::wire::spec::wire::<_, Fail>(&got).map(Some)
 }
 
 /// 推给发起它的那条连接的那一帧的小成品（`changed {login, key: 作业号, body}`）。

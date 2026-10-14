@@ -12,7 +12,7 @@
 
 use crate::relay::{TapEvent, TapPort};
 use crate::stream::live::Live;
-use crate::stream::wire::{Frame, Topic};
+use crate::wire::{Frame, Topic};
 use std::sync::{Arc, Mutex};
 
 /// 进程级 hub：整台一份的活卡。
@@ -107,8 +107,8 @@ pub struct TapRx {
     manual: Option<tokio::sync::broadcast::Receiver<()>>,
     /// 这一端的机器表变了的铃（推一帧 `changed {machines}`）；`None` ＝ 不订。
     machines: Option<tokio::sync::broadcast::Receiver<()>>,
-    /// 帧里的小成品怎么现算（生产 ＝ [`crate::stream::topic_hook::body`]；判据自己接的那一形不现算）。
-    bodies: crate::stream::topic_hook::Bodies,
+    /// 帧里的小成品怎么现算（生产 ＝ [`crate::wire::topic_hook::body`]；判据自己接的那一形不现算）。
+    bodies: crate::wire::topic_hook::Bodies,
     /// 这条连接看的那一台的时区（attach 带来的）：小成品里的时刻字按它写。
     tz: crate::Tz,
     out: std::collections::VecDeque<Frame>,
@@ -232,7 +232,7 @@ pub fn attach(tz: crate::Tz) -> TapRx {
     rx.needs = Some(crate::control::asks::changes().subscribe());
     rx.manual = Some(crate::accounts::sign_in::manual_changes().subscribe());
     rx.machines = Some(crate::control::machines::changes().subscribe());
-    rx.bodies = crate::stream::topic_hook::body;
+    rx.bodies = crate::wire::topic_hook::body;
     rx.tz = tz;
     rx
 }

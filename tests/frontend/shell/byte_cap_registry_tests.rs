@@ -577,7 +577,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
         "拒收+回错",
     ),
     (
-        "src/backend/stream/listen.rs",
+        "src/backend/wire/listen.rs",
         "ATTACH_LINE_CAP",
         "backend 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
              ⚠ 对端是**同机任何进程**，不是我们自己的子进程",
@@ -858,7 +858,7 @@ const CAPS: &[(&str, &str, &str, &str)] = &[
     ),
     // 分页那四条一条应答（与 `session_branch` 一帧）的字节数：超了不截，切成下一页 / 下一帧（续点 `next` · `at`），一项不少。
     (
-        "src/backend/faces/read_face.rs",
+        "src/backend/wire/mod.rs",
         "REPLY_PAGE_BYTES",
         "`history-index` · `-user-inputs` · `-turns` · `-branch` 一条应答、`session_branch` 一帧的字节数",
         "分块（不丢数据）",

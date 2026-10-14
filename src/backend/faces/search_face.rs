@@ -1,8 +1,8 @@
-//! 全文搜索那两条帧命令（typed，`stream/inbound/typed.rs`）：`history-search`（这台搜一遍）· `history-search-merge`（各台的会话行合一份）。
+//! 全文搜索那两条帧命令（typed，`wire/typed.rs`）：`history-search`（这台搜一遍）· `history-search-merge`（各台的会话行合一份）。
 //! 本体（索引 · 口径 · 合并规则）在 `observe/search_query.rs`；这里只有线上那三个类型和接线。
 
 use crate::observe::search_query::{self, MachineHits, Merged, SearchOpts, SessionHits};
-use crate::stream::inbound::typed::{codes, Async, Blocking, Command, Cx};
+use crate::wire::typed::{codes, Async, Blocking, Command, Cx};
 
 /// `history-search` 的入参。
 #[derive(Debug, Clone, serde::Deserialize)]

@@ -27,12 +27,12 @@ fn line(seq: u64) -> Frame {
 }
 
 fn tapf(n: u64) -> Frame {
-    Frame::LiveCard(cc_monitor_backend::stream::wire::LiveCard {
+    Frame::LiveCard(cc_monitor_backend::wire::LiveCard {
         sid: "sid-w".into(),
         run: None,
         card: 0,
         n,
-        op: cc_monitor_backend::stream::wire::LiveOp::Awaiting,
+        op: cc_monitor_backend::wire::LiveOp::Awaiting,
     })
 }
 

@@ -11,8 +11,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
 
-use crate::stream::inbound::{prepare, Prepared};
-use crate::stream::wire::Request;
+use crate::wire::spec::{prepare, Prepared};
+use crate::wire::Request;
 
 /// 走登记表跑一条（阻塞档当场跑，异步档在当场起的运行时上等）。
 fn run(cmd: &str, args: Value) -> Result<Value, String> {
@@ -229,7 +229,7 @@ fn the_replies_the_file_window_reads_keep_their_wire_bytes() {
 /// 登记那一行的名字与回包类型，跟文件窗口照着发的那张表（`cmd_wire::files::Call`）是同一份：名字抄错一处就红。
 #[test]
 fn the_registered_names_are_the_ones_the_file_window_calls() {
-    use crate::stream::inbound::typed::Command;
+    use crate::wire::typed::Command;
     use cmd_wire::files::Call;
     fn same<C: Command>()
     where

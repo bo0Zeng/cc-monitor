@@ -126,7 +126,7 @@ export function unavailableReason(code: string, machine: string): string {
 }
 
 /**
- * 那台后端已经把「被拒」说成了一句（结束会话 · 读画面 / 送字 · cc-bus · 账号库那几条，`src/backend/stream/said.rs`）⇒ 原样上屏；
+ * 那台后端已经把「被拒」说成了一句（结束会话 · 读画面 / 送字 · cc-bus · 账号库那几条，`src/backend/wire/said.rs`）⇒ 原样上屏；
  * 拒绝体里没有那一句（老后端 · 体读不出）⇒ `none`。界面不再按码另写句子。
  */
 export function asSaid(none: () => string): Refusals {

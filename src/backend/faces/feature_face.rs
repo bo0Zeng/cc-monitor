@@ -8,7 +8,7 @@
 //!   整份超过 [`crate::faces::read_face::LINES_CAP_BYTES`] ⇒ `too_large`（不截断）。
 //! - 不拨号、不起进程、不写盘。
 
-use crate::stream::inbound::typed::{codes, of_pair, Blocking, Command, Cx};
+use crate::wire::typed::{codes, of_pair, Blocking, Command, Cx};
 use copy_core::copy_text;
 use serde_json::Value;
 
@@ -91,14 +91,14 @@ pub(crate) struct HooksDiagCmd;
 impl Command for HooksDiagCmd {
     const NAME: &'static str = "hooks-diag";
     const TAKES_INPUT: bool = false;
-    type Req = crate::stream::inbound::typed::NoArgs;
+    type Req = crate::wire::typed::NoArgs;
     type Reply = crate::observe::cc_bus_hooks::HooksReport;
     type Err = HooksDiagErr;
 }
 
 impl Blocking for HooksDiagCmd {
     fn run(
-        _req: crate::stream::inbound::typed::NoArgs,
+        _req: crate::wire::typed::NoArgs,
         _cx: &Cx,
     ) -> Result<crate::observe::cc_bus_hooks::HooksReport, HooksDiagErr> {
         capped(crate::observe::cc_bus_hooks::answer()).map_err(HooksDiagErr::TooLarge)
@@ -366,7 +366,7 @@ mod tests;
 /// `session-terminals`：此刻是哪个终端在显示这个会话（↗ 点那一刻问一次）。阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。
 pub(crate) struct SessionTerminals;
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `session-terminals` 自己的码。
     pub(crate) enum SessionTerminalsErr {
         /// 这台没有在跑的这个会话。
@@ -378,17 +378,17 @@ crate::stream::inbound::typed::codes! {
     }
 }
 
-impl crate::stream::inbound::typed::Command for SessionTerminals {
+impl crate::wire::typed::Command for SessionTerminals {
     const NAME: &'static str = "session-terminals";
     type Req = crate::observe::session_terminals::SidReq;
     type Reply = crate::observe::session_terminals::Showing;
     type Err = SessionTerminalsErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for SessionTerminals {
+impl crate::wire::typed::Blocking for SessionTerminals {
     fn run(
         req: crate::observe::session_terminals::SidReq,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<crate::observe::session_terminals::Showing, SessionTerminalsErr> {
         crate::observe::session_terminals::answer_at(&crate::history::listing::agent_home(), &req)
             .map_err(|(code, said)| match code {

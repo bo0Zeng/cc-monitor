@@ -1,4 +1,4 @@
-//! CLI 面**读入参的唯一一处**：派生子命令（`cli_control`，含 `--resolve`）都经 [`read_args`] 读。
+//! CLI 面**读入参的唯一一处**：派生子命令（`stream::cli`，含 `--resolve`）都经 [`read_args`] 读。
 //!
 //! 两个口**二选一**，修饰词都认任意位置：
 //! - stdin：默认读到 EOF；带 [`STDIN_LINE_FLAG`] ⇒ 只读一行（给 stdin 关不掉的调用方）。开着却 [`STDIN_QUIET`] 内一个字节都没来 ⇒ `no_input`。
@@ -6,7 +6,7 @@
 //!
 //! 上限：stdin [`MAX_CLI_STDIN`]；argv [`MAX_ARGS_B64_LEN`]。超了 `args_too_large`，不截断。会回的码全集是 [`READ_ARGS_CODES`]。
 //!
-//! 单独住一个文件：从前 `resolve_query` 也引它（不引挂着整张命令表的 `cli_control`）；那条手写臂 10-11 删了，读入参的口留在这里。
+//! 单独住一个文件：从前 `resolve_query` 也引它（不引挂着整张命令表的 `stream::cli`）；那条手写臂 10-11 删了，读入参的口留在这里。
 
 use crate::common::contract;
 use std::io::Read;
@@ -96,7 +96,7 @@ fn decode_argv(b64: &str) -> Result<String, (&'static str, String)> {
             )),
         ));
     }
-    let bytes = crate::stream::wire::b64_decode(b64).map_err(|e| ("bad_request", e))?;
+    let bytes = crate::wire::b64_decode(b64).map_err(|e| ("bad_request", e))?;
     String::from_utf8(bytes).map_err(|e| {
         (
             "bad_request",

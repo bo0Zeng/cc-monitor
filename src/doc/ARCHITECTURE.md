@@ -91,7 +91,7 @@ agent 不是我们起的进程：后端渲好一行 `ccm …`，交给用户的�
 - **大小分流**（`event_replay.rs::on_line_batch_awaited`）：小批逐行一格；大批（`--resume` 灌历史、重放）按 `CHUNK_SIZE = 600` 切块、末块先发，每块带 batch 边界，界面进 batch 模式（代码高亮延后）。
 - **启动序**：主窗口先经通道订好每台机器的会话流，再发 `frontend-ready`（带优先会话）——那就是这些订阅的就绪点。monitor 在 `event_replay.rs::ready_point` 里按会话分组切块、优先会话先交，并按活跃集补发 `session-ended`，归档落在全部重放行之后（INVARIANTS §24）。本机活会话的骨架 tab 也由这条流的起停帧给出。
 - **冷读也问那台后端**：历史清单、整页正文、按偏移读、按行号读、子 agent、全文搜索都是帧命令（`history-*`）。记录解释（一行 jsonl → 通用记录，各家的翻译表在 `agents/<名>/`）只在后端，界面按 `t` 与格排版；主线外清单（ESC 回退掉的那几条）也是后端给的成品（实时帧 `session_branch` · 冷读 `history-branch`）；多台的搜索结果由本机后端合并排序。
-- **「X 变了 ⇒ 重读」只一种帧** `changed {topic, key?, rev?, body?}`：主题表（名字 · 可不可丢 · 带不带小成品、上限）只住后端 `stream/topic.rs`，协议见 IPC-PROTOCOL「`changed` 主题表」。壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按生成的 `Topic` 订、读，带了 `body` 就不重问。
+- **「X 变了 ⇒ 重读」只一种帧** `changed {topic, key?, rev?, body?}`：主题表（名字 · 可不可丢 · 带不带小成品、上限）只住后端 `wire/topic.rs`，协议见 IPC-PROTOCOL「`changed` 主题表」。壳不认主题，按 `topic` 原样扇给订了 `changed/<topic>` 的界面订阅；界面按生成的 `Topic` 订、读，带了 `body` 就不重问。
 - **Task 面板**：那台后端盯 `<agent 家>/tasks/`，一批事件按 sid 去重发 `changed {tasks, key: sid}`，界面订 `changed/tasks`，收到就重问 `tasks-list`。
 
 ### 1.3 每条线的源头
@@ -133,7 +133,7 @@ subscribe(origin, kind)    → 流
 
 后端是一份代码、两种承载：本机常驻后端与每台远端的后端是同一个二进制，本机与远端的唯一差别是通道（管道 / SSH）。本机就是不走 ssh 的远端。
 
-进后端的口有两个、平级：帧面（`stream/`，monitor · 手机 · 外部前端经通信层面 A 走这条）与 CLI 面（`main.rs` 的一次性分派，用户与脚本敲 `ccm` 走这条；帧命令派生出同名的 CLI 子命令，§3.2）。argv 只在 `main.rs` 里取一次。
+进后端的口有两个、平级，分派都住 `stream/`、共用一张命令表：帧面（monitor · 手机 · 外部前端经通信层面 A 走这条）与 CLI 面（`main.rs` 交给 `stream/cli.rs` 的一次性分派，用户与脚本敲 `ccm` 走这条；帧命令派生出同名的 CLI 子命令，§3.2）。argv 只在 `main.rs` 里取一次。
 
 模块地图（`src/backend/`，逐文件清单见它的 README，每个目录的 `mod.rs` 头注是那一块的说明）：
 
@@ -149,7 +149,9 @@ subscribe(origin, kind)    → 流
 - `assets/`：skill / MCP / 别名的计算、判定与写，资产目录与同步，两台之间的装由本机后端当枢纽。
 - `history/`：历史跨机 join 与注解（星标 / 改名 / 隐藏 / 上次账号）。
 - `plan/`：计划页的读面（这台机器上的计划工作区、每片的图与状态）。
-- `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里；`stream/`：帧定义 · 入方向命令信封与命令表 · 监听（本机后端问远端后端的唯一一处住 `dial/remote_ask.rs`）。
+- `faces/`：只读面与功能侧的帧面宿主（本体在 `observe/` / `control/` / `accounts/`），格目录与通用投影也在这里。
+- `wire/`：帧面的协议零件，最底下那一层（帧定义 · typed 命令 · 登记形状 · 复制详情 · 码 → 句 · 主题表 · 监听判定 · 收场闸），只引 `platform/` · `common/` · `agents/` · `relay/`，各功能都引它。
+- `stream/`：进后端的口，最上面那一层（命令表 · 帧面的信封与分派 · CLI 面的分派 · 对后端其余部分开的门 · 总期限 · 出口声明 · tee 消费侧与活卡），引所有功能，除 `main.rs` / `lib.rs` 谁都不引它（判据 `layering_guard`）。本机后端问远端后端的唯一一处住 `dial/remote_ask.rs`。
 - `footprint/`：足迹（这台机器上 cc-monitor 写过什么、能不能撤）；`common/`：共用判定与成品的格类型；`lineage.rs`：会话血缘（谁起的谁）。
 
 后端分两块、零互相依赖：**原生后端**（会话 · tmux · 账号 · SSH 与两台之间的传输 · 资产 · 历史 · 中转宿主）与**文件管理后端**（只管本机的读和写：列 · 读 · 搜 · 写用户的文件 · 上传块 · 解压 · 提交，即 `files/` 与 `control/files_write.rs` · `files_upload_chunks.rs` · `files_extract.rs` · `files_commit.rs`），两块只共用 `platform/` · `common/` 与 `lib.rs` 的能力声明轴；原生那一块够到文件管理那一块只经帧面分派（命令表文件管理那一族）。传输台 `control/transfer.rs` 归原生那一块（拨号拿会话、搬字节），它要的路径解析 · 暂存件命名 · 摘要住 `common/`。判据 `tests/backend/files/module_boundary_guard.rs`。
@@ -269,7 +271,7 @@ Tauri State 都在 `lib.rs` 的 `setup()` 里 `app.manage`；漏一次 `cargo ch
 | 记录解释（一行 → 通用记录） | `agents/<家>/`，Claude 的链与主线在 `agents/claudecode/` · `agents/mainline.rs` |
 | 划段（一轮里哪几条收进「过程」） | `observe/turns.rs` |
 | 子运行（子 agent）表 | `observe/runs.rs`，帧 `session_runs` |
-| 帧定义与发帧 | `stream/wire.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `stream/topic.rs` |
+| 帧定义与发帧 | `wire/mod.rs` · `stream/tap.rs` · 活卡 `stream/live.rs` · 主题表 `wire/topic.rs` |
 | 收口 · 重放 · 就绪点 | 壳 `stream_source/` · `event_replay.rs` · `session_book.rs` · `stream_watch.rs` |
 | 排版 | 界面 `events.ts` → `tabs.ts` → `render-stream-record.ts` → `cards/` |
 | 手机 | `core-claude` 的 `link/`（常驻流客户端 · 帧解码）→ `app` 的聊天屏 |

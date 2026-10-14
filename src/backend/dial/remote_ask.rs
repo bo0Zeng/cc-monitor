@@ -190,35 +190,6 @@ pub(crate) fn answer_reach_with(
     })
 }
 
-crate::stream::inbound::typed::codes! {
-    /// `remote-reach` 只有 `bad_args`（名字空 · 拨号读不动 · 表满了）。
-    pub(crate) enum ReachErr {}
-}
-
-/// `remote-reach`：本机后端的可达表登记。纯内存（一把锁、插一行）⇒ 不进阻塞档。
-pub(crate) struct RemoteReach;
-
-impl crate::stream::inbound::typed::Command for RemoteReach {
-    const NAME: &'static str = "remote-reach";
-    type Req = ReachReq;
-    type Reply = Reached;
-    type Err = ReachErr;
-}
-
-impl crate::stream::inbound::typed::Async for RemoteReach {
-    fn run(
-        req: ReachReq,
-        cx: crate::stream::inbound::typed::Cx,
-    ) -> impl Future<Output = Result<Reached, ReachErr>> + Send + 'static {
-        let got = answer_reach_with(&req, &REACH).map_err(|(_, said)| ReachErr::BadArgs(said));
-        // 第 7 批换形：那台连上了 ⇒ 从旧设置搬来、还待交给它的那一份偏好后台交一次（只在常驻那一位；下一版删）。
-        if let Ok(r) = &got {
-            crate::control::prefs_migration::after_reach(&r.origin, cx.tz.clone());
-        }
-        std::future::ready(got)
-    }
-}
-
 /// 远端上那条一次性命令的完整字面：`<落点> <argv…>`，argv 每一格都过 POSIX 单引号。
 /// 那台后端恒在固定落点（`relay_route_core::BACKEND_LANDING_SHELL`，可填的 `backendPath` 删了）。
 pub fn command_line(argv: &[&str]) -> String {
@@ -495,7 +466,7 @@ fn settle_pulled(got: &Value) -> Result<String, Said> {
     }
     if got.get("exit_status").and_then(Value::as_u64) != Some(0) {
         let stderr = got.get("stderr").and_then(Value::as_str).unwrap_or("");
-        // 那台 CLI 面的失败信封（`cli_control::emit_err` 那一份）：读得出来就把码与原话都取出来。
+        // 那台 CLI 面的失败信封（`stream::cli::emit_err` 那一份）：读得出来就把码与原话都取出来。
         #[derive(serde::Deserialize)]
         struct Envelope {
             code: Option<String>,

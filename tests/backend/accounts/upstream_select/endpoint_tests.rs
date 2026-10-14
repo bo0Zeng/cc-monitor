@@ -19,7 +19,7 @@ use super::*;
 // 入参经 typed 那一处收（同分派），再交本体（盖住 `super::*` 里的同名口）。
 fn answer_optin(args: &Value) -> Result<Value, (&'static str, String)> {
     let req: crate::faces::relay_optin_face::OptinReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+        crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     crate::faces::relay_optin_face::answer_optin(&req).map(|r| serde_json::to_value(r).unwrap())
 }
 

@@ -229,7 +229,7 @@ fn a_brand_new_agent_is_discovered_and_announced_with_zero_general_layer_change(
     assert_eq!(discovered[0].agent_kind, AGENT_KIND);
     assert_eq!(discovered[0].path, root.to_string_lossy());
 
-    let line = crate::stream::wire::to_line(&crate::stream::wire::Frame::Hello {
+    let line = crate::wire::to_line(&crate::wire::Frame::Hello {
         v: 1,
         build_id: "s6".into(),
         host_arch: "x86_64".into(),
@@ -406,7 +406,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     // ④ resume：生产注册表里没有这一家 ⇒ 报错，不落默认那一家。
     let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
     let spec: crate::control::resolve_query::ResumeSpec =
-        crate::stream::inbound::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
+        crate::wire::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
     let (code, said) = crate::control::resolve_query::resolve(crate::agents::REGISTRY, &spec)
         .expect_err("`resolve` 对注册表里没有的 agentKind 落了默认那一家");
     assert_eq!(code, "bad_args");
@@ -556,7 +556,7 @@ fn the_ccm_plan_and_resume_read_only_the_launch_face_for_every_family() {
             a.kind
         );
         let spec: crate::control::resolve_query::ResumeSpec =
-            crate::stream::inbound::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
+            crate::wire::typed::take(&serde_json::from_str(&spec).unwrap()).unwrap();
         let rp = serde_json::to_value(
             crate::control::resolve_query::resolve(&reg, &spec).expect("解析得动"),
         )

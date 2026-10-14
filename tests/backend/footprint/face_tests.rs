@@ -22,8 +22,7 @@ fn answer_with(
     agent_home: &Path,
     args: &serde_json::Value,
 ) -> Result<serde_json::Value, (&'static str, String)> {
-    let req: FootprintReq =
-        crate::stream::inbound::typed::take(args).map_err(|f| ("bad_args", f.message))?;
+    let req: FootprintReq = crate::wire::typed::take(args).map_err(|f| ("bad_args", f.message))?;
     super::answer_with(get, session_path, agent_home, &req)
         .map(|r| serde_json::to_value(r).unwrap())
 }

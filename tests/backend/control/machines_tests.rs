@@ -29,7 +29,7 @@ fn insert(label: &str, host: &str) -> Value {
 }
 
 fn code(e: MachinesSetErr) -> String {
-    use crate::stream::inbound::typed::Codes;
+    use crate::wire::typed::Codes;
     e.into_fail().code.to_string()
 }
 

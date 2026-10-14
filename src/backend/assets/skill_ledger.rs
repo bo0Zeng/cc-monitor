@@ -149,14 +149,11 @@ pub fn read_at(path: &Path) -> Read {
 }
 
 /// 读成一份可用的记录：没有 ⇒ 空的；读不懂 ⇒ `ledger_unreadable`（读的人也不许把它说成「什么都没装过」）。
-pub fn load_at(path: &Path) -> Result<Ledger, crate::stream::inbound::spec::Fail> {
+pub fn load_at(path: &Path) -> Result<Ledger, crate::wire::spec::Fail> {
     match read_at(path) {
         Read::Absent => Ok(Ledger::default()),
         Read::Present(l) => Ok(l),
-        Read::Unreadable(why) => Err(crate::stream::inbound::spec::Fail::from((
-            "ledger_unreadable",
-            why,
-        ))),
+        Read::Unreadable(why) => Err(crate::wire::spec::Fail::from(("ledger_unreadable", why))),
     }
 }
 
@@ -176,17 +173,15 @@ fn write_at(
 // 后写的整份会盖掉先写的一条 ⇒ 那一趟装的文件从此卸不掉。
 
 /// `add` 的 `files`：非空、不超上限、每个路径都在 skill 里、摘要是 16 位小写十六进制。
-fn check_files(
-    files: &BTreeMap<String, Recorded>,
-) -> Result<(), crate::stream::inbound::spec::Fail> {
+fn check_files(files: &BTreeMap<String, Recorded>) -> Result<(), crate::wire::spec::Fail> {
     if files.is_empty() {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed("`files` is empty"),
         )));
     }
     if files.len() > MAX_FILES {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "too_large",
             copy_text(
                 "beSkillLedger.add.tooMany",
@@ -196,7 +191,7 @@ fn check_files(
     }
     for (path, rec) in files {
         if !crate::assets::skill_install::valid_rel(path) {
-            return Err(crate::stream::inbound::spec::Fail::from((
+            return Err(crate::wire::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "{path:?} is not a relative path inside the skill"
@@ -204,7 +199,7 @@ fn check_files(
             )));
         }
         if !valid_digest(&rec.digest) {
-            return Err(crate::stream::inbound::spec::Fail::from((
+            return Err(crate::wire::spec::Fail::from((
                 "bad_args",
                 crate::common::contract::malformed(&format!(
                     "`digest` of {path:?} is not 16 lowercase hex digits"
@@ -271,8 +266,7 @@ pub(crate) struct RecordReply {
 }
 
 /// 装记录的写口（生产 = [`answer_record`]，由 `stream/inbound/` 递进来；装 · 卸那几处不直呼它）。
-pub(crate) type Record<'a> =
-    &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::stream::inbound::spec::Fail>;
+pub(crate) type Record<'a> = &'a dyn Fn(&RecordReq) -> Result<RecordReply, crate::wire::spec::Fail>;
 
 /// `add`：并进那个目录的记录。回 `(目录, 变没变)`。**纯**（目录由调用方算好）。
 pub fn add(ledger: &mut Ledger, dir: &str, name: &str, files: BTreeMap<String, Recorded>) -> bool {
@@ -302,7 +296,7 @@ pub fn drop_paths(
     ledger: &mut Ledger,
     dir: &str,
     paths: &[String],
-) -> Result<usize, crate::stream::inbound::spec::Fail> {
+) -> Result<usize, crate::wire::spec::Fail> {
     let entry = ledger.installs.get_mut(dir).ok_or((
         "not_found",
         copy_text(
@@ -311,7 +305,7 @@ pub fn drop_paths(
         ),
     ))?;
     if let Some(p) = paths.iter().find(|p| !entry.files.contains_key(*p)) {
-        return Err(crate::stream::inbound::spec::Fail::from((
+        return Err(crate::wire::spec::Fail::from((
             "bad_args",
             crate::common::contract::malformed(&format!("{p:?} is not recorded under {dir}")),
         )));
@@ -331,13 +325,10 @@ pub(crate) fn record_at(
     own: &Own,
     skills_root: Option<&Path>,
     req: &RecordReq,
-) -> Result<RecordReply, crate::stream::inbound::spec::Fail> {
+) -> Result<RecordReply, crate::wire::spec::Fail> {
     // 先建那一层目录（在就算了），再拿它的跨进程锁，锁住之后才读。
     let no_home = |_| {
-        crate::stream::inbound::spec::Fail::from((
-            "io_failed",
-            copy_text("beSkillLedger.path.noHome", &[]),
-        ))
+        crate::wire::spec::Fail::from(("io_failed", copy_text("beSkillLedger.path.noHome", &[])))
     };
     let lock_dir = own.home_dir().map_err(no_home)?;
     let file = own
@@ -361,7 +352,7 @@ pub(crate) fn record_at(
         )
     })?;
     let held = own.lock(&lock_dir).map_err(|e| {
-        crate::stream::inbound::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
+        crate::wire::spec::Fail::from(("io_failed", crate::common::said::Said::from(e)))
     })?;
     let mut ledger = load_at(path)?;
     let (dir, name, changed, left) = match req {
@@ -372,7 +363,7 @@ pub(crate) fn record_at(
             at,
         } => {
             if !crate::assets::skill_install::valid_name(name) {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "bad_args",
                     crate::common::contract::malformed(
                         "`name` is not a valid skill directory name",
@@ -426,20 +417,20 @@ pub(crate) fn record_at(
         }
         RecordReq::McpAdd { file, name, .. } | RecordReq::McpDrop { file, name } => {
             if !Path::new(file).is_absolute() {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "bad_args",
                     crate::common::contract::malformed("`file` is not an absolute path"),
                 )));
             }
             if name.trim().is_empty() {
-                return Err(crate::stream::inbound::spec::Fail::from((
+                return Err(crate::wire::spec::Fail::from((
                     "bad_args",
                     crate::common::contract::malformed("`name` is empty"),
                 )));
             }
             let changed = if let RecordReq::McpAdd { digest, .. } = req {
                 if !valid_digest(digest) {
-                    return Err(crate::stream::inbound::spec::Fail::from((
+                    return Err(crate::wire::spec::Fail::from((
                         "bad_args",
                         crate::common::contract::malformed(
                             "`digest` must be 16 lowercase hex digits",
@@ -465,7 +456,7 @@ pub(crate) fn record_at(
     };
     if changed {
         write_at(own, &file, &held, &ledger)
-            .map_err(|e| crate::stream::inbound::spec::Fail::from(("io_failed", e)))?;
+            .map_err(|e| crate::wire::spec::Fail::from(("io_failed", e)))?;
     }
     Ok(RecordReply {
         dir,
@@ -479,7 +470,7 @@ pub(crate) fn record_at(
 pub(crate) fn answer_record(
     req: &RecordReq,
     own: &Own,
-) -> Result<RecordReply, crate::stream::inbound::spec::Fail> {
+) -> Result<RecordReply, crate::wire::spec::Fail> {
     record_at(own, None, req)
 }
 

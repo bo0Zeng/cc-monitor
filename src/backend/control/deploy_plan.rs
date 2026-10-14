@@ -43,7 +43,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 /// 这一串的失败：码 ＋ 那一句 ＋ 下层原话（那台答 `uname` 的原话进复制详情，不上句子）。
-pub(crate) use crate::stream::inbound::spec::Fail;
+pub(crate) use crate::wire::spec::Fail;
 
 /// 身份戳的两个界标（住契约 crate）。
 const MARKS: Marks<'static> = Marks {
@@ -505,7 +505,7 @@ pub async fn answer(req: &DeployPlanReq, facing: &dyn Facing) -> Result<Planned,
         .map(|p| plan_json(&p))
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `deploy-plan` 的码：读那台没读成 · 那一格这一版不承诺 · 够不到那台 · 那台那一份说不清自己是谁。
     pub(crate) enum DeployPlanErr {
         IoFailed = "io_failed",
@@ -518,17 +518,17 @@ crate::stream::inbound::typed::codes! {
 /// `deploy-plan`：那台的后端要不要换、换成哪一格。真异步（拨号 / 等远端）；一个字节都不写（放字节是 monitor 经 `files` 链路的事）。
 pub(crate) struct DeployPlan;
 
-impl crate::stream::inbound::typed::Command for DeployPlan {
+impl crate::wire::typed::Command for DeployPlan {
     const NAME: &'static str = "deploy-plan";
     type Req = DeployPlanReq;
     type Reply = Planned;
     type Err = DeployPlanErr;
 }
 
-impl crate::stream::inbound::typed::Async for DeployPlan {
+impl crate::wire::typed::Async for DeployPlan {
     fn run(
         req: DeployPlanReq,
-        _cx: crate::stream::inbound::typed::Cx,
+        _cx: crate::wire::typed::Cx,
     ) -> impl std::future::Future<Output = Result<Planned, DeployPlanErr>> + Send + 'static {
         async move {
             let dial = req
@@ -538,7 +538,7 @@ impl crate::stream::inbound::typed::Async for DeployPlan {
             let facing = DialFacing::new(dial);
             answer(&req, &facing)
                 .await
-                .map_err(|f| crate::stream::inbound::typed::of_fail(f, DeployPlanErr::IoFailed))
+                .map_err(|f| crate::wire::typed::of_fail(f, DeployPlanErr::IoFailed))
         }
     }
 }
@@ -683,7 +683,7 @@ pub fn answer_place(req: &PlaceReq) -> Result<PlaceAnswer, Fail> {
     )
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `place-verdict` 的码：这一格不承诺 · 落点那一份说不清自己是谁 / 读不了。
     pub(crate) enum PlaceErr {
         Refused = "refused",
@@ -694,20 +694,16 @@ crate::stream::inbound::typed::codes! {
 /// `place-verdict`：本机那一份放不放（只读落点那一个文件 ⇒ 阻塞档）。
 pub(crate) struct PlaceVerdict;
 
-impl crate::stream::inbound::typed::Command for PlaceVerdict {
+impl crate::wire::typed::Command for PlaceVerdict {
     const NAME: &'static str = "place-verdict";
     type Req = PlaceReq;
     type Reply = PlaceAnswer;
     type Err = PlaceErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for PlaceVerdict {
-    fn run(
-        req: PlaceReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-    ) -> Result<PlaceAnswer, PlaceErr> {
-        answer_place(&req)
-            .map_err(|f| crate::stream::inbound::typed::of_fail(f, PlaceErr::Undecidable))
+impl crate::wire::typed::Blocking for PlaceVerdict {
+    fn run(req: PlaceReq, _cx: &crate::wire::typed::Cx) -> Result<PlaceAnswer, PlaceErr> {
+        answer_place(&req).map_err(|f| crate::wire::typed::of_fail(f, PlaceErr::Undecidable))
     }
 }
 

@@ -8,8 +8,8 @@ fn answer_uninstall_preview(
     d: &dyn Door,
     env: &Env,
     a: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take(a)?;
+) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take(a)?;
     super::answer_uninstall_preview(d, env, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 
@@ -18,16 +18,16 @@ fn answer_uninstall_apply(
     env: &Env,
     record: Record,
     a: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take(a)?;
+) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take(a)?;
     super::answer_uninstall_apply(d, env, record, &req).map(|r| serde_json::to_value(r).unwrap())
 }
 use crate::assets::aliases::tests::HomeDoor;
 use crate::assets::asset_catalog::{Scanned, Snapshot, Visits};
 use crate::assets::hub::tests::{ap, pv};
-use crate::assets::hub::Here;
 use crate::assets::mcp_sync::{Facts, There};
 use crate::dial::remote_ask::{register, Remote, Said, Table};
+use crate::wire::typed::Here;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -35,9 +35,9 @@ use std::sync::{Arc, Mutex};
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
+) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
 
@@ -471,7 +471,7 @@ impl M {
                 super::super::cc_bus_install::install_at(&self.door(), &skills, &record)
                     .map(|t| serde_json::to_value(t).unwrap())
             }
-            other => Err(crate::stream::inbound::spec::Fail::from((
+            other => Err(crate::wire::spec::Fail::from((
                 "unknown_command",
                 other.to_string(),
             ))),
@@ -1232,7 +1232,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
     let mut ua = u.clone();
     ua["token"] = card["token"].clone();
     std::fs::write(dir.join("SKILL.md"), "edited\n").unwrap();
-    let crate::stream::inbound::spec::Fail { code, .. } =
+    let crate::wire::spec::Fail { code, .. } =
         answer_uninstall_apply(&m.door(), &m.env, &record, &ua).expect_err("变了还删了");
     assert_eq!(code, "stale");
     assert!(dir.join("SKILL.md").exists());
@@ -1282,7 +1282,7 @@ fn a_foreign_skill_or_mcp_entry_is_backed_up_before_it_goes() {
         "MCP 那份原文没抄进备份"
     );
     // 这台没建账号库：用户级 MCP 只读，卸也拒。
-    let crate::stream::inbound::spec::Fail { code, .. } = answer_uninstall_preview(
+    let crate::wire::spec::Fail { code, .. } = answer_uninstall_preview(
         &m.door(),
         &m.env,
         &json!({ "kind": "mcp", "name": "x", "at": { "level": "user" } }),
@@ -1398,7 +1398,7 @@ async fn the_many_hub_pair_keeps_its_wire_bytes() {
     let wire = |v: Value| v.to_string().replace(&*b, "<BASE>");
     // 入参照旧用 JSON 写、经 `typed::take` 解成入参类型（同帧面那一跳）。
     use crate::assets::hub_wire::{HubApplyReq, HubReq};
-    use crate::stream::inbound::typed::take;
+    use crate::wire::typed::take;
     let ask =
         |to: Value| take::<HubReq>(&json!({ "kind": "skill", "name": "demo", "to": to })).unwrap();
     let pre = crate::assets::hub::ext_preview_many(
@@ -1451,7 +1451,7 @@ async fn a_machine_without_a_token_is_told_to_look_again() {
         .peer = Some(cb.self_id.clone());
     let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
     use crate::assets::hub_wire::HubApplyReq;
-    use crate::stream::inbound::typed::take;
+    use crate::wire::typed::take;
     let apply = take::<HubApplyReq>(&json!({ "kind": "skill", "name": "demo", "to": ["laptop"],
         "place": { "level": "user" }, "tokens": {}, "fill": {} }))
     .unwrap();
@@ -1517,7 +1517,7 @@ async fn a_done_that_does_not_parse_says_that_backend_differs() {
         .peer = Some(cb.self_id.clone());
     let current = move |_visit: bool| Ok((ca.clone(), Vec::new()));
     use crate::assets::hub_wire::{HubApplyReq, HubReq};
-    use crate::stream::inbound::typed::take;
+    use crate::wire::typed::take;
     let pre = crate::assets::hub::ext_preview_many(
         &t.here,
         &take::<HubReq>(&json!({ "kind": "skill", "name": "demo", "to": ["laptop"] })).unwrap(),

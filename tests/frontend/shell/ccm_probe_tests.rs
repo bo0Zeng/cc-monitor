@@ -523,7 +523,7 @@ fn wf1_the_windows_probe_script_reports_card_and_where_ccm_resolves() {
     );
 }
 
-/// 〔判定只在后端〕[`ask_once`] 读 CLI 面的信封（`control/cli_control.rs` 头注那三条）：
+/// 〔判定只在后端〕[`ask_once`] 读 CLI 面的信封（`stream/cli.rs` 头注那三条）：
 /// 入参从 stdin 交到（替身原样回显）· exit 0 ⇒ stdout 那行 JSON · exit 2 ⇒ `{code, message}` 成 `Refused` ·
 /// 别的退出码 / 不成 JSON ⇒ `Unreadable` · 上限内不退 ⇒ `TimedOut` · 起不来 ⇒ `Spawn`。替身是一份 sh 脚本（不是后端），
 /// 判的是问法；判词本身住后端（`deploy_plan_tests`）。

@@ -13,18 +13,18 @@ pub(crate) const RECENT_MAX: usize = 8;
 /// `session-new`：起一个新会话（全产品一个框、一个请求）。阻塞档；写自家状态（起之前写好打开哪一份轮换配置）⇒ 写句柄由分派那一层递。
 pub(crate) struct SessionNew;
 
-impl crate::stream::inbound::typed::Command for SessionNew {
+impl crate::wire::typed::Command for SessionNew {
     const NAME: &'static str = "session-new";
     type Req = session_new::NewRequest;
     type Reply = session_new::SessionNew;
     type Err = session_new::SessionNewErr;
 }
 
-impl crate::stream::inbound::typed::WithOwn for SessionNew {
+impl crate::wire::typed::WithOwn for SessionNew {
     fn run(
         req: session_new::NewRequest,
-        _cx: &crate::stream::inbound::typed::Cx,
-        files: crate::stream::inbound::typed::Files,
+        _cx: &crate::wire::typed::Cx,
+        files: crate::wire::typed::Files,
         own: &crate::platform::Own,
     ) -> Result<session_new::SessionNew, session_new::SessionNewErr> {
         // 带 `forkFrom` 时写分支记录：同 `session-fork`，在这里领一只只会新建的手。
@@ -71,17 +71,17 @@ fn answer(
 /// `session-new-dir`：起新会话前核一个目录（在不在 · 这台此刻会给它铸的终端名）。阻塞档：起一次 `tmux` 列会话、铸名。
 pub(crate) struct SessionNewDir;
 
-impl crate::stream::inbound::typed::Command for SessionNewDir {
+impl crate::wire::typed::Command for SessionNewDir {
     const NAME: &'static str = "session-new-dir";
     type Req = session_new::SessionNewDirReq;
     type Reply = session_new::DirChecked;
     type Err = session_new::SessionNewDirErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for SessionNewDir {
+impl crate::wire::typed::Blocking for SessionNewDir {
     fn run(
         req: session_new::SessionNewDirReq,
-        _cx: &crate::stream::inbound::typed::Cx,
+        _cx: &crate::wire::typed::Cx,
     ) -> Result<session_new::DirChecked, session_new::SessionNewDirErr> {
         let user_home = crate::platform::paths::home_dir();
         super::session_batch_face::with_deps_as(None, "", None, |d| {
@@ -207,7 +207,7 @@ pub(crate) struct NewFactsReq {
     pub(crate) at: Option<String>,
 }
 
-crate::stream::inbound::typed::codes! {
+crate::wire::typed::codes! {
     /// `session-new-facts` 的码。
     pub(crate) enum NewFactsErr {
         /// 分叉源会话的记录找不着 / 记录树读不出。
@@ -218,18 +218,15 @@ crate::stream::inbound::typed::codes! {
 /// `session-new-facts`：起新会话那个框要的事实（只读，不写分支记录）。阻塞档：扫各家记录目录 · 问一次 tmux。
 pub(crate) struct SessionNewFacts;
 
-impl crate::stream::inbound::typed::Command for SessionNewFacts {
+impl crate::wire::typed::Command for SessionNewFacts {
     const NAME: &'static str = "session-new-facts";
     type Req = NewFactsReq;
     type Reply = NewFacts;
     type Err = NewFactsErr;
 }
 
-impl crate::stream::inbound::typed::Blocking for SessionNewFacts {
-    fn run(
-        req: NewFactsReq,
-        cx: &crate::stream::inbound::typed::Cx,
-    ) -> Result<NewFacts, NewFactsErr> {
+impl crate::wire::typed::Blocking for SessionNewFacts {
+    fn run(req: NewFactsReq, cx: &crate::wire::typed::Cx) -> Result<NewFacts, NewFactsErr> {
         facts(&req, &cx.tz).map_err(|(code, said)| match code {
             "bad_args" => NewFactsErr::BadArgs(said),
             _ => {

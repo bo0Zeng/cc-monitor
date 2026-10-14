@@ -928,7 +928,7 @@ async fn a_failed_upload_says_a_reason_word_and_hands_the_raw_text_on() {
 /// 收场帧：失败那一形多一格 `detail`（复制详情那几行：时刻 · 机器 · 命令 · 原话），缺 ⇒ 不出这一格。
 #[test]
 fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
-    let end = crate::stream::wire::TransferEnd::failed(
+    let end = crate::wire::TransferEnd::failed(
         "写入远端失败 · 原因不明".into(),
         None,
         super::TRANSFER_START,
@@ -950,7 +950,7 @@ fn a_failed_transfer_end_carries_the_detail_beside_the_sentence() {
         )),
         "{d}"
     );
-    let bare = crate::stream::wire::TransferEnd::Failed {
+    let bare = crate::wire::TransferEnd::Failed {
         why: "x".into(),
         code: None,
         detail: None,

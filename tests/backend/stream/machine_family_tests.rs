@@ -25,7 +25,7 @@ fn the_terminal_line_the_shell_reads_keeps_its_wire_bytes() {
         "prefer": { "host": "192.0.2.6", "port": 2200 },
         "command": "claude --resume abc",
     });
-    let req = crate::stream::inbound::typed::take(&args).unwrap();
+    let req = crate::wire::typed::take(&args).unwrap();
     let got = crate::dial::terminal::answer_in(
         &req,
         false,
@@ -50,7 +50,7 @@ fn the_reach_table_the_shell_reads_keeps_its_wire_bytes() {
     let dial = json!({ "machine": { "host": "h", "user": "u", "label": "m1" }, "saved": null, "jump": null,
                        "prefer": null, "use": "capture", "agent_sock": null });
     let got = crate::dial::remote_ask::answer_reach_with(
-        &crate::stream::inbound::typed::take(&json!({ "origin": "m1", "dial": dial })).unwrap(),
+        &crate::wire::typed::take(&json!({ "origin": "m1", "dial": dial })).unwrap(),
         &table,
     )
     .unwrap();
@@ -59,7 +59,7 @@ fn the_reach_table_the_shell_reads_keeps_its_wire_bytes() {
         r#"{"origin":"m1","reach":[{"machine":null,"origin":"m1"}]}"#
     );
     let got = crate::dial::remote_ask::answer_reach_with(
-        &crate::stream::inbound::typed::take(&json!({ "origin": "m0", "dial": dial })).unwrap(),
+        &crate::wire::typed::take(&json!({ "origin": "m0", "dial": dial })).unwrap(),
         &table,
     )
     .unwrap();
@@ -73,7 +73,7 @@ fn the_reach_table_the_shell_reads_keeps_its_wire_bytes() {
 fn run_any(cmd: &str, args: serde_json::Value) -> super::spec::Outcome {
     use super::spec::{prepare, Prepared};
     let spec = super::lookup(cmd).unwrap_or_else(|| panic!("`{cmd}` 不在登记表里"));
-    let req = crate::stream::wire::Request {
+    let req = crate::wire::Request {
         id: "t".to_string(),
         cmd: cmd.to_string(),
         args,

@@ -78,8 +78,8 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/control/asks/mod.rs", "let _ = changes().send(sid.to_string());", Why::PeerGone, "广播「这条会话挂着的请求变了」：此刻没有流连接在订 ⇒ 没人收（下一个连上来的照常重问）"),
     ("src/backend/control/cli_args.rs", "let _ = std::io::BufRead::fill_buf(&mut br);", Why::Signal, "读入参的静默窗只等「第一个字节（或 EOF）到了」这件事；读错不在这里报 —— 紧接着那一趟 `read_input` 读同一个读端会再拿到它、按 `stdin_read_failed` 报"),
     ("src/backend/control/cli_args.rs", "let _ = tx.send(Ev::Done(read_input(br, one_line)));", Why::PeerGone, "静默窗到点之后等的那一方已经回了 `no_input`、进程正要退：读线程这时才读完，没人要这个结果"),
-    ("src/backend/stream/detail.rs", "let _ = writeln!(err, \"{line}\");", Why::Diag, "CLI 面的失败信封写 stderr（各 CLI 出口都经 `Failed::emit_to` 这一处）：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
-    ("src/backend/control/cli_control.rs", "let _ = writeln!(out, \"{}\", crate::common::time::fill_at(&line, tz));", Why::Diag, "CLI 面的应答写 stdout（JSON 那一形与 `--text` 那一形同一行）：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
+    ("src/backend/wire/detail.rs", "let _ = writeln!(err, \"{line}\");", Why::Diag, "CLI 面的失败信封写 stderr（各 CLI 出口都经 `Failed::emit_to` 这一处）：写不进去就没有第二个地方可以说（退出码 2 照样回）"),
+    ("src/backend/stream/cli.rs", "let _ = writeln!(out, \"{}\", crate::common::time::fill_at(&line, tz));", Why::Diag, "CLI 面的应答写 stdout（JSON 那一形与 `--text` 那一形同一行）：写不进去 ⇒ 调用方已经走了（管道断），没有第二个地方可以说"),
     ("src/backend/control/launch_account.rs", "let _ = own.delete_file(&f);", Why::CleanupAfterFailure, "清陈旧便条（进程不在 / pid 被复用）：删不掉下次认便条时再清，它对不上进程不会被认"),
     ("src/backend/control/files_commit.rs", "let _ = face.delete_file(&at);", Why::CleanupAfterFailure, "写块失败 / 收拾旧块：主错误已在回；删不掉等孤儿扫（7 天）"),
     ("src/backend/control/files_commit.rs", "let _ = face.delete_file(&side);", Why::CleanupAfterFailure, "跨盘提交抄写失败后删自己这一趟的旁名；主错误已在回"),
@@ -135,7 +135,7 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, ask, done, });", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));", Why::PeerGone, ""),
     // read8a：连接接上 / 走了交给这台那份 watcher（它正在退出 ⇒ 没人收；走了那一声没人收也就没有要摘的）。
-    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, wants.tz.clone())));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
+    ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, tz.clone())));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
     ("src/backend/observe/watcher.rs", "let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));", Why::PeerGone, "watcher 已停：连接本来就不在它的名单上了"),
     // read8a：预读交回 watcher（它在退出 ⇒ 结果没人要）；任务交线程池（池子的线程都退了 ⇒ 进程在收尾）。
     ("src/backend/observe/watcher.rs", "let _ = events.send(WatchEvent::Primed(done));", Why::PeerGone, "watcher 已停：这一趟预读的结果没人要"),

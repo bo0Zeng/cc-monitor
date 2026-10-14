@@ -8,9 +8,9 @@ use std::cell::RefCell;
 /// 判据仍用 JSON 写入参：经 `typed::take` 解成入参类型（同帧面那一跳），回包序列化回 JSON 比。
 fn via<R: serde::de::DeserializeOwned, T: serde::Serialize>(
     args: &Value,
-    f: impl FnOnce(&R) -> Result<T, crate::stream::inbound::spec::Fail>,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
-    let req = crate::stream::inbound::typed::take::<R>(args)?;
+    f: impl FnOnce(&R) -> Result<T, crate::wire::spec::Fail>,
+) -> Result<Value, crate::wire::spec::Fail> {
+    let req = crate::wire::typed::take::<R>(args)?;
     f(&req).map(|t| serde_json::to_value(t).unwrap())
 }
 
@@ -18,7 +18,7 @@ fn answer_source(
     d: &dyn crate::common::door::Door,
     user_mcp: Option<&std::path::Path>,
     args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<Value, crate::wire::spec::Fail> {
     via(args, |r| super::answer_source(d, user_mcp, r))
 }
 
@@ -26,7 +26,7 @@ fn answer_preview(
     d: &dyn crate::common::door::Door,
     facts: &dyn crate::assets::mcp_sync::Facts,
     args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<Value, crate::wire::spec::Fail> {
     via(args, |r| super::answer_preview(d, facts, r))
 }
 
@@ -34,7 +34,7 @@ fn answer_apply(
     d: &dyn crate::common::door::Door,
     record: Record,
     args: &Value,
-) -> Result<Value, crate::stream::inbound::spec::Fail> {
+) -> Result<Value, crate::wire::spec::Fail> {
     via(args, |r| super::answer_apply(d, record, r))
 }
 
@@ -149,7 +149,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         Ok(Default::default())
     };
     let before = std::fs::read_to_string(dst.join(mcp_json())).unwrap();
-    let crate::stream::inbound::spec::Fail { code, .. } = answer_apply(
+    let crate::wire::spec::Fail { code, .. } = answer_apply(
         &LocalFiles,
         &record,
         &json!({ "name": "s", "at": at(&dst), "def": def, "fill": {}, "target": pre["target"] }),
@@ -183,7 +183,7 @@ fn the_target_fills_each_slot_from_the_card_or_its_own_value_and_never_from_the_
         ))
     );
     // 交来的定义里夹着值 ⇒ 拒（值只许从卡上或这台来）
-    let crate::stream::inbound::spec::Fail { code, .. } = answer_preview(
+    let crate::wire::spec::Fail { code, .. } = answer_preview(
         &LocalFiles,
         &NoFacts,
         &json!({ "name": "s", "at": at(&dst), "def": { "command": "x", "env": { "API_KEY": "leak" } } }),
@@ -208,7 +208,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
     .unwrap();
     std::fs::write(dst.join(mcp_json()), "{\"mcpServers\":{\"z\":{}}}").unwrap();
     let record = |_: &crate::assets::skill_ledger::RecordReq| Ok(Default::default());
-    let crate::stream::inbound::spec::Fail { code, .. } = answer_apply(
+    let crate::wire::spec::Fail { code, .. } = answer_apply(
         &LocalFiles,
         &record,
         &json!({ "name": "a", "at": at(&dst), "def": def, "target": pre["target"] }),
@@ -220,7 +220,7 @@ fn a_target_that_changed_after_the_preview_is_left_alone_and_user_level_is_read_
         "{\"mcpServers\":{\"z\":{}}}"
     );
     // 这台没建账号库（家目录是临时目录）⇒ 用户级只读。
-    let crate::stream::inbound::spec::Fail { code, .. } = answer_preview(
+    let crate::wire::spec::Fail { code, .. } = answer_preview(
         &crate::assets::aliases::tests::HomeDoor(d.clone()),
         &NoFacts,
         &json!({ "name": "a", "at": { "level": "user" }, "def": def }),

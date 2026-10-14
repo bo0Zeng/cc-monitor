@@ -4,7 +4,8 @@
 //! 判据只有一条：重新生成 == 仓里那份。改了帧字段 / 命令登记之后红是预期的，重生成：
 //! `CCM_REGEN_PROTOCOL_DOC=yes cargo test --lib -- protocol_doc_gen`（在 `src/backend` 下）。
 
-use crate::stream::inbound::{CommandSpec, Dir, Run, REGISTRY};
+use crate::stream::inbound::REGISTRY;
+use crate::wire::spec::{CommandSpec, Dir, Run};
 use std::fmt::Write as _;
 
 const OUT: &str = "src/doc/IPC-COMMANDS.md";
@@ -602,7 +603,7 @@ fn inline_reexports(src: &str) -> String {
 }
 
 fn frames(out: &mut String) {
-    let src = inline_reexports(&read("stream/wire.rs"));
+    let src = inline_reexports(&read("wire/mod.rs"));
     let types = wire_types(&src);
     let frame = types
         .iter()
@@ -697,7 +698,7 @@ fn traits_of(spec: &CommandSpec) -> String {
             .collect();
         t.push(format!("收 `view`（{}）", at.join("，")));
     }
-    if crate::control::cli_control::cli_exposed(spec) {
+    if crate::stream::cli::cli_exposed(spec) {
         t.push(format!("CLI：`ccm -- {}`", crate::cli_flag(spec.name)));
     } else {
         t.push("只在流上".to_string());
@@ -797,7 +798,7 @@ fn cli(out: &mut String) {
     flags.dedup();
     let mut documented = Vec::new();
     for flag in flags {
-        if let Some(spec) = crate::control::cli_control::spec_for(flag) {
+        if let Some(spec) = crate::stream::cli::spec_for(flag) {
             let _ = writeln!(
                 out,
                 "| `{flag}` | ＝ 帧命令 `{}`：{} |",
