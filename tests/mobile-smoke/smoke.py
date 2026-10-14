@@ -442,7 +442,7 @@ def main():
             for line in key:
                 typed(line)
                 adb("shell", "input", "keyevent", "66")
-            tap(t("mobIdentity.import.ok"))
+            hide_keyboard(); tap(t("mobIdentity.import.ok"))
             if not wait("SHA256:", 10):
                 raise Step.Fail("整把钥匙没导进来")
             tap(t("mobKit.act.back")); time.sleep(1)
@@ -459,7 +459,7 @@ def main():
         tap(t("mobIdentity.import.name")); typed("smoke")
         tap(t("mobIdentity.import.pem")); time.sleep(0.5)
         typed(key[0])  # 只贴一行：要当场拒
-        tap(t("mobIdentity.import.ok")); time.sleep(2)
+        hide_keyboard(); tap(t("mobIdentity.import.ok")); time.sleep(2)
         if ui.find("imported") is not None:
             raise Step.Fail("只贴进一行的钥匙照样存下了")
         # 拒的那一句是条长提示（带「复制详情」）：它在的时候「+」要让开、不被盖住，接着点得到。
@@ -476,7 +476,7 @@ def main():
         # `input text` 敲进去是异步的（输入法排着队一行行吃）：等最后一行真进了框再按「搬进来」，机器忙时不等就交上去半把钥匙。
         if not wait(key[-1].split()[-1], 20):
             raise Step.Fail("钥匙敲不进框里")
-        tap(t("mobIdentity.import.ok"))
+        hide_keyboard(); tap(t("mobIdentity.import.ok"))
         # 刚装上的包头一回存钥匙要先建本机加密库（Keystore），机器忙时十几秒。
         if not wait("SHA256:", 40):
             raise Step.Fail("整把钥匙没导进来")
