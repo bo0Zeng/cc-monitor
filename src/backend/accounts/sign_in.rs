@@ -107,7 +107,7 @@ fn new_job_id() -> String {
 }
 
 /// 起一份作业：起那一家的登录子命令，等它打印链接（至多 [`START_WITHIN`]）。同一个号已有一份 ⇒ 先替掉（杀它）。
-/// 起不来 · 没给出链接就退了 · 等不到链接 ⇒ `Err(那一句 ＋ 原话)`。
+/// 起不来 · 没给出链接就退了 · 等不到链接 ⇒ `Err(那一句 ＋ 原话)`。给了链接 ⇒ 回链接，哪怕它随后（`start` 醒来之前）就退了：结局走「结束了」回调。
 pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
     let f = a.face;
     let mut child = Child::new(f.program).args(f.args).args(a.then);
@@ -184,17 +184,9 @@ pub(crate) fn start(a: &SignInAsk, on_end: OnEnd) -> Result<Started, Said> {
             )))
         }
     };
-    let url = got?;
-    match jobs().get_mut(&job) {
-        Some(j) => j.url = url.clone(),
-        None => {
-            return Err(Said::from(copy_core::copy_text(
-                "beLogin.start.exited",
-                &[],
-            )))
-        }
-    }
-    Ok(Started { job, url })
+    // 有没有链接只看它说过的（读线程收到链接时已把它记进作业）：链接给了、它在这条线程醒来之前就退了 ⇒ 照样回链接，
+    //   结局由「结束了」回调报，两边说的是同一件事（不看醒来时作业还在不在，不比谁先醒）。
+    Ok(Started { job, url: got? })
 }
 
 /// 一份作业的读线程：认链接（交给 `start`）· 认「码不对」（交给正在等的 `finish`）· 它退了 ⇒ 收作业、交结局。
@@ -219,6 +211,9 @@ fn listen(
                 if !linked {
                     if let Some(url) = (f.link_in)(&l) {
                         linked = true;
+                        if let Some(j) = jobs().get_mut(job) {
+                            j.url = url.clone();
+                        }
                         let _ = link_tx.send(Ok(url));
                         continue;
                     }

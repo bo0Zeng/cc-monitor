@@ -210,8 +210,8 @@ fn cancel_replace_and_a_dropped_connection_end_the_job_quietly() {
 fn a_login_that_completes_by_itself_is_reported() {
     let rig = Rig::new(
         "auto",
-        // 等判据放行（`start` 已经回了）才自己退：不等的话机器一忙，`start` 那条线程还没醒、它已经退了、作业已经收了，
-        //   `start` 就回「没给出链接就退了」——比的是快慢。工作目录是这份临时目录；目录没了（判据中途红了）也退。
+        // 等判据放行（`start` 已经回了）才自己退：这一条看的是「`start` 回了以后它才退」那个次序；
+        //   反过来（它在 `start` 醒来前就退了）是 `a_link_then_an_instant_exit_still_starts`。工作目录是这份临时目录；目录没了（判据中途红了）也退。
         &format!(
             "echo \"visit: {FAKE_URL}\"\nwhile [ ! -e go ] && [ -d bin ]; do sleep 0.02; done\necho \"Login successful.\""
         ),
@@ -251,4 +251,53 @@ fn no_link_before_it_exits_is_a_failed_start() {
         e.raw.as_deref().unwrap_or("").contains("boom: no network"),
         "{e:?}"
     );
+}
+
+/// 给了链接、马上自己退了（`start` 那条线程醒来之前作业可能已经收了）⇒ `start` 照收到的输出回链接，不回「没给出链接就退了」；
+/// 「结束了」回调同一份作业报「成」：两句对得上。
+/// 谁先醒不该要紧 ⇒ 作业那几条线程（`start` 这条 · 读线程 · 子进程的读线程，都从这条线程起、继承它的亲和）挤在一个核上，
+/// 读线程多半在 `start` 醒来之前就看到它退了、收了作业；连起几份，每份都得这样。只钉判据自己起的那条线程，不动别的判据。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_link_then_an_instant_exit_still_starts() {
+    std::thread::spawn(|| {
+        // SAFETY: cpu_set_t 是纯位图，全零即空集；pid 0 ＝ 调用它的这条线程。
+        unsafe {
+            let mut one: libc::cpu_set_t = std::mem::zeroed();
+            let cpu = usize::try_from(libc::sched_getcpu()).unwrap_or(0);
+            libc::CPU_SET(cpu, &mut one);
+            assert_eq!(
+                libc::sched_setaffinity(0, std::mem::size_of::<libc::cpu_set_t>(), &one),
+                0,
+                "钉不上核"
+            );
+        }
+        link_then_instant_exit();
+    })
+    .join()
+    .unwrap_or_else(|e| std::panic::resume_unwind(e));
+}
+
+#[cfg(target_os = "linux")]
+fn link_then_instant_exit() {
+    let rig = Rig::new("instant", &format!("echo \"visit: {FAKE_URL}\"\nexit 0"));
+    for i in 0..40 {
+        let target: &'static str = Box::leak(format!("acct-instant-{i}").into_boxed_str());
+        let (tx, rx) = std::sync::mpsc::channel::<(String, SignInEnd)>();
+        let tx = Mutex::new(tx);
+        let (mut a, dir) = rig.ask(target, conn());
+        a.dir = Some(Box::leak(dir.into_boxed_str()));
+        let s = start(
+            &a,
+            Box::new(move |job, e| {
+                let _ = tx.lock().unwrap().send((job.to_string(), e.clone()));
+            }),
+        )
+        .unwrap_or_else(|e| panic!("第 {i} 份：给了链接却回起不成：{e:?}"));
+        assert_eq!(s.url, FAKE_URL);
+        let got = rx
+            .recv_timeout(guard_core::wall::CEILING)
+            .expect("它没自己退");
+        assert_eq!(got, (s.job.clone(), SignInEnd::Done), "第 {i} 份");
+    }
 }
