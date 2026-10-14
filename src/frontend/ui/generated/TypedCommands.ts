@@ -11,6 +11,8 @@ import type { AccountNameArgs } from "./AccountNameArgs";
 import type { AccountRemoveArgs } from "./AccountRemoveArgs";
 import type { AccountRepairArgs } from "./AccountRepairArgs";
 import type { AccountRollbackArgs } from "./AccountRollbackArgs";
+import type { AccountsList } from "./AccountsList";
+import type { AccountsListReq } from "./AccountsListReq";
 import type { AccountsTrustReq } from "./AccountsTrustReq";
 import type { AgentHomeCheck } from "./AgentHomeCheck";
 import type { AgentHomeCheckReq } from "./AgentHomeCheckReq";
@@ -318,6 +320,7 @@ import type { Whereabouts } from "./Whereabouts";
 export interface TypedCommands {
   "accounts-add": { req: AccountAddArgs; reply: AccountChange; code: "bad_args" | "io_failed" | "not_enabled" | "refused" | "unsupported" };
   "accounts-init": { req: AccountInitArgs; reply: AccountChange; code: "bad_args" | "io_failed" | "not_enabled" | "refused" | "unsupported" };
+  "accounts-list": { req: AccountsListReq; reply: AccountsList; code: "bad_args" | "too_large" };
   "accounts-login-cmd": { req: AccountNameArgs; reply: AccountLoginCmd; code: "bad_args" | "io_failed" | "refused" | "unsupported" };
   "accounts-mcp-pick": { req: AccountMcpPickArgs; reply: AccountMcpView; code: "bad_args" | "io_failed" | "not_found" | "refused" };
   "accounts-mcp-read": { req: NoArgs; reply: AccountMcpView; code: "bad_args" | "io_failed" | "refused" };

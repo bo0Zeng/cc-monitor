@@ -10,12 +10,27 @@ const LIMIT: u64 = 300;
 
 fn ask(phase: &str, round: usize, q: &str) {
     let t = std::time::Instant::now();
-    let v = crate::faces::read_face::answer(
-        "history-search",
-        &json!({ "query": q, "limit": LIMIT }),
-        &Default::default(),
-    )
-    .unwrap_or_else(|(c, m)| panic!("history-search 答错了（{c}）：{m}"));
+    // 经登记表跑（同分派那一层）。
+    let spec = crate::stream::inbound::REGISTRY
+        .iter()
+        .find(|c| c.name == "history-search")
+        .expect("登记表里有 history-search");
+    let Some(crate::wire::spec::Prepared::Blocking(run)) =
+        crate::wire::spec::invoke(spec.run, &crate::stream::inbound::hands(None))
+    else {
+        panic!("history-search 不在阻塞档");
+    };
+    let v = run(crate::wire::Request {
+        id: "sx1".to_string(),
+        cmd: "history-search".to_string(),
+        args: json!({ "query": q, "limit": LIMIT }),
+        within_ms: None,
+        view: Value::Null,
+        tz: Default::default(),
+        until: None,
+    })
+    .unwrap_or_else(|f| panic!("history-search 答错了（{}）：{}", f.code, f.message))
+    .unwrap_or_default();
     let ms = t.elapsed().as_secs_f64() * 1000.0;
     let lines: Vec<&str> = v["lines"]
         .as_array()

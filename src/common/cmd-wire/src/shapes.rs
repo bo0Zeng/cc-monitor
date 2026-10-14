@@ -5,6 +5,7 @@
 pub const SHAPES: &[(&str, &str)] = &[
     ("accounts-add", "ffb62a67"),
     ("accounts-init", "6b5379da"),
+    ("accounts-list", "b8a71084"),
     ("accounts-login-cmd", "a6d298b1"),
     ("accounts-mcp-pick", "fc80a269"),
     ("accounts-mcp-read", "ff26131b"),
@@ -194,6 +195,7 @@ pub const SHAPES: &[(&str, &str)] = &[
 pub const UNCANCELLABLE: &[&str] = &[
     "accounts-add",
     "accounts-init",
+    "accounts-list",
     "accounts-login-cmd",
     "accounts-mcp-pick",
     "accounts-mcp-read",

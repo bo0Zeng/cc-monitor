@@ -236,69 +236,42 @@ struct SessionRow {
 fn scan_accounts(
     accts_dir: &Path,
     in_table: &dyn Fn(&str) -> bool,
-) -> (
-    serde_json::Map<String, serde_json::Value>,
-    Vec<serde_json::Value>,
-) {
-    let mpath = manifest_path(accts_dir);
+) -> (ListMeta, Vec<ScannedAccount>) {
     let meta = |enabled: bool,
-                updated_at: serde_json::Value,
-                shared_store: serde_json::Value,
+                updated_at: Option<String>,
+                shared_store: Option<String>,
                 count: usize,
-                err_text: serde_json::Value,
-                effective_default: serde_json::Value| {
-        let mut m = serde_json::Map::new();
-        m.insert("enabled".into(), enabled.into());
-        m.insert("acctsDir".into(), accts_dir.to_string_lossy().into());
-        m.insert("manifestPath".into(), mpath.to_string_lossy().into());
-        m.insert("updatedAt".into(), updated_at);
-        m.insert("sharedStore".into(), shared_store);
-        m.insert("count".into(), count.into());
-        m.insert("error".into(), err_text);
-        m.insert(
-            "unsupported".into(),
-            crate::platform::acct_view::unsupported_said().into(),
-        );
-        m.insert(
-            "nextDefault".into(),
-            json_str(next_default(accts_dir).as_deref()),
-        );
+                error: Option<String>,
+                effective_default: Option<String>| ListMeta {
+        enabled,
+        accts_dir: accts_dir.to_string_lossy().into_owned(),
+        manifest_path: manifest_path(accts_dir).to_string_lossy().into_owned(),
+        updated_at,
+        shared_store,
+        count,
+        error,
+        unsupported: crate::platform::acct_view::unsupported_said(),
+        next_default: next_default(accts_dir),
         // 这台的默认号是谁（标了的第一个，没标 ⇒ 第一个）：规则只住 `acct_core::effective_default`，界面与起会话都读这一格。
-        m.insert("effectiveDefault".into(), effective_default);
-        m
+        effective_default,
+        home: None,
     };
     match load_manifest(accts_dir) {
-        Err(e) => (
-            meta(
-                false,
-                serde_json::Value::Null,
-                serde_json::Value::Null,
-                0,
-                e.into(),
-                serde_json::Value::Null,
-            ),
-            Vec::new(),
-        ),
+        Err(e) => (meta(false, None, None, 0, Some(e), None), Vec::new()),
         Ok(m) => {
             let colors = colors_at(accts_dir);
             let mut lines = Vec::new();
             for a in &m.accounts {
                 // configDir 缺席 = 账号 0：它的 config dir 就是共享库 ⇒ 登录态查那儿，`configDir` 在帧里出 null（下游据此不注入 CLAUDE_CONFIG_DIR）。
                 let (cfg_out, probe_dir) = match a.config_dir.as_deref() {
-                    None => (
-                        serde_json::Value::Null,
-                        m.shared_store.as_deref().map(PathBuf::from),
-                    ),
+                    None => (None, m.shared_store.as_deref().map(PathBuf::from)),
                     Some(c) => {
                         if !is_safe_config_dir(c) {
                             tracing::warn!("账号 {} 的 configDir 不安全，已丢弃：{}", a.name, c);
                             continue;
                         }
                         let n = norm_dir(c);
-                        (
-                            serde_json::Value::String(n.to_string()),
-                            Some(PathBuf::from(n)),
-                        )
+                        (Some(n.to_string()), Some(PathBuf::from(n)))
                     }
                 };
                 // 只 stat 存在性，绝不读内容。这个文件名就是身份表
@@ -310,7 +283,7 @@ fn scan_accounts(
                     .is_some_and(|d| d.join(CREDENTIALS_NAME).exists());
                 // 鉴权方式这一维：分类与就绪各只有一处实现，都住 `acct-core`（本文件与 `local_accounts.rs` 都调它）。
                 // 第二个输入：这台机器的 apikey 表里有没有它。
-                let in_apikey_table = cfg_out.as_str().is_some_and(in_table);
+                let in_apikey_table = cfg_out.as_deref().is_some_and(in_table);
                 let auth_kind = auth_kind_with_apikey_table(
                     auth_kind_from_manifest(a.auth_kind.as_deref()),
                     in_apikey_table,
@@ -321,49 +294,146 @@ fn scan_accounts(
                     _ => a.config_dir.is_none(),
                 };
                 let ready = auth_ready(auth_kind, credentials_present);
-                lines.push(serde_json::json!({
-                        "name": a.name,
-                        // 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）：唯一一处 `name_words::account_text`，界面 · 手机照抄。
-                        "label": crate::accounts::quota::name_words::account_text(&a.name),
-                        "email": a.email.clone().unwrap_or_default(),
-                        "configDir": cfg_out,
-                        "isDefault": a.is_default,
-                        "mode": mode,
-                        // 账号 0 恒 exists（「裸起」这个状态永远可达）；有 configDir 的看目录在不在。
-                        "exists": exists,
-                        // 仅 stat `.credentials.json` 存在性，不代表凭据有效；可用性走 `authReady`。
-                        "loggedIn": credentials_present,
-                        // 订阅 / api-key。manifest 缺这个键 ⇒ 订阅。
-                        "authKind": auth_kind,
-                        // 鉴权方式这一维不阻塞它被选中；不等于真能连上（界面要把这个状态说出来）。
-                        "authReady": ready,
-                        // 能拿来起会话 / 选为默认：规则只住 `acct_core::account_selectable`，界面与起会话都读这一格。
-                        "selectable": acct_core::account_selectable(&mode, ready, exists, a.config_dir.is_some()),
-                        // 号色（`--acct-c0..c7` 第几格）：账号库里的事实，界面只画它（[`colors_at`]；形状不合规矩的那条按名字哈希兜底）。
-                        "color": colors
-                            .get(&a.name)
-                            .copied()
-                            .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(&a.name)),
-                }));
+                lines.push(ScannedAccount {
+                    name: a.name.clone(),
+                    // 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）：唯一一处 `name_words::account_text`，界面 · 手机照抄。
+                    label: crate::accounts::quota::name_words::account_text(&a.name),
+                    email: a.email.clone().unwrap_or_default(),
+                    config_dir: cfg_out,
+                    is_default: a.is_default,
+                    // 能拿来起会话 / 选为默认：规则只住 `acct_core::account_selectable`，界面与起会话都读这一格。
+                    selectable: acct_core::account_selectable(
+                        &mode,
+                        ready,
+                        exists,
+                        a.config_dir.is_some(),
+                    ),
+                    mode,
+                    // 账号 0 恒 exists（「裸起」这个状态永远可达）；有 configDir 的看目录在不在。
+                    exists,
+                    // 仅 stat `.credentials.json` 存在性，不代表凭据有效；可用性走 `authReady`。
+                    logged_in: credentials_present,
+                    // 订阅 / api-key。manifest 缺这个键 ⇒ 订阅。
+                    auth_kind: auth_kind.to_string(),
+                    // 鉴权方式这一维不阻塞它被选中；不等于真能连上（界面要把这个状态说出来）。
+                    auth_ready: ready,
+                    // 号色（`--acct-c0..c7` 第几格）：账号库里的事实，界面只画它（[`colors_at`]；形状不合规矩的那条按名字哈希兜底）。
+                    color: colors
+                        .get(&a.name)
+                        .copied()
+                        .unwrap_or_else(|| crate::accounts::manage::model::color_fallback(&a.name)),
+                });
             }
-            let count = lines.len();
-            let effective_default = acct_core::effective_default(&lines, |a| {
-                a["isDefault"] == serde_json::Value::Bool(true)
-            })
-            .map_or(serde_json::Value::Null, |a| a["name"].clone());
+            let effective_default =
+                acct_core::effective_default(&lines, |a| a.is_default).map(|a| a.name.clone());
             (
                 meta(
                     true,
-                    json_str(m.updated_at.as_deref()),
-                    json_str(m.shared_store.as_deref()),
-                    count,
-                    serde_json::Value::Null,
+                    m.updated_at.clone(),
+                    m.shared_store.clone(),
+                    lines.len(),
+                    None,
                     effective_default,
                 ),
                 lines,
             )
         }
     }
+}
+
+/// `accounts-list` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct AccountsListReq {
+    /// 这次起会话的是哪一家（适配器 id；空串 ⇒ 默认那一家，注册表里没有 ⇒ `bad_args`）。
+    pub(crate) agent: String,
+}
+
+/// `accounts-list` 的回包：清单 ＋ 这台的 apikey 表并上去的那几格。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct AccountsList {
+    pub(crate) meta: ListMeta,
+    /// 每账号一行，清单次序。
+    pub(crate) accounts: Vec<AccountRow>,
+    /// 「能用但有缺」的那一句（几件都有 ⇒ 连成一句）：启用了却一个账号 0 都没有（写清单的那一侧旧到不认账号 0）·
+    /// 这台的 API key 凭据文件不是只给本人（宽在哪 ＋ 怎么修；查不出 ⇒ 为什么）；都没有 ⇒ `null`。
+    pub(crate) notice: Option<String>,
+}
+
+/// [`AccountsList::meta`]。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListMeta {
+    /// 这台建了账号库（清单读得出）。
+    pub(crate) enabled: bool,
+    pub(crate) accts_dir: String,
+    pub(crate) manifest_path: String,
+    pub(crate) updated_at: Option<String>,
+    /// 账号 0 的配置目录（清单里写了才有）。
+    pub(crate) shared_store: Option<String>,
+    /// 清单里认得的号数。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) count: usize,
+    /// 清单读不出的那一句。
+    pub(crate) error: Option<String>,
+    /// 这台做不了多账号的那一句（做得了 ⇒ `null`）。
+    pub(crate) unsupported: Option<String>,
+    /// 删掉默认号之后新会话默认谁（同删号那一条的答案）。
+    pub(crate) next_default: Option<String>,
+    /// 这台的默认号（标了的第一个，没标 ⇒ 第一个；`acct_core::effective_default`）。
+    pub(crate) effective_default: Option<String>,
+    /// 这台的家目录（界面把路径里的它缩成 `~`；推不出 ⇒ `null`）。
+    pub(crate) home: Option<String>,
+}
+
+/// 扫清单得出的一个号（[`AccountRow`] 里除了并表那几格的部分）。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ScannedAccount {
+    pub(crate) name: String,
+    /// 号在人眼里叫什么（账号 0 ⇒ 「~/.claude」那一句，其余照原名）。
+    pub(crate) label: String,
+    pub(crate) email: String,
+    /// `null` ＝ 账号 0（下游据此不注入配置目录那一格）。
+    pub(crate) config_dir: Option<String>,
+    pub(crate) is_default: bool,
+    /// `isolated` · `in-place`。
+    pub(crate) mode: String,
+    pub(crate) exists: bool,
+    /// 凭据文件在不在（不代表凭据有效；可用性看 `authReady`）。
+    pub(crate) logged_in: bool,
+    /// `subscription` · `api-key`。
+    pub(crate) auth_kind: String,
+    pub(crate) auth_ready: bool,
+    /// 能拿来起会话 / 选为默认（`acct_core::account_selectable`）。
+    pub(crate) selectable: bool,
+    /// 号色（`--acct-c0..c7` 第几格，账号库里的事实），界面只画它。
+    pub(crate) color: u8,
+}
+
+/// `accounts-list` 每个号一行。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccountRow {
+    #[serde(flatten)]
+    #[cfg_attr(test, ts(flatten))]
+    pub(crate) scanned: ScannedAccount,
+    /// API 号在这台 apikey 表里那一行的掩码（只留末四位）；订阅号 / 表里没有 / 没配 key ⇒ `null`。key 本体从不出后端。
+    pub(crate) key_masked: Option<String>,
+    /// 同上，那一行的端点。
+    pub(crate) base_url: Option<String>,
+    /// 账号菜单每一项右边那一枚徽章。
+    pub(crate) badge: Badge,
 }
 
 /// 号目录里那份凭据文件的名字（「已登录」只 stat 它在不在；watcher 盯它出现 / 变了）。
@@ -412,7 +482,7 @@ pub(crate) fn list_product(
     agent: &str,
     table_agent: &str,
     relay_running: bool,
-) -> serde_json::Value {
+) -> AccountsList {
     let creds = crate::accounts::upstream_select::file_face::machine_path()
         .ok()
         .and_then(|p| crate::accounts::upstream_select::creds::perm_notice(&p));
@@ -431,39 +501,26 @@ pub(crate) fn list_product(
 }
 
 /// 清单的 `notice` 并上另一句（凭据文件权限那一句，KS11）：两句都有 ⇒ 连成一句；只有一句 ⇒ 就是它。
-pub(crate) fn with_notice(mut v: serde_json::Value, more: Option<String>) -> serde_json::Value {
+pub(crate) fn with_notice(mut v: AccountsList, more: Option<String>) -> AccountsList {
     let Some(more) = more else { return v };
-    let joined = match v["notice"].as_str() {
+    v.notice = Some(match v.notice.take() {
         Some(a) => copy_text(
             "beAccountsQuery.listProductAt.joined",
-            &[("a", a), ("b", &more)],
+            &[("a", &a), ("b", &more)],
         ),
         None => more,
-    };
-    v["notice"] = serde_json::Value::String(joined);
+    });
     v
 }
 
 /// 一个号那一枚徽章（账号菜单每一项右边那一格）：写好的字 · 要不要标警示 · 悬停那一句（没有 ⇒ 空串）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Badge {
     pub(crate) text: Words,
     pub(crate) warn: bool,
     pub(crate) title: Words,
-}
-
-/// 徽章读一个号的那几格（清单那一行照类型读回来，不再按键名取）。
-#[derive(Debug, Default, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct BadgeFacts {
-    #[serde(default)]
-    mode: String,
-    #[serde(default)]
-    auth_kind: String,
-    #[serde(default)]
-    auth_ready: bool,
-    #[serde(default)]
-    config_dir: Option<String>,
 }
 
 /// ★ 徽章一处判（每一态只出自这里）：原地模式 ⇒ 不隔离；API key 号 ⇒ 这台 key 表里有没有它那一行 · 这台的中转在不在
@@ -545,40 +602,46 @@ pub(crate) fn list_product_with(
     agent: &str,
     table_agent: &str,
     relay_running: bool,
-) -> serde_json::Value {
+) -> AccountsList {
     let routed = |dir: &str| {
         !acct_core::apikey_routed_subset(&[dir.to_string()], rows, agent, table_agent).is_empty()
     };
-    let (mut meta, mut accounts) = scan_accounts(accts_dir, &routed);
-    meta.insert(
-        "home".into(),
-        json_str(home.map(|h| h.to_string_lossy()).as_deref()),
-    );
-    for a in &mut accounts {
-        let fact = (a["authKind"] == acct_core::AUTH_KIND_API_KEY)
-            .then(|| {
-                a["configDir"]
-                    .as_str()
-                    .and_then(acct_core::apikey_account_id_of_dir)
-            })
-            .flatten()
-            .and_then(|id| keys.iter().find(|k| k.id == id));
-        a["keyMasked"] = json_str(fact.and_then(|k| k.masked.as_deref()));
-        a["baseUrl"] = json_str(fact.and_then(|k| k.base_url.as_deref()));
-        let row: BadgeFacts = serde_json::from_value(a.clone()).unwrap_or_default();
-        let badge = badge_of(
-            row.mode == "in-place",
-            row.auth_kind == acct_core::AUTH_KIND_API_KEY,
-            row.auth_ready,
-            row.config_dir.as_deref().map(&routed),
-            relay_running,
-        );
-        a["badge"] = serde_json::to_value(badge).unwrap_or(serde_json::Value::Null);
-    }
-    let enabled = meta.get("enabled") == Some(&serde_json::Value::Bool(true));
-    let notice = (enabled && !accounts.iter().any(|a| a["configDir"].is_null()))
+    let (mut meta, scanned) = scan_accounts(accts_dir, &routed);
+    meta.home = home.map(|h| h.to_string_lossy().into_owned());
+    let accounts: Vec<AccountRow> = scanned
+        .into_iter()
+        .map(|a| {
+            let api_key = a.auth_kind == acct_core::AUTH_KIND_API_KEY;
+            let fact = api_key
+                .then(|| {
+                    a.config_dir
+                        .as_deref()
+                        .and_then(acct_core::apikey_account_id_of_dir)
+                })
+                .flatten()
+                .and_then(|id| keys.iter().find(|k| k.id == id));
+            let badge = badge_of(
+                a.mode == "in-place",
+                api_key,
+                a.auth_ready,
+                a.config_dir.as_deref().map(&routed),
+                relay_running,
+            );
+            AccountRow {
+                key_masked: fact.and_then(|k| k.masked.clone()),
+                base_url: fact.and_then(|k| k.base_url.clone()),
+                badge,
+                scanned: a,
+            }
+        })
+        .collect();
+    let notice = (meta.enabled && !accounts.iter().any(|a| a.scanned.config_dir.is_none()))
         .then(|| copy_text("beAccountsQuery.listProductAt.noDefault", &[]));
-    serde_json::json!({ "meta": meta, "accounts": accounts, "notice": notice })
+    AccountsList {
+        meta,
+        accounts,
+        notice,
+    }
 }
 
 /// 这台活会话里那一家说断开的一个 MCP 服务器（[`live_mcp_failed`] 的一项）。

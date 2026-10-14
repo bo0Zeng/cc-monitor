@@ -184,42 +184,6 @@ impl crate::wire::typed::Handle for DriftReportCmd {
     }
 }
 
-/// 本族的应答：`data` 或 `(code, message)`。
-pub(crate) type Answer = Result<Value, (&'static str, String)>;
-
-/// 帧面入口：命令名从 `r.cmd` 来（与 `files::answer_wire` 同一形 —— 「登记的名字」与
-/// 「真正跑的那条」在类型上是同一个值）。
-pub(crate) fn answer(cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    answer_at(&crate::history::listing::agent_home(), cmd, args, tz)
-}
-
-/// [`answer`] 的本体，家目录是参数（判据拿夹具喂它，不去动进程级环境变量）。
-/// `tz` ＝ 看的那一台的时区（请求信封带来的）：成品里的钟面 · 命中时刻 · 行尾时刻都按它写。
-pub(crate) fn answer_at(home: &std::path::Path, cmd: &str, args: &Value, tz: &crate::Tz) -> Answer {
-    use crate::observe::accounts_query;
-    match cmd {
-        "accounts-list" => {
-            let agent = crate::accounts::upstream_select::endpoint::agent_arg(args)?;
-            let rows = crate::accounts::upstream_select::file_face::machine_rows();
-            let v = accounts_query::list_product(
-                &rows,
-                agent,
-                crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
-                crate::relay::our_relay_listening(relay_route_core::PORT),
-            );
-            let size = v.to_string().len();
-            if size > LINES_CAP_BYTES {
-                return Err(too_large(size));
-            }
-            Ok(v)
-        }
-        other => Err((
-            "bad_args",
-            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
-        )),
-    }
-}
-
 /// `accounts-sessions` 的回包：每条运行中会话一行（`{pid, sessionId, cwd, configDir, account, bare, alive, viaRelay}` 那一行 JSON 原样）；
 /// `account:null` ＝ 查不到（不猜）。
 #[derive(Debug, Clone, serde::Serialize)]
@@ -266,6 +230,51 @@ pub(crate) fn sessions_at(home: &std::path::Path) -> Result<SessionLines, Accoun
         return Err(AccountsSessionsErr::TooLarge(too_large(size).1));
     }
     Ok(SessionLines { lines })
+}
+
+crate::wire::typed::codes! {
+    /// `accounts-list` 的码：整份超过一帧装得下的。
+    pub(crate) enum AccountsListErr {
+        TooLarge = "too_large",
+    }
+}
+
+/// `accounts-list`：账号清单，并上这台机器自己那份 apikey 表（读 manifest ＋ 每个号 stat 一下 ⇒ 阻塞档）。
+pub(crate) struct AccountsListCmd;
+
+impl crate::wire::typed::Command for AccountsListCmd {
+    const NAME: &'static str = "accounts-list";
+    type Req = crate::observe::accounts_query::AccountsListReq;
+    type Reply = crate::observe::accounts_query::AccountsList;
+    type Err = AccountsListErr;
+}
+
+impl crate::wire::typed::Handle for AccountsListCmd {
+    type Needs = crate::wire::typed::needs::Nothing;
+    fn run(
+        req: crate::observe::accounts_query::AccountsListReq,
+        _cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<
+        Output = Result<crate::observe::accounts_query::AccountsList, AccountsListErr>,
+    > + Send
+           + 'static {
+        async move {
+            let agent =
+                crate::agents::pick_adapter(Some(&req.agent)).map_err(AccountsListErr::BadArgs)?;
+            let rows = crate::accounts::upstream_select::file_face::machine_rows();
+            let v = crate::observe::accounts_query::list_product(
+                &rows,
+                agent,
+                crate::accounts::upstream_select::CREDENTIALS_FILE_AGENT,
+                crate::relay::our_relay_listening(relay_route_core::PORT),
+            );
+            let size = serde_json::to_string(&v).map_or(0, |t| t.len());
+            if size > LINES_CAP_BYTES {
+                return Err(AccountsListErr::TooLarge(too_large(size).1));
+            }
+            Ok(v)
+        }
+    }
 }
 
 /// `machine-interrupts` 的入参。

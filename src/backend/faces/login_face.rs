@@ -81,23 +81,19 @@ pub(crate) const LOGIN_START_CODES: &[&str] = <LoginStartErr as Codes>::ALL;
 
 /// 号在这台账号库里的样子（与 `accounts-list` 同一份成品）：配置目录（账号 0 ⇒ `None`）· 是不是 API 号。
 fn account_of(agent: &str, account: &str) -> Option<(Option<String>, bool)> {
-    let v = accounts_product(agent);
-    v["accounts"]
-        .as_array()?
-        .iter()
-        .find(|a| a["name"] == account)
+    accounts_product(agent)
+        .accounts
+        .into_iter()
+        .find(|a| a.scanned.name == account)
         .map(|a| {
             (
-                a["configDir"]
-                    .as_str()
-                    .filter(|d| !d.is_empty())
-                    .map(str::to_string),
-                a["authKind"] == acct_core::AUTH_KIND_API_KEY,
+                a.scanned.config_dir.filter(|d| !d.is_empty()),
+                a.scanned.auth_kind == acct_core::AUTH_KIND_API_KEY,
             )
         })
 }
 
-fn accounts_product(agent: &str) -> Value {
+fn accounts_product(agent: &str) -> crate::observe::accounts_query::AccountsList {
     let rows = crate::accounts::upstream_select::file_face::machine_rows();
     crate::observe::accounts_query::list_product(
         &rows,
@@ -437,7 +433,7 @@ impl crate::wire::typed::Handle for ManualListCmd {
             });
             Ok(manual_of(
                 agent,
-                &accounts_product(agent),
+                &serde_json::to_value(accounts_product(agent)).unwrap_or_default(),
                 mcp.as_ref().map(|(k, r)| (*k, r)),
             ))
         }

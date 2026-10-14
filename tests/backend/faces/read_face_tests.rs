@@ -3,7 +3,11 @@
 //! 夹具只造**结构**（目录名、行数、字节边界），行内容是占位的最小 JSON —— 不采任何真会话正文。
 
 use super::*;
+use serde_json::Value;
 use std::path::{Path, PathBuf};
+
+/// 本族的应答：`data` 或 `(code, message)`（判据这一层按登记表那一层的做法走一遍之后的样子）。
+type Answer = Result<Value, (&'static str, String)>;
 
 /// 读一份会话记录的那几条换成了 typed（`faces/history_face.rs`）：判据照旧按命令名问，这里照登记表那一层的做法走一遍
 ///   （入参经 typed 那一处解、回包过一遍真序列化器、失败落成码 ＋ 那一句），盖住 `super::*` 里的同名口；别的命令照旧交只读宿主。
@@ -74,7 +78,20 @@ fn answer_at(home: &Path, cmd: &str, args: &serde_json::Value, tz: &crate::Tz) -
                 },
             ))
         }),
-        _ => super::answer_at(home, cmd, args, tz),
+        "accounts-list" => via::<super::AccountsListCmd>(args, |r| {
+            crate::wire::spec::finish(<super::AccountsListCmd as crate::wire::typed::Handle>::run(
+                r,
+                crate::wire::typed::Cx {
+                    tz: tz.clone(),
+                    until: None,
+                    needs: (),
+                },
+            ))
+        }),
+        other => Err((
+            "bad_args",
+            crate::common::contract::malformed(&format!("this face has no command `{other}`")),
+        )),
     }
 }
 

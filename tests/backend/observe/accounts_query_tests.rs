@@ -24,9 +24,31 @@ fn write_manifest(accts: &Path, body: &str) {
 /// 清单的扫描本体摊成行：首行 meta、其后每号一行（不并 apikey 表）。下面几条判的是扫描（读 manifest · 判安全 · 判鉴权），不是哪一个出口。
 fn list_accounts(accts: &Path) -> Vec<String> {
     let (meta, rows) = scan_accounts(accts, &|_| false);
-    let mut out = vec![serde_json::Value::Object(meta).to_string()];
-    out.extend(rows.iter().map(serde_json::Value::to_string));
+    let mut out = vec![serde_json::to_string(&meta).unwrap()];
+    out.extend(rows.iter().map(|r| serde_json::to_string(r).unwrap()));
     out
+}
+
+/// 清单成品回成 `Value` 好按键看（帧里那一份写法）；盖住 `super::*` 里的同名口。
+fn list_product_with(
+    accts_dir: &Path,
+    home: Option<&Path>,
+    rows: &[String],
+    keys: &[crate::accounts::upstream_select::file_face::KeyFact],
+    agent: &str,
+    table_agent: &str,
+    relay_running: bool,
+) -> serde_json::Value {
+    serde_json::to_value(super::list_product_with(
+        accts_dir,
+        home,
+        rows,
+        keys,
+        agent,
+        table_agent,
+        relay_running,
+    ))
+    .unwrap()
 }
 
 fn meta(lines: &[String]) -> serde_json::Value {
@@ -1179,9 +1201,9 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
         "生产段里 `auth_kind_from_manifest(` 出现了不止一次"
     );
     assert_eq!(
-        prod.matches("\"authReady\"").count(),
+        prod.matches("auth_ready: ready").count(),
         1,
-        "`authReady` 这个键在生产段里被写了不止一处"
+        "`authReady` 这一格在生产段里被写了不止一处"
     );
     // 阴性对照式自检：本文件的生产段里**不许**出现 api-key 这个字面量
     // （分类规则住 acct-core；这里出现它就意味着有人在本地又判了一次）。
@@ -1419,7 +1441,12 @@ fn the_list_product_carries_exactly_what_the_scan_reads() {
     let product = list_product_with(&accts, None, &[], &[], "claude-code", "claude-code", false);
     let keys: Vec<&String> = product.as_object().unwrap().keys().collect();
     assert_eq!(keys, ["accounts", "meta", "notice"], "成品顶层键集合变了");
-    let cli_meta = meta(&cli);
+    let mut cli_meta = meta(&cli);
+    // 扫描那一份与成品同一个类型：家目录那一格扫描不填（`null`），成品才填。
+    assert_eq!(
+        cli_meta.as_object_mut().unwrap().remove("home"),
+        Some(serde_json::Value::Null)
+    );
     // 成品比扫描多出的只有帧面那几格（家目录 · 每号 key 掩码与端点 · 徽章），其余逐格同一份扫描。
     let mut product = product;
     assert_eq!(
@@ -2362,15 +2389,23 @@ fn the_badge_is_written_by_the_core() {
 /// 清单的 `notice` 是几句「能用但有缺」并成的一句：凭据文件权限那一句并进去（KS11）；都没有 ⇒ `null`。
 #[test]
 fn the_list_notice_carries_the_credentials_file_warning_too() {
-    let base = |n: Option<&str>| serde_json::json!({"meta": {}, "accounts": [], "notice": n});
+    let empty = tmpdir("notice");
+    let base = |n: Option<&str>| {
+        let mut v =
+            super::list_product_with(&empty, None, &[], &[], "claude-code", "claude-code", false);
+        v.notice = n.map(str::to_string);
+        v
+    };
+    assert_eq!(with_notice(base(None), None).notice, None);
     assert_eq!(
-        with_notice(base(None), None)["notice"],
-        serde_json::Value::Null
+        with_notice(base(None), Some("宽".into())).notice.unwrap(),
+        "宽"
     );
-    assert_eq!(with_notice(base(None), Some("宽".into()))["notice"], "宽");
-    assert_eq!(with_notice(base(Some("缺")), None)["notice"], "缺");
+    assert_eq!(with_notice(base(Some("缺")), None).notice.unwrap(), "缺");
     assert_eq!(
-        with_notice(base(Some("缺")), Some("宽".into()))["notice"],
+        with_notice(base(Some("缺")), Some("宽".into()))
+            .notice
+            .unwrap(),
         copy_text(
             "beAccountsQuery.listProductAt.joined",
             &[("a", "缺"), ("b", "宽")]

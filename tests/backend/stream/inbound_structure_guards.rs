@@ -1095,12 +1095,9 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
 /// ③ [`ZERO_OUT`]：零出参（`fields` 里没有 out / both），逐条写结果走哪儿。
 #[test]
 fn every_command_declares_exactly_the_fields_it_puts_out() {
-    const ACCOUNTS: &str = include_str!("../../__fixtures__/accounts.golden.json");
-    const ALIASES: &str = include_str!("../../__fixtures__/aliases.golden.json");
     /// `(命令, 金样, JSON 指针, below, elsewhere)`。指针指到的是数组 ⇒ 几种应答形状并起来算顶层。
     #[allow(clippy::type_complexity)]
-    const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] =
-        &[("accounts-list", ACCOUNTS, "/accounts-list", &[], &[])];
+    const SHAPED: &[(&str, &str, &str, &[&str], &[(&str, &str)])] = &[];
     /// 零出参的命令（头注 ③）：应答只有 `ok` / `code`，结果走别处（帧 · 链路 · 进度）。逐条写为什么。
     const ZERO_OUT: &[(&str, &str)] = &[
         ("cancel", "撤单的结果是 `cancelled` 帧，应答只回 ok"),
