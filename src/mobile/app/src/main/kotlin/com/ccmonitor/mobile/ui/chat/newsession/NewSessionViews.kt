@@ -29,6 +29,9 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.AccountsList
 import com.ccmonitor.mobile.core.claude.link.RotationStrategies
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 
 /** 供 UI 测试与冒烟定位的 tag（与文案解耦）。 */
@@ -173,7 +176,7 @@ fun CwdSheet(
         title = copyText("mobNewSession.dir.browse"),
         tag = NewSessionTags.BROWSE,
         onClick = onBrowse,
-        trail = { Text(MORE, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        trail = { PhIcon(Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant) },
     )
 }
 

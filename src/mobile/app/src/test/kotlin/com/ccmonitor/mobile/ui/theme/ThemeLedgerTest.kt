@@ -189,7 +189,8 @@ class ThemeLedgerTest {
         val arrows = listOf("←")
         // 内容记号，不是图标（稿第 13 节）：diff 行首的 + / −。
         // 键帽名 → 图标的那张表本身（`KeyCap.kt`：库里的按钮名是数据，这张表就是把那几个字符画成图标的那一处）。
-        val contentMarks = mapOf("DiffView.kt" to setOf("+"), "KeyCap.kt" to setOf("↑", "↓", "←", "→", "⇌", "▤", "＋", "+"))
+        // 导航路由拼目录参数：`URLEncoder` 把空格编成「+」，换成 `%20`（`Screen.kt`，不上屏）。
+        val contentMarks = mapOf("DiffView.kt" to setOf("+"), "KeyCap.kt" to setOf("↑", "↓", "←", "→", "⇌", "▤", "＋", "+"), "Screen.kt" to setOf("+"))
         val files =
             listOf("app", "core-ui").flatMap { m ->
                 File(mobile, "$m/src/main").walkTopDown().filter { it.isFile && it.extension == "kt" }.toList()

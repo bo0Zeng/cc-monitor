@@ -153,7 +153,7 @@ private fun UnreadLine(
                 Text(it, style = monoSmall, color = tokens.textFaint)
             }
             Spacer(Modifier.weight(1f))
-            Text(if (expanded) "▾" else "▸", style = monoSmall, color = tokens.textFaint)
+            PhIcon(if (expanded) Ph.CaretDown else Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = tokens.textFaint)
         }
         AnimatedVisibility(expanded) {
             Column(Modifier.padding(bottom = tokens.spacing.xs)) {

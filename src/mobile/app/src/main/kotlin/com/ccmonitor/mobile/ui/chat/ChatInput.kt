@@ -117,7 +117,7 @@ internal fun ChatInputArea(
                             sheet = InputSheet.Plus
                         },
                         modifier = Modifier.semantics { contentDescription = plus }.testTag(ChatTestTags.PLUS),
-                    ) { Text(PLUS_GLYPH, style = MaterialTheme.typography.titleLarge) }
+                    ) { PhIcon(Ph.Plus, contentDescription = null) }
                     SwitchChipView(state.model, copyText("session.model.title"), enabled = !busy, tag = ChatTestTags.MODEL_CHIP) {
                         actions.loadPicks()
                         sheet = InputSheet.Models
@@ -224,7 +224,7 @@ private fun SwitchChipView(
             } else {
                 null
             },
-        trailingIcon = { Text(CARET_GLYPH) },
+        trailingIcon = { PhIcon(Ph.CaretDown, contentDescription = null, size = Touch.iconInline) },
     )
 }
 
@@ -351,8 +351,8 @@ private fun PlusRows(
     say: (String) -> Unit,
     confirmClear: (String) -> Unit,
 ) {
-    SheetRow(copyText("mobPlus.row.commands"), end = "${list.commands.size}  $NEXT_GLYPH", enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
-    SheetRow(copyText("mobPlus.row.skills"), end = "${list.skills.size}  $NEXT_GLYPH", enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
+    SheetRow(copyText("mobPlus.row.commands"), end = "${list.commands.size}", next = true, enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
+    SheetRow(copyText("mobPlus.row.skills"), end = "${list.skills.size}", next = true, enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
     val acts = plusActions(list)
     if (acts.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = LocalAppTokens.current.spacing.xs))
     acts.forEach { a ->
@@ -466,6 +466,8 @@ private fun SheetRow(
     text: String,
     sub: String? = null,
     end: String? = null,
+    /** 点了进下一层 ⇒ 行尾画一颗 caret。 */
+    next: Boolean = false,
     enabled: Boolean = true,
     tag: String? = null,
     onClick: () -> Unit,
@@ -486,15 +488,13 @@ private fun SheetRow(
             sub?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2, overflow = TextOverflow.Ellipsis) }
         }
         end?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+        if (next) PhIcon(Ph.CaretRight, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 private const val INPUT_MAX_LINES = 4
 private const val LIST_MAX_HEIGHT = 480
 private const val SLASH = "/"
-private const val PLUS_GLYPH = "+"
-private const val CARET_GLYPH = "▾"
-private const val NEXT_GLYPH = "›"
 private const val CHECK_GLYPH = "✓"
 
 /** 那一家内置的压缩 · 清空两条命令名（见 [plusActions] 的缺口注）。 */
