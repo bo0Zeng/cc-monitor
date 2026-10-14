@@ -75,7 +75,7 @@ fun NewSessionBar(
                 Chip(onClick = { onOpen(NewSessionSheet.Account) }, tag = NewSessionTags.ACCOUNT) {
                     val a = ui.accounts.firstOrNull { it.name == ui.account }
                     a?.let { AccountBadge(it.name, it.color, size = 18) }
-                    Text(ui.account.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                    Text(a?.label ?: ui.account.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -229,7 +229,7 @@ private fun AccountRow(
     var menu by remember { mutableStateOf(false) }
     Box {
         PickRow(
-            title = a.name,
+            title = a.label,
             tag = NewSessionTags.ROW,
             second = if (a.selectable) null else copyText("newSession.account.needLogin"),
             selected = a.name == ui.account,

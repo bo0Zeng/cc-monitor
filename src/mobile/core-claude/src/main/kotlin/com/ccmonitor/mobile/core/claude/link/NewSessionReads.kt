@@ -29,6 +29,8 @@ object AccountsList {
 
     data class Account(
         val name: String,
+        /** 号在人眼里叫什么（那台写的 `label`；旧后端没有这一格 ⇒ 号名）。 */
+        val label: String,
         /** 号色第几格（`--acct-c0..c7`，账号库里的事实）；没分到 ⇒ `null`。 */
         val color: Int?,
         /** 能拿来起会话（那台判的）。 */
@@ -53,7 +55,7 @@ object AccountsList {
                     .need()
                     .onEach { a -> a.str("name").need() }
                     .filter { it.str("configDir") != null && it.str("mode") == ISOLATED }
-                    .map { a -> Account(a.str("name").need(), a.num("color")?.toInt(), a.bool("selectable") == true) }
+                    .map { a -> Account(a.str("name").need(), a.str("label") ?: a.str("name").need(), a.num("color")?.toInt(), a.bool("selectable") == true) }
             Answer(accounts, meta.str("effectiveDefault"), meta.str("home"))
         }
 

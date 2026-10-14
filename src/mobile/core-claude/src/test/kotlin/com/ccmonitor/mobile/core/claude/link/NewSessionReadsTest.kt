@@ -58,7 +58,7 @@ class NewSessionReadsTest {
                 "accounts" to
                     listOf(
                         mapOf("name" to "0", "configDir" to null, "mode" to "base", "selectable" to true, "loggedIn" to true, "color" to null),
-                        mapOf("name" to "work", "configDir" to "/a/work", "mode" to "isolated", "selectable" to true, "loggedIn" to true, "color" to 0.0),
+                        mapOf("name" to "work", "label" to "工作号", "configDir" to "/a/work", "mode" to "isolated", "selectable" to true, "loggedIn" to true, "color" to 0.0),
                         mapOf("name" to "team", "configDir" to "/a/team", "mode" to "isolated", "selectable" to false, "loggedIn" to false, "color" to 1.0),
                     ),
                 "meta" to mapOf("enabled" to true, "effectiveDefault" to "work", "home" to "/h"),
@@ -70,6 +70,7 @@ class NewSessionReadsTest {
         assertEquals(listOf("work", "team"), a.accounts.map { it.name })
         assertEquals("账号 0（不是隔离的号）不列（同桌面新建会话框）", null, a.accounts.firstOrNull { it.name == "0" })
         assertEquals(listOf(0, 1), a.accounts.map { it.color })
+        assertEquals("号名上屏照那台写的 label；没有 ⇒ 号名", listOf("工作号", "team"), a.accounts.map { it.label })
         assertEquals(listOf(true, false), a.accounts.map { it.selectable })
         assertEquals(mapOf("agent" to "claude"), AccountsList.args("claude"))
         assertNull(AccountsList.of(data + ("accounts" to listOf(mapOf("configDir" to "/a/x", "mode" to "isolated")))))
