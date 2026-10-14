@@ -13,7 +13,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -38,8 +37,8 @@ import com.ccmonitor.mobile.core.ui.icon.BackButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
+import com.ccmonitor.mobile.core.ui.icon.PrimaryIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
-import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import com.ccmonitor.mobile.ui.session.BUILTIN_ACTIONS
 import com.ccmonitor.mobile.ui.session.BUTTON_GROUPS
@@ -122,10 +121,7 @@ private fun ColumnScope.GroupListView(
         }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(onClick = { newGroupOpen = true }) {
-            PhIcon(Ph.Plus, contentDescription = null, size = Touch.iconInline)
-            Text(copyText("mobButtonSettings.groups.new"))
-        }
+        PrimaryIconButton(Ph.Plus, copyText("mobButtonSettings.groups.new"), onClick = { newGroupOpen = true })
         if (hostId == null) {
             TextButton(onClick = {
                 vm.restoreDefaults()
@@ -197,13 +193,10 @@ private fun ColumnScope.GroupDetailView(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
-    Button(onClick = {
+    PrimaryIconButton(Ph.Plus, copyText("mobButtonSettings.group.newButton"), onClick = {
         editing = null
         dialogOpen = true
-    }) {
-        PhIcon(Ph.Plus, contentDescription = null, size = Touch.iconInline)
-        Text(copyText("mobButtonSettings.group.newButton"))
-    }
+    })
 
     if (dialogOpen) {
         ButtonEditDialog(
@@ -298,7 +291,6 @@ private fun ButtonRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val tokens = LocalAppTokens.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("${button.label}  · ${buttonTypeLabel(button.type)}", style = MaterialTheme.typography.bodyMedium)

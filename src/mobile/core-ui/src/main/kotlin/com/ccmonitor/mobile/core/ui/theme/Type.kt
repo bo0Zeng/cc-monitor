@@ -17,7 +17,7 @@ val JetBrainsMono =
         Font(R.font.jetbrains_mono_medium, FontWeight.Medium),
     )
 
-/** 界面字与消息流正文：系统无衬线（Android ＝ Roboto ＋ Noto Sans CJK）；桌面的 Inter / Source Serif 不打包（主会话 10-11 定）。 */
+/** 界面字与消息流正文：系统无衬线（Android ＝ Roboto ＋ Noto Sans CJK）；桌面的 Inter / Source Serif 不打包（中文衬线要十几 MB，Inter 与 Roboto 字形相近）。 */
 val UiSans = FontFamily.Default
 
 private val Strong = FontWeight(ThemeTokens.FontWeightStrong.toInt())

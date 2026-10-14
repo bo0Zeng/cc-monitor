@@ -286,7 +286,6 @@ private fun HostRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val tokens = LocalAppTokens.current
     var showDeleteConfirm by remember { mutableStateOf(false) } // 删除二次确认
     if (showDeleteConfirm) {
         AlertDialog(
@@ -364,7 +363,6 @@ fun HostEditorScreen(
     val saveScope = rememberCoroutineScope()
     val identities by vm.identities.collectAsState()
     val allHosts by vm.hosts.collectAsState() // 跳板机候选（排除自身）
-    val tokens = LocalAppTokens.current
 
     var existing by remember { mutableStateOf<Host?>(null) }
     var label by remember { mutableStateOf("") }

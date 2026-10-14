@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
@@ -99,6 +100,21 @@ fun IconTextButton(
     enabled: Boolean = true,
 ) {
     TextButton(onClick = onClick, modifier = modifier, enabled = enabled) {
+        PhIcon(icon, contentDescription = null, size = Touch.iconInline)
+        Spacer(Modifier.width(LocalAppTokens.current.spacing.xs))
+        Text(text)
+    }
+}
+
+/** 主按钮（`--accent-strong` 底）：行内 16 dp 图标 ＋ 字。一屏最多一颗。 */
+@Composable
+fun PrimaryIconButton(
+    icon: Ph,
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(onClick = onClick, modifier = modifier) {
         PhIcon(icon, contentDescription = null, size = Touch.iconInline)
         Spacer(Modifier.width(LocalAppTokens.current.spacing.xs))
         Text(text)

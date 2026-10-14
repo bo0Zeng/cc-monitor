@@ -203,7 +203,6 @@ private fun TmuxSessionList(
     onAttach: (String) -> Unit,
     onKillRequested: (TerminalsList.Row) -> Unit,
 ) {
-    val tokens = LocalAppTokens.current
     when {
         loading -> Text(copyText("mobTmux.list.loading"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         sessions.isEmpty() -> Text(copyText("mobTmux.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)

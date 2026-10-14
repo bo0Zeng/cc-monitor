@@ -60,7 +60,6 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     val identities by vm.identities.collectAsState()
     val clipboard = LocalClipboard.current
     val scope = rememberCoroutineScope()
-    val tokens = LocalAppTokens.current
     val context = LocalContext.current
     val snackbar = LocalAppSnackbar.current
 
@@ -115,14 +114,11 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     }
 }
 
+/** 右下的悬浮「+」：这一屏唯一的主动作（`--accent-strong`、圆角 10），无障碍名照文案表。 */
 @Composable
-private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
-    var showChooser by remember { mutableStateOf(false) }
-    var showGenerate by remember { mutableStateOf(false) }
-    var showImport by remember { mutableStateOf(false) }
-    var showGenerateEd25519 by remember { mutableStateOf(false) }
+private fun BoxScope.AddIdentityFab(onClick: () -> Unit) {
     FloatingActionButton(
-        onClick = { showChooser = true },
+        onClick = onClick,
         modifier =
             Modifier
                 .align(Alignment.BottomEnd)
@@ -133,6 +129,15 @@ private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
     ) {
         PhIcon(Ph.Plus, contentDescription = null)
     }
+}
+
+@Composable
+private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
+    var showChooser by remember { mutableStateOf(false) }
+    var showGenerate by remember { mutableStateOf(false) }
+    var showImport by remember { mutableStateOf(false) }
+    var showGenerateEd25519 by remember { mutableStateOf(false) }
+    AddIdentityFab(onClick = { showChooser = true })
     if (showChooser) {
         IdentityChooserDialog(
             onDismiss = { showChooser = false },
@@ -189,7 +194,6 @@ private fun IdentityRow(
     onCopy: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val tokens = LocalAppTokens.current
     var showDeleteConfirm by remember { mutableStateOf(false) } // 删除二次确认（删身份有级联后果）
     if (showDeleteConfirm) {
         AlertDialog(
