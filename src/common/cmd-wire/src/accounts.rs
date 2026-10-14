@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub enum AccountKind {
     #[serde(rename = "subscription")]
@@ -24,7 +24,7 @@ pub enum AccountKind {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountInitArgs {
     pub name: String,
@@ -39,7 +39,7 @@ pub struct AccountInitArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountAddArgs {
     pub name: String,
@@ -66,7 +66,7 @@ pub struct AccountAddArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountRemoveArgs {
     pub name: String,
@@ -83,7 +83,7 @@ pub struct AccountRemoveArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountNameArgs {
     pub name: String,
@@ -97,7 +97,7 @@ pub struct AccountNameArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountRepairArgs {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -110,7 +110,7 @@ pub struct AccountRepairArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountRollbackArgs {
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
@@ -125,7 +125,7 @@ pub struct AccountRollbackArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountRef {
     pub name: String,
@@ -138,7 +138,7 @@ pub struct AccountRef {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AliasChange {
     pub path: String,
@@ -160,7 +160,7 @@ pub struct AliasChange {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountChange {
     pub applied: bool,
@@ -188,7 +188,7 @@ pub struct AccountChange {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub enum CheckLevel {
     Ok,
@@ -203,7 +203,7 @@ pub enum CheckLevel {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct VerifyCheck {
     pub level: CheckLevel,
@@ -218,7 +218,7 @@ pub struct VerifyCheck {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct VerifyReport {
     /// 没有一条 `fail`。
@@ -234,7 +234,7 @@ pub struct VerifyReport {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountLoginCmd {
     pub cmd: String,
@@ -246,7 +246,7 @@ pub struct AccountLoginCmd {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountMcpNameArgs {
     pub name: String,
@@ -258,7 +258,7 @@ pub struct AccountMcpNameArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountMcpPickArgs {
     pub name: String,
@@ -272,7 +272,7 @@ pub struct AccountMcpPickArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountMcpSyncArgs {
     pub on: bool,
@@ -284,7 +284,7 @@ pub struct AccountMcpSyncArgs {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountMcpChoice {
     /// 挑这一版时交回去的 `from`（`None` = 共享的那一版）。
@@ -301,7 +301,7 @@ pub struct AccountMcpChoice {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountMcpConflict {
     pub name: String,
@@ -314,7 +314,7 @@ pub struct AccountMcpConflict {
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
-    ts(export, export_to = "../../../frontend/ui/generated/")
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
 )]
 pub struct AccountMcpView {
     /// 这台有没有账号库（没有 ⇒ 不做同步，下面几格都是空的）。

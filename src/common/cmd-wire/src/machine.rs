@@ -103,15 +103,16 @@ pub const LOCAL: &str = "<local>";
 /// 唯一的不变式（「名字不许是空白」）由 [`Machine::route`] 那个漏斗执行 ——
 /// 装在构造器上反而会把它拆成「构造时拒」与「路由时拒」两处，而那两处会漂。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-// 生成物目录相对本包根（`src/common/cmd-wire/`）写；TS 那一侧照旧叫 `Origin`（界面几十处引它）。
-//   别的 crate 的测试档里有生成类型嵌着它 ⇒ 那边经 `ts` feature 拿到同一个派生（导出只在本 crate 的测试档跑）。
+// TS 那一侧照旧叫 `Origin`（界面几十处引它）。
+//   别的 crate 的测试档里有生成类型嵌着它 ⇒ 那边经 `ts` feature 拿到同一个派生，也会把它当依赖导出一份；
+//   落点因此写成本包根起算的绝对路径（相对的会跟着那边的目录走，曾经落到仓根 `frontend/`；判据 `ts_export_guard`）。
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(
     any(test, feature = "ts"),
     ts(
         export,
         rename = "Origin",
-        export_to = "../../../frontend/ui/generated/"
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
     )
 )]
 #[serde(transparent)]
