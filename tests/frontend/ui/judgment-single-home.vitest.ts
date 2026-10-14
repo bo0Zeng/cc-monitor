@@ -726,6 +726,8 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     COMMANDS: NONE,
     decode_reply: NONE,
     reply_names: NONE,
+    // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
+    dialed: NONE,
   },
   "copy-core": {
     backend_old: "J22",

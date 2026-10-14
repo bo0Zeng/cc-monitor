@@ -30,7 +30,7 @@
 use crate::common::contract;
 use crate::stream::detail::Failed;
 use crate::stream::inbound::spec::Fail;
-use crate::stream::inbound::{CommandSpec, Run, REGISTRY};
+use crate::stream::inbound::{CommandSpec, REGISTRY};
 use crate::stream::wire::Request;
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -47,14 +47,14 @@ const CLI_REQUEST_ID: &str = "cli";
 
 /// 一条命令**上不上 CLI 面** —— 从 `REGISTRY` 派生，不是手抄一张表。
 ///
-/// 判据是 `Run::Builtin`：那种命令的实现住在 `inbound::dispatch` 的硬臂里，
+/// 判据是帧面硬臂（`Run::on_frame_arm`：`Run::Builtin` 与 typed 的那一档）：那种命令的实现住在 `inbound::dispatch` 的硬臂里，
 /// 要 `replies` 通道与在飞表才能跑，而**一次性 exec 里两样都不存在**。
 ///
 /// 另一条：派生出来的名字是 ccm 自己的诊断口（`--ccm-print` 这类）⇒ 不上。二进制叫 `ccm` 时
 /// 按 `SUBCOMMANDS` 分流（`control::ccm::intercept`），占了 ccm 的词就把 `ccm --ccm-print` 抢进后端。
 /// 第三条：[`STREAM_ONLY`] 那几条能跑，但在一次性进程里结构上答不了 ⇒ 不上；[`UI_ONLY`] 那几条答得了、只是除了界面没人用 ⇒ 暂不上。
 pub(crate) fn cli_exposed(spec: &CommandSpec) -> bool {
-    !matches!(spec.run, Run::Builtin)
+    !spec.run.on_frame_arm()
         && !crate::control::ccm::argv::is_ccm_word(&flag_of(spec.name))
         && !STREAM_ONLY.contains(&spec.name)
         && !UI_ONLY.contains(&spec.name)

@@ -165,7 +165,13 @@ impl Run {
         matches!(
             self,
             Run::Blocking(_) | Run::BlockingData(_) | Run::BlockingOwn(_)
-        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_)))
+        ) || matches!(self, Run::Typed(t) if !matches!(t.run, super::typed::TypedRun::Async(_) | super::typed::TypedRun::AsyncFiles(..) | super::typed::TypedRun::AsyncOwning(..) | super::typed::TypedRun::AsyncOwn(_) | super::typed::TypedRun::Frame))
+    }
+
+    /// 帧面硬臂（`dispatch` 里那几条：要碰本连接的状态）：[`Run::Builtin`] 与 typed 的那一档（[`super::typed::TypedRun::Frame`]）。
+    /// 只在帧面（CLI 面不派生）、不进 [`prepare`]。
+    pub(crate) fn on_frame_arm(self) -> bool {
+        matches!(self, Run::Builtin) || matches!(self, Run::Typed(t) if t.on_frame_arm())
     }
 
     /// 这一档写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几档）。
@@ -176,7 +182,7 @@ impl Run {
 }
 
 /// 按档把处理器装成 [`Prepared`]。`own` ＝ 调用方手里那一份写句柄；没有（文件门 · 小成品重问）⇒ 写自家状态的那几档交不出来（`None`）。
-/// `Builtin` 那几条在分派的硬臂里，这里也是 `None`。
+/// 帧面硬臂那几条（[`Run::on_frame_arm`]）在分派的硬臂里，这里也是 `None`。
 /// 文件管理面的写句柄只在这一处造、只活这一问：[`prepare`] 的 `Facing` 那一档（帧面 · CLI 面），
 /// 和资产域那扇门（`doors::LocalFiles` 问写的那几样，进程内的那一次分派）都经它。
 pub(crate) fn with_face<T>(f: impl FnOnce(&crate::platform::fs::Face) -> T) -> T {
@@ -223,6 +229,7 @@ pub(crate) fn prepare(run: Run, own: Option<&crate::platform::Own>) -> Option<Pr
                 let own = own?.clone();
                 Prepared::Async(Box::new(move |r| f(r, own)))
             }
+            super::typed::TypedRun::Frame => return None,
         },
         Run::Builtin => return None,
     })

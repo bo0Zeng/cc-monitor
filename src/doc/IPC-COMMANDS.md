@@ -641,12 +641,32 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 拨号请求，同 `link-open` |
-| `id` | → | 传输单 id（`xfer-<n>`） |
-| `key` | → | 暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端 |
-| `local_path` | → | 本机一份普通文件的路径 |
+入参 `TransferUploadReq` · 回包 `TransferUploaded`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type TransferUploadReq = { 
+/**
+ * 拨号请求（同 `link-open` 的 `dial`）：后端拨号核心读它。
+ */
+dial: Record<string, unknown>, 
+/**
+ * 本机一份普通文件的路径。
+ */
+local_path: string, 
+/**
+ * 那台后端的 `$HOME`（同 [`TransferUploadAsk::home`]）。
+ */
+home?: string, };
+type TransferUploaded = { 
+/**
+ * 传输单 id（`xfer-<n>`）：订阅 `transfer/<id>` 即起跑。
+ */
+id: string, 
+/**
+ * 暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端后端。
+ */
+key: string, };
+```
 
 码：`bad_args` · `io_failed` · `busy` · `too_many_transfers`
 
@@ -656,12 +676,29 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 收 `args` · 连接内就地做完 · 只在流上
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `dial` | → | 拨号请求，同 `link-open` |
-| `id` | → | 传输单 id |
-| `local_path` | → | 本机落点（绝对路径；也收 `{"b16":…}`） |
-| `remote_path` | → | 远端路径 |
+入参 `TransferDownloadReq` · 回包 `TransferOpened`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type TransferDownloadReq = { 
+/**
+ * 拨号请求（同 [`TransferUploadReq::dial`]）。
+ */
+dial: Record<string, unknown>, 
+/**
+ * 远端路径。
+ */
+remote_path: string, 
+/**
+ * 本机落点（同 [`TransferDownloadAsk::local_path`]）：开单时当场过路径解析，起跑时再过一次。
+ */
+local_path: WirePath, };
+type TransferOpened = { 
+/**
+ * 传输单 id：订阅 `transfer/<id>` 即起跑。
+ */
+id: string, };
+type WirePath = string | { b16: string };
+```
 
 码：`bad_args` · `refused` · `too_many_transfers`
 

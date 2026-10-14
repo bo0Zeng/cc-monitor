@@ -1278,7 +1278,7 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 🔴 **本族第一条会往盘上写的命令。**
     //
     // 它落在这张表里**不是选择，是派生的必然**：`cli_control::cli_exposed` 逐字是
-    // `!matches!(spec.run, Run::Builtin)` —— 只要一条命令进了 `inbound::REGISTRY`
+    // `!spec.run.on_frame_arm()` —— 只要一条命令进了 `inbound::REGISTRY`
     // 且不是那个硬臂，CLI 面就**自动**认得它；而本表是 `is_query_mode` 那道闸门。
     // ⇒ 不加这一行的后果与上面那几条逐字相同（当未知 flag、照常进流模式）。
     // ⚠ **如实登记一条代价**：因此「写这一面只从帧面进来」这句话**做不到**，

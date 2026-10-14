@@ -29,10 +29,12 @@ use crate::backend_route::{route_call_error, Routed};
 use crate::inbound_client::InboundClient;
 use crate::stream_source::RemoteConfig;
 
-/// 开单：上传。载荷 `{"local_path"}`，回 `{"id","key"}`（`key` 是暂存件的键，提交时交给远端后端）。
-pub const TRANSFER_UPLOAD: &str = "transfer-upload";
-/// 开单：下载。载荷 `{"remote_path","local_path"}`，回 `{"id"}`。
-pub const TRANSFER_DOWNLOAD: &str = "transfer-download";
+/// 开单：上传。载荷 `cmd_wire::transfer::TransferUploadAsk`，回 `TransferUploaded`（`key` 是暂存件的键，提交时交给远端后端）。
+pub const TRANSFER_UPLOAD: &str =
+    <cmd_wire::transfer::TransferUploadAsk as cmd_wire::files::Call>::NAME;
+/// 开单：下载。载荷 `cmd_wire::transfer::TransferDownloadAsk`，回 `TransferOpened`。
+pub const TRANSFER_DOWNLOAD: &str =
+    <cmd_wire::transfer::TransferDownloadAsk as cmd_wire::files::Call>::NAME;
 /// 🔴 **窗口经通道说得出的传输命令：恰好这两条。** 取消不是命令（停订即撤）。
 pub const TRANSFER_OPS: [&str; 2] = [TRANSFER_UPLOAD, TRANSFER_DOWNLOAD];
 /// 进度流的 `kind`：`transfer/<id>`。
@@ -117,7 +119,8 @@ fn said(e: &crate::inbound_client::CallError) -> (String, String) {
     (code.into_inner(), text)
 }
 
-/// **开单**那一面（宿主 `call` 调）：读载荷、转给本机后端、登记一个中继。回应答的 JSON。
+/// **开单**那一面（宿主 `call` 调）：窗口那一份按类型解（`cmd_wire::transfer::*Ask`，多一个键就拒）、补上那台远端的拨号请求，
+/// 按后端那一份类型（`*Req`）转给本机后端，回包按类型解、登记一个中继。回应答的 JSON。
 ///
 /// 失败回 `(码, 话)`，宿主原样翻成「对端答不行」（与后端命令的拒绝同一个信封）。
 pub async fn transfer_call(
@@ -125,69 +128,74 @@ pub async fn transfer_call(
     op: &str,
     payload: &serde_json::Value,
 ) -> Result<serde_json::Value, (String, String)> {
-    let text = |k: &str| {
-        payload
-            .get(k)
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_string)
-            .ok_or((
-                "bad_args".to_string(),
-                copy_text(
-                    "rsSftpPool.call.missingField",
-                    &[("op", &op.to_string()), ("k", &k.to_string())],
-                ),
-            ))
-    };
-    let dial = crate::dial_host::transfer_dial(&cfg).map_err(|e| ("bad_args".to_string(), e))?;
-    let args = match op {
-        // `home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比，原样转。
+    use cmd_wire::transfer::{TransferDownloadAsk, TransferUploadAsk};
+    let dial = || crate::dial_host::transfer_dial(&cfg).map_err(|e| ("bad_args".to_string(), e));
+    match op {
+        // `home`（可缺席）：窗口问那台后端拿到的 `$HOME`，传输台连上之后与 SFTP 起始目录比。
         TRANSFER_UPLOAD => {
-            let mut a = serde_json::json!({ "dial": dial, "local_path": text("local_path")? });
-            if let Some(h) = payload.get("home").filter(|v| v.is_string()) {
-                a["home"] = h.clone();
-            }
-            a
+            let ask: TransferUploadAsk = ask_of(op, payload)?;
+            relay(&cfg, ask.dialed(dial()?)).await
         }
         // 这里原来先判一次本机落点是不是 Claude 会话数据（开单时出声早）。用户「文件管理器全部都可以改.
         //   不需要任何围栏」⇒ 删了；落点的路径解析（绝对路径 · 父目录在盘上）在本机常驻后端 `transfer-download` 开单那一判。
-        // 下载的本机落点收字符串或 `{"b16": …}`（有损名在 Linux 上按原始字节落名），原样转给本机后端判。
-        TRANSFER_DOWNLOAD => serde_json::json!({
-            "dial": dial,
-            "remote_path": text("remote_path")?,
-            "local_path": match payload.get("local_path") {
-                Some(v) if v.is_string() || v.get("b16").is_some_and(serde_json::Value::is_string) => v.clone(),
-                _ => serde_json::Value::String(text("local_path")?),
-            },
-        }),
-        other => {
-            return Err((
+        // 下载的本机落点是原始字节（字符串或 `{"b16": …}`：有损名在 Linux 上按原始字节落名），原样转给本机后端判。
+        TRANSFER_DOWNLOAD => {
+            let ask: TransferDownloadAsk = ask_of(op, payload)?;
+            relay(&cfg, ask.dialed(dial()?)).await
+        }
+        other => Err((
+            "bad_args".to_string(),
+            copy_text(
+                "rsSftpPool.call.notTransfer",
+                &[("other", &other.to_string())],
+            ),
+        )),
+    }
+}
+
+/// 窗口那一份载荷按类型解（缺一格 · 多一格 · 型不对 ⇒ `bad_args`）。解码器那一句不上句子（原话不进话里），记一行日志。
+fn ask_of<A: serde::de::DeserializeOwned>(
+    op: &str,
+    payload: &serde_json::Value,
+) -> Result<A, (String, String)> {
+    match serde_json::from_value(payload.clone()) {
+        Ok(a) => Ok(a),
+        Err(e) => {
+            tracing::warn!("传输：窗口说的 {op} 载荷解不出来（{e}）");
+            Err((
                 "bad_args".to_string(),
-                copy_text(
-                    "rsSftpPool.call.notTransfer",
-                    &[("other", &other.to_string())],
-                ),
+                copy_text("rsSftpPool.call.badArgs", &[("op", &op.to_string())]),
             ))
         }
-    };
-    let client = crate::dial_host::local_backend_accepting(op)
+    }
+}
+
+/// 按后端那一份类型转给本机后端，回包按类型解（解不出 ⇒ 没回传输编号），登记一个中继。
+async fn relay<R: cmd_wire::files::Call>(
+    cfg: &RemoteConfig,
+    req: R,
+) -> Result<serde_json::Value, (String, String)>
+where
+    R::Reply: Opened,
+{
+    let args = serde_json::to_value(&req).map_err(|e| ("bad_args".to_string(), e.to_string()))?;
+    let client = crate::dial_host::local_backend_accepting(R::NAME)
         .await
         .map_err(|e| ("backend_unavailable".to_string(), e))?;
     let v = client
-        .call(op, args, CALL_BUDGET)
+        .call(R::NAME, args, CALL_BUDGET)
         .await
         .map_err(|e| said(&e))?
         .unwrap_or(serde_json::Value::Null);
-    let id = v
-        .get("id")
-        .and_then(serde_json::Value::as_str)
-        .ok_or((
+    let opened: R::Reply = serde_json::from_value(v.clone()).map_err(|_| {
+        (
             "backend".to_string(),
             copy_text("rsSftpPool.call.noTicket", &[("v", &v.to_string())]),
-        ))?
-        .to_string();
+        )
+    })?;
     let (tx, _rx) = watch::channel::<Snap>(Snap::default());
     relays().insert(
-        id,
+        opened.ticket().to_string(),
         Relay {
             origin: crate::origin::Origin(cfg.origin_label()),
             owner: Arc::downgrade(&client),
@@ -195,7 +203,22 @@ pub async fn transfer_call(
             watched: false,
         },
     );
-    Ok(v)
+    serde_json::to_value(&opened).map_err(|e| ("backend".to_string(), e.to_string()))
+}
+
+/// 开单回包里的传输单 id（两条回包各一个类型，都带它）。
+trait Opened: serde::Serialize + serde::de::DeserializeOwned {
+    fn ticket(&self) -> &str;
+}
+impl Opened for cmd_wire::transfer::TransferUploaded {
+    fn ticket(&self) -> &str {
+        &self.id
+    }
+}
+impl Opened for cmd_wire::transfer::TransferOpened {
+    fn ticket(&self) -> &str {
+        &self.id
+    }
 }
 
 /// 订阅那一格的守卫：**流被丢掉 = 停订**。没收场就经开它的那条流发 `transfer-stop`；无论如何把中继摘掉 ——

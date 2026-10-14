@@ -123,6 +123,8 @@ tauri-plugin-single-instance = "2"
 arboard = { version = "3.6", default-features = false }
 
 serde = { version = "1", features = ["derive"] }
+# 传输台开单那两条（`transfer-upload` / `-download`）的线上类型：窗口那一份按它解、补上拨号按后端那一份发（`sftp_pool.rs`）。
+cmd-wire = { path = "../../common/cmd-wire" }
 # `raw_value`：会话行的成品（后端给的记录）原样转交、monitor 不解析它（`ui_contract::JsonlLinePayload::message`）。
 serde_json = { version = "1", features = ["raw_value"] }
 # F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
@@ -221,8 +223,6 @@ guard-core = { path = "../../common/guard-core" }
 comms-inward = { path = "../../comms/inward", features = ["ts"] }
 # 判据要的那几样（停一个本来就分开的写端 · 关写半边 · 数登记）：只在测试档开。
 resident-client = { path = "../../comms/resident-client", features = ["test-support"] }
-# 判据要对着编进来的那张形状指纹表（`cmd_wire::shapes::SHAPES`）验「对不上就不发」。
-cmd-wire = { path = "../../common/cmd-wire" }
 # 暂停时钟（`#[tokio::test(start_paused = true)]`）：拿「截止时刻」说事的测试用虚拟时钟，机器负载多高读数都一样。
 # 只在 dev 侧开 —— resolver 2 下 dev 依赖的特性不并进产品构建，发布二进制里的 tokio 照旧是上面那份 `full`。
 tokio = { version = "1", features = ["test-util"] }

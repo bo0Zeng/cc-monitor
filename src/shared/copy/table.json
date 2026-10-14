@@ -10464,12 +10464,6 @@
       "zh": "同名 {n} · {machine}",
       "args": ["n", "machine"]
     },
-    "rsFilewinTransfer.reply.missingField": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "后端的回复缺 {key} 字段",
-      "args": ["key"]
-    },
     "rsFilewinTransfer.label.cancel": {
       "kind": "action",
       "role": "按钮",
@@ -12462,11 +12456,11 @@
       "zh": "请求格式不对 · {other} 不是传输命令",
       "args": ["other"]
     },
-    "rsSftpPool.call.missingField": {
+    "rsSftpPool.call.badArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对 · 缺 {k} 或它不是字符串 · {op}",
-      "args": ["op", "k"]
+      "zh": "请求格式不对 · {op}",
+      "args": ["op"]
     },
     "rsChanWire.frame.tooLong": {
       "kind": "error",

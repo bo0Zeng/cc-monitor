@@ -6,6 +6,8 @@
 //! - 码表从错误枚举来（[`codes!`] 声明的那一份），登记的 `codes` 就是它，不另写。
 //! - 字段不手写（`fields` 空）：协议参考与形状指纹都从类型生成（测试档，经 ts-rs）。
 //! - 跑起来就是 [`super::Run::Typed`] 那一档，按档分派照旧只在 [`super::spec::prepare`] 一处。
+//! - 要碰本连接的票表与应答通道的那几条（帧面硬臂，同 [`super::Run::Builtin`]）登记成 `typed::frame::<X>("一句话")`：
+//!   分派照旧在 `dispatch` 那条硬臂，硬臂那一发经 [`answer`] 一处（入参按类型收 · 回包按类型写 · 失败照码表）。
 
 use super::spec::{CommandSpec, DataFut, Fail, Outcome, Run};
 use crate::stream::wire::Request;
@@ -255,6 +257,16 @@ pub(super) enum TypedRun {
     AsyncOwning(fn(Request, crate::platform::Own, Hub) -> DataFut, Hub),
     /// 异步、只要写句柄（[`AsyncOwn`]）：写句柄由分派那一层递。
     AsyncOwn(fn(Request, crate::platform::Own) -> DataFut),
+    /// 帧面硬臂（要碰本连接的票表与应答通道）：分派在 `dispatch` 那条硬臂，就地做完、回一帧（经 [`answer`]）。
+    /// 同 [`super::Run::Builtin`]：只在帧面（CLI 面不派生）、不进 [`super::spec::prepare`]。
+    Frame,
+}
+
+impl Typed {
+    /// 这一份是不是帧面硬臂那一档（[`TypedRun::Frame`]）。
+    pub(crate) fn on_frame_arm(&self) -> bool {
+        matches!(self.run, TypedRun::Frame)
+    }
 }
 
 /// 入参 ⇒ `R`。缺 ＝ `{}`；多一个键 · 缺一个必填 · 类型不对 ⇒ `bad_args`（解码器那一句进原话）。
@@ -364,6 +376,31 @@ fn run_async_own<C: AsyncOwn>(r: Request, own: crate::platform::Own) -> DataFut 
         };
         settle::<C>(C::run(req, cx, own).await)
     })
+}
+
+/// 帧面硬臂那一档（[`TypedRun::Frame`]）的一发：入参按类型收 → `run` → 应答帧（成功带回包；失败照码表投，详情里带命令名）。
+/// `dispatch` 的硬臂调本体时都经这里（本体签名里只有类型，没有 `args`）。
+pub(crate) fn answer<C: Command>(
+    id: &str,
+    args: &serde_json::Value,
+    run: impl FnOnce(C::Req) -> Result<C::Reply, C::Err>,
+) -> crate::stream::wire::Frame {
+    match take::<C::Req>(args).and_then(|req| settle::<C>(run(req))) {
+        Ok(data) => crate::stream::wire::Frame::Reply {
+            id: id.to_string(),
+            ok: true,
+            code: None,
+            message: None,
+            detail: None,
+            data,
+        },
+        Err(f) => f.into_reply(id.to_string(), C::NAME, args),
+    }
+}
+
+/// 帧面硬臂那一档的一行登记（本体在 `dispatch` 那条硬臂里经 [`answer`] 调）。
+pub(crate) const fn frame<C: Command>(summary: &'static str) -> CommandSpec {
+    spec::<C>(summary, TypedRun::Frame)
 }
 
 /// 阻塞档的一行登记。`summary` ＝ 一句话：这条命令做什么（住命令表，同别的命令）。
