@@ -11,7 +11,7 @@
 //! 收口前本文件各写了一遍那 12 个（`K-R85` 实测逐字相同），而 monitor 的
 //! `cross_half_edge_registry::CROSS_EDGES` 17 条跨轨边里 **search 零命中** ⇒
 //! **没有任何判据在拦着它们漂开**。判据现在有了，住
-//! `tests/backend/observe/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（随家从 monitor 那份守卫搬来）。
+//! `tests/backend/history/search_rules_tests.rs::the_search_kou_jing_has_exactly_one_home`（随家从 monitor 那份守卫搬来）。
 //! 后端**有**记录解析（`agents/claudecode/parse.rs::parse_line`，2026-09-28 进后端，`line` 帧的成品与 `history-read` 的逐行成品都出自它）；
 //! 本模块仍直接在 `serde_json::Value` 上抽取，是因为搜索只要正文 / 工具内容那几段文本，不要整条记录的成品 ——
 //! 那是**取数**的差别，不是**口径**的差别（口径只有上面那一个家）。
