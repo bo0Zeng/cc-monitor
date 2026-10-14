@@ -128,23 +128,21 @@ fn linux_stat(pid: u32) -> Option<LinuxStat> {
     })
 }
 
-/// 一个 pid 往上的祖先（父进程在前，不含它自己）：`(pid, 程序名)`。一趟 ToolHelp 快照；最多 32 级（父进程表成环 / 读坏了也停得下来）。
-/// 读不到 ⇒ 空。别处恒空。
+/// 此刻的进程表：`(进程号, 父进程号, 程序名)`，一趟 ToolHelp 快照（不用打开各个进程：提权的也列得出）。读不到 ⇒ 空。
 #[cfg(windows)]
-pub fn ancestors(pid: u32) -> Vec<(u32, String)> {
-    use std::collections::HashMap;
+pub fn processes() -> Vec<(u32, u32, String)> {
     use windows::Win32::Foundation::CloseHandle;
     use windows::Win32::System::Diagnostics::ToolHelp::{
         CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
         TH32CS_SNAPPROCESS,
     };
-    let mut table: HashMap<u32, (u32, String)> = HashMap::new();
+    let mut out = Vec::new();
     unsafe {
         let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
-            return Vec::new();
+            return out;
         };
         if snap.is_invalid() {
-            return Vec::new();
+            return out;
         }
         let mut entry = PROCESSENTRY32W {
             dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
@@ -157,13 +155,11 @@ pub fn ancestors(pid: u32) -> Vec<(u32, String)> {
                     .iter()
                     .position(|&c| c == 0)
                     .unwrap_or(entry.szExeFile.len());
-                table.insert(
+                out.push((
                     entry.th32ProcessID,
-                    (
-                        entry.th32ParentProcessID,
-                        String::from_utf16_lossy(&entry.szExeFile[..n]),
-                    ),
-                );
+                    entry.th32ParentProcessID,
+                    String::from_utf16_lossy(&entry.szExeFile[..n]),
+                ));
                 if Process32NextW(snap, &mut entry).is_err() {
                     break;
                 }
@@ -171,6 +167,24 @@ pub fn ancestors(pid: u32) -> Vec<(u32, String)> {
         }
         let _ = CloseHandle(snap);
     }
+    out
+}
+
+/// 别处：不列（只有 Windows 那一支要按进程树数终端的标签）。
+#[cfg(not(windows))]
+pub fn processes() -> Vec<(u32, u32, String)> {
+    Vec::new()
+}
+
+/// 一个 pid 往上的祖先（父进程在前，不含它自己）：`(pid, 程序名)`。一趟进程表（[`processes`]）；最多 32 级（父进程表成环 / 读坏了也停得下来）。
+/// 读不到 ⇒ 空。别处恒空。
+#[cfg(windows)]
+pub fn ancestors(pid: u32) -> Vec<(u32, String)> {
+    use std::collections::HashMap;
+    let table: HashMap<u32, (u32, String)> = processes()
+        .into_iter()
+        .map(|(pid, ppid, name)| (pid, (ppid, name)))
+        .collect();
     let mut out = Vec::new();
     let mut cur = pid;
     while out.len() < 32 {

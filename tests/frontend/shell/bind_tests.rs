@@ -912,20 +912,25 @@ fn front_markers_are_fresh_and_an_empty_marker_names_no_tab() {
 /// ★ 什么时候试切标签页：只在 Windows Terminal 的窗口、而且窗口是借某一级的控制台认出来的（记号要挂在那个控制台上）；
 /// 不是 Windows Terminal（经典控制台没有标签、别的终端程序不试）⇒ 不试；终端那一级认出的窗口 ⇒ 不试、说为什么
 /// （提权 ⇒ 无权切；否则 ⇒ 读不到控制台）。窗口切过去了、标签页没切成 ⇒ 已切到窗口 · 标签页未切换；窗口没切过去 ⇒ 照窗口那一句说。
+/// 标签个数只在提权那一支才数（[`elevated_tab_step_counts_the_owner_s_tabs`]），别的分支不数（替身一数就炸）。
 #[test]
 fn tabs_are_tried_only_in_windows_terminal_through_the_console_that_named_the_window() {
-    assert_eq!(tab_step(Via::Shown(700), true), TabStep::Try(700));
-    assert_eq!(tab_step(Via::Shown(700), false), TabStep::Skip);
+    let uncounted = || -> usize { panic!("这一支不该数标签") };
     assert_eq!(
-        tab_step(Via::Owner { elevated: true }, false),
+        tab_step(Via::Shown(700), true, uncounted),
+        TabStep::Try(700)
+    );
+    assert_eq!(tab_step(Via::Shown(700), false, uncounted), TabStep::Skip);
+    assert_eq!(
+        tab_step(Via::Owner { elevated: true }, false, uncounted),
         TabStep::Skip
     );
     assert_eq!(
-        tab_step(Via::Owner { elevated: true }, true),
+        tab_step(Via::Owner { elevated: true }, true, || 2),
         TabStep::Miss(TabMiss::Elevated)
     );
     assert_eq!(
-        tab_step(Via::Owner { elevated: false }, true),
+        tab_step(Via::Owner { elevated: false }, true, uncounted),
         TabStep::Miss(TabMiss::NoConsole)
     );
     assert_eq!(
@@ -948,6 +953,46 @@ fn tabs_are_tried_only_in_windows_terminal_through_the_console_that_named_the_wi
         })
         .unwrap(),
         serde_json::json!({ "kind": "switched-window", "why": "title-ignored" })
+    );
+}
+
+/// ★ 终端那一级提权、窗口是按「它只有这一个窗口」认出来的：标签页读不了，但标签有几个照进程树数得出（Windows Terminal 每个标签
+/// 底下一个伪控制台宿主进程，非提权进程也看得见）。只有一个 ⇒ 前面显示的就是它 ⇒ 不用切、结局切成；两个以上（或数不出 = 0）⇒
+/// 照旧「已切到窗口 · 标签页未切换」，原因是提权。
+#[test]
+fn elevated_tab_step_counts_the_owner_s_tabs() {
+    let elevated = Via::Owner { elevated: true };
+    assert_eq!(tab_step(elevated, true, || 1), TabStep::Skip);
+    assert_eq!(
+        with_tab(FrontOutcome::Switched, None),
+        FrontOutcome::Switched
+    );
+    for n in [0, 2, 3] {
+        assert_eq!(
+            tab_step(elevated, true, || n),
+            TabStep::Miss(TabMiss::Elevated),
+            "{n} 个"
+        );
+    }
+    // 个数的数法：终端进程名下直接挂着的伪控制台宿主（名字不分大小写）；孙辈 · 别的进程名下的 · 别的程序不算。
+    let procs: Vec<(u32, u32, String)> = [
+        (7884, 6692, "OpenConsole.exe"),
+        (6732, 6692, "powershell.exe"),
+        (10200, 6732, "claude.exe"),
+        (9436, 6732, "OpenConsole.exe"),
+        (5000, 4000, "OpenConsole.exe"),
+    ]
+    .into_iter()
+    .map(|(p, pp, n)| (p, pp, n.to_string()))
+    .collect();
+    assert_eq!(crate::platform::wt_tabs::hosted_tabs(&procs, 6692), 1);
+    let mut two = procs.clone();
+    two.push((7900, 6692, "openconsole.EXE".into()));
+    assert_eq!(crate::platform::wt_tabs::hosted_tabs(&two, 6692), 2);
+    assert_eq!(crate::platform::wt_tabs::hosted_tabs(&procs, 1), 0);
+    assert_eq!(
+        serde_json::to_value(with_tab(FrontOutcome::Switched, Some(TabMiss::Elevated))).unwrap(),
+        serde_json::json!({ "kind": "switched-window", "why": "elevated" })
     );
 }
 

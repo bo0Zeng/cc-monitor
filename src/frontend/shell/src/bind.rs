@@ -570,7 +570,7 @@ pub(crate) fn pick_tab(r: &mut impl TabReader, marker: &str, tries: usize) -> Ta
 /// 拉前之前那一步：要不要试切标签页。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TabStep {
-    /// 不试（不是 Windows Terminal：经典控制台没有标签，别的终端程序不试）。
+    /// 不试（不是 Windows Terminal：经典控制台没有标签，别的终端程序不试 · 提权的终端只开着一个标签：不用切）。
     Skip,
     /// 借这个进程的控制台挂记号试。
     Try(u32),
@@ -579,11 +579,13 @@ pub(crate) enum TabStep {
 }
 
 /// 只在 Windows Terminal 的窗口（`is_wt`）、而且窗口是借某一级的控制台认出来的才试（记号挂在那个控制台上）；
-/// 终端那一级认出的窗口 ⇒ 试不了：提权 ⇒ 无权；否则 ⇒ 读不到控制台。
-pub(crate) fn tab_step(via: Via, is_wt: bool) -> TabStep {
+/// 终端那一级认出的窗口 ⇒ 试不了：提权 ⇒ 无权，但它只开着一个标签（`tabs` 照进程树数，只在这一支才数）⇒ 前面显示的就是它、不用切；
+/// 否则 ⇒ 读不到控制台。
+pub(crate) fn tab_step(via: Via, is_wt: bool, tabs: impl Fn() -> usize) -> TabStep {
     match (is_wt, via) {
         (false, _) => TabStep::Skip,
         (true, Via::Shown(pid)) => TabStep::Try(pid),
+        (true, Via::Owner { elevated: true }) if tabs() == 1 => TabStep::Skip,
         (true, Via::Owner { elevated: true }) => TabStep::Miss(TabMiss::Elevated),
         (true, Via::Owner { elevated: false }) => TabStep::Miss(TabMiss::NoConsole),
     }
@@ -620,7 +622,10 @@ fn bring_pick(p: &Pick) -> FrontOutcome {
     if let Err(m) = verify_window(w.hwnd, w.owner_pid, w.owner_proc_start) {
         return m.outcome();
     }
-    let tab = match tab_step(p.via, crate::platform::wt_tabs::is_terminal_window(w.hwnd)) {
+    let is_wt = crate::platform::wt_tabs::is_terminal_window(w.hwnd);
+    let tab = match tab_step(p.via, is_wt, || {
+        crate::platform::wt_tabs::tab_count(w.owner_pid)
+    }) {
         TabStep::Skip => None,
         TabStep::Miss(why) => Some(why),
         TabStep::Try(pid) => match crate::platform::console::pick_tab(pid, w.hwnd) {
