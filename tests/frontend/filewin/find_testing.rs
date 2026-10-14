@@ -872,18 +872,26 @@ impl FakeBackend {
                         None,
                     );
                 }
-                // 应答照后端：一组一项，那一项带 `files` / `dirs`；源名没有扩展名（合成目录 `a/d`）⇒ 按「一棵」回一组定值。
-                let from = args["items"][0]["from"].as_str().unwrap_or("");
-                let tree = !crate::source::remote_basename(from).contains('.');
-                let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
+                // 应答照后端：逐项，每一项带 `files` / `dirs`；源名没有扩展名（合成目录 `a/d`）⇒ 按「一棵」回一组定值。
+                let items = args["items"].as_array().cloned().unwrap_or_default();
+                let outcomes: Vec<serde_json::Value> = items
+                    .iter()
+                    .enumerate()
+                    .map(|(k, it)| {
+                        let from = it["from"].as_str().unwrap_or("");
+                        let tree = !crate::source::remote_basename(from).contains('.');
+                        let (files, dirs) = if tree { (3, 2) } else { (1, 0) };
+                        serde_json::json!({ "key": k.to_string(), "state": "done", "path": root, "bytes": 42, "files": files, "dirs": dirs })
+                    })
+                    .collect();
+                let n = outcomes.len();
                 (
                     true,
                     None,
                     None,
-                    Some(serde_json::json!({
-                        "outcomes": [{ "key": "0", "state": "done", "path": root, "bytes": 42, "files": files, "dirs": dirs }],
-                        "said": "已复制 1 项",
-                    })),
+                    Some(
+                        serde_json::json!({ "outcomes": outcomes, "said": said_done("beFiles.batch.verbCopy", n) }),
+                    ),
                 )
             }
             // 写面五条：**只记下来、不落盘**（判据要的是「窗口发了哪一条、参数长什么样」），
@@ -942,15 +950,16 @@ impl FakeBackend {
                         None,
                     );
                 }
+                let n = args["items"].as_array().map_or(0, Vec::len);
                 let reply = match cmd {
-                    // 改权限：一组一项，回改之前的位（撤销据它；合成值恒 0o644）。
+                    // 改权限：逐项，回改之前的位（撤销据它；合成值恒 0o644）。
                     "files-chmod" => serde_json::json!({
-                        "outcomes": [{ "key": "0", "state": "done", "path": root, "before": 0o644 }],
-                        "said": "已改权限 1 项",
+                        "outcomes": (0..n).map(|k| serde_json::json!({ "key": k.to_string(), "state": "done", "path": root, "before": 0o644 })).collect::<Vec<_>>(),
+                        "said": said_done("beFiles.batch.verbChmod", n),
                     }),
                     "files-delete" => serde_json::json!({
-                        "outcomes": [{ "key": "0", "state": "done", "path": root, "removed": 1 }],
-                        "said": "已删除 1 项",
+                        "outcomes": (0..n).map(|k| serde_json::json!({ "key": k.to_string(), "state": "done", "path": root, "removed": 1 })).collect::<Vec<_>>(),
+                        "said": said_done("beFiles.batch.verbDelete", n),
                     }),
                     _ => serde_json::json!({ "path": root }),
                 };
@@ -1494,4 +1503,13 @@ pub fn wire(
     });
     let (rd, wr) = tokio::io::split(ours);
     comms_inward::chan::client::Client::over(rd, wr, frame)
+}
+
+/// 合成后端那一行（照后端：全成 ⇒ `beFiles.batch.done`）。
+fn said_done(verb: &str, n: usize) -> String {
+    let v = copy_core::copy_text(verb, &[]);
+    copy_core::copy_text(
+        "beFiles.batch.done",
+        &[("action", &v), ("n", &n.to_string())],
+    )
 }

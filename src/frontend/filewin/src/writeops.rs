@@ -250,7 +250,7 @@ pub struct WriteOutcome {
 ///
 /// - `confirm`：**一次**拿到「要问的那几件」，回「这几件准做」。⚠ 它是 `FnOnce`
 ///   —— 类型上就不许被调第二次，「一次问完」这件事有一半是编译器在守。
-/// - `apply`：真做一件。
+/// - `apply`：真做准做的那一摞（同一种的一组一条命令，[`apply_all`]），交回逐件的成败。
 ///
 /// ⚠ **不用问的那几件也要等这一次问完**。那是刻意的，同 [`super::transfer::run_drop`]：
 /// 若把它们先放出去，用户答「全都别做」时已经有几件写到对面盘上了 ——
@@ -259,8 +259,8 @@ pub async fn run_writes<C, CFut, A, AFut>(ops: Vec<WriteOp>, confirm: C, apply: 
 where
     C: FnOnce(Vec<WriteOp>) -> CFut,
     CFut: Future<Output = Vec<WriteOp>>,
-    A: Fn(WriteOp) -> AFut,
-    AFut: Future<Output = Result<(), super::source::Failed>>,
+    A: FnOnce(Vec<WriteOp>) -> AFut,
+    AFut: Future<Output = Vec<(WriteOp, Result<(), super::source::Failed>)>>,
 {
     let mut out = WriteOutcome::default();
     if ops.is_empty() {
@@ -287,9 +287,9 @@ where
         .collect();
     out.skipped = out.asked - go.iter().filter(|o| o.needs_confirm()).count();
 
-    // ── ② 才动手。**串行**，理由住本模块头注 §三那一段。 ──────────────────
-    for op in go {
-        match apply(op.clone()).await {
+    // ── ② 才动手：准做的那一摞一次交出去（删除 · 改权限一组一条命令；新建 · 改名一件一条）。 ──
+    for (op, r) in apply(go).await {
+        match r {
             Ok(()) => out.ok += 1,
             Err(e) => out.failed.push((op.label(), e)),
         }
@@ -463,6 +463,147 @@ async fn apply_named(
                 .await
                 .map(Applied::Chmod)
         }
+    }
+}
+
+/// 真做准做的那一摞：删除 · 改权限按同一个根（同一个权限位）收成一组一条命令（带票：做到一半断了带同一张票再问，
+/// 删一整棵树也撤得了 —— 有目录要删 ⇒ 「进度」里一行，那一行的「停」发 `files-batch-stop`）；新建 · 改名一件一条。
+/// 交回逐件的成败与那一件的应答（改权限的 `before` 撤销要用）。
+pub async fn apply_all(
+    line: &Line,
+    origin: &Origin,
+    ops: Vec<WriteOp>,
+    root_raw: Option<&[u8]>,
+    progress: &super::progress::Progress,
+    dir: &str,
+    machine: &str,
+) -> Vec<(WriteOp, Result<Applied, super::source::Failed>)> {
+    use cmd_wire::files as w;
+    let root = |shown: String| match root_raw {
+        Some(r) => w::WirePath(r.to_vec()),
+        None => w::WirePath::from(shown.as_str()),
+    };
+    let mut out = Vec::with_capacity(ops.len());
+    // 一组：(动词, 根, 权限位) ⇒ 那几件。
+    let mut groups: Vec<((super::batch::Verb, String, u32), Vec<WriteOp>)> = Vec::new();
+    for op in ops {
+        let key = match &op {
+            WriteOp::Delete { path, .. } => (super::batch::Verb::Delete, parent_dir(path), 0),
+            WriteOp::Chmod { path, mode, .. } => {
+                (super::batch::Verb::Chmod, parent_dir(path), *mode)
+            }
+            _ => {
+                let r = apply_named(line, origin, &op, root_raw, None).await;
+                out.push((op, r));
+                continue;
+            }
+        };
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, v)) => v.push(op),
+            None => groups.push((key, vec![op])),
+        }
+    }
+    for ((verb, at, mode), group) in groups {
+        let names: Vec<String> = group
+            .iter()
+            .map(|op| match op {
+                WriteOp::Delete { path, .. } | WriteOp::Chmod { path, .. } => {
+                    remote_basename(path).to_string()
+                }
+                _ => String::new(),
+            })
+            .collect();
+        let rel = |op: &WriteOp| match op {
+            WriteOp::Delete { path, raw, .. } | WriteOp::Chmod { path, raw, .. } => {
+                rel_wire(remote_basename(path), raw.as_deref())
+            }
+            _ => w::WirePath(Vec::new()),
+        };
+        let (cmd, args, tree) = match verb {
+            super::batch::Verb::Delete => {
+                let req = w::FilesDeleteReq {
+                    root: root(at),
+                    items: group
+                        .iter()
+                        .map(|op| w::DeleteItem {
+                            rel: rel(op),
+                            recursive: matches!(op, WriteOp::Delete { is_dir: true, .. })
+                                .then_some(true),
+                            expect: None,
+                        })
+                        .collect(),
+                    ticket: None,
+                };
+                let tree = req.items.iter().any(|i| i.recursive == Some(true));
+                ("files-delete", serde_json::to_value(&req), tree)
+            }
+            _ => {
+                let req = w::FilesChmodReq {
+                    root: root(at),
+                    items: group
+                        .iter()
+                        .map(|op| w::ChmodItem { rel: rel(op) })
+                        .collect(),
+                    mode,
+                    ticket: None,
+                };
+                ("files-chmod", serde_json::to_value(&req), false)
+            }
+        };
+        let board = super::batch::BatchBoard::new(super::batch::Plan {
+            verb,
+            cmd,
+            args: args.unwrap_or_default(),
+            names,
+            into: None,
+            machine: machine.to_string(),
+        });
+        if tree {
+            progress.add(
+                super::progress::Trip::Batch {
+                    board: board.clone(),
+                    icon: egui_phosphor::regular::TRASH,
+                },
+                Some(dir.to_string()),
+                None,
+            );
+        }
+        super::batch::go(line.clone(), origin.clone(), origin.clone(), board.clone()).await;
+        let phase = board.phase();
+        for (i, op) in group.into_iter().enumerate() {
+            let r = match &phase {
+                super::batch::Phase::Ended(reply) => {
+                    match reply.outcomes.iter().find(|o| o.key == i.to_string()) {
+                        Some(o) if o.state == cmd_wire::batch::ItemState::Done => Ok(match verb {
+                            super::batch::Verb::Chmod => Applied::Chmod(o.clone()),
+                            _ => Applied::Deleted(o.clone()),
+                        }),
+                        Some(o) => Err(super::source::one_of(only_one(reply, o))
+                            .err()
+                            .unwrap_or_default()),
+                        None => Err(super::source::Failed::from(reply.said.clone())),
+                    }
+                }
+                super::batch::Phase::Failed(f) => Err(f.clone()),
+                _ => Err(super::source::Failed::from(copy_text(
+                    "rsFilewinSource.said.cancelled",
+                    &[],
+                ))),
+            };
+            out.push((op, r));
+        }
+    }
+    out
+}
+
+/// 一组里没成的那一项 ⇒ 只有它的那一份回包（借 [`super::source::one_of`] 拆出码 · 那一句 · 详情）。
+fn only_one(
+    reply: &cmd_wire::batch::BatchReply,
+    o: &cmd_wire::batch::BatchOutcome,
+) -> cmd_wire::batch::BatchReply {
+    cmd_wire::batch::BatchReply {
+        outcomes: vec![o.clone()],
+        said: reply.said.clone(),
     }
 }
 

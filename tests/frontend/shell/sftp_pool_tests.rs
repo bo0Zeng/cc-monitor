@@ -92,6 +92,10 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
                         r#"{{"kind":"reply","id":{id:?},"ok":true,"data":{{"items":[{{"key":"0","state":"opened","id":"xfer-{n}","staged":"00112233445566778899aabbccddeeff"}}]}}}}"#
                     )
                 }
+                // 本机落点那一侧有同名、还没答 ⇒ 回 `exists` 带同名清单（窗口照它画冲突框）。
+                Some("transfer-download") if v["args"]["local_dir"] == "/clash" => format!(
+                    r#"{{"kind":"reply","id":{id:?},"ok":false,"code":"exists","message":"同名 1 项","data":{{"conflicts":[{{"key":"0","name":"a","kind":"file","there":"file","dir_into":false}}]}}}}"#
+                ),
                 Some("transfer-download") => {
                     n += 1;
                     format!(
@@ -348,7 +352,9 @@ async fn bad_subscriptions_say_why_in_place() {
 async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
     let _g = crate::inbound_client::local_origin_test_lock();
     let mut rig = rig(&["ping"]);
-    let (code, e) = transfer_call(
+    let Refusal {
+        code, message: e, ..
+    } = transfer_call(
         cfg("中继·旧"),
         TRANSFER_UPLOAD,
         &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }] }),
@@ -366,7 +372,9 @@ async fn an_old_local_backend_is_named_too_old_and_nothing_is_sent() {
 async fn without_a_local_backend_the_transfer_is_refused_out_loud() {
     let _g = crate::inbound_client::local_origin_test_lock();
     assert!(crate::inbound_client::client_for(LOCAL_ORIGIN).is_none());
-    let (code, e) = transfer_call(
+    let Refusal {
+        code, message: e, ..
+    } = transfer_call(
         cfg("中继·无"),
         TRANSFER_UPLOAD,
         &serde_json::json!({ "items": [{ "local_path": "/tmp/q.bin" }] }),
@@ -536,7 +544,11 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         ),
         ("transfer-start", serde_json::json!({ "id": "xfer-1" })),
     ] {
-        let (code, said) = transfer_call(cfg("中继·字节"), op, &payload)
+        let Refusal {
+            code,
+            message: said,
+            ..
+        } = transfer_call(cfg("中继·字节"), op, &payload)
             .await
             .expect_err("该拒");
         got.push(format!("{op} {payload} => {code} {said}"));
@@ -553,4 +565,26 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         r#"transfer-start {"id":"xfer-1"} => bad_args 请求格式不对 · transfer-start 不是传输命令"#,
     ];
     assert_eq!(got, want, "中继开单的字节变了");
+}
+
+/// 本机后端拒了、带着 `data`（`exists` 的同名清单）⇒ 原样带回窗口（今天之前那一格在这里丢掉，窗口画不出冲突框）。
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_refusal_brings_its_data_back_to_the_window() {
+    let _g = crate::inbound_client::local_origin_test_lock();
+    let _rig = rig(&ALL);
+    let r = transfer_call(
+        cfg("中继·同名"),
+        TRANSFER_DOWNLOAD,
+        &serde_json::json!({ "items": [{ "remote_path": "/srv/a" }], "local_dir": "/clash" }),
+    )
+    .await
+    .expect_err("有同名该拒");
+    assert_eq!(r.code, "exists");
+    assert_eq!(
+        r.data,
+        Some(
+            serde_json::json!({"conflicts": [{"key": "0", "name": "a", "kind": "file", "there": "file", "dir_into": false}]})
+        ),
+        "同名清单没带回来"
+    );
 }

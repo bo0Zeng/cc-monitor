@@ -64,6 +64,13 @@ pub struct RenderTally {
     pub menu_blank: bool,
     /// 这一帧哪一行被**拖起**了（带出「从哪一行拖起」）。
     pub drag_started: Option<usize>,
+    /// 🔴这一帧在**框选**（从列表空白处按下拖动）：框到的那几行 `(首, 尾)`（含两端；框里一行都没有 ⇒ `None` 那一格是空段）
+    /// ＋ 按着 Ctrl（加进已选）。松手那一帧也报（[`Self::band_end`] 同时为真）。
+    pub band: Option<(Option<(usize, usize)>, bool)>,
+    /// 框选松手了。
+    pub band_end: bool,
+    /// 框选中按了 Esc：选中回到按下之前。
+    pub band_cancel: bool,
     /// 🔴这一帧被画成「**选中**」的那几行（下标，按画的顺序；只含真画出来的那几行）。
     pub picked_rows: Vec<usize>,
     /// 🔴这一帧被画成「**键盘光标**」的那一行（`None` = 光标不在视野里 / 没有光标）。
@@ -729,9 +736,18 @@ pub fn show_file_rows_with_tail(
         let below = egui::Rect::from_min_max(
             egui::pos2(
                 out.inner_rect.left(),
-                out.inner_rect.top() + out.content_size.y,
+                out.inner_rect.top() + out.content_size.y - out.state.offset.y,
             ),
             out.inner_rect.max,
+        );
+        band(
+            ui,
+            out.inner_rect,
+            below,
+            out.state.offset.y,
+            row_h,
+            rows.len(),
+            tally,
         );
         if tally.menu_clicked.is_none()
             && below.height() > 0.0
@@ -741,6 +757,73 @@ pub fn show_file_rows_with_tail(
             tally.menu_blank = true;
         }
     });
+}
+
+/// **框选**：只从空白处（最后一行下面）按下才起（行上按下仍是「拖到另一栏」）；拖动时画一块选框，框到的行报给窗口；
+/// 按着 Ctrl ⇒ 加进已选；Esc ⇒ 这一次不算（选中回到按下之前）。起点按列表内容的坐标记（滚动了也不漂）。
+fn band(
+    ui: &mut Ui,
+    list: egui::Rect,
+    below: egui::Rect,
+    offset: f32,
+    row_h: f32,
+    n: usize,
+    tally: &mut RenderTally,
+) {
+    let id = ui.id().with("filewin-band");
+    let start: Option<f32> = ui.data(|d| d.get_temp(id));
+    let (pressed, down, released, at, ctrl, esc) = ui.input(|i| {
+        (
+            i.pointer.primary_pressed(),
+            i.pointer.primary_down(),
+            i.pointer.primary_released(),
+            i.pointer.interact_pos(),
+            i.modifiers.command,
+            i.key_pressed(egui::Key::Escape),
+        )
+    });
+    let start = match (start, at) {
+        // 按下落在这一层的空白处才起（菜单 · 对话框那几层盖在上面时，那一下是它们的）。
+        (None, Some(p)) if pressed && below.height() > 0.0 && ui.rect_contains_pointer(below) => {
+            let y = p.y - list.top() + offset;
+            ui.data_mut(|d| d.insert_temp(id, y));
+            Some(y)
+        }
+        (s, _) => s,
+    };
+    let Some(y0) = start else { return };
+    if esc {
+        ui.data_mut(|d| d.remove::<f32>(id));
+        tally.band_cancel = true;
+        return;
+    }
+    let y1 = at.map_or(y0, |p| p.y - list.top() + offset);
+    let (lo, hi) = (y0.min(y1), y0.max(y1));
+    let first = (lo / row_h).floor().max(0.0) as usize;
+    let last = ((hi / row_h).ceil() as usize).min(n);
+    let span = (first < last).then(|| (first, last - 1));
+    tally.band = Some((span, ctrl));
+    let p = palette(ui.ctx());
+    let x0 = at
+        .map_or(list.left(), |p| p.x)
+        .clamp(list.left(), list.right());
+    let rect = egui::Rect::from_min_max(
+        egui::pos2(list.left() + PAD, list.top() + lo - offset),
+        egui::pos2(x0.max(list.left() + PAD + 1.0), list.top() + hi - offset),
+    )
+    .intersect(list);
+    ui.painter()
+        .rect_filled(rect, 2.0, p.picked.linear_multiply(0.6));
+    ui.painter().rect_stroke(
+        rect,
+        2.0,
+        egui::Stroke::new(1.0, p.accent),
+        egui::StrokeKind::Inside,
+    );
+    if released || !down {
+        ui.data_mut(|d| d.remove::<f32>(id));
+        tally.band_end = true;
+    }
 }
 
 /// 一段字排成一行、超出 `width` 就截成「…」。

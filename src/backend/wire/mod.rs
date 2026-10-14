@@ -781,7 +781,7 @@ pub enum Frame {
         end: Option<TransferEnd>,
     },
 
-    /// **同一台上一组（复制 · 删除 · 改权限）此刻做到哪了**（`control/files_batch.rs`，带票的那一组在做时才出现）。
+    /// **一组（同一台上的复制 · 删除 · 改权限，两台之间的复制）此刻做到哪了**（`common/batch_book.rs`，带票的那一组在做时才出现）。
     ///
     /// 每一帧都是一整份快照，按变更合并（堵住时只留最新那一格）；结局在那一问的应答里，不在这里。
     /// 走应答那条独立通道，与 [`Frame::Transfer`] 同。旧 monitor / 手机端不认这个 kind ⇒ 忽略（additive）。
@@ -795,6 +795,12 @@ pub enum Frame {
         /// 手上那一项（根底下的相对段）；做完了缺席。
         #[serde(skip_serializing_if = "Option::is_none")]
         current: Option<PathBytes>,
+        /// 整组按字节已传几个（只有搬字节的那一种报：两台之间的复制）；不报 ⇒ 缺席。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bytes_done: Option<u64>,
+        /// 整组按字节一共几个（同 `bytes_done`，两格同在同缺）。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bytes_total: Option<u64>,
     },
 
     /// 〔「测试连接的进度不许倒退」〕**测试连接那一趟的一格进度**（`dial/probe.rs`，`remote-probe` 在跑时才出现）。

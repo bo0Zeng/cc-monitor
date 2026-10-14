@@ -506,8 +506,8 @@ fn perform_refuses_what_the_table_refuses_and_says_so() {
         (
             vec![file("a.bin"), file("b.bin")],
             vec!["a.bin", "b.bin"],
-            // 多项的「权限」放开了（批量改权限）⇒ 不在拒绝表里。
-            vec![Open, Edit, Copy, Download, Rename],
+            // 多项的「权限」放开了（批量改权限）· 多项下载（选目录）也放开了 ⇒ 都不在拒绝表里。
+            vec![Open, Edit, Copy, Rename],
         ),
         (
             vec![file("a.bin")],
@@ -624,11 +624,18 @@ async fn the_batch_that_reaches_the_wire_is_exactly_the_selection() {
             .unwrap()
             .iter()
             .filter(|r| r["cmd"] == "files-delete")
-            .map(|r| {
-                r["args"]["items"][0]["rel"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string()
+            .flat_map(|r| {
+                // 一组一条：那一条里每一项都带着票。
+                assert!(
+                    r["args"]["ticket"].as_str().is_some_and(|t| !t.is_empty()),
+                    "删一组没带票：{r}"
+                );
+                r["args"]["items"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|it| it["rel"].as_str().unwrap_or("").to_string())
             })
             .collect();
         v.sort();
@@ -636,7 +643,17 @@ async fn the_batch_that_reaches_the_wire_is_exactly_the_selection() {
     };
     assert_eq!(
         on_wire, want,
-        "线上那几行 files-delete 与选中态不等（两向）"
+        "线上那一条 files-delete 与选中态不等（两向）"
+    );
+    assert_eq!(
+        wired
+            .cmds()
+            .iter()
+            .filter(|c| c.as_str() == "files-delete")
+            .count(),
+        1,
+        "一组该是一条命令：{:?}",
+        wired.cmds()
     );
     // 跑完 ⇒ 选中清掉（那几个名字已经不在了），下一帧重列。
     d.frame(&mut w, Vec::new());
@@ -804,7 +821,16 @@ fn the_menu_lists_exactly_what_the_selection_allows() {
             vec![file("a.bin"), file("b.bin"), file("c.bin")],
             vec![("a.bin", NONE), ("c.bin", CTRL)],
             "c.bin",
-            vec![c!("rsFilewinSize.label.size"), chmod, delete2, "Delete"],
+            // 单栏：没有「复制到另一栏」那一项。
+            vec![
+                copy_core::copy_text("rsFilewinSelect.label.downloadMany", &[("n", "2")]).leak(),
+                "Ctrl+D",
+                copy_core::copy_text("rsFilewinSelect.label.crossMany", &[("n", "2")]).leak(),
+                c!("rsFilewinSize.label.size"),
+                chmod,
+                delete2,
+                "Delete",
+            ],
         ),
         (
             "右键落在选中外：换成只选它",
@@ -1354,16 +1380,12 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
         .unwrap()
         .iter()
         .filter(|r| r["cmd"] == "files-chmod")
-        .map(|r| r["args"]["items"][0]["rel"].clone())
+        .map(|r| r["args"]["items"].clone())
         .collect();
     assert_eq!(
         chmods,
-        vec![
-            serde_json::json!("a.bin"),
-            b16.clone(),
-            serde_json::json!("sub")
-        ],
-        "线上那几行 files-chmod 与选中态不等"
+        vec![serde_json::json!([{ "rel": "a.bin" }, { "rel": b16.clone() }, { "rel": "sub" }])],
+        "线上那一条 files-chmod 与选中态不等（一组一条）"
     );
 
     // 删：目录 ＋ 乱码名（不跑帧 ⇒ 列表不重列，下标还是那三行）。
@@ -1376,15 +1398,23 @@ async fn batch_chmod_and_a_recursive_delete_reach_the_wire_with_the_right_shapes
         .unwrap()
         .iter()
         .filter(|r| r["cmd"] == "files-delete")
-        .map(|r| r["args"].clone())
+        .map(|r| {
+            let mut a = r["args"].clone();
+            // 票是窗口铸的 UUID（每一组都带）：在就行，值不比。
+            assert!(
+                a["ticket"].as_str().is_some_and(|t| t.len() == 36),
+                "删一组没带票：{a}"
+            );
+            a.as_object_mut().unwrap().remove("ticket");
+            a
+        })
         .collect();
     assert_eq!(
         dels,
         vec![
-            serde_json::json!({ "root": "/srv/data", "items": [{ "rel": b16 }] }),
-            serde_json::json!({ "root": "/srv/data", "items": [{ "rel": "sub", "recursive": true }] }),
+            serde_json::json!({ "root": "/srv/data", "items": [{ "rel": b16 }, { "rel": "sub", "recursive": true }] })
         ],
-        "线上那几行 files-delete 不对（目录要带 recursive，乱码名要走 b16）"
+        "线上那一条 files-delete 不对（一组一条；目录要带 recursive，乱码名要走 b16）"
     );
 }
 

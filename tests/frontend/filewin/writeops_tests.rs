@@ -41,6 +41,32 @@ fn row(name: &str, is_dir: bool, lossy: bool) -> Listed {
 }
 
 /// 一台**时序台架**（形状照 `copy_tests::Tape` 与 `transfer_tests::Tape`）。
+
+/// 逐件的那一形 ⇒ `run_writes` 收的整摞那一形（判据照旧一件一件答）。
+fn each<'a, F, Fut>(
+    f: F,
+) -> impl FnOnce(
+    Vec<WriteOp>,
+) -> futures::future::LocalBoxFuture<
+    'a,
+    Vec<(WriteOp, Result<(), super::super::source::Failed>)>,
+>
+where
+    F: Fn(WriteOp) -> Fut + 'a,
+    Fut: std::future::Future<Output = Result<(), super::super::source::Failed>> + 'a,
+{
+    move |ops| {
+        Box::pin(async move {
+            let mut v = Vec::with_capacity(ops.len());
+            for op in ops {
+                let r = f(op.clone()).await;
+                v.push((op, r));
+            }
+            v
+        })
+    }
+}
+
 #[derive(Default)]
 struct Tape {
     seq: AtomicUsize,
@@ -118,10 +144,10 @@ async fn a_session_file_path_is_asked_and_done_like_any_other() {
             asked.fetch_add(a.len(), O::SeqCst);
             async move { a } // 全答「做」
         },
-        |op| {
+        each(|op| {
             applied.0.lock().unwrap().push(op);
             async move { Ok(()) }
-        },
+        }),
     )
     .await;
     assert_eq!(
@@ -239,13 +265,13 @@ async fn the_question_is_asked_exactly_once_for_the_whole_batch() {
             *seen.lock().unwrap() = a.clone();
             async move { a } // 全答「做」
         },
-        |_op| {
+        each(|_op| {
             let t = &tape;
             async move {
                 t.mark("apply");
                 Ok::<(), crate::source::Failed>(())
             }
-        },
+        }),
     )
     .await;
 
@@ -289,11 +315,14 @@ async fn nothing_is_touched_when_the_answer_is_no() {
     };
     let out = run_writes(
         vec![del.clone(), mkdir.clone()],
-        |_| async move { Vec::new() }, // 「都别做」
-        |op| {
-            applied.0.lock().unwrap().push(op);
-            async move { Ok(()) }
-        },
+        |_| async move { Vec::new() },
+        each(
+            // 「都别做」
+            |op| {
+                applied.0.lock().unwrap().push(op);
+                async move { Ok(()) }
+            },
+        ),
     )
     .await;
     assert_eq!(
@@ -326,10 +355,10 @@ async fn a_batch_with_nothing_dangerous_asks_nobody() {
             asked.fetch_add(1, O::SeqCst);
             async move { Vec::new() }
         },
-        |op| {
+        each(|op| {
             applied.0.lock().unwrap().push(op);
             async move { Ok(()) }
-        },
+        }),
     )
     .await;
     assert_eq!(asked.load(O::SeqCst), 0, "没有危险件却弹了一个框");
@@ -355,11 +384,14 @@ async fn the_answer_cannot_smuggle_in_an_operation_nobody_fenced() {
             is_dir: false,
             raw: None,
         }],
-        move |_| async move { vec![smuggled] }, // 答复里换了一件别的
-        |op| {
-            applied.0.lock().unwrap().push(op);
-            async move { Ok(()) }
-        },
+        move |_| async move { vec![smuggled] },
+        each(
+            // 答复里换了一件别的
+            |op| {
+                applied.0.lock().unwrap().push(op);
+                async move { Ok(()) }
+            },
+        ),
     )
     .await;
     assert_eq!(
@@ -380,7 +412,7 @@ async fn a_failure_comes_back_with_the_message_the_pool_gave() {
             path: "/srv/data/m".into(),
         }],
         |a| async move { a },
-        |_| async move { Err("新建目录失败: permission denied".into()) },
+        each(|_| async move { Err("新建目录失败: permission denied".into()) }),
     )
     .await;
     assert_eq!(out.ok, 0);
@@ -403,7 +435,7 @@ async fn an_empty_batch_does_nothing_at_all() {
             asked.fetch_add(1, O::SeqCst);
             async move { Vec::new() }
         },
-        |_| async move { Ok(()) },
+        each(|_| async move { Ok(()) }),
     )
     .await;
     assert_eq!(out, WriteOutcome::default());

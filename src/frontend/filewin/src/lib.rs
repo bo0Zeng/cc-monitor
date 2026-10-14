@@ -229,6 +229,7 @@
 //!
 
 // 🔴**大文件模式**：只排视口内的行。
+pub mod batch;
 pub mod bigfile;
 // 帧日志：`CCM_FILEWIN_FRAME_LOG=<文件>` 打开时每帧记一行（为什么重画 · 画面与布局变没变），收集「一闪一闪」的证据；不设就什么都不做。
 pub mod frame_log;

@@ -290,7 +290,6 @@ pub async fn pull_one_at(
     dest: cmd_wire::files::WirePath,
     board: &DownloadBoard,
 ) -> Result<(), super::source::Failed> {
-    let stop = board.cancels().stop_token();
     // 一组一项：存盘框给的落点拆成目录 ＋ 落名；存盘框已经问过盖不盖 ⇒ 同名照盖。
     let (dir, name) = split_dest(&dest);
     let ask = cmd_wire::transfer::TransferDownloadAsk {
@@ -304,6 +303,17 @@ pub async fn pull_one_at(
     };
     let opened = super::source::ask_typed(line, origin, &ask, super::transfer::OPEN_BUDGET).await?;
     let (id, _) = super::source::opened_one(opened)?;
+    watch_opened(line, origin, &id, board).await
+}
+
+/// 开了单的那一趟：订 `transfer/<id>` 即起跑，看到收场（进度交看板，「停」＝ 停订）。
+pub async fn watch_opened(
+    line: &super::source::Line,
+    origin: &super::source::Origin,
+    id: &str,
+    board: &DownloadBoard,
+) -> Result<(), super::source::Failed> {
+    let stop = board.cancels().stop_token();
     let sink = board.clone();
     super::source::watch(
         line,
@@ -314,6 +324,86 @@ pub async fn pull_one_at(
     )
     .await?;
     Ok(())
+}
+
+/// **下载一组到本机一个目录**：一条 `transfer-download`（落名照原名），同名由本机落点那一侧探、回 `exists` 就画冲突框
+/// （借 [`super::batch::BatchBoard`] 那一问，答完带 `decide` 再发）；开了单的每一项「进度」里各一行。
+pub async fn pull_many(
+    line: super::source::Line,
+    origin: super::source::Origin,
+    board: super::batch::BatchBoard,
+    progress: super::progress::Progress,
+    srcs: Vec<(String, String)>,
+) {
+    let call = |args: serde_json::Value| {
+        let (line, origin) = (line.clone(), origin.clone());
+        async move {
+            super::source::ask_batch(
+                &line,
+                &origin,
+                super::batch::CMD_DOWNLOAD,
+                &args,
+                super::transfer::OPEN_BUDGET,
+            )
+            .await
+        }
+    };
+    let Some(v) = super::batch::run(&board, call, || async {}).await else {
+        return;
+    };
+    let Ok(opened) = serde_json::from_value::<cmd_wire::transfer::TransferOpened>(v) else {
+        return;
+    };
+    for it in opened.items {
+        let Some(i) = it.key.parse::<usize>().ok() else {
+            continue;
+        };
+        let Some((src, name)) = srcs.get(i).cloned() else {
+            continue;
+        };
+        // 同名照答跳过的那几项不开单、不占一行。
+        if it.state == cmd_wire::transfer::OpenState::Skipped {
+            continue;
+        }
+        let dest = it
+            .path
+            .as_ref()
+            .map(|p| String::from_utf8_lossy(p.bytes()).into_owned())
+            .unwrap_or_default();
+        let row = DownloadBoard::default();
+        row.begin(&name);
+        progress.add(
+            super::progress::Trip::Download {
+                board: row.clone(),
+                name: name.clone(),
+                src,
+                dest: dest.clone(),
+            },
+            None,
+            None,
+        );
+        match (it.state, it.id) {
+            (cmd_wire::transfer::OpenState::Opened, Some(id)) => {
+                let (line, origin) = (line.clone(), origin.clone());
+                tokio::spawn(async move {
+                    let r = watch_opened(&line, &origin, &id, &row).await;
+                    let (got, _) = row.seen();
+                    row.finish(match r {
+                        Ok(()) => Outcome::Done { dest, bytes: got },
+                        Err(why) => Outcome::Failed { dest, why },
+                    });
+                });
+            }
+            (_, _) => row.finish(Outcome::Failed {
+                dest,
+                why: super::source::Failed {
+                    code: it.code,
+                    said: it.reason.unwrap_or_default(),
+                    detail: it.detail.unwrap_or_default(),
+                },
+            }),
+        }
+    }
 }
 
 /// 本机落点（原始字节）拆成目录 ＋ 最后那一段名字（按字节切 `/`；没有 `/` ⇒ 目录是空的，后端照实拒）。

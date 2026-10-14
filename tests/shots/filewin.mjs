@@ -22,7 +22,7 @@ export const FILEWIN_SCENES = [
   { id: "filewin-pull", scene: "pull", title: "文件窗口 · 下载在路上", desc: "一趟下载在路上：「进度」表收着，状态栏右端「进度 1」带一小条合计进度（点开是表里那一行）" },
   { id: "filewin-mkdir-error", scene: "mkdir-error", title: "文件窗口 · 新建文件夹名字填错", desc: "就地新建文件夹那一格把名字清空了就回车：红边 ＋ 格子下面挂一句「名称为空」，那一格留着" },
   { id: "filewin-search", scene: "search", title: "文件窗口 · 按名字搜", desc: "工具条搜索框里输「retry」：全家目录里名字带它的文件。索引那一行的「扫描间隔 4242 秒」是合成后端故意给的怪数、命中路径是沙箱里的长路径" },
-  { id: "filewin-progress", scene: "progress", title: "文件窗口 · 进度", desc: "窗口底部「进度」表：上传一摞与下载在跑（可停）· 删除文件夹在跑（那台撤不动，「停」灰着）· 上传失败（重试 2 个）· 复制到另一台完成；状态栏「进度 3」带红点" },
+  { id: "filewin-progress", scene: "progress", title: "文件窗口 · 进度", desc: "窗口底部「进度」表：上传一摞与下载在跑（可停）· 删除 2 项在跑（带票，「停」按得下）· 上传失败（重试 2 个）· 复制 3 项到另一台收尾（后端那一行 ＋ 没成的那一项）· 复制 5 项断开（其余待核）；状态栏「进度 3」带红点" },
   { id: "filewin-stale", scene: "stale", title: "文件窗口 · 断线过期", desc: "和 devbox 断了：工具条下一条「devbox 离线 · 采样 13:40」＋［重新连接］；列表照常摆着上次那一屏；写类按钮灰（悬停「离线 · 只读」）" },
   { id: "filewin-unreadable", scene: "unreadable", title: "文件窗口 · 无权限目录清单", desc: "按名字搜，状态行「3 个目录无权限［查看］」点开：列后端交来的那两个目录（相对搜索起点）＋「另外 1 个」；点一行复制那条绝对路径（稿里没画，待认）" },
   { id: "filewin-edit-page", scene: "edit-page", title: "文件窗口 · 编辑页", desc: "目录页上开 main.rs ⇒ 同一栏一个编辑页（标签「✎ main.rs」、未保存点）：头条面包屑 · 未保存 · 查找 · 保存 · ⋯；行号槽 ＋ 正文在面里滚；查找条浮在右上；状态栏是底条（行 · 列 · UTF-8 · LF · 大小 / 上限）" },
@@ -46,6 +46,9 @@ export const FILEWIN_SCENES = [
   { id: "filewin-multi-menu", scene: "multi-menu", title: "文件窗口 · 多选 ＋ 右键菜单", desc: "Ctrl 点选 docs · main.rs · release.tar.gz、在压缩包上右键（稿 02）：多选那一种只给「算大小」「改权限…」｜「删除 3 项…」（红、带 Delete）；每一项图标 ＋ 字 ＋ 右端快捷键，不画框。稿上的「下载 3 项」「复制到另一台…」「复制到另一栏」多选还做不了，没有" },
   { id: "filewin-blank-menu", scene: "blank-menu", title: "文件窗口 · 空白处右键", desc: "列表最后一行下面右键：选中清掉，菜单对这个目录说话 ——「文件夹」（Ctrl+Shift+N）·「空文件」·「上传」（Ctrl+U）｜「终端」（稿里没画，照命令栏「这个目录」那一组）" },
   { id: "filewin-focus", scene: "focus", title: "文件窗口 · 键盘焦点环", desc: "按 Tab 走到搜索框：2px 强调色外环（鼠标点出来的不画）" },
+  { id: "filewin-many-menu", scene: "many-menu", title: "文件窗口 · 多选右键菜单", desc: "（按两栏摆菜单）选中一个文件夹 ＋ 两个文件右键：「下载 3 项」灰着（有目录，悬停说哪几项）·「复制 3 项到另一台…」·「复制 3 项到另一栏」｜ 算大小 · 改权限 ｜ 删除 3 项" },
+  { id: "filewin-batch-ask", scene: "batch-ask", title: "文件窗口 · 同名冲突框", desc: "复制 3 项到另一栏，后端回同名 3 项：清单（要放过去的 → 已有的；目录那一行写不合并）·［逐项选］·［取消］［跳过同名］（默认）［保留两份］［覆盖］（危险）" },
+  { id: "filewin-batch-each", scene: "batch-each", title: "文件窗口 · 同名冲突框 · 逐项选", desc: "逐项选展开：每行一个三段（跳过｜保留两份｜覆盖；目录只给前两段）·［取消］［确定］" },
 ].map((s) => ({ dir: "文件窗口", width: 1280, height: 800, ...s }));
 
 export async function shootFilewin({ repo, sandbox, out, scenes, env, buildEnv, children }) {

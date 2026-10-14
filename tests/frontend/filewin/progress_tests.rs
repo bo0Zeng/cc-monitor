@@ -118,83 +118,115 @@ fn a_failed_upload_offers_to_retry_exactly_the_ones_that_failed() {
     assert!(matches!(v.button, Some((_, Ok(Act::Resume(ref r)))) if r.len() == 2));
 }
 
-/// 那台后端的阻塞档（机器上复制 · 解压 · 算大小 · 删除）：「停」在、灰着、悬停说那句（开这一行时交进来的事实）；
-/// 走传输台的那几类（上传 · 下载 · 复制到另一台）停得了。
+fn delete_board() -> crate::batch::BatchBoard {
+    crate::batch::BatchBoard::new(crate::batch::Plan {
+        verb: crate::batch::Verb::Delete,
+        cmd: "files-delete",
+        args: serde_json::json!({"root": "/srv", "items": [{"rel": "node_modules", "recursive": true}]}),
+        names: vec!["node_modules".into()],
+        into: None,
+        machine: "devbox".into(),
+    })
+}
+
+/// 删一整棵树那一行带票：「停」按得下去，发的是那一组的 `files-batch-stop`（撤的那一手由起跑那一侧装）；
+/// 那台阻塞档撤不动的那几类（解压 · 算大小）照旧灰着说为什么。
 #[test]
-fn trips_the_machine_cannot_stop_show_a_greyed_stop_that_says_why() {
+fn a_tree_delete_row_stops_through_its_ticket() {
     let p = Progress::default();
-    let why = copy_text(
-        "rsFilewinProgress.stop.uncancellable",
-        &[("machine", "devbox")],
-    );
-    let wb = WriteBoard::default();
-    p.add(
-        Trip::Delete {
-            board: wb.clone(),
-            base: 0,
-            name: "node_modules".into(),
-            n: 1,
+    let b = delete_board();
+    let hit = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let h2 = hit.clone();
+    b.set_stopper(std::sync::Arc::new(move || {
+        h2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
+    let id = p.add(
+        Trip::Batch {
+            board: b.clone(),
+            icon: egui_phosphor::regular::TRASH,
         },
         Some("/srv".into()),
-        Some(why.clone()),
+        None,
     );
     let v = p.jobs()[0].view();
     assert_eq!(
         v.title,
         copy_text(
-            "rsFilewinProgress.delete.runningOne",
-            &[("name", "node_modules")]
+            "rsFilewinBatch.row.title",
+            &[
+                ("action", &copy_text("rsFilewinBatch.verb.delete", &[])),
+                ("n", "1")
+            ]
         )
     );
-    assert_eq!(v.frac, Some(None), "删除那一行没画不确定进度");
-    assert_eq!(
-        v.button,
-        Some((copy_text("rsFilewinProgress.action.stop", &[]), Err(why)))
+    assert!(
+        matches!(v.button, Some((_, Ok(Act::Stop(x)))) if x == id),
+        "{:?}",
+        v.button
     );
-    assert!(!p.stop(p.jobs()[0].id), "撤不动的那一行被「停」了");
-    let d = DownloadBoard::default();
-    let id = p.add(
-        Trip::Download {
-            board: d.clone(),
-            name: "a".into(),
-            src: "/srv/a".into(),
-            dest: "/tmp/a".into(),
+    assert!(p.stop(id), "删大树那一行撤不了");
+    assert_eq!(hit.load(std::sync::atomic::Ordering::SeqCst), 1);
+    let why = copy_text(
+        "rsFilewinProgress.stop.uncancellable",
+        &[("machine", "devbox")],
+    );
+    let s = crate::size::SizeBoard::default();
+    p.add(
+        Trip::Size {
+            board: s,
+            name: "x".into(),
         },
         None,
-        None,
+        Some(why.clone()),
     );
-    assert!(matches!(p.jobs()[1].view().button, Some((_, Ok(Act::Stop(x)))) if x == id));
+    assert_eq!(
+        p.jobs()[1].view().button,
+        Some((copy_text("rsFilewinProgress.action.stop", &[]), Err(why)))
+    );
 }
 
-/// 删除那一问摆着时还不算开跑（表里不画）；人答了「取消」⇒ 那一行整个拿掉（没开过）。
-#[test]
-fn a_delete_the_user_cancelled_never_shows_up() {
+/// 冲突框摆着时还不算开跑（表里不画）；人答了「取消」⇒ 那一行整个拿掉（没开过）。
+#[tokio::test]
+async fn a_batch_the_user_cancelled_never_shows_up() {
     let p = Progress::default();
-    let wb = WriteBoard::default();
-    let _rx = wb.ask(vec![crate::writeops::WriteOp::Delete {
-        path: "/srv/x".into(),
-        is_dir: true,
-        raw: None,
-    }]);
+    let b = delete_board();
     p.add(
-        Trip::Delete {
-            board: wb.clone(),
-            base: 0,
-            name: "x".into(),
-            n: 1,
+        Trip::Batch {
+            board: b.clone(),
+            icon: egui_phosphor::regular::COPY,
         },
         Some("/srv".into()),
         None,
     );
-    assert!(p.is_empty(), "那一问还摆着，表里就有了一行");
-    wb.settle(false);
-    wb.finish(crate::writeops::WriteOutcome {
-        asked: 1,
-        skipped: 1,
-        ..Default::default()
+    let b2 = b.clone();
+    let task = tokio::spawn(async move {
+        crate::batch::run(
+            &b2,
+            |_| async {
+                Err(crate::batch::Rebuff {
+                    failed: crate::source::Failed {
+                        code: Some("exists".into()),
+                        said: String::new(),
+                        detail: String::new(),
+                    },
+                    data: Some(serde_json::json!({"conflicts": [
+                        {"key": "0", "name": "x", "kind": "file", "there": "file", "dir_into": false}
+                    ]})),
+                    cut: false,
+                })
+            },
+            || async {},
+        )
+        .await
     });
+    while !b.is_asking() {
+        tokio::task::yield_now().await;
+    }
+    assert!(p.is_empty(), "那一问还摆着，表里就有了一行");
+    b.answer(None, false);
+    task.await.unwrap();
     p.settle(0);
-    assert!(p.jobs().is_empty(), "答了取消的删除留在了表里");
+    assert!(p.jobs().is_empty(), "答了取消的那一组留在了表里");
 }
 
 /// 已完成的只留最近 50 行（更早的自动清掉）；在跑的一行都不清。

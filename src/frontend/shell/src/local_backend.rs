@@ -1421,10 +1421,8 @@ pub(crate) fn absorb_local_frame(
         } => crate::sftp_pool::deliver(&id, got, total, end),
         // 测试连接在本机常驻后端里跑：进度格原样交中继（`probe_relay::deliver`，从不阻塞），进界面订的 `probe-progress/<票>`。
         InboundFrame::Probe { ticket, cell } => crate::probe_relay::deliver(&ticket, cell),
-        // 一组复制 · 删除 · 改权限的进度：文件窗口订它那一口还没接（结局在那一问的应答里，进度只是快照）⇒ 记一行、不转。
-        InboundFrame::FilesBatch { ticket, .. } => {
-            tracing::debug!("本机后端推来一组的进度（ticket={ticket}）—— 窗口还没订这一口，不转");
-        }
+        // 一组的进度（本机上的复制 · 删除 · 改权限，两台之间的复制）：按票交给订了它的那扇文件窗口（从不阻塞；没人订就丢）。
+        InboundFrame::FilesBatch { ticket, cell } => crate::files_batch_relay::deliver(&ticket, cell),
         // 终端实时预览：本机后端推来的一屏 / 收尾 ⇒ 交订了 `<local>` 上 `terminal-screen/<票>` 的那条订阅（从不阻塞、不进内容通道）。
         InboundFrame::TerminalScreen { ticket, cell }
         | InboundFrame::TerminalFollowEnd { ticket, cell } => crate::terminal_screen_relay::deliver(

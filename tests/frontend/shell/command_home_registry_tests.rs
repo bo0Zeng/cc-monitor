@@ -248,6 +248,11 @@ const CHANNEL_OWN: &[(&str, Own, &str)] = &[
         "同上（下载那一形）",
     ),
     (
+        "transfer-copy",
+        Own::Channel,
+        "两台之间复制一组：monitor 补上源与落点两台的拨号请求，转给本机常驻后端（它经中转做完整组），不按寻址去那台",
+    ),
+    (
         "terminal-open",
         Own::Window,
         "文件窗口「在此打开终端」只交意图 `{cwd}`：monitor 补机器事实 → 本机后端 `terminal-ssh` 渲那一行 → `open_terminal_window` 开窗（与主界面同一条路）",

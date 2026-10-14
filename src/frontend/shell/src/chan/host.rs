@@ -12,7 +12,8 @@
 //!
 //! # 买不到的
 //!
-//! - 订阅只有一条流：`transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）；别的 `kind`
+//! - 订阅三条流：`transfer/<id>`（传输台那一趟的进度，翻译在本文件末尾，判据 `transfer_stream_tests`）· `link`（那台连没连着）·
+//!   `files-batch/<票>`（一组做到哪了，`files_batch_relay`）；别的 `kind`
 //!   [`InboundBackends::subscribe`] 原位回 `Closed{Peer(…)}`，不装作订阅成功。
 //! - 对端撤活是尽力的：外部前端撤单 ⇒ 路由器丢掉本 future（`router::run_call`）⇒ 那次 `inbound_client` 调用随之被丢 ⇒ 它的 `AbandonGuard`
 //!   补发一条 `cancel{target}`（判据 `inbound_client_tests::abandoning_the_wait_fires_one_cancel_and_finishing_fires_none`）。可取消档真停下；阻塞档照跑完。
@@ -75,9 +76,10 @@ const HOP: u8 = 1;
 /// 通道上**由 monitor 自己接**、不按 `origin` 转给那台后端的 op：传输台开单两条（本机常驻后端的传输台，经中继 `sftp_pool.rs`）·
 /// 文件窗口「在此打开终端」（[`terminal_open`]）。其余一切照旧按 `origin` 去 `inbound_client`。
 /// 传输那两条从传输台那一份名单取（`sftp_pool::TRANSFER_OPS`，一份名单一个家）。
-pub(crate) const HOST_OPS: [&str; 6] = [
+pub(crate) const HOST_OPS: [&str; 7] = [
     crate::sftp_pool::TRANSFER_OPS[0],
     crate::sftp_pool::TRANSFER_OPS[1],
+    crate::sftp_pool::TRANSFER_COPY,
     filewin_contract::TERMINAL_OPEN_OP,
     filewin_contract::FILEWIN_OPEN_OP,
     filewin_contract::LINK_RETRY_OP,
@@ -142,6 +144,9 @@ impl InboundBackends {
             if crate::sftp_pool::is_transfer_op(&op.0) {
                 return Box::pin(transfer_open(origin, op, payload));
             }
+            if op.0 == crate::sftp_pool::TRANSFER_COPY {
+                return Box::pin(transfer_copy(origin, payload, left));
+            }
             if op.0 == filewin_contract::FILEWIN_OPEN_OP {
                 return Box::pin(filewin_open(origin, payload));
             }
@@ -193,6 +198,18 @@ impl InboundBackends {
         // 🔴**生产上的第一条流**：`transfer/<id>` ⇒ 传输台那一趟的进度。
         if let Some(id) = kind.0.strip_prefix(crate::sftp_pool::TRANSFER_KIND_PREFIX) {
             return transfer_stream(&origin, id, from);
+        }
+        // 一组做到哪了：按票（窗口铸的）转后端推来的 `files_batch` 帧，那一组在哪台做都一样。`from` 没有意义（只留最新那一格）。
+        if let Some(ticket) = kind.0.strip_prefix(crate::files_batch_relay::KIND_PREFIX) {
+            use futures::StreamExt as _;
+            let _ = from;
+            return crate::files_batch_relay::watch(ticket)
+                .enumerate()
+                .map(|(i, cell)| Item::Frame {
+                    seq: i as u64 + 1,
+                    body: Body(cell.into_bytes()),
+                })
+                .boxed();
         }
         // 第二条：那台此刻连没连着（连接循环的事实，`inbound_client::link_of`）。
         if kind.0 == filewin_contract::LINK_KIND {
@@ -264,8 +281,20 @@ fn link_item(l: inbound_client::Link) -> Item {
 /// 「生产段不许自己拼 / 匹配那个错误枚举」—— 分层判定只许有一个家。这里不做任何分层判定：
 /// 传输台说了「不行」，就是对端说了「不行」，原样装进那个信封。
 fn refused(code: &str, message: String) -> CallError {
-    let body = serde_json::to_vec(&serde_json::json!({ "code": code, "message": message }))
-        .unwrap_or_default();
+    refused_with(crate::sftp_pool::Refusal {
+        code: code.to_string(),
+        message,
+        data: None,
+    })
+}
+
+/// 同 [`refused`]，后端带了 `data` 的（`exists` 的同名清单）一并装进信封，窗口照它画冲突框。
+fn refused_with(r: crate::sftp_pool::Refusal) -> CallError {
+    let mut v = serde_json::json!({ "code": r.code, "message": r.message });
+    if let Some(d) = r.data {
+        v["data"] = d;
+    }
+    let body = serde_json::to_vec(&v).unwrap_or_default();
     super::wire::err_from_wire(super::wire::WireErr::Refused, body)
 }
 
@@ -292,7 +321,42 @@ async fn transfer_open(origin: Origin, op: Op, payload: Body) -> Result<Body, Ca
     };
     match crate::sftp_pool::transfer_call(cfg, &op.0, &args).await {
         Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
-        Err((code, message)) => Err(refused(&code, message)),
+        Err(r) => Err(refused_with(r)),
+    }
+}
+
+/// 两台之间复制一组：源 ＝ 寻址的那台，落点 ＝ 载荷里 `to` 那台；两台的配置都按名字取（本机不是一台能拨的远端 ⇒ 说真实原因）。
+/// 本机后端做完整组才回 ⇒ 等的上限是窗口给的 `left`。
+async fn transfer_copy(origin: Origin, payload: Body, left: Duration) -> Result<Body, CallError> {
+    let Ok(args) = serde_json::from_slice::<serde_json::Value>(&payload.0) else {
+        return Err(OursFault::Misuse.into());
+    };
+    let to = args
+        .get("to")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let mut cfgs = Vec::with_capacity(2);
+    for machine in [origin.as_wire_str().to_string(), to] {
+        if machine == inbound_client::LOCAL_ORIGIN {
+            return Err(refused(
+                "local_has_no_transfer",
+                copy_text("rsChanHost.transfer.localNone", &[]),
+            ));
+        }
+        let Some(cfg) = crate::load_remote_config_by_label(&machine) else {
+            return Err(refused(
+                "no_such_origin",
+                copy_text("rsChanHost.transfer.noConfig", &[("machine", &machine)]),
+            ));
+        };
+        cfgs.push(cfg);
+    }
+    let to_cfg = cfgs.pop().expect("两台");
+    let from_cfg = cfgs.pop().expect("两台");
+    match crate::sftp_pool::copy_call(from_cfg, to_cfg, &args, left).await {
+        Ok(v) => Ok(Body(serde_json::to_vec(&v).unwrap_or_default())),
+        Err(r) => Err(refused_with(r)),
     }
 }
 

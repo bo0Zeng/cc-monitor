@@ -219,7 +219,8 @@ pub enum InboundFrame {
     /// （测试连接在本机常驻后端里跑），交 `probe_relay::deliver`。`cell` 原样（一个 JSON 对象的文本，monitor 不解释）。
     Probe { ticket: String, cell: String },
     /// 同一台上一组（复制 · 删除 · 改权限）此刻做到哪了（后端 `wire::Frame::FilesBatch`）。本机远端两条流上都会有
-    /// （那一组在哪台做就是哪台推的）。`cell` ＝ `{"done": n, "total": n, "current"?: 路径}` 的文本（原样，界面严格收）。
+    /// （那一组在哪台做就是哪台推的）。`cell` ＝ `{"done": n, "total": n, "current"?: 路径, "bytes_done"?: n, "bytes_total"?: n}`
+    /// 的文本（原样，界面严格收）；按票交 `files_batch_relay::deliver`。
     FilesBatch { ticket: String, cell: String },
     /// 终端实时预览的一整屏（后端 `wire::Frame::TerminalScreen`）。本机远端两条流上都会有（订了哪台就是哪台推的），
     /// 交 `terminal_screen_relay::deliver`。`cell` ＝ `{"seq": n, "view": {…}}` 的文本（`view` 必须是对象；内容由界面严格收）。
@@ -691,8 +692,10 @@ pub fn parse_frame(line: &str) -> Result<InboundFrame, Unread> {
                     "done": req_u64(obj, k, "done")?,
                     "total": req_u64(obj, k, "total")?,
                 });
-                if let Some(cur) = obj.get("current") {
-                    c["current"] = cur.clone();
+                for k in ["current", "bytes_done", "bytes_total"] {
+                    if let Some(v) = obj.get(k) {
+                        c[k] = v.clone();
+                    }
                 }
                 c.to_string()
             },

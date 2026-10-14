@@ -437,6 +437,7 @@ impl FileWindow {
             .map(|g| {
                 g.into_iter()
                     .filter(|a| !skip.contains(a))
+                    .filter(|a| self.dual || *a != super::select::Action::Across)
                     .map(|a| {
                         let it = Item::Act(a);
                         (

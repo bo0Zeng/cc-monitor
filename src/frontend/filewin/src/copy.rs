@@ -35,7 +35,7 @@
 //!   ⇒ 窗口上**不画**取消那颗按钮（画了就是一颗按了没用的按钮）。大文件复制因此停不下来 —— 如实登记。
 //! - **进度没有了。** 后端一趟做完才回话 ⇒ 窗口上只有「正在复制 …」一行，没有进度条。
 //! - **真机上鼠标点那颗「复制」会不会触发买不到**（本机没有图形会话）。判据喂的是合成事件。
-//! - **目录复制**（后端 `recursive: true`）与**一摞复制到另一栏**（[`run_copy_batch`]）做了；
+//! - **目录复制**（后端 `recursive: true`）做了；**一组复制到另一栏**走 [`super::batch`]（一组一条 `files-copy`，带票）；
 //!   「复制为」那个框仍只改名字、仍单选（它要一个名字），名字里不许带 `/`。
 
 use copy_core::copy_text;
@@ -160,29 +160,6 @@ pub enum CopyOutcome {
     },
     /// 起不来 / 半途失败：那一句 ＋ 复制详情。
     Failed(super::source::Failed),
-    /// 一摞（复制到另一栏）跑完的逐件读数。
-    Batch(BatchReport),
-    /// 一摞里有**目录**撞了名 ⇒ 整摞一件都没做（目录不覆盖、不合并）。带点了名的那句话。
-    Refused(String),
-}
-
-/// 一件复制成了：几个文件 · 几个目录 · 几个字节。
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Copied {
-    pub name: String,
-    pub bytes: u64,
-    pub files: u64,
-    pub dirs: u64,
-}
-
-/// 一摞复制的逐件结局。**失败不中断后面的件**（同写操作那一摞「一次问完、逐件做」）。
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct BatchReport {
-    pub done: Vec<Copied>,
-    /// 撞了名、人答了「都不覆盖」的那几件。
-    pub skipped: Vec<String>,
-    /// `(名字, 原话)`。
-    pub failed: Vec<(String, String)>,
 }
 
 /// 🔴 **正题**：一趟复制的全过程。三段的顺序就是这个函数的结构。
@@ -226,67 +203,6 @@ where
     }
 }
 
-/// **一摞复制**（复制到另一栏的多选 / 目录）。三段同 [`run_copy`]，只是「问」是**一次**问完整摞：
-///
-/// ```text
-/// ① probe    每一件的目标在不在（逐件问）
-/// ①'         撞名的里有**目录** ⇒ 整摞不做、点名（目录不覆盖、不合并）—— 一个字节都没动
-/// ② confirm  撞名的**文件**一次交给人（逐件列出）：「覆盖」⇒ 那几件带 `overwrite: true`；「都不覆盖」⇒ 那几件跳过
-/// ③ launch   逐件顺序发（后端阻塞档，一趟一件）；失败记下原话，不中断后面的件
-/// ```
-///
-/// ⚠ `confirm` 是 `FnOnce` —— 「只问一次」有一半由编译器守（同 [`run_copy`]）。
-pub async fn run_copy_batch<P, PFut, C, CFut, L, LFut>(
-    jobs: Vec<CopyJob>,
-    probe: P,
-    confirm: C,
-    launch: L,
-) -> CopyOutcome
-where
-    P: Fn(CopyJob) -> PFut,
-    PFut: Future<Output = bool>,
-    C: FnOnce(Vec<CopyJob>) -> CFut,
-    CFut: Future<Output = bool>,
-    L: Fn(CopyJob, bool) -> LFut,
-    LFut: Future<Output = Result<Copied, String>>,
-{
-    let mut clash: Vec<CopyJob> = Vec::new();
-    for j in &jobs {
-        if probe(j.clone()).await {
-            clash.push(j.clone());
-        }
-    }
-    let dirs: Vec<&str> = clash
-        .iter()
-        .filter(|j| j.is_dir)
-        .map(|j| j.name.as_str())
-        .collect();
-    if !dirs.is_empty() {
-        return CopyOutcome::Refused(copy_text(
-            "rsFilewinCopy.batch.dirClash",
-            &[(
-                "names",
-                &dirs.join(&copy_text("rsFilewinCopy.batch.listSep", &[])),
-            )],
-        ));
-    }
-    let overwrite = !clash.is_empty() && confirm(clash.clone()).await;
-    let mut report = BatchReport::default();
-    for j in jobs {
-        let clashing = clash.contains(&j);
-        if clashing && !overwrite {
-            report.skipped.push(j.name);
-            continue;
-        }
-        let name = j.name.clone();
-        match launch(j, clashing).await {
-            Ok(c) => report.done.push(c),
-            Err(e) => report.failed.push((name, e)),
-        }
-    }
-    CopyOutcome::Batch(report)
-}
-
 /// 一句要画在窗口上的话 ＋ 它的档位。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Notice {
@@ -320,44 +236,6 @@ pub fn outcome_notice(o: &CopyOutcome) -> Notice {
             ),
             loud: false,
         },
-        CopyOutcome::Refused(why) => Notice {
-            text: copy_text("rsFilewinCopy.outcome.refused", &[("why", why)]),
-            loud: true,
-        },
-        CopyOutcome::Batch(r) => {
-            let (files, dirs, bytes) = r.done.iter().fold((0, 0, 0), |(f, d, b), c| {
-                (f + c.files, d + c.dirs, b + c.bytes)
-            });
-            let mut text = copy_text(
-                "rsFilewinCopy.outcome.batchDone",
-                &[
-                    ("n", &r.done.len().to_string()),
-                    ("files", &files.to_string()),
-                    ("dirs", &dirs.to_string()),
-                    ("bytes", &bytes.to_string()),
-                ],
-            );
-            if !r.skipped.is_empty() {
-                text.push_str(&copy_text(
-                    "rsFilewinCopy.outcome.batchSkipped",
-                    &[(
-                        "names",
-                        &r.skipped
-                            .join(&copy_text("rsFilewinCopy.batch.listSep", &[])),
-                    )],
-                ));
-            }
-            for (name, why) in &r.failed {
-                text.push_str(&copy_text(
-                    "rsFilewinCopy.outcome.batchFailed",
-                    &[("name", name), ("why", why)],
-                ));
-            }
-            Notice {
-                text,
-                loud: !r.failed.is_empty(),
-            }
-        }
     }
 }
 
@@ -431,16 +309,6 @@ pub fn one_copy(
         }),
         decide: None,
         ticket: None,
-    }
-}
-
-/// `files-copy` 那一项的结局 → [`Copied`]（几个字节 · 几份文件 · 几个目录）。
-pub fn copied_from_reply(job: &CopyJob, d: &cmd_wire::batch::BatchOutcome) -> Copied {
-    Copied {
-        name: job.name.clone(),
-        bytes: d.bytes.unwrap_or(0),
-        files: d.files.unwrap_or(0),
-        dirs: d.dirs.unwrap_or(0),
     }
 }
 

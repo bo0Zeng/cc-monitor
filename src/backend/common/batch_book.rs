@@ -2,7 +2,8 @@
 //!
 //! - **票**：带了票 ⇒ 这台按票记这一组。连接断了照常做完；带同一张票再问 ⇒ 正在做就等它做完，做完了回那一份结局，不重做。
 //!   记最多 [`KEEP`] 张，满了丢最早做完的。还没开做就回了的（同名要问 · 入参不对）不记。
-//! - **进度**：按票有人听（[`listen`]，帧面那一层每条连接挂一个）就把 `{done, total, current}` 交过去；交法由听的那一侧定。
+//! - **进度**：按票有人听（[`listen`]，帧面那一层每条连接挂一个）就把 `{done, total, current, bytes}` 交过去；交法由听的那一侧定。
+//!   `bytes` 只有搬字节的那一种（两台之间的复制）报：整组按字节走到哪了，一份大文件传到一半也动。
 //! - **撤**：[`stop`] 立旗；做的那一侧做完手上那一项就停，剩下的回 `cancelled`。
 //!
 //! 住 `common/`：文件管理那一块（同台三条）与原生那一块（两台之间的复制）各引各的，两块之间不互相引。
@@ -32,6 +33,8 @@ pub(crate) struct Progress {
     pub(crate) total: u64,
     /// 手上那一项（根底下的相对段，线上那一形）。
     pub(crate) current: Option<wire::WirePath>,
+    /// 整组按字节：已传 · 一共（只有搬字节的那一种报）。
+    pub(crate) bytes: Option<(u64, u64)>,
 }
 
 /// 按票记的一组。
@@ -129,14 +132,25 @@ impl Run {
     }
 
     pub(crate) fn step(&self, done: usize, current: Option<&Path>) {
+        self.tell(|p| {
+            p.done = done as u64;
+            p.current = current.map(|p| wire::WirePath(p.as_os_str().as_encoded_bytes().to_vec()));
+        });
+    }
+
+    /// 整组按字节走到哪了（项数 · 手上那一项不动）。
+    pub(crate) fn sent(&self, done: u64, total: u64) {
+        self.tell(|p| p.bytes = Some((done.min(total), total)));
+    }
+
+    fn tell(&self, change: impl FnOnce(&mut Progress)) {
         let Some(job) = &self.job else { return };
-        let p = Progress {
-            ticket: self.ticket.clone(),
-            done: done as u64,
-            total: self.total,
-            current: current.map(|p| wire::WirePath(p.as_os_str().as_encoded_bytes().to_vec())),
+        let p = {
+            let mut g = lock(&job.progress);
+            change(&mut g);
+            g.total = self.total;
+            g.clone()
         };
-        *lock(&job.progress) = p.clone();
         for e in lock(&BOOK.ears).iter().filter(|e| e.ticket == self.ticket) {
             (e.tell)(&p);
         }
@@ -188,6 +202,7 @@ pub(crate) fn ticketed<P, E>(
                 done: 0,
                 total: total as u64,
                 current: None,
+                bytes: None,
             }),
             end: Mutex::new(None),
             ended: Condvar::new(),

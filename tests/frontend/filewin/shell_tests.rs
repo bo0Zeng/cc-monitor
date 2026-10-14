@@ -438,7 +438,7 @@ fn directories_lossy_names_and_out_of_range_rows_put_up_nothing() {
     assert!(!w.begin_copy(99), "越界下标也摆出了框（或者 panic 了）");
     assert!(w.copy_prompt().is_none());
     // 目录**摆得出**「复制为」框了（后端 `recursive: true`），框里记着「源是目录」
-    //   ⇒ 那一趟线上与文件同形，后端按源判、整棵复制（`copy_tests::a_directory_job_goes_as_the_same_item_and_its_outcome_counts`）。
+    //   ⇒ 那一趟线上与文件同形，后端按源判、整棵复制（`workspace_tests::copy_across_takes_the_whole_selection_and_a_directory_goes_recursive`）。
     assert!(w.begin_copy(0), "目录摆不出「复制为」框");
     let job = w
         .copy_prompt()
@@ -1433,9 +1433,9 @@ fn the_window_starts_a_batch_through_the_shared_three_step_function() {
          多了就是长出了第二条确认流，少了就是这一条被绕过了"
     );
     // 落点（根可以是当前目录的字节，有损名全寻址；交回应答与码）各恰好一处：`run_writes` 的 `apply` 里走
-    //   `apply_remote_coded`（删除问一次 · 改权限直接做）；就地那一格走 `apply_typed`（新建 · 改名：敲的名字原样交那台判）。
+    //   `apply_all`（删除 · 改权限一组一条命令）；就地那一格走 `apply_typed`（新建 · 改名：敲的名字原样交那台判）。
     assert_eq!(
-        prod.matches("writeops::apply_remote_coded(").count(),
+        prod.matches("writeops::apply_all(").count(),
         1,
         "批量那一条的落点不是恰好一处"
     );
@@ -2893,8 +2893,11 @@ async fn a_lossy_directory_is_entered_and_everything_inside_is_addressed_by_its_
     }
     assert!(w.write_board.settle(true), "删除那一问没摆出来");
     wait_for(&wired, "files-delete", 1).await;
+    let mut del = last_args(&wired, "files-delete");
+    assert!(del["ticket"].as_str().is_some(), "删一组没带票：{del}");
+    del.as_object_mut().unwrap().remove("ticket");
     assert_eq!(
-        last_args(&wired, "files-delete"),
+        del,
         serde_json::json!({ "root": b16(b"/srv/d\xff"), "items": [{ "rel": b16(b"f\xfe") }] })
     );
     // 有损目录里上传 / 搜索 / 开终端都按字节做（此前 W5-FILES 出声拒）。

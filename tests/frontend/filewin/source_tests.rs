@@ -1187,7 +1187,9 @@ fn each_layer_of_a_channel_failure_says_something_different() {
 /// 谁把它们改回 `mtime_text(…)`，这里多出一处就红。
 #[test]
 fn only_this_machines_own_moments_go_through_the_local_clock() {
+    // `batch.rs`：冲突框那一行两头的修改时刻 —— 后端只交 Unix 秒（同名清单不带写好的字），按本机钟画。
     const REGISTERED: &[(&str, usize)] = &[
+        ("batch.rs", 1),
         ("chrome.rs", 1),
         ("progress.rs", 1),
         ("shell.rs", 1),

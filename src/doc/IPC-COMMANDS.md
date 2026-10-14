@@ -212,7 +212,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 ### `files_batch`
 
-**同一台上一组（复制 · 删除 · 改权限）此刻做到哪了**（`control/files_batch.rs`，带票的那一组在做时才出现）。
+**一组（同一台上的复制 · 删除 · 改权限，两台之间的复制）此刻做到哪了**（`common/batch_book.rs`，带票的那一组在做时才出现）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -220,6 +220,8 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `done` | number | 做完了几项 |
 | `total` | number | 一共几项 |
 | `current` | PathBytes? | 手上那一项（根底下的相对段）；做完了缺席 |
+| `bytes_done` | number? | 整组按字节已传几个（只有搬字节的那一种报：两台之间的复制）；不报 ⇒ 缺席 |
+| `bytes_total` | number? | 整组按字节一共几个（同 `bytes_done`，两格同在同缺） |
 
 ### `probe`
 

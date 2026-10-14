@@ -612,11 +612,9 @@ async fn dispatch(
                 "stream_source [{host_label}] 远端后端发来了测试连接的进度帧（ticket={ticket}）—— 测试连接在本机后端，丢掉"
             );
         }
-        // 一组复制 · 删除 · 改权限的进度：同本机那条流（窗口还没订这一口）⇒ 记一行、不转。
-        Some(InboundFrame::FilesBatch { ticket, .. }) => {
-            tracing::debug!(
-                "stream_source [{host_label}] 推来一组的进度（ticket={ticket}）—— 窗口还没订这一口，不转"
-            );
+        // 一组复制 · 删除 · 改权限的进度：按票交给订了它的那扇文件窗口（从不阻塞；没人订就丢）。
+        Some(InboundFrame::FilesBatch { ticket, cell }) => {
+            crate::files_batch_relay::deliver(&ticket, cell)
         }
         // 远端中转住进远端常驻后端（进程内），它抄出来的 SSE 事件沿这条流回来 ⇒ 与本机那条流同一个口转前端
         //   （origin = 这台；标签就是 claude 自己的 sid，不用对账）。从不阻塞、不进内容通道。

@@ -27,6 +27,7 @@ impl Ends for Local {
             let mut out = vec![Entry {
                 rel: String::new(),
                 dir: m.is_dir(),
+                size: if m.is_dir() { 0 } else { m.len() },
             }];
             if m.is_dir() {
                 for (rel, dir) in TREE {
@@ -36,6 +37,7 @@ impl Ends for Local {
                         out.push(Entry {
                             rel: r.to_string(),
                             dir: *dir,
+                            size: fs::metadata(&full).map(|m| m.len()).unwrap_or(0),
                         });
                     }
                 }
@@ -59,13 +61,18 @@ impl Ends for Local {
         name: &'a str,
         overwrite: bool,
         _stop: &'a (dyn Fn() -> bool + Send + Sync),
+        sent: &'a (dyn Fn(u64) + Send + Sync),
     ) -> Fut<'a, Result<u64, Miss>> {
         Box::pin(async move {
             let to = Path::new(dir).join(name);
             if to.exists() && !overwrite {
                 return Err(("exists", Said::from("exists".to_string())));
             }
+            // 走到一半报一次（替身里「一半」＝ 一半字节），传完报整份。
+            let len = fs::metadata(from).map(|m| m.len()).unwrap_or(0);
+            sent(len / 2);
             let n = fs::copy(from, &to).map_err(|e| ("io_failed", Said::from(e.to_string())))?;
+            sent(n);
             let k = self.files.fetch_add(1, Ordering::SeqCst) + 1;
             (self.after)(k);
             Ok(n)
@@ -234,4 +241,50 @@ fn stopping_cancels_the_files_not_yet_sent() {
     assert_eq!(r.outcomes.len(), 5, "每一格都有结局");
     assert!(!b.join("d").exists());
     assert!(seen.load(Ordering::SeqCst) >= 1);
+}
+
+#[test]
+fn progress_counts_bytes_across_the_group_and_moves_inside_a_file() {
+    let (a, b) = rig("bytes");
+    let t = format!("tc-bytes-{}", std::process::id());
+    let ends = local(&a);
+    let seen: Arc<std::sync::Mutex<Vec<(u64, Option<(u64, u64)>)>>> = Arc::default();
+    let s2 = seen.clone();
+    let _ear = crate::common::batch_book::listen(
+        &t,
+        Box::new(move |p| s2.lock().unwrap().push((p.done, p.bytes))),
+    );
+    let r = on_rt(|rt| {
+        copy_with(
+            &ends,
+            rt,
+            req(&a, &b, &["f.txt", "d"], OnExists::Ask, Some(&t)),
+        )
+    })
+    .unwrap();
+    assert!(r.outcomes.iter().all(|o| o.state == ItemState::Done));
+    let seen = seen.lock().unwrap().clone();
+    // 一组的字节：f.txt 1 ＋ s/y.txt 2 ＋ x.txt 1 ＝ 4（目录不算）。
+    assert!(
+        seen.iter().all(|(_, b)| b.is_none_or(|(_, t)| t == 4)),
+        "总字节恒是整组文件的和：{seen:?}"
+    );
+    assert_eq!(
+        seen.last().and_then(|s| s.1),
+        Some((4, 4)),
+        "收尾那一格字节走满：{seen:?}"
+    );
+    // y.txt 走到一半（1 字节）时：f.txt 的 1 ＋ 1 ＝ 2，项数还停在 y.txt 开头那一格。
+    let at_y = seen
+        .iter()
+        .find(|(_, b)| *b == Some((2, 4)))
+        .unwrap_or_else(|| panic!("一份文件传到一半，字节进度要动：{seen:?}"));
+    assert_eq!(
+        at_y.0, 3,
+        "y.txt 是第 4 格（f.txt · d · d/s 之后）：{seen:?}"
+    );
+    let mono = seen
+        .windows(2)
+        .all(|w| w[0].1.map_or(0, |b| b.0) <= w[1].1.map_or(0, |b| b.0));
+    assert!(mono, "字节进度不倒退：{seen:?}");
 }

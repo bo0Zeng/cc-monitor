@@ -5,6 +5,7 @@
 //!   答法同同一台上的复制（覆盖只对文件 · 目录同名只许跳过或保留两份）。
 //! - 一份文件半路失败或撤 ⇒ 清两头暂存（本机那一份 · B 那头的暂存件）。
 //! - 票 · 进度 · 撤同同一台上那三条（`common/batch_book.rs`）：带票 ⇒ 断开照常做完、同一张票再问回同一份结局。
+//!   进度多报一样字节：整组文件的字节和是总数，一份文件两腿（A → 本机 · 本机 → B）各占它一半，传到一半也动。
 //!
 //! 两头的动作经 [`Ends`] 这一层：生产那一份是 SFTP ＋ 问 B 那台后端（[`Wired`]），判据用本机两个目录上的替身。
 
@@ -32,6 +33,8 @@ pub(crate) type Miss = (&'static str, Said);
 pub(crate) struct Entry {
     pub(crate) rel: String,
     pub(crate) dir: bool,
+    /// 文件的字节数（目录 ⇒ 0）。
+    pub(crate) size: u64,
 }
 
 /// 两头的动作。
@@ -43,6 +46,7 @@ pub(crate) trait Ends: Send + Sync {
     /// 落点那台：在 `dir` 底下建一层 `name`。
     fn mkdir<'a>(&'a self, dir: &'a str, name: &'a str) -> Fut<'a, Result<(), Miss>>;
     /// 一份文件：源那台的 `from` → 落点那台的 `dir/name`（经本机中转）；`stop()` 真 ⇒ 当场撤（清两头暂存）。回落了几个字节。
+    /// `sent(n)`：这一份走到第几个字节了（两腿合起来折成一份文件的字节，单调不减）。
     fn copy_file<'a>(
         &'a self,
         from: &'a str,
@@ -50,6 +54,7 @@ pub(crate) trait Ends: Send + Sync {
         name: &'a str,
         overwrite: bool,
         stop: &'a (dyn Fn() -> bool + Send + Sync),
+        sent: &'a (dyn Fn(u64) + Send + Sync),
     ) -> Fut<'a, Result<u64, Miss>>;
 }
 
@@ -57,8 +62,8 @@ codes! {
     /// `transfer-copy` 的码（一项没成不是整组没成：那一项的码在它的结局里）。
     pub(crate) enum CopyErr {
         /// 落点那台有同名的、还没答怎么办（一项都没做）：`data` 是同名清单。
+        Exists = "exists" => Conflicts,
         /// 源或落点连接失败 · 问不到落点后端的家目录。
-        /// 连不上源或落点 · 问不到落点后端的家目录。
         Unreachable = "unreachable",
         /// 落点那台的 SFTP 起始目录不是它后端的家目录（暂存件会落到后端看不见的地方）：一个字节不写。
         SftpHomeMismatch = "sftp_home_mismatch",
@@ -103,6 +108,7 @@ enum Step {
         dir: String,
         name: String,
         overwrite: bool,
+        size: u64,
     },
     /// 开做之前就定了的那一格（跳过 · 列不出源）。
     Settled(BatchOutcome),
@@ -198,6 +204,13 @@ pub(crate) fn copy_with(
     }
     let steps = plan(ends, rt, &to_dir, probed);
     let total = steps.len();
+    let bytes_total: u64 = steps
+        .iter()
+        .map(|s| match s {
+            Step::File { size, .. } => *size,
+            _ => 0,
+        })
+        .sum();
     ticketed(
         req.ticket.as_deref(),
         total,
@@ -206,13 +219,22 @@ pub(crate) fn copy_with(
         |steps, run| {
             let mut out = Vec::with_capacity(total);
             let mut it = steps.into_iter();
+            let mut before = 0u64;
+            run.sent(0, bytes_total);
             for step in it.by_ref() {
                 if run.stopped() {
                     out.push(BatchOutcome::bare(step.key(), ItemState::Cancelled));
                     break;
                 }
                 run.step(out.len(), None);
-                out.push(do_step(ends, rt, step, run));
+                let size = match &step {
+                    Step::File { size, .. } => *size,
+                    _ => 0,
+                };
+                out.push(do_step(ends, rt, step, run, before, bytes_total));
+                // 这一份不论成败都算过去了（总数不变，进度不倒退）。
+                before += size;
+                run.sent(before, bytes_total);
             }
             out.extend(it.map(|s| BatchOutcome::bare(s.key(), ItemState::Cancelled)));
             run.step(out.len(), None);
@@ -303,6 +325,7 @@ fn plan(
                     dir,
                     name: leaf,
                     overwrite,
+                    size: e.size,
                 }
             });
         }
@@ -310,7 +333,14 @@ fn plan(
     steps
 }
 
-fn do_step(ends: &dyn Ends, rt: &tokio::runtime::Handle, step: Step, run: &Run) -> BatchOutcome {
+fn do_step(
+    ends: &dyn Ends,
+    rt: &tokio::runtime::Handle,
+    step: Step,
+    run: &Run,
+    before: u64,
+    bytes_total: u64,
+) -> BatchOutcome {
     let landed = |key: &str, at: String, bytes: Option<u64>| BatchOutcome {
         path: Some(cwf::WirePath::from(at.as_str())),
         bytes,
@@ -328,9 +358,11 @@ fn do_step(ends: &dyn Ends, rt: &tokio::runtime::Handle, step: Step, run: &Run) 
             dir,
             name,
             overwrite,
+            size,
         } => {
             let stop = || run.stopped();
-            match rt.block_on(ends.copy_file(&from, &dir, &name, overwrite, &stop)) {
+            let sent = |n: u64| run.sent(before + n.min(size), bytes_total);
+            match rt.block_on(ends.copy_file(&from, &dir, &name, overwrite, &stop, &sent)) {
                 Ok(n) => landed(&key, join(&dir, &name), Some(n)),
                 Err(_) if run.stopped() => BatchOutcome::bare(&key, ItemState::Cancelled),
                 Err(m) => missed(&key, m),
@@ -431,6 +463,10 @@ impl Ends for Wired {
                     return Ok(vec![Entry {
                         rel: String::new(),
                         dir: false,
+                        size: crate::dial::sftp::metadata_size(&self.from, path)
+                            .await
+                            .flatten()
+                            .unwrap_or(0),
                     }]);
                 }
                 return Err((
@@ -441,11 +477,12 @@ impl Ends for Wired {
             let mut out = vec![Entry {
                 rel: String::new(),
                 dir: true,
+                size: 0,
             }];
             let mut stack: Vec<(String, Vec<(String, bool, u64)>)> = vec![(String::new(), top)];
             while let Some((rel, mut kids)) = stack.pop() {
                 kids.sort();
-                for (name, dir, _) in kids {
+                for (name, dir, size) in kids {
                     let r = if rel.is_empty() {
                         name
                     } else {
@@ -454,6 +491,7 @@ impl Ends for Wired {
                     out.push(Entry {
                         rel: r.clone(),
                         dir,
+                        size: if dir { 0 } else { size },
                     });
                     if dir {
                         let sub = listed(&self.from, &join(path, &r))
@@ -497,6 +535,7 @@ impl Ends for Wired {
         name: &'a str,
         overwrite: bool,
         stop: &'a (dyn Fn() -> bool + Send + Sync),
+        sent: &'a (dyn Fn(u64) + Send + Sync),
     ) -> Fut<'a, Result<u64, Miss>> {
         Box::pin(async move {
             use super::transfer::{
@@ -509,16 +548,21 @@ impl Ends for Wired {
             let key = staging_key(&format!("{from}\u{0}{dir}/{name}"), 0, nanos);
             let local = self.staging.join(format!("{key}.copy"));
             let cancel = Cancel::default();
-            let sink = |_: u64, _: u64| {
+            // 两腿各占这一份的一半：下那一腿报 got/2，传那一腿报 (总 ＋ got)/2。
+            let leg = std::sync::atomic::AtomicBool::new(false);
+            let sink = |got: u64, total: u64| {
                 if stop() {
                     cancel.fire();
                 }
+                let up = leg.load(std::sync::atomic::Ordering::Relaxed);
+                sent(if up { (total + got) / 2 } else { got / 2 });
             };
             let io = |s: Said| ("io_failed", s);
             let r: Result<u64, Miss> = async {
                 download_to_local(&self.face, &self.from, from, &local, &cancel, &sink)
                     .await
                     .map_err(io)?;
+                leg.store(true, std::sync::atomic::Ordering::Relaxed);
                 let local_s = local.to_string_lossy().into_owned();
                 let (n, sha) = upload_to_staging(&self.to, &local_s, &key, &cancel, &sink)
                     .await

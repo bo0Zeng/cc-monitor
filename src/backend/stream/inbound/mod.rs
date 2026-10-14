@@ -642,6 +642,8 @@ fn listened(
                     done: p.done,
                     total: p.total,
                     current: p.current.clone(),
+                    bytes_done: p.bytes.map(|b| b.0),
+                    bytes_total: p.bytes.map(|b| b.1),
                 }));
             }),
         )

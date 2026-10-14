@@ -205,6 +205,51 @@ pub struct TransferCopyReq {
     pub ticket: Option<String>,
 }
 
+/// 窗口说的 `transfer-copy`：源那台 ＝ 寻址的那台（窗口看着的这一台），`to` ＝ 落点那台的名字；两台的拨号请求由 monitor 补上
+/// （[`TransferCopyAsk::dialed`]），其余各格原样转给本机后端（同 [`TransferCopyReq`]）。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(deny_unknown_fields)]
+pub struct TransferCopyAsk {
+    /// 落点那台的名字（同窗口寻址用的那个名字）。
+    pub to: String,
+    pub items: Vec<CopyFrom>,
+    pub to_dir: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub on_exists: Option<crate::batch::OnExists>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub decide: Option<std::collections::BTreeMap<String, crate::batch::Decide>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub ticket: Option<String>,
+}
+
+impl TransferCopyAsk {
+    /// 补上两台的拨号请求 ⇒ 转给本机后端的那一份。
+    pub fn dialed(self, from: serde_json::Value, to: serde_json::Value) -> TransferCopyReq {
+        TransferCopyReq {
+            from,
+            to,
+            items: self.items,
+            to_dir: self.to_dir,
+            on_exists: self.on_exists,
+            decide: self.decide,
+            ticket: self.ticket,
+        }
+    }
+}
+
+impl Call for TransferCopyAsk {
+    const NAME: &'static str = "transfer-copy";
+    type Reply = crate::batch::BatchReply;
+}
+
 /// 跨机复制的一项：源那台上的路径。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]

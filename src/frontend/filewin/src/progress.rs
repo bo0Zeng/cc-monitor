@@ -14,13 +14,12 @@ use std::sync::{Arc, Mutex};
 
 use copy_core::copy_text;
 
+use super::batch::{BatchBoard, Phase};
 use super::copy::{CopyBoard, CopyOutcome};
-use super::cross_copy::CrossBoard;
 use super::download::DownloadBoard;
 use super::extract::ExtractBoard;
 use super::size::SizeBoard;
 use super::transfer::{DropBoard, Pending};
-use super::writeops::WriteBoard;
 
 /// 已完成的行最多留几行（更早的自动清掉）。
 pub const KEEP_FINISHED: usize = 50;
@@ -47,23 +46,15 @@ pub enum Trip {
         n: usize,
         name: String,
     },
-    /// 复制到另一台。
-    Cross {
-        board: CrossBoard,
-        name: String,
-        machine: String,
+    /// 一组一条命令（复制到另一栏 · 复制到另一台 · 删除 · 改权限）：那块看板带着票、进度、冲突框与结局。
+    Batch {
+        board: BatchBoard,
+        icon: &'static str,
     },
     /// 算大小。
     Size { board: SizeBoard, name: String },
     /// 解压到这里。
     Extract { board: ExtractBoard, name: String },
-    /// 删除（这一摞里有文件夹）：那块看板是标签页那一块写操作看板，`base` ＝ 开这一趟时它已经跑完过几趟。
-    Delete {
-        board: WriteBoard,
-        base: u64,
-        name: String,
-        n: usize,
-    },
 }
 
 /// 一行此刻的状态。
@@ -289,18 +280,26 @@ impl Progress {
                     );
                     put(transfers, (ph::DOWNLOAD_SIMPLE, name.clone(), right));
                 }
-                Trip::Cross { name, .. } => {
-                    let right = copy_text(
-                        "rsFilewinWorkspace.closeAsk.copy",
-                        &[("pct", &pct(j).to_string())],
-                    );
-                    put(transfers, (ph::ARROWS_LEFT_RIGHT, name.clone(), right));
+                Trip::Batch { board, icon } => {
+                    let name = board.title();
+                    match board.plan().verb {
+                        super::batch::Verb::Copy => {
+                            let right = copy_text(
+                                "rsFilewinWorkspace.closeAsk.copy",
+                                &[("pct", &pct(j).to_string())],
+                            );
+                            put(transfers, (*icon, name, right));
+                        }
+                        super::batch::Verb::Delete => put(
+                            copy_text("rsFilewinWorkspace.closeAsk.deleting", &[]),
+                            (*icon, name, String::new()),
+                        ),
+                        super::batch::Verb::Chmod | super::batch::Verb::Download => {
+                            put(transfers, (*icon, name, String::new()))
+                        }
+                    }
                 }
                 Trip::Copy { name, .. } => put(transfers, (ph::COPY, name.clone(), String::new())),
-                Trip::Delete { name, .. } => put(
-                    copy_text("rsFilewinWorkspace.closeAsk.deleting", &[]),
-                    (ph::TRASH, name.clone(), String::new()),
-                ),
                 Trip::Extract { name, .. } => put(
                     copy_text("rsFilewinWorkspace.closeAsk.extracting", &[]),
                     (ph::FILE_ZIP, name.clone(), String::new()),
@@ -329,10 +328,7 @@ impl Progress {
                 board.cancels().request();
                 true
             }
-            Trip::Cross { board, .. } => {
-                board.cancel();
-                true
-            }
+            Trip::Batch { board, .. } => board.stop(),
             _ => false,
         }
     }
@@ -385,9 +381,8 @@ impl Job {
         match &self.trip {
             Trip::Upload { board, .. } => !board.is_asking(),
             Trip::Copy { board, .. } => !board.is_asking(),
-            Trip::Cross { board, .. } => !board.is_asking(),
+            Trip::Batch { board, .. } => !board.is_asking() && board.phase() != Phase::Dropped,
             Trip::Extract { board, .. } => !board.is_asking(),
-            Trip::Delete { board, .. } => !board.is_asking(),
             Trip::Download { .. } | Trip::Size { .. } => true,
         }
     }
@@ -395,12 +390,7 @@ impl Job {
     /// 人在那一问上答了「取消」⇒ 这一趟没开过，整行拿掉。
     fn dropped(&self) -> bool {
         match &self.trip {
-            Trip::Delete { board, base, .. } => {
-                board.rounds() > *base
-                    && board
-                        .last()
-                        .is_some_and(|o| o.ok == 0 && o.failed.is_empty())
-            }
+            Trip::Batch { board, .. } => board.phase() == Phase::Dropped,
             Trip::Copy { board, .. } => {
                 board.rounds() > 0 && matches!(board.last(), Some(CopyOutcome::Skipped))
             }
@@ -432,19 +422,30 @@ impl Job {
             },
             Trip::Copy { board, .. } => match (board.rounds(), board.last()) {
                 (0, _) => State::Running,
-                (_, Some(CopyOutcome::Failed(_) | CopyOutcome::Refused(_))) => State::Failed,
-                (_, Some(CopyOutcome::Batch(r))) if !r.failed.is_empty() => State::Failed,
+                (_, Some(CopyOutcome::Failed(_))) => State::Failed,
                 _ => State::Done,
             },
-            Trip::Cross { board, .. } => match (board.rounds(), board.last()) {
-                (0, _) => State::Running,
-                (_, Some(super::cross_copy::Outcome::Failed { .. }))
-                    if board.pull.cancels().is_cancelled() =>
+            Trip::Batch { board, .. } => match board.phase() {
+                Phase::Running | Phase::Asking | Phase::Cut(_) => State::Running,
+                Phase::Ended(r)
+                    if r.outcomes
+                        .iter()
+                        .any(|o| o.state == cmd_wire::batch::ItemState::Cancelled) =>
                 {
                     State::Stopped
                 }
-                (_, Some(super::cross_copy::Outcome::Failed { .. })) => State::Failed,
-                _ => State::Done,
+                Phase::Ended(r)
+                    if r.outcomes.iter().any(|o| {
+                        matches!(
+                            o.state,
+                            cmd_wire::batch::ItemState::Failed | cmd_wire::batch::ItemState::Exists
+                        )
+                    }) =>
+                {
+                    State::Failed
+                }
+                Phase::Ended(_) | Phase::Dropped | Phase::Opened => State::Done,
+                Phase::Failed(_) => State::Failed,
             },
             Trip::Size { board, .. } => match (board.rounds(), board.last()) {
                 (0, _) => State::Running,
@@ -456,15 +457,6 @@ impl Job {
                 (_, Some((_, super::extract::Outcome::Failed(_)))) => State::Failed,
                 _ => State::Done,
             },
-            Trip::Delete { board, base, .. } => {
-                if board.rounds() <= *base {
-                    return State::Running;
-                }
-                match board.last() {
-                    Some(o) if !o.failed.is_empty() => State::Failed,
-                    _ => State::Done,
-                }
-            }
         }
     }
 
@@ -473,10 +465,7 @@ impl Job {
         match &self.trip {
             Trip::Upload { board, .. } => board.totals(),
             Trip::Download { board, .. } => board.seen(),
-            Trip::Cross { board, name, .. } => {
-                let (g, t) = board.seen(name);
-                (g / 2, t / 2)
-            }
+            Trip::Batch { board, .. } => board.tick().bytes.unwrap_or((0, 0)),
             _ => (0, 0),
         }
     }
@@ -498,22 +487,12 @@ impl Job {
                     copy_text("rsFilewinProgress.copy.running", &[("n", &n.to_string())])
                 }
             }
-            Trip::Cross { name, machine, .. } => copy_text(
-                "rsFilewinProgress.cross.running",
-                &[("name", name), ("machine", machine)],
-            ),
+            Trip::Batch { board, .. } => board.title(),
             Trip::Size { name, .. } => {
                 copy_text("rsFilewinProgress.size.running", &[("name", name)])
             }
             Trip::Extract { name, .. } => {
                 copy_text("rsFilewinProgress.extract.running", &[("name", name)])
-            }
-            Trip::Delete { name, n, .. } => {
-                if *n == 1 {
-                    copy_text("rsFilewinProgress.delete.runningOne", &[("name", name)])
-                } else {
-                    copy_text("rsFilewinProgress.delete.running", &[("n", &n.to_string())])
-                }
             }
         }
     }
@@ -574,7 +553,6 @@ impl Job {
                 .collect::<Vec<_>>()
                 .join(sep)
         }
-        let fails = |failed: &[(String, String)]| fails_of(failed, &sep);
         match &self.trip {
             Trip::Upload { board, items, .. } => {
                 let o = board.last();
@@ -811,27 +789,6 @@ impl Job {
                 },
                 (_, o) => {
                     let (title, detail) = match &o {
-                        Some(CopyOutcome::Batch(r)) if !r.failed.is_empty() => (
-                            copy_text(
-                                "rsFilewinProgress.copy.failed",
-                                &[("n", &r.failed.len().to_string())],
-                            ),
-                            fails(&r.failed),
-                        ),
-                        Some(CopyOutcome::Batch(r)) => (
-                            copy_text(
-                                "rsFilewinProgress.copy.done",
-                                &[("n", &r.done.len().to_string())],
-                            ),
-                            if r.skipped.is_empty() {
-                                String::new()
-                            } else {
-                                copy_text(
-                                    "rsFilewinProgress.copy.skipped",
-                                    &[("names", &r.skipped.join(&sep))],
-                                )
-                            },
-                        ),
                         Some(CopyOutcome::Done { bytes, .. }) => (
                             copy_text("rsFilewinProgress.copy.done", &[("n", "1")]),
                             copy_core::size_text(*bytes),
@@ -860,91 +817,72 @@ impl Job {
                     }
                 }
             },
-            Trip::Cross {
-                board,
-                name,
-                machine,
-            } => match (state, board.last()) {
-                (State::Running, _) => {
-                    let (got, total) = self.amounts();
-                    View {
+            Trip::Batch { board, icon } => {
+                let plan = board.plan();
+                let tick = board.tick();
+                match board.phase() {
+                    Phase::Cut(line) => View {
                         state,
-                        icon: ph::ARROWS_LEFT_RIGHT,
-                        title: self.title(),
+                        icon,
+                        title: line,
                         detail: String::new(),
-                        frac: frac_of(got, total),
-                        nums: bytes_nums(got, total),
+                        frac: Some(tick.frac()),
+                        nums: String::new(),
                         copy: None,
                         button: stop_button(self),
+                    },
+                    Phase::Ended(r) => View {
+                        state,
+                        icon: icon_for(icon),
+                        title: r.said.clone(),
+                        detail: super::batch::failed_lines(&plan, &r).join(&sep),
+                        frac: None,
+                        nums: ended,
+                        copy: super::batch::copy_details(&plan, &r),
+                        button: None,
+                    },
+                    Phase::Failed(f) => View {
+                        state,
+                        icon: icon_for(icon),
+                        title: board.title(),
+                        detail: f.said.clone(),
+                        frac: None,
+                        nums: ended,
+                        copy: super::source::Failed::copy_body(
+                            &format!("{}\n{}", board.title(), f.said),
+                            &f.detail,
+                        ),
+                        button: None,
+                    },
+                    Phase::Running | Phase::Asking | Phase::Dropped | Phase::Opened => {
+                        let (got, total) = tick.bytes.unwrap_or((0, 0));
+                        View {
+                            state,
+                            icon,
+                            title: self.title(),
+                            detail: if tick.total > 0 {
+                                copy_text(
+                                    "rsFilewinBatch.row.items",
+                                    &[
+                                        ("done", &tick.done.to_string()),
+                                        ("total", &tick.total.to_string()),
+                                    ],
+                                )
+                            } else {
+                                String::new()
+                            },
+                            frac: Some(tick.frac()),
+                            nums: bytes_nums(got, total),
+                            copy: None,
+                            button: if board.stopping() {
+                                None
+                            } else {
+                                stop_button(self)
+                            },
+                        }
                     }
                 }
-                (_, Some(super::cross_copy::Outcome::Done { machine, path, .. })) => View {
-                    state,
-                    icon: icon_for(ph::ARROWS_LEFT_RIGHT),
-                    title: copy_text(
-                        "rsFilewinProgress.cross.done",
-                        &[
-                            ("name", name),
-                            ("machine", &super::cross_copy::shown_machine(&machine)),
-                        ],
-                    ),
-                    detail: path,
-                    frac: None,
-                    nums: ended,
-                    copy: None,
-                    button: None,
-                },
-                (_, Some(super::cross_copy::Outcome::Skipped { path, .. })) => View {
-                    state,
-                    icon: icon_for(ph::ARROWS_LEFT_RIGHT),
-                    title: copy_text("rsFilewinProgress.cross.skipped", &[("name", name)]),
-                    detail: path,
-                    frac: None,
-                    nums: ended,
-                    copy: None,
-                    button: None,
-                },
-                (_, o) => View {
-                    state,
-                    icon: icon_for(ph::ARROWS_LEFT_RIGHT),
-                    title: if state == State::Stopped {
-                        copy_text(
-                            "rsFilewinProgress.cross.stopped",
-                            &[("name", name), ("machine", machine)],
-                        )
-                    } else {
-                        copy_text(
-                            "rsFilewinProgress.cross.failed",
-                            &[("name", name), ("machine", machine)],
-                        )
-                    },
-                    detail: match (state, &o) {
-                        (State::Failed, Some(super::cross_copy::Outcome::Failed { why, .. })) => {
-                            why.said.clone()
-                        }
-                        _ => String::new(),
-                    },
-                    frac: None,
-                    nums: ended,
-                    copy: match (state, &o) {
-                        (State::Failed, Some(super::cross_copy::Outcome::Failed { why, .. })) => {
-                            super::source::Failed::copy_body(
-                                &format!(
-                                    "{}\n{}",
-                                    copy_text(
-                                        "rsFilewinProgress.cross.failed",
-                                        &[("name", name), ("machine", machine)],
-                                    ),
-                                    why.said
-                                ),
-                                &why.detail,
-                            )
-                        }
-                        _ => None,
-                    },
-                    button: None,
-                },
-            },
+            }
             Trip::Size { board, .. } => match (state, board.last()) {
                 (State::Running, _) => View {
                     state,
@@ -994,50 +932,6 @@ impl Job {
                     copy: last
                         .as_ref()
                         .and_then(|(n, o)| super::extract::outcome_copy(n, o)),
-                    button: None,
-                },
-            },
-            Trip::Delete { board, n, .. } => match (state, board.last()) {
-                (State::Running, _) => View {
-                    state,
-                    icon: ph::TRASH,
-                    title: self.title(),
-                    detail: String::new(),
-                    frac: Some(None),
-                    nums: String::new(),
-                    copy: None,
-                    button: stop_button(self),
-                },
-                (State::Failed, Some(o)) => View {
-                    state,
-                    icon: icon_for(ph::TRASH),
-                    title: copy_text(
-                        "rsFilewinProgress.delete.failed",
-                        &[("n", &o.failed.len().to_string())],
-                    ),
-                    detail: fails_of(&o.failed, &sep),
-                    frac: None,
-                    nums: ended,
-                    copy: super::source::Failed::copy_many(
-                        &copy_text(
-                            "rsFilewinProgress.delete.failed",
-                            &[("n", &o.failed.len().to_string())],
-                        ),
-                        &o.failed,
-                    ),
-                    button: None,
-                },
-                (_, o) => View {
-                    state,
-                    icon: icon_for(ph::TRASH),
-                    title: copy_text(
-                        "rsFilewinProgress.delete.done",
-                        &[("n", &o.map_or(*n, |o| o.ok).to_string())],
-                    ),
-                    detail: String::new(),
-                    frac: None,
-                    nums: ended,
-                    copy: None,
                     button: None,
                 },
             },

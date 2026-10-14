@@ -136,6 +136,11 @@ pub const FILEWIN_OPEN_OP: &str = "filewin-open";
 /// 格子：连着 ⇒ `Seen`；刚断、在重连 ⇒ `Unseen{why: Dropped}`；重连一轮没连上 / 从没连上 ⇒ `Unseen{why: Unreachable}`。
 pub const LINK_KIND: &str = "link";
 
+/// 「一组做到哪了」那条流的 `kind` 前缀：`files-batch/<票>`（票是窗口给那一组铸的）。窗口订它，**monitor 自己接**：
+/// 那一组在哪台做，那台的流上就推 `files_batch` 帧，monitor 按票转过来（两台之间的复制在本机后端里做，帧从本机那条流上来）。
+/// 格子：`{done, total, current?, bytes_done?, bytes_total?}`（一整份快照，只留最新的）；流不自己关，那一问回来窗口就停订。
+pub const FILES_BATCH_KIND_PREFIX: &str = "files-batch/";
+
 /// 「重新连接」：窗口那一条警告条上的按钮 ⇒ 在通道上 `call` 这一条（寻址 ＝ 那台，参数空），
 /// **monitor 自己接**：叫醒那台的连接循环，不等退避睡满。回 `{}`；连没连上看 [`LINK_KIND`] 那条流。
 pub const LINK_RETRY_OP: &str = "link-retry";
