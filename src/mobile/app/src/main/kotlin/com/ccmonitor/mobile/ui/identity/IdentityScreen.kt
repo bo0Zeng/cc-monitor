@@ -1,13 +1,16 @@
 package com.ccmonitor.mobile.ui.identity
 
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,11 +18,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,18 +35,22 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.Identity
 import com.ccmonitor.mobile.core.data.db.isKeystoreBacked
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.icon.BackButton
+import com.ccmonitor.mobile.core.ui.icon.IconTextButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
+import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ui.copyPlainText
 import com.ccmonitor.mobile.ui.host.IDENTITY_SCREEN_TITLE
@@ -82,27 +87,32 @@ fun IdentityScreen(onBack: () -> Unit = {}) {
     // inset 垫在最外层 Box 上：返回键/标题让开状态栏，右下的 FAB 让开手势条。
     Box(Modifier.fillMaxSize().settingsGroupScreenInsets()) {
         Column(Modifier.fillMaxSize()) {
-            // 返回键与 `ButtonSettingsScreen` 同一写法。
-            BackButton(onBack, modifier = Modifier.padding(start = 4.dp, top = 4.dp))
-            Text(
-                text = IDENTITY_SCREEN_TITLE,
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 16.dp),
-            )
+            // 顶栏：返回图标 ＋ 标题（稿 `外观对齐` 第 10 节：「← 返回」字换顶栏图标）。
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = Touch.topBar).padding(start = 4.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BackButton(onBack)
+                Text(IDENTITY_SCREEN_TITLE, style = MaterialTheme.typography.titleMedium)
+            }
             if (identities.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
                     // 文案说差别、不说算法名（下面的选择框同理）。
                     Text(copyText("mobIdentity.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
-                LazyColumn(Modifier.fillMaxSize()) {
+                // 一把一张卡（`--card`、圆角 8）。
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
                     items(identities, key = { it.id }) { identity ->
                         IdentityRow(
                             identity = identity,
                             onCopy = { scope.launch { clipboard.copyPlainText(identity.publicKeyOpenSsh) } },
                             onDelete = { vm.delete(identity) },
                         )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
             }
@@ -139,20 +149,11 @@ private fun BoxScope.AddIdentityButton(vm: IdentityViewModel) {
     var showGenerateEd25519 by remember { mutableStateOf(false) }
     AddIdentityFab(onClick = { showChooser = true })
     if (showChooser) {
-        IdentityChooserDialog(
+        IdentityChooserSheet(
             onDismiss = { showChooser = false },
-            onGenerate = {
-                showChooser = false
-                showGenerate = true
-            },
-            onGenerateEd25519 = {
-                showChooser = false
-                showGenerateEd25519 = true
-            },
-            onImport = {
-                showChooser = false
-                showImport = true
-            },
+            onGenerate = { showGenerate = true },
+            onGenerateEd25519 = { showGenerateEd25519 = true },
+            onImport = { showImport = true },
         )
     }
     if (showGenerate) {
@@ -201,37 +202,35 @@ private fun IdentityRow(
             title = { Text(copyText("mobIdentity.delete.title")) },
             text = { Text(identityDeleteWarning(identity.label, identity.isKeystoreBacked())) },
             confirmButton = {
-                TextButton(onClick = {
+                SecondaryButton(danger = true, onClick = {
                     showDeleteConfirm = false
                     onDelete()
-                }) { Text(copyText("mobIdentity.delete.ok"), color = LocalAppTokens.current.errorText) }
+                }) { Text(copyText("mobIdentity.delete.ok")) }
             },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
+            dismissButton = { SecondaryButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
+    val tokens = LocalAppTokens.current
     Column(
         Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .background(tokens.card, RoundedCornerShape(tokens.radius.l))
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(identity.label, style = MaterialTheme.typography.bodyMedium)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            PhIcon(Ph.Key, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(identity.label, style = MaterialTheme.typography.titleSmall)
             Text(identity.keyType, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(
             text = identity.fingerprintSha256,
             style = monoSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(start = Touch.iconBar + 12.dp, top = 4.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onCopy) { Text(copyText("mobIdentity.row.copyKey")) }
-            TextButton(onClick = { showDeleteConfirm = true }) { Text(copyText("mobIdentity.row.delete"), color = LocalAppTokens.current.errorText) }
+        Row(Modifier.padding(start = Touch.iconBar), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            IconTextButton(Ph.Copy, copyText("mobIdentity.row.copyKey"), onClick = onCopy)
+            IconTextButton(Ph.Trash, copyText("mobIdentity.row.delete"), onClick = { showDeleteConfirm = true }, danger = true)
         }
     }
 }
@@ -268,33 +267,29 @@ private fun NewIdentityDialog(
                 singleLine = true,
             )
         },
-        confirmButton = { TextButton(onClick = { onCreate(label) }) { Text(copyText("mobIdentity.new.create")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = { onCreate(label) }) { Text(copyText("mobIdentity.new.create")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
+/** 添一把钥匙：从底部拉起、三种来源（稿 `外观对齐` 第 10 节）。说差别不说算法名；格式判别交给解析，不让用户判。 */
 @Composable
-private fun IdentityChooserDialog(
+private fun IdentityChooserSheet(
     onDismiss: () -> Unit,
     onGenerate: () -> Unit,
     onGenerateEd25519: () -> Unit,
     onImport: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        // 上屏叫「钥匙」不叫「身份」：「身份」会与账号身份撞（同 `IDENTITY_SCREEN_TITLE`）。
-        title = { Text(copyText("mobIdentity.add.title")) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                // 说差别不说算法名：硬件那一档私钥出不了这台手机，软件那一档能导出来备份。
-                TextButton(onClick = onGenerate) { Text(copyText("mobIdentity.add.hardware")) }
-                TextButton(onClick = onGenerateEd25519) { Text(copyText("mobIdentity.add.software")) }
-                // 格式判别交给解析，不让用户判。
-                TextButton(onClick = onImport) { Text(copyText("mobIdentity.add.import")) }
-            }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+    // 上屏叫「钥匙」不叫「身份」：「身份」会与账号身份撞（同 `IDENTITY_SCREEN_TITLE`）。
+    ActionSheet(
+        title = copyText("mobIdentity.add.title"),
+        actions =
+            listOf(
+                SheetAction(Ph.Fingerprint, copyText("mobIdentity.add.hardware"), onClick = onGenerate),
+                SheetAction(Ph.Key, copyText("mobIdentity.add.software"), onClick = onGenerateEd25519),
+                SheetAction(Ph.UploadSimple, copyText("mobIdentity.add.import"), onClick = onImport),
+            ),
+        onDismiss = onDismiss,
     )
 }
 
@@ -332,8 +327,8 @@ private fun ImportPrivateKeyDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onImport(label, pem) }, enabled = pem.isNotBlank()) { Text(copyText("mobIdentity.import.ok")) }
+            SecondaryButton(onClick = { onImport(label, pem) }, enabled = pem.isNotBlank()) { Text(copyText("mobIdentity.import.ok")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }

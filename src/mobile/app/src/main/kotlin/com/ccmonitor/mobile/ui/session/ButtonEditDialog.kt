@@ -12,7 +12,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,6 +26,7 @@ import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.terminal.escapeSequenceBytes
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.Touch
@@ -252,11 +252,11 @@ fun ButtonEditDialog(
         title = { Text(if (initial == null) copyText("mobButtonEdit.dialog.newTitle") else copyText("mobButtonEdit.dialog.editTitle")) },
         text = { ButtonEditForm(s, hostContext) },
         confirmButton = {
-            TextButton(enabled = s.valid, onClick = { onConfirm(s.build(initial, hostContext)) }) {
+            SecondaryButton(enabled = s.valid, onClick = { onConfirm(s.build(initial, hostContext)) }) {
                 Text(if (initial == null) copyText("mobButtonEdit.dialog.add") else copyText("mobButtonEdit.dialog.save"))
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -458,7 +458,7 @@ private fun DropdownTrigger(
     text: String,
     onClick: () -> Unit,
 ) {
-    TextButton(onClick = onClick) {
+    SecondaryButton(onClick = onClick) {
         Text(text)
         PhIcon(Ph.CaretDown, contentDescription = null, size = Touch.iconInline)
     }

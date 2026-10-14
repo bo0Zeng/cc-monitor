@@ -15,10 +15,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.res.ResourcesCompat
 import androidx.core.graphics.ColorUtils
+import androidx.core.widget.TextViewCompat
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
 import io.noties.markwon.AbstractMarkwonPlugin
 import io.noties.markwon.LinkResolverDef
 import io.noties.markwon.Markwon
@@ -28,6 +31,7 @@ import io.noties.markwon.ext.latex.JLatexMathPlugin
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.linkify.LinkifyPlugin
+import kotlin.math.roundToInt
 import com.ccmonitor.mobile.core.ui.R as UiR
 
 /**
@@ -63,8 +67,8 @@ private fun buildMarkwon(
     // 强制不透明：luminance 判定与高亮主题背景都按不透明算才稳。
     val opaqueCodeBg = codeBgArgb or 0xFF000000.toInt()
     val darkCode = ColorUtils.calculateLuminance(opaqueCodeBg) < 0.5
-    // LaTeX 数学字号用 px，与下方 TextView 的 15sp 一致。
-    val mathTextSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, 15f, context.resources.displayMetrics)
+    // LaTeX 数学字号用 px，与下方 TextView 同一档（`--font-size-prose`）。
+    val mathTextSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, ThemeTokens.FontSizeProse.value, context.resources.displayMetrics)
     return Markwon
         .builder(context)
         .usePlugin(StrikethroughPlugin.create())
@@ -123,14 +127,19 @@ fun MarkdownText(
     val markwon = LocalMarkwon.current ?: rememberMarkwon(color)
     val linkArgb = LocalAppTokens.current.link.toArgb()
     val textArgb = color.toArgb()
+    // 消息流正文：字号 · 行高照六档里给消息流的那一档（`--font-size-prose` 15 · `--line-height-prose` 1.65）。
+    val prose = MaterialTheme.typography.bodyLarge
+    val density = LocalDensity.current
+    val sizePx = with(density) { prose.fontSize.toPx() }
+    val lineHeightPx = (sizePx * prose.lineHeight.value).roundToInt()
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
             TextView(ctx).apply {
                 setTextColor(textArgb)
                 setLinkTextColor(linkArgb)
-                textSize = 15f
-                setLineSpacing(0f, 1.25f)
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, sizePx)
+                TextViewCompat.setLineHeight(this, lineHeightPx)
                 setTextIsSelectable(true)
             }
         },

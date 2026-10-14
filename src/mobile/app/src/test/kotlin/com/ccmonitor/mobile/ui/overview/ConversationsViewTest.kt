@@ -3,6 +3,8 @@ package com.ccmonitor.mobile.ui.overview
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
+import com.ccmonitor.mobile.core.claude.link.SessionDot
+import com.ccmonitor.mobile.core.claude.link.SessionFate
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.HistoryListPage
@@ -11,6 +13,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.Needs
 import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.DurationFormat
+import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.link.Problem
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -22,7 +25,7 @@ class ConversationsViewTest {
     private fun row(
         sid: String,
         section: String,
-    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null)
+    ) = HistoryRow(sid, "标题 $sid", "09:0$sid", section, "/w", "/w/$sid.jsonl", "claude", null, "live")
 
     private val list =
         Fetched.Got(
@@ -84,5 +87,38 @@ class ConversationsViewTest {
         assertEquals(Problem("m 后端要更新", "theirs: p9"), v.linkNotice)
         assertNull(v.linkProblem)
         assertNull("不旧 ⇒ 不说", view(LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList())).linkNotice)
+    }
+
+    @Test
+    fun `每行一颗状态点：活的照语气、离开活的照去向、流上没有的照清单那一格；字跟着那一格`() {
+        val rows =
+            listOf("a" to "live", "b" to "ended", "c" to "ended", "d" to "unknown", "e" to "live", "f" to "别的词")
+                .map { (sid, st) -> HistoryRow(sid, "标题 $sid", "09:00", "今天", "/w", "/w/$sid.jsonl", "claude", null, st) }
+        val table =
+            SessionTable(
+                sessions = mapOf("a" to LiveSession(sid = "a", activity = Toned("需手动", Tone.NEED))),
+                fates = mapOf("b" to SessionFate(SessionFate.State.RECONNECTABLE, "Claude 已退出")),
+            )
+        val v = view(LinkState.Up(), table, Fetched.Got(HistoryListPage(rows, null, false)), Fetched.Got(emptyList()))
+        val by = v.sections.flatMap { it.rows }.associateBy { it.sessionId }
+        assertEquals(SessionDot.NEEDS_YOU, by.getValue("a").dot)
+        assertEquals(Toned("需手动", Tone.NEED), by.getValue("a").status)
+        assertEquals(SessionDot.EXITED, by.getValue("b").dot)
+        assertEquals("去向那一句照抄", "Claude 已退出", by.getValue("b").status?.text)
+        assertEquals(SessionDot.ENDED, by.getValue("c").dot)
+        assertEquals(copyText("sessionState.ended.name"), by.getValue("c").status?.text)
+        assertEquals(SessionDot.UNKNOWN, by.getValue("d").dot)
+        assertEquals(copyText("sessionState.unseen.name"), by.getValue("d").status?.text)
+        assertEquals(SessionDot.RUNNING, by.getValue("e").dot)
+        assertNull("还没报到 ⇒ 不写字", by.getValue("e").status)
+        assertNull("认不出 ⇒ 不画", by.getValue("f").dot)
+        assertNull(by.getValue("f").status)
+    }
+
+    @Test
+    fun `需手动那几条的点照核心给的语气`() {
+        val needs = listOf(SessionsNeeds.Row("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, null)))
+        val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs))
+        assertEquals(SessionDot.NEEDS_YOU, v.needs.single().dot)
     }
 }

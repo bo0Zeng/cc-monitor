@@ -32,7 +32,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -52,6 +51,7 @@ import com.ccmonitor.mobile.core.data.db.Bookmark
 import com.ccmonitor.mobile.core.data.repo.BookmarkRepository
 import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
@@ -61,6 +61,7 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.ssh.dialectFor
@@ -168,7 +169,7 @@ private fun SftpContent(
                     Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             ErrorLine(copyText("mobSftp.load.failed"))
-                            TextButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
+                            SecondaryButton(onClick = { vm.connect() }) { Text(copyText("front.act.retry")) }
                             CopyDetailButton(copyText("mobSftp.load.failed"), s.message)
                         }
                     }
@@ -308,9 +309,9 @@ private fun SftpReadyContent(
         ) {
             PhIconButton(Ph.Tabs, copyText("mobTabs.open.aria"), onClick = onShowTabs, tint = MaterialTheme.colorScheme.onSurfaceVariant)
             IconTextButton(Ph.FolderPlus, copyText("mobSftp.bar.mkdir"), onClick = { onDialog(SftpDialog.Mkdir) })
-            TextButton(onClick = { vm.toggleSort() }) { Text(if (sortBySize) copyText("mobSftp.bar.sortSize") else copyText("mobSftp.bar.sortName")) }
+            SecondaryButton(onClick = { vm.toggleSort() }) { Text(if (sortBySize) copyText("mobSftp.bar.sortSize") else copyText("mobSftp.bar.sortName")) }
             // SFTP 路径归一成 shell cd 路径（Windows /C:/x→C:/x；POSIX 原样）。
-            TextButton(onClick = { onOpenTerminal(dialectFor(hostOs).sftpCwdToShell(path)) }) { Text(copyText("mobSftp.bar.terminal")) }
+            SecondaryButton(onClick = { onOpenTerminal(dialectFor(hostOs).sftpCwdToShell(path)) }) { Text(copyText("mobSftp.bar.terminal")) }
         }
         // 书签横条（点跳转 / 长按删）
         if (bookmarks.isNotEmpty()) {
@@ -497,14 +498,14 @@ private fun DeleteEntryDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = {
+            SecondaryButton(danger = true, onClick = {
                 onConfirm()
                 onDialog(null)
             }) {
-                Text(copyText("mobSftp.delete.ok"), color = LocalAppTokens.current.errorText)
+                Text(copyText("mobSftp.delete.ok"))
             }
         },
-        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -525,7 +526,7 @@ private fun PreviewDialog(
                 modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -547,8 +548,8 @@ private fun EditFileDialog(
                 modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp, max = 420.dp),
             )
         },
-        confirmButton = { TextButton(onClick = { onDialog(SftpDialog.ConfirmSave(d.name, d.path, text)) }) { Text(copyText("mobSftp.edit.save")) } },
-        dismissButton = { TextButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = { onDialog(SftpDialog.ConfirmSave(d.name, d.path, text)) }) { Text(copyText("mobSftp.edit.save")) } },
+        dismissButton = { SecondaryButton(onClick = { onDialog(null) }) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -570,9 +571,9 @@ private fun ConfirmSaveDialog(
                 style = monoSmall,
             )
         },
-        confirmButton = { TextButton(onClick = onConfirm) { Text(copyText("mobSftp.overwrite.ok"), color = LocalAppTokens.current.errorText) } },
+        confirmButton = { SecondaryButton(danger = true, onClick = onConfirm) { Text(copyText("mobSftp.overwrite.ok")) } },
         // 返回编辑（保留改动）。
-        dismissButton = { TextButton(onClick = { onDialog(SftpDialog.Edit(d.name, d.path, d.text)) }) { Text(copyText("mobSftp.overwrite.back")) } },
+        dismissButton = { SecondaryButton(onClick = { onDialog(SftpDialog.Edit(d.name, d.path, d.text)) }) { Text(copyText("mobSftp.overwrite.back")) } },
     )
 }
 
@@ -593,16 +594,16 @@ private fun ActionMenuDialog(
         text = {
             Column {
                 if (!entry.isDir) {
-                    TextButton(onClick = onPreview) { Text(copyText("mobSftp.menu.preview")) }
-                    TextButton(onClick = onEdit) { Text(copyText("mobSftp.menu.edit")) } // 小文件编辑
-                    TextButton(onClick = onDownload) { Text(copyText("mobSftp.menu.download")) }
+                    SecondaryButton(onClick = onPreview) { Text(copyText("mobSftp.menu.preview")) }
+                    SecondaryButton(onClick = onEdit) { Text(copyText("mobSftp.menu.edit")) } // 小文件编辑
+                    SecondaryButton(onClick = onDownload) { Text(copyText("mobSftp.menu.download")) }
                 }
-                TextButton(onClick = onRename) { Text(copyText("mobSftp.menu.rename")) }
-                TextButton(onClick = onDelete) { Text(copyText("mobSftp.menu.delete"), color = LocalAppTokens.current.errorText) }
+                SecondaryButton(onClick = onRename) { Text(copyText("mobSftp.menu.rename")) }
+                SecondaryButton(danger = true, onClick = onDelete) { Text(copyText("mobSftp.menu.delete")) }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -621,11 +622,11 @@ private fun InputDialog(
         title = { Text(title) },
         text = { OutlinedTextField(value, { value = it }, singleLine = true, modifier = Modifier.fillMaxWidth()) },
         confirmButton = {
-            TextButton(onClick = { onConfirm(value.trim()) }, enabled = value.trim().isNotEmpty() && !value.contains('/')) {
+            SecondaryButton(onClick = { onConfirm(value.trim()) }, enabled = value.trim().isNotEmpty() && !value.contains('/')) {
                 Text(confirm)
             }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -661,8 +662,9 @@ private fun SftpRow(
     Row(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = Touch.rowFile)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick) // 长按出菜单
-            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.md),
+            .padding(horizontal = tokens.spacing.lg, vertical = tokens.spacing.xs),
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {

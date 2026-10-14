@@ -357,6 +357,7 @@ private fun NavGraphBuilder.chatRoutes(
         ConversationsRoute(
             hostId = hostId,
             onOpen = { sid -> nav.navigate(Screen.Chat.of(hostId, sid)) },
+            onDrawerAction = { action -> nav.followDrawer(action, hostId, tabManager) },
         )
     }
     composable(
@@ -409,6 +410,8 @@ private fun NavHostController.followDrawer(
             openTerminal = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Terminal())}" },
         )
     navigate(to.route) {
+        // 对话列表里再点「对话」不叠第二份。
+        launchSingleTop = !to.replacesChat
         if (to.replacesChat) popUpTo(Screen.Chat.route) { inclusive = true }
     }
 }

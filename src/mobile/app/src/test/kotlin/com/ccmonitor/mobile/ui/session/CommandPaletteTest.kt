@@ -1,7 +1,7 @@
 package com.ccmonitor.mobile.ui.session
 
-import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.data.db.CustomButton
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -68,8 +68,8 @@ class CommandPaletteTest {
     @Test
     fun paletteRowMeetsMinimumTouchTarget() =
         assertTrue(
-            "行高下界 $PALETTE_ROW_MIN_HEIGHT 低于 Material3 的最小触控目标 48dp",
-            PALETTE_ROW_MIN_HEIGHT >= 48.dp,
+            "面板一行的下界（适配层单行 ${Touch.rowSingle}）低于最小触控目标 ${Touch.target}",
+            Touch.rowSingle >= Touch.target,
         )
 
     @Test

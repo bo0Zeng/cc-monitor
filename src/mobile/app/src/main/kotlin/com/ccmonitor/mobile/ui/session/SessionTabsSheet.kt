@@ -32,6 +32,7 @@ import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import org.koin.compose.koinInject
 
@@ -116,10 +117,11 @@ private fun SessionTabRowItem(
     Row(
         Modifier
             .fillMaxWidth()
+            .heightIn(min = Touch.rowSingle)
             .clip(RoundedCornerShape(tokens.radius.m))
             .background(bg)
             .clickable(onClick = onClick)
-            .padding(start = 12.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 12.dp, end = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(tokens.spacing.md),
     ) {

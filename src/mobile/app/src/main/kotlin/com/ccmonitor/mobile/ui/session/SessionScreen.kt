@@ -20,7 +20,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -56,6 +55,7 @@ import com.ccmonitor.mobile.core.ssh.SessionStatus
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.terminal.CcMonitorTerminal
 import com.ccmonitor.mobile.core.terminal.TerminalSession
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.AppSnackbarHostScaffold
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
@@ -170,7 +170,7 @@ private fun ErrorContent(
         // 下层给的原话（或这一侧判出的原因）不上屏，进复制详情；连接日志照旧给原文。
         CopyDetailButton(copyText("mobSession.connect.failed"), message)
         if (log.isNotEmpty()) ConnectLogView(log, Modifier.fillMaxWidth().weight(1f))
-        TextButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
+        SecondaryButton(onClick = { vm.retry() }) { Text(copyText("mobSession.connect.retry")) }
     }
 }
 
@@ -200,7 +200,7 @@ private fun NeedIdentityContent(
         Text(copyText("mobSession.identity.pickTitle"), style = MaterialTheme.typography.titleMedium)
         Text(copyText("mobSession.identity.pickHint"), style = MaterialTheme.typography.bodySmall)
         identities.forEach { id ->
-            TextButton(onClick = { onPick(id.id) }) { Text(id.label.ifBlank { id.id }) }
+            SecondaryButton(onClick = { onPick(id.id) }) { Text(id.label.ifBlank { id.id }) }
         }
     }
 }
@@ -249,7 +249,7 @@ private fun HostKeyChangedContent(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = { confirming = true }) { Text(copyText("mobHostKey.page.confirm")) }
+        SecondaryButton(onClick = { confirming = true }) { Text(copyText("mobHostKey.page.confirm")) }
     }
 
     if (confirming) {
@@ -259,12 +259,12 @@ private fun HostKeyChangedContent(
             // 二次确认的文案说清后果，而不是只问「确定吗」。
             text = { Text(copyText("hostIdentity.trust.consequence")) },
             confirmButton = {
-                TextButton(onClick = {
+                SecondaryButton(onClick = {
                     confirming = false
                     onTrustNew()
                 }) { Text(copyText("mobHostKey.trust.ok")) }
             },
-            dismissButton = { TextButton(onClick = { confirming = false }) { Text(copyText("kit.dialog.cancel")) } },
+            dismissButton = { SecondaryButton(onClick = { confirming = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
 }
@@ -395,7 +395,7 @@ private fun DroppedBanner(
             if (status == SessionStatus.RECONNECTING) copyText("mobSession.bar.reconnecting") else copyText("mobSession.bar.dropped"),
             modifier = Modifier.weight(1f).padding(vertical = 12.dp),
         )
-        TextButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
+        SecondaryButton(onClick = onReconnect) { Text(copyText("mobSession.connect.retry")) }
     }
 }
 
@@ -591,13 +591,13 @@ private fun PushKeyDialog(
                 } else {
                     Text(copyText("mobKeyPush.dialog.hint"), style = MaterialTheme.typography.bodySmall)
                     identities.forEach { id ->
-                        TextButton(onClick = { onPick(id) }) { Text(id.label.ifBlank { id.id }) }
+                        SecondaryButton(onClick = { onPick(id) }) { Text(id.label.ifBlank { id.id }) }
                     }
                 }
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 
@@ -618,8 +618,8 @@ private fun CaptureDialog(
                 modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState()),
             )
         },
-        confirmButton = { TextButton(onClick = onCopy) { Text(copyText("mobCapture.dialog.copy")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
+        confirmButton = { SecondaryButton(onClick = onCopy) { Text(copyText("mobCapture.dialog.copy")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("mobKit.act.close")) } },
     )
 }
 

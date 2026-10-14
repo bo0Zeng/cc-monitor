@@ -31,7 +31,6 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -47,8 +46,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Reply
+import com.ccmonitor.mobile.core.claude.link.SessionDot
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.copy.copyText
@@ -56,16 +57,20 @@ import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.db.parseAddressLine
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
+import com.ccmonitor.mobile.core.ui.sheet.ActionSheet
+import com.ccmonitor.mobile.core.ui.sheet.SheetAction
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.dialectFor
+import com.ccmonitor.mobile.ui.common.StatusDot
 import com.ccmonitor.mobile.ui.nav.settingsGroupScreenInsets
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -104,6 +109,7 @@ fun HostListScreen(
     val vm = koinViewModel<HostViewModel>()
     val hosts by vm.hosts.collectAsState()
     val launchersByHost by vm.launchersByHost.collectAsState()
+    val linkDots by vm.linkDots.collectAsState()
     val tokens = LocalAppTokens.current
 
     // 按 groupId 分组：命名组按名排序在前，未分组的放最后。
@@ -135,6 +141,7 @@ fun HostListScreen(
                         items(groupHosts, key = { it.id }) { host ->
                             HostRow(
                                 host,
+                                dot = linkDots[host.id],
                                 launchers = launchersByHost[host.id].orEmpty(),
                                 // 种类跟着 hostId 一起交出去，见本屏头注。
                                 onClick = { onConnect(host.id) },
@@ -239,8 +246,8 @@ private fun ImportSshConfigDialog(
                 )
             }
         },
-        confirmButton = { TextButton(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text(copyText("mobHosts.import.ok")) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        confirmButton = { SecondaryButton(onClick = { onImport(text) }, enabled = text.isNotBlank()) { Text(copyText("mobHosts.import.ok")) } },
+        dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
     )
 }
 
@@ -271,14 +278,18 @@ private fun HostListActions(
     }
 }
 
+/** 行首那颗点的读屏名：已连接 ⇒ 在线，连接失败 ⇒ 离线（与桌面机器页同一句）。 */
+private fun hostDotLabel(dot: SessionDot): String = if (dot == SessionDot.FAILED) copyText("machinePage.state.down") else copyText("machinePage.state.up")
+
 /** 主机删除确认文案：点明不可撤销，且不动远端数据。 */
 internal fun hostDeleteWarning(label: String): String =
     copyText("mobHosts.delete.body", "label" to label)
 
-@OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按删除，与 SftpScreen 的「点跳转，长按删」一致
+@OptIn(ExperimentalFoundationApi::class) // combinedClickable：点行连接，长按 ＝ ⋯（手机的右键菜单）
 @Composable
 private fun HostRow(
     host: Host,
+    dot: SessionDot?,
     launchers: List<Launcher>,
     onClick: () -> Unit,
     onLaunch: (String) -> Unit,
@@ -286,46 +297,42 @@ private fun HostRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    var showDeleteConfirm by remember { mutableStateOf(false) } // 删除二次确认
-    if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text(copyText("mobHosts.delete.title")) },
-            text = { Text(hostDeleteWarning(host.label)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showDeleteConfirm = false
-                    onDelete()
-                }) { Text(copyText("mobHosts.delete.ok"), color = LocalAppTokens.current.errorText) }
-            },
-            dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
-        )
-    }
+    var showMenu by remember { mutableStateOf(false) }
+    if (showMenu) HostRowMenu(host, onEdit, onFiles, onDelete, onDismiss = { showMenu = false })
     Column(
         Modifier
             .fillMaxWidth()
-            // 点行按默认方式连接（无 launcher）；长按弹删除确认。删除不放动作栏，免得与 编辑/文件 并排误触。
-            .combinedClickable(onClick = onClick, onLongClick = { showDeleteConfirm = true })
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .heightIn(min = Touch.rowDouble)
+            // 点行按默认方式连接（无 launcher）；长按 ＝ ⋯。
+            .combinedClickable(onClick = onClick, onLongClick = { showMenu = true })
+            .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(Modifier.weight(1f).padding(end = 8.dp)) {
-                Text(host.label, style = MaterialTheme.typography.bodyMedium)
-                // 主地址；有额外地址时标出数量
+            StatusDot(dot, dot?.let { hostDotLabel(it) })
+            Column(Modifier.weight(1f)) {
+                Text(host.label, style = MaterialTheme.typography.titleSmall)
+                // 主地址；有额外地址时标出数量；连接失败 ⇒ 后面跟一句红字
                 val extraCount = host.extraAddresses?.lineSequence()?.count { it.isNotBlank() } ?: 0
-                Text(
-                    "${host.username}@${host.host}:${host.port}" + if (extraCount > 0) "  +$extraCount" else "",
-                    style = monoSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row {
+                    Text(
+                        "${host.username}@${host.host}:${host.port}" + if (extraCount > 0) "  +$extraCount" else "",
+                        style = monoSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    if (dot == SessionDot.FAILED) {
+                        Text(" · " + hostDotLabel(dot), style = MaterialTheme.typography.bodySmall, color = LocalAppTokens.current.errorText)
+                    }
+                }
             }
-            TextButton(onClick = onEdit) { Text(copyText("mobHosts.row.edit")) }
-            TextButton(onClick = onFiles) { Text(copyText("mobHosts.row.files")) }
-            // 删除由长按主机行触发（见上方 combinedClickable）。
+            PhIconButton(Ph.DotsThree, copyText("mobHosts.row.more", "label" to host.label), onClick = { showMenu = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         // 启动配置 chips（cc/cct/项目）：点 chip 即带 launcher 连接（一键 cd、tmux、跑命令）。
         // 能力位门控：launcher 要跑 tmux/claude，`supportsTmux` 为 false（如 Windows/PS）时隐藏。
@@ -343,6 +350,43 @@ private fun HostRow(
                 }
             }
         }
+    }
+}
+
+/** 一台的 ⋯：行尾「编辑 · 文件」收进这里（稿 `外观对齐` 第 1 节），删除也在这里（撤不回 ⇒ 再弹确认框）。 */
+@Composable
+private fun HostRowMenu(
+    host: Host,
+    onEdit: () -> Unit,
+    onFiles: () -> Unit,
+    onDelete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var confirming by remember { mutableStateOf(false) }
+    if (!confirming) {
+        ActionSheet(
+            title = host.label,
+            actions =
+                listOf(
+                    SheetAction(Ph.PencilSimple, copyText("mobHosts.row.edit"), onClick = onEdit),
+                    SheetAction(Ph.FolderSimple, copyText("mobHosts.row.files"), onClick = onFiles),
+                    SheetAction(Ph.Trash, copyText("mobHosts.delete.title"), danger = true, onClick = { confirming = true }),
+                ),
+            onDismiss = { if (!confirming) onDismiss() },
+        )
+    } else {
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text(copyText("mobHosts.delete.title")) },
+            text = { Text(hostDeleteWarning(host.label)) },
+            confirmButton = {
+                SecondaryButton(danger = true, onClick = {
+                    onDismiss()
+                    onDelete()
+                }) { Text(copyText("mobHosts.delete.ok")) }
+            },
+            dismissButton = { SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) } },
+        )
     }
 }
 
@@ -420,7 +464,7 @@ fun HostEditorScreen(
         Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ErrorLine(copyText("mobHostEdit.load.missing"))
-                TextButton(onClick = onDone) { Text(copyText("mobHostEdit.load.back")) }
+                SecondaryButton(onClick = onDone) { Text(copyText("mobHostEdit.load.back")) }
             }
         }
         return
@@ -535,11 +579,11 @@ fun HostEditorScreen(
 
         // 本机自定义按钮编辑器入口；只对已保存的主机给，因为要 host id 作专属作用域。
         if (existing != null) {
-            TextButton(onClick = onEditButtons) { Text(copyText("mobHostEdit.buttons.edit")) }
+            SecondaryButton(onClick = onEditButtons) { Text(copyText("mobHostEdit.buttons.edit")) }
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            TextButton(onClick = onDone) { Text(copyText("kit.dialog.cancel")) }
+            SecondaryButton(onClick = onDone) { Text(copyText("kit.dialog.cancel")) }
             Button(
                 onClick = {
                     val base = existing ?: Host(id = "host-" + UUID.randomUUID(), label = "", host = "", port = 22, username = "")

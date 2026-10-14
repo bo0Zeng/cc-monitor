@@ -281,6 +281,7 @@ class HostConnectorGatewayTest {
         private const val HOST_LINK = "app/src/main/kotlin/com/ccmonitor/mobile/ui/common/HostLink.kt"
         private const val KEEP_ALIVE = "app/src/main/kotlin/com/ccmonitor/mobile/service/SshKeepAliveService.kt"
         private const val HOST_BACKENDS = "app/src/main/kotlin/com/ccmonitor/mobile/link/HostBackends.kt"
+        private const val HOST_VM = "app/src/main/kotlin/com/ccmonitor/mobile/ui/host/HostViewModel.kt"
 
         /** 顶层/成员函数声明（含 `private` / `suspend`）。不认调用 —— `fun` 后必须紧跟名字与 `(`。 */
         private val FUN_DECL_RE = Regex("""(?m)^\s*(?:private\s+|internal\s+)?(?:suspend\s+)?fun\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""")
@@ -303,6 +304,7 @@ class HostConnectorGatewayTest {
          * | `connection` | `SessionViewModel` · `SftpViewModel` · `HostLink` |
          * | `disconnectAll` | `SshKeepAliveService.onTaskRemoved` |
          * | `linkOf` · `probeStale` | `HostBackends`（常驻流跟着 SSH 的连接重接：把它的拨号请求交给核心 · 流断了先叫 SSH 探活） |
+         * | `states` | `HostViewModel`（服务器列表行首那颗点：只读各台的名义状态） |
          *
          * 这里只问「住址集变了没」；「凡调 retain 的生产文件必须也调 release」由
          * `ConnectorRetainReleasePairingTest` 管。网关没有 `disconnect(id)` 那一支：全仓零生产调用方。
@@ -316,6 +318,7 @@ class HostConnectorGatewayTest {
                 "disconnectAll" to setOf(KEEP_ALIVE),
                 "linkOf" to setOf(HOST_BACKENDS),
                 "probeStale" to setOf(HOST_BACKENDS),
+                "states" to setOf(HOST_VM),
             )
 
         /**

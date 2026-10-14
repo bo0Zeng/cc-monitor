@@ -760,6 +760,19 @@ describe("底部抽屉的终端页（L1：快照 ＋ 一行输入 ＋ 常用键�
     expect(named).not.toBe(box(r.page).placeholder);
   });
 
+  it("★ 输入框占位只写「发消息…」；快捷键那句挪进悬停（文案表那一句）；送不了时不挂（键不起作用）", async () => {
+    const r = rig([row("a")], { t: tab("a") });
+    r.page.setVisible(true);
+    await flush();
+    const tip = (b: HTMLTextAreaElement): string => b.getAttribute("title") ?? b.dataset.kitTitle ?? "";
+    expect(box(r.page).placeholder).toBe(copyText("chat.input.placeholder"));
+    expect(tip(box(r.page))).toBe(copyText("terminal.input.keysHint"));
+    const no = rig([row("a", { inputNo: "那台写的一句 · 不归这边" })], { t: tab("a") });
+    no.page.setVisible(true);
+    await flush();
+    expect(tip(box(no.page))).toBe("");
+  });
+
   it("★ 抓屏失败 ⇒ 只出那一条错误条、不去订实时；点［刷新］抓到了 ⇒ 照常订上", async () => {
     const r = rig([row("a")], { t: tab("a") }, "live");
     r.failShots(new Error("no tmux server"));

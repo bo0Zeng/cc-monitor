@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,6 +32,7 @@ import com.ccmonitor.mobile.core.data.db.ButtonGroups
 import com.ccmonitor.mobile.core.data.db.CustomButton
 import com.ccmonitor.mobile.core.data.db.CustomButtonDao
 import com.ccmonitor.mobile.core.data.db.CustomButtonType
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.icon.Ph
 import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -111,12 +111,12 @@ fun CustomButtonBar(
             title = { Text(copyText("mobButtons.delete.title")) },
             text = { Text(copyText("mobButtons.delete.body", "label" to target.label)) },
             confirmButton = {
-                TextButton(onClick = {
+                SecondaryButton(onClick = {
                     scope.launch { dao.delete(target) }
                     deleteTarget = null
                 }) { Text(copyText("mobButtons.delete.ok")) }
             },
-            dismissButton = { TextButton(onClick = { deleteTarget = null }) { Text(copyText("kit.dialog.cancel")) } },
+            dismissButton = { SecondaryButton(onClick = { deleteTarget = null }) { Text(copyText("kit.dialog.cancel")) } },
         )
     }
 }
