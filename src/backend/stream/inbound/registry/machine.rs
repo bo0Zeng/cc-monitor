@@ -1,6 +1,6 @@
 //! 命令表 · 机器：`ssh-*` · `remote-*` · `deploy-*` · `resident-*` · `place-verdict` · `drift-report` · `powershell-*` · `authorized-keys-add` · `pubkey-push` · `backend-log` · `exit-policy-*` · `relay-optin` · `forward-*` · `ccm-*`。
 
-use crate::wire::spec::{arg, both, out, CommandSpec, Run};
+use crate::wire::spec::CommandSpec;
 
 pub(super) const SPECS: &[CommandSpec] = &[
     // **别名预览**（「生成器旁边显示这条别名实际会执行什么，是真验证，

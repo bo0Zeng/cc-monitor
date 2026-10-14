@@ -380,11 +380,11 @@ fn cancelling_while_waiting_for_the_summary_stops_nothing_and_starts_nothing() {
     );
 }
 
-/// 它是可撤档：hello 的「撤不动」那张表里没有它。
+/// 它是可撤档：指纹表那份「撤不动」名单里没有它。
 #[test]
 fn session_restart_is_cancellable() {
     assert!(crate::stream::inbound::command_names().contains(&"session-restart"));
-    assert!(!crate::stream::inbound::uncancellable().contains(&"session-restart".to_string()));
+    assert!(!cmd_wire::shapes::UNCANCELLABLE.contains(&"session-restart"));
 }
 
 /// 写这条会话的活进程不止一个（终端里那个之外另有一个）⇒ `session_already_live`（`data.pids`），不停、不起。

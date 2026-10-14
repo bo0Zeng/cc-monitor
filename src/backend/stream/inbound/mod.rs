@@ -63,9 +63,7 @@ pub use doors::{fill_account_colors, migrate_aliases, watch_account_mcp, watch_r
 use drain::{exit_after_drain_within, Drain};
 use sniff::sniff_id;
 pub use sniff::ID_SNIFF_BYTES;
-use spec::{
-    BlockingHandler, BoxFut, CommandSpec, DataFut, DataHandler, Fail, Handler, Outcome, Run,
-};
+use spec::{BlockingHandler, CommandSpec, DataHandler, Outcome};
 
 /// 单行上限。超过即整行丢弃 + 回 `line_too_long`。
 ///
@@ -131,7 +129,7 @@ impl WatchDesk {
     }
 }
 
-/// 入口递给这条连接的两样：`stream-watch` 那一口 · 写自家状态的句柄（分派只递给 [`Run::BlockingOwn`] 那几条）。
+/// 入口递给这条连接的两样：`stream-watch` 那一口 · 写自家状态的句柄（分派只递给要写句柄的那几条：`Needs::WRITES`）。
 pub(crate) struct Given {
     pub(crate) watch: WatchDesk,
     pub(crate) own: crate::platform::Own,
@@ -294,10 +292,6 @@ async fn handle_line(
     match dispatch(req, replies, running, links, xfers, follows, given, asks) {
         Disposition::Done => {}
         Disposition::Reply(f) => send(replies, f).await,
-        Disposition::Spawn(req, run) => {
-            let fut = move |r: Request| async move { run(r).await.map_err(Fail::from) };
-            spawn_handler(req, replies.clone(), running.clone(), fut, true, plan).await
-        }
         Disposition::SpawnData(req, run) => {
             spawn_handler(req, replies.clone(), running.clone(), run, true, plan).await
         }
@@ -328,7 +322,7 @@ async fn handle_line(
                 {
                     Ok(res) => res,
                     // 线程没回来（panic / 被取消）：句子说「程序出错」，那条 JoinError 进复制详情。
-                    Err(e) => Err(Fail::from((
+                    Err(e) => Err(spec::Fail::from((
                         "handler_panicked".to_string(),
                         copy_text("beInbound.handleLine.internal", &[]),
                     ))
@@ -357,16 +351,15 @@ async fn handle_line(
 /// 三档的分工：
 /// - [`Disposition::Done`]：已经在 `dispatch` 里**同步**做完了。非 async 意味着它做不了会阻塞的事。
 /// - [`Disposition::Reply`]：立刻回这一帧，**由调用方 await 发送**（保住背压，不像 `try_send` 会丢）。
-/// - [`Disposition::Spawn`]：交给独立 task。绝大多数命令走这里。
+/// - [`Disposition::SpawnData`]：交给独立 task。绝大多数命令走这里。
 enum Disposition {
     Done,
     Reply(Frame),
-    Spawn(Request, Handler),
-    /// 同 [`Disposition::Spawn`]，失败可带 `data`。
+    /// 交给独立 task（`cancel` 能在 await 点打断）。失败可带 `data`。
     SpawnData(Request, DataHandler),
     /// **同步阻塞**的处理器（起进程、扫全库）。走 `tokio::task::spawn_blocking`。
     ///
-    /// # 为什么必须与 [`Disposition::Spawn`] 分开（D 设计审计 · 视角 A · P5）
+    /// # 为什么必须与 [`Disposition::SpawnData`] 分开（D 设计审计 · 视角 A · P5）
     ///
     /// `launch` 的处理器是同步的，起 tmux 进程会真的阻塞。放在 `tokio::spawn` 上就是
     /// **占住一个 worker**；`main` 是裸 `#[tokio::main]`（worker 数 = 可用并行度），
@@ -573,20 +566,6 @@ fn dispatch(
             )),
         },
     }
-}
-
-/// 撤不动的那几条里**不是 typed 的**：阻塞档开跑之后打不断，`cancel` 命中回 `not_cancellable`。
-/// hello 的 `uncancellable` 就是它 —— 与 `dispatch` 按档位分流读的是同一张表。typed 那一半算进了形状指纹、
-/// 由指纹表那份生成物说（`cmd_wire::shapes::UNCANCELLABLE`，客户端读本侧编进来的那一份），这里不再列。
-/// 按字母排：它是一个集合，次序与命令登记在哪一族无关。
-pub fn uncancellable() -> Vec<String> {
-    let mut names: Vec<String> = REGISTRY
-        .iter()
-        .filter(|s| s.run.blocking() && !matches!(s.run, Run::Typed(_)))
-        .map(|s| s.name.to_string())
-        .collect();
-    names.sort();
-    names
 }
 
 /// 分派那一层手里的能力（[`spec::Hands`]）：写句柄由调用方递（没有 ⇒ `None`）；文件管理面 · 枢纽问这台自己那一跳是这台的单例，只在这里装。

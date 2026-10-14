@@ -3868,13 +3868,10 @@ fn resync_face_reply_matches_the_cross_language_golden() {
             .all(|e| e["command"].is_string() && e["code"].is_string()),
         "`unavailable` 的项不是 {{command, code}}：{got}"
     );
-    let ops = got["uncancellable"]
-        .as_array()
-        .expect("`uncancellable` 不是数组");
-    assert_eq!(
-        ops.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>(),
-        crate::stream::inbound::uncancellable(),
-        "`uncancellable` 不是命令表派生的那一份"
+    // 撤不动的那几条算进了形状指纹（每条命令都 typed），回包不再另列。
+    assert!(
+        got.get("uncancellable").is_none(),
+        "回包还另列着 `uncancellable`：{got}"
     );
     for bad in [
         serde_json::json!({"sid": 5}),

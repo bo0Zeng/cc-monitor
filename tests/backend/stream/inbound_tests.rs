@@ -483,7 +483,7 @@ fn the_dispatch_table_puts_blocking_commands_on_the_blocking_arm() {
         "remote-probe",
     ] {
         assert!(
-            matches!(d(c), Disposition::Spawn(..) | Disposition::SpawnData(..)),
+            matches!(d(c), Disposition::SpawnData(..)),
             "`{c}` 不该在阻塞档上 —— 那会让它白白变成不可取消"
         );
     }
@@ -1035,8 +1035,8 @@ fn every_registered_command_is_reachable_through_the_real_dispatch() {
     );
 }
 
-/// hello 的 `uncancellable` == 真 `dispatch` 会送进阻塞档（开跑之后撤不动）的那几条，两向。
-/// 两侧异源：左边是 `uncancellable()`（读表的档位），右边是真调一次 `dispatch` 看它回哪种 `Disposition`。
+/// 指纹表的「撤不动」名单 == 真 `dispatch` 会送进阻塞档（开跑之后撤不动）的那几条，两向。
+/// 两侧异源：左边是生成物 `cmd_wire::shapes::UNCANCELLABLE`（照登记的档位写），右边是真调一次 `dispatch` 看它回哪种 `Disposition`。
 #[test]
 fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
     let (tx, _rx) = mpsc::channel::<Frame>(64);
@@ -1067,23 +1067,10 @@ fn the_uncancellable_list_is_exactly_what_dispatch_runs_blocking() {
         .map(str::to_string)
         .collect();
     assert!(!blocking.is_empty(), "一条阻塞档都没有 —— 本条在空转");
-    // 名单按字母排（它是集合，次序与命令登记在哪一族无关）；集合与分派那一侧两向相等。
-    let got = super::uncancellable();
-    let mut sorted = got.clone();
-    sorted.sort();
-    assert_eq!(got, sorted, "`uncancellable` 没按字母排");
-    // typed 命令那一半由指纹表那份说（`cmd_wire::shapes::UNCANCELLABLE`，客户端读它本侧编进来的那一份），hello 那一栏不再列。
-    assert!(
-        got.iter().all(|n| cmd_wire::shapes::shape_of(n).is_none()),
-        "hello 的 `uncancellable` 列了 typed 命令：{got:?}"
-    );
-    let mut all: Vec<String> = got
-        .into_iter()
-        .chain(
-            cmd_wire::shapes::UNCANCELLABLE
-                .iter()
-                .map(|s| s.to_string()),
-        )
+    // 指纹表那份「撤不动」名单（客户端读它本侧编进来的那一份）与分派那一侧两向相等。
+    let mut all: Vec<String> = cmd_wire::shapes::UNCANCELLABLE
+        .iter()
+        .map(|s| s.to_string())
         .collect();
     all.sort();
     let mut blocking = blocking;
@@ -1422,7 +1409,7 @@ async fn a_files_read_failure_puts_the_system_words_into_the_detail() {
 /// 有「码 → 句」表的命令被拒：句子换成表里那一句，处理器原来那句（带下层原话）进复制详情的原话那一项。
 #[test]
 fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
-    let f = Fail::from((
+    let f = crate::wire::spec::Fail::from((
         "kill_failed".to_string(),
         "tmux: can't find window: demo-cc:2".to_string(),
     ));

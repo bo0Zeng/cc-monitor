@@ -794,10 +794,9 @@ mod tests {
     #[test]
     fn only_the_file_manager_commands_are_handed_the_face() {
         use crate::stream::inbound::REGISTRY;
-        use crate::wire::spec::Run;
         let got: std::collections::BTreeSet<&str> = REGISTRY
             .iter()
-            .filter(|s| matches!(s.run, Run::Typed(t) if t.face))
+            .filter(|s| s.run.face)
             .map(|s| s.name)
             .collect();
         let want: std::collections::BTreeSet<&str> = crate::control::files_write::MANAGE_COMMANDS

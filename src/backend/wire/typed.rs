@@ -4,13 +4,13 @@
 //! 登记表里一行 `typed::blocking::<X>("一句话")` / `typed::asynchronous::<X>("一句话")`：阻塞还是异步在这一行说。
 //! - 入参只在 [`take`] 这一处从 `args` 解成 `Req`（`deny_unknown_fields`）：形状不对 ⇒ `bad_args`，原话里带解码器那一句；处理器里没有 `args.get`。
 //! - 码表从错误枚举来（[`codes!`] 声明的那一份），登记的 `codes` 就是它，不另写。
-//! - 字段不手写（`fields` 空）：协议参考与形状指纹都从类型生成（测试档，经 ts-rs）。
+//! - 字段不手写：协议参考与形状指纹都从类型生成（测试档，经 ts-rs）。
 //! - 它要的能力（文件管理面 · 写句柄 · 文件管理写句柄 · 枢纽那一跳）写在 [`Handle::Needs`]，分派只在 [`super::spec::invoke`] 一处按它交进 `cx.needs`。
 //! - 要碰本连接的票表与应答通道的那几条（帧面硬臂）登记成 `typed::frame::<X>("一句话")`、只实现 [`Command`]：
 //!   分派在 `dispatch` 那条硬臂，硬臂那一发经 [`answer`] 一处（入参按类型收 · 回包按类型写 · 失败照码表）。
 
 pub(crate) use super::spec::{needs, Needs};
-use super::spec::{CommandSpec, Fail, Outcome, Run};
+use super::spec::{CommandSpec, Fail, Outcome};
 use crate::wire::Request;
 
 /// 测试档才要的 TS 派生（生成类型 · 形状指纹）；发布二进制里它什么都不要求。
@@ -249,9 +249,13 @@ impl Typed {
     pub(crate) fn blocking(&self) -> bool {
         matches!(self.how, How::Blocking | How::FrameBlocking)
     }
-    /// 帧面硬臂那一档。
+    /// 帧面硬臂那一档（只在帧面：CLI 面不派生、不进 [`super::spec::invoke`]）。
     pub(crate) fn on_frame_arm(&self) -> bool {
         matches!(self.how, How::Frame | How::FrameBlocking)
+    }
+    /// 写不写（后端自家状态 · 文件管理面改用户的文件；分派要递写句柄的那几条）。
+    pub(crate) fn writes(&self) -> bool {
+        self.writes || self.face
     }
 }
 
@@ -429,16 +433,15 @@ const fn spec<C: Command>(
         name: C::NAME,
         summary,
         codes: <C::Err as Codes>::ALL,
-        fields: &[],
         takes_input: C::TAKES_INPUT,
-        run: Run::Typed(Typed {
+        run: Typed {
             how,
             writes,
             face,
             go,
             #[cfg(test)]
             shape: tests::shape_of::<C>,
-        }),
+        },
     }
 }
 

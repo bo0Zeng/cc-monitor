@@ -83,7 +83,7 @@ impl Home {
     /// 照线上那一份喂（JSON 入参经 typed 那一处收成类型，同生产），回包回成 `Value` 好按键看。
     fn probe(&self, ctx: &Ctx, args: Value) -> Result<Value, crate::wire::spec::Fail> {
         let path = format!("{}:/usr/bin:/bin", self.bin.display());
-        let req: ProbeReq = crate::wire::typed::take(&args)?;
+        let req: QuotaProbeReq = crate::wire::typed::take(&args)?;
         answer_probe_with(
             ctx,
             &crate::platform::fs::Own::issue_data_at(&self.root),

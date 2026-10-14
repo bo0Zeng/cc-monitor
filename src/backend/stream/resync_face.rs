@@ -34,8 +34,6 @@ pub(crate) struct Resynced {
     pub(crate) watchers: usize,
     /// 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
     pub(crate) unavailable: Vec<crate::wire::Unavailable>,
-    /// 这台当下开跑之后打不断的命令，按字母排（同 hello 那一格）。
-    pub(crate) uncancellable: Vec<String>,
 }
 
 codes! {
@@ -73,7 +71,6 @@ impl crate::wire::typed::Handle for ResyncCmd {
                 caught_up: d.caught_up,
                 watchers,
                 unavailable: crate::unavailable_here(),
-                uncancellable: crate::stream::inbound::uncancellable(),
             })
         }
     }

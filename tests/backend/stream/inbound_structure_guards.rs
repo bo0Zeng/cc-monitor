@@ -856,16 +856,12 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
          上线了而没登记 ⇒ 🔴 **写能力长出了一个没签字的命令** ——\n\
          而 `readonly_guard` 那条「拿得到 `Face` 的命令 == 写面登记的命令」判的正是这张表。"
     );
-    // ★ 写那一面的每条命令是 typed 的（码表从错误枚举来、字段从类型来，不另写镜子；同读族那一半）。
+    // ★ 写那一面的每条命令：喂空 `args` 落在它登记的码上（码表从错误枚举来）。
     for name in &write_face {
         let spec = super::REGISTRY
             .iter()
             .find(|s| s.name == name)
             .unwrap_or_else(|| panic!("`{name}` 不在 REGISTRY 上 —— 上面那条应该先红"));
-        assert!(
-            matches!(spec.run, super::spec::Run::Typed(_)),
-            "`{name}` 不是 typed 的那一档 —— 写的这一族入参 · 回包 · 码都从类型来"
-        );
         // 真的调一次：喂空 `args` ⇒ 落在这条命令登记的码上。
         if let Err(crate::control::files_write::WriteFail {
             code, said: msg, ..
@@ -878,7 +874,7 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
         }
     }
 
-    // ② ③ 逐条：读的那几条是 typed 的（码表从错误枚举来、字段从类型来，不另写镜子）。
+    // ② ③ 逐条：读的那几条都在登记表上。
     let mut checked = 0usize;
     for cap in crate::files::CAPABILITIES {
         let online = cap.name.replace('.', "-");
@@ -886,10 +882,6 @@ fn the_files_read_family_is_online_exactly_as_it_is_declared() {
             .iter()
             .find(|s| s.name == online)
             .unwrap_or_else(|| panic!("`{online}` 不在 REGISTRY 上 —— 上面那条应该先红"));
-        assert!(
-            matches!(spec.run, super::spec::Run::Typed(_)),
-            "`{online}` 不是 typed 的那一档 —— 读的这一族入参 · 回包 · 码都从类型来"
-        );
         checked += 1;
 
         // ④ 真的调一次：喂空 `args` ⇒ 要么成功，要么落在这条命令登记的码上；落到 `unknown_capability` 就说明能力接错了。
@@ -1001,46 +993,5 @@ fn no_handler_validates_an_arg_and_then_throws_it_away() {
         hits.is_empty(),
         "这些入参验完就丢了（返回值没人用）：\n{}\n要么真用它，要么把这一格从字段表 · 校验 · 调用方 · 协议文档里一起删掉。",
         hits.join("\n")
-    );
-}
-
-/// 按档分派只有一处：登记表以外，`Run` 的几个跑档（`Run::Blocking(` · `Run::BlockingOwn(` …）只许在
-/// `wire/spec.rs` 的 [`super::spec::prepare`] 里出现。从前分派 · 撤不动名单 · 文件门 · 枢纽 · 小成品重问 · CLI 面
-/// 各写一份 `match`，枢纽那一份漏了两档，问本机那一跳的 8 条一律 `unknown_command`。
-#[test]
-fn only_one_place_matches_on_how_a_command_runs() {
-    const TIERS: &[&str] = &[
-        "Run::Blocking(",
-        "Run::BlockingData(",
-        "Run::BlockingOwn(",
-        "Run::Async(",
-    ];
-    let root = crate::guard_support::src_root();
-    let mut at: Vec<String> = guard_core::scan_tree_excluding(&root, &["rs"], &[])
-        .into_iter()
-        .filter_map(|(path, src)| {
-            let rel = path
-                .strip_prefix(&root)
-                .unwrap_or(&path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let code = crate::guard_support::production_code(&src);
-            // 前面紧挨标识符字符的不算（`TypedRun::Blocking(` 是 typed 那一份自己的两种，不是 `Run` 的档）。
-            let names_a_tier = TIERS.iter().any(|t| {
-                code.match_indices(t).any(|(i, _)| {
-                    !code[..i]
-                        .chars()
-                        .next_back()
-                        .is_some_and(|c| c.is_alphanumeric() || c == '_')
-                })
-            });
-            (!rel.starts_with("stream/inbound/registry/") && names_a_tier).then_some(rel)
-        })
-        .collect();
-    at.sort();
-    assert_eq!(
-        at,
-        vec!["wire/spec.rs".to_string()],
-        "按档分派该只有 `spec::prepare` 一处"
     );
 }

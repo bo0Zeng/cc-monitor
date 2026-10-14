@@ -235,6 +235,7 @@ import type { ProfilesWriteDone } from "./ProfilesWriteDone";
 import type { ProfilesWriteReq } from "./ProfilesWriteReq";
 import type { PubkeyPushReq } from "./PubkeyPushReq";
 import type { PubkeyPushed } from "./PubkeyPushed";
+import type { QuotaProbeReq } from "./QuotaProbeReq";
 import type { QuotaRead } from "./QuotaRead";
 import type { ReachReq } from "./ReachReq";
 import type { Reached } from "./Reached";
@@ -480,7 +481,7 @@ export interface TypedCommands {
   "profiles-resolve": { req: ProfilesResolveReq; reply: ProfileResolved; code: "bad_args" | "refused" };
   "profiles-write": { req: ProfilesWriteReq; reply: ProfilesWriteDone; code: "bad_args" | "refused" | "stale" };
   "pubkey-push": { req: PubkeyPushReq; reply: PubkeyPushed; code: "bad_args" | "bad_jump" | "refused" | "failed" };
-  "quota-probe": { req: ProbeReq; reply: Probed; code: "bad_args" | "child_timed_out" | "failed" | "io_failed" | "not_found" | "unsupported" };
+  "quota-probe": { req: QuotaProbeReq; reply: Probed; code: "bad_args" | "child_timed_out" | "failed" | "io_failed" | "not_found" | "unsupported" };
   "quota-read": { req: NoArgs; reply: QuotaRead; code: "bad_args" };
   "relay-optin": { req: OptinReq; reply: Optin; code: "bad_args" | "failed" };
   "remote-probe": { req: ProbeReq; reply: null; code: "bad_args" | "bad_jump" | "failed" };

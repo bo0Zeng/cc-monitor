@@ -688,10 +688,7 @@ fn the_contract_says_how_strong_typed_actually_is() {
         .iter()
         .find(|s| s.name == "launch")
         .expect("注册表里没有 launch");
-    let crate::wire::spec::Run::Typed(t) = spec.run else {
-        panic!("launch 不是 typed 命令")
-    };
-    let shape = (t.shape)();
+    let shape = (spec.run.shape)();
     let decl = shape
         .decls
         .iter()

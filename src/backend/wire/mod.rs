@@ -413,13 +413,6 @@ pub enum Frame {
         /// hello 是「只读 hello 就走」那一档谁都读得到的东西。
         #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
         host_env: std::collections::BTreeMap<String, String>,
-        /// `commands` 里**撤不动**、又不是 typed 的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`）。
-        /// 从 `inbound::REGISTRY` 的档位派生（`inbound::uncancellable`，一个家）；typed 那一半算进了 `shapes` 的指纹、
-        /// 客户端读本侧编进来的 `cmd_wire::shapes::UNCANCELLABLE`，这里不再列。客户端据此在本地撤单时
-        /// 说「那台停不了它、可能还在跑」，也不再为它补发一条注定被拒的撤单。
-        /// 空/缺 = 没有把握（旧后端）⇒ 客户端照旧补发、看回话。
-        #[serde(skip_serializing_if = "Vec::is_empty")]
-        uncancellable: Vec<String>,
         /// typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：
         /// 这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算）。客户端拿它自己编进来的那一张比：
         /// 对得上就直接按类型用，对不上就说「那台后端版本不同」、一个字节不发。没有 typed 命令 ⇒ 省略。

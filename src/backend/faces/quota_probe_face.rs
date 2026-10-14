@@ -36,7 +36,7 @@ fn bad(detail: &str) -> crate::wire::spec::Fail {
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 #[serde(deny_unknown_fields)]
-pub(crate) struct ProbeReq {
+pub(crate) struct QuotaProbeReq {
     /// 路由第 1 段：哪一家。
     pub(crate) agent: String,
     /// 账号库里的号（配置目录末段；账号 0 是 `0`）。
@@ -64,7 +64,7 @@ pub(crate) struct QuotaProbe;
 
 impl crate::wire::typed::Command for QuotaProbe {
     const NAME: &'static str = "quota-probe";
-    type Req = ProbeReq;
+    type Req = QuotaProbeReq;
     type Reply = Probed;
     type Err = ProbeErr;
 }
@@ -72,7 +72,7 @@ impl crate::wire::typed::Command for QuotaProbe {
 impl crate::wire::typed::Handle for QuotaProbe {
     type Needs = crate::wire::typed::needs::Own;
     fn run(
-        req: ProbeReq,
+        req: QuotaProbeReq,
         cx: crate::wire::typed::Cx<Self::Needs>,
     ) -> impl std::future::Future<Output = Result<Probed, ProbeErr>> + Send + 'static {
         async move {
@@ -83,7 +83,7 @@ impl crate::wire::typed::Handle for QuotaProbe {
 }
 
 /// `quota-probe`：`{agent, account}` ⇒ 读到的窗口（并已记进额度账）或「读不懂」。
-pub(crate) fn answer_probe(req: &ProbeReq, own: &Own) -> Answer {
+pub(crate) fn answer_probe(req: &QuotaProbeReq, own: &Own) -> Answer {
     answer_probe_with(
         &Ctx::here(),
         own,
@@ -97,7 +97,7 @@ pub(crate) fn answer_probe(req: &ProbeReq, own: &Own) -> Answer {
 pub(crate) fn answer_probe_with(
     ctx: &Ctx,
     own: &Own,
-    req: &ProbeReq,
+    req: &QuotaProbeReq,
     now: u64,
     path: Option<&OsStr>,
 ) -> Answer {

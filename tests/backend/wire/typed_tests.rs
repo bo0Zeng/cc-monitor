@@ -2,7 +2,6 @@
 //! 界面那张命令表（`src/frontend/ui/generated/TypedCommands.ts`：命令名 ⇒ 入参 · 回包 · 码）。
 //! 跟盘上那份不一样 ⇒ 重写盘上那份、并红（提交新的那一份）。
 
-use super::super::spec::Run;
 use super::{Codes, Command};
 use crate::stream::inbound::REGISTRY;
 
@@ -171,15 +170,14 @@ pub(crate) fn ask(cmd: &str, args: serde_json::Value) -> super::super::spec::Out
 fn typed() -> Vec<(&'static str, Shape)> {
     let mut v: Vec<(&'static str, Shape)> = REGISTRY
         .iter()
-        .filter_map(|s| match s.run {
-            Run::Typed(t) => Some((
+        .map(|s| {
+            (
                 s.name,
                 Shape {
                     uncancellable: s.run.blocking(),
-                    ..(t.shape)()
+                    ..(s.run.shape)()
                 },
-            )),
-            _ => None,
+            )
         })
         .collect();
     v.sort_by_key(|(n, _)| *n);
@@ -261,27 +259,6 @@ fn the_ui_command_map_is_what_the_types_say() {
 export interface TypedCommands {{\n{body}}}\n"
     );
     fresh("src/frontend/ui/generated/TypedCommands.ts", &want);
-}
-
-/// typed 命令不手写字段镜子（协议参考与指纹都从类型来）；登记的码就是错误枚举那一份。
-#[test]
-fn typed_commands_carry_no_hand_mirror() {
-    for (name, shape) in typed() {
-        let spec = REGISTRY.iter().find(|s| s.name == name).unwrap();
-        assert!(
-            spec.fields.is_empty(),
-            "`{name}` 是 typed 命令，`fields` 该空"
-        );
-        assert_eq!(
-            spec.codes, shape.codes,
-            "`{name}` 登记的码不是错误枚举那一份"
-        );
-        assert_eq!(
-            spec.codes.first(),
-            Some(&"bad_args"),
-            "`{name}` 的码表该以 bad_args 打头"
-        );
-    }
 }
 
 /// 外层命令那道边界：下层（经资产域那扇门交上来的）回了这一条码表里没有的码 ⇒ 落这一条自己的那一格失败（`fallback`），

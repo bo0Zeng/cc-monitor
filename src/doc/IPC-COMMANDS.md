@@ -23,7 +23,6 @@ Handshake sent once when a client connects。
 | `commands` | [string]? | 本 backend **接受的入方向命令集** |
 | `unavailable` | [Unavailable]? | 本 backend **接得下、但在这台机器上做不到**的命令，以及原因（`[{command, code}]`，见 `Unavailable`） |
 | `host_env` | {string: string}? | **起我的宿主交给我的那几格环境，原样回显**（`{名: 值}`，名单 `HOST_ECHO_ENVS`） |
-| `uncancellable` | [string]? | `commands` 里**撤不动**、又不是 typed 的那几条（阻塞档：开跑之后 `cancel` 回 `not_cancellable`） |
 | `shapes` | {string: string}? | typed 命令（入参 · 回包 · 错误码都从 Rust 类型来的那几条）的形状指纹 `{命令: 8 位十六进制}`：这份二进制编进来的那张表（`cmd_wire::SHAPES`，由判据从类型现算） |
 
 ### `line`
@@ -1672,19 +1671,10 @@ type Words = string;
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 32 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --quota-probe`
 
-入参 `ProbeReq` · 回包 `Probed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+入参 `QuotaProbeReq` · 回包 `Probed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
 
 ```ts
 type ProbeFrom = "usage";
-type ProbeReq = { 
-/**
- * 路由第 1 段：哪一家。
- */
-agent: string, 
-/**
- * 账号库里的号（配置目录末段；账号 0 是 `0`）。
- */
-account: string, };
 type ProbeState = "read" | "unreadable";
 type Probed = { 
 /**
@@ -1719,6 +1709,15 @@ windows: Array<QuotaWindow>,
  * 额度账那份文件的绝对路径（家推不出来时 `null`）。
  */
 path: string | null, };
+type QuotaProbeReq = { 
+/**
+ * 路由第 1 段：哪一家。
+ */
+agent: string, 
+/**
+ * 账号库里的号（配置目录末段；账号 0 是 `0`）。
+ */
+account: string, };
 type QuotaWindow = { 
 /**
  * 窗口名（那一家读法表里的值，如 5 小时 · 7 天）。
@@ -6344,11 +6343,7 @@ watchers: number,
 /**
  * 这台当下接得下但做不到的命令（同 hello 那一格）：握手之后才装上 tmux 的机器，靠「重新对齐」让客户端认出来。
  */
-unavailable: Array<Unavailable>, 
-/**
- * 这台当下开跑之后打不断的命令，按字母排（同 hello 那一格）。
- */
-uncancellable: Array<string>, };
+unavailable: Array<Unavailable>, };
 type Unavailable = { 
 /**
  * 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::command_names`）。
