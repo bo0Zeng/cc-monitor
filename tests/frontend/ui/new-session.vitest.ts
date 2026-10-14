@@ -93,7 +93,7 @@ const rowOf = (el: HTMLElement): HTMLElement => el.closest<HTMLElement>("[class*
 const createBtn = (): HTMLButtonElement => [...dialog().querySelectorAll<HTMLButtonElement>("button")].find((b) => b.textContent === copyText("newSession.action.create"))!;
 const newRequests = (): Record<string, unknown>[] => sent.filter((s) => s.op === "session-new").map((s) => s.body);
 
-const agentOf = (kind: string) => ({ kind, text: kind === "claude" ? "Claude Code" : "Codex", models: [], permissionModes: [] });
+const agentOf = (kind: string) => ({ kind, text: kind === "claude" ? "Claude Code" : "Codex", models: [], modelDefault: null, modelNote: null, permissionModes: [] });
 const FACTS = { recent: [{ cwd: "/home/u/srv/orders", lastMs: 2, lastText: "00:00" }, { cwd: "/home/u/srv/billing", lastMs: 1, lastText: "00:00" }], tmux: true, agents: [agentOf("claude")], fork: null };
 const OK = { outcome: "started", session: "orders-cc", sid: null, cmd: null, account: { name: "work", configDir: "/h/.cc/work", model: null }, agent: "claude", cwd: "/home/u/srv/orders", prompt: null };
 

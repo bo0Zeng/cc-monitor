@@ -68,6 +68,17 @@ pub(crate) const MODEL_ALIASES: &[Choice] = &[
     },
 ];
 
+/// 换模型抽屉的「默认」那一项：`/model default` 回到那一家自己的缺省模型（官方别名表里的 `default`）。起会话不交它（不写 `--model` 就是默认）。
+pub(crate) const MODEL_DEFAULT: Choice = Choice {
+    value: "default",
+    text: || copy_core::copy_text("beSessionNew.model.default", &[]),
+};
+
+/// 换模型顺带改了什么（抽屉底那一行）：`/model` 也把它存成这个号以后新会话的默认（读回那一句同样照实说）。
+pub(crate) fn model_note() -> String {
+    copy_core::copy_text("beSessionModel.note.savesDefault", &[])
+}
+
 /// `claude --permission-mode` 收的、起会话框给的档（不给越过批准那一档）。字与答批计划那一组同字。
 pub(crate) const PERMISSION_MODES: &[Choice] = &[
     Choice {

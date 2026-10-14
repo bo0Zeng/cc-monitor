@@ -61,7 +61,7 @@ export function defaultOps(): Record<string, OpHandler> {
       return {
         recent: [...new Set(mine.map((s) => s.cwd))].map((cwd, i) => ({ cwd, lastMs: Date.now() - i * 60_000, lastText: "09:30" })),
         tmux: !/win/.test(origin),
-        agents: [{ kind: "claude", text: "Claude Code", models: [], permissionModes: [] }],
+        agents: [{ kind: "claude", text: "Claude Code", models: [], modelDefault: null, modelNote: null, permissionModes: [] }],
         fork: src
           ? {
               agent: "claude",

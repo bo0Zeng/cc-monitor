@@ -1701,6 +1701,12 @@
       "zh": "Sonnet · 1M 上下文",
       "args": []
     },
+    "beSessionNew.model.default": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "默认",
+      "args": []
+    },
     "beSessionNew.model.opusPlan": {
       "kind": "action",
       "role": "菜单项",
@@ -1790,6 +1796,12 @@
       "role": "片段",
       "zh": "{family} {version}",
       "args": ["family", "version"]
+    },
+    "beSessionModel.note.savesDefault": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "换模型也改此号以后新会话的默认",
+      "args": []
     },
     "beSessionModel.switch.unsupported": {
       "kind": "error",

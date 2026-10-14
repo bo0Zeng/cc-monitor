@@ -342,6 +342,8 @@ pub(crate) struct LaunchFace {
     pub(crate) has_identity: bool,
     /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
     pub(crate) models: Option<&'static [Choice]>,
+    /// 回到这一家缺省模型的那一项（原值 ＋ 字）：会话开着时换模型交它；起会话不交（不选就是默认）。没有 ⇒ `None`。
+    pub(crate) model_default: Option<Choice>,
     /// 记录里写的模型原值 ⇒ 写给人看的名字（会话事实 `modelText`）；认不出 ⇒ `None`。这一家没考据过 ⇒ `None`。
     pub(crate) model_text: Option<fn(&str) -> Option<String>>,
     /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
@@ -355,6 +357,8 @@ pub(crate) struct ModelSwitch {
     pub(crate) command: fn(&str) -> String,
     /// 从记录里的一条认出读回的那一句；不是 ⇒ `None`。
     pub(crate) read: fn(&serde_json::Value) -> Option<ModelSaid>,
+    /// 换模型顺带改了什么（换模型抽屉底那一行）；没有 ⇒ `None`。
+    pub(crate) note: Option<fn() -> String>,
 }
 
 /// 换模型读回的那一句（[`ModelSwitch::read`]）。

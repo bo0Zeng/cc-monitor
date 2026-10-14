@@ -18,6 +18,15 @@ text: string,
  */
 models: Array<NewSessionPick>, 
 /**
+ * 换模型抽屉的第一项「默认」：会话开着时交 `session-model` 这个值 ⇒ 回到那一家自己的缺省模型（起会话不交它，不选就是默认）；
+ * 这一家没声明 ⇒ `null`。
+ */
+modelDefault: NewSessionPick | null, 
+/**
+ * 抽屉底那一行：换模型的副作用（那一家自己的行为，例如也改这个号以后新会话的默认）；没有 ⇒ `null`。
+ */
+modelNote: string | null, 
+/**
  * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
  */
 permissionModes: Array<NewSessionPick>, };

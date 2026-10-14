@@ -149,12 +149,35 @@ fn each_agent_comes_with_its_name_and_its_models_and_modes_in_words() {
     assert!(codex.models.is_empty() && codex.permission_modes.is_empty());
 }
 
-/// ★ 线上那一形：`agents` 每项 `{kind, text, models, permissionModes}`，`recent` 每项 `{cwd, lastMs, lastText}`。
+/// ★ 换模型抽屉的第一项「默认」：回到那一家缺省模型的那个值 ＋ 写好的字；抽屉底那一句（换模型的副作用，那一家自己的行为）也由后端写。
+/// 没声明的那一家 ⇒ 两格都 `null`（界面不画那一项、那一行）。
+#[test]
+fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_changes() {
+    let t = |k: &str| copy_core::copy_text(k, &[]);
+    let claude = agent_facts("claude");
+    let d = claude.model_default.expect("Claude 有「默认」那一项");
+    assert_eq!(
+        (d.value.as_str(), d.text),
+        ("default", t("beSessionNew.model.default"))
+    );
+    assert!(
+        claude.models.iter().all(|c| c.value != "default"),
+        "「默认」不混进可选的模型里（起会话不选 ＝ 默认，不交这个值）"
+    );
+    assert_eq!(claude.model_note, Some(t("beSessionModel.note.savesDefault")));
+    let codex = agent_facts("codex");
+    assert!(codex.model_default.is_none() && codex.model_note.is_none());
+}
+
+/// ★ 线上那一形：`agents` 每项 `{kind, text, models, modelDefault, modelNote, permissionModes}`，`recent` 每项 `{cwd, lastMs, lastText}`。
 #[test]
 fn the_new_session_facts_wire_names_its_cells() {
     let v = serde_json::to_value(agent_facts("claude")).unwrap();
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
-    assert_eq!(keys, vec!["kind", "models", "permissionModes", "text"]);
+    assert_eq!(
+        keys,
+        vec!["kind", "modelDefault", "modelNote", "models", "permissionModes", "text"]
+    );
     assert_eq!(
         v["models"][0],
         serde_json::json!({"value": "sonnet", "text": copy_core::copy_text("beSessionNew.model.sonnet", &[])})

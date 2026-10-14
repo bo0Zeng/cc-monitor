@@ -141,6 +141,15 @@ async fn answer(req: SessionModelReq) -> Result<ModelSwitched, Fail> {
     })
 }
 
+/// 这一家会话开着时换模型收不收 `model`：可选的模型 ＋ 「默认」那一项的值（[`crate::agents::LaunchFace::model_default`]）。
+pub(crate) fn offered(face: &crate::agents::LaunchFace, model: &str) -> bool {
+    face.models
+        .into_iter()
+        .flatten()
+        .chain(face.model_default.as_ref())
+        .any(|c| c.value == model)
+}
+
 /// 认会话 · 核模型 · 判在不在等人 · 先装读回的耳朵 · 再送那一行。
 fn send(req: &SessionModelReq) -> Result<Sent2, Fail> {
     if !shell_quote_core::session_id_ok(&req.sid) {
@@ -159,13 +168,13 @@ fn send(req: &SessionModelReq) -> Result<Sent2, Fail> {
     let face = crate::agents::pick_kind(crate::agents::record_kind_of(&record))
         .ok()
         .map(|(_, f)| f);
-    let Some((models, sw)) = face.and_then(|f| Some((f.models?, f.model_switch?))) else {
+    let Some(sw) = face.and_then(|f| f.models.and(f.model_switch)) else {
         return Err(Fail::new(
             "unsupported",
             copy_text("beSessionModel.switch.unsupported", &[]),
         ));
     };
-    if !models.iter().any(|c| c.value == req.model) {
+    if !face.is_some_and(|f| offered(&f, &req.model)) {
         return Err(Fail::new(
             "bad_args",
             malformed("`model` is not one this agent offers"),
