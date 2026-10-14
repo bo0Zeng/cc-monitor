@@ -684,6 +684,7 @@ mod specimens {
         Answer, ApiReason, AskOption, AskQuestion, ChildRunTag, McpStatus, Pasted, PatchHunk,
         ResultKind, SessionActivity, Speaker, StepAsk, StepResult, ToolCard, ToolStep, UserText,
     };
+    use crate::agents::{PlanTitleExt as _, SpeakerExt as _};
     use crate::common::cells::Words;
     use crate::observe::facts_query::{
         Cost, LastRequest, LastSay, LimitFrom, McpTrouble, Needs, NeedsKind, PendingCall,

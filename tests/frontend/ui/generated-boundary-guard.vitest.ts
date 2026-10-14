@@ -84,7 +84,7 @@ function tsDerivingSources(): string[] {
     for (const e of readdirSync(resolve(ROOT, dir), { withFileTypes: true })) {
       const rel = `${dir}/${e.name}`;
       if (e.isDirectory()) walk(rel);
-      else if (e.name.endsWith(".rs") && read(rel).includes("ts_rs::TS")) out.push(rel);
+      else if (e.name.endsWith(".rs") && read(rel).includes("derive(ts_rs::TS)")) out.push(rel);
     }
   };
   walk("src/frontend/shell/src");

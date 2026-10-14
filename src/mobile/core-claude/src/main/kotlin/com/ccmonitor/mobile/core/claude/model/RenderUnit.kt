@@ -113,6 +113,18 @@ sealed interface RenderUnit {
         val timeText: String?,
         override val sourceUuid: String?,
     ) : RenderUnit
+
+    /**
+     * 认不出的那一条（记录 `t: unread`：那一家的这一行后端认不出，或手机这边解不开、核心换成的那一条）：
+     * 一行「无法识别的记录 · {type}」，点开是原文摘录 ＋ 复制详情。字 · 钟面 · 摘录都照核心写好的，不按类名分支。
+     */
+    data class Unread(
+        override val key: String,
+        val text: String,
+        val timeText: String?,
+        val excerpt: String,
+        override val sourceUuid: String?,
+    ) : RenderUnit
 }
 
 /** 会话内搜索用的可搜索纯文本（工具调用含名/参数/输出，便于搜命令、文件名、输出）。 */
@@ -127,6 +139,7 @@ fun RenderUnit.searchableText(): String =
         is RenderUnit.BashOutput -> if (stderr.isEmpty()) stdout else "$stdout\n$stderr"
         is RenderUnit.CompactSummary -> text
         is RenderUnit.Interrupt -> ""
+        is RenderUnit.Unread -> text
     }
 
 private fun RenderUnit.ToolCall.toolCallSearchable(): String =

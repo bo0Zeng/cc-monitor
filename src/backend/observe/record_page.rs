@@ -17,9 +17,12 @@
 //!
 //! 一页从文件中段起读时，调用方把起点之前 [`QUEUE_LOOKBACK_BYTES`] 以内那一段一起交进来（[`Reader::new`]），只为配打字时刻。
 
+use crate::agents::record::RecordExt as _;
 use crate::agents::record::TypedTimes;
 use crate::agents::RecordFace;
 use crate::platform::fs::Ro;
+/// 行摘要 · 记录行的线上形住 `cmd-wire`（手机按同一份解）；记录那一格后端照原样的一团写（缺省 `Value`）。
+pub(crate) use cmd_wire::record::{ReadRow, RecordLine};
 use serde_json::{json, Value};
 use std::path::Path;
 
@@ -133,27 +136,6 @@ fn split_starts(offset: u64, bytes: &[u8]) -> Vec<(&[u8], u64)> {
         .collect()
 }
 
-/// 行摘要的一条（`history-read.rows[]`；成品 `read_row`，格目录里登记、冻结）。
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct ReadRow {
-    /// 这一行（含 `\n`）之后那个字节的偏移；没 `\n` 收尾的残尾 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) end: Option<u64>,
-    /// 这一行正文的摘要（[`line_hash`]；64 位，过 JSON 数会失精度，只拿来比相等）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) hash: u64,
-    /// 通用记录（缺 ＝ 不进界面，照占号）。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional, as = "Option<crate::agents::record::Record>"))]
-    pub(crate) record: Option<Value>,
-    /// 那一行记的工作目录（只在有记录时带）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub(crate) cwd: Option<String>,
-}
-
 /// **行摘要**（旁路快照那一页，`history-read`）：页里每个可计行一条，次序同文件。
 /// 相邻的认不出那几条并进前一条（[`fold_unread`]）：被并掉的那一行照占号、不再带记录。
 pub(crate) fn rows_of(reader: &mut Reader<'_>, offset: u64, bytes: &[u8]) -> Vec<ReadRow> {
@@ -210,25 +192,6 @@ pub(crate) fn fold_unread(into: &mut Value, next: &Value) -> bool {
     into["count"] = json!(count);
     into["text"] = json!(unread_text(why, kind.as_deref(), count).0);
     true
-}
-
-/// 记录行的一条（`history-page.lines[]` · `history-lines.lines[]`）。
-#[derive(Debug, Clone, PartialEq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct RecordLine {
-    /// 这份记录是哪个会话的（那一家按路径认）。
-    pub(crate) session_id: String,
-    /// 那份记录的路径。
-    pub(crate) path: String,
-    /// 行号（可计行，从 0 起）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub(crate) seq: u64,
-    /// 那一行记的工作目录；没有 ⇒ `null`。
-    pub(crate) cwd: Option<String>,
-    /// 通用记录。出口的声明可能去过格（`faces/project.rs`），所以是原样的一团。
-    #[cfg_attr(test, ts(as = "crate::agents::record::Record"))]
-    pub(crate) record: Value,
 }
 
 /// 子运行那一页的一条（`history-run.rows[]`）。

@@ -43,6 +43,7 @@
 //! 能改动事实的记录必然带着那几个键名（Claude Code 写 JSON 不转义 ASCII 字母），由判据逐行对拍「过滤 / 不过滤」两向相等。
 
 use crate::common::cells::Words;
+pub(crate) use cmd_wire::needs::{Needs, NeedsKind};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -543,67 +544,6 @@ pub(crate) struct LastSay {
     /// `at` 的毫秒（同 [`PendingCall::at_ms`]：「完成多久前」交那一个读口走字）。
     #[cfg_attr(test, ts(type = "number | null"))]
     pub(crate) at_ms: Option<i64>,
-}
-
-/// 「需手动」的种类（要人做哪种事）。判不出 ⇒ `Unknown`（只说在等人，不猜）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) enum NeedsKind {
-    /// 批准一个工具调用（或别的批准框）。
-    Approve,
-    /// 回答一个问题 / 填那一侧要的输入。
-    Answer,
-    /// 批准计划。
-    Plan,
-    /// 放行沙箱里的命令联网。
-    Network,
-    /// 批准协作的另一个运行发来的请求。
-    Worker,
-    /// 确认它提的会话目标。
-    Goal,
-    /// 在开着的对话框里选一项。
-    Choose,
-    Unknown,
-}
-
-/// **需手动**的成品：种类 · 等的那一句 · 从何时起等。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Needs {
-    pub(crate) kind: NeedsKind,
-    /// 等的是哪个工具调用（工具名原样）；判不出 ⇒ `null`。
-    pub(crate) tool: Option<String>,
-    /// 那个调用的 id（记录里 `tool_use` 的 `id`）：界面据此把过程里那一步画成「在等你批准」；判不出 ⇒ `null`。
-    pub(crate) call: Option<String>,
-    /// 批准：那一步的主参数；回答：问题原文头一行；计划 / 判不出 ⇒ `null`。
-    pub(crate) what: Option<String>,
-    /// 何时起等（那台 pidfile 的 `statusUpdatedAt`，epoch ms）；没有 ⇒ `null`。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) since_ms: Option<u64>,
-    /// 写好的字（等批准 · 等回答 · 需手动），出口照抄。
-    pub(crate) text: Words,
-    /// 钉条第一行（种类 ＋ 工具名：「等批准 · Bash」· 等批准 · 计划 · 等放行 · 联网 …，[`needs_head`]），出口照抄；短的那一格是 `text`。
-    pub(crate) head: Words,
-    /// 钉条里等宽那一段（批准 · 回答 · 放行带那一步的主参数 / 问题；别的种类不带）⇒ `null`。
-    pub(crate) head_code: Option<String>,
-    /// 语气（恒 `need`）。
-    pub(crate) tone: crate::common::cells::Tone,
-    /// 先答哪个的序（0 最先）：顶上那个框先答（`kind` 已按它判），再按危险度（[`NEEDS_BY_DANGER`]）。
-    pub(crate) rank: u8,
-    /// 到这一份答出的那一刻已经等了多久（毫秒）：`sinceMs` 与读那份 pidfile 的时刻**同在那台的钟上**相减，不跨机器减；
-    /// 起点比那一刻还晚（那台的钟往回拨过）⇒ 0。没有起点 ⇒ `null`。会走的钟：手机与 CLI 按节拍重问；桌面从收到那一刻起接着加（时长读口对同一份金样）。
-    #[cfg_attr(test, ts(type = "number | null"))]
-    pub(crate) waited_ms: Option<u64>,
-    /// `waitedMs` 写好的字（短时长那一处 `copy_core::short_duration`，与过程行步骤耗时同一种写法）；没有起点 ⇒ `null`。
-    pub(crate) waited_text: Option<Words>,
-    /// 这一条可以怎么答（挂着的待答请求，`control::asks`）：选项的字 · 语气 · 要不要附话都写好；没有挂着的 ⇒ `null`（只能去终端）。
-    pub(crate) ask: Option<crate::agents::asks::Ask>,
-    /// `ask` 为 `null` 时写好的那一句（「只能在终端里答」）；有 `ask` ⇒ `null`。
-    pub(crate) manual_text: Option<Words>,
 }
 
 /// 那台 pidfile 说「在等」（`observe::accounts_query::session_wait`）。

@@ -13,6 +13,7 @@
 
 use super::facts_query::{what_of, Needs, NeedsKind, PendingCall};
 use super::user_inputs::user_input_given;
+use crate::agents::UserTextExt as _;
 use copy_core::copy_text;
 use serde_json::Value;
 

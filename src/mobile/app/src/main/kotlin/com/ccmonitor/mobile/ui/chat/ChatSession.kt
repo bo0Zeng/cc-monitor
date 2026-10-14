@@ -11,7 +11,8 @@ import com.ccmonitor.mobile.core.claude.link.SessionNew
 import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.claude.link.TerminalInput
-import com.ccmonitor.mobile.core.claude.link.str
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.RecordKind
 import com.ccmonitor.mobile.core.claude.link.wire.TailPlan
 import com.ccmonitor.mobile.core.claude.model.DeliveryState
 import com.ccmonitor.mobile.core.claude.model.RecordUnits
@@ -96,7 +97,7 @@ class ChatSession(
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
 
     private val draft = target as? ChatTarget.Draft
-    private val records = mutableListOf<Map<String, Any?>>()
+    private val records = mutableListOf<LineRecord>()
     private val outgoing = mutableListOf<Outgoing>()
     private val lock = Mutex()
 
@@ -452,8 +453,8 @@ class ChatSession(
         p: String,
         from: Long,
         until: Long,
-    ): List<Map<String, Any?>>? {
-        val out = mutableListOf<Map<String, Any?>>()
+    ): List<LineRecord>? {
+        val out = mutableListOf<LineRecord>()
         var at = from
         while (at < until) {
             val r = link.call(HistoryRead.COMMAND, HistoryRead.args(p, at, until), READ_MS)
@@ -477,7 +478,7 @@ class ChatSession(
 
     /** 记录里出现了同一句人话 ⇒ 那一句的本地标消失；其余的接在记录后面。 */
     private fun publishLocked() {
-        val said = records.filter { it.str("t") == "said" || it.str("t") == "queued" }.mapNotNull { (it["who"] as? Map<*, *>)?.get("text") as? String }.toMutableList()
+        val said = records.filter { it.t == RecordKind.SAID || it.t == RecordKind.QUEUED }.mapNotNull { it.who?.text }.toMutableList()
         outgoing.removeAll { o -> o.delivery != DeliveryState.FAILED && o.delivery != DeliveryState.FAILED_PERMANENT && said.remove(o.text) }
         val local = outgoing.map { RenderUnit.UserText(it.localId, it.text, null, it.delivery, it.deliveryText) }
         _state.value = _state.value.copy(units = RecordUnits.of(records) + local)

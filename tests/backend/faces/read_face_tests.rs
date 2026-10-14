@@ -2064,8 +2064,21 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
             }],
         }
     };
+    let row_bytes = serde_json::to_string(&serde_json::to_value(&row).unwrap()).unwrap();
+    // 手机嵌的 Rust 核心按 `cmd-wire` 那一份解这几份（`replies::decode_reply`）：解得开、按类型重写出来逐字节相同。
+    for (cmd, b) in [
+        ("history-tail", &tail),
+        ("sessions-needs", &needs),
+        ("sessions-needs", &row_bytes),
+        ("history-read", &read),
+        ("history-read", &read_mid),
+        ("history-lines", &lines),
+        ("history-lines", &lines_mid),
+    ] {
+        phone_decodes_back(cmd, b);
+    }
     assert_eq!(
-        serde_json::to_string(&serde_json::to_value(&row).unwrap()).unwrap(),
+        row_bytes,
         r#"{"waiting":[{"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
@@ -2110,6 +2123,42 @@ fn the_record_reads_refuse_fields_their_request_types_do_not_have() {
         }
     }
     let _ = std::fs::remove_dir_all(&home);
+}
+
+/// 手机嵌的 Rust 核心按 `cmd-wire` 那张表解 `cmd` 的这份回包：解得开，按类型重写出来与后端写的逐字节相同（不丢格、不改字）。
+/// 通用记录的两份金样（各类全格 ＋ 最少格，两家）：每一条放进 `history-read` · `history-lines` 的回包里，
+/// 手机按 `cmd-wire` 那一份完整记录解得开、按类型重写出来逐字节相同（缺省格 · 平铺的类别 · 内容块的标签都对得上）。
+#[test]
+fn every_golden_record_is_decoded_by_the_phone_as_a_whole_record() {
+    let mut n = 0;
+    for golden in [
+        include_str!("../../__fixtures__/record.golden.jsonl"),
+        include_str!("../../__fixtures__/record-codex.golden.jsonl"),
+    ] {
+        for line in golden.lines().filter(|l| !l.trim().is_empty()) {
+            let row: serde_json::Value = serde_json::from_str(line).unwrap();
+            let record = row["record"].clone();
+            let read = serde_json::json!({"eof": true, "next": 9, "rows": [{"cwd": "/w", "end": 9, "hash": 1, "record": record}]});
+            let lines = serde_json::json!({"eof": true, "from": 0, "next": 1, "lines": [{"cwd": null, "path": "p", "record": record, "seq": 0, "session_id": "s"}]});
+            phone_decodes_back("history-read", &read.to_string());
+            phone_decodes_back("history-lines", &lines.to_string());
+            n += 1;
+        }
+    }
+    assert!(n > 40, "金样只有 {n} 条");
+}
+
+fn phone_decodes_back(cmd: &str, bytes: &str) {
+    let v: serde_json::Value = serde_json::from_str(bytes).unwrap();
+    match cmd_wire::replies::decode_reply(cmd, v) {
+        // 记录一条一条地解（解不开的那一条成认不出那一条、整份不失败）⇒ 逐字节相同才说明每一条都按完整记录解开了。
+        Some(Ok(back)) => assert_eq!(
+            serde_json::to_string(&back).unwrap(),
+            bytes,
+            "{cmd}：重写出来不是原样（有一条没按完整记录解开）"
+        ),
+        other => panic!("{cmd}：手机解不开后端写的那一份：{other:?}"),
+    }
 }
 
 /// 照手机那一份入参问一条只读命令，应答原样（成功那一支）。

@@ -1,4 +1,5 @@
 use super::*;
+use crate::agents::record::RecordExt as _;
 
 /// 在这台后端的漂移账里找一条记账（全局账本，只找「我这条」）。
 fn ledger_entry(

@@ -221,12 +221,12 @@ fn a_code_the_outer_table_lacks_lands_on_that_commands_own_failure() {
     );
 }
 
-/// ★ 手机嵌的 Rust 核心按 `cmd-wire::session` 那张表解回包：表里每一条都是 typed 命令，解它用的类型就是后端那条命令回的类型（TS 名相同 ⇒ 同一个类型）。
+/// ★ 手机嵌的 Rust 核心按 `cmd-wire::replies` 那张表解回包：表里每一条都是 typed 命令，解它用的类型就是后端那条命令回的类型（TS 名相同 ⇒ 同一个类型）。
 /// 表里写错了类型（拿 `Sent` 去解 `session-model`）⇒ 手机把对的回包当成对不上 —— 这条当场红。
 #[test]
 fn the_phone_decodes_each_reply_with_the_type_the_backend_answers_with() {
     let rows: std::collections::BTreeMap<&str, Shape> = typed().into_iter().collect();
-    let names = cmd_wire::session::reply_names();
+    let names = cmd_wire::replies::reply_names();
     assert!(!names.is_empty(), "表是空的 —— 本条在空转");
     for (cmd, name) in names {
         let shape = rows

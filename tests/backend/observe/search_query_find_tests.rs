@@ -8,6 +8,7 @@
 
 use super::*;
 use crate::agents::claudecode::paths::projects_root;
+use crate::agents::UserTextExt as _;
 
 const Q: &str = "NeEdLe";
 

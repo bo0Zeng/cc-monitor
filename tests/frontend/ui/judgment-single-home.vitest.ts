@@ -726,6 +726,17 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     COMMANDS: NONE,
     decode_reply: NONE,
     reply_names: NONE,
+    // 通用记录的两处纯形状（`record`）：「谁说的」那一格的线上词（`Speaker::kind`，骨架索引也存它）· 没有正文的那一形（`UserText::of`）。
+    //   界面直接读记录上的 `kind`，不另判，TS 侧没有孪生。
+    kind: NONE,
+    of: NONE,
+    // 认不出的那一条（`record`）：那一句 · 原文摘录的截法 · 那一形（后端适配层认不出的那一行与手机核心解不开的那一条同这一份），
+    //   流上 `line` 帧里解不开的那条换成它（手机核心）。界面照记录上写好的 `text` · `excerpt` 画，TS 侧没有孪生。
+    EXCERPT_BYTES: NONE,
+    excerpt_of: NONE,
+    unread_text: NONE,
+    unread: NONE,
+    mend_line_frame: NONE,
     // 传输台开单那两条：窗口那一份补上拨号成后端那一份（monitor 的 `sftp_pool::transfer_call` 用）。界面不开单，TS 侧没有孪生。
     dialed: NONE,
   },

@@ -2,6 +2,9 @@ package com.ccmonitor.mobile.core.claude.link
 
 import com.ccmonitor.mobile.core.claude.link.wire.AgentFacts
 import com.ccmonitor.mobile.core.claude.link.wire.FirstSay
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryLinesPage
+import com.ccmonitor.mobile.core.claude.link.wire.HistoryReadPage
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
 import com.ccmonitor.mobile.core.claude.link.wire.ModelSwitched
 import com.ccmonitor.mobile.core.claude.link.wire.NewFacts
 import com.ccmonitor.mobile.core.claude.link.wire.SentResult
@@ -170,19 +173,18 @@ object HistoryRead {
     ): Map<String, Any?> = mapOf("path" to path, "offset" to offset, "until" to until)
 
     data class Page(
-        val records: List<Map<String, Any?>>,
+        val records: List<LineRecord>,
         /** 每条记录那一行之后的字节（与 [records] 一一对应）。 */
         val ends: List<Long>,
         val next: Long,
         val eof: Boolean,
     )
 
-    fun of(data: Any?): Page? =
-        decoding {
-            val m = data.asObj()
-            val rows = m.objs("rows").need().mapNotNull { r -> r.obj("record")?.let { it to (r.num("end") ?: -1L) } }
-            Page(rows.map { it.first }, rows.map { it.second }, m.num("next").need(), m.bool("eof") == true)
-        }
+    fun of(data: Any?): Page? {
+        val p = Wire.bind<HistoryReadPage>(data) ?: return null
+        val rows = p.rows.mapNotNull { r -> r.record?.let { it to (r.end ?: -1L) } }
+        return Page(rows.map { it.first }, rows.map { it.second }, p.next, p.eof)
+    }
 }
 
 /** `history-lines`：按行号取 `[from, until)` 那一段（不进界面的行照占号、不出）。 */
@@ -196,7 +198,7 @@ object HistoryLines {
     ): Map<String, Any?> = mapOf("path" to path, "from" to from, "until" to until)
 
     data class Page(
-        val records: List<Map<String, Any?>>,
+        val records: List<LineRecord>,
         /** 每条记录的行号（与 [records] 一一对应）。 */
         val seqs: List<Long>,
         /** 下一段从这一行起。 */
@@ -204,15 +206,13 @@ object HistoryLines {
         val eof: Boolean,
     )
 
-    fun of(data: Any?): Page? =
-        decoding {
-            val m = data.asObj()
-            val rows = m.objs("lines").need().mapNotNull { l -> l.obj("record")?.let { it to l.num("seq").need() } }
-            Page(rows.map { it.first }, rows.map { it.second }, m.num("next").need(), m.bool("eof") == true)
-        }
+    fun of(data: Any?): Page? {
+        val p = Wire.bind<HistoryLinesPage>(data) ?: return null
+        return Page(p.lines.map { it.record }, p.lines.map { it.seq }, p.next, p.eof)
+    }
 }
 
-/** 流上的 `line` 帧：一条会话记录文件里新写的一行（`record` 缺 ＝ 不进界面、照占号）。 */
+/** 流上的 `line` 帧：一条会话记录文件里新写的一行（`record` 缺 ＝ 不进界面、照占号；形状对不上的那一条核心那一层已换成认不出那一条〔`unread` 卡〕，同按页读的那两条）。 */
 data class RecordLine(
     val sid: String,
     val path: String,
@@ -220,13 +220,14 @@ data class RecordLine(
     val seq: Long,
     /** 这一行末尾在文件里的累计字节。 */
     val byteOffset: Long?,
-    val record: Map<String, Any?>?,
+    val record: LineRecord?,
 ) {
     companion object {
         fun of(frame: Map<String, Any?>): RecordLine? {
             if (frame.str("kind") != "line") return null
+            val record = frame["record"]?.let { Wire.bind<LineRecord>(it) }
             return decoding {
-                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), frame.obj("record"))
+                RecordLine(frame.str("session_id").need(), frame.str("path").need(), frame.num("seq").need(), frame.num("byte_offset"), record)
             }
         }
     }

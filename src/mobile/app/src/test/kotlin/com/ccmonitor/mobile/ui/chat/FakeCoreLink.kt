@@ -7,9 +7,11 @@ import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.Reply
 import com.ccmonitor.mobile.core.claude.link.SessionTable
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
-import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.WatchFrom
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
+import com.ccmonitor.mobile.core.claude.link.wire.Wire
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -42,7 +44,7 @@ internal class FakeCoreLink :
         sid: String,
         seq: Long,
         record: Map<String, Any?>?,
-    ) = lineFlow.emit(RecordLine(sid, "/p/$sid.jsonl", seq, null, record))
+    ) = lineFlow.emit(RecordLine(sid, "/p/$sid.jsonl", seq, null, record?.let { Wire.bind<LineRecord>(it) }))
 
     /** 此刻有人在看的会话（[hold] 的计数）。 */
     val held = mutableMapOf<String, Int>()

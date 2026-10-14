@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.core.claude.link
 
+import com.ccmonitor.mobile.core.claude.link.wire.NeedsRow
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -99,7 +101,7 @@ class ProductsTest {
         assertEquals("等批准 · Bash", rows[0].needs.text)
         assertEquals("已等那一格读毫秒（手机按此刻走表），不抄收到那一刻写好的字", 180_000L, rows[0].needs.waitedMs)
         assertEquals(null, rows[1].needs.waitedMs)
-        assertEquals(emptyList<SessionsNeeds.Row>(), SessionsNeeds.of(mapOf("waiting" to emptyList<Any>())))
+        assertEquals(emptyList<NeedsRow>(), SessionsNeeds.of(mapOf("waiting" to emptyList<Any>())))
         assertNull("缺 text ⇒ 契约对不上", SessionsNeeds.of(mapOf("waiting" to listOf(mapOf("sid" to "a", "needs" to mapOf("kind" to "x", "rank" to 0.0))))))
     }
 

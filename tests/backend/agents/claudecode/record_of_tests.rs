@@ -1,6 +1,7 @@
 //! Claude 一行 ⇒ 通用记录：各类全格 ＋ 最少格（金样 `tests/__fixtures__/record.golden.jsonl`，手机端照它比）· 自动应答按型号认 ·
 //! 报错带原因与状态码 · 一轮结束与帧 `turn_end` 同判 · 不进界面的几类不出记录。夹具是结构占位，不采真正文。
 use super::*;
+use crate::agents::record::{BodyExt as _, RecordExt as _};
 
 /// 金样重写开关（人读过「现打」再落盘）。
 const REGEN: &str = "CCM_REGEN_RECORD_GOLDEN";
@@ -338,7 +339,8 @@ fn claude_status_lines_are_known_and_stay_off_screen() {
 /// 认不出的一行出 `unread`：没见过的类型 · 见过的类型形状变了；写好的一句、`warn`、原文摘录按字符截到 400 字节以内。
 #[test]
 fn an_unread_line_comes_out_as_unread() {
-    use crate::agents::record::{UnreadWhy, EXCERPT_BYTES};
+    use crate::agents::record::UnreadWhy;
+    use cmd_wire::record::EXCERPT_BYTES;
     let r = one(r#"{"type":"some-new-kind","uuid":"x","timestamp":"2026-10-09T01:30:00.000Z"}"#)
         .expect("没见过的类型也要出一条");
     let Body::Unread {

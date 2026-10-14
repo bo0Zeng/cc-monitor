@@ -183,7 +183,7 @@
 
 ### 通用记录
 
-会话记录里一行在界面里是什么，由那一家的适配层翻成这一形（`agents/record.rs`；Claude 的翻译表 `agents/claudecode/record_of.rs`，Codex 的 `agents/codex/record.rs`）。
+会话记录里一行在界面里是什么，由那一家的适配层翻成这一形（形状 `src/common/cmd-wire/src/record.rs`，两侧同一份；Claude 的翻译表 `agents/claudecode/record_of.rs`，Codex 的 `agents/codex/record.rs`）。
 两个前端都只按 `t` 与格排版，不认任何一家的盘上格式。每类全格 ＋ 最少格的样本：`tests/__fixtures__/record.golden.jsonl`（后端真序列化器写，`record_of_tests` 钉着）。Codex 那一家的样本是一整份造的中性 rollout（`tests/__fixtures__/codex-rollout.sample.jsonl`）走读页那一遍写成的 `tests/__fixtures__/record-codex.golden.jsonl`（`agents/codex` 的 `record_tests` 钉着；界面 `codex-record.vitest.ts`、手机 `CodexRecordGoldenTest` 解同一份）；它的 `function_call` 入参盘上是 `arguments` 那个 JSON 串，适配层解成对象放进 `tool_use.input`（解不出 ⇒ 原串包成 `{input}`）。
 
 公共格（每类都有）：

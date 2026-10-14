@@ -4,8 +4,9 @@ import com.ccmonitor.mobile.core.claude.link.HistoryRead
 import com.ccmonitor.mobile.core.claude.link.Json
 import com.ccmonitor.mobile.core.claude.link.RecordLine
 import com.ccmonitor.mobile.core.claude.link.SessionTable
-import com.ccmonitor.mobile.core.claude.link.Tone
 import com.ccmonitor.mobile.core.claude.link.str
+import com.ccmonitor.mobile.core.claude.link.wire.LineRecord
+import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -27,7 +28,7 @@ class CodexRecordGoldenTest {
     private fun record(case: String): Map<String, Any?> = golden.first { it["case"] == case }["record"] as Map<String, Any?>
 
     /** 金样照 `history-read` 的回话交进来（`rows[].record` · `end`）。 */
-    private fun read(): List<Map<String, Any?>> {
+    private fun read(): List<LineRecord> {
         val rows = golden.mapIndexed { i, g -> mapOf("end" to (i + 1).toLong(), "hash" to 0L, "record" to g["record"]) }
         val page = HistoryRead.of(mapOf("rows" to rows, "next" to rows.size.toLong(), "eof" to true))!!
         return page.records
@@ -39,11 +40,11 @@ class CodexRecordGoldenTest {
     fun `金样每一条都解得出、都是 codex 那一家的`() {
         val records = read()
         assertEquals(golden.size, records.size)
-        assertEquals(setOf("codex"), records.map { it["agent"] }.toSet())
+        assertEquals(setOf("codex"), records.map { it.agent }.toSet())
     }
 
     @Test
-    fun `逐格照记录：人话 · 推理 · 两种工具（入参与配上的结果）· 回复；系统注入 · 空推理 · 工具结果那一条 · 认不出的那一行不单出`() {
+    fun `逐格照记录：人话 · 推理 · 两种工具（入参与配上的结果）· 回复；系统注入 · 空推理 · 工具结果那一条不单出；认不出的那一行成一张卡`() {
         val human = record("line-05")
         val think = record("line-07")
         val shell = record("line-09")
@@ -74,6 +75,9 @@ class CodexRecordGoldenTest {
                     sourceUuid = patch["id"] as String,
                 ),
                 RenderUnit.AssistantMarkdown("msg-9#0", "two files", "msg-9"),
+                record("line-16").let { u ->
+                    RenderUnit.Unread(u["id"] as String, u["text"] as String, u["timeText"] as String?, u["excerpt"] as String, u["id"] as String)
+                },
             )
         assertEquals(expected, units)
     }
@@ -89,6 +93,7 @@ class CodexRecordGoldenTest {
                     is RenderUnit.Thinking -> u.text
                     is RenderUnit.AssistantMarkdown -> u.markdown
                     is RenderUnit.ToolCall -> u.resultText.orEmpty()
+                    is RenderUnit.Unread -> u.text
                     else -> ""
                 }
             assertTrue("单元 ${u.key} 的字不在记录里：$text", cells.contains(Json.line(text)))
@@ -108,10 +113,10 @@ class CodexRecordGoldenTest {
         val lines = frames.map { requireNotNull(RecordLine.of(it)) { "line 帧解不出：$it" } }
         val records = lines.mapNotNull { it.record }
         assertTrue("金样里得有带记录的 line 帧", records.isNotEmpty())
-        assertEquals(setOf("codex"), records.map { it["agent"] }.toSet())
-        assertEquals(listOf("again", "more"), records.map { (it["who"] as Map<*, *>)["text"] })
+        assertEquals(setOf("codex"), records.map { it.agent }.toSet())
+        assertEquals(listOf("again", "more"), records.map { it.who?.text })
         assertEquals(
-            records.map { RenderUnit.UserText(it["id"] as String, (it["who"] as Map<*, *>)["text"] as String, it["id"] as String) },
+            records.map { RenderUnit.UserText(it.id, it.who?.text.orEmpty(), it.id) },
             RecordUnits.of(records),
         )
     }

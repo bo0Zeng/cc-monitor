@@ -14,6 +14,7 @@
 //!
 //! Codex 没有 pidfile ⇒ 判活答不了（「不知道」，不是「没活」）；Codex 的会话目录里也没有项目概念（按 cwd 分组是通用层的事）。
 
+use crate::agents::UserTextExt as _;
 use crate::platform::fs::Ro;
 use serde_json::Value;
 use std::io::BufRead;

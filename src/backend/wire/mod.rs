@@ -17,6 +17,7 @@ pub mod topic; // 「X 变了 ⇒ 重读」那一种推送（`changed`）的主�
 pub mod topic_hook; // 帧里的小成品怎么现算：进程里装的那一个函数（发端经它调；`main` 装 `stream::topic_body`）
 pub(crate) mod typed; // typed 命令：入参 · 回包 · 错误码各是一个 Rust 类型
 
+use crate::agents::record::RecordExt as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
