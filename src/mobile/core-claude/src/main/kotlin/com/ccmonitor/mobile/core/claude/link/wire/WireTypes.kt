@@ -226,7 +226,6 @@ data class HistoryRow(
     val jsonlPath: String,
     val agent: String,
     val agentTag: String?,
-    /** 活不活（`live` · `ended` · `unknown`，照抄；状态点读它）。 */
     val status: String,
 )
 
