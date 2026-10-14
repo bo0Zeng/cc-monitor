@@ -28161,8 +28161,11 @@
     "plan.review.topDoneWhat": {
       "kind": "body",
       "role": "片段",
-      "zh": "顶块阶段「{phase}」（看全局） · 顶层做完 {done} / {of}",
-      "args": ["phase", "done", "of"]
+      "zh": "顶块阶段「{phase}」（看全局） · 顶层做完了 {done} / {of}",
+      "args": ["phase", "done", "of"],
+      "waive": {
+        "C-W17": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "plan.review.red": {
       "kind": "title",
@@ -28200,14 +28203,20 @@
     "plan.review.endedWhat": {
       "kind": "body",
       "role": "片段",
-      "zh": "块未做完 · 里面 {done}/{of}",
-      "args": ["done", "of"]
+      "zh": "块没做完 · 里面 {done}/{of}",
+      "args": ["done", "of"],
+      "waive": {
+        "C-T1": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "plan.review.endedOpen": {
       "kind": "body",
       "role": "片段",
-      "zh": "块未做完",
-      "args": []
+      "zh": "块没做完",
+      "args": [],
+      "waive": {
+        "C-T1": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "plan.review.endedSub": {
       "kind": "body",
@@ -28489,8 +28498,11 @@
     "plan.outline.rootProgress": {
       "kind": "body",
       "role": "片段",
-      "zh": "{done}/{of} 做完",
-      "args": ["done", "of"]
+      "zh": "{done}/{of} 做完了",
+      "args": ["done", "of"],
+      "waive": {
+        "C-W17": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "plan.whyShort.nosign": {
       "kind": "body",
@@ -28535,8 +28547,12 @@
     "plan.overview.top": {
       "kind": "body",
       "role": "片段",
-      "zh": "顶层 做完 {done} / {of} · 不做 {dropped}",
-      "args": ["done", "of", "dropped"]
+      "zh": "顶层 做完了 {done} / {of} · 不做了 {dropped}",
+      "args": ["done", "of", "dropped"],
+      "waive": {
+        "C-T1": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫",
+        "C-W17": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "plan.overview.readAt": {
       "kind": "body",
@@ -28817,8 +28833,12 @@
     "plan.bar.droppedBare": {
       "kind": "body",
       "role": "说明",
-      "zh": "不做",
-      "args": []
+      "zh": "不做了",
+      "args": [],
+      "waive": {
+        "C-T1": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫",
+        "C-W17": "pb 自己的叫法（三种状态是「做完了 · 没做完 · 不做了」，同屏格的状态徽标照 pb 原话），用户在 pb 里也这么叫"
+      }
     },
     "main.cmd.openPlan": {
       "kind": "action",

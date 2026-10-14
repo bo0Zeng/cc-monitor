@@ -28,11 +28,16 @@
     "tests/frontend/ui/settings/accounts-section.vitest.ts": [
       { "text": "超时", "use": "输入" }
     ],
+    "tests/backend/plan/needs_tests.rs": [
+      { "text": "不做了", "use": "输入" }
+    ],
     "tests/backend/plan/product_tests.rs": [
-      { "text": "没做完", "use": "输入" }
+      { "text": "没做完", "use": "输入" },
+      { "text": "不做了", "use": "输入" }
     ],
     "tests/backend/plan/fixture.rs": [
       { "text": "没做完", "use": "输入" },
+      { "text": "不做了", "use": "输入" },
       { "text": "没签", "use": "输入" }
     ],
     "tests/backend/platform/cfgless_guard.rs": [
@@ -276,6 +281,7 @@
     ],
     "tests/shots/fake/plan.ts": [
       { "text": "没做完", "use": "输入" },
+      { "text": "不做了", "use": "输入" },
       { "text": "没签", "use": "输入" },
       { "text": "对账", "use": "输入" },
       { "text": "执行", "use": "输入" },
