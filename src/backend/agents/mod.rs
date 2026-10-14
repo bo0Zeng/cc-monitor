@@ -382,6 +382,8 @@ pub(crate) struct PermissionFace {
     pub(crate) flag: &'static str,
     /// 可选的档（原值 ＋ 字）。
     pub(crate) modes: &'static [Choice],
+    /// 会话会处在、却不给选的档（原值 ＋ 字：越过批准的那几档 · 别名）。会话事实 · 屏底认出来的档都要有字，字从这里与 [`Self::modes`] 取。
+    pub(crate) shown: &'static [Choice],
     /// 会话开着时怎么切档；这一家切不了 ⇒ `None`。
     pub(crate) switch: Option<ModeSwitch>,
 }
@@ -395,6 +397,22 @@ pub(crate) struct ModeSwitch {
     pub(crate) cycle_max: usize,
     /// 从此刻那一屏（纯文本行）认出此刻的档（原值）；认不出 ⇒ `None`。
     pub(crate) read: fn(&[String]) -> Option<&'static str>,
+}
+
+impl PermissionFace {
+    /// 这一档写给人看的那一句（会话事实 · 切档的回包都读它）：可选的档 ＋ 只认不选的档（[`PermissionFace::shown`]）里找；都没有 ⇒ `None`（不猜）。
+    pub(crate) fn text_of(&self, mode: &str) -> Option<String> {
+        self.modes
+            .iter()
+            .chain(self.shown)
+            .find(|c| c.value == mode)
+            .map(|c| (c.text)())
+    }
+}
+
+/// `kind` 那一家的 `mode` 这一档写给人看的那一句（[`PermissionFace::text_of`]）。认不出这一家 · 这一家没有权限档 · 认不出这一档 ⇒ `None`。
+pub(crate) fn permission_mode_text(kind: &str, mode: &str) -> Option<String> {
+    launch_face_among(REGISTRY, kind)?.permission?.text_of(mode)
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。

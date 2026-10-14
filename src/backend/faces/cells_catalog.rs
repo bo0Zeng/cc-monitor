@@ -989,6 +989,7 @@ mod specimens {
                         outcome: RetryOutcome::Recovered,
                     }],
                     permission_mode: some("default"),
+                    permission_mode_text: Some(Words(s("p"))),
                     tokens: Some(TokenUse {
                         input: 1,
                         output: 1,

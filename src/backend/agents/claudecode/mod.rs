@@ -178,6 +178,7 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     permission: Some(super::PermissionFace {
         flag: resume::PERMISSION_MODE_FLAG,
         modes: resume::PERMISSION_MODES,
+        shown: resume::SHOWN_MODES,
         switch: Some(super::ModeSwitch {
             key: "shift-tab",
             cycle_max: resume::MODE_CYCLE_MAX,

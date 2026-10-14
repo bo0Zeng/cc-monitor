@@ -803,7 +803,7 @@ mod tests {
         );
     }
     /// ⑨ 通用层零处「按注册序取第一家」：`agents/mod.rs` 生产段里每一次在注册表上 `find` / `find_map`，
-    /// 闭包都得按键比（`kind` · 路由名 · 名字）；不按键比的只许是下面登记的那几形（各带理由与处数，处数对不上就红 ——
+    /// 闭包都得按键比（`kind` · 路由名 · 名字 · 权限档的原值）；不按键比的只许是下面登记的那几形（各带理由与处数，处数对不上就红 ——
     /// 收掉一处要同轮改这张表，多出一处要先说清楚为什么不是「取第一家」）。
     const FIRST_PICK_ALLOWED: &[(&str, usize, &str)] = &[
         (
@@ -819,7 +819,8 @@ mod tests {
     ];
 
     /// 按键比的那几形：闭包里有其一 ⇒ 是「问那一家」，不是「取第一家」。
-    const KEYED: &[&str] = &["== kind", ".kind ==", "== route_id", "== name"];
+    /// `== mode`：`PermissionFace::text_of` 在那一家自己的档表里按入参那一档找字（不在注册表上取）。
+    const KEYED: &[&str] = &["== kind", ".kind ==", "== route_id", "== name", "== mode"];
 
     /// `src` 里每一次 `.find(` / `.find_map(` 的整个实参（括号配平）。
     fn find_calls(src: &str) -> Vec<String> {

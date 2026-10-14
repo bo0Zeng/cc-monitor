@@ -15,7 +15,7 @@ result: ModeSwitchResult,
  */
 mode: string | null, 
 /**
- * 同一档写给人看的字；那一家起会话不给这一档 · 没读到 ⇒ `null`。
+ * 同一档写给人看的字（同会话事实 `permissionModeText` 那一处：`PermissionFace::text_of`）；没读到 · 这一档没有字 ⇒ `null`。
  */
 modeText: string | null, 
 /**

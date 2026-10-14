@@ -524,6 +524,7 @@ describe("上下文那一格：状态栏与监控板照抄同一份核心成品"
     handedBack: [],
     retries: [],
     permissionMode: null,
+    permissionModeText: null,
     tokens: null,
     cost: null,
     mcp: [],

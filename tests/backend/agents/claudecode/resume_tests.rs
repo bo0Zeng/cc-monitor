@@ -114,3 +114,46 @@ fn the_model_command_is_slash_model_and_the_value() {
     assert_eq!(super::model_command("opus"), "/model opus");
     assert_eq!(super::model_command("sonnet[1m]"), "/model sonnet[1m]");
 }
+
+/// ★ 每一档都有字：记录里会写的那几档（`facts_query_tests` 那七个值：六个真值 ＋ 别名 `manual`）· 屏底认得出的那几档，
+/// 经同一处（[`crate::agents::permission_mode_text`]）都给字，字取自文案表；可选的那三档的字就是起会话框里那一句。认不出的档不猜字。
+#[test]
+fn every_mode_the_session_can_be_in_has_its_words() {
+    let text = |m: &str| crate::agents::permission_mode_text("claude", m);
+    for m in [
+        "default",
+        "plan",
+        "acceptEdits",
+        "bypassPermissions",
+        "dontAsk",
+        "auto",
+        "manual",
+    ] {
+        let t = text(m).unwrap_or_else(|| panic!("`{m}` 没有字"));
+        assert!(
+            !t.is_empty() && !t.contains(m),
+            "`{m}` 的字不像文案表里的：{t}"
+        );
+    }
+    for (_, m) in super::MODE_MARKS {
+        assert!(text(m).is_some(), "屏底认得出的 `{m}` 没有字");
+    }
+    for c in super::PERMISSION_MODES {
+        assert_eq!(
+            text(c.value),
+            Some((c.text)()),
+            "`{}` 的字与可选的那一句不同",
+            c.value
+        );
+    }
+    assert_eq!(
+        text("manual"),
+        text("default"),
+        "别名 `manual` 与 `default` 该是同一句"
+    );
+    assert_eq!(text("noSuchMode"), None);
+    assert_eq!(
+        crate::agents::permission_mode_text("codex", "default"),
+        None
+    );
+}

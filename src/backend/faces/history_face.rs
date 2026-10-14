@@ -1576,6 +1576,13 @@ pub(crate) fn facts_at(
     // 此刻谁持着它：判活只问这一处（照那一家声明的方式判；判不了 ⇒ 没有人、且「状态不明」说是判不了）。
     let holders = history_query::facts_holders(home, path);
     facts.writers = holders.clone().unwrap_or_default();
+    // 权限档的字：那一家的权限档那一处给（同 `session-permission` 回包的 `modeText`）。
+    facts.permission_mode_text = facts
+        .agent
+        .as_deref()
+        .zip(facts.permission_mode.as_deref())
+        .and_then(|(kind, mode)| crate::agents::permission_mode_text(kind, mode))
+        .map(crate::common::cells::Words);
     // 需手动：那台 pidfile 此刻说在等 ⇒ 配上记录里没结果的那一步判种类（不累加，`prior` 里那一份不用）。
     // 答题口没接上 ⇒ 那一句（[`answer_off_of`]，每次按持着它的进程现查）；配上挂着的待答请求（`needs.ask`：可以怎么答；
     // 挡着终端的那种 pidfile 不说在等，照它补出一份），没有挂着的 ⇒「只能在终端里答」换成它为什么（[`dress_ask`]）。
