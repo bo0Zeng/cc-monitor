@@ -648,6 +648,10 @@ pub enum Frame {
         /// 只有 `Superseded` 才出现 `"cause":"superseded"`。
         #[serde(default, skip_serializing_if = "RemovalCause::is_gone")]
         cause: RemovalCause,
+        /// 被顶替时（`cause: superseded`），顶替它的那条会话的 sid：同一个进程、同一个终端里另起的那份记录（`/clear` · `/branch`），
+        /// 随后是它的 `session_added`。客户端照它跟到新会话，不自己拿 `pid` 对。不是顶替 ⇒ 不上线。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        by: Option<String>,
     },
     /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
     /// 不 dedup**——每见一条 turn-end 记录（判词住适配层，见 `agents/claudecode/turn.rs`）

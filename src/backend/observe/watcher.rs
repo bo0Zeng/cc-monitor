@@ -1360,6 +1360,7 @@ fn watch_loop(
                         retire_sid_if_unreferenced(
                             &e.sid,
                             RemovalCause::Gone,
+                            None,
                             &mut state,
                             &mut sink,
                         );
@@ -2903,7 +2904,13 @@ fn process_session_added(path: &Path, state: &mut ReaderState, sink: &mut FrameS
     if let Some(old) = state.sessions.remove(&key) {
         // ★ S0：**同 pidfile 原地换 sid** —— 旧 sid 不是死了，是被顶替了。
         // monitor 若不知道这点，就会去查自己那份会陈旧的 tmux 快照、把它判成灰点。
-        retire_sid_if_unreferenced(&old.sid, RemovalCause::Superseded, state, sink);
+        retire_sid_if_unreferenced(
+            &old.sid,
+            RemovalCause::Superseded,
+            Some(sid.as_str()),
+            state,
+            sink,
+        );
     }
     // Batch5-F20: add-time imposter check. `/proc/<pid>` existing is NOT enough:
     // a stale pidfile (CC force-killed, tmux server killed, power loss — nothing
@@ -3443,7 +3450,7 @@ fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut Fram
     let key = path_key(path);
     if let Some(e) = state.sessions.remove(&key) {
         // pidfile 从盘上没了 = 真死。
-        retire_sid_if_unreferenced(&e.sid, RemovalCause::Gone, state, sink);
+        retire_sid_if_unreferenced(&e.sid, RemovalCause::Gone, None, state, sink);
     }
 }
 
@@ -3454,6 +3461,7 @@ fn process_session_removed(path: &Path, state: &mut ReaderState, sink: &mut Fram
 fn retire_sid_if_unreferenced(
     sid: &str,
     cause: RemovalCause,
+    by: Option<&str>,
     state: &mut ReaderState,
     sink: &mut FrameSink,
 ) {
@@ -3475,6 +3483,7 @@ fn retire_sid_if_unreferenced(
     sink.send(Frame::SessionRemoved {
         sid: sid.to_string(),
         cause,
+        by: by.map(str::to_string),
     });
 }
 

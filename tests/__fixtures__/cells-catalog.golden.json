@@ -1880,6 +1880,12 @@
     {
       "cells": [
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "by",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "cause",

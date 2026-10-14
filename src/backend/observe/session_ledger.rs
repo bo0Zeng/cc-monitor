@@ -83,7 +83,7 @@ impl SessionLedger {
                 self.miss.remove(sid);
                 (true, Vec::new())
             }
-            Frame::SessionRemoved { sid, cause } => {
+            Frame::SessionRemoved { sid, cause, .. } => {
                 if !self.live.remove(sid) {
                     return (true, Vec::new());
                 }

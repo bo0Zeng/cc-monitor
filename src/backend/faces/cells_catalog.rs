@@ -1171,6 +1171,7 @@ mod specimens {
         vec![node_of(&Frame::SessionRemoved {
             sid: s("s"),
             cause: RemovalCause::Superseded,
+            by: some("s2"),
         })]
     }
 }

@@ -103,6 +103,7 @@ A session file went away。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `cause` | RemovalCause? | 这个 sid 是「死了」还是「被顶替了」 |
+| `by` | string? | 被顶替时（`cause: superseded`），顶替它的那条会话的 sid：同一个进程、同一个终端里另起的那份记录（`/clear` · `/branch`），随后是它的 `session_added` |
 
 ### `turn_end`
 

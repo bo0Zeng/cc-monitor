@@ -395,10 +395,12 @@ fn golden_pairs() -> Vec<[Frame; 2]> {
             Frame::SessionRemoved {
                 sid: s("s1"),
                 cause: RemovalCause::Superseded,
+                by: Some(s("s2")),
             },
             Frame::SessionRemoved {
                 sid: s("s1"),
                 cause: RemovalCause::Gone,
+                by: None,
             },
         ],
         both(Frame::turn_end(
@@ -1514,6 +1516,7 @@ fn removal_cause_is_additive_on_the_wire() {
     let gone = to_line(&Frame::SessionRemoved {
         sid: "s".into(),
         cause: RemovalCause::Gone,
+        by: None,
     })
     .unwrap();
     assert!(
@@ -1523,8 +1526,15 @@ fn removal_cause_is_additive_on_the_wire() {
     let sup = to_line(&Frame::SessionRemoved {
         sid: "s".into(),
         cause: RemovalCause::Superseded,
+        by: Some("s2".into()),
     })
     .unwrap();
+    assert_eq!(
+        sup,
+        "{\"kind\":\"session_removed\",\"sid\":\"s\",\"cause\":\"superseded\",\"by\":\"s2\"}\n",
+        "被顶替时带上顶替它的那条会话；不是顶替不出这一格"
+    );
+    assert!(!gone.contains("by"), "{gone}");
     assert!(
         sup.contains(r#""cause":"superseded""#),
         "Superseded 必须逐字发 \"superseded\"（monitor 侧按这个字面量解析）：{sup}"
