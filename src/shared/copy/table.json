@@ -23273,9 +23273,9 @@
       "args": []
     },
     "sessionHead.kin.parent": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "由 {title} 启动",
+      "kind": "body",
+      "role": "片段",
+      "zh": "由「{title}」启动",
       "args": ["title"]
     },
     "sessionHead.kin.children": {

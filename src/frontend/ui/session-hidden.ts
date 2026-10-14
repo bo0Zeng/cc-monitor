@@ -95,7 +95,7 @@ export interface TabPlaces {
   bgTab: TabPlace;
 }
 
-/** 后端缺省（稿 §4.2：子会话隐藏 · 分身显示）；读回的偏好里没有这两格（老后端）⇒ 照它画。 */
+/** 后端缺省（子会话隐藏 · 分身显示，与今天分身默认显示一致）；读回的偏好里没有这两格（老后端）⇒ 照它画。 */
 const PLACE_DEFAULT: TabPlaces = { childTab: "hide", bgTab: "show" };
 
 function placeOf(v: unknown, d: TabPlace): TabPlace {

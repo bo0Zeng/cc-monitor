@@ -377,7 +377,7 @@ describe("设置：行为页那个开关不在了 · 机器页两行", () => {
   it("★ 机器页：子会话 · 分身会话两行，照那台读回的画；点了交 `prefs-set {childTab | bgTab}`", async () => {
     vi.mocked(readPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "hide", bgTab: "show" } } as never);
     vi.mocked(setPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "show" } } as never);
-    const m = machineLaunchRows(LOCAL_ORIGIN, "本机");
+    const m = machineLaunchRows(LOCAL_ORIGIN, "m-1");
     document.body.append(...m.rows);
     m.load();
     await new Promise((r) => setTimeout(r, 0));
