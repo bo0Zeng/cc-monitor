@@ -53,9 +53,7 @@ pub struct HistoryRow {
     pub is_bg: bool,
     pub starred: bool,
     pub custom_title: Option<String>,
-    /// 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    /// 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
     pub hidden: Option<Hidden>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]

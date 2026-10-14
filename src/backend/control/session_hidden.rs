@@ -1,5 +1,5 @@
 //! **一条会话隐不隐藏** —— 判定只住这里（[`judge`]，纯函数）。「隐藏」全产品一个意思：不占桌面标签页、不进历史默认清单；
-//! 会话总览 · 需手动 · 通知照常。线上那一格是 [`Hidden`]（`{by, said}`，不隐藏 ⇒ 不上线）。
+//! 会话总览 · 需手动 · 通知照常。线上那一格是 [`Hidden`]（`{by, said}`，不隐藏 ⇒ `null`）。
 //!
 //! 三处带它、都调 [`judge`]：会话宣告那一帧（`observe/watcher.rs`，经 `history/session_hidden.rs`）· `history-list` 每一行
 //! （`history/history_list.rs`）· `sessions-needs` 每一行（`faces/history_face.rs`）。这台读一次的那几样事实在 [`Here`]；

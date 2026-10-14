@@ -1,7 +1,7 @@
 /**
- * 会话隐藏 · 桌面界面（设计稿 `会话隐藏.md` §4.3）：界面只照帧上那一格 `hidden: {by, said}` 画，不判。
+ * 会话隐藏 · 桌面界面：界面只照帧上那一格 `hidden: {by, said} | null` 画（形状是后端生成的类型），不判。
  *
- * - 帧上那一格怎么读（读不懂 ⇒ 当没隐藏）；
+ * - 推帧主题「会话隐藏」那一格（`body {hidden}`）到了就挪；
  * - 标签栏栏底「已隐藏 N」那一行照那一格数、只列活的；隐藏的在等人「需手动」照样数、Ctrl+J 照样到；
  * - 右键 / 批量「隐藏」交 `hide: "on"`、撤销交 `hide: "off"`；推帧到了才挪；挪进去摘固定 · 出组，撤销原位放回；
  * - 会话头「由 X 启动」「子会话 N」读会话事实那两格；
@@ -25,12 +25,15 @@ import type { Needs, SessionFacts } from "../../../src/frontend/ui/session-reads
 import { LOCAL_ORIGIN } from "../../../src/frontend/ui/ipc/origin";
 import { ENDED, LIVE } from "../../../src/frontend/ui/tab-session-state";
 import { copyText } from "../../../src/frontend/ui/copy-table";
-import { hiddenOf, lineageOf, NO_LINEAGE, type HideSet, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
+import { hiddenPushed, lineageOf, NO_LINEAGE, type HideSet, type SessionHidden } from "../../../src/frontend/ui/session-hidden";
 import { setHide } from "../../../src/frontend/ui/session-hidden-cmds";
 import { TabHide, type TabHideHost } from "../../../src/frontend/ui/tab-hide";
 import { applyFacts } from "../../../src/frontend/ui/tab-session-facts";
 import { SessionHead } from "../../../src/frontend/ui/session-head";
-import { pushedProducts } from "../../../src/frontend/ui/changed-stream";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { REPO_ROOT } from "../../test-support/repo-root";
+import { stripComments } from "../../test-support/strip-comments";
 import { behaviorIn } from "../../../src/frontend/ui/behavior";
 import { KNOWN_CONFIG_KEYS } from "../../../src/frontend/ui/config";
 import { annotate } from "../../../src/frontend/ui/history-reads";
@@ -122,19 +125,34 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-describe("帧上那一格怎么读（界面不判，读不懂 ⇒ 当没隐藏）", () => {
-  it("★ {by, said} 照抄；缺 · null · 认不出的档 · 少 said ⇒ null", () => {
-    expect(hiddenOf({ by: "alias", said: "s" })).toEqual({ by: "alias", said: "s" });
-    for (const by of ["self", "alias", "child", "bg"]) expect(hiddenOf({ by, said: "x" })?.by).toBe(by);
-    expect(hiddenOf(undefined)).toBeNull();
-    expect(hiddenOf(null)).toBeNull();
-    expect(hiddenOf({ by: "rule", said: "x" })).toBeNull();
-    expect(hiddenOf({ by: "self" })).toBeNull();
+describe("推帧主题「会话隐藏」：那一格到了就挪", () => {
+  const LAUNCH: SessionHidden = { by: "launch", said: "后端那一句·命令行" };
+
+  it("★ 一批里每格 `{key: 会话, body: {hidden}}`（后端写的那一形）按会话落；`hidden: null` ＝ 不隐藏了；没 key 的不收", () => {
+    const got = hiddenPushed({ cells: [{ key: "a", rev: null, body: { hidden: BG } }, { key: "b", rev: null, body: { hidden: null } }, { key: "c", rev: null, body: { hidden: LAUNCH } }, { key: null, rev: null, body: { hidden: SELF } }], all: false });
+    expect([...got]).toEqual([["a", BG], ["b", null], ["c", LAUNCH]]);
   });
 
-  it("推帧主题「会话隐藏」一批：带了那一格的按会话落（null ＝ 不隐藏了）", () => {
-    const p = pushedProducts({ cells: [{ key: "a", rev: null, body: BG }, { key: "b", rev: null, body: null }], all: false }, hiddenOf);
-    expect([...p.got]).toEqual([["a", BG], ["b", null]]);
+  it("★ 收到那一帧 ⇒ 当场挪出标签栏、进「已隐藏」；再来一帧 `null` ⇒ 挪回", () => {
+    const r = bar([tab("a"), tab("b")]);
+    const prefs = { ...r.prefs, setPinnedMany: vi.fn(), forgetTab: vi.fn(async () => {}), joinGroup: vi.fn(async () => {}), persistOrder: vi.fn(async () => {}) };
+    const hider = new TabHide(r.store, prefs as unknown as TabBarPrefs, { setHide: vi.fn(), undoToast: vi.fn(), failed: vi.fn(), refreshTabBar: () => r.view.refresh(), close: vi.fn() });
+    const push = (hidden: SessionHidden | null): void => {
+      for (const [sid, h] of hiddenPushed({ cells: [{ key: "b", rev: null, body: { hidden } }], all: false })) hider.land(sid, h);
+      r.view.refresh();
+    };
+    push(LAUNCH);
+    expect(rowSids(r, false)).toEqual(["a"]);
+    expect(rowSids(r, true)).toEqual(["b"]);
+    push(null);
+    expect(rowSids(r, false).sort()).toEqual(["a", "b"]);
+    expect(hiddenRow(r.el)?.isConnected ?? false).toBe(false);
+  });
+
+  it("★ 隐藏这一套的界面代码里没有绕过生成类型的转换（`as unknown as`）：主题名 · 补丁 · 偏好两格 · 读回的偏好都照生成物", () => {
+    for (const f of ["src/frontend/ui/session-hidden.ts", "src/frontend/ui/session-hidden-cmds.ts", "src/frontend/ui/settings/machine-launch-rows.ts", "src/frontend/ui/tab-hide.ts"]) {
+      expect(stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts"), f).not.toContain("as unknown as");
+    }
   });
 });
 
@@ -323,23 +341,24 @@ describe("菜单：右键两项 · 批量两项", () => {
 
 describe("会话头：「由 X 启动」「子会话 N」读会话事实那两格", () => {
   const facts = (extra: Record<string, unknown>): SessionFacts =>
-    ({ forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, agent: null, writers: [], needs: null, pending: [], lastSay: null, background: null, retries: [], ...extra }) as unknown as SessionFacts;
+    ({ forkedFrom: null, touchedFiles: [], usage: null, projectDir: null, agent: null, writers: [], needs: null, pending: [], lastSay: null, background: null, retries: [], startedBy: null, children: [], ...extra }) as unknown as SessionFacts;
 
   it("★ 会话事实带的 `startedBy` · `children` 落到 tab 上；没带 ⇒ 没有；变了才报变", () => {
     const t = tab("a");
-    const ch = applyFacts(t, facts({ startedBy: { sid: "p", title: "主·名" }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child", said: "s" } }, { sid: "k2", title: "子·二", live: false }] }));
+    const kin = { startedBy: { sid: "p", title: "主·名", live: true, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child" as const, said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }] };
+    const ch = applyFacts(t, facts(kin));
     expect(ch.lineage).toBe(true);
-    expect(t.lineage).toEqual({ startedBy: { sid: "p", title: "主·名" }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child", said: "s" } }, { sid: "k2", title: "子·二", live: false, hidden: null }] });
-    expect(applyFacts(t, facts({ startedBy: { sid: "p", title: "主·名" }, children: [{ sid: "k1", title: "子·一", live: true, hidden: { by: "child", said: "s" } }, { sid: "k2", title: "子·二", live: false }] })).lineage).toBe(false);
+    expect(t.lineage).toEqual(kin);
+    expect(applyFacts(t, facts(structuredClone(kin))).lineage).toBe(false);
     applyFacts(t, facts({}));
     expect(t.lineage).toEqual(NO_LINEAGE);
-    expect(lineageOf({ startedBy: { sid: 1 } })).toEqual(NO_LINEAGE);
+    expect(lineageOf({ startedBy: null, children: [] })).toBe(NO_LINEAGE);
   });
 
   it("★ 会话头：已隐藏标（悬停是那一句）· 由 X 启动（点了切回主会话）· 子会话 N（点开列子会话、点一行切过去）", () => {
     const parent = tab("p");
     const kid = tab("k1");
-    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名" }, children: [{ sid: "k1", title: "子·一", live: true, hidden: BG }, { sid: "gone", title: "子·二", live: false, hidden: null }] } });
+    const t = tab("a", { hidden: SELF, lineage: { startedBy: { sid: "p", title: "主·名", live: true, hidden: null }, children: [{ sid: "k1", title: "子·一", live: true, hidden: BG }, { sid: "gone", title: "子·二", live: false, hidden: null }] } });
     const host = { active: () => t, viewTerminal: vi.fn(), openCwd: vi.fn(), front: vi.fn(), find: vi.fn(), more: vi.fn(), resume: vi.fn(), attach: vi.fn(), reconnect: vi.fn(), planMark: () => null, menuItem: () => null, displayItems: () => [], tabOf: (sid: string) => (sid === "p" ? parent : sid === "k1" ? kid : null), switchTo: vi.fn() };
     const h = new SessionHead(host);
     document.body.appendChild(h.el);
@@ -374,20 +393,30 @@ describe("设置：行为页那个开关不在了 · 机器页两行", () => {
     for (const k of ["settingsPanel.behavior.showHiddenTasks", "settingsPanel.behavior.showHiddenTasksHelp", "settingsPanel.behavior.hiddenTasks"]) expect(keys).not.toContain(k);
   });
 
-  it("★ 机器页：子会话 · 分身会话两行，照那台读回的画；点了交 `prefs-set {childTab | bgTab}`", async () => {
-    vi.mocked(readPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "hide", bgTab: "show" } } as never);
-    vi.mocked(setPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "show" } } as never);
+  it("★ 机器页：子会话 · 分身会话两行，读回之前灰着、哪一段都不选（缺省只住后端）；照那台读回的实际值画；点了交 `prefs-set {childTab | bgTab}`", async () => {
+    let answer: (v: unknown) => void = () => {};
+    vi.mocked(readPrefs).mockReturnValue(new Promise((r) => (answer = r)) as never);
+    vi.mocked(setPrefs).mockResolvedValue({ state: "ok", prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "hide" } } as never);
     const m = machineLaunchRows(LOCAL_ORIGIN, "m-1");
     document.body.append(...m.rows);
     m.load();
     await new Promise((r) => setTimeout(r, 0));
     const seg = (role: string): HTMLElement => document.body.querySelector<HTMLElement>(`[data-role=${role}]`)!;
     const on = (role: string): string | undefined => seg(role).querySelector<HTMLElement>("[aria-checked=true]")?.dataset.key;
-    expect([on("child-tab"), on("bg-tab")]).toEqual(["hide", "show"]);
-    expect(seg("child-tab").textContent).toContain(copyText("settings.machine.childTab"));
-    seg("child-tab").querySelector<HTMLElement>("[data-key=show]")!.click();
+    const grey = (role: string): string | null => seg(role).querySelector("[role=radiogroup]")!.getAttribute("aria-disabled");
+    expect([on("child-tab"), on("bg-tab")], "读回之前不画缺省").toEqual([undefined, undefined]);
+    expect([grey("child-tab"), grey("bg-tab")]).toEqual(["true", "true"]);
+    seg("bg-tab").querySelector<HTMLElement>("[data-key=hide]")!.click();
+    expect(vi.mocked(setPrefs), "读回之前点了不交").not.toHaveBeenCalled();
+    // 那台读回的不是缺省那一组（子会话显示 · 分身隐藏）⇒ 照它画。
+    answer({ state: "ok", reason: null, detail: null, path: null, prefs: { launchers: {}, resumeInTmux: false, models: {}, contextLimits: {}, agentHomes: {}, childTab: "show", bgTab: "hide" } });
     await new Promise((r) => setTimeout(r, 0));
-    expect(vi.mocked(setPrefs)).toHaveBeenCalledWith(LOCAL_ORIGIN, { childTab: "show" });
-    expect(on("child-tab")).toBe("show");
+    expect([on("child-tab"), on("bg-tab")]).toEqual(["show", "hide"]);
+    expect([grey("child-tab"), grey("bg-tab")]).toEqual(["false", "false"]);
+    seg("child-tab").querySelector<HTMLElement>("[data-key=hide]")!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(vi.mocked(setPrefs)).toHaveBeenCalledWith(LOCAL_ORIGIN, { childTab: "hide" });
+    expect(on("child-tab"), "画写完读回的那一份").toBe("show");
+    expect(seg("child-tab").textContent).toContain(copyText("settings.machine.childTab"));
   });
 });

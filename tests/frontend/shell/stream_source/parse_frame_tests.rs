@@ -413,6 +413,7 @@ fn known_kind_with_extra_fields_still_parses() {
                 label_project: None
             },
             waiting_for: None,
+            hidden: None,
             container: None,
             pid: None,
         }
@@ -445,6 +446,7 @@ fn session_added_metadata_parses() {
                 label_project: None
             },
             waiting_for: None,
+            hidden: None,
             container: None,
             pid: None,
         }
@@ -501,6 +503,41 @@ fn session_judgments_off_contract_are_bad_shape() {
         r#"{"kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L","background":"true"}"#,
     ] {
         assert!(parse_frame(line).is_err(), "认了一帧契约外的：{line}");
+    }
+}
+
+/// ★ `session_added.hidden`：后端判好的那一格原样收（含 `launch` 那一档）；缺 / `null` ⇒ 不隐藏；形状不对 ⇒ 整帧形状不对（不猜成不隐藏）。
+#[test]
+fn the_hidden_cell_on_session_added_is_read_as_the_backend_wrote_it() {
+    use cmd_wire::session::{Hidden, HiddenBy};
+    let base = r#""kind":"session_added","agent_kind":"claude","sid":"s","activity_text":"T","activity_tone":"now","activity_order":1,"label":"L""#;
+    let hidden_of = |extra: &str| match parse_frame(&format!("{{{base}{extra}}}")) {
+        Ok(InboundFrame::SessionAdded { hidden, .. }) => Ok(hidden),
+        Ok(other) => panic!("解成了别的：{other:?}"),
+        Err(e) => Err(e),
+    };
+    assert_eq!(
+        hidden_of(r#","hidden":{"by":"launch","said":"x"}"#),
+        Ok(Some(Hidden {
+            by: HiddenBy::Launch,
+            said: "x".into()
+        }))
+    );
+    assert_eq!(
+        hidden_of(r#","hidden":{"by":"bg","said":"y"}"#).map(|h| h.map(|h| h.by)),
+        Ok(Some(HiddenBy::Bg))
+    );
+    assert_eq!(hidden_of(""), Ok(None));
+    assert_eq!(hidden_of(r#","hidden":null"#), Ok(None));
+    for bad in [
+        r#","hidden":{"by":"rule","said":"x"}"#,
+        r#","hidden":{"by":"self"}"#,
+        r#","hidden":true"#,
+    ] {
+        assert!(
+            matches!(hidden_of(bad), Err(Unread::BadShape { .. })),
+            "认了一格契约外的隐藏：{bad}"
+        );
     }
 }
 

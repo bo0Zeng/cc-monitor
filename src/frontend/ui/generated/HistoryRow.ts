@@ -8,9 +8,9 @@ import type { Words } from "./Words";
  */
 export type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
- * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线。
+ * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden?: Hidden, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
 /**
  * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
  */

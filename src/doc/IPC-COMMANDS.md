@@ -57,7 +57,7 @@ A new session file appeared。
 | `face` | ActivityFace | 宣告时此刻在干什么（适配层翻好的那一态 · 写好的字 · 语气 · 监控板的序，`ActivityFace`，平铺在帧上） |
 | `name_face` | NameFace | 叫这条会话什么（`NameFace`，平铺在帧上） |
 | `waiting_for` | string? | 宣告时在等什么（同 `session_status`） |
-| `hidden` | Hidden? | 隐藏那一格（不占标签页，判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线 |
+| `hidden` | Hidden? | 隐藏那一格（不占标签页，判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线（同这一帧别的可缺格；壳转给界面时补成 `null`） |
 | `container` | SessionContainer? | 这条会话住在什么容器里（见 `SessionContainer`） |
 | `pid` | number | 那个 claude 进程的 **pid**（恒在） |
 
@@ -3080,9 +3080,9 @@ projectDir: string,
 group: string, lastAccount?: string, };
 type HistoryRow = { agent: string, sessionId: string, projectPath: string, projectName: string, aiTitle: string | null, firstUserExcerpt: string, title: string, startedAt: number, updatedAt: number, jsonlPath: string, messageCountApprox: number, isBg: boolean, starred: boolean, customTitle: string | null, 
 /**
- * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线。
+ * 隐藏那一格（判定只住后端 `control/session_hidden.rs`）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden?: Hidden, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
+hidden: Hidden | null, forkedFromSessionId?: string, forkedFromMessageUuid?: string, projectDir: string, group: string, lastAccount?: string, 
 /**
  * 显示的标题：用户改过的 ＞ 标题 ＞ 第一句。
  */
@@ -4986,9 +4986,9 @@ type NeedsQuestionOption = {
 id: string, text: string, detail: string | null, };
 type NeedsRow = { sid: string, needs: Needs, 
 /**
- * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ 不上线。
+ * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden?: Hidden, };
+hidden: Hidden | null, };
 type NoArgs = Record<symbol, never>;
 type Tone = "plain" | "fail" | "now" | "need" | "warn" | "busy";
 type Words = string;
@@ -5132,9 +5132,9 @@ type Kin = { sid: string, title: string,
  */
 live: boolean, 
 /**
- * 隐藏那一格；不隐藏 ⇒ 不上线。
+ * 隐藏那一格；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden?: Hidden, };
+hidden: Hidden | null, };
 type LastSay = { text: string, 
 /**
  * 那条记录的 `timestamp` 原样；没有 ⇒ `null`。

@@ -47,6 +47,11 @@ export const REAL_OPS = new Set([
   "history-last-accounts",
   "exit-policy-read",
   "needs-answer",
+  // 那台的偏好（`prefs.json`：启动命令 · 子会话 / 分身会话进不进标签栏 …）：真后端读写台架盘上那一份，缺省只在后端。
+  "prefs-read",
+  "prefs-set",
+  // 改注解（星标 · 改名 · 隐藏）：真后端写台架盘上那一份，它的观测那一侧照新注解重判隐藏、推 `changed/session_hidden`。
+  "history-annotate",
 ]);
 
 /**
@@ -55,7 +60,7 @@ export const REAL_OPS = new Set([
  * 其余几种还是这里合成：`session-live-card`（活卡帧，台架没有真流量，场景自己推）· 其余几种 `changed/<topic>`（场景演换号那一下自己推，`pushChanged`；
  * 换号那几条帧命令还是合成的）· 终端画面。看不见 / 被关掉的那几台（`unseenMachines` · `closedMachines`）是连接那一跳的事，照旧这里演。
  */
-export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs"]);
+export const SHELL_KINDS = new Set(["session-lines", "changed/accounts", "changed/profiles", "changed/tasks", "changed/needs", "changed/session_hidden"]);
 const shellKind = (kind: string): boolean => SHELL_KINDS.has(kind) || kind.startsWith("session-lines/");
 
 /**
@@ -301,11 +306,9 @@ export class FakeBackend {
     if (this.world.hopDown?.[origin]?.includes(op)) return Promise.reject({ err: { Hop: { idx: 0, tag: "open", reach: "NotSent", why: "Unreachable" } }, body: [] });
     if (REAL_OPS.has(op)) {
       const face = WINDOWS_FACE[origin]?.[op];
-      const kin = op === "history-facts" ? lineageFor(this.world, String(req.path ?? "")) : null;
       return new Promise((r) => setTimeout(r, delay))
         .then(() => this.real(origin, op, req, args.view))
         .then((b) => {
-          if (kin) return enc.encode(JSON.stringify({ ...(JSON.parse(dec.decode(b)) as object), ...kin })).buffer;
           if (!face) return b;
           const v = JSON.parse(dec.decode(b)) as { meta?: object };
           return enc.encode(JSON.stringify({ ...v, meta: { ...v.meta, ...face.meta } })).buffer;
@@ -401,12 +404,6 @@ export class FakeBackend {
       }
     }
   }
-}
-
-/** 〔对类型 · 会话隐藏〕这份记录（路径里带会话 id）的血缘两格：场景给了 ⇒ 那一份；没给 ⇒ `null`（真后端答的原样交）。 */
-function lineageFor(world: World, path: string): Record<string, unknown> | null {
-  for (const [sid, v] of Object.entries(world.factsLineage ?? {})) if (path.includes(sid)) return v;
-  return null;
 }
 
 /** 替身那一份复制详情（那台后端写、monitor 转交的那几行）：钟停在夹具那一刻，机器与版本是合成的。 */

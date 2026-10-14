@@ -105,6 +105,7 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
             activity,
             naming,
             waiting_for,
+            hidden,
             container,
             pid,
             ..
@@ -120,6 +121,7 @@ pub(crate) fn local_product(item: &LocalItem, label: &str) -> Option<BookIn> {
                 activity: activity.clone(),
                 naming: naming.clone(),
                 waiting_for: waiting_for.clone(),
+                hidden: hidden.clone(),
                 container: container.clone(),
                 pid: *pid,
             },

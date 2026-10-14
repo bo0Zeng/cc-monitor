@@ -1,5 +1,5 @@
 import { makeYieldToMain } from "./yield-to-main";
-import { hiddenOf, type SessionHidden } from "./session-hidden";
+import type { SessionHidden } from "./session-hidden";
 import { commands } from "./ipc/commands";
 import { chan, type HopFault, type HopTag, type Item, type Sub } from "../../comms/inward/chan";
 import { isLocalOrigin, type Origin } from "./ipc/origin";
@@ -635,8 +635,8 @@ export async function bindEvents(
         } else if (f !== null && typeof f === "object" && "live" in f) {
           // 会话起停 / 状态的成品：与行同一条流、同序；不吃 credit（不带 grant）。本机远端同一形，只差建 tab 那一跳。
           const p = f.live;
-          // 隐藏那一格：后端判好、界面照抄（读不懂 ⇒ 当没隐藏）。
-          const hidden = hiddenOf((p as { hidden?: unknown }).hidden);
+          // 隐藏那一格：后端判好、壳原样转来，界面照抄。
+          const hidden = p.hidden;
           if (isLocalOrigin(p.origin)) {
             queue.push({
               kind: "started",

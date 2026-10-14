@@ -1620,12 +1620,12 @@ fn sessions_needs_lists_the_waiting_sessions_each_with_its_history_facts_needs()
     for r in rows {
         let mut keys: Vec<&str> = r.as_object().unwrap().keys().map(String::as_str).collect();
         keys.sort();
-        assert_eq!(keys, vec!["needs", "sid"], "一行只有这两格：{r}");
+        assert_eq!(keys, vec!["hidden", "needs", "sid"], "一行只有这三格：{r}");
     }
 }
 
 /// ★ 「分身会话」关掉（这台偏好 `bgTab = hide`）时，分身会话的需手动**照样在**清单里（隐藏只是不占标签页），那一行带隐藏那一格说为什么；
-/// 交互会话不带。从前壳在帧进门处整条丢分身会话，连批准框一起丢（会话隐藏稿问题 3）。
+/// 交互会话不带。从前壳在帧进门处整条丢分身会话，连批准框一起丢：隐藏只管占不占标签页，在等人的会话照样要人答。
 #[cfg(target_os = "linux")]
 #[test]
 fn a_hidden_background_session_still_lists_its_needs() {
@@ -1674,7 +1674,11 @@ fn a_hidden_background_session_still_lists_its_needs() {
     };
     assert_eq!(row("s-bg")["hidden"]["by"], "bg", "{list}");
     assert!(row("s-bg")["needs"].is_object(), "{list}");
-    assert!(row("s-fg").get("hidden").is_none(), "{list}");
+    assert_eq!(
+        row("s-fg").get("hidden"),
+        Some(&serde_json::Value::Null),
+        "不隐藏 ⇒ 格在、写 null：{list}"
+    );
 }
 
 /// 一份 `needs` 拆成「已等多久（毫秒）」与其余各格（已等的那两格随问的时刻变，单拿出来判）。
@@ -2143,7 +2147,7 @@ fn the_history_replies_the_phone_reads_keep_their_wire_bytes() {
     }
     assert_eq!(
         row_bytes,
-        r#"{"waiting":[{"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
+        r#"{"waiting":[{"hidden":null,"needs":{"ask":null,"call":null,"head":"等批准 · 协作请求","headCode":null,"kind":"worker","manualText":null,"rank":2,"sinceMs":1,"text":"等批准","tone":"need","tool":null,"waitedMs":1,"waitedText":"<1s","what":null},"sid":"s-1"}]}"#
     );
 }
 

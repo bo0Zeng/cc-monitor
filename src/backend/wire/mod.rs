@@ -510,7 +510,8 @@ pub enum Frame {
         /// 宣告时在等什么（同 `session_status`）。
         #[serde(skip_serializing_if = "Option::is_none")]
         waiting_for: Option<String>,
-        /// 隐藏那一格（不占标签页，判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线。之后变了经主题 `session_hidden` 推。
+        /// 隐藏那一格（不占标签页，判定住 `control/session_hidden.rs`）；不隐藏 ⇒ 不上线（同这一帧别的可缺格；壳转给界面时补成 `null`）。
+        /// 之后变了经主题 `session_hidden` 推。
         #[serde(skip_serializing_if = "Option::is_none")]
         hidden: Option<cmd_wire::session::Hidden>,
         /// 〔additive〕这条会话住在什么容器里（见 [`SessionContainer`]）。

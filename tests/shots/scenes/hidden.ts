@@ -1,14 +1,15 @@
 /**
- * 会话隐藏（设计稿 `会话隐藏.md` §4.3 桌面那几样）：栏底「已隐藏 N」收着 / 展开 · 窄栏 · 右键「隐藏」与撤销 toast ·
+ * 会话隐藏的桌面那几样：栏底「已隐藏 N」收着 / 展开 · 窄栏 · 右键「隐藏」与撤销 toast ·
  * 「已隐藏」里的行右键「取消隐藏」· 会话头「已隐藏」「由 X 启动」「子会话 N」· 设置机器页两行 · 行为页没有「显示分身会话」。
  *
- * 隐藏那一格由后端判：会话宣告里那一格要等后端那一路进来，场景在开页之后照推帧主题「会话隐藏」推（`changed/session_hidden`，
- * 格体 `{key: 会话, body: {by, said}}`）。`said` 是后端写的那一句，这里是台架编的占位。血缘两格经 `world.factsLineage` 并进会话事实。
+ * 隐藏那一格全由真后端判：台架盘上写会话血缘（两个帮手是「订单服务加重试」起的）与这台偏好（分身会话隐藏，子会话照缺省隐藏），
+ * 会话宣告带着那一格经壳到界面；右键「隐藏」交真后端写注解，它重判后推 `changed/session_hidden`。悬停那一句 · 会话头的血缘也是真后端写的。
  */
 import type { Scene } from "./index";
-import type { SceneCtx, World } from "../fake/types";
+import type { World } from "../fake/types";
 import { Convo } from "../fake/records";
 import { defaultWorld, LOCAL, session } from "../fake/world";
+import { putLineage, putPrefs } from "../disk";
 import { byText, click, mainReady, rightClick, sleep, waitFor } from "./helpers";
 import { copyText } from "../../../src/frontend/ui/copy-table";
 
@@ -34,13 +35,6 @@ const ROWS: Row[] = [
 ];
 const N = ROWS.length;
 const sidAt = (i: number): string => `7ab1${(i + 1).toString(16).padStart(4, "0")}-0000-4000-8000-00000000${(i + 1).toString(16).padStart(4, "0")}`;
-/** 台架编的「后端那一句」（真句子由后端拼，界面照抄）。 */
-const SAID = { child: "台架占位 · 子会话默认隐藏", bg: "台架占位 · 分身会话默认隐藏", self: "台架占位 · 已隐藏" };
-const HIDDEN: [number, keyof typeof SAID][] = [
-  [4, "child"],
-  [5, "child"],
-  [6, "bg"],
-];
 
 function hideWorld(): World {
   const w = defaultWorld();
@@ -58,26 +52,15 @@ function hideWorld(): World {
       ...(r.activity === "needs_you" ? { waitingFor: "permission prompt", waitingSinceMs: Date.now() - 90_000 } : {}),
     });
   });
-  // 两个帮手都是「订单服务加重试」起的。
-  w.factsLineage = {
-    [sidAt(0)]: { startedBy: null, children: [4, 5].map((i) => ({ sid: sidAt(i), title: ROWS[i].title, live: true, hidden: { by: "child", said: SAID.child } })) },
-    [sidAt(4)]: { startedBy: { sid: sidAt(0), title: ROWS[0].title }, children: [] },
-    [sidAt(5)]: { startedBy: { sid: sidAt(0), title: ROWS[0].title }, children: [] },
-  };
-  // 右键「隐藏」交的那一条（注解住本机后端；台架答一份写完的注解）。
-  w.ops["history-annotate"] = () => ({ entry: { starred: false, customTitle: null, hidden: false, updatedAt: 0 } });
+  // 两个帮手都是「订单服务加重试」起的（会话血缘）；这台偏好：分身会话不进标签栏（子会话照缺省也不进）。
+  putLineage(w.disk[LOCAL], { [sidAt(4)]: sidAt(0), [sidAt(5)]: sidAt(0) }, Date.now() - 600_000);
+  putPrefs(w.disk[LOCAL], { bgTab: "hide" });
   return w;
 }
 
-/** 推帧主题「会话隐藏」：这几个会话那一格（`null` ＝ 不隐藏了）。 */
-function pushHidden(ctx: SceneCtx, cells: [number, keyof typeof SAID | null][]): void {
-  for (const [i, by] of cells) ctx.backend.pushChanged(LOCAL, "session_hidden", { key: sidAt(i), body: by === null ? null : { by, said: SAID[by] } });
-}
-
-/** 开页、等标签页都到了、推那三格、等栏挪好。 */
-async function ready(ctx: SceneCtx): Promise<void> {
+/** 开页、等标签页都到了、等栏挪好（隐藏那一格随会话宣告到）。 */
+async function ready(): Promise<void> {
   await mainReady(N);
-  pushHidden(ctx, HIDDEN);
   await waitFor(".tab-hidden");
   await sleep(500);
 }
@@ -112,41 +95,41 @@ async function go(...ids: string[]): Promise<void> {
 }
 
 export const HIDDEN_SCENES: Scene[] = [
-  hs("hide-00-row", "栏底「已隐藏 3」（收着）", "7 个会话里 3 个隐藏（两个子会话、一个分身）：散的标签页之后一行，收着时汇总需手动那颗点；「需手动 1」照样数隐藏的那个", async (ctx) => {
-    await ready(ctx);
+  hs("hide-00-row", "栏底「已隐藏 3」（收着）", "7 个会话里 3 个隐藏（两个子会话、一个分身）：散的标签页之后一行，收着时汇总需手动那颗点；「需手动 1」照样数隐藏的那个", async () => {
+    await ready();
   }),
-  hs("hide-01-row-open", "「已隐藏」展开", "点那一行：列活着的隐藏会话，行与标签页同形、缩进一格", async (ctx) => {
-    await ready(ctx);
+  hs("hide-01-row-open", "「已隐藏」展开", "点那一行：列活着的隐藏会话，行与标签页同形、缩进一格", async () => {
+    await ready();
     await openRow();
   }),
-  hs("hide-02-menu-hide", "右键「隐藏」", "右键「部署文档」：固定 · 分组之后一项「隐藏」", async (ctx) => {
-    await ready(ctx);
+  hs("hide-02-menu-hide", "右键「隐藏」", "右键「部署文档」：固定 · 分组之后一项「隐藏」", async () => {
+    await ready();
     await rightClick(tabOf("部署文档"));
     await sleep(400);
   }),
-  hs("hide-03-toast", "隐藏之后的撤销 toast", "点了「隐藏」：toast「已隐藏「部署文档」」［撤销］；推帧来了它挪进「已隐藏」（4）", async (ctx) => {
-    await ready(ctx);
+  hs("hide-03-toast", "隐藏之后的撤销 toast", "点了「隐藏」：toast「已隐藏「部署文档」」［撤销］；推帧来了它挪进「已隐藏」（4）", async () => {
+    await ready();
     await rightClick(tabOf("部署文档"));
     await sleep(300);
     (await byText("[role^=menuitem]", /^隐藏/)).click();
-    await sleep(300);
-    pushHidden(ctx, [[1, "self"]]);
+    // 真后端写了注解、重判、推帧来了 ⇒ 它挪进「已隐藏」（3 → 4）。
+    await byText(".tab-hidden .tab-group-name", copyText("tabBar.hidden.row", { n: 4 }));
     await sleep(600);
   }),
-  hs("hide-04-menu-unhide", "「已隐藏」里右键「取消隐藏」", "展开「已隐藏」、右键「文档索引」（分身会话）：只有「取消隐藏」，不固定、不分组", async (ctx) => {
-    await ready(ctx);
+  hs("hide-04-menu-unhide", "「已隐藏」里右键「取消隐藏」", "展开「已隐藏」、右键「文档索引」（分身会话）：只有「取消隐藏」，不固定、不分组", async () => {
+    await ready();
     await openRow();
     await rightClick(tabOf("文档索引"));
     await sleep(400);
   }),
-  hs("hide-05-head-child", "子会话的会话头", "切到「帮手：跑一遍测试」：会话头「已隐藏」「由 订单服务加重试 启动」；「已隐藏」那一行自己展开、选中它", async (ctx) => {
-    await ready(ctx);
+  hs("hide-05-head-child", "子会话的会话头", "切到「帮手：跑一遍测试」：会话头「已隐藏」「由「订单服务加重试」启动」；「已隐藏」那一行自己展开、选中它", async () => {
+    await ready();
     await openRow();
     tabOf("帮手：跑一遍测试").click();
     await sleep(900);
   }),
-  hs("hide-06-head-children", "主会话的「子会话 2」", "「订单服务加重试」的会话头点「子会话 2」：列两个子会话（状态点 · 名字 · 已隐藏）", async (ctx) => {
-    await ready(ctx);
+  hs("hide-06-head-children", "主会话的「子会话 2」", "「订单服务加重试」的会话头点「子会话 2」：列两个子会话（状态点 · 名字 · 已隐藏）", async () => {
+    await ready();
     tabOf("订单服务加重试").click();
     await sleep(600);
     await click("#session-head [data-head=children]");
@@ -156,8 +139,8 @@ export const HIDDEN_SCENES: Scene[] = [
     "hide-07-folded",
     "窄栏：「隐藏」图标 ＋ 计数",
     "栏收成 44px：「已隐藏」那一行只剩图标与 3，点开是同一列的菜单",
-    async (ctx) => {
-      await ready(ctx);
+    async () => {
+      await ready();
       await click(".tab-hidden .tab-group-head");
       await sleep(400);
     },

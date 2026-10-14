@@ -349,7 +349,7 @@ fn the_local_dispatch_core_matches_the_hand_written_table() {
     assert_eq!(step(LocalItem::LineLost), LocalStep::Lost);
 }
 
-/// 分身会话不再在壳里整条丢（从前「显示分身会话」关掉 ⇒ 连它的批准框一起丢，会话隐藏稿问题 3）：
+/// 分身会话不再在壳里整条丢（从前「显示分身会话」关掉 ⇒ 连它的批准框一起丢；隐藏只管占不占标签页，在等人的会话照样要人答）：
 /// 本机与远端两条读循环里都没有那道门，也不再读那个开关。
 #[test]
 fn no_read_loop_drops_background_sessions() {

@@ -594,7 +594,7 @@ describe("〔DL1〕changed/accounts：两侧同一个串 · 零裸事件", () =>
     const count = (hay: string, needle: string): number => hay.split(needle).length - 1;
     const dead = ["remote", "backend", "ready"].join("-");
     expect(count(main, `"${dead}"`), "main.ts 又在听那个裸事件").toBe(0);
-    expect(count(main, `(["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", HIDDEN_TOPIC] as const)`), "main.ts 不是恰好一处订 changed/accounts（`bindEvents` 的 `changed`）").toBe(1);
+    expect(count(main, `(["accounts", "tasks", "quota", "rotation", "rotation_strategies", "plan", "needs", "session_hidden"] as const)`), "main.ts 不是恰好一处订 changed/accounts（`bindEvents` 的 `changed`）").toBe(1);
     expect(count(main, `case "accounts":\n          onAccountsChanged();`), "main.ts 没把账号那一主题交给刷账号那一处").toBe(1);
     // 正控：同一个剥法与数法认得出一处真在的裸 listen、认得出一处现造的死事件。
     // 正控换锚：`remote-session-added` 那一处裸 listen 随会话起停并进会话流删了 ⇒ 认今天真在的那一处（设置已应用）。

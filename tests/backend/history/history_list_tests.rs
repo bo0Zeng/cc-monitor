@@ -908,9 +908,10 @@ fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
         copy_core::copy_text("beSession.hidden.child", &[("parent", &s1_label)])
     );
     assert_eq!(find(&v, S5)["hidden"]["by"], "alias");
-    assert!(
-        find(&v, S1).get("hidden").is_none(),
-        "不隐藏的那一行带了隐藏那一格"
+    assert_eq!(
+        find(&v, S1).get("hidden"),
+        Some(&serde_json::Value::Null),
+        "不隐藏的那一行那一格得是 null（格恒在）"
     );
     // 默认清单里没有它们（隐藏的不进）。
     let plain = serde_json::to_value(super::answer_from(
@@ -934,6 +935,6 @@ fn rows_carry_the_hidden_cell_judged_from_that_machines_facts() {
         },
     );
     let v = run(&l, &a);
-    assert!(find(&v, S3).get("hidden").is_none());
-    assert!(find(&v, S5).get("hidden").is_none());
+    assert!(find(&v, S3)["hidden"].is_null());
+    assert!(find(&v, S5)["hidden"].is_null());
 }

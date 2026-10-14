@@ -171,6 +171,8 @@ pub struct LiveMeta {
     /// 叫它什么（之后按 `session_status` 更新）。
     pub naming: NameCells,
     pub waiting_for: Option<String>,
+    /// 隐藏那一格（那台后端判好的 `{by, said}`；不隐藏 ⇒ `None`）。原样转给界面，壳不判。
+    pub hidden: Option<cmd_wire::session::Hidden>,
     pub container: Option<SessionContainer>,
     /// 那个 claude 进程的 pid（本机 ↗ 点那一刻从它往上找窗口；没索要 ⇒ `None`）。
     pub pid: Option<u32>,
@@ -645,6 +647,7 @@ impl Out {
                         cwd: meta.cwd.clone(),
                         project_dir: meta.project_dir.clone(),
                         name: meta.name.clone(),
+                        hidden: meta.hidden.clone(),
                     }),
                     F::Activity(b::SessionActivityPayload {
                         session_id: sid.clone(),

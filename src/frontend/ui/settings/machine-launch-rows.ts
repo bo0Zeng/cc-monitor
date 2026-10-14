@@ -16,6 +16,7 @@ import { rememberResumePreset, getBehavior } from "../behavior";
 import { DEFAULT_AGENT } from "../agent-profile";
 import { diagnoseRemoteLauncher } from "../launcher-diagnostics";
 import { readPrefs, setPrefs, type PrefsReply } from "../machine-prefs";
+import type { Prefs } from "../generated/Prefs";
 import { ResumeSelect } from "./resume-select";
 import { toggleSwitch } from "../kit/switch";
 import { segmented } from "../kit/tabs";
@@ -33,15 +34,15 @@ function applied(): void {
 }
 
 /**
- * 子会话 · 分身会话那两行：名字短、说明在悬停；分段按钮读回那台之前灰着，改了交那台、画写完读回的那一份，失败退回、行下一句。
- * 回两行与「读回了」那一下（读不懂 ⇒ 照读回的画、仍灰着：那台也拒写）。
+ * 子会话 · 分身会话那两行：名字短、说明在悬停；分段按钮读回那台之前灰着、一段都不选（缺省只住那台后端，这里不存一份），
+ * 改了交那台、画写完读回的那一份，失败退回、行下一句。回两行与「读回了」那一下（读不懂 ⇒ 照读回的画、仍灰着：那台也拒写）。
  */
-function placeRows(origin: Origin): { rows: HTMLElement[]; fill: (prefs: unknown, writable: boolean) => void } {
+function placeRows(origin: Origin): { rows: HTMLElement[]; fill: (prefs: Prefs, writable: boolean) => void } {
   const specs: { which: keyof TabPlaces; label: string; tip: string; role: string }[] = [
     { which: "childTab", label: copyText("settings.machine.childTab"), tip: copyText("settings.machine.childTabTip"), role: "child-tab" },
     { which: "bgTab", label: copyText("settings.machine.bgTab"), tip: copyText("settings.machine.bgTabTip"), role: "bg-tab" },
   ];
-  let places: TabPlaces = placesOf(null);
+  let places: TabPlaces | null = null;
   let writable = false;
   const paints: (() => void)[] = [];
   const rows = specs.map((sp) => {
@@ -57,10 +58,10 @@ function placeRows(origin: Origin): { rows: HTMLElement[]; fill: (prefs: unknown
           { key: "show", label: copyText("settings.machine.tabShow") },
           { key: "hide", label: copyText("settings.machine.tabHide") },
         ],
-        current: places[sp.which],
+        current: places?.[sp.which] ?? null,
         label: sp.label,
         onChange: (to) => {
-          if (!writable) return paint();
+          if (!writable || places === null) return paint();
           err.hidden = true;
           setPlace(origin, sp.which, to).then(
             (p) => {

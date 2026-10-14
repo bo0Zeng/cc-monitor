@@ -475,6 +475,7 @@ async fn dispatch(
             activity,
             naming,
             waiting_for,
+            hidden,
             container,
             // pid 只给本机那条流用（本机 ↗ 绑窗口）；远端这条流的声明去掉了它（`resident_client::attach::remote_stream_view`）。
             pid: _,
@@ -490,6 +491,7 @@ async fn dispatch(
                 activity,
                 naming,
                 waiting_for,
+                hidden,
                 container,
                 pid: None,
             },

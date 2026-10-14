@@ -7,6 +7,6 @@ import type { Needs } from "./Needs";
  */
 export type NeedsRow = { sid: string, needs: Needs, 
 /**
- * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ 不上线。
+ * 隐藏那一格（照常列在这里：隐藏不影响需手动）；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden?: Hidden, };
+hidden: Hidden | null, };

@@ -3,7 +3,6 @@
  * 形状挂在产品生成物类型上 ⇒ 后端改了线上形状，这里当场编不过。
  */
 import type { SessionActivity } from "../../../src/frontend/ui/generated/SessionActivity";
-import type { Prefs } from "../../../src/frontend/ui/generated/Prefs";
 import type { Convo } from "./records";
 
 export interface TaskSpec {
@@ -77,16 +76,9 @@ export interface World {
   /** 订阅时看得见、交完会话之后断了的那几台（交完清单一会儿之后那台后端被杀：壳那一侧照真的那一套作废它的成品、通道说断了）。 */
   droppedMachines?: string[];
   config: Record<string, unknown>;
-  /** 那台后端 `prefs.json` 里的偏好（启动命令 · 恢复到 tmux 里 · 每号模型 · 上下文上限 · 数据目录）：机器 → 那一份。没有那一台 ⇒ 那台没设过（`prefs-read` 答「没有这份」）。 */
-  prefs?: Record<string, Prefs>;
   sessions: SessionSpec[];
   /** 帧命令的答法，按 op 名；场景可以整条覆盖。 */
   ops: Record<string, OpHandler>;
-  /**
-   * 〔对类型 · 会话隐藏〕会话事实里血缘那两格（`startedBy` · `children`）：会话 id → 那两格。真后端答的 `history-facts` 还没有这两格，
-   * 台架按记录路径里的会话 id 把场景给的并上去（形状照设计稿 `会话隐藏.md` §4.3）。后端那一路进来、场景改写盘上的血缘账以后删。
-   */
-  factsLineage?: Record<string, Record<string, unknown>>;
   /** 终端实时画面那一路怎么演（不给 ⇒ `live`：订上、推一屏）：推一屏之后画面中断 · 推一屏之后那台断开。只能快照的那一种由场景把 `terminal-follow` 换成拒。 */
   terminalLive?: "live" | "lost" | "offline";
   /** 场景故意不答的那几条（演「后端比界面老」）：答不上照样按「不认」拒，只是不报。 */

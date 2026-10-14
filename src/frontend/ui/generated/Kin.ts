@@ -10,6 +10,6 @@ export type Kin = { sid: string, title: string,
  */
 live: boolean, 
 /**
- * 隐藏那一格；不隐藏 ⇒ 不上线。
+ * 隐藏那一格；不隐藏 ⇒ `null`（格恒在）。
  */
-hidden?: Hidden, };
+hidden: Hidden | null, };

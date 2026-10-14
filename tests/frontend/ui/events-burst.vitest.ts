@@ -215,7 +215,7 @@ describe("live 格的项目目录交到处理器", () => {
       onBatchEnd: vi.fn(),
     } as never, STREAMS);
     const live = (origin: string, projectDir: string | null) => ({
-      live: { session_id: `s-${origin}`, origin, background: false, attachable: null, cwd: "/launched", project_dir: projectDir, name: null },
+      live: { session_id: `s-${origin}`, origin, background: false, attachable: null, cwd: "/launched", project_dir: projectDir, name: null, hidden: null },
     });
     streamFake.lifecycle([live("<local>", "/a/proj"), live("pi", null)]);
     await vi.runAllTimersAsync();
@@ -223,16 +223,16 @@ describe("live 格的项目目录交到处理器", () => {
     expect(added).toHaveBeenCalledWith("s-pi", "pi", expect.objectContaining({ projectDir: null, cwd: "/launched" }));
   });
 
-  it("隐藏那一格（后端判好的 `{by, said}`）原样交给处理器；没带 · 读不懂 ⇒ null（当没隐藏）", async () => {
+  it("★ 隐藏那一格（后端判好、壳原样转的 `{by, said} | null`）原样交给处理器：哪一档都认（含命令行当场写的 `launch`）", async () => {
     const started = vi.fn();
     const added = vi.fn();
     await bindEvents({ onLine: vi.fn(), onSessionEnded: vi.fn(), onSessionStarted: started, onRemoteSessionAdded: added, onBatchStart: vi.fn(), onBatchEnd: vi.fn() } as never, STREAMS);
     const live = (sid: string, origin: string, hidden: unknown) => ({
-      live: { session_id: sid, origin, background: true, attachable: null, cwd: null, project_dir: null, name: null, ...(hidden === undefined ? {} : { hidden }) },
+      live: { session_id: sid, origin, background: true, attachable: null, cwd: null, project_dir: null, name: null, hidden },
     });
-    streamFake.lifecycle([live("a", "<local>", { by: "bg", said: "占位·分身" }), live("b", "pi", { by: "child", said: "占位·子" }), live("c", "<local>", undefined), live("d", "pi", { by: "?" })]);
+    streamFake.lifecycle([live("a", "<local>", { by: "bg", said: "占位·分身" }), live("b", "pi", { by: "child", said: "占位·子" }), live("c", "<local>", null), live("d", "pi", { by: "launch", said: "占位·命令行" })]);
     await vi.runAllTimersAsync();
     expect(started.mock.calls.map((c) => [c[0], c[1].hidden])).toEqual([["a", { by: "bg", said: "占位·分身" }], ["c", null]]);
-    expect(added.mock.calls.map((c) => [c[0], c[2].hidden])).toEqual([["b", { by: "child", said: "占位·子" }], ["d", null]]);
+    expect(added.mock.calls.map((c) => [c[0], c[2].hidden])).toEqual([["b", { by: "child", said: "占位·子" }], ["d", { by: "launch", said: "占位·命令行" }]]);
   });
 });

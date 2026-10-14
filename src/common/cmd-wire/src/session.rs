@@ -481,7 +481,7 @@ pub enum HiddenBy {
 }
 
 /// 那一格：`session_added` · `history-list` 每一行 · `sessions-needs` 每一行 · 主题 `session_hidden` 的 `body` 都是它。
-/// 不隐藏 ⇒ 不上线（主题 `body` 里写 `null`）。`said` 是悬停里那一句（后端拼好）。
+/// 不隐藏 ⇒ `null`（清单 · 需手动 · 会话事实里格恒在；`session_added` 那一帧不上线）。主题 `body` 是 `{hidden}`。`said` 是悬停里那一句（后端拼好）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
 #[cfg_attr(

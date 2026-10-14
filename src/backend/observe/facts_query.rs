@@ -217,9 +217,7 @@ pub(crate) struct Kin {
     pub(crate) title: String,
     /// 此刻活着（这台 pidfile 说的）。
     pub(crate) live: bool,
-    /// 隐藏那一格；不隐藏 ⇒ 不上线。
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
+    /// 隐藏那一格；不隐藏 ⇒ `null`（格恒在）。
     pub(crate) hidden: Option<cmd_wire::session::Hidden>,
 }
 

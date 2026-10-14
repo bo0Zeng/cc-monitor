@@ -366,6 +366,9 @@ pub struct SessionLivePayload {
     /// 老后端不带 ⇒ `null`，标题退到 aiTitle / sid。
     pub project_dir: Option<String>,
     pub name: Option<String>,
+    /// 隐藏那一格（那台后端判好的 `{by, said}`，`session_added.hidden` 原样；不隐藏 ⇒ `null`）：界面照它决定占不占标签页，不自己判。
+    /// 之后变了走推帧主题 `session_hidden`（`changed`，壳原样交）。
+    pub hidden: Option<cmd_wire::session::Hidden>,
 }
 
 /// `container` 格 的 payload：在认得的宿主里（带终端句柄）· 不在任何宿主里 · 不认识的宿主（判不了的不发这一格）。
