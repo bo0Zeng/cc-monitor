@@ -117,7 +117,7 @@ class ConversationsViewTest {
 
     @Test
     fun `需手动那几条的点照核心给的语气`() {
-        val needs = listOf(SessionsNeeds.Row("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, null)))
+        val needs = listOf(NeedsRow("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, null)))
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs))
         assertEquals(SessionDot.NEEDS_YOU, v.needs.single().dot)
     }
