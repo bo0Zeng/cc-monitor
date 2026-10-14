@@ -44,11 +44,9 @@ pub struct Sized {
 /// 一项的结局：成了 · 没成（名字 ＋ 原话）。
 pub type SizeResult = Result<Sized, (String, String)>;
 
-/// `files-size` 的 `data` → [`Sized`]。**缺字段 ⇒ 失败**（不悄悄当 0：「0 字节」是一个真读数）。
-pub fn sized_from_reply(name: &str, d: &serde_json::Value) -> Result<Sized, String> {
-    let d = super::source::reply_of::<cmd_wire::files::SizeReq>(d.clone())
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
-    Ok(Sized {
+/// `files-size` 的回包 → [`Sized`]。缺字段在按回包类型解那一步就是失败（不悄悄当 0：「0 字节」是一个真读数）。
+pub fn sized_from_reply(name: &str, d: cmd_wire::files::SizeReply) -> Sized {
+    Sized {
         name: name.to_string(),
         bytes: d.bytes,
         files: d.files,
@@ -56,7 +54,7 @@ pub fn sized_from_reply(name: &str, d: &serde_json::Value) -> Result<Sized, Stri
         links: d.links,
         skipped_mounts: d.skipped_mounts,
         unreadable_dirs: d.unreadable_dirs,
-    })
+    }
 }
 
 /// 一项的那一句。字节数照写（后端报的那个数），前面给一份人读的。零值的几格不说。
@@ -107,22 +105,18 @@ pub fn outcome_text(results: &[SizeResult]) -> String {
         .join(&copy_text("rsFilewinSize.outcome.sep", &[]))
 }
 
-/// 真发一趟（经通道问后端 `files-size`）。
+/// 真发一趟（经通道问后端 `files-size`，按 `SizeReq` 发、按 `SizeReply` 解）。
 pub async fn size_remote(
     line: &super::source::Line,
     origin: &super::source::Origin,
-    path: &serde_json::Value,
+    path: &cmd_wire::files::WirePath,
     name: &str,
 ) -> Result<Sized, String> {
-    let d = super::source::ask(
-        line,
-        origin,
-        CMD_SIZE,
-        &serde_json::json!({ "path": path }),
-        SIZE_BUDGET,
-    )
-    .await?;
-    sized_from_reply(name, &d)
+    let req = cmd_wire::files::SizeReq { path: path.clone() };
+    let r = super::source::ask_typed(line, origin, &req, SIZE_BUDGET)
+        .await
+        .map_err(|f| f.said)?;
+    Ok(sized_from_reply(name, r))
 }
 
 /// 窗口上的样子：在算哪一项 · 上一摞的结局。**跨线程共享**（UI 线程画，tokio 那条写）。形状照 [`super::copy::CopyBoard`]。

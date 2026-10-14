@@ -683,7 +683,7 @@ impl super::shell::FileWindow {
                 rt,
                 line,
                 origin: self.source.origin(),
-                wire: v.shot().at.wire(),
+                wire: v.shot().at.path(),
                 cap: super::picture::PICTURE_MAX_BYTES,
                 side,
                 ctx: Some(ctx.clone()),

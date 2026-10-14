@@ -201,7 +201,7 @@ fn the_empty_path_branch_goes_through_the_one_home_resolver_before_listing() {
     for needle in [
         "InboundBackends",
         "home_of(",
-        "CMD_LS",
+        "LsReq",
         "list_dir(",
         "source::ask(",
     ] {

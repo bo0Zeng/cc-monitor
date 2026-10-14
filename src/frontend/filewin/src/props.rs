@@ -25,11 +25,9 @@ pub struct Stat {
     pub link_target: Option<String>,
 }
 
-/// 一趟 `files-stat` 的 `data` → [`Stat`]。`path` 解不出来就是错（不猜）。
-pub fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
-    let d = super::source::reply_of::<cmd_wire::files::StatReq>(d.clone())
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
-    Ok(Stat {
+/// 一趟 `files-stat` 的回包 → [`Stat`]。`path` 解不出来就是错（不猜），那一步在按回包类型解。
+pub fn stat_from_reply(d: cmd_wire::files::StatReply) -> Stat {
+    Stat {
         path: String::from_utf8_lossy(&d.path.0).into_owned(),
         size: d.size,
         mtime_full: d.mtime_full,
@@ -38,7 +36,7 @@ pub fn stat_from_reply(d: &serde_json::Value) -> Result<Stat, String> {
         link_target: d
             .link_target
             .map(|b| String::from_utf8_lossy(&b.0).into_owned()),
-    })
+    }
 }
 
 /// `0o755` → `rwxr-xr-x (755)`；特殊位只写进八进制那一截。
@@ -132,7 +130,7 @@ impl FileWindow {
         let Some(row) = self.listing.rows.lock().unwrap().get(i).cloned() else {
             return false;
         };
-        let path = self.row_path(&row).wire();
+        let path = self.row_path(&row).path();
         let state = Arc::new(Mutex::new(State::Loading));
         self.props = Some(Props {
             row,
@@ -144,15 +142,15 @@ impl FileWindow {
         };
         let origin = self.source.origin();
         h.spawn(async move {
-            let got = super::source::ask(
+            let got = super::source::ask_typed(
                 &line,
                 &origin,
-                CMD_STAT,
-                &serde_json::json!({ "path": path }),
+                &cmd_wire::files::StatReq { path },
                 STAT_BUDGET,
             )
             .await
-            .and_then(|d| stat_from_reply(&d));
+            .map(stat_from_reply)
+            .map_err(|f| f.said);
             *state.lock().unwrap() = match got {
                 Ok(s) => State::Ready(s),
                 Err(e) => State::Failed(e),

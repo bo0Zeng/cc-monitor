@@ -380,7 +380,7 @@ pub async fn probe_target(
     job: &CopyJob,
 ) -> bool {
     // 目标有损 ⇒ 按字节问（`to_path().wire()`；合法 UTF-8 时就是 `overwrite_target()` 那个串）。
-    super::transfer::probe_remote_at(line, origin, job.to_path().wire()).await
+    super::transfer::probe_remote_at(line, origin, job.to_path().path()).await
 }
 
 /// 复制那条线上命令的名字（后端写面第七条）。

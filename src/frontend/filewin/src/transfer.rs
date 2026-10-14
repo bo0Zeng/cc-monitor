@@ -151,16 +151,16 @@ impl Pending {
         }
     }
 
-    /// 探「在不在」的那条整路径（线上那一形）。
-    pub fn path_wire(&self) -> serde_json::Value {
+    /// 探「在不在」的那条整路径（按字节）。
+    pub fn path_wire(&self) -> cmd_wire::files::WirePath {
         match &self.remote_dir_raw {
             Some(b) => {
                 let mut v = b.clone();
                 v.push(b'/');
                 v.extend_from_slice(self.name.as_bytes());
-                super::source::wire_bytes(&v)
+                cmd_wire::files::WirePath(v)
             }
-            None => serde_json::Value::String(self.remote_path.clone()),
+            None => cmd_wire::files::WirePath::from(self.remote_path.as_str()),
         }
     }
 
@@ -459,36 +459,26 @@ pub async fn probe_remote(
     origin: &super::source::Origin,
     remote_path: &str,
 ) -> bool {
-    probe_remote_at(
-        line,
-        origin,
-        serde_json::Value::String(remote_path.to_string()),
-    )
-    .await
+    probe_remote_at(line, origin, cmd_wire::files::WirePath::from(remote_path)).await
 }
 
 /// 同 [`probe_remote_at`]，在 ⇒ 交回那台 `files-stat` 的应答（同名那张表要那台的大小与修改时间）；不在 / 读不到 ⇒ `None`。
 pub async fn stat_remote_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
-    remote_path: serde_json::Value,
-) -> Option<serde_json::Value> {
-    super::source::ask(
-        line,
-        origin,
-        "files-stat",
-        &serde_json::json!({ "path": remote_path }),
-        PROBE_BUDGET,
-    )
-    .await
-    .ok()
+    remote_path: cmd_wire::files::WirePath,
+) -> Option<cmd_wire::files::StatReply> {
+    let req = cmd_wire::files::StatReq { path: remote_path };
+    super::source::ask_typed(line, origin, &req, PROBE_BUDGET)
+        .await
+        .ok()
 }
 
-/// 〔有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径由调用方给线上那一形（字符串或 `{"b16": …}`）。
+/// 〔有损名全寻址〕同 [`probe_remote`]（同一个口径：`stat` 失败算「不在」），路径按字节给。
 pub async fn probe_remote_at(
     line: &super::source::Line,
     origin: &super::source::Origin,
-    remote_path: serde_json::Value,
+    remote_path: cmd_wire::files::WirePath,
 ) -> bool {
     stat_remote_at(line, origin, remote_path).await.is_some()
 }

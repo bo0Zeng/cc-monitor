@@ -782,7 +782,7 @@ pub async fn list_via_backend(
     list_via_backend_at(
         line,
         origin,
-        serde_json::Value::String(dir.to_string()),
+        cmd_wire::files::WirePath::from(dir),
         limit,
         by,
     )
@@ -790,24 +790,21 @@ pub async fn list_via_backend(
     .map_err(|f| f.said)
 }
 
-/// 〔有损名全寻址〕同 [`list_via_backend`]，目录由调用方给线上那一形（字符串或 `{"b16": …}`，[`RemotePath::wire`]）。
+/// 〔有损名全寻址〕同 [`list_via_backend`]，目录按字节给（[`RemotePath::path`]）。按 `LsReq` 发、按 `LsReply` 解。
 pub async fn list_via_backend_at(
     line: &Line,
     origin: &Origin,
-    dir: serde_json::Value,
+    dir: cmd_wire::files::WirePath,
     limit: usize,
     by: impl Into<Sort>,
 ) -> Result<(Vec<Listed>, Cut), Failed> {
-    let args = serde_json::json!({ "path": dir, "limit": limit });
-    let d = ask_coded(
-        line,
-        origin,
-        CMD_LS,
-        &args,
-        std::time::Duration::from_secs(20),
-    )
-    .await?;
-    rows_from_ls_data(&d, by).map_err(Failed::local)
+    let req = cmd_wire::files::LsReq {
+        path: dir,
+        limit: Some(limit as u64),
+        dirs_only: None,
+    };
+    let r = ask_typed(line, origin, &req, std::time::Duration::from_secs(20)).await?;
+    Ok(rows_from_ls_data(r, by))
 }
 
 /// 目录打不开的那几种（后端的码；界面按它说一句、给出路）。
@@ -832,7 +829,7 @@ impl OpenFail {
     }
 }
 
-/// 一趟 `files-ls` 的整份 `data` → **一屏**。
+/// 一趟 `files-ls` 的回包 → **一屏**。
 ///
 /// 🔴 **把整段抽出来（而不是只抽一条 entry）是为了让这三件都变成行为可判的**：
 /// ① 排序真的做了；② 解不出的一行**整趟报错**而不是被悄悄跳过；③ 截断那一格带回来。
@@ -843,25 +840,20 @@ impl OpenFail {
 ///
 /// 悄悄跳过的后果：目录里少一个文件，屏幕上没有任何提示
 /// ⇒ 与「这个文件不存在」**分不开**。而用户会据此以为文件丢了。
-pub fn rows_from_ls_data(
-    d: &serde_json::Value,
-    by: impl Into<Sort>,
-) -> Result<(Vec<Listed>, Cut), String> {
-    // 解不出一行 ⇒ 整趟失败（悄悄跳过 ⇒ 目录里少一个文件，屏幕上没有任何提示）。
-    let d = reply_of::<cmd_wire::files::LsReq>(d.clone())
-        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))?;
+pub fn rows_from_ls_data(d: cmd_wire::files::LsReply, by: impl Into<Sort>) -> (Vec<Listed>, Cut) {
+    // 解不出一行 ⇒ 整趟失败（悄悄跳过 ⇒ 目录里少一个文件，屏幕上没有任何提示）：那一步在按回包类型解（[`ask_typed`]）。
     let mut out: Vec<Listed> = d.entries.iter().map(row_from_ls_entry).collect();
     // 🔴 **排序在这一侧，而且它只有一份** —— 后端不排（它答的是目录项，不是一屏）。
     //    「按什么排」由调用方给（用户在工具栏上选的那一档），算法只有 `sort_rows` 这一个家。
     sort_rows(&mut out, by);
-    Ok((
+    (
         out,
         Cut {
             truncated: d.truncated,
             unreadable: d.unreadable,
             total: d.total,
         },
-    ))
+    )
 }
 
 /// 一屏最多要多少行。

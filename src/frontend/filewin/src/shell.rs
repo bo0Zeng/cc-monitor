@@ -833,7 +833,7 @@ impl FileWindow {
         let l = self.listing.clone();
         let mine = l.start();
         // 〔有损名全寻址〕发出去的是线上那一形（有损目录 ⇒ `{"b16": …}`）。
-        let cwd = self.cwd_path().wire();
+        let cwd = self.cwd_path().path();
         // 🔴**先问后端，问不到才退回旧路** ——
         //    用户指令的第 1 步，逐条理由住 `source.rs` 那一段头注。
         // 🔴「问不到才退回旧路」那半句**拿掉了**（`D11`）：只问后端。
@@ -1520,13 +1520,7 @@ impl FileWindow {
                         let got =
                             super::transfer::stat_remote_at(&line, &origin, p.path_wire()).await;
                         if let Some(v) = &got {
-                            seen.note_there(
-                                &p.name,
-                                v.get("size").and_then(serde_json::Value::as_u64),
-                                v.get("mtime_text")
-                                    .and_then(serde_json::Value::as_str)
-                                    .map(str::to_string),
-                            );
+                            seen.note_there(&p.name, Some(v.size), v.mtime_text.clone());
                         }
                         got.is_some()
                     }
@@ -4370,12 +4364,12 @@ impl FileWindow {
             *self.listing.error.lock().unwrap() = Some(NO_LINE.to_string().into());
             return false;
         };
-        let items: Vec<(serde_json::Value, String)> = {
+        let items: Vec<(cmd_wire::files::WirePath, String)> = {
             let rows = self.listing.rows.lock().unwrap();
             // 〔有损名全寻址〕路径按字节发。
             idx.iter()
                 .filter_map(|&i| rows.get(i))
-                .map(|r| (self.row_path(r).wire(), r.name.clone()))
+                .map(|r| (self.row_path(r).path(), r.name.clone()))
                 .collect()
         };
         let origin = self.source.origin();

@@ -1,5 +1,15 @@
 use super::*;
 
+/// 一份 `files-ls` 回包（JSON）先按回包类型解（`ask_typed` 那一步），再摊成一屏：两步任一不过都是报错。
+fn rows_from_ls_data(
+    d: &serde_json::Value,
+    by: impl Into<Sort>,
+) -> Result<(Vec<Listed>, Cut), String> {
+    reply_of::<cmd_wire::files::LsReq>(d.clone())
+        .map(|r| super::rows_from_ls_data(r, by))
+        .map_err(|_| copy_text("rsFilewinSource.said.badReply", &[]))
+}
+
 /// 造一棵**结构**上像样的临时目录树：名字全合成，不锚在任何活体上。
 fn synth_tree() -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!(
@@ -90,7 +100,7 @@ fn the_two_orderings_agree_on_a_synthetic_set() {
 /// 上一版这里是两条：「`list_remote` 调的是共用池」＋「池子那条列目录命令
 /// 整棵树恰好一处（`source.rs`）」。窗口改成只经通道说 `call` 之后，那条路整条摘了 ⇒ 判据翻面：
 ///
-/// - 问后端 `files-ls` 的地方（`CMD_LS` 这个名字被用到的地方）恰好两处：
+/// - 问后端 `files-ls` 的地方（它的入参类型 `LsReq` 被用到的地方）恰好两处：
 ///   `source.rs`（窗口进程里那一次，[`list_via_backend`]）与 `entry.rs`（开窗前那一屏，
 ///   monitor 进程里经通道宿主的同一个句柄）。**两向相等**，多一处 / 少一处都红。
 /// - 池子那条列目录命令在整棵树的生产段里**零处**（零命中守卫，带反向自检）。
@@ -117,7 +127,7 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
         "`filewin/` 下只扫到 {} 份 `.rs`（{files:?}）—— 扫描面塌了，下面几条在空转",
         files.len()
     );
-    let ask_ls = "CMD_LS";
+    let ask_ls = "LsReq";
     let pool_ls = format!("sftp_pool::sftp_{}(", "list_dir");
     let mut asking: Vec<(String, bool)> = Vec::new();
     let mut total_prod = 0usize;
@@ -129,7 +139,7 @@ fn the_whole_filewin_tree_lists_a_remote_directory_only_by_asking_the_backend() 
         let src = std::fs::read_to_string(path).expect("read filewin rs");
         let prod = guard_core::production_code(&src);
         total_prod += prod.len();
-        // 定义那一行（`pub const CMD_LS`）不算「问」。
+        // 定义那一行（带 `const` 的）不算「问」。
         let uses = prod
             .lines()
             .filter(|l| {
@@ -1351,7 +1361,10 @@ impl comms_inward::chan::router::Backends for RawLog {
         'static,
         Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
     > {
-        self.0.lock().unwrap().push((op.0.clone(), payload.0.clone()));
+        self.0
+            .lock()
+            .unwrap()
+            .push((op.0.clone(), payload.0.clone()));
         Box::pin(async { Ok(comms_inward::chan::wire::Body(b"{}".to_vec())) })
     }
 
@@ -1377,9 +1390,9 @@ async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
     let plain = RemotePath::plain("/srv/a b");
     let lossy = RemotePath::from_bytes(b"/srv/d\xff");
     for p in [&plain, &lossy] {
-        let _ = list_via_backend_at(&line, &o, p.wire(), LS_LIMIT, SortBy::default()).await;
-        let _ = crate::size::size_remote(&line, &o, &p.wire(), "n").await;
-        let _ = crate::transfer::stat_remote_at(&line, &o, p.wire()).await;
+        let _ = list_via_backend_at(&line, &o, p.path(), LS_LIMIT, SortBy::default()).await;
+        let _ = crate::size::size_remote(&line, &o, &p.path(), "n").await;
+        let _ = crate::transfer::stat_remote_at(&line, &o, p.path()).await;
         let _ = crate::editor::read_text_at(&line, &o, p).await;
     }
     let board = crate::find::SearchBoard::default();
