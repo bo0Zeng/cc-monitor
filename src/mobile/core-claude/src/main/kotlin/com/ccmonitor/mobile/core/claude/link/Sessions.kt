@@ -212,7 +212,7 @@ object HistoryLines {
     }
 }
 
-/** 流上的 `line` 帧：一条会话记录文件里新写的一行（`record` 缺 ＝ 不进界面、照占号；在却装不进 [LineRecord] ⇒ 同缺）。 */
+/** 流上的 `line` 帧：一条会话记录文件里新写的一行（`record` 缺 ＝ 不进界面、照占号；形状对不上的那一条核心那一层已换成认不出那一条〔`unread` 卡〕，同按页读的那两条）。 */
 data class RecordLine(
     val sid: String,
     val path: String,

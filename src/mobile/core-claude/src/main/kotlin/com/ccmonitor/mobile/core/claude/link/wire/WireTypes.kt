@@ -273,6 +273,8 @@ data class LineRecord(
     val results: Map<String, StepResult>?,
     val autoReply: Boolean?,
     val steps: Map<String, ToolStep>?,
+    val text: String?,
+    val excerpt: String?,
 )
 
 @JsonClass(generateAdapter = false)

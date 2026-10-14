@@ -44,7 +44,7 @@ class CodexRecordGoldenTest {
     }
 
     @Test
-    fun `逐格照记录：人话 · 推理 · 两种工具（入参与配上的结果）· 回复；系统注入 · 空推理 · 工具结果那一条 · 认不出的那一行不单出`() {
+    fun `逐格照记录：人话 · 推理 · 两种工具（入参与配上的结果）· 回复；系统注入 · 空推理 · 工具结果那一条不单出；认不出的那一行成一张卡`() {
         val human = record("line-05")
         val think = record("line-07")
         val shell = record("line-09")
@@ -75,6 +75,9 @@ class CodexRecordGoldenTest {
                     sourceUuid = patch["id"] as String,
                 ),
                 RenderUnit.AssistantMarkdown("msg-9#0", "two files", "msg-9"),
+                record("line-16").let { u ->
+                    RenderUnit.Unread(u["id"] as String, u["text"] as String, u["timeText"] as String?, u["excerpt"] as String, u["id"] as String)
+                },
             )
         assertEquals(expected, units)
     }
@@ -90,6 +93,7 @@ class CodexRecordGoldenTest {
                     is RenderUnit.Thinking -> u.text
                     is RenderUnit.AssistantMarkdown -> u.markdown
                     is RenderUnit.ToolCall -> u.resultText.orEmpty()
+                    is RenderUnit.Unread -> u.text
                     else -> ""
                 }
             assertTrue("单元 ${u.key} 的字不在记录里：$text", cells.contains(Json.line(text)))

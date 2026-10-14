@@ -9,8 +9,9 @@
 //! 不在这一形里的：链（上一条是谁 —— 主线外清单另给，`mainline`）· 会话事实（分叉血缘、用量、花费 —— `history-facts`）· 原文（线上不带）。
 
 //!
-//! 形状住 `cmd-wire`（[`cmd_wire::record`]，手机按同一份解）；这里是后端在它上面做的事（写钟面 · 认不出那一行的一句 · 类别）。
+//! 形状住 `cmd-wire`（[`cmd_wire::record`]，手机按同一份解）；这里是后端在它上面做的事（写钟面 · 类别）；认不出那一行的一句与摘录跟形状一起住 `cmd-wire`（手机解不开的那一条也写这一句）。
 
+pub use cmd_wire::record::{excerpt_of, unread_text};
 pub(crate) use cmd_wire::record::{Block, Body, Record, ReplyError, TitleBy, UnreadWhy};
 
 /// 后端写记录那一侧（形状在 `cmd-wire`，孤儿规则不许在那边的类型上加固有方法）。
@@ -34,68 +35,13 @@ impl RecordExt for Record {
     }
 }
 
-/// 原文摘录的上界（字节）：与漂移账的样例同一个上界、同一个截断（[`excerpt_of`]）。
-pub const EXCERPT_BYTES: usize = 400;
-
-/// 按字符边界把原文截到 [`EXCERPT_BYTES`] 以内（漂移账的样例也走它）。
-pub fn excerpt_of(raw: &str) -> String {
-    if raw.len() <= EXCERPT_BYTES {
-        return raw.to_string();
-    }
-    let mut end = EXCERPT_BYTES;
-    while !raw.is_char_boundary(end) {
-        end -= 1;
-    }
-    raw[..end].to_string()
-}
-
-/// 认不出那一条的一句：「认不出的记录 · {type}」/「记录形状变了 · {type}」，并了几条 ⇒ 后面带「 · {n} 条」。
-pub fn unread_text(why: UnreadWhy, kind: Option<&str>, count: u32) -> crate::common::cells::Words {
-    use copy_core::copy_text;
-    let kind = kind
-        .filter(|k| !k.is_empty())
-        .map(str::to_string)
-        .unwrap_or_else(|| copy_text("record.unread.noType", &[]));
-    let n = count.to_string();
-    let text = match (why, count > 1) {
-        (UnreadWhy::UnknownType, false) => {
-            copy_text("record.unread.unknownType", &[("type", &kind)])
-        }
-        (UnreadWhy::UnknownType, true) => copy_text(
-            "record.unread.unknownTypeMany",
-            &[("type", &kind), ("n", &n)],
-        ),
-        (UnreadWhy::ParseFailed, false) => {
-            copy_text("record.unread.parseFailed", &[("type", &kind)])
-        }
-        (UnreadWhy::ParseFailed, true) => copy_text(
-            "record.unread.parseFailedMany",
-            &[("type", &kind), ("n", &n)],
-        ),
-    };
-    crate::common::cells::Words(text)
-}
-
 /// 后端造 / 认记录类别那一侧（形状在 `cmd-wire`）。
 pub(crate) trait BodyExt {
-    /// 适配层认不出的一行（每行一条，`count` 1）。
-    fn unread(why: UnreadWhy, kind: Option<String>, raw: &str) -> Self;
     /// 这条记录的类。
     fn class(&self) -> RecordClass;
 }
 
 impl BodyExt for Body {
-    fn unread(why: UnreadWhy, kind: Option<String>, raw: &str) -> Self {
-        Self::Unread {
-            why,
-            text: unread_text(why, kind.as_deref(), 1),
-            kind,
-            tone: crate::common::cells::Tone::Warn,
-            excerpt: crate::common::cells::Words(excerpt_of(raw)),
-            count: 1,
-        }
-    }
-
     fn class(&self) -> RecordClass {
         match self {
             Self::Said { .. } => RecordClass::Said,

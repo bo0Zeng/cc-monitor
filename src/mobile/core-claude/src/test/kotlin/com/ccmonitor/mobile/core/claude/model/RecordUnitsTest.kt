@@ -71,10 +71,19 @@ class RecordUnitsTest {
     }
 
     @Test
-    fun `没出稿的那几类（事件条 · 系统 · 重试 · 标题 · 认不出）不上屏`() {
+    fun `没出稿的那几类（事件条 · 系统 · 重试 · 标题）不上屏`() {
         val silent =
-            listOf("said-system", "said-task-notification", "said-agent-message", "said-peer-session", "said-coordinator", "said-command-output", "said-agent-task", "retry-full", "title-agent", "unread-unknown", "said-read")
+            listOf("said-system", "said-task-notification", "said-agent-message", "said-peer-session", "said-coordinator", "said-command-output", "said-agent-task", "retry-full", "title-agent", "said-read")
         assertEquals(emptyList<RenderUnit>(), units(*silent.toTypedArray()))
+    }
+
+    @Test
+    fun `认不出的那一条（后端认不出 · 手机这边解不开，核心都写成 unread）画成一张卡：字 · 钟面 · 摘录照核心写好的`() {
+        assertEquals(
+            listOf(RenderUnit.Unread("n-1", "无法识别的记录 · brand-new-kind", "01:31", """{"type":"brand-new-kind","uuid":"n-1","timestamp":"2026-10-09T01:31:30.000Z","x":1}""", "n-1")),
+            units("unread-unknown"),
+        )
+        assertEquals("没有时刻 ⇒ 没有钟面", null, (units("unread-parse-failed").single() as RenderUnit.Unread).timeText)
     }
 
     @Test

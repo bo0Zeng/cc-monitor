@@ -6,7 +6,7 @@
 //!
 //! # 有界
 //!
-//! 键数上限 [`MAX_KEYS`]；再多的一律并进 `<overflow>`。样例只留首见的一条并截断到 [`EXCERPT_BYTES`](crate::agents::record::EXCERPT_BYTES)。这是诊断面，不是数据管道。
+//! 键数上限 [`MAX_KEYS`]；再多的一律并进 `<overflow>`。样例只留首见的一条并截断到 [`EXCERPT_BYTES`](cmd_wire::record::EXCERPT_BYTES)。这是诊断面，不是数据管道。
 //!
 //! # 按机器分
 //!
@@ -89,7 +89,7 @@ fn lock() -> std::sync::MutexGuard<'static, Ledger> {
     ledger().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 按字符边界把样例截到 [`EXCERPT_BYTES`](crate::agents::record::EXCERPT_BYTES) 以内（与记录里认不出那一条的摘录同一个截断：[`crate::agents::record::excerpt_of`]），截了 ⇒ 末尾一个 `…`。
+/// 按字符边界把样例截到 [`EXCERPT_BYTES`](cmd_wire::record::EXCERPT_BYTES) 以内（与记录里认不出那一条的摘录同一个截断：[`crate::agents::record::excerpt_of`]），截了 ⇒ 末尾一个 `…`。
 fn truncate_sample(s: &str) -> String {
     let cut = crate::agents::record::excerpt_of(s);
     if cut.len() == s.len() {

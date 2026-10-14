@@ -52,6 +52,7 @@ object RecordUnits {
         when (r.t) {
             RecordKind.SAID, RecordKind.QUEUED -> listOfNotNull(said(r))
             RecordKind.REPLY -> if (r.autoReply == true) emptyList() else reply(r, results)
+            RecordKind.UNREAD -> listOfNotNull(r.text?.let { RenderUnit.Unread(r.id, it, r.timeText, r.excerpt.orEmpty(), r.id) })
             else -> emptyList()
         }
 

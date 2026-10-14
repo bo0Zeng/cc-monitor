@@ -5,7 +5,7 @@
 //! `t` 的闭集：`said` · `reply` · `retry` · `title` · `queued` · `unread`；内容块 [`Block`] 是两家共有的词。
 //!
 //! 回包里的那一份记录后端照原样的一团写（出口的声明可能去过格），所以 [`ReadRow`] · [`RecordLine`] 及其回包对记录那一格是泛型：
-//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 解（`replies` 表里登记的是 `HistoryRead<Record>`）；TS 一侧照 `Record` 出（`ts(concrete)`）。
+//! 后端写 `Value`（缺省），手机按完整记录 [`Record`] 一条一条地解（`replies` 表里登记的是 `HistoryRead<OrUnread>`：解不开的那一条成认不出那一条，整份不失败）；TS 一侧照 `Record` 出（`ts(concrete)`）。
 
 use crate::cells::{Tone, Words};
 use serde::{Deserialize, Serialize};
@@ -690,5 +690,186 @@ impl UserText {
 impl Default for UserText {
     fn default() -> Self {
         Self::of(Speaker::System { body: None })
+    }
+}
+
+/// 原文摘录的上界（字节）：与漂移账的样例同一个上界、同一个截断（[`excerpt_of`]）。
+pub const EXCERPT_BYTES: usize = 400;
+
+/// 按字符边界把原文截到 [`EXCERPT_BYTES`] 以内（漂移账的样例也走它）。
+pub fn excerpt_of(raw: &str) -> String {
+    if raw.len() <= EXCERPT_BYTES {
+        return raw.to_string();
+    }
+    let mut end = EXCERPT_BYTES;
+    while !raw.is_char_boundary(end) {
+        end -= 1;
+    }
+    raw[..end].to_string()
+}
+
+/// 认不出那一条的一句：「认不出的记录 · {type}」/「记录形状变了 · {type}」，并了几条 ⇒ 后面带「 · {n} 条」。
+/// 后端适配层认不出的那一行与客户端解不开的那一条（[`OrUnread`]）同这一句。
+pub fn unread_text(why: UnreadWhy, kind: Option<&str>, count: u32) -> Words {
+    use copy_core::copy_text;
+    let kind = kind
+        .filter(|k| !k.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| copy_text("record.unread.noType", &[]));
+    let n = count.to_string();
+    let text = match (why, count > 1) {
+        (UnreadWhy::UnknownType, false) => {
+            copy_text("record.unread.unknownType", &[("type", &kind)])
+        }
+        (UnreadWhy::UnknownType, true) => copy_text(
+            "record.unread.unknownTypeMany",
+            &[("type", &kind), ("n", &n)],
+        ),
+        (UnreadWhy::ParseFailed, false) => {
+            copy_text("record.unread.parseFailed", &[("type", &kind)])
+        }
+        (UnreadWhy::ParseFailed, true) => copy_text(
+            "record.unread.parseFailedMany",
+            &[("type", &kind), ("n", &n)],
+        ),
+    };
+    Words(text)
+}
+
+impl Body {
+    /// 认不出的一行（每行一条，`count` 1）：一句 ＋ 原文摘录。
+    pub fn unread(why: UnreadWhy, kind: Option<String>, raw: &str) -> Self {
+        Self::Unread {
+            why,
+            text: unread_text(why, kind.as_deref(), 1),
+            kind,
+            tone: Tone::Warn,
+            excerpt: Words(excerpt_of(raw)),
+            count: 1,
+        }
+    }
+}
+
+/// `t` 的闭集（[`Body`] 各支的标签；判据逐支核过）：解不开的那一条按它分「没见过的类」与「形状变了」。
+const BODY_TAGS: &[&str] = &["said", "reply", "retry", "title", "queued", "unread"];
+
+/// 客户端解记录那一层：[`Record`] 外面包一层，解得开 ⇒ 那一条原样；解不开 ⇒ 认不出那一支（[`Body::unread`]，带原样的类名与摘录），
+/// 不让整份回包 / 整帧失败（后端照原样的一团写记录，记录的形状不进形状指纹：那一家新出一种记录不该让整页读不出）。
+/// 线上照 [`Record`] 写（`transparent`）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct OrUnread(pub Record);
+
+impl OrUnread {
+    /// 一团 JSON ⇒ 一条（解不开 ⇒ 认不出那一条：类在 [`BODY_TAGS`] 里 ⇒ 形状变了，否则没见过的类；
+    /// 身份原样有就用，没有 ⇒ 按原文摘一个稳定的；时刻那几格型对就带上）。
+    pub fn of(raw: Value) -> Self {
+        if let Ok(r) = Record::deserialize(&raw) {
+            return Self(r);
+        }
+        let s = |k: &str| raw.get(k).and_then(Value::as_str).map(str::to_string);
+        let kind = s("t");
+        let why = match kind.as_deref() {
+            Some(t) if BODY_TAGS.contains(&t) => UnreadWhy::ParseFailed,
+            _ => UnreadWhy::UnknownType,
+        };
+        let text = raw.to_string();
+        let id = s("id")
+            .filter(|i| !i.is_empty())
+            .unwrap_or_else(|| format!("unread:{:016x}", fnv1a(text.as_bytes())));
+        Self(Record {
+            agent: s("agent").unwrap_or_default(),
+            id,
+            at: s("at"),
+            time_text: s("timeText").map(Words),
+            at_ms: raw.get("atMs").and_then(Value::as_i64),
+            body: Body::unread(why, kind, &text),
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for OrUnread {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Value::deserialize(d).map(Self::of)
+    }
+}
+
+/// 摘身份用的 64 位 FNV-1a（只求稳定、不求抗碰撞）。
+fn fnv1a(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |h, b| {
+        (h ^ u64::from(*b)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
+}
+
+/// 流上的 `line` 帧（一行 JSON）：`record` 在、却解不开 ⇒ 换成认不出那一条（[`OrUnread`]）的那一行；别的（解得开 · 不是 `line` 帧 · 不是 JSON）⇒ `None`（原样交）。
+pub fn mend_line_frame(frame: &str) -> Option<String> {
+    let mut v: Value = serde_json::from_str(frame).ok()?;
+    if v.get("kind").and_then(Value::as_str) != Some("line") {
+        return None;
+    }
+    let raw = v.get("record").filter(|r| !r.is_null())?.clone();
+    if Record::deserialize(&raw).is_ok() {
+        return None;
+    }
+    v["record"] = serde_json::to_value(OrUnread::of(raw)).ok()?;
+    Some(v.to_string())
+}
+
+#[cfg(test)]
+mod lenient_tests {
+    use super::*;
+
+    /// [`BODY_TAGS`] 与 [`Body`] 各支的标签逐一对上（多一支、改一个名都红）。
+    #[test]
+    fn the_tag_list_is_every_body_tag() {
+        let u = UserText::default();
+        let each = [
+            Body::Said {
+                who: u.clone(),
+                blocks: vec![],
+                results: BTreeMap::new(),
+                cwd: None,
+            },
+            Body::Reply {
+                blocks: vec![],
+                model: None,
+                auto_reply: false,
+                ends_turn: false,
+                cards: BTreeMap::new(),
+                steps: BTreeMap::new(),
+                runs: BTreeMap::new(),
+                error: None,
+            },
+            Body::Retry {
+                reason: ApiReason::Unknown,
+                attempt: None,
+                max: None,
+            },
+            Body::Title {
+                text: String::new(),
+                by: TitleBy::Agent,
+            },
+            Body::Queued { who: u },
+            Body::unread(UnreadWhy::UnknownType, None, ""),
+        ];
+        let tags: Vec<String> = each
+            .iter()
+            .map(|b| {
+                // 穷举：新添一支这里编不过。
+                match b {
+                    Body::Said { .. }
+                    | Body::Reply { .. }
+                    | Body::Retry { .. }
+                    | Body::Title { .. }
+                    | Body::Queued { .. }
+                    | Body::Unread { .. } => {}
+                }
+                serde_json::to_value(b).unwrap()["t"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(tags, BODY_TAGS);
     }
 }

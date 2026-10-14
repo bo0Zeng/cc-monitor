@@ -4,7 +4,7 @@
 
 use crate::listing::HistoryListReply;
 use crate::needs::NeedsList;
-use crate::record::{HistoryLines, HistoryRead, Record};
+use crate::record::{HistoryLines, HistoryRead, OrUnread};
 use crate::session::{
     Killed, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionNew, TailPlan, TerminalsList,
 };
@@ -45,9 +45,9 @@ macro_rules! replies {
 }
 
 replies! {
-    "history-lines" => HistoryLines<Record>,
+    "history-lines" => HistoryLines<OrUnread>,
     "history-list" => HistoryListReply,
-    "history-read" => HistoryRead<Record>,
+    "history-read" => HistoryRead<OrUnread>,
     "history-tail" => TailPlan,
     "kill" => Killed,
     "launch-render-cli" => Rendered,

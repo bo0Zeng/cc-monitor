@@ -11,7 +11,6 @@
 //! | 其余（别的 `system` · `attachment` · 状态行 · 元数据） | 无记录（链上那一半由 [`super::chain`] 给） |
 
 use super::schema::JsonlRecord;
-use crate::agents::record::BodyExt as _;
 use crate::agents::record::{Block, Body, Record, RecordClass, ReplyError, TitleBy, UnreadWhy};
 use serde_json::Value;
 

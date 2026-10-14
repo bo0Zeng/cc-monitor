@@ -1,7 +1,7 @@
 //! **一台的常驻流**在手机这一侧的宿主：循环本身是 `resident-client` 那一份（[`Feed`]，桌面同一条循环），
 //! 这里只接两根线 —— 下面那条 SSH（[`PhoneLink`]：拨号核心在这台手机上开的链路，拨号请求由 Kotlin 交那一份）· 往 Kotlin 交的事（一个回调，走消息）。
 //!
-//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON）· `frame`（流上的一帧原样一行）· `watch_from`（JSON 数组）·
+//! 往 Kotlin 交的事一律 `(编号, 种类, 一段文本)`：`state`（这台通不通，JSON）· `frame`（流上的一帧，原样一行；`line` 帧里解不开的那条记录换成认不出那一条）· `watch_from`（JSON 数组）·
 //! `lost`（流断了、请 Kotlin 探一次 SSH）· `reply`（一问一答的结局，JSON，带 `call` 编号）。
 
 use resident_client::client::CallError;
@@ -184,11 +184,14 @@ fn feed(h: i64) -> Option<Arc<Feed<PhoneLink>>> {
         .cloned()
 }
 
-/// 一件事 ⇒ `(种类, 文本)`；Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
+/// 一件事 ⇒ `(种类, 文本)`（帧原样，只有 `line` 帧里解不开的那条记录换成认不出那一条：`cmd_wire::record::mend_line_frame`）；Kotlin 用不着的（接上那一刻的 hello 与客户端：问答经 [`call`] 走 · 超长丢行的缺口）⇒ `None`。
 pub fn event_of(e: &Event) -> Option<(&'static str, String)> {
     Some(match e {
         Event::State(s) => ("state", state_json(s)),
-        Event::Frame(line) => ("frame", line.clone()),
+        Event::Frame(line) => (
+            "frame",
+            cmd_wire::record::mend_line_frame(line).unwrap_or_else(|| line.clone()),
+        ),
         Event::WatchFrom(rows) => (
             "watch_from",
             serde_json::to_string(rows).unwrap_or_else(|_| "[]".into()),
@@ -400,6 +403,89 @@ mod tests {
             .starts_with("history-tail: "));
         let raw = serde_json::json!({"anything": [1, 2]});
         assert_eq!(j("history-facts", raw.clone())["data"], raw);
+    }
+
+    /// 记录一条一条地降级：一页里混一条形状对不上的（见过的类、少了格）与一条没见过的类，
+    /// 整页照常交 `ok`，好的那条原样，坏的那两条各成一张「认不出的记录」卡（`unread`，同桌面那几个文案键，带原样的类名与摘录）。
+    #[test]
+    fn one_unreadable_record_becomes_an_unread_card_and_the_page_stays_readable() {
+        use copy_core::copy_text;
+        let good = serde_json::json!({"agent": "claude", "by": "agent", "id": "@1", "t": "title", "text": "Fix"});
+        let short = serde_json::json!({"agent": "claude", "id": "@2", "t": "reply", "model": "m"});
+        let novel = serde_json::json!({"agent": "claude", "id": "@3", "t": "brandNew", "x": 1});
+        let card = |raw: &serde_json::Value, why: &str, kind: &str, id: &str| {
+            let key = if why == "parseFailed" {
+                "record.unread.parseFailed"
+            } else {
+                "record.unread.unknownType"
+            };
+            serde_json::json!({
+                "agent": "claude", "id": id, "t": "unread", "why": why, "type": kind,
+                "text": copy_text(key, &[("type", kind)]), "tone": "warn",
+                "excerpt": raw.to_string(), "count": 1,
+            })
+        };
+        let row = |r: &serde_json::Value| serde_json::json!({"end": 10, "hash": 1, "record": r, "cwd": "/w"});
+        let read = serde_json::json!({"rows": [row(&good), row(&short), row(&novel)], "next": 30, "eof": true});
+        let got: serde_json::Value =
+            serde_json::from_str(&reply_json(4, "box", "history-read", Ok(Some(read))))
+                .expect("JSON");
+        assert_eq!(got["ok"], true, "{got}");
+        assert_eq!(got["data"]["rows"][0]["record"], good);
+        assert_eq!(
+            got["data"]["rows"][1]["record"],
+            card(&short, "parseFailed", "reply", "@2")
+        );
+        assert_eq!(
+            got["data"]["rows"][2]["record"],
+            card(&novel, "unknownType", "brandNew", "@3")
+        );
+        assert_eq!(got["data"]["rows"][1]["cwd"], "/w");
+
+        let line = |seq: u64, r: &serde_json::Value| serde_json::json!({"session_id": "s", "path": "/p", "seq": seq, "cwd": null, "record": r});
+        let lines = serde_json::json!({"from": 0, "next": 2, "eof": false, "lines": [line(0, &good), line(1, &short)]});
+        let got: serde_json::Value =
+            serde_json::from_str(&reply_json(5, "box", "history-lines", Ok(Some(lines))))
+                .expect("JSON");
+        assert_eq!(got["ok"], true, "{got}");
+        assert_eq!(got["data"]["lines"][0]["record"], good);
+        assert_eq!(
+            got["data"]["lines"][1]["record"],
+            card(&short, "parseFailed", "reply", "@2")
+        );
+
+        // 没有类名 · 没有身份的那一团：类名照桌面写「无类型」那一句，身份按原文摘出一个稳定的。
+        let bare = serde_json::json!({"agent": 3});
+        let read = serde_json::json!({"rows": [row(&bare)], "next": 1, "eof": true});
+        let got: serde_json::Value =
+            serde_json::from_str(&reply_json(6, "box", "history-read", Ok(Some(read))))
+                .expect("JSON");
+        let rec = &got["data"]["rows"][0]["record"];
+        assert_eq!(rec["t"], "unread");
+        assert_eq!(rec["type"], serde_json::Value::Null);
+        assert_eq!(
+            rec["text"],
+            copy_text(
+                "record.unread.unknownType",
+                &[("type", &copy_text("record.unread.noType", &[]))]
+            )
+        );
+        assert!(!rec["id"].as_str().unwrap().is_empty());
+
+        // 流上的 `line` 帧：同一个解法（那一条成卡、帧照交）；别的帧原样。
+        let frame = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 7, "byte_offset": 70, "record": short});
+        let (k, b) = event_of(&Event::Frame(frame.to_string())).unwrap();
+        assert_eq!(k, "frame");
+        let v: serde_json::Value = serde_json::from_str(&b).unwrap();
+        assert_eq!(v["record"], card(&short, "parseFailed", "reply", "@2"));
+        assert_eq!(
+            (v["seq"].as_u64(), v["byte_offset"].as_u64()),
+            (Some(7), Some(70))
+        );
+        let fine = serde_json::json!({"kind": "line", "session_id": "s", "path": "/p", "seq": 8, "record": good});
+        let v: serde_json::Value =
+            serde_json::from_str(&event_of(&Event::Frame(fine.to_string())).unwrap().1).unwrap();
+        assert_eq!(v, fine);
     }
 
     /// 交 Kotlin 的几种事：状态是带 `state` 标签的 JSON · 帧原样 · 断了只是一个记号。
