@@ -18,6 +18,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +34,7 @@ import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
+import com.ccmonitor.mobile.ui.chat.needs.ChatNeeds
 import com.ccmonitor.mobile.ui.common.HostLink
 import com.ccmonitor.mobile.ui.common.chatHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
@@ -40,6 +42,7 @@ import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_GLYPH
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -73,6 +76,8 @@ fun ChatRoute(
         org.koin.androidx.compose
             .koinViewModel(key = open.key) { parametersOf(open) }
     val state by vm.state.collectAsStateWithLifecycle()
+    val backends = koinInject<HostBackends>()
+    val sid = remember(vm) { vm.state.map { it.sid } }
     // 在屏上才进这台的 stream-watch 名单（离屏 ⇒ 退出，列表页上名单是空的）。
     DisposableEffect(vm) {
         vm.visible(true)
@@ -92,6 +97,7 @@ fun ChatRoute(
                 onRetrySend = vm::retry,
                 onStop = vm::stop,
                 onLoadOlder = vm::loadOlder,
+                needs = { ChatNeeds(open.key, backends.of(hostId), sid, host.machine) },
                 // 键盘弹起：垫上输入法，消息区缩到输入行上方（不垫的话系统把整窗往上推，顶栏和消息被推出屏外）。
                 // 先认领 Scaffold 已垫的那几块，手势条那一段才不算两遍。
                 modifier =

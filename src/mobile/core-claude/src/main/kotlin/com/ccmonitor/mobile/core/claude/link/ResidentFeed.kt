@@ -95,6 +95,11 @@ class ResidentFeed(
     /** 每来一帧发它的 `kind`：出口据此重问（`session_added` ⇒ 重问 `history-list` …）。 */
     val changes: SharedFlow<String> = changeFlow.asSharedFlow()
 
+    private val pushFlow = MutableSharedFlow<Changed>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** 流上的 `changed` 帧（主题 ＋ 键）：出口据此重问那一份（可丢：丢了下一次变化或重问就补上，同那台那一侧）。 */
+    val pushes: SharedFlow<Changed> = pushFlow.asSharedFlow()
+
     private val turnEndFlow = MutableSharedFlow<TurnEnd>(extraBufferCapacity = BUFFER, onBufferOverflow = BufferOverflow.DROP_OLDEST)
 
     /** 流上的 `turn_end` 帧（逐帧，未折；折成一轮一条在 [TurnEnds]）。 */
@@ -205,6 +210,7 @@ class ResidentFeed(
         tableFlow.value = next
         frame.str("kind")?.let(changeFlow::tryEmit)
         TurnEnd.of(frame)?.let(turnEndFlow::tryEmit)
+        Changed.of(frame)?.let(pushFlow::tryEmit)
         // 满了就在这里等（停收），不丢行。
         RecordLine.of(frame)?.let { lineFlow.emit(it) }
         if (next.needsResync) reconnect()

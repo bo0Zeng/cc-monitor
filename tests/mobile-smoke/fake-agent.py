@@ -7,7 +7,10 @@
 #           projects/<编码后的 cwd>/<sid>.jsonl（sid 认 --session-id / --resume，没给就随机）。
 #           第一句进来才建记录文件（与真的一样）。每句：user → thinking → tool_use → tool_result → text(end_turn)，
 #           逐条隔一小会儿落盘（像真的那样一条一条出），句里带 long ⇒ 答一大段（看往上翻），
-#           带 ask ⇒ 停在批准框上（pidfile waiting · permission prompt，看需手动），终端里再敲一行才往下走。
+#           带 ask ⇒ 停在批准框上（pidfile waiting · permission prompt，看需手动），终端里再敲一行才往下走；
+#           带 askq ⇒ 停在提问框（AskUserQuestion），带 plan ⇒ 停在批计划（ExitPlanMode）。起的时候给了答题 hook
+#           （`--settings` 里的 PermissionRequest，ccm 起会话时垫的）⇒ 同真的那样把请求交给它，hook 先给了决定就照它往下走
+#           （决定原样落进那一步的结果），终端里先敲了一行也算答（谁先算谁的）。
 #           敲进来 `/model <值>` ⇒ 不答，只落一条本地命令输出 ``Set model to `<值>` ``（那一家换模型的读回）。
 #   codex： <CODEX_HOME 或 $HOME/.codex>/sessions/YYYY/MM/DD/rollout-<ts>-<uuid>.jsonl，在世期间一直开着写
 #           （那一家「开着即活」）；第一句进来才建文件；每句 task_started … task_complete。
@@ -52,6 +55,62 @@ def arg_after(flag):
         if x.startswith(flag + "="):
             return x.split("=", 1)[1]
     return None
+
+
+def hook_command():
+    """起会话时垫的答题 hook（`--settings` 里 hooks.PermissionRequest 的第一条 command 形）；没有 ⇒ None。"""
+    raw = arg_after("--settings")
+    try:
+        for group in (json.loads(raw or "{}").get("hooks") or {}).get("PermissionRequest") or []:
+            for h in group.get("hooks") or []:
+                if h.get("type") == "command" and h.get("command"):
+                    return [h["command"], *(h.get("args") or [])]
+    except ValueError:
+        pass
+    return None
+
+
+# 三种框：哪个词触发 · 工具名 · 工具参数 · hook 那一份里的建议。
+ASK_TOOLS = (
+    ("askq", "AskUserQuestion", {"questions": [
+        {"question": "Which color?", "header": "Color", "multiSelect": False,
+         "options": [{"label": "Red", "description": "warm"}, {"label": "Blue", "description": ""}]},
+        {"question": "Which fruits?", "header": "Fruit", "multiSelect": True,
+         "options": [{"label": "Apple", "description": ""}, {"label": "Pear", "description": ""}]}]}, []),
+    ("plan", "ExitPlanMode", {"plan": "1. 建 planB.txt，写入 hi\n2. 跑一遍测试"}, []),
+    ("ask", "Bash", {"command": "touch probe1.txt\necho ok > probe1.txt", "description": "建探针文件"},
+     [{"type": "addDirectories", "directories": ["/w"], "destination": "session"}]),
+)
+
+
+def ask_tool(said):
+    return next((x for x in ASK_TOOLS if x[0] in said), None)
+
+
+def wait_answer(hook, request, readline):
+    """框挂着：hook 先给了决定 ⇒ 它（dict）；终端里先敲了一行 ⇒ None。hook 空手退了（改到终端里答 · 别处关了）⇒ 等终端。"""
+    import select
+    import subprocess
+    proc = None
+    if hook:
+        proc = subprocess.Popen(hook, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        proc.stdin.write(json.dumps(request).encode())
+        proc.stdin.close()
+    try:
+        while True:
+            fds = [sys.stdin] + ([proc.stdout] if proc and proc.stdout else [])
+            ready, _, _ = select.select(fds, [], [])
+            if sys.stdin in ready:
+                readline()
+                return None
+            out = proc.stdout.read()
+            proc.wait()
+            proc.stdout = None
+            if out.strip():
+                return json.loads(out)
+    finally:
+        if proc and proc.poll() is None:
+            proc.kill()
 
 
 def answer_text(said):
@@ -122,16 +181,24 @@ class Claude:
         mid = "msg_" + uuid.uuid4().hex[:20]
         self.assistant(mid, {"type": "thinking", "thinking": "替身在想。", "signature": "AAAA"})
         call = "toolu_" + uuid.uuid4().hex[:20]
-        self.assistant(mid, {"type": "tool_use", "id": call, "name": "Bash",
-                             "input": {"command": "ls", "description": "看看目录"}}, stop="tool_use")
-        if "ask" in said:  # 停在批准框上（需手动），等终端里再敲一行才往下走
+        box = ask_tool(said)
+        tool, tinput, suggest = (box[1], box[2], box[3]) if box else ("Bash", {"command": "ls", "description": "看看目录"}, [])
+        self.assistant(mid, {"type": "tool_use", "id": call, "name": tool, "input": tinput}, stop="tool_use")
+        result = "a.txt\nb.txt"
+        if box:  # 停在框上（需手动）：答题 hook 先答 · 终端里先敲一行，谁先算谁的
             self.status("waiting", "permission prompt")
-            print("[替身] 要批准：ls（敲一行放行）", flush=True)
-            ask()
+            print(f"[替身] 要批准：{tool}（敲一行放行）", flush=True)
+            got = wait_answer(hook_command(), {
+                "hook_event_name": "PermissionRequest", "session_id": self.sid, "cwd": self.cwd,
+                "tool_name": tool, "tool_input": tinput, "permission_suggestions": suggest}, ask)
+            if got is not None:
+                decision = (got.get("hookSpecificOutput") or {}).get("decision") or {}
+                result = "答题口：" + json.dumps(decision, ensure_ascii=False, sort_keys=True)
+                print(f"[替身] {result}", flush=True)
             self.status("busy")
         self.put({"type": "user", "message": {"role": "user", "content": [
-            {"type": "tool_result", "tool_use_id": call, "content": "a.txt\nb.txt", "is_error": False}]},
-            "toolUseResult": {"stdout": "a.txt\nb.txt", "stderr": "", "interrupted": False}})
+            {"type": "tool_result", "tool_use_id": call, "content": result, "is_error": False}]},
+            "toolUseResult": {"stdout": result, "stderr": "", "interrupted": False}})
         mid = "msg_" + uuid.uuid4().hex[:20]
         self.assistant(mid, {"type": "text", "text": answer_text(said)}, stop="end_turn")
         self.status("idle")

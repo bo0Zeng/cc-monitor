@@ -115,13 +115,21 @@ data class SessionTable(
 /** 一条需手动（`sessions-needs` 的 `waiting[]` 一项 · `history-facts.needs`）。 */
 data class Needs(
     val kind: String,
-    /** 「等批准 · Bash」那一句（核心按文案表写好）。 */
+    /** 「等批准」那一句（短的那一格，对话列表用；核心按文案表写好）。 */
     val text: String,
+    /** 钉条第一行「等批准 · Bash」（核心写好）。 */
+    val head: String,
+    /** 钉条里等宽那一段（命令头一行 · 问题）；别的种类 ⇒ `null`。 */
+    val headCode: String?,
     val tone: Tone?,
     /** 先答哪个，0 最先。 */
     val rank: Long,
     /** 那台答出那一刻已等了多久（毫秒）；屏上从收到那份起接着走表（`DurationFormat.waited`）。没有起点 ⇒ `null`。 */
     val waitedMs: Long?,
+    /** 这一条可以怎么答；没挂上（只能去终端）⇒ `null`，那一句在 [manualText]。 */
+    val ask: NeedsAsk? = null,
+    /** [ask] 为 `null` 时核心写好的那一句（「只能在终端里答」· 答题口没接上的原因）。 */
+    val manualText: String? = null,
 ) {
     companion object {
         fun of(m: Map<String, Any?>?): Needs? = decoding { need(m) }
@@ -131,9 +139,13 @@ data class Needs(
                 Needs(
                     kind = it.str("kind").need(),
                     text = it.str("text").need(),
+                    head = it.str("head").need(),
+                    headCode = it.str("headCode"),
                     tone = Tone.of(it.str("tone")),
                     rank = it.num("rank").need(),
                     waitedMs = it.num("waitedMs"),
+                    ask = it["ask"]?.let(NeedsAsk::need),
+                    manualText = it.str("manualText"),
                 )
             }
     }
