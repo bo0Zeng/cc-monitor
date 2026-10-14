@@ -89,6 +89,9 @@ data class AskSheet(
 
     fun waited(now: Long): String? = DurationFormat.waited(waitedMs, receivedAt, now)
 
+    /** 每题的答（没碰过的那题交空的）。 */
+    fun everyPick(): Map<String, NeedsPick> = ask.questions.associate { it.id to (picks[it.id] ?: NeedsPick(emptySet(), "")) }
+
     /** 重问里挂着的是 [current]：画着的这一份不在了、也不是这里正在答 / 已知别处答了的 ⇒ 别处先答了。 */
     fun lostTo(current: NeedsAsk?): Boolean = gone == null && sending == null && ask.id != current?.id
 }
@@ -176,7 +179,8 @@ class NeedsDesk(
     private val _state = MutableStateFlow(NeedsUi())
     val state: StateFlow<NeedsUi> = _state.asStateFlow()
 
-    @Volatile private var sid: String? = null
+    /** 此刻对着的那条会话（新建会话起好之前没有）。 */
+    @Volatile private var current: String? = null
     private var needs: Needs? = null
     private var receivedAt = 0L
 
@@ -187,7 +191,7 @@ class NeedsDesk(
     init {
         scope.launch {
             sid.filterNotNull().distinctUntilChanged().collectLatest { s ->
-                this@NeedsDesk.sid = s
+                current = s
                 wake.trySend(Unit)
                 merge(
                     pushes.map { if (it.topic == Changed.NEEDS && it.key == s) Unit else null }.filterNotNull(),
@@ -222,7 +226,7 @@ class NeedsDesk(
         when {
             c.note != NeedsNote.NONE -> update { it.copy(sheet = sheet.copy(noteFor = c.id, failed = null)) }
             quiz && !sheet.allAnswered -> Unit
-                        quiz -> send(sheet, c.id, picks = sheet.ask.questions.associate { it.id to (sheet.picks[it.id] ?: NeedsPick(emptySet(), "")) })
+            quiz -> send(sheet, c.id, picks = sheet.everyPick())
             else -> send(sheet, c.id)
         }
     }
@@ -278,7 +282,7 @@ class NeedsDesk(
         note: String? = null,
         picks: Map<String, NeedsPick>? = null,
     ) {
-        val s = sid ?: return
+        val s = current ?: return
         update { it.copy(sheet = sheet.copy(sending = choice, failed = null)) }
         scope.launch {
             val r = answerCall(NeedsAnswer.COMMAND, NeedsAnswer.args(s, sheet.ask.id, choice, note, picks))
@@ -304,7 +308,7 @@ class NeedsDesk(
     }
 
     private suspend fun fetch() {
-        val s = sid ?: return
+        val s = current ?: return
         val r = link.call(SessionsNeeds.COMMAND, null, READ_MS)
         // 读不出 ⇒ 照常画已读到的（不清钉条，下一次变化再问）。
         val rows = (r as? Reply.Ok)?.let { SessionsNeeds.of(it.data) } ?: return

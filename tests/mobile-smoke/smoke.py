@@ -375,7 +375,14 @@ def main():
             if f"替身收到：{said}" in log:
                 break
             time.sleep(1)
-        rec = [ln for ln in log.splitlines() if "答题口：" in ln and want in ln]
+        def said_by_hook(ln):
+            try:
+                content = (json.loads(ln).get("message") or {}).get("content")
+            except ValueError:
+                return False
+            return any("答题口：" in str(c.get("content")) and want in str(c.get("content")) for c in content if isinstance(c, dict)) if isinstance(content, list) else False
+
+        rec = [ln for ln in log.splitlines() if said_by_hook(ln)]
         if not rec:
             raise Step.Fail(f"记录里没有答题口给的「{want}」")
         if ui.find(t("mobNeeds.act.answer")) is not None:
@@ -392,13 +399,13 @@ def main():
         answered(f"{T} ask go", '"behavior": "allow"')
 
     with Step("4e-答提问"):
-        ask_up(f"{T} askq go", t("mobAsk.head.page", head=t("needs.bar.answer"), i=1, n=2))
+        ask_up(f"{T} quiz go", t("mobAsk.head.page", head=t("needs.bar.answer"), i=1, n=2))
         tap_still("Red")
         shot("4e-提问第一题")
         tap_still(t("mobAsk.act.next")); time.sleep(1)
         tap_still("Pear")
         tap_still(t("beAsk.choice.answer"))
-        answered(f"{T} askq go", '"Which color?": "Red"')
+        answered(f"{T} quiz go", '"Which color?": "Red"')
 
     with Step("4f-批计划"):
         ask_up(f"{T} plan go", t("needs.bar.plan"))

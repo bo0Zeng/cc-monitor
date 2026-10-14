@@ -8,7 +8,7 @@
 #           第一句进来才建记录文件（与真的一样）。每句：user → thinking → tool_use → tool_result → text(end_turn)，
 #           逐条隔一小会儿落盘（像真的那样一条一条出），句里带 long ⇒ 答一大段（看往上翻），
 #           带 ask ⇒ 停在批准框上（pidfile waiting · permission prompt，看需手动），终端里再敲一行才往下走；
-#           带 askq ⇒ 停在提问框（AskUserQuestion），带 plan ⇒ 停在批计划（ExitPlanMode）。起的时候给了答题 hook
+#           带 quiz ⇒ 停在提问框（AskUserQuestion），带 plan ⇒ 停在批计划（ExitPlanMode）。起的时候给了答题 hook
 #           （`--settings` 里的 PermissionRequest，ccm 起会话时垫的）⇒ 同真的那样把请求交给它，hook 先给了决定就照它往下走
 #           （决定原样落进那一步的结果），终端里先敲了一行也算答（谁先算谁的）。
 #           敲进来 `/model <值>` ⇒ 不答，只落一条本地命令输出 ``Set model to `<值>` ``（那一家换模型的读回）。
@@ -72,7 +72,7 @@ def hook_command():
 
 # 三种框：哪个词触发 · 工具名 · 工具参数 · hook 那一份里的建议。
 ASK_TOOLS = (
-    ("askq", "AskUserQuestion", {"questions": [
+    ("quiz", "AskUserQuestion", {"questions": [
         {"question": "Which color?", "header": "Color", "multiSelect": False,
          "options": [{"label": "Red", "description": "warm"}, {"label": "Blue", "description": ""}]},
         {"question": "Which fruits?", "header": "Fruit", "multiSelect": True,
