@@ -236,10 +236,9 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     );
     let literal = arm_tokens(block);
     let derived_arm = block.contains("cli::handles(");
-    let catch_all = block.lines().any(|l| {
-        l.trim_start()
-            .starts_with("_ => cli::refuse_unknown(")
-    });
+    let catch_all = block
+        .lines()
+        .any(|l| l.trim_start().starts_with("_ => cli::refuse_unknown("));
 
     // ── 反空真地板（只问「抽取塌没塌」，不问「某一条在不在」）──────────────
     assert!(
