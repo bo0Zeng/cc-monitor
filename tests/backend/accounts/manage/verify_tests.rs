@@ -108,6 +108,7 @@ const ACCOUNT_DIR_SHAPE: &[(&str, char)] = &[
     ("policy-limits.json.stamp.json", 'f'),
     ("projects", 'l'),
     ("remote-settings.json", 'f'),
+    ("remote-settings.json.synced-at", 'f'),
     ("session-env", 'l'),
     ("sessions", 'l'),
     ("settings.json", 'l'),
@@ -213,4 +214,35 @@ fn every_per_account_file_in_an_account_dir_is_on_the_list_and_never_called_a_mi
         .collect();
     links.sort_unstable();
     assert_eq!(linked, links);
+}
+
+/// 远端托管设置的「上次同步时刻」跟着号走：共享库里有一份、号里没有 ⇒ 不报缺共享链接；
+/// 号里那份被链回共享库 ⇒ 跟别的身份文件被链错一样报致命，点名是它。
+#[test]
+fn the_remote_settings_sync_stamp_is_per_account_not_a_missing_link() {
+    const SYNCED_AT: &str = "remote-settings.json.synced-at";
+    let mut s = shaped(&[]);
+    s.shared
+        .entries
+        .insert(SYNCED_AT.to_string(), own_file(0o644));
+    let z = "/h/.cc-monitor/accounts/z";
+    s.dirs.get_mut(z).unwrap().entries.remove(SYNCED_AT);
+    let r = verify(&s, &[]);
+    let loud: Vec<&VerifyCheck> = r
+        .checks
+        .iter()
+        .filter(|c| matches!(c.level, CheckLevel::Fail | CheckLevel::Warn))
+        .collect();
+    assert!(loud.is_empty(), "{loud:?}");
+
+    s.dirs.get_mut(z).unwrap().entries.insert(
+        SYNCED_AT.to_string(),
+        Item::Link {
+            target: format!("/h/.claude/{SYNCED_AT}"),
+            dangling: false,
+        },
+    );
+    let r = verify(&s, &[]);
+    assert_eq!(r.fails, 1, "{:?}", r.checks);
+    assert!(fails(&r)[0].contains(SYNCED_AT), "{:?}", fails(&r));
 }
