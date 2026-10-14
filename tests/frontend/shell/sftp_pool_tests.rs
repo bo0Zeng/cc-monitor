@@ -473,7 +473,8 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
 
 /// 开单两条在中继这一层的字节（换形之前用旧代码跑出来钉的）：窗口那一份 ⇒ 补上 `dial` 转给本机后端的那一行
 /// （`dial` 换成占位：它带这台此刻的 ssh-agent 套接字）· 交回窗口的那一份 · 中继自己拒的那几种。
-/// 换 typed 时有意改的：窗口那一份解不出来时那一句跟解码器原话（原来只说「缺 X 或它不是字符串」）；多一个键从照收变成拒。
+/// 换 typed 时有意改的：窗口那一份解不出来时只说「请求格式不对 · 哪一条」，解码器那一句进日志（原来句子里说「缺 X 或它不是字符串」）；
+/// 多一个键从照收变成拒。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_openers_are_relayed_with_the_same_bytes() {
     let _g = crate::inbound_client::local_origin_test_lock();
@@ -539,10 +540,10 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         r#"transfer-upload {"dial":<dial>,"home":"/home/u","local_path":"/tmp/x.bin"} => {"id":"xfer-2","key":"00112233445566778899aabbccddeeff"}"#,
         r#"transfer-download {"dial":<dial>,"local_path":"/tmp/a b","remote_path":"/srv/a b"} => {"id":"xfer-3"}"#,
         r#"transfer-download {"dial":<dial>,"local_path":{"b16":"2f746d702fff"},"remote_path":"/srv/a"} => {"id":"xfer-4"}"#,
-        r#"transfer-upload {} => bad_args 请求格式不对 · transfer-upload · missing field `local_path`"#,
-        r#"transfer-upload {"local_path":7} => bad_args 请求格式不对 · transfer-upload · invalid type: integer `7`, expected a string"#,
-        r#"transfer-download {"local_path":"/tmp/a"} => bad_args 请求格式不对 · transfer-download · missing field `remote_path`"#,
-        r#"transfer-upload {"home":"/h","local_path":"/tmp/x.bin","via":1} => bad_args 请求格式不对 · transfer-upload · unknown field `via`, expected `local_path` or `home`"#,
+        r#"transfer-upload {} => bad_args 请求格式不对 · transfer-upload"#,
+        r#"transfer-upload {"local_path":7} => bad_args 请求格式不对 · transfer-upload"#,
+        r#"transfer-download {"local_path":"/tmp/a"} => bad_args 请求格式不对 · transfer-download"#,
+        r#"transfer-upload {"home":"/h","local_path":"/tmp/x.bin","via":1} => bad_args 请求格式不对 · transfer-upload"#,
         r#"transfer-start {"id":"xfer-1"} => bad_args 请求格式不对 · transfer-start 不是传输命令"#,
     ];
     assert_eq!(got, want, "中继开单的字节变了");

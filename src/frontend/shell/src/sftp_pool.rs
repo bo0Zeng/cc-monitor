@@ -153,18 +153,16 @@ pub async fn transfer_call(
     }
 }
 
-/// 窗口那一份载荷按类型解（缺一格 · 多一格 · 型不对 ⇒ `bad_args`，解码器那一句跟在后面）。
+/// 窗口那一份载荷按类型解（缺一格 · 多一格 · 型不对 ⇒ `bad_args`）。解码器那一句不上句子（原话不进话里），记一行日志。
 fn ask_of<A: serde::de::DeserializeOwned>(
     op: &str,
     payload: &serde_json::Value,
 ) -> Result<A, (String, String)> {
     serde_json::from_value(payload.clone()).map_err(|e| {
+        tracing::warn!("传输：窗口说的 {op} 载荷解不出来（{e}）");
         (
             "bad_args".to_string(),
-            copy_text(
-                "rsSftpPool.call.badArgs",
-                &[("op", &op.to_string()), ("why", &e.to_string())],
-            ),
+            copy_text("rsSftpPool.call.badArgs", &[("op", &op.to_string())]),
         )
     })
 }

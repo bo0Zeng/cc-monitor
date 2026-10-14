@@ -12459,8 +12459,8 @@
     "rsSftpPool.call.badArgs": {
       "kind": "error",
       "role": "报错",
-      "zh": "请求格式不对 · {op} · {why}",
-      "args": ["op", "why"]
+      "zh": "请求格式不对 · {op}",
+      "args": ["op"]
     },
     "rsChanWire.frame.tooLong": {
       "kind": "error",
