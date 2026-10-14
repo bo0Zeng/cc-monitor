@@ -934,6 +934,33 @@ pub fn bring_local_window(claude_pid: u32, bind: &BindRegistry) -> FrontOutcome 
     }
 }
 
+/// 真机诊断子命令 `--ccm-pick <pid>` 的命令行解析（与 `platform::console::helper_request` 同族，纯函数、判据喂）：
+/// 紧跟程序名的是 `--ccm-pick`、后面恰好一个数 ⇒ 那个 claude 进程号；别的形（没参数 · 别的旗 · 没进程号 · 不是数 · 多了参数）⇒ `None`。
+pub fn pick_request(args: &[String]) -> Option<u32> {
+    let (flag, rest) = args.get(1..)?.split_first()?;
+    if flag != "--ccm-pick" {
+        return None;
+    }
+    match rest {
+        [pid] => pid.parse::<u32>().ok(),
+        _ => None,
+    }
+}
+
+/// 被当成 `--ccm-pick <pid>` 诊断子命令起的那一趟：照 ↗ 本机那一格的真路子（[`bring_local_window`]：进程链 → 认窗口 →
+/// 终端那一级提权了没有 → 拉前 · 核前台 · 切标签页）算一次结局，印成一行 JSON（`kind` 与界面同一套），做完就退、不起 monitor。
+/// 真机上核「为什么切不了 / 是不是因为提权」用：判据只能喂替身的读法，提权终端的真令牌要真机才有。
+pub fn pick_main() -> Option<i32> {
+    let pid = pick_request(&std::env::args().collect::<Vec<_>>())?;
+    let bind = BindRegistry::spawn(std::env::temp_dir().join("cc-monitor-pick-probe"));
+    let outcome = bring_local_window(pid, &bind);
+    println!(
+        "{}",
+        serde_json::to_string(&outcome).unwrap_or_else(|_| format!("{outcome:?}"))
+    );
+    Some(0)
+}
+
 fn run_heartbeat(this: Arc<BindRegistry>) {
     loop {
         std::thread::sleep(Duration::from_secs(10));

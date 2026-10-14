@@ -1033,3 +1033,24 @@ fn borrowing_another_process_console_lives_in_the_helper() {
         "monitor 这边不自己借控制台"
     );
 }
+
+/// ★ 真机诊断子命令 `--ccm-pick <pid>`（与 `--ccm-console` 同族，照 ↗ 本机那一格的真路子算一次结局、印成一行 JSON）：
+/// 认得这一形 ⇒ 那个进程号；不是这一形（没参数 · 别的旗 · 没进程号 · 进程号不是数 · 多了参数）⇒ 不认，照常起 monitor。
+#[test]
+fn the_pick_probe_command_line_parses() {
+    let raw = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+    assert_eq!(
+        pick_request(&raw(&["cc-monitor.exe", "--ccm-pick", "1234"])),
+        Some(1234)
+    );
+    for bad in [
+        raw(&["cc-monitor.exe"]),
+        raw(&["cc-monitor.exe", "--background"]),
+        raw(&["cc-monitor.exe", "--ccm-pick"]),
+        raw(&["cc-monitor.exe", "--ccm-pick", "x"]),
+        raw(&["cc-monitor.exe", "--ccm-pick", "1234", "5"]),
+        raw(&["cc-monitor.exe", "--ccm-console", "windows", "1"]),
+    ] {
+        assert_eq!(pick_request(&bad), None, "{bad:?}");
+    }
+}

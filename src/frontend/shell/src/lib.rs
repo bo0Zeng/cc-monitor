@@ -466,6 +466,10 @@ pub fn run() {
     if let Some(code) = platform::console::helper_main() {
         std::process::exit(code);
     }
+    // 真机诊断子命令 `--ccm-pick <pid>`（与 `--ccm-console` 同族）：照 ↗ 本机那一格算一次结局、印成一行 JSON，做完就退。
+    if let Some(code) = bind::pick_main() {
+        std::process::exit(code);
+    }
     // 启动 perf 测量起点
     let t0 = std::time::Instant::now();
 
