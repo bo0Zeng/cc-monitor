@@ -130,7 +130,7 @@ pub struct Workspace {
 /// 缩放的上下限与一步多少（Ctrl + = / -）。
 pub const ZOOM_MIN: f32 = 0.8;
 pub const ZOOM_MAX: f32 = 2.0;
-/// 缩放的档位（规范 `I8`）。
+/// 缩放的档位。
 pub const ZOOM_STOPS: [f32; 8] = [0.8, 0.9, 1.0, 1.1, 1.25, 1.5, 1.75, 2.0];
 
 /// 视图文件（monitor 交来的那一份，`{"zoom": 1.2, "preview": true}`）：记**整窗缩放**与**预览开没开**，下次开窗照它摆。
@@ -913,7 +913,7 @@ impl Workspace {
         self.closing_ask
     }
 
-    /// 「关闭文件窗口 · devbox」（规范 `C10` · `I12`）：按族列出会打断的（未保存 · 传输中 · 删除中 · 解压中 · 计算大小中）；
+    /// 「关闭文件窗口 · devbox」：按族列出会打断的（未保存 · 传输中 · 删除中 · 解压中 · 计算大小中）；
     /// 按钮「取消」（焦点）·「全部保存后关闭」（只在有没保存的时出现）·「仍然关闭」（危险）。
     pub fn close_ask_ui(&mut self, ctx: &egui::Context) {
         if !self.closing_ask {
@@ -1463,7 +1463,7 @@ impl Workspace {
         }
     }
 
-    /// 一栏：标签栏（规范 `C5` 下划线式；图标 ＋ 名字 ＋ ×（悬停与当前才显）＋ 忙点；末尾「＋」；放不下右端「▾」列出全部）
+    /// 一栏：标签栏（下划线式；图标 ＋ 名字 ＋ ×（悬停与当前才显）＋ 忙点；末尾「＋」；放不下右端「▾」列出全部）
     /// ＋ 当前那个标签页的正文。
     fn side_ui(&mut self, ui: &mut egui::Ui, k: usize) {
         let mut pick: Option<usize> = None;

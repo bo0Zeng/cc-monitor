@@ -8,7 +8,7 @@ use copy_core::copy_text;
 
 use super::theme::{metrics, palette};
 
-/// 条的语气（规范 `C15`）：出错 · 警告 · 说明。
+/// 条的语气：出错 · 警告 · 说明。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tone {
     Error,
@@ -36,7 +36,7 @@ impl Tone {
     }
 }
 
-/// 一条横贯的条（规范 `C15`）：左 3px 语气色 ＋ 图标 ＋ 一句话 ＋ 右端几个动作。回这一帧点了第几个动作。
+/// 一条横贯的条：左 3px 语气色 ＋ 图标 ＋ 一句话 ＋ 右端几个动作。回这一帧点了第几个动作。
 pub fn banner(ui: &mut Ui, tone: Tone, text: &str, actions: &[String]) -> Option<usize> {
     banner_with_detail(ui, tone, text, actions, None)
 }
@@ -197,7 +197,7 @@ pub fn marked(ui: &Ui, text: &str, marks: &[(usize, usize)], color: Color32) -> 
     job
 }
 
-/// 开关按钮（规范 `C21`）：开着 ＝ `--state-active` 底 ＋ 图标强调色 ＋ 字主色；关着 ＝ 幽灵按钮。`label` 空 ⇒ 只画图标。
+/// 开关按钮：开着 ＝ `--state-active` 底 ＋ 图标强调色 ＋ 字主色；关着 ＝ 幽灵按钮。`label` 空 ⇒ 只画图标。
 pub fn toggle(ui: &mut Ui, icon: &str, label: &str, on: bool) -> egui::Response {
     let p = palette(ui.ctx());
     let icon_c = if on { p.accent } else { p.text2 };
@@ -233,7 +233,7 @@ pub fn ghost(ui: &mut Ui, icon: &str, label: &str, enabled: bool, why: &str) -> 
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// 菜单（规范 `C12`）：窗口里每一个弹出的菜单都只经这一处画项
+// 菜单：窗口里每一个弹出的菜单都只经这一处画项
 // ═══════════════════════════════════════════════════════════════════════
 
 /// 菜单上的一行：图标 ＋ 字 ＋ 右端淡色快捷键；悬停一层淡底，不画框。
@@ -492,7 +492,7 @@ pub fn select_field(
     hit
 }
 
-/// 标签页（规范 `C5` 下划线式 ＋ 图标 ＋ ×（悬停与当前才显）＋ 6px 忙点）。回 `(点了, 点了 ×)`。
+/// 标签页（下划线式 ＋ 图标 ＋ ×（悬停与当前才显）＋ 6px 忙点）。回 `(点了, 点了 ×)`。
 pub fn tab(
     ui: &mut Ui,
     icon: &str,
@@ -674,7 +674,7 @@ pub enum SideMark {
     Warn,
 }
 
-/// 一条回执（规范 `C13`：右下角、8 秒、悬停停表；可带一个动作）。
+/// 一条回执（右下角、8 秒、悬停停表；可带一个动作）。
 #[derive(Clone, Debug, PartialEq)]
 pub struct Toast {
     pub text: String,
@@ -785,7 +785,7 @@ impl Toasts {
     }
 }
 
-/// 列表加载那几行骨架（规范 `C19`）。
+/// 列表加载那几行骨架。
 pub fn skeleton_rows(ui: &mut Ui, n: usize) {
     let p = palette(ui.ctx());
     let m = metrics(ui.ctx());
@@ -829,7 +829,7 @@ pub fn empty_state(ui: &mut Ui, icon: &str, text: &str, actions: &[String]) -> O
     hit
 }
 
-/// 进度条（规范 `C14`）：底 `--border-soft`、填 `--accent`；`None` ⇒ 不确定进度（来回走的一小段）。
+/// 进度条：底 `--border-soft`、填 `--accent`；`None` ⇒ 不确定进度（来回走的一小段）。
 pub fn progress(ui: &mut Ui, width: f32, frac: Option<f32>) {
     let p = palette(ui.ctx());
     let (rect, _) = ui.allocate_exact_size(egui::vec2(width, 4.0), egui::Sense::hover());
@@ -1139,7 +1139,7 @@ pub fn path_list(
     hit
 }
 
-/// 对话框一颗按钮的样子（规范 `C10`）：普通 · 主按钮（强调色底）· 危险（错误色底）。
+/// 对话框一颗按钮的样子：普通 · 主按钮（强调色底）· 危险（错误色底）。
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Btn {
     Plain,
@@ -1147,7 +1147,7 @@ pub enum Btn {
     Danger,
 }
 
-/// 对话框（规范 `C10`）：压暗的底 ＋ 居中一块（浮层底、圆角、最宽 480 且不超过窗宽 − 48）：
+/// 对话框：压暗的底 ＋ 居中一块（浮层底、圆角、最宽 480 且不超过窗宽 − 48）：
 /// 标题（16 / 600）＋ 正文（调用方画）＋ 右下一排按钮。`focus` ＝ 打开时焦点在第几颗；Esc / 点压暗的底 ⇒ 当作点了第 `cancel` 颗。
 /// 回这一帧点了第几颗。
 pub fn dialog(
@@ -1174,7 +1174,7 @@ pub fn dialog(
             ui.scope(body);
             ui.add_space(14.0);
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                // 按钮之间的间距是对话框自己的（规范 `C10` 一处）：正文改过 `item_spacing` 也漏不到这一排。
+                // 按钮之间的间距是对话框自己的（一处）：正文改过 `item_spacing` 也漏不到这一排。
                 ui.spacing_mut().item_spacing.x = metrics(ui.ctx()).space[2];
                 let mut first_frame_focus = None;
                 for (i, (label, look)) in buttons.iter().enumerate().rev() {
@@ -1374,7 +1374,7 @@ pub fn drop_zone(ctx: &egui::Context, rect: egui::Rect, text: &str) {
     );
 }
 
-/// 键盘走到的那个控件画 2px 强调色外环（规范 `I4`）；鼠标点出来的不画（`keyboard` 假）。
+/// 键盘走到的那个控件画 2px 强调色外环；鼠标点出来的不画（`keyboard` 假）。
 pub fn focus_ring(ctx: &egui::Context, keyboard: bool) {
     if !keyboard {
         return;

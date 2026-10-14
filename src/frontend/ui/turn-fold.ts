@@ -605,7 +605,7 @@ export function paintLine(line: HTMLElement, fold: FoldSegment, open: boolean, n
   line.dataset.phase = fold.phase;
   line.replaceChildren();
   line.appendChild(foldCaret());
-  // 在跑：转圈取「运行中」那一色（规范 V10 · --success），用 currentColor 跟着 .proc-run。
+  // 在跑：转圈取「运行中」那一色（--success），用 currentColor 跟着 .proc-run。
   if (fold.phase === "running") {
     const run = document.createElement("span");
     run.className = "proc-run";

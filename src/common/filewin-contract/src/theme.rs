@@ -122,7 +122,7 @@ pub struct Theme {
     /// 浮层（菜单 · 悬浮提示）与对话框的投影。
     pub shadow_float: Shadow,
     pub shadow_modal: Shadow,
-    /// 抽屉开着时盖在内容区上的那层淡暗（规范 `C11`：内容区变暗、仍看得见）。
+    /// 抽屉开着时盖在内容区上的那层淡暗（内容区变暗、仍看得见）。
     pub overlay_dim: Rgba,
 }
 

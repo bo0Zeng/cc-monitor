@@ -1835,7 +1835,7 @@ fn rect_shapes(out: &egui::FullOutput) -> Vec<egui::epaint::RectShape> {
     acc
 }
 
-/// 🔴 **窄档左栏抽屉照规范 `C11` 画**（720 宽开着抽屉）：浮层底（`--card`）· 外侧两角圆、贴边两角方 ·
+/// 🔴 **窄档左栏抽屉**（720 宽开着抽屉）：浮层底（`--card`）· 外侧两角圆、贴边两角方 ·
 /// 对话框那一档投影（`--shadow-modal`）· 底下的内容区盖一层 `--overlay-dim`，比抽屉宽（盖到抽屉以外），且先于抽屉画（压在下面）。
 #[test]
 fn the_narrow_drawer_floats_with_a_shadow_over_a_dimmed_list() {

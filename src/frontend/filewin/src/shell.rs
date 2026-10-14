@@ -514,7 +514,7 @@ pub struct FileWindow {
     pub progress: super::progress::Progress,
     /// 那台此刻连没连着（一扇窗一份，`Workspace` 交下来；`link` 那条流写进来）。断着 ⇒ 列表留着上次的内容、写类按钮灰。
     pub link: super::chrome::LinkState,
-    /// 一次性的回执（「路径已复制」…）：窗口那一级每帧收走、摆成右下角的回执（规范 `C13`）。
+    /// 一次性的回执（「路径已复制」…）：窗口那一级每帧收走、摆成右下角的回执。
     pub(super) receipt: Option<String>,
     /// 同 [`Self::receipt`] 那一句的［复制详情］整段（写操作没做成、带详情时才有；与那一句同一拍交走）。
     pub(super) receipt_copy: Option<String>,
@@ -3611,7 +3611,7 @@ impl FileWindow {
     /// 关这一页那一问（改了没存）：取消 · 不保存 · 保存。
     fn edit_discard_ask(&mut self, ctx: &egui::Context, name: &str, acts: &mut EditActs) {
         let p = super::theme::palette(ctx);
-        // ── 关这一页那一问（改了没存；规范 `C10`）：取消 · 不保存 · 保存（焦点在「保存」）──
+        // ── 关这一页那一问（改了没存）：取消 · 不保存 · 保存（焦点在「保存」）──
         if self.asking_discard {
             let hit = super::kit::dialog(
                 &ctx,
@@ -3752,7 +3752,7 @@ impl FileWindow {
         let Some(mut p) = self.write_prompt.clone().filter(|p| !p.is_inline()) else {
             return;
         };
-        // 改权限（规范 `C10`）：标题「改权限 · deploy.sh」·「当前 644」· 3 × 3 勾 ·「数字写法」两边联动 · ［取消］［改权限］。
+        // 改权限：标题「改权限 · deploy.sh」·「当前 644」· 3 × 3 勾 ·「数字写法」两边联动 · ［取消］［改权限］。
         // 现值答回来了 ⇒ 九格与那一栏预填至多一次（`writeops::apply_prefill`）。
         self.mode_probe.attach(ui.ctx().clone());
         let readout = self.mode_probe.readout();

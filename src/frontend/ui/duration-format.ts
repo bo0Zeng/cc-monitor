@@ -3,7 +3,7 @@
  * `tests/__fixtures__/short-duration.golden.json`）。
  *
  * 静态的时长 / 距今由核心写成 `…Text`，界面照抄；这里只管**会走的钟**：核心交 `{text, from, to?}`（`text` 里的 `{dur}` 是空位，
- * `from` / `to` 是毫秒时刻），此刻按 `now` 填（[`clockNow`]）。短时长的写法（文案规范 N5）：`<1s` · `45s` · `6m` · `1h50m` · `2h` · `3d`
+ * `from` / `to` 是毫秒时刻），此刻按 `now` 填（[`clockNow`]）。短时长的写法：`<1s` · `45s` · `6m` · `1h50m` · `2h` · `3d`
  * （不满 1 秒写 `<1s`；满 24h 只写天；秒以下舍去、分钟以下舍去），单位格住文案表 `durationFormat.short.*`。界面里别处不许自己拼时长 / 距今（出口扫描判据钉着）。
  */
 import { copyText } from "./copy-table";

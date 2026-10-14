@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 
 /**
- * 整句出错（规范 V3）：字用正文色，红只给左边一道 3 dp 的 `--error` 条 —— 红字在 `--card` 上只有 3.4:1 读不清。
+ * 整句出错：字用正文色，红只给左边一道 3 dp 的 `--error` 条 —— 红字在 `--card` 上只有 3.4:1 读不清。
  * 短的红字（危险按钮 · stderr · 出错 chip）另用 `LocalAppTokens.current.errorText`，不走这里。
  */
 @Composable

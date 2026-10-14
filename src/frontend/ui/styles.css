@@ -2781,7 +2781,7 @@
 
 
 /* 放在层的末尾：它要压过上面那几条同元素的规则（选择器更具体，后写）。 */
-/* 栏收起（窗宽 < 980 或手动收起，`tab-bar-fold.ts` 挂 `data-tab-bar`；规范 I8 偏离：每格 = 状态点 ＋ 项目名两个字母）：
+/* 栏收起（窗宽 < 980 或手动收起，`tab-bar-fold.ts` 挂 `data-tab-bar`；收起时每格 = 状态点 ＋ 项目名两个字母）：
    栏收成 44px，栏顶竖排，「需手动」收成「● N」。 */
 body[data-tab-bar="folded"]:not(.viewer-mode) #tab-bar {
   width: 44px;
