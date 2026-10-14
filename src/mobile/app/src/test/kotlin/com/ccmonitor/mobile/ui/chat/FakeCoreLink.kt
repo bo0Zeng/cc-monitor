@@ -29,6 +29,7 @@ internal class FakeCoreLink :
 
     /** 流上来一帧活卡（照线上那一形，经 [LiveFrame.of] 解）。 */
     suspend fun live(frame: Map<String, Any?>) = liveFlow.emit(LiveFrame.of(frame + ("kind" to LiveFrame.KIND))!!)
+
     val calls = mutableListOf<Pair<String, Map<String, Any?>?>>()
 
     var answer: (String, Map<String, Any?>?) -> Reply = { _, _ -> Reply.LinkDown }

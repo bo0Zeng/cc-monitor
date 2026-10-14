@@ -58,7 +58,15 @@ class LiveTest {
     fun `开 → 逐字长 → 说完等记录 → 记录到了撤`() {
         val b = LiveBoard()
         assertEquals(listOf(true, true, true), b.feed(open(1, "改"), text(1, 1, "好"), text(1, 2, "了")))
-        assertEquals("改好了", b.cardsOf("s1").single().blocks.single().text)
+        assertEquals(
+            "改好了",
+            b
+                .cardsOf("s1")
+                .single()
+                .blocks
+                .single()
+                .text,
+        )
         assertFalse(b.cardsOf("s1").single().awaiting)
         b.feed(frame(1, 3, mapOf("op" to "awaiting")))
         assertTrue(b.cardsOf("s1").single().awaiting)
@@ -73,9 +81,25 @@ class LiveTest {
         assertEquals(0, b.size)
         assertFalse("没开过的卡来的长帧不认", b.apply(LiveFrame.of(text(1, 3, "x"))!!))
         b.feed(open(1, "整张", n = 4))
-        assertEquals("整张", b.cardsOf("s1").single().blocks.single().text)
+        assertEquals(
+            "整张",
+            b
+                .cardsOf("s1")
+                .single()
+                .blocks
+                .single()
+                .text,
+        )
         b.feed(text(1, 5, "接上"))
-        assertEquals("整张接上", b.cardsOf("s1").single().blocks.single().text)
+        assertEquals(
+            "整张接上",
+            b
+                .cardsOf("s1")
+                .single()
+                .blocks
+                .single()
+                .text,
+        )
     }
 
     @Test

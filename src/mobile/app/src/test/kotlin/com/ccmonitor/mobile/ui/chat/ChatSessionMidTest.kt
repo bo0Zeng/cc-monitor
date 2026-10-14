@@ -132,7 +132,9 @@ class ChatSessionMidTest {
             s.loadCommands()
             assertEquals(CommandsView.Loading, s.state.value.commands)
             runCurrent()
-            assertEquals("用 pdf", (s.state.value.commands as CommandsView.Ready).list.skills.single().say)
+            val ready = s.state.value.commands as CommandsView.Ready
+            val skill = ready.list.skills.single()
+            assertEquals("用 pdf", skill.say)
             assertEquals(listOf(mapOf("sid" to "s1")), link.calls("session-commands"))
             fail = true
             s.loadCommands()
@@ -175,7 +177,9 @@ class ChatSessionMidTest {
             link.live(open(3, "子运行", run = "a1"))
             link.live(mapOf("sid" to "s1", "card" to 1.0, "n" to 1.0, "op" to "text", "i" to 0.0, "s" to "好了"))
             runCurrent()
-            assertEquals(listOf("改好了"), s.state.value.live.map { it.blocks.single().text })
+            val cards = s.state.value.live
+            val texts = cards.map { it.blocks.single().text }
+            assertEquals(listOf("改好了"), texts)
             link.live(mapOf("sid" to "s1", "card" to 1.0, "n" to 2.0, "op" to "close", "why" to "record"))
             runCurrent()
             assertEquals(emptyList<Any>(), s.state.value.live)

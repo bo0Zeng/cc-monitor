@@ -271,7 +271,11 @@ class ChatSession(
     /** 抽屉里列什么：那台给这条会话那一家的模型与权限档（会话表里认那一家；认不出 ⇒ 那台列的第一家）。问过一次就不再问。 */
     fun loadPicks() {
         if (_state.value.picks?.error == null && _state.value.picks != null) return
-        val agent = sid?.let { link.table.value.sessions[it]?.agentKind } ?: draft?.agent
+        val agent =
+            sid?.let {
+                link.table.value.sessions[it]
+                    ?.agentKind
+            } ?: draft?.agent
         scope.launch {
             val r = link.call(SessionNewFacts.COMMAND, emptyMap(), READ_MS)
             val picks =

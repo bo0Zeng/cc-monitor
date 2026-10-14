@@ -140,7 +140,6 @@ class LiveBoard {
                 is LiveFrame.Op.Text ->
                     s.copy(blocks = s.blocks.mapIndexed { i, b -> if (i == op.i) b.copy(text = b.text + op.s) else b })
                 LiveFrame.Op.Awaiting -> s.copy(awaiting = true)
-                else -> s
             }
         return true
     }
@@ -149,7 +148,11 @@ class LiveBoard {
     fun cardsOf(
         sid: String,
         run: String? = null,
-    ): List<LiveCardState> = cards.values.filter { it.sid == sid && it.run == run }.sortedBy { it.born }.map { it.state }
+    ): List<LiveCardState> =
+        cards.values
+            .filter { it.sid == sid && it.run == run }
+            .sortedBy { it.born }
+            .map { it.state }
 
     /** 这个会话的卡不留了。变了 ⇒ `true`。 */
     fun drop(sid: String): Boolean = cards.values.removeAll { it.sid == sid }

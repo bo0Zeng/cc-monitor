@@ -31739,14 +31739,14 @@
       "args": []
     },
     "session.model.unsure": {
-      "kind": "body",
-      "role": "状态",
+      "kind": "error",
+      "role": "原因格",
       "zh": "换模型结果未知",
       "args": []
     },
     "session.permission.unsure": {
-      "kind": "body",
-      "role": "状态",
+      "kind": "error",
+      "role": "原因格",
       "zh": "换权限档结果未知",
       "args": []
     },
@@ -31768,31 +31768,31 @@
       "zh": "清空",
       "args": []
     },
-    "mobPlus.title": {
+    "mobPlus.sheet.title": {
       "kind": "title",
       "role": "标题",
       "zh": "添加",
       "args": []
     },
-    "mobPlus.commands": {
+    "mobPlus.row.commands": {
       "kind": "action",
       "role": "菜单项",
       "zh": "命令",
       "args": []
     },
-    "mobPlus.skills": {
+    "mobPlus.row.skills": {
       "kind": "action",
       "role": "菜单项",
       "zh": "Skill",
       "args": []
     },
-    "mobPlus.compact": {
+    "mobPlus.row.compact": {
       "kind": "action",
       "role": "菜单项",
       "zh": "压缩上下文",
       "args": []
     },
-    "mobPlus.clear": {
+    "mobPlus.row.clear": {
       "kind": "action",
       "role": "菜单项",
       "zh": "清空会话",

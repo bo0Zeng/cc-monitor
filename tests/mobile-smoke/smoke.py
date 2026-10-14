@@ -399,11 +399,11 @@ def main():
         # ［+］：命令清单是那台给这条会话的（session-commands），点一条只填进输入框；压缩上下文不确认、经 session-say 送；清空会话先确认，取消就不送。
         name = tmux_name_of(f"{T} new session")
         hide_keyboard()
-        tap(t("mobPlus.title"))
-        if not wait(t("mobPlus.commands"), 15):
+        tap(t("mobPlus.sheet.title"))
+        if not wait(t("mobPlus.row.commands"), 15):
             raise Step.Fail("面板里没有「命令」那一行")
         shot("4c-面板")
-        tap(t("mobPlus.commands"))
+        tap(t("mobPlus.row.commands"))
         if not wait("/init", 10):
             raise Step.Fail("命令清单里没有 /init")
         shot("4c-命令清单")
@@ -417,10 +417,10 @@ def main():
         for _ in range(8):
             adb("shell", "input", "keyevent", "67")
         hide_keyboard()
-        tap(t("mobPlus.title"))
-        if not wait(t("mobPlus.clear"), 15):
+        tap(t("mobPlus.sheet.title"))
+        if not wait(t("mobPlus.row.clear"), 15):
             raise Step.Fail("面板里没有「清空会话」")
-        tap(t("mobPlus.clear"))
+        tap(t("mobPlus.row.clear"))
         if not wait(t("session.clear.body"), 5):
             raise Step.Fail("清空会话没先确认")
         shot("4c-清空先确认")
@@ -428,10 +428,10 @@ def main():
         time.sleep(2)
         if pane_has(name, "> /clear", 2):
             raise Step.Fail("取消了照样送了 /clear")
-        tap(t("mobPlus.title"))
-        if not wait(t("mobPlus.compact"), 15):
+        tap(t("mobPlus.sheet.title"))
+        if not wait(t("mobPlus.row.compact"), 15):
             raise Step.Fail("面板里没有「压缩上下文」")
-        tap(t("mobPlus.compact"))
+        tap(t("mobPlus.row.compact"))
         if not pane_has(name, "> /compact", 20):
             raise Step.Fail("压缩上下文没送进那个会话")
 

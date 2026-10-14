@@ -93,7 +93,7 @@ internal fun ChatInputArea(
                 horizontalArrangement = Arrangement.spacedBy(tokens.spacing.xs),
             ) {
                 if (open) {
-                    val plus = copyText("mobPlus.title")
+                    val plus = copyText("mobPlus.sheet.title")
                     TextButton(
                         onClick = {
                             actions.loadCommands()
@@ -115,32 +115,43 @@ internal fun ChatInputArea(
             }
         }
     }
-    val fill = { text: String ->
-        draft = TextFieldValue(text, TextRange(text.length))
-        sheet = null
-    }
-    when (val s = sheet) {
-        InputSheet.Models -> PickSheet(copyText("session.model.title"), state.picks, { it.models }, state.model.value, { sheet = null }) { actions.switchModel(it) }
-        InputSheet.Modes -> PickSheet(copyText("session.permission.title"), state.picks, { it.modes }, state.permission.value, { sheet = null }) { actions.switchPermission(it) }
+    InputSheets(sheet, state, actions, { sheet = it }) { text -> draft = TextFieldValue(text, TextRange(text.length)) }
+}
+
+/** 此刻升起的那一个抽屉 / 确认框（[set] 换成别的或 `null` 收起；[fill] 把字填进输入框）。 */
+@Composable
+private fun InputSheets(
+    sheet: InputSheet?,
+    state: ChatUiState,
+    actions: ChatInputActions,
+    set: (InputSheet?) -> Unit,
+    fill: (String) -> Unit,
+) {
+    when (sheet) {
+        InputSheet.Models -> PickSheet(copyText("session.model.title"), state.picks, { it.models }, state.model.value, { set(null) }) { actions.switchModel(it) }
+        InputSheet.Modes -> PickSheet(copyText("session.permission.title"), state.picks, { it.modes }, state.permission.value, { set(null) }) { actions.switchPermission(it) }
         InputSheet.Plus, InputSheet.Commands, InputSheet.Skills ->
             PlusSheet(
-                at = s ?: InputSheet.Plus,
+                at = sheet,
                 view = state.commands,
-                go = { sheet = it },
-                close = { sheet = null },
-                fill = fill,
+                go = set,
+                close = { set(null) },
+                fill = { text ->
+                    set(null)
+                    fill(text)
+                },
                 say = { text ->
-                    sheet = null
+                    set(null)
                     actions.say(text)
                 },
-                confirmClear = { sheet = InputSheet.Clear(it) },
+                confirmClear = { set(InputSheet.Clear(it)) },
             )
         is InputSheet.Clear ->
             ClearDialog(
-                onCancel = { sheet = null },
+                onCancel = { set(null) },
                 onClear = {
-                    sheet = null
-                    actions.say(s.text)
+                    set(null)
+                    actions.say(sheet.text)
                 },
             )
         null -> Unit
@@ -278,7 +289,7 @@ private fun PlusSheet(
             when {
                 at != InputSheet.Plus && list != null -> CommandList(at, list, back = { go(InputSheet.Plus) }, fill = fill)
                 else -> {
-                    SheetTitle(copyText("mobPlus.title"))
+                    SheetTitle(copyText("mobPlus.sheet.title"))
                     when (view) {
                         CommandsView.Idle, CommandsView.Loading -> SheetLine(copyText("newSession.facts.loading"))
                         is CommandsView.Failed -> SheetLine(view.why)
@@ -297,12 +308,12 @@ private fun PlusRows(
     say: (String) -> Unit,
     confirmClear: (String) -> Unit,
 ) {
-    SheetRow(copyText("mobPlus.commands"), end = "${list.commands.size}  $NEXT_GLYPH", enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
-    SheetRow(copyText("mobPlus.skills"), end = "${list.skills.size}  $NEXT_GLYPH", enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
+    SheetRow(copyText("mobPlus.row.commands"), end = "${list.commands.size}  $NEXT_GLYPH", enabled = list.commands.isNotEmpty(), tag = ChatTestTags.PLUS_COMMANDS) { go(InputSheet.Commands) }
+    SheetRow(copyText("mobPlus.row.skills"), end = "${list.skills.size}  $NEXT_GLYPH", enabled = list.skills.isNotEmpty(), tag = ChatTestTags.PLUS_SKILLS) { go(InputSheet.Skills) }
     val acts = plusActions(list)
     if (acts.isNotEmpty()) HorizontalDivider(Modifier.padding(vertical = LocalAppTokens.current.spacing.xs))
     acts.forEach { a ->
-        val label = if (a.kind == PlusAction.Kind.COMPACT) copyText("mobPlus.compact") else copyText("mobPlus.clear")
+        val label = if (a.kind == PlusAction.Kind.COMPACT) copyText("mobPlus.row.compact") else copyText("mobPlus.row.clear")
         SheetRow(label) { if (a.confirm) confirmClear(a.say) else say(a.say) }
     }
 }
@@ -319,7 +330,7 @@ private fun CommandList(
     Row(verticalAlignment = Alignment.CenterVertically) {
         TextButton(onClick = back) { Text(copyText("mobKit.act.back")) }
         Text(
-            if (skills) copyText("mobPlus.skills") else copyText("mobPlus.commands"),
+            if (skills) copyText("mobPlus.row.skills") else copyText("mobPlus.row.commands"),
             style = MaterialTheme.typography.titleMedium,
         )
         Spacer(Modifier.width(LocalAppTokens.current.spacing.sm))
