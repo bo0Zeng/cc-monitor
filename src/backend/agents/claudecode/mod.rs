@@ -161,6 +161,9 @@ pub(crate) const OLD_HOME_PREF: &str = "claudeDir";
 /// 请求压缩上下文用的那一句（注册表 `Adapter.compact_request` 那一格）：在会话里敲的斜杠命令。
 pub(crate) const COMPACT_REQUEST: &str = "/compact";
 
+/// 清空会话用的那一句（注册表 `Adapter.clear_request` 那一格）：在会话里敲的斜杠命令（同一个进程里另起一份新记录，见 `wire::RemovalCause::Superseded`）。
+pub(crate) const CLEAR_REQUEST: &str = "/clear";
+
 /// 怎么判活（注册表 `Adapter.live` 那一格）：认 pidfile（[`LOCAL`] 的 pidfile 目录），不认谁开着记录。
 pub(crate) const LIVE: crate::agents::LiveBy = crate::agents::LiveBy::Pidfiles;
 
@@ -195,9 +198,12 @@ pub(crate) const LAUNCH: super::LaunchFace = super::LaunchFace {
     needs_bus_id: false,
     has_identity: true,
     models: Some(resume::MODEL_ALIASES),
+    model_default: Some(resume::MODEL_DEFAULT),
+    model_text: Some(resume::model_text),
     model_switch: Some(super::ModelSwitch {
         command: resume::model_command,
         read: resume::model_said,
+        note: Some(resume::model_note),
     }),
 };
 

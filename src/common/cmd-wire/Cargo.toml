@@ -9,7 +9,7 @@ description = "帧命令两端必须对上的那几样：机器名（`Machine`�
 [dependencies]
 copy-core = { path = "../copy-core" }
 serde = { version = "1", features = ["derive"] }
-# 客户端那一侧按类型解回包（`session::decode_reply`：进来的是一份 JSON 值）。
+# 客户端那一侧按类型解回包（`replies::decode_reply`：进来的是一份 JSON 值）。
 serde_json = "1"
 # `Machine` 的 TS 派生：只在测试档（本 crate 自己 · 或别的 crate 的 dev 侧开 `ts`）进来，codegen 工具不进产物。
 ts-rs = { version = "12.0.1", optional = true }

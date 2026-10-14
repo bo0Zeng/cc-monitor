@@ -1,5 +1,5 @@
 //! 会话族那几条帧命令的**回包**线上形（`terminal-input` · `session-new` · `launch-render-cli` · `session-new-facts` · `session-model` ·
-//! `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
+//! `session-permission` · `session-commands` · `session-say` · `terminals-list` · `terminal-preview` · `kill` · `history-tail`）—— 两侧同一份：后端按这里的类型回，
 //! 手机嵌的 Rust 核心按这里的类型解（[`decode_reply`]），界面用从这里导出的类型（`src/frontend/ui/generated/`）。
 //! 入参与码还住后端（`control/terminals_wire.rs` 等）：手机交的入参不经这里。
 
@@ -517,6 +517,11 @@ pub struct AgentFacts {
     pub text: String,
     /// 起会话可选的模型（不选 ＝ 跟着那一家自己的默认）；这一家没声明 ⇒ 空。
     pub models: Vec<Pick>,
+    /// 换模型抽屉的第一项「默认」：会话开着时交 `session-model` 这个值 ⇒ 回到那一家自己的缺省模型（起会话不交它，不选就是默认）；
+    /// 这一家没声明 ⇒ `null`。
+    pub model_default: Option<Pick>,
+    /// 抽屉底那一行：换模型的副作用（那一家自己的行为，例如也改这个号以后新会话的默认）；没有 ⇒ `null`。
+    pub model_note: Option<String>,
     /// 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
     pub permission_modes: Vec<Pick>,
 }
@@ -668,6 +673,130 @@ pub struct ModelSwitched {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(any(test, feature = "ts"), ts(optional))]
     pub said: Option<String>,
+}
+
+/// `session-permission` 的回包。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ModeSwitched {
+    /// 结局。
+    pub result: SwitchResult,
+    /// 最后读到的档（原值）；没读 · 认不出 ⇒ `null`。
+    pub mode: Option<String>,
+    /// 同一档写给人看的字（同会话事实 `permissionModeText` 那一处：`PermissionFace::text_of`）；没读到 · 这一档没有字 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
+    pub mode_text: Option<String>,
+    /// `refused` 的原因（同 `terminal-input`）。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub why: Option<Refused>,
+    /// `unsure` · `refused` 时给人看的那一句。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional))]
+    pub said: Option<String>,
+}
+
+/// `session-commands` 的回包。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct SessionCommands {
+    /// 内置的在前，再本项目、用户级（各按名字排）。
+    pub commands: Vec<SessionCommand>,
+    /// 本项目的在前，再用户级。
+    pub skills: Vec<SessionSkill>,
+    /// 读不出来的那几份（一句一份；不整条失败）。
+    pub problems: Vec<String>,
+    /// ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
+    pub compact: Option<SessionAct>,
+    /// 同上「清空会话」。
+    pub clear: Option<SessionAct>,
+}
+
+/// ［+］面板分隔线下的一个一次性动作。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct SessionAct {
+    /// 经 `session-say` 送进会话的那一句（那一家声明的）。
+    pub say: String,
+    /// 送之前先确认（清空 ⇒ 是；压缩 ⇒ 否）。
+    pub confirm: bool,
+}
+
+/// 一条斜杠命令。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionCommand {
+    /// 命令名（不带 `/`；界面填进输入框的是 `/name `）。
+    pub name: String,
+    /// 简介；文件里没写 ⇒ `null`。
+    pub text: Option<String>,
+    /// 住哪。
+    pub scope: CommandScope,
+    /// 同一格写给人看的字。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub scope_text: String,
+    /// 要跟参数（填进去停住等补）。
+    pub needs_args: bool,
+    /// 发之前先确认。
+    pub confirm: bool,
+    /// `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
+    pub needs_args_text: Option<String>,
+    /// `confirm` 为真时那一格的字（「先确认」）；为假 ⇒ `null`。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string | null"))]
+    pub confirm_text: Option<String>,
+}
+
+/// 命令住哪。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+#[serde(rename_all = "snake_case")]
+pub enum CommandScope {
+    /// 那一家内置。
+    Builtin,
+    /// 本项目（`<项目>/.claude/commands`）。
+    Project,
+    /// 这条会话用的号的配置目录里。
+    User,
+}
+
+/// 一个 Skill。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/"))
+)]
+pub struct SessionSkill {
+    /// 名字。
+    pub name: String,
+    /// 简介；没写 ⇒ `null`。
+    pub text: Option<String>,
+    /// 点它时发进会话的那一句（后端写好，经 `session-say` 发）。
+    #[cfg_attr(any(test, feature = "ts"), ts(type = "string"))]
+    pub say: String,
 }
 
 /// `kill` 的回包：杀成了才有（没杀成走失败信封）。

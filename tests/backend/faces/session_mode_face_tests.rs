@@ -72,7 +72,7 @@ fn it_presses_until_the_mode_reads_back() {
     let mut f = Fake::new(&["default", "acceptEdits", "plan"], 0);
     let got = run("plan", false, &mut f);
     assert_eq!(got.result, SwitchResult::Done);
-    assert_eq!(got.mode, Some("plan"));
+    assert_eq!(got.mode.as_deref(), Some("plan"));
     assert_eq!(f.presses, 2);
     // 已经是那一档 ⇒ 一下都不按。
     let mut f = Fake::new(&["default", "acceptEdits", "plan"], 2);
@@ -96,7 +96,7 @@ fn a_mode_outside_the_cycle_stops_after_one_round() {
     let mut f = Fake::new(&["default", "acceptEdits"], 0);
     let got = run("plan", false, &mut f);
     assert_eq!(got.result, SwitchResult::Unsure);
-    assert_eq!(got.mode, Some("default"));
+    assert_eq!(got.mode.as_deref(), Some("default"));
     assert_eq!(f.presses, 2);
     assert_eq!(
         got.said.as_deref(),
@@ -141,4 +141,40 @@ fn a_press_that_did_not_land_ends_the_walk() {
     f.sent = SentResult::Unsure;
     assert_eq!(run("plan", false, &mut f).result, SwitchResult::Unsure);
     assert_eq!(f.presses, 1);
+}
+
+/// ★ 回包逐字节（线上形挪进 `cmd-wire` 前后同一份字节）：键序 · `null` 的格照出 · `why` · `said` 缺席不出；
+/// 手机按 `cmd_wire::replies::decode_reply` 解得开、按类型重写出来是同一份。
+#[test]
+fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
+    let mut f = Fake::new(&["default", "acceptEdits", "plan"], 0);
+    let done = run("plan", false, &mut f);
+    let mut f = Fake::new(&["default", "acceptEdits"], 0);
+    let refused = run("acceptEdits", true, &mut f);
+    let said = crate::control::terminals::no_said(crate::control::terminals::Refused::Waiting);
+    for (got, want) in [
+        (
+            done,
+            r#"{"result":"done","mode":"plan","modeText":null}"#.to_string(),
+        ),
+        (
+            refused,
+            format!(
+                r#"{{"result":"refused","mode":null,"modeText":null,"why":"waiting","said":"{said}"}}"#
+            ),
+        ),
+    ] {
+        let bytes = serde_json::to_string(&got).unwrap();
+        assert_eq!(bytes, want);
+        let back = cmd_wire::replies::decode_reply(
+            "session-permission",
+            serde_json::from_str(&bytes).unwrap(),
+        )
+        .expect("表里有 session-permission")
+        .expect("解得开");
+        assert_eq!(
+            back,
+            serde_json::from_str::<serde_json::Value>(&want).unwrap()
+        );
+    }
 }

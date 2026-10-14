@@ -135,6 +135,8 @@ pub(crate) const LAUNCH: crate::agents::LaunchFace = crate::agents::LaunchFace {
     needs_bus_id: true,
     has_identity: true,
     models: None,
+    model_default: None,
+    model_text: None,
     model_switch: None,
 };
 
@@ -320,6 +322,7 @@ pub(crate) fn bare_row(home: fn() -> Option<PathBuf>) -> crate::agents::Adapter 
         processes: None,
         launch: None,
         compact_request: None,
+        clear_request: None,
         local: None,
         live: crate::agents::LiveBy::Unknown,
         asks: None,

@@ -50,7 +50,7 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
     std::fs::write(&path, b"{\"n\":0}\n{\"n\":1}").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     assert_eq!(lines(&mut rx), vec![(0, 8)], "活着时残行不许发");
-    retire_sid_if_unreferenced(SID, RemovalCause::Gone, &mut state, &mut sink);
+    retire_sid_if_unreferenced(SID, RemovalCause::Gone, None, &mut state, &mut sink);
     assert_eq!(lines(&mut rx), vec![(1, 15)]);
     std::fs::remove_dir_all(&dir).ok();
 
@@ -59,7 +59,7 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
     std::fs::write(&path, b"{\"n\":0}\n{\"n\":1,\"tor").unwrap();
     process_jsonl(&path, &mut state, &mut sink);
     let _ = lines(&mut rx);
-    retire_sid_if_unreferenced(SID, RemovalCause::Gone, &mut state, &mut sink);
+    retire_sid_if_unreferenced(SID, RemovalCause::Gone, None, &mut state, &mut sink);
     assert_eq!(lines(&mut rx), Vec::<(u64, u64)>::new(), "半行永不误发");
     std::fs::remove_dir_all(&dir).ok();
 
@@ -69,7 +69,7 @@ fn a_complete_final_line_without_newline_is_handed_out_once_the_writer_is_dead()
     process_jsonl(&path, &mut state, &mut sink);
     let _ = lines(&mut rx);
     std::fs::write(&path, b"{\"n\":0}\n{\"n\":1}\n").unwrap();
-    retire_sid_if_unreferenced(SID, RemovalCause::Gone, &mut state, &mut sink);
+    retire_sid_if_unreferenced(SID, RemovalCause::Gone, None, &mut state, &mut sink);
     assert_eq!(lines(&mut rx), vec![(1, 16)]);
     std::fs::remove_dir_all(&dir).ok();
 }

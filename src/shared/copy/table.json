@@ -1701,6 +1701,12 @@
       "zh": "Sonnet · 1M 上下文",
       "args": []
     },
+    "beSessionNew.model.default": {
+      "kind": "action",
+      "role": "菜单项",
+      "zh": "默认",
+      "args": []
+    },
     "beSessionNew.model.opusPlan": {
       "kind": "action",
       "role": "菜单项",
@@ -1767,6 +1773,36 @@
       "zh": "换模型结果未知\n未读到新的模型",
       "args": []
     },
+    "beSessionSwitch.why.running": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "本轮结束后可换模型",
+      "args": []
+    },
+    "beSessionSwitch.why.waiting": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "先答完需手动",
+      "args": []
+    },
+    "beSessionSwitch.why.ended": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "会话已退出",
+      "args": []
+    },
+    "beSessionModel.name.versioned": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "{family} {version}",
+      "args": ["family", "version"]
+    },
+    "beSessionModel.note.savesDefault": {
+      "kind": "body",
+      "role": "说明",
+      "zh": "换模型也改此号以后新会话的默认",
+      "args": []
+    },
     "beSessionModel.switch.unsupported": {
       "kind": "error",
       "role": "报错",
@@ -1795,6 +1831,18 @@
       "kind": "body",
       "role": "片段",
       "zh": "换模型",
+      "args": []
+    },
+    "beSessionCommands.mark.needsArgs": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "带参数",
+      "args": []
+    },
+    "beSessionCommands.mark.confirm": {
+      "kind": "body",
+      "role": "片段",
+      "zh": "先确认",
       "args": []
     },
     "beSessionCommands.scope.builtin": {

@@ -157,6 +157,8 @@ pub(crate) struct Adapter {
     pub(crate) launch: Option<LaunchFace>,
     /// 请求压缩上下文用的那一句（送进会话所在的终端，换号重启「先压缩」那一步）；`None` ＝ 这一家不支持。
     pub(crate) compact_request: Option<&'static str>,
+    /// 清空会话用的那一句（［+］面板「清空会话」经 `session-say` 送）；`None` ＝ 这一家不支持。
+    pub(crate) clear_request: Option<&'static str>,
     /// 这一家在本机的布局（家目录解析 · pidfile · 进程认法）；`None` ＝ 这一家今天不由后端盯着判活。
     pub(crate) local: Option<LocalFace>,
     /// 这一家的会话**怎么判活**（全仓只此一处声明）：流式 watcher 挑哪一路跟、冷读问「此刻谁持着它」、resume 前问「是不是已在别处跑着」都读它。
@@ -335,6 +337,10 @@ pub(crate) struct LaunchFace {
     pub(crate) has_identity: bool,
     /// 这一家认得的模型名与写给人看的字（起会话框 · 账号页「默认模型」的选项；不选 ＝ 跟着这一家自己的默认）。没考据过 ⇒ `None`。
     pub(crate) models: Option<&'static [Choice]>,
+    /// 回到这一家缺省模型的那一项（原值 ＋ 字）：会话开着时换模型交它；起会话不交（不选就是默认）。没有 ⇒ `None`。
+    pub(crate) model_default: Option<Choice>,
+    /// 记录里写的模型原值 ⇒ 写给人看的名字（会话事实 `modelText`）；认不出 ⇒ `None`。这一家没考据过 ⇒ `None`。
+    pub(crate) model_text: Option<fn(&str) -> Option<String>>,
     /// 会话开着时怎么换模型；这一家换不了 ⇒ `None`。
     pub(crate) model_switch: Option<ModelSwitch>,
 }
@@ -346,6 +352,8 @@ pub(crate) struct ModelSwitch {
     pub(crate) command: fn(&str) -> String,
     /// 从记录里的一条认出读回的那一句；不是 ⇒ `None`。
     pub(crate) read: fn(&serde_json::Value) -> Option<ModelSaid>,
+    /// 换模型顺带改了什么（换模型抽屉底那一行）；没有 ⇒ `None`。
+    pub(crate) note: Option<fn() -> String>,
 }
 
 /// 换模型读回的那一句（[`ModelSwitch::read`]）。
@@ -406,6 +414,11 @@ impl PermissionFace {
 /// `kind` 那一家的 `mode` 这一档写给人看的那一句（[`PermissionFace::text_of`]）。认不出这一家 · 这一家没有权限档 · 认不出这一档 ⇒ `None`。
 pub(crate) fn permission_mode_text(kind: &str, mode: &str) -> Option<String> {
     launch_face_among(REGISTRY, kind)?.permission?.text_of(mode)
+}
+
+/// `kind` 那一家记录里的模型原值 `raw` 写给人看的名字（[`LaunchFace::model_text`]）。认不出这一家 · 这一家没有这一格 · 认不出这个值 ⇒ `None`。
+pub(crate) fn model_text(kind: &str, raw: &str) -> Option<String> {
+    launch_face_among(REGISTRY, kind)?.model_text?(raw)
 }
 
 /// 某一家（wire 上的 kind）在给定注册表里的起会话事实。认不出 ⇒ `None`。
@@ -953,17 +966,8 @@ pub enum StreamEv {
     Stop { ok: bool },
 }
 
-/// 归一流里一块是什么。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "lowercase")]
-pub enum BlockKind {
-    Text,
-    Thinking,
-    Tool,
-    Other,
-}
+/// 归一流里一块是什么：线上形住 `cmd-wire::live`（活卡每一块的种类）。
+pub use cmd_wire::live::BlockKind;
 
 /// 通用层要的那一组面（记录 ＋ 子运行住址）：流式 watcher 跟的那一家给；判据喂别的一组（假适配层）。
 #[derive(Clone, Copy)]
@@ -2472,9 +2476,9 @@ pub(crate) fn user_mcp_file(kind: &str) -> Option<PathBuf> {
 /// ⚠ **一家一行**（不是每字段一行）：判据⑦把本文件直呼适配层的**行数**钉成 `REGISTRY.len()`。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), old_home_pref: Some(claudecode::OLD_HOME_PREF), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV), old_home_pref: Some(claudecode::OLD_HOME_PREF), assets: Some(claudecode::ASSETS), history: None, upstream: Some(claudecode::UPSTREAM), mcp: Some(claudecode::MCP), footprint: Some(claudecode::footprint::FACE), accounts: Some(claudecode::accounts::FACE), records: Some(claudecode::RECORDS), processes: Some(claudecode::cards::PROCESS_NAMES), launch: Some(claudecode::LAUNCH), compact_request: Some(claudecode::COMPACT_REQUEST), clear_request: Some(claudecode::CLEAR_REQUEST), local: Some(claudecode::LOCAL), live: claudecode::LIVE, asks: Some(claudecode::asks::FACE) },
     // codex 今天没有账号维度（`account_env: None`）：选号对它说不出，起法与 `ccm` 都明说不行。
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, local: None, live: codex::LIVE, asks: None },
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: None, old_home_pref: None, assets: None, history: Some(codex::HISTORY), upstream: Some(codex::relay::UPSTREAM), mcp: None, footprint: None, accounts: None, records: Some(codex::RECORDS), processes: None, launch: Some(codex::LAUNCH), compact_request: None, clear_request: None, local: None, live: codex::LIVE, asks: None },
 ];
 
 /// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
@@ -2509,6 +2513,14 @@ pub(crate) fn base_url_env_of(kind: &str) -> Option<&'static str> {
         Some(Inject::Env(v)) => Some(v),
         _ => None,
     }
+}
+
+/// 某一家清空会话用的那一句（[`Adapter::clear_request`]）。认不出这家 / 这一家不支持 ⇒ `None`。
+pub(crate) fn clear_request_of(kind: &str) -> Option<&'static str> {
+    REGISTRY
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.clear_request)
 }
 
 /// 某一家请求压缩上下文用的那一句（[`Adapter::compact_request`]）。认不出这家 / 这一家不支持 ⇒ `None`。

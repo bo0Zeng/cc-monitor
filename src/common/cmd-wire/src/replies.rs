@@ -6,7 +6,8 @@ use crate::listing::HistoryListReply;
 use crate::needs::NeedsList;
 use crate::record::{HistoryLines, HistoryRead, OrUnread};
 use crate::session::{
-    Killed, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionNew, TailPlan, TerminalsList,
+    Killed, ModeSwitched, ModelSwitched, NewFacts, Preview, Rendered, Sent, SessionCommands, SessionNew,
+    TailPlan, TerminalsList,
 };
 use serde::Serialize;
 
@@ -51,9 +52,12 @@ replies! {
     "history-tail" => TailPlan,
     "kill" => Killed,
     "launch-render-cli" => Rendered,
+    "session-commands" => SessionCommands,
     "session-model" => ModelSwitched,
     "session-new" => SessionNew,
     "session-new-facts" => NewFacts,
+    "session-permission" => ModeSwitched,
+    "session-say" => Sent,
     "sessions-needs" => NeedsList,
     "terminal-input" => Sent,
     "terminal-preview" => Preview,

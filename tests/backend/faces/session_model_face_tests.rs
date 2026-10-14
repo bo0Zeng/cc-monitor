@@ -86,3 +86,14 @@ fn the_reply_wire_names_its_cells() {
     assert_eq!(keys, vec!["model", "result", "said"]);
     assert_eq!(v["result"], "unsure");
 }
+
+/// ★ 会话开着时换模型收的值：那一家可选的模型 ＋ 「默认」那一项的值（回到它自己的缺省模型）；别的不收。
+#[test]
+fn the_default_item_is_a_model_the_session_takes() {
+    let (_, claude) = crate::agents::pick_kind(Some("claude")).unwrap();
+    assert!(offered(&claude, "default"));
+    assert!(offered(&claude, "opus"));
+    assert!(!offered(&claude, "nope"));
+    let (_, codex) = crate::agents::pick_kind(Some("codex")).unwrap();
+    assert!(!offered(&codex, "default"));
+}

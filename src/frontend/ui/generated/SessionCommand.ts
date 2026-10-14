@@ -28,4 +28,12 @@ needsArgs: boolean,
 /**
  * 发之前先确认。
  */
-confirm: boolean, };
+confirm: boolean, 
+/**
+ * `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+ */
+needsArgsText: string | null, 
+/**
+ * `confirm` 为真时那一格的字（「先确认」）；为假 ⇒ `null`。
+ */
+confirmText: string | null, };

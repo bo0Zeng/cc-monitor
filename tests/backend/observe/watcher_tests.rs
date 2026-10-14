@@ -1291,9 +1291,10 @@ fn sid_change_in_place_retires_old_sid() {
     assert!(
         // ★ S0：原地换 sid 的 removed 必须带 `Superseded`——monitor 靠它区分
         // 「死了（tmux 还在 ⇒ 灰点）」和「被顶替了（⇒ 直接归档）」。
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause })
-            if sid == "sid-1" && cause == RemovalCause::Superseded),
-        "old sid must be retired BEFORE the new announcement"
+        // 顶替它的是谁也说（`by`）：同一个进程、同一个终端里新起的那份记录，客户端照它跟过去，不自己拿 pid 对。
+        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause, by })
+            if sid == "sid-1" && cause == RemovalCause::Superseded && by.as_deref() == Some("sid-2")),
+        "old sid must be retired BEFORE the new announcement, naming the one that replaced it"
     );
     assert!(matches!(rx.try_recv(), Ok(Frame::SessionAdded { sid, .. }) if sid == "sid-2"));
     assert!(!state.active_sids.contains("sid-1"));
@@ -1510,8 +1511,8 @@ fn same_sid_two_pidfiles_refcount() {
     // 删第二个 → 归零 → Removed 恰一次
     process_session_removed(&p2, &mut state, &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause })
-        if sid == "shared-sid" && cause == RemovalCause::Gone)
+        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause, by })
+        if sid == "shared-sid" && cause == RemovalCause::Gone && by.is_none())
     );
     assert!(!state.active_sids.contains("shared-sid"));
     assert!(rx.try_recv().is_err());
@@ -1545,8 +1546,8 @@ fn plain_lifecycle_regression() {
     );
     process_session_removed(&path, &mut state, &mut sink);
     assert!(
-        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause })
-        if sid == "solo" && cause == RemovalCause::Gone)
+        matches!(rx.try_recv(), Ok(Frame::SessionRemoved { sid, cause, by })
+        if sid == "solo" && cause == RemovalCause::Gone && by.is_none())
     );
     assert!(state.sessions.is_empty() && state.active_sids.is_empty());
     std::fs::remove_dir_all(&dir).ok();
@@ -2286,6 +2287,7 @@ fn frame_sink_counts_drops_then_signals_overflow_on_recovery() {
     sink.send(Frame::SessionRemoved {
         sid: "f".into(),
         cause: RemovalCause::Gone,
+        by: None,
     });
     assert_eq!(
         sink.subs[0].dropped, 0,
@@ -2599,6 +2601,7 @@ fn dropping_an_unrecoverable_frame_puts_its_identity_in_the_overflow() {
     sink.send(Frame::SessionRemoved {
         sid: "sid-gone".into(),
         cause: RemovalCause::Gone,
+        by: None,
     });
     assert_eq!(sink.subs[0].dropped, 2, "两条都该计入 dropped");
 
@@ -2651,6 +2654,7 @@ fn the_identity_list_is_bounded_and_says_so_when_it_truncates() {
         sink.send(Frame::SessionRemoved {
             sid: format!("sid-{i}"),
             cause: RemovalCause::Gone,
+            by: None,
         });
     }
     assert_eq!(

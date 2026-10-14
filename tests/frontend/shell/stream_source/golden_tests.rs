@@ -75,8 +75,13 @@ fn without(o: &Map<String, Value>, key: &str) -> String {
     Value::Object(o).to_string()
 }
 
-/// 后端恒写、出口在流的声明里能去掉的格（`kind`, 格）。
-const OMITTABLE: &[(&str, &str)] = &[("session_added", "pid")];
+/// 后端恒写、出口在流的声明里能去掉的格（`kind`, 格）。`switch`（此刻能不能换模型 · 权限档）是手机聊天输入框读的，桌面不读、不要求。
+const OMITTABLE: &[(&str, &str)] = &[
+    ("session_added", "pid"),
+    ("session_added", "switch"),
+    ("session_status", "switch"),
+    ("session_state", "switch"),
+];
 
 /// ② 每一行解得出、解成那一种；必填 == 最少格里的格（删哪一格都判形状不对），全格多出来的格删了照样解得出。
 #[test]

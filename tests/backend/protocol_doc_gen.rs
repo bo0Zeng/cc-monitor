@@ -542,47 +542,41 @@ fn read(rel: &str) -> String {
         .unwrap_or_else(|e| panic!("读不到 {rel}：{e}"))
 }
 
-/// 帧定义里 `pub use crate::<模块>::<类型>;` 引进来的线上类型（类型住在别处、帧面只引用它）：
+/// 帧定义里 `pub use crate::<模块>::<类型>;` · `pub use cmd_wire::<模块>::{<类型>, …};` 引进来的线上类型（类型住在别处、帧面只引用它）：
 /// 就地换成那份类型定义的原文（连着它的文档与属性），于是它在参考里的位置与写在帧定义里时一样。
+/// 住 `cmd-wire` 的那几样：TS 派生的条件写成多行的 `cfg_attr(any(test, feature = "ts"), …)`，先收成一行的 `cfg_attr(test, …)`（同后端里的写法）再取。
 fn inline_reexports(src: &str) -> String {
     let mut out = String::new();
     for line in src.lines() {
-        let reexport = line
-            .trim()
-            .strip_prefix("pub use crate::")
-            .and_then(|r| r.strip_suffix(';'))
-            .and_then(|r| r.rsplit_once("::"));
-        let Some((module, name)) = reexport else {
+        let home_of: fn(&str) -> std::path::PathBuf;
+        let rest = if let Some(r) = line.trim().strip_prefix("pub use crate::") {
+            home_of = crate_file;
+            r
+        } else if let Some(r) = line.trim().strip_prefix("pub use cmd_wire::") {
+            home_of = cmd_wire_file;
+            r
+        } else {
             out.push_str(line);
             out.push('\n');
             continue;
         };
-        let file = module.replace("::", "/");
-        let home = std::fs::read_to_string(
-            crate::guard_support::src_root().join(format!("{file}/mod.rs")),
-        )
-        .or_else(|_| {
-            std::fs::read_to_string(crate::guard_support::src_root().join(format!("{file}.rs")))
-        })
-        .unwrap_or_else(|e| panic!("读不到 `{module}` 的源码：{e}"));
+        let Some((module, names)) = rest.strip_suffix(';').and_then(|r| r.rsplit_once("::")) else {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        };
+        let names: Vec<&str> = names
+            .trim_matches(|c| c == '{' || c == '}')
+            .split(',')
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .collect();
+        let path = home_of(module);
+        let home = one_line_attrs(
+            &std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("读不到 `{module}` 的源码（{}）：{e}", path.display())),
+        );
         let lines: Vec<&str> = home.lines().collect();
-        let head = lines
-            .iter()
-            .position(|l| {
-                l.starts_with(&format!("pub struct {name} "))
-                    || l.starts_with(&format!("pub enum {name} "))
-            })
-            .unwrap_or_else(|| panic!("`{module}` 里没有 `{name}` 的定义"));
-        let mut from = head;
-        while from > 0 && (lines[from - 1].starts_with("///") || lines[from - 1].starts_with("#["))
-        {
-            from -= 1;
-        }
-        let to = head
-            + lines[head..]
-                .iter()
-                .position(|l| *l == "}")
-                .expect("定义没收尾");
         // 引用那一行自己的文档（就在它上面）不进参考：换成定义原文里的那一段。
         while out.ends_with("\n")
             && out
@@ -594,10 +588,82 @@ fn inline_reexports(src: &str) -> String {
             let keep = out.trim_end_matches('\n').rfind('\n').map_or(0, |i| i + 1);
             out.truncate(keep);
         }
-        for l in &lines[from..=to] {
-            out.push_str(l);
-            out.push('\n');
+        for (k, name) in names.iter().enumerate() {
+            if k > 0 {
+                out.push('\n');
+            }
+            let head = lines
+                .iter()
+                .position(|l| {
+                    l.starts_with(&format!("pub struct {name} "))
+                        || l.starts_with(&format!("pub enum {name} "))
+                })
+                .unwrap_or_else(|| panic!("`{module}` 里没有 `{name}` 的定义"));
+            let mut from = head;
+            while from > 0
+                && (lines[from - 1].starts_with("///") || lines[from - 1].starts_with("#["))
+            {
+                from -= 1;
+            }
+            let to = head
+                + lines[head..]
+                    .iter()
+                    .position(|l| *l == "}")
+                    .expect("定义没收尾");
+            for l in &lines[from..=to] {
+                out.push_str(l);
+                out.push('\n');
+            }
         }
+    }
+    out
+}
+
+/// `crate::<模块>` 的源码文件（`<模块>/mod.rs` 或 `<模块>.rs`）。
+fn crate_file(module: &str) -> std::path::PathBuf {
+    let file = module.replace("::", "/");
+    let dir = crate::guard_support::src_root().join(format!("{file}/mod.rs"));
+    if dir.is_file() {
+        dir
+    } else {
+        crate::guard_support::src_root().join(format!("{file}.rs"))
+    }
+}
+
+/// `cmd_wire::<模块>` 的源码文件。
+fn cmd_wire_file(module: &str) -> std::path::PathBuf {
+    crate::guard_support::src_root().join(format!(
+        "../common/cmd-wire/src/{}.rs",
+        module.replace("::", "/")
+    ))
+}
+
+/// `#[cfg_attr(\n    any(test, feature = "ts"),\n    ts(…)\n)]` ⇒ `#[cfg_attr(test, ts(…))]`；单行的 `any(test, feature = "ts")` 同样换成 `test`。
+fn one_line_attrs(src: &str) -> String {
+    let mut out = String::new();
+    let mut open: Option<String> = None;
+    for line in src.lines() {
+        if let Some(acc) = open.as_mut() {
+            let part = line.trim();
+            if part == ")]" {
+                let joined = acc.replace("any(test, feature = \"ts\"),", "test,");
+                out.push_str(&format!(
+                    "#[cfg_attr({})]\n",
+                    joined.trim_end_matches(',').trim()
+                ));
+                open = None;
+            } else {
+                acc.push_str(part);
+                acc.push(' ');
+            }
+            continue;
+        }
+        if line == "#[cfg_attr(" {
+            open = Some(String::new());
+            continue;
+        }
+        out.push_str(&line.replace("any(test, feature = \"ts\")", "test"));
+        out.push('\n');
     }
     out
 }

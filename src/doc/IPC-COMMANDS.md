@@ -93,6 +93,7 @@ A new session file appeared。
 | `state_text` | Words | 那一种写好的短名（`SessionFate::cells`） |
 | `state_hint` | Words | 悬停那一句 |
 | `state_tone` | Tone | 语气 |
+| `switch` | Switch | 此刻能不能换模型 · 权限档（离开「活」那一形，`Switch::gone`） |
 
 ### `session_removed`
 
@@ -102,6 +103,7 @@ A session file went away。
 |---|---|---|
 | `sid` | string | 会话 id |
 | `cause` | RemovalCause? | 这个 sid 是「死了」还是「被顶替了」 |
+| `by` | string? | 被顶替时（`cause: superseded`），顶替它的那条会话的 sid：同一个进程、同一个终端里另起的那份记录（`/clear` · `/branch`），随后是它的 `session_added` |
 
 ### `turn_end`
 
@@ -297,10 +299,27 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `activity_text` | Words |  |
 | `activity_tone` | Tone |  |
 | `activity_order` | number |  |
+| `switch` | Switch | 此刻能不能换模型 · 权限档（随那一态判，`Switch::live`） |
+
+#### `Switch`
+
+**此刻能不能换模型 · 权限档的唯一判定处**（会话帧上的 `switch`：`session_added` · `session_status` 随那一态带（`ActivityFace`）， `session_state` 带离开「活」那一形）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `model` | CanSwitch | 换模型（`session-model`） |
+| `permission` | CanSwitch | 切权限档（`session-permission`） |
+
+#### `CanSwitch`
+
+一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
+
+- `can: "yes"` —— 能换
+- `can: "no"`，带 `why` Words —— 此刻不能（chip 灰着，上方写这一句）
 
 #### `NameFace`
 
-**这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：从会话的那几样事实造它只有一处 —— `crate::history::search_rules::name_face`（`label` ＝ 同一个 `session_label`，与历史清单 · 全文搜索同一个函数； `label_project` ＝ 项目目录最后一截，界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
+**这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）： `label` ＝ `crate::history::search_rules::session_label`（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截（界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
@@ -377,6 +396,16 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `tool` | string |  |
 | `state` | RunState |  |
 
+#### `LiveBlock`
+
+活卡里的一块。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `kind` | BlockKind |  |
+| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
+| `tool` | string? | 工具块的工具名 |
+
 #### `LiveCard`
 
 `Frame::Live` 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
@@ -405,16 +434,6 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 - `streaming` —— 上游还在说
 - `awaiting` —— 上游说完了，那一轮的记录还没到
-
-#### `LiveBlock`
-
-活卡里的一块。
-
-| 字段 | 类型 | 说明 |
-|---|---|---|
-| `kind` | BlockKind |  |
-| `text` | string? | 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示） |
-| `tool` | string? | 工具块的工具名 |
 
 #### `LiveWhy`
 
@@ -5308,6 +5327,11 @@ touchedFiles: Array<string>,
  */
 usage: UsageFact | null, 
 /**
+ * `usage.model` 写给人看的名字（那一家的模型那一处给：`agents::model_text`）；没有 usage · 认不出是哪一家 · 这一家认不出这个值 ⇒ `null`
+ * （界面照抄，不自己拼）。每次现给，不进续算表。
+ */
+modelText: Words | null, 
+/**
  * 会话的项目目录（会话起在哪个目录）：适配层读记录开头给（`agents::project_dir_of`），读到即锁定；
  * 开头里还没有 ⇒ `null`，下一次再读。与会话宣告那一帧的 `project_dir` 同一个函数。
  */
@@ -8462,6 +8486,15 @@ client?: string, };
 
 ```ts
 type CommandScope = "builtin" | "project" | "user";
+type SessionAct = { 
+/**
+ * 经 `session-say` 送进会话的那一句（那一家声明的）。
+ */
+say: string, 
+/**
+ * 送之前先确认（清空 ⇒ 是；压缩 ⇒ 否）。
+ */
+confirm: boolean, };
 type SessionCommand = { 
 /**
  * 命令名（不带 `/`；界面填进输入框的是 `/name `）。
@@ -8486,7 +8519,15 @@ needsArgs: boolean,
 /**
  * 发之前先确认。
  */
-confirm: boolean, };
+confirm: boolean, 
+/**
+ * `needsArgs` 为真时那一格的字（「带参数」）；为假 ⇒ `null`。
+ */
+needsArgsText: string | null, 
+/**
+ * `confirm` 为真时那一格的字（「先确认」）；为假 ⇒ `null`。
+ */
+confirmText: string | null, };
 type SessionCommands = { 
 /**
  * 内置的在前，再本项目、用户级（各按名字排）。
@@ -8499,7 +8540,15 @@ skills: Array<SessionSkill>,
 /**
  * 读不出来的那几份（一句一份；不整条失败）。
  */
-problems: Array<string>, };
+problems: Array<string>, 
+/**
+ * ［+］面板分隔线下「压缩上下文」：送进会话的那一句（经 `session-say` 送）；这一家没有 ⇒ `null`（那一行不画）。
+ */
+compact: SessionAct | null, 
+/**
+ * 同上「清空会话」。
+ */
+clear: SessionAct | null, };
 type SessionCommandsReq = { 
 /**
  * 会话 id。
@@ -9282,6 +9331,15 @@ text: string,
  * 起会话可选的模型（不选 ＝ 跟着那一家自己的默认）；这一家没声明 ⇒ 空。
  */
 models: Array<NewSessionPick>, 
+/**
+ * 换模型抽屉的第一项「默认」：会话开着时交 `session-model` 这个值 ⇒ 回到那一家自己的缺省模型（起会话不交它，不选就是默认）；
+ * 这一家没声明 ⇒ `null`。
+ */
+modelDefault: NewSessionPick | null, 
+/**
+ * 抽屉底那一行：换模型的副作用（那一家自己的行为，例如也改这个号以后新会话的默认）；没有 ⇒ `null`。
+ */
+modelNote: string | null, 
 /**
  * 起会话可选的权限档（不给越过批准那一档）；这一家没有 ⇒ 空。
  */

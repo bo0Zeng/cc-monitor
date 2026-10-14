@@ -143,6 +143,8 @@ pub(crate) struct ActivityFace {
     activity_text: Words,
     activity_tone: Tone,
     activity_order: u8,
+    /// 此刻能不能换模型 · 权限档（随那一态判，[`Switch::live`]）。
+    switch: Switch,
 }
 
 impl ActivityFace {
@@ -181,6 +183,7 @@ impl ActivityFace {
             activity_text: Words(text),
             activity_tone: tone,
             activity_order: order,
+            switch: Switch::live(a),
         }
     }
 
@@ -194,9 +197,70 @@ impl ActivityFace {
     }
 }
 
-/// **这条会话叫什么那两格**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
-/// 从会话的那几样事实造它只有一处 —— [`crate::history::search_rules::name_face`]（`label` ＝ 同一个 `session_label`，与历史清单 · 全文搜索同一个函数；
-/// `label_project` ＝ 项目目录最后一截，界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。这里只是线上那两格的形状。
+/// **此刻能不能换模型 · 权限档的唯一判定处**（会话帧上的 `switch`：`session_added` · `session_status` 随那一态带（[`ActivityFace`]），
+/// `session_state` 带离开「活」那一形）。界面只照 `can` 灰不灰、照 `why` 写 chip 上方那一行，不自己判。
+/// 正在换（转圈）是发起的那一端自己知道的，不在这里。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct Switch {
+    /// 换模型（`session-model`）。
+    model: CanSwitch,
+    /// 切权限档（`session-permission`）。
+    permission: CanSwitch,
+}
+
+/// 一样此刻能不能换：`{can: "yes"}` · `{can: "no", why: 写好的那一句}`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(tag = "can", rename_all = "snake_case")]
+pub(crate) enum CanSwitch {
+    /// 能换。
+    Yes,
+    /// 此刻不能（chip 灰着，上方写这一句）。
+    No { why: Words },
+}
+
+impl Switch {
+    /// 活会话此刻那一态 ⇒ 能不能换：
+    /// 在等人 ⇒ 都不能（按键 · 送的那一行会落进那个框里）；一轮在跑 ⇒ 模型不能（送的那一行排成下一条消息、不立刻生效）、权限档能（跑着也收切档键）；
+    /// 闲着 · 后台命令在跑 · 说不清 ⇒ 都能（说不清时由那两条命令自己判、照实回）。
+    pub(crate) fn live(a: Option<SessionActivity>) -> Self {
+        match a {
+            Some(SessionActivity::NeedsYou) => {
+                let waiting = || CanSwitch::No {
+                    why: Words(copy_core::copy_text("beSessionSwitch.why.waiting", &[])),
+                };
+                Switch {
+                    model: waiting(),
+                    permission: waiting(),
+                }
+            }
+            Some(SessionActivity::Working) => Switch {
+                model: CanSwitch::No {
+                    why: Words(copy_core::copy_text("beSessionSwitch.why.running", &[])),
+                },
+                permission: CanSwitch::Yes,
+            },
+            Some(SessionActivity::Idle | SessionActivity::BackgroundWork) | None => Switch {
+                model: CanSwitch::Yes,
+                permission: CanSwitch::Yes,
+            },
+        }
+    }
+
+    /// 离开「活」（进程退了：可重连 · 已结束）⇒ 都不能：两条命令都要往那一家的进程里送。
+    pub(crate) fn gone() -> Self {
+        let ended = || CanSwitch::No {
+            why: Words(copy_core::copy_text("beSessionSwitch.why.ended", &[])),
+        };
+        Switch {
+            model: ended(),
+            permission: ended(),
+        }
+    }
+}
+
+/// **这条会话叫什么那两格的唯一构造口**（`session_added` · `session_status` 都带它，平铺在帧上；一轮结束的通知标题也读它）：
+/// `label` ＝ [`crate::history::search_rules::session_label`]（与历史清单 · 全文搜索同一个函数）；`label_project` ＝ 项目目录最后一截
+/// （界面拼「[项目] 名字」；不知道项目目录 ⇒ 不带）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct NameFace {
     label: Words,
@@ -574,6 +638,8 @@ pub enum Frame {
         state_hint: Words,
         /// 语气。
         state_tone: Tone,
+        /// 此刻能不能换模型 · 权限档（离开「活」那一形，[`Switch::gone`]）。
+        switch: Switch,
     },
     /// A session file went away.
     SessionRemoved {
@@ -597,6 +663,10 @@ pub enum Frame {
         /// 只有 `Superseded` 才出现 `"cause":"superseded"`。
         #[serde(default, skip_serializing_if = "RemovalCause::is_gone")]
         cause: RemovalCause,
+        /// 被顶替时（`cause: superseded`），顶替它的那条会话的 sid：同一个进程、同一个终端里另起的那份记录（`/clear` · `/branch`），
+        /// 随后是它的 `session_added`。客户端照它跟到新会话，不自己拿 `pid` 对。不是顶替 ⇒ 不上线。
+        #[serde(skip_serializing_if = "Option::is_none")]
+        by: Option<String>,
     },
     /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
     /// 不 dedup**——每见一条 turn-end 记录（判词住适配层，见 `agents/claudecode/turn.rs`）
@@ -874,112 +944,8 @@ pub struct RunEnded {
     pub state: RunState,
 }
 
-/// [`Frame::Live`] 的体：哪个会话哪个运行的哪张卡、这条连接上它的第几帧、这一帧做什么。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct LiveCard {
-    /// 会话 id。
-    pub sid: String,
-    /// 归哪个子运行；缺 ＝ 主运行（主 tab 只画主运行的）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub run: Option<String>,
-    /// 卡号（本进程的段号，整台唯一）。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub card: u64,
-    /// 这条连接上这张卡的第几帧：`open` 从 0 起，之后连续。不接上一帧 ⇒ 这张卡先不画，等下一张 `open` / `close`。
-    #[cfg_attr(test, ts(type = "number"))]
-    pub n: u64,
-    /// 这一帧做什么。
-    #[serde(flatten)]
-    pub op: LiveOp,
-}
-
-/// 活卡的一帧做什么（`op` 是标签）。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(tag = "op", rename_all = "snake_case")]
-pub enum LiveOp {
-    /// 整张卡（新开 · 这条连接刚开始看这个会话 · 发件箱满过 · 正文截过一次头）：照它整张换。
-    Open {
-        /// 对账键（与那一轮记录的 `rid` 同值）。
-        rid: String,
-        phase: LivePhase,
-        /// 正文截过头（只留了尾巴）。
-        clipped: bool,
-        /// 各块，按块号。
-        blocks: Vec<LiveBlock>,
-    },
-    /// 第 `i` 块开始了（种类叫 `block`：`kind` 已是帧的标签）。
-    Block {
-        #[cfg_attr(test, ts(type = "number"))]
-        i: u64,
-        block: crate::agents::BlockKind,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        #[cfg_attr(test, ts(optional))]
-        tool: Option<String>,
-    },
-    /// 第 `i` 块（文字块）接着一段字。
-    Text {
-        #[cfg_attr(test, ts(type = "number"))]
-        i: u64,
-        s: String,
-    },
-    /// 上游说完了，等写入记录。
-    Awaiting,
-    /// 撤卡（为什么见 [`LiveWhy`]；客户端对哪种都一样：撤）。
-    Close { why: LiveWhy },
-}
-
-/// 活卡此刻在哪一相。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum LivePhase {
-    /// 上游还在说。
-    Streaming,
-    /// 上游说完了，那一轮的记录还没到。
-    Awaiting,
-}
-
-/// 活卡里的一块。
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub struct LiveBlock {
-    pub kind: crate::agents::BlockKind,
-    /// 文字块已到的正文（只有文字块有；思考不展开、工具入参不显示）。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub text: Option<String>,
-    /// 工具块的工具名。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(test, ts(optional))]
-    pub tool: Option<String>,
-}
-
-/// 为什么撤卡。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "snake_case")]
-pub enum LiveWhy {
-    /// 那一轮的记录到了（整轮覆盖）。
-    Record,
-    /// 上游断在半路（Esc 打断 · 上游断 · 抄流那一跳缺了号）。
-    Broken,
-    /// 上游报错收尾。
-    Error,
-    /// 满了被挤掉（同一运行 2 张 · 整台 16 张）。
-    Evicted,
-    /// 会话走了 / 子运行收场了。
-    Gone,
-    /// 出了这条连接的名单。
-    Unwatched,
-}
+/// 活卡那几样（[`Frame::LiveCard`] 的体）：线上形住 `cmd-wire::live`。
+pub use cmd_wire::live::{LiveBlock, LiveCard, LiveOp, LivePhase, LiveWhy};
 
 /// 一个子运行此刻的样子（[`Frame::SessionRuns`] 的一项）。三个时刻是自 1970 起的毫秒（记录自己写着的时刻；记录里没写 ⇒ 读到它的时刻）。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Default)]
@@ -1191,6 +1157,7 @@ impl Frame {
             state_text,
             state_hint,
             state_tone,
+            switch: Switch::gone(),
         }
     }
 

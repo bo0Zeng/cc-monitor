@@ -826,6 +826,12 @@
         },
         {
           "frozen": false,
+          "kind": "text",
+          "path": "modelText",
+          "type": "string"
+        },
+        {
+          "frozen": false,
           "kind": "value",
           "path": "needs.ask.choices[].id",
           "type": "string"
@@ -1703,6 +1709,30 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "switch.model.can",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "switch.model{can=no}.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "switch.permission.can",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "switch.permission{can=no}.why",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "waiting_for",
@@ -1768,6 +1798,30 @@
           "type": "string"
         },
         {
+          "frozen": false,
+          "kind": "value",
+          "path": "switch.model.can",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "switch.model{can=no}.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "switch.permission.can",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "switch.permission{can=no}.why",
+          "type": "string"
+        },
+        {
           "frozen": true,
           "kind": "value",
           "path": "waiting_for",
@@ -1813,12 +1867,42 @@
           "kind": "tone",
           "path": "state_tone",
           "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "switch.model.can",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "switch.model{can=no}.why",
+          "type": "string"
+        },
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "switch.permission.can",
+          "type": "enum"
+        },
+        {
+          "frozen": false,
+          "kind": "text",
+          "path": "switch.permission{can=no}.why",
+          "type": "string"
         }
       ],
       "name": "session_state"
     },
     {
       "cells": [
+        {
+          "frozen": false,
+          "kind": "value",
+          "path": "by",
+          "type": "string"
+        },
         {
           "frozen": true,
           "kind": "value",
