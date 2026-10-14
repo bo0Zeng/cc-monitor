@@ -1735,7 +1735,11 @@ pub(crate) fn from_rows(
             Change::Flags(f) => f,
             Change::AliasName | Change::Settings | Change::Nobody => &[],
         };
-        let pass = if tmux_name.is_some() { r.tmux } else { r.direct };
+        let pass = if tmux_name.is_some() {
+            r.tmux
+        } else {
+            r.direct
+        };
         let implicit = || match pass {
             Pass::Caller | Pass::Carried => Source::Inherit,
             Pass::Fresh | Pass::Machine | Pass::Pane | Pass::Cleared => Source::Default,
@@ -1744,13 +1748,8 @@ pub(crate) fn from_rows(
             let these: Vec<&str> = flags.iter().copied().filter(|f| only.contains(f)).collect();
             given_by(origins, &these)
         };
-        let mut push = |label: String, value: String, from: Source| {
-            out.push(FromRow {
-                label,
-                value,
-                from,
-            })
-        };
+        let mut push =
+            |label: String, value: String, from: Source| out.push(FromRow { label, value, from });
         match r.item {
             Item::Cwd => {
                 let (cwd, why) = cwd_and_why(o, env);
@@ -2002,8 +2001,18 @@ pub(crate) fn render_container_tail(c: &Container) -> String {
         seq.push_str(&format!(
             "; {{ _p=$(tmux -u list-panes -t {t} -F '#{{pane_id}}' 2>/dev/null | head -1)"
         ));
+        // 这一发知道会话编号（`--ccm-sid`）⇒ 一并登记（第 5 列；敲门按它经后端说一句）；不知道 ⇒ 敲门时从窗格读身份标记。
+        let sid = if c.ccm_sid.is_empty() {
+            String::new()
+        } else {
+            format!(
+                "{} {} ",
+                crate::control::cc_bus::REGISTER_SID,
+                sq(&c.ccm_sid)
+            )
+        };
         seq.push_str(&format!(
-            "; [ -n \"$_p\" ] && TMUX_PANE=\"$_p\" {} {} >/dev/null",
+            "; [ -n \"$_p\" ] && TMUX_PANE=\"$_p\" {} {sid}{} >/dev/null",
             sq(&format!("{}/cc-register", b.scripts_dir)),
             sq(&c.name)
         ));

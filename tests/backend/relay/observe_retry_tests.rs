@@ -1094,7 +1094,11 @@ fn a_session_started_inside_a_swapped_one_keeps_the_account_it_names() {
     let relay = home.relay_tracing(up);
     let path = "/t/claude-code/a/~0a1b2c3d4e5f6071/v1/messages";
     assert!(send_on(relay, path, "s-owner", "").starts_with("HTTP/1.1 200"));
-    assert_eq!(home.session("s-owner").current, "b", "台架没过：主会话没换到 b");
+    assert_eq!(
+        home.session("s-owner").current,
+        "b",
+        "台架没过：主会话没换到 b"
+    );
     // 预热那一发照「新会话用」那一份：这里清成不轮换，只看它跟不跟主会话。
     rotation::face_change(
         &RotationStore::at(Some(home.rotation_path())),
@@ -1106,7 +1110,12 @@ fn a_session_started_inside_a_swapped_one_keeps_the_account_it_names() {
     let warm = "/t/claude-code/a/~ffff000011112222~s-owner/v1/messages";
     let resp = send_on(relay, warm, "s-warm", "");
     let got = got.lock().expect("lock");
-    assert_eq!(got.len(), 4, "{:?}", got.iter().map(|g| g.auth.clone()).collect::<Vec<_>>());
+    assert_eq!(
+        got.len(),
+        4,
+        "{:?}",
+        got.iter().map(|g| g.auth.clone()).collect::<Vec<_>>()
+    );
     assert_eq!(
         got[2].auth,
         Some(format!("Bearer {B_TOKEN}")),
@@ -1117,7 +1126,10 @@ fn a_session_started_inside_a_swapped_one_keeps_the_account_it_names() {
         Some(AGENT_TOKEN),
         "在主会话里起、点名 a 的那一发跟着主会话换到了别的号"
     );
-    assert!(resp.starts_with("HTTP/1.1 429"), "点名的号被拒就照实交回，不替它换：{resp}");
+    assert!(
+        resp.starts_with("HTTP/1.1 429"),
+        "点名的号被拒就照实交回，不替它换：{resp}"
+    );
     assert_eq!(home.lineage().parent_of("s-warm"), Some("s-owner"));
     assert_eq!(home.session("s-warm").current, "a");
 }

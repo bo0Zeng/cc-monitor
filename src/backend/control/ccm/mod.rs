@@ -300,10 +300,11 @@ pub fn run(
         return EXIT_NO_TERMINAL;
     }
     let env = Env::from_process(process_argv);
-    let (parsed, origins) = match parse_entry(args, || crate::assets::aliases::profile::read_at(&env.home)) {
-        Ok(p) => p,
-        Err(Die(msg)) => return die(&msg),
-    };
+    let (parsed, origins) =
+        match parse_entry(args, || crate::assets::aliases::profile::read_at(&env.home)) {
+            Ok(p) => p,
+            Err(Die(msg)) => return die(&msg),
+        };
     match parsed {
         Parsed::Early(Early::Version) => {
             println!("ccm {CCM_VERSION}");

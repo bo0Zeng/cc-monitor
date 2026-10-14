@@ -9,39 +9,55 @@ const MARK: &str = "〔继承表〕";
 /// `crate::a::b::c::f` / `crate::a::b::T::f` ⇒ （候选文件，函数名）。模块路径最后一段大写开头的是类型，去掉。
 fn locate(judge: &str) -> (Vec<std::path::PathBuf>, String) {
     let parts: Vec<&str> = judge.split("::").collect();
-    assert_eq!(parts.first(), Some(&"crate"), "判它的函数要写成 crate:: 开头的全路径：{judge}");
+    assert_eq!(
+        parts.first(),
+        Some(&"crate"),
+        "判它的函数要写成 crate:: 开头的全路径：{judge}"
+    );
     let name = parts.last().expect("有函数名").to_string();
     let mut module: Vec<&str> = parts[1..parts.len() - 1].to_vec();
-    if module.last().is_some_and(|m| m.starts_with(|c: char| c.is_ascii_uppercase())) {
+    if module
+        .last()
+        .is_some_and(|m| m.starts_with(|c: char| c.is_ascii_uppercase()))
+    {
         module.pop();
     }
     let rel = module.join("/");
     let root = crate::guard_support::src_root();
     (
-        vec![root.join(format!("{rel}.rs")), root.join(&rel).join("mod.rs")],
+        vec![
+            root.join(format!("{rel}.rs")),
+            root.join(&rel).join("mod.rs"),
+        ],
         name,
     )
 }
 
 /// 一份源文件里头注带 [`MARK`] 的函数名（标记之后、下一个 `fn` 之前只许是头注与属性）。
+/// 按词认：头注行的第一个词以 `///` 打头；`fn` 是一个完整的词，函数名是它后面那个词的标识符那一截。
 fn marked_in(text: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut armed = false;
-    for line in text.lines() {
-        let t = line.trim_start();
-        if t.starts_with("///") {
-            if t.contains(MARK) {
+    for src_line in text.lines() {
+        let words: Vec<&str> = src_line.split_whitespace().collect();
+        let first = words.first().copied().unwrap_or("");
+        if first.get(..3) == Some("///") {
+            if guard_core::contains_word(src_line, MARK) {
                 armed = true;
             }
             continue;
         }
-        if !armed || t.starts_with("#[") || t.is_empty() {
+        if !armed || first.is_empty() || first.get(..2) == Some("#[") {
             continue;
         }
         armed = false;
-        let Some(at) = t.find("fn ") else { continue };
-        let rest = &t[at + 3..];
-        let name: String = rest
+        let Some(at) = words.iter().position(|w| *w == "fn") else {
+            continue;
+        };
+        let name: String = words
+            .get(at + 1)
+            .copied()
+            .unwrap_or("")
             .chars()
             .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
             .collect();
@@ -76,7 +92,10 @@ fn every_inherit_row_names_a_judge_and_every_marked_judge_is_a_row() {
     for row in INHERIT {
         let (files, name) = locate(row.judge);
         let hit = files.iter().find(|f| f.is_file()).unwrap_or_else(|| {
-            panic!("{:?} 那一格点名的 {} 找不到文件（{:?}）", row.item, row.judge, files)
+            panic!(
+                "{:?} 那一格点名的 {} 找不到文件（{:?}）",
+                row.item, row.judge, files
+            )
         });
         let text = std::fs::read_to_string(hit).expect("读得出");
         assert!(
@@ -178,7 +197,10 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     assert_eq!(row(&bare, "beCcm.item.cwd").1, "/here");
     assert_eq!(row(&bare, "beCcm.item.cwd").2, Source::Inherit);
     assert_eq!(row(&bare, "beProfile.slot.launcher").2, Source::Default);
-    assert_eq!(row(&bare, "beProfile.slot.tmux").1, copy_core::copy_text("beCcm.value.here", &[]));
+    assert_eq!(
+        row(&bare, "beProfile.slot.tmux").1,
+        copy_core::copy_text("beCcm.value.here", &[])
+    );
     assert_eq!(row(&bare, "beProfile.slot.tmux").2, Source::Default);
     assert_eq!(
         row(&bare, "beProfile.slot.account").1,
@@ -186,20 +208,45 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     );
     assert_eq!(row(&bare, "beProfile.slot.account").2, Source::Default);
     // 命令行给的 ⇒ 命令行。
-    let flags = rows_of(&[], &["--", "--cwd", "/p", "--launcher", "mycc", "--account-dir", "/acct/x"], &env());
+    let flags = rows_of(
+        &[],
+        &[
+            "--",
+            "--cwd",
+            "/p",
+            "--launcher",
+            "mycc",
+            "--account-dir",
+            "/acct/x",
+        ],
+        &env(),
+    );
     assert_eq!(row(&flags, "beCcm.item.cwd").2, Source::Flag);
     assert_eq!(row(&flags, "beProfile.slot.launcher").1, "mycc");
     assert_eq!(row(&flags, "beProfile.slot.launcher").2, Source::Flag);
     assert_eq!(row(&flags, "beProfile.slot.account").1, "/acct/x");
     assert_eq!(row(&flags, "beProfile.slot.account").2, Source::Flag);
     // 别名里写的 ⇒ 别名 <那一段>；命令行当场给的盖过它 ⇒ 命令行。
-    let alias = rows_of(&[("cct", &["--cwd", "/a", "--ccm-tmux=t1"])], &["--", "--launcher", "x"], &env());
+    let alias = rows_of(
+        &[("cct", &["--cwd", "/a", "--ccm-tmux=t1"])],
+        &["--", "--launcher", "x"],
+        &env(),
+    );
     assert_eq!(row(&alias, "beCcm.item.cwd").1, "/a");
     assert_eq!(row(&alias, "beCcm.item.cwd").2, Source::Alias("cct".into()));
     assert_eq!(row(&alias, "beProfile.slot.tmux").1, "t1");
-    assert_eq!(row(&alias, "beProfile.slot.tmux").2, Source::Alias("cct".into()));
+    assert_eq!(
+        row(&alias, "beProfile.slot.tmux").2,
+        Source::Alias("cct".into())
+    );
     let over = rows_of(&[("cct", &["--cwd", "/a"])], &["--", "--cwd", "/b"], &env());
-    assert_eq!((row(&over, "beCcm.item.cwd").1.as_str(), &row(&over, "beCcm.item.cwd").2), ("/b", &Source::Flag));
+    assert_eq!(
+        (
+            row(&over, "beCcm.item.cwd").1.as_str(),
+            &row(&over, "beCcm.item.cwd").2
+        ),
+        ("/b", &Source::Flag)
+    );
     // 继承来的号 ⇒ 继承；调用方是某条会话的 shell ⇒ 主会话那一行 · 继承。
     let mut e = env();
     e.inherited_config_dir = Some("/acct/b".into());
@@ -210,14 +257,18 @@ fn the_from_section_says_flag_alias_inherit_or_default_for_each_item() {
     assert_eq!(row(&kid, "beCcm.item.parent").1, "s-parent");
     assert_eq!(row(&kid, "beCcm.item.parent").2, Source::Inherit);
     assert!(
-        bare.iter().all(|r| r.0 != copy_core::copy_text("beCcm.item.parent", &[])),
+        bare.iter()
+            .all(|r| r.0 != copy_core::copy_text("beCcm.item.parent", &[])),
         "不在任何会话里也写了主会话那一行"
     );
 }
 
 #[test]
 fn the_from_section_is_comment_lines_only() {
-    let a: Vec<String> = ["--", "--cwd", "/p"].iter().map(|s| s.to_string()).collect();
+    let a: Vec<String> = ["--", "--cwd", "/p"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let (parsed, origins) = crate::ccm_line::argv::parse_layered(&[], &a).expect("解析得动");
     let crate::ccm_line::argv::Parsed::Opts(o) = parsed else {
         panic!("该是起会话")
@@ -227,7 +278,10 @@ fn the_from_section_is_comment_lines_only() {
     let text = render_from(&from_rows(&o, &origins, &env(), &t, &plan));
     let lines: Vec<&str> = text.lines().collect();
     assert!(lines.len() >= 4, "「来自」那一节太短：{text}");
-    assert_eq!(lines[0], format!("# {}", copy_core::copy_text("beCcm.print.from", &[])));
+    assert_eq!(
+        lines[0],
+        format!("# {}", copy_core::copy_text("beCcm.print.from", &[]))
+    );
     assert!(
         lines.iter().all(|l| l.starts_with("# ")),
         "「来自」那一节有一行不是注释（混进那条命令交给 shell 就会被当命令跑）：{text}"
@@ -242,9 +296,14 @@ fn the_from_section_is_comment_lines_only() {
     );
     assert!(lines.contains(&format!("# {cwd}").as_str()), "{text}");
     // 接回一个会话不起新会话 ⇒ 一行都不写。
-    let attach: Vec<String> = ["--", "--attach", "x"].iter().map(|s| s.to_string()).collect();
+    let attach: Vec<String> = ["--", "--attach", "x"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
     let (p, g) = crate::ccm_line::argv::parse_layered(&[], &attach).expect("解析得动");
-    let crate::ccm_line::argv::Parsed::Opts(o) = p else { panic!() };
+    let crate::ccm_line::argv::Parsed::Opts(o) = p else {
+        panic!()
+    };
     let plan = build(&o, &env(), &t, None).expect("算得出计划");
     assert_eq!(render_from(&from_rows(&o, &g, &env(), &t, &plan)), "");
 }
@@ -261,13 +320,67 @@ fn quota_warm_hands_ccm_its_own_environment_plus_its_two_switches() {
         .filter(|l| !l.trim_start().starts_with('#'))
         .collect::<Vec<_>>()
         .join("\n");
-    for own in ["MAX_THINKING_TOKENS", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] {
-        assert!(code.contains(&format!("\"{own}\"")), "预热自己要的 {own} 那一格不在了");
+    for own in [
+        "MAX_THINKING_TOKENS",
+        "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+    ] {
+        assert!(
+            code.contains(&format!("\"{own}\"")),
+            "预热自己要的 {own} 那一格不在了"
+        );
     }
-    for stripped in ["\"CCM_\"", "\"ANTHROPIC_\"", "\"CLAUDE_CONFIG_DIR\"", "\"TMUX\"", "\"TMUX_PANE\"", "\"CLAUDE_CODE_\""] {
+    for stripped in [
+        "\"CCM_\"",
+        "\"ANTHROPIC_\"",
+        "\"CLAUDE_CONFIG_DIR\"",
+        "\"TMUX\"",
+        "\"TMUX_PANE\"",
+        "\"CLAUDE_CODE_\"",
+    ] {
         assert!(
             !code.contains(stripped),
             "预热脚本又按名字剥了一格 {stripped}：新会话从调用方拿什么只由 ccm 的继承表定"
         );
     }
+}
+
+/// 登记上 cc-bus 时这一发知道会话编号（`--ccm-sid`）⇒ 一并交给 cc-register（第 5 列，敲门按它经后端说一句）；不知道 ⇒ 不写那一格。
+#[test]
+fn bus_registration_carries_the_session_id_when_the_launch_knows_it() {
+    let tail = |sid: &[&str]| {
+        let mut a: Vec<String> = [
+            "--",
+            "--ccm-tmux=bus-sid",
+            "--detach",
+            "--bus-register",
+            "--cwd",
+            "/p",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+        a.extend(sid.iter().map(|s| s.to_string()));
+        let crate::ccm_line::argv::Parsed::Opts(o) =
+            crate::ccm_line::argv::parse(&a).expect("解析得动")
+        else {
+            panic!()
+        };
+        let mut e = env();
+        e.bus_scripts = Some("/b".into());
+        let Plan::Container(c) = build(&o, &e, &AccountTable::default(), None).expect("计划")
+        else {
+            panic!("该是容器路")
+        };
+        render_container_tail(&c)
+    };
+    let with = tail(&["--ccm-sid", "s-1"]);
+    assert!(
+        with.contains("'/b/cc-register' --sid 's-1' 'bus-sid'"),
+        "{with}"
+    );
+    let without = tail(&[]);
+    assert!(
+        without.contains("'/b/cc-register' 'bus-sid'") && !without.contains("--sid"),
+        "{without}"
+    );
 }

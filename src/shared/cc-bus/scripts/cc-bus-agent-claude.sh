@@ -15,18 +15,18 @@
 #
 # 只提供函数、不自执行;由 `cc-bus-adapt.sh` 的 `ccbus_adapt_load` source 进来。
 
-# 三位能力。**这三个键名是判据的分母**(与 `CCBUS_BEHAVIOR_CAP` 那张表两向对拍)。
+# 三位投递能力。**这三个键名是判据的分母**(与 `CCBUS_BEHAVIOR_CAP` 那张表两向对拍)。
 #   can_block    有结束钩子 ⇒ 能把"本轮结束"拦下来
-#   can_nudge    能往它的输入打字 ⇒ 能敲门
+#   can_nudge    能往它的会话说一句(经后端 `session-say`)⇒ 能敲门
 #   can_readback 有"读消息"这个动作(cc-recv / cc-peek)⇒ 能让它自己来读
-agent_caps() { printf 'agent=claude can_block=yes can_nudge=yes can_readback=yes\n'; }
+# 另一位 can_peer 不是投递语义:它自己够得着同一台上的别的 Claude(Claude 自带的 ListAgents / SendMessage)。
+#   发方与收方都是这一家时,cc-send 的回执里提一句可用原生的;消息照投,不拒、不替它改道。
+agent_caps() { printf 'agent=claude can_block=yes can_nudge=yes can_readback=yes can_peer=yes\n'; }
 
 # 结束钩子的形状:从 `<文件>` 读正文,吐 claude 认的那个 JSON。
 # 🔴 **走 `--rawfile` 不走 argv**:40 条 ×4KB 累计 160KB 时 `--arg` 会撞 `MAX_ARG_STRLEN`
 #   (128 KiB)⇒ 钩子 rc=126、stdout 空。那条实测事故是两阶段读口的立案理由。
 agent_block_reason() { jq -cn --rawfile r "$1" '{decision:"block", reason:$r}'; }
 
-# claude 的输入要**另打一个 Enter** 才算提交(先 send-keys 文本,再 send-keys Enter)。
-# ⚠ 这一位属于 agent 而不是 OS:通道是 tmux(②),"打完还要回车"是 claude 这一侧的事。
-# 返回 0 = 要另打 Enter。
-agent_submit_enter() { return 0; }
+# 自己是哪条会话:claude 导给它起的每个子进程的那个变量(钩子里跑的 cc-register 用它登记会话编号)。没有 ⇒ 空串。
+agent_self_sid() { printf '%s' "${CLAUDE_CODE_SESSION_ID:-}"; }

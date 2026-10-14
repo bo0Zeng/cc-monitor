@@ -1106,7 +1106,7 @@ fn every_tmux_call_names_its_server_and_drops_the_inherited_tmux() {
     const ALLOWED: &[(&str, &str)] = &[
         (
             "src/shared/cc-bus/scripts/cc-bus-adapt-posix.sh",
-            "随部署装到用户机器上的 cc-bus：往用户自己那台 tmux 里的会话送键，本就该连那台",
+            "随部署装到用户机器上的 cc-bus：读用户自己那台 tmux 里窗格的身份，本就该连那台",
         ),
         (
             "tests/e2e/gen-idle-tmux.sh",

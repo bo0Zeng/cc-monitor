@@ -237,7 +237,13 @@ fn a_seen_screen_rides_along_and_a_gone_terminal_is_not_resumed() {
         "看见的那一屏的指纹没交给送字那一条"
     );
     for gone in [Refused::NotKnown, Refused::Ended] {
-        let got = say_with(&with_seen(SID), &|_| false, &|_| Ok(refused(gone)), &no_resume).unwrap();
+        let got = say_with(
+            &with_seen(SID),
+            &|_| false,
+            &|_| Ok(refused(gone)),
+            &no_resume,
+        )
+        .unwrap();
         assert_eq!((got.result, got.why), (SentResult::Refused, Some(gone)));
     }
 }

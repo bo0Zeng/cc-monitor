@@ -1,19 +1,28 @@
 ---
 name: cc-bus
-description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消息、接力协作、广播的消息总线(带智能路由)。触发场景——收到「🔔 cc-bus」敲门提示、要联系/唤醒另一个正在跑的 CC 实例、要广播给所有实例、要多个 claude 协作或接力、看到 cc-send/cc-recv/cc-broadcast/cc-list/cc-busd 相关操作、要搭建或排障多实例通信/路由。机制=tmux send-keys 投递 + inbox 文件(唯一源头) + 路由管线(ACL/限流/去重/灭环/敲门去抖) + broker 守护进程 cc-busd(挂了 cc-send 就地兜底) + Stop 钩子收信。区别于 subagent(同会话内派生):这是**跨独立进程、独立上下文**的实例间通信。触发词:「让另一个 CC 看这个」「通知 B 实例」「广播给所有 agent」「把结论发给 planner」「多个 claude 接力」「收到 cc-bus 提示」。
+description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消息、接力协作、广播的消息总线(带智能路由)。触发场景——收到「🔔 cc-bus」敲门提示、要联系/唤醒另一个正在跑的 CC 实例、要广播给所有实例、要多个 claude 协作或接力、看到 cc-send/cc-recv/cc-broadcast/cc-list/cc-busd 相关操作、要搭建或排障多实例通信/路由。机制=经 cc-monitor 后端往对方会话说一句(敲门) + inbox 文件(唯一源头) + 路由管线(ACL/限流/去重/灭环/敲门去抖) + broker 守护进程 cc-busd(挂了 cc-send 就地兜底) + Stop 钩子收信。区别于 subagent(同会话内派生):这是**跨独立进程、独立上下文**的实例间通信。同一台上 Claude ↔ Claude 优先用 Claude 自带的 ListAgents / SendMessage;cc-bus 留给 Codex、跨机器、按规则路由与广播、要留底的消息。触发词:「让另一个 CC 看这个」「通知 B 实例」「广播给所有 agent」「把结论发给 planner」「多个 claude 接力」「收到 cc-bus 提示」。
 ---
 
 # cc-bus:多 Claude Code 实例消息总线(带智能路由)
 
-让同一台机器上 tmux 里几个**各自独立**的 CC 实例互发消息、接力、广播。CC 无原生"给运行中实例发消息"能力,本 skill 自搭一条带路由的总线。
+让同一台机器上 tmux 里几个**各自独立**的 agent 实例互发消息、接力、广播,带路由的总线。
+
+## 先看该不该用 cc-bus
+- **同一台上 Claude ↔ Claude**:用 Claude 自带的 `ListAgents`(列出本机别的会话)/ `SendMessage {to: 名字}`(对方下一个工具回合取出;还能一次性订「它空闲了告诉我」)。不用登记、不经文件。
+- **cc-bus 留给原生够不着的**:Codex(没有原生通道)· 跨机器 · 按规则路由与广播(ACL · 限流 · 去重 · kinds)· 要留底的消息(收件箱落盘、可重读)。
+- 同机两头都是 Claude 时 `cc-send` 照投,并在 stderr 提一句 `同机 Claude 之间可用 SendMessage`(不拒、不替你改道)。
 
 ## 一句话模型
-**投递靠敲门,送达靠钩子,去重靠 offset,路由靠管线,承载靠 broker+兜底,拓扑靠策略。**
+**投递靠敲门(经后端往会话说一句),送达靠钩子,去重靠 offset,路由靠管线,承载靠 broker+兜底,拓扑靠策略。**
 
 - **唯一源头**=`~/.cc-bus/inbox/<id>.jsonl`(消息落盘、不丢、按 offset 去重消费)。
 - **投递入口**=`cc-send`:组信封 → 入队 `queue/` → 有 `cc-busd` 守护进程则它异步施策投递,**没有则 cc-send 就地跑同一套管线兜底**(不卡/不丢)。
 - **管线(唯一实现在 `cc-bus-lib.sh`,backend 与兜底共用)**:ACL → 限流/熔断 → 灭环 → 去重 → 写 inbox → 敲门去抖。
 - **收信**=看到 🔔 或被 Stop 钩子喂进来 → 跑 `cc-recv`。
+- **敲门**=经 cc-monitor 后端(`ccm -- --terminal-preview` 看一眼那一屏拿指纹 → `ccm -- --session-say` 带着它说那一句):
+  窗格真是那条会话才送 · 那台在等人(批准框 · 提问)不送 · 两下之间画面变了(人正在打字)不送。**不再往窗格里打字。**
+  会话编号先看登记的那一格(`agents.tsv` 第 5 列),没有就读窗格上 cc-monitor 打的身份标记(核登记时的窗格根进程)。
+  **读不到会话编号(不是经 ccm 起的、裸 tmux 里登记的)⇒ 不敲,只入收件箱**:回合结束时 Stop 钩子照样喂回,不丢,只是空闲时不被叫醒。
 
 ## 你的身份(自动,无需手动设)
 **身份自动从 tmux 认领**——在 tmux pane 里普通 `claude` 启动即可,**不用 `CC_BUS_ID`**。优先级:`$CC_BUS_ID`(可选覆盖)→ pane 标签 `@cc_id` → **tmux 会话名**(默认,如 `shengwu_cc`)。SessionStart 钩子会自动 `cc-register` 把你登记进总线。
@@ -70,8 +79,8 @@ cc-bus 是**额外的东西,解耦清楚**:它不住在 monitor 后端里,缝切
 
 | 面 | 契约(函数名) | POSIX | Windows |
 |---|---|---|---|
-| ① agent | `agent_caps` · `agent_block_reason` · `agent_submit_enter` | claude 词典:有 Stop 钩子、能敲门、能读回 | 同一份词典 |
-| ② OS | `os_caps` · `os_send_keys` · `os_pane_fingerprint` | tmux send-keys / `pane_pid` | ❌ **没做**(ConPTY 那条路一行都没写)⇒ 显式 rc=13,不假装投递 |
+| ① agent | `agent_caps` · `agent_block_reason` · `agent_self_sid` | claude 词典:有 Stop 钩子、能敲门、能读回、`can_peer`(够得着同机 Claude);codex 词典(`CCBUS_ADAPT_AGENT=codex`):有 Stop 钩子、能敲门、能读回 | 同几份词典 |
+| ② OS | `os_caps` · `os_pane_identity` | 读窗格上的身份标记 ＋ 核窗格根进程 pid | ❌ **没做**(ConPTY 那条路一行都没写)⇒ 显式 rc=13,读不到会话 ⇒ 只入收件箱 |
 | ③ 存储 | `store_caps` · `store_lock_shared` · `store_lock_exclusive` · `store_append_line` · `store_now` · `store_path_real` | `flock`(含 `-s` 共享读锁) | 有 `flock` 就用(MSYS2);**没有共享读锁** ⇒ peek 退化成排他并记一行 `DEGRADE`;连 `flock` 都没有就 rc=13 |
 
 `kinds.tsv` 里配的行为在 agent 不支持时**按能力降级,不硬失败**:
@@ -90,7 +99,7 @@ cc-broadcast "全体同步:X 已完成"    # 广播给除自己外所有已登�
 
 ## 消息分轻重:`--kind` ＋ `kinds.tsv`
 每条消息带一个 `kind`(`cc-send --kind <k> …`,缺省 `msg` = 老行为),它决定这条**怎么注入**:
-拦停(Stop 钩子要不要喂回、拦下本轮结束)· 敲门(要不要往对方屏幕打一行)· 过哪几道阀门 · 两段模板。
+拦停(Stop 钩子要不要喂回、拦下本轮结束)· 敲门(要不要往对方会话说一句)· 过哪几道阀门 · 两段模板。
 
 | kind(随包默认) | 拦停 | 敲门 | 阀门 | 用在 |
 |---|---|---|---|---|
@@ -100,7 +109,7 @@ cc-broadcast "全体同步:X 已完成"    # 广播给除自己外所有已登�
 | `fyi` | ✗ | ✗ | 全部 | 「随便看看」:不把对方从收尾里拽回来、不打扰屏幕;`cc-recv`/面板照样读得到 |
 
 - 表的查找顺序:`~/.cc-bus/kinds.tsv`(你的)→ skill 的 `examples/kinds.tsv`(随包、带注释)→ 内置 `msg` 一行。
-- 🔴 **敲门模板里不许放 `{body}`**:它走 `send-keys` ＋ Enter,正文里的换行会被当成回车执行。含 `{body}` 的行整行作废。
+- 🔴 **敲门模板里不许放 `{body}`**:它是打进对方输入框 ＋ 回车的那一句,正文进去就成了对方的输入。含 `{body}` 的行整行作废。
 - 🔴 **ACL 与限流不许按 kind 关**:kind 是发信方自己选的。缺这两项的行整行作废。
 - 不认识的 kind / 那一行不合法 ⇒ `cc-send` 当场 rc=2(没发);已入队的按 `msg` 投、`bus.log` 记一行 `KIND fallback`。
 - Stop 钩子一批里全是不拦停的 kind(如 `fyi`)⇒ 放行、**不推进**已读位置(留着等下一条要拦停的一起喂)。
@@ -119,6 +128,7 @@ cc-broadcast "全体同步:X 已完成"    # 广播给除自己外所有已登�
 
 ```bash
 cc-spawn ~/项目/foo "分析这个项目的架构"   # **总是新建**(同名避让成 foo_cc-2);返回 id
+cc-spawn --as cct ~/项目/foo "…"           # 照这台的别名 cct 起(交成 `ccm @cct …`:号 · 启动器等照别名,目录等这一趟给的盖在上面)
 cc-agents                                  # 列出 spawn 的会话(活/已退)
 cc-kill foo_cc                             # 收掉(杀会话+进程树+清名册/状态)
 ```
@@ -162,13 +172,13 @@ bash ~/.claude/skills/cc-bus/scripts/cc-bus-install.sh
 - 两个 agent 互相自动回复可能停不下来——开限流兜底,或人工 `Esc` 打断。多 agent 建议星形拓扑(ACL 强制)。
 
 ## 安全边界
-send-keys 投递的内容 = 对方 CC 的**用户级输入**(auto 权限基本不弹确认)。**只在你信任的 pane 间用**,别把 `cc-send` 接不可信来源。
+敲门那一句 = 对方会话的**用户级输入**(auto 权限基本不弹确认);正文不进敲门,要对方 `cc-recv` 自己读。**只在你信任的 pane 间用**,别把 `cc-send` 接不可信来源。
 
 ## 命令一览
-`cc-whoami`(查/认领身份) · `cc-send`(单播/`--new`/`--broadcast`/`--kind`) · `cc-broadcast`(广播) · `cc-recv`(收) · `cc-peek`(纯读,吐令牌) · `cc-commit`(确认推进) · `cc-register`(登记,无参自动认领) · `cc-list`(看在线/积压) · `cc-spawn`(在某目录开独立 cct 会话) · `cc-kill`(收掉会话) · `cc-agents`(列 spawn 的会话) · `cc-busd`(守护 start/stop/status) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-adapt.sh`＋`cc-bus-adapt-posix.sh`/`cc-bus-adapt-windows.sh`/`cc-bus-agent-claude.sh`(三个适配面,被 source) · `cc-bus-install.sh`(安装)。
+`cc-whoami`(查/认领身份) · `cc-send`(单播/`--new`/`--broadcast`/`--kind`) · `cc-broadcast`(广播) · `cc-recv`(收) · `cc-peek`(纯读,吐令牌) · `cc-commit`(确认推进) · `cc-register`(登记,无参自动认领) · `cc-list`(看在线/积压) · `cc-spawn`(在某目录开独立 cct 会话) · `cc-kill`(收掉会话) · `cc-agents`(列 spawn 的会话) · `cc-busd`(守护 start/stop/status) · `cc-bus-stop-hook`(Stop 钩子) · `cc-bus-lib.sh`(路由管线库,被 source) · `cc-bus-adapt.sh`＋`cc-bus-adapt-posix.sh`/`cc-bus-adapt-windows.sh`/`cc-bus-agent-claude.sh`/`cc-bus-agent-codex.sh`(三个适配面,被 source) · `cc-bus-install.sh`(安装)。
 
 ## 排障
-- 敲门没反应:`cat ~/.cc-bus/agents.tsv` 看地址;对方在忙靠 Stop 钩子;`cc-list` 看积压。
+- 敲门没反应:`tail ~/.cc-bus/log/bus.log` 看 `NUDGE nosid`(读不到会话编号,只入收件箱)/ `NUDGE noscreen`(看不到那一屏)/ `NUDGE refused`(那台没送:在等人 · 画面变了)/ `NUDGE stale`(名字被别人占了)/ `NUDGE noccm`(找不到后端);`cat ~/.cc-bus/agents.tsv` 看地址;对方在忙靠 Stop 钩子;`cc-list` 看积压。
 - 消息没到:`tail ~/.cc-bus/log/bus.log` 看流水(`DELIVER`/`REJECT acl`/`THROTTLE`/`DROP *`/`COALESCE dup`/`NUDGE skip`/`NUDGE off`/`KIND fallback`/`DEGRADE`);开了 ACL/限流会拒投。
 - 队列积压:`cc-busd status` 看深度;`~/.cc-bus/log/busd.log` 看守护事件;`.dead.*` 是投递失败的死信。
 - 停机期间入队的消息滞留 queue,**要等 cc-busd 起来才被消费**(cc-send 兜底只处理自己新发的那条、不扫别人滞留的);所以要可靠就常驻 cc-busd。

@@ -29,8 +29,8 @@ ccbus_adapt_load || return 13
 # 表住 `~/.cc-bus/kinds.tsv`(用户可改);没有 ⇒ 用 skill 自带的 `examples/kinds.tsv`
 # (部署时随包落盘、带注释);两份都没有 ⇒ 只有内置的 `msg` 一行 = 今天的行为,零回归。
 #
-# 🔴 **敲门模板(T2)里不许放正文 `{body}`**:T2 走 `send-keys` ＋ Enter,
-#    正文里的换行会被当成回车 ⇒ 把消息内容当成对方的输入执行。三道闸,**任何一道单独都够**:
+# 🔴 **敲门模板(T2)里不许放正文 `{body}`**:T2 是打进对方输入框 ＋ 回车的那一句,
+#    正文进了它就成了对方的输入(消息内容被当成指令执行)。三道闸,**任何一道单独都够**:
 #    ① 装表时逐行判(`kinds_check_row`),含 `{body}` 的行整行作废,cc-send 当场 rc=2;
 #    ② 渲染 T2 的函数**根本不收正文**(`kinds_render_nudge` 的参数表里没有它);
 #    ③ 渲染结果里只要有控制字符或残留的 `{body}` 字面量就拒,退回内置 T2。
@@ -94,7 +94,7 @@ kinds_check_row() {
   bad=$(_kinds_vars_ok "$t1" "$CCBUS_KIND_T1_VARS") || { printf '%s: 注入模板里有不认识的变量 {%s}' "$kind" "$bad"; return 1; }
   # 🔴 安全项:敲门模板不许放正文
   if [[ "$t2" == *"{body}"* ]]; then
-    printf '%s: 🔴 敲门模板里不许放 {body} —— 它走 send-keys,正文里的换行会被当成回车执行' "$kind"; return 1
+    printf '%s: 🔴 敲门模板里不许放 {body} —— 它是打进对方输入框 ＋ 回车的那一句,正文进去就成了对方的输入' "$kind"; return 1
   fi
   if [[ "$t2" == *[[:cntrl:]]* ]]; then
     printf '%s: 🔴 敲门模板里有控制字符 —— 打进屏幕就是按键' "$kind"; return 1
@@ -408,8 +408,30 @@ route_deliver() {
   return 0
 }
 
-# 敲门(去抖):同一收件人 DEBOUNCE 秒内只敲一次;send-keys 到其 pane。
+# 经后端往那条会话说一句(敲门的那一句):先看一眼那一屏拿指纹,再带着它说 ——
+#   后端那一道照它的规矩判:窗格真是那条会话 · 那台说它在等人(批准 · 回答)就不送 · 画面在这两下之间变了(人正在打字)就不送。
+#   看不到那一屏 / 没送 ⇒ rc=1(调用方照只入收件箱办;回合结束时 Stop 钩子照样喂回,不丢)。终端没了不恢复(带了指纹就不恢复)。
+# 找不到后端 ⇒ rc=1 并说清。cc-bus 只认后端的两条命令,不认它的数据布局。
+ccbus_say() {   # <会话编号> <那一句>
+  local sid="$1" text="$2" ccm screen out res
+  ccm=$(ccbus_ccm_bin) || { route_log "NUDGE noccm sid=$sid —— 找不到后端(~/.cc-monitor/bin/ccm),只入收件箱"; return 1; }
+  screen=$(jq -cn --arg s "$sid" '{sid:$s, color:false}' \
+    | "$ccm" -- --terminal-preview --within-ms 10000 2>/dev/null | jq -r '(.data // .).screen // empty' 2>/dev/null)
+  if [ -z "$screen" ]; then
+    route_log "NUDGE noscreen sid=$sid —— 看不到那一屏,只入收件箱"; return 1
+  fi
+  out=$(jq -cn --arg s "$sid" --arg t "$text" --arg v "$screen" '{sid:$s, text:$t, seen_screen:$v}' \
+    | "$ccm" -- --session-say --within-ms 10000 2>/dev/null)
+  res=$(printf '%s' "$out" | jq -r '(.data // .).result // empty' 2>/dev/null)
+  case "$res" in delivered|unsure) return 0 ;; esac
+  route_log "NUDGE refused sid=$sid why=$(printf '%s' "$out" | jq -r '(.data // .).why // "?"' 2>/dev/null) —— 没送,只入收件箱"
+  return 1
+}
+
+# 敲门(去抖):同一收件人 DEBOUNCE 秒内只敲一次;经后端往它的会话说一句(`ccbus_say`),不往窗格里打字。
 # 敲什么由 kind 的 T2 定(`kinds_render_nudge` —— 它**不收正文**,见 kinds 那一节的三道闸)。
+# 会话编号从哪来:登记那一格(agents.tsv 第 5 列)→ 没有 ⇒ OS 适配面从登记的窗格读一次身份标记(`os_pane_identity`,
+#   核登记时记下的窗格根进程 pid:对不上就是名字被别人占了,不认)。读不到 ⇒ 不敲,只入收件箱。
 route_nudge() {
   local to="$1" from="$2" t2="${3:-$CCBUS_KIND_BUILTIN_T2}" kind="${4:-msg}" ts="${5:-}"
   local nf="$BUS/state/nudge-$to" now last target   # 独立行:$to 已赋值后再拼路径
@@ -420,31 +442,25 @@ route_nudge() {
     last=$(cat "$nf" 2>/dev/null || echo 0); [[ "$last" =~ ^[0-9]+$ ]] || last=0
     if [ $(( now - last )) -ge "${CCBUS_NUDGE_DEBOUNCE:-2}" ]; then
       target=$(awk -F'\t' -v id="$to" '$1==id{t=$2} END{print t}' "$BUS/agents.tsv" 2>/dev/null || true)
-      # ★★ **敲门前先核这个 pane 还是不是它**〔08-13 实测误投〕
-      # 地址是名字型的(`proj_cc:0.0`)而名字会被重用 ⇒ agent 退出后同名会话被别人占着时,
-      # 敲门文字(带 Enter)会**打进陌生占用者的屏幕**。⇒ 比对登记时记下的 pane 根进程 pid。
-      # ⚠ 第 4 列为空(老表/不在 tmux 里登记的)⇒ **按老行为敲**,不制造假跳过。
       want_pid=$(awk -F'\t' -v id="$to" '$1==id{p=$4} END{print p}' "$BUS/agents.tsv" 2>/dev/null || true)
-      if [ -n "$target" ] && [ -n "$want_pid" ]; then
-        have_pid=$(os_pane_fingerprint "$target" || true)
-        if [ "$have_pid" != "$want_pid" ]; then
-          route_log "NUDGE stale $to target=$target 登记时 pid=$want_pid 现在 pid=${have_pid:-<没有这个 pane>} —— 不敲,免得打进别人的屏幕"
-          target=""
+      sid=$(awk -F'\t' -v id="$to" '$1==id{s=$5} END{print s}' "$BUS/agents.tsv" 2>/dev/null || true)
+      if [ -z "$sid" ] && [ -n "$target" ]; then
+        sid=$(os_pane_identity "$target" "$want_pid"); prc=$?
+        if [ "$prc" = 3 ]; then
+          route_log "NUDGE stale $to target=$target 登记时 pid=$want_pid 现在是别的窗格 —— 不敲,免得敲到别人"
+          sid=""
         fi
       fi
-      # T2 渲染不出来(控制字符 / 残留 {body})⇒ 退回内置那一句,并**说出来**
-      knock=$(kinds_render_nudge "$t2" "$from" "$to" "$kind" "$ts") || {
-        route_log "NUDGE tpl-refused kind=$kind —— 敲门模板渲染出了控制字符或 {body},改敲内置那一句"
-        knock=$(kinds_render_nudge "$CCBUS_KIND_BUILTIN_T2" "$from" "$to" "$kind" "")
-      }
-      if [ -n "$target" ] && os_send_keys "$target" "$knock"; then
-        # claude 的输入要**另打一个 Enter** 才算提交 —— 这一位由 agent 词典自陈(§3.2b),
-        # 不是所有 agent 都这样;`sleep 0.3` 刻意留在本文件(它是本仓登记在册的周期唤醒)。
-        if agent_submit_enter; then
-          sleep 0.3
-          os_send_keys "$target" Enter || true
-        fi
-        echo "$now" > "$nf"
+      case "$sid" in *[!A-Za-z0-9_-]*) sid="" ;; esac
+      if [ -z "$sid" ]; then
+        route_log "NUDGE nosid $to —— 未识别会话 · 只入收件箱"
+      else
+        # T2 渲染不出来(控制字符 / 残留 {body})⇒ 退回内置那一句,并**说出来**
+        knock=$(kinds_render_nudge "$t2" "$from" "$to" "$kind" "$ts") || {
+          route_log "NUDGE tpl-refused kind=$kind —— 敲门模板渲染出了控制字符或 {body},改敲内置那一句"
+          knock=$(kinds_render_nudge "$CCBUS_KIND_BUILTIN_T2" "$from" "$to" "$kind" "")
+        }
+        if ccbus_say "$sid" "$knock"; then echo "$now" > "$nf"; fi
       fi
     else
       route_log "NUDGE skip $to"
