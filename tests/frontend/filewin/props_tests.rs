@@ -56,6 +56,20 @@ async fn the_menu_item_puts_up_the_box_and_asks_the_backend() {
         tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     }
     assert_eq!(wired.count("files-stat"), 1, "该恰好问一次后端");
+    // 发出去的整份字节（换形前用旧代码跑出来钉的）。
+    let sent: Vec<String> = wired
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .filter(|r| r["cmd"] == "files-stat")
+        .map(|r| serde_json::to_string(&r["args"]).unwrap())
+        .collect();
+    assert_eq!(
+        sent,
+        [format!(r#"{{"path":{}}}"#, serde_json::to_string(&format!("{d}/a.txt")).unwrap())],
+        "属性框发出去的字节变了"
+    );
     let lines = w.props().unwrap().lines();
     let path_line = lines
         .iter()

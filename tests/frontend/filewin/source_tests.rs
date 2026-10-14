@@ -1334,3 +1334,80 @@ fn an_unreadable_refusal_keeps_its_body_out_of_the_sentence_and_in_the_detail() 
         "{d}"
     );
 }
+
+/// 合成后端：只记下每一趟**原样收到的字节**（不解），一律回 `{}`（这条判据只看发出去的那一半）。
+struct RawLog(std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>);
+
+impl comms_inward::chan::router::Backends for RawLog {
+    fn call(
+        &self,
+        _origin: comms_inward::chan::wire::Origin,
+        op: comms_inward::chan::wire::Op,
+        payload: comms_inward::chan::wire::Body,
+        _view: Option<serde_json::Value>,
+        _left: std::time::Duration,
+        _cancel: comms_inward::chan::wire::CancelToken,
+    ) -> futures::future::BoxFuture<
+        'static,
+        Result<comms_inward::chan::wire::Body, comms_inward::chan::wire::CallError>,
+    > {
+        self.0.lock().unwrap().push((op.0.clone(), payload.0.clone()));
+        Box::pin(async { Ok(comms_inward::chan::wire::Body(b"{}".to_vec())) })
+    }
+
+    fn subscribe(
+        &self,
+        _o: comms_inward::chan::wire::Origin,
+        _k: comms_inward::chan::wire::Kind,
+        _f: Option<comms_inward::chan::wire::Cursor>,
+    ) -> futures::stream::BoxStream<'static, comms_inward::chan::wire::Item> {
+        use futures::StreamExt as _;
+        futures::stream::empty().boxed()
+    }
+}
+
+/// 文件窗口问读侧那几条（列目录 · 算大小 · 探在不在 · 读文本 · 搜索）发出去的**字节**：
+/// 换形（`json!` 拼 → 按线上类型发）之前用旧代码跑出来钉成字面量，换形之后逐字节比。
+/// 路径两形都走：合法 UTF-8 ⇒ 字符串；有损 ⇒ `{"b16": …}`。（属性框 · 预览两处在各自的窗口判据里钉。）
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_read_requests_the_window_sends_keep_their_wire_bytes() {
+    let log = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let line = crate::find::testing::wire(std::sync::Arc::new(RawLog(log.clone())), 1 << 20);
+    let o = Origin("R".into());
+    let plain = RemotePath::plain("/srv/a b");
+    let lossy = RemotePath::from_bytes(b"/srv/d\xff");
+    for p in [&plain, &lossy] {
+        let _ = list_via_backend_at(&line, &o, p.wire(), LS_LIMIT, SortBy::default()).await;
+        let _ = crate::size::size_remote(&line, &o, &p.wire(), "n").await;
+        let _ = crate::transfer::stat_remote_at(&line, &o, p.wire()).await;
+        let _ = crate::editor::read_text_at(&line, &o, p).await;
+    }
+    let board = crate::find::SearchBoard::default();
+    let asked = crate::find::Asked {
+        query: "q".into(),
+        under: Some(lossy.clone()),
+        ..Default::default()
+    };
+    crate::find::fetch_more(board.clone(), line.clone(), o.clone(), 7, asked, 3).await;
+    let got: Vec<String> = log
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(c, b)| format!("{c} {}", String::from_utf8_lossy(b)))
+        .collect();
+    let stream = board.stream().to_string();
+    let want = [
+        r#"files-ls {"limit":50000,"path":"/srv/a b"}"#.to_string(),
+        r#"files-size {"path":"/srv/a b"}"#.to_string(),
+        r#"files-stat {"path":"/srv/a b"}"#.to_string(),
+        r#"files-read-text {"max_bytes":8388608,"path":"/srv/a b"}"#.to_string(),
+        r#"files-ls {"limit":50000,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        r#"files-size {"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        r#"files-stat {"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        r#"files-read-text {"max_bytes":8388608,"path":{"b16":"2f7372762f64ff"}}"#.to_string(),
+        format!(
+            r#"files-find {{"desc":false,"limit":100,"offset":3,"query":"q","seq":7,"sort":"relevance","stream":"{stream}","under":{{"b16":"2f7372762f64ff"}}}}"#
+        ),
+    ];
+    assert_eq!(got, want, "发出去的字节变了");
+}
