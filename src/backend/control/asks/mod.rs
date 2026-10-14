@@ -11,6 +11,7 @@ pub mod hook;
 
 use crate::agents::asks::{product_of, Ask, NoteNeed};
 use crate::agents::{AskIn, PlanMode, Verdict};
+pub(crate) use cmd_wire::needs::{AnswerPick as Pick, AnswerReq, AnswerResult, Answered};
 use copy_core::copy_text;
 use serde::Serialize;
 use serde_json::Value;
@@ -22,24 +23,6 @@ use std::sync::Mutex;
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub(crate) struct AskReply {
     pub(crate) decision: Option<Value>,
-}
-
-/// `needs-answer` 的应答。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-pub(crate) struct Answered {
-    /// 恒 `answered`。
-    pub(crate) result: AnswerResult,
-}
-
-/// `needs-answer` 成功那一形（闭集一个词：失败各走自己的码）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum AnswerResult {
-    Answered,
 }
 
 /// 一条挂着的请求。
@@ -325,45 +308,6 @@ fn answers_of(
         out.push((q.text.clone(), parts.join(", ")));
     }
     Ok(out)
-}
-
-/// `needs-answer` 的入参。
-#[derive(Debug, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct AnswerReq {
-    /// 会话 id。
-    pub(crate) sid: String,
-    /// `needs.ask.id`。
-    pub(crate) ask: String,
-    /// `needs.ask.choices[].id`。
-    pub(crate) choice: String,
-    /// 可缺：附的那句话（选项 `note` 是 required 时必给）。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) note: Option<String>,
-    /// 提问那一种选 `answer` 时必给：题 id ⇒ 那一题的答，每题都要答、单选至多一项。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) picks: Option<BTreeMap<String, Pick>>,
-}
-
-/// 提问那一种里一题的答：选了哪几项 ＋ 自由文本。
-#[derive(Debug, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[cfg_attr(test, ts(rename = "AskPick"))] // 不叫 `Pick`：TS 里那是内建的工具类型。
-#[serde(deny_unknown_fields)]
-pub(crate) struct Pick {
-    /// 选项 id（`needs.ask.questions[].options[].id`）；缺 ⇒ 没选。
-    #[serde(default)]
-    #[cfg_attr(test, ts(as = "Option<Vec<String>>", optional))]
-    pub(crate) options: Vec<String>,
-    /// 自由文本；缺 / 空白 ⇒ 没写。
-    #[serde(default)]
-    #[cfg_attr(test, ts(optional = nullable))]
-    pub(crate) text: Option<String>,
 }
 
 crate::wire::typed::codes! {

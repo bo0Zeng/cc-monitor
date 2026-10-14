@@ -228,3 +228,67 @@ pub enum AskKind {
     #[serde(rename = "plan")]
     Plan,
 }
+
+/// `needs-answer` 的入参。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct AnswerReq {
+    /// 会话 id。
+    pub sid: String,
+    /// `needs.ask.id`。
+    pub ask: String,
+    /// `needs.ask.choices[].id`。
+    pub choice: String,
+    /// 可缺：附的那句话（选项 `note` 是 required 时必给）。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub note: Option<String>,
+    /// 提问那一种选 `answer` 时必给：题 id ⇒ 那一题的答，每题都要答、单选至多一项。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub picks: Option<std::collections::BTreeMap<String, AnswerPick>>,
+}
+
+/// 提问那一种里一题的答：选了哪几项 ＋ 自由文本。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+// 线上不叫 `Pick`：TS 里那是内建的工具类型。
+#[cfg_attr(
+    any(test, feature = "ts"),
+    ts(
+        export,
+        rename = "AskPick",
+        export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")
+    )
+)]
+pub struct AnswerPick {
+    /// 选项 id（`needs.ask.questions[].options[].id`）；缺 ⇒ 没选。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(as = "Option<Vec<String>>", optional))]
+    pub options: Vec<String>,
+    /// 自由文本；缺 / 空白 ⇒ 没写。
+    #[serde(default)]
+    #[cfg_attr(any(test, feature = "ts"), ts(optional = nullable))]
+    pub text: Option<String>,
+}
+
+/// `needs-answer` 的应答。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub struct Answered {
+    /// 恒 `answered`。
+    pub result: AnswerResult,
+}
+
+/// `needs-answer` 成功那一形（闭集一个词：失败各走自己的码）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+#[cfg_attr(any(test, feature = "ts"), derive(ts_rs::TS))]
+#[cfg_attr(any(test, feature = "ts"), ts(export, export_to = concat!(env!("CARGO_MANIFEST_DIR"), "/../../frontend/ui/generated/")))]
+pub enum AnswerResult {
+    Answered,
+}
