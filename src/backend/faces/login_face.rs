@@ -101,15 +101,61 @@ pub(crate) struct LoginStarted {
     pub(crate) auto: bool,
 }
 
+/// 登录失败之后还能怎么办（`login-start` · `login-finish` 失败的 `data.again`）：由后端照码定，界面照它画，不按码去猜。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum LoginAgainHow {
+    /// 作业还在，接着粘（粘的框留着）。
+    Paste,
+    /// 作业没了，从头再起一趟（`login-start`）。
+    Restart,
+    /// 没路：再来一趟也是同样的结果（没有这个号 · 这一家不在 app 里登 …）。
+    None,
+}
+
+/// 登录失败的 `data`：还能怎么办。每个码一个定值，写在码表那一行上（`bad_args` 不带：入参形状不对，不是一条能走的路）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+pub(crate) struct LoginAgain {
+    pub(crate) again: LoginAgainHow,
+}
+
+impl LoginAgain {
+    const PASTE: LoginAgain = LoginAgain {
+        again: LoginAgainHow::Paste,
+    };
+    const RESTART: LoginAgain = LoginAgain {
+        again: LoginAgainHow::Restart,
+    };
+    const NONE: LoginAgain = LoginAgain {
+        again: LoginAgainHow::None,
+    };
+}
+
 typed::codes! {
-    /// `login-start` 可能回的码。
+    /// `login-start` 可能回的码（每个码带 `data: {again}`，值写在各码那一行）。
     pub(crate) enum LoginStartErr {
-        /// 账号库里没有这个号 · 那一份配置里没有这个 MCP 服务器。
-        NotFound = "not_found",
-        /// 这一家不在 app 里登（号 · MCP）· 这个号是 API 号（不用登录）。
-        Unsupported = "unsupported",
-        /// 起不来 · 没给出登录链接就退了 · 等不到链接（原话里是它最后说的几行）。
-        Failed = "failed",
+        /// 账号库里没有这个号 · 那一份配置里没有这个 MCP 服务器。`again: none`。
+        NotFound = "not_found" => LoginAgain,
+        /// 这一家不在 app 里登（号 · MCP）· 这个号是 API 号（不用登录）。`again: none`。
+        Unsupported = "unsupported" => LoginAgain,
+        /// 起不来 · 没给出登录链接就退了 · 等不到链接（原话里是它最后说的几行）。`again: restart`。
+        Failed = "failed" => LoginAgain,
+    }
+}
+
+impl LoginStartErr {
+    fn not_found(said: String) -> Self {
+        LoginStartErr::NotFound(said, LoginAgain::NONE)
+    }
+    fn unsupported(said: String) -> Self {
+        LoginStartErr::Unsupported(said, LoginAgain::NONE)
+    }
+    fn failed(said: String) -> Self {
+        LoginStartErr::Failed(said, LoginAgain::RESTART)
     }
 }
 
@@ -152,10 +198,10 @@ pub(crate) fn start(
     on_end: sign_in::OnEnd,
 ) -> Result<LoginStarted, LoginStartErr> {
     let unsupported = |agent: &str| {
-        LoginStartErr::Unsupported(copy_text("beLogin.agent.unsupported", &[("agent", agent)]))
+        LoginStartErr::unsupported(copy_text("beLogin.agent.unsupported", &[("agent", agent)]))
     };
     let not_found = |account: &str| {
-        LoginStartErr::NotFound(copy_text(
+        LoginStartErr::not_found(copy_text(
             "beLogin.account.notFound",
             &[("account", account)],
         ))
@@ -170,7 +216,7 @@ pub(crate) fn start(
                 .ok_or_else(|| unsupported(agent))?;
             let (dir, api) = account_of(agent, account).ok_or_else(|| not_found(account))?;
             if api {
-                return Err(LoginStartErr::Unsupported(copy_text(
+                return Err(LoginStartErr::unsupported(copy_text(
                     "beLogin.account.apiKey",
                     &[("account", account)],
                 )));
@@ -193,7 +239,7 @@ pub(crate) fn start(
             };
             let project = project_dir.as_deref().map(std::path::Path::new);
             if !mcp_listed(agent, project, server) {
-                return Err(LoginStartErr::NotFound(copy_text(
+                return Err(LoginStartErr::not_found(copy_text(
                     "beLogin.mcp.notFound",
                     &[("server", server)],
                 )));
@@ -214,7 +260,7 @@ pub(crate) fn start(
         path,
     };
     let s = sign_in::start(&ask, on_end)
-        .map_err(|s| typed::of_fail(Fail::from(("failed", s)), LoginStartErr::Failed))?;
+        .map_err(|s| LoginStartErr::failed(Fail::from(("failed", s)).into_said()))?;
     Ok(started(s, face, args))
 }
 
@@ -304,16 +350,38 @@ pub(crate) struct LoginDone {
 }
 
 typed::codes! {
-    /// `login-finish` 可能回的码。
+    /// `login-finish` 可能回的码（每个码带 `data: {again}`，值写在各码那一行）。
     pub(crate) enum LoginFinishErr {
-        /// 粘的格式不对，或那一家说码不对：作业还在，可以再粘。
-        BadPaste = "bad_paste",
-        /// 那一家换码没成：作业收了，要重来（原话里是它最后说的几行）。
-        Refused = "refused",
-        /// 没有这份作业（收了 · 被替掉）。
-        NoJob = "no_job",
-        /// 等了一阵还没答：作业还在。
-        ChildTimedOut = "child_timed_out",
+        /// 粘的格式不对，或那一家说码不对：作业还在，可以再粘。`again: paste`。
+        BadPaste = "bad_paste" => LoginAgain,
+        /// 那一家换码没成：作业收了，要重来（原话里是它最后说的几行）。`again: restart`。
+        Refused = "refused" => LoginAgain,
+        /// 没有这份作业（收了 · 被替掉）。`again: restart`。
+        NoJob = "no_job" => LoginAgain,
+        /// 等了一阵还没答：作业还在（那一家答了就推 `changed {login}`），粘的框留着。`again: paste`。
+        ChildTimedOut = "child_timed_out" => LoginAgain,
+    }
+}
+
+impl LoginFinishErr {
+    fn of(f: FinishFail) -> Self {
+        match f {
+            FinishFail::NoJob => Self::no_job(),
+            FinishFail::BadPaste => LoginFinishErr::BadPaste(
+                copy_text("beLogin.finish.badPaste", &[]),
+                LoginAgain::PASTE,
+            ),
+            FinishFail::Slow => LoginFinishErr::ChildTimedOut(
+                copy_text("beLogin.finish.slow", &[]),
+                LoginAgain::PASTE,
+            ),
+            FinishFail::Refused(s) => {
+                LoginFinishErr::Refused(Fail::from(("refused", s)).into_said(), LoginAgain::RESTART)
+            }
+        }
+    }
+    fn no_job() -> Self {
+        LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[]), LoginAgain::RESTART)
     }
 }
 
@@ -327,23 +395,12 @@ impl Command for LoginFinish {
 impl Blocking for LoginFinish {
     fn run(req: LoginFinishReq, _cx: &typed::Cx) -> Result<LoginDone, LoginFinishErr> {
         sign_in::finish(&req.job, &req.pasted)
-            .map_err(|f| match f {
-                FinishFail::NoJob => LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[])),
-                FinishFail::BadPaste => {
-                    LoginFinishErr::BadPaste(copy_text("beLogin.finish.badPaste", &[]))
-                }
-                FinishFail::Slow => {
-                    LoginFinishErr::ChildTimedOut(copy_text("beLogin.finish.slow", &[]))
-                }
-                FinishFail::Refused(s) => {
-                    typed::of_fail(Fail::from(("refused", s)), LoginFinishErr::Refused)
-                }
-            })
+            .map_err(LoginFinishErr::of)
             .and_then(|key| {
                 // 键是起它时那份入参原样 ⇒ 解得回来；解不回来不会发生（只有本模块写键），照「没有这份作业」答。
                 serde_json::from_str(&key)
                     .map(|target| LoginDone { target })
-                    .map_err(|_| LoginFinishErr::NoJob(copy_text("beLogin.finish.noJob", &[])))
+                    .map_err(|_| LoginFinishErr::no_job())
             })
     }
 }

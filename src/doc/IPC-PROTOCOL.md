@@ -88,6 +88,9 @@
   终端画面每条订阅至多一帧在途（客户端回执才推下一帧）、每条连接至多 8 条订阅，单帧至多 512 KiB，所以占不满这条通道。
 - **信任边界**：单行上限 1 MiB（超了整行丢、回 `line_too_long`，`id` 从行首至多 4 KiB 里尽力抠）· 坏 JSON 回 `bad_request` 并继续读 · 任何失败都不结束读循环、不结束进程。
 - **码分两层**：协议级码（闭集，见 IPC-COMMANDS.md 第 3 节）与命令无关、只有入方向那一层发得出；命令自己的码列在各命令下面。客户端拿到协议级码 ＝ 客户端代码写错了，别重试。
+- **登录失败还能怎么办**：`login-start` · `login-finish` 失败时（`bad_args` 除外）`data` 带 `again`：`paste`（作业还在，接着粘）· `restart`（作业没了，重起一趟 `login-start`）·
+  `none`（再来也是同样结果）。值由后端照码定、写在码表那一行上（`faces/login_face.rs`）：`not_found` · `unsupported` ⇒ `none`；`failed` · `refused` · `no_job` ⇒ `restart`；
+  `bad_paste` · `child_timed_out` ⇒ `paste`。界面照 `again` 画，不按码去猜。
 - **失败应答三格**：`code` 给程序认（分支 · 重试判断）；`message` 是给人看的那一句（后端按共享文案表 `src/shared/copy/table.json` 写好，前端原样上屏）；
   `detail` 是「复制详情」那几行（时刻 · 机器 · 命令 · 码 · 原话，排法只住 `copy_core::detail`），下层原话只进这里、不进 `message`。
 

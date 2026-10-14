@@ -184,6 +184,63 @@ fn it_says_it_finishes_by_itself_only_when_the_browser_is_here() {
 }
 
 /// 登录失败的回包说还能怎么办（`data.again`），每个码一个定值：接着粘 · 重来 · 没路。码表里每个码都有（`bad_args` 不带）。
+#[test]
+fn each_failure_says_what_can_be_done_next() {
+    let again = |f: Fail| (f.code.clone(), f.data.map(|d| d["again"].clone()));
+    let start = [
+        LoginStartErr::not_found("x".into()),
+        LoginStartErr::unsupported("x".into()),
+        LoginStartErr::failed("x".into()),
+    ]
+    .map(|e| again(e.into_fail()));
+    assert_eq!(
+        start,
+        [
+            ("not_found".to_string(), Some(json!("none"))),
+            ("unsupported".to_string(), Some(json!("none"))),
+            ("failed".to_string(), Some(json!("restart"))),
+        ]
+    );
+    let finish = [
+        LoginFinishErr::of(FinishFail::BadPaste),
+        LoginFinishErr::of(FinishFail::Refused(crate::common::said::Said::with_raw(
+            "x".into(),
+            "tail",
+        ))),
+        LoginFinishErr::of(FinishFail::NoJob),
+        LoginFinishErr::of(FinishFail::Slow),
+    ]
+    .map(|e| again(e.into_fail()));
+    assert_eq!(
+        finish,
+        [
+            ("bad_paste".to_string(), Some(json!("paste"))),
+            ("refused".to_string(), Some(json!("restart"))),
+            ("no_job".to_string(), Some(json!("restart"))),
+            ("child_timed_out".to_string(), Some(json!("paste"))),
+        ]
+    );
+    // 码表里除 `bad_args` 外每个码都在上面（漏一个 ⇒ 红：新加的码要定它的 `again`）。
+    let seen = |rows: &[(String, Option<Value>)]| -> Vec<String> {
+        rows.iter().map(|(c, _)| c.clone()).collect()
+    };
+    assert_eq!(&LOGIN_START_CODES[1..], seen(&start).as_slice());
+    assert_eq!(
+        &<LoginFinishErr as Codes>::ALL[1..],
+        seen(&finish).as_slice()
+    );
+    // 换码没成：那一句之外，原话照旧进复制详情。
+    let refused = LoginFinishErr::of(FinishFail::Refused(crate::common::said::Said::with_raw(
+        "x".into(),
+        "tail",
+    )))
+    .into_fail();
+    assert_eq!(
+        (refused.message.as_str(), refused.raw.as_deref()),
+        ("x", Some("tail"))
+    );
+}
+
 /// MCP 那一种：名字以 `-` 开头（会被子命令当成旗标）· 空名一律不认，配置读都不读。
 #[test]
 fn a_mcp_name_that_could_pass_for_a_flag_is_never_listed() {
