@@ -205,7 +205,7 @@ fn api_reason_maps_status_and_error_kinds() {
 
 #[test]
 fn the_record_product_carries_steps_results_and_reasons() {
-    let a = parse_line(r#"{"type":"assistant","uuid":"u1","timestamp":"t","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"/w/a"}}]}}"#).unwrap().unwrap();
+    let a = parse_line(&crate::agents::Line::new(r#"{"type":"assistant","uuid":"u1","timestamp":"t","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"/w/a"}}]}}"#, 0)).unwrap().unwrap();
     let JsonlRecord::Assistant {
         tool_steps,
         api_reason: why,
@@ -222,21 +222,23 @@ fn the_record_product_carries_steps_results_and_reasons() {
         ),
         (Some("/w/a"), true, None)
     );
-    let u = parse_line(r#"{"type":"user","uuid":"u2","timestamp":"t","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"…"}]},"toolUseResult":{"file":{"numLines":7}}}"#).unwrap().unwrap();
+    let u = parse_line(&crate::agents::Line::new(r#"{"type":"user","uuid":"u2","timestamp":"t","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"tu1","content":"…"}]},"toolUseResult":{"file":{"numLines":7}}}"#, 0)).unwrap().unwrap();
     let v = serde_json::to_value(&u).unwrap();
     assert_eq!(
         v["toolResults"]["tu1"],
         json!({"ok": true, "lines": 7, "preview": "…", "chars": 1, "text": copy_core::copy_text("stream.step.lines", &[("n", "7")])})
     );
     assert!(v.get("toolUseResult").is_none(), "原样那一格不上线");
-    let e = parse_line(r#"{"type":"assistant","uuid":"u3","timestamp":"t","isApiErrorMessage":true,"apiErrorStatus":529,"error":"server_error","message":{"role":"assistant","content":[{"type":"text","text":"API Error: 529"}]}}"#).unwrap().unwrap();
+    let e = parse_line(&crate::agents::Line::new(r#"{"type":"assistant","uuid":"u3","timestamp":"t","isApiErrorMessage":true,"apiErrorStatus":529,"error":"server_error","message":{"role":"assistant","content":[{"type":"text","text":"API Error: 529"}]}}"#, 0)).unwrap().unwrap();
     assert_eq!(serde_json::to_value(&e).unwrap()["apiReason"], "overloaded");
-    let s = parse_line(r#"{"type":"system","subtype":"api_error","level":"error","timestamp":"t","retryAttempt":3,"maxRetries":10,"error":{"status":529}}"#).unwrap().unwrap();
+    let s = parse_line(&crate::agents::Line::new(r#"{"type":"system","subtype":"api_error","level":"error","timestamp":"t","retryAttempt":3,"maxRetries":10,"error":{"status":529}}"#, 0)).unwrap().unwrap();
     assert_eq!(serde_json::to_value(&s).unwrap()["apiReason"], "overloaded");
-    let other =
-        parse_line(r#"{"type":"system","subtype":"turn_duration","timestamp":"t","durationMs":5}"#)
-            .unwrap()
-            .unwrap();
+    let other = parse_line(&crate::agents::Line::new(
+        r#"{"type":"system","subtype":"turn_duration","timestamp":"t","durationMs":5}"#,
+        0,
+    ))
+    .unwrap()
+    .unwrap();
     assert!(serde_json::to_value(&other)
         .unwrap()
         .get("apiReason")

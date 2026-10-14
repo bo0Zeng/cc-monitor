@@ -223,7 +223,10 @@ fn an_unwatched_session_still_says_its_turn_end() {
     let mut r = rig("unwatched");
     let _ = watch_sessions(
         0,
-        vec!["someone-else".to_string()],
+        crate::stream::wire::WatchAsk {
+            sids: vec!["someone-else".to_string()],
+            branch: vec![],
+        },
         &mut r.state,
         &mut r.sink,
     );

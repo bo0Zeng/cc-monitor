@@ -267,6 +267,7 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         path: path.into(),
         at,
         off: ids.iter().map(|i| i.to_string()).collect(),
+        sum: format!("s{at}+{}", ids.len()),
     };
     let mut b = Book::default();
     b.step(live("pi", "a"));
@@ -312,4 +313,58 @@ fn a_sessions_branch_list_passes_through_and_replays_after_its_announcement() {
         })
         .collect();
     assert_eq!(got, vec!["live a", r#"branch a ["u1","u2"]"#, "live b"]);
+}
+
+/// read8c：报名单时交回手上那份主线外清单（条数 ＋ 那台给的最后一帧的摘要）—— 断线不摘（重接之后交回，那台只补缺的）；
+/// 拼的时候中间缺过一截（`at` 比手上的长）⇒ 说不准，交 `at: 0`；没有的、会话离开了的 ⇒ `at: 0`；那台报完清单时不在了 ⇒ 摘。
+#[test]
+fn the_branch_list_on_hand_is_handed_back_across_a_lost_link() {
+    use resident_client::watch::BranchHeld;
+    let pi = crate::origin::Origin("pi".into());
+    let branch = |s: &str, at: u64, ids: &[&str], sum: &str| In::Branch {
+        origin: pi.clone(),
+        sid: s.into(),
+        path: format!("/{s}.jsonl"),
+        at,
+        off: ids.iter().map(|i| i.to_string()).collect(),
+        sum: sum.into(),
+    };
+    let sids = |v: &[&str]| {
+        v.iter()
+            .map(|s| s.to_string())
+            .collect::<std::collections::BTreeSet<_>>()
+    };
+    let mut b = Book::default();
+    b.step(live("pi", "a"));
+    b.step(live("pi", "b"));
+    b.step(branch("a", 0, &["u1", "u2"], "s2"));
+    b.step(branch("a", 2, &["u3"], "s3"));
+    b.step(branch("b", 0, &["x"], "sx"));
+    b.step(branch("b", 5, &["y"], "sy")); // 前 5 条照旧，手上只有 1 条 ⇒ 中间缺过
+    b.step(In::LinkLost {
+        origin: "pi".into(),
+    });
+    assert_eq!(
+        b.branch_held(&pi, &sids(&["a", "b", "c"])),
+        vec![
+            BranchHeld {
+                sid: "a".into(),
+                path: Some("/a.jsonl".into()),
+                at: 3,
+                sum: Some("s3".into())
+            },
+            BranchHeld::nothing("b"),
+            BranchHeld::nothing("c"),
+        ],
+        "断线之后交回的手上那份不对"
+    );
+    // 重接：那台报完清单时 a 不在了 ⇒ 摘。
+    b.step(live("pi", "b"));
+    b.step(In::Listed {
+        origin: "pi".into(),
+    });
+    assert_eq!(
+        b.branch_held(&pi, &sids(&["a"])),
+        vec![BranchHeld::nothing("a")]
+    );
 }

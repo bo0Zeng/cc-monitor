@@ -151,7 +151,7 @@ fn index_back<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Vec<IndexRow>, D
 }
 
 /// 链事实面（注册表 `RecordFace.chain`）。
-type ChainOf = Option<fn(&str) -> Option<crate::agents::mainline::ChainFact>>;
+type ChainOf = Option<fn(&crate::agents::Line<'_>) -> Option<crate::agents::mainline::ChainFact>>;
 
 impl Scan {
     /// 从 `self.end` 接着读 `r`（`r` 已定位在那里），读到 `upto` 为止（之后的不读；残尾不计）。
@@ -185,16 +185,19 @@ impl Scan {
                 w.drain(..drop);
             }
             let body = &buf[..buf.len() - 1];
-            if let Some(f) = chain.and_then(|c| c(&String::from_utf8_lossy(body))) {
+            // 一行只解一次：链事实与下面那四样吃同一份（[`parse_record`] 同一口径）。
+            let text = String::from_utf8_lossy(body);
+            let line = crate::agents::Line::new(&text, start);
+            let v = line.value();
+            if let Some(f) = chain.and_then(|c| c(&line)) {
                 self.rest.chain.load(f);
             }
             let counted = super::history_query::line_counts(body);
-            let v = parse_record(body);
             if counted {
                 self.starts.push(start);
                 self.index.push(super::history_query::index_row_of(
                     kind,
-                    v.as_ref(),
+                    v,
                     start,
                     read as u64,
                 ));

@@ -46,7 +46,9 @@ fn rec(text: &str, extra: Value) -> Value {
 fn said(v: &Value) -> UserText {
     let a = user_text_of_record(v).expect("user 记录");
     let line = serde_json::to_string(v).unwrap();
-    let parsed = super::super::parse::parse_line(&line).unwrap().unwrap();
+    let parsed = super::super::parse::parse_line(&crate::agents::Line::new(&line, 0))
+        .unwrap()
+        .unwrap();
     let b = match parsed {
         super::super::schema::JsonlRecord::User { user_text, .. } => user_text,
         other => panic!("不是 user：{other:?}"),

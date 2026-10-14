@@ -3,6 +3,7 @@
 //! 名单按机器合一份：主窗口在看的 tab ∪ 有 `session-lines/<sid>` 订阅的会话（[`EventReplay::watched`]）。
 //! 名单一变，或那台换了一条新连接（新连接 ＝ 没报过 ＝ 全看），就在那台的长连接上发一次；主窗口还没报过 ⇒ 一台都不报。
 //! 应答 `from[]`（刚进名单的会话从第几行起上流）原样交会话流（[`EventReplay::on_watch_from`]），界面据它补上没上流的那段。
+//! 主线外清单：名单里每个会话都要（`branch`），各交回会话账手上那份的条数与摘要（[`crate::session_book::Book::branch_held`]），那台只补缺的。
 //!
 //! 每台一个发送任务，手里只有「最新那一份」（`watch` 通道）：整份换的语义下中间那几份不必发；同一台按序发，不会后发先到。
 
@@ -71,7 +72,11 @@ async fn send_loop(
         let Some(client) = client.upgrade() else {
             continue; // 那条连接已经走了（新连接来时总循环会再交一份）
         };
-        let args = resident_client::watch::args(&sids);
+        // 交回手上各份主线外清单有什么（读在发的这一刻：断线期间那几帧的拼法已落进会话账），那台只补缺的那一截。
+        let held = crate::session_book::book()
+            .read()
+            .branch_held(&origin, &sids);
+        let args = resident_client::watch::args(&sids, &held);
         match client.call(WATCH_CMD, args, WATCH_BUDGET).await {
             Ok(data) => {
                 let from = from_of(data.as_ref());

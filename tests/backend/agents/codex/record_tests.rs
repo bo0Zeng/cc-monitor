@@ -424,7 +424,9 @@ fn events_and_meta_records_do_not_come_out() {
         env("turn_context", json!({"cwd": "/w"})),
     ] {
         assert!(rec(&v).is_none(), "{v}");
-        let t = translated(&v.to_string(), 0).unwrap().unwrap();
+        let t = translated(&crate::agents::Line::new(&v.to_string(), 0))
+            .unwrap()
+            .unwrap();
         assert!(t.record.is_none() && t.queue.is_none(), "{v}");
     }
 }
@@ -467,7 +469,10 @@ fn speaker_golden() {
         let row: Value = serde_json::from_str(row).unwrap();
         let case = row["case"].as_str().unwrap();
         let raw = row["line"].to_string();
-        let got = translated(&raw, 0).unwrap().unwrap().record;
+        let got = translated(&crate::agents::Line::new(&raw, 0))
+            .unwrap()
+            .unwrap()
+            .record;
         assert_eq!(
             got.as_ref()
                 .and_then(who_of)
@@ -534,7 +539,7 @@ fn codex_records_carry_the_clock_face_too() {
     let msg = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "message", "role": "assistant", "id": "m1", "content": [{"type": "output_text", "text": "ok"}]}});
     let out = json!({"timestamp": ts, "type": "response_item", "payload": {"type": "function_call_output", "call_id": "c", "output": "x"}});
     for v in [msg, out] {
-        let got = translated(&v.to_string(), 0)
+        let got = translated(&crate::agents::Line::new(&v.to_string(), 0))
             .unwrap()
             .unwrap()
             .record
@@ -564,29 +569,53 @@ fn a_codex_turn_complete_answers_turn_end_through_the_registry() {
         line(json!({"timestamp": "t", "type": "event_msg", "payload": payload}))
     };
     assert_eq!(
-        turn_end(&ev(json!({"type": "task_complete", "turn_id": "t1"}))),
+        turn_end(&crate::agents::Line::new(
+            &ev(json!({"type": "task_complete", "turn_id": "t1"})),
+            0
+        )),
         Some("t1".to_string())
     );
     assert_eq!(
-        turn_end(&ev(json!({"type": "turn_complete", "turn_id": "t2"}))),
+        turn_end(&crate::agents::Line::new(
+            &ev(json!({"type": "turn_complete", "turn_id": "t2"})),
+            0
+        )),
         Some("t2".to_string())
     );
     assert_eq!(
-        turn_end(&ev(json!({"type": "turn_aborted", "turn_id": "t3"}))),
-        None
-    );
-    assert_eq!(turn_end(&ev(json!({"type": "task_complete"}))), None);
-    assert_eq!(
-        turn_end(&ev(json!({"type": "task_started", "turn_id": "t4"}))),
-        None
-    );
-    assert_eq!(
-        turn_end(&line(
-            json!({"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "task_complete"}]}})
+        turn_end(&crate::agents::Line::new(
+            &ev(json!({"type": "turn_aborted", "turn_id": "t3"})),
+            0
         )),
         None
     );
-    assert_eq!(turn_end("not json _complete"), None);
+    assert_eq!(
+        turn_end(&crate::agents::Line::new(
+            &ev(json!({"type": "task_complete"})),
+            0
+        )),
+        None
+    );
+    assert_eq!(
+        turn_end(&crate::agents::Line::new(
+            &ev(json!({"type": "task_started", "turn_id": "t4"})),
+            0
+        )),
+        None
+    );
+    assert_eq!(
+        turn_end(&crate::agents::Line::new(
+            &line(
+                json!({"type": "response_item", "payload": {"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": "task_complete"}]}})
+            ),
+            0
+        )),
+        None
+    );
+    assert_eq!(
+        turn_end(&crate::agents::Line::new("not json _complete", 0)),
+        None
+    );
 }
 
 /// 金样重写开关（人读过「现打」再落盘）。
@@ -662,4 +691,23 @@ fn the_skeleton_classes_of_a_codex_rollout_agree_with_its_records() {
         offset += raw.len() as u64 + 1;
     }
     assert!(shown >= 3, "样本里进界面的行塌了：{shown}");
+}
+
+/// read8c：同一行交给这一家的几问（成品 · 一轮结束 · 此刻在干什么）共用一份解析 —— 从文本只解一次。
+#[test]
+fn the_three_asks_on_one_line_share_one_parse() {
+    let raw = json!({"timestamp": "t", "type": "event_msg", "payload": {"type": "task_complete", "turn_id": "t1"}}).to_string();
+    let line = crate::agents::Line::new(&raw, 0);
+    crate::agents::LINE_PARSES.with(|c| c.set(0));
+    let _ = translated(&line);
+    assert_eq!(turn_end_id(&line).as_deref(), Some("t1"));
+    assert_eq!(
+        activity_of(&line),
+        Some(crate::agents::SessionActivity::Idle)
+    );
+    assert_eq!(
+        crate::agents::LINE_PARSES.with(std::cell::Cell::get),
+        1,
+        "一行解析了不止一遍"
+    );
 }

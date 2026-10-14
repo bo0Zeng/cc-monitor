@@ -441,9 +441,18 @@ fn w5vis_fetch_snapshot_checks_the_witness_before_it_resumes() {
         let forgot = at("crate::snapshot_resume::forget(&origin, sid);")?;
         at("pick.see(upto, plan.end, row.hash, span);")?;
         let done = at("crate::snapshot_resume::note_snapshot_done(&origin, sid, path, &plan);")?;
-        let noted = at("crate::snapshot_resume::note_witness(&origin, sid, pick.done());")?;
+        let noted = at(
+            "crate::snapshot_resume::note_witness(&origin, sid, handed.or_else(|| pick.done()));",
+        )?;
+        let handoff = at("if let crate::snapshot_resume::Read::Handoff { seq } = how {")?;
+        let handed = at("replay.on_watch_from(")?;
         if !(check < forgot && forgot < told && told < full && full < walk) {
             return Err("核 → 作废 → 出声 → 改读尾段 → 走读 的次序不对".into());
+        }
+        if !(full < handoff && handoff < handed && handed < walk) {
+            return Err(
+                "缺得多交给界面那一步不在核见证之后（被改写的文件会被当成只是缺得多）".into(),
+            );
         }
         if noted < done {
             return Err("见证在立锚之前就记了（立锚会带着旧的盖过去）".into());
@@ -523,4 +532,38 @@ fn unwatched_sessions_lose_their_cursor() {
     );
     forget(&here, "seen");
     forget(&there, "unseen");
+}
+
+/// read8c：续得上、但断线期间缺的比壳留存（600 行）还多 ⇒ 断线那一截一行都不读，交「从第 `total` 行起接着来」；
+/// 恰好 600 行 ⇒ 照旧续读；文件变短 · 换了路径 ⇒ 照旧只读尾段（截断那一形不当成缺得多）。
+#[test]
+fn a_reconnect_that_lacks_more_than_the_keep_hands_off_instead_of_reading() {
+    let (text, rows) = fixture(2000);
+    let plan = plan_of(&text, &rows, 600);
+    let keep = HANDOFF_OVER as usize;
+    assert_eq!(
+        keep,
+        crate::event_replay::REPLAY_TAIL_KEEP,
+        "缺得多的界线与壳留存不是同一个数"
+    );
+    let at = |next: usize| cursor("/p.jsonl", next as u64, rows[next].0, next as u64);
+    let over = plan_read(Some(&at(2000 - keep - 1)), "/p.jsonl", &plan);
+    assert_eq!(over, Read::Handoff { seq: 2000 }, "缺 601 行还在整段续读");
+    let (sent, walk) = run(&text, &over, &plan);
+    assert!(
+        sent.is_empty() && walk.segments().is_empty(),
+        "交出去了还读了 {} 行",
+        sent.len()
+    );
+    assert_eq!((walk.arrived(), walk.want()), (0, 0));
+    assert!(
+        matches!(
+            plan_read(Some(&at(2000 - keep)), "/p.jsonl", &plan),
+            Read::Resume { .. }
+        ),
+        "恰好缺 600 行该照旧续读"
+    );
+    let shrunk = cursor("/p.jsonl", 2100, text.len() as u64 + 10, 2100);
+    assert_eq!(plan_read(Some(&shrunk), "/p.jsonl", &plan), Read::Tail);
+    assert_eq!(plan_read(Some(&at(10)), "/other.jsonl", &plan), Read::Tail);
 }

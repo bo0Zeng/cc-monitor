@@ -583,9 +583,9 @@ pub(crate) fn is_agent_process(command: &str) -> bool {
 /// 一家的记录解释面：函数指针（同 [`Adapter::home`]，不立 trait）。
 #[derive(Clone, Copy)]
 pub(crate) struct RecordFace {
-    /// 一行原文（与它在文件里的起点字节偏移，没有自己身份的记录拿它合成 id，[`line_id`]）⇒ 通用记录那一形
+    /// 一行（[`Line`]：原文与它在文件里的起点字节偏移，没有自己身份的记录拿它合成 id，[`line_id`]）⇒ 通用记录那一形
     /// （空行 / 纯 BOM ⇒ `Ok(None)`；连 JSON 都不是 ⇒ `Err`，调用方照占号、不出成品）。
-    pub(crate) parse: fn(&str, u64) -> Result<Option<Translated>, String>,
+    pub(crate) parse: fn(&Line<'_>) -> Result<Option<Translated>, String>,
     /// 会话文件 ⇒ 它的 sid（这一家的文件命名）。
     pub(crate) sid: fn(&Path) -> Option<String>,
     /// 这个路径是不是这一家的一份会话记录（按文件形态判：后缀 / 命名）。
@@ -593,15 +593,15 @@ pub(crate) struct RecordFace {
     /// 这一家的记录树（会话按项目目录分、住在家目录下）：根在哪 · 新会话文件怎么命名。`None` ＝ 这一家的会话不住记录树。
     pub(crate) tree: Option<RecordTree>,
     /// 这一行是不是一轮的结束 ⇒ 那条记录的 uuid（`turn_end` 帧）。`None` ＝ 这一家今天不报轮次边沿。
-    pub(crate) turn_end: Option<fn(&str) -> Option<String>>,
+    pub(crate) turn_end: Option<fn(&Line<'_>) -> Option<String>>,
     /// 这一行说这条会话此刻进到哪一态（一轮开始 ⇒ 在跑 · 一轮完了 / 中止 ⇒ 闲着）；不说 ⇒ `None`。
     /// 没有进程状态文件的那一家靠它（[`LocalFace::activity_of`] 是有状态文件那一家的同一问）；`None` 这一格 ＝ 这一家的记录不说。
-    pub(crate) activity: Option<fn(&str) -> Option<SessionActivity>>,
+    pub(crate) activity: Option<fn(&Line<'_>) -> Option<SessionActivity>>,
     /// 一条已解析的记录 ⇒ 它会翻成哪一类通用记录（不进界面 ⇒ `None`）：只看几格判别字段，不走整条翻译
     /// （骨架索引每行一问，大会话上万行）。与 `parse` 出的记录的类逐条一致（各家对拍判据钉）。`None` ＝ 这一家不出骨架。
     pub(crate) class: Option<fn(&serde_json::Value) -> Option<record::RecordClass>>,
     /// 一行原文 ⇒ 它在记录链上的事实（主线外清单由通用层 [`mainline`] 按它算）。`None` ＝ 这一家的记录没有链（清单恒空）。
-    pub(crate) chain: Option<fn(&str) -> Option<mainline::ChainFact>>,
+    pub(crate) chain: Option<fn(&Line<'_>) -> Option<mainline::ChainFact>>,
     /// 在这一家的记录树（`records_root`）下按 sid 找那份会话文件（原共享 crate `branch-core`）。`None` ＝ 这一家不按 sid 找。
     pub(crate) find_session: Option<fn(&Path, &str) -> Result<PathBuf, String>>,
     /// 分叉的记录变换：`(记录, 分叉点 uuid, 源 sid, 新 sid)` ⇒ 新会话的记录（原共享 crate `branch-core`）。`None` ＝ 这一家不分叉。
@@ -1536,6 +1536,78 @@ pub(crate) enum QueueMark {
     Typed { text: String, at: String },
     /// 这一条 `queued` 记录插的是这一句。
     Taken { text: String },
+}
+
+/// **一行记录**，交给适配层那几问（成品 · 链事实 · 轮次结束 · 此刻在干什么 · 运行簿）的同一份：原文（去掉 BOM 与两端空白）＋
+/// 起点字节 ＋ 惰性解析的 `Value`。头一个要整行的那一问解一次，之后的都吃这一份 —— 一行只从文本解一次（瓶颈 #8）。
+/// 只要几格的那几问（[`Line::read`]）在没人解过整行时直接从文本解那几格（预读那一路只要链事实，不必整行）。
+pub(crate) struct Line<'a> {
+    text: &'a str,
+    start: u64,
+    value: std::cell::OnceCell<Option<serde_json::Value>>,
+}
+
+impl<'a> Line<'a> {
+    /// `raw` ＝ 一行原文（不含换行；BOM 与两端空白这里去掉），`start` ＝ 它在文件里的起点字节偏移。
+    pub(crate) fn new(raw: &'a str, start: u64) -> Self {
+        Line {
+            text: raw.trim_start_matches('\u{feff}').trim(),
+            start,
+            value: std::cell::OnceCell::new(),
+        }
+    }
+
+    /// 同 [`Self::new`]，当场把整行解好：几问都要整行的那一路（实时 `send_line`）用它，只要几格的那几问也从这一份里取。
+    pub(crate) fn whole(raw: &'a str, start: u64) -> Self {
+        let line = Self::new(raw, start);
+        line.value();
+        line
+    }
+
+    /// 原文（预筛用：认得出不是这一类的行就不解）。
+    pub(crate) fn text(&self) -> &'a str {
+        self.text
+    }
+
+    /// 起点字节偏移（没有自己身份的记录拿它合成 id，[`line_id`]）。
+    pub(crate) fn start(&self) -> u64 {
+        self.start
+    }
+
+    /// 是不是空行（纯空白 / 纯 BOM）。
+    pub(crate) fn is_blank(&self) -> bool {
+        self.text.is_empty()
+    }
+
+    /// 整行（解过就共用那一份）；连 JSON 都不是 ⇒ `None`。
+    pub(crate) fn value(&self) -> Option<&serde_json::Value> {
+        self.value
+            .get_or_init(|| {
+                count_parse();
+                serde_json::from_str(self.text).ok()
+            })
+            .as_ref()
+    }
+
+    /// 只要几格：整行解过就从那一份里取（树上走，不再解文本），没解过就从文本直接解那几格。
+    pub(crate) fn read<T: serde::de::DeserializeOwned>(&self) -> serde_json::Result<T> {
+        match self.value.get() {
+            Some(Some(v)) => T::deserialize(v),
+            _ => {
+                count_parse();
+                serde_json::from_str(self.text)
+            }
+        }
+    }
+}
+
+thread_local! {
+    /// 本线程到此刻从**文本**解析了几次记录行（[`Line::value`] · [`Line::read`] 记）：判据数「一行解几遍」。
+    pub(crate) static LINE_PARSES: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
+}
+
+fn count_parse() {
+    LINE_PARSES.with(|c| c.set(c.get() + 1));
 }
 
 /// 一行在文件里的起点字节偏移 ⇒ 没有自己身份的记录用的那个 id（会话内唯一、各条读路给出的都一样）。

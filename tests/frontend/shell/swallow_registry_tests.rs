@@ -132,8 +132,8 @@ const ALLOWED: &[(&str, &str, Why, &str)] = &[
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Notify(event));", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Poke);", Why::PeerGone, ""),
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Shutdown);", Why::PeerGone, ""),
-    ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, sids, done, });", Why::PeerGone, ""),
-    ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, sids, &mut state, &mut sink));", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = self.tx.send(WatchEvent::Watch { sub: self.id, ask, done, });", Why::PeerGone, ""),
+    ("src/backend/observe/watcher.rs", "let _ = done.send(watch_sessions(sub, ask, &mut state, &mut sink));", Why::PeerGone, ""),
     // read8a：连接接上 / 走了交给这台那份 watcher（它正在退出 ⇒ 没人收；走了那一声没人收也就没有要摘的）。
     ("src/backend/observe/watcher.rs", "let _ = self.0.send(WatchEvent::Join(Sub::new(id, tx, wants.tz.clone())));", Why::PeerGone, "watcher 已停：这条连接的出方向通道随即读到关闭，按「流结束」收场"),
     ("src/backend/observe/watcher.rs", "let _ = self.0.tx.send(WatchEvent::Leave(self.0.id));", Why::PeerGone, "watcher 已停：连接本来就不在它的名单上了"),

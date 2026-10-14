@@ -696,7 +696,7 @@ impl RunTrack {
     }
 
     /// 一行主记录交出去之前：归属与派出链接记进簿里。回：（对账键, 它其实属于某个子运行, 运行表变没变）。
-    pub(crate) fn main_record(&self, sid: &str, raw: &str) -> MainRecord {
+    pub(crate) fn main_record(&self, sid: &str, line: &crate::agents::Line<'_>) -> MainRecord {
         let none = MainRecord::default();
         if self.faces.response_id.is_none()
             && self.faces.child_link.is_none()
@@ -704,13 +704,13 @@ impl RunTrack {
         {
             return none;
         }
-        let Ok(v) = serde_json::from_str::<Value>(raw.trim_start_matches('\u{feff}').trim()) else {
+        let Some(v) = line.value() else {
             return none;
         };
         MainRecord {
-            changed: self.book.record(&self.faces, sid, &v, None),
-            rid: self.faces.response_id(&v),
-            in_run: self.faces.run_of(&v).is_some(),
+            changed: self.book.record(&self.faces, sid, v, None),
+            rid: self.faces.response_id(v),
+            in_run: self.faces.run_of(v).is_some(),
         }
     }
 

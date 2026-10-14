@@ -67,6 +67,18 @@ impl FrameSink {
             priming: HashSet::new(),
         }
     }
+
+    /// 同 [`Self::new`]，那条连接还要了这几个会话的主线外清单（`stream-watch.branch`）。
+    pub(in crate::observe::watcher) fn wanting_branches(
+        tx: mpsc::Sender<Frame>,
+        sids: &[&str],
+    ) -> Self {
+        let mut s = Self::new(tx);
+        s.subs[0]
+            .branching
+            .extend(sids.iter().map(|x| x.to_string()));
+        s
+    }
 }
 
 // ---------- P2（zero-poll-liveness）：pidfd 判活 ----------
@@ -1399,7 +1411,15 @@ fn the_session_name_follows_the_records_even_when_nobody_watches() {
             path: Some(path.to_string_lossy().into_owned()),
         },
     );
-    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
+    watch_sessions(
+        0,
+        crate::stream::wire::WatchAsk {
+            sids: vec!["other".into()],
+            branch: vec![],
+        },
+        &mut state,
+        &mut sink,
+    );
     let names = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut got = Vec::new();
         while let Ok(f) = rx.try_recv() {
@@ -4296,7 +4316,7 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
         + line("u3", "a1", "t4", "user").as_str();
     std::fs::write(&jsonl, &body).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(64);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &["br-sid"]);
     let mut state = ReaderState::new(dir.join("projects"));
     let pidfile = dir.join(format!("{pid}.json"));
     std::fs::write(
@@ -4307,7 +4327,10 @@ fn the_off_main_list_goes_out_only_when_it_changes_and_only_the_changed_part() {
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut branches = Vec::new();
     while let Ok(f) = rx.try_recv() {
-        if let Frame::SessionBranch { sid, path, at, off } = f {
+        if let Frame::SessionBranch {
+            sid, path, at, off, ..
+        } = f
+        {
             assert_eq!(sid, "br-sid");
             assert_eq!(path, jsonl.to_string_lossy());
             branches.push((at, off));
@@ -4382,10 +4405,9 @@ fn long_branchy_record(records: usize, fork_every: usize, queue_every: usize) ->
 
 /// 主线外清单 = 这份记录整批算一次（与冷读同一个算法）。
 fn off_of_record(body: &str) -> Vec<String> {
-    crate::agents::mainline::tests::off_of(
-        body.lines()
-            .filter_map(crate::agents::claudecode::chain::chain_fact),
-    )
+    crate::agents::mainline::tests::off_of(body.lines().filter_map(|l| {
+        crate::agents::claudecode::chain::chain_fact(&crate::agents::Line::new(l, 0))
+    }))
 }
 
 /// 一份合成记录的冷接宣告：起一个认得出的活会话（本进程当写它的那个），宣告出去；回（帧，这份记录的链索引整条走过几格）。
@@ -4402,7 +4424,7 @@ fn announce_record(dir: &Path, sid: &str, body: &str) -> (Vec<Frame>, ReaderStat
     )
     .unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 16);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &[sid]);
     let mut state = ReaderState::new(dir.join("projects"));
     process_session_added(&pidfile, &mut state, &mut sink);
     let mut got = Vec::new();
@@ -4477,7 +4499,7 @@ fn reading_a_big_batch_of_new_lines_walks_the_chain_once() {
     let path = dir.join("projects").join("proj-h").join("hot-sid2.jsonl");
     std::fs::write(&path, &body).unwrap();
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 16);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &["hot-sid2"]);
     process_jsonl(&path, &mut state, &mut sink);
     let mut frames = Vec::new();
     while let Ok(f) = rx.try_recv() {
@@ -4529,7 +4551,7 @@ fn queued_lines_without_forks_do_not_walk_the_chain() {
 #[test]
 fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(4);
-    let mut sink = FrameSink::new(tx);
+    let mut sink = FrameSink::wanting_branches(tx, &["s", "other"]);
     let ids = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     let branches = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut v = Vec::new();
@@ -4559,43 +4581,159 @@ fn a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time() {
     assert_eq!(branches(&mut rx), [(3, ids(&["d"]))]);
 }
 
-/// read8b：同一条连接把一条会话切出名单、再切回来（换 tab 回来）⇒ 主线外清单只补它缺的那一截：
-/// 出名单那一刻它手上那份前缀没动 ⇒ 从 `at = 它手上的条数` 发（这里一条都没变 ⇒ 只一帧空的），不再整份重发。
-/// （丢过帧 ⇒ 整份，那一支与实时那一路共用 `branch_stale`，`a_connection_that_lost_a_branch_frame_gets_the_whole_list_next_time` 钉着。）
+/// read8c：主线外清单只给在 `stream-watch.branch` 里要了的连接，照它交回的手上那份只补缺的那一截 —— 换不换连接都一样：
+/// 不要（手机那一形）⇒ 一帧不收；接上来那一份此刻的样子里没有清单；交回最后一帧的条数与摘要 ⇒ 只一帧空的；
+/// 摘要对不上 · 换了一份记录 · 这条连接丢过它的帧 ⇒ 整份。
 #[cfg(target_os = "linux")]
 #[test]
-fn rewatching_on_the_same_connection_sends_only_the_branch_tail_it_lacks() {
+fn a_connection_gets_only_the_branch_tail_it_says_it_lacks() {
+    use crate::stream::wire::{BranchHeld, WatchAsk};
     let _iso = crate::control::identity_tag::door::isolate();
-    let dir = std::env::temp_dir().join(format!("ccm-read8b-rewatch-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ccm-read8c-held-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let body = long_branchy_record(600, 30, usize::MAX);
     let (_, mut state) = announce_record(&dir, "rw-sid", &body);
-    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
-    let mut sink = FrameSink::new(tx);
+    let path = dir.join("projects/proj-h/rw-sid.jsonl");
+    let p = path.to_string_lossy().into_owned();
+    // 每条连接一个通道；收下的清单帧 ⇒ `(at, 条数, sum)`。
     let drain = |rx: &mut tokio::sync::mpsc::Receiver<Frame>| {
         let mut v = Vec::new();
         while let Ok(f) = rx.try_recv() {
-            if let Frame::SessionBranch { at, off, .. } = f {
-                v.push((at, off.len()));
+            if let Frame::SessionBranch { at, off, sum, .. } = f {
+                v.push((at, off.len() as u64, sum));
             }
         }
         v
     };
-    let path = dir.join("projects/proj-h/rw-sid.jsonl");
-    // 接上来那一份此刻的样子（整份清单），之后它报了名单。
-    branch_to(&state, &mut sink, 0, "rw-sid", &path);
-    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
+    let ask = |held: Option<BranchHeld>| WatchAsk {
+        sids: vec!["rw-sid".into()],
+        branch: held.into_iter().collect(),
+    };
+    let none = BranchHeld {
+        sid: "rw-sid".into(),
+        ..Default::default()
+    };
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
+    let mut sink = FrameSink::new(tx);
+    // 接上来那一份此刻的样子：不带清单。
+    let (tx1, mut rx1) = tokio::sync::mpsc::channel::<Frame>(1 << 12);
+    join(
+        Sub::new(1, tx1, crate::Tz::default()),
+        &mut state,
+        &mut sink,
+    );
+    assert!(drain(&mut rx1).is_empty(), "新连接一接上就推了主线外清单");
+    // 只报名单、不要清单 ⇒ 一帧不收。
+    watch_sessions(0, ask(None), &mut state, &mut sink);
+    assert!(drain(&mut rx).is_empty(), "没要清单的连接收到了清单");
+    // 要了、手上没有 ⇒ 整份。
+    watch_sessions(0, ask(Some(none.clone())), &mut state, &mut sink);
     let first = drain(&mut rx);
-    let whole: usize = first.iter().map(|(_, n)| n).sum();
-    assert!(whole > 0, "这份记录该有主线外（{first:?}）");
-    assert_eq!(first[0].0, 0, "接上来那一份是整份");
-    // 切走再切回来：清单没变 ⇒ 只一帧，从它手上的条数起、一条不带。
-    watch_sessions(0, vec!["other".into()], &mut state, &mut sink);
-    watch_sessions(0, vec!["rw-sid".into()], &mut state, &mut sink);
+    let whole: u64 = first.iter().map(|(_, n, _)| n).sum();
+    assert!(
+        whole > 0 && first[0].0 == 0,
+        "手上没有却没给整份：{first:?}"
+    );
+    let last = first.last().unwrap().2.clone();
+    let held = BranchHeld {
+        sid: "rw-sid".into(),
+        path: Some(p.clone()),
+        at: whole,
+        sum: Some(last.clone()),
+    };
+    // 换一条连接、交回手上那份 ⇒ 只一帧，从它手上的条数起、一条不带。
+    watch_sessions(1, ask(Some(held.clone())), &mut state, &mut sink);
+    assert_eq!(
+        drain(&mut rx1),
+        [(whole, 0, last.clone())],
+        "新连接交回了手上那份，却又整份重发"
+    );
+    // 同一条连接切走再切回来（客户端照样交回手上那份）⇒ 同上。
+    watch_sessions(
+        0,
+        WatchAsk {
+            sids: vec!["other".into()],
+            branch: vec![],
+        },
+        &mut state,
+        &mut sink,
+    );
+    watch_sessions(0, ask(Some(held.clone())), &mut state, &mut sink);
     assert_eq!(
         drain(&mut rx),
-        [(whole as u64, 0)],
+        [(whole, 0, last.clone())],
         "换 tab 回来又整份重发了主线外清单"
     );
+    // 摘要对不上 · 换了一份记录 ⇒ 整份。
+    for bad in [
+        BranchHeld {
+            sum: Some("0000000000000000".into()),
+            ..held.clone()
+        },
+        BranchHeld {
+            path: Some("/elsewhere.jsonl".into()),
+            ..held.clone()
+        },
+    ] {
+        watch_sessions(1, WatchAsk::default(), &mut state, &mut sink);
+        watch_sessions(1, ask(Some(bad.clone())), &mut state, &mut sink);
+        let got = drain(&mut rx1);
+        assert_eq!(
+            (got[0].0, got.iter().map(|(_, n, _)| n).sum::<u64>()),
+            (0, whole),
+            "{bad:?} 却没给整份"
+        );
+    }
+    // 丢过它一帧（手上的对不上）⇒ 整份。
+    watch_sessions(0, WatchAsk::default(), &mut state, &mut sink);
+    sink.subs[0].branch_stale.insert(p.clone());
+    watch_sessions(0, ask(Some(held)), &mut state, &mut sink);
+    let again = drain(&mut rx);
+    assert_eq!(
+        (again[0].0, again.iter().map(|(_, n, _)| n).sum::<u64>()),
+        (0, whole),
+        "丢过帧却没给整份"
+    );
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// read8c（瓶颈 #8 实时那一半）：实时读进来的一行只从文本解析一次 —— 成品 · 链事实 · 运行簿 · 轮次结束都吃同一份。
+/// 语料是占位字的人话 / 回复（含一轮结束那一形）。
+#[cfg(target_os = "linux")]
+#[test]
+fn a_live_line_is_parsed_from_text_once() {
+    let _iso = crate::control::identity_tag::door::isolate();
+    let dir = std::env::temp_dir().join(format!("ccm-read8c-once-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let (_, mut state) = announce_record(&dir, "once-sid", "");
+    let path = dir.join("projects/proj-h/once-sid.jsonl");
+    let lines = [
+        r#"{"type":"user","uuid":"u1","parentUuid":null,"timestamp":"t1","message":{"role":"user","content":"w"}}"#,
+        r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"t2","message":{"role":"assistant","content":[{"type":"text","text":"w"}],"stop_reason":"tool_use"}}"#,
+        r#"{"type":"assistant","uuid":"a2","parentUuid":"a1","timestamp":"t3","message":{"role":"assistant","content":[{"type":"text","text":"w"}],"stop_reason":"end_turn"}}"#,
+    ];
+    std::fs::write(&path, lines.join("\n") + "\n").unwrap();
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<Frame>(1 << 10);
+    let mut sink = FrameSink::new(tx);
+    crate::agents::LINE_PARSES.with(|c| c.set(0));
+    process_jsonl(&path, &mut state, &mut sink);
+    let parses = crate::agents::LINE_PARSES.with(std::cell::Cell::get);
+    let mut kinds = Vec::new();
+    while let Ok(f) = rx.try_recv() {
+        kinds.push(f.loss_identity().kind);
+    }
+    std::fs::remove_dir_all(&dir).ok();
+    assert_eq!(
+        kinds.iter().filter(|k| **k == "line").count(),
+        3,
+        "{kinds:?}"
+    );
+    assert!(
+        kinds.contains(&"turn_end"),
+        "一轮结束那一行没报出来：{kinds:?}"
+    );
+    assert_eq!(
+        parses, 3,
+        "3 行实时读进来从文本解析了 {parses} 次（该一行一次）"
+    );
 }

@@ -87,28 +87,29 @@ pub fn classify(v: &Value) -> CodexRecordKind {
 /// （旧名 `turn_complete`，[`classify`] 归一）⇒ 那一轮的 `turn_id`（帧里的 `uuid`，客户端按它去重）。
 /// 中止轮（`turn_aborted`）不算（静默，与手机端同一个决定）；没带 `turn_id` ⇒ 不报（没有去重键）。
 /// 先过子串闸：原文里连 `_complete` 都没有的行（绝大多数）零解析直接回。
-pub(crate) fn turn_end_id(raw: &str) -> Option<String> {
-    if !raw.contains("_complete") {
+pub(crate) fn turn_end_id(line: &crate::agents::Line<'_>) -> Option<String> {
+    if !line.text().contains("_complete") {
         return None;
     }
-    let v: Value = serde_json::from_str(raw).ok()?;
-    if classify(&v) != CodexRecordKind::TurnComplete {
+    let v = line.value()?;
+    if classify(v) != CodexRecordKind::TurnComplete {
         return None;
     }
-    let (_, payload) = unwrap_envelope(&v)?;
+    let (_, payload) = unwrap_envelope(v)?;
     payload.get("turn_id")?.as_str().map(str::to_string)
 }
 
 /// **此刻在干什么**（注册表 `RecordFace.activity`；这一家没有进程状态文件，只有记录里的事件说得出）：
 /// 一轮开始（`task_started`）⇒ 在跑；一轮完了（`task_complete`）· 中止（`turn_aborted`）⇒ 闲着，等下一句；别的行不说。
 /// 先过子串闸：连 `"event_msg"` 都没有的行（绝大多数）零解析直接回。
-pub(crate) fn activity_of(raw: &str) -> Option<crate::agents::SessionActivity> {
+pub(crate) fn activity_of(
+    line: &crate::agents::Line<'_>,
+) -> Option<crate::agents::SessionActivity> {
     use crate::agents::SessionActivity as A;
-    if !raw.contains("\"event_msg\"") {
+    if !line.text().contains("\"event_msg\"") {
         return None;
     }
-    let v: Value = serde_json::from_str(raw).ok()?;
-    match classify(&v) {
+    match classify(line.value()?) {
         CodexRecordKind::TurnStarted => Some(A::Working),
         CodexRecordKind::TurnComplete | CodexRecordKind::TurnAborted => Some(A::Idle),
         _ => None,
@@ -480,14 +481,13 @@ const AGENT: &str = super::AGENT_KIND;
 
 /// 一行 rollout 原文（与它的起点字节偏移）⇒ 交给通用层的那一形（注册表 `RecordFace.parse`；契约同 Claude 那一家：
 /// 空行 `Ok(None)` · 连 JSON 都不是 `Err`）。这一家没有排队那一对、记录上也不带 `cwd`。
-pub(crate) fn translated(raw: &str, start: u64) -> Result<Option<Translated>, String> {
-    let trimmed = raw.trim_start_matches('\u{feff}').trim();
-    if trimmed.is_empty() {
+pub(crate) fn translated(line: &crate::agents::Line<'_>) -> Result<Option<Translated>, String> {
+    if line.is_blank() {
         return Ok(None);
     }
-    let v: Value = serde_json::from_str(trimmed).map_err(|e| e.to_string())?;
+    let v = line.value().ok_or_else(|| "not JSON".to_string())?;
     Ok(Some(Translated {
-        record: record_of(&v, start),
+        record: record_of(v, line.start()),
         cwd: None,
         queue: None,
     }))

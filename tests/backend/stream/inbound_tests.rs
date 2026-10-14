@@ -1438,13 +1438,15 @@ fn the_handlers_own_sentence_moves_into_the_detail_raw_line() {
     );
 }
 
-/// `stream-watch`：名单原样交给这条连接的 watcher（整份），它答的「从第几行起」原样回；`sids` 不是串数组 ⇒ `bad_args`、不交。
+/// `stream-watch`：名单（连同要哪几个的主线外清单、手上各有什么）原样交给这条连接的 watcher（整份），它答的「从第几行起」原样回；
+/// `sids` 不是串数组 · `branch` 形状不对 ⇒ `bad_args`、不交。`branch` 可缺（＝ 一份都不要）。
 #[tokio::test]
 async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its_answer() {
-    let asked: Arc<Mutex<Vec<Vec<String>>>> = Arc::default();
+    use crate::stream::wire::{BranchHeld, WatchAsk};
+    let asked: Arc<Mutex<Vec<WatchAsk>>> = Arc::default();
     let seen = asked.clone();
-    let desk = WatchDesk::new(move |sids| {
-        seen.lock().unwrap().push(sids);
+    let desk = WatchDesk::new(move |ask| {
+        seen.lock().unwrap().push(ask);
         let (tx, rx) = tokio::sync::oneshot::channel();
         let _ = tx.send(vec![crate::stream::wire::WatchFrom {
             sid: "a".into(),
@@ -1459,6 +1461,10 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
         r#"{"id":"w2","cmd":"stream-watch","args":{"sids":"a"}}"#,
         "\n",
         r#"{"id":"w3","cmd":"stream-watch","args":{}}"#,
+        "\n",
+        r#"{"id":"w4","cmd":"stream-watch","args":{"sids":["a"],"branch":[{"sid":"a","path":"/p/a.jsonl","at":3,"sum":"00ff"},{"sid":"b"}]}}"#,
+        "\n",
+        r#"{"id":"w5","cmd":"stream-watch","args":{"sids":["a"],"branch":[{"at":3}]}}"#,
         "\n",
     );
     let (tx, mut rx) = chan();
@@ -1482,12 +1488,32 @@ async fn stream_watch_hands_the_list_to_this_connections_watcher_and_returns_its
         "{}",
         got["w1"]
     );
-    for id in ["w2", "w3"] {
+    for id in ["w2", "w3", "w5"] {
         assert_eq!(got[id]["code"], "bad_args", "{id}: {}", got[id]);
     }
     assert_eq!(
         *asked.lock().unwrap(),
-        vec![vec!["a".to_string(), "b".to_string()]]
+        vec![
+            WatchAsk {
+                sids: vec!["a".to_string(), "b".to_string()],
+                branch: vec![]
+            },
+            WatchAsk {
+                sids: vec!["a".to_string()],
+                branch: vec![
+                    BranchHeld {
+                        sid: "a".into(),
+                        path: Some("/p/a.jsonl".into()),
+                        at: 3,
+                        sum: Some("00ff".into())
+                    },
+                    BranchHeld {
+                        sid: "b".into(),
+                        ..Default::default()
+                    },
+                ],
+            },
+        ]
     );
 }
 

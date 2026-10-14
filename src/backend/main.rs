@@ -479,9 +479,9 @@ async fn run_over_stdio(
 fn watch_desk(attached: &observe::watcher::Attachment, tap_rx: &tap::TapRx) -> inbound::WatchDesk {
     let h = attached.handle();
     let live = tap_rx.watch_handle();
-    inbound::WatchDesk::new(move |sids| {
-        live.watch(&sids);
-        h.watch(sids)
+    inbound::WatchDesk::new(move |ask| {
+        live.watch(&ask.sids);
+        h.watch(ask)
     })
 }
 

@@ -84,11 +84,11 @@ pub fn turn_end_uuid(p: &Probe) -> Option<&str> {
 
 /// 一行原文 ⇒ 它若是 turn-end 边沿，那条记录的 uuid（注册表 `RecordFace.turn_end` 那一格；watcher 每行问一次）。
 /// 过不了子串闸 ⇒ 不解析；畸形 ⇒ `None`（不影响那一行的 `line` 帧）。
-pub(crate) fn turn_end_uuid_of(raw: &str) -> Option<String> {
-    if !raw.contains(END_TURN_NEEDLE) {
+pub(crate) fn turn_end_uuid_of(line: &crate::agents::Line<'_>) -> Option<String> {
+    if !line.text().contains(END_TURN_NEEDLE) {
         return None;
     }
-    let p: Probe = serde_json::from_str(raw).ok()?;
+    let p: Probe = line.read().ok()?;
     turn_end_uuid(&p).map(str::to_string)
 }
 

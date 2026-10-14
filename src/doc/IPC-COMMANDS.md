@@ -245,6 +245,7 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `path` | string | 这份会话记录在那台机器上的绝对路径 |
 | `at` | number | 前几条照旧 |
 | `off` | [string] | 第 `at` 条起的那几条 `id`（之后没有了：清单到此为止） |
+| `sum` | string | 清单前 `at + off.len()` 条的摘要（`branch_sum`）：客户端记下最后一帧的条数与它，在 `stream-watch` 的 `branch` 里原样交回，后端照它判手上那份前缀还对不对、只补缺的那一截（换一条连接也一样） |
 
 ### `terminal_screen`
 
@@ -493,6 +494,26 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 | `path` | string | 这份会话记录在那台机器上的绝对路径 |
 | `seq` | number | 这条流从这一行起发它 |
 
+#### `WatchAsk`
+
+`stream-watch` 的入参：在看哪几个（整份换）＋ 要哪几个的主线外清单、手上各有什么（`branch`；不报 ＝ 一份都不要）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sids` | [string] |  |
+| `branch` | [BranchHeld]? |  |
+
+#### `BranchHeld`
+
+`stream-watch.branch` 的一格：这条连接要这个会话的主线外清单；手上已有那份记录（`path`）的前 `at` 条、摘要 `sum`（上一帧 `session_branch` 给的）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `sid` | string |  |
+| `path` | string? |  |
+| `at` | number? |  |
+| `sum` | string? |  |
+
 #### `WatchReply`
 
 `stream-watch` 的应答。
@@ -547,12 +568,13 @@ The bounded frame channel back-pressured and the reader had to drop `dropped` fr
 
 #### `stream-watch`
 
-这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单 · 活卡不上这条流（刚进名单的会话此刻每张活卡补一张整卡，出名单的撤卡），宣告 · 状态 · 轮次边沿照发；回刚进名单的那几个从第几行起上流。
+这条流此刻在看哪几个会话（整份换；从没报过 ＝ 全看）：不在名单里的会话，它的行 · 运行表 · 主线外清单 · 活卡不上这条流（刚进名单的会话此刻每张活卡补一张整卡，出名单的撤卡），宣告 · 状态 · 轮次边沿照发；主线外清单只给 `branch` 里要了的会话、照手上那份只补缺的；回刚进名单的那几个从第几行起上流。
 
 收 `args` · 连接内就地做完 · 只在流上
 
 | 字段 | 向 | 说明 |
 |---|---|---|
+| `branch` | → | 要哪几个会话的主线外清单、手上各有什么（可缺 ＝ 一份都不要）：`[{sid, path?, at?, sum?}]`，`at` · `sum` 照手上最后一帧 `session_branch` 的 `at + off.len()` 与 `sum`，手上没有 ⇒ `at: 0` |
 | `sids` | → | 在看的会话 id（串数组；空 ＝ 一个都不看） |
 | `from` | ← | 刚进名单的会话每份记录一格 `{sid, path, seq}`（先前就在名单里的不回） |
 | `path` | ← | `from[]`：那份记录在那台机器上的绝对路径 |

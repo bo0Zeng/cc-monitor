@@ -2,7 +2,7 @@
 use super::*;
 
 fn node(raw: &str) -> Link {
-    match chain_fact(raw) {
+    match chain_fact(&crate::agents::Line::new(raw, 0)) {
         Some(ChainFact::Node(l)) => l,
         other => panic!("not a node: {other:?}"),
     }
@@ -59,15 +59,17 @@ fn placeholders_join_the_chain_but_are_not_shown() {
 #[test]
 fn queued_text_comes_from_enqueue_only() {
     assert_eq!(
-        chain_fact(
-            r#"{"type":"queue-operation","operation":"enqueue","content":" later words ","timestamp":"t8"}"#
-        ),
+        chain_fact(&crate::agents::Line::new(
+            r#"{"type":"queue-operation","operation":"enqueue","content":" later words ","timestamp":"t8"}"#,
+            0
+        )),
         Some(ChainFact::Queued("later words".into()))
     );
     assert_eq!(
-        chain_fact(
-            r#"{"type":"queue-operation","operation":"remove","content":"later words","timestamp":"t9"}"#
-        ),
+        chain_fact(&crate::agents::Line::new(
+            r#"{"type":"queue-operation","operation":"remove","content":"later words","timestamp":"t9"}"#,
+            0
+        )),
         None
     );
 }
@@ -81,7 +83,7 @@ fn lines_without_identity_or_time_are_off_the_chain() {
         r#"{"type":"mode","mode":"x"}"#,
         "not json",
     ] {
-        assert_eq!(chain_fact(raw), None, "{raw}");
+        assert_eq!(chain_fact(&crate::agents::Line::new(raw, 0)), None, "{raw}");
     }
 }
 
@@ -90,9 +92,9 @@ fn lines_without_identity_or_time_are_off_the_chain() {
 #[test]
 fn a_line_is_parsed_from_text_at_most_once() {
     let count = |raw: &str| {
-        PARSES.with(|c| c.set(0));
-        let _ = chain_fact(raw);
-        PARSES.with(std::cell::Cell::get)
+        crate::agents::LINE_PARSES.with(|c| c.set(0));
+        let _ = chain_fact(&crate::agents::Line::new(raw, 0));
+        crate::agents::LINE_PARSES.with(std::cell::Cell::get)
     };
     let user = r#"{"type":"user","uuid":"u1","parentUuid":"a0","timestamp":"t1","message":{"role":"user","content":"hello"}}"#;
     let reply = r#"{"type":"assistant","uuid":"a1","parentUuid":"u1","timestamp":"t2","message":{"role":"assistant","content":[{"type":"text","text":"hi"}]}}"#;
