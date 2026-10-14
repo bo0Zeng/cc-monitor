@@ -20,7 +20,9 @@ pub(crate) struct SessionCommandsReq {
 }
 
 /// `session-commands` 的回包与它引到的几样：线上形住 `cmd-wire::session`。
-pub(crate) use cmd_wire::session::{CommandScope, SessionAct, SessionCommand, SessionCommands, SessionSkill};
+pub(crate) use cmd_wire::session::{
+    CommandScope, SessionAct, SessionCommand, SessionCommands, SessionSkill,
+};
 
 typed::codes! {
     /// `session-commands` 的码。

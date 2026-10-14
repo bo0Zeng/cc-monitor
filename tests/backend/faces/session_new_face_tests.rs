@@ -164,7 +164,10 @@ fn each_agent_says_how_to_go_back_to_its_default_model_and_what_a_switch_also_ch
         claude.models.iter().all(|c| c.value != "default"),
         "「默认」不混进可选的模型里（起会话不选 ＝ 默认，不交这个值）"
     );
-    assert_eq!(claude.model_note, Some(t("beSessionModel.note.savesDefault")));
+    assert_eq!(
+        claude.model_note,
+        Some(t("beSessionModel.note.savesDefault"))
+    );
     let codex = agent_facts("codex");
     assert!(codex.model_default.is_none() && codex.model_note.is_none());
 }
@@ -176,7 +179,14 @@ fn the_new_session_facts_wire_names_its_cells() {
     let keys: Vec<&str> = v.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(
         keys,
-        vec!["kind", "modelDefault", "modelNote", "models", "permissionModes", "text"]
+        vec![
+            "kind",
+            "modelDefault",
+            "modelNote",
+            "models",
+            "permissionModes",
+            "text"
+        ]
     );
     assert_eq!(
         v["models"][0],

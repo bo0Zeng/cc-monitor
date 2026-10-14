@@ -181,11 +181,12 @@ fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
     );
     let bytes = serde_json::to_string(&got).unwrap();
     assert_eq!(bytes, want);
-    let back = cmd_wire::session::decode_reply(
-        "session-commands",
-        serde_json::from_str(&bytes).unwrap(),
-    )
-    .expect("表里有 session-commands")
-    .expect("解得开");
-    assert_eq!(back, serde_json::from_str::<serde_json::Value>(&want).unwrap());
+    let back =
+        cmd_wire::session::decode_reply("session-commands", serde_json::from_str(&bytes).unwrap())
+            .expect("表里有 session-commands")
+            .expect("解得开");
+    assert_eq!(
+        back,
+        serde_json::from_str::<serde_json::Value>(&want).unwrap()
+    );
 }

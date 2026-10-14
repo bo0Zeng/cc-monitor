@@ -153,10 +153,15 @@ fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
     let refused = run("acceptEdits", true, &mut f);
     let said = crate::control::terminals::no_said(crate::control::terminals::Refused::Waiting);
     for (got, want) in [
-        (done, r#"{"result":"done","mode":"plan","modeText":null}"#.to_string()),
+        (
+            done,
+            r#"{"result":"done","mode":"plan","modeText":null}"#.to_string(),
+        ),
         (
             refused,
-            format!(r#"{{"result":"refused","mode":null,"modeText":null,"why":"waiting","said":"{said}"}}"#),
+            format!(
+                r#"{{"result":"refused","mode":null,"modeText":null,"why":"waiting","said":"{said}"}}"#
+            ),
         ),
     ] {
         let bytes = serde_json::to_string(&got).unwrap();
@@ -167,6 +172,9 @@ fn the_reply_bytes_are_pinned_and_the_phone_reads_them_back() {
         )
         .expect("表里有 session-permission")
         .expect("解得开");
-        assert_eq!(back, serde_json::from_str::<serde_json::Value>(&want).unwrap());
+        assert_eq!(
+            back,
+            serde_json::from_str::<serde_json::Value>(&want).unwrap()
+        );
     }
 }

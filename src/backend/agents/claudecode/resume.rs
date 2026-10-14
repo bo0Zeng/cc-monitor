@@ -161,7 +161,10 @@ pub(crate) fn model_text(raw: &str) -> Option<String> {
     }
     Some(copy_core::copy_text(
         "beSessionModel.name.versioned",
-        &[("family", &(family.text)()), ("version", &version.join("."))],
+        &[
+            ("family", &(family.text)()),
+            ("version", &version.join(".")),
+        ],
     ))
 }
 

@@ -181,7 +181,13 @@ fn the_model_written_in_the_record_reads_as_its_name() {
         text("claude-3-5-haiku-20241022"),
         Some(format!("{} 3.5", family("haiku")))
     );
-    for m in ["<synthetic>", "claude-opus", "claude-mystery-4-5", "gpt-5", ""] {
+    for m in [
+        "<synthetic>",
+        "claude-opus",
+        "claude-mystery-4-5",
+        "gpt-5",
+        "",
+    ] {
         assert_eq!(text(m), None, "`{m}` 不该有字");
     }
     assert_eq!(

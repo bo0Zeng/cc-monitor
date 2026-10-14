@@ -645,7 +645,10 @@ fn one_line_attrs(src: &str) -> String {
             let part = line.trim();
             if part == ")]" {
                 let joined = acc.replace("any(test, feature = \"ts\"),", "test,");
-                out.push_str(&format!("#[cfg_attr({})]\n", joined.trim_end_matches(',').trim()));
+                out.push_str(&format!(
+                    "#[cfg_attr({})]\n",
+                    joined.trim_end_matches(',').trim()
+                ));
                 open = None;
             } else {
                 acc.push_str(part);
