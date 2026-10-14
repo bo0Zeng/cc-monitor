@@ -12,23 +12,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::BlockingData(|r| crate::faces::rotation_face::answer_quota_read(&r.tz).map(Some)),
     },
     // 用某个号查一次额度（帧面宿主 `faces/quota_probe_face.rs`）：起官方客户端、等它 ⇒ 阻塞档，总期限登记在 `caps.rs`。
-    CommandSpec {
-        name: "quota-probe",
-        summary: "用某个号查一次额度",
-        codes: &[
-            "bad_args",
-            "child_timed_out",
-            "failed",
-            "io_failed",
-            "not_found",
-            "unsupported",
-        ],
-        fields: &[both("account", "账号库里的号（配置目录末段；账号 0 是 `0`）"), both("agent", "路由第 1 段：哪一家"), out("from", "恒 `\"usage\"`"), out("now", "这台此刻的 unix 秒"), out("path", "额度账那份文件的绝对路径"), out("reason", "只在 `unreadable` 时有：哪一处读不懂（英文诊断）"), out("state", "`\"read\"`（读得懂、已记进额度账）· `\"unreadable\"`（输出对不上：**不猜、不写账**）"), out("windows", "读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]`")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::faces::quota_probe_face::answer_probe(&r.args, own).map(Some)
-        }),
-    },
+    crate::wire::typed::blocking::<crate::faces::quota_probe_face::QuotaProbe>(
+        "用某个号查一次额度",
+    ),
     // 轮换第五版：每个号此刻的事实（typed，`轮换-v5-分层.md` §1.1）。只读。
     crate::wire::typed::blocking::<crate::faces::rotation_facts_face::RotationFacts>(
         "每个号此刻的事实",
@@ -68,17 +54,9 @@ pub(super) const SPECS: &[CommandSpec] = &[
     //     **不进 argv / env / 日志**；两条的应答都只有掩码。
     //   ⚠ 两条都在阻塞档：同步文件 I/O，开跑之后打不断。
     //   ⚠ 它们**不起中转**、中转那几条也**不碰凭据**（「账号就账号, 中转就中转」）。
-    CommandSpec {
-        name: "apikey-key-set",
-        summary: "给一个账号写 key，写完读回",
-        codes: &["bad_args", "bad_file", "io_failed"],
-        // 入 `configDir`（账号 id 由后端推）· 出 `account`（推出来的那个）。
-        fields: &[out("account", "推出来的账号 id"), both("baseUrl", "入（可选）：这个账号的第三方端点"), arg("configDir", "这个号的账号目录"), arg("key", "明文"), out("masked", "写完**再读一遍**、这一行 key 的掩码（盘上的事实）"), out("path", "那份文件的绝对路径")],
-        takes_input: true,
-        run: Run::BlockingOwn(|r, own| {
-            crate::accounts::upstream_select::file_face::answer_set(&r.args, own).map(Some)
-        }),
-    },
+    crate::wire::typed::blocking::<crate::accounts::upstream_select::file_face::ApikeyKeySet>(
+        "给一个账号写 key，写完读回",
+    ),
     // 出成品：`{meta, accounts, notice}`，并上这台机器自己那份 apikey 表；`agent` 随请求带（必填）。
     CommandSpec {
         name: "accounts-list",

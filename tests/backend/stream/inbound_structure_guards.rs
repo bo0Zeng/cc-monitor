@@ -1071,12 +1071,6 @@ const TYPED: &[(&str, fn() -> Sampled, &[&str], &[(&str, &str)])] = &[
         &[],
         &[],
     ),
-    (
-        "quota-probe",
-        sampled::<crate::faces::quota_probe_face::Probed>,
-        &[],
-        &[],
-    ),
     ("quota-read", sampled::<rf::QuotaRead>, &[], &[]),
     (
         "terminal-follow",
@@ -1128,8 +1122,8 @@ fn every_command_declares_exactly_the_fields_it_puts_out() {
     ];
     /// 有出参、还没有真序列化样本的命令（见头注 ②）。**只许删**：[`UNSHAPED_CEILING`] 是上一批删完之后的条数，
     /// 多一条就红；删了一批就把它降到现数（不降也红）。
-    const UNSHAPED_CEILING: usize = 3;
-    const UNSHAPED: &[&str] = &["apikey-key-set", "remote-probe", "resident-verdict"];
+    const UNSHAPED_CEILING: usize = 2;
+    const UNSHAPED: &[&str] = &["remote-probe", "resident-verdict"];
     fn keys_at_any_depth(v: &serde_json::Value, into: &mut std::collections::BTreeSet<String>) {
         match v {
             serde_json::Value::Object(m) => {

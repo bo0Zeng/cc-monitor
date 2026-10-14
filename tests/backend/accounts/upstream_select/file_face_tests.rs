@@ -20,6 +20,12 @@
 
 use super::*;
 
+/// 判据照线上那一份喂（JSON 入参），经 typed 那一处收成类型（同生产），回包回成 `Value` 好按键看；盖住 `super::*` 里的同名口。
+fn answer_set_at(own: &Own, args: &Value) -> FileFaceAnswer {
+    let req: KeySetReq = crate::wire::typed::take(args)?;
+    super::answer_set_at(own, &req).map(|v| serde_json::to_value(v).unwrap())
+}
+
 fn temp_dir(tag: &str) -> PathBuf {
     let p = std::env::temp_dir().join(format!("ccm-apikey-face-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&p);

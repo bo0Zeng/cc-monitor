@@ -26,8 +26,8 @@ use std::path::PathBuf;
 
 /// 这台 key 表的几口，由门递进来（生产：`stream/inbound/` 递 `file_face` 那几个；判据给落在临时目录上的那一份）。
 pub(crate) struct KeyDoor<'a> {
-    /// 写一个号的 key（`{configDir, key, baseUrl}`）。
-    pub(crate) set: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,
+    /// 写一个号的 key（同 `apikey-key-set`）。
+    pub(crate) set: &'a dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Fail>,
     /// 摘掉一个号那一行（`{configDir}`）。
     pub(crate) drop: &'a dyn Fn(&Value) -> file_face::FileFaceAnswer,
     /// 从备份那一份放回一个号那一行（`{configDir, from}`）。
@@ -110,7 +110,7 @@ pub(crate) fn change(
 /// 改账号库那几条递给本体的 key 表几口：写 key · 删号清那一行 · 回滚放回去 · 表在哪。
 /// 那份表（上游选择自己的状态）写经分派那一层递进来的写句柄。
 fn with_account_keys<R>(own: &crate::platform::Own, f: impl FnOnce(&KeyDoor<'_>) -> R) -> R {
-    let set = |a: &Value| file_face::answer_set(a, own);
+    let set = |a: &file_face::KeySetReq| file_face::answer_set(a, own);
     let drop = |a: &Value| file_face::answer_drop(a, own);
     let restore = |a: &Value| file_face::answer_restore(a, own);
     f(&KeyDoor {
@@ -525,13 +525,17 @@ fn sync_mcp(d: &dyn Door, change: &mut AccountChange) {
 
 fn put_key(
     change: &mut AccountChange,
-    key_set: &dyn Fn(&Value) -> file_face::FileFaceAnswer,
+    key_set: &dyn Fn(&file_face::KeySetReq) -> Result<file_face::KeySet, Fail>,
     config_dir: &str,
     key: &str,
     base_url: Option<&str>,
 ) {
-    match key_set(&json!({ "configDir": config_dir, "key": key, "baseUrl": base_url })) {
-        Ok(v) => change.key_masked = v.get("masked").and_then(Value::as_str).map(str::to_string),
+    match key_set(&file_face::KeySetReq {
+        config_dir: config_dir.to_string(),
+        key: key.to_string(),
+        base_url: base_url.map(str::to_string),
+    }) {
+        Ok(v) => change.key_masked = Some(v.masked),
         Err(f) => {
             change.key_problem = Some(copy_text(
                 "beAcctFace.key.notSaved",

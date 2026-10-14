@@ -12,13 +12,11 @@ use crate::accounts::upstream_select::rotate::account_ok;
 use crate::faces::rotation_face::Ctx;
 use crate::platform::child::{Child, Deadline};
 use crate::platform::fs::Own;
-use crate::wire::spec::wire;
 use copy_core::copy_text;
-use serde_json::Value;
 use std::ffi::OsStr;
 
 /// 失败带码 ＋ 那一句 ＋ 原话（落账写不进那一形的原话进复制详情，[`Fail`]）。
-type Answer = Result<Value, crate::wire::spec::Fail>;
+type Answer = Result<Probed, crate::wire::spec::Fail>;
 
 /// 起官方客户端报一次用量的期限（它要起进程、读登录、问一次上游）。
 const PROBE_WITHIN: Deadline = Deadline::secs(30);
@@ -33,12 +31,63 @@ fn bad(detail: &str) -> crate::wire::spec::Fail {
     crate::wire::spec::Fail::new("bad_args", crate::common::contract::malformed(detail))
 }
 
+/// `quota-probe` 的入参。
+#[derive(Debug, Clone, serde::Deserialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(deny_unknown_fields)]
+pub(crate) struct ProbeReq {
+    /// 路由第 1 段：哪一家。
+    pub(crate) agent: String,
+    /// 账号库里的号（配置目录末段；账号 0 是 `0`）。
+    pub(crate) account: String,
+}
+
+crate::wire::typed::codes! {
+    /// `quota-probe` 的码。
+    pub(crate) enum ProbeErr {
+        /// 官方客户端没在期限里说完。
+        ChildTimedOut = "child_timed_out",
+        /// 起不来 · 退出码非零（它自己那句话进原话）。
+        Failed = "failed",
+        /// 工作目录建不了 · 额度账写不进。
+        IoFailed = "io_failed",
+        /// 账号库里没有这个号。
+        NotFound = "not_found",
+        /// 这一家查不了 · 按量号没有额度可查。
+        Unsupported = "unsupported",
+    }
+}
+
+/// `quota-probe`：用某个号查一次额度（起官方客户端、等它 ⇒ 阻塞档，总期限登记在 `caps.rs`；落账经写句柄）。
+pub(crate) struct QuotaProbe;
+
+impl crate::wire::typed::Command for QuotaProbe {
+    const NAME: &'static str = "quota-probe";
+    type Req = ProbeReq;
+    type Reply = Probed;
+    type Err = ProbeErr;
+}
+
+impl crate::wire::typed::Handle for QuotaProbe {
+    type Needs = crate::wire::typed::needs::Own;
+    fn run(
+        req: ProbeReq,
+        cx: crate::wire::typed::Cx<Self::Needs>,
+    ) -> impl std::future::Future<Output = Result<Probed, ProbeErr>> + Send + 'static {
+        async move {
+            answer_probe(&req, &cx.needs)
+                .map_err(|f| crate::wire::typed::of_fail(f, ProbeErr::Failed))
+        }
+    }
+}
+
 /// `quota-probe`：`{agent, account}` ⇒ 读到的窗口（并已记进额度账）或「读不懂」。
-pub(crate) fn answer_probe(args: &Value, own: &Own) -> Answer {
+pub(crate) fn answer_probe(req: &ProbeReq, own: &Own) -> Answer {
     answer_probe_with(
         &Ctx::here(),
         own,
-        args,
+        req,
         crate::accounts::quota::now_unix(),
         None,
     )
@@ -48,26 +97,16 @@ pub(crate) fn answer_probe(args: &Value, own: &Own) -> Answer {
 pub(crate) fn answer_probe_with(
     ctx: &Ctx,
     own: &Own,
-    args: &Value,
+    req: &ProbeReq,
     now: u64,
     path: Option<&OsStr>,
 ) -> Answer {
-    let agent = args
-        .get("agent")
-        .and_then(Value::as_str)
+    let agent = Some(req.agent.as_str())
         .filter(|a| crate::relay::segment_is_safe(a))
         .ok_or_else(|| bad("`agent` must be a route id such as \"claude-code\""))?;
-    let account = args
-        .get("account")
-        .and_then(Value::as_str)
+    let account = Some(req.account.as_str())
         .filter(|a| account_ok(a))
         .ok_or_else(|| bad("`account` must be an account id"))?;
-    if let Some(k) = args.as_object().and_then(|o| {
-        o.keys()
-            .find(|k| !matches!(k.as_str(), "agent" | "account"))
-    }) {
-        return Err(bad(&format!("unknown field `{k}`")));
-    }
     let face = crate::agents::usage_of(agent).ok_or_else(|| {
         (
             "unsupported",
@@ -161,7 +200,7 @@ pub(crate) fn answer_probe_with(
     let probed = |state, reason, windows| Probed {
         agent: agent.to_string(),
         account: account.to_string(),
-        from: "usage",
+        from: ProbeFrom::Usage,
         now,
         state,
         reason,
@@ -169,30 +208,56 @@ pub(crate) fn answer_probe_with(
         path: shown.clone(),
     };
     match (face.read)(&text, now) {
-        Err(why) => wire(&probed("unreadable", Some(why), Vec::new())),
+        Err(why) => Ok(probed(ProbeState::Unreadable, Some(why), Vec::new())),
         Ok(windows) => {
             ledger::record_probe(&ctx.hop.quota, own, agent, account, windows.clone(), now)
                 .map_err(|e| ("io_failed", e))?;
-            wire(&probed("read", None, windows))
+            Ok(probed(ProbeState::Read, None, windows))
         }
     }
 }
 
-/// `quota-probe` 的应答（各格的意思见注册表那一条）。
-#[derive(serde::Serialize)]
+/// `quota-probe` 的回包。
+#[derive(Debug, Clone, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
 pub(crate) struct Probed {
-    agent: String,
-    account: String,
-    /// 恒 `"usage"`。
-    from: &'static str,
-    now: u64,
-    /// `"read"` · `"unreadable"`。
-    state: &'static str,
-    /// 只在 `unreadable` 时有（英文诊断）；`read` ⇒ `null`。
-    reason: Option<String>,
-    /// `unreadable` ⇒ `[]`。
-    windows: Vec<crate::agents::QuotaWindow>,
-    path: Option<String>,
+    /// 路由第 1 段：哪一家（同入参）。
+    pub(crate) agent: String,
+    /// 账号库里的号（同入参）。
+    pub(crate) account: String,
+    /// 这份读数从哪来。
+    pub(crate) from: ProbeFrom,
+    /// 这台此刻的 unix 秒。
+    #[cfg_attr(test, ts(type = "number"))]
+    pub(crate) now: u64,
+    /// 读得懂（已记进额度账）· 输出对不上（不猜、不写账）。
+    pub(crate) state: ProbeState,
+    /// 只在 `unreadable` 时有：哪一处读不懂（英文诊断）；`read` ⇒ `null`。
+    pub(crate) reason: Option<String>,
+    /// 读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]`。
+    pub(crate) windows: Vec<crate::agents::QuotaWindow>,
+    /// 额度账那份文件的绝对路径（家推不出来时 `null`）。
+    pub(crate) path: Option<String>,
+}
+
+/// [`Probed::from`]：恒是官方客户端报的用量。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ProbeFrom {
+    Usage,
+}
+
+/// [`Probed::state`]。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ProbeState {
+    Read,
+    Unreadable,
 }
 
 #[cfg(test)]

@@ -5,7 +5,7 @@ use super::*;
 use crate::accounts::quota::ledger::{Ledger, Source};
 use crate::accounts::quota::rotation::{self, RotationStore};
 use crate::accounts::upstream_select::rotate::{Hop, LibAccount, Library};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::Arc;
 
 const FIXTURE: &str = include_str!("../../__fixtures__/claude-usage.fixture.txt");
@@ -80,15 +80,18 @@ impl Home {
         }
     }
 
-    fn probe(&self, ctx: &Ctx, args: Value) -> Answer {
+    /// 照线上那一份喂（JSON 入参经 typed 那一处收成类型，同生产），回包回成 `Value` 好按键看。
+    fn probe(&self, ctx: &Ctx, args: Value) -> Result<Value, crate::wire::spec::Fail> {
         let path = format!("{}:/usr/bin:/bin", self.bin.display());
+        let req: ProbeReq = crate::wire::typed::take(&args)?;
         answer_probe_with(
             ctx,
             &crate::platform::fs::Own::issue_data_at(&self.root),
-            &args,
+            &req,
             NOW,
             Some(OsStr::new(&path)),
         )
+        .map(|p| serde_json::to_value(p).unwrap())
     }
 
     fn seen(&self) -> String {
@@ -231,21 +234,6 @@ fn bad_args_unknown_accounts_and_api_keys_never_start_anything() {
         "not_found"
     );
     assert_eq!(home.seen(), "", "一次都没起");
-}
-
-impl crate::guard_support::Shaped for Probed {
-    fn samples() -> Vec<Self> {
-        vec![Probed {
-            agent: "claude-code".into(),
-            account: "b".into(),
-            from: "usage",
-            now: 1,
-            state: "unreadable",
-            reason: Some("no table".into()),
-            windows: Vec::new(),
-            path: Some("/x/quota.json".into()),
-        }]
-    }
 }
 
 /// 换成 typed 之前钉的线上字节（回包过一遍 `Value` ＝ 帧里那一份写法，夹具根换成 `<root>`）：读得懂的一份 · 读不懂的一份，

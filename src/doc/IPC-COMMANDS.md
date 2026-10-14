@@ -1339,16 +1339,71 @@ type WirePath = string | { b16: string };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · 总期限上限 32 秒（带 `within_ms` / `--within-ms` ⇒ 收紧到它减 2 秒） · CLI：`ccm -- --quota-probe`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | → ← | 账号库里的号（配置目录末段；账号 0 是 `0`） |
-| `agent` | → ← | 路由第 1 段：哪一家 |
-| `from` | ← | 恒 `"usage"` |
-| `now` | ← | 这台此刻的 unix 秒 |
-| `path` | ← | 额度账那份文件的绝对路径 |
-| `reason` | ← | 只在 `unreadable` 时有：哪一处读不懂（英文诊断） |
-| `state` | ← | `"read"`（读得懂、已记进额度账）· `"unreadable"`（输出对不上：**不猜、不写账**） |
-| `windows` | ← | 读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]` |
+入参 `ProbeReq` · 回包 `Probed`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type ProbeFrom = "usage";
+type ProbeReq = { 
+/**
+ * 路由第 1 段：哪一家。
+ */
+agent: string, 
+/**
+ * 账号库里的号（配置目录末段；账号 0 是 `0`）。
+ */
+account: string, };
+type ProbeState = "read" | "unreadable";
+type Probed = { 
+/**
+ * 路由第 1 段：哪一家（同入参）。
+ */
+agent: string, 
+/**
+ * 账号库里的号（同入参）。
+ */
+account: string, 
+/**
+ * 这份读数从哪来。
+ */
+from: ProbeFrom, 
+/**
+ * 这台此刻的 unix 秒。
+ */
+now: number, 
+/**
+ * 读得懂（已记进额度账）· 输出对不上（不猜、不写账）。
+ */
+state: ProbeState, 
+/**
+ * 只在 `unreadable` 时有：哪一处读不懂（英文诊断）；`read` ⇒ `null`。
+ */
+reason: string | null, 
+/**
+ * 读到的窗口（形状同 `reading.windows`）；`unreadable` ⇒ `[]`。
+ */
+windows: Array<QuotaWindow>, 
+/**
+ * 额度账那份文件的绝对路径（家推不出来时 `null`）。
+ */
+path: string | null, };
+type QuotaWindow = { 
+/**
+ * 窗口名（那一家读法表里的值，如 5 小时 · 7 天）。
+ */
+name: string, 
+/**
+ * 已用比例（通常 0–1，可以超过 1）。
+ */
+used?: number, 
+/**
+ * 几点重置（unix 秒）。
+ */
+resetsAt?: number, 
+/**
+ * 越过了哪条预警线（比例）；没越过就没有。
+ */
+warnedAt?: number, };
+```
 
 码：`bad_args` · `child_timed_out` · `failed` · `io_failed` · `not_found` · `unsupported`
 
@@ -2059,14 +2114,40 @@ v: number | null, };
 
 收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --apikey-key-set`
 
-| 字段 | 向 | 说明 |
-|---|---|---|
-| `account` | ← | 推出来的账号 id |
-| `baseUrl` | → ← | 入（可选）：这个账号的第三方端点 |
-| `configDir` | → | 这个号的账号目录 |
-| `key` | → | 明文 |
-| `masked` | ← | 写完**再读一遍**、这一行 key 的掩码（盘上的事实） |
-| `path` | ← | 那份文件的绝对路径 |
+入参 `KeySetReq` · 回包 `KeySet`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
+
+```ts
+type KeySet = { 
+/**
+ * 推出来的账号 id。
+ */
+account: string, 
+/**
+ * 那份文件的绝对路径。
+ */
+path: string, 
+/**
+ * 这一行 key 的掩码（只留末四位）。
+ */
+masked: string, 
+/**
+ * 这一行此刻的端点（没配 ⇒ `null`）。
+ */
+baseUrl: string | null, };
+type KeySetReq = { 
+/**
+ * 这个号的账号目录。
+ */
+configDir: string, 
+/**
+ * 明文。
+ */
+key: string, 
+/**
+ * 这个账号的第三方端点：缺 / `null` / 空串 ＝ 不碰那一格（只配 key 时已有端点原样留着）。
+ */
+baseUrl?: string | null, };
+```
 
 码：`bad_args` · `bad_file` · `io_failed`
 

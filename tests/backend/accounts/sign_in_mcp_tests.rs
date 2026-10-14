@@ -173,7 +173,9 @@ impl Rig {
         let table = self.root.join(".cc-monitor/apikey-credentials.json");
         let own =
             || crate::platform::fs::Own::issue_data_at(table.parent().expect("表所在的那一层"));
-        let set = |v: &Value| crate::accounts::upstream_select::file_face::answer_set_at(&own(), v);
+        let set = |v: &crate::accounts::upstream_select::file_face::KeySetReq| {
+            crate::accounts::upstream_select::file_face::answer_set_at(&own(), v)
+        };
         let drop =
             |v: &Value| crate::accounts::upstream_select::file_face::answer_drop_at(&own(), v);
         let restore =
