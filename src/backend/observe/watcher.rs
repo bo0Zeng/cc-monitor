@@ -903,7 +903,7 @@ pub fn spawn(
     agent_home: PathBuf,
     own: crate::platform::fs::Own,
 ) -> (WatcherPoke, std::sync::Arc<crate::observe::runs::RunBook>) {
-    let book = crate::observe::runs::RunBook::shared();
+    let book = std::sync::Arc::new(crate::observe::runs::RunBook::default());
     // P4：事件 channel 从 `watch_loop` 内部**上提到这里**造 —— 因为 poke 句柄必须在线程
     // 起来之前就能交给 `main`。**仍然只有这一条 channel**（账本第 1 行不许再开第二条）：
     // 交出去的是同一个 sender 的 clone，`watch_loop` 收的是同一条的 receiver。
@@ -4345,13 +4345,6 @@ fn is_background(bytes: &[u8]) -> bool {
         .is_ok_and(|v| crate::agents::pidfile_background(&v))
 }
 
-/// 这份 pidfile 说的此刻在干什么（适配层翻）；读不成 JSON / 说不清 ⇒ `None`。
-fn activity(bytes: &[u8]) -> Option<crate::agents::SessionActivity> {
-    serde_json::from_slice::<serde_json::Value>(bytes)
-        .ok()
-        .and_then(|v| crate::agents::pidfile_activity(&v))
-}
-
 /// **一次性扫描**：`<agent_home>/sessions/` 下此刻活着的交互会话 `(sid, pid)` —— 判活与起步初扫同一条
 /// （pid 在 · 不是后台任务 · add-time 冒名判定过）。给 `ccm` resume 用（由 `main` 注入，control 层不引用 observe）。
 pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
@@ -4371,31 +4364,6 @@ pub fn running_sessions(agent_home: &Path) -> Vec<(String, u32)> {
                 .then_some((sid, pid))
         })
         .collect()
-}
-
-/// `sid` 那个会话此刻有没有一轮在跑：活着的交互会话 pidfile 说在干活（判活同 [`running_sessions`]）。
-pub(crate) fn session_busy(agent_home: &Path, sid: &str) -> bool {
-    let dir = pidfile_dir(agent_home);
-    let Ok(entries) = Ro::read_dir(&dir) else {
-        return false;
-    };
-    entries
-        .filter_map(Result::ok)
-        .map(|e| e.path())
-        .filter(|p| is_session_json(p))
-        .any(|p| {
-            let Some(pid) = file_stem_str(&p).and_then(|s| s.parse::<u32>().ok()) else {
-                return false;
-            };
-            let Ok(bytes) = Ro::read(&p) else {
-                return false;
-            };
-            parse_session_id(&bytes).as_deref() == Some(sid)
-                && activity(&bytes) == Some(crate::agents::SessionActivity::Working)
-                && pid_alive(pid)
-                && !is_background(&bytes)
-                && add_time_check(pid, &bytes, &p).is_ok()
-        })
 }
 
 /// Parse the pidfile's `procStart` field as starttime ticks. CC writes it as a

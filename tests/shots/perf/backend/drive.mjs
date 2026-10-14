@@ -247,7 +247,6 @@ await bench("accounts-sessions", "accounts-sessions", {});
 await bench("tasks-list", "tasks-list", { sid: midSid });
 await bench("terminals-list", "terminals-list", {});
 await bench("machine-interrupts", "machine-interrupts", {});
-await bench("session-interrupts", "session-interrupts", { sid: midSid });
 await bench("assets-catalog", "assets-catalog", {});
 await bench("ext-list", "ext-list", {});
 await bench("profiles-read", "profiles-read", {});

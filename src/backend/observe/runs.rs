@@ -428,43 +428,7 @@ pub(crate) trait BookWatch: Send + Sync {
     fn gone(&self, sid: &str);
 }
 
-/// 这个进程里活着的运行簿（watcher 那一本 ＋ 夹具造的，见 [`RunBook::shared`]）。只读查询（`session-interrupts`）在这里看全部。
-static LIVE_BOOKS: Mutex<Vec<std::sync::Weak<RunBook>>> = Mutex::new(Vec::new());
-
-/// `sid` 此刻在跑的子运行（全部活着的运行簿合起来，按运行号去重）：显示名（标签 ＞ 种类 ＞ 运行号）。
-pub(crate) fn running_names(sid: &str) -> Vec<String> {
-    let books: Vec<Arc<RunBook>> = {
-        let mut g = LIVE_BOOKS.lock().unwrap_or_else(|e| e.into_inner());
-        g.retain(|w| w.strong_count() > 0);
-        g.iter().filter_map(std::sync::Weak::upgrade).collect()
-    };
-    let mut seen = std::collections::BTreeMap::<String, String>::new();
-    for b in books {
-        for r in b.runs(sid) {
-            if r.state == RunState::Running {
-                let name = r
-                    .label
-                    .clone()
-                    .or_else(|| r.kind.clone())
-                    .unwrap_or_else(|| r.run.clone());
-                seen.entry(r.run.clone()).or_insert(name);
-            }
-        }
-    }
-    seen.into_values().collect()
-}
-
 impl RunBook {
-    /// 一本新的运行簿，登记进本进程的活簿表（连接断了它随 `Arc` 一起走，表里那一格自然失效）。
-    pub fn shared() -> Arc<Self> {
-        let b = Arc::new(Self::default());
-        LIVE_BOOKS
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(Arc::downgrade(&b));
-        b
-    }
-
     fn with<T>(&self, f: impl FnOnce(&mut HashMap<String, Sess>) -> T) -> T {
         f(&mut self.inner.lock().unwrap_or_else(|e| e.into_inner()))
     }

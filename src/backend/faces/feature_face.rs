@@ -387,44 +387,6 @@ pub(crate) fn mcp_reply(r: &crate::agents::McpRead, say: &McpSay) -> McpReadRepl
 #[path = "../../../tests/backend/faces/feature_face_tests.rs"]
 mod tests;
 
-/// `session-interrupts`：动一个会话之前，会打断什么（按族答，界面只画）。阻塞档：读 pidfile 目录 ＋ 任务目录。
-pub(crate) struct SessionInterrupts;
-
-crate::stream::inbound::typed::codes! {
-    /// `session-interrupts` 自己没有别的码（读不到按「没有」答；sid 空 ⇒ `bad_args`）。
-    pub(crate) enum SessionInterruptsErr {}
-}
-
-/// `session-interrupts` 的入参。
-#[derive(Debug, Clone, serde::Deserialize)]
-#[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../frontend/ui/generated/"))]
-#[serde(deny_unknown_fields)]
-pub(crate) struct SessionInterruptsReq {
-    /// 会话 id（空 ⇒ `bad_args`）。
-    pub(crate) sid: String,
-}
-
-impl crate::stream::inbound::typed::Command for SessionInterrupts {
-    const NAME: &'static str = "session-interrupts";
-    type Req = SessionInterruptsReq;
-    type Reply = crate::observe::interrupts_query::SessionInterrupts;
-    type Err = SessionInterruptsErr;
-}
-
-impl crate::stream::inbound::typed::Blocking for SessionInterrupts {
-    fn run(
-        req: SessionInterruptsReq,
-        _cx: &crate::stream::inbound::typed::Cx,
-    ) -> Result<crate::observe::interrupts_query::SessionInterrupts, SessionInterruptsErr> {
-        crate::observe::interrupts_query::answer_at(
-            &crate::observe::history_query::agent_home(),
-            &req.sid,
-        )
-        .map_err(SessionInterruptsErr::BadArgs)
-    }
-}
-
 /// `session-terminals`：此刻是哪个终端在显示这个会话（↗ 点那一刻问一次）。阻塞档：读 `/proc` ＋ 在 tmux 里时起一次 `tmux list-clients`。
 pub(crate) struct SessionTerminals;
 

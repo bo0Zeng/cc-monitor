@@ -1365,7 +1365,6 @@ pub const SUBCOMMANDS: &[&str] = &[
     // 帧面 `resolve` 派生的 CLI 面（手写那一臂删了，信封与别的命令同一形）。
     "--resolve",
     // `--resync` 摘了（`cli_control::STREAM_ONLY`：一次性进程里没有 watcher，答 `watchers: 0` 是假话）。⚠ 逼出 `BUILD_ID` bump（打版本号时统一做）。
-    "--session-interrupts",
     // 起新会话框那三问 ＋ tab 栏多选的批量停 / 起 / 问样子（`inbound::REGISTRY` 的 `session-new*` / `sessions-*`）
     //   自动派生的 CLI 面：六条的事实**全在这台**（tmux 名单现探 · 记录在不在 · 铸名经同一张会话快照 ——
     //   `SessionSnapshot::query` 没有「只读缓存」那条路，一次性进程问它一次它就重探一次），

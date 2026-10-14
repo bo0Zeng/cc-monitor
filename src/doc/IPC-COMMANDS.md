@@ -9269,31 +9269,6 @@ forkOf?: string, };
 
 码：`bad_args`
 
-#### `session-interrupts`
-
-动一个会话之前，会打断什么。
-
-收 `args` · 撤不动（阻塞档，`cancel` 回 `not_cancellable`） · CLI：`ccm -- --session-interrupts`
-
-入参 `SessionInterruptsReq` · 回包 `SessionInterrupts`（类型从 Rust 生成，`generated/TypedCommands.ts`）：
-
-```ts
-type InterruptFamily = { family: InterruptKind, 
-/**
- * 显示名（`turn` 那一族没有名字 ⇒ 空表）。
- */
-names: Array<string>, };
-type InterruptKind = "turn" | "agent" | "task";
-type SessionInterrupts = { families: Array<InterruptFamily>, };
-type SessionInterruptsReq = { 
-/**
- * 会话 id（空 ⇒ `bad_args`）。
- */
-sid: string, };
-```
-
-码：`bad_args`
-
 #### `session-restart`
 
 换号重启。
@@ -10819,7 +10794,6 @@ type SshImported = { groups: Array<SshImportGroup>, };
 | `--rotation-view` | ＝ 帧命令 `rotation-view`：一个会话或一份策略此刻的轮换 |
 | `--session-commands` | ＝ 帧命令 `session-commands`：一条会话能用的斜杠命令与 Skill（内置 ＋ 本项目 ＋ 它用的号的配置目录） |
 | `--session-fork` | ＝ 帧命令 `session-fork`：从某条消息处分叉出一个新会话 |
-| `--session-interrupts` | ＝ 帧命令 `session-interrupts`：动一个会话之前，会打断什么 |
 | `--session-model` | ＝ 帧命令 `session-model`：会话开着时换模型（送那一家的那一行、从记录里读回换成了什么；在等人不送） |
 | `--session-new` | ＝ 帧命令 `session-new`：起一个新会话（全产品一个框、一个请求） |
 | `--session-new-dir` | ＝ 帧命令 `session-new-dir`：起新会话前核一个目录：在不在 · 会用哪个终端名 |

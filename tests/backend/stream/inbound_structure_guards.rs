@@ -322,8 +322,6 @@ fn every_registered_command_declares_its_run_kind() {
                 | "rotation-day-paint"
                 // 功能侧只读查询：读一个目录 ＋ 每个文件各一次（同步文件 I/O）。
                 | "tasks-list"
-                // 动一个会话之前会打断什么：读 pidfile 目录 ＋ 任务目录（同步文件 I/O）。
-                | "session-interrupts"
                 // MCP 列表：读 `.claude.json` ＋ 一份 `.mcp.json`（同步文件 I/O）。
                 | "mcp-read"
                 // 列 tmux 会话：起一次 `sh` ＋ `tmux` 并等它退出。
@@ -603,7 +601,6 @@ fn every_registered_command_declares_its_run_kind() {
         "rotation-strategy-tz",
         "rotation-day-paint",
         "tasks-list",
-        "session-interrupts",
         "mcp-read",
         "tmux-list",
         "session-terminals",
