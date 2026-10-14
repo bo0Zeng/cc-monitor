@@ -106,6 +106,7 @@ class ChatSessionMidTest {
             val link = FakeCoreLink()
             val facts =
                 mapOf(
+                    "recent" to emptyList<Any>(),
                     "agents" to
                         listOf(
                             mapOf("kind" to "claude", "text" to "Claude Code", "models" to listOf(mapOf("value" to "opus", "text" to "Opus")), "permissionModes" to listOf(mapOf("value" to "plan", "text" to "规划模式"))),

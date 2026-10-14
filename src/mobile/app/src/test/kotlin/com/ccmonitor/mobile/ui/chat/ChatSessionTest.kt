@@ -384,7 +384,7 @@ class ChatSessionTest {
                         ok(
                             mapOf(
                                 "recent" to listOf(mapOf("cwd" to "/h/orders", "lastMs" to 1.0, "lastText" to "19:02")),
-                                "agents" to listOf("claude", "codex").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>()) },
+                                "agents" to listOf("claude", "codex").map { mapOf("kind" to it, "text" to it, "models" to emptyList<Any>(), "permissionModes" to emptyList<Any>()) },
                             ),
                         )
                     "accounts-list" ->

@@ -61,6 +61,7 @@ class SessionsMidTest {
         val agents =
             SessionNewFacts.of(
                 mapOf(
+                    "recent" to emptyList<Any>(),
                     "agents" to
                         listOf(
                             mapOf("kind" to "claude", "text" to "Claude Code", "models" to emptyList<Any>(), "permissionModes" to listOf(mapOf("value" to "plan", "text" to "规划模式"))),
