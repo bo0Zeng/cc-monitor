@@ -58,8 +58,8 @@ class ConversationsViewTest {
     fun `需手动照核心的先后、字照抄；清单里没有的不拿 sid 顶标题`() {
         val needs =
             listOf(
-                NeedsRow("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, 180_000L)),
-                NeedsRow("9", Needs("answer", "等回答", Tone.NEED, 1, null)),
+                NeedsRow("3", Needs("approve", "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, 180_000L, null, null)),
+                NeedsRow("9", Needs("answer", "等回答", "等回答", null, Tone.NEED, 1, null, null, null)),
             )
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs), needsAt = 1_000)
         assertEquals(listOf("3", "9"), v.needs.map { it.sessionId })
@@ -117,7 +117,7 @@ class ConversationsViewTest {
 
     @Test
     fun `需手动那几条的点照核心给的语气`() {
-        val needs = listOf(NeedsRow("3", Needs("approve", "等批准 · Bash", Tone.NEED, 0, null)))
+        val needs = listOf(NeedsRow("3", Needs("approve", "等批准 · Bash", "等批准 · Bash", null, Tone.NEED, 0, null, null, null)))
         val v = view(LinkState.Up(), SessionTable(), list, Fetched.Got(needs))
         assertEquals(SessionDot.NEEDS_YOU, v.needs.single().dot)
     }

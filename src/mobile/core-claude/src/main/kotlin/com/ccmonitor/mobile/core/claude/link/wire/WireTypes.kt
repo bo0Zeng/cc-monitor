@@ -202,10 +202,119 @@ data class NeedsRow(
 data class Needs(
     val kind: String,
     val text: String,
+    val head: String,
+    val headCode: String?,
     val tone: Tone,
     val rank: Long,
     val waitedMs: Long?,
+    val ask: NeedsAsk?,
+    val manualText: String?,
 )
+
+/*
+ * 答题口：一条挂着的待答请求（`needs.ask`）与答它那一条（`needs-answer`）。选项的字 · 次序 · 语气 · 要不要附话 · 题目全是后端写好的，
+ * 手机只排版；入参也是这里的类型（[Wire.args] 出成线上那一份），与桌面 · 后端同一形。
+ */
+
+@WireOf("NeedsAsk")
+@JsonClass(generateAdapter = true)
+data class NeedsAsk(
+    val id: String,
+    val kind: AskKind,
+    val tool: String,
+    val run: NeedsAskRun?,
+    val what: String?,
+    val detail: String,
+    val choices: List<NeedsChoice>,
+    val questions: List<NeedsQuestion>,
+)
+
+@JsonClass(generateAdapter = false)
+enum class AskKind {
+    @Json(name = "approve")
+    APPROVE,
+
+    @Json(name = "answer")
+    QUESTION,
+
+    @Json(name = "plan")
+    PLAN,
+}
+
+@WireOf("NeedsAskRun")
+@JsonClass(generateAdapter = true)
+data class NeedsAskRun(
+    val id: String,
+    val kind: String?,
+)
+
+@WireOf("NeedsChoice")
+@JsonClass(generateAdapter = true)
+data class NeedsChoice(
+    val id: String,
+    val text: String,
+    val tone: Tone,
+    val note: NeedsNote,
+)
+
+@JsonClass(generateAdapter = false)
+enum class NeedsNote {
+    @Json(name = "none")
+    NONE,
+
+    @Json(name = "optional")
+    OPTIONAL,
+
+    @Json(name = "required")
+    REQUIRED,
+}
+
+@WireOf("NeedsQuestion")
+@JsonClass(generateAdapter = true)
+data class NeedsQuestion(
+    val id: String,
+    val text: String,
+    val header: String?,
+    val multi: Boolean,
+    val options: List<NeedsQuestionOption>,
+)
+
+@WireOf("NeedsQuestionOption")
+@JsonClass(generateAdapter = true)
+data class NeedsQuestionOption(
+    val id: String,
+    val text: String,
+    val detail: String?,
+)
+
+@WireOf("AnswerReq")
+@JsonClass(generateAdapter = true)
+data class AnswerReq(
+    val sid: String,
+    val ask: String,
+    val choice: String,
+    val note: String?,
+    val picks: Map<String, AskPick>?,
+)
+
+@WireOf("AskPick")
+@JsonClass(generateAdapter = true)
+data class AskPick(
+    val options: List<String>?,
+    val text: String?,
+)
+
+@WireOf("Answered")
+@JsonClass(generateAdapter = true)
+data class Answered(
+    val result: AnswerResult,
+)
+
+@JsonClass(generateAdapter = false)
+enum class AnswerResult {
+    @Json(name = "answered")
+    ANSWERED,
+}
 
 @WireOf("HistoryList")
 @JsonClass(generateAdapter = true)
