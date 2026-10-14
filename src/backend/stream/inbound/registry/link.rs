@@ -1,4 +1,4 @@
-//! 命令表 · 连接本身：`cancel` · `ping` · 链路四条 · 传输四条（`Run::Builtin` 那几条的本体是 `dispatch` 的硬臂）。
+//! 命令表 · 连接本身：`cancel` · `ping` · 链路四条 · 传输四条（帧面硬臂那几条的本体是 `dispatch` 的硬臂）。
 
 use crate::stream::inbound::spec::{arg, out, CommandSpec, Run};
 
@@ -62,23 +62,14 @@ pub(super) const SPECS: &[CommandSpec] = &[
         run: Run::Builtin,
     },
     // **传输四条** —— 用户「SFTP 进本机常驻后端，只写暂存区」：传输台从 monitor 搬进
-    // 本机常驻后端。四条都是 `Run::Builtin`：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
-    CommandSpec {
-        name: "transfer-upload",
-        summary: "开一张上传单",
-        codes: &["bad_args", "io_failed", "busy", "too_many_transfers"],
-        fields: &[arg("dial", "拨号请求，同 `link-open`"), arg("id", "传输单 id（`xfer-<n>`）"), arg("key", "暂存件的键（32 位十六进制）：同一份文件重拖同一个键 ⇒ 续传；提交时交给远端"), arg("local_path", "本机一份普通文件的路径")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
-    CommandSpec {
-        name: "transfer-download",
-        summary: "开一张下载单",
-        codes: &["bad_args", "refused", "too_many_transfers"],
-        fields: &[arg("dial", "拨号请求，同 `link-open`"), arg("id", "传输单 id"), arg("local_path", "本机落点（绝对路径；也收 `{\"b16\":…}`）"), arg("remote_path", "远端路径")],
-        takes_input: true,
-        run: Run::Builtin,
-    },
+    // 本机常驻后端。四条都是帧面硬臂：要碰本连接的票表与应答通道 ⇒ **只在帧面**。
+    // 开单两条是 typed（入参 · 回包 · 码从类型来），帧面硬臂那一档：分派照旧在 `dispatch` 那条硬臂。
+    crate::stream::inbound::typed::frame::<crate::control::transfer::TransferUpload>(
+        "开一张上传单",
+    ),
+    crate::stream::inbound::typed::frame::<crate::control::transfer::TransferDownload>(
+        "开一张下载单",
+    ),
     CommandSpec {
         name: "transfer-start",
         summary: "传输单起跑",

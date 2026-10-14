@@ -477,7 +477,7 @@ fn the_real_adapters_speak_only_through_the_channel() {
     );
     for needle in [
         "files::StatReq {",
-        "\"transfer-upload\"",
+        "TransferUploadAsk {",
         "\"files-commit-upload\"",
         "pub fn lanes()",
     ] {

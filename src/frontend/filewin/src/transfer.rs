@@ -74,7 +74,7 @@
 //! 上面几节里「调池子那条既有命令」「同一个进程级连接池」的说法**是上一版的**，今天的形状是：
 //!
 //! ```text
-//! 开单  source::ask(line, origin, "transfer-upload", {local_path})        → {id, key}
+//! 开单  source::ask_typed(line, origin, TransferUploadAsk{local_path, home?}) → TransferUploaded{id, key}
 //! 起跑  source::watch(line, origin, "transfer/<id>", 撤的令牌, 进度回调)    → 传完的字节数
 //! 提交  source::ask(line, origin, "files-commit-upload", {key, root, rel, overwrite})
 //! ```
@@ -486,8 +486,6 @@ pub async fn probe_remote_at(
 /// 一次「那儿有没有东西」的往返上限（调用方给的期限）。
 pub const PROBE_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 
-/// 开单：上传（传输台那一侧 `sftp_pool::TRANSFER_UPLOAD`，判据钉两份相等）。
-pub const OP_UPLOAD: &str = "transfer-upload";
 /// 进度流的 `kind` 前缀（传输台那一侧 `sftp_pool::TRANSFER_KIND_PREFIX`，判据钉两份相等）。
 pub const KIND_PREFIX: &str = "transfer/";
 /// 提交：后端文件管理那一条（后端 `control/files_commit.rs::COMMIT_COMMANDS`）。
@@ -496,19 +494,6 @@ pub const CMD_COMMIT: &str = "files-commit-upload";
 pub const OPEN_BUDGET: std::time::Duration = std::time::Duration::from_secs(10);
 /// 提交那一趟往返的上限：后端那一侧是围栏的几次 `canonicalize` ＋ 一次同盘改名。
 pub const COMMIT_BUDGET: std::time::Duration = std::time::Duration::from_secs(30);
-
-/// 从开单的应答里取一个字符串字段（缺了 ⇒ 契约不符，照实说）。
-pub(crate) fn field(v: &serde_json::Value, _cmd: &str, key: &str) -> Result<String, String> {
-    v.get(key)
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-        .ok_or_else(|| {
-            copy_text(
-                "rsFilewinTransfer.reply.missingField",
-                &[("key", &key.to_string())],
-            )
-        })
-}
 
 /// 真起一件上传 —— **开单 → 起跑并看 → 提交**，三步全经通道。
 ///
@@ -576,15 +561,14 @@ async fn upload_once(
 ) -> Result<(), Once> {
     let stop = board.cancels().stop_token();
     // 问得到后端的 `$HOME` 就带上：传输台连上之后与 SFTP 起始目录比（不一致 ⇒ 一个字节不写）。
-    let mut args = serde_json::json!({ "local_path": p.local_path });
-    if let Some(h) = home {
-        args["home"] = serde_json::Value::String(h.to_string());
-    }
-    let opened = super::source::ask(line, origin, OP_UPLOAD, &args, OPEN_BUDGET)
-        .await
-        .map_err(|s| Once::Failed(s.into()))?;
-    let id = field(&opened, OP_UPLOAD, "id").map_err(|s| Once::Failed(s.into()))?;
-    let key = field(&opened, OP_UPLOAD, "key").map_err(|s| Once::Failed(s.into()))?;
+    let ask = cmd_wire::transfer::TransferUploadAsk {
+        local_path: p.local_path.clone(),
+        home: home.map(str::to_string),
+    };
+    let cmd_wire::transfer::TransferUploaded { id, key } =
+        super::source::ask_typed(line, origin, &ask, OPEN_BUDGET)
+            .await
+            .map_err(Once::Failed)?;
     // 记下暂存件的键：跨机复制半路失败时，由它去那台机器上把暂存件删掉。
     board.note_staged(&key);
     let name = p.name.clone();

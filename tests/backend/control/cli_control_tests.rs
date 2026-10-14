@@ -41,7 +41,7 @@ use crate::control::cli_args::{
 };
 
 /// 帧面有、CLI 面没有的命令，**逐条登记理由**（不在这里的另两张在生产里：`STREAM_ONLY` 「结构上答不了」·
-/// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收 `Run::Builtin` 与占了 ccm 的词那几条）。
+/// `UI_ONLY` 「只有界面用得着」，理由同样是数据；这张只收帧面硬臂与占了 ccm 的词那几条）。
 ///
 /// 形状抄 `readonly_guard::spawn_registry::ALLOWED`：把「为什么这条不上」写成**数据**，
 /// 好让机检对着它比 —— 散文里说一遍，下一个人加命令时看不见。
@@ -868,7 +868,7 @@ fn the_protocol_doc_states_the_input_limits_the_code_enforces() {
 
 /// ★ 不上 CLI 面的理由分三种、各住一张表，**互不重叠**：`STREAM_ONLY`（一次性进程里结构上答不了：答出来是假话 / 活不过进程）·
 /// `UI_ONLY`（答得了，只是除了界面没人用得着 —— 这是关于调用方是谁的产品判断，第二个前端来了就该重看）· 测试里的 `NOT_ON_CLI`
-/// （`Run::Builtin` 与占了 ccm 的词）。混成一张表时，后一种理由被读成前一种，第二个前端就够不着（审计 §4）。
+/// （帧面硬臂与占了 ccm 的词）。混成一张表时，后一种理由被读成前一种，第二个前端就够不着（审计 §4）。
 #[test]
 fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
     fn names(t: &[(&'static str, &'static str)]) -> Vec<&'static str> {
@@ -905,22 +905,22 @@ fn the_withheld_tables_do_not_overlap_and_each_holds_its_own_kind() {
             "{an} 与 {bn} 都登记了 {both:?} —— 一条命令只有一种理由"
         );
     }
-    // 两张生产表收的都是**跑得起来**的命令（`Builtin` 那一种本来就跑不了，理由住 `NOT_ON_CLI`）。
+    // 两张生产表收的都是**跑得起来**的命令（帧面硬臂那一种本来就跑不了，理由住 `NOT_ON_CLI`）。
     for name in s.iter().chain(u.iter()) {
         let spec = REGISTRY
             .iter()
             .find(|x| x.name == *name)
             .unwrap_or_else(|| panic!("{name} 不在 REGISTRY 里 —— 过期的登记"));
         assert!(
-            !matches!(spec.run, Run::Builtin),
-            "{name} 是 `Run::Builtin`，理由该住 `NOT_ON_CLI`"
+            !spec.run.on_frame_arm(),
+            "{name} 是帧面硬臂，理由该住 `NOT_ON_CLI`"
         );
     }
     // `NOT_ON_CLI` 只收那两种。
     for name in &n {
         if let Some(spec) = REGISTRY.iter().find(|x| x.name == *name) {
             assert!(
-                matches!(spec.run, Run::Builtin) || crate::control::ccm::argv::is_ccm_word(&flag_of(name)),
+                spec.run.on_frame_arm() || crate::control::ccm::argv::is_ccm_word(&flag_of(name)),
                 "`NOT_ON_CLI` 里的 {name} 跑得起来、也不是 ccm 的词 —— 它的理由该住 `STREAM_ONLY` 或 `UI_ONLY`"
             );
         }

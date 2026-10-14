@@ -667,7 +667,7 @@ fn traits_of(spec: &CommandSpec) -> String {
         .to_string(),
     );
     t.push(
-        if matches!(spec.run, Run::Builtin) {
+        if spec.run.on_frame_arm() {
             "连接内就地做完"
         } else if spec.run.blocking() {
             "撤不动（阻塞档，`cancel` 回 `not_cancellable`）"

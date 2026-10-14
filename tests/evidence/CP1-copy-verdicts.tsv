@@ -137,7 +137,7 @@ src/frontend/shell/src/backend_policy.rs:392	它一个字节都没说就退出�
 src/frontend/shell/src/backend_policy.rs:393	说过话之后异常终止	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/frontend/shell/src/backend_policy.rs:394	monitor 这一侧读出错：{detail}	保留	[不对外] death_detail：账行破折号后那截只摆证据，只随 ledger_line 落 monitor 日志（界面接 health_face 成品）；原 death_copy 的处方与论证已删
 src/frontend/filewin/src/fonts.rs:335	解压	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（解压到这里那几句的字）
-src/frontend/filewin/src/fonts.rs:339	之执批果校缺验所	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（filewin 那几句去行话之后新进的字）
+src/frontend/filewin/src/fonts.rs:339	之执批果校验所	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（filewin 那几句去行话之后新进的字）〔开单两条换类型：探针 −`缺`〕
 src/frontend/filewin/src/fonts.rs:346	从修图地址始子展属左性指片藏试退配隐他其包夹缩	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案〔窗口换骨架那一批新字〕〔文案第四段 D 类：探针 −`⚠ 事 任 何 准 叫 和 哪 备 好 带 引 忙 掉 正 种 给 许 趟 都 面 ； ？`〕
 src/frontend/filewin/src/fonts.rs:343	得词	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（文件名搜索那几句新进的字）
 src/frontend/filewin/src/fonts.rs:349	仅匹单度无未清	保留	[不对外] 字体子集化的字形探针常量（PROBE），不是文案（搜索结果状态行与表那几句新进的字）

@@ -44,7 +44,11 @@ pub(crate) fn rig(commands: &[&str]) -> Rig {
         commands: commands.iter().map(|s| s.to_string()).collect(),
         unavailable: vec![],
         uncancellable: vec![],
-        shapes: vec![],
+        // 同一版的后端：typed 那几条（开单两条）的形状指纹照本侧编进来的那一份交。
+        shapes: cmd_wire::shapes::SHAPES
+            .iter()
+            .map(|(c, h)| (c.to_string(), h.to_string()))
+            .collect(),
     };
     let witness = BackendHello::from_hello_frame(&hello).expect("是 hello");
     let client = park(mon_w).into_client(witness);
@@ -469,6 +473,7 @@ fn transfer_frames_parse_exactly_as_the_backend_writes_them() {
 
 /// 开单两条在中继这一层的字节（换形之前用旧代码跑出来钉的）：窗口那一份 ⇒ 补上 `dial` 转给本机后端的那一行
 /// （`dial` 换成占位：它带这台此刻的 ssh-agent 套接字）· 交回窗口的那一份 · 中继自己拒的那几种。
+/// 换 typed 时有意改的：窗口那一份解不出来时那一句跟解码器原话（原来只说「缺 X 或它不是字符串」）；多一个键从照收变成拒。
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_openers_are_relayed_with_the_same_bytes() {
     let _g = crate::inbound_client::local_origin_test_lock();
@@ -518,6 +523,10 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
             TRANSFER_DOWNLOAD,
             serde_json::json!({ "local_path": "/tmp/a" }),
         ),
+        (
+            TRANSFER_UPLOAD,
+            serde_json::json!({ "local_path": "/tmp/x.bin", "home": "/h", "via": 1 }),
+        ),
         ("transfer-start", serde_json::json!({ "id": "xfer-1" })),
     ] {
         let (code, said) = transfer_call(cfg("中继·字节"), op, &payload)
@@ -530,9 +539,10 @@ async fn the_openers_are_relayed_with_the_same_bytes() {
         r#"transfer-upload {"dial":<dial>,"home":"/home/u","local_path":"/tmp/x.bin"} => {"id":"xfer-2","key":"00112233445566778899aabbccddeeff"}"#,
         r#"transfer-download {"dial":<dial>,"local_path":"/tmp/a b","remote_path":"/srv/a b"} => {"id":"xfer-3"}"#,
         r#"transfer-download {"dial":<dial>,"local_path":{"b16":"2f746d702fff"},"remote_path":"/srv/a"} => {"id":"xfer-4"}"#,
-        r#"transfer-upload {} => bad_args 请求格式不对 · 缺 local_path 或它不是字符串 · transfer-upload"#,
-        r#"transfer-upload {"local_path":7} => bad_args 请求格式不对 · 缺 local_path 或它不是字符串 · transfer-upload"#,
-        r#"transfer-download {"local_path":"/tmp/a"} => bad_args 请求格式不对 · 缺 remote_path 或它不是字符串 · transfer-download"#,
+        r#"transfer-upload {} => bad_args 请求格式不对 · transfer-upload · missing field `local_path`"#,
+        r#"transfer-upload {"local_path":7} => bad_args 请求格式不对 · transfer-upload · invalid type: integer `7`, expected a string"#,
+        r#"transfer-download {"local_path":"/tmp/a"} => bad_args 请求格式不对 · transfer-download · missing field `remote_path`"#,
+        r#"transfer-upload {"home":"/h","local_path":"/tmp/x.bin","via":1} => bad_args 请求格式不对 · transfer-upload · unknown field `via`, expected `local_path` or `home`"#,
         r#"transfer-start {"id":"xfer-1"} => bad_args 请求格式不对 · transfer-start 不是传输命令"#,
     ];
     assert_eq!(got, want, "中继开单的字节变了");

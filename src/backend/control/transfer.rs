@@ -1,11 +1,14 @@
 //! 传输台住本机常驻后端：SFTP 只写暂存区，窗口那一侧的 `call` / `subscribe` 不变。
 //!
-//! # 线上四条命令（`Run::Builtin`：要碰本连接的票表与应答通道，同 `link-*`）
+//! # 线上四条命令（帧面硬臂：要碰本连接的票表与应答通道，同 `link-*`）
+//!
+//! 开单两条是 typed（入参 · 回包 · 码从 `cmd_wire::transfer` 与下面的错误枚举来，登记 `typed::frame`，硬臂经 `typed::answer` 调本体）；
+//! 起跑 · 撤两条仍是 `Run::Builtin`。
 //!
 //! | 命令 | `args` | 应答 | |
 //! |---|---|---|---|
-//! | `transfer-upload` | `{dial, local_path}` | `{id, key}` | 开单（不起跑）；`key` = 暂存件的键，提交时交给远端后端 `files-commit-upload` |
-//! | `transfer-download` | `{dial, remote_path, local_path}` | `{id}` | 开单；本机落点当场过路径解析（出声早），起跑时再过一次 |
+//! | `transfer-upload` | `TransferUploadReq {dial, local_path, home?}` | `TransferUploaded {id, key}` | 开单（不起跑）；`key` = 暂存件的键，提交时交给远端后端 `files-commit-upload` |
+//! | `transfer-download` | `TransferDownloadReq {dial, remote_path, local_path}` | `TransferOpened {id}` | 开单；本机落点当场过路径解析（出声早），起跑时再过一次 |
 //! | `transfer-start` | `{id}` | — | 起跑；进度走出方向 `transfer` 帧（`wire.rs`） |
 //! | `transfer-stop` | `{id}` | — | 撤（幂等）。上传删暂存件；下载留 `.part` |
 //!
@@ -49,7 +52,11 @@ use crate::common::said::Said;
 use crate::common::staging::{KEY_LEN, PART_SUFFIX};
 use crate::dial::sftp::{self, Dial, Session};
 use crate::platform::fs::{Face, FaceFile, Ro};
+use crate::stream::inbound::typed::{self, codes};
 use crate::stream::wire::{Frame, TransferEnd};
+use cmd_wire::transfer::{
+    TransferDownloadReq, TransferOpened, TransferUploadReq, TransferUploaded,
+};
 
 /// 开单：上传。
 pub const TRANSFER_UPLOAD: &str = "transfer-upload";
@@ -59,6 +66,48 @@ pub const TRANSFER_DOWNLOAD: &str = "transfer-download";
 pub const TRANSFER_START: &str = "transfer-start";
 /// 撤。
 pub const TRANSFER_STOP: &str = "transfer-stop";
+/// 开单（上传）那一条（typed，帧面硬臂那一档：要碰本连接的票表）。
+pub(crate) struct TransferUpload;
+
+codes! {
+    /// `transfer-upload` 会回的码。
+    pub(crate) enum UploadErr {
+        /// 开单那一下读不到本机那一份（原话进复制详情）。
+        IoFailed = "io_failed",
+        /// 同一份文件已有一张票。
+        Busy = "busy",
+        /// 这条连接上的票满了。
+        TooMany = "too_many_transfers",
+    }
+}
+
+impl typed::Command for TransferUpload {
+    const NAME: &'static str = "transfer-upload";
+    type Req = TransferUploadReq;
+    type Reply = TransferUploaded;
+    type Err = UploadErr;
+}
+
+/// 开单（下载）那一条（同 [`TransferUpload`]）。
+pub(crate) struct TransferDownload;
+
+codes! {
+    /// `transfer-download` 会回的码。
+    pub(crate) enum DownloadErr {
+        /// 本机落点过不了路径解析。
+        Refused = "refused",
+        /// 这条连接上的票满了。
+        TooMany = "too_many_transfers",
+    }
+}
+
+impl typed::Command for TransferDownload {
+    const NAME: &'static str = "transfer-download";
+    type Req = TransferDownloadReq;
+    type Reply = TransferOpened;
+    type Err = DownloadErr;
+}
+
 /// SFTP 读写的一块（≤32 KiB：SFTP 草案建议；严格的服务端拒超大包）。
 const CHUNK: usize = 32 * 1024;
 
@@ -728,30 +777,12 @@ fn err(id: &str, cmd: &str, code: &str, message: &str) -> Frame {
     Frame::refused(id, cmd, code, message)
 }
 
-/// 下载的本机落点：字符串或 `{"b16": …}`（与文件管理面同一个字节形）。
-fn local_path_of(args: &serde_json::Value) -> Result<PathBuf, String> {
-    args.get("local_path")
-        .and_then(crate::common::path_wire::from_json)
-        .filter(|b| !b.is_empty())
-        .map(|b| crate::common::path_wire::to_path_buf(&b))
-        .ok_or_else(|| {
-            crate::common::contract::malformed("missing `local_path` (a string or {\"b16\": …})")
-        })
-}
-
 fn text<'a>(args: &'a serde_json::Value, k: &str) -> Result<&'a str, String> {
     args.get(k)
         .and_then(serde_json::Value::as_str)
         .ok_or_else(|| {
             crate::common::contract::malformed(&format!("missing `{k}` or not a string"))
         })
-}
-
-fn dial_of(args: &serde_json::Value) -> Result<Dial, String> {
-    let d = args
-        .get("dial")
-        .ok_or_else(|| crate::common::contract::malformed("missing `dial` (a dial request)"))?;
-    Dial::parse(d)
 }
 
 /// 票号：本进程里单调（票只在一条连接里有意义；`xfer-` 前缀与旧传输台同形）。
@@ -772,8 +803,8 @@ impl Desk {
     /// **本面唯一的答口**（`stream/inbound/` 那四条硬臂都经它进来，`files/module_boundary_guard::DOORS` 登记）。
     pub fn answer_wire(&self, cmd: &str, id: &str, args: &serde_json::Value) -> Frame {
         match cmd {
-            TRANSFER_UPLOAD => self.upload(id, args),
-            TRANSFER_DOWNLOAD => self.download(id, args),
+            TRANSFER_UPLOAD => typed::answer::<TransferUpload>(id, args, |r| self.upload(r)),
+            TRANSFER_DOWNLOAD => typed::answer::<TransferDownload>(id, args, |r| self.download(r)),
             TRANSFER_START => self.start(id, args),
             TRANSFER_STOP => self.stop(id, args),
             other => err(
@@ -790,14 +821,13 @@ impl Desk {
         lock(&self.tickets).len()
     }
 
-    fn register(&self, id: &str, cmd: &str, t: Ticket) -> Result<String, Frame> {
+    /// 登记一张票。满册 ⇒ `too_many_transfers`；同一个暂存件键已有一张 ⇒ `busy`（下层那一形：码 ＋ 那一句，各条照自己的码表收）。
+    fn register(&self, t: Ticket) -> Result<String, (&'static str, String)> {
         let mut g = lock(&self.tickets);
         if g.len() >= MAX_TICKETS_PER_CONNECTION {
-            return Err(err(
-                id,
-                cmd,
+            return Err((
                 "too_many_transfers",
-                &copy_text(
+                copy_text(
                     "beTransfer.register.tooMany",
                     &[("max", &MAX_TICKETS_PER_CONNECTION.to_string())],
                 ),
@@ -805,12 +835,7 @@ impl Desk {
         }
         if let Some(k) = &t.key {
             if g.values().any(|o| o.key.as_ref() == Some(k)) {
-                return Err(err(
-                    id,
-                    cmd,
-                    "busy",
-                    &copy_text("beTransfer.register.sameFile", &[]),
-                ));
+                return Err(("busy", copy_text("beTransfer.register.sameFile", &[])));
             }
         }
         let tid = next_id();
@@ -819,29 +844,22 @@ impl Desk {
     }
 
     /// `transfer-upload`：开单（不起跑）。
-    fn upload(&self, id: &str, args: &serde_json::Value) -> Frame {
-        let (dial, local) = match dial_of(args).and_then(|d| Ok((d, text(args, "local_path")?))) {
-            Ok(v) => v,
-            Err(m) => return err(id, TRANSFER_UPLOAD, "bad_args", &m),
-        };
-        let meta = match Ro::metadata(local) {
-            Ok(m) => m,
-            Err(e) => {
-                // 开单那一下就读不到本机那份：应答带复制详情（系统原话不上句子）。
-                let said = copy_text(
-                    "beTransfer.local.readFailed",
-                    &[("path", local), ("why", &io_reason(e.kind()))],
-                );
-                return Frame::err_raw(id, TRANSFER_UPLOAD, "io_failed", &said, &e.to_string());
-            }
-        };
-        if !meta.is_file() {
-            return err(
-                id,
-                TRANSFER_UPLOAD,
-                "bad_args",
-                &copy_text("beTransfer.local.notRegular", &[("path", local)]),
+    fn upload(&self, req: TransferUploadReq) -> Result<TransferUploaded, UploadErr> {
+        let dial = Dial::parse(&req.dial).map_err(UploadErr::BadArgs)?;
+        let local = req.local_path.as_str();
+        let meta = Ro::metadata(local).map_err(|e| {
+            // 开单那一下就读不到本机那份：应答带复制详情（系统原话不上句子）。
+            let said = copy_text(
+                "beTransfer.local.readFailed",
+                &[("path", local), ("why", &io_reason(e.kind()))],
             );
+            UploadErr::IoFailed(crate::common::contract::joined(said, Some(e.to_string())))
+        })?;
+        if !meta.is_file() {
+            return Err(UploadErr::BadArgs(copy_text(
+                "beTransfer.local.notRegular",
+                &[("path", local)],
+            )));
         }
         let mtime_ns = meta
             .modified()
@@ -853,49 +871,43 @@ impl Desk {
         let t = Ticket {
             dial,
             job: Some(Job::Upload {
-                local: local.to_string(),
+                local: req.local_path.clone(),
                 key: key.clone(),
-                home: args
-                    .get("home")
-                    .and_then(serde_json::Value::as_str)
-                    .map(str::to_string),
+                home: req.home,
             }),
             key: Some(key.clone()),
             cancel: Arc::new(Cancel::default()),
         };
-        match self.register(id, TRANSFER_UPLOAD, t) {
-            Ok(tid) => ok(id, Some(serde_json::json!({ "id": tid, "key": key }))),
-            Err(f) => f,
-        }
+        let id = self
+            .register(t)
+            .map_err(typed::of_pair(UploadErr::BadArgs))?;
+        Ok(TransferUploaded { id, key })
     }
 
     /// `transfer-download`：开单；本机落点当场过路径解析。
-    fn download(&self, id: &str, args: &serde_json::Value) -> Frame {
-        // 本机落点收字符串或 `{"b16": …}`（有损名下载在 Linux 上按原始字节落名）。
-        let parsed = dial_of(args).and_then(|d| {
-            Ok((
-                d,
-                text(args, "remote_path")?.to_string(),
-                local_path_of(args)?,
-            ))
-        });
-        let (dial, remote, local) = match parsed {
-            Ok(v) => v,
-            Err(m) => return err(id, TRANSFER_DOWNLOAD, "bad_args", &m),
-        };
-        if let Err(e) = land_check(&local) {
-            return err(id, TRANSFER_DOWNLOAD, "refused", &e);
+    fn download(&self, req: TransferDownloadReq) -> Result<TransferOpened, DownloadErr> {
+        let dial = Dial::parse(&req.dial).map_err(DownloadErr::BadArgs)?;
+        // 本机落点收字符串或 `{"b16": …}`（有损名下载在 Linux 上按原始字节落名）；空的不算给了。
+        if req.local_path.bytes().is_empty() {
+            return Err(DownloadErr::BadArgs(crate::common::contract::malformed(
+                "missing `local_path` (a string or {\"b16\": …})",
+            )));
         }
+        let local = crate::common::path_wire::to_path_buf(req.local_path.bytes());
+        land_check(&local).map_err(DownloadErr::Refused)?;
         let t = Ticket {
             dial,
-            job: Some(Job::Download { remote, local }),
+            job: Some(Job::Download {
+                remote: req.remote_path,
+                local,
+            }),
             key: None,
             cancel: Arc::new(Cancel::default()),
         };
-        match self.register(id, TRANSFER_DOWNLOAD, t) {
-            Ok(tid) => ok(id, Some(serde_json::json!({ "id": tid }))),
-            Err(f) => f,
-        }
+        let id = self
+            .register(t)
+            .map_err(typed::of_pair(DownloadErr::BadArgs))?;
+        Ok(TransferOpened { id })
     }
 
     /// `transfer-stop`：撤。没起跑的票当场摘掉；起跑了的由它自己收场（撤删 / 撤留）后摘掉。

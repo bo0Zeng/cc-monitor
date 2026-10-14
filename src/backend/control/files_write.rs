@@ -2596,7 +2596,7 @@ fn fenced_session_file(
 //
 // 🔴 **「窄」不是靠命令面窄 —— 这一条是现打改过来的，原来那句话是假的。**
 //   本节第一版写的是「只上帧面、不上 CLI 面」。**做不到**：
-//   `cli_control::cli_exposed` 逐字是 `!matches!(spec.run, Run::Builtin)` ——
+//   `cli_control::cli_exposed` 逐字是 `!spec.run.on_frame_arm()` ——
 //   一条命令进了 `inbound::REGISTRY` 且不是那个硬臂，CLI 面就**自动**认得它
 //  （现打：加完之后 `every_cli_exposed_command_is_in_the_query_mode_gate` 当场红，
 //   逐字点名 `["--files-create"]`）。⇒ 两个宿主共用同一个 `run`，
