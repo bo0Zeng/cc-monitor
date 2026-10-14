@@ -27,8 +27,8 @@ class HostBackends(
 
     fun of(hostId: String): ResidentFeed = byHost.getOrPut(hostId) { feed(hostId) }
 
-    /** App 回到前台 · 网络变了：每台断着的当场再接（手机会被杀后台，不是常驻）。 */
-    fun onForeground() = byHost.values.forEach(ResidentFeed::onForeground)
+    /** App 回到前台 · 网络回来了 / 变了：每台交给核心（[ResidentFeed.wake]：连着的当场问活，断着的当场再接）。 */
+    fun wake() = byHost.values.forEach(ResidentFeed::wake)
 
     private fun feed(hostId: String): ResidentFeed {
         val reported = ConcurrentHashMap.newKeySet<String>()

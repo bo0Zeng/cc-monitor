@@ -30,21 +30,40 @@ fn a_backend_that_dies_after_hello_every_round_still_backs_off() {
     for _ in 0..5 {
         let healthy = should_reset_backoff(true, Duration::from_millis(500));
         waits.push(b.before_wait(healthy).as_secs());
-        b.after_wait(false, healthy);
+        b.after_wait(false, healthy, true);
     }
     assert_eq!(waits, vec![2, 4, 8, 16, 30]);
     let healthy = should_reset_backoff(true, MIN_HEALTHY_UPTIME);
     assert_eq!(b.before_wait(healthy), RECONNECT_MIN);
-    b.after_wait(false, healthy);
+    b.after_wait(false, healthy, true);
     assert_eq!(
         b.before_wait(false),
         RECONNECT_MIN,
         "站住过的那一轮之后，下一次断先等下界"
     );
-    b.after_wait(false, false);
+    b.after_wait(false, false, true);
     assert_eq!(b.before_wait(false).as_secs(), 4);
-    b.after_wait(true, false);
+    b.after_wait(true, false, true);
     assert_eq!(b.before_wait(false), RECONNECT_MIN, "叫醒过 ⇒ 从下界来");
+}
+
+/// 拨到期限都没回话（没够到那台）的那几轮：一直从下界来，不涨；够到了但没站住的那一轮之后照旧翻倍。
+#[test]
+fn rounds_that_never_reached_the_far_side_stay_at_the_floor() {
+    assert_eq!(DIAL_WITHIN, Duration::from_secs(10));
+    let mut b = Backoff::new();
+    let mut waits = Vec::new();
+    for _ in 0..5 {
+        waits.push(b.before_wait(false).as_secs());
+        b.after_wait(false, false, false);
+    }
+    assert_eq!(waits, vec![2, 2, 2, 2, 2]);
+    b.after_wait(false, false, true);
+    assert_eq!(
+        b.before_wait(false).as_secs(),
+        4,
+        "够到了却没站住 ⇒ 照旧翻倍"
+    );
 }
 
 /// 两端同一份阈值：退避的数只在本文件定义一次；用它的循环全仓只一条（`feed.rs`，monitor `one_loop_guard` 守着），
@@ -56,7 +75,14 @@ fn both_ends_take_the_backoff_from_here() {
         std::fs::read_to_string(repo.join(rel)).unwrap_or_else(|e| panic!("读不了 {rel}：{e}"))
     };
     let here = guard_core::production_code(&read("src/comms/resident-client/backoff.rs"));
-    for name in ["RECONNECT_MIN", "RECONNECT_MAX", "MIN_HEALTHY_UPTIME"] {
+    for name in [
+        "RECONNECT_MIN",
+        "RECONNECT_MAX",
+        "MIN_HEALTHY_UPTIME",
+        "DIAL_WITHIN",
+        "HEARTBEAT_IDLE",
+        "PING_WITHIN",
+    ] {
         assert_eq!(
             here.matches(&format!("pub const {name}: Duration")).count(),
             1,
@@ -72,10 +98,29 @@ fn both_ends_take_the_backoff_from_here() {
             src.contains("resident_client::feed::") && src.contains("Feed::start("),
             "{who}不再经本 crate 的 `Feed` 跑重连循环（{rel}）"
         );
+        // 判死（心跳问活）· 拨号期限只在循环里：宿主那一侧不许自己问活、自己给拨号掐表。
+        for own in [
+            "\"ping\"",
+            "HEARTBEAT",
+            "PING_WITHIN",
+            "DIAL_WITHIN",
+            "time::timeout(",
+        ] {
+            assert!(
+                !src.contains(own),
+                "{who}又自己判死 / 掐拨号（`{own}`，{rel}）"
+            );
+        }
     }
     // Kotlin 那一侧：从前那一份（`BackendFeed.Backoff` · `HEALTHY_MS`）的名字一个都不许回来；逐文件扫在 `LinkLayerLivesInTheCoreScanTest`，这里只看落地那一份。
     let kt = read("src/mobile/core-claude/src/main/kotlin/com/ccmonitor/mobile/core/claude/link/ResidentFeed.kt");
-    for name in ["class Backoff", "HEALTHY_MS", "MIN_HEALTHY"] {
+    for name in [
+        "class Backoff",
+        "HEALTHY_MS",
+        "MIN_HEALTHY",
+        "\"ping\"",
+        "HEARTBEAT",
+    ] {
         assert!(
             !kt.contains(name),
             "Kotlin 落地那一份里又有了一份退避（`{name}`）"

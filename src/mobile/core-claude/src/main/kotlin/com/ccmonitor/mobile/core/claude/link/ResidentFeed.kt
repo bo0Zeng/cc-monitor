@@ -136,8 +136,8 @@ class ResidentFeed(
         scope.launch { core.kick(opened.await(), true) }
     }
 
-    /** App 回到前台 · 网络变了：通着不动；断着马上再接。 */
-    fun onForeground() {
+    /** App 回到前台 · 网络回来了 / 变了：通着 ⇒ 核心当场问一句活（没回话就判死重接）；断着 ⇒ 马上再接（卡在一拨没人回话的拨号里也丢下重拨）。 */
+    fun wake() {
         ensure()
         scope.launch { core.kick(opened.await(), false) }
     }

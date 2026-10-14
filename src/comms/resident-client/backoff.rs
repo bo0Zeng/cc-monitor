@@ -8,6 +8,24 @@ pub const RECONNECT_MIN: Duration = Duration::from_secs(2);
 /// 重连退避上界：指数退避封顶，避免长断网时无意义地拉长重连间隔。
 pub const RECONNECT_MAX: Duration = Duration::from_secs(30);
 
+/// **开一条链路（拨号 ＋ 在那台开出那条 exec）等多久没回话就放弃、隔 [`RECONNECT_MIN`] 再拨**。
+///
+/// 静默断网（网卡还在、包全丢：电梯 · 地铁）里拨出去的那一拨，SYN 石沉大海；内核按 1 · 3 · 7 · 15 · 31 · 63 秒补发，
+/// 一拨要挂两分钟。网回来时正挂在后半段的那一拨要等到下一次补发才赶上（断 90 秒那一格量出来 56 秒）。
+/// 10 秒放弃：前 7 秒里补发得勤（网回来至多再等 4 秒），7 秒之后丢下、隔下界重拨一拨新的，网回来到重拨上至多 5 秒。
+/// 代价：登录 ＋ 开 exec 要 10 秒以上的链路（往返一秒以上、再隔跳板）一拨也接不上。
+/// 到期限都没回话的那一拨没够到那一台（没有一次登录落到它身上），不涨退避（[`Backoff::after_wait`] 的 `reached`）。
+pub const DIAL_WITHIN: Duration = Duration::from_secs(10);
+
+/// **连接自己的心跳**：流上这么久没来一个字节 ⇒ 问一句活（`ping`）。健康的空闲连接每这么久一个来回（与 SSH 保活同一个数，
+/// 问活的回话把 SSH 保活的计时也续上，空闲时线上的包数不变）。
+pub const HEARTBEAT_IDLE: Duration = Duration::from_secs(10);
+
+/// 问活之后这么久一个字节都没来 ⇒ 判这条流死了、收掉重接。最后收到字节之后至多 [`HEARTBEAT_IDLE`] ＋ 它（15 秒）判死，
+/// 不再等 SSH 保活（最后收包之后 20 秒）；判死之前网就回来了的那种，旧连接上补发的包要等 TCP 的重传退避（断得越久等得越久），
+/// 判死重拨一条新的反而快。宿主报「网回来了 · 网变了 · 回前台」时连着 ⇒ 当场问一句（[`crate::feed::Feed::wake`]），这一问也按它判。
+pub const PING_WITHIN: Duration = Duration::from_secs(5);
+
 /// ★ **「本次连接算不算健康」的最短存活时长**〔audit-0805 F05 / 报告 I-1〕。
 ///
 /// # 为什么不能拿「收到过 hello」当健康
@@ -64,9 +82,10 @@ impl Backoff {
         self.cur
     }
 
-    /// 睡完（或被叫醒）之后。
-    pub fn after_wait(&mut self, kicked: bool, healthy: bool) {
-        if kicked {
+    /// 睡完（或被叫醒）之后。`reached` = 这一轮够到了那一台（拨出去有回话）；拨到 [`DIAL_WITHIN`] 都没回话 ⇒ `false`：
+    /// 没有一次登录落到那台身上，涨退避护不了谁，只会让网回来之后多等 ⇒ 下一轮照样从下界来。
+    pub fn after_wait(&mut self, kicked: bool, healthy: bool, reached: bool) {
+        if kicked || !reached {
             self.cur = RECONNECT_MIN;
         } else if !healthy {
             self.cur = next_backoff(self.cur);

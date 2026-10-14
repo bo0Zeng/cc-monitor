@@ -42,7 +42,7 @@ import org.koin.android.ext.android.inject
 
 /**
  * SSH 保活前台服务。会话连上时启动，挂一条常驻通知降低后台被杀的概率（部分 ROM 仍会杀，靠重连兜底）。
- * 没有活动会话也没有在飞轮次时自停；网络恢复时调 `probeAndReconnectStale()`。
+ * 没有活动会话也没有在飞轮次时自停；网络恢复时调 `probeAndReconnectStale()`，并把这件事交给每台的常驻流（[HostBackends.wake]）。
  *
  * 连接期间，对每台连着的机器收它常驻流上的 `turn_end` 帧（[HostBackends]，与「对话」一屏同一条流）：
  * app 在后台（[AppForeground]）时，一轮完成就发一条本地通知。判哪条算一轮结束在后端，折成一轮一条在 [TurnEnds]。
@@ -268,6 +268,7 @@ class SshKeepAliveService : Service() {
             object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
                     manager.probeAndReconnectStale() // 网络恢复 → 重连僵死会话
+                    backends.wake() // 常驻流交核心：连着的当场问活、断着的当场重拨（判法只在核心）
                 }
             }
         runCatching {
