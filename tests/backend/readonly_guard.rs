@@ -797,7 +797,7 @@ mod tests {
         use crate::wire::spec::Run;
         let got: std::collections::BTreeSet<&str> = REGISTRY
             .iter()
-            .filter(|s| matches!(s.run, Run::Typed(t) if t.hands_the_face()))
+            .filter(|s| matches!(s.run, Run::Typed(t) if t.face))
             .map(|s| s.name)
             .collect();
         let want: std::collections::BTreeSet<&str> = crate::control::files_write::MANAGE_COMMANDS

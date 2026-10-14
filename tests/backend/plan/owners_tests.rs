@@ -86,7 +86,7 @@ fn an_unreadable_slice_says_so_and_lists_nothing() {
 /// 出参对拍判据（`inbound_structure_guards`）拿这一份对注册表登的出参。
 #[test]
 fn the_reply_through_the_wire_type_is_the_golden_sample() {
-    let got = crate::plan::wire::checked::<crate::plan::wire::PlanFiles>(of_dir(
+    let got = crate::plan::wire::tests::checked::<crate::plan::wire::PlanFiles>(of_dir(
         &doc(dump("/w")),
         "/w/alpha/src",
     ))

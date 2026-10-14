@@ -523,14 +523,6 @@ pub(crate) struct PlanFiles {
     pub unowned: Option<Vec<String>>,
 }
 
-/// 帧面出口：一份按 JSON 拼的回包过一遍 `T`（线上那一份就是 `T` 的序列化）。对不上 ⇒ 拼的那一侧有错（程序员错误），回 `failed`。
-pub(crate) fn checked<T: Serialize + serde::de::DeserializeOwned>(
-    v: Value,
-) -> Result<Value, String> {
-    let t: T = serde_json::from_value(v).map_err(|e| e.to_string())?;
-    serde_json::to_value(t).map_err(|e| e.to_string())
-}
-
 #[cfg(test)]
 #[path = "../../../tests/backend/plan/wire_tests.rs"]
-mod tests;
+pub(crate) mod tests;

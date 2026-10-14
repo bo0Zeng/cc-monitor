@@ -28,6 +28,14 @@ fn lossless<T: Serialize + serde::de::DeserializeOwned>(v: &Value) {
     );
 }
 
+/// 一份按 JSON 拼的回包过一遍 `T`、再写回（判据比「过一遍不丢格」用）。对不上 ⇒ 原话。
+pub(crate) fn checked<T: Serialize + serde::de::DeserializeOwned>(
+    v: Value,
+) -> Result<Value, String> {
+    let t: T = serde_json::from_value(v).map_err(|e| e.to_string())?;
+    serde_json::to_value(t).map_err(|e| e.to_string())
+}
+
 #[test]
 fn a_full_read_a_stale_slice_and_a_bare_slice_all_pass_through_the_types_unchanged() {
     let b = crate::plan::book::Book::default();

@@ -67,7 +67,8 @@ pub(crate) trait Codes: Sized {
     fn into_fail(self) -> Fail;
     /// 下层交上来的码 ⇒ 这一条的那个变体（只认不带 `data` 的那几种）；不在码表里 ⇒ 原样交回那一句（调用方定落哪一格）。
     fn of_code(code: &str, said: String) -> Result<Self, String>;
-    /// 带 `data` 的那几个码（声明次序）。
+    /// 带 `data` 的那几个码（声明次序）。读它的只有形状指纹与协议参考（测试档）。
+    #[cfg_attr(not(test), allow(dead_code))]
     const DATA: &'static [&'static str];
     /// 那几个码的 `data` 类型：元组，与 [`Codes::DATA`] 逐位对上（[`Each`] ＝ 每个码都带同一形）。测试档拿它算形状指纹与协议参考。
     type Data: DataTypes;
@@ -244,10 +245,6 @@ impl Typed {
     /// 帧面硬臂那一档。
     pub(crate) fn on_frame_arm(&self) -> bool {
         self.how == How::Frame
-    }
-    /// 拿不拿得到文件管理写句柄。
-    pub(crate) fn hands_the_face(&self) -> bool {
-        self.face
     }
 }
 
