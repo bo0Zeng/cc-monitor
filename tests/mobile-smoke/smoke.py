@@ -294,7 +294,8 @@ def main():
         if not wait(key[-1].split()[-1], 20):
             raise Step.Fail("钥匙敲不进框里")
         tap(t("mobIdentity.import.ok"))
-        if not wait("SHA256:", 10):
+        # 刚装上的包头一回存钥匙要先建本机加密库（Keystore），机器忙时十几秒。
+        if not wait("SHA256:", 40):
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
         add_host("smokebox")
