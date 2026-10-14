@@ -30,7 +30,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.ccmonitor.mobile.core.ui.theme.AcctPalette
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoBody
 
@@ -112,7 +111,7 @@ internal fun PickRow(
     trail: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val tokens = LocalAppTokens.current
-    val bg = if (selected) tokens.accentSoft else Color.Transparent
+    val bg = if (selected) tokens.selectedBg else Color.Transparent
     Row(
         modifier
             .fillMaxWidth()
@@ -148,7 +147,8 @@ internal fun AccountBadge(
     color: Int?,
     size: Int = 22,
 ) {
-    val (bg, ink) = AcctPalette[(color ?: 0).mod(AcctPalette.size)]
+    val acct = LocalAppTokens.current.acct
+    val (bg, ink) = acct[(color ?: 0).mod(acct.size)]
     Box(Modifier.size(size.dp).background(bg, RoundedCornerShape(4.dp)), contentAlignment = Alignment.Center) {
         Text(badgeText(name), color = ink, fontSize = 10.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, maxLines = 1)
     }

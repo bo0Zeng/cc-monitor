@@ -197,9 +197,9 @@ def tap_in_row(label, button):
 
 
 def open_import():
-    """钥匙页点「+」开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
+    """钥匙页点悬浮的「+」（按无障碍名找）开「添一把钥匙」那一张、点「搬进来」。提示条收起时「+」在往回落，那一下可能点空：没开出来就再点，最多三回。"""
     for _ in range(3):
-        tap("+")
+        tap(t("mobIdentity.fab.aria"))
         if wait(t("mobIdentity.add.import"), 4):
             break
     tap(t("mobIdentity.add.import"))
@@ -209,7 +209,7 @@ def open_import():
 def add_host(name):
     if ui.find(t("mobDrawer.open.aria")) is not None:
         drawer(t("mobDrawer.server.named", name=""))
-    tap("+")
+    tap(t("mobHosts.fab.aria"))
     time.sleep(1.5)
     tap(t("mobHostEdit.field.name")); typed(name)
     tap(t("mobHostEdit.field.host")); typed(host_alias())
@@ -308,7 +308,7 @@ def main():
         # 拒的那一句是条长提示（带「复制详情」）：它在的时候「+」要让开、不被盖住，接着点得到。
         if not wait(t("detail.act.copy"), 5):
             raise Step.Fail("拒了却没出那条提示")
-        if fab_under_notice("+", t("detail.act.copy")):
+        if fab_under_notice(t("mobIdentity.fab.aria"), t("detail.act.copy")):
             raise Step.Fail("提示盖住了「+」（按钮没让开）")
         open_import()
         tap(t("mobIdentity.import.name")); typed("smoke")
@@ -316,8 +316,12 @@ def main():
         for line in key:
             typed(line)
             adb("shell", "input", "keyevent", "66")
+        # `input text` 敲进去是异步的（输入法排着队一行行吃）：等最后一行真进了框再按「搬进来」，机器忙时不等就交上去半把钥匙。
+        if not wait(key[-1].split()[-1], 20):
+            raise Step.Fail("钥匙敲不进框里")
         tap(t("mobIdentity.import.ok"))
-        if not wait("SHA256:", 10):
+        # 刚装上的包头一回存钥匙要先建本机加密库（Keystore），机器忙时十几秒。
+        if not wait("SHA256:", 40):
             raise Step.Fail("整把钥匙没导进来")
         tap(t("mobKit.act.back")); time.sleep(1)
         add_host("smokebox")
@@ -361,7 +365,7 @@ def main():
         tap(t("mobNewSession.dir.pick"))
         if not wait(f"~/work/{T}dir", 10):
             raise Step.Fail("选了目录，chip 没换成它")
-        tap(t("mobChat.input.placeholder")); typed(f"{T} new session")
+        tap(t("chat.input.placeholder")); typed(f"{T} new session")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} new session", 40):
@@ -370,7 +374,7 @@ def main():
             raise Step.Fail("那条会话没起在选的目录里")
 
     with Step("4-聊天屏"):
-        tap(t("mobChat.input.placeholder")); typed(f"{T} long")
+        tap(t("chat.input.placeholder")); typed(f"{T} long")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(t("cards.thinking.title"), 20):
@@ -560,7 +564,7 @@ def main():
         tap(names["codex"])
         time.sleep(1)
         hide_keyboard()
-        tap(t("mobChat.input.placeholder")); typed(f"{T} codex")
+        tap(t("chat.input.placeholder")); typed(f"{T} codex")
         hide_keyboard()
         tap(t("mobChat.input.send"))
         if not wait(f"替身收到：{T} codex", 40):

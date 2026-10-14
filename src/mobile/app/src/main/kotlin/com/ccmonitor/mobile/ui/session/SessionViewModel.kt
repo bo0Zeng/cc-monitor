@@ -28,6 +28,7 @@ import com.ccmonitor.mobile.ssh.ShellDialect
 import com.ccmonitor.mobile.ssh.dialectFor
 import com.ccmonitor.mobile.ssh.initialCommands
 import com.ccmonitor.mobile.ssh.resolveTmuxSession
+import com.ccmonitor.mobile.ui.theme.AppTerminalPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -323,6 +324,7 @@ class SessionViewModel(
             onResizeRemote = { cols, rows -> shell.resize(cols, rows) },
             rows = 24,
             cols = 80,
+            palette = AppTerminalPalette,
             remoteChannel = shell,
         )
 

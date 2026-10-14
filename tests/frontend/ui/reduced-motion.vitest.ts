@@ -2,7 +2,7 @@
  * **减少动画**（系统的「减弱动态效果」· `prefers-reduced-motion: reduce`）开着时界面上什么都不动：运行中的点不呼吸、转圈不转、
  * 浮层直接出现、悬停直接变色、命中那一行不闪。
  *
- * 做法只有一种：动效的时长一律写 `--dur-*`（`styles/tokens.css`），减少动画时那几个令牌全是 0。
+ * 做法只有一种：动效的时长一律写 `--dur-*`（`src/shared/theme/tokens.css`），减少动画时那几个令牌全是 0。
  * 判据钉两件：
  * - 界面的 CSS 里 `transition` · `animation`（连同 `-duration` 两格）不写字面时长（`120ms` · `1.5s`）—— 写了就绕过了那一处开关；
  * - `tokens.css` 里定义的每个 `--dur-*`，减少动画那一段都把它置 0（两向相等：新加一个令牌不置 0 红，置 0 了一个不存在的也红）。
@@ -78,7 +78,7 @@ describe("减少动画时界面上什么都不动", () => {
   });
 
   it("每个 --dur-* 在减少动画那一段里都置 0（两向相等）", () => {
-    const t = durTokens(readFileSync(path.join(ui, "styles/tokens.css"), "utf8"));
+    const t = durTokens(readFileSync(path.resolve(__dirname, "../../../src/shared/theme/tokens.css"), "utf8"));
     expect(t.defined.length).toBeGreaterThan(3);
     expect(t.zeroed).toEqual(t.defined);
     expect(t.notZero).toEqual([]);

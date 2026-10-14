@@ -41,8 +41,8 @@ val LocalMarkwon: ProvidableCompositionLocal<Markwon?> = staticCompositionLocalO
 fun rememberMarkwon(textColor: Color = MaterialTheme.colorScheme.onSurface): Markwon {
     val context = LocalContext.current
     val tokens = LocalAppTokens.current
-    val linkArgb = MaterialTheme.colorScheme.primary.toArgb()
-    val codeBgArgb = tokens.surfaceHigh.toArgb()
+    val linkArgb = tokens.link.toArgb()
+    val codeBgArgb = tokens.bg2.toArgb()
     val codeTextArgb = textColor.toArgb()
     return remember(context, linkArgb, codeBgArgb, codeTextArgb) {
         buildMarkwon(context, linkArgb, codeBgArgb, codeTextArgb)
@@ -121,7 +121,7 @@ fun MarkdownText(
     color: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val markwon = LocalMarkwon.current ?: rememberMarkwon(color)
-    val linkArgb = MaterialTheme.colorScheme.primary.toArgb()
+    val linkArgb = LocalAppTokens.current.link.toArgb()
     val textArgb = color.toArgb()
     AndroidView(
         modifier = modifier,

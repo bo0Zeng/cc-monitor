@@ -17,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -42,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -52,8 +56,13 @@ import com.ccmonitor.mobile.core.data.db.Endpoint
 import com.ccmonitor.mobile.core.data.db.Host
 import com.ccmonitor.mobile.core.data.db.Launcher
 import com.ccmonitor.mobile.core.data.db.parseAddressLine
+import com.ccmonitor.mobile.core.ui.feedback.ErrorLine
 import com.ccmonitor.mobile.core.ui.feedback.clearOfNotice
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.dialectFor
@@ -108,7 +117,7 @@ fun HostListScreen(
             HostListHeader(vm, title, newSessionMode, onIdentities, onSessions)
             if (hosts.isEmpty()) {
                 Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    Text(copyText("mobHosts.list.empty"), color = tokens.textFaint)
+                    Text(copyText("mobHosts.list.empty"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             } else {
                 LazyColumn(Modifier.fillMaxSize()) {
@@ -118,7 +127,7 @@ fun HostListScreen(
                                 Text(
                                     group ?: copyText("mobHosts.list.ungrouped"),
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = tokens.textFaint,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                                 )
                             }
@@ -140,10 +149,17 @@ fun HostListScreen(
                 }
             }
         }
+        // 悬浮按钮：这一屏唯一的主动作，`--accent-strong`（primaryContainer）、圆角 10。
         FloatingActionButton(
             onClick = onAddHost,
-            modifier = Modifier.align(Alignment.BottomEnd).clearOfNotice().padding(24.dp),
-        ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+            modifier =
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .clearOfNotice()
+                    .padding(24.dp)
+                    .semantics { contentDescription = copyText("mobHosts.fab.aria") },
+            shape = RoundedCornerShape(tokens.radius.xl),
+        ) { PhIcon(Ph.Plus, contentDescription = null) }
     }
 }
 
@@ -161,7 +177,7 @@ private fun HostListHeader(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = MaterialTheme.typography.titleLarge)
+        Text(title, style = MaterialTheme.typography.titleMedium)
         HostListActions(vm, onIdentities, onSessions)
     }
     // 新建会话模式的提示：点主机即强制新建独立 tab（不复用已开会话），返回键取消。
@@ -169,7 +185,7 @@ private fun HostListHeader(
         Text(
             copyText("mobHosts.newSession.hint"),
             style = MaterialTheme.typography.bodySmall,
-            color = LocalAppTokens.current.textFaint,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         )
     }
@@ -181,7 +197,7 @@ private fun ImportSshConfigButton(vm: HostViewModel) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var show by remember { mutableStateOf(false) }
-    TextButton(onClick = { show = true }) { Text(copyText("mobHosts.import.action")) }
+    PhIconButton(Ph.UploadSimple, copyText("mobHosts.import.action"), onClick = { show = true }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     if (show) {
         ImportSshConfigDialog(
             onDismiss = { show = false },
@@ -248,9 +264,10 @@ private fun HostListActions(
     onSessions: () -> Unit,
 ) {
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-        TextButton(onClick = onSessions) { Text(copyText("mobHosts.list.sessions")) } // 多 tab 会话总览
+        // 顶栏三颗图标按钮（稿 `外观对齐` 第 1 节）：会话总览 · 导入 · 钥匙；字只当无障碍名。
+        PhIconButton(Ph.Chats, copyText("mobHosts.list.sessions"), onClick = onSessions, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         ImportSshConfigButton(vm)
-        TextButton(onClick = onIdentities) { Text(IDENTITY_SCREEN_TITLE) }
+        PhIconButton(Ph.Key, IDENTITY_SCREEN_TITLE, onClick = onIdentities, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -269,7 +286,6 @@ private fun HostRow(
     onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    val tokens = LocalAppTokens.current
     var showDeleteConfirm by remember { mutableStateOf(false) } // 删除二次确认
     if (showDeleteConfirm) {
         AlertDialog(
@@ -280,7 +296,7 @@ private fun HostRow(
                 TextButton(onClick = {
                     showDeleteConfirm = false
                     onDelete()
-                }) { Text(copyText("mobHosts.delete.ok"), color = MaterialTheme.colorScheme.error) }
+                }) { Text(copyText("mobHosts.delete.ok"), color = LocalAppTokens.current.errorText) }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text(copyText("kit.dialog.cancel")) } },
         )
@@ -304,7 +320,7 @@ private fun HostRow(
                 Text(
                     "${host.username}@${host.host}:${host.port}" + if (extraCount > 0) "  +$extraCount" else "",
                     style = monoSmall,
-                    color = tokens.textFaint,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             TextButton(onClick = onEdit) { Text(copyText("mobHosts.row.edit")) }
@@ -319,7 +335,11 @@ private fun HostRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 launchers.forEach { l ->
-                    AssistChip(onClick = { onLaunch(l.id) }, label = { Text("▶ ${l.label}", style = monoSmall) })
+                    AssistChip(
+                        onClick = { onLaunch(l.id) },
+                        label = { Text(l.label, style = monoSmall) },
+                        leadingIcon = { PhIcon(Ph.Play, contentDescription = null, size = Touch.iconInline) },
+                    )
                 }
             }
         }
@@ -343,7 +363,6 @@ fun HostEditorScreen(
     val saveScope = rememberCoroutineScope()
     val identities by vm.identities.collectAsState()
     val allHosts by vm.hosts.collectAsState() // 跳板机候选（排除自身）
-    val tokens = LocalAppTokens.current
 
     var existing by remember { mutableStateOf<Host?>(null) }
     var label by remember { mutableStateOf("") }
@@ -400,7 +419,7 @@ fun HostEditorScreen(
     if (load == HostEditLoad.NotFound) {
         Box(Modifier.fillMaxSize().padding(24.dp), Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(copyText("mobHostEdit.load.missing"), color = MaterialTheme.colorScheme.error)
+                ErrorLine(copyText("mobHostEdit.load.missing"))
                 TextButton(onClick = onDone) { Text(copyText("mobHostEdit.load.back")) }
             }
         }
@@ -442,7 +461,7 @@ fun HostEditorScreen(
             Text(
                 copyText("mobHostEdit.field.extraPreview", "n" to previewEps.size, "addresses" to previewEps.joinToString(", ") { "${it.host}:${it.port}" }),
                 style = monoSmall,
-                color = tokens.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
@@ -595,7 +614,8 @@ private fun SwitchRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f).padding(end = 8.dp))
-        Switch(checked = checked, onCheckedChange = onChange)
+        // 开关开 ＝ `--accent`（不是主按钮那个 `--accent-strong`）。
+        Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = LocalAppTokens.current.accent))
     }
 }
 

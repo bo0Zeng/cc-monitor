@@ -37,7 +37,7 @@
 // 样式表清单逐份引（viewer 窗 = tab 管理 ＋ 渲染栈，正是本探针量的那一块），次序与那份清单相同。
 import "../../src/frontend/ui/styles/layers.css";
 import "../../src/frontend/ui/styles/reset.css";
-import "../../src/frontend/ui/styles/tokens.css";
+import "../../src/shared/theme/tokens.css";
 import "../../src/frontend/ui/styles/layout.css";
 import "../../src/frontend/ui/styles/shared.css";
 import "../../src/frontend/ui/styles.css";

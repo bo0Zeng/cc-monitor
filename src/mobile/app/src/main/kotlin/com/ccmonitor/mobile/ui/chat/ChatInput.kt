@@ -13,25 +13,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -48,7 +50,10 @@ import com.ccmonitor.mobile.core.claude.link.wire.NewSessionPick
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommand
 import com.ccmonitor.mobile.core.claude.link.wire.SessionCommands
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 
 /** 输入那一圈要的几样动作（聊天屏往会话里做的事都经 [ChatSession]）。 */
 data class ChatInputActions(
@@ -76,16 +81,26 @@ internal fun ChatInputArea(
     val open = state.sid != null
     val busy = state.model.pending != null || state.permission.pending != null
     val tokens = LocalAppTokens.current
-    Surface(tonalElevation = 2.dp) {
+    // 输入区是骨架（`--bg-2`），输入框底 `--field-bg`、边 `--border-medium`、聚焦 `--accent`；➤ / ■ 是这一屏唯一的主按钮。
+    Surface(color = tokens.bg2) {
         Column(Modifier.fillMaxWidth().padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             state.note?.let { NoteLine(it) }
             OutlinedTextField(
                 value = draft,
                 onValueChange = { draft = it },
                 modifier = Modifier.fillMaxWidth().testTag(ChatTestTags.INPUT),
-                placeholder = { Text(copyText("mobChat.input.placeholder")) },
+                placeholder = { Text(copyText("chat.input.placeholder"), color = MaterialTheme.colorScheme.onSurfaceVariant) },
                 singleLine = false,
                 maxLines = INPUT_MAX_LINES,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                shape = RoundedCornerShape(tokens.radius.l),
+                colors =
+                    OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = tokens.fieldBg,
+                        unfocusedContainerColor = tokens.fieldBg,
+                        focusedBorderColor = tokens.accent,
+                        cursorColor = tokens.accent,
+                    ),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -226,16 +241,42 @@ private fun SendOrStop(
 ) {
     // 运行中且框里没字 ⇒ 停止；二选一，不并存。输入框永远不锁。
     if (running && draft.isBlank()) {
-        TextButton(onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP)) { Text(copyText("mobChat.input.stop")) }
+        SendButton(Ph.Stop, copyText("mobChat.input.stop"), enabled = true, onClick = actions.stop, modifier = Modifier.testTag(ChatTestTags.STOP))
     } else {
-        Button(
+        SendButton(
+            Ph.PaperPlaneRight,
+            copyText("mobChat.input.send"),
+            enabled = draft.isNotBlank(),
             onClick = {
                 actions.send(draft)
                 clear()
             },
-            enabled = draft.isNotBlank(),
             modifier = Modifier.testTag(ChatTestTags.SEND),
-        ) { Text(copyText("mobChat.input.send")) }
+        )
+    }
+}
+
+/** 发送 / 停止：主按钮（`--accent-strong` 底 ＋ 白图标），命中区 48 dp；没字时灰掉（0.45）。无障碍名照文案表。 */
+@Composable
+private fun SendButton(
+    icon: Ph,
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FilledIconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.size(Touch.target).semantics { contentDescription = label },
+        shape = RoundedCornerShape(LocalAppTokens.current.radius.m),
+        colors =
+            IconButtonDefaults.filledIconButtonColors(
+                disabledContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = LocalAppTokens.current.disabledAlpha),
+                disabledContentColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = LocalAppTokens.current.disabledAlpha),
+            ),
+    ) {
+        PhIcon(icon, contentDescription = null)
     }
 }
 

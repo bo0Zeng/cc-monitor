@@ -1,6 +1,7 @@
 package com.ccmonitor.mobile.ui.drawer
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,10 +12,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -26,11 +26,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.ThemeTokens
 import com.ccmonitor.mobile.ui.overview.rememberRecent
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -60,8 +63,15 @@ fun ChatDrawer(
     ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = true,
+        scrimColor = MaterialTheme.colorScheme.scrim,
         drawerContent = {
-            ModalDrawerSheet(Modifier.fillMaxWidth(DRAWER_WIDTH_FRACTION)) {
+            // 抽屉 ＝ 凸起面（`--card`）＋ `--border-medium` 边 ＋ 外角 10；遮罩 `--overlay-backdrop`（稿第 3 节）。
+            ModalDrawerSheet(
+                Modifier.fillMaxWidth(DRAWER_WIDTH_FRACTION).border(1.dp, MaterialTheme.colorScheme.outline, DrawerShape),
+                drawerShape = DrawerShape,
+                drawerContainerColor = LocalAppTokens.current.card,
+                drawerTonalElevation = 0.dp,
+            ) {
                 DrawerContent(hostId, linkReady, act)
             }
         },
@@ -78,7 +88,7 @@ private fun DrawerContent(
     Column(Modifier.fillMaxHeight()) {
         Text(
             DRAWER_TITLE,
-            style = MaterialTheme.typography.titleLarge,
+            style = MaterialTheme.typography.titleMedium,
             modifier = Modifier.padding(start = 28.dp, end = 16.dp, top = 20.dp, bottom = 12.dp),
         )
         drawerEntries().forEach { entry -> EntryRow(entry) { onAction(entry.item.action()) } }
@@ -96,7 +106,6 @@ private fun EntryRow(
     entry: DrawerEntry,
     onClick: () -> Unit,
 ) {
-    val color = if (entry.accent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
     Row(
         Modifier
             .fillMaxWidth()
@@ -106,8 +115,8 @@ private fun EntryRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        Text(entry.glyph, color = color, style = MaterialTheme.typography.titleMedium)
-        Text(entry.label, color = color, style = MaterialTheme.typography.bodyLarge)
+        PhIcon(entry.icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(entry.label, color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -173,18 +182,19 @@ private fun ServerRow(
                 .padding(start = 28.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
-            Text(serverRowLabel(name), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                PhIcon(Ph.HardDrives, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(serverRowLabel(name), maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodyMedium)
+            }
         }
-        IconButton(
-            onClick = { onAction(DrawerAction.Settings) },
-            modifier = Modifier.width(48.dp).semantics { contentDescription = SETTINGS_DESCRIPTION },
-        ) {
-            Text(SETTINGS_GLYPH, style = MaterialTheme.typography.titleLarge)
-        }
+        PhIconButton(Ph.GearSix, SETTINGS_DESCRIPTION, onClick = { onAction(DrawerAction.Settings) }, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
 private const val DRAWER_WIDTH_FRACTION = 0.85f
+
+/** 只有外侧那两角圆（`--radius-xl`）。 */
+private val DrawerShape = RoundedCornerShape(topEnd = ThemeTokens.RadiusXl, bottomEnd = ThemeTokens.RadiusXl)
 
 private const val ENTRY_ROW_DP = 56
 

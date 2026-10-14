@@ -11,7 +11,7 @@
 #   cargo / rustup / npm 的家照外面的 CARGO_HOME / RUSTUP_HOME / npm_config_cache，没设就是真家目录下的默认位置（沙箱换 HOME 之前就定下）。
 # 手机那一套（ktlint · detekt · 各模块 JVM 单测；经 heavy.sh，gradle 带 --no-daemon）：这棵树（连没提交的改动）相对 main 改到了
 #   下面 mobile_reads 里的路径才跑，没改到就跳过并打一行说明。手机的单测与构建在 src/mobile 之外还读：tests/__fixtures__/（金样）·
-#   src/backend/lib.rs（BUILD_ID 与子命令表）· src/shared/copy/（文案表，生成 CopyEntries）。这张表漏没漏，由判据
+#   src/backend/lib.rs（BUILD_ID 与子命令表）· src/shared/copy/（文案表，生成 CopyEntries）· src/shared/theme/（令牌正本，生成 ThemeTokens）。这张表漏没漏，由判据
 #   tests/backend/flow_scripts_guard.rs 对着 src/mobile 里字面写到的仓内路径核。Android Lint 与 release 构建不在这里（门禁 mobile 格跑）。
 #   工具链：外面给了 JAVA_HOME 与 ANDROID_HOME 就用；没给就照 src/mobile/scripts/env.sh 探真家目录下的 android-dev（沙箱换 HOME 之前就定下）。
 #   `--mobile` 只跑手机那一段；`--mobile-plan` 只印跑不跑、为什么。
@@ -22,7 +22,7 @@ root=$(git rev-parse --show-toplevel) || exit 2
 cd "$root" || exit 2
 mode=all
 case "${1:-}" in --mobile) mode=mobile; shift ;; --mobile-plan) mode=plan; shift ;; esac
-mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/backend/ssh-dial/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
+mobile_reads=(src/mobile/ tests/__fixtures__/ src/backend/lib.rs src/shared/copy/ src/shared/theme/ src/backend/ssh-dial/ src/backend/Cargo.toml src/backend/Cargo.lock src/frontend/ui/generated)
 # 改到的第一条（空 = 没改到；`?` = 找不到 main，照跑）
 mobile_touch() {
   local base

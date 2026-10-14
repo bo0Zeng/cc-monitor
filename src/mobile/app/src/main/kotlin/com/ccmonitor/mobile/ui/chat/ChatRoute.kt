@@ -8,11 +8,11 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -23,8 +23,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ccmonitor.mobile.core.claude.link.CoreLink
@@ -33,6 +31,9 @@ import com.ccmonitor.mobile.core.claude.link.SessionNewFacts
 import com.ccmonitor.mobile.core.claude.link.SessionWatch
 import com.ccmonitor.mobile.core.copy.copyText
 import com.ccmonitor.mobile.core.data.repo.HostRepository
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIconButton
+import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.service.SshKeepAliveService
 import com.ccmonitor.mobile.ui.chat.newsession.NewSessionPane
@@ -41,7 +42,6 @@ import com.ccmonitor.mobile.ui.common.chatHolder
 import com.ccmonitor.mobile.ui.common.rememberHostLink
 import com.ccmonitor.mobile.ui.drawer.ChatDrawer
 import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_DESCRIPTION
-import com.ccmonitor.mobile.ui.drawer.DRAWER_OPEN_GLYPH
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -201,14 +201,16 @@ private fun ChatTopBar(
 ) {
     TopAppBar(
         navigationIcon = {
-            IconButton(
+            PhIconButton(
+                Ph.List,
+                DRAWER_OPEN_DESCRIPTION,
                 onClick = onOpenDrawer,
-                modifier = Modifier.semantics { contentDescription = DRAWER_OPEN_DESCRIPTION }.testTag(ChatTestTags.DRAWER_OPEN),
-            ) {
-                Text(DRAWER_OPEN_GLYPH, style = MaterialTheme.typography.titleLarge)
-            }
+                modifier = Modifier.testTag(ChatTestTags.DRAWER_OPEN),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         },
-        title = { Text(title) },
+        title = { Text(title, style = MaterialTheme.typography.titleMedium) },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = LocalAppTokens.current.bg2, scrolledContainerColor = LocalAppTokens.current.bg2),
     )
 }
 

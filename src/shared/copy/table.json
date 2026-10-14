@@ -24034,15 +24034,6 @@
       "zh": "另有终端窗口 ×{n} · 输入会混在一起",
       "args": ["n"]
     },
-    "terminal.input.placeholder": {
-      "kind": "control",
-      "role": "占位",
-      "zh": "回车送出 · Shift+回车换行 · Ctrl+回车仅送字",
-      "args": [],
-      "waive": {
-        "C-W12": "终端输入框的固定键（不可改绑）"
-      }
-    },
     "terminal.input.readOnly": {
       "kind": "control",
       "role": "标签",
@@ -29198,10 +29189,10 @@
       "zh": "已是最早",
       "args": []
     },
-    "mobChat.input.placeholder": {
+    "chat.input.placeholder": {
       "kind": "control",
       "role": "占位",
-      "zh": "说点什么…",
+      "zh": "发消息…",
       "args": []
     },
     "mobChat.input.stop": {
@@ -29410,7 +29401,7 @@
     "mobKit.act.back": {
       "kind": "action",
       "role": "按钮",
-      "zh": "← 返回",
+      "zh": "返回",
       "args": []
     },
     "mobSsh.conn.unavailable": {
@@ -29583,6 +29574,12 @@
       "zh": "删除",
       "args": []
     },
+    "mobButtons.add.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "添加按钮",
+      "args": []
+    },
     "mobTabs.overview.title": {
       "kind": "title",
       "role": "标题",
@@ -29598,13 +29595,13 @@
     "mobTabs.overview.new": {
       "kind": "action",
       "role": "按钮",
-      "zh": "+ 新会话",
+      "zh": "新会话",
       "args": []
     },
     "mobTabs.overview.empty": {
       "kind": "body",
       "role": "空态",
-      "zh": "无打开的会话\n点「+ 新会话」选主机连接",
+      "zh": "无打开的会话\n点「新会话」选主机连接",
       "args": [],
       "limited": ["连接"]
     },
@@ -29617,7 +29614,13 @@
     "mobTabs.row.close": {
       "kind": "action",
       "role": "按钮",
-      "zh": "× 关闭",
+      "zh": "关闭",
+      "args": []
+    },
+    "mobTabs.open.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "会话 tab",
       "args": []
     },
     "mobTabs.sheet.title": {
@@ -30380,7 +30383,7 @@
     "mobButtonSettings.group.back": {
       "kind": "action",
       "role": "按钮",
-      "zh": "← 组列表",
+      "zh": "返回组列表",
       "args": []
     },
     "mobButtonSettings.group.empty": {
@@ -30436,6 +30439,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "删",
+      "args": []
+    },
+    "mobButtonSettings.row.up": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "上移",
+      "args": []
+    },
+    "mobButtonSettings.row.down": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "下移",
       "args": []
     },
     "mobButtonSettings.groupDelete.title": {
@@ -30545,6 +30560,12 @@
     "mobIdentity.add.title": {
       "kind": "title",
       "role": "确认框",
+      "zh": "添一把钥匙",
+      "args": []
+    },
+    "mobIdentity.fab.aria": {
+      "kind": "action",
+      "role": "按钮",
       "zh": "添一把钥匙",
       "args": []
     },
@@ -30666,6 +30687,12 @@
       "kind": "action",
       "role": "按钮",
       "zh": "会话",
+      "args": []
+    },
+    "mobHosts.fab.aria": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "新建主机",
       "args": []
     },
     "mobHosts.delete.body": {
@@ -30897,6 +30924,18 @@
       "kind": "action",
       "role": "按钮",
       "zh": "终端",
+      "args": []
+    },
+    "mobSftp.bar.up": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "上一级",
+      "args": []
+    },
+    "mobSftp.bar.bookmark": {
+      "kind": "action",
+      "role": "按钮",
+      "zh": "收藏此目录",
       "args": []
     },
     "mobSftp.bookmark.deleted": {

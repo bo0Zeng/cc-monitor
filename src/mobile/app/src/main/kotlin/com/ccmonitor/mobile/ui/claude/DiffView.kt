@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -37,24 +38,24 @@ fun DiffView(
     Column(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(6.dp))
-            .background(tokens.surfaceRaised),
+            .clip(RoundedCornerShape(tokens.radius.l))
+            .background(tokens.bg2),
     ) {
         // 表头：+adds / -dels
         Row(Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs)) {
             Text("+${result.addCount}", color = tokens.success, style = monoSmall)
             Spacer(Modifier.width(tokens.spacing.sm))
-            Text("−${result.delCount}", color = tokens.diffDelBorder, style = monoSmall)
+            Text("−${result.delCount}", color = tokens.errorText, style = monoSmall)
         }
         val rows = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())
         Column(rows) {
-            result.rows.forEach { row -> DiffRowView(row, tokens.diffAddBorder, tokens.diffDelBorder, tokens.diffAddBg, tokens.diffDelBg, tokens.textFaint) }
+            result.rows.forEach { row -> DiffRowView(row, tokens.diffAddBorder, tokens.diffDelBorder, tokens.diffAddBg, tokens.diffDelBg, MaterialTheme.colorScheme.onSurfaceVariant) }
         }
         if (result.truncated) {
             Text(
                 copyText("mobReading.diff.truncated"),
                 style = monoSmall,
-                color = tokens.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = tokens.spacing.sm, vertical = tokens.spacing.xs),
             )
         }
