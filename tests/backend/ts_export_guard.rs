@@ -1,12 +1,14 @@
-//! 🔴 ts-rs 生成物的落点（第 8 刀收尾）。
+//! 🔴 ts-rs 生成物的落点与出处（第 8 刀收尾）。
 //!
 //! ts-rs 的相对落点（`export_to = "../.."`）相对的是**跑导出的那个 crate**（`<它的目录>/bindings/`），不是类型住的那个 crate：
 //! 别的 crate 的测试档把一个类型当依赖导出时，相对落点就落到别处（`cmd_wire::Machine` 曾经因此往仓根多导出一个 `frontend/`）。
+//! 生成物也按「落点目录 ＋ TS 名」一份文件：两个类型同名就悄悄互相盖掉（`ForkFrom` 那一次）。
 //!
 //! 这里读全仓 `src/` 里每个 `derive(ts_rs::TS)`，现算它落在哪、叫什么：
 //! - 落点只许是 [`REGISTERED`] 那几处；没写落点（落进 `bindings/`）· 认不出的写法 ⇒ 红；
 //! - 住在会被别的 crate 经 feature 引用的 crate 里（Cargo.toml 里 ts-rs 是 feature 开的 `dep:ts-rs`）⇒ 落点必须写成
 //!   `concat!(env!("CARGO_MANIFEST_DIR"), "…")`，相对的直接红；
+//! - 同一个落点目录里同一个 TS 名只许一个出处。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -224,6 +226,27 @@ fn every_ts_export_lands_in_a_registered_directory() {
         "这些 TS 派生的落点不对（{} 处）：\n{}",
         bad.len(),
         bad.join("\n")
+    );
+}
+
+/// 🔴 同一个生成物目录里，同一个 TS 名只许一个出处（不然后写的那份悄悄盖掉先写的）。
+#[test]
+fn every_generated_type_name_has_one_source() {
+    let mut by: BTreeMap<(String, String), Vec<String>> = BTreeMap::new();
+    for d in all_derived() {
+        if let Ok(dir) = d.dir {
+            by.entry((dir, d.ts_name)).or_default().push(d.at);
+        }
+    }
+    let dup: Vec<String> = by
+        .into_iter()
+        .filter(|(_, v)| v.len() > 1)
+        .map(|((dir, n), v)| format!("  {dir}/{n}.ts ⇐ {}", v.join(" ｜ ")))
+        .collect();
+    assert!(
+        dup.is_empty(),
+        "同名的生成物不止一个出处：\n{}",
+        dup.join("\n")
     );
 }
 
