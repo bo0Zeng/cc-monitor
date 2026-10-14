@@ -547,17 +547,18 @@ fn read(rel: &str) -> String {
 fn inline_reexports(src: &str) -> String {
     let mut out = String::new();
     for line in src.lines() {
-        let t = line.trim();
-        let (home_of, rest): (fn(&str) -> std::path::PathBuf, &str) =
-            if let Some(r) = t.strip_prefix("pub use crate::") {
-                (crate_file, r)
-            } else if let Some(r) = t.strip_prefix("pub use cmd_wire::") {
-                (cmd_wire_file, r)
-            } else {
-                out.push_str(line);
-                out.push('\n');
-                continue;
-            };
+        let home_of: fn(&str) -> std::path::PathBuf;
+        let rest = if let Some(r) = line.trim().strip_prefix("pub use crate::") {
+            home_of = crate_file;
+            r
+        } else if let Some(r) = line.trim().strip_prefix("pub use cmd_wire::") {
+            home_of = cmd_wire_file;
+            r
+        } else {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        };
         let Some((module, names)) = rest.strip_suffix(';').and_then(|r| r.rsplit_once("::")) else {
             out.push_str(line);
             out.push('\n');

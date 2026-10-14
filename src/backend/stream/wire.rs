@@ -204,26 +204,25 @@ pub(crate) enum CanSwitch {
     No { why: Words },
 }
 
-impl CanSwitch {
-    fn no(key: &str) -> Self {
-        CanSwitch::No {
-            why: Words(copy_core::copy_text(key, &[])),
-        }
-    }
-}
-
 impl Switch {
     /// 活会话此刻那一态 ⇒ 能不能换：
     /// 在等人 ⇒ 都不能（按键 · 送的那一行会落进那个框里）；一轮在跑 ⇒ 模型不能（送的那一行排成下一条消息、不立刻生效）、权限档能（跑着也收切档键）；
     /// 闲着 · 后台命令在跑 · 说不清 ⇒ 都能（说不清时由那两条命令自己判、照实回）。
     pub(crate) fn live(a: Option<SessionActivity>) -> Self {
         match a {
-            Some(SessionActivity::NeedsYou) => Switch {
-                model: CanSwitch::no("beSessionSwitch.why.waiting"),
-                permission: CanSwitch::no("beSessionSwitch.why.waiting"),
-            },
+            Some(SessionActivity::NeedsYou) => {
+                let waiting = || CanSwitch::No {
+                    why: Words(copy_core::copy_text("beSessionSwitch.why.waiting", &[])),
+                };
+                Switch {
+                    model: waiting(),
+                    permission: waiting(),
+                }
+            }
             Some(SessionActivity::Working) => Switch {
-                model: CanSwitch::no("beSessionSwitch.why.running"),
+                model: CanSwitch::No {
+                    why: Words(copy_core::copy_text("beSessionSwitch.why.running", &[])),
+                },
                 permission: CanSwitch::Yes,
             },
             Some(SessionActivity::Idle | SessionActivity::BackgroundWork) | None => Switch {
@@ -235,9 +234,12 @@ impl Switch {
 
     /// 离开「活」（进程退了：可重连 · 已结束）⇒ 都不能：两条命令都要往那一家的进程里送。
     pub(crate) fn gone() -> Self {
+        let ended = || CanSwitch::No {
+            why: Words(copy_core::copy_text("beSessionSwitch.why.ended", &[])),
+        };
         Switch {
-            model: CanSwitch::no("beSessionSwitch.why.ended"),
-            permission: CanSwitch::no("beSessionSwitch.why.ended"),
+            model: ended(),
+            permission: ended(),
         }
     }
 }

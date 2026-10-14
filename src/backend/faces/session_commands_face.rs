@@ -125,8 +125,12 @@ pub(crate) fn commands_of(
         scope_text: scope_text(CommandScope::Builtin),
         needs_args: b.needs_args,
         confirm: b.confirm,
-        needs_args_text: mark(b.needs_args, "beSessionCommands.mark.needsArgs"),
-        confirm_text: mark(b.confirm, "beSessionCommands.mark.confirm"),
+        needs_args_text: b
+            .needs_args
+            .then(|| copy_text("beSessionCommands.mark.needsArgs", &[])),
+        confirm_text: b
+            .confirm
+            .then(|| copy_text("beSessionCommands.mark.confirm", &[])),
     });
     let files = seen.commands.into_iter().map(|c| {
         let scope = if c.project {
@@ -141,7 +145,9 @@ pub(crate) fn commands_of(
             scope_text: scope_text(scope),
             needs_args: c.needs_args,
             confirm: false,
-            needs_args_text: mark(c.needs_args, "beSessionCommands.mark.needsArgs"),
+            needs_args_text: c
+                .needs_args
+                .then(|| copy_text("beSessionCommands.mark.needsArgs", &[])),
             confirm_text: None,
         }
     });
@@ -173,11 +179,6 @@ pub(crate) fn one_shots(kind: &str) -> (Option<SessionAct>, Option<SessionAct>) 
         crate::agents::compact_request_of(kind).map(|s| act(s, false)),
         crate::agents::clear_request_of(kind).map(|s| act(s, true)),
     )
-}
-
-/// 为真 ⇒ 那一格的字；为假 ⇒ `None`。
-fn mark(on: bool, key: &str) -> Option<String> {
-    on.then(|| copy_text(key, &[]))
 }
 
 #[cfg(test)]
