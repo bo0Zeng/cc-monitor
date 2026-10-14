@@ -1178,7 +1178,7 @@ fn the_local_path_does_not_hand_roll_version_comparison() {
     assert!(
         !src.contains(&bad),
         "生产段出现了手写的 build_id 比较（`{bad}`）。\n\
-             版本比对只有一个源头：后端 `control/deploy_plan.rs` 的 `identity_decision`（本机经 `place-verdict` 问）。\n\
+             版本比对只有一个源头：后端 `deploy` crate 的 `identity_decision`（本机经 `place-verdict` 问）。\n\
              另写一套 ⇒ 两处判「要不要装」的逻辑迟早分叉，而分叉的后果是无限重装。"
     );
 }

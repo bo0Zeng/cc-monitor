@@ -4,6 +4,7 @@ import android.util.Log
 import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.ssh.KnownHostStore
 import com.ccmonitor.mobile.dev.DevSeeder
+import com.ccmonitor.mobile.link.BackendFiles
 import com.ccmonitor.mobile.link.HostBackends
 import com.ccmonitor.mobile.ssh.HostConnector
 import com.ccmonitor.mobile.ssh.KnownHostDaoStore
@@ -64,10 +65,13 @@ val appModule =
         // 每台一条常驻流（进程级）；「对话」一屏与抽屉「最近」共用同一个清单 VM。参数顺序 = `parametersOf(hostId, machine)`。
         single {
             val hosts = get<HostRepository>()
-            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id })
+            val files = BackendFiles(androidContext())
+            HostBackends(get(), labelOf = { id -> hosts.get(id)?.label ?: id }, backendSlots = files::slots)
         }
         viewModel { params ->
-            ConversationsViewModel(backend = get<HostBackends>().of(params.get(0)), machine = params.get(1))
+            val hostId: String = params.get(0)
+            val backends = get<HostBackends>()
+            ConversationsViewModel(backend = backends.of(hostId), machine = params.get(1), deployBackend = { backends.deploy(hostId) })
         }
         viewModel { IdentityViewModel(get()) }
         viewModel { ButtonSettingsViewModel(get()) } // get() = CustomButtonDao

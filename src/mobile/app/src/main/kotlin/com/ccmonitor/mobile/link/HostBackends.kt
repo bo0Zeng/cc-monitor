@@ -10,6 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.time.ZoneId
 import java.util.concurrent.ConcurrentHashMap
 
@@ -20,12 +21,17 @@ import java.util.concurrent.ConcurrentHashMap
 class HostBackends(
     private val connector: HostConnector,
     private val labelOf: suspend (hostId: String) -> String,
+    /** 包里那几格后端解到私有目录、交核心的那一段（装 / 更新后端用；解压在 IO 线程上）。 */
+    private val backendSlots: () -> String = { "[]" },
     private val core: ResidentCore = CoreResident,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val byHost = ConcurrentHashMap<String, ResidentFeed>()
 
     fun of(hostId: String): ResidentFeed = byHost.getOrPut(hostId) { feed(hostId) }
+
+    /** 给这台装 / 更新后端（判定与做法在核心；走到哪 · 结局经 [ResidentFeed.deploying]）。 */
+    fun deploy(hostId: String) = of(hostId).deploy { withContext(Dispatchers.IO) { backendSlots() } }
 
     /** App 回到前台 · 网络变了：每台断着的当场再接（手机会被杀后台，不是常驻）。 */
     fun onForeground() = byHost.values.forEach(ResidentFeed::onForeground)

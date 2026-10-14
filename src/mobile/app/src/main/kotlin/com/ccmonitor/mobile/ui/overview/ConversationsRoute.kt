@@ -37,7 +37,7 @@ fun ConversationsRoute(
                 if (machine != null) {
                     val vm = conversationsViewModel(hostId, machine)
                     val state by vm.state.collectAsStateWithLifecycle()
-                    ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner))
+                    ConversationsScreen(state, machine, onOpen, vm::retry, Modifier.fillMaxSize().padding(inner), onDeploy = vm::deploy)
                 }
         }
     }

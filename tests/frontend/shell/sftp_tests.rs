@@ -539,66 +539,9 @@ fn remote_parent_and_marker() {
     // 旁挂标记的路径拼法随标记一起退役（后端那条路读字节自己的身份戳）。
 }
 
-// ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
-
-// 读回那一趟住本机后端（它交回**比对的事实**：读回长度 · 首个差异，读不回 ⇒ `None`；
-//   那一侧怎么算由后端 `dial_sftp_tests` 的部署那一趟判）。这里判的是**判定与话**：拿事实喂 `verify_readback`。
-
-#[test]
-fn upload_verify_catches_same_length_corruption() {
-    let want = b"#!/bin/sh\nexec ccm \"$@\"\n";
-    // 等长但一字节不同——**只比长度是查不出来的**，而此前连长度都没比
-    let k = (want.len() / 2) as u64;
-    let e = verify_readback(
-        "/r/x",
-        want.len() as u64,
-        Some((want.len() as u64, Some(k))),
-    )
-    .unwrap_err();
-    assert!(
-        copy_core::copy_matches("rsSftp.verify.contentDiffers", &e),
-        "{e}"
-    );
-    assert!(
-        copy_core::copy_matches_with(
-            "rsSftp.verify.contentDiffers",
-            &[("at", &k.to_string())],
-            &e
-        ),
-        "要指出位置：{e}"
-    );
-    // 「下次会重来」那半句挪到了 `upload_verified`（它当场删掉传坏的那一份），这里只说坏在哪。
-    assert!(e.contains("/r/x"), "{e}");
-}
-
-#[test]
-fn upload_verify_catches_truncation_and_unreadable() {
-    let e = verify_readback("/r/x", 10, Some((5, Some(5)))).unwrap_err();
-    assert!(
-        copy_core::copy_matches("rsSftp.verify.lengthDiffers", &e),
-        "{e}"
-    );
-    assert!(
-        copy_core::copy_matches_with("rsSftp.verify.lengthDiffers", &[("expectedLen", "10")], &e),
-        "{e}"
-    );
-    // 读不回来 ≠ 写对了
-    let e2 = verify_readback("/r/x", 10, None).unwrap_err();
-    assert!(
-        copy_core::copy_matches("rsSftp.verify.unreadable", &e2),
-        "{e2}"
-    );
-    assert!(e2.contains("/r/x"), "{e2}");
-}
-
-#[test]
-fn upload_verify_passes_on_exact_bytes() {
-    // 二进制（含 NUL 与非 UTF-8）也要过——判定只看事实，不碰字节本身
-    assert!(verify_readback("/r/d", 7, Some((7, None))).is_ok());
-    assert!(verify_readback("/r/d", 0, Some((0, None))).is_ok());
-    // 反向：长度对上了而差异在 ⇒ 不许放行（这一格是「只比长度」那一形的阴性对照）
-    assert!(verify_readback("/r/d", 7, Some((7, Some(0)))).is_err());
-}
+// ===== T04 审计① 上传读回判据 =====
+// 判读回的话与「读回不对当场删」随判定搬进了拨号核心（`ssh-dial/sftp.rs::put_verified` · `verify_readback`，手机那一趟装同一份），
+//   逐格判据在后端 `dial_sftp_tests.rs`（`the_readback_verdict_names_what_went_wrong` 等）。
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
@@ -957,22 +900,18 @@ fn a_failed_auto_deploy_reaches_the_screen_through_remote_health() {
     );
 }
 
-/// 读回比对不对 ⇒ **当场删掉传坏的那一份**（旁挂标记退役后，断链那一环就是这一删）。
-///
-/// 部署决策的对照物是那份字节自报的身份 ⇒ 一份传坏却恰好还带着对的戳的字节，
-/// 下次会被判「已是这一版」—— 删掉它，下次就是「落点没有 ⇒ 装」。
-/// 形态判据（`upload_verified` 要经真 `RemoteFs`，单测起不了那条链路；行为那一半在回环 sshd 读数里没有现成的坏读回可造）：
-/// 读回判定的 `Err` 那一支里恰好一次 `fs.remove(remote_path)`，且排在 `fs.put(` 之后。
+/// 读回比对不对 ⇒ **当场删掉传坏的那一份** —— 那一删住拨号核心 `put_verified`（后端 `dial_sftp_tests` 用一台会读坏的合成服务端判它）；
+/// 这里钉 monitor 这一侧真的要了那一格：部署的上传恰一处 `fs.put(remote_path, bytes, mode, true)`（`verify` 开着），自己不再判、不再删。
 #[test]
 fn a_bad_readback_removes_the_upload_it_just_made() {
     let prod = guard_core::production_code(include_str!("../../../src/frontend/shell/src/sftp.rs"));
     let body = dp1_body(&prod, "pub(crate) async fn upload_verified(");
-    let put = guard_core::find_pinned(&body, "fs.put(remote_path").expect("上传那一问不在了");
-    let bad = guard_core::find_pinned(&body, "let Err(bad) = verify_readback(")
-        .expect("读回判定那一支不在了");
-    let rm = guard_core::find_pinned(&body, "fs.remove(remote_path)")
-        .unwrap_or_else(|e| panic!("读回不对那一支没有恰好一次删掉那一份（{e}）：\n{body}"));
-    assert!(put < bad && bad < rm, "次序不是「传 → 判 → 删」：\n{body}");
+    guard_core::find_pinned(&body, "fs.put(remote_path, bytes, mode, true)")
+        .unwrap_or_else(|e| panic!("部署的上传没开读回比对（{e}）：\n{body}"));
+    assert!(
+        !body.contains("fs.remove("),
+        "读回不对那一删在后端，monitor 这一侧不该再删一次：\n{body}"
+    );
 }
 
 /// 🔴 **A1：别名块的真相不住 `sftp.rs`**（`audit/B-decouple.md` §2 第 12 条：

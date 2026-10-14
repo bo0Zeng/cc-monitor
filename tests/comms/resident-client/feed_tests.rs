@@ -789,20 +789,23 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
         (p.text, k),
         (
             copy_text("rsRemoteResident.ensure.answerUnreadable", &[]),
-            FailKind::Install
+            FailKind::Install(Fix::Install)
         )
     );
     let (p, k) = fail(exec(&hello("p1a-old"), "", None));
     assert_eq!(
         (p.text, k),
-        (copy_core::backend_old("devbox"), FailKind::Install)
+        (
+            copy_core::backend_old("devbox"),
+            FailKind::Install(Fix::Update)
+        )
     );
     let (p, k) = fail(exec("", "sh: ccm: not found", Some(127)));
     assert_eq!(
         (p.text, k),
         (
             copy_text("remoteHealth.head.notDeployed", &[]),
-            FailKind::Install
+            FailKind::Install(Fix::Install)
         )
     );
     let (p, k) = fail(exec(
@@ -827,7 +830,11 @@ fn the_ensure_answer_is_read_the_same_on_both_ends() {
     ));
     assert_eq!(
         (p.text.as_str(), p.detail.as_str(), k),
-        ("x", "Permission denied (os error 13)", FailKind::Install)
+        (
+            "x",
+            "Permission denied (os error 13)",
+            FailKind::Install(Fix::Install)
+        )
     );
     let (p, _) = fail(exec("", "garbage", Some(1)));
     assert_eq!(p.text, copy_text("rsRemoteResident.ensure.noReason", &[]));
@@ -850,4 +857,110 @@ async fn a_relay_that_stays_absent_is_tried_a_capped_number_of_times() {
         "先直接接一回，ensure 之后至多再接 RELAY_TRIES 回"
     );
     assert_eq!(f.ensured.load(Ordering::SeqCst), 1);
+}
+
+/// 装不了后端的宿主（手机）断在「装一次会好」那几种 ⇒ 状态里点名要哪一种：没装 ⇒ `install`；不认这一版子命令的老后端 ⇒ `update`。
+/// 装得了的（桌面）下一轮自己装 ⇒ 不点名。
+#[tokio::test(start_paused = true)]
+async fn the_phone_is_told_whether_to_install_or_update() {
+    let absent = || Exec {
+        exit_status: Some(127),
+        stdout: String::new(),
+        stderr: "ccm: not found".into(),
+    };
+    let fix_of = |s: State| match s {
+        State::Down { fix, .. } => fix,
+        _ => None,
+    };
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(absent());
+    let (feed, _) = start(&f);
+    until("没装 ⇒ 要人动手", || {
+        matches!(
+            feed.state(),
+            State::Down {
+                needs_hand: true,
+                ..
+            }
+        )
+    })
+    .await;
+    assert_eq!(fix_of(feed.state()), Some(Fix::Install));
+    let v: serde_json::Value = serde_json::to_value(feed.state()).unwrap();
+    assert_eq!(v["fix"], "install", "{v}");
+
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(Exec {
+        exit_status: None,
+        stdout: hello("p0a-ancient"),
+        stderr: String::new(),
+    });
+    let (feed, _) = start(&f);
+    until("老后端 ⇒ 要人动手", || {
+        matches!(
+            feed.state(),
+            State::Down {
+                needs_hand: true,
+                ..
+            }
+        )
+    })
+    .await;
+    assert_eq!(fix_of(feed.state()), Some(Fix::Update));
+
+    let f = Arc::new(Fake::default());
+    f.ensures.lock().unwrap().push_back(absent());
+    f.attaches.lock().unwrap().push_back(Peer::Absent);
+    let seen_fix: Arc<Mutex<Vec<Option<Fix>>>> = Arc::default();
+    let s = Arc::clone(&seen_fix);
+    let feed = Feed::start(
+        cfg(),
+        Some(Arc::new(D(Arc::clone(&f)))),
+        sink(move |e| {
+            if let Event::State(State::Down { fix, .. }) = e {
+                s.lock().unwrap().push(fix);
+            }
+        }),
+    );
+    until("桌面断过一轮", || {
+        !seen_fix.lock().unwrap().is_empty()
+    })
+    .await;
+    assert!(
+        seen_fix.lock().unwrap().iter().all(Option::is_none),
+        "{:?}",
+        seen_fix.lock().unwrap()
+    );
+    feed.close();
+}
+
+/// 手机装完之后换常驻：在此刻那条 SSH 上跑一次 `--resident-ensure --replace`、成了就整份重接（接上的是新的那一位）；
+/// 接着时报那台 hello 的身份，断着时不报。没有 SSH ⇒ 不跑、说离线。
+#[tokio::test(start_paused = true)]
+async fn replacing_the_resident_runs_ensure_replace_then_reconnects() {
+    let f = Arc::new(Fake::default());
+    f.attaches.lock().unwrap().push_back(upp("p9z-old"));
+    let (feed, _) = start(&f);
+    until("接上旧的", || up(&feed)).await;
+    assert_eq!(feed.theirs().as_deref(), Some("p9z-old"));
+    f.attaches.lock().unwrap().push_back(upp(MINE));
+    feed.replace().await.expect("换装该成");
+    assert!(
+        f.captured
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|c| c.ends_with("-- --resident-ensure --replace")),
+        "{:?}",
+        f.captured.lock().unwrap()
+    );
+    until("接上新的", || feed.theirs().as_deref() == Some(MINE)).await;
+
+    let none: Arc<Feed<T>> = Feed::start(cfg(), None, sink(|_| {}));
+    let e = none.replace().await.unwrap_err();
+    assert_eq!(
+        e.text,
+        copy_core::copy_text("front.body.offline", &[("machine", "box")])
+    );
+    assert_eq!(none.theirs(), None);
 }

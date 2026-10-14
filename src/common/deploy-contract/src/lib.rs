@@ -10,7 +10,7 @@
 //! | 身份戳的格式（读它字节里那段，不跑它） | | [`STAMP_OPEN`] · [`STAMP_CLOSE`] · [`Marks`] · [`RemoteIdentity`] · [`identity_of_bytes`] · [`stamp_scan_cmd`] · [`interpret_stamp_scan`] · [`build_order`] |
 //! | 计划答话的形状 | `IPC-PROTOCOL.md` 的 `deploy-plan` | [`DeployAction`] |
 //!
-//! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `control/deploy_plan.rs` 一家；
+//! 判定（那台要哪一格 · 表 B 承诺 · 换不换 · 落点那一份认不认）住后端 `deploy` crate 一家（`src/backend/deploy/`，桌面后端与手机同一份）；
 //! monitor 自举那一刻（本机后端还没起）问的是手上那份字节自己（帧命令 `place-verdict`，CLI 面自动派生）。
 //!
 //! # 不在本 crate 的
@@ -22,7 +22,7 @@
 use copy_core::copy_text;
 use copy_core::said::Said;
 
-// ═══ 表 A：键与行（表 B 的承诺是判定，住后端 `control/deploy_plan.rs::promised`）═══════════════
+// ═══ 表 A：键与行（表 B 的承诺是判定，住后端 `deploy/lib.rs::promised`）═══════════════
 
 /// 表 A 的 OS 轴。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -379,7 +379,7 @@ pub fn interpret_stamp_scan(
     }
 }
 
-// ═══ 计划答话的形状 · 戳的序键（换不换是判定，住后端 `control/deploy_plan.rs`）══════════════
+// ═══ 计划答话的形状 · 戳的序键（换不换是判定，住后端 `deploy` crate）══════════════
 
 /// 部署决策（答话的形状）。
 #[derive(Debug, PartialEq, Eq)]
@@ -390,7 +390,7 @@ pub enum DeployAction {
     Deploy(String),
     /// 那台上是**另一版、但不比这一版旧**（更新 · 同序不同名 · 序解不出）⇒ **不动它**，
     /// 照旧连上那一份。`theirs` = 那台上那一份自报的身份；`why` = 人读原因（点名两边各是哪一版）。
-    /// 只有后端 `control/deploy_plan.rs::identity_decision` 产这一格。
+    /// 只有后端 `deploy/lib.rs::identity_decision` 产这一格。
     Keep { theirs: String, why: String },
 }
 

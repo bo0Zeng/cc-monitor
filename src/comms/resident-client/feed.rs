@@ -104,13 +104,24 @@ pub enum State {
         epoch: u64,
         notice: Option<Problem>,
     },
-    /// 断着：那一句；`needs_hand` ⇒ 不会自己好（要［重试］或人去装 / 起）；`unsupported` ⇒ 那台不是 Unix（常驻脱离不了）。
+    /// 断着：那一句；`needs_hand` ⇒ 不会自己好（要［重试］或人去装 / 起）；`unsupported` ⇒ 那台不是 Unix（常驻脱离不了）；
+    /// `fix` ⇒ 装一次会好、而这一侧不自己装（手机：等人按［装后端］/［更新后端］）—— 装得了的宿主（桌面）下一轮自己装，恒缺。
     Down {
         problem: Problem,
         needs_hand: bool,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         unsupported: bool,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fix: Option<Fix>,
     },
+}
+
+/// 装一次会好的那一种：那台没有我们的后端（没装 · 起不了 · 不是我们的）· 有、但旧了（不认这一版的子命令）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Fix {
+    Install,
+    Update,
 }
 
 /// 交给宿主的事（按发生的先后、一件一件交：宿主慢了，读流就跟着慢，背压一路回到那台）。
@@ -181,8 +192,8 @@ struct Fail {
 enum FailKind {
     /// 断在路上（被掐 · 小中继与常驻断开 · 拨不通 · 问不成换不换）：再试会好。
     Transient,
-    /// 没装 · 起不了常驻 · 不是我们的后端：装一次会好 ⇒ 装得了的宿主下一轮再试，装不了的等人。
-    Install,
+    /// 没装 · 起不了常驻 · 不是我们的后端 · 太旧：装一次会好 ⇒ 装得了的宿主下一轮再试，装不了的等人（`Fix` 是装还是更新）。
+    Install(Fix),
     /// 那台不是 Unix：怎样都不会好。
     Unsupported,
 }
@@ -209,6 +220,8 @@ pub struct Feed<T: Transport> {
     transport: tw::Sender<Option<Arc<T>>>,
     state: tw::Sender<State>,
     client: Mutex<Option<Arc<InboundClient>>>,
+    /// 接着的那一台 hello 报的身份（没接着 ⇒ `None`）。
+    theirs: Mutex<Option<String>>,
     /// ［重试］· 回前台 · 网络变了 · 「起」：每按一下 +1。接上那一刻之前按的作废（不留到下一次断线白白跳过一轮退避）。
     kick: tw::Sender<u64>,
     /// 当前这条流的收工信号（[`Feed::reconnect`] 拨它）。
@@ -229,6 +242,7 @@ impl<T: Transport> Feed<T> {
             transport: tw::channel(transport).0,
             state: tw::channel(State::Connecting).0,
             client: Mutex::new(None),
+            theirs: Mutex::new(None),
             kick: tw::channel(0).0,
             cut: Mutex::new(None),
             watched: Mutex::new(None),
@@ -268,6 +282,23 @@ impl<T: Transport> Feed<T> {
         if !matches!(*self.state.borrow(), State::Up { .. }) {
             self.kick.send_modify(|k| *k += 1);
         }
+    }
+
+    /// 接着的那一台 hello 报的身份（没接着 ⇒ `None`）。
+    pub fn theirs(&self) -> Option<String> {
+        lock(&self.theirs).clone()
+    }
+
+    /// 换上落点上那一份（装得了后端、却不在每一轮自己装的宿主：手机按［装后端］装完之后）：在此刻那条 SSH 上跑一次
+    /// `--resident-ensure --replace`（在听的那一位停掉、起落点上那一份），成了就整份重接。回话照 `--resident-ensure` 同一套读（[`read_one_shot`]）。
+    pub async fn replace(&self) -> Result<(), Problem> {
+        let Some(t) = self.transport.borrow().clone() else {
+            return Err(self.offline());
+        };
+        let exec = t.capture(backend_command(ENSURE_REPLACE)).await?;
+        read_one_shot(&exec, &self.cfg.machine).map_err(|f| f.problem)?;
+        self.reconnect();
+        Ok(())
     }
 
     /// 这台在屏上的名字。
@@ -365,6 +396,7 @@ impl<T: Transport> Feed<T> {
                     problem: self.offline(),
                     needs_hand: false,
                     unsupported: false,
+                    fix: None,
                 })
                 .await;
                 if ssh.changed().await.is_err() {
@@ -387,6 +419,7 @@ impl<T: Transport> Feed<T> {
                 }) => {
                     epoch += 1;
                     *lock(&self.client) = Some(Arc::clone(&client));
+                    *lock(&self.theirs) = Some(hello.build_id.clone());
                     (self.events)(Event::Attached {
                         hello: hello.line.clone(),
                         client: Arc::clone(&client),
@@ -420,10 +453,12 @@ impl<T: Transport> Feed<T> {
                     }
                     client.shutdown();
                     *lock(&self.client) = None;
+                    *lock(&self.theirs) = None;
                     self.set_state(State::Down {
                         problem: self.offline(),
                         needs_hand: false,
                         unsupported: false,
+                        fix: None,
                     })
                     .await;
                     (self.events)(Event::Lost).await;
@@ -432,13 +467,18 @@ impl<T: Transport> Feed<T> {
                 Err(Fail { problem, kind }) => {
                     let needs_hand = match kind {
                         FailKind::Transient => false,
-                        FailKind::Install => !installs,
+                        FailKind::Install(_) => !installs,
                         FailKind::Unsupported => true,
+                    };
+                    let fix = match kind {
+                        FailKind::Install(f) if !installs => Some(f),
+                        _ => None,
                     };
                     self.set_state(State::Down {
                         problem,
                         needs_hand,
                         unsupported: kind == FailKind::Unsupported,
+                        fix,
                     })
                     .await;
                     (false, needs_hand)
@@ -644,12 +684,14 @@ impl<T: Transport> Feed<T> {
             ),
             AttachFail::NotOurs(line) => Fail::new(
                 Problem::new(copy_text("rsRemoteResident.hello.notOurs", &[]), line),
-                FailKind::Install,
+                FailKind::Install(Fix::Install),
             ),
             AttachFail::Cut { said, raw, .. } => {
                 Fail::new(Problem::new(said, raw), FailKind::Transient)
             }
-            AttachFail::Reply(said) => Fail::new(Problem::new(said, ""), FailKind::Install),
+            AttachFail::Reply(said) => {
+                Fail::new(Problem::new(said, ""), FailKind::Install(Fix::Install))
+            }
         }
     }
 
@@ -815,9 +857,12 @@ fn read_one_shot(exec: &Exec, machine: &str) -> Result<serde_json::Value, Fail> 
     let out = exec.stdout.trim();
     let err = exec.stderr.trim();
     let raw = || format!("exit: {:?}\nstdout: {out}\nstderr: {err}", exec.exit_status);
-    let install = |p: Problem| Err(Fail::new(p, FailKind::Install));
+    let install = |p: Problem| Err(Fail::new(p, FailKind::Install(Fix::Install)));
     if out.contains(OLD_BACKEND_MARKER) {
-        return install(Problem::new(copy_core::backend_old(machine), raw()));
+        return Err(Fail::new(
+            Problem::new(copy_core::backend_old(machine), raw()),
+            FailKind::Install(Fix::Update),
+        ));
     }
     match exec.exit_status {
         Some(0) => match serde_json::from_str::<serde_json::Value>(out)

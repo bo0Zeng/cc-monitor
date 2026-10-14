@@ -57,6 +57,12 @@ pub struct Fs {
     pub served_bytes: u64,
     /// 目录上被 `SETSTAT` 设过的权限位（`目录 → permissions`）—— 部署建出来的那几层收没收窄。
     pub dir_modes: BTreeMap<String, u32>,
+    /// 列目录时报的修改时间（`路径 → 秒`；没登记 ⇒ 不报）—— 残件新旧那一格要一个「早就放在那儿」的形状。
+    pub mtimes: BTreeMap<String, u32>,
+    /// 读回来的字节第一个翻一位（「传坏了、长度还对」那一形：读回比对要抓得住）。
+    pub corrupt_reads: bool,
+    /// `REMOVE` 一律回 `FAILURE`（「传坏的那一份删不掉」那一形）。
+    pub refuse_remove: bool,
 }
 
 impl Fs {
@@ -254,7 +260,12 @@ impl russh_sftp::server::Handler for Server {
                 return Err(StatusCode::Eof);
             }
             let end = (start + len as usize).min(e.bytes.len());
-            let data = e.bytes[start..end].to_vec();
+            let mut data = e.bytes[start..end].to_vec();
+            if fs.corrupt_reads && start == 0 {
+                if let Some(b) = data.first_mut() {
+                    *b ^= 1;
+                }
+            }
             fs.served_bytes += data.len() as u64;
             Ok(Data { id, data })
         }
@@ -367,6 +378,9 @@ impl russh_sftp::server::Handler for Server {
             let mut fs = fs.lock().unwrap();
             let p = rel(&filename);
             fs.touch("remove", &p);
+            if fs.refuse_remove {
+                return Err(StatusCode::Failure);
+            }
             match fs.files.remove(&p) {
                 Some(_) => Ok(ok(id)),
                 None => Err(StatusCode::NoSuchFile),
@@ -466,11 +480,13 @@ impl russh_sftp::server::Handler for Server {
                 .iter()
                 .filter_map(|d| direct(d).map(|n| File::new(n, dir_attrs())))
                 .collect();
-            files.extend(
-                fs.files
-                    .iter()
-                    .filter_map(|(k, e)| direct(k).map(|n| File::new(n, attrs_of(e)))),
-            );
+            files.extend(fs.files.iter().filter_map(|(k, e)| {
+                direct(k).map(|n| {
+                    let mut a = attrs_of(e);
+                    a.mtime = fs.mtimes.get(k).copied();
+                    File::new(n, a)
+                })
+            }));
             Ok(Name { id, files })
         }
     }

@@ -1052,7 +1052,7 @@ const CORE_ITEMS: Record<string, Record<string, Entry>> = {
     upstream_is_loopback: "J9",
     usable: "J9",
   },
-  // 部署那一族的契约（`deploy-core` 拆开：判定那一半进了后端 `control/deploy_plan.rs`，这里只剩两侧对上的形状）。TS 侧零处判部署 ⇒ 全 NONE。
+  // 部署那一族的契约（`deploy-core` 拆开：判定那一半进了后端 `deploy` crate，这里只剩两侧对上的形状）。TS 侧零处判部署 ⇒ 全 NONE。
   "deploy-contract": {
     LINES: NONE,
     UNAME_CMD: NONE,

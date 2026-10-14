@@ -206,6 +206,11 @@ impl Dial {
     pub fn parse(v: &serde_json::Value) -> Result<Dial, String> {
         crate::machine::resolve(v).map(Dial).map_err(|(_, m)| m)
     }
+
+    /// 一份组好的拨号请求（手机交来的那一形 · 后端已经 `resolve` 过的）。
+    pub fn of(req: DialRequest) -> Dial {
+        Dial(req)
+    }
 }
 
 /// 传输那一趟的会话：先找一条停着的空闲会话（1 个往返）；没有 ⇒ 在池里放置（同身份复用 / 分道到批量连接）
@@ -556,7 +561,7 @@ pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Res
     //   别人正在写的那一份，审计 E3 子形 2）。仍 `EXCLUDE` 新建：真撞了名 ⇒ 当场失败，不会写进别人的那一份。
     let tmp = format!("{rel}.{}.tmp", trip_tag());
     // 失败那几支删**自己这一趟**的临时件；连接已经断了（`sender dropped`）⇒ 删不掉：说一句，
-    //   留下的那一份由下次连上的部署计划认领（`control/deploy_plan.rs::stale_leftovers`）。
+    //   留下的那一份由下次连上的部署计划认领（`deploy::stale_leftovers`）。
     let drop_own_tmp = || async {
         if let Err(e) = s.sftp().remove_file(tmp.clone()).await {
             tracing::warn!("dial: 上传没成，临时件 {tmp} 也没删掉（{e}）—— 下次连上由部署计划清");
@@ -659,6 +664,69 @@ pub async fn put_atomic(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Res
         let _ = s.sftp().remove_file(b).await;
     }
     Ok(())
+}
+
+/// **原子上传 ＋ 整份读回比对**（部署那一趟：桌面经 `files` 链路的 `put`（`verify`）· 手机经 `deploy` crate，同一份）：
+/// [`put_atomic`] 放上去 → [`read_all`] 读回 → [`verify_readback`] 判；**读回不对 ⇒ 当场删掉传坏的那一份**（删不掉也照实说）。
+///
+/// 删的理由（从 monitor `sftp.rs::upload_verified` 随判定一起搬来）：身份读字节自己的戳 —— 一份传坏的字节若恰好还带着对的戳，
+/// 下次会被判「已是这一版」⇒ 坏字节永久驻留。删掉它，下次就是「落点没有 ⇒ 装」。
+/// 中途断了（读回之前 · 删之前）：落点上留的是这一趟放上去的那一份（没读回过），下次连上照计划扫它的戳再判。
+pub async fn put_verified(s: &Session, path: &str, bytes: &[u8], mode: u32) -> Result<(), Refusal> {
+    put_atomic(s, path, bytes, mode).await?;
+    let back = read_all(s, path).await;
+    let Err(bad) = verify_readback(path, bytes, back.as_deref()) else {
+        return Ok(());
+    };
+    Err(match remove(s, path).await {
+        Ok(_) => Refusal::Io {
+            said: copy_text("rsSftp.upload.badRemoved", &[("bad", &bad)]),
+            raw: None,
+        },
+        // 删也没删成：那一句说清两件事，删那一步的原话进复制详情。
+        Err(e) => Refusal::Io {
+            said: copy_text("rsSftp.upload.badKept", &[("bad", &bad)]),
+            raw: Some(
+                [Some(e.message()), e.raw()]
+                    .into_iter()
+                    .flatten()
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            ),
+        },
+    })
+}
+
+/// 判一次上传的读回（纯函数）：`actual` = 读回来的那一份（读不回 ⇒ `None`）。逐字节相同才过；
+/// 不过 ⇒ 那一句（读不回 · 长度不同 · 长度相同内容不同、首个差异在哪）。
+///
+/// 按字节而不是按字符串：上传的是**可执行二进制**。此前完全缺失的那一环（T04 审计①）：
+/// 传输损坏的后端二进制照样被当成装好了 → 下次判「已是最新，跳过」→ 坏二进制永久驻留，而用户看到的是部署成功。
+pub fn verify_readback(path: &str, expected: &[u8], actual: Option<&[u8]>) -> Result<(), String> {
+    let Some(got) = actual else {
+        return Err(copy_text("rsSftp.verify.unreadable", &[("path", path)]));
+    };
+    if got.len() != expected.len() {
+        return Err(copy_text(
+            "rsSftp.verify.lengthDiffers",
+            &[
+                ("path", path),
+                ("expectedLen", &expected.len().to_string()),
+                ("gotLen", &got.len().to_string()),
+            ],
+        ));
+    }
+    match expected.iter().zip(got).position(|(x, y)| x != y) {
+        None => Ok(()),
+        Some(at) => Err(copy_text(
+            "rsSftp.verify.contentDiffers",
+            &[
+                ("path", path),
+                ("expectedLen", &expected.len().to_string()),
+                ("at", &at.to_string()),
+            ],
+        )),
+    }
 }
 
 /// 一趟上传独有的后缀：pid ⊕ 纳秒 ⊕ 进程内计数（十六进制）。**不是**密码学随机 —— 它只要「两个部署者不撞」，
@@ -968,27 +1036,6 @@ fn refusal(op: &str, r: &Refusal) -> serde_json::Value {
     refused(op, r.code(), r.message(), r.raw())
 }
 
-/// 读回来的那一份与期望的比对结论：`None` = 读不回来；`Some((读回长度, 首个差异))`，`差异 == None` ⇒ 逐字节相同。
-fn readback_facts(expected: &[u8], actual: Option<&[u8]>) -> serde_json::Value {
-    match actual {
-        None => serde_json::Value::Null,
-        Some(a) => {
-            let first_diff = if a == expected {
-                None
-            } else {
-                Some(
-                    expected
-                        .iter()
-                        .zip(a)
-                        .position(|(x, y)| x != y)
-                        .unwrap_or(expected.len().min(a.len())),
-                )
-            };
-            serde_json::json!({ "len": a.len(), "first_diff": first_diff })
-        }
-    }
-}
-
 /// 一条请求。`put` 从 `input` 里再收 `size` 个字节。
 async fn answer<R: AsyncRead + Unpin>(
     s: &Session,
@@ -1004,7 +1051,7 @@ async fn answer<R: AsyncRead + Unpin>(
         match op {
             "home" => Ok(serde_json::json!({ "home": s.home() })),
             // `stat` 那一问删了：它唯一的问者（monitor 部署时问落点在不在）随部署判定进了本机后端
-            //   （`control/deploy_plan.rs` 直接用本文件的 `metadata_size` / `exists`），这条链路上零调用方。
+            //   （`deploy` crate 直接用本文件的 `metadata_size` / `exists`），这条链路上零调用方。
             "read" => {
                 let path = arg_str(req, "path").map_err(bad)?;
                 let max = arg_u64(req, "max").map_err(bad)?;
@@ -1084,16 +1131,14 @@ async fn answer<R: AsyncRead + Unpin>(
                         None,
                     ));
                 }
-                put_atomic(s, path, &bytes, mode)
-                    .await
-                    .map_err(|r| refusal(op, &r))?;
-                let readback = if verify {
-                    let back = read_all(s, path).await;
-                    readback_facts(&bytes, back.as_deref())
+                // `verify` ⇒ 读回比对、读回不对当场删（部署那一趟）；否则只原子放。
+                if verify {
+                    put_verified(s, path, &bytes, mode).await
                 } else {
-                    serde_json::Value::Null
-                };
-                Ok(serde_json::json!({ "readback": readback }))
+                    put_atomic(s, path, &bytes, mode).await
+                }
+                .map_err(|r| refusal(op, &r))?;
+                Ok(serde_json::json!({}))
             }
             "list" => {
                 let path = arg_str(req, "path").map_err(bad)?;

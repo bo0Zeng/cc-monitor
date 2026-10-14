@@ -23,6 +23,7 @@ use ssh_dial::Said;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 
+pub mod install;
 pub mod resident;
 
 /// 这一份核心的身份那一行（JSON）：拨号核心的 ack 协议版本 ＋ 认得的用法。Kotlin 侧冒烟与「装上的是不是这一份」用它。
@@ -701,6 +702,26 @@ pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_residentKick<'l>(
     retry: jboolean,
 ) {
     guarded((), || resident::kick(handle, retry != JNI_FALSE));
+}
+
+/// `Core.deploy(handle, slots)`：给那台装 / 升级后端（`slots` = 包里那几格解到的文件，JSON）；事经 `Sink.resident(…, "deploy", …)` 交回。
+/// 那台不在 · 正在装 ⇒ `false`。
+#[no_mangle]
+pub extern "system" fn Java_com_ccmonitor_mobile_core_rs_Core_deploy<'l>(
+    mut env: JNIEnv<'l>,
+    _class: JClass<'l>,
+    handle: jlong,
+    slots: JString<'l>,
+) -> jboolean {
+    guarded(JNI_FALSE, || {
+        let slots = string(&mut env, &slots).unwrap_or_default();
+        let _rt = runtime().enter();
+        if install::start(handle, &slots, on_resident()) {
+            JNI_TRUE
+        } else {
+            JNI_FALSE
+        }
+    })
 }
 
 /// `Core.residentClose(handle)`：不再看这台。

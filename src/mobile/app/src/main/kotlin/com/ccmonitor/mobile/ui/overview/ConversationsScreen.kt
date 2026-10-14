@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -24,6 +25,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.Toned
 import com.ccmonitor.mobile.core.claude.link.wire.Tone
 import com.ccmonitor.mobile.core.copy.copyText
@@ -31,6 +34,8 @@ import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.core.ui.theme.monoSmall
 import com.ccmonitor.mobile.link.Problem
 import com.ccmonitor.mobile.ui.common.CopyDetailButton
+import com.ccmonitor.mobile.ui.common.DeployStepLine
+import com.ccmonitor.mobile.ui.common.deployLabel
 import kotlinx.coroutines.delay
 
 /** 屏上几处的测试标签。 */
@@ -38,6 +43,8 @@ object OverviewTags {
     const val LIST = "overview-list"
     const val EMPTY = "overview-empty"
     const val PROBLEM = "overview-problem"
+    const val DEPLOY = "overview-deploy"
+    const val DEPLOYED = "overview-deployed"
 }
 
 /**
@@ -51,26 +58,45 @@ fun ConversationsScreen(
     onOpen: (sessionId: String) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onDeploy: () -> Unit = {},
 ) {
     Column(modifier.fillMaxSize()) {
         val whole = state.linkProblem ?: state.listProblem
+        val fixing = Fixing(state.fix, state.deploying, onDeploy)
         when {
-            whole != null -> ProblemBar(whole, onRetry)
+            whole != null -> ProblemBar(whole, onRetry, fixing.takeIf { state.linkProblem != null })
+            // 装完换常驻、重接的那一会儿：照旧说装到哪一步了，不换回「读取中」。
+            state.connecting && state.deploying is Deploying.Step ->
+                Column(Modifier.padding(16.dp).testTag(OverviewTags.PROBLEM)) { DeployStepLine(state.deploying) }
             state.connecting || (state.listLoading && state.sections.isEmpty()) ->
                 Text(copyText("history.list.reading", "machines" to machine), style = monoSmall, modifier = Modifier.padding(16.dp))
-            state.sections.isEmpty() && state.needs.isEmpty() ->
-                Text(copyText("history.list.empty"), style = monoSmall, modifier = Modifier.padding(16.dp).testTag(OverviewTags.EMPTY))
-            else ->
-                LazyColumn(Modifier.fillMaxSize().testTag(OverviewTags.LIST)) {
-                    state.linkNotice?.let { p -> item { ProblemBar(p, onRetry) } }
-                    state.needsProblem?.let { p -> item { ProblemBar(p, onRetry) } }
-                    needsSection(state.needs, onOpen)
-                    state.notice?.let { n -> item { Text(n, style = monoSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) } }
-                    for (s in state.sections) historySection(s, onOpen)
-                    if (state.truncated) {
-                        item { Text(copyText("history.list.truncated"), style = monoSmall, modifier = Modifier.padding(16.dp)) }
-                    }
-                }
+            else -> ConversationsList(state, fixing, onOpen, onRetry)
+        }
+    }
+}
+
+@Composable
+private fun ConversationsList(
+    state: ConversationsUiState,
+    fixing: Fixing,
+    onOpen: (sessionId: String) -> Unit,
+    onRetry: () -> Unit,
+) {
+    LazyColumn(Modifier.fillMaxSize().testTag(OverviewTags.LIST)) {
+        (state.deploying as? Deploying.Done)?.let { d ->
+            item { Text(d.text, style = monoSmall, modifier = Modifier.padding(16.dp).testTag(OverviewTags.DEPLOYED)) }
+        }
+        state.linkNotice?.let { p -> item { ProblemBar(p, onRetry, fixing) } }
+        state.needsProblem?.let { p -> item { ProblemBar(p, onRetry) } }
+        // 一条都没有：照旧一句「无会话」，上面那两条（装好那一句 · 要更新）照样在。
+        if (state.sections.isEmpty() && state.needs.isEmpty()) {
+            item { Text(copyText("history.list.empty"), style = monoSmall, modifier = Modifier.padding(16.dp).testTag(OverviewTags.EMPTY)) }
+        }
+        needsSection(state.needs, onOpen)
+        state.notice?.let { n -> item { Text(n, style = monoSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) } }
+        for (s in state.sections) historySection(s, onOpen)
+        if (state.truncated) {
+            item { Text(copyText("history.list.truncated"), style = monoSmall, modifier = Modifier.padding(16.dp)) }
         }
     }
 }
@@ -134,16 +160,37 @@ private fun toneColor(t: Tone?): Color {
     }
 }
 
+/** 问题条上的修法：核心点名的那一种（[fix]）· 装到哪一步了（[deploying]）· 按下去做什么。 */
+private class Fixing(
+    val fix: Fix?,
+    val deploying: Deploying?,
+    val onDeploy: () -> Unit,
+)
+
+/**
+ * 问题条：核心那一句 ＋［重试］［复制详情］；核心点名装一次会好 ⇒ 最前一颗［安装］/［更新］。
+ * 装的时候同一处换成那一步的话（＋ 进度条），按钮变灰不挪位；没装上 ⇒ 换成失败那一句，按钮可再按。
+ */
 @Composable
 private fun ProblemBar(
     p: Problem,
     onRetry: () -> Unit,
+    fixing: Fixing? = null,
 ) {
+    val step = fixing?.deploying as? Deploying.Step
+    val failed = (fixing?.deploying as? Deploying.Failed)?.said
     Column(Modifier.fillMaxWidth().padding(16.dp).testTag(OverviewTags.PROBLEM)) {
-        Text(p.text, color = MaterialTheme.colorScheme.error)
-        Row {
-            TextButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
-            CopyDetailButton(p.text, p.detail)
+        when {
+            step != null -> DeployStepLine(step)
+            failed != null -> Text(failed.text, color = MaterialTheme.colorScheme.error)
+            else -> Text(p.text, color = MaterialTheme.colorScheme.error)
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            fixing?.fix?.let { fix ->
+                Button(onClick = fixing.onDeploy, enabled = step == null, modifier = Modifier.testTag(OverviewTags.DEPLOY)) { Text(deployLabel(fix)) }
+            }
+            if (step == null) TextButton(onClick = onRetry) { Text(copyText("front.act.retry")) }
+            CopyDetailButton(failed?.text ?: p.text, failed?.detail ?: p.detail)
         }
     }
 }

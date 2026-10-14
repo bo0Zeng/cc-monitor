@@ -2,6 +2,8 @@ package com.ccmonitor.mobile.ui.overview
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.HistoryList
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.Reply
@@ -37,12 +39,14 @@ import kotlinx.coroutines.launch
 class ConversationsViewModel(
     private val backend: ResidentFeed,
     private val machine: String,
+    /** 给这台装 / 更新后端（判定与做法在核心；包里那几格由 App 解出来交过去）。 */
+    private val deployBackend: () -> Unit = {},
 ) : ViewModel() {
     private val list = MutableStateFlow<Fetched<HistoryListPage>>(Fetched.Loading)
     private val needs = MutableStateFlow<Fetched<List<NeedsRow>>>(Fetched.Loading)
 
     val state: StateFlow<ConversationsUiState> =
-        combine(backend.state, backend.table, list, needs) { link, table, l, n -> view(link, table, l, n, needsAt) }
+        combine(backend.state, backend.table, list, needs, backend.deploying) { link, table, l, n, d -> view(link, table, l, n, needsAt, d) }
             .stateIn(viewModelScope, SharingStarted.Eagerly, ConversationsUiState())
 
     init {
@@ -72,6 +76,9 @@ class ConversationsViewModel(
     fun retry() {
         if (backend.state.value is LinkState.Down) backend.reconnect() else refetchAll()
     }
+
+    /** ［安装］/［更新］/［核对版本］：核心点名的那一种修法。 */
+    fun deploy() = deployBackend()
 
     private fun refetchAll() {
         fetchList()
@@ -132,6 +139,10 @@ data class ConversationsUiState(
     val linkProblem: Problem? = null,
     /** 通着、但要人动手的那一句（那台后端旧了：照用对得上的那几条，屏上排在需手动最前）；没有 ⇒ `null`。 */
     val linkNotice: Problem? = null,
+    /** 核心点名「装一次会好」的那一种（问题条上给［安装］/［更新］）；没点名 ⇒ `null`。 */
+    val fix: Fix? = null,
+    /** 装 / 更新后端这一趟走到哪了（核心写好的话）；没装过 ⇒ `null`。 */
+    val deploying: Deploying? = null,
     val connecting: Boolean = true,
     val needs: List<NeedsItem> = emptyList(),
     val needsProblem: Problem? = null,
@@ -188,9 +199,12 @@ internal fun view(
     list: Fetched<HistoryListPage>,
     needs: Fetched<List<NeedsRow>>,
     needsAt: Long = 0,
+    deploying: Deploying? = null,
 ): ConversationsUiState {
-    if (link is LinkState.Down) return ConversationsUiState(linkProblem = link.problem(), connecting = false, listLoading = false)
-    if (link == LinkState.Connecting) return ConversationsUiState()
+    if (link is LinkState.Down) {
+        return ConversationsUiState(linkProblem = link.problem(), fix = link.fix, deploying = deploying, connecting = false, listLoading = false)
+    }
+    if (link == LinkState.Connecting) return ConversationsUiState(deploying = deploying)
     val answer = (list as? Fetched.Got)?.value
     val labels = answer?.rows?.associate { it.sessionId to it.label }.orEmpty()
     // 段头是核心写好的；连着同一个段头的几行归一段（核心已按时间排好，这里不重排）。
@@ -207,6 +221,8 @@ internal fun view(
     return ConversationsUiState(
         connecting = false,
         linkNotice = (link as? LinkState.Up)?.notice(),
+        fix = (link as? LinkState.Up)?.fix,
+        deploying = deploying,
         needs = (needs as? Fetched.Got)?.value.orEmpty().map { NeedsItem(it.sid, labels[it.sid], it.needs.text, it.needs.waitedMs, needsAt) },
         needsProblem = (needs as? Fetched.Failed)?.problem,
         sections = sections,

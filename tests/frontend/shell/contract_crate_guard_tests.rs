@@ -5,7 +5,7 @@
 //! ① `src/common/` 下每个 crate 恰好登记一类、逐个写理由（两向：目录 == [`CRATES`]）；
 //! ② monitor 生产段（`[dependencies]` · `[build-dependencies]` · `[target.*.dependencies]`）点名的每个 path 依赖、连同它们自己生产段的
 //!    path 依赖闭包，只许住 `src/common/` 且是契约类；判定类出现即红，**没有例外**（`deploy-core` 拆成契约 `deploy-contract` ＋ 后端判定之后，按符号那道豁免退役）；
-//! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `control/deploy_plan.rs` 恰一处定义；契约 crate `deploy-contract` 与
+//! ③ crate 级：部署判定（[`DEPLOY_DECISIONS`]）只有一个家 —— 后端 `deploy` crate（`place_verdict` 在 `control/deploy_plan.rs`）恰一处定义；契约 crate `deploy-contract` 与
 //!    monitor 生产源码里用着部署契约的每一份（壳 `src/**` ＋ 通信层面 A 那个 crate）零处定义。
 //! ④「前端宿主原语」类（`host-core`）只许两个前端链：后端生产段闭包里出现即红。
 //! ⑤「前端包」（[`FRONTEND_PACKAGES`]：文件窗口）不住 `src/common/`、自己出一个程序（它的 `[[bin]]` 住它自己名下，size2 10-11 从 monitor 包搬来）：
@@ -36,7 +36,7 @@ const CRATES: &[(&str, Class, &str)] = &[
     ("cmd-wire", Class::Contract, "帧命令两端对上的形状：机器名（`Machine`，线上一个字符串）· typed 命令的形状指纹表（后端 hello 交出去、客户端比）· 文件管理那一族的入参与回包（文件窗口照它发、照它解）· 会话族手机问的那几条的回包（手机嵌的 Rust 核心照它解）；不裁决"),
     ("copy-core", Class::Contract, "文案表：两侧按同一个键取同一句（`copy_text` / `copy_static`），不裁决"),
     ("creds-core", Class::Contract, "文件格式 · 路径：凭据落盘格式与文件名、数据目录（monitor 只算路径；写半边在 `harden` 后面，monitor 不开）"),
-    ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `control/deploy_plan.rs`）"),
+    ("deploy-contract", Class::Contract, "字节表键 · 文件格式 · 答话形状 · 路径：表 A 的键与行、拒绝的形状与话、身份戳格式、计划答话、落点路径，两侧对上同一份（判定那一半住后端 `deploy` crate）"),
     ("filewin-contract", Class::Contract, "monitor 与文件窗口进程两边对上的形状：开窗种子 · 就绪那一行 · 「在此打开终端」那一问的名字与参数，不裁决"),
     ("test-home", Class::TestInfra, "测试档的家一开始就是沙箱：各 crate 只在 dev 侧引它，不判业务"),
     ("guard-core", Class::TestInfra, "源码扫描判据的原语，两侧都只在 dev 侧"),
@@ -56,18 +56,19 @@ const FRONTEND_PACKAGES: &[(&str, &str, &str)] = &[(
     "文件窗口（又一个前端）：它自己的 `[[bin]] cc-monitor-filewin` 一行转调库面；只经 monitor 内嵌那份出货（不进安装包，K-R124 ⑭a）；monitor 一行都不引它",
 )];
 
-/// 部署判定（原 `deploy-core` 的判定那一半）：只许在后端 [`DEPLOY_HOME`] 恰一处定义。
-const DEPLOY_DECISIONS: &[&str] = &[
-    "judge",
-    "promised",
-    "is_newer",
-    "identity_decision",
-    "interpret_target_probe",
-    "place_verdict",
+/// 部署判定（原 `deploy-core` 的判定那一半）：各自只许在后端那一个家恰一处定义 —— (名字, 家)。
+/// 判定与计划住 `deploy` crate（桌面后端与手机 mobcore 同一份）；`place_verdict` 要这份字节自己的 `BUILD_ID`，留在后端的帧面那一层。
+const DEPLOY_DECISIONS: &[(&str, &str)] = &[
+    ("judge", DEPLOY_HOME),
+    ("promised", DEPLOY_HOME),
+    ("is_newer", DEPLOY_HOME),
+    ("identity_decision", DEPLOY_HOME),
+    ("interpret_target_probe", DEPLOY_HOME),
+    ("place_verdict", "src/backend/control/deploy_plan.rs"),
 ];
 
-/// 部署判定的唯一住址（仓内相对路径）。
-const DEPLOY_HOME: &str = "src/backend/control/deploy_plan.rs";
+/// 部署判定的家（仓内相对路径）。
+const DEPLOY_HOME: &str = "src/backend/deploy/lib.rs";
 
 fn root() -> PathBuf {
     crate::guard_support::repo_root()
@@ -332,14 +333,13 @@ fn the_backend_links_no_host_primitive_crate() {
 fn deploy_decisions_live_only_in_the_backend() {
     let root = root();
     let mut bad = Vec::new();
-    let home = guard_core::production_code(
-        &std::fs::read_to_string(root.join(DEPLOY_HOME))
-            .unwrap_or_else(|e| panic!("读 {DEPLOY_HOME}：{e}")),
-    );
-    for name in DEPLOY_DECISIONS {
-        let n = fn_defs(&home, name);
+    for (name, home) in DEPLOY_DECISIONS {
+        let body = guard_core::production_code(
+            &std::fs::read_to_string(root.join(home)).unwrap_or_else(|e| panic!("读 {home}：{e}")),
+        );
+        let n = fn_defs(&body, name);
         if n != 1 {
-            bad.push(format!("`{name}` 在 {DEPLOY_HOME} 定义 {n} 处（该恰一处）"));
+            bad.push(format!("`{name}` 在 {home} 定义 {n} 处（该恰一处）"));
         }
     }
     let sources = monitor_production_sources();
@@ -374,10 +374,10 @@ fn deploy_decisions_live_only_in_the_backend() {
         "monitor 里用部署契约的人群没扫到 `byte_table.rs` —— 量法瞎了"
     );
     for (rel, body) in contract.iter().chain(users) {
-        for name in DEPLOY_DECISIONS {
+        for (name, home) in DEPLOY_DECISIONS {
             if fn_defs(body, name) > 0 {
                 bad.push(format!(
-                    "{rel}：定义了部署判定 `{name}`（判定只在后端 {DEPLOY_HOME}）"
+                    "{rel}：定义了部署判定 `{name}`（判定只在后端 {home}）"
                 ));
             }
         }

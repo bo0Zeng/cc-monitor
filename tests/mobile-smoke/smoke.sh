@@ -12,6 +12,9 @@ export CCM_SMOKE_BOX=${CCM_SMOKE_BOX:-$root/.build/mobile-smoke/box}
 heavy=()
 [ -f "$root/tests/scripts/heavy.sh" ] && heavy=(bash "$root/tests/scripts/heavy.sh")
 (cd "$root/src/backend" && "${heavy[@]}" cargo build -q)
+# 装后端那两步要包里带着给远端装的字节（开发树由 re-embed.sh 铺，桌面同一个目录）。
+[ -f "$root/src/frontend/shell/embedded-backends/cc-monitor-backend-x86_64" ] ||
+  { echo "包里没带后端字节（src/frontend/shell/embedded-backends/ 空）：先 bash tests/scripts/re-embed.sh" >&2; exit 2; }
 bash "$here/rig.sh" up
 bash "$here/emu.sh" up
 eval "$(bash "$here/emu.sh" env)"

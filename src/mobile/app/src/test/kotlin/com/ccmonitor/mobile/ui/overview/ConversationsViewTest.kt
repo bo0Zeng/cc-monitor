@@ -1,5 +1,7 @@
 package com.ccmonitor.mobile.ui.overview
 
+import com.ccmonitor.mobile.core.claude.link.Deploying
+import com.ccmonitor.mobile.core.claude.link.Fix
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.LiveSession
 import com.ccmonitor.mobile.core.claude.link.Said
@@ -32,6 +34,19 @@ class ConversationsViewTest {
                 truncated = true,
             ),
         )
+
+    @Test
+    fun `装一次会好的那一种照核心点名带上（断着 · 通着旧了）；装到哪一步原样带上，连着的那一会儿也不丢`() {
+        val step = Deploying.Step("安装 cc-monitor → box", bar = true)
+        val down = view(LinkState.Down(Said("远端 cc-monitor 未装", ""), needsHand = true, fix = Fix.INSTALL), SessionTable(), list, Fetched.Loading, deploying = step)
+        assertEquals(Fix.INSTALL, down.fix)
+        assertEquals(step, down.deploying)
+        val old = view(LinkState.Up(Said("box 后端要更新", ""), fix = Fix.UPDATE), SessionTable(), list, Fetched.Got(emptyList()))
+        assertEquals(Fix.UPDATE, old.fix)
+        assertEquals(Problem("box 后端要更新", ""), old.linkNotice)
+        assertEquals(step, view(LinkState.Connecting, SessionTable(), list, Fetched.Loading, deploying = step).deploying)
+        assertNull(view(LinkState.Up(), SessionTable(), list, Fetched.Got(emptyList())).fix)
+    }
 
     @Test
     fun `段头照核心写的、按先后连着归段，不重排`() {

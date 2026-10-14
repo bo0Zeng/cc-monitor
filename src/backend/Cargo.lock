@@ -244,6 +244,7 @@ dependencies = [
  "comms-outward",
  "copy-core",
  "creds-core",
+ "deploy",
  "deploy-contract",
  "flate2",
  "guard-core",
@@ -655,6 +656,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "deploy"
+version = "0.1.0"
+dependencies = [
+ "copy-core",
+ "deploy-contract",
+ "relay-route-core",
+ "serde_json",
+ "ssh-dial",
+ "test-home",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1491,7 +1506,10 @@ dependencies = [
  "cmd-wire",
  "comms-inward",
  "copy-core",
+ "deploy",
+ "deploy-contract",
  "jni",
+ "relay-route-core",
  "resident-client",
  "ring",
  "russh",
