@@ -33,7 +33,6 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +66,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.RotFormKind
 import com.ccmonitor.mobile.core.claude.link.wire.RotSeg
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
 import kotlinx.coroutines.launch
@@ -417,9 +417,9 @@ private fun PaintSheet(
                 NumberBox(v, copyText("rot.unit.percent"), faint = false, 80.dp, copyText("rot.day.popLabel")) { v = it.coerceIn(0.0, 100.0) }
             }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = { onGo(null) }) { Text(copyText("rot.day.del")) }
+                SecondaryButton(onClick = { onGo(null) }) { Text(copyText("rot.day.del")) }
                 Box(Modifier.weight(1f))
-                TextButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
+                SecondaryButton(onClick = onDismiss) { Text(copyText("kit.dialog.cancel")) }
                 Button(onClick = { onGo(v) }) { Text(copyText("rot.ask.go")) }
             }
         }

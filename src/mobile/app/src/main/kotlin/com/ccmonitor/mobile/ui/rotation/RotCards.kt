@@ -24,7 +24,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -52,7 +51,11 @@ import com.ccmonitor.mobile.core.claude.link.wire.RotFormScope
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.claude.link.wire.WinFact
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
+import com.ccmonitor.mobile.core.ui.icon.Ph
+import com.ccmonitor.mobile.core.ui.icon.PhIcon
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
+import com.ccmonitor.mobile.core.ui.theme.Touch
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
@@ -217,7 +220,10 @@ private fun AddCard(
             .dim(!enabled),
         contentAlignment = Alignment.Center,
     ) {
-        Text(PLUS + copyText("rot.card.add"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            PhIcon(Ph.Plus, contentDescription = null, size = Touch.iconInline, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(copyText("rot.card.add"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
     }
 }
 
@@ -263,7 +269,7 @@ private fun AccountPane(
                 if (board.inSession && account != view.current) {
                     OutlinedButton(onClick = { board.useNow(account) }, enabled = f.blocked == null) { Text(copyText("rot.acct.useNow", "account" to board.label(account))) }
                 }
-                TextButton(onClick = { board.settings(removed(view.settings, i)) }) { Text(copyText("rot.acct.remove")) }
+                SecondaryButton(onClick = { board.settings(removed(view.settings, i)) }) { Text(copyText("rot.acct.remove")) }
             }
             f.blocked?.let { b -> NoteBox(NoteTone.WARN) { Text(b.text, style = MaterialTheme.typography.bodySmall) } }
             ui.refused?.takeIf { it.first == account }?.let { (_, t) -> Text(t, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
@@ -276,4 +282,3 @@ private val WIDE = 340.dp
 private val GAP = 8.dp
 private const val FULL = 100.0
 private const val LIFT = 12f
-private const val PLUS = "＋ "

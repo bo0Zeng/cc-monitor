@@ -24,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -46,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.LinkState
 import com.ccmonitor.mobile.core.claude.link.wire.RotFormScope
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.feedback.LocalAppSnackbar
 import com.ccmonitor.mobile.core.ui.feedback.Notice
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
@@ -174,7 +174,7 @@ private fun DirtyBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(copyText("rot.top.dirty"), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-            TextButton(onClick = board::revert, enabled = !saving) { Text(copyText("rot.top.revert")) }
+            SecondaryButton(onClick = board::revert, enabled = !saving) { Text(copyText("rot.top.revert")) }
             Button(onClick = board::save, enabled = !saving) {
                 if (saving) {
                     CircularProgressIndicator(Modifier.width(16.dp).height(16.dp), strokeWidth = 2.dp)
@@ -209,7 +209,7 @@ private fun ReadFailed(
         Text(text, style = MaterialTheme.typography.bodyMedium)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
             CopyDetailButton(text, detail)
-            TextButton(onClick = retry) { Text(copyText("rot.read.retry")) }
+            SecondaryButton(onClick = retry) { Text(copyText("rot.read.retry")) }
         }
     }
 }

@@ -26,7 +26,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -50,6 +49,7 @@ import com.ccmonitor.mobile.core.claude.link.wire.RotNote
 import com.ccmonitor.mobile.core.claude.link.wire.RotStrategyItem
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 import com.ccmonitor.mobile.ui.chat.newsession.PickRow
 import com.ccmonitor.mobile.ui.chat.newsession.SheetHead
@@ -305,7 +305,7 @@ private fun Hint(
                 }
                 RotHintKind.TZ_UNKNOWN -> n.hint.zone?.let { z -> OutlinedButton(onClick = { board.setTz(z) }) { Text(copyText("rot.hint.setTzTip", "zone" to z)) } }
                 RotHintKind.NEWER -> {
-                    TextButton(onClick = board::keepMine) { Text(copyText("rot.hint.keepMine")) }
+                    SecondaryButton(onClick = board::keepMine) { Text(copyText("rot.hint.keepMine")) }
                     OutlinedButton(onClick = board::loadNew) { Text(copyText("rot.hint.loadNew")) }
                 }
                 RotHintKind.OLD_SCRIPTS -> OutlinedButton(onClick = board::toggleOld) { Text(copyText("rot.hint.which")) }
@@ -387,7 +387,7 @@ private fun AskName(
             Text(ask.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             OutlinedTextField(name, { name = it }, label = { Text(copyText("rot.ask.name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                TextButton(onClick = { board.named("") }) { Text(copyText("kit.dialog.cancel")) }
+                SecondaryButton(onClick = { board.named("") }) { Text(copyText("kit.dialog.cancel")) }
                 Button(onClick = { board.named(name) }, enabled = name.isNotBlank()) { Text(copyText("rot.ask.go")) }
             }
         }

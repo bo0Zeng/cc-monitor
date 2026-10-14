@@ -22,7 +22,6 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import com.ccmonitor.mobile.core.claude.link.wire.RotTryTimeline
 import com.ccmonitor.mobile.core.claude.link.wire.RotationViewReply
 import com.ccmonitor.mobile.core.copy.copyText
+import com.ccmonitor.mobile.core.ui.button.SecondaryButton
 import com.ccmonitor.mobile.core.ui.theme.LocalAppTokens
 import com.ccmonitor.mobile.ui.chat.newsession.AccountBadge
 
@@ -70,7 +70,7 @@ internal fun Simulation(
     val tl = view.timeline ?: return
     val temp = view.decision?.temp.orEmpty()
     RotHeader(copyText("rot.h.sim"), if (temp.isNotEmpty() && board.inSession) copyText("rot.sim.manual", "n" to temp.size) else null) {
-        if (temp.isNotEmpty() && board.inSession) TextButton(onClick = board::clearTemp) { Text(copyText("rot.sim.clear")) }
+        if (temp.isNotEmpty() && board.inSession) SecondaryButton(onClick = board::clearTemp) { Text(copyText("rot.sim.clear")) }
         SingleChoiceSegmentedButtonRow {
             listOf(RotationUi.HOURS_12 to copyText("rot.sim.h12"), RotationUi.HOURS_24 to copyText("rot.sim.h24")).forEachIndexed { i, (h, text) ->
                 SegmentedButton(selected = ui.hours == h, onClick = { board.hours(h) }, shape = SegmentedButtonDefaults.itemShape(i, 2), icon = {}) { Text(text) }
@@ -201,7 +201,7 @@ private fun UseSeg(
             .fillMaxHeight()
             .padding(horizontal = 0.5.dp)
             .background(if (past) bg else bg.copy(alpha = FUTURE), RoundedCornerShape(2.dp))
-            .then(if (temp) Modifier.border(1.5.dp, Color.White, RoundedCornerShape(2.dp)) else Modifier),
+            .then(if (temp) Modifier.border(1.5.dp, MaterialTheme.colorScheme.onSurface, RoundedCornerShape(2.dp)) else Modifier),
         contentAlignment = Alignment.CenterStart,
     ) {
         Text((if (temp) DOT else "") + text, color = ink, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.padding(horizontal = 3.dp))
