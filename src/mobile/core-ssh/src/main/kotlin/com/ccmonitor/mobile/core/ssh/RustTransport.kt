@@ -16,13 +16,10 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
@@ -39,7 +36,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [SshTransport] 走手机嵌的 Rust 核心（`:core-rs`，拨号核心 `ssh-dial` 与后端同一份）。
  *
  * - **连上**＝开一条握着连接的链路（`use: hold`）：竞速 · 跳板（多跳）· host key · 鉴权 · 保活都在核心里；之后每一次 exec /
- *   shell / SFTP 各开一条链路，按同一份拨号身份复用那条连接（核心的连接池）。握着的那条收工（对端断 · 保活判死）⇒ [isConnected] 变假。
+ *   shell 各开一条链路，按同一份拨号身份复用那条连接（核心的连接池）。握着的那条收工（对端断 · 保活判死）⇒ [isConnected] 变假。
  * - host key：这台记过的全部钥匙交进请求，照 OpenSSH 比（记过的类型协商排前、按协商出的那一种严格比、那一种没记过 ⇒ 拒）；
  *   一把都没记过 ⇒ 首见接受，**鉴权过了**才落 [KnownHostStore]。
  * - 钥匙按编号交进核心（密码 · PEM · Keystore 别名＋公钥）；Keystore 的签名在这里做（回 DER，核心换成 SSH 的格式）。
@@ -52,8 +49,6 @@ class RustTransport(
 
     @Volatile private var hold: RustLink? = null
     private val children: MutableSet<RustLink> = ConcurrentHashMap.newKeySet()
-    private val filesLock = Mutex()
-    private var files: RustLink? = null
     private val closed = AtomicBoolean(false)
     private val watcher = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -150,76 +145,8 @@ class RustTransport(
             RustShell(child(JSONObject().put("use", "shell").put("pty", pty)))
         }
 
-    override suspend fun sftpList(path: String): List<SftpEntry> {
-        val dir = sftpRealPath(path)
-        val got = ask(JSONObject().put("op", "list").put("path", dir))
-        val rows = got.optJSONArray("entries") ?: JSONArray()
-        return (0 until rows.length()).map { i ->
-            val e = rows.getJSONObject(i)
-            val name = e.getString("name")
-            SftpEntry(name, joinPath(dir, name), e.optBoolean("dir"), e.optLong("size"))
-        }
-    }
-
-    override suspend fun sftpRealPath(path: String): String = ask(JSONObject().put("op", "realpath").put("path", path)).getString("path")
-
-    override suspend fun sftpDownload(
-        remotePath: String,
-        local: File,
-    ) {
-        val bytes = readRemote(remotePath, MAX_FILE_BYTES) ?: throw IOException(remotePath)
-        withContext(Dispatchers.IO) { local.writeBytes(bytes) }
-    }
-
-    override suspend fun sftpUpload(
-        local: File,
-        remotePath: String,
-    ) = put(remotePath, withContext(Dispatchers.IO) { local.readBytes() })
-
-    override suspend fun sftpRename(
-        from: String,
-        to: String,
-    ) {
-        ask(JSONObject().put("op", "rename").put("from", from).put("to", to))
-    }
-
-    override suspend fun sftpDelete(
-        path: String,
-        isDir: Boolean,
-    ) {
-        ask(JSONObject().put("op", if (isDir) "rmdir" else "remove").put("path", path))
-    }
-
-    override suspend fun sftpMkdir(path: String) {
-        ask(JSONObject().put("op", "mkdirs").put("path", path))
-    }
-
-    override suspend fun sftpReadText(
-        path: String,
-        maxBytes: Int,
-    ): String {
-        val bytes = readRemote(path, MAX_FILE_BYTES) ?: return ""
-        if (bytes.size <= maxBytes) return bytes.toString(Charsets.UTF_8)
-        return bytes.copyOf(maxBytes).toString(Charsets.UTF_8) + copyText("mobSsh.read.truncated", "n" to bytes.size.toString())
-    }
-
-    override suspend fun sftpReadTextForEdit(
-        path: String,
-        maxBytes: Int,
-    ): String? {
-        val bytes = readRemote(path, maxBytes.toLong()) ?: return null
-        if (bytes.any { it == 0.toByte() }) return null
-        return bytes.toString(Charsets.UTF_8)
-    }
-
-    override suspend fun sftpWriteText(
-        remotePath: String,
-        text: String,
-    ) = put(remotePath, text.toByteArray(Charsets.UTF_8))
-
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        files?.close()
         children.forEach { it.close() }
         children.clear()
         hold?.close()
@@ -243,52 +170,6 @@ class RustTransport(
             throw IOException(ack.optString("error"))
         }
         return link
-    }
-
-    /** files 链路上的一问一答（链路惰性开、一问接一问）。应答带 `code` ⇒ 抛那一句。 */
-    private suspend fun ask(
-        req: JSONObject,
-        bytes: ByteArray? = null,
-    ): JSONObject =
-        withContext(Dispatchers.IO) {
-            filesLock.withLock {
-                val link = files?.takeIf { it.isOpen } ?: child(JSONObject().put("use", "files")).also { files = it }
-                link.send((req.toString() + "\n").toByteArray(Charsets.UTF_8))
-                bytes?.let { link.send(it) }
-                val line = link.readLine() ?: throw IOException(copyText("mobSsh.conn.unavailable"))
-                val got = JSONObject(line)
-                if (got.has("code")) throw IOException(got.optString("message"))
-                got
-            }
-        }
-
-    /** 整份读回来；比 [max] 大 / 不在 ⇒ `null`。 */
-    private suspend fun readRemote(
-        path: String,
-        max: Long,
-    ): ByteArray? {
-        val got =
-            try {
-                ask(JSONObject().put("op", "read").put("path", path).put("max", max))
-            } catch (e: IOException) {
-                return null.also { if (!isConnected) throw e }
-            }
-        if (got.isNull("data")) return null
-        return Base64.getDecoder().decode(got.getString("data"))
-    }
-
-    private suspend fun put(
-        path: String,
-        bytes: ByteArray,
-    ) {
-        ask(
-            JSONObject()
-                .put("op", "put")
-                .put("path", path)
-                .put("size", bytes.size)
-                .put("mode", FILE_MODE),
-            bytes,
-        )
     }
 
     // ── 钥匙 · host key ─────────────────────────────────────────────────────────
@@ -392,8 +273,6 @@ class RustTransport(
         const val ANDROID_KEYSTORE = "AndroidKeyStore"
         const val CAPTURE_MAX = 16 * 1024 * 1024
         const val STDERR_TAIL = 4096
-        const val MAX_FILE_BYTES = 64L shl 20
-        const val FILE_MODE = 0x1A4 // 0644
 
         /** SSH 公钥 blob（base64）⇒ `SHA256:<无填充 base64>`（与 OpenSSH / 核心报的同形）。 */
         fun fingerprintOf(blobB64: String): String {
@@ -409,11 +288,6 @@ class RustTransport(
             }
             return byteArrayOf(4) + fixed(pub.w.affineX) + fixed(pub.w.affineY)
         }
-
-        fun joinPath(
-            dir: String,
-            name: String,
-        ): String = if (dir.endsWith('/')) dir + name else "$dir/$name"
 
         private const val P256_COORD = 32
     }

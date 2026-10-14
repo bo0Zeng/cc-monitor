@@ -152,10 +152,10 @@ class InstrumentedTestInventoryTest {
                 "core-data/src/androidTest/kotlin/com/ccmonitor/mobile/core/data/db/SeedOnCreateTest.kt" to 1,
                 "core-rs/src/androidTest/kotlin/com/ccmonitor/mobile/core/rs/CoreLoadTest.kt" to 1,
                 "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/PublicKeyDeriverTest.kt" to 2,
-                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 6,
+                "core-ssh/src/androidTest/kotlin/com/ccmonitor/mobile/core/ssh/RustTransportTest.kt" to 5,
             )
 
-        const val PINNED_TOTAL_TESTS = 31
+        const val PINNED_TOTAL_TESTS = 30
         const val CI_WORKFLOW = "scripts/android-test.sh"
         const val ANDROID_TEST_JOB = "connectedDebugAndroidTest"
         const val CLASS_FILTER = "testInstrumentationRunnerArguments.class="

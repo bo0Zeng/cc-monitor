@@ -71,7 +71,7 @@ pub struct Env {
     /// `None` ⇒ 这个宿主没有 agent（手机）：没配钥匙就报「此系统不支持连 SSH agent」。
     pub agent: Option<Box<dyn Agent>>,
     pub facts: Box<dyn Facts>,
-    /// 远端写的规矩（后端：部署那两处；手机：任意路径）。
+    /// 远端写的规矩（后端 · 手机都是部署那两处；没装宿主那一套 ⇒ 一个字节都不许写）。
     pub files: crate::sftp::WriteRules,
 }
 

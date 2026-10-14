@@ -12,14 +12,14 @@ import kotlinx.coroutines.flow.update
  * 只有 [close] 才 `clear()` → VM.onCleared → 释放连接引用，引用归零才真断连。
  *
  * key 是自增的 `sess-<seq>`，不是 hostId：同主机可开多个 tab，底层 SSH 连接共享复用。
- * tab 目标分两种 [TabTarget]：终端（shell 会话）与 SFTP（文件浏览），两者共享同一 host 连接。
+ * tab 目标分两种 [TabTarget]：终端（shell 会话）与文件屏，两者共享同一 host 连接。
  */
 class SessionTabManager {
-    /** tab 目标：各类型带各自的 payload。HostedSession 按类型分派到终端屏或 SFTP 屏。 */
+    /** tab 目标：各类型带各自的 payload。HostedSession 按类型分派到终端屏或文件屏。 */
     sealed interface TabTarget {
         /**
          * 终端 shell 会话。
-         * - [cd]：初始工作目录（SFTP「在此打开终端」传入）。
+         * - [cd]：初始工作目录（文件屏「在此打开终端」传入）。
          * - [launcherId]：启动配置（cc / cct）。
          * - [tmuxSession]：首连即接回的会话名（敲那台渲出的那一行）。进去重键：不同名各开一个 tab，同名复用。
          */
@@ -29,8 +29,8 @@ class SessionTabManager {
             val tmuxSession: String? = null,
         ) : TabTarget
 
-        /** SFTP 文件浏览（Termius 式）。无 payload——同主机至多 1 个（去重键仅 hostId+类型）。 */
-        data object Sftp : TabTarget
+        /** 文件浏览（Termius 式）。无 payload——同主机至多 1 个（去重键仅 hostId+类型）。 */
+        data object Files : TabTarget
     }
 
     /**
@@ -54,7 +54,7 @@ class SessionTabManager {
 
     /**
      * 打开 tab，返回 key。hostId＋[target] 已存在则复用（按结构相等），
-     * 所以同主机可同时有：默认终端 tab、若干 attach tab、一个 SFTP tab。
+     * 所以同主机可同时有：默认终端 tab、若干 attach tab、一个 文件 tab。
      *
      * - [forceNew]：跳过复用、强制新建（「＋新会话」），同样的 target 也各成独立 shell 与 VM store。
      * - [label]：不进去重键。复用旧 tab 时 null 可被非 null 补上，已有的非 null 不覆写。

@@ -12,13 +12,13 @@ import com.ccmonitor.mobile.ui.chat.ChatOpen
 import com.ccmonitor.mobile.ui.chat.ChatViewModel
 import com.ccmonitor.mobile.ui.chat.ConnectionHolder
 import com.ccmonitor.mobile.ui.chat.sessionOf
+import com.ccmonitor.mobile.ui.files.FilesViewModel
 import com.ccmonitor.mobile.ui.host.HostViewModel
 import com.ccmonitor.mobile.ui.identity.IdentityViewModel
 import com.ccmonitor.mobile.ui.overview.ConversationsViewModel
 import com.ccmonitor.mobile.ui.session.SessionTabManager
 import com.ccmonitor.mobile.ui.session.SessionViewModel
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsViewModel
-import com.ccmonitor.mobile.ui.sftp.SftpViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
@@ -89,8 +89,8 @@ val appModule =
                 knownHostStore = get(), // TOFU 恢复路径
             )
         }
-        // SFTP 连接编排和浏览状态 VM；与终端共享同一主机连接，按持有者计数保活。
-        viewModel { (hostId: String) -> SftpViewModel(hostId, get(), get()) }
+        // 文件屏的浏览状态 VM：读写问那台后端（这台的常驻流）；SSH 连接与终端共用，按持有者计数保活。
+        viewModel { (hostId: String) -> FilesViewModel(hostId, get(), get(), get()) }
         // core-ssh 的 KnownHostStore 端口接 Room；sshModule 里的连接管理器靠它解析。
         single<KnownHostStore> { KnownHostDaoStore(get()) } // get()=KnownHostDao（dataModule 提供）
         single { HostConnector(get(), get(), get()) }

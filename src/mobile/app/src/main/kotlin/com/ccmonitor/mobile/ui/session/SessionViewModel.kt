@@ -147,7 +147,7 @@ class SessionViewModel(
     val executor: RemoteExecutor = manager.commandExecutor(hostId)
 
     /**
-     * 只取本主机的会话状态（distinctUntilChanged，别的会话或 SFTP 变动不触发整屏重组）。
+     * 只取本主机的会话状态（distinctUntilChanged，别的会话或文件屏变动不触发整屏重组）。
      * 初值取构造时的真实快照：新 tab 为 null（终端屏对 null 不显示断线条幅）；复用已连主机的 tab 为 CONNECTED；
      * 构造时已 ERROR 则条幅立刻显示。写死 CONNECTING 会让每次 Connected 首帧误闪「连接已断开」。
      */

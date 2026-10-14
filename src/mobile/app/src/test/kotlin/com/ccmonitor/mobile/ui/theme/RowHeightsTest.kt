@@ -23,7 +23,7 @@ class RowHeightsTest {
             "overview/ConversationsScreen.kt" to mapOf("DotRow" to "rowDouble"),
             "host/HostScreens.kt" to mapOf("HostRow" to "rowDouble"),
             "drawer/AppDrawer.kt" to mapOf("EntryRow" to "rowDrawer", "RecentSection" to "rowDrawer", "ServerRow" to "rowDrawer"),
-            "sftp/SftpScreen.kt" to mapOf("SftpRow" to "rowFile"),
+            "files/FilesScreen.kt" to mapOf("EntryRow" to "rowFile"),
             "settings/SettingsScreen.kt" to mapOf("EntrySections" to "rowSetting"),
             "settings/ButtonSettingsScreen.kt" to mapOf("GroupRow" to "rowSetting", "ButtonRow" to "rowSetting"),
             "session/SessionTabsSheet.kt" to mapOf("SessionTabRowItem" to "rowSingle"),

@@ -9,7 +9,6 @@ import com.ccmonitor.mobile.core.data.repo.HostRepository
 import com.ccmonitor.mobile.core.data.repo.IdentityRepository
 import com.ccmonitor.mobile.core.remote.ExecResult
 import com.ccmonitor.mobile.core.ssh.ConnectionConfig
-import com.ccmonitor.mobile.core.ssh.SftpEntry
 import com.ccmonitor.mobile.core.ssh.ShellChannel
 import com.ccmonitor.mobile.core.ssh.SshConnectEvent
 import com.ccmonitor.mobile.core.ssh.SshConnectionManager
@@ -23,7 +22,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 /**
  * 网关的「生」与「死」真的落在连接管理器上：行为那一半。
@@ -185,7 +183,7 @@ class HostConnectorLifecycleTest {
      *
      * 它要防的 bug 很具体：`fun connection(hostId: String): SshTransport? = null`（空壳）
      * 能让 `HostConnectorGatewayTest` 那几条源码扫描全绿：名字写对了、调用方钉上了、
-     * 文件集也对。真实后果是 `SftpViewModel.ensureConn` 永远复用不到现成连接（每次重连）、
+     * 文件集也对。真实后果是 `FilesViewModel.ensureSsh` 永远复用不到现成连接（每次重连）、
      * `HostLink` 永远走一遍建连、`AttachmentPicker` 上传当场报「这台主机现在用不了」。
      *
      * 两头都断：有连接时非空且同一对象（防空壳）+ 断开后变 null（防「把 connect 的返回值缓存住」）。
@@ -205,7 +203,7 @@ class HostConnectorLifecycleTest {
             connector.release(hostId, holder)
             assertNull(
                 "连接已经被放手摘掉了，经网关问句柄却还拿得到：网关缓存了一份陈旧句柄。" +
-                    "真实后果：拿着一条已死的 transport 去 sftp/exec，卡死而不报错。",
+                    "真实后果：拿着一条已死的 transport 去 exec，卡死而不报错。",
                 connector.connection(hostId),
             )
         }
@@ -263,7 +261,7 @@ private class LifecycleFakeTransport : SshTransport {
         closed = true
     }
 
-    private fun nope(): Nothing = throw UnsupportedOperationException("本替身只服务连接生死，不做通道/SFTP")
+    private fun nope(): Nothing = throw UnsupportedOperationException("本替身只服务连接生死，不做通道")
 
     override suspend fun openShell(
         term: String,
@@ -274,47 +272,6 @@ private class LifecycleFakeTransport : SshTransport {
     override fun execStream(command: String): Flow<ByteArray> = nope()
 
     override suspend fun execCapture(command: String): ExecResult = nope()
-
-    override suspend fun sftpList(path: String): List<SftpEntry> = nope()
-
-    override suspend fun sftpRealPath(path: String): String = nope()
-
-    override suspend fun sftpDownload(
-        remotePath: String,
-        local: File,
-    ) = nope()
-
-    override suspend fun sftpUpload(
-        local: File,
-        remotePath: String,
-    ) = nope()
-
-    override suspend fun sftpRename(
-        from: String,
-        to: String,
-    ) = nope()
-
-    override suspend fun sftpDelete(
-        path: String,
-        isDir: Boolean,
-    ) = nope()
-
-    override suspend fun sftpMkdir(path: String) = nope()
-
-    override suspend fun sftpReadText(
-        path: String,
-        maxBytes: Int,
-    ): String = nope()
-
-    override suspend fun sftpReadTextForEdit(
-        path: String,
-        maxBytes: Int,
-    ): String? = nope()
-
-    override suspend fun sftpWriteText(
-        remotePath: String,
-        text: String,
-    ) = nope()
 }
 
 private class LifecycleFakeHostDao(

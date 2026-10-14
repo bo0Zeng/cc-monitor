@@ -36,6 +36,7 @@ import com.ccmonitor.mobile.ui.chat.chatKey
 import com.ccmonitor.mobile.ui.chat.newConversationId
 import com.ccmonitor.mobile.ui.drawer.DrawerAction
 import com.ccmonitor.mobile.ui.drawer.DrawerNav
+import com.ccmonitor.mobile.ui.files.FilesScreen
 import com.ccmonitor.mobile.ui.host.HostEditorScreen
 import com.ccmonitor.mobile.ui.host.HostListScreen
 import com.ccmonitor.mobile.ui.identity.IdentityScreen
@@ -46,7 +47,6 @@ import com.ccmonitor.mobile.ui.session.SessionTabsSheet
 import com.ccmonitor.mobile.ui.session.SessionsOverviewScreen
 import com.ccmonitor.mobile.ui.settings.ButtonSettingsScreen
 import com.ccmonitor.mobile.ui.settings.SettingsScreen
-import com.ccmonitor.mobile.ui.sftp.SftpScreen
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
@@ -123,7 +123,7 @@ private fun AppNavGraph(
 }
 
 /**
- * Session 路由：tab 宿主按 kind 分派 SessionScreen / SftpScreen。
+ * Session 路由：tab 宿主按 kind 分派 SessionScreen / FilesScreen。
  *
  * 注意：切 tab 用 launchSingleTop + popUpTo(Hosts) 防返回栈堆积，且目标是当前 tab 时必须短路：
  * `popUpTo` 先于 `launchSingleTop` 去重执行，会先弹掉 session/$key 再比对，结果重建当前 entry、
@@ -135,7 +135,7 @@ private fun NavGraphBuilder.sessionRoute(
 ) {
     composable(Screen.Session.route) { entry ->
         val key = entry.arguments?.getString("key") ?: return@composable
-        // SFTP tab「在此打开终端」开一个终端 tab。
+        // 文件 tab「在此打开终端」开一个终端 tab。
         HostedSession(
             tabManager,
             key,
@@ -166,9 +166,9 @@ private fun NavGraphBuilder.sessionRoute(
             onNewTerminalTab = { hid ->
                 nav.navigate("session/${tabManager.open(hid, SessionTabManager.TabTarget.Terminal(), forceNew = true)}")
             },
-            // 面板「＋ 文件 tab」：每主机至多一个 SFTP tab，可能命中当前 tab，照上面的规则短路。
-            onNewSftpTab = { hid ->
-                val k = tabManager.open(hid, SessionTabManager.TabTarget.Sftp)
+            // 面板「＋ 文件 tab」：每主机至多一个 文件 tab，可能命中当前 tab，照上面的规则短路。
+            onNewFilesTab = { hid ->
+                val k = tabManager.open(hid, SessionTabManager.TabTarget.Files)
                 if (k != key) {
                     nav.navigate("session/$k") {
                         launchSingleTop = true
@@ -189,7 +189,7 @@ private fun NewSessionHostPickerScreen(
     nav: NavHostController,
     tabManager: SessionTabManager,
 ) {
-    // 选中即进会话并弹出本页。SFTP 去重可能命中已在栈顶的 tab，所以加 launchSingleTop。
+    // 选中即进会话并弹出本页。文件 tab 去重可能命中已在栈顶的 tab，所以加 launchSingleTop。
     fun openAndLeave(key: String) {
         nav.navigate("session/$key") {
             launchSingleTop = true
@@ -201,7 +201,7 @@ private fun NewSessionHostPickerScreen(
         onConnect = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(), forceNew = true)) },
         onAddHost = { nav.navigate("host/new") },
         onIdentities = { nav.navigate(Screen.Identities.route) },
-        onFiles = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Sftp)) },
+        onFiles = { hostId -> openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Files)) },
         onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
         onLaunch = { hostId, launcherId ->
             openAndLeave(tabManager.open(hostId, SessionTabManager.TabTarget.Terminal(launcherId = launcherId), forceNew = true))
@@ -215,7 +215,7 @@ private fun NewSessionHostPickerScreen(
 /**
  * 宿主一个 tab。VM 挂在 [SessionTabManager] 的 per-key store 上（覆盖 `LocalViewModelStoreOwner`），
  * 跨「总览 ↔ tab」导航保活；只有 `close(key)` 才清掉 store、释放连接。
- * tab 已关则 [onGone] 退回。按 [SessionTabManager.TabTarget] 分派终端或 SFTP 屏，并挂 tab 面板 [SessionTabsSheet]。
+ * tab 已关则 [onGone] 退回。按 [SessionTabManager.TabTarget] 分派终端屏或文件屏，并挂 tab 面板 [SessionTabsSheet]。
  */
 @Composable
 private fun HostedSession(
@@ -226,7 +226,7 @@ private fun HostedSession(
     onOpenTmuxTab: (hostId: String, tmuxName: String) -> Unit,
     onSwitchTab: (key: String) -> Unit,
     onNewTerminalTab: (hostId: String) -> Unit,
-    onNewSftpTab: (hostId: String) -> Unit,
+    onNewFilesTab: (hostId: String) -> Unit,
 ) {
     // 响应式观察 sessions：面板「×」原地关掉当前 tab 时要触发 onGone，否则会困在已清 store 的死会话上。
     val sessions by tabManager.sessions.collectAsState()
@@ -255,9 +255,9 @@ private fun HostedSession(
                     onAttachInNewTab = { name -> onOpenTmuxTab(open.hostId, name) },
                     onShowTabs = { showTabs = true },
                 )
-            // 「在此打开终端」开新终端 tab，不替换当前 SFTP tab。
-            SessionTabManager.TabTarget.Sftp ->
-                SftpScreen(
+            // 「在此打开终端」开新终端 tab，不替换当前 文件 tab。
+            SessionTabManager.TabTarget.Files ->
+                FilesScreen(
                     open.hostId,
                     onOpenTerminal = { path -> onOpenTerminalTab(open.hostId, path) },
                     onShowTabs = { showTabs = true },
@@ -271,7 +271,7 @@ private fun HostedSession(
             onHide = { showTabs = false },
             onSwitchTab = onSwitchTab,
             onNewTerminalTab = onNewTerminalTab,
-            onNewSftpTab = onNewSftpTab,
+            onNewFilesTab = onNewFilesTab,
         )
     }
 }
@@ -284,7 +284,7 @@ private fun HostedTabsSheet(
     onHide: () -> Unit,
     onSwitchTab: (key: String) -> Unit,
     onNewTerminalTab: (hostId: String) -> Unit,
-    onNewSftpTab: (hostId: String) -> Unit,
+    onNewFilesTab: (hostId: String) -> Unit,
 ) {
     SessionTabsSheet(
         currentKey = currentKey,
@@ -296,9 +296,9 @@ private fun HostedTabsSheet(
             onHide()
             onNewTerminalTab(hostId)
         },
-        onNewSftpTab = {
+        onNewFilesTab = {
             onHide()
-            onNewSftpTab(hostId)
+            onNewFilesTab(hostId)
         },
         onDismiss = onHide,
     )
@@ -315,9 +315,9 @@ private fun NavGraphBuilder.hostsRoute(
             onConnect = onConnect,
             onAddHost = { nav.navigate("host/new") },
             onIdentities = { nav.navigate(Screen.Identities.route) },
-            // 文件 = 开一个 SFTP tab，与终端 tab 一样保活、共享连接。
+            // 文件 = 开一个 文件 tab，与终端 tab 一样保活、共享连接。
             onFiles = { hostId ->
-                nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Sftp)}")
+                nav.navigate("session/${tabManager.open(hostId, SessionTabManager.TabTarget.Files)}")
             },
             onEdit = { hostId -> nav.navigate("host/$hostId/edit") },
             onLaunch = { hostId, launcherId ->
@@ -406,7 +406,7 @@ private fun NavHostController.followDrawer(
             action = action,
             hostId = hostId,
             newConversationId = ::newConversationId,
-            openFiles = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Sftp)}" },
+            openFiles = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Files)}" },
             openTerminal = { "session/${tabManager.open(it, SessionTabManager.TabTarget.Terminal())}" },
         )
     navigate(to.route) {

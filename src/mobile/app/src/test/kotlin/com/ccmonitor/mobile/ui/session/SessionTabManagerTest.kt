@@ -41,24 +41,24 @@ class SessionTabManagerTest {
         assertEquals(3, m.sessions.value.size)
     }
 
-    // 去重键含 target 类型——同主机可同时有 1 终端 tab + 1 SFTP tab。
+    // 去重键含 target 类型——同主机可同时有 1 终端 tab + 1 文件 tab。
     @Test
     fun sameHostDifferentTargetOpensDistinctTabs() {
         val m = SessionTabManager()
         val term = m.open("h1", TabTarget.Terminal())
-        val sftp = m.open("h1", TabTarget.Sftp)
-        assertNotEquals("同主机 终端 vs SFTP → 两个不同 tab", term, sftp)
+        val files = m.open("h1", TabTarget.Files)
+        assertNotEquals("同主机 终端 vs 文件 → 两个不同 tab", term, files)
         assertEquals(2, m.sessions.value.size)
         assertTrue(m.get(term)?.target is TabTarget.Terminal)
-        assertEquals(TabTarget.Sftp, m.get(sftp)?.target)
+        assertEquals(TabTarget.Files, m.get(files)?.target)
     }
 
     @Test
     fun sameHostSameTargetReusesTab() {
         val m = SessionTabManager()
-        val s1 = m.open("h1", TabTarget.Sftp)
-        val s2 = m.open("h1", TabTarget.Sftp) // 同主机同 SFTP → 复用（一 SFTP tab/主机）
-        assertEquals("同主机同 SFTP target 应复用", s1, s2)
+        val s1 = m.open("h1", TabTarget.Files)
+        val s2 = m.open("h1", TabTarget.Files) // 同主机同文件屏 → 复用（每主机一个文件 tab）
+        assertEquals("同主机同文件屏应复用", s1, s2)
         assertEquals(1, m.sessions.value.size)
     }
 

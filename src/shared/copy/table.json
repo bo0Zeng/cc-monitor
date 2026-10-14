@@ -29484,12 +29484,6 @@
       "zh": "认证失败",
       "args": []
     },
-    "mobSsh.read.truncated": {
-      "kind": "body",
-      "role": "片段",
-      "zh": "…（已截断，共 {n} 字节）",
-      "args": ["n"]
-    },
     "mobSsh.log.waitOther": {
       "kind": "body",
       "role": "进度",
@@ -29626,10 +29620,10 @@
       "args": [],
       "limited": ["连接"]
     },
-    "mobTabs.row.sftp": {
+    "mobTabs.row.files": {
       "kind": "body",
       "role": "片段",
-      "zh": "SFTP 文件",
+      "zh": "文件",
       "args": []
     },
     "mobTabs.row.close": {
@@ -30905,121 +30899,13 @@
       "zh": "无 · 直连",
       "args": []
     },
-    "mobSftp.fab.upload": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上传",
-      "args": []
-    },
-    "mobSftp.load.failed": {
-      "kind": "error",
-      "role": "报错",
-      "zh": "SFTP 错误",
-      "args": []
-    },
-    "mobSftp.edit.tooBig": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "文件过大或非文本，不可编辑",
-      "args": []
-    },
-    "mobSftp.upload.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "上传失败 · {name}",
-      "args": ["name"]
-    },
-    "mobSftp.bar.mkdir": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "新建目录",
-      "args": []
-    },
-    "mobSftp.bar.sortSize": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "排序 · 大小",
-      "args": []
-    },
-    "mobSftp.bar.sortName": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "排序 · 名称",
-      "args": []
-    },
-    "mobSftp.bar.terminal": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "终端",
-      "args": []
-    },
-    "mobSftp.bar.up": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "上一级",
-      "args": []
-    },
-    "mobSftp.bar.bookmark": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "收藏此目录",
-      "args": []
-    },
-    "mobSftp.bookmark.deleted": {
+    "mobFiles.bookmark.deleted": {
       "kind": "body",
       "role": "toast",
       "zh": "已删除书签「{label}」",
       "args": ["label"]
     },
-    "mobSftp.rename.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "重命名",
-      "args": []
-    },
-    "mobSftp.rename.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "重命名",
-      "args": []
-    },
-    "mobSftp.mkdir.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "新建目录",
-      "args": []
-    },
-    "mobSftp.mkdir.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "创建",
-      "args": []
-    },
-    "mobSftp.delete.title": {
-      "kind": "title",
-      "role": "确认框",
-      "zh": "删除",
-      "args": []
-    },
-    "mobSftp.delete.dirBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "删除目录 “{name}”（仅限空目录）",
-      "args": ["name"]
-    },
-    "mobSftp.delete.fileBody": {
-      "kind": "body",
-      "role": "确认框",
-      "zh": "删除文件 “{name}”",
-      "args": ["name"]
-    },
-    "mobSftp.delete.ok": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "删除",
-      "args": []
-    },
-    "mobSftp.preview.empty": {
+    "mobFiles.preview.empty": {
       "kind": "body",
       "role": "空态",
       "zh": "（空文件）",
@@ -31028,125 +30914,71 @@
         "C-L4": "文件是空的时的占位，括号把它和真内容分开"
       }
     },
-    "mobSftp.edit.title": {
+    "mobFiles.edit.title": {
       "kind": "title",
       "role": "确认框",
       "zh": "编辑 {name}",
       "args": ["name"]
     },
-    "mobSftp.edit.save": {
-      "kind": "action",
-      "role": "确认框",
-      "zh": "保存",
-      "args": []
-    },
-    "mobSftp.overwrite.title": {
+    "mobFiles.overwrite.title": {
       "kind": "title",
       "role": "确认框",
       "zh": "覆盖远端文件",
       "args": []
     },
-    "mobSftp.overwrite.body": {
+    "mobFiles.overwrite.body": {
       "kind": "body",
       "role": "确认框",
       "zh": "将以 UTF-8 覆写 “{name}”（{chars} 字符 / {bytes} 字节）\n此操作不可撤销",
       "args": ["name", "chars", "bytes"]
     },
-    "mobSftp.overwrite.ok": {
+    "mobFiles.overwrite.ok": {
       "kind": "action",
       "role": "确认框",
       "zh": "确认覆盖",
       "args": []
     },
-    "mobSftp.overwrite.back": {
+    "mobFiles.overwrite.back": {
       "kind": "action",
       "role": "确认框",
       "zh": "返回编辑",
       "args": []
     },
-    "mobSftp.menu.preview": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "预览",
-      "args": []
-    },
-    "mobSftp.menu.edit": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "编辑",
-      "args": []
-    },
-    "mobSftp.menu.download": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "下载",
-      "args": []
-    },
-    "mobSftp.menu.rename": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "重命名",
-      "args": []
-    },
-    "mobSftp.menu.delete": {
-      "kind": "action",
-      "role": "按钮",
-      "zh": "删除",
-      "args": []
-    },
-    "mobSftp.mkdir.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "新建目录失败",
-      "args": []
-    },
-    "mobSftp.rename.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "重命名失败",
-      "args": []
-    },
-    "mobSftp.delete.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "删除失败 · {name}",
-      "args": ["name"]
-    },
-    "mobSftp.download.done": {
+    "mobFiles.download.done": {
       "kind": "body",
       "role": "toast",
       "zh": "已下载到 {path}",
       "args": ["path"]
     },
-    "mobSftp.download.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "下载失败",
-      "args": []
-    },
-    "mobSftp.upload.done": {
+    "mobFiles.upload.done": {
       "kind": "body",
       "role": "toast",
       "zh": "已上传 {name}",
       "args": ["name"]
     },
-    "mobSftp.read.failed": {
-      "kind": "body",
-      "role": "toast",
-      "zh": "读取失败 · {path}",
-      "args": ["path"]
-    },
-    "mobSftp.save.done": {
+    "mobFiles.save.done": {
       "kind": "body",
       "role": "toast",
       "zh": "已保存",
       "args": []
     },
-    "mobSftp.save.failed": {
+    "mobFiles.list.truncated": {
       "kind": "body",
-      "role": "toast",
-      "zh": "保存失败",
-      "args": []
+      "role": "说明",
+      "zh": "前 {n} / 共 {total} 项",
+      "args": ["n", "total"]
+    },
+    "mobFiles.local.readFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "读取所选文件失败 · {name}",
+      "args": ["name"]
+    },
+    "mobFiles.local.writeFailed": {
+      "kind": "error",
+      "role": "报错",
+      "zh": "存到本机失败 · {path}",
+      "args": ["path"]
     },
     "mobConnect.jump.missing": {
       "kind": "error",

@@ -73,14 +73,14 @@ fun SessionsOverviewScreen(
             LazyColumn(Modifier.fillMaxSize()) {
                 items(sessions, key = { it.key }) { s ->
                     val label = hosts.firstOrNull { it.id == s.hostId }?.label ?: s.hostId
-                    // 区分 tab 目标：终端 shell 还是 SFTP 文件浏览。
-                    val isSftp = s.target is SessionTabManager.TabTarget.Sftp
+                    // 区分 tab 目标：终端 shell 还是 文件浏览。
+                    val isFiles = s.target is SessionTabManager.TabTarget.Files
                     Row(
                         Modifier.fillMaxWidth().clickable { onOpen(s.key) }.padding(horizontal = 16.dp, vertical = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        PhIcon(if (isSftp) Ph.FolderSimple else Ph.TerminalWindow, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                        PhIcon(if (isFiles) Ph.FolderSimple else Ph.TerminalWindow, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         Column(Modifier.weight(1f)) {
                             Text(label, style = MaterialTheme.typography.bodyMedium)
                             // 终端 tab 副标题：有 label 先显 label，其次 tmux 会话名（attach tab 的名），都没有则显 cd。
@@ -88,7 +88,7 @@ fun SessionsOverviewScreen(
                             val tmuxName = term?.tmuxSession
                             val sub =
                                 when {
-                                    isSftp -> copyText("mobTabs.row.sftp")
+                                    isFiles -> copyText("mobTabs.row.files")
                                     s.label != null -> s.label + (tmuxName?.let { " · tmux: $it" } ?: "")
                                     tmuxName != null -> "tmux: $tmuxName"
                                     else -> term?.cd

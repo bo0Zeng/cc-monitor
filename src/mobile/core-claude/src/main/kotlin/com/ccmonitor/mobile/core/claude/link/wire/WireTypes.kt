@@ -484,18 +484,6 @@ data class DirChecked(
     val exists: Boolean,
 )
 
-@WireOf("LsReply")
-@JsonClass(generateAdapter = true)
-data class LsReply(
-    val entries: List<LsEntry>,
-)
-
-@WireOf("LsEntry")
-@JsonClass(generateAdapter = true)
-data class LsEntry(
-    val path: Any,
-)
-
 @WireOf("FilesPathReply")
 @JsonClass(generateAdapter = true)
 data class FilesPathReply(
@@ -534,3 +522,69 @@ enum class PasteKind {
     @Json(name = "redirectUrl")
     REDIRECT_URL,
 }
+
+@JsonClass(generateAdapter = false)
+enum class FileKind {
+    @Json(name = "dir")
+    DIR,
+
+    @Json(name = "file")
+    FILE,
+
+    @Json(name = "symlink")
+    SYMLINK,
+
+    @Json(name = "other")
+    OTHER,
+}
+
+@WireOf("LsEntry")
+@JsonClass(generateAdapter = true)
+data class LsEntry(
+    val path: Any,
+    val kind: FileKind,
+    val size: Long?,
+    @Json(name = "mtime_text") val mtimeText: String?,
+    @Json(name = "link_dir") val linkDir: Boolean?,
+)
+
+@WireOf("LsReply")
+@JsonClass(generateAdapter = true)
+data class LsReply(
+    val entries: List<LsEntry>,
+    val truncated: Boolean,
+    val total: Long,
+)
+
+@WireOf("StatReply")
+@JsonClass(generateAdapter = true)
+data class StatReply(
+    val mode: Long?,
+)
+
+@WireOf("ReadTextReply")
+@JsonClass(generateAdapter = true)
+data class ReadTextReply(
+    val text: String,
+    val sha256: String,
+)
+
+@WireOf("HexBytes")
+@JsonClass(generateAdapter = true)
+data class HexBytes(
+    val b16: String,
+)
+
+@WireOf("ReadChunkReply")
+@JsonClass(generateAdapter = true)
+data class ReadChunkReply(
+    val size: Long,
+    val eof: Boolean,
+    val content: HexBytes,
+)
+
+@WireOf("FilesDeleteReply")
+@JsonClass(generateAdapter = true)
+data class FilesDeleteReply(
+    val remaining: Long,
+)
